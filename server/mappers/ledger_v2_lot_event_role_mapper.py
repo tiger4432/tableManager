@@ -105,10 +105,10 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
 class LotEventRoleMapper(BaseLedgerMapper):
     """Interpret split, merge, and track-in EventFrames as registered Pack Roles.
 
-    THE SENTENCES THIS MAPPER CAN SAY, in the mapper's own words.  Each is a shape, not a
-    name: it says what the sentence must be able to carry, and the engine finds whichever
-    Profile mapping realizes it.  Rename ``has_wafer@1`` to anything, call a Lot a Batch,
-    renumber every ``mapping_id`` -- none of it reaches this file.
+    THE SENTENCES THIS MAPPER CAN SAY, in the mapper's own words.  Each carries the NAME
+    this mapper gives it, and the Profile files under that name the mapping that realizes
+    it.  Rename ``has_wafer@1`` to anything, call a Lot a Batch, re-bind every role --
+    none of it reaches this file.
 
     Qualifier names stay because they ARE the business vocabulary: a slot is a slot, and
     "from where, to where, which wafer" is what a slot map means.  The engine checks them
@@ -119,28 +119,34 @@ class LotEventRoleMapper(BaseLedgerMapper):
     implementation_id = "lot-event-role"
     implementation_version = 1
 
-    #: "this identity exists" -- no object, no qualifiers.
-    FIRST_SIGHT = SentenceShape(has_object=False)
+    # 🔴 TWO FIRST-SIGHT SENTENCES, NOT ONE SHAPE SAID TWICE (2026-08-21).  This was a
+    # single `FIRST_SIGHT` steered by a `subject_type=` selector the mapper had learned
+    # from the Profile, which put half the sentence's identity at the CALL SITE.  A
+    # sentence is picked by its name now, so the two announcements this mapper actually
+    # makes get two names.  Holder and item stay this mapper's own words -- the thing that
+    # holds items in slots, and the thing it holds -- exactly as they were when they were
+    # selector values; what changed is that they are said here, once, instead of being
+    # looked up out of the declaration on every unit.
+    #: "this holder exists".
+    FIRST_SIGHT_HOLDER = SentenceShape()
+    #: "this item exists".
+    FIRST_SIGHT_ITEM = SentenceShape()
     #: "this holder carries that item, in this slot".
-    IN_SLOT = SentenceShape(has_object=True, qualifiers=("slot",))
-    #: "this lot came out of that lot" -- object, nothing qualified.
-    DESCENT = SentenceShape(has_object=True)
+    IN_SLOT = SentenceShape(qualifiers=("slot",))
+    #: "this lot came out of that lot".
+    DESCENT = SentenceShape()
 
-    # Split slot-carry and merge slot-join are shape-IDENTICAL -- same predicate, same
+    # Split slot-carry and merge slot-join realize the SAME Claim -- same predicate, same
     # subject/object types, same three qualifiers -- and differ only in the rule that
-    # computed them, which is what each atom's `derivation` records.  Nothing in the
-    # declaration tells them apart, so each is its own shape and the Profile says which
-    # mapping realizes which; a shape carries the name of the sentence it says, taken from
-    # the attribute below.  These are this mapper's words, not the config's: rename
-    # anything in `ledger_config.json` and they still hold.  A Profile that leaves the
-    # pair undeclared is refused at COMPILE time (`ambiguous_sentence`) rather than
-    # resolved to whichever matched first.
+    # computed them, which is what each atom's `derivation` records.  Nothing about their
+    # structure tells them apart, which is why structure stopped being how a sentence is
+    # chosen; each has a name, and the Profile files a mapping under each.  These are this
+    # mapper's words, not the config's: rename anything in `ledger_config.json` and they
+    # still hold.
     #: "this wafer stayed in its slot as the child was split off".
-    SPLIT_SLOT_CARRY = SentenceShape(
-        has_object=True, qualifiers=("from", "to", "wafer"))
+    SPLIT_SLOT_CARRY = SentenceShape(qualifiers=("from", "to", "wafer"))
     #: "this wafer moved from that slot to this one as the two lots merged".
-    MERGE_SLOT_JOIN = SentenceShape(
-        has_object=True, qualifiers=("from", "to", "wafer"))
+    MERGE_SLOT_JOIN = SentenceShape(qualifiers=("from", "to", "wafer"))
 
     def interpret_unit(
         self,
@@ -186,11 +192,6 @@ class LotEventRoleMapper(BaseLedgerMapper):
         all_refs = tuple(sorted(refs))
         sentences = ProfileSentences(
             context, profile, occurred_at=unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN])
-        # What THIS deployment calls the thing that holds items in slots, and the thing it
-        # holds.  Learned from the one sentence where both appear together, so the two
-        # spellings never have to be written down here.
-        holder = sentences.subject_type_of(self.IN_SLOT)
-        item = sentences.object_type_of(self.IN_SLOT)
 
         emissions: list[RoleEmission] = []
 
@@ -206,8 +207,7 @@ class LotEventRoleMapper(BaseLedgerMapper):
                 "lot event names no Lot identity",
             )
         for lot in lots:
-            keep(sentences.first_sight(
-                self.FIRST_SIGHT, lot, all_refs, subject_type=holder))
+            keep(sentences.first_sight(self.FIRST_SIGHT_HOLDER, lot, all_refs))
 
         pairs_by_row: list[list[tuple[str, str]]] = []
         for position, row in enumerate(rows):
@@ -217,16 +217,13 @@ class LotEventRoleMapper(BaseLedgerMapper):
                 if not wafer:
                     continue
                 keep(sentences.first_sight(
-                    self.FIRST_SIGHT, wafer, (refs[position],), subject_type=item))
+                    self.FIRST_SIGHT_ITEM, wafer, (refs[position],)))
                 keep(sentences.say(
                     self.IN_SLOT, _text(row["lot"]), (refs[position],),
-                    obj=wafer, qualifiers={"slot": slot},
-                    subject_type=holder, object_type=item))
+                    obj=wafer, qualifiers={"slot": slot}))
 
         if event_type in {"split", "merge"} and parent and child:
-            keep(sentences.say(
-                self.DESCENT, child, all_refs, obj=parent,
-                subject_type=holder, object_type=holder))
+            keep(sentences.say(self.DESCENT, child, all_refs, obj=parent))
 
         if event_type == "split":
             child_position = next(
@@ -238,8 +235,7 @@ class LotEventRoleMapper(BaseLedgerMapper):
                         keep(sentences.say(
                             self.SPLIT_SLOT_CARRY, parent, (refs[child_position],),
                             obj=child,
-                            qualifiers={"from": slot, "to": slot, "wafer": wafer},
-                            subject_type=holder, object_type=holder))
+                            qualifiers={"from": slot, "to": slot, "wafer": wafer}))
         elif event_type == "merge":
             parent_position = next(
                 (index for index, row in enumerate(rows)
@@ -257,8 +253,7 @@ class LotEventRoleMapper(BaseLedgerMapper):
                             (refs[parent_position], refs[child_position]),
                             obj=child,
                             qualifiers={"from": parent_slots[wafer], "to": slot,
-                                        "wafer": wafer},
-                            subject_type=holder, object_type=holder))
+                                        "wafer": wafer}))
         return tuple(emissions)
 
 

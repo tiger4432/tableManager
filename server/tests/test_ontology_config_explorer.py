@@ -26,7 +26,8 @@ from ledger.config_explorer import (
 from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT, load_setup
 from ledger.implementations import trusted_implementations
-from ledger.setup_bundle import require_ready_bundle, validate_bundle
+from ledger.setup_bundle import (
+    SETUP_VERSION, require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot
 import ontology_config_explorer_router as explorer_router
 from tests.support.ontology_explorer_sample import load_transfer_sample_setup
@@ -120,18 +121,18 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     assert len(by_kind["binding"]) == sum(
         len(mapping["bind"])
         for profile in profiles
-        for mapping in profile["mappings"])
+        for mapping in profile["mappings"].values())
     expected = {
         "predicate|slot_map@1",
         "entity|Lot@1",
         "pack|lot-lineage@1",
         "claim|lot-lineage@1/slot_map",
         "profile|lot_event#profile",
-        "mapping|lot_event#profile#mapping:slot_preserving",
+        "mapping|lot_event#profile#mapping:split_slot_carry",
         "preparer|lot_event#preparation",
         "mapper|lot_event#mapper",
         "source_plan|lot_event",
-        "binding|lot_event#profile#mapping:slot_preserving#binding:subject",
+        "binding|lot_event#profile#mapping:split_slot_carry#binding:subject",
         "table|lot_event",
     }
     assert expected.issubset(index.nodes)
@@ -148,7 +149,7 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         + sum(len(profile["mappings"]) for profile in profiles)
         + sum(len(mapping["bind"])
               for profile in profiles
-              for mapping in profile["mappings"])
+              for mapping in profile["mappings"].values())
         # one profile, one preparer and one mapper per source, inline in the source
         + 3 * len(bundle["sources"])
         + len(bundle["sources"]) + len(tables)
@@ -180,7 +181,7 @@ def test_actual_round_trip_source_profile_claim_predicate(active_setup):
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
     assert ("source_plan|lot_event", "profile|lot_event#profile", "source_profile") in edges
     assert (
-        "mapping|lot_event#profile#mapping:slot_preserving",
+        "mapping|lot_event#profile#mapping:split_slot_carry",
         "claim|lot-lineage@1/slot_map",
         "mapping_claim",
     ) in edges
@@ -189,8 +190,8 @@ def test_actual_round_trip_source_profile_claim_predicate(active_setup):
         "emits_predicate",
     ) in edges
     assert (
-        "mapping|lot_event#profile#mapping:slot_preserving",
-        "binding|lot_event#profile#mapping:slot_preserving#binding:subject",
+        "mapping|lot_event#profile#mapping:split_slot_carry",
+        "binding|lot_event#profile#mapping:split_slot_carry#binding:subject",
         "mapping_binding",
     ) in edges
 
@@ -495,10 +496,7 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "ledger_config.json#/vocabulary/transferred_to@1")
 
     logical = transfer_sample_setup.bundle.to_mapping()
-    mappings = {
-        item["mapping_id"]: item
-        for item in logical["sources"]["dt_log"]["bind"]["mappings"]
-    }
+    mappings = logical["sources"]["dt_log"]["bind"]["mappings"]
     lineage = [
         (
             mappings[mapping_id]["bind"]["subject"]["entity_type"],
@@ -1819,13 +1817,13 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     catalog = live_physical_catalog()
     bundle = json.loads(
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    del bundle["sources"]["dt_job"]["bind"]["mappings"][1]["bind"]["count"]
+    del bundle["sources"]["dt_job"]["bind"]["mappings"]["counted"]["bind"]["count"]
     del (bundle["packs"]["lot-lineage@1"]["claims"]["membership"]
          ["emit"]["object"]["qualifiers"]["slot"])
 
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    role = by_path["bundle.sources.dt_job.bind.mappings[1].bind.count"]
+    role = by_path["bundle.sources.dt_job.bind.mappings.counted.bind.count"]
     assert role["state"] == "missing"
     assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
     qualifier = by_path[
@@ -1955,7 +1953,7 @@ def test_a_setup_can_be_started_from_nothing(tmp_path, monkeypatch):
     # shape rather than the emptiness and fails on a green result.
     assert not validate_bundle_errors(bundle, catalog={}), (
         "a starting file that does not validate is a file handed back to be repaired")
-    assert bundle["setup_version"] == 3
+    assert bundle["setup_version"] == SETUP_VERSION
     assert set(result["sections"]) <= set(bundle), "every section it names must be present"
 
     # And the plan reads it afterwards, which is what the operator sees next.

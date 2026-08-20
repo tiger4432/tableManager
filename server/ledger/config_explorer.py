@@ -562,7 +562,7 @@ def _node_description(kind: str, raw: Any) -> str:
         # `packs` was named here until 2026-08-21.  It was `sorted(set(...))` of the packs
         # the mappings already name through `use`, so the line said the same thing twice
         # and the second copy is the one that left.
-        return f"mappings {len(raw.get('mappings', []))}개"
+        return f"mappings {len(raw.get('mappings', {}))}개"
     if kind == "mapping":
         return f"claim {raw.get('use', '없음')}"
     if kind == "binding":
@@ -958,13 +958,16 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         # unreachable for it: every mapping still draws `mapping_claim` at the claim it
         # uses, and a claim is a position inside its pack, so the pack keeps both its
         # `used_by` rows and its walk-root status through the same source.
-        compiled_mappings = profile_compiled.get(source_id, {}).get("mappings", [])
-        for index, mapping in enumerate(profile_raw.get("mappings", [])):
-            mapping_id = str(mapping.get("mapping_id", index))
-            mapping_ref = f"{profile_ref}#mapping:{mapping_id}"
-            mapping_path = (*profile_path, "mappings", index)
-            mapping_compiled = (compiled_mappings[index]
-                                if index < len(compiled_mappings) else mapping)
+        # 🔴 A MAPPING IS ADDRESSED BY THE SENTENCE IT REALIZES as of 2026-08-21.  The key
+        # was `mapping_id`, or the list position when that was absent -- a positional
+        # fallback that renamed every node below it the day a mapping was inserted.  A map
+        # has no positions to shift.
+        compiled_mappings = profile_compiled.get(source_id, {}).get("mappings", {})
+        for sentence in sorted(profile_raw.get("mappings", {}), key=str):
+            mapping = profile_raw["mappings"][sentence]
+            mapping_ref = f"{profile_ref}#mapping:{sentence}"
+            mapping_path = (*profile_path, "mappings", sentence)
+            mapping_compiled = compiled_mappings.get(sentence, mapping)
             mapping_key = builder.add_node(
                 "mapping", mapping_ref, mapping, mapping_compiled, mapping_path,
                 config_file=ledger_file, json_pointer=pointer(*mapping_path),
@@ -1028,7 +1031,7 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         )
         # The `mapper_emits` edges retired with `map.emits` on 2026-08-21, for the same
         # reason as `profile_pack`: a mapper cannot name a claim, so the edge was drawn
-        # from a restatement of `bind.mappings[].use`, and the mapping already draws it.
+        # from a restatement of `bind.mappings.<sentence>.use`, and the mapping already draws it.
         for index, join_id in enumerate(
             preparation.get("inherit_virtual_join_rules", []),
         ):

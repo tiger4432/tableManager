@@ -190,29 +190,31 @@ def lot_event_bundle():
     # event-level value rather than pretending each half-row has both pair columns.
     child = approved_entity("Lot@1", "lot", "lot")
     parent = approved_entity("Lot@1", "lot", "lot")
-    mappings = [
-        {"mapping_id": "first_sight_lot",
-         "use": "lot-lineage@1/register_lot", "bind": bind(lot)},
-        {"mapping_id": "first_sight_wafer",
-         "use": "lot-lineage@1/register_wafer", "bind": bind(wafer)},
-        {"mapping_id": "positional_row",
-         "use": "lot-lineage@1/membership",
-         "bind": bind(lot, wafer, (("slot", "slots"),))},
-        {"mapping_id": "pair_field", "use": "lot-lineage@1/lineage",
-         "bind": bind(child, parent)},
-        # The only shape class with two members: both say the same sentence and differ
-        # only in the rule that computed it, so each declares which mapper sentence it
-        # realizes.  Drop either `sentence` and the bundle is refused (`ambiguous_sentence`)
-        # -- see the compile-time test below.
-        {"mapping_id": "slot_preserving", "sentence": "split_slot_carry",
-         "use": "lot-lineage@1/split_slot",
-         "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
-                                      ("wafer", "wafers")))},
-        {"mapping_id": "shared_wafer", "sentence": "merge_slot_join",
-         "use": "lot-lineage@1/merge_slot",
-         "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
-                                      ("wafer", "wafers")))},
-    ]
+    # 🔴 KEYED BY THE SENTENCE THE MAPPER SAYS, as of 2026-08-21.  Every key here is a
+    # `SentenceShape` attribute of `LotEventRoleMapper`, lowercased -- that is the whole
+    # of how a mapping is selected now, and it is why `mapping_id` is gone rather than
+    # renamed: the key already was the identity, one copy later.
+    mappings = {
+        "first_sight_holder": {
+            "use": "lot-lineage@1/register_lot", "bind": bind(lot)},
+        "first_sight_item": {
+            "use": "lot-lineage@1/register_wafer", "bind": bind(wafer)},
+        "in_slot": {
+            "use": "lot-lineage@1/membership",
+            "bind": bind(lot, wafer, (("slot", "slots"),))},
+        "descent": {"use": "lot-lineage@1/lineage", "bind": bind(child, parent)},
+        # These two realize the SAME Claim shape and differ only in the rule that computed
+        # them.  Nothing about their structure tells them apart, which is exactly why
+        # structure stopped being how a sentence is chosen.
+        "split_slot_carry": {
+            "use": "lot-lineage@1/split_slot",
+            "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
+                                         ("wafer", "wafers")))},
+        "merge_slot_join": {
+            "use": "lot-lineage@1/merge_slot",
+            "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
+                                         ("wafer", "wafers")))},
+    }
     return {
         "setup_version": SETUP_VERSION,
         "virtual_joins": {},
@@ -352,11 +354,12 @@ FOREIGN_SPELLINGS = {
     "slot_map@1": "slot_trace@1", "register@1": "first_seen@1",
     "register_lot": "mid_a", "register_wafer": "mid_b",
     "membership": "carriage", "lineage": "descent",
-    "first_sight_lot": "m_one", "first_sight_wafer": "m_two",
-    "positional_row": "m_three", "pair_field": "m_four",
-    # Nothing is exempt any more: the last two mapping ids are renamed here too, because
-    # the mapper now names the SENTENCE and the config says which mapping realizes it.
-    "slot_preserving": "m_five", "shared_wafer": "m_six",
+    # 🔴 THE SIX MAPPING IDS LEFT THIS TABLE ON 2026-08-21, and their absence is the
+    # point rather than an omission.  A mapping is FILED under the sentence its mapper
+    # says, so there is no longer a config-owned name to rename: renaming a key here would
+    # be renaming `LotEventRoleMapper.IN_SLOT`, which is a code change and not a
+    # deployment's spelling.  What a foreign deployment still owns -- entity types,
+    # predicates, claim ids, role ids, columns -- is all still renamed below.
 }
 UNSPELL = {new.split("@")[0]: old.split("@")[0]
            for old, new in FOREIGN_SPELLINGS.items()}
@@ -379,17 +382,19 @@ def test_a_foreign_deployments_spellings_change_nothing_the_mapper_emits():
     """The owner's definition of done, executed: a different-schema environment needs
     ZERO lines of Python.
 
-    Everything the declaration names is renamed -- both entity types, all four
-    predicates, four of the six mappings, and the claim ids -- and the mapper is asked
-    for the same split.  It must emit the same sentences.
+    Everything the declaration OWNS is renamed -- both entity types, all four
+    predicates, and the claim ids -- and the mapper is asked for the same split.  It must
+    emit the same sentences.
 
     This is the test the old mapper could not pass: it carried `"Lot"`, `"Wafer"`,
     `"has_wafer"`, `"positional_row"` and friends as literals, and against this bundle it
     refused every case with `invalid_lot_event_contract` instead of emitting anything.
 
-    NOTHING is exempt: all six mapping ids are renamed too.  The mapper names the
-    SENTENCE in its own vocabulary and each mapping declares which sentence it realizes,
-    so the naming runs config -> mapper and a rename cannot reach the mapper at all.
+    🔴 WHAT IS NOT RENAMED IS THE SENTENCE KEY, and that is a narrowing worth stating.
+    Until 2026-08-21 a mapping also had a config-owned `mapping_id` and this test renamed
+    all six.  The map is keyed by the sentence now, and a sentence is the MAPPER's word:
+    the naming still runs config -> mapper, so what used to be "a rename cannot reach the
+    mapper" is now "there is nothing left on the config side to rename".
     """
     foreign = compile_setup_snapshot(
         validate_bundle(respell(lot_event_bundle()), catalog=LOT_EVENT_CATALOG),
@@ -509,38 +514,24 @@ def test_incomplete_pair_lands_visible_claims_and_updates_existing_cursor_metric
     gate.reset_counters()
 
 
-def test_two_shape_identical_mappings_with_no_sentence_are_refused_at_compile_time():
-    """The tie is a NAMED config error, never a run-time coin flip.
-
-    `slot_preserving` and `shared_wafer` are indistinguishable to a mapper: same object
-    kind, same three qualifiers, same subject Entity type.  Whichever one a resolver
-    "found first" would be an election from an unordered set -- correct today, and wrong
-    the day a third mapping joins the class, at which point everything that already worked
-    starts emitting a different `derivation` with nothing naming the cause.
-
-    So dropping `sentence` must fail validation, at the path of the mapping that is
-    missing it, before anything runs.
-    """
+# RETIRED: test_two_shape_identical_mappings_with_no_sentence_are_refused_at_compile_time.
+# It deleted `sentence` from one of the two indistinguishable mappings and asserted an
+# `ambiguous_sentence` refusal at that mapping's path. Both the field and the refusal are
+# gone as of 2026-08-21, and NOT because the rule was relaxed: `mappings` is a map keyed by
+# the sentence, so "two mappings realizing one sentence" cannot be written down, and "a
+# mapping that names no sentence" cannot either -- a member of a map has a key. The state
+# it refused stopped being expressible, which is the same shape as the retirement of
+# `mapping_id`'s duplicate check. What made it removable is asserted instead.
+def test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else():
     bundle = lot_event_bundle()
     mappings = bundle["sources"]["lot_event"]["bind"]["mappings"]
-    ambiguous = [index for index, mapping in enumerate(mappings)
-                 if mapping.get("sentence")]
-    assert len(ambiguous) == 2, "the fixture must still contain the ambiguous pair"
-
-    for index in ambiguous:
-        broken = lot_event_bundle()
-        del broken["sources"]["lot_event"]["bind"]["mappings"][index]["sentence"]
-        with pytest.raises(LedgerSetupValidationError) as exc:
-            validate_bundle(broken, catalog=LOT_EVENT_CATALOG)
-        assert exc.value.code == "ambiguous_sentence", exc.value.code
-        assert exc.value.path == (
-            f"bundle.sources.lot_event.bind.mappings[{index}].sentence"), exc.value.path
-        # the message must name the peers, or a reader cannot find the other half
-        assert "slot_preserving" in exc.value.message
-        assert "shared_wafer" in exc.value.message
-
-    # ...and a mapping whose shape is already unique must NOT be forced to restate itself.
-    unique = next(index for index, mapping in enumerate(mappings)
-                  if not mapping.get("sentence"))
-    assert "sentence" not in mappings[unique]
+    pair = {key: mapping for key, mapping in mappings.items()
+            if mapping["use"].endswith(("split_slot", "merge_slot"))}
+    assert set(pair) == {"split_slot_carry", "merge_slot_join"}
+    # Same roles, same qualifier names, same entity types on both ends: nothing but the
+    # key separates them, and both keys are `SentenceShape` attributes of the mapper.
+    carry, join = pair["split_slot_carry"], pair["merge_slot_join"]
+    assert carry["bind"] == join["bind"]
+    assert {LotEventRoleMapper.SPLIT_SLOT_CARRY.sentence,
+            LotEventRoleMapper.MERGE_SLOT_JOIN.sentence} == set(pair)
     validate_bundle(lot_event_bundle(), catalog=LOT_EVENT_CATALOG)

@@ -39,8 +39,8 @@ SAID_COUNT = 12.5
 class CountingSentenceMapper(BaseLedgerMapper):
     """Says exactly one sentence, and its object is a number rather than an identity."""
 
-    #: "this thing counted N" -- an object, no qualifiers.
-    COUNT = SentenceShape(has_object=True)
+    #: "this thing counted N".
+    COUNT = SentenceShape()
 
     def interpret_unit(self, context, unit, profile):
         row = unit.iloc[0]
@@ -68,10 +68,14 @@ def value_object_bundle(*, object_kind="value", role_kind="quantity"):
     claim["roles"].pop("event_key")
     claim["roles"]["result"] = {"kind": role_kind, "required": True}
     claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
-    mapping = source_profile(raw)["mappings"][0]
+    # The mapping is FILED UNDER THE SENTENCE `CountingSentenceMapper` says, because that
+    # key is the whole of selection since 2026-08-21.  The fixture's own name for it
+    # (`main_transition`) is a different mapper's word and would resolve to nothing here.
+    mapping = source_profile(raw)["mappings"].pop("main_transition")
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(BOUND_COUNT)
+    source_profile(raw)["mappings"][CountingSentenceMapper.COUNT.sentence] = mapping
     return raw
 
 

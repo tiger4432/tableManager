@@ -30,10 +30,10 @@ class DtJobRoleMapper(BaseLedgerMapper):
     implementation_id = "dt-job-role"
     implementation_version = 1
 
-    #: "this job exists" -- no object.
-    REGISTER = SentenceShape(has_object=False)
-    #: "this job carries this many" -- an object, and it is a value, not an entity.
-    COUNTED = SentenceShape(has_object=True)
+    #: "this job exists".
+    REGISTER = SentenceShape()
+    #: "this job carries this many".
+    COUNTED = SentenceShape()
 
     def interpret_unit(
         self,

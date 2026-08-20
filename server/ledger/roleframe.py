@@ -43,7 +43,7 @@ ROLE_FRAME_SCHEMA_VERSION = 1
 ROLE_FRAME_ATTR = "assy_manager.role_frame_schema_version"
 ROLE_FRAME_COLUMNS = (
     "source_event_id",
-    "mapping_id",
+    "sentence",
     "claim_ref",
     "roles",
     "source_row_refs",
@@ -144,19 +144,23 @@ class RoleEmission:
 
     🔴 NO `claim_ref`, AND THE ABSENCE IS THE POINT (owner, 2026-08-20: 「클레임과 맵퍼
     함수는 완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함? 프로필에서 해야하는거 아니야?」 ->
-    「닿을 수 없다면 선언도 닿으면 안됨」).  A mapper names a mapping; which CLAIM that
-    mapping realizes is `bind.mappings[].use`, one declaration away, and a mapper that
-    restated it could only restate it wrongly.  `_role_frame_from_emissions` looks the ref
-    up from `mapping_id` against the same Profile the mapper was handed, so the RoleFrame
-    column is unchanged and the disagreement it used to be checked for cannot be written.
+    「닿을 수 없다면 선언도 닿으면 안됨」).  A mapper names a sentence; which CLAIM that
+    sentence realizes is `bind.mappings.<sentence>.use`, one declaration away, and a mapper
+    that restated it could only restate it wrongly.  `_role_frame_from_emissions` looks the
+    ref up from `sentence` against the same Profile the mapper was handed.
+
+    🔴 `sentence`, NOT `mapping_id`, as of 2026-08-21 (owner: 「맵퍼 구조를 문장에 별명을
+    붙여 부르게 만들고 그 별명에 바인드를 한다면?」).  A mapping is now KEYED by the
+    sentence it realizes, so the two were the same string wearing two names; the one that
+    survives is the one the mapper actually declares.
     """
 
-    mapping_id: str
+    sentence: str
     roles: Mapping[str, Any]
     source_row_refs: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        for name in ("mapping_id",):
+        for name in ("sentence",):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip() or value != value.strip():
                 raise RoleFrameError(
@@ -289,14 +293,14 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
     ) -> Sequence[RoleEmission]:
         refs = _source_row_refs(unit)
         out = []
-        for mapping in profile.mappings:
+        for sentence, mapping in profile.mappings.items():
             roles = {
                 role_id: _evaluate_binding(binding, unit, path=(
                     f"{mapping.config_path}.bind.{role_id}"))
                 for role_id, binding in mapping.bindings.items()
             }
             out.append(RoleEmission(
-                mapping_id=mapping.mapping_id,
+                sentence=sentence,
                 roles=roles,
                 source_row_refs=refs,
             ))
@@ -305,21 +309,24 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
 
 @dataclass(frozen=True)
 class SentenceShape:
-    """What a mapper needs a sentence to be ABLE TO SAY -- never what it is called.
+    """One sentence a mapper can say, carrying the mapper's own NAME for it.
 
     A business reading knows things like "a wafer sits in a slot of a lot".  That sentence
-    needs an object, and it carries one qualifier the business calls ``slot``.  It does NOT
-    know that this deployment's declaration spells the predicate ``has_wafer@1``, names the
-    mapping ``positional_row``, calls the two entity types ``Lot@1``/``Wafer@1``, or files
-    the values under role ids ``subject``/``target``.  Those are one operator's words for
-    the sentence and they are exactly what changes in a different-schema environment; the
-    shape does not change.
+    carries one qualifier the business calls ``slot``.  It does NOT know that this
+    deployment's declaration spells the predicate ``has_wafer@1``, calls the two entity
+    types ``Lot@1``/``Wafer@1``, or files the values under role ids ``subject``/``target``.
+    Those are one operator's words for the sentence and they are exactly what changes in a
+    different-schema environment; the sentence does not change.
 
-    :class:`ProfileSentences` matches shapes against the Profile, so a mapper carries the
-    business vocabulary (qualifier names) and the engine carries the wiring.
+    🔴 NO `has_object` AS OF 2026-08-21, AND THE REASON IS THAT MATCHING BY STRUCTURE IS
+    GONE (owner: 「맵퍼 구조를 문장에 별명을 붙여 부르게 만들고 그 별명에 바인드를 한다면?」).
+    Measured before removing it: the flag was read at exactly two places, the structural
+    match in ``ProfileSentences._resolve`` and the refusal text that reported it.  Both go
+    with the match, so keeping the field would keep a declaration nothing can reach.
+    ``qualifiers`` is NOT symmetric with it and stays: :meth:`ProfileSentences.say` checks
+    the keys a mapper actually passed against it, which has nothing to do with selection.
     """
 
-    has_object: bool
     qualifiers: tuple[str, ...] = ()
     #: The mapper's own word for this sentence, taken from the class attribute the shape
     #: was bound to (lowercased).  Never a constructor argument: a shape is named by being
@@ -338,10 +345,13 @@ class SentenceShape:
         declared twice -- once as a constant, once at the call site -- next to the same
         word a third time in the Profile.  Two of those three are the mapper's own
         vocabulary, and Python already records the one that matters, so this takes it
-        rather than asking for it again.  What the declaration says is unchanged: the
-        auto name is matched against ``ProfileMappingDescriptor.sentence``, so a config
-        that names no sentence still cannot resolve a tie, and the compile-time
-        ``ambiguous_sentence`` refusal keeps its whole job.
+        rather than asking for it again.
+
+        🔴 THIS NAME IS NOW THE WHOLE OF SELECTION.  It is the key under which the Profile
+        files the mapping that realizes the sentence, so an unbound shape -- one built
+        inline rather than assigned to a class attribute -- can say nothing at all, and
+        :meth:`ProfileSentences._resolve` refuses it by name instead of matching a
+        structure it happens to share with something else.
 
         🔴 One instance bound to two attribute names is refused HERE, at class creation,
         because its name could only be one of the two and the other call site would then
@@ -367,15 +377,18 @@ class ProfileSentences:
     This is the wiring that used to be copied into every custom mapper: find the Profile
     mapping, read the Claim's role ids, assemble the Entity references, and remember which
     identities have already been announced in this unit.  A mapper that owns this code
-    inevitably names the declaration to steer it -- which is how ``mapping_id``, predicate
-    spellings and entity-type spellings ended up as Python literals in a file whose only
-    job was domain interpretation.
+    inevitably names the declaration to steer it -- which is how predicate spellings and
+    entity-type spellings ended up as Python literals in a file whose only job was domain
+    interpretation.
 
-    Selection here is by SHAPE, not by name.  Two things follow:
+    Selection here is by the mapper's OWN NAME for the sentence -- one key lookup.  Two
+    things follow:
 
-    * a deployment may rename any predicate, entity type or mapping and the mapper is
-      untouched, which is the owner's definition of done ("a different-schema production
-      environment needs zero lines of code");
+    * a deployment may rename any predicate or entity type and the mapper is untouched,
+      which is the owner's definition of done ("a different-schema production environment
+      needs zero lines of code").  The naming still runs config -> mapper: the key is the
+      mapper's word, and an operator who wants a different one edits the mapper, not the
+      config;
     * entity-type spellings are LEARNED rather than asserted -- ask
       :meth:`subject_type_of` / :meth:`object_type_of` what this Profile calls the thing
       that holds items in slots, instead of writing ``"Lot"`` and hoping.
@@ -397,14 +410,14 @@ class ProfileSentences:
         self._occurred_at = occurred_at
         self._announced: set[tuple[str, str]] = set()
 
-    def subject_type_of(self, shape: SentenceShape, **selectors: Any) -> str:
+    def subject_type_of(self, shape: SentenceShape) -> str:
         """What THIS Profile calls the subject of that sentence."""
-        mapping, claim = self._resolve(shape, **selectors)
+        mapping, claim = self._resolve(shape)
         return self._entity_binding(mapping, claim.emission.subject.role_id)["entity_type"]
 
-    def object_type_of(self, shape: SentenceShape, **selectors: Any) -> str:
+    def object_type_of(self, shape: SentenceShape) -> str:
         """What THIS Profile calls the object of that sentence."""
-        mapping, claim = self._resolve(shape, **selectors)
+        mapping, claim = self._resolve(shape)
         if claim.emission.object_role is None:
             raise RoleFrameError(
                 "invalid_sentence_contract", mapping.config_path,
@@ -420,9 +433,8 @@ class ProfileSentences:
         *,
         obj: Any = None,
         qualifiers: Mapping[str, Any] | None = None,
-        **selectors: Any,
     ) -> RoleEmission:
-        mapping, claim = self._resolve(shape, **selectors)
+        mapping, claim = self._resolve(shape)
         emission = claim.emission
         values = dict(qualifiers or {})
         if set(values) != set(shape.qualifiers):
@@ -440,7 +452,7 @@ class ProfileSentences:
         for name, reference in emission.qualifiers.items():
             roles[reference.role_id] = values[name]
         return RoleEmission(
-            mapping_id=mapping.mapping_id,
+            sentence=shape.sentence,
             roles=roles,
             source_row_refs=tuple(refs),
         )
@@ -450,7 +462,6 @@ class ProfileSentences:
         shape: SentenceShape,
         subject: Any,
         refs: Sequence[str],
-        **selectors: Any,
     ) -> RoleEmission | None:
         """Announce an identity the first time this unit mentions it, else ``None``.
 
@@ -458,82 +469,49 @@ class ProfileSentences:
         source that announces identities wants exactly this, and a mapper that reimplements
         it has to name the mapping to find it.
         """
-        mapping, _claim = self._resolve(shape, **selectors)
+        self._resolve(shape)
         token = (
-            mapping.mapping_id,
+            shape.sentence,
             json.dumps(_plain(subject), ensure_ascii=False, sort_keys=True),
         )
         if token in self._announced:
             return None
         self._announced.add(token)
-        return self.say(shape, subject, refs, **selectors)
+        return self.say(shape, subject, refs)
 
-    def _resolve(
-        self,
-        shape: SentenceShape,
-        *,
-        subject_type: str | None = None,
-        object_type: str | None = None,
-        sentence: str | None = None,
-    ) -> tuple[Any, ClaimDescriptor]:
-        """Find the one Profile mapping that realizes this sentence.
+    def _resolve(self, shape: SentenceShape) -> tuple[Any, ClaimDescriptor]:
+        """Look the sentence up by the name the mapper gave it.  One key, one mapping.
 
-        ``sentence`` is the MAPPER's word, matched against what each mapping declares it
-        realizes -- the naming runs config -> mapper, so renaming a ``mapping_id`` cannot
-        reach this file.  A shape class that needs the tiebreak and does not declare it is
-        refused at compile time by ``setup_bundle._ambiguous_sentences``, so reaching a
-        tie here means the two disagree; that is a broken invariant, not a coin flip, and
-        it raises rather than picking a representative.
+        🔴 THIS WAS A STRUCTURE MATCH UNTIL 2026-08-21 (owner: 「지금 자연스럽지 못한 자리가
+        맵퍼가 낸 정규 문장 - 클레임으로 바인드 여기네」 -> 「맵퍼 구조를 문장에 별명을 붙여
+        부르게 만들고 그 별명에 바인드를 한다면?」).  It compared object-ness, qualifier
+        names, and two entity-type spellings, and consulted the name LAST, as a tiebreak --
+        while a stable name existed on both sides the whole time.  Selection is now the
+        name and nothing else.
 
-        A caller that passes no ``sentence`` falls back to the shape's OWN name -- the
-        class attribute it was bound to (:meth:`SentenceShape.__set_name__`).  It is a
-        tiebreak and not a filter, and the difference is the whole safety of it: a shape
-        whose match is already unique resolves exactly as before even when the declaration
-        never mentions its name, so no config has to be edited to gain one.  It only
-        narrows an otherwise-ambiguous set, and only when narrowing leaves exactly one --
-        so a declaration that names no sentence still cannot break a tie, and the
-        compile-time refusal is not weakened by any of this.
+        The naming direction is unchanged, which is why this is safe: the key is the
+        SHAPE's name, taken from the class attribute it was bound to
+        (:meth:`SentenceShape.__set_name__`), so it runs config -> mapper exactly as the
+        tiebreak did.  What is gone is the possibility of two mappings answering to one
+        sentence: ``bind.mappings`` is a map keyed by sentence, so a duplicate cannot be
+        written down at all, and ``setup_bundle._ambiguous_sentences`` retired with the
+        state it refused rather than with the rule it enforced.
         """
-        matches = []
-        for mapping in self._profile.mappings:
-            claim = self._claim_of(mapping)
-            if claim is None:
-                continue
-            emission = claim.emission
-            if (emission.object_role is not None) != shape.has_object:
-                continue
-            if tuple(sorted(emission.qualifiers)) != shape.qualifiers:
-                continue
-            binding = mapping.bindings.get(emission.subject.role_id)
-            if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
-                continue
-            if subject_type is not None and binding.get("entity_type") != subject_type:
-                continue
-            if object_type is not None:
-                object_binding = mapping.bindings.get(
-                    emission.object_role.role_id) if emission.object_role else None
-                if (not isinstance(object_binding, Mapping)
-                        or object_binding.get("entity_type") != object_type):
-                    continue
-            if sentence is not None and mapping.sentence != sentence:
-                continue
-            matches.append((mapping, claim))
-        if len(matches) > 1 and sentence is None and shape.sentence is not None:
-            narrowed = [item for item in matches
-                        if item[0].sentence == shape.sentence]
-            if len(narrowed) == 1:
-                matches, sentence = narrowed, shape.sentence
-        if len(matches) != 1:
+        if shape.sentence is None:
+            raise RoleFrameError(
+                "unnamed_sentence", self._profile.config_path,
+                "a SentenceShape says nothing until it is bound to a class attribute, "
+                "which is where its name comes from",
+            )
+        mapping = self._profile.mappings.get(shape.sentence)
+        claim = None if mapping is None else self._claim_of(mapping)
+        if claim is None:
             raise RoleFrameError(
                 "unresolved_sentence", self._profile.config_path,
-                f"expected one Profile mapping for a sentence with "
-                f"object={shape.has_object} qualifiers={list(shape.qualifiers)}"
-                f"{'' if subject_type is None else f' subject={subject_type!r}'}"
-                f"{'' if object_type is None else f' object={object_type!r}'}"
-                f"{'' if sentence is None else f' sentence={sentence!r}'}, "
-                f"found {len(matches)}",
+                f"no Profile mapping realizes sentence {shape.sentence!r}; "
+                f"declared here: {sorted(self._profile.mappings)}",
             )
-        return matches[0]
+        return mapping, claim
 
     def _claim_of(self, mapping: Any) -> ClaimDescriptor | None:
         try:
@@ -845,15 +823,15 @@ def _role_frame_from_emissions(
 ) -> pd.DataFrame:
     """Fill the RoleFrame, resolving each emission's claim from the Profile that owns it.
 
-    A `mapping_id` the Profile does not have resolves to the empty string rather than
+    A `sentence` the Profile does not realize resolves to the empty string rather than
     raising here.  `validate_role_frame` refuses that same row as `unknown_mapping` one
-    step later, which is the refusal an author can act on -- it names the mapping.
+    step later, which is the refusal an author can act on -- it names the sentence.
     """
-    claim_refs = {item.mapping_id: item.claim_ref for item in profile.mappings}
     rows = [{
         "source_event_id": event_attrs["source_event_id"],
-        "mapping_id": emission.mapping_id,
-        "claim_ref": claim_refs.get(emission.mapping_id, ""),
+        "sentence": emission.sentence,
+        "claim_ref": (profile.mappings[emission.sentence].claim_ref
+                      if emission.sentence in profile.mappings else ""),
         "roles": emission.roles,
         "source_row_refs": emission.source_row_refs,
     } for emission in emissions]
@@ -903,7 +881,6 @@ def validate_role_frame(
         raise RoleFrameError(
             "invalid_role_frame_schema", f"{path}.columns",
             f"columns must exactly match RoleFrame v{ROLE_FRAME_SCHEMA_VERSION}")
-    mappings = {item.mapping_id: item for item in profile.mappings}
     sort_rows: list[tuple[str, dict[str, Any]]] = []
     for position in range(len(value)):
         row = value.iloc[position]
@@ -916,16 +893,16 @@ def validate_role_frame(
             raise RoleFrameError(
                 "cross_event_mapper_output", f"{row_path}.source_event_id",
                 "RoleFrame row source_event_id disagrees with preserved EventFrame context")
-        mapping = mappings.get(row["mapping_id"])
+        mapping = profile.mappings.get(row["sentence"])
         if mapping is None:
             raise RoleFrameError(
-                "unknown_mapping", f"{row_path}.mapping_id",
-                f"Profile has no mapping {row['mapping_id']!r}")
+                "unknown_mapping", f"{row_path}.sentence",
+                f"Profile realizes no sentence {row['sentence']!r}")
         # 🔴 BOTH OF THESE ARE NOW TAUTOLOGIES, AND THAT IS WHY THEY STAY.  They were not
         # removed; the state they refused stopped being expressible.  `claim_ref` is looked
-        # up from `mapping_id` against this same Profile, so the first compares a value with
+        # up from `sentence` against this same Profile, so the first compares a value with
         # its own source; `descriptor.emits` is compiled from those same `use` refs, so the
-        # second does too.  A mapper that invents a `mapping_id` is already refused three
+        # second does too.  A mapper that invents a `sentence` is already refused three
         # lines up as `unknown_mapping`.  Deleting a check that can no longer fail would
         # also delete the record of what used to be writable -- and `validate_role_frame`
         # is a boundary that accepts frames it did not build.
@@ -971,7 +948,7 @@ def validate_role_frame(
                 "must be a non-empty sequence of source row references")
         normalized_row = {
             "source_event_id": row["source_event_id"],
-            "mapping_id": row["mapping_id"],
+            "sentence": row["sentence"],
             "claim_ref": row["claim_ref"],
             "roles": roles,
             "source_row_refs": tuple(sorted(set(refs))),
@@ -1100,8 +1077,6 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
     rows = []
     for position in range(len(normalized)):
         row = normalized.iloc[position]
-        mapping = next(item for item in context.source_plan.profile.mappings
-                       if item.mapping_id == row["mapping_id"])
         claim = _claim(context.snapshot, row["claim_ref"],
                        f"role_frame.rows[{position}].claim_ref")
         emission = claim.emission
@@ -1195,12 +1170,12 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
             "source_who": context.source_plan.source_id,
             "source_translator_ver": (
                 f"ledger-v2:{context.snapshot.snapshot_sha256}#"
-                f"{mapping.mapping_id}"),
+                f"{row['sentence']}"),
             "source_raw_ref": _claim_source_raw_ref(
                 normalized.attrs["source_raw_ref"], row["source_row_refs"]),
             "supersedes": None,
             "molecule_ref": normalized.attrs["molecule_ref"],
-            "derivation": mapping.mapping_id,
+            "derivation": row["sentence"],
         })
     frame = pd.DataFrame({
         column: pd.Series([row[column] for row in rows], dtype=object)
@@ -1241,7 +1216,7 @@ def dry_run_event_frame(
     ledger_frame = compile_role_frame(context, role_frame)
     derivations = tuple(sorted(set(ledger_frame["derivation"].tolist())))
     subjects = tuple(sorted(set(ledger_frame["subject_type"].tolist())))
-    mappings = tuple(sorted(set(role_frame["mapping_id"].tolist())))
+    sentences = tuple(sorted(set(role_frame["sentence"].tolist())))
     refs = tuple(sorted({ref for values in role_frame["source_row_refs"].tolist()
                          for ref in values}))
     gate_preview = MappingProxyType({
@@ -1256,7 +1231,7 @@ def dry_run_event_frame(
         "source_event_id": str(event_frame.attrs["source_event_id"]),
         "molecule_ref": event_frame.attrs["molecule_ref"],
         "source_raw_ref": event_frame.attrs["source_raw_ref"],
-        "mapping_ids": mappings,
+        "sentences": sentences,
         "source_row_refs": refs,
         "mapper_implementation": (
             f"{context.source_plan.driver.mapper.implementation.implementation_id}@"

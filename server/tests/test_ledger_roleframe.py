@@ -76,7 +76,7 @@ def constant(value, *, status="approved", origin="user_declared"):
 
 def test_declarative_column_constant_entity_bindings_make_role_frame():
     raw = logical_bundle()
-    source_profile(raw)["mappings"][0]["bind"]["event_key"] = (
+    source_profile(raw)["mappings"]["main_transition"]["bind"]["event_key"] = (
         constant("fixed-event"))
     compiled = snapshot(raw)
     context = mapper_context(compiled, "input_rows")
@@ -94,10 +94,10 @@ def test_declarative_column_constant_entity_bindings_make_role_frame():
 
 class EquivalentPythonMapper(BaseLedgerMapper):
     def interpret_unit(self, context, unit, profile):
-        mapping = profile.mappings[0]
+        sentence = next(iter(profile.mappings))
         row = unit.iloc[0]
         return [RoleEmission(
-            mapping_id=mapping.mapping_id,
+            sentence=sentence,
             roles={
                 "subject": {"type": "InputEntity@1",
                             "keys": {"input_id": row["source_id"]}},
@@ -204,7 +204,7 @@ def test_pack_compiler_supports_closed_scalar_object_kinds(
     claim["roles"].pop("event_key")
     claim["roles"]["result"] = {"kind": role_kind, "required": True}
     claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
-    mapping = source_profile(raw)["mappings"][0]
+    mapping = source_profile(raw)["mappings"]["main_transition"]
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
     mapping["bind"]["result"] = constant(value)
@@ -224,7 +224,7 @@ class InvalidEntityMapper(EquivalentPythonMapper):
         roles = dict(emission.roles)
         roles["target"] = {"type": "OutputEntity@1", "keys": {"wrong": "OUT-1"}}
         return [RoleEmission(
-            mapping_id=emission.mapping_id,
+            sentence=emission.sentence,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]
@@ -248,7 +248,7 @@ class WrongStageEntityMapper(EquivalentPythonMapper):
         roles["subject"] = {
             "type": "OutputEntity@1", "keys": {"output_id": "OUT-1"}}
         return [RoleEmission(
-            mapping_id=emission.mapping_id,
+            sentence=emission.sentence,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]
@@ -354,7 +354,7 @@ def test_group_by_mapper_units_are_internal_and_deterministic():
 def test_binding_approval_metadata_never_creates_claim_class():
     raw_a = logical_bundle()
     raw_b = logical_bundle()
-    source_profile(raw_b)["mappings"][0]["bind"]["event_key"][
+    source_profile(raw_b)["mappings"]["main_transition"]["bind"]["event_key"][
         "binding_origin"] = "imported"
     compiled_a = snapshot(raw_a)
     compiled_b = snapshot(raw_b)
@@ -409,7 +409,7 @@ def test_dry_run_returns_role_ledger_gate_preview_and_provenance_without_runtime
         "declared_derivations": ("main_transition",),
         "declared_subject_types": ("InputEntity",),
     }
-    assert result.provenance["mapping_ids"] == ("main_transition",)
+    assert result.provenance["sentences"] == ("main_transition",)
     assert not hasattr(context, "db")
     assert not hasattr(context, "cursor")
     assert not hasattr(context, "store")
@@ -442,7 +442,7 @@ class NaiveTimeMapper(EquivalentPythonMapper):
         roles = dict(emission.roles)
         roles["occurred_at"] = datetime(2026, 8, 17, 10, 30)
         return [RoleEmission(
-            mapping_id=emission.mapping_id,
+            sentence=emission.sentence,
             roles=roles,
             source_row_refs=emission.source_row_refs,
         )]

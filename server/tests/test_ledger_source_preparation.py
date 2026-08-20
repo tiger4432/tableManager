@@ -220,19 +220,19 @@ def dt_chain_bundle():
             "prepare": preparation,
             "map": mapper,
             "bind": {
-                "mappings": [
-                    {"mapping_id": "core_to_dt", "use": "assembly@1/core_to_dt",
-                     "bind": {"subject": core, "target": dt,
-                              "occurred_at": binding("event_at"),
-                              "job": binding("dt_job_id")}},
-                    {"mapping_id": "dt_to_bond", "use": "assembly@1/dt_to_bond",
-                     "bind": {"subject": dt, "target": bond,
-                              "occurred_at": binding("event_at"),
-                              "job": binding("dt_job_id")}},
-                    {"mapping_id": "core_component", "use": "assembly@1/core_component",
-                     "bind": {"subject": core, "target": final_chip,
-                              "occurred_at": binding("event_at")}},
-                ],
+                "mappings": {
+                    "core_to_dt": {"use": "assembly@1/core_to_dt",
+                                   "bind": {"subject": core, "target": dt,
+                                            "occurred_at": binding("event_at"),
+                                            "job": binding("dt_job_id")}},
+                    "dt_to_bond": {"use": "assembly@1/dt_to_bond",
+                                   "bind": {"subject": dt, "target": bond,
+                                            "occurred_at": binding("event_at"),
+                                            "job": binding("dt_job_id")}},
+                    "core_component": {"use": "assembly@1/core_component",
+                                       "bind": {"subject": core, "target": final_chip,
+                                                "occurred_at": binding("event_at")}},
+                },
             },
         },
     }
@@ -567,7 +567,7 @@ def test_successful_right_row_change_yields_dependency_replay_worklist():
 @pytest.mark.parametrize("status", ["pending", "rejected"])
 def test_unapproved_nested_entity_binding_stops_before_preparer_call(status):
     raw = logical_bundle()
-    source_profile(raw)["mappings"][0]["bind"]["subject"][
+    source_profile(raw)["mappings"]["main_transition"]["bind"]["subject"][
         "keys"]["input_id"]["approval_status"] = status
     reader = FakeJoinReader()
 
@@ -686,7 +686,7 @@ def test_custom_preparer_free_hook_can_rename_and_calculate_only_declared_output
         "resolved_target": "string"}
     driver_mapper(raw)["input_columns"] = [
         "source_id", "resolved_target", "event_at", "event_key"]
-    source_profile(raw)["mappings"][0]["bind"]["target"][
+    source_profile(raw)["mappings"]["main_transition"]["bind"]["target"][
         "keys"]["output_id"]["column"] = "resolved_target"
     compiled = snapshot(raw)
 

@@ -23,6 +23,7 @@ from ledger.setup import (
 from ledger.setup_bundle import (
     CONFIG_FILENAME,
     LedgerSetupValidationError,
+    SETUP_VERSION,
     load_setup_bundle,
 )
 from ledger.source_preparation import VerifiedJoinBatchReader
@@ -503,7 +504,8 @@ def test_verifying_a_draft_does_not_touch_the_live_config(tmp_path, capsys):
     draft = copied_root(tmp_path)
     (draft / "ledger_config.json").write_text(
         json.dumps({**json.loads((draft / "ledger_config.json").read_text("utf-8")),
-                    "setup_version": 3}, ensure_ascii=False), encoding="utf-8")
+                    "setup_version": SETUP_VERSION}, ensure_ascii=False),
+        encoding="utf-8")
     assert setup_main(["--root", str(draft)]) == 0
     capsys.readouterr()
     assert live.read_bytes() == before

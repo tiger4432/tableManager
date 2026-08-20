@@ -1,5 +1,5 @@
 {
-  "setup_version": 3,
+  "setup_version": 4,
   "vocabulary": {
     "transferred_to@1": {
       "status": "active",
@@ -335,9 +335,57 @@
         ]
       },
       "bind": {
-        "mappings": [
-          {
-            "mapping_id": "core_to_dt",
+        "mappings": {
+          "bond_component": {
+            "use": "dt-assembly@1/bond_component",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "BondComponent@1",
+                "keys": {
+                  "bond_wafer": {
+                    "kind": "column",
+                    "column": "bond_wafer",
+                    "approval_status": "approved"
+                  },
+                  "bond_x": {
+                    "kind": "column",
+                    "column": "bond_offset_x",
+                    "approval_status": "approved"
+                  },
+                  "bond_y": {
+                    "kind": "column",
+                    "column": "bond_offset_y",
+                    "approval_status": "approved"
+                  },
+                  "layer": {
+                    "kind": "column",
+                    "column": "bond_layer",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "FinalChip@1",
+                "keys": {
+                  "chip_id": {
+                    "kind": "column",
+                    "column": "final_chip",
+                    "approval_status": "approved"
+                  }
+                },
+                "approval_status": "approved"
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              }
+            }
+          },
+          "core_to_dt": {
             "use": "dt-assembly@1/core_to_dt",
             "bind": {
               "subject": {
@@ -401,8 +449,7 @@
               }
             }
           },
-          {
-            "mapping_id": "dt_to_bond",
+          "dt_to_bond": {
             "use": "dt-assembly@1/dt_to_bond",
             "bind": {
               "subject": {
@@ -471,8 +518,7 @@
               }
             }
           },
-          {
-            "mapping_id": "job_contains_die",
+          "job_contains_die": {
             "use": "dt-assembly@1/job_contains_die",
             "bind": {
               "subject": {
@@ -521,8 +567,7 @@
               }
             }
           },
-          {
-            "mapping_id": "job_occupies_slot",
+          "job_occupies_slot": {
             "use": "dt-assembly@1/job_occupies_slot",
             "bind": {
               "subject": {
@@ -560,58 +605,8 @@
                 "approval_status": "approved"
               }
             }
-          },
-          {
-            "mapping_id": "bond_component",
-            "use": "dt-assembly@1/bond_component",
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "BondComponent@1",
-                "keys": {
-                  "bond_wafer": {
-                    "kind": "column",
-                    "column": "bond_wafer",
-                    "approval_status": "approved"
-                  },
-                  "bond_x": {
-                    "kind": "column",
-                    "column": "bond_offset_x",
-                    "approval_status": "approved"
-                  },
-                  "bond_y": {
-                    "kind": "column",
-                    "column": "bond_offset_y",
-                    "approval_status": "approved"
-                  },
-                  "layer": {
-                    "kind": "column",
-                    "column": "bond_layer",
-                    "approval_status": "approved"
-                  }
-                },
-                "approval_status": "approved"
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "FinalChip@1",
-                "keys": {
-                  "chip_id": {
-                    "kind": "column",
-                    "column": "final_chip",
-                    "approval_status": "approved"
-                  }
-                },
-                "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "approval_status": "approved"
-              }
-            }
           }
-        ]
+        }
       }
     }
   },

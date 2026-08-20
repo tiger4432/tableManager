@@ -31,7 +31,7 @@ message is the weakest available fix; removing the question is the strongest.
 
 The first two of those three took the strongest fix on 2026-08-21 and are no longer
 fields at all -- `bind` and `map` do not carry them, and `MapperDescriptor.emits` is
-compiled from `bind.mappings[].use`.  A `derived` row still costs the operator a line in
+compiled from `bind.mappings.<sentence>.use`.  A `derived` row still costs the operator a line in
 the file and a row on the screen; a retired one costs neither.
 
 The tiers, strongest first, are recorded per field in ``tier`` so a reader can audit that
@@ -257,13 +257,19 @@ def _section(bundle: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _mappings(profile: Any) -> tuple[Mapping[str, Any], ...]:
+def _mappings(profile: Any) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    """The mappings of one `bind` clause, as (sentence, mapping) pairs.
+
+    A map keyed by sentence as of 2026-08-21; it was a list, and the caller's index was
+    the address.  Sorted so the authoring rows are stable whatever order the file holds.
+    """
     if not isinstance(profile, Mapping):
         return ()
     value = profile.get("mappings")
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+    if not isinstance(value, Mapping):
         return ()
-    return tuple(item for item in value if isinstance(item, Mapping))
+    return tuple(sorted(
+        (key, item) for key, item in value.items() if isinstance(item, Mapping)))
 
 
 def _listed(value: Any) -> tuple[Any, ...]:
@@ -603,8 +609,8 @@ def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
 def profile_binding_columns(path: str, profile: Any
                             ) -> tuple[tuple[str, str], ...]:
     out: list[tuple[str, str]] = []
-    for index, mapping in enumerate(_mappings(profile)):
-        base = f"{path}.mappings[{index}].bind"
+    for sentence, mapping in _mappings(profile):
+        base = f"{path}.mappings.{sentence}.bind"
         bind = mapping.get("bind")
         if not isinstance(bind, Mapping):
             continue
@@ -870,7 +876,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `emits` was a `derived` row here until 2026-08-21 -- set equality in BOTH
         # directions, zero degrees of freedom.  A field the screen fills and never asks is
         # still a field the file carries, so this round removed the declaration instead:
-        # `MapperDescriptor.emits` is compiled from `bind.mappings[].use` and there is
+        # `MapperDescriptor.emits` is compiled from `bind.mappings.<sentence>.use` and there is
         # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
         if binding_columns:
@@ -942,15 +948,15 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `packs` was a `derived` row here on the same terms as the mapper's `emits`, and
         # left the file with it on 2026-08-21.
         available = prepared_columns(bundle, catalog, source)
-        for index, mapping in enumerate(_mappings(profile)):
+        for sentence, mapping in _mappings(profile):
             yield from _mapping_fields(
-                base, index, mapping, packs, entities, available)
+                base, sentence, mapping, packs, entities, available)
 
 
-def _mapping_fields(base: str, index: int, mapping: Mapping[str, Any],
+def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                     packs: Mapping[str, Any], entities: Mapping[str, Any],
                     available: Sequence[str]) -> Iterable[Field]:
-    mpath = f"{base}.mappings[{index}]"
+    mpath = f"{base}.mappings.{sentence}"
     parsed = _claim_ref(mapping.get("use"))
     if parsed is None:
         yield Field(

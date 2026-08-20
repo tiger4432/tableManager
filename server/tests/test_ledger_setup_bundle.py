@@ -198,8 +198,7 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                     "input_columns": [source_key, target_key, occurred, event],
                 },
                 "bind": {
-                    "mappings": [{
-                        "mapping_id": "main_transition",
+                    "mappings": {"main_transition": {
                         "use": "movement@1/transition",
                         "bind": {
                             "subject": entity("InputEntity@1", "input_id", source_key),
@@ -207,7 +206,7 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                             "occurred_at": binding(occurred),
                             "event_key": binding(event),
                         },
-                    }],
+                    }},
                 },
             },
         },
@@ -254,13 +253,13 @@ def objectless_register_bundle():
             "object": {"kind": "none"}, "occurred_at": "$occurred_at",
         },
     }}}
-    source_profile(raw)["mappings"].append({
-        "mapping_id": "register_input", "use": "registration@1/register",
+    source_profile(raw)["mappings"]["register_input"] = {
+        "use": "registration@1/register",
         "bind": {
             "subject": entity("InputEntity@1", "input_id", "source_id"),
             "occurred_at": binding("event_at"),
         },
-    })
+    }
     return raw
 
 
@@ -321,7 +320,7 @@ def issue(bundle, code):
 
 def test_public_schema_is_the_single_logical_contract():
     schema = public_bundle_schema()
-    assert schema["setup_version"] == 3
+    assert schema["setup_version"] == SETUP_VERSION
     assert schema["config_file"] == "ledger_config.json"
     assert schema["logical_fields"] == ["setup_version", *LOGICAL_SECTIONS]
     assert schema["optional_fields"] == ["virtual_joins"]
@@ -399,8 +398,11 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # was b884892c... while a source had `relation` / `profile` / `driver`. On 2026-08-21
     # `driver` split into `read` / `prepare` / `map`, `profile` became `bind`, and
     # `map.emits`, `bind.packs` and every default `binding_origin` stopped being written.
+    # was 3260c937... while `bind.mappings` was a LIST of records carrying `mapping_id`.
+    # Later the same day it became a map keyed by the sentence each mapping realizes, so
+    # `setup_version` reads 4 and the id field is gone from the only mapping here.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "3260c937828e4c7537baf6d0b00ecd62a9cdedca4fd8ec9b8788de7d13582e3d")
+        "6bafeff21c8c8450591a31387c01f5a78fd140ef5b24383827e2725b890d150d")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -595,7 +597,7 @@ def test_text_and_binary_values_are_not_treated_as_json_arrays(value):
 
 def test_declared_lookup_binding_is_rejected():
     bundle = logical_bundle()
-    target = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
+    target = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
     target.clear()
     target.update({
         "kind": "declared_lookup", "lookup_id": "x", "select": "y",
@@ -677,7 +679,7 @@ def test_a_declared_basis_names_no_source_column():
 
 def test_entity_binding_requires_exact_registered_identity_keys():
     bundle = logical_bundle()
-    keys = source_profile(bundle)["mappings"][0]["bind"]["subject"]["keys"]
+    keys = source_profile(bundle)["mappings"]["main_transition"]["bind"]["subject"]["keys"]
     keys["extra"] = binding("source_id")
     error = issue(bundle, "invalid_entity_ref")
     assert error.path.endswith("bind.subject.keys")
@@ -734,13 +736,13 @@ def test_pack_vocabulary_subject_and_object_mismatch_are_rejected():
 def test_unknown_pack_claim_role_and_join_are_named():
     cases = []
     bundle = logical_bundle()
-    source_profile(bundle)["mappings"][0]["use"] = "absent@1/transition"
+    source_profile(bundle)["mappings"]["main_transition"]["use"] = "absent@1/transition"
     cases.append((bundle, "unknown_pack"))
     bundle = logical_bundle()
-    source_profile(bundle)["mappings"][0]["use"] = "movement@1/absent"
+    source_profile(bundle)["mappings"]["main_transition"]["use"] = "movement@1/absent"
     cases.append((bundle, "unknown_claim"))
     bundle = logical_bundle()
-    source_profile(bundle)["mappings"][0]["bind"]["absent"] = binding("event_key")
+    source_profile(bundle)["mappings"]["main_transition"]["bind"]["absent"] = binding("event_key")
     cases.append((bundle, "unknown_role"))
     # RETIRED 2026-08-20 with the references they measured: the preparer and the mapper
     # are bodies inside the driver now, so there is no id left to misspell and no
@@ -787,20 +789,20 @@ def test_unused_vocabulary_and_pack_are_still_cross_validated():
 def test_profile_entity_binding_is_cross_validated_against_its_source():
     bundle = logical_bundle()
     profile = source_profile(bundle)
-    profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
+    profile["mappings"]["main_transition"]["bind"]["subject"]["entity_type"] = "Missing@1"
 
     errors = validate_bundle_errors(bundle)
 
     assert_structured_errors(errors)
     matches = [error for error in errors if error.code == "unknown_entity_type"]
     assert [error.path for error in matches] == [
-        f"{PROFILE_PATH}.mappings[0].bind.subject.entity_type"]
+        f"{PROFILE_PATH}.mappings.main_transition.bind.subject.entity_type"]
 
 
 def test_profile_leaf_column_is_cross_validated_against_event_frame():
     bundle = logical_bundle()
     profile = source_profile(bundle)
-    profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
+    profile["mappings"]["main_transition"]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
 
     errors = validate_bundle_errors(bundle)
@@ -808,7 +810,7 @@ def test_profile_leaf_column_is_cross_validated_against_event_frame():
     assert_structured_errors(errors)
     matches = [error for error in errors if error.code == "unknown_column"]
     assert [error.path for error in matches] == [
-        f"{PROFILE_PATH}.mappings[0].bind.subject.keys.input_id.column"]
+        f"{PROFILE_PATH}.mappings.main_transition.bind.subject.keys.input_id.column"]
 
 
 @pytest.mark.parametrize(
@@ -887,7 +889,7 @@ def test_vocabulary_undeclared_qualifier_is_rejected_exactly():
 def test_the_only_place_a_source_names_a_claim_is_its_bind_mapping():
     """Retirement of `test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed`.
 
-    That test drove `bind.packs` and `map.emits` out of agreement with `mappings[].use`
+    That test drove `bind.packs` and `map.emits` out of agreement with `mappings.<sentence>.use`
     and asserted three refusals.  None of the three can be provoked any more, and not
     because a check was relaxed: neither field exists, so the disagreement has nowhere to
     be written.  What replaces it is the statement that made them removable -- one
@@ -1021,7 +1023,7 @@ def test_nonunique_index_is_not_a_total_order_proof():
 
 def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
     bundle = logical_bundle()
-    del source_profile(bundle)["mappings"][0]["bind"]["target"]
+    del source_profile(bundle)["mappings"]["main_transition"]["bind"]["target"]
     assert issue(bundle, "missing_required_role").path.endswith("bind.target")
     bundle = logical_bundle()
     role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"]["occurred_at"]
@@ -1029,22 +1031,34 @@ def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
     assert issue(bundle, "invalid_binding").path.endswith("bind.occurred_at.kind")
 
 
-def test_duplicate_mapping_id_is_rejected():
+# RETIRED: test_duplicate_mapping_id_is_rejected, and the `duplicate_id` refusal it drove.
+# It appended a copy of a mapping and asserted the second one was named as a duplicate.
+# `mappings` is a MAP keyed by the sentence since 2026-08-21, so two mappings sharing one
+# name is not a document that can be written -- the second key overwrites the first before
+# any validator sees it. The rule was not relaxed; what it refused stopped being
+# expressible. This asserts the property that made it removable.
+def test_the_map_key_is_the_mappings_only_identity():
     bundle = logical_bundle()
     mappings = source_profile(bundle)["mappings"]
-    mappings.append(copy.deepcopy(mappings[0]))
-    error = issue(bundle, "duplicate_id")
-    assert error.path.endswith("mappings[1].mapping_id")
+    assert set(mappings) == {"main_transition"}
+    assert set(mappings["main_transition"]) == {"use", "bind"}, (
+        "a mapping restates neither its name nor the sentence it realizes")
+
+    mappings["second_sentence"] = copy.deepcopy(mappings["main_transition"])
+    validated = validate_bundle(bundle).to_mapping()
+    assert set(validated["sources"]["input_rows"]["bind"]["mappings"]) == {
+        "main_transition", "second_sentence"}, (
+        "two mappings on one Claim are legal; they are two sentences, not a duplicate")
 
 
 def test_binding_approval_metadata_survives_normalization():
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
     event["binding_origin"] = "system_suggested"
     event["approval_status"] = "pending"
     event["suggestion_reason"] = "header similarity"
     normalized = validate_bundle(bundle).to_mapping()
-    got = source_profile(normalized)["mappings"][0]["bind"]["event_key"]
+    got = source_profile(normalized)["mappings"]["main_transition"]["bind"]["event_key"]
     assert got["binding_origin"] == "system_suggested"
     assert got["approval_status"] == "pending"
     assert got["suggestion_reason"] == "header similarity"
@@ -1052,7 +1066,7 @@ def test_binding_approval_metadata_survives_normalization():
 
 def test_system_suggested_requires_a_reason():
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
     event["binding_origin"] = "system_suggested"
     error = issue(bundle, "invalid_binding")
     assert error.path.endswith("bind.event_key.suggestion_reason")
@@ -1060,7 +1074,7 @@ def test_system_suggested_requires_a_reason():
 
 def test_constant_binding_must_be_finite_deterministic_json():
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
     event.clear()
     event.update({
         "kind": "constant", "value": float("nan"),
@@ -1078,7 +1092,7 @@ def test_unregistered_symbolic_constant_is_rejected_exactly():
     assert [error.to_mapping() for error in errors] == [{
         "code": "invalid_symbolic_constant",
         "path": (
-            f"{PROFILE_PATH}.mappings[0].bind."
+            f"{PROFILE_PATH}.mappings.main_transition.bind."
             "movement_kind.value"
         ),
         "message": (
@@ -1099,7 +1113,7 @@ def symbolic_bundle(value="pick"):
         "allowed_values": ["pick", "place"],
     }
     claim["emit"]["object"]["qualifiers"]["movement_kind"] = "$movement_kind?"
-    claim_binding = source_profile(bundle)["mappings"][0]["bind"]
+    claim_binding = source_profile(bundle)["mappings"]["main_transition"]["bind"]
     claim_binding["movement_kind"] = {
         "kind": "constant",
         "value": value,
@@ -1146,7 +1160,7 @@ def test_general_time_constant_is_not_treated_as_symbolic():
     bundle = logical_bundle()
     bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
         "required": [], "optional": ["event_key"]}
-    occurred = source_profile(bundle)["mappings"][0]["bind"][
+    occurred = source_profile(bundle)["mappings"]["main_transition"]["bind"][
         "occurred_at"]
     occurred.clear()
     occurred.update({
@@ -1169,7 +1183,7 @@ def test_binding_approval_never_adds_a_claim_epistemic_class():
 @pytest.mark.parametrize("status", ["pending", "rejected"])
 def test_readiness_blocks_nonapproved_bindings_without_rejecting_draft(status):
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"][0]["bind"]["event_key"]
+    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
     event["approval_status"] = status
     draft = validate_bundle(bundle)
     error = bundle_readiness_errors(draft)[0]
@@ -1181,7 +1195,7 @@ def test_readiness_blocks_nonapproved_bindings_without_rejecting_draft(status):
 
 def test_readiness_walks_nested_entity_key_bindings():
     bundle = logical_bundle()
-    nested = source_profile(bundle)["mappings"][0]["bind"]["target"]["keys"]["output_id"]
+    nested = source_profile(bundle)["mappings"]["main_transition"]["bind"]["target"]["keys"]["output_id"]
     nested["approval_status"] = "pending"
     errors = bundle_readiness_errors(validate_bundle(bundle))
     assert errors[0].path.endswith("bind.target.keys.output_id.approval_status")
@@ -1226,7 +1240,7 @@ def test_preparer_must_explicitly_accept_inherited_join_rules():
 def test_errors_have_deterministic_order():
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["relation"] = "absent"
-    source_profile(bundle)["mappings"][0]["use"] = "missing@1/nope"
+    source_profile(bundle)["mappings"]["main_transition"]["use"] = "missing@1/nope"
     first = [item.to_mapping() for item in validate_bundle_errors(bundle)]
     second = [item.to_mapping() for item in validate_bundle_errors(reverse_mappings(bundle))]
     assert first == second
@@ -1236,8 +1250,8 @@ def test_errors_have_deterministic_order():
 def test_followup_validation_errors_have_deterministic_order():
     bundle = logical_bundle()
     profile = source_profile(bundle)
-    profile["mappings"][0]["bind"]["subject"]["entity_type"] = "Missing@1"
-    profile["mappings"][0]["bind"]["subject"]["keys"]["input_id"][
+    profile["mappings"]["main_transition"]["bind"]["subject"]["entity_type"] = "Missing@1"
+    profile["mappings"]["main_transition"]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
     bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": {"bad": True}}
     driver = bundle["sources"]["input_rows"]["read"]
@@ -1433,19 +1447,19 @@ def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_ye
     disagree on purpose: a single fixture would pass under either rule.
     """
     typo = logical_bundle()
-    source_profile(typo)["mappings"][0]["use"] = "movment@1/transition"
+    source_profile(typo)["mappings"]["main_transition"]["use"] = "movment@1/transition"
     near = issue(typo, "unknown_pack")
     assert "did you mean 'movement@1'?" in near.message
 
     absent = logical_bundle()
-    source_profile(absent)["mappings"][0]["use"] = "shipment@9/transition"
+    source_profile(absent)["mappings"]["main_transition"]["use"] = "shipment@9/transition"
     far = issue(absent, "unknown_pack")
     assert "did you mean" not in far.message
     assert "declared packs: 'movement@1'" in far.message
 
     # And the claim half of the same reference, scored against the pack it names.
     wrong_claim = logical_bundle()
-    source_profile(wrong_claim)["mappings"][0]["use"] = "movement@1/transitions"
+    source_profile(wrong_claim)["mappings"]["main_transition"]["use"] = "movement@1/transitions"
     claim = issue(wrong_claim, "unknown_claim")
     assert "did you mean 'transition'?" in claim.message
 
@@ -1462,12 +1476,12 @@ def test_a_refusal_about_a_claim_reference_says_how_one_is_spelled():
     the item spelling.  `map.emits` was the only such list and is gone, so the clause it
     measured has no caller.  The need did not go with it: an author who writes a claim
     reference wrongly is exactly the one who does not know how one is spelled, and
-    `mappings[].use` is now the only place they write it.
+    `mappings.<sentence>.use` is now the only place they write it.
     """
     raw = logical_bundle()
-    source_profile(raw)["mappings"][0]["use"] = "movement@1"
+    source_profile(raw)["mappings"]["main_transition"]["use"] = "movement@1"
     refused = issue(raw, "invalid_claim_ref")
-    assert refused.path == f"{PROFILE_PATH}.mappings[0].use"
+    assert refused.path == f"{PROFILE_PATH}.mappings.main_transition.use"
     assert "must use <pack>@<version>/<claim>" in refused.message
 
     # And an ordinary list of names still says nothing about claim references.

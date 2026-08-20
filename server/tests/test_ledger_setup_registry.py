@@ -197,7 +197,7 @@ def test_registries_and_descriptors_are_recursively_immutable():
     with pytest.raises(TypeError):
         compiled.entities["InputEntity@1"].key_types["input_id"] = "integer"
     with pytest.raises(TypeError):
-        compiled.profiles["input_rows"].mappings[0].bindings["new"] = {}
+        compiled.profiles["input_rows"].mappings["main_transition"].bindings["new"] = {}
     with pytest.raises(FrozenInstanceError):
         compiled.packs["movement@1"].version = 2
 
@@ -541,7 +541,7 @@ def test_known_implementation_with_untrusted_version_has_exact_error_path(
 @pytest.mark.parametrize("approval", ["pending", "rejected"])
 def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
     bundle = logical_bundle()
-    binding = source_profile(bundle)["mappings"][0]["bind"]
+    binding = source_profile(bundle)["mappings"]["main_transition"]["bind"]
     binding["subject"]["keys"]["input_id"]["approval_status"] = approval
 
     errors = snapshot_compile_errors(validate_bundle(bundle), trusted_implementations())
@@ -549,7 +549,7 @@ def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "binding_not_approved",
         "path": (
-            f"{PROFILE_PATH}.mappings[0].bind.subject.keys."
+            f"{PROFILE_PATH}.mappings.main_transition.bind.subject.keys."
             "input_id.approval_status"
         ),
         "message": f"binding approval_status is {approval!r}, expected 'approved'",

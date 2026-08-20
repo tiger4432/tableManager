@@ -214,7 +214,7 @@ class MapperDescriptor:
     닿으면 안됨」).  `map` no longer carries a list of claim refs, because a mapper
     implementation cannot answer which claims it produces -- it knows `SentenceShape`, and
     the naming runs config -> mapper in one direction.  The set is built here from
-    `bind.mappings[].use`, the one declaration that owns the answer, so the field a reader
+    `bind.mappings.<sentence>.use`, the one declaration that owns the answer, so the field a reader
     already had is still there and the question an author could only get wrong is not.
     """
 
@@ -230,23 +230,18 @@ class MapperDescriptor:
 
 @dataclass(frozen=True)
 class ProfileMappingDescriptor:
-    """One Profile mapping.
+    """One Profile mapping: which Claim it realizes, and how its Roles are filled.
 
-    ``sentence`` is the mapper-vocabulary name this mapping realizes, and it is OPTIONAL:
-    a mapping whose shape is already unique needs no such statement.  It exists so the
-    naming runs config -> mapper.  The mapper owns its own words (as it already owns
-    qualifier names) and the declaration says which mapping speaks them; a mapper that
-    instead reached for ``mapping_id`` would break at RUN TIME on a config rename, which
-    is exactly the hole this closes.  ``setup_bundle._ambiguous_sentences`` refuses, by
-    name and at compile time, any shape class where this is left unset by more than one
-    member.
+    🔴 NO `mapping_id` AND NO `sentence` FIELD as of 2026-08-21 (owner: 「같이 넣어」).  The
+    mapping is FILED under the sentence it realizes -- `ProfileDescriptor.mappings` is a
+    map keyed by that name -- so an id field could only be a fourth copy of a name the key
+    already carries, and `sentence` would be the key restated inside its own value.  The
+    one place either was read, `roleframe.ProfileSentences._resolve`, now takes the key.
     """
 
-    mapping_id: str
     claim_ref: str
     bindings: Mapping[str, Any]
     config_path: str
-    sentence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -264,14 +259,18 @@ class ProfileDescriptor:
     and `source_preparation` use `mappings`, `source_id` and `config_path` only.
 
     🔴 `pack_ids` LEFT ON 2026-08-21 FOR THE SAME MEASUREMENT.  `bind.packs` was
-    `sorted(set(...))` of the packs `mappings[].use` names, checked both ways, and nothing
+    `sorted(set(...))` of the packs `mappings.<sentence>.use` names, checked both ways, and nothing
     but that check ever read the compiled copy.  A mapping's `use` still names its pack, so
     the answer is not lost -- only the restatement is.
+
+    🔴 `mappings` IS A MAP KEYED BY SENTENCE as of 2026-08-21, not a tuple.  That is what
+    makes `ProfileSentences._resolve` one key lookup, and it is also what makes two
+    mappings claiming one sentence UNWRITABLE rather than merely refused.
     """
 
     profile_id: str
     source_id: str
-    mappings: tuple[ProfileMappingDescriptor, ...]
+    mappings: Mapping[str, ProfileMappingDescriptor]
     config_path: str
 
 
@@ -801,7 +800,7 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
             unit_columns=tuple(item["unit"].get("columns", ())),
             input_columns=tuple(item["input_columns"]),
             emits=tuple(sorted({
-                mapping["use"] for mapping in source["bind"]["mappings"]})),
+                mapping["use"] for mapping in source["bind"]["mappings"].values()})),
             config_path=f"bundle.sources.{source_id}.map",
         ))
     return builder.seal()
@@ -813,13 +812,14 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
     for source_id, source in section.items():
         item = source["bind"]
         path = f"bundle.sources.{source_id}.bind"
-        mappings = tuple(ProfileMappingDescriptor(
-            mapping_id=mapping["mapping_id"],
-            claim_ref=mapping["use"],
-            bindings=_freeze(mapping["bind"]),
-            config_path=f"{path}.mappings[{index}]",
-            sentence=(mapping.get("sentence") or None),
-        ) for index, mapping in enumerate(item["mappings"]))
+        mappings = MappingProxyType({
+            sentence: ProfileMappingDescriptor(
+                claim_ref=mapping["use"],
+                bindings=_freeze(mapping["bind"]),
+                config_path=f"{path}.mappings.{sentence}",
+            )
+            for sentence, mapping in sorted(item["mappings"].items())
+        })
         builder.add(source_id, ProfileDescriptor(
             profile_id=source_id,
             source_id=source_id,

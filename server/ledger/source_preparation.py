@@ -656,7 +656,7 @@ def _assemble_prepared_frame(
 
 def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     columns: set[str] = set()
-    for mapping in source_plan.profile.mappings:
+    for mapping in source_plan.profile.mappings.values():
         for binding in mapping.bindings.values():
             if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
                 continue

@@ -27,7 +27,8 @@ from ledger.implementations import (                                     # noqa:
 )
 from ledger.roleframe import DeclarativeRoleMapper                       # noqa: E402
 from ledger.runtime_v2 import preview_cursor_batch                       # noqa: E402
-from ledger.setup_bundle import require_ready_bundle, validate_bundle    # noqa: E402
+from ledger.setup_bundle import (                                        # noqa: E402
+    SETUP_VERSION, require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
 from ledger.source_preparation import (                                  # noqa: E402
     DirectJoinSourcePreparer,
@@ -46,7 +47,7 @@ def _column(name):
 #: One whole source. No module, no function, no path -- `setup_bundle` forbids those keys,
 #: and nothing here needs them.
 SHIPMENT_SETUP = {
-    "setup_version": 3,
+    "setup_version": SETUP_VERSION,
     "virtual_joins": {},
     "vocabulary": {"register@1": {
         "status": "active", "layer": "ontology", "subjects": ["Box@1"],
@@ -79,12 +80,13 @@ SHIPMENT_SETUP = {
             "unit": {"kind": "row"},
             "input_columns": ["shipment_id", "box", "shipped_at"]},
         "bind": {
-            "mappings": [{
-                "mapping_id": "first_sight_box", "use": "shipping@1/first_sight",
-                "bind": {
-                    "subject": _approved(kind="entity", entity_type="Box@1",
-                                         keys={"box": _column("box")}),
-                    "occurred_at": _column("shipped_at")}}]}}},
+            "mappings": {
+                "first_sight_box": {
+                    "use": "shipping@1/first_sight",
+                    "bind": {
+                        "subject": _approved(kind="entity", entity_type="Box@1",
+                                             keys={"box": _column("box")}),
+                        "occurred_at": _column("shipped_at")}}}}}},
 
 }
 
