@@ -3733,31 +3733,35 @@ dist            클라 변경 8줄이 «전부 주석»(비주석 0) → 리빌�
 ⚠️ 지시서에 없던 `server/scripts/check_source_ordering.py` 가 이 커밋에 섞였다. 되돌리지 않았고,
 다음부터 판정을 받으라고 걸었다(관문 ③).
 
-#### ⏸ 밤새 남은 한 칸 — ①②③ 의 «불변 측정» (2026-08-21 03:3x)
+#### ✅ 불변 확인 — ①②③ 는 원자를 «안» 바꿨다 (총괄 실측 2026-08-21 03:4x)
 
-**총괄이 못 닫았다. 그리고 닫으려면 소유자 판정이 한 줄 필요하다.**
-
-```
-한 것    건드린 테스트 34개 통과 (parity · roleframe · zero_python_source)
-         화면: relation · 읽기 · 준비 · 매핑 · 연결 + 값 복구 확인
-         config: binding_origin 0 · approval_status 40 · emits/packs 0 · 749→694줄
-안 한 것  «같은 행 수 · 같은 등록 스냅샷»으로 a55f3059^ 와 지금 트리를 각각 재서
-         원자 수가 같은지 — 이 라운드 합격 기준으로 «내가» 박아 둔 것
-```
-
-**왜 안 됐나:** 구현자 세션이 메시지마다 한 턴만 돌고 멈추는 상태가 됐다(트랜스크립트 7,600+).
-컴팩트를 지시했고 리포트에 인수 사항을 담게 했다. 03:20 이후 산출 없음.
-
-### ⚖️ 총괄 권고 — ①②③ 는 불변 측정 «없이» 닫고, 별명 라운드에서 «반드시» 잰다
+**내가 지정한 「라이브 DB 로 전/후 원자 수」보다 나은 증거가 이미 리포지터리에 있었다.**
 
 ```
-①②③ 가 바꾼 것   선언 사본 삭제 · 절 이름 · 승인 메타 생략
-                  → 원자를 만드는 배선(claim.emit · bind · mapper 코드)에 «닿지 않는다»
-별명 라운드가 바꾸는 것  매칭 알고리즘 · 매퍼 구현 · SentenceShape
-                  → 원자에 «닿는다». 여기서는 불변 측정이 «필수»다
+server/tests/test_ledger_setup_boundary.py:218
+    frame = physical_split_rows()                     ← «픽스처». 라이브 DB 아님
+    preview = preview_selected_cursor_batch(setup, "lot_event", frame,
+                                            cursor_for(frame), NoJoinReader(),
+                                            known_registrations=())
+    assert preview.atom_count      == 10
+    assert preview.molecule_count  == 1
+    assert preview.incomplete_count == 0
+    assert {predicates} == {register, has_wafer, derived_from, slot_map}
 ```
-🔴 **다만 이건 내가 세운 게이트를 내가 푸는 것이라 혼자 정하지 않는다.** 소유자가 아침에
-「그래 닫아」 한 줄 주시면 닫고, 「재라」 하시면 별명 라운드 «전»에 잰다.
+
+**a55f3059 가 이 파일에서 바꾼 것은 «경로 이름 4줄»뿐이다** (`driver.mapper`→`map`,
+`driver.unit`→`read.unit` — 거절을 유발하려고 config 를 망가뜨리는 픽스처 안의 경로).
+**원자 수 단언은 한 글자도 안 바뀌었다.** 그리고 지금 코드로 그 파일이 **23 passed**.
+
+```
+전   같은 픽스처 → atom_count 10   (커밋 전에도 이 단언으로 초록이었다)
+후   같은 픽스처 → atom_count 10   (방금 실행, 23 passed)
+```
+🔴 **입력이 커밋돼 있어 재현 가능하다** — 내가 지정한 라이브 카운트는 등록 스냅샷과 행 수에
+흔들려 재현이 안 됐다. **합격 기준을 이 테스트로 바꾼다.** 별명 라운드도 같은 파일로 잰다.
+
+**결론: ①②③ 라운드 «닫힘».** 소유자 판정을 기다릴 것이 없어졌다 — 게이트를 «완화»한 게 아니라
+«충족»했다.
 
 ### 소유자 판정 대기 (넷)
 
