@@ -2494,3 +2494,108 @@ body.resizing-active .history-sidebar {
   font-size: 10.5px;
   white-space: nowrap;
 }
+
+
+/* ── Mockup 2c: the Global tab is a table, not a stack of cards ───────────────────────
+   Scoped to `.audit-table`, the class `loadHistory` puts on the container for the Global tab
+   only -- the Row tab keeps the card timeline, which is what it is good at: few entries, one
+   subject, room to read. This tab has hundreds of entries about hundreds of subjects, and a
+   card each turns scanning into scrolling. */
+.audit-table { display: flex; flex-direction: column; min-height: 0; }
+.audit-head, .audit-table .timeline-card {
+  display: grid;
+  /* Tx is 120px, not the mockup's 84px. The mockup's Tx cell is text only; ours carries the
+     two controls this screen already had -- the 🔍 that filters the grid to that transaction
+     and the ▶ that expands a batch -- and at 84px the ▶ was CLIPPED OUT OF THE CELL, which
+     made a live control unclickable. Same ruling as the header widths: the mockup's number is
+     a minimum, and a control you cannot reach is not a narrow control, it is a missing one. */
+  grid-template-columns: 58px 62px 74px 1fr 150px 120px;
+  align-items: center;
+}
+.audit-head {
+  height: 28px;
+  flex: 0 0 28px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-strong);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: .4px;
+  color: var(--text-muted);
+}
+/* Only the Global tab has a table to head. */
+.timeline-container:not(.audit-table) > .audit-head,
+.timeline-container:not(.audit-table) > .audit-legend { display: none; }
+
+/* The rail, the dots and the per-card gap are card furniture. A table row has none of it. */
+.audit-table .timeline { padding-left: 0; flex: 1; min-height: 0; overflow-y: auto; }
+.audit-table .timeline::before { display: none; }
+.audit-table .timeline-item { margin-bottom: 0; }
+.audit-table .timeline-item::before { display: none; }
+.audit-table .timeline-card {
+  min-height: 38px;
+  padding: 0;
+  border-radius: 0;
+  border-width: 0 0 1px;
+  background: transparent;
+  cursor: pointer;
+}
+.audit-table .timeline-card:hover { background: var(--surface-hover); }
+
+.audit-cell {
+  padding: 0 8px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+  overflow: hidden;
+}
+.audit-cell.audit-tx { border-right: none; }
+.audit-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.audit-user { font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--accent); }
+.audit-tx { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); gap: 4px; }
+
+/* The kind pill. Six kinds, because six is what the audit rows actually distinguish. */
+.audit-pill {
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.kind-manual { border-color: var(--accent);  background: var(--accent-weak);  color: var(--accent); }
+.kind-parser { border-color: var(--accent-2); background: var(--accent-2-weak, var(--bg-inset)); color: var(--accent-2); }
+.kind-auto   { border-color: var(--border-strong); background: var(--bg-inset); color: var(--text-muted); }
+.kind-batch  { border-color: var(--warning); background: var(--warning-weak); color: var(--warning); }
+.kind-create { border-color: var(--success); background: var(--success-weak); color: var(--success); }
+.kind-delete { border-color: var(--danger);  background: var(--danger-weak);  color: var(--danger); }
+
+/* Two lines, because the key and the column answer different questions and the mockup gives
+   each its own line rather than joining them with a separator nobody can scan. */
+.audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.audit-target-key { font-family: var(--font-mono); font-size: 11px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-target-col { font-family: var(--font-sans); font-size: 9.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+
+.audit-change { gap: 6px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+.audit-change .val-old, .audit-change .val-new { overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+.audit-change .val-arrow { color: var(--text-dim); flex: 0 0 auto; }
+
+.audit-legend {
+  flex: 0 0 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-header);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.audit-legend-dot { color: var(--border-strong); }

@@ -419,9 +419,27 @@
               Select a cell to view history
             </div>
             <div id="timeline-container" class="timeline-container">
+              <!-- Mockup 2c. Header and legend sit OUTSIDE the `<ul>`: `renderTimeline` and
+                   `renderGlobalTimeline` both clear the list with `innerHTML = ''`. They show
+                   only on the Global tab, via `.audit-table` on this container. -->
+              <div class="audit-head">
+                <div class="audit-cell audit-time">시각</div>
+                <div class="audit-cell audit-user">사용자</div>
+                <div class="audit-cell audit-kind">종류</div>
+                <div class="audit-cell audit-target">대상 · 컬럼</div>
+                <div class="audit-cell audit-change">변경</div>
+                <div class="audit-cell audit-tx">Tx</div>
+              </div>
               <ul id="timeline" class="timeline">
                 <li class="timeline-empty">No history loaded.</li>
               </ul>
+              <div class="audit-legend">
+                <span>행 클릭 → 그리드에서 해당 셀로 이동</span>
+                <span class="audit-legend-dot">·</span>
+                <span>Tx 🔍 → 그 트랜잭션만 필터</span>
+                <span class="audit-legend-dot">·</span>
+                <span>Tx 클릭 → 일괄 내역 펼치기</span>
+              </div>
             </div>
             <div id="reference-view" class="reference-view" style="display: none">
               <div id="reference-view-content" class="reference-view-content"></div>
