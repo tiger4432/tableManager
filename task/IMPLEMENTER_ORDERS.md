@@ -62,6 +62,58 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ✅ `lot_event` 이 «흐릅니다» — 결과 보고 (20:2x)
+
+```
+molecules 40 · refused 0 · incomplete 0 · rows_read 142 · 3.5초
+attempted 1323 -> inserted 1323 · deduped 0
+재실행    rows_read 0 · inserted 0 · 커서 그대로   <- 커서가 선다. 두 번 안 쌓인다
+```
+```
+has_wafer     Lot    907        register     Wafer  125        register  Lot  25
+slot_map      Lot    226        derived_from Lot     40  <- 계보
+원장   v2 792 -> 2,115      v1 220,771 «불변»
+```
+**계보 (원장에서 직접):**
+```
+NAB539TA <- NAB539  2026-01-01 12:04:00+09:00     NAB122TB <- NAB122   (같은 부모 두 자식)
+```
+🔴 **시각이 `+09:00`.** 당신이 착지시킨 `9aa147b9` 가 «실제 원자에» 적용된 증거입니다.
+당신 라운드 셋이 다 여기서 만납니다 — 제외(`8bb0f5f1`) · 수 정정(`f134eab6`) · 시각(`9aa147b9`).
+
+## 총괄이 «찾아서 넣은» 선언 하나 — 알아 두십시오
+```
+lot_event.read.registration_probe    소유자 승인 후 «라이브에» 넣었습니다 (20:2x)
+  [{"entity_type":"Lot@1",   "columns":["lot_id"]},
+   {"entity_type":"Wafer@1", "columns":["waferids"], "list_separator":":"}]
+```
+`register@1` 을 쏘는 소스는 「누가 이미 등록됐나」를 알아야 합니다. 없으면 런타임이
+`registration_context_required` 로 «맞게» 거절합니다. 백업 14개 전수로 훑어 확인했는데
+**잃은 게 아니라 한 번도 안 쓴 선언**이었습니다.
+🔴 **프로브는 «물리» 컬럼을 읽습니다** (준비 «전» 페이지). `lot`/`wafers` 아니라 `lot_id`/`waferids`.
+검증기도 카탈로그에 대고 봅니다 — 제가 논리명으로 먼저 썼다가 거절당했습니다.
+
+## ⚠️ 아직 «라이브 루트로는» 못 돕니다
+```
+사본으로 돌렸습니다   die_transfer · die-transfer 두 미완성 소스가 번들을 거절시켜서
+라이브 lot_event 선언 == 사본 선언   (대조 확인 완료 -> 커서 지문 안 어긋납니다)
+```
+정리는 소유자가 폼에서 손을 뗀 뒤 총괄이 합니다. **당신은 여전히 라이브에 쓰지 마십시오.**
+
+## 남은 경고 하나 (지금 무해, 언젠가 아님)
+```
+split guard inactive for lot_event: group columns ['event_group_key'] are not base columns
+   이번엔 batches=1 이라 무해했습니다. «페이지가 둘로 갈리는 날» 분할 분자를 못 잡습니다
+   -> 지금 고치지 마십시오. 적어만 둡니다
+```
+
+## 지금 당신이 할 것
+```
+대기.  소유자가 폼을 보고 계십니다. 반응이 오면 제가 여기 적습니다
+```
+
+---
+
 # ✅ 재기동 «완료» — 초록불입니다 (21:0x)
 
 ```

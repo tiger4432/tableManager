@@ -1,5 +1,50 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## ✅ 2026-08-21 20:2x — **`lot_event` 이 흐른다. 원자 1,323 · 계보 40**
+>
+> ```
+> molecules 40 · refused 0 · incomplete 0 · rows_read 142 · 3.5초
+> attempted 1323 -> inserted 1323 · deduped 0
+> 커서   {event_time: 2026-08-12 06:00:00, row_id: 01a00031-…}  ver ledger-v2:2e2dc0d6…
+> ```
+> ```
+> has_wafer     Lot    907        register    Wafer  125        register  Lot  25
+> slot_map      Lot    226        derived_from Lot    40   <- 계보
+> 원장   v2 792 -> 2,115      v1 220,771 «불변»
+> ```
+> **계보 실측 (원장에서 직접):**
+> ```
+> NAB539TA <- NAB539   2026-01-01 12:04:00+09:00      NAB122TA <- NAB122
+> NAB122TB <- NAB122   (같은 부모, 두 자식 = split)
+> ```
+> 🔴 **시각이 `+09:00`** — 소유자 「가」 판정(선언된 timezone 이 naive 컬럼을 읽는다)이
+> «실제 원자에» 적용된 증거다. 총괄이 예측한 계보 40행도 그대로 맞았다.
+>
+> ### ⚠️ 이 실행은 라이브 설정 «그대로»가 아니다 — 재현하려면 선언 하나가 더 필요하다
+> 소유자가 `die-transfer` 를 만드는 중이라 라이브를 안 건드리고 «사본»으로 돌렸고,
+> 사본에 총괄이 선언 하나를 «넣었다»:
+> ```
+> lot_event.read.registration_probe        ← 라이브엔 «아직 없다»
+>   [{"entity_type":"Lot@1",   "columns":["lot_id"]},
+>    {"entity_type":"Wafer@1", "columns":["waferids"], "list_separator":":"}]
+> ```
+> `register@1` 을 쏘는 소스는 「누가 이미 등록됐나」를 알아야 한다(모르면 첫만남 원자가 중복).
+> **백업 14개를 전수로 훑어 확인했다 — 잃은 게 아니라 «한 번도 안 쓴» 선언이다.**
+> 🔴 프로브는 «물리» 컬럼을 읽는다(준비 전 페이지). `lot`/`wafers` 가 아니라 `lot_id`/`waferids`.
+> ⚠️ **라이브에 안 넣으면 다음 실행에서 커서 지문이 안 맞아 막힌다.**
+>
+> ### 🟡 `trace` · `explore` 는 아직 503 — 원자와 «무관», 오늘 것 아님
+> 해결기가 v2 셋업이 아니라 «옛 세대» config 를 읽는다. 아래 20:4x 절에 자세히 있다.
+> **계보 자체는 원장에 있다** (위 실측). 별도 판정 사안.
+>
+> ### 남은 잡음
+> ```
+> split guard inactive for lot_event: group columns ['event_group_key'] are not base columns
+>    -> 분할 분자를 페이지에서 못 잡는다는 경고. 이번 실행은 batches=1 이라 무해했다
+>    -> 페이지가 둘 이상으로 갈리는 날 다시 볼 것
+> ```
+>
+
 > ## 🔴 2026-08-21 20:4x — **원장은 뚫렸고 «화면»에서 막혔다. 그리고 소유자 작업이 지워졌다**
 >
 > ### 🔴 사고 — 총괄의 «받아들이는 시험»이 소유자의 파일에 썼다
