@@ -461,30 +461,6 @@ body.resizing-active .history-sidebar {
 }
 
 .reference-view { flex: 1; min-width: 0; }
-/* [2b Phase 3.4] The alignment band. 30px, above the view tabs, only present while a
-   range is selected. It INFORMS -- the warning state is readable and ignorable, because
-   pasting one column of a two-column copy is something people legitimately do. Only the
-   blocked state is a verdict, and even it does not intercept the keystroke: the server
-   is what refuses, batch-wide, and this says so before the operator finds out. Uses the
-   existing success/warning/danger tokens; no new colour. */
-.reference-alignment {
-  height: 30px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  margin-bottom: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-family: var(--font-sans);
-  font-size: .82rem;
-  white-space: nowrap;
-  overflow-x: auto;
-}
-.reference-alignment.is-match   { color: var(--success); border-color: var(--success); background: var(--success-weak); }
-.reference-alignment.is-warn    { color: var(--warning); border-color: var(--warning); background: var(--warning-weak); }
-.reference-alignment.is-blocked { color: var(--danger);  border-color: var(--danger);  background: var(--danger-weak); }
-
 .reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
 .reference-view-tab { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: .76rem; }
 .reference-view-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-surface); }
@@ -1221,93 +1197,6 @@ body.resizing-active .history-sidebar {
   word-break: break-all;
 }
 
-/* ── Grid filter bar: active column filters + the columns past the right edge ──────────
-   One strip, shown only when it has something to say. `flex: 0 0 auto` so it takes its
-   own height off the grid instead of shrinking away under it. */
-.grid-filter-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg-inset);
-  border-bottom: 1px solid var(--border);
-  font-family: var(--font-sans);
-}
-
-.filter-chips {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 320px;
-  padding: 4px 6px 4px 10px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--bg-surface);
-  color: var(--text);
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-
-.filter-chip-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.filter-chip-x {
-  flex: 0 0 auto;
-  padding: 2px 5px;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-
-.filter-chip-x:hover {
-  color: var(--accent);
-  background: var(--bg-inset);
-}
-
-.filter-clear-all {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: none;
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-}
-
-.filter-clear-all:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.offscreen-cols {
-  flex: 0 0 auto;
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
 /* Active Transaction Filter Banner */
 .tx-filter-banner {
   display: flex;
@@ -1322,6 +1211,48 @@ body.resizing-active .history-sidebar {
   font-family: var(--font-sans);
   font-size: 0.85rem;
 }
+
+/* ── Phase 0: the filter chip bar and the alignment band are `.tx-filter-banner`
+   VARIANTS, not new components. Structure (icon left, text, close right, height,
+   padding, radius, shadow) comes from that class; only the colour differs here. */
+.filter-banner { background: var(--accent-weak); border-color: var(--accent); }
+.reference-alignment.is-match   { background: var(--success-weak); border-color: var(--success); }
+.reference-alignment.is-warn    { background: var(--warning-weak); border-color: var(--warning); }
+.reference-alignment.is-blocked { background: var(--danger-weak);  border-color: var(--danger); }
+
+/* The Tx banner's icon pulses because that banner means "a filter is hiding rows from you".
+   These two are steady statements, so they inherit the POSITION and drop the animation —
+   a permanently pulsing badge on an informational band is motion with nothing to report. */
+.filter-banner .banner-icon,
+.reference-alignment .banner-icon { animation: none; font-size: 0.9rem; }
+
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.filter-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.offscreen-cols {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-right: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 
 .banner-icon {
   font-size: 1.1rem;

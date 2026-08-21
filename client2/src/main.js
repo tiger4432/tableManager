@@ -346,14 +346,18 @@ function setupEventListeners() {
     // lists — harmless while it was hidden by default, two highlighted tabs now that
     // a rule-bearing table selects it.
     elements.tabGlobalBtn.classList.add('active');
-    elements.tabCellBtn.classList.remove('active');
+    elements.tabCellBtn?.classList.remove('active');
     elements.tabRowBtn.classList.remove('active');
     elements.tabReferenceBtn?.classList.remove('active');
     state.activeHistoryTab = 'global';
     loadHistory();
   });
 
-  elements.tabCellBtn.addEventListener('click', () => {
+  // The Cell History tab is off the row (owner, 2026-08-21: it has no function). The
+  // listener is GUARDED rather than deleted: `activeHistoryTab === 'cell'` is still read in
+  // five places in timeline.js, so removing the branch is a different change from taking the
+  // tab off the screen, and doing both at once would make the second one hard to undo.
+  elements.tabCellBtn?.addEventListener('click', () => {
     hideReferenceView();
     elements.tabCellBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
@@ -367,7 +371,7 @@ function setupEventListeners() {
     hideReferenceView();
     elements.tabRowBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
-    elements.tabCellBtn.classList.remove('active');
+    elements.tabCellBtn?.classList.remove('active');
     elements.tabReferenceBtn?.classList.remove('active');
     state.activeHistoryTab = 'row';
     loadHistory();

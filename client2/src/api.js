@@ -136,7 +136,7 @@ export async function switchTable(tableName) {
   // Reset active history tab to global when switching tables to avoid empty screen
   state.activeHistoryTab = 'global';
   elements.tabGlobalBtn.classList.add('active');
-  elements.tabCellBtn.classList.remove('active');
+  elements.tabCellBtn?.classList.remove('active');
   elements.tabRowBtn.classList.remove('active');
   // Cleared here too: a table WITHOUT a rule must not inherit the previous table's
   // reference highlight, and `syncReferenceViewRule` re-selects it a moment later on

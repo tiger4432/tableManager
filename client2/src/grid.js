@@ -265,7 +265,8 @@ export function renderFilterBar() {
       label.textContent = filterChipText(colId, model[colId]);
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'filter-chip-x';
+      // Phase 0: the banner's own close button, not a private one that looks like it.
+      remove.className = 'clear-banner-btn';
       remove.textContent = '✕';
       remove.title = `${colId.toUpperCase()} 필터 해제`;
       remove.addEventListener('click', () => {

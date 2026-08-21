@@ -238,7 +238,16 @@ function updateAlignmentBand() {
 
   band.classList.remove('is-match', 'is-warn', 'is-blocked');
   band.classList.add(`is-${verdict.state}`);
-  band.textContent = `${verdict.rowsLabel(rows)} · ${verdict.body}`;
+  // Same three parts the Tx banner has: icon, text, and no close control — this band has
+  // nothing to close, and growing a dead ✕ to match a shape would be worse than omitting it.
+  band.replaceChildren();
+  const icon = document.createElement('span');
+  icon.className = 'banner-icon';
+  icon.textContent = verdict.state === 'match' ? '✔' : (verdict.state === 'blocked' ? '⛔' : '⚠');
+  const text = document.createElement('span');
+  text.className = 'banner-text';
+  text.textContent = `${verdict.rowsLabel(rows)} · ${verdict.body}`;
+  band.append(icon, text);
 }
 
 function selectionRect() {
@@ -354,7 +363,9 @@ function render(results) {
   host.replaceChildren();
   const band = document.createElement('div');
   band.id = 'reference-alignment';
-  band.className = 'reference-alignment';
+  // Phase 0: the SAME banner, not a lookalike. `.tx-filter-banner` carries the structure and
+  // geometry; `.reference-alignment` is a colour variant on top of it.
+  band.className = 'tx-filter-banner reference-alignment';
   band.style.display = 'none';
   const tabs = document.createElement('div');
   tabs.className = 'reference-view-tabs';

@@ -316,20 +316,28 @@
           </div>
           <!-- Active column filters (left) and the columns pushed past the right edge
                (right). Hidden until it has one of the two to say. -->
-          <div id="grid-filter-bar" class="grid-filter-bar" style="display: none">
-            <div id="filter-chips" class="filter-chips"></div>
-            <button
-              id="filter-clear-all"
-              class="filter-clear-all"
-              style="display: none"
-            >
-              전체 해제
-            </button>
+          <div
+            id="grid-filter-bar"
+            class="tx-filter-banner filter-banner"
+            style="display: none"
+          >
+            <span class="banner-icon">▼</span>
+            <span class="banner-text">
+              <span id="filter-chips" class="filter-chips"></span>
+            </span>
             <span
               id="offscreen-cols"
               class="offscreen-cols"
               style="display: none"
             ></span>
+            <button
+              id="filter-clear-all"
+              class="clear-banner-btn"
+              title="전체 해제"
+              style="display: none"
+            >
+              &times;
+            </button>
           </div>
           <div
             id="myGrid"
@@ -412,7 +420,6 @@
               <button id="tab-global" class="tab-btn active">
                 Global History
               </button>
-              <button id="tab-cell" class="tab-btn">Cell History</button>
               <button id="tab-row" class="tab-btn">Row History</button>
             </div>
           </div>
