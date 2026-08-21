@@ -14,7 +14,7 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
 - Ledger V2 1~7단계: `COMPLETE / APPROVED`
 - Ontology Config Explorer 전체 계약: `COMPLETE / APPROVED`
 - production authoring root: `server/config/ontology/` — 🔴 **[2026-08-18] 파일 «하나»**(`ledger_config.json`). `manifest.json`·`catalog/`·`dataflows/`는 은퇴했고 옮겨진 원본은 `server/config/_ontology_pre_single_file_20260818/`(지원 경로 아님)
-- 🔴 **[2026-08-21] `setup_version: 4` — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 든다.** `source_preparers`·`mappers`·`profiles` 세 section은 본문이 소스 안으로 들어가며 은퇴했고, mapping은 mapper가 선언한 **문장 별명**으로 키가 매겨진다(`mapping_id`·`map.emits`·`bind.packs`·기본 `binding_origin` 은퇴; `approval_status`는 필수로 남음). 옛 세대는 `server/scripts/migrate_ledger_config_to_v4.py`. 모양의 정본은 [ONTOLOGY_LEDGER_SETUP §4·§7](../guide/ONTOLOGY_LEDGER_SETUP.md)
+- 🔴 **[2026-08-21] `setup_version: 5` — 필수 section은 «셋»(`vocabulary`·`entities`·`sources`)이고 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 든다.** `packs`·`source_preparers`·`mappers`·`profiles` 네 section이 은퇴했고(앞의 셋은 본문이 소스 안으로, `packs`는 **술어에서 도출** — `setup_bundle.predicate_claim`), mapping은 mapper가 선언한 **문장 별명**으로 키가 매겨지며 `use` 대신 **`predicate`**로 술어를 직접 댄다(`mapping_id`·`map.emits`·`bind.packs`·기본 `binding_origin` 은퇴; `approval_status`는 필수로 남음). 옛 세대는 `migrate_ledger_config_to_v4.py` → `migrate_ledger_config_to_v5.py` 순. 모양의 정본은 [ONTOLOGY_LEDGER_SETUP §4·§7](../guide/ONTOLOGY_LEDGER_SETUP.md)
 - 현재 선언된 source: 🔴 **여기 세지 않는다**(이 자리는 「`lot_event` 하나」라 적혀 있었고 거짓이 됐다). **선언이 곧 활성화**라 `mode` selector는 없고, 무엇이 선언돼 있는지는 `conda run -n assy_manager python -m ledger.setup`(`server/`에서, 쓰기 없음)이 답한다
 - UI: `http://127.0.0.1:8080/admin.html#ontology`
 - active snapshot 기준: 🔴 **여기 적어 두지 않는다.** 이 자리의 `f6223d6c…`는 2026-08-21의
@@ -91,11 +91,15 @@ server/config/ontology/ledger_config.json   (파일 하나)
 
 1. `docs/overview/SYSTEM_OVERVIEW.md`
 2. `docs/process/PROJECT_STATUS.md` 최상단
-3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — V2 설정 파일·필드·샘플·검증 절차
-4. `ledger_v2_redesign_plan_20260817/README.md`
-5. `ledger_v2_redesign_plan_20260817/00_MASTER_PLAN.md`
-6. `ledger_v2_redesign_plan_20260817/CONFIG_CANON.md`
-7. 해당 단계의 `STAGE_*_ACCEPTANCE_EVIDENCE.md`
+3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — **설정의 정본.** 파일·필드·샘플·검증 절차
+
+> 🔴 **[2026-08-21] 4~7번이던 `ledger_v2_redesign_plan_20260817/`은 «읽지 마십시오».**
+> 그 디렉터리는 **1~7단계를 끝낸 계획서**이고, 설계가 그 뒤로 여러 결정을 지나쳤습니다.
+> 특히 `CONFIG_CANON.md`는 `setup_version: 2`와 `packs`·`profiles`를 포함한 «일곱 절»을
+> 가르칩니다 — **지금은 `setup_version: 5`, 절 «셋»(`entities`·`sources`·`vocabulary`)이고
+> `packs`·`claims`·`profiles`·`mapping_id`는 전부 은퇴했습니다.**
+> 위 3번이 그 자리를 대신합니다. 계획서는 **왜 그렇게 됐는지**를 볼 때만 «역사»로 엽니다.
+> (문서 감사 2026-08-21: 그 디렉터리 26개 중 현행 A등급 «0», C등급 21)
 8. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
 9. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
 10. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항

@@ -19,7 +19,8 @@
 > 어느 config에도 선언돼 있지 않다(그래서 이번 라운드들이 건드리지 않았다). v2
 > `ledger_config.json`에는 `profiles` section도 `profile_id`도 **없다** — 소스 하나가
 > `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은 문장 별명으로 키가 매겨진다
-> (`setup_version: 4`, [ONTOLOGY_LEDGER_SETUP §4·§7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)).
+> (`setup_version: 5` — `packs`/`claims`도 없고 문장이 `predicate`로 술어를 직접 댄다,
+> [ONTOLOGY_LEDGER_SETUP §4·§7.5·§7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)).
 > **§5·§6을 v2 작성 지침으로 읽지 말 것.**
 
 ## 1. 결론

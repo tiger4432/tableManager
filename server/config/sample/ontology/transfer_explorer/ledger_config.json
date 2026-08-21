@@ -3,7 +3,6 @@
   "vocabulary": {
     "transferred_to@1": {
       "status": "active",
-      "layer": "ontology",
       "subjects": [
         "CoreDie@1",
         "DTDie@1"
@@ -24,7 +23,6 @@
     },
     "contains_dt_die@1": {
       "status": "active",
-      "layer": "ontology",
       "subjects": [
         "DTJob@1"
       ],
@@ -41,7 +39,6 @@
     },
     "occupies_slot@1": {
       "status": "active",
-      "layer": "ontology",
       "subjects": [
         "DTJob@1"
       ],
@@ -58,7 +55,6 @@
     },
     "component_of@1": {
       "status": "active",
-      "layer": "ontology",
       "subjects": [
         "BondComponent@1"
       ],

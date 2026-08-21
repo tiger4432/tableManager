@@ -177,14 +177,6 @@
                 }
               },
               {
-                "key": "layer",
-                "required": true,
-                "node": {
-                  "kind": "leaf",
-                  "hint": "free"
-                }
-              },
-              {
                 "key": "subjects",
                 "required": true,
                 "label": "주어 타입",

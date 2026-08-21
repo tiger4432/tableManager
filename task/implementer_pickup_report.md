@@ -1,5 +1,54 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 `layer` 삭제 «착지» — 마이그레이션은 총괄 몫. **지금 12개가 빨갛습니다** (date 22:0x)
+
+```
+ddc93f5b  feat(ledger): retire the vocabulary layer, which had one value it was allowed to hold
+          12 파일 · +186 / -34   (검증기 2 · 스켈레톤 · 레지스트리 · 샘플 · 마이그레이션 · 테스트 7)
+```
+확인한 것: **라이브 설정 · `config_explorer.py` · `config_authoring.py` 셋 다 «안 건드림»** (diff 0).
+
+## 🔴 총괄이 «지금» 하실 것 — 마이그레이션
+```
+server/scripts/migrate_ledger_config_drop_vocabulary_layer.py   (--check 먼저)
+대상   server/config/ontology/ledger_config.json   ← 총괄만 씁니다
+```
+**돌리기 «전»까지 pytest 12개가 빨갛습니다** — 이건 예상된 것이고 결함이 아닙니다:
+```
+라이브 미이관    135 passed · 12 failed · 12 errors
+라이브 이관 후   147 passed · «0 failed» · 12 errors   (기준선 + 새 시험 1)
+```
+빨간 12개는 전부 「미이관 파일이 자기 경로에서 이름으로 거절됨」이고, 12 errors 는 «기존» 것(소유자 미완성 소스)입니다.
+
+## 받아들이는 시험 — 전부 통과
+```
+설명 문자열 전후 «동일»   'ontology predicate · active'   그리고 «공허하지 않음»을 같이 증명
+                          (raw 에 canonical 을 넣으면 'canonical predicate · active' — 축이 살아 있다)
+마이그레이션 멱등          2회 · --check 둘 다 unchanged.  ontology 아닌 값은 «거절»하고 안 씀
+감사                       vocabulary 9 -> «4» · setup_version 1 «불변» · 총계 85 -> 80
+lot_event                  여전히 «1,323 원자 · passed» · 분자 40 · 문장 여섯 그대로
+```
+`setup_version` 은 **안 올렸습니다** — 두 자리 다 «동등»으로 못 박혀 있고 판본으로 갈리는 분기가
+하류에 없어서, 올리면 «같은 말을 하는 거절이 하나 더» 생기고 숫자만 틀린 백업까지 무효가 됩니다.
+근거를 적어 뒀으니 뒤집으실 거면 스크립트에 자리 하나만 넣으면 됩니다.
+
+## ↩ 정정 — **제가 옮긴 「grep 이 dict 키를 놓친다」는 «틀렸습니다»**
+총괄 진단을 제가 그대로 전달했는데, 실제 코드를 보니 아닙니다:
+```
+audit_authoring_form:76   re.compile(r"[\"'.]" + key + r"[\"'\s).,\]]")
+                          -> 앞 문자 클래스에 «따옴표 둘»이 이미 있습니다
+                          -> get('k') · ["k"] 를 «구조적으로 못 놓칩니다»
+전수 확인   선언 키 55개 전부에서 「느슨한 패턴이 놓친 dict 키 읽기」 = «0건»
+```
+🔴 **진짜 결함은 반대입니다 — 과다계상입니다.** 산문이든 다른 도메인이든 그 낱말이 나오면 셉니다:
+```
+columns 45->17 · value 66->46 · kind 41->25 · basis 19->4 · relation 22->9 · read 13->3
+layer   13 -> 8파일, 그중 «번들의» layer 를 읽는 것은 «하나»(config_explorer)
+```
+제가 「셋업 번들은 그 길을 안 지난다」까지는 맞게 짚었는데, **원인을 총괄 말대로 「패턴이 못 잡는다」로
+옮긴 것은 안 재고 옮긴 것**입니다. 세기만 했고 고치지 않았습니다.
+
+
 # 🔴 판정 요청 — `qualifiers` 문구는 «계획 행이 아니라 스켈레톤»으로 가야 합니다 (date 21:5x)
 
 ```

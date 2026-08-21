@@ -58,8 +58,21 @@
 >
 > 🆕⑨ ⚠️ **이 패스가 열지 않은 것**: `crud.py`·`directory_watcher.py`·`map_alignment.py`·`map_overlay.py`·`transfer_plan.py`·`bonding_plan.py`·`enrichment_*`·`map_editor.js`·`admin.js`·`timeline.js`의 **심볼 표**는 열지 않았다(줄 수만 쟀다 — 아래 「줄 수 실측표」). 그 절들은 여전히 미검증이다. §5-H 쓰기 측의 심볼 표도 재측정하지 않았다(줄 수와 파일 목록만).
 
+> 🆕⑩ **[2026-08-21 원장 쓰기 측·온톨로지 작성 표면 패스의 측정 기준]** 이 패스가 잰 것은 **`8d1e6c4c`(HEAD)의 커밋된 blob**이다(`git show 8d1e6c4c:<path>` — 워킹트리 아님). 범위는 `5359fdd..8d1e6c4c`(**449커밋**)이고 **지시받은 반경은 `server/ledger/` 패키지 + 온톨로지 config 작성/탐색 표면 하나**다. 🔬 **워킹트리 실측**: 이 패스의 대상 파일은 전부 blob과 동일했다(`git status --porcelain` 기준 dirty였던 것은 `client2/dist/*`·`client2/src/{dom,grid,style}`·`server/{dt_map_derivation,map_alignment,map_overlay}.py`·`server/config/sample/ledger_config.json.sample`뿐 — **전부 이 패스의 반경 밖**이다).
+>
+> 🆕⑩ 🔴 **삭제부터 훑었고, 이 구간의 삭제가 이 문서에서 가장 비싼 항목이었다.** `--diff-filter=D`의 **소스 8건**: `ledger/declared_translator.py` · `ledger/lot_event_translator.py` · `ledger/observation_translator.py` · `ledger/transfer_translator.py` · `ledger/translator_pattern.py` · `ledger/cutover_v2.py` · `ledger/examples/grouped_translator_template.py` · `mappers/ledger_lot_event_mapper.py`. **🆕⑨가 「그 레인이 착지하면 묘비 다섯이 필요하다」고 적어 둔 바로 그 레인이 착지했다** — 그리고 그중 `lot_event_translator.py`는 §5-H에 **심볼 10행짜리 표를 통째로** 달고 살아 있었다. 그 표를 지우고 묘비로 대체했다(아래 §5-H). config 삭제는 **11건**이고 «세는 방법에 따라 6으로 보인다» — 🔴 **기본 rename 탐지가 그중 다섯을 «삭제가 아니라 이동»으로 짝지어 목록에서 지우기 때문이다**(`server/config/ontology/{manifest,catalog/tables,catalog/virtual_joins,dataflows/chains,dataflows/enrichments}.json` → `task/evidence/ontology_root_before_20260818/…`, R100). **`--no-renames`로 다시 세어 11을 얻었다.** 내역: ① 라이브 root의 다중 파일 6개(위 다섯 + `ledger_config.json`)가 사라지고 **`server/config/ontology/`엔 `README.md`만 tracked로 남았다** — 라이브 `ledger_config.json`은 **gitignored**이고 디스크에는 있다 ② `config/sample/ontology/transfer_explorer/`의 다중 파일 5개가 **단일 `ledger_config.json`으로 접혔다**(`scripts/convert_ontology_to_single_file.py`). ⚠️ **이 지도는 어느 쪽 실값도 옮겨 적지 않는다** — 구조만이다.
+>
+> 🆕⑩ **이 패스가 새로 등재/정정한 것 — 전건**: §5-H 쓰기 측 표 전면 재작성(파일 목록 19→**33 + `examples/` 1**, 줄 수 전건 재측정, 묘비 7) · `lot_event_translator.py` 심볼 표 삭제→묘비 · `backfill.py` 행(1,574 → **983**, 드라이버 넷 소멸) + **고아 `fetch_*` 아홉의 실측 반박**(아래) · **[§5-H-bis 신설](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)** — `ontology_config_explorer_router`(**15**라우트 — 전건 계수) · `OntologyExplorerService.test_run` · `config_authoring`(`Ground`/`Field`/4상태/`disposition` 5종) · `implementations.py` · `column_stats.py` · `ledger_skeleton.json` · `source_preparation.SOURCE_ROW_EXCLUDED_COLUMN`/`_assemble_prepared_frame` · 클라 `ontology_explorer{,_store,_view}.js` + 신설 3종(`ontology_path`·`ontology_skeleton`·`dom_patch`) · §5-I의 낡은 워킹트리 경고 철회.
+>
+> 🆕⑩ ⚠️ **이 패스가 열지 않은 것**: `server/ledger/` 안에서도 `envelope`·`vocabulary`·`gate`·`schema`·`store`·`config`·`observability`·`source_profile`·`source_contract`·`shadow_parity`·`profile_*`·`ledger_frame`·`legacy_import`의 **심볼 표는 재검증하지 않았다**(줄 수만 실측). 읽기 측(`ledger_trace*`·`ledger_explorer`·`ledger_subgraph`·`ledger_journey` 등)은 **한 파일도 열지 않았다** — §5-H 읽기 측 절과 §5-I 읽기 측 표는 여전히 `5359fdd`/`a729a7f` 기준이다. `roleframe`·`setup_registry`·`setup_bundle`은 **최상위 심볼 이름만** 실측했고 시그니처·서술은 등재하지 않았다. 이 문서의 나머지 절은 이 패스의 반경 밖이다.
+
 | 절 / 파일 | 상태 | 기준 리비전 | 비고 |
 |---|---|---|---|
+| 🆕⑩ §5-H `server/ledger/` 쓰기 측 — **파일 목록·줄 수 전면 재작성 + 묘비 7** | 🟢 **파일·줄 수 실측 / 🔴 심볼 표는 미검증** | **`8d1e6c4c`**(HEAD) | 19 → **33파일 + `examples/__init__.py`**. 삭제 7(번역기 5 + `cutover_v2` + `examples/grouped_translator_template`). 🔴 **`lot_event_translator.py`의 심볼 표 10행을 삭제하고 묘비로 대체** — 없는 파일의 앵커였다. ⚠️ `envelope`·`vocabulary`·`gate`·`schema`·`store`·`config`·`observability`의 **심볼 표는 이 패스가 열지 않았다**(줄 수만) |
+| 🆕⑩ §5-H `backfill.py` — 드라이버 넷 소멸 + 고아 `fetch_*` 아홉 | 🟢 **심볼·호출자 실측(2026-08-21)** | **`8d1e6c4c`**(HEAD) | 1,574 → **983**. `_run_lineage`/`_run_observation`/`_run_transfer`/`_run_declared` 삭제, 남은 경로는 `run()` → `_run_v2_lineage` 하나. 신설 `PREVIEW_FETCH_ROWS`/`preview_first_batch`. 🔴 **docstring이 「`dry_run.py`가 `fetch_*` 아홉을 import한다」고 적는데 실측 0건이고 그 아홉의 호출자는 레포 전체에 없다.** `probe_lag=True`도 본체가 안 읽는다 |
+| 🆕⑩ **§5-H-bis 온톨로지 config 작성·탐색 표면 — 신설 등재** | 🟢 **라우트 전건 + 지목된 심볼 실측(2026-08-21)** | **`8d1e6c4c`**(HEAD) | 라우터 **129 → 264줄, 라우트 7 → «15»**(`^@router\.` 전건 계수 — 보통 토큰 6 + strict 9). `OntologyExplorerService.test_run`(POST `/test-run`) · `config_authoring`(4상태·`Ground`/`Field`·`disposition` 5종·`tier` 4종) · `implementations.py`(신설) · `column_stats.py`(신설) · `ledger_skeleton.json`(신설) · `source_preparation.SOURCE_ROW_EXCLUDED_COLUMN`/`_assemble_prepared_frame` · 클라 6모듈. ⚠️ `roleframe`·`setup_registry`·`setup_bundle`은 **최상위 심볼 이름만** |
+| 🆕⑩ §5-I 원장 v2 작성/설정 계열 · 클라 온톨로지 3종 — **승격 후 삭제** | 🟢 **승격(2026-08-21)** | **`8d1e6c4c`**(HEAD) | 서버 9행 → §5-H/§5-H-bis, 클라 3행 → §5-H-bis. 🔴 클라 3종은 **셋 다 3배 이상 자랐다**(368/246/375 → **1,323/465/2,199**) — 같은 표의 나머지 클라 행도 밀렸다고 가정하라. 2026-08-18의 「워킹트리에서만 삭제」 경고는 **철회**(HEAD에서도 삭제됐다) |
+| 🆕⑩ 원장 **읽기** 측(§5-H 읽기 절 · §5-I 읽기 표) | 🔴 **이 패스가 한 파일도 열지 않았다** | ~~`8d1e6c4c`~~ → **`5359fdd`/`a729a7f`** | `ledger_trace`·`ledger_trace_router`·`ledger_explorer`·`ledger_catalog`·`ledger_subgraph`·`ledger_journey`·`ledger_trends`·`ledger_composition`·`ledger_selection`·`ledger_identity`·`ledger_walk_contrast`·`mechanism_gate`. **449커밋 구간이 지났으므로 밀렸다고 가정하라** |
 | 🆕⑨ §1.5 / §1.5-bis 그래프 조회 — **묘비로 대체** | 🔴 **서술 전량 폐기(2026-08-18)** | **`5359fdd`**(HEAD, `main.py` blob `9cee25d`) | 일곱 핸들러는 **이름만** 살아 있고 본체는 410 한 줄. 헬퍼·캡·status 어휘는 grep 0건. 🔴 접두어 둘(`/graph/` 여섯 + `POST /api/graph/sync`) |
 | 🆕⑨ §5 `server/database/models.py` — 라인 앵커 전건 재측정 | 🟢 **심볼 실측 + 라인 폐기(2026-08-18)** | **`5359fdd`**(blob `fbe4bde`) | 636(제목) → 실측 **1,079**. 앵커 14개 중 **맞은 것은 `AuditLog` ~11 하나**. 나머지는 라인 열을 걷어내고 심볼만 남겼다 |
 | 🆕⑨ §5-A `server/value_suggest.py` — 라인 앵커 40여 개 폐기 | 🟢 **심볼 실측 + 라인 폐기(2026-08-18)** | **`5359fdd`**(blob `ba921bb`) | 1,154 → 실측 **1,166**. 드리프트가 **조각(+1/+2/+8/+12)**이라 일괄 가산이 불가능했다 — 심볼 40건 전건 존재 확인 후 라인만 걷어냈다 |
@@ -401,7 +414,23 @@
 > #       그 넷은 `check_harnesses.mjs`의 `KNOWN_RED`에 **총괄 수용(2026-08-09)** 으로 등재돼 있다.
 > git grep -nE "^(SIDES_KEY|def load_alignment_sides)" -- server/map_alignment.py
 > git grep -nE "^export const (SIDES|SIDE_HEADERS) " -- client2/src/map2/candidates.js
+> # ⑲ [🆕⑩ 2026-08-21 신설] **원장 v1 번역기 계열 — 파일도 심볼도 0건**이어야 한다.
+> #    🔴 이것은 이 문서가 «심볼 표를 통째로» 달고 살려 두던 이름들이다(§5-H의
+> #       `lot_event_translator.py` 10행). 소유자 판정 「remove legacy」로 v1 문법 넷이
+> #       은퇴하면서 파일 일곱이 함께 사라졌다.
+> #    ⚠️ 범위에 `docs/`·`agent_workspace/`·`task/`를 넣지 마라 — 그쪽 히트는 전부
+> #       묘비·이력 문맥이고, 넣으면 이 검사가 영원히 빨개진다.
+> git ls-tree -r --name-only HEAD -- server/ledger/ | grep -E "(declared|lot_event|observation|transfer)_translator|translator_pattern|cutover_v2|grouped_translator_template"
+> git grep -nE "class (LotEvent|Observation|Transfer|Declared)Translator|def group_molecules|def molecule_key" -- server/
+> # ⑲-b 그리고 삭제된 체인 맵퍼 하나 — `server/mappers/` 히트 0건이어야 한다.
+> #     (살아 있는 v2 맵퍼 둘은 `ledger_v2_` 접두어를 «반드시» 갖는다 — `implementations.py`가
+> #      그 접두어로만 import하므로 접두어 없는 이름은 config에서 닿지 못한다.)
+> #     🔴 `grep -E`에 `(?!…)`를 쓰지 마라 — ERE에 부정 선읽기가 없어 «항상 0건»이 되고,
+> #        그러면 파일이 돌아와도 초록인 «구조적 초록» 검사가 된다. 파이프로 뺀다.
+> git ls-tree -r --name-only HEAD -- server/mappers/ | grep -E "/ledger_" | grep -v "/ledger_v2_"
 > ```
+>
+> 🆕⑩ **⑲/⑲-b는 고장 주입으로 확인했다** — 세 명령 전부 HEAD에서 0건이고, `5359fdd`에 대고 돌리면 각각 **7건 · (해당 없음) · 1건**으로 빨개진다. **자기 고장에서 눈이 머는 검사가 아니라는 것을 보이는 것이 이 줄의 목적이다.**
 >
 > **측정 기준 (라인 앵커가 가리키는 상태)**: **전 절이 `41b17ee`의 커밋된 blob 실측**이다(`git show 41b17ee:<path>` 기준, 2026-08-04 여덟 번째 패스). HEAD(`35b03cc`)와의 차이는 `docs/process/PROJECT_STATUS.md`·`client2/scripts/check_harnesses.mjs`뿐이라 **소스 blob은 하나도 다르지 않다** — 아래 게이트 핀만 HEAD 기준이다.
 >
@@ -505,8 +534,9 @@
 | 🆕 **[신설] 2026-08-04(2차)** — **`server/notation_norm.py`**(표기 정규화 파생 컬럼) · ~~`server/graph_stale_edges.py`~~ | **542** (🪦 **[2026-08-16] `graph_stale_edges.py` 549줄과 CLI `graph_stale_edge_sweep.py` 193줄이 삭제돼 이 행은 이제 «1종»입니다.** `rederive_notation_norm.py`는 그보다 앞서 `8d306a5`에서 삭제됐습니다) | [§5-E](#5-e-2026-08-042차-신설-서버-모듈-2종--표기-정규화--낡은-엣지-스윕) |
 | 🆕 **[등재] 2026-08-07 정렬 채점 계열** — `serpentine_index`/`serpentine_rank` · `_walk_by_index` · `direction_judge`/`direction_violations` · **`index_group_count`** · **`bin_fingerprint_shift`** · 앵커/잔차 배치 · 순번 축 진단 | (`server/map_alignment.py` 안 — 파일 🆕🆕🆕 **6,468** @`68db020`) | [§5-F](#5-f--정렬-채점-계열-index-scoring-family--servermap_alignmentpy-2026-08-07-등재) |
 | 🆕🆕 **[등재] DT·core 프레임 유도 체인** — `dt_map_derivation.py`(**`parse_frame`의 정의**) · `dt_frame_transform.py` · `alignment_view_service.py` · 체인 맵퍼 5종(`mappers/*.py.sample`) · 씨앗/프로브 스크립트 3종 | **849** + **96** + **85** (+ `.sample` 791 · 스크립트 817) | [§5-G](#5-g--dtcore-프레임-유도-체인-2026-08-11-신설-등재) |
-| 🆕⑦ **[등재] 정본 원장(canonical ledger) + 원장 콘솔** — `server/ledger/` 🆕⑨ **34파일**(쓰기 측, 구 표기 13 — 상세는 [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측)) + 읽기 측 9모듈(`ledger_trace.py`·`ledger_trace_router.py`·`finding_kinds.py`·`ledger_kinds.py`·`ledger_siblings.py`·`ledger_structure.py`·`ledger_lots.py`·`ledger_walk_contrast.py`·`mechanism_gate.py`) + `server/migrations/add_ledger_events.py` + 클라 콘솔(`client2/ledger.html` + `src/ledger_trace*.js` + 놀라움/콘솔 모듈군) + 하니스 | 쓰기 측 **5,638** / 읽기 측 **1,937**+**419**+**310**+**349**+**845**+**1,300**+**1,392**+**1,327**+**368** + **96** / 클라 `ledger.html` **2,499** · 엔트리 **1,205** · 하니스 **1,556** (@`a729a7f`) | [§5-H](#5-h-정본-원장-canonical-ledger) |
-| 🆕⑨ **[신설] 미등재 모듈 레지스트리** — 맵에 **절이 아예 없던** 서버 25 · 클라 13 + 페이지 2(존재·크기만, 심볼 표 없음) | — | [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측) |
+| 🆕⑦ **[등재] 정본 원장(canonical ledger) + 원장 콘솔** — `server/ledger/` 🆕⑩ **33파일 + `examples/__init__.py`**(쓰기 측, 구 표기 34/13 — 상세는 [§5-H](#5-h-정본-원장-canonical-ledger) 표. 🪦 **v1 번역기 5 + `cutover_v2` + 예제 1이 삭제됐다**) + 읽기 측 9모듈(`ledger_trace.py`·`ledger_trace_router.py`·`finding_kinds.py`·`ledger_kinds.py`·`ledger_siblings.py`·`ledger_structure.py`·`ledger_lots.py`·`ledger_walk_contrast.py`·`mechanism_gate.py`) + `server/migrations/add_ledger_events.py` + 클라 콘솔(`client2/ledger.html` + `src/ledger_trace*.js` + 놀라움/콘솔 모듈군) + 하니스 | 쓰기 측 **5,638** / 읽기 측 **1,937**+**419**+**310**+**349**+**845**+**1,300**+**1,392**+**1,327**+**368** + **96** / 클라 `ledger.html` **2,499** · 엔트리 **1,205** · 하니스 **1,556** (@`a729a7f`) | [§5-H](#5-h-정본-원장-canonical-ledger) |
+| 🆕⑩ **[신설] 온톨로지 config 작성·탐색 표면** — `ontology_config_explorer_router.py`(**15라우트**) + `ledger/config_{authoring,explorer,explorer_service,drafts}.py` + `implementations.py` · `column_stats.py` · `ledger_skeleton.json` + 클라 `ontology_explorer{,_store,_view}.js` · `ontology_path.js` · `ontology_skeleton.js` · `dom_patch.js` | 서버 **264**+**1,548**+**1,380**+**946**+**806**+**172**+**287**+**763** / 클라 **1,323**+**465**+**2,199**+**92**+**153**+**221** (@`8d1e6c4c`) | [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑨ **[신설] 미등재 모듈 레지스트리** — 맵에 **절이 아예 없던** 서버 25 · 클라 13 + 페이지 2(존재·크기만, 심볼 표 없음). 🆕⑩ **원장 v2 작성 계열 9 + 클라 온톨로지 3은 위 두 절로 승격했다** | — | [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측) |
 | 기타 서버 모듈 (한줄 요약) + 설치·개발환경 스크립트 + **교차 구현 계약 `contracts/` (6계약)** + **빌드 게이트 3종** + **런처 `run_decoupled_app.py`(🆕⑨ **389** @`5359fdd` — 구 표기 228)** | — | [§6](#6-기타-서버-모듈-한줄-요약) |
 | 🆕 **`server/map_alignment.py`**(프레임 정렬 채점자) + **`server/frame_confirmation.py`**(확정 기록자) + `migrations/add_frame_confirmation.py` | 🆕🆕🆕 **6,468** + **798** (@`68db020` 실측 — 등재 당시 3,272 + 688. 🔴 **`frame_confirmation`이 처음으로 줄었다** — private `_basis_cells_for`가 `map_alignment.basis_cells_for`로 이사·공개됐다) | [§5](#-servermap_alignmentpy--프레임-정렬의-채점자) · [§5-F](#5-f--정렬-채점-계열-index-scoring-family--servermap_alignmentpy-2026-08-07-등재) |
 | 🆕 **Map Editor 2** — `client2/src/map_editor2.js` + `client2/src/map2/` **18**모듈 (구 에디터를 **대체하지 않고 옆에 선다**) | **408** + **8,378** (신설) | [§7-A](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506-신설) |
@@ -2249,32 +2279,48 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ### `server/ledger/` — 쓰기 측
 
-🆕⑦ **[2026-08-14] 11 → 13파일.** 줄 수는 `a729a7f` 재측정값이고, ⚠️ **아래 각 파일의 심볼 표는 `aeddac8` 기준 그대로다** — 자란 파일의 신설 심볼은 이 표에 없다.
+🆕⑦ **[2026-08-14] 11 → 13파일.** 🆕⑧ **[2026-08-16] 13 → 19파일.**
 
-🆕⑧ **[2026-08-16] 13 → 19파일.** 이번 패스는 새 작성 경로 여섯 파일만 코드 대조했다. 기존 행의 줄 수와 심볼은 재검증하지 않았다.
+🆕⑩ **[2026-08-21 전면 재측정 — `8d1e6c4c` 커밋 blob] 19 → 「33파일 + `examples/__init__.py`」이고, 그중 «일곱이 죽었다».** 아래 표의 **줄 수는 전건 `git show HEAD:<path> | wc -l` 실측**이다. ⚠️ **각 파일의 «심볼 표»는 여전히 `aeddac8` 기준이고 이 패스가 재검증하지 않았다** — 아래 묘비 행과 `backfill` 행, 그리고 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 나간 것만이 이 패스가 실측한 것이다.
+
+🪦 **[2026-08-21] 이 구간의 삭제 일곱 — 파일이 없다.** `declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` · `transfer_translator.py` · `translator_pattern.py` · `cutover_v2.py` · `examples/grouped_translator_template.py`(패키지 `examples/__init__.py` **2줄만 남았다**). 🔴 **이 지도는 그중 `lot_event_translator.py`를 심볼 10행짜리 표와 함께 살아 있는 것으로 싣고 있었다** — 아래에서 그 표를 묘비로 대체했다. 검사: `git ls-tree -r --name-only HEAD -- server/ledger/`에 이 일곱이 **0건**이어야 한다.
 
 | 파일 | 줄 | 한 줄 |
 |---|---|---|
-| `__init__.py` | **27** | 코드 0줄, docstring만. 읽는 순서를 선언한다(vocabulary → envelope → gate → schema → config → lot_event_translator → backfill → observability — 🆕⑦ 신설 번역기 2종은 이 목록에 아직 없다). ⚠️ 결합 서술 1건이 실측과 어긋난다 — 아래 「소스가 이 절을 반박하는 자리」 |
-| `envelope.py` | **264** | 봉투 7필드의 파이썬 표현 + 타입 보존 (🆕⑦ 무변동) |
-| `vocabulary.py` | 🆕⑦ **622** | 닫힌 어휘와 기계 검사 가능한 시그니처. 🆕⑦ 🔴 **`PREDICATES`는 이제 7이 아니라 11종이다**(실측 키: `register`·`pin`·`same_as`·`derived_from`·`slot_map`·`has_wafer`·`frame_confirmed` + 신설 `processed_with`·`has_param`·`transferred`·`observed`) — 아래 `PREDICATES` 행의 「v0는 일곱」은 낡았다. walk 선언 계열 신설: `WALK_DIRECTIONS`(frozenset) · `walk_predicates()` · `traversable_predicates()` · `walk_direction(predicate)` · `check_walk_declaration()` — **읽기 측 walk가 따라갈 술어를 코드가 아니라 이 선언이 정한다**(`ledger_trace.traversal_predicate` 참조) |
-| `uuid7.py` | **123** | 단조 UUIDv7 — `id`이자 워터마크이자 기록 시각 (🆕⑦ 무변동) |
-| `gate.py` | 🆕⑦ **468** | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자(molecule)** |
-| `config.py` | 🆕⑦ **623** | `ledger_config.json` 로더/검증 + 번역기 버전 해시 |
-| 🆕⑧ `declared_translator.py` | **258** | 한 행을 `emit[]` 선언대로 Claim 1~N개로 만드는 선언 실행기 |
-| 🆕⑧ `dry_run.py` | **179** (2026-08-18 실측) | ⚰️ **미리보기는 내려가 있다.** 종전 「실제 번역기를 PostgreSQL 읽기 전용 트랜잭션에서 실행하는 미리보기」는 v1 번역기 넷과 함께 은퇴했다(`ab8657f`, 596 → 179줄). `preview()`는 이제 `DryRunUnavailable`을 던지고 `main.py`가 그것을 `declaration_rejected` 거절로 렌더한다. **남은 실물은 `begin_read_only(connection)`·`envelope_of(atom)`·`_existing_registrations(...)`** — 앞의 것이 「쓰기 0」을 구조로 만드는 자리(`SET TRANSACTION READ ONLY` → `SHOW transaction_read_only`로 되묻기)라 v2 미리보기가 그대로 쓴다. 🔴 **v2 미리보기를 부르는 HTTP 라우트는 아직 없다** — 할 수 있는 함수는 `ledger/setup.py`의 `preview_selected_cursor_batch`다 |
-| 🆕⑧ `source_contract.py` | **281** | 소스 선언·번역 프로필·가능 Claim 전수·live vocabulary를 한 작성 계약으로 컴파일 |
-| 🆕⑧ `translator_pattern.py` | **164** | 복잡한 Python 번역기의 시각·출처·register·게이트·롤백 공통 수명주기 |
-| 🆕⑧ `setup_bundle.py` + `source_profile.py` + `ledger_frame.py` + `chain_mapper.py` + `profile_chain_mapper.py` + `profile_lookup_adapters.py` + `legacy_import.py` | — | **v2 2단계 `IN_REVIEW` / `NOT_APPROVED`.** `setup_bundle.py`는 DB/runtime import 없는 순수 authoring schema, strict manifest loader, 결정적 직렬화/readiness와 malformed-safe 전수 교차검증을 소유한다. Vocabulary/Pack/Profile/Mapper/Source/Catalog 계약은 source 사용 여부와 무관하게 검증한다. `server/config/ontology/`는 정본 root지만 운영 JSON은 아직 없고 runtime 미연결이다. 나머지 현행 실행 코드는 `FROZEN_FOR_REDESIGN`. 재개 정본은 [`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md), 근거는 [`STAGE_2_ACCEPTANCE_EVIDENCE`](../../ledger_v2_redesign_plan_20260817/STAGE_2_ACCEPTANCE_EVIDENCE.md)다. 기존 reader/cursor/gate/store/read API는 유지한다. |
-| 🆕⑧ `source_profile_builtins.py` | **146** | `lot-lineage@1`, `transfer@1` Pack/Claim/Role 및 `source_position` symbolic constant 등록 데이터. 사례 이름은 이 등록 파일에만 허용 |
-| `schema.py` | 🆕⑦ **360** | 물리 DDL — **첫날부터 시간 파티션**. 유일한 철자 |
-| `store.py` | 🆕⑦ **442** | 원자 append와 커서 전진을 **한 트랜잭션**으로 |
-| `lot_event_translator.py` | 🆕⑦ **526** | 첫 소스. 두 행 = 한 분자 |
-| 🆕⑦ `observation_translator.py` | **362** | **신설.** 관측(검사 발견) 소스의 번역기 — `class ObservationMolecule` · `class ObservationTranslator`(`source_cfg["columns"]`의 논리 이름으로만 컬럼을 읽는다) · `raw_ref(source, rows)`. **심볼 표 미등재**(이 패스는 존재·최상위 심볼만 실측) |
-| 🆕⑦ `transfer_translator.py` | **395** | **신설.** 이송(transfer) 소스의 번역기 — `class TransferMolecule` · `class TransferTranslator` · `raw_ref(source, columns, group_key, extra=None)`. **심볼 표 미등재**(〃) |
-| 🆕⑧ `examples/grouped_translator_template.py` | **72** | 런타임 미등록 복사 예제. `CUSTOMIZE` 네 블록만 교체하며 복사만 해서는 0행을 쓴다 |
-| `backfill.py` | **895**(2026-08-19 실측 — 구 표기 1,002) | 커서 루프 + CLI. **분자를 반으로 자르지 않는다** |
-| `observability.py` | 🆕⑦ **424** | 하트비트 note + **2계층 lag 보고** |
+| `__init__.py` | **27** | 코드 0줄, docstring만. ⚠️ 🆕⑩ **그 docstring의 읽는 순서가 이미 낡았다** — `lot_event_translator.py`를 여섯째로 지목하는데 **그 파일이 없다**. 소스 소관이라 여기서 못 고치고, **이 지도가 그 순서를 복사하지 않는다**(종전 이 행이 복사하고 있었다) |
+| `envelope.py` | 🆕⑩ **329** | 봉투 7필드의 파이썬 표현 + 타입 보존 |
+| `vocabulary.py` | 🆕⑩ **1,280** | 닫힌 어휘와 기계 검사 가능한 시그니처. 🆕⑦ 🔴 **`PREDICATES`는 7이 아니라 11종**(`register`·`pin`·`same_as`·`derived_from`·`slot_map`·`has_wafer`·`frame_confirmed` + `processed_with`·`has_param`·`transferred`·`observed`). walk 선언 계열: `WALK_DIRECTIONS` · `walk_predicates()` · `traversable_predicates()` · `walk_direction(predicate)` · `check_walk_declaration()` |
+| `uuid7.py` | **123** | 단조 UUIDv7 — `id`이자 워터마크이자 기록 시각 (🆕⑩ 무변동) |
+| `gate.py` | 🆕⑩ **581** | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자(molecule)** |
+| `config.py` | 🆕⑩ **1,073** | v1 `ledger_config.json` 로더/검증 + 번역기 버전 해시. ⚠️ **v2 정본은 이 파일이 아니라 `setup_bundle.py`+`setup.py`다**(`SETUP_VERSION`·`CONFIG_FILENAME` 소유가 그쪽으로 갔다) |
+| `schema.py` | 🆕⑩ **430** | 물리 DDL — **첫날부터 시간 파티션**. 유일한 철자 |
+| `store.py` | 🆕⑩ **503** | 원자 append와 커서 전진을 **한 트랜잭션**으로 |
+| `observability.py` | 🆕⑩ **428** | 하트비트 note + **2계층 lag 보고** |
+| `backfill.py` | 🆕⑩ **983**(구 표기 895/1,574) | 커서 루프 + CLI. **분자를 반으로 자르지 않는다.** 🔴 **드라이버는 이제 «하나»다** — `_run_lineage`/`_run_observation`/`_run_transfer`/`_run_declared` 넷과 그 헬퍼(`_flush`·`_refusal_totals`·`_refusal_delta`·`_watermark_json`·`_cursor_json`)가 번역기 넷과 함께 삭제됐고, 남은 실행 경로는 `run()` → **`_run_v2_lineage`**뿐이다. 🆕⑩ 신설: `PREVIEW_FETCH_ROWS = 200` · **`preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS)`**(쓰기 0·커서 무이동, [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)의 test-run이 유일한 소비자) · `v2_base_select_columns` · `prepare_v2_cursor_batch` · `_fetch_v2_lineage_{page,group,rows}` · `_v2_frame` · `_v2_registration_subjects` · `_no_join_reader`. **아래 「소스가 이 절을 반박하는 자리」에 이 파일의 실측 반박 1건이 있다** |
+| `dry_run.py` | 🆕⑩ **196**(구 표기 179) | ⚰️ **미리보기는 내려가 있다.** `preview()`는 `DryRunUnavailable`을 던지고 `main.py`(`post_ledger_dry_run`)가 그것을 `declaration_rejected`로 렌더한다. 남은 실물은 `begin_read_only(connection)`·`envelope_of(atom)`·`_existing_registrations(...)`. 🔴 **v2의 쓰기 없는 미리보기는 이 파일이 아니라 `backfill.preview_first_batch` / `setup.preview_selected_cursor_batch`이고, 이제 HTTP 라우트가 «있다**」(`POST /admin/ontology-explorer/test-run`) |
+| `source_contract.py` | 🆕⑩ **319** | 소스 선언·번역 프로필·가능 Claim 전수·live vocabulary를 한 작성 계약으로 컴파일 |
+| `source_profile_builtins.py` | **146** | `lot-lineage@1`, `transfer@1` Pack/Claim/Role 및 `source_position` symbolic constant 등록 데이터 (🆕⑩ 무변동) |
+| 🆕⑩ `setup.py` | **365**(구 표기 251) | **셋업 경계 — config root 하나를 읽어 스냅샷 하나로 컴파일한다.** 구 `cutover_v2.py`의 개명(`b4c5870`)이고 진입 함수는 **`load_setup(root)`**. `DEFAULT_ONTOLOGY_ROOT`(= `server/config/ontology/`) 소유. 최상위: `LedgerSetupError` · `LedgerSetup` · `load_setup` · **`setup_from_document`** · **`live_physical_catalog`** · **`physical_catalog_path`** · `preview_selected_cursor_batch` · `execute_selected_cursor_batch` · `dry_run_report` · `_require_declared_source` · `_authoring_issues` · `_resolve_cli_root` · `main(argv=None)`. CLI `--root <디렉터리>` |
+| 🆕⑩ `setup_bundle.py` | **1,854**(구 표기 1,610) | DB/runtime import 없는 **순수 authoring schema + strict loader**. 🔴 **`SETUP_VERSION = 5`**(구 4 — 이주 스크립트가 `scripts/migrate_ledger_config_to_v{4,5}.py` 둘) · `CONFIG_FILENAME = "ledger_config.json"` · `PHYSICAL_CATALOG_FILENAME = "table_config.json"` · `LOGICAL_SECTIONS`/`OPTIONAL_SECTIONS`(`virtual_joins`)/`ALL_SECTIONS` · `_FORBIDDEN_DECLARATION_KEYS`/`_FORBIDDEN_EXECUTABLE_KEYS`(**선언은 이름을 대지 경로·표현식을 대지 않는다** — `implementations.py`가 그 규칙의 나머지 반쪽) · 역할 어휘 `SUBJECT_ROLE`/`OCCURRED_AT_ROLE`/`TARGET_ROLE`/`VALUE_ROLE` · `validate_bundle`/`validate_bundle_errors`/`bundle_readiness_errors`/`require_ready_bundle` · `load_setup_bundle`/`setup_bundle_errors`/`load_physical_catalog` · `public_bundle_schema()` · `predicate_claim()` · `role_binding_kinds()` |
+| 🆕⑩ `setup_registry.py` | **1,048**(구 표기 781) | 순수 v2 **레지스트리 컴파일러 + 불변 setup 스냅샷**. `SNAPSHOT_COMPILER_VERSION = 4` · 디스크립터 계열(`PredicateDescriptor`·`EntityTypeDescriptor`·`RoleDescriptor`·`ClaimDescriptor`·`MapperDescriptor`·`ProfileDescriptor`·`SourcePreparerDescriptor`·`VerifiedJoinDescriptor`) · 계획 계열(**`SourcePlan`**·`SourceDriverPlan`·`SourcePreparationPlan`·**`OccurredAtPlan`**·**`RegistrationProbePlan`**) · `OCCURRED_AT_BASIS_COLUMNS = {"ingested": "created_at"}` · `_SealedRegistry` + 레지스트리 8종 · `LedgerSetupSnapshot` · `compile_setup_snapshot` · `snapshot_compile_errors` · `source_cursor_fingerprint` · `cursor_translator_version` · `TrustedImplementationCatalog`/`ImplementationKey` |
+| 🆕⑩ `roleframe.py` | **1,245**(구 표기 931) | v2 Stage 4 **EventFrame → RoleFrame → LedgerFrame 컴파일러**. `ROLE_FRAME_SCHEMA_VERSION = 1` · `ROLE_FRAME_COLUMNS` · `EVENT_FRAME_REQUIRED_ATTRS` · `SOURCE_ROW_REF_COLUMN = "__source_row_ref"` · `SOURCE_OCCURRED_AT_COLUMN = "__occurred_at"` · `SOURCE_EVENT_INCOMPLETE_ATTR` · `RoleEmission`/`MapperContext`/`SentenceShape`/`ProfileSentences` · **`BaseLedgerMapper`**(`map()`이 final) · **`DeclarativeRoleMapper`** · `RoleMapperImplementationRegistry` · `map_event_frame` · `validate_role_frame` · **`compile_role_frame`**(🔴 **atom의 `derivation`에 `row["sentence"]`를 찍는다** — 문장별 원자 귀속이 컴파일러 자신의 것이라 아무도 RoleFrame을 다시 걷지 않는다) · `dry_run_event_frame` |
+| 🆕⑩ `source_preparation.py` | **1,022**(구 표기 968) | v2 Stage 5 **pandas 소스 준비 경계**. 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `runtime_v2.py` | **385**(구 표기 365) | v2 Stage 6 — 기존 gate/store 트랜잭션 **위의** 실행 어댑터. `LedgerV2RuntimeError` · **`CursorBatchPreview`**/**`CursorBatchExecutionResult`** · `preview_cursor_batch`/`execute_cursor_batch` · `_filtered_event_atoms`(🔴 `register`를 낼 소스가 조회 방법을 선언 안 했으면 **`registration_context_required`로 거절** — `known_registrations`가 `None`일 때만 발화한다) · `_stamp_occurred_at_basis` · `_known_registrations` · `_cursor_value` |
+| 🆕⑩ `implementations.py` | **172**(신설) | 🔴 **손으로 관리하던 목록 «넷»을 대체한다.** 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `column_stats.py` | **287**(신설) | 컬럼 선택을 위한 물리 통계 프로브. 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `config_authoring.py` | **1,548**(신설) | 작성 패널의 엔진 — 「무엇이 강제이고 무엇이 여전히 질문인가」. 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `ledger_skeleton.json` | **763**(신설) | config가 **무엇으로 이루어지는지**를 말하는 문서. 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `config_explorer.py` | **1,380**(구 표기 767) | v2 온톨로지 config 탐색기의 **불변 읽기 모델**. `ConfigExplorerError`·`ExplorerIndex`·`AUTHORABLE_SECTIONS`/`AUTHORABLE_SECTION_NAMES`·`build_explorer_index`·`explorer_view`·`resolve_declarations`·`load_resolved_setup`·`deletion_plan`/`DeletionPlan`·`definition_diff`/`reference_diff`·`document_hash`·`authorable_bundle_path` |
+| 🆕⑩ `config_explorer_service.py` | **946**(구 표기 305) | 그 탐색기의 **캐시된 애플리케이션 서비스**(`OntologyExplorerService`). 상세는 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) |
+| 🆕⑩ `config_drafts.py` | **806**(구 표기 548) | 탐색기의 **파일시스템 작업 초안**(`OntologyDraftStore`) — 🔴 **작성 경로에서 «쓰는» 유일한 자리**(`config_authoring`은 한 줄도 안 쓴다) |
+| `source_profile.py` | **1,512** | (🆕⑩ 무변동) |
+| `chain_mapper.py` | 🆕⑩ **363** | |
+| `profile_chain_mapper.py` | **469** | (🆕⑩ 무변동) |
+| `ledger_frame.py` | **278** | (🆕⑩ 무변동) |
+| `profile_lookup_adapters.py` | **105** | (🆕⑩ 무변동) |
+| `legacy_import.py` | **31** | (🆕⑩ 무변동) |
+| `shadow_parity.py` | **241** | 레거시 ↔ v2 **결정적 의미 그림자 대조** (🆕⑩ 무변동) |
+| 🪦 `declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` · `transfer_translator.py` · `translator_pattern.py` · `cutover_v2.py` · `examples/grouped_translator_template.py` | — | **파일이 없습니다**(2026-08-21 실측). 소유자 판정 「remove legacy」로 v1 문법 넷이 통째로 은퇴했다. `cutover_v2.py`는 삭제가 아니라 **`setup.py`로 개명**(위 행). 🔴 **이 이름들을 앵커로 쓰지 마라** |
 
 #### `envelope.py`
 
@@ -2379,20 +2425,18 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `parse_occurred_at(raw, fmt, tzname)` | 실패는 `None`이고 **`None`은 호출자에게 거절 신호이지 `now()`로 대체할 면허가 아니다**. 🔴 **소스가 든 명시 오프셋이 이기고, 선언된 zone은 naive 값에만 적용된다** |
 | `_zone(tzname)` | 해석 불가 zone은 raise. **UTC로 조용히 폴백하지 않는다** — 모든 `occurred_at`이 오프셋만큼 밀린다 |
 
-#### `lot_event_translator.py`
+#### 🪦 `lot_event_translator.py` — 파일이 없습니다 (2026-08-21 실측)
 
-| 심볼 | 무엇인가 |
-|---|---|
-| `SOURCE = "lot_event"` | |
-| `class Molecule` | `__slots__ = ("event_type","event_time","parent","child","ambiguous","rows")`. 🔴 **한 split/merge는 소스 행 *둘*이고 그 쌍이 분자이자 트랜잭션 단위다** — 소스에 이벤트 id가 없어 `(event_type, event_time, parent, child)` **넷 전부**로 짝짓는다(두 랏이 같은 순간에 움직일 수 있다). `ref`(비의미 상관 마커) · `is_complete` · `parent_row()` / `child_row()` |
-| `molecule_key(row)` | `(event_type, event_time, parent, child, ambiguous)`. 한 행은 짝의 **한쪽**을 대고 다른 쪽을 유도한다. 🔴 **양쪽을 다 채운 행은 자기 행 정체성을 키에 실어 아무 분자에도 못 낀다** — 라이브 DB에 실재한다(그리드 손편집으로 `child_lot`이 들어갔다). 「parent 먼저 보고 없으면 child」류 순서는 그 행의 웨이퍼 25장을 **소스가 주장한 적 없는 계보에** 조용히 붙인다 |
-| `group_molecules(rows)` | 커서 순서를 보존한 채 분자로 묶는다 |
-| `class LotEventTranslator(source_cfg, translator_ver, declared_derivations, who=SOURCE)` | 등록 메모(`registered`)만 런 스코프 캐시. `store.existing_registrations`로 배치마다 씨를 받고 런 중에 자란다 |
-| `LotEventTranslator.translate(molecule) -> (atoms, report)` | 🔴 **게이트를 통과하기 *전*의 원자다.** `(None, report)`는 원자가 생기기 전에 거절됐다는 뜻(모호한 짝 · 미선언 `event_type` · 파싱 불가 시각 · 정체성 없음). 방출 순서 — `register`(정렬된 lot) → `has_wafer`(행의 위치쌍) → `derived_from`(행 자신의 parent/child 필드) → `slot_map`(선언된 전략) |
-| `LotEventTranslator._positional_pairs(row)` | `[(slot, wafer)]`, 길이가 다르면 **분자 전체 거절**. 🔴 방어적 정돈이 아니다 — 불균등 짝짓기는 아무 데서도 raise하지 않고 **웨이퍼를 틀린 슬롯에 재배정한 채 형태만 멀쩡**하다 |
-| `LotEventTranslator._slot_map(molecule, strategy, occurred_at)` | `slot_preserving` — 선언된 **관습**. 자식 행의 `(slot, wafer)`마다 `from == to`. split에서도 도는 유일한 갈래. `shared_wafer` — **추론 0**. 양쪽 행이 **같은 웨이퍼 id를 발화한 자리에만** 짝. 소스가 침묵하면 아무것도 안 낸다 |
-| `raw_ref(rows) -> str` | `lot_event:["<row id>", …]` — 재번역으로 가는 **유일한** 경로. 🔴 구분자 join이 아니라 **JSON 배열**인 이유는 소스 행 정체성(`business_key_val`)이 이미 `lot\|event_type\|event_time`이라 뻔한 구분자를 품고 있어서다. 정렬하므로 매 실행 동일 → 유일 인덱스가 재번역을 알아본다 |
-| `source_translator_ver`의 `#<derivation>` 접미 | 🔴 **열두 번째 컬럼을 만들지 않고 관습을 질의 가능하게 만든 자리.** `WHERE source_translator_ver LIKE '%#slot_preserving'`이 「선언된 관습에 기대는 원자」와 「소스가 대놓고 발화한 원자」를 가른다. **읽기 측 `ledger_trace.claim_basis`가 정확히 이 접미를 읽는다** |
+> 🆕⑩ 🔴 **여기 있던 심볼 표 10행을 삭제했다.** `SOURCE` · `class Molecule` · `molecule_key` · `group_molecules` · `class LotEventTranslator` · `.translate` · `._positional_pairs` · `._slot_map` · `raw_ref` — **전부 없는 이름이다.** 이 표는 「이 파일은 감사됐다」는 인상을 주면서 다른 에이전트를 없는 파일로 보내고 있었다.
+>
+> 검사(히트 0건이어야 한다):
+> ```bash
+> git grep -nE "class (LotEvent|Observation|Transfer)Translator|def group_molecules|def molecule_key" -- server/
+> ```
+>
+> **대체된 것.** 「소스 행 → 원자」는 이제 번역기 모듈이 아니라 **선언 + 두 컴파일러**다: `source_preparation.prepare_source_batch`(EventFrame) → `roleframe.map_event_frame`/`compile_role_frame`(RoleFrame → LedgerFrame) → `runtime_v2.execute_cursor_batch`(게이트·store). 소스마다 파이썬 파일을 쓰던 자리는 `mappers/ledger_v2_*.py` **구현 등록**(→ `implementations.py`)으로 옮겨 갔다.
+>
+> ⚠️ **살아남은 두 계약은 이 지도의 다른 자리에 있다** — ① `source_translator_ver`의 **`#<derivation>` 접미**(관습에 기댄 원자를 질의 가능하게 만드는 자리, 읽기 측 `ledger_trace.claim_basis`가 읽는다)는 §5-H 읽기 측 표에 그대로 있다. ② 「한 소스 사건은 한 배치에 통째로 착지한다」는 규율은 `backfill._run_v2_lineage`의 **쪼갬 가드**로 옮겨 갔다(아래 `backfill.py` 표).
 
 #### `backfill.py`
 
@@ -2407,7 +2451,10 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS, reset_cursor=False, start_from=None, max_batches=None, probe_lag=True, ontology_root=None)` 🔴 **`cfg`는 없다**(2026-08-18 문법 드라이버 넷과 함께 삭제) — 두 번째 «위치»가 이제 `source`라, 옛 모양으로 부르면 `invalid_source_argument`로 이름 대고 거절한다 | 🔴 **쓰기 전에 읽기 트랜잭션을 끝낸다(`read.rollback()`)** — psycopg2가 첫 SELECT에서 암묵 트랜잭션을 열고 유지하므로 이 연결이 `ledger_events`에 ACCESS SHARE를 쥔 채 idle-in-transaction으로 앉고, 루프의 첫 쓰기가 `CREATE TABLE … PARTITION OF`(ACCESS EXCLUSIVE)라서 **프로세스가 자기 자신에 영원히 막힌다.** 이 레인의 첫 실행에서 실제로 발생 |
 | `_forget_registers(translator, atoms)` | 🔴 거절된 분자는 **등록 메모를 남기면 안 된다** — 아무것도 안 쓰였으므로 같은 lot을 말하는 다음 분자가 등록할 수 있어야 한다 |
 | 🆕 쪼갬 가드(`_run_v2_lineage`의 `completed_groups`) | 이번 **런에서 통째로 처리한 그룹 키**를 들고 있다가 뒤 페이지에 다시 나오면 `source_event_split_across_batches`로 거절한다. 원인이 아니라 **증상**을 재므로 페이지 키·ORDER BY·새 문법 무엇이 깨지든 잡힌다. **쓰기 전에** 루프가 이미 들고 있는 base 프레임에서 읽는다(분자 ref를 다시 얻으려면 준비를 한 번 더 돌아야 하고 그것은 배치당 preview의 **61%**다). ⚠️ 그룹이 **돌아올 때** 터지므로 첫 조각은 이미 커밋된 뒤다 — 막지 못하고 한 분자로 **묶어 두고 시끄럽게** 만든다. 그룹 키가 파생이라 base 행에서 못 읽는 소스에서는 **「가드 꺼짐」을 런이 말한다** |
+| 🆕⑩ `preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS)` | 🔴 **쓰기 0, 커서 무이동, 그리고 «첫 페이지»이지 커서가 아니다.** 작성 중인 소스엔 커서 행이 없고, 커서가 있는 소스는 그 뒤부터 읽으면 **이미 돈 소스에서만 빈 페이지가 답이 된다** — 「내 선언이 되나」라는 질문에 정확히 거꾸로 답한다. 🔴 **`known_registrations`가 «빈 스냅샷»인 것이 결정이다**: 라이브 등록 집합을 넘기면 이미 백필한 소스의 `register` 문장이 전부 0을 보고하고(**소스 docstring이 대는 수치이고 이 패스가 재지 않았다** — `lot_event`에서 라이브 1,173 대 빈 것 1,323, 차이 150은 원장이 이미 든 등록), **일 없는 문장과 침묵하는 문장이 같은 모양이 된다**. 🔴 **등록 프로브를 «선언 안 한» 소스에는 `None`을 넘긴다** — 빈 집합으로 바꿔치우면 `runtime_v2._filtered_event_atoms`의 `registration_context_required` 거절을 삼킨다. 반환 `(rows_read, preview_or_None)`이고 **`None`은 「0행 읽음」이라는 답이지 실패가 아니다** |
 | `beat(result)` | `utils.heartbeat.beat("ledger", note=observability.note(...), force=True)`. `force`인 이유는 스로틀이 빠른 루프를 막으려는 것이지 **한 런이 내는 유일한 비트를 버리라는 것이 아니기** 때문 |
+| 🆕⑩ ⚠️ `run(...)`의 `probe_lag=True` | **읽히지 않는다.** `run()` 본체는 `probe_lag`를 한 번도 참조하지 않고 `_run_v2_lineage`에도 넘기지 않는다(실측 `8d1e6c4c`). 같은 커밋의 docstring이 **`cfg`를 지운 이유로 「결정하지 않는 몸을 대신 답하는 이름」**을 들고 있으므로, 이것은 그 규칙이 아직 닿지 않은 자리다. **`probe_lag=False`로 불러도 동작은 같다** |
+| 🆕⑩ 🪦 고아 `fetch_*` **아홉** | 🔴 **소스가 이들을 살려 둔 이유를 «명시»하는데 그 이유가 실측과 어긋난다.** 이 파일의 docstring은 「`ledger/dry_run.py`가 `fetch_observation_page`·`fetch_runs`·`fetch_declared_page`·`fetch_transfer_page`·`fetch_transfer_group`·`fetch_containers`·`_group_transfer_rows`·`_plain`·`_forget_registers`를 import한다」고 적지만, **`dry_run.py`는 그중 하나도 import하지 않는다**(HEAD `dry_run.py`의 import는 `collections.abc.Mapping`·`logging`과 함수 안의 `.envelope`뿐). 전 레포 grep 결과 그 아홉의 **호출자는 `backfill.py` 안에도 밖에도 0건**이다(유일한 히트는 `ledger_admin.py:124`의 «주석»). ⚠️ **`_transfer_select`는 예외이니 「열 번째 고아」로 세지 마라** — `fetch_transfer_page`/`fetch_transfer_group` 본문이 실제로 «부른다». 고아인 것은 그 둘이고 `_transfer_select`는 **고아에게만 불린다**(도달 불가이지 미호출이 아니다). **삭제 판정은 서버 도메인 소관이라 여기서 하지 않는다** — 이 지도는 그 아홉을 **살아 있는 앵커로 쓰지 않는다**는 것만 기록한다 |
 | 멱등성 그물 **둘** | ① **커서** — 두 번째 런은 0행을 읽는다 ② **`uq_ledger_atom`** — 커서를 리셋하면 행은 읽히고 원자도 만들어지지만 DB가 하나도 받지 않는다. 🔴 **한쪽만 고치고 성공을 보고한 전례**가 있어 `test_ledger_l1_pg.py`가 둘을 **따로** 채점한다 |
 | ⚠️ 커서가 **세계 시각**일 때의 대가 | 늦게 도착한 오래된 행은 커서 뒤에 떨어지고 이 백필이 못 본다(`lot_event`가 그 경우다). 일회성 백필에는 허용, **뒤따르는 라이브 구독에는 허용 안 됨**(그쪽은 outbox 구동이어야 한다). 🔴 **`--from`은 이 대가를 갚아 주지 않는다** — 거절된다. `basis` 소스(`dt_job`)의 커서는 그룹 키라 이 대가가 없고, 대신 **커서가 뒤의 것을 배제한다**(2026-08-19: 커서 뒤 5개 job이 전진 실행으로는 복구 불가였다) |
 
@@ -2635,7 +2682,154 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 - 🔴 **`server/ledger/__init__.py`의 「Nothing in `server/` imports this package」는 글자 그대로는 거짓이다.** `aeddac8` 전건 grep 실측 — `server/migrations/add_ledger_events.py`가 `from ledger import schema`를, 테스트 5모듈이 `from ledger import …`를 한다. **의도한 뜻(상시 도는 프로세스는 부팅에 이 패키지를 import하지 않는다)은 참이고** `add_ledger_events.py` 자신의 docstring이 그 형태로 적고 있다(「no process imports `server/ledger` at boot」). **어느 쪽도 사실로 등재하지 않고 실측한 import 자리만 적는다.** 🆕⑦ **`a729a7f`에서 그 문장은 더 거짓이 됐다** — 이제 웹 서버가 서빙하는 읽기 측(`ledger_trace._vocabulary` · `ledger_structure._vocabulary`)이 `from ledger import vocabulary`를 **지연 import** 한다(함수 안이라 부팅 경로는 여전히 무접촉 — `ledger_structure._vocabulary`의 docstring이 정확히 그 구분을 적고 있다). docstring의 「읽는 순서」 목록도 신설 번역기 2종(`observation_translator`·`transfer_translator`)을 아직 모른다.
 - 같은 문장의 뒷부분 「`database.database`와 `utils.heartbeat`가 결합의 전부」도 **하나 빠졌다** — `config._config_dir()`이 `import paths`를 한다(실패 시 파일 기준 폴백).
 - 🔴 **`ledger_trace.py`의 `DISPLAY_TIMEZONE_RULING = __doc__`과 `CONVENTION_DERIVATIONS_RULE = __doc__`은 둘 다 *모듈 docstring*에 바인딩된다** — 모듈 스코프의 `__doc__`이 그것이기 때문이다. 즉 **두 상수는 같은 문자열이고, 이름이 가리키는 판정문(바로 위 `#:` 주석)은 어느 쪽에도 들어 있지 않다.** 판정문 자체는 주석으로만 존재한다(파이썬 런타임에 없다). 의도가 「이름 붙은 참조점」인지 「그 텍스트를 담는 상수」인지는 소스에서 판정할 수 없어 **어느 쪽도 사실로 적지 않는다.**
-- `server/config/sample/ledger_config.json.sample`이 **`partitioning` 블록을 선언하는데 저장소 어디에도 읽는 코드가 없다**(전건 grep 0건 — `server/ledger/`도 마이그레이션도). `sources.<name>.columns.equipment`도 마찬가지로 **선언만 되고 읽히지 않는다**(`config.validate`의 필수 7종에 없고 `backfill.fetch_page`의 SELECT에도 없다). 🆕⑦ **`a729a7f`에서 재확인 — 둘 다 여전히 참이다**(`partitioning`의 grep 히트는 sample 자신·마이그레이션 docstring 산문·테스트 1곳뿐이고, `equipment`를 컬럼으로 읽는 코드는 신설 번역기 2종에도 없다).
+- `server/config/sample/ledger_config.json.sample`이 **`partitioning` 블록을 선언하는데 저장소 어디에도 읽는 코드가 없다**(전건 grep 0건 — `server/ledger/`도 마이그레이션도). `sources.<name>.columns.equipment`도 마찬가지로 **선언만 되고 읽히지 않는다**(`config.validate`의 필수 7종에 없고 `backfill.fetch_page`의 SELECT에도 없다). 🆕⑦ **`a729a7f`에서 재확인 — 둘 다 여전히 참이다**(`partitioning`의 grep 히트는 sample 자신·마이그레이션 docstring 산문·테스트 1곳뿐이고, `equipment`를 컬럼으로 읽는 코드는 신설 번역기 2종에도 없다). ⚠️ 🆕⑩ **이 항은 `5359fdd` 기준이고 재측정하지 않았다** — 그 사이 `.sample`이 워킹트리에서 수정 중이었다(다른 레인).
+- 🆕⑩ 🔴 **`backfill.py`의 docstring이 「`dry_run.py`가 `fetch_*` 아홉을 import한다」고 적지만 `dry_run.py`는 하나도 import하지 않는다.** 그 아홉의 호출자는 레포 전체에서 0건이다 — 위 `backfill.py` 표의 마지막 행에 실측을 적었다. 살려 두는 근거가 명시돼 있고 그 근거가 거짓인 형태라, **다음 독자가 근거만 읽고 통과시킬 것**이므로 여기 겹쳐 적는다.
+- 🆕⑩ 🔴 **`server/ledger/__init__.py`의 「읽는 순서」가 없는 파일을 여섯째로 지목한다** — `lot_event_translator.py`. 위 항목이 「신설 번역기 2종을 아직 모른다」고 적었는데, 이제는 **그 목록이 가리키는 파일 자체가 삭제됐다.** 소스 소관이라 여기서 못 고친다.
+
+---
+
+## 5-H-bis. 온톨로지 config 작성·탐색 표면 (2026-08-21 신설 등재)
+
+> 🔬 **측정 기준: `8d1e6c4c`(HEAD)의 커밋된 blob**(`git show 8d1e6c4c:<path>` — 워킹트리 아님. 측정 시각에 이 절의 대상 파일은 전부 blob과 동일했다). 🔴 **라인 번호는 이 절에 하나도 없다.** 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라.
+>
+> ⚠️ **이 절이 «주장하지 않는» 것**: 아래 각 파일의 **전체 심볼 표가 아니다.** 이 패스가 본체까지 읽은 것은 `config_explorer_service.test_run` 계열 · `config_authoring`의 `Ground`/`Field`/`authoring_plan` 머리 · `source_preparation._assemble_prepared_frame` · `backfill.preview_first_batch`/`_run_v2_lineage` · 라우터 전량이고, 나머지는 **최상위 심볼 이름과 docstring 머리만** 실측했다.
+
+**무엇인가.** 원장 v2는 소스마다 파이썬 번역기를 쓰던 자리를 **선언 하나 + 등록된 구현**으로 바꿨다([§5-H](#5-h-정본-원장-canonical-ledger) 묘비 참조). 그러자 **그 선언을 사람이 쓸 수 있어야 한다**는 문제가 남고, 이 표면이 그것을 담당한다 — 「무엇을 입력해야 하고 어떻게 입력하는지를 UI로」. 서버 절반은 `server/ledger/config_*.py` + 라우터 하나, 클라 절반은 `client2/src/ontology_explorer*.js`다.
+
+**config root의 모양이 바뀌었다(구조만 — 실값은 여기 옮기지 않는다).** 🔴 **정본은 `server/config/ontology/`(= `setup.DEFAULT_ONTOLOGY_ROOT`)의 «단일 파일» `ledger_config.json`이다.** 종전 다중 파일 레이아웃(`manifest.json` + `catalog/tables.json` + `catalog/virtual_joins.json` + `dataflows/chains.json` + `dataflows/enrichments.json`)은 이 구간에 **접혔고**(이주기 `server/scripts/convert_ontology_to_single_file.py`), 샘플도 `server/config/sample/ontology/transfer_explorer/ledger_config.json` 하나로 남았다. 🔴 **라이브 `server/config/ontology/ledger_config.json`은 이 구간에 tracked에서 «빠졌다»** — `.gitignore:61`이 **`server/config/ontology/*`**(디렉터리 통째)를 무시하므로 tracked로 남은 것은 `README.md` 하나뿐이고, **디렉터리 훑기로는 sample만 뜬다.** 파일을 이름으로 지목할 것. 검사: `git check-ignore -v server/config/ontology/ledger_config.json`이 **그 61행을 지목해야** 한다(안 하면 무시 규칙이 바뀐 것이다). 물리 카탈로그는 같은 root의 `table_config.json`(`setup_bundle.PHYSICAL_CATALOG_FILENAME`)이고 `setup.live_physical_catalog()`가 읽는다.
+
+### `server/ontology_config_explorer_router.py` (🆕⑩ **264줄** — 구 표기 129)
+
+🔴 **[2026-08-21 실측 정정] 라우트는 7개가 아니라 «15개»다** — `git show HEAD:<path> | grep -c '^@router\.'` 전건 계수이고, 표본 확인이 아니다(아래 표가 `/drafts/{id}/{review,revise,activate}`를 «한 행»으로 접으므로 행 수로 세면 틀린다 — 이 패스가 실제로 그렇게 틀렸다가 계수로 잡았다). `main.py`가 `include_router`로 등록하는 두 라우터 중 하나(다른 하나가 `ledger_trace_router`).
+
+| 라우트 | 게이트 | 무엇인가 |
+|---|---|---|
+| GET `/view` | `require_admin_token` | 탐색기 읽기 모델 |
+| 🆕⑩ GET `/columns` | `require_admin_token` | 컬럼 피커 — `column_stats`의 물리 프로브를 태운다(**비싼 읽기**라 strict가 아니다) |
+| 🆕⑩ GET `/authoring/schema` | `require_admin_token` | `config_authoring.closed_lists()` — 폼이 고를 수 있는 닫힌 목록 |
+| 🆕⑩ GET `/authoring/plan?selection=` | `require_admin_token` | **작성 계획** — `authoring_plan`의 4상태 행 전량 |
+| 🆕⑩ GET `/deletion-preview?targets=&context_token=` | `require_admin_token` | 삭제가 **함께 데려갈 선언 전부**를 확정 전에 이름 댄다. 🔴 **아무것도 쓰지 않아서** `/view`와 같은 토큰이다 |
+| 🆕⑩ **POST `/test-run`** | `require_admin_token` | 🔴 **선언 하나를 «진짜 한 배치» 돌려 본다.** 아래 별도 항목 |
+| POST `/drafts` | `require_admin_token_strict` | |
+| 🆕⑩ POST `/bootstrap` | `require_admin_token_strict` | 빈 root에서 config를 세운다 |
+| 🆕⑩ POST `/drafts/new` | `require_admin_token_strict` | `kind`+`canonical_id`로 **새 선언** 초안 |
+| PUT `/drafts/{draft_id}` | `require_admin_token_strict` | |
+| POST `/drafts/{draft_id}/review` · `/revise` · `/activate` | `require_admin_token_strict` | ⚠️ **한 행이지만 라우트 «셋»이다** — 이 행을 하나로 세면 총계가 13이 되고, 실측은 15다 |
+| DELETE `/drafts/{draft_id}` | `require_admin_token_strict` | |
+| 🆕⑩ DELETE `/declarations/{target_key:path}` | `require_admin_token_strict` | 선언 삭제(경로 컨버터 — key에 `.`이 들어간다) |
+
+🔒 **게이트가 갈리는 규칙은 「쓰는가」가 아니라 「쓰는가 + 값싼가」다** — `/view`·`/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run` **여섯**이 보통 토큰이고 **나머지 «아홉» 쓰기 전부가 strict**다(6+9=15. 검사: `grep -c 'Depends(require_admin_token)'` = **6**). 모듈 수준 헬퍼: `configure_service(service)`(테스트가 서비스를 갈아 끼우는 자리) · `_refusal(exc)`(`ConfigExplorerError`/`ColumnStatsError` → HTTPException 단일 철자).
+
+⚠️ [§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트)의 「`/admin`+`/internal` 게이트 데코레이터 28개」 계수에 **이 라우터는 들어 있지 않다**(그 수는 `main.py`의 `@app.*`만 셌다). 🆕⑩ **이 패스도 다시 세지 않았다.**
+
+### 🆕⑩ POST `/admin/ontology-explorer/test-run` → `OntologyExplorerService.test_run(engine, *, source_id)`
+
+🔴 **「선언이 도는가」에 화면이 «측정»으로 답하는 자리.** 종전엔 백필을 손으로 돌려 봐야 알 수 있었다.
+
+| 술어 | 실측 |
+|---|---|
+| 무엇을 실행하나 | `backfill.preview_first_batch(engine, setup, source_id)` — **첫 페이지 200행**(`PREVIEW_FETCH_ROWS`), 커서 아님 |
+| 무엇을 쓰나 | 🔴 **원자 0 · `ledger_cursor` 무접촉.** 게이트 «한 걸음 앞»에서 멈춘다. ⚠️ **그러나 「아무것도 안 쓴다」는 아니다** — `status == "passed"`면 `_record_test_run`이 **`draft_store.root/test_runs.json`에 파일을 쓴다**. 원장이 아니라 초안 옆이고, `ledger_config.json` 안이 아닌 이유는 **테스트 결과가 선언의 일부가 아니기** 때문(넣으면 매 실행이 누군가 편집 중인 파일의 재작성이 된다) |
+| 왜 POST인가 | 🔴 **바꾸기 때문이 아니라 «비싸기» 때문이다**(페이지 읽기 + 전체 컴파일 1회) |
+| 거절을 어떻게 내나 | 🔴 **선언 문제는 raise하지 않는다 — 거절이 이 엔드포인트가 «내려는 답»이다.** 400 한 문장으로 던지면 폼이 가리킬 칸이 없어진다. `ValueError`(400)로 나가는 것은 **아무것도 이름 대지 않는 `source_id`뿐**(`unknown_source`) |
+| 컴파일에서 떨어진 선언 | 🔴 **그 자체가 답이다.** 스냅샷에 없으면 `_invalid[key]["reasons"][0]`을 렌더하고 `status="refused"` — 「unknown source」로 답하면 운영자가 **없는 이름을 찾으러** 가고 진짜 거절은 `invalid`에 남는다 |
+| 예외 포획 범위 | 🔴 **클래스 목록이 아니라 `except Exception`이다.** 오늘 아홉 종류가 이 호출에 닿고 열째는 다음 문법과 함께 온다; 없는 테이블의 psycopg 오류도 **답이지 500이 아니다** |
+| 상태 어휘 | `passed` · `refused` · `empty`(0행 읽음 — **통과가 아니다**) · `unverified`(`OntologyExplorerService.UNVERIFIED`) |
+| 폼 좌표 | `_test_run_refusal(source)` → `{code, path, message, form_path}`. 🔴 **`form_path`는 «매핑»이지 «발명»이 아니다** — `bundle.`로 시작하거나 첫 토막이 `AUTHORABLE_SECTION_NAMES`에 있을 때만 채우고, 나머지(`cursor_value`·`known_registrations`·`role_frame.rows[0].roles.subject`)는 **비운 채 원문 그대로** 보인다. 「추측한 칸은 자리 못 잡은 문장보다 나쁘다」 |
+| 문장별 원자 수 | `_atoms_per_sentence(preview, plan)` — 🔴 **`derivation`으로 묶는다**(= sentence. `roleframe.compile_role_frame`이 `derivation = row["sentence"]`를 찍으므로 귀속이 컴파일러 자신의 것이다). 🔴 **선언된 문장은 «아무 말도 안 한 것까지» 전부 나열한다** — Profile에서 0으로 씨를 뿌린 뒤 카운트를 덮는다. **`0`은 행이지 부재가 아니다**(빠뜨리면 그 구멍이 다시 안 보인다). 집계 시점은 `_filtered_event_atoms` **뒤**라 배치가 스스로 중복 제거한 `register`가 두 번 세어지지 않는다 |
+| 기록 키 | `_record_test_run`은 **`definition_hash`로 건다** — 소스의 한 필드만 고쳐도 해시가 어긋나 기록이 **그 편집과 함께 죽는다**. 「이 선언이 돌았다」와 「이 이름을 가진 무언가가 한 번 돌았다」의 차이 |
+
+### `server/ledger/config_explorer_service.py` (🆕⑩ **946줄** — 구 표기 305)
+
+`class OntologyExplorerService` 하나. 생성자는 **전부 키워드**이고 주입 지점이 넷이다: `config_root=DEFAULT_ONTOLOGY_ROOT` · `draft_root` · `setup_loader=load_setup` · `catalog_loader=live_physical_catalog` · `convergence_probe`. 소유 상태 — `draft_store`(`OntologyDraftStore`) · `test_run_path`(`draft_store.root/test_runs.json`) · `_lock`(`RLock`) · `_stamp`/`_setup`/`_index`/`_compiled_at`/`_invalid`/`_config_level`.
+
+메서드(이름 실측): `invalidate` · `active(force=False)` · `view` · `_resolution` · `_knocked_out_reasons` · `delete_declaration` · `deletion_preview` · `_definition_change` · `column_picker` · **`test_run`** · `_test_run_refusal` · `_test_runs` · `_record_test_run` · `_verification_view` · `authoring_schema` · `authoring_prefix` · `authoring` · `bootstrap_config` · `create_draft` · `create_declaration_draft` · `save_draft` · `review_draft` · `revise_draft` · `discard_draft` · `activate_draft` · `_file_stamp` · `_assert_context`. 클래스 상수 `UNVERIFIED = "unverified"`.
+
+🔴 **`_verification_view`가 지키는 구분** — 「선언은 곧 활성화」(`setup.py`)는 **소스가 «도는가»에 대해 여전히 참**이고 이것은 그것을 바꾸지 않는다. 답하는 질문이 다르다: **이 선언이 원자를 내는 것을 누가 본 적 있는가.**
+
+### `server/ledger/config_authoring.py` (🆕⑩ **1,548줄**, 신설) — 작성 패널의 엔진
+
+🔴 **한 줄도 쓰지 않는다.** bundle(유효하든 반쯤 쓰였든)과 물리 카탈로그 위의 **읽기**이고, 실제로 적용하는 쪽은 `config_drafts`다.
+
+| 심볼 | 무엇인가 |
+|---|---|
+| **4상태** | `derived`(다른 선언이 정한다 — **자유도 0**, 화면이 채우고 묻지 않는다) · `missing`(강제인데 없다 — 할 일) · `unanswered`(진짜 자유, 아직 안 골랐다 — 후보와 함께) · `answered`. `Field.__post_init__`이 이 넷 밖을 `ValueError`로 거부한다 |
+| `@dataclass(frozen=True) class Ground` | `rule` · `text`(**한국어**, 값 «옆»에 렌더 — 툴팁 아님) · `from_paths` · `from_value`. `to_mapping()`이 `from_keys`를 **순서 보존 dedupe**로 유도한다(프로필 하나 아래 바인딩 8경로는 «갈 곳 하나»이지 여덟이 아니다) |
+| `class AuthoringGroundError(RuntimeError)` | 🔴 **불변식이 코드로 강제된다** — `state == "derived"`인데 `Ground`(rule·한국어 문장·출처 경로)가 없으면 `Field` 생성이 **거절된다**. 근거를 못 대는 유도는 추측이므로 `unanswered` + 후보로 내려간다 |
+| `@dataclass(frozen=True) class Field` | `path`·`step`·`label`·`state`·`tier`·`value`·`declared`·`ground`·`candidates`·`universe`·`note`·`comparison`·`disposition`·`forbidden`·`refusals`. `conflicts` 프로퍼티 = 「파일이 유도가 거절하는 것을 말한다」 |
+| `comparison` | `equal`(자유도 0) 대 **`superset`**(유도된 **최소**이고 더 넓은 선언도 만족). 🔴 이걸 틀리면 **합법 선언이 빨갛게 칠해진다** — 실측 `lot-event-role@1.input_columns`(파일 10 · 바인딩 필요 4) |
+| `disposition` **5종** | 🔴 **소유자 판정 2026-08-19: 「덮어쓸 수 없는 필드는 유도가 아니라 «강제»이고, 강제는 파일 밖에 있어야 한다」** — 회색 처리된 칸이 셋 중 최악이다. 값: `remove_from_file`(**실측**으로 지워도 검증 통과) · `grammar_requires_it`(**실측**으로 못 지움 — 잠근 컨트롤이 아니라 **말로 하는 미해결 항목**) · `default_overridable` · `shape`(파일 잎이 아님) · `unmeasured`(bundle이 검증을 통과 못 해 삭제 프로브가 오염됨) |
+| `tier` **4종** | `TIER_STRUCTURAL` > `TIER_DERIVATION` > `TIER_CONSTRAINED`(`constrained_input`) > `TIER_DIAGNOSTIC` — 🔴 **서열을 필드마다 기록해 감사 가능하게** 한다 |
+| `universe` | `UNIVERSE_RELATION`(`"RELATION"`) 대 `UNIVERSE_PREPARED`(`"PREPARED"`) + `_UNIVERSE_NOTE` — 이 후보가 **물리 컬럼**에서 왔는지 **준비된 컬럼**에서 왔는지 |
+| `authoring_plan(bundle, catalog, *, selection_prefix=None)` | 표면 전체. 🔴 **`bundle`이 유효하지 않아도 돈다** — 반쯤 쓰인 것이 정상 작성 상태이고, 컴파일된 bundle에서만 도는 계획은 **필요한 바로 그때 쓸모없다**. 필드 출처 다섯: `_entities_fields` · `_vocabulary_fields` · `_implementation_fields` · `_profile_fields` · `_source_fields` |
+| `skeleton()` / `SKELETON_PATH` | `ledger/ledger_skeleton.json`을 `lru_cache`로 편다(`_deref`가 `$defs` 참조를 푼다) |
+| `empty_value(node, defs, …)` / `empty_declaration(section)` | 🔴 **값이 없으면 «빈 폼으로 하위 구조가»** — 스켈레톤에서 빈 목적 객체를 만든다 |
+| `closed_lists()` / `versioned_sections()` | 폼이 고를 수 있는 닫힌 목록 · `@N` 버전을 다는 절 |
+| `ground_node_key(path)` · `is_remaining(row)` · `relation_columns` · `prepared_columns` · `profile_binding_columns` | 조회·판정 헬퍼 |
+| `_PATH_STEP` / `_split_path` / `_without` | 🔴 **bundle 경로 문법의 정본**(`a.b[0].c`) — 클라 `ontology_path.js`가 이것의 **거울**이다 |
+
+### 🆕⑩ `server/ledger/ledger_skeleton.json` (**763줄**, 신설) — config가 «무엇으로 이루어지는가»
+
+폼이 그릴 모양의 선언. 🔴 **`config_authoring`이 이 문서를 읽어 빈 선언을 만들고, 클라 `ontology_skeleton.js`는 «절 이름을 하나도 모른 채» 이것을 읽는다** — 소유자 DoD(「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」)가 걸려 있는 자리다. **필드를 스켈레톤에 더하면 폼이 그것을 묻고, 지우면 폼이 멈춘다.** ⚠️ 이 지도는 그 안의 절 이름·필드를 **옮겨 적지 않는다**(옮기면 두 번째 철자가 되고 다음 스키마에서 낡는다).
+
+### 🆕⑩ `server/ledger/implementations.py` (**172줄**, 신설) — 실행 가능한 구현의 **유일한 발견자**
+
+🔴 **손으로 관리하던 목록 «넷»을 대체한다**(trusted 카탈로그 · preparer 레지스트리 · mapper 레지스트리 · transfer 샘플 테스트 지원 안의 네 번째 리터럴). 실측 사고: **이미 쓰였고 이미 맞았던 구현 둘**(`roleframe.DeclarativeRoleMapper` · `source_preparation.DirectJoinSourcePreparer`)이 **아무 목록에도 없어서 config에서 닿지 못했다** — 증상은 컴파일 시점 `untrusted_implementation`이고 클래스가 존재한다는 힌트는 없었다.
+
+**신뢰 조건 넷(각각 검사된다).** ① `BaseSourcePreparer` 또는 `BaseLedgerMapper`의 하위 ② `implementation_id`(비공백) + `implementation_version`(양수)를 **자기 자신에** 선언(상속만으로는 안 된다 — 중간 베이스가 정체성을 모든 하위에 빌려주면 안 되므로) ③ 이 파일이 import하는 모듈 안에 있을 것 — `ledger.roleframe` · `ledger.source_preparation` · **`mappers/ledger_v2_*.py`**(🔴 import 집합은 **저장소 레이아웃**의 성질이지 config의 성질이 아니다. 그것이 선언에게 「무엇을 import할지」를 못 고르게 하는 자리) ④ 레지스트리 자신의 구조 관문(`map()`/`prepare_batch()`가 final이고 인자 없이 생성 가능).
+
+심볼: `_IMPLEMENTATION_PACKAGE = "mappers"` · `_IMPLEMENTATION_MODULE_PREFIX = "ledger_v2_"`(🔴 접두어가 있는 이유 — 같은 디렉터리의 **체인 인제션 맵퍼**는 DB 기계장치를 import하므로, 여기서 함께 import하면 원장 셋업 경로가 무관한 의존성 뒤에 선다) · `ImplementationDeclarationError` · `source_preparer_declarations()` · `mapper_declarations()` · `trusted_implementations()` · `source_preparer_registry()` · `role_mapper_registry()`.
+
+🔴 **그래서 「맵퍼를 추가한다」 = `server/mappers/ledger_v2_*.py` 파일 하나이고, 이 모듈은 편집하지 않는다.** 현재 실물 둘: `mappers/ledger_v2_lot_event_role_mapper.py` · 🆕⑩ `mappers/ledger_v2_dt_job_mapper.py`(신설). 🪦 `mappers/ledger_lot_event_mapper.py`는 **삭제됐다**.
+
+### 🆕⑩ `server/ledger/column_stats.py` (**287줄**, 신설) — 컬럼을 «고르기 위한» 물리 프로브
+
+`GET /admin/ontology-explorer/columns`의 몸. `MAX_MEASURED_COLUMNS = 64` · `ColumnStatsError` · `declared_unique_keys(table)` · `physical_columns(db, relation)` · `estimated_rows(db, relation)` · `population(db, relation, columns=None)` · **`combination_uniqueness(db, relation, columns)`** · **`ordering_candidates(db, relation, table)`** · `_checked`(관계·컬럼을 물리 카탈로그에 대고 검증 — SQL 보간 전) · `_quote`.
+
+### `server/ledger/source_preparation.py` — 🆕⑩ **제외된 행이 나가는 자리**
+
+전체 심볼 목록은 재측정하지 않았다. 이 패스가 실측한 것은 **아래 둘**이다.
+
+| 심볼 | 실측 |
+|---|---|
+| 🆕⑩ `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` | 🔴 **소스별 preparer가 「이 행은 내 것이 아니다」라고 «선언»할 수 있는 한 컬럼.** 이웃 상수 `SOURCE_EVENT_INCOMPLETE_COLUMN = "__source_event_incomplete"`와 **다른 뜻**이다(뒤엣것은 사건이 반만 도착했다는 표시이지 배제가 아니다) |
+| 🆕⑩ `_assemble_prepared_frame(context, base, outputs)` | 아래 순서 표 |
+
+**`_assemble_prepared_frame`의 검사 순서 — 이 순서가 계약이다.**
+
+1. `outputs`가 Mapping인가 → 아니면 `invalid_source_preparer_output`
+2. 출력 컬럼 집합이 **선언과 정확히 일치**하는가(`source_plan.driver.preparation.preparer.output_columns`) — 부분집합도 초과집합도 거절
+3. 컬럼마다 **base 행 수와 정확히 같은 개수**의 값인가(문자열·Mapping은 Sequence로 안 쳐 준다)
+4. **base의 물리 값을 바꾸지 않았는가** → 아니면 `source_preparation_output_collision`
+5. 🔴 **여기서 «비로소» `SOURCE_ROW_EXCLUDED_COLUMN`의 행이 나간다.** 값이 전부 `bool`이어야 하고, `True`인 행을 떨군 뒤 인덱스를 다시 세운다
+6. `_required_entity_columns(source_plan)`의 컬럼이 **살아남은 행 전부**에 있고 비지 않았는가 → 아니면 `source_preparation_incomplete`(경로가 `event_frame.rows[N].<col>`)
+
+🔴 **왜 5가 4 «뒤»인가 — 그것이 이 변경을 「가드를 좁힌 것」으로 만들고 「내린 것」이 아니게 한다.** 배제 표지도 **base 행마다 값 하나**를 내야 하고 base 값을 바꾸면 안 된다는 두 계약을 **먼저 채점받는다.** 살아남은 행은 여전히 전부 정체성을 요구받고, 6의 거절문은 한 글자도 안 바뀌었으며, **이 컬럼을 선언하지 않은 소스는 5를 아예 지나지 않는다**(소스 주석은 그 수를 25라고 적지만 **이 패스가 세지 않았다** — 개수를 인용하려면 선언을 직접 세어라).
+
+⚠️ **전량 배제된 페이지는 «거절이 아니라 빈 프레임 + 원자 0」이다.** 페이지는 세대가 아니라 **커서**로 잘리므로 옛 행만 든 페이지는 정상이고, 거절하면 백필이 거기서 영원히 선다. 🔴 **커서는 «살아남은 것»이 아니라 «base 페이지»에서 전진한다** — 실측: `backfill._run_v2_lineage`가 `_v2_frame(complete)`의 `frame`에서 `next_cursor`를 뽑고 그 뒤에 `execute_selected_cursor_batch`를 부른다. ⚠️ **소스 주석은 그 자리를 `backfill._backfill_source`라고 적지만 그런 함수는 없다**(레포 전체 grep 1건 = 그 주석 자신). 감싸는 실물은 **`_run_v2_lineage`**다.
+
+### 🆕⑩ 클라 — 온톨로지 탐색기 (`8d1e6c4c` 실측, 워킹트리 동일)
+
+| 파일 | 줄(구 표기) | `^export` 심볼 (실측) |
+|---|---|---|
+| `client2/src/ontology_explorer.js` | **1,323**(368) | `createOntologyExplorerController({root, apiBase, adminFetch, showToast})` · `initOntologyExplorer(options)` · `refreshOntologyExplorer()`. 모듈 내부: `chooseDirtyNavigation` · `errorMessage` · `seededPaths` · `ancestorPaths` |
+| `client2/src/ontology_explorer_store.js` | **465**(246) | `initialExplorerState`(frozen) · `assertOneContext` · `reduceExplorerState` · `reduceNewDeclaration` · `reduceFieldFold` · `sectionMembers` · `mirrorLoaded` · `canLeaveSelection` · `dirtyNavigationDecision` · `restoreDirtyEditorCheckpoint` · `isDraftRevisionEditable` · `declarationIdFor` |
+| `client2/src/ontology_explorer_view.js` | **2,199**(375) | `renderOntologyExplorer(root, state)` **하나** |
+| `client2/src/ontology_explorer.css` | — | |
+
+🆕⑩ **신설 클라 3종.**
+
+| 파일 | 줄 | 무엇인가 |
+|---|---|---|
+| `client2/src/ontology_path.js` | **92** | `splitBundlePath` · `setAtPath` · `getAtPath` · `deleteAtPath`. 🔴 **거울이지 설계가 아니다** — 규칙은 `server/ledger/config_authoring.py`(`_PATH_STEP`/`_split_path`)에 살고 그것이 먹이는 쓰기는 `config_drafts._set_path`에 산다. **소스가 스스로 대는 근거**(이 패스의 측정이 아니라 파일 주석의 인용): 라이브 config의 작성 필드 **123개 중 69개가 대괄호 표기 뒤에** 있어 순진한 dot-split은 절반 이상에서 조용히 틀렸을 것이다 |
+| `client2/src/ontology_skeleton.js` | **153** | `shapeAt` · `declarationShape` · `fieldOf` · `fieldApplies` · `emptyOf` · `memberPath` · `membersOf`. 🔴 **이 파일은 절 이름을 하나도 모른다** — `packs`도 `claims`도 `emit`도. 소유자 규율 「폼은 스켈레톤에서 목적 객체 형태 받아」의 구현이고, 여기서 **「어느 선언인가」를 묻는 순간** 다음 스키마는 다시 코드를 요구한다 |
+| `client2/src/dom_patch.js` | **221** | `commitTree(root, nextTree, activeElement)` — 새로 지은 트리를 **다른 부분만 변이시켜** 라이브 트리에 커밋한다. 🔴 **왜 생겼나(소유자 2026-08-19)**: 패널이 상태 변화마다 DOM을 통째로 다시 짓고 `root.replaceChildren(...)`으로 커밋했다 — **출력은 맞지만 스크롤 위치·포커스·선택이 매번 날아갔다** |
+
+🧪 **하니스**: `client2/tests/ontology_explorer_harness.mjs` · 🆕⑩ `client2/tests/ontology_authoring_panel_harness.mjs`(신설) · 🆕⑩ `client2/tests/dom_patch_harness.mjs`(신설). ⚠️ **이 패스는 하니스를 돌리지 않았고 채점 결과를 등재하지 않는다.**
+
+### 🆕⑩ `server/scripts/audit_authoring_form.py` (**280줄**, 신설) — 폼의 «구멍을 세는» 기계
+
+⚠️ 이 지도는 `server/scripts/**`를 파일 단위로 등재하지 않지만([§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측) 제외 규칙), **이것은 위 표면 자체를 채점하므로** 이름을 남긴다. `audit(root, catalog_path)` · `unanswered_leaves(document, plan, skeleton)`(계획이 대변하지 않는 **그려질 잎** — 후보도 기본값도 접기도 없는 것) · `_skeleton_node`/`_skeleton_leaves` · `_reader_counts`(선언 키를 **선언 집합 «밖»의 파일 몇 개가 언급하는가**) · `DECLARING = ("config_authoring.py", "setup_bundle.py", "config_explorer.py", …)` · `SKELETON` · `TITLES` · `main(argv=None)`.
 
 ---
 
@@ -2664,29 +2858,19 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/ledger_selection.py` | **1,423** | UI의 타입 있는 마킹을 **원장 근거의 최종 CHIP 증거·비교로 해석** (POST `/api/ledger/selection/resolve`) |
 | `server/ledger_identity.py` | **62** | Trend와 타입 있는 선택이 공유하는 **실험 단위 표식(mark)**. ⚠️ **온톨로지 엔티티 정체성이 «아니라고» docstring이 명시**한다 — 둘을 섞지 마라 |
 
-### 서버 — 원장 v2 작성/설정 계열 (`server/ledger/` 패키지, [§5-H](#5-h-정본-원장-canonical-ledger) 표에 없는 것)
+### ⚰️ 서버 — 원장 v2 작성/설정 계열 → **[§5-H](#5-h-정본-원장-canonical-ledger) / [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다 (2026-08-21)**
 
-| 파일 | 줄 | docstring 첫 줄 (실측) |
-|---|---|---|
-| `server/ledger/setup_registry.py` | **781** | 순수 v2 **레지스트리 컴파일러 + 불변 setup 스냅샷** |
-| `server/ledger/roleframe.py` | **931** | v2 Stage 4 **EventFrame → RoleFrame → LedgerFrame 컴파일러** |
-| `server/ledger/source_preparation.py` | **968**(2026-08-19 실측 — 구 표기 899) | v2 Stage 5 **pandas 소스 준비 경계**. 🆕 **`_event_frames`가 그룹 사건의 시각을 «선언별로» 정한다**(2026-08-19 판정) — `occurred_at.basis`가 있으면 그룹의 `min`으로 접고(적재 시각은 한 사건 안에서 여럿일 수 있다), `column`이면 종전대로 «정확히 하나»를 요구하며 거절한다(세계 시각이 둘이면 그룹이 틀린 것이라 어떤 집계도 못 고친다) |
-| `server/ledger/runtime_v2.py` | **365** | v2 Stage 6 — 기존 gate/store 트랜잭션 **위의** 실행 어댑터 |
-| `server/ledger/setup.py` | **251** (2026-08-18 실측) | **셋업 경계 — config root 하나를 읽어 스냅샷 하나로 컴파일한다.** 🔴 **구 `cutover_v2.py`(삭제 시점 185줄)의 개명이다**(`b4c5870` 개명 · `382b78c` 구 경로 삭제) — 진입 함수도 `load_cutover_setup` → **`load_setup(root)`**. `DEFAULT_ONTOLOGY_ROOT` 소유. **선언이 곧 활성화**라 `mode`/`parity_status` selector는 없다. 그 밖의 최상위 심볼: `LedgerSetupError` · `LedgerSetup` · `preview_selected_cursor_batch` · `execute_selected_cursor_batch` · `dry_run_report` · `_resolve_cli_root` · `main(argv=None)`. 🆕 **[`4ff500e`] CLI가 `--root <디렉터리>`를 받는다** — 초안 config root를 운영 파일을 덮어쓰지 않고 검증한다. 생략하면 종전대로 운영 root. 인자 거절 셋(없는 경로 · config 없는 디렉터리 · 디렉터리 대신 파일)은 stderr 한 줄 + 종료코드 2이고, **나쁜 config는 여전히 raise한다**(그것이 검증의 답이므로) |
-| `server/ledger/shadow_parity.py` | **241** | 레거시 ↔ v2 **결정적 의미 그림자 대조** |
-| `server/ledger/config_explorer.py` | **767** | v2 온톨로지 config 탐색기의 **불변 읽기 모델**. `ConfigExplorerError` 소유 |
-| `server/ledger/config_explorer_service.py` | **305** | 그 탐색기의 **캐시된 애플리케이션 서비스**(`OntologyExplorerService`) |
-| `server/ledger/config_drafts.py` | **548** | 탐색기의 **파일시스템 작업 초안** |
+> 🆕⑩ **여기 있던 표 아홉 행은 이제 정식 절에 있다** — `setup_registry` · `roleframe` · `source_preparation` · `runtime_v2` · `setup` · `shadow_parity` · `config_explorer` · `config_explorer_service` · `config_drafts`. §5-I의 규칙(「절이 필요할 만큼 중요해지면 §5-x로 승격하고 이 목록에서 지운다」)대로 지웠다. **줄 수·심볼은 §5-H 쓰기 측 표를 보라** — 여기 있던 값은 전부 `5359fdd` 기준이었고 아홉 중 **여덟이 이 구간에 자랐다**.
+>
+> 🆕⑩ 🔴 **`source_preparation.py`의 `_event_frames` 서술 한 줄은 살려서 옮긴다**(2026-08-19 판정): `occurred_at.basis`가 있으면 그룹 사건의 시각을 그룹의 **`min`**으로 접고(적재 시각은 한 사건 안에서 여럿일 수 있다), `column`이면 종전대로 **정확히 하나**를 요구하며 거절한다(세계 시각이 둘이면 그룹이 틀린 것이라 어떤 집계도 못 고친다). ⚠️ **이 패스는 `_event_frames` 본체를 다시 열지 않았다** — 위 문장은 `5359fdd` 기준이고 심볼 존재만 `8d1e6c4c`에서 확인했다.
 
-⚠️ 🔴 **[§5-H](#5-h-정본-원장-canonical-ledger) 쓰기 측 표의 줄 수는 전부 낡았다 — 이 패스가 재측정한 값**: `envelope` 264 → **323** · `vocabulary` 622 → **1,280** · `gate` 468 → **581** · `config` 623 → **1,073** · `schema` 360 → **427** · `store` 442 → **461** · `lot_event_translator` 526 → **535** · `backfill` 1,002 → **1,574** · `observability` 424 → **428** · `declared_translator` 258 → **294** · `dry_run` 416 → 596 → **179**(2026-08-18 `ab8657f` 재측) · `source_contract` 281 → **319** · `translator_pattern` 164 → **197** · `observation_translator` **362**(무변동) · `transfer_translator` **395**(무변동) · `setup_bundle` **1,610** · `source_profile` **1,512** · `chain_mapper` **359** · `profile_chain_mapper` **469** · `ledger_frame` **278** · `profile_lookup_adapters` **105** · `legacy_import` **31** · `source_profile_builtins` **146**(무변동) · `__init__` **27**(무변동). 🔴 **패키지는 19가 아니라 «34파일 + `examples/` 1»이다.** 그 표의 심볼 서술은 이 패스가 열지 않았다.
-
-🔴 **[2026-08-18 워킹트리 경고 — 커밋된 상태가 아니다]** 측정 시각에 **번역기 다섯이 워킹트리에서 삭제된 상태**였다: `declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` · `transfer_translator.py` · `translator_pattern.py`. **HEAD 기준으로는 전부 살아 있고 위 값은 HEAD 값이다.** 그 레인이 착지하면 §5-H에 묘비 다섯이 필요하다 — **이 지도가 아직 그 사실을 모른다는 것을 여기 적어 둔다.**
+⚰️ 🆕⑩ **[2026-08-18 워킹트리 경고 철회 — 그 레인이 착지했다]** 이 자리에 「번역기 다섯이 워킹트리에서 삭제된 상태이고 HEAD 기준으로는 살아 있다」는 경고가 있었다. **`8d1e6c4c` 실측: 다섯 전부 HEAD에서도 없다**(+`cutover_v2.py`·`examples/grouped_translator_template.py`·`mappers/ledger_lot_event_mapper.py`). 예고된 묘비는 [§5-H](#5-h-정본-원장-canonical-ledger)에 섰고 `lot_event_translator.py`의 심볼 표도 거기서 대체됐다. 🔴 **그 경고가 «다음 패스에 무엇을 하라」를 적어 둔 덕에 이 패스가 삭제부터 찾을 수 있었다** — 미래형 경고는 값이 있다.
 
 ### 서버 — 그 밖의 운영 모듈
 
 | 파일 | 줄 | docstring 첫 줄 (실측) |
 |---|---|---|
-| `server/ontology_config_explorer_router.py` | **129** | `APIRouter(prefix="/admin/ontology-explorer")` — `main.py`가 **`include_router`로 등록하는 두 라우터 중 하나**(다른 하나가 `ledger_trace_router`). 라우트 7종: GET `/view` · POST `/drafts` · PUT `/drafts/{id}` · POST `/drafts/{id}/{review,revise,activate}` · DELETE `/drafts/{id}`. 🔒 **게이트가 갈린다** — 읽기 `/view`만 `require_admin_token`, **쓰기 전부가 `require_admin_token_strict`**. ⚠️ **[§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트)의 「`/admin`+`/internal` 게이트 데코레이터 28개」 계수에 이 라우터가 들어 있지 않다** — 그 수는 `main.py`의 `@app.*`만 셌기 때문이다. **이 패스도 다시 세지 않았다** |
+| ⚰️ `server/ontology_config_explorer_router.py` | ~~129~~ → 🆕⑩ **264** | **[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다.** 🔴 여기 적혀 있던 **「라우트 7종」은 2026-08-21 실측 «16»이다** — 그 사이 `/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run`·`/bootstrap`·`/drafts/new`·`DELETE /declarations/{key:path}`가 섰다. 게이트 서술도 정정됐다(읽기 `/view`만 보통 토큰 → **여섯이 보통 토큰**) |
 | `server/ledger_admin.py` | **844** | admin으로 소스를 원장에 잇고 어휘를 늘린다 — **문법 검증과 저장(1단·3단)**. 판정 정본은 `docs/process/LEDGER_RULINGS.md` **R-2026-08-15-M** |
 | `server/audit_changeset.py` | **416** | 🅿️ **파킹 — 배선 안 됨, 운영 호출자 0개.** 자기 테스트 파일 말고는 import하는 곳이 **레포 전체에 없다**(`crud.py` 쓰기·`main.py` 읽기 둘 다 **리팩터 이전 인코딩 그대로**). 레인은 **2026-08-12에 의도적으로 중단**됐고 `crud.py`/`main.py`/`schemas.py` hunk는 되돌려졌다 — 이 파일이 추적 대상이 된 건 6일 뒤 `1aeda91`의 **경로 없는 `git add`** 때문이다. `server/tests/test_audit_changeset.py`는 **23건 전부 skip**. docstring이 「감사 행의 CHANGESET 모양 — WRITE 1건당 1행」이라 **착지한 것처럼** 적혀 있으나 **제안일 뿐**이니 라이브 감사 모양으로 읽지 말 것. 서술된 결함 5종은 **여전히 열려 있다**(감사 «이력»만 손실, 셀 값은 정상). 판정: `docs/process/PROJECT_STATUS.md:1560-1568` |
 | `server/chain_key_gate.py` | **232** | 체인은 키 컬럼이 안 채워진 행을 낼 수 없다 — **관문 «하나», 일곱 개가 아니라** |
@@ -2703,7 +2887,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 이 지도는 마이그레이션을 파일 단위로 등재하지 않지만, 아래는 **다른 절이 이름으로 참조할 수 있어** 존재만 남긴다. **내용은 열지 않았다.**
 
-`migrations/drop_graph_storage.py`(+`_reverse.sql` — `2ec78b9`, 2026-08-14에 그래프 표를 DROP한 그 마이그레이션) · `add_ledger_source_events.py` · `add_ledger_refusal_reasons.py` · `add_ledger_entity_catalog_indexes.py` · `align_indexes_to_declarations.py` · `normalize_schema.py` · `migrate_jsonb_numeric.py` — 그리고 맵퍼 둘: `mappers/ledger_lot_event_mapper.py`(driver 구분자 `lot_event` 이벤트 하나의 **순수 등록 체인 맵퍼**) · `mappers/ledger_v2_lot_event_role_mapper.py`(**v2 Role 맵퍼** — 준비된 `lot_event` 소스 이벤트 하나). ⚠️ 뒤의 둘은 `.py.sample`이 아니라 **추적되는 `.py`**라 [§5-G](#5-g--dtcore-프레임-유도-체인-2026-08-11-신설-등재)의 「맵퍼는 `.py.sample`」 규율과 다른 계급이다.
+`migrations/drop_graph_storage.py`(+`_reverse.sql` — `2ec78b9`, 2026-08-14에 그래프 표를 DROP한 그 마이그레이션) · `add_ledger_source_events.py` · `add_ledger_refusal_reasons.py` · `add_ledger_entity_catalog_indexes.py` · `align_indexes_to_declarations.py` · `normalize_schema.py` · `migrate_jsonb_numeric.py` · 🆕⑩ `add_ledger_occurred_at_basis.py`(신설) — 그리고 맵퍼 **둘**: 🆕⑩ `mappers/ledger_v2_lot_event_role_mapper.py`(**v2 Role 맵퍼** — 준비된 `lot_event` 소스 이벤트 하나) · 🆕⑩ `mappers/ledger_v2_dt_job_mapper.py`(**신설**). 🪦 🆕⑩ **`mappers/ledger_lot_event_mapper.py`는 삭제됐다**(구 체인 계열 「순수 등록 맵퍼」 — 앵커로 쓰지 마라). ⚠️ 살아 있는 둘은 `.py.sample`이 아니라 **추적되는 `.py`**라 [§5-G](#5-g--dtcore-프레임-유도-체인-2026-08-11-신설-등재)의 「맵퍼는 `.py.sample`」 규율과 다른 계급이고, 🔴 **`ledger_v2_` 접두어가 계급 표지 자체다** — [`implementations.py`](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)가 그 접두어로만 import한다.
 
 ### 클라 — 미등재 모듈 13종 + 페이지 2종
 
@@ -2723,11 +2907,11 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `client2/src/ledger_setup.js` | **1,640** | 5 | 원장 설정 화면 (서버 짝 `ledger_admin.py`) |
 | `client2/src/ledger_setup_view.js` | **570** | 18 | 그 뷰 |
 | `client2/src/ledger_map_panel.js` | **194** | 4 | 원장 맵 패널 |
-| `client2/src/ontology_explorer.js` | **368** | 3 | 온톨로지 config 탐색기 (서버 짝 `ontology_config_explorer_router.py`) |
-| `client2/src/ontology_explorer_store.js` | **246** | 7 | 그 스토어 |
-| `client2/src/ontology_explorer_view.js` | **375** | 1 | 그 뷰 |
+| ⚰️ `client2/src/ontology_explorer{,_store,_view}.js` | ~~368/246/375~~ | — | 🆕⑩ **[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격 — 심볼 이름과 함께 실측했다.** 🔴 **셋 다 «세 배 넘게» 자랐다**(실측 `8d1e6c4c`: **1,323 / 465 / 2,199**). 신설 3종(`ontology_path.js`·`ontology_skeleton.js`·`dom_patch.js`)도 거기 있다 |
 
-⚠️ **`^export` 수를 「이 모듈이 무엇을 내놓는가」로 읽지 마라** — 줄 첫머리가 `export`인 줄만 셌으므로 `export { a, b, c }` 한 줄이 셋을 내보내도 **1**이다. **심볼 이름은 하나도 등재하지 않았다.** 소비 배선(어느 HTML이 어느 모듈을 부르는가, 어느 라우트를 치는가)도 이 패스가 확인하지 않았다 — **짝 표기(「서버 짝 …」)는 이름의 대응이지 실측한 호출이 아니다.**
+⚠️ **`^export` 수를 「이 모듈이 무엇을 내놓는가」로 읽지 마라** — 줄 첫머리가 `export`인 줄만 셌으므로 `export { a, b, c }` 한 줄이 셋을 내보내도 **1**이다. **심볼 이름은 하나도 등재하지 않았다**(🆕⑩ 예외: 위 승격 3행은 §5-H-bis에 심볼 이름이 있다). 소비 배선(어느 HTML이 어느 모듈을 부르는가, 어느 라우트를 치는가)도 이 패스가 확인하지 않았다 — **짝 표기(「서버 짝 …」)는 이름의 대응이지 실측한 호출이 아니다.**
+
+⚠️ 🆕⑩ **위 표의 나머지 행(`rnd_console/*`·`ledger_graph/*`·`journey_*`·`ledger_setup*`·`ledger_map_panel`)은 `5359fdd` 기준이고 이 패스가 «한 파일도 열지 않았다».** 온톨로지 3종이 셋 다 3배 이상 자란 구간이므로 **이 줄 수들도 밀렸다고 가정하라.**
 
 ⚠️ **`client2/ledger.html`은 이 지도에 «2,499줄»로 등재돼 있으나 실측은 2,151줄이다**([§5-H](#5-h-정본-원장-canonical-ledger) 클라 절) — **줄어들었다.** 이 패스는 그 파일의 심볼·구조를 열지 않았으므로 **무엇이 빠졌는지는 모른다.**
 

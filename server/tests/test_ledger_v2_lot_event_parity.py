@@ -182,25 +182,25 @@ def lot_event_bundle():
         "virtual_joins": {},
         "vocabulary": {
             "register@1": {
-                "status": "active", "layer": "ontology",
+                "status": "active",
                 "subjects": ["Lot@1", "Wafer@1"],
                 "object": {"kind": "none",
                            "qualifiers": {"required": [], "optional": []}},
             },
             "has_wafer@1": {
-                "status": "active", "layer": "ontology",
+                "status": "active",
                 "subjects": ["Lot@1"],
                 "object": {"kind": "entity_ref", "types": ["Wafer@1"],
                            "qualifiers": {"required": ["slot"], "optional": []}},
             },
             "derived_from@1": {
-                "status": "active", "layer": "ontology",
+                "status": "active",
                 "subjects": ["Lot@1"],
                 "object": {"kind": "entity_ref", "types": ["Lot@1"],
                            "qualifiers": {"required": [], "optional": []}},
             },
             "slot_map@1": {
-                "status": "active", "layer": "ontology",
+                "status": "active",
                 "subjects": ["Lot@1"],
                 "object": {"kind": "entity_ref", "types": ["Lot@1"],
                            "qualifiers": {

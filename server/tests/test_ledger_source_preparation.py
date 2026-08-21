@@ -115,7 +115,7 @@ def dt_chain_bundle():
     }
     raw["vocabulary"] = {
         "transferred_to@1": {
-            "status": "active", "layer": "ontology",
+            "status": "active",
             "subjects": ["CoreDie@1", "DTDie@1"],
             "object": {
                 "kind": "entity_ref", "types": ["DTDie@1", "BondComponent@1"],
@@ -123,7 +123,7 @@ def dt_chain_bundle():
             },
         },
         "component_of@1": {
-            "status": "active", "layer": "ontology",
+            "status": "active",
             "subjects": ["CoreDie@1"],
             "object": {
                 "kind": "entity_ref", "types": ["FinalChip@1"],

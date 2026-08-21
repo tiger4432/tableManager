@@ -416,7 +416,7 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
         "ProcessCell@1": {"keys": ["cell"]},
     })
     logical["vocabulary"]["transferred_to@1"] = {
-        "status": "active", "layer": "ontology",
+        "status": "active",
         "subjects": ["CoreDie@1"],
         "object": {
             "kind": "entity_ref", "types": ["ProcessCell@1"],
@@ -2209,3 +2209,34 @@ def test_the_whole_walk_works_on_a_freshly_bootstrapped_config(tmp_path):
     # fix did not turn the whole endpoint permissive.
     unknown = client.get(f"{base}/view", params={"selection": "entity|Nope@9"})
     assert unknown.status_code == 400
+
+
+def test_the_predicate_description_is_byte_identical_without_the_retired_layer_field():
+    """`layer` left the vocabulary declaration; the screen line must not have moved.
+
+    🔴 THIS IS THE TEST THAT PROTECTS THE READER. `_node_description` was the ONE reader
+    of the bundle's `layer` (found by sweeping before deleting, not after), and it reads
+    it as `raw.get('layer', 'ontology')`. Removing the field was safe only because the
+    default IS the single value a declaration was ever allowed to write -- `vocabulary`
+    declares `LAYER_CANONICAL`/`LAYER_ONTOLOGY` and makes `EDITABLE_LAYER` the ontology
+    one alone -- so the two shapes must produce the same characters, not merely a
+    "reasonable" line each.
+
+    Scored as an EQUALITY between the two shapes and then against the literal, because
+    either half alone is vacuous: equality alone passes if the function starts returning
+    a constant, and the literal alone passes if the old shape silently stopped rendering.
+    """
+    with_layer = {"layer": "ontology", "status": "active",
+                  "subjects": ["Lot@1"], "object": {"kind": "none"}}
+    without_layer = {"status": "active",
+                     "subjects": ["Lot@1"], "object": {"kind": "none"}}
+
+    from ledger.config_explorer import _node_description
+
+    described_with = _node_description("predicate", with_layer)
+    described_without = _node_description("predicate", without_layer)
+
+    assert described_with == described_without, (
+        "dropping `layer` moved the predicate node's on-screen description; the "
+        "reader's default no longer equals the only value the declaration could write")
+    assert described_without == "ontology predicate · active"

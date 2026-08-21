@@ -50,7 +50,7 @@ SHIPMENT_SETUP = {
     "setup_version": SETUP_VERSION,
     "virtual_joins": {},
     "vocabulary": {"register@1": {
-        "status": "active", "layer": "ontology", "subjects": ["Box@1"],
+        "status": "active", "subjects": ["Box@1"],
         "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}}}},
     "entities": {"Box@1": {"keys": ["box"]}},
     # The `shipping@1` pack that stood here -- two Roles and an `emit` clause, six lines --

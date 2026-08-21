@@ -136,7 +136,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
         "vocabulary": {
             "moves_to@1": {
                 "status": "active",
-                "layer": "ontology",
                 "subjects": ["InputEntity@1"],
                 "object": {
                     "kind": "entity_ref",
@@ -220,7 +219,7 @@ def source_profile(bundle, source_name="input_rows"):
 def objectless_register_bundle():
     raw = logical_bundle()
     raw["vocabulary"]["register@1"] = {
-        "status": "active", "layer": "ontology",
+        "status": "active",
         "subjects": ["InputEntity@1"],
         "object": {
             "kind": "none",
@@ -349,7 +348,7 @@ def test_the_object_kind_alone_decides_which_roles_a_predicate_forces(object_kin
     qualifiers = ({"required": [], "optional": []} if object_kind == "none"
                   else {"required": [], "optional": ["slot"]})
     predicate = {
-        "status": "active", "layer": "ontology", "subjects": ["InputEntity@1"],
+        "status": "active", "subjects": ["InputEntity@1"],
         "object": {"kind": object_kind, "qualifiers": qualifiers},
     }
     if object_kind == "entity_ref":
@@ -434,8 +433,12 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # was 6bafeff2... while the bundle still carried `packs`. The section went on
     # 2026-08-21 (`predicate_claim` derives the Claim from the predicate), the mapping's
     # `use` became `predicate`, and `setup_version` reads 5.
+    # was f18f42b1... while the vocabulary still declared `layer`. The key left on
+    # 2026-08-21 (one legal value, so no decision to write); `setup_version` still reads 5
+    # because the version is pinned by EQUALITY and routes nothing -- see
+    # `scripts/migrate_ledger_config_drop_vocabulary_layer`.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "f18f42b13600051b669894f23fb29f66b42ea2836615421cc8dfadc7e4230192")
+        "a5f02f28f425f25025a19b6d9c1666e6f478c8161eb85544f52efacff1bd1fd9")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -822,7 +825,7 @@ def test_unused_vocabulary_is_still_cross_validated():
     """
     bundle = logical_bundle()
     bundle["vocabulary"]["unused@1"] = {
-        "status": "active", "layer": "ontology", "subjects": ["MissingEntity@1"],
+        "status": "active", "subjects": ["MissingEntity@1"],
         "object": {
             "kind": "entity_ref", "types": ["OutputEntity@1"],
             "qualifiers": {"required": [], "optional": []},
@@ -1281,7 +1284,9 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # and its `object` record's `kind`/`entity`/`qualifiers`/`qualifiers.event_key` (9).
     # The mapping's `use` -> `predicate` rename is net zero. (The two prose figures above
     # read one higher than the asserts they explain; the asserts are what was measured.)
-    assert checked >= 110
+    # 110 -> 109 on 2026-08-21, when `layer` left the vocabulary declaration: one leaf, on
+    # the fixture's one predicate. MEASURED both sides: 110 before, 109 after.
+    assert checked >= 109
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1302,8 +1307,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
             checked += 1
     # Same floor, times the six replacement kinds. Was 900 while the bundle carried
     # `tables`, 894 while the preparer and mapper had their own sections; 816 while it
-    # still carried `packs`. 660 today (110 x 6) -- the -26 nodes above, times six.
-    assert checked >= 660
+    # still carried `packs`. 660 while the vocabulary still declared `layer`. 654 today
+    # (109 x 6) -- the one leaf that left above, times six.
+    assert checked >= 654
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():

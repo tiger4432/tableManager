@@ -1,11 +1,18 @@
 # 🗂️ DOC_OWNERSHIP — 서브시스템 ↔ 문서 소유 매핑
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-19 번역기 은퇴·두 번째 소스 반영 | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-21 원장 config v5·시험 실행·폼 감사 반영 | **Owner:** Lead / PM
 >
 > 🔴 **행을 더하거나 고치면 이 헤더의 「이번 라운드」도 함께 쓴다** — 직전에 F9 행이 추가될 때 그것을 어겼고, 그래서 새 행이 어느 라운드의 것인지 알 수 없었습니다.
 > 🔴 **소유 행이 없는 문서·계약은 조용히 낡습니다.** 새 문서를 만들거나 새 계약(`contracts/<name>/`)을 추가하면 **그 자리에서 행을 만드십시오.**
 >
-> **이번 라운드 (2026-08-19 · doc-keeper · 번역기 은퇴·두 번째 소스 · 행 «추가 0 · 정정 6»)**
+> **이번 라운드 (2026-08-21 밤 · doc-keeper · 원장 config v5 + 시험 실행 + 준비기 행 배제 · 행 «추가 0 · 정정 3»)**
+> - **[Ledger V2 설정 가이드 소유권]** 아래 그 행이 `setup_version: 3`·「필수 section 일곱」이라 적고 있었고 **두 세대 낡았다** — 지금은 **`setup_version: 5`, 필수 section 셋**(`vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`다(`9b6c5da`). 🔴 **개수를 문장에 박지 않는 규율의 재발 사례이므로 정본을 함께 적는다**: `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`·`SETUP_VERSION`.
+> - 🔴 **[신규 코드 경로 — 이 표에 «없던» 종류] `packs` section이 사라지고 그 자리를 «함수 하나»가 대신한다** — `setup_bundle.predicate_claim`이 Role 목록과 emission을 술어에서 도출하고, 컴파일러·검증기·작성 화면 **셋이 그 하나를 읽는다**. 이 표가 여러 번 값을 치른 계급(같은 문장이 N곳에 복사돼 틀렸을 때도 N곳이 동의)의 **구조적 해소**라서 남길 값어치가 있다.
+> - **[Ledger V2 작성 화면 소유권 · 신규 표면 둘]** ① `POST /admin/ontology-explorer/test-run`(`fd3dda05`) — `ledger/config_explorer_service.test_run`이 소유하고 **쓰기 0 · 커서 미이동**이며, 계약 행은 [backend §2](../architecture/backend.md), 절차는 [ONTOLOGY_LEDGER_SETUP §13.3-ter](../guide/ONTOLOGY_LEDGER_SETUP.md)다. ② `server/scripts/audit_authoring_form.py`(`951f391e`·`04c6aebf`, **총괄 작성 · 읽기 전용**) — 스켈레톤이 그리는 잎과 `config_authoring.authoring_plan`의 차집합을 세는 감사기. 재사용 관점은 [PRIMITIVES §3·§6-bis](../architecture/PRIMITIVES.md).
+> - **[준비기 예약 컬럼]** `source_preparation.SOURCE_ROW_EXCLUDED_COLUMN`(`__source_row_excluded`, `8bb0f5f1`)이 「이 행은 내 것이 아니다」를 소유한다 — 형제 `__source_event_incomplete`와 **하는 일이 다르다**(하나는 빼고, 하나는 착지시키고 «센다»). 서술은 [ONTOLOGY_LEDGER_SETUP §7.3](../guide/ONTOLOGY_LEDGER_SETUP.md).
+> - ⚠️ **총괄 보고 대상** — SSOT [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)가 아직 `setup_version: 4`·「필수 section 넷」이라 적는다(SSOT는 총괄 소유라 손대지 않았다).
+>
+> **직전 라운드 (2026-08-19 · doc-keeper · 번역기 은퇴·두 번째 소스 · 행 «추가 0 · 정정 6»)**
 > - **[정준 원장 — 착지한 구현 행]** 번역기 셋(`lot_event_translator`·`observation_translator`·`declared_translator`)이 **트리에 없다**(`e47d325`) · `backfill.run()`은 **디스패치하지 않는다**(`d7bfcd0`) · config 경로가 `server/config/ontology/`로 **옮겨졌다** · `dry_run.py`의 **소스 미리보기가 내려가 있다**(`ab8657f`).
 > - **[원장 Source Profile 행]** 🔴 **선언 source는 하나가 아니다** — 이 표는 이제 개수를 «세지 않는다»(정본 `python -m ledger.setup`의 `sources`). 없는 `server/mappers/ledger_lot_event_mapper.py`를 실재하는 셋으로 교체하고, 작성 화면 코드(`column_stats.py`·`config_explorer*`)를 소유 목록에 추가.
 > - 🔴 **개수를 문장에 박지 않는 것이 이 라운드의 규율이다** — 「소스 셋」·「유일한 소스」 두 문장이 각각 다른 날 거짓이 됐다.
@@ -13,7 +20,7 @@
 > **직전 라운드 (2026-08-18 · Ledger V2 설정 가이드·Explorer 인수인계 정비)**
 > - **[Ledger V2 설정 가이드 소유권]**
 >   [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이 **단일 파일
->   `ledger_config.json`**(`setup_version: 3`, 필수 section **일곱** + 선택 `virtual_joins`
+>   `ledger_config.json`**(🔴 **[2026-08-21] `setup_version: 5`, 필수 section «셋»**(`vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`
 >   — 🔴 **[2026-08-18] `tables`가 빠졌다**: 물리 스키마의 정본은
 >   `server/config/table_config.json` 하나이고, 원장 파일에 `tables`를 적으면
 >   `unknown_field`로 거절된다. 가이드 §5),

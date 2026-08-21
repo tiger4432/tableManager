@@ -922,11 +922,10 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         _versioned_id(predicate_id, path, problems)
         item = section[predicate_id]
         if not problems.exact(
-                item, path, required=("status", "layer", "subjects", "object")):
+                item, path, required=("status", "subjects", "object")):
             continue
         if item.get("status") not in ("active", "retired"):
             problems.add("invalid_predicate", f"{path}.status", "must be active or retired")
-        _nonblank_text(item.get("layer"), f"{path}.layer", problems)
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
         if problems.exact(
