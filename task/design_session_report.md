@@ -80,6 +80,60 @@ which established that my unverified source was inside the served bundle; I did 
 who ran the build, and I named a lane anyway. The substance stands, the attribution was mine
 to not make. `dist` is the lead's per the owner.
 
+### ③-CORRECTION 🔴 my own alternative does not hold — I proposed it without measuring
+
+I recommended `candidate_for` as a zero-server-change substitute for `fill_targets`. **I was
+wrong, and I was wrong because I read the normalizer instead of the live declaration.**
+
+Measured in `server/config/enrichment_rules.json`:
+
+```
+dt_job_lot_slot_attribution   derived_table = dt_job_attribution
+  target_fields = ['dt_lot_confirmed', 'dt_slot_confirmed']
+  view[3]  candidate_for = {'dt_lot_confirmed':  'dt_lot'}
+  view[4]  candidate_for = {'dt_slot_confirmed': 'dt_slot'}
+  view[0,1,2]  candidate_for = None
+```
+
+The two fill targets live in **two different views** — two different tabs of the panel — with
+one target each. So `candidate_for` cannot express "these columns, adjacent, in this order,
+in one grid", which is the entire job `fill_targets` was invented for. A per-view dict of
+size one has no order to read.
+
+The order's own design was right and my shortcut was not. **Ruling still needed, but the
+menu has changed: it is `fill_targets` plus its server passthrough, or Phase 3.1 gets a
+different design.** I am not proposing a third option before someone rules on that.
+
+### ④ Phase 3 has no reachable screen in this environment — measured, not assumed
+
+Two declarations that the migration depends on are not live here:
+
+```
+virtual_join_rules.json    active rules: NONE
+                           both are prefixed `_retired_...`, which the loader reads as a
+                           comment. Product-owner ruling 2026-08-14: the two right tables
+                           were never registered in table_config, so both were rejected on
+                           every load.
+enrichment_rules.json      the ONLY rule carrying reference_views is
+                           dt_job_lot_slot_attribution, whose derived_table is
+                           dt_job_attribution — NOT registered in table_config, therefore
+                           not selectable in the grid's table dropdown (verified against
+                           the live dropdown: 26 tables, that one absent).
+```
+
+Consequences, stated as limits rather than as failures:
+
+- **Phase 3 in full** — the reference panel cannot be opened on any table this environment
+  offers, so the reference grid, the range selection, the copy path and the alignment band
+  have nowhere to run.
+- **Phase 2.2** (reference tab default-active) — same reason.
+- **Phase 1's join-column criterion** (`equals 미상` returning the unresolved rows, and the
+  `⇲` mark on the chip) — no join-resolved column exists to filter, so this is
+  **NOT MEASURED**. It is not "working" and it is not "broken".
+
+This is a lead-PM matter, not a design one: making them reachable means registering tables
+in `table_config.json`, which is server territory.
+
 ### ③ Phase 3 still needs a decision I am not allowed to make alone
 
 Unchanged from the previous report, restated because it is still open and still blocking.
@@ -97,6 +151,44 @@ It carries more than `fill_targets` does, and it is a declaration rather than a 
 **Ruling needed before any Phase 3 code exists.** None has been written.
 
 ---
+
+## Walked it in Chrome — what passed, and what could not be reached
+
+Dev server on 5173, `lot_event`, 142 rows, live API. 🔴 **The server serves the MAIN tree, not
+this worktree** — the preview harness refuses a `cwd` outside the project root, so what was
+under test is the four files I left in the shared tree. For `grid.js`, `style.css`,
+`index.html` and `dom.js` that is byte-identical to what is committed here. `main.js`,
+`api.js` and `enrichment_reference_view.js` were **not** under test; verified by marker
+(`SIDEBAR_WIDTH_KEY` absent from the served bundle), not assumed.
+
+**Passed:**
+
+```
+system columns have no filter box      the floating row ends after WAFERIDS; the five system
+                                       columns' filter cells are structurally EMPTY in the
+                                       accessibility tree, not merely blank-looking
+column filter changes Matches          LOT_ID contains NAB539 -> Matches 142 -> 16
+                                       + EVENT_TYPE contains split -> 16 -> 8
+chip renders what was typed            "LOT_ID contains NAB539", "EVENT_TYPE contains split"
+chip ✕ clears only that filter         cleared LOT_ID -> Matches 8 -> 78, EVENT_TYPE chip and
+                                       its input survive, LOT_ID input emptied
+전체 해제 appears from the 2nd chip     display none at 1 chip, block at 2
+sidebar width                          640px exactly
+four tabs at 640px                     68 + 120 + 101 + 105 = 394px, no row overflow, no tab
+                                       clipped (measured scrollWidth vs clientWidth)
+underline variant                      active tab box-shadow = inset 0 -2px 0, the mockup value
++N열 → is the REAL number              scrollWidth 1950 vs clientWidth 1869 = 81px hidden = one
+                                       column -> "+1열 →"; scrolled fully right -> badge empty
+                                       and display:none
+```
+
+**NOT MEASURED** (recorded as not measured, not as absent):
+
+```
+join-column filter + ⇲ chip mark    no active virtual join rule exists — see ④
+sidebar width persistence           code is in this branch only, not in the served tree
+reference tab default-active        same, and no reachable table — see ④
+```
 
 ## What I left in the main tree, and why
 
