@@ -1,5 +1,76 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 판정 요청 — `layer` 도 «못 메웁니다». 이유가 «둘», 각각 단독으로 막습니다 (date 21:4x)
+
+```
+바뀐 것 «없음»   audit 섹션0 = 10 (vocabulary 9 · setup_version 1) · pytest 146/12 · git diff 비어 있음
+```
+
+## ① 🔴 검증기가 `layer` 를 «제약하지 않습니다» — 후보의 출처가 «없습니다»
+```
+setup_bundle.py:925-929
+   status  ->  ("active","retired") «멤버십 검사»
+   layer   ->  _nonblank_text(...)   «비지만 않으면 된다»
+closed_lists() 가 내보내는 13개 목록에 layer «없음»
+```
+🔴 **그리고 진짜 닫힌 집합은 «다른 어휘»의 것입니다:**
+```
+vocabulary.py:463-465  LAYER_CANONICAL · LAYER_ONTOLOGY · EDITABLE_LAYER
+   -> ledger_vocabulary.json 확장을 다스립니다 (gate.py · ledger_structure.py 가 씁니다)
+   -> «셋업 번들은 그 길을 안 지납니다»
+그리고 번들의 값이 앉는 PredicateDescriptor.layer 를 «되읽는 코드가 서버에 없습니다»
+```
+**감사 §4 의 `layer readers=13` 은 «저쪽» 어휘를 센 것입니다.** 같은 낱말, 다른 외연입니다 —
+`[[predicate-extension-vs-class-name]]`.
+
+## ② 🔴 접힘 함정 — 계획 행을 붙이면 «컨트롤이 0» 이 됩니다
+실제 뷰를 Node 로 돌려 «쓰기 컨트롤 개수»를 셌습니다 (양성 대조 둘 포함):
+```
+                                       키 없음   키 선언됨
+지금 (계획 행 없음)                        1         1     <- 스켈레톤 input
+행 + 후보 1개                              0         0     🔴 «둘 다» 접힌다
+행 + 후보 2개                              3         0     🔴 answered 에서 접힌다
+```
+```
+foldDecision  후보가 «1개»면 접는다(:1071) · state 가 answered 면 접는다(:1083)
+접힌 행은 컨트롤을 만들기 «전»에 반환한다(:1100-1117)
+라이브 다섯 항목은 전부 layer:"ontology" -> «전부 answered»
+```
+**양성 대조:** `status` 는 모든 칸에서 1(스켈레톤 select), `layer` 도 «전»에는 1.
+→ 0 은 «없음»이지 «못 봄»이 아닙니다.
+⚠️ `remaining` 을 억지로 세워 펼치는 길은 **「정할 것 n개 남음」 계수기를 거짓말시킵니다.**
+
+## 🔴 그래서 이건 «세 번째 반례»이고, 부류가 하나 더 보입니다
+```
+setup_version  검증기가 값을 «고정»       -> 메울 것이 없다
+allow_null     스켈레톤이 체크박스를 그린다 -> 메우면 부순다
+layer          제약이 «없고» 접힘이 죽인다  -> 후보도 없고, 붙이면 부순다
+```
+**한 칸짜리 목록은 스켈레톤 경로에선 무해(항상 보이는 select)하고 계획 행 경로에선 치명(자동 접힘)입니다.**
+같은 값이 «어느 길로 가느냐»에 따라 반대로 동작합니다.
+
+## 되는 형태 — 셋이 «같이» 가야 하고, 셋 다 제 울타리 밖입니다
+```
+1  ledger_skeleton.json:180-186   "hint":"free" -> "choice" + "list":"predicate_layer"
+2  setup_bundle._validate_vocabulary  PREDICATE_LAYERS 멤버십 («status» 바로 윗줄과 같은 모양)
+3  closed_lists() 가 "predicate_layer" 를 «발행»
+   (3은 이미 test_ledger_skeleton.py:220 이 «요구»합니다 — choice 는 서버가 발행하는 목록을 지목해야 한다)
+```
+⚠️ **즉 이건 「폼 배선」이 아니라 «문법에 제약을 추가»하는 일입니다.**
+`layer` 가 무엇이어야 하는지를 정하는 것이라 제가 정하지 않았습니다.
+```
+갑  번들도 EDITABLE_LAYER 를 따른다 -> ("ontology",) 한 개.  스켈레톤 경로면 «무해»합니다
+을  canonical/ontology 둘을 허용
+병  지금처럼 «자유 텍스트»로 둔다     제약이 없고 되읽는 코드도 없으니 이것도 방어됩니다
+```
+
+## 못 잰 것
+```
+진짜 브라우저      Node DOM 모델입니다 (울타리)
+qualifiers 4칸     제 프로브에선 0인데, 그건 «접힌 노드» 때문이라 그 가족에 대한 주장이 «아닙니다»
+```
+
+
 # 🔴 판정 요청 — `entities.*.allow_null` 은 «서버만으로 못 메웁니다». 아무것도 안 바꿨습니다 (date 21:2x)
 
 ```
