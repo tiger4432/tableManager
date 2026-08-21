@@ -721,10 +721,13 @@ export function renderGrid(initialRows) {
       width: 150,
       minWidth: 100,
       floatingFilter: true,
-      // The funnel button opens a second way to say what the box under it already says.
-      // At this column width it also eats the input, so the control that narrows the query
-      // gets smaller to make room for a control that duplicates it.
-      floatingFilterComponentParams: { suppressFilterButton: true },
+      // 🔴 NO `suppressFilterButton` HERE, DELIBERATELY. The 2b order asked for it and the
+      // line was removed after measuring what it would cost: the funnel is the ONLY route to
+      // the operator list, and `joinResolvedFilterDef` writes a header tooltip that tells the
+      // operator to "필터를 Equals 로 두고" — suppressing it deletes the path the screen's own
+      // instruction depends on. (It was also inert as written: AG-Grid 35 reads
+      // `colDef.suppressFloatingFilterButton`, not this key, so the line did nothing and the
+      // next reader would have spent a day on "why doesn't this work".)
       suppressKeyboardEvent: (params) => {
         const event = params.event;
         const key = event.key;
