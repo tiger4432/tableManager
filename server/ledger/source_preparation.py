@@ -859,19 +859,28 @@ def _event_frames(
         # declaration to a column is this boundary's job, and now it is only this
         # boundary's job.
         #
-        # The published cell is the value AS READ, not `occurred_values[earliest]`.  The two
-        # differ in exactly one case: a naive cell, which `_aware_time` localizes with the
-        # declared timezone for the id while the Role validator refuses it outright
-        # ("time Role must be a timezone-aware datetime").  Publishing the localized
-        # instant would make that refusal disappear -- a source whose time column carries
-        # no zone would start minting atoms at a GUESSED instant, silently.  Whether the
-        # declared timezone may interpret a naive column is a separate ruling; this change
-        # moves where a mapper reads the time, not what the time is allowed to be.
+        # The published cell is the INTERPRETED instant, the same one the event id is
+        # minted from below.  🔴 THE DECLARED TIMEZONE READS A NAIVE COLUMN (owner ruling
+        # 2026-08-21): a value that writes its own offset keeps it, and `occurred_at
+        # .timezone` answers only for a value that carries none.
         #
-        # object dtype so the exact cell survives instead of being re-derived through a
+        # Until that ruling this line published the value AS READ, and the two halves
+        # disagreed: the id below was ALREADY minted from `occurred_values[earliest]`, so
+        # the declared timezone was trusted to say WHICH instant an event happened at while
+        # the published cell kept the raw text and was refused outright by the Role
+        # validator ("time Role must be a timezone-aware datetime").  One assumption, good
+        # enough for identity and not for the value, is not a safeguard -- it is a source
+        # that cannot produce an atom at all, which is what `lot_event` did.
+        #
+        # The price is named on purpose: EVERY source whose time column carries no zone is
+        # now read through the timezone someone declared for it.  That is what the
+        # declaration is FOR -- if it were never allowed to decide this, the square would
+        # have had zero freedom and belonged out of the file entirely.
+        #
+        # object dtype so the exact value survives instead of being re-derived through a
         # pandas datetime64 conversion.
         event[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(
-            [occurred_cells[earliest]] * len(event), index=event.index, dtype=object)
+            [occurred_values[earliest]] * len(event), index=event.index, dtype=object)
         molecule_ref = _canonical(
             {"source": plan.source_id, "identity": identity},
             path="event_frame.molecule_ref",
