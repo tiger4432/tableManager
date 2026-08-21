@@ -43,6 +43,7 @@ PREPARATION_PROVENANCE_ATTR = "assy_manager.preparation_provenance"
 PREPARATION_METRICS_ATTR = "assy_manager.preparation_metrics"
 SOURCE_PREPARER_ATTR = "assy_manager.source_preparer"
 SOURCE_EVENT_INCOMPLETE_COLUMN = "__source_event_incomplete"
+SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"
 
 
 class SourcePreparationError(ValueError):
@@ -638,6 +639,32 @@ def _assemble_prepared_frame(
                 f"source_preparation.outputs.{column}",
                 "source preparer must not alter base physical values",
             )
+    # A source-specific preparer may DECLARE that a row is not its own, and the rows it
+    # excludes leave here before anything asks them for an identity.  `lot_event` holds two
+    # generations that spell the same facts differently -- 80 rows say `lot_id`, 62 say
+    # `lot` -- and the preparer reads only the first spelling, so the second arrived at the
+    # identity loop below with nothing in it and refused the whole batch.
+    #
+    # This NARROWS the guard rather than lowering it: every row that survives still needs
+    # an identity, with the refusal below unchanged, and the 25 sources that do not declare
+    # this column take a code path that cannot tell the difference.  The two contracts
+    # above are untouched -- the preparer still returns exactly one value per base row, and
+    # still may not alter a base value -- because the removal happens after both are scored.
+    #
+    # An all-excluded page yields an EMPTY frame and no atoms rather than a refusal: pages
+    # are cut by the cursor, not by generation, so a page holding only old rows is normal
+    # and refusing would stall the backfill on it forever.  The cursor advances off the
+    # base page (`backfill._backfill_source`), never off what survives here, so the excluded
+    # rows are passed over once and not re-read.
+    if SOURCE_ROW_EXCLUDED_COLUMN in out.columns:
+        excluded = out[SOURCE_ROW_EXCLUDED_COLUMN].tolist()
+        if any(not isinstance(value, bool) for value in excluded):
+            raise SourcePreparationError(
+                "invalid_source_preparer_output",
+                f"source_preparation.outputs.{SOURCE_ROW_EXCLUDED_COLUMN}",
+                "row exclusion marker must be a boolean for every source row",
+            )
+        out = out.loc[[not value for value in excluded]].reset_index(drop=True)
     for column in _required_entity_columns(context.source_plan):
         if column not in out.columns:
             raise SourcePreparationError(

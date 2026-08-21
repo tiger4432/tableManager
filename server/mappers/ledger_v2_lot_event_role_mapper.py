@@ -31,6 +31,7 @@ from ledger.source_preparation import (
     SourcePreparationContext,
     SourcePreparationError,
     SOURCE_EVENT_INCOMPLETE_COLUMN,
+    SOURCE_ROW_EXCLUDED_COLUMN,
 )
 
 
@@ -91,6 +92,18 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
             for logical, physical in LIVE_LOT_EVENT_OUTPUT_MAP.items()
         }
         outputs.update(group_outputs)
+        # WHICH ROWS ARE NOT OURS.  The physical table carries two generations: 80 rows
+        # spell the identity `lot_id` and 62 spell it `lot`, with the same split across
+        # `slotnumbers`/`slot_numbers` and `waferids`/`wafer_ids`.  Every column this
+        # preparer reads is the first spelling, so the second generation reaches the engine
+        # with an empty identity.  Measured 2026-08-21 across all 26 ingested tables: six
+        # carry both spellings of some word, and `lot_event` is the only one whose ROWS
+        # actually split between them.  Owner ruling the same day: drop the old generation.
+        #
+        # The knowledge that an empty `lot` means "not this source's row" is specific to
+        # this table, so it lives here and not in the common module.
+        outputs[SOURCE_ROW_EXCLUDED_COLUMN] = tuple(
+            not _text(value) for value in normalized["lot"].tolist())
         declared = set(
             context.source_plan.driver.preparation.preparer.output_columns)
         if set(outputs) != declared:
