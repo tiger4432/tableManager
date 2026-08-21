@@ -1,5 +1,122 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 `lot_event` 라운드 — 착수 전 측정 셋. **「한 파일」이 아닙니다** (19:5x)
+
+## ① 총괄 질문의 답: `__source_event_incomplete` 는 «세기만» 합니다
+```
+쓴다   mappers/ledger_v2_lot_event_role_mapper.py:277   그룹마다 boolean
+검사   source_preparation.py:739-745                    열의 값 모양을 본다
+싣는다 source_preparation.py:905 -> attrs · roleframe.py:847·969 passthrough
+읽는다 runtime_v2.py:110   «단 한 곳»
+        incomplete_count = sum(...)   <- CursorBatchPreview 의 «숫자»
+```
+```
+🔴 원자를 고르는 곳은 _filtered_event_atoms (runtime_v2.py:228)
+   그 함수는 register 중복만 known_registrations 로 거른다. 이 표지를 «안 본다»
+```
+**→ 표지는 계량이지 관문이 아닙니다. 이 라운드는 준비기 한 곳으로 안 끝납니다.**
+
+### 🔴 그리고 표지를 관문으로 바꿔도 «안 됩니다» — 거절이 더 «위»에서 납니다
+```
+죽는 자리   source_preparation.py:649  _assemble_prepared_frame  (총괄이 실행해서 잡은 것)
+표지가 실리는 자리   source_preparation.py:905  _event_frames 이후
+→ 배치는 event frame 을 만들기 «전에» 죽습니다. 원자 단계에 도달하지 못합니다
+```
+표지를 막게 만드는 안은 **이 결함을 안 고칩니다.** 자리는 정체성 조립입니다.
+
+⚠️ 총괄 grep 이 「소비자 없음」이었는데 **소비자는 있습니다(숫자 하나).**
+「원자를 막는 소비자가 없다」가 맞는 문장입니다. 저도 처음 훑을 때 **대소문자를 안 무시해서**
+`SOURCE_EVENT_INCOMPLETE_COLUMN` 을 통째로 놓쳤습니다 — 하마터면 「아무도 안 쓴다」로 보고할 뻔했습니다.
+
+---
+
+## ② 부류 세기 — 총괄 지시 「다른 표에도 같은 쌍이 있는지」
+### ⚠️ 먼저 정정: 카탈로그로 세면 «0/26» 이 나옵니다. 그 0은 공허합니다
+```
+table_config.json 의 lot_event 선언 컬럼   8개
+DB 의 lot_event 실제 컬럼                 20개
+column_stats.physical_columns 독스트링이 이미 말합니다: 「dt_log 는 14 선언, 표에는 31」
+```
+**선언은 인제션이 «쓰는» 것이지 표가 «가진» 것이 아닙니다.** information_schema 로 다시 셌습니다.
+
+### 실측 — 26표 전수, DB 컬럼 기준
+```
+같은 낱말을 두 철자로 «가진» 표      6 / 26   (11쌍)
+   lot_event      lot|lot_id · slot_numbers|slotnumbers · wafer_ids|waferids
+   wafer_process  lot|lot_id · slot|slot_no
+   dt_log         core_wafer|core_wafer_id · dt_job|dt_job_id · event_time|eventtime
+   bonding_log    event_time|eventtime
+   core_wafer_map event_time|eventtime
+   dt_inventory   dt_job|dt_job_id
+```
+### 🔴 그런데 «행이 실제로 갈리는» 표는 «하나»뿐입니다
+```
+표             쌍                   총행     A만    B만   둘다   둘다없음
+lot_event      lot|lot_id            142     61     80     0        1   🔴 갈린다
+lot_event      slot_numbers|…        142     61     80     0        1   🔴 갈린다
+lot_event      wafer_ids|…           142     61     80     0        1   🔴 갈린다
+wafer_process  lot|lot_id           3022      0      0  3022        0   둘 다 채운다
+dt_log         event_time|eventtime 34939  34417      0     0      522   eventtime 은 «죽은 열»
+bonding_log    event_time|eventtime 376043 376043    0     0        0   같음
+```
+**「존재」는 6표, 「실제로 두 세대」는 1표입니다.** 부류는 실재하지만 **오늘 외연은 `lot_event` 하나**입니다.
+세기만 했고 아무것도 안 고쳤습니다.
+
+### ⚠️ 덤으로 나온 것 — 시각이 «아예 없는» 행
+```
+dt_log   event_time·eventtime 이 «둘 다» 빈 행   522 / 34,939
+dt_log   core_wafer 계열이 둘 다 빈 행          6,731 / 34,939
+```
+문자열 시각 라운드는 이 행들을 **거절**합니다(적재 시각으로 대체 안 함). 총괄이 `dt_job` 을 흘릴 때
+「거절 522」가 나오면 **결함이 아니라 이것**입니다. 미리 적어 둡니다.
+
+---
+
+## ③ vocabulary 조합 전수표 — 나왔습니다 (하위 에이전트, 제가 검수)
+```
+📄 task/ledger_vocabulary_combination_table.md
+```
+```
+48 변형 전수 검증기 통과 시험 -> «선언 가능한 것은 7개»뿐
+24 정렬칸 중 「선언 가능 && 컴파일러가 안 읽음」  ->  «없음»
+```
+### 🔴 그래서 제 「딸린 관측」을 정정합니다
+제가 「object.kind=none 인데 qualifier 칸이 깔린다 → 거절이 필요하다」고 올렸는데,
+**거절은 «이미 있습니다».** 라이브 술어를 기준선으로 놓고(손대지 않으면 거절 0) 그 축만 바꿔 재봤습니다:
+```
+register@1 그대로                    -> 거절 0
+object.qualifiers 를 채우면          -> invalid_predicate
+                                        「none object cannot declare payload qualifiers」
+```
+```
+진짜 문제는 «거절이 없다»가 아니라  ->  거절이 «어디서» 나느냐
+   화면(config_explorer_service.authoring)은 검증을 «우회»합니다
+   스켈레톤은 object.types 만 걸어 두고(:223) object.qualifiers 는 «안» 겁니다
+   -> 사람은 slot 칸을 채우고, 저장에서 «object.qualifiers» 로 거절당합니다
+      자기가 채운 «그 행»이 아니라
+```
+제 앞 보고의 「고치지 않았습니다, 판정만 주시면 붙이겠습니다」는 **문제를 잘못 이름 붙인 것**입니다.
+붙일 것은 거절이 아니라 **거절이 나는 자리**입니다.
+
+### 표에서 나온 것 둘 (총괄 축에 «없던» 것)
+```
+object.kind 에 event_ref 가 «있습니다»   선언 가능 · 끝까지 배선됨 · 라이브 0 · 샘플 0
+predicate_claim 은 subjects·types 를 «안 봅니다»   제가 직접 확인: 둘을 바꿔도 roles·emit 동일
+   -> 칸을 까는 것은 kind 와 qualifiers «둘»뿐입니다
+```
+
+---
+
+## 🔴 판정 요청 — `lot_event` 를 어디서 자를지
+표지가 관문이 아니고 거절이 조립 단계에서 나므로, 울타리 안에서 남는 자리는 하나입니다:
+```
+준비기가 «이 행은 내 것이 아니다»라고 말할 수 있어야 한다
+그런데 지금 계약은:  :627 행마다 정확히 하나 · :634 base 값 불변 · :641~ 정체성은 «모든 행»에
+```
+**계약을 어떻게 좁힐지 형태를 정해 주시면 그대로 만들겠습니다.** 제가 고른 형태로 먼저
+코드를 태우지 않겠습니다 — 공통 모듈이고 26개 소스가 같이 탑니다.
+
+
 # ↩ 정정 — 「피커가 좁히는 기능을 잃었다」는 **제가 안 재고 쓴 문장입니다** (19:3x)
 
 총괄 지적이 맞습니다. 재고 나니 **양쪽 다 제 문장과 반대**입니다:
