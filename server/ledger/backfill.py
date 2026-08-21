@@ -682,27 +682,6 @@ def _v2_registration_subjects(plan, frame):
     return subjects
 
 
-# ------------------------------------------------------------------ transfer driver
-def _transfer_select(source_cfg):
-    """The SELECT list for a transfer page, in LOGICAL names. Shared by page and group.
-
-    Written once because the two fetches below MUST produce identically shaped dicts: the
-    group-escape fetch exists precisely for the case where a page could not hold a whole
-    molecule, and a translator receiving a differently shaped row on that path would fail
-    only on groups larger than a page - the rarest input, so the last one anybody tests.
-    """
-    columns = source_cfg["columns"]
-    select = [f"{columns['row_identity']} AS row_identity",
-              f"{columns['group_key']} AS group_key",
-              f"{columns['wafer']} AS wafer",
-              f"{source_cfg['occurred_at_column']} AS event_time"]
-    for logical in ("recorded_lot", "recorded_slot"):
-        physical = columns.get(logical)
-        if physical:
-            select.append(f"{physical} AS {logical}")
-    return select
-
-
 def beat(result):
     """Publish the run's state to the shared heartbeat file, note and all.
 
