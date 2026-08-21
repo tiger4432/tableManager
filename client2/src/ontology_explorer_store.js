@@ -37,6 +37,7 @@ export const initialExplorerState = Object.freeze({
   // it has to answer while the bundle is half-written and `/view` cannot compile.
   authoring: null,
   authoringSchema: null,
+  authoringAll: null,
   authoringError: null,
   // The declaration being NAMED, before the server has a draft for it. Local only, and
   // deliberately not merged into `items`: `items` mirrors what the server has, and a name
@@ -273,6 +274,10 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         ...state,
         authoring: action.plan ?? state.authoring,
         authoringSchema: action.schema ?? state.authoringSchema,
+        // The same plan, unfiltered by selection. Read for ONE question -- what value do the
+        // other declarations of this section already hold at this slot -- which the filtered
+        // plan cannot answer because it holds only the declaration being edited.
+        authoringAll: action.whole ?? state.authoringAll,
         authoringError: null,
       };
     case 'AUTHORING_FAILED':
@@ -280,7 +285,7 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       // read as "nothing left to author", which is the silent empty panel again.
       return { ...state, authoringError: action.message };
     case 'AUTHORING_INVALIDATED':
-      return { ...state, authoring: null, authoringError: null };
+      return { ...state, authoring: null, authoringAll: null, authoringError: null };
     default:
       return state;
   }

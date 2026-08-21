@@ -784,7 +784,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 # for. The derived value is a MINIMUM; the universe is what a person may
                 # widen it to.
                 candidates=tuple(prepared), universe=UNIVERSE_PREPARED,
-                note="최소 집합. 더 넓게 선언해도 통과하지만 물어볼 이유가 없다.",
+                note="기본은 최소 집합 · 더 넣어도 됩니다",
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
@@ -805,7 +805,8 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 tier=TIER_CONSTRAINED,
                 value=columns, declared=columns if columns else _ABSENT,
                 candidates=tuple(derived_inputs),
-                note=f"kind=group_by일 때만 존재. 소스 group_by={group_by}",
+                note="소스 read.group_by와 같게 · "
+                     f"{', '.join(str(key) for key in group_by) or '없음'}",
             )
 
 
@@ -987,7 +988,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
             "entity_binding_keys_from_entity",
             f"채움: {entity_type}의 식별키",
             (f"bundle.entities.{entity_type}.keys",), list(keys)),
-        note="남는 질문은 「각 키에 어느 컬럼」 하나뿐.",
+        note="각 키에 어느 컬럼인지만 아래에서 고르세요",
     )
     for key in keys:
         child = declared_keys.get(key) if isinstance(declared_keys, Mapping) else None
@@ -1076,7 +1077,13 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                         [list(key) for key in unique_keys]),
                     comparison="superset",
                     candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                    note="선언 키는 주장이지 실측이 아니다. 컬럼 피커의 유일성으로 확인할 것.",
+                    # A note beside a box says WHAT TO DO with the box.  This one used to
+                    # say 「선언 키는 주장이지 실측이 아니다」 -- our design conversation,
+                    # printed on the operator's form, where it reads as a warning about
+                    # something they cannot act on.  The default is IN the boxes; the only
+                    # thing left to say is that it can be changed and how.
+                    note=f"기본 {', '.join(str(key) for key in shortest)}"
+                         " · 바꾸려면 고르세요",
                 )
         occurred = driver.get("occurred_at")
         occurred = occurred if isinstance(occurred, Mapping) else {}
@@ -1110,9 +1117,11 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                  if narrowed
                  else f"후보: {relation}의 시각으로 읽을 컬럼 {len(time_columns)}개 + basis"),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
-            note="column과 basis 중 정확히 하나. "
-                 "basis가 묶음 이벤트에서 무엇을 읽는지는 소유자 판정 대기"
-                 "(task/ledger_basis_on_grouped_events.md).",
+            # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS.  This said which question
+            # was still open and named the task file holding it -- true, and useless to
+            # somebody filling the box, who cannot act on either.  What is left is the one
+            # rule that changes what they press.
+            note="column · basis 중 하나만 고르세요",
         )
         probes = _listed(driver.get("registration_probe"))
         single_key = tuple(sorted(

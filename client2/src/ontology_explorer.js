@@ -217,10 +217,25 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   // One element of a list field. The whole list is rewritten through `editFieldAtPath`, so
   // there is still exactly one writer and one save path.
-  const editFieldList = (path, mutate) => {
+  //
+  // 🔴 A LIST THE DOCUMENT HAS NOT GOT YET IS STILL THE LIST ON SCREEN. A derived default
+  // is rendered IN the boxes before anybody has written it to the file, so the draft holds
+  // nothing at that path -- and refusing on that made `x` and `+` controls that press and
+  // do nothing, which is the silent refusal this screen keeps removing. The control carries
+  // what it is showing (`data-list`), and that is the base when the document is silent.
+  const shownList = (el) => {
+    try {
+      const held = JSON.parse(el?.dataset?.list || 'null');
+      return Array.isArray(held) ? held : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const editFieldList = (path, mutate, base) => {
     const current = draftValueAt(path);
-    if (!Array.isArray(current)) return;
-    editFieldAtPath(path, mutate([...current]));
+    const items = Array.isArray(current) ? current : base;
+    if (!Array.isArray(items)) return;
+    editFieldAtPath(path, mutate([...items]));
   };
 
   // Write a leaf named by a path RELATIVE to the declaration body (the claim form).
@@ -727,13 +742,22 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     try {
       const params = new URLSearchParams();
       if (selection) params.set('selection', selection);
-      const [plan, schema] = await Promise.all([
+      // 🔴 THE UNFILTERED PLAN IS FETCHED TOO, AND ONLY FOR "WHAT DOES THE FILE ALREADY
+      // USE HERE". The per-selection plan is filtered to one declaration, so a leaf no
+      // catalog can answer for -- a timezone -- could only ever be offered its own value
+      // back. Same endpoint, no parameter, so nothing on the server changes; and it is
+      // fetched once per invalidation, like the closed lists beside it, because a
+      // suggestion list going one save stale costs nothing.
+      const [plan, schema, whole] = await Promise.all([
         jsonRequest(`/authoring/plan?${params}`),
         state.authoringSchema
           ? Promise.resolve(state.authoringSchema)
           : jsonRequest('/authoring/schema'),
+        !selection ? Promise.resolve(null)
+          : state.authoringAll ? Promise.resolve(state.authoringAll)
+            : jsonRequest('/authoring/plan'),
       ]);
-      dispatch({ type: 'AUTHORING_RECEIVED', plan, schema });
+      dispatch({ type: 'AUTHORING_RECEIVED', plan, schema, whole: whole || plan });
     } catch (error) {
       console.warn('[ontology] authoring plan unavailable', error);
       dispatch({ type: 'AUTHORING_FAILED', message: errorMessage(error) });
@@ -941,11 +965,24 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       editShapeList(target.dataset.value, (items) => items.filter((_, i) => i !== at));
     }
     else if (action === 'add-field-item') {
-      editFieldList(target.dataset.value, (items) => [...items, '']);
+      editFieldList(target.dataset.value, (items) => [...items, ''], shownList(target));
     }
     else if (action === 'remove-field-item') {
       const at = Number(target.dataset.index);
-      editFieldList(target.dataset.value, (items) => items.filter((_, i) => i !== at));
+      editFieldList(target.dataset.value, (items) => items.filter((_, i) => i !== at),
+                    shownList(target));
+    }
+    else if (action === 'pick-candidate') {
+      // 🔴 THE CHIP CARRIES THE WHOLE NEXT VALUE, so this knows nothing about lists,
+      // objects, order or which field was pressed. The view is where the shape lives --
+      // it is the half that knows what the candidate set covers -- and a second copy of
+      // that reasoning here is the second author this screen keeps deleting.
+      try {
+        editFieldAtPath(target.dataset.value, JSON.parse(target.dataset.pick));
+      } catch {
+        // A chip whose payload will not parse writes nothing; the box beside it still takes
+        // typing, so the field is never left without a way in.
+      }
     }
     else if (action === 'add-entity-key') {
       editEntityKeys((keys) => [...keys, '']);
@@ -1176,7 +1213,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const at = Number(event.target.dataset.index);
       const typed = event.target.value;
       editFieldList(event.target.dataset.value,
-                    (items) => items.map((item, i) => (i === at ? typed : item)));
+                    (items) => items.map((item, i) => (i === at ? typed : item)),
+                    shownList(event.target));
       return;
     }
     if (event.target.dataset.action === 'edit-field') {

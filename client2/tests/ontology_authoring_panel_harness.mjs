@@ -348,9 +348,17 @@ const renderDraft = (plan) => {
   const refused = byClass(root, 'oe-node-row').filter(
     (row) => row._classes.includes('is-refused'));
   eq('C2 the refused role is a row in the tree, not a card below it', refused.length, 1);
-  check('C3 the stable code is on screen',
-    at(byClass(root, 'oe-field-refusal'), 0).textContent
-      .includes('missing_required_role'));
+  // 🔴 THE CODE MOVED OFF THE SENTENCE ON 2026-08-21, AND THIS MOVED WITH IT rather than
+  // being deleted. Lead's ruling for the source form: a refusal beside a box gets human
+  // wording and the raw identifier stays in the log -- `invalid_type` printed in bold is
+  // the validator quoting itself at an operator who cannot act on it. So the refusal line
+  // now carries the MESSAGE as its text and the code as `data-code`, and both halves are
+  // scored: the code is still reachable (a bug report needs it) and the sentence a person
+  // reads is the message. Dropping the code entirely would have been the weakening.
+  eq('C3 the stable code is still carried, on the element',
+    at(byClass(root, 'oe-field-refusal'), 0).dataset.code, 'missing_required_role');
+  check('C3b and the sentence on screen is the message, not the code',
+    !at(byClass(root, 'oe-field-refusal'), 0).textContent.includes('missing_required_role'));
   const unanswered = inside(render(PLAN), 'oe-bucket--unanswered', 'oe-field');
   eq('C4 the unanswered bucket holds the free question', unanswered.length, 1);
   const chips = byClass(at(byClass(at(unanswered, 0), 'oe-candidates'), 0), 'oe-chip');

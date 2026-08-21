@@ -583,6 +583,12 @@
   max-height: 132px; overflow: auto;
 }
 #ontology-explorer-root .oe-candidates small { color: var(--oe-ink-meta); font-size: 11px; }
+/* Each picked value on its own line -- a row of `[box][x]` pairs wrapping in among the
+   chips reads as one long run of controls, and the operator has to count brackets to see
+   how many columns are in the list. */
+#ontology-explorer-root .oe-candidates .oe-field-row {
+  display: flex; gap: 3.4px; align-items: center; flex: 1 0 100%;
+}
 #ontology-explorer-root .oe-candidates.is-forbidden .oe-chip {
   color: var(--oe-warn); text-decoration: line-through;
 }
@@ -961,6 +967,21 @@
   background: var(--oe-surface-2); overflow-wrap: anywhere; white-space: normal;
 }
 #ontology-explorer-root .oe-chip.is-none { color: var(--oe-muted); font-family: var(--oe-font-body); }
+
+/* A chip that WRITES. Same tag as the chip beside it because it is the same object -- a
+   candidate -- and the only new thing it says is that pressing it does something. The
+   picked one is filled rather than outlined: the operator has to be able to see WHICH of
+   nine columns is in the file without reading the box above. */
+#ontology-explorer-root .oe-pick {
+  cursor: pointer; text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+#ontology-explorer-root .oe-pick:hover { border-color: var(--oe-accent); color: var(--oe-accent); }
+#ontology-explorer-root .oe-pick:active { transform: translateY(1px); }
+#ontology-explorer-root .oe-pick.is-on {
+  border-color: var(--oe-accent); color: var(--oe-surface);
+  background: var(--oe-accent); font-weight: 600;
+}
 
 /* 🔴 RADIUS 0 IS THE SIGNATURE, AND IT IS STATED LAST SO NOTHING ABOVE CAN WALK IT BACK.
    Everything this screen draws with a box -- pills, badges, dialogs, code blocks, popovers,

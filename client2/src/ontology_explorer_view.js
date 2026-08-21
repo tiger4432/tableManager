@@ -453,9 +453,11 @@ function renderReadTree(state) {
     // calls it for any map whose `keyed_by` is not `index` -- which is nearly every
     // source -- so opening an item threw before it drew anything.
     plannedMembers: () => [],
+    covering: () => null,
     deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item),
     declared: () => [],
     rolesNear: () => [],
+    usedElsewhere: () => [],
     renderRow: () => null,
     suggest: (row) => row,
     hot: [],
@@ -840,6 +842,70 @@ function formatValue(value) {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
+// ---- picking a candidate -------------------------------------------------------------
+//
+// 🔴 A ROW THAT CARRIES CANDIDATES IS PICKED, NOT TYPED. Measured on the live config: six
+// plan rows on one source arrive WITH their candidate list (`relation` 26, `read.identity`
+// 16, `read.occurred_at` 10, `read.order_by` 9, `read.cursor.columns` 9, `read.group_by` 1)
+// and not one of them reached a control -- `closedListFor` only ever answered for a set
+// that exactly equals a published enum, so a catalog-derived list of column names fell
+// through to a free-text box, and `{column: …}` objects were not even strings. The owner
+// was typing column names off another screen.
+//
+// The picker is CHIPS, not a `select`, and that is the same ruling as before rather than a
+// new one: a chip WRITES on press, so nothing has to be typed, and the input beside it
+// stays, so a name nothing has yet can still be coined. A `select` would have bought the
+// first at the cost of the second.
+const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** What a candidate READS as. An object candidate says which slot it fills. */
+function candidateLabel(item) {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object' && !Array.isArray(item)) {
+    return Object.entries(item).map(([key, held]) => `${key} · ${held}`).join(' · ');
+  }
+  return JSON.stringify(item);
+}
+
+/** Is this candidate the one the draft currently holds? */
+function candidateChosen(editable, item) {
+  if (editable.kind === 'list') {
+    return editable.value.some((held) => sameValue(held, item));
+  }
+  if (editable.kind === 'object') {
+    return Object.entries(item).every(([key, held]) => sameValue(editable.value[key], held));
+  }
+  return sameValue(editable.value, item);
+}
+
+/** The WHOLE value that lands at the row's path when this candidate is pressed.
+ *
+ * 🔴 A LIST KEEPS ITS ORDER, because in `order_by` and `cursor.columns` the order IS the
+ * meaning. Pressing appends at the end, so the list reads in the order it was picked, and
+ * pressing a chip that is already in takes it back out at its own position.
+ *
+ * 🔴 AND AN OBJECT KEEPS WHAT THE CANDIDATES DO NOT SPEAK FOR. `read.occurred_at`'s
+ * candidates fill `column` or `basis`; `timezone` sits in the same record and no catalog can
+ * supply it. Writing the candidate as the whole object would delete a required field the
+ * screen never asked about -- so the keys the candidate set covers are replaced, and every
+ * other key the document holds is carried across untouched.
+ */
+function pickedValue(editable, item) {
+  if (editable.kind === 'list') {
+    const at = editable.value.findIndex((held) => sameValue(held, item));
+    return at === -1 ? [...editable.value, item]
+                     : editable.value.filter((_, index) => index !== at);
+  }
+  if (editable.kind === 'object') {
+    const next = {};
+    for (const [key, held] of Object.entries(editable.value)) {
+      if (!editable.covers.includes(key)) next[key] = held;
+    }
+    return { ...next, ...item };
+  }
+  return item;
+}
+
 function renderValue(row) {
   const value = row.value;
   if (value === null || value === undefined) return h('span', 'oe-value is-none', 'None');
@@ -887,7 +953,17 @@ function foldDecision(row, expanded = {}) {
   if (chosen === false) return { open: false, reason: '접힘', byHand: true };
   if (row.remaining) return { open: true, reason: '' };
   if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
-  if (row.state === 'derived') {
+  // 🔴 A DEFAULT THE AUTHOR MAY CHANGE, WITH SOMETHING TO CHANGE IT TO, IS A CHOICE. The
+  // server measures that distinction already and stamps it: `default_overridable` means
+  // nothing FIXED this value, and a candidate list means today's data offers alternatives.
+  // Folded, such a row shows a value with no way to reach it -- and `read.order_by` and
+  // `read.cursor.columns` are exactly that pair, each arriving with 9 columns to choose
+  // from. This is not a hole in the fold rule; it is the rule's own predicate applied where
+  // it had been decided by the STATE word alone.
+  const overridable = row.state === 'derived'
+    && row.disposition === 'default_overridable'
+    && Array.isArray(row.candidates) && row.candidates.length > 1;
+  if (row.state === 'derived' && !overridable) {
     // 🔴 THE WORDS ARE NOT NEW. Each is already this screen's word for the same thing --
     // 「파생됨 · 묻지 않음」 on the bucket heading, 「강제 · …」 on the row's own action line,
     // 「비움」 on an empty list chip, 「후보」 across the client. Nothing here was translated
@@ -980,8 +1056,12 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
     }
     card.append(act);
   }
-  if (row.candidates && row.state !== 'derived') {
+  // A derived row keeps its chips hidden UNLESS the server called it a default the author
+  // may change and `editableFor` agreed -- that is the one derived case with a real choice
+  // in it, and hiding the choice is what left `read.order_by` unreachable.
+  if (row.candidates && (row.state !== 'derived' || editable)) {
     const box = h('div', 'oe-candidates');
+    let picks = null;
     const label = row.universe ? `${row.universe} · ${row.universe_note}` : '고를 수 있는 값';
     box.append(h('small', '', `${label} · ${row.candidates.length}`));
     // 🔴 A DATALIST ON THE INPUT, NEVER A `select`. The list SUGGESTS; it must not
@@ -1038,19 +1118,50 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
       } else if (editable.kind === 'list') {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
         // the same path tools, so save, dirty-tracking and the revision guard are untouched.
+        // 🔴 THE LIST THE BOXES SHOW RIDES ON THE CONTROLS. A derived default is IN the box
+        // before it is in the file, so the draft holds no array to mutate -- and the writer
+        // refuses a mutation it cannot base on one, which would make `x` and `+` press and
+        // do nothing. So each control carries the list it is showing, and the write starts
+        // from that when the document has nothing yet.
+        const shown = JSON.stringify(editable.value);
         editable.value.forEach((item, index) => {
           const line = h('div', 'oe-field-row');
           const drop = button('x', 'remove-field-item', row.path, 'oe-field-row-remove');
           drop.dataset.index = String(index);
-          line.append(nameInput(item, 'edit-field-item', index), drop);
+          drop.dataset.list = shown;
+          const box_ = nameInput(item, 'edit-field-item', index);
+          box_.dataset.list = shown;
+          line.append(box_, drop);
           box.append(line);
         });
-        if (!editable.value.length) box.append(h('div', 'oe-key-none', 'None defined'));
-        box.append(button('+ Add', 'add-field-item', row.path, 'oe-field-row-add'));
-      } else {
+        if (!editable.value.length) box.append(h('div', 'oe-key-none', '비움'));
+        const add = button('+ 직접 입력', 'add-field-item', row.path, 'oe-field-row-add');
+        add.dataset.list = shown;
+        box.append(add);
+      } else if (editable.kind !== 'object') {
         box.append(nameInput(editable.value, 'edit-field'));
       }
       box.append(list);
+      // 🔴 THE CHIPS WRITE. Every candidate is a button carrying the WHOLE value that lands
+      // at this row's path when it is pressed, so the controller needs one line and knows
+      // nothing about lists, objects or which field this is. A `closed` row is skipped: its
+      // dropbox already IS the picker, and two pickers for one value is two answers.
+      //
+      // In their OWN scroll box, not among the boxes above: the candidates area is capped at
+      // 132px, and a source declaring three identity columns would have left one line of a
+      // 16-column table visible under them -- a picker you have to scroll to find is a
+      // picker the owner goes back to typing instead of using.
+      if (editable.kind !== 'closed') {
+        picks = h('div', 'oe-candidates oe-picks');
+        for (const item of row.candidates) {
+          const on = candidateChosen(editable, item);
+          const chip = button(candidateLabel(item), 'pick-candidate', row.path,
+                              'oe-chip oe-pick' + (on ? ' is-on' : ''));
+          chip.dataset.pick = JSON.stringify(pickedValue(editable, item));
+          chip.setAttribute('aria-pressed', String(on));
+          picks.append(chip);
+        }
+      }
     } else {
       for (const item of row.candidates.slice(0, 24)) {
         box.append(h('i', 'oe-chip', typeof item === 'string' ? item : JSON.stringify(item)));
@@ -1060,6 +1171,7 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
       }
     }
     card.append(box);
+    if (picks) card.append(picks);
   }
   if (row.forbidden?.length) {
     const box = h('div', 'oe-candidates is-forbidden');
@@ -1070,9 +1182,16 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
     }
     card.append(box);
   }
+  // 🔴 THE CODE IS NOT THE SENTENCE. `invalid_type` printed in bold beside a box is the
+  // validator's identifier, not a thing a person can act on, and it read as the screen
+  // quoting itself at the operator. The message stays -- it is what says what to do -- and
+  // the code moves onto the element as a `title` and a `data-code`, so it is one hover away
+  // and still there for a log or a bug report.
   for (const refusal of row.refusals) {
     const line = h('div', 'oe-field-refusal');
-    line.append(h('b', '', refusal.code), h('span', '', refusal.message));
+    line.title = refusal.code;
+    line.dataset.code = refusal.code;
+    line.append(h('span', '', refusal.message));
     card.append(line);
   }
   if (row.note) card.append(h('small', 'oe-field-note', row.note));
@@ -1186,6 +1305,11 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   const shape = context.deref(node);
   if (!shape) return null;
   if (shape.kind === 'leaf') return renderTreeLeaf(context, shape, path, value, depth, label);
+  // 🔴 A BRANCH THE PLAN OFFERS CANDIDATES FOR IS PICKED AT THE BRANCH. See `covering`.
+  // An index map becomes ONE row carrying the picker -- its members are the picked values,
+  // so drawing them again below would be the same list twice with two ways to edit it.
+  const covers = context.covering ? context.covering(path, shape) : null;
+  if (covers === 'all') return renderTreeLeaf(context, shape, path, value, depth, label);
   // 🔴 THE DECLARATION'S OUTLINE IS ALWAYS DRAWN; FOLDING STARTS BELOW IT. Owner opened a
   // finished pack and saw two lines -- `lot-lineage@1` and 「주장 MAP 접힘 · 5」 -- and asked
   // whether it had been pushed. The tree was there and the fold rule was doing exactly what
@@ -1236,7 +1360,7 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
                    : shape.keyed_by === 'index' ? '항목' : '이름');
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
-    : renderSkeletonRecord(context, shape, path, value, depth);
+    : renderSkeletonRecord(context, shape, path, value, depth, covers);
   {
     // 🔴 A FOLD SHOWS ITS COUNT. Folding without saying how many were folded is deleting
     // with extra steps -- the mockup's rule is 「접힌 것은 개수를 보인다」, and it is the
@@ -1248,7 +1372,13 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
                open ? 'oe-node-fold' : 'oe-node-folded')
       : null;
     if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    box.append(treeRow(depth, label || path, [kind], null, toggle,
+    // 🔴 THE PICKER RIDES IN THE BRANCH'S OWN VALUE COLUMN, NOT IN AN 「이 자리」 CHILD ROW.
+    // A record whose candidates fill some of its keys keeps the rest as rows below, so the
+    // control belongs on the line that carries the name -- and a fold then hides only the
+    // keys nobody picked for, never the picker itself.
+    const own = covers ? context.planRow(path) : null;
+    box.append(treeRow(depth, label || path, [kind],
+                       own ? context.renderRow(own, shape, true) : null, toggle,
                        (path ? 'is-branch' : 'is-branch is-root')
                        + (open ? '' : ' is-folded')));
   }
@@ -1282,12 +1412,16 @@ function branchOwnRow(context, path, depth) {
                  context.renderRow(own, null, true), state, cls);
 }
 
-function renderSkeletonRecord(context, node, path, value, depth) {
+function renderSkeletonRecord(context, node, path, value, depth, covers = null) {
   const box = h('div', 'oe-node-children');
-  const own = path ? branchOwnRow(context, path, depth) : null;
+  // When the record's own plan row is drawn as the picker on the branch line above, it is
+  // not drawn again here -- one row, one control, one place to press.
+  const own = path && !covers ? branchOwnRow(context, path, depth) : null;
   if (own) box.append(own);
   const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   for (const field of node.fields || []) {
+    // The keys the picker above writes are not also asked for one box at a time.
+    if (covers && covers.has(field.key)) continue;
     const at = path ? path + '.' + field.key : field.key;
     const current = held[field.key];
     if (!fieldApplies(field, held, current)) continue;
@@ -1436,8 +1570,16 @@ function renderSkeletonLeaf(context, node, path, value) {
   input.dataset.action = 'edit-shape';
   input.dataset.value = path;
   input.setAttribute('aria-label', path);
+  // 🔴 A LEAF NO CATALOG CAN ANSWER FOR STILL HAS AN ANSWER: THE ONE THE FILE ALREADY USES.
+  // `read.occurred_at.timezone` is the case that named this -- a region is not a column and
+  // no catalog will ever list one, so the plan sends no candidates and the box stayed
+  // blank. What the CONFIG holds is a real answer: every other declaration of this section
+  // has stood in this same slot, and what they put there is what this one probably wants.
+  // Suggestions only -- the input keeps taking anything typed, because a zone nobody has
+  // used yet has to stay possible.
   const suggestions = node.hint === 'ref' ? context.declared(node.section)
-    : node.hint === 'role' ? context.rolesNear(path, node.from) : [];
+    : node.hint === 'role' ? context.rolesNear(path, node.from)
+      : context.usedElsewhere(context.absolute(path));
   if (suggestions.length) {
     const listId = `oe-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     const list = h('datalist');
@@ -1534,8 +1676,14 @@ function renderAuthoring(state) {
 
   const editableFor = (row, node) => {
     if (!prefix || !draftRaw || !row.path.startsWith(prefix)) return null;
+    // 🔴 A DERIVED ROW IS THE SYSTEM'S TO WRITE -- EXCEPT THE ONE KIND THE SERVER MARKS AS
+    // A DEFAULT. `default_overridable` is measured there, not asserted here, and it is the
+    // only derived disposition that means "nothing fixed this; widen it if you like".
+    // Everything else derived keeps its value and its ground and offers no box.
+    if (row.state === 'derived' && row.disposition !== 'default_overridable') return null;
     const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
     const closed = closedListFor(row.candidates);
+    const candidates = Array.isArray(row.candidates) ? row.candidates : [];
     if (typeof current === 'string') {
       return closed ? { kind: 'closed', value: current, options: closed }
                     : { kind: 'string', value: current };
@@ -1545,6 +1693,35 @@ function renderAuthoring(state) {
     // not a row of name boxes, and pretending otherwise would flatten what it holds.
     if (Array.isArray(current) && current.every((item) => typeof item === 'string')) {
       return { kind: 'list', value: current };
+    }
+    // 🔴 THE SHAPE OF AN ABSENT VALUE IS THE SKELETON'S ANSWER, AND THE PLAN'S DEFAULT IS
+    // WHAT SITS IN THE BOX. Both cases below are fields the plan speaks for and the
+    // document has not got: an index map (`read.identity`, `read.order_by`,
+    // `read.cursor.columns`, `read.group_by`) and a record the candidates fill
+    // (`read.occurred_at`). Until now neither produced a control, so the candidates the
+    // server sent for them reached nothing at all and the skeleton drew empty free-text
+    // boxes for their children instead.
+    //
+    // 🔴 A DEFAULT IS PRE-FILLED, NEVER PLACEHOLDER TEXT. `row.value` on a derived default
+    // is what the system will use if nobody says otherwise, so it is IN the box -- 「바꾸려면
+    // 고르세요」 is a sentence about a filled box, and beside an empty one it is a lie.
+    if (current === undefined && candidates.length
+        && node && node.kind === 'map' && node.keyed_by === 'index') {
+      const filled = Array.isArray(row.value) ? row.value : [];
+      return { kind: 'list', value: filled.filter((item) => typeof item === 'string') };
+    }
+    // An object candidate names the keys it fills; every other key in the record is
+    // somebody else's and is carried across untouched when one is picked.
+    const covers = [...new Set(candidates.flatMap(
+      (item) => (item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.keys(item) : [])))];
+    if (covers.length) {
+      const held = current && typeof current === 'object' && !Array.isArray(current)
+        ? current : null;
+      if (held) return { kind: 'object', value: held, covers };
+      if (current === undefined && node && node.kind === 'record') {
+        return { kind: 'object', value: {}, covers };
+      }
     }
     // 🔴 A FIELD NOBODY HAS FILLED IN YET IS STILL A FIELD. Everything above asks what the
     // draft HOLDS, so an absent value produced no control at all -- and the skeleton hands
@@ -1631,10 +1808,62 @@ function renderAuthoring(state) {
     }
     return [];
   };
+  /** What the plan row AT a branch path already answers for, so the tree stops asking.
+   *
+   * 🔴 THE CANDIDATES SIT ON THE PARENT AND THE BOXES SAT ON THE CHILDREN, WHICH IS WHY
+   * THEY NEVER MET. The plan answers at `read.occurred_at` while the skeleton draws that
+   * record's `timezone` / `column` / `basis` as three free-text leaves; it answers at
+   * `read.identity` while the skeleton draws an index map whose members are typed one box
+   * at a time. In both the person typed into a box the candidate list was not attached to.
+   *
+   *   'all'  the row IS the control -- an index map picked at the row, members and all
+   *   Set    a record whose named keys the row's candidates write; the rest stay their own
+   *   null   nothing changes; the node draws its children exactly as before
+   *
+   * Nothing here names a path or a field. It asks the plan whether the row has candidates
+   * and asks `editableFor` what shape they write, so a field this screen has never heard of
+   * is covered on the day the server starts sending candidates for it.
+   */
+  const covering = (path, shape) => {
+    const row = plan.fields.find((item) => item.path === `${base}.${path}`);
+    if (!row || !Array.isArray(row.candidates) || !row.candidates.length) return null;
+    const editable = editableFor(row, shape);
+    if (!editable) return null;
+    if (editable.kind === 'list') return 'all';
+    // A record only. A name-keyed MAP also holds a plain object, and covering ITS keys
+    // would hide members the document actually declares behind a picker that never names
+    // them -- the one direction of this change that could lose somebody's work.
+    if (editable.kind === 'object' && shape.kind === 'record') return new Set(editable.covers);
+    return null;
+  };
+  /** The distinct strings the OTHER declarations of this section hold at the same slot.
+   *
+   * Read off the whole-config plan (`state.authoringAll`), because the plan on screen is
+   * filtered to the open declaration and a list built from that could only ever suggest a
+   * value back to itself. A plan row states a whole subtree's value, so the deepest row
+   * that is an ancestor of the wanted slot is the one that can answer for it.
+   */
+  const usedElsewhere = (path) => {
+    const rows = state.authoringAll?.fields;
+    if (!Array.isArray(rows)) return [];
+    const [wantSection, wantId, ...rest] = splitBundlePath(path);
+    if (!wantSection || !wantId || !rest.length) return [];
+    const out = [];
+    for (const row of rows) {
+      const [section, id, ...at] = splitBundlePath(row.path);
+      if (section !== wantSection || id === wantId || at.length > rest.length) continue;
+      if (!at.every((step, index) => step === rest[index])) continue;
+      const held = getAtPath(row.value, rest.slice(at.length));
+      if (typeof held === 'string' && held && !out.includes(held)) out.push(held);
+    }
+    return out.sort();
+  };
   const context = {
     schema: state.authoringSchema || {},
     planRow,
     plannedMembers,
+    covering,
+    usedElsewhere,
     deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
     declared: (name) => (state.authoring?.sections || {})[name] || [],
     rolesNear,
