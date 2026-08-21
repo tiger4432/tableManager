@@ -138,7 +138,6 @@ class PredicateDescriptor:
     predicate_id: str
     version: int
     status: str
-    layer: str
     subject_entity_types: tuple[str, ...]
     object_kind: str
     object_entity_types: tuple[str, ...]
@@ -800,7 +799,6 @@ def _compile_vocabulary(section: Mapping[str, Any]) -> VocabularyRegistry:
             predicate_id=predicate_id,
             version=version,
             status=item["status"],
-            layer=item["layer"],
             subject_entity_types=tuple(item["subjects"]),
             object_kind=obj["kind"],
             object_entity_types=tuple(obj.get("types", ())),

@@ -386,7 +386,11 @@ def test_registry_semantic_changes_reach_snapshot_and_provenance(change):
     baseline = snapshot()
     raw = logical_bundle()
     if change == "vocabulary":
-        raw["vocabulary"]["moves_to@1"]["layer"] = "source"
+        # `layer` stood here until 2026-08-21, when it left the vocabulary declaration
+        # (one legal value, so no decision to move).  `subjects` is its replacement for
+        # the same reason it was chosen: it lands on `PredicateDescriptor` and nowhere
+        # else, so this parameter still moves ONE registry.
+        raw["vocabulary"]["moves_to@1"]["subjects"] = ["InputEntity@1", "OutputEntity@1"]
     else:
         raw["entities"]["InputEntity@1"]["key_types"] = {"input_id": "string"}
     changed = snapshot(raw)

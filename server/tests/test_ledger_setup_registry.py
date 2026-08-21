@@ -711,7 +711,6 @@ def test_new_config_entity_and_predicate_need_no_compiler_change():
     bundle["entities"]["NewTarget@1"] = {"keys": ["new_target_id"]}
     bundle["vocabulary"]["links_to@1"] = {
         "status": "active",
-        "layer": "ontology",
         "subjects": ["NewSubject@1"],
         "object": {
             "kind": "entity_ref", "types": ["NewTarget@1"],
