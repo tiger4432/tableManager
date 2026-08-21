@@ -2366,6 +2366,34 @@ body.resizing-active .history-sidebar {
   text-align: center;
 }
 
+/* Mockup 2b: the bottom shortcut row. `margin-top: auto` pins it to the foot of the panel
+   while there is spare height and lets it follow the table down when there is not, so it
+   never floats in the middle of an empty pane. */
+.reference-view { display: flex; flex-direction: column; }
+.reference-shortcuts {
+  margin-top: auto;
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* Copy Header MOVED here from the Options dropdown -- one control, same `#copy-header-toggle`,
+   so `clipboard.js` and `main.js` keep reading the element they already read. */
+.reference-shortcuts-copy {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.reference-shortcuts-copy input { width: 12px; height: 12px; margin: 0; }
+
 /* ── Mockup 2b: active filters live in the header bar ──────────────────────────────────
    They take the free space between the toolbar and the unsaved badges, so a filter is
    visible from wherever the operator is looking without a strip pushing the grid down. */

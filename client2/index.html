@@ -174,19 +174,6 @@
                   >Sort Latest</label
                 >
               </div>
-              <div class="dropdown-item checkbox-item">
-                <input
-                  type="checkbox"
-                  id="copy-header-toggle"
-                  class="glass-checkbox"
-                />
-                <label
-                  for="copy-header-toggle"
-                  class="checkbox-label"
-                  style="text-transform: none; letter-spacing: normal"
-                  >Copy Header</label
-                >
-              </div>
               <div
                 class="dropdown-item checkbox-item"
                 style="
@@ -425,6 +412,24 @@
             </div>
             <div id="reference-view" class="reference-view" style="display: none">
               <div id="reference-view-content" class="reference-view-content"></div>
+              <!-- Bottom shortcut row, mockup 2b. It sits OUTSIDE `#reference-view-content`
+                   because `render()` calls `replaceChildren()` on that node every refresh. -->
+              <div class="reference-shortcuts">
+                <span><span class="kbd">Shift</span>+<span class="kbd">↑↓</span> 범위</span>
+                <span><span class="kbd">Ctrl</span><span class="kbd">Enter</span> 일괄</span>
+                <span
+                  ><span class="kbd">Ctrl</span><span class="kbd">Shift</span
+                  ><span class="kbd">V</span> Smart Paste</span
+                >
+                <label class="reference-shortcuts-copy">
+                  <input
+                    type="checkbox"
+                    id="copy-header-toggle"
+                    class="glass-checkbox"
+                  />
+                  Copy Header
+                </label>
+              </div>
             </div>
           </div>
         </aside>
