@@ -78,6 +78,22 @@ function seededPaths(value, at, into = []) {
   return into;
 }
 
+/** Every container a form path sits inside, itself included -- `a`, `a.b`, `a.b[0]`, …
+ *
+ *  A jump from the map has to land on a row that EXISTS, and the middle tree folds. So the
+ *  jump opens the branches on the way down first; the map itself never folds, which is why
+ *  it can offer an address the tree is not currently showing.
+ */
+function ancestorPaths(path) {
+  const out = [];
+  let at = '';
+  for (const step of String(path || '').matchAll(/(?:^|\.)[^.[\]]+|\[\d+\]/g)) {
+    at += step[0];
+    out.push(at);
+  }
+  return out;
+}
+
 export function createOntologyExplorerController({ root, apiBase, adminFetch, showToast }) {
   let state = { ...initialExplorerState, navigation: { back: [], forward: [] } };
   let generation = 0;
@@ -578,6 +594,32 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     );
   });
 
+  // 🔴 「나는 지금 어디에 있나」 IS MOVED WITHOUT A RE-RENDER. The map is one class on one
+  // row; re-rendering the whole panel to move a marker would rebuild the form under the
+  // hand that is filling it -- and this fires on every focus change, including a Tab
+  // between two inputs. Rows are compared by `dataset.value`, so no path needs escaping.
+  const markMapCursor = (path) => {
+    let here = null;
+    for (const row of root.querySelectorAll('.oe-map-row')) {
+      const on = row.dataset.value === path;
+      row.classList.toggle('is-here', on);
+      if (on) here = row;
+    }
+    // `nearest`: a marker already on screen does not move the panel, and the map's own
+    // column is the only scroller between here and a fixed-height body.
+    if (here) here.scrollIntoView({ block: 'nearest' });
+  };
+
+  // The map follows the hand. Focus, not click, so tabbing through the form moves it too.
+  root.addEventListener('focusin', (event) => {
+    const node = event.target.closest?.('.oe-workspace .oe-node[data-path]');
+    if (!node) return;
+    const path = node.dataset.path;
+    if (state.mapCursor === path) return;
+    state = { ...state, mapCursor: path };
+    markMapCursor(path);
+  });
+
   const jsonRequest = async (path, init) => {
     const response = await adminFetch(`${apiBase}/admin/ontology-explorer${path}`, init);
     let payload = null;
@@ -911,6 +953,27 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     else if (action === 'remove-entity-key') {
       const at = Number(target.dataset.value);
       editEntityKeys((keys) => keys.filter((_, i) => i !== at));
+    }
+    else if (action === 'map-goto') {
+      // 🔴 THE MAP IS A DOOR, NOT A SECOND PLACE TO READ. Pressing a row opens whatever it
+      // sits under and scrolls the middle tree to it -- the answer to 「거기로 어떻게 가나」.
+      // Opening is `open: true` only: a jump never SHUTS anything the person had open.
+      const path = target.dataset.value;
+      state = { ...state, mapCursor: path };
+      state = reduceFieldFold(state, {
+        type: 'FIELD_TOGGLED', open: true, paths: ancestorPaths(path),
+      });
+      renderOntologyExplorer(root, state);
+      // 🔴 NOW, NOT IN A `requestAnimationFrame`. The render is synchronous, so the row is
+      // already in the document, and `scrollIntoView` forces the layout it needs by itself.
+      // Deferring it to a frame made the jump depend on frames being SERVED -- measured on a
+      // hidden pane: the marker moved, the middle tree never scrolled, and the door was a
+      // door that did nothing. Same trap as `built-is-not-loaded`, one layer down.
+      for (const node of root.querySelectorAll('.oe-workspace .oe-node[data-path]')) {
+        if (node.dataset.path !== path) continue;
+        node.querySelector('.oe-node-row')?.scrollIntoView({ block: 'center' });
+        break;
+      }
     }
     else if (action === 'toggle-field') {
       // WHICH WAY comes off the control the person actually pressed. The store records a

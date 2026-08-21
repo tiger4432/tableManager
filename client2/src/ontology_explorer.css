@@ -389,9 +389,20 @@
 #ontology-explorer-root .oe-check { display: flex; gap: 6.8px; color: var(--oe-muted); font-size: 13px; }
 #ontology-explorer-root .oe-check i { color: var(--oe-ok); }
 #ontology-explorer-root .oe-editor { display: grid; gap: 13.6px; }
+/* 🔴 ONE LINE, NOT A THREE-ROW TABLE -- 「항목 열면 트리가 위에 나오게」.
+   Nothing is deleted: 초안 상태, Revision and the base snapshot hash all still say what
+   they said. They stopped being the first 101px of the editing area and became a strip of
+   metadata under the form, wrapping only when the column is too narrow to hold it. The
+   hash keeps its mono face; at 10.5px the whole 64 characters fit the middle column. */
 #ontology-explorer-root .oe-editor-context {
-  display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 6.8px 13.6px;
-  padding: 10.2px; background: transparent; border: 1px solid var(--oe-line);
+  display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10.2px; row-gap: 3.4px;
+  padding: 5px 10.2px; background: transparent; border: 1px solid var(--oe-line);
+  font-size: 11px;
+}
+#ontology-explorer-root .oe-editor-context .oe-label { color: var(--oe-ink-meta); font-size: 10px; }
+#ontology-explorer-root .oe-editor-context .oe-value {
+  margin-right: 6.8px; font-family: var(--oe-font-mono); font-size: 10.5px;
+  overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-editor-validation { white-space: pre-wrap; color: var(--oe-ok); font-size: 12px; }
 #ontology-explorer-root .oe-editor-validation[data-valid="false"] { color: var(--oe-warn); }
@@ -707,6 +718,45 @@
 #ontology-explorer-root .oe-side > .oe-panel { border: 0; background: transparent; }
 #ontology-explorer-root .oe-side .oe-flow-area { padding: 10.2px; }
 #ontology-explorer-root .oe-side .oe-section-heading h2 { font-size: 13px; }
+
+/* ── The map ────────────────────────────────────────────────────────────────────────────
+   The declaration's outline in the 330px column: one line a node, names only, nothing
+   folded. It has no value column and no state column, which is what lets a shape that
+   needs 1048px in the middle stand inside 330 here.
+
+   🔴 IT WRAPS, IT NEVER TRUNCATES. An ellipsis at this width would hide the end of the
+   very identifiers the map exists to point at, and a hidden row is the failure this whole
+   round removes. A row that needs more than the column gets a second line and stays whole.
+
+   🔴 10px A LEVEL, NOT THE TREE'S 16, AND EVERY CHILD CARRIES A `ㄴ`. Owner's sketch:
+   A / ㄴB / ····ㄴC. Indentation alone is unreadable in this column -- two or three
+   characters of whitespace and the eye has to count them -- so the mark and the stair are
+   drawn together. The tree keeps its own 16px stair; that figure is the mockup's and this
+   is a different column. */
+#ontology-explorer-root .oe-map-area { padding: 10.2px; }
+#ontology-explorer-root .oe-map-list { display: flex; flex-direction: column; }
+#ontology-explorer-root .oe-map-row {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: 0; border-left: 2px solid transparent; background: transparent;
+  color: var(--oe-muted); font-family: var(--oe-font-mono); font-size: 11px;
+  line-height: 1.5; padding: 0 4px 0 calc(6px + var(--oe-depth, 0) * 10px);
+  overflow-wrap: anywhere;
+}
+/* The connector stays a rung, not a word: it never takes the row's colour emphasis. */
+#ontology-explorer-root .oe-map-branch { color: var(--oe-ink-meta); margin-right: 2px; }
+#ontology-explorer-root .oe-map-row.is-branch { color: var(--oe-text); }
+#ontology-explorer-root .oe-map-row:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
+#ontology-explorer-root .oe-map-row:active { background: var(--oe-tint-accent-press); }
+/* 「어디가 남았나」 -- the plan's own predicate, in the warn tone the form rows use. */
+#ontology-explorer-root .oe-map-row.is-left {
+  color: var(--oe-warn); border-left-color: var(--oe-warn);
+}
+/* 「나는 지금 어디에 있나」. The bar and the ground together, because on a marked row the
+   colour alone is already spoken for. */
+#ontology-explorer-root .oe-map-row.is-here {
+  background: var(--oe-accent-soft); border-left-color: var(--oe-accent);
+  color: var(--oe-accent); font-weight: 600;
+}
 
 /* ── The mockup's components, stated once ───────────────────────────────────────────────
    This block sits last on purpose: the design file ends the same way, with the shapes

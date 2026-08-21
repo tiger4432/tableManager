@@ -2,7 +2,7 @@ import { isDraftRevisionEditable, declarationIdFor } from './ontology_explorer_s
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
-  declarationShape, fieldApplies, memberPath, membersOf,
+  declarationShape, fieldApplies, memberPath, membersOf, shapeAt,
 } from './ontology_skeleton.js';
 
 const KIND_LABELS = Object.freeze({
@@ -253,51 +253,150 @@ function renderTree(state) {
   return nav;
 }
 
-function renderPaths(state) {
-  const area = h('section', 'oe-flow-area');
-  const heading = h('div', 'oe-section-heading');
-  const mode = state.viewContext?.mode === 'draft_preview'
-    ? `DRAFT PREVIEW · r${state.draft?.revision} · ${state.viewContext.preview_snapshot_hash?.slice(0, 8)}`
-    : `ACTIVE · ${state.activeSnapshot?.snapshot_hash?.slice(0, 8)}`;
-  heading.append(h('h2', '', 'Reference Flow'), h('span', '', mode));
-  area.append(heading);
-  const nodes = nodeMap(state);
-  // 🔴 ONE LANE: WHERE THIS THING STANDS. The 「경로 후보 1..N」 enumeration went on
-  // 2026-08-20 (owner: 「우측 패널 경로 후보는 딱히 쓸데가 없네」) together with the merge that
-  // emptied it -- with a preparer and a mapper no longer separate declarations, the routes
-  // that ran THROUGH them stopped existing. It is not a loss of information: the lanes were
-  // built from `index.inbound` filtered to `resolved`, and Integrity below lists that same
-  // relation WITH each edge's status, so it says strictly more (measured: 92 of 92 path
-  // edges already appear in some node's 사용처, and 48 of 62 selections had one lane).
-  const paths = [state.currentPath || {
-    path_id: 'root', node_keys: [state.selection.key], edge_ids: [],
-  }];
-  const edgeMap = new Map([...state.outbound, ...state.usedBy].map((edge) => [edge.edge_id, edge]));
-  paths.forEach((path) => {
-    const lane = h('div', 'oe-flow');
-    lane.dataset.pathId = path.path_id;
-    lane.dataset.current = 'true';
-    lane.append(h('span', 'oe-flow-label', '현재 경로'));
-    path.node_keys.forEach((key, index) => {
-      const node = nodes.get(key);
-      const card = button('', 'select', key, 'oe-flow-node');
-      card.dataset.pathId = path.path_id;
-      if (index > 0) card.dataset.edgeId = path.edge_ids[index - 1] || '';
-      card.setAttribute('aria-pressed', String(key === state.selection?.key));
-      card.append(h('div', 'oe-node-kind', node?.kind || 'unknown'));
-      card.append(h('div', 'oe-node-name', node?.canonical_id || key));
-      card.append(h('div', 'oe-node-state', `${node?.change_status || 'active'} · ${node?.compile_status || 'unresolved'}`));
-      addPopover(card, node);
-      lane.append(card);
-      if (index < path.node_keys.length - 1) {
-        const edge = edgeMap.get(path.edge_ids[index]);
-        const arrow = h('div', 'oe-arrow', '→');
-        arrow.append(h('small', '', `${edge?.status || 'resolved'} · ${edge?.change_status || 'active'}`));
-        lane.append(arrow);
-      }
-    });
-    area.append(lane);
+// 🔴 THE RIGHT COLUMN IS A MAP OF THE DECLARATION YOU ARE IN.
+//
+//     우측 패널은 현재 트리구조를 다 펼쳐두고 일종의 현재 항목의 지도?로 전환할 수 있을까
+//     어차피 후보 경로는 안 쓰는데 그거 지우고            (owner, 2026-08-21)
+//
+// `Reference Flow`'s 「현재 경로」 went with the change and lost nothing: for a source it was
+// always ONE hop -- the declaration itself -- so the lane restated the title. `Integrity`
+// below is untouched; it answers the unresolved-reference count and that is real.
+//
+// The map answers four questions and owns no controls:
+//
+//   1  what does this declaration look like whole   every branch drawn, nothing folded
+//   2  where am I now                               `state.mapCursor`, the row last touched
+//   3  WHAT IS LEFT                                 the plan's own 「남음」 predicate, marked
+//   4  how do I get there                           every row is a button that jumps
+//
+// 🔴 IT NEVER FOLDS, AND THAT IS THE WHOLE POINT. Folding is what the middle tree does; a
+// map that folds is a second tree and there is no map. If the outline is too long, the row
+// count is the finding to report -- not something to hide behind a 「접힘 · N」.
+//
+// 🔴 AND IT DRAWS NO VALUES. The middle tree is where a value is read and written; putting
+// them here would make the third copy of the same sentence, which is the other half of this
+// round.
+
+/** What the map is a map OF: the shape, the document, and where the plan spells its paths. */
+function mapSubject(state) {
+  const kind = state.draft?.target_kind || state.selection?.kind || null;
+  const skeleton = state.authoringSchema?.skeleton || null;
+  const section = (state.authoringSchema?.authorable_kinds || [])
+    .find((row) => row.id === kind)?.section || null;
+  const label = state.draft?.target_id || state.selection?.canonical_id || '';
+  // A draft is what the person is CHANGING, so the map follows the buffer rather than the
+  // snapshot -- a mapping added a moment ago is on the map before it is saved. Unparseable
+  // text is the textarea's problem; the map falls back to what the file holds.
+  let document_ = state.selection?.raw;
+  if (state.draft) {
+    try { document_ = JSON.parse(state.editorText); } catch { document_ = document_ ?? null; }
+  }
+  return {
+    node: skeleton && section ? declarationShape(skeleton, section) : null,
+    defs: skeleton?.defs || {},
+    document: document_,
+    label,
+    // The same spelling `writablePrefix` uses, minus its draft precondition: the map is
+    // drawn for reading too, and the plan's rows are absolute either way.
+    base: section && label ? `bundle.${section}.${label}` : '',
+  };
+}
+
+/** The outline, flat: one entry per node the middle tree would draw a row for.
+ *
+ *  🔴 THE SAME PRIMITIVES THE FORM WALKS WITH -- `shapeAt` to deref, `fieldApplies` to gate,
+ *  `membersOf`/`memberPath` to name members. It is a separate walk because it produces
+ *  positions rather than controls, but every rule about WHICH nodes exist is read from the
+ *  one place, so the map cannot list a row the tree does not have.
+ *
+ *  🔴 A NUMBERED LIST IS ONE ENTRY, AND ONLY A NUMBERED ONE (owner, 2026-08-21):
+ *
+ *      리스트 멤버를 하나씩 나열하지 마. 0, 1, 2 행 만들지 마
+ *
+ *  `input_columns` with ten elements was ten rows called `0`…`9`, and rows named after their
+ *  own subscript bury the structure the map exists to show. The list keeps its line and says
+ *  how many it holds. This is NOT folding to fit: a record's fields and a map's NAMED
+ *  members are all still drawn, at every depth, exactly as before -- what stops having a
+ *  line each is the member whose only name is its index.
+ */
+function outlineRows(node, defs, path, value, depth, label, out) {
+  const shape = shapeAt(node, [], defs);
+  if (!shape) return out;
+  const indexed = shape.kind === 'map' && shape.keyed_by === 'index';
+  const held = indexed ? membersOf(shape, value) : null;
+  out.push({
+    path, depth, branch: shape.kind !== 'leaf',
+    label: indexed ? `${label} · ${held.length}` : label,
   });
+  if (shape.kind === 'leaf' || indexed) return out;
+  if (shape.kind === 'record') {
+    const record = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    for (const field of shape.fields || []) {
+      const current = record[field.key];
+      if (!fieldApplies(field, record, current)) continue;
+      outlineRows(field.node, defs, path ? `${path}.${field.key}` : field.key,
+                  current, depth + 1, field.label || field.key, out);
+    }
+    return out;
+  }
+  for (const key of membersOf(shape, value)) {
+    outlineRows(shape.of, defs, memberPath(path, key, shape.keyed_by),
+                (value || {})[key], depth + 1, String(key), out);
+  }
+  return out;
+}
+
+function renderDeclarationMap(state) {
+  const area = h('section', 'oe-map-area');
+  const subject = mapSubject(state);
+  const heading = h('div', 'oe-section-heading');
+  heading.append(h('h2', '', '지도'), h('span', '', subject.label || '—'));
+  area.append(heading);
+  if (!subject.node || !subject.document || typeof subject.document !== 'object') {
+    area.append(h('div', 'oe-empty', '펼칠 선언이 없습니다.'));
+    return area;
+  }
+  const rows = outlineRows(subject.node, subject.defs, '', subject.document, 0,
+                           subject.label || '선언', []);
+  // The plan's own predicate for 「남음」, unchanged and not re-derived here -- PLUS the
+  // refusals that never found a field.
+  //
+  // 🔴 THE ONES WITH NO ROW ARE THE ONES YOU CANNOT SEE. `attentionPaths` walks
+  // `plan.fields`, so a refusal in `unattached_refusals` is invisible to it -- and the
+  // middle tree folds on that same predicate, so the branch holding it closes over it.
+  // Measured on a source built from nothing: `read.occurred_at` sat folded while
+  // `read.occurred_at.timezone` under it owed `missing_field`. That is exactly the 「어디가
+  // 남았나」 the map exists to answer, so the map counts it.
+  //
+  // 🔴 ADDED HERE, NOT IN `attentionPaths`. That function is also the tree's fold rule, and
+  // changing it would re-fold the middle tree -- a different round's decision.
+  const hot = [
+    ...attentionPaths(state.authoring || {}),
+    ...(state.authoring?.unattached_refusals || []).map((refusal) => refusal.path),
+  ];
+  const list = h('div', 'oe-map-list');
+  for (const row of rows) {
+    const absolute = subject.base
+      ? (row.path ? `${subject.base}.${row.path}` : subject.base) : row.path;
+    const item = button('', 'map-goto', row.path, 'oe-map-row');
+    item.style.setProperty('--oe-depth', String(row.depth));
+    // 🔴 THE HIERARCHY IS DRAWN, NOT IMPLIED. Owner's sketch, mid-round:
+    //
+    //     A
+    //     ㄴB
+    //         ㄴC
+    //
+    // At 330px an indent alone is a couple of characters of whitespace and the eye cannot
+    // count it; every child carries the mark AND stands further in than its parent.
+    if (row.depth) item.append(h('span', 'oe-map-branch', 'ㄴ'));
+    item.append(h('span', 'oe-map-name', row.label));
+    if (row.branch) item.classList.add('is-branch');
+    if (needsAttention(hot, absolute)) item.classList.add('is-left');
+    if (row.path === (state.mapCursor || '')) item.classList.add('is-here');
+    item.title = row.path || subject.label;
+    list.append(item);
+  }
+  area.append(list);
   return area;
 }
 
@@ -503,16 +602,17 @@ function renderRaw(state) {
       title.append(h('h1', '', state.draft.target_id), h('p', '', state.draft.target_kind));
       editor.append(title);
     }
-    // 🔴 THE REASONS COME WITH YOU. Shown only in the list, they vanish at the moment the
-    // operator opens the thing to fix it -- which is the one moment they are needed.
-    const unreadHere = state.invalid?.[state.draft.target_key];
-    if (unreadHere) {
-      for (const reason of unreadHere.reasons || []) {
-        const why = h('div', 'oe-tree-why');
-        why.append(h('code', '', reason.path), h('span', '', reason.message));
-        editor.append(why);
-      }
-    }
+    // 🔴 THE COLLECTED REASONS ARE GONE FROM HERE, AND THAT IS THE RULING.
+    //
+    //     편집창도 트리 상단 에러는 없애도 될 것 같아 좌측 패널에 에러가 떠 있어서.
+    //     항목 열면 트리가 위에 나오게 해 줘                (owner, 2026-08-21)
+    //
+    // They were a THIRD copy: the left index carries them under the row that could not be
+    // read, and every row of the form still carries its own. Piled above the tree they
+    // pushed the form off the first screen and said nothing the other two did not.
+    //
+    // 🔴 THE PER-ROW MARKS STAY. Deleting those would leave no way to tell which box is
+    // still owed -- only the COLLECTED list goes.
     const context = h('div', 'oe-editor-context');
     context.append(keyValue('초안 상태', state.draft.lifecycle_status));
     context.append(keyValue('Revision', state.draft.revision));
@@ -565,7 +665,6 @@ function renderRaw(state) {
       controls.append(button('Delete', 'delete-declaration', state.draft.target_key,
                              'oe-editor-action oe-editor-action-danger'));
     }
-    editor.append(context);
     if (state.draft.target_kind === 'entity') {
       const keysForm = renderEntityKeys(state);
       if (keysForm) editor.append(keysForm);
@@ -576,7 +675,12 @@ function renderRaw(state) {
     // brought up to where the declaration is being edited, so filling them IS the editing.
     // No new area, no new mode, no modal -- the owner's standing rule.
     if (state.authoring) editor.append(renderAuthoring(state));
-    editor.append(label, validation, controls);
+    // 🔴 THE TREE FIRST, THE DRAFT'S PAPERWORK AFTER IT. 「항목 열면 트리가 위에 나오게」:
+    // the three-line context and the raw JSON are ABOUT the draft, and reading them is not
+    // what opening a declaration is for. Nothing is deleted -- the snapshot hash, the
+    // revision and the lifecycle all still say exactly what they said, one screen lower and
+    // one line tall (see `.oe-editor-context`).
+    editor.append(context, label, validation, controls);
     return editor;
   }
   if (state.draft) {
@@ -1109,6 +1213,11 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   const chosen = context.expanded ? context.expanded[path] : undefined;
   const open = !path ? true : (chosen === undefined ? byDefault : chosen);
   const box = h('div', 'oe-node');
+  // The address the right-hand map jumps to. It is the node's own path and nothing else --
+  // the map is drawn from the same paths, so there is no second naming scheme to keep in
+  // step. (Not `data-key`: that is `dom_patch`'s reconciliation signature and these boxes
+  // are already reconciled positionally among their siblings.)
+  box.dataset.path = path;
   // 🔴 THREE SHAPES, NOT TWO. Owner, looking at the badge: 「편집창에서 map으로 떠있는건
   // 머야」 -- and asking is the verdict, because two different things wore one word. A
   // name-keyed map asks you for a NAME before it can hold anything; an index-keyed one just
@@ -1220,6 +1329,7 @@ function renderTreeLeaf(context, node, path, value, depth, label) {
     ? context.renderRow(context.suggest(planned, node, path), node, true)
     : renderSkeletonLeaf(context, node, path, value);
   const box = h('div', 'oe-node');
+  box.dataset.path = path;             // the map's jump target; see `renderSkeletonForm`
   let state = null;
   let cls = '';
   if (planned) {
@@ -1317,11 +1427,16 @@ function renderAuthoring(state) {
   // The blocked strongest tier, stated rather than absorbed: fields whose value is fully
   // determined AND that the grammar still demands as a key. Each is a question the screen
   // can answer but cannot remove, and that is a config-grammar item, not a UI one.
+  //
+  // 🔴 UNDER THE FORM, NOT OVER IT. It is a COUNT of rows that are all on the tree below
+  // carrying their own tier mark, so above them it was a summary standing between the
+  // operator and the thing summarised -- the last 36px of the 「항목 열면 트리가 위에」.
+  // It still says the same sentence; it is appended at the end of this panel.
   const blocked = plan.force_summary?.grammar_requires_it || 0;
-  if (blocked) {
-    wrap.append(h('div', 'oe-note',
-      `자유도 0인데 문법이 요구하는 칸 ${blocked}개 · 화면이 채우고 근거로 보낸다`));
-  }
+  const note = blocked
+    ? h('div', 'oe-note',
+        `자유도 0인데 문법이 요구하는 칸 ${blocked}개 · 화면이 채우고 근거로 보낸다`)
+    : null;
   // 🔴 ABSENT AND UNREADABLE ARE NOT THE SAME CASE. Absent gets an OFFER; a file that
   // exists but will not parse gets its error and nothing else, because it is almost
   // certainly somebody's work with a bad comma in it. Writing a skeleton over that would
@@ -1522,6 +1637,7 @@ function renderAuthoring(state) {
     }
     wrap.append(section);
   }
+  if (note) wrap.append(note);
   return wrap;
 }
 
@@ -1685,14 +1801,14 @@ export function renderOntologyExplorer(root, state) {
     workspace.append(h('div', 'oe-empty', state.loading ? '불러오는 중…' : '표시할 정의가 없습니다.'));
   }
   main.append(workspace);
-  // 6b's third column. The mockup puts the reference flow here, not across the top of the
-  // work -- owner: 「위에 플로우도 목업에는 오른쪽 패널에 있는데 좀 작게하고」. At 330px the
-  // boxes cannot stand side by side, so "smaller" is a vertical stack at the mockup's own
-  // 11px, which is what its right panel does.
+  // 6b's third column, and what stands in it is now the MAP -- 「일종의 현재 항목의 지도」.
+  // The reference flow that used to be here said one hop about a source and nothing else;
+  // `Integrity` under it is untouched and still answers the unresolved-reference count.
   //
-  // What the flow SAYS is unchanged, and so is clicking a node -- only where it sits.
+  // Drawn for a draft as well as a selection: the declaration being FILLED is the one whose
+  // remaining rows a person needs to see, and it may not be in the snapshot at all.
   const side = h('div', 'oe-side');
-  if (state.selection) side.append(renderPaths(state));
+  if (state.selection || state.draft) side.append(renderDeclarationMap(state));
   side.append(renderIntegrity(state));
   main.append(side);
   // 🔴 THE SPINE IS A BAND ABOVE THE BODY, NOT A COLUMN INSIDE IT. It was appended into

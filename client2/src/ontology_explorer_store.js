@@ -60,6 +60,10 @@ export const initialExplorerState = Object.freeze({
   // exactly where it had begun to owe something, which is the one place nobody wanted it
   // folded. A remembered inversion is not a remembered decision.
   expandedFields: {},
+  // Which row of the current declaration the hand is on, for the right-hand map's 「나는
+  // 지금 어디에 있나」. A form path, or `''` for the declaration's own row. Local only: it
+  // is a fact about this screen, not about the snapshot.
+  mapCursor: '',
 });
 
 const CONTEXT_COLLECTIONS = [
