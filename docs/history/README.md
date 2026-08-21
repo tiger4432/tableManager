@@ -1,13 +1,23 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **679개** 이력. (거버넌스 규칙 #4)
+> 총 **689개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-21 21:28** — [A Machine To Count The Holes And Its Own Predicate Was Wrong Twice](./20260821_212800_a_machine_to_count_the_holes_and_its_own_predicate_was_wrong_twice.md)
+- **2026-08-21 20:59** — [The Screen Runs One Real Batch Instead Of Building A Second Judge](./20260821_205900_the_screen_runs_one_real_batch_instead_of_building_a_second_judge.md)
+- **2026-08-21 20:51** — [The Candidates Were On The Parent And The Form Never Asked For The Declaration That Gates The Run](./20260821_205100_the_candidates_were_on_the_parent_and_the_form_never_asked_for_the_declaration_that_gates_the_run.md)
+- **2026-08-21 19:40** — [Lot Event Flowed After Three Rounds At The Read Path And One Correction Behind Them](./20260821_194000_lot_event_flowed_after_three_rounds_at_the_read_path_and_one_correction_behind_them.md)
+- **2026-08-21 17:52** — [A Claim That Only Restated Its Predicate Was A Copy So The Section Went Away](./20260821_175200_a_claim_that_only_restated_its_predicate_was_a_copy_so_the_section_went_away.md)
+- **2026-08-21 15:19** — [The Screen Stopped Losing The Operators Place](./20260821_151900_the_screen_stopped_losing_the_operators_place.md)
+- **2026-08-21 11:26** — [The Cursor Was Comparing Itself Against A Hash Of The Whole File](./20260821_112600_the_cursor_was_comparing_itself_against_a_hash_of_the_whole_file.md)
+- **2026-08-21 10:20** — [The Form Drew Settled Squares It Could Not Back Up](./20260821_102000_the_form_drew_settled_squares_it_could_not_back_up.md)
+- **2026-08-21 07:32** — [A Sentence Got A Nickname And The Structure Search Had Nothing Left To Do](./20260821_073200_a_sentence_got_a_nickname_and_the_structure_search_had_nothing_left_to_do.md)
+- **2026-08-21 01:53** — [The Config Learned To Say Read Prepare Map Bind And The Same Rename Blanked The Read Tree](./20260821_015300_the_config_learned_to_say_read_prepare_map_bind_and_the_same_rename_blanked_the_read_tree.md)
 - **2026-08-19 07:50** — [The Backfill Finished And Every Job Carries Its Own Count](./20260819_075000_the_backfill_finished_and_every_job_carries_its_own_count.md)
 - **2026-08-19 07:45** — [The Cursor Was Written With One Key And Read With Another](./20260819_074500_the_cursor_was_written_with_one_key_and_read_with_another.md)
 - **2026-08-19 07:00** — [The Group Had Two Ingestion Times And The Gate Could Not See That Path](./20260819_070000_the_group_had_two_ingestion_times_and_the_gate_could_not_see_that_path.md)
@@ -700,4 +710,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-19 by gen_index.py*
+*Last generated: 2026-08-21 by gen_index.py*
