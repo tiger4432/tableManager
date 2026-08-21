@@ -206,6 +206,54 @@ A vite dev server is running from this worktree on 5173 (background). It writes 
 
 ---
 
+## ✅ 22:4x — 판정 ⑧ applied and WALKED. Phase 3.1 is visible on screen (`a808c784`)
+
+```
+before   panel bound to rules.find(has views) -> dt_frame_confrimation (declares nothing)
+after    a rule that DECLARES wins; otherwise the first, exactly as before
+```
+
+**Walked on the dev server against live 8080:**
+
+```
+view tabs now   "관측된 dt_lot / dt_slot — 이 job 이 말하는 것"  ·  "이 job 의 원본 행 (근거)"
+                -> the panel reaches dt_lot_slot_from_log, which it could not before
+view[0]         headers  ["① dt_lot", "② dt_slot", "cells"]
+                declared columns FIRST, ADJACENT, numbered in declared order; cells after
+                row      SYN-DT-103 · 25 · 125
+view[1]         declares nothing -> original 8 columns, 125 rows, no numbering
+                view-level FALLBACK intact
+```
+
+🔴 The selected cell was `DT_LOT: NULL` while the panel offered `SYN-DT-103` for it — the
+empty cell and its candidate on screen together. That is the feature working, not a mock.
+
+No control was added to choose a rule, per the ban.
+
+**The stopgap is in the code comment, not only here**, as instructed: the panel still shows
+one rule out of N; this criterion is unique today only because exactly one rule declares; when
+a second declares, the arbitrary representative returns just as silently as it did this time.
+
+Harnesses: 28 · 59 · 72 · 65, zero failures.
+
+### NOT walked, and why
+
+```
+rule-level fallback (|| forTable[0])   unreachable from a screen here — all three rules sit on
+                                       dt_inventory and one of them declares, so `find` never
+                                       returns undefined. Reasoned, not observed. Saying so.
+```
+
+### Still open
+
+```
+⑦   suppressFilterButton inert on AG-Grid 35.3.0, deliberately left inert (not blocking)
+3.2 not started — awaiting your go
+Phase 1–2  awaiting your merge
+```
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
