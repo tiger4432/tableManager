@@ -783,10 +783,10 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
 
 
 def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str) -> Any:
-    if binding.get("approval_status") != "approved":
-        raise RoleFrameError(
-            "binding_not_approved", f"{path}.approval_status",
-            "only approved bindings are executable")
+    # `approval_status` gated this call until 2026-08-21.  It refused any binding that did
+    # not say `approved`, and no file in the tree ever held another value -- 40 of 40 live
+    # bindings said `approved`, so the gate could not fire and the field could not be
+    # withheld.  A permission that is never withheld is not a permission; it retired.
     kind = binding.get("kind")
     if kind == "column":
         column = binding.get("column")

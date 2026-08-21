@@ -152,8 +152,7 @@ ID의 Profile 내용이 바뀌어도 과거 cursor version으로 조용히 건�
 
 Lookup은 binding별 고유 key를 모아 한 번에 호출하며 0건은 `lookup_not_found`, 다건은
 `lookup_not_unique`, 미등록 adapter/select와 잘못된 반환 형상은 전용 오류로 거절한다.
-raw SQL, 임의 Python/JavaScript/expression은 없다. Binding의 `approval_status`와
-`binding_origin`은 실행 허용만 결정하며 Claim의 derivation/epistemic class를 승격하지 않는다.
+raw SQL, 임의 Python/JavaScript/expression은 없다. ⚠️ **[2026-08-22] 이 자리에 있던 `approval_status`·`binding_origin` 문장은 지웠다 — 그 필드들이 선언에서 «없어졌다**(자유도가 0이었다: 라이브 40개 전부 `approved`, 나머지 둘은 0번 선언). binding은 이제 종류와 그 payload만 말하고, 실행 허용을 binding이 «결정하는» 자리는 없다.
 
 현재 등록된 실제 adapter `destination_inventory`는 표준 동적 테이블의
 `row_id`, `business_key_val`, `container`를 읽는다. key를 최대 1000개씩 조회하고, 별도

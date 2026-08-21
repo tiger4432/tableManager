@@ -37,7 +37,7 @@ from ledger.source_preparation import (                                  # noqa:
 
 
 def _approved(**extra):
-    return dict(binding_origin="user_declared", approval_status="approved", **extra)
+    return dict(**extra)
 
 
 def _column(name):
@@ -63,9 +63,10 @@ SHIPMENT_SETUP = {
             "unit": "row",
             "identity": ["shipment_id"],
             "group_by": [],
-            "order_by": ["shipment_id"],
+            # `cursor` retired 2026-08-21 and the watermark is derived from this
+            # list, so this list is what the cursor used to declare.
+            "order_by": ["shipped_at", "shipment_id"],
             "occurred_at": {"column": "shipped_at", "timezone": "Asia/Seoul"},
-            "cursor": {"columns": ["shipped_at", "shipment_id"]},
             "registration_probe": [
                 {"entity_type": "Box@1", "columns": ["box"]}],
         },

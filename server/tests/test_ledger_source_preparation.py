@@ -64,8 +64,6 @@ def entity_binding(entity_type, columns):
         "kind": "entity",
         "entity_type": entity_type,
         "keys": {key: binding(column) for key, column in columns.items()},
-        "binding_origin": "user_declared",
-        "approval_status": "approved",
     }
 
 
@@ -180,9 +178,10 @@ def dt_chain_bundle():
             "relation": "dt_log",
             "read": {
                 "unit": "group", "identity": ["dt_job_id"],
-                "group_by": ["dt_job_id"], "order_by": ["record_id"],
+                # `order_by` is what the retired `cursor` declared -- see
+                # `setup_bundle._derived_cursor`.
+                "group_by": ["dt_job_id"], "order_by": ["event_at", "record_id"],
                 "occurred_at": {"column": "event_at", "timezone": "Asia/Seoul"},
-                "cursor": {"columns": ["event_at", "record_id"]},
             },
             "prepare": preparation,
             "map": mapper,
@@ -531,19 +530,15 @@ def test_successful_right_row_change_yields_dependency_replay_worklist():
     assert worklist[0]["current_fingerprint"] == new_fingerprint
 
 
-@pytest.mark.parametrize("status", ["pending", "rejected"])
-def test_unapproved_nested_entity_binding_stops_before_preparer_call(status):
-    raw = logical_bundle()
-    source_profile(raw)["mappings"]["main_transition"]["bind"]["subject"][
-        "keys"]["input_id"]["approval_status"] = status
-    reader = FakeJoinReader()
-
-    with pytest.raises(LedgerSetupValidationError) as exc:
-        snapshot(raw)
-
-    assert exc.value.code == "binding_not_approved"
-    assert exc.value.path.endswith("bind.subject.keys.input_id.approval_status")
-    assert reader.calls == []
+# DELETED 2026-08-21 with the field it measured:
+# `test_unapproved_nested_entity_binding_stops_before_preparer_call` (two parameters).
+# It drove a nested entity key binding's `approval_status` to `pending`/`rejected` and
+# asserted the preparer was never called. `approval_status` retired that day -- 40 of 40
+# live bindings said `approved` and nothing in the tree could write another value -- so
+# the state it refused is underivable, not merely unchecked. The property it stood on
+# ("a declaration is refused before any reader is touched") is still held by
+# `test_zero_or_multiple_right_rows_refuse_before_mapper_and_cursor`, which asserts the
+# same `reader.calls == []` on a refusal that IS reachable.
 
 
 def test_missing_prepared_entity_identity_refuses_before_role_mapper():

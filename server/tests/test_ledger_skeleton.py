@@ -63,7 +63,10 @@ ANCHORS = {
     ("_validate_sources", "f'{path}.read'"): "sources.*.read",
     ("_validate_sources", "f'{path}.read.occurred_at'"):
         "sources.*.read.occurred_at",
-    ("_validate_sources", "f'{path}.read.cursor'"): "sources.*.read.cursor",
+    # `sources.*.read.cursor` left this map on 2026-08-21 with the `exact()` call that
+    # placed it: the cursor stopped being asked and became a copy of `read.order_by`,
+    # written by `setup_bundle._derived_cursor`.  A stale anchor is silent here, which is
+    # why it is removed by hand -- see the note above about `_validate_packs`.
     ("_validate_registration_probe", "item_path"):
         "sources.*.read.registration_probe.*",
 }

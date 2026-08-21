@@ -28,22 +28,13 @@ MAPPING_STATUSES = frozenset({
     MAPPING_STATUS_INFERRED,
 })
 
-BINDING_ORIGIN_USER_DECLARED = "user_declared"
-BINDING_ORIGIN_SYSTEM_SUGGESTED = "system_suggested"
-BINDING_ORIGIN_IMPORTED = "imported"
-BINDING_ORIGINS = frozenset({
-    BINDING_ORIGIN_USER_DECLARED,
-    BINDING_ORIGIN_SYSTEM_SUGGESTED,
-    BINDING_ORIGIN_IMPORTED,
-})
-
-APPROVAL_STATUS_PENDING = "pending"
-APPROVAL_STATUS_APPROVED = "approved"
-APPROVAL_STATUS_REJECTED = "rejected"
-APPROVAL_STATUSES = frozenset({
-    APPROVAL_STATUS_PENDING,
-    APPROVAL_STATUS_APPROVED,
-    APPROVAL_STATUS_REJECTED,
+#: Read and thrown away.  `binding_origin`, `approval_status` and `suggestion_reason`
+#: retired on 2026-08-21 -- each had exactly one reachable value, so none of them said
+#: anything.  Every v1 Profile ever written carries `approval_status` on every binding, so
+#: the names stay listed here to keep them OUT of the kind payload below: without that,
+#: `descriptor.normalize` would meet a field it does not know and refuse the whole file.
+RETIRED_BINDING_FIELDS = frozenset({
+    "binding_origin", "approval_status", "suggestion_reason",
 })
 
 CONSTANT_VALUE_TYPES = frozenset({
@@ -170,17 +161,10 @@ class PackRegistry:
 class BindingDefinition:
     kind: str
     values: Mapping[str, Any]
-    binding_origin: str
-    approval_status: str
-    suggestion_reason: Optional[str] = None
 
     def to_mapping(self) -> dict:
         out = {"kind": self.kind}
         out.update({name: _thaw_json(self.values[name]) for name in sorted(self.values)})
-        out["binding_origin"] = self.binding_origin
-        out["approval_status"] = self.approval_status
-        if self.suggestion_reason is not None:
-            out["suggestion_reason"] = self.suggestion_reason
         return out
 
 
@@ -277,37 +261,8 @@ class BindingKindRegistry:
                 f"binding kind {kind!r} does not support role kind {role.kind!r}"),)
 
         issues: list[ProfileValidationError] = []
-        binding_origin = raw.get(
-            "binding_origin", BINDING_ORIGIN_USER_DECLARED)
-        approval_status = raw.get(
-            "approval_status", APPROVAL_STATUS_PENDING)
-        suggestion_reason = raw.get("suggestion_reason")
-        if (not isinstance(binding_origin, str)
-                or binding_origin not in BINDING_ORIGINS):
-            issues.append(_binding_issue(
-                _path(path, "binding_origin"),
-                f"must be one of {', '.join(sorted(BINDING_ORIGINS))}"))
-        if (not isinstance(approval_status, str)
-                or approval_status not in APPROVAL_STATUSES):
-            issues.append(_binding_issue(
-                _path(path, "approval_status"),
-                f"must be one of {', '.join(sorted(APPROVAL_STATUSES))}"))
-        if binding_origin == BINDING_ORIGIN_SYSTEM_SUGGESTED:
-            if (not isinstance(suggestion_reason, str)
-                    or not suggestion_reason.strip()):
-                issues.append(_binding_issue(
-                    _path(path, "suggestion_reason"),
-                    "is required for a system_suggested binding"))
-        elif suggestion_reason is not None:
-            issues.append(_binding_issue(
-                _path(path, "suggestion_reason"),
-                "is only allowed for a system_suggested binding"))
-
         payload = {name: raw[name] for name in raw
-                   if name not in {
-                       "kind", "binding_origin", "approval_status",
-                       "suggestion_reason",
-                   }}
+                   if name != "kind" and name not in RETIRED_BINDING_FIELDS}
         normalized, kind_issues = descriptor.normalize(payload, path, role, self)
         issues.extend(kind_issues)
         if issues or normalized is None:
@@ -316,9 +271,6 @@ class BindingKindRegistry:
             kind=kind,
             values=MappingProxyType({name: _freeze_json(normalized[name])
                                      for name in sorted(normalized)}),
-            binding_origin=binding_origin,
-            approval_status=approval_status,
-            suggestion_reason=suggestion_reason,
         ), ()
 
 
@@ -717,58 +669,25 @@ def profile_readiness_errors(
 
     Structural validation and execution readiness deliberately remain separate.  This
     function performs no compilation, lookup, translation, I/O, or database work.
+
+    🔴 IT HAS NO RULES LEFT.  The one rule was `approval_status == "approved"`, and that
+    field retired on 2026-08-21 for holding one value everywhere it was ever written.  The
+    stage stays because `profile_chain_mapper` places it between "this Profile parsed" and
+    "this Profile runs", and that is where the next may-this-run rule belongs.
     """
     if not isinstance(profile, SourceOntologyProfile):
         raise TypeError(
             "readiness gate requires a validated SourceOntologyProfile")
-    issues: list[ProfileValidationError] = []
-    for mapping_index, mapping in enumerate(profile.mappings):
-        bind_path = f"mappings[{mapping_index}].bind"
-        for role_id in sorted(mapping.bind):
-            issues.extend(_binding_readiness_issues(
-                mapping.bind[role_id], _path(bind_path, role_id)))
-    return _sort_issues(issues)
+    return ()
 
 
 def require_executable_profile(
         profile: SourceOntologyProfile) -> SourceOntologyProfile:
-    """Return ``profile`` only when every top-level and nested Binding is approved."""
+    """Return ``profile`` when nothing blocks its execution."""
     issues = profile_readiness_errors(profile)
     if issues:
         raise issues[0]
     return profile
-
-
-def _binding_readiness_issues(
-        binding: BindingDefinition, path: str) -> list[ProfileValidationError]:
-    issues: list[ProfileValidationError] = []
-    if binding.approval_status != APPROVAL_STATUS_APPROVED:
-        issues.append(ProfileValidationError(
-            _path(path, "approval_status"),
-            "binding must be approved before execution; "
-            f"got {binding.approval_status!r}",
-            "binding_not_approved",
-        ))
-    for name in sorted(binding.values):
-        issues.extend(_nested_binding_readiness_issues(
-            binding.values[name], _path(path, name)))
-    return issues
-
-
-def _nested_binding_readiness_issues(
-        value: Any, path: str) -> list[ProfileValidationError]:
-    if isinstance(value, BindingDefinition):
-        return _binding_readiness_issues(value, path)
-    issues: list[ProfileValidationError] = []
-    if isinstance(value, Mapping):
-        for name in sorted(value):
-            issues.extend(_nested_binding_readiness_issues(
-                value[name], _path(path, str(name))))
-    elif isinstance(value, tuple):
-        for index, item in enumerate(value):
-            issues.extend(_nested_binding_readiness_issues(
-                item, f"{path}[{index}]"))
-    return issues
 
 
 def validate_profile_section(config: Mapping[str, Any], *,
@@ -803,8 +722,6 @@ def public_profile_schema(registries: Optional[ProfileRegistries] = None) -> dic
     return {
         "profile_version": PROFILE_SCHEMA_VERSION,
         "config_section": PROFILE_CONFIG_SECTION,
-        "binding_origins": sorted(BINDING_ORIGINS),
-        "approval_statuses": sorted(APPROVAL_STATUSES),
         "packs": registries.packs.public_metadata(),
         "binding_kinds": registries.binding_kinds.public_metadata(),
     }

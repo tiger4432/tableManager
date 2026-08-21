@@ -38,11 +38,6 @@ from ledger.profile_chain_mapper import (
     DeclaredLookupAdapter,
 )
 from ledger.source_profile import (
-    APPROVAL_STATUS_APPROVED,
-    APPROVAL_STATUS_PENDING,
-    APPROVAL_STATUS_REJECTED,
-    BINDING_ORIGIN_IMPORTED,
-    BINDING_ORIGIN_USER_DECLARED,
     validate_profile,
 )
 
@@ -215,8 +210,6 @@ def approved(kind, **values):
     return {
         "kind": kind,
         **values,
-        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-        "approval_status": APPROVAL_STATUS_APPROVED,
     }
 
 
@@ -402,17 +395,13 @@ def test_profile_mapper_can_explicitly_return_normal_empty_ledger_frame():
     assert validate_ledger_frame(frame) is frame
 
 
-@pytest.mark.parametrize("status", [APPROVAL_STATUS_PENDING,
-                                    APPROVAL_STATUS_REJECTED])
-def test_profile_mapper_reuses_readiness_gate_for_pending_and_rejected(status):
-    profile = movement_profile()
-    profile["mappings"][0]["bind"]["to"]["key"]["approval_status"] = status
-    with pytest.raises(LedgerMapperError) as exc:
-        run_registered_mapper(
-            "canonical-profile", 1, profile_input(),
-            context=profile_context(), rule=profile_rule(profile))
-    assert exc.value.code == "binding_not_approved"
-    assert exc.value.path.endswith("bind.to.key.approval_status")
+# DELETED 2026-08-21 with the field it measured:
+# `test_profile_mapper_reuses_readiness_gate_for_pending_and_rejected` (two
+# parameters). It drove a nested lookup key's `approval_status` to a value no file in
+# the tree ever held; the field retired for holding one reachable value, so the
+# refusal it asserted is underivable rather than merely unchecked. That the mapper
+# REUSES the readiness gate instead of carrying its own is still true and is stated
+# by `profile_chain_mapper` calling `require_executable_profile`.
 
 
 @pytest.mark.parametrize(("count", "code"), [
@@ -435,20 +424,31 @@ def test_profile_claim_without_registered_emitter_is_rejected():
     assert exc.value.code == "unsupported_claim_execution"
 
 
-def test_binding_approval_metadata_never_promotes_claim_epistemic_derivation():
-    user_profile = movement_profile()
-    imported_profile = copy.deepcopy(user_profile)
-    imported_profile["mappings"][0]["bind"]["subject"]["binding_origin"] = (
-        BINDING_ORIGIN_IMPORTED)
-    user_frame = run_registered_mapper(
+def test_a_retired_binding_field_changes_nothing_the_mapper_emits():
+    """Was `test_binding_approval_metadata_never_promotes_...`.
+
+    It set `binding_origin: imported` on one binding and asserted the emitted claim
+    was identical to the `user_declared` one. The field retired on 2026-08-21 -- but
+    the assertion gets SHARPER rather than deleted, because every v1 Profile on disk
+    still writes all three names and this proves a mapper fed one emits the same
+    frame as a mapper fed none.
+    """
+    plain = movement_profile()
+    stamped = copy.deepcopy(plain)
+    stamped["mappings"][0]["bind"]["subject"].update({
+        "binding_origin": "imported",
+        "approval_status": "rejected",
+        "suggestion_reason": "header similarity",
+    })
+    plain_frame = run_registered_mapper(
         "canonical-profile", 1, profile_input(), context=profile_context(),
-        rule=profile_rule(user_profile))
-    imported_frame = run_registered_mapper(
+        rule=profile_rule(plain))
+    stamped_frame = run_registered_mapper(
         "canonical-profile", 1, profile_input(), context=profile_context(),
-        rule=profile_rule(imported_profile))
-    assert user_frame.iloc[0]["derivation"] == "profile_transfer_movement"
-    assert imported_frame.iloc[0]["derivation"] == "profile_transfer_movement"
-    assert user_frame.iloc[0]["predicate"] == imported_frame.iloc[0]["predicate"]
+        rule=profile_rule(stamped))
+    assert plain_frame.iloc[0]["derivation"] == "profile_transfer_movement"
+    assert stamped_frame.iloc[0]["derivation"] == "profile_transfer_movement"
+    assert plain_frame.iloc[0]["predicate"] == stamped_frame.iloc[0]["predicate"]
 
 
 def test_mapper_result_must_be_ledger_frame_and_crashes_are_typed():

@@ -24,25 +24,20 @@ from ledger.setup_bundle import (
 # require to answer any physical question. Reached through `setup_bundle_module`.
 
 
-def binding(column, *, status="approved", origin="user_declared", reason=None):
-    out = {
-        "kind": "column",
-        "column": column,
-        "binding_origin": origin,
-        "approval_status": status,
-    }
-    if reason is not None:
-        out["suggestion_reason"] = reason
-    return out
+#: A binding is three fields shorter since 2026-08-21.  `binding_origin`,
+#: `approval_status` and `suggestion_reason` each had one reachable value, so none of them
+#: could ever change what a binding did; they retired together.  The validator still READS
+#: them off an old file and drops them -- `test_a_retired_binding_field_is_swallowed`
+#: is what holds that, and it is the only place in this plant that writes one.
+def binding(column):
+    return {"kind": "column", "column": column}
 
 
-def entity(entity_type, key_name, column, *, status="approved"):
+def entity(entity_type, key_name, column):
     return {
         "kind": "entity",
         "entity_type": entity_type,
-        "keys": {key_name: binding(column, status=status)},
-        "binding_origin": "user_declared",
-        "approval_status": "approved",
+        "keys": {key_name: binding(column)},
     }
 
 
@@ -162,9 +157,15 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                     "unit": "group",
                     "identity": [event],
                     "group_by": [event],
-                    "order_by": [record],
+                    # No `cursor` since 2026-08-21: the watermark is DERIVED from
+                    # `order_by` by `setup_bundle._derived_cursor`, because a cursor can
+                    # only be expressed in the order the read ran.  A config that still
+                    # declares one is read and dropped -- see
+                    # `test_a_retired_binding_field_is_swallowed`.
+                    # This list is what the retired `cursor` declared; the plant paged
+                    # and watermarked on it, so it is the ordering the read really had.
+                    "order_by": [occurred, record],
                     "occurred_at": {"column": occurred, "timezone": "Asia/Seoul"},
-                    "cursor": {"columns": [occurred, record]},
                 },
                 "prepare": {
                     "implementation_id": "prepare-input",
@@ -437,8 +438,17 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # 2026-08-21 (one legal value, so no decision to write); `setup_version` still reads 5
     # because the version is pinned by EQUALITY and routes nothing -- see
     # `scripts/migrate_ledger_config_drop_vocabulary_layer`.
+    # was a5f02f28... while a binding declared `binding_origin` / `approval_status` and a
+    # source declared `read.cursor`. All four retired on 2026-08-21 for holding one legal
+    # value each; the FIXTURE stopped writing the three binding fields, and `cursor` is now
+    # derived from `order_by` -- so the plant's cursor reads `["record_id"]` where it used
+    # to read `["event_at", "record_id"]` only because the CURSOR said so. `order_by` now
+    # carries that pair -- the ordering the plant always paged in -- so the derived cursor
+    # is unchanged and the movement here is `order_by` gaining the column plus the three
+    # binding fields leaving. `setup_version` does not move: nothing routes on
+    # it, and a config that still writes all four still loads (they are read and dropped).
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "a5f02f28f425f25025a19b6d9c1666e6f478c8161eb85544f52efacff1bd1fd9")
+        "c2d0be6a8d6eaabdbbdbd46eb4211c8f2ecaac4c60aa6580f6144b862e894248")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -446,7 +456,10 @@ def test_list_order_is_preserved_but_object_order_is_not():
     reversed_keys = reverse_mappings(original)
     assert validate_bundle(original).serialize() == validate_bundle(reversed_keys).serialize()
     changed = copy.deepcopy(original)
-    changed["sources"]["input_rows"]["read"]["cursor"]["columns"].reverse()
+    # Was `read.cursor.columns`; that declaration retired on 2026-08-21 and `order_by`
+    # absorbed the pair it used to hold, so the same two-item list is still here to reverse
+    # -- one level up, and now the derived cursor reverses with it.
+    changed["sources"]["input_rows"]["read"]["order_by"].reverse()
     assert validate_bundle(original).serialize() != validate_bundle(changed).serialize()
 
 
@@ -637,7 +650,6 @@ def test_declared_lookup_binding_is_rejected():
     target.clear()
     target.update({
         "kind": "declared_lookup", "lookup_id": "x", "select": "y",
-        "binding_origin": "user_declared", "approval_status": "approved",
     })
     error = issue(bundle, "invalid_binding")
     assert error.path.endswith("bind.event_key.kind")
@@ -649,7 +661,7 @@ def test_unknown_relation_and_column_have_exact_paths():
     relation = issue(bundle, "unknown_relation")
     assert relation.path == "bundle.sources.input_rows.relation"
     bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["read"]["cursor"]["columns"][0] = "missing_col"
+    bundle["sources"]["input_rows"]["read"]["order_by"][0] = "missing_col"
     column = issue(bundle, "unknown_column")
     assert column.path == "bundle.sources.input_rows.relation"
     assert "missing_col" in column.message
@@ -957,7 +969,7 @@ def test_a_key_naming_a_column_the_relation_lacks_certifies_nothing():
     catalog["input_rows"]["business_key"] = "missing_key"
     errors = validate_bundle_errors(logical_bundle(), catalog=catalog)
     assert_structured_errors(errors)
-    assert sum(error.code == "invalid_cursor" for error in errors) == 2
+    assert sum(error.code == "invalid_cursor" for error in errors) == 1
 
 
 def test_join_right_side_without_an_exact_unique_key_is_refused():
@@ -970,18 +982,23 @@ def test_join_right_side_without_an_exact_unique_key_is_refused():
     assert error.path.endswith("join_key")
 
 
-def test_order_and_cursor_reject_columns_without_catalog_unique_proof():
+def test_ordering_rejects_columns_without_catalog_unique_proof():
+    """One ordering, scored once.
+
+    This asserted the same fault at TWO paths -- `read.order_by` and
+    `read.cursor.columns` -- because the validator ran one predicate over both. That is
+    the measurement that retired the second declaration on 2026-08-21: no answer to one
+    was ever a wrong answer to the other, so the operator was being asked to paste. The
+    cursor is now written from `order_by`, and one fault is reported once.
+    """
     bundle = logical_bundle()
-    driver = bundle["sources"]["input_rows"]["read"]
-    driver["order_by"] = ["event_at"]
-    driver["cursor"]["columns"] = ["event_at"]
+    bundle["sources"]["input_rows"]["read"]["order_by"] = ["event_at"]
 
     errors = validate_bundle_errors(bundle)
 
     assert_structured_errors(errors)
     assert [(error.code, error.path) for error in errors
             if error.code == "invalid_cursor"] == [
-        ("invalid_cursor", "bundle.sources.input_rows.read.cursor.columns"),
         ("invalid_cursor", "bundle.sources.input_rows.read.order_by"),
     ]
 
@@ -1002,7 +1019,6 @@ def test_complete_composite_unique_key_proves_total_order():
     bundle = logical_bundle()
     driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at", "event_key", "record_id"]
-    driver["cursor"]["columns"] = ["event_at", "event_key", "record_id"]
     assert validate_bundle_errors(bundle, catalog=_composite_key_catalog()) == ()
 
 
@@ -1010,10 +1026,9 @@ def test_partial_composite_unique_key_does_not_prove_total_order():
     bundle = logical_bundle()
     driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at", "event_key"]
-    driver["cursor"]["columns"] = ["event_at", "event_key"]
     errors = validate_bundle_errors(bundle, catalog=_composite_key_catalog())
     assert_structured_errors(errors)
-    assert sum(error.code == "invalid_cursor" for error in errors) == 2
+    assert sum(error.code == "invalid_cursor" for error in errors) == 1
 
 
 def test_nonunique_index_is_not_a_total_order_proof():
@@ -1024,10 +1039,9 @@ def test_nonunique_index_is_not_a_total_order_proof():
     bundle = logical_bundle()
     driver = bundle["sources"]["input_rows"]["read"]
     driver["order_by"] = ["event_at"]
-    driver["cursor"]["columns"] = ["event_at"]
     errors = validate_bundle_errors(bundle, catalog=catalog)
     assert_structured_errors(errors)
-    assert sum(error.code == "invalid_cursor" for error in errors) == 2
+    assert sum(error.code == "invalid_cursor" for error in errors) == 1
 
 
 def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
@@ -1065,25 +1079,62 @@ def test_the_map_key_is_the_mappings_only_identity():
         "two mappings on one predicate are legal; they are two sentences, not a duplicate")
 
 
-def test_binding_approval_metadata_survives_normalization():
+@pytest.mark.parametrize("name, value", [
+    ("binding_origin", "system_suggested"),
+    ("approval_status", "pending"),
+    ("suggestion_reason", "header similarity"),
+    ("cursor", {"columns": ["event_at", "record_id"]}),
+])
+def test_a_retired_binding_field_is_swallowed(name, value):
+    """A config written before 2026-08-21 must still LOAD, and the name must decide nothing.
+
+    🔴 THIS IS THE CONDITION THE REMOVAL SHIPPED UNDER.  Every config on disk carries
+    `approval_status` on every binding and a `cursor` on every source. A plain removal
+    turns `unknown_field` on at those exact paths the moment the code lands, and the
+    person holding the file is mid-sentence in it. Nothing has to move for the file to
+    keep meaning what it meant, so nothing is asked of them.
+
+    🔴 SWALLOWED MEANS "REACHES NO DECISION", NOT "SCRUBBED FROM THE DOCUMENT".  The three
+    binding names ride through into the canonical bundle untouched, and that is the
+    deliberate half: `source_cursor_fingerprint` hashes the compiled source, so a
+    validator that stripped `approval_status` would move every live source's fingerprint
+    and stop every running cursor with `cursor_snapshot_reset_required` -- a reset for a
+    word that no longer means anything. MEASURED on the live config: bundle hash, snapshot
+    hash and both per-source fingerprints are byte-identical across this change. When the
+    field is migrated OUT of the file the hash moves, and that is the migration's ruling
+    to make, not the validator's.
+
+    `cursor` is the one that is REPLACED rather than passed through: everything downstream
+    reads `driver.cursor_columns`, so the key must exist, and it must hold the ordering
+    the read actually ran in.
+    """
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
-    event["binding_origin"] = "system_suggested"
-    event["approval_status"] = "pending"
-    event["suggestion_reason"] = "header similarity"
-    normalized = validate_bundle(bundle).to_mapping()
-    got = source_profile(normalized)["mappings"]["main_transition"]["bind"]["event_key"]
-    assert got["binding_origin"] == "system_suggested"
-    assert got["approval_status"] == "pending"
-    assert got["suggestion_reason"] == "header similarity"
+    if name == "cursor":
+        bundle["sources"]["input_rows"]["read"]["cursor"] = value
+    else:
+        source_profile(bundle)["mappings"]["main_transition"]["bind"][
+            "event_key"][name] = value
+
+    assert validate_bundle_errors(bundle) == ()
+    validated = validate_bundle(bundle)
+    # `approval_status: pending` blocked this stage until today; nothing does now.
+    assert bundle_readiness_errors(validated) == ()
+    if name == "cursor":
+        assert '"cursor":{"columns":["event_at","record_id"]}' in validated.serialize()
 
 
-def test_system_suggested_requires_a_reason():
+def test_swallowing_a_retired_name_does_not_forgive_a_typo():
+    """The narrow tolerance stays narrow: `unknown_field` still catches a misspelling.
+
+    Deleting a field is cheap; making the validator incurious is not. `approval_statuss`
+    must land exactly where it always did, or the class of defect `unknown_field` exists
+    to catch would have been traded away for this one convenience.
+    """
     bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
-    event["binding_origin"] = "system_suggested"
-    error = issue(bundle, "invalid_binding")
-    assert error.path.endswith("bind.event_key.suggestion_reason")
+    source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"][
+        "approval_statuss"] = "approved"
+    error = issue(bundle, "unknown_field")
+    assert error.path.endswith("bind.event_key.approval_statuss")
 
 
 def test_constant_binding_must_be_finite_deterministic_json():
@@ -1092,7 +1143,6 @@ def test_constant_binding_must_be_finite_deterministic_json():
     event.clear()
     event.update({
         "kind": "constant", "value": float("nan"),
-        "binding_origin": "user_declared", "approval_status": "approved",
     })
     error = issue(bundle, "invalid_binding")
     assert error.path.endswith("bind.event_key.value")
@@ -1129,42 +1179,40 @@ def test_general_time_constant_is_not_treated_as_symbolic():
     occurred.update({
         "kind": "constant",
         "value": "2026-08-17T00:00:00+09:00",
-        "binding_origin": "user_declared",
-        "approval_status": "approved",
     })
 
     assert validate_bundle_errors(bundle) == ()
 
 
-def test_binding_approval_never_adds_a_claim_epistemic_class():
+def test_a_binding_never_adds_a_claim_epistemic_class():
+    """Was `test_binding_approval_never_adds_...`; it also asserted the approval field.
+
+    That half went with `approval_status` on 2026-08-21 -- 40 of 40 live bindings said
+    `approved` and no file anywhere held a value that could fail the gate, so the field
+    granted a permission that was never withheld. What stays is the property that never
+    depended on it: a binding states WHERE a value comes from, never how much it is
+    believed.
+    """
     rendered = validate_bundle(logical_bundle()).serialize()
-    assert '"approval_status":"approved"' in rendered
-    for forbidden in ("claim_class", "confirmed", "pin_class", "resolution_class"):
+    for forbidden in ("claim_class", "confirmed", "pin_class", "resolution_class",
+                      "approval_status", "binding_origin", "suggestion_reason"):
         assert forbidden not in rendered
 
 
-@pytest.mark.parametrize("status", ["pending", "rejected"])
-def test_readiness_blocks_nonapproved_bindings_without_rejecting_draft(status):
-    bundle = logical_bundle()
-    event = source_profile(bundle)["mappings"]["main_transition"]["bind"]["event_key"]
-    event["approval_status"] = status
-    draft = validate_bundle(bundle)
-    error = bundle_readiness_errors(draft)[0]
-    assert error.code == "binding_not_approved"
-    assert error.path.endswith("bind.event_key.approval_status")
-    with pytest.raises(LedgerSetupValidationError):
-        require_ready_bundle(draft)
+# DELETED 2026-08-21 with the field they measured:
+# `test_readiness_blocks_nonapproved_bindings_without_rejecting_draft` (two parameters)
+# and `test_readiness_walks_nested_entity_key_bindings`. Both drove `approval_status`
+# to `pending`/`rejected`; no config on disk ever held either value, and the field is
+# gone, so the state they refused is underivable now rather than merely unchecked.
+#
+# ⚠️ REPORTED UPWARDS RATHER THAN PAPERED OVER: `bundle_readiness_errors` /
+# `require_ready_bundle` now hold NO rules and always answer empty. The stage is kept
+# because three callers place it between structural validation and compilation, which
+# is where the next may-this-run rule belongs; retiring the stage is a separate ruling
+# with seven call sites.
 
 
-def test_readiness_walks_nested_entity_key_bindings():
-    bundle = logical_bundle()
-    nested = source_profile(bundle)["mappings"]["main_transition"]["bind"]["target"]["keys"]["output_id"]
-    nested["approval_status"] = "pending"
-    errors = bundle_readiness_errors(validate_bundle(bundle))
-    assert errors[0].path.endswith("bind.target.keys.output_id.approval_status")
-
-
-def test_only_all_approved_bundle_is_ready():
+def test_a_valid_bundle_is_ready():
     validated = validate_bundle(logical_bundle())
     assert bundle_readiness_errors(validated) == ()
     assert require_ready_bundle(validated) is validated
@@ -1224,9 +1272,7 @@ def test_followup_validation_errors_have_deterministic_order():
     profile["mappings"]["main_transition"]["bind"]["subject"]["keys"]["input_id"][
         "column"] = "missing_column"
     bundle["entities"]["InputEntity@1"]["key_types"] = {"input_id": {"bad": True}}
-    driver = bundle["sources"]["input_rows"]["read"]
-    driver["order_by"] = ["event_at"]
-    driver["cursor"]["columns"] = ["event_at"]
+    bundle["sources"]["input_rows"]["read"]["order_by"] = ["event_at"]
     # was `bundle["chains"]["bad"]`; that section is gone, the follow-up error it
     # contributed is not -- any additional error source exercises the ordering.
     bundle["virtual_joins"]["input_to_reference"]["fold"] = {"steps": [[{"sql": "DROP"}]]}
@@ -1286,7 +1332,13 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # read one higher than the asserts they explain; the asserts are what was measured.)
     # 110 -> 109 on 2026-08-21, when `layer` left the vocabulary declaration: one leaf, on
     # the fixture's one predicate. MEASURED both sides: 110 before, 109 after.
-    assert checked >= 109
+    # 109 -> 94 later the same day, when three binding fields and `read.cursor` retired.
+    # MEASURED, name by name: -12 binding leaves (`binding_origin` + `approval_status` on
+    # each of the plant's six bindings, nested keys included), -4 cursor nodes (the record,
+    # its `columns` list and the list's two items), +1 for the column `order_by` absorbed
+    # from that cursor. Every one of the sixteen was a node whose mutation had ALREADY
+    # stopped producing an error, which is how the subtraction was taken.
+    assert checked >= 94
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1307,9 +1359,10 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
             checked += 1
     # Same floor, times the six replacement kinds. Was 900 while the bundle carried
     # `tables`, 894 while the preparer and mapper had their own sections; 816 while it
-    # still carried `packs`. 660 while the vocabulary still declared `layer`. 654 today
-    # (109 x 6) -- the one leaf that left above, times six.
-    assert checked >= 654
+    # still carried `packs`. 660 while the vocabulary still declared `layer`. 654 while
+    # the bindings still declared their origin and approval and the source its cursor.
+    # 564 today (94 x 6) -- the net fifteen nodes from above, times six.
+    assert checked >= 564
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():

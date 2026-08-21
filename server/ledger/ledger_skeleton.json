@@ -67,32 +67,6 @@
               "use": "binding"
             }
           }
-        },
-        {
-          "key": "binding_origin",
-          "required": false,
-          "node": {
-            "kind": "leaf",
-            "hint": "choice",
-            "list": "binding_origin"
-          }
-        },
-        {
-          "key": "approval_status",
-          "required": true,
-          "node": {
-            "kind": "leaf",
-            "hint": "choice",
-            "list": "approval_status"
-          }
-        },
-        {
-          "key": "suggestion_reason",
-          "required": false,
-          "node": {
-            "kind": "leaf",
-            "hint": "free"
-          }
         }
       ]
     }
@@ -376,28 +350,6 @@
                               "kind": "leaf",
                               "hint": "choice",
                               "list": "occurred_at_basis"
-                            }
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "key": "cursor",
-                      "required": true,
-                      "node": {
-                        "kind": "record",
-                        "fields": [
-                          {
-                            "key": "columns",
-                            "required": true,
-                            "node": {
-                              "kind": "map",
-                              "keyed_by": "index",
-                              "member": "컬럼",
-                              "of": {
-                                "kind": "leaf",
-                                "hint": "free"
-                              }
                             }
                           }
                         ]

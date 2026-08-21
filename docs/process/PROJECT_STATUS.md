@@ -52,6 +52,19 @@
 >
 > ### 대기열 (착수 «금지», 순서대로)
 > ```
+> 🔴 총괄 몫 — 문서 셋이 «없어진 게이트»를 아직 단언한다 (구현자가 앵커까지 주고 남긴 것, 00:1x)
+> PRIMITIVES.md:18 · :797                 approval_status 필수 · _DEFAULT_BINDING_ORIGIN 인용(사라짐)
+> LEDGER_FRAME_CHAIN_MAPPER.md:155-156
+> ONTOLOGY_LEDGER_SETUP.md                :200 · :354 · :957-966(필드표) · :1047 · :1075 · :1136(커서)
+>                                         JSON 예시 :825-940 · :1342-1346 · :1808-1810
+> ⚠️ 앵커는 «유통기한»이 있다 — 고치기 전에 그 줄이 실제로 그 문장인지 다시 본다
+> ```
+> ```
+> 은퇴 라운드 재료 (지금 손대지 않는다)
+> bundle_readiness_errors · profile_readiness_errors   규칙 0개 · 호출부 7곳. 지우면 리팩터가 된다
+> read.cursor 키 자체                                   -35줄이지만 거절문이 «문서에 없는 경로»를 부른다
+> ```
+> ```
 > 소유자 라운드 (23:2x~, 구현자가 «한 라운드»로 묶어 진행 중)
 >    바인딩 3칸 삭제 (binding_origin · approval_status · suggestion_reason)
 >       + 옛 키는 «세 이름만» 받아서 버린다 — unknown_field 가드는 일반화하지 않는다
