@@ -101,44 +101,46 @@
             style="display: flex; align-items: center; gap: 8px"
           >
             <span id="performance-log" class="glass-log-badge">Ready</span>
-            <!-- Dynamic Unsaved Tx State Indicator -->
-            <span
-              id="tx-pending-badge"
-              class="glass-log-badge"
-              style="
-                display: none;
-                background: var(--warning-weak);
-                border-color: var(--warning);
-                color: var(--warning);
-                font-weight: bold;
-              "
-              >⚡ Unsaved: 0</span
-            >
-            <button
-              id="tx-apply-btn"
-              class="glass-btn success-glow"
-              style="
-                display: none;
-                padding: 4px 12px;
-                font-size: 0.8rem;
-                font-weight: bold;
-                border-radius: 6px;
-              "
-            >
-              Apply
-            </button>
-            <button
-              id="tx-discard-btn"
-              class="glass-btn hover-danger"
-              style="
-                display: none;
-                padding: 4px 12px;
-                font-size: 0.8rem;
-                border-radius: 6px;
-              "
-            >
-              Discard
-            </button>
+            <!-- Mockup 2b joins these three into ONE control: the count, the commit and
+                 the abandon are one decision, and three loose buttons read as three. -->
+            <span class="tx-action-group">
+              <!-- Dynamic Unsaved Tx State Indicator -->
+              <span
+                id="tx-pending-badge"
+                class="glass-log-badge"
+                style="
+                  display: none;
+                  background: var(--warning-weak);
+                  border-color: var(--warning);
+                  color: var(--warning);
+                  font-weight: bold;
+                "
+                >⚡ Unsaved: 0</span
+              >
+              <button
+                id="tx-apply-btn"
+                class="glass-btn success-glow"
+                style="
+                  display: none;
+                  padding: 4px 12px;
+                  font-size: 0.8rem;
+                  font-weight: bold;
+                                "
+              >
+                Apply
+              </button>
+              <button
+                id="tx-discard-btn"
+                class="glass-btn hover-danger"
+                style="
+                  display: none;
+                  padding: 4px 12px;
+                  font-size: 0.8rem;
+                                "
+              >
+                Discard
+              </button>
+            </span>
           </div>
           <div class="control-group">
             <input

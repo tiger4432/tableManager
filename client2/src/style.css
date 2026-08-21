@@ -2620,3 +2620,15 @@ body.resizing-active .history-sidebar {
   color: var(--text-muted);
 }
 .audit-legend-dot { color: var(--border-strong); }
+
+
+/* Mockup 2b: ⚡ 미저장 N | Apply | Discard is ONE control, not three loose buttons -- the
+   count, the commit and the abandon are one decision. Nothing new is drawn: each of the three
+   already carried its own border and colour, so joining them is a gap of zero and a shared
+   pair of outer corners. The group has NO border of its own, which is what lets it vanish
+   completely while all three children sit at `display: none` (0 pending edits). */
+.tx-action-group { display: inline-flex; align-items: center; }
+.tx-action-group > * { border-radius: 0; height: 32px; }
+.tx-action-group > * + * { margin-left: -1px; }
+.tx-action-group > :first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.tx-action-group > :last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
