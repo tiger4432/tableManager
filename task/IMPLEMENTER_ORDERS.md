@@ -62,6 +62,75 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# 🔴🔴 다음 라운드 — `registration_probe` 를 화면이 «묻지 않는다» (20:3x)
+
+> **소유자 (20:3x): 「LOT EVENT 할 때 넣었다는 저 선언은 ledger 셋업 UI 에 반영되어 있어?」**
+
+**총괄이 재 봤습니다. 답은 «반쪽»입니다.** 그리고 이건 오늘 우리가 계속 죽여 온 부류입니다.
+
+## 실측 — `authoring_plan` 을 라이브에 직접 먹였습니다
+```
+lot_event     read.registration_probe[0].entity_type   cand=3  value=Lot@1     answered
+              read.registration_probe[1].entity_type   cand=3  value=Wafer@1   answered
+              🔴 columns · list_separator 에 대한 «계획 행이 없다»
+dt_job        read.registration_probe[0].entity_type   cand=3  value=DTJob@1   answered
+die-transfer  🔴 registration_probe 행이 «하나도 없다»
+```
+
+## 🔴 두 결함, 하나는 오늘 고친 병의 «남은 조각»
+
+### ① `columns` 에 후보가 없다 — 배선 라운드가 «안 덮은» 칸
+```
+방금 고친 것   relation · identity · group_by · order_by · cursor.columns · occurred_at
+안 고친 것     registration_probe[N].columns          <- 같은 병. 사람이 손으로 친다
+```
+소유자가 `lot_id` · `waferids` 를 **외워서** 쳐야 합니다.
+🔴 **후보의 «출처»가 다릅니다 — 여긴 «물리» 컬럼입니다.**
+프로브는 준비 «전» 페이지를 읽고 검증기도 카탈로그에 대고 봅니다
+(총괄이 `lot`/`wafers` 로 먼저 썼다가 `'lot_event' has no column 'lot'` 로 거절당했습니다).
+**준비기 출력 컬럼을 후보로 주면 안 됩니다.**
+
+### ② 새 소스에는 «칸 자체가 안 뜬다» — 그런데 없으면 «못 돈다»
+```
+register@1 을 쏘는 소스는 registration_probe 가 «필수»다
+   없으면 런타임이 registration_context_required 로 거절한다  (runtime_v2.py:237)
+그런데 스켈레톤엔 required: false 이고, 계획은 새 소스에 그 행을 «안 낸다»
+-> 사람은 폼을 다 채우고 «저장까지 통과»한 뒤, backfill 에서야 막힌다
+   화면에서 «한참 떨어진» 곳에서
+```
+🔴 **이게 오늘 소유자가 계속 지적하신 부류입니다** — 코드가 요구하는데 화면이 안 묻는 칸.
+`lot_event` 는 **그래서** 오늘까지 한 번도 안 돌았습니다.
+
+## 도착지
+```
+소스의 bind 에 register@1 을 쏘는 문장이 «있으면»
+   -> registration_probe 칸이 «생긴다» (묻지 않으면 만들 수 없다)
+   -> entity_type 은 그 문장들이 등록하는 «엔터티»에서 후보가 온다
+   -> columns 는 «물리 컬럼»에서 후보가 온다
+```
+**vocabulary 로 칸을 까는 것과 «같은 원리»입니다** — 술어가 무엇을 요구하는지 화면이 안다.
+그걸 `packs` 라운드에서 이미 했습니다. 여기에 한 번 더 적용하는 것입니다.
+
+## ⛔ 울타리
+```
+✖  registration_probe 를 required: true 로 «전역» 승격        register 안 쏘는 소스엔 불필요하다
+      -> 조건은 「이 소스가 register 를 쏘는가」이지 「모든 소스」가 아니다
+✖  준비기 출력 컬럼을 columns 후보로                          검증기가 카탈로그에 대고 본다
+✖  새 후보 계산 · DB 조회                                      카탈로그가 이미 물리 컬럼을 안다
+✔  기존 배선 기계를 그대로 재사용                              방금 만든 그것
+```
+
+## ⚠️ 착수 전
+```
+소유자가 폼을 보고 계십니다. 라이브 설정에 «쓰지 마십시오»
+목업이나 프로브 소스가 필요하면 «별도 초안»으로
+```
+그리고 **먼저 재십시오:** 새 소스에서 `register@1` 문장을 만들면 지금 그 칸이 뜨는지 «안 뜨는지».
+총괄은 계획(plan)만 쟀고 **화면이 optional 미선언 필드를 어떻게 그리는지는 못 쟀습니다.**
+「안 뜬다」가 아니라 **「못 쟀다」**입니다 — 당신이 확정하십시오.
+
+---
+
 # ✅ `lot_event` 이 «흐릅니다» — 결과 보고 (20:2x)
 
 ```
