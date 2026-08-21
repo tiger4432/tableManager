@@ -1,5 +1,60 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# ✅ 야간 ②③ 착지 — **빌드 요청** (date 02:5x). 야간 지시 셋 «다 끝났습니다»
+
+```
+aa519b2e  feat(ledger): a grouped source arrives with the columns its identity already names
+e195127d  fix(ontology): the strip under the sticky bar was the page styling our scroll container
+```
+🔴 **빌드가 밀렸습니다** — `client2/src/ontology_explorer.css` 만 고쳤고 `dist` 는 그대로입니다.
+sticky 수정은 «빌드해야» 아침 화면에 보입니다. (서버 쪽 `group_by` 는 재기동만으로 됩니다.)
+
+## 기본값 6칸 — **하나만 썼습니다. 넷은 «이미» 채워져 있었고, 하나는 «거부»했습니다**
+```
+group_by          ✅ 씀 — identity 에서, «파일이 아무 말 안 할 때만»
+unit              🔴 «거부» — 채우면 컨트롤이 사라집니다
+join 플래그 둘     이미 empty_value 가 씨앗으로 넣고 있었습니다
+version 둘         id 를 고르면 이미 저장 때 들어갑니다 (직접 골라서 «확인»했습니다)
+```
+
+### 🔴 `unit` 을 거부한 이유가 오늘 밤 가장 값진 측정입니다
+```
+① 채우면 컨트롤이 죽습니다
+   스켈레톤의 select 가 계획 행에 넘어가는데, derived 행은 fallback 상자에 «도달 못 합니다»
+   -> 소스를 «만드는» 화면에서 그 칸이 통째로 빕니다  (before 1 control -> after 0)
+② 그리고 기본값 자체가 «틀렸습니다»
+   표본 둘(dt_job · lot_event)은 group 인데
+   🔴 user_test — «아침의 시험 대상» — 은 unit: "row" 입니다 (제가 직접 확인했습니다)
+   -> group 을 넣었으면 «바로 그 소스에서» 소유자를 틀린 쪽으로 밀었을 겁니다
+```
+**「표본 둘로 상수라 단정하지 말 것」이 실제로 세 번째 소스에서 반증됐습니다.**
+
+### `group_by` 를 «조건부»로 채운 이유 — 검증기가 한쪽으로만 묶습니다
+```
+setup_bundle:1282   invalid_driver — group_by 는 identity 에 «포함»되어야 한다
+-> «진부분집합»이 합법입니다.  무조건 identity 전체로 유도하면 그런 선언이 빨개집니다
+```
+그리고 `disposition="default_overridable"` 을 **명시**했습니다 — `_dispositions` 는 번들이 거절 중이면
+전부 `unmeasured` 로 답하는데, **기본값이 필요한 행은 정의상 「아직 거절 중인」 선언에만 존재**합니다.
+그 낱말이 없으면 후보 칩이 사라집니다. **있을 때/없을 때 둘 다 렌더해서 확인했습니다.**
+
+## 불변 넷
+```
+lot_event  142행 · 분자 40 · «원자 1,323» · incomplete 0
+지문       dt_job · lot_event 동일
+pytest     193 passed / 12 errors  (12는 user_test 미완성 탓, 기존 것)
+감사       바이트 동일 — ⚠️ 즉 «이 변경이 발화하는 상태에 라이브가 없습니다». 증거는 프로브입니다
+```
+
+## 아침에 대표님이 답하실 칸 — **여섯**
+```
+prepare.implementation_id · map.implementation_id · map.unit.kind
+bind.mappings · read.occurred_at · read.occurred_at.timezone
+```
+⚠️ 다만 어젯밤 적은 «다음 1순위»가 그대로입니다: `filled_declaration` 이 `bind.<role>.keys` 에
+«리스트»를 써서 맨바닥 생성이 막힙니다. 그게 아침 경로 위에 있습니다.
+
+
 # 🔴🔴 야간 ② 착지 — **재기동 «과» 빌드를 «같이» 해 주십시오. 하나만 하면 아침이 나빠집니다** (date 01:4x)
 
 ```
