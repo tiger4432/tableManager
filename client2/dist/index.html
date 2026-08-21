@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-O0tPPmjM.js"></script>
+    <script type="module" crossorigin src="/assets/main-ClrvVGzJ.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
     <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
@@ -37,7 +37,7 @@
     <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/admin-DeBRhHDR.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-BHIdCGFH.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-AKspx9a2.css">
   </head>
 
   <body>
@@ -99,7 +99,22 @@
           <!-- Mockup 2b: active filters live IN the header bar, taking the free space
                between the toolbar and the unsaved-changes badges. They are not a strip
                above the grid — the grid starts at its own header row. -->
-          <div id="grid-filter-bar" class="header-filter-bar" style="display: none">
+          <div id="grid-filter-bar" class="header-filter-bar">
+            <!-- Active Transaction Filter Banner -->
+            <div
+              id="tx-filter-banner"
+              class="tx-filter-banner"
+              style="display: none"
+            >
+              <span class="banner-icon">⚡</span>
+              <span class="banner-text"
+                >TX</span
+              ><code id="banner-tx-id" class="banner-tx-id">tx_id</code
+              >
+              <button id="clear-tx-filter-btn" class="clear-banner-btn">
+                &times;
+              </button>
+            </div>
             <span id="filter-chips" class="filter-chips"></span>
             <button
               id="filter-clear-all"
@@ -326,22 +341,6 @@
       <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
       <main class="main-layout">
         <section class="grid-section">
-          <!-- Active Transaction Filter Banner -->
-          <div
-            id="tx-filter-banner"
-            class="tx-filter-banner"
-            style="display: none"
-          >
-            <span class="banner-icon">⚡</span>
-            <span class="banner-text"
-              >Showing rows modified in Transaction:<code id="banner-tx-id"
-                >tx_id</code
-              ></span
-            >
-            <button id="clear-tx-filter-btn" class="clear-banner-btn">
-              &times;
-            </button>
-          </div>
           <span
             id="offscreen-cols"
             class="offscreen-cols"
