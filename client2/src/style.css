@@ -1221,7 +1221,8 @@ body.resizing-active .history-sidebar {
 /* ── Phase 0: the filter chip bar and the alignment band are `.tx-filter-banner`
    VARIANTS, not new components. Structure (icon left, text, close right, height,
    padding, radius, shadow) comes from that class; only the colour differs here. */
-.filter-banner { background: var(--accent-weak); border-color: var(--accent); }
+/* `.filter-banner` retired: the chips moved INTO the header bar (mockup 2b), so they no
+   longer need a banner of their own. */
 .reference-alignment.is-match   { background: var(--success-weak); border-color: var(--success); }
 .reference-alignment.is-warn    { background: var(--warning-weak); border-color: var(--warning); }
 .reference-alignment.is-blocked { background: var(--danger-weak);  border-color: var(--danger); }
@@ -2363,4 +2364,72 @@ body.resizing-active .history-sidebar {
   font-family: var(--font-mono);
   font-size: 9.5px;
   text-align: center;
+}
+
+/* ── Mockup 2b: active filters live in the header bar ──────────────────────────────────
+   They take the free space between the toolbar and the unsaved badges, so a filter is
+   visible from wherever the operator is looking without a strip pushing the grid down. */
+.header-filter-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+/* A text control, not a button box — the mockup's 「전체 해제」 is a plain link beside the
+   chips, and a bordered button there would outweigh the chips it clears. */
+.filter-clear-all {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.filter-clear-all:hover { color: var(--text); }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  padding: 1px 4px 1px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* The columns past the right edge, at the grid header's right end (mockup 2b) rather than
+   in a strip of its own. Absolute so it cannot take height from the grid. */
+.grid-section { position: relative; }
+/* 🔴 IT SITS ON TOP OF THE LAST HEADER CELL, so it needs its own ground. The mockup gives
+   this a `1fr` spacer column at the end of the header grid; AG-Grid has no spare column,
+   so without an opaque background the count renders straight through a column name and
+   both become unreadable — measured on dt_log, where it landed over CREATED_AT. */
+.offscreen-cols {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 30px;
+  padding: 0 10px 0 14px;
+  background: var(--bg-header);
+  box-shadow: -8px 0 8px -6px var(--bg-header);
+  display: flex;
+  align-items: center;
+  z-index: 2;
+  pointer-events: none;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  white-space: nowrap;
 }

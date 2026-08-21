@@ -81,6 +81,19 @@
               Discard
             </button>
           </div>
+          <!-- Mockup 2b: active filters live IN the header bar, taking the free space
+               between the toolbar and the unsaved-changes badges. They are not a strip
+               above the grid — the grid starts at its own header row. -->
+          <div id="grid-filter-bar" class="header-filter-bar" style="display: none">
+            <span id="filter-chips" class="filter-chips"></span>
+            <button
+              id="filter-clear-all"
+              class="filter-clear-all"
+              style="display: none"
+            >
+              전체 해제
+            </button>
+          </div>
           <div class="control-group">
             <label for="table-select">Table</label>
             <select id="table-select" class="glass-input">
@@ -314,31 +327,11 @@
               &times;
             </button>
           </div>
-          <!-- Active column filters (left) and the columns pushed past the right edge
-               (right). Hidden until it has one of the two to say. -->
-          <div
-            id="grid-filter-bar"
-            class="tx-filter-banner filter-banner"
+          <span
+            id="offscreen-cols"
+            class="offscreen-cols"
             style="display: none"
-          >
-            <span class="banner-icon">▼</span>
-            <span class="banner-text">
-              <span id="filter-chips" class="filter-chips"></span>
-            </span>
-            <span
-              id="offscreen-cols"
-              class="offscreen-cols"
-              style="display: none"
-            ></span>
-            <button
-              id="filter-clear-all"
-              class="clear-banner-btn"
-              title="전체 해제"
-              style="display: none"
-            >
-              &times;
-            </button>
-          </div>
+          ></span>
           <div
             id="myGrid"
             class="ag-theme-quartz-dark"

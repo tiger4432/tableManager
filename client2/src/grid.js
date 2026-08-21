@@ -242,8 +242,11 @@ export function updateOffscreenIndicator() {
     badge.title = count > 0 ? '가로 스크롤로 갈 수 있습니다' : '';
     badge.style.display = count > 0 ? '' : 'none';
   }
+  // The bar now shows for CHIPS ALONE. The off-screen count moved to the grid header's
+  // right end (mockup 2b) and is its own element, so a table with pushed-off columns and
+  // no filters must not light up an empty filter area in the header.
   const chipCount = elements.filterChips ? elements.filterChips.childElementCount : 0;
-  bar.style.display = (chipCount > 0 || count > 0) ? '' : 'none';
+  bar.style.display = chipCount > 0 ? '' : 'none';
 }
 
 /** Rebuild the chips from `getFilterModel()`, then re-measure the right-hand end. */
