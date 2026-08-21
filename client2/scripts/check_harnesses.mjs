@@ -963,6 +963,18 @@ const FLOORS = new Map([
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
   ['virtual_column_render_harness.mjs', 65],
+  // New 2026-08-21 with the 2b reference-grid paste round. Floor is the count it reports on
+  // the commit that introduces it — there is no earlier tree to measure it against.
+  //
+  // 🔴 THE COUNT INCLUDES ITS OWN MUTANTS AND CONTROLS, and that is the load-bearing part.
+  //    Four defects must be CAUGHT (declared column order reversed, the clipboard guard
+  //    removed, the alignment comparison reduced to a column COUNT, and the virtual-column
+  //    predicate pinned false) and two controls must ESCAPE. A drop here means one of those
+  //    stopped being provable — most likely because a source anchor moved, which is exactly
+  //    how a mutant goes quietly inert rather than red.
+  //
+  //    FLOORS, not KNOWN_RED: it lands green. A name in both lists refuses to start.
+  ['reference_grid_paste_harness.mjs', 22],
   // New 2026-08-04 with the reconnect-backoff round (the 30s ceiling that left the page dark
   // after a server restart). Same rule as the other new entries: the floor is the count it
   // reports on the commit that introduces it — there is no earlier tree to measure it against.

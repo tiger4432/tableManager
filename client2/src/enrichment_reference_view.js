@@ -193,6 +193,37 @@ function selectedColumnNames() {
     .map(th => th.dataset.column);
 }
 
+/**
+ * The band's whole decision, as a pure function of the two column lists.
+ *
+ * SEPARATED FROM THE DOM ON PURPOSE. This is the part that can be wrong in a way nobody
+ * sees — a comparison that only counts columns still shows a green band while the paste
+ * lands sideways — so it is the part a harness has to be able to score without a browser.
+ * `isVirtual` arrives as an argument rather than being imported here for the same reason.
+ *
+ * 🔴 NO ARITY BRANCH. The lists carry their own lengths; a two-column case and a
+ * three-column case take the same path.
+ */
+export function alignmentVerdict(sourceCols, targetCols, isVirtual) {
+  const rowsLabel = count => `${count}행 × ${sourceCols.length}열`;
+  const arrow = list => list.length ? list.join(' → ') : '—';
+  // 🔴 `isVirtualColumn`, NOT `joinResolvedColumn`. The question is "will the server refuse a
+  // WRITE here", which is what that predicate answers; a `collide` column is join-resolved
+  // AND writable, so the wider one would refuse a paste that would have worked.
+  const blocked = targetCols.filter(isVirtual);
+  // Names AND order AND count — any one of the three differing is a mismatch. Comparing only
+  // the count is the defect this is written to make visible.
+  const same = sourceCols.length === targetCols.length
+    && sourceCols.every((name, index) => name === targetCols[index]);
+  if (blocked.length) {
+    return { state: 'blocked', blocked, rowsLabel,
+      body: `불가 — 조인 컬럼 ${blocked.join(', ')} 포함 · 대상에서 빼고 붙여넣기` };
+  }
+  if (same) return { state: 'match', blocked, rowsLabel, body: `열 순서 일치 · ${arrow(sourceCols)}` };
+  return { state: 'warn', blocked, rowsLabel,
+    body: `열 순서 불일치 · 복사 ${arrow(sourceCols)} / 대상 ${arrow(targetCols)}` };
+}
+
 function updateAlignmentBand() {
   const band = elements.referenceAlignment;
   if (!band) return;
@@ -202,29 +233,12 @@ function updateAlignmentBand() {
 
   const sourceCols = selectedColumnNames();
   const targetCols = targetColumnIds();
+  const verdict = alignmentVerdict(sourceCols, targetCols, isVirtualColumn);
   const rows = rect.r1 - rect.r0 + 1;
-  const size = `${rows}행 × ${sourceCols.length}열`;
-
-  // 🔴 `isVirtualColumn`, NOT `joinResolvedColumn`. This asks "will the server refuse a WRITE
-  // here", and that is the question the first predicate answers; a `collide` column is
-  // join-resolved AND writable, so judging with the wider one would refuse a paste that
-  // would in fact have worked.
-  const blocked = targetCols.filter(isVirtualColumn);
-  const same = sourceCols.length === targetCols.length
-    && sourceCols.every((name, i) => name === targetCols[i]);
 
   band.classList.remove('is-match', 'is-warn', 'is-blocked');
-  const arrow = list => list.length ? list.join(' → ') : '—';
-  if (blocked.length) {
-    band.classList.add('is-blocked');
-    band.textContent = `${size} · 불가 — 조인 컬럼 ${blocked.join(', ')} 포함 · 대상에서 빼고 붙여넣기`;
-  } else if (same) {
-    band.classList.add('is-match');
-    band.textContent = `${size} · 열 순서 일치 · ${arrow(sourceCols)}`;
-  } else {
-    band.classList.add('is-warn');
-    band.textContent = `${size} · 열 순서 불일치 · 복사 ${arrow(sourceCols)} / 대상 ${arrow(targetCols)}`;
-  }
+  band.classList.add(`is-${verdict.state}`);
+  band.textContent = `${verdict.rowsLabel(rows)} · ${verdict.body}`;
 }
 
 function selectionRect() {
