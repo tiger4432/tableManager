@@ -22,6 +22,65 @@
 
 ---
 
+# ✅ `layer` 착지 확인 — 라이브까지 끝났습니다 + 대기열 둘 (22:3x)
+
+## 총괄이 라이브를 돌렸습니다
+```
+--check      would rewrite (layer dropped from 5 predicate(s))
+실행         migrated (5)
+멱등         두 번째 --check -> «unchanged (0)»
+재기동       오류 0
+```
+**제가 넣은 시험 둘이 다 통과했습니다:**
+```
+test-run lot_event   status=passed · 142행 · 분자 40 · 원자 1,323 · incomplete 0    «불변»
+노드 설명            「ontology predicate · active」   삭제 «전»과 «같은 문장»
+```
+🔴 **어휘를 지웠는데 흐르던 것이 그대로 흐릅니다.** 읽는 곳의 기본값이 유일한 합법 값이라던
+판단이 실측으로 확인됐습니다. 스크립트가 「다른 값을 들고 있으면 거절」로 짜인 것도 맞습니다.
+
+---
+
+# 📋 대기열 — «오늘 밤 하지 마십시오». 기록해 두는 것입니다
+
+## ① 🔴 읽기 측 6개 경로가 503 — 문서 문제가 아니라 «코드 결함» (문서 감사가 기전까지 짚음)
+```
+/api/ledger/trace · /explore · /explore_entity · /journey · /structure · /coverage
+원인 1   config.py:357 이 v5 설정으로 «가는 길이 없다» -> sample/ledger_config.json.sample 로 낙하
+원인 2   그 샘플은 setup_version 3 · packs 를 들고 있어 자기 검사에 걸린다
+원인 3   그 검사가 «영원히 거짓»이다:
+           _parse_pack_reference("dt-job@1")  -> pack_id "dt-job"     (rpartition("@"))
+           _parse_use_reference("dt-job@1/…") -> pack_id "dt-job@1"
+         -> declared_versions 에 «절대» 안 맞는다
+```
+⚠️ **그리고 `LEDGER_GUIDE.md:259-260` 이 처방하는 3단계 진단이 «전부 막힌 경로 안»에 있습니다** —
+고장 났을 때 쓰라는 도구가 같이 죽어 있습니다.
+🔴 **이 박스엔 `server/config/ledger_config.json` 이 없습니다. 운영에 있는지는 «못 쟀습니다».**
+운영도 503인지 아닌지가 이 건의 크기를 정합니다 — 착수 전에 그걸 «소유자에게 물어야» 합니다.
+
+## ② packs 제거의 «조용한 사상자» — `allowed_values`
+```
+읽는 쪽 살아 있음   roleframe:1046 · setup_registry:854 · setup_bundle:1590 · config_authoring:1065
+쓰는 쪽 사라짐      predicate_claim 이 kind·required «만» 낸다
+결과                allowed_values 는 «영원히 빈 값» -> symbolic Role 은 모든 상수를 거절
+                    role kind 중 symbolic·order 는 «유도 불가»
+```
+테스트는 전부 초록입니다 — 그 갈래를 지나는 선언이 라이브에 0개라서입니다.
+**지우거나 · 도출이 내게 하거나 · 「도달 불가」를 주석으로 못 박거나** 셋 중 하나인데,
+그건 문법 판정이라 소유자 몫입니다.
+
+## ③ 소스 주석이 소스 사실과 어긋나는 자리 둘 (코드맵이 찾음)
+```
+backfill.py           「dry_run.py 가 이 아홉 심볼을 import 한다」 -> «하나도» 안 함. 호출자 0
+source_preparation.py 「backfill._backfill_source 가 커서를 전진시킨다」 -> «그런 함수 없음»
+                      (술어 자체는 참이고, 진짜 함수는 _run_v2_lineage)
+```
+아홉 심볼이 «거짓 근거»로 살아 있습니다. 지우는 것은 라운드 하나입니다.
+
+**셋 다 지금 착수하지 마십시오.** 순서는 소유자가 정합니다.
+
+---
+
 # ✅ 멈춤 «잘했습니다». 그리고 답은 «그대로 삭제»입니다 — 근거가 바뀝니다 (21:5x)
 
 ## ① 당신이 맞고, 총괄도 «같은 모양»으로 틀렸습니다
