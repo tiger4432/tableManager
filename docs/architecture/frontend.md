@@ -181,7 +181,7 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 | `doe_bands.js` | 753 | **DOE zone 모델의 순수 구현**(§4.1) — 구간 소요·자재당 분배 산식의 정본. 계약 벡터 `contracts/doe_band_rules/vectors.json`으로 서버와 같은 기댓값에 채점 |
 | `timeline.js` | 1,008 (2026-08-12 재실측 — 종전 899) | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터. **[2026-08-11 `dab9152`] `readHistoryPage`**(엔벨로프 `{logs,truncated,next_cursor,limit,returned}`와 구버전 bare-list 응답 양쪽을 받는 관용 파서) + 목록 끝 `일부만 (N건) · 더 보기` 페이징(§7). 🔴 **[2026-08-12] 빈 셀 탭은 두 상태다** — `createHistoryEmptyDom`이 서버가 셀 라우트에만 싣는 `row_history_total`을 읽어 「이 행엔 정말 이력이 없다」(`기록 없음`)와 「기록은 있는데 이 화면이 못 보여준다」(`이 셀 기록 없음` + `행 이력 N건 보기` → 행 탭)를 갈라 그린다. 기계 쓰기가 `column_name='ROW_UPDATE'`로 **행마다 한 줄**을 적기 때문에 생기는 상태이고, **요약 문자열을 파싱해 셀 이력을 복원하지 않는다**(그 값은 렌더된 문장이다 — [backend §이력/감사](./backend.md)). `row_history_truncated`면 그 수는 하한이라 `N건 이상`으로 적는다 |
 | `ui.js` | 431 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`(**Ctrl+Enter 일괄 채우기 — 사각형이 뒤쪽 가상 컬럼까지 닿으므로 `isVirtualColumn` 가드 필요**), 페이지캐시 유지, unload 경고. ⚠️ **[2026-08-11] Enrichment 배지(`updateEnrichmentBadge`)는 삭제됐다**(`5116f67` — 호출자 0건이던 죽은 함수) |
-| `enrichment_reference_view.js` | 119 (2026-08-11 신설 `1e29078`) | **메인 그리드 History 패널의 참조뷰 탭** — 옛 `enrichment.html` 컨베이어의 조회 절반을 그리드 사이드바로 이식. `syncReferenceViewRule`(테이블 전환 시 그 테이블에 해당 규칙이 있으면 탭 노출) · `refreshReferenceForSelection`(셀 클릭 시 자동 갱신) · `installReferenceKeyboardIsolation`(패널 안 텍스트 선택·복사가 그리드 클립보드 핸들러에 가로채이지 않게 격리 — 그리드 핸들러는 선택이 남아 있으면 **항상** 자기 TSV로 덮어썼다). 같은 백엔드 라우트(`GET /enrichment/rules/{r}/references/{i}`)를 재사용, 새 엔드포인트 없음 |
+| `enrichment_reference_view.js` | 485 (2026-08-11 신설 `1e29078` · 2026-08-21 2b 라운드로 확장) | **메인 그리드 History 패널의 참조뷰 «그리드»** — 2026-08-21 이주 2b로 «읽는 표»에서 «범위 선택·복사가 되는 그리드»가 됐다. `fillPlan`(규칙의 `target_fields` **배열** 순서 × 뷰의 `candidate_for` 매핑으로 «채울 열»을 정한다 — 키 순서가 아니라 배열을 읽는 이유는 §3.6) · `alignmentVerdict`(순수 함수, 붙여넣기 정렬 판정) · 로컬 범위 선택 모델 하나(드래그와 `Shift`+방향키가 같은 `end`를 움직인다) · `serializeTsv` 재사용 복사(`clipboard.js`를 **import 하지 않는다** — 그 모듈은 `grid.js`·`ui.js`·`effort_meter.js`를 끌고 오고, 이 패널은 셋 다 필요 없다). 규칙 선택은 «선언하는 규칙 우선»(§3.6). 같은 백엔드 라우트 재사용, 새 엔드포인트 없음 — 옛 `enrichment.html` 컨베이어의 조회 절반을 그리드 사이드바로 이식. `syncReferenceViewRule`(테이블 전환 시 그 테이블에 해당 규칙이 있으면 탭 노출) · `refreshReferenceForSelection`(셀 클릭 시 자동 갱신) · `installReferenceKeyboardIsolation`(패널 안 텍스트 선택·복사가 그리드 클립보드 핸들러에 가로채이지 않게 격리 — 그리드 핸들러는 선택이 남아 있으면 **항상** 자기 TSV로 덮어썼다). 같은 백엔드 라우트(`GET /enrichment/rules/{r}/references/{i}`)를 재사용, 새 엔드포인트 없음 |
 | `utils.js` | 347 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) · `dismissToasts(dedupeKey)`로 **회수**(지시형 토스트는 그 지시가 참이 아니게 된 순간 사라져야 한다 — §2.1-ter) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 113 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
@@ -333,7 +333,7 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 🔴 **그러나 병합하지 않는 것으로는 쓰기가 막히지 않는다 — 이 라운드의 핵심 정정이다.**
 「목록에 안 넣으면 붙여넣기 대상이 안 된다」는 **거짓**이었다. 붙여넣기 경로는 `currentColumns`를 **읽지 않고** 배치를 **그리드 컬럼 id**에서 만들며, 유일한 관문은 하드코딩된 시스템 컬럼 배열이다. 즉 **컬럼이 렌더되는 순간 그것은 붙여넣기 대상**이고, 어느 목록에 사는지는 무관하다. 그리고 그 컬럼 하나가 겹치면 서버 거부가 **배치 단위**라 **붙여넣은 블록 전체가 400**이 된다. 같은 모양의 문이 둘 더 있다 — **delete로 비우기**와 **Ctrl+Enter 일괄 채우기**.
 
-- **판정은 술어 하나**: `state.isVirtualColumn(colId)`. 사이트마다 배열에 이름을 더하는 방식이 불가능한 이유는 가상 컬럼의 **이름이 사이트별 선언**이기 때문이다. 🔴 **이 술어는 강제가 아니다** — 강제는 서버의 `crud.refuse_virtual_join_columns`이고, 이쪽은 **되돌아올 400을 제안하지 않기** 위한 것이다.
+- **판정은 술어 하나**: `isVirtualColumn(colId)` — `state.js`의 **named export**이지 `state` 객체의 속성이 아니다(2026-08-21 정정. 이 문서가 `state.isVirtualColumn`으로 적고 있었고, 그 표기가 그대로 이주 지시서에 복사돼 있었다 — 그 이름으로는 호출이 안 된다). 사이트마다 배열에 이름을 더하는 방식이 불가능한 이유는 가상 컬럼의 **이름이 사이트별 선언**이기 때문이다. 🔴 **이 술어는 강제가 아니다** — 강제는 서버의 `crud.refuse_virtual_join_columns`이고, 이쪽은 **되돌아올 400을 제안하지 않기** 위한 것이다.
 - **복사는 반대 방향으로 손봐야 했다.** `getRangeSelectedTSV`는 컬럼 창 안에서 `currentColumns`로 **거른다** — 그대로 두면 복사한 블록 **가운데서 컬럼이 빠지고 오른쪽 전부가 한 칸씩 밀려**, 선택한 것이 아닌 직사각형을 돌려준다. 복사는 읽기이므로 **두 복사 술어는 가상 이름을 받아들인다.**
 - **정렬은 비교기를 붙였고, 필터는 일부러 껐다.** `number` 선언 컬럼의 값 정의역에는 `unresolved_label`이 섞이는데, AG-Grid 기본 비교는 `(50, '미상')`에서 **양쪽 비교가 모두 거짓**이라 미해결 행이 모든 숫자와 동률이 되어 결과 전체에 흩어진다. 필터는 `filter: false`다 — 이 그리드의 컬럼 필터는 **서버측**이고 서버는 이 컬럼을 모르므로, 조건이 하나도 성립하지 않아 **페이지가 필터 없이 돌아온다**(클라 행 모델만 걸러 화면은 필터된 것처럼 보이고 `Matches:`와 페이지 수는 전량 그대로다 — **반만 동작하면서 아무 말도 안 하는 필터**).
 - **셀 읽기는 저장 컬럼과 같은 함수를 쓴다**(`rawCellValue`/`numericDisplayValue`). 서버 `attach`가 조인 셀을 `fetch_and_merge_metadata`와 **같은 키**로 채우므로 두 번째 리더가 필요 없다. `numericDisplayValue`가 **강제 변환하지 않는 것**이 계약이다 — `Number('미상')`은 `NaN`이라 가드가 원값을 돌려주고 라벨이 그대로 셀에 닿는다.
@@ -379,6 +379,26 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
 - ⚠️ **초기값을 「연결 안 함」류의 다른 문구로 바꾸지 마십시오** — 세 상태 중 하나가 *「JS가 그 줄에 닿지 않았다」*로 읽히는 것이 이 설계의 요점입니다.
 
 ---
+
+### 3.6 참조뷰 붙여넣기 계약 — **선언이 열 순서를 정하고, 화면은 막지 않는다** (2026-08-21 이주 2b)
+
+참조뷰가 «읽는 표»에서 **또 하나의 그리드**가 됐다. 값을 넣는 수단은 버튼이 아니라 **범위 선택 → `Ctrl+C` → 메인 그리드 `Ctrl+V`**이고, 채우기 버튼·확정 버튼은 만들지 않았다.
+
+**① 열 순서의 출처는 «배열»이지 «키 순서»가 아니다.** 채울 열은 규칙의 `target_fields`(배열)가 **순서**를, 뷰의 `candidate_for`(`{대상 필드: 뷰 결과 컬럼}`)가 **매핑**을 준다.
+
+🔴 **둘 다 같은 답을 주는데도 배열을 읽는 이유:** JSON 객체의 키 순서는 파이썬 dict → `json.dumps` → `JSON.parse`를 지나 보존되지만, 그것은 키가 **정수처럼 생기지 않은 동안만** 참이다 — `Object.keys`가 정수형 키를 앞으로 끌어올린다. 오늘 `1`이라는 이름의 컬럼은 없다. 생기는 날 붙여넣기는 **오류도 거절도 없이** 엉뚱한 열에 내려앉는다. 배열을 읽으면 그 실패 모드가 **존재하지 않게** 된다.
+
+⚠️ **`fill_targets`는 만들지 않았다.** 이주 지시서 초안은 새 선언을 요구했으나, 그것은 서버 두 곳 + 소유자의 gitignore 설정 변경이 필요해 지시서 **자신의 전제**(「서버 계약 변경 0」)를 깬다. `candidate_for`가 이미 선언돼 있고 이미 정규화되며 이미 클라로 나가고, **`fill_targets`보다 더 많이** 말한다(어느 뷰 컬럼이 어느 대상을 채우나).
+
+**② 정렬 띠는 «알리는 장치»다.** 복사 크기 · 복사한 열 순서 · 대상 열 순서를 적고, 어긋나면 경고 상태가 된다. **막지 않는다** — 두 열을 복사해 **한 열만** 붙여넣는 것은 사람이 실제로 하는 일이고, 그것을 거절하는 화면은 붙여넣기보다 더 자주 틀린다. 대상 열은 메인 그리드의 실제 범위(`state.dragStartCell`/`dragEndCell` → `state.visibleRangeColIds()`)에서 읽는다.
+
+**③ 유일한 단정은 「불가」**, 대상 범위에 가상 조인 컬럼이 한 칸이라도 걸릴 때다(§3.4의 배치 단위 400). 이것도 키 입력을 가로채지 않는다 — **거절하는 것은 서버**이고, 띠는 그 400을 화면에서 **미리 말할** 뿐이다.
+
+**④ `clipboard.js`를 import 하지 않는다.** 그 모듈은 `grid.js`·`ui.js`·`effort_meter.js`를 끌고 오고 이 패널은 셋 다 필요 없다 — **의존이 어느 쪽을 향하느냐의 문제이지 재사용을 피하라는 뜻이 아니다.** 직렬화는 공용 `tsv.js`, 헤더 스위치는 메인 그리드의 `#copy-header-toggle`을 그대로 쓴다. 패널 안 복사가 그리드 TSV에 덮이지 않는 것은 `clipboard.js` 쪽의 **조기 반환**(`e.target.closest('#reference-view')`)이 하며, 이는 **등록 순서에 의존하지 않는다**.
+
+**⑤ 규칙 선택 — 「선언하는 규칙」이 이긴다.** 한 테이블에 규칙이 여럿이면 `candidate_for`를 가진 규칙을 먼저 고르고, 없으면 종전대로 첫 번째. ⚠️ **임시방편이다**: 패널이 N개 중 «하나»만 보여준다는 한계는 그대로이고, 이 기준이 유일해를 내는 것은 **선언하는 규칙이 현재 하나뿐**이기 때문이다. 둘이 되는 날 다시 「첫 번째」가 된다.
+
+**게이트:** `client2/tests/reference_grid_paste_harness.mjs`(FLOORS 22). 변이 넷(선언 순서 뒤집기 · 클립보드 가드 제거 · 비교를 개수만으로 · 가상 컬럼 술어 false 고정)이 **전부 잡혀야** 하고, 대조군 둘(주석 제거 · 지역명 일괄 변경)은 **빠져나가야** 한다.
 
 ## 4. 맵 에디터 (`map_editor.js` + `map_key.js` + `split_registry_row.js`)
 
