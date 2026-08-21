@@ -38,8 +38,30 @@
 > 5  select 가 «재렌더 뒤 값을 잃는다»              종류·approval_status 가 세 번 되돌아갔다.
 >                                                  모델엔 들어갔는데 화면만 옛값 (총괄 신규 관측)
 > ```
-> ⚠️ **딸린 관측 하나:** `dt_log` 에 `event_time` 이 «있는데» 시각 피커는 「시각 타입 컬럼 0개」라
-> 하고 `basis` 만 준다. 타입 선언 문제인지 후보 규칙 문제인지 «아직 안 갈랐다».
+> ### ✅ 그 「딸린 관측」은 갈랐다 — **화면이 맞고 내가 틀렸다** (09:2x)
+>
+> `dt_log` 에 `event_time` 이 있는데 시각 피커가 「시각 타입 컬럼 0개」라고 해서 결함을 의심했다.
+> **판별식으로 재니 화면이 옳다.**
+> ```
+> lot_event → 「lot_event의 시각 타입 컬럼 1개 + basis」   {"column":"event_time"}   ← 규칙은 «돈다»
+> dt_job    → 「dt_log에 시각 타입 컬럼 없음 → basis만」                              ← 정직한 0
+> ```
+> ⚠️ **하마터면 없는 결함을 세울 뻔했다.** `_column_types` 가 `table.get("columns")` 를 읽는데
+> `table_config.json` 은 `column_types` 를 쓴다 — **두 줄만 떼어 보면 「모든 표가 0」이 된다.**
+> 그런데 `lot_event` 는 후보를 «준다». 카탈로그가 정규화돼 넘어온다는 뜻이고, 내 가설은 죽었다.
+> `dt_log` 로는 두 가설이 «같은 답»을 내서 판별이 안 됐다.
+> [[a-snippet-reproduced-out-of-context-is-not-the-behaviour]] · [[a-fixture-both-rules-agree-on-decides-nothing]]
+>
+> ### 🟠 그래서 남은 것은 «코드»가 아니라 «선언»이다 — 소유자 판정
+> ```
+> event_time 이라는 «같은 이름»이 표마다 다른 타입으로 선언돼 있다
+>    datetime   lot_event · process_event · metro
+>    string     dt_log · defect · core_wafer_map
+> 시각처럼 생긴 컬럼 전체:  datetime 6개 · string 8개
+> ```
+> **결과:** `string` 으로 선언된 표 위에 새 소스를 만들면 시각 피커가 **`basis`(적재 시각)밖에**
+> 못 준다. 세상 시각이 표에 있는데 적재 시각을 쓰게 된다. **선언이 맞는지는 소유자 판정이다** —
+> 진짜 문자열이면 지금이 맞고, 오선언이면 `table_config.json` 을 고칠 일이지 화면을 고칠 일이 아니다.
 >
 > ### 판정
 > ```
