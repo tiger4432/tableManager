@@ -1,5 +1,55 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## ✅ 2026-08-21 21:0x — **화면이 «진짜 행»을 돌린다. 구멍을 소유자가 아니라 화면이 찾는다**
+>
+> ### `fd3dda05` — 「시험 실행」 (+563 / 7파일).  총괄이 직접 태워서 확인
+> ```
+> POST /admin/ontology-explorer/test-run     쓰기 «없음» · 커서 «안 움직임»
+> ```
+> ```
+> lot_event      rows_read 142 · molecules 40 · incomplete 0 · atoms 1,323 · status passed
+>    descent 40 · first_sight_holder 25 · first_sight_item 125
+>    in_slot 907 · merge_slot_join 113 · split_slot_carry 113
+> die-transfer   status refused
+>    code invalid_profile · message "must be a non-empty object keyed by sentence"
+>    form_path bundle.sources.die-transfer.bind.mappings      <- «그 칸»을 가리킨다
+> DB 원자   2,115 «불변» — 한 줄도 안 썼다
+> ```
+> 🔴 **오늘 소유자가 `lot_event` 하나로 다섯 번 불려 온 그 왕복이 전부 이 버튼에서 뜬다** —
+> 커서 죽음 · business_key 불일치 · 정체성 결측 · 문자열 시각 · registration_probe 누락.
+> **backfill 까지 안 간다.** 이것이 「언제 끝나」의 답이다.
+>
+> ### `2f870d39` — 화면이 `registration_probe` 를 «묻는다». 기계로 채점: 47 -> 38
+> 남은 것: `vocabulary 14 · prepare 12 · map 8 · entities 3 · setup_version 1`.
+> 지시 `34fab926` 이 가족 넷으로 묶었고 구현자가 ①(prepare·map 20)을 돌고 있다.
+> ⚠️ 소유자 정정으로 전제가 하나 무너졌다 — **`/admin/scripts/code` 로 화면에서 파이썬을 쓸 수 있고
+> `implementations.py` 가 자동 발견한다.** 「후보로 좁히면 새로 못 만든다」는 총괄의 거짓 전제였다.
+>
+> ### 🔧 디자인 세션을 «워크트리»로 분리했다 (소유자 지시)
+> ```
+> C:/Users/kk980/Developments/assyManager-design    브랜치 design
+> 채널   총괄 -> main 의 task/DESIGN_ORDERS.md  ·  세션 -> design 의 design_session_report.md
+> ⚠️ node_modules 는 git 에 없다 — 그쪽에서 npm install 이 «필요»
+> ```
+> **판정 셋:** ① `dist` 는 총괄만, 착지 후 «한 번만» 굽는다 ② 소유자의 `MIGRATION_2b` 는 유효
+> ③ Phase 3 는 `candidate_for` (기존 선언 · 서버 변경 0 · `fill_targets` 보다 더 말한다)
+>
+> ### 🔴 총괄이 오늘 «이름을 추측해서» 두 번 틀렸다
+> ```
+> ① die_transfer / die-transfer   내용을 보고 소유자 것을 골랐다 -> 거꾸로였다
+>                                 울타리에 «틀린 이름»을 박아 남이 소유자 것을 지울 뻔했다
+> ② 「디자인 세션이 dist 를 구웠다」  삭제된 자산만 보고 추측 -> 재 보니 «남의 빌드»가
+>                                 그 세션의 미완성 작업을 «싣고 간» 것이었다
+>                                 20:55:12 총괄 재기동(빌드 없음) · 20:55:52 남의 빌드
+> ```
+> **둘 다 재면 한 줄이었다.** 소유자와 그 세션이 각각 반박해서 잡혔다.
+> 「누구 것인가」를 지목하기 전에 «mtime 이나 실측»을 먼저 본다. [[a-hypothesis-is-not-a-diagnosis]]
+>
+> ### ⚠️ `client2/dist` 는 지금 «세 세션이 섞인» 번들이다
+> 20:55:52 빌드가 디자인 세션의 미완성 CSS/JS 를 실었다. **화면으로 무엇도 판정하지 말 것.**
+> 두 레인에 빌드 금지를 걸었고, 재빌드는 착지 후 총괄이 한 번만 한다.
+>
+
 > ## 🔧 2026-08-21 21:4x — **구멍을 세는 «기계»가 생겼다. 47 -> 38**
 >
 > > 소유자: 「대체 자꾸 빵꾸가 계속 나냐 언제 끝나? 구멍 다 찾아서 이제 진짜 한번에 메워」
