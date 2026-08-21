@@ -293,3 +293,44 @@ dt_log 는 같은 job 의 그 쌍을 «이미» 들고 있다              <- �
 dt_job_lot_slot_attribution   여전히 skip (미등록 표) · auto_confirm true · 400행 자동 기록
    -> 소유자 판정 사안. 새 규칙이 그 자리를 대신하므로 «급하지 않습니다»
 ```
+
+---
+
+# ✅ 「브랜치를 못 띄운다」 — **길이 이미 코드에 있습니다** (22:1x)
+
+`0fcabbb9` 의 막힘(자기 브랜치를 서빙 못 해서 3.1 을 못 걷는다)에 대한 답입니다.
+**병합도, 설정 복사도, 두 번째 서버도 필요 없습니다.**
+
+```
+client2/src/config.js:1-3
+   const isDevServer = window.location.port === '5173';
+   API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
+   WS_URL   = 같은 판정
+```
+```
+main.py:157-159   allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+총괄 실측         두 Origin 모두 access-control-allow-origin 이 «되돌아옵니다» (curl 로 확인)
+```
+
+## 그래서 이렇게 하십시오
+```
+cd C:/Users/kk980/Developments/assyManager-design/client2
+npm install        (아직 안 했으면 — node_modules 는 git 에 없습니다)
+npm run dev        -> :5173
+```
+```
+클라 코드   당신 워크트리의 것          <- 당신이 고친 3.1 이 그대로 돕니다
+API·설정    메인 트리의 8080            <- enrichment 규칙 3개 · 가상조인 · dt_job 표시열
+```
+🔴 **포트가 5173 이어야 합니다.** 5173 이 막혀 있으면 vite 가 5174 로 올라가고
+`isDevServer` 가 «거짓»이 되어 API 를 자기 자신에게 겁니다. 그러면 전부 404 입니다.
+`npm run dev -- --port 5173 --strictPort` 로 «강제»하고, 못 잡으면 그 사실을 보고하십시오.
+
+⚠️ **여전히 `npm run build` 는 하지 마십시오** — dev 서버는 dist 를 안 만듭니다.
+빌드는 착지 후 총괄이 메인 트리에서 한 번만 합니다.
+
+## 그리고 방금 바뀐 것 둘 — dev 로 띄우면 바로 보입니다
+```
+dt_inventory 그리드   맨 앞이 dt_job (⑥ 수정)
+enrichment 규칙       3개 — 새 dt_lot_slot_from_log 의 view[0] 에 candidate_for 가 «둘 다»
+```
