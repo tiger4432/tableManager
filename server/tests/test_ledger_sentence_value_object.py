@@ -1,7 +1,7 @@
 """A mapper says a sentence whose object is a VALUE, end to end.
 
 Before this, ``ProfileSentences.say()`` assembled the object unconditionally as an Entity
-reference, so a Claim declaring ``"object": {"kind": "value", ...}`` could not be produced
+reference, so a predicate declaring ``"object": {"kind": "value", ...}`` could not be produced
 by any mapper: the assembly refused every non-entity binding by name.  It was a missing
 path rather than a broken one -- every shipped sentence happened to have an entity object,
 so the branch was never written.
@@ -50,31 +50,33 @@ class CountingSentenceMapper(BaseLedgerMapper):
             obj=SAID_COUNT)]
 
 
-def value_object_bundle(*, object_kind="value", role_kind="quantity"):
+def value_object_bundle(*, object_kind="value"):
     """The fixture bundle, respoken so its one sentence has a scalar object.
 
     The object Role is bound to a CONSTANT on purpose.  An entity assembly cannot be built
     from a constant binding, so a ``say()`` that still took the entity path refuses this
     bundle by name instead of quietly producing something -- which is what makes the
     mutation below visible.
+
+    🔴 `role_kind` STOPPED BEING A PARAMETER on 2026-08-21.  The four lines that rewrote
+    `packs.movement@1.claims.transition` -- drop `target`, drop `event_key`, add a
+    `result` Role of the given kind, point `emit.object.value` at it -- described a Claim
+    nobody writes any more.  Changing `object.kind` IS the whole edit now, and
+    `predicate_claim` derives the object Role under its canonical name `value`, with the
+    kind the object kind implies (`quantity` for `value`, `identity` for `event_ref`).
     """
     raw = logical_bundle()
     raw["vocabulary"]["moves_to@1"]["object"] = {
         "kind": object_kind,
         "qualifiers": {"required": [], "optional": []},
     }
-    claim = raw["packs"]["movement@1"]["claims"]["transition"]
-    claim["roles"].pop("target")
-    claim["roles"].pop("event_key")
-    claim["roles"]["result"] = {"kind": role_kind, "required": True}
-    claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
     # The mapping is FILED UNDER THE SENTENCE `CountingSentenceMapper` says, because that
     # key is the whole of selection since 2026-08-21.  The fixture's own name for it
     # (`main_transition`) is a different mapper's word and would resolve to nothing here.
     mapping = source_profile(raw)["mappings"].pop("main_transition")
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
-    mapping["bind"]["result"] = constant(BOUND_COUNT)
+    mapping["bind"]["value"] = constant(BOUND_COUNT)
     source_profile(raw)["mappings"][CountingSentenceMapper.COUNT.sentence] = mapping
     return raw
 
@@ -88,7 +90,7 @@ def test_a_mapper_can_say_a_sentence_whose_object_is_a_value():
     ledger_frame = compile_role_frame(context, role_frame)
 
     # The Role carries the bare value: no {'type', 'keys'} envelope was invented for it.
-    assert role_frame.iloc[0]["roles"]["result"] == SAID_COUNT
+    assert role_frame.iloc[0]["roles"]["value"] == SAID_COUNT
     assert ledger_frame.iloc[0]["object_kind"] == "value"
     assert ledger_frame.iloc[0]["object_payload"] == {"value": SAID_COUNT}
     # ...and it is the MAPPER's number, not the one the Profile binding declares.
@@ -102,7 +104,7 @@ def test_a_mapper_can_say_a_sentence_whose_object_is_an_event_reference():
     execution here instead of a comment claiming it works.
     """
     compiled = snapshot(
-        value_object_bundle(object_kind="event_ref", role_kind="identity"))
+        value_object_bundle(object_kind="event_ref"))
     context = mapper_context(compiled, "input_rows")
 
     class EventRefMapper(CountingSentenceMapper):
@@ -146,17 +148,26 @@ def test_an_object_kind_say_does_not_answer_is_refused_by_name(monkeypatch):
     it the new kind would take the entity path and mint an atom whose object was assembled
     as an identity it never was.
 
-    (``none`` cannot reach ``say()`` at all: ``_validate_emission`` refuses a ``none``
-    object that names a Role, so a validated bundle can never hand the method a ``none``
-    emission with an object Role.  That is why this is the kind simulated and not that
-    one.)
+    🔴 TWO SETS ARE WIDENED SINCE 2026-08-21, AND THAT IS THE POINT OF THE UPDATE.  With
+    the `packs` section gone, the Role a scalar object carries is DERIVED, from
+    `_OBJECT_VALUE_ROLE_KINDS`.  So a fifth kind added to `_OBJECT_KINDS` alone derives no
+    object Role at all and is refused one stage earlier, as `unknown_role` on the binding
+    -- which is a different refusal about a different mistake.  The mistake this test is
+    for is "the derivation learned the new kind and `_object_value` did not", and that is
+    now spelled by widening both.  The guard did not die; its precondition moved.
+
+    (``none`` cannot reach ``say()`` at all: it derives no object Role, so `say()` never
+    calls this method for one.  That is why this is the kind simulated and not that one.)
     """
     from ledger import setup_bundle as bundle_module
 
     monkeypatch.setattr(
         bundle_module, "_OBJECT_KINDS",
         frozenset(bundle_module._OBJECT_KINDS | {"tally"}))
-    raw = value_object_bundle(object_kind="tally", role_kind="quantity")
+    monkeypatch.setattr(
+        bundle_module, "_OBJECT_VALUE_ROLE_KINDS",
+        {**bundle_module._OBJECT_VALUE_ROLE_KINDS, "tally": "quantity"})
+    raw = value_object_bundle(object_kind="tally")
     compiled = snapshot(raw)
     context = mapper_context(compiled, "input_rows")
 
@@ -165,6 +176,6 @@ def test_an_object_kind_say_does_not_answer_is_refused_by_name(monkeypatch):
             context, event_frame(compiled), implementations(CountingSentenceMapper))
 
     assert caught.value.code == "unsupported_object_kind"
-    assert caught.value.path == (
-        "bundle.packs.movement@1.claims.transition.emit.object.kind")
+    # The Claim's `config_path` is the predicate's declaration now, not a pack position.
+    assert caught.value.path == "bundle.vocabulary.moves_to@1.object.kind"
     assert "'tally'" in caught.value.message

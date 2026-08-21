@@ -72,7 +72,16 @@ def referenced_relations(bundle):
     return relations
 
 
-def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
+def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup):
+    """Was `..._every_registry_and_claim`.
+
+    `pack` and `claim` NODES stopped being built on 2026-08-21 with the section they read.
+    They are not replaced by `predicate` nodes -- those already existed -- so both kinds
+    simply leave the enumeration, and the bijection below loses the two pack terms.  The
+    `claims` REGISTRY still exists and is still keyed by predicate; it is enumerated
+    through `predicate` nodes, which is asserted directly rather than through a second
+    node kind saying the same thing.
+    """
     index = build_explorer_index(active_setup)
     bundle = active_setup.bundle.to_mapping()
     by_kind = {
@@ -83,8 +92,10 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         }
     }
     assert by_kind["predicate"] == set(active_setup.snapshot.registries["vocabulary"])
+    assert by_kind["predicate"] == set(active_setup.snapshot.registries["claims"])
     assert by_kind["entity"] == set(active_setup.snapshot.registries["entities"])
-    assert by_kind["pack"] == set(active_setup.snapshot.registries["packs"])
+    assert by_kind["pack"] == set()
+    assert by_kind["claim"] == set()
     # All three registries are keyed by the SOURCE they belong to since 2026-08-20, and the
     # nodes are positions inside it -- `<source>#profile` / `<source>#preparation` /
     # `<source>#mapper` -- so the pairing is stated rather than assumed equal.
@@ -113,8 +124,6 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
         node = index.nodes[f"table|{table_id}"]
         assert node.config_file == "table_config.json"
         assert dict(node.raw) == dict(active_setup.catalog[table_id])
-    assert len(by_kind["claim"]) == sum(
-        len(pack["claims"]) for pack in bundle["packs"].values())
     profiles = [source["bind"] for source in bundle["sources"].values()]
     assert len(by_kind["mapping"]) == sum(
         len(profile["mappings"]) for profile in profiles)
@@ -125,8 +134,6 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     expected = {
         "predicate|slot_map@1",
         "entity|Lot@1",
-        "pack|lot-lineage@1",
-        "claim|lot-lineage@1/slot_map",
         "profile|lot_event#profile",
         "mapping|lot_event#profile#mapping:split_slot_carry",
         "preparer|lot_event#preparation",
@@ -142,10 +149,11 @@ def test_actual_snapshot_enumerates_every_registry_and_claim(active_setup):
     # is a number nobody notices is wrong.
     # What the test's name actually promises is a BIJECTION: every declaration becomes one
     # node and nothing else does. Summing the sections says that, and it keeps saying it
-    # when a section grows.
+    # when a section grows. The two pack terms -- `len(bundle["packs"])` and the sum of
+    # each pack's claims -- left the sum on 2026-08-21 with the section itself, which is
+    # exactly the self-maintaining behaviour this form was written for.
     assert len(index.nodes) == (
-        len(bundle["vocabulary"]) + len(bundle["entities"]) + len(bundle["packs"])
-        + sum(len(pack["claims"]) for pack in bundle["packs"].values())
+        len(bundle["vocabulary"]) + len(bundle["entities"])
         + sum(len(profile["mappings"]) for profile in profiles)
         + sum(len(mapping["bind"])
               for profile in profiles
@@ -168,26 +176,29 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
                    for candidate in index.inbound[edge.to_key]) == 1
         assert edge.json_pointer.startswith("/")
 
+    # Was the `emits_predicate` edge out of `claim|lot-lineage@1/slot_map`, pointing at
+    # `/packs/.../emit/predicate`.  A claim draws no edges since 2026-08-21 because there
+    # is no claim node; the mapping draws the same arrow one hop shorter, at the pointer
+    # the author actually typed.
     split = next(edge for edge in index.edges if
-                 edge.from_key == "claim|lot-lineage@1/slot_map"
-                 and edge.reference_kind == "emits_predicate")
+                 edge.from_key == "mapping|lot_event#profile#mapping:split_slot_carry"
+                 and edge.reference_kind == "mapping_predicate")
     assert split.to_key == "predicate|slot_map@1"
     assert split.json_pointer == (
-        "/packs/lot-lineage@1/claims/slot_map/emit/predicate")
+        "/sources/lot_event/bind/mappings/split_slot_carry/predicate")
 
 
-def test_actual_round_trip_source_profile_claim_predicate(active_setup):
+def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
     assert ("source_plan|lot_event", "profile|lot_event#profile", "source_profile") in edges
+    # The pair `mapping -> claim -> predicate` collapsed into one hop on 2026-08-21: the
+    # claim node it went through was a position inside a section that no longer exists,
+    # and it carried nothing the mapping does not already name.
     assert (
         "mapping|lot_event#profile#mapping:split_slot_carry",
-        "claim|lot-lineage@1/slot_map",
-        "mapping_claim",
-    ) in edges
-    assert (
-        "claim|lot-lineage@1/slot_map", "predicate|slot_map@1",
-        "emits_predicate",
+        "predicate|slot_map@1",
+        "mapping_predicate",
     ) in edges
     assert (
         "mapping|lot_event#profile#mapping:split_slot_carry",
@@ -412,22 +423,24 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
             "qualifiers": {"required": [], "optional": []},
         },
     }
-    logical["packs"]["process-material-flow@1"] = {
-        "claims": {
-            "material_to_cell": {
-                "roles": {
-                    "material": {"kind": "entity", "required": True},
-                    "cell": {"kind": "entity", "required": True},
-                    "occurred_at": {"kind": "time", "required": True},
-                },
-                "emit": {
-                    "predicate": "transferred_to@1",
-                    "subject": "$material",
-                    "object": {"kind": "entity_ref", "entity": "$cell",
-                               "qualifiers": {}},
-                    "occurred_at": "$occurred_at",
-                },
-            },
+    # The `process-material-flow@1` pack that named this predicate went with the section on
+    # 2026-08-21.  What made the reference EXTRACTABLE was never the pack -- it is that a
+    # declaration names another declaration and the index resolves it -- so the reference
+    # is planted where an author writes one now: a source's mapping.
+    dt_job = logical["sources"]["dt_job"]["bind"]["mappings"]
+    occurred_at = dt_job["register"]["bind"]["occurred_at"]
+    key_binding = dt_job["register"]["bind"]["subject"]["keys"]["dt_job"]
+
+    def entity(entity_type, key):
+        return {"kind": "entity", "entity_type": entity_type,
+                "keys": {key: dict(key_binding)}, "approval_status": "approved"}
+
+    dt_job["material_to_cell"] = {
+        "predicate": "transferred_to@1",
+        "bind": {
+            "subject": entity("CoreDie@1", "core"),
+            "target": entity("ProcessCell@1", "cell"),
+            "occurred_at": dict(occurred_at),
         },
     }
     # The fixture bundle is judged against the SAME physical catalog the live setup was
@@ -445,8 +458,8 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
     index = build_explorer_index(fixture_setup)
     edge = next(edge for edge in index.edges if
                 edge.from_key ==
-                "claim|process-material-flow@1/material_to_cell"
-                and edge.reference_kind == "emits_predicate")
+                "mapping|dt_job#profile#mapping:material_to_cell"
+                and edge.reference_kind == "mapping_predicate")
     assert edge.to_key == "predicate|transferred_to@1"
     assert index.inbound[edge.to_key] == (edge,)
     assert index.nodes["entity|CoreDie@1"].kind == "entity"
@@ -462,9 +475,11 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "entity|DTDie@1",
         "entity|DTJob@1",
         "entity|LotSlot@1",
-        "pack|dt-assembly@1",
-        "claim|dt-assembly@1/core_to_dt",
-        "claim|dt-assembly@1/bond_component",
+        # `pack|dt-assembly@1` and its two `claim|…` nodes were required here until
+        # 2026-08-21.  Neither kind is built any more; `predicate|component_of@1` joins
+        # the list in their place, because what those claims were REACHED FOR was the
+        # predicate they emitted and a mapping names that directly now.
+        "predicate|component_of@1",
         "profile|dt_log#profile",
         # The sample names the GENERIC implementations the repository ships.  Before
         # self-registration it named "sample-*" ids no class declared, so this round trip
@@ -482,16 +497,13 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "source_plan|dt_log", "profile|dt_log#profile", "source_profile") in edges
     assert (
         "mapping|dt_log#profile#mapping:core_to_dt",
-        "claim|dt-assembly@1/core_to_dt", "mapping_claim") in edges
-    assert (
-        "claim|dt-assembly@1/core_to_dt",
-        "predicate|transferred_to@1", "emits_predicate") in edges
+        "predicate|transferred_to@1", "mapping_predicate") in edges
     assert (
         "source_plan|dt_log", "verified_join|dt_job_to_inventory",
         "source_verified_join") in edges
     assert (
         "mapping|dt_log#profile#mapping:bond_component",
-        "claim|dt-assembly@1/bond_component", "mapping_claim") in edges
+        "predicate|component_of@1", "mapping_predicate") in edges
     assert index.nodes["predicate|transferred_to@1"].config_path == (
         "ledger_config.json#/vocabulary/transferred_to@1")
 
@@ -852,7 +864,11 @@ def test_authorable_sections_match_where_the_index_actually_puts_things(active_s
 
     # Non-vacuous: the live setup really does exercise several of these kinds, so the loop
     # above is comparing things rather than skipping everything.
-    assert len(set(AUTHORABLE_SECTIONS) & set(observed)) >= 4
+    # Was `>= 4` while `pack` was authorable.  MEASURED after the section went on
+    # 2026-08-21: `AUTHORABLE_SECTIONS` holds three kinds and the live root declares all
+    # three, so the floor is the whole map -- lower it only when a section retires, and
+    # say which one.
+    assert len(set(AUTHORABLE_SECTIONS) & set(observed)) >= 3
 
     # And the two kinds deliberately left out must NOT become creatable by accident.
     for excluded in ("table", "verified_join"):
@@ -995,8 +1011,13 @@ def test_a_source_plan_holds_its_profile_and_nothing_points_back(active_setup):
 _FIXTURE_BUNDLE_PATH = {
     "predicate": lambda i: ("vocabulary", i),
     "entity": lambda i: ("entities", i),
-    "pack": lambda i: ("packs", i),
-    "claim": lambda i: ("packs", i.split("/")[0], "claims", i.split("/", 1)[1]),
+    # `pack` and `claim` left this map on 2026-08-21 with the section they addressed.
+    # `mapping` takes the SUB-DECLARATION role `claim` used to play in the fixtures below:
+    # it owns no section, it is written as part of the source that holds it, and its
+    # `bundle_path` is four levels deep -- which is the shape `owning_section` has to walk
+    # up from, and the one a kind-membership rule gets wrong.
+    "mapping": lambda i: (
+        "sources", i.split("#")[0], "bind", "mappings", i.split("#mapping:", 1)[1]),
     # Positions inside a source since 2026-08-20, keyed `<source>#preparation`.
     # The clause they sit in was renamed on 2026-08-21; the node keys did not move.
     "preparer": lambda i: ("sources", i.split("#")[0], "prepare"),
@@ -1137,14 +1158,15 @@ def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
     from ledger.config_explorer import deletion_plan, self_standing_keys
 
     index = _linked_index(
-        # The third kind is a `pack`: it is the procedure that is under test, not the
+        # The third kind is a `predicate`: it is the procedure that is under test, not the
         # kind, and `mapper` stopped being a top-level declaration on 2026-08-20 -- a
         # position inside a source is `unauthorable_here` and would have made this pass
-        # for the wrong reason.
-        [("source_plan", "s"), ("profile", "s#profile"), ("pack", "k")],
+        # for the wrong reason.  It was a `pack` until 2026-08-21, when that section went;
+        # `predicate` is the top-level authorable kind that took its place in the graph.
+        [("source_plan", "s"), ("profile", "s#profile"), ("predicate", "p@1")],
         [("source_plan", "s", "profile", "s#profile", "source_profile"),
-         ("profile", "s#profile", "pack", "k", "profile_pack"),
-         ("pack", "k", "source_plan", "s", "mapper_emits")],
+         ("profile", "s#profile", "predicate", "p@1", "mapping_predicate"),
+         ("predicate", "p@1", "source_plan", "s", "mapper_emits")],
     )
     assert self_standing_keys(index) == frozenset(), (
         "every node must have a referrer or this fixture proves nothing")
@@ -1152,42 +1174,47 @@ def test_a_third_kind_in_the_cycle_goes_with_it_without_a_pair_special_case():
     plan = deletion_plan(index, ["source_plan|s"])
     assert plan.blocked == tuple()
     assert set(plan.removed_keys) == {
-        "source_plan|s", "profile|s#profile", "pack|k"}
+        "source_plan|s", "profile|s#profile", "predicate|p@1"}
 
 
 def test_a_half_wired_declaration_survives_an_unrelated_deletion():
     """Two things a deletion must NOT take: a declaration shared with a survivor, and a
     declaration nothing points at yet.
 
-    The second is the normal state of the screen this feeds -- an author creates a pack
-    minutes before any source's profile uses it.  If in-degree zero were not a walk root,
-    the first unrelated deletion would find that pack unreachable and quietly sweep it.
+    The second is the normal state of the screen this feeds -- an author writes a predicate
+    minutes before any source's mapping utters it.  If in-degree zero were not a walk root,
+    the first unrelated deletion would find it unreachable and quietly sweep it.
+
+    The two stand-ins were `pack|shared` and `pack|fresh` holding `claim|fresh/one` until
+    2026-08-21.  A predicate is the top-level authorable kind that both roles moved to; what
+    the half-wired one HOLDS UP is now the entity only it names, which is the same
+    "unreachable after the walk, named on the confirm screen" property one level over.
     """
     from ledger.config_explorer import deletion_plan
 
     index = _linked_index(
         [("source_plan", "a"), ("profile", "a#profile"), ("source_plan", "b"),
-         ("profile", "b#profile"), ("pack", "shared"), ("pack", "fresh"),
-         ("claim", "fresh/one")],
+         ("profile", "b#profile"), ("predicate", "shared@1"), ("predicate", "fresh@1"),
+         ("entity", "OnlyFresh@1")],
         [("source_plan", "a", "profile", "a#profile", "source_profile"),
-         ("profile", "a#profile", "pack", "shared", "profile_pack"),
+         ("profile", "a#profile", "predicate", "shared@1", "mapping_predicate"),
          ("source_plan", "b", "profile", "b#profile", "source_profile"),
-         ("profile", "b#profile", "pack", "shared", "profile_pack"),
-         ("pack", "fresh", "claim", "fresh/one", "contains_claim")],
+         ("profile", "b#profile", "predicate", "shared@1", "mapping_predicate"),
+         ("predicate", "fresh@1", "entity", "OnlyFresh@1", "subject_entity")],
     )
 
     plan = deletion_plan(index, ["source_plan|a"])
     assert plan.blocked == tuple()
     assert set(plan.removed_keys) == {"source_plan|a", "profile|a#profile"}, (
-        "the shared pack and the half-wired pack are held up by survivors")
+        "the shared predicate and the half-wired one are held up by survivors")
 
-    # And deleting the half-wired pack ITSELF must still take what it holds up.  This is
-    # the half that needs the zero-in-degree walk root: without it the pack is outside
-    # every walk, the plan reports only the pack, and the claim inside it disappears from
-    # the file having never been named on the confirm screen.
-    fresh = deletion_plan(index, ["pack|fresh"])
+    # And deleting the half-wired predicate ITSELF must still take what it holds up.  This
+    # is the half that needs the zero-in-degree walk root: without it the predicate is
+    # outside every walk, the plan reports only the predicate, and the entity only it named
+    # disappears from the file having never been named on the confirm screen.
+    fresh = deletion_plan(index, ["predicate|fresh@1"])
     assert fresh.blocked == tuple()
-    assert set(fresh.removed_keys) == {"pack|fresh", "claim|fresh/one"}
+    assert set(fresh.removed_keys) == {"predicate|fresh@1", "entity|OnlyFresh@1"}
 
 
 def test_pre_existing_garbage_is_not_swept_into_an_unrelated_deletion():
@@ -1267,7 +1294,11 @@ def test_the_fixture_bundle_paths_match_the_ones_the_index_builds(transfer_sampl
             f"the fixture builds {node.kind} at {builder(node.canonical_id)} but the index "
             f"builds it at {node.bundle_path}")
 
-    assert {"source_plan", "profile", "pack", "claim", "entity", "table"} <= seen, (
+    # `pack` and `claim` left this set on 2026-08-21 with the node kinds themselves;
+    # `mapping` and `predicate` joined it, because those are the kinds the fixtures below
+    # now build by hand and therefore the ones whose paths can go wrong unnoticed.
+    assert {"source_plan", "profile", "mapping", "predicate",
+            "entity", "table"} <= seen, (
         "the sample stopped declaring a kind this map covers -- the check went vacuous")
 
 
@@ -1343,35 +1374,44 @@ def test_a_sub_declaration_still_goes_with_the_declaration_that_owns_it():
     """🔴 THE MIRROR FAULT, and the one that nearly shipped: scoring deletability on the
     KIND instead of the SECTION.
 
-    `claim`, `mapping` and `binding` have no entry in `AUTHORABLE_SECTIONS` -- they own no
-    section, they are written as part of their owner.  A kind-membership rule calls them
+    `mapping` and `binding` have no entry in `AUTHORABLE_SECTIONS` -- they own no section,
+    they are written as part of their owner.  A kind-membership rule calls them
     un-authorable and strands them in the file when their owner goes, which is the exact
     orphan `deletion_plan` exists to prevent, arrived at by way of a fix for the opposite
-    bug.  `verified_join` is un-authorable because its SECTION is; a claim's section is
-    `packs`, and `packs` is authorable.
+    bug.  `verified_join` is un-authorable because its SECTION is; a mapping's section is
+    `sources`, and `sources` is authorable.
+
+    The sub-declaration was `claim|fresh/one` inside `pack|fresh` until 2026-08-21.  Both
+    kinds went with the section, so the pairing is now the one that actually ships:
+    a profile clause and the mapping filed inside it.
     """
     from ledger.config_explorer import deletion_plan
 
     index = _linked_index(
-        [("pack", "fresh"), ("claim", "fresh/one")],
-        [("pack", "fresh", "claim", "fresh/one", "contains_claim")],
+        [("profile", "fresh#profile"), ("mapping", "fresh#profile#mapping:one")],
+        [("profile", "fresh#profile", "mapping", "fresh#profile#mapping:one",
+          "contains_mapping")],
     )
 
-    plan = deletion_plan(index, ["pack|fresh"])
-    assert set(plan.removed_keys) == {"pack|fresh", "claim|fresh/one"}
-    assert plan.retained == tuple(), "a claim is not stranded; it goes with its pack"
+    plan = deletion_plan(index, ["profile|fresh#profile"])
+    assert set(plan.removed_keys) == {
+        "profile|fresh#profile", "mapping|fresh#profile#mapping:one"}
+    assert plan.retained == tuple(), (
+        "a mapping is not stranded; it goes with the clause that holds it")
 
-    # Selecting the claim ON ITS OWN is a different question, and the answer today is
-    # "blocked": the surviving pack still points at it, so the reachability instrument
+    # Selecting the mapping ON ITS OWN is a different question, and the answer today is
+    # "blocked": the surviving profile still points at it, so the reachability instrument
     # refuses exactly as it would for any other live reference.  Asserted here because it
     # is the behaviour, not because it is obviously the right product decision -- removing
-    # one claim from a pack is an ordinary authoring move, and today it can only be done by
-    # editing the pack.  That gap is raised as an open item; this test pins what the code
-    # does so a future change to it is deliberate rather than incidental.
-    alone = deletion_plan(index, ["claim|fresh/one"])
+    # one mapping from a source is an ordinary authoring move, and today it can only be
+    # done by editing the source.  That gap is raised as an open item; this test pins what
+    # the code does so a future change to it is deliberate rather than incidental.
+    alone = deletion_plan(index, ["mapping|fresh#profile#mapping:one"])
     assert alone.removed_keys == tuple()
-    assert [row["key"] for row in alone.blocked] == ["claim|fresh/one"]
-    assert [r["key"] for r in alone.blocked[0]["reached_by"]] == ["pack|fresh"]
+    assert [row["key"] for row in alone.blocked] == [
+        "mapping|fresh#profile#mapping:one"]
+    assert [r["key"] for r in alone.blocked[0]["reached_by"]] == [
+        "profile|fresh#profile"]
 
 
 def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
@@ -1391,11 +1431,12 @@ def test_deleting_the_last_source_is_allowed_and_reports_itself_as_a_reset():
     """
     from ledger.config_explorer import deletion_plan
 
-    # `pack`, not `mapper`: the third declaration only has to be top-level and authorable,
-    # and a mapper is a position inside a source since 2026-08-20.
-    nodes = [("source_plan", "s"), ("profile", "s#profile"), ("pack", "k")]
+    # `predicate`, not `mapper`: the third declaration only has to be top-level and
+    # authorable, and a mapper is a position inside a source since 2026-08-20.  It was a
+    # `pack` until 2026-08-21, when that section went.
+    nodes = [("source_plan", "s"), ("profile", "s#profile"), ("predicate", "p@1")]
     edges = [("source_plan", "s", "profile", "s#profile", "source_profile"),
-             ("profile", "s#profile", "pack", "k", "profile_pack")]
+             ("profile", "s#profile", "predicate", "p@1", "mapping_predicate")]
     index = _linked_index(nodes, edges)
 
     plan = deletion_plan(index, ["source_plan|s"])
@@ -1454,23 +1495,28 @@ def test_the_screen_can_author_a_declaration_that_does_not_exist_yet(
 
     _, index, _ = service.active()
     snapshot = index.snapshot_hash
-    assert node_key("pack", "brand-new@1") not in index.nodes, "fixture must not have it"
+    # The creatable kind was `pack` until 2026-08-21, when the section went.  What this
+    # test needs is any kind in `AUTHORABLE_SECTIONS` the fixture does not already declare
+    # under that name; `predicate` is the one that took the pack's place in that map.
+    assert node_key("predicate", "brand-new@1") not in index.nodes, (
+        "fixture must not have it")
 
     made = client.post("/admin/ontology-explorer/drafts/new", json={
-        "kind": "pack", "canonical_id": "brand-new@1", "base_snapshot_hash": snapshot})
+        "kind": "predicate", "canonical_id": "brand-new@1",
+        "base_snapshot_hash": snapshot})
     assert made.status_code == 200, made.text
     draft = made.json()
-    assert draft["target_key"] == "pack|brand-new@1"
+    assert draft["target_key"] == "predicate|brand-new@1"
     assert draft["creates_declaration"] is True
 
     # 🔴 The path has to reach the wire. `public()` is a WHITELIST, so a field added to the
     # record is invisible until it is named there -- and invisible reads to the screen as
     # absent, not as missing. Measured: the first version answered `null` here.
-    assert draft["target_bundle_path"] == ["packs", "brand-new@1"], (
+    assert draft["target_bundle_path"] == ["vocabulary", "brand-new@1"], (
         "the draft must know where it will be written, and say so")
 
-    # It lands in the real bundle at that path: saving an EMPTY pack must be refused by the
-    # validator naming this pack, which is only possible if it actually landed there.
+    # It lands in the real bundle at that path: saving an EMPTY predicate must be refused
+    # by the validator naming it, which is only possible if it actually landed there.
     saved = client.put(f"/admin/ontology-explorer/drafts/{draft['draft_id']}", json={
         "expected_revision": 0, "raw": "{}"})
     assert saved.status_code == 200, saved.text
@@ -1508,8 +1554,8 @@ def test_authoring_a_declaration_refuses_the_three_ways_it_can_be_wrong(
         json={"kind": kind, "canonical_id": cid, "base_snapshot_hash": snapshot})
     code = lambda response: response.json()["detail"]["code"]
 
-    existing = next(node for node in index.nodes.values() if node.kind == "pack")
-    assert code(post("pack", existing.canonical_id)) == "declaration_exists", (
+    existing = next(node for node in index.nodes.values() if node.kind == "predicate")
+    assert code(post("predicate", existing.canonical_id)) == "declaration_exists", (
         "creating over a live declaration is an edit wearing a create's clothes")
 
     for kind in ("verified_join", "table"):
@@ -1520,11 +1566,11 @@ def test_authoring_a_declaration_refuses_the_three_ways_it_can_be_wrong(
     # on 2026-08-19 and removed the same day: nobody asked for it, no comparable
     # constraint exists for edit drafts, and it locked the owner out of a name with no way
     # to see or cancel the draft holding it. A lock with no key is worse than the race.
-    assert post("pack", "twice@1").status_code == 200
-    assert post("pack", "twice@1").status_code == 200
+    assert post("predicate", "twice@1").status_code == 200
+    assert post("predicate", "twice@1").status_code == 200
 
     stale = client.post("/admin/ontology-explorer/drafts/new", json={
-        "kind": "pack", "canonical_id": "other@1", "base_snapshot_hash": "0" * 64})
+        "kind": "predicate", "canonical_id": "other@1", "base_snapshot_hash": "0" * 64})
     assert code(stale) == "stale_base_snapshot"
 
 
@@ -1548,18 +1594,18 @@ def test_an_absent_target_is_normal_for_a_create_and_a_conflict_for_an_edit(
     store = OntologyDraftStore(tmp_path / "drafts")
     index = build_explorer_index(transfer_sample_setup)
 
-    created = store.create_new(transfer_sample_setup, index, "pack", "absent@1")
+    created = store.create_new(transfer_sample_setup, index, "predicate", "absent@1")
     record = store.get(created["draft_id"])
     assert store.stale_status(record, index) == "stale", (
         "the declaration it is authoring is absent BY DESIGN")
 
     # Same record, but now something occupies the name: that IS the conflict.
-    existing = next(node for node in index.nodes.values() if node.kind == "pack")
+    existing = next(node for node in index.nodes.values() if node.kind == "predicate")
     occupied = dict(record, target_key=existing.key)
     assert store.stale_status(occupied, index) == "conflict"
 
     # And the edit rule is untouched: an edit whose target vanished is still a conflict.
-    edit = dict(record, creates_declaration=False, target_key="pack|vanished@1")
+    edit = dict(record, creates_declaration=False, target_key="predicate|vanished@1")
     assert store.stale_status(edit, index) == "conflict"
 
 
@@ -1628,7 +1674,9 @@ def test_deletion_preview_endpoint_names_the_casualties_and_shows_the_blockage(
     assert empty.json()["detail"]["code"] == "empty_deletion"
 
 
-def test_deletion_preview_names_the_pack_that_stops_being_read(copied_root, tmp_path):
+def test_deletion_preview_names_the_declaration_that_stops_being_read(
+    copied_root, tmp_path,
+):
     """The confirm's one job: name what stops being read if you press delete.
 
     🔴 THE SUITE GOING GREEN SAYS NOTHING ABOUT THIS FIELD, AND THE TEST ABOVE NEVER CAN.
@@ -1637,27 +1685,31 @@ def test_deletion_preview_names_the_pack_that_stops_being_read(copied_root, tmp_
     CONSTRUCTION, correctly and forever, however broken the field is otherwise.  This is
     the only assertion in the tree that touches it; without it the defect returns silently.
 
-    The case is the one measured lying on 2026-08-19: deleting a predicate that a pack's
-    claim emits printed 「영향 없음」 while that pack was about to go unread.
+    The case is the one measured lying on 2026-08-19: deleting a predicate printed
+    「영향 없음」 while the declaration that reads it was about to go unread.  That
+    declaration was a PACK until 2026-08-21; a mapping names its predicate directly now,
+    so what goes unread is the SOURCE the mapping belongs to.  The subject of the test --
+    "deleting a predicate names its casualty" -- is unchanged, and the casualty is one hop
+    nearer.
 
     The pair is DERIVED from the config rather than spelled out, so an owner hand-edit does
-    not rename this test's subject out from under it; if no pack emits a declared predicate
-    the lookup raises rather than passing on an empty search.
+    not rename this test's subject out from under it; if no mapping names a declared
+    predicate the lookup raises rather than passing on an empty search.
     """
     document = json.loads(
         (copied_root / "ledger_config.json").read_text(encoding="utf-8"))
-    predicate, pack_key = next(
-        (claim["emit"]["predicate"], node_key("pack", pack_id))
-        for pack_id, pack_raw in document["packs"].items()
-        for claim in pack_raw["claims"].values()
-        if claim["emit"]["predicate"] in document["vocabulary"])
+    predicate, reader_key = next(
+        (mapping["predicate"], node_key("source_plan", source_id))
+        for source_id, source in document["sources"].items()
+        for mapping in source["bind"]["mappings"].values()
+        if mapping["predicate"] in document["vocabulary"])
 
     service = OntologyExplorerService(
         config_root=copied_root, draft_root=tmp_path / "drafts")
     service.active()
     plan = service.deletion_preview(targets=[node_key("predicate", predicate)])
 
-    assert pack_key in {row["key"] for row in plan["unread_after"]}
+    assert reader_key in {row["key"] for row in plan["unread_after"]}
 
 
 # --------------------------------------------------------------------- authoring plan
@@ -1689,9 +1741,10 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
         # strongest available fix rather than the second strongest -- so a bundle without
         # them IS the live bundle and there is nothing to rebuild.
         source["map"].pop("input_columns", None)
-    for pack in reduced["packs"].values():
-        for claim in pack["claims"].values():
-            claim["emit"]["object"].pop("kind", None)
+    # The second thing this used to delete and put back was
+    # `packs.*.claims.*.emit.object.kind`.  It is not a field any more either -- the whole
+    # section went on 2026-08-21 and `predicate_claim` derives the emission -- so, like
+    # `bind.packs` and `map.emits` before it, there is nothing left to rebuild.
 
     plan = authoring_plan(reduced, catalog)
     derived = {row["path"]: row for row in plan["fields"] if row["state"] == "derived"}
@@ -1706,10 +1759,6 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
         base = f"bundle.sources.{source_id}.map"
         source["map"]["input_columns"] = derived[
             f"{base}.input_columns"]["value"]
-    for pack_id, pack in rebuilt["packs"].items():
-        for claim_id, claim in pack["claims"].items():
-            claim["emit"]["object"]["kind"] = derived[
-                f"bundle.packs.{pack_id}.claims.{claim_id}.emit.object.kind"]["value"]
 
     assert not validate_bundle_errors(rebuilt, catalog=catalog)
 
@@ -1804,8 +1853,11 @@ def test_closed_lists_come_from_the_validators_own_constants():
     # Steps ship with their labels so the step bar carries no list of its own.
     # Four since 2026-08-20: the 「준비기·매퍼」 layer and then 「프로필」 named sections that no
     # longer exist, and all of their fields moved into `sources`.
+    # THREE since 2026-08-21, and this one is different in kind: 「팩」's fields did not move
+    # anywhere, they stopped being questions. What the operator answers in their place is
+    # a binding per Role, which `_mapping_fields` lays out inside the `sources` step.
     assert [step["id"] for step in lists["steps"]] == [
-        "entities", "vocabulary", "packs", "sources"]
+        "entities", "vocabulary", "sources"]
     assert all(step["label"] for step in lists["steps"])
 
 
@@ -1817,25 +1869,34 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     catalog = live_physical_catalog()
     bundle = json.loads(
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    del bundle["sources"]["dt_job"]["bind"]["mappings"]["counted"]["bind"]["count"]
-    del (bundle["packs"]["lot-lineage@1"]["claims"]["membership"]
-         ["emit"]["object"]["qualifiers"]["slot"])
+    # The object Role of `has_netdie@1` is named `value` since 2026-08-21 -- it is derived
+    # from `object.kind`, and the operator's own name for it (`count`) went with the Claim
+    # that declared it.
+    del bundle["sources"]["dt_job"]["bind"]["mappings"]["counted"]["bind"]["value"]
+    # The second hole was `packs.lot-lineage@1.claims.membership.emit.object.qualifiers
+    # .slot`, and it landed as `missing_required_payload` on a `packs` field.  There is no
+    # emission to leave a hole in any more; the SAME hole -- "the predicate wants a `slot`
+    # and nothing supplies it" -- is now the unbound Role, one declaration over, so it is
+    # made there instead.  Its refusal is `missing_required_role`, which is why the two
+    # deficits below are asserted per path rather than by distinct codes.
+    del bundle["sources"]["lot_event"]["bind"]["mappings"]["in_slot"]["bind"]["slot"]
 
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    role = by_path["bundle.sources.dt_job.bind.mappings.counted.bind.count"]
+    role = by_path["bundle.sources.dt_job.bind.mappings.counted.bind.value"]
     assert role["state"] == "missing"
     assert [item["code"] for item in role["refusals"]] == ["missing_required_role"]
-    qualifier = by_path[
-        "bundle.packs.lot-lineage@1.claims.membership.emit.object.qualifiers.slot"]
+    qualifier = by_path["bundle.sources.lot_event.bind.mappings.in_slot.bind.slot"]
     assert qualifier["state"] == "missing"
-    assert "missing_required_payload" in [
-        item["code"] for item in qualifier["refusals"]]
-    # The candidate is offered ALREADY SPELLED, so the `?` is never typed by hand.
-    assert "$slot" in qualifier["candidates"]
+    assert [item["code"] for item in qualifier["refusals"]] == [
+        "missing_required_role"]
+    # The candidates are the binding KINDS the Role admits, offered so the operator picks
+    # rather than recalls -- the same service the `$slot` spelling used to do for a
+    # qualifier reference.
+    assert set(qualifier["candidates"]) == {"column", "constant"}
     assert not plan["unattached_refusals"], plan["unattached_refusals"]
     blocked = {step["id"] for step in plan["steps"] if step["status"] == "blocked"}
-    assert blocked == {"packs", "sources"}
+    assert blocked == {"sources"}
 
 
 def test_column_candidates_are_three_universes_and_not_one(active_setup):
@@ -2063,8 +2124,12 @@ def test_the_plan_lists_every_declaration_unpaged(transfer_sample_setup, tmp_pat
 
     # A selection prefix narrows the FIELDS -- it must not narrow the section lists, or the
     # picker would offer less whenever the operator had something selected.
+    # was `bundle.packs.` until 2026-08-21. That prefix now matches NOTHING, which would
+    # leave `narrowed["fields"]` empty and make "the prefix must actually narrow" pass for
+    # the wrong reason -- 0 is less than N however broken the narrowing is.
     narrowed = authoring_plan(bundle, transfer_sample_setup.catalog,
-                              selection_prefix="bundle.packs.")
+                              selection_prefix="bundle.vocabulary.")
+    assert narrowed["fields"], "the prefix must select something, or the check is vacuous"
     assert len(narrowed["fields"]) < len(plan["fields"]), "the prefix must actually narrow"
     assert narrowed["sections"] == sections, (
         "🔴 narrowing the view must never narrow what is declared")

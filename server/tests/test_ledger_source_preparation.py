@@ -161,43 +161,10 @@ def dt_chain_bundle():
             "resolved_bond_y", "inventory_bond_layer", "inventory_final_chip",
         ],
     }
-    entity_role = {"kind": "entity", "required": True}
-    time_role = {"kind": "time", "required": True}
-    job_role = {"kind": "identity", "required": True}
-    raw["packs"] = {
-        "assembly@1": {"claims": {
-            "core_to_dt": {
-                "roles": {"subject": entity_role, "target": entity_role,
-                          "occurred_at": time_role, "job": job_role},
-                "emit": {
-                    "predicate": "transferred_to@1", "subject": "$subject",
-                    "object": {"kind": "entity_ref", "entity": "$target",
-                               "qualifiers": {"job": "$job"}},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-            "dt_to_bond": {
-                "roles": {"subject": entity_role, "target": entity_role,
-                          "occurred_at": time_role, "job": job_role},
-                "emit": {
-                    "predicate": "transferred_to@1", "subject": "$subject",
-                    "object": {"kind": "entity_ref", "entity": "$target",
-                               "qualifiers": {"job": "$job"}},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-            "core_component": {
-                "roles": {"subject": entity_role, "target": entity_role,
-                          "occurred_at": time_role},
-                "emit": {
-                    "predicate": "component_of@1", "subject": "$subject",
-                    "object": {"kind": "entity_ref", "entity": "$target",
-                               "qualifiers": {}},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-        }},
-    }
+    # The `assembly@1` pack that stood here declared three Claims, two of which
+    # (`core_to_dt` and `dt_to_bond`) were character-for-character identical and emitted
+    # the same predicate.  Since 2026-08-21 the two sentences differ only in their MAPPING
+    # KEY and their bindings, which is what they always actually differed in.
     core = entity_binding("CoreDie@1", {
         "core_wafer": "core_wafer", "core_x": "core_x", "core_y": "core_y"})
     dt = entity_binding("DTDie@1", {
@@ -221,15 +188,15 @@ def dt_chain_bundle():
             "map": mapper,
             "bind": {
                 "mappings": {
-                    "core_to_dt": {"use": "assembly@1/core_to_dt",
+                    "core_to_dt": {"predicate": "transferred_to@1",
                                    "bind": {"subject": core, "target": dt,
                                             "occurred_at": binding("event_at"),
                                             "job": binding("dt_job_id")}},
-                    "dt_to_bond": {"use": "assembly@1/dt_to_bond",
+                    "dt_to_bond": {"predicate": "transferred_to@1",
                                    "bind": {"subject": dt, "target": bond,
                                             "occurred_at": binding("event_at"),
                                             "job": binding("dt_job_id")}},
-                    "core_component": {"use": "assembly@1/core_component",
+                    "core_component": {"predicate": "component_of@1",
                                        "bind": {"subject": core, "target": final_chip,
                                                 "occurred_at": binding("event_at")}},
                 },

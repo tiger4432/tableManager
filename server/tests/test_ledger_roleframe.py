@@ -1,4 +1,4 @@
-"""Ledger v2 Stage 4 focused RoleFrame and Pack compiler contract tests."""
+"""Ledger v2 Stage 4 focused RoleFrame and Claim compiler contract tests."""
 from __future__ import annotations
 
 import ast
@@ -192,23 +192,27 @@ def test_pack_compiler_maps_closed_none_object_to_existing_physical_nulls():
         ("event_ref", "identity", "EVENT-42", {"event": "EVENT-42"}),
     ],
 )
-def test_pack_compiler_supports_closed_scalar_object_kinds(
+def test_claim_compiler_supports_closed_scalar_object_kinds(
         object_kind, role_kind, value, payload):
+    """Was `test_pack_compiler_...`.
+
+    The three lines that hand-built the Claim (drop `target`, drop `event_key`, add a
+    `result` role of kind `role_kind`, point `emit.object.value` at it) are gone: changing
+    `object.kind` is now the WHOLE edit, and `predicate_claim` derives the same Role set
+    -- under the canonical name `value`.  `role_kind` stays a parameter because it is what
+    the derivation is being scored on, so it is asserted directly rather than declared.
+    """
     raw = logical_bundle()
     raw["vocabulary"]["moves_to@1"]["object"] = {
         "kind": object_kind,
         "qualifiers": {"required": [], "optional": []},
     }
-    claim = raw["packs"]["movement@1"]["claims"]["transition"]
-    claim["roles"].pop("target")
-    claim["roles"].pop("event_key")
-    claim["roles"]["result"] = {"kind": role_kind, "required": True}
-    claim["emit"]["object"] = {"kind": object_kind, "value": "$result"}
     mapping = source_profile(raw)["mappings"]["main_transition"]
     mapping["bind"].pop("target")
     mapping["bind"].pop("event_key")
-    mapping["bind"]["result"] = constant(value)
+    mapping["bind"]["value"] = constant(value)
     compiled = snapshot(raw)
+    assert compiled.claims["moves_to@1"].roles["value"].kind == role_kind
 
     result = dry_run_event_frame(
         mapper_context(compiled, "input_rows"), event_frame(compiled),
@@ -373,14 +377,15 @@ def test_binding_approval_metadata_never_creates_claim_class():
                for value in result_a.ledger_frame.iloc[0].tolist())
 
 
-@pytest.mark.parametrize("change", ["pack", "vocabulary", "entity"])
+# The `pack` parameter -- adding a `note` role to the Claim -- became the same edit as
+# `qualifier` on 2026-08-21: a Role is derived from the predicate's qualifier list, so
+# there is no second declaration to move independently. It is not replaced by a copy of
+# `vocabulary`; the two remaining parameters already differ in WHICH registry they move.
+@pytest.mark.parametrize("change", ["vocabulary", "entity"])
 def test_registry_semantic_changes_reach_snapshot_and_provenance(change):
     baseline = snapshot()
     raw = logical_bundle()
-    if change == "pack":
-        raw["packs"]["movement@1"]["claims"]["transition"]["roles"]["note"] = {
-            "kind": "attribute", "required": False}
-    elif change == "vocabulary":
+    if change == "vocabulary":
         raw["vocabulary"]["moves_to@1"]["layer"] = "source"
     else:
         raw["entities"]["InputEntity@1"]["key_types"] = {"input_id": "string"}

@@ -6,8 +6,8 @@ import {
 } from './ontology_skeleton.js';
 
 const KIND_LABELS = Object.freeze({
-  source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings', binding: 'Bindings', pack: 'Packs',
-  claim: 'Claims', predicate: 'Vocabulary', entity: 'Entities',
+  source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
+  binding: 'Bindings', predicate: 'Vocabulary', entity: 'Entities',
   preparer: 'Preparers', mapper: 'Mappers', verified_join: 'Verified joins', table: 'Tables',
 });
 
@@ -1251,8 +1251,36 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   return box;
 }
 
+/** The plan row ABOUT a branch node itself, drawn at the top of its block, or null.
+ *
+ * 🔴 IT IS ASKED FOR EVERY BRANCH, NOT JUST FOR MAPS. A map has always drawn one -- which
+ * qualifier slots a predicate opens is a statement about the map, not about a member. A
+ * RECORD never did, and on 2026-08-21 that became the hole through which a refusal fell:
+ * a Role the predicate forces and the file has not got is a plan row at
+ * `…bind.<role>`, whose skeleton node is the binding RECORD, so nothing drew it. It used
+ * to land in the 「빠짐」 bucket; the bucket is gone, and a refusal nobody can see is worse
+ * than a duplicated one.
+ */
+function branchOwnRow(context, path, depth) {
+  const own = context.planRow(path);
+  if (!own) return null;
+  // 🔴 THREE ARGUMENTS, NOT TWO. `renderRow` is `(row, node, bare)`, so a bare `true` in
+  // the second slot lands in `node` and leaves `bare` false -- the row then draws its own
+  // card head among flat siblings and states itself twice. Passing `bare` also means the
+  // row must supply the state element itself, exactly as `renderTreeLeaf` does.
+  const fold = foldDecision(own, context.expanded);
+  const state = h('i', 'oe-tier oe-tier--' + own.tier,
+                  fold.open ? own.tier : fold.reason);
+  const cls = own.remaining ? 'is-remaining'
+    : own.refusals && own.refusals.length ? 'is-refused' : '';
+  return treeRow(depth + 1, '이 자리', [],
+                 context.renderRow(own, null, true), state, cls);
+}
+
 function renderSkeletonRecord(context, node, path, value, depth) {
   const box = h('div', 'oe-node-children');
+  const own = path ? branchOwnRow(context, path, depth) : null;
+  if (own) box.append(own);
   const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   for (const field of node.fields || []) {
     const at = path ? path + '.' + field.key : field.key;
@@ -1279,21 +1307,26 @@ function renderSkeletonMap(context, node, path, value, depth) {
   const box = h('div', 'oe-node-children');
   // A plan row ABOUT the map itself says what the grammar expects OF it -- which qualifier
   // slots a predicate opens, for instance. It stays at the top of the block.
-  const own = context.planRow(path);
-  if (own) {
-    // 🔴 THREE ARGUMENTS, NOT TWO. `renderRow` is `(row, node, bare)`, so the bare `true`
-    // that used to sit here landed in `node` and left `bare` false -- these four rows drew
-    // their own card head while every sibling was a flat line, and said their state twice.
-    // The other call site got the third argument in the same commit; this one did not.
-    // Passing `bare` also means the row must supply the state element itself, exactly as
-    // `renderTreeLeaf` does -- otherwise the only place that stated it disappears.
-    const fold = foldDecision(own, context.expanded);
-    const state = h('i', 'oe-tier oe-tier--' + own.tier,
-                    fold.open ? own.tier : fold.reason);
-    box.append(treeRow(depth + 1, '이 자리', [],
-                       context.renderRow(own, null, true), state));
-  }
-  const members = membersOf(node, value);
+  const own = branchOwnRow(context, path, depth);
+  if (own) box.append(own);
+  // 🔴 THE MEMBERS THE PLAN NAMES ARE DRAWN TOO, NOT ONLY THE ONES THE DOCUMENT HOLDS
+  // (owner, 2026-08-21: 「packs 제거 후 소스에는 문장id - vocab - vocab 정의 따른 하위 항목별
+  // binding 템플릿 이런 형태가 되어야 함」).
+  //
+  // A record always draws its declared fields, so an unfilled one is a visible empty box.
+  // A name-keyed MAP had nothing to draw them from: its members are whatever the document
+  // says, so a role the grammar requires and the file has not got was simply absent from
+  // the tree -- and the operator had to know the word `slot` from outside the screen to
+  // create it. That is the burden `claims` used to carry and this round was supposed to
+  // REMOVE, not move onto a person.
+  //
+  // The plan is where the answer lives: `_mapping_fields` emits one row per Role the
+  // predicate forces, bound or not. So the map draws the union, and the day another
+  // section derives its required members the same way, it is covered without being named
+  // here. Only what the DOCUMENT holds gets a 「−」: you cannot take out what is not in.
+  const held = membersOf(node, value);
+  const planned = node.keyed_by === 'index' ? [] : context.plannedMembers(path);
+  const members = [...held, ...planned.filter((key) => !held.includes(key))];
   for (const key of members) {
     const at = memberPath(path, key, node.keyed_by);
     const drawn = renderSkeletonForm(
@@ -1302,7 +1335,9 @@ function renderSkeletonMap(context, node, path, value, depth) {
       depth + 1, String(key));
     if (!drawn) continue;
     const slot = drawn.querySelector('.oe-node-label');
-    if (!context.readOnly && slot) slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
+    if (!context.readOnly && slot && held.includes(key)) {
+      slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
+    }
     box.append(drawn);
   }
   if (context.readOnly) return box;
@@ -1534,8 +1569,14 @@ function renderAuthoring(state) {
     }
     return null;
   };
+  // 🔴 NO 'missing' BUCKET, AND ITS ABSENCE IS THE POINT (owner, 2026-08-21: 「지우고」).
+  // 「빠짐 · N」 was moved BELOW the tree in the map round and read as removed; it was not.
+  // The lead then measured that the right-hand map marks every one of those paths `is-left`
+  // (`attentionPaths` counts exactly `remaining || conflicts || refusals`), so the bucket
+  // was a second copy of a list the operator already had. What tells you WHICH box is
+  // unfilled stays where it belongs: on the row, in the tree.
   const buckets = [
-    ['missing', '빠짐'], ['unanswered', '미답'],
+    ['unanswered', '미답'],
     ['derived', '파생됨 · 묻지 않음'], ['answered', '답함'],
   ];
 
@@ -1557,6 +1598,17 @@ function renderAuthoring(state) {
     if (row) drawn.add(row.path);
     return row;
   };
+  /** The immediate member names the plan speaks for under a map path. */
+  const plannedMembers = (path) => {
+    const under = `${base}${path ? '.' + path : ''}.`;
+    const out = [];
+    for (const row of plan.fields || []) {
+      if (!row.path.startsWith(under)) continue;
+      const key = row.path.slice(under.length).split('.')[0].split('[')[0];
+      if (key && !out.includes(key)) out.push(key);
+    }
+    return out.sort();
+  };
   // A `$role` is spelled by the ROLE, not by the endpoint: `$r` when it is required and
   // `$r?` when it is not, which is the server's `_role_reference` and the only spelling
   // the validator accepts. The skeleton says where to look (`from`), so this knows the
@@ -1577,6 +1629,7 @@ function renderAuthoring(state) {
   const context = {
     schema: state.authoringSchema || {},
     planRow,
+    plannedMembers,
     deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
     declared: (name) => (state.authoring?.sections || {})[name] || [],
     rolesNear,
@@ -1626,17 +1679,11 @@ function renderAuthoring(state) {
     }
     wrap.append(section);
   }
-  if (plan.unattached_refusals?.length) {
-    const section = h('section', 'oe-bucket oe-bucket--missing');
-    section.append(h('h3', '', `필드에 붙지 않은 거절 · ${plan.unattached_refusals.length}`));
-    for (const refusal of plan.unattached_refusals) {
-      const line = h('div', 'oe-field-refusal');
-      line.append(h('b', '', refusal.code), h('code', '', refusal.path),
-        h('span', '', refusal.message));
-      section.append(line);
-    }
-    wrap.append(section);
-  }
+  // 「필드에 붙지 않은 거절 · N」 stood here until 2026-08-21 and left with 「빠짐」, for the
+  // measurement that made it a duplicate rather than a loss: all six unattached refusals in
+  // the live config have a row in the map, all six marked `is-left`. The payload key is
+  // still read -- `renderDeclarationMap` adds those paths to `hot` -- so the refusals did
+  // not become invisible, they stopped being printed twice.
   if (note) wrap.append(note);
   return wrap;
 }

@@ -506,11 +506,12 @@ class OntologyExplorerService:
     def authoring_prefix(selection: str | None) -> str | None:
         """`kind|id` -> the bundle path prefix its authoring rows live under.
 
-        Lenient by design.  Sub-declaration kinds (`claim`, `mapping`, `binding`) have no
-        entry in `AUTHORABLE_SECTIONS`, and a selection this cannot place must widen the
-        plan to everything rather than refuse -- a screen that answers "no rows" for a
-        claim would read as "nothing left to do", which is the silent-empty-panel failure
-        this whole round exists to remove.
+        Lenient by design.  Sub-declaration kinds (`mapping`, `binding`) have no entry in
+        `AUTHORABLE_SECTIONS`, and a selection this cannot place must widen the plan to
+        everything rather than refuse -- a screen that answers "no rows" for a mapping
+        would read as "nothing left to do", which is the silent-empty-panel failure this
+        whole round exists to remove.  (`claim` was named here until 2026-08-21, when the
+        kind stopped existing.)
         """
         if not selection or "|" not in selection:
             return None

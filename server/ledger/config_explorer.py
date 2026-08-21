@@ -21,8 +21,9 @@ KIND_ORDER = {
     "profile": 1,
     "mapping": 2,
     "binding": 3,
-    "pack": 4,
-    "claim": 5,
+    # `pack` and `claim` sat at 4 and 5 until 2026-08-21, when the section they addressed
+    # went.  The numbers below are not renumbered: they are node kinds' sort keys, and
+    # closing the gap would move every one of them for no reason a reader could see.
     "predicate": 6,
     "entity": 7,
     "preparer": 8,
@@ -91,7 +92,6 @@ def node_key(kind: str, canonical_id: str) -> str:
 AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
     "predicate": "vocabulary",
     "entity": "entities",
-    "pack": "packs",
     "source_plan": "sources",
 })
 
@@ -116,11 +116,11 @@ def owning_section(node: "ExplorerNode") -> str | None:
 
     🔴 THE DISCRIMINATOR IS THE SECTION, NOT THE KIND, and the difference is the whole
     correctness of this module.  Half the kinds in `KIND_ORDER` are SUB-declarations that
-    own no section of their own -- a `claim` lives at `("packs", p, "claims", c)`, a
-    `binding` five levels down inside a profile -- and they are created and deleted as part
-    of their owner.  Scoring those on kind membership in `AUTHORABLE_SECTIONS` would call a
-    claim un-authorable and strand it in the file when its pack goes, which is exactly the
-    orphan this module exists to prevent.
+    own no section of their own -- a `mapping` lives at
+    `("sources", s, "bind", "mappings", m)`, a `binding` one level below that -- and they
+    are created and deleted as part of their owner.  Scoring those on kind membership in
+    `AUTHORABLE_SECTIONS` would call a mapping un-authorable and strand it in the file when
+    its source goes, which is exactly the orphan this module exists to prevent.
 
     `bundle_path` already carries the answer and is built by `build_explorer_index` beside
     the node itself, so it cannot drift from where the node actually lives: length 2 is a
@@ -554,17 +554,13 @@ def _node_description(kind: str, raw: Any) -> str:
         return f"{raw.get('layer', 'ontology')} predicate · {raw.get('status', 'status 없음')}"
     if kind == "entity":
         return f"identity keys: {', '.join(map(str, raw.get('keys', []))) or '없음'}"
-    if kind == "pack":
-        return f"claims {len(raw.get('claims', {}))}개"
-    if kind == "claim":
-        return f"roles {len(raw.get('roles', {}))}개"
     if kind == "profile":
         # `packs` was named here until 2026-08-21.  It was `sorted(set(...))` of the packs
         # the mappings already name through `use`, so the line said the same thing twice
         # and the second copy is the one that left.
         return f"mappings {len(raw.get('mappings', {}))}개"
     if kind == "mapping":
-        return f"claim {raw.get('use', '없음')}"
+        return f"낱말 {raw.get('predicate', '없음')}"
     if kind == "binding":
         return f"{raw.get('kind', 'unknown')} binding"
     if kind in {"preparer", "mapper"}:
@@ -849,31 +845,10 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             version=compiled.get("version"),
         )
 
-    pack_compiled = registries["packs"].to_mapping()
-    for pack_id, raw in sorted(bundle["packs"].items()):
-        compiled = pack_compiled[pack_id]
-        pack_key = builder.add_node(
-            "pack", pack_id, raw, compiled, ("packs", pack_id),
-            config_file=ledger_file, json_pointer=pointer("packs", pack_id),
-            version=compiled.get("version"),
-        )
-        for claim_id, claim in sorted(raw.get("claims", {}).items()):
-            claim_ref = f"{pack_id}/{claim_id}"
-            claim_pointer = pointer("packs", pack_id, "claims", claim_id)
-            claim_compiled = compiled["claims"][claim_id]
-            claim_key = builder.add_node(
-                "claim", claim_ref, claim, claim_compiled,
-                ("packs", pack_id, "claims", claim_id),
-                config_file=ledger_file, json_pointer=claim_pointer,
-            )
-            builder.add_edge(
-                pack_key, claim_ref, "claim", "contains_claim", claim_pointer)
-            predicate_id = claim.get("emit", {}).get("predicate")
-            if predicate_id is not None:
-                builder.add_edge(
-                    claim_key, predicate_id, "predicate", "emits_predicate",
-                    pointer("packs", pack_id, "claims", claim_id, "emit", "predicate"),
-                )
+    # `pack` and `claim` NODES STOPPED BEING BUILT ON 2026-08-21 with the section they
+    # read.  A claim's one outgoing edge was `emits_predicate`; a mapping now draws that
+    # edge itself (`mapping_predicate`, below), so the predicate keeps its `used_by` rows
+    # and its walk-root status through one hop instead of three.
 
     # 🔴 TABLE NODES COME FROM `table_config.json` NOW, NOT FROM THE LEDGER FILE.
     # Two consequences worth stating because both are deliberate:
@@ -954,10 +929,10 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             source_key, profile_ref, "profile", "source_profile",
             pointer(*profile_path),
         )
-        # The `profile_pack` edge retired with `bind.packs` on 2026-08-21.  Nothing is
-        # unreachable for it: every mapping still draws `mapping_claim` at the claim it
-        # uses, and a claim is a position inside its pack, so the pack keeps both its
-        # `used_by` rows and its walk-root status through the same source.
+        # The `profile_pack` edge retired with `bind.packs` on 2026-08-21, and the packs
+        # themselves went the same day.  Nothing is unreachable for either: every mapping
+        # draws `mapping_predicate` at the predicate it utters, so a predicate keeps both
+        # its `used_by` rows and its walk-root status through the same source.
         # 🔴 A MAPPING IS ADDRESSED BY THE SENTENCE IT REALIZES as of 2026-08-21.  The key
         # was `mapping_id`, or the list position when that was absent -- a positional
         # fallback that renamed every node below it the day a mapping was inserted.  A map
@@ -977,8 +952,8 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                 pointer(*mapping_path),
             )
             builder.add_edge(
-                mapping_key, mapping.get("use", ""), "claim", "mapping_claim",
-                pointer(*mapping_path, "use"),
+                mapping_key, mapping.get("predicate", ""), "predicate",
+                "mapping_predicate", pointer(*mapping_path, "predicate"),
             )
             compiled_bindings = mapping_compiled.get("bindings", {})
             for role_id, binding in sorted(mapping.get("bind", {}).items()):
@@ -1264,12 +1239,9 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
     elif node.kind == "entity":
         common.append({"code": "entity_identity", "status": "valid",
                        "message": "identity key와 사용처가 compile됨"})
-    elif node.kind in {"pack", "claim"}:
-        common.append({"code": "pack_emission", "status": "valid",
-                       "message": "Role과 emission 계약이 compile됨"})
     elif node.kind in {"profile", "mapping"}:
         common.append({"code": "profile_binding", "status": "valid",
-                       "message": "Pack·Role binding이 compile됨"})
+                       "message": "낱말·Role binding이 compile됨"})
     elif node.kind == "source_plan":
         common.append({"code": "source_plan", "status": "valid",
                        "message": "relation·cursor·preparer·mapper 계약이 compile됨"})

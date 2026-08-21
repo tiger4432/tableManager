@@ -15,6 +15,7 @@ from ledger.setup_bundle import (
     LOGICAL_SECTIONS,
     SETUP_VERSION,
     bundle_readiness_errors,
+    predicate_claim,
     public_bundle_schema,
     require_ready_bundle,
 )
@@ -148,30 +149,13 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
             "InputEntity@1": {"keys": ["input_id"]},
             "OutputEntity@1": {"keys": ["output_id"]},
         },
-        "packs": {
-            "movement@1": {
-                "claims": {
-                    "transition": {
-                        "roles": {
-                            "subject": {"kind": "entity", "required": True},
-                            "target": {"kind": "entity", "required": True},
-                            "occurred_at": {"kind": "time", "required": True},
-                            "event_key": {"kind": "identity", "required": False},
-                        },
-                        "emit": {
-                            "predicate": "moves_to@1",
-                            "subject": "$subject",
-                            "object": {
-                                "kind": "entity_ref",
-                                "entity": "$target",
-                                "qualifiers": {"event_key": "$event_key?"},
-                            },
-                            "occurred_at": "$occurred_at",
-                        },
-                    },
-                },
-            },
-        },
+        # 🔴 NO `packs` SECTION SINCE 2026-08-21.  The Claim this fixture used to write out
+        # -- roles subject/target/occurred_at/event_key plus an `emit` clause -- is now
+        # DERIVED from `moves_to@1` by `setup_bundle.predicate_claim`, so the mapping below
+        # names the predicate and the Roles come with it.  The one thing that moved: the
+        # derived `event_key` role has kind `attribute` where the hand-written Claim said
+        # `identity`.  Both are in `_SCALAR_ROLE_KINDS` and both resolve to the same
+        # `role_binding_kinds`, so no binding in this plant changes.
         "sources": {
             source_name: {
                 "relation": source_name,
@@ -199,7 +183,7 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                 },
                 "bind": {
                     "mappings": {"main_transition": {
-                        "use": "movement@1/transition",
+                        "predicate": "moves_to@1",
                         "bind": {
                             "subject": entity("InputEntity@1", "input_id", source_key),
                             "target": entity("OutputEntity@1", "output_id", target_key),
@@ -243,18 +227,11 @@ def objectless_register_bundle():
             "qualifiers": {"required": [], "optional": []},
         },
     }
-    raw["packs"]["registration@1"] = {"claims": {"register": {
-        "roles": {
-            "subject": {"kind": "entity", "required": True},
-            "occurred_at": {"kind": "time", "required": True},
-        },
-        "emit": {
-            "predicate": "register@1", "subject": "$subject",
-            "object": {"kind": "none"}, "occurred_at": "$occurred_at",
-        },
-    }}}
+    # The `registration@1` pack that used to be written out here went with the section on
+    # 2026-08-21: `register@1`'s `object.kind == "none"` derives exactly the two Roles the
+    # pack spelled (`subject`, `occurred_at`) and no `target`.
     source_profile(raw)["mappings"]["register_input"] = {
-        "use": "registration@1/register",
+        "predicate": "register@1",
         "bind": {
             "subject": entity("InputEntity@1", "input_id", "source_id"),
             "occurred_at": binding("event_at"),
@@ -334,22 +311,71 @@ def test_public_schema_is_the_single_logical_contract():
     # `source_preparers`/`mappers` joined on 2026-08-20 for the third time in the same
     # shape: both moved INTO the source itself, so a file still carrying them at the root
     # has to be named, not skipped.
+    # `packs` joined on 2026-08-21 for the same reason once more -- it did not move
+    # anywhere, it is DERIVED now, and every config written before that day still carries
+    # one, so a pasted-back section has to be refused by name.
     assert schema["forbidden_sections"] == [
         "frames", "lookups", "positions", "manifest", "chains", "enrichments",
-        "tables", "source_preparers", "mappers", "profiles"]
+        "tables", "source_preparers", "mappers", "profiles", "packs"]
     # And the contract SAYS where the physical half went, so a screen can name the file
     # instead of leaving an operator to work out an absence.
     assert schema["physical_schema_file"] == "table_config.json"
 
 
-def test_objectless_predicate_and_pack_emission_have_one_closed_spelling():
+@pytest.mark.parametrize(
+    ("object_kind", "kinds"),
+    [
+        # `none` carries no qualifiers on purpose: `_validate_vocabulary` refuses a
+        # `none` object that declares any, so a fixture with one would be pinning the
+        # derivation's behaviour on a predicate no config can hold.
+        ("none", {"subject": "entity", "occurred_at": "time"}),
+        ("entity_ref", {"subject": "entity", "occurred_at": "time",
+                        "target": "entity", "slot": "attribute"}),
+        ("value", {"subject": "entity", "occurred_at": "time",
+                   "value": "quantity", "slot": "attribute"}),
+        ("event_ref", {"subject": "entity", "occurred_at": "time",
+                       "value": "identity", "slot": "attribute"}),
+    ],
+)
+def test_the_object_kind_alone_decides_which_roles_a_predicate_forces(object_kind, kinds):
+    """The whole of what the `packs` section used to say, in one derivation.
+
+    All four `object.kind` values in one place because the discriminating case is the one
+    a per-kind test would not have: `none` must derive NO `target`.  Laying every slot out
+    unconditionally is the zero-degrees-of-freedom box this round deleted, and it would
+    come straight back -- on the authoring screen this time -- if the derivation were
+    permissive here.
+    """
+    qualifiers = ({"required": [], "optional": []} if object_kind == "none"
+                  else {"required": [], "optional": ["slot"]})
+    predicate = {
+        "status": "active", "layer": "ontology", "subjects": ["InputEntity@1"],
+        "object": {"kind": object_kind, "qualifiers": qualifiers},
+    }
+    if object_kind == "entity_ref":
+        predicate["object"]["types"] = ["OutputEntity@1"]
+
+    roles = predicate_claim("p@1", predicate)["roles"]
+
+    assert {name: role["kind"] for name, role in roles.items()} == kinds
+    assert ("target" in roles) is (object_kind == "entity_ref")
+    assert {name for name, role in roles.items() if not role["required"]} == (
+        set() if object_kind == "none" else {"slot"})
+
+
+def test_objectless_predicate_and_its_derived_emission_have_one_closed_spelling():
     validated = validate_bundle(objectless_register_bundle())
     normalized = validated.to_mapping()
 
     assert normalized["vocabulary"]["register@1"]["object"] == {
         "kind": "none", "qualifiers": {"required": [], "optional": []}}
-    assert normalized["packs"]["registration@1"]["claims"]["register"][
-        "emit"]["object"] == {"kind": "none"}
+    # The second half of this used to read
+    # `packs.registration@1.claims.register.emit.object`.  Nobody AUTHORS that any more;
+    # `predicate_claim` derives it, so the closed spelling is a property of the derivation
+    # instead of a property of what a hand-written pack was permitted to say.
+    assert predicate_claim(
+        "register@1", normalized["vocabulary"]["register@1"])["emit"]["object"] == {
+            "kind": "none"}
 
 
 @pytest.mark.parametrize(
@@ -361,9 +387,13 @@ def test_objectless_predicate_and_pack_emission_have_one_closed_spelling():
         (lambda raw: raw["vocabulary"]["register@1"]["object"][
             "qualifiers"]["optional"].append("unexpected"),
          "bundle.vocabulary.register@1.object.qualifiers"),
-        (lambda raw: raw["packs"]["registration@1"]["claims"]["register"][
-            "emit"]["object"].update({"value": "$subject"}),
-         "bundle.packs.registration@1.claims.register.emit.object"),
+        # DELETED 2026-08-21: a third case put `value: "$subject"` into
+        # `packs.registration@1.claims.register.emit.object` and expected
+        # `invalid_emission`.  Nobody writes an `emit` clause now -- `predicate_claim`
+        # builds it -- so an objectless emission carrying a payload is not a document that
+        # can exist, and `invalid_emission` is not a code any validator raises.  The
+        # payload surface it guarded is still closed, one declaration earlier, by the two
+        # vocabulary cases above.
     ],
 )
 def test_objectless_contract_rejects_every_payload_surface(mutation, path):
@@ -373,7 +403,7 @@ def test_objectless_contract_rejects_every_payload_surface(mutation, path):
     errors = validate_bundle_errors(raw)
 
     assert any(item.path == path and item.code in {
-        "invalid_predicate", "invalid_emission", "unknown_field"}
+        "invalid_predicate", "unknown_field"}
                for item in errors)
 
 
@@ -401,8 +431,11 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # was 3260c937... while `bind.mappings` was a LIST of records carrying `mapping_id`.
     # Later the same day it became a map keyed by the sentence each mapping realizes, so
     # `setup_version` reads 4 and the id field is gone from the only mapping here.
+    # was 6bafeff2... while the bundle still carried `packs`. The section went on
+    # 2026-08-21 (`predicate_claim` derives the Claim from the predicate), the mapping's
+    # `use` became `predicate`, and `setup_version` reads 5.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "6bafeff21c8c8450591a31387c01f5a78fd140ef5b24383827e2725b890d150d")
+        "f18f42b13600051b669894f23fb29f66b42ea2836615421cc8dfadc7e4230192")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -493,7 +526,7 @@ def test_duplicate_json_key_is_rejected_before_normalization(tmp_path):
     write_tree(tmp_path)
     (tmp_path / "ledger_config.json").write_text(
         '{"schema_version":2,"vocabulary":{},"vocabulary":{},'
-        '"entities":{},"packs":{},"sources":{}}', encoding="utf-8")
+        '"entities":{},"sources":{}}', encoding="utf-8")
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
     assert caught.value.code == "duplicate_id"
@@ -722,25 +755,49 @@ def test_entity_key_types_optional_branch_accepts_matching_string_types():
     assert validate_bundle_errors(bundle) == ()
 
 
-def test_pack_vocabulary_subject_and_object_mismatch_are_rejected():
+def test_a_binding_endpoint_the_predicate_does_not_admit_is_rejected():
+    """The subject half of `test_pack_vocabulary_subject_and_object_mismatch_...`, MOVED.
+
+    It was raised against `packs.*.claims.*.emit.subject`, reached through the `$subject`
+    reference in an `emit` clause.  A derived Claim always spells that endpoint `subject`,
+    so `_cross_binding_entity_types` reads the binding the author actually wrote and the
+    refusal addresses THAT path.  Same code, same predicate, new home.
+
+    DELETED with the pack section: the object half, which set the Claim's
+    `emit.object.kind` to something the predicate did not declare and expected
+    `invalid_predicate` at `emit.object.kind`.  The kind is copied from the predicate by
+    `predicate_claim` now, so the two cannot disagree -- that is not an unchecked state,
+    it is an unwritable one.
+    """
     bundle = logical_bundle()
     bundle["vocabulary"]["moves_to@1"]["subjects"] = ["OutputEntity@1"]
     subject = issue(bundle, "invalid_entity_ref")
-    assert subject.path.endswith("emit.subject")
+    assert subject.path == (
+        f"{PROFILE_PATH}.mappings.main_transition.bind.subject.entity_type")
+
     bundle = logical_bundle()
-    bundle["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["kind"] = "value"
-    obj = issue(bundle, "invalid_predicate")
-    assert obj.path.endswith("emit.object.kind")
+    bundle["vocabulary"]["moves_to@1"]["object"]["types"] = ["InputEntity@1"]
+    target = issue(bundle, "invalid_entity_ref")
+    assert target.path == (
+        f"{PROFILE_PATH}.mappings.main_transition.bind.target.entity_type")
 
 
-def test_unknown_pack_claim_role_and_join_are_named():
+def test_unknown_predicate_role_and_join_are_named():
+    """Was `test_unknown_pack_claim_role_and_join_are_named`.
+
+    DELETED with the pack section: the `unknown_pack` case (a `use` naming a pack that is
+    not declared) and the `unknown_claim` case (a `use` naming a claim inside a pack that
+    is).  Neither refusal exists -- there is no pack to miss and no claim id to misspell.
+    What a mapping names now is a PREDICATE, so the half of that pair which survived the
+    move is scored here at its new path.
+    """
     cases = []
     bundle = logical_bundle()
-    source_profile(bundle)["mappings"]["main_transition"]["use"] = "absent@1/transition"
-    cases.append((bundle, "unknown_pack"))
+    source_profile(bundle)["mappings"]["main_transition"]["predicate"] = "absent@1"
+    cases.append((bundle, "unknown_predicate"))
     bundle = logical_bundle()
-    source_profile(bundle)["mappings"]["main_transition"]["use"] = "movement@1/absent"
-    cases.append((bundle, "unknown_claim"))
+    bundle["vocabulary"]["moves_to@1"]["status"] = "retired"
+    cases.append((bundle, "inactive_predicate"))
     bundle = logical_bundle()
     source_profile(bundle)["mappings"]["main_transition"]["bind"]["absent"] = binding("event_key")
     cases.append((bundle, "unknown_role"))
@@ -754,7 +811,15 @@ def test_unknown_pack_claim_role_and_join_are_named():
         assert any(item.code == code for item in validate_bundle_errors(value)), code
 
 
-def test_unused_vocabulary_and_pack_are_still_cross_validated():
+def test_unused_vocabulary_is_still_cross_validated():
+    """Was `test_unused_vocabulary_and_pack_are_still_cross_validated`.
+
+    DELETED with the pack section: the pack leg, which declared an unused pack whose claim
+    emitted `missing@1` and expected `unknown_predicate` at `bundle.packs.unused@1...`.
+    A claim no longer names a predicate -- it IS one -- so an unused pack pointing at an
+    undeclared predicate is not a state a config can reach.  The vocabulary leg is
+    untouched: a predicate nothing utters is still cross-validated against `entities`.
+    """
     bundle = logical_bundle()
     bundle["vocabulary"]["unused@1"] = {
         "status": "active", "layer": "ontology", "subjects": ["MissingEntity@1"],
@@ -763,16 +828,9 @@ def test_unused_vocabulary_and_pack_are_still_cross_validated():
             "qualifiers": {"required": [], "optional": []},
         },
     }
-    bundle["packs"]["unused@1"] = {
-        "claims": {"claim": copy.deepcopy(
-            bundle["packs"]["movement@1"]["claims"]["transition"])}
-    }
-    bundle["packs"]["unused@1"]["claims"]["claim"]["emit"]["predicate"] = "missing@1"
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "unknown_entity_type"
                and error.path.startswith("bundle.vocabulary.unused@1") for error in errors)
-    assert any(error.code == "unknown_predicate"
-               and error.path.startswith("bundle.packs.unused@1") for error in errors)
 
 
 # RETIRED 2026-08-20 with the declaration they measured, not because they stopped passing:
@@ -813,87 +871,35 @@ def test_profile_leaf_column_is_cross_validated_against_event_frame():
         f"{PROFILE_PATH}.mappings.main_transition.bind.subject.keys.input_id.column"]
 
 
-@pytest.mark.parametrize(
-    ("mutation", "suffix"),
-    [
-        ("unknown_subject", "emit.subject"),
-        ("wrong_subject_kind", "emit.subject"),
-        ("wrong_time_kind", "emit.occurred_at"),
-        ("wrong_object_kind", "emit.object.entity"),
-        ("unknown_qualifier", "emit.object.qualifiers.event_key"),
-        ("wrong_qualifier_kind", "emit.object.qualifiers.event_key"),
-    ],
-)
-def test_emission_roles_must_exist_and_have_purpose_specific_kinds(mutation, suffix):
-    bundle = logical_bundle()
-    claim = bundle["packs"]["movement@1"]["claims"]["transition"]
-    if mutation == "unknown_subject":
-        claim["emit"]["subject"] = "$missing"
-    elif mutation == "wrong_subject_kind":
-        claim["roles"]["subject"]["kind"] = "attribute"
-    elif mutation == "wrong_time_kind":
-        claim["roles"]["occurred_at"]["kind"] = "attribute"
-    elif mutation == "wrong_object_kind":
-        claim["roles"]["target"]["kind"] = "identity"
-    elif mutation == "unknown_qualifier":
-        claim["emit"]["object"]["qualifiers"]["event_key"] = "$missing?"
-    else:
-        claim["roles"]["event_key"]["kind"] = "entity"
-    errors = validate_bundle_errors(bundle)
-    assert any(error.path.endswith(suffix)
-               and error.code in {"unknown_role", "invalid_role_kind"}
-               for error in errors)
+# DELETED 2026-08-21, three tests, all scoring `_cross_emission_role` / `_cross_packs`:
+#
+#   * `test_emission_roles_must_exist_and_have_purpose_specific_kinds` -- six mutations of
+#     `packs.*.claims.*.roles.*.kind` and `...emit.*`, expecting `unknown_role` /
+#     `invalid_role_kind` at an `emit.…` path.
+#   * `test_vocabulary_required_qualifier_missing_is_rejected_exactly` --
+#     `missing_required_payload` at `packs.*.claims.*.emit.object.qualifiers.<name>`.
+#   * `test_vocabulary_undeclared_qualifier_is_rejected_exactly` --
+#     `unknown_payload_field` at the same path prefix.
+#
+# All three drove a hand-written Claim out of agreement with its predicate: an endpoint
+# naming a Role that is not declared, a Role whose kind does not suit its endpoint, a
+# qualifier the predicate requires and the emission omits, a qualifier the emission adds
+# and the predicate does not allow.  `predicate_claim` now builds the Role map AND the
+# `emit` clause from that same predicate, so none of those four disagreements has two
+# declarations left to occur between.  They are not unchecked -- they are underivable, and
+# the codes `missing_required_payload`, `unknown_payload_field` and `invalid_role_kind`
+# are raised nowhere.  Re-aiming them at some other path that still fails would be
+# scoring a different subject.
 
 
-def test_vocabulary_required_qualifier_missing_is_rejected_exactly():
-    bundle = logical_bundle()
-    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
-        "required": ["event_key"], "optional": []}
-    del bundle["packs"]["movement@1"]["claims"]["transition"]["emit"][
-        "object"]["qualifiers"]["event_key"]
-
-    errors = validate_bundle_errors(bundle)
-
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "missing_required_payload",
-        "path": (
-            "bundle.packs.movement@1.claims.transition.emit.object."
-            "qualifiers.event_key"
-        ),
-        "message": "predicate 'moves_to@1' requires qualifier 'event_key'",
-    }]
-
-
-def test_vocabulary_undeclared_qualifier_is_rejected_exactly():
-    bundle = logical_bundle()
-    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
-        "required": [], "optional": ["event_key"]}
-    bundle["packs"]["movement@1"]["claims"]["transition"]["emit"][
-        "object"]["qualifiers"]["undeclared_payload"] = "$event_key?"
-
-    errors = validate_bundle_errors(bundle)
-
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "unknown_payload_field",
-        "path": (
-            "bundle.packs.movement@1.claims.transition.emit.object."
-            "qualifiers.undeclared_payload"
-        ),
-        "message": (
-            "predicate 'moves_to@1' does not allow qualifier "
-            "'undeclared_payload'"
-        ),
-    }]
-
-
-def test_the_only_place_a_source_names_a_claim_is_its_bind_mapping():
+def test_the_only_place_a_source_names_a_predicate_is_its_bind_mapping():
     """Retirement of `test_profile_packs_mapping_use_and_mapper_emits_are_mutually_closed`.
 
     That test drove `bind.packs` and `map.emits` out of agreement with `mappings.<sentence>.use`
     and asserted three refusals.  None of the three can be provoked any more, and not
     because a check was relaxed: neither field exists, so the disagreement has nowhere to
     be written.  What replaces it is the statement that made them removable -- one
-    declaration names the claim, and the compiled mapper's `emits` is that same set.
+    declaration names the predicate, and the compiled mapper's `emits` is that same set.
     """
     bundle = logical_bundle()
     source = bundle["sources"]["input_rows"]
@@ -1025,9 +1031,14 @@ def test_missing_required_role_and_disallowed_binding_kind_are_rejected():
     bundle = logical_bundle()
     del source_profile(bundle)["mappings"]["main_transition"]["bind"]["target"]
     assert issue(bundle, "missing_required_role").path.endswith("bind.target")
+    # The second half used to narrow the Claim's `occurred_at` role to
+    # `allowed_binding_kinds: ["constant"]` and then bind a column.  A derived Role never
+    # declares that list, so the narrowing is unwritable -- but the REFUSAL is not: the
+    # allowed set now comes from `_default_binding_kinds(role.kind)`, and a `time` role
+    # bound as an entity is the same `invalid_binding` at the same path.
     bundle = logical_bundle()
-    role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"]["occurred_at"]
-    role["allowed_binding_kinds"] = ["constant"]
+    source_profile(bundle)["mappings"]["main_transition"]["bind"]["occurred_at"] = entity(
+        "InputEntity@1", "input_id", "source_id")
     assert issue(bundle, "invalid_binding").path.endswith("bind.occurred_at.kind")
 
 
@@ -1041,14 +1052,14 @@ def test_the_map_key_is_the_mappings_only_identity():
     bundle = logical_bundle()
     mappings = source_profile(bundle)["mappings"]
     assert set(mappings) == {"main_transition"}
-    assert set(mappings["main_transition"]) == {"use", "bind"}, (
+    assert set(mappings["main_transition"]) == {"predicate", "bind"}, (
         "a mapping restates neither its name nor the sentence it realizes")
 
     mappings["second_sentence"] = copy.deepcopy(mappings["main_transition"])
     validated = validate_bundle(bundle).to_mapping()
     assert set(validated["sources"]["input_rows"]["bind"]["mappings"]) == {
         "main_transition", "second_sentence"}, (
-        "two mappings on one Claim are legal; they are two sentences, not a duplicate")
+        "two mappings on one predicate are legal; they are two sentences, not a duplicate")
 
 
 def test_binding_approval_metadata_survives_normalization():
@@ -1084,76 +1095,25 @@ def test_constant_binding_must_be_finite_deterministic_json():
     assert error.path.endswith("bind.event_key.value")
 
 
-def test_unregistered_symbolic_constant_is_rejected_exactly():
-    bundle = symbolic_bundle("NOT_REGISTERED_ANYWHERE")
-
-    errors = validate_bundle_errors(bundle)
-
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "invalid_symbolic_constant",
-        "path": (
-            f"{PROFILE_PATH}.mappings.main_transition.bind."
-            "movement_kind.value"
-        ),
-        "message": (
-            "constant 'NOT_REGISTERED_ANYWHERE' is not registered by symbolic role "
-            "'movement_kind'"
-        ),
-    }]
-
-
-def symbolic_bundle(value="pick"):
-    bundle = logical_bundle()
-    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
-        "required": [], "optional": ["event_key", "movement_kind"]}
-    claim = bundle["packs"]["movement@1"]["claims"]["transition"]
-    claim["roles"]["movement_kind"] = {
-        "kind": "symbolic",
-        "required": False,
-        "allowed_values": ["pick", "place"],
-    }
-    claim["emit"]["object"]["qualifiers"]["movement_kind"] = "$movement_kind?"
-    claim_binding = source_profile(bundle)["mappings"]["main_transition"]["bind"]
-    claim_binding["movement_kind"] = {
-        "kind": "constant",
-        "value": value,
-        "binding_origin": "user_declared",
-        "approval_status": "approved",
-    }
-    return bundle
-
-
-def test_registered_symbolic_constant_is_accepted():
-    assert validate_bundle_errors(symbolic_bundle("pick")) == ()
-
-
-@pytest.mark.parametrize(
-    ("allowed_values", "code"),
-    [
-        (None, "invalid_type"),
-        ({"pick": True}, "invalid_type"),
-        ([True], "blank_value"),
-        ([""], "blank_value"),
-        (["pick", "pick"], "duplicate_id"),
-        (["place", "pick"], "invalid_role_kind"),
-    ],
-)
-def test_symbolic_allowed_values_fail_closed(allowed_values, code):
-    bundle = symbolic_bundle()
-    role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"][
-        "movement_kind"]
-    role["allowed_values"] = allowed_values
-
-    errors = validate_bundle_errors(bundle)
-
-    assert any(
-        error.code == code
-        and error.path.startswith(
-            "bundle.packs.movement@1.claims.transition.roles."
-            "movement_kind.allowed_values")
-        and error.message
-        for error in errors
-    )
+# DELETED 2026-08-21 together with the `symbolic_bundle` fixture all three stood on:
+# `test_unregistered_symbolic_constant_is_rejected_exactly`,
+# `test_registered_symbolic_constant_is_accepted` and
+# `test_symbolic_allowed_values_fail_closed` (six parameters).
+#
+# A `symbolic` Role -- kind `symbolic` plus an `allowed_values` roster -- could only be
+# declared at `packs.*.claims.*.roles.*`.  `predicate_claim` derives Role kinds from the
+# predicate and the four it can produce are `entity`, `time`, `quantity`, `identity` and
+# `attribute`; `symbolic` is not among them and there is no field left to write one in.
+# So the state these refused (`invalid_symbolic_constant`, and the four shape refusals on
+# `allowed_values`) is underivable, not merely unchecked.
+#
+# ⚠️ REPORTED UPWARDS RATHER THAN PAPERED OVER: this leaves `symbolic` in `_ROLE_KINDS`
+# and `_SCALAR_ROLE_KINDS`, and leaves the `invalid_symbolic_constant` branch of
+# `_cross_profile_contract` with no input that can reach it.  Deciding whether that
+# branch retires is a production change and not this pass's to make.
+# `test_general_time_constant_is_not_treated_as_symbolic` below is kept: it stands on
+# `logical_bundle`, and "a plain time constant is not scored against a roster" is exactly
+# the negative half that is still reachable.
 
 
 def test_general_time_constant_is_not_treated_as_symbolic():
@@ -1207,10 +1167,17 @@ def test_only_all_approved_bundle_is_ready():
     assert require_ready_bundle(validated) is validated
 
 
-def test_same_pack_validates_with_completely_different_source_and_column_names():
+def test_same_vocabulary_validates_with_completely_different_source_and_column_names():
+    """Was `test_same_pack_validates_...`; it compared `section("packs")`.
+
+    There is no `packs` section to compare.  The invariant it stood for is unchanged and
+    now belongs to `vocabulary`: the SEMANTIC half of the setup is the half that does not
+    move when the plant is renamed, which is the owner's "zero Python, swap the
+    declarations" bar stated as an equality.
+    """
     first = validate_bundle(logical_bundle())
     second = validate_bundle(logical_bundle(source_name="alternate_rows", prefix="z_"))
-    assert first.section("packs") == second.section("packs")
+    assert first.section("vocabulary") == second.section("vocabulary")
     assert require_ready_bundle(second) is second
 
 
@@ -1240,7 +1207,7 @@ def test_preparer_must_explicitly_accept_inherited_join_rules():
 def test_errors_have_deterministic_order():
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["relation"] = "absent"
-    source_profile(bundle)["mappings"]["main_transition"]["use"] = "missing@1/nope"
+    source_profile(bundle)["mappings"]["main_transition"]["predicate"] = "missing@1"
     first = [item.to_mapping() for item in validate_bundle_errors(bundle)]
     second = [item.to_mapping() for item in validate_bundle_errors(reverse_mappings(bundle))]
     assert first == second
@@ -1271,18 +1238,22 @@ def test_followup_validation_errors_have_deterministic_order():
     assert first == sorted(first, key=lambda item: (item["path"], item["code"], item["message"]))
 
 
-@pytest.mark.parametrize("broken_path", ["role", "claims", "predicate_object", "emission"])
-def test_malformed_nested_pack_descriptors_return_errors_instead_of_raising(broken_path):
+@pytest.mark.parametrize("broken_path", ["predicate_object", "mapping_bind"])
+def test_malformed_nested_descriptors_return_errors_instead_of_raising(broken_path):
+    """Was `test_malformed_nested_pack_descriptors_...`, four parameters.
+
+    DELETED with the pack section: `role` (`claims.*.roles.subject = "broken"`), `claims`
+    (`packs.*.claims = "broken"`) and `emission` (`claims.*.emit = "broken"`).  There is
+    no such nesting to malform.  `predicate_object` survives unchanged, and the deepest
+    record a config still nests -- a mapping's `bind` -- takes the place the pack shapes
+    held, so the property (a malformed nested object is a structured refusal, never an
+    AttributeError out of a later semantic lookup) keeps two witnesses.
+    """
     bundle = logical_bundle()
-    claim = bundle["packs"]["movement@1"]["claims"]["transition"]
-    if broken_path == "role":
-        claim["roles"]["subject"] = "broken"
-    elif broken_path == "claims":
-        bundle["packs"]["movement@1"]["claims"] = "broken"
-    elif broken_path == "predicate_object":
+    if broken_path == "predicate_object":
         bundle["vocabulary"]["moves_to@1"]["object"] = "broken"
     else:
-        claim["emit"] = "broken"
+        source_profile(bundle)["mappings"]["main_transition"]["bind"] = "broken"
     assert validate_bundle_errors(bundle)
 
 
@@ -1303,7 +1274,14 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # took their list node and its one item, and `driver` splitting into `read`/`prepare`/
     # `map` is net zero (one record node out, one in). Lower it only alongside a deliberate
     # shape change, and say which one.
-    assert checked >= 136
+    # 136 -> 110 later the same day, when `packs` went and `predicate_claim` took over.
+    # MEASURED both sides: 136 before, 110 after, and the -26 is the whole pack subtree --
+    # section + `movement@1` + `claims` + `transition` + `roles` + 4 role records with
+    # their `kind`/`required` leaves (12) + `emit` with `predicate`/`subject`/`occurred_at`
+    # and its `object` record's `kind`/`entity`/`qualifiers`/`qualifiers.event_key` (9).
+    # The mapping's `use` -> `predicate` rename is net zero. (The two prose figures above
+    # read one higher than the asserts they explain; the asserts are what was measured.)
+    assert checked >= 110
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1323,9 +1301,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
                 validate_bundle(candidate)
             checked += 1
     # Same floor, times the six replacement kinds. Was 900 while the bundle carried
-    # `tables`, 894 while the preparer and mapper had their own sections; 822 today
-    # (137 x 6).
-    assert checked >= 816
+    # `tables`, 894 while the preparer and mapper had their own sections; 816 while it
+    # still carried `packs`. 660 today (110 x 6) -- the -26 nodes above, times six.
+    assert checked >= 660
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():
@@ -1410,19 +1388,23 @@ def test_an_unknown_field_refusal_names_what_the_object_does_take(tmp_path):
 
     `exact()` has the required and optional tuples in hand at the moment it refuses; the
     author has to go and find them.  The exact case measured was `emit.object.payload`,
-    where a human had to say "object takes kind / entity / value / qualifiers".
+    where a human had to say "object takes kind / entity / value / qualifiers".  That path
+    went with the `packs` section on 2026-08-21; the OBJECT the operator was describing
+    did not move -- it is `vocabulary.<p>.object`, one declaration earlier, and it is now
+    the only place they type it.  Kept here (rather than deleted with the pack tests
+    above) because the subject is `_allowed_note`, not the pack.
     """
     raw = logical_bundle()
-    raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = {"n": 1}
+    raw["vocabulary"]["moves_to@1"]["object"]["payload"] = {"n": 1}
     refused = issue(raw, "unknown_field")
 
-    assert refused.path == "bundle.packs.movement@1.claims.transition.emit.object.payload"
+    assert refused.path == "bundle.vocabulary.moves_to@1.object.payload"
     assert refused.message.startswith("field is not allowed")
-    # Every allowed name, and which one is not optional. Scored as a SET so the assertion
+    # Every allowed name, and which ones are not optional. Scored as a SET so the assertion
     # does not pin the join text of the sentence.
     listed = refused.message.split("allowed here: ", 1)[1]
     assert {part.strip() for part in listed.split(",")} == {
-        "kind (required)", "entity", "value", "qualifiers"}
+        "kind (required)", "qualifiers (required)", "types"}
 
     # The retired-section help still wins where it applies -- it says what happened and
     # where the truth moved, which a bare field list would replace with something less
@@ -1440,54 +1422,44 @@ def test_an_unknown_field_refusal_names_what_the_object_does_take(tmp_path):
 
 
 def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_yet():
-    """"unknown pack 'dt-job@1'" does not say WHICH mistake this is.
+    """"unknown predicate 'dt-job@1'" does not say WHICH mistake this is.
 
-    Misspelling an existing pack and emitting into one that has not been authored yet need
+    Misspelling a declared predicate and naming one that has not been authored yet need
     opposite next actions -- fix a character, or go write a declaration.  The two fixtures
     disagree on purpose: a single fixture would pass under either rule.
+
+    The reference was `<pack>/<claim>` until 2026-08-21 and the three branches of
+    `_did_you_mean` were scored on `unknown_pack`.  A mapping names a PREDICATE now, so
+    the same three branches are scored on `unknown_predicate`.  DELETED with the section:
+    the fourth leg, which misspelled the CLAIM half of the ref and expected
+    `unknown_claim` scored against the pack it named -- there is no second half left.
     """
     typo = logical_bundle()
-    source_profile(typo)["mappings"]["main_transition"]["use"] = "movment@1/transition"
-    near = issue(typo, "unknown_pack")
-    assert "did you mean 'movement@1'?" in near.message
+    source_profile(typo)["mappings"]["main_transition"]["predicate"] = "movs_to@1"
+    near = issue(typo, "unknown_predicate")
+    assert "did you mean 'moves_to@1'?" in near.message
 
     absent = logical_bundle()
-    source_profile(absent)["mappings"]["main_transition"]["use"] = "shipment@9/transition"
-    far = issue(absent, "unknown_pack")
+    source_profile(absent)["mappings"]["main_transition"]["predicate"] = "shipment@9"
+    far = issue(absent, "unknown_predicate")
     assert "did you mean" not in far.message
-    assert "declared packs: 'movement@1'" in far.message
-
-    # And the claim half of the same reference, scored against the pack it names.
-    wrong_claim = logical_bundle()
-    source_profile(wrong_claim)["mappings"]["main_transition"]["use"] = "movement@1/transitions"
-    claim = issue(wrong_claim, "unknown_claim")
-    assert "did you mean 'transition'?" in claim.message
+    assert "declared predicates: 'moves_to@1'" in far.message
 
     # Nothing declared at all reads as neither of the above.
     empty = logical_bundle()
-    empty["packs"] = {}
-    assert "no packs are declared yet" in issue(empty, "unknown_pack").message
+    empty["vocabulary"] = {}
+    assert "no predicates are declared yet" in issue(empty, "unknown_predicate").message
 
 
-def test_a_refusal_about_a_claim_reference_says_how_one_is_spelled():
-    """Replaces the `emits` half of `..._says_what_one_item_looks_like`.
-
-    That test refused a LIST of claim references and asserted the list's refusal carried
-    the item spelling.  `map.emits` was the only such list and is gone, so the clause it
-    measured has no caller.  The need did not go with it: an author who writes a claim
-    reference wrongly is exactly the one who does not know how one is spelled, and
-    `mappings.<sentence>.use` is now the only place they write it.
-    """
-    raw = logical_bundle()
-    source_profile(raw)["mappings"]["main_transition"]["use"] = "movement@1"
-    refused = issue(raw, "invalid_claim_ref")
-    assert refused.path == f"{PROFILE_PATH}.mappings.main_transition.use"
-    assert "must use <pack>@<version>/<claim>" in refused.message
-
-    # And an ordinary list of names still says nothing about claim references.
-    plain = logical_bundle()
-    driver_mapper(plain)["input_columns"] = "record_id"
-    assert "each item is" not in issue(plain, "invalid_type").message
+# DELETED 2026-08-21: `test_a_refusal_about_a_claim_reference_says_how_one_is_spelled`.
+# It asserted that `invalid_claim_ref` at `mappings.<sentence>.use` carried the spelling
+# `<pack>@<version>/<claim>`.  A mapping names a versioned predicate id now; there is no
+# compound reference to spell, `_CLAIM_REF` / `CLAIM_REF_FORM` / `_parse_claim_ref` are
+# gone, and `invalid_claim_ref` is a code nothing raises.  Its second half scored the
+# `item_form` clause of `_nonblank_list` by asserting an ordinary list refusal did NOT
+# carry an item spelling -- with `map.emits` retired, `item_form` has no caller at all,
+# so that clause is a permanently-empty branch and the negative it asserted is vacuous.
+# ⚠️ Reported upwards: `_nonblank_list(..., item_form=...)` is now dead production code.
 
 
 def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tmp_path):
@@ -1503,7 +1475,10 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     """
     raw = logical_bundle()
     driver_mapper(raw)["input_columns"] = "record_id"
-    raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["object"]["payload"] = 1
+    # was `packs.movement@1.claims.transition.emit.object.payload = 1` until the section
+    # went on 2026-08-21.  The point of this leg is a fifth INDEPENDENT check firing in
+    # the same read, so it moved to the deepest record a config still nests.
+    source_profile(raw)["mappings"]["main_transition"]["colour"] = "blue"
     raw["vocabulary"]["moves_to@1"]["colour"] = "blue"
     raw["entities"]["InputEntity@1"]["allow_null"] = "yes"
     raw["sources"]["input_rows"]["read"]["unit"] = "wafer"
@@ -1517,7 +1492,7 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     # kind of check cannot hide behind the count.
     for expected in (
         f"{MAPPER_PATH}.input_columns",
-        "bundle.packs.movement@1.claims.transition.emit.object.payload",
+        f"{PROFILE_PATH}.mappings.main_transition.colour",
         "bundle.vocabulary.moves_to@1.colour",
         "bundle.entities.InputEntity@1.allow_null",
         "bundle.sources.input_rows.read.unit",
@@ -1545,11 +1520,15 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
     section stage runs before cross-validation: a list where the cause is buried under
     thirty consequences is the single-message problem in a new costume.
     """
+    # was `del raw["packs"]`; that section retired on 2026-08-21, so the whole-section
+    # absence is staged on another required one.  `vocabulary` is the sharpest choice:
+    # every mapping names a predicate, so its absence is exactly the case where a list of
+    # consequences would be longest.
     raw = logical_bundle()
-    del raw["packs"]
+    del raw["vocabulary"]
     write_tree(tmp_path, raw)
     issues = setup_bundle_module.setup_bundle_errors(tmp_path, catalog=DEFAULT_CATALOG)
-    assert [item.path for item in issues] == ["ledger_config.packs"]
+    assert [item.path for item in issues] == ["ledger_config.vocabulary"]
     assert issues[0].code == "missing_field"
 
 

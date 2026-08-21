@@ -23,6 +23,7 @@ from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
+    predicate_claim,
     role_binding_kinds,
     validate_bundle,
     validate_bundle_errors,
@@ -181,17 +182,18 @@ class EmissionDescriptor:
 
 @dataclass(frozen=True)
 class ClaimDescriptor:
+    """What one predicate forces: its Roles and the emission that fills them.
+
+    🔴 NOT COMPILED FROM A `packs` SECTION SINCE 2026-08-21 -- `setup_bundle.predicate_claim`
+    derives the body from the vocabulary, and `claim_id` IS the predicate id.  See that
+    function for what was measured before the section went.  The descriptor kept its shape
+    on purpose: every reader of `roles` and `emission` is unchanged, and only where the
+    material comes from moved.
+    """
+
     claim_id: str
     roles: Mapping[str, RoleDescriptor]
     emission: EmissionDescriptor
-    config_path: str
-
-
-@dataclass(frozen=True)
-class PackDescriptor:
-    pack_id: str
-    version: int
-    claims: Mapping[str, ClaimDescriptor]
     config_path: str
 
 
@@ -211,11 +213,13 @@ class MapperDescriptor:
     """One source's mapper.
 
     🔴 `emits` IS DERIVED, NOT DECLARED, as of 2026-08-21 (owner: 「닿을 수 없다면 선언도
-    닿으면 안됨」).  `map` no longer carries a list of claim refs, because a mapper
-    implementation cannot answer which claims it produces -- it knows `SentenceShape`, and
-    the naming runs config -> mapper in one direction.  The set is built here from
-    `bind.mappings.<sentence>.use`, the one declaration that owns the answer, so the field a reader
-    already had is still there and the question an author could only get wrong is not.
+    닿으면 안됨」).  `map` no longer carries a list of refs, because a mapper implementation
+    cannot answer which sentences it produces -- it knows `SentenceShape`, and the naming
+    runs config -> mapper in one direction.  The set is built here from
+    `bind.mappings.<sentence>.predicate`, the one declaration that owns the answer, so the
+    field a reader already had is still there and the question an author could only get
+    wrong is not.  (It held `<pack>/<claim>` refs until the `packs` section went, later the
+    same day; it now holds predicate ids, which is what a mapping names.)
     """
 
     mapper_id: str
@@ -230,7 +234,7 @@ class MapperDescriptor:
 
 @dataclass(frozen=True)
 class ProfileMappingDescriptor:
-    """One Profile mapping: which Claim it realizes, and how its Roles are filled.
+    """One Profile mapping: which predicate it utters, and how its Roles are filled.
 
     🔴 NO `mapping_id` AND NO `sentence` FIELD as of 2026-08-21 (owner: 「같이 넣어」).  The
     mapping is FILED under the sentence it realizes -- `ProfileDescriptor.mappings` is a
@@ -239,7 +243,7 @@ class ProfileMappingDescriptor:
     one place either was read, `roleframe.ProfileSentences._resolve`, now takes the key.
     """
 
-    claim_ref: str
+    predicate_id: str
     bindings: Mapping[str, Any]
     config_path: str
 
@@ -261,7 +265,8 @@ class ProfileDescriptor:
     🔴 `pack_ids` LEFT ON 2026-08-21 FOR THE SAME MEASUREMENT.  `bind.packs` was
     `sorted(set(...))` of the packs `mappings.<sentence>.use` names, checked both ways, and nothing
     but that check ever read the compiled copy.  A mapping's `use` still names its pack, so
-    the answer is not lost -- only the restatement is.
+    the answer is not lost -- only the restatement is.  (`use` itself became `predicate`
+    later the same day, when the `packs` section went.)
 
     🔴 `mappings` IS A MAP KEYED BY SENTENCE as of 2026-08-21, not a tuple.  That is what
     makes `ProfileSentences._resolve` one key lookup, and it is also what makes two
@@ -370,8 +375,8 @@ class EntityTypeRegistry(_SealedRegistry[EntityTypeDescriptor]):
     pass
 
 
-class PackRegistry(_SealedRegistry[PackDescriptor]):
-    pass
+class ClaimRegistry(_SealedRegistry[ClaimDescriptor]):
+    """Every predicate's derived Claim, keyed by the predicate id it belongs to."""
 
 
 class SourcePreparerRegistry(_SealedRegistry[SourcePreparerDescriptor]):
@@ -428,7 +433,7 @@ class LedgerSetupSnapshot:
     entities: EntityTypeRegistry
     source_preparers: SourcePreparerRegistry
     mappers: MapperRegistry
-    packs: PackRegistry
+    claims: ClaimRegistry
     profiles: ProfileRegistry
     verified_joins: VerifiedJoinRegistry
     source_plans: SourcePlanRegistry
@@ -438,8 +443,8 @@ class LedgerSetupSnapshot:
     def registries(self) -> Mapping[str, _SealedRegistry[Any]]:
         return MappingProxyType({
             "entities": self.entities,
+            "claims": self.claims,
             "mappers": self.mappers,
-            "packs": self.packs,
             "profiles": self.profiles,
             "source_preparers": self.source_preparers,
             "sources": self.source_plans,
@@ -614,7 +619,7 @@ def compile_setup_snapshot(
     entities = _compile_entities(bundle.section("entities"))
     preparers = _compile_preparers(bundle.section("sources"))
     mappers = _compile_mappers(bundle.section("sources"))
-    packs = _compile_packs(bundle.section("packs"))
+    claims = _compile_claims(bundle.section("vocabulary"))
     profiles = _compile_profiles(bundle.section("sources"))
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
@@ -624,9 +629,9 @@ def compile_setup_snapshot(
     bundle_canonical_json = bundle.serialize()
     bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
     registries = {
+        "claims": claims,
         "entities": entities,
         "mappers": mappers,
-        "packs": packs,
         "profiles": profiles,
         "source_preparers": preparers,
         "sources": source_plans,
@@ -667,7 +672,7 @@ def compile_setup_snapshot(
         entities=entities,
         source_preparers=preparers,
         mappers=mappers,
-        packs=packs,
+        claims=claims,
         profiles=profiles,
         verified_joins=verified_join_registry,
         source_plans=source_plans,
@@ -719,18 +724,19 @@ def source_cursor_fingerprint(
         the source plan       relation, read, prepare (preparer + verified joins),
                               map (mapper), bind (profile) -- all of it, since the
                               bodies now live inside the source
-        the packs             every pack a `bind.mappings.<sentence>.use` names, WHOLE.
-                              A pack is the unit an author edits and the unit a claim
-                              is filed under; taking only the named claims would leave
-                              a source unblocked by an edit to its own pack
-        the predicates        every `emit.predicate` of those packs' claims
+        the predicates        every predicate a `bind.mappings.<sentence>.predicate`
+                              names.  This used to be "the packs, WHOLE, plus the
+                              predicates their claims emitted".  The packs went on
+                              2026-08-21 and the pack-shaped widening went with them:
+                              a predicate IS the unit an author edits now, so the
+                              closure lands exactly on it with nothing left to widen to
         the entities          every entity id occurring in the above (see
                               `_reachable_entity_ids`)
         + compiler_contract_version and setup_version -- when the grammar generation
           moves, every source's material moves, and that is correct
 
     🔴 SHARED MATERIAL MOVES EVERY SOURCE THAT TOUCHES IT, ON PURPOSE. `register@1` is
-    named by both packs today, so editing it moves both sources' fingerprints. That is
+    named by both sources today, so editing it moves both fingerprints. That is
     the whole point: a closure narrowed to "my own declarations" would let a source keep
     running against a predicate that changed under it, which is silent and worse than
     blocking one cursor too many.
@@ -742,21 +748,17 @@ def source_cursor_fingerprint(
     keep going".
     """
     plan = snapshot.source_plans[source_id]
-    pack_ids = sorted({
-        mapping.claim_ref.split("/", 1)[0]
-        for mapping in plan.profile.mappings.values()
-    })
-    packs = {pack_id: snapshot.packs[pack_id] for pack_id in pack_ids}
     predicate_ids = sorted({
-        claim.emission.predicate_id
-        for pack in packs.values()
-        for claim in pack.claims.values()
+        mapping.predicate_id for mapping in plan.profile.mappings.values()
     })
     material: dict[str, Any] = {
         "compiler_contract_version": snapshot.compiler_contract_version,
         "setup_version": snapshot.setup_version,
         "source": _semantic_plain(plan),
-        "packs": {pack_id: _semantic_plain(packs[pack_id]) for pack_id in pack_ids},
+        "claims": {
+            predicate_id: _semantic_plain(snapshot.claims[predicate_id])
+            for predicate_id in predicate_ids
+        },
         "vocabulary": {
             predicate_id: _semantic_plain(snapshot.vocabulary[predicate_id])
             for predicate_id in predicate_ids
@@ -827,49 +829,49 @@ def _role_reference(value: str) -> RoleReferenceDescriptor:
     )
 
 
-def _compile_packs(section: Mapping[str, Any]) -> PackRegistry:
-    builder = _RegistryBuilder(PackRegistry)
-    for pack_id, item in section.items():
-        _, version = _versioned_parts(pack_id)
-        claims: dict[str, ClaimDescriptor] = {}
-        for claim_id, claim in item["claims"].items():
-            claim_path = f"bundle.packs.{pack_id}.claims.{claim_id}"
-            roles: dict[str, RoleDescriptor] = {}
-            for role_id, role in claim["roles"].items():
-                roles[role_id] = RoleDescriptor(
-                    role_id=role_id,
-                    kind=role["kind"],
-                    required=role["required"],
-                    allowed_binding_kinds=role_binding_kinds(role),
-                    allowed_values=tuple(role.get("allowed_values", ())),
-                    config_path=f"{claim_path}.roles.{role_id}",
-                )
-            emission = claim["emit"]
-            obj = emission["object"]
-            object_ref = obj.get("entity", obj.get("value"))
-            claims[claim_id] = ClaimDescriptor(
-                claim_id=claim_id,
-                roles=_freeze(roles),
-                emission=EmissionDescriptor(
-                    predicate_id=emission["predicate"],
-                    subject=_role_reference(emission["subject"]),
-                    object_kind=obj["kind"],
-                    object_role=(None if object_ref is None
-                                 else _role_reference(object_ref)),
-                    qualifiers=_freeze({
-                        key: _role_reference(value)
-                        for key, value in obj.get("qualifiers", {}).items()
-                    }),
-                    occurred_at=_role_reference(emission["occurred_at"]),
-                    config_path=f"{claim_path}.emit",
-                ),
+def _compile_claims(section: Mapping[str, Any]) -> ClaimRegistry:
+    """One Claim per PREDICATE, derived -- the `packs` section is gone.
+
+    The body comes from `setup_bundle.predicate_claim`, so this function does exactly what
+    it did before: turn a Role map and an `emit` clause into descriptors.  What changed is
+    who wrote the Role map, and therefore that two predicates can no longer disagree about
+    the same grammar.  `config_path` points at the predicate because that is now the
+    declaration a refusal should send an author to.
+    """
+    builder = _RegistryBuilder(ClaimRegistry)
+    for predicate_id, predicate in section.items():
+        claim = predicate_claim(predicate_id, predicate)
+        claim_path = f"bundle.vocabulary.{predicate_id}"
+        roles: dict[str, RoleDescriptor] = {}
+        for role_id, role in claim["roles"].items():
+            roles[role_id] = RoleDescriptor(
+                role_id=role_id,
+                kind=role["kind"],
+                required=role["required"],
+                allowed_binding_kinds=role_binding_kinds(role),
+                allowed_values=tuple(role.get("allowed_values", ())),
                 config_path=claim_path,
             )
-        builder.add(pack_id, PackDescriptor(
-            pack_id=pack_id,
-            version=version,
-            claims=_freeze(claims),
-            config_path=f"bundle.packs.{pack_id}",
+        emission = claim["emit"]
+        obj = emission["object"]
+        object_ref = obj.get("entity", obj.get("value"))
+        builder.add(predicate_id, ClaimDescriptor(
+            claim_id=predicate_id,
+            roles=_freeze(roles),
+            emission=EmissionDescriptor(
+                predicate_id=emission["predicate"],
+                subject=_role_reference(emission["subject"]),
+                object_kind=obj["kind"],
+                object_role=(None if object_ref is None
+                             else _role_reference(object_ref)),
+                qualifiers=_freeze({
+                    key: _role_reference(value)
+                    for key, value in obj.get("qualifiers", {}).items()
+                }),
+                occurred_at=_role_reference(emission["occurred_at"]),
+                config_path=claim_path,
+            ),
+            config_path=claim_path,
         ))
     return builder.seal()
 
@@ -916,7 +918,8 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
             unit_columns=tuple(item["unit"].get("columns", ())),
             input_columns=tuple(item["input_columns"]),
             emits=tuple(sorted({
-                mapping["use"] for mapping in source["bind"]["mappings"].values()})),
+                mapping["predicate"]
+                for mapping in source["bind"]["mappings"].values()})),
             config_path=f"bundle.sources.{source_id}.map",
         ))
     return builder.seal()
@@ -930,7 +933,7 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
         path = f"bundle.sources.{source_id}.bind"
         mappings = MappingProxyType({
             sentence: ProfileMappingDescriptor(
-                claim_ref=mapping["use"],
+                predicate_id=mapping["predicate"],
                 bindings=_freeze(mapping["bind"]),
                 config_path=f"{path}.mappings.{sentence}",
             )

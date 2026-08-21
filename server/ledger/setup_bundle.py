@@ -17,7 +17,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SETUP_VERSION = 4
+SETUP_VERSION = 5
 
 #: The one authoring file. The path does not move: the operator writes here.
 CONFIG_FILENAME = "ledger_config.json"
@@ -51,8 +51,12 @@ CONFIG_FILENAME = "ledger_config.json"
 #: silence and disagree only at execution.
 #: The physical schema now has exactly one author, `server/config/table_config.json`,
 #: which `_physical_catalog` reads.  See `PHYSICAL_CATALOG_FILENAME`.
+#: 🔴 `packs` LEFT ON 2026-08-21, AND IT IS THE THIRD RESTATEMENT THIS FILE HAS RETIRED
+#: (owner: 「굳이 claims 도 불필요하지 않나 … 실질적 클레임은 vocab 만 남잖아」).  A Claim
+#: declared Roles and an `emit` clause; `predicate_claim` now derives both from the
+#: predicate the mapping names.  See that function for what was measured first.
 LOGICAL_SECTIONS = (
-    "vocabulary", "entities", "packs", "sources",
+    "vocabulary", "entities", "sources",
 )
 
 #: 🔴 OPTIONAL, AND THE DISTINCTION IS DELIBERATE.  The operator root stops carrying a
@@ -84,12 +88,6 @@ ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)
 PHYSICAL_CATALOG_FILENAME = "table_config.json"
 
 _VERSIONED_ID = re.compile(r"^[^@/\s]+@[1-9][0-9]*$")
-_CLAIM_REF = re.compile(r"^(?P<pack>[^@/\s]+@[1-9][0-9]*)/(?P<claim>[^/\s]+)$")
-#: How a claim reference is SPELLED, next to the pattern that parses it.  Every refusal
-#: about one reads it from here: an operator told "must be a list with at least one item"
-#: still does not know what an item looks like, and that gap was measured -- a human had to
-#: sit next to the author and translate it.
-CLAIM_REF_FORM = "<pack>@<version>/<claim>"
 _FORBIDDEN_DECLARATION_KEYS = frozenset({
     "module", "function", "path", "python", "sql", "javascript",
     "expression", "eval", "exec", "lookup", "lookups", "declared_lookup",
@@ -213,17 +211,32 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         composite = declared.get("composite_key_source")
         if isinstance(composite, list) and composite:
             relation["composite_key"] = [str(column) for column in composite]
-        # `table_config.json` declares no `indexes` today, so this passes nothing through
-        # on the live catalog.  It is wired anyway rather than left for later, because the
-        # consumers (`_table_has_unique_key`, `_columns_cover_declared_unique_key`) DO read
-        # unique indexes: without this line they are permanently-empty branches that would
-        # start giving the wrong answer, silently, on the day the catalog grammar gains the
-        # key -- and "wrong answer about which orderings are unique" is the direction that
-        # loses events.
+        # The consumers (`_table_has_unique_key`, `_columns_cover_declared_unique_key`)
+        # read unique indexes to decide whether an ordering can resume deterministically.
+        # `table_config.json` may declare extra ones per table, and they pass through here.
         indexes = declared.get("indexes")
         if isinstance(indexes, list) and indexes:
             relation["indexes"] = [dict(item) for item in indexes
                                    if isinstance(item, Mapping)]
+        # 🔴 `row_id` IS THE PRIMARY KEY OF EVERY INGESTED TABLE, AND THE CATALOG DID NOT
+        # SAY SO.  Measured 2026-08-21: 26 of 26 tables carry `PRIMARY KEY (row_id)` in
+        # PostgreSQL, and 0 of 26 declared it here -- so the two consumers above were
+        # permanently-empty branches and no source could name ANY resumable cursor whose
+        # ordering the catalog would accept.
+        # Declaring it per table would be 26 copies of one sentence, which is the shape
+        # this config has spent the day deleting; the invariant belongs to the loader.
+        # It is added rather than replaced so a table that also declares its own unique
+        # index keeps it.
+        #
+        # ⚠️ THE COLUMN IS ADDED TOO, AND THAT IS NOT A CONVENIENCE.  `column_types` names
+        # the BUSINESS columns; `row_id` is the ingestion framework's own identity and 0 of
+        # 26 tables list it.  A first version of this guarded on `"row_id" in columns` and
+        # was therefore dead on every table -- a permanently-false branch, which is the
+        # exact defect this block exists to remove.  Declaring the column is what makes the
+        # index nameable: a cursor may only cite columns the catalog admits.
+        relation["columns"].setdefault("row_id", "string")
+        relation.setdefault("indexes", []).append(
+            {"columns": ["row_id"], "unique": True})
         business_key = declared.get("business_key")
         if (isinstance(business_key, str) and business_key.strip()
                 and business_key in relation["columns"]):
@@ -374,21 +387,96 @@ def public_bundle_schema() -> dict[str, Any]:
         # they retired into the source, and every config written before that day
         # still has them.  `profiles` joins them the same evening.  (Where inside the
         # source they landed changed once more on 2026-08-21: `driver` split into
-        # `read`/`prepare`/`map` and the profile body became `bind`.)
+        # `read`/`prepare`/`map` and the profile body became `bind`.)  `packs` joins the
+        # list later the same day for the same reason: every config written before it went
+        # still carries one, and a pasted-back section must say so by name.
         "forbidden_sections": ["frames", "lookups", "positions",
                                "manifest", "chains", "enrichments", "tables",
-                               "source_preparers", "mappers", "profiles"],
+                               "source_preparers", "mappers", "profiles", "packs"],
     }
 
 
 def role_binding_kinds(role: Mapping[str, Any]) -> tuple[str, ...]:
-    """Resolve one validated Role's effective binding kinds from the Pack contract."""
+    """Resolve one validated Role's effective binding kinds from the Role contract."""
     if not isinstance(role, Mapping):
         raise TypeError("role must be a mapping")
     declared = role.get("allowed_binding_kinds")
     if _is_list(declared):
         return tuple(declared)
     return _default_binding_kinds(role.get("kind"))
+
+
+#: The two Roles every predicate has, whatever it says about its object, and the one Role
+#: an object contributes.  They are CONSTANTS because the vocabulary does not name them:
+#: `subjects` says which entity TYPES may fill the subject, never what the slot is called,
+#: so a per-predicate spelling would be a free choice with nothing to check it against.
+SUBJECT_ROLE = "subject"
+OCCURRED_AT_ROLE = "occurred_at"
+TARGET_ROLE = "target"
+VALUE_ROLE = "value"
+
+#: `object.kind` -> the Role kind that carries the object, for the two kinds that carry one
+#: in a Role rather than in an entity reference.  `value` is `quantity` because that is what
+#: the only live value predicate (`has_netdie@1`) declared while a Claim still said so.
+_OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}
+
+
+def predicate_claim(predicate_id: str, predicate: Any) -> dict[str, Any]:
+    """The Roles and the emission ONE predicate forces -- the Claim, with nobody to say it.
+
+    🔴 THIS FUNCTION IS WHAT `packs` USED TO BE (owner, 2026-08-21: 「packs 도 아예 삭제
+    가능하네. claims 도 필요없고. 그냥 맵퍼가 say 한 문장 id 에 vocab 만 달아주면 되는 거
+    아님?」).  Measured before removing the section: of the five predicates in the live
+    config, ZERO were used with two different Role sets, every qualifier name in a Claim's
+    `roles` matched its predicate's `object.qualifiers` character for character, and five
+    of six `emit` clauses were `$subject`/`$occurred_at` verbatim.  The sixth spelled its
+    endpoints `$child`/`$parent`, which is why the same round renamed them: a Claim that
+    only restates its predicate is a copy, and a copy that MAY differ is a defect waiting
+    for the day someone edits one side.
+
+    Returns the shape `packs.<pack>.claims.<claim>` had, so the compiler, the validator and
+    the authoring plan all read one derivation instead of three agreeing ones.
+
+    Tolerant of a half-written predicate on purpose: `config_authoring` runs this over
+    bundles that do not validate yet, and a screen that raises tells an author nothing.
+    """
+    obj = predicate.get("object") if isinstance(predicate, Mapping) else None
+    obj = obj if isinstance(obj, Mapping) else {}
+    object_kind = obj.get("kind")
+    qualifiers = obj.get("qualifiers") if isinstance(obj.get("qualifiers"), Mapping) else {}
+    required_qualifiers = _column_values(qualifiers.get("required"))
+    optional_qualifiers = _column_values(qualifiers.get("optional"))
+
+    roles: dict[str, Any] = {
+        SUBJECT_ROLE: {"kind": "entity", "required": True},
+        OCCURRED_AT_ROLE: {"kind": "time", "required": True},
+    }
+    emit_object: dict[str, Any] = {"kind": object_kind}
+    if object_kind == "entity_ref":
+        roles[TARGET_ROLE] = {"kind": "entity", "required": True}
+        emit_object["entity"] = f"${TARGET_ROLE}"
+    elif object_kind in _OBJECT_VALUE_ROLE_KINDS:
+        roles[VALUE_ROLE] = {
+            "kind": _OBJECT_VALUE_ROLE_KINDS[object_kind], "required": True}
+        emit_object["value"] = f"${VALUE_ROLE}"
+    if object_kind != "none":
+        emit_object["qualifiers"] = {
+            **{name: f"${name}" for name in required_qualifiers},
+            **{name: f"${name}?" for name in optional_qualifiers},
+        }
+    for name in required_qualifiers:
+        roles[name] = {"kind": "attribute", "required": True}
+    for name in optional_qualifiers:
+        roles.setdefault(name, {"kind": "attribute", "required": False})
+    return {
+        "roles": roles,
+        "emit": {
+            "predicate": predicate_id,
+            "subject": f"${SUBJECT_ROLE}",
+            "object": emit_object,
+            "occurred_at": f"${OCCURRED_AT_ROLE}",
+        },
+    }
 
 
 def validate_bundle(value: Mapping[str, Any], *,
@@ -451,8 +539,6 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
         _validate_vocabulary(value["vocabulary"], problems)
     if isinstance(value.get("entities"), Mapping):
         _validate_entities(value["entities"], problems)
-    if isinstance(value.get("packs"), Mapping):
-        _validate_packs(value["packs"], problems)
     if isinstance(value.get("sources"), Mapping):
         _validate_sources(value["sources"], problems)
 
@@ -624,18 +710,6 @@ def _versioned_id(value: Any, path: str, problems: _Problems) -> None:
         problems.add("invalid_versioned_id", path, "must use nonblank-id@positive-version")
 
 
-def _claim_ref(value: Any, path: str, problems: _Problems) -> None:
-    if _parse_claim_ref(value) is None:
-        problems.add("invalid_claim_ref", path, f"must use {CLAIM_REF_FORM}")
-
-
-def _parse_claim_ref(value: Any) -> Optional[tuple[str, str]]:
-    if not isinstance(value, str):
-        return None
-    matched = _CLAIM_REF.fullmatch(value)
-    return None if matched is None else (matched.group("pack"), matched.group("claim"))
-
-
 def _role_ref(value: Any, path: str, problems: _Problems, *, optional: bool = False) -> None:
     if not isinstance(value, str) or not value.startswith("$"):
         problems.add("invalid_role_ref", path, "must be a $role reference")
@@ -647,12 +721,6 @@ def _role_ref(value: Any, path: str, problems: _Problems, *, optional: bool = Fa
         problems.add("invalid_role_ref", path, "optional qualifier must use $role?")
     if not body or any(char.isspace() for char in body):
         problems.add("invalid_role_ref", path, "role reference must not be blank")
-
-
-def _role_name(value: Any) -> Optional[str]:
-    if not isinstance(value, str) or not value.startswith("$"):
-        return None
-    return value[1:].removesuffix("?") or None
 
 
 def _nonblank_id(value: Any, path: str, problems: _Problems) -> None:
@@ -1009,93 +1077,6 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
                    allow_empty=True)
 
 
-def _validate_packs(section: Mapping[str, Any], problems: _Problems) -> None:
-    for pack_id in sorted(section, key=str):
-        path = f"bundle.packs.{pack_id}"
-        _versioned_id(pack_id, path, problems)
-        pack = section[pack_id]
-        if not problems.exact(pack, path, required=("claims",)):
-            continue
-        claims = pack.get("claims")
-        if not isinstance(claims, Mapping) or not claims:
-            problems.add("invalid_pack", f"{path}.claims", "must be a non-empty object")
-            continue
-        for claim_id in sorted(claims, key=str):
-            cpath = f"{path}.claims.{claim_id}"
-            _nonblank_id(claim_id, cpath, problems)
-            claim = claims[claim_id]
-            if not problems.exact(claim, cpath, required=("roles", "emit")):
-                continue
-            roles = claim.get("roles")
-            if not isinstance(roles, Mapping) or not roles:
-                problems.add("invalid_pack", f"{cpath}.roles", "must be non-empty")
-            else:
-                for role_id in sorted(roles, key=str):
-                    rpath = f"{cpath}.roles.{role_id}"
-                    _nonblank_id(role_id, rpath, problems)
-                    role = roles[role_id]
-                    if problems.exact(
-                            role, rpath, required=("kind", "required"),
-                            optional=("allowed_binding_kinds", "allowed_values")):
-                        role_kind = role.get("kind")
-                        if not isinstance(role_kind, str) or role_kind not in _ROLE_KINDS:
-                            problems.add("invalid_role_kind", f"{rpath}.kind",
-                                         f"must be one of {sorted(_ROLE_KINDS)}")
-                        if not isinstance(role.get("required"), bool):
-                            problems.add("invalid_type", f"{rpath}.required", "must be boolean")
-                        if "allowed_binding_kinds" in role:
-                            _binding_kind_list(role["allowed_binding_kinds"],
-                                               f"{rpath}.allowed_binding_kinds", problems)
-                            allowed = set(_column_values(role["allowed_binding_kinds"]))
-                            compatible = set(_default_binding_kinds(role_kind))
-                            if role_kind in _ROLE_KINDS and not allowed <= compatible:
-                                problems.add(
-                                    "invalid_role_kind", f"{rpath}.allowed_binding_kinds",
-                                    f"binding kinds must be a subset of {sorted(compatible)}")
-                        if role_kind == "symbolic":
-                            if "allowed_values" not in role:
-                                problems.add(
-                                    "missing_field", f"{rpath}.allowed_values",
-                                    "symbolic role requires allowed_values")
-                            else:
-                                values = role["allowed_values"]
-                                _nonblank_list(values, f"{rpath}.allowed_values", problems)
-                                if (_is_list(values)
-                                        and list(values) != sorted(values, key=str)):
-                                    problems.add(
-                                        "invalid_role_kind", f"{rpath}.allowed_values",
-                                        "symbolic allowed_values must be sorted")
-                        elif "allowed_values" in role:
-                            problems.add(
-                                "invalid_role_kind", f"{rpath}.allowed_values",
-                                "allowed_values is only valid for symbolic roles")
-            _validate_emission(claim.get("emit"), f"{cpath}.emit", problems)
-
-
-def _validate_emission(value: Any, path: str, problems: _Problems) -> None:
-    if not problems.exact(
-            value, path, required=("predicate", "subject", "object", "occurred_at")):
-        return
-    _versioned_id(value.get("predicate"), f"{path}.predicate", problems)
-    _role_ref(value.get("subject"), f"{path}.subject", problems)
-    _role_ref(value.get("occurred_at"), f"{path}.occurred_at", problems)
-    obj = value.get("object")
-    if problems.exact(obj, f"{path}.object", required=("kind",),
-                      optional=("entity", "value", "qualifiers")):
-        if (not isinstance(obj.get("kind"), str)
-                or obj.get("kind") not in _OBJECT_KINDS):
-            problems.add("invalid_emission", f"{path}.object.kind",
-                         f"must be one of {sorted(_OBJECT_KINDS)}")
-        if "entity" in obj:
-            _role_ref(obj["entity"], f"{path}.object.entity", problems)
-        if "qualifiers" in obj and not isinstance(obj["qualifiers"], Mapping):
-            problems.add("invalid_type", f"{path}.object.qualifiers", "must be an object")
-        elif isinstance(obj.get("qualifiers"), Mapping):
-            for name in sorted(obj["qualifiers"]):
-                _role_ref(obj["qualifiers"][name], f"{path}.object.qualifiers.{name}",
-                          problems)
-
-
 def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
     """One source's bind clause, at `sources.<id>.bind`.
 
@@ -1108,6 +1089,11 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
     🔴 `packs` WENT THE SAME WAY on 2026-08-21, for the third time in the same file.  It was
     `sorted(set(...))` of the packs the mappings' `use` names, checked for equality in BOTH
     directions -- an author could not write it better, only wrong.
+
+    🔴 AND `use` BECAME `predicate` THE SAME DAY, when the `packs` SECTION went too.  A
+    mapping named a Claim that named a predicate; it names the predicate.  The value is a
+    versioned vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
+    left with the section.
 
     🔴 AND IT STAYS A RECORD WITH ONE FIELD (owner: 「ㅇㅇ 남겨」).  `bind: [...]` would read
     the same today and would have to be unfolded -- with a migration -- the first time
@@ -1124,9 +1110,9 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
         mapping = mappings[sentence]
         mpath = f"{path}.mappings.{sentence}"
         _nonblank_id(sentence, mpath, problems)
-        if not problems.exact(mapping, mpath, required=("use", "bind")):
+        if not problems.exact(mapping, mpath, required=("predicate", "bind")):
             continue
-        _claim_ref(mapping.get("use"), f"{mpath}.use", problems)
+        _versioned_id(mapping.get("predicate"), f"{mpath}.predicate", problems)
         bindings = mapping.get("bind")
         if not isinstance(bindings, Mapping) or not bindings:
             problems.add("invalid_profile", f"{mpath}.bind", "must be non-empty")
@@ -1376,21 +1362,25 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     tables = catalog
     entities = bundle["entities"]
     vocabulary = bundle["vocabulary"]
-    packs = bundle["packs"]
     sources = bundle["sources"]
 
     _cross_vocabulary(vocabulary, entities, problems)
-    _cross_packs(packs, vocabulary, problems)
-    # The bind contract is a question about the LEDGER FILE alone -- does this pack own
-    # this claim, does this claim declare this role -- so it is asked for every source,
-    # including one whose relation is undeclared and which the loop below skips.  It is
-    # also where "does this pack own this claim" is answered for the mapper, which used to
-    # restate the same refs in `emits` and be asked separately just above this line.
+    # `_cross_packs` stood here and checked a Claim against the predicate it emitted --
+    # object kind agreement, every required qualifier present, no qualifier the predicate
+    # does not allow, every `$role` endpoint declared with a compatible kind.  Every one of
+    # those compared two declarations that `predicate_claim` now derives from ONE, so they
+    # are not relaxed: they are unwritable.  The half that survives -- "is this predicate
+    # known, and is it active" -- moved into `_cross_profile_contract`, which is where a
+    # predicate is now named.
+    #
+    # The bind contract is a question about the LEDGER FILE alone -- does this predicate
+    # exist, does its derived Claim declare this role -- so it is asked for every source,
+    # including one whose relation is undeclared and which the loop below skips.
     for source_id, source in sources.items():
         profile = source.get("bind")
         if isinstance(profile, Mapping):
             _cross_profile_contract(
-                f"bundle.sources.{source_id}.bind", profile, packs, problems)
+                f"bundle.sources.{source_id}.bind", profile, vocabulary, problems)
 
     for rule_id, rule in bundle["virtual_joins"].items():
         path = f"bundle.virtual_joins.{rule_id}"
@@ -1534,7 +1524,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             # The EventFrame schema this source's Profile binds against is `available`,
             # which is only known HERE -- so the bind/column half of the Profile contract
             # is asked inside the source loop, while the file-only half was asked above.
-            _cross_profile_source(profile_path, profile, packs, entities, vocabulary,
+            _cross_profile_source(profile_path, profile, entities, vocabulary,
                                   available, problems)
         if profile is not None and isinstance(mapper, Mapping):
             # The two-direction set equality between `map.emits` and these `use` values
@@ -1568,114 +1558,27 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
                                  + _did_you_mean(entity_type, entities, "entity types"))
 
 
-def _cross_packs(packs: Mapping[str, Any], vocabulary: Mapping[str, Any],
-                 problems: _Problems) -> None:
-    for pack_id, pack in packs.items():
-        for claim_id, claim in pack["claims"].items():
-            path = f"bundle.packs.{pack_id}.claims.{claim_id}"
-            roles = claim["roles"]
-            emission = claim["emit"]
-            predicate_id = emission["predicate"]
-            predicate = vocabulary.get(predicate_id)
-            if predicate is None:
-                problems.add("unknown_predicate", f"{path}.emit.predicate",
-                             f"unknown predicate {predicate_id!r}"
-                             + _did_you_mean(predicate_id, vocabulary, "predicates"))
-            elif predicate["status"] != "active":
-                problems.add("inactive_predicate", f"{path}.emit.predicate",
-                             f"predicate {predicate_id!r} is not active")
-
-            _cross_emission_role(
-                roles, emission["subject"], f"{path}.emit.subject", {"entity"},
-                problems, required_endpoint=True)
-            _cross_emission_role(
-                roles, emission["occurred_at"], f"{path}.emit.occurred_at", {"time"},
-                problems, required_endpoint=True)
-            obj = emission["object"]
-            object_kind = obj["kind"]
-            if predicate is not None and object_kind != predicate["object"]["kind"]:
-                problems.add("invalid_predicate", f"{path}.emit.object.kind",
-                             "Pack emission object kind disagrees with Vocabulary")
-            if object_kind == "entity_ref":
-                if "entity" not in obj or "value" in obj:
-                    problems.add("invalid_emission", f"{path}.emit.object",
-                                 "entity_ref object requires only an entity Role")
-                elif "entity" in obj:
-                    _cross_emission_role(
-                        roles, obj["entity"], f"{path}.emit.object.entity", {"entity"},
-                        problems, required_endpoint=True)
-            elif object_kind in ("value", "event_ref"):
-                expected = _SCALAR_ROLE_KINDS if object_kind == "value" else {"identity"}
-                if "value" not in obj or "entity" in obj:
-                    problems.add("invalid_emission", f"{path}.emit.object",
-                                 f"{object_kind} object requires only a value Role")
-                elif "value" in obj:
-                    _cross_emission_role(
-                        roles, obj["value"], f"{path}.emit.object.value", expected,
-                        problems, required_endpoint=True)
-            elif object_kind == "none":
-                if set(obj) != {"kind"}:
-                    problems.add(
-                        "invalid_emission", f"{path}.emit.object",
-                        "none object must contain only kind")
-            for qualifier, role_ref in obj.get("qualifiers", {}).items():
-                _cross_emission_role(
-                    roles, role_ref, f"{path}.emit.object.qualifiers.{qualifier}",
-                    _SCALAR_ROLE_KINDS, problems, required_endpoint=False)
-            if predicate is not None:
-                qualifier_contract = predicate["object"]["qualifiers"]
-                required_qualifiers = set(qualifier_contract["required"])
-                optional_qualifiers = set(qualifier_contract["optional"])
-                emitted_qualifiers = set(obj.get("qualifiers", {}))
-                for qualifier in sorted(required_qualifiers - emitted_qualifiers):
-                    problems.add(
-                        "missing_required_payload",
-                        f"{path}.emit.object.qualifiers.{qualifier}",
-                        f"predicate {predicate_id!r} requires qualifier {qualifier!r}")
-                allowed_qualifiers = required_qualifiers | optional_qualifiers
-                for qualifier in sorted(emitted_qualifiers - allowed_qualifiers):
-                    problems.add(
-                        "unknown_payload_field",
-                        f"{path}.emit.object.qualifiers.{qualifier}",
-                        f"predicate {predicate_id!r} does not allow qualifier {qualifier!r}")
-
-
-def _cross_emission_role(roles: Mapping[str, Any], role_ref: str, path: str,
-                         expected_kinds: set[str] | frozenset[str], problems: _Problems,
-                         *, required_endpoint: bool) -> None:
-    role_id = _role_name(role_ref)
-    if role_id not in roles:
-        problems.add("unknown_role", path, f"emission references unknown Role {role_id!r}")
-        return
-    descriptor = roles[role_id]
-    role_kind = descriptor["kind"]
-    if role_kind not in expected_kinds:
-        problems.add("invalid_role_kind", path,
-                     f"Role {role_id!r} kind {role_kind!r} is not one of {sorted(expected_kinds)}")
-    is_optional_ref = role_ref.endswith("?")
-    is_required_role = descriptor["required"] is True
-    if required_endpoint and (not is_required_role or is_optional_ref):
-        problems.add("invalid_role_ref", path,
-                     "subject, object, and occurred_at require a required non-optional Role")
-    elif not required_endpoint and is_required_role == is_optional_ref:
-        expected = f"${role_id}" if is_required_role else f"${role_id}?"
-        problems.add("invalid_role_ref", path,
-                     f"Role optionality requires reference {expected!r}")
-
-
 def _cross_profile_contract(path: str, profile: Mapping[str, Any],
-                            packs: Mapping[str, Any], problems: _Problems) -> None:
+                            vocabulary: Mapping[str, Any], problems: _Problems) -> None:
     for sentence, mapping in sorted(profile.get("mappings", {}).items()):
         mpath = f"{path}.mappings.{sentence}"
-        claim = _known_claim(mapping.get("use"), packs, f"{mpath}.use", problems)
-        if claim is None:
+        predicate_id = mapping.get("predicate")
+        predicate = vocabulary.get(predicate_id)
+        if predicate is None:
+            problems.add("unknown_predicate", f"{mpath}.predicate",
+                         f"unknown predicate {predicate_id!r}"
+                         + _did_you_mean(predicate_id, vocabulary, "predicates"))
             continue
-        roles = claim["roles"]
+        if predicate.get("status") != "active":
+            problems.add("inactive_predicate", f"{mpath}.predicate",
+                         f"predicate {predicate_id!r} is not active")
+        roles = predicate_claim(predicate_id, predicate)["roles"]
         bindings = mapping["bind"]
         for role in sorted(bindings):
             if role not in roles:
                 problems.add("unknown_role", f"{mpath}.bind.{role}",
-                             f"role {role!r} is not declared by Claim"
+                             f"role {role!r} is not declared by predicate "
+                             f"{predicate_id!r}"
                              + _did_you_mean(role, roles, "roles"))
             if role in roles:
                 allowed = role_binding_kinds(roles[role])
@@ -1694,7 +1597,7 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
             descriptor = roles[role]
             if descriptor.get("required") and role not in bindings:
                 problems.add("missing_required_role", f"{mpath}.bind.{role}",
-                             f"Claim requires role {role!r}")
+                             f"predicate {predicate_id!r} requires role {role!r}")
     # `packs` was checked here in both directions -- every declared pack had to be used and
     # every used pack had to be declared -- until 2026-08-21, when the list itself went.
     # `ProfileDescriptor` no longer carries one either: nothing read it.
@@ -1709,44 +1612,45 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
 
 
 def _cross_profile_source(path: str, profile: Mapping[str, Any],
-                          packs: Mapping[str, Any], entities: Mapping[str, Any],
+                          entities: Mapping[str, Any],
                           vocabulary: Mapping[str, Any], available: set[str],
                           problems: _Problems) -> None:
     for sentence, mapping in sorted(profile["mappings"].items()):
         mpath = f"{path}.mappings.{sentence}"
         for role, binding in mapping["bind"].items():
             _binding_refs(binding, f"{mpath}.bind.{role}", entities, available, problems)
-        use = _parse_claim_ref(mapping["use"])
-        if use is None or use[0] not in packs or use[1] not in packs[use[0]]["claims"]:
-            continue
-        claim = packs[use[0]]["claims"][use[1]]
-        predicate = vocabulary.get(claim["emit"]["predicate"])
+        predicate = vocabulary.get(mapping["predicate"])
         if predicate is not None:
-            _cross_emission_types(
-                claim["emit"], mapping["bind"], predicate, entities,
-                f"bundle.packs.{use[0]}.claims.{use[1]}.emit", problems)
+            _cross_binding_entity_types(
+                mapping["bind"], predicate, entities, f"{mpath}.bind", problems)
 
 
-def _cross_emission_types(emission: Mapping[str, Any], bindings: Mapping[str, Any],
-                          predicate: Mapping[str, Any], entities: Mapping[str, Any],
-                          path: str, problems: _Problems) -> None:
-    subject_role = _role_name(emission.get("subject"))
-    subject = bindings.get(subject_role) if subject_role else None
+def _cross_binding_entity_types(bindings: Mapping[str, Any],
+                                predicate: Mapping[str, Any],
+                                entities: Mapping[str, Any],
+                                path: str, problems: _Problems) -> None:
+    """Do the two entity ENDPOINTS name types this predicate admits?
+
+    The endpoints are read by their canonical names rather than through an `emit` clause's
+    `$role` references: a derived Claim always spells them `subject` and `target`, so the
+    indirection had exactly one possible answer.  The refusal moves with them -- it now
+    addresses the binding the author wrote instead of a `bundle.packs.…emit` path that no
+    longer exists.
+    """
+    subject = bindings.get(SUBJECT_ROLE)
     if isinstance(subject, Mapping) and subject.get("kind") == "entity":
         entity_type = subject.get("entity_type")
         if entity_type in entities and entity_type not in predicate.get("subjects", []):
-            problems.add("invalid_entity_ref", f"{path}.subject",
+            problems.add("invalid_entity_ref", f"{path}.{SUBJECT_ROLE}.entity_type",
                          f"entity {entity_type!r} is not an allowed predicate subject")
-    obj = emission.get("object") if isinstance(emission.get("object"), Mapping) else {}
     predicate_object = (predicate.get("object", {})
                         if isinstance(predicate.get("object"), Mapping) else {})
-    target_role = _role_name(obj.get("entity"))
-    target = bindings.get(target_role) if target_role else None
+    target = bindings.get(TARGET_ROLE)
     if isinstance(target, Mapping) and target.get("kind") == "entity":
         entity_type = target.get("entity_type")
         allowed = predicate_object.get("types", [])
         if entity_type in entities and entity_type not in allowed:
-            problems.add("invalid_entity_ref", f"{path}.object.entity",
+            problems.add("invalid_entity_ref", f"{path}.{TARGET_ROLE}.entity_type",
                          f"entity {entity_type!r} is not an allowed predicate object")
 
 
@@ -1780,30 +1684,6 @@ def _binding_readiness(binding: Any, path: str, problems: _Problems) -> None:
     if binding.get("kind") == "entity" and isinstance(binding.get("keys"), Mapping):
         for key in sorted(binding["keys"]):
             _binding_readiness(binding["keys"][key], f"{path}.keys.{key}", problems)
-
-
-def _known_claim(value: Any, packs: Mapping[str, Any], path: str,
-                 problems: _Problems) -> Optional[Mapping[str, Any]]:
-    parsed = _parse_claim_ref(value)
-    if parsed is None:
-        return None
-    pack_id, claim_id = parsed
-    pack = packs.get(pack_id)
-    if pack is None:
-        problems.add("unknown_pack", path,
-                     f"unknown pack {pack_id!r}"
-                     + _did_you_mean(pack_id, packs, "packs"))
-        return None
-    claims = pack.get("claims", {}) if isinstance(pack, Mapping) else {}
-    if not isinstance(claims, Mapping):
-        return None
-    claim = claims.get(claim_id)
-    if claim is None:
-        problems.add("unknown_claim", path,
-                     f"pack {pack_id!r} has no claim {claim_id!r}"
-                     + _did_you_mean(claim_id, claims, f"claims of {pack_id!r}"))
-        return None
-    return claim
 
 
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]

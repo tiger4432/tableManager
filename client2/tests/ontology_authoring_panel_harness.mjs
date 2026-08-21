@@ -30,6 +30,9 @@ function element(tag) {
     _text: '',
     _classes: [],
     dataset: Object.create(null),
+    // The map sets its indent through a custom property, so a stub with no `style` dies
+    // there rather than failing an assertion.
+    style: { setProperty() {} },
     get className() { return this._classes.join(' '); },
     set className(value) {
       this._classes = String(value).split(/\s+/).filter(Boolean);
@@ -96,7 +99,10 @@ const PLAN = {
       status: 'ready', derived: 0, missing: 0, unanswered: 0, answered: 3 },
     { id: 'sources', label: '소스', sections: ['sources'], declared: 2,
       status: 'blocked', derived: 2, missing: 1, unanswered: 1, answered: 0 },
-    { id: 'packs', label: '팩', sections: ['packs'], declared: 0,
+    // 🔴 WAS 「팩」 UNTIL 2026-08-21. `STEPS` lost that band when the `packs` section went,
+    // so a fixture naming it would be scoring a payload the server can no longer send.
+    // The block below only needs a step with nothing declared; `vocabulary` is a real one.
+    { id: 'vocabulary', label: '낱말', sections: ['vocabulary'], declared: 0,
       status: 'empty', derived: 0, missing: 0, unanswered: 0, answered: 0 },
   ],
   fields: [
@@ -132,13 +138,17 @@ const PLAN = {
         from_value: ['dt_index', 'dt_job', 'event_time'],
       },
     }),
+    // 🔴 A MAP KEY, NOT AN INDEX, AND THE ROLE IS THE ONE THE PREDICATE FORCES.
+    // `mappings` became a map keyed by sentence on 2026-08-21 and `packs` went the same
+    // day, so `mappings[1].bind.count` named two shapes that no longer exist. The role a
+    // value-object predicate opens is `value`; nothing declares it claim-side any more.
     field({
-      path: 'bundle.sources.dt_job.bind.mappings[1].bind.count', label: '역할 count',
+      path: 'bundle.sources.dt_job.bind.mappings.counted.bind.value', label: '역할 value',
       step: 'sources', state: 'missing', tier: 'constrained_input',
       candidates: ['column', 'constant'],
       refusals: [{ code: 'missing_required_role',
-        path: 'bundle.sources.dt_job.bind.mappings[1].bind.count',
-        message: "Claim requires role 'count'" }],
+        path: 'bundle.sources.dt_job.bind.mappings.counted.bind.value',
+        message: "predicate 'has_netdie@1' requires role 'value'" }],
     }),
     field({
       path: 'bundle.sources.dt_job.read.identity', label: 'identity', step: 'sources',
@@ -151,9 +161,63 @@ const PLAN = {
   counts: { derived: 2, missing: 1, unanswered: 1, answered: 1 },
   force_summary: { grammar_requires_it: 1, default_overridable: 1 },
   refusals: [],
+  // 🔴 UNDER THE DECLARATION ON SCREEN, because that is what the map can answer for.
+  // This is the shape the lead measured before deleting the 「필드에 붙지 않은 거절」 block:
+  // a refusal with no plan row, whose path still lands on a map row. It was
+  // `bundle.vocabulary` while a bucket printed refusals verbatim from anywhere.
   unattached_refusals: [
-    { code: 'missing_field', path: 'bundle.vocabulary', message: 'field is required' },
+    { code: 'missing_field', path: 'bundle.sources.dt_job.read.occurred_at.timezone',
+      message: 'field is required' },
   ],
+};
+
+// The smallest skeleton that is a real one: a section of name-keyed declarations, a
+// name-keyed map of sentences inside it, and a name-keyed map of roles inside that. The
+// last is what the binding template has to fill, and a map is the only shape that could
+// not draw a member the document has not got.
+const SKELETON = {
+  defs: {
+    binding: { kind: 'record', fields: [
+      { key: 'kind', required: true, label: '결선 종류', node: { kind: 'leaf', hint: 'free' } },
+    ] },
+  },
+  root: { kind: 'record', fields: [
+    { key: 'sources', required: true, node: { kind: 'map', keyed_by: 'name', member: '소스',
+      of: { kind: 'record', fields: [
+        { key: 'read', required: true, label: '읽기', node: { kind: 'record', fields: [
+          { key: 'occurred_at', required: true, label: '시각', node: { kind: 'record',
+            fields: [
+              { key: 'column', required: true, label: '컬럼',
+                node: { kind: 'leaf', hint: 'free' } },
+            ] } },
+        ] } },
+        { key: 'bind', required: true, label: '결선', node: { kind: 'record', fields: [
+          { key: 'mappings', required: true, node: { kind: 'map', keyed_by: 'name',
+            member: '문장', of: { kind: 'record', fields: [
+              { key: 'predicate', required: true, label: '낱말',
+                node: { kind: 'leaf', hint: 'ref', section: 'vocabulary' } },
+              { key: 'bind', required: true, label: '역할 바인딩',
+                node: { kind: 'map', keyed_by: 'name', member: '역할',
+                        of: { use: 'binding' } } },
+            ] } } },
+        ] } },
+      ] } } },
+  ] },
+};
+
+const SCHEMA = {
+  skeleton: SKELETON,
+  authorable_kinds: [{ id: 'source_plan', section: 'sources', versioned: false }],
+};
+
+// What the file holds for `dt_job`: the sentence names its predicate and has bound ONE of
+// the roles that predicate forces. `value` is missing, which is the whole point.
+const DOCUMENT = {
+  read: { occurred_at: { column: 'event_time' } },
+  bind: { mappings: { counted: {
+    predicate: 'has_netdie@1',
+    bind: { subject: { kind: 'entity' } },
+  } } },
 };
 
 const stateWith = (plan) => ({
@@ -170,7 +234,9 @@ const stateWith = (plan) => ({
     key: 'source_plan|dt_job', canonical_id: 'dt_job', kind: 'source_plan',
     config_path: 'bundle.sources.dt_job', compile_status: 'valid',
     config_file: 'ledger_config.json',
+    raw: DOCUMENT,
   },
+  authoringSchema: SCHEMA,
   navigation: { back: [], forward: [] },
 });
 
@@ -203,6 +269,23 @@ const render = (plan) => {
 const renderFolded = (plan) => {
   const root = element('div');
   renderOntologyExplorer(root, stateWith(plan));
+  return root;
+};
+
+// 🔴 A DRAFT IS WHAT MAKES THE TREE EXIST, so the block that scores the tree opens one and
+// the blocks that score the BUCKETS do not. `renderAuthoring` draws the form only when a
+// draft is open, and every row it draws leaves the buckets -- which is exactly the
+// difference the C block below is about, and exactly why E1 ("no greyed boxes") still
+// renders without one.
+const renderDraft = (plan) => {
+  const root = element('div');
+  renderOntologyExplorer(root, {
+    ...stateWith(plan),
+    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    editorText: JSON.stringify(DOCUMENT),
+    expandedFields: Object.fromEntries(
+      (plan.fields || []).map((row) => [row.path, true])),
+  });
   return root;
 };
 
@@ -249,15 +332,26 @@ const renderFolded = (plan) => {
 }
 
 // ── C. missing and unanswered are named, with the server's own codes ──────────────
+//
+// 🔴 THE CONTRACT CHANGED ON 2026-08-21 AND C1-C3 AND C8 MOVED WITH IT. Two
+// `oe-bucket--missing` blocks used to sit below the tree -- 「빠짐 · N」 and 「필드에 붙지
+// 않은 거절 · N」 -- and the owner asked for both to be deleted. The lead measured what
+// covers them: `attentionPaths` marks every remaining/refused path `is-left` on the
+// right-hand map, and all six unattached refusals in the live config had such a row. So
+// the surfaces are the TREE ROW (which box) and the MAP (what is left), and these
+// assertions score those instead of the bucket. They were not weakened -- C1 now refuses
+// the bucket's RETURN, which nothing scored before.
 {
-  const root = render(PLAN);
-  const missing = inside(root, 'oe-bucket--missing', 'oe-field');
-  eq('C1 the missing bucket holds the missing row', missing.length, 1);
-  const refusal = byClass(at(missing, 0), 'oe-field-refusal');
-  eq('C2 the refusal is shown verbatim', refusal.length, 1);
+  const root = renderDraft(PLAN);
+  eq('C1 no missing bucket exists at all',
+    byClass(root, 'oe-bucket--missing').length, 0);
+  const refused = byClass(root, 'oe-node-row').filter(
+    (row) => row._classes.includes('is-refused'));
+  eq('C2 the refused role is a row in the tree, not a card below it', refused.length, 1);
   check('C3 the stable code is on screen',
-    at(refusal, 0).textContent.includes('missing_required_role'));
-  const unanswered = inside(root, 'oe-bucket--unanswered', 'oe-field');
+    at(byClass(root, 'oe-field-refusal'), 0).textContent
+      .includes('missing_required_role'));
+  const unanswered = inside(render(PLAN), 'oe-bucket--unanswered', 'oe-field');
   eq('C4 the unanswered bucket holds the free question', unanswered.length, 1);
   const chips = byClass(at(byClass(at(unanswered, 0), 'oe-candidates'), 0), 'oe-chip');
   eq('C5 one chip per server candidate, no more', chips.length, CANDIDATES.length);
@@ -266,8 +360,35 @@ const renderFolded = (plan) => {
     chips.map((c) => c.textContent).join(','));
   check('C7 the column universe is named beside them',
     at(byClass(at(unanswered, 0), 'oe-candidates'), 0).textContent.includes('PREPARED'));
-  check('C8 refusals with no field still reach the screen',
-    root.textContent.includes('bundle.vocabulary'));
+  const left = byClass(root, 'oe-map-row').filter(
+    (row) => row._classes.includes('is-left'));
+  check('C8 a refusal with no field still reaches the screen, on the map',
+    left.some((row) => String(row.title || '').startsWith('read.occurred_at')),
+    left.map((row) => row.title).join(','));
+}
+
+// ── G. the binding template: choosing a predicate lays the slots out ──────────────
+//
+// 🔴 THE HALF OF `packs` REMOVAL THAT IS NOT A DELETION (owner, 2026-08-21: 「packs 제거 후
+// 소스에는 문장id - vocab - vocab 정의 따른 하위 항목별 binding 템플릿 이런 형태가 되어야
+// 함」). A record always drew its declared fields, so an unfilled one was a visible empty
+// box; a name-keyed MAP drew only what the document held, so a Role the grammar requires
+// and the file has not got was simply not on the screen. Dropping `claims` without this
+// would have MOVED the burden onto a person -- they would have to know the word `value`
+// from outside the form -- which is worse than what was there before.
+{
+  const root = renderDraft(PLAN);
+  const roleRows = byClass(root, 'oe-node').filter(
+    (node) => String(node.dataset.path || '')
+      .startsWith('bind.mappings.counted.bind.'));
+  const paths = roleRows.map((node) => node.dataset.path);
+  check('G1 the bound role is drawn',
+    paths.includes('bind.mappings.counted.bind.subject'), paths.join(','));
+  check('G2 the role the predicate forces is drawn though the document lacks it',
+    paths.includes('bind.mappings.counted.bind.value'), paths.join(','));
+  const slots = paths.filter((path) => path.split('.').length === 5);
+  check('G3 no slot is invented: only what the document holds or the plan names',
+    slots.length === 2, slots.join(','));
 }
 
 // ── D. the counts bite: delete the rows and the numbers must move ─────────────────

@@ -20,10 +20,10 @@ from ledger.setup_bundle import (
     LedgerSetupValidationError,
 )
 from ledger.setup_registry import (
+    ClaimDescriptor,
     EntityTypeDescriptor,
     EntityTypeRegistry,
     MapperDescriptor,
-    PackDescriptor,
     PredicateDescriptor,
     RoleDescriptor,
     SourcePlan,
@@ -131,20 +131,24 @@ def snapshot(bundle=None, trusted=None, *, catalog=None):
     )
 
 
-def test_registry_tree_compiles_pack_claim_role_and_source_plan():
+def test_registry_tree_compiles_predicate_claim_role_and_source_plan():
     compiled = snapshot()
 
     predicate = compiled.vocabulary["moves_to@1"]
     entity = compiled.entities["InputEntity@1"]
-    pack = compiled.packs["movement@1"]
-    role = pack.claims["transition"].roles["subject"]
+    # `compiled.packs["movement@1"].claims["transition"]` until 2026-08-21. One registry,
+    # keyed by the PREDICATE, because that is the declaration the Claim is derived from.
+    claim = compiled.claims["moves_to@1"]
+    role = claim.roles["subject"]
     source = compiled.source_plans["input_rows"]
 
     assert isinstance(predicate, PredicateDescriptor)
     assert predicate.version == 1
     assert isinstance(entity, EntityTypeDescriptor)
     assert entity.identity_keys == ("input_id",)
-    assert isinstance(pack, PackDescriptor)
+    assert isinstance(claim, ClaimDescriptor)
+    assert claim.claim_id == "moves_to@1"
+    assert claim.config_path == "bundle.vocabulary.moves_to@1"
     assert isinstance(role, RoleDescriptor)
     assert role.allowed_binding_kinds == ("entity",)
     assert isinstance(source, SourcePlan)
@@ -156,7 +160,7 @@ def test_registry_tree_compiles_pack_claim_role_and_source_plan():
 
 def test_objectless_emission_compiles_without_an_object_role():
     compiled = snapshot(objectless_register_bundle())
-    emission = compiled.packs["registration@1"].claims["register"].emission
+    emission = compiled.claims["register@1"].emission
 
     assert compiled.compiler_contract_version == 3
     assert compiled.vocabulary["register@1"].object_kind == "none"
@@ -164,29 +168,48 @@ def test_objectless_emission_compiles_without_an_object_role():
     assert emission.object_role is None
 
 
-def test_role_binding_kinds_use_the_same_pack_contract_as_validation():
+def test_role_binding_kinds_use_the_same_predicate_contract_as_validation():
+    """Was `..._use_the_same_pack_contract_...`.
+
+    It narrowed the Claim's `event_key` role to `allowed_binding_kinds: ["column"]` and
+    asserted the compiler read the same list the validator did.  A derived Role declares
+    no such list, so what the two now have to agree on is the DEFAULT for the role kind --
+    which is the same `role_binding_kinds` call on both sides, and the same statement.
+    """
+    compiled = snapshot()
+
+    roles = compiled.claims["moves_to@1"].roles
+    assert roles["event_key"].kind == "attribute"
+    assert roles["event_key"].allowed_binding_kinds == ("column", "constant")
+    assert roles["subject"].allowed_binding_kinds == ("entity",)
+
+
+def test_vocabulary_qualifier_contract_survives_compilation():
+    """Was `test_vocabulary_and_symbolic_role_contracts_survive_compilation`.
+
+    DELETED with the pack section: the symbolic half. A `symbolic` Role with an
+    `allowed_values` roster could only be declared at `packs.*.claims.*.roles.*`, and
+    `predicate_claim` derives no such kind -- see the deletion note in
+    `test_ledger_setup_bundle.py`. The vocabulary half is the part that had a declaration
+    of its own all along, so it keeps its assertions unchanged.
+    """
     bundle = logical_bundle()
-    role = bundle["packs"]["movement@1"]["claims"]["transition"]["roles"]["event_key"]
-    role["allowed_binding_kinds"] = ["column"]
+    bundle["vocabulary"]["moves_to@1"]["object"]["qualifiers"] = {
+        "required": [], "optional": ["event_key", "movement_kind"]}
+    source_profile(bundle)["mappings"]["main_transition"]["bind"]["movement_kind"] = {
+        "kind": "constant", "value": "pick",
+        "binding_origin": "user_declared", "approval_status": "approved",
+    }
 
     compiled = snapshot(bundle)
-
-    assert compiled.packs["movement@1"].claims["transition"].roles[
-        "event_key"].allowed_binding_kinds == ("column",)
-
-
-def test_vocabulary_and_symbolic_role_contracts_survive_compilation():
-    from test_ledger_setup_bundle import symbolic_bundle
-
-    compiled = snapshot(symbolic_bundle("pick"))
     predicate = compiled.vocabulary["moves_to@1"]
-    role = compiled.packs["movement@1"].claims["transition"].roles[
-        "movement_kind"]
 
     assert predicate.required_qualifiers == ()
     assert predicate.optional_qualifiers == ("event_key", "movement_kind")
-    assert role.kind == "symbolic"
-    assert role.allowed_values == ("pick", "place")
+    role = compiled.claims["moves_to@1"].roles["movement_kind"]
+    assert role.kind == "attribute"
+    assert role.required is False
+    assert role.allowed_values == ()
 
 
 def test_registries_and_descriptors_are_recursively_immutable():
@@ -199,7 +222,7 @@ def test_registries_and_descriptors_are_recursively_immutable():
     with pytest.raises(TypeError):
         compiled.profiles["input_rows"].mappings["main_transition"].bindings["new"] = {}
     with pytest.raises(FrozenInstanceError):
-        compiled.packs["movement@1"].version = 2
+        compiled.claims["moves_to@1"].claim_id = "other@1"
 
 
 def test_source_plan_reuses_registry_join_descriptor_without_copying_it():
@@ -557,16 +580,20 @@ def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
 
 
 def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
+    # The undeclared predicate used to be planted at the pack's `emit.predicate`; since
+    # 2026-08-21 the only place a predicate is NAMED is the mapping, so the same
+    # `unknown_predicate` refusal is provoked there. Same code, same fail-closed
+    # revalidation of a hand-built bundle that never went through `validate_bundle`.
     raw = logical_bundle()
-    raw["packs"]["movement@1"]["claims"]["transition"]["emit"]["predicate"] = (
-        "missing@1")
+    source_profile(raw)["mappings"]["main_transition"]["predicate"] = "missing@1"
     untrusted_input = LedgerSetupBundle(raw)
 
     errors = snapshot_compile_errors(untrusted_input, trusted_implementations())
 
     assert any(
         issue.code == "unknown_predicate"
-        and issue.path == "bundle.packs.movement@1.claims.transition.emit.predicate"
+        and issue.path == (
+            f"{PROFILE_PATH}.mappings.main_transition.predicate")
         for issue in errors
     )
 
@@ -672,7 +699,13 @@ def test_source_preparation_cannot_redeclare_join_contract():
     }]
 
 
-def test_new_config_entity_predicate_and_pack_need_no_compiler_change():
+def test_new_config_entity_and_predicate_need_no_compiler_change():
+    """Was `..._entity_predicate_and_pack_...`; the pack half was 17 lines of declaration.
+
+    Adding a predicate is now the WHOLE act -- its Claim compiles with it, which is the
+    point of the section going -- so the third assertion reads the derived Claim rather
+    than a hand-written pack.
+    """
     bundle = logical_bundle()
     bundle["entities"]["NewSubject@1"] = {"keys": ["new_subject_id"]}
     bundle["entities"]["NewTarget@1"] = {"keys": ["new_target_id"]}
@@ -685,23 +718,6 @@ def test_new_config_entity_predicate_and_pack_need_no_compiler_change():
             "qualifiers": {"required": [], "optional": []},
         },
     }
-    bundle["packs"]["linkage@1"] = {
-        "claims": {
-            "link": {
-                "roles": {
-                    "subject": {"kind": "entity", "required": True},
-                    "target": {"kind": "entity", "required": True},
-                    "occurred_at": {"kind": "time", "required": True},
-                },
-                "emit": {
-                    "predicate": "links_to@1",
-                    "subject": "$subject",
-                    "object": {"kind": "entity_ref", "entity": "$target"},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-        },
-    }
 
     compiled = snapshot(bundle)
 
@@ -710,7 +726,9 @@ def test_new_config_entity_predicate_and_pack_need_no_compiler_change():
         "bundle.entities.NewSubject@1")
     assert compiled.vocabulary["links_to@1"].config_path == (
         "bundle.vocabulary.links_to@1")
-    assert compiled.packs["linkage@1"].config_path == "bundle.packs.linkage@1"
+    assert compiled.claims["links_to@1"].config_path == "bundle.vocabulary.links_to@1"
+    assert set(compiled.claims["links_to@1"].roles) == {
+        "subject", "target", "occurred_at"}
 
 
 def test_registry_keeps_multiple_versions_as_distinct_keys():
@@ -750,14 +768,15 @@ def test_registry_builder_refuses_add_after_seal():
 # Same reason as `test_unused_config_implementations_are_also_checked` above: a preparer
 # or mapper no source selects can no longer be declared. The registries are now keyed by
 # source id and are populated by walking `sources`, so "in the registry" and "declared"
-# are the same statement -- see `test_registry_tree_compiles_pack_claim_role_and_source_plan`.
+# are the same statement -- see
+# `test_registry_tree_compiles_predicate_claim_role_and_source_plan`.
 
 
-def test_same_pack_compiles_for_completely_renamed_source_and_columns():
+def test_same_claims_compile_for_completely_renamed_source_and_columns():
     original = snapshot(logical_bundle())
     renamed = snapshot(logical_bundle(source_name="arbitrary_rows", prefix="renamed_"))
 
-    assert original.packs.to_mapping() == renamed.packs.to_mapping()
+    assert original.claims.to_mapping() == renamed.claims.to_mapping()
     assert renamed.source_plans["arbitrary_rows"].relation == "arbitrary_rows"
     assert renamed.source_plans["arbitrary_rows"].driver.identity == (
         "renamed_event_key",)
@@ -846,7 +865,7 @@ def test_mapper_group_by_columns_are_compiled_into_snapshot():
 
 
 def two_source_bundle():
-    """One pack shared by two sources, so a shared edit and a private edit are separable.
+    """One predicate shared by two sources, so a shared edit and a private edit separate.
 
     🔴 THE ISOLATION CLAIM NEEDS A BUNDLE WHERE THE TWO ANSWERS DIFFER.  A one-source
     fixture cannot tell "only my own material moves me" from "nothing ever moves me";
@@ -916,9 +935,11 @@ def test_editing_a_shared_predicate_moves_every_source_that_reaches_it():
     """The closure is transitive, and erring SMALL is the dangerous direction.
 
     A source that should have been refused and is not re-reads under a stale contract
-    silently; a source refused too often merely annoys.  Both fixtures reach `moves_to@1`
-    through the pack they share, so both must move -- and this is the assertion that
+    silently; a source refused too often merely annoys.  Both fixtures name `moves_to@1`
+    in their own `bind.mappings`, so both must move -- and this is the assertion that
     fails first if someone later narrows the closure to a source's own declarations.
+    (Until 2026-08-21 they reached it through a shared PACK, one hop further out; the
+    closure lands directly on the predicate now, and the requirement is unchanged.)
     """
     raw = two_source_bundle()
     before = cursor_fingerprints(raw)

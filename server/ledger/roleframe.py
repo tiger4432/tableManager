@@ -44,7 +44,7 @@ ROLE_FRAME_ATTR = "assy_manager.role_frame_schema_version"
 ROLE_FRAME_COLUMNS = (
     "source_event_id",
     "sentence",
-    "claim_ref",
+    "predicate",
     "roles",
     "source_row_refs",
 )
@@ -144,10 +144,12 @@ class RoleEmission:
 
     🔴 NO `claim_ref`, AND THE ABSENCE IS THE POINT (owner, 2026-08-20: 「클레임과 맵퍼
     함수는 완전 별개인데 왜 맵퍼에서 쓸 클레임을 정의함? 프로필에서 해야하는거 아니야?」 ->
-    「닿을 수 없다면 선언도 닿으면 안됨」).  A mapper names a sentence; which CLAIM that
-    sentence realizes is `bind.mappings.<sentence>.use`, one declaration away, and a mapper
-    that restated it could only restate it wrongly.  `_role_frame_from_emissions` looks the
-    ref up from `sentence` against the same Profile the mapper was handed.
+    「닿을 수 없다면 선언도 닿으면 안됨」).  A mapper names a sentence; which PREDICATE that
+    sentence utters is `bind.mappings.<sentence>.predicate`, one declaration away, and a
+    mapper that restated it could only restate it wrongly.  `_role_frame_from_emissions`
+    looks it up from `sentence` against the same Profile the mapper was handed.  (The
+    declaration spelled a `<pack>/<claim>` ref until the `packs` section went on
+    2026-08-21; the direction it runs in never changed.)
 
     🔴 `sentence`, NOT `mapping_id`, as of 2026-08-21 (owner: 「맵퍼 구조를 문장에 별명을
     붙여 부르게 만들고 그 별명에 바인드를 한다면?」).  A mapping is now KEYED by the
@@ -514,14 +516,14 @@ class ProfileSentences:
         return mapping, claim
 
     def _claim_of(self, mapping: Any) -> ClaimDescriptor | None:
-        try:
-            pack_id, claim_id = mapping.claim_ref.split("/", 1)
-        except (AttributeError, ValueError):
-            return None
-        pack = self._context.snapshot.packs.get(pack_id)
-        if pack is None:
-            return None
-        return pack.claims.get(claim_id)
+        """The Claim the mapping's predicate forces -- one lookup, no pack to open first.
+
+        It was `snapshot.packs[pack].claims[claim]` until 2026-08-21, splitting a
+        `<pack>/<claim>` ref that `bind.mappings.<sentence>` no longer writes.  Nothing
+        pack-shaped was consumed on the way through, so this is a substitution.
+        """
+        predicate_id = getattr(mapping, "predicate_id", None)
+        return self._context.snapshot.claims.get(predicate_id)
 
     def _entity_binding(self, mapping: Any, role_id: str) -> Mapping[str, Any]:
         binding = mapping.bindings.get(role_id)
@@ -830,7 +832,7 @@ def _role_frame_from_emissions(
     rows = [{
         "source_event_id": event_attrs["source_event_id"],
         "sentence": emission.sentence,
-        "claim_ref": (profile.mappings[emission.sentence].claim_ref
+        "predicate": (profile.mappings[emission.sentence].predicate_id
                       if emission.sentence in profile.mappings else ""),
         "roles": emission.roles,
         "source_row_refs": emission.source_row_refs,
@@ -899,22 +901,22 @@ def validate_role_frame(
                 "unknown_mapping", f"{row_path}.sentence",
                 f"Profile realizes no sentence {row['sentence']!r}")
         # 🔴 BOTH OF THESE ARE NOW TAUTOLOGIES, AND THAT IS WHY THEY STAY.  They were not
-        # removed; the state they refused stopped being expressible.  `claim_ref` is looked
+        # removed; the state they refused stopped being expressible.  `predicate` is looked
         # up from `sentence` against this same Profile, so the first compares a value with
-        # its own source; `descriptor.emits` is compiled from those same `use` refs, so the
-        # second does too.  A mapper that invents a `sentence` is already refused three
+        # its own source; `descriptor.emits` is compiled from those same declarations, so
+        # the second does too.  A mapper that invents a `sentence` is already refused three
         # lines up as `unknown_mapping`.  Deleting a check that can no longer fail would
         # also delete the record of what used to be writable -- and `validate_role_frame`
         # is a boundary that accepts frames it did not build.
-        if row["claim_ref"] != mapping.claim_ref:
+        if row["predicate"] != mapping.predicate_id:
             raise RoleFrameError(
-                "invalid_claim_ref", f"{row_path}.claim_ref",
-                "claim_ref disagrees with the Profile mapping")
-        if row["claim_ref"] not in descriptor.emits:
+                "invalid_predicate_ref", f"{row_path}.predicate",
+                "predicate disagrees with the Profile mapping")
+        if row["predicate"] not in descriptor.emits:
             raise RoleFrameError(
-                "unsupported_claim", f"{row_path}.claim_ref",
-                "claim_ref is outside MapperDescriptor.emits")
-        claim = _claim(context.snapshot, row["claim_ref"], f"{row_path}.claim_ref")
+                "unsupported_predicate", f"{row_path}.predicate",
+                "predicate is outside MapperDescriptor.emits")
+        claim = _claim(context.snapshot, row["predicate"], f"{row_path}.predicate")
         roles = row["roles"]
         if not isinstance(roles, Mapping):
             raise RoleFrameError(
@@ -949,7 +951,7 @@ def validate_role_frame(
         normalized_row = {
             "source_event_id": row["source_event_id"],
             "sentence": row["sentence"],
-            "claim_ref": row["claim_ref"],
+            "predicate": row["predicate"],
             "roles": roles,
             "source_row_refs": tuple(sorted(set(refs))),
         }
@@ -970,17 +972,12 @@ def validate_role_frame(
     return out
 
 
-def _claim(snapshot: LedgerSetupSnapshot, claim_ref: str, path: str) -> ClaimDescriptor:
-    try:
-        pack_id, claim_id = claim_ref.split("/", 1)
-    except (AttributeError, ValueError) as exc:
+def _claim(snapshot: LedgerSetupSnapshot, predicate_id: Any, path: str) -> ClaimDescriptor:
+    claim = None if not isinstance(predicate_id, str) else snapshot.claims.get(predicate_id)
+    if claim is None:
         raise RoleFrameError(
-            "invalid_claim_ref", path, "claim_ref must be pack@version/claim") from exc
-    pack = snapshot.packs.get(pack_id)
-    if pack is None or claim_id not in pack.claims:
-        raise RoleFrameError(
-            "unknown_claim", path, f"unknown Claim {claim_ref!r}")
-    return pack.claims[claim_id]
+            "unknown_predicate", path, f"unknown predicate {predicate_id!r}")
+    return claim
 
 
 def _runtime_id(versioned_id: str) -> str:
@@ -1077,8 +1074,8 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
     rows = []
     for position in range(len(normalized)):
         row = normalized.iloc[position]
-        claim = _claim(context.snapshot, row["claim_ref"],
-                       f"role_frame.rows[{position}].claim_ref")
+        claim = _claim(context.snapshot, row["predicate"],
+                       f"role_frame.rows[{position}].predicate")
         emission = claim.emission
         roles = row["roles"]
         subject = roles[emission.subject.role_id]

@@ -31,8 +31,12 @@ message is the weakest available fix; removing the question is the strongest.
 
 The first two of those three took the strongest fix on 2026-08-21 and are no longer
 fields at all -- `bind` and `map` do not carry them, and `MapperDescriptor.emits` is
-compiled from `bind.mappings.<sentence>.use`.  A `derived` row still costs the operator a line in
-the file and a row on the screen; a retired one costs neither.
+compiled from `bind.mappings.<sentence>.predicate`.  A `derived` row still costs the
+operator a line in the file and a row on the screen; a retired one costs neither.
+
+Later the same day the WHOLE `packs` step went the same way.  Every field it had restated
+its predicate, so `_mapping_fields` now lays the Role slots out from the vocabulary and
+asks only for each slot's material.
 
 The tiers, strongest first, are recorded per field in ``tier`` so a reader can audit that
 ranking rather than take it on faith:
@@ -63,6 +67,7 @@ from .setup_bundle import (
     _SCALAR_ROLE_KINDS,
     _SOURCE_UNITS,
     PHYSICAL_CATALOG_FILENAME,
+    predicate_claim,
     public_bundle_schema,
     role_binding_kinds,
     validate_bundle_errors,
@@ -87,10 +92,15 @@ TIER_DIAGNOSTIC = "diagnostic"
 #: the same evening. Their FIELDS did not vanish with the layers: all of them moved to the
 #: `sources` step, which is where the operator now writes them, and a source is therefore
 #: authored in ONE band instead of being started in one and finished in another.
+#:
+#: 🔴 THREE SINCE 2026-08-21, and this one is a REAL band that stopped existing. 「팩」 had
+#: fields of its own -- Role kinds, `emit` endpoints, qualifier refs -- and every one of
+#: them was a transcription of the predicate one band earlier. They did not move to
+#: `sources`; they stopped being questions. What the operator answers instead is the
+#: binding for each Role the predicate forces, which `_mapping_fields` lays out.
 STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("entities", "엔터티", ("entities",)),
     ("vocabulary", "낱말", ("vocabulary",)),
-    ("packs", "팩", ("packs",)),
     ("sources", "소스", ("sources",)),
 )
 
@@ -284,18 +294,6 @@ def _role_name(ref: Any) -> str:
     return ref[1:].removesuffix("?")
 
 
-def _role_reference(role_id: str, role: Mapping[str, Any]) -> str:
-    """The only legal spelling of a reference to this Role from a non-required endpoint."""
-    return f"${role_id}" if role.get("required") is True else f"${role_id}?"
-
-
-def _claim_ref(value: Any) -> tuple[str, str] | None:
-    if not isinstance(value, str) or value.count("/") != 1:
-        return None
-    pack_id, claim_id = value.split("/", 1)
-    return (pack_id, claim_id) if pack_id and claim_id else None
-
-
 def is_remaining(row: Mapping[str, Any]) -> bool:
     """Does a PERSON still have to decide this one?
 
@@ -391,9 +389,9 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     ALREADY showing them, so the file stops disagreeing with the pixels.
 
     The class, not the case.  `accepts_verified_join_rules` is the one that showed today;
-    the skeleton has three required flags (`packs.*.claims.*.roles.*.required` and
-    `virtual_joins.*.enabled` are the others), and the hint is READ, so a fourth is covered
-    the day it is declared.  `entities.*.allow_null` is `required: false` and stays absent --
+    the skeleton has two required flags (`virtual_joins.*.enabled` is the other -- the
+    third, `packs.*.claims.*.roles.*.required`, left with its section on 2026-08-21), and
+    the hint is READ, so a third is covered the day it is declared.  `entities.*.allow_null` is `required: false` and stays absent --
     seeding what is NOT required is the complaint below, coming straight back.
 
     Nothing here knows a field by name -- it asks the skeleton whether the field is required
@@ -688,137 +686,6 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
             )
 
 
-def _packs_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
-    vocabulary = _section(bundle, "vocabulary")
-    for pack_id in sorted(_section(bundle, "packs"), key=str):
-        pack = _section(bundle, "packs")[pack_id]
-        claims = pack.get("claims") if isinstance(pack, Mapping) else None
-        if not isinstance(claims, Mapping):
-            continue
-        for claim_id in sorted(claims, key=str):
-            claim = claims[claim_id]
-            if not isinstance(claim, Mapping):
-                continue
-            yield from _claim_fields(bundle, vocabulary, pack_id, claim_id, claim)
-
-
-def _claim_fields(bundle: Mapping[str, Any], vocabulary: Mapping[str, Any],
-                  pack_id: str, claim_id: str, claim: Mapping[str, Any]
-                  ) -> Iterable[Field]:
-    base = f"bundle.packs.{pack_id}.claims.{claim_id}"
-    roles = claim.get("roles") if isinstance(claim.get("roles"), Mapping) else {}
-    emit = claim.get("emit") if isinstance(claim.get("emit"), Mapping) else {}
-    predicate_id = emit.get("predicate")
-    predicate = vocabulary.get(predicate_id) if isinstance(predicate_id, str) else None
-
-    active_predicates = tuple(sorted(
-        name for name, item in vocabulary.items()
-        if isinstance(item, Mapping) and item.get("status") == "active"))
-    yield Field(
-        path=f"{base}.emit.predicate", step="packs", label="낱말",
-        state="answered" if predicate_id else "missing", tier=TIER_CONSTRAINED,
-        value=predicate_id, declared=predicate_id if predicate_id else _ABSENT,
-        candidates=active_predicates,
-        note="retired 낱말은 후보에서 빠진다.",
-    )
-
-    obj = emit.get("object") if isinstance(emit.get("object"), Mapping) else {}
-    if isinstance(predicate, Mapping):
-        contract = predicate.get("object")
-        contract = contract if isinstance(contract, Mapping) else {}
-        kind = contract.get("kind")
-        if isinstance(kind, str):
-            # ① 자유도 0. The validator compares this for equality with the predicate.
-            yield Field(
-                path=f"{base}.emit.object.kind", step="packs", label="목적어 종류",
-                state="derived", tier=TIER_STRUCTURAL,
-                value=kind, declared=obj.get("kind", _ABSENT),
-                ground=Ground(
-                    "emit_object_kind_from_predicate",
-                    f"채움: {predicate_id}의 object.kind",
-                    (f"bundle.vocabulary.{predicate_id}.object.kind",), kind),
-                note="kind에 따라 이 아래의 칸 구성이 바뀐다.",
-            )
-        qualifiers = contract.get("qualifiers")
-        qualifiers = qualifiers if isinstance(qualifiers, Mapping) else {}
-        required = tuple(str(name) for name in _listed(qualifiers.get("required")))
-        optional = tuple(str(name) for name in _listed(qualifiers.get("optional")))
-        emitted = obj.get("qualifiers")
-        emitted = emitted if isinstance(emitted, Mapping) else {}
-        if required or optional:
-            yield Field(
-                path=f"{base}.emit.object.qualifiers", step="packs", label="qualifier 칸",
-                state="derived", tier=TIER_DERIVATION,
-                value={"required": list(required), "optional": list(optional)},
-                ground=Ground(
-                    "qualifier_slots_from_predicate",
-                    f"채움: {predicate_id}의 qualifier 계약",
-                    (f"bundle.vocabulary.{predicate_id}.object.qualifiers",),
-                    {"required": list(required), "optional": list(optional)}),
-                disposition="shape",
-                note="required는 칸을 미리 만들고, optional만 쓸지 묻는다.",
-            )
-        # One row per qualifier the predicate allows.  WHICH Role fills it is free; how
-        # the reference is SPELLED is not -- `_cross_emission_role(...,
-        # required_endpoint=False)` refuses when `is_required_role == is_optional_ref`,
-        # so a required Role must read `$r` and an optional one `$r?`.  The candidates
-        # are therefore emitted already spelled, and the question mark is never typed.
-        candidates = tuple(
-            _role_reference(name, roles[name])
-            for name in sorted(roles, key=str)
-            if isinstance(roles.get(name), Mapping)
-            and roles[name].get("kind") in _SCALAR_ROLE_KINDS)
-        for name in sorted(set(required) | set(optional) | set(emitted), key=str):
-            qpath = f"{base}.emit.object.qualifiers.{name}"
-            ref = emitted.get(name)
-            role_id = _role_name(ref)
-            role = roles.get(role_id) if isinstance(roles, Mapping) else None
-            if isinstance(role, Mapping):
-                yield Field(
-                    path=qpath, step="packs", label=f"qualifier {name}",
-                    state="derived", tier=TIER_STRUCTURAL,
-                    value=_role_reference(role_id, role), declared=ref,
-                    candidates=candidates,
-                    ground=Ground(
-                        "role_ref_spelling_from_role_required",
-                        f"채움: Role {role_id} required="
-                        f"{str(role.get('required') is True).lower()} → 표기 확정",
-                        (f"{base}.roles.{role_id}.required",),
-                        role.get("required") is True),
-                )
-            elif name in required:
-                yield Field(
-                    path=qpath, step="packs", label=f"qualifier {name}",
-                    state="missing", tier=TIER_CONSTRAINED, candidates=candidates,
-                    refusals=({
-                        "code": "missing_required_payload", "path": qpath,
-                        "message": f"predicate {predicate_id!r} requires qualifier "
-                                   f"{name!r}"},),
-                )
-            else:
-                yield Field(
-                    path=qpath, step="packs", label=f"qualifier {name}",
-                    state="unanswered", tier=TIER_CONSTRAINED, candidates=candidates,
-                    note="optional qualifier. 쓸지 여부만 자유.",
-                )
-
-    for endpoint, expected_kinds in (
-        ("subject", ("entity",)), ("occurred_at", ("time",)),
-    ):
-        candidates = tuple(sorted(
-            name for name, role in roles.items()
-            if isinstance(role, Mapping) and role.get("required") is True
-            and role.get("kind") in expected_kinds))
-        value = emit.get(endpoint)
-        yield Field(
-            path=f"{base}.emit.{endpoint}", step="packs", label=f"emit.{endpoint}",
-            state="answered" if value else "missing", tier=TIER_CONSTRAINED,
-            value=value, declared=value if value else _ABSENT,
-            candidates=tuple(f"${name}" for name in candidates),
-            note="required이고 kind가 맞는 Role만 후보.",
-        )
-
-
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
     """The preparer and mapper clauses of every source, walked FROM the source.
@@ -953,7 +820,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
     has no such field and needs no such search.
     """
     sources = _section(bundle, "sources")
-    packs = _section(bundle, "packs")
+    vocabulary = _section(bundle, "vocabulary")
     entities = _section(bundle, "entities")
     for source_id in sorted(sources, key=str):
         source = sources[source_id]
@@ -968,43 +835,61 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         available = prepared_columns(bundle, catalog, source)
         for sentence, mapping in _mappings(profile):
             yield from _mapping_fields(
-                base, sentence, mapping, packs, entities, available)
+                base, sentence, mapping, vocabulary, entities, available)
 
 
 def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
-                    packs: Mapping[str, Any], entities: Mapping[str, Any],
+                    vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
                     available: Sequence[str]) -> Iterable[Field]:
+    """One sentence: which predicate it utters, and one row per slot that predicate forces.
+
+    🔴 THE SLOTS ARE LAID OUT THE MOMENT A PREDICATE IS CHOSEN (owner, 2026-08-21:
+    「packs 제거 후 소스에는 문장id - vocab - vocab 정의 따른 하위 항목별 binding 템플릿
+    이런 형태가 되어야 함」).  Deleting `claims` without this would MOVE the burden instead
+    of removing it: the operator would have to know that `has_wafer@1` wants a `slot` from
+    somewhere outside the screen.  `predicate_claim` answers it from the vocabulary, so the
+    form asks only what is genuinely free -- the MATERIAL for each slot.
+
+    🔴 AND ONLY THE SLOTS IT FORCES.  A predicate whose object is `none` gets no `target`
+    row, because laying every possible slot out always is how the zero-degrees-of-freedom
+    boxes this project spent 2026-08-21 deleting would come back on a different screen.
+    """
     mpath = f"{base}.mappings.{sentence}"
-    parsed = _claim_ref(mapping.get("use"))
-    if parsed is None:
+    predicate_id = mapping.get("predicate")
+    predicate = (vocabulary.get(predicate_id)
+                 if isinstance(predicate_id, str) else None)
+    if not isinstance(predicate, Mapping):
         yield Field(
-            path=f"{mpath}.use", step="sources", label="use",
+            path=f"{mpath}.predicate", step="sources", label="낱말",
             state="missing", tier=TIER_CONSTRAINED,
+            value=predicate_id, declared=predicate_id,
             candidates=tuple(sorted(
-                f"{pack_id}/{claim_id}"
-                for pack_id, pack in packs.items()
-                if isinstance(pack, Mapping) and isinstance(pack.get("claims"), Mapping)
-                for claim_id in pack["claims"])),
+                name for name, item in vocabulary.items()
+                if isinstance(item, Mapping) and item.get("status") == "active")),
+            note="이 문장이 말하는 낱말. 고르면 아래 역할 칸이 깔린다.",
         )
         return
-    pack_id, claim_id = parsed
-    pack = packs.get(pack_id)
-    claims = pack.get("claims") if isinstance(pack, Mapping) else None
-    claim = claims.get(claim_id) if isinstance(claims, Mapping) else None
-    if not isinstance(claim, Mapping):
-        return
-    roles = claim.get("roles") if isinstance(claim.get("roles"), Mapping) else {}
+    yield Field(
+        path=f"{mpath}.predicate", step="sources", label="낱말",
+        state="answered", tier=TIER_CONSTRAINED,
+        value=predicate_id, declared=predicate_id,
+        candidates=tuple(sorted(
+            name for name, item in vocabulary.items()
+            if isinstance(item, Mapping) and item.get("status") == "active")),
+        note="retired 낱말은 후보에서 빠진다.",
+    )
+    roles = predicate_claim(predicate_id, predicate)["roles"]
     bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
 
-    # The row set itself is derived: which roles exist is the Claim's business.
+    # The row set itself is derived: which roles exist is the predicate's business.
     yield Field(
         path=f"{mpath}.bind", step="sources", label="결선할 역할",
         state="derived", tier=TIER_DERIVATION,
         value=sorted(roles, key=str),
         ground=Ground(
-            "bind_rows_from_claim_roles",
-            f"채움: Claim {pack_id}/{claim_id}의 역할 {len(roles)}개",
-            (f"bundle.packs.{pack_id}.claims.{claim_id}.roles",),
+            "bind_rows_from_predicate",
+            f"채움: 낱말 {predicate_id}이 요구하는 역할 {len(roles)}개",
+            (f"bundle.vocabulary.{predicate_id}",),
             sorted(roles, key=str)),
         disposition="shape",
     )
@@ -1025,7 +910,8 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 refusals=({
                     "code": "missing_required_role",
                     "path": f"{mpath}.bind.{role_id}",
-                    "message": f"Claim requires role {role_id!r}"},) if required else (),
+                    "message": f"predicate {predicate_id!r} requires role "
+                               f"{role_id!r}"},) if required else (),
             )
             continue
         yield Field(
@@ -1327,7 +1213,6 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
     fields: list[Field] = [
         *_entities_fields(bundle),
         *_vocabulary_fields(bundle),
-        *_packs_fields(bundle),
         *_implementation_fields(bundle, catalog),
         *_profile_fields(bundle, catalog),
         *_source_fields(bundle, catalog),

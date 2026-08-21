@@ -44,18 +44,29 @@ from .setup_registry import compile_setup_snapshot, snapshot_compile_errors
 _DRAFT_ID = re.compile(r"^[0-9a-f]{32}$")
 _EDITABLE_FILE = "ledger_config.json"
 
+#: 🔴 `unknown_predicate` JOINS THIS ON 2026-08-21, AND THE MOVE IS THE REASON.  It used to
+#: be raised only at `bundle.packs.<p>.claims.<c>.emit.predicate` -- inside a section an
+#: author reached long before binding anything -- so an unresolved predicate was somebody
+#: else's problem by the time a draft was open.  A mapping now names its predicate
+#: directly, which makes "the reference does not exist YET" the ordinary state of a
+#: half-written sentence, and that is exactly what `unresolved` is for.  Left un-tagged it
+#: would read as a hard error on the one path an author walks every time.
+#:
+#: `unknown_pack` / `unknown_claim` went with the section; `unsupported_pack_version` with
+#: it.  They are removed rather than kept as harmless no-ops: a classifier listing codes
+#: nothing can raise is a list nobody can audit.
 _UNRESOLVED_CODES = {
-    "unknown_entity_type", "unknown_pack", "unknown_claim", "unknown_source",
+    "unknown_entity_type", "unknown_predicate", "unknown_source",
     "unknown_preparer", "unknown_mapper", "unknown_table", "unknown_virtual_join",
 }
 _WRONG_VERSION_CODES = {
-    "unsupported_pack_version", "unsupported_profile_version",
+    "unsupported_profile_version",
     "unsupported_preparer_version", "unsupported_mapper_version",
 }
 _WRONG_KIND_CODES = {"invalid_entity_ref", "invalid_reference_kind"}
 _SIGNATURE_CODES = {
-    "missing_required_payload", "unknown_payload_field", "invalid_binding",
-    "missing_required_role", "unknown_role", "invalid_emission",
+    "invalid_binding",
+    "missing_required_role", "unknown_role",
     "invalid_symbolic_constant", "predicate_signature_mismatch",
 }
 

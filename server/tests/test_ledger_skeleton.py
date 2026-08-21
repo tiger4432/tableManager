@@ -4,9 +4,10 @@
 statement of a contract whose first author is `setup_bundle.py`. Two authors of one
 contract drift in silence, and that is not hypothetical here: the screen's previous
 hand-written shape offered `emit.object` as `kind` and `value` while the validator had
-allowed `entity` and `qualifiers` all along. `lot-lineage@1` uses both, in three of its
+allowed `entity` and `qualifiers` all along. `lot-lineage@1` used both, in three of its
 four claims, so the owner's own live pack could not be expressed through the form -- and
-nothing anywhere was red about it.
+nothing anywhere was red about it. (That particular object retired with the `packs`
+section on 2026-08-21; the drift it demonstrates is why this test still counts.)
 
 🔴 AND WHY IT IS A COUNT, NOT A SPOT CHECK. The skeleton was drafted by trimming the live
 config, which is the fast way to draft it and the wrong way to finish it: the live config
@@ -50,11 +51,11 @@ ANCHORS = {
     ("_validate_preparation", "path"): "sources.*.prepare",
     ("_validate_mapper", "path"): "sources.*.map",
     ("_validate_mapper", "f'{path}.unit'"): "sources.*.map.unit",
-    ("_validate_packs", "path"): "packs.*",
-    ("_validate_packs", "cpath"): "packs.*.claims.*",
-    ("_validate_packs", "rpath"): "packs.*.claims.*.roles.*",
-    ("_validate_emission", "path"): "packs.*.claims.*.emit",
-    ("_validate_emission", "f'{path}.object'"): "packs.*.claims.*.emit.object",
+    # The five `_validate_packs` / `_validate_emission` anchors left this map on
+    # 2026-08-21 with the functions they placed.  A dead anchor is silent here -- nothing
+    # looks it up -- which is exactly why it has to be removed by hand: the day something
+    # else is called `_validate_packs`, a stale entry would place it at a skeleton node
+    # that does not exist and the failure would name the skeleton instead of the map.
     ("_validate_profile", "path"): "sources.*.bind",
     ("_validate_profile", "mpath"): "sources.*.bind.mappings.*",
     ("_validate_binding", "path"): "def:binding",

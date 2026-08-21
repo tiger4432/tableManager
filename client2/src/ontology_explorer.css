@@ -543,7 +543,6 @@
   margin: 0 0 6.8px; font-size: 13px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--oe-ink-th);
 }
-#ontology-explorer-root .oe-bucket--missing h3 { color: var(--oe-warn); }
 #ontology-explorer-root .oe-bucket--derived h3 { color: var(--oe-ok); }
 /* A card. */
 #ontology-explorer-root .oe-field {

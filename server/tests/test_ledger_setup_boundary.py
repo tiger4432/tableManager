@@ -159,6 +159,14 @@ def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
     # pointing at something that is not a column certifies no ordering.
     if declared.get("business_key") in expected["columns"]:
         expected["business_key"] = declared["business_key"]
+    # 🔴 `row_id` IS THE LOADER'S OWN INVARIANT, NOT A TRANSLATION, and this test would be
+    # wrong to omit it. `column_types` names the BUSINESS columns; every ingested table
+    # carries `PRIMARY KEY (row_id)` and none of them declares it, so `_adapt_physical_
+    # catalog` ADDS both the column and its unique index rather than reading them.
+    # Written out here for the same reason the rest is: an expectation obtained by calling
+    # the translator would pass whatever the translator did.
+    expected["columns"].setdefault("row_id", "string")
+    expected.setdefault("indexes", []).append({"columns": ["row_id"], "unique": True})
 
     assert dict(setup.catalog["lot_event"]) == expected
     # And it is the catalog the validation used, not one re-read afterwards.
@@ -547,13 +555,15 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     root = tmp_path / "draft"
     root.mkdir()
     raw = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
-    pack = sorted(raw["packs"])[0]
-    claim = sorted(raw["packs"][pack]["claims"])[0]
     predicate = sorted(raw["vocabulary"])[0]
     entity_type = sorted(raw["entities"])[0]
     source = sorted(raw["sources"])[0]
+    sentence = sorted(raw["sources"][source]["bind"]["mappings"])[0]
     raw["sources"][source]["map"]["emits"] = "one/claim"
-    raw["packs"][pack]["claims"][claim]["emit"]["object"]["payload"] = {"n": 1}
+    # was `packs.<p>.claims.<c>.emit.object.payload = {"n": 1}` until the section went on
+    # 2026-08-21. What this leg is for is a FIFTH independent check firing in the same
+    # read, so it moved to the deepest record a config still nests.
+    raw["sources"][source]["bind"]["mappings"][sentence]["colour"] = "blue"
     raw["vocabulary"][predicate]["colour"] = "blue"
     raw["entities"][entity_type]["allow_null"] = "yes"
     raw["sources"][source]["read"]["unit"] = "wafer"
@@ -568,7 +578,7 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
     # check cannot hide behind a count.
     for expected in (
         f"bundle.sources.{source}.map.emits",
-        f"bundle.packs.{pack}.claims.{claim}.emit.object.payload",
+        f"bundle.sources.{source}.bind.mappings.{sentence}.colour",
         f"bundle.vocabulary.{predicate}.colour",
         f"bundle.entities.{entity_type}.allow_null",
         f"bundle.sources.{source}.read.unit",

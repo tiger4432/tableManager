@@ -123,54 +123,14 @@ LOT_EVENT_CATALOG = {
 
 
 def lot_event_bundle():
-    entity_role = {"kind": "entity", "required": True}
-    time_role = {"kind": "time", "required": True}
-    attribute_role = {"kind": "attribute", "required": True}
-
-    def entity_claim(predicate, qualifiers=()):
-        roles = {
-            "subject": entity_role, "target": entity_role,
-            "occurred_at": time_role,
-        }
-        roles.update({name: attribute_role for name in qualifiers})
-        return {
-            "roles": roles,
-            "emit": {
-                "predicate": predicate, "subject": "$subject",
-                "object": {
-                    "kind": "entity_ref", "entity": "$target",
-                    "qualifiers": {name: f"${name}" for name in qualifiers},
-                },
-                "occurred_at": "$occurred_at",
-            },
-        }
-
-    packs = {
-        "lot-lineage@1": {"claims": {
-            "register_lot": {
-                "roles": {"subject": entity_role, "occurred_at": time_role},
-                "emit": {
-                    "predicate": "register@1", "subject": "$subject",
-                    "object": {"kind": "none"},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-            "register_wafer": {
-                "roles": {"subject": entity_role, "occurred_at": time_role},
-                "emit": {
-                    "predicate": "register@1", "subject": "$subject",
-                    "object": {"kind": "none"},
-                    "occurred_at": "$occurred_at",
-                },
-            },
-            "membership": entity_claim("has_wafer@1", ("slot",)),
-            "lineage": entity_claim("derived_from@1"),
-            "split_slot": entity_claim(
-                "slot_map@1", ("from", "to", "wafer")),
-            "merge_slot": entity_claim(
-                "slot_map@1", ("from", "to", "wafer")),
-        }},
-    }
+    # 🔴 NO `packs` SINCE 2026-08-21.  The `lot-lineage@1` pack written out here held six
+    # Claims and 40-odd lines, and every one of them restated its predicate: two
+    # `register_lot`/`register_wafer` bodies that were character-for-character identical,
+    # and `split_slot`/`merge_slot`, which were identical AND emitted the same predicate.
+    # `predicate_claim` derives all six from four predicates, so what used to make two
+    # sentences distinguishable -- a Claim id apiece -- is now their MAPPING KEY alone.
+    # That is not a loss here: this fixture already existed to prove that two sentences of
+    # identical structure are told apart by name and nothing else.
 
     def bind(subject, target=None, qualifiers=()):
         values = {
@@ -196,22 +156,24 @@ def lot_event_bundle():
     # renamed: the key already was the identity, one copy later.
     mappings = {
         "first_sight_holder": {
-            "use": "lot-lineage@1/register_lot", "bind": bind(lot)},
+            "predicate": "register@1", "bind": bind(lot)},
         "first_sight_item": {
-            "use": "lot-lineage@1/register_wafer", "bind": bind(wafer)},
+            "predicate": "register@1", "bind": bind(wafer)},
         "in_slot": {
-            "use": "lot-lineage@1/membership",
+            "predicate": "has_wafer@1",
             "bind": bind(lot, wafer, (("slot", "slots"),))},
-        "descent": {"use": "lot-lineage@1/lineage", "bind": bind(child, parent)},
-        # These two realize the SAME Claim shape and differ only in the rule that computed
+        "descent": {"predicate": "derived_from@1", "bind": bind(child, parent)},
+        # These two utter the SAME predicate and differ only in the rule that computed
         # them.  Nothing about their structure tells them apart, which is exactly why
-        # structure stopped being how a sentence is chosen.
+        # structure stopped being how a sentence is chosen.  (Until 2026-08-21 they named
+        # two separate Claims, `split_slot` and `merge_slot`, whose bodies were identical
+        # down to the predicate -- so the distinctness was already only in the name.)
         "split_slot_carry": {
-            "use": "lot-lineage@1/split_slot",
+            "predicate": "slot_map@1",
             "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
                                          ("wafer", "wafers")))},
         "merge_slot_join": {
-            "use": "lot-lineage@1/merge_slot",
+            "predicate": "slot_map@1",
             "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
                                          ("wafer", "wafers")))},
     }
@@ -251,7 +213,6 @@ def lot_event_bundle():
             "Lot@1": {"keys": ["lot"]},
             "Wafer@1": {"keys": ["wafer"]},
         },
-        "packs": packs,
         "sources": {
             "lot_event": {
                 "relation": "lot_event",
@@ -352,14 +313,16 @@ FOREIGN_SPELLINGS = {
     "Lot@1": "Batch@1", "Wafer@1": "Slice@1",
     "has_wafer@1": "carries_slice@1", "derived_from@1": "descends_from@1",
     "slot_map@1": "slot_trace@1", "register@1": "first_seen@1",
-    "register_lot": "mid_a", "register_wafer": "mid_b",
-    "membership": "carriage", "lineage": "descent",
     # 🔴 THE SIX MAPPING IDS LEFT THIS TABLE ON 2026-08-21, and their absence is the
     # point rather than an omission.  A mapping is FILED under the sentence its mapper
     # says, so there is no longer a config-owned name to rename: renaming a key here would
     # be renaming `LotEventRoleMapper.IN_SLOT`, which is a code change and not a
-    # deployment's spelling.  What a foreign deployment still owns -- entity types,
-    # predicates, claim ids, role ids, columns -- is all still renamed below.
+    # deployment's spelling.
+    # 🔴 THE FOUR CLAIM IDS (`register_lot`, `register_wafer`, `membership`, `lineage`)
+    # LEFT IT LATER THE SAME DAY, when the `packs` section went.  Same reason once more:
+    # a Claim is derived from its predicate and has no id of its own to respell, and the
+    # predicate that IS its id is renamed one line above.  What a foreign deployment still
+    # owns -- entity types, predicates, role ids, columns -- is all still renamed below.
 }
 UNSPELL = {new.split("@")[0]: old.split("@")[0]
            for old, new in FOREIGN_SPELLINGS.items()}
@@ -383,7 +346,7 @@ def test_a_foreign_deployments_spellings_change_nothing_the_mapper_emits():
     ZERO lines of Python.
 
     Everything the declaration OWNS is renamed -- both entity types, all four
-    predicates, and the claim ids -- and the mapper is asked for the same split.  It must
+    predicates -- and the mapper is asked for the same split.  It must
     emit the same sentences.
 
     This is the test the old mapper could not pass: it carried `"Lot"`, `"Wafer"`,
@@ -526,7 +489,7 @@ def test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else():
     bundle = lot_event_bundle()
     mappings = bundle["sources"]["lot_event"]["bind"]["mappings"]
     pair = {key: mapping for key, mapping in mappings.items()
-            if mapping["use"].endswith(("split_slot", "merge_slot"))}
+            if mapping["predicate"] == "slot_map@1"}
     assert set(pair) == {"split_slot_carry", "merge_slot_join"}
     # Same roles, same qualifier names, same entity types on both ends: nothing but the
     # key separates them, and both keys are `SentenceShape` attributes of the mapper.

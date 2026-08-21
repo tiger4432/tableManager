@@ -1,5 +1,5 @@
 {
-  "setup_version": 4,
+  "setup_version": 5,
   "vocabulary": {
     "transferred_to@1": {
       "status": "active",
@@ -115,154 +115,6 @@
       ]
     }
   },
-  "packs": {
-    "dt-assembly@1": {
-      "claims": {
-        "core_to_dt": {
-          "roles": {
-            "subject": {
-              "kind": "entity",
-              "required": true
-            },
-            "target": {
-              "kind": "entity",
-              "required": true
-            },
-            "occurred_at": {
-              "kind": "time",
-              "required": true
-            },
-            "job": {
-              "kind": "identity",
-              "required": true
-            }
-          },
-          "emit": {
-            "predicate": "transferred_to@1",
-            "subject": "$subject",
-            "object": {
-              "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {
-                "job": "$job"
-              }
-            },
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "dt_to_bond": {
-          "roles": {
-            "subject": {
-              "kind": "entity",
-              "required": true
-            },
-            "target": {
-              "kind": "entity",
-              "required": true
-            },
-            "occurred_at": {
-              "kind": "time",
-              "required": true
-            },
-            "job": {
-              "kind": "identity",
-              "required": true
-            }
-          },
-          "emit": {
-            "predicate": "transferred_to@1",
-            "subject": "$subject",
-            "object": {
-              "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {
-                "job": "$job"
-              }
-            },
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "job_contains_die": {
-          "roles": {
-            "subject": {
-              "kind": "entity",
-              "required": true
-            },
-            "target": {
-              "kind": "entity",
-              "required": true
-            },
-            "occurred_at": {
-              "kind": "time",
-              "required": true
-            }
-          },
-          "emit": {
-            "predicate": "contains_dt_die@1",
-            "subject": "$subject",
-            "object": {
-              "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {}
-            },
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "job_occupies_slot": {
-          "roles": {
-            "subject": {
-              "kind": "entity",
-              "required": true
-            },
-            "target": {
-              "kind": "entity",
-              "required": true
-            },
-            "occurred_at": {
-              "kind": "time",
-              "required": true
-            }
-          },
-          "emit": {
-            "predicate": "occupies_slot@1",
-            "subject": "$subject",
-            "object": {
-              "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {}
-            },
-            "occurred_at": "$occurred_at"
-          }
-        },
-        "bond_component": {
-          "roles": {
-            "subject": {
-              "kind": "entity",
-              "required": true
-            },
-            "target": {
-              "kind": "entity",
-              "required": true
-            },
-            "occurred_at": {
-              "kind": "time",
-              "required": true
-            }
-          },
-          "emit": {
-            "predicate": "component_of@1",
-            "subject": "$subject",
-            "object": {
-              "kind": "entity_ref",
-              "entity": "$target",
-              "qualifiers": {}
-            },
-            "occurred_at": "$occurred_at"
-          }
-        }
-      }
-    }
-  },
   "sources": {
     "dt_log": {
       "relation": "dt_log",
@@ -337,8 +189,12 @@
       "bind": {
         "mappings": {
           "bond_component": {
-            "use": "dt-assembly@1/bond_component",
             "bind": {
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_at",
+                "approval_status": "approved"
+              },
               "subject": {
                 "kind": "entity",
                 "entity_type": "BondComponent@1",
@@ -377,17 +233,22 @@
                   }
                 },
                 "approval_status": "approved"
+              }
+            },
+            "predicate": "component_of@1"
+          },
+          "core_to_dt": {
+            "bind": {
+              "job": {
+                "kind": "column",
+                "column": "dt_job_id",
+                "approval_status": "approved"
               },
               "occurred_at": {
                 "kind": "column",
                 "column": "event_at",
                 "approval_status": "approved"
-              }
-            }
-          },
-          "core_to_dt": {
-            "use": "dt-assembly@1/core_to_dt",
-            "bind": {
+              },
               "subject": {
                 "kind": "entity",
                 "entity_type": "CoreDie@1",
@@ -436,22 +297,22 @@
                   }
                 },
                 "approval_status": "approved"
+              }
+            },
+            "predicate": "transferred_to@1"
+          },
+          "dt_to_bond": {
+            "bind": {
+              "job": {
+                "kind": "column",
+                "column": "dt_job_id",
+                "approval_status": "approved"
               },
               "occurred_at": {
                 "kind": "column",
                 "column": "event_at",
                 "approval_status": "approved"
               },
-              "job": {
-                "kind": "column",
-                "column": "dt_job_id",
-                "approval_status": "approved"
-              }
-            }
-          },
-          "dt_to_bond": {
-            "use": "dt-assembly@1/dt_to_bond",
-            "bind": {
               "subject": {
                 "kind": "entity",
                 "entity_type": "DTDie@1",
@@ -505,22 +366,17 @@
                   }
                 },
                 "approval_status": "approved"
-              },
+              }
+            },
+            "predicate": "transferred_to@1"
+          },
+          "job_contains_die": {
+            "bind": {
               "occurred_at": {
                 "kind": "column",
                 "column": "event_at",
                 "approval_status": "approved"
               },
-              "job": {
-                "kind": "column",
-                "column": "dt_job_id",
-                "approval_status": "approved"
-              }
-            }
-          },
-          "job_contains_die": {
-            "use": "dt-assembly@1/job_contains_die",
-            "bind": {
               "subject": {
                 "kind": "entity",
                 "entity_type": "DTJob@1",
@@ -559,17 +415,17 @@
                   }
                 },
                 "approval_status": "approved"
-              },
+              }
+            },
+            "predicate": "contains_dt_die@1"
+          },
+          "job_occupies_slot": {
+            "bind": {
               "occurred_at": {
                 "kind": "column",
                 "column": "event_at",
                 "approval_status": "approved"
-              }
-            }
-          },
-          "job_occupies_slot": {
-            "use": "dt-assembly@1/job_occupies_slot",
-            "bind": {
+              },
               "subject": {
                 "kind": "entity",
                 "entity_type": "DTJob@1",
@@ -598,13 +454,9 @@
                   }
                 },
                 "approval_status": "approved"
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_at",
-                "approval_status": "approved"
               }
-            }
+            },
+            "predicate": "occupies_slot@1"
           }
         }
       }

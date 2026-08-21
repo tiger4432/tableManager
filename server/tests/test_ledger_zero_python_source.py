@@ -53,11 +53,10 @@ SHIPMENT_SETUP = {
         "status": "active", "layer": "ontology", "subjects": ["Box@1"],
         "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}}}},
     "entities": {"Box@1": {"keys": ["box"]}},
-    "packs": {"shipping@1": {"claims": {"first_sight": {
-        "roles": {"subject": {"kind": "entity", "required": True},
-                  "occurred_at": {"kind": "time", "required": True}},
-        "emit": {"predicate": "register@1", "subject": "$subject",
-                 "object": {"kind": "none"}, "occurred_at": "$occurred_at"}}}}},
+    # The `shipping@1` pack that stood here -- two Roles and an `emit` clause, six lines --
+    # went with the section on 2026-08-21.  `register@1`'s `object.kind: "none"` derives
+    # exactly those two Roles and no other, which makes this fixture a smaller statement
+    # of the same capability rather than a weaker one.
     "sources": {"shipment": {
         "relation": "shipment",
         "read": {
@@ -82,7 +81,7 @@ SHIPMENT_SETUP = {
         "bind": {
             "mappings": {
                 "first_sight_box": {
-                    "use": "shipping@1/first_sight",
+                    "predicate": "register@1",
                     "bind": {
                         "subject": _approved(kind="entity", entity_type="Box@1",
                                              keys={"box": _column("box")}),
