@@ -32,7 +32,35 @@ export function isCellInRange(rowIndex, colId) {
   return rowIndex >= minRowIdx && rowIndex <= maxRowIdx && colIdx >= minColIdx && colIdx <= maxColIdx;
 }
 
+/**
+ * Mockup 2b's 「범위 N행 × M열 선택」.
+ *
+ * 🔴 DRIVEN BY THE RECTANGLE, NOT BY `selectedCellsMap`. The two input paths do not agree on
+ * that map on purpose: `extendRangeByKeyboard` deliberately does NOT materialise into it (see
+ * its comment in grid.js -- Shift+click does not either), so a readout counting the map is
+ * silent for every keyboard selection. What both paths DO share is `dragStartCell` /
+ * `dragEndCell`, which is exactly what these two painters receive.
+ *
+ * Written from the arguments rather than from `state`, because `refreshRange` is also called
+ * on mouse-up with the OLD rectangle after `state` has already been nulled.
+ */
+function writeRangeReadout(startCell, endCell) {
+  const readout = document.getElementById('range-readout');
+  if (!readout) return;
+  if (!startCell || !endCell) { readout.textContent = ''; return; }
+  const startColIdx = state.visibleColIndexMap[startCell.colId];
+  const endColIdx = state.visibleColIndexMap[endCell.colId];
+  if (startColIdx === undefined || endColIdx === undefined) { readout.textContent = ''; return; }
+  const rows = Math.abs(endCell.rowIndex - startCell.rowIndex) + 1;
+  const minCol = Math.min(startColIdx, endColIdx);
+  const maxCol = Math.max(startColIdx, endColIdx);
+  const cols = Object.keys(state.visibleColIndexMap)
+    .filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#').length;
+  readout.textContent = (rows > 1 || cols > 1) ? `범위 ${rows}행 × ${cols}열 선택` : '';
+}
+
 export function refreshRange(api, startCell, endCell) {
+  writeRangeReadout(startCell, endCell);
   if (!startCell || !endCell || !api) return;
   const startRow = startCell.rowIndex;
   const endRow = endCell.rowIndex;
@@ -61,6 +89,7 @@ export function refreshRange(api, startCell, endCell) {
 }
 
 export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell) {
+  writeRangeReadout(startCell, newEndCell);
   if (!startCell || !newEndCell || !api) return;
 
   const startRow = startCell.rowIndex;
@@ -96,6 +125,9 @@ export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell
 }
 
 export function clearRangeSelection() {
+  const readout = document.getElementById('range-readout');
+  // Cleared BEFORE the early return: a screen with no grid api still has a stale number on it.
+  if (readout) readout.textContent = '';
   if (!state.gridApi) return;
 
   const rowIndexes = new Set();
