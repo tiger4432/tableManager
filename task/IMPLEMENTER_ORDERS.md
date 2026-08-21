@@ -22,6 +22,57 @@
 
 ---
 
+# ✅ 검수 통과 + 총괄 오류 인정 + 남긴 셋 판정 (총괄 00:2x)
+
+## 총괄 근거가 틀렸습니다 — 확인했습니다
+```
+setup_bundle.py:1755   return any(key and set(key).issubset(candidate) for key in declared)
+                       «집합»의 부분집합 검사 — 순서 무시 · 초과 허용
+그래서                 [event_time,row_id] 와 [row_id] 와 [record_id,row_id] 가 «전부» 통과
+```
+제 「둘이 다를 수 있는 설정이 존재하지 않는다」는 **거짓입니다.** 그리고 그 오류가 안 잡혔으면
+`order_by` 쪽으로 합쳐서 **다섯 픽스처를 조용히 다시 페이징시켰을 겁니다**
+(`backfill._page_key` 가 `cursor_columns[0]`). 방향을 반대로 잡아 주셔서 살았습니다.
+
+## 검수 — 총괄이 직접 잰 것
+```
+소유자 파일    loads OK · sources [dt_job, lot_event] · invalid 0
+               파일은 여전히 approval_status 를 «40개» 들고 있다 -> 관용이 실제로 돕니다
+스켈레톤       binding = [kind, column, value, entity_type, keys]   ← 소유자가 말한 「타입, 키」 그대로
+드리프트       test_ledger_skeleton.py  2 passed
+lot_event      142행 · 분자 40 · 원자 1,323 · refusal None   ← «불변»
+```
+
+## 판정 셋
+
+### ① 문서 셋 — «총괄 몫» 맞습니다. 보드 대기열에 넣었습니다
+지금 라운드를 멈추지 마십시오. 앵커 주신 것 그대로 총괄이 처리합니다.
+
+### ② 빈 껍데기 둘 (`bundle_readiness_errors` · `profile_readiness_errors`) — «남깁니다»
+```
+규칙 0개지만 호출부가 7곳입니다. 지우면 «동작 변화 0에 7곳 수정» — 그건 리팩터입니다
+은퇴 라운드의 재료로 적어만 두십시오
+```
+
+### ③ 커서 «키 자체» 삭제 — «하지 마십시오. 지금은»
+```
+소유자 요구는 「묻지 마라」였고 그건 «끝났습니다»
+키를 지우면    라이브 두 소스가 read.cursor 를 들고 있으므로 또 관용/마이그레이션 한 바퀴
+               그리고 invalid_cursor 거절문이 «문서에 없는 경로»를 부르게 됩니다
+               — 「거절문은 자리이지 원인이 아니다」. 사람을 없는 자리로 보냅니다
+35줄은 «지금 치를 값이 아닙니다». 은퇴 라운드에서 문서와 «같이» 정리합니다
+```
+
+## 라운드에 남은 둘 — 계속 부탁드립니다
+```
+기본값 6칸     group_by(=identity) · unit · 조인플래그 둘 · implementation_version
+유도값을 «문서에 쓰기»   방금 실측: order_by 를 빼면 여전히 state=derived · refusals=2
+                        빨강의 원인이 그대로입니다
+sticky 바      아직
+```
+
+---
+
 # ✅ 부류 훑기 — **총괄이 했습니다.** 새 소스가 묻는 16개 중 «6개가 정보가 없습니다» (23:5x)
 
 라이브 사본(메모리, 쓰기 0)에 빈 소스를 하나 세우고 검증기가 «무엇을 더 요구하는지» 셌습니다.
