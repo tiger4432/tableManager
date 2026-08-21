@@ -249,16 +249,28 @@ function updateAlignmentBand() {
 
   band.classList.remove('is-match', 'is-warn', 'is-blocked');
   band.classList.add(`is-${verdict.state}`);
-  // Same three parts the Tx banner has: icon, text, and no close control — this band has
-  // nothing to close, and growing a dead ✕ to match a shape would be worse than omitting it.
+
+  // Mockup 2b: the copied column order, then a pill for the verdict, then the keystroke pair
+  // pushed right. The row count rides in the pill rather than leading the strip — the order
+  // is what the operator has to check before pasting, and it should be the first thing read.
   band.replaceChildren();
-  const icon = document.createElement('span');
-  icon.className = 'banner-icon';
-  icon.textContent = verdict.state === 'match' ? '✔' : (verdict.state === 'blocked' ? '⛔' : '⚠');
-  const text = document.createElement('span');
-  text.className = 'banner-text';
-  text.textContent = `${verdict.rowsLabel(rows)} · ${verdict.body}`;
-  band.append(icon, text);
+  const order = document.createElement('span');
+  order.className = 'alignment-order';
+  order.textContent = sourceCols.map(c => c.toUpperCase()).join(' → ');
+  const pill = document.createElement('span');
+  pill.className = 'pill alignment-pill';
+  pill.textContent = verdict.state === 'blocked'
+    ? verdict.body
+    : `${verdict.rowsLabel(rows)} · 대상 열 순서와 일치`;
+  const keys = document.createElement('span');
+  keys.className = 'alignment-keys';
+  ['Ctrl', 'C', '→', 'Ctrl', 'V'].forEach(k => {
+    const el = document.createElement('span');
+    if (k !== '→') el.className = 'kbd';
+    el.textContent = k;
+    keys.appendChild(el);
+  });
+  band.append(order, pill, keys);
 }
 
 function selectionRect() {

@@ -2305,9 +2305,62 @@ body.resizing-active .history-sidebar {
    wrapping to two lines in a fixed-width button; wrapping is the thing to avoid, not to
    copy — a two-line button breaks the row's rhythm and reads as a defect. */
 .tx-filter-banner button,
-.clear-banner-btn,
-.tab-btn {
+.clear-banner-btn {
   width: auto;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+/* Tabs divide the row evenly (mockup 2b), but never wrap a label — the two-line button was
+   the thing to avoid, not the equal widths. */
+.history-tabs--wide .tab-btn { white-space: nowrap; }
+
+/* ── Mockup 2b: the alignment strip ───────────────────────────────────────────────────
+   Flush against the tabs, not an inset card: it belongs to the grid below it. It keeps the
+   `.tx-filter-banner` class (Phase 0) and overrides only geometry and colour. */
+.tx-filter-banner.reference-alignment {
+  height: 30px;
+  min-height: 30px;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 8px;
+  justify-content: flex-start;
+  font-size: 11px;
+}
+.reference-alignment.is-match   { background: var(--accent-weak); border-color: var(--accent); }
+.reference-alignment.is-blocked { background: var(--danger-weak); border-color: var(--danger); }
+
+.alignment-order { font-weight: 600; color: var(--accent); font-family: var(--font-mono); }
+.is-blocked .alignment-order { color: var(--danger); }
+
+/* The verdict pill — the same shape the mockup uses for the filter chips. */
+.alignment-pill {
+  border: 1px solid var(--success);
+  background: var(--success-weak);
+  color: var(--success);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.is-blocked .alignment-pill { border-color: var(--danger); background: var(--danger-weak); color: var(--danger); }
+
+.alignment-keys { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
+
+/* Keycap. New here because the screen had no way to draw one, and the shortcut row at the
+   bottom of the panel needs the same shape. Existing tokens only. */
+.kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-align: center;
 }
