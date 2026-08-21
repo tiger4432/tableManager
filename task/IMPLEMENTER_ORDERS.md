@@ -22,6 +22,54 @@
 
 ---
 
+# ✅ 부류 훑기 — **총괄이 했습니다.** 새 소스가 묻는 16개 중 «6개가 정보가 없습니다» (23:5x)
+
+라이브 사본(메모리, 쓰기 0)에 빈 소스를 하나 세우고 검증기가 «무엇을 더 요구하는지» 셌습니다.
+```
+relation 만 있는 소스        4개 요구 (read · prepare · map · bind 가 객체여야 함)
+네 섹션을 연 소스            «16개» 요구
+```
+그 16개를 라이브 두 소스에 대고 재 봤습니다:
+
+## 갑 — «검증기가 같은 술어로 채점»한다 (증명됨, 칸을 없앤다)
+```
+read.order_by  ==  read.cursor.columns      dt_job ✔  lot_event ✔
+                   setup_bundle.py:1445-1455 한 루프·한 술어         <- 앞 지시서에 이미 있음
+```
+
+## 을 — «관측상 항상 같다» (2/2, 칸은 남기되 «값이 들어가 있게»)
+```
+read.identity  ==  read.group_by            dt_job ["dt_job"]        lot_event ["event_group_key"]
+```
+🔴 **기본값이지 계약이 아닙니다.** 갑처럼 없애지 마십시오 — 검증기가 둘을 묶는다는 증거가
+«없습니다». `group_by` 의 기본값 = 그 소스의 `identity` 로 «넣어» 두고, 사람이 바꿀 수 있게.
+
+## 병 — «두 소스가 같은 상수» (기본값으로 넣는다)
+```
+read.unit                             "group"   "group"
+prepare.accepts_verified_join_rules   false     false
+prepare.inherit_virtual_join_rules    []        []
+prepare/map.implementation_version    1         1        <- implementation_id 에서 «유도»된다
+```
+⚠️ 표본이 «둘»입니다. 상수라고 «단정»하지 말고 기본값으로만 넣으십시오.
+`implementation_version` 만은 유도 규칙이 이미 있으니 갑과 같이 처리합니다.
+
+## 남는 것 — 사람이 «정말» 정하는 것
+```
+relation · read.identity · read.occurred_at · prepare.input/output_columns
+map.unit.kind · prepare/map.implementation_id · bind.mappings
+```
+**16 -> 10.** 그리고 그 10은 전부 「이 테이블이 무엇을 말하는가」라 사람이 답할 것이 맞습니다.
+
+## 지시
+```
+앞서 보낸 「유도된 값은 문서에 쓴다」 라운드에 «을·병을 같이» 넣으십시오. 한 수리입니다
+✔  넣을 때마다 ground 문구를 답니다: "기본값: 이 소스의 identity" 처럼
+✖  표본 둘로 「상수다」라고 검증기를 조이지 마십시오. 기본값이지 제약이 아닙니다
+```
+
+---
+
 # ✅ 「새 축」 필요 없습니다 — 소유자 지시가 A단계를 «없앴습니다» (총괄 23:5x)
 
 당신 측정 맞습니다: 드리프트 테스트에 면제가 «없고», 그건 설계입니다. 건드리지 마십시오.
