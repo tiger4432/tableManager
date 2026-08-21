@@ -32,8 +32,8 @@
 
 새 소스는 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md)의 Step 1~9를 따른다.
 v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `relation`·`read`·`prepare`·`map`·
-`bind` 다섯 절을 실행 순서대로 **직접** 든다(🔴 2026-08-21 `setup_version: 4`; 옛 `driver`와
-`preparer_id`·`mapper_id`·`profile_id` 참조는 은퇴했다). 고르는 것은 문법이 아니라
+`bind` 다섯 절을 실행 순서대로 **직접** 든다(🔴 2026-08-21 `setup_version: 5`; 옛 `driver`와
+`preparer_id`·`mapper_id`·`profile_id` 참조, 그리고 `packs`/`claims` section은 은퇴했다). 고르는 것은 문법이 아니라
 **Python을 쓸지 말지**다.
 
 | 소스 모양 | 선택 |
@@ -125,8 +125,8 @@ source rows
 🔴 **mapper는 선언의 이름을 하나도 모른다.** predicate 철자(`has_wafer@1`)도 entity type
 이름(`Lot@1`)도 이 파일에 없다 — 그것들은 배포마다 바뀌는 운영자의 낱말이고, 「다른 스키마의
 운영 환경에서 코드 0줄」이 완성 조건이기 때문이다. mapper가 아는 것은 **자기가 그 문장을
-부르는 별명**이고, 그 별명이 어느 Claim이 되는지는 `bind.mappings.<별명>.use` 한 칸 옆에
-있다. 배선을 대신해 주는 것은 `ledger.roleframe.ProfileSentences`다.
+부르는 별명**이고, 그 별명이 어느 술어가 되는지는 `bind.mappings.<별명>.predicate` 한 칸
+옆에 있다 — 그 술어가 채워야 할 Role까지 정한다(`9b6c5da`로 `use`와 `packs`가 함께 갔다). 배선을 대신해 주는 것은 `ledger.roleframe.ProfileSentences`다.
 
 🔴 **문장 해석은 탐색이 아니라 조회다** (2026-08-21 `e795c706`). 종전에는 목적어 유무 → qualifier
 집합 → subject type → object type 순으로 비교하고 **마지막에야** 이름을 봤다. 그런데 이름은
