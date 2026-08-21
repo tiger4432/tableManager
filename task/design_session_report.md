@@ -150,6 +150,62 @@ the worktree. I have not touched the shared config beyond the one test above, wh
 
 ---
 
+## ✅ 22:2x — served my own branch, walked it. Two phases verified, one new blocker.
+
+`90a11941` was right and the blocker was mine to clear: `npm run dev -- --port 5173
+--strictPort` in the worktree, API resolving to 8080 by port. Held 5173. Confirmed by marker
+that the served code is **this branch** (`fillPlan`, `FILL_ORDINALS`, `SIDEBAR_WIDTH_KEY`,
+`tabReferenceBtn`, `reference-view-fill` all present) before trusting anything on screen.
+
+### Verified for the first time — both were untestable until now
+
+```
+Phase 2.2  selecting dt_inventory auto-selects 참조뷰 and opens the panel
+           (no rule -> unchanged, Global stays)
+Phase 2.1  drag 640 -> 900, reload -> 900 survives (CSS default is 640)
+           corrupt value: stored 99999 -> restored 2269 = the cap, grid still 635px wide.
+           The clamp-on-the-way-BACK-IN is what stops a stored width from swallowing the grid
+⑥ (yours) dt_job now leads dt_inventory and is populated — the blank grid is gone
+```
+
+### 🔴 ⑧ Phase 3.1 is correct and still unreachable — the panel binds to the FIRST rule
+
+The panel rendered the **fallback**, exactly as designed, because it never saw the rule that
+declares anything. Measured:
+
+```
+rules matching dt_inventory, in API order:
+   1  dt_frame_confrimation   3 views   declares [] [] []
+   2  core_frame_review       3 views   declares [] [] []
+   3  dt_lot_slot_from_log    2 views   declares ['dt_lot','dt_slot'] []      <- the declaration
+syncReferenceViewRule uses  rules.find(r => r.derived_table === currentTable && views.length)
+   -> picks #1. #3 is unreachable from the screen.
+```
+
+So `dt_lot_slot_from_log` cannot be opened at all, and Phase 3.1's ①② ordering has never been
+drawn. My renderer is not wrong here — a rule declaring nothing SHOULD fall back, and it did.
+
+🔴 **This is the unordered-representative shape, not a typo.** `find()` was right while a
+table had at most one rule; the class grew to three and the representative became arbitrary.
+Adding a fourth rule tomorrow could change which panel the operator sees, silently.
+
+**It is a binding contract, not styling, so I have not changed it.** Candidates:
+
+```
+㉮  show every matching rule's views          8 tabs — against 「복잡하면 안 된다」
+㉯  prefer a rule that declares candidate_for  smallest change; still arbitrary if two declare
+㉰  let the operator pick the rule             honest, but it is a new control
+```
+
+I lean ㉯ as the immediate unblock and ㉰ as the durable answer, but this is yours to rule.
+**With ㉮/㉯/㉰ unruled, Phase 3.1 cannot be demonstrated and 3.2 has nothing to build on.**
+
+### Environment note
+
+A vite dev server is running from this worktree on 5173 (background). It writes no `dist`.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
