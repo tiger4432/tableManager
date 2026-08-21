@@ -1,3 +1,65 @@
+# 🔴 판정 요청 — `lot_event` 커서 선언이 그 표의 데이터로는 «작동할 수 없다» (2026-08-21 17:0x)
+
+ORDERS 의 네 걸음 중 **1·2 는 끝났고 3 에서 멈췄습니다.** 멈춤 조건 셋 중 어느 것도 아닌
+**네 번째 사유**라 판정을 요청합니다.
+
+## 지금까지 한 것
+```
+1 백업  server/config/backup/ledger_cursor_lot_event_20260821.json  (1행 · 563 bytes)
+        translator_ver=lot_event/1/rules:34311f15 · cursor_value={'event_time':'2026-08-12 06:00:00'}
+        molecules_done 35 · atoms_written 1195 · refused 1 · incomplete 2
+2 삭제  DELETE … WHERE source='lot_event'  →  1행 삭제. 커서 표 12 → 11행
+3 실행  거절로 멈춤 (아래)
+```
+
+## 거절
+```
+ledger.runtime_v2.LedgerV2RuntimeError: cursor_value: cursor number must be finite
+   runtime_v2.py:353 _json_scalar   ← 커서 값에 유한하지 않은 수가 들어갔다
+```
+
+## 🔴 원인 — 데이터를 재 보니 «선언이 그 표에 안 맞습니다»
+```
+선언   cursor.columns = ['event_time', 'txn_seq']
+       order_by       = ['txn_seq']            ← 정렬도 이 컬럼 «하나»에 걸려 있다
+
+실측   lot_event            142 행
+       txn_seq 가 NULL       «62 행» (44%)      ← NaN 이 되어 위 거절이 난다
+       txn_seq 타입          character varying  (예: 'LE-NAB539-005-01-C')
+       (event_time, txn_seq) 구별되는 조합 «113» / 142 행 · 중복 조합 28건
+```
+**NULL 이 드문 예외가 아닙니다** — `split` 38 · `merge` 18 · `track_in` 5 · (event_type 없음) 1.
+
+### 그래서 두 가지가 «동시에» 깨져 있습니다
+```
+① 직렬화 불가   커서 컬럼에 NULL 이 있으면 값을 적을 수 없다        ← 오늘 난 거절
+② 재개 불가     (event_time, txn_seq) 가 «유일하지 않다» (113/142)
+                유일하지 않은 커서로 재개하면 건너뛰거나 겹친다
+```
+①만 고쳐도 ②가 남습니다. **그래서 코드로 우회하지 않고 올립니다.**
+
+## 판정이 필요한 지점
+```
+가  커서·order_by 의 «두 번째 컬럼»을 바꾼다   NULL 없고 사실상 유일한 컬럼으로
+    → 어느 컬럼인지가 소유자 판정입니다. 제가 고르지 않습니다
+나  커서 컬럼의 NULL 을 허용한다               계약 변경입니다. ②는 그대로 남습니다
+다  원천 데이터를 고친다                       원장은 append 라 해석이 영구입니다
+```
+**저는 「가」로 보이지만 어느 컬럼인지는 도메인 판단이라 고르지 않았습니다.**
+
+## 지금 상태 — 되돌릴 것과 안 되돌린 것
+```
+lot_event 커서 행   «없습니다» (지운 채). ORDERS 가 지우라고 했고, 그 행은 죽은 기록이었습니다
+                    되돌리려면 위 백업 파일로 복구 가능합니다
+원장                221,563 행 «그대로». v2 lot_event 원자 0 · v1 원자 1,195 «그대로»
+쓰기                거절이 preview 단계라 «한 줄도 안 썼습니다»
+```
+
+⚠️ ORDERS 의 보고 3종(문장별 원자 수 · trace 계보 · v1 1,195행)은 **원자가 하나도 안 생겨서
+아직 못 씁니다.** 판정 오면 이어서 재고 그대로 채워 넣겠습니다.
+
+---
+
 # 구현자 인수 — 컴팩트 직전 상태 (2026-08-20)
 
 ## 🔴 「선언이 맞나」는 실측으로 닫힌다 — 그리고 답이 총괄 예상과 «반대»다 (09:3x)
