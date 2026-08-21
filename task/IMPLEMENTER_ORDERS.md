@@ -62,6 +62,71 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ✅ 「못 쟀다」를 닫아 준 것 + 당신 라운드를 «기계로» 검수하는 법 (21:2x)
+
+## ① 좋은 닫기입니다
+```
+총괄     「화면이 optional 미선언 필드를 어떻게 그리는지 «못 쟀다»」
+당신     계획이 «아무 행도 안 보낸다» -> 화면은 그릴 것이 없다 -> 클라 문제가 «아니다»
+```
+**클라를 안 뒤져도 되게 만든 측정입니다.** 그리고 조건의 출처를 `vocabulary.PREDICATES["register"]`
+로 잡은 것 — 런타임이 «이미» 그 이름으로 판정하니 같은 식별자를 쓰는 것이지 스키마를 박는 게
+아니라는 판단, 맞습니다.
+
+## ② 총괄이 «기계»를 만들었습니다 — 당신 라운드의 받아들이는 시험으로 쓰십시오
+```
+server/scripts/audit_authoring_form.py      읽기 전용 (설정·DB 안 건드림)
+python scripts/audit_authoring_form.py
+```
+소유자 지시로 만들었습니다: 「드롭다운 있어야 하는데 없는 것 · trivial 한 값 · 틀이 없는 것
+다 조사해. 기계를 만들든 해서」.
+
+**핵심 술어는 이것입니다:**
+```
+화면이 «그리는» 잎 중에 계획이 «답을 안 주는» 것
+   -> 후보도 기본값도 접힘도 없이 도착한다 -> 사람이 맨손이다
+```
+🔴 **총괄이 첫 판에 틀렸던 것을 적어 둡니다** — 「스켈레톤이 `free` 면 사람이 친다」로 쟀는데,
+당신 배선 뒤로 그게 «거짓»이 됐습니다(`:1062` 후보 있으면 칩, `:975` 1개면 접음).
+그 잣대로는 **화면이 이미 처리하는 46건**을 구멍이라 보고할 뻔했습니다.
+
+## ③ 지금 상태 — 진짜 구멍 47개, 그중 «당신 라운드가 9개»
+```
+vocabulary.*.status · layer                       10
+vocabulary.*.object.qualifiers.required.N          4
+sources.*.prepare.implementation_id/_version       8
+sources.*.prepare.accepts_verified_join_rules      3
+sources.*.map.implementation_id/_version           6
+sources.*.read.registration_probe.*                9   <- 당신이 지금 하는 것
+entities.*.allow_null                              3
+setup_version                                      1
+```
+
+### 🔴 그러니 시험은 이것입니다
+```
+착수 «전»에 한 번 돌려 47 을 기록
+착지 «뒤»에 다시 돌려   registration_probe 9 -> 0 이고 «나머지 38 은 그대로»
+```
+⚠️ **나머지가 줄어들면 범위를 넘은 것이고, 늘어나면 회귀입니다.** 둘 다 보고하십시오.
+숫자를 맞히는 게 아니라 **«당신 것만» 움직였는지**를 봅니다.
+
+## ④ 나머지 38 은 «지금 하지 마십시오»
+```
+소유자 판정 대기   implementation_id 처럼 「코드가 있어야 고를 수 있는」 칸의 선을 어디에 긋나
+                   (등록된 구현 목록에서 후보를 뽑으면, 새 준비기는 화면에서 못 만든다 — 코드니까)
+```
+그 판정이 나면 총괄이 가족 단위 지시서를 씁니다. **낱개로 가져가지 마십시오.**
+
+## ⑤ 참고 — 「이 선언이 필요한가」도 기계가 답합니다
+검증기 «밖에서» 그 키를 읽는 파일 수:
+```
+accepts_verified_join_rules  1     implementation_version 2     list_separator 2
+allow_null 3 · implementation_id 3 · status 31 · kind 41 · columns 45
+```
+**죽은 선언은 거의 없습니다.** 답은 「지워라」가 아니라 「계획이 답하게 하라」입니다.
+
+---
+
 # 🔴🔴🔴 이걸로 «끝낸다» — 저장 전에 화면이 «진짜 행»을 돌려 본다 (20:4x)
 
 > **소유자 (20:4x): 「대체 자꾸 빵꾸가 계속 나냐 언제 끝나? 원장 셋업?
