@@ -1,5 +1,46 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 착수 전 멈춤 조건 답 + «지금 도는 backfill»에 대한 경고 (18:2x)
+
+## 멈춤 조건: 「라이브 읽기 경로가 이미 변환하고 있나」 → **아니오. 진행합니다**
+다만 답이 「전혀 없다」가 아니라 **「반쪽이 이미 있다」**입니다. 그리고 나머지 반쪽도
+**옆 파일에 이미 있습니다.** 실측 (같은 값을 두 구현에 먹였습니다):
+```
+값                            source_preparation._aware_time    profile_chain_mapper._aware_time
+2026-08-09T00:00:00Z          거절: occurred_at must be datetime   -> 00:00:00+00:00  OK UTC
+2026-08-10T00:14:00+09:00     거절: 같음                            -> 00:14:00+09:00  OK KST
+2026-05-11 00:00:00 (naive)   거절: 같음                            -> 거절 (aware 아님)
+```
+```
+문자열 파싱 + 명시 offset 존중   profile_chain_mapper.py:418  «이미 있다» (Z->+00:00 치환까지)
+naive -> 선언 timezone 적용       source_preparation.py:670    «이미 있다»
+둘을 «같이» 하는 곳                «없다»  <- 이 라운드가 채울 자리
+```
+🔴 **새로 만들 규칙이 아니라 «옮겨 붙일» 규칙입니다.** 읽기 경로 전수(`to_datetime`·
+`fromisoformat`·`astype`)에서 캐스팅은 이 둘뿐이고, 소스 읽기 갈래엔 «없습니다».
+
+## ⚠️ 지금 도는 `lot_event` backfill 이 «전부 거절»될 것입니다
+추측이 아니라 사실 셋이 한 줄로 이어집니다:
+```
+1  lot_event.event_time 은 VARCHAR       서버 로그 17:52 기동 [INFO type-mismatch]
+2  read.occurred_at.column = event_time  라이브 설정
+3  source_preparation._aware_time 는 문자열을 «무조건» 거절   위 실측
+-> 모든 그룹이 source_preparation_incomplete 로 떨어집니다
+```
+**총괄 콘솔을 확인해 주십시오.** 원자 0이 「겹칠 것이 없다」가 아니라 **「읽지를 못한다」**일 수 있습니다.
+⚠️ 서버 로그에는 그 거절이 «안 찍혀 있습니다» — backfill 은 총괄 셸에서 도니 출력이 거기 있습니다.
+그리고 이 라운드가 착지하면 **그 거절이 사라집니다.** 순서가 겹칠 수 있으니 알려 드립니다.
+
+## 그래서 이 라운드의 «바뀌는 층»이 더 작아집니다
+```
+(1)  source_preparation._aware_time 에 문자열 파싱 한 단계        <- 옆 구현과 «같은» 방식
+(2)  시각 피커 후보 규칙 (config_authoring.py:1179 근처)          <- (1)과 «같이» 착지
+(3)  compiler_contract_version                                    <- 값이 바뀌므로 올린다
+그대로  선언 형식(새 필드 없음) · timezone 칸의 뜻만 확정 · 스켈레톤 · setup_version
+```
+시험은 **`dt_log`** 로 합니다 — `lot_event` 는 2형식 다 naive 라 맞는 규칙과 틀린 규칙이 «같은 답»을 냅니다.
+
+
 # 🔴 판정 요청 — `packs` 라운드 «착지했습니다». 서버 재기동 부탁드립니다 (18:0x)
 
 ```
