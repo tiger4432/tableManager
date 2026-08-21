@@ -188,6 +188,30 @@ export function joinResolvedColumn(colId) {
   return list.find(e => e && e.name === colId) || null;
 }
 
+/**
+ * Visible column ids in visible order, '#' (the row-number gutter) excluded.
+ * Ordered by the index map's VALUES rather than trusting key insertion order, so it
+ * cannot silently disagree with `visibleColIndexMap` after a column move.
+ *
+ * 🔴 LIVES HERE, NEXT TO THE TWO FIELDS IT READS, and not in `grid.js` where it was
+ * written. It answers a question about `state` alone — `visibleColIndexMap` and `gridApi` —
+ * so `grid.js` was never more than its first caller. The second caller is the reference
+ * panel's alignment band, which must know the paste target's column order, and importing
+ * `grid.js` to get it would have formed a CYCLE: `grid.js` already imports
+ * `refreshReferenceForSelection` from that module. Copying the four lines instead would
+ * have been a second implementation of column order, which is exactly the kind of pair that
+ * later disagrees about what '#' means.
+ */
+export function visibleRangeColIds() {
+  const map = state.visibleColIndexMap || {};
+  const ids = Object.keys(map).filter(id => id !== '#');
+  if (ids.length > 0) return ids.sort((a, b) => map[a] - map[b]);
+  if (!state.gridApi) return [];
+  return (state.gridApi.getColumnState() || [])
+    .filter(c => !c.hide && c.colId !== '#')
+    .map(c => c.colId);
+}
+
 export function updateVisibleColIndexMap() {
   if (!state.gridApi) return;
   const colState = state.gridApi.getColumnState() || [];

@@ -1,6 +1,6 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
-import { state, updateVisibleColIndexMap, joinResolvedColumn } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
 import { elements } from './dom.js';
 import { handleCellEdit, fetchData } from './api.js';
 import { loadHistory } from './timeline.js';
@@ -40,20 +40,6 @@ const RANGE_ARROW_DELTA = Object.freeze({
   ArrowRight: { r: 0, c: 1 }
 });
 
-/**
- * Visible column ids in visible order, '#' (the row-number gutter) excluded.
- * Ordered by the index map's VALUES rather than trusting key insertion order, so it
- * cannot silently disagree with `visibleColIndexMap` after a column move.
- */
-function visibleRangeColIds() {
-  const map = state.visibleColIndexMap || {};
-  const ids = Object.keys(map).filter(id => id !== '#');
-  if (ids.length > 0) return ids.sort((a, b) => map[a] - map[b]);
-  if (!state.gridApi) return [];
-  return (state.gridApi.getColumnState() || [])
-    .filter(c => !c.hide && c.colId !== '#')
-    .map(c => c.colId);
-}
 
 /**
  * Extend (or seed) the keyboard range rectangle by one cell.

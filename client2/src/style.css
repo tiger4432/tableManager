@@ -461,6 +461,30 @@ body.resizing-active .history-sidebar {
 }
 
 .reference-view { flex: 1; min-width: 0; }
+/* [2b Phase 3.4] The alignment band. 30px, above the view tabs, only present while a
+   range is selected. It INFORMS -- the warning state is readable and ignorable, because
+   pasting one column of a two-column copy is something people legitimately do. Only the
+   blocked state is a verdict, and even it does not intercept the keystroke: the server
+   is what refuses, batch-wide, and this says so before the operator finds out. Uses the
+   existing success/warning/danger tokens; no new colour. */
+.reference-alignment {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: .82rem;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.reference-alignment.is-match   { color: var(--success); border-color: var(--success); background: var(--success-weak); }
+.reference-alignment.is-warn    { color: var(--warning); border-color: var(--warning); background: var(--warning-weak); }
+.reference-alignment.is-blocked { color: var(--danger);  border-color: var(--danger);  background: var(--danger-weak); }
+
 .reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
 .reference-view-tab { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: .76rem; }
 .reference-view-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-surface); }

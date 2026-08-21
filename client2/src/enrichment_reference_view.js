@@ -1,5 +1,5 @@
 import { API_BASE } from './config.js';
-import { state } from './state.js';
+import { state, isVirtualColumn, visibleRangeColIds } from './state.js';
 import { elements } from './dom.js';
 // The ONE TSV implementation in this codebase. Pure: no DOM, no module state, no
 // clipboard API — which is exactly why importing it does not drag the app graph in
@@ -153,6 +153,80 @@ let selection = null;
 let dragging = false;
 let selectionKeysInstalled = false;
 
+// ── [2b Phase 3.4] The alignment band ────────────────────────────────────────────────────
+//
+// 🔴 IT INFORMS. IT DOES NOT BLOCK. The migration order lists a paste-blocking gate under
+// "what not to build", and for a reason that is easy to lose: pasting ONE column of a
+// two-column copy is a thing people legitimately do, and a screen that refuses it is wrong
+// more often than the paste is. So a mismatch is a warning the operator can read and ignore.
+//
+// The single hard verdict is 「불가」, and even that does not block the keystroke — it says
+// the paste cannot land, because the SERVER refuses a write to a virtual join column and the
+// refusal is BATCH-level: one such cell in the range loses the whole pasted block, not just
+// that cell. The band exists so that 400 is predicted on screen instead of discovered after.
+
+/** The columns the paste would land on, read from the main grid's own range. */
+function targetColumnIds() {
+  const cols = visibleRangeColIds();
+  const start = state.dragStartCell?.colId;
+  const end = state.dragEndCell?.colId;
+  if (start && end) {
+    const a = cols.indexOf(start);
+    const b = cols.indexOf(end);
+    if (a >= 0 && b >= 0) return cols.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+  // No range drawn yet: a single focused cell is a 1-wide target, which is the common case
+  // for filling one value.
+  const single = state.selectedCell?.colId;
+  return single ? [single] : [];
+}
+
+/** The column names inside the panel's current selection, left to right. */
+function selectedColumnNames() {
+  const rect = selectionRect();
+  const table = elements.referenceViewContent
+    ?.querySelectorAll('.reference-view-table')[selection?.viewIndex];
+  if (!rect || !table) return [];
+  return [...table.querySelectorAll('thead th')]
+    .filter(th => th.dataset.column !== undefined)
+    .slice(rect.c0, rect.c1 + 1)
+    .map(th => th.dataset.column);
+}
+
+function updateAlignmentBand() {
+  const band = elements.referenceAlignment;
+  if (!band) return;
+  const rect = selectionRect();
+  if (!rect) { band.style.display = 'none'; return; }
+  band.style.display = '';
+
+  const sourceCols = selectedColumnNames();
+  const targetCols = targetColumnIds();
+  const rows = rect.r1 - rect.r0 + 1;
+  const size = `${rows}행 × ${sourceCols.length}열`;
+
+  // 🔴 `isVirtualColumn`, NOT `joinResolvedColumn`. This asks "will the server refuse a WRITE
+  // here", and that is the question the first predicate answers; a `collide` column is
+  // join-resolved AND writable, so judging with the wider one would refuse a paste that
+  // would in fact have worked.
+  const blocked = targetCols.filter(isVirtualColumn);
+  const same = sourceCols.length === targetCols.length
+    && sourceCols.every((name, i) => name === targetCols[i]);
+
+  band.classList.remove('is-match', 'is-warn', 'is-blocked');
+  const arrow = list => list.length ? list.join(' → ') : '—';
+  if (blocked.length) {
+    band.classList.add('is-blocked');
+    band.textContent = `${size} · 불가 — 조인 컬럼 ${blocked.join(', ')} 포함 · 대상에서 빼고 붙여넣기`;
+  } else if (same) {
+    band.classList.add('is-match');
+    band.textContent = `${size} · 열 순서 일치 · ${arrow(sourceCols)}`;
+  } else {
+    band.classList.add('is-warn');
+    band.textContent = `${size} · 열 순서 불일치 · 복사 ${arrow(sourceCols)} / 대상 ${arrow(targetCols)}`;
+  }
+}
+
 function selectionRect() {
   if (!selection) return null;
   const { anchor, end } = selection;
@@ -175,6 +249,7 @@ function paintSelection() {
     const inRect = !!rect && inView && row >= rect.r0 && row <= rect.r1 && col >= rect.c0 && col <= rect.c1;
     td.classList.toggle('custom-range-selected', inRect);
   });
+  updateAlignmentBand();
 }
 
 // Shift+Arrow extends the same rectangle the mouse drags. Installed on the panel, which
@@ -187,7 +262,9 @@ function installSelectionKeys() {
   // On the DOCUMENT, not the table: a drag that leaves the panel and releases over the grid
   // would otherwise never end, and the next hover would keep extending a range the operator
   // let go of.
-  document.addEventListener('mouseup', () => { dragging = false; });
+  // Also refreshes the band: a drag that ended in the MAIN grid changed the paste target
+  // without touching this panel, and the band would otherwise describe the previous target.
+  document.addEventListener('mouseup', () => { dragging = false; updateAlignmentBand(); });
 
   // ── [2b Phase 3.3] Copy ────────────────────────────────────────────────────────────────
   //
@@ -261,6 +338,10 @@ function installSelectionKeys() {
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
+  const band = document.createElement('div');
+  band.id = 'reference-alignment';
+  band.className = 'reference-alignment';
+  band.style.display = 'none';
   const tabs = document.createElement('div');
   tabs.className = 'reference-view-tabs';
   const panels = document.createElement('div');
@@ -365,7 +446,7 @@ function render(results) {
     }
     panels.appendChild(section);
   });
-  host.append(tabs, panels);
+  host.append(band, tabs, panels);
   installSelectionKeys();
   if (results.length) selectView(0);
 }
