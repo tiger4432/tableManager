@@ -228,3 +228,68 @@ dt_job_lot_slot_attribution   여전히 skip.  derived_table 'dt_job_attribution
 4  Phase 3.1 은 여전히 «판정 대기» — fill_targets 냐 다른 설계냐. 시작하지 마십시오
 ```
 **걸어 보고 «무엇이 안 되는지»를 재서 올려 주십시오.** 그게 다음 라운드의 재료입니다.
+
+---
+
+# ✅ 판정 ⑤⑥ — 둘 다 «처리했습니다». Phase 3.1 착수하십시오 (22:0x)
+
+> 소유자: 「알아서 써, 적당한 시나리오로」 — 총괄이 선언을 썼습니다.
+
+## ⑥ 🔴 **제 잘못이었습니다. 고쳤습니다**
+```
+전   dt_inventory.display_columns = [dt_job_id, dt_eqp, dt_lot, ...]
+     dt_job 은 401/401 채워져 있는데 «그리드에 없다» -> 앞 네 칸이 전부 빈 401행
+후   display_columns[0] = "dt_job"     정체를 «맨 앞»에
+```
+`column_types` 에만 넣고 `display_columns` 에는 「최소 수정」으로 «일부러» 안 넣었습니다.
+**그 최소가 틀렸습니다** — 행을 구별할 수단을 안 준 것이고, 당신이 재서 잡았습니다.
+`dt_job_id` 가 401/401 비어 있다는 것도 그대로 보입니다. 그건 별개 문제로 남깁니다.
+
+## ⑤ **`candidate_for` 로 갑니다. 반대 근거가 «제 뷰에는 성립하지 않습니다»**
+
+당신이 철회한 이유는 정확했습니다 — «기존» 규칙은 두 대상이 서로 다른 뷰에 하나씩이라
+순서를 말할 수 없었습니다. **그건 그 선언의 사실이지 `candidate_for` 의 한계가 아닙니다.**
+새 뷰는 제가 모양을 정하므로 **두 대상을 한 뷰에 선언 순서로** 담았습니다.
+
+```
+새 규칙   dt_lot_slot_from_log
+   source dt_log · derived dt_inventory · decision_key ["dt_job"]
+   target_fields  ["dt_lot", "dt_slot"]          <- 순서가 곧 열 순서
+   auto_confirm   false                           <- 사람이 확인한다
+   view[0]  "관측된 dt_lot / dt_slot"
+            candidate_for = {"dt_lot": "dt_lot", "dt_slot": "dt_slot"}
+   view[1]  "이 job 의 원본 행 (근거)"
+```
+**총괄이 클라 투영까지 실측했습니다:**
+```
+to_public_rule(...)  ->  target_fields ['dt_lot','dt_slot']
+                         view[0] candidate_for = {"dt_lot":"dt_lot","dt_slot":"dt_slot"}
+                         view[1] EMPTY   (근거 뷰는 후보가 아니다 — 의도한 것)
+[Enrichment] Synthesized 3 dedup chain rule(s)      <- 규칙 2 -> 3
+```
+🔴 **서버 코드 0줄입니다.** 이주 지시서의 전제(「서버 계약 변경 0」)가 지켜집니다.
+`fill_targets` 는 «만들지 마십시오».
+
+### 왜 이 시나리오인가 — 지어낸 게 아닙니다
+```
+dt_inventory.dt_lot / dt_slot   401 중 «400 이 빈칸»       <- 진짜 일거리
+dt_log 는 같은 job 의 그 쌍을 «이미» 들고 있다              <- 표본 job: DT-2601-001 / 01 (72셀)
+396 / 401 job 이 dt_log 에 행을 가진다
+후보가 대개 «1개»  ->  선언 주석 그대로: 「후보가 1개면 판단이 아니라 확인」
+```
+
+## ▶ 이제 Phase 3.1 을 착수하십시오
+```
+읽을 것   view[0].candidate_for 의 «키 순서» = 열 순서
+          (선언 순서가 곧 target_fields 순서이고, 둘이 같은 뷰에 있습니다)
+⚠️ 다만  당신이 앞서 걱정한 「순서가 로더를 거쳐도 보존되나」는 «여전히 유효한 질문»입니다.
+          위 실측에서 순서가 보존됐지만, 그건 «표본 하나»입니다.
+          Phase 3.1 이 순서에 «기대기 전에» 그 가정을 코드 주석에 적어 두십시오 —
+          깨져도 조용한 종류입니다
+```
+
+## ⚠️ 그리고 이건 «남깁니다»
+```
+dt_job_lot_slot_attribution   여전히 skip (미등록 표) · auto_confirm true · 400행 자동 기록
+   -> 소유자 판정 사안. 새 규칙이 그 자리를 대신하므로 «급하지 않습니다»
+```
