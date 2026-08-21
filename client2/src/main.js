@@ -56,6 +56,13 @@ import {
   updatePageCacheOnDelete
 } from './ui.js';
 import { initTraceEntry } from './trace_launch.js';
+
+// Every control that shows `localStorage['copyHeader']`. Read through `elements`' lazy
+// getters, the convention the whole module already uses, and `filter(Boolean)` so a missing
+// one is skipped instead of throwing -- this runs inside `init()`, where a throw takes the
+// WebSocket down with it.
+const copyHeaderToggles = () =>
+  [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
@@ -97,8 +104,10 @@ async function init() {
   // null DOM handle, and a `fetch` that never settles (a hung backend or proxy), which does not
   // even reject and so logs nothing at all.
   //
-  // FIRST, not merely "earlier". Every setup call below can throw too — `elements.copyHeaderToggle
+  // FIRST, not merely "earlier". Every setup call below can throw too — `elements.sortLatestToggle
   // .checked` on the next lines is an unguarded handle — so the socket goes ahead of ALL of it.
+  // (It used to name `copyHeaderToggle`; that one is now read through a `filter(Boolean)` list,
+  // which is why the example moved rather than the rule.)
   // Opening it has no dependency on health status or the table list: `initWebSocket` reads only
   // WS_URL, `state`, and the wake signals, and its `onopen` re-derives what it needs
   // (`checkServerHealth`, then `loadTables` only if the picker is still empty). The overlap that
@@ -108,7 +117,7 @@ async function init() {
   // Load cached settings from localStorage
   const cachedCopyHeader = localStorage.getItem('copyHeader');
   if (cachedCopyHeader !== null) {
-    elements.copyHeaderToggle.checked = cachedCopyHeader === 'true';
+    copyHeaderToggles().forEach(toggle => { toggle.checked = cachedCopyHeader === 'true'; });
   }
   const cachedSortLatest = localStorage.getItem('sortLatest');
   if (cachedSortLatest !== null) {
@@ -601,9 +610,19 @@ function setupEventListeners() {
     fetchData(true);
   });
 
-  // Copy Header Toggle
-  elements.copyHeaderToggle.addEventListener('change', () => {
-    localStorage.setItem('copyHeader', elements.copyHeaderToggle.checked);
+  // Copy Header Toggle. TWO controls, ONE stored value: the mockup puts it at the foot of the
+  // reference panel, and that panel is `display:none` on every table with no reference rule --
+  // measured on `lot_event`: tab hidden, panel hidden, rect 0x0. The toggle decides the MAIN
+  // grid's copy (`clipboard.js:256`, `:655`), so leaving only that copy would put a live
+  // setting out of reach on most tables.
+  //
+  // No new storage key and no event bridge -- the mirror is the assignment below, because
+  // both boxes are on THIS page and a stale checkbox is a second vocabulary for one value.
+  copyHeaderToggles().forEach(toggle => {
+    toggle.addEventListener('change', () => {
+      localStorage.setItem('copyHeader', toggle.checked);
+      copyHeaderToggles().forEach(other => { other.checked = toggle.checked; });
+    });
   });
 
   // Context Menu Item: Sources Management

@@ -48,6 +48,11 @@ export const elements = {
   get smartPasteBtn() { return document.getElementById('smart-paste-btn'); },
   get toolbarFileInput() { return document.getElementById('toolbar-file-input'); },
   get copyHeaderToggle() { return document.getElementById('copy-header-toggle'); },
+  // The SAME stored value, seen from the Options menu. Two places to look at one setting is
+  // already this repo's answer -- `map_editor.js` keeps its own `map-copy-header-toggle` on
+  // the same `localStorage['copyHeader']`. Two ids because an id is unique; one key because
+  // a second key is how the two later disagree.
+  get copyHeaderMenuToggle() { return document.getElementById('copy-header-menu-toggle'); },
   get sortLatestToggle() { return document.getElementById('sort-latest-toggle'); },
   get viewModeSelect() { return document.getElementById('view-mode-select'); },
   get loadAllBtn() { return document.getElementById('load-all-btn'); },
