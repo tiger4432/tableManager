@@ -62,6 +62,71 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# 🔴🔴 소유자 차단 — `read` 절 칸들이 «자유 입력»이다. 후보는 서버에 «이미 있다» (20:1x)
+
+> **소유자 (20:1x): 「소스 셋업에서 order by랑 시각 왜 이래? timezone 수동으로 쳐야 하고
+> column 도 직접 넣어야 하네」**
+>
+> 소유자가 **지금 화면에서 `die_transfer` 소스를 만들고 계신다.** 이게 오늘의 도착지다.
+
+## 총괄 실측 — 후보는 «있다». 폼이 «안 쓴다»
+`authoring_plan(raw, catalog)` 을 라이브에 직접 먹여 셌다:
+```
+bundle.sources.lot_event.relation              후보 26   answered
+bundle.sources.lot_event.read.identity         후보 16   answered
+bundle.sources.lot_event.read.group_by         후보  1   answered
+bundle.sources.lot_event.read.order_by         후보  9   derived   child_lot·event_time·event_type…
+bundle.sources.lot_event.read.cursor.columns   후보  9   derived
+bundle.sources.lot_event.read.occurred_at      후보 10   answered  [{column: child_lot}, {column: event_time}…]
+```
+
+## 🔴 왜 안 내려앉나 — «계획이 답하는 경로»와 «폼이 그리는 경로»가 다르다
+```
+계획      read.occurred_at        «통째»에 {column: X} 객체 후보 10개
+스켈레톤  read.occurred_at 은 record 이고 그 «아래» 세 leaf 를 그린다:
+             timezone  hint "free"     column  hint "free"     basis  choice
+-> 후보는 부모에 붙어 있고, 사람이 치는 칸은 «자식»이다. 만날 수가 없다
+
+계획      read.order_by · read.cursor.columns    map «경로»에 컬럼 후보 9개
+스켈레톤  keyed_by index 의 map, 멤버는 leaf hint "free"
+-> 같은 어긋남. 멤버 칸마다 후보가 없다
+```
+**이건 「후보를 만들라」가 아니다. 「있는 후보를 그 칸에 연결하라」다.**
+
+## ⛔ 울타리
+```
+✖  새 후보 계산 · DB 조회 · authoring_plan 계약 변경     후보는 이미 온다
+✖  이름 규칙 하드코딩                                     DoD 위반
+✔  부모 경로의 후보를 «자식 칸»이 쓰게 배선                  {column: X} -> column 칸의 목록
+✔  map 경로의 후보를 «멤버 칸»이 쓰게 배선                   order_by · cursor.columns · identity · group_by
+```
+⚠️ **부류로 하라.** `occurred_at` 하나만 고치지 말 것 —
+`order_by` · `cursor.columns` · `identity` · `group_by` 가 **같은 어긋남**이다.
+고치기 전에 **「계획이 답하는 경로」와 「폼이 그리는 경로」가 어긋나는 칸을 전수로 세고**,
+그 목록을 한 번에 배선하라. 지금 아는 것이 다섯이고, 더 있을 수 있다.
+
+## `timezone` 은 «다른» 문제 — 후보가 아예 없다
+컬럼이 아니라 지역이라 카탈로그가 못 준다. 소유자가 손으로 친다.
+```
+지금   hint "free" — 자유 입력
+최소   설정 «안에서 이미 쓰이는» zone 을 후보로 (오늘은 Asia/Seoul 하나)
+       + 자유 입력은 «남긴다» — 새 zone 을 못 쓰게 되면 안 된다
+```
+🔴 **IANA 전체 목록을 싣지 말 것.** 600개 드롭박스는 자유 입력보다 나쁘다.
+
+## 절차 — 시계가 돈다
+```
+1  전수 표를 «먼저» (경로 어긋남 목록). 다섯인지 여덟인지 세고 시작
+2  배선. 클라 빌드는 «백그라운드»로
+3  착지하면 이 파일에 「배선 착지, 재기동 요청」 한 줄
+4  ⚠️ 라이브 설정을 «건드리지 말 것» — 소유자가 지금 그 파일로 소스를 만들고 계신다
+```
+🔴 **`die_transfer` 는 소유자 것이다. 지우지도, 고치지도, 완성해 주지도 말 것.**
+(총괄의 backfill 이 그 미완성 소스에서 멈췄다 — 그건 정상이고, 소유자가 끝내면 풀린다.)
+
+---
+
+
 # 🔴🔴 지금 «즉시» 할 것 — 소유자 판정 「가」. 선언된 timezone 으로 해석한다 (19:5x)
 
 > **소유자 (2026-08-21 19:5x): 「가로 진행. 1시간 내로 원장 셋업 마무리하자.
