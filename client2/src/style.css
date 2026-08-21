@@ -76,13 +76,25 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
+  /* Mockup 2b's seam between the logo and the toolbar. Without it the toolbar now butts
+     straight against the wordmark -- `justify-content: space-between` used to hide that by
+     shoving the toolbar to the far edge. */
+  gap: 14px;
   justify-content: space-between;
   padding: 0 24px;
   z-index: 200; /* 헤더 레이어: resizer(100) < 헤더(200) < 팝업(1000) < 모달(2000+) */
 }
 
+/* 🔴 NOT `flex: 1` any more. Mockup 2b gives the header's free space to the filter chips,
+   and two `flex: 1` siblings split it -- the chips got half a bar and the transient status
+   message got the other half whether or not it had anything to say. This one now sizes to
+   its content and stops growing; `max-width` still caps a long message. */
 .log-indicator-area {
-  flex: 1;
+  flex: 0 1 auto;
+  /* Pins itself and everything after it to the right edge, which is what the mockup's
+     `margin-left: auto` does for its badge/⚙/🧭 cluster. It also keeps that cluster on the
+     right on the tables where no filter chip is showing to take the slack. */
+  margin-left: auto;
   display: flex;
   justify-content: center;
   padding: 0 20px;
@@ -109,6 +121,10 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* The mockup's divider: the logo is not part of the toolbar, and side by side with no
+     rule between them they read as one control strip. */
+  padding-right: 14px;
+  border-right: 1px solid var(--border);
 }
 
 .logo-area h1 {
@@ -162,6 +178,11 @@ body {
 }
 
 .controls-area {
+  /* 🔴 GROWS. The header is `space-between`, so a non-growing toolbar was shoved to the right
+     edge and left a 1,051px hole after the logo -- mockup 2b starts the table picker right
+     beside it. Growing here also gives the chips something to take the slack of. */
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 20px;

@@ -37,63 +37,6 @@
         </div>
 
         <div class="controls-area">
-          <div
-            class="log-indicator-area"
-            style="display: flex; align-items: center; gap: 8px"
-          >
-            <span id="performance-log" class="glass-log-badge">Ready</span>
-            <!-- Dynamic Unsaved Tx State Indicator -->
-            <span
-              id="tx-pending-badge"
-              class="glass-log-badge"
-              style="
-                display: none;
-                background: var(--warning-weak);
-                border-color: var(--warning);
-                color: var(--warning);
-                font-weight: bold;
-              "
-              >⚡ Unsaved: 0</span
-            >
-            <button
-              id="tx-apply-btn"
-              class="glass-btn success-glow"
-              style="
-                display: none;
-                padding: 4px 12px;
-                font-size: 0.8rem;
-                font-weight: bold;
-                border-radius: 6px;
-              "
-            >
-              Apply
-            </button>
-            <button
-              id="tx-discard-btn"
-              class="glass-btn hover-danger"
-              style="
-                display: none;
-                padding: 4px 12px;
-                font-size: 0.8rem;
-                border-radius: 6px;
-              "
-            >
-              Discard
-            </button>
-          </div>
-          <!-- Mockup 2b: active filters live IN the header bar, taking the free space
-               between the toolbar and the unsaved-changes badges. They are not a strip
-               above the grid — the grid starts at its own header row. -->
-          <div id="grid-filter-bar" class="header-filter-bar" style="display: none">
-            <span id="filter-chips" class="filter-chips"></span>
-            <button
-              id="filter-clear-all"
-              class="filter-clear-all"
-              style="display: none"
-            >
-              전체 해제
-            </button>
-          </div>
           <div class="control-group">
             <label for="table-select">Table</label>
             <select id="table-select" class="glass-input">
@@ -138,6 +81,63 @@
               title="선택 행을 시드로 온톨로지 추적 리포트 열기"
             >
               🕸️ 추적
+            </button>
+          </div>
+          <!-- Mockup 2b: active filters live IN the header bar, taking the free space
+               between the toolbar and the unsaved-changes badges. They are not a strip
+               above the grid — the grid starts at its own header row. -->
+          <div id="grid-filter-bar" class="header-filter-bar" style="display: none">
+            <span id="filter-chips" class="filter-chips"></span>
+            <button
+              id="filter-clear-all"
+              class="filter-clear-all"
+              style="display: none"
+            >
+              전체 해제
+            </button>
+          </div>
+          <div
+            class="log-indicator-area"
+            style="display: flex; align-items: center; gap: 8px"
+          >
+            <span id="performance-log" class="glass-log-badge">Ready</span>
+            <!-- Dynamic Unsaved Tx State Indicator -->
+            <span
+              id="tx-pending-badge"
+              class="glass-log-badge"
+              style="
+                display: none;
+                background: var(--warning-weak);
+                border-color: var(--warning);
+                color: var(--warning);
+                font-weight: bold;
+              "
+              >⚡ Unsaved: 0</span
+            >
+            <button
+              id="tx-apply-btn"
+              class="glass-btn success-glow"
+              style="
+                display: none;
+                padding: 4px 12px;
+                font-size: 0.8rem;
+                font-weight: bold;
+                border-radius: 6px;
+              "
+            >
+              Apply
+            </button>
+            <button
+              id="tx-discard-btn"
+              class="glass-btn hover-danger"
+              style="
+                display: none;
+                padding: 4px 12px;
+                font-size: 0.8rem;
+                border-radius: 6px;
+              "
+            >
+              Discard
             </button>
           </div>
           <div class="control-group">
