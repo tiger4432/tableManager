@@ -22,6 +22,40 @@
 
 ---
 
+# 🔴 정정 — 커서는 «기본값을 넣을» 칸이 아니라 «없어질» 칸입니다 (소유자 23:3x)
+
+> **소유자: 「커서 어차피 복붙할건데 왜 적으라 그래?」**
+
+앞 블록에서 총괄이 「cursor.columns 기본값 = order_by」라고 적었습니다. **그건 반쪽입니다.**
+소유자 지적을 받고 검증기를 열었더니 근거가 거기 있었습니다:
+```
+setup_bundle.py:1445-1455
+    ordering_contracts = ( order_by ,  cursor.columns )
+    for columns, path in ordering_contracts:
+        if not _columns_cover_declared_unique_key(table, columns):
+            problems.add("invalid_cursor", ...)
+```
+🔴 **두 키가 «같은 루프»에서 «같은 술어»로 채점됩니다.** 하나를 만족시키는 값은 반드시
+다른 하나도 만족시킵니다 — 둘이 달라도 되는 설정이 «존재하지 않습니다».
+계약이 둘인 게 아니라 «같은 계약을 두 번 묻고» 있었습니다.
+
+## 판정
+```
+✔  read.cursor 는 «폼에서 사라집니다».  값은 order_by 에서 유도되어 문서에 들어갑니다
+✔  runtime_v2.py:307 이 driver.cursor_columns 를 읽으므로 «값은 계속 있어야» 합니다.
+    지우는 건 «묻는 것»이지 «값»이 아닙니다
+🔴 더 갈 수 있는지 재 주십시오: cursor 키 자체를 없애고 runtime 이 order_by 를 읽게 하는 것이
+    더 작습니까?  «재고 한 줄 보고», 판정은 총괄이 합니다. 먼저 지우지 마십시오
+```
+⚠️ 이 칸은 소유자를 **두 번** 막았습니다(전: 「이거도 뭐 어쩌라는 거야」, 오늘: 「왜 적으라 그래」).
+같은 부류가 옆에 더 있는지 보십시오 — **낱개로 고치지 말고 부류로 판정합니다.**
+```
+후보  read.order_by · read.cursor.columns · map/prepare.implementation_version
+      «검증기가 다른 선언에서 같은 술어로 채점하는» 키 전부
+```
+
+---
+
 # 🔴 소유자 확정 (23:3x) — 「approval_status 다 삭제」 + 커서를 «묻지 마라»
 
 ## ① approval_status — 반쪽(optional·무시) 안은 «취소». 지웁니다
