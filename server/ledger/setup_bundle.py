@@ -1623,6 +1623,12 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                 if (roles[role].get("kind") == "symbolic"
                         and bindings[role].get("kind") == "constant"
                         and bindings[role].get("value") not in
+                        # 🔴 The roster is always absent since `packs` left, so this
+                        # membership test reads an empty list and this branch cannot fire.
+                        # `predicate_claim` above emits no `symbolic` kind either, so the
+                        # guarding condition is dead as well. Left in place: it states what
+                        # a symbolic Role would have to satisfy, and that sentence is the
+                        # thing worth keeping until an axis produces one again.
                         roles[role].get("allowed_values", [])):
                     problems.add(
                         "invalid_symbolic_constant", f"{mpath}.bind.{role}.value",

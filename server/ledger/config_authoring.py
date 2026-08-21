@@ -1077,6 +1077,14 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 state="answered" if binding.get("value") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("value"),
                 declared=binding.get("value"),
+                # 🔴 ALWAYS EMPTY SINCE `packs` LEFT, so this offers no candidate today.
+                # `allowed_values` could only be written at `packs.*.claims.*.roles.*`, and
+                # the derivation that replaced it (`setup_bundle.predicate_claim`) emits
+                # `kind` and `required` and nothing else -- measured 2026-08-22: zero
+                # occurrences in the live config, the sample, or any producer in `server/`.
+                # Kept rather than deleted: the day an axis writes rosters again, this is
+                # where they have to reach the screen, and rebuilding it then costs more
+                # than carrying a line that returns `()`.
                 candidates=tuple(_listed(role.get("allowed_values"))),
             )
         if binding.get("kind") == "column":

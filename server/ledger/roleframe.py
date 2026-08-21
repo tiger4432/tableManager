@@ -1043,6 +1043,13 @@ def _validate_role_value(
         return
     if kind in {"identity", "order", "attribute", "symbolic"}:
         _scalar(value, path)
+        # 🔴 UNREACHABLE TWICE OVER, AND `not in ()` IS ALWAYS TRUE -- so if the first
+        # condition ever became reachable while the second stayed empty, this would refuse
+        # EVERY symbolic value rather than none. Measured 2026-08-22: `predicate_claim`
+        # emits only `entity`/`time`/`quantity`/`identity`/`attribute`, never `symbolic`,
+        # and nothing writes `allowed_values`, so neither half can fire today.
+        # Whichever returns first, this line is the one that goes wrong -- it is correct
+        # only while BOTH are absent. [[a-guard-goes-wrong-the-day-it-becomes-reachable]]
         if kind == "symbolic" and value not in role.allowed_values:
             raise RoleFrameError(
                 "invalid_symbolic_value", path,

@@ -162,6 +162,11 @@ class RoleDescriptor:
     kind: str
     required: bool
     allowed_binding_kinds: tuple[str, ...]
+    #: 🔴 Always `()` since `packs` left -- nothing writes the roster it carries, so this
+    #: field is a shape the compiled plan preserves rather than a value it computes.
+    #: Measured 2026-08-22 across the live config, the sample and every producer in
+    #: `server/`: zero. Deleting it would have to be rebuilt the day rosters return, and
+    #: defaulting it to something non-empty would invent a constraint nobody declared.
     allowed_values: tuple[str, ...]
     config_path: str
 
@@ -851,6 +856,10 @@ def _compile_claims(section: Mapping[str, Any]) -> ClaimRegistry:
                 kind=role["kind"],
                 required=role["required"],
                 allowed_binding_kinds=role_binding_kinds(role),
+                # 🔴 Reads a key no declaration carries any more, so this is `()` every
+                # time. It stays because the compiler should copy what the grammar allows,
+                # not what today's files happen to hold -- the day the roster returns, this
+                # line already carries it. See the field's own note above.
                 allowed_values=tuple(role.get("allowed_values", ())),
                 config_path=claim_path,
             )
