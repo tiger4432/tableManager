@@ -655,7 +655,7 @@ def _assemble_prepared_frame(
     # An all-excluded page yields an EMPTY frame and no atoms rather than a refusal: pages
     # are cut by the cursor, not by generation, so a page holding only old rows is normal
     # and refusing would stall the backfill on it forever.  The cursor advances off the
-    # base page (`backfill._backfill_source`), never off what survives here, so the excluded
+    # base page (`backfill._run_v2_lineage`), never off what survives here, so the excluded
     # rows are passed over once and not re-read.
     if SOURCE_ROW_EXCLUDED_COLUMN in out.columns:
         excluded = out[SOURCE_ROW_EXCLUDED_COLUMN].tolist()

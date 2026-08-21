@@ -1,5 +1,84 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 📌 2026-08-21 23:2x — **컴팩트 뒤의 총괄은 이 절부터 읽는다**
+>
+> ### 🔴 소유자가 정한 «순서» — 이게 지금 유일한 축이다
+> ```
+> ① 기반 원장 셋업 «완주»    <- 지금 여기.  게이트는 «이미 서 있다» (아래)
+> ② 온톨로지 응용 본격 착수   task/APPLICATION_{PROPAGATION,ANYWHERE_SEED}_BRIEF.md 둘이 대기 중
+> ③ 그때 «은퇴»              혈통 추적 · admin/원장 선언 · v1 계통 전체
+> ```
+> 🔴 **지금 지킬 규칙 하나: 은퇴 대상에 «새 일을 얹지 않는다».**
+> `ledger_trace*` · `ledger_admin` · `ledger/config.py` · 그 네 화면.
+> **버그를 봐도 고치지 말고 «적는다».** 총괄이 오늘 그 자리에 두 번 손댈 뻔했다
+> (샘플 반쪽 수리 → 되돌림, 503 수리 지시 → 취소). 세 번째를 만들지 말 것.
+>
+> ### ✅ ① 의 게이트는 «이미 통과»했다 — 총괄이 직접 재서 확인
+> ```
+> python scripts/audit_authoring_form.py   (server/ 에서)
+> 섹션 0 = 5      vocabulary 4 · setup_version 1
+> ```
+> **47 -> 5.** 그리고 남은 5는 «메울 것이 아니라 판정이 끝난 것»이다:
+> ```
+> qualifiers 4     자유입력이 «맞다».  문구만 남았고 그건 «총괄 몫» (스켈레톤 label/member)
+> setup_version 1  검증기가 값을 «고정» -> 구멍 아님
+> ```
+> ⚠️ 총계(80)를 비교하지 말 것 — 소유자의 미완성 소스 둘이 설정에 있어 소스 수가 4다.
+> **가족별로만 비교한다.**
+>
+> ### 오늘 밤 착지한 것
+> ```
+> 원장    lot_event 흐른다 — 40분자 · 1,323원자 · 계보 40 · 시각 +09:00
+>         화면의 「시험 실행」이 «진짜 배치»를 돌린다 (쓰기 0 · 거절이면 form_path 로 그 칸을 가리킨다)
+>         layer 은퇴 — 검증기·스켈레톤·샘플·라이브·마이그레이션 다섯이 «같이», 멱등 확인
+> 클라    enrich 규칙 3 (참조뷰 6) · 가상조인 1 · dt_lot_slot_from_log 의 candidate_for
+>         디자인 세션 Phase 1·2·3.1 착지 — 「① dt_lot ② dt_slot」이 화면에 그려진다
+> 문서    한 바퀴 (히스토리 9 · 코드맵 · 리빙 11 · SSOT · 감사) + 계획서 26개 아카이브
+> ```
+>
+> ### 🔴 총괄이 오늘 틀린 것 — 전부 «남이» 잡았다
+> ```
+> 1  보드 절 교체가 643줄을 지웠다            잘라낸 줄 수를 찍어서 «내가» 잡음
+> 2  die_transfer / die-transfer 를 «추측»    소유자가 정정
+> 3  「디자인 세션이 dist 를 구웠다」 추측      그 세션이 mtime 으로 반박 · 구현자가 자백
+> 4  candidate_for 판정                       디자인 세션이 라이브 선언을 재서 뒤집음
+> 5  「layer 를 아무도 안 읽는다」             구현자가 지우기 «직전»에 읽는 곳을 찾음
+> 6  「47->10 은 대부분 내 계측기 탓」          히스토리가 사다리를 세워 정정 (29가 «진짜 수리»)
+> 7  git mv 를 `-- docs/` 로 반쪽만 커밋       아카이브 에이전트가 인덱스 위험을 알려 줌
+> ```
+> **공통 원인 하나: 실물에 «먹여 보지 않고» 형태를 골랐다.** 메모 셋에 박았다 —
+> [[a-commits-own-number-may-be-the-lanes-not-its-own]] ·
+> [[chasing-the-instruments-zero-breaks-what-works]] · [[derivation-kills-the-axis-that-fed-it]]
+>
+> ### 대기열 (착수 «금지», 순서대로)
+> ```
+> ③  거짓 근거로 살아 있는 심볼 아홉 + 독스트링 둘    구현자 진행 중
+> ②  allowed_values 도달 불가를 «주석으로»            그다음.  지우지도 도출하지도 않는다
+> ①  읽기 측 503                                     «취소» — 은퇴 대상 그 자체
+> 문구 4칸                                            총괄 몫. 스켈레톤 label/member 로
+> ```
+>
+> ### 세션·감시
+> ```
+> 구현자   local_bb9c475d-6f85-4fe4-bc97-76584eed703b     ORDERS <- / pickup_report ->
+> 디자인   local_230777ff-30b7-4c7a-8412-dedc02b125aa     워크트리 ../assyManager-design (design 브랜치)
+>          DESIGN_ORDERS(main) <- / design_session_report(design) ->
+>          🔴 server/config/* 는 gitignore 라 그 워크트리에 «없다». dev(:5173 --strictPort)로 8080 API 를 본다
+> 응용     local_9816d414-7052-4ce8-bf2a-5f46775f6aeb     ② 에서 다시 연다
+> 감시     bkcn6qygz(코드·보고) · bbk2ry4hl(15분 틱) · bsp5t1373(design 브랜치) · be1rvsinn(구식)
+> ```
+>
+> ### 환경
+> ```
+> 서버   포트 8080.  파이썬 고치면 «총괄»이 재기동하고 ORDERS 에 한 줄 적는다
+> 설정   server/config/ontology/ledger_config.json  = v2 셋업 «있음» (오늘 만진 것)
+>        server/config/ledger_config.json           = v1 «없음» (운영에도 없다 — 소유자 확인)
+>        🔴 둘은 «디렉터리 하나» 차이다. 질문할 때 반드시 구분할 것
+> 원장   v2 2,115 · v1 220,771 «불변» · lot_event 커서 ledger-v2:2e2d…
+> 트리   세 세션 공유.  add/commit «둘 다» 경로 명시.  git mv 는 «양쪽»을 한 커밋에
+> ```
+>
+
 > ## ✅ 2026-08-21 21:0x — **화면이 «진짜 행»을 돌린다. 구멍을 소유자가 아니라 화면이 찾는다**
 >
 > ### `fd3dda05` — 「시험 실행」 (+563 / 7파일).  총괄이 직접 태워서 확인
