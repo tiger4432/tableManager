@@ -229,17 +229,19 @@
                     },
                     {
                       "key": "qualifiers",
+                      "label": "한정어",
                       "required": true,
                       "node": {
                         "kind": "record",
                         "fields": [
                           {
                             "key": "required",
+                            "label": "필수",
                             "required": true,
                             "node": {
                               "kind": "map",
                               "keyed_by": "index",
-                              "member": "이름",
+                              "member": "한정어 이름",
                               "of": {
                                 "kind": "leaf",
                                 "hint": "free"
@@ -248,11 +250,12 @@
                           },
                           {
                             "key": "optional",
+                            "label": "선택",
                             "required": true,
                             "node": {
                               "kind": "map",
                               "keyed_by": "index",
-                              "member": "이름",
+                              "member": "한정어 이름",
                               "of": {
                                 "kind": "leaf",
                                 "hint": "free"
