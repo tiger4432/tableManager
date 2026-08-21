@@ -1,62 +1,71 @@
-# 🔴 판정 요청 — `lot_event` 커서 선언이 그 표의 데이터로는 «작동할 수 없다» (2026-08-21 17:0x)
+# 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
-ORDERS 의 네 걸음 중 **1·2 는 끝났고 3 에서 멈췄습니다.** 멈춤 조건 셋 중 어느 것도 아닌
-**네 번째 사유**라 판정을 요청합니다.
+## 채널 — 세션 간 «메시지는 안 쓴다». 파일과 커밋이다
+```
+총괄 → 나    task/IMPLEMENTER_ORDERS.md         «지금 할 것»만 담긴다. 착수 전·보고 전 다시 읽는다
+나 → 총괄    task/implementer_pickup_report.md   이 파일. 보고·질문·판정 요청
+공통         일 시작 전 git pull → 쓴 뒤 commit + push. 총괄이 커밋을 감시한다
+판정 요청    이 파일 «맨 위»에 「🔴 판정 요청」. 총괄이 ORDERS 에 답을 적는다
+```
+**감시 둘이 돌고 있다:** ORDERS 파일 변경 감시(2분), 커밋 정체 감시(10분).
+컴팩트 뒤 죽어 있으면 다시 걸 것 — 명령은 ORDERS 맨 위 프로토콜 절에 있다.
 
-## 지금까지 한 것
+## 🔴 1순위 행동양식 (소유자, 상설) — 긴 작업은 백그라운드, 본체는 읽을 수 있게
 ```
-1 백업  server/config/backup/ledger_cursor_lot_event_20260821.json  (1행 · 563 bytes)
-        translator_ver=lot_event/1/rules:34311f15 · cursor_value={'event_time':'2026-08-12 06:00:00'}
-        molecules_done 35 · atoms_written 1195 · refused 1 · incomplete 2
-2 삭제  DELETE … WHERE source='lot_event'  →  1행 삭제. 커서 표 12 → 11행
-3 실행  거절로 멈춤 (아래)
+빌드·전체 스위트·긴 backfill·마이그레이션   Bash run_in_background: true
+브라우저 장시간 걷기                        하위 에이전트
+넘긴 «뒤»  1 즉시 돌아온다  2 ORDERS 다시 읽는다  3 판정 대기는 이 파일에 적고 푸시
 ```
+**빨리 끝내는 것보다 「틀린 지시 위에서 오래 일하지 않는 것」이 싸다.**
+어제 앞 세션이 막힌 채로 돌다 총괄 메시지 «다섯»을 못 읽고 죽었다.
 
-## 거절
+## 지금 도는 것
 ```
-ledger.runtime_v2.LedgerV2RuntimeError: cursor_value: cursor number must be finite
-   runtime_v2.py:353 _json_scalar   ← 커서 값에 유한하지 않은 수가 들어갔다
-```
-
-## 🔴 원인 — 데이터를 재 보니 «선언이 그 표에 안 맞습니다»
-```
-선언   cursor.columns = ['event_time', 'txn_seq']
-       order_by       = ['txn_seq']            ← 정렬도 이 컬럼 «하나»에 걸려 있다
-
-실측   lot_event            142 행
-       txn_seq 가 NULL       «62 행» (44%)      ← NaN 이 되어 위 거절이 난다
-       txn_seq 타입          character varying  (예: 'LE-NAB539-005-01-C')
-       (event_time, txn_seq) 구별되는 조합 «113» / 142 행 · 중복 조합 28건
-```
-**NULL 이 드문 예외가 아닙니다** — `split` 38 · `merge` 18 · `track_in` 5 · (event_type 없음) 1.
-
-### 그래서 두 가지가 «동시에» 깨져 있습니다
-```
-① 직렬화 불가   커서 컬럼에 NULL 이 있으면 값을 적을 수 없다        ← 오늘 난 거절
-② 재개 불가     (event_time, txn_seq) 가 «유일하지 않다» (113/142)
-                유일하지 않은 커서로 재개하면 건너뛰거나 겹친다
-```
-①만 고쳐도 ②가 남습니다. **그래서 코드로 우회하지 않고 올립니다.**
-
-## 판정이 필요한 지점
-```
-가  커서·order_by 의 «두 번째 컬럼»을 바꾼다   NULL 없고 사실상 유일한 컬럼으로
-    → 어느 컬럼인지가 소유자 판정입니다. 제가 고르지 않습니다
-나  커서 컬럼의 NULL 을 허용한다               계약 변경입니다. ②는 그대로 남습니다
-다  원천 데이터를 고친다                       원장은 append 라 해석이 영구입니다
-```
-**저는 「가」로 보이지만 어느 컬럼인지는 도메인 판단이라 고르지 않았습니다.**
-
-## 지금 상태 — 되돌릴 것과 안 되돌린 것
-```
-lot_event 커서 행   «없습니다» (지운 채). ORDERS 가 지우라고 했고, 그 행은 죽은 기록이었습니다
-                    되돌리려면 위 백업 파일로 복구 가능합니다
-원장                221,563 행 «그대로». v2 lot_event 원자 0 · v1 원자 1,195 «그대로»
-쓰기                거절이 preview 단계라 «한 줄도 안 썼습니다»
+packs·claims 제거 + binding 템플릿 + 남은 에러 로그
+   지시서 task/ledger_drop_packs_claims_brief.md (소유자 보강 절 «포함»)
+   하위 에이전트가 돌고 있다. 메인 트리가 조용한 것이 정상이다
 ```
 
-⚠️ ORDERS 의 보고 3종(문장별 원자 수 · trace 계보 · v1 1,195행)은 **원자가 하나도 안 생겨서
-아직 못 씁니다.** 판정 오면 이어서 재고 그대로 채워 넣겠습니다.
+### 착수 전 관문 셋 — 내가 «이미 쟀다». 다시 재지 말 것
+```
+1 has_netdie 의 count   die_count 의 나머지 역할이 «정확히 하나»(count) → 유도 가능
+2 target 필수 여부       membership·slot_map 둘 다 required True
+3 pack 을 단위로 읽나    roleframe.py:515-523 · :974-984 둘 다 pack/claim 을 쪼개
+                        claim 을 꺼낼 뿐. pack 속성을 «아무도 안 읽는다» → 치환 가능
+```
+🔴 **지시서보다 데이터가 엄격하다 — 규칙을 이렇게 적어야 한다:**
+```
+object.kind == entity_ref  →  target 역할
+object.kind == value       →  나머지 역할 «정확히 하나»가 그 값 (die_count 의 count)
+object.kind == none        →  둘 다 없음
+```
+「object 가 있으면 target」으로 적으면 `die_count`(object=value, target 없음)에서 틀린다.
+그리고 `lineage` 가 나머지 «둘»(parent·child)을 남기는 것은 실패가 아니라 **이 라운드가
+개명하는 바로 그 claim** 이다. 개명이 빠지면 유도가 «안 닫힌다».
+
+### ⚠️ 에러 로그 제거는 하네스를 빨갛게 만든다 — 내가 한 번 밟고 되돌렸다
+```
+buckets 에서 ['missing','빠짐'] 빼고 unattached_refusals 절 지우면
+   ontology_authoring_panel_harness.mjs 가 C1·C2·C3·C8 에서 빨강
+```
+그 하네스가 «옛 계약»을 못 박고 있다. **계약이 바뀐 것이므로 하네스를 새 계약으로 고친다.**
+KNOWN_RED 에 넣지 말 것.
+
+## 손 떼는 것 — 총괄 몫
+```
+lot_event 흐르게   총괄이 가져갔다. 🔴 backfill 을 «돌리지 말 것» (둘이 같은 DB 에 쓰면 안 된다)
+   내가 한 데까지: 커서 1행 백업(config/backup/ledger_cursor_lot_event_20260821.json) 후 삭제
+   총괄 판정: 커서 둘째 컬럼 txn_seq → row_id (UUIDv7 이라 사전순=시간순, NULL 0, 142/142 유일)
+   미판정: lot_event 142행이 «두 세대»로 갈린다 — 총괄이 잰다
+```
+
+## 오늘 내가 착지시킨 것 (총괄이 별도 검증함)
+```
+0e2c0b0f 드롭박스·저장버튼·자리유지    선택상자 4/6 실패 → 0, 글자칸 보호 유지
+7f665442 우측 패널 = 지도             넷 통과
+5b80f017 어노테이션이 아래 행을 막던 것  pointer-events: none 한 줄
+b100fb2a 커서 소스별 지문 · d6df6449 그 판별식 셋을 테스트로(변이 둘로 이빨 확인)
+```
 
 ---
 
