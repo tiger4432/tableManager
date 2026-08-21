@@ -1,5 +1,70 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 판정 요청 — 문자열 시각 «착지». 그리고 피커가 «넓어진» 것 (19:1x)
+
+```
+5ea23aaa  feat(ledger): read the time a varchar column holds, instead of refusing it
+          4 파일 · +32 / -5   (source_preparation · config_authoring · setup_registry · 그 체크포인트)
+```
+
+## 판별식 실측 — `dt_log` 의 세 철자
+```
+2026-08-09T00:00:00Z         -> 00:00:00+00:00      offset 0 «유지»
+2026-08-10T00:14:00+09:00    -> 00:14:00+09:00      명시 offset «유지»
+2026-05-11 00:00:00 (naive)  -> 00:00:00+09:00      선언 timezone 적용
+읽을 수 없는 문자열           -> 거절                 적재 시각으로 «대체 안 함»
+```
+🔴 **틀린 규칙이었다면 Z 값이 `+09:00` 으로 찍힙니다.** 거절 없이 9시간 밀린 원자가 쌓이는 자리고,
+`lot_event` 로만 봤으면 두 규칙이 «같은 답»을 내서 못 봤습니다. 총괄 지시대로 `dt_log` 로 갈랐습니다.
+
+## ⚠️ 판정 필요 — ②가 후보를 «전부»로 넓혔습니다
+```
+lot_event  시각 후보  0개(datetime 없음) -> 9개   실제 시각은 event_time «하나»
+dt_job                                  -> 15개
+```
+`string` 을 시각 후보에 넣으니 **모든 텍스트 컬럼이 시각 후보**가 됩니다. 읽기는 뚫렸는데
+**피커의 좁히는 기능이 사실상 사라졌습니다.** 「작은 글씨는 없느니만 못하다」와 같은 부류입니다.
+
+### 좁히려면 «층의 계약»이 바뀝니다 — 그래서 안 했습니다
+```
+좁히는 유일한 정직한 방법   컬럼 «값»을 표본으로 읽어 새 규칙으로 파싱되는지 본다
+그런데                      authoring_plan 은 «DB 를 안 받습니다» — 선언(catalog)만 받습니다
+                            column_stats 의 값 함수들은 전부 db 인자를 받고,
+                            config_authoring 은 그중 declared_unique_keys(순수) «하나»만 씁니다
+→ 좁히려면 작성 계획에 DB 손잡이를 새로 주어야 합니다. 최소 수정이 아니고, 판정 사안입니다
+```
+```
+갑  지금대로 둔다        읽기는 뚫렸고 후보는 넓다. 사람이 아는 컬럼을 고른다
+을  DB 표본으로 좁힌다    정확하지만 authoring_plan 계약이 바뀐다 (별도 라운드)
+병  이름 규칙으로 좁힌다   ✖ 하드코딩. 「다른 스키마에서 코드 0줄」 DoD 를 깬다
+```
+**을을 하려면 지시를 주십시오. 지금은 갑입니다.**
+
+## ⚠️ 스위트 상태 — 빨강 4개는 «총괄 라운드» 것입니다 (제 것 아님을 실측했습니다)
+```
+282 passed · 4 failed   모두 test_ledger_setup_boundary.py
+   test_existing_cursor_selects_only_physical_lot_event_columns
+   test_live_physical_batch_normalizes_then_uses_stage6_compiler_path
+   test_selected_execute_reuses_preview_candidates_and_existing_store_transaction
+   test_existing_other_snapshot_cursor_blocks_before_source_read
+```
+넷 다 `load_setup()` 으로 «라이브» 설정을 읽고 기댓값에 `txn_seq` 를 손으로 박아 뒀습니다.
+`txn_seq -> row_id` 판정이 그 기댓값을 무효로 만들었습니다.
+```
+286-초록 실행이 «끝난» 시각   17:46
+라이브 설정이 바뀐 시각        17:55   <- 그 초록은 이것을 못 봤다
+내 수정                        18:19
+결정적 확인   SNAPSHOT_COMPILER_VERSION 을 3으로 «되돌려» 돌려도 «똑같은 넷»이 똑같이 실패
+```
+🔴 **고치지 않았습니다 — `lot_event` 는 총괄 몫입니다.** 기댓값을 새 커서로 옮기면 됩니다.
+
+## 다음
+```
+총괄이 lot_event 를 흘리십시오. 이제 문자열 시각이 막지 않습니다
+그다음 제가 vocabulary 조합 전수표 (총괄 b71082f7 지시)
+```
+
+
 # 🔴 착수 전 멈춤 조건 답 + «지금 도는 backfill»에 대한 경고 (18:2x)
 
 ## 멈춤 조건: 「라이브 읽기 경로가 이미 변환하고 있나」 → **아니오. 진행합니다**
