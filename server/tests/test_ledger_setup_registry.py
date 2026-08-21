@@ -843,3 +843,90 @@ def test_mapper_group_by_columns_are_compiled_into_snapshot():
     mapper = compiled.mappers["input_rows"]
     assert mapper.unit_kind == "group_by"
     assert mapper.unit_columns == ("target_id",)
+
+
+def two_source_bundle():
+    """One pack shared by two sources, so a shared edit and a private edit are separable.
+
+    🔴 THE ISOLATION CLAIM NEEDS A BUNDLE WHERE THE TWO ANSWERS DIFFER.  A one-source
+    fixture cannot tell "only my own material moves me" from "nothing ever moves me";
+    both pass.  The second source reuses `input_rows` because a relation the fixture
+    plant does not declare is refused, and the point here is the closure, not the table.
+    """
+    raw = copy.deepcopy(logical_bundle())
+    second = copy.deepcopy(logical_bundle(source_name="other_rows")["sources"]["other_rows"])
+    second["relation"] = "input_rows"
+    raw["sources"]["other_rows"] = second
+    return raw
+
+
+def cursor_fingerprints(raw):
+    compiled = snapshot(raw)
+    return {
+        source_id: setup_registry_module.source_cursor_fingerprint(compiled, source_id)
+        for source_id in ("input_rows", "other_rows")
+    }
+
+
+def test_editing_one_sources_binding_leaves_the_other_sources_cursor_alone():
+    """The whole reason the per-source fingerprint exists.
+
+    Against the global `snapshot_sha256` this test cannot pass: that value covers every
+    registry, so editing either source moved both and a cursor was refused
+    (`cursor_snapshot_reset_required`) for a change that could not alter one of its atoms.
+    """
+    raw = two_source_bundle()
+    before = cursor_fingerprints(raw)
+
+    edited = copy.deepcopy(raw)
+    source = edited["sources"]["other_rows"]
+    source["bind"]["mappings"]["main_transition"]["bind"][
+        "subject"]["keys"]["input_id"]["column"] = "join_id"
+    source["map"]["input_columns"] = sorted(
+        {*source["map"]["input_columns"], "join_id"})
+    after = cursor_fingerprints(edited)
+
+    assert after["other_rows"] != before["other_rows"]
+    assert after["input_rows"] == before["input_rows"]
+
+
+def test_a_sources_own_edit_moves_its_own_cursor():
+    """The discriminator for the test above.
+
+    🔴 WITHOUT THIS ONE, "nothing ever moves" is indistinguishable from isolation --
+    a fingerprint that ignored the sources entirely would pass the isolation test
+    perfectly.  This is the sample on which the two candidate rules disagree.
+    """
+    raw = two_source_bundle()
+    before = cursor_fingerprints(raw)
+
+    edited = copy.deepcopy(raw)
+    source = edited["sources"]["input_rows"]
+    source["bind"]["mappings"]["main_transition"]["bind"][
+        "subject"]["keys"]["input_id"]["column"] = "join_id"
+    source["map"]["input_columns"] = sorted(
+        {*source["map"]["input_columns"], "join_id"})
+    after = cursor_fingerprints(edited)
+
+    assert after["input_rows"] != before["input_rows"]
+    assert after["other_rows"] == before["other_rows"]
+
+
+def test_editing_a_shared_predicate_moves_every_source_that_reaches_it():
+    """The closure is transitive, and erring SMALL is the dangerous direction.
+
+    A source that should have been refused and is not re-reads under a stale contract
+    silently; a source refused too often merely annoys.  Both fixtures reach `moves_to@1`
+    through the pack they share, so both must move -- and this is the assertion that
+    fails first if someone later narrows the closure to a source's own declarations.
+    """
+    raw = two_source_bundle()
+    before = cursor_fingerprints(raw)
+
+    edited = copy.deepcopy(raw)
+    predicate = edited["vocabulary"]["moves_to@1"]
+    predicate["object"]["qualifiers"]["optional"] = ["event_key", "reason"]
+    after = cursor_fingerprints(edited)
+
+    assert after["input_rows"] != before["input_rows"]
+    assert after["other_rows"] != before["other_rows"]
