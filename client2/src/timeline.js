@@ -8,6 +8,10 @@ import { countNav, ROUTES } from './effort_meter.js';
 
 // Feature 3: Load audit log history from API
 export async function loadHistory() {
+  // [2c] The audit table's header and legend are siblings of the `<ul>`, so `innerHTML = ''`
+  // on the list leaves them alone. ONE place decides whether they show, here rather than in
+  // each of the four tab handlers -- every switch calls this.
+  elements.timelineContainer?.classList.toggle('audit-table', state.activeHistoryTab === 'global');
   if (state.activeHistoryTab === 'global') {
     elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
     try {
@@ -203,6 +207,44 @@ export function createTimelineItemDom(log) {
 }
 
 // Create global timeline group list item DOM element
+/**
+ * The row's kind, as a pill.
+ *
+ * 🔴 DERIVED FROM THE BRANCH THAT ALREADY PICKS THE COLOUR, not from a new taxonomy. Mockup 2c
+ * names seven kinds (MANUAL/PASTE/INGEST/OVERWRITE/BATCH/DELETE/SYNC); the audit rows do not
+ * carry that distinction -- they carry `column_name`, `source_name` and `total_count`, which is
+ * the six-way split this file has always drawn in colour. Inventing the other seven would put a
+ * classification on screen that nothing computes.
+ */
+/**
+ * An absent value, in one glyph.
+ *
+ * `formatVal` writes 「비어있음」 / 「삭제됨」, which is right in the card timeline where there is
+ * room for a sentence. In a 150px cell those words crowd out the value that is actually there,
+ * and the mockup writes `—` for the same state. `formatVal` is UNCHANGED -- the Row tab and the
+ * transaction sub-list still read it -- because this is one surface's rendering, not a new rule
+ * about what absence means.
+ */
+function auditVal(value, isOld) {
+  if (value === null || value === undefined || value === '') return '—';
+  return formatVal(value, isOld);
+}
+
+function auditKind(group, baseLog, isSummary) {
+  if (isSummary) {
+    if (group.logs.every(log => log.column_name === 'DELETE')) return { label: 'DELETE', cls: 'kind-delete' };
+    if (group.logs.every(log => log.column_name === 'CREATE')) return { label: 'CREATE', cls: 'kind-create' };
+    return { label: 'BATCH', cls: 'kind-batch' };
+  }
+  const col = baseLog.column_name;
+  if (col === 'CREATE') return { label: 'CREATE', cls: 'kind-create' };
+  if (col === 'DELETE') return { label: 'DELETE', cls: 'kind-delete' };
+  if (col === 'ROW_UPDATE') return { label: 'AUTO', cls: 'kind-auto' };
+  return baseLog.source_name === 'user'
+    ? { label: 'MANUAL', cls: 'kind-manual' }
+    : { label: 'PARSER', cls: 'kind-parser' };
+}
+
 export function createGlobalTimelineItemDom(group) {
   const txId = group.transaction_id;
   const isSummary = group.total_count > 1;
@@ -223,8 +265,6 @@ export function createGlobalTimelineItemDom(group) {
   const user = baseLog.updated_by || 'system';
   const isUser = user !== 'system';
   li.classList.add(isUser ? 'user-change' : 'system-change');
-
-  const dateStr = new Date(baseLog.timestamp).toLocaleString();
 
   let displayTitle = '';
   let colorClass = '';
@@ -265,30 +305,40 @@ export function createGlobalTimelineItemDom(group) {
     displayTitle = `❌ [삭제됨] ` + displayTitle;
   }
 
-  const summaryColsText = group.summary_columns && group.summary_columns.length > 0
-    ? (group.summary_columns.length > 5 ? group.summary_columns.slice(0, 5).join(', ') + ` 외 ${group.summary_columns.length - 5}건` : group.summary_columns.join(', '))
-    : '';
+  // [2c] A ROW, not a card. The class names and the nesting roles are unchanged -- the click,
+  // expand and Tx-filter handlers below query `.timeline-card`, `.tx-tag`, `.filter-tx-btn` and
+  // `.expand-indicator`, and all four are still here. Only the layout changed.
+  li.classList.add('audit-row');
+  const kind = auditKind(group, baseLog, isSummary);
+  // `toLocaleTimeString()` writes 「오후 11:31:31」 in this locale, which does not fit 58px and
+  // wrapped the cell to two lines. The mockup's `09:31:12` is what a scan needs: fixed width,
+  // no marker to read past. Built from the parts rather than a locale option so the width is
+  // the same on every machine.
+  const stamp = new Date(baseLog.timestamp);
+  const timeStr = [stamp.getHours(), stamp.getMinutes(), stamp.getSeconds()]
+    .map(part => String(part).padStart(2, '0')).join(':');
+  const targetKey = isSummary
+    ? baseLog.table_name
+    : (baseLog.business_key || baseLog.row_id.slice(0, 8));
+  const targetCol = isSummary
+    ? `${group.total_count} ROWS`
+    : baseLog.column_name;
 
   li.innerHTML = `
-    <div class="timeline-time">${dateStr}</div>
-    <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}">
-      <div class="timeline-user">
-        <span class="user-tag">${user}</span>
-        <span class="source-tag">${baseLog.source_name || 'system'}</span>
+    <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}" title="${displayTitle}">
+      <div class="audit-cell audit-time">${timeStr}</div>
+      <div class="audit-cell audit-user">${user}</div>
+      <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
+      <div class="audit-cell audit-target">
+        <span class="audit-target-key">${targetKey}</span>
+        <span class="audit-target-col">${targetCol}</span>
       </div>
-      <div class="timeline-changes">
-        <div class="change-detail">
-          <span class="change-title-text">${displayTitle}</span>
-          ${summaryColsText ? `<div class="summary-columns-list">${summaryColsText}</div>` : ''}
-          ${!isSummary ? `
-          <div class="change-values">
-            <span class="val-old">${formatVal(baseLog.old_value, true)}</span>
-            <span class="val-arrow">→</span>
-            <span class="val-new">${formatVal(baseLog.new_value, false)}</span>
-          </div>` : ''}
-        </div>
+      <div class="audit-cell audit-change">
+        <span class="val-old">${auditVal(baseLog.old_value, true)}</span>
+        <span class="val-arrow">→</span>
+        <span class="val-new">${auditVal(baseLog.new_value, false)}</span>
       </div>
-      ${txId ? `<div class="tx-tag" data-tx-id="${txId}">Tx: ${txId.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${txId}" title="Filter table by this transaction">🔍</span> ${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : ''}
+      ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}">…${txId.slice(-8)} <span class="filter-tx-btn" data-tx-id="${txId}" title="Filter table by this transaction">🔍</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
     ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
   `;

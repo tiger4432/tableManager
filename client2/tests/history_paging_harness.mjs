@@ -108,7 +108,11 @@ const WANTED = [
   // the envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
   // actually paints an entry — stubbing the second would leave "the panel renders" asserted
   // against a stand-in rather than against the code that renders it.
-  'renderGlobalTimeline', 'createGlobalTimelineItemDom',
+  // `auditKind` and `auditVal` are what the 2c row calls while painting. Sliced in rather than
+  // stubbed for the same reason as the two above: a stub would let the row render against the
+  // harness's idea of a kind pill. Without them the slice throws and section H paints nothing --
+  // which is exactly how this harness reported the change.
+  'renderGlobalTimeline', 'createGlobalTimelineItemDom', 'auditKind', 'auditVal',
 ];
 
 function applyOnce(src, find, replace, label) {
