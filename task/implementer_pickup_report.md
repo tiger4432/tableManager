@@ -1,5 +1,64 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 판정 요청 — `packs` 라운드 «착지했습니다». 서버 재기동 부탁드립니다 (18:0x)
+
+```
+9b6c5da0  feat(ledger): a claim that only restates its predicate is a copy, so derive it
+          29 파일 · +1511 / -1700 · 총괄 훵크 포함 (메시지에 「+ catalog knows row_id is the PK (lead)」)
+          ⚠️ dt_map_derivation · map_alignment · map_overlay 셋은 «넣지 않았습니다» — 이 라운드 것이 아닙니다
+```
+하위 에이전트가 56분 무활동으로 멈춰 정지시켰고, **남은 것이 구현이 아니라 검증이라** 제가 마저 쟀습니다.
+
+## 받아들이는 시험 — 잰 것과 «못 잰 것»
+```
+1  마이그레이션 멱등      ✅  두 설정 모두 --check 에서 「unchanged (5 -> 5)」
+2  원자 전후 불변         ✅  test_ledger_setup_boundary 가 옛 수치를 «그대로» 못 박은 채 통과
+3  여섯 문장 → 여섯 술어  ✅  아래 표. 술어를 못 단 문장 0
+6  커서 판별식 셋         ✅  286 passed / 1 skipped / 0 failed
+7  술어가 칸을 깐다       ✅  has_wafer@1→slot · slot_map@1→from·to·wafer (선언과 «같은 이름»)
+8  object=none 은 target 없음  ✅  register@1 → target «없음». 「항상 다 깔기」로 도망가지 않았습니다
+9  optional 은 비워도 통과 ⚠️  «라이브에서 잴 수 없습니다» — 아래
+4  화면 거절 0 · N layers  ⛔  서버 재기동 대기
+5  폼만으로 새 소스 active ⛔  서버 재기동 대기
+```
+
+### 시험 3 실측
+```
+first_sight_holder → register@1      first_sight_item → register@1
+in_slot            → has_wafer@1     descent          → derived_from@1
+split_slot_carry   → slot_map@1      merge_slot_join  → slot_map@1
+(추가 2)  counted → has_netdie@1 · register → register@1     문장 8 / 술어 미부착 0
+```
+`descent` 의 bind 가 `subject·target·occurred_at` 입니다 — **lineage 개명이 착지했습니다.**
+`counted` 는 `value` 를 씁니다 — object=value 규칙도 착지했습니다.
+
+### 🔴 시험 9 는 «공허합니다» — 통과로 적지 않았습니다
+```
+라이브 설정의 optional qualifier 총 «0개»
+```
+비울 칸이 하나도 없으니 **라이브로는 그 시험이 아무것도 판별하지 못합니다.**
+그래서 `predicate_claim` 에 optional 을 «직접 먹여» 봤습니다:
+```
+required=[slot] optional=[lane]  →  lane 칸이 깔리고 required=False, slot 은 required=True
+                                     emit 도 `$lane?` / `$slot` 으로 갈린다
+```
+동작은 맞습니다. 다만 **라이브에 그 갈래를 지나는 선언이 0개**라는 사실을 함께 적습니다.
+
+### ⚠️ 딸린 관측 — 지금은 «닿을 수 없는» 자리 (수정 안 했습니다)
+```
+object.kind="none" 인데 qualifiers.required=[slot] 을 선언하면
+   roles 에는 slot 칸이 깔리고   emit 에는 qualifier 가 «통째로 없다»
+   → 채워도 나가지 않는 칸
+라이브 도달성: register@1 이 qualifier 를 선언하지 않아 «현재 0건»
+```
+🔴 **고치지 않았습니다** — 지시받은 범위 밖이고, 오늘 지운 것이 바로 「자유도 0인 칸」입니다.
+판정만 주시면 다음 라운드에 붙이겠습니다.
+
+## 부탁 — 서버를 올려 주십시오
+시험 4·5 는 화면이라 **16:15 기동 프로세스로는 못 잽니다**(이 라운드 코드가 아닙니다).
+올려 주시면 제가 직접 걷고 결과를 여기 적겠습니다. **재기동 전에는 완료라고 하지 않습니다.**
+
+
 # 🔴 판정 요청 — 총괄 훵크의 «주석 한 낱말»이 기존 가드를 깨고 있습니다 (17:5x)
 
 `packs` 라운드를 검수하려고 원장 테스트 10본을 돌렸습니다. **284 통과 / 2 실패**인데,
