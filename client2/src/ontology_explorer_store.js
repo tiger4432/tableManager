@@ -65,6 +65,16 @@ export const initialExplorerState = Object.freeze({
   // 지금 어디에 있나」. A form path, or `''` for the declaration's own row. Local only: it
   // is a fact about this screen, not about the snapshot.
   mapCursor: '',
+  // Which source declarations have been through a real batch, from the server. Mirrored
+  // like every other server fact: the screen never decides on its own that something has
+  // been verified.
+  verification: {},
+  // The last test run's own report, and whether one is in flight. Local: it is the
+  // ANSWER to a button press, not part of the compiled context, and it belongs to the
+  // source it was run for -- `source_id` is carried so a run's result can never be read
+  // beside a different declaration.
+  testRun: null,
+  testRunning: false,
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -165,6 +175,12 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         } : null),
         changes: p.changes || [],
         edgeChanges: p.edge_changes || [],
+        verification: p.verification || {},
+        // 🔴 A RESULT OUTLIVES ITS SUBJECT ONLY WHILE THE SUBJECT IS STILL SELECTED. The
+        // counts belong to one declaration, and leaving them up after the operator moves
+        // to another source would show `dt_job`'s 4 atoms under `lot_event`'s heading.
+        testRun: (state.testRun && p.selection?.canonical_id === state.testRun.source_id)
+          ? state.testRun : null,
         integrity: p.integrity || [],
         page: p.page || 1,
         total: p.total || 0,
@@ -269,6 +285,28 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       };
     case 'DRAFT_CLOSED':
       return { ...state, draft: null, editorText: '', dirty: false };
+    // 시험 실행. Three states and no fourth: asking, an answer, or a request that never
+    // reached the server. A run that came back REFUSED is an answer and lands in
+    // `testRun` like any other -- only a transport failure is an error, because only that
+    // one leaves nothing to read.
+    case 'TEST_RUN_STARTED':
+      return { ...state, testRunning: true, testRun: null };
+    case 'TEST_RUN_RECEIVED':
+      return { ...state, testRunning: false, testRun: action.result };
+    case 'TEST_RUN_FAILED':
+      return {
+        ...state,
+        testRunning: false,
+        testRun: {
+          source_id: action.sourceId,
+          status: 'refused',
+          rows_read: 0, molecules: 0, incomplete: 0, atoms: 0, sentences: [],
+          refusal: {
+            code: action.code || 'request_failed',
+            path: '', form_path: null, message: action.message,
+          },
+        },
+      };
     case 'AUTHORING_RECEIVED':
       return {
         ...state,

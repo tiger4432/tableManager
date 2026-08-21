@@ -1064,6 +1064,30 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         });
         restoreScroll(saved);
       }
+    } else if (action === 'test-run') {
+      // 🔴 THE SCREEN RUNS THE REAL THING ONCE, rather than growing a second judge.
+      // Measured 2026-08-21: the runtime refuses 85 ways, this screen refuses 57, and the
+      // two share ZERO code names -- so a declaration that passes every box here can and
+      // did die at backfill five times in one day. Nothing is copied here to close that
+      // gap; the server compiles one actual batch from real rows, writes nothing, and
+      // sends back what it produced or what stopped it.
+      const sourceId = target.dataset.value;
+      dispatch({ type: 'TEST_RUN_STARTED' });
+      try {
+        const result = await jsonRequest('/test-run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_id: sourceId }),
+        });
+        dispatch({ type: 'TEST_RUN_RECEIVED', result });
+        // Only a PASS changes what the tree says about this source, and only the server
+        // knows whether it did -- so the mirror is re-read rather than patched here.
+        if (result.status === 'passed') await readMirror();
+      } catch (error) {
+        dispatch({
+          type: 'TEST_RUN_FAILED', sourceId,
+          code: error?.detail?.code, message: errorMessage(error),
+        });
+      }
     } else if (action === 'create-draft') {
       try {
         const draft = await jsonRequest('/drafts', {

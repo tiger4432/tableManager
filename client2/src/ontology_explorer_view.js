@@ -703,6 +703,82 @@ function renderRaw(state) {
   return code;
 }
 
+// ------------------------------------------------------------------ 시험 실행
+//
+// 🔴 THE SCREEN RUNS THE REAL THING; IT DOES NOT JUDGE A SECOND TIME. Everything below
+// renders a server answer -- counts, sentence names, refusal sentences, refusal codes.
+// There is no code→wording table here and there must never be one: the runtime refuses 85
+// ways, this screen refuses 57, and the two share zero code names, so any copy made here
+// would be a third vocabulary drifting away from both.
+
+/** What the server says about THIS source's declaration having actually run. */
+function verificationOf(state) {
+  if (state.selection?.kind !== 'source_plan') return null;
+  return state.verification?.[state.selection.canonical_id] || null;
+}
+
+/** One refusal line: the server's sentence, the server's code, and the box if it maps. */
+function renderTestRunRefusal(refusal) {
+  const box = h('div', 'oe-testrun-refusal');
+  box.title = refusal.code;
+  box.dataset.code = refusal.code;
+  box.append(h('span', 'oe-testrun-why', refusal.message));
+  // 🔴 THE PATH IS SHOWN EITHER WAY. When the server could place it on the form it is a
+  // door -- pressing it opens the fold and scrolls the row into view, the same `map-goto`
+  // the right-hand map uses. When it could not, the raw path is still printed, because a
+  // refusal whose location is unnamed is still worth more than a refusal with nowhere.
+  if (refusal.form_path) {
+    box.append(button(refusal.form_path, 'map-goto', refusal.form_path,
+                      'oe-testrun-goto'));
+  } else if (refusal.path) {
+    box.append(h('code', 'oe-testrun-path', refusal.path));
+  }
+  return box;
+}
+
+function renderTestRun(state) {
+  const run = state.testRun;
+  if (!run && !state.testRunning) return null;
+  const box = h('section', 'oe-testrun');
+  const head = h('div', 'oe-testrun-head');
+  head.append(h('span', 'oe-testrun-title', '시험 실행'));
+  if (state.testRunning) {
+    head.append(h('span', 'oe-testrun-note', '실행 중'));
+    box.append(head);
+    return box;
+  }
+  box.dataset.status = run.status;
+  if (run.relation) head.append(h('code', 'oe-testrun-relation', run.relation));
+  // 🔴 THE THREE NUMBERS ARE SAID EVEN WHEN IT REFUSED. "행 0" is an answer, and so is
+  // "행 142, 분자 0" -- knowing the rows arrived and nothing was built from them is a
+  // different problem from the table being empty, and the counts are what tell them apart.
+  head.append(h('span', 'oe-testrun-count',
+                `행 ${run.rows_read} · 분자 ${run.molecules} · 원자 ${run.atoms}`));
+  if (run.incomplete) head.append(h('span', 'oe-testrun-note', `미완 ${run.incomplete}`));
+  box.append(head);
+  if (run.refusal) box.append(renderTestRunRefusal(run.refusal));
+  if (run.status === 'empty') {
+    box.append(h('div', 'oe-testrun-why', '이 테이블에서 읽은 행이 없습니다.'));
+  }
+  if (run.sentences?.length) {
+    const list = h('div', 'oe-testrun-sentences');
+    for (const row of run.sentences) {
+      const line = h('div', 'oe-testrun-sentence');
+      line.append(h('span', 'oe-testrun-name', row.sentence));
+      line.append(h('code', 'oe-testrun-predicate', row.predicate));
+      line.append(h('span', 'oe-testrun-atoms', String(row.atoms)));
+      list.append(line);
+    }
+    box.append(list);
+  }
+  // 🔴 SAID EVERY TIME, BECAUSE IT IS TRUE EVERY TIME. The run compiles the declaration
+  // that is IN THE FILE -- on this screen a save is the write to the file, so a saved
+  // draft is what runs, and text still sitting in the editor is not.
+  box.append(h('small', 'oe-testrun-note',
+               '쓰기 없음 · 커서 이동 없음 · 저장된 선언 기준'));
+  return box;
+}
+
 function renderInspector(state) {
   const article = h('article', 'oe-panel');
   article.setAttribute('aria-live', 'polite');
@@ -711,7 +787,23 @@ function renderInspector(state) {
   title.append(h('h1', '', state.selection.canonical_id), h('p', '', `${state.selection.kind} · ${state.selection.config_path}`));
   const actions = h('div', 'oe-head-actions');
   const mode = state.viewContext?.mode || 'active';
-  actions.append(h('span', 'oe-status oe-status--active', `● ACTIVE · ${state.selection.compile_status}`));
+  // 🔴 DECLARED IS NOT THE SAME AS RUN, AND ONLY A SOURCE CAN SAY SO. Every other kind
+  // keeps the badge it had. A source that no batch has ever been compiled from is 미검증 --
+  // it is still saved, still declared, still executed by the backfill exactly as before;
+  // what it is not is something anybody has seen produce an atom.
+  const verified = verificationOf(state);
+  if (verified && verified.status !== 'verified') {
+    actions.append(h('span', 'oe-status oe-status--unverified',
+                     verified.stale ? '● 미검증 · 선언 변경됨' : '● 미검증'));
+  } else {
+    actions.append(h('span', 'oe-status oe-status--active', `● ACTIVE · ${state.selection.compile_status}`));
+  }
+  if (state.selection.kind === 'source_plan') {
+    const run = button('시험 실행', 'test-run', state.selection.canonical_id,
+                       'oe-edit-action');
+    run.disabled = Boolean(state.testRunning);
+    actions.append(run);
+  }
   if (state.draft) {
     actions.append(h('span', `oe-status oe-status--${state.draft.lifecycle_status}`, `◇ DRAFT · ${state.draft.lifecycle_status}`));
     const activeButton = button('Active 보기', 'view-active', '', `oe-mode-action ${mode !== 'draft_preview' ? 'is-current' : ''}`);
@@ -726,6 +818,10 @@ function renderInspector(state) {
   }
   head.append(title, actions);
   article.append(head);
+  // Above the tabs, so the answer stays on screen whichever tab the operator moves to
+  // next -- the refusal names a box, and the box is on 작성.
+  const testRun = renderTestRun(state);
+  if (testRun) article.append(testRun);
 
   const tabs = h('div', 'oe-tabs');
   tabs.setAttribute('role', 'tablist');

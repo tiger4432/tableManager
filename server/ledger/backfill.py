@@ -84,6 +84,12 @@ logger = logging.getLogger("Ledger.Backfill")
 
 DEFAULT_FETCH_ROWS = 2000
 
+#: One page for the write-free test run behind the setup screen. Small on purpose: the
+#: screen asks "does this declaration work at all", and that answer arrives in the first
+#: page of a table with ten million rows exactly as it does in the first page of one with
+#: forty. `DEFAULT_FETCH_ROWS` belongs to a run that intends to sweep the whole table.
+PREVIEW_FETCH_ROWS = 200
+
 
 def _bootstrap_path():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -301,7 +307,6 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         execute_selected_cursor_batch,
     )
     from .setup_registry import cursor_translator_version
-    from .source_preparation import VerifiedJoinBatchReader
     from .store import LedgerStore
 
     if reset_cursor or start_from is not None:
@@ -313,13 +318,6 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
     if not isinstance(fetch_rows, int) or isinstance(fetch_rows, bool) or fetch_rows < 1:
         raise LedgerSetupError(
             "invalid_fetch_rows", "fetch_rows", "must be a positive integer")
-
-    class NoJoinReader(VerifiedJoinBatchReader):
-        def read_chunk(self, descriptor, keys):
-            raise LedgerSetupError(
-                "verified_join_reader_required", "source_preparation.join_reader",
-                "selected source inherits a verified join but no reader was supplied",
-            )
 
     plan = setup.snapshot.source_plans[source]
     if plan.driver.preparation.verified_join_descriptors:
@@ -433,7 +431,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
                     f"{repeated[:5]}",
                 )
             executed = execute_selected_cursor_batch(
-                setup, source, frame, next_cursor, NoJoinReader(), store,
+                setup, source, frame, next_cursor, _no_join_reader(), store,
                 known_registrations=known,
             )
             written = executed.store_result
@@ -450,6 +448,95 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         return result
     finally:
         read.close()
+
+
+def _no_join_reader():
+    """The join reader for a source that inherits no verified join: it refuses if asked.
+
+    Built here rather than declared at module scope because `LedgerSetupError` lives in
+    `.setup`, which imports `runtime_v2`, which imports THIS module -- every import in
+    this file is lazy for that reason.  One factory rather than one class per caller: the
+    execute path and the write-free preview path must refuse an unsupplied reader with the
+    SAME code, or the screen and the backfill disagree about what happened.
+    """
+    from .setup import LedgerSetupError
+    from .source_preparation import VerifiedJoinBatchReader
+
+    class NoJoinReader(VerifiedJoinBatchReader):
+        def read_chunk(self, descriptor, keys):
+            raise LedgerSetupError(
+                "verified_join_reader_required", "source_preparation.join_reader",
+                "selected source inherits a verified join but no reader was supplied",
+            )
+
+    return NoJoinReader()
+
+
+def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
+    """Compile ONE batch of this source's FIRST page. WRITES NOTHING, MOVES NO CURSOR.
+
+    Returns `(rows_read, preview_or_None)`; the preview is `None` only when the relation
+    handed back no rows at all, which is an ANSWER ("read 0 rows") and not a failure.
+
+    🔴 THE FIRST PAGE, NEVER THE CURSOR. A source being authored has no cursor row, and a
+    source that has one would have this read start past everything it has already done --
+    so a screen asking "does my declaration work" would be answered by an empty page on
+    exactly the sources that have run. Reading from the start costs one indexed page and
+    is the only position that answers the question for a new source and an old one alike.
+    Nothing here reads or writes `ledger_cursor`.
+
+    🔴 `known_registrations` IS THE EMPTY SNAPSHOT WHEN A PROBE IS DECLARED, and that is a
+    decision rather than a shortcut. Passing the LIVE set makes every `register` sentence
+    report zero on a source that has already been backfilled -- measured on `lot_event`:
+    1,173 atoms with the live set against 1,323 with the empty one, the difference being
+    150 registrations the ledger already holds. A sentence reporting zero because the work
+    is done reads identically to a sentence that emits nothing, which is the silent hole
+    this whole surface exists to remove. The empty snapshot answers what the DECLARATION
+    says about these rows.
+
+    🔴 `None` WHEN NO PROBE IS DECLARED, and that is NOT the same as empty. `None` is what
+    makes `runtime_v2._filtered_event_atoms` refuse with `registration_context_required`
+    for a source that emits `register` without declaring how to look one up -- one of the
+    five refusals `lot_event` met at backfill while the screen was green. Substituting an
+    empty set here would swallow it.
+    """
+    from .setup import LedgerSetupError, preview_selected_cursor_batch
+
+    plan = setup.snapshot.source_plans[source]
+    if plan.driver.preparation.verified_join_descriptors:
+        # Same refusal, same code, as the backfill entry: this path has no registered
+        # read-only join reader either, and inventing one for a preview would report a
+        # pass for a declaration the run cannot execute.
+        raise LedgerSetupError(
+            "verified_join_reader_required", "source_preparation.join_reader",
+            "the test run requires a registered read-only join reader",
+        )
+    read = engine.raw_connection()
+    try:
+        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
+        complete, dropped = _cut_on_group_boundary(
+            rows, fetch_rows, key=_page_key(plan))
+        # A page that is ENTIRELY one group cannot be cut down; fetch that group whole,
+        # exactly as `walk_group_pages` does, so a molecule is never previewed in halves.
+        if not complete and dropped is not None:
+            complete = _fetch_v2_lineage_group(read, plan, dropped)
+    finally:
+        # Every statement above is a SELECT; ending the transaction rather than leaving it
+        # open is the same lock boundary the run keeps before it writes.
+        read.rollback()
+        read.close()
+    if not complete:
+        return 0, None
+    frame = _v2_frame(complete)
+    subjects = _v2_registration_subjects(plan, frame)
+    known = None if subjects is None else ()
+    ordered = frame.sort_values(list(plan.driver.cursor_columns))
+    last = ordered.iloc[-1]
+    cursor_value = {column: last[column] for column in plan.driver.cursor_columns}
+    preview = preview_selected_cursor_batch(
+        setup, source, frame, cursor_value, _no_join_reader(),
+        known_registrations=known)
+    return len(frame), preview
 
 
 def _v2_frame(rows):

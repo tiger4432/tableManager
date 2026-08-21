@@ -14,6 +14,7 @@ from .column_stats import (
 from .config_authoring import authoring_plan, closed_lists
 from .config_drafts import OntologyDraftStore
 from .config_explorer import (
+    AUTHORABLE_SECTION_NAMES,
     ConfigExplorerError,
     DeletionPlan,
     ExplorerIndex,
@@ -35,6 +36,36 @@ from .setup_bundle import (
 )
 
 
+def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
+    """How many atoms each SENTENCE produced, in this batch.
+
+    🔴 GROUPED ON `derivation`, WHICH IS THE SENTENCE. `compile_role_frame` writes
+    `derivation = row["sentence"]` onto every atom it builds, so the attribution is the
+    compiler's own and nothing here has to re-walk the RoleFrame or re-read the profile.
+    Counted AFTER `_filtered_event_atoms`, so a `register` the batch itself deduplicated
+    is not counted twice -- these are the atoms an execution would hand the gate.
+
+    🔴 EVERY DECLARED SENTENCE IS LISTED, INCLUDING THE ONES THAT SAID NOTHING. A sentence
+    that produced no atom is the hole this whole surface exists to find, and leaving it out
+    of the list is the one way to make it invisible again -- the reader would have to hold
+    the declaration in their head and notice a name missing. So the declared sentences are
+    seeded at zero from the Profile and the counts are laid over them; a `0` is a row, not
+    an absence.
+    """
+    counts: dict[str, int] = {}
+    predicates: dict[str, str] = {}
+    for sentence, mapping in getattr(plan.profile, "mappings", {}).items():
+        counts[str(sentence)] = 0
+        predicates[str(sentence)] = str(
+            getattr(mapping, "predicate_id", "") or "").rsplit("@", 1)[0]
+    for atom in preview.candidate_semantics:
+        sentence = str(atom.get("derivation") or "")
+        counts[sentence] = counts.get(sentence, 0) + 1
+        predicates.setdefault(sentence, str(atom.get("predicate") or ""))
+    return [{"sentence": sentence, "predicate": predicates[sentence],
+             "atoms": counts[sentence]} for sentence in sorted(counts)]
+
+
 class OntologyExplorerService:
     def __init__(
         self,
@@ -49,6 +80,11 @@ class OntologyExplorerService:
         self.config_root = Path(config_root)
         self.draft_store = OntologyDraftStore(
             draft_root or self.config_root.parent / "backup" / "ontology_drafts")
+        #: Which source declarations have been through a real batch, and against WHICH
+        #: text.  Beside the drafts rather than inside `ledger_config.json`: a test result
+        #: is not part of the declaration, and writing it there would make every run a
+        #: rewrite of the file somebody is editing.
+        self.test_run_path = self.draft_store.root / "test_runs.json"
         self._setup_loader = setup_loader
         self._convergence_probe = convergence_probe or (
             lambda expected: {"ontology-explorer-api": expected})
@@ -285,6 +321,10 @@ class OntologyExplorerService:
         # everything from loading, and hiding it among per-declaration tags sends a person
         # to fix declarations while the cause sits in another layer.
         payload["config_problems"] = list(self._config_level)
+        # 🔴 WHICH SOURCES HAVE ACTUALLY RUN, read off the ACTIVE index even in draft
+        # preview. A test run is a fact about the text that is in the file; reporting it
+        # against a preview snapshot would let an unsaved edit inherit the last run's pass.
+        payload["verification"] = self._verification_view(active_index)
         # 🔴 AN UNREAD DECLARATION MUST STILL BE IN THE LIST. The resolver drops it from the
         # bundle, so `build_explorer_index` never sees it and the tree -- which renders
         # `items` -- would not show it at all. That is the opposite of what was asked for:
@@ -492,6 +532,184 @@ class OntologyExplorerService:
             combination_uniqueness(db, relation, list(combination))
             if combination else None)
         return payload
+
+    # ------------------------------------------------------------------ the test run
+    #
+    # 🔴 THIS IS NOT A SECOND VALIDATOR, AND THE DIFFERENCE IS THE WHOLE POINT.
+    #
+    # Measured 2026-08-21: the runtime can refuse 85 distinct ways, the authoring screen
+    # refuses 57 ways, and the two sets share ZERO code names. So a declaration passes the
+    # form and dies at backfill -- `lot_event` did it five times in one day (dead cursor,
+    # business_key mismatch, missing identity, string time, missing registration_probe),
+    # every one of them green on screen and red on execution. Porting those 85 codes into
+    # form validation would build a third vocabulary to drift; `main.py`'s ledger admin
+    # block already says so ("the server's structure, not the screen's discipline").
+    #
+    # The cure is that the screen RUNS THE REAL THING once: the same preparers, the same
+    # mappers, the same compiler, the same gate-shaped candidates -- over real rows, with
+    # no write of any kind. Whatever refuses, refuses HERE, in its own words.
+
+    #: What a source is until a batch has actually been compiled from its rows.
+    UNVERIFIED = "unverified"
+
+    def test_run(self, engine: Any, *, source_id: str) -> dict[str, Any]:
+        """Run one write-free batch for `source_id` and report what it produced.
+
+        Never raises for a declaration problem -- a refusal is the ANSWER this endpoint
+        exists to deliver, and a 400 with one sentence would put it somewhere the form
+        cannot point at a box. Only an id that names nothing at all is refused as a
+        request error, because there is no declaration for the answer to be about.
+        """
+        from . import backfill
+
+        setup, index, _ = self.active()
+        key = f"source_plan|{source_id}"
+        node = index.nodes.get(key)
+        declared = source_id in getattr(setup.snapshot, "source_plans", {})
+        if not declared and key not in self._invalid:
+            raise ConfigExplorerError(
+                "unknown_source", "source_id",
+                f"no source declaration named {source_id!r}")
+        result: dict[str, Any] = {
+            "source_id": source_id,
+            "target_key": key,
+            "definition_hash": node.definition_hash if node is not None else None,
+            "snapshot_hash": index.snapshot_hash,
+            "ran_at": datetime.now(timezone.utc).isoformat(),
+            "relation": (setup.snapshot.source_plans[source_id].relation
+                         if declared else None),
+            "fetch_rows": backfill.PREVIEW_FETCH_ROWS,
+            "rows_read": 0,
+            "molecules": 0,
+            "incomplete": 0,
+            "atoms": 0,
+            "sentences": [],
+            "refusal": None,
+            "status": self.UNVERIFIED,
+        }
+        # 🔴 A DECLARATION THAT DID NOT LOAD IS ITS OWN ANSWER. It is not in the compiled
+        # snapshot, so there is nothing to run -- and the reason it was dropped is already
+        # measured. Reporting "unknown source" here would send the operator looking for a
+        # missing name while the real refusal sits in `invalid`.
+        if not declared:
+            reasons = self._invalid[key]["reasons"]
+            result["refusal"] = self._test_run_refusal(
+                reasons[0] if reasons else {
+                    "code": "declaration_unread", "path": key,
+                    "message": "이 선언은 아직 읽히지 않아 실행할 수 없습니다"})
+            result["status"] = "refused"
+            return result
+        try:
+            rows_read, preview = backfill.preview_first_batch(engine, setup, source_id)
+        except Exception as exc:                       # noqa: BLE001 - see below
+            # 🔴 EVERY EXCEPTION, NOT A LIST OF CLASSES. Nine refusal classes reach this
+            # call today and a tenth arrives with the next grammar; a psycopg error from a
+            # table that is not there is just as much of an answer. `_test_run_refusal`
+            # keeps the structured code/path/message when the exception carries one and
+            # falls back to the class name and `str(exc)` when it does not -- raw beats
+            # silence, and a 500 on this route is silence with extra steps.
+            result["refusal"] = self._test_run_refusal(exc)
+            result["status"] = "refused"
+            return result
+        result["rows_read"] = rows_read
+        if preview is None:
+            # "read 0 rows" IS the result. It is not a pass either: a declaration nothing
+            # was compiled from has not been shown to work.
+            result["status"] = "empty"
+            return result
+        result["molecules"] = preview.molecule_count
+        result["incomplete"] = preview.incomplete_count
+        result["atoms"] = preview.atom_count
+        result["sentences"] = _atoms_per_sentence(
+            preview, setup.snapshot.source_plans[source_id])
+        result["status"] = "passed"
+        self._record_test_run(result)
+        return result
+
+    @staticmethod
+    def _test_run_refusal(source: Any) -> dict[str, Any]:
+        """One refusal, with the form path it lands on WHEN THERE IS ONE.
+
+        🔴 THE PATH IS MAPPED, NEVER INVENTED. Snapshot-born refusals already address the
+        form (`bundle.sources.<id>.bind.mappings.<sentence>`), and the driver's own
+        refusals address the same tree one prefix short (`sources.<id>.read.cursor`). Those
+        two are turned into a form path. Everything else -- `cursor_value`,
+        `known_registrations`, `role_frame.rows[0].roles.subject` -- keeps `form_path`
+        empty and is shown RAW, because a guessed box is worse than an unplaced sentence.
+        """
+        if isinstance(source, Mapping):
+            code = str(source.get("code") or "")
+            path = str(source.get("path") or "")
+            message = str(source.get("message") or "")
+        else:
+            code = str(getattr(source, "code", "") or type(source).__name__)
+            path = str(getattr(source, "path", "") or "")
+            message = str(getattr(source, "message", "") or str(source))
+        head = path.split(".", 1)[0].split("[", 1)[0]
+        form_path = (
+            path if path.startswith("bundle.")
+            else f"bundle.{path}" if head in AUTHORABLE_SECTION_NAMES
+            else None)
+        return {"code": code, "path": path, "message": message,
+                "form_path": form_path}
+
+    def _test_runs(self) -> dict[str, Any]:
+        try:
+            stored = json.loads(self.test_run_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return stored.get("sources") or {} if isinstance(stored, Mapping) else {}
+
+    def _record_test_run(self, result: Mapping[str, Any]) -> None:
+        """Remember a PASS, against the exact declaration text that passed.
+
+        Keyed by `definition_hash` so the record dies with the edit that invalidates it:
+        change one field of the source and the stored hash stops matching, which is the
+        difference between "this declaration ran" and "something with this name ran once".
+        """
+        with self._lock:
+            sources = self._test_runs()
+            sources[str(result["source_id"])] = {
+                key: result[key] for key in (
+                    "definition_hash", "snapshot_hash", "ran_at", "relation",
+                    "rows_read", "molecules", "incomplete", "atoms", "sentences")
+            }
+            self.test_run_path.parent.mkdir(parents=True, exist_ok=True)
+            self.test_run_path.write_text(
+                json.dumps({"version": 1, "sources": sources},
+                           ensure_ascii=False, indent=2, sort_keys=True) + chr(10),
+                encoding="utf-8")
+
+    def _verification_view(self, index: ExplorerIndex) -> dict[str, Any]:
+        """Per source declaration: has THIS text been run, and what did it produce.
+
+        🔴 DECLARED IS NOT ACTIVE ANY MORE, and only for sources. `setup.py` says
+        "declaration IS activation" about whether a source RUNS, and that stays true --
+        this changes nothing about execution and nothing about saving. It answers a
+        different question, the one the operator was answering by hand at backfill: has
+        anybody ever seen this declaration produce an atom.
+        """
+        stored = self._test_runs()
+        out: dict[str, Any] = {}
+        for key, node in index.nodes.items():
+            if not key.startswith("source_plan|"):
+                continue
+            record = stored.get(node.canonical_id)
+            current = bool(record) and record.get(
+                "definition_hash") == node.definition_hash
+            out[node.canonical_id] = {
+                "target_key": key,
+                "status": "verified" if current else self.UNVERIFIED,
+                "ran_at": record.get("ran_at") if record else None,
+                "rows_read": record.get("rows_read") if current else None,
+                "molecules": record.get("molecules") if current else None,
+                "atoms": record.get("atoms") if current else None,
+                # A run that happened against DIFFERENT text is not a pass, and saying so
+                # is not the same as saying nothing ever ran -- the operator needs to know
+                # their edit is what put the badge back.
+                "stale": bool(record) and not current,
+            }
+        return out
 
     def authoring_schema(self) -> dict[str, Any]:
         """Every closed list the authoring screen may offer.

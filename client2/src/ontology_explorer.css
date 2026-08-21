@@ -1016,3 +1016,72 @@
 #ontology-explorer-root .oe-search {
   font-family: var(--oe-font-mono); font-size: 11.5px; padding: 5px 9px; min-height: 0;
 }
+
+/* --- 시험 실행: 선언이 실제 행에서 무엇을 냈는가 -------------------------------- */
+/* Between the title and the tabs, so the answer survives a tab change -- the refusal
+   points at a box that lives on 작성. Bordered top and bottom rather than boxed: it is a
+   band of this panel, not a new area. */
+#ontology-explorer-root .oe-status--unverified { color: var(--oe-warn); }
+#ontology-explorer-root .oe-testrun {
+  display: flex; flex-direction: column; gap: 6.8px;
+  padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line);
+  background: var(--oe-surface-2);
+}
+#ontology-explorer-root .oe-testrun[data-status="refused"] {
+  border-left: 3px solid var(--oe-danger, #c0392b);
+}
+#ontology-explorer-root .oe-testrun[data-status="passed"] {
+  border-left: 3px solid var(--oe-ok);
+}
+#ontology-explorer-root .oe-testrun[data-status="empty"] {
+  border-left: 3px solid var(--oe-warn);
+}
+#ontology-explorer-root .oe-testrun-head {
+  display: flex; align-items: baseline; gap: 10.2px; flex-wrap: wrap;
+}
+#ontology-explorer-root .oe-testrun-title {
+  font-family: var(--oe-font-head); font-weight: 600; font-size: 14px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+#ontology-explorer-root .oe-testrun-count {
+  font-family: var(--oe-font-mono); font-size: 13px; color: var(--oe-text);
+}
+#ontology-explorer-root .oe-testrun-relation,
+#ontology-explorer-root .oe-testrun-path {
+  font-family: var(--oe-font-mono); font-size: 11.5px; color: var(--oe-ink-meta);
+  overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-testrun-note { font-size: 11px; color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-testrun-refusal {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
+}
+#ontology-explorer-root .oe-testrun-why {
+  font-size: 13px; color: var(--oe-text); overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-testrun-goto {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font-family: var(--oe-font-mono); font-size: 11.5px; color: var(--oe-accent);
+  text-decoration: underline; overflow-wrap: anywhere; text-align: left;
+}
+/* One line per sentence: the name, what it utters, and how many it made. The count is
+   the column an operator scans, so it is last and monospaced -- a sentence sitting at 0
+   is the hole, and it has to be findable without reading the names. */
+#ontology-explorer-root .oe-testrun-sentences {
+  display: flex; flex-direction: column; gap: 1.7px;
+  max-height: 190px; overflow: auto;
+}
+#ontology-explorer-root .oe-testrun-sentence {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10.2px; align-items: baseline; padding: 1.7px 0;
+}
+#ontology-explorer-root .oe-testrun-name {
+  font-family: var(--oe-font-mono); font-size: 12px; overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-testrun-predicate {
+  font-family: var(--oe-font-mono); font-size: 12px; color: var(--oe-accent);
+  overflow-wrap: anywhere;
+}
+#ontology-explorer-root .oe-testrun-atoms {
+  font-family: var(--oe-font-mono); font-size: 12px; font-weight: 600;
+  text-align: right; font-variant-numeric: tabular-nums;
+}

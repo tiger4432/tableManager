@@ -118,6 +118,27 @@ def deletion_preview(
         raise _refusal(exc) from exc
 
 
+@router.post("/test-run", dependencies=[Depends(require_admin_token)])
+def test_run(payload: dict[str, Any] = Body(...)):
+    """Run ONE real batch for a declared source and report what it produced.
+
+    🔴 WRITES NOTHING AND MOVES NO CURSOR -- it stops one step before the gate, so no atom
+    and no `ledger_cursor` row is touched. It is a POST rather than a GET because it costs
+    a page read and a full compile, not because it changes anything.
+
+    Behind the ordinary admin token for the same reason `/columns` is: it is an expensive
+    READ. It executes only the trusted implementations the snapshot already names, which
+    is exactly what the backfill executes.
+    """
+    from database.database import engine
+
+    try:
+        return _service.test_run(
+            engine, source_id=str(payload.get("source_id", "")))
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.post("/drafts", dependencies=[Depends(require_admin_token_strict)])
 def create_draft(payload: dict[str, Any] = Body(...)):
     try:
