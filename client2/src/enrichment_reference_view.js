@@ -1,6 +1,10 @@
 import { API_BASE } from './config.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
+// The ONE TSV implementation in this codebase. Pure: no DOM, no module state, no
+// clipboard API — which is exactly why importing it does not drag the app graph in
+// behind it the way importing `clipboard.js` would.
+import { serializeTsv } from './tsv.js';
 
 let rulesPromise = null;
 let activeRule = null;
@@ -184,6 +188,56 @@ function installSelectionKeys() {
   // would otherwise never end, and the next hover would keep extending a range the operator
   // let go of.
   document.addEventListener('mouseup', () => { dragging = false; });
+
+  // ── [2b Phase 3.3] Copy ────────────────────────────────────────────────────────────────
+  //
+  // WHY THIS MODULE DOES NOT IMPORT `clipboard.js`. That module pulls `grid.js`, `ui.js` and
+  // `effort_meter.js` behind it, none of which this panel needs — it already has the three it
+  // does need (`config`, `state`, `dom`). The constraint is about which way the dependency
+  // points, NOT about avoiding reuse: the serializer below IS the shared one, and the
+  // header toggle IS the grid's own control.
+  //
+  // `serializeTsv` from `tsv.js`, never a second TSV writer. That module is the single
+  // implementation the clipboard path and the company-form round trip share, and its quoting
+  // is the part that is easy to get wrong — a value holding a tab or a newline has to survive
+  // the round trip rather than be flattened into spaces.
+  //
+  // `e.clipboardData`, never `navigator.clipboard`: production is plain-HTTP, a non-secure
+  // context where that object is simply undefined. `scripts/check_clipboard_convention.mjs`
+  // enforces this at prebuild.
+  //
+  // 🔴 `clipboard.js`'s own document-level `copy` handler ALREADY steps aside for this panel
+  // (`e.target.closest('#reference-view')`), added when the panel was a native-text surface.
+  // It is still exactly the guard this needs, so nothing was added there — a second guard
+  // saying the same thing is how two of them later disagree.
+  document.addEventListener('copy', event => {
+    const panel = elements.referenceView;
+    if (!selection || !panel || !panel.contains(document.activeElement)) return;
+    const rect = selectionRect();
+    const table = elements.referenceViewContent
+      ?.querySelectorAll('.reference-view-table')[selection.viewIndex];
+    if (!rect || !table) return;
+
+    const matrix = [];
+    // The grid's OWN toggle, not a second one. Two switches meaning the same thing is how an
+    // operator ends up with headers in one surface and not the other.
+    if (elements.copyHeaderToggle?.checked) {
+      const heads = [...table.querySelectorAll('thead th')];
+      matrix.push(heads
+        .filter(th => th.dataset.column !== undefined)
+        .slice(rect.c0, rect.c1 + 1)
+        .map(th => th.dataset.column));
+    }
+    for (let row = rect.r0; row <= rect.r1; row++) {
+      const line = [];
+      for (let col = rect.c0; col <= rect.c1; col++) {
+        line.push(table.querySelector(`td[data-row="${row}"][data-col="${col}"]`)?.textContent ?? '');
+      }
+      matrix.push(line);
+    }
+    event.clipboardData.setData('text/plain', serializeTsv(matrix));
+    event.preventDefault();
+  });
   panel.addEventListener('keydown', event => {
     if (!selection || !event.shiftKey) return;
     const delta = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
@@ -254,6 +308,10 @@ function render(results) {
         // The number is the paste order, so it belongs on the column that will be pasted.
         // Without it the reordering is unexplained and the operator has to trust it.
         th.textContent = ordinal ? `${ordinal} ${column}` : column;
+        // The BARE name, kept beside the decorated label. A copy with headers must carry
+        // `dt_lot`, not `① dt_lot` — the ordinal is this screen's explanation of paste order
+        // and means nothing in the cell you paste into.
+        th.dataset.column = column;
         if (ordinal) th.className = 'reference-view-fill';
         header.appendChild(th);
       });
