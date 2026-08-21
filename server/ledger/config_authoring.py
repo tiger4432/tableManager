@@ -1256,11 +1256,37 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             )
         elif unit == "group":
             group_by = list(_listed(driver.get("group_by")))
+            # 🔴 A DEFAULT ONLY WHERE THE FILE SAYS NOTHING, AND THAT IS WHY IT CANNOT PAINT
+            # A LEGAL DECLARATION RED.  `group_by` equals `identity` on both live sources,
+            # and the validator binds them ONE WAY ONLY -- `invalid_driver: group_by columns
+            # must be included in identity` -- so a strict SUBSET is legal and common.
+            # Deriving unconditionally would compare the whole of `identity` against such a
+            # declaration and call it a conflict, which is the `input_columns` mistake the
+            # `comparison` docstring was written for.  A declared `group_by` therefore stays
+            # exactly as answered as it was; only the empty box gets filled.
+            #
+            # 🔴 THE DISPOSITION IS STATED RATHER THAN MEASURED, and it has to be.  This row
+            # only exists while the bundle REFUSES (`group unit requires at least one
+            # group_by column`), so `_dispositions` is in its `unmeasured` branch -- and
+            # `editableFor` hands a box to `default_overridable` and to nothing else.
+            # Measured 2026-08-22 by rendering the real plan through the real view: with the
+            # word, the list editor and the `identity` chip both survive; with `unmeasured`
+            # they are replaced by the skeleton's bare `+ 컬럼` and the chip is gone.
+            # (No probe cost: an empty `group_by` under `unit: group` cannot occur in a
+            # bundle that validates, so the measured branch never sees this path.)
+            filling = bool(identity) and not group_by
             yield Field(
                 path=f"{base}.read.group_by", step="sources", label="group_by",
-                state="answered" if group_by else "missing", tier=TIER_CONSTRAINED,
-                value=group_by, declared=group_by if group_by else _ABSENT,
+                state="derived" if filling else "answered" if group_by else "missing",
+                tier=TIER_CONSTRAINED,
+                value=list(identity) if filling else group_by,
+                declared=group_by if group_by else _ABSENT,
                 candidates=tuple(identity), universe=UNIVERSE_PREPARED,
+                disposition="default_overridable" if filling else "",
+                ground=Ground(
+                    "group_by_default_from_identity",
+                    f"기본값: identity {', '.join(str(key) for key in identity)}",
+                    (f"{base}.read.identity",), list(identity)) if filling else None,
                 note="후보는 identity로 제한된다.",
             )
         table = catalog.get(relation) if isinstance(relation, str) else None
