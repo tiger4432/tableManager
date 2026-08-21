@@ -2681,3 +2681,126 @@ body.resizing-active .history-sidebar {
 .tx-action-group > * + * { margin-left: -1px; }
 .tx-action-group > :first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .tx-action-group > :last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+
+
+/* ── Mockup 2b/2c: the industrial pass ───────────────────────────────────────────────
+   △소유자: 「목업이 훨씬 정돈되고 각져있네 산업적으로, 버튼 배치 알약도 다르고」
+
+   Read off the mockup's own class definitions rather than eyeballed:
+     .tbtn  height 32 · radius 6 · padding 0 11 · 500 12px sans
+     .pill  radius 5 · padding 3px 9px · 500 11px sans      <- NOT a capsule
+     .kbd   radius 4 · border-bottom-width 2px                <- the keycap edge
+
+   🔴 THE PILLS WERE THE BIGGEST TELL. Every badge on this screen was `999px`, i.e. a
+   capsule; the mockup has none. A capsule reads as a status dot, a 5px rectangle reads as a
+   control with an edge -- which is the whole difference the owner named.
+
+   Scoped to the grid screen's own chrome. `.glass-*` is shared with the admin and map screens
+   and this is not a request to restyle those. */
+.app-header .glass-input,
+.app-header .glass-btn,
+.app-header .glass-log-badge,
+.app-header .glass-btn-group {
+  height: 32px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.app-header .glass-input { padding: 0 10px; font-family: var(--font-mono); font-size: 12.5px; }
+.app-header .glass-btn-group { overflow: hidden; padding: 0; }
+.app-header .glass-btn-group > button { height: 30px; border-radius: 0; font-size: 12px; }
+.app-header .control-group > label {
+  font: 600 9.5px var(--font-sans);
+  letter-spacing: .6px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* The capsules become rectangles. 5px is the mockup's `.pill`. */
+.filter-chip,
+.alignment-pill,
+.audit-filter-pick { border-radius: 5px; }
+.audit-pill { border-radius: 5px; }
+
+/* The keycap's bottom edge is what makes it read as a key rather than a tag. */
+.kbd { border-bottom-width: 2px; border-radius: 4px; }
+
+
+/* ── Mockup 2b/2c: the right panel, matched ───────────────────────────────────────
+
+   TABS ARE SEGMENTS, not underlined text. The mockup fills the row: inactive segments carry
+   `bg-inset`, the active one lifts to `bg-surface` with a 2px underline, and 1px rules divide
+   them. `flex: 1` is the mockup's own value.
+
+   🔴 `min-width: max-content` KEEPS THE EARLIER RULING ALIVE. The owner ruled that a tab is
+   as wide as its label, because equal shares clip the longest name and a clipped tab is a tab
+   nobody clicks. `flex: 1` fills the row when there is room and `min-width` refuses to shrink
+   past the label, so both hold at once instead of one overwriting the other. */
+.history-tabs--wide {
+  box-sizing: border-box;
+  height: 34px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.history-tabs--wide .tab-btn {
+  flex: 1;
+  min-width: max-content;
+  height: 33px;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.history-tabs--wide .tab-btn:last-child { border-right: none; }
+.history-tabs--wide .tab-btn.active {
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* ① The panel starts at the tabs. The title row is gone from the markup; this removes the
+   space it used to reserve. */
+.sidebar-header { padding-bottom: 0; }
+
+/* ① 「Select a cell to view history」 is an instruction for the Row tab. On Global it is a
+   sentence that answers nothing while pushing the table down, so it stands aside there.
+   `:has()` rather than a second class: `.audit-table` already means "the Global tab". */
+.sidebar-content:has(.audit-table) > #selected-cell-info { display: none; }
+
+/* Mockup 2b: the range readout sits in the footer beside the counts, in the accent the
+   selection itself uses. Empty string when there is no range, so it takes no room. */
+.range-readout { color: var(--accent); font-family: var(--font-mono); }
+.range-readout:empty { display: none; }
+
+/* Sync moved here from the panel title, where the mockup draws 🔄. */
+.audit-filter-refresh {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.audit-filter-count + .audit-filter-refresh { margin-left: 6px; }
+/* On the Row tab the strip carries only this button -- the filters describe the audit table
+   and have nothing to filter there. Sync stays reachable on every tab, which is why it moved
+   into the strip rather than into the Global-only part of it. */
+.timeline-container:not(.audit-table) > .audit-filter { display: flex; background: none; border-bottom: none; justify-content: flex-end; }
+.timeline-container:not(.audit-table) > .audit-filter > :not(.audit-filter-refresh) { display: none; }
+
+/* ③ The mockup has no status text -- it has the dot beside the wordmark, which this screen
+   already draws. The badges keep their words (removing them would lose the reading) but take
+   the mockup's density instead of shouting at twice the size. */
+.app-header .status-indicators { gap: 6px; }
+.app-header .status-indicators > * {
+  height: 22px;
+  border-radius: 5px;
+  font-size: 10px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+}
