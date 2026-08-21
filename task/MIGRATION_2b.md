@@ -16,6 +16,20 @@
 
 ---
 
+## Phase 0 — CSS·배너 형태는 기존 것을 그대로 쓴다 (먼저 확인)
+
+새 화면이 아니라 기존 화면의 마이그레이션이다. 아래는 각 Phase 본문에 흩어져 있던 것을 한곳에 모은 것 — 구현 중 이 항목들이 실제로 지켜졌는지 체크리스트로 쓴다.
+
+- **색·타입·간격 토큰**: `tokens.css` 의 기존 변수만 쓴다. 새 hex, 새 폰트 크기, 새 radius 값을 추가하지 않는다.
+- **상단 Tx 필터 배너**: 현재 `.tx-filter-banner`(accent-2 배경, 좌측 `⚡` 아이콘, 우측 `✕`, 높이 30px)와 **동일한 마크업·클래스**를 정렬 띠(Phase 3.4)와 필터 칩 바(Phase 1.4)에 재사용한다. 색만 다르게 쓰되(정렬 띠는 accent, 경고 상태는 warning) 구조(아이콘 위치·높이·닫기 버튼 위치)는 그대로 복제한다 — 새 배너 컴포넌트를 만들지 않는다.
+- **셀 상태 클래스**: `.cell-overwrite` · `.cell-dirty-tx` · `.custom-range-selected` · `.cell-system-readonly` 를 그대로 재사용한다(Phase 3.2 에 명시). 참조 그리드 셀에 새 상태 클래스를 만들지 않는다.
+- **버튼/토글 스타일**: `.glass-btn-group`, `#copy-header-toggle`, `.tab-btn` 등 기존 클래스를 재사용하거나(Copy Header, 3.3) 폭이 다를 때만 변종을 추가한다(`.history-tabs--wide`, Phase 2.3) — 색이나 패딩을 이 작업만을 위해 새로 정의하지 않는다.
+- **헤더/행 높이**: 메인 그리드와 동일한 30px 헤더 / 28px 행(Phase 3.2). 참조 그리드가 다른 리듬을 가지면 안 된다.
+
+구현 에이전트가 참조뷰 로직만 반복해서 고치고 있다면, 이 Phase 0 체크리스트부터 다시 확인시킨다 — 배너 마크업 재사용과 토큰 재사용이 실제 커밋에 있는지가 우선 확인 대상이다.
+
+---
+
 ## Phase 1 — 컬럼별 필터 행 (AG-Grid floating filter)
 
 **손대는 파일:** `src/grid.js` · `src/api.js` · `index.html` · `src/style.css`

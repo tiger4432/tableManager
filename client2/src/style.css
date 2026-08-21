@@ -521,7 +521,7 @@ body.resizing-active .history-sidebar {
   color: var(--text-dim);
   background: var(--bg-inset);
   font-family: var(--font-mono);
-  font-size: .72rem;
+  font-size: .76rem;
 }
 
 /* 🔴 REUSES THE GRID'S SELECTION NAME AND ITS TOKENS. The existing rule is scoped
