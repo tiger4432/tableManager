@@ -69,7 +69,9 @@ body {
      본문 .split-resizer(z:100)보다 높게(200) 두어야 한다. position:relative는 의도 명시용. */
 .app-header {
   position: relative;
-  height: 70px;
+  /* Mockup 2b: 52px, down from 70. The header carries no data — every pixel it gives
+     back is a grid row. */
+  height: 52px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -416,7 +418,8 @@ body.resizing-active .history-sidebar {
 
 .history-tabs--wide .tab-btn {
   flex: 0 1 auto;
-  padding: 8px 14px;
+  height: 34px;          /* mockup 2b */
+  padding: 0 14px;
   border-radius: 0;
   font-size: 0.9rem;
   /* The label decides the width. Four labels of different lengths sharing a row equally is
@@ -1202,7 +1205,10 @@ body.resizing-active .history-sidebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  /* Mockup 2b: 30px tall. The table states the alignment band equals the Tx banner, so the
+     height lives on the shared class rather than on one of the two variants. */
+  min-height: 30px;
+  padding: 2px 16px;
   margin: 12px 16px 0 16px;
   background: var(--accent-2-weak);
   border: 1px solid var(--accent-2);
@@ -2252,3 +2258,45 @@ body.resizing-active .history-sidebar {
   margin-top: 4px;
   cursor: default;
 }
+
+/* ── Mockup 2b type scale ─────────────────────────────────────────────────────────────
+   🔴 KEYED OFF `#myGrid`, NOT off a theme class. `theme.js` flips the element between
+   `ag-theme-quartz` and `ag-theme-quartz-dark`, so a rule written against either one is
+   correct in one mode and silently absent in the other — measured: the first version of
+   these rules matched nothing at all because the element was in light mode.
+
+   Cell type goes through AG-Grid's OWN variables rather than a `.ag-cell` override, because
+   that is what the theme reads for row layout as well as text; overriding the rule instead
+   of the variable leaves the theme computing spacing from a size it is no longer using.
+
+   The quartz default is 14px everywhere. The mockup's grid is a dense correction surface:
+   mono in the cells so values line up column-wise, and a small upper-case sans header so a
+   column name reads as a label rather than as one more value. */
+#myGrid {
+  --ag-font-size: 11.5px;
+  --ag-font-family: var(--font-mono);
+}
+
+#myGrid .ag-header-cell-text {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+
+/* The filter box has to fit inside a 28px row, so it cannot keep the theme's 14px text and
+   8px inset. */
+#myGrid .ag-floating-filter-input .ag-input-field-input {
+  padding: 3px;
+  border-width: 1px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  height: 22px;
+  min-height: 22px;
+}
+
+/* The reference grid is the same surface, same rhythm. */
+.reference-view-table th { height: 30px; }
+.reference-view-table td { height: 28px; font-size: 11.5px; }
