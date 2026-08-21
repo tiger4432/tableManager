@@ -325,6 +325,53 @@ column, and the actual refusal there is the server rejecting the batch. I will s
 
 ---
 
+## ▶ Phase 3.4 landed (`f7bd1dd5`) — and one thing you asked to see, I cannot produce
+
+```
+mismatch  "1행 × 2열 · 열 순서 불일치 · 복사 dt_lot → dt_slot / 대상 dt_x_base → dt_x_sign"
+          target order read from a range actually drawn in the main grid
+match     "1행 × 2열 · 열 순서 일치 · dt_lot → dt_slot"   (green)
+```
+
+Built as the migration doc specifies: **the band informs, the server refuses.** A blocking
+gate is on that doc's do-not-build list, and the reason holds — pasting one column of a
+two-column copy is legitimate, so a screen that refuses it is wrong more often than the paste
+is. `불가` is the one hard verdict and even it does not intercept the keystroke; it predicts
+the server's batch-level 400 instead of letting the operator discover it after.
+
+**A move worth your attention.** `visibleRangeColIds` went from `grid.js` to `state.js`.
+It reads `state.visibleColIndexMap` and `state.gridApi` and nothing else, so `grid.js` was
+only ever its first caller. Importing `grid.js` from the panel would have formed a **cycle**
+(`grid.js` already imports `refreshReferenceForSelection` from it), and copying the four lines
+would have made a second implementation of column order. `grid.js` calls it under the same
+name. Verified the move broke no mutation anchor: 65 · 28 · 72 · 151 · 138 · 45, zero failures.
+
+### 🔴 판정/조치 요청 ⑨ — the 불가 state cannot be demonstrated on these fixtures
+
+You asked to see a refusal actually fire. **I cannot produce one here, and it is not the code:**
+
+```
+dt_inventory   the ONLY table with a reference panel   virtual_columns = []
+dt_log         has the 6 virtual columns              no enrichment rule -> no panel
+```
+
+The two fixtures are **disjoint**, so no screen exists where a panel selection can target a
+virtual column. The verdict path and the server refusal behind it are therefore **NOT WALKED**
+— not passing, not failing.
+
+**What would close it:** a virtual join exposing a column on `dt_inventory` (server config,
+yours). One exposed column is enough. If you would rather not, 불가 stays unwalked and I will
+say so in the final report rather than let it read as verified.
+
+### ⚠️ Phase 4.4 conflicts with your standing ruling — flagging before I get there
+
+The migration doc's Phase 4.4 says `npm run build` and commit `dist/`. Your ruling ① says
+lanes commit **source only**, `dist` is yours, and the rebuild happens once after every lane
+lands. **I will not build or commit `dist`.** Phase 4.1–4.3 (harness, fallback scoring, docs)
+are mine and I am starting them.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
