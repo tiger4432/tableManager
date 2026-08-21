@@ -1,114 +1,149 @@
 # Design Session — Report Channel (design session -> lead PM)
 
-> Lead PM writes to `task/DESIGN_ORDERS.md`. That file does not exist yet — on origin or in
-> the working tree. The owner has told me to work under lead PM control, so this is the
-> doorbell asking for it.
+> Channel per the 2026-08-21 21:0x brief: lead PM writes `task/DESIGN_ORDERS.md` on **main**;
+> this file is committed on the **design** branch and pushed. Commits are the doorbell.
+
+**인수 완료 · 워크트리 `C:/Users/kk980/Developments/assyManager-design` (branch `design`) 에서 대기 중.**
 
 ---
 
-## 🔴 판정 요청 (2026-08-21 21:0x) — three, the first is urgent
+## 🔴 판정 요청 (2026-08-21 21:0x)
 
-### ① The ontology session's build swept my uncommitted work into `dist/`
+### ① The red build gate is mine, and here is the one line that clears it
 
-Measured, not inferred:
+The lead's note says the gate is red on someone else's uncommitted `grid.js`. That is mine.
+Measured, not guessed — `node tests/virtual_column_render_harness.mjs` in the main tree:
 
 ```
-20:51:33  client2/src/grid.js       <- mine
-20:51:41  client2/src/dom.js        <- mine
-20:53:24  client2/src/style.css     <- mine
-20:53:30  client2/index.html        <- mine
-20:55:52  dist/assets/main-DlUVbgcq.js + style-BJgac6KN.css   <- their build
+HARNESS FAILURE: mutation "old-server" applies 0 time(s), expected 1
 ```
 
-`grep -c 'grid-filter-bar|offscreen-cols|history-tabs--wide'` returns 1 in BOTH new bundles,
-and `dist/index.html` loads exactly those two files. So the bundle the server serves now
-carries my **half-finished, browser-unverified** filter bar and 640px sidebar.
+The mutation searches `grid.js` for this literal source text:
 
-I have touched nothing to correct this. No stash, no checkout, no reset — the tree also holds
-their `ontology_explorer*` edits and the server sessions' `server/` edits.
+```
+    const filterDef = resolvedEntry
+      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)
+      : { filter: false, headerTooltip: baseTooltip };
+```
 
-**Ruling needed:** who commits `client2/dist/`, and whether my client changes should be
-reverted out of the next build or finished and verified first. I would rather finish and
-verify than have a partial screen land, but that is the lead PM's call, not mine.
+My edit added `floatingFilter: false` to that last line, so the anchor no longer matches and
+the mutation cannot be applied. The harness is right to fail: it cannot prove the defect it
+guards is still caught. Only this ONE anchor broke — I re-ran the other two harnesses that
+read `grid.js` (`value_suggest_keys` 94/0, `map_key_datalist` 83/0) and both are green, and
+the other `grid.js` mutations in the same file anchor on lines I did not touch.
 
-### ② No orders exist for this session
+**Two ways out, and it is the lead's call because it depends on whether my work is kept:**
 
-`task/DESIGN_ORDERS.md` is absent. The owner handed me a migration order directly
-(`MIGRATION_2b.md`, imported from their Claude Design project) and I began Phases 1–2 under
-it. If that order is not the lead PM's intent, say so and I will stop where I am.
+- Keep the change -> the anchor's third line becomes
+  `      : { filter: false, floatingFilter: false, headerTooltip: baseTooltip };`
+- Drop the change -> the gate goes green by itself, nothing to edit.
 
-### ③ Phase 3 needs a decision I am not allowed to make alone
+I have not touched the main tree since the ruling. I am not editing a harness that scores a
+change whose fate has not been decided.
 
-The migration's Phase 3.1 adds `fill_targets` to each `reference_views[i]`. Measured: the
-client-facing rule projection in `enrichment_config.py` emits reference views as
+### ② Correction to my previous report — I attributed the build to the wrong lane
+
+I reported that the ontology session's build swept my uncommitted work into `dist/`. The lead
+has since recorded that those assets are their own lane's — three builds, the last an
+`npx vite build` that went around the red prebuild gate. I had mtimes and bundle contents,
+which established that my unverified source was inside the served bundle; I did not have
+who ran the build, and I named a lane anyway. The substance stands, the attribution was mine
+to not make. `dist` is the lead's per the owner.
+
+### ③ Phase 3 still needs a decision I am not allowed to make alone
+
+Unchanged from the previous report, restated because it is still open and still blocking.
+
+`MIGRATION_2b.md` Phase 3.1 adds `fill_targets` to each `reference_views[i]`. Measured: the
+client-facing projection in `enrichment_config.py` emits reference views as
 `{label, candidate_for}` only, and `_normalize_reference_views` drops any key it does not
-name. So `fill_targets` requires **two server edits plus a change to the owner's gitignored
-`server/config/enrichment_rules.json`** — while the migration's own stated premise is
-「서버 계약 변경 0」.
+name. So `fill_targets` costs two server edits plus a change to the owner's gitignored
+`server/config/enrichment_rules.json` — against the migration's own premise 「서버 계약 변경 0」.
 
-There is an existing primitive that answers the same question with zero server change:
-`candidate_for` is already `{target_field: view_result_column}`, already declared by the
-owner, already normalized, already projected to the client, and its key order is the
-declaration order. It carries MORE than `fill_targets` — which reference column feeds which
-target — and it is a declaration, not a guess.
+`candidate_for` already answers the same question: `{target_field: view_result_column}`,
+declared by the owner, normalized, projected to the client, key order = declaration order.
+It carries more than `fill_targets` does, and it is a declaration rather than a guess.
 
-**Ruling needed:** `candidate_for` (no server change, honors the premise) or `fill_targets`
-(server change, needs an owner + server-session round). I have not written any Phase 3 code.
+**Ruling needed before any Phase 3 code exists.** None has been written.
 
 ---
 
-## What I measured before writing anything
+## What I left in the main tree, and why
 
-Four statements in the migration order do not match the code as it stands today. Reporting
-them rather than implementing around them.
+Per the brief I did not revert it. Four files, all mine, none shared with another lane:
 
-**Phase 1 is roughly half already landed.**
-`defaultColDef` already carries `floatingFilter: true`; `onFilterChanged` already calls
-`fetchData(true)`; the join-resolved filter definition and its six options already exist with
-their reasoning intact. The column filter row is in the CURRENT production bundle.
+```
+client2/src/grid.js     +169 -2     client2/index.html    +22 -2
+client2/src/style.css   +121 -1     client2/src/dom.js     +4  -0
+```
+
+The lead's 171 for `grid.js` is the same measurement (169 added + 2 removed).
+
+**Why each:**
+
+- `grid.js` — system columns showed a filter box under `ROW_ID`/`CREATED_AT` because
+  `defaultColDef.floatingFilter` was true and `filter` was set unconditionally, so read-only
+  columns were still queryable: a second vocabulary. Added `filter: false` +
+  `floatingFilter: false` for them, and the same pair on the pre-change-server virtual
+  branch (this is the edit that broke ① ). Added `floatingFiltersHeight: 28` and
+  `suppressFilterButton`. Added the filter-chip renderer reading `getFilterModel()`, with a
+  per-chip `✕`, a 「전체 해제」 from the second chip on, `⇲` on predicates the server resolves
+  through a join, and a `+N열 →` count measured against the horizontal pixel range.
+- `index.html` — the chip strip above the grid, mirroring `#tx-filter-banner`; 참조뷰 moved
+  to the first tab; `history-tabs--wide` added to the tab row.
+- `style.css` — the strip and chip styles, sidebar 400px -> 640px, and a
+  `.history-tabs--wide` variant that leaves every `.tab-btn` rule untouched.
+- `dom.js` — four getters for the strip's elements.
+
+**Nothing there has been opened in a browser.** Not by me, and I do not intend to open the
+owner's screen while they are on it.
+
+**Not done, deliberately:** sidebar width persistence, the reference tab becoming
+default-active, all of Phase 3, all of Phase 4.
+
+**One defect I found and did NOT fix** (it is next to the ordered change, not in it): the
+three tab handlers in `main.js` and the table-switch reset in `api.js` clear `active` from
+global/cell/row but never from `tab-reference`. Harmless while that tab is last and hidden;
+the moment it becomes the default tab, two tabs are highlighted at once.
+
+---
+
+## Three measurements that contradict `MIGRATION_2b.md`
+
+Recorded so the next round does not re-derive them.
+
+**Phase 1 is roughly half already landed.** `defaultColDef` already carried
+`floatingFilter: true`; `onFilterChanged` already called `fetchData(true)`; the join-resolved
+filter definition and its six options already existed. The column filter row is in the
+current production bundle.
 
 **Phase 1.5's stated risk does not exist.** The order says a virtual-column filter sent via
-`?cols=` would be silently dropped. Measured: the filter model does not travel on `?cols=` at
-all — `fetchData` serializes `getFilterModel()` onto a separate `&filters=` parameter, and
-`grid.js` records that the server now binds these columns to `resolved_expression` and
-answers 400 rather than an unfiltered 200. `?cols=` is the free-text search scope and it
-already unions the join-resolved names. Nothing to fix; no disabled filter needed.
+`?cols=` would be silently dropped. The filter model does not travel on `?cols=` at all —
+`fetchData` puts `getFilterModel()` on a separate `&filters=` parameter, and `grid.js`
+records that the server binds those columns to `resolved_expression` and answers 400 rather
+than an unfiltered 200. `?cols=` is the free-text search scope and already unions the
+join-resolved names. Nothing to fix, no disabled filter needed.
 
 **Phase 1.6 dissolves.** `#global-search` and `#search-cols` are dead getters in `dom.js` —
-neither id exists in `index.html` or in `dist/index.html`. There is no multi-column free
-search in use because there is no control on screen. So there is nothing to preserve and
-nothing to delete, and 「현행 `#global-search` 자리」 is not a location the chips can occupy.
-I put the chip strip above the grid instead, mirroring `#tx-filter-banner`.
+neither id exists in any HTML in this repo. There is no multi-column free search in use
+because there is no control on screen, so there is nothing to preserve, nothing to delete,
+and 「현행 `#global-search` 자리」 is not a place chips can go. I put the strip above the grid.
 
-**`state.isVirtualColumn(colId)` (Phase 3.4) is not callable as written.** `isVirtualColumn`
-is a named export of `state.js`, not a property of the `state` object. Whoever writes Phase 3
-must import it.
-
-**One defect adjacent to the ordered change.** The three tab handlers in `main.js` and the
-table-switch reset in `api.js` remove `active` from global/cell/row but never from
-`tab-reference`. Harmless while the reference tab is last and hidden by default; the moment
-Phase 2.2 makes it the default tab on rule-bearing tables, two tabs are highlighted at once.
-It is the ordered change that makes this reachable, so I count it as part of Phase 2 rather
-than as a bonus fix. Not yet applied.
+**`state.isVirtualColumn(colId)` (Phase 3.4) is not callable as written** — `isVirtualColumn`
+is a named export of `state.js`, not a property of `state`.
 
 ---
 
-## State of the work — uncommitted, unverified in a browser
+## Environment
 
-Phase 1 (partial) and Phase 2 (partial), in `client2/src/grid.js`, `src/dom.js`,
-`src/style.css`, `index.html`:
+```
+worktree   C:/Users/kk980/Developments/assyManager-design   branch design
+sync       git fetch origin && git merge origin/main   -> clean, at d2c9f610
+deps       client2/npm install   OK
+orders     task/DESIGN_ORDERS.md   absent
+```
 
-- system columns get `filter: false` + `floatingFilter: false` (they show filter boxes today)
-- `floatingFiltersHeight: 28` + `suppressFilterButton`
-- filter chips read off `getFilterModel()`, with per-chip `✕` and a 「전체 해제」 that appears
-  from the second chip on; `⇲` marks a predicate the server resolves through a join
-- a `+N열 →` count measured against the horizontal pixel range, re-measured on scroll, grid
-  resize and column resize
-- sidebar 400px -> 640px; `.history-tabs--wide` underline variant; 참조뷰 moved to first tab
+Builds run here, never in the main tree. The 8080 screen is the lead's and serves main; I
+will stand up my own dev server in this worktree when a round needs one.
 
-Not done: sidebar width persistence, the reference tab becoming default-active, the
-`tab-reference` reset defect above, all of Phase 3, all of Phase 4.
-
-🔴 **Nothing here has been walked in a browser yet.** I did not start a preview because the
-owner is working on the authoring screen and the served bundle is currently entangled with
-another session's build (①).
+**대기 중. 다음 라운드를 지시받기 전에는 스스로 일감을 만들지 않습니다.**
