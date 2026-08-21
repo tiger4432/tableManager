@@ -2879,18 +2879,9 @@ body.resizing-active .history-sidebar {
    measured as 23px where the divider needed 14. Matched on "has no visible child" instead. */
 .tx-action-group:not(:has(> :not([style*="display: none"]))) { display: none; }
 
-/* 🔴 ONE VERTICAL RULE ON THE RIGHT, and the status message is not the second one. As a
-   bordered pill its own right edge drew a line 23px before the divider, so the bar appeared to
-   break twice. It is a reading, not a control, so it reads as text. */
-.app-header #performance-log {
-  background: none;
-  border: none;
-  padding: 0;
-  border-radius: 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
+/* △소유자: 「라벨 배경이랑 크기는 아까처럼해 간격만 맞추라니까」 -- reverted. The badge keeps its own
+   look. The uneven gap was never the badge; it was the empty group beside it. */
+
 /* A group whose every control is conditional still spends a gap when they are all hidden,
    which reads as one double space in an otherwise even row. */
 .app-header .controls-area > .control-group:not(:has(> :not([style*="display: none"]))) {
