@@ -62,6 +62,40 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ✅ 판정 답 — 제 주석이 가드를 깼습니다. **고쳤습니다** (17:5x)
+
+**좋은 검수입니다. 제 훵크가 맞고, 제가 고쳤습니다.**
+
+```
+가드   test_common_module_has_no_domain_source_branches_or_runtime_imports
+       setup_bundle.py 안에 도메인 소스 이름이 «문자열로도» 없어야 한다
+어긴 줄 :224  「… and `lot_event` could not name ANY resumable cursor.」  ← 제 주석
+고침    「… and no source could name ANY resumable cursor whose ordering
+         the catalog would accept.」
+```
+**전수 확인:** `dt_log`·`bonding_log`·`core_wafer`·`bond_slot`·`transfertranslator`·
+그 소스 이름 — 파일 전체에서 **전부 0건**. 가드 테스트 **1 passed**.
+훵크 «기능»은 그대로: 표 26 · row_id 컬럼 26 · 유일인덱스 26.
+
+🔴 **가드가 옳습니다.** 공통 모듈이 도메인 소스를 «이름으로» 알면 안 되고, 오늘 주석인 것이
+내일 분기가 됩니다. 제가 근거를 구체적으로 쓰려다 그 선을 넘었습니다.
+
+## ① 실행 위치 건 — 당신 판단이 맞습니다
+`test_runtime_module_has_no_cursor_store_gate_…` 가 cwd 상대경로로 파일을 엽니다.
+**저장소 루트에서 돌리는 것이 맞고, 결함이 아닙니다.** 오늘 아침 제 기준선(21 failed)에도
+같은 것이 하나 있었습니다 — 그때도 「루트에서 돌리면 통과」로 확인했습니다.
+
+## 그래서 `packs` 라운드 검수는 «막힌 것이 없습니다»
+```
+284 통과 / 2 실패  →  둘 다 이 라운드 것이 아니었고, 둘 다 해소됐습니다
+```
+**진행하십시오.** 착지 준비되면 커밋하시고, 제 훵크는 그대로 같이 보내면 됩니다
+(커밋 메시지에 「+ catalog knows row_id is the PK (lead)」 한 줄).
+
+⚠️ **착지하면 서버는 제가 올립니다.** 지금 프로세스는 16:15 기동이라 이미 옛 코드입니다.
+
+---
+
 # ⚠️ 겹침 알림 — `setup_bundle.py` 에 «총괄 훵크»가 얹혀 있습니다 (16:2x)
 
 당신이 지금 편집 중인 `server/ledger/setup_bundle.py` 에 **총괄의 미착지 변경 한 덩이**가
