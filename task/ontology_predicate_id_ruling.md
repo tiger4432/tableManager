@@ -153,3 +153,101 @@ predicate → id       지문 이동 + 재스탬프 1회 + 원장 스키마 변�
 **지금은 안 해도 되돌릴 수 있다** — 792행이면 지우고 다시 쌓는 것이 현실적이다.
 **`lot_event` 를 흐르게 하는 순간 그 창이 닫힌다.**
 그래서 **「lot_event 를 흐르게 할지」 판정보다 이것이 «먼저»여야 한다.**
+
+---
+
+# 🔴 소유자 설명 둘로 «위 분석 두 대목이 죽었다» (2026-08-21 15:2x)
+
+> 「**v1,v2 케이스는 사실 고려하지 않아도 됨 — 선언 복잡해서 못 했음**」
+> 「V1 원자는 지워 어차피 운영에는 v3 원자부터밖에 없음」
+
+## 죽은 것 ① — 「비용 0이 아니다」는 «이제 거의 0이다»
+
+위 §총괄 정정①은 「792행이 옛 모양으로 남는다」를 비용으로 세웠다. **여전히 참이지만 무게가 다르다:**
+```
+ledger-v2 792행이 무는 술어 = register · has_netdie «뿐»
+lot trace 가 따라가는 derived_from → v2 원자 «0개»
+```
+**계보 원자는 아직 하나도 안 태어났다.** `lot_event` 가 흐를 때 태어나고, 그것들은
+«우리가 정한 모양»으로 태어난다. → **데이터 마이그레이션이 없다.**
+
+## 죽은 것 ② — 「lot trace 가 v1/v2 경계에서 끊긴다」는 «해당 없음»
+
+총괄이 「`derived_from` 61행이 전부 v1이라 id 로 바꾸면 계보가 끊긴다」며
+**v1 원자 8,000행 재도색을 처방했다. 소유자 설명으로 그 처방이 통째로 빠진다** —
+그 61행은 고려 대상이 아니다.
+
+## 실측: 원장이 실제로 무엇인가
+```
+syn_* 합성 픽스처         99,653 행    테스트 재료
+void_obs · delam_obs     114,508 행    v1 관측 번역기
+dt_log · lot_event         6,610 행    v1 시대
+ledger-v2                    792 행    ← 오늘 세대. 이게 전부다
+```
+⚠️ **총괄 권고: 지우지 «않는다».** id 로 바꾸면 v1 행은 이름을 들고 있어 걷기에 «저절로
+안 걸린다». 되돌릴 수 없는 삭제를, 무시하면 되는 것에 쓸 이유가 없다. 합성 픽스처
+99,653행은 검증 재료이기도 하다. **정말 지우려면 범위를 먼저 정할 것.**
+
+---
+
+# 최종 그림 — packs 제거(승인) + id(검토) 를 합친 모습
+
+## 설정: 절이 «셋»
+```json
+{ "setup_version": 5,
+  "entities":   { "e_7f3a91": { "label": "Lot@1", "keys": ["lot"] } },
+  "vocabulary": { "p_a41b09": { "label": "derived_from@1", "status": "active",
+                                "subjects": ["e_7f3a91"],
+                                "object": { "kind": "entity_ref", "types": ["e_7f3a91"],
+                                            "qualifiers": {"required": [], "optional": []} } } },
+  "sources": { "lot_event": {
+      "relation": "lot_event", "read": {…}, "prepare": {…}, "map": {…},
+      "bind": { "mappings": {
+        "descent": { "predicate": "p_a41b09",
+                     "bind": { "subject": {…"entity_type": "e_7f3a91"…},
+                               "target":  {…"entity_type": "e_7f3a91"…},
+                               "occurred_at": { "kind": "column", "column": "event_time" } } } } } } } }
+```
+**사라지는 것:** `packs` 절 · `claims` · `emit` · `use` · `parent`/`child` 역할 이름
+
+## 원자
+```
+predicate            p_a41b09        ← dedupe 키. 불변
+predicate_label      derived_from    ← dedupe «아님». 쓸 때의 이름
+subject_type         e_7f3a91
+subject_type_label   Lot
+```
+
+## lot trace — **코드 변경 없음**
+```
+지금   traversable_predicates() → ('derived_from',)
+뒤     traversable_predicates() → ('p_a41b09',)
+```
+`ledger_trace` 는 이름을 직접 안 쓴다 — vocabulary 에 묻는다. 그 하드코딩은 이미 걷혀 있고
+(`vocabulary.walk_predicates` 주석), **그 작업이 여기서 값을 한다.**
+
+## 화면
+**id 는 사용자 눈에 안 보인다.** label 로 그리고 저장할 때만 id 로 바꾼다.
+
+## 개명하면
+```
+설정        label 한 줄
+원자        «0건»            id 가 그대로 → dedupe 그대로
+과거 원자    predicate_label 에 옛 이름이 남는다 — 그때 그렇게 불렀다는 사실
+lot trace   그대로 돈다
+```
+
+## 바뀌는 코드 — 네 자리
+```
+roleframe.py:986        _runtime_id            선언 주소 → 저장값. 여기가 id 를 낸다
+roleframe.py:1134·1164·1166                    그 세 호출부
+ledger/vocabulary.py    walk_predicates 등이 «같은 id» 를 내도록
+ledger/schema.py        label 컬럼 둘 추가. DEDUPE_COLUMNS 는 «안 건드린다»
++ 마이그레이션           설정 이관 + setup_version
+```
+
+## 남은 선택 — id 형태 (소유자 판정 대기)
+```
+가  p_a41b09  짧은 불투명 문자열    사람이 진단할 때 눈으로 대조 가능. 총괄 권고
+나  UUID                          충돌 0, 대신 길다
+```
