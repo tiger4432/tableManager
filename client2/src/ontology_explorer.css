@@ -277,7 +277,22 @@
 #ontology-explorer-root .oe-tree-item:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
 #ontology-explorer-root .oe-tree-item:active { background: var(--oe-tint-accent-press); color: var(--oe-accent); }
 #ontology-explorer-root .oe-tree-item[aria-current="true"] { background: var(--oe-accent-soft); color: var(--oe-accent); }
-#ontology-explorer-root .oe-workspace { display: block; min-width: 0; overflow: auto; }
+/* 🔴 `padding-bottom: 0` IS THE STRIP UNDER THE STICKY BAR, AND IT WAS NEVER OURS.
+ *
+ *     sticky 도 아래에 딱붙여 지금 좀 떠있네  (owner, 2026-08-21)
+ *
+ * This element is a `<main>` tag, and `admin.html` styles the bare tag for the PAGE:
+ * `main { padding: 20px 30px 25px }`. The rule below has the ID so it wins `display`,
+ * `overflow` and `min-width` -- but it never declared padding, so the page's 25px landed
+ * on the workspace and this is the screen's scroll container. Sticky `bottom: 0` seats a
+ * box on the scrollport's CONTENT edge, so the bar came to rest 25px above the floor and
+ * the strip below it was the scroll container's padding, not the bar's own offset.
+ * Measured: gap 25.0px at every scroll position, 0.0px with this line. `bottom` was
+ * already 0 and the parent `.oe-editor` already had 0 padding -- neither could make it.
+ *
+ * Only the BOTTOM is taken back. The leaked 20px top / 30px sides move every panel in
+ * this column and no one reported them; that is a separate call. */
+#ontology-explorer-root .oe-workspace { display: block; min-width: 0; overflow: auto; padding-bottom: 0; }
 #ontology-explorer-root .oe-breadcrumb {
   display: flex; align-items: center; gap: 6.8px; flex-wrap: wrap; min-height: 43px;
   padding: 10.2px 13.6px; background: var(--oe-surface); border-bottom: 1px solid var(--oe-line);
