@@ -395,7 +395,27 @@
 }
 #ontology-explorer-root .oe-editor-validation { white-space: pre-wrap; color: var(--oe-ok); font-size: 12px; }
 #ontology-explorer-root .oe-editor-validation[data-valid="false"] { color: var(--oe-warn); }
-#ontology-explorer-root .oe-editor-controls { display: flex; justify-content: flex-end; gap: 6.8px; flex-wrap: wrap; }
+/* 🔴 SAVE IS REACHABLE FROM WHEREVER YOU ARE READING.
+ *
+ *     저장버튼 맨 아래 말고 좀 스크롤 어디든 떠있게  (owner, 2026-08-21)
+ *
+ * The same button in a new place -- no new region, no mode, no modal, and `Delete` rides
+ * with it because splitting the pair would be worse than the walk it saves. A form built
+ * from nothing is thousands of pixels tall, so "at the end of the panel" meant leaving the
+ * row being filled in order to press it, which is the same disease as losing your scroll.
+ *
+ * 🔴 `sticky`, NOT `fixed`, AND THAT IS THE WHOLE OF "MUST NOT COVER THE LAST ROW". A
+ * sticky bar keeps its place in the flow, so at the bottom of the scroll it settles under
+ * the last thing on the panel instead of sitting on top of it. A fixed bar would hide
+ * whatever ends up beneath it -- covering a row is exactly what this round is curing. It
+ * needs the opaque ground and the rule above it because it floats over the panel in
+ * between. */
+#ontology-explorer-root .oe-editor-controls {
+  display: flex; justify-content: flex-end; gap: 6.8px; flex-wrap: wrap;
+  position: sticky; bottom: 0; z-index: 2;
+  padding: 10.2px 0;
+  background: var(--oe-bg); border-top: 1px solid var(--oe-line);
+}
 #ontology-explorer-root .oe-empty { color: var(--oe-muted); padding: 10.2px 6.8px; font-size: 13px; }
 #ontology-explorer-root .oe-error,
 #ontology-explorer-root .oe-warning { padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line); font-size: 13px; }

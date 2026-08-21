@@ -991,6 +991,18 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const targetKey = state.draft.target_key;
       const targetKind = state.draft.target_kind;
       const targetId = state.draft.target_id;
+      // 🔴 WHERE THEY WERE READING, TAKEN BEFORE THE WRITE.
+      //
+      //     저장 후 뷰는 현상태 유지되어 있게 (충돌 해소 결과를 바로바로 보면서 셋업하고 싶음)
+      //
+      // Nothing here is replaced wholesale -- `dom_patch` keeps the panel and mutates it,
+      // so `.oe-workspace` is the same element before and after. What moves is its
+      // CONTENT: closing the draft empties the editor, the panel briefly becomes a few
+      // hundred pixels tall, and the browser clamps `scrollTop` to what is left. Reopening
+      // grows it back with the operator already returned to the top. So this is the same
+      // shape back/forward already uses -- take the checkpoint, restore it after -- and
+      // not a re-render problem.
+      const place = checkpoint();
       try {
         const saved = await jsonRequest(`/drafts/${draftId}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -1021,6 +1033,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         // the write just produced. A draft opened on the pre-write hash is refused by the
         // compare-and-swap, which is exactly this morning's 409.
         await reopenForEditing(targetKey, targetKind, targetId);
+        // 🔴 WAIT FOR THE ROWS, THEN PUT THEM BACK WHERE THEY WERE. `load` fires the
+        // authoring plan and does not wait for it (`void loadAuthoring`), so at the moment
+        // the reopen returns the panel is still the short one -- restoring there would be
+        // clamped to it and land at the top anyway. Asking for the plan here is the same
+        // read, awaited, so the restore lands on the panel the operator will see.
+        await loadAuthoring(targetKey);
+        restoreScroll(place);
       } catch (error) { showToast(errorMessage(error), 'error'); }
     } else if (action === 'review-draft') {
       if (state.dirty) { showToast('먼저 초안을 저장해 주세요.', 'warning'); return; }

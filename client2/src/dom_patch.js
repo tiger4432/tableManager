@@ -111,10 +111,17 @@ function syncAttributes(live, next) {
  * built from state that is, by one keystroke, older than what the operator has typed.
  * Writing it back would delete the character they just entered and move the caret to the
  * end -- which is the "half-entered values" failure, arriving through the repair for it.
+ *
+ * 🔴 A `select` IS NOT BEING TYPED INTO, AND IT KEEPS FOCUS AFTER A CHOICE. There is no
+ * half-entered state in a dropdown: the choice is whole the instant it is made, and the
+ * state we are committing already contains it. But the element STAYS focused afterwards,
+ * so the typing guard applied to it forever after -- its value was never resynced again
+ * while its `<option>` children were rebuilt underneath it. Text boxes keep the guard;
+ * that protection is the reason it exists and it is untouched.
  */
 function syncFormState(live, next, activeElement) {
   if (!FORM_TAGS.has(live.tagName)) return;
-  if (live === activeElement) return;
+  if (live === activeElement && live.tagName !== 'SELECT') return;
   if (next.value !== undefined && live.value !== next.value) live.value = next.value;
   if (next.checked !== undefined && live.checked !== next.checked) live.checked = next.checked;
   if (next.disabled !== undefined && live.disabled !== next.disabled) {
@@ -138,8 +145,25 @@ function patchNode(live, next, activeElement) {
   }
   if (!isElement(live) || !isElement(next) || live.tagName !== next.tagName) return next;
   syncAttributes(live, next);
-  syncFormState(live, next, activeElement);
   patchChildren(live, next, activeElement);
+  // 🔴 THE VALUE IS WRITTEN AFTER THE CHILDREN, AND THIS IS THE OTHER HALF OF THE DEFECT.
+  //
+  // A `select`'s value is only meaningful against the `<option>` list it currently holds,
+  // and this panel CHANGES that list on the very render that follows a choice: the current
+  // value is always offered as an option, so an empty field renders `['', ...list]` and
+  // stops prepending the blank the moment something is chosen. Reconciling those children
+  // positionally then shifts every option up by one -- the live element keeps its
+  // `selectedIndex`, so the row silently reads as the NEXT value down.
+  //
+  // Measured on the live screen with nothing focused, so it is not the guard above and not
+  // an instrument artefact: options `['', 'group', 'row']`, chose `group`, the draft
+  // recorded `group`, and the box showed `row`. Syncing before the children could not see
+  // it -- the old and new values were both `group` and it correctly did nothing.
+  //
+  // Last is also the safe order for the other two tags: an `input` has no element children
+  // and a `textarea`'s text child is its DEFAULT value, so writing the live value after
+  // that child settles can only be more correct, never less.
+  syncFormState(live, next, activeElement);
   return live;
 }
 
