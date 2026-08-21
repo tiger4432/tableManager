@@ -197,8 +197,7 @@ export function fillTargetOrdinals() {
 /** The column names inside the panel's current selection, left to right. */
 function selectedColumnNames() {
   const rect = selectionRect();
-  const table = elements.referenceViewContent
-    ?.querySelectorAll('.reference-view-table')[selection?.viewIndex];
+  const table = tableForView(selection?.viewIndex);
   if (!rect || !table) return [];
   return [...table.querySelectorAll('thead th')]
     .filter(th => th.dataset.column !== undefined)
@@ -286,6 +285,20 @@ function updateAlignmentBand() {
   band.append(order, pill, keys);
 }
 
+/**
+ * The table a view index belongs to, BY NAME rather than by position.
+ *
+ * Position was a fair key while every table sat in the tab strip in `results` order. The
+ * evidence tables now render UNDER the grid, so document order and `results` order are no
+ * longer the same list -- and an index into `querySelectorAll` would have kept returning a
+ * table, just the wrong one, with no error anywhere.
+ */
+function tableForView(viewIndex) {
+  if (viewIndex === undefined || viewIndex === null) return null;
+  return elements.referenceViewContent
+    ?.querySelector(`.reference-view-table[data-view="${viewIndex}"]`) || null;
+}
+
 function selectionRect() {
   if (!selection) return null;
   const { anchor, end } = selection;
@@ -350,8 +363,7 @@ function installSelectionKeys() {
     const panel = elements.referenceView;
     if (!selection || !panel || !panel.contains(document.activeElement)) return;
     const rect = selectionRect();
-    const table = elements.referenceViewContent
-      ?.querySelectorAll('.reference-view-table')[selection.viewIndex];
+    const table = tableForView(selection.viewIndex);
     if (!rect || !table) return;
 
     const matrix = [];
@@ -407,6 +419,12 @@ function render(results) {
   tabs.className = 'reference-view-tabs';
   const panels = document.createElement('div');
   panels.className = 'reference-view-panels';
+  // [2b] The evidence stack. The mockup puts the source rows UNDER the candidate grid rather
+  // than behind a tab, because the operator reads the evidence to decide whether to trust the
+  // candidate -- behind a tab that decision costs a click and a memory of what was on the
+  // other side.
+  const evidence = document.createElement('div');
+  evidence.className = 'reference-evidence';
   const selectView = (index) => {
     Array.from(tabs.children).forEach((button, tabIndex) => button.classList.toggle('active', tabIndex === index));
     Array.from(panels.children).forEach((panel, panelIndex) => { panel.style.display = panelIndex === index ? '' : 'none'; });
@@ -416,16 +434,24 @@ function render(results) {
     dragging = false;
     paintSelection();
   };
-  results.forEach(({ view, payload, error }, index) => {
-    const tab = document.createElement('button');
-    tab.type = 'button'; tab.className = 'reference-view-tab'; tab.textContent = view.label || `Reference ${index + 1}`;
-    tab.addEventListener('click', () => selectView(index));
-    tabs.appendChild(tab);
+  // A view that declares `candidate_for` is a grid the operator pastes FROM; one that declares
+  // nothing is evidence. Where no view declares anything the first is still the grid, which is
+  // the behaviour every display-only rule had before this.
+  const declares = entry => {
+    const map = entry?.view?.candidate_for;
+    return !!map && Object.keys(map).length > 0;
+  };
+  const anyDeclares = results.some(declares);
+  const isPrimary = entry => (anyDeclares ? declares(entry) : results.indexOf(entry) === 0);
+
+  results.forEach((entry, index) => {
+    const { view, payload, error } = entry;
     const section = document.createElement('section'); section.className = 'reference-view-section';
     if (error || !payload.rows?.length) {
       const empty = document.createElement('div'); empty.className = 'reference-view-empty'; empty.textContent = error || '참조 행이 없습니다.'; section.appendChild(empty);
     } else {
       const table = document.createElement('table'); table.className = 'reference-view-table';
+      table.dataset.view = String(index);
       const columns = payload.columns || [];
       const plan = fillPlan(view, activeRule, columns);
       const shown = plan ? plan.order : columns;
@@ -505,11 +531,37 @@ function render(results) {
 
       section.appendChild(table);
     }
-    panels.appendChild(section);
+
+    if (isPrimary(entry)) {
+      // Captured BEFORE the append, so the tab and its panel keep the same position even
+      // though `index` counts views the tab strip never receives.
+      const panelIndex = panels.children.length;
+      const tab = document.createElement('button');
+      tab.type = 'button'; tab.className = 'reference-view-tab';
+      tab.textContent = view.label || `Reference ${index + 1}`;
+      tab.addEventListener('click', () => selectView(panelIndex));
+      tabs.appendChild(tab);
+      panels.appendChild(section);
+    } else {
+      const strip = document.createElement('div');
+      strip.className = 'reference-evidence-head';
+      const label = document.createElement('span');
+      label.textContent = view.label || '근거';
+      const count = document.createElement('span');
+      count.className = 'reference-evidence-count';
+      // The count is the ONLY number here. The mockup's `lot = TL26-08*` is its own fixture
+      // and inventing a live equivalent would put a filter on screen that nothing applied.
+      count.textContent = payload?.rows?.length ? `${payload.rows.length}행` : '';
+      strip.append(label, count);
+      evidence.append(strip, section);
+    }
   });
-  host.append(band, tabs, panels);
+  // One panel needs no tab strip -- the mockup's panel goes straight from the band to the
+  // grid. The strip comes back the moment a rule declares a second fillable view.
+  tabs.style.display = panels.children.length > 1 ? '' : 'none';
+  host.append(band, tabs, panels, evidence);
   installSelectionKeys();
-  if (results.length) selectView(0);
+  if (panels.children.length) selectView(0);
 }
 
 export async function showReferenceView() {
