@@ -2804,3 +2804,72 @@ body.resizing-active .history-sidebar {
   display: inline-flex;
   align-items: center;
 }
+
+
+/* △소유자: 「TX 필터 걸려 있을 때 상단 보라 배너는 현재 컬럼 필터와 동일한 위치로 이동」
+   A Tx filter and a column filter are the same statement -- rows are hidden and here is why --
+   so they belong in the same place. It was a full-width band above the grid, which said the
+   same thing twice as loudly and stole a grid row to do it. Now it is a chip beside the
+   others, in the accent-2 it already used.
+   🔴 `#tx-filter-banner` only. `.tx-filter-banner` is also worn by the reference panel's
+   alignment strip, which is a band on purpose and must not be shrunk into a chip. */
+#tx-filter-banner {
+  flex: 0 0 auto;
+  height: 22px;
+  min-height: 22px;
+  margin: 0;
+  padding: 0 4px 0 9px;
+  border-radius: 5px;
+  box-shadow: none;
+  gap: 5px;
+  font-size: 11px;
+  max-width: 340px;
+}
+#tx-filter-banner .banner-text { font-weight: 600; letter-spacing: .3px; }
+#tx-filter-banner .banner-tx-id {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── The audit header and its rows must start and end on the same pixels ────────────────
+   △소유자: 「audit log 상단 헤더랑 아래 본문 간격이 샐뚜게 되어 있는데」
+
+   Two causes, both measured:
+     +3px on every column   the card keeps its `border-left: 3px` colour stripe (`.color-*`),
+                            which sits in the layout and pushes the whole grid right
+     -15px on the last one  the list scrolls, so its rows are 15px narrower than the header
+
+   The stripe STAYS -- it is the row's kind in colour, at the left edge where a scan starts.
+   The header takes the same 3px as a transparent border instead, so both grids begin on the
+   same pixel. And the header reserves the same scrollbar gutter the list spends, which is
+   what makes the last column line up without hard-coding a platform's scrollbar width. */
+.audit-head {
+  border-left: 3px solid transparent;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+.audit-head::-webkit-scrollbar { width: 15px; background: transparent; }
+.audit-head::-webkit-scrollbar-thumb { background: transparent; }
+
+
+/* △소유자: 「상단 헤더에 OPTION 버튼도 다 우측 칸으로 · LOADED 라벨은 | 를 기준으로
+   Label | Options Menu ... 이렇게 같은 간격 배치」
+
+   One gap for the whole right side, and a rule where the reading ends and the controls begin.
+   The status message used to carry `padding: 0 20px` of its own on top of the row's 20px gap,
+   so the space either side of it was wider than the space between the buttons -- which is the
+   unevenness. The padding is gone, the row's gap matches the logo seam, and the divider is a
+   border on the message rather than a separate element to keep aligned. */
+.app-header .controls-area { gap: 14px; }
+.app-header .log-indicator-area {
+  padding: 0 14px 0 0;
+  border-right: 1px solid var(--border);
+}
+/* A group whose every control is conditional still spends a gap when they are all hidden,
+   which reads as one double space in an otherwise even row. */
+.app-header .controls-area > .control-group:not(:has(> :not([style*="display: none"]))) {
+  display: none;
+}
