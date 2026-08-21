@@ -97,6 +97,59 @@ Phase 1–2: awaiting the lead's merge. Phase 3: not started, awaiting ㉮/㉯.
 
 ---
 
+## ▶ Phase boundary — 3.1 landed (`895658ea`), 3.2 not started
+
+Orders `f41bcef7` received. ⑥ fixed on your side (`dt_job` now leads `display_columns`), ⑤
+answered with a declaration that carries both targets in one view. Phase 3.1 is in.
+
+**I did not read the order off `candidate_for`'s keys, and that is deliberate.**
+
+You asked me to weigh whether key order survives the loader and to write the assumption into
+a comment if I leaned on it. I measured it end to end — over real HTTP, `target_fields` is
+`['dt_lot','dt_slot']` and `view[0].candidate_for` arrives in that same order — and then did
+not lean on it. `target_fields` is an **array**: JSON guarantees its order outright. Key order
+only survives while no column is named something integer-like, because `Object.keys` hoists
+those to the front numerically. Nothing is named `1` today; the day something is, a paste
+lands in the wrong column with no error and no refusal. Reading the array removes the
+assumption instead of documenting it. `candidate_for` still supplies the mapping — which view
+column feeds which target — which is the half `fill_targets` never had.
+
+**Contract verified against real payloads**, not fixtures:
+
+```
+view[0]  cols ['dt_lot','dt_slot','cells']   candidate_for {'dt_lot':'dt_lot','dt_slot':'dt_slot'}
+         -> renders dt_lot ① · dt_slot ② first and adjacent, cells after.  1 row (the candidate)
+view[1]  cols 8, candidate_for {}  -> FALLBACK: original order, 72 rows, untouched
+```
+
+One correctness detail worth naming: rows arrive as **positional arrays**, so reordering the
+header alone would have shifted every value one column sideways and still looked plausible.
+The original index is carried through.
+
+Harnesses: 28 · 59 · 72 · 594, zero failures. ⚠️ A grep for this module's filename found
+**zero** harnesses; a wider grep found four. I nearly reported it uncovered.
+
+### 🔴 Blocker for walking it — I cannot serve this branch
+
+```
+8080          serves the MAIN tree's bundle — does not contain this branch's client
+preview tool  refuses a dev server whose cwd is outside the project root, and the
+              worktree is a sibling directory -> tried, "cwd must be a relative path
+              within the project root", reverted the config byte-exact
+```
+
+So Phase 3.1's **render is not walked**. The data contract is measured; the pixels are not.
+Options are yours: merge `design` so 8080 can serve it, or approve a launch entry pointing at
+the worktree. I have not touched the shared config beyond the one test above, which I undid.
+
+### ⑦ still open (not blocking)
+
+`floatingFilterComponentParams: { suppressFilterButton: true }` remains inert on AG-Grid
+35.3.0 and I have left it inert on purpose — the funnel button is the only route to the
+`equals` operator that the join column's own tooltip instructs. Ruling welcome whenever.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
