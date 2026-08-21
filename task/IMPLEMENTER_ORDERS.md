@@ -22,6 +22,93 @@
 
 ---
 
+# 🔴 다음 라운드 — 소유자 지시 (23:2x). 바인딩은 «타입과 키만» 묻는다
+
+> **소유자 원문 (화면을 보시면서):**
+> 「binding_origin − imported / approval_status approved / suggestion_reason
+>  -> 바인딩이 이렇게 복잡하게 할일이야?」
+> 「**바인딩 그냥 주어, 목적어 등 당 타입, 키만 입력하게 해**」
+
+## 도착지 — 바인딩 폼에 남는 것
+```
+kind                     column · constant · entity 중 하나
+ ├ column                kind=column 일 때
+ ├ value                 kind=constant 일 때
+ └ entity_type + keys    kind=entity 일 때
+그리고 «그게 전부다».
+```
+
+## 나가는 것 셋 — 총괄이 라이브에서 실측한 근거
+```
+binding_origin      40개 바인딩 중 «0개»가 선언.  분기는 source_profile.py:295 하나뿐이고
+                    그 갈래(system_suggested)를 «만드는 코드가 없다»
+approval_status     40개 «전부 approved».  자유도 0.
+                    :745 가 approved 아니면 실행을 막는데, 막힐 값이 파일에 «없다»
+suggestion_reason   40개 중 «0개».  system_suggested 아니면 «있으면 거절»당하는 필드
+```
+🔴 이건 오늘 낮에 하신 `layer` 은퇴와 **같은 부류**입니다 — 「가질 수 있는 값이 하나뿐인 선언」.
+그때 쓰신 마이그레이션 형태를 그대로 쓰십시오.
+
+## 🔴 순서 제약 — 소유자가 «지금» 그 파일을 쓰고 계십니다
+```
+23:15~23:19 사이에만 ledger_config.json 이 «여섯 번» 쓰였습니다 (총괄 감시 실측)
+그 파일의 40개 바인딩은 전부 approval_status 를 «들고 있습니다»
+```
+🔴 **코드가 착지한 순간 그 파일이 안 읽히면 소유자 작업이 멈춥니다.**
+그러니 먼저 재십시오: **번들 검증기가 «모르는 키»를 거절합니까, 무시합니까?**
+```
+무시한다   -> 코드 먼저 착지해도 안전.  마이그레이션은 나중에 «총괄이» 돌린다
+거절한다   -> layer 때처럼 «한 커밋에 통째로» 가야 한다.  그러면 착지 시각을 총괄과 맞춘다
+```
+⚠️ **라이브 설정은 총괄이 씁니다.** 마이그레이션 스크립트는 만드시되 `--check` 까지만 돌리고,
+`--apply` 는 **돌리지 마십시오.**
+
+## 걸리는 자리 (총괄이 훑은 것 — 전수는 아닙니다)
+```
+ledger_skeleton.json   defs.binding 의 필드 셋
+source_profile.py      :31-46 상수 · :173-183 dataclass·직렬화 · :280-300 파싱·검증
+                       :745  _binding_readiness_issues 의 승인 게이트 (필드와 «같이» 나갑니다)
+setup_bundle.py        검증기가 이 이름들을 말하는 자리
+test_ledger_skeleton.py  🔴 스켈레톤↔검증기 «양방향» 개수 대조. 한쪽만 지우면 «정당하게» 빨개집니다
+```
+
+## 완료 판정
+```
+✔  화면에서 바인딩을 열면 kind + 그 payload «만» 보인다 (총괄이 브라우저로 확인)
+✔  test_ledger_skeleton.py 양방향 드리프트 0
+✔  lot_event 시험 실행이 «그대로» 돈다 — 원자 수가 안 변한다
+✔  소유자 파일이 라운드 중 «한 번도» 안 읽히는 순간이 없다
+```
+
+---
+
+# 🟠 대기열 다음 — 소유자 지시 (23:2x). 유도되는 칸을 빨갛게 칠하지 않는다
+
+> **소유자 원문:** 「기본 설정 되는 항목은 트리에서 빨갛게 띄우지마
+>  (implementation version, order by 등등 **유도된다면서 빨감**)」
+
+```
+증상   같은 행이 「유도됨」이라고 말하면서 «빨간색»으로 뜬다
+뜻     빨강은 「당신이 할 일이 남았다」인데, 유도되는 칸은 «할 일이 없다»
+       -> 소유자가 채울 것을 찾다가 채울 수 없는 칸 앞에 선다
+```
+🔴 **먼저 재고 나서 고치십시오. 색을 옮기지 말고 «무엇이 색을 부르는지»를 찾으십시오.**
+```
+1  실제로 빨간 행 하나를 «지목»한다 (소유자가 든 예: implementation_version · order_by)
+2  그 행의 plan row 를 찍는다 — state · tier · remaining · refusals · ground
+3  빨강이 remaining 에서 오는지 refusals 에서 오는지 «둘 다»인지 판정한다
+   (ontology_explorer_view.js 의 is-remaining / is-refused)
+4  state 가 derived 인데 remaining/refusals 가 붙어 있으면 «그것이 결함»이다
+```
+⚠️ 오늘 감사에서 `state=derived` 43행, `missing` 9행, `unanswered` 6행이었습니다.
+missing·unanswered 는 소유자가 «만드는 중»인 소스 둘의 것이라 빨간 게 맞습니다 —
+**derived 인데 빨간 행만** 이 지시의 대상입니다. 둘을 섞지 마십시오.
+
+**색 규칙을 새로 만들지 마십시오.** 이미 있는 두 상태(remaining · refusals)가
+derived 행에 «왜 붙었는지»가 답입니다.
+
+---
+
 # 🔴 판정 — 「화면이 시험 실행을 못 한다」는 **틀렸습니다.** 기능이 «답한» 것입니다 (총괄 22:58 실측)
 
 보고 맨 위의 「가장 급한 것」에 먼저 답합니다. **급한 것이 아니고, 고칠 것도 없습니다.**
