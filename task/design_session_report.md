@@ -372,6 +372,58 @@ are mine and I am starting them.
 
 ---
 
+## ▶ Phase 4 — harness landed, docs landed (`7f30c9fd`), build NOT done (your ruling)
+
+### 4.1 / 4.2 — the harness scores its own mutants
+
+`client2/tests/reference_grid_paste_harness.mjs`, registered in **`FLOORS` at 22**, not
+`KNOWN_RED`. Standalone run:
+
+```
+16 passed, 0 failed
+4/4 defects CAUGHT   reverse declared order · remove the clipboard guard ·
+                     compare only the COUNT · pin isVirtual false
+2/2 controls ESCAPED comments stripped · a local renamed
+ASSERTIONS 22 0
+```
+
+The controls are the part that makes the rest mean anything: if stripping comments or renaming
+a local had been *caught*, some check would be reading source text instead of behaviour.
+
+**4.2 fallback is scored** — a view with no `candidate_for` makes no plan, a rule with no
+`target_fields` makes no plan, a declared column the query did not return is dropped, and the
+fallback copy keeps the payload's own order. That path is operational reality for every rule
+that declares nothing.
+
+⚠️ **A mutation anchor died on me mid-build, from CRLF.** The anchor was written with `
+`
+and this checkout is CRLF, so it matched nowhere and the runner refused — correctly. An anchor
+that matches on one machine and vanishes on another is precisely the silent-inert mutant this
+file exists to prevent, so the anchors are newline-agnostic now.
+
+### 4.3 — docs
+
+`frontend.md`: module row 119 → 485 with what it now does, plus a new **§3.6** for the paste
+contract. And a correction that matters beyond this round: **§3.4 was writing
+`state.isVirtualColumn(colId)`**, which is not callable — it is a named export of `state.js`.
+🔴 **The migration order I was given had copied that exact form out of this document.** The
+wrong name had already travelled once; left in place it travels again.
+
+History entry `20260821_232730_reference_grid_and_column_filters.md`, including the §6 point
+you flagged: this work lands on the CURRENT `index.html` grid and its sidebar, which is not in
+the retiring set, and I did not put new work on anything that is.
+
+### 4.4 — not done, deliberately
+
+The migration doc says build and commit `dist/`. Your ruling ① says lanes commit source only.
+**I built nothing and committed no `dist`.**
+
+⏳ The full `check:harnesses` run is still going as I write this; I have the standalone result
+above but not yet the runner's own acceptance of the FLOORS entry. I will not call 4.1 closed
+until I have seen the runner score it.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
