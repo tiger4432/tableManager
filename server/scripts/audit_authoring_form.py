@@ -222,6 +222,15 @@ def main(argv=None):
 
     plan, findings, readers = audit(args.root, args.catalog)
     rows = plan["fields"]
+    # 🔴 THE TOTAL IS ONLY COMPARABLE ACROSS RUNS THAT SAW THE SAME SOURCES.  Each
+    # source contributes its own copy of every family, so adding a half-built source
+    # raises the count without a single new defect -- and the implementer hit exactly
+    # that comparing their run to the lead's baseline while the owner had two
+    # unfinished sources in the file.  Print the subjects with the number.
+    document = json.load(open(os.path.join(args.root, "ledger_config.json"),
+                              encoding="utf-8"))
+    print("sources seen ({}): {}".format(
+        len(document.get("sources") or {}), ", ".join(sorted(document.get("sources") or {}))))
     print("plan rows: {}   state={}   tier={}".format(
         len(rows),
         dict(Counter(r.get("state") for r in rows)),
@@ -242,6 +251,15 @@ def main(argv=None):
     for key in sorted(readers, key=lambda k: (readers[k], k)):
         mark = "   <- nobody reads it" if readers[key] == 0 else ""
         print("    {:34s} readers={}{}".format(key, readers[key], mark))
+
+    families = Counter()
+    for path, _hint, _where in findings.get("plan_silent") or ():
+        parts = path.split(".")
+        families[parts[3] if parts[1] == "sources" and len(parts) > 3
+                 else parts[1]] += 1
+    print("\n=== 0 by family (compare THESE across runs, not the total)")
+    for name, count in sorted(families.items(), key=lambda item: (-item[1], item[0])):
+        print("    {:34s} {}".format(name, count))
 
     print("\nTOTAL findings: {}".format(total))
     return 0
