@@ -22,6 +22,60 @@
 
 ---
 
+# 📋 은퇴 범위 확정 — 소유자 (23:0x). **지금 착수하지 마십시오, 기록입니다**
+
+> **소유자: 「지금 원장 혈통 추적, admin/원장 선언 다 은퇴 대상임」**
+
+앞 절의 「계보를 새로 만든다」보다 «범위가 큽니다». 정확히 적어 둡니다.
+
+## 은퇴 대상
+```
+① 원장 혈통 추적       ledger_trace.py · ledger_trace_router.py 와 그 여섯 경로
+                       /api/ledger/trace · /explore · /explore_entity · /journey · /structure · /coverage
+② admin / 원장 선언    ledger_admin.py 와 /admin/ledger/*
+                       (vocabulary · sources · config/raw · save · dry-run · relations · retire)
+```
+
+## 🔴 그러면 «v1 계통 전체»가 같이 갑니다 — 총괄 실측
+```
+ledger/config.py 의 소비자   ledger_admin (②)  ·  ledger_trace (①)  ·  config_resolve_report
+                             🔴 그 둘이 은퇴하면 «남는 소비자가 보고서 하나»입니다
+그래서 같이 은퇴 가능        server/config/ledger_config.json          (어디에도 없던 파일)
+                             sample/ledger_config.json.sample           (v1 문법 · 검증 불가)
+                             ledger/config.py 의 .sample 낙하           (이유가 이미 만료됨:
+                                「신선한 체크아웃도 백필이 돌게」인데 백필은 v2 root 를 씁니다)
+                             source_profile.py 의 pack/claim 해소 경로   (packs 가 이미 은퇴)
+```
+⚠️ **`config_resolve_report` 가 마지막 소비자로 남습니다.** 그것이 v1 을 정말 필요로 하는지가
+은퇴 라운드의 «첫 측정»입니다. 필요 없으면 `ledger/config.py` 자체가 은퇴 대상입니다.
+
+## 지금 상태와의 관계
+```
+503 여섯 경로   ① 그 자체입니다 -> «고치지 않습니다» (앞 절에서 취소)
+빈 집합 가드    은퇴와 함께 사라집니다 -> 별도 수리 «불필요»
+문서            LEDGER_GUIDE 의 3단계 진단 · trace 관련 절 전부 «은퇴 문서»가 됩니다
+                -> 총괄이 은퇴 시점에 한 번에 처리합니다. 지금 고치지 않습니다
+```
+
+## 착수는 «별도 지시»로 — 그 전에 이것부터 재야 합니다
+```
+1  ledger_trace / ledger_admin 을 «부르는» 곳 전수 (클라 포함)
+      ledger.html · rnd-console.html · trace.html · ledger-graph.html 이 무엇을 부르나
+2  그 화면들이 은퇴하면 «후계가 있나» — 없으면 사용자가 잃는 것을 먼저 적는다
+3  config_resolve_report 가 v1 을 정말 쓰는가
+```
+🔴 **은퇴는 삭제라 되돌리기 어렵습니다.** 오늘 `layer` 에서 「아무도 안 읽는다」가
+두 번 틀렸습니다. 이 규모면 그 실수의 대가가 훨씬 큽니다.
+**전수 측정 → 총괄 검토 → 소유자 승인 → 삭제** 순서로 갑니다.
+
+## 지금 할 것은 그대로입니다
+```
+③ 심볼 아홉 + 독스트링 둘   진행
+② allowed_values 주석        그다음
+```
+
+---
+
 # ⛔ ① 취소 — 계보는 «지우고 새로 만듭니다». 고치지 마십시오 (23:0x)
 
 > **소유자 (2026-08-21 23:0x): 「계보 어차피 지우고 새로 만들 건데」**
