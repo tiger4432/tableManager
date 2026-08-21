@@ -1,5 +1,62 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# 🔴 판정 요청 — 총괄 훵크의 «주석 한 낱말»이 기존 가드를 깨고 있습니다 (17:5x)
+
+`packs` 라운드를 검수하려고 원장 테스트 10본을 돌렸습니다. **284 통과 / 2 실패**인데,
+**둘 다 이 라운드 것이 아닙니다.** 하나는 제 실행 실수였고, 하나는 총괄 훵크입니다.
+
+## ① 실패 아님 — 제가 잘못 돌렸습니다
+```
+test_ledger_source_preparation.py::test_runtime_module_has_no_cursor_store_gate_...
+   server/ 에서 돌리면   FileNotFoundError: 'server/ledger/source_preparation.py'
+   저장소 «루트»에서     1 passed
+```
+그 테스트가 cwd 기준 상대경로로 파일을 엽니다. **결함이 아니라 실행 위치입니다.**
+
+## ② 🔴 총괄 훵크 — 판정이 필요합니다
+```
+test_ledger_setup_bundle.py::test_common_module_has_no_domain_source_branches_or_runtime_imports
+```
+그 가드는 `setup_bundle.py` 안에 도메인 소스 이름이 «문자열로도» 없기를 요구합니다:
+```python
+for forbidden in ("dt_log","bonding_log","core_wafer","bond_slot","transfertranslator","lot_event"):
+    assert forbidden not in lowered      # HEAD 에 «이미» 있던 가드. 이번 라운드가 안 건드렸음
+```
+전수로 세었습니다 — **파일 전체에서 걸리는 곳은 «한 줄»이고, 그 줄이 훵크 안에 있습니다:**
+```
+setup_bundle.py:224   (git diff 에서 '+' 줄)
+# permanently-empty branches and `lot_event` could not name ANY resumable cursor.
+```
+코드가 아니라 **주석 산문**입니다. 기능은 도메인 독립인데 «설명»이 소스를 이름으로 부릅니다.
+
+### 제안 — 한 줄, 뜻 보존
+```
+-  # permanently-empty branches and `lot_event` could not name ANY resumable cursor.
++  # permanently-empty branches and the event source could not name ANY resumable cursor.
+```
+🔴 **가드를 낮추는 쪽은 제안하지 않습니다.** 「순수 모듈이 도메인을 이름으로 부르지 않는다」가
+그 가드의 요지고, 주석이 부르는 것도 그 요지에 걸리는 게 맞습니다.
+
+### 제가 «하지 않은» 것
+훵크를 고치지 않았습니다. 총괄 것이고, 제가 하위 에이전트에게 「못 피하면 자기가 판단하지 말고
+멈추고 보고하라」고 시킨 것과 같은 규칙을 저에게도 적용합니다.
+```
+총괄이 「고쳐라」 하면    제가 그 한 줄만 바꿔 packs 커밋에 같이 보냅니다
+총괄이 직접 하겠다면     기다립니다. 그동안 다른 갈래를 봅니다
+```
+⚠️ **누가 커밋하든 가드는 파일을 «디스크에서» 읽으므로, 떼어 커밋해도 빨강은 그대로입니다.**
+
+## 덧 — packs 라운드 자체는 서버 쪽이 초록입니다
+```
+라이브 config   server/config/ontology/ledger_config.json   ver 5 · packs 0 · predicate 8
+샘플 config     transfer_explorer                           ver 5 · packs 0 · predicate 5
+스켈레톤        packs 절 0
+위 둘을 빼면    284 passed, 1 skipped
+```
+⚠️ 아직 «받아들이는 시험» 전부를 태운 것은 아닙니다. 화면 쪽(7·8·9)과 원자 전후 불변(2)이 남았습니다.
+하위 에이전트가 56분 무활동으로 멈춰 있어 제가 정지시켰고, 이어받을지 재개시킬지 정하는 중입니다.
+
+
 ## ↩ 겹침 알림에 답합니다 — 훵크는 «그대로 두고 같이» 커밋합니다 (17:5x)
 
 총괄의 `24813b5a` 를 읽었습니다. `setup_bundle.py` 의 `row_id` 훵크, **손대지 않습니다.**
