@@ -234,20 +234,43 @@ function updateAlignmentBand() {
   const sourceCols = selectedColumnNames();
   const targetCols = targetColumnIds();
   const verdict = alignmentVerdict(sourceCols, targetCols, isVirtualColumn);
+
+  // 🔴 THE MISMATCH LABEL IS NOT SHOWN (owner, 2026-08-21: "그냥 없애"). Pasting two copied
+  // columns into one target is something people do on purpose, so a band that turns red every
+  // time the shapes differ is crying wolf on the normal case — and a warning that fires on
+  // normal use is one the operator learns to read past, including on the day it is right.
+  //
+  // The other two states stay: the green match is the mockup's own badge, and `blocked` is not
+  // an opinion about tidiness — the server refuses that write batch-wide, so the band is
+  // predicting a 400 rather than grading the operator.
+  if (verdict.state === 'warn') { band.style.display = 'none'; return; }
+
   const rows = rect.r1 - rect.r0 + 1;
 
   band.classList.remove('is-match', 'is-warn', 'is-blocked');
   band.classList.add(`is-${verdict.state}`);
-  // Same three parts the Tx banner has: icon, text, and no close control — this band has
-  // nothing to close, and growing a dead ✕ to match a shape would be worse than omitting it.
+
+  // Mockup 2b: the copied column order, then a pill for the verdict, then the keystroke pair
+  // pushed right. The row count rides in the pill rather than leading the strip — the order
+  // is what the operator has to check before pasting, and it should be the first thing read.
   band.replaceChildren();
-  const icon = document.createElement('span');
-  icon.className = 'banner-icon';
-  icon.textContent = verdict.state === 'match' ? '✔' : (verdict.state === 'blocked' ? '⛔' : '⚠');
-  const text = document.createElement('span');
-  text.className = 'banner-text';
-  text.textContent = `${verdict.rowsLabel(rows)} · ${verdict.body}`;
-  band.append(icon, text);
+  const order = document.createElement('span');
+  order.className = 'alignment-order';
+  order.textContent = sourceCols.map(c => c.toUpperCase()).join(' → ');
+  const pill = document.createElement('span');
+  pill.className = 'pill alignment-pill';
+  pill.textContent = verdict.state === 'blocked'
+    ? verdict.body
+    : `${verdict.rowsLabel(rows)} · 대상 열 순서와 일치`;
+  const keys = document.createElement('span');
+  keys.className = 'alignment-keys';
+  ['Ctrl', 'C', '→', 'Ctrl', 'V'].forEach(k => {
+    const el = document.createElement('span');
+    if (k !== '→') el.className = 'kbd';
+    el.textContent = k;
+    keys.appendChild(el);
+  });
+  band.append(order, pill, keys);
 }
 
 function selectionRect() {

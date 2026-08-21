@@ -252,6 +252,13 @@ function runBuildColumnDefs(sources, schema) {
     fnFrom(sources.grid, 'grid.js', 'numericDisplayValue'),
     constFrom(sources.grid, 'grid.js', 'JOIN_RESOLVED_FILTER_OPTIONS'),
     fnFrom(sources.grid, 'grid.js', 'joinResolvedFilterDef'),
+    // `buildColumnDefs` ends by delegating the mockup's column order and widths, so the
+    // helper and its table have to come into the sandbox with it. Without them the slice
+    // throws ReferenceError rather than scoring anything — which is how this harness
+    // reported the change, loudly, instead of going quietly green.
+    constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_LAYOUT'),
+    constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_ORDER'),
+    fnFrom(sources.grid, 'grid.js', 'applyMockupLayout'),
     fnFrom(sources.grid, 'grid.js', 'buildColumnDefs'),
     'globalThis.__defs = buildColumnDefs();'
   ].join('\n\n'), s.ctx, { filename: 'grid.js#buildColumnDefs' });

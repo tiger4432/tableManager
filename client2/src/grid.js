@@ -680,7 +680,57 @@ export function buildColumnDefs() {
     cellClass: 'cell-system-readonly'
   });
 
-  return columnDefs;
+  return applyMockupLayout(columnDefs);
+}
+
+// ── Mockup 2b column layout (order + widths) ─────────────────────────────────────────────
+//
+// The order's measurement table fixes these to the pixel, so they are a contract rather than
+// a preference: `dt_cell_key 176 · dt_job 210 · dt_eqp 70 · dt_index 58 · product 100 ·
+// dt_lot 112 · dt_slot 58 · dt_x 44 · dt_y 44 · core_wafer 150`, with `c_bn`, `event_time`
+// and `core_product` pushed past the right edge at a 640px sidebar.
+//
+// 🔴 APPLIED BY NAME, NEVER BY POSITION, AND ONLY TO NAMES THAT APPEAR. `/schema` decides
+// which columns a table has; this decides how the ones it names are laid out. A table that
+// shares none of these names is untouched and keeps the default width — which is what makes
+// this a layout declaration rather than a hardcoded screen. The widths are the mockup's
+// measurements; the COLUMNS are still the server's.
+//
+// The two fill targets are in here at their mockup widths (`dt_lot 112`, `dt_slot 58`) on
+// purpose: they are the columns a reference-grid paste lands in, so their width is part of
+// the same contract as the ①② marking in the panel.
+const MOCKUP_COLUMN_LAYOUT = Object.freeze({
+  dt_cell_key: 176, dt_job: 210, dt_eqp: 70, dt_index: 58, product: 100,
+  dt_lot: 112, dt_slot: 58, dt_x: 44, dt_y: 44, core_wafer: 150,
+  c_bn: 90, event_time: 150, core_product: 110
+});
+const MOCKUP_COLUMN_ORDER = Object.keys(MOCKUP_COLUMN_LAYOUT);
+
+function applyMockupLayout(columnDefs) {
+  columnDefs.forEach(def => {
+    const width = MOCKUP_COLUMN_LAYOUT[def.field];
+    if (width) { def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width); }
+  });
+  // Stable sort: named columns take the mockup's sequence, everything else keeps the order
+  // `/schema` gave it, after them. `#` is not in this list and stays where it was pinned.
+  const rank = def => {
+    const index = MOCKUP_COLUMN_ORDER.indexOf(def.field);
+    return index === -1 ? MOCKUP_COLUMN_ORDER.length : index;
+  };
+  const ordered = columnDefs
+    .map((def, index) => ({ def, index }))
+    .sort((a, b) => (rank(a.def) - rank(b.def)) || (a.index - b.index))
+    .map(entry => entry.def);
+
+  // 🔴 THE CHECKBOX FOLLOWS THE FIRST COLUMN, NOT ITS ORIGINAL INDEX. `buildColumnDefs` sets
+  // `checkboxSelection: index === 0` against the SCHEMA order; reordering leaves that flag on
+  // whichever column happened to be first in `/schema`, which after this sort can be the
+  // fourth column on screen — a select-all box floating in the middle of the header. Cleared
+  // and re-applied to whatever is actually leftmost.
+  ordered.forEach(def => { def.checkboxSelection = false; def.headerCheckboxSelection = false; });
+  const first = ordered.find(def => def.field);
+  if (first) { first.checkboxSelection = true; first.headerCheckboxSelection = true; }
+  return ordered;
 }
 
 // Render grid layout using AG-Grid Core
