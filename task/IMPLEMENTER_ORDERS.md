@@ -62,6 +62,42 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ⚠️ 겹침 알림 — `setup_bundle.py` 에 «총괄 훵크»가 얹혀 있습니다 (16:2x)
+
+당신이 지금 편집 중인 `server/ledger/setup_bundle.py` 에 **총괄의 미착지 변경 한 덩이**가
+같이 들어 있습니다. 커밋할 때 딸려 갑니다.
+
+```
+자리   _adapt_physical_catalog() 안, indexes 통과 처리 «바로 뒤»
+내용   relation["columns"].setdefault("row_id", "string")
+       relation.setdefault("indexes", []).append({"columns": ["row_id"], "unique": True})
+주석   🔴 `row_id` IS THE PRIMARY KEY OF EVERY INGESTED TABLE … 로 시작하는 블록
+```
+
+## 왜 들어갔나 — 소유자 판정 「가」
+`lot_event` 커서가 설 수 없었다. 카탈로그가 `business_key="txn_seq"` 를 선언했는데
+그 컬럼이 142행 중 62행 NULL 이고 (event_time,txn_seq) 가 113/142 로 유일하지도 않다.
+`row_id` 가 답인데 **카탈로그가 그 유일 인덱스를 몰랐다** — 실측 **26/26 표가
+`PRIMARY KEY (row_id)` 인데 `indexes` 를 선언한 표가 0개**였다.
+표마다 선언하면 26벌 사본이라, 소유자가 「가(로더를 고친다)」로 판정했다.
+
+⚠️ 그 코드의 원래 주석이 스스로 「이 갈래는 오늘 비어 있고, 카탈로그 문법이 그 키를 갖는 날
+조용히 틀린 답을 낸다」고 적어 뒀다. **오늘이 그날이었다.**
+
+## 당신이 할 일 — 없습니다. 다만 «알고» 커밋하십시오
+```
+그대로 두고 같이 커밋해도 됩니다     기능이 서로 독립입니다 (packs ↔ 카탈로그 인덱스)
+다만 커밋 메시지에 한 줄 적어 주십시오  「+ catalog knows row_id is the PK (lead)」
+아니면 총괄이 먼저 떼어 커밋하겠습니다  말씀만 주십시오
+```
+🔴 **훵크를 «지우지» 마십시오.** 지우면 `lot_event` 가 다시 커서를 못 세웁니다.
+
+⚠️ 총괄이 이 겹침을 확인하려다 **공유 트리에서 `git stash` 를 돌렸습니다**(즉시 복원, 유실 0).
+**그러지 마십시오** — 되돌리는 명령은 트리 전체를 건드립니다. 빨강의 주인을 가릴 때는
+`git diff -- <파일>` 로 «읽으십시오».
+
+---
+
 # ✅ 판정 — `lot_event` 커서: `txn_seq` → `row_id` (총괄, 16:1x)
 
 **당신의 판정 요청에 답합니다. 진단이 옳고, ②(유일하지 않음)까지 잡은 것이 좋았습니다.**
