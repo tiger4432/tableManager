@@ -495,7 +495,10 @@ body.resizing-active .history-sidebar {
 
 /* Row-number gutter, the same role `#` plays in the main grid. */
 .reference-view-table .reference-view-gutter {
-  width: 34px;
+  /* 32px, the mockup's measurement. The rest of its reference-grid widths name columns the
+     live rule does not have (`dt_job` `x` `y` `신뢰도`), so there is nothing to apply them to
+     -- the same settlement the column NAMES already got. */
+  width: 32px;
   text-align: right;
   color: var(--text-dim);
   background: var(--bg-inset);
