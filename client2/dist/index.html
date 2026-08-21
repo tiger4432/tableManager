@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-CxSBofCw.js"></script>
+    <script type="module" crossorigin src="/assets/main-O0tPPmjM.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
     <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
@@ -37,7 +37,7 @@
     <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/admin-DeBRhHDR.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-dg-GUwHv.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-BHIdCGFH.css">
   </head>
 
   <body>
@@ -358,6 +358,9 @@
               <span id="exposed-rows">Loaded: 0</span>
               <span class="divider">/</span>
               <span id="total-rows">Matches: 0</span>
+              <!-- Mockup 2b's range readout. Written by the function that already computes
+                   the rectangle, so it cannot disagree with what is highlighted. -->
+              <span id="range-readout" class="range-readout"></span>
             </div>
             <div class="status-center pagination-controls">
               <button id="prev-page-btn" class="glass-page-btn" disabled>
@@ -402,27 +405,9 @@
         <!-- 히스토리 사이드바 -->
         <aside class="history-sidebar glass-panel">
           <div class="sidebar-header">
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 10px;
-              "
-            >
-              <h2 style="margin: 0">Audit History</h2>
-              <button
-                id="refresh-history-btn"
-                class="glass-page-btn"
-                style="padding: 2px 8px; font-size: 0.8rem; margin: 0"
-                title="Refresh history from server"
-              >
-                🔄 Sync
-              </button>
-            </div>
-            <!-- 참조뷰 leads because on a table that declares a reference rule it is the
-                 tab the operator works in; it stays `display: none` on every table that
-                 does not. -->
+            <!-- Mockup 2b/2c: the panel starts at the tabs. The 「Audit History」 title
+                 said what the tabs already say; the Sync button MOVED into the filter
+                 strip below rather than being deleted. -->
             <div class="history-tabs history-tabs--wide">
               <button id="tab-reference" class="tab-btn" style="display: none">참조 그리드 ⇲</button>
               <button id="tab-global" class="tab-btn active">Global</button>
@@ -451,6 +436,13 @@
                   <option value="7d">7일</option>
                 </select>
                 <span id="audit-filter-count" class="audit-filter-count"></span>
+                <button
+                  id="refresh-history-btn"
+                  class="audit-filter-refresh"
+                  title="Refresh history from server"
+                >
+                  🔄
+                </button>
               </div>
               <div class="audit-head">
                 <div class="audit-cell audit-time">시각</div>
