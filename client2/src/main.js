@@ -19,7 +19,8 @@ import { initWebSocket } from './websocket.js';
 import {
   loadHistory,
   triggerHistoryReloadDebounced,
-  navigateToLog
+  navigateToLog,
+  installAuditFilters
 } from './timeline.js';
 import {
   isCellInRange,
@@ -132,6 +133,7 @@ async function init() {
   installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
   setupEventListeners();
   installReferenceKeyboardIsolation();
+  installAuditFilters();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
   // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;

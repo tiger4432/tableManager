@@ -113,6 +113,9 @@ const WANTED = [
   // harness's idea of a kind pill. Without them the slice throws and section H paints nothing --
   // which is exactly how this harness reported the change.
   'renderGlobalTimeline', 'createGlobalTimelineItemDom', 'auditKind', 'auditVal',
+  // The 2c filter strip's helpers. `renderGlobalTimeline` calls all four while painting, so
+  // leaving them out makes the slice throw and section H paint nothing.
+  'auditFilterState', 'groupKindLabel', 'fillAuditFilterOptions', 'auditFilterPasses',
 ];
 
 function applyOnce(src, find, replace, label) {
@@ -261,7 +264,11 @@ function buildSandbox(src = UNDER_TEST) {
     API_BASE,
     pageLimit: 1000,
     elements: { timeline, tabRowBtn, performanceLog: makeEl('div') },
-    document: { createElement: makeEl },
+    // `getElementById` returns null here on purpose: the 2c audit filter strip is static
+    // markup that does not exist in this sandbox, and every reader of it is written to cope
+    // with a missing control. Stubbing an element instead would score the filter path against
+    // a stand-in the browser never sees.
+    document: { createElement: makeEl, getElementById: () => null },
     fetch: fetchFake,
     Date,
     JSON,

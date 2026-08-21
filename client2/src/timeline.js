@@ -239,10 +239,24 @@ function auditKind(group, baseLog, isSummary) {
   const col = baseLog.column_name;
   if (col === 'CREATE') return { label: 'CREATE', cls: 'kind-create' };
   if (col === 'DELETE') return { label: 'DELETE', cls: 'kind-delete' };
+
+  const source = baseLog.source_name || '';
+  const byHand = source === 'user';
+  const byPaste = /paste/i.test(source);
+  // OVERWRITE beats MANUAL and PASTE, and only for a HUMAN source: replacing a value someone
+  // already had is a different act from filling a blank, and it is the one worth spotting in a
+  // scan. A cell whose previous value was absent stays MANUAL/PASTE -- which is why the rows
+  // the grid paints as 「미상」 do not turn into overwrites: absent reaches here as null.
+  if ((byHand || byPaste) && baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '') {
+    return { label: 'OVERWRITE', cls: 'kind-overwrite' };
+  }
+  if (byPaste) return { label: 'PASTE', cls: 'kind-paste' };
+  if (byHand) return { label: 'MANUAL', cls: 'kind-manual' };
+  // A file name is an ingest -- that is what the parser writes into `source_name`.
+  if (/\.[a-z0-9]{2,4}$/i.test(source)) return { label: 'INGEST', cls: 'kind-ingest' };
+  if (source === 'custom_script') return { label: 'SCRIPT', cls: 'kind-script' };
   if (col === 'ROW_UPDATE') return { label: 'AUTO', cls: 'kind-auto' };
-  return baseLog.source_name === 'user'
-    ? { label: 'MANUAL', cls: 'kind-manual' }
-    : { label: 'PARSER', cls: 'kind-parser' };
+  return { label: 'SYSTEM', cls: 'kind-auto' };
 }
 
 export function createGlobalTimelineItemDom(group) {
@@ -680,19 +694,93 @@ export async function loadMoreHistory(btn) {
 }
 
 // Render overall table audit history logs (recent transactions)
+/**
+ * The audit filter strip, mockup 2c.
+ *
+ * 🔴 CLIENT-SIDE OVER WHAT IS ALREADY LOADED, and the count says so: 「N건 중 M」 counts the
+ * groups in hand, not the table. `/audit_logs/recent` EMITS `next_cursor` but its signature
+ * does not ACCEPT one, so there is no honest way to claim these filters searched all history.
+ *
+ * Options come from the loaded groups rather than a fixed list, so a source this screen has
+ * never seen still gets an entry the day it first appears.
+ */
+function auditFilterState() {
+  return {
+    user: document.getElementById('audit-filter-user')?.value || '',
+    kind: document.getElementById('audit-filter-kind')?.value || '',
+    when: document.getElementById('audit-filter-when')?.value || ''
+  };
+}
+
+function groupKindLabel(group) {
+  const baseLog = group.logs?.[0];
+  if (!baseLog) return '';
+  return auditKind(group, baseLog, group.total_count > 1).label;
+}
+
+function fillAuditFilterOptions(groups) {
+  const fill = (id, values) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const chosen = select.value;
+    // Option 0 is the "all" row and lives in the markup, so it is kept and the rest rebuilt --
+    // clearing everything would drop the label the mockup names.
+    while (select.options.length > 1) select.remove(1);
+    values.forEach(value => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = value;
+      select.appendChild(option);
+    });
+    // A choice that no longer exists in the data must not go on filtering invisibly.
+    select.value = values.includes(chosen) ? chosen : '';
+  };
+  fill('audit-filter-user', [...new Set(groups.map(g => g.logs?.[0]?.updated_by || 'system'))].sort());
+  fill('audit-filter-kind', [...new Set(groups.map(groupKindLabel).filter(Boolean))].sort());
+}
+
+function auditFilterPasses(group, filters) {
+  const baseLog = group.logs?.[0];
+  if (!baseLog) return false;
+  if (filters.user && (baseLog.updated_by || 'system') !== filters.user) return false;
+  if (filters.kind && groupKindLabel(group) !== filters.kind) return false;
+  if (filters.when) {
+    const stamp = new Date(baseLog.timestamp);
+    const now = new Date();
+    if (filters.when === 'today' && stamp.toDateString() !== now.toDateString()) return false;
+    if (filters.when === '7d' && now - stamp > 7 * 24 * 60 * 60 * 1000) return false;
+  }
+  return true;
+}
+
 export function renderGlobalTimeline() {
   elements.timeline.innerHTML = '';
+  const count = document.getElementById('audit-filter-count');
 
   if (!state.globalHistoryData || state.globalHistoryData.length === 0) {
     elements.timeline.innerHTML = '<li class="timeline-empty">No database history recorded.</li>';
+    if (count) count.textContent = '';
     return;
   }
 
-  state.globalHistoryData.forEach((group) => {
+  fillAuditFilterOptions(state.globalHistoryData);
+  const filters = auditFilterState();
+  const shown = state.globalHistoryData.filter(group => auditFilterPasses(group, filters));
+
+  shown.forEach((group) => {
     const li = createGlobalTimelineItemDom(group);
-    if (li) {
-      elements.timeline.appendChild(li);
-    }
+    if (li) elements.timeline.appendChild(li);
+  });
+
+  if (!shown.length) {
+    elements.timeline.innerHTML = '<li class="timeline-empty">조건에 맞는 기록이 없습니다.</li>';
+  }
+  if (count) count.textContent = `${state.globalHistoryData.length}건 중 ${shown.length}`;
+}
+
+/** Re-render on a filter change. The selects are static markup, so this installs once. */
+export function installAuditFilters() {
+  ['audit-filter-user', 'audit-filter-kind', 'audit-filter-when'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => renderGlobalTimeline());
   });
 }
 
