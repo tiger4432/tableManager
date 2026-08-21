@@ -162,7 +162,7 @@ def test_objectless_emission_compiles_without_an_object_role():
     compiled = snapshot(objectless_register_bundle())
     emission = compiled.claims["register@1"].emission
 
-    assert compiled.compiler_contract_version == 3
+    assert compiled.compiler_contract_version == 4
     assert compiled.vocabulary["register@1"].object_kind == "none"
     assert emission.object_kind == "none"
     assert emission.object_role is None

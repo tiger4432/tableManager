@@ -31,7 +31,11 @@ from .setup_bundle import (
 
 
 _DescriptorT = TypeVar("_DescriptorT")
-SNAPSHOT_COMPILER_VERSION = 3
+#: 4 since 2026-08-21: the read path reads a varchar occurred_at instead of refusing it,
+#: so the same rows now yield atoms with DIFFERENT instants.  Without this move a cursor
+#: would call the setup unchanged and keep stacking new-reading atoms onto old-reading
+#: ones with nothing recording which is which.
+SNAPSHOT_COMPILER_VERSION = 4
 
 
 def _versioned_parts(identifier: str) -> tuple[str, int]:

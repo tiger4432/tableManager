@@ -1081,8 +1081,14 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         occurred = driver.get("occurred_at")
         occurred = occurred if isinstance(occurred, Mapping) else {}
         types = _column_types(catalog, relation)
+        # `string` stands beside `datetime` here.  The operational tables keep time in
+        # varchar ON PURPOSE (owner 2026-08-21: the text formats are not uniform in
+        # production), and the read path now parses those spellings -- so a catalog type
+        # of `string` no longer means "not a time".  Leaving it out would let a person
+        # declare a column the screen will not offer, which is the same wall from the
+        # other side.
         time_columns = tuple(sorted(
-            name for name, kind in types.items() if kind == "datetime"))
+            name for name, kind in types.items() if kind in ("datetime", "string")))
         # The CANDIDATE SET is derived; the answer is not.  A table with no time-typed
         # column leaves `basis` as the only door, and the screen says so instead of
         # letting a person discover it through three refusals -- but it still ASKS,
@@ -1100,9 +1106,9 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             universe=UNIVERSE_RELATION,
             ground=Ground(
                 "occurred_at_candidates_from_column_types",
-                (f"제한: {relation}에 시각 타입 컬럼 없음 → basis만"
+                (f"제한: {relation}에 시각으로 읽을 컬럼 없음 → basis만"
                  if narrowed
-                 else f"후보: {relation}의 시각 타입 컬럼 {len(time_columns)}개 + basis"),
+                 else f"후보: {relation}의 시각으로 읽을 컬럼 {len(time_columns)}개 + basis"),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
             note="column과 basis 중 정확히 하나. "
                  "basis가 묶음 이벤트에서 무엇을 읽는지는 소유자 판정 대기"

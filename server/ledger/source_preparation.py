@@ -668,6 +668,23 @@ def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
 
 
 def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
+    # A varchar time column arrives here as `str`, and the two halves of reading one
+    # already existed APART: `profile_chain_mapper._aware_time` parses ISO and honours an
+    # explicit offset but refuses naive, while this one localizes naive with the declared
+    # timezone and refused every string.  Measured 2026-08-21 against the three spellings
+    # `dt_log.event_time` actually holds -- `...Z`, `...+09:00`, and a naive
+    # `2026-05-11 00:00:00` -- so the parse below is the chain's, character for character,
+    # and the localization further down stays exactly as it was.  An offset written in the
+    # text WINS; `timezone_name` answers only for a value that carries none, which is what
+    # makes that declaration mean "the timezone of this source's naive values".
+    #
+    # A string this cannot read falls through to the refusal rather than being replaced by
+    # ingestion time: a value we could not read is not a value we may invent.
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            pass
     if isinstance(value, pd.Timestamp):
         value = value.to_pydatetime()
     if not isinstance(value, datetime):
