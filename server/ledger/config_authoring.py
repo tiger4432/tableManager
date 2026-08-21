@@ -965,7 +965,23 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `packs` was a `derived` row here on the same terms as the mapper's `emits`, and
         # left the file with it on 2026-08-21.
         available = prepared_columns(bundle, catalog, source)
-        for sentence, mapping in _mappings(profile):
+        sentences = _mappings(profile)
+        # 🔴 THE MAP ITSELF IS A SQUARE.  An empty `mappings` is refused with
+        # `invalid_profile ... must be a non-empty object keyed by sentence`, and until this
+        # row existed that refusal had no field to sit on: it went to `unattached_refusals`,
+        # so a source with no sentence yet showed NO red square and still would not compile.
+        # The row is drawn where the form already draws one -- `renderSkeletonMap` asks
+        # `branchOwnRow` for the map's own plan row, on the same line as the 「+ 매핑」
+        # button that answers it.  No control is added; the refusal is given the square the
+        # screen was already drawing.
+        yield Field(
+            path=f"{base}.mappings", step="sources", label="문장",
+            state="answered" if sentences else "missing", tier=TIER_CONSTRAINED,
+            value=[sentence for sentence, _ in sentences],
+            declared=[sentence for sentence, _ in sentences] if sentences else _ABSENT,
+            note="아래 「+ 매핑」으로 문장을 하나 이상 추가",
+        )
+        for sentence, mapping in sentences:
             yield from _mapping_fields(
                 base, sentence, mapping, vocabulary, entities, available)
 
@@ -1162,9 +1178,40 @@ def _registering_sentences(source: Any) -> tuple[tuple[str, str], ...]:
     return tuple(found)
 
 
+#: The timezone offered when the file answers nowhere at all.
+#:
+#: 🔴 A DEFAULT, NOT A CONSTRAINT (lead, 2026-08-21).  Both live sources say `Asia/Seoul`,
+#: and two sources are a SAMPLE, not a rule -- so this is only the value that goes in when
+#: there is nothing to read.  Nothing enforces it: the box beside the picker is free text
+#: and no timezone list is published, because a closed list here would be this module
+#: authoring a vocabulary it does not own.
+_TIMEZONE_FALLBACK = "Asia/Seoul"
+
+
+def _declared_timezones(bundle: Mapping[str, Any]) -> list[str]:
+    """Every timezone this file's sources already answer with, sorted.
+
+    Read from the document rather than written here, so a site that types its own once is
+    offered that answer on every later source without a line of code changing.
+    """
+    found = []
+    for source in _section(bundle, "sources").values():
+        read = source.get("read") if isinstance(source, Mapping) else None
+        occurred = read.get("occurred_at") if isinstance(read, Mapping) else None
+        value = occurred.get("timezone") if isinstance(occurred, Mapping) else None
+        if isinstance(value, str) and value.strip():
+            found.append(value.strip())
+    return sorted(found)
+
+
 def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
     entities = _section(bundle, "entities")
+    # The most-used answer in the file, ties broken alphabetically so two runs of the same
+    # file never disagree about which chip a new source is offered.
+    zones = _declared_timezones(bundle)
+    timezone_default = max(zones, key=zones.count) if zones else _TIMEZONE_FALLBACK
+    timezone_candidates = tuple(sorted({*zones, timezone_default}))
     for source_id in sorted(_section(bundle, "sources"), key=str):
         source = _section(bundle, "sources")[source_id]
         if not isinstance(source, Mapping):
@@ -1264,14 +1311,25 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # because which basis a grouped event should read is not settled (see the note).
         answered = bool(occurred.get("column") or occurred.get("basis"))
         narrowed = bool(physical) and not time_columns
+        # 🔴 AN OFFERED CANDIDATE IS A COMPLETE ANSWER OR IT IS A TRAP.  The candidates
+        # named `column` or `basis` and stopped; `timezone` sits in the same record and is
+        # REQUIRED, so pressing a chip produced a half-written record and two refusals
+        # (`missing_field`, `blank_value`) at a path no plan row spoke for -- i.e. the
+        # screen could show zero red squares and still refuse to compile, which is the
+        # owner's own report (2026-08-21: 「timezone 수동으로 쳐야하고」).  Measured the
+        # same evening: 16 of 16 candidates left that refusal standing.
+        zone = occurred.get("timezone")
+        zone = (zone.strip() if isinstance(zone, str) and zone.strip()
+                else timezone_default)
         yield Field(
             path=f"{base}.read.occurred_at", step="sources", label="시각",
             state="answered" if answered else "missing", tier=TIER_CONSTRAINED,
             value=dict(occurred) if occurred else None,
             declared=dict(occurred) if occurred else _ABSENT,
             candidates=tuple(
-                [{"column": name} for name in time_columns]
-                + [{"basis": name} for name in sorted(_OCCURRED_AT_BASES)]),
+                [{"column": name, "timezone": zone} for name in time_columns]
+                + [{"basis": name, "timezone": zone}
+                   for name in sorted(_OCCURRED_AT_BASES)]),
             universe=UNIVERSE_RELATION,
             ground=Ground(
                 "occurred_at_candidates_from_column_types",
@@ -1284,6 +1342,28 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # somebody filling the box, who cannot act on either.  What is left is the one
             # rule that changes what they press.
             note="column · basis 중 하나만 고르세요",
+        )
+        # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON.  Filling it from the picker above is
+        # only half: the validator refuses at `…occurred_at.timezone`, and with no row at
+        # that exact path both refusals fell into `unattached_refusals` -- reachable on the
+        # map and on no box.  This row is also what keeps the value CHANGEABLE: the picker
+        # swallows the keys it writes (`covering`), and the client's rule is that a key the
+        # plan speaks for in its own right keeps its box.  Measured on the live config
+        # before this existed: adding `timezone` to the candidates deleted the only input
+        # for it anywhere in the form.
+        declared_zone = occurred.get("timezone")
+        answered_zone = isinstance(declared_zone, str) and bool(declared_zone.strip())
+        yield Field(
+            path=f"{base}.read.occurred_at.timezone", step="sources",
+            label="시각 timezone",
+            state="answered" if answered_zone else "missing", tier=TIER_CONSTRAINED,
+            value=declared_zone if answered_zone else None,
+            declared=declared_zone if answered_zone else _ABSENT,
+            # 🔴 A SUGGESTION, NEVER A LIST TO PICK FROM.  What the file already answers
+            # plus the default -- no IANA table is shipped and none is enforced, so a site
+            # outside Seoul types it once and every later source is offered that answer.
+            candidates=timezone_candidates,
+            note="시각을 고르면 함께 채워짐 · 다르면 직접 입력",
         )
         probes = _listed(driver.get("registration_probe"))
         single_key = tuple(sorted(

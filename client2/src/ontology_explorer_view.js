@@ -1929,7 +1929,24 @@ function renderAuthoring(state) {
     // A record only. A name-keyed MAP also holds a plain object, and covering ITS keys
     // would hide members the document actually declares behind a picker that never names
     // them -- the one direction of this change that could lose somebody's work.
-    if (editable.kind === 'object' && shape.kind === 'record') return new Set(editable.covers);
+    //
+    // 🔴 A KEY THE PLAN SPEAKS FOR IN ITS OWN RIGHT KEEPS ITS OWN BOX. A candidate may
+    // carry a key it does not DECIDE -- `read.occurred_at`'s candidates carry `timezone`
+    // so that pressing one is a complete answer, and every one of them carries the same
+    // value. Swallowing that key would leave the form with no input for it anywhere:
+    // measured on the live config the moment the server added it, the only `timezone` box
+    // on the screen disappeared, so a default became a value nobody could change.
+    // The plan is the test, not a key name: it emits a row at `…occurred_at.timezone`,
+    // and that row is the box. Nothing here knows which field this is.
+    //
+    // Asked of `plan.fields` directly rather than through `planRow`, which STAMPS what it
+    // finds as drawn. A key whose row a `when` condition then hides would have been
+    // stamped without being rendered, and a row that is neither in the tree nor in the
+    // buckets is a question nobody can answer.
+    if (editable.kind === 'object' && shape.kind === 'record') {
+      return new Set(editable.covers.filter((key) => !plan.fields.some(
+        (item) => item.path === `${base}.${path}.${key}`)));
+    }
     return null;
   };
   /** The distinct strings the OTHER declarations of this section hold at the same slot.
