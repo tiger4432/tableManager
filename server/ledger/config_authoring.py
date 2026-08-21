@@ -42,8 +42,11 @@ The tiers, strongest first, are recorded per field in ``tier`` so a reader can a
 ranking rather than take it on faith:
 ``structural`` > ``derivation`` > ``constrained_input`` > ``diagnostic``.
 
-NOTHING HERE WRITES.  The plan is a read over a bundle mapping and the catalog; the
-authoring path that applies a choice is `config_drafts`, unchanged by this module.
+NOTHING HERE TOUCHES A FILE.  The plan is a read over a bundle mapping and the catalog,
+and `filled_declaration` -- the one function that produces a document rather than a
+description of one -- returns a new mapping.  `config_drafts` is still the only writer;
+it calls that function at the moment of save so a square the screen says is FILLED is
+filled in the file too, rather than being refused as missing one step later.
 """
 from __future__ import annotations
 
@@ -1544,3 +1547,111 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
             issue for issue in refusals if issue["path"] not in attached],
         "physical_schema_file": PHYSICAL_CATALOG_FILENAME,
     }
+
+
+# ------------------------------------------------------- the fill, at the moment of save
+
+
+def _says_nothing(value: Any) -> bool:
+    """Does the document hold nothing at this leaf?
+
+    Absent, `null`, and the skeleton's empty containers (`[]`, `{}`, `""`) all mean "not
+    answered".  `false` and `0` do NOT -- they are answers, and treating a declared `false`
+    as a gap is how a fill starts overwriting decisions.  `accepts_verified_join_rules` is
+    exactly that field and is `false` on all three live sources.
+    """
+    return value is None or (isinstance(value, (str, list, tuple, dict)) and not value)
+
+
+def _fill_leaf(document: Any, steps: Sequence[Any], value: Any) -> None:
+    """Write `value` at `steps`, into containers that are already there. In place.
+
+    Two refusals to guess, both deliberate:
+
+    * a missing intermediate container is NOT created.  The plan speaks about a leaf; it
+      says nothing about which shape should hold it, and inventing one is this module
+      authoring a declaration rather than completing one.
+    * a leaf addressed by list INDEX is skipped.  Nothing derived addresses one today, and
+      the day something does, the question "does slot 3 exist yet" is a shape question.
+    """
+    cursor = document
+    for step in steps[:-1]:
+        if isinstance(step, int):
+            if not isinstance(cursor, list) or step >= len(cursor):
+                return
+        elif not isinstance(cursor, dict) or step not in cursor:
+            return
+        cursor = cursor[step]
+    last = steps[-1] if steps else None
+    if not isinstance(last, str) or not isinstance(cursor, dict):
+        return
+    if last in cursor and not _says_nothing(cursor[last]):
+        return
+    cursor[last] = copy.deepcopy(value)
+
+
+def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
+                       bundle_path: Sequence[Any], raw: Mapping[str, Any]
+                       ) -> dict[str, Any]:
+    """`raw`, with the plan's derived values written into the gaps it leaves.
+
+    🔴 THE SCREEN SAYS 「채움」 AND THE FILE HAS TO AGREE.  A `derived` row renders its value
+    and its ground, so the operator reads "this is filled in" -- and then the declaration is
+    saved with the box still empty, the validator refuses `missing_field` on the very square
+    that said it filled itself, and the square goes red.  Measured on the half-built
+    `user_test` source, 2026-08-21: of its 7 red squares, 3 were this -- both
+    `implementation_version` boxes and `read.order_by` -- so three of the seven things it
+    asked a person to go and fix were things it had already answered.
+
+    ONE PASS OVER THE PLAN, NOT ONE RULE PER FIELD.  The plan already knows which rows are
+    derived, what each one derives to, and (via `disposition == "shape"`) which of them are
+    not file leaves at all -- a row set like `bind.mappings.<sentence>.bind`, whose "value"
+    is the list of Role names to lay out and would be nonsense in the file.  So the rule is
+    the plan's own vocabulary, and a derivation added later lands in the file without a
+    second author here.
+
+    🔴 IT FILLS A GAP; IT DOES NOT OVERWRITE, AND THIS IS THE ONE PLACE IT DIFFERS FROM
+    `setup_bundle._derived_cursor`.  A cursor MUST equal its `order_by` -- a watermark can
+    only be expressed in the order the read ran -- so that one overwrites.  These are
+    defaults the plan itself marks `default_overridable`, and overwriting them would rewrite
+    a live decision: measured on `lot_event`, whose `read.order_by` is `['event_time',
+    'row_id']` while the catalog's declared key derives `['txn_seq']`.  Overwriting it moves
+    `source_cursor_fingerprint`, and a moved fingerprint stops a running cursor with
+    `cursor_snapshot_reset_required` -- i.e. an operator saving an unrelated edit to that
+    source would silently halt its backfill.
+
+    `bundle` is the document to derive AGAINST (the active setup's), `bundle_path` is where
+    `raw` lives in it (`['sources', 'user_test']`), and the return value is a new mapping --
+    nothing here touches a file.
+    """
+    steps = [str(step) for step in bundle_path]
+    out = copy.deepcopy(dict(raw))
+    if not steps:
+        return out
+    document = copy.deepcopy(dict(bundle))
+    cursor: Any = document
+    for step in steps[:-1]:
+        if not isinstance(cursor, dict) or not isinstance(cursor.get(step), dict):
+            return out
+        cursor = cursor[step]
+    if not isinstance(cursor, dict):
+        return out
+    cursor[steps[-1]] = out
+    # Not `selection_prefix`: that is a `startswith` over a dotted path, so saving
+    # `user_test` would also match `user_test_2`'s rows and fill THEM into this body at the
+    # same relative steps.  The trailing dot is what makes the prefix a whole declaration.
+    prefix = "bundle." + ".".join(steps) + "."
+    for row in authoring_plan(document, catalog)["fields"]:
+        if not row["path"].startswith(prefix):
+            continue
+        if row["state"] != "derived" or row["disposition"] == "shape":
+            continue
+        # `None` is the derivation having NO ANSWER YET, not an answer of nothing: an
+        # `implementation_version` whose `implementation_id` has not been chosen derives to
+        # `None`, and writing that would turn `missing_field` into `invalid_version` while
+        # inventing a value nobody picked.  An empty LIST is a different thing -- it is the
+        # answer for `read.group_by` under `unit: row` -- so it is written.
+        if row["value"] is None:
+            continue
+        _fill_leaf(out, _split_path(row["path"])[len(steps):], row["value"])
+    return out

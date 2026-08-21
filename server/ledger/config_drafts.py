@@ -81,6 +81,22 @@ def _empty_declaration(section: str) -> dict:
     return empty_declaration(section)
 
 
+def _filled_declaration(active_setup: Any, node: Any,
+                        raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """What the operator typed, plus what the screen already told them was filled in.
+
+    The derivations are `config_authoring`'s -- this is the moment they stop being
+    something the plan says and become something the file holds.  See
+    `config_authoring.filled_declaration` for what may be written and what may not.
+
+    Imported at call time for the same cycle reason as `_empty_declaration`.
+    """
+    from .config_authoring import filled_declaration
+    return filled_declaration(
+        active_setup.bundle.to_mapping(), active_setup.catalog,
+        node.bundle_path, raw)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -402,6 +418,12 @@ class OntologyDraftStore:
                     "active snapshot changed; rebase before saving",
                 )
             node = draft_target(record, active_index)
+            # 🔴 THE FILL LANDS BEFORE THE PREVIEW, NOT AFTER IT.  What the preview scores
+            # has to be what the file will hold, or the operator reads a refusal
+            # (`missing_field` on `implementation_version`) about a square the screen has
+            # already answered -- and `activate` writes `record["raw"]` verbatim, so this
+            # is also the only assignment that decides what reaches the config file.
+            raw = _filled_declaration(active_setup, node, raw)
             preview = compile_draft_preview(active_setup, node, raw)
             record["revision"] += 1
             record["raw"] = json.loads(json.dumps(raw, ensure_ascii=False))
