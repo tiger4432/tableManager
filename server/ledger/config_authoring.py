@@ -1144,6 +1144,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
             f"채움: {entity_type}의 식별키",
             (f"bundle.entities.{entity_type}.keys",), list(keys)),
         note="각 키에 어느 컬럼인지만 아래에서 고르세요",
+        disposition="shape",
     )
     for key in keys:
         child = declared_keys.get(key) if isinstance(declared_keys, Mapping) else None
