@@ -470,6 +470,12 @@ body.resizing-active .history-sidebar {
 .reference-view-table th, .reference-view-table td { padding: 7px; border: 1px solid var(--border); text-align: left; vertical-align: top; word-break: break-word; }
 .reference-view-table th { color: var(--text-muted); background: var(--bg-inset); }
 .reference-view-empty { color: var(--text-dim); font-size: .82rem; }
+/* [2b Phase 3.1] The columns a copy from this view will paste, in declared order.
+   Accent background rather than a new colour token: this is the same 'this is the
+   active thing' the grid already says with --accent. */
+.reference-view-table th.reference-view-fill { color: var(--accent); background: var(--accent-weak, var(--bg-surface)); }
+.reference-view-table td.reference-view-fill { font-family: var(--font-mono); color: var(--text); }
+
 
 .timeline {
   list-style: none;

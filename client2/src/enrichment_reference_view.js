@@ -70,6 +70,49 @@ export function installReferenceKeyboardIsolation() {
   panel.addEventListener('keydown', event => event.stopPropagation());
 }
 
+// ── [2b Phase 3.1] Which columns get pasted, and in what order ───────────────────────────
+//
+// THE ORDER COMES OFF `target_fields`, WHICH IS AN ARRAY, NOT OFF `candidate_for`'s KEYS.
+// Both say the same thing today — measured against the live server, `target_fields` is
+// ['dt_lot','dt_slot'] and the view's `candidate_for` keys arrive in that same order. But one
+// of those two is order-BEARING and the other is order-INCIDENTAL: a JSON object's key order
+// survives Python's dict, `json.dumps` and `JSON.parse` only for keys that are not
+// integer-like, because `Object.keys` hoists integer-like keys to the front in numeric order.
+// No column is named `1` today. The day one is, a paste would silently land in the wrong
+// column — no error, no refusal, just values in the wrong place. Reading the array costs
+// nothing and that failure mode stops existing.
+//
+// `candidate_for` still answers the other half, which is the half `fill_targets` could not:
+// WHICH view column feeds each target. So the pair is {order: target_fields, mapping:
+// candidate_for} rather than either one alone.
+//
+// Returns null when the rule declares nothing usable — the caller then renders exactly what
+// it rendered before. A view with no `candidate_for` is a display-only view (the lead's
+// evidence views are deliberately empty), and guessing a fill order for one would silently
+// misalign a paste.
+function fillPlan(view, rule, payloadColumns) {
+  const candidateFor = view?.candidate_for;
+  if (!candidateFor || typeof candidateFor !== 'object') return null;
+  const targets = Array.isArray(rule?.target_fields) ? rule.target_fields : [];
+  const pairs = targets
+    .map(target => ({ target, column: candidateFor[target] }))
+    .filter(p => typeof p.column === 'string' && p.column !== '')
+    // A declared column the query did not return cannot be a fill source. Dropping it here
+    // keeps the numbering contiguous instead of leaving a gap the operator has to decode.
+    .filter(p => payloadColumns.includes(p.column));
+  if (pairs.length === 0) return null;
+  const fillColumns = pairs.map(p => p.column);
+  return {
+    pairs,
+    // Declared columns FIRST and adjacent, everything else after in its original order. The
+    // paste target is a rectangle, so the columns that feed it cannot have other columns
+    // interleaved between them.
+    order: [...fillColumns, ...payloadColumns.filter(c => !fillColumns.includes(c))]
+  };
+}
+
+const FILL_ORDINALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨'];
+
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
@@ -92,11 +135,38 @@ function render(results) {
     } else {
       const table = document.createElement('table'); table.className = 'reference-view-table';
       const columns = payload.columns || [];
+      const plan = fillPlan(view, activeRule, columns);
+      const shown = plan ? plan.order : columns;
+      // 🔴 THE ORIGINAL INDEX, KEPT. `payload.rows` may be positional arrays, so a reordered
+      // header must still read each cell from the column's position in `payload.columns` —
+      // reordering the header alone would shift every value one column sideways and the
+      // table would still look plausible.
+      const sourceIndex = new Map(columns.map((column, index) => [column, index]));
+      const fillOrdinal = new Map((plan?.pairs || []).map((p, i) => [p.column, FILL_ORDINALS[i] || `${i + 1}`]));
+
       const head = document.createElement('thead'); const header = document.createElement('tr');
-      columns.forEach(column => { const th = document.createElement('th'); th.textContent = column; header.appendChild(th); });
+      shown.forEach(column => {
+        const th = document.createElement('th');
+        const ordinal = fillOrdinal.get(column);
+        // The number is the paste order, so it belongs on the column that will be pasted.
+        // Without it the reordering is unexplained and the operator has to trust it.
+        th.textContent = ordinal ? `${ordinal} ${column}` : column;
+        if (ordinal) th.className = 'reference-view-fill';
+        header.appendChild(th);
+      });
       head.appendChild(header); table.appendChild(head);
       const body = document.createElement('tbody');
-      payload.rows.forEach(row => { const tr = document.createElement('tr'); columns.forEach((column, index) => { const td = document.createElement('td'); td.textContent = Array.isArray(row) ? (row[index] ?? '') : (row?.[column] ?? ''); tr.appendChild(td); }); body.appendChild(tr); });
+      payload.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        shown.forEach(column => {
+          const td = document.createElement('td');
+          const at = sourceIndex.get(column);
+          td.textContent = Array.isArray(row) ? (row[at] ?? '') : (row?.[column] ?? '');
+          if (fillOrdinal.has(column)) td.className = 'reference-view-fill';
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
       table.appendChild(body); section.appendChild(table);
     }
     panels.appendChild(section);
