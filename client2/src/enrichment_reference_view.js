@@ -39,7 +39,31 @@ export async function syncReferenceViewRule() {
       .catch(() => []);
   }
   const rules = await rulesPromise;
-  activeRule = rules.find(rule => rule?.derived_table === state.currentTable && (rule.reference_views || []).length) || null;
+
+  // Which of this table's rules the panel binds to.
+  //
+  // `find` on "has views" was the whole test while a table had at most ONE rule. It stopped
+  // being a test the day a third rule landed on `dt_inventory`: three matched, the panel took
+  // the first, and the only one carrying a `candidate_for` was third and therefore
+  // unreachable. Nothing errored — the panel opened on a rule that declares nothing and
+  // correctly fell back, which looks identical to "this feature does not work".
+  //
+  // A rule that DECLARES beats one that does not, because declaring is what this screen is
+  // for: the operator is here to put values into cells. A rule with no `candidate_for` is a
+  // display-only view, and display-only is the right answer only when nothing better exists.
+  //
+  // 🔴 THIS IS A STOPGAP AND THE NEXT READER MUST NOT MISTAKE IT FOR THE RULE. The panel still
+  //    shows exactly ONE rule out of N, and that limitation is untouched. This criterion picks
+  //    a unique answer today only because exactly one rule declares anything. On the day a
+  //    SECOND declaring rule exists, `find` returns the first of those two and the arbitrary
+  //    representative is back — silently, with no error, exactly as it was silent this time.
+  //    What to do that day is the lead's and the owner's call, not this function's.
+  const forTable = rules.filter(rule =>
+    rule?.derived_table === state.currentTable && (rule.reference_views || []).length);
+  const declaresAFillTarget = rule => (rule.reference_views || []).some(
+    view => view && view.candidate_for && Object.keys(view.candidate_for).length > 0);
+  activeRule = forTable.find(declaresAFillTarget) || forTable[0] || null;
+
   requestSequence++;
   if (elements.tabReferenceBtn) elements.tabReferenceBtn.style.display = activeRule ? '' : 'none';
   // On a table that declares a reference rule this is the tab the work happens in, so
