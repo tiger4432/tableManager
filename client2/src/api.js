@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject } from './grid.js';
+import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, applyFillTargetHeaders } from './grid.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
 import { refreshTraceEntry } from './trace_launch.js';
@@ -145,7 +145,10 @@ export async function switchTable(tableName) {
   await loadHistory();
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)
-  syncReferenceViewRule();
+  // The headers get their ①② here, not in `renderGrid` above: the rule is still in flight
+  // at that point. `.catch` keeps the stated fire-and-forget contract -- adding a `.then`
+  // to a bare call would otherwise turn a silent failure into an unhandled rejection.
+  syncReferenceViewRule().then(applyFillTargetHeaders).catch(() => {});
 
   // G2 추적 진입점: 현재 테이블의 그래프 매핑 여부 재판정 (fire-and-forget, 실패 무음)
   refreshTraceEntry();

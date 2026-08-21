@@ -2394,6 +2394,17 @@ body.resizing-active .history-sidebar {
 }
 .reference-shortcuts-copy input { width: 12px; height: 12px; margin: 0; }
 
+/* Mockup 2b: the columns the paste lands in, marked in the MAIN grid header.
+   🔴 Scoped to `#myGrid`, NOT to a theme class -- `theme.js` swaps `ag-theme-quartz` for
+   `-dark`, so a rule keyed on either one is silently absent in the other mode. */
+#myGrid .ag-header-cell.fill-target-header {
+  background: var(--accent-weak);
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+#myGrid .ag-header-cell.fill-target-header .ag-header-cell-text { color: var(--accent); }
+
+
 /* ── Mockup 2b: active filters live in the header bar ──────────────────────────────────
    They take the free space between the toolbar and the unsaved badges, so a filter is
    visible from wherever the operator is looking without a strip pushing the grid down. */

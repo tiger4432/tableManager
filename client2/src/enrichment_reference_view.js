@@ -181,6 +181,19 @@ function targetColumnIds() {
   return single ? [single] : [];
 }
 
+/**
+ * The derived-table columns this rule fills, in paste order — the main grid's ①②.
+ *
+ * Reads `target_fields` for the same reason `fillPlan` does: it is the order-BEARING
+ * declaration. Empty until `syncReferenceViewRule` has resolved, which is why the caller
+ * re-applies the column defs once it has rather than building them and hoping.
+ */
+export function fillTargetOrdinals() {
+  const targets = activeRule?.target_fields;
+  if (!Array.isArray(targets)) return new Map();
+  return new Map(targets.map((column, index) => [column, FILL_ORDINALS[index] || `${index + 1}`]));
+}
+
 /** The column names inside the panel's current selection, left to right. */
 function selectedColumnNames() {
   const rect = selectionRect();

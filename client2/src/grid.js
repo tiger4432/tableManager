@@ -13,7 +13,7 @@ import {
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
-import { refreshReferenceForSelection } from './enrichment_reference_view.js';
+import { refreshReferenceForSelection, fillTargetOrdinals } from './enrichment_reference_view.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -400,7 +400,22 @@ function joinResolvedFilterDef(entry, baseTooltip) {
 }
 
 // Helper to build column definitions dynamically based on schema
+/**
+ * Re-apply the column defs once the reference rule has arrived.
+ *
+ * `buildColumnDefs` runs while `loadTable` is still fetching the rules, so at that moment
+ * `fillTargetOrdinals()` is legitimately empty and no header can carry ①②. This is the
+ * second pass. It is a no-op on tables with no rule, because the defs come out identical.
+ */
+export function applyFillTargetHeaders() {
+  if (!state.gridApi) return;
+  state.gridApi.setGridOption('columnDefs', buildColumnDefs());
+}
+
 export function buildColumnDefs() {
+  // Read ONCE per build, not per column: it is the same Map for every column and the rule
+  // must not be able to change halfway down the list.
+  const fillTargets = fillTargetOrdinals();
   const columnDefs = state.currentColumns.map((col, index) => {
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(col);
     const colTypes = state.currentColumnTypes || {};
@@ -413,6 +428,12 @@ export function buildColumnDefs() {
     } else if (state.currentCompositeKeySources.includes(col)) {
       headerLabel = `${headerLabel}*`;
     }
+
+    // [2b] The paste order, on the columns the paste lands in. The panel already numbers its
+    // own columns ①②; without the same numbers over here the operator has to hold the
+    // mapping in their head, which is the thing this screen exists to stop.
+    const fillOrdinal = fillTargets.get(col);
+    if (fillOrdinal) headerLabel = `${headerLabel} ${fillOrdinal}`;
 
     // [Virtual join] A STORED column can still be join-resolved — `kind: 'collide'`, where
     // the same name exists on both sides and the server fills it from the right table
@@ -435,6 +456,7 @@ export function buildColumnDefs() {
       // `floatingFilter: false` says the same thing where a reader looks for it.
       filter: isSystem ? false : (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter'),
       floatingFilter: !isSystem,
+      headerClass: fillOrdinal ? 'fill-target-header' : undefined,
       resizable: true,
       checkboxSelection: index === 0,
       headerCheckboxSelection: index === 0,

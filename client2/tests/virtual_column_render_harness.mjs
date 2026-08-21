@@ -232,7 +232,7 @@ async function runLoadSchema(sources, response) {
 }
 
 /** The real `buildColumnDefs`, with the schema already in state. */
-function runBuildColumnDefs(sources, schema) {
+function runBuildColumnDefs(sources, schema, fillTargets = [['core_lot', '①'], ['core_slot', '②']]) {
   const s = withState(sources);
   Object.assign(s.state, {
     currentColumns: schema.columns.slice(),
@@ -245,6 +245,11 @@ function runBuildColumnDefs(sources, schema) {
   });
   s.sandbox.isCellInRange = () => false;
   s.sandbox.SuggestCellEditor = function () {};
+  // `buildColumnDefs` now asks the reference panel which columns the paste fills. That module
+  // is not sliced in here (it owns async rule state), so the harness SUPPLIES the answer --
+  // and supplies a non-empty one, because a stub returning nothing would leave the ①②
+  // decoration unwalked and this harness green whatever it did.
+  s.sandbox.fillTargetOrdinals = () => new Map(fillTargets);
   // `joinResolvedColumn` is NOT lifted here — it comes from the real state.js that
   // `withState` already ran, so the predicate under test is the shipped one.
   vm.runInContext([
@@ -472,6 +477,10 @@ async function suite(sources) {
   check('3d virtual defs are not editable',
     [defOf(defs, 'wafer_id').editable, defOf(defs, 'yield_pct').editable], [false, false]);
   check('3e stored data column stays editable', defOf(defs, 'bond_count').editable, true);
+  check('3e2 fill targets wear the ordinal and the header class',
+    [defOf(defs, 'core_lot').headerName, defOf(defs, 'core_lot').headerClass,
+     defOf(defs, 'bond_count').headerName, defOf(defs, 'bond_count').headerClass],
+    ['CORE_LOT ①', 'fill-target-header', 'BOND_COUNT', undefined]);
   check('3f virtual defs carry no cell editor',
     [defOf(defs, 'wafer_id').cellEditor, defOf(defs, 'yield_pct').cellEditor],
     [undefined, undefined]);

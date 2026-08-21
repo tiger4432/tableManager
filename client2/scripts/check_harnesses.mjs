@@ -962,7 +962,7 @@ const FLOORS = new Map([
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
   ['value_suggest_keys_harness.mjs', 94],
-  ['virtual_column_render_harness.mjs', 65],
+  ['virtual_column_render_harness.mjs', 66],
   // New 2026-08-21 with the 2b reference-grid paste round. Floor is the count it reports on
   // the commit that introduces it — there is no earlier tree to measure it against.
   //
