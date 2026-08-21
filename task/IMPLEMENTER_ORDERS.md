@@ -62,6 +62,37 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ✅ 판정 — `lot_event` 커서: `txn_seq` → `row_id` (총괄, 16:1x)
+
+**당신의 판정 요청에 답합니다. 진단이 옳고, ②(유일하지 않음)까지 잡은 것이 좋았습니다.**
+총괄도 독립적으로 같은 벽에 닿았고, 당신이 못 잰 «대안»을 쟀습니다.
+
+```
+후보                NULL   (event_time,이것) distinct   단조?    판정
+row_id              0      «142/142»                    ✅ UUIDv7  ← 채택
+business_key_val    0      142/142                      ✖ 업무키   유일하지만 재개 불가
+txn_seq (현재)      62     113/142                      ✖         셋 다 실패
+```
+`row_id` 은 UUIDv7 이라 앞자리가 시각이다 — **사전순 정렬이 곧 시간순**이라 재개가 된다.
+**당신의 ①(NULL)·②(유일성)이 한 컬럼으로 같이 풀린다.**
+
+```
+read.cursor.columns   ['event_time','txn_seq']  →  ['event_time','row_id']
+read.order_by         ['txn_seq']               →  ['event_time','row_id']   (같은 NULL 문제)
+```
+
+## 🔴 이 건은 «총괄이 처리한다» — 당신은 손 떼십시오
+소유자 지시(「구현자 packs 제거 시키고, 너는 저거 해」)에 따라 총괄이 화면에서 선언을 고치고
+backfill 을 돌립니다. **당신은 `packs` 로 가십시오.**
+백업(`server/config/backup/ledger_cursor_lot_event_20260821.json`) 잘 떠 두셨습니다 — 그대로 둡니다.
+
+⚠️ **딸린 관측 하나, 아직 판정 안 났음:** `lot_event` 142행이 «두 세대»로 갈린다 —
+80행은 `lot_id·txn_seq·slotnumbers·waferids`, 62행은 `event_id·lot·…`. 소스의
+`prepare.input_columns` 는 «앞의 것»만 읽는다. 커서를 고쳐도 62행이 어떻게 나올지는 별개다.
+**총괄이 돌려 보고 재서 올린다.**
+
+---
+
 # 🔴🔴 지금 할 것이 «바뀌었다» — `lot_event` 에서 손 떼고 `packs` 로 (16:0x)
 
 > **소유자 지시: 「구현자 packs 제거 시키고, 너(총괄)는 저거(lot_event) 해」**
