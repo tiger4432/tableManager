@@ -57,6 +57,15 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .column_stats import declared_unique_keys
 from .config_explorer import AUTHORABLE_SECTIONS
+from .implementations import (
+    # Private on purpose over there and imported anyway: it is the ONE spelling of "a
+    # source-specific implementation lives under this package", and `_registered_ids`
+    # ranks candidates by exactly that distinction.  A second copy of the word here is
+    # the hand-kept list `implementations.py` exists to have deleted.
+    _IMPLEMENTATION_PACKAGE,
+    mapper_declarations,
+    source_preparer_declarations,
+)
 from .setup_bundle import (
     _APPROVAL_STATUSES,
     _BINDING_ORIGINS,
@@ -694,6 +703,86 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
             )
 
 
+#: The one line the candidate list needs beside it.  A name that is not on the list yet is
+#: NOT a wall: `/admin/scripts/code` reads and writes Python under `mappers/`, and
+#: `implementations._descendants()` picks a newly written class up on the next start.  Said
+#: once, because the preparer list and the mapper list are the same situation.
+NEW_IMPLEMENTATION_NOTE = (
+    "새 구현: /admin/scripts/code 에서 mappers/ledger_v2_*.py 작성 · 서버 재시작 후 후보")
+
+
+def _registered_ids(declarations: Mapping[tuple[str, int], type]) -> tuple[str, ...]:
+    """The addressable implementation names, GENERIC ONES FIRST.
+
+    🔴 THE ORDER IS THE ADVICE.  Most sources need no code at all -- a shape that says N
+    things per row is `DeclarativeRoleMapper`'s whole job -- and a person reading an
+    alphabetical list top-down meets somebody else's source-specific class first and
+    concludes they have to write one.  So the ranking is MEASURED off where the class
+    lives: `ledger.*` ships with the engine and is generic by construction, while
+    `mappers/ledger_v2_*.py` is one operator's one source.  `_IMPLEMENTATION_PACKAGE` is
+    the same constant the discovery walk uses, so a rename moves both together -- naming
+    the generic implementation here would be this module keeping a copy of the registry's
+    most important entry, which is the bookkeeping `implementations.py` exists to end.
+    """
+    ranked = sorted(
+        (implementation.__module__.startswith(f"{_IMPLEMENTATION_PACKAGE}."), identifier)
+        for (identifier, _version), implementation in declarations.items())
+    return tuple(dict.fromkeys(identifier for _specific, identifier in ranked))
+
+
+def _registered_versions(declarations: Mapping[tuple[str, int], type],
+                         identifier: Any) -> tuple[int, ...]:
+    """Every version registered under this name, ascending."""
+    if not isinstance(identifier, str):
+        return ()
+    return tuple(sorted(version for name, version in declarations if name == identifier))
+
+
+def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
+                                  declarations: Mapping[tuple[str, int], type],
+                                  identifiers: tuple[str, ...],
+                                  label: str, note: str) -> Iterable[Field]:
+    """`implementation_id` + `implementation_version` for one clause -- one question, not two.
+
+    🔴 THE VERSION IS NOT A SECOND DECISION, AND ASKING FOR IT AS ONE IS WHAT THE FORM DID.
+    The registry is keyed by `(id, version)` and every trusted address is stated BY THE
+    CLASS (`implementations._self_declared_identity`), so picking the name has already
+    picked the number: measured 2026-08-21, all 2 preparers and all 3 mappers register
+    exactly one version each.  The old form drew a bare number box beside a bare text box,
+    which is two ways to be wrong about one fact -- `unsupported_implementation_version`
+    lands at compile time on a person who typed the only other integer they could think of.
+
+    So the id gets the candidates and the version gets `derived` with the id as its ground.
+    `derived` is the word for zero degrees of freedom, not a picker with one entry: a
+    single-candidate row is still a question, and this one has no question left in it.
+
+    The version's `declared` is compared ONLY where the registry knows the name.  An id
+    nothing has registered already carries `untrusted_implementation` on its own row, and
+    painting the VERSION red for it would put the refusal one square away from its cause.
+    """
+    identifier = clause.get("implementation_id")
+    yield Field(
+        path=f"{base}.implementation_id", step="sources", label=label,
+        state="answered" if identifier else "missing", tier=TIER_CONSTRAINED,
+        value=identifier, declared=identifier if identifier else _ABSENT,
+        candidates=identifiers,
+        note=note,
+    )
+    versions = _registered_versions(declarations, identifier)
+    yield Field(
+        path=f"{base}.implementation_version", step="sources",
+        label=f"{label} 버전", state="derived", tier=TIER_STRUCTURAL,
+        value=versions[-1] if versions else None,
+        declared=clause.get("implementation_version", _ABSENT) if versions else _ABSENT,
+        ground=Ground(
+            "implementation_version_from_registered_id",
+            (f"채움: 등록된 {identifier}@{versions[-1]}"
+             + (f" · 이 이름의 등록 버전 {len(versions)}개" if len(versions) > 1 else "")
+             ) if versions else "채움: implementation_id를 고르면 버전이 따라온다",
+            (f"{base}.implementation_id",), versions[-1] if versions else None),
+    )
+
+
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
     """The preparer and mapper clauses of every source, walked FROM the source.
@@ -705,6 +794,14 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
     always has its source, its `relation`, and therefore its column universes.
     """
     sources = _section(bundle, "sources")
+    # Read ONCE per plan rather than per source: `_declarations` re-walks `mappers/` on
+    # every call, and the answer cannot change between two sources of one bundle.  Not
+    # cached across calls on purpose -- a class written through `/admin/scripts/code` has
+    # to appear the moment the process that imported it serves the next plan.
+    preparers = source_preparer_declarations()
+    mappers = mapper_declarations()
+    preparer_ids = _registered_ids(preparers)
+    mapper_ids = _registered_ids(mappers)
     for source_id in sorted(sources, key=str):
         source = sources[source_id]
         if not isinstance(source, Mapping):
@@ -718,6 +815,11 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # ------------------------------------------------------------------ preparer
         preparation = _preparation(source)
         prep_base = f"bundle.sources.{source_id}.prepare"
+        # Not gated on `physical`: which preparer runs is a fact about the REGISTRY, and a
+        # source whose relation is not in the catalog yet still has to be able to name one.
+        yield from _implementation_clause_fields(
+            prep_base, preparation, preparers, preparer_ids, "준비기 구현",
+            NEW_IMPLEMENTATION_NOTE)
         if physical:
             inputs = list(_listed(preparation.get("input_columns")))
             # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
@@ -751,21 +853,43 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
             )
         inherited = _listed(preparation.get("inherit_virtual_join_rules"))
-        if inherited:
-            yield Field(
-                path=f"{prep_base}.accepts_verified_join_rules", step="sources",
-                label="accepts_verified_join_rules", state="derived",
-                tier=TIER_DERIVATION, value=True,
-                declared=preparation.get("accepts_verified_join_rules", _ABSENT),
-                ground=Ground(
-                    "accepts_join_rules_from_inheritance",
-                    f"채움: 소스 {source_id}가 join rule {len(inherited)}건 상속",
-                    (f"{prep_base}.inherit_virtual_join_rules",), True),
-            )
+        # 🔴 IS THIS DECLARATION EVEN NEEDED -- ASKED BEFORE IT WAS WIRED.  Measured
+        # 2026-08-21: exactly one file outside the validator mentions the key, and it does
+        # not READ it -- `setup_registry` writes
+        # `SourcePreparerDescriptor.accepts_verified_join_rules` at compile time and
+        # nothing ever looks at the attribute again.  The validator states one rule about
+        # it (`invalid_driver`: must be true when the source inherits virtual join rules).
+        # So inheriting FORCES true, and not inheriting leaves a bit whose value changes
+        # nothing -- a default, not a question, in both directions.
+        #
+        # It used to be derived only in the first case, which is why this square sat on the
+        # form as a bare checkbox for all four live sources: none of them inherits a rule,
+        # so none of them reached the derivation, and the operator was asked for a bit
+        # nobody consumes.  The `if` is what left; the inheriting branch is unchanged.
+        #
+        # 🔴 AND THE STRONGER FIX IS STILL OPEN, SAID OUT LOUD.  A key nothing reads should
+        # leave the grammar rather than be filled in silence; that is `setup_bundle` +
+        # `setup_registry` + every config on disk, not this module, so it stays an open
+        # item here instead of being absorbed into a green box.
+        yield Field(
+            path=f"{prep_base}.accepts_verified_join_rules", step="sources",
+            label="accepts_verified_join_rules", state="derived",
+            tier=TIER_DERIVATION, value=bool(inherited),
+            declared=preparation.get("accepts_verified_join_rules", _ABSENT),
+            ground=Ground(
+                "accepts_join_rules_from_inheritance",
+                f"채움: 소스 {source_id}가 join rule {len(inherited)}건 상속"
+                if inherited else
+                f"기본값: 소스 {source_id}가 상속하는 join rule 없음 → false",
+                (f"{prep_base}.inherit_virtual_join_rules",), bool(inherited)),
+        )
 
         # -------------------------------------------------------------------- mapper
         mapper = _mapper(source)
         base = f"bundle.sources.{source_id}.map"
+        yield from _implementation_clause_fields(
+            base, mapper, mappers, mapper_ids, "매퍼 구현",
+            "맨 앞은 코드 없이 선언만으로 도는 구현 · " + NEW_IMPLEMENTATION_NOTE)
         # `emits` was a `derived` row here until 2026-08-21 -- set equality in BOTH
         # directions, zero degrees of freedom.  A field the screen fills and never asks is
         # still a field the file carries, so this round removed the declaration instead:

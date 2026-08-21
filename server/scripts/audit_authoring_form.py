@@ -151,6 +151,17 @@ def unanswered_leaves(document, plan, skeleton):
         # its own to be empty.  Only a leaf with no answered ancestor is on its own.
         if any(".".join(parts[:index + 1]) in answered for index in range(len(parts))):
             continue
+        # 🔴 A LEAF WHOSE TYPE IS ITS OWN CONTROL IS NOT A HOLE, AND SPEAKING FOR IT MAKES
+        # THINGS WORSE.  `flag` draws a checkbox and `choice` with a declared list draws a
+        # dropdown straight from the skeleton -- no plan row needed.  Measured by the
+        # implementer on `entities.*.allow_null`: adding a plan row replaced a working
+        # checkbox with a free-text box, and once the row was answered the control vanished
+        # altogether.  Counting these as holes sends someone to fill a square that is
+        # already filled and to break it on the way.
+        hint = node.get("hint")
+        if hint == "flag" or (hint == "choice"
+                              and (node.get("list") or node.get("section"))):
+            continue
         holes.append((path, node.get("hint") or node.get("kind"),
                       parts[2] if len(parts) > 2 else parts[-1]))
     return leaves, holes
