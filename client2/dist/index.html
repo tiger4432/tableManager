@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-D9vpkn-Y.js"></script>
+    <script type="module" crossorigin src="/assets/main-IZN8iUSQ.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
     <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
@@ -37,7 +37,7 @@
     <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/admin-CFMKwJnd.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-ndwXa8ZL.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-hGcBtzZC.css">
   </head>
 
   <body>
@@ -329,20 +329,28 @@
           </div>
           <!-- Active column filters (left) and the columns pushed past the right edge
                (right). Hidden until it has one of the two to say. -->
-          <div id="grid-filter-bar" class="grid-filter-bar" style="display: none">
-            <div id="filter-chips" class="filter-chips"></div>
-            <button
-              id="filter-clear-all"
-              class="filter-clear-all"
-              style="display: none"
-            >
-              전체 해제
-            </button>
+          <div
+            id="grid-filter-bar"
+            class="tx-filter-banner filter-banner"
+            style="display: none"
+          >
+            <span class="banner-icon">▼</span>
+            <span class="banner-text">
+              <span id="filter-chips" class="filter-chips"></span>
+            </span>
             <span
               id="offscreen-cols"
               class="offscreen-cols"
               style="display: none"
             ></span>
+            <button
+              id="filter-clear-all"
+              class="clear-banner-btn"
+              title="전체 해제"
+              style="display: none"
+            >
+              &times;
+            </button>
           </div>
           <div
             id="myGrid"
@@ -425,7 +433,6 @@
               <button id="tab-global" class="tab-btn active">
                 Global History
               </button>
-              <button id="tab-cell" class="tab-btn">Cell History</button>
               <button id="tab-row" class="tab-btn">Row History</button>
             </div>
           </div>
