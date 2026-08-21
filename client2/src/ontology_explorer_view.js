@@ -448,6 +448,11 @@ function renderReadTree(state) {
     schema: state.authoringSchema || {},
     readOnly: true,
     planRow: () => null,
+    // The read-only tree has no plan, so no path has planned members.  Every other
+    // context function here is stubbed; this one was missed, and `renderSkeletonForm`
+    // calls it for any map whose `keyed_by` is not `index` -- which is nearly every
+    // source -- so opening an item threw before it drew anything.
+    plannedMembers: () => [],
     deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item),
     declared: () => [],
     rolesNear: () => [],
