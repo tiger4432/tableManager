@@ -638,6 +638,12 @@ def compile_setup_snapshot(
         "setup_version": bundle.setup_version,
         "bundle_sha256": bundle_sha256,
         "readiness": "ready",
+        # 🔴 THE CURSOR NO LONGER COMPARES AGAINST THIS VALUE (2026-08-21). It is still
+        # every source's material at once, so it moves when ANY source is edited; that is
+        # correct for "which WHOLE setup produced this atom" (`setup_snapshot_hash`) and
+        # wrong for "may THIS cursor keep going". The cursor asks
+        # `source_cursor_fingerprint` below instead.
+        #
         # `declarations` used to carry `chains` and `enrichments` into the snapshot hash.
         # Neither reached execution, so editing an approval-reference string moved the
         # hash and blocked the cursor with `cursor_snapshot_reset_required` for a change
@@ -667,6 +673,116 @@ def compile_setup_snapshot(
         source_plans=source_plans,
         readiness="ready",
     )
+
+
+def _reachable_entity_ids(value: Any, known: frozenset[str], found: set[str]) -> None:
+    """Collect every declared entity id that OCCURS anywhere in already-plain material.
+
+    🔴 SCANNED, NOT ENUMERATED, AND DELIBERATELY SO. An entity id reaches a source through
+    at least four unrelated shapes -- a predicate's `subjects`, a predicate's
+    `object.types`, a `read.registration_probe[].entity_type`, and a binding's
+    `entity_type` nested under `bind.mappings.<sentence>.bind.<role>` -- and a binding may
+    nest further. Enumerating those four would be a list that goes silently WRONG the day
+    a fifth shape is declared, and a closure that is too SMALL fails by not blocking a
+    cursor that should have been blocked. A scan over the material errs the other way:
+    a new shape is covered the day it lands, and the worst case is an extra entity in the
+    closure, which only ever blocks more than strictly necessary.
+
+    Keys are matched as well as values because an entity id is a versioned name
+    (`Lot@1`), so a coincidental match would have to be that exact string.
+    """
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str) and key in known:
+                found.add(key)
+            _reachable_entity_ids(item, known, found)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _reachable_entity_ids(item, known, found)
+    elif isinstance(value, str) and value in known:
+        found.add(value)
+
+
+def source_cursor_fingerprint(
+    snapshot: LedgerSetupSnapshot, source_id: str) -> str:
+    """The hash of the material that can change ONE source's atoms.
+
+    🔴 WHY THIS EXISTS AT ALL. `snapshot_sha256` covers every registry, so it moves when
+    ANY source's declaration is edited. Every cursor compared against that one value, so
+    editing `lot_event`'s bindings refused `dt_job`'s backfill with
+    `cursor_snapshot_reset_required` -- a refusal for a change that could not alter one
+    `dt_job` atom. `compile_setup_snapshot` already wrote the principle down ("the hash
+    covers only what can change an atom"); this keeps it PER SOURCE.
+
+    The closure is transitive and deliberately errs LARGE:
+
+        the source plan       relation, read, prepare (preparer + verified joins),
+                              map (mapper), bind (profile) -- all of it, since the
+                              bodies now live inside the source
+        the packs             every pack a `bind.mappings.<sentence>.use` names, WHOLE.
+                              A pack is the unit an author edits and the unit a claim
+                              is filed under; taking only the named claims would leave
+                              a source unblocked by an edit to its own pack
+        the predicates        every `emit.predicate` of those packs' claims
+        the entities          every entity id occurring in the above (see
+                              `_reachable_entity_ids`)
+        + compiler_contract_version and setup_version -- when the grammar generation
+          moves, every source's material moves, and that is correct
+
+    🔴 SHARED MATERIAL MOVES EVERY SOURCE THAT TOUCHES IT, ON PURPOSE. `register@1` is
+    named by both packs today, so editing it moves both sources' fingerprints. That is
+    the whole point: a closure narrowed to "my own declarations" would let a source keep
+    running against a predicate that changed under it, which is silent and worse than
+    blocking one cursor too many.
+
+    🔴 `bundle_sha256` IS NOT IN HERE, and its absence is the fix. It is the hash of the
+    whole config file, so including it would restore exactly the globality being removed.
+    It stays in `snapshot_sha256` -- the atom's `setup_snapshot_hash` still answers "which
+    WHOLE setup produced this row", which is a different question from "may this cursor
+    keep going".
+    """
+    plan = snapshot.source_plans[source_id]
+    pack_ids = sorted({
+        mapping.claim_ref.split("/", 1)[0]
+        for mapping in plan.profile.mappings.values()
+    })
+    packs = {pack_id: snapshot.packs[pack_id] for pack_id in pack_ids}
+    predicate_ids = sorted({
+        claim.emission.predicate_id
+        for pack in packs.values()
+        for claim in pack.claims.values()
+    })
+    material: dict[str, Any] = {
+        "compiler_contract_version": snapshot.compiler_contract_version,
+        "setup_version": snapshot.setup_version,
+        "source": _semantic_plain(plan),
+        "packs": {pack_id: _semantic_plain(packs[pack_id]) for pack_id in pack_ids},
+        "vocabulary": {
+            predicate_id: _semantic_plain(snapshot.vocabulary[predicate_id])
+            for predicate_id in predicate_ids
+        },
+    }
+    entity_ids: set[str] = set()
+    _reachable_entity_ids(material, frozenset(snapshot.entities), entity_ids)
+    material["entities"] = {
+        entity_id: _semantic_plain(snapshot.entities[entity_id])
+        for entity_id in sorted(entity_ids)
+    }
+    canonical = json.dumps(
+        material, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def cursor_translator_version(
+    snapshot: LedgerSetupSnapshot, source_id: str) -> str:
+    """The string a source's cursor stores and is compared against. ONE spelling.
+
+    The reader (`backfill._run_v2_lineage`) and the writer (`runtime_v2.execute_cursor_batch`)
+    both call this. They used to build `f"ledger-v2:{snapshot_sha256}"` separately, and two
+    spellings of the value a guard compares is how a guard stops guarding.
+    """
+    return f"ledger-v2:{source_cursor_fingerprint(snapshot, source_id)}"
 
 
 def _compile_vocabulary(section: Mapping[str, Any]) -> VocabularyRegistry:

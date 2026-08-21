@@ -300,6 +300,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         LedgerSetupError,
         execute_selected_cursor_batch,
     )
+    from .setup_registry import cursor_translator_version
     from .source_preparation import VerifiedJoinBatchReader
     from .store import LedgerStore
 
@@ -332,7 +333,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
     try:
         existing = store.read_cursor(read, source)
         cursor_value = (existing or {}).get("cursor_value") or {}
-        expected_version = f"ledger-v2:{setup.snapshot.snapshot_sha256}"
+        expected_version = cursor_translator_version(setup.snapshot, source)
         if existing and set(cursor_value) != set(plan.driver.cursor_columns):
             raise LedgerSetupError(
                 "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",

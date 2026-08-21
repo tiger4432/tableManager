@@ -332,6 +332,47 @@ class LedgerStore:
         finally:
             connection.close()
 
+    def restamp_cursor(self, source, *, expect, translator_ver):
+        """Swap ONE cursor's fingerprint string. Reads no source row, moves no position.
+
+        🔴 THIS IS NOT A RESET, AND THE DIFFERENCE IS THE WHOLE SAFETY ARGUMENT.
+        `source_translator_ver` is part of `uq_ledger_atom` (`schema.py:60`), so a cursor
+        that is deleted and recreated - or rewound - re-reads rows that are already in the
+        ledger, and those re-read rows land AGAIN under the new fingerprint instead of
+        deduping against the old ones. On a ledger of millions of rows that doubles it.
+
+        So this statement touches `translator_ver` and NOTHING else: not `cursor_value`,
+        not the counters, not the atoms. The next batch reads rows AFTER the unchanged
+        position, which are facts arriving in the ledger for the first time and have no old
+        row to collide with. Past atoms keep the fingerprint they were written under,
+        because a ledger appends (owner, 2026-08-21: 「그냥 예전 것도 계속 append 하는 게
+        원장이니 갈아치우는 건 아니지」).
+
+        `expect` is required and is matched in the WHERE clause: a re-stamp is only ever
+        correct as "this exact old string becomes this exact new one", and matching it in
+        SQL is what makes a second run a no-op instead of a silent overwrite of whatever a
+        concurrent writer left there. Returns True when one row moved, False when none did.
+        """
+        if not isinstance(expect, str) or not expect:
+            raise ValueError("expect must be the exact stored translator_ver string")
+        if not isinstance(translator_ver, str) or not translator_ver:
+            raise ValueError("translator_ver must be a non-empty string")
+        connection = self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {schema.CURSOR_TABLE} SET translator_ver = %s "
+                    f"WHERE source = %s AND translator_ver = %s RETURNING source",
+                    (translator_ver, source, expect))
+                moved = cursor.fetchone() is not None
+            connection.commit()
+            return moved
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     # -------------------------------------------------------------------- observation
     def atom_count(self, connection=None):
         own = connection is None

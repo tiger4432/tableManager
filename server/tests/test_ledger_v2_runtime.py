@@ -13,6 +13,7 @@ from ledger.runtime_v2 import (
     execute_cursor_batch,
     preview_cursor_batch,
 )
+from ledger.setup_registry import cursor_translator_version
 from ledger.source_preparation import SourcePreparationError
 from ledger.store import CursorVersionConflict, LedgerStore
 from test_ledger_setup_registry import snapshot
@@ -88,7 +89,17 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
 
     assert executed.preview.candidate_semantics == dry.candidate_semantics
     assert executed.preview.snapshot_hash == compiled.snapshot_sha256
-    assert executed.preview.translator_version == (
+    # 🔴 THE CURSOR'S STRING IS THE SOURCE'S FINGERPRINT, NOT THE GLOBAL SNAPSHOT HASH
+    # (2026-08-21). This assertion used to read `f"ledger-v2:{compiled.snapshot_sha256}"`
+    # and it was right for the rule it measured: one global value that every cursor
+    # compared against, which is why editing one source's bindings refused another
+    # source's backfill. The INEQUALITY is pinned beside the equality on purpose -- an
+    # equality against `cursor_translator_version` alone would still hold if that function
+    # went back to returning the global hash, and "these two strings are no longer the
+    # same" is the property the per-source cursor actually depends on.
+    assert executed.preview.translator_version == cursor_translator_version(
+        compiled, "input_rows")
+    assert executed.preview.translator_version != (
         f"ledger-v2:{compiled.snapshot_sha256}")
     assert len(store.calls) == 1
     assert store.calls[0]["enforce_translator_version"] is True

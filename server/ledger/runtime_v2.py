@@ -29,7 +29,7 @@ from .source_preparation import (
     SourcePreparerImplementationRegistry,
     VerifiedJoinBatchReader,
 )
-from .setup_registry import LedgerSetupSnapshot
+from .setup_registry import LedgerSetupSnapshot, cursor_translator_version
 
 
 class LedgerV2RuntimeError(ValueError):
@@ -101,7 +101,7 @@ def preview_cursor_batch(
     return CursorBatchPreview(
         source_id=source_id,
         snapshot_hash=snapshot.snapshot_sha256,
-        translator_version=f"ledger-v2:{snapshot.snapshot_sha256}",
+        translator_version=cursor_translator_version(snapshot, source_id),
         cursor_value=MappingProxyType(normalized_cursor),
         event_results=event_results,
         candidate_semantics=tuple(MappingProxyType(item) for item in semantics),
