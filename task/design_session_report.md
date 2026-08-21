@@ -41,6 +41,36 @@ the other `grid.js` mutations in the same file anchor on lines I did not touch.
 I have not touched the main tree since the ruling. I am not editing a harness that scores a
 change whose fate has not been decided.
 
+### ①-b The gate was ALREADY red before my change — three more, none of them mine
+
+Measured after moving in: `npm run build` in this worktree, which is a **clean** merge of
+`origin/main` with zero local modifications (`git status` empty, verified). It still fails,
+at the same prebuild gate, on three harnesses that have nothing to do with me:
+
+```
+case_control_harness.mjs         HARNESS BROKEN: mutant `small-rates-round-to-zero` — its anchor moved
+ledger_trace_harness.mjs         HARNESS FAILURE: mutant `sentence-overrides-the-field` — its anchor moved
+load_shows_loaded_map_harness.mjs HARNESS FAILURE: mutation anchor is GONE: restore-runs-unconditionally-again
+```
+
+Their baselines are green (195, 324, 43 assertions, 0 failures). What died is the mutation
+corpus: each anchors on literal source text, and the sources moved under them
+(`map_key.js`, `ledger_trace.js`, and case-control's core were all touched by recent
+console/ledger commits). The runner's own words: *"An anchor that no longer matches makes
+the mutant silently inert — this file's corpus is only worth its anchors."*
+
+🔴 **This corrects what I said in ①.** I reported my `grid.js` as the thing blocking the
+build. It is *a* red, in the main tree — but the build does not pass without it either, so
+dropping my change does **not** turn the gate green. That matters for the ruling in ①: it
+was never a choice between "keep my change and fix one anchor" and "drop it and be green".
+
+🔴 **And it is one disease, not four.** Every one of these — mine included — is a mutation
+anchored to literal source text that a different lane edited. Four instances in one evening,
+in four unrelated files, is the class rather than the incidents. The runner says to bring
+this to the Lead PM rather than parking entries in `KNOWN_RED`, so I am bringing it and not
+touching any of them. I own exactly one of the four and I am not editing anchors on the
+other three.
+
 ### ② Correction to my previous report — I attributed the build to the wrong lane
 
 I reported that the ontology session's build swept my uncommitted work into `dist/`. The lead
