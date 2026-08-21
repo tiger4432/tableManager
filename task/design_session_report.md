@@ -424,6 +424,58 @@ until I have seen the runner score it.
 
 ---
 
+## ✅ 답변 ⑪ — **네, 메인 트리의 그 변경은 전부 `design` 에 이미 있습니다. 되돌리셔도 됩니다**
+
+한 줄로 답하라고 하셨지만, 되돌리는 판단이라 **무엇이 어디로 갔는지**까지 재서 붙입니다.
+「메인에만 있는 줄」을 전부 세었고 **잃는 것은 0**입니다.
+
+```
+index.html   메인에만 있는 줄  0      dom.js   메인에만 있는 줄  0
+style.css    메인에만 있는 줄  1      grid.js  메인에만 있는 줄  19
+```
+
+**style.css 의 1줄** — `.reference-view-section { margin-bottom: 16px; }`.
+`design` 은 같은 규칙에 `overflow-x: auto` 가 **붙은** 형태를 갖고 있습니다(3.2 에서 헤더가
+한 글자씩 쪼개지던 것을 고치며 옆스크롤을 켰습니다). 대체됐습니다.
+
+**grid.js 의 19줄 — 셋으로 나뉘고 셋 다 살아 있습니다:**
+
+```
+1줄   import 문        design 은 같은 import 에 `visibleRangeColIds` 가 «추가된» 형태
+14줄  visibleRangeColIds  design 에서 `state.js` 로 «옮겼습니다» — 지워진 게 아닙니다.
+                          그 함수는 state 만 읽고, grid.js 에서 import 하면 참조뷰 패널과
+                          «순환»이 됩니다 (3.4 커밋 `f7bd1dd5` 에 사유 기록)
+4줄   주석 한 덩이       design 에서 삼항 연산자 «위»로 옮겼습니다. 그 자리에 두면
+                          `virtual_column_render_harness` 의 변이 앵커가 셋으로 쪼개져
+                          조용히 무력화됩니다 — 실제로 한 번 그렇게 죽었습니다
+```
+
+🔴 **되돌려도 되는 이유는 「같아서」가 아니라 「대체돼서」입니다.** 세 덩이 전부 `design`
+안에 «더 나은 자리»로 존재합니다. 되돌리지 않았습니다 — 공유 트리는 총괄 몫입니다.
+
+## ✅ ⑦ 적용 — 죽은 줄을 «지웠습니다** (`5b4a0b1` 계열, 아래 커밋)
+
+고쳐서 살리지 않고 **삭제**했습니다. 판정하신 대로 깔때기는 남습니다. 왜 안 넣는지를
+주석에 적었습니다 — 「해 봤고 일부러 안 한다」가 빠지면 다음 사람이 다시 넣습니다.
+
+## ⑨ ⑩ 접수
+
+- **⑨** 가상 컬럼 픽스처 감사합니다. 서버가 config 를 다시 읽어 화면에 뜬 뒤에 **불가를
+  걸어서** 보고하겠습니다. 그때까지 그 항목은 계속 **「못 쟀다」**로 둡니다.
+- **⑩** 병합 보류 접수. 타이밍이라는 것도 접수했습니다. 5173 에서 계속 걷겠습니다.
+- **4.4** 빌드·`dist` 가 제게서 빠진 것 확인했습니다.
+
+## ✅ Phase 4.1 CLOSED — the runner scored it, not just the harness itself
+
+```
+✓ reference_grid_paste_harness.mjs  (ran 22, failed 0)
+```
+그리고 러너의 「floor 없음」 목록 5개에 **제 것은 없습니다** — FLOORS 등록이 먹었다는 뜻입니다.
+게이트 전체는 여전히 빨강이지만 그 사유는 제 것이 아닌 셋(`case_control` · `ledger_trace` ·
+`load_shows_loaded_map`)입니다.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
