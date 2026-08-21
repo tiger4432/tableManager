@@ -45,14 +45,15 @@ export function updateTxModeUI() {
     }
     if (elements.txApplyBtn) {
       elements.txApplyBtn.style.display = count > 0 ? 'inline-block' : 'none';
-      elements.txApplyBtn.textContent = `Apply (${count})`;
+      // The count lives in the badge beside it -- mockup 2b writes it once, not twice.
+      elements.txApplyBtn.textContent = 'Apply';
     }
     if (elements.txDiscardBtn) {
       elements.txDiscardBtn.style.display = count > 0 ? 'inline-block' : 'none';
     }
     if (elements.txPendingBadge) {
       elements.txPendingBadge.style.display = count > 0 ? 'inline-block' : 'none';
-      elements.txPendingBadge.textContent = `⚡ Unsaved: ${count}`;
+      elements.txPendingBadge.textContent = `⚡ 미저장 ${count}`;
     }
     if (elements.performanceLog) {
       elements.performanceLog.textContent = count > 0 
