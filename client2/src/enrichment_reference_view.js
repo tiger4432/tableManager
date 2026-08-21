@@ -137,6 +137,73 @@ function fillPlan(view, rule, payloadColumns) {
 
 const FILL_ORDINALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨'];
 
+// ── [2b Phase 3.2] Range selection ───────────────────────────────────────────────────────
+//
+// ONE model, held here, not on the DOM. `{viewIndex, anchor, end}` where anchor and end are
+// `{row, col}` into the RENDERED grid. Drag and Shift+Arrow both move `end` and nothing else,
+// which is what makes them the same gesture rather than two features that agree by accident.
+//
+// The view index is part of it because each reference view is its own table: a selection that
+// survived a tab switch would highlight cells in a grid whose columns mean something else.
+let selection = null;
+let dragging = false;
+let selectionKeysInstalled = false;
+
+function selectionRect() {
+  if (!selection) return null;
+  const { anchor, end } = selection;
+  return {
+    r0: Math.min(anchor.row, end.row), r1: Math.max(anchor.row, end.row),
+    c0: Math.min(anchor.col, end.col), c1: Math.max(anchor.col, end.col)
+  };
+}
+
+// Paints the current rectangle. Reuses `.custom-range-selected` — the grid's own name for
+// this state — rather than inventing a second one, so the two surfaces cannot drift apart.
+function paintSelection() {
+  const host = elements.referenceViewContent;
+  if (!host) return;
+  const rect = selectionRect();
+  host.querySelectorAll('td[data-row]').forEach(td => {
+    const inView = Number(td.dataset.view) === selection?.viewIndex;
+    const row = Number(td.dataset.row);
+    const col = Number(td.dataset.col);
+    const inRect = !!rect && inView && row >= rect.r0 && row <= rect.r1 && col >= rect.c0 && col <= rect.c1;
+    td.classList.toggle('custom-range-selected', inRect);
+  });
+}
+
+// Shift+Arrow extends the same rectangle the mouse drags. Installed on the panel, which
+// already swallows keydown so these never reach the main grid's handlers — that isolation
+// exists for exactly this reason and predates this round.
+function installSelectionKeys() {
+  const panel = elements.referenceView;
+  if (!panel || selectionKeysInstalled) return;
+  selectionKeysInstalled = true;
+  // On the DOCUMENT, not the table: a drag that leaves the panel and releases over the grid
+  // would otherwise never end, and the next hover would keep extending a range the operator
+  // let go of.
+  document.addEventListener('mouseup', () => { dragging = false; });
+  panel.addEventListener('keydown', event => {
+    if (!selection || !event.shiftKey) return;
+    const delta = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
+    if (!delta) return;
+    const table = elements.referenceViewContent
+      ?.querySelectorAll('.reference-view-table')[selection.viewIndex];
+    if (!table) return;
+    // Clamped to the grid it is in. Without this the rectangle keeps growing past the last
+    // row and the copy silently carries blank trailing lines.
+    const rows = table.querySelectorAll('tbody tr').length;
+    const cols = table.querySelectorAll('thead th').length - 1; // minus the row-number gutter
+    selection.end = {
+      row: Math.min(Math.max(selection.end.row + delta[0], 0), rows - 1),
+      col: Math.min(Math.max(selection.end.col + delta[1], 0), cols - 1)
+    };
+    event.preventDefault();
+    paintSelection();
+  });
+}
+
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
@@ -147,6 +214,11 @@ function render(results) {
   const selectView = (index) => {
     Array.from(tabs.children).forEach((button, tabIndex) => button.classList.toggle('active', tabIndex === index));
     Array.from(panels.children).forEach((panel, panelIndex) => { panel.style.display = panelIndex === index ? '' : 'none'; });
+    // A selection belongs to the grid it was made in. Carrying it across a tab switch would
+    // leave a rectangle highlighted over columns that mean something else.
+    selection = null;
+    dragging = false;
+    paintSelection();
   };
   results.forEach(({ view, payload, error }, index) => {
     const tab = document.createElement('button');
@@ -169,6 +241,13 @@ function render(results) {
       const fillOrdinal = new Map((plan?.pairs || []).map((p, i) => [p.column, FILL_ORDINALS[i] || `${i + 1}`]));
 
       const head = document.createElement('thead'); const header = document.createElement('tr');
+      // The row-number gutter, same idea as the main grid's `#` column: it gives the operator
+      // a way to say "rows 3 to 7" out loud, and it gives the drag somewhere to start that is
+      // not a value.
+      const gutterHead = document.createElement('th');
+      gutterHead.className = 'reference-view-gutter';
+      gutterHead.textContent = '#';
+      header.appendChild(gutterHead);
       shown.forEach(column => {
         const th = document.createElement('th');
         const ordinal = fillOrdinal.get(column);
@@ -180,22 +259,56 @@ function render(results) {
       });
       head.appendChild(header); table.appendChild(head);
       const body = document.createElement('tbody');
-      payload.rows.forEach(row => {
+      payload.rows.forEach((row, rowIndex) => {
         const tr = document.createElement('tr');
-        shown.forEach(column => {
+        const gutter = document.createElement('td');
+        gutter.className = 'reference-view-gutter';
+        gutter.textContent = String(rowIndex + 1);
+        tr.appendChild(gutter);
+        shown.forEach((column, colIndex) => {
           const td = document.createElement('td');
           const at = sourceIndex.get(column);
           td.textContent = Array.isArray(row) ? (row[at] ?? '') : (row?.[column] ?? '');
           if (fillOrdinal.has(column)) td.className = 'reference-view-fill';
+          // The coordinates the selection model works in. Held on the cell rather than
+          // recomputed from `cellIndex`, because the gutter offsets that by one and every
+          // reader would have to remember the offset.
+          td.dataset.view = String(index);
+          td.dataset.row = String(rowIndex);
+          td.dataset.col = String(colIndex);
           tr.appendChild(td);
         });
         body.appendChild(tr);
       });
-      table.appendChild(body); section.appendChild(table);
+      table.appendChild(body);
+
+      // Drag. `mousedown` seeds anchor and end together so a single click is a 1x1 range,
+      // and `mouseover` only moves `end` while the button is down.
+      table.addEventListener('mousedown', event => {
+        const td = event.target.closest('td[data-row]');
+        if (!td) return;
+        const at = { row: Number(td.dataset.row), col: Number(td.dataset.col) };
+        selection = { viewIndex: index, anchor: at, end: at };
+        dragging = true;
+        // Stops the browser turning the drag into a text selection, which would paint its own
+        // highlight over this one and put different text on the clipboard.
+        event.preventDefault();
+        paintSelection();
+      });
+      table.addEventListener('mouseover', event => {
+        if (!dragging || selection?.viewIndex !== index) return;
+        const td = event.target.closest('td[data-row]');
+        if (!td) return;
+        selection.end = { row: Number(td.dataset.row), col: Number(td.dataset.col) };
+        paintSelection();
+      });
+
+      section.appendChild(table);
     }
     panels.appendChild(section);
   });
   host.append(tabs, panels);
+  installSelectionKeys();
   if (results.length) selectView(0);
 }
 

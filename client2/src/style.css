@@ -464,7 +464,7 @@ body.resizing-active .history-sidebar {
 .reference-view-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
 .reference-view-tab { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--bg-inset); color: var(--text-muted); cursor: pointer; font: inherit; font-size: .76rem; }
 .reference-view-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-surface); }
-.reference-view-section { margin-bottom: 16px; }
+.reference-view-section { margin-bottom: 16px; overflow-x: auto; }
 .reference-view-section h3 { font-size: .85rem; margin: 0 0 8px; color: var(--accent); }
 .reference-view-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
 .reference-view-table th, .reference-view-table td { padding: 7px; border: 1px solid var(--border); text-align: left; vertical-align: top; word-break: break-word; }
@@ -475,6 +475,40 @@ body.resizing-active .history-sidebar {
    active thing' the grid already says with --accent. */
 .reference-view-table th.reference-view-fill { color: var(--accent); background: var(--accent-weak, var(--bg-surface)); }
 .reference-view-table td.reference-view-fill { font-family: var(--font-mono); color: var(--text); }
+
+/* [2b Phase 3.2] The reference view is another GRID, so it keeps the main grid's own
+   metrics: 30px header, 28px rows. Matching them is not decoration -- the two surfaces
+   sit side by side and a row that is a different height reads as a different kind of
+   row. `user-select: none` because the drag below is the selection; letting the browser
+   also select text would paint a second highlight and put different text on a copy. */
+/* 🔴 `nowrap` ON THE HEADER TOO, not only the body. Without it a narrow column breaks its
+   name one character per line -- `c_bn` became four stacked letters -- and a header you
+   have to decode vertically is worse than one you scroll to. The section scrolls
+   sideways instead, which is what the main grid does with the same problem. */
+.reference-view-table { width: auto; min-width: 100%; }
+.reference-view-table th { height: 30px; padding: 0 7px; white-space: nowrap; }
+.reference-view-table td { height: 28px; padding: 0 7px; white-space: nowrap; }
+.reference-view-table tbody { user-select: none; }
+
+/* Row-number gutter, the same role `#` plays in the main grid. */
+.reference-view-table .reference-view-gutter {
+  width: 34px;
+  text-align: right;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: .72rem;
+}
+
+/* 🔴 REUSES THE GRID'S SELECTION NAME AND ITS TOKENS. The existing rule is scoped
+   `.ag-cell.custom-range-selected`, so it cannot reach a `<td>`; this extends the same
+   class to this table with the SAME `--range-fill` and `--accent`. No new colour. */
+.reference-view-table td.custom-range-selected {
+  background-color: var(--range-fill);
+  border: 1px dashed var(--accent);
+  box-sizing: border-box;
+}
+
 
 
 .timeline {
