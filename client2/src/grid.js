@@ -731,10 +731,44 @@ const MOCKUP_COLUMN_LAYOUT = Object.freeze({
 });
 const MOCKUP_COLUMN_ORDER = Object.keys(MOCKUP_COLUMN_LAYOUT);
 
+// The header chrome a column spends before any text: cell padding plus the sort/menu icons.
+// Measured off the live grid rather than assumed -- `dt_slot` at 58px and `dt_eqp` at 70px
+// both reported exactly 32px less usable text width than their column width.
+const HEADER_CHROME_PX = 32;
+
+/**
+ * How wide the header label needs the column to be, so it is not truncated.
+ *
+ * 🔴 THE MOCKUP'S WIDTHS ARE MINIMUMS, NOT FINAL VALUES. The mockup measured them against
+ * ITS OWN labels (`Slot`), and the owner ruled the labels come from the live schema
+ * (`DT_SLOT`). Both cannot hold at once, and the standing rule decides which yields:
+ * 「작은 글씨는 없느니만 못하다 · 가독성이 기능」 — a truncated column name is not a narrow
+ * column, it is an absent one. So width gives way to the name.
+ *
+ * ONE RULE FOR THE WHOLE CLASS, not a special case for the column that happened to be
+ * noticed: `DT_EQP` was truncated too, and it carries no ordinal.
+ *
+ * `measureText` cannot see `letter-spacing`, so it is added back per character.
+ */
+function headerLabelWidth(label) {
+  if (!label) return 0;
+  const canvas = headerLabelWidth.canvas || (headerLabelWidth.canvas = document.createElement('canvas'));
+  const context = canvas.getContext('2d');
+  if (!context) return 0;
+  const family = getComputedStyle(document.body).getPropertyValue('--font-sans').trim() || 'sans-serif';
+  // Matches `#myGrid .ag-header-cell-text` in style.css. Uppercase because the header is
+  // transformed there, and the transform changes the measured width.
+  context.font = `600 10.5px ${family}`;
+  const text = String(label).toUpperCase();
+  return Math.ceil(context.measureText(text).width + text.length * 0.4);
+}
+
 function applyMockupLayout(columnDefs) {
   columnDefs.forEach(def => {
-    const width = MOCKUP_COLUMN_LAYOUT[def.field];
-    if (width) { def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width); }
+    const mockupWidth = MOCKUP_COLUMN_LAYOUT[def.field];
+    if (!mockupWidth) return;
+    const width = Math.max(mockupWidth, headerLabelWidth(def.headerName) + HEADER_CHROME_PX);
+    def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width);
   });
   // Stable sort: named columns take the mockup's sequence, everything else keeps the order
   // `/schema` gave it, after them. `#` is not in this list and stays where it was pinned.
