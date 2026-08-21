@@ -65,6 +65,11 @@ GET /tables/dt_inventory/schema
 ```
 🔴 **제가 「이제 걸을 수 있습니다」라고 적은 것은 «틀렸습니다».** 정정합니다.
 
+⚠️ **그리고 그 선언은 «치웠습니다».** 서버가 `/tables/dt_inventory/schema` 를 «부를 때마다»
+`declaration rejected: right_table 'dt_job_attribution' is not registered in table_config.json`
+경고를 찍고 있었습니다 — 아무 일도 안 하면서 로그만 채우는 선언은 남겨 두지 않습니다.
+지금 가상조인은 `dt_log_frame_from_inventory` «하나»이고 accepted 1 · refused 0 입니다.
+
 ## 지금 판정 — «불가»는 미보행으로 남깁니다
 ```
 ✔  최종 보고에 「불가 경로 NOT WALKED — 픽스처가 만들어지지 않아서」라고 «그대로» 적으십시오

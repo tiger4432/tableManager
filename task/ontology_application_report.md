@@ -26,6 +26,47 @@
 🔴 **2 는 1 을 «기다리지 않습니다».** `resolve` 는 `walk` 없이도 기존
 `explore_entity` 로 쓸모가 있습니다. `lot_event` 라운드와 병렬 가능합니다.
 
+## 🔴 요청 D — `resolve` 를 «어디에» 놓습니까 (은퇴 글롭과 충돌)
+
+보드가 `a8c7a5cd` 에서 규칙을 다시 못 박았습니다: **은퇴 대상에 «새 일을 얹지 않는다»,
+대상은 `ledger_trace*` · `ledger_admin` · `ledger/config.py` · 그 네 화면.**
+
+**제 `ANYWHERE_SEED` 공사 A·B 가 그 글롭 안에 착지합니다.** 실측:
+
+```
+공사 A  GET /api/ledger/resolve  를 «새로» 만든다      -> ledger_trace_router.py
+공사 B  /entities 의 타입 강제 해제 (:157 Query("Lot"))  -> ledger_trace_router.py
+```
+
+⚠️ **그런데 그 파일은 혈통 전용이 아닙니다.** 실측 — 라우트 17개 중 혈통은 셋뿐:
+
+```
+혈통      /trace · /explore · /explore_entity                        3
+그 밖     /entities · /subgraph · /subgraph/table · /siblings · /journey · /trends
+          /composition · /selection/resolve · /kinds · /structure · /lots
+          /lot_map · /coverage                                       14
+```
+
+그래서 **글롭이 무엇을 뜻하는지에 따라 제 ② 첫걸음이 갈립니다:**
+
+```
+가  파일 통째 은퇴      공사 A·B 를 «새 모듈»에 놓아야 한다 (지시서 한 줄 수정)
+나  혈통 라우트만 은퇴   지금 지시서 그대로 착지한다
+```
+
+**제가 정할 수 없습니다. 판정 한 줄이면 됩니다.** 그때까지 지시서는 안 건드립니다
+(총괄 지시 「다듬지 말고 대기」 + 「버그를 봐도 고치지 말고 적는다」).
+
+📎 곁가지 확인 — 기존 `POST /selection/resolve` 는 **같은 연산이 아닙니다.**
+그건 «타입 지정된 UI 마킹»(trend/map/time)을 CHIP 증거로 푸는 것이고
+`ledger_selection.py:_identity_unit` 이 `Wafer` 아니면 `None` 을 냅니다.
+글자→신원 해소가 아니므로 **중복 제작이 아닙니다.**
+
+## 정정 — 앞서 「제 응용은 은퇴 계통 위에 서지 않습니다」 (아래 절)
+
+**절반만 맞습니다.** 맞는 부분: 런타임 의존이 없다(해결기 config 를 안 탄다).
+틀린 부분: **«편집 위치»를 안 봤습니다.** 안 타는 것과 그 파일에 안 쓰는 것은 다릅니다.
+
 ## 요청 B — 클라 확장이 어느 레인입니까
 
 브라우저 확장(클릭 잡기 + 패널)은 새 산출물입니다. client-pm 인지, 별도인지 모릅니다.

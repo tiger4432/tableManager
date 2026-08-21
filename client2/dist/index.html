@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-D9vpkn-Y.js"></script>
+    <script type="module" crossorigin src="/assets/main-Buwv3NtT.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
     <link rel="modulepreload" crossorigin href="/assets/ontology_structure_view-oe81kcPZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CXYS4egR.js">
@@ -37,7 +37,7 @@
     <link rel="stylesheet" crossorigin href="/assets/config-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/admin-CFMKwJnd.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-ndwXa8ZL.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-flAdJ_Gc.css">
   </head>
 
   <body>
@@ -92,6 +92,19 @@
               "
             >
               Discard
+            </button>
+          </div>
+          <!-- Mockup 2b: active filters live IN the header bar, taking the free space
+               between the toolbar and the unsaved-changes badges. They are not a strip
+               above the grid — the grid starts at its own header row. -->
+          <div id="grid-filter-bar" class="header-filter-bar" style="display: none">
+            <span id="filter-chips" class="filter-chips"></span>
+            <button
+              id="filter-clear-all"
+              class="filter-clear-all"
+              style="display: none"
+            >
+              전체 해제
             </button>
           </div>
           <div class="control-group">
@@ -327,23 +340,11 @@
               &times;
             </button>
           </div>
-          <!-- Active column filters (left) and the columns pushed past the right edge
-               (right). Hidden until it has one of the two to say. -->
-          <div id="grid-filter-bar" class="grid-filter-bar" style="display: none">
-            <div id="filter-chips" class="filter-chips"></div>
-            <button
-              id="filter-clear-all"
-              class="filter-clear-all"
-              style="display: none"
-            >
-              전체 해제
-            </button>
-            <span
-              id="offscreen-cols"
-              class="offscreen-cols"
-              style="display: none"
-            ></span>
-          </div>
+          <span
+            id="offscreen-cols"
+            class="offscreen-cols"
+            style="display: none"
+          ></span>
           <div
             id="myGrid"
             class="ag-theme-quartz-dark"
@@ -421,12 +422,9 @@
                  tab the operator works in; it stays `display: none` on every table that
                  does not. -->
             <div class="history-tabs history-tabs--wide">
-              <button id="tab-reference" class="tab-btn" style="display: none">참조뷰</button>
-              <button id="tab-global" class="tab-btn active">
-                Global History
-              </button>
-              <button id="tab-cell" class="tab-btn">Cell History</button>
-              <button id="tab-row" class="tab-btn">Row History</button>
+              <button id="tab-reference" class="tab-btn" style="display: none">참조 그리드 ⇲</button>
+              <button id="tab-global" class="tab-btn active">Global</button>
+              <button id="tab-row" class="tab-btn">Row</button>
             </div>
           </div>
           <div class="sidebar-content">

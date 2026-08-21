@@ -52,10 +52,38 @@
 >
 > ### 대기열 (착수 «금지», 순서대로)
 > ```
-> ③  거짓 근거로 살아 있는 심볼 아홉 + 독스트링 둘    구현자 진행 중
-> ②  allowed_values 도달 불가를 «주석으로»            그다음.  지우지도 도출하지도 않는다
+> 소유자 라운드 (23:2x~, 구현자가 «한 라운드»로 묶어 진행 중)
+>    바인딩 3칸 삭제 (binding_origin · approval_status · suggestion_reason)
+>       + 옛 키는 «세 이름만» 받아서 버린다 — unknown_field 가드는 일반화하지 않는다
+>    커서 칸 제거          order_by 와 «검증기가 한 술어로» 채점한다 (setup_bundle.py:1445-1455)
+>    기본값 6칸            identity==group_by (관측 2/2) · unit "group" · 조인플래그 둘 · version 1
+>    유도값을 «문서에 쓴다»  이게 빨강의 원인이다 — 유도가 값을 만들지만 파일을 안 채운다
+>    sticky Save 바        바닥에서 한 뼘 떠 있다
+> ```
+> ```
+> 끝난 것
+> ③  심볼 아홉 + 독스트링 둘                         d239bdf8
+> 문구 4칸                                            81382191 — 화면에서 「한정어·필수·+한정어 이름」 확인
 > ①  읽기 측 503                                     «취소» — 은퇴 대상 그 자체
-> 문구 4칸                                            총괄 몫. 스켈레톤 label/member 로
+> ```
+> ```
+> 🔴 «도는 라운드에 얹지 않은» 발견 — 그 라운드가 착지한 «뒤»에 판정한다
+> prepare.output_columns 가 후보 «0개»              소유자가 이름을 밖에서 알아야 하는 마지막 칸
+>    direct-join      outputs 는 «상속한 가상조인 규칙이 노출하는 것»이어야 한다
+>                     (source_preparation.py:339,347-362).  후보를 거기서 뽑을 수 있다
+>    맞춤 준비기       lot-event-live-frame 은 설정에 outputs 를 «적어» 둔다.
+>                     구현이 그걸 스스로 말하는지 «안 쟀다» — 재고 나서 판정
+> bind.mappings                                     사람이 하는 «진짜 일». 후보 문제 아님
+> ```
+> ```
+> 🔴 화면이 스스로 말한 것 — 총괄이 찾은 게 아니라 «설정 반영» 패널이 적고 있었다 (00:0x)
+> rejected  dt_job_lot_slot_attribution   mapping_unavailable
+>           "rule skipped: derived_table 'dt_job_attribution' is not registered in table_config.json"
+> 뜻        이건 «내 픽스처가 아니다» — 원래 있던 enrichment 선언이 그동안 «조용히 안 돌고» 있었다
+>           같은 사유로 총괄이 만든 가상조인도 거절당했고, 그건 소음이라 도로 걷어냈다
+> 그래서    「dt_job_attribution 을 table_config 에 등록한다」는 픽스처 편의가 아니라
+>           «이미 둘이 기대고 있는 테이블이 카탈로그에 없는 것»을 고치는 일이다
+> 판정      소유자 승인 필요 — 앱 테이블 목록에 테이블이 하나 늘어난다. 먼저 묻는다
 > ```
 >
 > ### 세션·감시
