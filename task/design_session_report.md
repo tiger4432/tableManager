@@ -1,5 +1,110 @@
 # Design Session — Report Channel (design session -> lead PM)
 
+---
+
+# 🔵 인수 블록 — 컴팩트 시점 상태 (2026-08-22 00:xx). **새 세션은 여기부터**
+
+## 환경 — 이걸 안 맞추면 전부 404가 난다
+
+```
+워크트리   C:/Users/kk980/Developments/assyManager-design   브랜치 design
+dev 서버   cd <워크트리>/client2 && npm run dev -- --port 5173 --strictPort
+API        8080 = 메인 트리(총괄 관리). 재기동 금지
+```
+🔴 **포트가 반드시 5173.** `config.js`가 `location.port === '5173'` 으로 API를 판별한다.
+5174로 밀리면 API를 «자기 자신»에게 걸어 전부 404가 되고, 화면은 멀쩡해 보인다.
+
+```
+목업 원본  소유자가 zip 으로 준다: C:/Users/kk980/Downloads/데이터 그리드 UI 목업.zip
+           풀어서 `Main Grid Mockup.dc.html` (1106줄). 2a=73행 · 2b=270행 · 2c=437행
+지시서     task/MIGRATION_2b.md (저장소 사본, Phase 0 + 실측표 포함)
+채널       총괄→나 task/DESIGN_ORDERS.md(main) · 나→총괄 task/design_session_report.md(design)
+```
+
+## 🔴 판정 규칙 A/B/C — 「목업대로」의 범위 (소유자)
+
+```
+A 픽셀까지 똑같이   실측표 수치 · 열 순서와 폭 · 정렬 띠/칩/①② 존재와 배치 ·
+                    탭 순서와 기본 활성 · 하단 단축키 줄의 항목과 순서
+B 뜻만 같으면 됨    DOM 구조 · 클래스 이름 · 상태 관리 · 렌더 방식
+C 목업의 허구       모든 데이터 값 · TL26-*/CW-*/EQP07 · 신뢰도 % · 「미저장 6」·「15,489」·
+                    「4,052」 · 규칙 이름 · 참조 그리드 7행 → 전부 실제 API 응답에서 온다
+```
+애매하면 **A로 간주.** A에서 벗어나려면 지시서를 «먼저» 고친다.
+
+## ✅ 착지 완료 (전부 main 병합됨, 브라우저로 직접 확인함)
+
+```
+Phase 1   컬럼별 필터 · 시스템 컬럼 필터 없음 · 칩(⇲ 조인 표시) · 칩 ✕ 개별 해제
+Phase 2   사이드바 640px · 폭 영속(+ 복원 시 clamp) · 탭 밑줄형 · 참조 탭 기본 활성
+Phase 3.1 열 순서 = 규칙의 target_fields «배열» (candidate_for 키 순서 아님) · ①②
+    3.2   참조뷰가 그리드 (거터 · 30/28px · 드래그+Shift방향키 한 모델 · custom-range-selected)
+    3.3   copy → tsv.js 재사용 · clipboard.js «import 안 함» · 가드는 clipboard.js 쪽에 이미 있었음
+    3.4   정렬 띠 (알린다, 막지 않는다)
+Phase 4.1 client2/tests/reference_grid_paste_harness.mjs · FLOORS 22 · 변이 4/4 · 대조군 2/2
+    4.3   frontend.md §3.6 신설 + 모듈표 · docs/history/20260821_232730_*.md
+밀도     헤더바 52 · 탭 34 · 그리드 헤더 30 · 데이터행 28 · 셀 mono 11.5 ·
+         헤더 sans 600 10.5 자간.4 uppercase · 필터칸 3px/1px/r3px/10.5 · 배너 30
+형태     칩 → 상단 헤더 바 «안» · 밀린 열 수 → 그리드 헤더 우단 · 정렬 띠 → 탭 아래 30px 플러시
+```
+🔴 **4.4(빌드·dist 커밋)는 내 것이 아니다.** 총괄이 굽는다. 소스만 커밋한다.
+
+## ▶ 다음에 할 것 — 2b 남은 넷, 그다음 2c
+
+```
+1  메인 그리드의 채울 열 두 개에 ①② + accent 배경 + inset 0 -2px 0
+   ⚠️ 규칙은 «비동기»로 온다 — buildColumnDefs 시점엔 아직 없다.
+      syncReferenceViewRule 이 규칙을 잡은 뒤 setGridOption('columnDefs', buildColumnDefs()) 재적용 필요
+2  사이드바 하단 30px 단축키 줄
+      Shift+↑↓ 범위 · Ctrl Enter 일괄 · Ctrl Shift V Smart Paste · 우측 Copy Header
+   🔴 Copy Header 는 «새로 만들지 말고» 기존 #copy-header-toggle 을 DOM 에서 옮긴다
+      (index.html 180행 근처. id 조회라 위치를 옮겨도 JS 는 그대로 돈다)
+   `.kbd` 키캡 클래스는 이미 style.css 에 있다
+3  참조 그리드 아래 LOT_EVENT 근거 표 (목업은 «탭»이 아니라 아래에 «쌓인» 표)
+4  참조 그리드 열 폭  # 32 · dt_job 1fr · x 46 · y 46 · dt_lot 132 · dt_slot 74 · 신뢰도 66
+그다음 2c  Global 탭을 카드 타임라인 → «표»로 (timeline.js 전면)
+      필터줄: 사용자 전체▾ · 종류 전체▾ · 오늘▾ · 우측 「50건 중 18」
+      헤더:  시각58 · 사용자62 · 종류74 · 대상·컬럼 1fr · 변경150 · TX84
+      행:    종류 알약(MANUAL/PASTE/INGEST/OVERWRITE/BATCH/DELETE/SYNC) ·
+             대상은 두 줄(키+컬럼) · 변경은 「옛값 취소선 → 새값」
+      하단:  행 클릭→그 셀로 이동 · Tx 클릭→그 트랜잭션만 · 우측 「더 보기」
+```
+
+## ⚠️ 아는 함정 — 다시 밟지 말 것
+
+```
+목업 열 이름 13개 중 8개가 «실제 dt_log 에 없다»
+   없는 것: dt_cell_key · dt_job · dt_eqp · product · dt_x · dt_y · core_wafer · core_product
+   🔴 소유자 판정: 「열순서는 그냥 지금 로직으로 해」 → 이름으로 매칭, 없는 건 건드리지 않는다. 종결됨
+Cell 탭은 소유자가 «빼라»고 했다 (목업엔 4탭이지만 3탭이 맞다). 리스너는 가드만 하고 남겨 뒀다
+   — activeHistoryTab === 'cell' 을 timeline.js 가 다섯 군데서 읽는다
+CSS 는 «#myGrid» 로 건다. theme.js 가 ag-theme-quartz ↔ -dark 를 뒤집어서
+   테마 클래스로 걸면 한쪽 모드에서만 맞고 반대쪽에선 «조용히» 없다 (실제로 한 번 당했다)
+변이 앵커는 CRLF 를 탄다. 
+ 으로 적으면 이 체크아웃에서 «아무 데도» 안 맞는다
+grid.js 를 참조뷰에서 import 하면 «순환»이다 (grid.js 가 이미 그 모듈을 import 한다)
+   → 공용 헬퍼는 state.js 로 (visibleRangeColIds 가 그렇게 갔다)
+buildColumnDefs 를 고치면 virtual_column_render_harness 의 «슬라이스»도 같이 고쳐야 한다
+   (새 헬퍼/상수를 sandbox 에 안 넣으면 ReferenceError 로 죽는다 — 한 번 그랬다)
+```
+
+## 🔴 아직 못 잰 것 (「없다」가 아니라 「못 쟀다」)
+
+```
+정렬 띠의 «불가» 판정과 그 뒤 서버 거절
+   총괄이 dt_inventory 에 가상조인(dt_lot_confirmed·dt_slot_confirmed)을 «만들어 뒀다».
+   그런데 서버가 config 를 아직 «다시 안 읽었다» — 실측: /tables/dt_inventory/schema 의
+   virtual_columns 가 여전히 []. 총괄이 리로드를 눌러 주면 그때 걸어서 보고할 것
+   (백그라운드 감시 task biobq1eck 가 그 순간을 잡도록 걸려 있었다 — 컴팩트 후엔 다시 걸 것)
+```
+
+## 감시
+
+`origin/main` 폴링 모니터(task bgpt8wdma)가 걸려 있고 `task/DESIGN_ORDERS.md` 변경을 따로 표시한다.
+컴팩트 후 끊겼으면 다시 건다.
+
+---
+
 > Channel per the 2026-08-21 21:0x brief: lead PM writes `task/DESIGN_ORDERS.md` on **main**;
 > this file is committed on the **design** branch and pushed. Commits are the doorbell.
 
