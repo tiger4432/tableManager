@@ -123,17 +123,12 @@
           "dt_job_id"
         ],
         "order_by": [
+          "event_at",
           "record_id"
         ],
         "occurred_at": {
           "column": "event_at",
           "timezone": "Asia/Seoul"
-        },
-        "cursor": {
-          "columns": [
-            "event_at",
-            "record_id"
-          ]
         }
       },
       "prepare": {

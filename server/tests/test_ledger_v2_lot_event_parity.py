@@ -220,10 +220,11 @@ def lot_event_bundle():
                     "unit": "group",
                     "identity": [EVENT_GROUP_COLUMN],
                     "group_by": [EVENT_GROUP_COLUMN],
-                    "order_by": ["row_identity"],
+                    # `cursor` retired 2026-08-21 and the watermark is derived from
+                    # this list, so this list is what the cursor used to declare.
+                    "order_by": ["event_time", "row_identity"],
                     "occurred_at": {
                         "column": "event_time", "timezone": "Asia/Seoul"},
-                    "cursor": {"columns": ["event_time", "row_identity"]},
                 },
                 "prepare": {
                     "implementation_id": "lot-event-frame",

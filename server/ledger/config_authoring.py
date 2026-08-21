@@ -67,8 +67,6 @@ from .implementations import (
     source_preparer_declarations,
 )
 from .setup_bundle import (
-    _APPROVAL_STATUSES,
-    _BINDING_ORIGINS,
     _MAPPER_UNITS,
     _OBJECT_KINDS,
     _OCCURRED_AT_BASES,
@@ -529,8 +527,6 @@ def closed_lists() -> dict[str, Any]:
         "object_kind": sorted(_OBJECT_KINDS),
         "role_kind": sorted(_ROLE_KINDS),
         "scalar_role_kind": sorted(_SCALAR_ROLE_KINDS),
-        "binding_origin": sorted(_BINDING_ORIGINS),
-        "approval_status": sorted(_APPROVAL_STATUSES),
         "source_unit": sorted(_SOURCE_UNITS),
         "mapper_unit": sorted(_MAPPER_UNITS),
         "occurred_at_basis": sorted(_OCCURRED_AT_BASES),
@@ -1219,33 +1215,35 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             )
         table = catalog.get(relation) if isinstance(relation, str) else None
         unique_keys = declared_unique_keys(table) if isinstance(table, Mapping) else ()
+        # 🔴 ONE ORDERING ROW, NOT TWO.  `read.cursor.columns` stood here beside
+        # `order_by` with the same default, the same candidates and the same ground, and
+        # the owner answered it by pasting the box above -- 「커서 어차피 복붙할건데 왜
+        # 적으라 그래?」.  The validator scored both under one predicate, so no answer to
+        # one was ever a wrong answer to the other.  The cursor is now written from this
+        # list (`setup_bundle._derived_cursor`) and is not a question any more.
         if unique_keys:
             shortest = min(unique_keys, key=len)
-            cursor = driver.get("cursor") if isinstance(driver.get("cursor"), Mapping) else {}
-            for name, declared in (
-                ("order_by", driver.get("order_by")),
-                ("cursor.columns", cursor.get("columns")),
-            ):
-                yield Field(
-                    path=f"{base}.read.{name}", step="sources", label=name,
-                    state="derived", tier=TIER_DERIVATION, value=list(shortest),
-                    declared=list(_listed(declared)) if declared is not None else _ABSENT,
-                    ground=Ground(
-                        "ordering_default_from_catalog_key",
-                        f"기본값: {PHYSICAL_CATALOG_FILENAME}의 {relation} 선언 키 "
-                        f"{list(shortest)}",
-                        (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
-                        [list(key) for key in unique_keys]),
-                    comparison="superset",
-                    candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                    # A note beside a box says WHAT TO DO with the box.  This one used to
-                    # say 「선언 키는 주장이지 실측이 아니다」 -- our design conversation,
-                    # printed on the operator's form, where it reads as a warning about
-                    # something they cannot act on.  The default is IN the boxes; the only
-                    # thing left to say is that it can be changed and how.
-                    note=f"기본 {', '.join(str(key) for key in shortest)}"
-                         " · 바꾸려면 고르세요",
-                )
+            declared = driver.get("order_by")
+            yield Field(
+                path=f"{base}.read.order_by", step="sources", label="order_by",
+                state="derived", tier=TIER_DERIVATION, value=list(shortest),
+                declared=list(_listed(declared)) if declared is not None else _ABSENT,
+                ground=Ground(
+                    "ordering_default_from_catalog_key",
+                    f"기본값: {PHYSICAL_CATALOG_FILENAME}의 {relation} 선언 키 "
+                    f"{list(shortest)}",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
+                    [list(key) for key in unique_keys]),
+                comparison="superset",
+                candidates=tuple(physical), universe=UNIVERSE_RELATION,
+                # A note beside a box says WHAT TO DO with the box.  This one used to
+                # say 「선언 키는 주장이지 실측이 아니다」 -- our design conversation,
+                # printed on the operator's form, where it reads as a warning about
+                # something they cannot act on.  The default is IN the boxes; the only
+                # thing left to say is that it can be changed and how.
+                note=f"기본 {', '.join(str(key) for key in shortest)}"
+                     " · 바꾸려면 고르세요",
+            )
         occurred = driver.get("occurred_at")
         occurred = occurred if isinstance(occurred, Mapping) else {}
         types = _column_types(catalog, relation)

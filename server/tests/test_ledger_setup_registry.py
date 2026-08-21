@@ -198,7 +198,6 @@ def test_vocabulary_qualifier_contract_survives_compilation():
         "required": [], "optional": ["event_key", "movement_kind"]}
     source_profile(bundle)["mappings"]["main_transition"]["bind"]["movement_kind"] = {
         "kind": "constant", "value": "pick",
-        "binding_origin": "user_declared", "approval_status": "approved",
     }
 
     compiled = snapshot(bundle)
@@ -561,22 +560,12 @@ def test_known_implementation_with_untrusted_version_has_exact_error_path(
     assert [issue.path for issue in errors] == [path]
 
 
-@pytest.mark.parametrize("approval", ["pending", "rejected"])
-def test_snapshot_compiler_requires_every_binding_to_be_approved(approval):
-    bundle = logical_bundle()
-    binding = source_profile(bundle)["mappings"]["main_transition"]["bind"]
-    binding["subject"]["keys"]["input_id"]["approval_status"] = approval
-
-    errors = snapshot_compile_errors(validate_bundle(bundle), trusted_implementations())
-
-    assert [issue.to_mapping() for issue in errors] == [{
-        "code": "binding_not_approved",
-        "path": (
-            f"{PROFILE_PATH}.mappings.main_transition.bind.subject.keys."
-            "input_id.approval_status"
-        ),
-        "message": f"binding approval_status is {approval!r}, expected 'approved'",
-    }]
+# DELETED 2026-08-21 with the field it measured:
+# `test_snapshot_compiler_requires_every_binding_to_be_approved` (two parameters). It
+# asserted that the compiler runs `bundle_readiness_errors` before compiling, by driving a
+# nested key binding's `approval_status` to a value nothing in the tree could produce.
+# The field retired for holding one reachable value; the readiness STAGE is still called
+# from `snapshot_compile_errors` and still returns its result, it simply has no rules left.
 
 
 def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():

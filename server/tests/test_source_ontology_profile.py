@@ -11,12 +11,6 @@ import pytest
 
 from ledger import config as ledger_config
 from ledger.source_profile import (
-    APPROVAL_STATUS_APPROVED,
-    APPROVAL_STATUS_PENDING,
-    APPROVAL_STATUS_REJECTED,
-    BINDING_ORIGIN_IMPORTED,
-    BINDING_ORIGIN_SYSTEM_SUGGESTED,
-    BINDING_ORIGIN_USER_DECLARED,
     MAPPING_STATUS_HUMAN_APPROVED,
     MAPPING_STATUS_INFERRED,
     BindingKindDescriptor,
@@ -141,9 +135,6 @@ def movement_profile(source="movement_rows", subject_column="ITEM_ID"):
                 "subject": {
                     "kind": "column",
                     "column": subject_column,
-                    "binding_origin": BINDING_ORIGIN_SYSTEM_SUGGESTED,
-                    "approval_status": APPROVAL_STATUS_APPROVED,
-                    "suggestion_reason": "matched the declared source identity",
                 },
                 "from": {"kind": "constant", "value": "source_position"},
                 "to": {
@@ -162,23 +153,15 @@ def executable_movement_profile():
     profile = movement_profile()
     bind = profile["mappings"][0]["bind"]
     bind["from"].update({
-        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-        "approval_status": APPROVAL_STATUS_APPROVED,
     })
     bind["occurred_at"] = {
         "kind": "column",
         "column": "EVENT_TIME",
-        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-        "approval_status": APPROVAL_STATUS_APPROVED,
     }
     bind["to"].update({
-        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-        "approval_status": APPROVAL_STATUS_APPROVED,
         "key": {
             "kind": "column",
             "column": "MOVE_ID",
-            "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-            "approval_status": APPROVAL_STATUS_APPROVED,
         },
     })
     return profile
@@ -630,12 +613,7 @@ def test_binding_registry_validates_column_constant_and_declared_lookup():
         "to": "declared_lookup",
     }
     lookup = validated.mappings[0].bind["to"].to_mapping()
-    assert lookup["key"] == {
-        "kind": "column",
-        "column": "MOVE_ID",
-        "binding_origin": BINDING_ORIGIN_USER_DECLARED,
-        "approval_status": APPROVAL_STATUS_PENDING,
-    }
+    assert lookup["key"] == {"kind": "column", "column": "MOVE_ID"}
 
 
 def test_declared_lookup_phase_two_only_normalizes_declared_structure():
@@ -656,107 +634,60 @@ def test_constant_null_permission_comes_from_the_role_contract():
     assert error["path"] == "mappings[0].bind.from.value"
 
 
-def test_binding_origin_and_approval_status_are_independent_and_preserved():
+def test_a_retired_v1_binding_field_is_swallowed():
+    """A v1 Profile written before 2026-08-21 must still validate, unchanged.
+
+    `binding_origin`, `approval_status` and `suggestion_reason` retired that day for
+    holding one reachable value each. This reader is the LEGACY v1 door, and every v1
+    Profile ever written carries all three, so the names are read and dropped rather
+    than refused -- without that they would fall into the kind payload and
+    `descriptor.normalize` would refuse the whole file for a word that means nothing.
+
+    Replaces `test_binding_origin_and_approval_status_are_independent_and_preserved`
+    and `test_system_suggested_binding_requires_a_suggestion_reason`, which asserted
+    that the values survived normalization and that one implied the other.
+    """
     profile = movement_profile()
     profile["mappings"][0]["bind"]["occurred_at"] = {
         "kind": "column",
         "column": "EVENT_TIME",
-        "binding_origin": BINDING_ORIGIN_IMPORTED,
-        "approval_status": APPROVAL_STATUS_REJECTED,
+        "binding_origin": "imported",
+        "approval_status": "rejected",
+        "suggestion_reason": "header similarity",
     }
     validated = validate_profile(profile)
-    subject = validated.mappings[0].bind["subject"]
-    occurred_at = validated.mappings[0].bind["occurred_at"]
-    assert subject.binding_origin == BINDING_ORIGIN_SYSTEM_SUGGESTED
-    assert subject.approval_status == APPROVAL_STATUS_APPROVED
-    assert subject.suggestion_reason == "matched the declared source identity"
-    assert occurred_at.binding_origin == BINDING_ORIGIN_IMPORTED
-    assert occurred_at.approval_status == APPROVAL_STATUS_REJECTED
-    assert occurred_at.suggestion_reason is None
-    normalized = validated.to_mapping()
-    assert normalized["mappings"][0]["bind"]["subject"] == {
-        "kind": "column",
-        "column": "ITEM_ID",
-        "binding_origin": BINDING_ORIGIN_SYSTEM_SUGGESTED,
-        "approval_status": APPROVAL_STATUS_APPROVED,
-        "suggestion_reason": "matched the declared source identity",
-    }
+    assert validated.mappings[0].bind["occurred_at"].to_mapping() == {
+        "kind": "column", "column": "EVENT_TIME"}
+    # ...and `rejected` no longer withholds execution, because nothing reads it.
+    assert profile_readiness_errors(validated) == ()
 
 
-def test_system_suggested_binding_requires_a_suggestion_reason():
-    profile = movement_profile()
-    subject = profile["mappings"][0]["bind"]["subject"]
-    subject.pop("suggestion_reason")
-    error = one_error(profile)
-    assert error == {
-        "code": "invalid_binding",
-        "path": "mappings[0].bind.subject.suggestion_reason",
-        "message": "is required for a system_suggested binding",
-    }
+def test_a_binding_does_not_create_or_raise_a_claim_epistemic_class():
+    """Was `test_approved_binding_does_not_...`; the approval half retired 2026-08-21.
+
+    It compared an `approved` Profile against a `pending` one and asserted both kept their
+    own value. There is one value now, so what is left is the property that never needed
+    two: a binding says WHERE a value comes from and never how much it is believed.
+    """
+    normalized = validate_profile(movement_profile()).to_mapping()
+    assert normalized["mappings"][0]["use"] == "transfer/movement"
+    mapping_text = json.dumps(normalized, sort_keys=True)
+    for forbidden in ("claim_class", '"pin"', '"confirmed"',
+                      "approval_status", "binding_origin", "suggestion_reason"):
+        assert forbidden not in mapping_text
 
 
-def test_approved_binding_does_not_create_or_raise_a_claim_epistemic_class():
-    approved_profile = movement_profile()
-    pending_profile = copy.deepcopy(approved_profile)
-    pending_profile["mappings"][0]["bind"]["subject"]["approval_status"] = (
-        APPROVAL_STATUS_PENDING)
-
-    approved_mapping = validate_profile(approved_profile).to_mapping()
-    pending_mapping = validate_profile(pending_profile).to_mapping()
-    assert approved_mapping["mappings"][0]["use"] == "transfer/movement"
-    assert pending_mapping["mappings"][0]["use"] == "transfer/movement"
-    assert approved_mapping["mappings"][0]["bind"]["subject"][
-        "approval_status"] == APPROVAL_STATUS_APPROVED
-    assert pending_mapping["mappings"][0]["bind"]["subject"][
-        "approval_status"] == APPROVAL_STATUS_PENDING
-    for normalized in (approved_mapping, pending_mapping):
-        mapping_text = json.dumps(normalized, sort_keys=True)
-        assert "claim_class" not in mapping_text
-        assert '"pin"' not in mapping_text
-        assert '"confirmed"' not in mapping_text
+# DELETED 2026-08-21 with the field they measured:
+# `test_pending_binding_is_structurally_valid_but_not_executable`,
+# `test_rejected_binding_is_structurally_valid_but_not_executable` and
+# `test_nested_lookup_key_pending_blocks_execution_at_its_exact_path`.
+# All three drove `approval_status` to a value no file in the tree ever held, and the
+# field is gone, so the state they refused is underivable rather than merely
+# unchecked. `profile_readiness_errors` keeps its TYPE gate (below) and its position
+# between "this parsed" and "this runs"; it holds no rules today.
 
 
-def test_pending_binding_is_structurally_valid_but_not_executable():
-    profile = executable_movement_profile()
-    profile["mappings"][0]["bind"]["from"]["approval_status"] = (
-        APPROVAL_STATUS_PENDING)
-    validated = validate_profile(profile)
-    errors = profile_readiness_errors(validated)
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "binding_not_approved",
-        "path": "mappings[0].bind.from.approval_status",
-        "message": "binding must be approved before execution; got 'pending'",
-    }]
-    with pytest.raises(ProfileValidationError) as caught:
-        require_executable_profile(validated)
-    assert caught.value.to_mapping() == errors[0].to_mapping()
-
-
-def test_rejected_binding_is_structurally_valid_but_not_executable():
-    profile = executable_movement_profile()
-    profile["mappings"][0]["bind"]["subject"]["approval_status"] = (
-        APPROVAL_STATUS_REJECTED)
-    validated = validate_profile(profile)
-    assert [error.to_mapping() for error in profile_readiness_errors(validated)] == [{
-        "code": "binding_not_approved",
-        "path": "mappings[0].bind.subject.approval_status",
-        "message": "binding must be approved before execution; got 'rejected'",
-    }]
-
-
-def test_nested_lookup_key_pending_blocks_execution_at_its_exact_path():
-    profile = executable_movement_profile()
-    profile["mappings"][0]["bind"]["to"]["key"]["approval_status"] = (
-        APPROVAL_STATUS_PENDING)
-    validated = validate_profile(profile)
-    assert [error.to_mapping() for error in profile_readiness_errors(validated)] == [{
-        "code": "binding_not_approved",
-        "path": "mappings[0].bind.to.key.approval_status",
-        "message": "binding must be approved before execution; got 'pending'",
-    }]
-
-
-def test_only_an_all_approved_profile_is_executable():
+def test_a_validated_profile_is_executable():
     validated = validate_profile(executable_movement_profile())
     assert profile_readiness_errors(validated) == ()
     assert require_executable_profile(validated) is validated

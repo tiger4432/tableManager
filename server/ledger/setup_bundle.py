@@ -97,23 +97,22 @@ _FORBIDDEN_EXECUTABLE_KEYS = frozenset({
     "module", "function", "path", "python", "sql", "javascript",
     "expression", "eval", "exec",
 })
-#: What an unwritten `binding_origin` means, and the ONLY reason it may be left unwritten.
+#: The three binding fields that retired on 2026-08-21, kept ONLY as names to swallow.
 #:
-#: 🔴 SILENCE MAY ONLY DEFAULT TO THE VALUE THAT GRANTS NOTHING.  `user_declared` is the
-#: plainest kind of authorship -- it permits nothing that writing it out would not, and the
-#: one rule that reads this field (`suggestion_reason`, below) fires on
-#: `system_suggested` alone.  So an absent field and a written `user_declared` are the same
-#: claim, and 40 repetitions of a constant leave the operator's file.
+#: 🔴 EACH ONE HAD EXACTLY ONE REACHABLE VALUE, MEASURED ON THE LIVE FILE.
+#: `binding_origin` was declared on 0 of 40 bindings and the one branch that read it
+#: (`system_suggested`) had no writer anywhere in the tree.  `approval_status` was
+#: `approved` on all 40 and no file in the repository held a value that could fail the
+#: gate -- a permission that is never withheld is not a permission.  `suggestion_reason`
+#: was declared on 0 of 40 and was REFUSED outright unless the origin was the branch that
+#: nothing could produce.  A declaration with one legal value is a copy, not a contract.
 #:
-#: `approval_status` LOOKS symmetric and is not, which is why it stays required.
-#: `roleframe._evaluate_binding` refuses to execute any binding that does not say
-#: `approved`, so defaulting an absent one to `approved` would turn "approved only if it
-#: says so" into "approved unless it says otherwise" -- and the legacy v1 reader
-#: (`source_profile._binding`) already defaults the same absence to `pending`, so the two
-#: would answer differently about one file.
-_DEFAULT_BINDING_ORIGIN = "user_declared"
-_BINDING_ORIGINS = frozenset({_DEFAULT_BINDING_ORIGIN, "system_suggested", "imported"})
-_APPROVAL_STATUSES = frozenset({"pending", "approved", "rejected"})
+#: 🔴 THEY ARE SWALLOWED, NOT REFUSED, AND THAT IS THE WHOLE POINT OF THE CONSTANT.
+#: Every config written before today carries `approval_status` on every binding.  A plain
+#: removal turns `unknown_field` on at those exact paths the moment this lands, and the
+#: person holding that file is mid-sentence in it.  Nothing has to be migrated for the
+#: file to keep meaning what it meant, so nothing is asked of them.  See `_Problems.exact`.
+_RETIRED_BINDING_FIELDS = ("approval_status", "binding_origin", "suggestion_reason")
 _JOIN_FOLD_RULES = frozenset({"separator", "case", "zero_pad"})
 _IMPLEMENTED_JOIN_FOLD_RULES = frozenset({"separator", "case"})
 _ROLE_KINDS = frozenset({
@@ -345,11 +344,25 @@ class _Problems:
         self.items.append(LedgerSetupValidationError(code, path, message))
 
     def exact(self, value: Any, path: str, *, required: Sequence[str],
-              optional: Sequence[str] = ()) -> bool:
+              optional: Sequence[str] = (), ignored: Sequence[str] = ()) -> bool:
+        """Refuse every field this object does not take -- except the ones it USED to.
+
+        🔴 `ignored` IS ACCEPT-AND-DISCARD, AND IT IS NOT `_RETIRED_FIELD_HELP`.  That map
+        only rewords an `unknown_field`; the refusal still happens, so a config
+        holding the name still fails to load.  That is right for `tables`, whose contents
+        moved to another file and must be deleted by hand.  It is wrong for a field that
+        retired because it had ONE legal value: nothing has to move, nothing has to be
+        decided, and refusing stops an operator mid-sentence over a word that no longer
+        means anything.  So these names are read and dropped, in silence.
+
+        🔴 NARROW BY CONSTRUCTION.  This is a per-call-site tuple, never a global
+        tolerance: `unknown_field` is how a typo is caught everywhere else, and one
+        forgiving validator would take that away from every object at once.
+        """
         if not isinstance(value, Mapping):
             self.add("invalid_type", path, "must be an object")
             return False
-        allowed = set(required) | set(optional)
+        allowed = set(required) | set(optional) | set(ignored)
         for name in sorted(set(value) - allowed, key=str):
             key_path = _path(path, str(name))
             code = ("unsafe_declaration"
@@ -379,8 +392,6 @@ def public_bundle_schema() -> dict[str, Any]:
         # `tables` is no longer here.
         "physical_schema_file": PHYSICAL_CATALOG_FILENAME,
         "binding_kinds": ["column", "constant", "entity"],
-        "binding_origin": sorted(_BINDING_ORIGINS),
-        "approval_status": sorted(_APPROVAL_STATUSES),
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
@@ -479,13 +490,50 @@ def predicate_claim(predicate_id: str, predicate: Any) -> dict[str, Any]:
     }
 
 
+def _derived_cursor(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Write each source's `read.cursor` from its `read.order_by`, in the bundle.
+
+    🔴 THE QUESTION LEFT THE FORM; THE VALUE DID NOT LEAVE THE DOCUMENT.  Everything
+    downstream reads `driver.cursor_columns` -- `setup_registry` compiles it,
+    `backfill` sorts the page by it and stores the watermark from it, `runtime_v2`
+    checks a cursor tuple against it, `source_preparation` requires those columns to
+    survive preparation.  None of them changes: the bundle they are handed still carries
+    `read.cursor.columns`, it is just no longer something a person types.
+
+    🔴 IT OVERWRITES RATHER THAN FILLING A GAP, AND THAT IS THE POINT.  A watermark says
+    how far a read got; it can only be expressed in the order the read ran, so a cursor
+    that differs from `order_by` is not a second opinion, it is a page boundary the reader
+    cannot honour.  Filling only the absent ones would leave exactly those declarations
+    alive AND unchecked, because the validator no longer looks at the key at all.
+
+    ⚠️ MEASURED BEFORE WRITING THIS: of the three source declarations on disk, the two in
+    the live config already declare a cursor character-for-character equal to their
+    `order_by`; one tracked sample declares a two-column cursor against a one-column
+    `order_by`, and that sample is the only place this changes a value.
+    """
+    sources = value.get("sources")
+    if not isinstance(sources, Mapping):
+        return dict(value)
+    rebuilt: dict[str, Any] = {}
+    for source_id, source in sources.items():
+        read = source.get("read") if isinstance(source, Mapping) else None
+        if not isinstance(read, Mapping) or not _is_list(read.get("order_by")):
+            rebuilt[source_id] = source
+            continue
+        rebuilt[source_id] = {
+            **source,
+            "read": {**read, "cursor": {"columns": list(read["order_by"])}},
+        }
+    return {**value, "sources": rebuilt}
+
+
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
     issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
     filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
-    normalized = _normalize(filled)
+    normalized = _normalize(_derived_cursor(filled))
     return LedgerSetupBundle(_freeze(normalized))
 
 
@@ -554,16 +602,19 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
 
 def bundle_readiness_errors(bundle: LedgerSetupBundle
                             ) -> tuple[LedgerSetupValidationError, ...]:
+    """Structurally valid is not the same as ready to run -- and today nothing separates them.
+
+    🔴 THIS PASS HAS NO RULES LEFT.  Its one rule was `approval_status == "approved"`, and
+    that field retired on 2026-08-21 for holding one value on all 40 live bindings.  The
+    stage is kept because three callers (`setup.load`, `setup_registry.snapshot_compile_
+    errors`, `config_drafts.compile_draft_preview`) place it BETWEEN structural validation
+    and compilation, and that position is the thing worth keeping: the next rule that is
+    about "may this run" rather than "is this well formed" belongs here and nowhere else.
+    Retiring the stage itself is a separate ruling with seven call sites; it is not this one.
+    """
     if not isinstance(bundle, LedgerSetupBundle):
         raise TypeError("readiness requires a validated LedgerSetupBundle")
-    problems = _Problems()
-    for source_id, source in bundle.section("sources").items():
-        profile = source["bind"]
-        for sentence, mapping in sorted(profile["mappings"].items()):
-            base = f"bundle.sources.{source_id}.bind.mappings.{sentence}.bind"
-            for role in sorted(mapping["bind"]):
-                _binding_readiness(mapping["bind"][role], f"{base}.{role}", problems)
-    return problems.finish()
+    return _Problems().finish()
 
 
 def require_ready_bundle(bundle: LedgerSetupBundle) -> LedgerSetupBundle:
@@ -1127,21 +1178,21 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
         return
     kind = value.get("kind")
     if kind == "column":
-        allowed = ("kind", "column", "binding_origin", "approval_status", "suggestion_reason")
-        required = ("kind", "column", "approval_status")
+        allowed = ("kind", "column")
+        required = ("kind", "column")
     elif kind == "constant":
-        allowed = ("kind", "value", "binding_origin", "approval_status", "suggestion_reason")
-        required = ("kind", "value", "approval_status")
+        allowed = ("kind", "value")
+        required = ("kind", "value")
     elif kind == "entity":
-        allowed = ("kind", "entity_type", "keys", "binding_origin", "approval_status",
-                   "suggestion_reason")
-        required = ("kind", "entity_type", "keys", "approval_status")
+        allowed = ("kind", "entity_type", "keys")
+        required = ("kind", "entity_type", "keys")
     else:
         problems.add("invalid_binding", f"{path}.kind",
                      f"unsupported binding kind {kind!r}")
         return
     problems.exact(value, path, required=required,
-                   optional=tuple(name for name in allowed if name not in required))
+                   optional=tuple(name for name in allowed if name not in required),
+                   ignored=_RETIRED_BINDING_FIELDS)
     if kind == "column":
         _nonblank_text(value.get("column"), f"{path}.column", problems)
     elif kind == "constant" and "value" in value:
@@ -1159,24 +1210,6 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
                     problems.add(
                         "invalid_binding", f"{path}.keys.{key}.kind",
                         "entity identity keys allow only column or constant bindings")
-    origin = value.get("binding_origin", _DEFAULT_BINDING_ORIGIN)
-    approval = value.get("approval_status")
-    if not isinstance(origin, str) or origin not in _BINDING_ORIGINS:
-        problems.add("invalid_binding", f"{path}.binding_origin",
-                     f"must be one of {sorted(_BINDING_ORIGINS)}")
-    if not isinstance(approval, str) or approval not in _APPROVAL_STATUSES:
-        problems.add("invalid_binding", f"{path}.approval_status",
-                     f"must be one of {sorted(_APPROVAL_STATUSES)}")
-    reason = value.get("suggestion_reason")
-    if origin == "system_suggested" and not isinstance(reason, str):
-        problems.add("invalid_binding", f"{path}.suggestion_reason",
-                     "system_suggested binding requires suggestion_reason")
-    elif origin == "system_suggested" and not reason.strip():
-        problems.add("invalid_binding", f"{path}.suggestion_reason",
-                     "system_suggested binding requires non-blank suggestion_reason")
-    elif reason is not None and (not isinstance(reason, str) or not reason.strip()):
-        problems.add("invalid_binding", f"{path}.suggestion_reason",
-                     "suggestion_reason must be non-blank when present")
 
 
 def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1215,11 +1248,18 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         _validate_preparation(source.get("prepare"), f"{path}.prepare", problems)
         _validate_mapper(source.get("map"), f"{path}.map", problems)
         read = source.get("read")
+        # 🔴 `cursor` IS NOT ASKED ANY MORE -- IT WAS THE SAME CONTRACT, ASKED TWICE.
+        # `_cross_validate` scored `order_by` and `cursor.columns` in ONE loop under ONE
+        # predicate (each must cover a catalog-declared unique key), so the two questions
+        # had the same answer set and the operator had nothing to decide between them --
+        # owner, 2026-08-21: 「커서 어차피 복붙할건데 왜 적으라 그래?」.  A cursor says how
+        # far a read got, which can only be said in the order that read ran, so the value
+        # is DERIVED from `order_by` in `validate_bundle` rather than declared.  The name
+        # is swallowed here because every config on disk still carries one.
         if not problems.exact(
                 read, f"{path}.read",
-                required=("unit", "identity", "group_by", "order_by", "occurred_at",
-                          "cursor"),
-                optional=("registration_probe",)):
+                required=("unit", "identity", "group_by", "order_by", "occurred_at"),
+                optional=("registration_probe",), ignored=("cursor",)):
             continue
         _validate_registration_probe(
             read.get("registration_probe"), f"{path}.read.registration_probe",
@@ -1257,9 +1297,6 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                 except ZoneInfoNotFoundError:
                     problems.add("invalid_timezone", f"{path}.read.occurred_at.timezone",
                                  f"unknown timezone {timezone!r}")
-        cursor = read.get("cursor")
-        if problems.exact(cursor, f"{path}.read.cursor", required=("columns",)):
-            _nonblank_list(cursor.get("columns"), f"{path}.read.cursor.columns", problems)
 
 
 def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> None:
@@ -1427,8 +1464,6 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         base_columns = []
         if _is_list(driver.get("order_by")):
             base_columns.extend(driver["order_by"])
-        if isinstance(driver.get("cursor"), Mapping) and _is_list(driver["cursor"].get("columns")):
-            base_columns.extend(driver["cursor"]["columns"])
         if isinstance(driver.get("occurred_at"), Mapping):
             # A declared basis names no source column - its time comes from the row's own
             # ingestion stamp, which the schema builder puts on every table.
@@ -1442,18 +1477,19 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             relation, physical, tables, entities, problems)
         table = tables.get(relation)
         if isinstance(table, Mapping):
-            ordering_contracts = (
-                (driver.get("order_by"), f"{path}.read.order_by"),
-                (driver.get("cursor", {}).get("columns"),
-                 f"{path}.read.cursor.columns"),
-            )
-            for columns, order_path in ordering_contracts:
-                if (_is_list(columns)
-                        and not _columns_cover_declared_unique_key(table, columns)):
-                    problems.add(
-                        "invalid_cursor", order_path,
-                        "ordering must include every column of a catalog-declared "
-                        "business_key, composite_key, or UNIQUE index")
+            # ONE ordering, scored once.  This was a two-entry loop over `order_by` and
+            # `cursor.columns` under a single predicate -- which is the measurement that
+            # retired the second declaration: any value satisfying one satisfied the
+            # other, so the pair could never disagree about anything the validator asked.
+            # The cursor now IS this list (see `_derived_cursor`), so scoring it again
+            # would score the same value twice and report one fault as two.
+            columns = driver.get("order_by")
+            if (_is_list(columns)
+                    and not _columns_cover_declared_unique_key(table, columns)):
+                problems.add(
+                    "invalid_cursor", f"{path}.read.order_by",
+                    "ordering must include every column of a catalog-declared "
+                    "business_key, composite_key, or UNIQUE index")
 
         profile = source.get("bind") if isinstance(source.get("bind"), Mapping) else None
         profile_path = f"{path}.bind"
@@ -1671,18 +1707,6 @@ def _binding_refs(binding: Any, path: str, entities: Mapping[str, Any],
                          "entity binding must contain exactly the registered identity keys")
         for key, child in binding.get("keys", {}).items() if isinstance(binding.get("keys"), Mapping) else ():
             _binding_refs(child, f"{path}.keys.{key}", entities, available, problems)
-
-
-def _binding_readiness(binding: Any, path: str, problems: _Problems) -> None:
-    if not isinstance(binding, Mapping):
-        return
-    status = binding.get("approval_status")
-    if status != "approved":
-        problems.add("binding_not_approved", f"{path}.approval_status",
-                     f"binding approval_status is {status!r}, expected 'approved'")
-    if binding.get("kind") == "entity" and isinstance(binding.get("keys"), Mapping):
-        for key in sorted(binding["keys"]):
-            _binding_readiness(binding["keys"][key], f"{path}.keys.{key}", problems)
 
 
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]

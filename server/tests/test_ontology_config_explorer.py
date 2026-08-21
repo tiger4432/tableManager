@@ -1848,8 +1848,11 @@ def test_closed_lists_come_from_the_validators_own_constants():
     assert set(lists["source_unit"]) == set(setup_bundle._SOURCE_UNITS)
     assert set(lists["mapper_unit"]) == set(setup_bundle._MAPPER_UNITS)
     assert set(lists["occurred_at_basis"]) == set(setup_bundle._OCCURRED_AT_BASES)
-    assert set(lists["approval_status"]) == set(setup_bundle._APPROVAL_STATUSES)
-    assert set(lists["binding_origin"]) == set(setup_bundle._BINDING_ORIGINS)
+    # `approval_status` and `binding_origin` left this list on 2026-08-21 with the fields
+    # they filled. A closed list whose every member is legal everywhere is a dropbox that
+    # cannot be answered wrong, which is a control that asks nothing.
+    assert "approval_status" not in lists
+    assert "binding_origin" not in lists
     # Steps ship with their labels so the step bar carries no list of its own.
     # Four since 2026-08-20: the 「준비기·매퍼」 layer and then 「프로필」 named sections that no
     # longer exist, and all of their fields moved into `sources`.
