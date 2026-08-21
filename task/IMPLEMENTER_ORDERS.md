@@ -62,7 +62,23 @@ npm run build              Bash run_in_background: true
 
 ---
 
-# ▶ 지금 할 것 — `lot_event` 를 흐르게
+# 🔴🔴 지금 할 것이 «바뀌었다» — `lot_event` 에서 손 떼고 `packs` 로 (16:0x)
+
+> **소유자 지시: 「구현자 packs 제거 시키고, 너(총괄)는 저거(lot_event) 해」**
+
+```
+lot_event      총괄이 «가져간다». 손 떼십시오
+               ⚠️ 커서 행은 이미 지워져 있습니다(당신이 2단계를 한 것으로 보입니다).
+                  거기서 «멈추면» 됩니다. backfill 을 «돌리지 마십시오» — 총괄이 돌립니다
+당신이 할 것    packs·claims 제거 + binding 템플릿 + 남은 에러 로그
+               📄 task/ledger_drop_packs_claims_brief.md  (보강됨, ac682baf)
+```
+⚠️ **둘이 같은 DB 에 동시에 쓰지 않게 하는 것이 이 지시의 목적입니다.**
+`backfill` 은 총괄만 실행합니다.
+
+---
+
+# ▶ 총괄이 가져간 것 (참고) — `lot_event` 를 흐르게
 
 ```
 📄 상세   task/ledger_lot_event_flow_brief.md     (커밋 9b42ea4b)
