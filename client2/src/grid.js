@@ -717,7 +717,13 @@ export function renderGrid(initialRows) {
     suppressRowHoverHighlight: true,
     suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id,
+    // ── Mockup 2b metrics (the order's measurement table is canonical) ──────────────────
+    // 30 / 28 / 28 instead of the quartz theme's defaults (~48 header, ~41 row). This is the
+    // difference between a screen that shows 24 rows and one that shows 16, which on a
+    // correction surface is the difference between seeing the pattern and scrolling for it.
+    headerHeight: 30,
     floatingFiltersHeight: 28,
+    rowHeight: 28,
     defaultColDef: {
       width: 150,
       minWidth: 100,
