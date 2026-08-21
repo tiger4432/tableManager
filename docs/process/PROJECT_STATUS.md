@@ -1,5 +1,55 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 📋 2026-08-21 11:5x — 운영 절차 둘 (v3→v4 이관 · 커서 재스탬프). 총괄이 도구에서 «뽑았다»
+>
+> 소유자가 운영에서 「v3 라 에러난다」로 물었고, 이관을 «했다». 아래는 지어낸 형식이 아니라
+> 스크립트의 `argparse` 와 실제 실행 출력에서 뽑은 것이다([[quote-the-validator-not-my-memory-of-it]]).
+>
+> ### ① v3 → v4 이관
+> ```bash
+> cd server && cp config/ontology/ledger_config.json config/ontology/ledger_config.json.bak
+> cd server && python scripts/migrate_ledger_config_to_v4.py config/ontology/ledger_config.json --check
+> cd server && python scripts/migrate_ledger_config_to_v4.py config/ontology/ledger_config.json
+> # 그리고 서버 재시작 — --reload 가 없어서 파이썬은 다시 안 읽는다
+> ```
+> **총괄이 진짜 v3 파일(`087e7d8~1` 샘플)로 끝까지 태운 결과:**
+> ```
+> --check   「would rewrite (setup_version 3 -> 4)」   exit 0
+> 실제       「migrated (3 -> 4)」                      exit 0
+> 재실행     「unchanged (4 -> 4)」                     exit 0   ← 멱등
+> 사라진 거절 unsupported_setup_version · mappers · profiles · source_preparers ·
+>            bind/map/driver 모양   ← v3 가 v4 코드에서 내는 «14건»이 전부
+> ```
+> ⚠️ **스크립트는 제자리에 덮어쓰고 백업을 «안 만든다».** ⚠️ `REFUSED` 면 파일을 안 건드리고 멈춘다 —
+> 매핑 이름을 «추측해서» 채우지 않으려고 일부러 그렇게 만든 자리다. 억지로 진행하지 말 것.
+>
+> ### ② 커서 재스탬프 — 이관 «후» 백필이 막히면
+> ```bash
+> cd server && conda run -n assy_manager python scripts/ledger_restamp_cursor.py           # 보고만
+> cd server && conda run -n assy_manager python scripts/ledger_restamp_cursor.py --apply   # 쓰기
+> ```
+> **이 박스 실제 출력:**
+> ```
+> dt_job: already ledger-v2:925655da…                        ← 할 일 없음
+> lot_event: REFUSED -- stored cursor is not a v2 cursor      ← v1 커서. 별도 판정. 건드리지 않는다
+>            ('lot_event/1/rules:34311f15')
+> exit=1   ← 거절이 하나라도 있으면 «보고 모드에서도» 1 이다. 실패가 아니다. 줄을 읽을 것
+> ```
+> 🔴 **「지문만 바꾼다」를 산문 말고 SQL 에서 확인했다** (`store.restamp_cursor`):
+> ```sql
+> UPDATE ledger_cursor SET translator_ver = %s
+> WHERE source = %s AND translator_ver = %s      -- 옛 문자열을 «물고» 바꾼다
+> ```
+> 위치·카운터·원자를 «안» 건드린다. `WHERE` 의 compare-and-swap 때문에 두 번 돌려도 무해하고,
+> 남이 그새 바꿔 놨으면 조용히 덮지 않는다.
+>
+> 🔴 **이것은 리셋이 아니고 되어서도 안 된다.** `source_translator_ver` 가 `uq_ledger_atom` 의
+> 재료라(`schema.py:60`) **커서를 되감으면 이미 있는 행을 다시 읽고, 같은 사실이 새 지문을 달고
+> 한 번 더 쌓인다.** 수백만 행이면 두 배다. 위치를 안 건드리는 것이 안전의 전부다.
+>
+> ⚠️ **이 박스의 `dt_job` 은 이미 새 지문이다** — 구현자가 라운드 중 적용한 것으로 보인다.
+> 되돌릴 것 없음(원장 221,563행·커서 위치 그대로). **운영은 별개이므로 위 절차를 그대로 밟는다.**
+
 > ## ✅ 2026-08-21 11:2x — 커서가 «자기에게 닿는 것»만 본다 `b100fb2a`. 판별식 셋 통과
 >
 > 소유자 「3번 진행」 → 구현자 착지 → **총괄이 «따로» 재서 같은 값을 얻었다.**
