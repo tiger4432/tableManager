@@ -2300,3 +2300,14 @@ body.resizing-active .history-sidebar {
 /* The reference grid is the same surface, same rhythm. */
 .reference-view-table th { height: 30px; }
 .reference-view-table td { height: 28px; font-size: 11.5px; }
+
+/* Owner 2026-08-21: a button is as wide as its label. The mockup shows 「전체 해제」
+   wrapping to two lines in a fixed-width button; wrapping is the thing to avoid, not to
+   copy — a two-line button breaks the row's rhythm and reads as a defect. */
+.tx-filter-banner button,
+.clear-banner-btn,
+.tab-btn {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

@@ -234,6 +234,17 @@ function updateAlignmentBand() {
   const sourceCols = selectedColumnNames();
   const targetCols = targetColumnIds();
   const verdict = alignmentVerdict(sourceCols, targetCols, isVirtualColumn);
+
+  // 🔴 THE MISMATCH LABEL IS NOT SHOWN (owner, 2026-08-21: "그냥 없애"). Pasting two copied
+  // columns into one target is something people do on purpose, so a band that turns red every
+  // time the shapes differ is crying wolf on the normal case — and a warning that fires on
+  // normal use is one the operator learns to read past, including on the day it is right.
+  //
+  // The other two states stay: the green match is the mockup's own badge, and `blocked` is not
+  // an opinion about tidiness — the server refuses that write batch-wide, so the band is
+  // predicting a 400 rather than grading the operator.
+  if (verdict.state === 'warn') { band.style.display = 'none'; return; }
+
   const rows = rect.r1 - rect.r0 + 1;
 
   band.classList.remove('is-match', 'is-warn', 'is-blocked');
