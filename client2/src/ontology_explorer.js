@@ -60,6 +60,24 @@ function errorMessage(error) {
   return error?.detail?.message || error?.message || String(error);
 }
 
+/** `at`, plus every container the seed put inside it -- the rows a new member arrives as.
+ *
+ *  The shape is READ off the value the skeleton just produced, so this knows no field name
+ *  and no kind: whatever `emptyOf` decided to build is what gets opened. The seed is
+ *  required containers only, so this walk is a handful of empty objects deep at most.
+ */
+function seededPaths(value, at, into = []) {
+  if (!at) return into;
+  into.push(at);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const key of Object.keys(value)) {
+      const child = value[key];
+      if (child && typeof child === 'object') seededPaths(child, `${at}.${key}`, into);
+    }
+  }
+  return into;
+}
+
 export function createOntologyExplorerController({ root, apiBase, adminFetch, showToast }) {
   let state = { ...initialExplorerState, navigation: { back: [], forward: [] } };
   let generation = 0;
@@ -840,16 +858,37 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         const node = shapeForPath(path);
         if (!node || node.kind !== 'map') return;
         const empty = emptyOf(node.of, state.authoringSchema?.skeleton?.defs);
+        let born = null;
         if (action === 'form-append') {
           const held = draftShapeAt(path);
+          const at = Array.isArray(held) ? held.length : 0;
+          born = `${path}[${at}]`;
           editShapeAtPath(path, [...(Array.isArray(held) ? held : []), empty]);
         } else {
           const box = root.querySelector(`.oe-form-new-id[data-for="${path}"]`);
           const name = (box?.value || '').trim();
           if (!name) return;
-          editShapeAtPath(`${path}.${name}`, empty);
+          born = `${path}.${name}`;
+          editShapeAtPath(born, empty);
           if (box) box.value = '';
         }
+        // 🔴 WHAT YOU JUST NAMED IS OPEN. Typing a name and then hunting the page for the
+        // row it made is the friction this whole round is about: a new member landed
+        // 「접힘 · 2」 and the next control the person needed was inside it. So the same
+        // action that adds the member decides its fold -- and the fold of the map it landed
+        // in, which the rule would otherwise shut the instant it stopped being empty.
+        //
+        // The containers the seed brought with it are opened too. A new mapping is born
+        // holding `bind: {}` because the grammar requires it; that map is where `+ 역할`
+        // lives, so leaving it folded would put the next door one click away again.
+        //
+        // The write above already rendered, so this renders again -- the fold is decided
+        // after the member exists, which is the only order in which the new rows are there
+        // to be opened.
+        state = reduceFieldFold(state, {
+          type: 'FIELD_TOGGLED', open: true, paths: seededPaths(empty, born, [path]),
+        });
+        renderOntologyExplorer(root, state);
       }
     }
     else if (action === 'add-draft-item') {
@@ -874,7 +913,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       editEntityKeys((keys) => keys.filter((_, i) => i !== at));
     }
     else if (action === 'toggle-field') {
-      state = reduceFieldFold(state, { type: 'FIELD_TOGGLED', path: target.dataset.value });
+      // WHICH WAY comes off the control the person actually pressed. The store records a
+      // decision now, not an inversion of the fold rule, and only the render knows what
+      // this row is showing at the moment of the click -- the rule's answer moves when the
+      // plan does, so a stored inversion turns into the opposite instruction by itself.
+      state = reduceFieldFold(state, {
+        type: 'FIELD_TOGGLED',
+        path: target.dataset.value,
+        open: target.getAttribute('aria-expanded') !== 'true',
+      });
       renderOntologyExplorer(root, state);
     }
     else if (action === 'delete-declaration') {

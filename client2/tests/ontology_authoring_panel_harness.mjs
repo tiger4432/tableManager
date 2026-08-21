@@ -185,11 +185,17 @@ const stateWith = (plan) => ({
 // So `render` opens every row by hand, and `renderFolded` is the new helper that scores
 // the default. Passing every path is deliberate: an assertion that quietly stopped finding
 // its row would otherwise read as "the fold is working".
+//
+// `expandedFields` records the DECISION per path (`true` open, `false` shut, absent means
+// the rule decides) rather than a set of paths that inverted the rule -- an inversion drifts
+// into its own opposite the moment the rule's answer moves, which is what folded a subtree
+// shut on save. "Opened by hand" is now spelled as the true it always meant.
 const render = (plan) => {
   const root = element('div');
   renderOntologyExplorer(root, {
     ...stateWith(plan),
-    expandedFields: (plan.fields || []).map((row) => row.path),
+    expandedFields: Object.fromEntries(
+      (plan.fields || []).map((row) => [row.path, true])),
   });
   return root;
 };

@@ -378,11 +378,27 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     way to produce `qualifiers: {...}` -- the validator asked for a key that the screen could
     only create by adding something and taking it away again.
 
-    Only containers.  A required LEAF stays absent on purpose: absent is `missing_field`,
-    which tells the operator to fill it, while a seeded `""` would read as a value they
-    chose.  And nothing here knows a field by name -- it asks the skeleton whether the field
-    is required and whether it is a container, so the next section with the same shape is
-    covered without being mentioned.
+    Containers, and the one leaf whose control cannot DRAW its own absence.  A required text
+    or choice leaf stays absent on purpose: absent is `missing_field`, which tells the
+    operator to fill it, while a seeded `""` would read as a value they chose -- and the
+    screen can show that, because an empty box and a blank select both look unanswered.
+
+    🔴 A CHECKBOX HAS NO BLANK.  `hint: flag` draws `checked = value === true`, so `undefined`
+    and `false` are PIXEL-IDENTICAL: the operator reads "answered, false", saves, and gets
+    `invalid_type` + `missing_field` on a field the screen showed them as settled.  Owner,
+    walking a new source: the only way through was to tick the box on and back off.  Here the
+    seeded value is not a guess about what they meant -- it is the value the screen was
+    ALREADY showing them, so the file stops disagreeing with the pixels.
+
+    The class, not the case.  `accepts_verified_join_rules` is the one that showed today;
+    the skeleton has three required flags (`packs.*.claims.*.roles.*.required` and
+    `virtual_joins.*.enabled` are the others), and the hint is READ, so a fourth is covered
+    the day it is declared.  `entities.*.allow_null` is `required: false` and stays absent --
+    seeding what is NOT required is the complaint below, coming straight back.
+
+    Nothing here knows a field by name -- it asks the skeleton whether the field is required
+    and what its control is, so the next section with the same shape is covered without being
+    mentioned.
 
     🔴 REQUIRED IS NOT UNCONDITIONAL: `when` SAYS WHO IT IS REQUIRED OF.  Four fields of
     `defs.binding` are `required: true` behind a `when` gate on `kind` -- `column`, `value`,
@@ -414,7 +430,9 @@ def empty_value(node: Any, defs: Mapping[str, Any],
             if isinstance(gate, Mapping) and seeded.get(gate.get("field")) != gate.get("is"):
                 continue
             child = _deref(field.get("node"), defs, seen)
-            if not isinstance(child, Mapping) or child.get("kind") == "leaf":
+            if not isinstance(child, Mapping):
+                continue
+            if child.get("kind") == "leaf" and child.get("hint") != "flag":
                 continue
             seeded[field["key"]] = empty_value(field.get("node"), defs, seen)
         return seeded

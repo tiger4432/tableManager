@@ -355,7 +355,7 @@ function renderReadTree(state) {
     renderRow: () => null,
     suggest: (row) => row,
     hot: [],
-    expanded: state.expandedFields || [],
+    expanded: state.expandedFields || {},
     absolute: (at) => at,
   };
   return renderSkeletonForm(context, node, '', document_, 0,
@@ -768,10 +768,14 @@ function renderValue(row) {
 // genuine choice appears and stays hidden behind a fold nobody re-opened. That is why the
 // count is read HERE, at render time, from the candidate list as it currently is -- never
 // cached, never stamped on the field. When the list grows to two, the row opens by itself.
-function foldDecision(row, expanded = []) {
-  // The operator's own choice wins over every rule below it. A fold nobody can open is
-  // not a fold, it is a deletion.
-  if (expanded.includes(row.path)) return { open: true, reason: '', byHand: true };
+function foldDecision(row, expanded = {}) {
+  // The operator's own choice wins over every rule below it, IN BOTH DIRECTIONS. A fold
+  // nobody can open is not a fold, it is a deletion -- and a card nobody can shut is the
+  // same control failing the other way round, which is what "opened by hand" used to mean
+  // here: the toggle could only ever agree with the screen.
+  const chosen = expanded ? expanded[row.path] : undefined;
+  if (chosen === true) return { open: true, reason: '', byHand: true };
+  if (chosen === false) return { open: false, reason: '접힘', byHand: true };
   if (row.remaining) return { open: true, reason: '' };
   if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
   if (row.state === 'derived') {
@@ -1084,13 +1088,26 @@ function renderSkeletonForm(context, node, path, value, depth = 0, label = null)
   // which are most of the ones anybody opens.
   //
   // Not an exception to the fold rule. This decides the INITIAL state, and 「남은 칸과 거절은
-  // 펼침」 still only ever opens MORE. A person can still fold anything by hand: membership in
-  // `expandedFields` FLIPS whatever the default was, so the toggle works in both directions
-  // instead of being a control that only ever agrees with the screen.
+  // 펼침」 still only ever opens MORE. A person can still fold anything by hand, and that
+  // choice is RECORDED rather than applied as a flip of this rule -- see `expandedFields`.
+  //
+  // 🔴 AN EMPTY MAP HAS NO DETAIL TO HIDE; IT HAS A DOOR. Folded, it says 「접힘 · 1」 and the
+  // one thing behind it is the control that CREATES the member -- `+ 매핑`, `+ 역할`,
+  // `+ 식별키`. So at the moment the screen says a role is missing, the button that makes
+  // that role is not on the page, and the operator reads the fold as the form being unable
+  // to answer. Owner's walk paid five hand-expands for one mapping, and the folds were
+  // empty maps all the way down.
+  //
+  // It cannot fold itself shut under a hand that is filling it: naming a member records the
+  // map as open in the same action that adds the member, so the row the person just created
+  // is the row they are looking at. In READING there is no door -- an empty map there really
+  // is nothing -- so the outline stays folded and says how much.
   const byDefault = depth <= 1
-    || needsAttention(context.hot, context.absolute(path));
-  const open = !path ? true
-    : (context.expanded.includes(path) ? !byDefault : byDefault);
+    || needsAttention(context.hot, context.absolute(path))
+    || (!context.readOnly && shape.kind === 'map'
+        && membersOf(shape, value).length === 0);
+  const chosen = context.expanded ? context.expanded[path] : undefined;
+  const open = !path ? true : (chosen === undefined ? byDefault : chosen);
   const box = h('div', 'oe-node');
   // 🔴 THREE SHAPES, NOT TWO. Owner, looking at the badge: 「편집창에서 map으로 떠있는건
   // 머야」 -- and asking is the verdict, because two different things wore one word. A
@@ -1456,7 +1473,7 @@ function renderAuthoring(state) {
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
     hot: attentionPaths(plan),
-    expanded: state.expandedFields || [],
+    expanded: state.expandedFields || {},
     absolute: (path) => (base ? base + '.' + path : path),
     suggest: (row, node, path) => {
       if (!node || node.hint !== 'role') return row;

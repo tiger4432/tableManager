@@ -43,13 +43,23 @@ export const initialExplorerState = Object.freeze({
   // nobody has accepted yet is not that. Conflating them is how a create that was refused
   // goes on showing in the tree as if it existed.
   newDeclaration: null,
-  // Rows the operator has opened by hand, by path.
+  // What the operator decided about a row's fold, by path: `true` open, `false` shut,
+  // absent means nobody has said, so the render rule decides.
   //
   // 🔴 IN STATE, NOT IN THE DOM. `<details open>` would be the obvious way and it is the
   // wrong one here: the commit step syncs attributes from the freshly built tree, so an
   // `open` the browser set would be removed on the next render and the row would fold
   // itself shut while being read. Keeping it here means a re-render cannot close it.
-  expandedFields: [],
+  //
+  // 🔴 AND IT RECORDS THE CHOICE, NOT A FLIP OF THE DEFAULT. This was a Set of paths that
+  // INVERTED whatever the rule said, which is the same thing only while the rule's answer
+  // holds still -- and it does not: the default is `depth <= 1 || needsAttention(...)`, and
+  // `needsAttention` reads the plan the server just recomputed. So saving a half-built
+  // source made the rows the save had just given refusals to flip from open to SHUT --
+  // 「저장을 누르면 bind.mappings 서브트리가 통째로 접힌다」 -- and the subtree folded itself
+  // exactly where it had begun to owe something, which is the one place nobody wanted it
+  // folded. A remembered inversion is not a remembered decision.
+  expandedFields: {},
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -295,12 +305,17 @@ export function reduceNewDeclaration(state, action) {
 
 // One row opened or closed by hand. A fold the operator cannot open is not a fold, it is
 // a deletion -- so every folded row is reachable, and the choice survives re-renders.
+//
+// The caller says WHICH WAY, because only the render knows what the row is showing right
+// now: the same path can be open by rule on one render and shut by rule on the next.
+//
+// `paths` takes several at once, which is what "what you just added is born open" needs --
+// naming a member decides the fold of the member AND of the map it landed in, in one write.
 export function reduceFieldFold(state, action) {
   if (action.type !== 'FIELD_TOGGLED') return state;
-  const open = new Set(state.expandedFields);
-  if (open.has(action.path)) open.delete(action.path);
-  else open.add(action.path);
-  return { ...state, expandedFields: [...open] };
+  const choices = { ...state.expandedFields };
+  for (const path of action.paths || [action.path]) choices[path] = action.open !== false;
+  return { ...state, expandedFields: choices };
 }
 
 // 🔴 THE ONE PLACE ANYTHING ASKS "WHAT IS DECLARED IN THIS SECTION".

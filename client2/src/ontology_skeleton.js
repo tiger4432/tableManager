@@ -88,10 +88,22 @@ export function emptyOf(node, defs, depth = 0) {
     // member added later: a claim added to a pack needs its own required containers, or the
     // person who wants none of something has no way to say so.
     //
-    // Containers only. A required LEAF stays absent on purpose -- absent reads as
-    // `missing_field`, which asks the operator to fill it, while a seeded `''` would look
-    // like a value they chose. And no field is known by name: the skeleton is asked whether
-    // it is required and whether it is a container.
+    // Containers, and the one leaf whose control cannot DRAW its own absence. A required
+    // text or choice leaf stays absent on purpose -- absent reads as `missing_field`, which
+    // asks the operator to fill it, while a seeded `''` would look like a value they chose,
+    // and the screen can show that difference: an empty box and a blank select both look
+    // unanswered.
+    //
+    // 🔴 A CHECKBOX HAS NO BLANK. `hint: flag` is drawn `checked = value === true`, so
+    // `undefined` and `false` are PIXEL-IDENTICAL -- the operator reads "answered, false",
+    // saves, and gets `invalid_type` + `missing_field` on a field the screen showed as
+    // settled. The seeded `false` is not a guess about what they meant; it is the value the
+    // screen was ALREADY showing them, so the file stops disagreeing with the pixels.
+    //
+    // The class, not the case: three fields of the skeleton are required flags today, and
+    // the HINT is read, so a fourth is covered the day it is declared. `allow_null` is
+    // `required: false` and stays absent -- seeding what is not required is the complaint
+    // below, coming straight back.
     //
     // 🔴 REQUIRED IS NOT UNCONDITIONAL: `when` SAYS WHO IT IS REQUIRED OF. Four fields of
     // `defs.binding` are `required: true` behind a gate on `kind` -- and a brand-new binding
@@ -111,7 +123,8 @@ export function emptyOf(node, defs, depth = 0) {
       if (field.required !== true) continue;
       if (!fieldApplies(field, seeded)) continue;
       const child = deref(field.node, defs);
-      if (!child || child.kind === 'leaf') continue;
+      if (!child) continue;
+      if (child.kind === 'leaf' && child.hint !== 'flag') continue;
       seeded[field.key] = emptyOf(field.node, defs, depth + 1);
     }
     return seeded;
