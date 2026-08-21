@@ -166,3 +166,65 @@ Chrome   당신이 «직접» 걸었습니다
 대기.  Phase 3 은 판정 대기이고 Phase 1–2 는 병합 대기입니다
 필요하면  `design` 브랜치에서 다듬되, 새 Phase 를 «시작하지 마십시오»
 ```
+
+---
+
+# ✅ Phase 3 의 «걸 화면»을 만들어 드렸습니다 (소유자 지시, 21:4x)
+
+당신이 「Phase 3 는 이 환경에서 걸 화면이 없다」를 **실측으로** 올렸고, 소유자가
+「클라용 enrich 는 몇 개 만들자, 가상조인이랑 시나리오 짜서」로 답했습니다. 총괄이 만들었습니다.
+
+## 이제 «있는» 것 — 전부 8080 API 에 실려 있습니다
+
+### ① 참조 뷰가 달린 enrichment 규칙 «둘» (전에는 0)
+```
+dt_frame_confrimation    source dt_log        derived dt_inventory   views 3
+core_frame_review        source dt_core_view  derived dt_inventory   views 3
+```
+🔴 **`dt_inventory` 는 table_config 에 «등록돼 있습니다»** — 그리드 표 드롭박스에 «뜹니다».
+당신이 「선택 불가라 못 연다」고 재서 올린 그 벽이 이것으로 사라집니다.
+
+각 규칙의 참조 뷰 셋:
+```
+1  이 job 의 원본 행            dt_log / dt_core_view 에서 그 job 의 행 전부
+2  관측된 좌표 범위             x_min·x_max·y_min·y_max·cells   <- 프레임이 «덮어야» 하는 것
+3  같은 장비의 다른 job / 쓴 core 웨이퍼
+```
+⚠️ 뜻을 «지어내지 않았습니다**. `dt_frame`·`core_frame` 은 평범한 값이 아니라
+`{"frame_confirmed_from": …}` JSON 이력이라, 뷰는 「이 결정의 원본 행과 그 좌표 범위」까지만 보여줍니다.
+그 이상은 좌표 도메인 판정이라 총괄이 만들지 않았습니다.
+
+### ② 가상조인 «하나» (전에는 활성 0)
+```
+dt_log_frame_from_inventory
+   dt_log  ⋈  dt_inventory   on dt_job   (cardinality one)
+   expose  dt_x_base · dt_x_sign · dt_x_offset · dt_y_base · dt_y_sign · dt_y_offset
+```
+**`dt_log` 그리드에 좌표 프레임 6열이 «가상 컬럼»으로 붙습니다.** 126/401 job 에 값이 있습니다
+(나머지는 위 enrichment 로 확정되면서 찹니다 — 두 기능이 «서로를 먹입니다»).
+
+## 총괄이 이걸 만들려고 «고친» 것 — 알아 두십시오
+```
+table_config.dt_inventory   column_types 에 dt_job 추가        (DB 엔 있는데 선언에 없었다)
+                            composite_key_source: ["dt_job"] 추가 (upsert 키 계약)
+DB                          CREATE UNIQUE INDEX uq_dt_inventory_dt_job  (401/401 distinct 확인 후)
+```
+🔴 **`server/config/*` 는 gitignore 입니다 — «당신 워크트리에는 없습니다».**
+당신이 워크트리에서 서버를 띄우면 이 규칙들이 «없습니다». 8080(메인 트리)으로 보십시오.
+
+## ⚠️ 아직 «안 되는» 것 — 정직하게
+```
+dt_job_lot_slot_attribution   여전히 skip.  derived_table 'dt_job_attribution' 이 «미등록»
+   그 규칙의 참조 뷰 5개가 제일 풍부한데 «못 씁니다»
+   되살리려면 target_fields(dt_lot_confirmed·dt_slot_confirmed)를 dt_inventory 컬럼으로 바꿔야 하고
+   auto_confirm: true 라 «400행에 자동으로 씁니다» -> 소유자 판정 사안. 총괄이 손대지 않았습니다
+```
+
+## ▶ 그러니 지금 할 수 있는 것
+```
+1  git fetch origin && git merge origin/main   (이 지시를 받는 법)
+2  8080 에서 dt_inventory 를 표로 골라 참조 패널을 «연다»  -> Phase 3 를 실제로 걸어 본다
+3  dt_log 그리드에서 가상 컬럼 6열이 뜨는지 «본다»
+4  Phase 3.1 은 여전히 «판정 대기» — fill_targets 냐 다른 설계냐. 시작하지 마십시오
+```
+**걸어 보고 «무엇이 안 되는지»를 재서 올려 주십시오.** 그게 다음 라운드의 재료입니다.
