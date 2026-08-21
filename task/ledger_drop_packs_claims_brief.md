@@ -159,3 +159,67 @@ setup_version   올릴지는 «측정 후» 판단하고 보고할 것
 백틱            커밋 메시지는 `-F` 파일로
 조용해지면      30분 넘을 것 같으면 «한 줄» 남길 것
 ```
+
+---
+
+# 🔴 소유자 보강 (2026-08-21 16:1x) — 화면이 «binding 템플릿»을 깔아 준다
+
+> 소유자: 「packs 제거 후 소스에는 **문장id - vocab - vocab 정의 따른 하위 항목별
+> binding 템플릿** 이런 형태가 되어야 함」
+
+**총괄이 지시서에 빠뜨린 절이다.** 위 §②는 「vocabulary 가 roles 를 유도한다」까지만 적었는데,
+소유자가 말한 것은 **그 유도를 «화면이 써서» binding 칸을 깔아 준다**는 데까지다.
+
+## 왜 이것이 «빠지면 안 되는가»
+
+```
+템플릿 없이 claims 만 지우면
+   선언은 단순해지는데  «폼은 더 어려워진다»
+   → 사람이 subject·target·slot 같은 역할 이름을 «밖에서 알아야» 친다
+   → 오늘 기록된 마찰 2번(「역할 이름에 후보가 없다」)이 «더 나빠진다»
+```
+🔴 **claims 제거의 이득은 「화면이 대신 안다」로만 실현된다.** 그러지 않으면 사람에게
+짐을 옮긴 것이지 없앤 것이 아니다.
+
+## 도착 형태
+
+```
+1  문장 이름을 만든다              + 매핑 → 이름 입력
+2  그 문장의 vocab(술어)을 고른다   후보는 vocabulary 절에서 «온다»
+3  고르는 «순간» 화면이 칸을 깐다   vocabulary 정의를 읽어서:
+      subject       항상          (종류는 vocabulary.subjects 가 제한)
+      target        object.kind != none 이면
+      <qualifier들>  object.qualifiers.required / optional 의 «이름 그대로»
+      occurred_at   항상
+4  사람은 «각 칸의 재료»만 고른다   컬럼이냐 상수냐 엔터티냐
+```
+
+**실측 근거는 위 §②다** — `slot_map@1` 의 qualifier 이름(`from`·`to`·`wafer`)이
+claim 의 roles 와 **한 글자도 안 틀린다.** 그러니 vocabulary 만으로 칸을 정확히 깔 수 있다.
+
+## 이 절의 받아들이는 시험 (위 시험에 «추가»)
+
+```
+7  새 소스에서 + 매핑 → 술어를 고른다
+      → subject · target · qualifier 칸이 «자동으로» 생기는가
+      → 술어를 has_wafer@1 로 고르면 slot 칸이, slot_map@1 로 고르면
+        from·to·wafer 칸이 생기는가 (vocabulary 선언과 «같은 이름»으로)
+8  object.kind = none 인 술어(register@1)를 고르면 target 칸이 «안» 생기는가
+9  필요 없는 칸을 사람이 «지울 수» 있는가 — optional qualifier 는 비워도 통과
+```
+⚠️ **8번을 빼지 말 것.** 「항상 다 깔기」로 도망가면 `register` 에 쓰지 않는 target 칸이
+남고, 그건 오늘 지운 「자유도 0인 칸」을 화면에서 다시 만드는 것이다.
+
+---
+
+# 🟡 같이 붙일 것 — 지도 라운드의 «남은 하나»
+
+`7f665442` 검증에서 남았다(`task/ontology_map_panel_brief.md` §총괄 검증).
+```
+oe-bucket--missing 둘을 «제거»한다     「빠짐 · N」 · 「필드에 붙지 않은 거절 · N」
+   트리 «아래»로 옮겨졌을 뿐 사라지지 않았다. 소유자 요청은 「지우고」였다
+   총괄이 지도가 덮는지 실측함: 붙지 않은 거절 6건 «전부» 지도에 있고 전부 is-left 표시
+   → 이제 진짜 중복이다
+남긴다   행에 붙은 표시 (oe-field-path·oe-field-refusal INSIDE .oe-node-row)
+         어느 칸이 문제인지 아는 «유일한» 수단이다
+```
