@@ -250,7 +250,16 @@
   font-size: 11px; line-height: 1.2;
 }
 #ontology-explorer-root .oe-has-popover { position: relative; }
+/* 🔴 THE ANNOTATION IS NOT PART OF THE TARGET. It hangs below its row and over the rows
+   after it, so while it is up those rows cannot be clicked -- owner: 「좌측 패널에서 마우스
+   호버링하면 어노테이션 때문에 바로 아래 목록 클릭못함」.  It is also a CHILD of the row it
+   describes, so the pointer entering it counts as still hovering the row and the thing
+   sustains itself.  `pointer-events: none` answers both at once: the pointer passes
+   through to the row underneath, and leaving the row's own box ends the hover.
+   What that gives up is selecting the annotation's text, which is a hover tooltip that
+   disappears the moment you reach for it anyway. */
 #ontology-explorer-root .oe-popover {
+  pointer-events: none;
   display: none; position: absolute; z-index: 30; left: 6.8px; top: calc(100% - 2px);
   width: min(250px, calc(100vw - 36px)); padding: 10.2px; border: 1px solid var(--oe-line);
   background: var(--oe-surface); color: var(--oe-text);
