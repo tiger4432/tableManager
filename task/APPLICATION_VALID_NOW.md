@@ -137,3 +137,70 @@
     총괄에 올린 것·받은 판정            ontology_application_report.md
                                      ontology_predicate_id_ruling.md (총괄 작성)
     이 세션의 규율과 배운 것            ontology_application_session_brief.md
+
+---
+
+## 10. 재고 — «유니버셜 UI» 는 이미 있다 (2026-08-21 실측)
+
+소유자 질문: 「collect 로 임의의 객체 집합이 나오면 UI 는 결국 수많은 항목을 대응해야
+한다. 어떻게 유니버셜한 UI 를 만드나」
+
+### 문제를 다시 놓으면 — 렌더러가 «무엇당» 필요한가
+
+    타입당      Lot · Wafer · DTJob · Recipe …    선언이 늘면 늘어난다 -> 유한 목록 실패
+    값 모양당   스칼라 · 레코드 · 맵 · 목록 …      «구조적 상수». 유한이어도 된다
+
+**개체 «타입» 은 무한히 늘지만 «값의 모양» 은 안 는다.**
+
+### 🔴 실측 — 클라 렌더러에 도메인 타입 분기가 «0건» 이다
+
+    ledger_graph/main.js        kind === 'node'/'edge'          선택 상태 (구조적)
+                                basis.kind === 'convention'      근거 종류 (기계 어휘)
+    ledger_trace_core.js        basis.kind === MEASURED/CONVENTION   기계 어휘
+    ontology_explorer_view.js   shape.kind === leaf/record/map/list/closed   ← «값 모양»
+
+`Lot` 이냐 `Wafer` 냐로 갈라지는 렌더러가 **하나도 없다.**
+
+### 모양 어휘가 «서버에서» 온다
+
+    server/ledger/ledger_skeleton.json     leaf 50 · map 27 · record 18
+    server/ledger/config_authoring.py      shape 를 만드는 곳
+
+서버가 「이건 잎이다 / 레코드다 / 맵이다」를 보내고 클라가 모양대로 그린다.
+그래서 `ontology_explorer_view.js` 가 **임의의 중첩 선언을 타입을 모른 채** 렌더한다 —
+오늘 설정 절이 8 -> 3 으로 바뀌었는데 그 화면이 «안 깨진» 이유가 이것이다.
+
+### 그래서 할 일은 «만들기» 가 아니라 «넓히기»
+
+    있는 것   선언을 모양으로 그리는 렌더러 한 벌      config 저작 화면
+    없는 것   walk 산출을 «같은 모양 어휘» 로 내보내기   서버 쪽
+
+    walk 응답 노드 하나
+       type · label     선언에서            (배지)
+       why              근거 경로 요약        봉투에서 «생성»
+       badges           등급 · 미계측 · 비교불가  기계 어휘
+       detail           shape { leaf | record | map }   ← 기존 렌더러가 받는 그 모양
+
+`detail` 을 기존 모양 어휘로 내면 **펼침 카드가 공짜로 생긴다.**
+
+### 「수많은 항목」은 UI 문제가 «아니다»
+
+    최상위 집합만 보인다     전파가 이미 골라 놓았다 (§21 지배 관계)
+    나머지는 「아래 N건 더」  조용한 절단 금지 규율
+    한 화면에 한 타입        `collect` 가 하나라서 섞일 일이 없다
+
+**셋 다 서버가 정하고 UI 는 그린다.** 「무엇을 먼저 보여줄까」를 UI 가 결정하지 않는
+것이 A 판정(사람이 해석하지 않는다)의 UI 판이다.
+
+### 봉투 카드는 이미 그렇게 적혀 있다
+
+`ledger_journey` 의 자기 서술: 「There is ONE envelope→slot mapping and it runs for
+every atom of every predicate. A predicate translated tomorrow renders in the same card.
+**no branch in this file reads a predicate name**」
+
+### ⚠️ 안 잰 것
+
+    walk 응답이 모양 어휘를 «낼 수 있는지» 는 설계일 뿐 구현 확인이 아니다
+    좌표·시계열·이미지처럼 «공간 구조» 를 가진 값은 목록으로 못 그린다
+       -> 그것도 «타입당» 이 아니라 «값 모양당» 이므로 렌더러 하나가 모든 타입의 좌표를
+          받는다. 다만 그 렌더러가 지금 그렇게 돼 있는지는 «안 쟀다»
