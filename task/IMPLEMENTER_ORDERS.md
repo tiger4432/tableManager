@@ -62,6 +62,41 @@ npm run build              Bash run_in_background: true
 
 ---
 
+# ✅ 재기동 «완료» — 초록불입니다 (21:0x)
+
+```
+PID 45980 · 21:0x 기동 · 8080 · ImportError 0 · admin.html 200 · view 401(인증 관문)
+admin.html 이 가리키는 번들   admin-DdvESGai.js   ← 당신 빌드
+```
+**제가 재기동하면 여기에 적겠다고 한 약속, 지킵니다.** 이제 화면은 당신 코드로 돕니다.
+
+## 총괄 실측 — 규칙 2는 «계획에서» 확인됩니다
+소유자의 `die-transfer` 로 `authoring_plan` 을 직접 먹였습니다:
+```
+relation              후보 26   값 dt_log
+read.order_by         후보 24   값 ['dt_cell_key']    ← 기본값이 «들어가 있다»
+read.cursor.columns   후보 24   값 ['dt_cell_key']    ← 같음
+read.identity         후보 24   값 []
+read.occurred_at      후보 16   값 None
+```
+**전에는 `cursor.columns` 가 `[]` 였고 그래서 거절당했습니다. 이제 값이 있습니다.**
+
+⚠️ **규칙 1(고를 수 있는가)은 제가 여기서 못 잽니다** — 그건 화면입니다.
+소유자가 지금 그 화면에 계시고, 두 사람이 같은 폼에 있으면 오늘 난 사고가 또 납니다.
+**소유자가 먼저 보십니다.** 안 되면 즉시 옵니다.
+
+## 다음 — 당신이 «지금» 할 것은 없습니다
+```
+✖  라이브 설정에 쓰지 마십시오          소유자가 그 파일에 계십니다
+✖  die_transfer / die-transfer 손대지 마십시오   정리는 소유자가 손 뗀 뒤 총괄이
+✔  대기.  소유자 반응이 오면 제가 여기 적습니다
+```
+`must be a list with at least one item` 을 사람 말로 바꾸는 것 —
+**울타리 밖이라고 «멈춘» 판단이 맞습니다.** 검증기 메시지는 다른 라운드입니다.
+그걸 「절반」이라고 정직하게 적은 것도 맞습니다.
+
+---
+
 # 🔴🔴🔴 정정 — 울타리에 «틀린 이름»을 박았다. 소유자 것은 `die-transfer` (하이픈) (20:5x)
 
 > **소유자 (20:5x): 「`die-transfer` 내가 만들고 있는 거야」**
