@@ -1010,14 +1010,22 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
 | `read.cursor.columns` | physical keyset cursor 컬럼. UNIQUE key 전체를 포함해야 함 |
-| `read.registration_probe` | **(선택)** 이미 등록된 개체를 가려내는 probe |
+| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register@1`을 내는 소스에는 필수** |
 | `prepare` | 이 소스의 preparer 본문 (§7.3) |
 | `map` | 이 소스의 mapper 본문 (§7.4) |
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
 `read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 필수이고
-`registration_probe`만 선택이다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야
-한다 — 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
+`registration_probe`만 문법상 선택이다. `occurred_at`의 `column`과 `basis`는 **정확히
+하나**여야 한다 — 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
+
+🔴 **`registration_probe`의 「선택」은 문법의 말이지 소스의 말이 아니다.** `bind`의 문장
+가운데 하나라도 `register@1`을 내면 이 절은 **필수**다 — `runtime_v2._filtered_event_atoms`가
+`registration_context_required`로 **런을 통째로 거절**한다(`backfill._probe_subjects`가
+probe 없는 소스에 `None`을 돌려주기 때문이고, 빈 집합을 돌려주면 첫 등록이 매 batch 중복
+발화한다). `lot_event`가 오래 돌지 못한 이유가 이것이었다. 화면은 이 조건을 소스마다
+따져서 묻는다 — `config_authoring._registering_sentences`가 `bind`의 문장에서 `register`를
+찾고, 찾으면 `bundle.sources.<id>.read.registration_probe` 칸을 **`missing`으로 세운다.**
 
 `order_by`와 `cursor.columns`는 각각 유일 키를 완전히 포함해야 한다. 현재 `lot_event`는
 `txn_seq`가 business key이므로 `order_by: ["txn_seq"]`가 전순서를 만들고,

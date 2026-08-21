@@ -67,6 +67,7 @@ from .setup_bundle import (
     _SCALAR_ROLE_KINDS,
     _SOURCE_UNITS,
     PHYSICAL_CATALOG_FILENAME,
+    SUBJECT_ROLE,
     predicate_claim,
     public_bundle_schema,
     role_binding_kinds,
@@ -77,6 +78,13 @@ from .setup_bundle import (
 #: to a name, so this is the one closed list this module cannot import.  Kept next to the
 #: imports so the day it becomes a constant there, the fix is one line here.
 PREDICATE_STATUSES = ("active", "retired")
+
+#: The canonical predicate whose emission makes `read.registration_probe` load-bearing.
+#: It is `vocabulary.PREDICATES["register"]`, and the atom spelling -- not the config's
+#: `register@1` address -- is what `runtime_v2._filtered_event_atoms` and
+#: `backfill._forget_registers` both compare `atom.predicate` against.  Named here rather
+#: than spelled inline so the three sites are one grep.
+REGISTER_PREDICATE = "register"
 
 TIER_STRUCTURAL = "structural"
 TIER_DERIVATION = "derivation"
@@ -1002,6 +1010,35 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
         )
 
 
+def _registering_sentences(source: Any) -> tuple[tuple[str, str], ...]:
+    """(sentence, subject entity type) for every sentence of this source that REGISTERS.
+
+    🔴 DERIVED FROM THE SAME WORD THE RUNTIME KEYS ON, not from a spelling rule.  A
+    sentence registers when its predicate resolves to the canonical `register`
+    (`REGISTER_PREDICATE`); the config addresses it as `register@1` and the atom carries
+    it unversioned, which is the split `roleframe._runtime_id` makes everywhere else.
+
+    The entity type comes out of the subject binding, and is `""` while that binding is
+    half-written.  The two answers are kept apart on purpose: whether the source registers
+    at all decides that the probe is REQUIRED, and a subject nobody has bound yet must not
+    turn that requirement back off -- it only leaves the candidate list short until the
+    binding names something.
+    """
+    profile = source.get("bind") if isinstance(source, Mapping) else None
+    found: list[tuple[str, str]] = []
+    for sentence, mapping in _mappings(profile):
+        predicate = mapping.get("predicate")
+        if not isinstance(predicate, str):
+            continue
+        if predicate.rsplit("@", 1)[0] != REGISTER_PREDICATE:
+            continue
+        bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
+        subject = bind.get(SUBJECT_ROLE) if isinstance(bind, Mapping) else None
+        entity_type = subject.get("entity_type") if isinstance(subject, Mapping) else None
+        found.append((sentence, entity_type if isinstance(entity_type, str) else ""))
+    return tuple(found)
+
+
 def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
     entities = _section(bundle, "entities")
@@ -1127,18 +1164,74 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         single_key = tuple(sorted(
             name for name, entity in entities.items()
             if isinstance(entity, Mapping) and len(_listed(entity.get("keys"))) == 1))
+        # 🔴 THE SENTENCES SAY WHETHER THIS DECLARATION IS OPTIONAL, AND THE SKELETON
+        # CANNOT.  `registration_probe` is `required: false` in the grammar and that is
+        # right for most sources -- one that emits no `register` needs no probe.  For one
+        # that DOES, it is not optional at all: `runtime_v2._filtered_event_atoms` refuses
+        # the whole run with `registration_context_required`, which is why `lot_event`
+        # never ran until 2026-08-21.  The refusal lands at backfill, hours and one screen
+        # away from the person who filled the form and passed save.  So the condition is
+        # asked here, per source, off the same `bind` the compiler reads.
+        registers = _registering_sentences(source)
+        # Both grounds, kept: the entity must be one this source registers (a probe for
+        # anything else suppresses nothing) AND single-keyed, which is what
+        # `_cross_registration_probe` refuses with `unsupported_registration_probe`.
+        probe_entities = tuple(
+            name for name in sorted({entity for _, entity in registers if entity})
+            if name in single_key)
+        if registers or probes:
+            yield Field(
+                path=f"{base}.read.registration_probe", step="sources",
+                label="등록 탐침",
+                state="answered" if probes else "missing", tier=TIER_CONSTRAINED,
+                value=[dict(probe) for probe in probes if isinstance(probe, Mapping)],
+                declared=list(probes) if probes else _ABSENT,
+                ground=Ground(
+                    "registration_probe_required_by_register_sentences",
+                    f"필요: 이 소스의 register 문장 {len(registers)}개 "
+                    f"({', '.join(sentence for sentence, _ in registers) or '없음'})",
+                    tuple(f"{base}.bind.mappings.{sentence}"
+                          for sentence, _ in registers) or (base,)),
+                note="register 문장이 있으면 필수 · 없으면 백필이 통째로 거절",
+            )
         for probe_index, probe in enumerate(probes):
             if not isinstance(probe, Mapping):
                 continue
+            ppath = f"{base}.read.registration_probe[{probe_index}]"
             yield Field(
-                path=f"{base}.read.registration_probe[{probe_index}].entity_type",
+                path=f"{ppath}.entity_type",
                 step="sources", label="등록 탐침 엔터티",
                 state="answered" if probe.get("entity_type") else "missing",
                 tier=TIER_CONSTRAINED, value=probe.get("entity_type"),
                 declared=probe.get("entity_type"),
-                candidates=single_key,
-                note="식별키가 하나인 엔터티만 후보.",
+                candidates=probe_entities,
+                note="register 문장이 등록하는 엔터티 · 식별키 1개",
             )
+            columns = list(_listed(probe.get("columns")))
+            # 🔴 RELATION, NOT PREPARED, AND THE SAME REFUSAL SAYS SO.  The probe is asked
+            # BEFORE preparation, on physical column names, while the bindings name
+            # post-preparation ones -- so offering the preparer's outputs here produces
+            # `unknown_column ... has no column`, which is exactly the refusal a person
+            # gets today for typing the binding's spelling from memory.
+            yield Field(
+                path=f"{ppath}.columns", step="sources", label="등록 탐침 컬럼",
+                state="answered" if columns else "missing", tier=TIER_CONSTRAINED,
+                value=columns, declared=columns if columns else _ABSENT,
+                candidates=tuple(physical), universe=UNIVERSE_RELATION,
+                note="준비 전에 묻기 때문에 물리 표 컬럼만",
+            )
+            # 🔴 `list_separator` GETS NO ROW HERE, AND THE MEASUREMENT IS WHY.  It reads
+            # like the obvious third row -- `waferids` is `:`-separated and probing the
+            # unsplit string finds none of the wafers, the under-approximation that
+            # duplicates `register`.  But a plan row REPLACES the skeleton's own control
+            # for a leaf (`renderTreeLeaf` prefers it), and `renderAuthoringRow` builds no
+            # control at all unless the row carries candidates -- so a candidate-less row
+            # here DELETES the text box the operator types the separator into.  Measured
+            # 2026-08-21 on the live `lot_event`: with the row, `INPUT.oe-field-input`
+            # disappears from both probes; without it, the skeleton draws it for both.  No
+            # catalog knows a separator, so there are no candidates to give, and inventing
+            # a list of punctuation would be this module authoring a closed list it does
+            # not own.  The plan speaks for a leaf when it has something to say about it.
 
 
 # ------------------------------------------------------------ removability, measured
