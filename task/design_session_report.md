@@ -254,6 +254,77 @@ Phase 1–2  awaiting your merge
 
 ---
 
+## ▶ Phase 3.2 (`038d7eee`) and 3.3 (`2b257d58`) — both walked
+
+### 3.2 — the panel is a grid you can select a range in
+
+```
+gutter + header 30px + rows 28px      the main grid's own metrics, measured on screen
+3x2 drag                              6 cells, rgba(26,102,208,0.14) + dashed --accent
+Shift+Down, Shift+Right               3x2 -> 4x3 = 12 cells (same model as the drag)
+tab switch                            selection cleared (0)
+```
+
+**Deviation, stated plainly:** I kept the `<table>` element instead of rebuilding as divs.
+Everything 3.2 names — gutter, header, matching heights, fill styling, range selection, the
+generation guard — a table does, with far less code than a div grid whose cells would then
+need their own layout. If divs were wanted for a reason not written down, say so and I will
+convert it.
+
+**A defect the screenshot caught before I committed:** `nowrap` was on the body but not the
+header, so narrow columns broke their names one character per line — `c_bn` rendered as four
+stacked letters. Header holds its line now; the section scrolls sideways instead.
+
+### 3.3 — the one line you asked for, before choosing a shape
+
+🔴 **What the constraint prevents:** `clipboard.js` drags `grid.js`, `ui.js` and
+`effort_meter.js` in behind it, and this panel needs none of them (it already has `config`,
+`state`, `dom`). **It is about which way the dependency points, not about avoiding reuse** —
+the serializer IS the shared `tsv.js` and the header switch IS the grid's `#copy-header-toggle`.
+
+**And the guard it recommends already exists.** `clipboard.js` has returned early for targets
+inside `#reference-view` since the panel was a native-text surface, with a comment saying why.
+That is option (b), order-independent, already in place. I added nothing there.
+
+🔴 **Verified it is the guard working, not accidental ordering.** My handler registers later
+than `clipboard.js`'s, so winning the clipboard proves nothing on its own. Probed the event in
+the capture phase: target resolves inside `#reference-view`, panel holds focus, so
+`clipboard.js` takes its early return regardless of registration order.
+
+**Clipboard payload read back, not assumed:**
+
+```
+3x2, header off   "SYN-DTE-02	SYN-PRD-A
+SYN-DTE-02	SYN-PRD-A
+SYN-DTE-02	SYN-PRD-A"
+header on         prepends BARE names: "dt_eqp	product"   (not "① dt_lot")
+declared view     "dt_lot	dt_slot
+SYN-DT-103	25"      in declared order
+```
+
+⚠️ My first measurement said the clipboard was empty. **That was the instrument** — the probe
+had been registered before the panel's handler existed, so it read `clipboardData` before
+anything wrote to it. Re-armed after render and it read correctly.
+
+Convention gate green (no `navigator.clipboard`). Harnesses 28 · 59 · 72 · 151 · 306, zero
+failures.
+
+### ⚠️ Fixture limit for 3.3's stated acceptance
+
+The order's acceptance is a **3행×2열** drag on the fill columns. The declared view returns
+**one row** (`후보가 대개 1개`, as your declaration comment says), so a 3-row drag on the fill
+columns is not possible here. I ran 3×2 on the evidence view and 1×2 on the declared columns.
+Not a defect — recording it so nobody reads the missing 3-row case as untested by choice.
+
+### Next: 3.4
+
+Building it as the migration doc specifies — the band **informs** and the SERVER refuses. Your
+note said 「거절되는 화면」; the doc says 「막지 않고 알린다」 and lists a blocking gate under
+「하지 않을 것」. The one hard verdict is 「불가」 when the target range touches a virtual
+column, and the actual refusal there is the server rejecting the batch. I will show both.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
