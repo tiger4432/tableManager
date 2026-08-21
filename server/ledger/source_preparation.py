@@ -641,9 +641,10 @@ def _assemble_prepared_frame(
             )
     # A source-specific preparer may DECLARE that a row is not its own, and the rows it
     # excludes leave here before anything asks them for an identity.  `lot_event` holds two
-    # generations that spell the same facts differently -- 80 rows say `lot_id`, 62 say
-    # `lot` -- and the preparer reads only the first spelling, so the second arrived at the
-    # identity loop below with nothing in it and refused the whole batch.
+    # generations that spell the same facts differently -- 80 rows say `lot_id` and 61 say
+    # `lot`, with 1 row saying neither, so 62 are excluded -- and the preparer reads only
+    # the first spelling, so the rest arrived at the identity loop below with nothing in it
+    # and refused the whole batch.
     #
     # This NARROWS the guard rather than lowering it: every row that survives still needs
     # an identity, with the refusal below unchanged, and the 25 sources that do not declare

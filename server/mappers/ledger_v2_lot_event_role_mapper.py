@@ -93,7 +93,8 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
         }
         outputs.update(group_outputs)
         # WHICH ROWS ARE NOT OURS.  The physical table carries two generations: 80 rows
-        # spell the identity `lot_id` and 62 spell it `lot`, with the same split across
+        # spell the identity `lot_id` and 61 spell it `lot` -- 1 more says neither, so 62
+        # rows are excluded in total -- with the same split across
         # `slotnumbers`/`slot_numbers` and `waferids`/`wafer_ids`.  Every column this
         # preparer reads is the first spelling, so the second generation reaches the engine
         # with an empty identity.  Measured 2026-08-21 across all 26 ingested tables: six
