@@ -4,14 +4,17 @@
 >
 > **단계 경계:** 2단계 canonical Profile 계약은 승인됨. 이 문서는 3단계 실행 경로이며
 > 2026-08-17 사용자 판정으로 추가 구현을 중지했다. 재개 정본은
-> [`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md)이며,
+> 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)이며,
 > 사용자 승인 전에는 재설계 1단계 코드도 시작하지 않는다.
 >
 > **v2 목표 판정:** 이 문서 아래의 `declared_lookup`/adapter는 동결된 현행 구현 설명이지
 > 재사용 목표가 아니다. v2는 lookup/Position을 제거하고, cursor 뒤 pandas source preparer가
 > verified virtual-join rule ID를 상속한다. Registry 등록값은 `server/config/ontology/`의
-> config에서만 컴파일한다. 정확한 목표 구조와 config 목록은
-> [TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)가 정본이다.
+> config에서만 컴파일한다. 🔴 **[2026-08-21] 착지한 구조와 config 목록의 정본은
+> [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이다** — 종전 이 자리가
+> 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
+> 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)로
+> 이관됐고, 그 문서가 대는 config 경로 다섯 중 넷은 디스크에 없다.
 >
 > 🔴 **[2026-08-21] 이 문서의 `profile_id`·`profiles`·`binding_origin`은 «레거시 v1 flat
 > config»(`server/config/ledger_config.json`)의 낱말이다 — v2 셋업의 그것과 이름만 같다.**

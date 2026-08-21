@@ -29,8 +29,10 @@
 > **Ledger v2 목표 경계(아직 미구현):** Ledger cursor는 virtual column을 직접 읽지 않는다.
 > cursor가 base relation을 읽은 뒤 pandas source preparer가 이 선언의 verified descriptor를
 > rule ID로 상속해 batch join한다. `attach()`의 UI absent-only/`미상`/셀 표시 계약은 상속하지
-> 않는다. 목표 정본은
-> [TARGET_ARCHITECTURE_AND_SSOT](../../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)다.
+> 않는다. 🔴 **[2026-08-21] 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../ONTOLOGY_LEDGER_SETUP.md)이다** —
+> 종전 이 자리가 목표 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
+> 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../../_archive/ledger_v2_redesign_plan_20260817/README.md)로
+> 이관됐다(닫힌 계획서 — 가르치는 config 문법은 은퇴).
 
 분석가는 REST API로 두 테이블을 Spotfire에 끌어와 거기서 잇는다. DB 뷰를 만들지 않는
 이유가 그것이다 — 서빙 계층은 API다.
