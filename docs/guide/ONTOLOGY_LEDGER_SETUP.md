@@ -197,7 +197,7 @@ conda run -n assy_manager python -m scripts.migrate_ledger_config_to_v5 <ledger_
 | `profiles` 절 | 그 본문이 그것을 binding하는 소스 안으로 |
 | `driver` | `read` · `prepare` · `map` · `bind` 넷으로 갈라짐 |
 | `map.emits` · `bind.packs` | 삭제 — 둘 다 `use`의 되풀이였다 |
-| `binding_origin: "user_declared"` | 삭제 — 읽는 쪽이 대는 기본값이다 |
+| `binding_origin` · `approval_status` · `suggestion_reason` | 삭제 — 셋 다 은퇴했다(2026-08-22). 남아 있어도 검증기가 받아서 버린다 |
 | `mappings: [ {mapping_id, …} ]` | `mappings: { "<문장 이름>": {…} }` |
 | `setup_version` | `4` |
 | **`packs` section** | **삭제** — Claim은 술어에서 도출된다(`predicate_claim`) |
@@ -821,16 +821,13 @@ kind `symbolic`과 `order`도 **도출될 수 없다.** 좁힌 binding이나 닫
           "keys": {
             "lot": {
               "kind": "column",
-              "column": "lot",
-              "approval_status": "approved"
+              "column": "lot"
             }
-          },
-          "approval_status": "approved"
+          }
         },
         "occurred_at": {
           "kind": "column",
-          "column": "event_time",
-          "approval_status": "approved"
+          "column": "event_time"
         }
       }
     }
@@ -895,8 +892,7 @@ V2 canonical binding은 다음 세 가지뿐이다.
 ```json
 {
   "kind": "column",
-  "column": "event_time",
-  "approval_status": "approved"
+  "column": "event_time"
 }
 ```
 
@@ -905,8 +901,7 @@ V2 canonical binding은 다음 세 가지뿐이다.
 ```json
 {
   "kind": "constant",
-  "value": "track_in",
-  "approval_status": "approved"
+  "value": "track_in"
 }
 ```
 
@@ -923,21 +918,17 @@ constant는 임의 문자열을 무조건 통과시키지 않는다. null 허용
   "keys": {
     "wafer": {
       "kind": "column",
-      "column": "core_wafer",
-      "approval_status": "approved"
+      "column": "core_wafer"
     },
     "x": {
       "kind": "column",
-      "column": "core_x",
-      "approval_status": "approved"
+      "column": "core_x"
     },
     "y": {
       "kind": "column",
-      "column": "core_y",
-      "approval_status": "approved"
+      "column": "core_y"
     }
-  },
-  "approval_status": "approved"
+  }
 }
 ```
 
@@ -948,26 +939,34 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 아니다. 외부 값을 붙여야 하면 Source Preparer의 verified batch join으로 EventFrame column을
 만든 뒤 `column` binding을 쓴다.
 
-#### binding 승인 metadata
+#### binding 승인 metadata — **은퇴했다 (2026-08-22)**
 
-모든 binding에는 두 필드가 보존된다.
+> 🔴 **`binding_origin` · `approval_status` · `suggestion_reason` 셋은 선언에서 «없어졌다».**
+> binding은 이제 **종류와 그 payload만** 말한다 — `kind` + (`column` | `value` | `entity_type`·`keys`).
+>
+> **왜:** 소유자가 화면에서 그 셋을 보고 「바인딩이 이렇게 복잡하게 할 일이야? 그냥 주어, 목적어
+> 등 당 타입, 키만 입력하게 해」라고 판정했다. 실측이 뒷받침했다 — 라이브 40개 binding에서
+> `approval_status`는 **40번 다 `approved`**(자유도 0), `binding_origin`과 `suggestion_reason`은
+> **0번** 선언됐고 `binding_origin`을 읽는 유일한 분기(`system_suggested`)를 **만드는 코드가 없었다**.
+> 실행을 막던 `_binding_readiness_issues`의 승인 게이트도 필드와 «같이» 나갔다.
+>
+> **옛 파일은 그대로 열린다.** 검증기는 이 «세 이름만» 받아서 버린다(`_Problems.exact(..., ignored=)`,
+> 호출부 둘). 일반화가 아니라 세 낱말짜리 목록이라, `approval_statuss` 같은 오타는 여전히
+> `unknown_field`로 자기 경로에서 잡힌다. 마이그레이션은 급하지 않다 — 있어도 없어도 돌아간다.
+>
+> ✅ **이 문서의 JSON 예시에서도 그 줄은 걷어냈다** (9곳). 복사해서 쓰면 그대로 맞는다.
 
-| 필드 | 필수 | 허용값 | 의미 |
-|---|---:|---|---|
-| `binding_origin` | **아니오** | `user_declared`, `system_suggested`, `imported` | 이 Mapping 설정이 어디서 왔나. **생략하면 `user_declared`** |
-| `approval_status` | **예** | `pending`, `approved`, `rejected` | 이 Mapping 설정을 실행해도 되는가 |
-| `suggestion_reason` | 조건부 | 문자열 | `system_suggested`일 때 필수인 추천 근거 |
+<details><summary>은퇴 전 판정 (읽을 필요 없다 — 왜 «둘 중 하나만» 접혔는지의 기록)</summary>
 
-🔴 **둘은 대칭으로 «보이고» 대칭이 아니다** (`a55f3059`). `user_declared`는 가장 밋밋한
-저작권 주장이라 **적어도 아무것도 더 허락하지 않는다** — 그리고 이 필드를 읽는 유일한 규칙
-(`suggestion_reason` 요구)은 `system_suggested`에서만 발화한다. 그래서 안 적은 것과
-`user_declared`라 적은 것은 **같은 주장**이고, 상수 40번이 운영자 파일에서 빠졌다.
+둘은 대칭으로 «보이고» 대칭이 아니었다 (`a55f3059`). `user_declared`는 가장 밋밋한 저작권
+주장이라 적어도 아무것도 더 허락하지 않고, 이 필드를 읽는 유일한 규칙(`suggestion_reason` 요구)은
+`system_suggested`에서만 발화했다. 그래서 안 적은 것과 `user_declared`라 적은 것이 같은 주장이었고
+상수 40번이 운영자 파일에서 빠졌다. `approval_status`는 그럴 수 없어서 필수로 남았다 —
+`roleframe._evaluate_binding`이 `approved`라 말하지 않은 binding을 실행하지 않고, 레거시 v1
+리더가 같은 부재를 `pending`으로 읽었기 때문이다. **침묵은 아무것도 허락하지 않는 값에만 기본값을
+줄 수 있다** — 그 문장은 지금도 참이고, 다만 그 필드가 «없어져서» 물을 일이 없어졌다.
 
-`approval_status`는 그럴 수 없어서 **필수로 남았다.** `roleframe._evaluate_binding`은
-`approved`라고 말하지 않은 binding을 실행하지 않고, 레거시 v1 리더(`source_profile._binding`)는
-같은 부재를 `pending`으로 읽는다. 없는 것을 `approved`로 채우면 「말했을 때만 승인」이
-「말하지 않으면 승인」으로 뒤집히고, **한 파일을 두 리더가 다르게 답하게 된다.**
-**침묵은 아무것도 허락하지 않는 값에만 기본값을 줄 수 있다.**
+</details>
 
 이 metadata는 canonical 정규화 산출물에 결정적으로 보존된다. Mapping이 사람이 승인됐다는
 사실은 **컬럼 배선 승인**일 뿐, 생성되는 원장 원자를 `pin`, `confirmed` 같은 epistemic
