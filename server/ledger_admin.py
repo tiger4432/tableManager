@@ -121,7 +121,11 @@ def _identifier_positions(source, declaration) -> list:
         out.append(("run.key_column", run.get("key_column"), relation))
         if run.get("method_column"):
             out.append(("run.method_column", run.get("method_column"), relation))
-        # 🔴 관측 소스의 시각 컬럼은 run 관계 위에 있다(`fetch_runs`가 그렇게 읽는다).
+        # 🔴 An observation source's time column lives on the run relation, not on the
+        # source row.  No code READS it that way any more - the observation driver and
+        # its `fetch_runs` went with the translators - so the rule now survives only in
+        # the declaration: `ledger.config._validate_observation_source` requires `run`
+        # and states that `occurred_at` is read from it.
         out.append(("occurred_at_column", declaration.get("occurred_at_column"),
                     relation))
         for index, column in enumerate(

@@ -15,13 +15,16 @@ only raise `ImportError` where a refusal belonged. Their private helpers went wi
 (`_flush`, `_refusal_totals`, `_refusal_delta`, `_watermark_json`, `_cursor_json`) and so
 did `run()`'s `cfg` parameter, which existed to carry the legacy declaration into them.
 
-🔴 The `fetch_*` helpers below OUTLIVED their drivers on purpose, and that is not
-leftovers. `ledger/dry_run.py` imports `fetch_observation_page`, `fetch_runs`,
-`fetch_declared_page`, `fetch_transfer_page`, `fetch_transfer_group`, `fetch_containers`,
-`_group_transfer_rows`, `_plain` and `_forget_registers` for the admin dry-run, which is a
-separate entry point behind `POST /admin/ledger/dry-run` and is retired with
-`ledger/config.py` rather than here. Deleting them in this commit would have taken down a
-live route to tidy a module.
+🔴 THE `fetch_*` HELPERS ARE GONE (2026-08-21), AND THE SENTENCE THAT KEPT THEM IS WHY
+THEY LASTED. This header used to assert that `ledger/dry_run.py` imported them "for the
+admin dry-run", so everyone who came to check whether they still had callers read the
+assertion instead of the module and stopped. The assertion was false: `dry_run.py` imports
+`Mapping`, `logging` and `.envelope`, and nothing whatever from here. Nothing else called
+them either, and `_group_transfer_rows` could not have run if something had - it imported
+`transfer_translator`, deleted with the other three translators above. The admin dry-run is
+a real entry point (`POST /admin/ledger/dry-run`) and it is retired with `ledger/config.py`
+rather than here; it simply never depended on this module. 🔴 A DOCSTRING THAT NAMES YOUR
+CALLER IS NOT A CALLER. Grep before believing this file about who reads it.
 
 🔴 The count in this header used to be maintained by hand and went stale silently: it said
 THREE until 2026-08-18, having missed `_run_declared`, and the wrong count propagated into
@@ -679,133 +682,6 @@ def _v2_registration_subjects(plan, frame):
     return subjects
 
 
-def fetch_observation_page(connection, source, source_cfg, after, limit):
-    """One page of finding rows past the keyset `after`, as dicts with LOGICAL names.
-
-    🔴 KEYSET, NOT OFFSET, AND NOT A TIME. The row-value comparison
-    `(updated_at, row_id) > (…, …)` is what the declared watermark index answers directly,
-    so page N costs the same as page 1 - the property an OFFSET loses and the reason this
-    project forbids large offsets. A world-time cursor is not available here at all: the
-    findings' world time lives on the run, and their own `updated_at` is stamped in bulk
-    (92 distinct values across 91,756 rows on this box), so a time cursor would make one
-    load one indivisible group.
-    """
-    columns = source_cfg["columns"]
-    watermark = list(source_cfg["watermark"]["columns"])
-    select = [f"{columns['row_identity']} AS row_identity",
-              f"{columns['wafer']} AS wafer",
-              f"{columns['run_key']} AS run_key"]
-    for logical in ("die_x", "die_y", "die_gate", "inchip_x", "inchip_y",
-                    "extent_x", "extent_y", "unit", "class"):
-        physical = columns.get(logical)
-        if physical:
-            select.append(f"{physical} AS {logical}")
-    select.extend(f"{column} AS __wm{index}__"
-                  for index, column in enumerate(watermark))
-    ordered = ", ".join(watermark)
-    where, params = "", []
-    if after:
-        placeholders = ", ".join(["%s"] * len(watermark))
-        where = f"WHERE ({ordered}) > ({placeholders}) "
-        params.extend(after)
-    params.append(limit)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {', '.join(select)} FROM {source} {where}"
-            f"ORDER BY {ordered} LIMIT %s", tuple(params))
-        names = [d[0] for d in cursor.description]
-        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
-    for row in rows:
-        row["__watermark__"] = [row.pop(f"__wm{index}__")
-                                for index in range(len(watermark))]
-    return rows
-
-
-def fetch_runs(connection, source_cfg, keys):
-    """`{run_key: {occurred_at, method}}` for a whole page. ONE query.
-
-    A per-row lookup is what makes a ten-million row backfill quadratic - the same
-    argument `store.existing_registrations` is built on, one relation over. The page's
-    distinct keys are bound as an ARRAY, so the planner counts them instead of guessing.
-    """
-    if not keys:
-        return {}
-    run = source_cfg["run"]
-    relation = run["relation"]
-    key_column = run["key_column"]
-    time_column = source_cfg["occurred_at_column"]
-    method_column = run.get("method_column")
-    select = [f"{key_column} AS run_key", f"{time_column} AS occurred_at"]
-    if method_column:
-        select.append(f"{method_column} AS method")
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {', '.join(select)} FROM {relation} "
-            f"WHERE {key_column} = ANY(%s)", (sorted(keys),))
-        names = [d[0] for d in cursor.description]
-        return {row[0]: dict(zip(names, row)) for row in cursor.fetchall()}
-
-
-def fetch_declared_page(connection, source, source_cfg, after, limit):
-    """One page of rows past the keyset `after`, with EVERY column the row has.
-
-    🔴 `SELECT *`, and it is the one place in this file that does. The other grammars know
-    their columns because a Python class reads named fields; this grammar's columns are
-    named by the OPERATOR inside `emit` (`"$leg"`), and the set of them is not knowable
-    until the declaration is read - which is the whole point of the kind. Building a
-    projection from the declaration instead would mean parsing `$` tokens out of arbitrary
-    nested payloads to decide a SELECT list, and getting that wrong yields a row missing a
-    column, which this translator (correctly) refuses. A registry table is small by nature
-    - `bonding_map` is 1,181 rows - so the wide read costs nothing that matters.
-
-    The keyset, the ordering and the `LIMIT` are the observation driver's, for the same
-    reason: page N costs what page 1 costs.
-    """
-    watermark = list(source_cfg["watermark"]["columns"])
-    identity = source_cfg["columns"]["row_identity"]
-    ordered = ", ".join(watermark)
-    select = ["*", f"{identity} AS row_identity",
-              f"{source_cfg['occurred_at_column']} AS event_time"]
-    select.extend(f"{column} AS __wm{index}__" for index, column in enumerate(watermark))
-    where, params = "", []
-    if after:
-        placeholders = ", ".join(["%s"] * len(watermark))
-        where = f"WHERE ({ordered}) > ({placeholders}) "
-        params.extend(after)
-    params.append(limit)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {', '.join(select)} FROM {source} {where}"
-            f"ORDER BY {ordered} LIMIT %s", tuple(params))
-        names = [d[0] for d in cursor.description]
-        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
-    for row in rows:
-        row["__watermark__"] = [row.pop(f"__wm{index}__")
-                                for index in range(len(watermark))]
-    return rows
-
-
-def _plain(value, row):
-    """A declared value resolved WITHOUT the gate - for the register pre-fetch only.
-
-    The pre-fetch is an optimisation (one query per page instead of one per row), so a
-    value it cannot resolve must not refuse anything: it raises `KeyError`, the caller
-    skips that row's pre-fetch, and the TRANSLATOR meets the same missing column inside
-    the molecule scope and refuses it by name. Two code paths reaching one refusal, with
-    only the second one counting.
-    """
-    from .config import COLUMN_REF_PREFIX
-
-    if not isinstance(value, str) or not value.startswith(COLUMN_REF_PREFIX):
-        return value
-    if value.startswith(COLUMN_REF_PREFIX * 2):
-        return value[1:]
-    column = value[len(COLUMN_REF_PREFIX):]
-    if column not in row:
-        raise KeyError(column)
-    return row[column]
-
-
 # ------------------------------------------------------------------ transfer driver
 def _transfer_select(source_cfg):
     """The SELECT list for a transfer page, in LOGICAL names. Shared by page and group.
@@ -825,96 +701,6 @@ def _transfer_select(source_cfg):
         if physical:
             select.append(f"{physical} AS {logical}")
     return select
-
-
-def fetch_transfer_page(connection, source, source_cfg, after, limit):
-    """One page of transfer rows past `after`, ordered so groups are CONTIGUOUS.
-
-    🔴 ORDERED BY `(group column, row order column)`, NOT BY THE ROW IDENTITY ALONE. On
-    `dt_log` the identity is `business_key_val = '<dt_job>_<dt_x>_<dt_y>'`, so ordering by
-    it LOOKS like ordering by job - and it is, only as long as no job name is a prefix of
-    another (measured: 0 pairs today). That is an accident of the current data, not a
-    property of the source, and a batch boundary that depends on an accident is the
-    half-landing waiting for one new job name. Ordering by the declared group column makes
-    contiguity structural.
-    """
-    group_column = source_cfg["group"]["column"]
-    order_column = source_cfg["group"]["row_order_column"]
-    where, params = "", []
-    if after:
-        where = f"WHERE {group_column} > %s "
-        params.append(after)
-    params.append(limit)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {', '.join(_transfer_select(source_cfg))} FROM {source} {where}"
-            f"ORDER BY {group_column}, {order_column} LIMIT %s", tuple(params))
-        names = [d[0] for d in cursor.description]
-        return [dict(zip(names, row)) for row in cursor.fetchall()]
-
-
-def fetch_transfer_group(connection, source, source_cfg, group_key):
-    """Every row of ONE group. The escape hatch for a group bigger than a page."""
-    group_column = source_cfg["group"]["column"]
-    order_column = source_cfg["group"]["row_order_column"]
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {', '.join(_transfer_select(source_cfg))} FROM {source} "
-            f"WHERE {group_column} = %s ORDER BY {order_column}", (group_key,))
-        names = [d[0] for d in cursor.description]
-        return [dict(zip(names, row)) for row in cursor.fetchall()]
-
-
-def fetch_containers(connection, source_cfg, keys):
-    """`{group_key: {"lot": ..., "slot": ...}}` for a whole page. ONE query.
-
-    Same shape and same argument as `fetch_runs`: a per-group lookup is what makes a
-    ten-million row backfill quadratic. A group ABSENT from the result is a destination
-    nobody confirmed, and the translator records that rather than treating it as an error -
-    which is why this returns only what it found and never a placeholder.
-    """
-    container = source_cfg.get("container") or {}
-    relation = str(container.get("relation") or "").strip()
-    if not relation or not keys:
-        return {}
-    key_column = container["key_column"]
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT {key_column} AS group_key, {container['lot_column']} AS lot, "
-            f"{container['slot_column']} AS slot FROM {relation} "
-            f"WHERE {key_column} = ANY(%s)", (sorted(keys),))
-        return {row[0]: {"lot": row[1], "slot": row[2]} for row in cursor.fetchall()}
-
-
-def _group_transfer_rows(source, rows):
-    """Rows already in group order -> molecules, order preserved.
-
-    Deliberately does NOT assume contiguity: a group value that reappears after another
-    group started still lands in its own molecule rather than a second one. Contiguity is
-    what the ORDER BY buys and what the page cut relies on; this function not depending on
-    it means a mis-ordered page produces a wrong batch boundary (loud, the cursor moves
-    oddly) rather than two half molecules (silent).
-    """
-    from .transfer_translator import TransferMolecule
-
-    molecules, order = {}, []
-    for row in rows:
-        key = row["group_key"]
-        molecule = molecules.get(key)
-        if molecule is None:
-            molecule = TransferMolecule(source, key)
-            molecules[key] = molecule
-            order.append(key)
-        molecule.rows.append(row)
-    return [molecules[key] for key in order]
-
-
-def _forget_registers(translator, atoms):
-    from .envelope import canonical_keys
-    for atom in atoms or ():
-        if atom.predicate == "register":
-            translator.registered.discard(
-                (atom.subject_type, canonical_keys(atom.subject_keys)))
 
 
 def beat(result):
