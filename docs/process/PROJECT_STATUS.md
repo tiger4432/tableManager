@@ -75,6 +75,16 @@
 >                     구현이 그걸 스스로 말하는지 «안 쟀다» — 재고 나서 판정
 > bind.mappings                                     사람이 하는 «진짜 일». 후보 문제 아님
 > ```
+> ```
+> 🔴 화면이 스스로 말한 것 — 총괄이 찾은 게 아니라 «설정 반영» 패널이 적고 있었다 (00:0x)
+> rejected  dt_job_lot_slot_attribution   mapping_unavailable
+>           "rule skipped: derived_table 'dt_job_attribution' is not registered in table_config.json"
+> 뜻        이건 «내 픽스처가 아니다» — 원래 있던 enrichment 선언이 그동안 «조용히 안 돌고» 있었다
+>           같은 사유로 총괄이 만든 가상조인도 거절당했고, 그건 소음이라 도로 걷어냈다
+> 그래서    「dt_job_attribution 을 table_config 에 등록한다」는 픽스처 편의가 아니라
+>           «이미 둘이 기대고 있는 테이블이 카탈로그에 없는 것»을 고치는 일이다
+> 판정      소유자 승인 필요 — 앱 테이블 목록에 테이블이 하나 늘어난다. 먼저 묻는다
+> ```
 >
 > ### 세션·감시
 > ```
