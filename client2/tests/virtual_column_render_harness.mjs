@@ -706,7 +706,7 @@ const DEFECTS = [
     grid: sub(s.grid, `    const resolvedEntry = joinResolvedColumn(col);\n\n    const colDef = {`,
       `    const resolvedEntry = null;\n\n    const colDef = {`, 'wrong-predicate') })],
   ['enable the filter even when the server never announced it', s => ({ ...s,
-    grid: sub(s.grid, `    const filterDef = resolvedEntry\n      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)\n      : { filter: false, headerTooltip: baseTooltip };`,
+    grid: sub(s.grid, `    const filterDef = resolvedEntry\n      ? joinResolvedFilterDef(resolvedEntry, baseTooltip)\n      : { filter: false, floatingFilter: false, headerTooltip: baseTooltip };`,
       `    const filterDef = joinResolvedFilterDef(resolvedEntry || vc, baseTooltip);`,
       'old-server') })],
   ['hardcode the unresolved label instead of reading the entry', s => ({ ...s,

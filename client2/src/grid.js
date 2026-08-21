@@ -182,6 +182,136 @@ export function updatePaginationUI(total) {
   }
 }
 
+// ── The filter bar: what is narrowing the grid, and what is off to the right ─────────────
+//
+// ONE strip carrying two conditional facts, and `display: none` whenever it has neither.
+// A permanent band above the grid would be a new region, which the screen's constitution
+// forbids; a band that appears only when there is something to read is the existing
+// `#tx-filter-banner` pattern, reused rather than reinvented.
+
+let clearAllWired = false;
+
+/**
+ * One active filter as the operator would say it: `<COLUMN> <type> <value>`.
+ *
+ * The value is read off the MODEL, never off the input. AG-Grid's combined conditions
+ * (`operator: 'AND'` with a `conditions` array) have no single input to read, and a
+ * renderer that special-cased "one condition" vs "two" would be carrying an arity branch
+ * that the model already answers by its own length.
+ */
+function filterChipText(colId, model) {
+  const conditions = (Array.isArray(model?.conditions) && model.conditions.length)
+    ? model.conditions
+    : [model || {}];
+  const clause = (m) => {
+    const from = m.filter ?? m.dateFrom ?? '';
+    const to = m.filterTo ?? m.dateTo ?? '';
+    const value = String(to) !== '' ? `${from}~${to}` : String(from);
+    return value === '' ? String(m.type || '') : `${m.type} ${value}`;
+  };
+  // ⇲ = the SERVER resolves this predicate through a join. It is a fact about the FILTER,
+  // not about the column, which is why it is keyed off `joinResolvedColumn` and not off
+  // `isVirtualColumn`: a `collide` column is stored, carries no 🔗 in its header, and its
+  // filter still runs against the joined COALESCE rather than against storage.
+  const mark = joinResolvedColumn(colId) ? '⇲' : '';
+  const body = conditions.map(clause).join(` ${model?.operator || 'AND'} `);
+  return `${colId.toUpperCase()}${mark} ${body}`.trim();
+}
+
+/**
+ * How many columns sit past the right edge of the body viewport right now.
+ *
+ * Measured against the horizontal pixel range rather than counted off a column list,
+ * because "pushed off" is a question about the VIEWPORT and the answer changes on scroll,
+ * on a sidebar drag and on a column resize without any column list changing. Pinned
+ * columns are excluded: they are never unreachable, so counting them would report an
+ * obstacle that does not exist.
+ */
+function offscreenColumnCount(api) {
+  if (!api || typeof api.getHorizontalPixelRange !== 'function') return 0;
+  const range = api.getHorizontalPixelRange();
+  if (!range) return 0;
+  return (api.getAllDisplayedColumns() || []).filter(col => {
+    if (typeof col.getPinned === 'function' && col.getPinned()) return false;
+    return (col.getLeft() + col.getActualWidth()) > range.right + 1;
+  }).length;
+}
+
+/**
+ * The `+N열 →` end of the strip, plus the strip's own visibility.
+ *
+ * Split from `renderFilterBar` because this one runs on every scroll frame and rebuilding
+ * the chips there would throw away the operator's DOM sixty times a second.
+ */
+export function updateOffscreenIndicator() {
+  const bar = elements.gridFilterBar;
+  if (!bar) return;
+  const count = offscreenColumnCount(state.gridApi);
+  const badge = elements.offscreenCols;
+  if (badge) {
+    // Saying it is the whole point. A column that scrolled out of view with nothing on
+    // screen to say so reads as a column that is GONE, and the next question is asked of
+    // the table config rather than of the scrollbar.
+    badge.textContent = count > 0 ? `+${count}열 →` : '';
+    badge.title = count > 0 ? '가로 스크롤로 갈 수 있습니다' : '';
+    badge.style.display = count > 0 ? '' : 'none';
+  }
+  const chipCount = elements.filterChips ? elements.filterChips.childElementCount : 0;
+  bar.style.display = (chipCount > 0 || count > 0) ? '' : 'none';
+}
+
+/** Rebuild the chips from `getFilterModel()`, then re-measure the right-hand end. */
+export function renderFilterBar() {
+  const bar = elements.gridFilterBar;
+  if (!bar) return;
+  const api = state.gridApi;
+  const model = api ? (api.getFilterModel() || {}) : {};
+  const colIds = Object.keys(model);
+  const chips = elements.filterChips;
+
+  if (chips) {
+    chips.replaceChildren();
+    colIds.forEach(colId => {
+      const chip = document.createElement('span');
+      chip.className = 'filter-chip';
+      const label = document.createElement('span');
+      label.className = 'filter-chip-label';
+      label.textContent = filterChipText(colId, model[colId]);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'filter-chip-x';
+      remove.textContent = '✕';
+      remove.title = `${colId.toUpperCase()} 필터 해제`;
+      remove.addEventListener('click', () => {
+        // `setColumnFilterModel` is async in AG-Grid 33+ and synchronous before it. Wrapping
+        // in `Promise.resolve` means the refresh lands AFTER the model actually changed on
+        // either version, instead of racing it on one of them.
+        Promise.resolve(api.setColumnFilterModel(colId, null))
+          .then(() => api.onFilterChanged());
+      });
+      chip.append(label, remove);
+      chips.appendChild(chip);
+    });
+  }
+
+  const clearAll = elements.filterClearAll;
+  if (clearAll) {
+    // Shown from the SECOND chip on. With one filter its ✕ already is "clear everything",
+    // and two controls doing the identical thing is the duplication this screen keeps out.
+    clearAll.style.display = colIds.length > 1 ? '' : 'none';
+    if (!clearAllWired) {
+      clearAllWired = true;
+      clearAll.addEventListener('click', () => {
+        if (!state.gridApi) return;
+        Promise.resolve(state.gridApi.setFilterModel(null))
+          .then(() => state.gridApi.onFilterChanged());
+      });
+    }
+  }
+
+  updateOffscreenIndicator();
+}
+
 // Ensure that the cell data structure exists as an object: { value, is_overwrite, sources, updated_by }
 export function ensureCellObject(dataObj, colId) {
   if (!dataObj) return;
@@ -308,7 +438,13 @@ export function buildColumnDefs() {
       field: col,
       editable: !isSystem,
       sortable: true,
-      filter: colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter',
+      // A system column is not editable and is not filterable either. Until now only the
+      // first half was said, and `defaultColDef.floatingFilter` then put a filter box under
+      // `ROW_ID`/`CREATED_AT` — a second vocabulary in which read-only still means
+      // queryable. `filter: false` is what AG-Grid reads to skip the floating row, and
+      // `floatingFilter: false` says the same thing where a reader looks for it.
+      filter: isSystem ? false : (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter'),
+      floatingFilter: !isSystem,
       resizable: true,
       checkboxSelection: index === 0,
       headerCheckboxSelection: index === 0,
@@ -455,9 +591,18 @@ export function buildColumnDefs() {
     // and the page comes back unfiltered — the exact defect `filter: false` existed to
     // prevent. So when the announcement is absent we keep the old, safe behaviour.
     const resolvedEntry = joinResolvedColumn(col);
+    // `floatingFilter: false` rides with `filter: false` below for the same reason it does on
+    // a system column: the two keys must move together or the grid draws a box that cannot
+    // narrow anything. On this branch the box would be empty of capability, not merely
+    // disabled.
+    //
+    // 🔴 THE COMMENT SITS ABOVE THE TERNARY, NOT INSIDE IT. `virtual_column_render_harness`
+    // mutation-tests this file by quoting these three lines verbatim; a comment between the
+    // `?` and the `:` splits the quote and the mutant silently stops applying, which is a
+    // green harness that compares nothing. Prose goes where it cannot break the anchor.
     const filterDef = resolvedEntry
       ? joinResolvedFilterDef(resolvedEntry, baseTooltip)
-      : { filter: false, headerTooltip: baseTooltip };
+      : { filter: false, floatingFilter: false, headerTooltip: baseTooltip };
 
     columnDefs.push({
       // 🔗 joins the existing header vocabulary (🗝️ business key, * composite source) rather
@@ -567,6 +712,10 @@ export function renderGrid(initialRows) {
 
     updateVisibleColIndexMap();
     updateGridSortState();
+    // A table swap replaces the column set, so both halves of the strip are stale: the
+    // chips belong to a filter model that no longer applies and the off-screen count was
+    // measured against the previous table's widths.
+    renderFilterBar();
     return;
   }
 
@@ -581,10 +730,15 @@ export function renderGrid(initialRows) {
     suppressRowHoverHighlight: true,
     suppressSortOnDataChange: true,
     getRowId: (params) => params.data?.row_id || params.data?.id,
+    floatingFiltersHeight: 28,
     defaultColDef: {
       width: 150,
       minWidth: 100,
       floatingFilter: true,
+      // The funnel button opens a second way to say what the box under it already says.
+      // At this column width it also eats the input, so the control that narrows the query
+      // gets smaller to make room for a control that duplicates it.
+      floatingFilterComponentParams: { suppressFilterButton: true },
       suppressKeyboardEvent: (params) => {
         const event = params.event;
         const key = event.key;
@@ -668,6 +822,19 @@ export function renderGrid(initialRows) {
     },
     onFilterChanged: () => {
       fetchData(true);
+      renderFilterBar();
+    },
+    // The `+N열 →` count is a fact about the VIEWPORT, so it is re-measured by everything
+    // that can move the viewport's right edge: the first paint, a sidebar drag, a column
+    // resize (which `sizeColumnsToFit` also raises), and horizontal scrolling.
+    onFirstDataRendered: () => {
+      renderFilterBar();
+    },
+    onGridSizeChanged: () => {
+      updateOffscreenIndicator();
+    },
+    onColumnResized: () => {
+      updateOffscreenIndicator();
     },
     onCellFocused: (event) => {
       if (!event.column || event.rowIndex === null || event.rowIndex === undefined) return;
@@ -838,6 +1005,11 @@ export function renderGrid(initialRows) {
       }
     },
     onBodyScroll: (event) => {
+      // Ahead of the infinite-scroll early return on purpose: a HORIZONTAL scroll changes
+      // how many columns are off the right edge in every view mode, and returning first
+      // would leave the count frozen at whatever it was on load in `pagination` mode.
+      updateOffscreenIndicator();
+
       if (state.viewMode !== 'infinite') return;
       if (state.isLoadingMore || !state.hasMoreData || state.allDataLoaded) return;
 

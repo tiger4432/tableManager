@@ -42,7 +42,14 @@ export async function syncReferenceViewRule() {
   activeRule = rules.find(rule => rule?.derived_table === state.currentTable && (rule.reference_views || []).length) || null;
   requestSequence++;
   if (elements.tabReferenceBtn) elements.tabReferenceBtn.style.display = activeRule ? '' : 'none';
-  hideReferenceView();
+  // On a table that declares a reference rule this is the tab the work happens in, so
+  // revealing it is not enough — it is SELECTED. Offering a tab and leaving the operator on
+  // Global is the screen knowing which surface the job needs and not saying so.
+  //
+  // Where there is no rule the previous behaviour is unchanged: hide it and stay on Global,
+  // which `loadTable` has already activated by the time this runs.
+  if (activeRule) showReferenceView();
+  else hideReferenceView();
 }
 
 export function hideReferenceView() {

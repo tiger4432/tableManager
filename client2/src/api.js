@@ -138,6 +138,10 @@ export async function switchTable(tableName) {
   elements.tabGlobalBtn.classList.add('active');
   elements.tabCellBtn.classList.remove('active');
   elements.tabRowBtn.classList.remove('active');
+  // Cleared here too: a table WITHOUT a rule must not inherit the previous table's
+  // reference highlight, and `syncReferenceViewRule` re-selects it a moment later on
+  // the tables that do have one.
+  elements.tabReferenceBtn?.classList.remove('active');
   await loadHistory();
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)

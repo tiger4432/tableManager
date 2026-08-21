@@ -341,9 +341,14 @@ function setupEventListeners() {
   // History Tabs
   elements.tabGlobalBtn.addEventListener('click', () => {
     hideReferenceView();
+    // The reference tab is in this set too. Every switch here names its siblings one
+    // by one, and the fourth tab was added to the row without being added to the
+    // lists — harmless while it was hidden by default, two highlighted tabs now that
+    // a rule-bearing table selects it.
     elements.tabGlobalBtn.classList.add('active');
     elements.tabCellBtn.classList.remove('active');
     elements.tabRowBtn.classList.remove('active');
+    elements.tabReferenceBtn?.classList.remove('active');
     state.activeHistoryTab = 'global';
     loadHistory();
   });
@@ -353,6 +358,7 @@ function setupEventListeners() {
     elements.tabCellBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
     elements.tabRowBtn.classList.remove('active');
+    elements.tabReferenceBtn?.classList.remove('active');
     state.activeHistoryTab = 'cell';
     loadHistory();
   });
@@ -362,6 +368,7 @@ function setupEventListeners() {
     elements.tabRowBtn.classList.add('active');
     elements.tabGlobalBtn.classList.remove('active');
     elements.tabCellBtn.classList.remove('active');
+    elements.tabReferenceBtn?.classList.remove('active');
     state.activeHistoryTab = 'row';
     loadHistory();
   });
@@ -1050,6 +1057,29 @@ function setupEventListeners() {
   if (mainResizer && gridSection && historySidebar) {
     let isDragging = false;
 
+    // The width the operator dragged to, restored on load.
+    //
+    // Without this the sidebar snaps back to its CSS width on every F5, so widening it to
+    // read a reference grid is work that has to be redone each visit — and a control whose
+    // result does not survive a refresh reads as a control that did not take.
+    //
+    // Clamped on the way back in, not just on the way out: the stored number was legal
+    // against YESTERDAY's window, and a 900px sidebar restored into a 1000px window would
+    // leave no grid. A missing or unparseable entry simply leaves the CSS width alone.
+    const SIDEBAR_WIDTH_KEY = 'assy.sidebarWidth';
+    const clampSidebarWidth = (width, containerWidth) =>
+      Math.min(Math.max(width, 300), Math.max(300, containerWidth - 350));
+
+    try {
+      const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      const mainLayout = document.querySelector('.main-layout');
+      if (Number.isFinite(stored) && stored > 0 && mainLayout) {
+        const width = clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width);
+        historySidebar.style.width = `${width}px`;
+        historySidebar.style.flex = 'none';
+      }
+    } catch { /* storage disabled or full: the CSS width is a correct fallback */ }
+
     mainResizer.addEventListener('mousedown', (e) => {
       isDragging = true;
       document.body.classList.add('resizing-active');
@@ -1089,6 +1119,15 @@ function setupEventListeners() {
         isDragging = false;
         document.body.classList.remove('resizing-active');
         mainResizer.classList.remove('dragging');
+
+        // Written on mouseup, not on every mousemove: a drag raises hundreds of moves and
+        // only the resting place is a decision.
+        try {
+          const width = parseFloat(historySidebar.style.width);
+          if (Number.isFinite(width) && width > 0) {
+            localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(width)));
+          }
+        } catch { /* storage refused the write; the drag itself still stands */ }
 
         if (state.gridApi) {
           state.gridApi.sizeColumnsToFit();

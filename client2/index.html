@@ -314,6 +314,23 @@
               &times;
             </button>
           </div>
+          <!-- Active column filters (left) and the columns pushed past the right edge
+               (right). Hidden until it has one of the two to say. -->
+          <div id="grid-filter-bar" class="grid-filter-bar" style="display: none">
+            <div id="filter-chips" class="filter-chips"></div>
+            <button
+              id="filter-clear-all"
+              class="filter-clear-all"
+              style="display: none"
+            >
+              전체 해제
+            </button>
+            <span
+              id="offscreen-cols"
+              class="offscreen-cols"
+              style="display: none"
+            ></span>
+          </div>
           <div
             id="myGrid"
             class="ag-theme-quartz-dark"
@@ -387,13 +404,16 @@
                 🔄 Sync
               </button>
             </div>
-            <div class="history-tabs">
+            <!-- 참조뷰 leads because on a table that declares a reference rule it is the
+                 tab the operator works in; it stays `display: none` on every table that
+                 does not. -->
+            <div class="history-tabs history-tabs--wide">
+              <button id="tab-reference" class="tab-btn" style="display: none">참조뷰</button>
               <button id="tab-global" class="tab-btn active">
                 Global History
               </button>
               <button id="tab-cell" class="tab-btn">Cell History</button>
               <button id="tab-row" class="tab-btn">Row History</button>
-              <button id="tab-reference" class="tab-btn" style="display: none">참조뷰</button>
             </div>
           </div>
           <div class="sidebar-content">
