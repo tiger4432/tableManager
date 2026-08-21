@@ -1,5 +1,18 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+## 🟢 상태 한 줄 (17:5x) — 조용한 것은 «막힌 것»이 아니다
+```
+packs·claims 라운드가 «메인 트리에서» 돌고 있다. 아직 커밋하지 않는다 — 하위 에이전트가 쓰는 중이다
+   이미 손댄 것: scripts/migrate_ledger_config_to_v5.py (신규) · roleframe · setup_bundle · setup_registry
+                 config_authoring · config_drafts · config_explorer(+service) · ledger_skeleton.json
+                 서버 테스트 9본 · 클라 하네스 + explorer view/css · dist 재빌드
+   두 번째 하위 에이전트: 클라 온톨로지 작성 패널 지도 (task/ontology_screen_walk_report.md)
+구현자 본체는 «비어 있고 읽을 수 있다». 지시가 오면 즉시 받는다
+```
+⚠️ 나는 도는 에이전트의 작업을 커밋하지 않는다 — 오늘 한 번 그렇게 해서 3.6시간짜리 검증 단계를
+잘랐다. 끝나면 «내가 검수하고» 경로 명시로 커밋한다.
+
+
 ## 채널 — 세션 간 «메시지는 안 쓴다». 파일과 커밋이다
 ```
 총괄 → 나    task/IMPLEMENTER_ORDERS.md         «지금 할 것»만 담긴다. 착수 전·보고 전 다시 읽는다
