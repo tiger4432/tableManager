@@ -2404,6 +2404,25 @@ body.resizing-active .history-sidebar {
 }
 #myGrid .ag-header-cell.fill-target-header .ag-header-cell-text { color: var(--accent); }
 
+/* Mockup 2b: the evidence stack under the candidate grid. Its own top border separates it
+   from the grid; `:empty` keeps that border off the screen on a rule with no evidence view. */
+.reference-evidence { border-top: 1px solid var(--border-strong); margin-top: 10px; }
+.reference-evidence:empty { display: none; border-top: none; margin-top: 0; }
+.reference-evidence-head {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.reference-evidence-count { font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; color: var(--text-dim); }
+
+
 
 /* ── Mockup 2b: active filters live in the header bar ──────────────────────────────────
    They take the free space between the toolbar and the unsaved badges, so a filter is
