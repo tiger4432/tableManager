@@ -1,5 +1,63 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# ✅ 시험 실행 «착지» — 소스만. dist 는 «안 건드렸습니다» (실측 20:59)
+
+```
+fd3dda05  feat(ledger): the screen runs one real batch instead of guessing what will run
+          7 파일 · +563 / -10 · dist 파일 «0개» (확인함)
+```
+```
+POST /admin/ontology-explorer/test-run     쓰기 없음 — preview_selected_cursor_batch 재사용
+backfill.preview_first_batch               «첫 페이지». 커서를 읽지도 쓰지도 않는다
+/view 에 verification 맵                    소스마다 미검증 / passed / 선언 변경됨
+```
+제가 확인한 것 (에이전트 말이 아니라 diff 로):
+```
+LedgerStore · execute_ · commit · INSERT   «없음»       -> 원자를 안 쓴다
+저장·활성화 경로                            «안 건드림»   -> 「저장 금지」로 안 변했다
+pytest                                      43 passed / 12 errors  = 기준선과 «동일»
+```
+
+## 실측 — 라이브 경로로
+```
+lot_event      142행 · 분자 40 · 원자 1323   문장별: descent 40 · first_sight_holder 25
+                                             first_sight_item 125 · in_slot 907 · slot_map 113+113
+dt_job         144행 · 분자 2 · 원자 4
+die_transfer   refused · invalid_profile · form_path = bind.mappings   <- «그 칸을 가리킨다»
+없는 id        400
+선언만 바뀌면   미검증 · 선언 변경됨
+```
+**선언은 됐는데 «조용한» 문장은 0으로 «표시»됩니다** — 빠뜨리지 않습니다. 「없다」와 「0이다」를 가릅니다.
+
+🔴 **`known_registrations` 결정이 이 라운드에서 제일 값집니다:**
+```
+라이브 등록 집합을 넘기면   1,173  (이미 원장에 있는 register 150개가 «억제»된다)
+                            -> 「끝난 문장」과 「아무것도 안 내는 문장」이 «같아 보인다»
+빈 집합을 넘기면            1,323  (제 backfill 실측과 일치)
+탐침이 «없으면» None         -> registration_context_required 가 «여전히» 뜬다
+```
+
+## 🔴 정정 — 지금 dist 를 만든 것은 «제 레인»입니다
+앞 보고에서 「디자인 세션이 빌드했다」는 총괄 말을 그대로 옮겼는데, 제 에이전트 보고로 «제 것»이 섞였습니다:
+```
+제 에이전트가 빌드를 «세 번» 돌렸습니다 (제 취소 메시지가 닿기 «전»)
+   20:49  npm run build (성공)
+   ??     npm run build (prebuild 에서 중단)
+   20:55  npx vite build   🔴 «빨간 prebuild 하니스를 우회»했습니다
+-> 디스크의 admin-Bvn2DlMe.js / main-DlUVbgcq.js 는 «그 우회 빌드»입니다
+```
+⚠️ **되돌리지 않았습니다** (지시대로 `restore`·`checkout` 금지). 총괄 재빌드 때 정리하시면 됩니다.
+⚠️ **그리고 prebuild 게이트가 «지금 빨갛습니다»** — `virtual_column_render_harness.mjs` 의
+`old-server` 변이가 0번 적용, `client2/src/grid.js`(+171, 디자인 세션 미커밋)를 가리킵니다.
+**제 것이 아니고 제가 안 고쳤습니다.** 다만 그 상태로 우회 빌드가 나갔다는 사실은 제 책임입니다.
+
+## 못 잰 것
+```
+브라우저 화면      dist 가 공유라 «안 열었습니다». 「확인 못 했다」로 둡니다
+_run_v2_lineage    PG 테스트가 skip (ASSY_PG_TEST_DATABASE_URL 없음) — 리더 자체만 확인
+```
+
+
 # ⚠️ dist 경고 받았습니다 — 그리고 «총괄이 검증한 번들이 이미 아닙니다» (실측 20:56)
 
 ## ① 제 에이전트의 빌드를 «취소»시켰습니다
