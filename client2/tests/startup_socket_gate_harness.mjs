@@ -249,6 +249,10 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     // `init` installs the reference panel's keyboard isolation (main.js). Outside the question
     // scored here, but its absence made every `init` slice die with a ReferenceError.
     installReferenceKeyboardIsolation: noop,
+    // `init` installs the 2c audit filters too. A missing stub here does not fail quietly:
+    // the ReferenceError rejects `init` and takes the socket gate's whole section C red,
+    // which is the harness doing its job.
+    installAuditFilters: noop,
     resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
     showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
     getLocalTimeString: () => '', updatePageCacheOnUpsert: noop, updatePageCacheOnDelete: noop,

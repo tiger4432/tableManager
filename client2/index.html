@@ -424,6 +424,21 @@
               <!-- Mockup 2c. Header and legend sit OUTSIDE the `<ul>`: `renderTimeline` and
                    `renderGlobalTimeline` both clear the list with `innerHTML = ''`. They show
                    only on the Global tab, via `.audit-table` on this container. -->
+              <div class="audit-filter">
+                <span class="audit-filter-label">필터</span>
+                <select id="audit-filter-user" class="audit-filter-pick">
+                  <option value="">사용자 전체</option>
+                </select>
+                <select id="audit-filter-kind" class="audit-filter-pick">
+                  <option value="">종류 전체</option>
+                </select>
+                <select id="audit-filter-when" class="audit-filter-pick">
+                  <option value="">전체 기간</option>
+                  <option value="today">오늘</option>
+                  <option value="7d">7일</option>
+                </select>
+                <span id="audit-filter-count" class="audit-filter-count"></span>
+              </div>
               <div class="audit-head">
                 <div class="audit-cell audit-time">시각</div>
                 <div class="audit-cell audit-user">사용자</div>

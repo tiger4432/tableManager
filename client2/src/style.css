@@ -2523,6 +2523,34 @@ body.resizing-active .history-sidebar {
    subject, room to read. This tab has hundreds of entries about hundreds of subjects, and a
    card each turns scanning into scrolling. */
 .audit-table { display: flex; flex-direction: column; min-height: 0; }
+.audit-filter {
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+.timeline-container:not(.audit-table) > .audit-filter { display: none; }
+.audit-filter-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+/* The mockup draws these as pills. A native `select` keeps the keyboard and the screen reader
+   working, so it wears the pill instead of a div pretending to be one. */
+.audit-filter-pick {
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  cursor: pointer;
+  max-width: 130px;
+}
+.audit-filter-count { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+
 .audit-head, .audit-table .timeline-card {
   display: grid;
   /* Tx is 120px, not the mockup's 84px. The mockup's Tx cell is text only; ours carries the
@@ -2530,7 +2558,22 @@ body.resizing-active .history-sidebar {
      and the ▶ that expands a batch -- and at 84px the ▶ was CLIPPED OUT OF THE CELL, which
      made a live control unclickable. Same ruling as the header widths: the mockup's number is
      a minimum, and a control you cannot reach is not a narrow control, it is a missing one. */
-  grid-template-columns: 58px 62px 74px 1fr 150px 120px;
+  /* 소유자: 대상 컬럼 폭 줄이고 변경 내용 컬럼을 늘려. The mockup had these the other way
+     round -- target flexible, change fixed at 150. The target is a key and a column name,
+     both short and both bounded; the change is a value that can be a whole sentence, so the
+     free space belongs to it.
+
+     140px was WRONG and measured so: at a 640px sidebar the old `1fr` target was only 117px,
+     so fixing it at 140 GREW the target and shrank the change -- the opposite of the
+     instruction, at exactly the width where space is tight. 110px shrinks it at every width
+     (117 -> 110 at 640, ~250 -> 110 at 890) and the change grows at every width (150 -> 156
+     at 640, 150 -> ~406 at 890).
+
+     Measured key widths at 11px mono: median 86px, p90 119px, longest 165px. 110px leaves
+     94px of text, so the median fits and the longest tenth ellipsize -- acceptable for a
+     VALUE (the row's `title` carries the full text). It would not be acceptable for a header,
+     which is why §3.7's rule is about header labels and not about cells. */
+  grid-template-columns: 58px 62px 74px 110px 1fr 120px;
   align-items: center;
 }
 .audit-head {
@@ -2589,12 +2632,18 @@ body.resizing-active .history-sidebar {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.kind-manual { border-color: var(--accent);  background: var(--accent-weak);  color: var(--accent); }
-.kind-parser { border-color: var(--accent-2); background: var(--accent-2-weak, var(--bg-inset)); color: var(--accent-2); }
-.kind-auto   { border-color: var(--border-strong); background: var(--bg-inset); color: var(--text-muted); }
-.kind-batch  { border-color: var(--warning); background: var(--warning-weak); color: var(--warning); }
-.kind-create { border-color: var(--success); background: var(--success-weak); color: var(--success); }
-.kind-delete { border-color: var(--danger);  background: var(--danger-weak);  color: var(--danger); }
+/* Every colour here is an EXISTING token. `--overwrite` in particular is the pair the grid
+   already paints an overwritten cell with, so the pill and the cell say the same thing in the
+   same colour instead of two vocabularies for one fact. */
+.kind-manual    { border-color: var(--accent);        background: var(--accent-weak);   color: var(--accent); }
+.kind-paste     { border-color: var(--accent-2);      background: var(--accent-2-weak); color: var(--accent-2); }
+.kind-ingest    { border-color: var(--info);          background: var(--info-weak);     color: var(--info); }
+.kind-overwrite { border-color: var(--overwrite);     background: var(--overwrite-weak);color: var(--overwrite); }
+.kind-script    { border-color: var(--border-strong); background: var(--bg-surface);    color: var(--text-dim); }
+.kind-auto      { border-color: var(--border-strong); background: var(--bg-inset);      color: var(--text-muted); }
+.kind-batch     { border-color: var(--warning);       background: var(--warning-weak);  color: var(--warning); }
+.kind-create    { border-color: var(--success);       background: var(--success-weak);  color: var(--success); }
+.kind-delete    { border-color: var(--danger);        background: var(--danger-weak);   color: var(--danger); }
 
 /* Two lines, because the key and the column answer different questions and the mockup gives
    each its own line rather than joining them with a separator nobody can scan. */
