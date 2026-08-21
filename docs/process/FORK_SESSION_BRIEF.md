@@ -91,11 +91,15 @@ server/config/ontology/ledger_config.json   (파일 하나)
 
 1. `docs/overview/SYSTEM_OVERVIEW.md`
 2. `docs/process/PROJECT_STATUS.md` 최상단
-3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — V2 설정 파일·필드·샘플·검증 절차
-4. `ledger_v2_redesign_plan_20260817/README.md`
-5. `ledger_v2_redesign_plan_20260817/00_MASTER_PLAN.md`
-6. `ledger_v2_redesign_plan_20260817/CONFIG_CANON.md`
-7. 해당 단계의 `STAGE_*_ACCEPTANCE_EVIDENCE.md`
+3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — **설정의 정본.** 파일·필드·샘플·검증 절차
+
+> 🔴 **[2026-08-21] 4~7번이던 `ledger_v2_redesign_plan_20260817/`은 «읽지 마십시오».**
+> 그 디렉터리는 **1~7단계를 끝낸 계획서**이고, 설계가 그 뒤로 여러 결정을 지나쳤습니다.
+> 특히 `CONFIG_CANON.md`는 `setup_version: 2`와 `packs`·`profiles`를 포함한 «일곱 절»을
+> 가르칩니다 — **지금은 `setup_version: 5`, 절 «셋»(`entities`·`sources`·`vocabulary`)이고
+> `packs`·`claims`·`profiles`·`mapping_id`는 전부 은퇴했습니다.**
+> 위 3번이 그 자리를 대신합니다. 계획서는 **왜 그렇게 됐는지**를 볼 때만 «역사»로 엽니다.
+> (문서 감사 2026-08-21: 그 디렉터리 26개 중 현행 A등급 «0», C등급 21)
 8. `ontology_config_explorer_plan/01_DISCOVERY_AND_STATE_CONTRACT.md`
 9. `ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md`
 10. `task/ontology_config_explorer_pending.md` — 완료된 원 요구사항
