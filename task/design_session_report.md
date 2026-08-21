@@ -7,6 +7,96 @@
 
 ---
 
+## ✅ 2026-08-21 22:0x — Phase 3's screen is real now. Walked it. Three things to rule on.
+
+Orders received (`aa4b5ffc`), merged, acted on. The fixtures work — the wall I measured is gone.
+
+### The fixture holds, and it closed a criterion I could not test before
+
+```
+dt_inventory   참조뷰 tab appears · panel opens · 3 views · 176 rows of real data
+               "이 job 의 원본 행 (dt_log)" / "관측된 좌표 범위" / "같은 장비의 다른 job 들"
+dt_log         all six virtual columns render with 🔗
+               🔴 I nearly recorded them ABSENT — AG-Grid virtualizes columns and they are
+                  appended last, so the first header read returned nothing. Scrolled, then read.
+```
+
+**Phase 1's join-column criterion — previously NOT MEASURED — now PASSES:**
+
+```
+DT_X_BASE 🔗 filtered on 미상   Matches 34,939 -> 29,830   (server narrowed on a VIRTUAL column)
+chip reads                      "DT_X_BASE⇲ contains 미상"  (the ⇲ mark works, keyed off the announcement)
+```
+
+That is the exact round-trip the migration order feared would be dropped. It is not dropped.
+
+### 🔴 ⑤ `candidate_for` is EMPTY on all six new views — Phase 3.1 has no source at all
+
+```
+dt_frame_confrimation  view[0..2]  candidate_for = {}
+core_frame_review      view[0..2]  candidate_for = {}
+```
+
+Neither `fill_targets` nor `candidate_for` exists on the new fixtures, so the column-order
+contract has nothing to read from. This is not an objection to the fixtures — the views are
+display-only by design and the lead said so. It means ㉮/㉯ is still the live question and
+**whichever way it is ruled, a declaration has to be written** before Phase 3.1 can start.
+
+### 🔴 ⑥ The panel's decision key is not on screen, and the grid reads as 401 blank rows
+
+Both new rules key on `dt_job`. Measured against `/schema` and the row payload:
+
+```
+dt_job          populated on 401/401 rows   —   NOT in /schema.columns, so no grid column
+dt_job_id  🗝️     0/401 non-null            <- the business key column, empty on every row
+dt_eqp            0/401
+dt_lot / dt_slot  1/401
+dt_frame        126/401      core_frame     6/401
+dt_x_* / dt_y_* 126/401      core_*         6/401
+```
+
+So the operator sees 401 rows whose first four visible columns are blank, the identity of
+each row is carried by a column the grid is never told about, and the panel silently keys off
+it. The panel WORKS — `valueOf` reads the row payload, not the column list — but the screen
+cannot tell you which job you are looking at.
+
+🔴 This is the owner's own rule from the brief: 「사람이 «밖에서» 알아야 하는 것이 있으면
+그건 화면이 덜 된 것이다」. Adding `dt_job` to that table's declaration is a server-side
+change, so I am reporting it rather than doing it.
+
+### 🔴 ⑦ The order's `suppressFilterButton` line is inert on AG-Grid 35.3.0 — and I think that is lucky
+
+I added `floatingFilterComponentParams: { suppressFilterButton: true }` as instructed.
+Measured: **14 funnel buttons are still in the DOM.** In 35.3.0 the key moved to
+`colDef.suppressFloatingFilterButton`; the spelling the order specifies is silently ignored.
+
+I did **not** switch to the working spelling, because making it work would break something:
+
+```
+the funnel button is the ONLY path to the operator list (contains -> equals)
+and joinResolvedFilterDef's own header tooltip tells the operator to use it:
+   "미해결 행 보기: 필터를 Equals로 두고 '미상' 입력"
+```
+
+Verified by clicking it: the menu opens and shows the operator selector. Suppressing it would
+delete the path the app's own instruction depends on — a control that says "do X" next to a
+screen where X is unreachable.
+
+**Ruling needed:** leave the button (drop that line from the order), or suppress it and move
+the operator choice somewhere reachable. I have left the inert line in place and touched
+nothing, so today's behaviour is the safe one either way.
+
+### Watch
+
+A monitor is armed on `origin/main`, flagging `task/DESIGN_ORDERS.md` changes separately from
+ordinary commits, so a new order reaches me without polling.
+
+### Standing
+
+Phase 1–2: awaiting the lead's merge. Phase 3: not started, awaiting ㉮/㉯.
+
+---
+
 ## 🔴 판정 요청 (2026-08-21 21:0x)
 
 ### ① The red build gate is mine, and here is the one line that clears it
