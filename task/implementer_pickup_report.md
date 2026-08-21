@@ -1,5 +1,58 @@
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
+# ✅ 야간 ① 착지 — 유도값이 «문서에» 들어갑니다 + 🔴 **재기동 요청** (date 01:0x)
+
+```
+3c6a854d  feat(ledger): a square that says it fills itself now arrives filled
+          2 파일 · +135 / -2   (config_authoring · config_drafts)
+```
+🔴 **재기동해 주십시오.** 채움은 `PUT /drafts/{id}` 를 «도는 프로세스»가 새 코드일 때만 먹습니다.
+아침 전에 안 올리면 화면은 «어젯밤 그대로»입니다.
+
+## 실측 — `user_test` 빨강 «7 → 0»
+```
+prepare/map.implementation_version   derived · 값 None · «없음» · 거절 2   ->  «1» 이 들어감
+read.order_by                        derived · 값 있음 · 선언 [] · 충돌    ->  ['dt_cell_key'] 들어감
+사람이 고르는 4개                     missing                             ->  answered
+```
+**대조 둘을 같이 걸었습니다** — 초록 하나로는 아무것도 증명 못 하므로:
+```
+채움을 «건너뛰고» 같은 저장   -> 정확히 그 «셋»만 빨강.  프로브가 새 코드를 지난다는 증거
+아무것도 «안 고르고» 저장     -> order_by 만 채워지고 version 둘은 «없는 채».  7 -> 6
+                              id 를 안 골랐으면 유도가 «답이 없으므로 안 지어냅니다»
+```
+라이브 전체에서 «쓰일 잎은 하나»뿐입니다: `user_test.read.order_by [] -> ['dt_cell_key']`.
+
+## 🔴 「빈틈만 채우고 «덮어쓰지» 않습니다」 — 이게 옆 구현과 다른 유일한 점이고, 측정이 시켰습니다
+```
+lot_event.read.order_by = [event_time, row_id]   카탈로그 키 유도 = [txn_seq]
+덮어썼다면 -> source_cursor_fingerprint 가 움직이고 «도는 커서가 멈춥니다»
+실측       dt_job · lot_event 지문 «전후 바이트 동일»
+```
+
+## 🔴 아침 전에 아셔야 할 것 — **「빨강 0」이 «완료가 아닙니다»**
+에이전트가 가설을 확인했는데 «반대로» 나왔습니다:
+```
+화면이 주는 occurred_at 후보를 «그대로» 고르면  {"column": "created_at"}
+   -> 후보 목록에 timezone 이 «없습니다»
+   -> 빨강 0 인데 컴파일 «실패»:  missing_field · blank_value  at read.occurred_at.timezone
+                                   invalid_profile            at bind.mappings (문장이 최소 하나 필요)
+   -> 둘 다 «unattached_refusals» 로 갑니다 — «앉을 칸이 없는» 진짜 거절
+```
+🔴 **즉 소유자가 빨강 0에 도달하고도 못 나아갈 수 있습니다.** 이 라운드가 만든 것이 아니고
+범위 밖이라 «안 고쳤습니다». 아침의 합격 조건이 「빨강이 사람 몫만」이면,
+**그 조건을 만족해도 막힐 수 있다**는 뜻입니다. 판정 주시면 다음으로 갑니다.
+
+## 못 잰 것
+```
+도는 서버가 이 코드인지    재기동 금지라 «모릅니다» — 그래서 위에 요청드립니다
+화면 렌더링                브라우저 없음. 「빨강」은 클라의 술어를 «서버에서» 계산한 값
+explorer 12 errors         전부 기존 것 (라이브의 user_test 미완성 때문).  HEAD 도 같음
+```
+⚠️ 라이브 설정은 00:29~00:30 에 «다른 레인»이 썼습니다. 저는 안 썼고 `user_test` 는 무손상입니다
+(제가 세션 시작에 읽은 것과 바이트 동일 · order_by 여전히 `[]`).
+
+
 # ✅ 바인딩 셋 삭제 + 커서 «질문 제거» 착지 (date 00:0x)
 
 ```
