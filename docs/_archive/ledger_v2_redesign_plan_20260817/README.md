@@ -1,5 +1,22 @@
 # Ledger v2 재설계 계획 — Kernel 유지, Setup/Compiler 재작성
 
+> 🗄️ **SUPERSEDED — 2026-08-21에 아카이브.** 1~7단계는 2026-08-18에 승인·main 병합되어
+> **닫혔고**(계획서로서 `COMPLETE`), 그 뒤 설계가 여러 결정을 지나쳤다.
+> **후계는 [guide/ONTOLOGY_LEDGER_SETUP](../../guide/ONTOLOGY_LEDGER_SETUP.md) 하나다** —
+> 오늘 무엇을 어떻게 선언하는지는 거기서 읽는다.
+>
+> 🔴 **이 폴더가 가르치는 config 문법은 은퇴했다. 세팅 지침으로 읽지 마라.**
+> 여기는 `setup_version: 2`와 `packs`·`profiles`를 포함한 **일곱 절**, 그리고
+> `profiles.use → packs/claim`을 가르친다. 현행은 **`setup_version: 5`**, 절 **셋**
+> (`entities` · `sources` · `vocabulary`)이고 `packs`·`claims`·`profiles`·`mapping_id`는
+> **전부 은퇴**했다 — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 든다.
+> `TARGET_ARCHITECTURE_AND_SSOT.md`가 대는 config 경로 다섯 중 **넷은 디스크에 없다.**
+>
+> 문서 감사(2026-08-21) 등급: 26개 중 현행 A **0** · B **5** · C **21**.
+> **역사 기록으로만 보존한다** — 「왜 그렇게 됐는가」를 볼 때만 연다.
+> 파괴적 reset 절차(`07_CUTOVER_RESET_AND_RETIREMENT.md` §7.2/§7.3)만은 여전히 이곳이
+> 유일한 기재처이며, 실행은 별도 승인 전까지 금지다.
+
 > 상태: `COMPLETE` · 승인: `APPROVED` · 1~7단계 승인
 > 작성일: 2026-08-17
 > 범위: Source → pandas event frame → Pack compiler → LedgerFrame

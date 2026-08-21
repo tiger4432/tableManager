@@ -22,6 +22,296 @@
 
 ---
 
+# 🕐 은퇴 «시점» 확정 — 소유자 (23:1x). 지금이 아닙니다
+
+> **소유자: 「은퇴는 온톨로지 응용 프로그램 본격적으로 시작할 때,
+> 즉 현재 기반 원장 셋업 다 끝나면」**
+
+```
+순서   ① 기반 원장 셋업 «완주»      <- 지금 여기
+       ② 온톨로지 응용 본격 착수
+       ③ 그때 은퇴 (혈통 추적 · admin/원장 선언 · v1 계통 전체)
+```
+
+## 그러니 지금 지켜야 할 것은 «하나»입니다
+🔴 **은퇴 대상에 «새 일을 얹지 마십시오».**
+```
+✖  ledger_trace* · ledger_admin · ledger/config.py 를 «고치거나 늘리지» 마십시오
+✖  그 경로의 503 · 빈 집합 가드 · 죽은 샘플 — 전부 «건드리지 않습니다»
+✔  버그를 발견하면 «고치지 말고 적으십시오» — 은퇴 라운드의 재료가 됩니다
+```
+오늘 그 자리에 총괄이 두 번 손댈 뻔했습니다(샘플 부분 수리 → 되돌림, 503 수리 지시 → 취소).
+**세 번째는 없게 합시다.**
+
+## 「기반 원장 셋업 완주」의 뜻 — 남은 것
+```
+구멍       9  (layer 5 는 «삭제로» 해결 -> 남은 것은 qualifiers 4 + setup_version 1)
+           🔴 다시 재야 합니다 — layer 삭제 뒤 감사를 아직 안 돌렸습니다
+③          거짓 근거로 살아 있는 심볼 아홉 + 독스트링 둘        진행 중
+②          allowed_values 도달 불가를 주석으로                  그다음
+시험 실행   화면에서 «진짜 배치»가 돕니다 — 착지 완료
+lot_event   1,323 원자 · 계보 40 — 흐릅니다
+```
+**②③ 끝나고 감사가 「qualifiers 4 + setup_version 1」로 확인되면 ①이 닫힙니다.**
+
+## 그다음이 «응용»입니다 — 이미 대기 중인 것
+```
+task/APPLICATION_PROPAGATION_BRIEF.md      전파 + walk
+task/APPLICATION_ANYWHERE_SEED_BRIEF.md    클릭한 글자가 씨앗
+```
+응용 세션이 8월 21일에 올려 둔 지시서 둘입니다. 그때 총괄이 「레인이 없다」로 대기시켰고,
+**소유자가 방금 말한 「②」가 그것입니다.**
+
+---
+
+# 📋 은퇴 범위 확정 — 소유자 (23:0x). **지금 착수하지 마십시오, 기록입니다**
+
+> **소유자: 「지금 원장 혈통 추적, admin/원장 선언 다 은퇴 대상임」**
+
+앞 절의 「계보를 새로 만든다」보다 «범위가 큽니다». 정확히 적어 둡니다.
+
+## 은퇴 대상
+```
+① 원장 혈통 추적       ledger_trace.py · ledger_trace_router.py 와 그 여섯 경로
+                       /api/ledger/trace · /explore · /explore_entity · /journey · /structure · /coverage
+② admin / 원장 선언    ledger_admin.py 와 /admin/ledger/*
+                       (vocabulary · sources · config/raw · save · dry-run · relations · retire)
+```
+
+## 🔴 그러면 «v1 계통 전체»가 같이 갑니다 — 총괄 실측
+```
+ledger/config.py 의 소비자   ledger_admin (②)  ·  ledger_trace (①)  ·  config_resolve_report
+                             🔴 그 둘이 은퇴하면 «남는 소비자가 보고서 하나»입니다
+그래서 같이 은퇴 가능        server/config/ledger_config.json          (어디에도 없던 파일)
+                             sample/ledger_config.json.sample           (v1 문법 · 검증 불가)
+                             ledger/config.py 의 .sample 낙하           (이유가 이미 만료됨:
+                                「신선한 체크아웃도 백필이 돌게」인데 백필은 v2 root 를 씁니다)
+                             source_profile.py 의 pack/claim 해소 경로   (packs 가 이미 은퇴)
+```
+⚠️ **`config_resolve_report` 가 마지막 소비자로 남습니다.** 그것이 v1 을 정말 필요로 하는지가
+은퇴 라운드의 «첫 측정»입니다. 필요 없으면 `ledger/config.py` 자체가 은퇴 대상입니다.
+
+## 지금 상태와의 관계
+```
+503 여섯 경로   ① 그 자체입니다 -> «고치지 않습니다» (앞 절에서 취소)
+빈 집합 가드    은퇴와 함께 사라집니다 -> 별도 수리 «불필요»
+문서            LEDGER_GUIDE 의 3단계 진단 · trace 관련 절 전부 «은퇴 문서»가 됩니다
+                -> 총괄이 은퇴 시점에 한 번에 처리합니다. 지금 고치지 않습니다
+```
+
+## 착수는 «별도 지시»로 — 그 전에 이것부터 재야 합니다
+```
+1  ledger_trace / ledger_admin 을 «부르는» 곳 전수 (클라 포함)
+      ledger.html · rnd-console.html · trace.html · ledger-graph.html 이 무엇을 부르나
+2  그 화면들이 은퇴하면 «후계가 있나» — 없으면 사용자가 잃는 것을 먼저 적는다
+3  config_resolve_report 가 v1 을 정말 쓰는가
+```
+🔴 **은퇴는 삭제라 되돌리기 어렵습니다.** 오늘 `layer` 에서 「아무도 안 읽는다」가
+두 번 틀렸습니다. 이 규모면 그 실수의 대가가 훨씬 큽니다.
+**전수 측정 → 총괄 검토 → 소유자 승인 → 삭제** 순서로 갑니다.
+
+## 지금 할 것은 그대로입니다
+```
+③ 심볼 아홉 + 독스트링 둘   진행
+② allowed_values 주석        그다음
+```
+
+---
+
+# ⛔ ① 취소 — 계보는 «지우고 새로 만듭니다». 고치지 마십시오 (23:0x)
+
+> **소유자 (2026-08-21 23:0x): 「계보 어차피 지우고 새로 만들 건데」**
+
+앞 지시(`641901d3`)의 ①(읽기 측 6경로 503)을 **취소합니다.**
+**지울 것을 고치는 것이 오늘 하루 종일 지운 그 부류입니다.**
+
+## 취소 «전»에 확정된 사실 — 새로 만들 때 여기서 시작하십시오
+소유자 확인 (23:0x):
+```
+server/config/ledger_config.json    운영에도 «없다»
+계보 화면                            운영에서 «한 번도 열어본 적 없다»
+```
+총괄 실측:
+```
+inference_derivations 의 실례        샘플·라이브·어디에도 «0건»
+                                     (derivations · inference 로도 0건)
+ledger.config.load() 를 부르는 곳     ledger_admin (옛 관리 화면) · config_resolve_report
+                                     🔴 백필은 «안 부릅니다» — setup.py 의 DEFAULT_ONTOLOGY_ROOT 를 씁니다
+503 연쇄                             config.py:357 이 없는 파일 -> sample(setup_version 3 · packs) 낙하
+                                     -> 그 샘플의 unknown_pack 검사가 «영원히 거짓»
+                                        (_parse_pack_reference 는 @version 을 떼고, _parse_use_reference 는 안 뗀다)
+```
+🔴 **즉 가드가 «빈 집합»을 지키려고 여섯 경로를 죽이고 있었습니다.**
+그 가드의 논리(「선언 없이 진행하면 그 원자들이 OBSERVATION 으로 강등된다」)는 옳게 쓰였는데,
+**강등될 원자가 애초에 없습니다.** 옳은 가드가 지킬 것이 사라진 뒤에도 그대로 서 있는 것 —
+오늘 `layer` · `allowed_values` 와 같은 부류의 세 번째입니다.
+
+## 새로 만들 때 «같이 정리될» 것
+```
+server/config/ledger_config.json        어디에도 없는 파일. 이 경로가 계속 필요한가
+sample/ledger_config.json.sample        v1 문법(packs·profiles). 검증 «불가» — 레지스트리가 없다
+ledger/config.py 의 .sample 낙하         「신선한 체크아웃도 백필이 돌게」가 이유였는데
+                                         «백필은 이제 이 경로를 안 씁니다» -> 이유가 만료됐습니다
+ledger_admin.py                          옛 관리 화면. 새 계보와 함께 갈지 남을지가 설계 질문
+```
+**넷 다 「새 계보」 라운드의 재료입니다. 지금 손대지 마십시오.**
+
+## 남은 순서 — ③ 다음 ②
+```
+③  거짓 근거로 살아 있는 심볼 아홉 + 독스트링 둘   (지금 진행)
+②  allowed_values 도달 불가를 주석으로 못 박기      (그다음)
+①  취소
+```
+
+⚠️ 문서 쪽(`LEDGER_GUIDE.md:259-260` 의 3단계 진단이 막힌 경로 안에 있음)은
+**총괄이 처리합니다.** 당신은 신경 쓰지 마십시오.
+
+---
+
+# 🔴🔴 소유자 「다 진행」 — 대기열 셋을 «순서대로» (22:5x)
+
+> **소유자 (2026-08-21 22:5x): 「다 진행해」**
+
+**셋을 한 커밋에 담지 마십시오. 하나씩, 각각 기계·시험과 함께.**
+
+---
+
+## ③ 먼저 — 거짓 근거로 살아 있는 심볼 아홉 (가장 싸고 가장 확실)
+```
+backfill.py 독스트링   「dry_run.py 가 이 아홉을 import 한다」
+실측 (코드맵)          dry_run 은 «하나도» 안 함 · 저장소 전체 호출자 «0»
+                       (`_transfer_select` 는 열째가 아닙니다 — 그 아홉이 그걸 «부릅니다»)
+source_preparation.py  「backfill._backfill_source 가 커서를 전진시킨다」 -> «그런 함수 없음»
+                       술어 자체는 참이고 진짜 함수는 `_run_v2_lineage`
+```
+```
+할 것   1  아홉을 지우기 «전»에 «당신이» 호출자를 한 번 더 셉니다
+             🔴 이름 grep 만 쓰지 마십시오 — 오늘 `layer` 를 그렇게 놓쳤습니다
+                `getattr` · 문자열 · dict 키 접근까지 봅니다
+           하나라도 나오면 «멈추고 보고»
+        2  나오지 않으면 아홉을 지우고 독스트링을 사실로 고칩니다
+        3  source_preparation 의 함수 이름을 `_run_v2_lineage` 로 정정 (술어는 그대로)
+시험    lot_event test-run 이 여전히 passed · 원자 1,323 · pytest 전후 동일
+```
+
+---
+
+## ② 그다음 — `allowed_values` 의 «죽은 축»
+```
+읽는 쪽 살아 있음   roleframe:1046 (symbolic 검사) · setup_registry:854
+                    setup_bundle:1590 · config_authoring:1065
+쓰는 쪽 사라짐      predicate_claim 이 kind·required «만» 낸다
+결과                allowed_values 는 영원히 빈 값 · role kind symbolic·order 는 «유도 불가»
+```
+🔴 **총괄 판정: 「도달 불가」를 «못 박는» 쪽입니다. 지우지도, 도출이 내게 하지도 마십시오.**
+```
+왜   지우면    symbolic role 을 되살리는 날 그 검사를 «다시» 써야 합니다.
+                오늘 `layer` 처럼 「아무도 안 읽는다」로 지웠다가 읽는 곳이 나온 전례가 있습니다
+     도출하면  「symbolic role 이 무엇이어야 하는가」를 «새로 정하는» 일입니다 (문법 추가)
+     못 박으면 비용 0이고, «그 날이 오면» 다음 사람이 이 주석을 만납니다
+```
+```
+할 것   네 자리에 한 줄씩: 「predicate_claim 이 kind·required 만 내므로 이 갈래는 현재 도달 불가.
+        symbolic/order role 을 되살리려면 생산자를 «먼저» 만들 것 (2026-08-21)」
+        + 어느 커밋이 생산자를 없앴는지 (`9b6c5da0`)
+✖  코드 동작은 «한 줄도» 바꾸지 마십시오
+```
+
+---
+
+## ① 마지막 — 읽기 측 6경로 503. **착수 «전»에 총괄에게 물으십시오**
+```
+/api/ledger/trace · /explore · /explore_entity · /journey · /structure · /coverage
+연쇄   config.py:357 이 v5 로 «가는 길이 없다» -> sample(setup_version 3 · packs) 로 낙하
+       그 샘플이 자기 검사에 걸린다
+       그 검사는 «영원히 거짓» — _parse_pack_reference 는 @version 을 떼고
+                                _parse_use_reference 는 안 뗀다
+```
+🔴 **이 건은 «크기가 안 정해졌습니다».**
+```
+이 박스   server/config/ledger_config.json «없음» -> 샘플로 떨어진다 -> 503
+운영      그 파일이 «있는지 못 쟀습니다».  있으면 운영은 멀쩡하고 이건 개발 박스 문제입니다
+          없으면 운영의 계보 화면이 «전부 죽어 있습니다»
+```
+**그러니 착수 전에 보고 파일로 물으십시오 — 총괄이 소유자에게 확인합니다.**
+그 답에 따라 고치는 자리가 달라집니다:
+```
+운영 멀쩡   -> 개발 박스가 v5 를 읽게 하거나, 죽은 v1 샘플을 «은퇴»시키는 쪽
+운영도 죽음 -> 즉시 수리 대상이고 우선순위가 위 둘보다 «앞»입니다
+```
+⚠️ 그리고 `LEDGER_GUIDE.md:259-260` 의 3단계 진단이 «막힌 경로 안»에 있습니다 —
+고칠 때 그 문서도 같이 봐야 합니다. **문서는 총괄이 처리하겠습니다.**
+
+---
+
+## 공통
+```
+하나 = 커밋 하나 + 시험 + 보고.  셋을 묶지 마십시오
+지우기 전에는 «항상» 당신이 한 번 더 셉니다. 오늘 그 규칙이 두 번 살렸습니다
+클라 빌드 금지 · 라이브 설정 금지 · 재기동은 총괄
+```
+
+---
+
+# ✅ `layer` 착지 확인 — 라이브까지 끝났습니다 + 대기열 둘 (22:3x)
+
+## 총괄이 라이브를 돌렸습니다
+```
+--check      would rewrite (layer dropped from 5 predicate(s))
+실행         migrated (5)
+멱등         두 번째 --check -> «unchanged (0)»
+재기동       오류 0
+```
+**제가 넣은 시험 둘이 다 통과했습니다:**
+```
+test-run lot_event   status=passed · 142행 · 분자 40 · 원자 1,323 · incomplete 0    «불변»
+노드 설명            「ontology predicate · active」   삭제 «전»과 «같은 문장»
+```
+🔴 **어휘를 지웠는데 흐르던 것이 그대로 흐릅니다.** 읽는 곳의 기본값이 유일한 합법 값이라던
+판단이 실측으로 확인됐습니다. 스크립트가 「다른 값을 들고 있으면 거절」로 짜인 것도 맞습니다.
+
+---
+
+# 📋 대기열 — «오늘 밤 하지 마십시오». 기록해 두는 것입니다
+
+## ① 🔴 읽기 측 6개 경로가 503 — 문서 문제가 아니라 «코드 결함» (문서 감사가 기전까지 짚음)
+```
+/api/ledger/trace · /explore · /explore_entity · /journey · /structure · /coverage
+원인 1   config.py:357 이 v5 설정으로 «가는 길이 없다» -> sample/ledger_config.json.sample 로 낙하
+원인 2   그 샘플은 setup_version 3 · packs 를 들고 있어 자기 검사에 걸린다
+원인 3   그 검사가 «영원히 거짓»이다:
+           _parse_pack_reference("dt-job@1")  -> pack_id "dt-job"     (rpartition("@"))
+           _parse_use_reference("dt-job@1/…") -> pack_id "dt-job@1"
+         -> declared_versions 에 «절대» 안 맞는다
+```
+⚠️ **그리고 `LEDGER_GUIDE.md:259-260` 이 처방하는 3단계 진단이 «전부 막힌 경로 안»에 있습니다** —
+고장 났을 때 쓰라는 도구가 같이 죽어 있습니다.
+🔴 **이 박스엔 `server/config/ledger_config.json` 이 없습니다. 운영에 있는지는 «못 쟀습니다».**
+운영도 503인지 아닌지가 이 건의 크기를 정합니다 — 착수 전에 그걸 «소유자에게 물어야» 합니다.
+
+## ② packs 제거의 «조용한 사상자» — `allowed_values`
+```
+읽는 쪽 살아 있음   roleframe:1046 · setup_registry:854 · setup_bundle:1590 · config_authoring:1065
+쓰는 쪽 사라짐      predicate_claim 이 kind·required «만» 낸다
+결과                allowed_values 는 «영원히 빈 값» -> symbolic Role 은 모든 상수를 거절
+                    role kind 중 symbolic·order 는 «유도 불가»
+```
+테스트는 전부 초록입니다 — 그 갈래를 지나는 선언이 라이브에 0개라서입니다.
+**지우거나 · 도출이 내게 하거나 · 「도달 불가」를 주석으로 못 박거나** 셋 중 하나인데,
+그건 문법 판정이라 소유자 몫입니다.
+
+## ③ 소스 주석이 소스 사실과 어긋나는 자리 둘 (코드맵이 찾음)
+```
+backfill.py           「dry_run.py 가 이 아홉 심볼을 import 한다」 -> «하나도» 안 함. 호출자 0
+source_preparation.py 「backfill._backfill_source 가 커서를 전진시킨다」 -> «그런 함수 없음»
+                      (술어 자체는 참이고, 진짜 함수는 _run_v2_lineage)
+```
+아홉 심볼이 «거짓 근거»로 살아 있습니다. 지우는 것은 라운드 하나입니다.
+
+**셋 다 지금 착수하지 마십시오.** 순서는 소유자가 정합니다.
+
+---
+
 # ✅ 멈춤 «잘했습니다». 그리고 답은 «그대로 삭제»입니다 — 근거가 바뀝니다 (21:5x)
 
 ## ① 당신이 맞고, 총괄도 «같은 모양»으로 틀렸습니다

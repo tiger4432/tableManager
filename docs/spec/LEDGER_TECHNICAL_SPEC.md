@@ -829,13 +829,16 @@ UI, Trace, DB 연결, migration, write가 없다. 실행은 다음 3단계 절�
 > **status:** `FROZEN_FOR_REDESIGN` · **approval:** `NOT_APPROVED`
 
 이 절의 추가 구현은 중지됐다. 다음 실행 계약은
-[`ledger_v2_redesign_plan_20260817`](../../ledger_v2_redesign_plan_20260817/README.md)의
+🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)의
 단계별 승인 뒤에만 변경한다.
 
 v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. cursor 뒤 pandas source
 preparer가 verified virtual-join rule ID를 상속하고, 완성 EventFrame 이후 compiler는 DB를
-읽지 않는다. Registry 등록 데이터는 `server/config/ontology/` config에서만 온다. 목표 계약은
-[TARGET_ARCHITECTURE_AND_SSOT](../../ledger_v2_redesign_plan_20260817/TARGET_ARCHITECTURE_AND_SSOT.md)가 정본이다.
+읽지 않는다. Registry 등록 데이터는 `server/config/ontology/` config에서만 온다. 🔴 **[2026-08-21]
+착지한 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이다** —
+종전 이 자리가 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
+🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)로
+이관됐고, 그 문서가 대는 config 경로 다섯 중 넷은 디스크에 없다.
 
 정확한 열·실행·실패·마이그레이션 계약은
 [LEDGER_FRAME_CHAIN_MAPPER](../architecture/LEDGER_FRAME_CHAIN_MAPPER.md)가 소유한다.

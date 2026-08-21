@@ -93,7 +93,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 2. `docs/process/PROJECT_STATUS.md` 최상단
 3. `docs/guide/ONTOLOGY_LEDGER_SETUP.md` — **설정의 정본.** 파일·필드·샘플·검증 절차
 
-> 🔴 **[2026-08-21] 4~7번이던 `ledger_v2_redesign_plan_20260817/`은 «읽지 마십시오».**
+> 🔴 **[2026-08-21] 4~7번이던 계획서는 🗄️ [`docs/_archive/ledger_v2_redesign_plan_20260817/`](../_archive/ledger_v2_redesign_plan_20260817/README.md)로 이관됐고, «읽지 마십시오».**
 > 그 디렉터리는 **1~7단계를 끝낸 계획서**이고, 설계가 그 뒤로 여러 결정을 지나쳤습니다.
 > 특히 `CONFIG_CANON.md`는 `setup_version: 2`와 `packs`·`profiles`를 포함한 «일곱 절»을
 > 가르칩니다 — **지금은 `setup_version: 5`, 절 «셋»(`entities`·`sources`·`vocabulary`)이고
