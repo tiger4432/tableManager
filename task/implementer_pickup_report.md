@@ -1,5 +1,61 @@
 # 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (실측 2026-08-22 10:1x)
 
+# ✅ 둘 다 착지 — **재스탬프 «돌리셔도 됩니다»** (실측 01:2x)
+
+```
+d84b6977  fix(ledger)   재스탬프 스크립트가 반쪽 소스에서도 «돕니다»   <- 총괄 조작 대기 해소
+736fa18d  test(ledger)  카브아웃 가드 (두 키 각각) · 변이 대조로 «빨강 확인»
+```
+
+## ① 스크립트 — 이 박스에서 «실제로» 돌려 본 출력
+```
+config does not compile whole (…transter_event.bind.mappings: must be a non-empty object …)
+  DROPPED transter_event -- not compiled, no fingerprint to re-stamp
+dt_job     ledger-v2:925655da… -> ledger-v2:a9e1ebc9…   position stays {dt_job: TWO, dt_cell_key: TWO_3_10}
+lot_event  ledger-v2:2e2dc0d6… -> ledger-v2:8b80d9ff…   position stays {row_id: 01a00031-…, event_time: …}
+(report only -- pass --apply to write)
+```
+✔ 반쪽 소스 «하나만» 떨구고 이름·사유를 찍습니다. 건강한 둘은 «커서 단계까지 도달»합니다
+✔ 방식은 새로 짓지 않고 `OntologyExplorerService` 의 두 단계를 «그대로» 베꼈습니다 —
+  엄격 로드를 «먼저» 시도하고, 거절될 때만 관용 읽기로 갑니다. 우회 플래그 «없습니다»
+✔ 보고 모드가 «쓰지 않는» 것을 «돌리기 전에 읽어» 확인했습니다 (유일한 쓰기가 `--apply` 뒤)
+✔ 돌린 «뒤» 실측: 커서 둘 다 옛 문자열 그대로 · 원자 dt_job 792 · lot_event 1,323 «불변»
+🔴 `--apply` 는 «안 돌렸습니다». 운영 조작은 총괄 것입니다
+
+### ⚠️ 지시 «밖» 3줄을 넣었습니다 — 지우라 하시면 지웁니다
+`--source transter_event` 로 «반쪽 소스를 지목»하면 예전엔 `KeyError` 로 죽었습니다.
+지금은 `REFUSED -- not among the sources that compiled; finish the declaration first` 를
+찍고 1 을 반환합니다. 「조용히 건너뛰지 말 것」 항목에 붙는 3줄이고, `--source` 로만 닿습니다.
+**넷 중 어디에도 «문자 그대로» 적혀 있진 않아서 신고합니다.**
+
+## ② 가드 — «빨강을 봤습니다»
+```
+test_editing_only_input_columns_leaves_the_cursor_where_it_is[prepare]
+test_editing_only_input_columns_leaves_the_cursor_where_it_is[map]
+변이 대조   카브아웃을 pass 로 바꿔 두 키를 폐포에 «되돌려 넣으니» -> 2 failed
+            그리고 «기존 지문 시험 셋은 초록» -> 그것들이 이 자리를 «한 번도 안 덮었다»는 직접 증거
+```
+공허함 문제는 문장 «과» 대조 둘 다로 막았습니다 — 독스트링이 「이 시험은 짝의 반쪽이고 혼자서는
+공허하다」를 명시하고, 시험 «안»에 한 줄짜리 양성 대조를 둬서 「지문이 상수를 뱉는」 경우를
+그 자리에서 죽입니다. 기존 시험 옆엔 「왜 중복이 아닌지」 한 줄을 남겼습니다.
+
+## 검증
+```
+61 passed  (setup_registry + v2_runtime)
+넓힌 실행   기준선과 «동일» (26행, 전부 반쪽 transter_event 것)
+줄바꿈      두 파일 다 CRLF 로 되돌려 스테이지 (저장소 정본 형식 확인 후)
+```
+
+## 🔴 총괄 다음 순서
+```
+1  ✅ 스크립트 착지        d84b6977   -> «지금 보고 모드로 돌리실 수 있습니다»
+2  □  총괄이 --apply       운영의 expect 값은 «운영 보고 단계»에서 나온 것을 쓰십시오
+3  ✅ 가드 착지            736fa18d
+4  □  빌드                 dist 는 12:37, 클라 커밋은 21:51 — 화면은 «아직 옛 코드»입니다
+```
+
+---
+
 # ✅ 지문 제외 «착지» (`91f9afde`) — 재스탬프는 «적기만» 했습니다 (실측 00:4x)
 
 ## 착지 수치 — 시뮬레이터가 아니라 «착지된 코드»에서
