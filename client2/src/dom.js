@@ -28,7 +28,6 @@ export const elements = {
   get timelineContainer() { return document.getElementById('timeline-container'); },
   get referenceView() { return document.getElementById('reference-view'); },
   get referenceViewContent() { return document.getElementById('reference-view-content'); },
-  get referenceAlignment() { return document.getElementById('reference-alignment'); },
   get refreshHistoryBtn() { return document.getElementById('refresh-history-btn'); },
   get contextMenu() { return document.getElementById('custom-context-menu'); },
   get sourcesModal() { return document.getElementById('sources-modal'); },
