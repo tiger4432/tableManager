@@ -903,6 +903,11 @@ def test_a_sources_own_edit_moves_its_own_cursor():
     🔴 WITHOUT THIS ONE, "nothing ever moves" is indistinguishable from isolation --
     a fingerprint that ignored the sources entirely would pass the isolation test
     perfectly.  This is the sample on which the two candidate rules disagree.
+
+    🔴 AND IT SAYS NOTHING ABOUT `input_columns`, WHICH IS WHY THE TEST BELOW IS NOT A
+    DUPLICATE OF IT.  This edits `bind` AND `map.input_columns` in one breath -- the second
+    only so the binding's column stays legal -- so it passes on the `bind` half alone and
+    would keep passing if `input_columns` re-entered the closure tomorrow.
     """
     raw = two_source_bundle()
     before = cursor_fingerprints(raw)
@@ -916,6 +921,45 @@ def test_a_sources_own_edit_moves_its_own_cursor():
     after = cursor_fingerprints(edited)
 
     assert after["input_rows"] != before["input_rows"]
+    assert after["other_rows"] == before["other_rows"]
+
+
+@pytest.mark.parametrize("clause", ["prepare", "map"])
+def test_editing_only_input_columns_leaves_the_cursor_where_it_is(clause):
+    """The carve-out, once per key. `source_cursor_fingerprint` deletes both before hashing.
+
+    Owner ruling 2026-08-22, after being shown what it costs: these two keys leave the
+    closure and nothing else does. Neither direction of changing them can produce a WRONG
+    atom -- widening carries columns the mapper never reads (measured on `dt_job`: SELECT
+    5 -> 25, same three mapper inputs, same atoms), and narrowing is refused by
+    `roleframe`'s `missing_mapper_input`, which is a STOP the fingerprint cannot make
+    safer. Keeping them in cost a cursor stop for every edit that could not move a row,
+    and the everything-default writes this key on every source's first save.
+
+    🔴 THIS TEST IS HALF OF A PAIR AND IS VACUOUS ALONE. "The fingerprint did not move"
+    also passes for a function broken into returning a constant.
+    `test_a_sources_own_edit_moves_its_own_cursor` above is the other half: it asserts a
+    `bind` edit DOES move it, and neither is redundant with the other -- delete either and
+    the surviving one can be satisfied by a fingerprint that is simply wrong. The cheap
+    positive control below carries part of that inside this test: two sources whose
+    declarations differ must not hash alike.
+    """
+    raw = two_source_bundle()
+    before = cursor_fingerprints(raw)
+    assert before["input_rows"] != before["other_rows"], (
+        "positive control: a fingerprint that returned a constant would pass every "
+        "assertion below without hashing anything")
+
+    edited = copy.deepcopy(raw)
+    columns = edited["sources"]["input_rows"][clause]["input_columns"]
+    # `record_id` is a real column of the relation and is named by `read.order_by`, so this
+    # widens the declaration without making any OTHER declaration illegal -- the point is
+    # an edit that touches this key and nothing else.
+    edited["sources"]["input_rows"][clause]["input_columns"] = sorted(
+        {*columns, "record_id"})
+    after = cursor_fingerprints(edited)
+
+    assert after["input_rows"] == before["input_rows"]
     assert after["other_rows"] == before["other_rows"]
 
 
