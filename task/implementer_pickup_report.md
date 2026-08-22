@@ -1,5 +1,74 @@
 # 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (실측 2026-08-22 10:1x)
 
+# ✅ 전용 테이블 착지 (`347c9069`) — 🔴 **선언만으로 «테이블이 생겼습니다»** (실측 03:0x)
+
+## 먼저 알아 두실 것 — 아무 명령도 안 돌렸는데 물리 테이블이 «생겼습니다»
+`table_config.json` 을 고치면 `config_watcher:153` 이 `create_missing_dynamic_tables` 를 부릅니다.
+**이 저장소에선 「선언하는 것」이 곧 「만드는 것」입니다.** 제가 직접 확인했습니다:
+```
+dt_transfer_log   실재 · 0행 · 선언한 12칸 전부 있음
+인덱스            business_key_val 이 «유니크가 아닙니다» (ix_… , unique=False)
+```
+의도한 종착지라 «되돌릴 것은 없습니다». 다만 총괄이 순서를 짤 때 이걸 알고 계셔야 합니다.
+그리고 생성 경로는 «만들지 않았습니다» — `migrations/` 는 인덱스·ALTER 용이고 테이블 생성은
+선언이 합니다. 지어내지 않았습니다.
+
+## 🔴 판정/조치 1 — 유니크 인덱스가 «빠져 있습니다». 선언 경로가 안 만들어 줍니다
+```
+migrations/add_business_key_unique_index.py --table dt_transfer_log            # 읽기 확인
+migrations/add_business_key_unique_index.py --table dt_transfer_log --apply
+```
+단일 프로세스 씨더엔 없어도 되지만, `crud.apply_batch_updates` 가 문서화해 둔 «프로세스 간 경합»이
+복구 가능한 `IntegrityError` 가 되려면 «유니크»여야 합니다. 그 마이그레이션은 대상 테이블을
+information_schema 에서 찾으므로 새 테이블도 이미 덮습니다.
+
+## 🔴 판정/조치 2 — **라이브 카탈로그는 gitignore 라 「이 박스에만」 있습니다**
+```
+라이브 server/config/table_config.json   28개 · dt_transfer_log «선언됨»  <- 커밋 «불가»
+샘플   …/sample/table_config.json.sample 22개 · dt_transfer_log «선언됨»  <- 커밋됨
+```
+**다른 곳에서 돌리려면 그 선언을 «거기서 다시» 해야 합니다.** 안 하면 테이블이 «안 생기고»,
+소스는 조용히 아무것도 못 읽습니다 — 오늘 `dt_job_attribution` 이 선언 둘을 죽였던
+그 실패와 «같은 모양»입니다. (그건 지금 양쪽에 다 있습니다. 누군가 이미 되살렸고
+라이브 쪽에 그 경위가 주석으로 남아 있습니다.)
+
+## 되돌리기 — 술어가 «정확»한 것을 실측으로 보였습니다
+```
+dt_cell_key LIKE 'SYN-XFER-D%'      키를 «쓴 그 상수»에서 만들어 어긋날 수 없습니다
+dt_log 전체                36,344
+술어에 걸리는 것            1,405   <- 픽스처가 쓴 수와 «같음»
+그중 product='SYN-XFER'     1,405   <- 걸리는 것이 «전부 우리 것»
+우리 것인데 안 걸리는 것        0    <- «새는 것 없음»
+36,344 − 1,405             34,939   <- 착지 조건
+```
+✔ 1,405 가 «아니면 거절»합니다. 전후로 세어 찍습니다. 두 번째 실행은 «거절»됩니다(0 ≠ 1,405)
+✔ 삭제는 술어 재평가가 아니라 «뽑아 둔 row_id» 로, `crud.delete_rows_batch` 를 지납니다
+  -> CellSource·CellOverwrite 가 «같이 정리»되고 DELETE 이력이 남습니다.
+     생 SQL 로 지웠으면 그것들이 «고아»로 남습니다
+✔ 날짜창·「합성처럼 보이는 것」 류 «없습니다». 술어 «하나»뿐입니다
+```
+python scripts/seed_syn_die_transfer.py --rollback-dt-log
+python scripts/seed_syn_die_transfer.py --rollback-dt-log --apply --i-accept-writing-to-owner-database
+```
+
+## 나머지 착지 조건
+```
+새 테이블   1,405행 예정 (20+47+…+261) · 여섯 칸 전부 참 · dt_cell_key 유일
+순번        «그대로» — serpentine_index(top_is_min_y=True, left_to_right=False). 재도출 안 했습니다
+기존        lot_event · dt_job 은 «다른 relation» 이라 이 테이블을 못 봅니다 -> 커서 둘 다 «안 섬»
+            지난 라운드에 제가 신고한 「커서 순서 위험」은 «분리로 사라졌습니다» —
+            낡은 경고를 남기지 않고 그 주석을 고쳤습니다
+소스 relation   «소유자 몫». 라이브 온톨로지 설정은 손대지 않았습니다
+```
+
+## 권하는 순서
+```
+1  유니크 인덱스 마이그레이션      2  씨더 드라이런 -> --apply
+3  되돌리기 드라이런 -> --apply    4  소유자께 relation 한 칸 변경 안내
+```
+
+---
+
 # ✅ 다이 전사 씨더 «작성» (`7147b634`) — 안 돌렸습니다. 판정 «셋» (실측 02:0x)
 
 ```
