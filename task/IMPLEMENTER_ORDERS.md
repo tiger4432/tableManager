@@ -22,6 +22,56 @@
 
 ---
 
+# 🔴 소유자 차단 — 일반 매퍼로는 «시각 역할을 채울 방법이 없습니다» (총괄 08:5x)
+
+> 소유자가 `transfer_event` 를 폼만으로 완성 → 시험 실행:
+> `invalid_time_role  role_frame.rows[0].roles.occurred_at  "time Role must be a timezone-aware datetime"`
+
+## 실측 — 이 경로가 «오늘 처음» 돕니다
+```
+dt_job          매퍼 dt-job-role      맞춤
+lot_event       매퍼 lot-event-role   맞춤     -> 둘 다 자기가 변환해서 통과
+transfer_event  매퍼 «declarative-role»        -> 일반 매퍼. «이번이 처음»
+```
+```
+일반 매퍼는 바인딩을 프레임 셀 «그대로» 읽습니다 (roleframe.py:296-302 _evaluate_binding)
+varchar 시각 컬럼 -> 문자열 -> roleframe.py:1029-1034 에서 거절
+```
+🔴 **「가드는 도달 가능해지는 날 틀린다」의 실례입니다.** 맞춤 매퍼 둘이 그 자리를 대신 서 있었고,
+소유자가 «선언만으로» 소스를 만드는 순간 처음 드러났습니다.
+
+## 그리고 엔진은 «이미 답을 계산해 두고 있습니다»
+```
+source_preparation.py:920   event[SOURCE_OCCURRED_AT_COLUMN] = 해석된 aware datetime
+roleframe.py:67             SOURCE_OCCURRED_AT_COLUMN = "__occurred_at"
+전수 grep                   그 상수를 «읽는 코드가 없습니다». 정의 · 쓰기 둘뿐입니다
+```
+그 주석이 스스로 「매퍼가 물리 컬럼 이름을 묻지 않게 하려고 엔진 이름으로 낸다」고 적어 뒀는데,
+**정작 그걸 읽는 매퍼가 없습니다.**
+
+## 판정 — 일반 매퍼가 time 역할에서 «그 값을 씁니다»
+```
+✔  declarative-role 이 «time 종류의 Role» 을 채울 때 __occurred_at 을 씁니다
+✔  이미 계산된 값입니다. 새로 파싱하지 마십시오 — 두 번째 철자가 됩니다
+✔  범위는 «time 역할»만. 다른 종류 역할은 지금처럼 바인딩대로 읽습니다
+🔴 바인딩이 «다른 컬럼»을 가리키면?  -> 그 경우를 «재고 적으십시오».
+   지금 소유자 선언은 occurred_at -> event_time 이고 그게 곧 driver.occurred_at.column 입니다.
+   둘이 다를 수 있는지, 다르면 무엇이 옳은지 «측정으로» 답한 뒤 판정 요청하십시오.
+   임의로 「바인딩을 무시한다」로 가지 마십시오
+✖  맞춤 매퍼 둘(dt-job-role · lot-event-role)은 «건드리지 마십시오» — 도는 커서 둘입니다
+```
+
+## 착지 조건
+```
+transfer_event   시험 실행이 «통과» — 행·분자·원자를 숫자로 적으십시오 (1,405행 기대)
+lot_event        142행 · 분자 40 · 원자 «1,323» 불변 · 지문 불변
+dt_job           792 불변 · 지문 불변
+라이브 설정      쓰기 금지 (소유자가 지금 그 화면에 계십니다)
+빌드·재기동      총괄
+```
+
+---
+
 # 🔴 판정 «을» — 전사 행은 **별도 테이블**로 옮깁니다 (소유자 00:1x)
 
 > 총괄이 갑(새 준비기) / 을(별도 테이블)을 올렸고 → **소유자: 「을」**
