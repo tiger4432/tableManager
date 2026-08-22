@@ -1,3 +1,78 @@
+# 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (실측 2026-08-22 10:1x)
+
+## 채널 — 세션 간 메시지 «안 쓴다». 파일과 커밋이다
+```
+총괄 → 나   task/IMPLEMENTER_ORDERS.md        착수 «전»·보고 «전» 다시 읽는다
+나 → 총괄   task/implementer_pickup_report.md  이 파일 맨 위에 「🔴 판정 요청」
+공통        일 시작 전 git pull → 쓴 뒤 commit + push. 총괄이 «커밋»으로 내 상태를 본다
+```
+**감시 둘이 돈다:** ORDERS 갱신 감시 · 커밋 정체(2시간). 죽어 있으면 다시 걸 것.
+
+## 🔴 지금 «도는» 하위 에이전트 하나 — 중복 금지
+```
+a23dd0fe6190c12d5   항목 «넷»을 들고 있다 (SendMessage 로 ②③④를 나중에 보냄)
+   ① default_overridable 행은 «선언이 있으면» 기본값을 계산하지 않는다 (사람 답을 불일치로 신고 중)
+   ② 검증기가 «비어서 거절»하는 값은 선언이 아니다 -> 기본값이 이긴다. «좁게», 거절이 근거일 때만
+   ③ 선행이 안 답해진 유도 행은 «대기». refusals 지우지 말고 «세는 법»만 (attentionPaths, 클라)
+   ④ 「매핑 삭제 안 됨」 — 지워지는데 화면이 남긴다. held ∪ planned 를
+      「사람이 이름 지은 멤버=문서 기준」 / 「술어가 강제하는 역할=합집합 유지」로 «가른다»
+🔴 그 에이전트가 쓰는 파일:  server/ledger/config_authoring.py · client2/src/ontology_explorer_view.js
+   -> 끝나기 «전»에 그 둘을 건드리지 마라. 새 에이전트를 그 파일에 넣지 마라
+```
+
+## 🔴 모든 라운드의 채점 기준 — 이 숫자가 안 움직여야 한다
+```
+lot_event   142행 · 분자 40 · «원자 1,323» · incomplete 0
+지문        dt_job 2e5d944a… · lot_event 65a40e73…   (움직이면 «도는 커서가 멈춘다»)
+감사        cd server && python scripts/audit_authoring_form.py
+            섹션0 = 5  ·  vocabulary 4 · setup_version 1   («가족별»로만 비교. 총계는 소스 수에 흔들림)
+pytest      test_ledger_setup_bundle · _skeleton · _ontology_config_explorer · _setup_registry
+            ~193 passed / «12 errors 는 기존»(라이브 user_test 미완성 탓)
+```
+
+## 🔴 이 화면에서 «네 번» 당한 함정 — 행을 만들기 전에 읽어라
+```
+1  후보도 기본값도 «없는» 계획 행 -> 그 잎의 «입력 상자가 사라진다»
+2  후보가 «하나»거나 state=answered -> foldDecision 이 «컨트롤 만들기 전에» 접는다
+3  스켈레톤이 «자기 컨트롤을 그리는» 잎(flag→체크박스, choice+list→드롭박스)에 행을 얹으면 «더 나빠진다»
+4  후보를 «완성»시키면 그 완성한 키의 «상자를 삼킨다» (객체 picker)
+검증법  실뷰를 Node 로 렌더해 «쓰기 컨트롤 수»를 전후로 센다
+        + «양성 대조»(다른 경로가 0이 아님) + «변이 대조»(일부러 지워서 숫자가 «움직이는지»)
+        -> 그래야 「같다」가 «안 본 것»이 아니라 «안 바뀐 것»이 된다
+        폼은 depth 1 까지만 그린다 -> 안 펼친 가지는 뭘 물어도 「없음」. «패널 전체 합계»도 같이 단언
+```
+
+## 🔴 울타리 (상설)
+```
+✖ server/config/ontology/ledger_config.json 에 «쓰지 마라». 기록자는 «소유자(화면)» 하나다
+  -> 오늘 내가 소유자 소스를 «두 번» 지웠다. 원인을 시각만 보고 «내 에이전트 것»으로 단정했다
+✖ user_test 손대지 마라 — 소유자의 시험 대상
+✖ 은퇴 대상: ledger_trace* · ledger_admin · ledger/config.py — «새 일을 얹지 마라». 버그는 «적기만»
+✖ npm run build · 서버 재기동 — «총괄 몫». dist 는 트리의 «모든» 미착지 소스를 굽는다
+✖ git checkout/stash/reset — 공유 트리 «전체»를 건드린다
+✔ 커밋은 «경로 명시». 백틱 들어가면 -F 파일로
+```
+
+## 도구 요령 (시간 아낀다)
+```
+conda run 은 느리고 «-c 로 부르면 깨진다». 스크립트는 이렇게:
+   E=/c/Users/kk980/anaconda3/envs/assy_manager; export PATH="$E:$E/Library/bin:$E/Scripts:$PATH"
+   PYTHONIOENCODING=utf-8 PYTHONUTF8=1 python.exe script.py
+pytest 는 «저장소 루트»에서 (cwd 상대경로를 여는 테스트가 있다)
+시각은 «date 출력이나 mtime»에서 뽑아라 — 내 감각이 한 시간 앞섰던 적이 있다
+grep 으로 「없다」를 판정하지 마라 — 대소문자·dict 키 접근(get('k'))·주석까지 본다
+```
+
+## 아침 상태 (07:05 실측, 그 뒤 변경 없음)
+```
+서버 PID 44024 · 06:08 기동 — 오늘 밤 서버 변경 «전부» 실림
+dist 04:12 — sticky 수정 «포함»(번들에서 직접 확인).  «밀린 빌드 없음»
+소유자가 답할 칸 «여섯»: prepare/map.implementation_id · map.unit.kind
+                        bind.mappings · read.occurred_at · read.occurred_at.timezone
+```
+
+---
+
 # 📌 구현자 현재 상태 — 컴팩트 뒤의 나는 이것부터 읽는다 (2026-08-21 17:2x)
 
 # ✅ 아침 준비 «완료» — 재고 확인했습니다. 밀린 것 «없습니다» (date 07:05)
