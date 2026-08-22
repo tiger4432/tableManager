@@ -324,6 +324,9 @@ export function createGlobalTimelineItemDom(group) {
   // `.expand-indicator`, and all four are still here. Only the layout changed.
   li.classList.add('audit-row');
   const kind = auditKind(group, baseLog, isSummary);
+  // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
+  // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
+  const hadOldValue = baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
   // `toLocaleTimeString()` writes 「오후 11:31:31」 in this locale, which does not fit 58px and
   // wrapped the cell to two lines. The mockup's `09:31:12` is what a scan needs: fixed width,
   // no marker to read past. Built from the parts rather than a locale option so the width is
@@ -348,11 +351,10 @@ export function createGlobalTimelineItemDom(group) {
         <span class="audit-target-col">${targetCol}</span>
       </div>
       <div class="audit-cell audit-change">
-        <span class="val-old">${auditVal(baseLog.old_value, true)}</span>
-        <span class="val-arrow">→</span>
+        ${hadOldValue ? `<span class="val-old">${auditVal(baseLog.old_value, true)}</span><span class="val-arrow">→</span>` : ''}
         <span class="val-new">${auditVal(baseLog.new_value, false)}</span>
       </div>
-      ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}">…${txId.slice(-8)} <span class="filter-tx-btn" data-tx-id="${txId}" title="Filter table by this transaction">🔍</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
+      ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="이 트랜잭션만 보기">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
     ${isSummary ? `<div class="tx-details-container" style="display: none;"></div>` : ''}
   `;

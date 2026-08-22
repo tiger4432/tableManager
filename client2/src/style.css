@@ -2573,8 +2573,11 @@ body.resizing-active .history-sidebar {
      Measured key widths at 11px mono: median 86px, p90 119px, longest 165px. 110px leaves
      94px of text, so the median fits and the longest tenth ellipsize -- acceptable for a
      VALUE (the row's `title` carries the full text). It would not be acceptable for a header,
-     which is why §3.7's rule is about header labels and not about cells. */
-  grid-template-columns: 58px 62px 74px 110px 1fr 120px;
+     which is why §3.7's rule is about header labels and not about cells.
+
+     △소유자: 「시각 컬럼은 다 나오게 조금 넓혀줘」 -- 58 -> 70. `23:31:31` at 10.5px mono needs
+     about 46px and the cell spends 16 on padding, so 58 left it one character short. */
+  grid-template-columns: 70px 62px 74px 110px 1fr 120px;
   align-items: center;
 }
 .audit-head {
