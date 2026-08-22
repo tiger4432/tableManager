@@ -730,8 +730,9 @@ def source_cursor_fingerprint(
     The closure is transitive and deliberately errs LARGE:
 
         the source plan       relation, read, prepare (preparer + verified joins),
-                              map (mapper), bind (profile) -- all of it, since the
-                              bodies now live inside the source
+                              map (mapper), bind (profile) -- all of it EXCEPT the two
+                              `input_columns`, which are the one carve-out and are
+                              deleted below with the measurement that earned them
         the predicates        every predicate a `bind.mappings.<sentence>.predicate`
                               names.  This used to be "the packs, WHOLE, plus the
                               predicates their claims emitted".  The packs went on
@@ -759,10 +760,38 @@ def source_cursor_fingerprint(
     predicate_ids = sorted({
         mapping.predicate_id for mapping in plan.profile.mappings.values()
     })
+    source = _semantic_plain(plan)
+    # 🔴 THE ONE CARVE-OUT, AND IT IS A CARVE-OUT WITH A REASON RATHER THAN AN OVERSIGHT.
+    # Everything else above stays: the closure errs LARGE on purpose, because a source
+    # that should have been refused and is not re-reads under a stale contract silently.
+    # These two keys are the documented exception, measured 2026-08-22, because neither
+    # direction of changing them can produce a WRONG atom:
+    #
+    #   WIDENING carries columns nobody reads.  The mapper reads its own declared inputs;
+    #     a preparer input the mapper never names reaches no Role and no atom.  Measured
+    #     on `dt_job`: `prepare.input_columns` [] -> 22 widens the SELECT 5 -> 25 and the
+    #     mapper's inputs stay the same three, so the atoms are the same atoms.
+    #   NARROWING is refused before it can write.  `roleframe` raises
+    #     `missing_mapper_input` when a bound column is not in the frame -- a STOP, which
+    #     the fingerprint is not needed to cause and cannot make safer.
+    #
+    # So they fail the closure's own stated test, "material that could change an atom",
+    # and keeping them in cost a cursor stop for every edit that cannot move a row.  The
+    # subscripts are bare on purpose: the day this shape is renamed, the carve-out must
+    # fail loudly at compile time rather than quietly stop applying and stop every cursor.
+    #
+    # ⚠️ REMOVING THESE MOVED EVERY FINGERPRINT ONCE, at the commit that did it -- the
+    # canonical JSON carries `"input_columns":[...]` (and `[]`: `_semantic_plain` keeps
+    # empty fields), so dropping the key changed the hash even where the value had not.
+    # That one-time stop is cleared with `scripts/ledger_restamp_cursor.py`, which moves
+    # the stored string and NOT the cursor position, so no atom is re-read or re-emitted.
+    for clause in (source["driver"]["preparation"]["preparer"],
+                   source["driver"]["mapper"]):
+        del clause["input_columns"]
     material: dict[str, Any] = {
         "compiler_contract_version": snapshot.compiler_contract_version,
         "setup_version": snapshot.setup_version,
-        "source": _semantic_plain(plan),
+        "source": source,
         "claims": {
             predicate_id: _semantic_plain(snapshot.claims[predicate_id])
             for predicate_id in predicate_ids
