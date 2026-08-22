@@ -314,14 +314,20 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                     # event id from this very value, so an atom timed from anything else
                     # would disagree with the id of the event it belongs to.
                     #
-                    # 🔴 OPEN, AND DELIBERATELY NOT DECIDED HERE: when the binding names a
-                    # column OTHER than the driver's `occurred_at`, this ignores it.  The
-                    # two already differ in the live config (`dt_job` reads
-                    # `occurred_at.basis: ingested` while every one of its `bind.occurred_at`
-                    # says `event_time`) and the custom mapper resolves it the same way.
-                    # Awaiting a ruling; nothing on this path can tell the cases apart
-                    # without the mapper reading `driver.occurred_at.column`, which is the
-                    # deployment detail the comment on that constant exists to keep out.
+                    # RULED 2026-08-23: the binding's column is ignored here ALWAYS, not
+                    # only where the two coincide.  The two already differ in the live
+                    # config -- `dt_job` reads `occurred_at.basis: ingested`, naming no
+                    # column at all, while every one of its `bind.occurred_at` says
+                    # `event_time` -- and its atoms carry the ingestion instant, so that
+                    # binding has been doing nothing on a running cursor since the source
+                    # was written.  The custom mappers never read it either.  So this is
+                    # not a rule being introduced; it is the rule already in force,
+                    # reaching the mapper that had been left out of it.
+                    #
+                    # What is NOT settled, and is queued rather than answered: whether the
+                    # form should keep ASKING for a column that decides nothing.  Removing
+                    # it rewrites `dt_job`'s and `lot_event`'s declarations and moves their
+                    # fingerprints, so it belongs to a retirement round, not to this one.
                     roles[role_id] = unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN]
                 else:
                     roles[role_id] = _evaluate_binding(binding, unit, path=(
