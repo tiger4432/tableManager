@@ -17,6 +17,7 @@ from ledger.roleframe import (
     RoleEmission,
     RoleFrameError,
     RoleMapperImplementationRegistry,
+    SOURCE_OCCURRED_AT_COLUMN,
     compile_role_frame,
     dry_run_event_frame,
     map_event_frame,
@@ -40,6 +41,12 @@ def event_frame(compiled, rows=None):
         "event_key": "E-1",
     }]
     frame = pd.DataFrame(rows)
+    # The preparation boundary publishes the ONE interpreted instant on every event it
+    # emits (`source_preparation` line 920), and a hand-built frame that skips that
+    # boundary has to stand in for it: `DeclarativeRoleMapper` fills time Roles from this
+    # column the same way both custom mappers do.  Constant across the rows of one event,
+    # exactly as the preparer writes it.
+    frame[SOURCE_OCCURRED_AT_COLUMN] = OCCURRED_AT.to_pydatetime()
     event_id, _ = source_event_identity(
         "input_rows", OCCURRED_AT.to_pydatetime(),
         molecule_ref=MOLECULE_REF, source_raw_ref=RAW_REF)

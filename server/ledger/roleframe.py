@@ -296,11 +296,36 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         refs = _source_row_refs(unit)
         out = []
         for sentence, mapping in profile.mappings.items():
-            roles = {
-                role_id: _evaluate_binding(binding, unit, path=(
-                    f"{mapping.config_path}.bind.{role_id}"))
-                for role_id, binding in mapping.bindings.items()
-            }
+            claim = context.snapshot.claims.get(mapping.predicate_id)
+            roles = {}
+            for role_id, binding in mapping.bindings.items():
+                role = None if claim is None else claim.roles.get(role_id)
+                if role is not None and role.kind == "time":
+                    # A TIME Role is filled from the instant the preparation boundary
+                    # already interpreted (`SOURCE_OCCURRED_AT_COLUMN`), never from the
+                    # frame cell the binding names.  Both custom mappers do exactly this
+                    # (`ledger_v2_dt_job_mapper` line 57, `ledger_v2_lot_event_role_mapper`
+                    # line 208) and neither ever reads its `occurred_at` binding; this is
+                    # the same reading, not a new one.  Reading the cell is what refused
+                    # `transfer_event` outright -- a varchar time column arrives as a
+                    # string and `_validate_role_value` demands a tz-aware datetime -- and
+                    # re-parsing it here would be a SECOND spelling of an instant the
+                    # engine has already committed to: `source_event_identity` mints the
+                    # event id from this very value, so an atom timed from anything else
+                    # would disagree with the id of the event it belongs to.
+                    #
+                    # 🔴 OPEN, AND DELIBERATELY NOT DECIDED HERE: when the binding names a
+                    # column OTHER than the driver's `occurred_at`, this ignores it.  The
+                    # two already differ in the live config (`dt_job` reads
+                    # `occurred_at.basis: ingested` while every one of its `bind.occurred_at`
+                    # says `event_time`) and the custom mapper resolves it the same way.
+                    # Awaiting a ruling; nothing on this path can tell the cases apart
+                    # without the mapper reading `driver.occurred_at.column`, which is the
+                    # deployment detail the comment on that constant exists to keep out.
+                    roles[role_id] = unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN]
+                else:
+                    roles[role_id] = _evaluate_binding(binding, unit, path=(
+                        f"{mapping.config_path}.bind.{role_id}"))
             out.append(RoleEmission(
                 sentence=sentence,
                 roles=roles,
