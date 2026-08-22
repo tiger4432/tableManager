@@ -2673,6 +2673,13 @@ body.resizing-active .history-sidebar {
   flex: 0 0 auto;
   white-space: nowrap;
   overflow: visible;
+  /* △소유자: 「가운데 중심에 오게해야지」. The badge is a `<span>`, so it inherited
+     `align-items: normal` and its text sat against the top -- measured 1px above, 16px
+     below. The two buttons were already centred, which is why only one segment looked off. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 .app-header .tx-action-group { flex: 0 0 auto; }
 /* The status MESSAGE is what gives way instead. It is a reading; the three controls beside
