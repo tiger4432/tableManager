@@ -20,6 +20,10 @@ stored keep the fingerprint they were written under -- a ledger appends.
     conda run -n assy_manager python scripts/ledger_restamp_cursor.py --apply    # write
 
 Reports by default; `--apply` is the only thing that writes.
+
+Runs on a config that does not compile whole: a source being authored is dropped, named on
+stdout, and the sources that DO compile are re-stamped anyway. There is no bypass flag --
+a dropped source has no fingerprint to want and no cursor to move.
 """
 from __future__ import annotations
 
@@ -35,7 +39,11 @@ if SERVER not in sys.path:
 
 def main(argv=None):
     from database.database import engine
-    from ledger.setup import DEFAULT_ONTOLOGY_ROOT, load_setup
+    from ledger.config_explorer import load_resolved_setup
+    from ledger.setup import (
+        DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup,
+        setup_from_document,
+    )
     from ledger.setup_registry import cursor_translator_version
     from ledger.store import LedgerStore
 
@@ -47,9 +55,47 @@ def main(argv=None):
     parser.add_argument("--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT))
     args = parser.parse_args(argv)
 
-    setup = load_setup(args.ontology_root)
+    # 🔴 A HALF-BUILT SOURCE MUST NOT BLOCK AN OPERATIONAL COMMAND.  `load_setup` refuses
+    # the WHOLE bundle when any one declaration does not compile, and a half-written source
+    # is the normal state of the authoring screen while somebody is using it -- so this
+    # command was unrunnable exactly when a cursor most needed re-stamping.  Measured
+    # 2026-08-22: `bundle.sources.transter_event.bind.mappings` raised here, before the
+    # script reached a single cursor.
+    #
+    # The resolver below is `OntologyExplorerService._resolution`'s, copied rather than
+    # reinvented: the whole-config load is tried FIRST and takes exactly the path it always
+    # took, and the tolerant read runs only when that refuses.  A source that cannot compile
+    # has no plan, therefore no fingerprint to want, and in practice no cursor either --
+    # nothing has ever run it.  It is named on stdout rather than skipped, because an
+    # operator reading "2 sources" needs to know whether that was 2 of 2 or 2 of 3.
+    root = args.ontology_root
+    try:
+        setup = load_setup(root)
+        dropped = {}
+    except Exception as exc:                                     # noqa: BLE001
+        catalog = live_physical_catalog()
+        resolved = load_resolved_setup(
+            root, catalog=catalog,
+            setup_from_document=lambda doc: setup_from_document(
+                doc, config_root=root, catalog=catalog))
+        setup = resolved["setup"]
+        dropped = resolved["invalid"]
+        print(f"config does not compile whole ({exc}); "
+              f"reading what resolves and naming what does not")
+    for key in sorted(dropped):
+        reasons = dropped[key].get("reasons") or []
+        first = reasons[0].get("path") if reasons else "?"
+        print(f"  DROPPED {key.partition('|')[2] or key} -- not compiled, "
+              f"no fingerprint to re-stamp ({first})")
     sources = ([args.source] if args.source
                else sorted(setup.snapshot.source_plans))
+    # Only reachable through `--source`: the default list IS `source_plans`, so it cannot
+    # name something absent from it.  Named-and-dropped therefore leaves nothing to do.
+    unknown = [s for s in sources if s not in setup.snapshot.source_plans]
+    if unknown:
+        print(f"{', '.join(unknown)}: REFUSED -- not among the sources that compiled; "
+              f"finish the declaration first")
+        return 1
     store = LedgerStore(engine)
     read = store.connection()
     try:
