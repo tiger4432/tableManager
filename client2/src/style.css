@@ -2644,11 +2644,34 @@ body.resizing-active .history-sidebar {
    already carried its own border and colour, so joining them is a gap of zero and a shared
    pair of outer corners. The group has NO border of its own, which is what lets it vanish
    completely while all three children sit at `display: none` (0 pending edits). */
-.tx-action-group { display: inline-flex; align-items: center; }
-.tx-action-group > * { border-radius: 0; height: 32px; }
-.tx-action-group > * + * { margin-left: -1px; }
-.tx-action-group > :first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
-.tx-action-group > :last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+/* △소유자: 「편집 버튼 알약 목업처럼 자연스럽게 하나로 합쳐」
+   Butting three bordered buttons together still reads as three buttons. The mockup gives the
+   BORDER to the group and leaves the children with nothing but a divider, so the outline is
+   one shape and the segments are inside it. Read off the mockup: outer 1px warning + 6px +
+   `warning-weak`, dividers 1px warning, Apply on `success-weak` in `success`, Discard flat. */
+.tx-action-group {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  background: var(--warning-weak);
+  overflow: hidden;
+}
+/* 🔴 `.app-header .glass-log-badge` (0,2,0) out-ranks `.tx-action-group > *` (0,1,0), so the
+   32px/6px header rule kept re-rounding these. Scoped through `.app-header` to match it. */
+.app-header .tx-action-group > * {
+  height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.app-header .tx-action-group > * + * { border-left: 1px solid var(--warning); }
+.app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--warning); }
+.app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: 11.5px; }
+.app-header #tx-discard-btn { border-radius: 0; padding: 0 10px; color: var(--text-muted); font-weight: 400; font-size: 11.5px; }
 
 
 /* ── Mockup 2b/2c: the industrial pass ───────────────────────────────────────────────
