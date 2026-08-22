@@ -262,7 +262,6 @@ function runBuildColumnDefs(sources, schema, fillTargets = [['core_lot', '①'],
     // throws ReferenceError rather than scoring anything — which is how this harness
     // reported the change, loudly, instead of going quietly green.
     constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_LAYOUT'),
-    constFrom(sources.grid, 'grid.js', 'MOCKUP_COLUMN_ORDER'),
     fnFrom(sources.grid, 'grid.js', 'applyMockupLayout'),
     fnFrom(sources.grid, 'grid.js', 'buildColumnDefs'),
     'globalThis.__defs = buildColumnDefs();'

@@ -729,7 +729,6 @@ const MOCKUP_COLUMN_LAYOUT = Object.freeze({
   dt_lot: 112, dt_slot: 58, dt_x: 44, dt_y: 44, core_wafer: 150,
   c_bn: 90, event_time: 150, core_product: 110
 });
-const MOCKUP_COLUMN_ORDER = Object.keys(MOCKUP_COLUMN_LAYOUT);
 
 // The header chrome a column spends before any text: cell padding plus the sort/menu icons.
 // Measured off the live grid rather than assumed -- `dt_slot` at 58px and `dt_eqp` at 70px
@@ -770,26 +769,21 @@ function applyMockupLayout(columnDefs) {
     const width = Math.max(mockupWidth, headerLabelWidth(def.headerName) + HEADER_CHROME_PX);
     def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width);
   });
-  // Stable sort: named columns take the mockup's sequence, everything else keeps the order
-  // `/schema` gave it, after them. `#` is not in this list and stays where it was pinned.
-  const rank = def => {
-    const index = MOCKUP_COLUMN_ORDER.indexOf(def.field);
-    return index === -1 ? MOCKUP_COLUMN_ORDER.length : index;
-  };
-  const ordered = columnDefs
-    .map((def, index) => ({ def, index }))
-    .sort((a, b) => (rank(a.def) - rank(b.def)) || (a.index - b.index))
-    .map(entry => entry.def);
-
-  // 🔴 THE CHECKBOX FOLLOWS THE FIRST COLUMN, NOT ITS ORIGINAL INDEX. `buildColumnDefs` sets
-  // `checkboxSelection: index === 0` against the SCHEMA order; reordering leaves that flag on
-  // whichever column happened to be first in `/schema`, which after this sort can be the
-  // fourth column on screen — a select-all box floating in the middle of the header. Cleared
-  // and re-applied to whatever is actually leftmost.
-  ordered.forEach(def => { def.checkboxSelection = false; def.headerCheckboxSelection = false; });
-  const first = ordered.find(def => def.field);
-  if (first) { first.checkboxSelection = true; first.headerCheckboxSelection = true; }
-  return ordered;
+  // △소유자: 「그리드 컬럼 순서 table config 의 display col 순서 그대로」.
+  //
+  // 🔴 NO REORDERING HERE ANY MORE. `/schema` already answers in the table config's declared
+  // order (measured on `dt_log`: dt_event_id · dt_job_id · event_time · dt_index · dt_lot …),
+  // so the mockup's sequence was a SECOND opinion about column order laid on top of the one
+  // the operator maintains. Two places deciding one thing is how they drift; the config wins
+  // because it is the one an operator can change without touching this file.
+  //
+  // The widths above stay: those are keyed BY NAME and apply wherever the column happens to
+  // sit, so they are a statement about a column, not about the sequence.
+  //
+  // The checkbox re-application went with the sort. `buildColumnDefs` sets
+  // `checkboxSelection: index === 0` against the schema order, and that is now the rendered
+  // order, so re-deriving it here could only ever disagree with itself.
+  return columnDefs;
 }
 
 // Render grid layout using AG-Grid Core

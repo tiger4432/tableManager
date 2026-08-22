@@ -2,6 +2,59 @@
 
 ---
 
+# 🔴🔴 작업 요청 — **`origin/main` 으로 병합 + dist 재빌드** (소유자 지시, 2026-08-22 10:2x)
+
+> △소유자: 「origin main 에 해달라해」
+
+소유자가 **운영(8080)을 보고 계시고**, 거기에는 제 수정이 안 들어가 있습니다.
+`origin/design` 의 아래 세 커밋을 `origin/main` 으로 병합하고 dist 를 다시 구워 주십시오.
+
+```
+a3adb6a0  미저장 알약이 좀은 헤더에서 먼저 찌그러지지 않게
+96bb007e  배지 글자 중앙 정렬
+21f1a50c  🔴 display 를 CSS 가 갖게 — 이게 진짜 수정입니다
+899e0317  (이 보고)
+그리고 그 뒤로 이어지는 컬럼 순서 변경도 같이 필요합니다 (아래 ②)
+```
+
+① **배지 중앙 정렬** — 운영 번들에 `txPendingBadge.style.display = e>0 ? \`inline-block\` : \`none\`` 이
+살아 있습니다. CSS(`.tx-action-group`)는 들어갔는데 인라인이 그것을 이김니다.
+
+② **그리드 컬럼 순서** — △소유자 「table config 의 display col 순서 그대로」.
+`applyMockupLayout` 의 재정렬을 걷어냈습니다 — `/schema` 가 이미 config 순서로 답하고 있었고
+목업 순서는 그 위에 얹힌 **두 번째 의견**이었습니다. 폭은 이름으로 붙는 것이라 그대로 둡니다.
+(virtual_column_render_harness 66/0, 28/28 결함 포착)
+
+---
+
+# 🔴 재빌드 요청 — 운영 번들이 수정 세 개 앞에서 멈췄습니다 (2026-08-22 10:1x)
+
+소유자가 「미저장 라벨이 여전히 가운데 안 온다」고 하셔서 운영(8080) 번들을 직접 열어 보았습니다.
+
+```
+운영 JS  /assets/main-D3qStpvX.js
+  txPendingBadge.style.display = e>0 ? `inline-block` : `none`   ← 제가 지운 그 줄이 살아 있습니다
+운영 CSS /assets/style-DBsbFcEs.css
+  .tx-action-group · .audit-filter · .range-readout · .fill-target-header  전부 있음
+```
+🔴 CSS 는 들어갔는데 인라인 `inline-block` 이 그것을 이깁니다 — 정확히 제가 고친 버그입니다.
+
+```
+09:56  a3adb6a0  미저장 알약이 먼저 찌그러지지 않게
+09:57  3e52394f  총괄 dist 빌드          ← 운영은 여기서 멈췤습니다
+09:58  96bb007e  글자 중앙 정렬
+10:07  21f1a50c  display 를 CSS 가 갖게   ← 진짜 수정. 번들에 없습니다
+```
+세 커밋 모두 `origin/design` 에 올라가 있습니다. **병합 + dist 재빌드 부탁드립니다.**
+
+⚠ 제가 배운 것: 저는 dev(:5173) 만 보고 「고쳐졌다」고 보고했고, 소유자는 운영을 보고 계셨습니다.
+앞으로 화면 수정 보고에는 **어느 포트에서 확인했는지**를 같이 적겠습니다.
+
+---
+
+
+---
+
 # ✅ 2c 착지 — Global 탭이 표가 됐습니다 (`fc70ef0b`, 2026-08-22 02:xx)
 
 ```

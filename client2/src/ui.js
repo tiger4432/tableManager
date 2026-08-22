@@ -44,15 +44,18 @@ export function updateTxModeUI() {
       elements.txModeToggle.checked = true;
     }
     if (elements.txApplyBtn) {
-      elements.txApplyBtn.style.display = count > 0 ? 'inline-block' : 'none';
+      // 🔴 `''`, NOT `'inline-block'`. An inline `display` BEATS the stylesheet, so these
+      // three were laid out as inline-block and `align-items: center` never applied -- the
+      // count sat on the ceiling of its pill. JS decides WHETHER they show; CSS decides HOW.
+      elements.txApplyBtn.style.display = count > 0 ? '' : 'none';
       // The count lives in the badge beside it -- mockup 2b writes it once, not twice.
       elements.txApplyBtn.textContent = 'Apply';
     }
     if (elements.txDiscardBtn) {
-      elements.txDiscardBtn.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.txDiscardBtn.style.display = count > 0 ? '' : 'none';
     }
     if (elements.txPendingBadge) {
-      elements.txPendingBadge.style.display = count > 0 ? 'inline-block' : 'none';
+      elements.txPendingBadge.style.display = count > 0 ? '' : 'none';
       elements.txPendingBadge.textContent = `⚡ 미저장 ${count}`;
     }
     if (elements.performanceLog) {

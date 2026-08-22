@@ -2667,7 +2667,24 @@ body.resizing-active .history-sidebar {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  /* △소유자: 「미저장 이거 글씨가 왜이래」 -- the count was ellipsised to 「미저장…」.
+     Not the text length: these were `flex: 0 1 auto` and shrank first when the header got
+     tight, which it is on a narrower window than the one I was measuring on. */
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: visible;
+  /* △소유자: 「가운데 중심에 오게해야지」. The badge is a `<span>`, so it inherited
+     `align-items: normal` and its text sat against the top -- measured 1px above, 16px
+     below. The two buttons were already centred, which is why only one segment looked off. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
+.app-header .tx-action-group { flex: 0 0 auto; }
+/* The status MESSAGE is what gives way instead. It is a reading; the three controls beside
+   it are not, and a button whose label is cut is a button you have to guess at. */
+.app-header #performance-log { flex: 0 1 auto; min-width: 0; }
 .app-header .tx-action-group > * + * { border-left: 1px solid var(--warning); }
 .app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--warning); }
 .app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: 11.5px; }
