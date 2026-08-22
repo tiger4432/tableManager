@@ -142,6 +142,22 @@ const PLAN = {
     // `mappings` became a map keyed by sentence on 2026-08-21 and `packs` went the same
     // day, so `mappings[1].bind.count` named two shapes that no longer exist. The role a
     // value-object predicate opens is `value`; nothing declares it claim-side any more.
+    // 🔴 THE MAP'S OWN ROW, WHICH THE SERVER EMITS FOR EVERY `bind`. Added 2026-08-22:
+    // the fixture had none, so it could not tell "the plan NAMES this member" from "some
+    // descendant row sits under this path" -- and that is exactly the distinction the map
+    // now turns on, after a removed sentence kept being redrawn from the saved
+    // declaration. A forced member set is a `shape` row whose value IS the names.
+    field({
+      path: 'bundle.sources.dt_job.bind.mappings.counted.bind', label: '결선할 역할',
+      step: 'sources', state: 'derived', tier: 'derivation',
+      value: ['occurred_at', 'subject', 'value'], disposition: 'shape',
+      ground: {
+        rule: 'bind_rows_from_predicate',
+        text: '채움: 낱말 has_netdie@1이 요구하는 역할 3개',
+        from_paths: ['bundle.vocabulary.has_netdie@1'],
+        from_value: ['occurred_at', 'subject', 'value'],
+      },
+    }),
     field({
       path: 'bundle.sources.dt_job.bind.mappings.counted.bind.value', label: '역할 value',
       step: 'sources', state: 'missing', tier: 'constrained_input',
@@ -313,7 +329,7 @@ const renderDraft = (plan) => {
   const root = render(PLAN);
   const derivedRows = inside(root, 'oe-bucket--derived', 'oe-field');
   const derivedGrounds = inside(root, 'oe-bucket--derived', 'oe-ground');
-  eq('B1 the derived bucket holds every derived row', derivedRows.length, 2);
+  eq('B1 the derived bucket holds every derived row', derivedRows.length, 3);  // was 2
   eq('B2 every derived row carries a ground block',
     derivedGrounds.length, derivedRows.length);
   check('B3 the ground states its sentence',
@@ -396,7 +412,7 @@ const renderDraft = (plan) => {
     paths.includes('bind.mappings.counted.bind.value'), paths.join(','));
   const slots = paths.filter((path) => path.split('.').length === 5);
   check('G3 no slot is invented: only what the document holds or the plan names',
-    slots.length === 2, slots.join(','));
+    slots.length === 3, slots.join(','));  // was 2: the predicate opens three roles
 }
 
 // ── D. the counts bite: delete the rows and the numbers must move ─────────────────

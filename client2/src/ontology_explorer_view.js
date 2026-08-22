@@ -1365,6 +1365,17 @@ function writablePrefix(state) {
 function attentionPaths(plan) {
   const hot = [];
   for (const row of plan.fields || []) {
+    // 🔴 A DERIVATION WITH NOTHING TO DERIVE FROM IS WAITING, NOT OWED. A derived row whose
+    // value is `null` has not failed -- its input has not been answered yet, which is what
+    // `null` means on a derivation everywhere in this system (`config_authoring`'s
+    // `filled_declaration` skips exactly this row for exactly this reason: "the derivation
+    // having NO ANSWER YET, not an answer of nothing"). Measured 2026-08-22 on a source
+    // built from nothing: `prepare.implementation_version` and `map.implementation_version`
+    // each carried `invalid_version` + `missing_field` and lit up as two more squares to
+    // fill, beside the ONE thing the person actually has to do -- pick the
+    // `implementation_id` their ground already names. The refusals are still sent and still
+    // rendered on the row; they simply stop being counted as the person's work.
+    if (row.state === 'derived' && row.value === null) continue;
     if (row.remaining || row.conflicts || row.refusals?.length) hot.push(row.path);
   }
   return hot;
@@ -1876,16 +1887,30 @@ function renderAuthoring(state) {
     if (row) drawn.add(row.path);
     return row;
   };
-  /** The immediate member names the plan speaks for under a map path. */
+  /** The member names something FORCES under a map path -- never the names a person typed.
+   *
+   * 🔴 THE UNION IN `renderSkeletonMap` IS FOR FORCED MEMBERS, AND THIS IS THE HALF THAT
+   * SAYS WHICH ONES THEY ARE. Scanning every plan row under the path could not tell the
+   * two apart: `bind.mappings.<sentence>` is a name a PERSON typed and the `.bind.<role>`
+   * under it is a role a PREDICATE opens, and both have descendant rows. So removing one
+   * sentence from the draft left its row on screen -- the document no longer held it, the
+   * scan still named it, and the union put it back with its 「−」 gone (「−」 follows `held`).
+   * To the operator: pressed delete, nothing deleted, and no way to retry. Measured by the
+   * lead in a browser on `bind.mappings.fsadffsdf`, 2026-08-22.
+   *
+   * The plan already draws the distinction and does not need a path list to do it: a map
+   * whose members are forced carries a ROW SET at its own path -- `disposition: 'shape'`,
+   * "not a file leaf at all (a row set, a slot list)" -- whose value IS the member names,
+   * from `bind_rows_from_predicate` and `entity_binding_keys_from_entity`. A map a person
+   * fills carries no such row (`bind.mappings` is a plain `answered` echo of the document's
+   * own keys), so it follows the document and nothing else.
+   */
   const plannedMembers = (path) => {
-    const under = `${base}${path ? '.' + path : ''}.`;
-    const out = [];
-    for (const row of plan.fields || []) {
-      if (!row.path.startsWith(under)) continue;
-      const key = row.path.slice(under.length).split('.')[0].split('[')[0];
-      if (key && !out.includes(key)) out.push(key);
-    }
-    return out.sort();
+    const own = (plan.fields || []).find(
+      (item) => item.path === `${base}${path ? '.' + path : ''}`);
+    if (!own || own.state !== 'derived' || own.disposition !== 'shape') return [];
+    return Array.isArray(own.value)
+      ? own.value.filter((key) => typeof key === 'string') : [];
   };
   // A `$role` is spelled by the ROLE, not by the endpoint: `$r` when it is required and
   // `$r?` when it is not, which is the server's `_role_reference` and the only spelling

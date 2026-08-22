@@ -1597,6 +1597,41 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
             payload["refusals"] = payload["refusals"] + [
                 dict(row) for row in extra
                 if (row["code"], row["path"]) not in seen]
+        # 🔴 A DEFAULT IS FOR AN EMPTY SQUARE.  A default computed over a square somebody
+        # ALREADY ANSWERED has nothing to offer and one thing to cost: `conflicts` compares
+        # it with the answer and reports the answer as a fault.  Measured 2026-08-22 on
+        # `lot_event.read.order_by`, where the catalog's shortest declared key derives
+        # `['txn_seq']` and the file says `['event_time', 'row_id']` -- both legal
+        # (`_columns_cover_declared_unique_key` is a superset test over EVERY declared key,
+        # and the file's ordering covers `row_id`), and the file's is the one 1,323 atoms
+        # were read in.  The row was the only red square on that source.
+        #
+        # 🔴 THE CLASS, NOT THE ROW.  Every `default_overridable` row is a default and none
+        # of them may compute one over an answer, so the withholding is here -- at the one
+        # place the disposition is known for the whole plan -- rather than as a `filling`
+        # branch inside each producer.  `_source_fields`' `group_by` already carries such a
+        # branch and is the proof it works; four more rows needed it and did not have it.
+        #
+        # 🔴 AN EMPTY VALUE THE VALIDATOR REFUSES IS NOT AN ANSWER, AND THE TEST IS THE
+        # REFUSAL RATHER THAN THE EMPTINESS.  `read.order_by: []` -- what the old screen
+        # seeded -- would otherwise read as "answered", withhold the default, AND still
+        # carry `invalid_type: must be a list with at least one item`.  Keying on
+        # emptiness alone would be wrong in the other direction: `_nonblank_list` passes
+        # `allow_empty=True` for `prepare.input_columns`, `map.input_columns` and
+        # `read.group_by`, so `[]` IS an answer there, and `_says_nothing`'s own docstring
+        # records the same thing for a declared `false`.  So: nothing in the box AND the
+        # validator objecting to this square.
+        if payload["disposition"] == "default_overridable" and payload["has_declared"]:
+            if _says_nothing(payload["declared"]) and payload["refusals"]:
+                # The default WINS.  The square holds nothing the validator will take, so it
+                # is not a rival answer and must not be scored as one -- the derivation goes
+                # on filling it, and `filled_declaration` writes it at save.  The refusal
+                # itself stays exactly as the validator wrote it; what stops is calling the
+                # empty box a DISAGREEMENT with the value about to be written into it.
+                payload["conflicts"] = False
+            else:
+                payload.update(state="answered", value=payload["declared"],
+                               conflicts=False, ground=None, disposition="")
         # Stamped so the screen never re-derives it. The fold rule and the per-layer count
         # must answer from ONE predicate: a screen saying "3 남음" while folding one of the
         # three away is a screen where neither number is believed.
