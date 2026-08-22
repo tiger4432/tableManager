@@ -69,6 +69,8 @@ from .implementations import (
     mapper_declarations,
     source_preparer_declarations,
 )
+from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
+from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _MAPPER_UNITS,
     _OBJECT_KINDS,
@@ -197,6 +199,16 @@ class Field:
     ground: Ground | None = None
     candidates: tuple[Any, ...] | None = None
     universe: str | None = None
+    #: 🔴 CANDIDATES THE READ ALREADY BRINGS IN -- drawn PRESSED AND UNPRESSABLE, and never
+    #: written to the file.  Owner, 2026-08-22: 「저 디폴트 컬럼들은 클릭 불가능한 «클릭되어
+    #: 있는» 버튼으로 둬」.  A subset of `candidates`, published BESIDE them rather than
+    #: folded into them or into `value`: the two lists answer different questions ("may I
+    #: pick this" vs "is it already coming"), and a screen that could not tell them apart
+    #: would either hide half the picker or write locked names into `input_columns`.
+    #:
+    #: The set is `source_preparation.locked_select_columns` -- computed HERE and shipped,
+    #: because a client that re-derived it would be a second vocabulary for one sentence.
+    locked: tuple[str, ...] = dataclass_field(default_factory=tuple)
     note: str = ""
     #: How the derived value relates to what the file says.  ``equal`` is the zero-freedom
     #: case; ``superset`` is a derived MINIMUM that a wider declaration still satisfies.
@@ -263,6 +275,9 @@ class Field:
                 _plain(item) for item in self.candidates],
             "universe": self.universe,
             "universe_note": _UNIVERSE_NOTE.get(self.universe or "", ""),
+            # Always a list, never `None`: "nothing is locked" and "this field has no such
+            # notion" are the same instruction to the screen -- draw no locked chips.
+            "locked": [_plain(item) for item in self.locked],
             "comparison": self.comparison,
             "disposition": self.disposition,
             "forbidden": [_plain(item) for item in self.forbidden],
@@ -623,6 +638,41 @@ def _mapper(source: Any) -> Mapping[str, Any]:
     return mapper if isinstance(mapper, Mapping) else {}
 
 
+def _locked_read_columns(source: Any) -> tuple[str, ...]:
+    """Columns this source's `read` brings in before either `input_columns` says a word.
+
+    🔴 THE RUNTIME'S OWN FORMULA, FED FROM THE DECLARATION.  The set is
+    `source_preparation.locked_select_columns`, which `base_select_columns` also calls --
+    the screen and the cursor say ONE sentence about what arrives anyway.  What this
+    function does is the part the runtime does not need: read the five terms off a bundle
+    that has not compiled, because a source someone is still building never has.
+
+    `basis` is resolved the way `setup_registry._occurred_at_plan` resolves it, so the
+    screen locks what the read will actually select rather than what the file spells.
+    Everything is tolerant of the wrong shape: a half-written `read` yields fewer terms,
+    and a source that has declared nothing yet locks NOTHING -- correctly, because nothing
+    arrives anyway until something is declared.
+    """
+    driver = _driver(source)
+    occurred = driver.get("occurred_at")
+    occurred = occurred if isinstance(occurred, Mapping) else {}
+    basis = occurred.get("basis")
+    column = (OCCURRED_AT_BASIS_COLUMNS.get(basis) if isinstance(basis, str)
+              else occurred.get("column"))
+    cursor = driver.get("cursor")
+    cursor = cursor if isinstance(cursor, Mapping) else {}
+    outputs = _preparation(source).get("output_columns")
+    return locked_select_columns(
+        identity=[str(name) for name in _listed(driver.get("identity"))],
+        group_by=[str(name) for name in _listed(driver.get("group_by"))],
+        order_by=[str(name) for name in _listed(driver.get("order_by"))],
+        cursor_columns=[str(name) for name in _listed(cursor.get("columns"))],
+        occurred_at_column=column if isinstance(column, str) else None,
+        preparer_outputs=([str(name) for name in outputs]
+                          if isinstance(outputs, Mapping) else ()),
+    )
+
+
 def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
     """Every column a binding names, with the exact authoring path that names it."""
     if not isinstance(binding, Mapping):
@@ -814,25 +864,70 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # ------------------------------------------------------------------ preparer
         preparation = _preparation(source)
         prep_base = f"bundle.sources.{source_id}.prepare"
+        # 🔴 THE SET THE READ ALREADY CARRIES, FOR BOTH SQUARES BELOW.  One call, one
+        # sentence: `locked_select_columns` is the runtime's own first five terms, and it
+        # is fed here from the DECLARATION because the source being authored does not
+        # compile.  Intersected with each square's candidates before it ships, since a
+        # locked chip that is not in the picker is a chip the screen cannot draw --
+        # `occurred_at.basis` resolves to `created_at`, which the schema builder puts on
+        # every table and `table_config.json` lists on none of them.
+        locked_all = set(_locked_read_columns(source))
+        prep_locked = tuple(name for name in physical if name in locked_all)
         # Not gated on `physical`: which preparer runs is a fact about the REGISTRY, and a
         # source whose relation is not in the catalog yet still has to be able to name one.
         yield from _implementation_clause_fields(
             prep_base, preparation, preparers, preparer_ids, "준비기 구현",
             NEW_IMPLEMENTATION_NOTE)
         if physical:
-            inputs = list(_listed(preparation.get("input_columns")))
+            # 🔴 MEMBERSHIP, NOT TRUTHINESS, AND `dt_job` IS WHY.  `_nonblank_list` passes
+            # `allow_empty=True` for this key, so `[]` is a LEGAL answer and `dt_job`
+            # declares exactly that.  `inputs if inputs else _ABSENT` -- what stood here --
+            # reported that declaration as `has_declared: false`, which under the default
+            # below hands the square to the derivation and writes the whole relation into a
+            # source that said it wanted none.
+            declared_inputs = (list(_listed(preparation.get("input_columns")))
+                               if "input_columns" in preparation else _ABSENT)
             # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
             # PHYSICAL table and nothing else -- it runs before anything has been
             # prepared -- so its candidates are `relation`'s columns.  While the body
             # lived in its own section this field had no relation to point at and the
             # screen offered a bare text box.
+            #
+            # 🔴 EVERYTHING ON, MINUS WHAT IS ALREADY COMING (owner, 2026-08-22: 「그러면 그냥
+            # 디폴트 전체 입력해도 되지?」, on top of the locked-chip ruling minutes earlier).
+            # The default is the candidates the locks do NOT already cover, because a locked
+            # column arrives whether or not this key names it and the key must not name it:
+            # `input_columns` still means "on top of the read", and putting a locked name in
+            # it would move a fingerprint to say something the file already said.
+            #
+            # The cost, chosen knowingly and twice: the saved list names columns this source
+            # does not read, so dropping one of them from the table stops this source too.
+            # The mitigation IS the control -- the person turns the chip off -- which is why
+            # the locks and the everything-default had to land together.
             yield Field(
                 path=f"{prep_base}.input_columns", step="sources",
                 label="준비기 input_columns",
-                state="answered" if inputs else "unanswered", tier=TIER_CONSTRAINED,
-                value=inputs, declared=inputs if inputs else _ABSENT,
+                state="derived", tier=TIER_DERIVATION,
+                value=[name for name in physical if name not in locked_all],
+                declared=declared_inputs,
+                ground=Ground(
+                    "preparer_inputs_from_relation_minus_locked",
+                    f"기본값: relation {relation}의 컬럼 {len(physical)}개 중 "
+                    f"read가 이미 읽는 {len(prep_locked)}개를 뺀 나머지",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
+                    [name for name in physical if name not in locked_all]),
+                # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
+                # derived value is a MAXIMUM a person narrows, which is neither of the two
+                # things `comparison` can say (`equal` = zero freedom, `superset` = a
+                # derived MINIMUM a wider declaration satisfies).  `superset` is the word
+                # that already produced a false red on `input_columns` once, so the row
+                # states its own disposition, as `_source_fields`' `group_by` does.  That
+                # word is also what routes this row through `authoring_plan`'s
+                # withholding: a square that already answers keeps its answer.
+                disposition="default_overridable",
                 candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                note="준비기는 준비 전에 돌기 때문에 물리 표 컬럼만 읽을 수 있다.",
+                locked=prep_locked,
+                note="잠김 = read가 이미 읽는 컬럼 · 나머지 토글",
             )
             outputs = preparation.get("output_columns")
             names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
@@ -895,27 +990,47 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `MapperDescriptor.emits` is compiled from `bind.mappings.<sentence>.use` and there is
         # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
-        if binding_columns:
+        # 🔴 THE PREPARED FRAME, NOT THE BINDINGS.  Deriving this from `bind.mappings` made
+        # the PROFILE the gate, so a source with no mappings yet -- which is what a
+        # half-built one looks like -- got no row at all, and the ruling says both squares
+        # come up full on a new source.  The frame is also the honest universe: it covers
+        # the columns a binding never names and a custom mapper still reads
+        # (`__source_event_incomplete` on `lot_event`).
+        if prepared:
+            map_locked = tuple(name for name in prepared if name in locked_all)
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
-                value=sorted({column for column, _ in binding_columns}),
+                value=[name for name in prepared if name not in locked_all],
                 declared=list(_listed(mapper.get("input_columns")))
                 if "input_columns" in mapper else _ABSENT,
                 ground=Ground(
-                    "mapper_inputs_from_profile_bindings",
-                    f"채움: 소스 {source_id}의 프로필이 바인딩한 컬럼 "
-                    f"{len({column for column, _ in binding_columns})}개",
-                    tuple(path for _, path in binding_columns),
-                    sorted({column for column, _ in binding_columns})),
-                comparison="superset",
+                    "mapper_inputs_from_prepared_frame_minus_locked",
+                    f"기본값: 준비 뒤 프레임 컬럼 {len(prepared)}개 중 "
+                    f"read가 이미 읽는 {len(map_locked)}개를 뺀 나머지 "
+                    f"(relation {relation} + 준비기 output_columns)",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
+                     f"{prep_base}.output_columns"),
+                    [name for name in prepared if name not in locked_all]),
+                # Stated for the same reason as the preparer row above: the value is the
+                # MAXIMUM and a person narrows it, so `comparison` has no word for it.
+                disposition="default_overridable",
                 # 🔴 RELATION ∪ 준비기.output_columns, WHICH THE MAPPER COULD NOT BE TOLD
                 # BEFORE.  The mapper runs AFTER preparation, so a preparer-made column is
                 # legal here and a physical one still is too -- the widening the move was
-                # for. The derived value is a MINIMUM; the universe is what a person may
-                # widen it to.
+                # for.  Universe and default are the same set minus the locks; the universe
+                # is what a person may put BACK after narrowing.
                 candidates=tuple(prepared), universe=UNIVERSE_PREPARED,
-                note="기본은 최소 집합 · 더 넣어도 됩니다",
+                # 🔴 THE SAME FIVE TERMS AS THE PREPARER SQUARE, INCLUDING THE `output_columns`
+                # SUBTRACTION -- the order publishes ONE formula and this row does not get a
+                # private variant.  Consequence, stated rather than absorbed: a preparer
+                # output that `read.identity` names (`row_identity` on `lot_event`) is in
+                # this square's candidates and is NOT locked, so it comes up pressed and
+                # still pressable even though the frame carries it regardless.  Turning it
+                # off is harmless: `base_select_columns` already drops mapper inputs that
+                # are preparer outputs, so it never widens the physical SELECT either way.
+                locked=map_locked,
+                note="잠김 = read가 이미 읽는 컬럼 · 나머지 토글",
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")

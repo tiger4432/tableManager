@@ -428,15 +428,53 @@ class SourcePreparerImplementationRegistry:
             ) from exc
 
 
+def locked_select_columns(
+    *,
+    identity: Sequence[str] = (),
+    group_by: Sequence[str] = (),
+    order_by: Sequence[str] = (),
+    cursor_columns: Sequence[str] = (),
+    occurred_at_column: str | None = None,
+    preparer_outputs: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """What a source's read brings in BEFORE anybody declares an input column.
+
+    The first five terms of `base_select_columns`, lifted out because a second reader
+    needs them and cannot have a compiled plan.  The authoring screen draws these columns
+    as pressed-and-locked chips -- "this arrives anyway" -- on a bundle that is half
+    written and does not compile, which is the normal state of a source being built.  So
+    the parameters are plain sequences read straight off a declaration, not a `SourcePlan`.
+
+    Written ONCE and called twice on purpose: the screen's locked set and the cursor's
+    SELECT are the same sentence, and a second spelling of it would drift the day a term
+    is added -- the screen would keep offering a chip the read had already forced on.
+
+    `occurred_at_column` is optional only for the authoring caller.  A compiled
+    `OccurredAtPlan.column` is always a readable column (a `basis` resolves to one at
+    compile time), while a half-written declaration may not name a time at all yet.
+    """
+    outputs = set(preparer_outputs)
+    columns = set(identity) - outputs
+    columns.update(set(group_by) - outputs)
+    columns.update(order_by)
+    columns.update(cursor_columns)
+    if occurred_at_column:
+        columns.add(occurred_at_column)
+    return tuple(sorted(columns))
+
+
 def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     """Physical columns the existing cursor must SELECT before preparation."""
     driver = source_plan.driver
     outputs = set(driver.preparation.preparer.output_columns)
-    columns = set(driver.identity) - outputs
-    columns.update(set(driver.group_by) - outputs)
-    columns.update(driver.order_by)
-    columns.update(driver.cursor_columns)
-    columns.add(driver.occurred_at.column)
+    columns = set(locked_select_columns(
+        identity=driver.identity,
+        group_by=driver.group_by,
+        order_by=driver.order_by,
+        cursor_columns=driver.cursor_columns,
+        occurred_at_column=driver.occurred_at.column,
+        preparer_outputs=driver.preparation.preparer.output_columns,
+    ))
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns
                    if column not in outputs)
