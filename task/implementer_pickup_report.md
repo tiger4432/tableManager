@@ -1,5 +1,61 @@
 # 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (실측 2026-08-22 10:1x)
 
+# 🔴 네 항목 착지 + **빌드 요청** + 판정 요청 하나 (실측 10:3x)
+
+```
+0a44069c  fix(ontology): a default is for an empty square, and a derivation waiting on its input is not work
+          3 파일 · +87 / -11   (config_authoring · ontology_explorer_view · 하네스 픽스처)
+```
+
+## 🔴 빌드가 «밀렸습니다» — ③④ 는 빌드 전엔 소유자에게 «안 보입니다»
+```
+client2/src/ontology_explorer_view.js  10:23      dist  09:56
+```
+서버 쪽(①②)은 재기동만으로 됩니다. **③(빨강 세는 법)·④(매핑 삭제)는 클라라 빌드가 필요합니다.**
+
+## 부류가 «1이 아니라 5»였습니다
+```
+default_overridable + 선언 있음    5행 -> 0행
+   lot_event.read.order_by      conflicts «true»   <- 소유자가 보신 빨강
+   dt_job / user_test .read.order_by               false
+   dt_job / lot_event .map.input_columns           false   <- «예상 밖의 둘»
+```
+그 둘은 지금 초록인데 **두 파일이 마침 «상위집합»을 선언해서**입니다.
+누군가 목록을 «좁히는 날» 맞는 선언이 빨개졌을 자리입니다. 눈이 머는 것도 아닙니다 —
+검증기가 «같은 경로»에서 짧은 목록을 따로 거절하고 그 거절은 그대로 뜹니다.
+
+## ②의 방아쇠는 «빔»이 아니라 «거절»입니다 — 이게 load-bearing
+```
+_nonblank_list 가 allow_empty=True 인 키가 셋 (prepare/map.input_columns · read.group_by)
+-> 거기서 [] 는 «합법한 답»이고 거절이 없으므로 기본값이 «안» 이깁니다
+   「빈 값 = 부재」로 일반화했으면 그 셋을 덮어썼습니다
+```
+
+## ✅ 하네스는 «새 계약으로 고쳤습니다» (45/0)
+빨강 넷이 났는데 **코드를 되돌리지 않았습니다.** 픽스처에 «bind 맵의 자기 행»이 없어서,
+「계획이 이 멤버를 이름 붙였다」와 「어떤 하위 행이 이 경로 밑에 있다」를 «구분 못 했습니다» —
+그게 정확히 ④가 딛는 구분입니다. 그 행 하나와 그로 인해 움직인 수 둘을 고쳐 «초록»입니다.
+(오늘 밤 이미 판정한 부류: 계약이 바뀌면 하네스를 고친다. KNOWN_RED 금지.)
+
+## 🔴 판정 요청 — 그 다섯 행이 이제 «기본 접힘»입니다
+```
+lot_event.read.order_by      전: 열림(입력2·버튼12)   후: «접힘»(버튼1)
+lot_event.map.input_columns  전: 열림(입력10·버튼28)  후: «접힘»
+```
+화면 자기 규칙(「끝난 결정은 대기 중이 아니다」)의 결과이고, 이제 `read.identity`·`read.group_by` 와
+«같은» 거동입니다. **다만 `foldDecision` 주석이 「order_by 를 접었더니 도달 불가가 됐다」를 적어 뒀습니다** —
+그건 order_by 가 «영구 파생»이던 시절 문장입니다. 열어 두길 원하시면 «접힘 규칙» 변경이고 울타리 밖입니다.
+
+## 못 잰 것 — 원자 1,323 (둘 다 HEAD 에서도 «똑같이» 막힘)
+```
+1  라이브 번들이 «컴파일 안 됨» — user_test.bind.mappings.fsadffsdf.bind 가 빈 채
+2  task/evidence/ledger_atom_baseline.py 가 «낡음» — 픽스처에 row_id 가 없어 KeyError
+대신   config_authoring 은 읽기·번역 경로(setup·backfill·runtime_v2·roleframe)가 «import 안 함»
+       + 지문 셋 «동일» -> 원자가 움직일 «경로가 없습니다»
+```
+⚠️ 두 번째는 «따로 고칠 것»으로 적어 둡니다 — 그게 낡으면 이 불변량을 앞으로 못 잽니다.
+
+
 ## 채널 — 세션 간 메시지 «안 쓴다». 파일과 커밋이다
 ```
 총괄 → 나   task/IMPLEMENTER_ORDERS.md        착수 «전»·보고 «전» 다시 읽는다
