@@ -879,14 +879,26 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             prep_base, preparation, preparers, preparer_ids, "준비기 구현",
             NEW_IMPLEMENTATION_NOTE)
         if physical:
-            # 🔴 MEMBERSHIP, NOT TRUTHINESS, AND `dt_job` IS WHY.  `_nonblank_list` passes
-            # `allow_empty=True` for this key, so `[]` is a LEGAL answer and `dt_job`
-            # declares exactly that.  `inputs if inputs else _ABSENT` -- what stood here --
-            # reported that declaration as `has_declared: false`, which under the default
-            # below hands the square to the derivation and writes the whole relation into a
-            # source that said it wanted none.
-            declared_inputs = (list(_listed(preparation.get("input_columns")))
-                               if "input_columns" in preparation else _ABSENT)
+            # 🔴 EMPTY IS UNANSWERED HERE, AND THAT IS A RULING, NOT AN OVERSIGHT.  Do not
+            # "fix" this back to a membership test.  A membership test stood here earlier on
+            # 2026-08-22 and was correct on its own terms: `_nonblank_list` passes
+            # `allow_empty=True` for this key, so `[]` IS a legal declaration, and reading it
+            # as absent hands the square to the default and overwrites what somebody wrote.
+            # The owner was told exactly that -- including that `dt_job.prepare` would change
+            # and its cursor would stop -- and ruled the other way: 「그냥 다 갈아버린다」.
+            #
+            # So `[]` means UNANSWERED for this key regardless of who left it there, and the
+            # default wins.  The provenance split that would have kept a saved `[]` while
+            # treating a create draft's seed as unanswered was designed and CANCELLED in the
+            # same breath; it is not a smaller version of this and must not be reintroduced
+            # as one.
+            #
+            # 🔴 SCOPE IS THIS KEY AND THE MAPPER'S TWIN, NOWHERE ELSE.  The same rule at
+            # `authoring_plan`'s class-level branch would catch `read.group_by`, where `[]`
+            # is the RIGHT answer under `unit: row` and overwriting it would be a defect.
+            # That is why the test lives here at the producer instead.
+            inputs = list(_listed(preparation.get("input_columns")))
+            declared_inputs = inputs if inputs else _ABSENT
             # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
             # PHYSICAL table and nothing else -- it runs before anything has been
             # prepared -- so its candidates are `relation`'s columns.  While the body
@@ -998,12 +1010,15 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # (`__source_event_incomplete` on `lot_event`).
         if prepared:
             map_locked = tuple(name for name in prepared if name in locked_all)
+            mapper_inputs = list(_listed(mapper.get("input_columns")))
+            declared_mapper_inputs = mapper_inputs if mapper_inputs else _ABSENT
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
                 value=[name for name in prepared if name not in locked_all],
-                declared=list(_listed(mapper.get("input_columns")))
-                if "input_columns" in mapper else _ABSENT,
+                # Empty-as-unanswered, same ruling and same scope as the preparer row above
+                # -- see the comment there before changing this back to a membership test.
+                declared=declared_mapper_inputs,
                 ground=Ground(
                     "mapper_inputs_from_prepared_frame_minus_locked",
                     f"기본값: 준비 뒤 프레임 컬럼 {len(prepared)}개 중 "
