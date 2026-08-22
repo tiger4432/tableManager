@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Seed synthetic die-transfer rows into ``dt_log`` -- the first data of its kind.
+"""Seed synthetic die-transfer rows into ``dt_transfer_log`` -- the first data of its kind.
 
 WHY THIS EXISTS.  Across the 34,939 rows ``dt_log`` held on 2026-08-22, six columns were
 entirely NULL: ``core_wafer_id``, ``c_wx``, ``c_wy``, ``dt_job_id``, ``b_wx``, ``b_wy``.
@@ -11,6 +11,16 @@ six are exactly what that source's declaration binds:
     target  (die@1)   mat_id=dt_job_id       x=b_wx   y=b_wy      # the DT wafer it landed on
 
 This is not repair -- there is nothing to restore.  It ADDS rows and never deletes any.
+
+WHERE THE ROWS GO, AND THE ONE DELETE THIS SCRIPT CAN DO.  The first landing (2026-08-22,
+1,405 rows, commit 7147b634) put them in ``dt_log`` and that was the wrong home: a ledger
+source reads its whole relation ordered by ``dt_cell_key``, so ``transfer_event``'s first
+row was one of the 34,939 non-transfer rows, it had no ``b_wx``, and the source refused
+there and never advanced.  The refusal was never about this fixture's data.  The owner
+ruled for a table of its own rather than a filtering preparer, so rows now go to
+``dt_transfer_log`` and ``--rollback-dt-log`` takes the first landing back out of
+``dt_log``.  The owner moves the source's ``relation`` on screen; this script never
+touches the ontology config.
 
 GEOMETRY IS READ, NEVER GENERATED.  Both die sets come out of ``valid_die_ref`` as they are:
 
@@ -47,11 +57,21 @@ yields are declared constants below (not draws), so the row total is arithmetic 
 no execution to state.  Only WHICH dies are yielded and WHERE each lands is random, and
 that randomness comes from one fixed seed.
 
-IDEMPOTENCY.  ``dt_log`` declares ``business_key: dt_cell_key`` and carries a UNIQUE index
-on ``business_key_val``.  Every row here is written with its ``dt_cell_key`` as the batch
-business key, so a second run resolves onto the SAME rows and updates them in place.
-Running twice cannot double the rows, because the keys are a pure function of the fixed
-seed and the read geometry.
+IDEMPOTENCY.  ``dt_transfer_log`` declares ``business_key: dt_cell_key``.  Every row here
+is written with its ``dt_cell_key`` as the batch business key, so ``apply_batch_updates``
+resolves a second run onto the SAME rows and updates them in place.  Running twice cannot
+double the rows, because the keys are a pure function of the fixed seed and the read
+geometry.
+
+⚠️ The catalog declaration created this table with a PLAIN index on ``business_key_val``,
+not a unique one (measured on the physical table: ``ix_dt_transfer_log_business_key_val``
+is non-unique).  The single-process resolution above does not depend on it, but the
+cross-process race documented in ``crud.apply_batch_updates`` is only turned into a
+recoverable ``IntegrityError`` when a UNIQUE index exists.  This repository already owns
+that migration -- use it rather than adding an index here:
+
+    python migrations/add_business_key_unique_index.py --table dt_transfer_log
+    python migrations/add_business_key_unique_index.py --table dt_transfer_log --apply
 """
 
 from __future__ import annotations
@@ -64,8 +84,25 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-DT_TABLE = "dt_log"
+#: Where transfer rows are written.  They were first written into ``dt_log`` on
+#: 2026-08-22 (1,405 rows, commit 7147b634).  That table also holds 34,939 rows that are
+#: NOT transfers and carry no ``b_wx``, and because a ledger source reads its whole
+#: relation ordered by ``dt_cell_key``, the source's first row was one of those and it
+#: refused there.  The owner chose a table of its own over a filtering preparer.
+DT_TABLE = "dt_transfer_log"
 VALID_TABLE = "valid_die_ref"
+
+#: --- rollback of the first landing -------------------------------------------------
+#: The 1,405 rows already written into ``dt_log`` have to come back out.  These three
+#: constants are the WHOLE contract of ``--rollback-dt-log``; nothing else scopes it.
+ROLLBACK_TABLE = "dt_log"
+#: 🔴 THE PREDICATE, and there is exactly one: ``dt_cell_key LIKE 'SYN-XFER-D%'``.
+#: It reuses ``JOB_PREFIX`` below -- the same constant that BUILT those keys -- so the
+#: delete predicate cannot drift from what the write produced.  No date window, no
+#: "looks synthetic" matching, no product check widening it.  Other people's fixtures
+#: live in this table (SYN-DTJ-, SYN-TL-, SYN-TR-, SYN-IDX-, SYN-CORE-, DT-EQP-, TWO)
+#: and none of them start with this prefix.
+ROLLBACK_EXPECTED_ROWS = 1405
 
 #: The core wafer floor and the DT wafer floor, as declared in ``valid_die_ref``.
 CORE_REF = ("5N", "BASE")
@@ -77,14 +114,11 @@ CORE_DIE_COUNT = 425
 DT_SLOT_COUNT = 261
 
 #: ``dt_job`` / ``dt_job_id`` for the ten DT wafers, and the synthetic product marker.
-#: 🔴 ORDERING NOTE, deliberate.  The `dt_job` source reads this same table ordered by
-#: ``(dt_job, dt_cell_key)`` and its cursor stood at ``{'dt_job': 'TWO',
-#: 'dt_cell_key': 'TWO_3_10'}`` -- the maximum key in the table.  ``'SYN-XFER-D01' < 'TWO'``,
-#: so these rows land BEHIND that cursor and `dt_job` will not translate them; its molecule
-#: count is left undisturbed.  ``transfer_event`` has no cursor row at all, so it reads from
-#: the beginning and DOES see them -- which is the source this fixture exists for.
-#: To make `dt_job` pick them up too, give this prefix a value sorting after ``'TWO'``
-#: (e.g. ``"XFER-SYN-D"``); that is the only edit needed.
+#: Now that the rows live in a table of their own, the cursor-ordering hazard that this
+#: prefix was chosen around is gone: ``dt_job`` and ``lot_event`` read other relations and
+#: cannot see ``dt_transfer_log`` at all, so neither cursor moves and neither stops.
+#: The prefix is kept unchanged because ``--rollback-dt-log`` identifies the already-written
+#: rows by it -- changing it would strand them.
 JOB_PREFIX = "SYN-XFER-D"
 CORE_WAFER_PREFIX = "SYN-XFER-CORE-W"
 PRODUCT = "SYN-XFER"
@@ -268,6 +302,68 @@ def _verify_unowned(db, plans):
                 f"REFUSED: unowned rows already use this prefix: {stray[:5]}")
 
 
+def rollback_dt_log(db, apply_changes):
+    """Take this fixture's rows back out of ``dt_log``.  DELETES FROM THE LIVE DATABASE.
+
+    Counts first and prints it, refuses unless the count is exactly what this fixture
+    wrote, deletes, then counts again and prints that.  The rows are removed through
+    ``crud.delete_rows_batch``, which is given the EXPLICIT row_ids selected by the
+    predicate -- so the statement that deletes is scoped to ids that were counted and
+    shown, not to a pattern re-evaluated at delete time.  That path also cascades
+    ``CellSource``/``CellOverwrite`` and writes DELETE history, which a raw SQL delete
+    would skip and leave the layering metadata orphaned.
+    """
+    from sqlalchemy import func
+
+    from database import crud, models
+
+    model = models.DYNAMIC_TABLES.get(ROLLBACK_TABLE)
+    if model is None:
+        raise SystemExit(f"REFUSED: {ROLLBACK_TABLE} is not declared.")
+
+    predicate = model.dt_cell_key.like(JOB_PREFIX + "%")
+
+    total_before = db.query(func.count()).select_from(model).scalar()
+    matched = db.query(func.count()).select_from(model).filter(predicate).scalar()
+    print("table                  : %s" % ROLLBACK_TABLE)
+    print("predicate              : dt_cell_key LIKE '%s%%'" % JOB_PREFIX)
+    print("rows in table (before) : %d" % total_before)
+    print("rows matching predicate: %d" % matched)
+
+    if matched != ROLLBACK_EXPECTED_ROWS:
+        raise SystemExit(
+            f"REFUSED: predicate matches {matched} rows, expected exactly "
+            f"{ROLLBACK_EXPECTED_ROWS}.  This fixture wrote {ROLLBACK_EXPECTED_ROWS} rows "
+            f"into {ROLLBACK_TABLE}; any other number means the scope is not what this "
+            "rollback was written against.  Nothing was deleted -- re-measure and decide."
+        )
+
+    if not apply_changes:
+        print("DRY RUN, nothing deleted.")
+        return
+
+    row_ids = [str(row[0]) for row in
+               db.query(model.row_id).filter(predicate).all()]
+    if len(row_ids) != matched:
+        raise SystemExit(
+            f"REFUSED: re-read returned {len(row_ids)} ids for {matched} counted rows. "
+            "The table changed under this command; nothing was deleted."
+        )
+
+    deleted = 0
+    for start in range(0, len(row_ids), CHUNK):
+        deleted += crud.delete_rows_batch(
+            db, ROLLBACK_TABLE, row_ids[start:start + CHUNK], user_name=UPDATED_BY)
+
+    total_after = db.query(func.count()).select_from(model).scalar()
+    remaining = db.query(func.count()).select_from(model).filter(predicate).scalar()
+    print("rows deleted           : %d" % deleted)
+    print("rows in table (after)  : %d" % total_after)
+    print("rows still matching    : %d" % remaining)
+    if remaining:
+        print("WARNING: predicate still matches rows. Investigate before re-running.")
+
+
 def _write(db, rows):
     from database import crud, schemas
 
@@ -292,11 +388,15 @@ def _write(db, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Seed synthetic die-transfer rows into dt_log (adds, never deletes).")
+        description=("Seed synthetic die-transfer rows into dt_transfer_log (adds, never "
+                     "deletes), or roll the first landing back out of dt_log."))
     parser.add_argument("--apply", action="store_true",
                         help="write; default is a dry run that touches nothing")
     parser.add_argument("--show", action="store_true",
                         help="print per-DT-wafer and per-core-wafer detail")
+    parser.add_argument("--rollback-dt-log", action="store_true", dest="rollback",
+                        help=("delete this fixture's rows from the OLD table (dt_log) by "
+                              "the SYN-XFER prefix; dry run unless --apply is also given"))
     parser.add_argument("--i-accept-writing-to-owner-database", action="store_true",
                         dest="accepted")
     args = parser.parse_args()
@@ -307,6 +407,15 @@ def main():
     from database import crud, models
 
     models.init_dynamic_models(crud.TABLE_CONFIG)
+
+    if args.rollback:
+        db = SessionLocal()
+        try:
+            rollback_dt_log(db, args.apply)
+        finally:
+            db.close()
+        return
+
     db = SessionLocal()
     try:
         core_cells = _read_floor(db, *CORE_REF, expected=CORE_DIE_COUNT)
@@ -323,7 +432,8 @@ def main():
 
     print("core wafers            : %d  (pooled yield %d dies)" % (len(yields), pool_size))
     print("DT wafers              : %d" % len(plans))
-    print("dt_log rows planned    : %d" % total)
+    print("target table           : %s" % DT_TABLE)
+    print("rows planned           : %d" % total)
     first = plans[0]["rows"][:5]
     print("first 5 slots of %-10s: %s"
           % (plans[0]["job"], [(r["b_wx"], r["b_wy"]) for r in first]))

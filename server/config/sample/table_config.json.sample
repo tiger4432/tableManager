@@ -718,5 +718,37 @@
       "MAX",
       "MIN"
     ]
+  },
+  "dt_transfer_log": {
+    "__comment": "[2026-08-23] Die transfer events -- one row per die moved from a core wafer to a DT wafer. SPLIT OUT OF dt_log by owner ruling: the ledger source `transfer_event` reads its whole relation ordered by dt_cell_key, and 34,939 of dt_log's 36,344 rows are not transfers at all -- they carry no b_wx, so the cursor's very first row refused with 'entity identity value is missing after preparation' and the source could never advance. A table of its own leaves nothing to filter. | business_key is dt_cell_key so the owner's existing transfer_event declaration fits unchanged (subject core_wafer_id/c_wx/c_wy, target dt_job_id/b_wx/b_wy, occurred_at event_time) -- only its `relation` moves, and the OWNER makes that edit on screen. | dt_x/dt_y intentionally carry the same coordinate as b_wx/b_wy: dt_cell_key is spelled {dt_job}_{dt_x}_{dt_y}, which is dt_log's verified format (0 mismatches over 20,000 live rows). | Written by scripts/seed_syn_die_transfer.py.",
+    "business_key": "dt_cell_key",
+    "column_types": {
+      "b_wx": "number",
+      "b_wy": "number",
+      "c_wx": "number",
+      "c_wy": "number",
+      "core_wafer_id": "string",
+      "dt_cell_key": "string",
+      "dt_job": "string",
+      "dt_job_id": "string",
+      "dt_x": "number",
+      "dt_y": "number",
+      "event_time": "string",
+      "product": "string"
+    },
+    "display_columns": [
+      "dt_cell_key",
+      "event_time",
+      "product",
+      "dt_job_id",
+      "b_wx",
+      "b_wy",
+      "core_wafer_id",
+      "c_wx",
+      "c_wy",
+      "dt_job",
+      "dt_x",
+      "dt_y"
+    ]
   }
 }
