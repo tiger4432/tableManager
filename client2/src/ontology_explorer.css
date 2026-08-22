@@ -998,6 +998,22 @@
   background: var(--oe-accent); font-weight: 600;
 }
 
+/* A chip that is pressed and is NOT a choice: the read brings this column in anyway.
+   Filled like a pressed chip -- that is what it is -- but in the muted token rather than
+   the accent, because the operator has to be able to tell at a glance WHICH of the pressed
+   ones they may turn off. That distinction is the safety half of the everything-default
+   (owner, 2026-08-21): a wide default is only safe while turning a column off is visible.
+   No cursor, no hover, no press: an element that answers to nothing must not look like it
+   answers to a click. */
+#ontology-explorer-root .oe-pick.is-locked {
+  border-color: var(--oe-muted); background: var(--oe-muted);
+  color: var(--oe-surface); font-weight: 600; cursor: default;
+}
+#ontology-explorer-root .oe-pick.is-locked:hover {
+  border-color: var(--oe-muted); color: var(--oe-surface);
+}
+#ontology-explorer-root .oe-pick.is-locked:active { transform: none; }
+
 /* 🔴 RADIUS 0 IS THE SIGNATURE, AND IT IS STATED LAST SO NOTHING ABOVE CAN WALK IT BACK.
    Everything this screen draws with a box -- pills, badges, dialogs, code blocks, popovers,
    the spine's ordinal -- is square. */

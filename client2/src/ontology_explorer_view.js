@@ -1160,6 +1160,27 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
     let picks = null;
     const label = row.universe ? `${row.universe} · ${row.universe_note}` : '고를 수 있는 값';
     box.append(h('small', '', `${label} · ${row.candidates.length}`));
+    // 🔴 THE SCREEN NEVER ADDS A LOCKED COLUMN -- AND NEVER TAKES ONE OUT EITHER. The chip
+    // is inert, so nothing here can put a locked name into the document; what the document
+    // ALREADY declares is carried through untouched, and that is not a softening of the
+    // rule but the only version of it the config grammar permits. Measured on the live
+    // file, 2026-08-22: `dt_job.map.input_columns` declares `dt_job` and
+    // `lot_event.map.input_columns` declares `event_time` and `event_group_key` -- every
+    // one of them locked, and every one of them REQUIRED there by the validator
+    // (`setup_bundle`: "Profile column 'x' at … is missing" → `invalid_mapper`, for every
+    // column a binding names). A screen that stripped locked names on the next press would
+    // refuse the owner's own config as the side effect of an unrelated click.
+    //
+    // 🔴 AND `locked` IS DRAWN, NEVER COMPUTED. It is a subset of `row.candidates` the
+    // server sends -- the columns the read brings in anyway (identity ∪ group_by ∪ order_by
+    // ∪ cursor ∪ occurred_at). Re-deriving that set here would be a second vocabulary for a
+    // rule the read already owns, and the two would drift the day one of them gains a term.
+    // An absent or empty list is not a special case: no chip is locked, and the picker is
+    // exactly the picker it was before. (owner, 2026-08-21: 「저 디폴트 컬럼들은 클릭 불가능한
+    // 클릭되어 있는 버튼으로 둬」 -- pressed because it is coming, inert because it is not a
+    // choice; and that visible inertness is what makes the everything-default safe.)
+    const locked = new Set((Array.isArray(row.locked) ? row.locked : [])
+      .filter((item) => typeof item === 'string'));
     // 🔴 A DATALIST ON THE INPUT, NEVER A `select`. The list SUGGESTS; it must not
     // constrain, because coining a name that nothing has yet is a thing this screen has
     // to keep allowing. (owner, 2026-08-19: 「미묘한 오타로 같은 말이 갈라지는거 방지」 --
@@ -1250,6 +1271,21 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
       if (editable.kind !== 'closed') {
         picks = h('div', 'oe-candidates oe-picks');
         for (const item of row.candidates) {
+          // 🔴 NOT A BUTTON AT ALL, SO IT CANNOT BE PRESSED BY ANY ROUTE. A `disabled`
+          // button or a CSS `pointer-events: none` still leaves the click delegate and the
+          // Enter/Space handler looking at a `[data-action]`; an `<i>` carries none, so
+          // there is nothing to reach with a mouse, a key, or a script that dispatches a
+          // click. It still SAYS it is pressed (`aria-pressed`), because that is the whole
+          // message: this column is already coming.
+          if (typeof item === 'string' && locked.has(item)) {
+            const held = h('i', 'oe-chip oe-pick is-on is-locked', candidateLabel(item));
+            held.setAttribute('aria-pressed', 'true');
+            held.setAttribute('aria-disabled', 'true');
+            held.dataset.locked = 'true';
+            held.title = '어차피 읽는 컬럼 · 끌 수 없음';
+            picks.append(held);
+            continue;
+          }
           const on = candidateChosen(editable, item);
           const chip = button(candidateLabel(item), 'pick-candidate', row.path,
                               'oe-chip oe-pick' + (on ? ' is-on' : ''));
