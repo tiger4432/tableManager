@@ -206,86 +206,6 @@ function selectedColumnNames() {
 }
 
 /**
- * The band's whole decision, as a pure function of the two column lists.
- *
- * SEPARATED FROM THE DOM ON PURPOSE. This is the part that can be wrong in a way nobody
- * sees — a comparison that only counts columns still shows a green band while the paste
- * lands sideways — so it is the part a harness has to be able to score without a browser.
- * `isVirtual` arrives as an argument rather than being imported here for the same reason.
- *
- * 🔴 NO ARITY BRANCH. The lists carry their own lengths; a two-column case and a
- * three-column case take the same path.
- */
-export function alignmentVerdict(sourceCols, targetCols, isVirtual) {
-  const rowsLabel = count => `${count}행 × ${sourceCols.length}열`;
-  const arrow = list => list.length ? list.join(' → ') : '—';
-  // 🔴 `isVirtualColumn`, NOT `joinResolvedColumn`. The question is "will the server refuse a
-  // WRITE here", which is what that predicate answers; a `collide` column is join-resolved
-  // AND writable, so the wider one would refuse a paste that would have worked.
-  const blocked = targetCols.filter(isVirtual);
-  // Names AND order AND count — any one of the three differing is a mismatch. Comparing only
-  // the count is the defect this is written to make visible.
-  const same = sourceCols.length === targetCols.length
-    && sourceCols.every((name, index) => name === targetCols[index]);
-  if (blocked.length) {
-    return { state: 'blocked', blocked, rowsLabel,
-      body: `불가 — 조인 컬럼 ${blocked.join(', ')} 포함 · 대상에서 빼고 붙여넣기` };
-  }
-  if (same) return { state: 'match', blocked, rowsLabel, body: `열 순서 일치 · ${arrow(sourceCols)}` };
-  return { state: 'warn', blocked, rowsLabel,
-    body: `열 순서 불일치 · 복사 ${arrow(sourceCols)} / 대상 ${arrow(targetCols)}` };
-}
-
-function updateAlignmentBand() {
-  const band = elements.referenceAlignment;
-  if (!band) return;
-  const rect = selectionRect();
-  if (!rect) { band.style.display = 'none'; return; }
-  band.style.display = '';
-
-  const sourceCols = selectedColumnNames();
-  const targetCols = targetColumnIds();
-  const verdict = alignmentVerdict(sourceCols, targetCols, isVirtualColumn);
-
-  // 🔴 THE MISMATCH LABEL IS NOT SHOWN (owner, 2026-08-21: "그냥 없애"). Pasting two copied
-  // columns into one target is something people do on purpose, so a band that turns red every
-  // time the shapes differ is crying wolf on the normal case — and a warning that fires on
-  // normal use is one the operator learns to read past, including on the day it is right.
-  //
-  // The other two states stay: the green match is the mockup's own badge, and `blocked` is not
-  // an opinion about tidiness — the server refuses that write batch-wide, so the band is
-  // predicting a 400 rather than grading the operator.
-  if (verdict.state === 'warn') { band.style.display = 'none'; return; }
-
-  const rows = rect.r1 - rect.r0 + 1;
-
-  band.classList.remove('is-match', 'is-warn', 'is-blocked');
-  band.classList.add(`is-${verdict.state}`);
-
-  // Mockup 2b: the copied column order, then a pill for the verdict, then the keystroke pair
-  // pushed right. The row count rides in the pill rather than leading the strip — the order
-  // is what the operator has to check before pasting, and it should be the first thing read.
-  band.replaceChildren();
-  const order = document.createElement('span');
-  order.className = 'alignment-order';
-  order.textContent = sourceCols.map(c => c.toUpperCase()).join(' → ');
-  const pill = document.createElement('span');
-  pill.className = 'pill alignment-pill';
-  pill.textContent = verdict.state === 'blocked'
-    ? verdict.body
-    : `${verdict.rowsLabel(rows)} · 대상 열 순서와 일치`;
-  const keys = document.createElement('span');
-  keys.className = 'alignment-keys';
-  ['Ctrl', 'C', '→', 'Ctrl', 'V'].forEach(k => {
-    const el = document.createElement('span');
-    if (k !== '→') el.className = 'kbd';
-    el.textContent = k;
-    keys.appendChild(el);
-  });
-  band.append(order, pill, keys);
-}
-
-/**
  * The table a view index belongs to, BY NAME rather than by position.
  *
  * Position was a fair key while every table sat in the tab strip in `results` order. The
@@ -321,7 +241,6 @@ function paintSelection() {
     const inRect = !!rect && inView && row >= rect.r0 && row <= rect.r1 && col >= rect.c0 && col <= rect.c1;
     td.classList.toggle('custom-range-selected', inRect);
   });
-  updateAlignmentBand();
 }
 
 // Shift+Arrow extends the same rectangle the mouse drags. Installed on the panel, which
@@ -336,7 +255,7 @@ function installSelectionKeys() {
   // let go of.
   // Also refreshes the band: a drag that ended in the MAIN grid changed the paste target
   // without touching this panel, and the band would otherwise describe the previous target.
-  document.addEventListener('mouseup', () => { dragging = false; updateAlignmentBand(); });
+  document.addEventListener('mouseup', () => { dragging = false; });
 
   // ── [2b Phase 3.3] Copy ────────────────────────────────────────────────────────────────
   //
@@ -409,12 +328,6 @@ function installSelectionKeys() {
 function render(results) {
   const host = elements.referenceViewContent;
   host.replaceChildren();
-  const band = document.createElement('div');
-  band.id = 'reference-alignment';
-  // Phase 0: the SAME banner, not a lookalike. `.tx-filter-banner` carries the structure and
-  // geometry; `.reference-alignment` is a colour variant on top of it.
-  band.className = 'tx-filter-banner reference-alignment';
-  band.style.display = 'none';
   const tabs = document.createElement('div');
   tabs.className = 'reference-view-tabs';
   const panels = document.createElement('div');
@@ -559,7 +472,7 @@ function render(results) {
   // One panel needs no tab strip -- the mockup's panel goes straight from the band to the
   // grid. The strip comes back the moment a rule declares a second fillable view.
   tabs.style.display = panels.children.length > 1 ? '' : 'none';
-  host.append(band, tabs, panels, evidence);
+  host.append(tabs, panels, evidence);
   installSelectionKeys();
   if (panels.children.length) selectView(0);
 }

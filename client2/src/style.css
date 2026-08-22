@@ -1230,8 +1230,7 @@ body.resizing-active .history-sidebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Mockup 2b: 30px tall. The table states the alignment band equals the Tx banner, so the
-     height lives on the shared class rather than on one of the two variants. */
+  /* Mockup 2b: 30px tall. */
   min-height: 30px;
   padding: 2px 16px;
   margin: 12px 16px 0 16px;
@@ -1243,20 +1242,16 @@ body.resizing-active .history-sidebar {
   font-size: 0.85rem;
 }
 
-/* ── Phase 0: the filter chip bar and the alignment band are `.tx-filter-banner`
-   VARIANTS, not new components. Structure (icon left, text, close right, height,
-   padding, radius, shadow) comes from that class; only the colour differs here. */
+/* ── Phase 0: the filter chip bar is a `.tx-filter-banner` VARIANT, not a new component.
+   The reference panel's alignment strip was the other variant; it was removed 2026-08-22
+   (△소유자 「일치든 거절이든 없애」), so one variant is left. */
 /* `.filter-banner` retired: the chips moved INTO the header bar (mockup 2b), so they no
    longer need a banner of their own. */
-.reference-alignment.is-match   { background: var(--success-weak); border-color: var(--success); }
-.reference-alignment.is-warn    { background: var(--warning-weak); border-color: var(--warning); }
-.reference-alignment.is-blocked { background: var(--danger-weak);  border-color: var(--danger); }
 
 /* The Tx banner's icon pulses because that banner means "a filter is hiding rows from you".
    These two are steady statements, so they inherit the POSITION and drop the animation —
    a permanently pulsing badge on an informational band is motion with nothing to report. */
 .filter-banner .banner-icon,
-.reference-alignment .banner-icon { animation: none; font-size: 0.9rem; }
 
 .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
@@ -2341,40 +2336,9 @@ body.resizing-active .history-sidebar {
    the thing to avoid, not the equal widths. */
 .history-tabs--wide .tab-btn { white-space: nowrap; }
 
-/* ── Mockup 2b: the alignment strip ───────────────────────────────────────────────────
-   Flush against the tabs, not an inset card: it belongs to the grid below it. It keeps the
-   `.tx-filter-banner` class (Phase 0) and overrides only geometry and colour. */
-.tx-filter-banner.reference-alignment {
-  height: 30px;
-  min-height: 30px;
-  margin: 0 0 8px;
-  padding: 0 12px;
-  border-width: 0 0 1px;
-  border-radius: 0;
-  box-shadow: none;
-  gap: 8px;
-  justify-content: flex-start;
-  font-size: 11px;
-}
-.reference-alignment.is-match   { background: var(--accent-weak); border-color: var(--accent); }
-.reference-alignment.is-blocked { background: var(--danger-weak); border-color: var(--danger); }
-
-.alignment-order { font-weight: 600; color: var(--accent); font-family: var(--font-mono); }
-.is-blocked .alignment-order { color: var(--danger); }
 
 /* The verdict pill — the same shape the mockup uses for the filter chips. */
-.alignment-pill {
-  border: 1px solid var(--success);
-  background: var(--success-weak);
-  color: var(--success);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10.5px;
-  white-space: nowrap;
-}
-.is-blocked .alignment-pill { border-color: var(--danger); background: var(--danger-weak); color: var(--danger); }
 
-.alignment-keys { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
 
 /* Keycap. New here because the screen had no way to draw one, and the shortcut row at the
    bottom of the panel needs the same shape. Existing tokens only. */
@@ -2721,29 +2685,6 @@ body.resizing-active .history-sidebar {
 
 /* The capsules become rectangles. 5px is the mockup's `.pill`. */
 .filter-chip,
-.alignment-pill,
-.audit-filter-pick { border-radius: 5px; }
-.audit-pill { border-radius: 5px; }
-
-/* The keycap's bottom edge is what makes it read as a key rather than a tag. */
-.kbd { border-bottom-width: 2px; border-radius: 4px; }
-
-
-/* ── Mockup 2b/2c: the right panel, matched ───────────────────────────────────────
-
-   TABS ARE SEGMENTS, not underlined text. The mockup fills the row: inactive segments carry
-   `bg-inset`, the active one lifts to `bg-surface` with a 2px underline, and 1px rules divide
-   them. `flex: 1` is the mockup's own value.
-
-   🔴 `min-width: max-content` KEEPS THE EARLIER RULING ALIVE. The owner ruled that a tab is
-   as wide as its label, because equal shares clip the longest name and a clipped tab is a tab
-   nobody clicks. `flex: 1` fills the row when there is room and `min-width` refuses to shrink
-   past the label, so both hold at once instead of one overwriting the other. */
-.history-tabs--wide {
-  box-sizing: border-box;
-  height: 34px;
-  border-bottom: 1px solid var(--border-strong);
-}
 .history-tabs--wide .tab-btn {
   flex: 1;
   min-width: max-content;
@@ -2815,8 +2756,8 @@ body.resizing-active .history-sidebar {
    so they belong in the same place. It was a full-width band above the grid, which said the
    same thing twice as loudly and stole a grid row to do it. Now it is a chip beside the
    others, in the accent-2 it already used.
-   🔴 `#tx-filter-banner` only. `.tx-filter-banner` is also worn by the reference panel's
-   alignment strip, which is a band on purpose and must not be shrunk into a chip. */
+   🔴 `#tx-filter-banner` only, not the class: scoping by id keeps this chip geometry off
+   anything else that adopts the shared banner shape later. */
 #tx-filter-banner {
   flex: 0 0 auto;
   height: 22px;

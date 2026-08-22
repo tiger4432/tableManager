@@ -105,23 +105,10 @@ function runChecks(api) {
     JSON.stringify(api.fillPlan(DECLARING_VIEW, RULE, PAYLOAD_COLUMNS).order)
       === JSON.stringify(['dt_lot', 'dt_slot', 'cells']));
 
-  // ③ A mismatch must WARN, and the comparison must look at names and order, not just count.
-  check('same names in the same order -> match',
-    api.alignmentVerdict(['dt_lot', 'dt_slot'], ['dt_lot', 'dt_slot'], isVirtual).state === 'match');
-  check('same COUNT but different names -> warn',
-    api.alignmentVerdict(['dt_lot', 'dt_slot'], ['dt_x_sign', 'dt_y_sign'], isVirtual).state === 'warn');
-  check('same names in the WRONG ORDER -> warn',
-    api.alignmentVerdict(['dt_lot', 'dt_slot'], ['dt_slot', 'dt_lot'], isVirtual).state === 'warn');
-  check('different count -> warn',
-    api.alignmentVerdict(['dt_lot', 'dt_slot'], ['dt_lot'], isVirtual).state === 'warn');
-
-  // ④ One virtual column anywhere in the target is 불가, and it outranks a name match.
-  check('a virtual column in the target -> blocked',
-    api.alignmentVerdict(['dt_lot', 'dt_slot'], ['dt_x_base', 'dt_slot'], isVirtual).state === 'blocked');
-  check('blocked outranks an otherwise perfect match',
-    api.alignmentVerdict(['dt_x_base'], ['dt_x_base'], isVirtual).state === 'blocked');
-  check('no virtual column -> not blocked',
-    api.alignmentVerdict(['dt_lot'], ['dt_lot'], isVirtual).state !== 'blocked');
+  // ③④ THE VERDICT AND ITS SCORING ARE GONE TOGETHER, in this same commit.
+  // △소유자 2026-08-22: 「일치든 거절이든 없애 어차피 사람들이 알아서 함」. With the strip removed the
+  // verdict had no consumer, and a pure function nothing calls, with a harness still scoring
+  // it, is a green gate over dead code.
 
   // ⑤ THE FALLBACK, which is operational reality for every rule that declares nothing.
   check('a view with no candidate_for makes no plan',
@@ -162,16 +149,13 @@ function apiFor(sources) {
   const panel = sources[PANEL];
   const clipboard = sources[CLIPBOARD];
   const fillPlan = sliceFunction(panel, 'function fillPlan(', 'fillPlan');
-  const verdict = sliceFunction(panel, 'export function alignmentVerdict(', 'alignmentVerdict')
-    .replace('export function', 'function');
   const guardBody = clipboard.includes(GUARD_ANCHOR)
     ? `if (e.target instanceof Element && e.target.closest('#reference-view')) { return true; } return false;`
     : `return false;`;
   new vm.Script(`
     ${fillPlan}
-    ${verdict}
     function clipboardStepsAside(e) { ${guardBody} }
-    module.api = { fillPlan, alignmentVerdict, clipboardStepsAside };
+    module.api = { fillPlan, clipboardStepsAside };
   `).runInContext(context);
   const api = context.module.api;
   api.__Element__ = context.Element;
@@ -202,14 +186,7 @@ const MUTANTS = [
     [PANEL]: sub(s[PANEL], 'order: [...fillColumns,', 'order: [...fillColumns.slice().reverse(),',
       'reverse-order') })],
   ['remove the clipboard.js guard', s => ({ ...s,
-    [CLIPBOARD]: sub(s[CLIPBOARD], GUARD_ANCHOR, 'if (false) {', 'drop-guard') })],
-  ['compare only the column COUNT', s => ({ ...s,
-    [PANEL]: sub(s[PANEL],
-      `const same = sourceCols.length === targetCols.length\n    && sourceCols.every((name, index) => name === targetCols[index]);`,
-      `const same = sourceCols.length === targetCols.length;`, 'count-only') })],
-  ['pin isVirtual to false', s => ({ ...s,
-    [PANEL]: sub(s[PANEL], 'const blocked = targetCols.filter(isVirtual);',
-      'const blocked = [];', 'no-virtual') })]
+    [CLIPBOARD]: sub(s[CLIPBOARD], GUARD_ANCHOR, 'if (false) {', 'drop-guard') })]
 ];
 
 let escaped = 0;

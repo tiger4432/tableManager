@@ -974,7 +974,7 @@ const FLOORS = new Map([
   //    how a mutant goes quietly inert rather than red.
   //
   //    FLOORS, not KNOWN_RED: it lands green. A name in both lists refuses to start.
-  ['reference_grid_paste_harness.mjs', 22],
+  ['reference_grid_paste_harness.mjs', 13],
   // New 2026-08-04 with the reconnect-backoff round (the 30s ceiling that left the page dark
   // after a server restart). Same rule as the other new entries: the floor is the count it
   // reports on the commit that introduces it — there is no earlier tree to measure it against.
