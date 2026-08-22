@@ -820,19 +820,43 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             prep_base, preparation, preparers, preparer_ids, "준비기 구현",
             NEW_IMPLEMENTATION_NOTE)
         if physical:
-            inputs = list(_listed(preparation.get("input_columns")))
-            # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
-            # PHYSICAL table and nothing else -- it runs before anything has been
-            # prepared -- so its candidates are `relation`'s columns.  While the body
-            # lived in its own section this field had no relation to point at and the
-            # screen offered a bare text box.
+            # 🔴 MEMBERSHIP, NOT TRUTHINESS, AND `dt_job` IS WHY.  `_nonblank_list` passes
+            # `allow_empty=True` for this key, so `[]` is a LEGAL answer and `dt_job`
+            # declares exactly that.  `inputs if inputs else _ABSENT` -- what stood here --
+            # reported that declaration as `has_declared: false`, which under the default
+            # below would hand the square to the derivation and write all 24 columns into a
+            # source that said it wanted none.
+            declared_inputs = (list(_listed(preparation.get("input_columns")))
+                               if "input_columns" in preparation else _ABSENT)
+            # 🔴 THE WHOLE RELATION, AND THE PERSON TAKES AWAY (owner, 2026-08-22: 「준비기는
+            # 테이블 컬럼 전부」 · 「현재 선택방식으로 하되 기본을 전체 선택으로」).  A preparer
+            # reads the PHYSICAL table and nothing else -- it runs before anything has been
+            # prepared -- so RELATION is both the universe and now the default.  The control
+            # does not change: this is a default a person NARROWS, not a constraint.
+            #
+            # The cost, chosen knowingly: the saved list names columns this source does not
+            # read, so dropping one of them from the table stops this source too.  The
+            # default is a SNAPSHOT written at save, so the guard that refuses a vanished
+            # column keeps working on exactly the names the file ends up holding.
             yield Field(
                 path=f"{prep_base}.input_columns", step="sources",
                 label="준비기 input_columns",
-                state="answered" if inputs else "unanswered", tier=TIER_CONSTRAINED,
-                value=inputs, declared=inputs if inputs else _ABSENT,
+                state="derived", tier=TIER_DERIVATION,
+                value=list(physical), declared=declared_inputs,
+                ground=Ground(
+                    "preparer_inputs_from_relation",
+                    f"기본값: relation {relation}의 카탈로그 컬럼 {len(physical)}개 전부",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
+                # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
+                # derived value is now the MAXIMUM a person narrows, which is neither of the
+                # two things `comparison` can say (`equal` = zero freedom, `superset` = a
+                # derived MINIMUM a wider declaration satisfies).  `superset` is the word
+                # that already produced a false red on `input_columns` once, so it is not
+                # kept here just to route the row; the row states its own disposition, as
+                # `_source_fields`' `group_by` does.
+                disposition="default_overridable",
                 candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                note="준비기는 준비 전에 돌기 때문에 물리 표 컬럼만 읽을 수 있다.",
+                note="기본은 물리 표 컬럼 전부 · 빼려면 x",
             )
             outputs = preparation.get("output_columns")
             names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
@@ -895,27 +919,39 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `MapperDescriptor.emits` is compiled from `bind.mappings.<sentence>.use` and there is
         # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
-        if binding_columns:
+        # 🔴 THE PREPARED FRAME, NOT THE BINDINGS (owner, 2026-08-22: 「맵퍼는 준비기 컬럼
+        # 전부」).  Deriving this from `bind.mappings` was the lead's proposal and the owner
+        # replaced it with the shorter rule: whatever the frame carries after preparation is
+        # what the mapper is offered.  It covers in one sentence the columns a binding never
+        # names and a custom mapper still reads (`__source_event_incomplete` on `lot_event`),
+        # and it makes the gate the FRAME rather than the profile -- a source with no
+        # mappings yet, which is what a half-built one looks like, now gets the row too.
+        if prepared:
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
-                value=sorted({column for column, _ in binding_columns}),
+                value=list(prepared),
                 declared=list(_listed(mapper.get("input_columns")))
                 if "input_columns" in mapper else _ABSENT,
                 ground=Ground(
-                    "mapper_inputs_from_profile_bindings",
-                    f"채움: 소스 {source_id}의 프로필이 바인딩한 컬럼 "
-                    f"{len({column for column, _ in binding_columns})}개",
-                    tuple(path for _, path in binding_columns),
-                    sorted({column for column, _ in binding_columns})),
-                comparison="superset",
+                    "mapper_inputs_from_prepared_frame",
+                    f"기본값: 준비 뒤 프레임 컬럼 {len(prepared)}개 전부 "
+                    f"(relation {relation} + 준비기 output_columns)",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
+                     f"{prep_base}.output_columns"),
+                    list(prepared)),
+                # Stated for the same reason as the preparer row above: the value is the
+                # MAXIMUM and a person narrows it, so `comparison` has no word for it and
+                # the classification is written here instead of being routed through a
+                # removal probe that would answer a different question.
+                disposition="default_overridable",
                 # 🔴 RELATION ∪ 준비기.output_columns, WHICH THE MAPPER COULD NOT BE TOLD
                 # BEFORE.  The mapper runs AFTER preparation, so a preparer-made column is
                 # legal here and a physical one still is too -- the widening the move was
-                # for. The derived value is a MINIMUM; the universe is what a person may
-                # widen it to.
+                # for.  Universe and default are now the same set; the universe is what a
+                # person may put BACK after narrowing.
                 candidates=tuple(prepared), universe=UNIVERSE_PREPARED,
-                note="기본은 최소 집합 · 더 넣어도 됩니다",
+                note="기본은 준비 뒤 컬럼 전부 · 빼려면 x",
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
