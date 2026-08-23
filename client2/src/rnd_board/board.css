@@ -519,3 +519,33 @@ body {
 /* 시각은 자재 이름 «아래» 줄에 둡니다 — 겹치지 않게. */
 .rb-trend-xlabel { bottom: -30px; }
 .rb-trend-plot { margin-bottom: 34px; }
+
+
+/* ── 표 부품 하나 — 구성 표도 순위 표도 이것입니다 (소유자 상설 ①, 2026-08-24) ──────
+   🔴 여기 있는 값들이 «표의 양식»입니다. 표가 셋째로 늘어도 이 블록은 안 늘어납니다 --
+   늘어나는 것은 컬럼 «선언»입니다. 그 전에는 한 화면의 표 둘이 머리·행높이·줄수·구분선·
+   정렬·상태 표기가 전부 달랐습니다. */
+.rb-table { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.rb-table-head, .rb-table-row { display: grid; column-gap: 12px; align-items: center;
+  justify-content: start; padding: 4px 6px; }
+.rb-table-head { background: var(--bg-header); color: var(--text-muted);
+  font-size: 11px; letter-spacing: .3px; text-transform: uppercase;
+  position: sticky; top: 0; z-index: 1; }
+.rb-table-row { border-bottom: 1px solid var(--border); font-size: 11.5px; min-height: 22px; }
+.rb-table-row:hover { background: var(--surface-hover); }
+.rb-table-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
+.rb-table-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
+.rb-table-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.rb-table-cell.is-right { text-align: right; }
+/* 🔴 없는 값은 «없다고» 보입니다. 0 과 같은 픽셀이 되면 안 됩니다. */
+.rb-table-cell.is-absent { color: var(--text-muted); }
+.rb-table-cell--mono, .rb-table-cell--number { font-family: var(--font-mono); }
+.rb-table-cell--number { text-align: right; }
+.rb-table-cell--rank { font-family: var(--font-mono); font-weight: 700; }
+/* 상태는 서버가 준 값 그대로. 번역하지 않습니다 -- 번역하면 두 표가 다시 달라집니다. */
+.rb-table-cell--badge { font-size: 11px; letter-spacing: .3px; color: var(--text-muted); }
+.rb-table-cell--two_line { white-space: normal; }
+.rb-table-main { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.rb-table-sub { color: var(--text-muted); font-size: 10.5px; font-family: var(--font-mono);
+  overflow: hidden; text-overflow: ellipsis; }
+.rb-table-empty { padding: 8px 6px; color: var(--text-muted); font-size: 11.5px; }

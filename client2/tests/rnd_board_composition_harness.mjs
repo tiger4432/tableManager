@@ -70,14 +70,20 @@ async function loadModules(mutate = {}) {
   const storeUrl = dataUrl(read('marking_store.js'));
   const apiUrl = dataUrl(read('api.js'));
   const panelUrl = dataUrl(read('panel.js').replaceAll("'./marking_store.js'", `'${storeUrl}'`));
+  // 표 부품은 이제 «다른 부품 안»에 삽니다 -- 그래서 여기서도 배선됩니다.
+  const tableUrl = dataUrl(read('table_part.js')
+    .replaceAll("'./panel.js'", `'${panelUrl}'`)
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   const rewire = (file) => dataUrl(read(file)
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
+    .replaceAll("'./table_part.js'", `'${tableUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
+  const table = await import(tableUrl);
   const head = await import(rewire('head_summary_panel.js'));
   const comp = await import(rewire('composition_panel.js'));
   const store = await import(storeUrl);
-  return { head, comp, store, sources };
+  return { head, comp, store, table, sources };
 }
 
 // ── the DOM stub. Same shape round 1 used: a part must be scorable under bare node ──
@@ -112,7 +118,7 @@ const okFetch = () => async () => ({ ok: true, status: 200, json: async () => BO
 const refuseFetch = (status) => async () => ({ ok: false, status, json: async () => ({ detail: 'no' }) });
 
 async function suite(mods) {
-  const { head, comp, store, sources } = mods;
+  const { head, comp, store, table, sources } = mods;
   const ran = [];
   const failures = [];
   const eq = (name, got, want) => {
@@ -132,7 +138,7 @@ async function suite(mods) {
   a.mount(); b.mount();
   await flush(); await flush();
 
-  eq('A1 both instances drew their own rows', [byClass(hostA, 'rb-comp-row').length, byClass(hostB, 'rb-comp-row').length], [2, 2]);
+  eq('A1 both instances drew their own rows', [byClass(hostA, 'rb-table-row').length, byClass(hostB, 'rb-table-row').length], [2, 2]);
   eq('A2 each kept its own subject', [a.finalChipId, b.finalChipId], ['CHIP-A', 'CHIP-B']);
   // 🔴 The interference test: marking through A must not mark B, because they declared
   // different names. Round 1's M2 (a hardcoded name) dies exactly here.
@@ -140,7 +146,7 @@ async function suite(mods) {
   // HARDCODED 'marking:1' produces the same counts, which is exactly how M1 escaped the first
   // time this suite ran. The discriminating input is the instance whose name is NOT the
   // hardcoded one.
-  byClass(hostB, 'rb-comp-row')[0].click();
+  byClass(hostB, 'rb-table-row')[0].click();
   await flush();
   eq('A3 a part writes the name IT declared, not a fixed one',
     [markings.count('marking:2'), markings.count('marking:1')], [1, 0]);
@@ -157,14 +163,14 @@ async function suite(mods) {
   //    CLEARING the name: a rogue write that removes one mark and adds another leaves the count
   //    exactly where it was. So the row that was clicked must be absent AND the mark that was
   //    already there must still be standing.
-  const row = byClass(hostRO, 'rb-comp-row')[0];
+  const row = byClass(hostRO, 'rb-table-row')[0];
   const rowNode = row.getAttribute('data-node-id');
   row.click();
   eq('B1 a part with no write name cannot write',
     [markings.signOf('marking:1', rowNode), markings.signOf('marking:1', 'component:C2')],
     [0, 1]);
   truthy('B2 but it still SEES the name it reads',
-    byClass(hostRO, 'rb-comp-row').some((r) => r.classList.contains('is-marked-case')));
+    byClass(hostRO, 'rb-table-row').some((r) => r.classList.contains('is-marked-case')));
 
   // ── C. no module-level state ──────────────────────────────────────────────────
   const scan = (src) => (src.match(/^(let|var)\s+\w+|^const\s+\w+\s*=\s*(\[|\{(?!\s*\})|new\s)/gm) || []);
@@ -230,11 +236,57 @@ async function suite(mods) {
   truthy('F1 a count the server did not send prints as a dash', counts.includes('-'));
   truthy('F2 and a count it DID send prints as itself', counts.includes('18'));
 
+  // ── T. 표 부품 «둘»이 한 화면에서 서로를 모릅니다 (소유자 상설 ①의 시험) ──────────
+  {
+    const { TablePart } = table;
+    const store2 = new store.MarkingStore();
+    const hostT1 = doc.createElement('div');
+    const hostT2 = doc.createElement('div');
+    // 🔴 두 «선언». 코드는 한 벌입니다.
+    const t1 = new TablePart(hostT1, { doc, markings: store2, reads: 'm:1', writes: 'm:1',
+      rowKey: 'id', columns: [{ key: 'id', label: '층', kind: 'mono' },
+        { key: 'state', label: '상태', kind: 'badge' }],
+      rows: [{ id: 'L01', state: 'resolved' }, { id: 'L02', state: 'contested' }] });
+    const t2 = new TablePart(hostT2, { doc, markings: store2, reads: 'm:2', writes: 'm:2',
+      rowKey: 'id', columns: [{ key: 'rank', label: '순위', kind: 'rank' },
+        { key: 'q', label: '물리량 · 모델', kind: 'two_line', subKey: 'model' },
+        { key: 'seen', label: '실측' }],
+      rows: [{ id: 'C1', rank: '1', q: 'bond_temp', model: 'void_formation', seen: null }] });
+    t1.mount(); t2.mount();
+    eq('T1 the first table drew its own declaration', byClass(hostT1, 'rb-table-row').length, 2);
+    eq('T2 the second drew a different one', byClass(hostT2, 'rb-table-row').length, 1);
+    eq('T3 the heads are the declarations, not one shared header',
+      [byClass(hostT1, 'rb-table-head')[0].textContent,
+        byClass(hostT2, 'rb-table-head')[0].textContent],
+      ['층상태', '순위물리량 · 모델실측']);
+    // 🔴 간섭 없음: 하나를 마킹해도 다른 하나는 «자기 이름»만 봅니다.
+    byClass(hostT1, 'rb-table-row')[0].click();
+    eq('T4 marking one table does not mark the other',
+      [byClass(hostT1, 'rb-table-row').filter((r) => String(r.className).includes('is-marked-case')).length,
+        byClass(hostT2, 'rb-table-row').filter((r) => String(r.className).includes('is-marked-case')).length],
+      [1, 0]);
+    // 없는 값은 «없다고». 0 과 같은 픽셀이면 이 화면이 존재할 이유가 없습니다.
+    truthy('T5 an absent cell says so instead of printing nothing',
+      walk(hostT2).some((n) => n.getAttribute && n.getAttribute('data-col') === 'seen'
+        && n.textContent === '-' && String(n.className).includes('is-absent')));
+    t1.destroy(); t2.destroy();
+  }
+
   return { ran, failures };
 }
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  { id: 'T-M1', what: 'the table draws one hardcoded header instead of the declaration',
+    catches: 'T3',
+    mutate: { 'table_part.js': (s) => s.replace(
+      "for (const col of this.columns) el.appendChild(this._cellEl(col, col.label || '', 'head'));",
+      "for (const col of [{ key: 'x', label: '층' }]) el.appendChild(this._cellEl(col, col.label, 'head'));") } },
+  { id: 'T-M2', what: 'an absent cell is drawn as an empty string, so 「없음」 and 「빈 값」 look alike',
+    catches: 'T5',
+    mutate: { 'table_part.js': (s) => s.replace(
+      "  return value === null || value === undefined || value === '';",
+      '  return false;') } },
   // 🔴 THE ANCHOR MOVED WHEN THE SELECTION MODEL LANDED. A plain click no longer goes through
   //    `toggle`, so hardcoding the name THERE stopped being reachable and this mutant sailed
   //    through green -- the assertion was fine, the mutation had stopped biting. It now sits on
