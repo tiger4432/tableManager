@@ -1,0 +1,201 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// 부품 F — 후보 리스트. 명세 §8.
+//
+// 🔴 THIS PART EXISTS TO KEEP TWO THINGS APART: a candidate an engineer can go and LOOK at,
+//    and a name `mechanism_models.json` declares. Measured on the live seed that is 4 against
+//    21. If they look alike the engineer walks to one of the 21 and finds nothing there, and
+//    then this screen is used once and abandoned.
+//
+//    It is drawn TWO ways on purpose, because one of them is colour and colour dies in a theme:
+//      1. every card states 「실측」 -- either what it reaches, or `-`
+//      2. the name-only ones are COLLAPSED into a single card that says how many
+//    The mockup does the same, and the second is the one that survives a palette change.
+//
+// 🔴 IT DRAWS NO CONCLUSION AND SORTS NOTHING. Rank comes from the server; `tied` rows keep the
+//    same number. A part that renumbered them would invent an order nobody computed.
+//
+// 🔴 NO SIZE CONSTANT.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { Panel } from './panel.js';
+import { SIGN } from './marking_store.js';
+import { fetchSubgraph, subgraphModel } from './api.js';
+
+export class CandidateListPanel extends Panel {
+  constructor(host, deps) {
+    super(host, deps);
+    const options = deps || {};
+    this.apiBase = options.apiBase || '';
+    this.seedNodeId = options.seedNodeId || null;
+    this.collect = options.collect || 'quantity';
+    this.fetchImpl = options.fetchImpl || null;
+    this.model = null;
+    this.loadState = this.seedNodeId ? 'idle' : 'no-seed';
+  }
+
+  mount() {
+    super.mount();
+    if (this.seedNodeId) this.load();
+  }
+
+  async load() {
+    this.loadState = 'loading';
+    this.render();
+    const result = await fetchSubgraph({
+      apiBase: this.apiBase,
+      nodeId: this.seedNodeId,
+      collect: this.collect,
+      fetchImpl: this.fetchImpl,
+    });
+    this.model = subgraphModel(result);
+    this.loadState = this.model.ok ? 'ready' : 'refused';
+    this.render();
+  }
+
+  render() {
+    const doc = this.doc;
+    if (!doc || !this.host) return;
+    this.host.textContent = '';
+    const root = doc.createElement('div');
+    root.className = 'rb-cand';
+
+    if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
+      root.appendChild(this._note());
+      this.host.appendChild(root);
+      return;
+    }
+
+    const m = this.model;
+
+    // ── the header count. Says what the walk found, and what it did NOT do ──────
+    const head = doc.createElement('div');
+    head.className = 'rb-cand-head';
+    head.appendChild(this._stat(`후보 ${m.counts.total}`, 'fact'));
+    head.appendChild(this._stat(`실측 ${m.counts.measured}`, 'fact'));
+    head.appendChild(this._stat(`이름뿐 ${m.counts.nameOnly}`, 'absent'));
+    // 🔴 「안 쟀다」 is not 「깨끗했다」. It is stated, in its own words, and never in red.
+    if (m.contrast === 'unexamined') {
+      head.appendChild(this._stat('대조군 없음 — 또래를 안 쟀습니다', 'absent'));
+    }
+    if (!m.complete) {
+      head.appendChild(this._stat('예산에서 끊김 — 아래는 미검사', 'absent'));
+    }
+    root.appendChild(head);
+
+    if (m.state === 'empty') {
+      // NOT 「원인 없음」. The walk did not reach a quantity; that is a fact about the walk.
+      root.appendChild(this._line('걷기가 물리량에 닿지 않았습니다', 'absent'));
+      this.host.appendChild(root);
+      return;
+    }
+
+    // ── the cards. Measured ones individually; the rest folded into one ─────────
+    const grid = doc.createElement('div');
+    grid.className = 'rb-cand-grid';
+    for (const c of m.candidates) {
+      if (!c.measured) continue;
+      grid.appendChild(this._card(c));
+    }
+    if (m.counts.nameOnly > 0) {
+      grid.appendChild(this._folded(m.counts.nameOnly));
+    }
+    root.appendChild(grid);
+    this.host.appendChild(root);
+  }
+
+  _card(c) {
+    const doc = this.doc;
+    const el = doc.createElement('div');
+    el.className = 'rb-cand-card';
+    if (c.id) {
+      el.setAttribute('data-node-id', c.id);
+      const sign = this.signOf(c.id);
+      if (sign === SIGN.CASE) el.classList.add('is-marked-case');
+      else if (sign === SIGN.CONTROL) el.classList.add('is-marked-control');
+      el.addEventListener('click', () => { this.mark(c.id, SIGN.CASE); });
+    }
+
+    const top = doc.createElement('div');
+    top.className = 'rb-cand-card-top';
+    const rank = doc.createElement('span');
+    rank.className = 'rb-cand-rank';
+    rank.textContent = c.rank === null ? '-' : String(c.rank);
+    top.appendChild(rank);
+    // Each of these is a DIFFERENT absence/state and gets its own chip. None is an error.
+    if (c.top) top.appendChild(this._tag('최상위', 'top'));
+    if (c.tied) top.appendChild(this._tag('동률', 'absent'));
+    if (c.incomparable) top.appendChild(this._tag('종류 다름', 'absent'));
+    el.appendChild(top);
+
+    // 🔴 TWO LINES. Merging the quantity and the model states a claim nobody made.
+    const q = doc.createElement('div');
+    q.className = 'rb-cand-quantity';
+    q.textContent = c.quantity;
+    const mdl = doc.createElement('div');
+    mdl.className = 'rb-cand-model';
+    mdl.textContent = c.model || '-';
+    el.append(q, mdl);
+
+    const measured = doc.createElement('div');
+    measured.className = 'rb-cand-measured';
+    // What it actually reaches, from the hop -- not a number invented for the card.
+    const ref = this._firstMeasuredRef(c);
+    measured.textContent = ref ? `실측 ${ref}` : '실측 -';
+    el.appendChild(measured);
+    return el;
+  }
+
+  _firstMeasuredRef(c) {
+    for (const ev of c.evidence || []) {
+      for (const hop of ev.hops || []) {
+        if ((hop.kind === 'claim' || hop.kind === 'value') && hop.ref) return hop.ref;
+      }
+    }
+    return null;
+  }
+
+  _folded(count) {
+    const el = this.doc.createElement('div');
+    el.className = 'rb-cand-card rb-cand-card--folded';
+    const t = this.doc.createElement('div');
+    t.className = 'rb-cand-quantity';
+    t.textContent = `모델 이름뿐 ${count}`;
+    const d = this.doc.createElement('div');
+    d.className = 'rb-cand-model';
+    d.textContent = '값도 트렌드도 없음 · 순위표에서 「-」로';
+    el.append(t, d);
+    return el;
+  }
+
+  _tag(text, kind) {
+    const el = this.doc.createElement('span');
+    el.className = `rb-cand-tag rb-cand-tag--${kind}`;
+    el.textContent = text;
+    return el;
+  }
+
+  _stat(text, kind) {
+    const el = this.doc.createElement('span');
+    el.className = `rb-cand-stat rb-cand-stat--${kind}`;
+    el.textContent = text;
+    return el;
+  }
+
+  _line(text, kind) {
+    const el = this.doc.createElement('div');
+    el.className = `rb-cand-line rb-cand-line--${kind}`;
+    el.textContent = text;
+    return el;
+  }
+
+  _note() {
+    const state = this.loadState;
+    const refused = state === 'refused';
+    const el = this.doc.createElement('div');
+    el.className = refused ? 'rb-cand-line rb-cand-line--refused' : 'rb-cand-line rb-cand-line--absent';
+    el.textContent = state === 'no-seed' ? '씨앗 없음 — 웨이퍼를 고르면 여기에 나옵니다'
+      : state === 'loading' ? '걷는 중'
+      : (this.model && this.model.message) || '서버가 거절했습니다';
+    return el;
+  }
+}

@@ -168,3 +168,67 @@ body {
 /* `unresolved` is an ABSENCE, not a failure -- muted, not red. */
 .rb-comp-row-state.is-resolved { color: var(--success); }
 .rb-comp-row-events { font-family: var(--font-mono); color: var(--text-muted); }
+
+
+/* ── 부품 F 후보 리스트 · 부품 G 순위 리스트 ──────────────────────────────────────
+   🔴 THE MEASURED/NAME-ONLY SPLIT IS NOT CARRIED BY COLOUR. Colour dies in a theme and this
+   distinction is the reason the screen exists, so it lives in POSITION (a 실측 field on every
+   card, a `-` column in the table) and in FOLDING (the name-only ones collapse into one card).
+   The tokens below only reinforce what the layout already says.
+   🔴 An absence never borrows `--danger`. Only a server refusal does. */
+.rb-cand { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; min-height: 0; overflow: auto; }
+.rb-cand-head { display: flex; gap: 6px; flex-wrap: wrap; }
+.rb-cand-stat { padding: 1px 7px; border-radius: 5px; font-size: 10.5px; border: 1px solid var(--border); }
+.rb-cand-stat--fact { background: var(--bg-surface); color: var(--text); }
+.rb-cand-stat--absent { background: var(--bg-inset); color: var(--text-muted); border-style: dashed; }
+.rb-cand-line { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
+.rb-cand-line--absent { background: var(--bg-inset); color: var(--text-muted); }
+.rb-cand-line--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
+
+.rb-cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 6px; }
+.rb-cand-card { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg-surface); cursor: pointer; }
+.rb-cand-card:hover { background: var(--surface-hover); }
+.rb-cand-card.is-marked-case { border-color: var(--accent); background: var(--accent-weak); }
+.rb-cand-card.is-marked-control { border-color: var(--text-muted); background: var(--bg-inset); }
+/* The folded card: one shape for "there are N more and none of them has a value". */
+.rb-cand-card--folded { cursor: default; border-style: dashed; background: var(--bg-inset); }
+.rb-cand-card-top { display: flex; align-items: center; gap: 5px; }
+.rb-cand-rank { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.rb-cand-tag { padding: 0 5px; border-radius: 4px; font-size: 9.5px; border: 1px solid var(--border); }
+.rb-cand-tag--top { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+.rb-cand-tag--absent { color: var(--text-muted); background: var(--bg-inset); border-style: dashed; }
+.rb-cand-quantity { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text); }
+.rb-cand-model { font-size: 10.5px; color: var(--text-muted); }
+.rb-cand-measured { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+
+.rb-rank { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-height: 0; overflow: auto; }
+.rb-rank-caption { font-size: 10.5px; color: var(--text-muted); }
+.rb-rank-note { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
+.rb-rank-note--absent { background: var(--bg-inset); color: var(--text-muted); }
+.rb-rank-note--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
+.rb-rank-rows { display: flex; flex-direction: column; }
+.rb-rank-row { display: grid; grid-template-columns: 2.5rem minmax(0,1fr) 2rem 3rem 8rem;
+  gap: 6px; align-items: center; padding: 3px 4px; border-bottom: 1px solid var(--border);
+  font-size: 11.5px; cursor: pointer; }
+.rb-rank-row--head { cursor: default; background: var(--bg-header); color: var(--text-muted);
+  font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; }
+.rb-rank-row:hover { background: var(--surface-hover); }
+.rb-rank-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
+.rb-rank-n { font-family: var(--font-mono); color: var(--text); }
+/* Two lines, never merged. */
+.rb-rank-label { display: flex; flex-direction: column; min-width: 0; }
+.rb-rank-quantity { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.rb-rank-model { font-size: 9.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.rb-rank-hops, .rb-rank-measured { font-family: var(--font-mono); color: var(--text); }
+/* `-` is the name-only reading. Muted, never red -- it is an absence of measurement, not a fault. */
+.rb-rank-measured.is-absent { color: var(--text-muted); }
+.rb-rank-state { font-size: 9.5px; color: var(--text-muted); }
+.rb-rank-evidence { display: flex; flex-direction: column; gap: 1px; padding: 4px 4px 6px 2.5rem;
+  border-bottom: 1px solid var(--border); background: var(--bg-inset); }
+.rb-rank-hop { display: flex; gap: 6px; font-size: 10.5px; align-items: baseline; }
+.rb-rank-hop-kind { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
+.rb-rank-hop-label { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+/* A hop that only names a model is dimmer than one that points at a thing in the world. */
+.rb-rank-hop.is-declared .rb-rank-hop-label { color: var(--text-muted); }
+.rb-rank-hop-ref { font-family: var(--font-mono); font-size: 9.5px; color: var(--accent-2); }

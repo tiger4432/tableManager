@@ -43,6 +43,7 @@
 export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
   composition: '/api/ledger/composition',
+  subgraph: '/api/ledger/subgraph',
 });
 
 /**
@@ -251,5 +252,148 @@ export function compositionModel(result) {
       transferEventCount: Array.isArray(c.transfer_events) ? c.transfer_events.length : null,
       dtCollectionCount: Array.isArray(c.dt_collections) ? c.dt_collections.length : null,
     })),
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBGRAPH -- 「이 웨이퍼 왜 이런가」. ONE route feeds TWO parts (F 후보 리스트, G 순위 리스트).
+//
+// 🔴 THREE THINGS WERE MEASURED, NOT ASSUMED, AND EACH WOULD HAVE PUT A FALSE SENTENCE ON THE
+//    SCREEN:
+//
+//    1. `id` IS A NODE ID, not a wafer name. `?id=SYN-BW-103-11` answers 422
+//       `subgraph_request_invalid`; `?id=ledger-entity:v1:<b64>` answers 200.
+//    2. `ranked` AND `top_set` LIVE INSIDE `propagation`, not at the top level. Reading
+//       `body.ranked` returns undefined, which renders as 「걷기가 아무것도 못 찾았다」 -- a claim
+//       about the wafer. It found 25.
+//    3. THE ROWS CARRY NO `kind`, `sublabel`, `detail` OR `color_role`. The order named that
+//       shape; this route does not serve it today. So the one distinction the screen exists to
+//       draw is DERIVED from the evidence hops, per the Lead PM's own rule, and `measured` below
+//       is that derivation and nothing else.
+//
+// 🔴 `measured` IS THE WHOLE POINT OF THIS SCREEN. A candidate whose hops are all `quantity`
+//    pointing at `mechanism_models.json` is a NAME the model declares; one with a `value` or
+//    `claim` hop has something an engineer can go and look at. Measured on the live seed:
+//    4 of 25. If those two look alike, the engineer walks to the 21 and finds nothing there.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
+export async function fetchSubgraph(params) {
+  const { apiBase, nodeId, collect, fetchImpl } = params || {};
+  const query = new URLSearchParams();
+  query.set('id', nodeId);
+  query.set('collect', collect || 'quantity');
+  const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
+  const res = await (fetchImpl || fetch)(url);
+  if (!res.ok) {
+    let detail = null;
+    try { detail = await res.json(); } catch (e) { detail = null; }
+    return { ok: false, status: res.status, detail, body: null };
+  }
+  return { ok: true, status: res.status, detail: null, body: await res.json() };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️ TEMPORARY BOUNDARY ADAPTER -- DELETE THIS FUNCTION WHEN THE SERVER SERVES THE FIELD.
+//
+// Lead PM ruling 2026-08-23: the derivation is ADOPTED because 「가서 볼 수 있는 것」 and
+// 「모델이 붙인 이름」 must be told apart or the rank table means nothing -- but a client
+// INTERPRETING ontology meaning is temporary, and the same ruling already applies to the map
+// cell's `node_id` placeholder. It is collected here, in ONE function, so the day
+// `/api/ledger/subgraph` serves the distinction itself, this function disappears and NO PART
+// IS TOUCHED.
+//
+// What it decides: a hop of kind `value` or `claim` reaches something an engineer can go and
+// look at. Hops that are all `quantity` are a name `mechanism_models.json` declares.
+//
+// ⚠️ It counts WALKS, not declarations. The order said 3 of 25; this says 4 of 25, and the
+//    Lead PM ruled the 4 correct -- their 3 counted rows with a model binding, which is a
+//    different question. `post_bond_queue_h · void_observation_bias` is the extra: it reaches
+//    a claim atom (`mes_queue:SYN-BW-103-11`) and a value hop.
+// ═══════════════════════════════════════════════════════════════════════════════
+export function measuredFromHops__untilServerServesIt(row) {
+
+  for (const ev of row.evidence || []) {
+    for (const hop of ev.hops || []) {
+      if (hop && (hop.node_kind === 'value' || hop.node_kind === 'claim')) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The view model both parts read. NO DOM.
+ *
+ * 🔴 THE FIVE ABSENCES ARE CARRIED SEPARATELY AND NONE OF THEM IS AN ERROR:
+ *      contrast 'unexamined'  나는 또래를 «안 쟀다»   != 「깨끗했다」
+ *      complete false          예산에서 끊겼다        != 「없다」
+ *      state 'empty'           물리량에 «안 닿았다»   != 「원인 없음」
+ *      tied                    동률                  != 순서가 있는 척
+ *      incomparable            종류가 다름            != 더 낮음
+ *    A part that collapses any two of these has told the operator something the ledger did not.
+ */
+export function subgraphModel(result) {
+  const failed = !result || result.ok === false;
+  const body = (result && result.body) || null;
+  if (failed || !body) {
+    const status = (result && result.status) || null;
+    const reason = (result && result.detail && result.detail.detail && result.detail.detail.reason) || null;
+    return {
+      ok: false, state: 'refused', status, reason,
+      message: status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다',
+      contrast: null, complete: null, candidates: [], topSet: [],
+      counts: { total: 0, measured: 0, nameOnly: 0, tied: 0, incomparable: 0 },
+    };
+  }
+  const prop = body.propagation || {};
+  const rows = Array.isArray(prop.ranked) ? prop.ranked : [];
+  const candidates = rows.map((row) => {
+    // The label is 「물리량 · 모델」 joined by U+00B7 -- measured, one separator, nothing else.
+    // 🔴 SPLIT, NEVER MERGE. The same quantity appears under two models, and joining them
+    //    states a third claim nobody made.
+    const parts = String(row.label || '').split('·');
+    return {
+      id: row.id || null,
+      quantity: (parts[0] || '').trim() || String(row.label || ''),
+      model: (parts[1] || '').trim() || null,
+      rank: typeof row.rank === 'number' ? row.rank : null,
+      top: row.top === true,
+      tied: row.tied === true,
+      incomparable: row.incomparable === true,
+      measured: measuredFromHops__untilServerServesIt(row),
+      hopCount: (row.evidence || []).reduce((n, ev) => Math.max(n, (ev.hops || []).length), 0),
+      evidence: (row.evidence || []).map((ev) => ({
+        seed: ev.seed || null,
+        sign: ev.sign || null,
+        hops: (ev.hops || []).map((h) => ({
+          id: h.id || null, kind: h.node_kind || null, label: h.label || '',
+          ref: h.ref || null,
+          // A hop that points at the model file is a DECLARATION; one that points elsewhere is
+          // a thing in the world. The parts show that difference rather than the raw string.
+          declaredOnly: h.node_kind === 'quantity',
+        })),
+      })),
+    };
+  });
+  const measured = candidates.filter((c) => c.measured).length;
+  return {
+    ok: true,
+    state: prop.state || 'unknown',
+    status: (result && result.status) || null,
+    reason: null,
+    message: prop.message || '',
+    // 'unexamined' is the value today, and it means NOBODY LOOKED -- not that nothing was found.
+    contrast: prop.contrast || null,
+    complete: prop.complete === true,
+    candidates,
+    topSet: Array.isArray(prop.top_set) ? prop.top_set.slice() : [],
+    counts: {
+      total: candidates.length,
+      measured,
+      nameOnly: candidates.length - measured,
+      tied: candidates.filter((c) => c.tied).length,
+      incomparable: candidates.filter((c) => c.incomparable).length,
+    },
   };
 }

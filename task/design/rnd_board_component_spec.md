@@ -70,6 +70,8 @@
 ```
 
 🔴 **후보의 «종류»와 «색»은 클라가 정하지 않습니다.** API 가
+
+⚠ **정정 (2026-08-23 밤)** — 이 문장은 `/api/ledger/subgraph` 가 `{kind, sublabel, detail, color_role}` 을 준다는 전제에서 썼는데, **그 모양은 없습니다.** 제가 지시서를 믿고 재 보지 않은 채 썼고, 총괄이 같은 오류를 여덟 자리에서 정정했습니다. 지금 서버가 주는 것은 `{id, type, label, rank, top, tied, incomparable, evidence[]}` 뿐이고, 「실측 있음/이름뿐」은 **근거 홉에서 도출**합니다(경계 어댑터 — `api.js` 참조). 아래 문장은 기록으로 남깁니다.
 `{kind, label, sublabel, detail, color_role}` 을 주고, 클라는 `color_role` 을 위 토큰에
 매핑만 합니다. 이 문서 어디에도 종류 목록은 없습니다 — 있으면 그날 서버가 하나 늘리는 순간
 화면이 틀립니다.
@@ -193,6 +195,8 @@ Marking    마킹 0 · 씨앗 1행
 **상태.** 맵 좌표 없음 → 「이 표에는 맵 좌표가 없습니다」(빈 원판을 그리지 않음).
 마킹 없음 → 전부 기본색, 범례의 마킹 수가 0. 값 없음 → 원판 윤곽만.
 
+
+⚠ **정정 (2026-08-23 밤)** — 이 문장은 `/api/ledger/subgraph` 가 `{kind, sublabel, detail, color_role}` 을 준다는 전제에서 썼는데, **그 모양은 없습니다.** 제가 지시서를 믿고 재 보지 않은 채 썼고, 총괄이 같은 오류를 여덟 자리에서 정정했습니다. 지금 서버가 주는 것은 `{id, type, label, rank, top, tied, incomparable, evidence[]}` 뿐이고, 「실측 있음/이름뿐」은 **근거 홉에서 도출**합니다(경계 어댑터 — `api.js` 참조). 아래 문장은 기록으로 남깁니다.
 토큰: 원판 `--bg-surface`, 윤곽 `--border-strong`, 값 스케일은 `color_role` → 토큰 매핑,
 마킹 `--accent`, 호버 `--surface-hover`, 기준 칩 `--bg-inset`/`--text-muted`.
 
@@ -225,12 +229,16 @@ sublabel                예) void_formation      (「delam_formation · 방향 �
 **⚠ 카드가 물리량만 있는 게 아닙니다.** 사고 이력(「챔버 파티큘 · SYN-BD-02 · CH-A ·
 8/19 03:20 · BONDING 겹침」)과 코멘트(「이 랏 재작업 1회 · 김OO · 8/18 · 원장 첨부 · 값 없음」)가
 같은 격자에 섞여 있었습니다. **그래서 클라가 종류를 세면 안 됩니다** — API 의 `kind` 와
+
+⚠ **정정 (2026-08-23 밤)** — 이 문장은 `/api/ledger/subgraph` 가 `{kind, sublabel, detail, color_role}` 을 준다는 전제에서 썼는데, **그 모양은 없습니다.** 제가 지시서를 믿고 재 보지 않은 채 썼고, 총괄이 같은 오류를 여덟 자리에서 정정했습니다. 지금 서버가 주는 것은 `{id, type, label, rank, top, tied, incomparable, evidence[]}` 뿐이고, 「실측 있음/이름뿐」은 **근거 홉에서 도출**합니다(경계 어댑터 — `api.js` 참조). 아래 문장은 기록으로 남깁니다.
 `color_role` 을 그대로 그립니다.
 
 **상태.** 후보 0 → 「걷기가 물리량에 닿지 않았습니다」(원인 없음이 아님).
 마킹 없음 → 전체 목록. `complete: false` → 접힌 카드가 그것을 말합니다.
 
 토큰: 카드 `--bg-surface`, 테두리 `--border`, 마킹된 카드 `--accent`(테두리)+`--accent-weak`,
+
+⚠ **정정 (2026-08-23 밤)** — 이 문장은 `/api/ledger/subgraph` 가 `{kind, sublabel, detail, color_role}` 을 준다는 전제에서 썼는데, **그 모양은 없습니다.** 제가 지시서를 믿고 재 보지 않은 채 썼고, 총괄이 같은 오류를 여덟 자리에서 정정했습니다. 지금 서버가 주는 것은 `{id, type, label, rank, top, tied, incomparable, evidence[]}` 뿐이고, 「실측 있음/이름뿐」은 **근거 홉에서 도출**합니다(경계 어댑터 — `api.js` 참조). 아래 문장은 기록으로 남깁니다.
 사고/공정 계열은 `color_role` 로 오고 `--orange`/`--overwrite` 계열에 매핑,
 접힌 카드는 빗금 + `--text-muted`, 실측 없음의 `-` 는 `--text-muted`.
 
@@ -292,6 +300,8 @@ rgba(194, 47, 47, 0.42)   맵 오버레이 <i> 두 개
 어두운 배경 위에 6% 회색은 **안 보입니다.** 그 카드가 안 보이면 «이름뿐 19개가 있다»는 사실이
 화면에서 사라지고, 그것이 바로 이 화면의 성패 조건입니다(§8).
 → **구현 때 세 색 모두 토큰으로 바꿉니다.** 접힌 카드는 `--bg-inset` + 빗금,
+
+⚠ **정정 (2026-08-23 밤)** — 이 문장은 `/api/ledger/subgraph` 가 `{kind, sublabel, detail, color_role}` 을 준다는 전제에서 썼는데, **그 모양은 없습니다.** 제가 지시서를 믿고 재 보지 않은 채 썼고, 총괄이 같은 오류를 여덟 자리에서 정정했습니다. 지금 서버가 주는 것은 `{id, type, label, rank, top, tied, incomparable, evidence[]}` 뿐이고, 「실측 있음/이름뿐」은 **근거 홉에서 도출**합니다(경계 어댑터 — `api.js` 참조). 아래 문장은 기록으로 남깁니다.
 맵 오버레이는 `--danger`/`--overwrite` 계열에 투명도를 얻어 쓰거나 `color_role` 로 받습니다.
 
 ---
