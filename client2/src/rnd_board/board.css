@@ -487,3 +487,17 @@ body {
 .rb-head-wafer-fact { font-family: var(--font-mono); }
 .rb-head-wafer-kind { font-family: var(--font-mono); color: var(--text); }
 .rb-head-wafer-pending { color: var(--text-dim); }
+
+/* 스팟파이어의 «선언 블록» — 차트 오른쪽. 필드는 선언, 고르는 것은 마킹에 씁니다. */
+.rb-decl { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 8px;
+  min-height: 0; overflow: auto; }
+.rb-decl-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 6px;
+  align-items: baseline; }
+.rb-decl-key { font-size: 11px; color: var(--text-muted); }
+.rb-decl-val { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+  overflow-wrap: anywhere; }
+.rb-decl-val.is-live { color: var(--accent); font-weight: 600; }
+.rb-decl-val.is-absent { color: var(--text-dim); border-bottom: 1px dashed var(--border-strong); }
+.rb-decl-select { width: 100%; font-family: var(--font-mono); font-size: 11px;
+  padding: 2px 4px; border: 1px solid var(--border-strong); background: var(--bg-surface);
+  color: var(--text); }
