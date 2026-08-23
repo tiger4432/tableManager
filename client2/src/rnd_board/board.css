@@ -501,3 +501,12 @@ body {
 .rb-decl-select { width: 100%; font-family: var(--font-mono); font-size: 11px;
   padding: 2px 4px; border: 1px solid var(--border-strong); background: var(--bg-surface);
   color: var(--text); }
+
+/* 「내가 보고 있는 점」 — 마킹과 다른 표시. 링만 두르고 색은 안 바꿉니다. */
+.rb-trend-dot.is-subject { box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent); }
+.is-attenuating .rb-trend-dot.is-subject { opacity: 1; }
+/* x 축의 시각 — 「차례」만 말하지 않습니다. */
+.rb-trend-xlabel { position: absolute; bottom: -15px; font-family: var(--font-mono);
+  font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.rb-trend-xlabel.is-left { left: 0; }
+.rb-trend-xlabel.is-right { right: 0; }

@@ -113,6 +113,7 @@ export const BOARD = Object.freeze({
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
         waferQuestion: { row: 'SYN-VOID-001', slot: '07' },
         waferKinds: ['void', 'delam'],
+        subjectReads: 'subject:wafer',
       },
     },
     {
@@ -178,6 +179,8 @@ export const BOARD = Object.freeze({
         axisReads: 'axis:y',
         // 찍은 점의 웨이퍼를 «이름»으로 남깁니다 -- 맵이 그것을 따라갑니다.
         writesSubject: 'subject:wafer',
+        // 지금 화면이 보고 있는 웨이퍼의 점을 «표시»합니다 (마킹과는 별개).
+        subjectReads: 'subject:wafer',
         // 🔴 THE GRAIN IS DECLARED, AND IT IS WHY THE POINTS HAVE VALUES. Handed over measured:
         //    the server's default aggregates `Wafer` and reads the leg out of `object_payload`,
         //    which returns 24 points all at 0.0 -- twelve findings drawn as none. Two fields
@@ -359,9 +362,12 @@ export function bindLoaders(layout, deps) {
       if (options.waferQuestion) {
         // One call per kind, because the route answers one kind at a time. A kind that has not
         // answered yet stays BLANK on screen -- never 0.
-        bound.loadWaferFacts = (kind) => fetchLotMap({
-          apiBase, fetchImpl, ...options.waferQuestion, kind,
-        }).then((body) => waferFactsFromLotMap(body, 'bond'));
+        // A wafer given means the screen moved: same route, wafer axis (the one that answers
+        // for a wafer picked out of a trend rather than a slot of a lot).
+        bound.loadWaferFacts = (kind, wafer) => fetchLotMap(wafer
+          ? { apiBase, fetchImpl, row: wafer, kind, by: 'wafer' }
+          : { apiBase, fetchImpl, ...options.waferQuestion, kind })
+          .then((body) => waferFactsFromLotMap(body, 'bond'));
       }
       if (options.peers) {
         bound.loadPeerCount = (scope) => fetchSiblings({

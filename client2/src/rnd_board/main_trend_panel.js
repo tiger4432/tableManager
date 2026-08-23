@@ -44,6 +44,10 @@ export class MainTrendPanel extends Panel {
     //    server id. The wafer NAME is in the same point, so it is written under its own
     //    declared name and a map can page to it by declaring that it follows.
     this.writesSubject = options.writesSubject || null;
+    // 🔴 「내가 보고 있는 점」 -- the wafer the rest of the screen is on. Declared, subscribed by
+    //    hand like the axis, and drawn as a ring so it is visible without being marked.
+    this.subjectReads = options.subjectReads || null;
+    this._subjectOff = null;
     this.axisChosen = null;
     this._axisOff = null;
     this.fetchImpl = options.fetchImpl || null;
@@ -54,6 +58,9 @@ export class MainTrendPanel extends Panel {
 
   mount() {
     super.mount();
+    if (this.subjectReads && this.markings) {
+      this._subjectOff = this.markings.subscribe(this.subjectReads, () => this.render());
+    }
     if (this.axisReads && this.markings) {
       this._axisOff = this.markings.subscribe(this.axisReads, () => this._onAxisChanged());
       this._onAxisChanged();
@@ -64,6 +71,8 @@ export class MainTrendPanel extends Panel {
   destroy() {
     if (this._axisOff) this._axisOff();
     this._axisOff = null;
+    if (this._subjectOff) this._subjectOff();
+    this._subjectOff = null;
     super.destroy();
   }
 
@@ -201,9 +210,12 @@ export class MainTrendPanel extends Panel {
     for (const p of points) {
       const dot = doc.createElement('div');
       const marked = p.markKey ? this.signOf(p.markKey) : SIGN.ABSENT;
+      const isSubject = Boolean(this.subjectReads && p.wafer && this.markings
+        && this.markings.signOf(this.subjectReads, p.wafer) !== SIGN.ABSENT);
       dot.className = 'rb-trend-dot'
         + (marked === SIGN.CASE ? ' is-marked-case' : '')
         + (marked === SIGN.CONTROL ? ' is-marked-control' : '')
+        + (isSubject ? ' is-subject' : '')
         + (seed && p === seed ? ' is-seed' : '');
       const t = Date.parse(p.at);
       const i = points.indexOf(p);
@@ -243,6 +255,23 @@ export class MainTrendPanel extends Panel {
     const yBottom = doc.createElement('div');
     yBottom.className = 'rb-trend-ymin';
     yBottom.textContent = '0.0%';
+    // 🔴 THE X AXIS NAMES ITS TIME. It was saying 「차례」 and nothing else, so the reader could
+    //    not see WHEN any of this happened. Measured: every point in this window shares one
+    //    timestamp, so the axis says that timestamp -- an order with no clock on it is not an
+    //    answer to 「언제」.
+    const stamp = (v) => String(v || '').replace('T', ' ').slice(0, 16);
+    const xLeft = doc.createElement('div');
+    xLeft.className = 'rb-trend-xlabel is-left';
+    xLeft.textContent = this.flatTime
+      ? `${stamp(points[0].at)} · 한 시각`
+      : stamp(points[0].at);
+    plot.appendChild(xLeft);
+    if (!this.flatTime) {
+      const xRight = doc.createElement('div');
+      xRight.className = 'rb-trend-xlabel is-right';
+      xRight.textContent = stamp(points[points.length - 1].at);
+      plot.appendChild(xRight);
+    }
     plot.append(yTop, yBottom);
     return plot;
   }
