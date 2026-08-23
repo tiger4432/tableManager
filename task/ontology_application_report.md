@@ -6,6 +6,92 @@
 
 ---
 
+# 📋 표면 ③ «선언» 완료 — 선언 셋 중 «하나만» 재료가 온전합니다 (05:1x)
+
+⚠️ **먼저, 제가 하마터면 없는 결함을 적을 뻔했습니다.** `lot_event` 의 bind 가 `slots`·`wafers`
+컬럼을 부르는데 표에 그 이름이 «없어서» 「선언이 없는 컬럼을 가리킨다」고 적을 뻔했습니다.
+**틀렸습니다** — 그 둘은 `prepare` 단계(`lot-event-live-frame`)가 «만들어 내는» 출력이고,
+표에서 읽는 것은 `slotnumbers`·`waferids` 입니다. **층을 잘못 짚었습니다.** 아래는 «prepare 입력»으로 다시 잰 것입니다.
+
+---
+
+### 1. 🔴 die@1 — 선언된 개체인데 «한 번도 등록되지 않습니다»
+```
+기능      entities.die@1 {mat_id, x, y, mat_type}  ->  walk 의 씨앗·목적지
+관측      die 주어 «1,405».  그중 register 원자 «0».  술어는 transfer «하나»뿐
+부족한 것 die 를 등록하는 매핑.  transfer_event 소스에 매핑이 «die-transfer 하나»뿐입니다
+왜 부족   ⓑ 행은 있는데 선언이 없다
+채우면    die 가 「언제 생겼나」를 답합니다. 지금 die 의 존재는 «전사에 의해 암시»될 뿐입니다
+```
+📎 대조: Lot 92/92 · DTJob 396/396 은 등록이 «완전»합니다. die 만 0 입니다.
+
+### 2. Wafer@1 — 12장이 «등록 없이» 관측만 있습니다
+```
+기능      entities.Wafer@1 · lot_event 의 first_sight_item
+관측      register 원자 7,007 / 서로 다른 등록 주어 6,332  ->  «675 중복 등록»
+          전체 웨이퍼 주어 6,344  ->  «등록 안 된 웨이퍼 12»
+부족한 것 그 12장의 첫 목격(register) 원자
+왜 부족   ⓐ 행이 없다
+채우면    그 12장이 「미등록」에서 벗어납니다.  ⚠️ 675 중복은 «해로운지 안 쟀습니다»
+```
+
+### 3. lot_event 소스 — 142행 중 «62행»이 재료가 없습니다
+```
+기능      sources.lot_event  (relation lot_event, unit=group, 매핑 «여섯»)
+관측      lot_id 80/142 · slotnumbers 80/142 · waferids 80/142 · txn_seq 80/142
+          parent_lot 68/142 · child_lot 68/142 · event_type 141/142 · event_time 142/142
+부족한 것 62행의 lot_id·슬롯·웨이퍼.  (68행은 split/merge 쪽이라 parent/child 만 갖습니다)
+왜 부족   ⓐ 행이 없다
+채우면    Lot 계보(derived_from 101 · slot_map 443)의 표본이 늘어납니다
+```
+
+### 4. dt_job 소스 — 522행이 «시각이 없어» 원자가 못 됩니다
+```
+기능      sources.dt_job  (relation dt_log 34,939, occurred_at = event_time)
+관측      dt_job 34,939/34,939 ✓ · event_time «34,417/34,939» · dt_index «26,239/34,939»
+부족한 것 522행의 event_time (occurred_at 이라 없으면 원자가 «설 수 없습니다»)
+          그리고 8,700행의 dt_index
+왜 부족   ⓐ 행이 없다
+채우면    DTJob 등록·netdie 가 522건 늘어납니다
+```
+
+### 5. ✅ transfer_event — 셋 중 «유일하게» 온전합니다
+```
+기능      sources.transfer_event (relation dt_transfer_log 1,405, unit=row)
+관측      선언이 읽는 컬럼 «11개 전부 1,405/1,405».  결측 «0»
+부족한 것 없습니다
+왜 부족   —
+채우면    —   ✅ 이게 「선언이 재료를 온전히 갖는」 유일한 표본입니다
+```
+📎 앞 라운드에서 「정본을 복사하면 0행」이라 한 것과 «모순 아닙니다» —
+   이 표(`dt_transfer_log`)는 온전하고, 그 «옆 표»(`dt_log`)에 그 이름들이 없다는 뜻이었습니다.
+
+### 6. ✅ vocabulary — 죽은 술어가 «없습니다»
+```
+기능      vocabulary 여섯
+관측      register 7,516 · has_wafer 1,645 · transfer 1,405 · slot_map 443 ·
+          has_netdie 396 · derived_from 101   ->  «여섯 다» 쓰입니다
+부족한 것 없습니다
+```
+
+---
+
+## 🔴 갈라 놓습니다
+```
+데이터가 없다 -> 구현자      2 (웨이퍼 12장 등록) · 3 (lot_event 62행) · 4 (dt_log 522행 시각)
+선언/코드가 없다 -> 대기열   1 (die 를 등록하는 매핑이 «없음»)
+아무 문제 없음               5 transfer_event · 6 vocabulary
+```
+
+## 세지 «못한» 것
+```
+· Wafer 675 «중복 등록»이 해로운지 — 중복이 무엇을 깨는지 안 쟀습니다
+· lot_event 의 80행과 68행이 «겹치는지» — 합이 148 > 142 라 겹칩니다만 분해 안 했습니다
+· dt_index 8,700 결측이 무엇을 막는지 — has_netdie 가 396 인 것과의 관계 안 쟀습니다
+```
+
+---
+
 # 📋 표면 ② «보드 부품» 완료 — 화면의 「—」가 셋으로 갈립니다 (04:4x)
 
 📎 먼저: 화면이 그새 바뀌었습니다 — **「코어 맵 · 마킹 2」와 「축」 패널이 붙었고**,
