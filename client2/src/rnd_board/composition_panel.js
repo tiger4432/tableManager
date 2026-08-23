@@ -60,7 +60,11 @@ export class CompositionPanel extends Panel {
     const place = (node) => { this.host.appendChild(node); node.scrollTop = scrollTop; };
     this.host.textContent = '';
     const root = doc.createElement('div');
-    root.className = 'rb-comp';
+    // 🔴 ATTENUATION, not decoration (the owner's Spotfire, measured): while something is
+    //    marked the rest FADES. Nothing fades while nothing is marked -- 「아직 안 골랐다」
+    //    and 「이건 아니다」 are different sentences. The dimming itself is CSS, so it is one
+    //    rule per part rather than a colour computed here.
+    root.className = this.markCount() > 0 ? 'rb-comp is-attenuating' : 'rb-comp';
 
     if (this.loadState === 'no-subject' || this.loadState === 'loading' || !this.model || !this.model.ok) {
       const state = this.loadState === 'no-subject' ? '대상 없음'

@@ -65,7 +65,11 @@ export class RankListPanel extends Panel {
     const place = (node) => { this.host.appendChild(node); node.scrollTop = scrollTop; };
     this.host.textContent = '';
     const root = doc.createElement('div');
-    root.className = 'rb-rank';
+    // 🔴 ATTENUATION, not decoration (the owner's Spotfire, measured): while something is
+    //    marked the rest FADES. Nothing fades while nothing is marked -- 「아직 안 골랐다」
+    //    and 「이건 아니다」 are different sentences. The dimming itself is CSS, so it is one
+    //    rule per part rather than a colour computed here.
+    root.className = this.markCount() > 0 ? 'rb-rank is-attenuating' : 'rb-rank';
 
     const caption = doc.createElement('div');
     caption.className = 'rb-rank-caption';

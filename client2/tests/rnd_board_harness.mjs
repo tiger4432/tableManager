@@ -476,6 +476,30 @@ async function suite(mods) {
     eq('C27 shift picks the control sign', shift.sign, SIGN.CONTROL);
     ok('C28 ctrl+shift adds a control',
       both.mode === 'add' && both.sign === SIGN.CONTROL);
+
+    // ── MARKING IS DRAWN BY ATTENUATION ───────────────────────────────────────
+    // Measured in the owner's Spotfire: the marked point keeps its strength and everything
+    // else fades. A hit that is only decorated has to be found; a faded field does not.
+    const fillsOf = (id) => canvasIn(elOf(id)).ops.filter((o) => o.op === 'fill');
+    // 🔴 AND NOTHING FADES WHILE NOTHING IS MARKED. B reads a name nobody has written, and
+    //    drawing it faded would say 「전부 아니다」 where the truth is 「아직 안 골랐다」.
+    ok('C29 nothing fades while nothing is marked',
+      fillsOf('b').every((o) => String(o.color).length <= 7));
+    ok('C30 a mark fades the rest of the wafer',
+      fillsOf('a').some((o) => String(o.color).length === 9));
+    ok('C31 the marked cell itself keeps full strength',
+      fillsOf('a').some((o) => String(o.color).length === 7));
+
+    // 🔴 THE BADGE COUNTS WHAT THIS MAP DREW, not the size of the name. A node of another
+    //    kind written under the same name used to make it read 「표시 1」 over an untouched
+    //    wafer -- the number was about the name, the sentence was about the map.
+    markings.set('marking:2', 'ledger-quantity:v1:not-a-cell-of-any-map', SIGN.CASE);
+    const badgeB = walk(elOf('b')).find((n) => n.getAttribute('data-reads') === 'marking:2');
+    ok('C32 the badge counts this maps own cells',
+      /표시 0$/.test(String(badgeB && badgeB.textContent)),
+      String(badgeB && badgeB.textContent));
+    markings.set('marking:2', 'ledger-quantity:v1:not-a-cell-of-any-map', SIGN.ABSENT);
+
     // Leave the name holding exactly one case, as the block below expects.
     A.mark(target.nodeId, SIGN.CASE);
 
@@ -707,6 +731,36 @@ const MUTANTS = [
       'map_panel.js': (s) => s.replace(
         "        layout, palette.control, 'ring').painted;",
         "        layout, palette.case, 'ring').painted;"),
+    },
+  },
+  {
+    id: 'M14',
+    what: 'map_panel.js stops attenuating, so a mark is decorated instead of the rest fading',
+    catches: 'C30',
+    mutate: {
+      'map_panel.js': (s) => s.replace(
+        '    const attenuating = this.markCount() > 0;',
+        '    const attenuating = false;'),
+    },
+  },
+  {
+    id: 'M15',
+    what: 'map_panel.js fades the wafer before anything is marked (unchosen drawn as rejected)',
+    catches: 'C29',
+    mutate: {
+      'map_panel.js': (s) => s.replace(
+        '    const attenuating = this.markCount() > 0;',
+        '    const attenuating = true;'),
+    },
+  },
+  {
+    id: 'M16',
+    what: 'the map badge counts the whole marking name again, not its own cells',
+    catches: 'C32',
+    mutate: {
+      'map_panel.js': (s) => s.replace(
+        '    for (const cell of ownCells) if (this.signOf(cell.nodeId) !== SIGN.ABSENT) marked += 1;',
+        '    marked = this.markings && this.reads ? this.markings.count(this.reads) : 0;'),
     },
   },
   {
