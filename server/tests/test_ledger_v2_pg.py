@@ -23,7 +23,7 @@ from ledger import backfill, gate, schema
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 from ledger.runtime_v2 import execute_cursor_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
-from ledger.setup_bundle import LedgerSetupValidationError, validate_bundle
+from ledger.setup_bundle import validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
 from ledger.source_preparation import (
     DirectJoinSourcePreparer,
@@ -35,7 +35,7 @@ from ledger.source_preparation import (
 from ledger.store import CursorVersionConflict, LedgerStore
 from ledger_trace import DEFAULT_RESOLVER_CONFIG, SqlClaimLookup, coverage, trace
 from ledger_structure import structure
-from test_ledger_setup_bundle import logical_bundle, logical_catalog, source_profile
+from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join_config
 
@@ -380,19 +380,29 @@ def test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0(clean_pg
     assert _counts(case) == (0, 0)
 
 
-@pytest.mark.parametrize("status", ["pending", "rejected"])
-def test_postgres_unapproved_binding_stops_before_atom_or_cursor(clean_pg_v2, status):
-    case = clean_pg_v2
-    raw = _bundle()
-    source_profile(raw)["mappings"][0]["bind"]["subject"][
-        "keys"]["input_id"]["approval_status"] = status
-
-    with pytest.raises(LedgerSetupValidationError) as exc:
-        compile_setup_snapshot(
-            validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
-            tuple(case["compiled"].verified_joins.values()), catalog=CATALOG)
-    assert exc.value.code == "binding_not_approved"
-    assert _counts(case) == (0, 0)
+# DELETED 2026-08-23 with the field it measured:
+# `test_postgres_unapproved_binding_stops_before_atom_or_cursor` (two parameters). It set
+# a subject key binding's `approval_status` to `pending`/`rejected` and asserted the
+# compile refused with `binding_not_approved`. That field retired on 2026-08-22
+# (`90383987`) for holding one reachable value on all 40 live bindings, and
+# `bundle_readiness_errors` -- the pass that owned the rule -- now has none: measured
+# off-PostgreSQL through the same three calls, `validate_bundle` accepts, readiness
+# returns `()`, and the snapshot compiles. `binding_not_approved` appears in no
+# production file in the tree. The bundle twins went the same way in the retirement
+# commit (`test_readiness_blocks_nonapproved_bindings_without_rejecting_draft`,
+# `test_readiness_walks_nested_entity_key_bindings`); that a retired name is swallowed
+# rather than refused, and that a typo at the same path is still `unknown_field`, is
+# asserted by `test_ledger_setup_bundle.py`.
+#
+# Its `_counts(case) == (0, 0)` added nothing: this unit never called `_seed` and never
+# executed a batch, so both counts were the clean fixture's own baseline. That a refusal
+# reaching PostgreSQL leaves atom 0 and cursor 0 is asserted above by
+# `test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0`, which seeds
+# first and refuses mid-execution.
+#
+# Second, independent reason it could not have passed: it wrote `["mappings"][0]`, and
+# `mappings` is a dict keyed by mapping id, so the line raised `KeyError: 0` before the
+# assertion was reached.
 
 
 def test_postgres_cursor_snapshot_conflict_rolls_back_insert_and_cursor(clean_pg_v2):

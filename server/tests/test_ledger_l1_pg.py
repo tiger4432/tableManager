@@ -539,25 +539,24 @@ def test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end(
     assert {row["source_event_id"] for row in preview["atoms_rendered"]} == {stored[4]}
 
 
-@pytest.mark.parametrize("status", ["pending", "rejected"])
-def test_canonical_profile_unapproved_binding_writes_no_atom_and_no_cursor(
-        ledger, status):
-    from ledger import config as ledger_config, dry_run
-    from ledger.chain_mapper import LedgerMapperError
-
-    _seed_profile_source_and_destination(ledger, matches=1)
-    cfg = _profile_mapper_cfg(nested_key_status=status)
-    ledger_config.validate(cfg)  # structurally valid draft; readiness is runtime-only
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        with pytest.raises(LedgerMapperError) as preview_error:
-            dry_run.preview(ledger, cfg, "lot_event", rows=20)
-        with pytest.raises(LedgerMapperError) as execute_error:
-            backfill.run(ledger, cfg, source="lot_event")
-    assert preview_error.value.code == execute_error.value.code == "binding_not_approved"
-    assert count(ledger) == 0
-    assert read_cursor_row(ledger) is None
-    assert _destination_count(ledger) == 1
+# DELETED 2026-08-23 with the field it measured:
+# `test_canonical_profile_unapproved_binding_writes_no_atom_and_no_cursor` (two
+# parameters). It drove the nested `declared_lookup` key's `approval_status` to
+# `pending`/`rejected` and asserted preview and execute both refused with
+# `binding_not_approved`. That field retired on 2026-08-22 (`90383987`) for holding one
+# reachable value on all 40 live bindings, and the validator now SWALLOWS the name, so
+# neither value reaches a decision: measured off-PostgreSQL against the same mapper the
+# PG path calls, `profile_readiness_errors` returns `()` and `run_registered_mapper`
+# emits a normal one-row frame. The refusal is underivable, not merely unchecked --
+# `binding_not_approved` appears in no production file in the tree.
+#
+# The same deletion landed on the non-PG twin in the retirement commit
+# (`test_profile_mapper_reuses_readiness_gate_for_pending_and_rejected`). What this unit
+# added over that twin -- a typed profile-mapper refusal leaves atom 0, the cursor
+# unmoved and the lookup's source table untouched, on real PostgreSQL -- is still
+# asserted below by `test_canonical_profile_lookup_cardinality_failure_writes_no_atom_
+# and_no_cursor` under `lookup_not_found` / `lookup_not_unique`, two codes that inputs
+# can still produce.
 
 
 @pytest.mark.parametrize(("matches", "code"), [
