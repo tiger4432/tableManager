@@ -3,6 +3,18 @@
 > **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-21 — 이 라운드에 대조한 것은 **Source-of-truth 목록과 §3.10의 경계 표시뿐**이다(`setup_version: 5`·section 셋 반영). 직전 2026-08-19 라운드가 대조한 것은 §3.8·§3.9·§3.11의 은퇴 서술이다. 나머지 절은 2026-08-17 Ledger v2 2단계 malformed-safe 전수 교차검증 `IN_REVIEW` / `NOT_APPROVED`; 현행 실행 경로 `FROZEN_FOR_REDESIGN` — 코드 대조 | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · **`server/ledger/setup_bundle.py`**(🔴 **[2026-08-21] 단일 `ledger_config.json` 문법 — `setup_version: 5`, 필수 section **셋**(`LOGICAL_SECTIONS` = `vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`. 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, `source_preparers`·`mappers`·`profiles` 셋은 본문이 소스 안으로 들어가며 은퇴했다. 🔴 **`packs`도 그 셋에 없다**(`9b6c5da`) — Claim이 선언하던 Role·`emit`을 `setup_bundle.predicate_claim`이 술어에서 도출하고, 문장은 `bind.mappings.<문장>.predicate`로 술어를 직접 댄다. **`tables`도 그 셋에 없다** — 물리 스키마의 정본은 `server/config/table_config.json` 하나다. `manifest.json` 다섯 파일 모양은 은퇴했고, 이 셋업은 이제 **백필 실행 경로에 연결돼 있다**) · `server/ledger/setup.py`(로드 경계 `load_setup` — 구 `cutover_v2.py`/`load_cutover_setup`은 삭제) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(현행 동결 Profile 계약) · **`server/ledger/source_profile_builtins.py`**(현행 동결 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/roleframe.py`**(RoleFrame compile · 범용 mapper · `SentenceShape`/`ProfileSentences`) · ⚰️ **`translator_pattern.py`·`declared_translator.py`는 트리에 없다**(`e47d325`로 번역기 다섯과 함께 삭제 — §3.8·§3.9의 그 서술은 은퇴한 경로다) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
 >
+> 🔴 **[2026-08-23] 위 목록의 일부는 «얼어 있다» — 은퇴 울타리 안이다.** 소유자 순서가
+> ① 셋업 완주 → ② 응용 → ③ 은퇴이고, ③이 데려갈 모듈이 **파일 단위로 측정돼 목록으로**
+> 그어졌다(파일 «이름» 글롭으로는 넷이 빠져나갔다). 얼어 있는 것: `server/ledger_trace.py` ·
+> `server/ledger_trace_router.py` · `server/ledger_admin.py` · `server/ledger/config.py` ·
+> `server/ledger_explorer.py` · `server/ledger_structure.py` · `server/ledger_journey.py` ·
+> `server/ledger_lots.py`(뒤의 넷이 resolver·어휘·계보 술어를 데려간다). **살아 있는 것**:
+> `ledger_subgraph` · `ledger_catalog` · `ledger_composition` · `ledger_selection` ·
+> `ledger_siblings` · `ledger_trends`(원장 결합이 SQL 헬퍼 둘뿐이다). 🔴 **얼어 있는 모듈의
+> 계약은 «기록»이지 갱신 대상이 아니다 — 그 위에 새 일을 얹지 않는다.** 아래 §4.x의 그 라우트
+> 서술은 이 표시와 함께 읽는다. 목록의 정본은 [PROJECT_STATUS](../process/PROJECT_STATUS.md)의
+> 2026-08-23 10:3x 블록.
+>
 > **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
 > **코드 대조 기준 리비전은 `8c236bc`다.**
 > **§3.8 신설**: 소스 문법이 **넷**이 됐고 넷째는 🔴 **파이썬 클래스가 «없다»** — 행→원자 사상이 `emit` 선언 그 자체다.
@@ -695,12 +707,19 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 >
 > 🔴 **[2026-08-21] 이 절의 `profiles`·`mapping_id`·`binding_origin`·`declared_lookup`은
 > «레거시 v1 flat config»(`server/config/ledger_config.json`, 정본 코드
-> `server/ledger/source_profile.py`)의 낱말이다 — v2 셋업의 그것과 이름만 같다.** 이 계약은
-> 이번 config 모양 라운드들이 **건드리지 않았고** 여기 적힌 대로 여전히 유효하다.
+> `server/ledger/source_profile.py`)의 낱말이다 — v2 셋업의 그것과 이름만 같다.**
+> 🔴 **[2026-08-22 `90383987` 정정] 종전의 「이 계약은 이번 config 모양 라운드들이 건드리지
+> 않았고 여기 적힌 대로 여전히 유효하다」는 «거짓이 됐다».** 세 필드
+> `binding_origin`·`approval_status`·`suggestion_reason`이 **v1 리더에서도** 나갔다 —
+> `source_profile._RETIRED_PROFILE_FIELDS`가 그 세 이름을 **읽고 버리고**(reaches no decision),
+> `approval_status == "approved"` 하나뿐이던 승인 패스는 **규칙이 0개**가 됐다. 그래서 아래
+> 예제 JSON의 그 줄들은 **오늘 아무 일도 하지 않는다** — 파싱은 되고 정규화 산출물에도
+> 실리지만(떼면 지문이 움직인다) 어떤 판정에도 닿지 않는다. 나머지 구조(`packs`·`mapping_id`·
+> `use`·`declared_lookup`)는 v1 계약 그대로다.
 > **v2 `server/config/ontology/ledger_config.json`에는 `profiles` section도 `mapping_id`도
 > 없다** — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은
-> mapper가 선언한 **문장 별명**으로 키가 매겨지며, `binding_origin`은 `user_declared`일 때
-> **생략**한다(`approval_status`는 필수로 남는다). 🔴 **[2026-08-21 `9b6c5da`] 아래 표의
+> mapper가 선언한 **문장 별명**으로 키가 매겨지며, **binding은 종류와 그 payload만 말한다**.
+> 🔴 **[2026-08-21 `9b6c5da`] 아래 표의
 > `packs[]`와 `mappings[].use`도 v2에는 «없다»** — v2 문장은 `predicate`로 술어를 직접 대고
 > Role은 `setup_bundle.predicate_claim`이 그 술어에서 도출한다. v2 작성 지침은
 > [ONTOLOGY_LEDGER_SETUP §4·§7.5·§7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)이 정본이다.

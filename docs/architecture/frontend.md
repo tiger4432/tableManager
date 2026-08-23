@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟠 부분 최신 (§1~§5·§6.5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-18 Ontology Config Explorer
+> **Status:** 🟠 부분 최신 (§1~§5·§6.5 Living · **§6.1~§6.4는 🗄️ 대체됨 — R-리라이트**) | **Last-verified:** 2026-08-23 — 작성 폼(잠긴 칩·객체 피커·삭제된 mapping) 서술 신설 · `ontology_explorer_view.js` 행 신설(이 표에 없던 2,277줄 모듈) · 모듈 줄 수 여섯 재실측. 직전 2026-08-18 Ontology Config Explorer
 >
 > 🔴 **[R-리라이트 · 소유자 최종] 콘솔 클라이언트 화면은 내일 «전면 재작성»됩니다** — §6 배너가 「무엇이 살아남고 무엇이 계승되지 않는가」의 정본입니다. **서버 계약은 전부 보존**([backend §2](./backend.md)), **화면은 계승하지 않습니다.** 이 문서의 §6 서술을 새 화면의 설계 근거로 쓰지 마십시오.
 > ⚰️ **[`2ec78b9` · R-2026-08-14-H] 구 지식그래프 뷰어(`graph.html`·`trace.html`)는 은퇴**했습니다 — §6.0 신설, 진입점 표·§7 갱신. nav 링크 삭제, 행 선택 버튼은 **활성 판정 라우트가 410이 되어 클라 변경 0줄로 자기 치유**.
@@ -169,23 +169,24 @@ npm run build     # prebuild(§2.1의 세 채점자) → dist/ 생성
 
 | 파일 | 줄 | 책임 |
 |---|---|---|
-| `main.js` | 2047 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트(**§2.1-ter 걸쇠** — `smartPasteFromPasteEvent`(읽기)/`smartPasteViaIngestion`(클릭 진입)/`uploadSmartPastePayload`), Tx 모드 apply/discard |
-| `state.js` | 162 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) + **`currentVirtualColumns`와 술어 `isVirtualColumn(colId)`**(§3.4). 🔴 가상 컬럼 목록은 **`currentColumns`에 병합하지 않습니다** — 그 배열의 뜻은 「이 테이블이 저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댑니다 |
+| `main.js` | 2,112 | 메인 페이지 오케스트레이터: init(+`initTraceEntry`), 이벤트 바인딩, 소스 모달, 스마트 페이스트(**§2.1-ter 걸쇠** — `smartPasteFromPasteEvent`(읽기)/`smartPasteViaIngestion`(클릭 진입)/`uploadSmartPastePayload`), Tx 모드 apply/discard |
+| `state.js` | 227 | **단일 싱글턴 상태 저장소**(gridApi, 현재 테이블/스키마, ws, 선택/드래그, 페이지캐시, `pendingTxEdits`) + **`currentVirtualColumns`와 술어 `isVirtualColumn(colId)`**(§3.4). 🔴 가상 컬럼 목록은 **`currentColumns`에 병합하지 않습니다** — 그 배열의 뜻은 「이 테이블이 저장하는 컬럼」이고 소비자 넷이 그 뜻에 기댑니다 |
 | `dom.js` | 57 | `getElementById` 지연 게터 모음(`elements`) |
 | `api.js` | 533 | REST 계층: health, loadTables, switchTable(테이블 전환 시 `refreshTraceEntry` 재판정), loadSchema(**`virtual_columns`를 `state`에 그대로 보관 — 배열이 아니면 `[]`**), fetchData(페이지캐시), handleCellEdit(Tx 스테이징+숫자검증), addRows, deleteSelectedRows. ⚠️ **검색 드롭다운(`?cols=`)은 `currentColumns`만 훑습니다** — 그 값은 WHERE 절로 가고 가상 이름에는 대응 컬럼이 없습니다(§3.4). ⚠️ **`switchTable`은 `txModeActive`를 강제로 다시 켭니다**(:70-71 — 대기 편집을 버리는 것과 한 쌍이라 안전한 기본값이지만, **표를 바꾸면 토글이 되살아납니다**. 편집 E2E에서 두 번 새는 자리 — [FEATURE_CHECKLIST §2.0](../qa/FEATURE_CHECKLIST.md)) |
 | `websocket.js` | 488 | 실시간 동기화: 지수 백오프 재연결(5s 천장 · `visibilitychange`/`online` 웨이크 · flap 가드), `batch_row_{create,upsert,delete}`/`batch_refresh_required`를 AG-Grid 트랜잭션으로 적용(셀 플래시). 🔴 **재연결 사다리 전체가 `initWebSocket` 안에 산다** — 그 함수에 닿지 못한 페이지는 소켓도 재시도도 없다. 그래서 `init()`의 **첫 문장**이다(§3.5) |
-| `grid.js` | 1,148 (2026-08-22 재실측 — 종전 869) | AG-Grid 설정/렌더: `buildColumnDefs`(저장 컬럼 뒤에 **가상 조인 컬럼을 APPEND** — §3.4), `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), 셀 읽기 공용 `rawCellValue`/`numericDisplayValue`, `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택). **`string` 선언 컬럼의 `cellEditor`를 `SuggestCellEditor`로 갈아끼우는 자리**(§3.3)이고, `defaultColDef.suppressKeyboardEvent`의 **첫 분기**가 `handleEditorKey`를 부릅니다 — 그 한 분기가 **`Enter` 한 번 계약이 서는 기반**입니다(AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하므로 `'accepted'` 판정은 "후보가 이미 입력에 들어갔으니 **이 이벤트가 그대로 확정하라**"는 뜻입니다. `false` 반환은 포기가 아니라 **확정**입니다) |
+| `grid.js` | 1,142 (2026-08-23 재실측) | AG-Grid 설정/렌더: `buildColumnDefs`(저장 컬럼 뒤에 **가상 조인 컬럼을 APPEND** — §3.4), `renderGrid`, `ensureCellObject`(중첩 셀 `{value,is_overwrite,priority_source}` 정규화), 셀 읽기 공용 `rawCellValue`/`numericDisplayValue`, `extendRangeByKeyboard`(§2.1-bis `Shift`+방향키 범위 선택). **`string` 선언 컬럼의 `cellEditor`를 `SuggestCellEditor`로 갈아끼우는 자리**(§3.3)이고, `defaultColDef.suppressKeyboardEvent`의 **첫 분기**가 `handleEditorKey`를 부릅니다 — 그 한 분기가 **`Enter` 한 번 계약이 서는 기반**입니다(AG-Grid가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`보다 **먼저** 호출하므로 `'accepted'` 판정은 "후보가 이미 입력에 들어갔으니 **이 이벤트가 그대로 확정하라**"는 뜻입니다. `false` 반환은 포기가 아니라 **확정**입니다) |
 | `value_suggest.js` | 1003 | **값 제안 셀 에디터(§3.3)** — `SuggestCellEditor` + `handleEditorKey`(순수 키보드 판정 `suppress`/`accepted`/`pass`) + `isSuggestEditorActive`. 디바운스 90ms(트레일링)·요청 한도 12·여는 최소 접두 1·표시 8행. 컬럼별 학습(플로어·4연속 4xx 후 비활성·`unavailable_reason` 쿨다운)은 **전부 TTL 60초로 만료**(핫리로드되는 `table_config`를 클라 래치가 조용히 면제받지 않도록). 진단은 `window.__assySuggest` |
-| `clipboard.js` | 858 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells`, `registerSmartPasteHandler`(**§2.1-ter** — paste 핸들러의 스마트 페이스트 걸쇠 분기). **쓰기 세 경로(붙여넣기·delete 비우기·행 복사 술어)는 `isVirtualColumn`으로, 읽기 두 경로(복사 술어)는 그 반대로** 갈립니다 — §3.4 |
+| `clipboard.js` | 897 | 엑셀형 범위 선택/클립보드: hit-test, `commitDragSelection`, `getRangeSelectedTSV`, paste, `clearSelectedCells`, `registerSmartPasteHandler`(**§2.1-ter** — paste 핸들러의 스마트 페이스트 걸쇠 분기). **쓰기 세 경로(붙여넣기·delete 비우기·행 복사 술어)는 `isVirtualColumn`으로, 읽기 두 경로(복사 술어)는 그 반대로** 갈립니다 — §3.4 |
 | `tsv.js` | 121 | TSV 직렬화/파싱 순수 함수 — 클립보드 경로와 회사 양식 왕복이 공유하는 유일한 구현 |
 | `doe_bands.js` | 753 | **DOE zone 모델의 순수 구현**(§4.1) — 구간 소요·자재당 분배 산식의 정본. 계약 벡터 `contracts/doe_band_rules/vectors.json`으로 서버와 같은 기댓값에 채점 |
-| `timeline.js` | 1,058 (2026-08-22 재실측 — 종전 1,008) | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터. **[2026-08-11 `dab9152`] `readHistoryPage`**(엔벨로프 `{logs,truncated,next_cursor,limit,returned}`와 구버전 bare-list 응답 양쪽을 받는 관용 파서) + 목록 끝 `일부만 (N건) · 더 보기` 페이징(§7). 🔴 **[2026-08-12] 빈 셀 탭은 두 상태다** — `createHistoryEmptyDom`이 서버가 셀 라우트에만 싣는 `row_history_total`을 읽어 「이 행엔 정말 이력이 없다」(`기록 없음`)와 「기록은 있는데 이 화면이 못 보여준다」(`이 셀 기록 없음` + `행 이력 N건 보기` → 행 탭)를 갈라 그린다. 기계 쓰기가 `column_name='ROW_UPDATE'`로 **행마다 한 줄**을 적기 때문에 생기는 상태이고, **요약 문자열을 파싱해 셀 이력을 복원하지 않는다**(그 값은 렌더된 문장이다 — [backend §이력/감사](./backend.md)). `row_history_truncated`면 그 수는 하한이라 `N건 이상`으로 적는다 |
+| `timeline.js` | 1,148 (2026-08-23 재실측 — 8/22 표기 1,058은 그날 밤 감사 필터 띠가 착지하기 «전»이었다) | 감사 히스토리 패널: `loadHistory`, `appendHistoryLocally`, 로그→그리드 점프 네비게이터. **[2026-08-11 `dab9152`] `readHistoryPage`**(엔벨로프 `{logs,truncated,next_cursor,limit,returned}`와 구버전 bare-list 응답 양쪽을 받는 관용 파서) + 목록 끝 `일부만 (N건) · 더 보기` 페이징(§7). 🔴 **[2026-08-12] 빈 셀 탭은 두 상태다** — `createHistoryEmptyDom`이 서버가 셀 라우트에만 싣는 `row_history_total`을 읽어 「이 행엔 정말 이력이 없다」(`기록 없음`)와 「기록은 있는데 이 화면이 못 보여준다」(`이 셀 기록 없음` + `행 이력 N건 보기` → 행 탭)를 갈라 그린다. 기계 쓰기가 `column_name='ROW_UPDATE'`로 **행마다 한 줄**을 적기 때문에 생기는 상태이고, **요약 문자열을 파싱해 셀 이력을 복원하지 않는다**(그 값은 렌더된 문장이다 — [backend §이력/감사](./backend.md)). `row_history_truncated`면 그 수는 하한이라 `N건 이상`으로 적는다 |
 | `ui.js` | 431 | 공용 UI 반영: `updateTxModeUI`, `setTransactionFilter`, `applyValueToSelectedRange`(**Ctrl+Enter 일괄 채우기 — 사각형이 뒤쪽 가상 컬럼까지 닿으므로 `isVirtualColumn` 가드 필요**), 페이지캐시 유지, unload 경고. ⚠️ **[2026-08-11] Enrichment 배지(`updateEnrichmentBadge`)는 삭제됐다**(`5116f67` — 호출자 0건이던 죽은 함수) |
-| `enrichment_reference_view.js` | 498 (2026-08-11 신설 `1e29078` · 2026-08-22 정렬 띠를 제거해 축소) | **메인 그리드 History 패널의 참조뷰 «그리드»** — 2026-08-21 이주 2b로 «읽는 표»에서 «범위 선택·복사가 되는 그리드»가 됐다. `fillPlan`(규칙의 `target_fields` **배열** 순서 × 뷰의 `candidate_for` 매핑으로 «채울 열»을 정한다 — 키 순서가 아니라 배열을 읽는 이유는 §3.6) · 로컬 범위 선택 모델 하나(드래그와 `Shift`+방향키가 같은 `end`를 움직인다) · `serializeTsv` 재사용 복사(`clipboard.js`를 **import 하지 않는다** — 그 모듈은 `grid.js`·`ui.js`·`effort_meter.js`를 끌고 오고, 이 패널은 셋 다 필요 없다). 규칙 선택은 «선언하는 규칙 우선»(§3.6). 같은 백엔드 라우트 재사용, 새 엔드포인트 없음 — 옛 `enrichment.html` 컨베이어의 조회 절반을 그리드 사이드바로 이식. `syncReferenceViewRule`(테이블 전환 시 그 테이블에 해당 규칙이 있으면 탭 노출) · `refreshReferenceForSelection`(셀 클릭 시 자동 갱신) · `installReferenceKeyboardIsolation`(패널 안 텍스트 선택·복사가 그리드 클립보드 핸들러에 가로채이지 않게 격리 — 그리드 핸들러는 선택이 남아 있으면 **항상** 자기 TSV로 덮어썼다). 같은 백엔드 라우트(`GET /enrichment/rules/{r}/references/{i}`)를 재사용, 새 엔드포인트 없음 |
+| `enrichment_reference_view.js` | 497 (2026-08-11 신설 `1e29078` · 2026-08-22 정렬 띠를 제거해 축소) | **메인 그리드 History 패널의 참조뷰 «그리드»** — 2026-08-21 이주 2b로 «읽는 표»에서 «범위 선택·복사가 되는 그리드»가 됐다. `fillPlan`(규칙의 `target_fields` **배열** 순서 × 뷰의 `candidate_for` 매핑으로 «채울 열»을 정한다 — 키 순서가 아니라 배열을 읽는 이유는 §3.6) · 로컬 범위 선택 모델 하나(드래그와 `Shift`+방향키가 같은 `end`를 움직인다) · `serializeTsv` 재사용 복사(`clipboard.js`를 **import 하지 않는다** — 그 모듈은 `grid.js`·`ui.js`·`effort_meter.js`를 끌고 오고, 이 패널은 셋 다 필요 없다). 규칙 선택은 «선언하는 규칙 우선»(§3.6). 같은 백엔드 라우트 재사용, 새 엔드포인트 없음 — 옛 `enrichment.html` 컨베이어의 조회 절반을 그리드 사이드바로 이식. `syncReferenceViewRule`(테이블 전환 시 그 테이블에 해당 규칙이 있으면 탭 노출) · `refreshReferenceForSelection`(셀 클릭 시 자동 갱신) · `installReferenceKeyboardIsolation`(패널 안 텍스트 선택·복사가 그리드 클립보드 핸들러에 가로채이지 않게 격리 — 그리드 핸들러는 선택이 남아 있으면 **항상** 자기 TSV로 덮어썼다). 같은 백엔드 라우트(`GET /enrichment/rules/{r}/references/{i}`)를 재사용, 새 엔드포인트 없음 |
 | `utils.js` | 347 | `getLocalTimeString`, **전역 토스트**(`showToast` — window 부착), 인제션 진행 위젯. 토스트는 **벽시계 `expireAt` 기준 만료**(백그라운드 탭 setTimeout 스로틀링으로 무한 누적되던 원인 제거) · 상한 4(퇴거는 비-에러 오래된 것 우선, 방금 삽입분 면제) · TTL info/success 5s·warning 9s·**error 15s** · `visibilitychange`/`focus` 스윕 · `dedupeKey` 합치기(**에러 제외** — 건별 원인이 중요) · `dismissToasts(dedupeKey)`로 **회수**(지시형 토스트는 그 지시가 참이 아니게 된 순간 사라져야 한다 — §2.1-ter) |
 | `theme.js` | 92 | 듀얼 테마 전환(`initTheme`/`toggleTheme`/`syncAgGridThemeClasses`) — 토큰 SSOT는 `tokens.css` |
 | `config.js` | 113 | 환경 설정: `API_BASE`/`WS_URL`(5173→8080), `CURRENT_USER`, `pageLimit=1000` |
 | `admin.js` | 3708 | 어드민 5탭(§5) |
+| `ontology_explorer_view.js` | 2,277 (2026-08-23 재실측 — **이 표에 행이 없던 모듈이다**) | **원장 셋업 작성 폼의 DOM·ARIA 전담**(§5 「Ontology Explorer 상태 경계」). 스켈레톤 + 계획 행에서 컨트롤을 «생성»하고 잠긴 칩·객체 피커·mapping 맵을 그린다. API·초안 lifecycle은 `ontology_explorer.js`, 상태는 `ontology_explorer_store.js`. 하네스 `client2/tests/ontology_authoring_panel_harness.mjs` |
 | `config_resolve_view.js` | 324 | **config 해석 보고서의 뷰 모델(§5, F9)** — DOM 없는 순수 모듈. `GET /admin/config/resolve` 응답을 렌더 트리로 바꾸면서 **모든 문자열에 출처를 태그**한다(`server`=페이로드 원문 · `value`=페이로드 값의 JSON 철자 · `chrome`=고정된 클라 라벨표 · `count`=클라가 센 정수). DOM 빌더 안에 있으면 node에서 채점할 수 없어서 분리한 것이고, `contracts/config_resolve_report/client_harness.mjs`가 **이 모듈을 임포트해** INV-F9-4를 실행 채점한다 |
 | `map_editor.js` | 11060 | 맵 에디터 + 페인트 잠금 + **오버레이 레이어**(§4) + 유효 다이 참조([MAP_EDITOR_SPEC §5.7/§5.7-bis](../spec/MAP_EDITOR_SPEC.md)). **이 저장소에서 가장 큰 클라 모듈**이고 **분할이 진행 중입니다** — 순수 함수 덩어리가 라운드마다 `client2/src/`의 별도 모듈로 빠져나가므로(아래 두 행), **「맵 에디터는 파일 하나」라고 읽지 마십시오.** 어느 심볼이 어느 파일에 있는지는 [CODE_MAP](./CODE_MAP.md)을 grep해서 확인하십시오. ⚠️ **「프레임 채택·저장 좌표 재배치」는 이 행에서 삭제됐습니다**(F8 `61440e6`+`94b9baa`로 심볼 8종이 소스에서 사라졌습니다 — 찾지 마십시오) |
 | `map_key.js` | 158 | **맵 키의 정준형(§7b)** — `map_editor.js`에서 분리(R1 `689ebb9`). `canonicalKeyValue`(선언 타입으로 키 값을 캐노니컬화) · `composeMapId` · `decomposeMapKey` · `canonicalMapKey` · `getMapIdFromMeta`. 🔴 **서버 `map_overlay.py`와 같은 답을 내야 하는 이음새**이고 양측 채점은 `contracts/map_seam/` + `client2/tests/seam_7b_oracle.py`입니다 — 여기를 고치면 그 둘이 판정합니다. `getMapIdFromMeta`는 분리하면서 `tableSchema`를 **두 번째 인자로** 받게 됐습니다(본문은 바이트 동일 — 하네스가 이 텍스트를 잘라 vm에서 돌립니다) |
@@ -558,6 +559,29 @@ SSOT §1의 정본 계기 **「완료까지의 상호작용 점수」**를 수�
   token 하나뿐이고 request generation이 지난 응답은 폐기한다. `ontology_explorer_view.js`는 DOM과 ARIA만,
   `ontology_explorer.js`는 API·stale guard·초안 lifecycle만 소유한다. API는 [backend §2](./backend.md),
   상세 근거는 [Explorer acceptance](../../ontology_config_explorer_plan/02_IMPLEMENTATION_AND_ACCEPTANCE.md).
+- **작성 폼(Authoring panel) — 🔴 [2026-08-22~23] 이 화면이 소유자가 «폼만으로» 소스를 만든
+  자리다.** 서버가 채우는 것(기본값·파생·후보)의 계약은
+  [ONTOLOGY_LEDGER_SETUP §13.3-quater](../guide/ONTOLOGY_LEDGER_SETUP.md)가 정본이고, 여기는
+  **클라가 지는 몫 넷**만 적는다.
+  - **잠긴 칩은 «구성상» 비활성이다** — 계획 행이 발행한 강제 컬럼을 눌린 상태로 그리되
+    **버튼이 아니고 `data-action`이 없다.** 컨트롤러가 클릭과 Enter/Space 양쪽을 가장 가까운
+    `data-action`으로 디스패치하므로 마우스·키보드·합성 클릭 어디로도 닿지 않는다. 🔴
+    **`disabled` 속성을 쓰지 않은 것이 판정**이다(회색인데 선택처럼 보이는 컨트롤을 소유자가
+    기각했다). 🔴 **강제 집합을 클라가 다시 계산하지 않는다** — 규칙의 두 번째 사본이 된다.
+  - 🔴 **객체 피커는 자기 후보가 이름 대는 키를 «전부 삼킨다».** `occurred_at` 후보가
+    timezone까지 실어 오게 만든 순간, **그 timezone 입력 상자가 화면에서 사라졌다** — 페이로드는
+    「더 완전」한데 화면은 「상자 하나 적음」이었고, 진짜 계획을 진짜 뷰로 렌더해 본 것이 그것을
+    잡았다. 지금은 **계획이 대변하는 키도 자기 컨트롤을 유지**하고, 그 판단은 필드 «이름»이
+    아니라 계획에서 나온다.
+  - 🔴 **지운 mapping이 계속 그려지던 것은 «합집합» 때문이었다.** 맵이 문서가 든 것과 계획이
+    이름 대는 것을 합치는데, 계획이 저장된 선언에서 그 이름을 대고 있었다 — 행이 자기 삭제에서
+    살아남고 마이너스 버튼만 사라져, **보이게 실패했는데 재시도할 수 없는 컨트롤**이 됐다.
+    합집합은 **술어가 강제하는 멤버**에 대해서만 남고(그것이 Role을 나타나게 하는 장치다),
+    **사람이 이름 붙인 멤버는 문서를 따른다.** 둘은 경로 목록이 아니라 **계획이 무엇을 싣는가**로
+    갈린다.
+  - ⚠️ **하네스 픽스처가 계약과 «함께» 움직여야 한다** — `client2/tests/ontology_authoring_panel_harness.mjs`에
+    bind map 행이 없어서, 지금 맵이 갈라 보는 바로 그 구분(이름 붙은 멤버 ↔ 후손 경로)을 재지
+    못하고 있었다.
 - **🔒 어드민 토큰 (2026-07-27)**: 서버가 `/admin/*`을 공유 토큰으로 잠근다([backend §API](./backend.md)). 클라 측 구현은 `admin.js`의 `adminFetch()` 하나뿐 — **로그인 화면도, 새 탭·모드·설정 패널도 없다.** `localStorage['assy.adminToken']`에 보관하고 `X-Admin-Token` 헤더로 전송한다. 서버에 토큰이 미설정이면 게이트가 열려 있어 프롬프트 자체가 뜨지 않는다. 판정 규칙 4가지가 **모두 필요**하다(각각 실제 오작동을 막는다):
   1. **상태코드가 아니라 `WWW-Authenticate: X-Admin-Token` 헤더로 판정한다.** `_resolve_admin_script_path`가 격리 사유로 내는 403이 있어, 상태코드만 보면 그것을 "토큰이 틀렸다"로 오해해 **정상 토큰을 사용자 입력으로 덮어썼다.**
   2. **토큰 세대 카운터** — 프롬프트 도중 이미 교체된 토큰에 대해 **먼저 날아간 응답**이 뒤늦게 도착하면 조용히 재시도한다. 이게 없으면 "동시 7건 → 프롬프트 1회"는 타이밍 운이고, 두 번째 모달이 **올바른 토큰을 두고** "거부되었습니다"라고 말한다.

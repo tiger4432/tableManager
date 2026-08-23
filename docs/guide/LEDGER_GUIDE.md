@@ -1,7 +1,7 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-21 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/` · `server/ledger_trace_router.py`
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-23 — 은퇴 울타리 표시(§1.1·§1.2) · 범용 매퍼가 시각 Role을 채운다(§0) · 커서 지문과 재-스탬프(§4.2-bis) | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/` · ⛔ `server/ledger_trace_router.py`(**얼어 있다** — §1.1)
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
 정확한 필드·인덱스·응답 계약은 [LEDGER_TECHNICAL_SPEC](../spec/LEDGER_TECHNICAL_SPEC.md),
@@ -43,6 +43,13 @@ v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `
 | 행을 쪼개거나 도메인 규칙으로 해석해야 한다 | `server/mappers/ledger_v2_*.py`에 전용 mapper 파일 **하나** |
 | 정규화·그룹 조립처럼 계산이 필요하다 | `server/ledger/`에 `BaseSourcePreparer` 하위 클래스 |
 
+✅ **[2026-08-23 `189193a4`] 범용 매퍼가 «시각 Role»을 채운다 — 그전에는 못 했다.**
+`declarative-role@1`은 모든 binding을 프레임 셀 그대로 읽었으므로 varchar 시각 컬럼을 문자열로
+집어 `invalid_time_role`로 거절했고, 전용 매퍼 둘이 각자 변환하며 그 칸을 **가리고** 있었다.
+이제 Role kind가 `time`이면 준비 경계가 이미 해석한 `__occurred_at`을 읽는다
+([ONTOLOGY_LEDGER_SETUP §7.9](./ONTOLOGY_LEDGER_SETUP.md)). **「Python 0줄」이 시각 있는 소스에
+대해 참이 된 것이 이 수리다** — 소유자가 폼만으로 만든 첫 소스가 그것을 요구했다.
+
 기본 원칙은 **먼저 범용 구현 둘로 끝나는지 보고, 안 되는 부분만 코드로 쓴다**이다.
 구현 클래스는 자기 `implementation_id`/`implementation_version`을 선언하고
 `server/ledger/implementations.py`가 **코드에서 발견**한다 — 손으로 유지하는 등록 목록은 없다.
@@ -55,9 +62,15 @@ v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `
 
 ### 1.1 쓰기 쪽
 
+🔴 **[2026-08-23 · 은퇴 울타리] 아래 표에서 ⛔가 붙은 것은 «얼어 있다».** 소유자 순서가
+① 셋업 완주 → ② 응용 → ③ 은퇴이고, ③이 데려갈 모듈이 파일 «이름»이 아니라 **파일 단위
+실측 목록**으로 그어졌다(이름 글롭으로는 넷이 빠져나갔다). **그 위에 새 일을 얹지 않는다** —
+계약이 낡아 보여도 갱신 대상이 아니라 기록이다. 목록의 정본은
+[PROJECT_STATUS](../process/PROJECT_STATUS.md)의 2026-08-23 10:3x 블록.
+
 | 파일 | 역할 |
 |---|---|
-| `config.py` | 소스 문법 검증과 버전 해시 |
+| ⛔ `config.py` | 소스 문법 검증과 버전 해시. **얼어 있다**(v1 계통과 함께 ③에서 간다) |
 | `source_contract.py` | 선언 → 번역 프로필 → 가능한 Claim → live vocabulary 결합 검사 |
 | `runtime_v2.py` · `source_preparation.py` · `roleframe.py` · `source_profile*.py` | **v2 실행 경로** — `prepare` → `map`/RoleFrame → Pack/`bind` |
 | `setup_bundle.py` · `setup_registry.py` · `setup.py` | 단일 `ledger_config.json` 검증·compile과 로드 경계(`load_setup`) |
@@ -73,11 +86,11 @@ v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `
 | 질문 | API |
 |---|---|
 | 원장 준비 상태 | `GET /api/ledger/coverage` |
-| 특정 개체 추적 | `GET /api/ledger/trace` |
-| 구조와 선언·관측 차이 | `GET /api/ledger/structure` |
+| ⛔ 특정 개체 추적 | `GET /api/ledger/trace` (`ledger_trace.py` — **얼어 있다**) |
+| ⛔ 구조와 선언·관측 차이 | `GET /api/ledger/structure` (`ledger_structure.py` — **얼어 있다**) |
 | 결함 종류와 원장 상태 | `GET /api/ledger/kinds` |
-| 두 주어의 공정 차이 | `GET /api/ledger/journey` |
-| 증거 서브그래프 | `GET /api/ledger/subgraph` |
+| ⛔ 두 주어의 공정 차이 | `GET /api/ledger/journey` (`ledger_journey.py` — **얼어 있다**) |
+| 증거 서브그래프 | `GET /api/ledger/subgraph` (`ledger_subgraph.py` — **얼지 않았다.** 응용 라운드가 여기 위에서 자란다) |
 
 파라미터와 응답 계약은 [backend §2](../architecture/backend.md)가 정본이다.
 
@@ -227,6 +240,36 @@ conda run -n assy_manager python -m ledger.setup
 
 이 문서는 소스 이름도 개수도 적지 않는다 — 위 명령의 `sources` 배열이 정본이다.
 
+### 4.2-bis 커서 지문(fingerprint) — 선언을 고치면 커서가 서는 자리 (2026-08-22)
+
+소스마다 **cursor fingerprint**가 있다(`setup_registry.source_cursor_fingerprint`). 저장된
+지문과 현재 선언의 지문이 다르면 그 소스의 커서는 `cursor_snapshot_reset_required`로 **선다** —
+「원자를 다르게 만들 수 있는 선언이 바뀌었으니 사람이 보라」는 뜻이다.
+
+🔴 **이 지문은 «크게» 잡는 것이 기본이고, 예외는 오늘 둘뿐이다.**
+`prepare.input_columns`와 `map.input_columns`는 **해시 재료에서 빠져 있다**(`91f9afde`) —
+넓히면 SELECT만 넓어지고 매퍼 입력은 그대로라 **원자가 같은 원자**이고, 좁히면 지문이 아니라
+`roleframe`의 `missing_mapper_input`이 **쓰기 전에** 이름 대어 거절하기 때문이다. 이 예외가
+필요해진 이유는 [작성 화면의 전체-켜짐 기본값](./ONTOLOGY_LEDGER_SETUP.md)이 **모든 소스의 첫
+저장마다** 이 두 칸을 건드리기 때문이다. **다른 키를 여기 더하지 마라** — 예외마다 코드에 그
+두 방향 증명이 붙어 있고, 없으면 넣지 않는다.
+
+🔴 **그 예외를 들이면 모든 지문이 «한 번» 움직인다** — 정규 JSON이 값이 비어 있어도 키를 실어
+왔기 때문이다. 흡수는 전용 도구가 한다.
+
+```bash
+cd server
+conda run -n assy_manager python scripts/ledger_restamp_cursor.py            # 보고만 (쓰기 0)
+conda run -n assy_manager python scripts/ledger_restamp_cursor.py --apply    # 저장된 지문만 교체
+```
+
+- **커서 «위치»는 안 건드린다.** 저장된 문자열만 바꾸므로 행을 다시 읽지 않고 원자를 다시 내지
+  않는다. 실행 전후로 커서 위치와 원자 수가 그대로인지 확인하는 것이 이 도구의 수용 조건이다.
+- 🔴 **반쯤 만든 소스가 있어도 돈다** — strict 로드를 먼저 시도하고, 실패하면 explorer가 쓰는
+  **관용 읽기로 폴백**한다. 컴파일 안 된 소스는 **경로와 함께 이름을 대고** 건너뛴다(조용한
+  skip이 아니다). 우회 플래그는 없다. 작성 화면이 켜져 있는 동안 번들이 통째로 컴파일되는 일이
+  드물어서, 그렇지 않으면 **사람이 일하는 바로 그때** 이 도구가 멈춘다.
+
 ### 4.3 재실행 의미
 
 | 실행 | 의미 |
@@ -290,6 +333,27 @@ Trend는 선언된 finding kind와 실제 검사 분모를 사용한다. 관측 
 - 셀 provenance가 있다면 해당 `updated_by`/source layer
 
 실행 전 각 술어의 건수를 따로 세고, 운영 데이터와 겹치지 않음을 확인한다.
+
+#### 4.7-bis 픽스처에게 «자기 표»를 주는 것이 필터를 가르치는 것보다 싸다 (2026-08-23 `347c9069`)
+
+전사(die transfer) 픽스처는 처음에 `dt_log`에 썼고, 그 표를 읽는 소스가 **거절**했다 —
+데이터가 틀려서가 아니라 **소스가 남의 행까지 읽었기 때문**이다(`dt_cell_key`로 정렬하니 첫
+행이 `b_wx` 없는 옛 행이고, 그 컬럼이 빈 행이 3만 4천이었다). 수리는 소스에 필터를 가르치는
+것이 아니라 **전사 로그에 자기 relation을 주는 것**이었다: `dt_transfer_log`(선언 12컬럼).
+
+- 🔴 **표를 «선언하는 것»이 표를 만든다** — config watcher가 modify에서
+  `create_missing_dynamic_tables`를 부르므로 **마이그레이션을 쓰지 않는다.** ⚠️ 그 경로가
+  만드는 업무키 인덱스는 **UNIQUE가 아니다**(기존 마이그레이션이 그 자리를 덮는다).
+- 🔴 **라이브 `table_config.json`은 gitignore라 선언이 이 박스에만 산다** — 커밋에 들어간 것은
+  `server/config/sample/table_config.json.sample`뿐이고, **다른 곳에서 돌리려면 거기서 다시
+  선언해야 한다.** 같은 날 선언 둘이 조용히 죽은 것이 그 실패다.
+- 🔴 **롤백은 목록이 아니라 술어 하나**로, **키를 쓴 것과 같은 상수**에서 만든다(그래야 드리프트가
+  불가능하다). 지우는 것은 원시 DELETE가 아니라 **소스·오버라이트를 캐스케이드하고 이력을 쓰는
+  경로**로 명시적 row id를 태운다 — 원시 삭제는 그것들을 고아로 남긴다.
+- 씨더: `server/scripts/seed_syn_die_transfer.py`. 채우기 순서를 **다시 구현하지 않고**
+  `map_alignment.serpentine_index`를 부른다(그 docstring이 두 번째 구현을 금지한다). 기하는
+  `valid_die_ref`에서 오고 생성하지 않는다. `--apply` 외에 **두 번째 명시 플래그**가 있어야
+  쓴다(라이브 DB 쓰기 가드 — 요구된 적 없고 총괄이 걷어낼 수 있다).
 
 ## 5. 원장이 일부러 하지 않는 것
 

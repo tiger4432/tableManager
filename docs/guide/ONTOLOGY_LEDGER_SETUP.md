@@ -1,7 +1,13 @@
 # Ledger V2 설정 작성 가이드
 
 > **Status:** 🟢 Living
-> **Last-verified:** 2026-08-21 — 🔴 **`setup_version: 5`. 필수 section은 이제 «셋»이다**
+> **Last-verified:** 2026-08-23 — 🔴 **선언에서 «없어진» 낱말 넷을 이 라운드에 지웠다**:
+> vocabulary의 `layer`(§7.1 · `ddc93f5b`)와 binding의 `binding_origin`·`approval_status`·
+> `suggestion_reason`(§7.6 · `90383987`). 🔴 **`read.cursor`는 이제 «묻지 않고 `order_by`에서
+> 파생»된다**(§7.7). 🔴 **범용 매퍼가 드디어 시각 Role을 채운다**(§7.9 · `189193a4`) — 그것이
+> 폼만으로 만든 첫 소스 `transfer_event`를 막고 있던 것이다. **작성 화면이 무엇을 채워 주는지는
+> §13.3-quater 신설.** 아래 2026-08-21 서술은 그대로 유효하다.
+> 🔴 **`setup_version: 5`. 필수 section은 «셋»이다**
 > (`entities`·`sources`·`vocabulary`). 2026-08-20~21의 다섯 라운드
 > (`087e7d8`·`d64f047e`·`a55f3059`·`e795c706`·`9b6c5da`)로 소스 하나가
 > `relation`·`read`·`prepare`·`map`·`bind` 다섯 절을 직접 들게 됐고, 마지막 라운드가
@@ -490,7 +496,6 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 {
   "register@1": {
     "status": "active",
-    "layer": "ontology",
     "subjects": ["Lot@1", "Wafer@1"],
     "object": {
       "kind": "none",
@@ -499,7 +504,6 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
   },
   "has_wafer@1": {
     "status": "active",
-    "layer": "ontology",
     "subjects": ["Lot@1"],
     "object": {
       "kind": "entity_ref",
@@ -509,7 +513,6 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
   },
   "derived_from@1": {
     "status": "active",
-    "layer": "ontology",
     "subjects": ["Lot@1"],
     "object": {
       "kind": "entity_ref",
@@ -519,7 +522,6 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
   },
   "slot_map@1": {
     "status": "active",
-    "layer": "ontology",
     "subjects": ["Lot@1"],
     "object": {
       "kind": "entity_ref",
@@ -539,7 +541,6 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 |---|---|
 | Vocabulary ID | 반드시 versioned ID, 예: `has_wafer@1` |
 | `status` | `active` 또는 `retired` |
-| `layer` | 의미 층 이름. 현재 예시는 `ontology` |
 | `subjects` | 허용되는 versioned Entity ID 목록 |
 | `object.kind` | `none`, `entity_ref`, `value`, `event_ref` |
 | `object.types` | `entity_ref`일 때 허용되는 Entity ID 목록 |
@@ -548,8 +549,20 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 
 required와 optional은 겹칠 수 없다. `object.kind: "none"`에는 qualifier나 type을 붙일 수
 없다. `slot_map@1`을 내는 문장이 `from`, `to`, `wafer` 중 하나를 빠뜨리면
-`missing_required_payload`, 선언하지 않은 `layer` 같은 값을 추가하면
+`missing_required_payload`, 선언하지 않은 이름(`depth` 같은 것)을 추가하면
 `unknown_payload_field`로 거절한다.
+
+🔴 **[2026-08-22 `ddc93f5b`] `layer`는 항목에서 «없어졌다» — 지금 적으면 `unknown_field`로
+거절된다.** 문법이 아무 비어 있지 않은 문자열이나 받았지만 **작성자가 쓸 수 있는 값은
+하나뿐**이었다: 시스템이 아는 층은 둘이고 `canonical`은 코드 소유라 `ontology`가 선언 가능한
+집합의 전부였다. 자유도 0인 칸은 계약이 아니라 상수의 사본이다([PRIMITIVES §3](../architecture/PRIMITIVES.md)).
+읽는 쪽은 **손대지 않았다** — config explorer가 술어 노드 설명을 `raw.get('layer', 'ontology')`로
+만드는데 그 기본값이 바로 그 유일 합법값이라, 필드가 사라져도 설명이 **바이트까지 같다.**
+옛 파일은 `server/scripts/migrate_ledger_config_drop_vocabulary_layer.py`가 올린다 —
+`ontology` 아닌 값을 들고 있으면 **아무것도 쓰지 않고 그 값을 대며 거절**하고, 두 번 돌리면
+「변화 없음」이라 답한다. `setup_version`은 **일부러 안 올렸다**(두 자리 모두 등가 비교라
+버전으로 분기하는 코드가 없고, 안 올린 파일은 이미 이름 대어 거절된다 — 올리면 같은 말을
+하는 거절이 하나 더 생기고 번호만 틀린 백업이 전부 무효가 된다).
 
 Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 실제 source 컬럼은 여기에 쓰지
 않는다.
@@ -968,13 +981,15 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 
 </details>
 
-이 metadata는 canonical 정규화 산출물에 결정적으로 보존된다. Mapping이 사람이 승인됐다는
-사실은 **컬럼 배선 승인**일 뿐, 생성되는 원장 원자를 `pin`, `confirmed` 같은 epistemic
-class로 승격하지 않는다.
+🔴 **「받아서 버린다」는 «지운다»가 아니다.** 옛 파일에 남아 있는 세 이름은 canonical bundle에
+**그대로 실려 간다** — 떼어 내면 소스마다 cursor fingerprint가 움직여, 이제 아무 뜻도 없는
+낱말 하나 때문에 **돌던 커서가 선다.** 바뀐 것은 그 이름이 **어떤 결정에도 도달하지 않는다**는
+것뿐이다(실측: 이 변경 전후로 bundle 해시·snapshot 해시·소스 지문 둘이 전부 동일).
 
-초안 validation과 실행 readiness는 분리된다. `pending`/`rejected` binding은 문법 검토는 할
-수 있지만 실행 진입점마다 readiness gate가 차단한다. nested Entity key 하나라도 approved가
-아니면 Atom 0, cursor 미이동이다.
+🔴 **그래서 「binding 승인」이라는 실행 관문은 더 이상 없다.** 종전에 여기 있던
+「`pending`/`rejected` binding은 실행 진입점마다 readiness gate가 차단한다」는 **거짓이 됐다** —
+그 게이트가 필드와 함께 나갔다(`roleframe`·`source_profile` 양쪽). 준비 안 된 소스를 붙드는
+자리는 §8 하나뿐이다: **`sources`에 적지 않는 것.**
 
 #### mapper는 여전히 선언의 낱말을 모른다
 
@@ -1006,13 +1021,13 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
       "unit": "group",
       "identity": ["event_group_key"],
       "group_by": ["event_group_key"],
-      "order_by": ["txn_seq"],
+      "order_by": ["event_time", "row_id"],
       "occurred_at": {
         "column": "event_time",
         "timezone": "Asia/Seoul"
       },
       "cursor": {
-        "columns": ["event_time", "txn_seq"]
+        "columns": ["event_time", "row_id"]
       }
     },
     "prepare": { },
@@ -1036,22 +1051,36 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 |---|---|
 | source ID | **여기 있으면 이 소스는 돈다**(§8) |
 | `relation` | `table_config.json`이 선언한 base physical relation. **안 옮겼다** — `prepared_columns`가 여기서 출발한다 |
-| `read.unit` | `row` 또는 `group` |
+| `read.unit` | `row` 또는 `group`. 🔴 **작성 화면이 «채워 주지 않는» 칸이다** — 채우면 드롭다운이 사라져 새 소스에서 고를 수가 없어진다(2026-08-22 판정) |
 | `read.identity` | 결정적인 source event identity 컬럼 |
-| `read.group_by` | group event 조립 컬럼. row이면 빈 배열 |
-| `read.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함 |
+| `read.group_by` | group event 조립 컬럼. row이면 빈 배열. 화면은 **파일이 아무 말도 안 할 때만** `identity`로 채운다 — 검증기가 「`identity`의 부분집합」만 요구하므로 진부분집합이 합법이고, 무조건 채우면 그런 선언을 빨갛게 칠한다 |
+| `read.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함. 화면은 `table_config.json`이 선언한 **가장 짧은 유일 키**를 기본값으로 낸다 |
 | `read.occurred_at.column` | 세계 시각을 담은 physical column |
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
-| `read.cursor.columns` | physical keyset cursor 컬럼. UNIQUE key 전체를 포함해야 함 |
+| `read.cursor.columns` | physical keyset cursor 컬럼. 🔴 **[2026-08-22 `90383987`] 더 이상 «묻지 않는다»** — `read.order_by`에서 파생돼 번들에 쓰인다(아래) |
 | `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register@1`을 내는 소스에는 필수** |
 | `prepare` | 이 소스의 preparer 본문 (§7.3) |
 | `map` | 이 소스의 mapper 본문 (§7.4) |
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
-`read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 필수이고
-`registration_probe`만 문법상 선택이다. `occurred_at`의 `column`과 `basis`는 **정확히
-하나**여야 한다 — 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
+`read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 번들에 전부
+있어야 하고 `registration_probe`만 문법상 선택이다. **다만 사람이 적는 것은 다섯이다** —
+`cursor`는 아래대로 파생된다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야 한다 —
+둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
+
+🔴 **[2026-08-22 `90383987`] `read.cursor`는 «질문»에서 빠졌지 «문서»에서 빠지지 않았다.**
+`setup_bundle._derived_cursor`가 번들을 만들 때 소스마다 `read.cursor.columns`를
+`read.order_by`로 **덮어쓴다.** 아래 전부가 그 값을 계속 읽으므로 한 줄도 안 바뀐다 —
+`setup_registry`가 compile하고, `backfill`이 페이지를 그것으로 정렬해 watermark를 만들고,
+`runtime_v2`가 커서 튜플을 그것에 대조하고, `source_preparation`이 그 컬럼들의 생존을 요구한다.
+- **왜 「빈 자리만 채우기」가 아니라 «덮어쓰기»인가.** watermark는 **읽기가 실제로 돈 순서로만**
+  표현될 수 있다. `order_by`와 다른 커서는 두 번째 의견이 아니라 **읽는 쪽이 지킬 수 없는
+  페이지 경계**다. 부재한 것만 채우면 어긋난 선언들이 살아남고, 검증기는 이제 그 키를 아예
+  안 보므로 **살아 있으면서 검사도 안 받는** 상태가 된다.
+- **어긋난 것이 실제로 있었다.** 트리의 선언 다섯이 자기 `order_by`가 한 번도 언급하지 않는
+  컬럼으로 페이징하고 있었다 — 두 칸을 한 계약으로 채점하던 탓에 결함 하나가 둘로 보고됐고
+  작성자는 같은 답을 두 번 붙여넣고 있었다(소유자: 「커서 어차피 복붙할건데 왜 적으라 그래?」).
 
 🔴 **`registration_probe`의 「선택」은 문법의 말이지 소스의 말이 아니다.** `bind`의 문장
 가운데 하나라도 `register@1`을 내면 이 절은 **필수**다 — `runtime_v2._filtered_event_atoms`가
@@ -1071,9 +1100,10 @@ probe 없는 소스에 `None`을 돌려주기 때문이고, 빈 집합을 돌려
 같은 소스의 binding은 `lot`·`wafers`(준비기 출력)를 쓴다. 화면은 그래서 **relation의 물리
 카탈로그 컬럼**을 후보로 내놓는다: probe가 진짜로 읽는 우주가 그것이다.
 
-`order_by`와 `cursor.columns`는 각각 유일 키를 완전히 포함해야 한다. 현재 `lot_event`는
-`txn_seq`가 business key이므로 `order_by: ["txn_seq"]`가 전순서를 만들고,
-`cursor: ["event_time", "txn_seq"]`도 그 키를 포함한다.
+`order_by`는 catalog가 선언한 유일 키를 완전히 포함해야 하고, `cursor.columns`는 그것과
+**같은 값**이 되므로 같은 성질을 물려받는다. 위 `lot_event`는 `row_id`가 유일 키라
+`order_by: ["event_time", "row_id"]`가 전순서를 만든다. **둘을 다르게 적어 볼 자리는 이제
+없다** — 다르게 적어도 번들이 `order_by` 쪽으로 맞춰 쓴다.
 
 Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다. `event_time`이 이미 offset을
 갖는지, 현장 local time인지 확인하고 실제 의미를 적는다. 없거나 잘못된 timezone은 validation
@@ -1158,6 +1188,21 @@ instant`로 거절된다. 접는 것은 `basis` 경로뿐이고, 두 갈래를 �
 **매퍼도 안 바뀐다.** `column`이든 `basis`든 매퍼는 시각을 **`__occurred_at` 한 이름으로**
 읽는다 — 물리 컬럼 이름은 준비 경계가 이미 풀었고, 그 이름을 매퍼가 되물을 자리는 없다.
 
+🔴 **[2026-08-23 `189193a4`] 그 문장이 «범용 매퍼에 대해서는» 오늘부터 참이 됐다.**
+`declarative-role@1`은 모든 binding을 프레임 셀 그대로 읽었으므로, varchar 시각 컬럼을 문자열로
+집어 들고 `invalid_time_role`(`time Role must be a timezone-aware datetime`)로 거절했다.
+**전용 매퍼 둘이 각자 값을 변환하고 있어서 그 칸을 가리고 있었고**, 전용 매퍼가 없는 소스가
+처음 생긴 날 드러났다 — 소유자가 폼만으로 만든 `transfer_event`가 그것이다. 지금은 범용
+매퍼도 **Role kind가 `time`이면** binding을 평가하지 않고 `__occurred_at`을 읽는다. 범위는
+정확히 그 kind 하나다(claim 컴파일러는 `time`을 `occurred_at`에만 준다). 다시 파싱하지 않는
+것이 요점이다 — **`source_event_identity`가 사건 id를 바로 그 값에서 만들기 때문에**, 다른
+철자로 읽은 시각은 자기가 속한 사건의 id와 어긋난다.
+
+⚠️ **그래서 `bind.<문장>.occurred_at`의 `column`은 시각 Role에 대해 «아무 일도 하지 않는다».**
+`dt_job`이 그 상태다 — `read.occurred_at.basis: ingested`인데 모든 `bind.occurred_at`은
+`event_time`을 가리키고, 전용 매퍼도 그것을 무시한다. **자유도 0인 칸이므로 지울 후보이지만
+아직 판정 전이다**(열린 항목). 이 칸을 「시각을 바꾸는 손잡이」로 읽지 말 것.
+
 ```python
 sentences = ProfileSentences(context, profile,
                              occurred_at=unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN])
@@ -1175,8 +1220,9 @@ sentences = ProfileSentences(context, profile,
 `parity_status`, `approval_ref`를 들고 있었다. 셋 다 은퇴했다. 그 파일도, 그 문법도 없다.
 
 **왜 느슨해진 것이 아닌가.** selector는 애초에 「선언은 됐지만 돌 준비는 안 됨」을 붙들고
-있지 않았다. binding이 전부 `approved`가 아닌 Profile은 **로드 시점에** readiness gate가
-거절하므로, 절반만 쓴 소스는 스위치가 무슨 말을 하든 돌 수 없었다. 그리고 스위치의 다른
+있지 않았다. 절반만 쓴 소스는 스위치가 무슨 말을 하든 **bundle validation과 snapshot compile을
+통과하지 못해** 돌 수 없다(⚠️ **그 자리를 붙들던 것이 binding 승인 게이트라고 적혀 있었는데,
+그 게이트는 2026-08-22에 필드째 없어졌다** — 붙드는 것은 검증기이지 승인이 아니었다). 그리고 스위치의 다른
 쪽 위치(`legacy`)는 이제 **아무것도 연결되지 않은 config**를 가리켰다. 남겨 두면 새 소스를
 **두 번** 적어야 하고, 그중 하나는 Explorer가 보여 주지도 않는 파일이었다 — 실제로 그렇게
 한 소스를 적는 것을 잊은 적이 있다.
@@ -1338,12 +1384,14 @@ Mapper는 여전히 Role 값만 반환한다. `object_payload` dict를 Mapper가
 3. 그 술어가 강제하는 required Role을 모두 binding한다. **목록은 §7.5가 도출한다** —
    고를 것은 없고, 빠뜨리면 `missing_required_role`, 없는 이름을 적으면 `unknown_role`이다.
 4. Entity logical key를 exact set으로 채운다.
-5. 모든 binding과 nested key에 **`approval_status`를 남긴다**(필수).
-   `binding_origin`은 `user_declared`면 **적지 않는다**.
-6. system suggestion이면 `binding_origin: "system_suggested"`와 `suggestion_reason`을 쓴다.
+5. **더 적을 것이 없다.** binding은 **종류와 그 payload**만 말한다 — `binding_origin`·
+   `approval_status`·`suggestion_reason` 셋은 2026-08-22에 선언에서 없어졌다(§7.6). 옛 파일에
+   남아 있어도 검증기가 **받아서 버리므로**(reaches no decision) 마이그레이션을 기다릴 수 있다.
 
-초기 검토 중에는 `approval_status: "pending"`을 사용할 수 있다. 하지만 preview/execute
-readiness를 확인하려면 전부 `approved`여야 한다.
+🔴 **「승인」이라는 별도 단계는 이제 없다.** 종전의 `approval_status: "pending"` → `approved`
+왕복이 실행 허가를 붙들고 있는 것처럼 보였지만, 라이브 40개 binding이 전부 `approved`였고
+그 관문을 **실패시킬 수 있는 파일이 없었다.** 준비의 표현은 §8 하나다 — **아직 돌리면 안 되는
+소스는 `sources`에 적지 않는다.**
 
 ### Step 9. `relation`·`read` 조립 — 이것이 「켠다」이다
 
@@ -1674,6 +1722,68 @@ CAS activation 전까지 active snapshot을 바꾸지 않는다.
 - 선언이 **아예 안 읽힌** 경우(compiled snapshot 밖)에는 「그런 소스 없음」이 아니라
   **읽히지 못한 사유**를 답한다.
 
+### 13.3-quater 작성 화면이 «채우는» 것 — 저장이 문서를 늘린다 (2026-08-22~23)
+
+🔴 **소유자가 폼만으로 소스 하나를 처음부터 만들어 원자를 얻은 것이 셋업 완주의 수락
+사건이다**(`transfer_event`, 2026-08-23). 그 라운드가 바꾼 것은 문법이 아니라 **작성 경험**이고,
+그래서 **손으로 쓴 파일과 화면이 쓴 파일이 다르게 생길 수 있다.** 아래가 화면이 채우는 전부다.
+
+**① 저장이 「파생」 행을 문서에 쓴다** (`config_authoring.filled_declaration`, `3c6a854d`).
+계획이 `derived`라 부르고, 모양(shape) 행이 아니며, 값이 있는 행은 **저장 시점에 문서로
+내려간다.** 종전에는 「id를 고르면 버전이 따라온다」가 **빈 칸 옆의 문장**으로만 있었고 칸은
+빨간 채였다. 특수 케이스 셋이 아니라 계획의 어휘를 한 번 훑는 한 패스라, 나중에 추가되는
+파생도 아무도 이 코드를 안 고치고 파일에 도착한다.
+- 🔴 **빈 자리만 채우고 «절대» 덮어쓰지 않는다** — 바로 옆 커서 파생(§7.7)과 갈리는 유일한
+  지점이다. 덮어쓰면 사람이 바꿔 달라 한 적 없는 값 위에서 **지문이 움직여 돌던 커서가 선다.**
+- ⚠️ **id를 안 고른 소스에서는 버전도 안 생긴다** — 파생할 것이 없는 것이지 지어내지 않는다.
+
+**② 후보는 «칸을 완성»해야 후보다** (`88c0c76d`). `occurred_at` 후보를 누르면 컬럼만 들어가고
+timezone이 빈 채로 남아, 화면은 빨강 0인데 소스는 컴파일을 거절했다. 지금 후보는 **객체를
+통째로** 낸다. timezone 값은 이 모듈이 아니라 **파일에서** 온다 — 그 소스의 선언 → 없으면 같은
+파일의 다른 소스가 쓰는 값 → 없으면 이름 붙은 폴백. 강제하지도 목록을 내지도 않으므로
+서울 밖 공장은 **첫 소스에서 한 번 타이핑하면** 이후 소스가 그 답을 제안받는다(코드 0줄).
+timezone은 **자기 행을 유지한다** — 채워지는 것과 바꿀 수 있는 것은 다르다.
+
+**③ `input_columns` 둘은 「전부 켜짐 + 잠긴 칩」으로 도착한다**
+(`a13eeed4`+`e21e990f`+`4a42f393`). 소유자 판정: 「그러면 그냥 디폴트 전체 입력해도 되지?」
+- **기본값** = 그 칸의 후보 전부에서 **읽기가 어차피 데려오는 컬럼을 뺀 나머지**.
+  준비기의 후보 우주는 `relation`의 **물리** 컬럼이고, 매퍼의 후보 우주는 준비된 컬럼이다.
+- **잠긴 칩** = `identity`·`group_by`·`order_by`·`cursor.columns`·`occurred_at`이 이미 SELECT에
+  넣는 컬럼(`source_preparation.locked_select_columns` — **런타임 자신의 식**을 선언에서 먹여
+  계산한다. 컴파일 안 된 소스도 답을 받는다). 눌린 채로 그려지고 **버튼이 아니다** —
+  `data-action`이 없어 마우스·키보드·합성 클릭 어느 쪽으로도 닿지 않는다. `disabled` 속성을
+  안 쓴 것이 판정이다(회색이지만 선택처럼 보이는 컨트롤을 소유자가 기각했다).
+- 🔴 **화면은 잠긴 컬럼을 문서에 «넣지도 빼지도» 않는다.** `input_columns`는 여전히
+  「읽기 위에 더하는 것」이라 이미 오는 이름을 적으면 파일이 이미 한 말을 다시 해서 **지문만
+  움직인다.** 반대로 지우는 쪽도 안 한다 — 검증기가 binding이 부르는 컬럼을 `map.input_columns`가
+  전부 이름 대기를 요구하고, 라이브 선언 둘이 오늘 실제로 잠긴 컬럼을 적고 있다.
+- 🔴 **이 두 키에서는 `[]`가 «미응답»이다**(소유자 판정: 「그냥 다 갈아버린다」). `[]`는 문법상
+  합법인 선언이지만 **읽는 쪽이 그것을 부재로 보고 기본값을 씌운다.** 대가를 알고 고른 것이다 —
+  `dt_job.prepare.input_columns`가 빈 목록이었으므로 22컬럼이 되고 그 소스의 지문이 움직인다.
+  ⚠️ **이 규칙은 그 두 키에만 있다** — 한 층 위에 두면 `read.group_by`까지 잡는데 거기서는
+  `unit: row`일 때 `[]`가 **정답**이다. 그래서 판정이 클래스 분기가 아니라 생산자 자리에 있다.
+- ⚠️ **대가는 이름 대어 적는다**: 저장된 목록이 이 소스가 읽지도 않는 컬럼을 이름 대므로,
+  그중 하나를 표에서 지우면 이 소스도 선다. 완화책이 바로 그 컨트롤이다 — **사람이 칩을 끈다.**
+
+**④ 기본값이 「이미 답한 칸」과 싸우지 않는다** (`0a44069c`). `default_overridable` 행이 선언을
+들고 있으면 그 행은 **답한 것**으로 선다(기본값은 주석에 남고 논쟁을 그만둔다). 종전에는
+소유자의 `order_by`가 **자기 1,323개 원자가 실제로 나온 정렬을 선언했다는 이유로** 빨갛게
+칠해졌다 — 카탈로그 기본값과 다르고 둘 다 합법인데. 같은 라운드에서 함께: 검증기가 **비었다고
+거절하는** 값은 결정으로 치지 않고(그 자리는 기본값이 이긴다), **입력이 아직 안 채워진 파생**은
+할 일로 세지 않으며(고를 id가 없으면 파생할 것이 없다), **지운 mapping이 진짜로 사라진다**
+(계획이 강제하는 멤버는 계속 합집합에 남고, 사람이 이름 붙인 멤버는 이제 문서를 따른다).
+
+**⑤ 「어떤 키가 있는지 보여 주는 행」은 문서에 쓸 값이 아니다** (`08991990`). entity 참조 행은
+키 **이름**의 정렬 목록을 화면에 보여 주는 모양 행인데, 저장 채움이 그것을 값으로 파일에 썼다.
+문법은 거기서 「키 → binding」 맵을 원하므로 `invalid_entity_ref`가 났고, 더 나쁘게는
+`setAtPath`가 문자열을 배열로 파고들지 못해 **키별 피커가 그려진 채 눌러도 아무것도 안 쓰는**
+상태가 됐다. 수리는 그 행에 **모양 표지**를 다는 것 하나다 — 옆의 bind 행이 이미 같은 이유로
+그 표지를 달고 있다.
+
+⚠️ **알려진 구멍 — 「+ New」 직후 첫 저장 전에는 계획 행이 0개다.** 초안의 본문은 config 파일에
+없고 계획 엔드포인트는 그 파일만 읽으므로, **만들어지는 중인 소스는 잠긴 칩도 전체선택도 못
+본다** — 스켈레톤의 `+ 컬럼` 버튼만 보인다. 위 ①~⑤는 전부 **첫 저장 이후**의 이야기다.
+
 ### 13.4 실제 execute — 쓰기 경계
 
 다음은 기존 LedgerStore와 cursor transaction을 실제로 사용한다.
@@ -1804,10 +1914,10 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 ### 승인/검증
 
-- [ ] 모든 nested binding까지 `approval_status`가 있다(필수). `binding_origin`은
-      `user_declared`면 **적지 않는다**(§7.6의 승인 metadata).
-- [ ] system suggestion마다 `binding_origin: "system_suggested"`와 suggestion reason이 있다.
-- [ ] 실행 전 모든 binding이 approved다.
+- [ ] binding에 `approval_status`·`binding_origin`·`suggestion_reason`을 **적지 않았다**
+      (2026-08-22 은퇴 — 남아 있어도 검증기가 받아서 버린다. §7.6).
+- [ ] vocabulary 항목에 `layer`를 **적지 않았다**(2026-08-22 은퇴 — 지금은 `unknown_field`. §7.1).
+- [ ] `read.cursor`를 손으로 적지 않았다 — `order_by`에서 파생돼 문서에 쓰인다(§7.7).
 - [ ] `python -m ledger.setup` dry-run이 `readiness: "ready"`이고 write 0이다. **초안이면
       `--root <초안폴더>`로 먼저 돌리고, 답의 `config_root`가 그 초안을 가리키는지 본다**(§13.2).
 - [ ] config root에 `ledger_config.json` 말고 다른 `.json`이 없다.
