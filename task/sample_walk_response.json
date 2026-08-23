@@ -1,0 +1,163 @@
+{
+  "seeds": [
+    {
+      "id": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+      "sign": "+",
+      "node_kind": "entity"
+    }
+  ],
+  "propagation": {
+    "collect": "quantity",
+    "state": "ranked",
+    "contrast": "unexamined",
+    "complete": true,
+    "message": null
+  },
+  "top_set": [
+    "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJkZWxhbSJd"
+  ],
+  "ranked_sample": [
+    {
+      "id": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJkZWxhbSJd",
+      "type": "Quantity",
+      "label": "delam · delam_formation",
+      "rank": 1,
+      "top": true,
+      "tied": false,
+      "incomparable": false,
+      "evidence": [
+        {
+          "seed": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+          "sign": "+",
+          "hops": [
+            {
+              "id": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+              "node_kind": "entity",
+              "label": "SYN-BW-103-11",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-finding-collection:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifSwiZGVsYW0iLCJzY2F0IixudWxsXQ",
+              "node_kind": "collection",
+              "label": "delam · scat (9)",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJkZWxhbSJd",
+              "node_kind": "quantity",
+              "label": "delam · delam_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+      "type": "Quantity",
+      "label": "bond_temp · void_formation",
+      "rank": 4,
+      "top": false,
+      "tied": true,
+      "incomparable": false,
+      "evidence": [
+        {
+          "seed": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+          "sign": "+",
+          "hops": [
+            {
+              "id": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+              "node_kind": "entity",
+              "label": "SYN-BW-103-11",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-claim-atom:v1:WyIwMTlmZmU3MC05YTdjLTcwMDMtOTY1MC00MTg0MGRhYmZkMzIiLCIyMDI2LTA4LTExVDE2OjAwOjAwKzAwOjAwIl0",
+              "node_kind": "claim",
+              "label": "BONDING · {'id': 'SYN-RCP-BOND', 'rev': '6'}",
+              "atom": "019ffe70-9a7c-7003-9650-41840dabfd32",
+              "ref": "recipe_book:SYN-RCP-BOND@6:SYN-BW-103-11"
+            },
+            {
+              "id": "ledger-value:v1:WyIwMTlmZmU3MC05YTdjLTcwMDMtOTY1MC00MTg0MGRhYmZkMzIiLCIyMDI2LTA4LTExVDE2OjAwOjAwKzAwOjAwIl0",
+              "node_kind": "value",
+              "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-EXC\",\"infer…",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+              "node_kind": "quantity",
+              "label": "bond_temp · void_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsInByZV9ib25kX3F1ZXVlX2giXQ",
+      "type": "Quantity",
+      "label": "pre_bond_queue_h · void_formation",
+      "rank": 9,
+      "top": false,
+      "tied": false,
+      "incomparable": false,
+      "evidence": [
+        {
+          "seed": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+          "sign": "+",
+          "hops": [
+            {
+              "id": "ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+              "node_kind": "entity",
+              "label": "SYN-BW-103-11",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-finding-collection:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifSwidm9pZCIsInNhdCIsbnVsbF0",
+              "node_kind": "collection",
+              "label": "void · sat (199)",
+              "atom": null,
+              "ref": null
+            },
+            {
+              "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsInZvaWQiXQ",
+              "node_kind": "quantity",
+              "label": "void · void_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            },
+            {
+              "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsIndldHRpbmdfZGVmaWNpdCJd",
+              "node_kind": "quantity",
+              "label": "wetting_deficit · void_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            },
+            {
+              "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsInN1cmZhY2Vfb3hpZGF0aW9uIl0",
+              "node_kind": "quantity",
+              "label": "surface_oxidation · void_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            },
+            {
+              "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsInByZV9ib25kX3F1ZXVlX2giXQ",
+              "node_kind": "quantity",
+              "label": "pre_bond_queue_h · void_formation",
+              "atom": null,
+              "ref": "mechanism_models.json"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
