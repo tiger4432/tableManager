@@ -1,13 +1,28 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **689개** 이력. (거버넌스 규칙 #4)
+> 총 **704개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-23 10:23** — [A Json Path In An F String Had Been 500ing Since It Was Written](./20260823_102300_a_json_path_in_an_f_string_had_been_500ing_since_it_was_written.md)
+- **2026-08-23 09:50** — [The Transfer Atoms Are In And Nothing Walks Into Them](./20260823_095000_the_transfer_atoms_are_in_and_nothing_walks_into_them.md)
+- **2026-08-23 09:11** — [A Fence Drawn On Filenames Let Four Modules Through](./20260823_091100_a_fence_drawn_on_filenames_let_four_modules_through.md)
+- **2026-08-23 08:59** — [Two Bespoke Mappers Stood In Front Of The Generic Ones Hole For Months](./20260823_085900_two_bespoke_mappers_stood_in_front_of_the_generic_ones_hole_for_months.md)
+- **2026-08-23 00:20** — [Six Columns No Seeder Had Ever Written And A Table That Declaring Created](./20260823_002000_six_columns_no_seeder_had_ever_written_and_a_table_that_declaring_created.md)
+- **2026-08-22 22:52** — [A Definition Change Cannot Be Free So The Landing Condition Was Withdrawn](./20260822_225200_a_definition_change_cannot_be_free_so_the_landing_condition_was_withdrawn.md)
+- **2026-08-22 22:24** — [The Column Square Took Five Rulings And The Screen Was Running Nine Hour Old Code](./20260822_222400_the_column_square_took_five_rulings_and_the_screen_was_running_nine_hour_old_code.md)
+- **2026-08-22 12:37** — [My Probe Wrote The State I Then Measured And Called Centred](./20260822_123700_my_probe_wrote_the_state_i_then_measured_and_called_centred.md)
+- **2026-08-22 10:29** — [A Shape Row Written As A Value Left Every Picker Drawn And Dead](./20260822_102900_a_shape_row_written_as_a_value_left_every_picker_drawn_and_dead.md)
+- **2026-08-22 04:12** — [The Audit Log Became A Table And The Capsules Were The Tell](./20260822_041200_the_audit_log_became_a_table_and_the_capsules_were_the_tell.md)
+- **2026-08-22 02:53** — [Completing The Candidate Deleted The Box It Completed](./20260822_025300_completing_the_candidate_deleted_the_box_it_completed.md)
+- **2026-08-22 00:43** — [The Mockup Became The Screen And Four Of Its Numbers Were Minimums](./20260822_004300_the_mockup_became_the_screen_and_four_of_its_numbers_were_minimums.md)
+- **2026-08-22 00:28** — [Three Squares With Zero Freedom And A Contract That Was Asked Twice](./20260822_002800_three_squares_with_zero_freedom_and_a_contract_that_was_asked_twice.md)
+- **2026-08-21 23:27** — [Reference Grid And Column Filters](./20260821_232730_reference_grid_and_column_filters.md)
+- **2026-08-21 23:04** — [Layer Had One Legal Value And Nine Helpers Had A Driver That Never Imported Them](./20260821_230400_layer_had_one_legal_value_and_nine_helpers_had_a_driver_that_never_imported_them.md)
 - **2026-08-21 21:28** — [A Machine To Count The Holes And Its Own Predicate Was Wrong Twice](./20260821_212800_a_machine_to_count_the_holes_and_its_own_predicate_was_wrong_twice.md)
 - **2026-08-21 20:59** — [The Screen Runs One Real Batch Instead Of Building A Second Judge](./20260821_205900_the_screen_runs_one_real_batch_instead_of_building_a_second_judge.md)
 - **2026-08-21 20:51** — [The Candidates Were On The Parent And The Form Never Asked For The Declaration That Gates The Run](./20260821_205100_the_candidates_were_on_the_parent_and_the_form_never_asked_for_the_declaration_that_gates_the_run.md)
@@ -710,4 +725,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-21 by gen_index.py*
+*Last generated: 2026-08-23 by gen_index.py*
