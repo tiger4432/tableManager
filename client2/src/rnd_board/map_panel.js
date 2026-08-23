@@ -219,10 +219,14 @@ export class MapPanel extends Panel {
     const title = el(doc, 'span', 'rb-map__title', this.title);
     const sub = el(doc, 'span', 'rb-map__sub');
     const counts = el(doc, 'span', 'rb-map__counts');
+    // 목업의 상태 알약: 「이 패널이 «왜» 이렇게 그려졌나」. The mockup puts one on every map and
+    // it is the difference between a panel you read and a panel you guess at.
+    const basis = el(doc, 'span', 'rb-map__basis');
     const badge = el(doc, 'span', 'rb-map__badge');
     head.appendChild(title);
     head.appendChild(sub);
     head.appendChild(counts);
+    head.appendChild(basis);
     head.appendChild(badge);
     const stage = el(doc, 'div', 'rb-map__stage');
     const canvas = el(doc, 'canvas', 'rb-map__canvas');
@@ -235,7 +239,7 @@ export class MapPanel extends Panel {
     if (canvas.addEventListener) {
       canvas.addEventListener('click', (event) => this._onCanvasClick(event));
     }
-    this._nodes = { root, head, title, sub, counts, badge, stage, canvas, note };
+    this._nodes = { root, head, title, sub, counts, basis, badge, stage, canvas, note };
   }
 
   _writeHead() {
@@ -265,6 +269,11 @@ export class MapPanel extends Panel {
     const ownCells = (m && m.cells) || [];
     let marked = 0;
     for (const cell of ownCells) if (this.signOf(cell.nodeId) !== SIGN.ABSENT) marked += 1;
+    // 🔴 DERIVED FROM THE DECLARATION, not from a new option nobody sets. A panel whose
+    //    declaration NAMES an axis was chosen deliberately; one that does not would be
+    //    following whatever the control bar picked. Today every map here names its axis.
+    n.basis.textContent = this.axis ? `축 직접 고름 · ${this.axis}` : '축 따라감';
+    n.basis.setAttribute('data-basis', this.axis ? 'declared' : 'follows');
     n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`;
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
