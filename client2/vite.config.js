@@ -34,7 +34,6 @@ export default defineConfig({
         ledger: resolve(__dirname, 'ledger.html'),
         // Isolated R&D investigation entry. It does not replace ledger.html until
         // product-owner cutover approval; keeping both inputs makes rollback trivial.
-        rnd_console: resolve(__dirname, 'rnd-console.html'),
         ledger_graph: resolve(__dirname, 'ledger-graph.html')
       }
     }
