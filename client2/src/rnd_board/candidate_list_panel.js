@@ -84,7 +84,11 @@ export class CandidateListPanel extends Panel {
 
     if (m.state === 'empty') {
       // NOT 「원인 없음」. The walk did not reach a quantity; that is a fact about the walk.
-      root.appendChild(this._line('걷기가 물리량에 닿지 않았습니다', 'absent'));
+      // 🔴 TWO FACTS, SEPARATELY. `ranked: []` for THIS collect is not 「nothing is here」:
+      // the walk reached nodes and edges, it just found no cause candidate of this kind.
+      // Saying only the second denies a transfer that actually happened.
+      const reached = `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges}`;
+      root.appendChild(this._line(`${reached} — 원인 후보는 없습니다`, 'absent'));
       this.host.appendChild(root);
       return;
     }

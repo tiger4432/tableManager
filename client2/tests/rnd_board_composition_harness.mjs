@@ -251,7 +251,9 @@ for (const m of MUTANTS) {
   try {
     out = await suite(await loadModules(m.mutate));
   } catch (e) {
-    console.log(`  caught  ${m.id} ${m.what} (threw: ${String(e.message).slice(0, 40)})`);
+    // 🔴 A THROW IS A HOLE, NOT A CATCH -- see the walk harness for the same repair.
+    escaped += 1;
+    console.log(`  INERT   ${m.id} ${m.what}  -- ${String(e.message).slice(0, 60)}`);
     continue;
   }
   const hit = out.failures.some((f) => f.startsWith(m.catches));
