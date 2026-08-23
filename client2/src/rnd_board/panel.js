@@ -90,6 +90,15 @@ export class Panel {
 
   // ── the marking contract, in two lines a part actually calls ──────────────────
 
+  /**
+   * How many marks stand under the name THIS part READS. Attenuation keys off it: while it is
+   * zero nothing is dimmed, because 「아직 안 골랐다」 is not 「이건 아니다」.
+   */
+  markCount() {
+    if (!this.reads || !this.markings) return 0;
+    return this.markings.count(this.reads);
+  }
+
   /** `+1` | `-1` | `0` for a node, under the name THIS part declared it reads. */
   signOf(nodeId) {
     if (!this.reads || !this.markings) return SIGN.ABSENT;

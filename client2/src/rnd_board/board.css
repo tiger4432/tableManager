@@ -232,3 +232,25 @@ body {
 /* A hop that only names a model is dimmer than one that points at a thing in the world. */
 .rb-rank-hop.is-declared .rb-rank-hop-label { color: var(--text-muted); }
 .rb-rank-hop-ref { font-family: var(--font-mono); font-size: 9.5px; color: var(--accent-2); }
+
+/* ── MARKING IS DRAWN BY ATTENUATION ─────────────────────────────────────────────
+   Measured in the owner's running Spotfire (2026-08-23): a click leaves the marked row at
+   full strength and FADES EVERY OTHER ROW. A ring or a tint on the hit has to be hunted for;
+   a faded field is read without looking.
+
+   🔴 THE CLASS IS ONLY ON THE ROOT WHILE SOMETHING IS MARKED. With nothing marked nothing
+      fades, because 「아직 안 골랐다」 must not be drawn as 「전부 아니다」 -- the same rule the
+      five absences are built on. */
+.is-attenuating .rb-rank-row:not(.is-marked-case):not(.is-marked-control),
+.is-attenuating .rb-cand-card:not(.is-marked-case):not(.is-marked-control),
+.is-attenuating .rb-comp-row:not(.is-marked-case):not(.is-marked-control) {
+  opacity: 0.38;
+}
+
+/* The rows that ARE marked keep their weight and gain the standing this board already uses
+   for a case. Nothing here invents a colour: the tokens are the ones in `tokens.css`. */
+.is-attenuating .rb-rank-row.is-marked-case,
+.is-attenuating .rb-cand-card.is-marked-case,
+.is-attenuating .rb-comp-row.is-marked-case {
+  opacity: 1;
+}

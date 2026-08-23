@@ -59,6 +59,10 @@ const ROLES = {
   },
 };
 
+/** The alpha an UNMARKED cell keeps while something is marked. Hex, because the painter is
+ *  handed colour strings and a canvas cannot inherit a CSS variable. */
+const DIM_ALPHA = '40';
+
 const CHROME = Object.freeze({
   LOADING: '읽는 중…',
   FAILED: '맵을 읽지 못했습니다',
@@ -254,7 +258,13 @@ export class MapPanel extends Panel {
     // otherwise, and a reader has no way to tell which one his click moved.
     const read = this.reads || '—';
     const write = this.writes || '—';
-    const marked = this.reads && this.markings ? this.markings.count(this.reads) : 0;
+    // 🔴 WHAT IS COUNTED IS WHAT IS DRAWN. This used to be `count(this.reads)`, the size of the
+    // whole NAME -- so the moment another part wrote a node of its own kind under the same
+    // name, this badge said 「표시 1」 over a wafer with nothing on it. The name's size is a
+    // fact about the name; this badge is a sentence about THIS map.
+    const ownCells = (m && m.cells) || [];
+    let marked = 0;
+    for (const cell of ownCells) if (this.signOf(cell.nodeId) !== SIGN.ABSENT) marked += 1;
     n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`;
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
@@ -348,11 +358,30 @@ export class MapPanel extends Panel {
       if (!group) { group = []; byRole.set(role, group); }
       group.push(cell);
     }
+    // 🔴 MARKING IS DRAWN BY ATTENUATION, not by decorating the hit. Measured in the owner's
+    // Spotfire: clicking leaves the marked point at full strength and FADES EVERYTHING ELSE.
+    // A ring has to be found; a faded field is read without looking. While nothing is marked
+    // nothing fades -- 「아직 안 골랐다」 must not look like 「전부 아니다」.
+    const attenuating = this.markCount() > 0;
     let painted = 0;
     for (const [role, group] of byRole) {
       const colour = palette[role] || palette.unknown;
-      painted += paintSeating(surface, { seats: group, seatCount: group.length },
-        layout, colour).painted;
+      if (!attenuating) {
+        painted += paintSeating(surface, { seats: group, seatCount: group.length },
+          layout, colour).painted;
+        continue;
+      }
+      // Same hue, less presence: the role still reads, it just stops competing.
+      const lit = group.filter((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);
+      const dim = group.filter((c) => this.signOf(c.nodeId) === SIGN.ABSENT);
+      if (dim.length) {
+        painted += paintSeating(surface, { seats: dim, seatCount: dim.length },
+          layout, `${colour}${DIM_ALPHA}`).painted;
+      }
+      if (lit.length) {
+        painted += paintSeating(surface, { seats: lit, seatCount: lit.length },
+          layout, colour).painted;
+      }
     }
 
     // Figure, drawn LAST: the marks. Grouped by SIGN, because「봤는데 안 났다」(control) and
