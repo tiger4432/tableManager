@@ -71,6 +71,7 @@ export class MainTrendPanel extends Panel {
       this._axisOff = this.markings.subscribe(this.axisReads, () => this._onAxisChanged());
       this._onAxisChanged();
     }
+    this._watchStart();
     this.load();
   }
 
@@ -79,6 +80,8 @@ export class MainTrendPanel extends Panel {
     this._axisOff = null;
     if (this._subjectOff) this._subjectOff();
     this._subjectOff = null;
+    if (this._offStart) this._offStart();
+    this._offStart = null;
     super.destroy();
   }
 
@@ -102,11 +105,27 @@ export class MainTrendPanel extends Panel {
     this.render();
   }
 
+  /** 🔴 THE SUBJECT MOVED, SO THE QUESTION IS ASKED AGAIN. Declared name, not a hardcoded one. */
+  _watchStart() {
+    if (!this.start || !this.start.marking || !this.markings) return;
+    this._offStart = this.markings.subscribe(this.start.marking, () => this.load());
+  }
+
   async load() {
+    // 🔴 A QUESTION WITH NO SUBJECT IS NOT ASKED. When this instance's start names a marking
+    //    and nobody has marked anything yet, walking would answer for EVERYBODY and the chart
+    //    would look like an answer about the candidate nobody picked. It waits, and says so.
+    const start = this.startFor();
+    if (!start && this.start && this.start.marking) {
+      this.model = null;
+      this.loadState = 'awaiting';
+      this.render();
+      return;
+    }
     this.loadState = 'loading';
     this.render();
     this.model = await this.walk({
-      start: this.start, collect: this.collect,
+      start, collect: this.collect,
       kinds: this.kinds, window: this.window, grain: this.grain,
     });
     this.loadState = this.model.ok ? 'ready' : 'refused';
@@ -133,15 +152,22 @@ export class MainTrendPanel extends Panel {
     // The subtitle is the instruction, on the panel: this is how a seed is chosen.
     const sub = doc.createElement('div');
     sub.className = 'rb-trend-sub';
-    sub.textContent = '점을 찍으면 그것이 씨앗입니다 · 씨앗도 마킹 하나';
+    sub.textContent = this.start && this.start.marking
+      ? `${this.start.marking} 이 이 차트의 주어입니다`
+      : '점을 찍으면 그것이 씨앗입니다 · 씨앗도 마킹 하나';
     root.appendChild(sub);
 
     if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
       const note = doc.createElement('div');
       note.className = this.loadState === 'refused'
         ? 'rb-trend-note rb-trend-note--refused' : 'rb-trend-note rb-trend-note--absent';
-      note.textContent = this.loadState === 'loading' ? '읽는 중…'
-        : (this.model && this.model.message) || '서버가 거절했습니다';
+      // 🔴 「아직 안 골랐다」 IS ITS OWN SENTENCE. Folding it into 「없다」 or a refusal would
+      //    make an untouched screen look broken -- the first of the four absences this board
+      //    is built to keep apart.
+      note.textContent = this.loadState === 'awaiting'
+        ? `${(this.start && this.start.marking) || '마킹'} 이 비었습니다 — 후보를 고르면 그립니다`
+        : (this.loadState === 'loading' ? '읽는 중…'
+          : (this.model && this.model.message) || '서버가 거절했습니다');
       root.appendChild(note);
       this.host.appendChild(root);
       return;
