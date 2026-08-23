@@ -39,14 +39,17 @@ import { RankListPanel } from './rank_list_panel.js';
 import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
-import { fetchLotMap, fetchComposition, basisCountsFromComposition,
+import { DeclarationPanel } from './declaration_panel.js';
+import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
+  fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
-  mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel };
+  mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,
+  declaration: DeclarationPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -163,7 +166,7 @@ export const BOARD = Object.freeze({
       id: 'main-trend',
       part: 'mainTrend',
       title: '메인 트렌드',
-      at: { column: 1, row: 3, columnSpan: 4 },
+      at: { column: 1, row: 3, columnSpan: 3 },
       reads: 'marking:0',
       writes: 'marking:0',
       options: {
@@ -195,6 +198,27 @@ export const BOARD = Object.freeze({
               numerator: { from: 'subject_keys', key: 'bonding_leg' } },
           ],
         },
+      },
+    },
+    {
+      // 스팟파이어가 차트마다 오른쪽에 다는 선언 블록. 필드는 «선언»이고, 고르는 것은 마킹에
+      // 씁니다 -- 트렌드는 이 패널이 있는지도 모릅니다.
+      id: 'trend-declaration',
+      part: 'declaration',
+      title: '축',
+      at: { column: 4, row: 3 },
+      reads: null,
+      writes: null,
+      options: {
+        fields: [
+          { label: 'Data table', text: 'trends' },
+          { label: 'Y value', writes: 'axis:y', options: 'y' },
+          { label: 'Group by', writes: 'axis:group', options: 'group' },
+          { label: 'Color by', text: '(None)' },
+          { label: 'Shape by', text: '(None)' },
+          { label: 'Marking', reads: 'marking:0' },
+          { label: 'Data limiting', text: '(None)' },
+        ],
       },
     },
     {
@@ -295,6 +319,43 @@ export function bindLoaders(layout, deps) {
       const bound = { ...options, apiBase, fetchImpl, dpr: dpr || 1 };
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
+      if (options.fields) {
+        // 🔴 THE LISTS ARE FETCHED HERE, NOT IN THE PART. `y` is the ratio axes this route can
+        //    plot plus the walk's measured quantities; `group` is the peer scopes the screen
+        //    declared. The part receives `[{id, label}]` and knows nothing else.
+        bound.optionsFor = (key) => {
+          if (key === 'y') {
+            return Promise.all([
+              fetchTrends({ apiBase, fetchImpl, window: '180d' }).then(trendsModel),
+              fetchSubgraph({
+                apiBase,
+                fetchImpl,
+                nodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
+                collect: 'quantity',
+              }).then(subgraphModel),
+            ]).then(([trends, walk]) => {
+              const out = (trends.kinds || []).map((k) => ({
+                id: `axis:ratio:${k.id}`, label: `${k.label} 비율`,
+              }));
+              for (const c of (walk.ok ? walk.candidates : []) || []) {
+                if (!c.measured) continue;
+                out.push({ id: `axis:quantity:${c.id || c.quantity}`,
+                  label: `${c.quantity}${c.model ? ` · ${c.model}` : ''}` });
+              }
+              return out;
+            });
+          }
+          if (key === 'group') {
+            return Promise.resolve([
+              { id: 'peer:leg', label: '같은 레그' },
+              { id: 'peer:lot', label: '같은 랏' },
+              { id: 'peer:recipe', label: '레시피' },
+              { id: 'peer:eqp', label: '설비' },
+            ]);
+          }
+          return Promise.resolve([]);
+        };
+      }
       if (options.waferQuestion) {
         // One call per kind, because the route answers one kind at a time. A kind that has not
         // answered yet stays BLANK on screen -- never 0.
