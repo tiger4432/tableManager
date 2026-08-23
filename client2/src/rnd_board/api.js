@@ -104,13 +104,14 @@ export function projectionModel(body, axis) {
       reason: 'axis_not_served',
       message: `${axis} 축이 응답에 없습니다`,
       cells: [], found: 0, scanned: 0, frame: null,
-      coordinateUnit: null,
+      coordinateUnit: null, relations: [], ledgerBacked: false,
       row: (body && body.row) || null,
       slot: (body && body.slot) || null,
       kind: (body && body.kind) || null,
     };
   }
   const frame = p.frame || null;
+  const prov = (body && body.provenance) || {};
   const cells = (p.cells || []).map((cell) => ({
     x: cell.x,
     y: cell.y,
@@ -136,6 +137,14 @@ export function projectionModel(body, axis) {
     scanned: p.scanned || 0,
     frame,
     coordinateUnit: p.coordinate_unit || null,
+    // 🔴 WHAT THE COUNTS ARE COUNTS OF. Measured 2026-08-24: 「검사 29」 is scanned AND bonded --
+    //    a die that was inspected but has no bonding row drops out of the join, and the screen
+    //    said 29 where the source says 30. The number is the server's to fix; the LABEL is
+    //    this screen's, and a label that cannot say what it counts is how that stayed invisible.
+    //    So the relations ride through and the panel prints them; when the server changes what
+    //    it joins, the words on screen change with it.
+    relations: Array.isArray((prov || {}).relations) ? prov.relations.slice() : [],
+    ledgerBacked: (prov || {}).ledger_backed === true,
     row: (body && body.row) || null,
     slot: (body && body.slot) || null,
     kind: (body && body.kind) || null,

@@ -299,9 +299,20 @@ export class MapPanel extends Panel {
       n.sub.textContent = m.sublabel ? `${m.label} · ${m.sublabel}` : m.label;
       // What came back is a fact whether or not it can be drawn; hiding it made a refused
       // projection look like an empty response.
+      // 🔴 THE COUNTS NAME THEIR OWN SOURCE. 「검사 29」 turned out to mean 「검사되고 본딩된 29」
+      //    -- an inspected die with no bonding row silently left the join and a real finding
+      //    never reached the picture. The relations the server joined are printed beside the
+      //    numbers, so the words change when the join does.
+      const source = (m.relations || []).join(' ∩ ');
       n.counts.textContent = m.cells.length
         ? `${m.cells.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
+          + (source ? ` · ${source} 기준` : '')
         : '';
+      if (m.cells.length && !m.ledgerBacked) {
+        // A count read off source tables is not a ledger claim, and the difference is the whole
+        // reason this board exists.
+        n.counts.setAttribute('title', '원장이 아니라 소스 표에서 센 값입니다');
+      }
     }
     // 🔴 THE TWO NAMES ARE ON SCREEN. Two panels reading different markings look identical
     // otherwise, and a reader has no way to tell which one his click moved.
