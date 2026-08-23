@@ -321,6 +321,9 @@ def signed_fixture():
         atom(13, "CTRL", "derived_from", target="ORIGIN"),
         atom(14, "CTRL", "measured", value={"metric": "cd", "value": 2.0}),
         atom(15, "CTRL", "measured", value={"metric": "ov", "value": 3.0}),
+        # One ancestor further out, so the fixture has a candidate that is NOT a seed and
+        # NOT first -- which is the case the owner's question is about.
+        atom(16, "ORIGIN", "derived_from", target="ROOT"),
     ]
 
 
@@ -376,13 +379,13 @@ def test_collect_switches_the_application_without_changing_the_walk():
     # The declared ancestor both marked subjects descend from is the lineage answer.
     origin = ledger_explorer.entity_id("Lot", {"lot": "ORIGIN"})
     assert origin in entities["propagation"]["top_set"]
-    # The reach PAIR travels with the rank: without the sign a reader can only see that
-    # something is not first, never that it was reached from the marked subjects and from
-    # no control.  What still never leaves is a probability or a percentage.
+    # Ranks, the top set and the trails travel; the reach that produced them does not.
+    # A magnitude reads like a probability and is not one — what tells a reader that a
+    # candidate was never reached from a control is the SIGN on its trails.
+    assert '"reach"' not in json.dumps(entities["propagation"])
     for row in entities["propagation"]["ranked"]:
         assert set(row) == {"id", "type", "label", "rank", "top", "tied",
-                            "incomparable", "reach", "evidence"}
-        assert len(row["reach"]) == 2
+                            "incomparable", "evidence"}
     try:
         ledger_subgraph.subgraph(seeds, lookup, collect="Physics")
     except ValueError as exc:
@@ -433,9 +436,11 @@ def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
     lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
     marked = ledger_explorer.entity_id("Lot", {"lot": "MARK"})
     control = ledger_explorer.entity_id("Lot", {"lot": "CTRL"})
+    # deep enough to reach the far ancestor, so `complete` still means something
     body = ledger_subgraph.subgraph(
-        {"positive": [marked], "negative": [control]}, lookup, hops=4, collect="entity")
+        {"positive": [marked], "negative": [control]}, lookup, hops=8, collect="entity")
     prop = body["propagation"]
+    prop_seeds = body["seeds"]
     ranked = {row["label"]: row for row in prop["ranked"]}
     assert prop["top_set"] == [row["id"] for row in prop["ranked"] if row["top"]]
     assert prop["complete"] is True
@@ -445,12 +450,20 @@ def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
     # 「걸은 경로도 나와?」 — on EVERY rank, not only on the winner.  A reader has to be
     # able to say 「this one was never reached from a control」 about something that is
     # not first, and that judgement needs the trail and the sign, not the position.
-    assert all(row["evidence"] for row in prop["ranked"])
+    # Every ranked candidate the WALK reached carries its trail.  A seed may carry none
+    # and that is not a hole: the caller named its sign, so there is no path to report --
+    # measured on live data, where a control in another lineage branch is reached by no
+    # other seed.  Asserting `all(...)` here would be a fixture-specific premise.
+    seeded = {item["id"] for item in prop_seeds}
+    assert all(row["evidence"] for row in prop["ranked"] if row["id"] not in seeded)
     assert any(row["rank"] > 1 for row in prop["ranked"]), "fixture must rank below 1"
-    below = next(row for row in prop["ranked"] if row["rank"] > 1)
+    below = next(row for row in prop["ranked"]
+                 if row["rank"] > 1 and row["id"] not in seeded)
     assert below["evidence"] and below["evidence"][0]["hops"]
+    # The sign is what carries the judgement, and it is on every rank's trails.
     assert {trail["sign"] for row in prop["ranked"] for trail in row["evidence"]} == {
         "+", "-"}
+    assert {trail["sign"] for trail in below["evidence"]} <= {"+", "-"}
     top = ranked["ORIGIN"]
     assert top["evidence"], "the top set carries its hop-by-hop basis"
     hops = top["evidence"][0]["hops"]

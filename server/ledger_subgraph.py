@@ -958,11 +958,11 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
     are not the same question after all.  A new application is a new value of this
     argument, not new code.
 
-    🔴 The rank is the machine's judgement and the reading is the owner's, so the reach
-    pair travels WITH the rank rather than being hidden behind it: without the sign a
-    reader can only see that something is not first, never that it was reached from every
-    marked subject and from no control.  What still does not leave is a probability or a
-    percentage — reach is a raw pair, not a score anybody should read as a likelihood.
+    🔴 NO NUMBERS LEAVE.  Reach decides the rank and the top set and then stays inside:
+    the ranking is the machine's judgement, and reading it is the owner's.  What answers
+    「이 후보는 대조군에서 한 번도 안 닿았다」 is the SIGN on each evidence trail, which
+    every rank now carries — not the magnitude, which reads like a probability and is not
+    one.
     """
     negatives = sum(1 for sign in seed_signs.values() if sign < 0)
     block = {
@@ -998,17 +998,18 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
         "id": item["id"], "type": item["type"], "label": item["label"],
         "rank": item["rank"], "top": item["rank"] == 1,
         "tied": item["tied"], "incomparable": item["incomparable"],
-        # 🔴 `[from_positive, from_negative]`, and the SIGN is the judgement the reader has
-        # to make.  「reached from the marked subjects and never from a control」 is a
-        # different answer from 「not first」, and rank alone cannot tell them apart — so
-        # every rank carries the pair and its trails, not only the top set.
+        # 🔴 The trails go on EVERY rank, not only the top set.  「reached from the marked
+        # subjects and never from a control」 is a different answer from 「not first」, and
+        # what carries that distinction is `evidence[].sign` — one `+`/`−` per seed that
+        # reached this candidate.  The magnitude does NOT travel: a reader who sees 0.0625
+        # reads it as 6% and hands the judgement back to the machine, and it is not a
+        # probability.  The sign is the finding; the size is an artefact of the walk.
         #
-        # Measured 2026-08-23 before choosing this: at the node cap (929 nodes, 5 seeds,
-        # 90 ranked items, 653 hop entries) the whole block is 288 KB inside a 2,723 KB
-        # response — 11% of what the caller already receives, and trails stay 5 hops long
-        # because a BFS trail is bounded by the graph's diameter rather than by `hops`.
-        # So NOTHING is cut here and there is no cap to name.
-        "reach": item["reach"],
+        # Measured 2026-08-23 before deciding whether to cut: at the node cap (929 nodes,
+        # 5 seeds, 90 ranked items, 653 hop entries) the block is 285 KB inside a 2,991 KB
+        # response — 10% of what the caller already receives — and trails stay 5 hops long
+        # because a BFS trail is bounded by the graph's DIAMETER rather than by `hops`.
+        # So nothing is truncated here and there is no cap to name.
         "evidence": _evidence(nodes, parents, seed_signs, item["id"]),
     } for layer in layers for item in layer]
     block["top_set"] = [item["id"] for item in layers[0]]
