@@ -1,3 +1,84 @@
+# 🔴 판정 요청 — 라운드 4: 프레임은 «등록돼 있습니다». 못 찾는 이유는 «슬롯 철자» 하나입니다
+
+**멈춤 조건에 해당하지 않습니다 — 등록이 «있습니다».** 지어내지 않았고, 코드도 데이터도
+아직 «한 줄도 안 바꿨습니다». 철자를 어느 쪽으로 맞출지가 판정이라 여기서 멈춥니다.
+
+## 실측 — DT·코어 자재마다 프레임이 이미 하나씩 있습니다 (1,200건)
+```
+등록   wafer_map_metadata  target_table='bonding_log'
+       SYN-DT-101_01 … _25   (600건)   grid 15x10  from (0,0)
+       SYN-CL-101_01 … _25   (600건)   grid 23x23  from (0,0)
+       -> 총괄 판정대로 «자재(mat_id) 하나에 프레임 하나» 모양이 «이미» 그렇습니다
+쓴 곳  scripts/seed_syn_world.py:685  "%s_%02d" % (lot, slot)
+```
+
+## 🔴 그런데 «읽는 쪽»이 만드는 열쇠가 다릅니다 — 한 슬롯에 철자가 셋
+```
+ledger_lots.py:1415   map_id = f"{lot}_{slot}"      <- 행의 «컬럼 값»을 그대로 문자열화
+bonding_log 컬럼형    bond_slot  character varying  '07'
+                      dt_slot    double precision    7.0      <- 여기가 갈립니다
+                      core_slot  double precision    7.0
+```
+```
+등록된 것            'SYN-DT-101_07'   -> wafer_map_metadata 에 «있음» (1)
+코드가 만드는 것     'SYN-DT-101_7.0'  -> 없음 (0)
+정본 조합기가 만드는 것 'SYN-DT-101_7'  -> 없음 (0)
+```
+🔴 **셋이 서로 다르고, 등록된 철자를 만드는 쪽이 «아무도 없습니다».**
+bond 축이 오늘 도는 것은 `bond_slot` 이 «문자열»이라 세 철자가 우연히 일치하기 때문입니다.
+
+## 이 하나만 맞추면 «전부» 살아납니다 — 재서 확인했습니다
+```
+_frame(…, 7.0)      -> no_frame / no_registered_frame          (오늘)
+_frame(…, "07")     -> ready + grid 15x10                       ← 클라가 필요한 바탕
+_agreed_frame  float 슬롯 25개 -> frames_matched 0   · grid 없음  (오늘)
+_agreed_frame  "07" 토큰 25개  -> frames_matched 25/25 · grid 15x10 «합의»
+```
+
+## ⚠️ 수락 조건 한 줄이 이 행에서는 «도달 불가»입니다 — 먼저 말씀드립니다
+지시서: 「`dt` 투영의 `frame.state` 가 `ready` 가 되고」.
+```
+실측  base_id='SYN-BW-101-07'  행 141개
+      bond  프레임 «1개»  -> ready 가능 (오늘도 ready)
+      dt    프레임 «25개» -> 한 장으로 못 정합니다. ready 는 «슬롯을 좁힌 요청»에서만
+      core  프레임 «28개» -> 같음
+```
+철자를 맞추면 이 행에서 도착하는 것은 `ready` 가 아니라
+**`frames_matched 25/25` + 「25개가 전부 같다」는 근거로 나오는 `grid`** 입니다.
+**클라가 테두리를 그리는 데 필요한 것은 그 `grid` 입니다** — 지금은 그게 «아예 안 나옵니다».
+`ready` 를 원하시면 그건 «슬롯 하나로 좁힌 요청»의 이야기이고, 그것도 같은 수리로 같이 삽니다.
+
+## 판정해 주십시오 — 철자를 «어느 쪽»으로 맞춥니까
+```
+(가) 픽스처를 «정본 철자»로 다시 등록 + 읽는 쪽을 정본 조합기로     ← 제 추천
+     읽기   ledger_lots._frame · _agreed_frame 이 f-string 대신
+            map_overlay.compose_map_id(cols, row, {"table": relation}) 를 씁니다
+     데이터 1,200건을 'SYN-DT-101_7' 철자로 재등록 (seed_syn_world.frame_rows)
+     근거   table_config: bonding_log.column_types.dt_slot = "number" · core_slot = "number"
+            compose_map_id 문서가 «이 사고를 이름으로 예고»해 뒀습니다 —
+            「'01' 이 number 선언 컬럼에 LOT_01 로 등록되면 소비자는 전부 LOT_1 을 찾는다」
+     bond   회귀 «없음» — 문자열 '07' 의 정본값은 '07' 그대로입니다 (실측)
+     ✅ 선언이 지배 -> 다른 스키마 운영 환경에서 «코드 0줄»
+     ⚠️ 소유자 DB의 1,200행을 다시 씁니다. 그래서 «제가 임의로 안 했습니다»
+
+(나) 읽는 쪽이 숫자 슬롯을 %02d 로 «패딩»한다
+     ❌ 형식을 지어내는 것입니다. 3자리 슬롯·문자 슬롯 운영에서 그날 깨집니다
+
+(다) 선언된 등록부(dt_map · core_wafer_map)로 조회한다
+     table_config 는 dt_map.map_key_columns = [dt_lot, dt_slot] 이라고 «선언»합니다
+     ❌ 그런데 이 자재들은 거기 «0건»입니다 (실측). 그리고 7.0 에서 '07' 을 되찾으려면
+        옆 테이블 조인이 필요한데 R-2026-08-14-D 가 코어 축에 그것을 금지합니다
+```
+
+## 📎 곁가지 둘 — 지금 손대지 않았습니다
+```
+1  seed_syn_world.py:671 주석이 「ledger_lots._frame 이 찾는 방식대로 키를 만들었다」고
+   «단언»합니다. 실제로는 안 맞습니다 — 그 문장이 이 결함을 4개월 가려 왔습니다
+2  MAP_AXES 의 frame_key_columns 는 «코드에 박혀» 있고, table_config 의
+   bonding_log.map_key_columns 는 [base_lot, base_slot] 로 «다릅니다». 별건입니다
+```
+
+---
 # 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (갱신 2026-08-24 새벽)
 
 ## 지금 상태 — 내 대기열은 «비었습니다»
