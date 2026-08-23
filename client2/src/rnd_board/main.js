@@ -40,7 +40,7 @@ import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
 import { fetchLotMap, fetchComposition, basisCountsFromComposition,
-  slotPagesFromLotMap } from './api.js';
+  slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
@@ -126,6 +126,16 @@ export const BOARD = Object.freeze({
         seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
         collect: 'quantity',
         window: '180d',
+        // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
+        //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
+        //    window, not a peer axis -- so it stays 「—」 until it is given one.
+        peers: [
+          { label: '같은 레그', scope: 'leg:HBM-B_LOW-P' },
+          { label: '같은 랏', scope: 'bond_lot:SYN-K1-201' },
+          { label: '레시피', scope: 'scan_recipe:SYN_VOID_R1' },
+          { label: '설비', scope: 'bond_eqp:SYN-BD-02' },
+          { label: '7d', scope: null },
+        ],
       },
     },
     {
@@ -231,6 +241,11 @@ export function bindLoaders(layout, deps) {
       const bound = { ...options, apiBase, fetchImpl, dpr: dpr || 1 };
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
+      if (options.peers) {
+        bound.loadPeerCount = (scope) => fetchSiblings({
+          apiBase, fetchImpl, scope, window: options.window,
+        }).then(peerCountFromSiblings);
+      }
       if (options.basisChipId) {
         bound.loadBasisCounts = () => fetchComposition({
           apiBase, fetchImpl, finalChipId: options.basisChipId,

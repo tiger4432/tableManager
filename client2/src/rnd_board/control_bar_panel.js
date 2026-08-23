@@ -25,7 +25,10 @@ import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel } from './api.js';
 
-/** The peer axes the mockup names. Counts come from a route, never from here. */
+/**
+ * The peer axes the mockup names, as a FALLBACK for a screen that declares none. Counts never
+ * come from here -- a pill with no route behind it keeps 「—」.
+ */
 const PEER_AXES = ['같은 레그', '같은 랏', '레시피', '설비', '7d'];
 
 export class ControlBarPanel extends Panel {
@@ -37,6 +40,12 @@ export class ControlBarPanel extends Panel {
     this.seedNodeId = options.seedNodeId || null;
     this.collect = options.collect || 'quantity';
     this.window = options.window || '180d';
+    // 🔴 THE SCOPES ARE DECLARED, THE COUNTS ARE FETCHED. `[{label, scope}]` -- the screen picks
+    //    which lot and which equipment axis it means (the route answers several), and a peer
+    //    with no scope declared stays 「—」 rather than becoming a zero.
+    this.peers = Array.isArray(options.peers) ? options.peers.slice() : [];
+    this.loadPeerCount = options.loadPeerCount || null;
+    this.peerCounts = Object.create(null);
     this.trends = null;
     this.walk = null;
     this.loadState = 'idle';
@@ -60,6 +69,15 @@ export class ControlBarPanel extends Panel {
         : Promise.resolve(null),
     ]);
     this.trends = trendsModel(trendResult);
+    // Each declared scope is one call; a refusal leaves that pill at 「—」 and the others stand.
+    if (this.loadPeerCount) {
+      for (const peer of this.peers) {
+        if (!peer.scope) continue;
+        Promise.resolve().then(() => this.loadPeerCount(peer.scope))
+          .then((got) => { this.peerCounts[peer.scope] = got; this.render(); })
+          .catch(() => {});
+      }
+    }
     this.walk = walkResult ? subgraphModel(walkResult) : null;
     this.loadState = 'ready';
     // The first ratio axis is selected only if NOTHING is selected yet: a reload must not
@@ -116,15 +134,23 @@ export class ControlBarPanel extends Panel {
     return el;
   }
 
-  /** 또래 축. Drawn, but with no counts -- because no route serves them yet. */
+  /** 또래 축. Counts come from `siblings`; a scope the screen did not declare stays 「—」. */
   _peerPills() {
-    return PEER_AXES.map((axis) => this._pill({
-      id: this._axisId('peer', axis),
-      text: axis,
-      // 🔴 「—」 is the honest count. Not 0, which would say 「또래가 없다」.
-      count: null,
-      unsourced: true,
-    }));
+    const declared = this.peers.length
+      ? this.peers
+      : PEER_AXES.map((label) => ({ label, scope: null }));
+    return declared.map((peer) => {
+      const got = peer.scope ? this.peerCounts[peer.scope] : null;
+      return this._pill({
+        id: this._axisId('peer', peer.label),
+        text: peer.label,
+        // 🔴 「—」 is the honest count. Not 0, which would say 「또래가 없다」.
+        count: got && typeof got.subjects === 'number' ? got.subjects : null,
+        unsourced: !(got && typeof got.subjects === 'number'),
+        // The other number the same answer carried, kept where it cannot be mistaken for the first.
+        title: got && typeof got.units === 'number' ? `유닛 ${got.units}` : null,
+      });
+    });
   }
 
   _valuePills() {
@@ -173,6 +199,7 @@ export class ControlBarPanel extends Panel {
     n.className = spec.count === null ? 'rb-pill-count is-absent' : 'rb-pill-count';
     n.textContent = spec.count === null ? '—' : String(spec.count);
     el.appendChild(n);
+    if (spec.title) el.setAttribute('title', spec.title);
     if (spec.id) {
       el.addEventListener('click', (event) => {
         // A plain click REPLACES, which is what single-select means. Ctrl still adds, and on an

@@ -272,10 +272,14 @@ const MUTANTS = [
     catches: 'A3',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
       '        if (!c.measured) continue;', '        if (false) continue;') } },
+  // 🔴 ANCHORED ON THE PREDICATE, ON ONE LINE. The previous anchor spanned two lines and named
+  //    a shape the peer-count round rewrote; this one sits on the decision itself -- what a
+  //    pill shows when the route served no number.
   { id: 'M3', what: 'an unserved peer count is drawn as 0 instead of an em dash',
     catches: 'A5',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
-      '      count: null,\n      unsourced: true,', '      count: 0,\n      unsourced: true,') } },
+      "count: got && typeof got.subjects === 'number' ? got.subjects : null,",
+      "count: got && typeof got.subjects === 'number' ? got.subjects : 0,") } },
   { id: 'M4', what: 'the control bar writes a fixed marking name instead of its declared one',
     catches: 'B4',
     mutate: { 'panel.js': (s) => s.replace(

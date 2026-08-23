@@ -45,6 +45,7 @@ export const ROUTES = Object.freeze({
   composition: '/api/ledger/composition',
   subgraph: '/api/ledger/subgraph',
   trends: '/api/ledger/trends',
+  siblings: '/api/ledger/siblings',
 });
 
 /**
@@ -549,4 +550,46 @@ export function slotPagesFromLotMap(result) {
   const bond = projections.find((p) => p && p.axis === 'bond');
   const slots = bond && bond.frame && bond.frame.available_slots;
   return Array.isArray(slots) ? slots.slice() : [];
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SIBLINGS -- 「또래가 몇인가」. The control bar's Group by pills.
+//
+// 🔴 THE COUNT IS IN `scope.value_accounting`, NOT IN `case`. Handed over by the implementer
+//    after they pulled it live: `case.subjects` counts the axis INSIDE the subject (leg,
+//    recipe, equipment) and answers 0 or another number entirely. Measured shape:
+//      value_accounting[0] = {value, state: "resolved", units: 384, subjects: 6}
+//    `subjects` is the peer count (wafers); `units` is packages. Both come in one answer, so
+//    the screen picks rather than derives.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `GET /api/ledger/siblings`. `scope` is `<axis>:<value>`. */
+export async function fetchSiblings(params) {
+  const { apiBase, scope, window: win, fetchImpl } = params || {};
+  const query = new URLSearchParams();
+  if (scope) query.set('scope', scope);
+  query.set('window', win || '180d');
+  const url = `${apiBase}${ROUTES.siblings}?${query.toString()}`;
+  const res = await (fetchImpl || fetch)(url);
+  if (!res.ok) return { ok: false, status: res.status, body: null };
+  return { ok: true, status: res.status, body: await res.json() };
+}
+
+/**
+ * @returns {{state, subjects, units}} -- `subjects`/`units` are null unless the server said
+ *          `resolved`. An unresolved scope keeps 「—」 on the pill; it never becomes 0.
+ */
+export function peerCountFromSiblings(result) {
+  const body = (result && result.body) || result || null;
+  const rows = (body && body.scope && body.scope.value_accounting) || [];
+  const row = rows[0] || null;
+  if (!row || row.state !== 'resolved') {
+    return { state: (row && row.state) || 'absent', subjects: null, units: null };
+  }
+  return {
+    state: 'resolved',
+    subjects: typeof row.subjects === 'number' ? row.subjects : null,
+    units: typeof row.units === 'number' ? row.units : null,
+  };
 }
