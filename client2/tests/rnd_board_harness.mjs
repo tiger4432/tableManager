@@ -74,7 +74,8 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`)
-    .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`));
+    .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`)
+    .replaceAll("'../map2/seating.js'", `'${srcUrl('map2/seating.js')}'`));
   const shellUrl = dataUrl(read('grid_shell.js'));
   const interUrl = dataUrl(read('marking_intersection.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
@@ -228,7 +229,7 @@ async function suite(mods) {
 
   const { SIGN, MarkingStore } = mods.store;
   const { GridShell } = mods.shell;
-  const { MapPanel } = mods.map;
+  const { MapPanel, seatedProjection } = mods.map;
   const { projectionModel } = mods.api;
   const { BOARD, bindLoaders, PARTS } = mods.main;
   const { markingIntent } = mods.panel;
@@ -397,6 +398,36 @@ async function suite(mods) {
     eq('B14 ... rows too, not the cells bounding box', A._layout && A._layout.rows, 15);
     // 「빈 자리」 and 「없는 자리」 are different sentences; before this round both were nothing.
     eq('B15 a declared seat with no cell holds its place', A.lastPaint.vacant, 15 * 15 - 141);
+
+    // 🔴 ROTATION IS READ, NOT ASSUMED -- and this is the one defect a PICTURE CANNOT SHOW.
+    //    The measured bond frame declares `rotation: 180` (dt and core declare 0). Drawing the
+    //    stored coordinate puts this wafer on screen upside down and it still looks like a
+    //    wafer; it only becomes an answer when one marking crosses two maps and the second one
+    //    lights the wrong die. So the assertion is not 「그려진다」 -- it is that the seats MOVE,
+    //    and that they move as a MIRROR rather than as any translation.
+    {
+      const bond = FIX_07.projections.find((pr) => pr.axis === 'bond');
+      const grid = JSON.parse(bond.frame.grid);
+      const cells = (bond.cells || []).slice(0, 40).map((c) => ({ ...c }));
+      const seatsAt = (rotation) => seatedProjection(
+        { grid: JSON.stringify({ ...grid, rotation }) }, cells,
+      ).cells.map((c) => [c.x, c.y]);
+      const at0 = seatsAt(0);
+      const at180 = seatsAt(180);
+      const moved = at0.filter((s, i) => s[0] !== at180[i][0] || s[1] !== at180[i][1]);
+      ok('B16 a 180 frame does not seat its cells where a 0 frame would',
+        cells.length > 0 && moved.length === cells.length,
+        `${moved.length}/${cells.length} moved`);
+      const sums = new Set();
+      const shifts = new Set();
+      at0.forEach((s, i) => {
+        sums.add(`${s[0] + at180[i][0]},${s[1] + at180[i][1]}`);
+        shifts.add(`${at180[i][0] - s[0]},${at180[i][1] - s[1]}`);
+      });
+      eq('B17 ... it is a MIRROR: every pair of seats sums to the one same point', sums.size, 1);
+      ok('B18 ... which no translation of the whole map could do', shifts.size > 1,
+        `${shifts.size} distinct shifts`);
+    }
   }
 
   // ── C. TWO MARKING NAMES: same name lights, different name does not ──────────
@@ -513,7 +544,11 @@ async function suite(mods) {
     A.mark(target.nodeId, SIGN.CASE);
 
     // A click at a coordinate resolves to the cell under it.
-    const cell = A.model.cells[5];
+    // 🔴 SEATED, NOT STORED. The panel draws where the FRAME says the die sits (this fixture's
+    //    bond frame declares `rotation: 180`), so the pixel for a cell must be computed from
+    //    its seat. Taking `model.cells[5]` -- the stored coordinate -- asks about a die that is
+    //    on screen somewhere else entirely.
+    const cell = [...A._byXY.values()][5];
     const layoutOf = A._layout;
     const px = (layoutOf.originX + (cell.x - layoutOf.minX + 0.5) * layoutOf.cell) / A.dpr;
     const py = (layoutOf.originY + (cell.y - layoutOf.minY + 0.5) * layoutOf.cell) / A.dpr;
@@ -569,7 +604,7 @@ async function suite(mods) {
       canvasIn(elOf('a')).width === 137 && canvasIn(elOf('a')).height === 91);
     eq('E7 no cell is lost at a small size', A.lastPaint.cells, 141);
     // Hit testing uses the CURRENT layout, not the one it was drawn with first.
-    const cell = A.model.cells[9];
+    const cell = [...A._byXY.values()][9];
     const l = A._layout;
     const px = (l.originX + (cell.x - l.minX + 0.5) * l.cell) / A.dpr;
     const py = (l.originY + (cell.y - l.minY + 0.5) * l.cell) / A.dpr;
@@ -663,6 +698,13 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 THE DEFECT THAT LOOKS RIGHT. Ignoring `rotation` still draws a plausible wafer, which is
+  //    why nothing on this board noticed for a week. It dies on the seats moving, not on a count.
+  { id: 'M0', what: 'the frame rotation is ignored and stored coordinates are drawn as seats',
+    catches: 'B16',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '  const seating = computeSeating(cells, seatFrame, null);',
+      '  const seating = { seats: cells.map((c) => ({ x: c.x, y: c.y, cell: c })) };') } },
   {
     id: 'M1',
     what: 'map_panel.js keeps its session counter at MODULE level (the ledger_map_panel defect)',
