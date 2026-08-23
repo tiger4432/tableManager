@@ -21,6 +21,64 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# ✅ 총괄이 «선언을 붙였습니다» — `die_inspection`. 백필은 당신 몫입니다
+
+로더 수리(`37694126`) 고맙습니다. `lc.load()` 가 되어서 «바로» 붙였습니다.
+🔴 **라이브 config 는 gitignore 라 커밋에 안 보입니다.** 이 문단이 통지입니다.
+
+## 붙인 것 — `server/config/ontology/ledger_config.json`
+```
+vocabulary   inspected@1   subjects [die@1] · object kind value
+sources      die_inspection
+             relation      inspection_run
+             read.unit     row · identity/cursor/order_by = run_uid
+             occurred_at   observed_at (Asia/Seoul)
+             subject       die@1 { mat_id=$base_wafer_id · mat_type="Wafer"
+                                   · x=$base_x · y=$base_y }
+             value         method
+백업          ledger_config.json.bak-lead-084553
+검증          lc.load() ✅ · sources 넷으로 읽힘
+```
+
+## 🔴 왜 void_obs 가 아니라 inspection_run 이 «먼저»인지 — 실측
+```
+void_obs        시각 컬럼이 «없습니다». v5 검증기가 created_at 을 거절합니다
+                (「column 'created_at' is not in relation 'void_obs'」)
+inspection_run  base_wafer_id · base_x · base_y · stack_gate · method · eqp_id · recipe_id
+                · «observed_at»  -> 좌표와 시각이 «자기 안»에 다 있습니다. 조인 «불필요»
+조인            void_obs.run_uid = inspection_run.run_uid  ->  103,729 / 103,729  «100%»
+```
+🔴 **그리고 이 둘이 합쳐지면 이 제품의 「없음 세 갈래」가 «그대로» 나옵니다:**
+```
+inspection_run 있고 void_obs 없음   ->  scanned    「봤는데 안 났다」   = 컨트롤(−)
+inspection_run 있고 void_obs 있음   ->  found      「났다」            = 케이스(+)
+inspection_run «없음»               ->  unscanned  「안 봤다」          = 마킹에 «없음»
+```
+마킹 계약 §1 의 부호 셋과 «같은 것»입니다. 우연이 아니라 이 화면의 뼈대입니다.
+
+## 할 것 — 백필. 🔴 제가 안 돌립니다
+```
+① 돌리기 «전»에 세십시오   ledger_events 총수 · die 원자 수 · source_who 목록
+② 돌리십시오               die_inspection.  103,729행이 대상입니다
+③ 돌린 «뒤» 같은 것을 세서 «전/후 표»로 보고하십시오
+④ 🔴 그리고 «화면»을 보십시오 — 웨이퍼 씨앗에서 collect=point 가 여전히 0인지
+   (접힘 수리 전이면 0 이 정상입니다. 그러면 「원자는 늘었고 접힘이 남았다」가 확인됩니다)
+⑤ 실패하면 «되돌리는 법»: 백업 파일이 위에 있습니다. 제게 말씀하십시오 — 제가 되돌립니다
+```
+⚠️ 시간이 오래 걸리면 «중간 보고»를 하십시오. DB 하나를 세 세션이 씁니다.
+
+## 다음 — void_obs 는 «조인이 필요»합니다. 제가 붙일 수 있는지 봐 주십시오
+```
+필요       void_obs 의 occurred_at 을 inspection_run.observed_at 에서 «가져와야» 합니다
+모르는 것  v5 grammar 가 그 조인을 «선언»으로 받는지
+           (prepare.accepts_verified_join_rules / inherit_virtual_join_rules 가 그것인지)
+당신이 할 것  «받는지 여부»만 답해 주십시오. 받으면 제가 씁니다.
+             안 받으면 그게 «문법의 구멍»이고 그때 판정하겠습니다
+⛔ 대신 써 주지 마십시오 — 선언은 제 자리입니다
+```
+
+---
+
 # 🔴🔴🔴 소유자 판정 — 「**레거시 다 버려**」 (2026-08-24). 세어서 목록을 냅니다
 
 앞의 「lot map 버려」에 이어집니다. **화면의 데이터는 walk 하나** — 그러면 그 앞의 시도들이 전부 레거시입니다.
