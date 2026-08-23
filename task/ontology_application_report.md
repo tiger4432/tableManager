@@ -6,6 +6,97 @@
 
 ---
 
+# ✅ 요구하신 «닿는다/안 닿는다» 목록 — 파일 단위 실측 (2026-08-23 10:2x)
+
+> 총괄 판정 `d1b86031`: 「8/21 의 «2번부터» 철회 · 글롭 밖에 짓는다 ·
+>  **무엇이 닿고 안 닿는지 당신이 목록으로, 파일 단위로, 실측으로**」
+> 접수했습니다. 아래가 그 목록이고, 마지막에 ② 첫 라운드를 다시 잡았습니다.
+
+## 1. 서버 파일 — 세 부류로 갈립니다
+
+```
+A. 글롭 «안» — 이름이 걸린다                                        4개
+   server/ledger_trace.py · ledger_trace_router.py
+   server/ledger_admin.py · server/ledger/config.py
+
+B. 글롭 «밖» · ledger_trace 결합 = «SQL 헬퍼 둘»                     6개
+   ledger_subgraph.py    import ledger_trace -> `_fetch` 딱 1곳 (:243)
+   ledger_catalog.py     from ledger_trace import _fetch
+   ledger_composition.py · ledger_selection.py · ledger_siblings.py · ledger_trends.py
+                         from ledger_trace import _fetch, relation_exists
+   -> `_fetch` 는 「psycopg2든 Session이든 SQL 을 돌린다」는 커넥션 헬퍼이고
+      `relation_exists` 는 `to_regclass` 게이트다 (ledger_trace.py:1539·1561).
+      «어휘도 계보도 안 들고 있다.» 새 일을 얹는 것과 무관하다
+
+C. 글롭 «밖» · 그러나 해결기·어휘를 «가져간다» — ③ 때 같이 죽는다     4개
+   ledger_explorer.py   10심볼  load_resolver_config · traversal_predicate
+                                lineage_predicates · claim_class · hop_basis · live_claims ...
+   ledger_structure.py   8심볼  load_resolver_config · RESOLVER_CONFIG_FILENAME · coverage ...
+   ledger_journey.py     8심볼  Claim · claim_class · claim_rank_key · CLASS_NAMES ...
+   ledger_lots.py        1심볼  LINEAGE_PREDICATES
+   -> 🔴 이름은 글롭 밖인데 «실질은 안»입니다. 여기에도 새 일을 얹지 마십시오
+```
+
+## 2. 제 지시서 둘을 그 목록에 대면
+
+```
+PROPAGATION   공사 1  mechanism_gate.py + config/mechanism_models.json
+                     -> mechanism_gate 는 «stdlib 만» 임포트한다. ledger 의존 0    ✅ 안 닿음
+              공사 3  ledger_subgraph.subgraph() 확장 — B 부류                    ✅ 안 닿음
+              공사 2  ledger/vocabulary.py 의 `traversable` 을 읽는다              🔴 닿음 (§3)
+
+ANYWHERE_SEED 공사 A·B  ledger_trace_router.py — A 부류                            ⛔ 보류
+              클라 확장  서버 무관                                                 (client-pm)
+```
+
+## 3. 🔴 공사 2 는 «두 번» 낡았습니다 — 판정하신 것보다 한 겹 더
+
+```
+읽을 선언이 있는 곳    ledger/vocabulary.py   observed 의 traversable: None
+                      -> v1 계통. ③ 에서 은퇴. 지금 하면 «은퇴할 것에 새 소비자»
+
+라이브 v5 설정         vocabulary 항목이 가진 키가 {object, status, subjects} «뿐»
+                      traversable «없음» · direction «없음»
+                      v5 가 선언한 술어 6개에 observed «자체가 없음»
+                      (derived_from · has_netdie · has_wafer · register · slot_map · transfer)
+```
+
+**즉 v5 세계에는 공사 2 가 읽을 선언이 아예 없습니다.** 은퇴 문제가 아니어도 지금은 못 합니다.
+
+## 4. 그래서 ② 첫 라운드 — 이렇게 제안합니다
+
+```
+간다    PROPAGATION 공사 1  ->  공사 3
+        브리핑의 «1 없으면 3 의 collect: Quantity 가 빈 답» 의존은 그대로 유효.
+        공사 2 는 그 둘과 «독립»입니다 (수락도 「기존 응답이 안 변하는지」였습니다)
+보류    PROPAGATION 공사 2      ③ 뒤 · 또는 v5 가 그 축을 선언한 뒤
+보류    ANYWHERE_SEED 서버 절반  글롭 안
+```
+
+## 5. 오늘 재료가 바꾸는 것 하나 — walk 을 «무엇 위에» 태울까
+
+```
+전사 원자        원장에 «0».  ledger_translator_cursor 에 transfer_event 행 «없음»
+                 (보드의 199 는 시험 실행값이고 시험 실행은 쓰지 않습니다 — 설계대로)
+씨앗 이름 공간    SYN-XFER-CORE-W01~W10 · SYN-XFER-D01~D10
+                 원장에 등록된 Wafer/DTJob 과 겹침 «0»
+```
+**그래서 공사 3 의 수락은 `lot_event` 재료 위에서 받는 것이 맞습니다** —
+`has_wafer` 907 · `derived_from` 40 · `slot_map` 226 이 실재하고 서로 이어집니다.
+
+## 6. 적어만 둡니다 (일이 아닙니다)
+
+`_fetch`/`relation_exists` 를 쓰는 모듈이 **여섯**입니다. ③ 때 그 헬퍼 둘의 «갈 곳»이
+필요합니다. **지금 옮기면 그게 새 일입니다** — 옮기지 말고 ③ 의 재료로만 적어 둡니다.
+
+---
+
+# ✅ 요청 D — 판정 접수 (`d1b86031`). 이 절은 닫힙니다
+
+총괄이 **자기 8/21 판정을 철회**했습니다. 제 서버 절반은 보류이고, 위 §4 로 대체합니다.
+
+---
+
 # 🔴 지금 총괄 판정 요청 (2026-08-21 갱신)
 
 ## 요청 A — 지시서 둘의 «착수 승인»
