@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>AssyManager - R&D 진단 보드</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- 토큰(SSOT)과 이 화면의 뼈대. main.js 는 CSS 를 임포트하지 않는다 — bare node 로
+       채점 가능해야 하기 때문. 그 규율의 근거는 ledger_map_panel.js 머리 주석. -->
+  <script type="module" crossorigin src="/assets/rnd_board-BpkYSi5u.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
+  <link rel="modulepreload" crossorigin href="/assets/painter-Bfkn6mFj.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
+  <link rel="stylesheet" crossorigin href="/assets/rnd_board-DNOmx01b.css">
+</head>
+
+<body>
+  <div class="rb-page">
+    <header class="rb-page__head">
+      <span class="rb-page__title">R&D 진단 보드</span>
+      <span class="rb-page__note">
+        맵을 클릭하면 그 자리가 «그 패널이 쓰는 마킹»에 들어갑니다 · Shift+클릭은 컨트롤(−)
+      </span>
+    </header>
+    <!-- 배치는 이 페이지에 없다. 셸이 선언(main.js 의 BOARD)을 읽어 격자에 앉힌다. -->
+    <div id="rb-board"></div>
+  </div>
+</body>
+
+</html>
