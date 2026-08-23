@@ -75,6 +75,8 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./api.js'", `'${apiUrl}'`)
     .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`));
   const shellUrl = dataUrl(read('grid_shell.js'));
+  const interUrl = dataUrl(read('marking_intersection.js')
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
   // composition root cannot load at all -- which is how it failed the moment they landed.
   const partUrl = (file) => dataUrl(read(file)
@@ -88,6 +90,7 @@ async function loadModules(mutate = {}) {
   const mainUrl = dataUrl(read('main.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
+    .replaceAll("'./marking_intersection.js'", `'${interUrl}'`)
     .replaceAll("'./map_panel.js'", `'${mapUrl}'`)
     .replaceAll("'./head_summary_panel.js'", `'${headUrl}'`)
     .replaceAll("'./composition_panel.js'", `'${compUrl}'`)
@@ -374,12 +377,31 @@ async function suite(mods) {
       elOf('b').getAttribute('data-panel') === 'b');
     ok('B12 both panels report ready', elOf('a') && byClass(elOf('a'), 'rb-map')
       .every((n) => n.getAttribute('data-map-state') === 'ready'));
+
+    // 🔴 THE LATTICE IS THE FRAME'S. The measured fixture declares `grid_cols/grid_rows` 15
+    //    while its 141 cells span 0..13, so a map laid out on the CELLS draws this wafer
+    //    14x14: the empty column and row do not shrink, they disappear, and nothing on screen
+    //    says the shape changed. `grid` arrives as a JSON string, which is the other half of
+    //    why this went unnoticed -- `frame.grid.grid_cols` is quietly `undefined`.
+    eq('B13 the map lays out on the grid the frame declares', A._layout && A._layout.cols, 15);
+    eq('B14 ... rows too, not the cells bounding box', A._layout && A._layout.rows, 15);
+    // 「빈 자리」 and 「없는 자리」 are different sentences; before this round both were nothing.
+    eq('B15 a declared seat with no cell holds its place', A.lastPaint.vacant, 15 * 15 - 141);
   }
 
   // ── C. TWO MARKING NAMES: same name lights, different name does not ──────────
   if (ready) {
     const target = A.model.cells[70];
     const paintsBefore = { b: canvasIn(elOf('b')).paints, d: canvasIn(elOf('d')).paints };
+    // 🔴 THE RING CHANNEL CARRIES TWO MEANINGS NOW -- an empty declared seat is an outline
+    //    too -- so "count the strokes" stopped being a question about marks the day the
+    //    lattice started holding its empty seats. The GROUND's stroke colours are sampled
+    //    here, before any mark exists, and a mark is a stroke in a colour that was not
+    //    already on the canvas. Nothing about the tone is written down twice.
+    const groundStroke = new Set(canvasIn(elOf('a')).ops
+      .filter((o) => o.op === 'stroke').map((o) => o.color));
+    const markStrokes = (id) => canvasIn(elOf(id)).ops
+      .filter((o) => o.op === 'stroke' && !groundStroke.has(o.color));
     A.mark(target.nodeId, SIGN.CASE);
 
     eq('C1 the mark landed under the name A writes',
@@ -403,7 +425,7 @@ async function suite(mods) {
     ok('C8 the other wafers panel did not repaint',
       canvasIn(elOf('b')).paints === paintsBefore.b);
     // The mark is drawn as a ring ON TOP, not as a replacement cell.
-    const strokes = canvasIn(elOf('a')).ops.filter((o) => o.op === 'stroke');
+    const strokes = markStrokes('a');
     eq('C9 exactly one ring was stroked', strokes.length, 1);
     ok('C10 the ring is drawn after the ground',
       canvasIn(elOf('a')).ops.indexOf(strokes[0])
@@ -414,7 +436,7 @@ async function suite(mods) {
     A.mark(other.nodeId, SIGN.CONTROL);
     eq('C11 a control mark is stored as -1',
       markings.signOf('marking:1', other.nodeId), SIGN.CONTROL);
-    const rings = canvasIn(elOf('a')).ops.filter((o) => o.op === 'stroke');
+    const rings = markStrokes('a');
     eq('C12 both marks are drawn', rings.length, 2);
     ok('C13 case and control are not the same colour',
       new Set(rings.map((r) => r.color)).size === 2);
@@ -653,6 +675,26 @@ const MUTANTS = [
       'map_panel.js': (s) => s.replace(
         "        layout, palette.control, 'ring').painted;",
         "        layout, palette.case, 'ring').painted;"),
+    },
+  },
+  {
+    id: 'M10',
+    what: 'map_panel.js lays the wafer out on the cells bounding box, ignoring the declared frame',
+    catches: 'B13',
+    mutate: {
+      'map_panel.js': (s) => s.replace(
+        '    const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);',
+        '    const bounds = boundsOf(cells);'),
+    },
+  },
+  {
+    id: 'M11',
+    what: 'map_panel.js reads frame.grid as an object, so the served JSON string parses to nothing',
+    catches: 'B13',
+    mutate: {
+      'map_panel.js': (s) => s.replace(
+        "  if (typeof grid !== 'string') return null;",
+        "  if (typeof grid !== 'object') return null;"),
     },
   },
   {

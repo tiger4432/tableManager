@@ -29,6 +29,7 @@
 // `API_BASE` still has exactly one definition; this file just does not ask for it until there
 // is a document to ask on behalf of.
 import { MarkingStore } from './marking_store.js';
+import { intersectMarkings } from './marking_intersection.js';
 import { GridShell } from './grid_shell.js';
 import { MapPanel } from './map_panel.js';
 import { HeadSummaryPanel } from './head_summary_panel.js';
@@ -62,6 +63,15 @@ export const BOARD = Object.freeze({
   columns: 'minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr)',
   rows: 'auto minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1fr)',
   gap: '10px',
+  // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
+  //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
+  //    nothing in this file, knows what 3 is made of except this line.
+  //    ⚠️ NO PART READS `marking:3` YET -- the candidate map that wants it is not built. It is
+  //    computed and standing so that seating that part is one string, and said out loud here
+  //    rather than reported as finished wiring.
+  intersections: [
+    { sources: ['marking:1', 'marking:2'], target: 'marking:3' },
+  ],
   panels: [
     {
       id: 'head-summary',
@@ -170,11 +180,15 @@ export function boot(doc, host, deps) {
     parts: options.parts || PARTS,
     observeSize: options.observeSize,
   });
-  shell.render(bindLoaders(options.layout || BOARD, {
+  const layout = options.layout || BOARD;
+  shell.render(bindLoaders(layout, {
     apiBase: options.apiBase || '',
     fetchImpl: options.fetchImpl,
     dpr: options.dpr || 1,
   }));
+  // Installed AFTER the seats, so a part that reads a derived name gets its first value from
+  // the same first computation as everyone else.
+  shell.intersections = (layout.intersections || []).map((spec) => intersectMarkings(markings, spec));
   return shell;
 }
 
