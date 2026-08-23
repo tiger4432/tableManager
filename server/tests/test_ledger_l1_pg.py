@@ -300,7 +300,11 @@ def _approved_binding(kind, *, status="approved", **values):
     }
 
 
-def _profile_mapper_cfg(*, nested_key_status="approved"):
+# TOMBSTONE 2026-08-23: this took a `nested_key_status` knob that fed the retired
+# `approval_status` field.  The field went and the knob's freedom went with it --
+# every caller passed nothing, so it could only ever be its own default.  A handle
+# nobody can pull is a copy, not a contract.
+def _profile_mapper_cfg():
     cfg = copy.deepcopy(CFG)
     cfg["profiles"] = {"lot-transfer-v1": {
         "profile_version": 1,
@@ -317,8 +321,7 @@ def _profile_mapper_cfg(*, nested_key_status="approved"):
                     "declared_lookup",
                     lookup_id="destination_inventory",
                     key=_approved_binding(
-                        "column", status=nested_key_status,
-                        column="row_identity"),
+                        "column", column="row_identity"),
                     select="container"),
                 "occurred_at": _approved_binding(
                     "column", column="event_time"),
