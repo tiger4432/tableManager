@@ -251,6 +251,14 @@ export function compositionModel(result) {
       bonding: c.bonding || null,
       resolutionState: c.resolution_state || 'unknown',
       transferEventCount: Array.isArray(c.transfer_events) ? c.transfer_events.length : null,
+      // 목업의 「이력 4 ›」. The derived_from chain the ledger already walked for this core --
+      // a COUNT of events, and `null` when the response carried no lineage at all.
+      lineage: c.core && c.core.lineage
+        ? {
+          state: c.core.lineage.state || null,
+          events: Array.isArray(c.core.lineage.events) ? c.core.lineage.events.length : null,
+        }
+        : null,
       dtCollectionCount: Array.isArray(c.dt_collections) ? c.dt_collections.length : null,
     })),
   };

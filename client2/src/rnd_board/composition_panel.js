@@ -114,6 +114,18 @@ export class CompositionPanel extends Panel {
     // ── the layers ─────────────────────────────────────────────────────────────
     const table = doc.createElement('div');
     table.className = 'rb-comp-rows';
+    // A column head, because seven columns without one is a grid of unlabelled strings.
+    const head = doc.createElement('div');
+    // 🔴 NOT `rb-comp-row`. A header that wears the row's class makes every 「행이 몇 개냐」 and
+    //    「행을 클릭하면」 assertion count and click the wrong thing -- it broke two of them the
+    //    moment it was added. The columns are shared through a variable instead.
+    head.className = 'rb-comp-head';
+    for (const label of ['층', '코어 웨이퍼', '랏', '슬롯', '브랜치', '이력', '상태']) {
+      const h = doc.createElement('span');
+      h.textContent = label;
+      head.appendChild(h);
+    }
+    table.appendChild(head);
     for (const c of m.components) {
       table.appendChild(this._row(c));
     }
@@ -161,25 +173,43 @@ export class CompositionPanel extends Panel {
       });
     }
 
-    const id = doc.createElement('span');
-    id.className = 'rb-comp-row-id';
-    id.textContent = c.id || '(id 없음)';
+    // 🔴 THE MOCKUP'S SEVEN COLUMNS, AND EVERY ONE OF THEM IS SERVED (measured 2026-08-23):
+    //    층 `component_id` · 코어웨이퍼 `core.wafer` · 랏 `core.lot` · 슬롯 `core.slot` ·
+    //    브랜치 `core.branch` · 이력 `core.lineage.events` · 상태 `resolution_state`.
+    //    Three of them were already in the response and this panel was throwing them away, so
+    //    one row said far less than the ledger knew about it.
+    const core = c.core || {};
+    const cell = (cls, text, absentTitle) => {
+      const n = doc.createElement('span');
+      n.className = text === null || text === undefined || text === ''
+        ? `${cls} is-absent` : cls;
+      // `-` is 「이 응답이 그 칸을 안 줬다」, never 「없다」. The title says which.
+      n.textContent = text === null || text === undefined || text === '' ? '-' : String(text);
+      if ((text === null || text === undefined || text === '') && absentTitle) {
+        n.setAttribute('title', absentTitle);
+      }
+      return n;
+    };
 
-    const core = doc.createElement('span');
-    core.className = 'rb-comp-row-core';
-    core.textContent = c.core
-      ? [c.core.wafer, c.core.slot, c.core.type].filter(Boolean).join(' · ')
-      : '-';
-
+    el.append(
+      cell('rb-comp-row-id', this._layerLabel(c.id)),
+      cell('rb-comp-row-core', core.wafer, '응답에 코어 웨이퍼가 없습니다'),
+      cell('rb-comp-row-lot', core.lot, '응답에 랏이 없습니다'),
+      cell('rb-comp-row-slot', core.slot, '응답에 슬롯이 없습니다'),
+      cell('rb-comp-row-branch', core.branch, '응답에 브랜치가 없습니다'),
+      cell('rb-comp-row-lineage', c.lineage ? c.lineage.events : null, '계보를 안 실어 줬습니다'),
+    );
     const state = doc.createElement('span');
     state.className = `rb-comp-row-state is-${c.resolutionState}`;
     state.textContent = c.resolutionState;
-
-    const events = doc.createElement('span');
-    events.className = 'rb-comp-row-events';
-    events.textContent = typeof c.transferEventCount === 'number' ? String(c.transferEventCount) : '-';
-
-    el.append(id, core, state, events);
+    el.appendChild(state);
     return el;
+  }
+
+  /** 「SYN-CX-CHIP-001:L04」 -> 「L04」. The chip id is on the panel title already. */
+  _layerLabel(id) {
+    if (!id) return null;
+    const at = String(id).lastIndexOf(':');
+    return at >= 0 ? String(id).slice(at + 1) : String(id);
   }
 }
