@@ -1139,8 +1139,80 @@ LEFT JOIN scanned s ON """ + " AND ".join(
 WHERE b.{axis.column} = %(row)s{slot_clause}
 """
     raw = _fetch(connection, sql, params)
-    return _map_envelope(connection, row, axis, source, slot, slot_column, the_kind, raw,
-                         projected, requested_window, now, identity_column)
+    answer = _map_envelope(connection, row, axis, source, slot, slot_column, the_kind, raw,
+                           projected, requested_window, now, identity_column)
+    if isinstance(answer, dict):
+        answer["unplaced"] = _unplaced(connection, geometry, source, axis,
+                                       identity_column, table, units, join_pairs,
+                                       time_clause, params)
+    return answer
+
+
+def _unplaced(connection, geometry, source, axis, identity_column, table, units,
+              join_pairs, time_clause, params):
+    """Inspected positions this map CANNOT DRAW, counted rather than dropped.
+
+    🔴 THE MAP'S DRIVING TABLE IS THE PROCESS RELATION, SO A POSITION THAT WAS INSPECTED
+    BUT NEVER BONDED FALLS OUT OF EVERY PROJECTION SILENTLY. MEASURED on `assy_manager`
+    2026-08-24: 2,527 scanned units have no `bonding_log` row, and 2,525 of them carry a
+    recorded void — real findings that the picture could never show. The screen read
+    「검사 29 · 발견 13」 where the source said 30 and 14.
+
+    🔴 AND THEY CANNOT BE DRAWN, WHICH IS WHY THIS IS A COUNT AND NOT A CELL. All three
+    axes take their coordinates from the process relation (`bond_x`, `dt_x`, `cx`), so a
+    row that does not exist there has no coordinate on ANY axis — the position is known in
+    unit space and nowhere else. Placing it would mean inventing a cell, which this module
+    refuses on the same grounds as an invented grid. So the number is served beside the map
+    and named, and the client can say 「29 drawn, 1 not placeable」 instead of showing 29 as
+    if it were all of them.
+
+    ⚠️ IT IS ONLY COMPUTABLE WHEN THE ROW AXIS IS THE WAFER ITSELF. A position with no
+    process row carries no lot, no equipment and no slot, so under `by=bond_lot` there is
+    nothing to attribute it to and the honest answer is that it is unknown — NOT zero. A
+    zero here would read as 「nothing was missed」, which is the one thing this field exists
+    to stop saying.
+    """
+    subject = (getattr(geometry, "ledger_subject", None) or {}) if geometry else {}
+    subject_column = subject.get("column")
+    if not (subject_column and identity_column and axis.column == identity_column):
+        return {"state": "unknown",
+                "reason": "row_axis_is_not_the_unit_subject",
+                "message": (f"이 행 축({axis.column})으로는 «공정 행이 없는» 검사 자리를 "
+                            f"귀속시킬 수 없다 — 그 자리는 랏·설비·슬롯을 갖고 있지 않다. "
+                            f"0 이 아니라 «모른다»이다.")}
+    if not relation_exists(connection, finding_kinds.RUN_TABLE):
+        return {"state": "unknown", "reason": "run_table_absent",
+                "message": f"{finding_kinds.RUN_TABLE} 미배포"}
+
+    unit_cols = ", ".join(units)
+    on_source = " AND ".join(f"b.{theirs} = o.{ours}" for ours, theirs in join_pairs)
+    on_found = " AND ".join(f"f.{c} = o.{c}" for c in units)
+    sql = f"""
+WITH runs AS (
+    SELECT {geometry.run_key_column} AS run_key, {unit_cols}
+    FROM {finding_kinds.RUN_TABLE}
+    WHERE {geometry.run_method_column} = ANY(%(methods)s){time_clause}
+      AND {subject_column} = %(row)s
+), scanned AS (SELECT DISTINCT {unit_cols} FROM runs
+), found AS (
+    SELECT DISTINCT {', '.join('r.' + c for c in units)}
+    FROM {table} o JOIN runs r ON r.run_key = o.{geometry.observation_run_ref_column}
+), orphan AS (
+    SELECT {unit_cols} FROM scanned o
+    WHERE NOT EXISTS (SELECT 1 FROM {source.relation} b WHERE {on_source})
+)
+SELECT (SELECT count(*) FROM orphan),
+       (SELECT count(*) FROM orphan o
+        WHERE EXISTS (SELECT 1 FROM found f WHERE {on_found}))
+"""
+    rows = _fetch(connection, sql, params)
+    scanned_n, found_n = (rows[0] if rows else (0, 0))
+    return {"state": "measured", "scanned": int(scanned_n or 0), "found": int(found_n or 0),
+            "reason": None if not scanned_n else "no_row_in_process_relation",
+            "message": (None if not scanned_n else
+                        (f"검사됐으나 {source.relation}에 행이 없어 «어느 축에도 좌표가 "
+                         f"없는» 자리 {int(scanned_n)}개 (그중 발견 {int(found_n or 0)}개). "
+                         f"맵에 그리지 않았다 — 없는 칸을 지어내지 않는다."))}
 
 
 def _identity_column(connection, geometry, source):
