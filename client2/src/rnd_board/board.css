@@ -404,3 +404,28 @@ body {
 .rb-comp-resolution-val { font-family: var(--font-mono); font-size: 11px; color: var(--text);
   overflow-wrap: anywhere; }
 .rb-comp-resolution-row.is-absent .rb-comp-resolution-val { color: var(--text-dim); }
+
+/* 스팟파이어의 상태바 — 「N marked」 가 항상 보입니다. */
+.rb-status { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px;
+  min-height: 0; overflow: auto; }
+.rb-status-row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; }
+.rb-status-key { color: var(--text-muted); }
+.rb-status-val { font-family: var(--font-mono); color: var(--text); margin-left: auto; }
+/* 0 marked 는 «상태»입니다. 흐리게 두되 숨기지 않습니다. */
+.rb-status-val.is-empty { color: var(--text-dim); }
+.rb-status-row.is-marked .rb-status-val { color: var(--accent); font-weight: 600; }
+.rb-status-control { font-family: var(--font-mono); color: var(--text-muted); }
+
+/* 목업 ② 의 스텝 빵부스러기 — 마킹된 층의 공정 사슬. */
+/* 🔴 ONE LINE THAT SCROLLS, NOT A WRAPPED WALL. Measured: a core wafer's route is 27 steps
+   (the mockup's bond wafer has 4). Wrapping them fills the panel and reads as noise; folding
+   them would hide steps. Scrolling keeps every step and keeps the row one line. */
+.rb-comp-steps { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 6px;
+  padding: 5px 6px; border-top: 1px solid var(--border); overflow-x: auto; }
+.rb-comp-steps > * { flex: 0 0 auto; }
+.rb-comp-steps-head { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
+.rb-comp-step { padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-surface); font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted); }
+.rb-comp-steps-sep { color: var(--border-strong); font-size: 11px; }
+.rb-comp-steps-absent { font-size: 11px; color: var(--text-dim); }

@@ -251,6 +251,12 @@ export function compositionModel(result) {
       bonding: c.bonding || null,
       resolutionState: c.resolution_state || 'unknown',
       transferEventCount: Array.isArray(c.transfer_events) ? c.transfer_events.length : null,
+      // 목업 ② 의 스텝 빵부스러기. MEASURED: `upstream_process.evidence_ids[]` carries `step`
+      // and `occurred_at` for the core wafer -- INGOT_RELEASE › WAFER_SORT › … So the
+      // breadcrumb is a fact the ledger already holds, not a path this client assembles.
+      steps: (((c.upstream_process || {}).evidence_ids) || [])
+        .map((e) => ({ step: e.step || null, at: e.occurred_at || null }))
+        .filter((e) => e.step),
       // 목업의 「이력 4 ›」. The derived_from chain the ledger already walked for this core --
       // a COUNT of events, and `null` when the response carried no lineage at all.
       lineage: c.core && c.core.lineage

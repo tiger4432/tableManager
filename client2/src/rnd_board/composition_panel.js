@@ -170,7 +170,50 @@ export class CompositionPanel extends Panel {
       table.appendChild(empty);
     }
     root.appendChild(table);
+
+    // ── 목업 ② 의 스텝 빵부스러기 — 마킹된 층의 «자기 스텝» ────────────────────
+    // 🔴 THE CHAIN THE MOCKUP DECLARES: 층 마킹 → 그 층의 공정. It is driven by the marking
+    //    this panel already writes, so clicking a layer is what opens it -- no second control.
+    const markedLayer = m.components.find(
+      (c) => this.signOf(c.entityId || c.id) !== SIGN.ABSENT);
+    if (markedLayer) root.appendChild(this._steps(markedLayer));
+
     place(root);
+  }
+
+  /** The marked layer's own process steps, in order, as the ledger recorded them. */
+  _steps(c) {
+    const doc = this.doc;
+    const box = doc.createElement('div');
+    box.className = 'rb-comp-steps';
+    const head = doc.createElement('span');
+    head.className = 'rb-comp-steps-head';
+    const wafer = (c.core && c.core.wafer) || c.id;
+    const steps = c.steps || [];
+    head.textContent = `${wafer} 의 스텝 ${steps.length}`;
+    box.appendChild(head);
+    if (!steps.length) {
+      const none = doc.createElement('span');
+      none.className = 'rb-comp-steps-absent';
+      // Not 「공정이 없다」: the response carried no upstream process for this layer.
+      none.textContent = '응답에 공정 이력이 없습니다';
+      box.appendChild(none);
+      return box;
+    }
+    steps.forEach((s, i) => {
+      if (i > 0) {
+        const sep = doc.createElement('span');
+        sep.className = 'rb-comp-steps-sep';
+        sep.textContent = '›';
+        box.appendChild(sep);
+      }
+      const el = doc.createElement('span');
+      el.className = 'rb-comp-step';
+      el.textContent = s.step;
+      if (s.at) el.setAttribute('title', s.at);
+      box.appendChild(el);
+    });
+    return box;
   }
 
   _count(label, value, title) {

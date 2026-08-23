@@ -38,12 +38,13 @@ import { CandidateListPanel } from './candidate_list_panel.js';
 import { RankListPanel } from './rank_list_panel.js';
 import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
+import { MarkingStatusPanel } from './marking_status_panel.js';
 import { fetchLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
-  mainTrend: MainTrendPanel };
+  mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -87,10 +88,28 @@ export const BOARD = Object.freeze({
       id: 'head-summary',
       part: 'headSummary',
       title: '머리 요약 · SYN-CX-CHIP-001',
-      at: { column: 1, row: 1, columnSpan: 3 },
+      at: { column: 1, row: 1, columnSpan: 2 },
       reads: 'marking:1',
       writes: null,
       options: { finalChipId: 'SYN-CX-CHIP-001' },
+    },
+    {
+      // 스팟파이어의 상태바. 「N marked」 가 «항상» 보여야 한다는 게 계약입니다 -- 마킹이 비어
+      // 있다는 사실이 곧 마킹으로 거르는 패널이 빈 이유이기 때문입니다.
+      id: 'marking-status',
+      part: 'markingStatus',
+      title: '마킹',
+      at: { column: 3, row: 1 },
+      reads: null,
+      writes: null,
+      options: {
+        names: [
+          { name: 'marking:0', label: '씨앗 · 마킹 0' },
+          { name: 'marking:1', label: '맵 · 마킹 1' },
+          { name: 'marking:2', label: '후보 · 마킹 2' },
+          { name: 'marking:3', label: '교집합 · 마킹 3' },
+        ],
+      },
     },
     {
       // 🔴 THE SCREEN'S GRAMMAR LIVES HERE (목업 ③). It writes the chosen axis into `axis:y`,
