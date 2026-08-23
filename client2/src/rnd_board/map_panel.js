@@ -166,6 +166,12 @@ export class MapPanel extends Panel {
     this.slot = (options.question && options.question.slot) || null;
     this.pages = [];
     this.loadPages = options.loadPages || null;
+    // 🔴 「점을 찍으면 그것이 씨앗」 REACHES THE MAP. The trend names the wafer it picked; a map
+    //    that declares it follows that name re-targets onto it. Paging never clears a marking.
+    this.pageFollows = options.pageFollows || null;
+    this.loadByWafer = options.loadByWafer || null;
+    this.wafer = null;
+    this._followOff = null;
     this.loadBasisCounts = options.loadBasisCounts || null;
     this.basisCounts = null;
     this.body = null;
@@ -189,6 +195,10 @@ export class MapPanel extends Panel {
   mount() {
     super.mount();
     this.reload();
+    if (this.pageFollows && this.markings) {
+      this._followOff = this.markings.subscribe(this.pageFollows, () => this._onSubjectChanged());
+      this._onSubjectChanged();
+    }
     if (this.loadPages) {
       Promise.resolve().then(() => this.loadPages())
         .then((pages) => { this.pages = Array.isArray(pages) ? pages : []; this.render(); })
@@ -200,6 +210,35 @@ export class MapPanel extends Panel {
         // A count nobody could fetch stays null and draws as 「—」; it never becomes 0.
         .catch(() => { this.basisCounts = null; });
     }
+  }
+
+  destroy() {
+    if (this._followOff) this._followOff();
+    this._followOff = null;
+    super.destroy();
+  }
+
+  /** The screen's subject moved; re-target onto that wafer. */
+  _onSubjectChanged() {
+    if (!this.loadByWafer) return;
+    const entries = this.markings ? this.markings.entries(this.pageFollows) : [];
+    const wafer = entries.length ? entries[0][0] : null;
+    if (!wafer || wafer === this.wafer) return;
+    this.wafer = wafer;
+    // The slot no longer names this page: it was picked by wafer, not by position.
+    this.slot = null;
+    const mine = ++this._session;
+    this.status = 'loading';
+    this.render();
+    Promise.resolve().then(() => this.loadByWafer(wafer))
+      .then((body) => {
+        if (mine !== this._session || !body) return;
+        this.body = body;
+        this.model = projectionModel(body, this.axis);
+        this.status = 'ready';
+        this.render();
+      })
+      .catch(() => { if (mine === this._session) { this.status = 'error'; this.render(); } });
   }
 
   /** Turn to another slot of the same row. Re-fetches; the marking is untouched. */
@@ -394,7 +433,9 @@ export class MapPanel extends Panel {
     //    is reading instead.
     const loading = this.status === 'loading';
     const wafer = this.model && this.model.frame && this.model.frame.wafer;
-    label.textContent = `${this.slot || '-'} / ${this.pages.length}`
+    // 🔴 A PAGE PICKED BY WAFER HAS NO SLOT NUMBER, and 「- / 25」 would imply it is page nothing
+    //    of twenty-five. It names the wafer alone, which is how it was chosen.
+    label.textContent = (this.slot ? `${this.slot} / ${this.pages.length}` : '씨앗')
       + (loading ? ' · 읽는 중…' : (wafer ? ` · ${wafer}` : ''));
     const next = doc.createElement('span');
     next.className = at >= 0 && at < this.pages.length - 1

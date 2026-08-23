@@ -39,6 +39,11 @@ export class MainTrendPanel extends Panel {
     //    CONTRACT WITH `control_bar_panel.js`: the id is `axis:<kind>:<id>` -- `ratio` for a
     //    finding kind this route can plot, `quantity` for a walk candidate it cannot.
     this.axisReads = options.axisReads || null;
+    // 🔴 THE SUBJECT, BY NAME, SO OTHER PARTS CAN FOLLOW IT. The mark id is the ledger's
+    //    `identity.mark_key`, which no other part can decode into a wafer without parsing a
+    //    server id. The wafer NAME is in the same point, so it is written under its own
+    //    declared name and a map can page to it by declaring that it follows.
+    this.writesSubject = options.writesSubject || null;
     this.axisChosen = null;
     this._axisOff = null;
     this.fetchImpl = options.fetchImpl || null;
@@ -218,6 +223,11 @@ export class MainTrendPanel extends Panel {
         dot.addEventListener('click', (event) => {
           const intent = markingIntent(event);
           this.mark(p.markKey, intent.sign, intent.mode);
+          if (this.writesSubject && this.markings && p.wafer) {
+            // Replace, always: the subject of the screen is one thing at a time.
+            this.markings.clear(this.writesSubject);
+            this.markings.set(this.writesSubject, p.wafer, SIGN.CASE);
+          }
         });
       }
       plot.appendChild(dot);
