@@ -21,6 +21,54 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+
+# 🔨 대기열 추가 — **라운드 1은 그대로**. 이건 그 «다음»입니다 (총괄 19:5x)
+
+⛔ **지금 하는 것을 멈추지 마십시오.** 이 블록은 라운드 1이 착지한 «뒤»에 읽는 것입니다.
+지금 당신 화면(`client2/src/rnd_board/` 일곱 파일)은 제가 커밋 로그로 보고 있고, 건드리지 않습니다.
+
+## 왜 지금 적어 두나 — 창문이 열렸는데 «부품보다 먼저» 닫아야 합니다
+
+클라가 rnd-console 을 걷어냈습니다. 그래서 오늘 이렇게 됐습니다 (응용 보고 + 제가 «따로» 재서 확인):
+```
+client2/src 에서 /trends 를 부르는 곳             0
+client2/src 에서 /selection/resolve 를 부르는 곳   0
+client2/src 에서 wafer_mark_keys 를 읽는 곳        0
+당신의 rnd_board/api.js 가 부르는 것               /api/ledger/lot_map «하나»
+```
+소유자 지시가 이미 있습니다 — 「trends 마킹 키 고정도 은퇴 대상에 넣어」.
+**지금 그 계약을 깨는 값이 0입니다.**
+
+🔴 **이건 순서 문제입니다.** 라운드 2·3 에서 붙일 «메인 트렌드»와 «마킹 후보 트렌드»가
+바로 그 라우트의 **다음 호출자**입니다. 부품이 붙은 뒤에 고치면 부품까지 같이 고쳐야 하고,
+그때는 호출자가 0이 아닙니다.
+
+## 무엇이 고정돼 있나 — 이름 하나가 아니라 «행의 grain» 입니다
+```
+ledger_trends.py:58          mark_key(wafer, bonding_leg)   축 «둘»이 함수에 박힘
+            :157 /166 /176   SQL 이 bonding_leg 을 직접 셀렉트
+            :181 /186 /194 /201 /205   GROUP BY · JOIN · 윈도우가 전부 (wafer, bonding_leg)
+ledger_identity.py:36~61     encode_mark / decode_mark 이 같은 쌍을 인코딩
+ledger_selection.py          wafer_mark_keys 로 그 쌍을 응답에 실어 보냄
+```
+
+## 설계는 응용 레인에 냈습니다 — 당신은 «실행»입니다
+`task/ontology_application_report.md` 에 대체 grain 설계가 올라오면 그때 착수합니다.
+**설계 없이 지우지 마십시오.** 지운 자리에 두 축을 다시 박게 됩니다.
+
+⚠️ 착수할 때 같이 움직이는 것 (지금 세어 둡니다):
+```
+테스트  server/tests/test_ledger_selection.py · test_ledger_trends.py · test_syn_complex_composite.py
+씨더    server/scripts/seed_syn_complex_composite.py   ← 같은 쌍을 «씁니다»
+```
+이 셋은 그 코드를 «재는» 테스트라 같은 커밋에서 같이 움직입니다. 먼저 지우면 무방비입니다.
+
+## 지금 당신 대기열
+```
+1 ▶ R&D 화면 라운드 1 — 골격 셋 + 맵 하나        «지금 하는 것». 안 바뀝니다
+2   trends/selection 의 «고정 grain» 은퇴          응용 설계 도착 후
+3   트렌드 부품 둘                                 반드시 2 «다음». 순서 바꾸지 마십시오
+```
 # ⚖️ 판정 — 셋 다 통과. 그리고 **헷갈리게 만든 숫자는 «제 보드»였습니다** (총괄 00:3x)
 
 ## 통과 — 그리고 «왜» 좋았는지
