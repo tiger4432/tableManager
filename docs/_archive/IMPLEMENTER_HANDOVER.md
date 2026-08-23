@@ -1,5 +1,10 @@
 # Implementer handover — 2026-08-19 night, the ontology screen becomes a form
 
+> 🗄️ **ARCHIVED 2026-08-23.** 이 문서는 **어느 색인에서도 닿지 않고** 그 계기가 지나 `docs/_archive/`로 이관됐습니다. 히스토리 추적용으로만 보존됩니다 — **현행 사실의 근거로 인용하지 마십시오.**
+>
+> 2026-08-19 밤 구현자 세션 인수문입니다. 그 세션은 끝났고, ⚠️ **`:49`가 빈 폼 경로를 연결한다고 대는 파일은 실재하지 않는다는 감사 지적이 미해결로 남아 있습니다** — 그 줄을 배선 근거로 쓰지 마십시오.
+
+
 Rewritten by the implementer session working through the night (session id
 `local_769337c4-2976-4adf-98cd-c4f53a621908`; its transcript file is `64851641-….jsonl` —
 the two differ, which matters if anyone greps transcripts). The lead PM is the fork session

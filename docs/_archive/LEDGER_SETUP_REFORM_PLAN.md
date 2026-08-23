@@ -1,5 +1,10 @@
 # 셋업 개혁안 — 소스→원장→온톨로지를 한 화면에서 (2026-08-15)
 
+> 🗄️ **ARCHIVED 2026-08-23.** 이 문서는 **어느 색인에서도 닿지 않고** 그 계기가 지나 `docs/_archive/`로 이관됐습니다. 히스토리 추적용으로만 보존됩니다 — **현행 사실의 근거로 인용하지 마십시오.**
+>
+> 2026-08-15 개혁안입니다. 근거로 대는 두 문서(`SETUP_PAIN_LOG.md` · `LEDGER_SETUP_SCENARIO_REVIEW.md`)도 **같은 날 같이 아카이브로 옵겨져 이 폴더에 나란히 있습니다**. 산출로 지어진 화면의 현행 서술은 [ONTOLOGY_LEDGER_SETUP §13.3-quater](../guide/ONTOLOGY_LEDGER_SETUP.md).
+
+
 > 근거: 소유자 구술 P-01~04(`SETUP_PAIN_LOG.md`) + 전 시나리오 검토
 > (`LEDGER_SETUP_SCENARIO_REVIEW.md`). 판정 정본 R-2026-08-15-M/N/O.
 > 소비 화면(UI)은 Spotfire로 간다는 전략과 무관 — **이 계획은 «셋업» 화면이다.**

@@ -1,5 +1,9 @@
 # CONFIG 상속 지도 — 무엇이 무엇에서 오고, 무엇이 무엇을 이기는가
 
+> 🗄️ **ARCHIVED 2026-08-23.** 이 문서는 **어느 색인에서도 닿지 않고** 그 계기가 지나 `docs/_archive/`로 이관됐습니다. 히스토리 추적용으로만 보존됩니다 — **현행 사실의 근거로 인용하지 마십시오.**
+>
+> 2026-08-16 이 박스에서 둔 config 상속 실측기로, 색인 유입이 0입니다. [DOC_OWNERSHIP](../process/DOC_OWNERSHIP.md)의 언급은 소유 배정이 아니라 「이 문서가 수상하다」는 2026-08-14 보고 줄이었습니다. 🔴 **§5는 «이 박스»의 config 상태라 다른 환경에 대해서는 거짓입니다.** 코드에서 오는 규칙(§2~§4)을 다시 쓰고 싶으면 [CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)로 옮기는 것이 제안된 길입니다(총괄 판정 대기).
+
 > **측정 시각:** 2026-08-16 (이 박스 `assy_manager` 개발 사본, 읽기 전용).
 > **측정 방법:** 재구현 없이 **제품의 실제 해석기를 그대로 호출**했다 —
 > `bonding_plan.explain_binding_refusal` · `map_overlay.resolve_binding_parts` ·
@@ -436,6 +440,6 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 
 - [guide/CONFIG_GUIDE.md](../guide/CONFIG_GUIDE.md) — 어느 파일을 열지(색인)
 - [guide/config/](../guide/config/README.md) — 파일 한 장당 세팅 절차
-- [architecture/SCHEMA_CANON.md](SCHEMA_CANON.md) — 스키마 규칙 + 탐지기(같은 장르, 다른 축)
-- [architecture/data_model.md](data_model.md) · [architecture/backend.md](backend.md)
+- [architecture/SCHEMA_CANON.md](../architecture/SCHEMA_CANON.md) — 스키마 규칙 + 탐지기(같은 장르, 다른 축)
+- [architecture/data_model.md](../architecture/data_model.md) · [architecture/backend.md](../architecture/backend.md)
 - [guide/data_preservation_and_signature_change.md](../guide/data_preservation_and_signature_change.md)

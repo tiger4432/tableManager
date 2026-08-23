@@ -85,7 +85,7 @@ v2 선언에는 소스 「문법(`kind`)」이 **없다** — 소스 하나가 `
 
 | 질문 | API |
 |---|---|
-| 원장 준비 상태 | `GET /api/ledger/coverage` |
+| ⛔ 원장 준비 상태 | `GET /api/ledger/coverage` (`ledger_trace_router.py` — 🔴 **[2026-08-23 정정] 이 행에 ⛔가 빠져 있었다: 얼어 있다**) |
 | ⛔ 특정 개체 추적 | `GET /api/ledger/trace` (`ledger_trace.py` — **얼어 있다**) |
 | ⛔ 구조와 선언·관측 차이 | `GET /api/ledger/structure` (`ledger_structure.py` — **얼어 있다**) |
 | 결함 종류와 원장 상태 | `GET /api/ledger/kinds` |

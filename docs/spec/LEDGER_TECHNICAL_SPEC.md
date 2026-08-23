@@ -711,10 +711,19 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 > 🔴 **[2026-08-22 `90383987` 정정] 종전의 「이 계약은 이번 config 모양 라운드들이 건드리지
 > 않았고 여기 적힌 대로 여전히 유효하다」는 «거짓이 됐다».** 세 필드
 > `binding_origin`·`approval_status`·`suggestion_reason`이 **v1 리더에서도** 나갔다 —
-> `source_profile._RETIRED_PROFILE_FIELDS`가 그 세 이름을 **읽고 버리고**(reaches no decision),
-> `approval_status == "approved"` 하나뿐이던 승인 패스는 **규칙이 0개**가 됐다. 그래서 아래
-> 예제 JSON의 그 줄들은 **오늘 아무 일도 하지 않는다** — 파싱은 되고 정규화 산출물에도
-> 실리지만(떼면 지문이 움직인다) 어떤 판정에도 닿지 않는다. 나머지 구조(`packs`·`mapping_id`·
+> `source_profile.RETIRED_BINDING_FIELDS`(모듈 수준·앞 밑줄 없음)가 그 세 이름을 **읽고
+> 버리고**(reaches no decision), `approval_status == "approved"` 하나뿐이던 승인 패스는
+> **규칙이 0개**가 됐다. 그래서 아래 예제 JSON의 그 줄들은 **오늘 아무 일도 하지 않는다** —
+> 파싱은 되지만 어떤 판정에도 닿지 않는다.
+> 🔴 **「삼킨다」의 뜻이 두 리더에서 «다르고», 이 절의 리더는 v1이다.**
+> **v1(`source_profile.py:264-265`)은 정규화 «전»에 세 이름을 payload에서 떨어뜨린다** —
+> 정규화 산출물에 실리지 «않으므로», v1 파일에서 그 줄을 떼도 **움직이는 지문이 없다**.
+> 「떼면 커서 지문이 움직인다」는 **v2 리더의 성질**이다: `setup_bundle._RETIRED_BINDING_FIELDS`
+> (이쪽은 앞 밑줄이 있다)는 세 이름을 `_Problems.exact`의 `ignored`로만 통과시키고 **정규 번들에
+> 그대로 실어 보내서** `source_cursor_fingerprint`가 안 움직이게 한다
+> (`server/tests/test_ledger_setup_bundle.py:1097-1101`). 두 문장을 섞어 읽지 마라 —
+> 상세는 [SYSTEM_OVERVIEW 라이브 config 표](../overview/SYSTEM_OVERVIEW.md).
+> 나머지 구조(`packs`·`mapping_id`·
 > `use`·`declared_lookup`)는 v1 계약 그대로다.
 > **v2 `server/config/ontology/ledger_config.json`에는 `profiles` section도 `mapping_id`도
 > 없다** — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은
@@ -802,11 +811,19 @@ Binding kind 등록부:
 | `constant` | `value` | 키의 명시적 존재; `null`은 Role의 `allow_null`, 나머지는 Role의 symbolic constant 또는 허용 JSON type 계약을 따름 |
 | `declared_lookup` | `lookup_id`, `key`, `select` | 2단계에서는 식별자·column/constant key binding·출력 선택의 구조만 검사. 실행과 반환 형상 검사는 3단계 |
 
-모든 정규화 Binding은 설정 출처 `binding_origin`(`user_declared`, `system_suggested`,
-`imported`)과 Mapping 승인 상태 `approval_status`(`pending`, `approved`, `rejected`)를
-별도 필드로 보존한다. 입력에서 생략하면 각각 `user_declared`, `pending`으로 정규화한다.
-`system_suggested`에는 `suggestion_reason`이 필수다. 이 승인은 컬럼 Mapping에만 적용되며
-생성될 Claim의 epistemic class를 `confirmed` 또는 `pin`으로 승격시키지 않는다.
+🔴 **[2026-08-23 정정 · v1 리더 `server/ledger/source_profile.py` 기준 실측]** 종전에 여기
+적혀 있던 「모든 정규화 Binding이 `binding_origin`·`approval_status`를 별도 필드로 **보존**하고,
+생략하면 `user_declared`·`pending`으로 **기본값을 채우며**, `system_suggested`에는
+`suggestion_reason`이 **필수**다」는 **거짓이다.** `binding_origin`·`approval_status`·
+`suggestion_reason` 셋은 2026-08-22(`90383987`)에 은퇴했고, v1 정규화는 셋을 **보존하지도
+기본값을 주지도 않는다** — `_binding` 이 payload를 만들 때
+`RETIRED_BINDING_FIELDS`에 든 이름을 **정규화에 들어가기 «전»에 떨어뜨린다**
+(`source_profile.py:264-265`). 그래서 옛 파일은 `unknown_field` 없이 그대로 열리고, 그 셋은
+Binding에 남지 않는다. 오늘 정규화 Binding이 드는 것은 **kind와 그 payload뿐**이다.
+🔴 **「승인」이라는 실행 관문도 없다** — 아래 readiness 문단을 보라. 은퇴 판정의 근거(자유도 0:
+라이브 40 binding 전부 `approved`, 나머지 둘은 0회 선언)는
+[ONTOLOGY_LEDGER_SETUP §7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)이 정본이다.
+아래 예제 JSON에 그 세 줄이 남아 있는 것은 **은퇴 이전 세대의 기록**이지 오늘의 계약이 아니다.
 정본 Profile의 루트는 `profile_version/source/packs/mappings` 네 필드만 허용한다.
 `validate_profile`, `validate_profile_errors`, `serialize_profile`, `validate_profile_section`,
 `public_profile_schema`는 이 canonical 계약만 다루며 입력 모양으로 구형 draft를 자동
@@ -828,11 +845,19 @@ Python·SQL·JavaScript·eval/exec와 범용 expression DSL은 지원하지 않�
 같은 입력은 두 함수에서 항상 같은 수락/거절 판정을 갖는다.
 
 구조 검증과 실행 가능 판정은 분리한다. `profile_readiness_errors()`와
-`require_executable_profile()`은 이미 검증된 `SourceOntologyProfile`만 받고 모든 최상위
-Binding과 `declared_lookup.key` 같은 중첩 Binding의 `approval_status`가 `approved`인지
-재귀적으로 검사한다. `pending|rejected`는 `binding_not_approved`와 정확한
-`mappings[i].bind.<role>[...].approval_status` 경로로 차단한다. 이 gate는 순수 판정이며
+`require_executable_profile()`은 이미 검증된 `SourceOntologyProfile`만 받고, 순수 판정이며
 compiler·lookup·translator·DB를 호출하지 않는다.
+🔴 **[2026-08-23 정정 · `server/ledger/source_profile.py:666-681` 실측] 이 단계에는 규칙이
+하나도 남아 있지 않고 «언제나» 빈 튜플을 낸다.** 유일한 규칙이 「모든 최상위 Binding과
+`declared_lookup.key` 같은 중첩 Binding의 `approval_status`가 `approved`인가」였는데, 그
+필드가 2026-08-22(`90383987`)에 은퇴하면서 규칙도 같이 나갔다. **`binding_not_approved`는
+오늘 어떤 입력으로도 나오지 않는다** — 종전에 여기 적혀 있던
+`mappings[i].bind.<role>[...].approval_status` 차단 경로도 도달할 수 없다. 남은 것은
+`SourceOntologyProfile`이 아닌 값에 대한 `TypeError` 하나뿐이다.
+**단계를 지우지 않고 남긴 이유는 «자리»다** — `profile_chain_mapper`가 이 함수를 「이 Profile이
+파싱됐다」와 「이 Profile이 돈다」 사이에 놓으므로, 다음 「이게 돌아도 되는가」류 규칙이 앉을
+곳이 여기다. 🔴 **그러므로 이 gate의 통과를 「승인됐다」·「검증을 통과했다」의 증거로 인용하지
+마라.** v2 쪽의 같은 자리(`setup_bundle.bundle_readiness_errors`)도 같은 이유로 규칙 0개다.
 
 `serialize_profile()`은 Pack, mapping, role, 객체 키를 정규화해 같은 Profile을 같은 UTF-8
 JSON 바이트로 직렬화하며 입력을 수정하지 않는다. `public_profile_schema()`는 canonical
@@ -904,8 +929,11 @@ translator를 유지한다」는 더 이상 참이 아니다** — 유지할 tra
 `ledger_config.json`의 `sources`에 없는 이름은 백필이 `undeclared_source`로 거절한다.
 
 격리 PostgreSQL 수락 검사는 canonical Profile의 dry-run → 동일 mapper 후보 → gate →
-`LedgerStore` → 기존 cursor를 한 경로에서 통과시킨다. nested Binding의 pending/rejected와
-lookup 0건/다건은 dry-run/execute 모두 같은 오류를 내며 Atom 0·cursor 미이동이어야 한다.
+`LedgerStore` → 기존 cursor를 한 경로에서 통과시킨다. lookup 0건/다건은 dry-run/execute
+모두 같은 오류를 내며 Atom 0·cursor 미이동이어야 한다.
+⚰️ **[2026-08-23] 이 문장의 앞 절반이던 「nested Binding의 pending/rejected」는 지웠다** —
+`approval_status`가 2026-08-22에 은퇴해 그 상태를 만들 수 있는 입력이 없다(위 readiness 문단).
+**lookup 0건/다건 절반만 오늘도 참이다.**
 
 ---
 
@@ -1104,7 +1132,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 🔴 **`ledger_link`도 «유도»된다**: 기전 노드는 `Model` 개체 타입을 통해 원장에 닿는데
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
 ✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/sample/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
-그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재하고 소비자는 **둘**이다 — 이 라우트의 기전 층 + 3관문 랭킹의 기전 관문(`server/mechanism_gate.py`).
+그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재한다. 🔴 **[2026-08-23 grep 전수 재도출 정정 — 종전 이 자리의 「소비자 둘」과 「`server/mechanism_gate.py`가 3관문 랭킹」은 둘 다 틀렸다] 소비자는 «모듈 넷»**(`ledger_walk_contrast.py:303` · `ledger_journey.py:326`·`:1287` · `ledger_subgraph.py:1071` · 이 라우트의 `ledger_structure.py:727`)이고, **3관문 랭킹(실재·상류·기전)은 `ledger_walk_contrast.py`에 산다** — `server/mechanism_gate.py`는 **로더 + 기전 판정기**다. 전수 목록은 [backend §2 `/structure`](../architecture/backend.md).
 🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이며(`mechanism_gate.KEY_DOC`/`KEY_BINDINGS`), `signatures`는 **모델 «안»의 키**이고 로더가 읽지 않는다(사람용). 모델은 방향만 나른다 — 방정식은 일부러 없다. **`bindings`**는 필드→물리량이고 🔴 **항목 목록이 아니다**(바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다). 선언 방법은 [guide/ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md).
 🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.
 

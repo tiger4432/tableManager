@@ -1550,7 +1550,7 @@ Preparer `direct-join@1`과 Mapper `declarative-role@1`을 쓴다 — **전용 P
 - `prepare` physical input/output collision와 inherited join
 - cursor total order의 catalog UNIQUE 근거
 - unsafe executable key의 임의 깊이 재귀 검사
-- 모든 binding readiness metadata
+- ⚰️ **[2026-08-23] 「모든 binding readiness metadata」는 검사 목록에서 뺐다** — 그 metadata(`binding_origin`·`approval_status`·`suggestion_reason`)가 2026-08-22에 은퇴했고, readiness 단계는 **규칙이 0개라 언제나 빈 결과**를 낸다(§7.6). 검증기가 오늘 binding에 대해 보는 것은 **kind와 그 payload뿐**이다
 
 malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거절된다. **path는
 소스에서 출발한다** — 그것이 절이 소스 안으로 들어온 부수 효과다. 대표 예시는 다음과 같다.
@@ -1843,7 +1843,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 - 같은 config의 canonical serialization/snapshot hash 결정성
 - source/column 이름이 달라도 같은 술어 재사용
-- pending/rejected/nested pending 실행 차단
+- ⚰️ **[2026-08-23] 「pending/rejected/nested pending 실행 차단」은 수락 항목에서 뺐다** — `approval_status` 은퇴(2026-08-22)로 **일으킬 수 없는 상태**라 이 항목을 통과시킬 수도 실패시킬 수도 없다(§7.6)
 - virtual join 0건/다건/incomplete/collision fail-closed
 - batch join N+1 방지
 - preview/execute 후보 parity
@@ -1865,7 +1865,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | `missing_required_role` | 술어가 강제하는 Role과 `bind` 불일치 | §7.5의 도출 표를 기준으로 binding 추가 |
 | `unknown_predicate` | `mappings.<문장>.predicate`가 `vocabulary` 밖 | 술어 ID와 version 철자 |
 | `unknown_payload_field` | binding한 qualifier가 Vocabulary 밖 | Vocabulary를 무작정 넓히지 말고 의미 확인 후 술어 서명 수정 |
-| draft validation은 되는데 execute 불가 | pending/rejected binding 존재 | nested binding 포함 승인 상태 확인 |
+| draft validation은 되는데 execute 불가 | ⚰️ **[2026-08-23] 「pending/rejected binding 존재」는 원인이 «될 수 없다»** — `approval_status`는 2026-08-22에 은퇴했고 binding 승인 관문 자체가 없다(§7.6). 이 칸을 보고 승인 상태를 찾으러 가면 **없는 필드를 찾는다** | 그 소스가 `sources`에 적혀 있는지부터 본다(§8) — 준비 안 된 소스를 붙드는 자리는 그것 하나다. 실행 거절문은 코드·경로와 함께 오므로 **거절문의 `code`를 이 표에서 찾아라**(`undeclared_source`·`invalid_cursor`·`invalid_mapper` 등) |
 | mapper가 문장을 못 찾는다 | `bind.mappings`의 **키**가 mapper의 문장 별명과 다름 | mapper 파일의 `SentenceShape` 속성명이 정본이다(§7.6) |
 | join 결과 0건 | inventory 늦은 도착/키 불일치 | 원천·표기·dependency replay 후보 확인; 가짜 값 생성 금지 |
 | join 결과 다건 | 오른쪽 유일성 위반 | 물리 중복 해소와 exact UNIQUE proof; 첫 행 임의 선택 금지 |

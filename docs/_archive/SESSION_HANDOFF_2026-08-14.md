@@ -1,8 +1,13 @@
 # 인수인계 — 2026-08-14 → 다음 세션
 
+> 🗄️ **ARCHIVED 2026-08-23.** 이 문서는 **어느 색인에서도 닿지 않고** 그 계기가 지나 `docs/_archive/`로 이관됐습니다. 히스토리 추적용으로만 보존됩니다 — **현행 사실의 근거로 인용하지 마십시오.**
+>
+> 세션 인수인계서라 **그날 밤에만 유효**했습니다. 상태 정본은 [PROJECT_STATUS](../process/PROJECT_STATUS.md), 설계 정본은 [SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md)입니다.
+
+
 > 다음 세션은 **콘솔 클라이언트 전면 재작성**으로 시작한다.
-> 이 문서는 그 착공에 필요한 것만 담는다. 보드([PROJECT_STATUS](PROJECT_STATUS.md))는 상태,
-> [SCENARIO_CONSOLE_BRIEF](SCENARIO_CONSOLE_BRIEF.md)는 설계 정본, 이 문서는 **인수인계**다.
+> 이 문서는 그 착공에 필요한 것만 담는다. 보드([PROJECT_STATUS](../process/PROJECT_STATUS.md))는 상태,
+> [SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md)는 설계 정본, 이 문서는 **인수인계**다.
 
 ---
 
@@ -19,12 +24,12 @@
 
 ## 2. 착공 전에 반드시 읽을 것 (순서대로)
 
-1. **[SCENARIO_CONSOLE_BRIEF](SCENARIO_CONSOLE_BRIEF.md) 맨 끝 — `R-아침` · `R-리라이트`**
+1. **[SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md) 맨 끝 — `R-아침` · `R-리라이트`**
    폐기/보존 경계와 착공 조건. **정본이다.**
 2. **`agent_workspace/ui_preview/JOURNEY_CONTRAST_MOCKUP.html`**
    소유자가 승인한 시안. 소유자 원문: 「클라한테 저 위젯 그대로 줘라 저거 좋다」.
    **생김새의 정본** — 재해석하지 말 것.
-3. **[LEDGER_RULINGS](LEDGER_RULINGS.md)** — 오늘 판정 `R-2026-08-14-D` ~ `L`.
+3. **[LEDGER_RULINGS](../process/LEDGER_RULINGS.md)** — 오늘 판정 `R-2026-08-14-D` ~ `L`.
    특히 **J(하니스 비례 규칙)**, **I(개발 DB 증강 상설 권한)**, **L(주소 구체성 우선)**.
 4. 보드의 「재작성이 반드시 물려받아야 할 «측정된» 사실」 블록.
 
