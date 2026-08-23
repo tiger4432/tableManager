@@ -88,7 +88,7 @@ export const BOARD = Object.freeze({
   //    ⚠️ 92px WAS THE FLOOR UNTIL THE WAFER LINE LANDED: measured content 112px in a 92px
   //       row, so the new line was clipped. An `auto` row cannot grow here -- the fixed rows
   //       below already overflow the viewport, so auto sinks to its own minimum.
-  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 360px 340px',
+  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 190px 360px 340px',
   gap: '10px',
   // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
   //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
@@ -231,12 +231,48 @@ export const BOARD = Object.freeze({
       },
     },
     {
+      // 🔴 목업 ① — 「마킹한 후보 트렌드 (마킹 2)」. 부품은 «메인 트렌드와 같은 것»이고 바뀌는
+      //    것은 선언뿐입니다: 시작점이 마킹 2 이고, 읽는 마킹도 2 입니다. 새 부품을 만들면
+      //    조립식이라는 말이 거짓이 됩니다.
+      id: 'candidate-trend',
+      part: 'mainTrend',
+      title: '마킹한 후보 트렌드 · 마킹 2',
+      at: { column: 1, row: 4, columnSpan: 4 },
+      reads: 'marking:2',
+      writes: 'marking:2',
+      // walk ⑦ — 후보에서 찍은 것이 이 차트의 «주어»입니다. 비어 있으면 묻지 않습니다.
+      start: { groupby: 'wafer', marking: 'marking:2' },
+      collect: 'trend_y',
+      options: {
+        kinds: 'void',
+        window: '180d',
+        axisReads: 'axis:y',
+        subjectReads: 'subject:wafer',
+        grain: {
+          subject_type: 'WaferLeg',
+          identity_fields: ['wafer'],
+          aggregation_unit: 'void_by_experiment_unit',
+          context_fields: ['bonding_leg'],
+          context_role: 'planned_bonding_experiment_unit',
+          marking: 'identity.mark_key',
+          axes: [
+            { name: 'wafer',
+              denominator: { relation: 'inspection_run', column: 'base_wafer_id' },
+              numerator: { from: 'subject_keys', key: 'wafer' } },
+            { name: 'bonding_leg',
+              denominator: { relation: 'bonding_map', column: 'leg' },
+              numerator: { from: 'subject_keys', key: 'bonding_leg' } },
+          ],
+        },
+      },
+    },
+    {
       id: 'composition',
       part: 'composition',
       start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
       collect: 'wafer_process',
       title: '구성 · SYN-CX-CHIP-001',
-      at: { column: 1, row: 4, columnSpan: 4 },
+      at: { column: 1, row: 5, columnSpan: 4 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: { finalChipId: 'SYN-CX-CHIP-001' },
@@ -246,7 +282,7 @@ export const BOARD = Object.freeze({
       part: 'map',
       collect: 'map',
       title: '본딩 맵 · 슬롯 07',
-      at: { column: 1, row: 5 },
+      at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: {
@@ -271,7 +307,7 @@ export const BOARD = Object.freeze({
       part: 'map',
       collect: 'map',
       title: '코어 맵 · 마킹 2',
-      at: { column: 2, row: 5 },
+      at: { column: 2, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
@@ -295,7 +331,7 @@ export const BOARD = Object.freeze({
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
       collect: 'candidate',
       title: '원인 후보 · SYN-BW-001-07',
-      at: { column: 3, row: 5 },
+      at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
@@ -308,7 +344,7 @@ export const BOARD = Object.freeze({
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
       collect: 'candidate',
       title: '순위 · SYN-BW-001-07',
-      at: { column: 4, row: 5 },
+      at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {

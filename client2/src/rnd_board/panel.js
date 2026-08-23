@@ -94,6 +94,27 @@ export class Panel {
    * How many marks stand under the name THIS part READS. Attenuation keys off it: while it is
    * zero nothing is dimmed, because 「아직 안 골랐다」 is not 「이건 아니다」.
    */
+  /**
+   * 🔴 START IS A MARKING (소유자 상설 2026-08-24: 「마킹한 노드의 하위 그래프를 데이터로」).
+   *    A declaration may name one instead of carrying a literal id, and then the walk's subject
+   *    is whatever the reader has marked -- signs included, because 「여기서 났다」 and 「봤는데
+   *    안 났다」 are different sentences and the route takes them as `positive`/`negative`
+   *    (`task/MARKING_CONTRACT.md` §1).
+   *
+   * @returns the start to walk with, or `null` when the marking is EMPTY -- which is not an
+   *          error and not a zero: it is 「아직 안 골랐다」, and the caller says so instead of
+   *          asking a question with no subject.
+   */
+  startFor(given) {
+    const decl = given || this.start || null;
+    if (!decl || !decl.marking || !this.markings) return decl;
+    const entries = this.markings.entries(decl.marking);
+    const positive = entries.filter((e) => e[1] === SIGN.CASE).map((e) => e[0]);
+    const negative = entries.filter((e) => e[1] === SIGN.CONTROL).map((e) => e[0]);
+    if (!positive.length) return null;
+    return { ...decl, value: decl.value || positive[0], positive, negative };
+  }
+
   markCount() {
     if (!this.reads || !this.markings) return 0;
     return this.markings.count(this.reads);
