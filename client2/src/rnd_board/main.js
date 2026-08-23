@@ -153,7 +153,30 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 3, columnSpan: 3 },
       reads: 'marking:0',
       writes: 'marking:0',
-      options: { kinds: 'void', window: '180d' },
+      options: {
+        kinds: 'void',
+        window: '180d',
+        // 🔴 THE GRAIN IS DECLARED, AND IT IS WHY THE POINTS HAVE VALUES. Handed over measured:
+        //    the server's default aggregates `Wafer` and reads the leg out of `object_payload`,
+        //    which returns 24 points all at 0.0 -- twelve findings drawn as none. Two fields
+        //    differ from the default: `subject_type` and `axes[1].numerator.from`.
+        grain: {
+          subject_type: 'WaferLeg',
+          identity_fields: ['wafer'],
+          aggregation_unit: 'void_by_experiment_unit',
+          context_fields: ['bonding_leg'],
+          context_role: 'planned_bonding_experiment_unit',
+          marking: 'identity.mark_key',
+          axes: [
+            { name: 'wafer',
+              denominator: { relation: 'inspection_run', column: 'base_wafer_id' },
+              numerator: { from: 'subject_keys', key: 'wafer' } },
+            { name: 'bonding_leg',
+              denominator: { relation: 'bonding_map', column: 'leg' },
+              numerator: { from: 'subject_keys', key: 'bonding_leg' } },
+          ],
+        },
+      },
     },
     {
       id: 'composition',
