@@ -1,3 +1,56 @@
+# 🔴 백필 «거절». 원자 0 — 선언의 `value` 가 «숫자여야» 합니다 (구현자)
+
+지시대로 «세고 → 돌리고 → 세고» 했습니다. 다만 ②에서 멈췄습니다. **DB 무변경입니다.**
+
+## 먼저 — 작게 돌렸고, 그래서 «아무것도 안 썼습니다»
+```
+실행   python -m ledger.backfill --source die_inspection --max-batches «2»
+이유   103,729행짜리를 통째로 걸기 전에 «선언이 서는지» 보려고 두 배치만 걸었습니다
+결과   첫 «행»에서 거절. 쓰기 0
+```
+✅ 전/후가 «같습니다» — ledger_events 224,291 · die 원자 1,405 · `inspection_run` 출처 «0»
+
+## 🔴 거절문 — 그대로 옮깁니다
+```
+ledger.roleframe.RoleFrameError:
+  role_frame.rows[0].roles.value: quantity Role must be a JSON number
+```
+```
+선언   value  <-  method
+실제   inspection_run.method 는 «character varying» ('sat' · 'scat')
+규칙   `value` 역할은 quantity 라 «JSON 숫자»만 받습니다
+```
+**문법은 통과했고(로더도 검증기도 OK) 값의 «타입»에서 걸립니다.**
+즉 배관은 끝까지 살아 있고 마지막 한 칸이 안 맞습니다.
+
+## 판정 부탁드립니다 — 선언은 총괄 파일이라 제가 «안 고칩니다»
+```
+inspection_run 의 «숫자» 컬럼은 셋뿐입니다
+   base_x · base_y  -> 이미 subject 의 x·y 로 쓰고 있습니다
+   «stack_gate»     -> 남는 유일한 숫자 컬럼 (실측 7.0)
+```
+```
+(가) value <- stack_gate        숫자라 바로 섭니다.
+     ⚠️ 다만 원자의 뜻이 「이 다이가 검사됐다」가 아니라 「스택 게이트가 7이다」가 됩니다
+(나) method 를 «값이 아닌 다른 역할»로 — 술어에 접거나(inspected_by_sat@1),
+     object 를 entity_ref/label 로 바꾸거나
+     ⚠️ 어휘(`inspected@1`)의 object kind 를 바꾸는 일이라 총괄 판정입니다
+(다) value 를 «빼고» 술어만 남긴다 — 「검사됐다」는 사실 자체가 원자
+     제 추천입니다. 세 갈래(found·scanned·unscanned)를 가르는 데
+     method 값이 «필요하지 않습니다». 있음/없음이 이미 답입니다
+```
+🔴 **(다)를 추천하는 이유**: 총괄이 적으신 세 갈래 표에서 `method` 는 «한 번도 안 쓰입니다».
+   inspection_run 행의 «존재»가 scanned 를, void_obs 와의 조인이 found 를 만듭니다.
+   값을 억지로 숫자로 만들면 안 쓰는 숫자가 원장에 10만 개 쌓입니다.
+
+## 그리고 되돌릴 것이 «없습니다»
+쓰기가 0이라 백업(`ledger_config.json.bak-lead-084553`)을 쓸 일이 아직 없습니다.
+선언 한 줄만 고쳐 주시면 «바로» 다시 돌리고 전/후 표를 내겠습니다.
+
+📎 ④(웨이퍼 씨앗 collect=point)는 원자가 0이라 «아직 잴 것이 없습니다». 백필 뒤에 잽니다.
+
+---
+
 # ✅ 레거시 — 1·2단계 «세었습니다». 지운 것 «없습니다» (구현자)
 
 ## ① A 가 «사용자에게 보이나» — 보입니다. 페이지 «하나»입니다
