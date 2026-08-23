@@ -1,3 +1,61 @@
+# ✅ 선언 파이프라인 «살아났습니다» — 그리고 v5 검증기는 «이미 있었습니다» (구현자)
+
+## 결과 — 숫자로
+```
+lc.load()            RAISES  ->  «OK · sources 3»  (dt_job · lot_event · transfer_event)
+origin               C:\…\server\config\ontology\ledger_config.json
+config_path()        ->  config/ontology/ledger_config.json   «존재함»
+sample_path()        ->  config/sample/ledger_config.json.sample  «존재함» (그대로)
+```
+**호출자 여섯이 이제 한 파일을 봅니다.** 사본 «안 만들었습니다» — 경로 하나만 돌렸습니다.
+
+## 🔴 핵심 발견 — 검증기를 «옮길» 필요가 없었습니다. v5 것이 이미 있습니다
+제가 처음엔 v3 검증기를 v5 로 «고치려» 했는데, 고칠수록 다음 요구가 나왔습니다:
+```
+v5 소스가 가진 키    bind · map · prepare · read · relation   (다섯)
+v3 검증기가 찾는 키  occurred_at_column · occurred_at_timezone · occurred_at_basis
+                    subject_types · watermark · columns · container · emit
+                    finding_kind · group · run · vocabulary · chain_mapper   (열셋)
+```
+**한 필드가 낡은 게 아니라 «다른 문법»이었습니다.** 그래서 손을 멈추고 찾아봤더니:
+```
+setup_bundle.validate_bundle_errors(라이브 v5 파일, catalog=…)  ->  «0건»
+```
+🔴 **v5 검증기가 이미 존재하고, 라이브 파일을 «완벽하게» 통과시킵니다.**
+그래서 v3 검증기 수정은 «되돌렸습니다». 남긴 것은 `load()` 가 `setup_version` 을 보고
+«자기 문법의 검증기»를 고르는 것 하나입니다. 규칙을 푼 것이 «아닙니다».
+
+⚠️ 그리고 여기 함정이 있습니다 — `catalog=` 없이 부르면 **불평 «1건»**이 옵니다.
+「카탈로그를 달라」는 요청인데 **문법 실패와 «똑같은 모양»**입니다. 그걸 「파일이 틀렸다」로
+읽으면 이 결론이 통째로 뒤집힙니다. 주석에 적어 뒀습니다.
+
+## 왜 이게 「자재를 넣어도 원자가 0」의 «진짜» 원인인가
+```
+선언이 «없어서»가 아니라 선언을 «열 수가 없어서»였습니다
+그리고 화면이 도는 이유도 이걸로 설명됩니다 — subgraph:589 가 그 파일을
+plain json.load 로 읽어서 «검증기를 안 지나갑니다»
+```
+
+## 시험 — 그리고 빨강 하나는 «제 것이 아닙니다»
+```
+tests/test_ledger_source_contract.py + test_ledger_subgraph.py   31 passed · 1 failed
+빨강   test_sql_lookup_round_trip_uses_persisted_event_identity
+확인   제 변경을 stash 하고 HEAD 에서 «같은 테스트가 같은 자리에서 빨강»입니다
+       -> 제 것이 아닙니다. 그대로 둡니다
+```
+
+## 남은 순서 — 지시하신 그대로
+```
+✅ 1  검증기가 v5 를 받는다        (setup_version 분기)
+✅ 2  config_path() -> ontology
+⏳ 3  subgraph:589 의 raw open -> load()   «다음»입니다
+⏸ 4  sample 재생성                지시대로 «지금 손대지 않았습니다»
+⏳ 재기동 필요                    도는 서버는 아직 옛 코드입니다 (총괄 소관)
+```
+④ 준비되셨다는 `void_die_observation` 선언 — **이제 붙이면 읽힙니다.**
+
+---
+
 # 🔴 판정 요청 — 정본 파일 «세었습니다». 그리고 ②는 «파일이 아니라 검증기»입니다 (구현자)
 
 ## ① 누가 어느 파일을 읽나 — 전수

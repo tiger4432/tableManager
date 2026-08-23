@@ -341,14 +341,33 @@ def _config_dir():
                             "config")
 
 
+#: The subdirectory the CANONICAL declaration lives in. Ruled 2026-08-24 after counting the
+#: readers: six of them, split across two files. Five went through `load()` to
+#: `config/ledger_config.json`, which DOES NOT EXIST and fell back to a setup_version 3
+#: sample; the sixth is the walk, which opens `config/ontology/ledger_config.json` directly.
+#: The ontology file is the one that exists, the one already migrated to v5, and the one the
+#: screen actually reads, so the path moves to it rather than a copy being made beside it --
+#: a second file holding the same declaration is the defect this repository spent 2026-08-23
+#: repairing at two other layers.
+CONFIG_SUBDIR = "ontology"
+
+
 def config_path(filename: str = CONFIG_FILENAME) -> str:
-    return os.path.join(_config_dir(), filename)
+    return os.path.join(_config_dir(), CONFIG_SUBDIR, filename)
 
 
 def sample_path(path: str = None) -> str:
+    """Where the shipped fallback lives.
+
+    Anchored to the CONFIG ROOT rather than to `config_path()`'s directory, because the
+    canonical file moved down into `ontology/` on 2026-08-24 while the sample still ships at
+    `config/sample/`. Deriving it from the active path would have looked for
+    `config/ontology/sample/...` and quietly reported "no sample" on a fresh checkout.
+    """
     active = path or config_path()
+    root = _config_dir() if not path else os.path.dirname(os.path.abspath(active))
     return os.path.join(
-        os.path.dirname(os.path.abspath(active)),
+        root,
         "sample",
         os.path.basename(active) + ("" if active.endswith(".sample") else ".sample"),
     )
@@ -373,9 +392,48 @@ def load(path: str = None) -> dict:
                 f"translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)
-    validate(raw, origin=path)
+    _validate_for_version(raw, origin=path)
     raw["__origin__"] = path
     return raw
+
+
+def _validate_for_version(raw: dict, origin: str):
+    """Check the declaration with the validator that speaks ITS grammar.
+
+    `validate` below is the v3 validator and `load` called it unconditionally, so no v5
+    declaration could be opened at all. MEASURED 2026-08-24: the live
+    `config/ontology/ledger_config.json` is setup_version 5, whose sources carry
+    `read`/`prepare`/`map`/`bind` and nothing else, while `validate` demands the flat v3
+    keys - `occurred_at_column`, `subject_types`, `watermark`, `emit` and nine more. Every
+    load raised, which is why filling four source tables produced no atoms: not a missing
+    declaration, an unopenable one. The screen kept answering only because
+    `ledger_subgraph` reads that file with a plain `json.load` and never comes here.
+
+    The v5 validator already existed - `setup_bundle.validate_bundle_errors` - and measured
+    against the live file it reports ZERO complaints once given the physical catalog. So
+    nothing is migrated here and no rule is relaxed: the version picks its own checker,
+    which is what `validate` never did. It does not read `setup_version` at all.
+
+    THE CATALOG IS REQUIRED AND ITS ABSENCE LOOKS LIKE A REFUSAL. Called without one,
+    `validate_bundle_errors` returns a single complaint asking for it - one item, exactly
+    the shape of a grammar failure - and reading that as "the file is invalid" is the trap
+    this paragraph exists to stop.
+    """
+    try:
+        version = int(raw.get("setup_version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version < 5:
+        validate(raw, origin=origin)
+        return
+    from . import setup as _setup
+    from . import setup_bundle as _bundle
+    errors = _bundle.validate_bundle_errors(
+        raw, catalog=_setup.live_physical_catalog())
+    if errors:
+        raise LedgerConfigError(
+            "%s: setup_version %d declaration refused by the v5 validator - %s"
+            % (origin, version, "; ".join(str(e) for e in errors[:3])))
 
 
 def validate(cfg: dict, origin: str = "<memory>"):

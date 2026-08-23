@@ -6,6 +6,78 @@
 
 ---
 
+# 📋 레거시 판정 «1·2» 셌습니다 — 🔴 **A 를 지우면 C 가 깨집니다** (08:0x)
+
+## 1. A 는 «죽은 코드»가 아니라 «살아 있는 화면 하나»입니다
+
+```
+A 열 전부가 -> src/ledger_trace.js 로 모입니다
+src/ledger_trace.js -> ledger.html 의 «엔트리»
+dist/ledger.html    -> «존재합니다» (빌드돼 배포됨)
+```
+**즉 A 는 「소스에만 있는 이전 시도」가 아니라 «사용자에게 보이는 화면»입니다.**
+(엔트리 아홉 중 하나: admin · graph · index · ledger-graph · **ledger** · map_editor ×2 · rnd-board · trace)
+
+## 2. A 를 지우면 «호출자 0» 이 되는 라우트 — 다섯
+
+```
+route          A  B  C  기타    판정
+coverage       1  0  0   0     🔴 «0»
+journey        1  0  0   0     🔴 «0»
+lot            1  0  0   0     🔴 «0»
+lots           1  0  0   0     🔴 «0»
+trace          1  0  0   0     🔴 «0»
+─────────────────────────────────────────
+composition    0  1  0   0     남음 — B (rnd_board/api.js)
+lot_map        1  1  0   0     남음 — B
+siblings       1  1  0   0     남음 — B
+trends         0  1  0   0     남음 — B
+subgraph       0  1  0   1     남음 — B + ledger_graph
+kinds          1  0  1   0     남음 — C (ledger_map_panel.js)
+structure      1  0  1   1     남음 — C + ledger_graph
+entities       0  0  1   0     남음 — C
+explore        0  0  0   1     남음 — ledger_graph
+```
+📎 총괄 후보 목록의 `lot_axis_map` 은 **이 방법으로 안 잡혔습니다** — `client2/src` 안에
+`/api/ledger/lot_axis_map` 리터럴이 «없습니다». 0 이라 적지 않고 «못 찾았다»로 둡니다.
+📎 세는 법: 주석을 «지우고» 셌습니다. 산문 속 라우트 이름을 호출로 세면 0 이 안 나옵니다.
+
+## 3. 🔴 그런데 A 삭제가 «C 를 깹니다» — 2 를 건너뛰면 안 되는 진짜 이유
+
+```
+src/ledger_map_panel.js  (C · 제외 대상)
+  └ import { kindCatalog } from './case_control_core.js'      ← A 파일입니다
+src/admin.js
+  └ import { … } from './ledger_map_panel.js'                 ← admin.html 에 실립니다
+```
+**A 를 통째로 지우면 admin 화면이 깨집니다.**
+총괄이 경고한 것은 「C 가 라우트를 계속 쓴다」였는데, **실제 위험은 반대 방향**이었습니다 —
+«C 가 A 파일을 import» 합니다.
+
+```
+그래서 필요한 것   case_control_core.js 의 kindCatalog 를 «어디에 둘지» 먼저 정할 것
+                  (C 로 옮기거나, 공용 자리로 빼거나) — 그 판정 전에는 A 를 못 지웁니다
+```
+✅ 반대로 **B(rnd_board)는 C 에 의존하지 «않습니다»** — `ledger_map_panel` 언급 셋은
+   전부 «주석»입니다 (map_panel.js:246 · panel.js:4 · rnd-board.html:18). import 아님.
+
+## 4. 판정 요청 — 총괄께
+```
+Q1  `ledger.html` 을 «화면째» 내리는 것이 맞습니까? (dist 에 있고 사용자가 열 수 있습니다)
+Q2  kindCatalog 를 어디로 옮깁니까? — 그 판정이 A 삭제의 «선행조건»입니다
+⛔ 제가 고르지 않았습니다. 그리고 저는 지우지 않았습니다 — 1·2 만 셌습니다
+```
+
+## 5. 세지 «못한» 것
+```
+· ledger.html 을 «실제로 여는 사용자»가 있는지 — 접근 로그를 안 봤습니다
+· A 안에서 서로만 쓰는 라우트가 또 있는지 — 리터럴 `/api/ledger/…` 만 셌습니다.
+  상수를 import 해서 부르는 자리는 이 방법으로 «안 잡힙니다»
+· 서버 쪽 라우트 등록 개수 — 클라 호출자만 셌습니다 (4·5 는 구현자 몫)
+```
+
+---
+
 # 🔴 판정 둘 «정정» — 그 빨강은 계약이 아니라 **제 중간 상태**였습니다. 재작성 불필요 (07:1x)
 
 > 총괄 판정: 「`rnd_board_composition_harness` green -> red. 계약이 바뀐 것이 맞습니다.
