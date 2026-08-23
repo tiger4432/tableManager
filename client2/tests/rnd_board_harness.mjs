@@ -530,10 +530,18 @@ async function suite(mods) {
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
   {
-    eq('H1 the shipped board seats two maps', BOARD.panels.length, 2);
-    ok('H2 both are the same part', BOARD.panels.every((p) => p.part === 'map'));
-    ok('H3 the two read different marking names',
-      BOARD.panels[0].reads !== BOARD.panels[1].reads);
+    // 🔴 H1 WAS `panels.length === 2`, AND THAT IS THE DEFECT THIS ROUND FIXED: four parts were
+    //    built, registered and NEVER SEATED, and no assertion here could tell. It now pins the
+    //    MEMBERS -- every registered part stands on the screen -- so registering a part without
+    //    seating it goes red at the moment it happens, which is when it is cheap.
+    const seated = new Set(BOARD.panels.map((p) => p.part));
+    ok('H1 every registered part is seated on the screen',
+      Object.keys(PARTS).every((name) => seated.has(name)),
+      `registered ${Object.keys(PARTS).join(',')} | seated ${[...seated].join(',')}`);
+    const maps = BOARD.panels.filter((p) => p.part === 'map');
+    ok('H2 one part stands twice on the same screen', maps.length >= 2);
+    ok('H3 the two instances read different marking names',
+      maps[0].reads !== maps[1].reads);
     ok('H4 every declared part is registered',
       BOARD.panels.every((p) => Boolean(PARTS[p.part])));
     ok('H5 placement is in the declaration, not in the part',
@@ -542,8 +550,14 @@ async function suite(mods) {
       BOARD.panels.every((p) => Object.values(p.options || {})
         .every((v) => typeof v !== 'function')));
     const bound = bindLoaders(BOARD, { apiBase: 'http://example', dpr: 2 });
+    // Only a panel that DECLARED a question gets a loader; the rest are handed the address and
+    // ask their own route. Asserting `every` here would have been asserting that every part is
+    // a map.
+    const asked = bound.panels.filter((p, i) => (BOARD.panels[i].options || {}).question);
     ok('H7 binding turns a question into a loader',
-      bound.panels.every((p) => typeof p.options.load === 'function'));
+      asked.length > 0 && asked.every((p) => typeof p.options.load === 'function'));
+    ok('H7b a panel with no question is still handed the address',
+      bound.panels.every((p) => p.options.apiBase === 'http://example'));
     ok('H8 binding does not mutate the declaration',
       BOARD.panels.every((p) => typeof (p.options || {}).load === 'undefined'));
     ok('H9 the device ratio reaches the parts',
