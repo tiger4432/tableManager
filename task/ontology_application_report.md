@@ -6,6 +6,86 @@
 
 ---
 
+# 📋 표면 ④ «스팟파이어 다섯 축» 완료 — 선언 49개 중 «쓸 수 있는 것은 열둘» (05:4x)
+
+⚠️ **또 층을 잘못 짚을 뻔했습니다.** `distinct_values: null` 인 축 33개를 「죽은 축」으로 셀 뻔했는데
+그건 **`compare: distribution` (수치형)이라 «해당 없음»**입니다. 갈라서 다시 쟀습니다.
+
+```
+선언된 축(fields) 49  =  categorical 16  +  distribution 33
+```
+
+---
+
+### 1. 🔴 상수라서 죽은 축 «여섯» — 씨앗과 무관하게 못 씁니다
+```
+기능      Color by · Shape by 후보 (categorical 16)
+관측      distinct_values = 1 인 축이 «6/16»
+          observed:synthetic · observed:unit · processed_with:basis · processed_with:inferred
+          processed_with:params_actual.vacuum_assist · params_setpoint.vacuum_assist
+부족한 것 그 축의 «두 번째 값». 지금 전 행이 같은 값입니다
+왜 부족   ⓐ 행이 없다
+채우면    색·모양으로 갈 수 있는 축이 10 -> 16 이 됩니다
+```
+
+### 2. 🔴 케이스 쪽을 «못 가르는» 축이 37/49 — 이게 제일 큽니다
+```
+기능      Color by · Shape by · Size by 전부
+관측      attributed.case.n = 0 인 축이 «37/49»
+          case n>0 인 «12개»는 전부 observed: 계열
+          -> processed_with: 계열 «36개 전부»가 케이스 쪽 귀속 0 (control 쪽은 191~299 로 «있음»)
+부족한 것 마킹된 주어에 붙은 공정 원자
+왜 부족   ⓐ 행이 없다   (표면① 3 과 «같은 뿌리» — 한쪽만 빕니다)
+채우면    공정 축(설비·레시피·스텝·파라미터)이 색·모양·크기로 살아납니다.
+          지금은 관측 축(finding_kind·method·좌표)으로만 갈립니다
+```
+
+### 3. ✅ 수치 축 33개는 «값이 있습니다»
+```
+기능      Size by 후보 (distribution 33)
+관측      leaves 0 인 축 «0/33».  leaves 13,787(7개) · 275(14) · 216(3) · 192(6) · 300(2) · 191(1)
+부족한 것 없습니다 — 값은 다 있습니다
+채우면    —   ⚠️ 다만 2 에 걸려 «케이스 쪽»에서 갈리는 것은 7개뿐입니다
+```
+
+### 4. ⚠️ 축 하나는 «점당 하나»라 축이 못 됩니다
+```
+기능      observed:run_uid
+관측      distinct 7,421 · high_cardinality = true
+부족한 것 없습니다 — 너무 많은 것이 문제입니다
+왜 부족   해당 없음 (선언이 스스로 표시하고 있습니다 ✅)
+채우면    —   그대로 두는 것이 맞습니다
+```
+
+---
+
+## 🔴 다섯 축에 그대로 답합니다
+```
+Color by / Shape by   categorical 16 -> 상수 6 빼고 10 -> 케이스를 가르는 것은
+                      «observed:finding_kind(2) · observed:method(2)» «둘»뿐
+Size by               distribution 33 -> 케이스를 가르는 것은 «7»
+                      (die.gate · die.x · die.y · extent.x · extent.y · inchip.x · inchip.y)
+Marker by             표면 ⑤ 에서 잽니다
+Data limiting         표면 ⑤ 에서 잽니다
+```
+🔴 **즉 지금 이 씨앗에서 색·모양은 «두 축», 크기는 «일곱 축»입니다.**
+나머지 40개는 고를 수는 있는데 그림이 «안 갈립니다».
+
+## 갈라 놓습니다
+```
+데이터가 없다 -> 구현자   1 (상수 축 여섯의 두 번째 값) · 2 (마킹 쪽 공정 원자 36축)
+선언/코드가 없다          없음 — 이 표면은 선언이 «자기 상태를 정확히 말합니다»
+                          (high_cardinality 표시 · compare 구분 둘 다 맞습니다)
+```
+
+## 세지 «못한» 것
+```
+· 다른 씨앗에서도 case n=0 이 37인지 — «이 씨앗 하나»로만 쟀습니다
+· 화면이 이 49개 중 «몇 개를 실제로 보여 주는지» — 축 선택 UI 를 안 열어 봤습니다
+```
+
+---
+
 # 📋 표면 ③ «선언» 완료 — 선언 셋 중 «하나만» 재료가 온전합니다 (05:1x)
 
 ⚠️ **먼저, 제가 하마터면 없는 결함을 적을 뻔했습니다.** `lot_event` 의 bind 가 `slots`·`wafers`
