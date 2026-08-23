@@ -39,7 +39,8 @@ import { RankListPanel } from './rank_list_panel.js';
 import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
-import { fetchLotMap, fetchComposition, basisCountsFromComposition } from './api.js';
+import { fetchLotMap, fetchComposition, basisCountsFromComposition,
+  slotPagesFromLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
@@ -240,7 +241,15 @@ export function bindLoaders(layout, deps) {
         ...decl,
         options: {
           ...bound,
-          load: () => fetchLotMap({ apiBase, fetchImpl, ...options.question }),
+          // The override is how a part turns a page without learning a route: it hands back
+          // the one field it is changing and the question stays the composition root's.
+          load: (override) => fetchLotMap({
+            apiBase, fetchImpl, ...options.question, ...(override || {}),
+          }),
+          // 목업의 페이지 목록. Measured: a slot-less call carries the row's whole slot list.
+          loadPages: () => fetchLotMap({
+            apiBase, fetchImpl, ...options.question, slot: undefined,
+          }).then(slotPagesFromLotMap),
         },
       };
     }),

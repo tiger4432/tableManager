@@ -279,13 +279,20 @@ body {
 .rb-part-title {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* 🔴 ABOVE EVERYTHING IN ITS PANEL. A sticky title that shares a stacking level with the rows
+     it covers lets them show through as they pass under it. */
+  z-index: 3;
   /* 🔴 MEASURED: without this the title was 12px tall in the two panels whose content overflows
      -- a flex item shrinks, and the ones that scroll squeezed their own title to a sliver while
      the two that fit looked correct. The difference was invisible until the boxes were measured. */
   flex: 0 0 auto;
-  margin: -8px -10px 2px;
-  padding: 6px 10px 5px;
+  /* 🔴 NO GAP ABOVE IT. It used to be pulled up into the panel's own top padding, so when the
+     panel scrolled there was an 8px band above the stuck title where content showed through --
+     the title read as floating over the rows. The title now supplies that padding itself and
+     its box starts exactly at the scrollport's top edge (each panel below drops its padding-top).
+     Measured on the owner's screen: 구성 was showing its resolution box through that band. */
+  margin: 0 -10px 2px;
+  padding: 8px 10px 5px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   font-size: 11.5px;
@@ -445,3 +452,15 @@ body {
 .rb-map__basis-pill.is-chosen .rb-map__basis-count { color: var(--accent-contrast); }
 /* 그릴 수 있는 거절문 = «단서»입니다. 빨강이 아니라 점선 밑줄. */
 .rb-map__note.is-caveat { color: var(--text-muted); border-bottom: 1px dashed var(--border-strong); }
+
+/* 맵 페이지 — 「‹ 07 / 25 › · SYN-BW-001-07」. 목록이 안 오면 아예 안 그립니다. */
+.rb-map__pager { display: inline-flex; align-items: center; gap: 4px; }
+.rb-map__page-step { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-surface); font-size: 11px; color: var(--text-muted); cursor: pointer; }
+.rb-map__page-step:hover { border-color: var(--accent); color: var(--accent); }
+.rb-map__page-step.is-end { color: var(--text-dim); cursor: default; }
+.rb-map__page-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+/* 제목을 다는 패널은 자기 위쪽 패딩을 «제목에 넘깁니다» — 제목 위에 빈 띠가 없어야
+   스크롤한 내용이 제목 위로 비쳐 보이지 않습니다. */
+.rb-head, .rb-comp, .rb-cand, .rb-rank, .rb-trend, .rb-status { padding-top: 0; }
