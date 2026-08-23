@@ -1,3 +1,91 @@
+# ✅ 새 자재 세트 «적용 완료» — 맵은 삽니다. **원장은 0이고 «이유»가 있습니다** (구현자)
+
+`scripts/seed_syn_aug_material.py` · `SYN-AUG-` 네임스페이스 · 기존 행 «무변경».
+
+## 넣은 것
+```
+bonding_log         4,230   (6 랏 x 5 슬롯 x 141 칸)
+inspection_run      2,520   (칸의 60% 검사)
+void_obs              753   (랏마다 발생률 12%~42% — 순위가 갈리게)
+core_defect_map       655
+wafer_map_metadata     90   (프레임. 없으면 새 랏 맵이 no_frame 이었습니다)
+bonding_map         4,230   (레그. 없으면 트렌드에 «주어»가 안 섭니다)
+```
+
+## ✅ prove 대조 (전/후) — 심은 랏이 «그대로»입니다
+```
+                    전                      후
+랏 수               119                     125
+baseline per_chip   1.2207                  1.2207      (변화 없음)
+baseline extent     58.6388                 58.5760     (-0.1%)
+SYN-VOID-101        x2.095 / x2.308         x2.097 / x2.308
+SYN-VOID-102        x3.202 / x3.397         x3.205 / x3.397
+SYN-VOID-103        x4.498 / x4.989         x4.503 / x4.989
+새 랏 6개           —                       per_chip x0.109 ~ x0.376  (임계 2.0 훨씬 아래)
+```
+새 랏끼리 per_chip 이 **3.4배 벌어집니다** — 순위가 갈릴 재료입니다(기준 ③).
+
+## ✅ lot_map — 새 랏은 세 축 다 ready · 검사 밀도 60%
+```
+새 랏 SYN-AUG-006/05   bond·dt·core 모두 state=ready
+                       141칸 중 검사 84 (60%) · found 38        <- 기준 ① 40% 초과
+옛 질문 SYN-VOID-001/07  29 / 13 · unplaced 1/1  «전과 동일»     <- 회귀 없음
+```
+
+## ⚠️ 트렌드 — 점은 «24 → 84» 로 늘었는데 «값 0 아닌 점은 12 그대로»입니다
+```
+주어는 섰습니다   레그 행을 넣으니 새 웨이퍼 30장이 트렌드에 «나타납니다»
+값은 안 붙습니다  분자가 «원장 원자»를 셉니다. 제 void 는 표 행이고 원자가 아닙니다
+```
+기준 ②(0 아닌 점 20개 이상)는 **못 맞췄습니다.** 이유는 아래와 «같은 하나»입니다.
+
+## 🔴 die 원자 «1,405 → 1,405». 0 입니다 — 왜인지 쟀습니다
+```
+선언된 소스가 «셋»뿐입니다
+   dt_job          relation = dt_log
+   lot_event       relation = lot_event
+   transfer_event  relation = dt_transfer_log
+제가 쓴 네 표
+   bonding_log · inspection_run · void_obs · core_defect_map   -> 소스 «없음» (넷 다)
+```
+🔴 **번역기가 못 도는 게 아니라 «읽으라는 선언이 없습니다».** 컬럼 불일치가 아닙니다.
+그래서 표를 아무리 채워도 원장은 안 늘고, 트렌드 분자도 안 늘고, walk collect 도 못 그립니다.
+
+## 📌 선언 조각 — 붙이는 건 총괄 몫이라 «내기만» 합니다
+`ledger_config.json` 의 `sources` 에 넷째로. void 관측을 die 단위 원자로 만드는 모양입니다:
+```json
+"void_observation": {
+  "relation": "void_obs",
+  "read": { "unit": "row", "identity": ["void_uid"], "order_by": ["void_uid"],
+            "cursor": { "columns": ["void_uid"] } },
+  "map":  { "implementation_id": "declarative-role", "implementation_version": 1,
+            "unit": { "kind": "row" } },
+  "bind": { "subject": { "kind": "entity", "entity_type": "die@1",
+                         "keys": { "mat_type": { "kind": "constant", "value": "Wafer" },
+                                   "mat_id": { "kind": "column", "column": "base_wafer_id" },
+                                   "x": { "kind": "column", "column": "base_x" },
+                                   "y": { "kind": "column", "column": "base_y" } } },
+            "predicate": "observed@1" }
+}
+```
+⚠️ **이건 제 «제안»이지 검증된 형식이 아닙니다** — 제가 검증기에 안 먹여 봤습니다.
+   `transfer_event` 선언의 모양을 그대로 본떴고, `occurred_at` 같은 필수 절이 더 필요할 수 있습니다.
+   붙이실 때 검증기가 거절하면 그 거절문을 주십시오. 제가 맞춥니다.
+
+## 되돌리기 — 네임스페이스 하나, 여섯 줄
+```sql
+DELETE FROM void_obs           WHERE base_wafer_id LIKE 'SYN-AUG-%';
+DELETE FROM inspection_run     WHERE base_wafer_id LIKE 'SYN-AUG-%';
+DELETE FROM bonding_log        WHERE bond_lot      LIKE 'SYN-AUG-%';
+DELETE FROM core_defect_map    WHERE lot           LIKE 'SYN-AUG-%';
+DELETE FROM bonding_map        WHERE base          LIKE 'SYN-AUG-%';
+DELETE FROM wafer_map_metadata WHERE map_id        LIKE 'SYN-AUG-%';
+```
+📎 스크립트는 «다시 돌려도 안전»합니다 — 쓰기 전에 자기 네임스페이스를 지웁니다.
+   (처음엔 안 그랬고, 두 번째 실행에서 전부 두 배가 될 뻔했습니다. 적어 둡니다.)
+
+---
+
 # ✅ 착수 전 관문 측정 — **중앙값은 안전합니다. 위험한 건 «날짜»였습니다** (구현자)
 
 지시하신 「몇 랏을 넣으면 중앙값이 얼마나 움직이나」를 먼저 쟀습니다. **아직 DB 무변경입니다.**
