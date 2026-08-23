@@ -111,6 +111,55 @@ void_observation…    2      1        1      1   ✅
 
 ---
 
+# 📌 소유자 지시 전달 — 「trends 마킹 키 고정도 은퇴 대상에」 (2026-08-23 22:2x)
+
+> **소유자: 「trends 마킹 키 고정도 은퇴 대상에 넣어」**
+
+은퇴 목록은 총괄 소관이라 «넣지 않고» 넘깁니다. 다만 **낱개로 넘기면 옆에 같은 게 남아서**
+전수를 세고 뿌리를 짚었습니다.
+
+## 실측 — `trends` 는 «4건»이고, 뿌리는 다른 파일입니다
+
+```
+서버
+  ledger_api/ledger_identity.py          7    🔴 «뿌리» — 이 키를 만드는 곳
+                                              encode_mark(wafer, bonding_leg)
+                                              몸통이 [UNIT_KIND, wafer, bonding_leg] 로 «두 축 고정»
+  ledger_api/ledger_selection.py        31    «가장 큰 덩어리». 소유자가 지목 안 하신 곳
+  ledger_api/ledger_trends.py            4    소유자가 지목하신 곳
+  scripts/seed_syn_complex_composite.py  4    씨더(픽스처)
+
+클라
+  client2/src/rnd_console/  넷           api · investigation_workspace · main · state
+                                         -> 이미 «소유자 폐기» 대상이라 같이 갑니다
+```
+
+**`trends` 만 은퇴시키면 `selection` 의 31 건이 그대로 남습니다.**
+`ledger_identity` 를 뿌리로 잡으면 서버 넷이 «한 번에» 닫힙니다.
+
+## 🔴 그리고 이건 「지워라」가 아니라 「갈아타라」입니다
+
+대체가 **이미 설계돼 있습니다** — `APPLICATION_MARKING_UNIT_BRIEF.md` §1:
+
+```
+지금    mark_key = encode_mark(wafer, bonding_leg)      두 축 «고정»
+설계    mark     = 노드 id 하나                          축 «없음»
+```
+
+**둘을 따로 하면 안 됩니다.** `encode_mark` 를 먼저 지우면 `selection` 이 마킹을
+«아예» 잃습니다. 은퇴와 §1 채택이 «같은 라운드»여야 합니다.
+
+## ⚠️ 제가 «안 잰» 것
+
+```
+/selection/resolve   API 가이드에서도 「안 쟀다」로 남긴 그 라우트입니다.
+                     31 건이 거기 있는데 «응답을 한 번도 안 봤습니다»
+                     은퇴 규모를 판정하기 전에 그 라우트가 실제로 무엇을 내는지 봐야 합니다
+클라 넷              폐기 대상이라 «안 쟀습니다»
+```
+
+---
+
 # ✅ 총괄이 명시한 «가르는 측정» 둘 — 재서 올립니다 (12:2x)
 
 보드 ⑦: 「가르는 측정 = 선언 기전 그래프에 순환이 있는가 / 한 씨앗에서 양방향으로 닿는가」,
