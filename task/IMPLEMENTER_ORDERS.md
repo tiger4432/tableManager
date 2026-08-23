@@ -21,6 +21,85 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# 🔴🔴🔴 «선언 파이프라인이 로드 단계에서 죽어 있습니다» — 자재를 넣어도 원자가 0인 진짜 이유
+
+**총괄이 v5 선언을 쓰려다 «파일에 닿기도 전에» 막혔습니다. 당신 레인 일입니다.**
+🔴 이게 당신의 「선언이 없어서 0」보다 «한 겹 아래»입니다. 선언을 «추가할 수가 없습니다».
+
+## 실측 — 세 파일, 셋 다 못 씁니다
+```
+ledger.config.config_path()  ->  server/config/ledger_config.json        🔴 «존재하지 않음»
+  load() 의 .sample 폴백     ->  server/config/sample/ledger_config.json.sample
+                                 setup_version «3» · packs 3개 · use 8개 (v5 이전 모양)
+                                 로드 시도 -> ❌ ProfileValidationError
+                                    「pack 'dt-job@1' is not declared in packs」
+실제로 walk 이 읽는 파일     ->  server/config/ontology/ledger_config.json
+                                 setup_version 5 · packs 0 · use 0  (마이그레이션 «완료»)
+                                 lc.load(그 경로) -> ❌ LedgerConfigError
+                                    「sources.dt_job.occurred_at_column is not declared」
+```
+🔴 **`ledger.config.load()` 가 «예외를 던집니다».** 어떤 경로로 불러도 그렇습니다.
+그러니 새 소스를 선언해도 «읽히지 않습니다». 표를 채워도 원자가 안 느는 이유가 이것입니다.
+
+## 두 실패는 «다른 것»입니다 — 섞지 마십시오
+```
+sample    v5 «이전» 모양이라 깨짐.  마이그레이션 스크립트가 이미 있고 「3 -> 5로 고쳐 쓰겠다」고 답합니다
+          python -m scripts.migrate_ledger_config_to_v5 <path> --check   -> rc=0, would rewrite
+ontology  v5 «모양은 됐는데» 필드가 빕니다. 세 소스가 occurred_at 을 `read.occurred_at`
+          ({"basis":"ingested","timezone":"Asia/Seoul"}) «안»에 두고 있는데
+          검증기는 «최상위 occurred_at_column» 을 요구합니다
+```
+
+## 할 것 — 순서대로. 🔴 «판정이 필요한 자리»가 하나 있습니다
+```
+① 🔴 판정 요청부터 올리십시오 — «어느 파일이 정본입니까»
+   ⓐ config_path() 를 ontology 쪽으로 돌린다
+   ⓑ 마이그레이션한 내용을 server/config/ledger_config.json 으로 «세운다»
+   ⓒ sample 을 마이그레이션해서 폴백을 살린다
+   -> 셋 다 되지만 «둘을 하면 사본이 둘» 됩니다. 총괄이 답합니다. 먼저 «세어서» 올리십시오:
+      각 파일을 «실제로 읽는 코드»가 어디어디인지. 제가 본 것은 두 곳뿐입니다
+      (ledger.config.load / ledger_subgraph.py:589) — «더 있는지 당신이 세십시오»
+② 그다음 로드가 «되게» 하십시오. occurred_at_column 건 포함
+③ 되면 «숫자로» 보고하십시오: lc.load() 가 성공하고, sources 가 몇 개로 읽히는지
+```
+
+## 🔴 그리고 v1 은 «은퇴했습니다» — 되살리는 선택지는 없습니다
+```
+dry_run.preview 의 거절문:
+  「the v1 translators were retired on 2026-08-18 and the v2 preview is not wired
+   to this route yet」
+```
+즉 원장의 224,291개 중 대부분(void_obs 102,947 · syn_* 등)은 **다시 만들 수 없는 과거**입니다.
+앞으로 원자가 느는 길은 **v5 선언 하나뿐**입니다. 그래서 ①②가 다른 모든 것보다 앞섭니다.
+
+## 📎 총괄이 준비해 둔 선언 — 로드가 살아나면 «바로» 붙입니다
+`_validate_declared_source` 를 «통과»한 상태로 들고 있습니다 (제가 돌려서 확인):
+```json
+"void_die_observation": {
+  "kind": "declared", "relation": "void_obs",
+  "occurred_at_basis": "row_created", "occurred_at_column": "created_at",
+  "watermark": {"columns": ["updated_at", "row_id"]},
+  "columns": {"row_identity": "row_id"},
+  "subject_types": ["Die"],
+  "emit": [{
+    "rule": "void_at_die", "predicate": "observed", "class": "observation",
+    "subject": {"type": "Die",
+                "keys": {"wafer": "$base_wafer_id", "x": "$base_x", "y": "$base_y"}},
+    "object": {"kind": "value", "payload": {
+      "finding": "void", "method": "sat", "gate": "$stack_gate",
+      "extent": {"x": "$radius_x", "y": "$radius_y"},
+      "inchip": {"x": "$inchip_x", "y": "$inchip_y"}, "unit": "$unit"}}
+  }]
+}
+```
+🔴 `Die` 엔티티가 **이미 선언돼 있고 키가 `(wafer, x, y)`** 입니다 — `void_obs` 의
+`base_wafer_id`·`base_x`·`base_y` 와 1:1 입니다. **지어낸 것이 하나도 없습니다.**
+이게 붙으면 맵 칸이 «진짜 노드»를 물고, 마킹이 지어낸 id 를 안 써도 됩니다.
+
+⚠️ 이 선언은 «제가» 붙입니다. 당신은 로드를 살리는 데까지입니다.
+
+---
+
 # ⚖️ 판정 — `collect` 는 «collection 을 뚫고» 가야 합니다. 지금은 벽입니다 (총괄 실측)
 
 ## 실측 — 웨이퍼에서 출발하면 «어떤 깊이에서도» point 에 못 닿습니다
