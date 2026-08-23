@@ -60,6 +60,16 @@ export class HeadSummaryPanel extends Panel {
     this.host.textContent = '';
     const root = doc.createElement('div');
     root.className = 'rb-head';
+    // 🔴 THE PANEL SAYS WHAT IT IS. The declaration carries a title and the shell hands it
+    //    over; only the map drew it, so four panels stood unnamed on the screen and a
+    //    reader had to infer the subject from the content. It is STICKY: a title that
+    //    scrolls away is a title you cannot check while reading row 20.
+    if (this.title) {
+      const cap = doc.createElement('div');
+      cap.className = 'rb-part-title';
+      cap.textContent = this.title;
+      root.appendChild(cap);
+    }
 
     if (this.loadState === 'no-subject') {
       // NOT an error: nobody has picked a chip yet. Says what to do, in one clause.

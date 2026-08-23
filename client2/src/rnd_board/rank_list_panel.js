@@ -70,6 +70,16 @@ export class RankListPanel extends Panel {
     //    and 「이건 아니다」 are different sentences. The dimming itself is CSS, so it is one
     //    rule per part rather than a colour computed here.
     root.className = this.markCount() > 0 ? 'rb-rank is-attenuating' : 'rb-rank';
+    // 🔴 THE PANEL SAYS WHAT IT IS. The declaration carries a title and the shell hands it
+    //    over; only the map drew it, so four panels stood unnamed on the screen and a
+    //    reader had to infer the subject from the content. It is STICKY: a title that
+    //    scrolls away is a title you cannot check while reading row 20.
+    if (this.title) {
+      const cap = doc.createElement('div');
+      cap.className = 'rb-part-title';
+      cap.textContent = this.title;
+      root.appendChild(cap);
+    }
 
     const caption = doc.createElement('div');
     caption.className = 'rb-rank-caption';

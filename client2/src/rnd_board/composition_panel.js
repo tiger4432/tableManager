@@ -65,6 +65,16 @@ export class CompositionPanel extends Panel {
     //    and 「이건 아니다」 are different sentences. The dimming itself is CSS, so it is one
     //    rule per part rather than a colour computed here.
     root.className = this.markCount() > 0 ? 'rb-comp is-attenuating' : 'rb-comp';
+    // 🔴 THE PANEL SAYS WHAT IT IS. The declaration carries a title and the shell hands it
+    //    over; only the map drew it, so four panels stood unnamed on the screen and a
+    //    reader had to infer the subject from the content. It is STICKY: a title that
+    //    scrolls away is a title you cannot check while reading row 20.
+    if (this.title) {
+      const cap = doc.createElement('div');
+      cap.className = 'rb-part-title';
+      cap.textContent = this.title;
+      root.appendChild(cap);
+    }
 
     if (this.loadState === 'no-subject' || this.loadState === 'loading' || !this.model || !this.model.ok) {
       const state = this.loadState === 'no-subject' ? '대상 없음'

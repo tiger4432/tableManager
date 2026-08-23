@@ -156,7 +156,13 @@ body {
 .rb-comp-note--refused { background: var(--danger-weak); color: var(--danger); }
 
 .rb-comp-rows { display: flex; flex-direction: column; }
-.rb-comp-row { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1.6fr) auto auto;
+.rb-comp-row { display: grid;
+  /* 🔴 A ROW THE EYE CAN FOLLOW. These were `fr` columns, so at 1568px the id sat at the far
+     left, the material in the middle and the state at the far right with empty space between
+     -- one row could not be read across. The band is capped and left-aligned instead: the
+     panel gets wider, the row does not. */
+  grid-template-columns: minmax(9rem, 15rem) minmax(11rem, 22rem) 7rem 4rem;
+  justify-content: start; column-gap: 12px;
   gap: 8px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--border);
   font-size: 11.5px; cursor: pointer; }
 .rb-comp-row:hover { background: var(--surface-hover); }
@@ -185,7 +191,11 @@ body {
 .rb-cand-line--absent { background: var(--bg-inset); color: var(--text-muted); }
 .rb-cand-line--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
 
-.rb-cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 6px; }
+/* 명세 §8: 「표가 아니라 2열 카드 격자」. 15rem never fit two cards in this column, so the grid
+   collapsed to one and the panel read as a list with a hole under it. */
+.rb-cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 6px; align-content: start; }
+.rb-cand-card--folded { grid-column: 1 / -1; }
 .rb-cand-card { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: 5px; background: var(--bg-surface); cursor: pointer; }
 .rb-cand-card:hover { background: var(--surface-hover); }
@@ -253,4 +263,24 @@ body {
 .is-attenuating .rb-cand-card.is-marked-case,
 .is-attenuating .rb-comp-row.is-marked-case {
   opacity: 1;
+}
+
+/* ── THE PANEL SAYS WHAT IT IS ───────────────────────────────────────────────────
+   The declaration carries a title; only the map drew it, so four panels stood unnamed.
+   Sticky, because a title that scrolls away cannot be checked while reading row 20. */
+.rb-part-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -8px -10px 2px;
+  padding: 6px 10px 5px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
