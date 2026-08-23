@@ -1,95 +1,163 @@
 {
-  "__doc": "FACTOR GEOMETRY for GET /api/ledger/siblings. This file declares HOW a population is attributed to factors; it does NOT declare what a finding kind is -- that registry is server/finding_kinds.py (`observed_by`, `observation_table`), and there is deliberately no second copy of it here. Adding a factor axis is an entry in `attribution` and costs no Python.",
-  "version": 1,
-
-  "defaults": {
-    "limit": 20,
-    "min_support": 2,
-    "evidence_ref_sample": 5,
-    "contrast": {
-      "enriched_at": 1.5,
-      "depleted_at": 0.6667,
-      "__comment": "The enrichment band. A factor between these two is FLAT -- carried by the found and the clean sides alike -- and `mode=contrast` drops it. That is the decoy filter, and where the line sits is an operator's judgement rather than a programmer's, which is why it is here."
-    },
-    "factors": {
-      "__comment": "The factor engine's high-cardinality guard -- the same name, default and shape as `walk.high_cardinality_at`, because it is the same rule about the same thing. An axis with more distinct values than this keeps its entry in `axes[]` (with `ranked: false` and its count) and loses only its VALUE rows from the ranking, so an axis that is merely noisy never becomes indistinguishable from one that was never declared. This is the MEASURED half of the guard; the DECLARED half is `rank: false` on an axis, which is cheaper (the axis never enters the GROUPING SETS) but needs somebody to know in advance. This half is what catches the axis nobody flagged.",
-      "high_cardinality_at": 200
-    },
-    "walk": {
-      "__comment": "🔴 BUDGET, NOT A FILTER. The walk contrast (`scope=`) has NO item list -- every predicate x payload field x value the marked subjects carry is a candidate, so a newly translated predicate appears with zero declarations here. These numbers only bound the COST of touching them. `max_atoms` is the ceiling on atoms flattened in one request; the CASE side is never thinned (it is the question), only the control side, deterministically by sorted position so the same URL answers the same way twice, and `walk.gate` in the response says it happened. MEASURED 2026-08-14 on assy_manager: the flatten costs ~73us per atom (187,234 atoms / 19.6s), so 60,000 atoms is roughly a 4.4s ceiling. `high_cardinality_at` DOES drop -- corrected 2026-08-14 after this sentence was found false: a field above it keeps its FIELD row and a note saying its values are identifiers rather than factors, and loses its VALUE rows from the ranking. That is the point of it; the field surviving is what keeps a noisy field from becoming indistinguishable from an undeclared one.",
-      "max_atoms": 60000,
-      "max_depth": 6,
-      "control_min_subjects": 30,
-      "evidence_ref_sample": 5,
-      "high_cardinality_at": 200
-    }
+ "__doc": "FACTOR GEOMETRY for GET /api/ledger/siblings. This file declares HOW a population is attributed to factors; it does NOT declare what a finding kind is -- that registry is server/finding_kinds.py (`observed_by`, `observation_table`), and there is deliberately no second copy of it here. Adding a factor axis is an entry in `attribution` and costs no Python.",
+ "version": 1,
+ "defaults": {
+  "limit": 20,
+  "min_support": 2,
+  "evidence_ref_sample": 5,
+  "contrast": {
+   "enriched_at": 1.5,
+   "depleted_at": 0.6667,
+   "__comment": "The enrichment band. A factor between these two is FLAT -- carried by the found and the clean sides alike -- and `mode=contrast` drops it. That is the decoy filter, and where the line sits is an operator's judgement rather than a programmer's, which is why it is here."
   },
-
-  "geometry": {
-    "__comment": "One member of every population is one PACKAGE: a bonded position, addressed the way void_obs addresses it. Same granularity as finding_kinds.population_ctes, on purpose -- two panels of one screen that count at two granularities disagree in front of the operator and neither of them is wrong.",
-    "unit": "package",
-    "unit_label": "패키지 (base 위치)",
-    "unit_columns": ["base_wafer_id", "base_x", "base_y"],
-    "run_key_column": "run_uid",
-    "run_method_column": "method",
-    "run_time_column": "observed_at",
-    "observation_run_ref_column": "run_uid",
-
-    "ledger_subject": {
-      "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `Wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
-      "type": "Wafer",
-      "key": "wafer",
-      "column": "base_wafer_id"
-    },
-
-    "universe": {
-      "__comment": "What COULD have been scanned -- the third bucket. Without it `never_scanned` would have to be guessed, and a guessed third bucket is how a never-scanned package quietly joins the clean side.",
-      "relation": "bonding_log",
-      "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" }
-    }
+  "factors": {
+   "__comment": "The factor engine's high-cardinality guard -- the same name, default and shape as `walk.high_cardinality_at`, because it is the same rule about the same thing. An axis with more distinct values than this keeps its entry in `axes[]` (with `ranked: false` and its count) and loses only its VALUE rows from the ranking, so an axis that is merely noisy never becomes indistinguishable from one that was never declared. This is the MEASURED half of the guard; the DECLARED half is `rank: false` on an axis, which is cheaper (the axis never enters the GROUPING SETS) but needs somebody to know in advance. This half is what catches the axis nobody flagged.",
+   "high_cardinality_at": 200
   },
-
-  "attribution": [
-    {
-      "relation": "bonding_log",
-      "about": "process",
-      "label": "본딩 공정",
-      "key_column": "bond_cell_key",
-      "join": { "base_wafer_id": "base_id", "base_x": "bx", "base_y": "by" },
-      "axes": [
-        { "name": "wafer",        "label": "웨이퍼",      "column": "base_id", "rank": false,
-          "__comment": "🔴 THE SUBJECT ITSELF, AS A MARKING AXIS. Until this entry existed every declared axis was lot / equipment / recipe level, so 「이 웨이퍼 두 장과 나머지」 was INEXPRESSIBLE -- the console's only option was to widen two marked wafers to the lots they sit in, and the screen then answered about fifty wafers when the owner had marked two (measured 2026-08-14). `base_id` is this relation's spelling of the same identity the geometry declares as `ledger_subject.column: base_wafer_id`; the two-hop translation is the `join` block right above, which is why this costs no Python.",
-          "__comment_rank": "🔴 `rank: false` MARKS IT AS AN IDENTITY, NOT A FACTOR, and that is the whole of the fix. Every declared axis is offered to the factor engine too, and 2,600 values one carrier each are not evidence of anything: measured the hour this axis was declared, 8 of the top 20 factor rows became individual wafers and pushed 8 real factors off the page. The flag is read BEFORE the SQL, so the axis never becomes a grouping set. MARKING IS UNAFFECTED -- `scope=wafer:<id>` and the lot grid's `by=wafer` read the axis list directly, and marking never ranks the axis it marked with. An axis nobody thought to flag is still caught by `defaults.factors.high_cardinality_at`." },
-        { "name": "bond_eqp",     "label": "본딩 장비",   "column": "bond_eqp" },
-        { "name": "bond_lot",     "label": "본딩 랏",     "column": "bond_lot" },
-        { "name": "dt_lot",       "label": "DT 랏",       "column": "dt_lot" },
-        { "name": "core_lot",     "label": "코어 랏",     "column": "core_lot" },
-        { "name": "b_bn",         "label": "본딩 판정",   "column": "b_bn" },
-        { "name": "stack_height", "label": "스택 높이",   "column": "stack_height" }
-      ]
-    },
-    {
-      "relation": "inspection_run",
-      "about": "inspection",
-      "label": "검사 자체",
-      "key_column": "run_uid",
-      "join": { "base_wafer_id": "base_wafer_id", "base_x": "base_x", "base_y": "base_y" },
-      "filter": {
-        "column": "method",
-        "values_from": "observed_by",
-        "__comment": "🔴 MEASURED, not a precaution. inspection_run holds EVERY method's runs. Without this narrowing, a package that was also scanned for delamination dragged `SYN_DELAM_R1` onto a `finding=void` answer (assy_manager, 2026-08-14) -- the delam scanner's recipe reported as a factor of voids. A factor relation holding rows about OTHER kinds must be narrowed by the same declaration that defines this kind's denominator, or the generalization leaks between kinds."
-      },
-      "__comment_about": "`about: inspection` is a BADGE, never a filter. These are the SCANNER's recipe and equipment, not the process that made the part. An enrichment here is a real finding -- the inspector is biased -- but it is a DIFFERENT finding, and a console that cannot tell the two apart will report a scanner artefact as a process cause.",
-      "axes": [
-        { "name": "scan_recipe", "label": "검사 레시피", "column": "recipe_id" },
-        { "name": "scan_eqp",    "label": "검사 장비",   "column": "eqp_id" }
-      ]
-    }
-  ],
-
-  "kinds": {
-    "__comment": "Per-kind overrides. An EMPTY object means 'use the shared geometry and attribution above', which is the answer for every package-scoped kind. A kind whose findings live at a different granularity overrides `geometry`; a kind with its own factor sources overrides `attribution`.",
-    "void": {},
-    "delam": {}
+  "walk": {
+   "__comment": "🔴 BUDGET, NOT A FILTER. The walk contrast (`scope=`) has NO item list -- every predicate x payload field x value the marked subjects carry is a candidate, so a newly translated predicate appears with zero declarations here. These numbers only bound the COST of touching them. `max_atoms` is the ceiling on atoms flattened in one request; the CASE side is never thinned (it is the question), only the control side, deterministically by sorted position so the same URL answers the same way twice, and `walk.gate` in the response says it happened. MEASURED 2026-08-14 on assy_manager: the flatten costs ~73us per atom (187,234 atoms / 19.6s), so 60,000 atoms is roughly a 4.4s ceiling. `high_cardinality_at` DOES drop -- corrected 2026-08-14 after this sentence was found false: a field above it keeps its FIELD row and a note saying its values are identifiers rather than factors, and loses its VALUE rows from the ranking. That is the point of it; the field surviving is what keeps a noisy field from becoming indistinguishable from an undeclared one.",
+   "max_atoms": 60000,
+   "max_depth": 6,
+   "control_min_subjects": 30,
+   "evidence_ref_sample": 5,
+   "high_cardinality_at": 200
   }
+ },
+ "geometry": {
+  "__comment": "One member of every population is one PACKAGE: a bonded position, addressed the way void_obs addresses it. Same granularity as finding_kinds.population_ctes, on purpose -- two panels of one screen that count at two granularities disagree in front of the operator and neither of them is wrong.",
+  "unit": "package",
+  "unit_label": "패키지 (base 위치)",
+  "unit_columns": [
+   "base_wafer_id",
+   "base_x",
+   "base_y"
+  ],
+  "run_key_column": "run_uid",
+  "run_method_column": "method",
+  "run_time_column": "observed_at",
+  "observation_run_ref_column": "run_uid",
+  "ledger_subject": {
+   "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `Wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
+   "type": "Wafer",
+   "key": "wafer",
+   "column": "base_wafer_id"
+  },
+  "universe": {
+   "__comment": "What COULD have been scanned -- the third bucket. Without it `never_scanned` would have to be guessed, and a guessed third bucket is how a never-scanned package quietly joins the clean side.",
+   "relation": "bonding_log",
+   "join": {
+    "base_wafer_id": "base_id",
+    "base_x": "bx",
+    "base_y": "by"
+   }
+  }
+ },
+ "attribution": [
+  {
+   "relation": "bonding_log",
+   "about": "process",
+   "label": "본딩 공정",
+   "key_column": "bond_cell_key",
+   "join": {
+    "base_wafer_id": "base_id",
+    "base_x": "bx",
+    "base_y": "by"
+   },
+   "axes": [
+    {
+     "name": "wafer",
+     "label": "웨이퍼",
+     "column": "base_id",
+     "rank": false,
+     "__comment": "🔴 THE SUBJECT ITSELF, AS A MARKING AXIS. Until this entry existed every declared axis was lot / equipment / recipe level, so 「이 웨이퍼 두 장과 나머지」 was INEXPRESSIBLE -- the console's only option was to widen two marked wafers to the lots they sit in, and the screen then answered about fifty wafers when the owner had marked two (measured 2026-08-14). `base_id` is this relation's spelling of the same identity the geometry declares as `ledger_subject.column: base_wafer_id`; the two-hop translation is the `join` block right above, which is why this costs no Python.",
+     "__comment_rank": "🔴 `rank: false` MARKS IT AS AN IDENTITY, NOT A FACTOR, and that is the whole of the fix. Every declared axis is offered to the factor engine too, and 2,600 values one carrier each are not evidence of anything: measured the hour this axis was declared, 8 of the top 20 factor rows became individual wafers and pushed 8 real factors off the page. The flag is read BEFORE the SQL, so the axis never becomes a grouping set. MARKING IS UNAFFECTED -- `scope=wafer:<id>` and the lot grid's `by=wafer` read the axis list directly, and marking never ranks the axis it marked with. An axis nobody thought to flag is still caught by `defaults.factors.high_cardinality_at`."
+    },
+    {
+     "name": "bond_eqp",
+     "label": "본딩 장비",
+     "column": "bond_eqp"
+    },
+    {
+     "name": "bond_lot",
+     "label": "본딩 랏",
+     "column": "bond_lot"
+    },
+    {
+     "name": "dt_lot",
+     "label": "DT 랏",
+     "column": "dt_lot"
+    },
+    {
+     "name": "core_lot",
+     "label": "코어 랏",
+     "column": "core_lot"
+    },
+    {
+     "name": "b_bn",
+     "label": "본딩 판정",
+     "column": "b_bn"
+    },
+    {
+     "name": "stack_height",
+     "label": "스택 높이",
+     "column": "stack_height"
+    }
+   ]
+  },
+  {
+   "relation": "inspection_run",
+   "about": "inspection",
+   "label": "검사 자체",
+   "key_column": "run_uid",
+   "join": {
+    "base_wafer_id": "base_wafer_id",
+    "base_x": "base_x",
+    "base_y": "base_y"
+   },
+   "filter": {
+    "column": "method",
+    "values_from": "observed_by",
+    "__comment": "🔴 MEASURED, not a precaution. inspection_run holds EVERY method's runs. Without this narrowing, a package that was also scanned for delamination dragged `SYN_DELAM_R1` onto a `finding=void` answer (assy_manager, 2026-08-14) -- the delam scanner's recipe reported as a factor of voids. A factor relation holding rows about OTHER kinds must be narrowed by the same declaration that defines this kind's denominator, or the generalization leaks between kinds."
+   },
+   "__comment_about": "`about: inspection` is a BADGE, never a filter. These are the SCANNER's recipe and equipment, not the process that made the part. An enrichment here is a real finding -- the inspector is biased -- but it is a DIFFERENT finding, and a console that cannot tell the two apart will report a scanner artefact as a process cause.",
+   "axes": [
+    {
+     "name": "scan_recipe",
+     "label": "검사 레시피",
+     "column": "recipe_id"
+    },
+    {
+     "name": "scan_eqp",
+     "label": "검사 장비",
+     "column": "eqp_id"
+    }
+   ]
+  },
+  {
+   "relation": "bonding_map",
+   "about": "process",
+   "label": "본딩 레그",
+   "key_column": "pkg_id",
+   "join": {
+    "base_wafer_id": "base",
+    "base_x": "x",
+    "base_y": "y"
+   },
+   "__comment_join": "🔴 THE JOIN IS (base, x, y) AND NOT (base_wafer_id, base_x, base_y), WHICH THIS TABLE ALSO HAS. MEASURED on assy_manager 2026-08-24: those three columns are NULL on all 1,181 rows, so an attribution declared against them joins to nothing and every leg answers 0 forever -- a declared axis that is permanently empty is worse than an undeclared one, because the zero reads as a fact about the process. `base` carries the real wafer names (SYN-CX-BW-001..006) and `x`/`y` the position, and that join reaches 1,536 inspection runs and 54 void observations, 384 packages on each of the two legs.",
+   "__comment_live": "⚠️ THIS SAMPLE IS THE LIVE CONFIG. `server/config/siblings_axes.json` does not exist, and `load_axes_config` falls back to this file, so an edit here takes effect. The day somebody creates the live file, THIS AXIS MUST BE COPIED INTO IT -- otherwise the fallback stops and the axis disappears without an error.",
+   "axes": [
+    {
+     "name": "leg",
+     "label": "본딩 레그",
+     "column": "leg",
+     "__comment": "The bonding leg a package belongs to. Two legs reach the population (HBM-B_LOW-P, LOGIC-A_REF), 6 wafers each; a third value (`1`, on base REF_BASE) exists in the table and reaches no package, so it attributes nothing rather than being filtered out here."
+    }
+   ]
+  }
+ ],
+ "kinds": {
+  "__comment": "Per-kind overrides. An EMPTY object means 'use the shared geometry and attribution above', which is the answer for every package-scoped kind. A kind whose findings live at a different granularity overrides `geometry`; a kind with its own factor sources overrides `attribution`.",
+  "void": {},
+  "delam": {}
+ }
 }

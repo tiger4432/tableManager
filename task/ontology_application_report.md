@@ -6,6 +6,34 @@
 
 ---
 
+# 🔴 「빈 화면의 사유」 — 서버가 «이미 다 줍니다». 그리고 셋이 아니라 «넷»입니다 (00:5x)
+
+도착지 판정의 「우리가 스팟파이어보다 더 주는 것 하나」에 답합니다.
+정본 `task/APPLICATION_EMPTY_REASON_BRIEF.md` — **클라가 오늘 밤 쓸 것입니다.**
+
+```
+사유                    state           contrast     (전부 «불러서» 확인)
+아직 안 골랐다           not_requested   unexamined
+그 종류가 없다           empty           unexamined   ← message 를 «한국어로» 이미 들고 온다
+대조를 안 했다           ranked          unexamined
+답이 있다               ranked          contrasted
+```
+🔴 `state` 와 `contrast` 는 «다른 축»입니다. `ranked` + `unexamined` 가 곧 「대조 안 함」입니다.
+
+**넷째 = 예산.** `complete:false` 는 「없다」가 아니라 «미검사»입니다.
+⚠️ **그런데 `complete` «만» 보면 틀립니다:**
+```
+BW-001 (3노드)  hops=2  -> complete=false  reason=depth   ← 더 볼 게 «없는데» false
+BW-001          hops=12 -> complete=true
+CW-HBM-B-03     hops=12 -> complete=false  reason=nodes   ← 이게 «진짜» 미검사
+```
+`reason="depth"` 는 「홉을 적게 줬다」이지 「더 있다」가 아닙니다.
+그대로 미검사로 그리면 **낮은 홉에서 항상 미검사**가 됩니다.
+
+📎 서 있지 않으려고 제 계약에 걸린 것부터 냈습니다. 다른 지시 오면 그것부터 하겠습니다.
+
+---
+
 # ✅ 「엣지로 옮길 수 있나」 소스마다 쟀음 — 🔴 **지시서 전제 하나를 정정합니다** (23:5x)
 
 정본 `task/ontology_trace_edge_move_check.md`.
