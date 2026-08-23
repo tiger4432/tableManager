@@ -1,3 +1,61 @@
+# 🔴 접힘 진단 — **둘 중 하나가 아니라 «셋째»입니다. 노드가 «만들어지지 않습니다»** (구현자)
+
+지시대로 고치기 «전에» 셉니다. 코드 무변경입니다.
+
+## 실측 — 같은 씨앗, 접기만 껐습니다
+```
+A  summary (화면이 부르는 모드) · collect=point
+   nodes 25   kinds {entity 1, claim 1, collection 1, event 1, quantity 21}
+   point «0개»  ·  propagation=empty  ·  ranked 0
+B  같은 씨앗 · observation_mode='claims' (접기 OFF) · collect=point
+   nodes 93   kinds {entity 1, claim 31, event 31, «point 30»}
+   propagation=ranked  ·  ranked «30»
+```
+
+## 🔴 그러므로 원인은 «걷기가 멈추는 것»도 «필터가 늦게 걸리는 것»도 아닙니다
+```
+걷기는 멈추지 않습니다   collection 을 지나 event·quantity 까지 «갑니다» (A 에 21개 있습니다)
+필터가 늦은 것도 아닙니다 point 노드가 응답 «어디에도 없습니다». 거를 대상이 없습니다
+진짜               summary 모드에서 point 노드가 «애초에 안 만들어집니다».
+                   접힘은 «벽»이 아니라 «치환»입니다 — 관측 30개 자리에 collection 1개
+```
+📎 그래서 「접힌 노드 안으로 들어가라」가 아니라 **「원하는 kind 가 접힘 안에 있으면 그 가지는
+   접지 말고 펴라」**가 수리의 모양입니다. 접기 자체는 그대로 둡니다(지시하신 대로).
+
+## ③ 부류 확인 — **`point` 만의 문제가 아니고, «전부»의 문제도 아닙니다**
+```
+                summary        접기 OFF        판정
+collect=point   ranked 0       ranked 30      🔴 접힘 때문
+collect=claim   ranked 1       ranked 31      🔴 접힘 때문 (1은 접힌 대역 하나)
+collect=value   empty  0       empty  0       ⚠️ 접힘과 «무관». 두 모드 다 0입니다
+collect=quantity ranked 21     —              ✅ 원래 됩니다
+collect=collection/entity ranked 1  —          ✅ 원래 됩니다
+```
+🔴 **`value` 를 이 수리에 묶지 마십시오.** 접기를 꺼도 0이라 «다른 원인»입니다.
+   접힘을 뚫고 나서 「value 도 고쳐졌다」고 보고하면 그건 틀린 보고가 됩니다.
+   (이 씨앗의 관측이 point 로 투영되고 value 로는 안 되는 것으로 보이는데, 확인은 별건입니다.)
+
+## 노드 비용 — 지시하신 주의 그대로
+```
+25 -> 93 노드 (관측 30개 펴는 값). 이 씨앗에선 상한에 안 걸립니다 (truncated 전부 0)
+관측 수천짜리 웨이퍼에서는 걸립니다 -> 그때는 `truncated` 로 «말하고» 자릅니다.
+접힘을 핑계로 0 이라 답하지 않습니다
+```
+
+## 제안 — 계약 한 줄, 갈래 안 늘림
+```
+collect 가 «접힘 뒤에만 있는 kind»를 지목하면, 그 관측 가지를 펴서 걷습니다
+   -> observation_mode 는 그대로 «기본 summary». 부르는 쪽이 안 바꿉니다
+   -> 라우트 안 늘고, 클라는 collect 만 선언합니다 (상설 ①·② 둘 다 지킴)
+수락    같은 웨이퍼 씨앗 collect=point 가 ranked 0 -> «30»
+        collect=claim 이 1 -> «31»
+        collect=quantity 는 21 «그대로» (회귀 없음)
+        value 는 «여전히 0» — 그게 맞는 결과입니다
+```
+🔴 착수 승인 주시면 바로 하겠습니다. 지시대로 «어느 쪽인지» 먼저 냅니다.
+
+---
+
 # ✅ 마킹 상설 — **서버 쪽은 «이미 됩니다».** 라이브로 눌러 봤습니다 (구현자)
 
 상설 규칙을 읽고, 클라가 배선하기 «전에» 서버가 부호 붙은 마킹 집합을 받는지 재 봤습니다.
