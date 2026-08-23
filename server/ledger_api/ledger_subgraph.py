@@ -842,10 +842,21 @@ def _reach(nodes, edges, seed_signs):
       * The FIRST hop does not divide by degree.  Dividing there makes a factor that is
         equally common on both sides come out non-zero purely because a marked subject
         happens to carry a different number of claims than a control does.
-      * Every hop after that divides by the emitting node's degree, so a hub splits its
-        reach instead of flooding the ranking.
+      * Every hop after that divides by the number of nodes it FORWARDS TO, so a hub splits
+        its reach instead of flooding the ranking.
       * There is NO damping constant, as a default or otherwise.  A decay factor is an
         artefact and it would end up being the thing that decides the answer.
+
+    🔴 IT USED TO DIVIDE BY THE FULL DEGREE, WHICH IS A LENGTH DECAY WEARING ANOTHER NAME.
+    A node's undirected degree counts the neighbour it was REACHED FROM, so a node in a pure
+    chain has degree 2 and halved its carry at a place where nothing forks.  MEASURED on the
+    chain S-B-C-D: 1.0, 0.5, 0.25 - the exact geometric decay the third rule above forbids,
+    arrived at without a constant.  A 3-hop process-history factor was therefore ranked below
+    a 1-hop one for its distance alone, which is the opposite of what an R&D screen is for.
+
+    Forward degree is `degree - 1` and not the count of not-yet-seen neighbours, deliberately:
+    the unseen count depends on the order the BFS happens to mark siblings, so the same graph
+    would score differently between runs.  Degree is a property of the graph.
 
     Returns `(reach, parents)` where reach is `node -> [from_positive, from_negative]` and
     parents is `seed -> {node: predecessor}`, so an evidence path is rebuilt on demand
@@ -868,7 +879,8 @@ def _reach(nodes, edges, seed_signs):
             neighbours = adjacency.get(node)
             if not neighbours:
                 continue
-            share = carried if node == seed else carried / len(neighbours)
+            forward = max(1, len(neighbours) - 1)     # exclude the way it came in
+            share = carried if node == seed else carried / forward
             for nxt in neighbours:
                 if nxt in seen:
                     continue
