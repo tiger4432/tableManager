@@ -475,3 +475,7 @@ body {
 .rb-map__outside.is-measured { font-family: var(--font-mono); }
 /* 「모른다」는 점선 밑줄 — 숫자가 아니라 상태라는 표시. 빨강이 아닙니다. */
 .rb-map__outside.is-unknown { border-bottom: 1px dashed var(--border-strong); }
+
+/* 트렌드도 같은 문법 — 마킹된 점은 그대로, 나머지가 흐려집니다. */
+.is-attenuating .rb-trend-dot:not(.is-marked-case):not(.is-marked-control) { opacity: 0.35; }
+.is-attenuating .rb-trend-dot.is-marked-case { opacity: 1; }

@@ -61,7 +61,10 @@ export class MainTrendPanel extends Panel {
     if (!doc || !this.host) return;
     this.host.textContent = '';
     const root = doc.createElement('div');
-    root.className = this.markCount() > 0 ? 'rb-trend is-attenuating' : 'rb-trend';
+    // 🔴 MY OWN POINTS, NOT THE NAME'S SIZE -- the same rule the map and the lists follow.
+    const mineMarked = ((this.model && this.model.points) || [])
+      .some((p) => p.markKey && this.signOf(p.markKey) !== SIGN.ABSENT);
+    root.className = mineMarked ? 'rb-trend is-attenuating' : 'rb-trend';
 
     if (this.title) {
       const cap = doc.createElement('div');
