@@ -260,18 +260,38 @@ export class MainTrendPanel extends Panel {
     //    timestamp, so the axis says that timestamp -- an order with no clock on it is not an
     //    answer to 「언제」.
     const stamp = (v) => String(v || '').replace('T', ' ').slice(0, 16);
+
+    // 🔴 THE AXIS NAMES THE MATERIAL, NOT JUST THE MOMENT. 「x축에 시간에 추가로 자재 id도」
+    //    (owner). Points that belong to one material sit together, so the tick goes under the
+    //    middle of that material's points -- one label per material, not one per point.
+    const groups = new Map();
+    points.forEach((p, i) => {
+      const key = p.wafer || '(이름 없음)';
+      const at = this.flatTime
+        ? (points.length > 1 ? (i / (points.length - 1)) * 100 : 50)
+        : ((Date.parse(p.at) - minTime) / spanTime) * 100;
+      const g = groups.get(key) || { key, sum: 0, n: 0 };
+      g.sum += at; g.n += 1;
+      groups.set(key, g);
+    });
+    for (const g of groups.values()) {
+      const tick = doc.createElement('div');
+      const marked = this.subjectReads && this.markings
+        && this.markings.signOf(this.subjectReads, g.key) !== SIGN.ABSENT;
+      tick.className = marked ? 'rb-trend-xtick is-subject' : 'rb-trend-xtick';
+      tick.style.left = `${g.sum / g.n}%`;
+      tick.textContent = g.key;
+      tick.setAttribute('title', `${g.key} · ${g.n}점`);
+      plot.appendChild(tick);
+    }
+
+    // The moment stays, beside the materials: 「언제」 and 「무엇」 are two questions.
     const xLeft = doc.createElement('div');
     xLeft.className = 'rb-trend-xlabel is-left';
     xLeft.textContent = this.flatTime
       ? `${stamp(points[0].at)} · 한 시각`
-      : stamp(points[0].at);
+      : `${stamp(points[0].at)} → ${stamp(points[points.length - 1].at)}`;
     plot.appendChild(xLeft);
-    if (!this.flatTime) {
-      const xRight = doc.createElement('div');
-      xRight.className = 'rb-trend-xlabel is-right';
-      xRight.textContent = stamp(points[points.length - 1].at);
-      plot.appendChild(xRight);
-    }
     plot.append(yTop, yBottom);
     return plot;
   }
@@ -307,7 +327,9 @@ export class MainTrendPanel extends Panel {
       flat.className = 'rb-trend-absent';
       const parts = [];
       if (this.flatRate) parts.push('값이 전부 같습니다');
-      if (this.flatTime) parts.push('시각이 전부 같습니다 — 가로는 시간이 아니라 «차례»입니다');
+      // The axis now names the materials and the moment, so the old wording («차례») would
+      // contradict what the reader can see on it.
+      if (this.flatTime) parts.push('가로는 «자재»입니다 · 시각은 하나뿐입니다');
       flat.textContent = parts.join(' · ');
       el.appendChild(flat);
     }

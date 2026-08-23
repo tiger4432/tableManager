@@ -510,3 +510,12 @@ body {
   font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .rb-trend-xlabel.is-left { left: 0; }
 .rb-trend-xlabel.is-right { right: 0; }
+
+/* x 축의 «자재 id» — 한 자재의 점들 가운데에 하나씩. */
+.rb-trend-xtick { position: absolute; bottom: -14px; transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+  white-space: nowrap; }
+.rb-trend-xtick.is-subject { color: var(--accent); font-weight: 600; }
+/* 시각은 자재 이름 «아래» 줄에 둡니다 — 겹치지 않게. */
+.rb-trend-xlabel { bottom: -30px; }
+.rb-trend-plot { margin-bottom: 34px; }
