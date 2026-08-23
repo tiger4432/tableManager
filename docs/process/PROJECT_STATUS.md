@@ -175,6 +175,33 @@
 > ⛔ 고칠 코드가 `ledger/vocabulary.py` 와 `ledger_explorer.py` 에 있고 **둘 다 얼음**이라
 >    ③ 전에는 못 엽니다. 지금은 «지시서에 이 한 줄을 적어 두는 것»이 전부입니다.
 >
+> ### ⑨ 서버 루트 정리 «착지» + 문서는 «은퇴 때 한번에» (소유자 판정 18:5x)
+> ```
+> e13bcfdd  죽은 프로브 5,993줄 삭제 (map_alignment 의 잘린 옛 사본, 호출자 0)
+> 75c32b50  server/ledger_api/ 패키지 — 열두 모듈 이동. 은퇴 예정 일곱은 루트에 남김
+> 루트       71 -> «58»
+> 검증       test_prod_import_env 통과 · 런타임 165파일 1,575 import PASS
+>            관련 테스트 269 passed / 3 failed — 실패 셋은 «건드리기 전과 바이트 동일»
+> ```
+> 🔴 **제 체크리스트가 놓친 것을 그 레인이 잡았습니다.** 문자열 참조 네 갈래는 전부 깨끗했고,
+> 진짜 위험은 열둘 중 «셋»이 `import paths` 실패 갈래에서 `__file__` 로 config 경로를
+> 만들고 있던 것 — 한 단 깊어지자 «영원히 없을» 디렉터리를 가리켰습니다. 살아 있는 갈래는
+> `paths.CONFIG_DIR` 로 가서 멀쩡하고, 셋 중 둘은 `pragma: no cover` 라
+> **처음 도달하는 날에만 틀립니다.** 「가드는 도달 가능해지는 날 틀린다」의 또 한 사례.
+>
+> ### 📌 문서 16개의 옛 경로 — «은퇴 라운드에서 한 번에» (소유자 판정)
+> ```
+> 소유자   「문서는 은퇴 때 한번에 하자」
+> 이유     은퇴가 얼린 일곱을 지우면 «또» 고쳐야 합니다. 두 번 쓰지 않습니다
+> 대상     CODE_MAP · backend · data_model · frontend · PRIMITIVES · PHYSICS_ONTOLOGY_SETUP
+>          spec 넷 · FEATURE_CHECKLIST · DOC_OWNERSHIP · FORK_SESSION_BRIEF
+>          README · TREND_DECLARATION_GUIDE
+> ⚠️ 그때 «반드시» 같이 고칠 것 — 지금 적극적으로 틀린 한 줄:
+>    CODE_MAP.md:3045 「_qa1_head_probe.py 는 트리에 있어서는 안 될 파일」 -> 이미 «없음»
+> ⚠️ table_config.json 과 .sample 의 __comment 가 server/finding_kinds.py 를 이름으로 부름
+>    (소유자 파일 · 기능 참조 아님 · 문서 문자열)
+> ```
+>
 > ### 남은 열린 것
 > ```
 > 문서 정비   doc-keeper 주기 ~194 커밋 밀림      «소유자 승인 대기»
