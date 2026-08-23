@@ -1,3 +1,71 @@
+# ✅ 제어 막대 «또래 개수» — **넷은 «지금» 나옵니다. 하나는 축이 없습니다** (구현자 03:4x)
+
+전부 «불러서» 잰 것입니다. 추론 없음. 코드 0줄.
+
+## ② 라우트와 인자 — `/siblings` 의 «scope» 가 그 자리입니다
+```
+GET /api/ledger/siblings?scope=<축이름>:<값>&window=7d
+   -> scope.case.subjects      = «또래 개수» (그 값을 가진 주어 수)   <- 알약의 숫자
+   -> scope.case.units         = 그 또래들의 유닛 수
+   -> scope.control.subjects   = 나머지
+```
+🔴 `scope` 를 주면 엔진이 `axes` 에서 «walk» 로 바뀌는데, **개수는 그것과 무관하게 나옵니다.**
+실측(라이브, window=7d):
+```
+bond_eqp    : SYN-BD-02     -> case.subjects «50»   units 1450   control 131
+scan_eqp    : SYN-SAT-01    -> case.subjects  «2»   units    3   control 123
+b_bn        : 1             -> case.subjects  «9»   units   98   control   0
+scan_recipe : SYN_VOID_R2   -> case.subjects  «0»   ← 이 값이 7d 안에 유닛이 없어서
+bond_lot    : SYN-VOID-026  -> case.subjects  «0»   ← 같은 이유
+stack_height: 8.0           -> case.subjects  «0»   ← 같은 이유
+```
+⚠️ **0 이 나온 셋은 「축이 못 답한다」가 아니라 「그 값이 이 기간에 없다」입니다.** 축은 같은
+   경로로 답합니다 — 위 셋이 그것을 보였습니다. 기간을 넓히거나 값을 바꾸면 나옵니다.
+
+## ① 다섯 알약 대응 — 넷은 선언된 축이 있습니다
+```
+[같은 랏 11]     ✅ bond_lot · dt_lot · core_lot   (어느 랏인지는 화면이 정할 일)
+[설비 1,806]     ✅ bond_eqp (본딩) · scan_eqp (검사)  — 둘 중 어느 쪽인지도 화면이 정합니다
+[레시피@6 214]   ✅ scan_recipe  (「@6」의 뜻은 아래 ④)
+[7d 96]          ✅ 축이 아니라 «기간»입니다. scope 없이 부르면 populations 가 옵니다
+                    실측 7d: found 3,225 · clean_scanned 2,025 · scanned 5,250 · never_scanned 365,672
+                    🔴 알약의 96 이 이 중 «무엇»인지는 제가 못 정합니다 — 셋 다 다른 질문입니다
+[같은 레그 25]   ❌ «선언된 축에 없습니다»
+```
+
+## ③ 못 내는 것 — **「레그」 축 하나**
+지어내지 않고 «불러서» 확인했습니다. 거절문이 선언 목록을 그대로 돌려줍니다:
+```
+scope=leg:X       -> unknown_marking_axis
+scope=wafer_leg:X -> unknown_marking_axis
+선언된 축 아홉    wafer · bond_eqp · bond_lot · dt_lot · core_lot · b_bn · stack_height
+                  · scan_recipe · scan_eqp
+```
+📎 `WaferLeg` 라는 «주어 타입»은 원장에 있습니다(원자 42개 — 라운드 3에서 셌습니다).
+   그런데 `siblings_axes.json` 이 그것을 «축으로 선언하지 않았습니다». 즉 데이터가 아니라
+   **선언 한 줄이 없는 것**입니다. 다음 라운드의 입력으로 이것을 올립니다.
+
+## ④ 「레시피@6」의 «@6» — **못 쟀습니다.** 대신 «아닌 것» 둘을 지웠습니다
+```
+❌ 축의 값 개수?   scan_recipe 의 distinct 값은 «8» 입니다 (6 아님)
+   (참고로 6인 축은 stack_height 입니다 — 다른 축이라 우연으로 봅니다)
+❌ 값에 붙은 표기?  실측 값 여덟에 «@» 가 하나도 없습니다
+   SYN-CX-SAT-INSPECT · SYN-CX-SCAT-INSPECT · SYN_DELAM_R1 · SYN_VOID_EXC
+   · SYN_VOID_NEG · SYN_VOID_R1 · SYN_VOID_R2 · SYN_VOID_R3
+```
+이 저장소에서 `이름@숫자` 를 쓰는 곳은 «원장 선언의 개체 타입 버전» 하나입니다
+(`die@1` · `transfer@1`). 목업이 그 뜻으로 쓴 것인지는 **라우트로는 알 수 없습니다.**
+소유자께 여쭙는 편이 빠릅니다.
+
+## 요약
+```
+지금 되는 것   또래 개수 4종 — /siblings?scope=<축>:<값> 의 scope.case.subjects
+막힌 것 하나   「레그」 — 데이터는 있고 «축 선언»이 없다
+정하셔야 할 것 ① 7d 알약의 96 이 어느 모집단인가  ② 「@6」의 뜻
+```
+
+---
+
 # 🔴 라운드 6 재개 «불가» — **「있는 걸로」가 «없습니다».** 전수로 셌습니다 (구현자 03:0x)
 
 판정하신 두 축도 도달하지 않습니다. **코드 0줄 · DB 무변경.** 이유가 한 줄입니다:
