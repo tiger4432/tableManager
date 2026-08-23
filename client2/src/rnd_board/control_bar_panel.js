@@ -141,12 +141,28 @@ export class ControlBarPanel extends Panel {
       : PEER_AXES.map((label) => ({ label, scope: null }));
     return declared.map((peer) => {
       const got = peer.scope ? this.peerCounts[peer.scope] : null;
+      const has = got && typeof got.subjects === 'number';
+      // 🔴 THE FOURTH ABSENCE, IN ITS OWN WORDS. The other three are 「아직 안 골랐다」·
+      //    「그 종류가 없다」·「대조를 안 했다」. This one is 「걸쳐 있어 어느 쪽도 아니다」: the
+      //    axis resolved and its subjects exist, but none of them is on the marked side, so
+      //    there is nothing to compare with. Writing the resolved number alone would say the
+      //    opposite of what happened -- which is the misreading this whole screen exists to end.
+      const straddled = has && got.analysis === 'empty';
+      if (straddled) {
+        return this._pill({
+          id: this._axisId('peer', peer.label),
+          text: `${peer.label} · 대조 0 · 걸침 ${got.straddling === null ? got.subjects : got.straddling}`,
+          count: undefined,
+          unsourced: true,
+          title: got.message || got.straddleMessage || null,
+        });
+      }
       return this._pill({
         id: this._axisId('peer', peer.label),
         text: peer.label,
         // 🔴 「—」 is the honest count. Not 0, which would say 「또래가 없다」.
-        count: got && typeof got.subjects === 'number' ? got.subjects : null,
-        unsourced: !(got && typeof got.subjects === 'number'),
+        count: has ? got.subjects : null,
+        unsourced: !has,
         // The other number the same answer carried, kept where it cannot be mistaken for the first.
         title: got && typeof got.units === 'number' ? `유닛 ${got.units}` : null,
       });
@@ -195,10 +211,14 @@ export class ControlBarPanel extends Panel {
     text.className = 'rb-pill-text';
     text.textContent = spec.text;
     el.appendChild(text);
-    const n = doc.createElement('span');
-    n.className = spec.count === null ? 'rb-pill-count is-absent' : 'rb-pill-count';
-    n.textContent = spec.count === null ? '—' : String(spec.count);
-    el.appendChild(n);
+    // `null` means 「the route served no number」 and draws 「—」. `undefined` means this pill
+    // already SAYS its numbers in words, so a dash after them would be a second, emptier claim.
+    if (spec.count !== undefined) {
+      const n = doc.createElement('span');
+      n.className = spec.count === null ? 'rb-pill-count is-absent' : 'rb-pill-count';
+      n.textContent = spec.count === null ? '—' : String(spec.count);
+      el.appendChild(n);
+    }
     if (spec.title) el.setAttribute('title', spec.title);
     if (spec.id) {
       el.addEventListener('click', (event) => {

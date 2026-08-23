@@ -172,6 +172,24 @@ async function suite(mods) {
       !texts.some((t) => t.includes('outgassing')), texts.join(' | '));
     ok('A4 the name-only rest is one folded pill carrying its count',
       texts.some((t) => t.includes('값 없음') && t.includes('1')), texts.join(' | '));
+    // 🔴 THE FOURTH ABSENCE: the axis resolved, the comparison did not. The resolved number on
+    //    its own reads as 「이만큼으로 대조할 수 있다」, the opposite of what happened.
+    const straddleBar = new control.ControlBarPanel(makeDoc().createElement('div'), {
+      doc, markings: new MarkingStore(), reads: 'axis:y', writes: 'axis:y',
+      apiBase: '', seedNodeId: 'seed', fetchImpl: routedFetch(TRENDS),
+      peers: [{ label: '같은 레그', scope: 'leg:X' }],
+      loadPeerCount: async () => ({ state: 'resolved', subjects: 6, units: 384,
+        analysis: 'empty', reason: 'empty_case_side', message: '케이스 쪽 주어 0',
+        straddling: 6, straddleMessage: '양쪽에 걸침' }),
+    });
+    straddleBar.mount();
+    await flush(); await flush(); await flush();
+    const straddlePill = byClass(straddleBar.host, 'rb-pill')
+      .find((p) => p.textContent.includes('같은 레그'));
+    ok('A6 a straddled peer says so instead of printing a comparable number',
+      Boolean(straddlePill) && straddlePill.textContent.includes('대조 0')
+      && straddlePill.textContent.includes('걸침 6'), straddlePill && straddlePill.textContent);
+
     // 🔴 A COUNT NOBODY SERVES IS 「—」. Zero would say 「또래가 없다」, which nobody measured.
     const peer = pills.find((p) => p.textContent.includes('같은 랏'));
     ok('A5 a peer axis nobody counted shows an em dash, not a zero',
@@ -275,11 +293,19 @@ const MUTANTS = [
   // 🔴 ANCHORED ON THE PREDICATE, ON ONE LINE. The previous anchor spanned two lines and named
   //    a shape the peer-count round rewrote; this one sits on the decision itself -- what a
   //    pill shows when the route served no number.
+  // Anchored on the predicate, one line: what a pill shows when the route served no number.
   { id: 'M3', what: 'an unserved peer count is drawn as 0 instead of an em dash',
     catches: 'A5',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
-      "count: got && typeof got.subjects === 'number' ? got.subjects : null,",
-      "count: got && typeof got.subjects === 'number' ? got.subjects : 0,") } },
+      "count: has ? got.subjects : null,",
+      "count: has ? got.subjects : 0,") } },
+  // 🔴 THE FOURTH ABSENCE. A pill whose axis resolved but whose comparison came back empty must
+  //    NOT print the resolved number on its own -- it reads as its opposite.
+  { id: 'M9', what: 'a straddled peer prints its subject count as if it were comparable',
+    catches: 'A6',
+    mutate: { 'control_bar_panel.js': (s) => s.replace(
+      "const straddled = has && got.analysis === 'empty';",
+      "const straddled = false;") } },
   { id: 'M4', what: 'the control bar writes a fixed marking name instead of its declared one',
     catches: 'B4',
     mutate: { 'panel.js': (s) => s.replace(

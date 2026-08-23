@@ -613,10 +613,24 @@ export function peerCountFromSiblings(result) {
   const body = (result && result.body) || result || null;
   const rows = (body && body.scope && body.scope.value_accounting) || [];
   const row = rows[0] || null;
+  const excluded = (body && body.scope && body.scope.excluded) || [];
+  const straddle = excluded.find((e) => e && e.bucket === 'mixed') || null;
+  const base = {
+    // 🔴 TWO STATES, NOT ONE. The VALUE resolved (the axis exists, it has 6 subjects) while the
+    //    COMPARISON came back empty (`empty_case_side`: none of those 6 is on the marked side).
+    //    Printing the resolved number alone reads as 「6 으로 대조할 수 있다」, which is the exact
+    //    opposite of what happened -- 「6 이 어느 쪽도 아니라 빠졌다」. So both travel.
+    analysis: (body && body.state) || null,
+    reason: (body && body.reason) || null,
+    message: (body && body.message) || null,
+    straddling: straddle && typeof straddle.subjects === 'number' ? straddle.subjects : null,
+    straddleMessage: (straddle && straddle.message) || null,
+  };
   if (!row || row.state !== 'resolved') {
-    return { state: (row && row.state) || 'absent', subjects: null, units: null };
+    return { ...base, state: (row && row.state) || 'absent', subjects: null, units: null };
   }
   return {
+    ...base,
     state: 'resolved',
     subjects: typeof row.subjects === 'number' ? row.subjects : null,
     units: typeof row.units === 'number' ? row.units : null,
