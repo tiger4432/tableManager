@@ -41,6 +41,9 @@ const REACHED = [hop('entity', 'W'), hop('claim', 'BONDING', 'eqp_log:SYN-BD-04'
 
 const BODY = {
   state: 'ok',
+  // The live die-seed response carries 4 nodes and 3 edges even when `collect=quantity`
+  // returns `ranked: []`. That is the whole point of Z3b below.
+  nodes: [1, 2, 3, 4], edges: [1, 2, 3],
   propagation: {
     collect: 'quantity', state: 'ranked', contrast: 'unexamined', complete: true, message: null,
     top_set: ['ledger-quantity:v1:delam · delam_formation'],
@@ -154,8 +157,13 @@ async function suite(mods) {
   const hostE = doc.createElement('div');
   const e = mk(cand.CandidateListPanel, hostE, { doc, markings, reads: 'marking:1', writes: null }, bodyWith({ state: 'empty', ranked: [] }));
   e.mount(); await flush(); await flush();
-  truthy('Z3 state:empty says the walk did not REACH, not that there is no cause',
-    hostE.textContent.includes('닿지 않았습니다'));
+  // 🔴 TWO FACTS. Lead PM correction 2026-08-23: `ranked: []` under one `collect` is NOT
+  // 「연결 없음」 -- the same die seed answers 2 under `collect=entity`, and 4 nodes / 3 edges
+  // were there all along. A part that prints only the absence has denied a transfer.
+  truthy('Z3 state:empty still states what the walk DID reach',
+    hostE.textContent.includes('노드 4') && hostE.textContent.includes('엣지 3'));
+  truthy('Z3c and says the absence is of CANDIDATES, not of connections',
+    hostE.textContent.includes('원인 후보는 없습니다'));
   eq('Z3b and it is not a refusal', byClass(hostE, 'rb-cand-line--refused').length, 0);
 
   const hostR = doc.createElement('div');
@@ -215,8 +223,7 @@ const MUTANTS = [
       "root.appendChild(this._line('대조군 없음 — 또래를 안 쟀습니다', 'refused'));") } },
   { id: 'X2', what: 'state:empty is reported as "no cause"', catches: 'Z3',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      "this._line('걷기가 물리량에 닿지 않았습니다', 'absent')",
-      "this._line('원인 없음', 'absent')") } },
+      '원인 후보는 없습니다', '원인 없음') } },
   { id: 'X3', what: 'incomparable is collapsed into tied', catches: 'Z5',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       "if (c.incomparable) words.push('종류 다름');", '') } },
@@ -231,6 +238,9 @@ const MUTANTS = [
     mutate: { 'api.js': (s) => s.replace(
       "      quantity: (parts[0] || '').trim() || String(row.label || ''),",
       `      quantity: String(row.label || ''),`) } },
+  { id: 'X0', what: 'the empty state denies the transfer by printing only the absence', catches: 'Z3',
+    mutate: { 'candidate_list_panel.js': (s) => s.replace(
+      '${reached} — 원인 후보는 없습니다', '연결 없음') } },
   { id: 'X7', what: 'all evidence is expanded by default', catches: 'E1',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       'if (c.id && this.opened.has(c.id)) wrap.appendChild(this._evidence(c));',
@@ -247,8 +257,11 @@ let escaped = 0;
 console.log('\n-- defect mutants (each must be CAUGHT by its named line) -----------');
 for (const m of MUTANTS) {
   let out;
+  // 🔴 A THROW IS A HOLE, NOT A CATCH. `loadModules` throws when a mutation changes nothing,
+  // and counting that as 'caught' would turn a rotted anchor into a green line -- the same
+  // silent-pass this file was hardened against, wearing a different costume.
   try { out = await suite(await loadModules(m.mutate)); }
-  catch (e) { console.log(`  caught  ${m.id} ${m.what} (threw)`); continue; }
+  catch (e) { escaped += 1; console.log(`  INERT   ${m.id} ${m.what}  -- ${String(e.message)}`); continue; }
   if (out.failures.some((f) => f.startsWith(m.catches))) console.log(`  caught  ${m.id} ${m.what}  (${m.catches})`);
   else { escaped += 1; console.log(`  ESCAPED ${m.id} ${m.what}  -- ${m.catches} stayed green`); }
 }

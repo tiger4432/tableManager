@@ -82,7 +82,8 @@ export class RankListPanel extends Panel {
     if (m.state === 'empty') {
       const note = doc.createElement('div');
       note.className = 'rb-rank-note rb-rank-note--absent';
-      note.textContent = '걷기가 물리량에 닿지 않았습니다';
+      // Same correction: state what the walk DID reach beside what it did not find.
+      note.textContent = `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges} — 원인 후보는 없습니다`;
       root.appendChild(note);
       this.host.appendChild(root);
       return;

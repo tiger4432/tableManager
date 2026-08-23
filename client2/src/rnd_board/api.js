@@ -343,6 +343,7 @@ export function subgraphModel(result) {
       ok: false, state: 'refused', status, reason,
       message: status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다',
       contrast: null, complete: null, candidates: [], topSet: [],
+      graph: { nodes: 0, edges: 0 },
       counts: { total: 0, measured: 0, nameOnly: 0, tied: 0, incomparable: 0 },
     };
   }
@@ -384,6 +385,14 @@ export function subgraphModel(result) {
     reason: null,
     message: prop.message || '',
     // 'unexamined' is the value today, and it means NOBODY LOOKED -- not that nothing was found.
+    // 🔴 WHAT THE WALK DID REACH, carried even when `state` is 'empty'. Lead PM correction
+    // 2026-08-23: `collect=quantity` answering `ranked: []` on a die seed does NOT mean there
+    // are no edges -- the same seed under `collect=entity` returns 2. There were 4 nodes and 3
+    // edges the whole time. A part that says 「연결 없음」 has denied a transfer that happened.
+    graph: {
+      nodes: Array.isArray(body.nodes) ? body.nodes.length : 0,
+      edges: Array.isArray(body.edges) ? body.edges.length : 0,
+    },
     contrast: prop.contrast || null,
     complete: prop.complete === true,
     candidates,
