@@ -76,9 +76,21 @@ function frameIdentity(frame) {
   return frame.wafer || frame.map_id || frame.table || 'no-frame';
 }
 
+// 🔴 THIS FILE MINTS THE PLACEHOLDER, SO THIS FILE GATES IT. `task/MARKING_CONTRACT.md` §4:
+//    only a node id the SERVER gave may become a marking, because a stamped one sends the
+//    walk off a node that does not exist and the empty answer that comes back cannot be told
+//    apart from 「없다」. The prefix is not a domain word -- it is this module's own namespace,
+//    kept beside the function that writes it so the two cannot drift.
+const STAMPED_PREFIX = 'unresolved-die:';
+
+/** True when `id` is one this client invented rather than one the server served. */
+export function isStampedNodeId(id) {
+  return typeof id === 'string' && id.startsWith(STAMPED_PREFIX);
+}
+
 /** See the header: a PLACEHOLDER for the node id the route does not yet serve. */
 function stampedNodeId(axis, frame, cell) {
-  return `unresolved-die:${axis}:${frameIdentity(frame)}:${cell.x},${cell.y}`;
+  return `${STAMPED_PREFIX}${axis}:${frameIdentity(frame)}:${cell.x},${cell.y}`;
 }
 
 /**
@@ -319,10 +331,21 @@ export function compositionModel(result) {
 
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
-  const { apiBase, nodeId, collect, fetchImpl } = params || {};
+  const { apiBase, nodeId, collect, fetchImpl, positive, negative } = params || {};
+  // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
+  //    would answer 200 with an empty walk and the screen would read that as 「없다」.
+  //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
+  if (isStampedNodeId(nodeId)) {
+    return { ok: false, status: null, body: null,
+             detail: { detail: { reason: 'seed_is_not_a_server_node' } } };
+  }
   const query = new URLSearchParams();
   query.set('id', nodeId);
   query.set('collect', collect || 'quantity');
+  // The signed sets the route already declares. Absent lists change nothing: a request that
+  // names neither reaches the server exactly as it did before.
+  for (const id of positive || []) query.append('positive', id);
+  for (const id of negative || []) query.append('negative', id);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
   if (!res.ok) {
@@ -381,7 +404,11 @@ export function subgraphModel(result) {
     const reason = (result && result.detail && result.detail.detail && result.detail.detail.reason) || null;
     return {
       ok: false, state: 'refused', status, reason,
-      message: status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다',
+      // The client-side gate and a server refusal are DIFFERENT answers and must not share
+      // a sentence -- one says 「이 자리는 아직 노드가 아닙니다」, the other 「서버가 거절」.
+      message: reason === 'seed_is_not_a_server_node'
+        ? '이 자리는 아직 원장 노드가 아닙니다 — 그릴 수는 있어도 마킹은 안 됩니다'
+        : (status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다'),
       contrast: null, complete: null, candidates: [], topSet: [],
       graph: { nodes: 0, edges: 0 },
       counts: { total: 0, measured: 0, nameOnly: 0, tied: 0, incomparable: 0 },
@@ -699,7 +726,12 @@ export const COLLECTS = Object.freeze({
   },
   // ③⑦ 후보 — 마킹한 노드에서 걸어서 모읍니다.
   candidate: {
-    params: (start) => (start.value ? { nodeId: start.value } : {}),
+    // 🔴 `positive`/`negative` are the marking itself, carried through unchanged. A start with
+    //    neither is the single-seed call this screen already makes; the contract's control
+    //    side arrives the day a part passes them (`task/MARKING_CONTRACT.md` §1).
+    params: (start) => (start.value
+      ? { nodeId: start.value, positive: start.positive, negative: start.negative }
+      : {}),
     run: (params) => fetchSubgraph(params).then(subgraphModel),
   },
   // ④ 자재 정보 — 그 칩이 무엇으로 만들어졌나.

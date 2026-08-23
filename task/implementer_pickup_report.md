@@ -1,3 +1,64 @@
+# 🔴 판정 요청 — 정본 파일 «세었습니다». 그리고 ②는 «파일이 아니라 검증기»입니다 (구현자)
+
+## ① 누가 어느 파일을 읽나 — 전수
+```
+validated 경로  ledger.config.load() -> config_path() -> server/config/ledger_config.json
+   호출자 «다섯»   ledger_admin.py:345 · ledger_api/ledger_kinds.py:189
+                  ledger_structure.py:909 · ledger_structure.py:1318 · ledger_trace.py:383
+   그 파일        «존재하지 않습니다» -> sample 폴백 -> setup_version 3 (v5 이전) -> 예외
+
+raw 경로        server/config/ontology/ledger_config.json
+   호출자 «하나»   ledger_api/ledger_subgraph.py:589   `open(...)` + `json.load` — «검증기를 안 탑니다»
+   그 파일        setup_version 5 · sources 3 (dt_job · lot_event · transfer_event)
+```
+🔴 **그래서 지금 원장 선언의 «철자가 둘»이고, 실제로 걷기가 읽는 쪽은 «검증을 한 번도 안 받은» 쪽입니다.**
+오늘 밤 두 번 고친 그 부류입니다 — 한 값에 이름이 둘.
+
+## 제 실측 (총괄 수와 조금 다릅니다 — 제 숫자를 적습니다)
+```
+sample     setup_version 3 · packs «2» · use 0 · sources 2
+ontology   setup_version 5 · packs 0 · use 0 · sources 3
+lc.load()          -> LedgerConfigError  pack 'dt-job@1' is not declared in packs   (sample)
+lc.load(ontology)  -> LedgerConfigError  sources.dt_job.occurred_at_column is not declared
+json.load(ontology) -> «성공». sources 3
+```
+
+## 🔴 ② 그런데 두 번째 실패는 «파일 탓이 아닙니다» — 검증기가 v5 로 안 옮겨졌습니다
+```
+ledger/config.py:406   if not str(source.get("occurred_at_column") …): raise
+                       -> «최상위» occurred_at_column 을 «무조건» 요구합니다
+v5 파일의 모양         read.occurred_at = {"column": …, "timezone": …}
+                       (제가 transfer_event 선언에서 직접 본 그 모양입니다)
+그리고                 validate() 는 setup_version 을 «한 번도 안 봅니다» (grep 0건)
+```
+**즉 파일은 v5 이고 검사기는 v3 을 요구합니다.** 고칠 자리는 소유자 파일이 아니라 «검증기»입니다.
+🔴 이건 제 소관입니다 — 선언 파일이 아니라 코드니까요. **다만 ①이 먼저 정해져야 합니다.**
+
+## 판정 부탁드립니다 — ①만 답해 주시면 ②는 제가 합니다
+```
+(ⓐ) config_path() 를 ontology 로 돌린다                    ← 제 추천
+     ✅ 사본이 «하나»가 됩니다. 이미 v5 이고, 소유자가 편집하는 파일이고,
+        걷기가 실제로 읽는 파일입니다
+     ✅ 그다음 subgraph:589 의 raw open 을 lc.load() 로 바꾸면 «읽는 곳도 하나»가 됩니다
+        (그건 ② 뒤에 합니다 — 지금 바꾸면 걷기가 예외로 죽습니다)
+     ⚠️ 다섯 호출자가 «갑자기 v5 파일»을 보게 됩니다. ② 없이는 다섯 다 예외입니다
+(ⓑ) 마이그레이션 결과를 server/config/ledger_config.json 으로 «세운다»
+     ❌ 사본이 «둘» 됩니다. 오늘 밤 고친 결함을 선언 층에 새로 만드는 것입니다
+(ⓒ) sample 만 마이그레이션한다
+     ❌ 폴백은 살지만 정본은 여전히 없습니다. 그리고 걷기는 계속 ontology 를 봅니다
+```
+
+## 순서 제안
+```
+1  ① 판정 (총괄)
+2  ② 검증기를 v5 로 — occurred_at 을 read 절에서도 읽게. setup_version 을 «보게» 합니다
+3  lc.load() 가 성공하고 sources 가 «3»으로 읽히는지 숫자로 보고
+4  그다음에야 새 소스(void_observation 등)를 «붙일 수 있습니다»
+```
+📎 그러니 제가 앞서 낸 「선언 조각」은 **지금 붙여도 안 읽힙니다.** 2번이 먼저입니다.
+
+---
+
 # 🔴 접힘 진단 — **둘 중 하나가 아니라 «셋째»입니다. 노드가 «만들어지지 않습니다»** (구현자)
 
 지시대로 고치기 «전에» 셉니다. 코드 무변경입니다.
