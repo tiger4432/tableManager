@@ -555,9 +555,10 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     # `collect` produces a ranking that the three tables do not carry, so the table route
     # does not accept an argument it would echo and never consume.
     assert "collect" not in params("/api/ledger/subgraph/table")
-    for frozen in ("/api/ledger/trace", "/api/ledger/explore",
-                   "/api/ledger/explore_entity"):
+    # `/api/ledger/explore_entity` was retired 2026-08-23; `/subgraph` answers it.
+    for frozen in ("/api/ledger/trace", "/api/ledger/explore"):
         assert not ({"positive", "negative", "collect"} & params(frozen))
+    assert "/api/ledger/explore_entity" not in routes
     # `id` alone must reach subgraph() as the very same argument it always was.
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     assert ledger_trace_router._signed_start(seed, None, None) == seed
@@ -590,6 +591,104 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
         assert node["id"] == ledger_explorer.entity_id("die", keys)
     finally:
         ledger_subgraph._entity_key_order = saved
+
+
+# The live ledger's own census, MEASURED 2026-08-23 against `ledger_events`.  Not a
+# fixture's invention - all three hold atoms and no declaration carries them:
+#     die       1,405 atoms   declared by v5, never by v1
+#     DTJob       792 atoms   declared by v5, never by v1
+#     WaferLeg     42 atoms   declared by NEITHER - v1 retired it, v5 never carried it
+# 🔴 `WaferLeg` is why "fill the entity table from the live declaration" could not have
+# been the fix: no edit to any declaration reaches a word both generations have dropped.
+# A production ledger keeps atoms written before a declaration changed, so reading across
+# a declaration edit is the ordinary case, not an exotic one.
+MIXED_GENERATION_SEEDS = {
+    "die": {"x": 1.0, "y": 8.0, "mat_id": "SYN-XFER-CORE-W04", "mat_type": "Wafer"},
+    "DTJob": {"dt_job": "DT-EQP-01_20260511T0000_T01"},
+    "WaferLeg": {"wafer": "SYN-CX-BW-001", "bonding_leg": "HBM-B_LOW-P"},
+}
+STILL_DECLARED_SEEDS = {"Wafer": {"wafer": "SYN-CX-BW-001"}, "Lot": {"lot": "SYN-CX-L1"}}
+
+
+def test_each_undeclared_subject_type_seeds_on_its_own():
+    """🔴 ASSERTED ONE AT A TIME ON PURPOSE.
+
+    A single set-shaped assertion lets one member's success carry the others, and this
+    repository has been bitten by exactly that.  Each of the three is named in its own
+    failure message so a red says WHICH generation stopped reading.
+    """
+    for subject_type, keys in sorted(MIXED_GENERATION_SEEDS.items()):
+        ref = ledger_subgraph.decode_node_id(
+            ledger_explorer.entity_id(subject_type, keys))
+        assert ref["kind"] == "entity", subject_type
+        assert ref["type"] == subject_type, subject_type
+        assert ref["keys"] == keys, subject_type
+
+
+def test_both_generations_seed_together_in_one_request():
+    """Mixed, resolved the way `subgraph()` itself resolves a seed set.
+
+    Separately is not the same test as together: a per-seed refusal would fail the whole
+    request, so the mixed set is what a screen actually sends when a user picks a die and
+    a wafer in one investigation.
+    """
+    ids = {subject_type: ledger_explorer.entity_id(subject_type, keys)
+           for subject_type, keys in
+           list(MIXED_GENERATION_SEEDS.items()) + list(STILL_DECLARED_SEEDS.items())}
+    collection = ledger_subgraph.finding_collection_node_id(
+        "Wafer", STILL_DECLARED_SEEDS["Wafer"], "void", "CD-SEM", None)
+    seed_signs = ledger_subgraph._signed_seeds(
+        {"positive": list(ids.values()) + [collection], "negative": []})
+    seed_refs = {item: ledger_subgraph.decode_node_id(item) for item in seed_signs}
+    assert len(seed_refs) == len(ids) + 1
+    for subject_type, node_id in ids.items():
+        assert seed_refs[node_id]["type"] == subject_type, subject_type
+    assert seed_refs[collection]["kind"] == "collection"
+
+
+def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
+    """🔴 THE MUTATION - without it the two tests above pass by not looking.
+
+    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ called
+    `vocabulary.check_subject_keys` - the same function the write gate runs - and refused
+    the id on any violation.  All three must go back to refusing, or the assertions above
+    are not measuring the removal of that call.
+    """
+    from ledger import vocabulary
+    original = ledger_explorer.decode_entity_id
+
+    def gate_guarded(value):
+        entity_type, keys = original(value)
+        violations = vocabulary.check_subject_keys(entity_type, keys)
+        if violations:
+            raise ValueError("; ".join(violations))
+        return entity_type, keys
+
+    ledger_explorer.decode_entity_id = gate_guarded
+    try:
+        for subject_type, keys in sorted(MIXED_GENERATION_SEEDS.items()):
+            try:
+                ledger_subgraph.decode_node_id(
+                    ledger_explorer.entity_id(subject_type, keys))
+            except ValueError as exc:
+                assert "is not a declared entity type" in str(exc), subject_type
+            else:
+                raise AssertionError(
+                    f"{subject_type} was accepted with the write gate restored - the "
+                    f"assertions above are not measuring the gate's removal")
+        # The mutation is SPECIFIC, not a blanket break: what v1 declares was never the
+        # part that stopped reading, so these two must survive it.
+        for subject_type, keys in STILL_DECLARED_SEEDS.items():
+            assert ledger_subgraph.decode_node_id(
+                ledger_explorer.entity_id(subject_type, keys))["type"] == subject_type
+    finally:
+        ledger_explorer.decode_entity_id = original
+
+    # 🔴 THE WRITE SIDE IS UNCHANGED, and this is where that is pinned.  The judgement
+    # still exists and still says no; only the READ stopped asking it.  If this ever goes
+    # empty, writing has been loosened and that is the wrong edit.
+    assert vocabulary.check_subject_keys("WaferLeg", {"wafer": "W", "bonding_leg": "L"})
+    assert vocabulary.check_subject_keys("die", MIXED_GENERATION_SEEDS["die"])
 
 
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():

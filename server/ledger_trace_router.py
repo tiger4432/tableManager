@@ -178,37 +178,11 @@ def registered_entity_catalog(
         raise
 
 
-@router.get("/explore_entity")
-def explore_registered_entity(
-    entity_id: str = Query(..., alias="id", description="/entities가 반환한 불투명 개체 id"),
-    hops: int = Query(20, ge=1, le=20, description="개체 참조 탐색 깊이"),
-    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
-    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
-    db: Session = Depends(get_db),
-):
-    """어떤 registered 개체든 그 개체의 주장과 전방 참조를 그래프로 답한다."""
-    try:
-        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
-            raise _relation_absent()
-        subject_type, keys = ledger_explorer.decode_entity_id(entity_id)
-        if subject_type == "Lot":
-            return ledger_explorer.explore(
-                keys["lot"], _lookup_for(db), hops=hops,
-                node_limit=node_limit, edge_limit=edge_limit)
-        return ledger_explorer.explore_entity(
-            subject_type, keys, db.connection(), hops=hops,
-            node_limit=node_limit, edge_limit=edge_limit,
-            relation=LEDGER_RELATION)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={
-            "reason": "entity_id_invalid", "message": str(exc)})
-    except ledger_trace.ResolverConfigError as exc:
-        raise HTTPException(status_code=503, detail={
-            "reason": "resolver_config_refused", "message": str(exc)})
-    except Exception as exc:                       # noqa: BLE001 - DDL-race backstop
-        if _is_undefined_table(exc):
-            raise _relation_absent()
-        raise
+# `GET /api/ledger/explore_entity` was retired 2026-08-23 (round 3, "v1 retirement").
+# `GET /api/ledger/subgraph` answers the same question and keeps competing claims visible
+# instead of letting a subgraph projection cover the facts. Measured before removal: zero
+# references anywhere in `client2/` - source or built bundles - which is why this one could
+# go alone while `trace`, `explore` and `structure` wait for a client round.
 
 
 def _subgraph_contract_state(connection):

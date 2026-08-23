@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime
 
@@ -20,8 +19,6 @@ import ledger_trace
 MAX_HOPS = ledger_trace.DEFAULT_MAX_DEPTH
 DEFAULT_NODE_LIMIT = 400
 DEFAULT_EDGE_LIMIT = 1200
-MAX_CLAIM_SCAN = 5000
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _canonical(value):
@@ -36,7 +33,41 @@ def entity_id(entity_type, keys):
 
 
 def decode_entity_id(value):
-    """Inverse of :func:`entity_id`, strict enough to reject forged URL state."""
+    """Inverse of :func:`entity_id`, strict enough to reject forged URL state.
+
+    🔴 A READ DOES NOT ASK THE WRITE GATE WHETHER A SUBJECT TYPE IS DECLARED
+    (ruling 2026-08-23, round 3 "v1 retirement").
+
+    This used to end by calling `vocabulary.check_subject_keys` - the same function
+    `ledger.gate` runs before an atom is WRITTEN - and refusing the id on any violation.
+    That made the closed vocabulary a condition of READING, and the two questions are not
+    the same one:
+
+        writing   "may this word be spoken?"      a declaration is the whole point
+        reading   "what was already said?"        the atoms exist either way
+
+    MEASURED 2026-08-23 on the live ledger, three subject types were refused as seeds
+    while holding atoms nobody disputes: `die` (1,405), `DTJob` (792) and `WaferLeg` (42,
+    over 12 subjects). `WaferLeg` is the sharp case - it is declared by NEITHER generation,
+    v1 having retired it and v5 never carrying it, so no edit to any declaration could have
+    reached it. A production ledger keeps atoms written before a declaration changed, so a
+    read that gates on the current declaration loses the past the first time someone edits
+    one, and reports that loss as `422` rather than as an empty result.
+
+    🔴 ABSENCE IS NOT A FAULT. An undeclared type ANSWERS; it simply answers without the
+    extras a declaration would have supplied (`_entity` falls back to insertion order for
+    key order, and to the raw type name for a label).
+
+    WHAT STILL REJECTS A FORGED ID, and why that was never the vocabulary's job: the
+    canonical-spelling check below re-encodes the decoded pair and compares it to the
+    text. An id that is not the exact output of :func:`entity_id` is refused there,
+    independently of which words happen to be declared today. Structure - a two-item
+    list, a string type, a non-empty mapping of keys - is checked here too. What is gone
+    is only the judgement about whether the WORD is in the book.
+
+    ⚠️ THE WRITE PATH IS UNTOUCHED. `ledger.gate` still calls `check_subject_keys` and
+    `check_signature` itself; this function was never on the way to a write.
+    """
     text = str(value or "").strip()
     prefix = "ledger-entity:v1:"
     if not text.startswith(prefix):
@@ -53,13 +84,6 @@ def decode_entity_id(value):
         raise ValueError("entity id must contain [type, structured keys]")
     if entity_id(decoded[0], decoded[1]) != text:
         raise ValueError("entity id is not in canonical spelling")
-    try:
-        from ledger import vocabulary
-        violations = vocabulary.check_subject_keys(decoded[0], decoded[1])
-    except Exception as exc:  # pragma: no cover - deployment failure, not user input
-        raise ValueError(f"entity vocabulary unavailable: {exc}") from exc
-    if violations:
-        raise ValueError("; ".join(violations))
     return decoded[0], decoded[1]
 
 
@@ -161,212 +185,6 @@ def _depths(seed_id, edges):
             depths[target] = depths[current] + 1
             queue.append(target)
     return depths
-
-
-def _claim_label(claim):
-    payload = claim.object_payload or {}
-    predicate = str(claim.predicate)
-    if claim.object_kind is None:
-        return "등록"
-    if predicate == "processed_with":
-        return " · ".join(str(v) for v in (payload.get("step"), payload.get("recipe"))
-                          if v not in (None, "")) or predicate
-    if predicate == "measured":
-        metric = payload.get("metric") or "계측"
-        value = payload.get("value", payload.get("state"))
-        unit = payload.get("unit") or ""
-        return f"{metric} = {value} {unit}".strip()
-    if predicate == "observed":
-        return " · ".join(str(v) for v in (payload.get("finding_kind"),
-                                             payload.get("method"))
-                          if v not in (None, "")) or predicate
-    if predicate == "has_param":
-        return f"{payload.get('param', '설정값')} = {payload.get('value', '—')} {payload.get('unit', '')}".strip()
-    if predicate == "transferred":
-        return f"{payload.get('from', '출발')} → {payload.get('to', '도착')}"
-    parts = []
-    for key, value in payload.items():
-        if isinstance(value, (str, int, float, bool)) and value not in (None, ""):
-            parts.append(f"{key}={value}")
-        if len(parts) == 2:
-            break
-    return " · ".join(parts) or predicate
-
-
-def _claims_for_entities(connection, entities, relation, limit):
-    if not entities or limit <= 0:
-        return [], False
-    if not _IDENTIFIER.match(relation or ""):
-        raise ValueError("relation must be a bare identifier")
-    frontier = [{"type": item[0], "keys": item[1]} for item in entities]
-    rows = ledger_trace._fetch(connection, f"""
-        WITH frontier AS (
-            SELECT type, keys
-            FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
-                 AS item(type text, keys jsonb)
-        )
-        SELECT e.id, e.subject_type, e.subject_keys, e.predicate, e.object_kind,
-               e.object_payload, e.occurred_at, e.source_who,
-               e.source_translator_ver, e.source_raw_ref, e.supersedes
-        FROM frontier f
-        JOIN {relation} e
-          ON e.subject_type = f.type AND e.subject_keys = f.keys
-        ORDER BY e.subject_type, e.subject_keys, e.predicate,
-                 e.occurred_at DESC, e.id DESC
-        LIMIT %(fetch)s
-    """, {"frontier": _canonical(frontier), "fetch": int(limit) + 1})
-    truncated = len(rows) > limit
-    return [ledger_trace._claim_from_row(row) for row in rows[:limit]], truncated
-
-
-def explore_entity(entity_type, keys, connection, hops=MAX_HOPS,
-                   node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
-                   relation="ledger_events", config=None):
-    """Project every claim reachable forward from any registered entity.
-
-    Entity references continue the breadth-first walk. Value/event/objectless claims
-    become inspectable claim nodes, so a Wafer or Recipe does not render as an
-    isolated dot merely because its ontology edges carry values instead of entity refs.
-    """
-    seed_id = entity_id(entity_type, keys)
-    # Reuse the vocabulary's exact structured-identity judgement.
-    decode_entity_id(seed_id)
-    hops = max(1, min(int(hops), MAX_HOPS))
-    node_limit = max(10, min(int(node_limit), 1000))
-    edge_limit = max(20, min(int(edge_limit), 3000))
-    cfg = config or ledger_trace.load_resolver_config()
-    zone = ledger_trace.resolve_display_zone(cfg)
-
-    nodes = {seed_id: _entity(entity_type, keys)}
-    depths = {seed_id: 0}
-    frontier = [(entity_type, dict(keys))]
-    all_claims = []
-    scanned = 0
-    claim_cap = min(MAX_CLAIM_SCAN, max(200, edge_limit * 4))
-    depth_truncated = False
-    claims_truncated = False
-
-    for depth in range(hops + 1):
-        remaining = claim_cap - scanned
-        if not frontier or remaining <= 0:
-            claims_truncated = claims_truncated or remaining <= 0
-            break
-        batch, cut = _claims_for_entities(connection, frontier, relation, remaining)
-        scanned += len(batch)
-        claims_truncated = claims_truncated or cut
-        live = ledger_trace.live_claims(batch)
-        all_claims.extend(live)
-        next_frontier = []
-        for claim in live:
-            target = _target_of(claim)
-            if target is None:
-                continue
-            target_node = _entity(target[0], target[1])
-            if target_node["id"] not in nodes:
-                if len(nodes) >= node_limit:
-                    claims_truncated = True
-                    continue
-                nodes[target_node["id"]] = target_node
-                depths[target_node["id"]] = depth + 1
-                if depth < hops:
-                    next_frontier.append((target[0], dict(target[1])))
-                else:
-                    depth_truncated = True
-        frontier = next_frontier
-        if cut:
-            break
-
-    predicate_counts = defaultdict(Counter)
-    for claim in all_claims:
-        source_id = entity_id(claim.subject_type, claim.subject_keys)
-        predicate_counts[source_id][str(claim.predicate)] += 1
-
-    edges = _edge_rows(all_claims, cfg, zone)
-    claim_groups = {}
-    for claim in all_claims:
-        if _target_of(claim) is not None:
-            continue
-        source_id = entity_id(claim.subject_type, claim.subject_keys)
-        token = (source_id, str(claim.predicate), str(claim.object_kind or "none"),
-                 _canonical(claim.object_payload or {}))
-        row = claim_groups.get(token)
-        instant = _instant(claim.occurred_at, zone)
-        if row is None:
-            encoded = base64.urlsafe_b64encode(_canonical(token).encode("utf-8")).decode("ascii").rstrip("=")
-            node_id = f"ledger-claim:v1:{encoded}"
-            node_type = ("Value" if claim.object_kind == "value" else
-                         "Event" if claim.object_kind == "event_ref" else "Empty")
-            nodes[node_id] = {
-                "id": node_id, "type": node_type, "keys": dict(claim.object_payload or {}),
-                "label": _claim_label(claim), "depth": depths.get(source_id, 0) + 1,
-                "claim_count": 0, "predicates": [], "schema_kind": "claim_instance",
-            }
-            row = {
-                "id": "ledger-edge:v1:" + encoded,
-                "source": source_id, "target": node_id,
-                "predicate": str(claim.predicate), "witnesses": 0,
-                "rank": ledger_trace.claim_class(claim, cfg),
-                "basis": ledger_trace.hop_basis(claim, cfg),
-                "first_at": instant, "last_at": instant,
-                "sources": [], "event_ids": [], "qualifiers": {},
-            }
-            claim_groups[token] = row
-        row["witnesses"] += 1
-        nodes[row["target"]]["claim_count"] += 1
-        if instant is not None:
-            row["first_at"] = min(row["first_at"], instant) if row["first_at"] else instant
-            row["last_at"] = max(row["last_at"], instant) if row["last_at"] else instant
-        source = str(claim.source_who or "")
-        if source and source not in row["sources"]:
-            row["sources"].append(source)
-        if len(row["event_ids"]) < 20:
-            row["event_ids"].append(str(claim.id))
-    edges.extend(claim_groups.values())
-
-    for node in nodes.values():
-        if node.get("schema_kind") == "claim_instance":
-            continue
-        node["depth"] = depths.get(node["id"])
-        counts = predicate_counts.get(node["id"], {})
-        node["claim_count"] = sum(counts.values())
-        node["predicates"] = [{"predicate": name, "count": count}
-                              for name, count in sorted(counts.items())]
-
-    ordered_nodes = sorted(nodes.values(), key=lambda n: (
-        n.get("depth") is None, n.get("depth") if n.get("depth") is not None else 10 ** 9,
-        n["type"], n["label"], n["id"]))
-    node_cut = len(ordered_nodes) > node_limit
-    ordered_nodes = ordered_nodes[:node_limit]
-    kept = {node["id"] for node in ordered_nodes}
-    graph_edges = [edge for edge in edges
-                   if edge["source"] in kept and edge["target"] in kept]
-    graph_edges.sort(key=lambda edge: (
-        depths.get(edge["source"], 10 ** 9), edge["predicate"], edge["target"], edge["id"]))
-    edge_cut = len(graph_edges) > edge_limit
-    graph_edges = graph_edges[:edge_limit]
-    return {
-        "state": "ready" if all_claims else "empty",
-        "generated_at": datetime.now(zone).isoformat(),
-        "seed": nodes[seed_id],
-        "nodes": ordered_nodes,
-        "edges": graph_edges,
-        "walk": {
-            "hops_requested": hops,
-            "hops_reached": max((node.get("depth") or 0 for node in ordered_nodes), default=0),
-            "direction": "subject_to_object",
-            "mode": "entity_claims",
-            "claims_scanned": scanned,
-        },
-        "limits": {"nodes": node_limit, "edges": edge_limit, "claims": claim_cap},
-        "truncated": {
-            "depth": depth_truncated,
-            "nodes": node_cut,
-            "edges": edge_cut,
-            "claims": claims_truncated,
-            "reason": "bounded entity claim projection" if any((depth_truncated, node_cut, edge_cut, claims_truncated)) else None,
-        },
-        "message": None if all_claims else "선택한 개체에 원장 주장이 없습니다",
-    }
 
 
 def explore(lot, lookup, hops=MAX_HOPS, node_limit=DEFAULT_NODE_LIMIT,
