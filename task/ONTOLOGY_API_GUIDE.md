@@ -186,8 +186,9 @@ structure  🔴 안 돕니다.  같은 이유 (옛 해결기를 읽습니다)
 **기준: 다른 스키마의 팹에 가져갔을 때, 코드 0줄 고치고 선언만 바꿔서 도는가.**
 
 ```
-🟢 그렇다        trends · composition · kinds            (3)
-🟡 반쪽          subgraph 둘 · siblings · entities · lots 둘  (6)
+🟢 그렇다        kinds                                   (1)   <- 정정: 셋에서 하나로
+🟡 반쪽          trends · composition                    (+2)  <- §8-ter 참조
+                 subgraph 둘 · siblings · entities · lots 둘  (6)
 🔴 아니다        trace · explore · explore_entity
                  coverage · structure · journey          (6)
    (selection/resolve 는 «안 쟀습니다» — 입력 형식을 제가 못 만들었습니다)
@@ -275,11 +276,37 @@ v5 에 «작게» 다시  coverage                            커서·소스 현
 
 ---
 
-## 🟢 셋이 왜 좋은지도 한 줄로
+# 8-ter. 🔴 제 등급이 틀렸습니다 — 잣대가 «한 종류»만 쟀습니다 (2026-08-23 22:0x 정정)
 
-`trends` · `composition` · `kinds` 는 **옛 어휘 목록을 아예 안 읽습니다.**
-필요한 것을 «선언 파일»에서 읽고, 없으면 «없다»고 답합니다.
-**새 API 를 만들 때 이 셋의 모양을 따르면 됩니다.**
+총괄이 「또래 축이 SQL 에 박혀 있다」를 찾았고, 그게 제 🟢 를 무너뜨렸습니다.
+**하드코딩에 두 종류가 있는데 저는 ①만 쟀습니다:**
+
+```
+①  옛 «목록»을 읽는다          v1 ENTITY_TYPES · traversable · packs …   <- 제가 잰 것
+②  도메인 «낱말»이 코드에 박힘   bonding_leg · final_chip_id · core_wafer  <- «안 쟀음»
+```
+
+실행되는 자리로 확인했습니다:
+
+```
+trends       :58  mark_key(wafer, bonding_leg)        «마킹 키 자체»가 두 축 고정
+             :157 b.leg::text AS bonding_leg          SQL
+composition  :51  object_payload->'component'->>'final_chip_id' = %(…)s   SQL
+             그 밖 core_wafer
+kinds        도메인 문자열 «0».  진짜 깨끗합니다
+```
+
+```
+정정   🟢 셋  ->  🟢 «하나»(kinds).  trends · composition 은 🟡 입니다
+```
+
+⚠️ **이미 🟡 인 여섯은 다시 안 쟀습니다** — 등급은 안 바뀌지만 «사유»가 불완전할 수 있습니다.
+
+## 🟢 하나가 왜 좋은지 한 줄로
+
+`kinds` 는 옛 목록도 «안 읽고» 도메인 낱말도 «안 박혀» 있습니다.
+필요한 것을 선언에서 읽고, 없으면 「없다」고 답합니다.
+**새 API 를 만들 때 이 모양을 따르면 됩니다.**
 
 ---
 
