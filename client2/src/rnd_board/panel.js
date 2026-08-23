@@ -26,6 +26,22 @@
 
 import { SIGN } from './marking_store.js';
 
+/**
+ * The modifier keys, read ONCE, in the vocabulary the store speaks. Four parts read the same
+ * three keys, and a screen where ctrl means 「더하기」 in one panel and something else in the
+ * next is not one screen.
+ *
+ * Ctrl (or Cmd) ADDS; Shift picks the SIGN and COMPOSES with it, so ctrl+shift+click adds a
+ * control. Nothing here decides what is marked -- only how.
+ */
+export function markingIntent(event) {
+  const e = event || {};
+  return {
+    mode: (e.ctrlKey || e.metaKey) ? 'add' : 'replace',
+    sign: e.shiftKey ? SIGN.CONTROL : SIGN.CASE,
+  };
+}
+
 export class Panel {
   /**
    * @param {object} host  the element THIS panel owns. Made by the shell, never by the part.
@@ -80,10 +96,23 @@ export class Panel {
     return this.markings.signOf(this.reads, nodeId);
   }
 
-  /** Write under the name THIS part declared it writes. A part with no write name is inert. */
-  mark(nodeId, sign) {
+  /**
+   * Write under the name THIS part declared it writes. A part with no write name is inert.
+   *
+   * 🔴 A PLAIN CLICK REPLACES, AND THAT IS THE DEFAULT. The owner named the defect: 「클릭하면
+   *    «초기화되고 새로» 되어야하는데 ctrl+클릭이 마킹 «누적»」. Accumulating on every click
+   *    makes 「이것만 다시 보고 싶다」 impossible -- you have to undo the last N clicks first --
+   *    and that is what read as unnatural. `'add'` (ctrl/cmd) accumulates, and re-adding the
+   *    same node with the same sign clears it: toggling belongs THERE and nowhere else.
+   *
+   *    The default is `replace` on purpose. A part that forgets to pass a mode then behaves
+   *    like every other part instead of quietly reintroducing the defect.
+   */
+  mark(nodeId, sign, mode = 'replace') {
     if (!this.writes || !this.markings) return SIGN.ABSENT;
-    return this.markings.toggle(this.writes, nodeId, sign);
+    if (mode === 'add') return this.markings.toggle(this.writes, nodeId, sign);
+    this.markings.clear(this.writes);
+    return this.markings.set(this.writes, nodeId, sign);
   }
 
   // ── hooks a part overrides ────────────────────────────────────────────────────
