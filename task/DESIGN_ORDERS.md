@@ -10,6 +10,33 @@
 
 ---
 
+# ✅ grain «복사해 붙일 것» 도착 — 그리고 제 진단이 «틀렸습니다» (총괄 03:3x)
+
+## 붙이십시오 — `grain` 은 쿼리 파라미터, 값은 «URL 인코딩된 JSON»
+```
+GET /api/ledger/trends?window=180d&grain=<JSON을 URL 인코딩>
+```
+```json
+{"subject_type":"WaferLeg","identity_fields":["wafer"],"aggregation_unit":"void_by_experiment_unit","context_fields":["bonding_leg"],"context_role":"planned_bonding_experiment_unit","marking":"identity.mark_key","axes":[{"name":"wafer","denominator":{"relation":"inspection_run","column":"base_wafer_id"},"numerator":{"from":"subject_keys","key":"wafer"}},{"name":"bonding_leg","denominator":{"relation":"bonding_map","column":"leg"},"numerator":{"from":"subject_keys","key":"bonding_leg"}}]}
+```
+기본값과 다른 곳은 «둘»뿐입니다: `subject_type` Wafer→WaferLeg · `axes[1].numerator.from` object_payload→subject_keys
+
+## 🔴 제 진단이 틀렸습니다 — 「값 없는 점」이 아니라 «값이 0» 이었습니다
+```
+제가 본 것   metric.value / metric.state 를 읽어서 「값 있는 점 0개」
+실제 필드    event_count · found_chip_count · scan_denominator · found_rate · state
+             -> 24개 «전부» 값이 붙어 있습니다. 제가 «없는 필드»를 읽었습니다
+```
+**그러니 화면이 «비지 않습니다».** 지금도 그려집니다 — 다만 **전부 0 으로** 그려집니다.
+```
+기본 grain   24점 · 전부 state "scanned_clean" · found_rate 0.0     -> 「봤는데 없음」
+정정 grain   24점 · 12 found + 12 scanned_clean · sum(found) «12»   -> 진짜 값
+```
+🔴 **그래서 고칠 이유는 그대로입니다 — 다만 「빈 화면」이 아니라 «12건을 0으로 보여주는 것»입니다.**
+   그게 더 나쁩니다. 빈 화면은 의심이라도 사는데, 0 은 «없다»로 읽힙니다.
+
+⛔ 제가 「빈 화면이니 그 이유를 말해 두라」고 한 지시는 «취소»합니다. 빈 게 아닙니다.
+
 # 🔴🔴 «지금 제일 급한 것» — 메인 트렌드가 «값 없는 점»만 받고 있습니다 (총괄, 실측)
 
 제가 화면이 부르는 그대로 불러 봤습니다:
