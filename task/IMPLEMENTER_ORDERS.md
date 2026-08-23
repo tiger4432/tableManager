@@ -21,6 +21,79 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# 🔴🔴🔴 소유자 판정 — 「**레거시 다 버려**」 (2026-08-24). 세어서 목록을 냅니다
+
+앞의 「lot map 버려」에 이어집니다. **화면의 데이터는 walk 하나** — 그러면 그 앞의 시도들이 전부 레거시입니다.
+🔴 **추측으로 지우지 않습니다.** 아래는 «호출자를 센» 목록입니다.
+
+## 실측 — 클라 파일별 원장 라우트 호출 (2026-08-24)
+```
+■ A. 이 화면의 «이전 시도» — 버릴 것
+  surprise_map_core.js          lot_map
+  surprise_axis.js              lot_map · lot_axis_map
+  surprise_core.js              lots
+  ledger_trace.js               trace · coverage · journey · lot · lots · siblings · structure · lot_map
+  ledger_trace_core.js          trace · coverage
+  case_control_core.js          coverage
+  contrast_core.js              siblings
+  journey_core.js · journey_view.js   journey
+  lot_reference_core.js         lot
+
+■ B. 지금 화면 — walk 으로 «갈아타는» 중
+  rnd_board/api.js              composition · lot_map · siblings · subgraph · trends
+  rnd_board/composition_panel.js  composition
+  rnd_board/main.js             lot_map
+  -> 목표: subgraph «하나». 나머지 넷은 소유자 도식에 «없습니다»
+
+■ C. 🔴 «다른 제품 표면» — 이번 판정에서 «제외»합니다
+  ledger_graph/*                explore · structure · subgraph      (그래프 뷰어)
+  ledger_map_panel.js           kinds · structure                   (원장 맵 패널)
+  ontology_structure_core.js    kinds · structure                   (구조 뷰)
+  entity_catalog.js             entities
+```
+🔴 **C 를 뺀 이유:** 이건 「이 화면의 이전 시도」가 아니라 «다른 기능»입니다.
+「레거시」로 묶어 지우면 도는 제품을 끄는 것입니다.
+**C 도 버리라시면 한 마디만 주십시오 — 그러면 같이 넣습니다.** 그전까지는 안 건드립니다.
+
+## 순서 — 🔴 lot_map 때와 같습니다. 「무엇이 같이 사라지나」를 먼저 셉니다
+```
+1  A 의 화면들이 «지금 사용자에게 보이는지» 세십시오
+   -> `client2/*.html` 의 script[src] 와 라우팅. 「소스에 있다」와 「화면에 있다」는 다릅니다
+2  A 를 지우면 «호출자 0» 이 되는 라우트를 «세십시오»
+   후보: lot_axis_map · lot · lots · trace · coverage · journey · siblings · composition · trends
+   🔴 C 가 쓰는 것(structure · kinds · explore · entities · subgraph)은 «0 이 안 됩니다»
+3  B 가 walk 으로 갈아탄다  (앞선 지시)
+4  «0 이 된» 라우트와 그 서버 코드를 지운다
+5  그 라우트만 재던 테스트도 «같은 커밋»에서 지운다
+   🔴 먼저 지우면 무방비, 늦으면 수집이 막힙니다. 파일명이 아니라 «테스트 단위»로 가르십시오
+```
+⚠️ **2 를 건너뛰고 4 를 하지 마십시오.** 「이 화면이 안 쓰니 라우트도 안 쓴다」가
+C 때문에 «거짓»일 수 있습니다.
+
+## 레인
+```
+응용     1·2 를 세십시오 (양쪽을 아는 레인). 결과를 «표»로. 판정은 총괄이 합니다
+클라     A 화면 제거는 «2 가 끝난 뒤». 지금은 B 갈아타기에 집중하십시오
+구현자   4·5 는 «2·3 이 끝난 뒤». 지금은 선언 로드 살리기가 «먼저»입니다
+```
+
+---
+
+# ⚖️ 정정 — 빨간 하니스에 대한 제 판정이 «틀렸습니다»
+
+응용 보고 `b6688f73`: 「빨간 하니스는 «제 깨진 작업 트리» 때문이지 계약 변경이 아니었습니다」.
+
+**그쪽이 맞습니다.** 제가 「계약이 바뀐 것이 맞으니 새 계약으로 다시 쓰라」고 판정했는데,
+원인은 커밋 안 된 작업 트리였습니다. 저는 **빌드 출력만 보고 원인을 «추정»했습니다** —
+그 시각 `api.js` 에 미커밋 36줄이 있다는 것을 «제가 같은 화면에서 보고도» 연결하지 않았습니다.
+```
+취소   「rnd_board_composition_harness.mjs 를 새 계약으로 다시 쓸 것」
+사실   작업 트리가 정리되자 빌드가 «초록»입니다 (✓ built in 829ms, dist 착지·푸시 완료)
+```
+📎 KNOWN_RED 금지는 «그대로 유효»합니다 — 그건 원인과 무관한 규칙입니다.
+
+---
+
 # 🔴🔴🔴 소유자 판정 — 「**lot map 버려**」 (2026-08-24)
 
 **확정입니다. 제가 앞서 「walk 이 그림을 낼 때까지 lot_map 을 살려 둔다」고 한 판정을 «취소»합니다.**
