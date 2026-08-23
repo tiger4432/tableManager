@@ -73,9 +73,27 @@ axis: { name: "bonding_leg",
         numerator:   { from: "subject_keys" | "object_payload", key: "bonding_leg" } }  원자 쪽
 ```
 
-📎 **이 모양은 이미 있습니다** — `config/siblings_axes.json` 의 `attribution`
-(relation · join · axes[{name,label,column}]). **두 번째 선언 표면을 만들지 마십시오.**
-grain 선언은 그 파일의 형제이거나 그것을 «가리켜야» 합니다.
+🔴 **정정 (총괄이 잡음, 20:2x) — 「어느 파일에 두나」는 이 라운드에서 «떼어냅니다».**
+
+제가 처음에 「`config/siblings_axes.json` 의 형제로 두라」고 적었는데 **그 파일은
+이 박스에 «없습니다».** 로더가 샘플로 폴백하고 있고, 그 샘플은 **git 에 추적됩니다**:
+
+```
+server/config/siblings_axes.json            «없음»
+실제로 읽히는 것                             server/config/sample/siblings_axes.json.sample  (추적됨)
+```
+
+그대로 시키면 구현자가 **샘플에 선언을 씁니다** — 여기선 돌고, 운영에 라이브 파일이
+생기는 날 «조용히» 사라집니다.
+
+⚠️ **저는 그 경로를 «출력에서 보고도»** 문장은 라이브 이름으로 썼습니다
+(`load_axes_config()` 가 `path: …/sample/…sample` 을 찍어 줬습니다).
+제 메모리에 있는 부류인데(「grep 은 실제로 도는 config 를 건너뛴다」) **증거를 손에 쥐고 틀렸습니다.**
+
+```
+이 라운드에서 정할 것    grain 을 «입력으로 받는다» + 축마다 두 표현        (§3 · §5 의 2·3)
+이 라운드에서 «안» 정할 것  그 선언을 «어느 파일»에 두나 — 별건입니다
+여전히 유효한 것        「두 번째 «선언 표면»을 만들지 말 것」 — 모양은 attribution 과 같습니다
 
 ---
 
