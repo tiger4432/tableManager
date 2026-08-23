@@ -36,11 +36,14 @@ import { HeadSummaryPanel } from './head_summary_panel.js';
 import { CompositionPanel } from './composition_panel.js';
 import { CandidateListPanel } from './candidate_list_panel.js';
 import { RankListPanel } from './rank_list_panel.js';
+import { ControlBarPanel } from './control_bar_panel.js';
+import { MainTrendPanel } from './main_trend_panel.js';
 import { fetchLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
-  candidateList: CandidateListPanel, rankList: RankListPanel };
+  candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
+  mainTrend: MainTrendPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -61,7 +64,14 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
 export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
   columns: 'minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr)',
-  rows: 'auto minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1fr)',
+  // 목업 2a 의 세로 차례: 신원 · 제어 · 메인 트렌드 · 구성 · (맵 / 후보 / 순위).
+  // 🔴 THE HEIGHTS ARE THE SCREEN'S, NOT A PART'S. The mockup is a page that SCROLLS -- fitting
+  //    six bands into one viewport is what made every panel too short to read.
+  // 🔴 `auto` COLLAPSED TO 2px HERE, MEASURED. Every panel carries `min-height: 0` (it must, or
+  //    a part could push the grid open), so an auto row's minimum is ZERO -- and once the fixed
+  //    rows below overflowed the viewport the identity band was squeezed to its borders while
+  //    its content sat inside, invisible. A floor is what makes it survive the overflow.
+  rows: 'minmax(92px, auto) minmax(44px, auto) 280px 220px 320px 320px',
   gap: '10px',
   // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
   //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
@@ -83,10 +93,38 @@ export const BOARD = Object.freeze({
       options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
+      // 🔴 THE SCREEN'S GRAMMAR LIVES HERE (목업 ③). It writes the chosen axis into `axis:y`,
+      //    which is a marking like any other -- see the part's header for why, and for what the
+      //    Lead PM still has to rule on.
+      id: 'control-bar',
+      part: 'controlBar',
+      title: '제어 · 축 선택',
+      at: { column: 1, row: 2, columnSpan: 3 },
+      reads: 'axis:y',
+      writes: 'axis:y',
+      options: {
+        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
+        collect: 'quantity',
+        window: '180d',
+      },
+    },
+    {
+      // 「점을 찍으면 그것이 씨앗이다」. The seed gets its OWN marking name -- the mockup calls it
+      // 마킹 0 -- because a wafer picked in a trend and a die clicked on a map are different
+      // kinds of thing and folding them into one name makes each panel's count a riddle.
+      id: 'main-trend',
+      part: 'mainTrend',
+      title: '메인 트렌드',
+      at: { column: 1, row: 3, columnSpan: 3 },
+      reads: 'marking:0',
+      writes: 'marking:0',
+      options: { kinds: 'void', window: '180d' },
+    },
+    {
       id: 'composition',
       part: 'composition',
       title: '구성 · SYN-CX-CHIP-001',
-      at: { column: 1, row: 2, columnSpan: 3 },
+      at: { column: 1, row: 4, columnSpan: 3 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: { finalChipId: 'SYN-CX-CHIP-001' },
@@ -95,7 +133,7 @@ export const BOARD = Object.freeze({
       id: 'map-bond-a',
       part: 'map',
       title: '본딩 맵 · 슬롯 07',
-      at: { column: 1, row: 3 },
+      at: { column: 1, row: 5 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: {
@@ -107,7 +145,7 @@ export const BOARD = Object.freeze({
       id: 'map-bond-b',
       part: 'map',
       title: '본딩 맵 · 슬롯 03',
-      at: { column: 1, row: 4 },
+      at: { column: 1, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
@@ -121,7 +159,7 @@ export const BOARD = Object.freeze({
       id: 'candidate-list',
       part: 'candidateList',
       title: '원인 후보 · SYN-BW-001-07',
-      at: { column: 2, row: 3, rowSpan: 2 },
+      at: { column: 2, row: 5, rowSpan: 2 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
@@ -133,7 +171,7 @@ export const BOARD = Object.freeze({
       id: 'rank-list',
       part: 'rankList',
       title: '순위 · SYN-BW-001-07',
-      at: { column: 3, row: 3, rowSpan: 2 },
+      at: { column: 3, row: 5, rowSpan: 2 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {

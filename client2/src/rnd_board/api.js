@@ -44,6 +44,7 @@ export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
   composition: '/api/ledger/composition',
   subgraph: '/api/ledger/subgraph',
+  trends: '/api/ledger/trends',
 });
 
 /**
@@ -312,7 +313,8 @@ export async function fetchSubgraph(params) {
 //    different question. `post_bond_queue_h · void_observation_bias` is the extra: it reaches
 //    a claim atom (`mes_queue:SYN-BW-103-11`) and a value hop.
 // ═══════════════════════════════════════════════════════════════════════════════
-export function measuredFromHops__untilServerServesIt(row) {
+export function measuredFromHops__untilServerServesIt(row) {
+
 
   for (const ev of row.evidence || []) {
     for (const hop of ev.hops || []) {
@@ -404,5 +406,92 @@ export function subgraphModel(result) {
       tied: candidates.filter((c) => c.tied).length,
       incomparable: candidates.filter((c) => c.incomparable).length,
     },
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRENDS -- 「이 불량이 어떻게 움직였나」, and the route that makes 「점을 찍으면 그것이 씨앗」
+// possible at all.
+//
+// 🔴 MEASURED 2026-08-23, `?kinds=void&window=180d`:
+//    1. `grain` IS OPTIONAL AND THE SERVER DEFAULTS IT. Passing `grain=wafer` is a REFUSAL --
+//       `bad_trend_grain`, 「grain을 JSON으로 해석할 수 없다」 -- because the parameter is a JSON
+//       object, not a name. Omitted, the answer carries the grain it chose, which is what this
+//       screen shows rather than a word this client made up.
+//    2. EVERY POINT CARRIES `identity.mark_key`. That is the id a click marks: the trend does
+//       not invent a subject, it hands over the one the ledger already named.
+//    3. `value.found_rate` has its numerator and denominator DECLARED in `provenance`
+//       (observed / inspection_run, `absence_is_zero: false`). The legend prints that, because
+//       a rate whose denominator is unstated is a number nobody can check.
+//    4. `selectable_finding_kinds` is the list of ratio axes -- 2 today (void, delam). The
+//       control bar's pills are that list, not a list this client keeps.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `GET /api/ledger/trends`. `grain` is deliberately NOT sent -- see the header. */
+export async function fetchTrends(params) {
+  const { apiBase, kinds, window: win, fetchImpl } = params || {};
+  const query = new URLSearchParams();
+  if (kinds) query.set('kinds', kinds);
+  query.set('window', win || '180d');
+  const url = `${apiBase}${ROUTES.trends}?${query.toString()}`;
+  const res = await (fetchImpl || fetch)(url);
+  if (!res.ok) {
+    let detail = null;
+    try { detail = await res.json(); } catch (e) { detail = null; }
+    return { ok: false, status: res.status, detail, body: null };
+  }
+  return { ok: true, status: res.status, detail: null, body: await res.json() };
+}
+
+/**
+ * @returns {{ok, state, points: Array, kinds: Array, provenance, message}}
+ *          A point is `{wafer, leg, at, rate, state, markKey, denominator}`. Nothing is
+ *          defaulted: a point whose `found_rate` is missing keeps `rate: null` and the view
+ *          draws it as unmeasured rather than as zero -- `absence_is_zero` is FALSE here and
+ *          this is the one place that could quietly make it true.
+ */
+export function trendsModel(result) {
+  if (!result || !result.ok) {
+    const detail = (result && result.detail) || {};
+    const inner = detail.detail || detail;
+    return {
+      ok: false, state: 'refused', points: [], kinds: [], provenance: null,
+      message: inner.message || inner.reason || `HTTP ${(result && result.status) || '?'}`,
+    };
+  }
+  const body = result.body || {};
+  const series = body.series || [];
+  const points = [];
+  for (const s of series) {
+    for (const p of s.points || []) {
+      const identity = p.identity || {};
+      const value = p.value || {};
+      points.push({
+        seriesId: s.id || null,
+        wafer: (identity.keys || {}).wafer || null,
+        leg: (identity.context || {}).bonding_leg || null,
+        at: p.occurred_at || null,
+        rate: typeof value.found_rate === 'number' ? value.found_rate : null,
+        denominator: typeof value.scan_denominator === 'number' ? value.scan_denominator : null,
+        state: value.state || null,
+        markKey: identity.mark_key || null,
+      });
+    }
+  }
+  const prov = body.provenance || {};
+  return {
+    ok: true,
+    state: body.state || null,
+    points,
+    kinds: (body.selectable_finding_kinds || []).map((k) => ({
+      id: k.id, label: k.label || k.id, active: Boolean(k.active),
+    })),
+    provenance: {
+      numerator: (prov.numerator || {}).predicate || null,
+      denominator: (prov.denominator || {}).source || null,
+      absenceIsZero: Boolean((prov.denominator || {}).absence_is_zero),
+    },
+    message: null,
   };
 }

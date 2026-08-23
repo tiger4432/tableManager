@@ -87,6 +87,8 @@ async function loadModules(mutate = {}) {
   const compUrl = partUrl('composition_panel.js');
   const candUrl = partUrl('candidate_list_panel.js');
   const rankUrl = partUrl('rank_list_panel.js');
+  const ctlUrl = partUrl('control_bar_panel.js');
+  const trendUrl = partUrl('main_trend_panel.js');
   const mainUrl = dataUrl(read('main.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
@@ -96,6 +98,8 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./composition_panel.js'", `'${compUrl}'`)
     .replaceAll("'./candidate_list_panel.js'", `'${candUrl}'`)
     .replaceAll("'./rank_list_panel.js'", `'${rankUrl}'`)
+    .replaceAll("'./control_bar_panel.js'", `'${ctlUrl}'`)
+    .replaceAll("'./main_trend_panel.js'", `'${trendUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const [store, api, panel, map, shell, main] = await Promise.all([
     import(storeUrl), import(apiUrl), import(panelUrl),
