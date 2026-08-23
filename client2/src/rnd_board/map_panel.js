@@ -226,6 +226,8 @@ export class MapPanel extends Panel {
     //    ids -- not a screen state (the harness scores that).
     this.slot = (options.question && options.question.slot) || null;
     this.pages = [];
+    // 마킹이 거절된 자리의 «문장». null 이면 거절이 없었다는 뜻입니다.
+    this.unmarkable = null;
     this.loadPages = options.loadPages || null;
     // 🔴 「점을 찍으면 그것이 씨앗」 REACHES THE MAP. The trend names the wafer it picked; a map
     //    that declares it follows that name re-targets onto it. Paging never clears a marking.
@@ -461,8 +463,12 @@ export class MapPanel extends Panel {
     // picture appears, and the reader is told which one they are looking at.
     const refused = this.status === 'ready' && m && !m.drawable;
     const canDraw = Boolean(m && m.cells && m.cells.length && declaredBounds(m.frame));
-    n.note.textContent = refused ? (m.message || m.reason || m.state || '') : '';
-    n.note.className = refused && canDraw ? 'rb-map__note is-caveat' : 'rb-map__note';
+    // 🔴 A REFUSED MARK IS SAID OUT LOUD. Swallowing it would look exactly like a click that
+    //    missed, and the reader would try again on a seat that can never take a mark.
+    n.note.textContent = refused ? (m.message || m.reason || m.state || '')
+      : (this.unmarkable || '');
+    n.note.className = refused && canDraw ? 'rb-map__note is-caveat'
+      : (this.unmarkable ? 'rb-map__note is-caveat' : 'rb-map__note');
     n.root.setAttribute('data-map-state',
       this.status === 'ready' ? (m && m.drawable ? 'ready' : 'refused') : this.status);
   }
@@ -719,7 +725,21 @@ export class MapPanel extends Panel {
   clickAt(cssX, cssY, control, mode) {
     const cell = this.hitCell(cssX, cssY);
     if (!cell) return null;
+    // 🔴 ONLY A NODE ID THE SERVER GAVE MAY BE MARKED (Lead PM ruling, 2026-08-24).
+    //    `stampedNodeId` invents one so the picture can be drawn and two panels can agree on
+    //    a die -- but a marking is the SUBJECT OF THE NEXT WALK, and an invented subject sends
+    //    that walk to a node which does not exist. It would answer 「없음」 for a die that is
+    //    right there on screen, and nothing would say why. `nodeIdResolved` already tells the
+    //    two apart, so it is the gate. The day the route ships the id, this opens by itself
+    //    and no line here changes.
+    if (cell.nodeIdResolved !== true) {
+      this.unmarkable = '이 자리는 아직 노드가 없습니다 — 서버가 id 를 실으면 마킹됩니다';
+      this._writeHead();
+      return null;
+    }
+    this.unmarkable = null;
     this.mark(cell.nodeId, control ? SIGN.CONTROL : SIGN.CASE, mode);
+    this._writeHead();
     return cell.nodeId;
   }
 

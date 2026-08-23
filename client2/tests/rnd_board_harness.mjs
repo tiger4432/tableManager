@@ -552,11 +552,36 @@ async function suite(mods) {
     const layoutOf = A._layout;
     const px = (layoutOf.originX + (cell.x - layoutOf.minX + 0.5) * layoutOf.cell) / A.dpr;
     const py = (layoutOf.originY + (cell.y - layoutOf.minY + 0.5) * layoutOf.cell) / A.dpr;
-    eq('C16 a click resolves to the cell under it', A.clickAt(px, py, false), cell.nodeId);
-    eq('C17 that click marked it', markings.signOf('marking:1', cell.nodeId), SIGN.CASE);
-    eq('C18 a shift-click writes the control sign',
-      A.clickAt(px, py, true) && markings.signOf('marking:1', cell.nodeId), SIGN.CONTROL);
-    ok('C19 a click outside every cell marks nothing', A.clickAt(-50, -50, false) === null);
+    // 🔴 THE MARKING GATE (Lead PM ruling, 2026-08-24). `lot_map` cells carry no node id, so
+    //    the boundary STAMPS one to draw with -- and a stamped id is not a node. A marking is
+    //    the subject of the next walk, so marking a stamped id would send that walk to a node
+    //    that does not exist and it would answer 「없음」 for a die that is on screen. The gate
+    //    is the flag the boundary already sets, and the refusal is SAID, not swallowed.
+    ok('C16 a seat the server never named cannot be marked',
+      cell.nodeIdResolved !== true && A.clickAt(px, py, false) === null,
+      `resolved=${cell.nodeIdResolved}`);
+    eq('C17 ... and nothing was written under that id',
+      markings.signOf('marking:1', cell.nodeId), SIGN.ABSENT);
+    ok('C18 ... and the panel says why',
+      /노드가 없습니다/.test(String(byClass(elOf('a'), 'rb-map__note')[0]
+        && byClass(elOf('a'), 'rb-map__note')[0].textContent)),
+      String(byClass(elOf('a'), 'rb-map__note')[0]
+        && byClass(elOf('a'), 'rb-map__note')[0].textContent));
+    // 🔴 AND IT OPENS BY ITSELF. Nothing here changes the code path -- only the flag the route
+    //    will set the day it ships an id. This is the assertion that keeps the gate from
+    //    becoming a wall nobody notices.
+    const named = A.model.cells[6];
+    named.nodeId = 'ledger-entity:v1:a-real-node-the-server-named';
+    named.nodeIdResolved = true;
+    A.render();
+    const seatedNamed = [...A._byXY.values()].find((c) => c.nodeId === named.nodeId);
+    const nx = (A._layout.originX + (seatedNamed.x - A._layout.minX + 0.5) * A._layout.cell) / A.dpr;
+    const ny = (A._layout.originY + (seatedNamed.y - A._layout.minY + 0.5) * A._layout.cell) / A.dpr;
+    eq('C19 a seat the server DID name marks normally', A.clickAt(nx, ny, false), named.nodeId);
+    eq('C19b ... with the case sign', markings.signOf('marking:1', named.nodeId), SIGN.CASE);
+    eq('C19c a shift-click writes the control sign',
+      A.clickAt(nx, ny, true) && markings.signOf('marking:1', named.nodeId), SIGN.CONTROL);
+    ok('C19d a click outside every cell marks nothing', A.clickAt(-50, -50, false) === null);
     // A panel that declares no write name is inert.
     const readOnly = C.model.cells[3];
     C.mark(readOnly.nodeId, SIGN.CASE);
@@ -698,6 +723,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 A STAMPED ID IS NOT A NODE. Dropping the gate still "works" on screen -- the die lights
+  //    up -- and the walk it starts is the thing that fails, three panels away.
+  { id: 'M00', what: 'a stamped (server-less) node id is allowed into the marking',
+    catches: 'C16',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '    if (cell.nodeIdResolved !== true) {', '    if (false) {') } },
   // 🔴 THE DEFECT THAT LOOKS RIGHT. Ignoring `rotation` still draws a plausible wafer, which is
   //    why nothing on this board noticed for a week. It dies on the seats moving, not on a count.
   { id: 'M0', what: 'the frame rotation is ignored and stored coordinates are drawn as seats',
