@@ -1,5 +1,42 @@
 # 지시서 — 전파가 설 땅을 잇고, 질의 하나를 얹는다
 
+> # 🔴 착수 상태 (2026-08-23 10:3x) — 이 절이 본문보다 «우선»한다
+>
+> 총괄 판정 `a256ce50`: **공사 1 → 3 착수 승인 · 공사 2 보류.**
+>
+> ```
+> ✔  공사 1   mechanism_gate.py + config/mechanism_models.json — ledger 의존 0
+> ⛔ 공사 2   보류.  «두 번» 낡았다 —
+>            읽으려던 선언(`ledger/vocabulary.py` 의 traversable)은 v1 계통이고,
+>            라이브 v5 어휘엔 traversable·direction 이 «없고» observed 술어도 «없다»
+>            (v5 술어 6: derived_from · has_netdie · has_wafer · register · slot_map · transfer)
+> ✔  공사 3   ledger_subgraph.subgraph() 확장.  공사 1 → 3 의존은 그대로
+> ```
+>
+> ### 울타리 — «이름»이 아니라 «목록»이다 (총괄이 이 목록으로 갱신)
+> ```
+> ✖ 얼음  A  ledger_trace.py · ledger_trace_router.py · ledger_admin.py · ledger/config.py
+> ✖ 얼음  C  ledger_explorer.py · ledger_structure.py · ledger_journey.py · ledger_lots.py
+>            (이름은 글롭 밖인데 해결기·어휘·계보 술어를 «가져간다»)
+> ✔ 가능  B  ledger_subgraph · ledger_catalog · ledger_composition
+>            ledger_selection · ledger_siblings · ledger_trends
+>            (`ledger_trace` 에서 `_fetch`·`relation_exists` «둘만» 쓴다)
+> ```
+> **A·C 에서 버그를 보면 «적고 지나간다».** 고치지 않는다.
+> 수락 D 가 `/api/ledger/trace` 를 부르는 것은 «읽기»이므로 괜찮다 — 고치지는 말 것.
+>
+> ### 수락을 «무엇 위에서» 받나 — 오늘 실측으로 바뀐 것
+> ```
+> 전사(transfer) 원자   원장에 «0».  ledger_translator_cursor 에 transfer_event 행 «없음»
+>                      (시험 실행은 쓰지 않는다 — 설계대로. 백필은 «총괄 소관»)
+> 씨앗 이름 공간        SYN-XFER-CORE-W01~W10 · SYN-XFER-D01~D10
+>                      원장에 등록된 Wafer/DTJob 과 겹침 «0»
+>
+> 그래서 수락은 lot_event 재료 위에서 받는다:
+>   has_wafer 907 · derived_from 40 · slot_map 226 · register 546
+> ```
+
+
 > **작성:** 응용 기획 세션 (2026-08-21) · **수신:** 구현자
 > **유효 결론 한 장:** `task/APPLICATION_VALID_NOW.md` — 착수 전 이것부터 읽는다
 > **근거:** `ontology_application_algorithm.md` §15~23 · `ontology_arbitrary_question.md`
@@ -53,6 +90,9 @@
 원장에 앉는 개체가 아니다. (`Model` 개체 타입은 «필요 없다» — 그건 구조뷰의 요구다.)
 
 ### 공사 2 — `observed` 를 «이름» 이 아니라 «선언» 으로 판별한다
+
+> ⛔ **보류 (총괄 `a256ce50`).** 아래 근거의 `traversable` 축이 v5 어휘에 «없다».
+> 착수하지 말 것. 본문은 ③ 뒤 재검토용으로 남긴다.
 
 `ledger_subgraph.py` 가 `observed` 를 이름으로 14곳에서 부른다. **그 규칙은 이미 어휘에
 선언돼 있다:**
@@ -134,14 +174,17 @@
 ## 6. 순서 제안
 
     1  공사 1 (기전 엣지 합성)          -> 수락 C 로 확인
-    2  공사 2 (`observed` 선언 판별)     -> 기존 응답이 안 변하는지로 확인
-    3  공사 3 (walk start±/collect)     -> 수락 A·B·D
+    2  공사 3 (walk start±/collect)     -> 수락 A·B·D
+    ⛔ 공사 2 는 «이번 라운드에 없다» (보류)
 
 **1 이 없으면 3 의 `collect: Quantity` 가 빈 답을 낸다.** 순서를 바꾸지 말 것.
 
 ---
 
-## 7. 🔴 착수 전 판정이 필요한 것 하나
+## 7. ✅ 착수 판정 — 받았다 (`a256ce50`, 2026-08-23 10:3x)
+
+**공사 1 → 3 승인.** 아래는 판정 «전»의 질문이고 답이 났으므로 기록으로만 남긴다.
+
 
 **이 지시서를 구현자 대기열에 넣어도 되는가** — `server/ledger_subgraph.py` 는
 서버 코드이고, 지금 총괄 라인이 `lot_event` 라운드를 돌고 있다. **파일이 겹치지 않으나
