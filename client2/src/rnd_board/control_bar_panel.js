@@ -23,7 +23,7 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel } from './api.js';
+import { createWalk } from './api.js';
 
 /**
  * The peer axes the mockup names, as a FALLBACK for a screen that declares none. Counts never
@@ -35,10 +35,16 @@ export class ControlBarPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
     const options = deps || {};
-    this.apiBase = options.apiBase || '';
+    // 🔴 ONE CALL — 소유자가 그린 데이터 흐름(2026-08-24): 부품은 { start, collect } 만 선언하고
+    //    라우트·질의·모델을 다시는 부르지 않습니다. 화면이 walk 하나를 «주입»하므로 같은 walk 을
+    //    쓰는 두 부품이 요청 하나를 나눠 씁니다. 혼자 서는 부품은 자기 것을 만듭니다.
+    this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
+    // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
+    this.start = options.start || null;
+    this.collect = options.collect || 'trend_y';
+    this.candidateCollect = options.candidateCollect || 'candidate';
     this.fetchImpl = options.fetchImpl || null;
     this.seedNodeId = options.seedNodeId || null;
-    this.collect = options.collect || 'quantity';
     this.window = options.window || '180d';
     // 🔴 THE SCOPES ARE DECLARED, THE COUNTS ARE FETCHED. `[{label, scope}]` -- the screen picks
     //    which lot and which equipment axis it means (the route answers several), and a peer
@@ -47,7 +53,7 @@ export class ControlBarPanel extends Panel {
     this.loadPeerCount = options.loadPeerCount || null;
     this.peerCounts = Object.create(null);
     this.trends = null;
-    this.walk = null;
+    this.candidateWalk = null;
     this.loadState = 'idle';
   }
 
@@ -59,16 +65,16 @@ export class ControlBarPanel extends Panel {
   async load() {
     this.loadState = 'loading';
     this.render();
-    const [trendResult, walkResult] = await Promise.all([
-      fetchTrends({ apiBase: this.apiBase, window: this.window, fetchImpl: this.fetchImpl }),
+    const [trends, candidates] = await Promise.all([
+      this.walk({ start: this.start, collect: this.collect, window: this.window }),
       this.seedNodeId
-        ? fetchSubgraph({
-          apiBase: this.apiBase, nodeId: this.seedNodeId,
-          collect: this.collect, fetchImpl: this.fetchImpl,
+        ? this.walk({
+          start: { groupby: 'wafer', value: this.seedNodeId },
+          collect: this.candidateCollect,
         })
         : Promise.resolve(null),
     ]);
-    this.trends = trendsModel(trendResult);
+    this.trends = trends;
     // Each declared scope is one call; a refusal leaves that pill at 「—」 and the others stand.
     if (this.loadPeerCount) {
       for (const peer of this.peers) {
@@ -78,7 +84,7 @@ export class ControlBarPanel extends Panel {
           .catch(() => {});
       }
     }
-    this.walk = walkResult ? subgraphModel(walkResult) : null;
+    this.candidateWalk = candidates || null;
     this.loadState = 'ready';
     // The first ratio axis is selected only if NOTHING is selected yet: a reload must not
     // silently move a choice the reader made.
@@ -175,15 +181,15 @@ export class ControlBarPanel extends Panel {
       pills.push(this._pill({
         id: this._axisId('ratio', kind.id),
         text: `${kind.label} 비율`,
-        count: null,
+        count: undefined,
       }));
     }
-    const walk = this.walk;
+    const walk = this.candidateWalk;
     if (walk && walk.ok) {
       for (const c of walk.candidates || []) {
         if (!c.measured) continue;
         pills.push(this._pill({ id: this._axisId('quantity', c.id || c.quantity),
-          text: c.quantity, count: null }));
+          text: c.quantity, count: undefined }));
       }
       if (walk.counts && walk.counts.nameOnly > 0) {
         // The folded rest, stated as what it is: declared names with nothing measured under them.
