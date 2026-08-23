@@ -68,8 +68,11 @@ GrainPlan = namedtuple("GrainPlan", "declared names denominators numerators para
 # ---------------------------------------------------------------------------------
 
 # The scan side of the ratio.  Its FROM/JOIN is *structure* -- the number of relations is
-# fixed here and never by the request -- so the caller's `denominator.join` is checked
-# against this rather than interpolated: a join nobody applied is worse than a refusal.
+# fixed here and never by the request -- so a declared axis names a relation this block
+# already opens and nothing else.  An axis does NOT restate the ON clause: a caller cannot
+# move it, so restating it could only ever agree, and a declaration with no freedom is a
+# copy rather than a contract (ruling 2, 2026-08-23).  It comes back with the round that
+# lets the FROM itself be declared.
 SCAN_SOURCE = {
     "relation": "inspection_run",
     "alias": "r",
@@ -90,22 +93,19 @@ DEFAULT_GRAIN = {
     "marking": "identity.mark_key",
     "axes": [
         {"name": "wafer",
-         "denominator": {"relation": "inspection_run", "column": "base_wafer_id",
-                         "join": None},
+         "denominator": {"relation": "inspection_run", "column": "base_wafer_id"},
          "numerator": {"from": "subject_keys", "key": "wafer"}},
         {"name": "bonding_leg",
-         "denominator": {"relation": "bonding_map", "column": "leg",
-                         "join": SCAN_SOURCE["joins"][0]["on"]},
+         "denominator": {"relation": "bonding_map", "column": "leg"},
          "numerator": {"from": "object_payload", "key": "bonding_leg"}},
     ],
 }
 
-# relation -> (alias, the ON clause the scans FROM actually binds).  Derived so the join
-# text is written once; a declared denominator is resolved against this.
+# relation -> the alias the scans FROM binds it to.  A declared denominator is resolved
+# against this, which is the whole of what a caller may choose about the scan side.
 SCAN_RELATIONS = dict(
-    [(SCAN_SOURCE["relation"], (SCAN_SOURCE["alias"], None))]
-    + [(join["relation"], (join["alias"], join["on"]))
-       for join in SCAN_SOURCE["joins"]])
+    [(SCAN_SOURCE["relation"], SCAN_SOURCE["alias"])]
+    + [(join["relation"], join["alias"]) for join in SCAN_SOURCE["joins"]])
 
 # Members the caller may state but may not yet move.  Not taste: `ledger_identity` spells
 # the axis names into every mark_key, `/selection/resolve` and the client read that same
@@ -242,10 +242,6 @@ def _fenced(declared, member):
     return list(expected) if isinstance(expected, list) else expected
 
 
-def _squeeze(text):
-    return " ".join(str(text).split())
-
-
 def _axis_denominator(index, axis):
     stated = axis.get("denominator")
     if not isinstance(stated, dict):
@@ -254,19 +250,14 @@ def _axis_denominator(index, axis):
     if relation not in SCAN_RELATIONS:
         _refuse_grain(f"grain.axes[{index}].denominator.relation이 scans가 여는 관계가 아니다",
                       declared=relation, allowed=sorted(SCAN_RELATIONS))
-    alias, bound_join = SCAN_RELATIONS[relation]
+    alias = SCAN_RELATIONS[relation]
     column = stated.get("column")
     if not isinstance(column, str) or not _IDENTIFIER.match(column):
         _refuse_grain(f"grain.axes[{index}].denominator.column은 식별자여야 한다",
                       declared=column)
-    join = stated.get("join")
-    if join is not None and _squeeze(join) != _squeeze(bound_join or ""):
-        _refuse_grain(f"grain.axes[{index}].denominator.join이 scans가 실제로 맺는 조인과 다르다",
-                      declared=join, bound=bound_join)
     # `::text` on every axis so the denominator meets the numerator's `->>` as the same
     # type no matter what a declared column happens to be underneath.
-    return f"{alias}.{column}::text", {"relation": relation, "column": column,
-                                       "join": bound_join}
+    return f"{alias}.{column}::text", {"relation": relation, "column": column}
 
 
 def _axis_numerator(index, axis):
@@ -344,8 +335,8 @@ def _base_ctes(grain):
     """`declared` + `scans` + `observed`, shared verbatim by the series and table reads.
 
     Only the column *lists* and the two per-axis expressions come from the grain.  The
-    FROM/JOIN shape is untouched, which is why a declared `join` is checked rather than
-    emitted.
+    FROM/JOIN shape is untouched, which is why an axis names a relation and a column and
+    says nothing about how the relation is joined.
     """
     alias = SCAN_SOURCE["alias"]
     scan = f"{alias}.{SCAN_SOURCE['observed_at_column']}"
