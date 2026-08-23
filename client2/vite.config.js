@@ -32,6 +32,11 @@ export default defineConfig({
         // two answers, and folding them into one page would put a screen that
         // shows WHY a claim won behind a screen that shows what is connected.
         ledger: resolve(__dirname, 'ledger.html'),
+        // The assembled R&D diagnosis board (`src/rnd_board/`). A SEPARATE entry from
+        // `ledger` above: that page is one walk, this one is a grid of independent parts that
+        // share a marking store. It is an entry rather than a route on an existing page
+        // because the parts are seated by a layout declaration, not by that page's markup.
+        rnd_board: resolve(__dirname, 'rnd-board.html'),
         // Isolated R&D investigation entry. It does not replace ledger.html until
         // product-owner cutover approval; keeping both inputs makes rollback trivial.
         ledger_graph: resolve(__dirname, 'ledger-graph.html')
