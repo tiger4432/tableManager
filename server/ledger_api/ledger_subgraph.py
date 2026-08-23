@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 import ledger_explorer
 import ledger_trace
 import enrichment_actions
-import mechanism_gate
+from ledger_api import mechanism_gate
 
 
 DEFAULT_HOPS = 12

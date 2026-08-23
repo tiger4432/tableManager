@@ -4,7 +4,7 @@ import uuid
 import enrichment_actions
 import enrichment_config
 import ledger_explorer
-import ledger_subgraph
+from ledger_api import ledger_subgraph
 
 
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)

@@ -7,10 +7,10 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import finding_kinds  # noqa: E402
+from ledger_api import finding_kinds  # noqa: E402
 import ledger_trace_router  # noqa: E402
-import ledger_trends  # noqa: E402
-import ledger_identity  # noqa: E402
+from ledger_api import ledger_trends  # noqa: E402
+from ledger_api import ledger_identity  # noqa: E402
 
 
 KINDS = {

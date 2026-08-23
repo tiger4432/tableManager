@@ -72,7 +72,7 @@ import re
 import threading
 from datetime import datetime, timedelta, timezone
 
-import finding_kinds
+from ledger_api import finding_kinds
 from ledger_trace import _fetch, relation_exists     # ONE spelling of both, reused
 
 logger = logging.getLogger("Ledger.Siblings")
@@ -362,7 +362,10 @@ def load_axes_config(force_reload=False):
             path = os.path.join(paths.CONFIG_DIR, AXES_CONFIG_FILENAME)
             sample = paths.config_sample_path(AXES_CONFIG_FILENAME)
         except Exception:                                          # pragma: no cover
-            base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+            # Two levels up: this module lives in `server/ledger_api/`, the config
+            # tree is `server/config/`.
+            server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            base = os.path.join(server_dir, "config")
             path = os.path.join(base, AXES_CONFIG_FILENAME)
             sample = os.path.join(base, "sample", AXES_CONFIG_FILENAME + ".sample")
         if not os.path.exists(path):

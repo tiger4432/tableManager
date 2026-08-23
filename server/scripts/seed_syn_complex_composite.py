@@ -293,7 +293,7 @@ def map_metadata_rows():
 
 def spatial_source_rows():
     """Return product-table rows for Bond/DT/Core projection and scan/finding overlays."""
-    import finding_kinds
+    from ledger_api import finding_kinds
     from parsers import void_sat_format
 
     void_method = finding_kinds.methods("void")[0]
@@ -1086,10 +1086,10 @@ def rollback():
 def verify_live():
     """Read-only proof from the configured development database."""
     from database.database import engine
-    import ledger_composition
+    from ledger_api import ledger_composition
     import ledger_lots
-    import ledger_selection
-    import ledger_trends
+    from ledger_api import ledger_selection
+    from ledger_api import ledger_trends
 
     connection = engine.raw_connection()
     try:

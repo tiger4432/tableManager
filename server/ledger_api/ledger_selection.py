@@ -8,8 +8,8 @@ import json
 import math
 from urllib.parse import quote
 
-import ledger_siblings
-import ledger_identity
+from ledger_api import ledger_siblings
+from ledger_api import ledger_identity
 from ledger import vocabulary as ledger_vocabulary
 from ledger_trace import _fetch, relation_exists
 

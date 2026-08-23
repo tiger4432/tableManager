@@ -8,9 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger.envelope import source_event_identity
 import ledger_explorer
-import ledger_subgraph
+from ledger_api import ledger_subgraph
 import ledger_trace_router
-import mechanism_gate
+from ledger_api import mechanism_gate
 
 
 NOW = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)

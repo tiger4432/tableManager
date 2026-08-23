@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ledger_catalog
+from ledger_api import ledger_catalog
 import ledger_explorer
 
 

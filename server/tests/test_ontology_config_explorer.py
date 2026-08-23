@@ -29,7 +29,7 @@ from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import (
     SETUP_VERSION, require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot
-import ontology_config_explorer_router as explorer_router
+from ledger_api import ontology_config_explorer_router as explorer_router
 from tests.support.ontology_explorer_sample import load_transfer_sample_setup
 
 

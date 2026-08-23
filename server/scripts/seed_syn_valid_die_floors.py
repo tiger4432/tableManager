@@ -87,8 +87,8 @@ def consuming_relation():
     means a deployment that attributes to another relation gets its frames stamped with no
     edit here.
     """
-    import ledger_siblings
-    import finding_kinds
+    from ledger_api import ledger_siblings
+    from ledger_api import finding_kinds
     config = ledger_siblings.load_axes_config()
     geometry, attribution = config.for_kind(finding_kinds.DEFAULT_KIND)
     for source in attribution:

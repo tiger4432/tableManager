@@ -638,7 +638,7 @@ def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
     object to interrogate, and a future edit back to `= %(stype)s` is exactly the
     regression this guards."""
     import ledger_journey
-    import ledger_walk_contrast
+    from ledger_api import ledger_walk_contrast
 
     sources = [
         ("ledger_journey", open(ledger_journey.__file__, encoding="utf-8").read()),
@@ -671,7 +671,7 @@ def test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier():
     Guarded on the SQL text because these are hand-built strings: a future edit that
     "helpfully" widens either arm is exactly the regression to catch.
     """
-    import ledger_selection
+    from ledger_api import ledger_selection
 
     pairs = [("process", ledger_selection._process_sql(),
               ledger_selection._analysis_process_sql()),

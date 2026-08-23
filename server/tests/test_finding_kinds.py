@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import finding_kinds  # noqa: E402
+from ledger_api import finding_kinds  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

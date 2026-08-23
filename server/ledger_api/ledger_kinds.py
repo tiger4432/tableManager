@@ -78,7 +78,7 @@ from __future__ import annotations
 
 import logging
 
-import finding_kinds
+from ledger_api import finding_kinds
 from ledger_trace import _fetch, relation_exists
 
 logger = logging.getLogger(__name__)

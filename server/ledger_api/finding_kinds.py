@@ -134,8 +134,10 @@ def _config_path():
         import paths
         return os.path.join(paths.CONFIG_DIR, CONFIG_FILENAME)
     except Exception:
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config",
-                            CONFIG_FILENAME)
+        # Two levels up: this module lives in `server/ledger_api/`, the config tree
+        # is `server/config/`. One `dirname` would name a directory that never exists.
+        server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(server_dir, "config", CONFIG_FILENAME)
 
 
 def load(force_reload: bool = False) -> dict:

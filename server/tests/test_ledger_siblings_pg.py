@@ -38,8 +38,8 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import finding_kinds                                                  # noqa: E402
-import ledger_siblings                                                # noqa: E402
+from ledger_api import finding_kinds                                  # noqa: E402
+from ledger_api import ledger_siblings                                # noqa: E402
 
 PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
 SCRATCH_SCHEMA = "assy_siblings_pytest" + (
@@ -495,7 +495,7 @@ def test_a_non_rankable_axis_is_still_fully_usable_for_marking():
     「축이 아니다」 — marking never ranks the axis it marked with, so `scope=wafer:…` and
     the lot grid's `by=wafer` must go on resolving it."""
     import ledger_lots
-    import ledger_walk_contrast
+    from ledger_api import ledger_walk_contrast
     cfg = ledger_siblings.AxesConfig(_axes_with(rank=False), "<test>")
     ledger_siblings.set_axes_config(_axes_with(rank=False))
     try:

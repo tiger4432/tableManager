@@ -7,8 +7,8 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts")))
 
-import ledger_composition  # noqa: E402
-import ledger_selection  # noqa: E402
+from ledger_api import ledger_composition  # noqa: E402
+from ledger_api import ledger_selection  # noqa: E402
 import seed_syn_complex_composite as fixture  # noqa: E402
 
 

@@ -245,7 +245,10 @@ def _config_path():
         base = paths.CONFIG_DIR
         sample = paths.config_sample_path(CONFIG_FILENAME)
     except Exception:                                            # pragma: no cover
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+        # Two levels up: this module lives in `server/ledger_api/`, the config tree
+        # is `server/config/`.
+        server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base = os.path.join(server_dir, "config")
         sample = os.path.join(base, "sample", CONFIG_FILENAME + ".sample")
     path = os.path.join(base, CONFIG_FILENAME)
     if os.path.exists(path):

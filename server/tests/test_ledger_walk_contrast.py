@@ -37,8 +37,8 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import ledger_walk_contrast as walk                                 # noqa: E402
-import mechanism_gate                                               # noqa: E402
+from ledger_api import ledger_walk_contrast as walk                 # noqa: E402
+from ledger_api import mechanism_gate                               # noqa: E402
 
 
 CONTRAST_CFG = {"enriched_at": 1.5, "depleted_at": 0.6667}

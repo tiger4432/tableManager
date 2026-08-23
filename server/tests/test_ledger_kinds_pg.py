@@ -29,8 +29,8 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import finding_kinds                                                  # noqa: E402
-import ledger_kinds                                                   # noqa: E402
+from ledger_api import finding_kinds                                  # noqa: E402
+from ledger_api import ledger_kinds                                   # noqa: E402
 
 PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
 SCRATCH_SCHEMA = "assy_kinds_pytest" + (

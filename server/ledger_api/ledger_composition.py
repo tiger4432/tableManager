@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import json
 from urllib.parse import quote
 
-import ledger_siblings
+from ledger_api import ledger_siblings
 from ledger_trace import _fetch, relation_exists
 
 
