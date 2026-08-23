@@ -15,7 +15,7 @@
 // 🔴 NO SIZE CONSTANT. `onResize` redraws into whatever box the shell hands over.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { Panel } from './panel.js';
+import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { fetchComposition, compositionModel } from './api.js';
 
@@ -51,6 +51,13 @@ export class CompositionPanel extends Panel {
   render() {
     const doc = this.doc;
     if (!doc || !this.host) return;
+    // 🔴 THE CURSOR MUST NOT MOVE. A re-render rebuilds this panel's box, and a rebuilt box
+    //    starts at scrollTop 0 -- so the row under the pointer jumps away on the very click
+    //    that opened it. The owner named this: 「접힌거 펴지면서 좌표 바껴서 마우스 위치 옮겨야」.
+    //    The position is carried across; the fold stays inside this panel's own cell.
+    const kept = this.host.firstElementChild;
+    const scrollTop = kept ? kept.scrollTop || 0 : 0;
+    const place = (node) => { this.host.appendChild(node); node.scrollTop = scrollTop; };
     this.host.textContent = '';
     const root = doc.createElement('div');
     root.className = 'rb-comp';
@@ -66,7 +73,7 @@ export class CompositionPanel extends Panel {
         : 'rb-comp-note rb-comp-note--idle';
       note.textContent = detail ? `${state} — ${detail}` : state;
       root.appendChild(note);
-      this.host.appendChild(root);
+      place(root);
       return;
     }
 
@@ -105,7 +112,7 @@ export class CompositionPanel extends Panel {
       table.appendChild(empty);
     }
     root.appendChild(table);
-    this.host.appendChild(root);
+    place(root);
   }
 
   _count(label, value, title) {
@@ -134,8 +141,9 @@ export class CompositionPanel extends Panel {
       if (sign === SIGN.CASE) el.classList.add('is-marked-case');
       else if (sign === SIGN.CONTROL) el.classList.add('is-marked-control');
       // A part with no write name is inert here: `mark` returns without touching the store.
-      el.addEventListener('click', () => {
-        this.mark(nodeId, SIGN.CASE);
+      el.addEventListener('click', (event) => {
+        const intent = markingIntent(event);
+        this.mark(nodeId, intent.sign, intent.mode);
       });
     }
 

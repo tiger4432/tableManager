@@ -222,6 +222,7 @@ async function suite(mods) {
   const { MapPanel } = mods.map;
   const { projectionModel } = mods.api;
   const { BOARD, bindLoaders, PARTS } = mods.main;
+  const { markingIntent } = mods.panel;
 
   // ── A. THE MARKING STORE ─────────────────────────────────────────────────────
   {
@@ -432,8 +433,11 @@ async function suite(mods) {
       > canvasIn(elOf('a')).ops.findIndex((o) => o.op === 'fill'));
 
     // The control sign is REACHABLE and looks different from a case (brief 9, acceptance I).
+    // 🔴 IT IS ADDED, NOT MARKED. A plain mark REPLACES now (the owner's selection model), so
+    //    two signs standing together is what ctrl+click is FOR. Asserting it with a plain
+    //    mark would be asserting the defect that was just removed.
     const other = A.model.cells[71];
-    A.mark(other.nodeId, SIGN.CONTROL);
+    A.mark(other.nodeId, SIGN.CONTROL, 'add');
     eq('C11 a control mark is stored as -1',
       markings.signOf('marking:1', other.nodeId), SIGN.CONTROL);
     const rings = markStrokes('a');
@@ -441,11 +445,39 @@ async function suite(mods) {
     ok('C13 case and control are not the same colour',
       new Set(rings.map((r) => r.color)).size === 2);
 
-    // Unmark, and the reader follows back down.
-    A.mark(target.nodeId, SIGN.CASE);
-    eq('C14 remarking the same sign clears it',
+    // Unmark, and the reader follows back down. Toggling lives in `add` and only there.
+    A.mark(target.nodeId, SIGN.CASE, 'add');
+    eq('C14 re-adding the same sign clears it',
       markings.signOf('marking:1', target.nodeId), SIGN.ABSENT);
     eq('C15 the reading panel followed the clear', C.lastPaint.marks, 1);
+
+    // ── THE SELECTION MODEL ITSELF ────────────────────────────────────────────
+    // 🔴 「클릭하면 초기화되고 새로」. A plain click empties the name first: without this, a
+    //    reader who wants to look at ONE die has to undo every earlier click, which is the
+    //    friction the owner reported.
+    A.mark(A.model.cells[10].nodeId, SIGN.CASE, 'add');
+    A.mark(A.model.cells[11].nodeId, SIGN.CASE, 'add');
+    ok('C21 add accumulates', markings.count('marking:1') >= 2);
+    A.mark(A.model.cells[12].nodeId, SIGN.CASE);
+    eq('C22 a plain mark replaces everything under that name', markings.count('marking:1'), 1);
+    eq('C23 ... and what is left is the one just marked',
+      markings.signOf('marking:1', A.model.cells[12].nodeId), SIGN.CASE);
+    A.mark(A.model.cells[12].nodeId, SIGN.CASE);
+    eq('C24 a plain mark never toggles itself off',
+      markings.signOf('marking:1', A.model.cells[12].nodeId), SIGN.CASE);
+    // The modifier reading is ONE definition, shared by every part.
+    const plain = markingIntent({});
+    const ctrl = markingIntent({ ctrlKey: true });
+    const shift = markingIntent({ shiftKey: true });
+    const both = markingIntent({ ctrlKey: true, shiftKey: true });
+    ok('C25 a plain click replaces with a case',
+      plain.mode === 'replace' && plain.sign === SIGN.CASE);
+    eq('C26 ctrl adds', ctrl.mode, 'add');
+    eq('C27 shift picks the control sign', shift.sign, SIGN.CONTROL);
+    ok('C28 ctrl+shift adds a control',
+      both.mode === 'add' && both.sign === SIGN.CONTROL);
+    // Leave the name holding exactly one case, as the block below expects.
+    A.mark(target.nodeId, SIGN.CASE);
 
     // A click at a coordinate resolves to the cell under it.
     const cell = A.model.cells[5];
@@ -675,6 +707,26 @@ const MUTANTS = [
       'map_panel.js': (s) => s.replace(
         "        layout, palette.control, 'ring').painted;",
         "        layout, palette.case, 'ring').painted;"),
+    },
+  },
+  {
+    id: 'M12',
+    what: 'panel.js goes back to accumulating on every click (the reported friction)',
+    catches: 'C22',
+    mutate: {
+      'panel.js': (s) => s.replace(
+        "    if (mode === 'add') return this.markings.toggle(this.writes, nodeId, sign);",
+        '    return this.markings.toggle(this.writes, nodeId, sign);'),
+    },
+  },
+  {
+    id: 'M13',
+    what: 'panel.js reads ctrl as the SIGN key, so ctrl+click stops accumulating',
+    catches: 'C26',
+    mutate: {
+      'panel.js': (s) => s.replace(
+        "    mode: (e.ctrlKey || e.metaKey) ? 'add' : 'replace',",
+        "    mode: e.altKey ? 'add' : 'replace',"),
     },
   },
   {

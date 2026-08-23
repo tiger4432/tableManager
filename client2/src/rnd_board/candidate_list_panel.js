@@ -17,7 +17,7 @@
 // 🔴 NO SIZE CONSTANT.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { Panel } from './panel.js';
+import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { fetchSubgraph, subgraphModel } from './api.js';
 
@@ -55,13 +55,20 @@ export class CandidateListPanel extends Panel {
   render() {
     const doc = this.doc;
     if (!doc || !this.host) return;
+    // 🔴 THE CURSOR MUST NOT MOVE. A re-render rebuilds this panel's box, and a rebuilt box
+    //    starts at scrollTop 0 -- so the row under the pointer jumps away on the very click
+    //    that opened it. The owner named this: 「접힌거 펴지면서 좌표 바껴서 마우스 위치 옮겨야」.
+    //    The position is carried across; the fold stays inside this panel's own cell.
+    const kept = this.host.firstElementChild;
+    const scrollTop = kept ? kept.scrollTop || 0 : 0;
+    const place = (node) => { this.host.appendChild(node); node.scrollTop = scrollTop; };
     this.host.textContent = '';
     const root = doc.createElement('div');
     root.className = 'rb-cand';
 
     if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
       root.appendChild(this._note());
-      this.host.appendChild(root);
+      place(root);
       return;
     }
 
@@ -89,7 +96,7 @@ export class CandidateListPanel extends Panel {
       // Saying only the second denies a transfer that actually happened.
       const reached = `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges}`;
       root.appendChild(this._line(`${reached} — 원인 후보는 없습니다`, 'absent'));
-      this.host.appendChild(root);
+      place(root);
       return;
     }
 
@@ -104,7 +111,7 @@ export class CandidateListPanel extends Panel {
       grid.appendChild(this._folded(m.counts.nameOnly));
     }
     root.appendChild(grid);
-    this.host.appendChild(root);
+    place(root);
   }
 
   _card(c) {
@@ -116,7 +123,10 @@ export class CandidateListPanel extends Panel {
       const sign = this.signOf(c.id);
       if (sign === SIGN.CASE) el.classList.add('is-marked-case');
       else if (sign === SIGN.CONTROL) el.classList.add('is-marked-control');
-      el.addEventListener('click', () => { this.mark(c.id, SIGN.CASE); });
+      el.addEventListener('click', (event) => {
+        const intent = markingIntent(event);
+        this.mark(c.id, intent.sign, intent.mode);
+      });
     }
 
     const top = doc.createElement('div');

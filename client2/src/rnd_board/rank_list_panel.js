@@ -16,7 +16,7 @@
 //    fault: 동률 · 종류 다름 · 미검사. None of them borrows the danger tokens.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { Panel } from './panel.js';
+import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { fetchSubgraph, subgraphModel } from './api.js';
 
@@ -56,6 +56,13 @@ export class RankListPanel extends Panel {
   render() {
     const doc = this.doc;
     if (!doc || !this.host) return;
+    // 🔴 THE CURSOR MUST NOT MOVE. A re-render rebuilds this panel's box, and a rebuilt box
+    //    starts at scrollTop 0 -- so the row under the pointer jumps away on the very click
+    //    that opened it. The owner named this: 「접힌거 펴지면서 좌표 바껴서 마우스 위치 옮겨야」.
+    //    The position is carried across; the fold stays inside this panel's own cell.
+    const kept = this.host.firstElementChild;
+    const scrollTop = kept ? kept.scrollTop || 0 : 0;
+    const place = (node) => { this.host.appendChild(node); node.scrollTop = scrollTop; };
     this.host.textContent = '';
     const root = doc.createElement('div');
     root.className = 'rb-rank';
@@ -74,7 +81,7 @@ export class RankListPanel extends Panel {
         : this.loadState === 'loading' ? '걷는 중'
         : (this.model && this.model.message) || '서버가 거절했습니다';
       root.appendChild(note);
-      this.host.appendChild(root);
+      place(root);
       return;
     }
 
@@ -85,7 +92,7 @@ export class RankListPanel extends Panel {
       // Same correction: state what the walk DID reach beside what it did not find.
       note.textContent = `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges} — 원인 후보는 없습니다`;
       root.appendChild(note);
-      this.host.appendChild(root);
+      place(root);
       return;
     }
 
@@ -94,7 +101,7 @@ export class RankListPanel extends Panel {
     table.appendChild(this._headRow());
     for (const c of m.candidates) table.appendChild(this._row(c, m));
     root.appendChild(table);
-    this.host.appendChild(root);
+    place(root);
   }
 
   _headRow() {
@@ -119,11 +126,12 @@ export class RankListPanel extends Panel {
       el.setAttribute('data-node-id', c.id);
       const sign = this.signOf(c.id);
       if (sign === SIGN.CASE) el.classList.add('is-marked-case');
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (event) => {
         // Clicking a row opens its evidence AND marks it. The marking is what links this table
         // to whatever else happens to read the same name.
         if (this.opened.has(c.id)) this.opened.delete(c.id); else this.opened.add(c.id);
-        this.mark(c.id, SIGN.CASE);
+        const intent = markingIntent(event);
+        this.mark(c.id, intent.sign, intent.mode);
         this.render();
       });
     }

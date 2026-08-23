@@ -36,7 +36,7 @@
 //    because the client did not recognise it is the same defect as a hardcoded kind list.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { Panel } from './panel.js';
+import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { projectionModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
@@ -395,13 +395,13 @@ export class MapPanel extends Panel {
   }
 
   /**
-   * Mark what is under the point. Plain = CASE, with `control` = CONTROL. Marking what is
-   * already marked with the same sign clears it (`MarkingStore.toggle`).
+   * Mark what is under the point. Plain = CASE, with `control` = CONTROL. `mode` is the
+   * selection model (`Panel.mark`): a plain click REPLACES, ctrl/cmd ADDS.
    */
-  clickAt(cssX, cssY, control) {
+  clickAt(cssX, cssY, control, mode) {
     const cell = this.hitCell(cssX, cssY);
     if (!cell) return null;
-    this.mark(cell.nodeId, control ? SIGN.CONTROL : SIGN.CASE);
+    this.mark(cell.nodeId, control ? SIGN.CONTROL : SIGN.CASE, mode);
     return cell.nodeId;
   }
 
@@ -409,7 +409,8 @@ export class MapPanel extends Panel {
     const canvas = this._nodes && this._nodes.canvas;
     if (!canvas || !canvas.getBoundingClientRect) return;
     const rect = canvas.getBoundingClientRect();
+    const intent = markingIntent(event);
     this.clickAt(event.clientX - rect.left, event.clientY - rect.top,
-      Boolean(event.shiftKey));
+      intent.sign === SIGN.CONTROL, intent.mode);
   }
 }

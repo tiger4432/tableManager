@@ -152,9 +152,16 @@ async function suite(mods) {
   const hostRO = doc.createElement('div');
   const readOnly = new comp.CompositionPanel(hostRO, { doc, markings, reads: 'marking:1', writes: null, apiBase: '', finalChipId: 'C', fetchImpl: okFetch() });
   readOnly.mount(); await flush(); await flush();
-  const before = markings.count('marking:1');
-  byClass(hostRO, 'rb-comp-row')[1].click();
-  eq('B1 a part with no write name cannot write', markings.count('marking:1'), before);
+  // 🔴 MEMBERS, NOT A COUNT. The count was a proxy and it went blind the day a click began by
+  //    CLEARING the name: a rogue write that removes one mark and adds another leaves the count
+  //    exactly where it was. So the row that was clicked must be absent AND the mark that was
+  //    already there must still be standing.
+  const row = byClass(hostRO, 'rb-comp-row')[0];
+  const rowNode = row.getAttribute('data-node-id');
+  row.click();
+  eq('B1 a part with no write name cannot write',
+    [markings.signOf('marking:1', rowNode), markings.signOf('marking:1', 'component:C2')],
+    [0, 1]);
   truthy('B2 but it still SEES the name it reads',
     byClass(hostRO, 'rb-comp-row').some((r) => r.classList.contains('is-marked-case')));
 
@@ -215,14 +222,19 @@ async function suite(mods) {
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  // 🔴 THE ANCHOR MOVED WHEN THE SELECTION MODEL LANDED. A plain click no longer goes through
+  //    `toggle`, so hardcoding the name THERE stopped being reachable and this mutant sailed
+  //    through green -- the assertion was fine, the mutation had stopped biting. It now sits on
+  //    the path a click actually takes.
   { id: 'M1', what: 'the part reads a HARDCODED marking name', catches: 'A3',
-    mutate: { 'panel.js': (s) => s.replace('return this.markings.toggle(this.writes, nodeId, sign);',
-      "return this.markings.toggle('marking:1', nodeId, sign);") } },
+    mutate: { 'panel.js': (s) => s.replace('return this.markings.set(this.writes, nodeId, sign);',
+      "return this.markings.set('marking:1', nodeId, sign);") } },
+  // ONE step, deliberately: this mutant used to be three, and when the first anchor rotted the
+  // other two still changed the text, so the "did anything change" check passed while the module
+  // died at runtime instead -- reported as INERT, which is the honest word for tested nothing.
   { id: 'M2', what: 'a part keeps its subject at MODULE level (the ledger_map_panel defect)', catches: 'A2',
     mutate: { 'composition_panel.js': (s) => s
-      .replace('import { Panel }', 'let __subject = null;\nimport { Panel }')
-      .replaceAll('this.finalChipId = options.finalChipId || null;', '__subject = options.finalChipId || null;')
-      .replaceAll('this.finalChipId', '__subject') } },
+      .replaceAll('this.finalChipId', 'globalThis.__subject') } },
   { id: 'M3', what: 'a part ignores the box the shell hands it', catches: 'D3',
     mutate: { 'panel.js': (s) => s.replace('this.box = { width: w, height: h };', '') } },
   { id: 'M4', what: 'a missing count is defaulted to 0 instead of stated as absent', catches: 'F1',
@@ -234,8 +246,7 @@ const MUTANTS = [
       "'기간', `기본값 적용", "'기간', 'refused', `기본값 적용") } },
   { id: 'M6', what: 'the write name is ignored so a read-only part can still write', catches: 'B1',
     mutate: { 'panel.js': (s) => s.replace('if (!this.writes || !this.markings) return SIGN.ABSENT;',
-      'if (!this.markings) return SIGN.ABSENT;').replace('this.markings.toggle(this.writes, nodeId, sign)',
-      "this.markings.toggle(this.writes || 'marking:1', nodeId, sign)") } },
+      "if (!this.markings) return SIGN.ABSENT; if (!this.writes) this.writes = 'marking:1';") } },
 ];
 
 const base = await loadModules();
