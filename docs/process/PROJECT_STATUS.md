@@ -1,5 +1,36 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> ## 🔴 2026-08-23 10:3x — **은퇴 울타리는 «이름»이 아니라 «이 목록»이다** (응용 세션 실측)
+> ```
+> 내 울타리는 파일 «이름»으로 그어져 있었고, 그래서 넷이 빠져나가 있었다.
+> 응용 세션이 파일 단위로 재서 세 부류로 갈랐다 — C 가 그 구멍이다.
+> ```
+> ```
+> A  글롭 «안» — 이름이 걸린다                                    ⛔ 얼림
+>    ledger_trace.py · ledger_trace_router.py · ledger_admin.py · ledger/config.py
+> B  글롭 «밖» · 결합이 «SQL 헬퍼 둘»뿐 (_fetch · relation_exists)  ✔ 닿아도 된다
+>    ledger_subgraph · ledger_catalog · ledger_composition
+>    ledger_selection · ledger_siblings · ledger_trends
+>    -> 그 둘은 커넥션 헬퍼와 to_regclass 게이트다. 어휘도 계보도 «안 들고 있다»
+> C  이름은 «밖», 실질은 «안» — ③ 때 같이 죽는다                    ⛔ 얼림
+>    ledger_explorer(10심볼) · ledger_structure(8) · ledger_journey(8) · ledger_lots(1)
+>    load_resolver_config · traversal_predicate · lineage_predicates · claim_class ...
+> ```
+> ### ② 첫 라운드 — 착수 승인된 것과 보류
+> ```
+> ✔ PROPAGATION 공사 1   mechanism_gate.py + config/mechanism_models.json  (ledger 의존 0)
+> ✔ PROPAGATION 공사 3   ledger_subgraph.subgraph() 확장 (B 부류)
+> ⛔ PROPAGATION 공사 2   v5 어휘에 traversable · direction 이 «없다». 읽을 선언 자체가 없음
+> ⛔ ANYWHERE_SEED 서버   A 부류.  클라 절반은 client-pm 소관
+> ```
+> ### 알아 둘 실측 둘
+> ```
+> 전사 원자가 원장에 «0»  — 시험 실행은 쓰지 않는다(설계대로). 백필은 «총괄»이 돌린다
+> _fetch · relation_exists 를 «여섯»이 쓴다 — ③ 때 갈 곳이 필요하다. «지금 옮기면 새 일»
+> ```
+>
+> ---
+>
 > ## ✅ 2026-08-23 10:0x — **① 기반 원장 셋업 «완주».  소유자가 폼만으로 소스를 만들어 원자를 냈다**
 > ```
 > transfer_event   status «passed» · 행 199 · 분자 199 · 원자 «199» · 미완 0
