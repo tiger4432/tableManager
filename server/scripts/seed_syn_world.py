@@ -665,13 +665,34 @@ def wafer_process_rows(lot: int):
     return rows
 
 
+def frame_map_id(lot_col, slot_col, lot, slot):
+    """The frame identity, composed the way the READER composes it — one spelling.
+
+    `ledger_lots._map_identity` calls the same function with the same binding. Writing the
+    id by string formatting here is what produced `_07` against a reader asking for `_7`.
+    """
+    import map_overlay
+    return map_overlay.compose_map_id([lot_col, slot_col],
+                                      {lot_col: lot, slot_col: slot},
+                                      {"table": "bonding_log"})
+
+
 def frame_rows():
     """A registered grid for every DT wafer and every core wafer.
 
     🔴 KEYED THE WAY `ledger_lots._frame` LOOKS THEM UP: `target_table` is the ATTRIBUTION
-    RELATION (`bonding_log`, the table the declared bridge lands on), and `map_id` is
-    f"{frame_lot}_{frame_slot}". Registering them under `dt_log` or `core_wafer_map`
-    would be the intuitive choice and would never be found.
+    RELATION (`bonding_log`, the table the declared bridge lands on). Registering them
+    under `dt_log` or `core_wafer_map` would be the intuitive choice and would never be
+    found.
+
+    🔴 THE SENTENCE ABOVE USED TO CLAIM THE map_id WAS KEYED THAT WAY TOO, AND IT WAS NOT.
+    It said f"{frame_lot}_{frame_slot}" and then wrote "%02d", so every DT and core frame
+    landed as `SYN-DT-101_07` while the reader — composing from `bonding_log`'s own
+    `dt_slot`, a `double precision` — looked up `SYN-DT-101_7.0`. MEASURED 2026-08-23:
+    zero of the 1,200 were reachable, and the claim in this docstring is what made the
+    defect invisible for months. Both sides now compose through `map_overlay.compose_map_id`
+    with `bonding_log` as the binding, so the declared column type ("number") decides the
+    spelling in ONE place and a second spelling cannot be introduced by editing one side.
     """
     dt_meta = {"grid_cols": DT_COLS, "grid_rows": DT_ROWS,
                "grid_start_x": 0, "grid_start_y": 0, "grid_y_invert": False,
@@ -682,10 +703,12 @@ def frame_rows():
     for lot in TIER1_LOTS:
         for slot in range(1, 26):
             rows.append({"target_table": "bonding_log",
-                         "map_id": "%s_%02d" % (DT_LOT_FMT % lot, slot),
+                         "map_id": frame_map_id("dt_lot", "dt_slot",
+                                                DT_LOT_FMT % lot, slot),
                          "grid_metadata": json.dumps(dt_meta)})
             rows.append({"target_table": "bonding_log",
-                         "map_id": "%s_%02d" % (core_lot_at_dt(lot), slot),
+                         "map_id": frame_map_id("core_lot", "core_slot",
+                                                core_lot_at_dt(lot), slot),
                          "grid_metadata": json.dumps(cm)})
     return rows
 
