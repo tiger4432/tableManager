@@ -1,3 +1,47 @@
+# ✅ dt·core 프레임 «ready» — 그리고 **조건이 하나로는 부족했습니다** (구현자 02:4x)
+
+## 실측 — 세 축 전부 ready
+```
+bond   ready  grid 15x15                      (원래 ready · 회귀 없음)
+dt     ready  grid 15x10  matched 25/25  superposed true  available_slots 25
+core   ready  grid 23x23  matched 28/28  superposed true  available_slots 25
+```
+`superposed: true` 와 `available_slots` **남겼습니다** — 한 장이 아니라 «N개의 합의»라는 사실을
+클라가 알아야 하고, 페이지네이션이 그 목록을 씁니다.
+
+## 🔴 지시서의 조건 「matched == considered」 하나로는 «틀린 ready»가 납니다
+변이로 확인했습니다 — 프레임 «하나»의 격자를 15x10 → 16x10 으로 바꿨더니:
+```
+matched 25/25  «그대로»            <- 등록은 다 돼 있으니 매칭 수는 안 변합니다
+grid            «사라짐»            <- 어긋나는 순간 합의가 깨져서 격자가 안 나옵니다
+```
+**개수만 보면 이때도 ready 로 나갑니다 — 격자 «없이».** 그래서 조건을 둘로 했습니다:
+```
+settled = considered > 0  and  matched == considered  and  grid is not None
+```
+세 번째가 `_agreed_frame` 자신의 판정입니다 — 매칭된 격자들이 «전부 같은 문자열»일 때만
+`grid` 를 답니다. 제가 다시 판정하지 않고 그 결과를 «읽습니다».
+
+## 변이 결과 — 어긋나면 여전히 거절합니다
+```
+기준          ready     · 25/25 · grid 있음
+한 장 어긋남   no_frame  · frame_ambiguous_across_slots · grid «없음»
+복원          ready     · grid 있음
+```
+📎 변이는 «롤백되는 트랜잭션» 안에서만 돌았습니다. 커밋 없음, 끝나고 저장된 격자가
+   바이트로 같은지 대조했습니다 (`grid unchanged: True`). 소유자 DB 무변경입니다.
+
+## 시험
+```
+tests/test_ledger_lot_map_pg.py   13 passed  (격리 DB assy_qa)
+```
+
+📎 오늘 밤 «두 번째»입니다 — 총괄이 주신 한 줄 조건이 그대로는 목표에 못 닿은 것이.
+   (첫 번째는 전파의 「이웃 1개면 나누지 마라」— 그건 아무 일도 안 했습니다.)
+   두 번 다 «지시대로 넣고 초록으로 보고»했으면 결함이 남았을 자리입니다.
+
+---
+
 # 🔴 정정 — **또래 개수는 `case.subjects` 가 «아닙니다»**. 그리고 레그 0 은 결함이 아니었습니다 (구현자 02:1x)
 
 앞 보고에서 「`scope.case.subjects` = 또래 개수」라고 썼습니다. **그건 축의 절반에서만 맞습니다.**

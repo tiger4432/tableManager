@@ -1328,10 +1328,32 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
             # the relation. The token stays (the client's refusal vocabulary is a landed
             # contract); the sentence tells the truth about which one happened.
             unkeyed = not lots_seen or not slots_seen
+            agreed = _agreed_frame(connection, source.relation, pairs_seen, spec)
+            # 🔴 FRAMES THAT ALL AGREE ARE NOT AMBIGUOUS, AND THIS USED TO SAY THEY WERE.
+            # `frame_ambiguous_across_slots` is a claim that the slots DISAGREE about the
+            # lattice — its own message says 「슬롯마다 격자 치수가 다르므로」. MEASURED on
+            # `SYN-BW-101-07` 2026-08-24: the DT axis matched 25 of 25 registered frames and
+            # the core axis 27 of 27, every one describing the same lattice, and the answer
+            # was still `no_frame`. The client then had no border to draw for a lattice that
+            # was fully determined. Owner, 01:5x: 「모두 같으면 모호한 게 아니다」.
+            #
+            # `grid` in the result is `_agreed_frame`'s OWN test — it is set only when every
+            # matched frame's lattice serialises identically — so this reads that verdict
+            # rather than re-deciding it. Both conditions are required: all considered
+            # frames matched (an unregistered one is an unknown, not an agreement) AND they
+            # agreed on the lattice.
+            #
+            # ⚠️ `superposed` STAYS TRUE and `available_slots` STAYS. This is not one slot's
+            # frame; it is N frames' agreement, and a client drawing it must know the cells
+            # are a sum over N tapes rather than one tape's picture.
+            settled = (agreed.get("frames_considered", 0) > 0
+                       and agreed.get("frames_matched") == agreed.get("frames_considered")
+                       and agreed.get("grid") is not None)
             projections.append({
                 "axis": ax, "label": spec["label"], "sublabel": spec["sublabel"],
-                "state": MAP_STATE_NO_FRAME, "reason": MAP_REASON_FRAME_AMBIGUOUS,
-                "message": (
+                "state": MAP_STATE_READY if settled else MAP_STATE_NO_FRAME,
+                "reason": None if settled else MAP_REASON_FRAME_AMBIGUOUS,
+                "message": None if settled else (
                     (f"이 축의 프레임 키({lot_col}·{slot_col})가 이 행에 기록돼 있지 "
                      f"않다 — 좌표는 있으나 어느 프레임의 좌표인지 알 수 없다. 슬롯을 "
                      f"골라도 해결되지 않는다.")
@@ -1345,11 +1367,13 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
                 # describe the SAME 15x10 lattice, and the DT sheet could not be drawn only
                 # because that agreement was never carried at wafer granularity.
                 "frame": _with_identity(
-                    dict({"state": MAP_STATE_NO_FRAME,
-                          "reason": MAP_REASON_FRAME_AMBIGUOUS,
+                    dict({"state": (MAP_STATE_READY if settled
+                                    else MAP_STATE_NO_FRAME),
+                          "reason": (None if settled
+                                     else MAP_REASON_FRAME_AMBIGUOUS),
                           "available_slots": slots_seen,
                           "available_lots": sorted(str(x) for x in lots_seen)},
-                         **_agreed_frame(connection, source.relation, pairs_seen, spec)),
+                         **agreed),
                     frame_wafer),
                 "coordinate_unit": "cells_from_origin",
                 "cells": cells, "found": found, "scanned": scanned})
