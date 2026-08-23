@@ -115,3 +115,56 @@ body {
   color: var(--warning);
   background: var(--warning-weak);
 }
+
+
+/* ── 부품 A 머리 요약 · 부품 D 구성 ────────────────────────────────────────────────
+   TOKENS ONLY. The colour of an absence is decided here once, and it is deliberately NOT
+   `--danger`: this board's whole job is keeping 「없음」 and 「고장」 apart, and a red chip
+   collapses them again. A refusal -- the server answering no -- is the only thing that
+   borrows the danger tokens. */
+.rb-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; }
+.rb-head-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rb-head-absences { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rb-head-subject { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+
+.rb-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px;
+  border: 1px solid var(--border); border-radius: 5px; font-size: 11px; white-space: nowrap; }
+.rb-chip-key { color: var(--text-muted); font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; }
+.rb-chip-val { font-family: var(--font-mono); color: var(--text); }
+.rb-chip--fact { background: var(--bg-surface); }
+/* An absence: quieter, never alarming. */
+.rb-chip--absent { background: var(--bg-inset); border-style: dashed; }
+.rb-chip--absent .rb-chip-val { color: var(--text-muted); }
+
+.rb-head-note { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: 5px; font-size: 12px; }
+.rb-head-note--idle { background: var(--bg-inset); color: var(--text-muted); }
+.rb-head-note--refused { background: var(--danger-weak); color: var(--danger);
+  border: 1px solid var(--danger); }
+.rb-head-note-title { font-weight: 600; }
+.rb-head-note-detail { font-family: var(--font-mono); }
+
+.rb-comp { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px;
+  min-height: 0; overflow: auto; }
+.rb-comp-counts { display: flex; gap: 14px; flex-wrap: wrap; }
+.rb-comp-count { display: flex; align-items: baseline; gap: 5px; }
+.rb-comp-count-value { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--text); }
+.rb-comp-count-label { font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+.rb-comp-cardinality { font-size: 11px; color: var(--text-muted); }
+.rb-comp-note { padding: 6px 8px; border-radius: 5px; font-size: 12px;
+  background: var(--bg-inset); color: var(--text-muted); }
+.rb-comp-note--refused { background: var(--danger-weak); color: var(--danger); }
+
+.rb-comp-rows { display: flex; flex-direction: column; }
+.rb-comp-row { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1.6fr) auto auto;
+  gap: 8px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--border);
+  font-size: 11.5px; cursor: pointer; }
+.rb-comp-row:hover { background: var(--surface-hover); }
+.rb-comp-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
+.rb-comp-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
+.rb-comp-row-id { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.rb-comp-row-core { font-family: var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.rb-comp-row-state { font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); }
+/* `unresolved` is an ABSENCE, not a failure -- muted, not red. */
+.rb-comp-row-state.is-resolved { color: var(--success); }
+.rb-comp-row-events { font-family: var(--font-mono); color: var(--text-muted); }

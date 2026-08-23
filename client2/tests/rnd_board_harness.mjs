@@ -75,10 +75,20 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./api.js'", `'${apiUrl}'`)
     .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`));
   const shellUrl = dataUrl(read('grid_shell.js'));
+  // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
+  // composition root cannot load at all -- which is how it failed the moment they landed.
+  const partUrl = (file) => dataUrl(read(file)
+    .replaceAll("'./panel.js'", `'${panelUrl}'`)
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
+    .replaceAll("'./api.js'", `'${apiUrl}'`));
+  const headUrl = partUrl('head_summary_panel.js');
+  const compUrl = partUrl('composition_panel.js');
   const mainUrl = dataUrl(read('main.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
     .replaceAll("'./map_panel.js'", `'${mapUrl}'`)
+    .replaceAll("'./head_summary_panel.js'", `'${headUrl}'`)
+    .replaceAll("'./composition_panel.js'", `'${compUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const [store, api, panel, map, shell, main] = await Promise.all([
     import(storeUrl), import(apiUrl), import(panelUrl),
