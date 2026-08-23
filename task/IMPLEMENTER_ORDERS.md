@@ -21,6 +21,91 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# ⚖️ 수락 A 판정 — **A 를 «철회»합니다. 당신이 못 맞춘 게 아니라 제가 잘못 적었습니다** (총괄 11:1x)
+
+재기동했습니다 (PID 47628 · 10:58:20). 실측:
+```
+/subgraph  plain      HTTP 200  567,688B
+/subgraph  collect=q  HTTP 200  567,745B      <- 새 인자 «HTTP 로 나갑니다»
+/trace     (얼린 것)  HTTP 422                <- 인자 검증, 500 아님
+```
+
+## 판정 — 규칙 «안» 바꿉니다. 필터 축 «안» 만듭니다. 그리고 A 를 내립니다
+당신이 세운 둘 중 어느 것도 하지 마십시오. 이유는 당신 보고가 이미 다 적었습니다:
+
+```
+①을 닫으면   총괄이 비준한 전파 규칙을 갈아엎는 것
+②를 닫으면   새 필터 축 — 그런데 「근본 원인」은 «선언에서의 위치»이지 노드 종류가 아니라
+             collect 으로 못 좁힙니다. 즉 B 가 금지한 «분기»를 다른 이름으로 만드는 것
+```
+**둘 다 같은 지시서가 금지한 것입니다.** 그러니 A 는 «달성 가능하지 않게» 적혀 있었고,
+그 지시서를 승인한 건 접니다. **A 를 철회합니다.**
+
+### A 자리에 들어갈 것 — 당신이 «이미 낸» 것입니다
+```
+tape_adhesion_anomaly 가 delam 컬렉션 씨앗에서
+「delam_formation 의 노드로 선언됐는데 한 번도 안 닿음」의 «유일한» 멤버로 나옴
+활성 0 · 경로 0 이 인스턴스 층에선 «부재»로 도착
+```
+선언 진단이 «찾아낸 결함»을 인스턴스가 재현한 것 — 이게 두 층이 같은 세계를 본다는 증거입니다.
+「같은 top-6 을 내라」는 두 엔진이 «같은 계산»이라는 가정이었고, 그 가정이 틀렸습니다.
+
+### 다만 한 가지는 재 주십시오 — 그리고 «어느 쪽이 나와도 아무것도 하지 마십시오»
+①이 «진짜 규칙 차이»인지, 아니면 두 엔진이 «다른 그래프»를 나누는 것인지 아직 모릅니다.
+```
+측정   떨어진 둘(dt_pass_count · humidity)의 감쇠가
+       (가) 기전 엣지의 out-degree > 1 에서 오는가        -> 규칙이 진짜로 다름
+       (나) 증거 쪽 노드(value·claim·entity)의 차수에서 오는가 -> 두 엔진은 «비교 대상이 아님»
+행동   «없습니다». 숫자만 보고하십시오. 어느 쪽이든 이번 라운드에 고치지 않습니다
+```
+당신을 세워 두지 않으려고 조건까지 적습니다 — 재고, 적고, 다음으로 넘어가십시오.
+
+---
+
+## ⛔ 라우트 울타리 «완성본» — 제가 16개를 전부 쟀습니다
+지난번에 「`/subgraph` 는 열림」까지만 말하고 나머지를 안 갈랐습니다. 감사가 그 구멍을 잡았고
+(`/coverage` 가 얼린 계산을 부르는데 목록에 없었습니다), **호출하는 심볼로** 다시 갈랐습니다.
+
+🔴 **판정 기준: 「`ledger_trace` 를 부르나」가 아니라 「«무엇»을 부르나」입니다.**
+```
+공용 배관 (얼림 아님)   relation_exists · ResolverConfigError · REASON_RELATION_ABSENT
+얼린 계산               ledger_trace.trace · ._fetch · .coverage · 그리고 얼린 모듈 전부
+```
+
+```
+⛔ 얼림 8    /trace          ledger_trace.trace
+             /explore        ledger_explorer
+             /explore_entity ledger_explorer · ledger_trace._fetch
+             /coverage       ledger_trace.coverage        <- 감사가 찾은 누수
+             /journey        ledger_journey
+             /structure      ledger_structure · ledger_lots
+             /lots           ledger_lots
+             /lot_map        ledger_lots
+
+✅ 열림 8    /subgraph · /subgraph/table   ledger_subgraph   (배관만)
+             /siblings                     ledger_siblings
+             /trends                       ledger_trends
+             /composition                  ledger_composition
+             /selection/resolve            ledger_selection
+             /entities                     ledger_catalog    (배관만)
+             /kinds                        얼린 의존 «없음»
+```
+📎 `/entities` 는 제가 전에 얼린 쪽에 넣었는데 **`ledger_catalog`(B군)를 섬깁니다** — 풀립니다.
+울타리가 «양쪽»으로 틀렸습니다: `/coverage` 를 놓쳤고 `/entities` 를 과하게 얼렸습니다.
+
+## 📌 당신이 «스스로» 잡은 것 둘 — 둘 다 기록합니다
+```
+① 계측기 고장   시계 정규식이 «공백 있는» JSON 만 맞췄고 FastAPI 는 압축 JSON
+                -> 10분간 「엔드포인트가 비결정적」이라 믿었음. 스스로 diff 해서 잡음
+② 수락 D        주장이 아니라 «시연» — 패치 떠내고 checkout, 캡처, 다시 apply, 캡처
+                라우터 변경만이 변수. 10건 바이트 동일
+```
+그리고 `/subgraph/table` 에 `collect` 를 **안 받은 판단**이 옳습니다 —
+「받고 안 쓰는 인자는 시그니처의 거짓말」. `id` 를 대조군으로 못 두는 것을 **밀어붙이지 않고
+적어 둔 것**도 옳습니다.
+
+---
+
 # ➕ 같은 파일에 둘 더 — 판정 1·2 «다음»입니다. 지금 라운드를 막지 않습니다 (총괄 11:0x)
 
 응용 세션이 «제안이 아니라 보고»로 올린 둘입니다. 제가 `ledger_subgraph.py` 를 직접 열어
