@@ -289,6 +289,15 @@ export function bindLoaders(layout, deps) {
           load: (override) => fetchLotMap({
             apiBase, fetchImpl, ...options.question, ...(override || {}),
           }),
+          // 🔴 THE SAME ROUTE ON THE WAFER AXIS. Measured 2026-08-24: asking by lot+slot answers
+          //    `unplaced: unknown` forever (the guard needs the row axis to BE the subject) and
+          //    refuses dt/core as `no_frame`; asking `row=<wafer>&by=wafer` answers the SAME bond
+          //    map (141 · 13/29), dt and core READY, and `unplaced: measured 1/1` -- the seat
+          //    with a void that no picture had. The screen already knows the wafer; it was
+          //    printing it one line above 「웨이퍼로는 귀속 불가」.
+          loadByWafer: (wafer) => fetchLotMap({
+            apiBase, fetchImpl, ...options.question, row: wafer, slot: undefined, by: 'wafer',
+          }),
           // 목업의 페이지 목록. Measured: a slot-less call carries the row's whole slot list.
           loadPages: () => fetchLotMap({
             apiBase, fetchImpl, ...options.question, slot: undefined,

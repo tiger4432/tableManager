@@ -166,6 +166,7 @@ export class MapPanel extends Panel {
     this.slot = (options.question && options.question.slot) || null;
     this.pages = [];
     this.loadPages = options.loadPages || null;
+    this.loadByWafer = options.loadByWafer || null;
     this.loadBasisCounts = options.loadBasisCounts || null;
     this.basisCounts = null;
     this.body = null;
@@ -233,6 +234,21 @@ export class MapPanel extends Panel {
         this.model = projectionModel(body, this.axis);
         this.status = 'ready';
         this.render();
+        // 🔴 THEN ASK THE SAME ROUTE ON THE WAFER AXIS. The lot axis cannot attribute what it
+        //    could not place and cannot pin dt/core to one frame; the wafer axis does both, and
+        //    the wafer is what this answer just told us. The lot answer stays on screen until
+        //    the wafer answer lands, so nothing blinks through an empty state.
+        const wafer = this.model && this.model.frame && this.model.frame.wafer;
+        if (this.loadByWafer && wafer) {
+          Promise.resolve().then(() => this.loadByWafer(wafer))
+            .then((waferBody) => {
+              if (mine !== this._session || !waferBody) return;
+              this.body = waferBody;
+              this.model = projectionModel(waferBody, this.axis);
+              this.render();
+            })
+            .catch(() => {});
+        }
       })
       .catch((err) => {
         if (mine !== this._session) return;
