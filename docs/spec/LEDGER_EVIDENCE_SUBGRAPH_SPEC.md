@@ -156,6 +156,16 @@ source_record = UUIDv5(namespace,
 | Enrich Action | `ledger-enrich-action:v1:` | `[rule_name, contract_version, scope, decision_key 또는 null]` |
 | Quantity | `ledger-quantity:v1:` | `[model_name, quantity_name]` — 모델 이름이 신원의 일부다 |
 
+🔴 **Entity 라벨의 키 «순서»는 라이브 `entities` 선언에서 온다** (`server/config/ontology/
+ledger_config.json`. 버전 접미사 `@N`은 떼고 맞춘다). `ledger_explorer._entity` 는 v1
+`ledger/vocabulary.py` 의 `ENTITY_TYPES` 를 보는데 나중에 선언된 유형은 거기 **없어서**
+payload JSON 의 삽입 순서로 떨어지고, `die` 의 경우 그것이 `x`·`y` 를 앞에 놓아 자재 이름인
+`mat_id` 를 두 칸짜리 라벨 밖으로 밀어낸다. 선언은 이미 답을 갖고 있다 — `die@1` 은 키를
+`mat_id` 부터 적는다. **선언에 없는 유형의 라벨은 손대지 않는다**(오늘 `WaferLeg` 가 그렇고,
+그건 이 코드의 구멍이 아니라 선언의 구멍이라 «선언되는 날» 코드 0줄로 고쳐진다).
+읽기는 한 번·캐시·**절대 예외를 올리지 않는다** — 선언이 없거나 깨져도 라벨이 오늘 그대로일 뿐
+걷기가 같이 죽지 않는다.
+
 Claim과 Event ID에 `occurred_at`을 함께 넣은 이유는 월 파티션을 정확히 가지치기하기 위해서다.
 Claim의 물리 PK도 `(id, occurred_at)`이다. UUID만 넘겨 모든 파티션을 뒤지는 API를 만들지 않는다.
 
@@ -240,7 +250,21 @@ subgraph(id, lookup)                      # 오늘과 같다 — positive 씨앗
     그다음                내보내는 노드의 차수로 나눈다
     감쇠 상수             없다. 기본값으로도 들여오지 않는다
 
-**산출은 순위와 최상위 집합뿐이다.** 도달량은 순위를 정하고 응답을 나가지 않는다 —
+**순위·최상위 집합·도달량 쌍·근거 경로가 나간다** (2026-08-23 정정. 종전 「도달량은 응답을
+나가지 않는다」는 소유자 질문 「collect 후 결과에서 걸은 경로도 나와?」로 뒤집혔다).
+🔴 **`reach`는 `[표시에서 도달, 대조군에서 도달]` 쌍이고, 읽는 사람이 내려야 하는 판정은
+«부호»다** — 「1등이 아니다」와 「표시된 것 전부에서 닿았고 대조군에서는 한 번도 안 닿았다」는
+다른 답이고, 순위만으로는 그 둘이 구별되지 않는다. 그래서 **모든 순위**가 쌍과 경로를 들고
+가고 최상위만 드는 것이 아니다. 여전히 나가지 않는 것은 **확률·퍼센트**다 — `reach`는 날것의
+쌍이지 가능도로 읽으라는 점수가 아니다.
+
+⚠️ **자르지 않았고, 자를 상한도 없다.** 고르기 «전에» 쟀다: 노드 상한(929노드·씨앗 5개·순위
+90개·홉 항목 653개)에서 블록 전체가 **2,723 KB 응답 안의 288 KB(11%)**이고, 작은 걷기에서는
+95 KB 중 25 KB(26%)다. 경로는 `hops`가 아니라 **그래프 지름**에 묶이므로 실측 최장 5홉이다.
+상한이 필요해지면 그때는 **응답에 이름이 있는 필드**로 적는다(`complete`가 그 선례다) —
+조용히 자르지 않는다.
+
+종전 서술: 도달량은 순위를 정하고 응답을 나가지 않는다 —
 판정은 소유자가 한다. 최상위는 «지배당하지 않는 것 전부»이고, 한 쪽은 표시에서
 더 많고 다른 쪽은 대조군에서 더 많으면 둘은 «정도가 아니라 종류가 다르다»고
 `incomparable` 로 표시된다.
@@ -269,6 +293,7 @@ subgraph(id, lookup)                      # 오늘과 같다 — positive 씨앗
     "complete": true,
     "ranked": [{"id": "...", "type": "Quantity", "label": "bond_pressure · void_formation",
                 "rank": 1, "top": true, "tied": true, "incomparable": false,
+                "reach": [0.5, 0.0],
                 "evidence": [{"seed": "...", "sign": "+", "hops": []}]}],
     "top_set": ["..."],
     "message": null
@@ -425,6 +450,9 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
   `void_formation.void`와 `void_observation_bias.void_observed`는 **합쳐지지 않는다**.
 - 새 쿼리 파라미터를 하나도 주지 않은 `/subgraph`·`/subgraph/table` 응답은 종전과
   바이트 단위로 같다.
+- `ranked` 의 **모든** 항목이 `reach` 쌍과 `evidence` 경로를 들고 있다 — 1등만이 아니다.
+- Entity 라벨의 키 순서가 **라이브 `entities` 선언**에서 나온다. 선언에 없는 유형은
+  종전 라벨 그대로다.
 - target이 충족되면 Action이 사라지고, 공급 source가 없으면 rule-level Meta Action 하나만 남는다.
 - 배포되지 않은 rule은 derived row를 읽지 않고 계약 복구 Action을 낸다.
 - incoming과 outgoing이 실제로 다른 그래프를 만든다.

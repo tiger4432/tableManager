@@ -562,9 +562,53 @@ class InMemoryEvidenceLookup:
         ], limit)
 
 
+#: Key order per entity type, read once from the live ontology declaration.  `None`
+#: until the first entity node asks for it.
+_entity_key_order = None
+
+
+def _declared_key_order(entity_type):
+    """The key order one entity type declares, from the LIVE ontology declaration.
+
+    `ledger_explorer._entity` takes its order from the v1 `ENTITY_TYPES` in
+    `ledger/vocabulary.py`, and a type the operator declared later is simply ABSENT there.
+    The label then falls back to whatever order the payload's JSON happened to use, which
+    for `die` puts `x` and `y` first and pushes `mat_id` — the only key that names the
+    material — off the front of a two-value label entirely.
+
+    The declaration already answers this: `entities` lists the keys in order, and `die@1`
+    lists `mat_id` first.  Read once, cached, and NEVER raised: an absent or unreadable
+    declaration leaves every label exactly as it is today rather than taking the walk down
+    with it.  The `@version` suffix is stripped the way `ledger/roleframe.py` strips it.
+    """
+    global _entity_key_order
+    if _entity_key_order is None:
+        order = {}
+        try:
+            import paths
+            with open(paths.config_path("ontology", "ledger_config.json"),
+                      "r", encoding="utf-8") as handle:
+                declared = (json.load(handle) or {}).get("entities") or {}
+            for name, spec in declared.items():
+                keys = [str(key) for key in ((spec or {}).get("keys") or [])]
+                if keys:
+                    order[str(name).rsplit("@", 1)[0]] = keys
+        except Exception:
+            order = {}
+        _entity_key_order = order
+    return _entity_key_order.get(str(entity_type))
+
+
 def _entity_node(entity_type, keys):
     node = ledger_explorer._entity(entity_type, keys)
     node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
+    order = _declared_key_order(entity_type)
+    if order:
+        # Same shape as the label `_entity` builds, on the declared order instead of the
+        # insertion order.  Types the declaration does not name keep the label they have.
+        values = [str(keys.get(name)) for name in order
+                  if keys.get(name) is not None and str(keys.get(name)) != ""]
+        node["label"] = " / ".join(values[:2]) or str(entity_type)
     return node
 
 
@@ -914,8 +958,11 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
     are not the same question after all.  A new application is a new value of this
     argument, not new code.
 
-    🔴 NO NUMBERS LEAVE.  Reach decides the rank and the top set and then stays inside:
-    the ranking is the machine's judgement, and reading it is the owner's.
+    🔴 The rank is the machine's judgement and the reading is the owner's, so the reach
+    pair travels WITH the rank rather than being hidden behind it: without the sign a
+    reader can only see that something is not first, never that it was reached from every
+    marked subject and from no control.  What still does not leave is a probability or a
+    percentage — reach is a raw pair, not a score anybody should read as a likelihood.
     """
     negatives = sum(1 for sign in seed_signs.values() if sign < 0)
     block = {
@@ -946,14 +993,23 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
         block["message"] = "이 걷기가 %s 노드에 닿지 않았습니다" % collect
         return block
     layers = _rank_layers(collected)
-    for item in layers[0]:
-        item["evidence"] = _evidence(nodes, parents, seed_signs, item["id"])
     block["state"] = "ranked"
     block["ranked"] = [{
         "id": item["id"], "type": item["type"], "label": item["label"],
         "rank": item["rank"], "top": item["rank"] == 1,
         "tied": item["tied"], "incomparable": item["incomparable"],
-        **({"evidence": item["evidence"]} if "evidence" in item else {}),
+        # 🔴 `[from_positive, from_negative]`, and the SIGN is the judgement the reader has
+        # to make.  「reached from the marked subjects and never from a control」 is a
+        # different answer from 「not first」, and rank alone cannot tell them apart — so
+        # every rank carries the pair and its trails, not only the top set.
+        #
+        # Measured 2026-08-23 before choosing this: at the node cap (929 nodes, 5 seeds,
+        # 90 ranked items, 653 hop entries) the whole block is 288 KB inside a 2,723 KB
+        # response — 11% of what the caller already receives, and trails stay 5 hops long
+        # because a BFS trail is bounded by the graph's diameter rather than by `hops`.
+        # So NOTHING is cut here and there is no cap to name.
+        "reach": item["reach"],
+        "evidence": _evidence(nodes, parents, seed_signs, item["id"]),
     } for layer in layers for item in layer]
     block["top_set"] = [item["id"] for item in layers[0]]
     return block

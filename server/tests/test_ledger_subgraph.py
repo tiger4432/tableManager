@@ -376,11 +376,13 @@ def test_collect_switches_the_application_without_changing_the_walk():
     # The declared ancestor both marked subjects descend from is the lineage answer.
     origin = ledger_explorer.entity_id("Lot", {"lot": "ORIGIN"})
     assert origin in entities["propagation"]["top_set"]
-    # Ranks and the top set travel; the reach that produced them does not.
-    assert '"reach"' not in json.dumps(entities["propagation"])
+    # The reach PAIR travels with the rank: without the sign a reader can only see that
+    # something is not first, never that it was reached from the marked subjects and from
+    # no control.  What still never leaves is a probability or a percentage.
     for row in entities["propagation"]["ranked"]:
-        assert set(row) <= {"id", "type", "label", "rank", "top", "tied",
-                            "incomparable", "evidence"}
+        assert set(row) == {"id", "type", "label", "rank", "top", "tied",
+                            "incomparable", "reach", "evidence"}
+        assert len(row["reach"]) == 2
     try:
         ledger_subgraph.subgraph(seeds, lookup, collect="Physics")
     except ValueError as exc:
@@ -440,6 +442,15 @@ def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
     # Every ranked entry that is NOT top is dominated by something in the top set, and
     # nothing in the top set dominates anything else there.
     assert all(row["rank"] > 1 for row in prop["ranked"] if not row["top"])
+    # 「걸은 경로도 나와?」 — on EVERY rank, not only on the winner.  A reader has to be
+    # able to say 「this one was never reached from a control」 about something that is
+    # not first, and that judgement needs the trail and the sign, not the position.
+    assert all(row["evidence"] for row in prop["ranked"])
+    assert any(row["rank"] > 1 for row in prop["ranked"]), "fixture must rank below 1"
+    below = next(row for row in prop["ranked"] if row["rank"] > 1)
+    assert below["evidence"] and below["evidence"][0]["hops"]
+    assert {trail["sign"] for row in prop["ranked"] for trail in row["evidence"]} == {
+        "+", "-"}
     top = ranked["ORIGIN"]
     assert top["evidence"], "the top set carries its hop-by-hop basis"
     hops = top["evidence"][0]["hops"]
@@ -542,6 +553,30 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
         "positive": [seed, "b"], "negative": ["c"]}
     assert ledger_trace_router._signed_start(seed, None, ["c"]) == {
         "positive": [seed], "negative": ["c"]}
+
+
+def test_entity_label_takes_its_key_order_from_the_live_declaration():
+    """A type declared after v1 has no entry in `ENTITY_TYPES`, so the label falls back
+    to payload insertion order — which for `die` leads with x and y and pushes the only
+    key that names the material out of a two-value label."""
+    keys = {"x": 1.0, "y": 10.0, "mat_id": "SYN-XFER-CORE-W07", "mat_type": "Wafer"}
+    saved = ledger_subgraph._entity_key_order
+    try:
+        # Declaration read, and this type is not in it: the label stays what it was.
+        ledger_subgraph._entity_key_order = {}
+        assert ledger_subgraph._entity_node("die", keys)["label"] == "1.0 / 10.0"
+        # Declared: the order is the declaration's and the material name leads.
+        ledger_subgraph._entity_key_order = {"die": ["mat_id", "x", "y", "mat_type"]}
+        assert (ledger_subgraph._entity_node("die", keys)["label"]
+                == "SYN-XFER-CORE-W07 / 1.0")
+        # A type the declaration does not name is untouched, declared in v1 or not.
+        assert ledger_subgraph._entity_node("Lot", {"lot": "A"})["label"] == "A"
+        # Nothing else about the node moves.
+        node = ledger_subgraph._entity_node("die", keys)
+        assert node["node_kind"] == "entity" and node["keys"] == keys
+        assert node["id"] == ledger_explorer.entity_id("die", keys)
+    finally:
+        ledger_subgraph._entity_key_order = saved
 
 
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():
