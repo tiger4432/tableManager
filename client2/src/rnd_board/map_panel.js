@@ -160,6 +160,12 @@ export class MapPanel extends Panel {
     //    map B stands on dt; the declaration gives the starting one and the pills move it.
     this.axis = options.axis;
     this.bases = Array.isArray(options.bases) ? options.bases.slice() : [];
+    // 🔴 THE PAGE IS THIS INSTANCE'S STATE TOO. Map A on 3/25 and map B on 7/25 must not know
+    //    about each other, and a marking survives paging because a marking is a set of node
+    //    ids -- not a screen state (the harness scores that).
+    this.slot = (options.question && options.question.slot) || null;
+    this.pages = [];
+    this.loadPages = options.loadPages || null;
     this.loadBasisCounts = options.loadBasisCounts || null;
     this.basisCounts = null;
     this.body = null;
@@ -183,12 +189,24 @@ export class MapPanel extends Panel {
   mount() {
     super.mount();
     this.reload();
+    if (this.loadPages) {
+      Promise.resolve().then(() => this.loadPages())
+        .then((pages) => { this.pages = Array.isArray(pages) ? pages : []; this.render(); })
+        .catch(() => { this.pages = []; });
+    }
     if (this.loadBasisCounts) {
       Promise.resolve().then(() => this.loadBasisCounts())
         .then((counts) => { this.basisCounts = counts || null; this.render(); })
         // A count nobody could fetch stays null and draws as 「—」; it never becomes 0.
         .catch(() => { this.basisCounts = null; });
     }
+  }
+
+  /** Turn to another slot of the same row. Re-fetches; the marking is untouched. */
+  setPage(slot) {
+    if (!slot || slot === this.slot) return;
+    this.slot = slot;
+    this.reload();
   }
 
   /** Move this instance to another projection of the SAME response. */
@@ -206,7 +224,7 @@ export class MapPanel extends Panel {
     this.status = 'loading';
     this.render();
     return Promise.resolve()
-      .then(() => this.load())
+      .then(() => (this.slot ? this.load({ slot: this.slot }) : this.load()))
       .then((body) => {
         if (mine !== this._session) return;
         // 🔴 ONE RESPONSE ALREADY CARRIES ALL THREE PROJECTIONS (measured: bond 141 · dt 11 ·
@@ -245,11 +263,13 @@ export class MapPanel extends Panel {
     // 목업의 상태 알약: 「이 패널이 «왜» 이렇게 그려졌나」. The mockup puts one on every map and
     // it is the difference between a panel you read and a panel you guess at.
     const basis = el(doc, 'span', 'rb-map__basis');
+    const pager = el(doc, 'span', 'rb-map__pager');
     const badge = el(doc, 'span', 'rb-map__badge');
     head.appendChild(title);
     head.appendChild(sub);
     head.appendChild(counts);
     head.appendChild(basis);
+    head.appendChild(pager);
     head.appendChild(badge);
     const stage = el(doc, 'div', 'rb-map__stage');
     const canvas = el(doc, 'canvas', 'rb-map__canvas');
@@ -262,7 +282,7 @@ export class MapPanel extends Panel {
     if (canvas.addEventListener) {
       canvas.addEventListener('click', (event) => this._onCanvasClick(event));
     }
-    this._nodes = { root, head, title, sub, counts, basis, badge, stage, canvas, note };
+    this._nodes = { root, head, title, sub, counts, basis, pager, badge, stage, canvas, note };
   }
 
   _writeHead() {
@@ -298,6 +318,7 @@ export class MapPanel extends Panel {
     //    declaration NAMES an axis was chosen deliberately; one that does not would be
     //    following whatever the control bar picked. Today every map here names its axis.
     this._writeBasisRow(n.basis);
+    this._writePager(n.pager);
     n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`;
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
@@ -311,6 +332,40 @@ export class MapPanel extends Panel {
     n.note.className = refused && canDraw ? 'rb-map__note is-caveat' : 'rb-map__note';
     n.root.setAttribute('data-map-state',
       this.status === 'ready' ? (m && m.drawable ? 'ready' : 'refused') : this.status);
+  }
+
+  /**
+   * 목업의 페이지 자리 — 「‹ 3/25 ›」 와 «지금 어느 자재인지». Nothing is drawn when the route
+   * served no page list: an absent pager is not a one-page row.
+   */
+  _writePager(host) {
+    const doc = this.doc;
+    host.textContent = '';
+    if (!this.pages.length) return;
+    const at = this.pages.indexOf(this.slot);
+    const step = (delta) => {
+      if (at < 0) return;
+      const next = this.pages[at + delta];
+      if (next) this.setPage(next);
+    };
+    const prev = doc.createElement('span');
+    prev.className = at > 0 ? 'rb-map__page-step' : 'rb-map__page-step is-end';
+    prev.textContent = '‹';
+    prev.addEventListener('click', () => step(-1));
+    const label = doc.createElement('span');
+    label.className = 'rb-map__page-label';
+    // The slot AND the wafer it turned out to be: a page number alone is not an identity.
+    const wafer = this.model && this.model.frame && this.model.frame.wafer;
+    label.textContent = `${this.slot || '-'} / ${this.pages.length}`
+      + (wafer ? ` · ${wafer}` : '');
+    const next = doc.createElement('span');
+    next.className = at >= 0 && at < this.pages.length - 1
+      ? 'rb-map__page-step' : 'rb-map__page-step is-end';
+    next.textContent = '›';
+    next.addEventListener('click', () => step(1));
+    host.appendChild(prev);
+    host.appendChild(label);
+    host.appendChild(next);
   }
 
   /**

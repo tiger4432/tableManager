@@ -527,3 +527,26 @@ export function basisCountsFromComposition(result) {
   }
   return counts;
 }
+
+
+/**
+ * 목업의 맵 페이지 목록. MEASURED 2026-08-23: calling `lot_map` WITHOUT a slot answers with the
+ * row's whole slot list on the bond frame -- `available_slots` ["01".."25"] -- while the same
+ * call WITH a slot drops it. So the pages are a fact the route already serves; asking for them
+ * is one slot-less call and no new endpoint.
+ *
+ * ⚠️ It reads the BOND frame on purpose. dt/core carry their own `available_slots` in a
+ *    different vocabulary ("1".."25" unpadded, and a different lot), and feeding those back as
+ *    `slot=` would be paging one axis with another axis's numbering.
+ */
+export function slotPagesFromLotMap(result) {
+  // ⚠️ `fetchLotMap` RESOLVES WITH THE BODY ITSELF, while `fetchComposition` and `fetchSubgraph`
+  //    resolve with `{ok, status, body}`. Two shapes at one boundary, and reading the wrong one
+  //    here returned an empty page list SILENTLY -- no error, no refusal, just a pager that
+  //    never appeared. Both are accepted rather than guessed at.
+  const body = (result && result.body) || result || null;
+  const projections = (body && body.projections) || [];
+  const bond = projections.find((p) => p && p.axis === 'bond');
+  const slots = bond && bond.frame && bond.frame.available_slots;
+  return Array.isArray(slots) ? slots.slice() : [];
+}
