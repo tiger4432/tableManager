@@ -22,6 +22,57 @@
 
 ---
 
+# 🔨 라운드 2 «착수하십시오» — grain 을 «받게» 만듭니다 (총괄 20:2x)
+
+**정본은 `task/APPLICATION_TREND_GRAIN_BRIEF.md` (`b63516de`) 입니다.** 먼저 읽으십시오.
+제 판정은 `task/ontology_application_ruling.md` 맨 위에 있습니다. **아래는 «차이»만 적습니다.**
+
+## 하는 것 — 브리프 순서의 «2·3만»
+```
+2   `/trends` 가 grain 을 «입력으로 받는다». 지금 응답이 «내보내는» 그 객체를 그대로 받습니다
+    (ledger_trends.py:467 — subject_type · identity_fields · context_fields · aggregation_unit)
+3   그 다섯 자리를 «컬럼 목록»으로 받게 한다
+    scans GROUP BY · observed GROUP BY · per_wafer JOIN 둘 · numbered ORDER BY
+    🔴 SQL «구조»는 안 바꿉니다. 목록만 파라미터화합니다
+```
+🔴 **축마다 «두 표현»입니다** — 분모는 테이블 컬럼, 분자는 원자 경로.
+`{ name, denominator:{relation,column,join}, numerator:{from:"subject_keys"|"object_payload", key} }`
+
+## 🔴 이 라운드가 «고치는 것» — 지금 이 라우트는 불량을 0건 셉니다
+```
+실측 (응용)   found «0» · scanned_clean 48
+원인          SQL 은 subject_type='Wafer' 의 object_payload 에서 bonding_leg 을 찾는데
+              이 원장은 subject_type='WaferLeg' 의 «주어 키»에 둡니다
+              Wafer observed 114,492 -> payload 에 bonding_leg  0
+              WaferLeg observed    18 -> 18
+```
+**분자 표현을 «선언»하게 되는 순간 이게 고쳐집니다** — 「주어 키냐 payload 냐」를 말해야 하니까.
+그러니 이 라운드의 수락 조건에 **「`found` 가 0이 아니게 된다」**를 넣으십시오. 그게 R&D 가 보는 값입니다.
+
+## ⛔ 하지 «않는» 것 — 셋 다 명시적으로 뺍니다
+```
+✗ 선언을 파일에 둔다        server/config/siblings_axes.json 은 «이 박스에 없습니다».
+                            로더가 sample/siblings_axes.json.sample 로 «폴백»합니다.
+                            거기 쓰면 여기선 돌고 운영에 라이브 파일이 생기는 날 사라집니다
+                            -> 기본값을 어디서 읽나는 «별건». 이번 라운드는 «입력으로 받는 것»까지
+✗ WaferLeg 선언             소유자 몫(폼·코드 0줄). 제가 올렸습니다. 기다리지 마십시오
+✗ marking 을 노드 id 로     WaferLeg 선언 뒤. 이번 라운드 아님
+```
+
+## ⚠️ 같이 움직이는 것 (앞 블록에서 이미 셌습니다)
+```
+테스트  test_ledger_selection.py · test_ledger_trends.py · test_syn_complex_composite.py
+씨더    server/scripts/seed_syn_complex_composite.py
+```
+📎 `grain` 을 «읽는» 곳은 전수 0입니다 (제가 잘림 없이 쟀습니다) — 하류에 깨질 것이 없습니다.
+
+## 지금 당신 대기열
+```
+1 ✅ R&D 화면 라운드 1 (d77499a1)
+2 ▶ /trends grain 을 «입력으로». found 0 이 아니게 되는 것이 수락 조건
+3   트렌드 부품 둘   반드시 2 다음
+```
+
 # ⚖️ 라운드 1 «수락» + 판정 셋 — 셋 다 답 나갑니다 (총괄 20:1x)
 
 ## 수락합니다. 그리고 «무엇이» 좋았는지 적어 둡니다
