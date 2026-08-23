@@ -37,46 +37,86 @@
 > 확인: 포트 8080 리슨 + «프로세스 시작 시각»이 최근 수리보다 뒤인지
 > ```
 >
-> ### ③ 지금 «08-24 오전» — 소유자가 «데이터»로 방향을 틀었습니다
+> ### ③ 지금 «08-24 낮» — 소유자가 «데이터 흐름»을 확정했습니다. 정본은 `task/MARKING_CONTRACT.md`
 > ```
-> 화면   http://localhost:8080/rnd-board.html    목업 http://localhost:8123/웨이퍼 진단 화면.dc.html
-> 소유자 지시 넷 (오전, 연달아):
->   ① 「작동 사항들 «검증 필요한 데이터 부족한거» 다 찾아」
->   ② 「트렌드 x축 시간 안 나옴 + wf 부족 -> 본딩 자재 보강, 연관 보이드·dt·core 도」
->   ③ 「core 에 defect 테이블 신설해서 «후보 맵·후보 트렌드 마킹 연동» 검증」
->   ④ 「프레임 여러 개 걸침 거절문 -> 그냥 «페이지네이션» 걸면 되는데 뭐가 문제임」
+> 소유자 도식 (직접 그려 주심) — 화면은 «전부 walk» 입니다. 다른 라우트가 없습니다
+>   서버 ─walk(each groupby · trend Y value)→ 기본 트렌드 → 마킹1
+>   마킹1 ─walk(specific · y value correlate candidate)→ 후보 → 마킹2
+>   마킹1 ─walk(specific · wafer, process)→ 자재 정보
+>   마킹1 ─walk(specific · trend Y value)→ 맵      🔴 맵과 트렌드는 «같은 collect». 시작점만 다름
+>   마킹2 ─walk(specific · mark2 type)→ 후보 트렌드 · 후보 맵
 > ```
-> **🔴 이 화면의 병목은 이제 «코드»가 아니라 «재료»입니다 — 그리는 칩이 «13개»입니다.**
+> **🔴 소유자 상설 (CLAUDE.md 289dc27f): 「마킹한 노드의 «하위 그래프»를 데이터로 들고 온다」**
+> 마킹은 표시가 아니라 «질의의 주어». 부품이 거르면 위반. 라우트가 늘면 위반.
+>
+> ### ③-lane 레인 넷 — 🔴 파일로 갈랐습니다. 겹치면 그것부터 사고
 > ```
-> lot_map(SYN-VOID-001/07)  본딩 141칸 found 13 · DT 11칸 found 8 · 코어 110칸 found 13
->                           세 축 다 state=ready — 배관은 살아 있고 흐르는 게 없습니다
-> dt_transfer_log           1,405행 · dt_job «10» · core_wafer «10»  <- 제일 좁은 목
-> core_defect_map           5,152행 · lot 2 · SYN «0»                <- 후보 맵 재료 없음
-> void 0행 · defect 0행 · bonding_log.base_wafer_id distinct «0»
-> 라이브 선언               ledger_config.json sources «셋»뿐 (dt_job·lot_event·transfer_event)
+> 총괄     선언 파일 셋 (ledger_config · siblings_axes · mechanism_models) + 판정
+> 응용     «이음새» — task/MARKING_CONTRACT.md + client2/src/rnd_board/api.js «한 파일»
+>          (소유자 지명: 「서버랑 클라 다 아는」)
+> 클라     패널 전부 · 회전 정규화 · 목업 항목.  api.js «금지»
+> 구현자   서버 — 선언 로드 살리기 · 접힘 통과 · finding point 좌표 · 자재
 > ```
-> ### ③-ruling 🔴 오전에 낸 판정 넷 — 되풀이하지 말 것
+>
+> ### ③-block 🔴 지금 «모든 것»이 막힌 한 자리 — 선언이 로드 단계에서 예외
 > ```
-> ⓐ core defect «신설 안 함»      core_defect_map 이 이미 있고 모양이 맞습니다
->                                (chip_key·lot·slot·x·y·val). 채우고 «선언»에 붙입니다
-> ⓑ 「여러 프레임」은 «페이저»     서버가 available_slots 25개를 «거절문에 이미 싣고» 있고
->                                &slot=07 붙이면 15x15 로 «그려집니다». 서버 무변경
->                                조건은 state==no_frame && available_slots 있음 «하나» — 축 이름 검사 금지
->                                페이지가 «없는» 거절(unkeyed·unregistered)은 문장 그대로
-> ⓒ 자재 보강 = «새 세트»         기존 SYN 랏 손대면 심어 둔 excursion 정답 키 «넷»이 깨집니다
->                                (시더 문서가 그 위험을 이름으로 적어 뒀음)
-> ⓓ 🔴 제 40% 기준을 «취소»       분모가 «칸»이라 본딩을 넣으면 비율이 «내려갑니다».
->                                제가 시킨 행위가 제 기준에서 멀어지는 방향이었습니다 (c2f98782)
->                                병목은 inspection_run + void_obs 이지 bonding_log 가 아닙니다
+> config_path()  ->  server/config/ledger_config.json          «없는 파일»
+>   .sample 폴백 ->  setup_version 3                            로드 ❌
+> walk 이 읽는 것 ->  config/ontology/ledger_config.json (v5)    raw open, «검증 안 탐»
+> 원인            검사기가 v3 을 요구합니다 (최상위 occurred_at_column).
+>                 v5 는 read.occurred_at 에 둡니다. validate() 는 setup_version 을 «안 봅니다»
+> 총괄 판정       정본 = ontology 파일. «복사 금지», config_path() 하나를 돌린다
+>                 순서: 검사기 v5 -> config_path -> subgraph 를 load() 로 -> sample 재생성
+> 파급            v1 번역기는 2026-08-18 «은퇴». 앞으로 원자가 느는 길은 v5 선언 «하나»뿐
+>                 -> 표를 채워도 원자 0. 자재 보강도 이게 풀려야 값이 됩니다
 > ```
-> ### ③-open 🔴 소유자 판정 «대기» — `lot_map` 이라는 이름
+> **총괄이 써 둔 선언** (`_validate_declared_source` 통과 확인): `void_die_observation`
+> — `Die {wafer, x, y}` 가 `void_obs` 의 `base_wafer_id·base_x·base_y` 와 1:1. 로드 살면 바로 붙임.
+>
+> ### ③-tangle 🔴 마킹 꼬임 — 소유자 「한번 꼬이면 답없다」. 이미 꼬여 있었음
 > ```
-> 물음   소유자 「api 이름은 왜 lot_map 임? 설마 랏 별로 불러오는 거 아니지?」
-> 실측   축은 siblings_axes.json 선언이고 ?by= 로 바뀝니다. «그런데 기본값이»
->        ledger_lots.py:436  axis.name.endswith("_lot")  <- 컬럼 대신 «접미사»를 박았습니다
->        오늘 답: row_axis = bond_lot. slot 없이 부르면 25슬롯이 «한 장에 겹칩니다»
-> 🔴 즉 「랏 기본값」과 ⓑ의 「프레임 여러 개」가 «같은 뿌리»입니다
-> 선택지 ⓐ 기본값을 웨이퍼 축으로 · ⓑ 라우트 개명 · ⓒ 지금은 두고 페이저만
+> ① 이름 불일치   트렌드가 marking:0 에 쓰고 맵은 marking:1 을 읽음. «잇는 것이 없음»
+>                 -> 아침 지적 「트렌드 마킹 → 맵 타겟팅 안 됨」의 «정체». 버그가 아니라 «미배선»
+> ② 소비자 0 파생  marking:3(교집합)을 «읽는 부품 0개». 그런데 저장은 됨
+> ③ 지어낸 id     맵 칸이 무는 노드가 «없어서» 클라가 stampedNodeId 로 «지어냄»
+>                 -> 지어낸 id 로 마킹하면 walk 이 «없는 노드»에서 출발
+> 총괄 판정       교집합은 «계산». marking:0 · marking:3 «은퇴». 마킹은 «둘»
+>                 게이트: «서버가 준 node id 만» 마킹 가능 (5c2c7e7d 착지)
+> ```
+>
+> ### ③-chain 하위 데이터 사슬 — 실측. 어디가 비어 있나
+> ```
+> 트렌드 점 = Wafer 노드
+>   └ collection 「void · sat (30)」  occurrence 30 · run 17 · claim 30
+>        spatial.bbox «전부 null»
+>        └ finding point × 30   evidence_claim_id ✅ · source_raw_ref ✅
+>             🔴 keys.position «{}»  ← 좌표가 run_uid «문자열 안»에만
+>                "sat|SYN-BW-K1-201-01|13|5|3|…"     원본 payload 엔 die{x,y,gate} 로 «있음»
+> 맵 칸 = «아무 노드도 안 뭄».  lot_map 셀 = {x,y,n,state}, node_id 0/141
+> 웨이퍼에서 collect=point -> 어떤 깊이에서도 «0». collection 을 씨앗으로 줘야 30개
+>   (구현자: 「접힘은 벽이 아니라 «치환»이라 노드가 애초에 안 만들어진다」)
+> 총괄 판정   collect 는 접힘을 «뚫는다». 접기 자체는 유지. 좌표 싣기와 «한 수리»로 묶음
+> ```
+>
+> ### ③-mockup 목업 대조 — 총괄이 «직접» 봤음 (상설 ②, 08-24 낮)
+> ```
+> 🔴 통째로 없음  스텝 사슬 · 「펼친 층」 패널 · 후보 트렌드 · X value 축
+> 다름            구성표 슬롯 컬럼 없음 · 「이력 8›」 열 없음 · 「← 후보 N」 배지 없음
+>                 머리에 마킹 행수 없음 · 맵 머리에 마킹/void/delam 수 없음
+>                 코어 맵이 «어느 층인지» 안 말함 · 「값 없음」에 수가 없음
+> ✅ 착지          맵 가로배치 · 코어맵(마킹2) · 슬롯페이저 · 우측 컨트롤열 · x축 자재id
+>                 walk 한 벌(896558da) · 회전 180 읽기(f9abae59) · 마킹 게이트(5c2c7e7d)
+> ⚠️ 빌드 빨강     rnd_board_composition_harness.mjs green->red.
+>                 총괄 판정: «계약이 바뀐 것이 맞음». KNOWN_RED 금지, 새 계약으로 다시 쓸 것
+>                 -> 초록 되기 전엔 dist 못 올림. 지금 8080 은 «옛 화면»
+> ```
+>
+> ### ③-open 🔴 소유자 판정 «대기» 하나 — `lot_map` 이라는 이름
+> ```
+> 실측   축은 선언이고 ?by= 로 바뀝니다. «그런데 기본값이»
+>        ledger_lots.py:436  axis.name.endswith("_lot")   ← 컬럼 대신 «접미사»를 박음
+> 선택지 ⓐ 기본값을 웨이퍼 축으로 · ⓑ 라우트 개명 · ⓒ 지금은 두고 walk 이 대체할 때 제거
+> 📎 lot_map 은 «지우지 않습니다» — walk 이 «그림을 낼 때» 뺍니다 (재료가 아직 없음)
 > ```
 > ### ③-gap 🔴 소유자가 짚은 일곱 — 클라 대기열 (우선순위 순)
 > ```
