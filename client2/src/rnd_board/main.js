@@ -73,7 +73,12 @@ export const BOARD = Object.freeze({
   //    a part could push the grid open), so an auto row's minimum is ZERO -- and once the fixed
   //    rows below overflowed the viewport the identity band was squeezed to its borders while
   //    its content sat inside, invisible. A floor is what makes it survive the overflow.
-  rows: 'minmax(92px, auto) minmax(44px, auto) 280px 300px 320px 320px',
+  // ⚠️ THE TREND'S BAND IS SMALLER THAN THE MOCKUP'S ON PURPOSE, TODAY. Its data has no
+  //    spread (every rate 0.0 at one timestamp), so a 280px band was 240px of empty air at
+  //    the top of the screen -- the least mockup-like thing on it. The height goes to the
+  //    layer table, which has ten rows to show. When the trend gets a spread this is one
+  //    number here, and no part changes.
+  rows: 'minmax(92px, auto) minmax(44px, auto) 190px 360px 320px 320px',
   gap: '10px',
   // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
   //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
