@@ -294,8 +294,26 @@ export async function fetchSubgraph(params) {
   return { ok: true, status: res.status, detail: null, body: await res.json() };
 }
 
-/** A candidate's evidence carries something real when any hop is a `value` or a `claim`. */
-function hasMeasuredHop(row) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️ TEMPORARY BOUNDARY ADAPTER -- DELETE THIS FUNCTION WHEN THE SERVER SERVES THE FIELD.
+//
+// Lead PM ruling 2026-08-23: the derivation is ADOPTED because 「가서 볼 수 있는 것」 and
+// 「모델이 붙인 이름」 must be told apart or the rank table means nothing -- but a client
+// INTERPRETING ontology meaning is temporary, and the same ruling already applies to the map
+// cell's `node_id` placeholder. It is collected here, in ONE function, so the day
+// `/api/ledger/subgraph` serves the distinction itself, this function disappears and NO PART
+// IS TOUCHED.
+//
+// What it decides: a hop of kind `value` or `claim` reaches something an engineer can go and
+// look at. Hops that are all `quantity` are a name `mechanism_models.json` declares.
+//
+// ⚠️ It counts WALKS, not declarations. The order said 3 of 25; this says 4 of 25, and the
+//    Lead PM ruled the 4 correct -- their 3 counted rows with a model binding, which is a
+//    different question. `post_bond_queue_h · void_observation_bias` is the extra: it reaches
+//    a claim atom (`mes_queue:SYN-BW-103-11`) and a value hop.
+// ═══════════════════════════════════════════════════════════════════════════════
+export function measuredFromHops__untilServerServesIt(row) {
+
   for (const ev of row.evidence || []) {
     for (const hop of ev.hops || []) {
       if (hop && (hop.node_kind === 'value' || hop.node_kind === 'claim')) return true;
@@ -343,7 +361,7 @@ export function subgraphModel(result) {
       top: row.top === true,
       tied: row.tied === true,
       incomparable: row.incomparable === true,
-      measured: hasMeasuredHop(row),
+      measured: measuredFromHops__untilServerServesIt(row),
       hopCount: (row.evidence || []).reduce((n, ev) => Math.max(n, (ev.hops || []).length), 0),
       evidence: (row.evidence || []).map((ev) => ({
         seed: ev.seed || null,

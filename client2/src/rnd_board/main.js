@@ -33,10 +33,13 @@ import { GridShell } from './grid_shell.js';
 import { MapPanel } from './map_panel.js';
 import { HeadSummaryPanel } from './head_summary_panel.js';
 import { CompositionPanel } from './composition_panel.js';
+import { CandidateListPanel } from './candidate_list_panel.js';
+import { RankListPanel } from './rank_list_panel.js';
 import { fetchLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
-export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel };
+export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
+  candidateList: CandidateListPanel, rankList: RankListPanel };
 
 /**
  * THE SCREEN. Round 1 seats the two maps; the remaining seven parts land beside them as
