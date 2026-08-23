@@ -464,3 +464,14 @@ body {
 /* 제목을 다는 패널은 자기 위쪽 패딩을 «제목에 넘깁니다» — 제목 위에 빈 띠가 없어야
    스크롤한 내용이 제목 위로 비쳐 보이지 않습니다. */
 .rb-head, .rb-comp, .rb-cand, .rb-rank, .rb-trend, .rb-status { padding-top: 0; }
+
+/* 「맵 밖」 — 이 맵이 «못 그린» 것. 없는 것이 아닙니다. */
+.rb-map { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.rb-map__outside:empty { display: none; }
+.rb-map__outside {
+  padding: 3px 10px; font-size: 11px; color: var(--text-muted);
+  background: var(--bg-inset); border-bottom: 1px solid var(--border);
+}
+.rb-map__outside.is-measured { font-family: var(--font-mono); }
+/* 「모른다」는 점선 밑줄 — 숫자가 아니라 상태라는 표시. 빨강이 아닙니다. */
+.rb-map__outside.is-unknown { border-bottom: 1px dashed var(--border-strong); }

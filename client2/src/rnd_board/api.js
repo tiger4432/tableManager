@@ -104,7 +104,7 @@ export function projectionModel(body, axis) {
       reason: 'axis_not_served',
       message: `${axis} 축이 응답에 없습니다`,
       cells: [], found: 0, scanned: 0, frame: null,
-      coordinateUnit: null, relations: [], ledgerBacked: false,
+      coordinateUnit: null, relations: [], ledgerBacked: false, unplaced: null,
       row: (body && body.row) || null,
       slot: (body && body.slot) || null,
       kind: (body && body.kind) || null,
@@ -143,6 +143,20 @@ export function projectionModel(body, axis) {
     //    this screen's, and a label that cannot say what it counts is how that stayed invisible.
     //    So the relations ride through and the panel prints them; when the server changes what
     //    it joins, the words on screen change with it.
+    // 🔴 WHAT THE MAP CANNOT PLACE, AS A NUMBER OR AS 「모른다」 -- never as a zero. Measured
+    //    2026-08-24: 2,527 inspected seats have no process row and no bond/dt/cx coordinate, so
+    //    no axis can draw them. On this row the server answers `state: "unknown"` because the
+    //    row axis cannot attribute them at all, and it says so in its own sentence. A screen
+    //    that printed 0 there would be claiming they do not exist.
+    unplaced: (body && body.unplaced)
+      ? {
+        state: body.unplaced.state || 'unknown',
+        scanned: typeof body.unplaced.scanned === 'number' ? body.unplaced.scanned : null,
+        found: typeof body.unplaced.found === 'number' ? body.unplaced.found : null,
+        reason: body.unplaced.reason || null,
+        message: body.unplaced.message || null,
+      }
+      : null,
     relations: Array.isArray((prov || {}).relations) ? prov.relations.slice() : [],
     ledgerBacked: (prov || {}).ledger_backed === true,
     row: (body && body.row) || null,

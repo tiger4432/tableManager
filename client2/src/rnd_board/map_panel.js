@@ -273,16 +273,19 @@ export class MapPanel extends Panel {
     head.appendChild(badge);
     const stage = el(doc, 'div', 'rb-map__stage');
     const canvas = el(doc, 'canvas', 'rb-map__canvas');
+    const outside = el(doc, 'div', 'rb-map__outside');
     const note = el(doc, 'div', 'rb-map__note');
     stage.appendChild(canvas);
     root.appendChild(head);
+    root.appendChild(outside);
     root.appendChild(stage);
     root.appendChild(note);
     this.host.appendChild(root);
     if (canvas.addEventListener) {
       canvas.addEventListener('click', (event) => this._onCanvasClick(event));
     }
-    this._nodes = { root, head, title, sub, counts, basis, pager, badge, stage, canvas, note };
+    this._nodes = { root, head, title, sub, counts, basis, pager, badge, stage, canvas,
+      outside, note };
   }
 
   _writeHead() {
@@ -335,6 +338,25 @@ export class MapPanel extends Panel {
     n.badge.setAttribute('data-writes', write);
 
     // A refusal is content: the server's own sentence, or the token when it sent none.
+    // 🔴 WHAT THE MAP COULD NOT PLACE. This is the closest line on the screen to why the board
+    //    exists: 2,525 inspected seats with a void recorded sat in the ledger and in no picture
+    //    at all. It is said as a COUNT when the server counted it, and as 「귀속 불가」 -- with
+    //    the server's own sentence -- when it could not. Never as a zero: 「모른다」 and 「없다」
+    //    are the two things this whole board refuses to fold together.
+    const un = m && m.unplaced;
+    if (!un) {
+      n.outside.textContent = '';
+      n.outside.className = 'rb-map__outside';
+    } else if (un.state === 'measured') {
+      n.outside.className = 'rb-map__outside is-measured';
+      n.outside.textContent = `맵 밖 · 검사 ${un.scanned === null ? '-' : un.scanned}`
+        + ` · 발견 ${un.found === null ? '-' : un.found}`;
+      if (un.message) n.outside.setAttribute('title', un.message);
+    } else {
+      n.outside.className = 'rb-map__outside is-unknown';
+      n.outside.textContent = `맵 밖 · 귀속 불가${un.message ? ` — ${un.message}` : ''}`;
+    }
+
     // A refusal we can still draw is a CAVEAT, not a blank panel: the sentence stays, the
     // picture appears, and the reader is told which one they are looking at.
     const refused = this.status === 'ready' && m && !m.drawable;
