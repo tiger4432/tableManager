@@ -129,7 +129,7 @@ body {
 
 .rb-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px;
   border: 1px solid var(--border); border-radius: 5px; font-size: 11px; white-space: nowrap; }
-.rb-chip-key { color: var(--text-muted); font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; }
+.rb-chip-key { color: var(--text-muted); font-size: 11px; letter-spacing: .3px; text-transform: uppercase; }
 .rb-chip-val { font-family: var(--font-mono); color: var(--text); }
 .rb-chip--fact { background: var(--bg-surface); }
 /* An absence: quieter, never alarming. */
@@ -149,7 +149,7 @@ body {
 .rb-comp-counts { display: flex; gap: 14px; flex-wrap: wrap; }
 .rb-comp-count { display: flex; align-items: baseline; gap: 5px; }
 .rb-comp-count-value { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--text); }
-.rb-comp-count-label { font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+.rb-comp-count-label { font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
 .rb-comp-cardinality { font-size: 11px; color: var(--text-muted); }
 .rb-comp-note { padding: 6px 8px; border-radius: 5px; font-size: 12px;
   background: var(--bg-inset); color: var(--text-muted); }
@@ -170,7 +170,7 @@ body {
 .rb-comp-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
 .rb-comp-row-id { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 .rb-comp-row-core { font-family: var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
-.rb-comp-row-state { font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); }
+.rb-comp-row-state { font-size: 11px; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); }
 /* `unresolved` is an ABSENCE, not a failure -- muted, not red. */
 .rb-comp-row-state.is-resolved { color: var(--success); }
 .rb-comp-row-events { font-family: var(--font-mono); color: var(--text-muted); }
@@ -184,7 +184,7 @@ body {
    🔴 An absence never borrows `--danger`. Only a server refusal does. */
 .rb-cand { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; min-height: 0; overflow: auto; }
 .rb-cand-head { display: flex; gap: 6px; flex-wrap: wrap; }
-.rb-cand-stat { padding: 1px 7px; border-radius: 5px; font-size: 10.5px; border: 1px solid var(--border); }
+.rb-cand-stat { padding: 1px 7px; border-radius: 5px; font-size: 11px; border: 1px solid var(--border); }
 .rb-cand-stat--fact { background: var(--bg-surface); color: var(--text); }
 .rb-cand-stat--absent { background: var(--bg-inset); color: var(--text-muted); border-style: dashed; }
 .rb-cand-line { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
@@ -193,7 +193,7 @@ body {
 
 /* 명세 §8: 「표가 아니라 2열 카드 격자」. 15rem never fit two cards in this column, so the grid
    collapsed to one and the panel read as a list with a hole under it. */
-.rb-cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+.rb-cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   gap: 6px; align-content: start; }
 .rb-cand-card--folded { grid-column: 1 / -1; }
 .rb-cand-card { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px;
@@ -205,15 +205,15 @@ body {
 .rb-cand-card--folded { cursor: default; border-style: dashed; background: var(--bg-inset); }
 .rb-cand-card-top { display: flex; align-items: center; gap: 5px; }
 .rb-cand-rank { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
-.rb-cand-tag { padding: 0 5px; border-radius: 4px; font-size: 9.5px; border: 1px solid var(--border); }
+.rb-cand-tag { padding: 0 5px; border-radius: 4px; font-size: 11px; border: 1px solid var(--border); }
 .rb-cand-tag--top { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
 .rb-cand-tag--absent { color: var(--text-muted); background: var(--bg-inset); border-style: dashed; }
-.rb-cand-quantity { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text); }
-.rb-cand-model { font-size: 10.5px; color: var(--text-muted); }
-.rb-cand-measured { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.rb-cand-quantity { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text); }
+.rb-cand-model { font-size: 11px; color: var(--text-muted); }
+.rb-cand-measured { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
 
 .rb-rank { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-height: 0; overflow: auto; }
-.rb-rank-caption { font-size: 10.5px; color: var(--text-muted); }
+.rb-rank-caption { font-size: 11px; color: var(--text-muted); }
 .rb-rank-note { padding: 6px 8px; border-radius: 5px; font-size: 12px; }
 .rb-rank-note--absent { background: var(--bg-inset); color: var(--text-muted); }
 .rb-rank-note--refused { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
@@ -222,26 +222,26 @@ body {
   gap: 6px; align-items: center; padding: 3px 4px; border-bottom: 1px solid var(--border);
   font-size: 11.5px; cursor: pointer; }
 .rb-rank-row--head { cursor: default; background: var(--bg-header); color: var(--text-muted);
-  font-size: 9.5px; letter-spacing: .3px; text-transform: uppercase; }
+  font-size: 11px; letter-spacing: .3px; text-transform: uppercase; }
 .rb-rank-row:hover { background: var(--surface-hover); }
 .rb-rank-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
 .rb-rank-n { font-family: var(--font-mono); color: var(--text); }
 /* Two lines, never merged. */
 .rb-rank-label { display: flex; flex-direction: column; min-width: 0; }
 .rb-rank-quantity { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-.rb-rank-model { font-size: 9.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.rb-rank-model { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
 .rb-rank-hops, .rb-rank-measured { font-family: var(--font-mono); color: var(--text); }
 /* `-` is the name-only reading. Muted, never red -- it is an absence of measurement, not a fault. */
 .rb-rank-measured.is-absent { color: var(--text-muted); }
-.rb-rank-state { font-size: 9.5px; color: var(--text-muted); }
+.rb-rank-state { font-size: 11px; color: var(--text-muted); }
 .rb-rank-evidence { display: flex; flex-direction: column; gap: 1px; padding: 4px 4px 6px 2.5rem;
   border-bottom: 1px solid var(--border); background: var(--bg-inset); }
-.rb-rank-hop { display: flex; gap: 6px; font-size: 10.5px; align-items: baseline; }
-.rb-rank-hop-kind { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
+.rb-rank-hop { display: flex; gap: 6px; font-size: 11px; align-items: baseline; }
+.rb-rank-hop-kind { font-size: 11px; color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
 .rb-rank-hop-label { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 /* A hop that only names a model is dimmer than one that points at a thing in the world. */
 .rb-rank-hop.is-declared .rb-rank-hop-label { color: var(--text-muted); }
-.rb-rank-hop-ref { font-family: var(--font-mono); font-size: 9.5px; color: var(--accent-2); }
+.rb-rank-hop-ref { font-family: var(--font-mono); font-size: 11px; color: var(--accent-2); }
 
 /* ── MARKING IS DRAWN BY ATTENUATION ─────────────────────────────────────────────
    Measured in the owner's running Spotfire (2026-08-23): a click leaves the marked row at
@@ -272,6 +272,10 @@ body {
   position: sticky;
   top: 0;
   z-index: 1;
+  /* 🔴 MEASURED: without this the title was 12px tall in the two panels whose content overflows
+     -- a flex item shrinks, and the ones that scroll squeezed their own title to a sliver while
+     the two that fit looked correct. The difference was invisible until the boxes were measured. */
+  flex: 0 0 auto;
   margin: -8px -10px 2px;
   padding: 6px 10px 5px;
   background: var(--bg-header);
@@ -284,3 +288,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── HIERARCHY ────────────────────────────────────────────────────────────────────
+   Measured on the owner's screen before this block: every line in the rank table sat between
+   9.5px and 11.5px, all weight 400 -- so nothing led and the eye had no entry point. The
+   mockup's rows are not denser than ours, they are more STAGED.
+
+   🔴 NOTHING UNDER 11px. 「작은 글씨는 없느니만 못하다」 is a standing value in this repo, and a
+      9.5px qualifier is a line the reader skips rather than reads. */
+.rb-rank-row { align-items: center; }
+.rb-rank-n { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.rb-cand-rank { font-size: 12px; font-weight: 600; }
+.rb-comp-row-id { font-size: 12.5px; }
+/* The qualifier under a name is a second line, not a second heading. */
+.rb-rank-model, .rb-cand-model { line-height: 1.35; }
