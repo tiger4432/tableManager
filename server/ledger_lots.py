@@ -1284,7 +1284,8 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
         # The override was not merely wrong, it was REDUNDANT where it was right: the
         # WHERE clause has already narrowed `present` to the requested slot, so for the
         # filtered axis `slots_seen` IS `[slot]`, spelled the way the column stores it —
-        # which is the spelling `map_id` needs. Deriving it costs nothing and cannot cross
+        # which is NOT the spelling `map_id` needs (see `_map_identity`; measured
+        # 2026-08-23). Deriving it costs nothing and cannot cross
         # a family. (Fixed 2026-08-14, ahead of the fixture lane's `core_slot != bond_slot`
         # corpus, so the repair is not shaped by the sample that exposes it.)
         lots_seen = {r.get(lot_col) for r in present if r.get(lot_col)}
@@ -1340,7 +1341,7 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
                           "reason": MAP_REASON_FRAME_AMBIGUOUS,
                           "available_slots": slots_seen,
                           "available_lots": sorted(str(x) for x in lots_seen)},
-                         **_agreed_frame(connection, source.relation, pairs_seen)),
+                         **_agreed_frame(connection, source.relation, pairs_seen, spec)),
                     frame_wafer),
                 "coordinate_unit": "cells_from_origin",
                 "cells": cells, "found": found, "scanned": scanned})
@@ -1397,6 +1398,28 @@ def _with_identity(frame, wafer):
     return frame
 
 
+def _map_identity(relation, spec, lot, slot):
+    """The frame identity, composed THROUGH THE DECLARED COLUMN TYPE — not by f-string.
+
+    🔴 THE SPELLING IS THE WHOLE DEFECT. MEASURED 2026-08-23 on `assy_manager`: one DT slot
+    had THREE spellings and NOBODY produced the registered one — `_07` in
+    `wafer_map_metadata` (1,200 rows), `_7.0` from the f-string this replaces (because
+    `bonding_log.dt_slot` is `double precision`), and `_7` from the canonical composer. The
+    bond axis resolved only because `bond_slot` is TEXT, so all three coincided there BY
+    ACCIDENT — it was never the design working.
+
+    `map_overlay.compose_map_id` reads `table_config`'s declared type per column
+    (`dt_slot`/`core_slot` = "number" -> integral-float folding; `bond_slot` undeclared ->
+    passed through unchanged, so that axis is byte-identical to before). Its own docstring
+    named this failure in advance: 「'01' registered into a number-declared key column while
+    every consumer looks up 'LOT_1'」. One composer, so a fourth spelling cannot appear.
+    """
+    lot_col, slot_col = spec["frame_key_columns"]
+    return map_overlay.compose_map_id([lot_col, slot_col],
+                                      {lot_col: lot, slot_col: slot},
+                                      {"table": relation})
+
+
 def _frame(connection, relation, lot, slot, spec):
     """The REGISTERED frame for this (lot, slot), or a refusal that names what is missing.
 
@@ -1412,7 +1435,7 @@ def _frame(connection, relation, lot, slot, spec):
     if not lot or not slot:
         return {"state": MAP_STATE_NO_FRAME, "reason": MAP_REASON_FRAME_AMBIGUOUS,
                 "message": "프레임 키(랏·슬롯)가 이 행에서 하나로 정해지지 않는다"}
-    map_id = f"{lot}_{slot}"
+    map_id = _map_identity(relation, spec, lot, slot)
     rows = _fetch(connection,
                   f"SELECT map_id, grid_metadata FROM {FRAME_RELATION} "
                   f"WHERE target_table = %(t)s AND map_id = %(m)s",
@@ -1427,7 +1450,7 @@ def _frame(connection, relation, lot, slot, spec):
             "valid_die_ref": _valid_die_pointer(connection, rows[0][1])}
 
 
-def _agreed_frame(connection, relation, pairs):
+def _agreed_frame(connection, relation, pairs, spec):
     """What the frames a row SPANS agree on — the lattice, and the valid-die floor.
 
     🔴 THE REFUSAL IS ABOUT SUPERPOSITION, NOT ABOUT THE LATTICE, and the two were being
@@ -1447,7 +1470,7 @@ def _agreed_frame(connection, relation, pairs):
     out = {"frames_considered": len(pairs), "frames_matched": 0, "superposed": len(pairs) > 1}
     if not pairs or not relation_exists(connection, FRAME_RELATION):
         return out
-    map_ids = [f"{lot}_{slot}" for lot, slot in pairs]
+    map_ids = [_map_identity(relation, spec, lot, slot) for lot, slot in pairs]
     rows = _fetch(connection,
                   f"SELECT map_id, grid_metadata FROM {FRAME_RELATION} "
                   f"WHERE target_table = %(t)s AND map_id = ANY(%(ids)s)",

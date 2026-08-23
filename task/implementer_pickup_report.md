@@ -1,84 +1,74 @@
-# 🔴 판정 요청 — 라운드 4: 프레임은 «등록돼 있습니다». 못 찾는 이유는 «슬롯 철자» 하나입니다
+# ✅ 라운드 4 착지 — 프레임이 «닿습니다». 두 반쪽 한 커밋 (구현자 2026-08-24 00:0x)
 
-**멈춤 조건에 해당하지 않습니다 — 등록이 «있습니다».** 지어내지 않았고, 코드도 데이터도
-아직 «한 줄도 안 바꿨습니다». 철자를 어느 쪽으로 맞출지가 판정이라 여기서 멈춥니다.
+승인대로 돌렸습니다. 수락 조건 셋 다 실측으로 통과했습니다.
 
-## 실측 — DT·코어 자재마다 프레임이 이미 하나씩 있습니다 (1,200건)
+## 실측 — 수락 조건 셋
 ```
-등록   wafer_map_metadata  target_table='bonding_log'
-       SYN-DT-101_01 … _25   (600건)   grid 15x10  from (0,0)
-       SYN-CL-101_01 … _25   (600건)   grid 23x23  from (0,0)
-       -> 총괄 판정대로 «자재(mat_id) 하나에 프레임 하나» 모양이 «이미» 그렇습니다
-쓴 곳  scripts/seed_syn_world.py:685  "%s_%02d" % (lot, slot)
+① 겹친 행(웨이퍼 한 장)   dt   frames_matched 25/25 · grid 15x10 · basis=agreed_across_matched_frames
+                          core frames_matched 28/28 · grid 23x23
+                          -> 클라가 테두리에 쓸 격자가 «나옵니다». 오늘까지는 0/25 였고 격자가 없었습니다
+② 슬롯 하나로 좁힌 요청   dt   state=ready · map_id=SYN-DT-101_7 · grid 15x10 · valid_die_ref=SYN-VD_G15X10
+                          core state=ready · map_id=SYN-CL-101_7 · grid 23x23 · valid_die_ref=SYN-VD_G23X23
+③ bond 회귀 없음          state=ready · map_id=SYN-VOID-101_07 · grid 15x15 (철자 그대로)
 ```
+테스트: `tests/test_ledger_lot_map_pg.py` **13 passed** — 격리 DB(`assy_qa`)에 붙여서 돌렸습니다.
+📎 그냥 돌리면 «10건이 skip» 됩니다 — 격리 DB 선언이 없으면 `assy_manager` 에 DDL 돌리길 거부합니다.
+   그래서 `ASSY_PG_TEST_DATABASE_URL` 을 주고 돌렸고, 그때 13건이 «실제로» 실행됐습니다.
 
-## 🔴 그런데 «읽는 쪽»이 만드는 열쇠가 다릅니다 — 한 슬롯에 철자가 셋
+## 🔴 정정 — 옮긴 행은 **432**입니다. 1,200 이 아닙니다
+제 앞선 보고와 지시서가 「1,200행 재등록」이라 적었는데, 실측하니 **768은 이미 정본 철자였습니다.**
 ```
-ledger_lots.py:1415   map_id = f"{lot}_{slot}"      <- 행의 «컬럼 값»을 그대로 문자열화
-bonding_log 컬럼형    bond_slot  character varying  '07'
-                      dt_slot    double precision    7.0      <- 여기가 갈립니다
-                      core_slot  double precision    7.0
+"%02d" 와 정본 fold 는 «슬롯 10부터 일치»합니다  '10' == '10'
+어긋나는 것은 «슬롯 01~09» 뿐                    '01' != '1'
+   옮김   432 (48 랏 x 9 슬롯)
+   그대로 768
+   합계   1,200 -> 1,200   ✅ 총괄이 지시한 개수 불변 조건은 «그대로 성립»합니다
 ```
-```
-등록된 것            'SYN-DT-101_07'   -> wafer_map_metadata 에 «있음» (1)
-코드가 만드는 것     'SYN-DT-101_7.0'  -> 없음 (0)
-정본 조합기가 만드는 것 'SYN-DT-101_7'  -> 없음 (0)
-```
-🔴 **셋이 서로 다르고, 등록된 철자를 만드는 쪽이 «아무도 없습니다».**
-bond 축이 오늘 도는 것은 `bond_slot` 이 «문자열»이라 세 철자가 우연히 일치하기 때문입니다.
+충돌 0 · 그래프 동기화된 행 0 을 «쓰기 전에» 확인하고 돌렸습니다.
 
-## 이 하나만 맞추면 «전부» 살아납니다 — 재서 확인했습니다
+## ③ 되돌리기 — 한 줄
+```sql
+UPDATE wafer_map_metadata SET map_id = regexp_replace(map_id, '_([1-9])$', '_0\1'), map_pk = regexp_replace(map_pk, '_([1-9])$', '_0\1'), business_key_val = regexp_replace(business_key_val, '_([1-9])$', '_0\1') WHERE target_table = 'bonding_log' AND (map_id LIKE 'SYN-DT-%' OR map_id LIKE 'SYN-CL-%') AND map_id ~ '_[1-9]$';
 ```
-_frame(…, 7.0)      -> no_frame / no_registered_frame          (오늘)
-_frame(…, "07")     -> ready + grid 15x10                       ← 클라가 필요한 바탕
-_agreed_frame  float 슬롯 25개 -> frames_matched 0   · grid 없음  (오늘)
-_agreed_frame  "07" 토큰 25개  -> frames_matched 25/25 · grid 15x10 «합의»
-```
+스크립트가 매 실행 끝에 이 문장을 다시 찍습니다 (`scripts/respell_syn_frame_map_ids.py`).
 
-## ⚠️ 수락 조건 한 줄이 이 행에서는 «도달 불가»입니다 — 먼저 말씀드립니다
-지시서: 「`dt` 투영의 `frame.state` 가 `ready` 가 되고」.
+## ⚠️ `seed_syn_world --apply` 를 «돌리지 않았습니다» — 이유를 적습니다
+지시서가 「seed_syn_world.frame_rows」라 하셨는데, 그 스크립트에 «프레임만» 돌리는 갈래가 없습니다.
+`--apply` 는 월드 전체를 씁니다 — **bonding_log 84,600행 UPDATE + dt_x/dt_y 재발행** 포함.
+철자 432개를 고치려고 그걸 돌리는 것은 최소 수정이 아니라 사고입니다.
 ```
-실측  base_id='SYN-BW-101-07'  행 141개
-      bond  프레임 «1개»  -> ready 가능 (오늘도 ready)
-      dt    프레임 «25개» -> 한 장으로 못 정합니다. ready 는 «슬롯을 좁힌 요청»에서만
-      core  프레임 «28개» -> 같음
-```
-철자를 맞추면 이 행에서 도착하는 것은 `ready` 가 아니라
-**`frames_matched 25/25` + 「25개가 전부 같다」는 근거로 나오는 `grid`** 입니다.
-**클라가 테두리를 그리는 데 필요한 것은 그 `grid` 입니다** — 지금은 그게 «아예 안 나옵니다».
-`ready` 를 원하시면 그건 «슬롯 하나로 좁힌 요청»의 이야기이고, 그것도 같은 수리로 같이 삽니다.
-
-## 판정해 주십시오 — 철자를 «어느 쪽»으로 맞춥니까
-```
-(가) 픽스처를 «정본 철자»로 다시 등록 + 읽는 쪽을 정본 조합기로     ← 제 추천
-     읽기   ledger_lots._frame · _agreed_frame 이 f-string 대신
-            map_overlay.compose_map_id(cols, row, {"table": relation}) 를 씁니다
-     데이터 1,200건을 'SYN-DT-101_7' 철자로 재등록 (seed_syn_world.frame_rows)
-     근거   table_config: bonding_log.column_types.dt_slot = "number" · core_slot = "number"
-            compose_map_id 문서가 «이 사고를 이름으로 예고»해 뒀습니다 —
-            「'01' 이 number 선언 컬럼에 LOT_01 로 등록되면 소비자는 전부 LOT_1 을 찾는다」
-     bond   회귀 «없음» — 문자열 '07' 의 정본값은 '07' 그대로입니다 (실측)
-     ✅ 선언이 지배 -> 다른 스키마 운영 환경에서 «코드 0줄»
-     ⚠️ 소유자 DB의 1,200행을 다시 씁니다. 그래서 «제가 임의로 안 했습니다»
-
-(나) 읽는 쪽이 숫자 슬롯을 %02d 로 «패딩»한다
-     ❌ 형식을 지어내는 것입니다. 3자리 슬롯·문자 슬롯 운영에서 그날 깨집니다
-
-(다) 선언된 등록부(dt_map · core_wafer_map)로 조회한다
-     table_config 는 dt_map.map_key_columns = [dt_lot, dt_slot] 이라고 «선언»합니다
-     ❌ 그런데 이 자재들은 거기 «0건»입니다 (실측). 그리고 7.0 에서 '07' 을 되찾으려면
-        옆 테이블 조인이 필요한데 R-2026-08-14-D 가 코어 축에 그것을 금지합니다
+한 것   ① seed_syn_world.frame_rows 는 «앞으로» 정본 철자를 쓰도록 고쳤습니다 (재발 방지)
+        ② 이미 박스에 있는 행은 «전용 스크립트»로 432개만 UPDATE 했습니다
 ```
 
-## 📎 곁가지 둘 — 지금 손대지 않았습니다
+## 무엇을 고쳤나 — 세 파일
 ```
-1  seed_syn_world.py:671 주석이 「ledger_lots._frame 이 찾는 방식대로 키를 만들었다」고
-   «단언»합니다. 실제로는 안 맞습니다 — 그 문장이 이 결함을 4개월 가려 왔습니다
-2  MAP_AXES 의 frame_key_columns 는 «코드에 박혀» 있고, table_config 의
-   bonding_log.map_key_columns 는 [base_lot, base_slot] 로 «다릅니다». 별건입니다
+server/ledger_lots.py                     _map_identity 추가 · _frame · _agreed_frame 이 그것을 씁니다
+                                          (f-string 두 자리 제거. _agreed_frame 에 spec 인자 하나 추가)
+server/scripts/seed_syn_world.py          frame_map_id 추가 · frame_rows 가 그것을 씁니다
+server/scripts/respell_syn_frame_map_ids.py  새 파일. 드라이런 기본 · --apply + 소유자 DB 승인 플래그
 ```
+🔴 **철자를 만드는 자리가 이제 «하나»입니다** — 양쪽 다 `map_overlay.compose_map_id` 를 부르고
+선언(`table_config`)이 결정합니다. 총괄 판정 ③(넷째 철자가 생기지 않게)이 그 모양입니다.
+
+## 📎 판정 부탁 하나 — «옆에 같은 부류»가 13건 있습니다. 고치지 «않았습니다»
+```
+ledger_selection.py:474   f"{keys['dt_lot']}_{keys['dt_slot']}"  -> 등록부 dt_map
+실측   dt_map        선언 dt_slot="number"  · 등록 id 중 _0[1-9] 로 끝나는 것 «13건»
+                     -> 제가 방금 고친 것과 «같은 모양»입니다 (숫자 선언에 패딩 등록)
+       core_wafer_map 선언 core_slot="string" · 패딩 72건 -> 여기선 패딩이 «정본»입니다. 결함 아님
+```
+이번 라운드 범위가 아니라 손대지 않았습니다. 별건으로 판정해 주십시오.
+
+## 📎 그리고 이 결함이 «언제» 생겼는지 — 단정이 아니라 추론입니다
+`ledger_lots.py:1284` 주석이 스스로 말합니다: 2026-08-14 이전에는 «요청한 슬롯»을 모든 축의
+프레임 슬롯으로 썼고, 그날 그것을 «컬럼이 저장한 대로» 뽑는 것으로 고쳤습니다.
+요청 슬롯은 `'01'` 이고 컬럼은 `7.0` 이므로, **그 수리가 bond 축은 살리고 DT·코어 축은 조용히 껐을**
+것입니다. 같은 파일 89~94줄이 「그 뒤 DT 축이 ready 로 읽힌다」고 적어 둔 것도 그때는 참이었을 수
+있습니다. 이건 코드 주석에서 «읽은 추론»이지 제가 되돌려 «잰» 것이 아닙니다 — 그렇게 읽어 주십시오.
 
 ---
+
 # 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (갱신 2026-08-24 새벽)
 
 ## 지금 상태 — 내 대기열은 «비었습니다»
