@@ -390,10 +390,16 @@ def test_the_dt_axis_frames_on_its_own_slot_too(pg):
 
 def test_each_axis_lists_its_own_slots_when_the_row_spans_several_frames(pg):
     """With no `slot`, the row spans two frames on every axis — and the slots offered are
-    each axis's OWN, never one list stamped onto all three."""
+    each axis's OWN, never one list stamped onto all three.
+
+    🔴 AND ORDERED AS NUMBERS. This assertion used to read `["11", "7"]`, which pinned a
+    TEXT sort — the order that puts 「2」 after 「19」 and, on `assy_manager`, listed a
+    25-slot tape as 1.0, 10.0, 11.0 … 2.0. The DT axis is the only one of the three whose
+    slots differ under the two rules, so it is the axis that decides this (2026-08-23).
+    """
     answer = ledger_lots.lot_map(pg, row=BOND_LOT)
     assert _axis(answer, "bond")["frame"]["available_slots"] == ["3", "7"]
-    assert _axis(answer, "dt")["frame"]["available_slots"] == ["11", "7"]
+    assert _axis(answer, "dt")["frame"]["available_slots"] == ["7", "11"]
     assert _axis(answer, "core")["frame"]["available_slots"] == ["21", "22"]
     for name in ("bond", "dt", "core"):
         p = _axis(answer, name)

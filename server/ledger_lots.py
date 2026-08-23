@@ -1289,7 +1289,15 @@ def _map_envelope(connection, row, axis, source, slot, slot_column, kind, raw, p
         # a family. (Fixed 2026-08-14, ahead of the fixture lane's `core_slot != bond_slot`
         # corpus, so the repair is not shaped by the sample that exposes it.)
         lots_seen = {r.get(lot_col) for r in present if r.get(lot_col)}
-        slots_seen = sorted({str(r.get(slot_col)) for r in present if r.get(slot_col)})
+        # 🔴 THE LIST IS SPELLED THE WAY THE FRAME IS KEYED, and ORDERED AS NUMBERS.
+        # `str()` here served the float straight out of `dt_slot` — 「1.0」, 「10.0」 —
+        # i.e. the spelling `_map_identity` exists to stop producing, in an order where
+        # 「2.0」 lands after 「19.0」 because it sorted as text. The lookup went through the
+        # composer and this list did not, so the screen offered a slot the response would
+        # not echo back. Same composer, so there is one spelling and not two.
+        slots_seen = sorted(
+            {map_overlay.canonical_bind_value(source.relation, slot_col, r.get(slot_col))
+             for r in present if r.get(slot_col)}, key=_slot_order)
         frame_lot = next(iter(lots_seen)) if len(lots_seen) == 1 else None
         frame_slot = slots_seen[0] if len(slots_seen) == 1 else None
         # 🔴 THE WAFER IS COUNTED, NOT SAMPLED — the same rule as the frame keys above, for
@@ -1396,6 +1404,20 @@ def _with_identity(frame, wafer):
     if wafer:
         frame[IDENTITY_FIELD] = str(wafer)
     return frame
+
+
+def _slot_order(token):
+    """Numbers in numeric order, anything else after them in text order.
+
+    A slot token is not guaranteed to be numeric — `wafer_map_metadata` on this box holds
+    `1H` and `T05` among its map ids — so this cannot be `float()` alone. The two groups are
+    kept apart rather than interleaved: a numeric list must not have a lexical value fall in
+    the middle of it and read as a number.
+    """
+    try:
+        return (0, float(token), "")
+    except (TypeError, ValueError):
+        return (1, 0.0, str(token))
 
 
 def _map_identity(relation, spec, lot, slot):
