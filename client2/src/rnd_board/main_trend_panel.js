@@ -33,6 +33,14 @@ export class MainTrendPanel extends Panel {
     this.window = options.window || '180d';
     // Declared by the screen, never assembled here: this part does not know what a grain means.
     this.grain = options.grain || null;
+    // 🔴 THE AXIS THE CONTROL BAR CHOSE. A panel READS one marking through the base class, and
+    //    this part needs two: the seed it writes, and the axis somebody else picked. The second
+    //    name is declared here and subscribed by hand.
+    //    CONTRACT WITH `control_bar_panel.js`: the id is `axis:<kind>:<id>` -- `ratio` for a
+    //    finding kind this route can plot, `quantity` for a walk candidate it cannot.
+    this.axisReads = options.axisReads || null;
+    this.axisChosen = null;
+    this._axisOff = null;
     this.fetchImpl = options.fetchImpl || null;
     this.seedWafer = options.seedWafer || null;
     this.model = null;
@@ -41,7 +49,37 @@ export class MainTrendPanel extends Panel {
 
   mount() {
     super.mount();
+    if (this.axisReads && this.markings) {
+      this._axisOff = this.markings.subscribe(this.axisReads, () => this._onAxisChanged());
+      this._onAxisChanged();
+    }
     this.load();
+  }
+
+  destroy() {
+    if (this._axisOff) this._axisOff();
+    this._axisOff = null;
+    super.destroy();
+  }
+
+  /** The chosen axis, read off the marking the control bar writes. */
+  _onAxisChanged() {
+    const entries = this.markings ? this.markings.entries(this.axisReads) : [];
+    const chosen = entries.length ? entries[0][0] : null;
+    if (chosen === this.axisChosen) return;
+    this.axisChosen = chosen;
+    const parts = String(chosen || '').split(':');
+    const kind = parts[1] || null;
+    const id = parts.slice(2).join(':') || null;
+    if (kind === 'ratio' && id && id !== this.kinds) {
+      this.kinds = id;
+      this.load();
+      return;
+    }
+    // 🔴 A QUANTITY AXIS IS NOT A RATIO. This route serves finding kinds; a walk candidate like
+    //    `bond_temp` has no series here. The panel draws nothing and SAYS which axis it is and
+    //    why -- an empty chart with no sentence would read as 「그 축은 값이 0」.
+    this.render();
   }
 
   async load() {
@@ -85,6 +123,20 @@ export class MainTrendPanel extends Panel {
         ? 'rb-trend-note rb-trend-note--refused' : 'rb-trend-note rb-trend-note--absent';
       note.textContent = this.loadState === 'loading' ? '읽는 중…'
         : (this.model && this.model.message) || '서버가 거절했습니다';
+      root.appendChild(note);
+      this.host.appendChild(root);
+      return;
+    }
+
+    const chosenKind = String(this.axisChosen || '').split(':')[1] || null;
+    if (chosenKind && chosenKind !== 'ratio') {
+      const note = doc.createElement('div');
+      note.className = 'rb-trend-note rb-trend-note--absent';
+      // The id stays checkable in the title; the sentence says the KIND, because a raw node id
+      // in a sentence is a string nobody reads.
+      note.setAttribute('title', String(this.axisChosen));
+      note.textContent = '고른 축은 «물리량»입니다 — 이 차트는 «비율»만 그립니다'
+        + ' (걷기에서 고른 축은 후보·순위가 씁니다)';
       root.appendChild(note);
       this.host.appendChild(root);
       return;

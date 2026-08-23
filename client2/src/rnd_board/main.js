@@ -167,6 +167,10 @@ export const BOARD = Object.freeze({
       options: {
         kinds: 'void',
         window: '180d',
+        // 🔴 THE CONTROL BAR'S CHOICE REACHES THIS CHART. It was a dead control until now: the
+        //    pill turned blue and nothing moved. The name is declared, so a second trend can
+        //    follow a different chooser without either part changing.
+        axisReads: 'axis:y',
         // 🔴 THE GRAIN IS DECLARED, AND IT IS WHY THE POINTS HAVE VALUES. Handed over measured:
         //    the server's default aggregates `Wafer` and reads the leg out of `object_payload`,
         //    which returns 24 points all at 0.0 -- twelve findings drawn as none. Two fields
