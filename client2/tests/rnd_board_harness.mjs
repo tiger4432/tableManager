@@ -75,6 +75,8 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./api.js'", `'${apiUrl}'`)
     .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`));
   const shellUrl = dataUrl(read('grid_shell.js'));
+  const interUrl = dataUrl(read('marking_intersection.js')
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
   // composition root cannot load at all -- which is how it failed the moment they landed.
   const partUrl = (file) => dataUrl(read(file)
@@ -88,6 +90,7 @@ async function loadModules(mutate = {}) {
   const mainUrl = dataUrl(read('main.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
     .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
+    .replaceAll("'./marking_intersection.js'", `'${interUrl}'`)
     .replaceAll("'./map_panel.js'", `'${mapUrl}'`)
     .replaceAll("'./head_summary_panel.js'", `'${headUrl}'`)
     .replaceAll("'./composition_panel.js'", `'${compUrl}'`)
