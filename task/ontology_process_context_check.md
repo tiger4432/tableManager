@@ -107,3 +107,65 @@ step 이름은 «있음»       BOND_PREP · PHOTO_COAT_01 · INGOT_RELEASE · P
 
 **선언을 늘리기 전에 물어야 할 것이 「필드가 있나」가 아니라 「재료가 있나」였습니다.**
 이번엔 재료가 없습니다.
+
+---
+
+# 8. 소유자 질문 — 「챔버가 DT 공정 챔버였으면 DT 쪽 PC 계측으로 연동되나. 유니버셜한 API 로 되나」
+
+목업 카드(`챔버 파티클 / SYN-BD-02 · CH-A / 8/19 03:20 · BONDING 겹침`)에 대한 질문입니다.
+**두 질문이고 답이 다릅니다.**
+
+## 답 1 — 지금 «연동 안 됩니다». 셋이 없습니다
+
+```
+① DT 쪽에 chamber 가 «0»
+   dt_log · dt_transfer_log · transfer_event · dt_job — 원자도 컬럼도 «없음»
+   (chamber 를 내는 것은 syn_recipe_book 7,867 · syn_eqp_log 3,778, 둘 다 processed_with)
+
+② 파티클 계측이 «없습니다»
+   measured 의 metric 은 넷뿐: etched_cd · photo_overlay_error
+                              post_clean_surface_roughness · post_cmp_film_thickness
+   각 36건 · 설비 1종.  파티클 계측 원자 «0»
+
+③ 챔버가 «비교 축으로 선언 안 됨»
+   bonding_log 축 일곱   wafer · bond_eqp · bond_lot · dt_lot · core_lot · b_bn · stack_height
+   inspection_run 축 둘  scan_recipe · scan_eqp
+   -> 챔버가 «어느 쪽에도 없습니다»
+```
+
+⚠️ **그래서 목업의 「CH-A」가 어디서 오는지 제가 «못 찾았습니다».**
+비교 축 선언에도 없고 그 테이블들의 컬럼에도 없습니다. 원자 payload 에는 있습니다(11,645).
+**목업이 지금 데이터 경로보다 «앞서» 있을 수 있습니다** — 그린 사람에게 확인이 필요합니다.
+
+## 답 2 — 🟢 「유니버셜한 API 로 되나」는 **네. 이미 그 모양입니다**
+
+비교 축이 코드가 아니라 **선언 파일**에서 옵니다:
+
+```
+server/config/siblings_axes.json      (지금은 sample 폴백 중)
+  attribution: [ { relation · about · label · key_column · join · axes:[{name,label,column}] } ]
+```
+
+**DT 챔버 축을 만들려면 그 파일에 항목 하나를 더하면 됩니다 — 코드 0줄.**
+조건은 「그 컬럼이 실제로 있을 것」이고, 지금은 «없습니다»(답 1의 ①).
+
+## 🔴 다만 — 선언이 «두 군데»이고, 축은 온톨로지를 «안 봅니다»
+
+```
+원장 어휘   server/config/ontology/ledger_config.json    원자를 «만드는» 선언
+비교 축     server/config/siblings_axes.json             원자를 «가르는» 선언
+                                                        -> «소스 테이블»을 봅니다
+```
+
+축 선언이 relation + join + column 입니다. **즉 「온톨로지로 연동」이 아니라
+「테이블 조인 선언」입니다.** 유니버셜하기는 한데 **온톨로지 축은 아닙니다.**
+
+```
+그래서   챔버로 잇는 두 길이 있습니다
+  가  테이블 축으로      siblings_axes 에 선언.  코드 0줄.  «단, 컬럼이 있어야»
+  나  온톨로지 노드로     챔버를 개체로 올린다 (설비와 같은 부류 — 소유자가 「설비는 노드」라 하셨음)
+      -> 그러면 걷기로 이어지고, 축 선언 없이 «어느 화면에서나» 붙습니다
+```
+
+**「DT 상 PC 계측으로 연동」처럼 «다른 공정 단계의 계측»까지 이으려면 (나)여야 합니다** —
+(가)는 한 테이블의 조인 규칙이라 단계를 건너뛰지 못합니다.
