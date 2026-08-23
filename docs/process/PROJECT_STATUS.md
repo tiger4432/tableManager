@@ -77,6 +77,40 @@
 > 씨앗별 재척도가 순위를 못 움직였기 때문입니다. 조건을 만드는 픽스처로 다시 쓰니 정확히 한 개 빨강.
 > **초록이 「맞다」가 아니라 「이 시험이 아무것도 안 문다」였습니다.**
 >
+> ### ⑥ 문서 정비 «세 레인 완료» — 그리고 제안 하나가 나왔습니다 (11:3x)
+> ```
+> doc-historian  30a99188   14항목 + 인덱스 재생성
+> code-mapper    2c234318   죽은 심볼 둘 · 라인수 22 · 툼스톤 체크 셋
+> doc-keeper     0e945af4   13파일. 저자가 «복사하는» 가이드가 거절당할 config 를 가르치고 있었음
+> doc-auditor    도는 중 — 셋의 산출을 적대 검수
+> ```
+>
+> ### 🔴 제안 — `dt_transfer_log` 가 `business_key` 를 선언하고 «UNIQUE 인덱스가 없습니다»
+> doc-keeper 가 SCHEMA_CANON R2 와 선언 경로의 충돌을 물어 왔고, **실측했습니다.**
+> ```
+> 선언        business_key = 'dt_cell_key'
+> 실제 인덱스  UNIQUE «0개» (기본키 dt_transfer_log_pkey 는 있음 — row_id)
+> 감사기       audit_schema_canon.py R2 -> declared_bk_no_unique_index «2건», 지금 발화 중
+>             (이 DB 는 dt_job_attribution 이 «걸려 있어서» 이 목록이 정보를 가집니다)
+> 원인        create_missing_dynamic_tables 가 만드는 인덱스는 «비유일»,
+>             UNIQUE 는 별도 마이그레이션으로만 옵니다 -> 선언으로 태어난 표는
+>             누가 마이그레이션을 돌릴 때까지 «R2 위반 상태로 존재»하고 아무도 말해 주지 않습니다
+> 지금 데이터  1,405행 · distinct dt_cell_key 1,405 · business_key_val NULL 0  -> «깨끗»
+> 고치는 법    server/migrations/add_business_key_unique_index.py --apply   지금 돌리면 성공합니다
+> 안 고치면    apply_batch_updates 의 중복 복구 가드는 IntegrityError 로 발화하는데
+>             인덱스가 없으면 그게 «안 납니다» — 두 프로세스가 한 키를 쓰면 행 둘, 에러 0
+> ```
+> 🔴 **소유자 승인 대기.** 제 원장 소스가 `dt_cell_key` 로 페이징하므로 중복이 생기면 그쪽도 물립니다.
+>
+> ### ⚖️ `bind.<sentence>.occurred_at.column` — 지우지 «않습니다», 폼이 «묻지» 않게 하는 쪽입니다
+> doc-keeper 가 「자유도 0이니 다음 삭제 후보」로 올렸습니다. 판정: **아직 아닙니다.**
+> ```
+> 지우면    소유자의 «라이브 config» 를 고쳐야 합니다 (dt_job 만 40군데). 그건 소유자 파일입니다
+> 그리고    「선택 역할의 선언은 지우면 «꺼진다»」 — 삭제가 표지까지 지웁니다
+> 진짜 비용  자유도 0인 것 자체가 아니라, «폼이 저자에게 계속 묻는다»는 것입니다
+> 그래서    삭제가 아니라 «묻지 않기»(derived-inert 표시)가 최소 수정입니다. 화면 대기열로 옮깁니다
+> ```
+>
 > ### 남은 열린 것
 > ```
 > 문서 정비   doc-keeper 주기 ~194 커밋 밀림      «소유자 승인 대기»
