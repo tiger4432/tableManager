@@ -1,5 +1,6 @@
 """Focused contract tests for the dynamic R&D Trend response."""
 from datetime import datetime, timezone
+import json
 import os
 import sys
 
@@ -150,7 +151,9 @@ def test_table_uses_keyset_cursor_and_limit_is_not_domain_cardinality(monkeypatc
                for row in first["table"]["rows"])
 
     decoded = ledger_trends._decode_cursor(first["table"]["next_cursor"])
-    assert decoded == (stamps[1], "W-2", "LEG-A")
+    # The token carries the unit as a positional list, not two named slots: renaming a
+    # schema column must not rename a cursor member.
+    assert decoded == (stamps[1], ["W-2", "LEG-A"])
 
 
 def test_absent_relation_keeps_declarations_and_never_queries(monkeypatch):
@@ -211,8 +214,9 @@ def test_default_selection_uses_only_active_declarations(monkeypatch):
 
 
 def test_sql_is_time_bounded_keyset_paged_and_database_downsampled():
-    series_sql = ledger_trends._series_sql()
-    table_sql = ledger_trends._table_sql(True)
+    plan = ledger_trends._grain(None)
+    series_sql = ledger_trends._series_sql(plan)
+    table_sql = ledger_trends._table_sql(True, plan)
     assert "occurred_at >= %(from)s" in series_sql
     assert "%(max_points)s" in series_sql
     assert "LIMIT %(page_size)s" in table_sql
@@ -222,3 +226,48 @@ def test_sql_is_time_bounded_keyset_paged_and_database_downsampled():
     assert "occurred_at >= %(from)s" in trace_sql
     assert "jsonb_to_recordset(%(page_units)s::jsonb)" in trace_sql
     assert "predicate = 'transferred'" in trace_sql
+
+
+def test_the_numerator_is_a_declared_expression_not_a_fixed_one():
+    """🔴 THE POINT OF THIS ROUND, asserted where it can regress.
+
+    The route counted zero defects because the SQL looked for the context key in the
+    payload of one subject type while the ledger carried it in the subject keys of
+    another.  Both are now bound values that the caller states, so the two grains land as
+    two different reads of the same query -- and no fab word is spelled in the builder.
+    """
+    default_sql = ledger_trends._series_sql(ledger_trends._grain(None))
+    assert "subject_type = %(grain_subject_type)s" in default_sql
+    assert "subject_keys ? %(grain_key_0)s" in default_sql
+    assert "'Wafer'" not in default_sql and "'bonding_leg'" not in default_sql
+
+    stated = json.loads(json.dumps(ledger_trends.DEFAULT_GRAIN))
+    stated["subject_type"] = "WaferLeg"
+    stated["axes"][1]["numerator"] = {"from": "subject_keys", "key": "bonding_leg"}
+    plan = ledger_trends._grain(stated)
+    assert plan.params == {"grain_key_0": "wafer", "grain_key_1": "bonding_leg",
+                           "grain_subject_type": "WaferLeg"}
+    assert "subject_keys ? %(grain_key_1)s" in ledger_trends._series_sql(plan)
+    assert plan.declared["axes"][1]["numerator"]["from"] == "subject_keys"
+
+
+@pytest.mark.parametrize("mutate,detail_key", [
+    (lambda g: g.update(axes=[]), "expected"),
+    (lambda g: g["axes"][0]["denominator"].update(relation="not_a_scan_relation"),
+     "allowed"),
+    (lambda g: g["axes"][0]["denominator"].update(column="leg; DROP TABLE x"),
+     "declared"),
+    (lambda g: g["axes"][1]["numerator"].update({"from": "somewhere_else"}), "allowed"),
+    (lambda g: g["axes"][1]["denominator"].update(join="1 = 1"), "bound"),
+    (lambda g: g.update(identity_fields=["lot"]), "fenced_to"),
+])
+def test_a_grain_the_query_cannot_serve_is_refused_before_sql(monkeypatch, mutate,
+                                                              detail_key):
+    monkeypatch.setattr(ledger_trends, "_fetch",
+                        lambda *_a, **_k: pytest.fail("refusal happened after SQL"))
+    stated = json.loads(json.dumps(ledger_trends.DEFAULT_GRAIN))
+    mutate(stated)
+    with pytest.raises(ledger_trends.TrendRequestError) as caught:
+        ledger_trends.trends(object(), now=_now(), grain=stated)
+    assert caught.value.detail["reason"] == ledger_trends.REASON_BAD_GRAIN
+    assert detail_key in caught.value.detail

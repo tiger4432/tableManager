@@ -548,17 +548,22 @@ def ledger_trends_route(
     cursor: str = Query(None, description="Trend Table keyset cursor"),
     limit: int = Query(None, description="표 행 수, 최대 200"),
     max_points: int = Query(None, description="series별 표시점 상한, 최대 500"),
+    grain: str = Query(None, description="분석 grain 선언 JSON. 미지정 시 서버 기본"),
     db: Session = Depends(get_db),
 ):
     """여러 불량 series와 Trend Table을 한 stable marking 계약으로 답한다.
 
     ``limit``와 ``max_points``는 표시 예산이지 도메인 cardinality가 아니다. 종류와
     subtype은 가변 길이 컬렉션이며, 표는 offset이 아니라 keyset cursor로 잇는다.
+
+    ``grain``은 응답이 늘 «내보내던» 그 객체다. 이제 입력이기도 하며 응답은 받은 것을
+    되비춘다. 축마다 표현이 «둘»인 이유는 분모가 스캔 관계의 컬럼이고 분자는 원자 안의
+    경로이기 때문이다 — 어느 자리를 읽는지 선언하지 않으면 셀 수 없는 원장이 있다.
     """
     try:
         return ledger_trends.trends(
             db.connection(), kinds=kinds, window=window, cursor=cursor,
-            limit=limit, max_points=max_points)
+            limit=limit, max_points=max_points, grain=grain)
     except ledger_trends.TrendRequestError as exc:
         raise HTTPException(status_code=422, detail=exc.detail)
     except ledger_siblings.SiblingsRequestError as exc:
