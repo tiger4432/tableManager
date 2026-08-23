@@ -58,20 +58,14 @@
 > 구현자   서버 — 선언 로드 살리기 · 접힘 통과 · finding point 좌표 · 자재
 > ```
 >
-> ### ③-block 🔴 지금 «모든 것»이 막힌 한 자리 — 선언이 로드 단계에서 예외
-> ```
-> config_path()  ->  server/config/ledger_config.json          «없는 파일»
->   .sample 폴백 ->  setup_version 3                            로드 ❌
-> walk 이 읽는 것 ->  config/ontology/ledger_config.json (v5)    raw open, «검증 안 탐»
-> 원인            검사기가 v3 을 요구합니다 (최상위 occurred_at_column).
->                 v5 는 read.occurred_at 에 둡니다. validate() 는 setup_version 을 «안 봅니다»
-> 총괄 판정       정본 = ontology 파일. «복사 금지», config_path() 하나를 돌린다
->                 순서: 검사기 v5 -> config_path -> subgraph 를 load() 로 -> sample 재생성
-> 파급            v1 번역기는 2026-08-18 «은퇴». 앞으로 원자가 느는 길은 v5 선언 «하나»뿐
->                 -> 표를 채워도 원자 0. 자재 보강도 이게 풀려야 값이 됩니다
-> ```
-> **총괄이 써 둔 선언** (`_validate_declared_source` 통과 확인): `void_die_observation`
-> — `Die {wafer, x, y}` 가 `void_obs` 의 `base_wafer_id·base_x·base_y` 와 1:1. 로드 살면 바로 붙임.
+> ### ③-block ✅ 풀렸습니다 — 선언 파이프라인이 살아났고 «첫 선언»이 섰습니다
+> 
+> **왜 void_obs 가 아니라 inspection_run 이 먼저였나 — 실측**
+> 
+> **거절 세 번에서 배운 것 (전부 임시파일 단계라 라이브는 무사)**
+> declaredemit
+> ⏭ 다음  ① 백필 (구현자, 전/후 카운트) ② void_obs 선언 — 시각을 «조인»해 와야 함.
+>         문법이 조인을 선언으로 받는지 확인 중 ③ 접힘 통과 + finding point 좌표
 >
 > ### ③-tangle 🔴 마킹 꼬임 — 소유자 「한번 꼬이면 답없다」. 이미 꼬여 있었음
 > ```
