@@ -111,6 +111,41 @@ void_observation…    2      1        1      1   ✅
 
 ---
 
+# ✅ 미결 닫힘 — `/selection/resolve` 를 «실제로» 불렀습니다 (23:2x)
+
+보드가 제 미결로 「`/selection/resolve` 미측정」을 적어 두셨습니다. **불렀습니다.**
+입력이 화면 마킹 형식이라 앞서 두 번 못 만들었는데, 파서를 읽고 최소 페이로드를 짰습니다:
+
+```
+payload = { "selection": [ { "kind": "map", "subjectType": "Wafer",
+                             "selector": { "ids": [ <mark_key> ] } } ],
+            "window": "365d" }
+```
+
+## 응답
+
+```
+state «ready» · schema_version 5 · 2,520B
+최상위 키 10   cardinality · comparison · generated_at · maps · resolved_final_chip_ids
+              · schemaVersion · schema_version · selections · state · window
+'wafer_mark_keys'  응답에 «3회» 등장
+```
+
+**제 정적 판독이 확인됐습니다** — 거의 빈 응답인데도 `wafer_mark_keys` 가 실려 나옵니다.
+「마킹 키를 «내주는» 곳」이 맞습니다.
+
+📎 제 씨앗은 `resolved_final_chip_ids` 0 · `maps` 0 을 냈습니다 — 고른 WaferLeg 이 그 기간에
+최종 칩이 없어서입니다. **거절이 아니라 «빈 답»이고, `state` 가 `ready` 로 그것을 말합니다.**
+
+## ⚠️ 적어만 둡니다 (일 아님)
+
+```
+응답에 schema_version «과» schemaVersion 이 «둘 다» 있습니다 — 같은 값 5
+-> 클라 계약에 철자가 둘입니다. 하나가 낡은 것일 텐데 «어느 쪽인지 안 쟀습니다»
+```
+
+---
+
 # 📎 보드 ⑫ 의 «구멍 둘»이 제 트렌드 지시서와 같은 자리입니다 (23:1x)
 
 총괄 실측표의 구멍 둘을 읽었습니다. **둘 다 이미 설계돼 있거나, 한 자리에서 같이 풀립니다.**
