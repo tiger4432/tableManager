@@ -122,9 +122,16 @@ def test_raw_observed_claim_points_to_a_directional_map_point_not_a_value():
     assert not any(node["node_kind"] == "value" for node in graph["nodes"])
     assert any(edge["predicate"] == "observed" and
                edge["target"] == point["id"] for edge in graph["edges"])
-    reseeded = ledger_subgraph.subgraph(point["id"], lookup, hops=12)
+    # The collection now carries the declared model target too, so the expected member
+    # set is pinned against a KNOWN declaration rather than against whatever
+    # mechanism_models.json happens to hold on this box.
+    mechanism_gate.set_graph(MECHANISM_DECLARATION)
+    try:
+        reseeded = ledger_subgraph.subgraph(point["id"], lookup, hops=12)
+    finally:
+        mechanism_gate.set_graph(None)
     assert {node["node_kind"] for node in reseeded["nodes"]} == {
-        "point", "entity", "collection"}
+        "point", "entity", "collection", "quantity"}
     assert any(edge["predicate"] == "on_subject" for edge in reseeded["edges"])
     assert any(edge["predicate"] == "has_findings" for edge in reseeded["edges"])
     assert not any(node["node_kind"] in {"claim", "event", "value"}
@@ -472,6 +479,69 @@ def test_the_summary_query_asks_for_a_literal_jsonb_path():
     lookup.finding_summaries_for_entities([("Wafer", {"wafer": "W1"})], "both", 5)
     assert "'{position,x}'" in captured["sql"]
     assert "'{position,y}'" in captured["sql"]
+
+
+def test_a_finding_reaches_every_model_declared_for_its_kind_without_merging_them():
+    """The third declared edge: `finding_kind` names the model, the model names its target.
+
+    A void reaches the formation model's `void` AND the observation-bias model's
+    `void_observed`, and they stay two nodes.  Merging them would let a factor that only
+    explains why a void was SEEN wear a formation path, which is the confusion the two
+    models were split apart to prevent.
+    """
+    lookup = ledger_subgraph.InMemoryEvidenceLookup([observed_atom()])
+    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-VOID"})
+    declaration = dict(MECHANISM_DECLARATION)
+    declaration["void_observation_bias"] = {
+        "role": "observation_bias", "finding_kind": "void", "target": "void_observed",
+        "nodes": ["post_bond_queue_h", "void_observed"],
+        "edges": [{"from": "post_bond_queue_h", "to": "void_observed", "dir": "u"}],
+    }
+    mechanism_gate.set_graph(declaration)
+    try:
+        graph = ledger_subgraph.subgraph(seed, lookup, hops=6)
+        answer = ledger_subgraph.subgraph(
+            next(node["id"] for node in graph["nodes"]
+                 if node["node_kind"] == "collection"),
+            lookup, hops=8, collect="quantity")
+    finally:
+        mechanism_gate.set_graph(None)
+    findings = [edge for edge in graph["edges"] if edge["predicate"] == "finding"]
+    labels = {node["id"]: node["label"] for node in graph["nodes"]}
+    assert {labels[edge["target"]] for edge in findings} == {
+        "void · void_formation", "void_observed · void_observation_bias"}
+    assert {edge["qualifiers"]["role"] for edge in findings} == {
+        "formation", "observation_bias"}
+    assert all(edge["basis"] == mechanism_gate.CONFIG_FILENAME for edge in findings)
+    # The delam model declares a different kind, so it is not drawn into a void's answer.
+    assert not any("delam" in labels[edge["target"]] for edge in findings)
+    # Seeding the finding is what makes the mechanism graph answerable from the finding
+    # side at all; before this edge the same call reached no Quantity whatsoever.
+    assert answer["propagation"]["state"] == "ranked"
+    assert answer["propagation"]["top_set"]
+
+
+def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
+    routes = {route.path: route for route in ledger_trace_router.router.routes}
+    def params(path):
+        return {field.alias or field.name
+                for field in routes[path].dependant.query_params}
+    assert {"positive", "negative", "collect"} <= params("/api/ledger/subgraph")
+    assert {"positive", "negative"} <= params("/api/ledger/subgraph/table")
+    # `collect` produces a ranking that the three tables do not carry, so the table route
+    # does not accept an argument it would echo and never consume.
+    assert "collect" not in params("/api/ledger/subgraph/table")
+    for frozen in ("/api/ledger/trace", "/api/ledger/explore",
+                   "/api/ledger/explore_entity"):
+        assert not ({"positive", "negative", "collect"} & params(frozen))
+    # `id` alone must reach subgraph() as the very same argument it always was.
+    seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
+    assert ledger_trace_router._signed_start(seed, None, None) == seed
+    assert ledger_trace_router._signed_start(seed, [], []) == seed
+    assert ledger_trace_router._signed_start(seed, ["b"], ["c"]) == {
+        "positive": [seed, "b"], "negative": ["c"]}
+    assert ledger_trace_router._signed_start(seed, None, ["c"]) == {
+        "positive": [seed], "negative": ["c"]}
 
 
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():

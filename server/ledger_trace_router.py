@@ -251,15 +251,21 @@ def evidence_subgraph(
                        description="graph 또는 Spotfire/Excel용 tables"),
     property_limit: int = Query(10000, ge=100, le=20000,
                                 description="tables.properties 행 상한"),
+    positive: list[str] | None = Query(
+        None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),
+    negative: list[str] | None = Query(
+        None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
+    collect: str | None = Query(
+        None, description="산출을 노드 종류 하나로 좁혀 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다"),
     db: Session = Depends(get_db),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     try:
         graph = _evidence_graph(
-            db.connection(), node_id=node_id,
+            db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction, include_values=include_values,
             node_limit=node_limit, edge_limit=edge_limit,
-            observation_mode=observations,
+            observation_mode=observations, collect=collect,
             action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)
                            if include_actions else None))
         return (ledger_subgraph.tabular_projection(graph, property_limit)
@@ -275,9 +281,23 @@ def evidence_subgraph(
         raise
 
 
+def _signed_start(node_id, positive, negative):
+    """`id` alone stays exactly the argument it has always been.
+
+    🔴 The signed lists widen it ONLY when at least one of them arrives, so a request that
+    names neither reaches `subgraph()` with the same single id it did before.  `id` is
+    always positive: the response's `seed` keeps pointing at it, and a walk of controls
+    with nothing marked is not a question anyone asks.
+    """
+    if not positive and not negative:
+        return node_id
+    return {"positive": [node_id] + list(positive or []),
+            "negative": list(negative or [])}
+
+
 def _evidence_graph(connection, *, node_id, hops, direction, include_values,
                     node_limit, edge_limit, observation_mode="summary",
-                    action_lookup=None):
+                    action_lookup=None, collect=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -293,7 +313,8 @@ def _evidence_graph(connection, *, node_id, hops, direction, include_values,
         connection, relation=LEDGER_RELATION),
         hops=hops, direction=direction, include_values=include_values,
         node_limit=node_limit, edge_limit=edge_limit,
-        observation_mode=observation_mode, action_lookup=action_lookup)
+        observation_mode=observation_mode, action_lookup=action_lookup,
+        collect=collect)
 
 
 def _csv_safe(value):
@@ -316,12 +337,18 @@ def evidence_subgraph_table(
     node_limit: int = Query(400, ge=10, le=1000),
     edge_limit: int = Query(1200, ge=20, le=3000),
     property_limit: int = Query(10000, ge=100, le=20000),
+    positive: list[str] | None = Query(
+        None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),
+    negative: list[str] | None = Query(
+        None, description="대조군 씨앗. 목록에 없는 주어는 미검사다"),
     db: Session = Depends(get_db),
 ):
     """Spotfire/Excel이 직접 소비할 한 장표를 JSON 또는 UTF-8 CSV로 답한다."""
     try:
         graph = _evidence_graph(
-            db.connection(), node_id=node_id, hops=hops, direction=direction,
+            db.connection(),
+            node_id=_signed_start(node_id, positive, negative),
+            hops=hops, direction=direction,
             include_values=include_values, node_limit=node_limit,
             edge_limit=edge_limit, observation_mode=observations,
             action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)

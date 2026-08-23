@@ -55,6 +55,7 @@ flowchart LR
   FC -.->|명시적 펼침| FP["Finding Point\n말단 상세"]
   CL -->|needs_enrichment| EA["Enrich Action\n재계산 행동"]
   O -->|binding| Q["Quantity\n선언된 물리량"]
+  FC -->|finding| QT["Quantity\n그 모델의 target"]
   Q -->|mechanism| Q2["Quantity\n다음 물리량"]
   CL -.->|supersedes, 필드로 보존| OLD["이전 Claim"]
 ```
@@ -70,6 +71,7 @@ flowchart LR
 | `needs_enrichment` | Claim → Enrich Action | 이 Claim 문맥에서 부족한 다음 Claim 또는 공급 계약이 있다 |
 | `binding` | Value → Quantity | 이 payload 필드가 이 물리량을 잰다. `qualifiers`에 `binding_key`·`model` |
 | `mechanism` | Quantity → Quantity | 선언된 인과 엣지. `qualifiers.dir`은 선언의 `dir` 그대로(`+`/`-`/`u`) |
+| `finding` | Finding Collection → Quantity | 이 관측 종류의 모델이 끝나는 물리량. `qualifiers`에 `finding_kind`·`model`·`role` |
 
 Quantity는 원장 원자가 아니라 `server/config/mechanism_models.json`에서 **합성**된다. 선언에
 노드·엣지를 더하면 코드 변경 없이 화면에 나타나고, 선언이 없거나 읽히지 않으면 Quantity 노드가
@@ -77,6 +79,16 @@ Quantity는 원장 원자가 아니라 `server/config/mechanism_models.json`에�
 물리량이라도 모델이 다르면 다른 노드다** — `bond_pressure`는 `void_formation`과 `delam_formation`
 양쪽의 노드이고, 하나로 합치면 두 모델러의 단언이 아무도 하지 않은 제3의 단언으로 이어 붙는다.
 `mechanism` 걷기는 프론티어 물리량이 속한 모델을 벗어나지 않는다.
+
+`finding` 엣지도 **새 단언이 아니라 이미 적힌 것을 읽은 것**이다 — 모델마다 자기가 어느
+`finding_kind`의 모델인지와 어느 `target`에서 끝나는지를 선언하고 있고, 그 둘을 잇는 것이
+전부다. `binding`이 `bindings`를 키로 쓰듯 이쪽은 `finding_kind`를 키로 쓴다. 원자를 더
+읽지 않는다 — 종류는 Collection이 이미 들고 있다.
+
+🔴 **한 관측이 «두 모델»에 닿는 것은 충돌이 아니라 목적이다.** void는
+`void_formation.void`와 `void_observation_bias.void_observed` 양쪽에 붙고, 둘을 합치면
+「왜 «보였는가»」만 설명하는 요인이 형성 경로를 입는다 — `mechanism_gate`가 모델을 둘로
+가른 바로 그 이유다.
 
 Enrich Action은 `ledger_events`에 쓰지 않는다. 검증된 `claim_contract`와 현재 derived row를
 합성한 projection이고, target이 채워지면 같은 조회에서 사라진다. 반대로 source/table 계약 자체가
@@ -177,14 +189,30 @@ GET /api/ledger/subgraph
 | `edge_limit` | 아니오 | 1200 | 20..3000 | 응답 엣지 하드캡 |
 | `shape` | 아니오 | `graph` | `graph`, `tables` | 캔버스 그래프 또는 외부도구용 3장표 |
 | `property_limit` | 아니오 | 10000 | 100..20000 | `shape=tables`의 동적 property long-table 행 상한 |
+| `positive` | 아니오 | — | 노드 id, 반복 가능 | 추가 관측 씨앗. `id`는 항상 positive다 |
+| `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
+| `collect` | 아니오 | — | 노드 종류 하나 | 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다. 모르는 이름은 422 |
 
 내부 Claim scan 상한은 `min(5000, max(200, edge_limit × 2))`다. 요청자가 직접 늘릴 수 없다.
 
-### 5.1-bis 부호 있는 씨앗과 `collect` — 함수 계약
+### 5.1-bis 부호 있는 씨앗과 `collect`
 
-⚠️ **오늘 라우트가 이 둘을 실어 나르지 않는다.** `ledger_subgraph.subgraph()` 는 받고,
-`/api/ledger/subgraph` 에는 아직 쿼리 파라미터가 없다. 둘을 붙이는 자리는
-`ledger_trace_router.py` 이고 그것은 이번 라운드의 얼음 목록에 있다.
+**라우트가 이 둘을 싣는다** (2026-08-23). `/subgraph`는 `positive`·`negative`·`collect`를,
+`/subgraph/table`은 `positive`·`negative`를 **선택** 파라미터로 받는다. 🔴 **셋 중 아무것도
+주지 않은 요청의 응답은 종전과 바이트 단위로 같다** — `id`만 온 요청은 종전과 똑같은 인자
+하나로 `subgraph()`에 닿는다.
+
+⚠️ **`/subgraph/table`은 `collect`를 «받지 않는다».** `collect`가 만드는 순위는
+Nodes·Edges·Properties 세 표에 실리지 않으므로, 받으면 되돌려 보내기만 하고 아무도 쓰지 않는
+인자가 된다. 부호 있는 씨앗은 «걷기»를 바꾸므로 표도 바뀌고, 그래서 그쪽만 받는다.
+
+```http
+GET /api/ledger/subgraph?id=<A>&positive=<B>&negative=<C>&collect=quantity
+```
+
+`id`는 **항상 positive**다. 응답의 `seed`가 계속 그것을 가리키고, 표시된 것 없이 대조군만
+걷는 것은 아무도 하지 않는 질문이다. ⚠️ 그래서 **`id`를 «대조군»으로 두는 요청은 이 모양으로
+표현할 수 없다** — 필요해지면 그때 넓힌다.
 
 ```python
 subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup, collect="quantity")
@@ -393,6 +421,10 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
   원인 후보와 혈통 공통 조상이 갈린다 — 두 호출의 노드 목록은 «같다».
 - 씨앗의 차수가 달라도 그 씨앗의 요인은 같은 무게로 도달한다(첫 홉 미분할).
 - 대조군 씨앗이 없으면 `contrast` 가 `unexamined` 이고, 그것은 «깨끗했다»가 아니다.
+- 한 관측 Collection이 그 `finding_kind`를 선언한 **모든** 모델의 `target`에 닿고,
+  `void_formation.void`와 `void_observation_bias.void_observed`는 **합쳐지지 않는다**.
+- 새 쿼리 파라미터를 하나도 주지 않은 `/subgraph`·`/subgraph/table` 응답은 종전과
+  바이트 단위로 같다.
 - target이 충족되면 Action이 사라지고, 공급 source가 없으면 rule-level Meta Action 하나만 남는다.
 - 배포되지 않은 rule은 derived row를 읽지 않고 계약 복구 Action을 낸다.
 - incoming과 outgoing이 실제로 다른 그래프를 만든다.

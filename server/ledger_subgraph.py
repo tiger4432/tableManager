@@ -16,7 +16,9 @@ A payload leaf the modeller has bound to a physical quantity continues into the 
 mechanism graph, which is synthesized from `mechanism_models.json` rather than read from
 the ledger — a Quantity is not an entity anybody asserted:
 
-    Value --binding--> Quantity --mechanism--> Quantity     `dir` as declared
+    Value             --binding--> Quantity
+    Finding Collection --finding--> Quantity   the model's own target, by finding_kind
+    Quantity        --mechanism--> Quantity    `dir` as declared
 
 Every public node id is opaque, typed, canonical, and can be passed back as the next
 seed.  Traversal is undirected for reachability but directed in the returned evidence.
@@ -1139,6 +1141,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                            and refs[item].get("expandable", False)]
         quantity_refs = [refs[item] for item in frontier_ids
                          if refs[item]["kind"] == "quantity"]
+        finding_refs = [refs[item] for item in frontier_ids
+                        if refs[item]["kind"] == "collection"]
         fetched = []
 
         full_entity_refs = [item for item in entity_refs
@@ -1236,6 +1240,31 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     if add_node(point, point_ref, depth + 1):
                         add_edge(_edge("contains", collection_id, point["id"],
                                        original_predicate="observed"))
+
+        # 🔴 Drawing what is already written.  Every model declares the `finding_kind`
+        # it is a model OF and the `target` it terminates in, so the link from an observed
+        # finding to that target is a READING of the declaration rather than a new
+        # assertion — the same class of edge as `binding`, keyed on `finding_kind` where
+        # that one is keyed on `bindings`.  No extra atom is read: the kind is already on
+        # the collection.
+        #
+        # 🔴 One finding reaching TWO models is the point, not a collision.  A void
+        # attaches to `void_formation.void` AND to `void_observation_bias.void_observed`,
+        # and keeping them apart is how a real formation path stays distinguishable from
+        # something that only looks like one — the split `mechanism_gate` is built around.
+        for item in finding_refs:
+            for model in models_by_name.values():
+                if model.finding_kind != item["finding_kind"]:
+                    continue
+                node = _quantity_node(model.name, model.target, model)
+                if not add_node(node, decode_node_id(node["id"]), depth + 1):
+                    continue
+                edge = _edge("finding", item["id"], node["id"],
+                             original_predicate="observed")
+                edge["basis"] = mechanism_gate.CONFIG_FILENAME
+                edge["qualifiers"] = {"finding_kind": item["finding_kind"],
+                                      "model": model.name, "role": model.role}
+                add_edge(edge)
 
         # Mechanism edges are DECLARED structure rather than ledger evidence, so they cost
         # no claim budget and ignore `direction` the way the other structural edges do.
