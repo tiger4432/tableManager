@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 import os
 import sys
 import uuid
@@ -300,6 +301,177 @@ def test_declared_mechanism_becomes_quantity_nodes_and_a_quantity_reseeds():
             "void · void_formation"}
     finally:
         mechanism_gate.set_graph(None)
+
+
+def signed_fixture():
+    """Two subjects that share one factor and differ in how many claims they carry.
+
+    The degree difference is the point: it is what makes the first-hop rule observable.
+    """
+    return [
+        atom(11, "MARK", "measured", value={"metric": "cd", "value": 1.0}),
+        atom(12, "MARK", "derived_from", target="ORIGIN"),
+        atom(13, "CTRL", "derived_from", target="ORIGIN"),
+        atom(14, "CTRL", "measured", value={"metric": "cd", "value": 2.0}),
+        atom(15, "CTRL", "measured", value={"metric": "ov", "value": 3.0}),
+    ]
+
+
+def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
+    marked = ledger_explorer.entity_id("Lot", {"lot": "MARK"})
+    control = ledger_explorer.entity_id("Lot", {"lot": "CTRL"})
+
+    plain = ledger_subgraph.subgraph(marked, lookup, hops=4)
+    assert plain["seed"]["id"] == marked
+    assert plain["walk"]["start"] == {"positive": 1, "negative": 0}
+    assert plain["propagation"]["state"] == "not_requested"
+
+    # No control seed is NOT 「controls came back clean」 — the axis was never examined,
+    # and an unlisted subject is never promoted into the negative list to fill it.
+    solo = ledger_subgraph.subgraph({"positive": [marked]}, lookup, hops=4,
+                                    collect="entity")
+    assert solo["propagation"]["contrast"] == "unexamined"
+    assert solo["walk"]["start"] == {"positive": 1, "negative": 0}
+
+    contrasted = ledger_subgraph.subgraph(
+        {"positive": [marked], "negative": [control]}, lookup, hops=4, collect="entity")
+    assert contrasted["propagation"]["contrast"] == "contrasted"
+    assert {item["sign"] for item in contrasted["seeds"]} == {"+", "-"}
+    assert contrasted["walk"]["start"] == {"positive": 1, "negative": 1}
+
+    try:
+        ledger_subgraph.subgraph({"positive": [marked], "negative": [marked]}, lookup)
+    except ValueError as exc:
+        assert "both observed and a control" in str(exc)
+    else:
+        raise AssertionError("one subject was accepted as observed AND as a control")
+
+
+def test_collect_switches_the_application_without_changing_the_walk():
+    """Acceptance B: cause candidates and a common ancestor from ONE mechanism."""
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(
+        signed_fixture() + [process_atom()])
+    seeds = {"positive": [ledger_explorer.entity_id("Lot", {"lot": "MARK"}),
+                          ledger_explorer.entity_id("Wafer", {"wafer": "WF-BOND"})]}
+    mechanism_gate.set_graph(MECHANISM_DECLARATION)
+    try:
+        entities = ledger_subgraph.subgraph(seeds, lookup, hops=8, collect="entity")
+        quantities = ledger_subgraph.subgraph(seeds, lookup, hops=8, collect="quantity")
+    finally:
+        mechanism_gate.set_graph(None)
+    # `collect` picks the population and nothing else: the walked graph is identical.
+    assert ([node["id"] for node in entities["nodes"]]
+            == [node["id"] for node in quantities["nodes"]])
+    assert len(entities["edges"]) == len(quantities["edges"])
+    assert {row["type"] for row in entities["propagation"]["ranked"]} == {"Lot", "Wafer"}
+    assert {row["type"] for row in quantities["propagation"]["ranked"]} == {"Quantity"}
+    # The declared ancestor both marked subjects descend from is the lineage answer.
+    origin = ledger_explorer.entity_id("Lot", {"lot": "ORIGIN"})
+    assert origin in entities["propagation"]["top_set"]
+    # Ranks and the top set travel; the reach that produced them does not.
+    assert '"reach"' not in json.dumps(entities["propagation"])
+    for row in entities["propagation"]["ranked"]:
+        assert set(row) <= {"id", "type", "label", "rank", "top", "tied",
+                            "incomparable", "evidence"}
+    try:
+        ledger_subgraph.subgraph(seeds, lookup, collect="Physics")
+    except ValueError as exc:
+        assert "collect must be one of" in str(exc)
+    else:
+        raise AssertionError("an unknown collect answered instead of refusing")
+
+
+def uneven_fixture():
+    """Two marked subjects carrying a DIFFERENT number of claims, one factor each.
+
+    The two factors sit the same distance behind claims of the same degree, so the only
+    thing that could separate them is the seeds' own degree — which is exactly what the
+    first hop is forbidden to divide by.
+    """
+    events = [str(uuid.UUID(int=900 + n)) for n in range(5)]
+    return [
+        atom(21, "THIN", "derived_from", target="FACTOR-THIN", event=events[0]),
+        atom(22, "THIN", "measured", value={"metric": "cd", "value": 1.0},
+             event=events[1]),
+        atom(23, "FAT", "derived_from", target="FACTOR-FAT", event=events[2]),
+        atom(24, "FAT", "measured", value={"metric": "cd", "value": 2.0},
+             event=events[3]),
+        atom(25, "FAT", "measured", value={"metric": "ov", "value": 3.0},
+             event=events[4]),
+    ]
+
+
+def test_the_first_hop_is_not_divided_by_the_seeds_own_degree():
+    """The rule with a stated reason, on the fixture where the two rules disagree.
+
+    `THIN` carries two claims and `FAT` three.  Their factors are otherwise identical, so
+    under the rule they are reached with the same weight and come out TIED.  Divide the
+    seed's own hop by its degree and the thinner subject's factor wins on nothing but its
+    subject having had fewer claims recorded — the artefact the rule exists to prevent.
+    """
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(uneven_fixture())
+    body = ledger_subgraph.subgraph({"positive": [
+        ledger_explorer.entity_id("Lot", {"lot": "THIN"}),
+        ledger_explorer.entity_id("Lot", {"lot": "FAT"}),
+    ]}, lookup, hops=4, collect="entity")
+    ranked = {row["label"]: row for row in body["propagation"]["ranked"]}
+    assert ranked["FACTOR-THIN"]["rank"] == ranked["FACTOR-FAT"]["rank"]
+    assert ranked["FACTOR-THIN"]["tied"] and ranked["FACTOR-FAT"]["tied"]
+
+
+def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
+    marked = ledger_explorer.entity_id("Lot", {"lot": "MARK"})
+    control = ledger_explorer.entity_id("Lot", {"lot": "CTRL"})
+    body = ledger_subgraph.subgraph(
+        {"positive": [marked], "negative": [control]}, lookup, hops=4, collect="entity")
+    prop = body["propagation"]
+    ranked = {row["label"]: row for row in prop["ranked"]}
+    assert prop["top_set"] == [row["id"] for row in prop["ranked"] if row["top"]]
+    assert prop["complete"] is True
+    # Every ranked entry that is NOT top is dominated by something in the top set, and
+    # nothing in the top set dominates anything else there.
+    assert all(row["rank"] > 1 for row in prop["ranked"] if not row["top"])
+    top = ranked["ORIGIN"]
+    assert top["evidence"], "the top set carries its hop-by-hop basis"
+    hops = top["evidence"][0]["hops"]
+    assert hops[0]["id"] in (marked, control)
+    assert hops[-1]["label"] == "ORIGIN"
+    assert any(hop["node_kind"] == "claim" and hop["atom"] for hop in hops)
+    # 「정도가 아니라 종류가 다르다」 has to be reachable or the mark is decoration:
+    # more reach from the marked subjects AND more from the controls is a trade-off, so
+    # neither dominates and both stay top.
+    layers = ledger_subgraph._rank_layers([
+        {"id": "trade", "reach": [0.5, 0.2]},
+        {"id": "clean", "reach": [0.3, 0.0]},
+        {"id": "twin", "reach": [0.3, 0.0]},
+        {"id": "weak", "reach": [0.1, 0.9]}])
+    assert [item["id"] for item in layers[0]] == ["trade", "clean", "twin"]
+    assert all(item["incomparable"] for item in layers[0])
+    assert [item["tied"] for item in layers[0]] == [False, True, True]
+    assert [item["id"] for item in layers[1]] == ["weak"]
+
+
+def test_the_summary_query_asks_for_a_literal_jsonb_path():
+    """`#>>'{position,x}'` lives inside an f-string; unescaped it is a NameError.
+
+    Every InMemory test uses the pure-Python twin and the PostgreSQL test is skipped
+    without a server, so nothing here saw the SQL text itself until now.
+    """
+    lookup = ledger_subgraph.SqlEvidenceLookup.__new__(
+        ledger_subgraph.SqlEvidenceLookup)
+    lookup.relation = "ledger_events"
+    captured = {}
+
+    def capture(sql, params):
+        captured["sql"] = sql
+        return []
+
+    lookup._execute = capture
+    lookup.finding_summaries_for_entities([("Wafer", {"wafer": "W1"})], "both", 5)
+    assert "'{position,x}'" in captured["sql"]
+    assert "'{position,y}'" in captured["sql"]
 
 
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():

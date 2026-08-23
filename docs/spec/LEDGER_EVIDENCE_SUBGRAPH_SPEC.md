@@ -180,6 +180,50 @@ GET /api/ledger/subgraph
 
 내부 Claim scan 상한은 `min(5000, max(200, edge_limit × 2))`다. 요청자가 직접 늘릴 수 없다.
 
+### 5.1-bis 부호 있는 씨앗과 `collect` — 함수 계약
+
+⚠️ **오늘 라우트가 이 둘을 실어 나르지 않는다.** `ledger_subgraph.subgraph()` 는 받고,
+`/api/ledger/subgraph` 에는 아직 쿼리 파라미터가 없다. 둘을 붙이는 자리는
+`ledger_trace_router.py` 이고 그것은 이번 라운드의 얼음 목록에 있다.
+
+```python
+subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup, collect="quantity")
+subgraph(id, lookup)                      # 오늘과 같다 — positive 씨앗 하나
+```
+
+| 인자 | 필수 | 기본 | 의미 |
+|---|---:|---:|---|
+| `seed_id` | 예 | — | 불투명 id 하나, 또는 `{"positive": [...], "negative": [...]}` |
+| `collect` | 아니오 | `None` | 산출을 노드 종류 하나로 좁힌다. 없으면 순위를 내지 않는다 |
+
+🔴 **부호는 셋이고 셋이다.**
+
+    +          관측됐다
+    −          «봤는데 안 났다» — 대조군
+    목록에 없음  미검사. − 와 같은 사실이 아니고, 목록에 없다는 이유로 대조군이 되지 않는다
+
+`negative` 가 비었으면 대조 축은 «재지 않은 것»이지 «모두 깨끗했던 것»이 아니다 —
+응답의 `propagation.contrast` 가 `unexamined` 로 그것을 이름 대어 말한다.
+
+**전파 규칙은 둘이고 셋째는 없다.**
+
+    첫 홉(씨앗 -> 요인)   차수로 나누지 않는다 — 나누면 한 주어가 단지 Claim 을
+                            적게 가졌다는 이유로 그 요인이 이긴다
+    그다음                내보내는 노드의 차수로 나눈다
+    감쇠 상수             없다. 기본값으로도 들여오지 않는다
+
+**산출은 순위와 최상위 집합뿐이다.** 도달량은 순위를 정하고 응답을 나가지 않는다 —
+판정은 소유자가 한다. 최상위는 «지배당하지 않는 것 전부»이고, 한 쪽은 표시에서
+더 많고 다른 쪽은 대조군에서 더 많으면 둘은 «정도가 아니라 종류가 다르다»고
+`incomparable` 로 표시된다.
+
+🔴 **`collect` 는 «모집단»만 고르고 걷기를 바꾸지 않는다.** 같은 씨앗으로
+`collect: quantity` 는 원인 후보를, `collect: entity` 는 혈통 공통 조상을 낸다 —
+둘을 가르는 분기가 코드에 «하나도» 없고, 그래서 문서가 아니라 구조가 그것을
+지킨다. 새 응용은 새 코드가 아니라 이 인자의 새 값이다. ⚠️ 반대로 `collect` 는
+그래프를 줄이지도 «않는다»: 근거 경로가 다른 종류의 노드를 관통하므로
+모집 종류만 남기면 근거가 사라진다. 그래프 상한은 여전히 `node_limit` 이다.
+
 ### 5.2 응답 골격
 
 ```json
@@ -187,12 +231,26 @@ GET /api/ledger/subgraph
   "schema_version": 3,
   "state": "ready",
   "seed": {"id": "...", "node_kind": "entity"},
+  "seeds": [{"id": "...", "sign": "+", "node_kind": "entity"}],
   "nodes": [],
   "edges": [],
+  "propagation": {
+    "collect": "quantity",
+    "state": "ranked",
+    "contrast": "contrasted",
+    "complete": true,
+    "ranked": [{"id": "...", "type": "Quantity", "label": "bond_pressure · void_formation",
+                "rank": 1, "top": true, "tied": true, "incomparable": false,
+                "evidence": [{"seed": "...", "sign": "+", "hops": []}]}],
+    "top_set": ["..."],
+    "message": null
+  },
   "walk": {
     "mode": "evidence_graph",
     "direction": "both",
     "observation_mode": "summary",
+    "collect": "quantity",
+    "start": {"positive": 3, "negative": 0},
     "hops_requested": 12,
     "hops_reached": 5,
     "claims_scanned": 60,
@@ -331,6 +389,10 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
 - Claim에서 Enrich Action에 도달하고 같은 Action ID를 seed로 다시 열 수 있다.
 - 바인딩된 payload 필드에서 Quantity에 도달하고 같은 Quantity ID를 seed로 다시 열 수 있다.
   선언되지 않은 필드는 엣지를 만들지 않고, 같은 이름의 물리량이라도 모델이 다르면 노드가 갈린다.
+- 단일 id 씨앗과 부호 있는 씨앗 셋이 같은 함수로 돌고, `collect` 를 바꾸는 것만으로
+  원인 후보와 혈통 공통 조상이 갈린다 — 두 호출의 노드 목록은 «같다».
+- 씨앗의 차수가 달라도 그 씨앗의 요인은 같은 무게로 도달한다(첫 홉 미분할).
+- 대조군 씨앗이 없으면 `contrast` 가 `unexamined` 이고, 그것은 «깨끗했다»가 아니다.
 - target이 충족되면 Action이 사라지고, 공급 source가 없으면 rule-level Meta Action 하나만 남는다.
 - 배포되지 않은 rule은 derived row를 읽지 않고 계약 복구 Action을 낸다.
 - incoming과 outgoing이 실제로 다른 그래프를 만든다.

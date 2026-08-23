@@ -25,9 +25,11 @@ All database probes are exact indexed batches and every response has hard budget
 from __future__ import annotations
 
 import base64
+import bisect
 import json
 import re
 import uuid
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -47,6 +49,12 @@ MAX_CLAIM_SCAN = 5000
 DEFAULT_PROPERTY_LIMIT = 10000
 MAX_PROPERTY_LIMIT = 20000
 EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
+#: Every node kind this projection can emit.  `collect` names exactly one of them and an
+#: unknown name is REFUSED rather than answered with an empty list: a filter that can never
+#: be true is indistinguishable from a true absence, and this walk's whole job is telling
+#: those two apart.
+NODE_KINDS = ("entity", "event", "claim", "collection", "point", "value",
+              "quantity", "action")
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -334,14 +342,14 @@ class SqlEvidenceLookup:
                    max(CASE WHEN e.object_payload->>'value'
                      ~ '^-?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?$'
                      THEN (e.object_payload->>'value')::double precision END),
-                   min(CASE WHEN e.object_payload#>>'{position,x}' ~ '^-?[0-9]+([.][0-9]+)?$'
-                     THEN (e.object_payload#>>'{position,x}')::double precision END),
-                   max(CASE WHEN e.object_payload#>>'{position,x}' ~ '^-?[0-9]+([.][0-9]+)?$'
-                     THEN (e.object_payload#>>'{position,x}')::double precision END),
-                   min(CASE WHEN e.object_payload#>>'{position,y}' ~ '^-?[0-9]+([.][0-9]+)?$'
-                     THEN (e.object_payload#>>'{position,y}')::double precision END),
-                   max(CASE WHEN e.object_payload#>>'{position,y}' ~ '^-?[0-9]+([.][0-9]+)?$'
-                     THEN (e.object_payload#>>'{position,y}')::double precision END)
+                   min(CASE WHEN e.object_payload#>>'{{position,x}}' ~ '^-?[0-9]+([.][0-9]+)?$'
+                     THEN (e.object_payload#>>'{{position,x}}')::double precision END),
+                   max(CASE WHEN e.object_payload#>>'{{position,x}}' ~ '^-?[0-9]+([.][0-9]+)?$'
+                     THEN (e.object_payload#>>'{{position,x}}')::double precision END),
+                   min(CASE WHEN e.object_payload#>>'{{position,y}}' ~ '^-?[0-9]+([.][0-9]+)?$'
+                     THEN (e.object_payload#>>'{{position,y}}')::double precision END),
+                   max(CASE WHEN e.object_payload#>>'{{position,y}}' ~ '^-?[0-9]+([.][0-9]+)?$'
+                     THEN (e.object_payload#>>'{{position,y}}')::double precision END)
             FROM frontier f
             JOIN {self.relation} e
               ON e.subject_type = f.type AND e.subject_keys = f.keys
@@ -751,70 +759,210 @@ def _edge(edge_type, source, target, *, original_predicate=None):
     }
 
 
-def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
-             include_values=True, node_limit=DEFAULT_NODE_LIMIT,
-             edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
-             action_lookup=None):
-    """Return a typed evidence subgraph from any public node id."""
-    seed_ref = decode_node_id(seed_id)
-    hops = max(1, min(int(hops), MAX_HOPS))
-    node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
-    edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
-    if direction not in {"outgoing", "incoming", "both"}:
-        raise ValueError("direction must be outgoing, incoming, or both")
-    if observation_mode not in {"summary", "claims"}:
-        raise ValueError("observation_mode must be summary or claims")
-    claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
-    # Declared, not queried.  An absent or broken declaration yields no models and no
-    # bindings, so the projection simply carries no Quantity nodes — the same «state, not
-    # exception» rule `mechanism_gate.load` follows for every other consumer.
-    mechanism = mechanism_gate.load()
-    models_by_name = {model.name: model for model in mechanism.models if model.usable}
+def _signed_seeds(start):
+    """`start` widens from one id to a signed SET without leaving its argument slot.
 
-    nodes = {}
-    refs = {}
-    depths = {}
-    edges = {}
-    atom_cache = {}
-    action_claims_seen = set()
-    node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
-    claims_scanned = 0
-    actions_scanned = 0
+    🔴 THREE STATES, AND THEY ARE THREE.
+        +        observed
+        −        looked for and NOT found — a control
+        unlisted never examined, which is NOT the same fact as −
 
-    def add_node(node, ref, depth):
-        nonlocal node_cut
-        node_id = node["id"]
-        if node_id in nodes:
-            if depth < depths[node_id]:
-                depths[node_id] = depth
-            nodes[node_id].update({k: v for k, v in node.items() if v is not None})
-            return True
-        if len(nodes) >= node_limit:
-            node_cut = True
-            return False
-        nodes[node_id] = node
-        refs[node_id] = ref
-        depths[node_id] = depth
-        return True
+    Nothing here promotes an unlisted subject to a control.  「미검사」 and 「봤는데 안
+    났다」 answer different questions and only the second can rule a factor out, so an
+    empty `negative` means the contrast was never run rather than that every control came
+    back clean.  A single id keeps working and is one positive seed.
+    """
+    if isinstance(start, dict):
+        positive = [str(item) for item in (start.get("positive") or [])]
+        negative = [str(item) for item in (start.get("negative") or [])]
+    else:
+        positive, negative = [str(start)], []
+    signs = {}
+    for sign, group in ((1, positive), (-1, negative)):
+        for item in group:
+            if signs.get(item, sign) != sign:
+                raise ValueError(
+                    "a seed cannot be both observed and a control: " + item)
+            signs[item] = sign
+    if not signs:
+        raise ValueError("start must name at least one seed")
+    return signs
 
-    def add_edge(row):
-        nonlocal edge_cut
-        if row["source"] not in nodes or row["target"] not in nodes:
-            return False
-        if row["id"] in edges:
-            return True
-        if len(edges) >= edge_limit:
-            edge_cut = True
-            return False
-        edges[row["id"]] = row
-        return True
 
-    def add_claim(atom, depth):
-        atom_cache[atom.claim_node_id] = atom
-        return add_node(_claim_node(atom), {
-            "kind": "claim", "claim_id": atom.id,
-            "occurred_at": atom.occurred_at, "id": atom.claim_node_id}, depth)
+def _reach(nodes, edges, seed_signs):
+    """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
+    TWO RULES AND NO THIRD.
+      * The FIRST hop does not divide by degree.  Dividing there makes a factor that is
+        equally common on both sides come out non-zero purely because a marked subject
+        happens to carry a different number of claims than a control does.
+      * Every hop after that divides by the emitting node's degree, so a hub splits its
+        reach instead of flooding the ranking.
+      * There is NO damping constant, as a default or otherwise.  A decay factor is an
+        artefact and it would end up being the thing that decides the answer.
+
+    Returns `(reach, parents)` where reach is `node -> [from_positive, from_negative]` and
+    parents is `seed -> {node: predecessor}`, so an evidence path is rebuilt on demand
+    instead of keeping one path per node per seed alive for the whole walk.
+    """
+    adjacency = {}
+    for edge in edges:
+        adjacency.setdefault(edge["source"], set()).add(edge["target"])
+        adjacency.setdefault(edge["target"], set()).add(edge["source"])
+    reach, parents = {}, {}
+    for seed, sign in seed_signs.items():
+        if seed not in nodes:
+            continue
+        slot = 0 if sign > 0 else 1
+        trail = parents.setdefault(seed, {})
+        seen = {seed}
+        queue = deque([(seed, 1.0)])
+        while queue:
+            node, carried = queue.popleft()
+            neighbours = adjacency.get(node)
+            if not neighbours:
+                continue
+            share = carried if node == seed else carried / len(neighbours)
+            for nxt in neighbours:
+                if nxt in seen:
+                    continue
+                seen.add(nxt)
+                trail[nxt] = node
+                reach.setdefault(nxt, [0.0, 0.0])[slot] += share
+                queue.append((nxt, share))
+    return reach, parents
+
+
+def _rank_layers(items):
+    """Layer candidates by DOMINANCE, never by one number.
+
+    A dominates B when A was reached at least as much from the marked subjects and at most
+    as much from the controls, strictly better on one of the two.  Two candidates that each
+    beat the other on one axis are not ranked against each other at all — they differ in
+    KIND, not in degree — and both stay in the top set.  The answer is a set, and 「1등」 is
+    a question this function refuses to answer when the evidence does not.
+
+    [SCALE] Layering is O(n log n) over the two axes rather than the pairwise sweep: a
+    lineage answer can collect the whole node budget, where the pairwise form is n³.
+    """
+    ordered = sorted(items, key=lambda item: (-item["reach"][0], item["reach"][1]))
+    floors, layers, index = [], [], 0
+    while index < len(ordered):
+        stop, coordinate = index, ordered[index]["reach"]
+        while stop < len(ordered) and ordered[stop]["reach"] == coordinate:
+            stop += 1
+        # Everything already placed has at least this observed-reach, so this group is
+        # dominated by exactly those layers already holding a smaller control-reach.
+        layer = bisect.bisect_right(floors, coordinate[1])
+        if layer == len(floors):
+            floors.append(coordinate[1])
+            layers.append([])
+        else:
+            floors[layer] = coordinate[1]
+        for item in ordered[index:stop]:
+            item["rank"] = layer + 1
+            item["tied"] = stop - index > 1
+            layers[layer].append(item)
+        index = stop
+    for layer in layers:
+        distinct = {tuple(item["reach"]) for item in layer}
+        for item in layer:
+            item["incomparable"] = len(distinct) > 1
+    return layers
+
+
+def _evidence(nodes, parents, seed_signs, node_id):
+    """The hop-by-hop path from every seed that reached this candidate.
+
+    Each hop carries the ref the projection already holds — the claim atom's raw source for
+    a ledger hop, the declaration file for a synthesized mechanism hop — rather than a
+    second provenance vocabulary invented for the ranking.
+    """
+    trails = []
+    for seed, trail in parents.items():
+        if node_id not in trail:
+            continue
+        path, cursor = [], node_id
+        while cursor is not None:
+            path.append(cursor)
+            cursor = trail.get(cursor)
+        path.reverse()
+        trails.append({
+            "seed": seed,
+            "sign": "+" if seed_signs[seed] > 0 else "-",
+            "hops": [{
+                "id": item,
+                "node_kind": nodes[item].get("node_kind"),
+                "label": nodes[item].get("label"),
+                "atom": (nodes[item].get("keys") or {}).get("id"),
+                "ref": (nodes[item].get("source_raw_ref")
+                        or nodes[item].get("basis")),
+            } for item in path],
+        })
+    return trails
+
+
+def _propagation(nodes, edges, seed_signs, collect, complete):
+    """Rank the collected node kind by signed reach.  ONE mechanism, two configurations.
+
+    🔴 `collect` chooses the POPULATION and nothing else.  The walk, the propagation and
+    the domination are identical whether the answer wanted is a cause candidate
+    (`quantity`) or a common ancestor in lineage (`entity`); there is deliberately no
+    branch on which one was asked for, because a fork here would mean the two applications
+    are not the same question after all.  A new application is a new value of this
+    argument, not new code.
+
+    🔴 NO NUMBERS LEAVE.  Reach decides the rank and the top set and then stays inside:
+    the ranking is the machine's judgement, and reading it is the owner's.
+    """
+    negatives = sum(1 for sign in seed_signs.values() if sign < 0)
+    block = {
+        "collect": collect,
+        "state": "not_requested",
+        # 🔴 With no control seed the second axis was never examined.  That is NOT
+        # 「controls were walked and the factor was absent from them」, and reporting it as
+        # a zero would turn 미검사 into a finding.
+        "contrast": "contrasted" if negatives else "unexamined",
+        # 🔴 A candidate the budget stopped the walk short of is UNEXAMINED, not absent.
+        # Measured 2026-08-23: four lot seeds at the default node cap truncate, so this is
+        # reachable today rather than a someday case, and a rank read off a truncated graph
+        # is provisional.
+        "complete": complete,
+        "ranked": [],
+        "top_set": [],
+        "message": None,
+    }
+    if collect is None:
+        return block
+    reach, parents = _reach(nodes, edges, seed_signs)
+    collected = [{
+        "id": node["id"], "type": node.get("type"), "label": node.get("label"),
+        "reach": reach.get(node["id"], [0.0, 0.0]),
+    } for node in nodes.values() if node.get("node_kind") == collect]
+    if not collected:
+        block["state"] = "empty"
+        block["message"] = "이 걷기가 %s 노드에 닿지 않았습니다" % collect
+        return block
+    layers = _rank_layers(collected)
+    for item in layers[0]:
+        item["evidence"] = _evidence(nodes, parents, seed_signs, item["id"])
+    block["state"] = "ranked"
+    block["ranked"] = [{
+        "id": item["id"], "type": item["type"], "label": item["label"],
+        "rank": item["rank"], "top": item["rank"] == 1,
+        "tied": item["tied"], "incomparable": item["incomparable"],
+        **({"evidence": item["evidence"]} if "evidence" in item else {}),
+    } for layer in layers for item in layer]
+    block["top_set"] = [item["id"] for item in layers[0]]
+    return block
+
+
+def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
+    """Build the depth-0 node for ONE seed.
+
+    Extracted verbatim so a signed seed SET runs the same construction per member;
+    the branches and their spellings are unchanged.
+    """
     if seed_ref["kind"] == "entity":
         seed_node = _entity_node(seed_ref["type"], seed_ref["keys"])
     elif seed_ref["kind"] == "event":
@@ -887,7 +1035,86 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "keys": {"claim_id": seed_ref["claim_id"]}, "claim_count": 0,
             "predicates": [],
         }
-    add_node(seed_node, seed_ref, 0)
+    return seed_node
+
+
+def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
+             include_values=True, node_limit=DEFAULT_NODE_LIMIT,
+             edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
+             action_lookup=None, collect=None):
+    """Return a typed evidence subgraph from any public node id, or from a signed SET.
+
+    `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
+    `collect` names one node kind and turns the walk into a ranked answer over it.  Both
+    are optional and neither changes what a single-seed caller already receives.
+    """
+    seed_signs = _signed_seeds(seed_id)
+    seed_refs = {item: decode_node_id(item) for item in seed_signs}
+    primary = next(iter(seed_signs))
+    if collect is not None:
+        collect = str(collect).strip().lower()
+        if collect not in NODE_KINDS:
+            raise ValueError("collect must be one of " + ", ".join(NODE_KINDS))
+    hops = max(1, min(int(hops), MAX_HOPS))
+    node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
+    edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
+    if direction not in {"outgoing", "incoming", "both"}:
+        raise ValueError("direction must be outgoing, incoming, or both")
+    if observation_mode not in {"summary", "claims"}:
+        raise ValueError("observation_mode must be summary or claims")
+    claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
+    # Declared, not queried.  An absent or broken declaration yields no models and no
+    # bindings, so the projection simply carries no Quantity nodes — the same «state, not
+    # exception» rule `mechanism_gate.load` follows for every other consumer.
+    mechanism = mechanism_gate.load()
+    models_by_name = {model.name: model for model in mechanism.models if model.usable}
+
+    nodes = {}
+    refs = {}
+    depths = {}
+    edges = {}
+    atom_cache = {}
+    action_claims_seen = set()
+    node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
+    claims_scanned = 0
+    actions_scanned = 0
+
+    def add_node(node, ref, depth):
+        nonlocal node_cut
+        node_id = node["id"]
+        if node_id in nodes:
+            if depth < depths[node_id]:
+                depths[node_id] = depth
+            nodes[node_id].update({k: v for k, v in node.items() if v is not None})
+            return True
+        if len(nodes) >= node_limit:
+            node_cut = True
+            return False
+        nodes[node_id] = node
+        refs[node_id] = ref
+        depths[node_id] = depth
+        return True
+
+    def add_edge(row):
+        nonlocal edge_cut
+        if row["source"] not in nodes or row["target"] not in nodes:
+            return False
+        if row["id"] in edges:
+            return True
+        if len(edges) >= edge_limit:
+            edge_cut = True
+            return False
+        edges[row["id"]] = row
+        return True
+
+    def add_claim(atom, depth):
+        atom_cache[atom.claim_node_id] = atom
+        return add_node(_claim_node(atom), {
+            "kind": "claim", "claim_id": atom.id,
+            "occurred_at": atom.occurred_at, "id": atom.claim_node_id}, depth)
+
+    for item, ref in seed_refs.items():
+        add_node(_seed_node(item, ref, models_by_name, action_lookup), ref, 0)
 
     for depth in range(hops):
         frontier_ids = [node_id for node_id, seen_depth in depths.items()
@@ -1200,8 +1427,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
-    seed = nodes[seed_id]
-    found = len(nodes) > 1 or bool(edges) or seed_ref["kind"] == "action"
+    seed = nodes[primary]
+    found = (len(nodes) > len(seed_refs) or bool(edges)
+             or any(ref["kind"] == "action" for ref in seed_refs.values()))
     reasons = []
     if depth_cut: reasons.append("depth")
     if node_cut: reasons.append("nodes")
@@ -1213,9 +1441,19 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed, "nodes": ordered_nodes, "edges": ordered_edges,
+        "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
+                   "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
+        "propagation": _propagation(
+            nodes, ordered_edges, seed_signs, collect,
+            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "observation_mode": observation_mode,
+            "collect": collect,
+            "start": {
+                "positive": sum(1 for s in seed_signs.values() if s > 0),
+                "negative": sum(1 for s in seed_signs.values() if s < 0),
+            },
             "hops_requested": hops,
             "hops_reached": max(depths.values(), default=0),
             "claims_scanned": claims_scanned,
