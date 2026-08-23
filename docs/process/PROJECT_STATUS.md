@@ -59,13 +59,43 @@
 > ```
 >
 > ### ③-block ✅ 풀렸습니다 — 선언 파이프라인이 살아났고 «첫 선언»이 섰습니다
-> 
+> ```
+> 08:4x  구현자 37694126  검사기를 v5 문법으로. config_path -> config/ontology/ledger_config.json
+>        -> lc.load() ✅   (그전엔 «어느 경로로도» 예외였습니다)
+> 08:5x  총괄이 «선언을 붙였습니다» — 라이브 config 는 gitignore 라 커밋에 «안 보입니다»
+>        vocabulary  inspected@1     subjects [die@1] · object kind «none» · qualifier 없음
+>        sources     die_inspection  relation inspection_run
+>                    subject  die@1 { mat_id=base_wafer_id · mat_type="Wafer"
+>                                     · x=base_x · y=base_y }
+>                    시각     observed_at
+>        백업        ledger_config.json.bak-lead-084553 (원본) · .bak-lead-085xxx (직전)
+>        무결성      백업과 «구조» 비교: 손실 0 · 변경 0 · 추가 45
+>                    (파일이 «작아진» 것은 재포맷 때문. 감시가 잡아서 확인함)
+> ```
 > **왜 void_obs 가 아니라 inspection_run 이 먼저였나 — 실측**
-> 
-> **거절 세 번에서 배운 것 (전부 임시파일 단계라 라이브는 무사)**
-> declaredemit
-> ⏭ 다음  ① 백필 (구현자, 전/후 카운트) ② void_obs 선언 — 시각을 «조인»해 와야 함.
->         문법이 조인을 선언으로 받는지 확인 중 ③ 접힘 통과 + finding point 좌표
+> ```
+> void_obs        «시각 컬럼이 없습니다». 검증기가 created_at 을 거절 (이 relation 에 없음)
+> inspection_run  base_wafer_id · base_x · base_y · stack_gate · method · eqp_id · «observed_at»
+>                 -> 좌표와 시각이 «한 행»에. 조인 «불필요»
+>                 -> void_obs 와는 run_uid 로 103,729 / 103,729 «100%»
+> 🔴 둘이 합쳐지면 이 제품의 「없음 세 갈래」가 «그대로» 나옵니다
+>    run 있고 void 없음  -> scanned   「봤는데 안 났다」  = 컨트롤(−)
+>    run 있고 void 있음  -> found     「났다」           = 케이스(+)
+>    run «없음»          -> unscanned 「안 봤다」        = 마킹에 «없음»
+>    => lot_map 이 «혼자» 들고 있던 칸 상태 세 갈래가 «원장 안»으로 들어옵니다
+> ```
+> **거절 세 번에서 배운 것 — 전부 «임시 파일» 단계라 라이브는 한 번도 안 깨졌습니다**
+> ```
+> 1  emit 문법은 v5 가 «안 받습니다».  v5 = relation · read · prepare · map · bind
+>    -> 이미 도는 transfer_event 를 «베꼈습니다». 지어내지 않았습니다
+> 2  void_obs 에 시각 컬럼 없음 -> inspection_run 으로 «갈아탐» (거절이 «더 나은 설계»로 데려감)
+> 3  value 역할은 «JSON 숫자»만.  method('sat') 를 붙인 것이 오류
+>    🔴 타입이 아니라 «의미»가 문제였습니다 — 점검은 «측정이 아니라» 붙는 수가 애초에 없습니다
+>    -> object kind «none».  숫자 컬럼을 찾아 끼웠으면 «없는 양»을 지어내는 것이었습니다
+> ```
+> ⏭ 다음  ① 백필 (구현자 · 전/후 카운트 · 작게 먼저)
+>         ② void_obs 선언 — 시각을 «조인»해 와야 함. 문법이 조인을 선언으로 받는지 확인 중
+>         ③ 접힘 통과 + finding point 좌표 («한 수리»로 묶음)
 >
 > ### ③-tangle 🔴 마킹 꼬임 — 소유자 「한번 꼬이면 답없다」. 이미 꼬여 있었음
 > ```
