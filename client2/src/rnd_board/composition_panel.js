@@ -18,6 +18,7 @@
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
+import { TablePart } from './table_part.js';
 
 export class CompositionPanel extends Panel {
   constructor(host, deps) {
@@ -153,31 +154,31 @@ export class CompositionPanel extends Panel {
     }
 
     // ── the layers ─────────────────────────────────────────────────────────────
+    // 🔴 THE TABLE IS A PART, AND THIS IS ONLY ITS DECLARATION (소유자 상설 ①). The seven
+    //    columns and their widths live here; the head, the row height, the divider, the
+    //    absent 「-」 and the state badge live in `table_part.js` with the OTHER tables.
     const table = doc.createElement('div');
     table.className = 'rb-comp-rows';
-    // A column head, because seven columns without one is a grid of unlabelled strings.
-    const head = doc.createElement('div');
-    // 🔴 NOT `rb-comp-row`. A header that wears the row's class makes every 「행이 몇 개냐」 and
-    //    「행을 클릭하면」 assertion count and click the wrong thing -- it broke two of them the
-    //    moment it was added. The columns are shared through a variable instead.
-    head.className = 'rb-comp-head';
-    for (const label of ['층', '코어 웨이퍼', '랏', '슬롯', '브랜치', '이력', '상태']) {
-      const h = doc.createElement('span');
-      h.textContent = label;
-      head.appendChild(h);
-    }
-    table.appendChild(head);
-    for (const c of m.components) {
-      table.appendChild(this._row(c));
-    }
-    if (!m.components.length) {
-      const empty = doc.createElement('div');
-      empty.className = 'rb-comp-note rb-comp-note--idle';
-      // NOT 「구성이 없습니다」 -- that would state a fact about the chip. The response carried
-      // no rows; those are different sentences.
-      empty.textContent = '응답에 구성 행이 없습니다';
-      table.appendChild(empty);
-    }
+    const layers = new TablePart(table, {
+      doc,
+      markings: this.markings,
+      reads: this.reads,
+      writes: this.writes,
+      rowKey: 'nodeId',
+      emptyText: '응답에 구성 행이 없습니다',
+      columns: [
+        { key: 'layer', label: '층', width: '4rem', kind: 'mono' },
+        { key: 'wafer', label: '코어 웨이퍼', width: 'minmax(11rem, 16rem)', kind: 'mono' },
+        { key: 'lot', label: '랏', width: 'minmax(9rem, 13rem)', kind: 'mono' },
+        { key: 'slot', label: '슬롯', width: '3rem' },
+        { key: 'branch', label: '브랜치', width: '4rem' },
+        { key: 'events', label: '이력', width: '4rem', kind: 'number' },
+        { key: 'state', label: '상태', width: '7rem', kind: 'badge' },
+      ],
+      rows: m.components.map((c) => this._layerRow(c)),
+    });
+    layers.mount();
+    this._layers = layers;
     root.appendChild(table);
 
     // ── 목업 ② 의 스텝 빵부스러기 — 마킹된 층의 «자기 스텝» ────────────────────
@@ -239,57 +240,27 @@ export class CompositionPanel extends Panel {
     return el;
   }
 
-  _row(c) {
-    const doc = this.doc;
-    const el = doc.createElement('div');
-    el.className = 'rb-comp-row';
-    // The node this row stands for. Marking is BY NODE -- that is the whole coupling.
-    const nodeId = c.entityId || c.id;
-    if (nodeId) {
-      el.setAttribute('data-node-id', nodeId);
-      const sign = this.signOf(nodeId);
-      if (sign === SIGN.CASE) el.classList.add('is-marked-case');
-      else if (sign === SIGN.CONTROL) el.classList.add('is-marked-control');
-      // A part with no write name is inert here: `mark` returns without touching the store.
-      el.addEventListener('click', (event) => {
-        const intent = markingIntent(event);
-        this.mark(nodeId, intent.sign, intent.mode);
-      });
-    }
-
-    // 🔴 THE MOCKUP'S SEVEN COLUMNS, AND EVERY ONE OF THEM IS SERVED (measured 2026-08-23):
-    //    층 `component_id` · 코어웨이퍼 `core.wafer` · 랏 `core.lot` · 슬롯 `core.slot` ·
-    //    브랜치 `core.branch` · 이력 `core.lineage.events` · 상태 `resolution_state`.
-    //    Three of them were already in the response and this panel was throwing them away, so
-    //    one row said far less than the ledger knew about it.
+  /**
+   * 한 층의 «행 데이터». 그리는 일은 표 부품이 합니다 -- 여기는 원장의 말을 컬럼 이름에
+   * 얹기만 합니다.
+   *
+   * 🔴 THE MOCKUP'S SEVEN COLUMNS, AND EVERY ONE OF THEM IS SERVED (measured 2026-08-23):
+   *    층 `component_id` · 코어웨이퍼 `core.wafer` · 랏 `core.lot` · 슬롯 `core.slot` ·
+   *    브랜치 `core.branch` · 이력 `core.lineage.events` · 상태 `resolution_state`.
+   */
+  _layerRow(c) {
     const core = c.core || {};
-    const cell = (cls, text, absentTitle) => {
-      const n = doc.createElement('span');
-      n.className = text === null || text === undefined || text === ''
-        ? `${cls} is-absent` : cls;
-      // `-` is 「이 응답이 그 칸을 안 줬다」, never 「없다」. The title says which.
-      n.textContent = text === null || text === undefined || text === '' ? '-' : String(text);
-      if ((text === null || text === undefined || text === '') && absentTitle) {
-        n.setAttribute('title', absentTitle);
-      }
-      return n;
+    return {
+      nodeId: c.entityId || c.id || null,
+      layer: this._layerLabel(c.id),
+      wafer: core.wafer,
+      lot: core.lot,
+      slot: core.slot,
+      branch: core.branch,
+      events: c.lineage ? c.lineage.events : null,
+      state: c.resolutionState,
     };
-
-    el.append(
-      cell('rb-comp-row-id', this._layerLabel(c.id)),
-      cell('rb-comp-row-core', core.wafer, '응답에 코어 웨이퍼가 없습니다'),
-      cell('rb-comp-row-lot', core.lot, '응답에 랏이 없습니다'),
-      cell('rb-comp-row-slot', core.slot, '응답에 슬롯이 없습니다'),
-      cell('rb-comp-row-branch', core.branch, '응답에 브랜치가 없습니다'),
-      cell('rb-comp-row-lineage', c.lineage ? c.lineage.events : null, '계보를 안 실어 줬습니다'),
-    );
-    const state = doc.createElement('span');
-    state.className = `rb-comp-row-state is-${c.resolutionState}`;
-    state.textContent = c.resolutionState;
-    el.appendChild(state);
-    return el;
   }
-
   /** 「SYN-CX-CHIP-001:L04」 -> 「L04」. The chip id is on the panel title already. */
   _layerLabel(id) {
     if (!id) return null;

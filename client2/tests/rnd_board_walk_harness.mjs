@@ -76,9 +76,13 @@ async function loadModules(mutate = {}) {
   const storeUrl = dataUrl(read('marking_store.js'));
   const apiUrl = dataUrl(read('api.js'));
   const panelUrl = dataUrl(read('panel.js').replaceAll("'./marking_store.js'", `'${storeUrl}'`));
+  const tableUrl = dataUrl(read('table_part.js')
+    .replaceAll("'./panel.js'", `'${panelUrl}'`)
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   const rewire = (file) => dataUrl(read(file)
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
+    .replaceAll("'./table_part.js'", `'${tableUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const cand = await import(rewire('candidate_list_panel.js'));
   const rank = await import(rewire('rank_list_panel.js'));
@@ -170,7 +174,8 @@ async function suite(mods) {
   const hostR = doc.createElement('div');
   const r = mk(rank.RankListPanel, hostR, { doc, markings, reads: 'marking:1', writes: 'marking:1' });
   r.mount(); await flush(); await flush();
-  const stateCells = byClass(hostR, 'rb-rank-state').map((n) => n.textContent);
+  // 상태 칸은 이제 공유 표의 `badge` 컬럼입니다 -- 마지막 셀. 표기가 한 곳으로 모였습니다.
+  const stateCells = byClass(hostR, 'rb-table-cell--badge').map((n) => n.textContent);
   truthy('Z4 tied is a word in the state column', stateCells.some((s) => s.includes('동률')));
   truthy('Z5 incomparable is a DIFFERENT word', stateCells.some((s) => s.includes('종류 다름')));
   // 🔴 The collapse test: if a part drew tied and incomparable the same way, this fails.
@@ -179,13 +184,17 @@ async function suite(mods) {
 
   // ── R. rank is not a verdict ──────────────────────────────────────────────────
   truthy('R1 the panel says so on itself', hostR.textContent.includes('순위는 판정이 아닙니다'));
-  const ranks = byClass(hostR, 'rb-rank-n').map((n) => n.textContent);
+  const ranks = byClass(hostR, 'rb-table-cell--rank').map((n) => n.textContent);
   // The header cells carry no `rb-rank-n`, so this is the data rows only. 2 appears TWICE:
   // that is the tie surviving, and X4 (renumbering) dies right here.
   eq('R2 tied rows keep the SAME number the server gave', ranks, ['1', '2', '2', '4', '5']);
 
   // ── M. measured vs name-only, drawn twice ─────────────────────────────────────
-  const measuredCells = byClass(hostR, 'rb-rank-measured').map((n) => n.textContent);
+  // 자리가 아니라 «컬럼 이름»으로 집습니다 -- 컬럼이 하나 끼어도 같은 것을 잽니다.
+  const measuredCells = walk(hostR)
+    .filter((n) => n.getAttribute && n.getAttribute('data-col') === 'measured'
+      && !String(n.className).includes('--head'))
+    .map((n) => n.textContent);
   eq('M1 the rank table prints `-` for a name-only candidate', measuredCells.filter((s) => s === '-').length, 4);
   eq('M2 and 있음 for the one that reaches a claim', measuredCells.filter((s) => s === '있음').length, 1);
   truthy('M3 the candidate list folds the name-only ones into one card',
@@ -193,13 +202,16 @@ async function suite(mods) {
   truthy('M4 and says how many', byClass(hostC, 'rb-cand-card--folded')[0].textContent.includes('4'));
 
   // ── L. two lines, never merged ────────────────────────────────────────────────
+  // 🔴 STILL TWO LINES, and now they are the SHARED table's two lines -- the `two_line` column
+  //    kind. Merging them would put a model name and a quantity in one string, which is the
+  //    fold this screen exists to refuse.
   eq('L1 quantity and model are separate elements',
-    [byClass(hostR, 'rb-rank-quantity')[0].textContent, byClass(hostR, 'rb-rank-model')[0].textContent],
+    [byClass(hostR, 'rb-table-main')[0].textContent, byClass(hostR, 'rb-table-sub')[0].textContent],
     ['delam', 'delam_formation']);
 
   // ── E. evidence is folded until asked ─────────────────────────────────────────
   eq('E1 no evidence is open at first', byClass(hostR, 'rb-rank-evidence').length, 0);
-  byClass(hostR, 'rb-rank-row')[1].click();
+  byClass(hostR, 'rb-table-row')[1].click();
   await flush();
   eq('E2 clicking a row opens exactly that one', byClass(hostR, 'rb-rank-evidence').length, 1);
 
@@ -230,11 +242,11 @@ const MUTANTS = [
       "if (c.incomparable) words.push('종류 다름');", '') } },
   { id: 'X4', what: 'ties are renumbered so the order looks total', catches: 'R2',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
-      "rank.textContent = c.rank === null ? '-' : String(c.rank);",
-      'rank.textContent = String(this._n = (this._n || 0) + 1);') } },
+      '      rank: c.rank === null ? null : String(c.rank),',
+      '      rank: String(this._n = (this._n || 0) + 1),') } },
   { id: 'X5', what: 'a name-only candidate is shown as measured', catches: 'M1',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
-      "measured.textContent = c.measured ? '있음' : '-';", "measured.textContent = '있음';") } },
+      "      measured: c.measured ? '있음' : null,", "      measured: '있음',") } },
   { id: 'X6', what: 'quantity and model are merged into one string', catches: 'L1',
     mutate: { 'api.js': (s) => s.replace(
       "      quantity: (parts[0] || '').trim() || String(row.label || ''),",
@@ -244,8 +256,8 @@ const MUTANTS = [
       '${reached} — 원인 후보는 없습니다', '연결 없음') } },
   { id: 'X7', what: 'all evidence is expanded by default', catches: 'E1',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
-      'if (c.id && this.opened.has(c.id)) wrap.appendChild(this._evidence(c));',
-      'wrap.appendChild(this._evidence(c));') } },
+      "      detailFor: (row) => (row.nodeId && this.opened.has(row.nodeId)",
+      '      detailFor: (row) => (row.nodeId || true') } },
 ];
 
 const base = await loadModules();

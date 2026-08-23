@@ -81,9 +81,13 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
   // composition root cannot load at all -- which is how it failed the moment they landed.
+  const tableUrl = dataUrl(read('table_part.js')
+    .replaceAll("'./panel.js'", `'${panelUrl}'`)
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   const partUrl = (file) => dataUrl(read(file)
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
+    .replaceAll("'./table_part.js'", `'${tableUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const headUrl = partUrl('head_summary_panel.js');
   const compUrl = partUrl('composition_panel.js');

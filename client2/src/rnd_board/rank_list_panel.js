@@ -19,6 +19,7 @@
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
+import { TablePart } from './table_part.js';
 
 export class RankListPanel extends Panel {
   constructor(host, deps) {
@@ -117,82 +118,55 @@ export class RankListPanel extends Panel {
       return;
     }
 
+    // 🔴 표 부품, 두 번째 «선언». 코드는 구성 표와 «한 벌»이고 다른 것은 이 컬럼 목록뿐입니다
+    //    (소유자 상설 ①). 전에는 이 표만 머리·행높이·두 줄·구분선·상태 표기가 달랐습니다.
     const table = doc.createElement('div');
     table.className = 'rb-rank-rows';
-    table.appendChild(this._headRow());
-    for (const c of m.candidates) table.appendChild(this._row(c, m));
+    const rows = new TablePart(table, {
+      doc,
+      markings: this.markings,
+      reads: this.reads,
+      writes: this.writes,
+      rowKey: 'nodeId',
+      emptyText: '응답에 후보가 없습니다',
+      columns: [
+        { key: 'rank', label: '순위', width: '2.5rem', kind: 'rank' },
+        { key: 'quantity', label: '물리량 · 모델', kind: 'two_line', subKey: 'model' },
+        { key: 'hops', label: '홉', width: '2rem', kind: 'number' },
+        { key: 'measured', label: '실측', width: '3rem' },
+        { key: 'state', label: '상태', width: '8rem', kind: 'badge' },
+      ],
+      rows: m.candidates.map((c) => this._rankRow(c, m)),
+      // 펼침의 «내용»은 이 패널의 것입니다. 표는 자리만 내줍니다.
+      detailFor: (row) => (row.nodeId && this.opened.has(row.nodeId)
+        ? this._evidence(row.candidate) : null),
+      onRowClick: (id) => {
+        if (this.opened.has(id)) this.opened.delete(id); else this.opened.add(id);
+        this.render();
+      },
+    });
+    rows.mount();
     root.appendChild(table);
     place(root);
   }
 
-  _headRow() {
-    const el = this.doc.createElement('div');
-    el.className = 'rb-rank-row rb-rank-row--head';
-    for (const label of ['순위', '물리량 · 모델', '홉', '실측', '상태']) {
-      const c = this.doc.createElement('span');
-      c.textContent = label;
-      el.appendChild(c);
-    }
-    return el;
+  /**
+   * 한 후보의 «행 데이터». 그리는 것은 표 부품입니다 -- 구성 표와 같은 코드입니다.
+   * 🔴 `-` IS THE POINT for 실측: it is how the name-only candidates read here, and the
+   *    candidate list's folded card points at exactly that column.
+   */
+  _rankRow(c, m) {
+    return {
+      nodeId: c.id || null,
+      candidate: c,
+      rank: c.rank === null ? null : String(c.rank),
+      quantity: c.quantity,
+      model: c.model || null,
+      hops: c.hopCount ? String(c.hopCount) : null,
+      measured: c.measured ? '있음' : null,
+      state: this._stateWords(c, m).join(' · ') || null,
+    };
   }
-
-  _row(c, m) {
-    const doc = this.doc;
-    const wrap = doc.createElement('div');
-    wrap.className = 'rb-rank-item';
-
-    const el = doc.createElement('div');
-    el.className = 'rb-rank-row';
-    if (c.id) {
-      el.setAttribute('data-node-id', c.id);
-      const sign = this.signOf(c.id);
-      if (sign === SIGN.CASE) el.classList.add('is-marked-case');
-      el.addEventListener('click', (event) => {
-        // Clicking a row opens its evidence AND marks it. The marking is what links this table
-        // to whatever else happens to read the same name.
-        if (this.opened.has(c.id)) this.opened.delete(c.id); else this.opened.add(c.id);
-        const intent = markingIntent(event);
-        this.mark(c.id, intent.sign, intent.mode);
-        this.render();
-      });
-    }
-
-    const rank = doc.createElement('span');
-    rank.className = 'rb-rank-n';
-    // The server's number, unchanged. Ties share it.
-    rank.textContent = c.rank === null ? '-' : String(c.rank);
-
-    const label = doc.createElement('span');
-    label.className = 'rb-rank-label';
-    const q = doc.createElement('span');
-    q.className = 'rb-rank-quantity';
-    q.textContent = c.quantity;
-    const mdl = doc.createElement('span');
-    mdl.className = 'rb-rank-model';
-    mdl.textContent = c.model || '-';
-    label.append(q, mdl);
-
-    const hops = doc.createElement('span');
-    hops.className = 'rb-rank-hops';
-    hops.textContent = c.hopCount ? String(c.hopCount) : '-';
-
-    const measured = doc.createElement('span');
-    measured.className = c.measured ? 'rb-rank-measured' : 'rb-rank-measured is-absent';
-    // 🔴 `-` IS THE POINT. It is how the 21 name-only candidates read in this table, and the
-    // candidate list's folded card points here for exactly that.
-    measured.textContent = c.measured ? '있음' : '-';
-
-    const state = doc.createElement('span');
-    state.className = 'rb-rank-state';
-    state.textContent = this._stateWords(c, m).join(' · ') || '-';
-
-    el.append(rank, label, hops, measured, state);
-    wrap.appendChild(el);
-
-    if (c.id && this.opened.has(c.id)) wrap.appendChild(this._evidence(c));
-    return wrap;
-  }
-
   /** Every word here is an absence or a position -- never a fault. */
   _stateWords(c, m) {
     const words = [];
