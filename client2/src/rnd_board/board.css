@@ -429,3 +429,19 @@ body {
   color: var(--text-muted); }
 .rb-comp-steps-sep { color: var(--border-strong); font-size: 11px; }
 .rb-comp-steps-absent { font-size: 11px; color: var(--text-dim); }
+
+/* 목업 맵 하단의 기반 «선택자» — 누르면 그 타입으로 다시 그립니다. */
+.rb-map__basis { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.rb-map__basis-label { font-size: 11px; color: var(--text-muted); }
+.rb-map__basis-pill { display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-surface); font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted); cursor: pointer; }
+.rb-map__basis-pill:hover { border-color: var(--accent); color: var(--accent); }
+.rb-map__basis-pill.is-chosen { border-color: var(--accent); background: var(--accent);
+  color: var(--accent-contrast); }
+.rb-map__basis-count { font-size: 11px; }
+.rb-map__basis-count.is-absent { color: var(--text-dim); }
+.rb-map__basis-pill.is-chosen .rb-map__basis-count { color: var(--accent-contrast); }
+/* 그릴 수 있는 거절문 = «단서»입니다. 빨강이 아니라 점선 밑줄. */
+.rb-map__note.is-caveat { color: var(--text-muted); border-bottom: 1px dashed var(--border-strong); }

@@ -64,7 +64,12 @@ export class CompositionPanel extends Panel {
     //    marked the rest FADES. Nothing fades while nothing is marked -- 「아직 안 골랐다」
     //    and 「이건 아니다」 are different sentences. The dimming itself is CSS, so it is one
     //    rule per part rather than a colour computed here.
-    root.className = this.markCount() > 0 ? 'rb-comp is-attenuating' : 'rb-comp';
+    // 🔴 ATTENUATE ONLY WHEN SOMETHING OF MINE IS MARKED. A name is shared, so another
+    //    panel writing an id of its own kind would otherwise fade every row here while
+    //    none of them lit up.
+    const mineMarked = (this.model && this.model.components || []).map((c) => c.entityId || c.id)
+      .some((id) => id && this.signOf(id) !== SIGN.ABSENT);
+    root.className = mineMarked ? 'rb-comp is-attenuating' : 'rb-comp';
     // 🔴 THE PANEL SAYS WHAT IT IS. The declaration carries a title and the shell hands it
     //    over; only the map drew it, so four panels stood unnamed on the screen and a
     //    reader had to infer the subject from the content. It is STICKY: a title that

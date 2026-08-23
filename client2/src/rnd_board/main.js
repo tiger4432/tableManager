@@ -39,7 +39,7 @@ import { RankListPanel } from './rank_list_panel.js';
 import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
-import { fetchLotMap } from './api.js';
+import { fetchLotMap, fetchComposition, basisCountsFromComposition } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
@@ -72,7 +72,7 @@ export const BOARD = Object.freeze({
   //    a part could push the grid open), so an auto row's minimum is ZERO -- and once the fixed
   //    rows below overflowed the viewport the identity band was squeezed to its borders while
   //    its content sat inside, invisible. A floor is what makes it survive the overflow.
-  rows: 'minmax(92px, auto) minmax(44px, auto) 280px 220px 320px 320px',
+  rows: 'minmax(92px, auto) minmax(44px, auto) 280px 300px 320px 320px',
   gap: '10px',
   // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
   //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
@@ -157,6 +157,13 @@ export const BOARD = Object.freeze({
       writes: 'marking:1',
       options: {
         axis: 'bond',
+        // 목업 맵 하단의 기반 선택자. `type` is the node type the count comes from.
+        bases: [
+          { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
+          { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
+          { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
+        ],
+        basisChipId: 'SYN-CX-CHIP-001',
         question: { row: 'SYN-VOID-001', slot: '07', kind: 'void' },
       },
     },
@@ -169,6 +176,12 @@ export const BOARD = Object.freeze({
       writes: 'marking:2',
       options: {
         axis: 'bond',
+        bases: [
+          { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
+          { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
+          { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
+        ],
+        basisChipId: 'SYN-CX-CHIP-001',
         question: { row: 'SYN-VOID-001', slot: '03', kind: 'void' },
       },
     },
@@ -215,6 +228,13 @@ export function bindLoaders(layout, deps) {
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
       const bound = { ...options, apiBase, fetchImpl, dpr: dpr || 1 };
+      // The basis counts come from ANOTHER route, so the seam is here and the part stays
+      // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
+      if (options.basisChipId) {
+        bound.loadBasisCounts = () => fetchComposition({
+          apiBase, fetchImpl, finalChipId: options.basisChipId,
+        }).then(basisCountsFromComposition);
+      }
       if (!options.question) return { ...decl, options: bound };
       return {
         ...decl,

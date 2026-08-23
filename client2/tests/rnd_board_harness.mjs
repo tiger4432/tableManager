@@ -745,7 +745,7 @@ const MUTANTS = [
     catches: 'C30',
     mutate: {
       'map_panel.js': (s) => s.replace(
-        '    const attenuating = this.markCount() > 0;',
+        '    const attenuating = cells.some((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);',
         '    const attenuating = false;'),
     },
   },
@@ -755,7 +755,7 @@ const MUTANTS = [
     catches: 'C29',
     mutate: {
       'map_panel.js': (s) => s.replace(
-        '    const attenuating = this.markCount() > 0;',
+        '    const attenuating = cells.some((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);',
         '    const attenuating = true;'),
     },
   },
