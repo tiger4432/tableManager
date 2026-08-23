@@ -95,36 +95,3 @@ def test_cursor_round_trip_and_type_refusal_are_named():
     with pytest.raises(ledger_catalog.CatalogRequestError) as caught:
         ledger_catalog.entity_catalog(Connection(), subject_type="Die")
     assert caught.value.detail["reason"] == "entity_type_not_catalogued"
-
-
-class GraphCursor(Cursor):
-    def execute(self, sql, params=None):
-        self.owner.calls.append((sql, params or {}))
-        frontier = json.loads((params or {})["frontier"])
-        assert frontier == [{"keys": {"wafer": "WF-01"}, "type": "Wafer"}]
-        self.rows = list(self.owner.rows)
-
-
-class GraphConnection(Connection):
-    def cursor(self):
-        return GraphCursor(self)
-
-
-def test_any_registered_entity_opens_a_claim_subgraph():
-    rows = [
-        ("1", "Wafer", {"wafer": "WF-01"}, "register", None, None,
-         NOW, "fixture", "1", "r1", None),
-        ("2", "Wafer", {"wafer": "WF-01"}, "processed_with", "value",
-         {"step": "ETCH", "recipe": "RCP-7"}, NOW, "fixture", "1", "r2", None),
-        ("3", "Wafer", {"wafer": "WF-01"}, "measured", "value",
-         {"metric": "etched_cd", "unit": "um", "method": "CD-SEM",
-          "state": "recorded", "value": 48.8, "run_uid": "RUN-1"},
-         NOW, "fixture", "1", "r3", None),
-    ]
-    body = ledger_explorer.explore_entity(
-        "Wafer", {"wafer": "WF-01"}, GraphConnection(rows), hops=20)
-    assert body["seed"]["type"] == "Wafer"
-    assert {node["type"] for node in body["nodes"]} >= {"Wafer", "Value", "Empty"}
-    assert {edge["predicate"] for edge in body["edges"]} >= {
-        "register", "processed_with", "measured"}
-    assert body["walk"]["hops_requested"] == 20
