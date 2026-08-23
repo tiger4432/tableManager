@@ -107,15 +107,8 @@ export class HeadSummaryPanel extends Panel {
     }
 
     line.appendChild(this._chip('상태', m.state, 'fact'));
-
-    // 🔴 The basis is shown, not summarised. 「resolved」 alone hides WHAT it was resolved on,
-    // and that is the first thing an engineer disputes.
-    if (m.resolution.basis) {
-      line.appendChild(this._chip('근거', m.resolution.basis, 'fact'));
-    }
-    if (typeof m.resolution.candidateCount === 'number') {
-      line.appendChild(this._chip('후보', String(m.resolution.candidateCount), 'fact'));
-    }
+    // 🔴 THE BASIS AND THE CANDIDATE COUNT MOVED TO 구성 (목업 2a). They belong beside the layers
+    //    they explain, and having them in both bands is the same fact said twice on one screen.
 
     root.appendChild(line);
 

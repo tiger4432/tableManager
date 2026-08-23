@@ -391,3 +391,16 @@ body {
   white-space: nowrap;
 }
 .rb-map__basis[data-basis="follows"] { border-style: dashed; }
+
+/* 목업 2a 구성 패널의 「어떻게 정해졌나」 상자 — 층 위에, 층을 설명하는 자리. */
+.rb-comp-resolution {
+  display: grid; gap: 1px 10px; padding: 6px 8px;
+  border: 1px solid var(--border); background: var(--bg-inset);
+  justify-self: start; min-width: 18rem;
+}
+.rb-comp-resolution-head { font-size: 11px; color: var(--text-muted); letter-spacing: .3px; }
+.rb-comp-resolution-row { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 8px; }
+.rb-comp-resolution-key { font-size: 11px; color: var(--text-muted); }
+.rb-comp-resolution-val { font-family: var(--font-mono); font-size: 11px; color: var(--text);
+  overflow-wrap: anywhere; }
+.rb-comp-resolution-row.is-absent .rb-comp-resolution-val { color: var(--text-dim); }

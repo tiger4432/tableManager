@@ -196,8 +196,20 @@ async function suite(mods) {
   truthy('E1 the defaulted window is drawn as an absence', absent.some((c) => c.textContent.includes('기본값 적용')));
   truthy('E2 cardinality stays the word the ledger chose', absent.some((c) => c.textContent.includes('variable')));
   eq('E3 no absence is drawn with the refusal class', byClass(hostH, 'rb-head-note--refused').length, 0);
-  truthy('E4 the resolution BASIS is shown, not just the verdict',
-    chips.some((c) => c.textContent.includes('transferred.to.bond_layer')));
+  // 🔴 THE CLAIM IS UNCHANGED, THE ADDRESS MOVED. 목업 2a puts 「어떻게 정해졌나」 beside the
+  //    layers it explains, so the basis is drawn by the COMPOSITION panel now. Asserting it
+  //    against the identity band would have kept scoring the old arrangement.
+  {
+    const hostR = doc.createElement('div');
+    const cp = new comp.CompositionPanel(hostR, { doc, markings, reads: 'marking:1',
+      writes: 'marking:1', apiBase: '', finalChipId: 'C', fetchImpl: okFetch() });
+    cp.mount(); await flush(); await flush();
+    truthy('E4 the resolution BASIS is shown, not just the verdict',
+      byClass(hostR, 'rb-comp-resolution-val')
+        .some((v) => v.textContent.includes('transferred.to.bond_layer')));
+    truthy('E5 the candidate count stands beside it',
+      byClass(hostR, 'rb-comp-resolution-key').some((k) => k.textContent === 'candidates'));
+  }
 
   // A refusal, on the other hand, says so.
   const hostX = doc.createElement('div');

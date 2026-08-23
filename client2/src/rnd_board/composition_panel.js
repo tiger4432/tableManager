@@ -111,6 +111,38 @@ export class CompositionPanel extends Panel {
       root.appendChild(card);
     }
 
+    // ── 「어떻게 정해졌나」 — 목업 2a 의 구성 패널이 층 위에 다는 상자 ──────────────
+    // 🔴 THE RESOLUTION IS SHOWN, NOT SUMMARISED. 「resolved」 alone hides WHAT it was resolved
+    //    on, and the basis is the first thing an engineer disputes. It sits beside the layers
+    //    it explains rather than in the identity band.
+    if (m.resolution) {
+      const box = doc.createElement('div');
+      box.className = 'rb-comp-resolution';
+      const head = doc.createElement('div');
+      head.className = 'rb-comp-resolution-head';
+      head.textContent = '어떻게 정해졌나';
+      box.appendChild(head);
+      const put = (k, v, absent) => {
+        const row = doc.createElement('div');
+        row.className = absent ? 'rb-comp-resolution-row is-absent' : 'rb-comp-resolution-row';
+        const key = doc.createElement('span');
+        key.className = 'rb-comp-resolution-key';
+        key.textContent = k;
+        const val = doc.createElement('span');
+        val.className = 'rb-comp-resolution-val';
+        val.textContent = v;
+        row.append(key, val);
+        box.appendChild(row);
+      };
+      put('state', m.resolution.state || '-', !m.resolution.state);
+      // `basis` is a path into the ledger; it is printed verbatim so it can be checked.
+      put('basis', m.resolution.basis || '응답에 근거가 없습니다', !m.resolution.basis);
+      put('candidates',
+        typeof m.resolution.candidateCount === 'number' ? String(m.resolution.candidateCount) : '-',
+        typeof m.resolution.candidateCount !== 'number');
+      root.appendChild(box);
+    }
+
     // ── the layers ─────────────────────────────────────────────────────────────
     const table = doc.createElement('div');
     table.className = 'rb-comp-rows';
