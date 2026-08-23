@@ -40,6 +40,7 @@ import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { projectionModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
+import { computeSeating, visualExtent } from '../map2/seating.js';
 
 //: Transcribed from `tokens.css`. Keyed by the role string the cell carries.
 const ROLES = {
@@ -105,6 +106,66 @@ function parseGrid(grid) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * `grid_metadata` -> the seat frame `map2/seating.js` consumes. A TRANSCRIPTION: every field is
+ * copied, none is computed. `surprise_map_core.js::seatFrameOf` does the same from ITS frame
+ * model; this one reads the ledger route's spelling (`grid_cols`, `grid_y_invert`, ...).
+ * `null` when the declaration cannot seat anything -- then the cells stand exactly as they are.
+ */
+function seatFrameOfGrid(grid) {
+  if (!grid) return null;
+  const cols = Number(grid.grid_cols);
+  const rows = Number(grid.grid_rows);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return null;
+  return {
+    rotation: Number(grid.rotation) || 0,
+    side: grid.side || 'front',
+    cols,
+    rows,
+    startX: Number.isFinite(Number(grid.grid_start_x)) ? Number(grid.grid_start_x) : 0,
+    startY: Number.isFinite(Number(grid.grid_start_y)) ? Number(grid.grid_start_y) : 0,
+    invertY: grid.grid_y_invert === true,
+    physWaferDia: grid.phys_wafer_dia,
+    physChipX: grid.phys_chip_x,
+    physChipY: grid.phys_chip_y,
+    physOffsetX: grid.phys_offset_x,
+    physOffsetY: grid.phys_offset_y,
+    physEdgeMargin: grid.phys_edge_margin,
+  };
+}
+
+/**
+ * 🔴 EVERY MAP STANDS AT 0°, AND THIS IS THE ONE PLACE THAT MAKES IT SO.
+ *
+ * MEASURED 2026-08-24 on `lot_map?row=SYN-VOID-001&slot=07`: the BOND frame declares
+ * `rotation: 180` while dt and core declare `0`. Drawing the stored (x, y) straight into a
+ * cell -- which every map on this board did -- puts the bonding wafer on screen upside down,
+ * and there is NO WAY TO SEE IT: a rotated wafer is still a plausible wafer. It becomes an
+ * answer the moment one marking crosses two maps, because bond (3,4) and core (3,4) are then
+ * two different physical dies and the second map lights the wrong one.
+ *
+ * 🔴 NOT A FORMULA WRITTEN HERE. `map2/seating.js` already holds this seam, transcribed from
+ *    `server/utils/coordinate_transformer.py`, with the bounding-box and y-invert terms that
+ *    a hand-written rotation drops -- the project has measured what dropping them costs
+ *    (3,430 cells on the wrong die, picture still plausible). This calls it.
+ *
+ * 🔴 NO AXIS NAMES. The input is the FRAME DECLARATION, so a fourth axis costs no code.
+ *
+ * @returns {{cells, bounds}} `bounds` is the seated lattice (0-based, quarter turns swapped),
+ *          or `null` when the frame declares nothing -- then the caller's old lattice stands.
+ */
+export function seatedProjection(frame, cells) {
+  const seatFrame = seatFrameOfGrid(parseGrid(frame && frame.grid));
+  if (!seatFrame) return { cells: cells || [], bounds: null };
+  const extent = visualExtent(seatFrame);
+  const bounds = { minX: 0, maxX: extent.cols - 1, minY: 0, maxY: extent.rows - 1, empty: false };
+  if (!cells || !cells.length) return { cells: cells || [], bounds };
+  const seating = computeSeating(cells, seatFrame, null);
+  // The seat carries its own cell, so every field the boundary stamped (state, role, node_id,
+  // n) rides along untouched. Only the two coordinates are answered again.
+  return { cells: seating.seats.map((s) => ({ ...s.cell, x: s.x, y: s.y })), bounds };
 }
 
 /**
@@ -531,8 +592,11 @@ export class MapPanel extends Panel {
     if (!canvas.getContext) return;   // a document stub with no 2D context: chrome only
     const surface = createCanvasSurface(canvas.getContext('2d'));
 
-    const cells = model.cells;
-    const declared = declaredBounds(model.frame);
+    // 🔴 SEATED FIRST, THEN EVERYTHING. The draw, the vacant lattice, the mark rings and the
+    //    click index below all read `cells`, so seating once here is what keeps them agreeing.
+    const seated = seatedProjection(model.frame, model.cells);
+    const cells = seated.cells;
+    const declared = seated.bounds || declaredBounds(model.frame);
     const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
     const layout = layoutFor(bounds, { width: canvas.width, height: canvas.height, padding: 0 });
     surface.clear(canvas.width, canvas.height);

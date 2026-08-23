@@ -659,3 +659,96 @@ export function waferFactsFromLotMap(result, axis) {
     scanned: typeof p.scanned === 'number' ? p.scanned : null,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔴 ONE CALL — 소유자가 그린 «클라 데이터 흐름» (2026-08-24).
+//
+//    The owner drew the board as SEVEN WALKS and no other route: every part declares
+//    `{ start, collect }` and asks here. A part never names a route, a query parameter or a
+//    model again -- which is why the map and the trend can be 「같은 collect, 시작점만 다름」
+//    without either part knowing the other exists.
+//
+//      walk ①  start: each wafer          collect: trend_y        기본 트렌드
+//      walk ③  start: marking 1           collect: candidate      후보
+//      walk ④  start: marking 1           collect: wafer_process  자재 정보
+//      walk ⑤  start: marking 1           collect: trend_y        맵  (같은 collect)
+//      walk ⑦  start: marking 2           collect: candidate      후보 트렌드 · 후보 맵
+//
+// 🔴 THE COLLECT TABLE IS THE DECLARATION; THE ROUTES UNDER IT ARE TODAY'S MATERIAL.
+//    The ledger carries coordinates as a subject on ONE family today (die transfer, 1,405
+//    atoms), so `map` still reads `lot_map` -- the Lead PM's standing ruling is that the old
+//    path stays alive until the walk itself can draw. When it can, ONE line here changes and
+//    no part does.
+//
+// 🔴 THE SAME WALK IS NOT ASKED TWICE. Walk ⑦ feeds two parts; they mount together, so the
+//    second one joins the first one's in-flight promise instead of opening a second request.
+//    Only IN-FLIGHT calls are shared -- nothing is cached after it settles, because a cache
+//    that outlives the request would answer a later question with an earlier answer.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `start` is `{ groupby, value }`. 🔴 `groupby` is `'wafer'` today because the owner wrote
+ * 「일단 wafer 로 고정」 -- it is a VALUE here, not a configuration axis, and it becomes two
+ * the day something needs two.
+ */
+export const COLLECTS = Object.freeze({
+  // 기본 트렌드 ① · 맵 ⑤ — 같은 collect. 트렌드는 창 전체를, 맵은 한 그룹을 그립니다.
+  trend_y: {
+    params: () => ({}),
+    run: (params) => fetchTrends(params).then(trendsModel),
+  },
+  // ③⑦ 후보 — 마킹한 노드에서 걸어서 모읍니다.
+  candidate: {
+    params: (start) => (start.value ? { nodeId: start.value } : {}),
+    run: (params) => fetchSubgraph(params).then(subgraphModel),
+  },
+  // ④ 자재 정보 — 그 칩이 무엇으로 만들어졌나.
+  wafer_process: {
+    params: (start) => (start.value ? { finalChipId: start.value } : {}),
+    run: (params) => fetchComposition(params).then(compositionModel),
+  },
+  // ⑤ 맵 — 오늘은 lot_map 이 재료입니다. 부품은 그것을 모릅니다.
+  map: {
+    params: (start) => (start.value ? { row: start.value, by: start.groupby } : {}),
+    run: (params) => fetchLotMap(params),
+  },
+  // 기반 위치 수 — 같은 라우트, 다른 «선언». 갈래를 파지 않고 값을 하나 더 씁니다.
+  basis: {
+    params: (start) => (start.value ? { finalChipId: start.value } : {}),
+    run: (params) => fetchComposition(params).then(basisCountsFromComposition),
+  },
+  // 또래 수 — 제어 막대의 알약 하나가 하나의 walk 입니다.
+  peer: {
+    params: (start) => (start.value ? { scope: start.value } : {}),
+    run: (params) => fetchSiblings(params).then(peerCountFromSiblings),
+  },
+});
+
+/**
+ * The one function a part calls. `createWalk` binds WHERE (apiBase) and HOW (fetchImpl) once,
+ * at the composition root, so those two never appear in a part again.
+ *
+ * @returns {(spec: {start?, collect: string}) => Promise<any>}
+ */
+export function createWalk(deps) {
+  const { apiBase, fetchImpl } = deps || {};
+  const inflight = new Map();
+  return function walk(spec) {
+    const { start, collect, ...rest } = spec || {};
+    const declared = COLLECTS[collect];
+    // A collect nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
+    // here would let a part draw 「없음」 for a question that was never asked.
+    if (!declared) return Promise.reject(new Error(`walk: 선언되지 않은 collect — ${collect}`));
+    const key = JSON.stringify([collect, start || null, rest]);
+    const joined = inflight.get(key);
+    if (joined) return joined;
+    const running = Promise.resolve()
+      // 🔴 START WINS. `rest` is the screen's declared question; `start` is the marking the
+      //    user just moved. Spreading start LAST is what makes 「마킹을 바꾸면 따라온다」 true.
+      .then(() => declared.run({ apiBase, fetchImpl, ...rest, ...declared.params(start || {}) }));
+    inflight.set(key, running);
+    const forget = () => { if (inflight.get(key) === running) inflight.delete(key); };
+    running.then(forget, forget);
+    return running;
+  };
+}

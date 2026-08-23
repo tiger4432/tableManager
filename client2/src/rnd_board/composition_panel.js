@@ -17,13 +17,19 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { fetchComposition, compositionModel } from './api.js';
+import { createWalk } from './api.js';
 
 export class CompositionPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
     const options = deps || {};
-    this.apiBase = options.apiBase || '';
+    // 🔴 ONE CALL — 소유자가 그린 데이터 흐름(2026-08-24): 부품은 { start, collect } 만 선언하고
+    //    라우트·질의·모델을 다시는 부르지 않습니다. 화면이 walk 하나를 «주입»하므로 같은 walk 을
+    //    쓰는 두 부품이 요청 하나를 나눠 씁니다. 혼자 서는 부품은 자기 것을 만듭니다.
+    this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
+    // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
+    this.start = options.start || null;
+    this.collect = options.collect || 'wafer_process';
     this.finalChipId = options.finalChipId || null;
     this.fetchImpl = options.fetchImpl || null;
     this.model = null;
@@ -38,12 +44,10 @@ export class CompositionPanel extends Panel {
   async load() {
     this.loadState = 'loading';
     this.render();
-    const result = await fetchComposition({
-      apiBase: this.apiBase,
-      finalChipId: this.finalChipId,
-      fetchImpl: this.fetchImpl,
+    this.model = await this.walk({
+      start: this.start || { groupby: 'chip', value: this.finalChipId },
+      collect: this.collect,
     });
-    this.model = compositionModel(result);
     this.loadState = this.model.ok ? 'ready' : 'refused';
     this.render();
   }

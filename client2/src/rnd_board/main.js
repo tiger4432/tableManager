@@ -41,6 +41,7 @@ import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
 import { DeclarationPanel } from './declaration_panel.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
+  createWalk,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap } from './api.js';
@@ -106,6 +107,9 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
+      // walk ④ — 「이 주어가 무엇으로 만들어졌나」. groupby 는 값이지 축이 아닙니다.
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      collect: 'wafer_process',
       options: {
         finalChipId: 'SYN-CX-CHIP-001',
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
@@ -144,9 +148,9 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 2, columnSpan: 4 },
       reads: 'axis:y',
       writes: 'axis:y',
+      collect: 'trend_y',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
-        collect: 'quantity',
         window: '180d',
         // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
@@ -170,6 +174,8 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 3, columnSpan: 3 },
       reads: 'marking:0',
       writes: 'marking:0',
+      // walk ① — start 없음: 「each groupby」, 즉 창 안의 모든 웨이퍼입니다.
+      collect: 'trend_y',
       options: {
         kinds: 'void',
         window: '180d',
@@ -227,6 +233,8 @@ export const BOARD = Object.freeze({
     {
       id: 'composition',
       part: 'composition',
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      collect: 'wafer_process',
       title: '구성 · SYN-CX-CHIP-001',
       at: { column: 1, row: 4, columnSpan: 4 },
       reads: 'marking:1',
@@ -236,6 +244,7 @@ export const BOARD = Object.freeze({
     {
       id: 'map-bond-a',
       part: 'map',
+      collect: 'map',
       title: '본딩 맵 · 슬롯 07',
       at: { column: 1, row: 5 },
       reads: 'marking:1',
@@ -260,6 +269,7 @@ export const BOARD = Object.freeze({
       //    규칙이 성립한다는 증거이기도 합니다.
       id: 'map-core',
       part: 'map',
+      collect: 'map',
       title: '코어 맵 · 마킹 2',
       at: { column: 2, row: 5 },
       reads: 'marking:2',
@@ -282,25 +292,27 @@ export const BOARD = Object.freeze({
       //    그것이 「마킹은 부품 밖에 산다」가 화면에서 보이는 자리다.
       id: 'candidate-list',
       part: 'candidateList',
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+      collect: 'candidate',
       title: '원인 후보 · SYN-BW-001-07',
       at: { column: 3, row: 5 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
-        collect: 'quantity',
       },
     },
     {
       id: 'rank-list',
       part: 'rankList',
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+      collect: 'candidate',
       title: '순위 · SYN-BW-001-07',
       at: { column: 4, row: 5 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
-        collect: 'quantity',
       },
     },
   ],
@@ -312,6 +324,10 @@ export const BOARD = Object.freeze({
  */
 export function bindLoaders(layout, deps) {
   const { apiBase, fetchImpl, dpr } = deps || {};
+  // 🔴 ONE WALK FOR THE WHOLE SCREEN, and that is not a performance note: 후보 트렌드와 후보
+  //    맵은 «같은 walk»(⑦)을 먹습니다. 인스턴스가 하나여야 둘째 부품이 첫째의 진행 중인 요청에
+  //    «합류»합니다 -- 인스턴스를 부품마다 만들면 같은 질문을 두 번 보내게 됩니다.
+  const walk = createWalk({ apiBase, fetchImpl });
   return {
     ...layout,
     panels: (layout.panels || []).map((decl) => {
@@ -319,7 +335,7 @@ export function bindLoaders(layout, deps) {
       // 🔴 THE ADDRESS IS INJECTED, NEVER DECLARED. `apiBase` is a fact about where this page
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
-      const bound = { ...options, apiBase, fetchImpl, dpr: dpr || 1 };
+      const bound = { ...options, walk, apiBase, fetchImpl, dpr: dpr || 1 };
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
       if (options.fields) {
@@ -329,18 +345,17 @@ export function bindLoaders(layout, deps) {
         bound.optionsFor = (key) => {
           if (key === 'y') {
             return Promise.all([
-              fetchTrends({ apiBase, fetchImpl, window: '180d' }).then(trendsModel),
-              fetchSubgraph({
-                apiBase,
-                fetchImpl,
-                nodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
-                collect: 'quantity',
-              }).then(subgraphModel),
-            ]).then(([trends, walk]) => {
+              walk({ collect: 'trend_y', window: '180d' }),
+              walk({
+                start: { groupby: 'wafer',
+                  value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+                collect: 'candidate',
+              }),
+            ]).then(([trends, candidates]) => {
               const out = (trends.kinds || []).map((k) => ({
                 id: `axis:ratio:${k.id}`, label: `${k.label} 비율`,
               }));
-              for (const c of (walk.ok ? walk.candidates : []) || []) {
+              for (const c of (candidates.ok ? candidates.candidates : []) || []) {
                 if (!c.measured) continue;
                 out.push({ id: `axis:quantity:${c.id || c.quantity}`,
                   label: `${c.quantity}${c.model ? ` · ${c.model}` : ''}` });
@@ -364,20 +379,20 @@ export function bindLoaders(layout, deps) {
         // answered yet stays BLANK on screen -- never 0.
         // A wafer given means the screen moved: same route, wafer axis (the one that answers
         // for a wafer picked out of a trend rather than a slot of a lot).
-        bound.loadWaferFacts = (kind, wafer) => fetchLotMap(wafer
-          ? { apiBase, fetchImpl, row: wafer, kind, by: 'wafer' }
-          : { apiBase, fetchImpl, ...options.waferQuestion, kind })
+        bound.loadWaferFacts = (kind, wafer) => walk(wafer
+          ? { start: { groupby: 'wafer', value: wafer }, collect: 'map', kind }
+          : { collect: 'map', ...options.waferQuestion, kind })
           .then((body) => waferFactsFromLotMap(body, 'bond'));
       }
       if (options.peers) {
-        bound.loadPeerCount = (scope) => fetchSiblings({
-          apiBase, fetchImpl, scope, window: options.window,
-        }).then(peerCountFromSiblings);
+        bound.loadPeerCount = (scope) => walk({
+          start: { groupby: 'scope', value: scope }, collect: 'peer', window: options.window,
+        });
       }
       if (options.basisChipId) {
-        bound.loadBasisCounts = () => fetchComposition({
-          apiBase, fetchImpl, finalChipId: options.basisChipId,
-        }).then(basisCountsFromComposition);
+        bound.loadBasisCounts = () => walk({
+          start: { groupby: 'chip', value: options.basisChipId }, collect: 'basis',
+        });
       }
       if (!options.question) return { ...decl, options: bound };
       return {
@@ -386,16 +401,17 @@ export function bindLoaders(layout, deps) {
           ...bound,
           // The override is how a part turns a page without learning a route: it hands back
           // the one field it is changing and the question stays the composition root's.
-          load: (override) => fetchLotMap({
-            apiBase, fetchImpl, ...options.question, ...(override || {}),
+          load: (override) => walk({
+            collect: 'map', ...options.question, ...(override || {}),
           }),
           // 씨앗으로 찍힌 웨이퍼를 그리는 길. 같은 라우트, 축만 웨이퍼.
-          loadByWafer: (wafer) => fetchLotMap({
-            apiBase, fetchImpl, ...options.question, row: wafer, slot: undefined, by: 'wafer',
+          loadByWafer: (wafer) => walk({
+            start: { groupby: 'wafer', value: wafer },
+            collect: 'map', ...options.question, slot: undefined,
           }),
           // 목업의 페이지 목록. Measured: a slot-less call carries the row's whole slot list.
-          loadPages: () => fetchLotMap({
-            apiBase, fetchImpl, ...options.question, slot: undefined,
+          loadPages: () => walk({
+            collect: 'map', ...options.question, slot: undefined,
           }).then(slotPagesFromLotMap),
         },
       };
