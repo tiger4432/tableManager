@@ -383,3 +383,11 @@ body {
   justify-content: start; column-gap: 12px; align-items: baseline; padding: 3px 4px;
   border-bottom: 1px solid var(--border-strong); font-size: 11px; color: var(--text-dim);
   letter-spacing: .3px; }
+
+/* 목업의 맵 상태 알약 — 「이 패널이 왜 이렇게 그려졌나」. */
+.rb-map__basis {
+  padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-inset); font-size: 11px; color: var(--text-muted);
+  white-space: nowrap;
+}
+.rb-map__basis[data-basis="follows"] { border-style: dashed; }
