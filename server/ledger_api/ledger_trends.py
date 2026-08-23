@@ -1,18 +1,30 @@
 """Dynamic defect trends for the R&D investigation workbench.
 
-The read model is deliberately wafer-grained and ledger-backed.  A chart point and a
-Trend Table row therefore carry the same ``mark_key``; no client-side join is needed to
-make marking travel in either direction.
+The read model is ledger-backed and grained at whatever unit the caller declares.  A
+chart point and a Trend Table row carry the same ``mark_key``; no client-side join is
+needed to make marking travel in either direction.
 
-This module does *not* flatten product composition.  ``Wafer`` is the observation
-subject declared by the active ``observed`` vocabulary.  Core/DT/Bonding composition is
-a separate, branching question and must not be inferred from a trend row.
+The ``grain`` object in the response used to be an *explanation* of a decision this
+module had already made.  It is now the caller's declaration, and the response reflects
+back what it was given.  Each axis carries two expressions because the two sides of the
+ratio live in different places: the denominator is a column on a scan relation, the
+numerator a path into an atom.  A ledger that carries the context in ``subject_keys``
+rather than in ``object_payload`` is countable only because the numerator says which --
+before it did, this route counted zero findings while reporting a healthy denominator.
+
+Composition is *not* flattened here.  The observation subject is whatever the grain
+declares; component composition is a separate, branching question and must never be
+inferred from a trend row.
+
+Below the declaration block, no schema word appears: axis names, the subject type and
+the payload keys are values that travel in from the request.
 """
 from __future__ import annotations
 
 import base64
 import json
-from collections import defaultdict
+import re
+from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 
 from ledger_api import finding_kinds
@@ -38,6 +50,69 @@ REASON_BAD_LIMIT = "bad_trend_limit"
 REASON_BAD_POINTS = "bad_trend_max_points"
 REASON_EMPTY_KINDS = "empty_trend_kinds"
 REASON_INACTIVE_KIND = "inactive_finding_kind"
+REASON_BAD_GRAIN = "bad_trend_grain"
+
+NUMERATOR_SOURCES = ("subject_keys", "object_payload")
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+GrainPlan = namedtuple("GrainPlan", "declared names denominators numerators params")
+
+# ---------------------------------------------------------------------------------
+# 🔴 THE ONLY BLOCK IN THIS MODULE THAT MAY SPELL A FAB'S OWN WORDS.
+#
+# Everything below reads these two objects and never a name out of them.  A deployment
+# whose ledger and scan relations are spelled differently replaces this block and nothing
+# else -- which is also why the block is shaped like the request body: it is the default
+# value of an input, not a decision.  Where the default is *read from* (this module today,
+# a declaration file later) is a separate item and deliberately not settled here.
+# ---------------------------------------------------------------------------------
+
+# The scan side of the ratio.  Its FROM/JOIN is *structure* -- the number of relations is
+# fixed here and never by the request -- so the caller's `denominator.join` is checked
+# against this rather than interpolated: a join nobody applied is worse than a refusal.
+SCAN_SOURCE = {
+    "relation": "inspection_run",
+    "alias": "r",
+    "method_column": "method",
+    "observed_at_column": "observed_at",
+    "joins": [
+        {"relation": "bonding_map", "alias": "b",
+         "on": "b.base = r.base_wafer_id AND b.x = r.base_x AND b.y = r.base_y"},
+    ],
+}
+
+DEFAULT_GRAIN = {
+    "subject_type": ledger_identity.SUBJECT_TYPE,
+    "identity_fields": ["wafer"],
+    "aggregation_unit": "void_by_experiment_unit",
+    "context_fields": ["bonding_leg"],
+    "context_role": ledger_identity.CONTEXT_ROLE,
+    "marking": "identity.mark_key",
+    "axes": [
+        {"name": "wafer",
+         "denominator": {"relation": "inspection_run", "column": "base_wafer_id",
+                         "join": None},
+         "numerator": {"from": "subject_keys", "key": "wafer"}},
+        {"name": "bonding_leg",
+         "denominator": {"relation": "bonding_map", "column": "leg",
+                         "join": SCAN_SOURCE["joins"][0]["on"]},
+         "numerator": {"from": "object_payload", "key": "bonding_leg"}},
+    ],
+}
+
+# relation -> (alias, the ON clause the scans FROM actually binds).  Derived so the join
+# text is written once; a declared denominator is resolved against this.
+SCAN_RELATIONS = dict(
+    [(SCAN_SOURCE["relation"], (SCAN_SOURCE["alias"], None))]
+    + [(join["relation"], (join["alias"], join["on"]))
+       for join in SCAN_SOURCE["joins"]])
+
+# Members the caller may state but may not yet move.  Not taste: `ledger_identity` spells
+# the axis names into every mark_key, `/selection/resolve` and the client read that same
+# mark, and the keyset cursor carries exactly that tuple.  Freeing them is the node-id
+# marking step of the design, which comes after the finer subject is declared.
+FENCED_GRAIN_MEMBERS = ("identity_fields", "context_fields", "aggregation_unit",
+                        "context_role", "marking")
 
 TRACE_DIMENSIONS = [
     {"id": "dt_trace", "label": "DT Trace",
@@ -55,13 +130,15 @@ class TrendRequestError(ValueError):
         self.detail = detail
 
 
-def mark_key(wafer: str, bonding_leg: str) -> str:
-    return ledger_identity.encode_mark(str(wafer), str(bonding_leg))
+def mark_key(*unit) -> str:
+    return ledger_identity.encode_mark(*(str(value) for value in unit))
 
 
-def _encode_cursor(occurred_at: datetime, wafer: str, bonding_leg: str) -> str:
-    raw = json.dumps({"v": 2, "t": occurred_at.isoformat(), "w": wafer,
-                      "l": bonding_leg},
+def _encode_cursor(occurred_at: datetime, unit) -> str:
+    # The keyset is (time, *unit values) at whatever arity the grain has; the token spells
+    # no axis name so a renamed schema does not rename the cursor.
+    raw = json.dumps({"v": 3, "t": occurred_at.isoformat(),
+                      "k": [str(value) for value in unit]},
                      separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -72,12 +149,14 @@ def _decode_cursor(text):
     try:
         padded = str(text) + "=" * (-len(str(text)) % 4)
         body = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
-        if body.get("v") != 2 or not body.get("t") or not body.get("w") or not body.get("l"):
+        keys = body.get("k")
+        if (body.get("v") != 3 or not body.get("t") or not isinstance(keys, list)
+                or not keys or not all(keys)):
             raise ValueError("missing cursor member")
         instant = datetime.fromisoformat(str(body["t"]).replace("Z", "+00:00"))
         if instant.tzinfo is None:
             raise ValueError("cursor timestamp has no offset")
-        return instant, str(body["w"]), str(body["l"])
+        return instant, [str(value) for value in keys]
     except Exception as exc:
         raise TrendRequestError({
             "reason": REASON_BAD_CURSOR,
@@ -118,7 +197,7 @@ def _window(text, now):
     return parsed
 
 
-def _definitions(selected):
+def _definitions(selected, grain):
     definitions = []
     for kind in selected:
         spec = finding_kinds.spec(kind)
@@ -128,8 +207,8 @@ def _definitions(selected):
             "label": spec.get("label") or kind,
             "active": bool(spec.get("active", True)),
             "selectable": bool(spec.get("active", True)),
-            "subject_type": "Wafer",
-            "aggregation_context": "bonding_experiment_unit",
+            "subject_type": grain.declared["subject_type"],
+            "aggregation_context": ledger_identity.UNIT_KIND,
             "subtypes": [{"id": value, "label": value} for value in subtypes],
             "series": ([{"id": f"{kind}:all", "subtype": None, "label": "전체"}]
                        + [{"id": f"{kind}:{value}", "subtype": value,
@@ -148,22 +227,151 @@ def _definitions(selected):
     return definitions
 
 
-def _series_sql():
-    return """
+def _refuse_grain(message, **named):
+    raise TrendRequestError(dict({"reason": REASON_BAD_GRAIN, "message": message},
+                                 **named))
+
+
+def _fenced(declared, member):
+    """A member the caller may state but may not yet move, and is told so by name."""
+    expected = DEFAULT_GRAIN[member]
+    stated = declared.get(member, expected)
+    if stated != expected:
+        _refuse_grain(f"grain.{member}은 아직 고정이다 (마킹 계약)",
+                      field=member, declared=stated, fenced_to=expected)
+    return list(expected) if isinstance(expected, list) else expected
+
+
+def _squeeze(text):
+    return " ".join(str(text).split())
+
+
+def _axis_denominator(index, axis):
+    stated = axis.get("denominator")
+    if not isinstance(stated, dict):
+        _refuse_grain(f"grain.axes[{index}].denominator는 객체여야 한다")
+    relation = stated.get("relation")
+    if relation not in SCAN_RELATIONS:
+        _refuse_grain(f"grain.axes[{index}].denominator.relation이 scans가 여는 관계가 아니다",
+                      declared=relation, allowed=sorted(SCAN_RELATIONS))
+    alias, bound_join = SCAN_RELATIONS[relation]
+    column = stated.get("column")
+    if not isinstance(column, str) or not _IDENTIFIER.match(column):
+        _refuse_grain(f"grain.axes[{index}].denominator.column은 식별자여야 한다",
+                      declared=column)
+    join = stated.get("join")
+    if join is not None and _squeeze(join) != _squeeze(bound_join or ""):
+        _refuse_grain(f"grain.axes[{index}].denominator.join이 scans가 실제로 맺는 조인과 다르다",
+                      declared=join, bound=bound_join)
+    # `::text` on every axis so the denominator meets the numerator's `->>` as the same
+    # type no matter what a declared column happens to be underneath.
+    return f"{alias}.{column}::text", {"relation": relation, "column": column,
+                                       "join": bound_join}
+
+
+def _axis_numerator(index, axis):
+    stated = axis.get("numerator")
+    if not isinstance(stated, dict):
+        _refuse_grain(f"grain.axes[{index}].numerator는 객체여야 한다")
+    source = stated.get("from")
+    if source not in NUMERATOR_SOURCES:
+        _refuse_grain(f"grain.axes[{index}].numerator.from은 원자의 어느 자리를 읽는지 말해야 한다",
+                      declared=source, allowed=list(NUMERATOR_SOURCES))
+    key = stated.get("key")
+    if not isinstance(key, str) or not key:
+        _refuse_grain(f"grain.axes[{index}].numerator.key는 비어 있지 않은 문자열이어야 한다",
+                      declared=key)
+    # The key is bound, never spelled into the SQL: it is a value, not an identifier.
+    return (source, f"grain_key_{index}"), {"from": source, "key": key}
+
+
+def _grain(stated):
+    """Resolve the caller's grain into the column lists and bindings the SQL takes.
+
+    Refuses before any SQL is built, like every other malformed question on this route.
+    """
+    if stated is None:
+        stated = DEFAULT_GRAIN
+    if isinstance(stated, str):
+        try:
+            stated = json.loads(stated)
+        except ValueError as exc:
+            _refuse_grain(f"grain을 JSON으로 해석할 수 없다: {exc}")
+    if not isinstance(stated, dict):
+        _refuse_grain("grain은 객체여야 한다")
+
+    subject_type = stated.get("subject_type", DEFAULT_GRAIN["subject_type"])
+    if not isinstance(subject_type, str) or not subject_type.strip():
+        _refuse_grain("grain.subject_type은 비어 있지 않은 문자열이어야 한다",
+                      declared=subject_type)
+    fenced = {member: _fenced(stated, member) for member in FENCED_GRAIN_MEMBERS}
+
+    names = fenced["identity_fields"] + fenced["context_fields"]
+    axes = stated.get("axes", DEFAULT_GRAIN["axes"])
+    if (not isinstance(axes, list)
+            or [axis.get("name") if isinstance(axis, dict) else None
+                for axis in axes] != names):
+        _refuse_grain("grain.axes는 identity_fields + context_fields와 이름·순서가 같아야 한다",
+                      expected=names)
+
+    denominators, numerators, params, echo = [], [], {}, []
+    for index, axis in enumerate(axes):
+        expression, denominator = _axis_denominator(index, axis)
+        binding, numerator = _axis_numerator(index, axis)
+        denominators.append(expression)
+        numerators.append(binding)
+        params[binding[1]] = numerator["key"]
+        echo.append({"name": names[index], "denominator": denominator,
+                     "numerator": numerator})
+    params["grain_subject_type"] = subject_type
+    # Echoed in the key order the response has always used, so a reader diffing the two
+    # eras sees the added `axes` and nothing else moved.
+    reflected = {member: DEFAULT_GRAIN[member] for member in DEFAULT_GRAIN}
+    reflected.update(fenced, subject_type=subject_type, axes=echo)
+    return GrainPlan(declared=reflected, names=names, denominators=denominators,
+                     numerators=numerators, params=params)
+
+
+def _join_on(grain, left, right):
+    return " AND ".join(f"{left}.{name} = {right}.{name}" for name in grain.names)
+
+
+def _qualified(grain, alias, suffix=""):
+    return ", ".join(f"{alias}.{name}{suffix}" for name in grain.names)
+
+
+def _base_ctes(grain):
+    """`declared` + `scans` + `observed`, shared verbatim by the series and table reads.
+
+    Only the column *lists* and the two per-axis expressions come from the grain.  The
+    FROM/JOIN shape is untouched, which is why a declared `join` is checked rather than
+    emitted.
+    """
+    alias = SCAN_SOURCE["alias"]
+    scan = f"{alias}.{SCAN_SOURCE['observed_at_column']}"
+    source = "\n".join(
+        [f"    FROM {SCAN_SOURCE['relation']} {alias} JOIN declared d "
+         f"ON d.method = {alias}.{SCAN_SOURCE['method_column']}"]
+        + [f"    JOIN {join['relation']} {join['alias']} ON {join['on']}"
+           for join in SCAN_SOURCE["joins"]])
+    projection = (",\n" + " " * 11).join(
+        f"{path}->>%({param})s AS {name}"
+        for (path, param), name in zip(grain.numerators, grain.names))
+    return f"""
 WITH declared AS MATERIALIZED (
     SELECT * FROM jsonb_to_recordset(%(kind_methods)s::jsonb)
       AS d(kind text, method text)
 ), scans AS MATERIALIZED (
-    SELECT r.base_wafer_id AS wafer, b.leg::text AS bonding_leg, d.kind,
-           max(r.observed_at) AS scan_at, count(*) AS scan_denominator
-    FROM inspection_run r JOIN declared d ON d.method = r.method
-    JOIN bonding_map b ON b.base = r.base_wafer_id AND b.x = r.base_x AND b.y = r.base_y
-    WHERE r.observed_at >= %(from)s AND r.observed_at < %(to)s
-      AND r.base_wafer_id IS NOT NULL AND NULLIF(b.leg::text, '') IS NOT NULL
-    GROUP BY r.base_wafer_id, b.leg::text, d.kind
+    SELECT {", ".join(f"{expr} AS {name}" for expr, name
+                      in zip(grain.denominators, grain.names))}, d.kind,
+           max({scan}) AS scan_at, count(*) AS scan_denominator
+{source}
+    WHERE {scan} >= %(from)s AND {scan} < %(to)s
+      AND {" AND ".join(f"NULLIF({expr}, '') IS NOT NULL"
+                        for expr in grain.denominators)}
+    GROUP BY {", ".join(grain.denominators)}, d.kind
 ), observed AS MATERIALIZED (
-    SELECT subject_keys->>'wafer' AS wafer,
-           object_payload->>'bonding_leg' AS bonding_leg,
+    SELECT {projection},
            object_payload->>'finding_kind' AS kind,
            NULLIF(object_payload->>'class', '') AS subtype,
            occurred_at,
@@ -172,41 +380,48 @@ WITH declared AS MATERIALIZED (
     WHERE predicate = 'observed'
       AND occurred_at >= %(from)s AND occurred_at < %(to)s
       AND object_payload->>'finding_kind' = ANY(%(kinds)s)
-      AND subject_type = 'Wafer'
-      AND subject_keys ? 'wafer' AND object_payload ? 'bonding_leg'
-), observed_wafer AS (
-    SELECT wafer, bonding_leg, kind, NULL::text AS subtype, max(occurred_at) AS observed_at,
+      AND subject_type = %(grain_subject_type)s
+      AND {" AND ".join(f"{path} ? %({param})s"
+                        for path, param in grain.numerators)}
+)"""
+
+
+def _series_sql(grain):
+    columns = ", ".join(grain.names)
+    first = grain.names[0]
+    return _base_ctes(grain) + f""", observed_unit AS (
+    SELECT {columns}, kind, NULL::text AS subtype, max(occurred_at) AS observed_at,
            count(*) AS events,
            count(DISTINCT die) FILTER (WHERE die IS NOT NULL) AS found_chips
-    FROM observed GROUP BY wafer, bonding_leg, kind
+    FROM observed GROUP BY {columns}, kind
     UNION ALL
-    SELECT wafer, bonding_leg, kind, subtype, max(occurred_at) AS observed_at,
+    SELECT {columns}, kind, subtype, max(occurred_at) AS observed_at,
            count(*) AS events,
            count(DISTINCT die) FILTER (WHERE die IS NOT NULL) AS found_chips
-    FROM observed WHERE subtype IS NOT NULL GROUP BY wafer, bonding_leg, kind, subtype
-), per_wafer AS (
-    SELECT s.wafer, s.bonding_leg, s.kind, NULL::text AS subtype,
+    FROM observed WHERE subtype IS NOT NULL GROUP BY {columns}, kind, subtype
+), per_unit AS (
+    SELECT {_qualified(grain, "s")}, s.kind, NULL::text AS subtype,
            GREATEST(s.scan_at, o.observed_at) AS last_at,
            coalesce(o.events, 0) AS events, coalesce(o.found_chips, 0) AS found_chips,
            s.scan_denominator,
            CASE WHEN coalesce(o.events, 0) = 0 THEN 'scanned_clean' ELSE 'found' END AS metric_state
-    FROM scans s LEFT JOIN observed_wafer o
-      ON o.wafer = s.wafer AND o.bonding_leg = s.bonding_leg
+    FROM scans s LEFT JOIN observed_unit o
+      ON {_join_on(grain, "o", "s")}
      AND o.kind = s.kind AND o.subtype IS NULL
     UNION ALL
-    SELECT o.wafer, o.bonding_leg, o.kind, o.subtype, o.observed_at, o.events, o.found_chips,
+    SELECT {_qualified(grain, "o")}, o.kind, o.subtype, o.observed_at, o.events, o.found_chips,
            coalesce(s.scan_denominator, 0),
-           CASE WHEN s.wafer IS NULL THEN 'no_denominator' ELSE 'found' END
-    FROM observed_wafer o LEFT JOIN scans s
-      ON s.wafer = o.wafer AND s.bonding_leg = o.bonding_leg AND s.kind = o.kind
-    WHERE o.subtype IS NOT NULL OR s.wafer IS NULL
+           CASE WHEN s.{first} IS NULL THEN 'no_denominator' ELSE 'found' END
+    FROM observed_unit o LEFT JOIN scans s
+      ON {_join_on(grain, "s", "o")} AND s.kind = o.kind
+    WHERE o.subtype IS NOT NULL OR s.{first} IS NULL
 ), numbered AS (
     SELECT *, row_number() OVER
-        (PARTITION BY kind, subtype ORDER BY last_at, wafer, bonding_leg) AS rn,
+        (PARTITION BY kind, subtype ORDER BY last_at, {columns}) AS rn,
         count(*) OVER (PARTITION BY kind, subtype) AS n
-    FROM per_wafer
+    FROM per_unit
 )
-SELECT wafer, bonding_leg, kind, subtype, last_at, events, found_chips, scan_denominator,
+SELECT {columns}, kind, subtype, last_at, events, found_chips, scan_denominator,
        metric_state, rn, n
 FROM numbered
 WHERE rn = 1
@@ -220,68 +435,45 @@ ORDER BY kind, subtype NULLS FIRST, rn
 """
 
 
-def _table_sql(has_cursor):
+def _table_sql(has_cursor, grain):
+    columns = ", ".join(grain.names)
+    first = grain.names[0]
     cursor_clause = ""
     if has_cursor:
-        cursor_clause = ("HAVING (max(occurred_at), wafer, bonding_leg) < "
-                         "(%(cursor_at)s, %(cursor_wafer)s, %(cursor_leg)s)")
-    return f"""
-WITH declared AS MATERIALIZED (
-    SELECT * FROM jsonb_to_recordset(%(kind_methods)s::jsonb)
-      AS d(kind text, method text)
-), scans AS MATERIALIZED (
-    SELECT r.base_wafer_id AS wafer, b.leg::text AS bonding_leg, d.kind,
-           max(r.observed_at) AS scan_at, count(*) AS scan_denominator
-    FROM inspection_run r JOIN declared d ON d.method = r.method
-    JOIN bonding_map b ON b.base = r.base_wafer_id AND b.x = r.base_x AND b.y = r.base_y
-    WHERE r.observed_at >= %(from)s AND r.observed_at < %(to)s
-      AND r.base_wafer_id IS NOT NULL AND NULLIF(b.leg::text, '') IS NOT NULL
-    GROUP BY r.base_wafer_id, b.leg::text, d.kind
-), observed AS MATERIALIZED (
-    SELECT subject_keys->>'wafer' AS wafer,
-           object_payload->>'bonding_leg' AS bonding_leg,
-           object_payload->>'finding_kind' AS kind,
-           NULLIF(object_payload->>'class', '') AS subtype,
-           occurred_at,
-           COALESCE(object_payload->'die', object_payload->'position') AS die
-    FROM ledger_events
-    WHERE predicate = 'observed'
-      AND occurred_at >= %(from)s AND occurred_at < %(to)s
-      AND object_payload->>'finding_kind' = ANY(%(kinds)s)
-      AND subject_type = 'Wafer'
-      AND subject_keys ? 'wafer' AND object_payload ? 'bonding_leg'
-), population AS MATERIALIZED (
-    SELECT wafer, bonding_leg, kind, scan_at AS occurred_at, scan_denominator FROM scans
+        bindings = ", ".join(f"%(cursor_key_{index})s"
+                             for index in range(len(grain.names)))
+        cursor_clause = (f"HAVING (max(occurred_at), {columns}) < "
+                         f"(%(cursor_at)s, {bindings})")
+    return _base_ctes(grain) + f""", population AS MATERIALIZED (
+    SELECT {columns}, kind, scan_at AS occurred_at, scan_denominator FROM scans
     UNION ALL
-    SELECT o.wafer, o.bonding_leg, o.kind, max(o.occurred_at), 0
+    SELECT {_qualified(grain, "o")}, o.kind, max(o.occurred_at), 0
     FROM observed o LEFT JOIN scans s
-      ON s.wafer=o.wafer AND s.bonding_leg=o.bonding_leg AND s.kind=o.kind
-    WHERE s.wafer IS NULL GROUP BY o.wafer, o.bonding_leg, o.kind
+      ON {_join_on(grain, "s", "o")} AND s.kind = o.kind
+    WHERE s.{first} IS NULL GROUP BY {_qualified(grain, "o")}, o.kind
 ), page AS (
-    SELECT wafer, bonding_leg, max(occurred_at) AS last_at
+    SELECT {columns}, max(occurred_at) AS last_at
     FROM population
-    GROUP BY wafer, bonding_leg
+    GROUP BY {columns}
     {cursor_clause}
-    ORDER BY last_at DESC, wafer DESC, bonding_leg DESC
+    ORDER BY last_at DESC, {", ".join(f"{name} DESC" for name in grain.names)}
     LIMIT %(page_size)s
 )
-SELECT p.wafer, p.bonding_leg, p.last_at, pop.kind, NULL::text AS subtype,
-       count(o.wafer) AS events,
+SELECT {_qualified(grain, "p")}, p.last_at, pop.kind, NULL::text AS subtype,
+       count(o.{first}) AS events,
        count(DISTINCT o.die) FILTER (WHERE o.die IS NOT NULL) AS found_chips,
        max(pop.scan_denominator) AS scan_denominator,
-       CASE WHEN max(pop.scan_denominator) > 0 AND count(o.wafer) = 0
+       CASE WHEN max(pop.scan_denominator) > 0 AND count(o.{first}) = 0
             THEN 'scanned_clean'
             WHEN max(pop.scan_denominator) = 0 THEN 'no_denominator'
             ELSE 'found' END AS metric_state
 FROM page p JOIN population pop
-  ON pop.wafer = p.wafer AND pop.bonding_leg = p.bonding_leg
+  ON {_join_on(grain, "pop", "p")}
 LEFT JOIN observed o
-  ON o.wafer = p.wafer AND o.bonding_leg = p.bonding_leg AND o.kind = pop.kind
-GROUP BY p.wafer, p.bonding_leg, p.last_at, pop.kind
-ORDER BY p.last_at DESC, p.wafer DESC, p.bonding_leg DESC, pop.kind
+  ON {_join_on(grain, "o", "p")} AND o.kind = pop.kind
+GROUP BY {_qualified(grain, "p")}, p.last_at, pop.kind
+ORDER BY p.last_at DESC, {_qualified(grain, "p", " DESC")}, pop.kind
 """
-
-
 def _traceability_sql():
     """Trace only final-component evidence for the already bounded table page."""
     return """
@@ -335,19 +527,28 @@ ORDER BY f.wafer, f.bonding_leg
 """
 
 
-def _identity(wafer, bonding_leg):
-    return ledger_identity.identity(str(wafer), str(bonding_leg))
+def _identity(unit):
+    # The mark layer still takes the axis values positionally; that positional contract
+    # is what fences the axis names, and it is the node-id step that retires it.
+    return ledger_identity.identity(*(str(value) for value in unit))
 
 
-def _make_series(rows):
+def _split(raw, arity):
+    """Peel the grain's leading columns off a result row, whatever they are named."""
+    return tuple(str(value) for value in raw[:arity]), raw[arity:]
+
+
+def _make_series(rows, grain):
     grouped = defaultdict(list)
     totals = {}
+    arity = len(grain.names)
     for raw in rows:
-        (wafer, bonding_leg, kind, subtype, last_at, events, found_chips,
-         scan_denominator, metric_state, rn, n) = raw
+        unit, rest = _split(raw, arity)
+        (kind, subtype, last_at, events, found_chips,
+         scan_denominator, metric_state, rn, n) = rest
         series_id = f"{kind}:{subtype or 'all'}"
         grouped[series_id].append({
-            "identity": _identity(str(wafer), str(bonding_leg)),
+            "identity": _identity(unit),
             "occurred_at": last_at.isoformat(),
             "value": {"event_count": int(events or 0),
                       "found_chip_count": int(found_chips or 0),
@@ -368,19 +569,19 @@ def _make_series(rows):
     } for series_id, points in sorted(grouped.items())]
 
 
-def _make_table(rows, limit):
-    by_wafer = {}
+def _make_table(rows, limit, grain):
+    by_unit = {}
     order = []
+    arity = len(grain.names)
     for raw in rows:
-        (wafer, bonding_leg, last_at, kind, subtype, events, found_chips,
-         scan_denominator, metric_state) = raw
-        wafer, bonding_leg = str(wafer), str(bonding_leg)
-        unit = (wafer, bonding_leg)
-        if unit not in by_wafer:
-            by_wafer[unit] = {"identity": _identity(wafer, bonding_leg),
-                               "occurred_at": last_at.isoformat(), "metrics": []}
+        unit, rest = _split(raw, arity)
+        (last_at, kind, subtype, events, found_chips,
+         scan_denominator, metric_state) = rest
+        if unit not in by_unit:
+            by_unit[unit] = {"identity": _identity(unit),
+                             "occurred_at": last_at.isoformat(), "metrics": []}
             order.append(unit)
-        by_wafer[unit]["metrics"].append({
+        by_unit[unit]["metrics"].append({
             "kind": str(kind), "subtype": subtype,
             "series_id": f"{kind}:{subtype or 'all'}",
             "event_count": int(events or 0),
@@ -392,16 +593,15 @@ def _make_table(rows, limit):
         })
     truncated = len(order) > limit
     visible = order[:limit]
-    page_rows = [by_wafer[unit] for unit in visible]
+    page_rows = [by_unit[unit] for unit in visible]
     next_cursor = None
-    if truncated and page_rows:
-        tail = page_rows[-1]
+    if truncated and visible:
+        # From the unit tuple the SQL returned, not by reading the axis names back out of
+        # the identity object -- that lookup is the one that goes wrong on a rename.
         next_cursor = _encode_cursor(
-            datetime.fromisoformat(tail["occurred_at"]),
-            tail["identity"]["keys"]["wafer"],
-            tail["identity"]["context"]["bonding_leg"])
+            datetime.fromisoformat(page_rows[-1]["occurred_at"]), visible[-1])
     return {"rows": page_rows, "returned": len(page_rows), "limit": limit,
-            "truncated": truncated, "next_cursor": next_cursor}
+            "truncated": truncated, "next_cursor": next_cursor}, visible
 
 
 def _trace_state(count, total):
@@ -410,11 +610,13 @@ def _trace_state(count, total):
     return "ready" if count == total else "partial"
 
 
-def _attach_traceability(table, rows):
-    by_wafer = {}
-    for wafer, bonding_leg, total, core_count, dt_count, core_evidence, dt_evidence in rows:
+def _attach_traceability(table, units, rows, arity):
+    by_unit = {}
+    for raw in rows:
+        unit, rest = _split(raw, arity)
+        total, core_count, dt_count, core_evidence, dt_evidence = rest
         total, core_count, dt_count = int(total or 0), int(core_count or 0), int(dt_count or 0)
-        by_wafer[(str(wafer), str(bonding_leg))] = {
+        by_unit[unit] = {
             "dt": {"state": _trace_state(dt_count, total), "count": dt_count,
                    "component_denominator": total,
                    "evidence_ids": sorted(f"evidence:{value}" for value in (dt_evidence or []))},
@@ -422,10 +624,8 @@ def _attach_traceability(table, rows):
                      "component_denominator": total,
                      "evidence_ids": sorted(f"evidence:{value}" for value in (core_evidence or []))},
         }
-    for row in table["rows"]:
-        identity = row["identity"]
-        row["traceability"] = by_wafer.get((identity["keys"]["wafer"],
-                                             identity["context"]["bonding_leg"]), {
+    for row, unit in zip(table["rows"], units):
+        row["traceability"] = by_unit.get(unit, {
             "dt": {"state": "absent", "count": 0, "component_denominator": 0,
                    "evidence_ids": [], "reason": "final_component_transfer_absent"},
             "core": {"state": "absent", "count": 0, "component_denominator": 0,
@@ -435,11 +635,12 @@ def _attach_traceability(table, rows):
 
 
 def trends(connection, kinds=None, window=None, cursor=None, limit=None,
-           max_points=None, now=None, relation=LEDGER_RELATION):
+           max_points=None, now=None, relation=LEDGER_RELATION, grain=None):
     """Return chart series and a cursor-paged Trend Table in one marking contract."""
     now = now or datetime.now(timezone.utc)
+    plan = _grain(grain)
     declared = finding_kinds.kinds()
-    definitions = _definitions(declared)
+    definitions = _definitions(declared, plan)
     if kinds is None:
         selected = [row["id"] for row in definitions if row["active"]]
     else:
@@ -464,12 +665,7 @@ def trends(connection, kinds=None, window=None, cursor=None, limit=None,
     decoded = _decode_cursor(cursor)
     base = {
         "generated_at": now.isoformat(),
-        "grain": {"subject_type": "Wafer",
-                  "identity_fields": ["wafer"],
-                  "aggregation_unit": "void_by_experiment_unit",
-                  "context_fields": ["bonding_leg"],
-                  "context_role": "planned_bonding_experiment_unit",
-                  "marking": "identity.mark_key"},
+        "grain": plan.declared,
         "finding_kinds": definitions,
         "selectable_finding_kinds": definitions,
         "applied_kinds": selected,
@@ -481,7 +677,7 @@ def trends(connection, kinds=None, window=None, cursor=None, limit=None,
         "provenance": {
             "numerator": {"source": relation, "ledger_backed": True,
                           "predicate": "observed"},
-            "denominator": {"source": "inspection_run",
+            "denominator": {"source": SCAN_SOURCE["relation"],
                             "declared_by": "finding_kinds.methods",
                             "absence_is_zero": False},
         },
@@ -495,17 +691,20 @@ def trends(connection, kinds=None, window=None, cursor=None, limit=None,
                     for kind in selected for method in finding_kinds.methods(kind)]
     params = {"from": applied.start, "to": applied.end, "kinds": selected,
               "kind_methods": json.dumps(kind_methods, separators=(",", ":")),
-              "max_points": point_limit, "page_size": page_limit + 1}
+              "max_points": point_limit, "page_size": page_limit + 1,
+              **plan.params}
     if decoded:
-        params.update(cursor_at=decoded[0], cursor_wafer=decoded[1], cursor_leg=decoded[2])
-    series_rows = _fetch(connection, _series_sql(), params)
-    table_rows = _fetch(connection, _table_sql(bool(decoded)), params)
-    table = _make_table(table_rows, page_limit)
-    page_units = [row["identity"]["keys"] for row in table["rows"]]
+        params["cursor_at"] = decoded[0]
+        params.update({f"cursor_key_{index}": value
+                       for index, value in enumerate(decoded[1])})
+    series_rows = _fetch(connection, _series_sql(plan), params)
+    table_rows = _fetch(connection, _table_sql(bool(decoded), plan), params)
+    table, units = _make_table(table_rows, page_limit, plan)
+    page_units = [dict(zip(plan.names, unit)) for unit in units]
     trace_rows = (_fetch(connection, _traceability_sql(), {
         "from": applied.start, "to": applied.end,
         "page_units": json.dumps(page_units, separators=(",", ":"))})
                   if page_units else [])
-    _attach_traceability(table, trace_rows)
+    _attach_traceability(table, units, trace_rows, len(plan.names))
     state = STATE_READY if series_rows or table["rows"] else STATE_EMPTY
-    return dict(base, state=state, series=_make_series(series_rows), table=table)
+    return dict(base, state=state, series=_make_series(series_rows, plan), table=table)
