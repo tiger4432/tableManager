@@ -156,7 +156,13 @@ export class MapPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
     const options = deps || {};
+    // 🔴 THE BASIS IS THIS INSTANCE'S STATE, NOT THE SCREEN'S. Map A can stand on bond while
+    //    map B stands on dt; the declaration gives the starting one and the pills move it.
     this.axis = options.axis;
+    this.bases = Array.isArray(options.bases) ? options.bases.slice() : [];
+    this.loadBasisCounts = options.loadBasisCounts || null;
+    this.basisCounts = null;
+    this.body = null;
     this.load = options.load;
     this.dpr = options.dpr || 1;
     this.model = null;
@@ -177,6 +183,20 @@ export class MapPanel extends Panel {
   mount() {
     super.mount();
     this.reload();
+    if (this.loadBasisCounts) {
+      Promise.resolve().then(() => this.loadBasisCounts())
+        .then((counts) => { this.basisCounts = counts || null; this.render(); })
+        // A count nobody could fetch stays null and draws as 「—」; it never becomes 0.
+        .catch(() => { this.basisCounts = null; });
+    }
+  }
+
+  /** Move this instance to another projection of the SAME response. */
+  setBasis(axis) {
+    if (!axis || axis === this.axis) return;
+    this.axis = axis;
+    if (this.body) this.model = projectionModel(this.body, axis);
+    this.render();
   }
 
   /** Fetch, then paint. Stale answers are dropped by sequence, not painted over the current. */
@@ -189,6 +209,9 @@ export class MapPanel extends Panel {
       .then(() => this.load())
       .then((body) => {
         if (mine !== this._session) return;
+        // 🔴 ONE RESPONSE ALREADY CARRIES ALL THREE PROJECTIONS (measured: bond 141 · dt 11 ·
+        //    core 110), so switching the basis is a re-read of what is in hand, not a refetch.
+        this.body = body;
         this.model = projectionModel(body, this.axis);
         this.status = 'ready';
         this.render();
@@ -254,7 +277,9 @@ export class MapPanel extends Panel {
       n.counts.textContent = this.failure || '';
     } else if (m) {
       n.sub.textContent = m.sublabel ? `${m.label} · ${m.sublabel}` : m.label;
-      n.counts.textContent = m.drawable
+      // What came back is a fact whether or not it can be drawn; hiding it made a refused
+      // projection look like an empty response.
+      n.counts.textContent = m.cells.length
         ? `${m.cells.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
         : '';
     }
@@ -272,17 +297,51 @@ export class MapPanel extends Panel {
     // 🔴 DERIVED FROM THE DECLARATION, not from a new option nobody sets. A panel whose
     //    declaration NAMES an axis was chosen deliberately; one that does not would be
     //    following whatever the control bar picked. Today every map here names its axis.
-    n.basis.textContent = this.axis ? `축 직접 고름 · ${this.axis}` : '축 따라감';
-    n.basis.setAttribute('data-basis', this.axis ? 'declared' : 'follows');
+    this._writeBasisRow(n.basis);
     n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`;
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
 
     // A refusal is content: the server's own sentence, or the token when it sent none.
+    // A refusal we can still draw is a CAVEAT, not a blank panel: the sentence stays, the
+    // picture appears, and the reader is told which one they are looking at.
     const refused = this.status === 'ready' && m && !m.drawable;
+    const canDraw = Boolean(m && m.cells && m.cells.length && declaredBounds(m.frame));
     n.note.textContent = refused ? (m.message || m.reason || m.state || '') : '';
+    n.note.className = refused && canDraw ? 'rb-map__note is-caveat' : 'rb-map__note';
     n.root.setAttribute('data-map-state',
       this.status === 'ready' ? (m && m.drawable ? 'ready' : 'refused') : this.status);
+  }
+
+  /**
+   * 목업 맵 하단의 기반 줄. 「누르면 그 타입으로 추적해서 그 맵을 그린다」 -- so it is a
+   * SELECTOR, and the chosen one is visible.
+   */
+  _writeBasisRow(host) {
+    const doc = this.doc;
+    host.textContent = '';
+    if (!this.bases.length) return;
+    const label = doc.createElement('span');
+    label.className = 'rb-map__basis-label';
+    label.textContent = '기반';
+    host.appendChild(label);
+    for (const b of this.bases) {
+      const pill = doc.createElement('span');
+      const chosen = b.axis === this.axis;
+      pill.className = chosen ? 'rb-map__basis-pill is-chosen' : 'rb-map__basis-pill';
+      pill.setAttribute('data-basis-axis', b.axis);
+      const text = doc.createElement('span');
+      text.textContent = b.label || b.axis;
+      pill.appendChild(text);
+      const n = doc.createElement('span');
+      const count = this.basisCounts ? this.basisCounts[b.type || b.label] : undefined;
+      n.className = typeof count === 'number' ? 'rb-map__basis-count' : 'rb-map__basis-count is-absent';
+      // 「—」 while the count has not arrived; a zero here would claim the type is empty.
+      n.textContent = typeof count === 'number' ? String(count) : '—';
+      pill.appendChild(n);
+      pill.addEventListener('click', () => this.setBasis(b.axis));
+      host.appendChild(pill);
+    }
   }
 
   // ── PAINT ────────────────────────────────────────────────────────────────────
@@ -313,7 +372,16 @@ export class MapPanel extends Panel {
     this._byXY = null;
     this.lastPaint = { cells: 0, marks: 0, vacant: 0 };
 
-    const drawable = this.status === 'ready' && model && model.drawable && model.cells.length;
+    // 🔴 A CONSENSUS GRID IS STILL A GRID -- BUT ONLY THE GRID. `dt`/`core` come back
+    //    `state: no_frame` while carrying their `grid` (dt 15x10 · core 23x23) and their cells.
+    //    The order was 「테두리는 그릴 수 있습니다 — 「프레임 없음」으로 읽고 안 그리지 마십시오」,
+    //    and the server's own sentence says why it can be no more than the borders: 「슬롯마다
+    //    격자 치수가 다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다」. So the lattice is drawn
+    //    and the cells are NOT -- a caption under a wrong picture is still a wrong picture.
+    const superposed = Boolean(model && !model.drawable && model.cells.length
+      && declaredBounds(model.frame));
+    const drawable = this.status === 'ready' && model && model.cells.length
+      && (model.drawable || superposed);
     if (canvas.style) canvas.style.display = drawable ? 'block' : 'none';
     if (!drawable || !box.width || !box.height) return;
 
@@ -344,7 +412,7 @@ export class MapPanel extends Panel {
     // drawn, which is the other sentence -- there is no seat there to be empty.
     let vacant = 0;
     if (declared) {
-      const present = new Set(cells.map((c) => `${c.x},${c.y}`));
+      const present = superposed ? new Set() : new Set(cells.map((c) => `${c.x},${c.y}`));
       const seats = [];
       for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
         for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
@@ -371,8 +439,22 @@ export class MapPanel extends Panel {
     // Spotfire: clicking leaves the marked point at full strength and FADES EVERYTHING ELSE.
     // A ring has to be found; a faded field is read without looking. While nothing is marked
     // nothing fades -- 「아직 안 골랐다」 must not look like 「전부 아니다」.
-    const attenuating = this.markCount() > 0;
+    // 🔴 MY OWN CELLS, NOT THE NAME'S SIZE. Marking a LAYER in 구성 writes a component id
+    //    under the same name, and keying off `markCount()` faded this whole wafer while
+    //    nothing on it lit up -- the same defect the 「표시 N」 badge had, in the paint path.
+    const attenuating = cells.some((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);
     let painted = 0;
+    // 🔴 SUPERPOSED MEANS THE LATTICE, NOT THE CELLS. The server's own sentence reads 「슬롯마다
+    //    격자 치수가 다르므로 한 장에 겹쳐 그리면 좌표가 «전부 어긋난다»」, so painting these
+    //    cells would draw positions the ledger says are wrong -- a caption under a wrong
+    //    picture is still a wrong picture. The frame IS agreed (dt 15x10 · core 23x23), so the
+    //    empty lattice is drawn and the sentence says what is missing: a slot.
+    if (superposed) {
+      this._layout = layout;
+      this._byXY = null;
+      this.lastPaint = { cells: 0, marks: 0, vacant };
+      return;
+    }
     for (const [role, group] of byRole) {
       const colour = palette[role] || palette.unknown;
       if (!attenuating) {

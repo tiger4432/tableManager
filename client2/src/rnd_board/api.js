@@ -509,3 +509,21 @@ export function trendsModel(result) {
     message: null,
   };
 }
+
+
+/**
+ * 목업 맵 하단의 기반 알약 숫자. MEASURED 2026-08-23: `composition.graph.nodes` is 38 nodes
+ * typed `bond_layer` 10 · `dt_slot` 18 · `wafer_grid` 10 -- the mockup's three numbers exactly.
+ * A node is a POSITION, so these are counts of positions, not of maps.
+ */
+export function basisCountsFromComposition(result) {
+  const body = (result && result.body) || null;
+  const nodes = (body && body.graph && body.graph.nodes) || [];
+  const counts = Object.create(null);
+  for (const n of nodes) {
+    const t = n && n.type;
+    if (!t) continue;
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  return counts;
+}
