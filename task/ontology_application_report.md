@@ -6,6 +6,55 @@
 
 ---
 
+# ✅ 총괄이 명시한 «가르는 측정» 둘 — 재서 올립니다 (12:2x)
+
+보드 ⑦: 「가르는 측정 = 선언 기전 그래프에 순환이 있는가 / 한 씨앗에서 양방향으로 닿는가」,
+그리고 「수락 쌍은 지금 픽스처에 «없음»」. **둘 다 쟀고, 두 번째는 «있습니다».**
+
+## 측정 1 — 순환은 «없습니다». 다만 합류점은 «있습니다»
+
+```
+void_formation          노드 19 · 엣지 18 · 순환 «0» · 진입 2 이상: void «7» · wetting_deficit 2
+delam_formation         노드  5 · 엣지  3 · 순환 «0» · 진입 2 이상: delam 2
+void_observation_bias   노드  2 · 엣지  1 · 순환 «0» · 합류점 없음
+```
+
+**세 모델 전부 DAG 입니다** -> 「순환 때문에 방향이 순회 성질이 된다」는 걱정은 «해소»됩니다.
+**그러나 합류점이 남습니다** — `void` 는 부모가 «일곱»입니다. 무향 걷기가 한 씨앗에서
+그 일곱 갈래로 갈라졌다 `void` 에서 다시 만날 수 있으므로, **총괄 걱정의 뒷부분은 살아 있습니다.**
+갈린 것은 「순환이냐」가 아니라 「합류냐」입니다.
+
+## 측정 2 — 🔴 수락 쌍이 «선언 안에 이미 있습니다»
+
+`void` 로 가는 경로 18개를 전수로 폈습니다. **전부 순수 체인입니다**(도중 분기 전부 1):
+
+```
+길이 1   7개   backside_damage · edge_gap · interface_contam · interface_unfill
+                local_gap · outgassing · wetting_deficit
+길이 2   8개   bond_pressure · bond_temp · adhesive_residue · surface_oxidation
+                core_cmp_nonuniform · moisture_uptake · stage_particle · tape_adhesion_anomaly
+길이 3   3개   dt_pass_count · humidity · pre_bond_queue_h
+```
+
+**그러므로 쌍이 있습니다:**
+
+```
+길이 1   backside_damage -> void
+길이 3   dt_pass_count -> adhesive_residue -> interface_contam -> void
+도중 분기  둘 다 전부 1 (진입도 1 — 합류점은 void 뿐이고 둘의 «종점»이 같다)
+
+지금 규칙(체인마다 /2)이면    길이 3 이 길이 1 보다 «1/4» 약하다
+선언 엔진(체인에서 안 나눔)   둘이 «같아야» 한다
+```
+
+**픽스처를 새로 만들 필요가 없습니다.** `collect: Quantity` 로 씨앗을 `void` 쪽에 두고
+이 둘의 순위가 갈리는지만 보면 됩니다 — 갈리면 감쇠가 확정이고, 같으면 아닙니다.
+
+⚠️ 제가 «못 한» 것: 실제로 태워 보지는 않았습니다. 그건 수리 라운드의 일입니다.
+제가 준 것은 **「무엇을 태우면 갈리는가」**입니다.
+
+---
+
 # 📎 구현자의 «순수 체인에서 2로 나눈다» 발견에 대한 방증 (11:5x)
 
 구현자 보고: 「후보를 가르는 나눗셈이 «순수 체인 링크»(들어오는 엣지 1 · 나가는 엣지 1)에
