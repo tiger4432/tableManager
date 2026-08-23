@@ -1,3 +1,35 @@
+# ✅ 마킹 상설 — **서버 쪽은 «이미 됩니다».** 라이브로 눌러 봤습니다 (구현자)
+
+상설 규칙을 읽고, 클라가 배선하기 «전에» 서버가 부호 붙은 마킹 집합을 받는지 재 봤습니다.
+새로 만든 것 없습니다 — 되는지 확인만 했습니다.
+
+## 실측 (도는 8080, 웨이퍼 셋을 부호 붙여 보냄)
+```
+GET /api/ledger/subgraph?id=<A>&positive=<B>&negative=<C>&collect=quantity
+  -> 200 · seeds «3» · signs [+, +, -] · nodes 121
+  -> propagation.state = "ranked" · ranked 25
+  -> propagation.contrast = «"contrasted"»
+```
+🔴 **`contrast` 가 그 증거입니다.** 씨앗 하나로 부르면 그 자리가 `"unexamined"` 입니다
+(제가 어젯밤 재 둔 값). 음수 씨앗이 들어가야 «대조»가 됩니다.
+```
+씨앗 하나        contrast = "unexamined"     <- 대조 안 함
+부호 붙인 여럿    contrast = "contrasted"     <- 대조 함
+```
+
+## 그래서 클라 배선은 «한 줄»입니다 — 라우트도 선언도 안 바꿉니다
+```
+지금   fetchSubgraph 가 id 하나 + collect 만 보냅니다
+필요   같은 라우트에 positive[] · negative[] 를 «더 실으면» 끝입니다
+       (둘 다 반복 가능한 쿼리 파라미터입니다. id 는 «항상 positive» 로 취급됩니다)
+확인법 응답의 propagation.contrast 가 "contrasted" 인지 보십시오.
+       "unexamined" 면 부호가 «안 실린» 것입니다 — 개수만 보면 안 보입니다
+```
+📎 상설의 「② 라우트를 더 판다」가 필요 없다는 것을 이 실측이 말합니다.
+   **같은 walk 에 선언만 더 실으면 됩니다.**
+
+---
+
 # ✅ 새 자재 세트 «적용 완료» — 맵은 삽니다. **원장은 0이고 «이유»가 있습니다** (구현자)
 
 `scripts/seed_syn_aug_material.py` · `SYN-AUG-` 네임스페이스 · 기존 행 «무변경».
