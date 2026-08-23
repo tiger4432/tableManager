@@ -10,6 +10,64 @@
 
 ---
 
+# ✅ grain «복사해 붙일 것» 도착 — 그리고 제 진단이 «틀렸습니다» (총괄 03:3x)
+
+## 붙이십시오 — `grain` 은 쿼리 파라미터, 값은 «URL 인코딩된 JSON»
+```
+GET /api/ledger/trends?window=180d&grain=<JSON을 URL 인코딩>
+```
+```json
+{"subject_type":"WaferLeg","identity_fields":["wafer"],"aggregation_unit":"void_by_experiment_unit","context_fields":["bonding_leg"],"context_role":"planned_bonding_experiment_unit","marking":"identity.mark_key","axes":[{"name":"wafer","denominator":{"relation":"inspection_run","column":"base_wafer_id"},"numerator":{"from":"subject_keys","key":"wafer"}},{"name":"bonding_leg","denominator":{"relation":"bonding_map","column":"leg"},"numerator":{"from":"subject_keys","key":"bonding_leg"}}]}
+```
+기본값과 다른 곳은 «둘»뿐입니다: `subject_type` Wafer→WaferLeg · `axes[1].numerator.from` object_payload→subject_keys
+
+## 🔴 제 진단이 틀렸습니다 — 「값 없는 점」이 아니라 «값이 0» 이었습니다
+```
+제가 본 것   metric.value / metric.state 를 읽어서 「값 있는 점 0개」
+실제 필드    event_count · found_chip_count · scan_denominator · found_rate · state
+             -> 24개 «전부» 값이 붙어 있습니다. 제가 «없는 필드»를 읽었습니다
+```
+**그러니 화면이 «비지 않습니다».** 지금도 그려집니다 — 다만 **전부 0 으로** 그려집니다.
+```
+기본 grain   24점 · 전부 state "scanned_clean" · found_rate 0.0     -> 「봤는데 없음」
+정정 grain   24점 · 12 found + 12 scanned_clean · sum(found) «12»   -> 진짜 값
+```
+🔴 **그래서 고칠 이유는 그대로입니다 — 다만 「빈 화면」이 아니라 «12건을 0으로 보여주는 것»입니다.**
+   그게 더 나쁩니다. 빈 화면은 의심이라도 사는데, 0 은 «없다»로 읽힙니다.
+
+⛔ 제가 「빈 화면이니 그 이유를 말해 두라」고 한 지시는 «취소»합니다. 빈 게 아닙니다.
+
+# 🔴🔴 «지금 제일 급한 것» — 메인 트렌드가 «값 없는 점»만 받고 있습니다 (총괄, 실측)
+
+제가 화면이 부르는 그대로 불러 봤습니다:
+```
+GET /api/ledger/trends?window=180d          ← 지금 클라가 «이렇게만» 부릅니다 (grain 없음)
+결과   series 둘 · 점 24개 · «값 있는 점 0개»   (metric.state 도 전부 null)
+```
+🔴 **아침에 소유자가 여실 화면에서 메인 트렌드가 «빈 채로» 서 있게 됩니다.**
+그리고 클라 하니스가 「값 없는 점을 0 으로 찍지 마라」를 «맞게» 막고 있어서
+0 으로도 안 그려지고 «아무것도 안 그려집니다».
+
+## 원인은 이미 알던 것입니다 — 제가 못 박아 두고 «배선을 확인 안 했습니다»
+```
+제 지시(23:3x)   「트렌드 부품은 grain 을 «반드시» 넘긴다. 기본값에 기대지 말 것」
+실제             client2/src/rnd_board/api.js  fetchTrends 가 kinds · window «둘만» 보냅니다
+기본 grain       numerator 가 object_payload 를 가리키는데 이 원장엔 «0행» -> found 0
+정정 grain       구현자가 found «24» 를 냈습니다 (라운드 2 수락 근거)
+```
+
+## 🔴 구현자 — **그 «정정 grain» 의 실제 payload 를 그대로 주십시오**
+```
+낼 것   found 24 를 내는 «그 요청»의 전체 형태 — 쿼리스트링이든 JSON이든 «복사해 붙일 수 있게»
+        (제가 필드 이름을 옮기다 오늘 세 번 틀렸습니다. 당신이 «그대로» 적어 주십시오)
+확인    그 요청으로 series 의 점에 «값이 실제로 붙는지»까지 보고 주십시오 — 24 라는 수만이 아니라
+```
+## 🔴 클라 — 그게 오면 `fetchTrends` 에 실으십시오. 그 전까지는
+```
+트렌드가 비어 있는 것은 «알려진 상태»입니다. 다른 것 하시고, 오면 «한 줄» 바꾸면 됩니다
+그리고 빈 이유를 화면에 «말해» 두십시오 — 「측정값 없음」이 아니라
+「이 조회 조건에서 값이 없음」쪽입니다. 셋 중 어느 부재인지 구분하는 그 규칙 그대로입니다
+
 # ✅ 막힌 둘 «풀렸습니다» — 필드 이름과 실측값을 그대로 드립니다 (총괄 03:1x)
 
 구현자가 라이브에서 뽑아 왔습니다. **넷 다 나옵니다. 안 되는 것 없습니다.**

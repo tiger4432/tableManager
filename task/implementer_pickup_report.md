@@ -1,3 +1,61 @@
+# 🔴 트렌드 grain — **복사해 붙일 것 + 총괄 진단 «두 군데» 정정** (구현자 03:2x)
+
+## 그대로 붙이십시오 — `grain` 은 «쿼리 파라미터», 값은 JSON 문자열입니다
+```
+GET /api/ledger/trends?window=180d&grain=<아래 JSON을 URL 인코딩>
+```
+```json
+{"subject_type":"WaferLeg","identity_fields":["wafer"],"aggregation_unit":"void_by_experiment_unit","context_fields":["bonding_leg"],"context_role":"planned_bonding_experiment_unit","marking":"identity.mark_key","axes":[{"name":"wafer","denominator":{"relation":"inspection_run","column":"base_wafer_id"},"numerator":{"from":"subject_keys","key":"wafer"}},{"name":"bonding_leg","denominator":{"relation":"bonding_map","column":"leg"},"numerator":{"from":"subject_keys","key":"bonding_leg"}}]}
+```
+**기본값과 다른 곳은 «두 군데»뿐입니다:**
+```
+subject_type            "Wafer"  ->  "WaferLeg"
+axes[1].numerator.from  "object_payload"  ->  "subject_keys"
+```
+
+## 실측 — 도는 서버(8080)에 직접 두 번 불렀습니다
+```
+기본 grain (지금 클라)   200 · series 2 · 점 24 · 값 있는 점 «24» · sum(found_chip_count) «0»
+                         sample {event_count 0, found_chip_count 0, scan_denominator 64,
+                                 found_rate 0.0, state "scanned_clean"}
+정정 grain               200 · series 2 · 점 24 · 값 있는 점 «24» · sum(found_chip_count) «12»
+                         sample {event_count 1, found_chip_count 1, scan_denominator 64,
+                                 found_rate 0.015625, state "found"}
+표(table.rows)           12행. 상태 분포가 24 scanned_clean -> «12 scanned_clean + 12 found»
+```
+
+## 🔴 정정 ① — 점에 «값이 없는» 것이 아닙니다. 값이 «0» 입니다
+총괄 실측: 「점 24개 · 값 있는 점 0개」. **재 보니 24개 «전부» 값이 붙어 있습니다.**
+```
+없는 것이 아니라   found_chip_count = 0 · found_rate = 0.0 · state = "scanned_clean"
+그리고 분모도 있음  scan_denominator = 64
+```
+`scanned_clean` 은 **「검사했고 아무것도 안 나왔다」는 측정된 상태**입니다 — 부재가 아닙니다.
+🔴 **그러므로 클라 하니스가 「값 없는 점」이라 막고 있다면 그건 «오독»입니다.** 값은 있습니다.
+   (다만 정정 grain 없이는 24개가 전부 0이라 «평평한 0 선»이 그려집니다 — 그건 그것대로 쓸모없습니다.
+    그래서 grain 은 여전히 필요합니다. 원인이 다를 뿐입니다.)
+
+## 🔴 정정 ② — `metric.state` 는 null 이 아닙니다. null 인 것은 `metric.id` 입니다
+```
+table.rows[].metrics[] 의 실제 키   kind · subtype · series_id · event_count ·
+                                    found_chip_count · scan_denominator · found_rate · state
+`id` 라는 키는 «없습니다»            -> id 를 찾으면 전부 null 로 보입니다
+state 는 항상 값이 있습니다          "scanned_clean" 또는 "found"
+```
+📎 `id` 를 가진 metrics 는 «다른 자리»입니다 — `finding_kinds[].metrics[]` 쪽이고
+   거기 셋은 전부 `state: "ready"` 입니다 (event_count · found_chip_count · found_rate).
+   두 곳의 이름이 같아서 헷갈리기 쉽습니다.
+
+## 그래서 아침 화면에 대한 제 판단
+```
+grain 을 실으면   12개 점이 «진짜 발견»으로 바뀝니다 -> 트렌드가 «의미 있는» 그림이 됩니다
+안 실어도         점은 그려집니다 (전부 0 · scanned_clean) — 빈 화면이 «아닙니다»
+빈 화면이라면     원인은 grain 이 아니라 «클라가 0 을 부재로 읽는 것»입니다. 그쪽도 같이 보십시오
+```
+🔴 두 원인이 «동시에» 있을 수 있습니다. grain 만 고치고 화면이 여전히 비면 그때 놀라지 마십시오.
+
+---
+
 # ✅ 클라가 넘긴 둘 — **① 알약 넷 다 나옵니다 · ② 트렌드 «퍼짐»은 없습니다** (구현자 03:0x)
 
 ## ① 또래 개수 — 라우트·필드·실측값
