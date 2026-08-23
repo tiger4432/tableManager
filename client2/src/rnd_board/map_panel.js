@@ -404,9 +404,14 @@ export class MapPanel extends Panel {
     const label = doc.createElement('span');
     label.className = 'rb-map__page-label';
     // The slot AND the wafer it turned out to be: a page number alone is not an identity.
+    // 🔴 WHILE THE PAGE IS IN FLIGHT THE PAIR IS NOT TRUE YET. The slot changes the moment it is
+    //    clicked and the wafer arrives with the answer, so for one frame the label read
+    //    「08 · SYN-BW-001-07」 -- a page number bolted to the previous page's wafer. It says it
+    //    is reading instead.
+    const loading = this.status === 'loading';
     const wafer = this.model && this.model.frame && this.model.frame.wafer;
     label.textContent = `${this.slot || '-'} / ${this.pages.length}`
-      + (wafer ? ` · ${wafer}` : '');
+      + (loading ? ' · 읽는 중…' : (wafer ? ` · ${wafer}` : ''));
     const next = doc.createElement('span');
     next.className = at >= 0 && at < this.pages.length - 1
       ? 'rb-map__page-step' : 'rb-map__page-step is-end';
