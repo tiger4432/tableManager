@@ -255,8 +255,14 @@ async function suite(mods) {
     await flush(); await flush();
     const text = host.textContent;
     ok('D1 a flat value axis is stated', text.includes('값이 전부 같습니다'), text.slice(0, 160));
-    ok('D2 a single timestamp is stated as an order, not a time',
-      text.includes('가로는 시간이 아니라'), text.slice(0, 160));
+    // 🔴 THE CLAIM MOVED WITH THE AXIS. It used to be 「가로는 차례」 because the axis said
+    //    nothing; the axis now names the materials and prints the one timestamp, so what must
+    //    be scored is that BOTH are said -- the material ticks and the moment.
+    ok('D2 a single timestamp is said, and the axis names its materials',
+      text.includes('한 시각') && text.includes('가로는 «자재»입니다'), text.slice(0, 200));
+    ok('D4 each material gets one tick, not one per point',
+      byClass(host, 'rb-trend-xtick').length === 2,
+      String(byClass(host, 'rb-trend-xtick').map((n) => n.textContent)));
     // 🔴 WITH EVERY RATE AT ZERO THERE IS NO UPPER BOUND IN THE DATA.
     const ymax = byClass(host, 'rb-trend-ymax')[0];
     eq('D3 the axis top is an em dash when nothing has a value', ymax.textContent, '—');
