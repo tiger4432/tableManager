@@ -31,6 +31,8 @@ export class MainTrendPanel extends Panel {
     this.apiBase = options.apiBase || '';
     this.kinds = options.kinds || null;
     this.window = options.window || '180d';
+    // Declared by the screen, never assembled here: this part does not know what a grain means.
+    this.grain = options.grain || null;
     this.fetchImpl = options.fetchImpl || null;
     this.seedWafer = options.seedWafer || null;
     this.model = null;
@@ -46,7 +48,8 @@ export class MainTrendPanel extends Panel {
     this.loadState = 'loading';
     this.render();
     const result = await fetchTrends({
-      apiBase: this.apiBase, kinds: this.kinds, window: this.window, fetchImpl: this.fetchImpl,
+      apiBase: this.apiBase, kinds: this.kinds, window: this.window,
+      grain: this.grain, fetchImpl: this.fetchImpl,
     });
     this.model = trendsModel(result);
     this.loadState = this.model.ok ? 'ready' : 'refused';

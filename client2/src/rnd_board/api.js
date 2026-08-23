@@ -443,12 +443,18 @@ export function subgraphModel(result) {
 //       control bar's pills are that list, not a list this client keeps.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** `GET /api/ledger/trends`. `grain` is deliberately NOT sent -- see the header. */
+/** `GET /api/ledger/trends`. `grain`, when declared, rides as URL-encoded JSON. */
 export async function fetchTrends(params) {
-  const { apiBase, kinds, window: win, fetchImpl } = params || {};
+  const { apiBase, kinds, window: win, grain, fetchImpl } = params || {};
   const query = new URLSearchParams();
   if (kinds) query.set('kinds', kinds);
   query.set('window', win || '180d');
+  // 🔴 `grain` IS A JSON OBJECT, SENT AS A STRING. Passing a NAME (`grain=wafer`) is refused --
+  //    `bad_trend_grain`, 「grain을 JSON으로 해석할 수 없다」 -- which is why this boundary sent
+  //    none at all and took the server's default. The default aggregates one subject_type and
+  //    reads the leg out of the wrong place, so every point came back 0.0: not an empty chart,
+  //    a chart showing twelve findings as none. The screen DECLARES the grain it wants.
+  if (grain) query.set('grain', JSON.stringify(grain));
   const url = `${apiBase}${ROUTES.trends}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
   if (!res.ok) {
