@@ -1,4 +1,53 @@
-# 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (실측 2026-08-22 10:1x)
+# 📌 구현자 인수 — 컴팩트 뒤의 나는 «이것부터» 읽는다 (갱신 2026-08-24 새벽)
+
+## 지금 상태 — 내 대기열은 «비었습니다»
+```
+착지   라운드1 골격(d77499a1) · 라운드2 grain 입력화(f80f1789) · 라운드3 A1+라우트하나(5f132d3e)
+대기   🔴 총괄 «재기동» — A1 이 화면에 닿으려면 필요
+다음   ① trace·explore·structure 제거는 «클라 라운드와 같이» (빌드된 번들이 아직 부름)
+       ② 스캔 FROM 을 선언으로 + 축의 «세 번째» 표현 (팹 낱말 27개가 거기 삽니다)
+```
+
+## ⚠️ 트리 상태 — «내 것이 아닌 것»이 앞서 있습니다
+```
+로컬 main 이 origin 보다 «11 앞섬»  -> 전부 «디자인 세션» 작업입니다. 내가 밀지 «않습니다»
+client2/dist 대량 변경 + 미추적 번들 -> 다른 레인이 «빌드 중»입니다. 손대지 않습니다
+내 마지막 커밋(799a28d2)은 origin/main 에 «있습니다» — 밀린 것 없음
+```
+
+## 채널 · 감시
+```
+총괄 -> 나   task/IMPLEMENTER_ORDERS.md      «맨 위 블록만» 읽으면 됩니다 (아래 참조)
+나 -> 총괄   task/implementer_pickup_report.md   맨 위에 「🔴 판정 요청」
+감시 복원    task/implementer_monitors.md    «먼저 살아 있는지 재고» 정합니다
+```
+📎 **대기열 절을 찾아 헤매지 마십시오.** 내가 두 번 놓친 뒤 총괄이 구조를 고쳤습니다 —
+이제 «모든 새 블록 끝»에 「지금 당신 대기열」이 붙습니다. 맨 위만 읽으면 됩니다.
+
+## 🔴 오늘 값을 치른 «측정 함정» — 다시 밟지 말 것
+```
+인터프리터   conda run 이 이 셸에서 깨집니다 -> C:/Users/kk980/anaconda3/envs/assy_manager/python.exe «직접»
+감사기       PYTHONIOENCODING=utf-8 없으면 «이모지에서 죽습니다» (데이터 문제 아님)
+검증기       validate_bundle_errors 에 catalog= 안 넘기면 «거절 1건»이 뜨는데 그건 「못 잰다」입니다
+탐색기       authoring(selection_prefix=…) 는 «bundle.» 형식이어야 합니다.
+             원본 키를 넣으면 «전부 0행»이 나오고 진짜 발견처럼 생겼습니다
+낱말 세기    리터럴만 세면 «심볼로 들어온 것»을 못 봅니다 -> 정의를 찾아 «심볼로» 다시
+라우트 은퇴  src 만 grep 하면 «dist 가 부르는 것»을 못 봅니다
+빨강 귀속    「남의 레인 탓」은 «stash 하고 HEAD 에 대고 재서» 확정합니다 (1분)
+스테이지     보고가 「staged」라 해도 «git status 로 직접» 봅니다. 두 번 어긋났습니다
+```
+
+## 울타리 (지금 형태)
+```
+얼림       ledger_trace·trace_router·admin·config.py / explorer·structure·journey·lots
+           🔴 다만 라우터는 «라우트 단위»입니다 — /subgraph 계열은 열려 있습니다
+파일 삭제  «금지». coverage() 가 ledger_trace.py 안에 살고,
+           journey 가 structure 를 모듈 수준 import 합니다 -> 지우면 «부팅 ImportError»
+라이브 설정 ledger_config.json 은 소유자 것. table_config.json 은 쓰되 «백업·내 항목만·개수 확인»
+```
+
+---
+
 
 # 📐 없는 API 모양 — **제 지시서 두 줄이 그 여덟에 듭니다. 클라 코드는 «안 물었습니다»**
 
