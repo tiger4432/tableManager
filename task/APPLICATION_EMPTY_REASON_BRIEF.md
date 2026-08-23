@@ -7,6 +7,17 @@
 
 ---
 
+> 🔴 **정정 (같은 날 01:0x, 클라 배선을 열어 본 뒤).** 위 표의 첫 줄이 틀렸습니다.
+> 「아직 안 골랐다」는 **서버가 답하는 것이 아니라 «클라가 스스로 아는 것»**입니다.
+> ```
+> 실측  client2/src/rnd_board/api.js  fetchSubgraph 가 collect 를 «항상» 보낸다
+>       query.set('collect', collect || 'quantity')      -> state=not_requested 는 «안 나온다»
+>       그리고 씨앗이 없으면 control_bar_panel 이 요청을 «아예 안 한다» (Promise.resolve(null))
+> ```
+> **그러므로 서버가 사유를 답하는 것은 «둘»(그 종류가 없다 · 대조 안 함) + 예산이고,
+> 「아직 안 골랐다」는 마킹 저장소가 비었는지로 클라가 «혼자» 판정합니다.**
+> `not_requested` 를 화면 상태로 배선하면 «영원히 안 오는 값»을 기다리게 됩니다.
+
 ## 세 사유 → 실제 필드 — 전부 «불러서» 확인했습니다
 
 응답의 `propagation` 블록에 있습니다. 새로 만들 것 없습니다.
