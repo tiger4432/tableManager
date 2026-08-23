@@ -180,16 +180,18 @@ tape_adhesion_anomaly 가 delam 컬렉션 씨앗에서
 🔴 **판정 기준: 「`ledger_trace` 를 부르나」가 아니라 「«무엇»을 부르나」입니다.**
 ```
 공용 배관 (얼림 아님)   relation_exists · ResolverConfigError · REASON_RELATION_ABSENT
-얼린 계산               ledger_trace.trace · ._fetch · .coverage · 그리고 얼린 모듈 전부
+                       · ledger_trace._fetch            <- 🔴 정정, 아래 참조
+                       · ledger_explorer 의 개체 id 코덱 (entity_id · decode_entity_id · _entity)
+얼린 계산               ledger_trace.trace · .coverage · 그리고 얼린 모듈의 «본체» 함수
 ```
 
 ```
 ⛔ 얼림 8    /trace          ledger_trace.trace
              /explore        ledger_explorer
-             /explore_entity ledger_explorer · ledger_trace._fetch
+             /explore_entity ledger_explorer.decode_entity_id · .explore · .explore_entity
              /coverage       ledger_trace.coverage        <- 감사가 찾은 누수
              /journey        ledger_journey
-             /structure      ledger_structure · ledger_lots
+             /structure      ledger_structure.structure  (ledger_lots 아님 — 제 오기)
              /lots           ledger_lots
              /lot_map        ledger_lots
 
@@ -201,6 +203,15 @@ tape_adhesion_anomaly 가 delam 컬렉션 씨앗에서
              /entities                     ledger_catalog    (배관만)
              /kinds                        얼린 의존 «없음»
 ```
+🔴 **정정 (12:2x) — 제 «규칙»이 틀렸습니다. 표는 맞았습니다.**
+제가 `_fetch` 를 「얼린 계산」에 넣었는데, **열린 모듈 8개가 «전부» 그걸 임포트합니다(8/8)**.
+규칙을 글자대로 적용하면 **16개 라우트가 전부 얼고 이 표가 무의미해집니다.** `_fetch` 는 배관입니다.
+같은 이유로 `ledger_explorer` 의 개체 id 코덱도 배관입니다 — 아니면 `/subgraph`·`/entities` 가 업힙니다.
+그리고 제 주석 셋이 틀렸습니다(판정은 셋 다 맞았습니다): `/structure` 는 `ledger_lots` 를
+«참조조차» 안 하고, `/explore_entity` 는 `_fetch` 를 직접 안 부르며, `/subgraph` 는 라우터 자신의
+`_subgraph_contract_state` 를 통해 `_fetch` 를 **직접 부릅니다**(그러니 「배관만」은 문자 그대로 거짓).
+**제 분류기가 조잡했고 그 출력을 실측처럼 내놨습니다.** 판정은 코드맵 실측(`5d73a2f4`)이 정본입니다.
+
 📎 `/entities` 는 제가 전에 얼린 쪽에 넣었는데 **`ledger_catalog`(B군)를 섬깁니다** — 풀립니다.
 울타리가 «양쪽»으로 틀렸습니다: `/coverage` 를 놓쳤고 `/entities` 를 과하게 얼렸습니다.
 
