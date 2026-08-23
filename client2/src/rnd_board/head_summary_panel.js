@@ -36,6 +36,12 @@ export class HeadSummaryPanel extends Panel {
     this.waferKinds = Array.isArray(options.waferKinds) ? options.waferKinds.slice() : [];
     this.loadWaferFacts = options.loadWaferFacts || null;
     this.waferFacts = Object.create(null);
+    // 🔴 THE WAFER LINE FOLLOWS THE MARKING. 「마킹 -> 머리요약」 (owner): picking a point in the
+    //    trend moves the maps, and this band has to move with them or it describes a wafer
+    //    nobody is looking at any more.
+    this.subjectReads = options.subjectReads || null;
+    this.subjectWafer = null;
+    this._subjectOff = null;
     this.model = null;
     this.loadState = this.finalChipId ? 'idle' : 'no-subject';
   }
@@ -43,9 +49,13 @@ export class HeadSummaryPanel extends Panel {
   mount() {
     super.mount();
     if (this.finalChipId) this.load();
+    if (this.subjectReads && this.markings) {
+      this._subjectOff = this.markings.subscribe(this.subjectReads, () => this._onSubject());
+      this._onSubject();
+    }
     if (this.loadWaferFacts) {
       for (const kind of this.waferKinds) {
-        Promise.resolve().then(() => this.loadWaferFacts(kind))
+        Promise.resolve().then(() => this.loadWaferFacts(kind, this.subjectWafer))
           .then((facts) => { if (facts) { this.waferFacts[kind] = facts; this.render(); } })
           // A kind that failed stays absent, which draws as nothing rather than as zero.
           .catch(() => {});
@@ -98,6 +108,29 @@ export class HeadSummaryPanel extends Panel {
     const pending = this.waferKinds.filter((k) => !this.waferFacts[k]);
     if (pending.length) put(`${pending.join(' · ')} 읽는 중…`, 'rb-head-wafer-pending');
     return el;
+  }
+
+  destroy() {
+    if (this._subjectOff) this._subjectOff();
+    this._subjectOff = null;
+    super.destroy();
+  }
+
+  /** The screen moved to another wafer; re-read this band's facts for it. */
+  _onSubject() {
+    const entries = this.markings ? this.markings.entries(this.subjectReads) : [];
+    const wafer = entries.length ? entries[0][0] : null;
+    if (!wafer || wafer === this.subjectWafer) return;
+    this.subjectWafer = wafer;
+    // Cleared, not left stale: the old wafer's numbers under a new wafer's name would be a lie.
+    this.waferFacts = Object.create(null);
+    this.render();
+    if (!this.loadWaferFacts) return;
+    for (const kind of this.waferKinds) {
+      Promise.resolve().then(() => this.loadWaferFacts(kind, wafer))
+        .then((facts) => { if (facts) { this.waferFacts[kind] = facts; this.render(); } })
+        .catch(() => {});
+    }
   }
 
   render() {
