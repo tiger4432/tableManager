@@ -35,6 +35,7 @@
 | **Finding Collection** | observed Claim의 집계 읽기 투영 | 조회 snapshot | void·SAT·map A의 count/mean/bbox |
 | **Finding Point** | 개별 맵 좌표 상세 투영 | observed Claim 한 건 | void @ (7,9). 일반 Entity처럼 자동 순회하지 않음 |
 | **Enrich Action** | 아직 필요한 Claim을 얻기 위한 행동 투영 | 조회 snapshot | 후보 확인, Claim 공급 경로 선언, Enrichment 배포 계약 복구 |
+| **Quantity** | 기전 모델이 선언한 물리량 | `mechanism_models.json` 선언 | `bond_pressure`, `interface_unfill`, `void` |
 
 ### 1.1 Event가 아닌 것
 
@@ -53,6 +54,8 @@ flowchart LR
   S -->|has_findings| FC["Finding Collection\n집계·맵"]
   FC -.->|명시적 펼침| FP["Finding Point\n말단 상세"]
   CL -->|needs_enrichment| EA["Enrich Action\n재계산 행동"]
+  O -->|binding| Q["Quantity\n선언된 물리량"]
+  Q -->|mechanism| Q2["Quantity\n다음 물리량"]
   CL -.->|supersedes, 필드로 보존| OLD["이전 Claim"]
 ```
 
@@ -65,6 +68,15 @@ flowchart LR
 | `subject` | Claim → Entity | 이 주장이 이 개체에 대한 말이다 |
 | 원래 원장 술어 | Claim → Entity/Value | 이 주장의 목적어다. `qualifiers`는 엣지에 보존 |
 | `needs_enrichment` | Claim → Enrich Action | 이 Claim 문맥에서 부족한 다음 Claim 또는 공급 계약이 있다 |
+| `binding` | Value → Quantity | 이 payload 필드가 이 물리량을 잰다. `qualifiers`에 `binding_key`·`model` |
+| `mechanism` | Quantity → Quantity | 선언된 인과 엣지. `qualifiers.dir`은 선언의 `dir` 그대로(`+`/`-`/`u`) |
+
+Quantity는 원장 원자가 아니라 `server/config/mechanism_models.json`에서 **합성**된다. 선언에
+노드·엣지를 더하면 코드 변경 없이 화면에 나타나고, 선언이 없거나 읽히지 않으면 Quantity 노드가
+하나도 나오지 않는다(예외가 아니라 상태 — `mechanism_gate.load()`의 규칙 그대로). 🔴 **같은 이름의
+물리량이라도 모델이 다르면 다른 노드다** — `bond_pressure`는 `void_formation`과 `delam_formation`
+양쪽의 노드이고, 하나로 합치면 두 모델러의 단언이 아무도 하지 않은 제3의 단언으로 이어 붙는다.
+`mechanism` 걷기는 프론티어 물리량이 속한 모델을 벗어나지 않는다.
 
 Enrich Action은 `ledger_events`에 쓰지 않는다. 검증된 `claim_contract`와 현재 derived row를
 합성한 projection이고, target이 채워지면 같은 조회에서 사라진다. 반대로 source/table 계약 자체가
@@ -130,6 +142,7 @@ source_record = UUIDv5(namespace,
 | Finding Point | `ledger-finding-point:v1:` | `[observed_claim_id, occurred_at]` |
 | Value | `ledger-value:v1:` | `[parent_claim_id, occurred_at]` |
 | Enrich Action | `ledger-enrich-action:v1:` | `[rule_name, contract_version, scope, decision_key 또는 null]` |
+| Quantity | `ledger-quantity:v1:` | `[model_name, quantity_name]` — 모델 이름이 신원의 일부다 |
 
 Claim과 Event ID에 `occurred_at`을 함께 넣은 이유는 월 파티션을 정확히 가지치기하기 위해서다.
 Claim의 물리 PK도 `(id, occurred_at)`이다. UUID만 넘겨 모든 파티션을 뒤지는 API를 만들지 않는다.
@@ -316,6 +329,8 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
 - source 또는 occurred_at이 다르면 Event ID가 다르다.
 - Entity, Event, Claim 각각을 seed로 다시 열 수 있다.
 - Claim에서 Enrich Action에 도달하고 같은 Action ID를 seed로 다시 열 수 있다.
+- 바인딩된 payload 필드에서 Quantity에 도달하고 같은 Quantity ID를 seed로 다시 열 수 있다.
+  선언되지 않은 필드는 엣지를 만들지 않고, 같은 이름의 물리량이라도 모델이 다르면 노드가 갈린다.
 - target이 충족되면 Action이 사라지고, 공급 source가 없으면 rule-level Meta Action 하나만 남는다.
 - 배포되지 않은 rule은 derived row를 읽지 않고 계약 복구 Action을 낸다.
 - incoming과 outgoing이 실제로 다른 그래프를 만든다.

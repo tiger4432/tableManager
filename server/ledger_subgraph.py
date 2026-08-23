@@ -12,6 +12,12 @@ are not promoted to traversable domain entities.  An Entity walk projects them a
 Finding Collection with aggregate and spatial properties.  Expanding a Collection
 adds terminal Finding Point nodes; those points never continue an automatic walk.
 
+A payload leaf the modeller has bound to a physical quantity continues into the declared
+mechanism graph, which is synthesized from `mechanism_models.json` rather than read from
+the ledger — a Quantity is not an entity anybody asserted:
+
+    Value --binding--> Quantity --mechanism--> Quantity     `dir` as declared
+
 Every public node id is opaque, typed, canonical, and can be passed back as the next
 seed.  Traversal is undirected for reachability but directed in the returned evidence.
 All database probes are exact indexed batches and every response has hard budgets.
@@ -28,6 +34,7 @@ from datetime import datetime, timezone
 import ledger_explorer
 import ledger_trace
 import enrichment_actions
+import mechanism_gate
 
 
 DEFAULT_HOPS = 12
@@ -109,6 +116,17 @@ def finding_collection_node_id(entity_type, keys, finding_kind, method, map_id):
     ])
 
 
+def quantity_node_id(model, quantity):
+    """Address one declared physical quantity INSIDE one mechanism model.
+
+    The model name is part of the identity on purpose.  `bond_pressure` is a node of both
+    `void_formation` and `delam_formation`, and one shared node would splice two
+    modellers' assertions into a third one nobody made — the rule
+    `mechanism_gate.Model.reach` already states for its own BFS.
+    """
+    return "ledger-quantity:v1:" + _token([str(model), str(quantity)])
+
+
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
@@ -133,6 +151,15 @@ def decode_node_id(value):
             "finding_kind": str(finding_kind), "method": method,
             "map_id": map_id, "id": text, "expandable": True,
         }
+    quantity_prefix = "ledger-quantity:v1:"
+    if text.startswith(quantity_prefix):
+        payload = _untoken(text[len(quantity_prefix):])
+        if not isinstance(payload, list) or len(payload) != 2:
+            raise ValueError("quantity node id has the wrong shape")
+        model, quantity = str(payload[0]), str(payload[1])
+        if quantity_node_id(model, quantity) != text:
+            raise ValueError("node id is not in canonical spelling")
+        return {"kind": "quantity", "model": model, "quantity": quantity, "id": text}
     prefixes = {
         "ledger-event:v1:": "event",
         "ledger-claim-atom:v1:": "claim",
@@ -143,7 +170,7 @@ def decode_node_id(value):
     if prefix is None:
         raise ValueError(
             "node id must be ledger-entity/event/claim-atom/"
-            "finding-collection/finding-point/value/enrich-action v1")
+            "finding-collection/finding-point/value/quantity/enrich-action v1")
     payload = _untoken(text[len(prefix):])
     kind = prefixes[prefix]
     expected = 3 if kind == "event" else 2
@@ -653,6 +680,63 @@ def _finding_collection_node(summary):
     }
 
 
+def _quantity_node(model_name, quantity, model=None):
+    """A physical quantity, SYNTHESIZED from `mechanism_models.json`.
+
+    It is not an entity sitting in the ledger and it costs no query: the declaration is a
+    config file of tens of nodes that `mechanism_gate` loads once and caches.  `model` is
+    the loaded `mechanism_gate.Model` when the declaration still carries it — a node id
+    bookmarked before the modeller deleted a model still decodes and still names itself.
+    """
+    node = {
+        "id": quantity_node_id(model_name, quantity),
+        "type": "Quantity", "node_kind": "quantity",
+        "schema_kind": "mechanism_quantity_projection",
+        "label": f"{quantity} · {model_name}",
+        "keys": {"model": model_name, "quantity": quantity},
+        "quantity": quantity, "model": model_name,
+        "basis": mechanism_gate.CONFIG_FILENAME,
+        "claim_count": 0, "predicates": [],
+    }
+    if model is not None:
+        node.update({"model_role": model.role, "finding_kind": model.finding_kind,
+                     "is_target": quantity == model.target})
+    return node
+
+
+def _payload_paths(payload, prefix=""):
+    """Dotted leaf paths of one claim payload — the spelling bindings are keyed by."""
+    if isinstance(payload, dict):
+        for key in payload:
+            child = f"{prefix}.{key}" if prefix else str(key)
+            yield from _payload_paths(payload[key], child)
+    elif prefix:
+        yield prefix
+
+
+def _bound_quantities(mechanism, atom):
+    """The declared `(model, quantity, binding key)` triples one claim's payload binds to.
+
+    The lookup is `mechanism_gate`'s own `nodes_for`, including its two accepted binding
+    spellings and their precedence, so this projection never re-decides what a binding
+    means.  A quantity is emitted once per usable model that declares it, which is how
+    `bond_pressure` reaches both the void and the delam model without the two becoming
+    one node.
+    """
+    out, seen = [], set()
+    for path in _payload_paths(atom.object_payload or {}):
+        quantities, binding_key = mechanism.nodes_for(f"{atom.predicate}:{path}")
+        for quantity in quantities:
+            for model in mechanism.models:
+                if not model.usable or quantity not in model.nodes:
+                    continue
+                if (model.name, quantity) in seen:
+                    continue
+                seen.add((model.name, quantity))
+                out.append((model, quantity, binding_key))
+    return out
+
+
 def _enrich_action_node(action):
     return enrichment_actions.action_node(action)
 
@@ -681,6 +765,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if observation_mode not in {"summary", "claims"}:
         raise ValueError("observation_mode must be summary or claims")
     claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
+    # Declared, not queried.  An absent or broken declaration yields no models and no
+    # bindings, so the projection simply carries no Quantity nodes — the same «state, not
+    # exception» rule `mechanism_gate.load` follows for every other consumer.
+    mechanism = mechanism_gate.load()
+    models_by_name = {model.name: model for model in mechanism.models if model.usable}
 
     nodes = {}
     refs = {}
@@ -769,6 +858,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "method": seed_ref.get("method"), "map_id": seed_ref.get("map_id"),
             "claim_count": 0, "predicates": [],
         }
+    elif seed_ref["kind"] == "quantity":
+        seed_node = _quantity_node(seed_ref["model"], seed_ref["quantity"],
+                                   models_by_name.get(seed_ref["model"]))
     elif seed_ref["kind"] == "action":
         action = action_lookup.action_for_ref(seed_ref) if action_lookup else None
         if action is not None:
@@ -818,6 +910,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         collection_refs = [refs[item] for item in frontier_ids
                            if refs[item]["kind"] == "collection"
                            and refs[item].get("expandable", False)]
+        quantity_refs = [refs[item] for item in frontier_ids
+                         if refs[item]["kind"] == "quantity"]
         fetched = []
 
         full_entity_refs = [item for item in entity_refs
@@ -916,6 +1010,32 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                         add_edge(_edge("contains", collection_id, point["id"],
                                        original_predicate="observed"))
 
+        # Mechanism edges are DECLARED structure rather than ledger evidence, so they cost
+        # no claim budget and ignore `direction` the way the other structural edges do.
+        # Reachability is undirected; the emitted edge keeps the declaration's own `dir`.
+        # Traversal never leaves the model the frontier quantity belongs to.
+        for item in quantity_refs:
+            model = models_by_name.get(item["model"])
+            if model is None:
+                continue
+            for head, outgoing in model.adjacency.items():
+                for spec in outgoing:
+                    tail = spec["to"]
+                    if item["quantity"] not in (head, tail):
+                        continue
+                    endpoints = {}
+                    for name in (head, tail):
+                        node = _quantity_node(model.name, name, model)
+                        if add_node(node, decode_node_id(node["id"]),
+                                    depth if name == item["quantity"] else depth + 1):
+                            endpoints[name] = node["id"]
+                    if len(endpoints) != 2:
+                        continue
+                    edge = _edge("mechanism", endpoints[head], endpoints[tail])
+                    edge["basis"] = mechanism_gate.CONFIG_FILENAME
+                    edge["qualifiers"] = {"dir": spec.get("dir"), "model": model.name}
+                    add_edge(edge)
+
         if event_refs and remaining > 0:
             batch, cut = lookup.claims_for_events([
                 (item["event_id"], item["occurred_at"], item["event_state"])
@@ -985,6 +1105,19 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 if add_node(value, decode_node_id(value_id), depth + 1):
                     add_edge(_edge(atom.predicate, claim_id, value_id,
                                    original_predicate=atom.predicate))
+                    # 「이 필드는 이 물리량을 잰다」 — knowledge the modeller has and the
+                    # data does not.  It is the only seam between a payload leaf and the
+                    # mechanism graph, and an unbound leaf simply grows no edge.
+                    for model, quantity, binding_key in _bound_quantities(mechanism, atom):
+                        node = _quantity_node(model.name, quantity, model)
+                        if not add_node(node, decode_node_id(node["id"]), depth + 2):
+                            continue
+                        edge = _edge("binding", value_id, node["id"],
+                                     original_predicate=atom.predicate)
+                        edge["basis"] = mechanism_gate.CONFIG_FILENAME
+                        edge["qualifiers"] = {"binding_key": binding_key,
+                                              "model": model.name}
+                        add_edge(edge)
 
         # Enrich Actions are reached FROM evidence Claims, never injected beside the
         # graph as an unrelated list.  The lookup reuses validated Enrichment rules and

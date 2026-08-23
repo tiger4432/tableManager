@@ -9,6 +9,7 @@ from ledger.envelope import source_event_identity
 import ledger_explorer
 import ledger_subgraph
 import ledger_trace_router
+import mechanism_gate
 
 
 NOW = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)
@@ -228,6 +229,77 @@ def test_node_ids_reject_noncanonical_or_forged_shapes():
         assert "canonical" in str(exc) or "JSON" in str(exc)
     else:
         raise AssertionError("noncanonical event id was accepted")
+
+
+MECHANISM_DECLARATION = {
+    "bindings": {"processed_with:params_actual.pressure_MPa": ["bond_pressure"]},
+    "void_formation": {
+        "role": "formation", "finding_kind": "void", "target": "void",
+        "nodes": ["bond_pressure", "interface_unfill", "void"],
+        "edges": [{"from": "bond_pressure", "to": "interface_unfill", "dir": "-"},
+                  {"from": "interface_unfill", "to": "void", "dir": "+"}],
+    },
+    "delam_formation": {
+        "role": "formation", "finding_kind": "delam", "target": "delam",
+        "nodes": ["bond_pressure", "delam"],
+        "edges": [{"from": "bond_pressure", "to": "delam", "dir": "+"}],
+    },
+}
+
+
+def process_atom():
+    return ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=77)), subject_type="Wafer",
+        subject_keys={"wafer": "WF-BOND"}, predicate="processed_with",
+        object_kind="value",
+        object_payload={"step": "BOND", "recipe": "R-6",
+                        "params_actual": {"pressure_MPa": 3.2, "clamp_force_N": 12.5}},
+        occurred_at=NOW, source_who="mes", source_translator_ver="v1",
+        source_raw_ref="job:77", supersedes=None, source_event_id=EVENT,
+        source_event_state="source_record")
+
+
+def test_declared_mechanism_becomes_quantity_nodes_and_a_quantity_reseeds():
+    lookup = ledger_subgraph.InMemoryEvidenceLookup([process_atom()])
+    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-BOND"})
+    mechanism_gate.set_graph(MECHANISM_DECLARATION)
+    try:
+        graph = ledger_subgraph.subgraph(seed, lookup, hops=8)
+        quantities = {node["label"]: node for node in graph["nodes"]
+                      if node["node_kind"] == "quantity"}
+        bindings = [edge for edge in graph["edges"] if edge["predicate"] == "binding"]
+        mechanisms = [edge for edge in graph["edges"] if edge["predicate"] == "mechanism"]
+        # The bound leaf grows edges; `clamp_force_N` is declared nowhere and stays silent.
+        assert {edge["qualifiers"]["binding_key"] for edge in bindings} == {
+            "processed_with:params_actual.pressure_MPa"}
+        value_id = ledger_subgraph.value_node_id(process_atom().id, NOW)
+        assert {edge["source"] for edge in bindings} == {value_id}
+        # One quantity name declared by two models is two nodes, never one shared node:
+        # merging them would splice two modellers' assertions into a third one.
+        assert "bond_pressure · void_formation" in quantities
+        assert "bond_pressure · delam_formation" in quantities
+        assert len(bindings) == 2
+        by_id = {node["id"]: node for node in graph["nodes"]}
+        assert all(by_id[edge["source"]]["model"] == by_id[edge["target"]]["model"]
+                   for edge in mechanisms)
+        unfill = quantities["interface_unfill · void_formation"]["id"]
+        pressure = quantities["bond_pressure · void_formation"]["id"]
+        declared = next(edge for edge in mechanisms
+                        if edge["source"] == pressure and edge["target"] == unfill)
+        assert declared["qualifiers"] == {"dir": "-", "model": "void_formation"}
+        assert declared["basis"] == mechanism_gate.CONFIG_FILENAME
+        # A synthesized id is a seed like any other public node id.
+        assert ledger_subgraph.decode_node_id(pressure) == {
+            "kind": "quantity", "model": "void_formation",
+            "quantity": "bond_pressure", "id": pressure}
+        reseeded = ledger_subgraph.subgraph(pressure, lookup, hops=3)
+        assert reseeded["state"] == "ready"
+        assert reseeded["seed"]["id"] == pressure
+        assert {node["label"] for node in reseeded["nodes"]} == {
+            "bond_pressure · void_formation", "interface_unfill · void_formation",
+            "void · void_formation"}
+    finally:
+        mechanism_gate.set_graph(None)
 
 
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():
