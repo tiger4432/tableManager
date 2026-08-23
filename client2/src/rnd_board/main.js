@@ -40,7 +40,8 @@ import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
 import { fetchLotMap, fetchComposition, basisCountsFromComposition,
-  slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings } from './api.js';
+  slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
+  waferFactsFromLotMap } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
@@ -97,7 +98,14 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 1, columnSpan: 2 },
       reads: 'marking:1',
       writes: null,
-      options: { finalChipId: 'SYN-CX-CHIP-001' },
+      options: {
+        finalChipId: 'SYN-CX-CHIP-001',
+        // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
+        //    가져오되 주어를 바꾸지 않습니다 -- 구성·후보·순위가 그 칩의 층에서 나오기 때문에
+        //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
+        waferQuestion: { row: 'SYN-VOID-001', slot: '07' },
+        waferKinds: ['void', 'delam'],
+      },
     },
     {
       // 스팟파이어의 상태바. 「N marked」 가 «항상» 보여야 한다는 게 계약입니다 -- 마킹이 비어
@@ -269,6 +277,13 @@ export function bindLoaders(layout, deps) {
       const bound = { ...options, apiBase, fetchImpl, dpr: dpr || 1 };
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
+      if (options.waferQuestion) {
+        // One call per kind, because the route answers one kind at a time. A kind that has not
+        // answered yet stays BLANK on screen -- never 0.
+        bound.loadWaferFacts = (kind) => fetchLotMap({
+          apiBase, fetchImpl, ...options.waferQuestion, kind,
+        }).then((body) => waferFactsFromLotMap(body, 'bond'));
+      }
       if (options.peers) {
         bound.loadPeerCount = (scope) => fetchSiblings({
           apiBase, fetchImpl, scope, window: options.window,

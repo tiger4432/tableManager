@@ -622,3 +622,26 @@ export function peerCountFromSiblings(result) {
     units: typeof row.units === 'number' ? row.units : null,
   };
 }
+
+
+/**
+ * 목업 ① 이 주는 정보를, 주어를 바꾸지 않고. The wafer this chip sits on and what was seen on
+ * it, out of the SAME `lot_map` body the maps already use.
+ *
+ * ⚠️ `fetchLotMap` resolves with the body itself (see `slotPagesFromLotMap`), so both shapes
+ *    are accepted here too.
+ */
+export function waferFactsFromLotMap(result, axis) {
+  const body = (result && result.body) || result || null;
+  const projections = (body && body.projections) || [];
+  const p = projections.find((x) => x && x.axis === (axis || 'bond'));
+  if (!p) return null;
+  const frame = p.frame || {};
+  return {
+    wafer: frame.wafer || null,
+    lot: (body && body.row) || null,
+    cells: Array.isArray(p.cells) ? p.cells.length : null,
+    found: typeof p.found === 'number' ? p.found : null,
+    scanned: typeof p.scanned === 'number' ? p.scanned : null,
+  };
+}

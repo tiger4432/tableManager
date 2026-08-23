@@ -479,3 +479,11 @@ body {
 /* 트렌드도 같은 문법 — 마킹된 점은 그대로, 나머지가 흐려집니다. */
 .is-attenuating .rb-trend-dot:not(.is-marked-case):not(.is-marked-control) { opacity: 0.35; }
 .is-attenuating .rb-trend-dot.is-marked-case { opacity: 1; }
+
+/* 목업 ① 의 웨이퍼 줄 — 주어(칩) «아래», 대체가 아니라 «추가». */
+.rb-head-wafer { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+  font-size: 11px; color: var(--text-muted); }
+.rb-head-wafer-subject { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
+.rb-head-wafer-fact { font-family: var(--font-mono); }
+.rb-head-wafer-kind { font-family: var(--font-mono); color: var(--text); }
+.rb-head-wafer-pending { color: var(--text-dim); }

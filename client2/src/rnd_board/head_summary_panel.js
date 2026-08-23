@@ -32,6 +32,10 @@ export class HeadSummaryPanel extends Panel {
     this.apiBase = options.apiBase || '';
     this.finalChipId = options.finalChipId || null;
     this.fetchImpl = options.fetchImpl || null;
+    // 목업 ① 의 웨이퍼 줄. Per-kind, because the route answers one kind at a time.
+    this.waferKinds = Array.isArray(options.waferKinds) ? options.waferKinds.slice() : [];
+    this.loadWaferFacts = options.loadWaferFacts || null;
+    this.waferFacts = Object.create(null);
     this.model = null;
     this.loadState = this.finalChipId ? 'idle' : 'no-subject';
   }
@@ -39,6 +43,14 @@ export class HeadSummaryPanel extends Panel {
   mount() {
     super.mount();
     if (this.finalChipId) this.load();
+    if (this.loadWaferFacts) {
+      for (const kind of this.waferKinds) {
+        Promise.resolve().then(() => this.loadWaferFacts(kind))
+          .then((facts) => { if (facts) { this.waferFacts[kind] = facts; this.render(); } })
+          // A kind that failed stays absent, which draws as nothing rather than as zero.
+          .catch(() => {});
+      }
+    }
   }
 
   async load() {
@@ -52,6 +64,40 @@ export class HeadSummaryPanel extends Panel {
     this.model = compositionModel(result);
     this.loadState = this.model.ok ? 'ready' : 'refused';
     this.render();
+  }
+
+  /**
+   * 「이 칩이 앉은 웨이퍼와 그 수」 -- added beside the subject, not instead of it.
+   *
+   * 🔴 A KIND THAT HAS NOT ANSWERED IS NOT DRAWN. The second request lands later than the first
+   *    and a 0 in its place would say 「delam 없음」 about a wafer nobody has asked about yet.
+   */
+  _waferLine() {
+    const kinds = this.waferKinds.filter((k) => this.waferFacts[k]);
+    if (!kinds.length) return null;
+    const doc = this.doc;
+    const first = this.waferFacts[kinds[0]];
+    const el = doc.createElement('div');
+    el.className = 'rb-head-wafer';
+    const put = (text, cls) => {
+      const n = doc.createElement('span');
+      n.className = cls || 'rb-head-wafer-fact';
+      n.textContent = text;
+      el.appendChild(n);
+    };
+    if (first.wafer) put(`웨이퍼 ${first.wafer}`, 'rb-head-wafer-subject');
+    if (first.lot) put(`랏 ${first.lot}`);
+    if (typeof first.cells === 'number') put(`${first.cells}칸`);
+    for (const kind of kinds) {
+      const f = this.waferFacts[kind];
+      if (typeof f.found !== 'number') continue;
+      put(`${kind} ${f.found}`, 'rb-head-wafer-kind');
+    }
+    if (typeof first.scanned === 'number') put(`검사 ${first.scanned}`);
+    // The kinds still in flight are named, so a missing one reads as 「아직」 rather than 「없음」.
+    const pending = this.waferKinds.filter((k) => !this.waferFacts[k]);
+    if (pending.length) put(`${pending.join(' · ')} 읽는 중…`, 'rb-head-wafer-pending');
+    return el;
   }
 
   render() {
@@ -111,6 +157,8 @@ export class HeadSummaryPanel extends Panel {
     //    they explain, and having them in both bands is the same fact said twice on one screen.
 
     root.appendChild(line);
+    const waferLine = this._waferLine();
+    if (waferLine) root.appendChild(waferLine);
 
     // ── the absences, in their own row so they cannot be mistaken for measurements ──
     const absences = doc.createElement('div');
