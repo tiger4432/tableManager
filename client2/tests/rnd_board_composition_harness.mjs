@@ -56,7 +56,8 @@ const BODY = {
 async function loadModules(mutate = {}) {
   const sources = {};
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8');
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8')
+      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     // 🔴 A MUTATION THAT CHANGES NOTHING IS A MUTANT THAT TESTS NOTHING, and it reads as a
     // pass. The first run of this file shipped two of those. An anchor that no longer matches

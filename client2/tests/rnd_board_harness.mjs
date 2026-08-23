@@ -60,7 +60,8 @@ async function loadModules(mutate = {}) {
   // the scan was reading the shipped file while the suite drove the mutated one.
   const sources = {};
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8');
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8')
+      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     sources[file] = fn ? fn(text) : text;
     return sources[file];
