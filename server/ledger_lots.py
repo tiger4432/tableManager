@@ -1144,12 +1144,12 @@ WHERE b.{axis.column} = %(row)s{slot_clause}
     if isinstance(answer, dict):
         answer["unplaced"] = _unplaced(connection, geometry, source, axis,
                                        identity_column, table, units, join_pairs,
-                                       time_clause, params)
+                                       time_clause, params, slot_clause)
     return answer
 
 
 def _unplaced(connection, geometry, source, axis, identity_column, table, units,
-              join_pairs, time_clause, params):
+              join_pairs, time_clause, params, slot_clause=""):
     """Inspected positions this map CANNOT DRAW, counted rather than dropped.
 
     🔴 THE MAP'S DRIVING TABLE IS THE PROCESS RELATION, SO A POSITION THAT WAS INSPECTED
@@ -1166,20 +1166,44 @@ def _unplaced(connection, geometry, source, axis, identity_column, table, units,
     and named, and the client can say 「29 drawn, 1 not placeable」 instead of showing 29 as
     if it were all of them.
 
-    ⚠️ IT IS ONLY COMPUTABLE WHEN THE ROW AXIS IS THE WAFER ITSELF. A position with no
-    process row carries no lot, no equipment and no slot, so under `by=bond_lot` there is
-    nothing to attribute it to and the honest answer is that it is unknown — NOT zero. A
-    zero here would read as 「nothing was missed」, which is the one thing this field exists
-    to stop saying.
+    🔴 THE FIRST VERSION OF THIS GUARD ASSERTED SOMETHING FALSE, AND THAT SENTENCE WAS THE
+    DEFECT. It said the orphan 「carries no lot, no equipment and no slot」 and refused on
+    every row axis but the wafer. An orphan is a row of the INSPECTION relation: it carries
+    `base_wafer_id`. What it lacks is the PROCESS ROW, not the wafer. The screen calls this
+    route with a slot and no `by`, which defaults to the lot axis, so the guard fired every
+    time and the voids this field exists to surface were reported as zero on every screen.
+    Found by the application lane, 2026-08-24.
+
+    So the question is not 「is the row axis the wafer」 but 「do these rows name ONE wafer」.
+    A slot narrows a lot to one wafer, and the orphan is then attributable exactly as it is
+    under `by=wafer`. It is resolved with the SAME relation, row filter and slot clause the
+    map used, rather than re-derived.
+
+    ⚠️ THE UNATTRIBUTABLE BRANCH STAYS. When the rows span several wafers there is genuinely
+    nothing to attribute an orphan to, and the answer is unknown — NOT zero. A zero would
+    read as 「nothing was missed」, which is the one thing this field exists to stop saying.
     """
     subject = (getattr(geometry, "ledger_subject", None) or {}) if geometry else {}
     subject_column = subject.get("column")
-    if not (subject_column and identity_column and axis.column == identity_column):
-        return {"state": "unknown",
-                "reason": "row_axis_is_not_the_unit_subject",
-                "message": (f"이 행 축({axis.column})으로는 «공정 행이 없는» 검사 자리를 "
-                            f"귀속시킬 수 없다 — 그 자리는 랏·설비·슬롯을 갖고 있지 않다. "
-                            f"0 이 아니라 «모른다»이다.")}
+    if not (subject_column and identity_column):
+        return {"state": "unknown", "reason": "no_declared_unit_subject",
+                "message": ("이 기하학은 유닛의 주어를 선언하지 않거나 이 관계가 그 컬럼을 "
+                            "안 든다 — 귀속할 기준이 없다.")}
+    if axis.column == identity_column:
+        wafers = [params["row"]]
+    else:
+        # 🔴 THE SAME FILTER THE MAP RAN, so the wafer resolves the way the cells did.
+        rows = _fetch(connection,
+                      f"SELECT DISTINCT b.{identity_column} FROM {source.relation} b "
+                      f"WHERE b.{axis.column} = %(row)s{slot_clause} "
+                      f"AND b.{identity_column} IS NOT NULL LIMIT 2",
+                      params)
+        wafers = [r[0] for r in rows]
+    if len(wafers) != 1:
+        return {"state": "unknown", "reason": "rows_span_several_wafers",
+                "message": ("이 요청의 행들이 웨이퍼 하나로 정해지지 않아 «공정 행이 없는» "
+                            "검사 자리를 어느 웨이퍼의 것으로 돌릴지 정할 수 없다. "
+                            "슬롯을 지정하면 정해진다. 0 이 아니라 «모른다»이다.")}
     if not relation_exists(connection, finding_kinds.RUN_TABLE):
         return {"state": "unknown", "reason": "run_table_absent",
                 "message": f"{finding_kinds.RUN_TABLE} 미배포"}
@@ -1192,7 +1216,7 @@ WITH runs AS (
     SELECT {geometry.run_key_column} AS run_key, {unit_cols}
     FROM {finding_kinds.RUN_TABLE}
     WHERE {geometry.run_method_column} = ANY(%(methods)s){time_clause}
-      AND {subject_column} = %(row)s
+      AND {subject_column} = %(unplaced_wafer)s
 ), scanned AS (SELECT DISTINCT {unit_cols} FROM runs
 ), found AS (
     SELECT DISTINCT {', '.join('r.' + c for c in units)}
@@ -1205,14 +1229,15 @@ SELECT (SELECT count(*) FROM orphan),
        (SELECT count(*) FROM orphan o
         WHERE EXISTS (SELECT 1 FROM found f WHERE {on_found}))
 """
-    rows = _fetch(connection, sql, params)
+    rows = _fetch(connection, sql, dict(params, unplaced_wafer=wafers[0]))
     scanned_n, found_n = (rows[0] if rows else (0, 0))
     return {"state": "measured", "scanned": int(scanned_n or 0), "found": int(found_n or 0),
             "reason": None if not scanned_n else "no_row_in_process_relation",
             "message": (None if not scanned_n else
-                        (f"검사됐으나 {source.relation}에 행이 없어 «어느 축에도 좌표가 "
-                         f"없는» 자리 {int(scanned_n)}개 (그중 발견 {int(found_n or 0)}개). "
-                         f"맵에 그리지 않았다 — 없는 칸을 지어내지 않는다."))}
+                        (f"{wafers[0]}에서 검사됐으나 {source.relation}에 행이 없어 "
+                         f"«이 맵의 좌표가 없는» 자리 {int(scanned_n)}개 "
+                         f"(그중 발견 {int(found_n or 0)}개). 웨이퍼는 알지만 공정 "
+                         f"행이 없어 칸을 정할 수 없다 — 지어내지 않고 수로만 말한다."))}
 
 
 def _identity_column(connection, geometry, source):
