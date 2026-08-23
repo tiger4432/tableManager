@@ -691,6 +691,42 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
     assert vocabulary.check_subject_keys("die", MIXED_GENERATION_SEEDS["die"])
 
 
+def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():
+    """The one pair of graphs the two candidate rules DISAGREE on, so this can only pass
+    for the right reason.
+
+    Nothing pinned this rule before 2026-08-23 and it had drifted into a length decay: the
+    divisor was the undirected degree, which counts the neighbour a node was REACHED FROM,
+    so a node in a pure chain divided by 2 at a place where nothing forks. That is the
+    damping constant `_reach`'s own docstring forbids, arrived at without a constant, and it
+    ranked a 3-hop process-history factor below a 1-hop one for its distance alone.
+
+    Both halves are needed because each rule is right on one of them:
+      * the CHAIN separates 「divide by degree」 from the correct rule — degree gives
+        1.0, 0.5, 0.25 and the correct rule holds 1.0 all the way.
+      * the FORK separates 「never divide」 from the correct rule — not dividing gives 1.0
+        to each of three siblings, and it also catches dividing by the full degree, which
+        splits a three-way fork into QUARTERS because it counts the way in.
+
+    🔴 WAKE IT WITH THE MUTATIONS IT EXISTS FOR. Both go red, and they go red on different
+    halves: restoring `carried / len(neighbours)` fails the chain, and dropping the division
+    (`share = carried`) fails the fork.
+    """
+    chain = [{"source": "S", "target": "B"}, {"source": "B", "target": "C"},
+             {"source": "C", "target": "D"}]
+    reach, _ = ledger_subgraph._reach(["S", "B", "C", "D"], chain, {"S": 1})
+    assert [round(reach[n][0], 6) for n in ("B", "C", "D")] == [1.0, 1.0, 1.0], (
+        "a pure chain must not decay - nothing forks anywhere on it")
+
+    fork = [{"source": "S", "target": "H"}, {"source": "H", "target": "X"},
+            {"source": "H", "target": "Y"}, {"source": "H", "target": "Z"}]
+    reach, _ = ledger_subgraph._reach(["S", "H", "X", "Y", "Z"], fork, {"S": 1})
+    assert round(reach["H"][0], 6) == 1.0                      # first hop never divides
+    third = round(1 / 3, 6)
+    assert [round(reach[n][0], 6) for n in ("X", "Y", "Z")] == [third] * 3, (
+        "a three-way fork splits three ways, not four - the way in is not an outgoing edge")
+
+
 def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():
     paths = {route.path for route in ledger_trace_router.router.routes}
     assert "/api/ledger/subgraph" in paths

@@ -1,3 +1,32 @@
+# ✅ 전파 규칙에 «판별 시험» 하나. 변이 둘로 깨워서 확인했습니다 (구현자 01:3x)
+
+승인하신 그대로 **한 개**만 만들었습니다 — 사슬과 갈래를 한 시험 안에 넣었습니다.
+```
+tests/test_ledger_subgraph.py
+   test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else
+```
+
+## 🔴 변이 둘 다 «빨강». 그리고 «서로 다른 절반»에서 빨강입니다
+```
+len(neighbours) 로 되돌림   -> RED   "a pure chain must not decay …"     <- 사슬 절반이 잡음
+share = carried (안 나눔)   -> RED   "a three-way fork splits three ways…" <- 갈래 절반이 잡음
+```
+**두 절반이 각각 «자기 변이»에서만 웁니다.** 한 절반이 둘 다 잡았다면 나머지 절반은
+있으나 마나였을 텐데, 그게 아닙니다 — 두 규칙이 «다른 답»을 내는 유일한 모양 둘이라서 그렇습니다.
+
+📎 변이는 공유 트리에 «한 번의 subprocess 호출 동안»만 올라갔고, 복원은 finally 에 있습니다.
+   끝나고 **바이트 단위로 같은지 확인**했습니다 (`restored byte-identical: True`, `git diff` 0줄).
+
+## 시험 전체
+```
+tests/test_ledger_subgraph.py   24 passed · 1 skipped
+```
+
+📎 총괄 재채점과 제 재채점의 숫자가 다릅니다(층 4 vs 5 · dt_pass_count 3위 vs 4위).
+   총괄이 「씨앗이 달랐을 수 있다」고 적어 두셨고, 저도 **제 씨앗만 적고 총괄 숫자는 안 건드립니다.**
+
+---
+
 # 🔨 라운드 5 — 전파 감쇠 수리 + 재채점. 그리고 **지시하신 한 줄은 «아무것도 안 바꿉니다»** (구현자 01:0x)
 
 ## 🔴 먼저: 지시서의 조건(`이웃이 둘 이상일 때만 나눈다`)은 «무효»입니다 — 실측
