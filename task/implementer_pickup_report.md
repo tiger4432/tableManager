@@ -1,3 +1,59 @@
+# ✅ 클라가 넘긴 둘 — **① 알약 넷 다 나옵니다 · ② 트렌드 «퍼짐»은 없습니다** (구현자 03:0x)
+
+## ① 또래 개수 — 라우트·필드·실측값
+```
+GET /api/ledger/siblings?scope=<축>:<값>&window=<창>
+읽을 필드   scope.value_accounting[0].subjects   (주어 수)
+            scope.value_accounting[0].units      (유닛=패키지 수)
+            같은 항목의 state 가 "resolved" 면 값이 있는 것
+❌ case.subjects 는 «아닙니다» — 주어 안을 가르는 축(레그·레시피·장비)에서 0 또는 딴 수가 나옵니다
+```
+실측 (window=180d, 값은 라이브에서 뽑음):
+```
+알약        축·값                        units   subjects
+같은 레그   leg:HBM-B_LOW-P                384          6
+같은 랏     bond_lot:SYN-K1-201            725         25
+            dt_lot:SYN-DT-002              725         25
+            core_lot:SYN-CL-006            813         50
+레시피      scan_recipe:SYN_VOID_R1       4028        124
+설비        bond_eqp:SYN-BD-02            2173         75
+            scan_eqp:SYN-SAT-01           3697        117
+```
+**넷 다 «나옵니다». 안 되는 것 없습니다.**
+🔴 총괄이 사장님께 `case.subjects` 로 보고하신 것 — **정정 필요합니다.** 위 필드가 맞습니다.
+📎 「랏」과 「설비」는 축이 각각 셋·둘이라 «어느 것을 쓸지»는 화면이 정합니다. 서버는 다 답합니다.
+📎 개수의 단위(주어 vs 패키지)도 화면이 고릅니다 — 같은 응답에 나란히 옵니다.
+
+## ② 트렌드 «퍼짐» — **집계된 퍼짐 값은 «없습니다».** 다만 흩뿌릴 «점»은 있습니다
+응답 전체를 훑어 확인했습니다(중첩 키 전수). 퍼짐 계열 필드 «0개»:
+```
+찾은 것    ...denominator (분모) 뿐 — scan_denominator · component_denominator
+없는 것    percentile · quantile · stddev · median · mean · band · iqr · min/max   전부 «없음»
+```
+**그런데 목업이 그리는 흩뿌림의 재료는 이미 옵니다:**
+```
+series[].points[]   실험 단위 «하나당 한 점»
+   value.found_rate      그 점의 y
+   occurred_at           그 점의 x
+   identity.mark_key     안정 키 — 씨앗이 어느 점인지 «클라가 이미 아는 마킹»과 맞추면 됩니다
+실측   points 12개 · distinct mark_key 12 · distinct 웨이퍼 6 (웨이퍼 x 레그 = 12)
+```
+```
+그러므로
+   흩뿌림(또래 점들)      ✅ 지금 그릴 수 있습니다 — points[] 그대로
+   씨앗의 가로 점선        ✅ 씨앗 점의 found_rate 가 그 y 입니다
+   «띠»(사분위·표준편차)   ❌ 서버가 «안 줍니다». 원하시면 «새 필드»입니다
+```
+⚠️ 그리고 이 창에서 점이 «12개»뿐입니다. 흩뿌림이 성기게 보일 텐데 그건 데이터이지 기능이 아닙니다.
+
+## 다음 라운드 입력 (제가 «안» 만들었습니다 — 읽기 전용 라운드라서)
+```
+필요하면   /trends 에 또래 분포 요약 하나 (p25·p50·p75 또는 mean·sd)
+           지금 points[] 로 클라가 계산할 수도 있습니다 — 어느 쪽인지 판정해 주십시오
+```
+
+---
+
 # ✅ dt·core 프레임 «ready» — 그리고 **조건이 하나로는 부족했습니다** (구현자 02:4x)
 
 ## 실측 — 세 축 전부 ready
