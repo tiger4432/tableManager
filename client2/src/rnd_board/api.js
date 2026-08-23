@@ -42,6 +42,7 @@
 
 export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
+  composition: '/api/ledger/composition',
 });
 
 /**
@@ -135,5 +136,120 @@ export function projectionModel(body, axis) {
     row: (body && body.row) || null,
     slot: (body && body.slot) || null,
     kind: (body && body.kind) || null,
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSITION -- 「이 최종 칩은 무엇으로 만들어졌나」. ONE route feeds TWO parts (A 머리 요약,
+// D 구성), which is why they were ordered together.
+//
+// 🔴 THE QUERY KEY IS `final_chip_id`, NOT `id`. Measured: `?id=` answers 422 with
+//    `{"loc":["query","final_chip_id"],"msg":"Field required"}`. Written down because a
+//    guessed key returns a REFUSAL, and a refusal rendered as an empty panel reads as
+//    「이 칩은 구성이 없다」 -- which is the absence-vs-fault confusion this board exists to end.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `GET /api/ledger/composition`. `fetchImpl` injected so the boundary scores without a network. */
+export async function fetchComposition(params) {
+  const { apiBase, finalChipId, fetchImpl } = params || {};
+  const query = new URLSearchParams();
+  query.set('final_chip_id', finalChipId);
+  const url = `${apiBase}${ROUTES.composition}?${query.toString()}`;
+  const res = await (fetchImpl || fetch)(url);
+  if (!res.ok) {
+    // The refusal is CARRIED, not swallowed. A part renders "the server refused, here is why",
+    // never a blank box.
+    let detail = null;
+    try { detail = await res.json(); } catch (e) { detail = null; }
+    return { ok: false, status: res.status, detail, body: null };
+  }
+  return { ok: true, status: res.status, detail: null, body: await res.json() };
+}
+
+/**
+ * The view model both parts read. NO DOM -- so it is scorable under bare node, the discipline
+ * `surprise_map_view.js` established and `panel.js` restates.
+ *
+ * 🔴 EVERY FIELD IS SOURCED. Nothing is defaulted into a number that looks measured: a missing
+ *    count is `null` and the parts print 「-」 for it. `cardinality` arrives as the WORD the
+ *    server chose ('variable'), not as a number, and it stays a word -- turning it into `10`
+ *    would state a constant the ledger explicitly refuses to claim.
+ *
+ * 🔴 `windowDefaulted` IS AN ABSENCE, NOT A FAULT. It means nobody chose a period, so the
+ *    server applied its own. A part must say that in different words from a refusal.
+ */
+export function compositionModel(result) {
+  const failed = !result || result.ok === false;
+  const body = (result && result.body) || null;
+  if (failed || !body) {
+    const status = (result && result.status) || null;
+    return {
+      ok: false,
+      state: 'refused',
+      status,
+      message: status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다',
+      subject: null, wafer: null, resolution: null, window: null,
+      cardinality: null, provenance: null,
+      counts: { components: null, dtCollections: null },
+      coreTypes: [], components: [],
+    };
+  }
+  const fsr = body.final_subject_resolution || {};
+  const win = body.window || {};
+  const applied = win.applied || {};
+  const summary = body.summary || {};
+  const card = body.cardinality || {};
+  const prov = body.provenance || {};
+  const num = (v) => (typeof v === 'number' ? v : null);
+  return {
+    ok: true,
+    state: body.state || 'unknown',
+    status: (result && result.status) || null,
+    message: '',
+    subject: {
+      finalChipId: (body.final_chip && body.final_chip.keys && body.final_chip.keys.final_chip_id) || null,
+      entityId: (body.final_chip && body.final_chip.entity_id) || null,
+    },
+    // The wafer the chip was resolved onto. `null` when the ledger could not resolve one --
+    // which is a STATE, and `resolution.state` carries which one.
+    wafer: fsr.wafer ? { id: fsr.wafer.wafer || null, entityId: fsr.wafer.entity_id || null } : null,
+    resolution: {
+      state: fsr.state || 'unknown',
+      basis: fsr.basis || null,
+      candidateCount: Array.isArray(fsr.candidates) ? fsr.candidates.length : null,
+    },
+    window: {
+      spec: applied.spec || null,
+      from: applied.from || null,
+      to: applied.to || null,
+      declared: applied.declared === true,
+      defaulted: win.defaulted === true,
+      requested: win.requested || null,
+    },
+    cardinality: {
+      components: card.components || null,
+      transferEvents: card.transfer_events || null,
+      dtCollections: card.dt_collections || null,
+    },
+    provenance: {
+      source: prov.source || null,
+      predicate: prov.predicate || null,
+      ledgerBacked: prov.ledger_backed === true,
+    },
+    counts: {
+      components: num(summary.component_count),
+      dtCollections: num(summary.dt_collection_count),
+    },
+    coreTypes: Array.isArray(summary.core_types) ? summary.core_types.slice() : [],
+    components: (Array.isArray(body.components) ? body.components : []).map((c) => ({
+      id: c.component_id || null,
+      entityId: c.entity_id || null,
+      core: c.core || null,
+      bonding: c.bonding || null,
+      resolutionState: c.resolution_state || 'unknown',
+      transferEventCount: Array.isArray(c.transfer_events) ? c.transfer_events.length : null,
+      dtCollectionCount: Array.isArray(c.dt_collections) ? c.dt_collections.length : null,
+    })),
   };
 }
