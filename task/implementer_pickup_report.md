@@ -1,3 +1,57 @@
+# 🔴 정정 — **또래 개수는 `case.subjects` 가 «아닙니다»**. 그리고 레그 0 은 결함이 아니었습니다 (구현자 02:1x)
+
+앞 보고에서 「`scope.case.subjects` = 또래 개수」라고 썼습니다. **그건 축의 절반에서만 맞습니다.**
+클라가 그 필드를 읽으면 알약 다섯 중 셋이 «0 또는 엉뚱한 수»로 나옵니다. 지금 고칩니다.
+
+## 실측 — 같은 호출, 두 필드가 «다릅니다»
+```
+축           값               창     units  subjects   case.subjects
+leg          HBM-B_LOW-P      180d     384        6     0     <- 다름
+leg          LOGIC-A_REF      180d     384        6     0     <- 다름
+scan_recipe  SYN_VOID_R2      180d    2900      100     0     <- 다름
+scan_eqp     SYN-SAT-01       7d      1624       59     3     <- 다름
+bond_eqp     SYN-BD-02        7d      1450       50    50        같음
+bond_lot     SYN-VOID-026     180d       0        0     0        같음(둘 다 없음)
+```
+```
+✅ 읽을 것   scope.value_accounting[].subjects   (또는 .units — 개수의 «단위»를 고르십시오)
+❌ 읽지 말 것 scope.case.subjects
+```
+
+## 왜 다릅니까 — `case` 는 «다른 질문»에 답하는 필드입니다
+```
+case.subjects            그 주어의 유닛이 «전부» 마킹 안에 있는 주어 수 (대조군을 세우려는 것)
+value_accounting.subjects 그 값에 «닿는» 주어 수                        (또래를 세려는 것)
+```
+🔴 **주어 «안»을 가르는 축은 case 가 구조적으로 0 입니다.** 레그가 그렇습니다 — 웨이퍼 6장이
+전부 두 레그에 걸쳐 있어서 «어느 쪽도 아님(mixed)» 으로 빠집니다. 응답이 그것을 말해 줍니다:
+```
+excluded: [{bucket: "mixed", subjects: 6, message: "마킹 안팎에 유닛이 걸쳐 있어 어느 쪽도 아님"}]
+```
+그건 «설계대로 도는 것»이지 결함이 아닙니다. 검사 레시피·검사 장비도 같은 이유입니다
+(한 웨이퍼가 여러 레시피로 검사됩니다).
+
+## ✅ 그러므로 열린 목록의 「레그 scope 가 0」은 «닫힙니다»
+어젯밤 「직접 조인은 384를 찾는데 scope 는 0, 원인 미상」으로 올려 둔 항목입니다.
+**원인은 제가 틀린 필드를 본 것이었습니다.** 레그 축은 정상 작동합니다 — 384 유닛 · 6 주어.
+```
+남은 주의    leg 은 window=180d 에서 나옵니다. 7d 는 0 이고 그건 «기간»입니다
+             (SYN-CX 검사가 전부 2026-07-11)
+```
+
+## 알약 다섯, 최종 형태
+```
+GET /api/ledger/siblings?scope=<축>:<값>&window=<창>
+   -> scope.value_accounting[0].subjects   또래 «주어» 수
+   -> scope.value_accounting[0].units      또래 «유닛(패키지)» 수
+   -> state="resolved" 면 값이 있는 것, 아니면 그 이유가 같은 항목에 붙습니다
+축   leg · bond_lot · dt_lot · core_lot · bond_eqp · scan_eqp · scan_recipe · b_bn · stack_height · wafer
+```
+🔴 **개수의 «단위»는 화면이 정할 일입니다** — 목업의 「같은 레그 25」가 웨이퍼 수인지
+패키지 수인지 저는 모릅니다. 둘 다 같은 응답에 «나란히» 있으니 고르시면 됩니다.
+
+---
+
 # ✅ 제어 막대 «또래 개수» — **넷은 «지금» 나옵니다. 하나는 축이 없습니다** (구현자 03:4x)
 
 전부 «불러서» 잰 것입니다. 추론 없음. 코드 0줄.
