@@ -1,5 +1,46 @@
 # 📌 PROJECT STATUS — 지금 무엇이 열려 있나 (Living Board)
 
+> # 🔴 깨어난 총괄 — «이 절만» 읽고 30초 안에 복구하십시오
+> 컴팩트(자동 포함)는 이 절을 위해 있습니다. 준비를 «미리» 하지 않아도 되게, 이 절이 항상 최신입니다.
+>
+> ### ① 감시 재장착 — 세션이 «끝나면» 감시는 같이 죽습니다 (컴팩트는 안 죽입니다)
+> Monitor 넷을 겁니다. 전부 `persistent: true`:
+> ```
+> 1  구현자·응용 착지    60초  git log 새 커밋 + implementer_pickup_report / application_report mtime
+>                       제외 접두: docs(orders) docs(board) docs(application) docs(agents)
+>                                 docs(design) build(client) docs: feat(orders)
+> 2  디자인 푸시        90초  git fetch origin design + main..origin/design 개수
+> 3  라이브 config      30초  server/config/ontology/ledger_config.json 의 stat 변화
+> 4  🔴 심박           3600초 「HEARTBEAT hh:mm 감시프로세스 N 서버8080 up」
+>                       -> 이 줄이 «한 시간 넘게 안 오면» 배관이 끊긴 것입니다
+> ```
+> 🔴 **생존 판정법**: 출력 파일 mtime 도, 프로세스 존재도 «둘 다 틀렸습니다»(2026-08-23 실측).
+> mtime 은 «죽은 시각»일 수 있고, 프로세스가 살아 있는데 «전달만» 끊긴 적이 있습니다.
+> **믿을 것은 심박 한 줄뿐입니다.**
+>
+> ### ② 서버 — 재기동은 총괄 몫 (소유자 상설)
+> ```
+> cd server && "C:/Users/kk980/anaconda3/envs/assy_manager/python.exe" -m uvicorn main:app --host "" --port 8080
+> 확인: 포트 8080 리슨 + «프로세스 시작 시각»이 최근 수리보다 뒤인지
+> ```
+>
+> ### ③ 지금 도는 것 — 자세한 것은 아래 절들
+> ```
+> 구현자   ① 설비 사건(사고·PM)+코멘트 시더  ② R&D 화면 1라운드(골격+맵)  목표 내일 오전
+> 응용     공정 컨텍스트 추적 점검 · /selection/resolve 미측정
+> 디자인   목업 2a — 소유자가 직접 조정 중
+> ```
+> ### ④ 채널 — 파일이 정본, 커밋이 초인종
+> ```
+> 총괄 -> 구현자   task/IMPLEMENTER_ORDERS.md      (맨 위 블록 + «그 끝의 대기열»)
+> 총괄 -> 응용     task/ontology_application_ruling.md
+> 총괄 -> 디자인   task/DESIGN_ORDERS.md
+> 받는 쪽 보고     task/implementer_pickup_report.md · task/ontology_application_report.md
+> ```
+> 🔴 **하위 세션은 컴팩트돼도 안전합니다** — 파일이 상태라 다시 읽으면 이어집니다.
+> 약한 고리는 «감시»뿐이고, 그래서 ①이 첫 줄입니다.
+
+
 > ## 📌 2026-08-23 09:4x — **백필 착지 · 레인 걸림.  위 인수절보다 «이것이» 최신**
 > ```
 > 소유자 지시   「감시 살리고, 원장 백필 돌려」
