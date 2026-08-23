@@ -22,6 +22,43 @@
 
 ---
 
+# 🔨 dt·core 프레임 — **「모두 같으면 모호한 게 아닙니다」** (소유자 지시, 01:5x)
+
+> 소유자: 「dt, core 너가 «적당히» 프레임 넣어」
+
+## 지어내지 «않고» 넣을 수 있습니다 — 이미 합의가 있습니다
+당신이 낸 수가 그걸 말합니다:
+```
+dt     frames_considered 25 · frames_matched «25»  · superposed true · grid 15x10
+core   frames_considered 27 · frames_matched «27»  · superposed true · grid 23x23
+지금 답 state=no_frame · reason=frame_ambiguous_across_slots
+```
+🔴 **25가 25 다 «같은데» 모호하다고 답하고 있습니다.** 모호하다는 것은 «서로 다를 때»의 말입니다.
+전부 일치하면 프레임은 «정해진 것»이고, 그때 `no_frame` 은 틀린 답입니다.
+
+## 하는 것 — 판정 한 줄
+```
+frames_matched == frames_considered  (그리고 > 0)
+   -> state = "ready" · grid = 그 합의된 격자
+   -> superposed: true 는 «남깁니다» — 슬롯 하나의 프레임이 아니라 «N개의 합의»라는 사실은
+      클라가 알아야 합니다 (한 장을 그리는 게 아니라 겹쳐 놓은 것이므로)
+   -> available_slots 도 그대로 남깁니다 (페이지네이션이 그걸 씁니다)
+하나라도 어긋나면
+   -> 지금처럼 no_frame + frame_ambiguous_across_slots. «그건 진짜 모호한 것»입니다
+```
+⛔ **격자를 «지어내지» 마십시오.** 합의가 없으면 없다고 답하는 것이 맞습니다.
+   이 라운드는 「합의가 있는데 없다고 답하던 것」만 고칩니다.
+
+수락:
+```
+dt·core 가 state=ready · grid 그대로 (15x10 · 23x23) · superposed true
+bond 회귀 «없음» (그쪽은 프레임 하나라 원래 ready)
+어긋나는 표본이 있으면 그건 여전히 no_frame — 변이로 확인하십시오
+   (프레임 하나를 다른 격자로 바꿔서 no_frame 이 되는지)
+```
+📎 클라가 이걸 기다립니다 — 「기반 알약을 누르면 그 타입 맵을 그린다」에서
+   dt·core 맵의 «테두리»가 이 grid 입니다.
+
 # 🔴🔴🔴 소유자 도착지 — **내일 아침까지 «목업과 똑같이 + 작동»** (2026-08-24 01:1x)
 
 > 소유자: 「내일 아침까지 목업 똑같이 완수해놔. «작동»까지.
