@@ -258,7 +258,10 @@ def test_the_numerator_is_a_declared_expression_not_a_fixed_one():
     (lambda g: g["axes"][0]["denominator"].update(column="leg; DROP TABLE x"),
      "declared"),
     (lambda g: g["axes"][1]["numerator"].update({"from": "somewhere_else"}), "allowed"),
-    (lambda g: g["axes"][1]["denominator"].update(join="1 = 1"), "bound"),
+    # `denominator.join` used to be stated and checked against the bound ON clause.  It
+    # left the grain shape with ruling 2 (2026-08-23): a caller could not move the join,
+    # so stating it could only ever agree.  There is no mutation to make here because
+    # there is no longer a member to mutate.
     (lambda g: g.update(identity_fields=["lot"]), "fenced_to"),
 ])
 def test_a_grain_the_query_cannot_serve_is_refused_before_sql(monkeypatch, mutate,
