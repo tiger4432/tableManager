@@ -79,7 +79,10 @@ export const BOARD = Object.freeze({
   //    the top of the screen -- the least mockup-like thing on it. The height goes to the
   //    layer table, which has ten rows to show. When the trend gets a spread this is one
   //    number here, and no part changes.
-  rows: 'minmax(92px, auto) minmax(44px, auto) 190px 360px 320px 320px',
+  //    ⚠️ 92px WAS THE FLOOR UNTIL THE WAFER LINE LANDED: measured content 112px in a 92px
+  //       row, so the new line was clipped. An `auto` row cannot grow here -- the fixed rows
+  //       below already overflow the viewport, so auto sinks to its own minimum.
+  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 360px 320px 320px',
   gap: '10px',
   // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
   //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
