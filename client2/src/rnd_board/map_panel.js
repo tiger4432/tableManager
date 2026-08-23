@@ -16,9 +16,13 @@
 //    circle, or a cell.
 //
 // 🔴 THE SERVER SEATED THESE CELLS. `coordinate_unit: "cells_from_origin"` -- the frame
-//    transform already ran server-side, so this file applies NONE. It takes min/max of the
-//    served coordinates because `layoutFor` needs bounds to fit the box, and that is the only
-//    arithmetic here. Running `computeSeating` over them would transform twice.
+//    transform already ran server-side, so this file applies NONE. Running `computeSeating`
+//    over them would transform twice.
+//
+// 🔴 THE LATTICE COMES FROM THE FRAME'S DECLARATION (`grid_cols`/`grid_rows`/`grid_start_*`),
+//    not from the cells' bounding box. Those two answer different questions and they part
+//    company exactly at an empty edge -- see `declaredBounds` below for the measurement. The
+//    cells' box is still the fallback for a projection whose frame declares no grid.
 //
 // 🔴 NO SIZE IS DECIDED HERE. There is no width or height constant in this file. The canvas
 //    is the box the shell measured, minus whatever the head actually occupies -- measured,
@@ -43,11 +47,15 @@ const ROLES = {
     unscanned: '#d7dce4', scanned: '#b9c2cf', found: '#c22f2f',
     unknown: '#8792a5',
     case: '#1a66d0', control: '#8a5a00',
+    // A seat the frame DECLARES and no cell arrived for. Quieter than any role, and an
+    // outline rather than a fill, because it is an empty seat and not a measurement.
+    vacant: '#c9cfda',
   },
   dark: {
     unscanned: '#36425f', scanned: '#55648a', found: '#f87e7e',
     unknown: '#6b7897',
     case: '#6ea8fe', control: '#f6bd35',
+    vacant: '#3b465f',
   },
 };
 
@@ -77,6 +85,62 @@ function boundsOf(cells) {
   return { minX, maxX, minY, maxY, empty: false };
 }
 
+/**
+ * The frame's `grid`, as an object. MEASURED 2026-08-23: the live route serves it as a JSON
+ * **string** (`frame.grid = '{"grid_cols": 15, ...}'`), so reading `frame.grid.grid_cols`
+ * silently returns undefined. Parsed here, and anything that is not an object is refused
+ * quietly -- a frame that declares nothing is a frame the cells have to speak for.
+ */
+function parseGrid(grid) {
+  if (!grid) return null;
+  if (typeof grid === 'object') return grid;
+  if (typeof grid !== 'string') return null;
+  try {
+    const parsed = JSON.parse(grid);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 🔴 THE LATTICE IS THE FRAME'S, NOT THE CELLS'. `boundsOf` answers 「어디까지 값이 왔나」,
+ * which is a different question from 「이 웨이퍼는 몇 칸인가」, and the two differ exactly when
+ * the edge is empty: measured, a frame declaring 15x15 arrives with cells spanning 0..13, and
+ * taking the cells' box drew it 14x14 -- the empty column and row did not shrink, they
+ * DISAPPEARED, and a wafer whose edge dies never ran became a different shape without saying so.
+ * `null` when the frame declares no grid; then the cells' box stands, as before.
+ */
+function declaredBounds(frame) {
+  const grid = parseGrid(frame && frame.grid);
+  if (!grid) return null;
+  const cols = Number(grid.grid_cols);
+  const rows = Number(grid.grid_rows);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return null;
+  // ⛔ CELL COUNTS FROM THE ORIGIN. No pitch, no mm: `coordinate_unit` is
+  // `cells_from_origin` and multiplying by `phys_chip_x` would invent a second transform.
+  const minX = Number.isFinite(Number(grid.grid_start_x)) ? Number(grid.grid_start_x) : 0;
+  const minY = Number.isFinite(Number(grid.grid_start_y)) ? Number(grid.grid_start_y) : 0;
+  return { minX, maxX: minX + cols - 1, minY, maxY: minY + rows - 1, empty: false };
+}
+
+/**
+ * The declaration, widened by anything that arrived outside it. `paintSeating` does not clip
+ * -- its own error text says the scaling is fitted so that no seat can fall outside the
+ * window -- so switching the lattice from the cells to the declaration would let a cell the
+ * frame did not expect be painted off-canvas and vanish silently. It is drawn, and the
+ * declaration is still what the empty edge is measured against.
+ */
+function unionBounds(a, b) {
+  if (!a || a.empty) return b;
+  if (!b || b.empty) return a;
+  return {
+    minX: Math.min(a.minX, b.minX), maxX: Math.max(a.maxX, b.maxX),
+    minY: Math.min(a.minY, b.minY), maxY: Math.max(a.maxY, b.maxY),
+    empty: false,
+  };
+}
+
 export class MapPanel extends Panel {
   /**
    * @param {object} host  this panel's own element, from the shell.
@@ -103,7 +167,7 @@ export class MapPanel extends Panel {
     this._byXY = null;
     //: What the last paint actually did. Render statistics for the harness and the head line
     //: -- nothing downstream reads this as data.
-    this.lastPaint = { cells: 0, marks: 0 };
+    this.lastPaint = { cells: 0, marks: 0, vacant: 0 };
   }
 
   mount() {
@@ -228,7 +292,7 @@ export class MapPanel extends Panel {
     const box = this._canvasBox();
     this._layout = null;
     this._byXY = null;
-    this.lastPaint = { cells: 0, marks: 0 };
+    this.lastPaint = { cells: 0, marks: 0, vacant: 0 };
 
     const drawable = this.status === 'ready' && model && model.drawable && model.cells.length;
     if (canvas.style) canvas.style.display = drawable ? 'block' : 'none';
@@ -247,12 +311,32 @@ export class MapPanel extends Panel {
     const surface = createCanvasSurface(canvas.getContext('2d'));
 
     const cells = model.cells;
-    const bounds = boundsOf(cells);
+    const declared = declaredBounds(model.frame);
+    const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
     const layout = layoutFor(bounds, { width: canvas.width, height: canvas.height, padding: 0 });
     surface.clear(canvas.width, canvas.height);
     if (layout.empty) return;
 
     const palette = this._palette();
+
+    // 🔴 「빈 자리」 AND 「없는 자리」 MUST NOT LOOK ALIKE, and until now both were nothing at
+    // all. A seat the frame declares and no cell filled is drawn as an OUTLINE: it holds its
+    // place, and it is visibly not a measurement. Outside the declared lattice nothing is
+    // drawn, which is the other sentence -- there is no seat there to be empty.
+    let vacant = 0;
+    if (declared) {
+      const present = new Set(cells.map((c) => `${c.x},${c.y}`));
+      const seats = [];
+      for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+        for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+          if (!present.has(`${x},${y}`)) seats.push({ x, y });
+        }
+      }
+      if (seats.length) {
+        vacant = paintSeating(surface, { seats, seatCount: seats.length },
+          layout, palette.vacant, 'ring').painted;
+      }
+    }
 
     // Ground: one group per ROLE THAT ARRIVED. Roles are discovered from the data, never
     // listed here -- a role nobody has seen before gets a group of its own and the neutral
@@ -292,7 +376,7 @@ export class MapPanel extends Panel {
 
     this._layout = layout;
     this._byXY = new Map(cells.map((c) => [`${c.x},${c.y}`, c]));
-    this.lastPaint = { cells: painted, marks };
+    this.lastPaint = { cells: painted, marks, vacant };
   }
 
   // ── CLICK -> MARK ────────────────────────────────────────────────────────────
