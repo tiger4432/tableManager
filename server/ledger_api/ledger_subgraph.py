@@ -1426,10 +1426,27 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if add_node(subject, decode_node_id(subject["id"]), depth + 1):
                 add_edge(_edge("subject", claim_id, subject["id"],
                                original_predicate=atom.predicate))
-            event = _event_node(atom)
-            if add_node(event, decode_node_id(event["id"]), depth + 1):
-                add_edge(_edge("asserts", event["id"], claim_id,
-                               original_predicate=atom.predicate))
+            # 🔴 THE SOURCE-EVENT LEAF IS PROVENANCE, NOT REACH -- SO A RANKING WALK SKIPS IT.
+            # Every claim carries exactly one, and MEASURED 2026-08-24 on `SYN-BW-103-11`
+            # that is a third of the whole graph: 260 event nodes against 780 nodes, joined
+            # by 260 edges that ALL land on a claim and go nowhere further. They are leaves.
+            # Dropping them disconnects nothing, and the evidence trails confirm it from the
+            # other side -- across `point`, `value`, `quantity` and `entity`, not one of the
+            # 790 hops in any trail crosses an event.
+            #
+            # ⚠️ BUT "ABSENT FROM THE EVIDENCE PATH" IS NOT "UNUSED", WHICH IS WHY THIS IS
+            # CONDITIONAL RATHER THAN A DELETION. `ledger_graph` draws these as diamonds and
+            # opens a 「원천 이벤트」 panel on them (`ledger_graph/main.js:113,149`) -- it is
+            # the provenance browser, and it never sends `collect`. The board does. So the
+            # budget is recovered exactly where it is spent and the browser keeps its 52.
+            #
+            # `collect == "event"` still emits: answering an empty set to a caller who asked
+            # for this kind is the same false statement the observation fold was repaired for.
+            if collect is None or collect == "event":
+                event = _event_node(atom)
+                if add_node(event, decode_node_id(event["id"]), depth + 1):
+                    add_edge(_edge("asserts", event["id"], claim_id,
+                                   original_predicate=atom.predicate))
             payload = atom.object_payload or {}
             if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
                 target = _entity_node(payload["type"], payload["keys"])
