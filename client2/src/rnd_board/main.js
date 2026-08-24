@@ -221,6 +221,9 @@ export const BOARD = Object.freeze({
         fields: [
           { label: 'Data table', text: 'trends' },
           { label: 'Y value', writes: 'axis:y', options: 'y' },
+          // 목업의 X value. 지금 트렌드의 x 는 «계측 시각»이고 가로 눈금이 자재입니다 --
+          // 고를 수 있는 목록이 아직 없어서 «지금 무엇인지»를 말합니다. 지어내지 않습니다.
+          { label: 'X value', text: '계측 시각 · 가로 눈금은 자재' },
           { label: 'Group by', writes: 'axis:group', options: 'group' },
           { label: 'Color by', text: '(None)' },
           { label: 'Shape by', text: '(None)' },
@@ -271,7 +274,7 @@ export const BOARD = Object.freeze({
       start: { groupby: 'chip', value: 'SYN-BW-103-11' },
       collect: 'wafer_process',
       title: '구성 · SYN-BW-103-11',
-      at: { column: 1, row: 5, columnSpan: 3 },
+      at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: { finalChipId: 'SYN-BW-103-11' },
@@ -302,12 +305,30 @@ export const BOARD = Object.freeze({
       },
     },
     {
+      // 🔴 목업은 구성에도 «축 열»을 답니다 -- 같은 선언 부품, 다른 필드. 부품을 새로 만들지
+      //    않는다는 것이 이 화면의 전제이고, 여기가 그 두 번째 증거입니다.
+      id: 'composition-declaration',
+      part: 'declaration',
+      title: '축 · 구성',
+      at: { column: 4, row: 5 },
+      reads: null,
+      writes: null,
+      options: {
+        fields: [
+          { label: 'Data table', text: 'composition' },
+          { label: 'Marker by', text: 'component_id' },
+          { label: 'Color by', text: 'role' },
+          { label: 'Data limiting', reads: 'marking:1' },
+        ],
+      },
+    },
+    {
       // 🔴 목업 구성의 «셋째 칸». 질의를 새로 하지 않습니다 -- 구성 walk 이 이미 걸어 온 답에서
       //    «찍은 층»을 펼칩니다. 그래서 marking:1 을 읽고 그 외에는 선언이 없습니다.
       id: 'expanded-layer',
       part: 'expandedLayer',
       title: '펼친 층',
-      at: { column: 4, row: 5 },
+      at: { column: 3, row: 5 },
       reads: 'marking:1',
       writes: null,
       start: { groupby: 'chip', value: 'SYN-BW-103-11' },
