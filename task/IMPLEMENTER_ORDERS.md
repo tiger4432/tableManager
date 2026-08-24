@@ -21,6 +21,68 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# ⚖️ 마이그레이션 «범위 확정» — 세 번째 자리는 «다른 어휘»였습니다. 대상이 «줄어듭니다»
+
+당신이 「타입 이름이 세 곳에 산다」고 세워 준 덕에 제 지시의 구멍(②를 뭉뚱그린 것)이 잡혔습니다.
+**그리고 ③을 열어 보니 «엔티티 타입이 아니었습니다».** 제가 확인했습니다:
+
+## 실측 — 세 자리의 «정체»
+```
+① subject_type                     Wafer 337,389 · Lot 2,281 · DTJob 792 · Recipe 44 · WaferLeg 42
+                                   (+ die 1,405 는 «이미 소문자»)
+                                   -> 대문자 «340,548»                          ✅ 대상
+
+② object_payload->>'type' · object_kind = «entity_ref» «만»
+                                   die 119,067 (이미 소문자) · Wafer «1,645» · Lot «544»
+                                   -> 대문자 «2,189»                            ✅ 대상
+
+③ value payload 의 중첩 from/to.type
+      from=dt_slot     to=package_gate  64,375
+      from=wafer_grid  to=dt_job         4,640
+      from=wafer_grid  to=dt_slot        3,336
+      from=dt_slot     to=dt_slot          439 · to=bond_layer 156 · wafer_grid->bond_layer 18
+   🔴 dt_slot · package_gate · wafer_grid · dt_job · bond_layer
+      -> «엔티티 타입이 아닙니다». 화면의 「기반」 알약 그 낱말들입니다 (프레임/기반 이름)
+      -> 그리고 «전부 이미 소문자»입니다
+   ⛔ **손대지 마십시오. 대상 «아님».**                                          ❌ 제외
+```
+**그래서 대상은 «342,737행 · 두 경로»입니다.** 72,964 는 빠집니다.
+
+📌 **그래도 당신의 ③ 지적이 옳았습니다** — 「문자열 치환 금지」가 없었으면
+   자연스러운 구현이 `payload::text` 통째 치환이었을 것이고, 그러면 «저 어휘»를 밟습니다.
+   대상이 아니라는 것을 «알고 제외»하는 것과 «모르고 안 밟는» 것은 다릅니다.
+
+---
+
+## 확정 지시 — 이대로 하십시오 (다음 세션이 이어받아도 되게 적습니다)
+```
+대상    ledger_events + 파티션 전부
+        ① subject_type = lower(subject_type)         WHERE subject_type <> lower(subject_type)
+        ② object_kind='entity_ref' 인 행의 payload 의 'type' 키만 소문자
+           -> jsonb_set 으로 «경로 지목». 문자열 치환 «금지»
+제외    ⛔ object_kind='value' 의 중첩 from/to.type — «다른 어휘». 건드리면 사고
+        ⛔ keys 안의 «키 이름»(wafer · lot · dt_job · mat_id …) — 이미 소문자이고 다른 것
+
+절차    1  건수 확인 -> ① 340,548 · ② 2,189.  «다르면 멈추고» 보고
+        2  «작게 먼저» — DTJob 792 만 (①②) 돌리고 walk 이 «닿는지» 확인
+           확인법: dt_job 씨앗으로 subgraph 가 nodes 를 내는지
+        3  맞으면 나머지 전체를 «한 트랜잭션»으로
+        4  전/후 표: subject_type 별 · entity_ref type 별 건수
+되돌리기 역매핑을 «먼저 적어 두십시오»
+        wafer->Wafer · lot->Lot · dtjob->DTJob · recipe->Recipe · waferleg->WaferLeg
+        (die 는 원래 소문자라 제외)
+        🔴 v1 은퇴분 219,576 은 «역치환이 유일한 길»입니다. 그래서 2의 «작게»가 중요합니다
+```
+
+## 끝나면
+```
+알려만 주십시오 -> 총괄이 «선언 소문자판»을 즉시 적용합니다 (이미 만들어 검증해 뒀습니다:
+   entities · vocabulary.subjects · object.types · sources 의 entity_type 전부. lc.load() 통과)
+-> 총괄이 서버 재기동 -> 총괄이 walk·화면을 직접 확인
+```
+📎 컨텍스트가 끝나가면 «착수하지 말고» 지금처럼 측정만 남기십시오. 오늘 그 판단이 두 번 옳았습니다.
+
+---
 # 🔴🔴🔴 소유자 판정 — 「**소문자로 다 해. 그냥 일괄 마이그레이션**」. 실행합니다
 
 > 소유자: 「소문자로 다 해」 → 「그냥 일괄 마이그레이션」
