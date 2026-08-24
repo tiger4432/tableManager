@@ -330,20 +330,20 @@ async function suite(mods) {
     panels: [
       { id: 'a', part: 'map', title: 'A', at: { column: 1, row: 1 },
         reads: 'marking:1', writes: 'marking:1',
-        options: { axis: 'bond', load: () => Promise.resolve(FIX_07) } },
+        options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
       { id: 'b', part: 'map', title: 'B', at: { column: 2, row: 1 },
         reads: 'marking:2', writes: 'marking:2',
-        options: { axis: 'bond', load: () => Promise.resolve(FIX_03) } },
+        options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_03) } },
       { id: 'c', part: 'map', title: 'C', at: { column: 1, row: 2 },
         reads: 'marking:1', writes: null,
-        options: { axis: 'bond', load: () => Promise.resolve(FIX_07) } },
+        options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
       { id: 'd', part: 'map', title: 'D', at: { column: 2, row: 2 },
         reads: 'marking:2', writes: null,
-        options: { axis: 'bond', load: () => Promise.resolve(FIX_07) } },
+        options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
       // 🔴 THE THIRD NAME. Nothing in any module knows this string exists.
       { id: 'e', part: 'map', title: 'E', at: { column: 1, row: 3 },
         reads: 'marking:3', writes: 'marking:3',
-        options: { axis: 'bond', load: () => Promise.resolve(FIX_07) } },
+        options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
     ],
   };
   const shell = new GridShell(host, {
@@ -674,9 +674,9 @@ async function suite(mods) {
     const h1 = doc2.createElement('div');
     const h2 = doc2.createElement('div');
     const store2 = new MarkingStore();
-    const p1 = new MapPanel(h1, { doc: doc2, markings: store2, reads: 'x', writes: 'x',
+    const p1 = new MapPanel(h1, { space: 'die:base', doc: doc2, markings: store2, reads: 'x', writes: 'x',
       axis: 'bond', load: () => Promise.resolve(FIX_07) });
-    const p2 = new MapPanel(h2, { doc: doc2, markings: store2, reads: 'y', writes: 'y',
+    const p2 = new MapPanel(h2, { space: 'die:base', doc: doc2, markings: store2, reads: 'y', writes: 'y',
       axis: 'bond', load: () => Promise.resolve(FIX_03) });
     p1.mount(); p2.mount();
     await flush();
@@ -762,7 +762,7 @@ async function suite(mods) {
     // 🔴 한 칸이 «몇 개»를 물었나가 화면에 남아야 합니다. 실측: 다이당 최대 13, 4개 이상인
     //    다이가 1,906개. 전부 같은 빨강이면 1과 13이 «같아 보이고», 그건 수를 잃는 것입니다.
     const weighHost = doc2.createElement('div');
-    const weigh = new MapPanel(weighHost, { doc: doc2, markings: store2, reads: 'w', writes: 'w',
+    const weigh = new MapPanel(weighHost, { space: 'die:base', doc: doc2, markings: store2, reads: 'w', writes: 'w',
       axis: 'bond', load: () => Promise.resolve(FIX_07) });
     weigh.mount();
     await flush(); await flush();
@@ -811,7 +811,7 @@ async function suite(mods) {
     //    한 번도 안 오면 캔버스는 크기조차 못 받습니다. 이제 호스트에게 직접 묻습니다.
     const blindHost = doc2.createElement('div');
     blindHost.getBoundingClientRect = () => ({ width: 300, height: 240 });
-    const blind = new MapPanel(blindHost, { doc: doc2, markings: store2, reads: 'b', writes: 'b',
+    const blind = new MapPanel(blindHost, { space: 'die:base', doc: doc2, markings: store2, reads: 'b', writes: 'b',
       axis: 'bond', load: () => Promise.resolve(FIX_07) });
     blind.mount();
     await flush(); await flush();
@@ -832,7 +832,7 @@ async function suite(mods) {
     //    실제로는 페이지가 세 번째 이름을 따라간 것입니다. 감추면 패널이 자기 선언을 어기는
     //    것처럼 읽힙니다.
     const followHost = doc2.createElement('div');
-    const follower = new MapPanel(followHost, { doc: doc2, markings: store2,
+    const follower = new MapPanel(followHost, { space: 'die:base', doc: doc2, markings: store2,
       reads: 'marking:2', writes: 'marking:2', pageFollows: 'subject:wafer',
       axis: 'bond', load: () => Promise.resolve(FIX_07), loadByWafer: () => Promise.resolve(FIX_03) });
     follower.mount();
@@ -875,6 +875,13 @@ async function suite(mods) {
     // 🔴 «자리»가 아니라 «구성원»으로 잽니다. 셋째 맵(칩 확대)이 앞에 앉는 순간 maps[0]과
     //    maps[1] 이 같은 이름을 읽게 되는데, 그건 「한 부품이 여러 이름으로 선다」가 깨진 것이
     //    아닙니다 -- 자리로 세는 단언이 정당한 추가를 결함으로 찍는 그 부류입니다.
+    // 🔴 기본값으로 떨어지면 placements 가 오는 «날» 모든 점이 아무 데도 안 맞습니다 --
+    //    옛 경로가 그리는 동안은 «이상이 없어 보이는» 부류입니다 (총괄 판정 2026-08-24).
+    const spaces = maps.map((pp) => (pp.options || {}).space);
+    ok('H3b every seated map declares its coordinate space, none falls to a default',
+      spaces.every(Boolean), spaces.join(' | '));
+    ok('H3c and the bonding and core maps declare DIFFERENT grids',
+      new Set(spaces.filter((x) => String(x).startsWith('die:'))).size >= 2, spaces.join(' | '));
     ok('H3 the instances of one part read more than one marking name',
       new Set(maps.map((p) => p.reads)).size >= 2,
       maps.map((p) => `${p.id}:${p.reads}`).join(' | '));
@@ -916,6 +923,19 @@ async function suite(mods) {
       declaresRow('rb-head-steps'), 'rb-head-steps');
     ok('S2 ... and so does the expanded layer step chain',
       declaresRow('rb-layer-steps'), 'rb-layer-steps');
+    // 🔴 부모만 잠그면 자식이 «0 쪽으로 찌그러집니다» -- 컨테이너 높이가 0 이 되어 넘침
+    //    단언은 통과하는데 사람은 못 읽습니다 (총괄 실측: 칩 폭 18px · 글자가 세로로 쌓임).
+    //    「없앴다」를 「고쳤다」로 세지 않으려면 자식 규칙이 «한 짝»으로 있어야 합니다.
+    const childHolds = (cls) => {
+      const at = css.indexOf(`.${cls} > * {`);
+      if (at < 0) return false;
+      const block = css.slice(at, css.indexOf('}', at));
+      return /flex:\s*0 0 auto/.test(block) && /white-space:\s*nowrap/.test(block);
+    };
+    ok('S3 every chip in the head chain keeps its own width',
+      childHolds('rb-head-steps'), 'rb-head-steps > *');
+    ok('S4 ... and in the expanded layer chain',
+      childHolds('rb-layer-steps'), 'rb-layer-steps > *');
   }
 
   return { ran, failures };
@@ -927,6 +947,9 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  { id: 'M15', what: 'a map falls back to a bare die space, erasing which grid it is on',
+    catches: 'H3b',
+    mutate: { 'main.js': (s) => s.replace("        space: 'die:base',", '') } },
   // 🔴 그림으로는 «안 보이는» 자리입니다: 스텝이 몇 개든 상자 안에 있어야 하는데, wrap 하나가
   //    머리 패널을 517px 넘치게 해 아래 패널 둘을 덮었습니다 (총괄 실측 2026-08-24).
   { id: 'M13', what: 'the step chain wraps again, so a chip with many steps overflows its panel',
@@ -934,6 +957,11 @@ const MUTANTS = [
     mutate: { 'board.css': (s) => s.replace(
       '.rb-head-steps { display: flex; flex-wrap: nowrap;',
       '.rb-head-steps { display: flex; flex-wrap: wrap;') } },
+  { id: 'M14', what: 'the chips are allowed to shrink, so the row collapses to zero height and reads vertically',
+    catches: 'S3',
+    mutate: { 'board.css': (s) => s.replace(
+      '.rb-head-steps > * { flex: 0 0 auto; white-space: nowrap; }',
+      '.rb-head-steps > * { white-space: nowrap; }') } },
   { id: 'M12', what: 'a map with an empty marking asks anyway, so 「not chosen yet」 reads as a refusal',
     catches: 'F17',
     mutate: { 'map_panel.js': (s) => s.replace(

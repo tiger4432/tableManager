@@ -367,7 +367,12 @@ export class MapPanel extends Panel {
     //    그리는 방식은 «앞부분»이 정합니다 (die 는 칸, inchip 은 점).
     // 🔴 시작점 선언. 값이 아니라 «마킹 이름»일 수 있고, 그러면 주어는 사용자가 정합니다.
     this.start = options.start || null;
-    this.space = options.space || 'die';
+    // 🔴 기본값은 «누락»입니다 (총괄 판정 2026-08-24). 계약이 네 이름을 정한 이유가
+    //    「한 die 가 같은 표에서 두 격자를 들 수 없다」인데, `die` 로 떨어뜨리면 그 구분이
+    //    지워지고 placements 가 오는 «날» 모든 점이 아무 데도 안 맞습니다 -- 오늘 아침의
+    //    「빈 맵」과 같은 모양(옛 경로가 그려서 이상이 없어 보이는 것)입니다. 그래서 조용히
+    //    떨어지지 않고 «시끄럽게» 섭니다.
+    this.space = options.space || null;
     // 🔴 소스가 «설 수 있다고 선언한» 좌표계 목록. 여기에 내 space 가 없으면 이 인스턴스는
     //    «서지 않습니다» -- 거절이 아니라 「해당 없음」입니다 (소유자 2026-08-24: MI 는 원래
     //    자리가 없는 계측이고, 「좌표가 없다」와 「있어야 하는데 빈다」는 다른 것입니다).
@@ -495,6 +500,9 @@ export class MapPanel extends Panel {
   /** Fetch, then paint. Stale answers are dropped by sequence, not painted over the current. */
   reload() {
     if (!this.load) return Promise.resolve();
+    // 좌표계를 선언 안 한 맵은 «묻지 않습니다» -- 어느 격자에 앉힐지 모르는 채로 그리면
+    // 그림이 조용히 틀립니다.
+    if (!this.space) { this.status = 'unspaced'; this.render(); return Promise.resolve(); }
     // 🔴 주어가 없으면 «묻지 않습니다». 마킹이 빈 채로 물으면 라우트가 422 로 거절하고,
     //    화면엔 「서버가 거절했습니다」가 뜹니다 -- 그건 «서버 잘못처럼» 읽히는데 사실은
     //    「아직 아무것도 안 골랐다」입니다. 넷 중 첫째 부재를 거절문으로 그리면 안 됩니다.
@@ -585,6 +593,9 @@ export class MapPanel extends Panel {
     if (this.status === 'loading') {
       n.sub.textContent = CHROME.LOADING;
       n.counts.textContent = '';
+    } else if (this.status === 'unspaced') {
+      n.sub.textContent = '좌표계 선언 없음';
+      n.counts.textContent = 'space 를 선언하십시오 — die:base · die:core · die:dt · inchip';
     } else if (this.status === 'awaiting') {
       n.sub.textContent = `${this.start.marking} 이 이 맵의 주어입니다`;
       n.counts.textContent = `${this.start.marking} 이 비었습니다 — 찍으면 그립니다`;
@@ -987,6 +998,7 @@ export class MapPanel extends Panel {
    *    그 좌표계가 없다」이기 때문입니다.
    */
   stands() {
+    if (!this.space) return true;   // 서긴 서고, 「선언이 없다」고 말합니다
     return !this.sourceSpaces || this.sourceSpaces.includes(this.space);
   }
 
