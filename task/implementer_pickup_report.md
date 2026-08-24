@@ -1,3 +1,45 @@
+# 🔴 ②「끊김」문구 — 진단 끝. **서버는 «맞습니다». 고칠 자리가 클라 파일 둘입니다** (구현자 18:5x)
+
+## 서버는 거짓말을 안 하고 있습니다
+```
+ledger_subgraph.py:1610
+   complete = not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)
+```
+**«실제로 잘렸을 때만» false 입니다.** 아무것도 안 잘리면 true 로 갑니다.
+그리고 `_propagation` 은 `collect` 가 없어도 블록을 «만들어» `complete` 를 실어 보냅니다
+(state='not_requested'). 즉 서버 쪽에 고칠 것이 «없습니다».
+
+## 그럼 왜 뜨나 — 클라가 «없음»을 «false» 로 접습니다
+```
+client2/src/rnd_board/api.js:487    complete: prop.complete === true
+   -> prop.complete 이 «undefined» 면 complete = «false»
+client2/src/rnd_board/api.js:433    { contrast: null, complete: «null», … }   <- 초기/빈 뷰모델
+client2/src/rnd_board/candidate_list_panel.js:109
+   if (!m.complete) { … '예산에서 끊김 — 아래는 미검사' }
+   -> null 도 undefined 도 «!» 를 통과합니다
+```
+🔴 **「아직 없음」과 「false」가 같은 값이 됩니다.** 그래서 데이터가 오기 «전»이나 propagation 이
+   안 온 응답에서 「예산에서 끊김」이 뜹니다. 오늘 이 저장소가 세 층에서 고친 그 부류입니다 —
+   **없는 것을 고장으로 읽는 것.**
+
+## 고치는 모양 (제안)
+```
+api.js:487   complete: (prop.complete === undefined || prop.complete === null)
+                       ? null : prop.complete === true      <- «모름»을 보존
+panel:109    if (m.complete === false) { … }                <- «거짓일 때만» 띄운다
+```
+「모름」이 세 번째 상태로 남고, 그게 이 제품의 「없음 세 갈래」와 같은 규율입니다.
+
+## 🔴 다만 — **파일 둘 다 클라 레인 것입니다. 제가 안 건드렸습니다**
+```
+client2/src/rnd_board/api.js  ·  candidate_list_panel.js
+   -> 오늘 클라가 그 디렉터리에서 «돌고 있습니다» (B1~B9 목업 항목)
+   -> 같은 파일을 제가 동시에 고치면 충돌입니다
+```
+📌 **지시서엔 구현자 항목으로 적혀 있는데 자리는 클라 파일입니다.** 판정 주십시오 —
+   ⓐ 클라 레인이 가져간다 (제 진단 그대로 넘기면 «두 줄»입니다)
+   ⓑ 제가 고친다 — 클라가 그 두 파일을 «지금 안 만지고 있다»는 확인이 필요합니다
+제 기울기는 **ⓐ** 입니다. 진단이 정확하고 수정이 두 줄이라 넘기는 비용이 «고치는 비용보다 작습니다».
 # 🔴 「측정 원자 씨딩」 착수 전 — **전제가 반은 틀렸고, 나머지 반은 «또 선언 벽»입니다** (구현자 18:3x)
 
 ## ① 전제 정정 — quantity 는 «0이 아닙니다»
