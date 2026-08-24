@@ -677,6 +677,80 @@ async function suite(mods) {
     p1.destroy();
     if (p2.model) store2.set('y', p2.model.cells[0].nodeId, SIGN.CASE);
     eq('F5 destroying one instance does not deafen the other', p2.lastPaint.marks, 1);
+
+    // 🔴 확대는 «모드»가 아니라 좌표계 선언의 다른 «값»입니다 (소유자 2026-08-24). 같은 부품,
+    //    같은 답, 선언 하나만 다릅니다 -- 부품 안에 `if (zoom)` 이 생기면 조립식이 안쪽에서
+    //    무너집니다. 오늘 라우트는 point 에 inchip 좌표를 «안 싣습니다», 그래서 이 인스턴스는
+    //    「없음」을 그리는 것이 정상이고, 싣는 날 «선언도 코드도» 안 바뀌고 켜져야 합니다.
+    const zoomHost = doc2.createElement('div');
+    const zoom = new MapPanel(zoomHost, { doc: doc2, markings: store2, reads: 'z', writes: 'z',
+      axis: 'bond', space: 'inchip', extent: { x: 20000, y: 20000 },
+      load: () => Promise.resolve(FIX_07) });
+    zoom.mount();
+    await flush(); await flush();
+    zoom.resize(240, 180);
+    eq('F6 an inchip instance draws nothing while the route ships no inchip coordinate',
+      zoom.lastPaint.cells, 0);
+    eq('F7 ... and the die instance beside it is untouched by that declaration',
+      p2.lastPaint.cells, 141);
+
+    // 재료가 실리는 날. 같은 선언, 같은 코드, 이번엔 그림이 나옵니다.
+    // ⚠️ 오늘 그 재료는 이 부품까지 «못 옵니다» -- `projectionModel` 이 셀을 여섯 필드로
+    //    줄이면서 `points` 를 버립니다. 그 파일은 응용 레인 소관이라 여기서 안 고치고
+    //    보고했습니다. 그래서 단언은 «이 부품이 보증하는 것»에 겁니다: 셀이 점을 물고 있으면
+    //    inchip 선언이 그것을 그린다.
+    zoom.model.cells[0].points = [
+      { inchip_x: 14041.75, inchip_y: 9879.75, node_id: 'ledger-entity:v1:a-point', state: 'found' },
+      { inchip_x: 5000, inchip_y: 12000, node_id: 'ledger-entity:v1:another-point', state: 'found' },
+    ];
+    zoom.render();
+    eq('F8 the same declaration draws the points the day a cell carries them',
+      zoom.lastPaint.cells, 2);
+    zoom.destroy();
+
+    // 🔴 한 칸이 «몇 개»를 물었나가 화면에 남아야 합니다. 실측: 다이당 최대 13, 4개 이상인
+    //    다이가 1,906개. 전부 같은 빨강이면 1과 13이 «같아 보이고», 그건 수를 잃는 것입니다.
+    const weighHost = doc2.createElement('div');
+    const weigh = new MapPanel(weighHost, { doc: doc2, markings: store2, reads: 'w', writes: 'w',
+      axis: 'bond', load: () => Promise.resolve(FIX_07) });
+    weigh.mount();
+    await flush(); await flush();
+    weigh.resize(240, 240);
+    const foundCells = weigh.model.cells.filter((c) => c.colorRole === 'found');
+    foundCells[0].n = 1;
+    foundCells[1].n = 13;
+    weigh.render();
+    const fills = new Set(canvasIn(weighHost).ops.filter((o) => o.op === 'fill')
+      .map((o) => o.color));
+    ok('F9 a die that carries 13 findings is not drawn like one that carries 1',
+      fills.size >= 4, `${fills.size} distinct fills`);
+    weigh.destroy();
+
+    // 🔴 소스가 «설 수 있다고 선언한» 좌표계에만 인스턴스가 섭니다 (소유자 2026-08-24).
+    //    MI 계측은 좌표 컬럼이 «아예 없습니다» -- 그건 결함이 아니라 그 계측의 성질이고,
+    //    빈 맵을 띄우면 「데이터가 없다」로 읽힙니다. 「해당 없음」은 아무것도 없는 것입니다.
+    let askedNo = 0;
+    const noHost = doc2.createElement('div');
+    const noMap = new MapPanel(noHost, { doc: doc2, markings: store2, reads: 'q', writes: 'q',
+      axis: 'bond', space: 'die:base', sourceSpaces: [],
+      load: () => { askedNo += 1; return Promise.resolve(FIX_07); } });
+    noMap.mount();
+    await flush(); await flush();
+    eq('F10 a source with no coordinate space stands no map at all', noHost.children.length, 0);
+    eq('F11 ... and it does not even ask', askedNo, 0);
+
+    let askedYes = 0;
+    const yesHost = doc2.createElement('div');
+    const yesMap = new MapPanel(yesHost, { doc: doc2, markings: store2, reads: 'q2', writes: 'q2',
+      axis: 'bond', space: 'die:base', sourceSpaces: ['die:base', 'inchip'],
+      load: () => { askedYes += 1; return Promise.resolve(FIX_07); } });
+    yesMap.mount();
+    await flush(); await flush();
+    yesMap.resize(200, 200);
+    ok('F12 the same part stands when the source declares that space',
+      askedYes === 1 && yesHost.children.length > 0 && yesMap.lastPaint.cells === 141,
+      `asked ${askedYes} · children ${yesHost.children.length} · cells ${yesMap.lastPaint.cells}`);
+    noMap.destroy(); yesMap.destroy();
   }
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
@@ -727,6 +801,23 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 「좌표가 없다」와 「좌표가 있어야 하는데 빈다」를 같은 그림으로 만드는 변이입니다.
+  { id: 'M03', what: 'a map stands even for a source that declares no such coordinate space',
+    catches: 'F10',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '    return !this.sourceSpaces || this.sourceSpaces.includes(this.space);',
+      '    return true;') } },
+  // 🔴 수를 색에서 지우면 1과 13이 같아 보입니다. 그림은 여전히 「그려집니다」.
+  { id: 'M02', what: 'the count a die carries is dropped from the drawing',
+    catches: 'F9',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '        const shade = weightShade(cell.n);', '        const shade = 1;') } },
+  // 🔴 좌표계가 선언이 아니라 부품 안의 고정값이 되면, 확대는 「부품을 고쳐야 서는 것」이 됩니다.
+  { id: 'M01', what: 'the coordinate space is hardcoded to die instead of read from the declaration',
+    catches: 'F8',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      "    return SPACES[String(this.space).split(':')[0]] || SPACES.die;",
+      '    return SPACES.die;') } },
   // 🔴 A STAMPED ID IS NOT A NODE. Dropping the gate still "works" on screen -- the die lights
   //    up -- and the walk it starts is the thing that fails, three panels away.
   { id: 'M00', what: 'a stamped (server-less) node id is allowed into the marking',

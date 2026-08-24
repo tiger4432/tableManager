@@ -206,6 +206,82 @@ function unionBounds(a, b) {
   };
 }
 
+/**
+ * 🔴 확대는 «모드»가 아니라 좌표계 «선언의 다른 값»입니다 (소유자 2026-08-24).
+ *    `if (zoomed)` 를 부품 안에 두면 조립식이 안쪽에서 무너집니다 -- 표 부품을 컬럼 선언으로
+ *    만든 것과 «같은 일»을 좌표계에 합니다. 공간이 셋째로 늘어도 코드가 아니라 이 표가 늡니다.
+ *
+ *      die     한 «칸» = 다이 하나.  단위 cells_from_origin.  프레임 격자에 앉힙니다
+ *      inchip  한 «점» = 관측 하나.  단위 um.  칩 한 변(extent) 안의 실제 위치입니다
+ *
+ * ⚠️ 오늘 `inchip` 은 «재료가 없습니다» — 라우트가 point 에 inchip 좌표를 아직 안 싣습니다.
+ *    그래서 inchip 인스턴스는 「없음」을 그립니다. 그게 «정상»이고, 서버가 싣는 날 이 표도
+ *    부품도 안 바뀝니다.
+ */
+const SPACES = {
+  die: {
+    unit: 'cells_from_origin',
+    // 🔴 이 좌표계에는 «자리»가 있습니다 -- 선언된 칸 중 아무도 안 채운 자리를 테두리로 그립니다.
+    lattice: true,
+    // 프레임 선언대로 0도 정규 좌표에 앉힌 «칸»들.
+    items: (model, panel) => panel._seated(model).cells,
+    bounds: (model, panel) => panel._seated(model).bounds,
+  },
+  inchip: {
+    unit: 'um',
+    // 🔴 연속 평면에는 «빈 자리»가 없습니다. 20,000um 를 1um 씩 도는 격자는 자리가 아니라
+    //    4억 번의 반복입니다 (실제로 힙을 터뜨렸습니다). 없는 개념은 선언에서 «없다»고 말합니다.
+    lattice: false,
+    // 칸이 무는 관측들. die 하나가 point 를 여럿 뭅니다 (실측 평균 2.06 · 최대 13).
+    items: (model) => (model.cells || []).reduce((out, cell) => {
+      for (const p of cell.points || []) {
+        if (!p || typeof p.inchip_x !== 'number' || typeof p.inchip_y !== 'number') continue;
+        out.push({ ...p, x: p.inchip_x, y: p.inchip_y, nodeId: p.node_id || null,
+          nodeIdResolved: Boolean(p.node_id), colorRole: p.color_role || p.state || null });
+      }
+      return out;
+    }, []),
+    // 칩 한 변의 «물리» 크기. 선언 안 하면 그릴 판이 없으므로 그리지 않습니다.
+    bounds: (model, panel) => (panel.extent
+      ? { minX: 0, maxX: panel.extent.x, minY: 0, maxY: panel.extent.y, empty: false }
+      : null),
+  },
+};
+
+/**
+ * 🔴 한 칸이 «몇 개»를 물었나. 실측: 다이당 평균 2.06 · 최대 13 (1개 18,524 · 2개 14,964 ·
+ *    3개 15,072 · 4~13개 1,906). 같은 빨강으로 그리면 «1과 13이 같아 보입니다» -- 수를 잃는
+ *    것이고, 그건 이 화면이 없애려는 오독입니다. 같은 색을 «진하게» 해서 구분합니다.
+ *
+ * ⚠️ 색조는 그대로입니다. 역할(found·scanned·unscanned)이 색이고, 수는 «농도»입니다 --
+ *    둘을 같은 축에 얹으면 둘 다 안 읽힙니다.
+ */
+const WEIGHT_SHADES = [
+  { from: 4, shade: 0.58 },
+  { from: 3, shade: 0.72 },
+  { from: 2, shade: 0.86 },
+  { from: 1, shade: 1 },
+];
+
+/** `#rrggbb` 를 검정 쪽으로 당깁니다. 알파는 안 씁니다 -- 감쇠가 이미 알파를 쓰고 있습니다. */
+function shaded(colour, factor) {
+  if (factor >= 1) return colour;
+  const hex = String(colour || '');
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return colour;
+  const to2 = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  const r = parseInt(hex.slice(1, 3), 16) * factor;
+  const g = parseInt(hex.slice(3, 5), 16) * factor;
+  const b = parseInt(hex.slice(5, 7), 16) * factor;
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
+}
+
+/** 그 칸이 문 수의 «버킷». 선언 하나를 찾을 뿐, 수를 여기서 정하지 않습니다. */
+function weightShade(n) {
+  const count = typeof n === 'number' ? n : 0;
+  const step = WEIGHT_SHADES.find((w) => count >= w.from);
+  return step ? step.shade : 1;
+}
+
 export class MapPanel extends Panel {
   /**
    * @param {object} host  this panel's own element, from the shell.
@@ -220,6 +296,18 @@ export class MapPanel extends Panel {
     // 🔴 THE BASIS IS THIS INSTANCE'S STATE, NOT THE SCREEN'S. Map A can stand on bond while
     //    map B stands on dt; the declaration gives the starting one and the pills move it.
     this.axis = options.axis;
+    // 🔴 좌표계 «값». 확대는 여기 값 하나입니다 -- 부품에 모드가 없습니다.
+    //    값은 소스가 쓰는 철자 그대로입니다: die:base · die:core · die:dt · inchip.
+    //    그리는 방식은 «앞부분»이 정합니다 (die 는 칸, inchip 은 점).
+    this.space = options.space || 'die';
+    // 🔴 소스가 «설 수 있다고 선언한» 좌표계 목록. 여기에 내 space 가 없으면 이 인스턴스는
+    //    «서지 않습니다» -- 거절이 아니라 「해당 없음」입니다 (소유자 2026-08-24: MI 는 원래
+    //    자리가 없는 계측이고, 「좌표가 없다」와 「있어야 하는데 빈다」는 다른 것입니다).
+    //    선언이 없으면 «묻지 않은 것»이므로 종전대로 섭니다.
+    this.sourceSpaces = Array.isArray(options.sourceSpaces) ? options.sourceSpaces.slice() : null;
+    this.unit = options.unit || (this._space() && this._space().unit) || null;
+    // 칩 확대일 때 칩 한 변의 물리 크기 { x, y }. die 좌표계에서는 안 씁니다.
+    this.extent = options.extent || null;
     this.bases = Array.isArray(options.bases) ? options.bases.slice() : [];
     // 🔴 THE PAGE IS THIS INSTANCE'S STATE TOO. Map A on 3/25 and map B on 7/25 must not know
     //    about each other, and a marking survives paging because a marking is a set of node
@@ -257,6 +345,9 @@ export class MapPanel extends Panel {
 
   mount() {
     super.mount();
+    // 안 서는 인스턴스는 «묻지도» 않습니다 -- 그릴 수 없는 답을 받아 두는 것은 요청 하나를
+    // 버리는 일입니다. 화면에도 아무것도 안 남습니다.
+    if (!this.stands()) return;
     this.reload();
     if (this.pageFollows && this.markings) {
       this._followOff = this.markings.subscribe(this.pageFollows, () => this._onSubjectChanged());
@@ -348,6 +439,8 @@ export class MapPanel extends Panel {
   // ── DOM ──────────────────────────────────────────────────────────────────────
 
   render() {
+    // 「해당 없음」은 빈 맵이 아니라 «아무것도 없음»입니다 -- 빈 맵은 「데이터가 없다」로 읽힙니다.
+    if (!this.stands()) { if (this.host) this.host.textContent = ''; return; }
     this._ensureChrome();
     this._writeHead();
     this._paint();
@@ -598,11 +691,11 @@ export class MapPanel extends Panel {
     if (!canvas.getContext) return;   // a document stub with no 2D context: chrome only
     const surface = createCanvasSurface(canvas.getContext('2d'));
 
-    // 🔴 SEATED FIRST, THEN EVERYTHING. The draw, the vacant lattice, the mark rings and the
-    //    click index below all read `cells`, so seating once here is what keeps them agreeing.
-    const seated = seatedProjection(model.frame, model.cells);
-    const cells = seated.cells;
-    const declared = seated.bounds || declaredBounds(model.frame);
+    // 🔴 좌표계 선언이 «무엇을 그릴지»와 «어느 판에 그릴지»를 답합니다. 축 이름도, 확대
+    //    여부도 여기서 묻지 않습니다 -- 선언을 찾아 쓸 뿐입니다.
+    const space = this._space();
+    const cells = space.items(model, this) || [];
+    const declared = space.bounds(model, this);
     const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
     const layout = layoutFor(bounds, { width: canvas.width, height: canvas.height, padding: 0 });
     surface.clear(canvas.width, canvas.height);
@@ -615,7 +708,7 @@ export class MapPanel extends Panel {
     // place, and it is visibly not a measurement. Outside the declared lattice nothing is
     // drawn, which is the other sentence -- there is no seat there to be empty.
     let vacant = 0;
-    if (declared) {
+    if (declared && space.lattice) {
       const present = superposed ? new Set() : new Set(cells.map((c) => `${c.x},${c.y}`));
       const seats = [];
       for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
@@ -660,22 +753,18 @@ export class MapPanel extends Panel {
       return;
     }
     for (const [role, group] of byRole) {
-      const colour = palette[role] || palette.unknown;
-      if (!attenuating) {
-        painted += paintSeating(surface, { seats: group, seatCount: group.length },
-          layout, colour).painted;
-        continue;
+      const roleColour = palette[role] || palette.unknown;
+      // 🔴 같은 역할 안에서 «수»로 한 번 더 나눕니다. 1과 13이 같은 픽셀이면 수를 잃습니다.
+      const byWeight = new Map();
+      for (const cell of group) {
+        const shade = weightShade(cell.n);
+        let bucket = byWeight.get(shade);
+        if (!bucket) { bucket = []; byWeight.set(shade, bucket); }
+        bucket.push(cell);
       }
-      // Same hue, less presence: the role still reads, it just stops competing.
-      const lit = group.filter((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);
-      const dim = group.filter((c) => this.signOf(c.nodeId) === SIGN.ABSENT);
-      if (dim.length) {
-        painted += paintSeating(surface, { seats: dim, seatCount: dim.length },
-          layout, `${colour}${DIM_ALPHA}`).painted;
-      }
-      if (lit.length) {
-        painted += paintSeating(surface, { seats: lit, seatCount: lit.length },
-          layout, colour).painted;
+      for (const [shade, bucket] of byWeight) {
+        painted += this._paintGroup(surface, layout, bucket,
+          shaded(roleColour, shade), attenuating);
       }
     }
 
@@ -722,6 +811,50 @@ export class MapPanel extends Panel {
    * Mark what is under the point. Plain = CASE, with `control` = CONTROL. `mode` is the
    * selection model (`Panel.mark`): a plain click REPLACES, ctrl/cmd ADDS.
    */
+  /**
+   * 한 무리를 칠합니다. 마킹이 걸려 있으면 «나머지를 흐리게» -- 색조는 그대로이고 존재감만
+   * 줄입니다 (스팟파이어의 마킹 표현). 아무것도 안 걸렸으면 아무것도 안 흐려집니다:
+   * 「아직 안 골랐다」가 「전부 아니다」처럼 보이면 안 됩니다.
+   */
+  _paintGroup(surface, layout, group, colour, attenuating) {
+    if (!group.length) return 0;
+    if (!attenuating) {
+      return paintSeating(surface, { seats: group, seatCount: group.length },
+        layout, colour).painted;
+    }
+    const lit = group.filter((c) => this.signOf(c.nodeId) !== SIGN.ABSENT);
+    const dim = group.filter((c) => this.signOf(c.nodeId) === SIGN.ABSENT);
+    let painted = 0;
+    if (dim.length) {
+      painted += paintSeating(surface, { seats: dim, seatCount: dim.length },
+        layout, `${colour}${DIM_ALPHA}`).painted;
+    }
+    if (lit.length) {
+      painted += paintSeating(surface, { seats: lit, seatCount: lit.length },
+        layout, colour).painted;
+    }
+    return painted;
+  }
+
+  /** 그리는 방식은 space 값의 «앞부분»이 정합니다 -- die:base·die:core·die:dt 는 다 칸입니다. */
+  _space() {
+    return SPACES[String(this.space).split(':')[0]] || SPACES.die;
+  }
+
+  /**
+   * 🔴 이 인스턴스가 «설 자리»인가. 소스가 자기 좌표계 목록에 내 space 를 안 넣었으면 서지
+   *    않습니다 -- 빈 맵을 띄우는 것은 「데이터가 없다」로 읽히고, 실제로는 「이 소스는 원래
+   *    그 좌표계가 없다」이기 때문입니다.
+   */
+  stands() {
+    return !this.sourceSpaces || this.sourceSpaces.includes(this.space);
+  }
+
+  /** 프레임 선언대로 앉힌 칸들. 좌표계 선언 `die` 가 쓰는 것입니다. */
+  _seated(model) {
+    return seatedProjection(model.frame, model.cells);
+  }
+
   clickAt(cssX, cssY, control, mode) {
     const cell = this.hitCell(cssX, cssY);
     if (!cell) return null;
