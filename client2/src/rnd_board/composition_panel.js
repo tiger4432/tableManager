@@ -165,7 +165,7 @@ export class CompositionPanel extends Panel {
       reads: this.reads,
       writes: this.writes,
       rowKey: 'nodeId',
-      emptyText: '응답에 구성 행이 없습니다',
+      emptyText: '이 웨이퍼는 구성 기록이 없습니다 — 구성은 본딩된 «칩»에만 있습니다',
       columns: [
         { key: 'layer', label: '층', width: '4rem', kind: 'mono' },
         { key: 'wafer', label: '코어 웨이퍼', width: 'minmax(11rem, 16rem)', kind: 'mono' },

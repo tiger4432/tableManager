@@ -101,20 +101,22 @@ export const BOARD = Object.freeze({
     {
       id: 'head-summary',
       part: 'headSummary',
-      title: '머리 요약 · SYN-CX-CHIP-001',
+      title: '머리 요약 · SYN-BW-103-11',
       at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
       // walk ④ — 「이 주어가 무엇으로 만들어졌나」. groupby 는 값이지 축이 아닙니다.
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
       collect: 'wafer_process',
       options: {
-        finalChipId: 'SYN-CX-CHIP-001',
+        finalChipId: 'SYN-BW-103-11',
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
         //    가져오되 주어를 바꾸지 않습니다 -- 구성·후보·순위가 그 칩의 층에서 나오기 때문에
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
         waferQuestion: { row: 'SYN-BW-103-11', by: 'wafer' },
         waferKinds: ['void', 'delam'],
+        // 목업이 머리에 다는 「마킹 1 · N행」 · 「마킹 2 · N행」. 이름은 여기서만 압니다.
+        markingRows: ['marking:1', 'marking:2'],
         subjectReads: 'subject:wafer',
       },
     },
@@ -266,13 +268,13 @@ export const BOARD = Object.freeze({
     {
       id: 'composition',
       part: 'composition',
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
       collect: 'wafer_process',
-      title: '구성 · SYN-CX-CHIP-001',
+      title: '구성 · SYN-BW-103-11',
       at: { column: 1, row: 5, columnSpan: 3 },
       reads: 'marking:1',
       writes: 'marking:1',
-      options: { finalChipId: 'SYN-CX-CHIP-001' },
+      options: { finalChipId: 'SYN-BW-103-11' },
     },
     {
       id: 'map-bond-a',
@@ -290,7 +292,7 @@ export const BOARD = Object.freeze({
           { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
           { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
         ],
-        basisChipId: 'SYN-CX-CHIP-001',
+        basisChipId: 'SYN-BW-103-11',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
@@ -308,9 +310,9 @@ export const BOARD = Object.freeze({
       at: { column: 4, row: 5 },
       reads: 'marking:1',
       writes: null,
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
       collect: 'wafer_process',
-      options: { finalChipId: 'SYN-CX-CHIP-001' },
+      options: { finalChipId: 'SYN-BW-103-11' },
     },
     {
       // 🔴 목업의 둘째 맵은 «코어 맵»입니다 (마킹 2 · 후보가 걸린 점). 우리는 본딩 맵을 한 장
@@ -330,7 +332,7 @@ export const BOARD = Object.freeze({
           { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
           { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
         ],
-        basisChipId: 'SYN-CX-CHIP-001',
+        basisChipId: 'SYN-BW-103-11',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로

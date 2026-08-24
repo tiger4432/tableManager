@@ -41,6 +41,10 @@ export class HeadSummaryPanel extends Panel {
     // 목업 ① 의 웨이퍼 줄. Per-kind, because the route answers one kind at a time.
     this.waferKinds = Array.isArray(options.waferKinds) ? options.waferKinds.slice() : [];
     this.loadWaferFacts = options.loadWaferFacts || null;
+    // 🔴 목업이 머리에 다는 「마킹 1 · 34행」 · 「마킹 2 · 1행」. 이름은 «선언»입니다 -- 이 부품은
+    //    1 과 2 가 무엇인지 모르고, 화면이 세 번째를 더해도 여기는 안 바뀝니다.
+    this.markingRows = Array.isArray(options.markingRows) ? options.markingRows.slice() : [];
+    this._rowOffs = [];
     this.waferFacts = Object.create(null);
     // 🔴 THE WAFER LINE FOLLOWS THE MARKING. 「마킹 -> 머리요약」 (owner): picking a point in the
     //    trend moves the maps, and this band has to move with them or it describes a wafer
@@ -54,6 +58,9 @@ export class HeadSummaryPanel extends Panel {
 
   mount() {
     super.mount();
+    for (const name of this.markingRows) {
+      if (this.markings) this._rowOffs.push(this.markings.subscribe(name, () => this.render()));
+    }
     if (this.finalChipId) this.load();
     if (this.subjectReads && this.markings) {
       this._subjectOff = this.markings.subscribe(this.subjectReads, () => this._onSubject());
@@ -111,12 +118,20 @@ export class HeadSummaryPanel extends Panel {
     // The kinds still in flight are named, so a missing one reads as 「아직」 rather than 「없음」.
     const pending = this.waferKinds.filter((k) => !this.waferFacts[k]);
     if (pending.length) put(`${pending.join(' · ')} 읽는 중…`, 'rb-head-wafer-pending');
+    // 🔴 목업이 머리에 다는 마킹 행수. 이 수는 «맵의 수와 다른 것»입니다 -- 맵은 그 그림에
+    //    그려진 칸을, 이건 «지금 찍혀 있는 행»을 셉니다. 그래서 같은 줄에 나란히 둡니다.
+    for (const name of this.markingRows) {
+      const n = this.markings ? this.markings.count(name) : 0;
+      put(`${name} · ${n}행`, n > 0 ? 'rb-head-wafer-mark is-live' : 'rb-head-wafer-mark');
+    }
     return el;
   }
 
   destroy() {
     if (this._subjectOff) this._subjectOff();
     this._subjectOff = null;
+    for (const off of this._rowOffs) off();
+    this._rowOffs = [];
     super.destroy();
   }
 

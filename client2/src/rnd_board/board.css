@@ -571,3 +571,6 @@ body {
 .rb-layer-sep { color: var(--text-muted); font-size: 10px; }
 .rb-layer-claims { display: flex; min-height: 0; padding: 0 4px; }
 .rb-layer-claims .rb-table { flex: 1 1 auto; min-height: 0; }
+/* 머리의 마킹 행수 — 맵의 수와 «다른 수»라 서체를 나눕니다. */
+.rb-head-wafer-mark { font-family: var(--font-mono); color: var(--text-muted); }
+.rb-head-wafer-mark.is-live { color: var(--accent); }
