@@ -677,6 +677,36 @@ async function suite(mods) {
     p1.destroy();
     if (p2.model) store2.set('y', p2.model.cells[0].nodeId, SIGN.CASE);
     eq('F5 destroying one instance does not deafen the other', p2.lastPaint.marks, 1);
+
+    // 🔴 확대는 «모드»가 아니라 좌표계 선언의 다른 «값»입니다 (소유자 2026-08-24). 같은 부품,
+    //    같은 답, 선언 하나만 다릅니다 -- 부품 안에 `if (zoom)` 이 생기면 조립식이 안쪽에서
+    //    무너집니다. 오늘 라우트는 point 에 inchip 좌표를 «안 싣습니다», 그래서 이 인스턴스는
+    //    「없음」을 그리는 것이 정상이고, 싣는 날 «선언도 코드도» 안 바뀌고 켜져야 합니다.
+    const zoomHost = doc2.createElement('div');
+    const zoom = new MapPanel(zoomHost, { doc: doc2, markings: store2, reads: 'z', writes: 'z',
+      axis: 'bond', space: 'inchip', extent: { x: 20000, y: 20000 },
+      load: () => Promise.resolve(FIX_07) });
+    zoom.mount();
+    await flush(); await flush();
+    zoom.resize(240, 180);
+    eq('F6 an inchip instance draws nothing while the route ships no inchip coordinate',
+      zoom.lastPaint.cells, 0);
+    eq('F7 ... and the die instance beside it is untouched by that declaration',
+      p2.lastPaint.cells, 141);
+
+    // 재료가 실리는 날. 같은 선언, 같은 코드, 이번엔 그림이 나옵니다.
+    // ⚠️ 오늘 그 재료는 이 부품까지 «못 옵니다» -- `projectionModel` 이 셀을 여섯 필드로
+    //    줄이면서 `points` 를 버립니다. 그 파일은 응용 레인 소관이라 여기서 안 고치고
+    //    보고했습니다. 그래서 단언은 «이 부품이 보증하는 것»에 겁니다: 셀이 점을 물고 있으면
+    //    inchip 선언이 그것을 그린다.
+    zoom.model.cells[0].points = [
+      { inchip_x: 14041.75, inchip_y: 9879.75, node_id: 'ledger-entity:v1:a-point', state: 'found' },
+      { inchip_x: 5000, inchip_y: 12000, node_id: 'ledger-entity:v1:another-point', state: 'found' },
+    ];
+    zoom.render();
+    eq('F8 the same declaration draws the points the day a cell carries them',
+      zoom.lastPaint.cells, 2);
+    zoom.destroy();
   }
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
@@ -727,6 +757,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 좌표계가 선언이 아니라 부품 안의 고정값이 되면, 확대는 「부품을 고쳐야 서는 것」이 됩니다.
+  { id: 'M01', what: 'the coordinate space is hardcoded to die instead of read from the declaration',
+    catches: 'F8',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '    const space = SPACES[this.space] || SPACES.die;',
+      '    const space = SPACES.die;') } },
   // 🔴 A STAMPED ID IS NOT A NODE. Dropping the gate still "works" on screen -- the die lights
   //    up -- and the walk it starts is the thing that fails, three panels away.
   { id: 'M00', what: 'a stamped (server-less) node id is allowed into the marking',

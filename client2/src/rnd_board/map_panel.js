@@ -206,6 +206,48 @@ function unionBounds(a, b) {
   };
 }
 
+/**
+ * 🔴 확대는 «모드»가 아니라 좌표계 «선언의 다른 값»입니다 (소유자 2026-08-24).
+ *    `if (zoomed)` 를 부품 안에 두면 조립식이 안쪽에서 무너집니다 -- 표 부품을 컬럼 선언으로
+ *    만든 것과 «같은 일»을 좌표계에 합니다. 공간이 셋째로 늘어도 코드가 아니라 이 표가 늡니다.
+ *
+ *      die     한 «칸» = 다이 하나.  단위 cells_from_origin.  프레임 격자에 앉힙니다
+ *      inchip  한 «점» = 관측 하나.  단위 um.  칩 한 변(extent) 안의 실제 위치입니다
+ *
+ * ⚠️ 오늘 `inchip` 은 «재료가 없습니다» — 라우트가 point 에 inchip 좌표를 아직 안 싣습니다.
+ *    그래서 inchip 인스턴스는 「없음」을 그립니다. 그게 «정상»이고, 서버가 싣는 날 이 표도
+ *    부품도 안 바뀝니다.
+ */
+const SPACES = {
+  die: {
+    unit: 'cells_from_origin',
+    // 🔴 이 좌표계에는 «자리»가 있습니다 -- 선언된 칸 중 아무도 안 채운 자리를 테두리로 그립니다.
+    lattice: true,
+    // 프레임 선언대로 0도 정규 좌표에 앉힌 «칸»들.
+    items: (model, panel) => panel._seated(model).cells,
+    bounds: (model, panel) => panel._seated(model).bounds,
+  },
+  inchip: {
+    unit: 'um',
+    // 🔴 연속 평면에는 «빈 자리»가 없습니다. 20,000um 를 1um 씩 도는 격자는 자리가 아니라
+    //    4억 번의 반복입니다 (실제로 힙을 터뜨렸습니다). 없는 개념은 선언에서 «없다»고 말합니다.
+    lattice: false,
+    // 칸이 무는 관측들. die 하나가 point 를 여럿 뭅니다 (실측 평균 2.06 · 최대 13).
+    items: (model) => (model.cells || []).reduce((out, cell) => {
+      for (const p of cell.points || []) {
+        if (!p || typeof p.inchip_x !== 'number' || typeof p.inchip_y !== 'number') continue;
+        out.push({ ...p, x: p.inchip_x, y: p.inchip_y, nodeId: p.node_id || null,
+          nodeIdResolved: Boolean(p.node_id), colorRole: p.color_role || p.state || null });
+      }
+      return out;
+    }, []),
+    // 칩 한 변의 «물리» 크기. 선언 안 하면 그릴 판이 없으므로 그리지 않습니다.
+    bounds: (model, panel) => (panel.extent
+      ? { minX: 0, maxX: panel.extent.x, minY: 0, maxY: panel.extent.y, empty: false }
+      : null),
+  },
+};
+
 export class MapPanel extends Panel {
   /**
    * @param {object} host  this panel's own element, from the shell.
@@ -220,6 +262,11 @@ export class MapPanel extends Panel {
     // 🔴 THE BASIS IS THIS INSTANCE'S STATE, NOT THE SCREEN'S. Map A can stand on bond while
     //    map B stands on dt; the declaration gives the starting one and the pills move it.
     this.axis = options.axis;
+    // 🔴 좌표계 «값». 확대는 여기 값 하나입니다 -- 부품에 모드가 없습니다.
+    this.space = options.space || 'die';
+    this.unit = options.unit || (SPACES[this.space] && SPACES[this.space].unit) || null;
+    // 칩 확대일 때 칩 한 변의 물리 크기 { x, y }. die 좌표계에서는 안 씁니다.
+    this.extent = options.extent || null;
     this.bases = Array.isArray(options.bases) ? options.bases.slice() : [];
     // 🔴 THE PAGE IS THIS INSTANCE'S STATE TOO. Map A on 3/25 and map B on 7/25 must not know
     //    about each other, and a marking survives paging because a marking is a set of node
@@ -598,11 +645,11 @@ export class MapPanel extends Panel {
     if (!canvas.getContext) return;   // a document stub with no 2D context: chrome only
     const surface = createCanvasSurface(canvas.getContext('2d'));
 
-    // 🔴 SEATED FIRST, THEN EVERYTHING. The draw, the vacant lattice, the mark rings and the
-    //    click index below all read `cells`, so seating once here is what keeps them agreeing.
-    const seated = seatedProjection(model.frame, model.cells);
-    const cells = seated.cells;
-    const declared = seated.bounds || declaredBounds(model.frame);
+    // 🔴 좌표계 선언이 «무엇을 그릴지»와 «어느 판에 그릴지»를 답합니다. 축 이름도, 확대
+    //    여부도 여기서 묻지 않습니다 -- 선언을 찾아 쓸 뿐입니다.
+    const space = SPACES[this.space] || SPACES.die;
+    const cells = space.items(model, this) || [];
+    const declared = space.bounds(model, this);
     const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
     const layout = layoutFor(bounds, { width: canvas.width, height: canvas.height, padding: 0 });
     surface.clear(canvas.width, canvas.height);
@@ -615,7 +662,7 @@ export class MapPanel extends Panel {
     // place, and it is visibly not a measurement. Outside the declared lattice nothing is
     // drawn, which is the other sentence -- there is no seat there to be empty.
     let vacant = 0;
-    if (declared) {
+    if (declared && space.lattice) {
       const present = superposed ? new Set() : new Set(cells.map((c) => `${c.x},${c.y}`));
       const seats = [];
       for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
@@ -722,6 +769,11 @@ export class MapPanel extends Panel {
    * Mark what is under the point. Plain = CASE, with `control` = CONTROL. `mode` is the
    * selection model (`Panel.mark`): a plain click REPLACES, ctrl/cmd ADDS.
    */
+  /** 프레임 선언대로 앉힌 칸들. 좌표계 선언 `die` 가 쓰는 것입니다. */
+  _seated(model) {
+    return seatedProjection(model.frame, model.cells);
+  }
+
   clickAt(cssX, cssY, control, mode) {
     const cell = this.hitCell(cssX, cssY);
     if (!cell) return null;
