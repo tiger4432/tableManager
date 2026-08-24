@@ -249,6 +249,13 @@ async function suite(mods) {
     ok('C6 ... including absence_is_zero', legend.textContent.includes('absence_is_zero false'));
     // 🔴 목업의 「접는 단위」 줄 — 선언에 있는 것을 그대로 말합니다. 이게 없으면 «접힌» 차트가
     //    안 접힌 차트처럼 읽힙니다 (점 하나가 웨이퍼 하나인지 웨이퍼×레그인지 모릅니다).
+    // 🔴 소유자 요청: 점 하나가 «몇 칩 중 몇 칩»인지 호버로. 비율만 있으면 「맵은 50%인데
+    //    트렌드는 0%」 같은 어긋남을 못 봅니다 -- 오늘 실제로 못 봤습니다.
+    const dot0 = byClass(host, 'rb-trend-dot')[0];
+    ok('C8 a trend point annotates the counts its ratio was made of',
+      Boolean(dot0) && /검사한 칩 \d+/.test(dot0.getAttribute('title') || '')
+      && /보이드 난 칩/.test(dot0.getAttribute('title') || ''),
+      String(dot0 && dot0.getAttribute('title')));
     ok('C7 the chart says what it folds a point out of',
       /접는 단위 WaferLeg/.test(legend.textContent), legend.textContent.slice(0, 90));
   }
@@ -298,6 +305,10 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { id: 'M12', what: 'a trend point shows only its ratio, hiding the two counts it was made of',
+    catches: 'C8',
+    mutate: { 'main_trend_panel.js': (s) => s.replace(
+      "        + ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`", "        + ''") } },
   { id: 'M11', what: 'a peer count is shown without saying which relation it came from',
     catches: 'A7',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
