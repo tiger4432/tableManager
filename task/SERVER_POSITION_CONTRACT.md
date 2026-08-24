@@ -354,3 +354,38 @@ T  placements 키가 «없는» 응답에서도 맵이 «그려진다» (옛 경
 U  placements: [] 인 점만 «맵 밖»으로 세어진다 — 전부가 아니라
 V  🔴 그리는 시험이 «픽셀»을 단언한다 — 「요소가 있다」로는 이 사고가 안 잡혔습니다
 ```
+
+---
+
+# 19. 🔴 점이 «어디에 실려» 오는지를 안 적었습니다 — 경계 대조로 드러났습니다
+
+> 총괄 지시 「응용 1 — placements 를 «경계가 그대로 옮기는» 준비. 지금 코드가 그 모양인지 대조」
+
+**대조했습니다. 두 홉이 비어 있고, 그중 하나는 «제 계약이 말을 안 한» 것입니다.**
+
+```
+서버 lot_map 셀     { x, y, n, state }                          -> points «0 / 141»
+api.js 셀 모델      { x, y, n, colorRole, nodeId, nodeIdResolved } -> points 를 «안 옮깁니다»
+클라가 읽는 것       cell.points[] . placements[] · point.node_id · placement.extent
+                    (`map_panel.js` items · placeState — 세 갈래를 «정확히» 구현했습니다)
+```
+
+## 빠진 것 — «운반 형태»
+§7·§10 은 「finding point 가 placements 를 들고 나올 것」이라고만 적었고
+**그 point 가 «무엇에 실려» 오는지**를 안 적었습니다. 클라는 «셀 안»을 골랐습니다.
+
+```
+계약에 박습니다   맵 응답의 셀은 자기 칸에 앉은 point 를 «안에» 싣는다:
+                 cell: { x, y, n, state, points: [ { node_id, placements: [ {space,x,y,extent?} ] } ] }
+근거             부품이 그렇게 읽고 있고(`cell.points || []`), 그 모양이 §8⑥(겹침)과 «같은 답»입니다
+                 — 한 칸에 point 가 여럿이면 n 과 points.length 가 «같아야» 합니다
+```
+🔴 **`n` 과 `points.length` 가 어긋나면 그것이 결함입니다** — 지금은 `n` 만 오고 points 가 없어
+   그 대조가 «불가능»합니다. 실리는 순간 이 단언이 섭니다.
+
+## 수락 단언 — §19
+```
+W  셀이 자기 point 를 «안에» 싣는다
+X  한 셀에서  n === points.length
+Y  points 가 없는 응답에서 부품이 'awaiting' 으로 «갈린다» (이미 구현돼 있습니다)
+```
