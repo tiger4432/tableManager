@@ -6,6 +6,71 @@
 
 ---
 
+# 🔴🔴 **살아 있는 라우트가 «둘» 죽어 있습니다** — `/siblings` 도입니다. 또래 패널이 다시 빕니다 (15:1x)
+
+훑기를 끝내다 «둘째»를 찾았습니다. ⓒ 판정의 급을 바꿉니다.
+
+## /siblings — 응답이 «원인을 그대로» 말합니다
+```
+지금        state «empty» · reason «no_atoms_for_subjects»
+            message 「이 주어들에 붙은 원자 0건 — 걸을 것이 없음」
+            axes «0» · candidates «0» · fields «0»
+오늘 낮      axes 10 · candidates 20 · fields 49        <- 같은 요청, 같은 scope
+🔴 결정타    응답이 자기 주어를 이렇게 선언합니다:
+            subject: { "type": «"Wafer"», "key":"wafer", "column":"base_wafer_id" }
+            -> 원장 subject_type 은 이제 «wafer». 그래서 원자 0건입니다
+```
+**주소**: `server/config/sample/siblings_axes.json.sample:39-41` 의 `ledger_subject.type = "Wafer"`
+📎 **라이브 `server/config/siblings_axes.json` 은 «없습니다»** — sample 이 실제로 도는 선언입니다.
+   (제 기억에 있는 「grep 이 실제로 도는 config 를 건너뛴다」의 반대 경우라 이름으로 지목합니다)
+
+## 그래서 급이 바뀝니다
+```
+총괄 판정   「A-1 은 보드 화면 경로가 «아닙니다»(그래프 뷰어). 급하지만 화면을 멈추는 급은 아님」
+정정        /siblings 는 «보드 화면 경로입니다» — 또래 알약 넷이 여기서 옵니다
+            오늘 「배선 확인 · 닫힘」으로 정리된 그 패널이 «지금 다시 빕니다»
+```
+🔴 그리고 이건 제가 오늘 아침 낸 「또래 패널이 /siblings 를 안 부른다」와 «다른» 결함입니다.
+   그때는 «안 불러서» 비었고, 지금은 «불러도» 빕니다.
+
+## 훑기 나머지 — 마저 냅니다
+
+### 🔴 인코딩된 옛 id — 붙여 넣으면 «빈 방»이 열립니다 (9곳, 한 파일)
+```
+task/sample_walk_response.json:4·30·34·41·68·72·113·117·124
+   전부  ["Wafer",{"wafer":"SYN-BW-103-11"}]  · 일부는 ["Wafer",{…},"void","sat",null]
+-> 이 파일은 «샘플 응답»이라 다음 사람이 그대로 씁니다. 눈으로는 base64 라 «안 보입니다»
+```
+
+### CONFIG (2곳, 실제로 도는 선언)
+```
+server/config/sample/siblings_axes.json.sample:41   "type": "Wafer"   <- 위의 그 자리
+```
+
+### 문서 60곳 — «고칠 것과 아닌 것»을 갈랐습니다
+```
+🔴 실행되는 예제 (붙여 넣으면 틀립니다)
+   docs/spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md:86   "subject_ref": {"type":"Wafer", …}
+   docs/spec/UNIVERSAL_MARKING_SCHEMA.md:44          "type": "WaferLeg"
+   docs/spec/RND_SURPRISE_INVESTIGATION_ALGORITHM.md:30
+   docs/spec/TREND_DECLARATION_GUIDE.md:73           "subject_type": "WaferLeg"
+   docs/guide/ledger/PRIMER.md:79                    "subject_type": "Lot"
+   docs/architecture/MI_LEDGER_SCHEMA_PROPOSAL.md:78 "subject_types": ["Wafer","Lot"]
+📄 산문·이력 (고칠 필요 «없음»)
+   docs/process/LEDGER_RULINGS.md · DOC_OWNERSHIP.md · spec/LEDGER_TECHNICAL_SPEC.md 의 서술
+   docs/_archive/** · task/** 의 «과거 실측 인용» — 그때 대문자였던 것이 사실입니다
+   -> ⛔ 이걸 고치면 «그때의 기록»이 거짓이 됩니다. 손대지 마십시오
+```
+
+## 제가 «안 한» 것
+```
+· 아무것도 안 고쳤습니다
+· 라우트 14개 중 «불러서» 확인한 것은 entities · siblings · structure · kinds 넷입니다.
+  나머지 열은 «형태로만» 분류했습니다 — trends·composition·lot_map 은 오늘 여러 번 돌았으니
+  살아 있는 것이 확인됐고, trace·journey·lots·coverage·explore·subgraph/table 은 «안 불렀습니다»
+```
+---
+
 # 📋 대문자 타입 «전수 훑기» 완료 — 부류로 갈랐습니다 (14:4x)
 
 ⚠️ **먼저 정정 받습니다.** 「걷기가 전부 죽었다」는 «지난 상태»가 맞습니다 — 클라가 `589148d1` 로
