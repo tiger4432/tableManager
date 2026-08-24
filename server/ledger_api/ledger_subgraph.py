@@ -1217,8 +1217,22 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: ⚠️ THIS DOES NOT MAKE THEM UNBOUNDED. `claim_limit` already caps how many are scanned
     #: and raises `claim_cut` on its own, so the ceiling moves from "shares one budget with
     #: the answer" to "has its own", which is what it was for.
+    #: 🔴 `event` JOINED `claim` HERE ON 2026-08-25, BECAUSE IT INHERITED THE SAME SEAT.
+    #: Unbudgeting claims alone freed nothing: the Source Event took the vacancy one for one --
+    #: 836 of the 1,000 remaining slots -- and the recipe still never arrived. Both are the
+    #: same class: provenance for a claim, not an answer to the question. Cutting one and
+    #: keeping the other is removing one of two connectors.
+    #:
+    #: Event consumers measured before changing: ZERO. No client part filters on
+    #: `node_kind === 'event'`, nothing reads `source_event_state` or `source_event_id`, the
+    #: viewer that drew them was deleted with the legacy screens, and no evidence trail crosses
+    #: one (measured 2026-08-24 across point, value, quantity and entity). They are leaves.
+    #: They stay emitted anyway, matching the treatment claims got -- the ruling is per class,
+    #: and dropping emission is a separate decision from dropping the budget.
+    _UNBUDGETED_KINDS = frozenset({"claim", "event"})
+
     def _spends_budget(node):
-        return node.get("node_kind") != "claim"
+        return node.get("node_kind") not in _UNBUDGETED_KINDS
 
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted

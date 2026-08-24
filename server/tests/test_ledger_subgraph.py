@@ -189,7 +189,9 @@ def test_caps_are_reported_instead_of_looking_complete():
     # among them: they are provenance the trails read, capped separately by `claim_limit`.
     # Asserting on len(nodes) again would re-pin the old contract, in which 837 claims could
     # crowd out the 3-to-35 entities a walk exists to find.
-    budgeted = [node for node in body["nodes"] if node["node_kind"] != "claim"]
+    # provenance kinds ride free; everything the caller asked for shares node_limit
+    unbudgeted = {"claim", "event"}
+    budgeted = [node for node in body["nodes"] if node["node_kind"] not in unbudgeted]
     assert len(budgeted) == 10
     assert any(node["node_kind"] == "claim" for node in body["nodes"]), (
         "claims must still be emitted -- evidence.hops is built by reading them")
