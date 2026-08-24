@@ -90,15 +90,12 @@ export const BOARD = Object.freeze({
   //       below already overflow the viewport, so auto sinks to its own minimum.
   rows: 'minmax(118px, auto) minmax(44px, auto) 190px 190px 360px 340px',
   gap: '10px',
-  // 🔴 DERIVED MARKINGS ARE DECLARED, NOT CODED. 「후보 map 의 마킹 활성 = 마킹 1 ∩ 마킹 2」
-  //    (owner). A part reads `marking:3` by naming it in `reads`; nothing in a part, and
-  //    nothing in this file, knows what 3 is made of except this line.
-  //    ⚠️ NO PART READS `marking:3` YET -- the candidate map that wants it is not built. It is
-  //    computed and standing so that seating that part is one string, and said out loud here
-  //    rather than reported as finished wiring.
-  intersections: [
-    { sources: ['marking:1', 'marking:2'], target: 'marking:3' },
-  ],
+  // 🔴 마킹은 «둘»입니다 (소유자 도식 · MARKING_CONTRACT §3). 트렌드에서 찍은 것이 마킹 1 이고
+  //    그것이 후보·자재정보·맵 «셋»의 시작점입니다. 후보에서 찍은 것이 마킹 2 입니다.
+  //    `marking:0` 과 `marking:3` 은 «은퇴»했습니다 -- 0 은 1 과 같은 것을 다른 이름으로
+  //    부르고 있었고(그래서 트렌드와 맵이 «안 이어져» 있었습니다), 3 은 읽는 부품이 0개인
+  //    파생이었습니다. 교집합이 필요해지면 읽는 자리에서 계산합니다.
+  intersections: [],
   panels: [
     {
       id: 'head-summary',
@@ -131,10 +128,8 @@ export const BOARD = Object.freeze({
       writes: null,
       options: {
         names: [
-          { name: 'marking:0', label: '씨앗 · 마킹 0' },
-          { name: 'marking:1', label: '맵 · 마킹 1' },
+          { name: 'marking:1', label: '씨앗 · 마킹 1' },
           { name: 'marking:2', label: '후보 · 마킹 2' },
-          { name: 'marking:3', label: '교집합 · 마킹 3' },
         ],
       },
     },
@@ -172,8 +167,9 @@ export const BOARD = Object.freeze({
       part: 'mainTrend',
       title: '메인 트렌드',
       at: { column: 1, row: 3, columnSpan: 3 },
-      reads: 'marking:0',
-      writes: 'marking:0',
+      // 🔴 트렌드에서 찍은 점이 «마킹 1» 입니다. 이 한 줄이 없어서 맵이 트렌드를 «안 따라왔습니다».
+      reads: 'marking:1',
+      writes: 'marking:1',
       // walk ① — start 없음: 「each groupby」, 즉 창 안의 모든 웨이퍼입니다.
       collect: 'trend_y',
       options: {
@@ -225,7 +221,7 @@ export const BOARD = Object.freeze({
           { label: 'Group by', writes: 'axis:group', options: 'group' },
           { label: 'Color by', text: '(None)' },
           { label: 'Shape by', text: '(None)' },
-          { label: 'Marking', reads: 'marking:0' },
+          { label: 'Marking', reads: 'marking:1' },
           { label: 'Data limiting', text: '(None)' },
         ],
       },
