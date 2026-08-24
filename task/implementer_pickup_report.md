@@ -1,3 +1,56 @@
+# 🗺️ 삭제 «지도» — 클라 착지 전에 만들어 뒀습니다. **파일 삭제가 아니라 «수술»입니다** (구현자 23:1x)
+
+지시가 「구현자는 클라 착지 뒤」라 **착수 안 했습니다.** 그 사이 되돌릴 지도를 만들었습니다
+(지시: 「지운 파일 목록이 되돌릴 때의 지도입니다」).
+
+## ✅ 게이트 전제를 «제가» 확인했습니다
+```
+보드(client2/src/rnd_board)가 여섯 라우트를 부르는 자리   «0»
+-> 「보드는 그 여섯을 원래 안 부릅니다」가 참입니다. 14요청이 안 변할 근거입니다
+부르는 곳은 클라 레인이 지울 파일 «여덟»뿐:
+   ledger_trace.js · ledger_trace_core.js · journey_view.js · journey_core.js
+   · surprise_core.js · case_control_core.js · ledger_graph/main.js · ledger_graph/entity_catalog.js
+```
+
+## 🔴 그런데 서버는 «파일을 지우는 일이 아닙니다»
+```
+ledger_trace_router.py 안의 라우트 «15개» 중 지울 것이 «6»입니다
+지울 것   /trace(70) · /explore(128) · /entities(156) · /journey(472) · /lots(689) · /coverage(759)
+🔴 남을 것 «9»  /subgraph · /subgraph/table · /siblings · /trends · /composition
+                · /selection/resolve · /kinds · /structure · /lot_map
+```
+**파일을 지우면 보드가 쓰는 것 전부가 같이 갑니다.** 함수 여섯을 «도려내는» 작업입니다.
+
+## 🔴🔴 그리고 «지우면 안 되는» 모듈 — 이름이 오해를 부릅니다
+```
+ledger_lots.py    이름이 「lots」라 «/lots 의 모듈»로 보입니다. 아닙니다:
+                     /structure «사용»   /lots 사용   🔴 «/lot_map» 사용
+                  -> /lot_map 은 지시서가 «이번이 아니다»라고 명시한 그 라우트입니다
+                  -> 지우면 보드의 맵이 죽습니다. «남깁니다»
+                  (+ 시더 둘도 import: seed_syn_complex_composite · seed_syn_lot_excursion)
+ledger_structure.py  /structure(생존) 과 ledger_journey 가 씁니다        «남깁니다»
+ledger_explorer.py   ledger_subgraph · ledger_catalog · ledger_identity   «남깁니다»
+ledger_trace.py      11개 모듈이 import (subgraph·trends·composition…)   «남깁니다»
+```
+```
+✅ «단독»인 것 하나만 지울 수 있습니다
+   ledger_journey.py   -> import 하는 곳이 ledger_trace_router.py «하나»뿐
+```
+
+## 그래서 제 라운드는 이렇게 됩니다
+```
+1  ledger_trace_router.py 에서 라우트 함수 «여섯» 제거 (남는 9개 무손상)
+2  ledger_journey.py 삭제 (단독 소비자)
+3  그 여섯을 재는 테스트·문서 참조 정리
+❌ 안 지움   ledger_lots · ledger_structure · ledger_explorer · ledger_trace
+```
+⚠️ 지시서의 「죽은 모듈 셋」은 «클라» 쪽 이야기입니다. 서버에서 단독인 것은 «하나»뿐입니다.
+
+## 상태
+```
+클라   아직 «안 지웠습니다» (화면 둘·모듈 여덟 그대로 · 삭제 커밋 없음)
+저     대기. 착지하면 위 1~3 을 돌리고 게이트(14요청·빌드·기동·다섯 라우트 200) 확인합니다
+```
 # ⚠️ ② transfer «착지». 수·분류 통과 — 그런데 **「여정」은 안 됩니다. 두 소스가 «다른 DT 세계»입니다** (구현자 22:4x)
 
 ## 통과한 것
