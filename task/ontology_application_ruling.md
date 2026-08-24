@@ -4,6 +4,94 @@
 > 채널: 파일·커밋. 세션 간 메시지는 쓰지 않는다.
 
 ---
+# 🔴🔴🔴 소유자 — 「보이드만이 아니다. DT·core 계측 디펙도 «전부». MI 는 맵은 못 해도 «트렌드는 같아야»」
+
+> 소유자: 「지금 보이드만 하고 있는데 «dt상 계측된 디펙, core상 계측된 디펙» 등도 다 포함인 거 알지?
+>  그리고 «mi 계측값»도 맵은 안 되지만(측정 좌표가 «코드»로 뜨고 그 코드랑 맵핑해야 하는데
+>  그걸 모름) «트렌드 레벨에서는 같은 동작» 되어야 하고」
+
+**맞습니다. 보이드는 «배관을 뚫는 첫 소스»이지 대상이 아닙니다.**
+보이드 전용 코드가 한 줄이라도 생기면 그 라운드는 실패입니다.
+
+---
+
+## 1. 실측 — 소스 전수. 그리고 «좌표계가 셋»입니다
+
+```
+소스                 행수      die 좌표계        inchip    비고
+void_obs          103,729   base(웨이퍼)        ✅        radius_x/y · stack_gate
+delam_obs          11,561   base(웨이퍼)        ✅        extent_x/y · interface(2종)
+core_defect_map     5,807   core(lot+slot)      ❌        val
+eds_fail_map        2,576   core(lot+slot)      ❌        val · metro_eqp
+dt_map              5,747   dt «와» core «둘 다» ❌        value · dt_job+dt_x/y + core_wafer+core_x/y
+inspection_run    117,662   base(웨이퍼)        ❌        «분모». method · eqp_id · recipe_id · observed_at
+metro                  «0»  «없음»              ❌        item_id · subitem_id ← 소유자가 말한 «코드»
+defect · void · test    0   (빈 표)
+valid_die_ref       5,378   product+x/y                   「그 자리가 칩인가」
+```
+🔴 **셋을 놓치면 안 됩니다:**
+```
+① inchip 을 가진 건 «둘»뿐 (void · delam). core·eds·dt 는 die 격자«만»
+   -> 확대/composite 뷰는 그 둘에서만 섭니다. «나머지는 없는 게 정상»입니다
+② dt_map 은 좌표계를 «둘» 가집니다 (dt 격자 + core 격자)
+   -> 한 소스가 두 맵에 얹힙니다. 「소스 하나 = 맵 하나」로 설계하면 여기서 깨집니다
+③ metro 는 좌표 컬럼이 «아예 없습니다». item_id/subitem_id 가 그 「코드」입니다
+   그리고 «0행»입니다 -> 선언은 쓸 수 있어도 «오늘 검증할 데이터가 없습니다»
+```
+
+---
+
+## 2. 🔴 판정 — 「맵 가능」은 «선언»이고, 「트렌드 가능」과 «따로»입니다
+
+```
+소스가 선언하는 것    spaces: [ ... ]      자기가 설 수 있는 좌표계 «목록»
+  void_obs            ["die:base", "inchip"]
+  delam_obs           ["die:base", "inchip"]
+  core_defect_map     ["die:core"]
+  eds_fail_map        ["die:core"]
+  dt_map              ["die:dt", "die:core"]        <- 둘
+  metro               []                            <- 🔴 «빈 목록». 이것이 정답입니다
+```
+```
+맵 부품    spaces 에 자기 space 가 «없는» 소스는 «세우지 않습니다»
+           -> 거절이 아니라 «해당 없음». 화면에 빈 맵을 띄우지 마십시오
+트렌드     spaces 를 «보지 않습니다». 좌표가 0인 소스도 «똑같이» 트렌드가 됩니다
+           🔴 이것이 소유자 지시의 핵심입니다 — 「맵은 안 되지만 트렌드는 같은 동작」
+```
+🔴 **`spaces: []` 를 「결함」으로 읽지 마십시오.** MI 는 원래 자리가 없는 계측입니다.
+   「좌표가 없다」와 「좌표가 있어야 하는데 빈다」는 «다른 것»이고, 선언이 그 둘을 가릅니다.
+
+---
+
+## 3. 그래서 각 레인이 지금 바꿀 것
+
+```
+클라     맵 부품 명세(77603751)에 «space 목록» 축을 더하십시오.
+         부품은 자기 space 를 선언에서 받고, 소스가 그 space 를 «안 가지면» 인스턴스가 «안 섭니다»
+         🔴 `if (kind === 'void')` 류 «전면 금지». finding_kind 로 분기하는 코드가 있으면 지금 뽑으십시오
+응용     좌표 계약을 «소스 여섯»으로 넓히십시오. 지금 void 하나로 쓰여 있습니다.
+         특히 dt_map 의 «두 좌표계»를 계약이 표현할 수 있는지 보십시오 — 못 하면 그게 계약의 구멍입니다
+구현자    선언이 늘어납니다. 지금 die_inspection 하나 세우는 것이 «여섯의 형판»입니다.
+         그것부터 끝내십시오 — 형판이 안 서면 여섯이 다 막힙니다
+총괄     선언 여섯을 씁니다. 순서: inspection_run(분모) -> void_obs -> delam_obs
+         -> core_defect_map -> eds_fail_map -> dt_map.  metro 는 «데이터 0» 이라 맨 뒤
+```
+
+---
+
+## 4. ⚠️ 총괄이 «못 잰» 것 — 추정하지 않고 적습니다
+```
+· core_defect_map / eds_fail_map 의 (lot, slot) 이 웨이퍼 하나로 «해석되는지»
+  -> void_obs 는 base_wafer_id 로 웨이퍼를 직접 말하는데 이 둘은 lot+slot 입니다.
+     같은 다이를 가리키는지 «대조 안 해 봤습니다»
+· dt_map 의 core_x/core_y 가 core_defect_map 의 x/y 와 «같은 격자인지»
+· metro 의 item_id → 좌표 매핑이 «어딘가에 있는지» (소유자: 「그걸 모름」)
+  -> 없으면 없는 대로 트렌드만 하면 됩니다. «찾으라는 지시가 아닙니다»
+```
+🔴 이 셋을 «추정으로 메우지 마십시오». 필요해지는 라운드에 재면 됩니다.
+
+---
+
 # ⚖️ 총괄 판정 — 좌표 계약 «승인». 다만 F 는 «lot_map 이 버려졌으므로» 고쳐 씁니다
 
 `task/SERVER_POSITION_CONTRACT.md` (8d731013) 읽었습니다. **A~E 그대로 승인합니다.**
