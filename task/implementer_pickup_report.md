@@ -1,3 +1,56 @@
+# ✅ 재번역 완주 — ranked «0 -> 9». 🔴 다만 «hops=4 에서»입니다 (구현자 12:4x)
+
+## ① 완주·정합
+```
+원자 103,729  =  뷰 행수 103,729   «일치»
+v1 void_obs   102,947  «무변경» (남의 원자 안 건드림)
+모양          subj=«die» · objkind=«value» · qualifiers gate·unit·inchip_x·inchip_y·radius_y
+```
+
+## ② 오늘의 판정 — 통과입니다. 조건 하나 붙습니다
+```
+SYN-CX-BW-001 · collect=point
+   hops=2   nodes 386  ranked «0»  state=empty   points 0
+   hops=3   nodes 395  ranked «0»  state=empty   points 0
+   hops=4   nodes 404  ranked «9»  state=ranked  points «9»   <- 🔴 여기서 삽니다
+```
+**point 는 «생겼습니다». 다만 웨이퍼 씨앗에서 «두 홉 더» 멀리 있습니다.**
+
+## 🔴 왜 — subject 가 v1 과 «다릅니다»
+```
+v1  void_obs           subj=«wafer»  102,947   -> wafer -> claim -> point      = 2홉
+새  void_observation   subj=«die»    103,729   -> wafer -> die -> claim -> point = 4홉
+```
+제 추천은 「object 만 value 로, **subject 는 wafer 그대로**」였고, 적용된 선언은 `die@1` 입니다.
+그래서 **틀린 건 아니지만 v1 과 «거리»가 다릅니다** — 같은 술어가 씨앗에서 «다른 깊이»에 있습니다.
+```
+🔴 이게 왜 신경 쓰이나   오늘 고친 「한 사실에 모양 둘」의 «순한 판본»입니다.
+                        모양은 이제 같은데(둘 다 value) «거리»가 둘입니다.
+                        hops 를 명시하는 호출자는 웨이퍼마다 «다른 답»을 받습니다
+🟢 지금 안 터지는 이유   화면은 hops 를 «안 보냅니다» -> 기본값 12 -> 둘 다 보입니다
+```
+
+## ③ 판정 부탁드립니다 — 둘 중 하나
+```
+ⓘ 그대로 둔다      die 주어가 「이 다이에서 났다」를 더 정확히 말합니다.
+                   화면은 기본값 12 라 안 터집니다. 대신 «거리 둘»이 남습니다
+ⓙ subject 를 wafer 로  v1 102,947 과 «완전히» 같은 모양·같은 거리가 됩니다
+                   -> 재번역 한 번 더 (제가 합니다. 20분)
+```
+📌 제 기울기는 **ⓙ** 입니다 — 오늘 하루가 「한 사실은 한 모양」에 쓴 날이라서요.
+   다만 die 주어가 «의미상» 더 맞다는 판단이면 ⓘ 도 방어됩니다. 그건 총괄 판정입니다.
+
+## ④ 그래서 픽스처 구멍은 «닫혔습니다»
+```
+SYN-CX-BW-001   void point «9» (hops=4)  +  구성 10층   ->  둘 다 있습니다
+```
+
+## 남은 것
+```
+밀도 9칸 -> 28칸        (뷰가 INNER JOIN — void_obs «와» inspection_run 을 쌍으로)
+타입 목록 선언에서 읽기  (32c59fb6 · 제 소관 · 리터럴 자리 인계 문서에 적어 뒀습니다)
+core·dt step 표
+```
 # 📌 인계 — void 재번역 «도는 중». 그 뒤 순서가 정해져 있습니다 (12:5x)
 
 ## 지금 도는 것
