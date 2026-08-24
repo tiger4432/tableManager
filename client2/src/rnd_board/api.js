@@ -581,6 +581,11 @@ export function trendsModel(result) {
         found: typeof value.found_chip_count === 'number' ? value.found_chip_count : null,
         state: value.state || null,
         markKey: identity.mark_key || null,
+        // 🔴 2단계 (소유자 판정: 「키는 노드 아이디와 노드 타입」). 서버가 이미 둘을 싣고 있고
+        //    (identity.node_id · identity.type), 읽는 쪽이 옮겨 갈 때까지 mark_key 도 함께
+        //    남습니다 -- 읽는 쪽이 먼저 가면 화면이 조용히 빈다는 것이 오늘 아침의 교훈입니다.
+        nodeId: identity.node_id || null,
+        nodeType: identity.type || null,
       });
     }
   }

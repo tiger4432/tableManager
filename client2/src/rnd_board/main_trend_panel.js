@@ -24,6 +24,16 @@ import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
 
+/**
+ * 🔴 이 점이 «어느 노드»인가 — 찍는 키는 한 곳에서 정합니다 (소유자 판정 2026-08-24:
+ *    「키는 노드 아이디와 노드 타입」). 서버가 node_id 를 실으면 그것이고, 아직인 응답에서는
+ *    옛 mark_key 입니다 -- 읽는 쪽이 «먼저» 가면 화면이 조용히 빕니다(오늘 아침 그 부류).
+ *    여섯 자리가 각자 고르면 한 자리만 옮겨도 어긋나므로 «한 함수»가 답합니다.
+ */
+function markIdOf(point) {
+  return (point && (point.nodeId || point.markKey)) || null;
+}
+
 export class MainTrendPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
@@ -139,7 +149,7 @@ export class MainTrendPanel extends Panel {
     const root = doc.createElement('div');
     // 🔴 MY OWN POINTS, NOT THE NAME'S SIZE -- the same rule the map and the lists follow.
     const mineMarked = ((this.model && this.model.points) || [])
-      .some((p) => p.markKey && this.signOf(p.markKey) !== SIGN.ABSENT);
+      .some((p) => markIdOf(p) && this.signOf(markIdOf(p)) !== SIGN.ABSENT);
     root.className = mineMarked ? 'rb-trend is-attenuating' : 'rb-trend';
 
     if (this.title) {
@@ -240,7 +250,7 @@ export class MainTrendPanel extends Panel {
 
     for (const p of points) {
       const dot = doc.createElement('div');
-      const marked = p.markKey ? this.signOf(p.markKey) : SIGN.ABSENT;
+      const marked = markIdOf(p) ? this.signOf(markIdOf(p)) : SIGN.ABSENT;
       const isSubject = Boolean(this.subjectReads && p.wafer && this.markings
         && this.markings.signOf(this.subjectReads, p.wafer) !== SIGN.ABSENT);
       dot.className = 'rb-trend-dot'
@@ -256,7 +266,7 @@ export class MainTrendPanel extends Panel {
       // A flat rate axis is drawn as a flat line, at the floor, not spread to fill the box.
       dot.style.bottom = this.flatRate && maxRate === 0 ? '0%' : `${(p.rate / top) * 100}%`;
       dot.setAttribute('data-wafer', p.wafer || '');
-      if (p.markKey) dot.setAttribute('data-node-id', p.markKey);
+      if (markIdOf(p)) dot.setAttribute('data-node-id', markIdOf(p));
       // The title is the whole point, in the vocabulary the ledger used.
       // 🔴 소유자 요청 (2026-08-24): 「몇 칩 있고 몇 칩 보이드인지 호버하면 어노테이션」.
       //    비율은 «그 둘로 만든 것»이라는 게 보여야 합니다 -- 오늘 「맵은 50%인데 트렌드는 0%」를
@@ -280,10 +290,13 @@ export class MainTrendPanel extends Panel {
         + ` · 비율 ${(p.rate * 100).toFixed(2)}%`
         + (grainWord ? ` · ${grainWord} 기준` : '')
         + (p.state ? ` · ${p.state}` : ''));
-      if (p.markKey) {
+      if (markIdOf(p)) {
         dot.addEventListener('click', (event) => {
           const intent = markingIntent(event);
-          this.mark(p.markKey, intent.sign, intent.mode);
+          // 🔴 이제 «노드»를 찍습니다. 서버가 node_id 를 실으면 그것을, 아직이면 옛 mark_key 를
+          //    씁니다 -- 둘 다 없는 점은 애초에 리스너가 안 붙습니다. 「읽는 쪽이 먼저 가지
+          //    않는다」는 2단계의 규칙 그대로입니다.
+          this.mark(markIdOf(p), intent.sign, intent.mode);
           if (this.writesSubject && this.markings && p.wafer) {
             // Replace, always: the subject of the screen is one thing at a time.
             this.markings.clear(this.writesSubject);
@@ -348,7 +361,7 @@ export class MainTrendPanel extends Panel {
   /** The marked point, if one is marked; otherwise none. The seed is a MARKING, not a field. */
   _seedPoint(points) {
     for (const p of points) {
-      if (p.markKey && this.signOf(p.markKey) === SIGN.CASE) return p;
+      if (markIdOf(p) && this.signOf(markIdOf(p)) === SIGN.CASE) return p;
     }
     return null;
   }
