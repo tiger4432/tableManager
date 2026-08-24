@@ -82,22 +82,53 @@
 > -> 게으른 상수가 아니라 «목업이 실제로 본 것»이었습니다. 제 「리터럴이니 고쳐라」보다 정확
 > ```
 >
-> ### ③-block 🔴 마지막 데이터 한 자리 — void 선언. «판정 대기»
+> ### ③-void ✅ **닫혔습니다** — void 선언 착지 · 재번역 완주 · 여정이 «끝까지» 걸립니다 (12:5x)
 > ```
-> 사실   void_obs 가 v5 선언에 «없습니다». 원장 void 102,922 는 전부 v1 은퇴 산물
->        -> 행을 더 넣어도 «원자가 안 생깁니다». SYN-CX-BW-001 의 9행이 그 상태
-> 🔴 제 앞 판정 취소   「이미 원장에 있으니 선언 불필요」는 «이미 번역된 웨이퍼»에만 참이었음
->                     「이미 있다」와 「앞으로도 생긴다」를 안 갈랐습니다
-> 막힌 자리 (총괄이 파일까지 좁힘)
->        검증기의 relation 스키마 출처 = «server/config/table_config.json» (DB 아님)
->        void_obs.column_types 12개에 «시각 컬럼 0» · inspection_run 엔 observed_at «있음»
-> 선택지  ⓧ table_config 에 created_at 추가  -> 통과하지만 «값이 틀림». 총괄 «반대»
->                                              (시더가 돈 시각이 검사 시각으로 기록됨)
->        ⓨ verified join 등록                -> 값 맞음 (103,729/103,729)
->        ⓩ 조인된 뷰를 소스로               -> 값 맞음 · 기존 항목 무변경
->        -> 비용을 아는 쪽이 구현자라 «추천을 받아» 총괄이 선언을 씁니다
-> 열리면  SYN-CX-BW-001 이 구성 10층 + void 를 «둘 다» 갖고,
->        제품의 중심 여정(void -> 어느 코어 층 -> 그 코어도 났나)이 «처음으로 끝까지» 걸립니다
+> 선언    observed@1 · void_observation.  소스는 «조인된 뷰» (ⓩ) — 기존 항목 무변경
+>         subject «die@1» · object «value» · qualifiers inchip_x·inchip_y·radius_y·unit·gate
+> 재번역  103,729 / 103,729  «완주».  뷰 행수와 «일치».  v1 102,947 «무변경»
+> 판정    SYN-CX-BW-001 · collect=point   ranked «0 -> 9»   ✅ 오늘의 마지막 확인 통과
+>         -> 그 웨이퍼가 «구성 10층 + void 9» 를 둘 다 갖습니다. ③-mockup 의 픽스처 구멍이 닫힘
+> ```
+> 🔴 **조건 하나 — 「두 홉 더 멀다」.** 새 원자는 die 주어라 씨앗에서 4홉, v1 은 wafer 주어라 2홉.
+> ```
+> 지금 안 터짐   클라가 hops 를 «안 보냅니다» (api.js:333-348) -> 서버 기본 12 -> 둘 다 보임
+> 총괄 판정      ⓘ die 주어 «유지». 맵의 한 칸 = die 이고, 마킹의 단위는 «노드»라
+>                die 가 void 를 안 달면 칸을 찍어도 딸려 올 하위 그래프가 없습니다
+>                + die_inspection 이 die 를 이미 1급으로 세움 (wafer->die 117,662)
+> 「거리 둘」    ⓚ **v1 void_obs 원자 은퇴**로 닫습니다 — 새것을 낮추는 게 아니라 옛것을 내림
+>                실측: v1 만 덮은 웨이퍼 «0» · 새것만 «36» -> 새것이 v1 을 진부분집합으로 포함
+>                소스 행 전부 생존 -> 투영 -> 삭제 자격 있음
+>                🔴 게이트: 삭제와 «같은 라운드»에 SYN-BW-103-11 point 208 이 die 경로로
+>                   다시 서는지 잰다. 0 이면 되돌린다 (지금 208 은 «전부 v1»)
+> ```
+> 📎 정정 둘 (제 실측): 뷰의 INNER JOIN 은 «한 행도 안 버립니다» (고아 run_uid 0 · NULL 0) —
+>    밀도 9→28 의 원인이 «아닙니다». 그리고 축 엔진은 처음부터 멀쩡했습니다.
+>
+> ### ③-siblings 🔴 마이그레이션 부작용 «다섯째» — 고쳤습니다 (`d9e14b35`)
+> ```
+> 자리    server/config/sample/siblings_axes.json.sample:41  ledger_subject.type = "Wafer"
+>         🔴 이 «sample 이 라이브»입니다 (server/config/siblings_axes.json 없음 -> fallback)
+> 증상    /siblings?scope= 걷기 엔진 통째 사망.  state=empty · no_atoms_for_subjects
+>         atoms_per_case_subject «1» <- 클램프. 실측이 0 이었다는 뜻
+> 지금    state=ready · candidates «20» · fields «54» · atoms_per_case_subject «260»
+> 🔴 배운 것  파일만 고쳐선 «안 먹습니다». load_axes_config 는 mtime 검사 없이 프로세스 캐시.
+>            /admin/reload-configs 는 토큰 필요 -> **서버 재기동**해서 먹였습니다.
+>            선언 고쳤는데 응답 그대로면 «무엇이 도는지»부터 — 「빌드했다고 로드된 건 아니다」 서버판
+> 📎 축 엔진(mode=intersection/contrast)은 원장을 안 읽어 «처음부터 정상» (axes 10 · factors 20)
+>    -> 응용의 census 「현역 고장 1」은 정확히는 «한 라우트의 두 엔진 중 하나»였습니다
+> ```
+>
+> ### ③-fallout 마이그레이션 부작용 «다섯» — 전부 같은 뿌리
+> ```
+> 제가 적은 것   「저장된 node id 가 무효가 됩니다」
+> 안 적은 것     🔴 «그 이름을 읽거나 만드는 모든 자리»
+> 대가 다섯      ① 클라 씨앗 상수 (589148d1)        ② walk 패널 둘 빈 채로
+>                ③ 옛 철자 잠복 (3fbfefd4, 응용)     ④ /api/ledger/entities 양쪽 막힘
+>                ⑤ siblings 걷기 엔진 (d9e14b35, 총괄)
+> ④ 판정        목록을 «선언에서» 읽는다(ⓒ) — 옳으나 «순서는 뒤로».
+>                고치는 대상이 /entities·/explore = 그래프 뷰어 = 「레거시 다 버려」의 삭제 후보라서.
+>                🔴 다시 올라오는 조건: ⓐ 그래프 뷰어를 안 지우기로 판정 ⓑ 현역 자리가 더 나옴
 > ```
 >
 > ### ③-next 소유자 판정 「모양부터」 (11:5x)
