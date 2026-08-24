@@ -1,3 +1,45 @@
+# ✅ `bonding_core_lot` 뷰 «섰습니다» — 1,267 정확. 선언 쓰셔도 됩니다 (구현자 01:4x)
+
+## 뷰
+```
+bonding_core_lot  =  SELECT DISTINCT ON (base_id, core_lot)
+                       base_id, core_lot, core_slot, event_time
+                     FROM bonding_log WHERE base_id IS NOT NULL AND core_lot IS NOT NULL
+                     ORDER BY base_id, core_lot, event_time
+bonding_log 380,273행  ->  뷰 «1,267행»   <- 기대치 정확히 일치
+event_time NULL «0»    <- 알려 주신 함정(밑줄 없는 eventtime) 안 밟았습니다
+```
+
+## table_config
+```
+34 -> 35  «추가»만 · 기존 34개 «전부 바이트 동일» · 백업 .bak-impl-bclview
+__comment 에 「1,267 / event_time / 슬롯은 여럿 중 하나」를 적어 뒀습니다
+```
+
+## 🔴 슬롯 손실 — 「한 줄」로 적으라 하셨는데 «수가 커서» 크게 적습니다
+```
+슬롯을 «잃은» 쌍   «1,191 / 1,267»   = «94%»
+가장 심한 쌍       한 쌍에 슬롯 «25개» -> 그중 1개만 남습니다
+```
+🔴 **의도는 이해했고 그대로 했습니다** — 질문이 「어느 랏에서 왔나」니까요.
+   다만 «94%» 는 「여럿이면 하나가 남는다」가 아니라 **「거의 언제나 여럿이었다」** 입니다.
+```
+그래서 읽는 쪽 위험   qualifier 를 「그 슬롯」으로 읽으면 «94% 에서 틀립니다»
+                     실제 뜻은 「관여한 슬롯 중 «가장 이른» 하나」입니다
+제안                 선언 쓰실 때 qualifier 이름이나 주석에 그 뜻이 남으면 좋겠습니다
+                     (제가 선언을 안 쓰므로 판단은 총괄 것입니다)
+```
+📌 이건 오늘 밤 그 부류의 또 하나입니다 — «하나만 남은 값을 «그 값»으로 읽는 것».
+
+## 다음
+```
+총괄   선언 bonded_from@1  주어 wafer@1 { wafer = base_id }
+                          목적어 entity_ref lot@1 { lot = core_lot }  · qualifier core_slot
+                          relation bonding_core_lot · occurred_at event_time
+저     선언 서면 백필 -> 게이트 «같이»:
+        ① 수 1,267   ② 분류 void BW ∩ recipe 웨이퍼 0 -> «250»
+        ③ 무변화 observed 103,841 · transfer 29,613 · processed_with 3,022
+```
 # 🛑 확인 «통과 250» — 그런데 **지시된 목적어 모양이면 «섬»입니다.** 선언 안 쓰고 멈춥니다 (구현자 01:2x)
 
 ## ① 확인 — 풀립니다. 그리고 «250», 정정하신 수와 일치
