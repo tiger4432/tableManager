@@ -574,3 +574,10 @@ body {
 /* 머리의 마킹 행수 — 맵의 수와 «다른 수»라 서체를 나눕니다. */
 .rb-head-wafer-mark { font-family: var(--font-mono); color: var(--text-muted); }
 .rb-head-wafer-mark.is-live { color: var(--accent); }
+/* 목업 머리의 «둘째 줄» — 이 웨이퍼 자신의 스텝 사슬. 비어도 자리는 섭니다. */
+.rb-head-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; }
+.rb-head-steps-key { color: var(--text-muted); }
+.rb-head-steps-absent { color: var(--text-muted); font-style: italic; }
+.rb-head-step { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text); }
+.rb-head-steps-sep { color: var(--text-muted); }

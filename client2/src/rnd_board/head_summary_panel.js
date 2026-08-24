@@ -93,6 +93,44 @@ export class HeadSummaryPanel extends Panel {
    * 🔴 A KIND THAT HAS NOT ANSWERED IS NOT DRAWN. The second request lands later than the first
    *    and a 0 in its place would say 「delam 없음」 about a wafer nobody has asked about yet.
    */
+  /**
+   * 🔴 목업 머리의 «둘째 줄» — 「이 본딩 웨이퍼 자신의 스텝 4」와 그 알약들.
+   *    자리를 «만들고» 비면 이유를 적습니다 (총괄 규칙 2026-08-24: 데이터가 없다고 멈추지 말 것).
+   *    오늘 이 웨이퍼는 구성이 없으므로 스텝도 «안 옵니다» -- 그것이 참이고 정보입니다.
+   */
+  _stepLine() {
+    const doc = this.doc;
+    const steps = ((this.model && this.model.components) || [])
+      .flatMap((c) => c.steps || []);
+    const el = doc.createElement('div');
+    el.className = 'rb-head-steps';
+    const key = doc.createElement('span');
+    key.className = 'rb-head-steps-key';
+    key.textContent = steps.length ? `이 웨이퍼 자신의 스텝 ${steps.length}` : '이 웨이퍼 자신의 스텝';
+    el.appendChild(key);
+    if (!steps.length) {
+      const none = doc.createElement('span');
+      none.className = 'rb-head-steps-absent';
+      none.textContent = '응답에 스텝이 없습니다 — 구성이 없는 웨이퍼입니다';
+      el.appendChild(none);
+      return el;
+    }
+    steps.forEach((s, i) => {
+      if (i > 0) {
+        const sep = doc.createElement('span');
+        sep.className = 'rb-head-steps-sep';
+        sep.textContent = '›';
+        el.appendChild(sep);
+      }
+      const pill = doc.createElement('span');
+      pill.className = 'rb-head-step';
+      pill.textContent = s.step;
+      if (s.at) pill.setAttribute('title', s.at);
+      el.appendChild(pill);
+    });
+    return el;
+  }
+
   _waferLine() {
     const kinds = this.waferKinds.filter((k) => this.waferFacts[k]);
     if (!kinds.length) return null;
@@ -214,6 +252,8 @@ export class HeadSummaryPanel extends Panel {
     root.appendChild(line);
     const waferLine = this._waferLine();
     if (waferLine) root.appendChild(waferLine);
+    // 목업의 둘째 줄. 비어도 «자리»는 섭니다 -- 없는 것은 없다고 말하는 자리입니다.
+    root.appendChild(this._stepLine());
 
     // ── the absences, in their own row so they cannot be mistaken for measurements ──
     const absences = doc.createElement('div');
