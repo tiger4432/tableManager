@@ -709,6 +709,9 @@ async function suite(mods) {
     //    inchip 선언이 그것을 그린다.
     // 🔴 자리는 «점이 말합니다» -- 총괄이 승인한 `placements` 모양 그대로입니다. 같은 점이
     //    die:base 와 inchip 에 «둘 다» 있고, 확대는 그 중 다른 자리를 읽는 일입니다.
+    // ⚠️ inchip 인스턴스는 이제 답을 «그대로» 모델로 씁니다 (좌표계 선언). lot_map 바디를
+    //    먹이는 조합은 제품에 없으므로, 모델 모양을 직접 놓고 «자리 규칙»만 잽니다.
+    zoom.model = { cells: [{ points: null }] };
     zoom.model.cells[0].points = [
       { node_id: 'ledger-entity:v1:a-point', state: 'found',
         placements: [{ space: 'die:base', x: 13, y: 5 },

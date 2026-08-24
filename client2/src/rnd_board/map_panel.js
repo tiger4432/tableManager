@@ -221,6 +221,12 @@ function unionBounds(a, b) {
 const SPACES = {
   die: {
     unit: 'cells_from_origin',
+    // 🔴 «답을 읽는 법»도 선언입니다. lot_map 은 축을 골라 모델로 바꿔야 하고, walk 은 이미
+    //    모델입니다 -- 이걸 부품 안의 `if` 로 두면 좌표계가 셋째로 늘 때 또 갈라집니다.
+    model: (body, panel) => projectionModel(body, panel.axis),
+    // 🔴 이 좌표계에서는 «서버가 그릴 수 있나»를 판정합니다 (프레임이 어긋나면 거절). 그
+    //    판정을 존중하는 것이 이 축의 계약입니다.
+    serverVerdict: true,
     // 🔴 이 좌표계에는 «자리»가 있습니다 -- 선언된 칸 중 아무도 안 채운 자리를 테두리로 그립니다.
     lattice: true,
     // 프레임 선언대로 0도 정규 좌표에 앉힌 «칸»들.
@@ -229,6 +235,10 @@ const SPACES = {
   },
   inchip: {
     unit: 'um',
+    // walk 이 돌려주는 것은 이미 모델입니다. 한 번 더 모델링하면 «두 번 변환»입니다.
+    model: (answer) => answer,
+    // 칩 안에는 «프레임 판정»이 없습니다 -- 겹칠 격자가 없으니 거절할 것도 없습니다.
+    serverVerdict: false,
     // 🔴 연속 평면에는 «빈 자리»가 없습니다. 20,000um 를 1um 씩 도는 격자는 자리가 아니라
     //    4억 번의 반복입니다 (실제로 힙을 터뜨렸습니다). 없는 개념은 선언에서 «없다»고 말합니다.
     lattice: false,
@@ -493,7 +503,7 @@ export class MapPanel extends Panel {
         // 🔴 ONE RESPONSE ALREADY CARRIES ALL THREE PROJECTIONS (measured: bond 141 · dt 11 ·
         //    core 110), so switching the basis is a re-read of what is in hand, not a refetch.
         this.body = body;
-        this.model = projectionModel(body, this.axis);
+        this.model = this._space().model(body, this);
         this.status = 'ready';
         this.render();
       })
@@ -775,9 +785,9 @@ export class MapPanel extends Panel {
     const walkedNodes = (model && Array.isArray(model.nodes)) ? model.nodes : null;
     const superposed = Boolean(model && !model.drawable && rawCells.length
       && declaredBounds(model.frame));
-    const drawable = this.status === 'ready' && model
-      && (walkedNodes ? walkedNodes.length : rawCells.length)
-      && (walkedNodes ? true : (model.drawable || superposed));
+    const has = walkedNodes ? walkedNodes.length : rawCells.length;
+    const drawable = this.status === 'ready' && model && has
+      && (this._space().serverVerdict ? (model.drawable || superposed) : true);
     if (canvas.style) canvas.style.display = drawable ? 'block' : 'none';
     if (!drawable || !box.width || !box.height) return;
 
