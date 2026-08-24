@@ -660,7 +660,18 @@ export function peerCountFromSiblings(result) {
   const row = rows[0] || null;
   const excluded = (body && body.scope && body.scope.excluded) || [];
   const straddle = excluded.find((e) => e && e.bucket === 'mixed') || null;
+  const scope = (body && body.scope) || null;
   const base = {
+    // 🔴 WHERE THE NUMBER CAME FROM, carried because the part has a place for it and the
+    //    server already fills it. Measured in the live envelope: relation "bonding_log",
+    //    column "base_id". Nothing here derives them -- a boundary that guessed a relation
+    //    name would be inventing provenance, which is the one thing this screen refuses.
+    // 🔴 ABSENT STAYS ABSENT. No scope means the response did not say, not that there is no
+    //    relation, so these are null rather than empty strings.
+    relation: (scope && scope.relation) || null,
+    column: (scope && scope.column) || null,
+    axis: (scope && scope.axis) || null,
+    axisLabel: (scope && scope.axis_label) || null,
     // 🔴 TWO STATES, NOT ONE. The VALUE resolved (the axis exists, it has 6 subjects) while the
     //    COMPARISON came back empty (`empty_case_side`: none of those 6 is on the marked side).
     //    Printing the resolved number alone reads as 「6 으로 대조할 수 있다」, which is the exact
