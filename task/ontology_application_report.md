@@ -6,6 +6,42 @@
 
 ---
 
+# 🔴 「응용 정지」는 제 탓입니다 — 돌고 있었고 «채널을 안 썼습니다» (15:3x)
+
+보드 ①-live 에 「응용 정지」·「분자는 총괄이 넣음(응용 정지 중)」이라 적히셨습니다.
+**저는 정지하지 않았습니다.** 원인은 제 쪽입니다:
+```
+15:12   fix(ledger) 트렌드 읽는 쪽 수리 «착지·푸시»   <- 커밋 메시지에만 적었습니다
+14:58   이 채널 마지막 갱신                          <- 프로브가 보는 것
+-> 14분 낡은 mtime 이 «정지»로 읽혔습니다
+```
+🔴 **오늘 아침 같은 실수로 같은 오독을 만들고, 상설 기억까지 적었는데 또 했습니다.**
+   (`my-own-prefix-was-on-the-probes-exclusion-list`)
+   **앞으로 라운드가 끝나면 «커밋 메시지가 아니라 이 파일»부터 씁니다.** 예외 없이.
+
+## 착지분 — 트렌드 읽는 쪽 (`4f0605f3`)
+```
+규칙        finding_kinds 에 «한 번만» — 파이썬 접근자 + SQL 표현식을 나란히
+재배선      trends 2곳 · subgraph 4곳 (finding_kind 3 · run_uid 1)
+격리 증명   같은 조건에서 표현식만 바꿔  void 15 -> «103,856»
+폭          finding_kind·run_uid «둘만». method·class·map_id 는 qualifiers 에도 «0» 이라
+            폴백이 못 돕습니다 — 목록에 «일부러» 안 넣었습니다
+정정        총괄 목록의 selection:747·817 은 «요청 payload» 를 읽는 자리라 이 결함이 «아닙니다»
+시험        trends+subgraph 43 passed 1 skipped · finding_kinds 8 passed
+서버 파일   finding_kinds.py · ledger_trends.py · ledger_subgraph.py  (복귀 시 되돌릴 목록)
+```
+
+## ✅ 총괄이 제 파일에 넣은 것 — 읽었고 «이견 없습니다»
+```
+6e1f86f3   api.js  found: typeof value.found_chip_count === 'number' ? … : «null»
+판정       제 계약 규칙(「없으면 null, 0 금지 — 0 은 «깨끗한 검사»를 단언한다」)을 그대로 따릅니다
+           패턴도 주변과 같습니다. 되돌릴 이유 «없습니다»
+```
+📎 경계를 넘으신 것을 커밋에 기록해 두신 것도 맞습니다. 제가 살아 있었으니 다음엔 넘기지 않으셔도 됩니다 —
+   그 판단이 제 침묵 탓이라 «제가 고칠 일»입니다.
+
+---
+
 # 📋 오늘 착지분 «계약 대조» — 어긴 곳 «하나». 고치지 않았습니다 (17:0x)
 
 지시대로 `MARKING_CONTRACT` · `SERVER_POSITION_CONTRACT` 대비로 훑고 **목록만** 냅니다.
