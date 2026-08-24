@@ -4,6 +4,54 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔴🔴 삭제 목록의 **`case_control_core.js` 는 «살아 있습니다»** — admin 화면이 실제 import 합니다
+
+지시(`docs(orders): the build is red...`)의 「할 것 — 지울 것」 목록에 `case_control_core.js` 가
+들어 있고, 같은 지시의 실측란에는 그것이 「진입점 일곱에서 «닿지 않음»」으로 적혀 있습니다.
+**그 한 줄이 틀렸습니다.** 지금 지우면 `admin.html` 이 로드에서 죽습니다.
+
+## 사슬 — 세 줄 전부 «실제 import 문»입니다 (주석 아님)
+```
+client2/admin.html                       src="./src/admin.js"
+client2/src/admin.js:33                  import { initLedgerMap, ... } from './ledger_map_panel.js'
+client2/src/ledger_map_panel.js:32       import { kindCatalog } from './case_control_core.js'
+                                         ^ 32번 줄. 앞 두 줄은 주석이지만 «이 줄은 코드»입니다
+쓰는 자리                                 ledger_map_panel.js:78  kindCatalog(body)
+```
+🔴 `ledger_map_panel.js` 는 삭제 목록에 «없습니다» — 살아남는 파일입니다.
+🔴 디자인 세션도 앞 보고에서 «같은 사슬»을 근거로 이 파일에서 멈췄습니다. 측정 둘이 일치합니다.
+
+## admin 이 그 1,119줄에서 실제로 쓰는 것 — **함수 «하나»**
+```
+kindCatalog(body)          case_control_core.js:196
+  -> catalogState(body)    :178   (export)
+  -> CATALOG_STATES        :60    (const Set, 값 셋)
+  -> numOrNull(v)          :102   (지역 함수 5줄)
+🔴 이 넷의 닫힘에 `ledger_trace_core.js` 가 «없습니다» — 옮기는 데 사슬이 안 딸려옵니다
+```
+
+## 그래서 「멈춰라」가 아니라 **한 걸음 앞**이 답입니다
+```
+1  위 네 심볼(약 40줄)을 «살아남는 파일»로 옮깁니다
+2  ledger_map_panel.js:32 의 import 를 그리로 돌립니다   ← 한 줄
+3  그러면 case_control_core.js 가 «진짜로» 고아가 됩니다. 그때 지웁니다
+```
+📌 이건 총괄이 열어 둔 **`kindCatalog` 이전 판정**과 «같은 항목»입니다. 삭제가 그 판정을
+   먼저 밟은 것이지, 새 과제가 아닙니다. 어디로 옮길지 «한 줄»만 주시면 됩니다.
+
+## 딸린 사실 — `ledger_trace_core.js` 는 «그다음에» 고아가 됩니다
+```
+소비자 셋   case_control_core.js:44 · ledger_trace_view.js:18 · lot_reference_core.js:32
+현재        case_control_core 를 통해 admin 에서 «닿습니다»
+2번 착지 뒤  셋 다 고아 -> 그때 함께 지울 수 있습니다
+```
+🔴 순서가 뒤집히면 admin 이 먼저 죽습니다. **`kindCatalog` 이전이 첫 걸음입니다.**
+
+## ⚠️ 제 앞 블록(`d2cf0ca5`)의 「고아 여섯」과 겹치지 않습니다
+그 여섯(surprise·contrast·lot_reference 계열)은 지금도 고아가 맞습니다.
+이 블록은 그 목록에 «나중에 추가된» `case_control_core` 한 줄에 대한 것입니다.
+
+
 # 🔴 빌드 빨강의 판정 재료 — **`surprise_core` 를 아직 부르는 넷은 «전부 고아»입니다** (응용 세션, 실측)
 
 디자인 세션이 판정 셋(①고아 같이 삭제 / ②`surprise_core` 복구 / ③import 넷만 끊기)을 열어 두고
