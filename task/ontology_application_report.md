@@ -6,6 +6,89 @@
 
 ---
 
+# 📋 대문자 타입 «전수 훑기» 완료 — 부류로 갈랐습니다 (14:4x)
+
+⚠️ **먼저 정정 받습니다.** 「걷기가 전부 죽었다」는 «지난 상태»가 맞습니다 — 클라가 `589148d1` 로
+이미 고쳤고, 지금 씨앗은 `["wafer",{"wafer":"SYN-BW-103-11"}]` 입니다. **제 화면 진술이 낡았습니다.**
+기전(옛 철자 → 빈 답 · 오류 없음)은 그대로 유효하고, 그래서 이 훑기를 했습니다.
+
+---
+
+## 🔴 A. «살아 있는 라우트»인데 지금 막혀 있습니다 — 제일 급합니다
+
+### A-1  `/api/ledger/entities` — **양쪽 다 막혔습니다**
+```
+그 라우트가 아는 타입   ['Equipment', 'Lot', 'Product', 'Recipe', 'Wafer']   <- v1 대문자 목록
+                       출처: server/ledger/vocabulary.py:126 …  (v1 ENTITY_TYPES)
+대문자로 물으면         items «0» · state empty        (원장 subject_type 은 이제 소문자)
+소문자로 물으면         «거절»  entity_type_not_catalogued
+                       「'lot'은 register 목록을 가진 개체 타입이 아닙니다」
+```
+🔴 **받아 주는 철자로는 데이터가 없고, 데이터가 있는 철자는 안 받아 줍니다.**
+   이 라우트로는 «어떤 개체도» 못 얻습니다.
+
+### A-2  SQL 에 대문자가 박힌 살아 있는 읽기 경로
+```
+server/ledger_api/ledger_selection.py:238·284·301·314·331   subject_type = 'Wafer'
+                                      :67·96                identity/subject 검사 (Wafer|wafer 둘 다 허용 ✅)
+   -> 라우트 있음 (router:581 `ledger_selection.resolve`)
+server/ledger_api/ledger_catalog.py:117                     기본값 subject_type="Lot"
+   -> 라우트 있음 (router:168) — A-1 이 이것입니다
+server/ledger_trace_router.py:158                           Query("Lot", alias="type")
+```
+📌 `ledger_selection.py:67·96` 은 **이미 두 철자를 다 받습니다** — 같은 파일 안에서
+   검사는 관대하고 SQL 은 대문자 고정입니다. **한 파일 안의 불일치**입니다.
+
+---
+
+## ⚠️ B. «쓰는» 경로 — 돌리면 대문자를 «다시» 넣습니다
+```
+server/ledger/profile_chain_mapper.py:346·375        "subject_type": "Lot" / "Wafer"
+server/ledger/source_profile_builtins.py:98·113      entity_types=("Lot",) / ("Wafer",)
+server/ledger/source_contract.py:75·111·125          {"Lot","Wafer"} 집합 비교
+server/scripts/seed_syn_composite_chip.py:72         subject_type="Wafer"
+server/scripts/seed_syn_split_merge_pressure.py:388  subject_type="Wafer"
+server/scripts/seed_syn_world.py:779·887             subject_type="Wafer" · declared {"Wafer"}
+server/scripts/seed_syn_process_ledger.py:935        WHERE … subject_type = 'Wafer'
+```
+🔴 **씨더를 다시 돌리면 소문자 원장에 대문자 원자가 섞입니다.** 오늘 고친 것이 되돌아갑니다.
+
+---
+
+## ⛔ C. 손대면 안 되는 것 — 그래서 «고칠 목록에서 뺍니다»
+```
+server/ledger_trace.py:936·964·983·995·1038·1344·1701   'Lot' 다수
+   -> 은퇴 구역(A-얼림)입니다. 「새 일을 얹지 않는다」가 상설입니다
+server/scripts/lowercase_entity_types.py:53-57         'Wafer'/'Lot'/… 대문자
+   -> 이건 «롤백 방향» 입니다. 정상입니다. 고치면 안 됩니다
+```
+
+## ✅ D. 시험 — 자기 픽스처를 쓰고 자기가 읽습니다 (라이브 원장 안 봄)
+```
+client2/tests/ledger_graph_harness.mjs:24·32·33
+client2/tests/rnd_board_control_trend_harness.mjs:225
+client2/tests/fixtures/gen_ledger_trace_contested.py:56
+server/tests/test_enrichment_actions.py:48·68·107·118·150
+```
+⚠️ 다만 **`server/tests/test_enrichment_actions.py` 는 `ledger_explorer.entity_id("Wafer", …)` 를 씁니다** —
+   그 함수가 정규화되면 «이 시험이 먼저 빨개집니다». 그게 정상 신호입니다.
+
+## 📄 E. 라벨·산문 — 고칠 필요 «없습니다»
+`client2/src/rnd_board/main.js:194·254` 의 `subject_type: 'WaferLeg'` 은
+**트렌드 grain 선언**이라 서버 grain 계약을 따릅니다 — id 를 만들지 않습니다.
+문서·주석의 대문자는 사람이 읽는 말입니다.
+
+---
+
+## 제가 «안 한» 것
+```
+· 고치지 않았습니다. 전부 «파일 소유 레인» 것입니다
+· A-2 의 SQL 이 «실제로 0행을 내는지» 라우트로 확인한 것은 A-1 뿐입니다.
+  selection 은 POST 계약이라 안 불러 봤습니다 — «형태»로만 분류했습니다
+· 서버 라우트 14개 중 대문자를 쓰는 것을 «전수»로 부르지 않았습니다 (entities·structure·kinds 셋만)
+```
+---
+
 # 🔴🔴🔴 **지금 화면의 걷기가 전부 죽어 있습니다** — 마이그레이션이 `subject_type` 을 소문자로 바꿨습니다 (14:1x)
 
 경로 측정을 시작하자마자 «걷기 자체가 안 도는» 것을 발견했습니다. **원인·증명 다 있습니다.**
