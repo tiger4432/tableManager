@@ -174,6 +174,18 @@ async function suite(mods) {
   const hostR = doc.createElement('div');
   const r = mk(rank.RankListPanel, hostR, { doc, markings, reads: 'marking:1', writes: 'marking:1' });
   r.mount(); await flush(); await flush();
+
+  // 🔴 «잘렸다고 말하는 것»이 자르는 것보다 먼저입니다 (총괄 판정 2026-08-24). 실측: 세 웨이퍼
+  //    전부 `truncated: ['depth']` 인데 화면은 아무 말도 안 했습니다 -- 그러면 「후보가 60개인
+  //    웨이퍼」와 「208개인데 60개만 실려 온 웨이퍼」가 «같아 보입니다».
+  //    ⚠️ 오늘 이 필드는 모델까지 «안 옵니다» (`subgraphModel` 이 안 싣습니다. api.js 는 응용
+  //       레인 파일이라 여기서 안 고쳤고 보고했습니다). 배선만 먼저 깔고 단언은 모델에 겁니다.
+  truthy('Z9 nothing is said about truncation while the walk was not truncated',
+    !/잘림/.test(hostR.textContent));
+  r.model.truncated = ['depth'];
+  r.render();
+  truthy('Z10 a truncated walk says so, in the words the server used',
+    /depth 에서 잘림/.test(hostR.textContent), hostR.textContent.slice(0, 120));
   // 상태 칸은 이제 공유 표의 `badge` 컬럼입니다 -- 마지막 셀. 표기가 한 곳으로 모였습니다.
   const stateCells = byClass(hostR, 'rb-table-cell--badge').map((n) => n.textContent);
   truthy('Z4 tied is a word in the state column', stateCells.some((s) => s.includes('동률')));
@@ -230,6 +242,12 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  // 🔴 잘린 것을 안 말하면 「지금까지 본 것 중 1위」가 「1위」로 읽힙니다.
+  { id: 'X9', what: 'a truncated walk says nothing, so a partial ranking reads as the whole one',
+    catches: 'Z10',
+    mutate: { 'rank_list_panel.js': (s) => s.replace(
+      '    if (Array.isArray(m.truncated) && m.truncated.length) {',
+      '    if (false) {') } },
   { id: 'X1', what: 'contrast:unexamined is drawn as a refusal', catches: 'Z1b',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
       "head.appendChild(this._stat('대조군 없음 — 또래를 안 쟀습니다', 'absent'));",
