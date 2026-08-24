@@ -80,10 +80,11 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./table_part.js'", `'${tableUrl}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const table = await import(tableUrl);
+  const layer = await import(rewire('expanded_layer_panel.js'));
   const head = await import(rewire('head_summary_panel.js'));
   const comp = await import(rewire('composition_panel.js'));
   const store = await import(storeUrl);
-  return { head, comp, store, table, sources };
+  return { head, comp, layer, store, table, sources };
 }
 
 // ── the DOM stub. Same shape round 1 used: a part must be scorable under bare node ──
@@ -118,7 +119,7 @@ const okFetch = () => async () => ({ ok: true, status: 200, json: async () => BO
 const refuseFetch = (status) => async () => ({ ok: false, status, json: async () => ({ detail: 'no' }) });
 
 async function suite(mods) {
-  const { head, comp, store, table, sources } = mods;
+  const { head, comp, layer, store, table, sources } = mods;
   const ran = [];
   const failures = [];
   const eq = (name, got, want) => {
@@ -272,11 +273,49 @@ async function suite(mods) {
     t1.destroy(); t2.destroy();
   }
 
+  // ── L. 펼친 층 — «찍은 층»만 펼칩니다 ─────────────────────────────────────────
+  {
+    const { ExpandedLayerPanel } = layer;
+    const marks = new store.MarkingStore();
+    const hostL = doc.createElement('div');
+    const model = {
+      ok: true,
+      components: [
+        { id: 'CHIP:L01', entityId: 'node:l01', core: { wafer: 'CW-1' },
+          steps: [{ step: 'INGOT_RELEASE' }, { step: 'WAFER_SORT' }] },
+        { id: 'CHIP:L02', entityId: 'node:l02', core: { wafer: 'CW-2' },
+          steps: [{ step: 'CMP_BULK' }] },
+      ],
+    };
+    const l = new ExpandedLayerPanel(hostL, { doc, markings: marks, reads: 'm:1', writes: null,
+      walk: async () => model, finalChipId: 'CHIP' });
+    l.mount();
+    await flush(); await flush();
+    // 🔴 넷 중 «첫째» 부재입니다 -- 「없다」가 아니라 「아직 안 골랐다」.
+    truthy('L1 nothing marked says so instead of drawing a layer nobody chose',
+      /층을 찍으면/.test(hostL.textContent) && !/INGOT_RELEASE/.test(hostL.textContent),
+      hostL.textContent.slice(0, 60));
+    marks.set('m:1', 'node:l02', store.SIGN.CASE);
+    truthy('L2 the marked layer is the one that opens',
+      /L02/.test(hostL.textContent) && /CMP_BULK/.test(hostL.textContent)
+      && !/INGOT_RELEASE/.test(hostL.textContent), hostL.textContent.slice(0, 80));
+    // claims 는 «표 부품»이고, 오늘은 경계가 events 를 안 실어 비어 있습니다 -- 그 이유를 말합니다.
+    truthy('L3 the claims table says WHY it is empty rather than showing an empty box',
+      /claim 이 없습니다/.test(hostL.textContent), hostL.textContent.slice(-80));
+    l.destroy();
+  }
+
   return { ran, failures };
 }
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  // 🔴 마킹을 안 보고 «첫 층»을 펼치면, 아무것도 안 찍은 화면이 「이 층이 답」이라고 말합니다.
+  { id: 'L-M1', what: 'the expanded layer opens the first component instead of the marked one',
+    catches: 'L1',
+    mutate: { 'expanded_layer_panel.js': (s) => s.replace(
+      '    return list.find((c) => this.signOf(c.entityId || c.id) !== SIGN.ABSENT) || null;',
+      '    return list[0] || null;') } },
   { id: 'T-M1', what: 'the table draws one hardcoded header instead of the declaration',
     catches: 'T3',
     mutate: { 'table_part.js': (s) => s.replace(
