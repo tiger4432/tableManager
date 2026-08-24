@@ -178,25 +178,26 @@ def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
 
 
 def test_caps_are_reported_instead_of_looking_complete():
-    many = [atom(index + 100, "FAN", "measured", value={"value": index},
-                 event=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"event-{index}")))
+    """A cap that bites must be SAID, never silently shrink the answer.
+
+    🔴 The fixture reaches 30 DISTINCT lots on purpose. From 2026-08-25 `node_limit` counts
+    things in the world and not the parts one assertion is made of, so a fixture of 30
+    measurements on ONE lot -- which is what this used to be -- yields a single world node and
+    stops testing the cap at all. Thirty targets make the cap bite for the reason it exists.
+    """
+    many = [atom(index + 100, "FAN", "derived_from", target=f"LOT-{index:02d}")
             for index in range(30)]
     seed = ledger_explorer.entity_id("Lot", {"lot": "FAN"})
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(many),
         hops=4, node_limit=10, edge_limit=20)
-    # 🔴 `node_limit` caps the nodes the CALLER ASKED FOR, and from 2026-08-25 claims are not
-    # among them: they are provenance the trails read, capped separately by `claim_limit`.
-    # Asserting on len(nodes) again would re-pin the old contract, in which 837 claims could
-    # crowd out the 3-to-35 entities a walk exists to find.
-    # provenance kinds ride free; everything the caller asked for shares node_limit
-    unbudgeted = {"claim", "event"}
-    budgeted = [node for node in body["nodes"] if node["node_kind"] not in unbudgeted]
-    assert len(budgeted) == 10
-    assert any(node["node_kind"] == "claim" for node in body["nodes"]), (
-        "claims must still be emitted -- evidence.hops is built by reading them")
+    world = [node for node in body["nodes"]
+             if node["node_kind"] not in ledger_subgraph._WORLDLESS_KINDS]
+    assert len(world) == 10
     assert body["truncated"]["nodes"] is True
     assert body["truncated"]["reason"]
+    # and the parts of a fact are still carried, since the trails are built by reading them
+    assert any(node["node_kind"] == "claim" for node in body["nodes"])
 
 
 def test_tabular_projection_is_stable_and_dynamic_fields_stay_typed():

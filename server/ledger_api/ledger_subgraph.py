@@ -1139,6 +1139,12 @@ def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
 FOLDED_KINDS = frozenset({"point", "claim"})
 
 
+#: Kinds that are parts of one assertion rather than things in the world. See the
+#: reasoning beside `_spends_budget`. Module scope so a test can assert THE rule
+#: instead of restating it and drifting.
+_WORLDLESS_KINDS = frozenset({"claim", "event", "value"})
+
+
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              include_values=True, node_limit=DEFAULT_NODE_LIMIT,
              edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
@@ -1198,6 +1204,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
     #: nodes that have spent the node budget -- see `_spends_budget` below
     budgeted = 0
+    budgeted_edges = 0
     claims_scanned = 0
     actions_scanned = 0
 
@@ -1229,10 +1236,19 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: one (measured 2026-08-24 across point, value, quantity and entity). They are leaves.
     #: They stay emitted anyway, matching the treatment claims got -- the ruling is per class,
     #: and dropping emission is a separate decision from dropping the budget.
-    _UNBUDGETED_KINDS = frozenset({"claim", "event"})
+    #: 🔴 THE CLASS, NOT A LIST OF KINDS CHASED ONE AT A TIME. `value` joined on
+    #: 2026-08-25 after it inherited the seat claim and event had each vacated in turn.
+    #: It is not data about the world: it carries `schema_kind = "claim_value"`, its
+    #: only inbound edge is from a claim and its only outbound one goes to a quantity,
+    #: and its label is the payload JSON stringified. It is a claim's object unfolded
+    #: into a node -- a part of one fact, like the other two.
+    #:
+    #: What the node budget counts is THINGS IN THE WORLD: entity, collection, quantity.
+    #: What it stops counting is the parts one assertion is made of. Those already have
+    #: their own ceiling in `claim_limit`, which is where they belong.
 
     def _spends_budget(node):
-        return node.get("node_kind") not in _UNBUDGETED_KINDS
+        return node.get("node_kind") not in _WORLDLESS_KINDS
 
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
@@ -1252,15 +1268,27 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         depths[node_id] = depth
         return True
 
+    #: 🔴 THE SAME RULE ON THE EDGE SIDE, IN THE SAME BREATH. An edge touching a fact-part is
+    #: plumbing: claim<->entity, event->claim, claim->value, value->quantity all exist to hold
+    #: one assertion together, not to say something further about the world. MEASURED
+    #: 2026-08-25: of the 1,200 edges in the saturated walk, 1,100 were claim->entity, so
+    #: repairing only the node budget would have moved the wall from `nodes` to `edges` and
+    #: bought nothing. Fixing one and not the other is the per-kind chase again, one level up.
+    def _edge_spends_budget(row):
+        return (_spends_budget(nodes[row["source"]])
+                and _spends_budget(nodes[row["target"]]))
+
     def add_edge(row):
-        nonlocal edge_cut
+        nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
         if row["id"] in edges:
             return True
-        if len(edges) >= edge_limit:
-            edge_cut = True
-            return False
+        if _edge_spends_budget(row):
+            if budgeted_edges >= edge_limit:
+                edge_cut = True
+                return False
+            budgeted_edges += 1
         edges[row["id"]] = row
         return True
 
@@ -1559,7 +1587,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     continue
                 action_claims_seen.add(atom.claim_node_id)
                 action_atoms.append(atom)
-            action_budget = min(node_limit - budgeted, edge_limit - len(edges))
+            action_budget = min(node_limit - budgeted, edge_limit - budgeted_edges)
             if not action_atoms:
                 pass
             elif action_budget <= 0:
