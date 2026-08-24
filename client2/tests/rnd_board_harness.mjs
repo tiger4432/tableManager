@@ -736,6 +736,21 @@ async function suite(mods) {
     // ⚠️ 이 하니스의 `eq` 는 «===» 입니다 -- 배열을 넣으면 절대 안 맞습니다. 문자열로 잽니다.
     eq('F8c a point whose placements never arrived is 「waiting」, not 「nowhere」',
       `${zoom.lastPaint.awaitingPlaces}/${zoom.lastPaint.offSpace}`, '1/1');
+    // 🔴 새 경로: 재료가 «walk 의 노드»로 옵니다 (collect:'point'). 같은 좌표계 선언, 같은
+    //    placements 규칙 -- 부품에는 갈래가 «하나»도 안 늘었습니다. lot_map 이 버려지는 날
+    //    옛 갈래만 지우면 됩니다.
+    zoom.model = { nodes: [
+      { id: 'ledger-finding-point:v1:a', finding_kind: 'void',
+        placements: [{ space: 'inchip', x: 100, y: 200 }] },
+      { id: 'ledger-finding-point:v1:b', finding_kind: 'void',
+        placements: [{ space: 'die:base', x: 3, y: 4 }] },
+      { id: 'ledger-entity:v1:no-contract', finding_kind: 'void' },
+    ] };
+    zoom.render();
+    eq('F16 the inchip space draws the walk own nodes, not only lot_map cells',
+      zoom.lastPaint.cells, 1);
+    eq('F16b ... and the other two are counted apart, nowhere vs not-yet',
+      `${zoom.lastPaint.offSpace}/${zoom.lastPaint.awaitingPlaces}`, '1/1');
     zoom.destroy();
 
     // 🔴 한 칸이 «몇 개»를 물었나가 화면에 남아야 합니다. 실측: 다이당 최대 13, 4개 이상인
@@ -871,11 +886,15 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  { id: 'M09', what: 'the map ignores a walk model and only ever reads lot_map cells',
+    catches: 'F16',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '      if (Array.isArray(model.nodes)) {', '      if (false) {') } },
   { id: 'M08', what: 'the map head drops the marking count, leaving it only in the badge',
     catches: 'C34',
     mutate: { 'map_panel.js': (s) => s.replace(
-      '        ? `마킹 ${markedHere} · ${m.cells.length}칸',
-      '        ? `${m.cells.length}칸') } },
+      '        ? `마킹 ${markedHere} · ${cellsHere.length}칸',
+      '        ? `${cellsHere.length}칸') } },
   // 🔴 배지가 «선언한 이름 전부»를 말해야 합니다. 둘만 말하면, 세 번째 이름을 따라 움직인
   //    패널이 「선언과 다르게 도는 것」으로 읽힙니다 -- 총괄이 실제로 그렇게 읽었습니다.
   { id: 'M07', what: 'the badge hides the name the page follows, so the panel looks like it lies',
@@ -898,8 +917,8 @@ const MUTANTS = [
   { id: 'M04', what: 'a point with no place in this space is dropped silently instead of counted',
     catches: 'F8b',
     mutate: { 'map_panel.js': (s) => s.replace(
-      "        if (state === 'nowhere') { panel._offSpace += 1; continue; }",
-      "        if (state === 'nowhere') { continue; }") } },
+      "        if (state === 'nowhere') { panel._offSpace += 1; return null; }",
+      "        if (state === 'nowhere') { return null; }") } },
   // 🔴 「좌표가 없다」와 「좌표가 있어야 하는데 빈다」를 같은 그림으로 만드는 변이입니다.
   { id: 'M03', what: 'a map stands even for a source that declares no such coordinate space',
     catches: 'F10',

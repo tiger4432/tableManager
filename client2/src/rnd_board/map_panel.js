@@ -232,27 +232,42 @@ const SPACES = {
     // 🔴 연속 평면에는 «빈 자리»가 없습니다. 20,000um 를 1um 씩 도는 격자는 자리가 아니라
     //    4억 번의 반복입니다 (실제로 힙을 터뜨렸습니다). 없는 개념은 선언에서 «없다»고 말합니다.
     lattice: false,
-    // 칸이 무는 관측들. die 하나가 point 를 여럿 뭅니다 (실측 평균 2.06 · 최대 13).
-    // 🔴 자리는 «점이 말합니다» (`placements`). 그 좌표계에 자리가 없는 점은 «안 그리고 셉니다» --
-    //    조용히 빠지면 「그런 게 없다」로 읽힙니다.
-    items: (model, panel) => (model.cells || []).reduce((out, cell) => {
-      for (const p of cell.points || []) {
-        const state = placeState(p, panel.space);
-        // 계약이 안 온 점은 «못 그리는 게 아니라 아직 모르는» 것입니다. 따로 셉니다.
-        if (state === 'awaiting') { panel._awaitingPlaces += 1; continue; }
-        if (state === 'nowhere') { panel._offSpace += 1; continue; }
-        const at = placementOf(p, panel.space);
-        out.push({ ...p,
+    // 🔴 재료가 «두 모양»으로 옵니다. 맵의 입력이 lot_map 의 칸에서 「마킹한 노드의 하위
+    //    그래프」로 옮겨 가는 중이라(소유자 상설 · 총괄 판정 2026-08-24) 한동안 둘 다입니다:
+    //      lot_map 모델   cells[].points        <- 옛 경로. 지금 화면이 이걸로 돕니다
+    //      walk 모델      nodes[]               <- 새 경로. collect:'point' 가 답합니다
+    //    자리를 읽는 규칙(placements 세 갈래)은 «한 벌»이라 어느 쪽이 와도 같은 답이 납니다.
+    items: (model, panel) => {
+      const take = (item, id, role) => {
+        const state = placeState(item, panel.space);
+        // 계약이 안 온 것은 «못 그리는 게 아니라 아직 모르는» 것입니다. 따로 셉니다.
+        if (state === 'awaiting') { panel._awaitingPlaces += 1; return null; }
+        if (state === 'nowhere') { panel._offSpace += 1; return null; }
+        const at = placementOf(item, panel.space);
+        return { ...item,
           x: at.x,
           y: at.y,
           // 크기는 점이 아니라 «자리»의 속성입니다 -- 다이 칸에 반경은 뜻이 없습니다.
           extent: at.extent || null,
-          nodeId: p.node_id || null,
-          nodeIdResolved: Boolean(p.node_id),
-          colorRole: p.color_role || p.state || null });
+          nodeId: id || null,
+          nodeIdResolved: Boolean(id),
+          colorRole: role || null };
+      };
+      if (Array.isArray(model.nodes)) {
+        return model.nodes.reduce((out, node) => {
+          const seat = take(node, node.id, node.color_role || node.finding_kind || node.type);
+          if (seat) out.push(seat);
+          return out;
+        }, []);
       }
-      return out;
-    }, []),
+      return (model.cells || []).reduce((out, cell) => {
+        for (const p of cell.points || []) {
+          const seat = take(p, p.node_id, p.color_role || p.state);
+          if (seat) out.push(seat);
+        }
+        return out;
+      }, []);
+    },
     // 칩 한 변의 «물리» 크기. 선언 안 하면 그릴 판이 없으므로 그리지 않습니다.
     bounds: (model, panel) => (panel.extent
       ? { minX: 0, maxX: panel.extent.x, minY: 0, maxY: panel.extent.y, empty: false }
@@ -561,13 +576,17 @@ export class MapPanel extends Panel {
       //    배지에만 있으면 「이 그림에서 몇 개를 골랐나」가 수로 안 보입니다 -- 이 화면에서
       //    제일 자주 묻는 수인데도요. 종류별(void·delam)은 이 질문이 한 종류만 묻기 때문에
       //    아직 하나입니다; 그 사실은 알약이 이미 말합니다.
-      const markedHere = m.cells.reduce(
+      // 🔴 `cells` 는 lot_map 모델의 것입니다. walk 모델은 «노드»를 나르고 cells 가 «없습니다» --
+      //    맵의 재료가 옮겨 가는 중이라 둘 다 옵니다(선언 표가 그걸 흡수합니다). 머리도 같은
+      //    가정을 버립니다: 없는 배열에 reduce 를 걸면 «패널 하나가 통째로» 안 그려집니다.
+      const cellsHere = m.cells || [];
+      const markedHere = cellsHere.reduce(
         (sum, c) => sum + (this.signOf(c.nodeId) !== SIGN.ABSENT ? 1 : 0), 0);
-      n.counts.textContent = m.cells.length
-        ? `마킹 ${markedHere} · ${m.cells.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
+      n.counts.textContent = cellsHere.length
+        ? `마킹 ${markedHere} · ${cellsHere.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
           + (source ? ` · ${source} 기준` : '')
         : '';
-      if (m.cells.length && !m.ledgerBacked) {
+      if (cellsHere.length && !m.ledgerBacked) {
         // A count read off source tables is not a ledger claim, and the difference is the whole
         // reason this board exists.
         n.counts.setAttribute('title', '원장이 아니라 소스 표에서 센 값입니다');
@@ -750,10 +769,15 @@ export class MapPanel extends Panel {
     //    and the server's own sentence says why it can be no more than the borders: 「슬롯마다
     //    격자 치수가 다르므로 한 장에 겹쳐 그리면 좌표가 전부 어긋난다」. So the lattice is drawn
     //    and the cells are NOT -- a caption under a wrong picture is still a wrong picture.
-    const superposed = Boolean(model && !model.drawable && model.cells.length
+    // 🔴 walk 모델에는 `cells` 도 `drawable` 도 «없습니다». 그릴 것이 있느냐는 좌표계 선언이
+    //    답할 일이지 lot_map 의 필드가 답할 일이 아닙니다 -- 그래서 여기서는 «둘 다» 봅니다.
+    const rawCells = (model && model.cells) || [];
+    const walkedNodes = (model && Array.isArray(model.nodes)) ? model.nodes : null;
+    const superposed = Boolean(model && !model.drawable && rawCells.length
       && declaredBounds(model.frame));
-    const drawable = this.status === 'ready' && model && model.cells.length
-      && (model.drawable || superposed);
+    const drawable = this.status === 'ready' && model
+      && (walkedNodes ? walkedNodes.length : rawCells.length)
+      && (walkedNodes ? true : (model.drawable || superposed));
     if (canvas.style) canvas.style.display = drawable ? 'block' : 'none';
     if (!drawable || !box.width || !box.height) return;
 
