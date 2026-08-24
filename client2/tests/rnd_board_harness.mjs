@@ -761,6 +761,30 @@ async function suite(mods) {
       askedYes === 1 && yesHost.children.length > 0 && yesMap.lastPaint.cells === 141,
       `asked ${askedYes} · children ${yesHost.children.length} · cells ${yesMap.lastPaint.cells}`);
     noMap.destroy(); yesMap.destroy();
+
+    // 🔴 이 회귀의 «모양»입니다 (총괄 실측 2026-08-24: 8080 에서 칠해진 픽셀 0%). 부품의
+    //    테두리는 전부 정상이고 -- 머리·수치·기반·페이저·배지 -- «그리는 자리»만 비어 있었고,
+    //    요소를 세는 검사는 그것을 「정상」으로 읽습니다. 그래서 단언은 「요소가 있다」가 아니라
+    //    「무엇이 «얼마나» 그려졌다」입니다.
+    //    원인 후보 중 코드로 막을 수 있는 것: box 가 resize 콜백에서«만» 왔다는 것. 콜백이
+    //    한 번도 안 오면 캔버스는 크기조차 못 받습니다. 이제 호스트에게 직접 묻습니다.
+    const blindHost = doc2.createElement('div');
+    blindHost.getBoundingClientRect = () => ({ width: 300, height: 240 });
+    const blind = new MapPanel(blindHost, { doc: doc2, markings: store2, reads: 'b', writes: 'b',
+      axis: 'bond', load: () => Promise.resolve(FIX_07) });
+    blind.mount();
+    await flush(); await flush();
+    // resize() 는 «한 번도» 부르지 않습니다 -- 관찰자가 없는 자리를 흉내 냅니다.
+    const blindCanvas = canvasIn(blindHost);
+    const inkOps = blindCanvas ? blindCanvas.ops.filter((o) => o.op === 'fill') : [];
+    const inked = inkOps.reduce((sum, o) => sum + Math.abs(o.w * o.h), 0);
+    ok('F13 the first paint does not wait for a resize callback',
+      Boolean(blindCanvas) && blindCanvas.width > 0 && blindCanvas.height > 0,
+      blindCanvas ? `${blindCanvas.width}x${blindCanvas.height}` : 'no canvas');
+    ok('F14 ... and it inks AREA, not just elements',
+      inkOps.length >= 141 && inked > 0.2 * blindCanvas.width * blindCanvas.height,
+      `${inkOps.length} fills · ${Math.round(inked)} of ${blindCanvas.width * blindCanvas.height}`);
+    blind.destroy();
   }
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
@@ -811,6 +835,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 그린 것이 «없는데» 테두리는 멀쩡한 모양 -- 요소를 세는 검사가 「정상」이라 읽는 그 회귀.
+  { id: 'M05', what: 'the first paint waits for a resize callback that may never come',
+    catches: 'F13',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '      if (rect && rect.width > 0 && rect.height > 0) this.resize(rect.width, rect.height);',
+      '      if (false) this.resize(rect.width, rect.height);') } },
   // 🔴 「이 좌표계에 자리가 없다」와 「그런 점이 없다」를 같은 그림으로 만드는 변이입니다.
   { id: 'M04', what: 'a point with no place in this space is dropped silently instead of counted',
     catches: 'F8b',

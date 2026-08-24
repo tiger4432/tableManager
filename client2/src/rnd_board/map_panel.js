@@ -375,6 +375,15 @@ export class MapPanel extends Panel {
     // 안 서는 인스턴스는 «묻지도» 않습니다 -- 그릴 수 없는 답을 받아 두는 것은 요청 하나를
     // 버리는 일입니다. 화면에도 아무것도 안 남습니다.
     if (!this.stands()) return;
+    // 🔴 첫 칠이 «관찰자»를 기다리지 않습니다. `box` 는 지금까지 resize 콜백에서«만» 왔고,
+    //    그 콜백이 한 번도 안 오는 자리가 있습니다. 그러면 캔버스는 width/height 없이 남고
+    //    화면은 「비어 있는데 «정상처럼»」 보입니다 -- 요소 개수로는 안 잡히는 모양입니다
+    //    (총괄이 8080 에서 픽셀 0% 를 재서 잡았습니다). 호스트가 자기 크기를 말할 수 있으면
+    //    그걸로 시작하고, 관찰자가 오면 그때 다시 맞춥니다.
+    if (this.host && typeof this.host.getBoundingClientRect === 'function') {
+      const rect = this.host.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) this.resize(rect.width, rect.height);
+    }
     this.reload();
     if (this.pageFollows && this.markings) {
       this._followOff = this.markings.subscribe(this.pageFollows, () => this._onSubjectChanged());
