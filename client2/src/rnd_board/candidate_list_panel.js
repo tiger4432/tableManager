@@ -122,6 +122,13 @@ export class CandidateListPanel extends Panel {
 
     root.appendChild(head);
 
+    // 🔴 «닿았는데 0» 도 말해야 합니다. state 가 ready 이고 후보만 0 이면 지금까지는 「후보 0」
+    //    한 줄뿐이었는데, 그건 「씨앗이 틀렸다」와 «같아 보입니다». 실측(2026-08-24): 이 웨이퍼의
+    //    walk 은 노드 386(wafer · Claim · die)에 닿고 물리량 후보만 0 입니다 -- 전혀 다른 사실입니다.
+    if (m.state !== 'empty' && !m.candidates.length && m.graph) {
+      root.appendChild(this._line(
+        `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges} — 걸었지만 물리량 후보가 없습니다`, 'absent'));
+    }
     if (m.state === 'empty') {
       // NOT 「원인 없음」. The walk did not reach a quantity; that is a fact about the walk.
       // 🔴 TWO FACTS, SEPARATELY. `ranked: []` for THIS collect is not 「nothing is here」:

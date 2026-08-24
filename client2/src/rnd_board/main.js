@@ -69,6 +69,11 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
  *    putting a refusal where the mockup shows content. The mockup's 제어 band -- not built --
  *    is what will bind them, and until it is the titles carry the subject.
  */
+// 🔴 이 파일의 씨앗 여섯 줄은 «픽스처 기본값»이지 계약이 아닙니다 (총괄 판정 2026-08-24).
+//    웨이퍼 SYN-CX-BW-001 과 칩 SYN-CX-CHIP-001 은 «같은 물리 대상»입니다 -- 그 칩이 그
+//    웨이퍼에 앉아 있고, 그래서 한 화면에 주어가 하나입니다. 라우트가 서로 다른 id 를 받을 뿐입니다.
+//    ⚠️ 다음 항목이 `start { marking: 'marking:1' }` 이고, 마킹이 시작점을 몰고 오는 날
+//       이 줄들은 «사라집니다». 계약으로 읽지 마십시오.
 export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
   // 🔴 목업의 아래 띠는 «가로»입니다 — 본딩 맵 | 코어 맵 | 후보 | 순위 가 나란히. 우리가 맵을
@@ -101,19 +106,19 @@ export const BOARD = Object.freeze({
     {
       id: 'head-summary',
       part: 'headSummary',
-      title: '머리 요약 · SYN-BW-103-11',
+      title: '머리 요약 · SYN-CX-BW-001',
       at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
       // walk ④ — 「이 주어가 무엇으로 만들어졌나」. groupby 는 값이지 축이 아닙니다.
-      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
       collect: 'wafer_process',
       options: {
-        finalChipId: 'SYN-BW-103-11',
+        finalChipId: 'SYN-CX-CHIP-001',
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
         //    가져오되 주어를 바꾸지 않습니다 -- 구성·후보·순위가 그 칩의 층에서 나오기 때문에
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
-        waferQuestion: { row: 'SYN-BW-103-11', by: 'wafer' },
+        waferQuestion: { row: 'SYN-CX-BW-001', by: 'wafer' },
         waferKinds: ['void', 'delam'],
         // 목업이 머리에 다는 「마킹 1 · N행」 · 「마킹 2 · N행」. 이름은 여기서만 압니다.
         markingRows: ['marking:1', 'marking:2'],
@@ -148,7 +153,7 @@ export const BOARD = Object.freeze({
       writes: 'axis:y',
       collect: 'trend_y',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
         window: '180d',
         // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
@@ -271,19 +276,19 @@ export const BOARD = Object.freeze({
     {
       id: 'composition',
       part: 'composition',
-      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
       collect: 'wafer_process',
-      title: '구성 · SYN-BW-103-11',
+      title: '구성 · SYN-CX-CHIP-001',
       at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:1',
-      options: { finalChipId: 'SYN-BW-103-11' },
+      options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
       id: 'map-bond-a',
       part: 'map',
       collect: 'map',
-      title: '본딩 맵 · SYN-BW-103-11',
+      title: '본딩 맵 · SYN-CX-BW-001',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
@@ -295,13 +300,13 @@ export const BOARD = Object.freeze({
           { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
           { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
         ],
-        basisChipId: 'SYN-BW-103-11',
+        basisChipId: 'SYN-CX-CHIP-001',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
         //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
-        question: { row: 'SYN-BW-103-11', kind: 'void', by: 'wafer' },
+        question: { row: 'SYN-CX-BW-001', kind: 'void', by: 'wafer' },
       },
     },
     {
@@ -331,9 +336,9 @@ export const BOARD = Object.freeze({
       at: { column: 3, row: 5 },
       reads: 'marking:1',
       writes: null,
-      start: { groupby: 'chip', value: 'SYN-BW-103-11' },
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
       collect: 'wafer_process',
-      options: { finalChipId: 'SYN-BW-103-11' },
+      options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
       // 🔴 목업의 둘째 맵은 «코어 맵»입니다 (마킹 2 · 후보가 걸린 점). 우리는 본딩 맵을 한 장
@@ -353,13 +358,13 @@ export const BOARD = Object.freeze({
           { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
           { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
         ],
-        basisChipId: 'SYN-BW-103-11',
+        basisChipId: 'SYN-CX-CHIP-001',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
         //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
-        question: { row: 'SYN-BW-103-11', kind: 'void', by: 'wafer' },
+        question: { row: 'SYN-CX-BW-001', kind: 'void', by: 'wafer' },
       },
     },
     {
@@ -367,27 +372,27 @@ export const BOARD = Object.freeze({
       //    그것이 「마킹은 부품 밖에 산다」가 화면에서 보이는 자리다.
       id: 'candidate-list',
       part: 'candidateList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
       collect: 'candidate',
-      title: '원인 후보 · SYN-BW-103-11',
+      title: '원인 후보 · SYN-CX-BW-001',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
       },
     },
     {
       id: 'rank-list',
       part: 'rankList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
       collect: 'candidate',
-      title: '순위 · SYN-BW-103-11',
+      title: '순위 · SYN-CX-BW-001',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
       },
     },
   ],
@@ -423,7 +428,7 @@ export function bindLoaders(layout, deps) {
               walk({ collect: 'trend_y', window: '180d' }),
               walk({
                 start: { groupby: 'wafer',
-                  value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+                  value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
                 collect: 'candidate',
               }),
             ]).then(([trends, candidates]) => {
