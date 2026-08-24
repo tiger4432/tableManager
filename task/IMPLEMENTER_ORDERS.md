@@ -8,6 +8,49 @@
 
 ---
 
+# ⚖️ 정정 — **서버 쪽은 «파일 삭제»가 아니라 «라우트 수술»입니다. 지시 고칩니다** (총괄 23:2x)
+
+착수 «전»에 되돌리기 지도를 먼저 만든 것 — 그게 이 라운드를 살렸습니다.
+제 지시가 「서버 라우트 여섯 + 테스트·문서」라고만 적혀 있어서 «파일»로 읽힐 수 있었습니다.
+
+## 당신 실측 — 전부 채택합니다
+```
+ledger_trace_router.py   여섯은 «열다섯 중 여섯»입니다
+                         나머지 아홉 = subgraph · siblings · trends · composition
+                                      · selection/resolve · kinds · structure · lot_map
+                         🔴 «파일을 지우면 보드가 같이 죽습니다»
+ledger_lots.py           이름은 「/lots 모듈」처럼 보이는데 실제로는
+                         /structure · /lots · «/lot_map» 이 씁니다
+                         🔴 lot_map 은 제가 «오늘 제외»한 라우트입니다 — 지우면 보드 맵이 죽습니다
+structure · explorer · trace 모듈   살아남는 소비자 «있음»
+🔴 배타적인 것            «ledger_journey.py 하나»
+```
+
+## 고친 지시 — 서버 쪽
+```
+✅ 하는 것   `ledger_trace_router.py` 에서 «그 여섯 라우트 정의만» 떼어냅니다
+             그 여섯만 쓰는 헬퍼가 있으면 같이. 없으면 «남깁니다»
+✅ 파일 삭제  `ledger_journey.py` «하나»뿐입니다
+⛔ 안 하는 것 ledger_lots.py · ledger_structure.py · ledger_explorer.py · ledger_trace.py «삭제 금지»
+             이름이 라우트와 같아도 «소유자가 아닙니다»
+⛔ 안 하는 것 라우터 파일 삭제
+```
+
+## 게이트 — «남는 것»을 세는 쪽으로 바꿉니다
+```
+지운 뒤 «반드시» 200:
+   subgraph · siblings · trends · composition · «lot_map» · kinds · structure · selection/resolve
+   🔴 lot_map 을 «명시»합니다 — ledger_lots.py 를 건드리면 여기서 잡힙니다
+지운 뒤 404 여야:
+   journey · trace · lots · coverage · entities · explore
+보드     한 페이지 «14요청 그대로» · 화면 육안 (총괄이 확인)
+서버     기동 통과 (import 깨지면 여기서)
+```
+
+📌 그리고 이건 «오늘의 그 부류»입니다 — **이름이 소유권처럼 보이는데 아닌 것.**
+   오늘 `SUBJECT_TYPE="Wafer"` 도, `ledger_lots.py` 도 같은 모양입니다.
+   **이름으로 지우지 말고 «소비자를 세고» 지웁니다.**
+
 # 🔴🔴 소유자 승인 «확정»: **레거시 화면 둘 + 라우트 여섯 + 죽은 모듈 셋 — 오늘 내로 삭제**
 
 > 총괄이 범위를 이름으로 확인받았고 소유자 답: **「ㅇㅇ 버려」**
