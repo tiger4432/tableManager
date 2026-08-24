@@ -8,6 +8,64 @@
 
 ---
 
+# ✅ 선언 «둘 다» 섰습니다 — 착수하십시오 (총괄 19:3x)
+
+```
+lc.load() ✅ · 백업 ledger_config.json.bak-lead-decls · diff «삽입만»
+정본 복사    transfer_event 의 소스 구조를 «복사»해서 씁니다 — 모양이 검증기에서 어긋날 수 없게
+```
+
+## ② `dt_transfer` — 소유자 ⓑ, 정본과 «같은» core die -> DT die
+```
+relation   dt_log
+subject    die@1 { mat_id=core_wafer · mat_type=상수 "Wafer" · x=core_x · y=core_y }
+target     die@1 { mat_id=dt_job     · mat_type=상수 "DT"    · x=dt_x   · y=dt_y }
+occurred   event_time (Asia/Seoul)
+```
+🔴 **두 가지가 원자를 «안» 만듭니다. 둘 다 «그대로 두십시오»**
+```
+core_wafer 없음   6,731행   -> 엣지 없음 (추정 금지)
+event_time 없음     522행   -> 원자 없음.  📎 그 522 는 product='SYNTHETIC' 과 «같은 집합»으로 보입니다
+                              (core_wafer 도 522/522 비어 있었습니다) — 재서 보고에 적어 주십시오
+게이트   엣지 «28,208» · 분류 subject_type=die · object entity_ref · type die
+         🔴 여정: 본딩 다이 씨앗에서 walk 이 «코어 웨이퍼에 닿는가» — 이 라운드의 «이유»입니다
+         무변화: SYN-BW-103-11 point 208 · { void 199, delam 9 }
+```
+
+## ③ `wafer_process_recipe` — 소유자 「c a」
+```
+predicate  processed_with@1  ·  object «entity_ref» -> recipe@1   (신설 개체: keys ["recipe"])
+relation   wafer_process (3,022행 · 전 컬럼 100%)
+subject    wafer@1 { wafer = wafer_id }
+target     recipe@1 { recipe = recipe_id }
+qualifier  step
+occurred   eventtime (Asia/Seoul)
+```
+🔴 **오늘 화면은 «안 바뀝니다» — 알고 하십시오.** wafer_process 가 화면의 세 웨이퍼를
+   «하나도 안 덮습니다»(0행씩). 이건 운영 어휘가 올라올 자리(ⓐ)이고,
+   ⓒ 의 값어치는 «walk 이 웨이퍼 -> 레시피 -> 같은 레시피 쓴 다른 웨이퍼»로 걸어가는 것입니다.
+```
+게이트   원자 «3,022» · object entity_ref · type recipe
+         🔴 그리고 «걸어 보십시오»: wafer 씨앗에서 recipe 노드에 닿고,
+            그 recipe 에서 «다른 wafer»로 다시 닿는가. 그게 ⓒ 를 고른 이유입니다
+```
+
+## 순서
+```
+1  ② 를 «작게 먼저» -> 게이트 -> 전량       (28,208 이라 큽니다)
+2  ③ 은 3,022 이라 한 번에 가도 됩니다
+3  둘 다 «커밋 전 같은 트랜잭션 안에서» 게이트 (오늘 당신이 세운 모양)
+```
+
+## 📌 그리고 「여정을 «전»에도 박아라」 — 채택합니다
+```
+당신 말이 맞습니다: «후»만 재는 게이트는 「고쳤다」와 「원래 됐다」를 «못 가릅니다»
+-> 두 여정 다 «착수 전» 값을 먼저 적으십시오:
+     본딩 다이 -> 코어 웨이퍼   (지금 «안 닿아야» 정상. 닿으면 이 라운드의 전제가 틀린 것)
+     wafer -> recipe -> 다른 wafer  (지금 recipe 노드가 «없어야» 정상)
+전/후 표에 «둘 다» — 오늘 제가 씨더에서 배운 것과 같은 자리입니다
+```
+
 # ⚖️ 판정 — **«행»입니다. 그리고 모양은 «core die -> DT die»** — 정본을 그대로 씁니다 (총괄 19:1x)
 
 게이트를 «선언을 읽기 전에 안 박은» 판단이 맞습니다. 답을 드립니다.
