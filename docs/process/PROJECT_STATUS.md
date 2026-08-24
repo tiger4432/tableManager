@@ -105,6 +105,38 @@
 > 📎 정정 둘 (제 실측): 뷰의 INNER JOIN 은 «한 행도 안 버립니다» (고아 run_uid 0 · NULL 0) —
 >    밀도 9→28 의 원인이 «아닙니다». 그리고 축 엔진은 처음부터 멀쩡했습니다.
 >
+> ### ③-kind 🔴 «도는 중» — 보이드가 자기를 「defect」이라 부릅니다. 재번역 대기 (14:5x)
+> ```
+> 증상   point 208 의 분포 { delam 9, «defect» 199 }.  run_uid «null».  position «{}»
+> 원인   투영은 payload «최상위» 넷을 읽습니다 (subgraph.py:665-687, 없으면 finding_kind="defect")
+>        v5 런타임은 payload 를 {"value":…} + {"qualifiers":…} «로만» 짓습니다 (roleframe.py:1172)
+>        -> 「한 사실, 읽는 쪽과 쓰는 쪽이 «다른 칸»을 본다」
+> ```
+> ```
+> ✅ 선언 (총괄, 라이브)   observed@1 optional + finding_kind · run_uid
+>                          void-at-die bind + finding_kind=상수 "void" · run_uid=컬럼
+>                          🔴 prepare/map.input_columns 에도 run_uid — «검증기가 이걸로 거절»했음
+>                          lc.load() ✅ · 백업 .bak-lead-quals · diff 삽입만 · 줄끝 LF 유지
+> ✅ 투영 (구현자)         658514bb — 최상위에 없으면 «같은 이름»으로 qualifiers 밑을 봄
+> ⏳ 재번역 103,729        게이트 = «수 + 분류»:  hops=12 point 208
+>                          분포 { void 199, delam 9 } · «defect 0» · run_uid 비어 있지 않음 199
+> ```
+> 🔴 **`position` 은 «이 라운드 아님»** — 투영이 찾는 이름은 `position` 인데 제 칸은 `inchip_x/y`.
+>    이름 매핑을 코드에 박으면 「다른 어휘로 코드 0줄」이 깨집니다. 아침의 「finding point 좌표」 별건.
+>    (v1 delam 도 position 은 «비어 있었습니다» — 이번 라운드가 만든 것이 아닙니다)
+> ⚠️ **밀도는 그 뒤** — 지금 올리면 이름 못 말하는 원자가 9,000건 더 생깁니다
+>
+> ### ③-catalog ⚖️ 제 ⓒ 판정 «철회» — 선언이 그 질문의 정답지가 아니었습니다 (14:5x)
+> ```
+> 코드 v1 목록      Equipment·Lot·Product·Recipe·Wafer   (마이그레이션 뒤 전부 빈 결과)
+> 선언 entities     dtjob·lot·wafer·die
+> «register 원자»   dtjob 396 · lot 92 · waferleg «12» · recipe «9» · wafer
+> -> ⓒ 로 가면 21건이 «에러 없이» 사라집니다. 원칙에서 판정하고 «선언의 내용을 안 셌습니다»
+> 채택   목록은 «원장»에서 (predicate='register') · keys 는 선언에서 · 라벨은 이름 조회 후 원시 이름
+>        소유자 완성 조건에 «더» 맞습니다 — 새 어휘에 코드 0줄 «이자 선언 편집도 0»
+> 순서   기록만. 대상이 그래프 뷰어(삭제 후보)라 지금 라운드 아님
+> ```
+>
 > ### ③-siblings 🔴 마이그레이션 부작용 «다섯째» — 고쳤습니다 (`d9e14b35`)
 > ```
 > 자리    server/config/sample/siblings_axes.json.sample:41  ledger_subject.type = "Wafer"
