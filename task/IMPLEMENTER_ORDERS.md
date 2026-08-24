@@ -1,3 +1,80 @@
+# 🔄 **판정 «변경» — 목적어를 `lot@1` 에서 `wafer@1` «직결»로 바꿉니다** (총괄 01:4x)
+
+30분 전 제가 `lot@1` 으로 확정했습니다. **그걸 바꿉니다.** 변덕이 아니라 «새 증거»입니다 —
+응용 레인이 그 사이에 「SQL 로는 닫히는데 **walk 이 한 홉 모자란다**」를 실측했고,
+제가 그 위에서 확인하고 대안을 쟀습니다.
+
+## 무엇이 바뀌었나 — 응용의 측정 (제가 재확인했습니다)
+```
+씨앗 SYN-CL-020 에서 홉을 올려 가며:
+   요청 2·4·6·8·12  ->  «닿은 홉이 전부 5»에서 섭니다
+   노드 1000 포화. 그중 Claim «678~810»
+   node_limit=2000 -> 422 (라우트 천장이 1000)
+🔴 제가 손잡이를 여섯 조합 태웠습니다: include_values · observations · enrich_actions · edge_limit
+   -> «어느 것도 Claim 을 예산에서 못 뺍니다». 전부 홉 5에서 섭니다
+```
+```
+제안했던 체인   BW --bonded_from--> lot --has_wafer--> wafer --processed_with--> recipe
+                = 엣지 «3» = «6홉»          -> walk 은 5에서 섭니다. «화면엔 아무것도 안 옵니다»
+```
+**SQL 로 250 이 닫혀도 walk 이 못 걸으면 소유자 화면엔 0 입니다.** 그게 이 프로젝트의 목표입니다.
+
+## 그래서 재 본 것 — 체인을 «한 칸 줄이는» 재료가 있나
+```
+🔴 core_wafer_map   78,555행 · (core_lot, core_slot, wafer_id) · SYN-CL 랏 «9개» 커버
+   표본  SYN-CL-001 | 02 | SYN-CW-001-02
+   📌 구현자가 보고한 has_wafer 커버 「9/33 랏」과 «독립적으로 같은 9» — 교차 확인됨
+   (wafer_id_status 는 59행, 진짜 랏만 -> SYN 에 0. 안 씁니다)
+```
+
+## 🔴 두 길을 «같은 끝»에서 비교 — 이게 판정 근거입니다
+```
+ⓑ-lot     BW -> lot -> wafer -> recipe    엣지 3 · «6홉»
+           SQL 닫힘 «250»      walk 닫힘 «0»    <- 걷지 못합니다
+ⓑ-직결     BW -> wafer -> recipe            엣지 2 · «4홉»
+           SQL 닫힘 «149»      walk «들어갑니다»  <- 4홉은 예산 안입니다
+                                                 (BW 에서 hops=4 실측 673노드 · 여유 327)
+```
+**149 가 250 보다 «큽니다»** — 걷는 149 와 안 걷는 250 이니까요.
+소유자 지시 「목표달성 못하면 말짱꽝」이 정확히 이 자리입니다.
+
+---
+
+# 할 것 — 뷰를 «한 컬럼» 늘립니다. 새 표 아닙니다
+
+## 당신: `bonding_core_lot` 에 `core_wafer` 를 «추가»
+```
+지금    base_id · core_lot · core_slot · event_time            (1,267행)
+바꿈    + core_wafer     <- core_wafer_map 조인으로 푼 값
+조인    ON m.core_lot = b.core_lot
+       AND regexp_replace(m.core_slot::text,'\D','','g')::int = b.core_slot::int
+       🔴 «양쪽 형을 맞춰서» — 슬롯 '02' 와 2.0 입니다. 오늘 이걸로 제가 두 번 틀렸습니다
+기대    (base_id, core_wafer) distinct 쌍 «281»
+        core_wafer 가 NULL 인 행은 «남겨 두십시오» (안 풀린 랏 24/33 이 그대로 보여야 합니다)
+```
+⚠️ **행 수가 1,267 을 넘으면 멈추십시오.** core_wafer_map 이 (lot,slot)당 여러 행이라
+   조인이 «불릴» 수 있습니다. DISTINCT ON 으로 하나만 남기고, 그때 «몇 개를 버렸는지» 보고.
+
+## 저: 선언을 다시 씁니다
+```
+바꿈   bonded_from@1   목적어 lot@1 -> «wafer@1» { wafer = core_wafer }
+그대로  주어 wafer@1 { wafer = base_id } · qualifier core_slot · 소스 bonding_core_lot
+📌 lot@1 판 선언은 «이미 config 에 써 뒀습니다». 제가 갈아끼웁니다 (백업 .bak-lead-bonded)
+```
+
+## 게이트 — 🔴 이번엔 «SQL 과 walk 을 둘 다» 잽니다. 하나만 재서 오늘 두 번 틀렸습니다
+```
+① 수      새 원자 «281» (뷰의 core_wafer notnull 행수와 일치)
+② SQL     void BW ∩ recipe 엣지 웨이퍼   0 -> «149»
+③ 🔴 walk  void BW 씨앗에서 subgraph 를 걸어 «recipe 노드가 나오나»
+          씨앗은 core_wafer 가 풀린 BW 하나. hops=4·6, node_limit=1000
+          -> recipe 개수와 hops_reached 와 truncated 를 «그대로» 적어 주십시오
+          🔴 0 이어도 «실패가 아닙니다» — 그러면 예산이 원인이라는 «증거»입니다
+④ 무변화   observed 103,841 · transfer 29,613 · processed_with(entity_ref) 3,022
+```
+
+---
+
 # ⚖️ **판정 — 당신 「섬」 지적 «채택». `lot@1` 확정. 그리고 «주어»는 웨이퍼로 내립니다** (총괄 01:3x)
 
 ## ① 당신이 맞습니다 — 목적어는 `lot@1` 입니다
