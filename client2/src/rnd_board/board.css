@@ -581,3 +581,5 @@ body {
 .rb-head-step { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px;
   font-family: var(--font-mono); font-size: 10.5px; color: var(--text); }
 .rb-head-steps-sep { color: var(--text-muted); }
+/* 목업의 「접는 단위」 줄 — 이 차트가 무엇을 한 점으로 접는지. */
+.rb-trend-fold { color: var(--text-muted); font-family: var(--font-mono); font-size: 10.5px; }

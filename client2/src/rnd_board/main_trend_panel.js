@@ -342,6 +342,18 @@ export class MainTrendPanel extends Panel {
     const one = doc.createElement('span');
     one.textContent = `점 하나 = 웨이퍼 하나 · ${points.length}개`;
     el.appendChild(one);
+    // 🔴 목업의 「접는 단위」 줄 (A4). 이 차트가 «무엇을 한 점으로 접는지»는 선언에 있습니다 --
+    //    grain 의 subject_type 이 그것이고, 지어낼 필요가 없습니다. 단위별 «행수»는 이 라우트가
+    //    안 실으므로 그 사실을 적습니다. 자리를 비워 두면 「접지 않는다」로 읽힙니다.
+    if (this.grain && this.grain.subject_type) {
+      const fold = doc.createElement('span');
+      fold.className = 'rb-trend-fold';
+      const keys = (this.grain.identity_fields || []).join(' · ');
+      fold.textContent = `접는 단위 ${this.grain.subject_type}`
+        + (keys ? ` (${keys})` : '')
+        + ' · 단위별 행수는 이 응답에 없습니다';
+      el.appendChild(fold);
+    }
     if (m.provenance) {
       const prov = doc.createElement('span');
       prov.className = 'rb-trend-prov';
