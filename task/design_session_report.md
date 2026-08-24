@@ -20,6 +20,17 @@ GET /api/ledger/siblings?scope=leg:HBM-B_LOW-P&window=180d   ->  HTTP «200»
 ```
 📌 오늘 하루의 규칙 그대로입니다: 수를 쓰면 «그 수가 어디서 왔는지»도 씁니다.
 
+## 그 한 줄이 «어디 있는지»까지 쟀습니다 — 응용 레인에 필요한 필드 셋 (누적)
+```
+siblings        scope.relation · scope.column      <- 또래 알약의 «출처». 지금 모델이 안 실음
+                (실측: scope 키에 relation · column 이 «있습니다»)
+subgraph        (완료 — truncated 는 3f6a27c4 로 들어왔습니다)
+composition     upstream_process.events            <- 펼친 층의 claims 표
+lot_map         cell.points (placements 포함)      <- inchip 좌표계
+```
+🔴 넷 다 «경계에서 한 줄»이고, 넷 다 화면에는 «자리와 단언이 이미 서 있습니다».
+   실리는 날 부품도 선언도 안 바뀌고 값만 나타납니다.
+
 ---
 
 # 🔴 「구멍이 닫혔다」를 재 봤습니다 — «한 겹 정정»이 필요합니다 (판정 요청)
