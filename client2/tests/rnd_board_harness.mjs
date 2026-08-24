@@ -66,6 +66,9 @@ async function loadModules(mutate = {}) {
     sources[file] = fn ? fn(text) : text;
     return sources[file];
   };
+  // 🔴 스타일시트도 «채점 대상»입니다. 오늘 화면을 깬 것은 자바스크립트가 아니라 CSS 한 줄
+  //    (flex-wrap)이었고, 소스에 안 읽어 두면 그 부류는 변이도 단언도 못 겁니다.
+  read('board.css');
   const storeUrl = dataUrl(read('marking_store.js'));
   const apiUrl = dataUrl(read('api.js'));
   const panelUrl = dataUrl(read('panel.js')
@@ -900,6 +903,21 @@ async function suite(mods) {
   shell.destroy();
   eq('I1 destroying the shell empties the host', host.children.length, 0);
 
+  // ── S. 넓은 내용은 «자기 컨테이너»에서 스크롤합니다 ─────────────────────────────
+  {
+    const css = (mods.sources && mods.sources['board.css']) || '';
+    const declaresRow = (cls) => {
+      const at = css.indexOf(`.${cls} {`);
+      if (at < 0) return false;
+      const block = css.slice(at, css.indexOf('}', at));
+      return /flex-wrap:\s*nowrap/.test(block) && /overflow-x:\s*auto/.test(block);
+    };
+    ok('S1 the head step chain stays on one line and scrolls itself',
+      declaresRow('rb-head-steps'), 'rb-head-steps');
+    ok('S2 ... and so does the expanded layer step chain',
+      declaresRow('rb-layer-steps'), 'rb-layer-steps');
+  }
+
   return { ran, failures };
 }
 
@@ -909,6 +927,13 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 그림으로는 «안 보이는» 자리입니다: 스텝이 몇 개든 상자 안에 있어야 하는데, wrap 하나가
+  //    머리 패널을 517px 넘치게 해 아래 패널 둘을 덮었습니다 (총괄 실측 2026-08-24).
+  { id: 'M13', what: 'the step chain wraps again, so a chip with many steps overflows its panel',
+    catches: 'S1',
+    mutate: { 'board.css': (s) => s.replace(
+      '.rb-head-steps { display: flex; flex-wrap: nowrap;',
+      '.rb-head-steps { display: flex; flex-wrap: wrap;') } },
   { id: 'M12', what: 'a map with an empty marking asks anyway, so 「not chosen yet」 reads as a refusal',
     catches: 'F17',
     mutate: { 'map_panel.js': (s) => s.replace(
