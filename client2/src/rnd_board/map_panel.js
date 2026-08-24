@@ -237,8 +237,11 @@ const SPACES = {
     //    조용히 빠지면 「그런 게 없다」로 읽힙니다.
     items: (model, panel) => (model.cells || []).reduce((out, cell) => {
       for (const p of cell.points || []) {
+        const state = placeState(p, panel.space);
+        // 계약이 안 온 점은 «못 그리는 게 아니라 아직 모르는» 것입니다. 따로 셉니다.
+        if (state === 'awaiting') { panel._awaitingPlaces += 1; continue; }
+        if (state === 'nowhere') { panel._offSpace += 1; continue; }
         const at = placementOf(p, panel.space);
-        if (!at) { panel._offSpace += 1; continue; }
         out.push({ ...p,
           x: at.x,
           y: at.y,
@@ -278,6 +281,20 @@ function placementOf(item, space) {
   const list = item && item.placements;
   if (!Array.isArray(list)) return null;
   return list.find((p) => p && p.space === space) || null;
+}
+
+/**
+ * 🔴 갈래는 «셋»입니다 (총괄 판정 2026-08-24). 앞의 둘을 하나로 묶으면 「아직 안 온다」가
+ *    「없다」로 읽히고, 그건 이 화면이 없애려는 오독 그 자체입니다.
+ *
+ *      'awaiting'  `placements` 키가 «없다»  -> 계약이 아직 안 왔습니다. 옛 경로가 있으면
+ *                                              그걸로 그리고, 화면이 「좌표 계약 대기」라 말합니다
+ *      'nowhere'   `placements: []`          -> 이 점은 «어느 자리에도» 없습니다
+ *      'here'      그 space 의 자리가 있다    -> 그립니다
+ */
+function placeState(item, space) {
+  if (!item || !Array.isArray(item.placements)) return 'awaiting';
+  return placementOf(item, space) ? 'here' : 'nowhere';
 }
 
 const WEIGHT_SHADES = [
@@ -343,6 +360,8 @@ export class MapPanel extends Panel {
     // 이 좌표계에 자리가 없어 빠진 점의 수 -- 칠할 때 세고, 머리가 그 수를 말합니다.
     this._offSpace = 0;
     this._headOffSpace = 0;
+    // 계약이 아직 안 와서 자리를 «모르는» 점의 수. 「자리가 없다」와 다른 수입니다.
+    this._awaitingPlaces = 0;
     this.loadPages = options.loadPages || null;
     // 🔴 「점을 찍으면 그것이 씨앗」 REACHES THE MAP. The trend names the wafer it picked; a map
     //    that declares it follows that name re-targets onto it. Paging never clears a marking.
@@ -577,8 +596,13 @@ export class MapPanel extends Panel {
     // 🔴 이 좌표계에 «자리가 없어» 빠진 점들. 서버가 못 붙인 것(unplaced)과 «다른 말»이라
     //    문장도 따로입니다: 하나는 「어디 것인지 모른다」, 이건 「이 그림에 자리가 없다」입니다.
     const offSpace = this.lastPaint && this.lastPaint.offSpace;
+    const awaiting = this.lastPaint && this.lastPaint.awaitingPlaces;
     const un = m && m.unplaced;
-    if (!un && offSpace) {
+    if (!un && awaiting) {
+      // 「아직 안 왔다」 -- 배관의 상태이지 데이터의 상태가 아닙니다.
+      n.outside.className = 'rb-map__outside is-unknown';
+      n.outside.textContent = `좌표 계약 대기 · ${awaiting}`;
+    } else if (!un && offSpace) {
       n.outside.className = 'rb-map__outside is-measured';
       n.outside.textContent = `이 좌표계에 자리 없음 · ${offSpace}`;
     } else if (!un) {
@@ -738,6 +762,7 @@ export class MapPanel extends Panel {
     const space = this._space();
     // 이 좌표계에 자리가 없어 «빠진» 점의 수. 한 칠마다 다시 셉니다.
     this._offSpace = 0;
+    this._awaitingPlaces = 0;
     const cells = space.items(model, this) || [];
     const declared = space.bounds(model, this);
     const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
@@ -833,11 +858,12 @@ export class MapPanel extends Panel {
 
     this._layout = layout;
     this._byXY = new Map(cells.map((c) => [`${c.x},${c.y}`, c]));
-    this.lastPaint = { cells: painted, marks, vacant, offSpace: this._offSpace };
+    this.lastPaint = { cells: painted, marks, vacant,
+      offSpace: this._offSpace, awaitingPlaces: this._awaitingPlaces };
     // 🔴 머리는 칠보다 «먼저» 쓰입니다. 그래서 여기서 «세어진» 수는 다음 render 까지 머리에
     //    안 보입니다 -- 한 박자 늦은 수는 틀린 수입니다. 바뀐 때만 머리를 다시 씁니다.
-    if (this._headOffSpace !== this._offSpace) {
-      this._headOffSpace = this._offSpace;
+    if (this._headOffSpace !== this._offSpace + this._awaitingPlaces) {
+      this._headOffSpace = this._offSpace + this._awaitingPlaces;
       this._writeHead();
     }
   }
@@ -902,7 +928,13 @@ export class MapPanel extends Panel {
 
   /** 프레임 선언대로 앉힌 칸들. 좌표계 선언 `die` 가 쓰는 것입니다. */
   _seated(model) {
-    return seatedProjection(model.frame, model.cells);
+    // 🔴 자리가 «오면» 그 자리를 씁니다. 아직 안 오면 «옛 경로»가 그대로 그립니다 -- 계약이
+    //    착지하는 날 새 갈래가 저절로 이기고, 그때까지 화면은 꺼지지 않습니다 (총괄 판정).
+    const cells = (model.cells || []).map((cell) => {
+      const at = placementOf(cell, this.space);
+      return at ? { ...cell, x: at.x, y: at.y } : cell;
+    });
+    return seatedProjection(model.frame, cells);
   }
 
   clickAt(cssX, cssY, control, mode) {

@@ -716,6 +716,18 @@ async function suite(mods) {
       zoom.lastPaint.cells, 2);
     eq('F8b a point with no place in THIS space is counted, not dropped',
       zoom.lastPaint.offSpace, 1);
+
+    // 🔴 갈래는 «셋»입니다 (총괄 판정). 「어느 자리에도 없다」와 「자리를 아직 안 실어 준다」는
+    //    다른 말이고, 앞의 것은 데이터의 상태, 뒤의 것은 «배관»의 상태입니다. 하나로 묶으면
+    //    계약이 안 온 것이 「없는 것」으로 읽힙니다 -- 오늘 화면이 꺼진 사고의 뿌리가 그것입니다.
+    zoom.model.cells[0].points = [
+      { node_id: 'ledger-entity:v1:no-contract-yet', state: 'found' },
+      { node_id: 'ledger-entity:v1:nowhere', state: 'found', placements: [] },
+    ];
+    zoom.render();
+    // ⚠️ 이 하니스의 `eq` 는 «===» 입니다 -- 배열을 넣으면 절대 안 맞습니다. 문자열로 잽니다.
+    eq('F8c a point whose placements never arrived is 「waiting」, not 「nowhere」',
+      `${zoom.lastPaint.awaitingPlaces}/${zoom.lastPaint.offSpace}`, '1/1');
     zoom.destroy();
 
     // 🔴 한 칸이 «몇 개»를 물었나가 화면에 남아야 합니다. 실측: 다이당 최대 13, 4개 이상인
@@ -835,6 +847,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 「아직 안 왔다」를 「없다」로 접는 변이. 화면은 조용히 「그런 건 없습니다」라고 말합니다.
+  { id: 'M06', what: 'a placement that has not arrived is folded into "this point is nowhere"',
+    catches: 'F8c',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      "  if (!item || !Array.isArray(item.placements)) return 'awaiting';",
+      "  if (!item || !Array.isArray(item.placements)) return 'nowhere';") } },
   // 🔴 그린 것이 «없는데» 테두리는 멀쩡한 모양 -- 요소를 세는 검사가 「정상」이라 읽는 그 회귀.
   { id: 'M05', what: 'the first paint waits for a resize callback that may never come',
     catches: 'F13',
@@ -845,8 +863,8 @@ const MUTANTS = [
   { id: 'M04', what: 'a point with no place in this space is dropped silently instead of counted',
     catches: 'F8b',
     mutate: { 'map_panel.js': (s) => s.replace(
-      '        if (!at) { panel._offSpace += 1; continue; }',
-      '        if (!at) { continue; }') } },
+      "        if (state === 'nowhere') { panel._offSpace += 1; continue; }",
+      "        if (state === 'nowhere') { continue; }") } },
   // 🔴 「좌표가 없다」와 「좌표가 있어야 하는데 빈다」를 같은 그림으로 만드는 변이입니다.
   { id: 'M03', what: 'a map stands even for a source that declares no such coordinate space',
     catches: 'F10',
