@@ -264,12 +264,21 @@ export class MainTrendPanel extends Panel {
       //    ⚠️ 분자(`found_chip_count`)는 경계 모델이 아직 안 싣습니다 (api.js = 응용 레인).
       //       그래서 그 칸은 «지어내지 않고» 없다고 말합니다 -- 0 이라고 쓰면 「보이드 없음」이
       //       되는데 그건 다른 사실입니다.
+      // 🔴 «알갱이»도 같이 말합니다 (총괄 판정 2026-08-24). 맵이 128 을 세고 이 점이 64 를
+      //    세는 것은 «어긋남이 아니라» 세는 단위가 다른 것입니다 (128 = 레그 64 + 레그 64).
+      //    맵은 「bonding_log ∩ inspection_run 기준」이라 출처를 답는데 이 점은 안 답았고,
+      //    그래서 운영자가 두 수를 «모순»으로 읽습니다. 낱말은 «선언된 그대로» 씁니다.
+      const grainWord = this.grain && this.grain.subject_type
+        ? `${this.grain.subject_type}(${[...(this.grain.identity_fields || []),
+          ...(this.grain.context_fields || [])].join(' · ')})`
+        : null;
       const seen = p.denominator === null ? '—' : p.denominator;
       const hit = typeof p.found === 'number' ? p.found : '— (경계가 아직 안 싣습니다)';
       dot.setAttribute('title',
         `${p.wafer || '(웨이퍼 없음)'}`
         + ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`
         + ` · 비율 ${(p.rate * 100).toFixed(2)}%`
+        + (grainWord ? ` · ${grainWord} 기준` : '')
         + (p.state ? ` · ${p.state}` : ''));
       if (p.markKey) {
         dot.addEventListener('click', (event) => {

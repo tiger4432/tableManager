@@ -256,6 +256,10 @@ async function suite(mods) {
       Boolean(dot0) && /검사한 칩 \d+/.test(dot0.getAttribute('title') || '')
       && /보이드 난 칩/.test(dot0.getAttribute('title') || ''),
       String(dot0 && dot0.getAttribute('title')));
+    // 🔴 128 과 64 는 «모순이 아니라 알갱이 둘»입니다. 화면이 그 낱말을 말해야 가릴 수 있습니다.
+    ok('C9 a point says which grain its counts were taken at',
+      /WaferLeg\(wafer\)/.test(dot0.getAttribute('title') || ''),
+      String(dot0 && dot0.getAttribute('title')));
     ok('C7 the chart says what it folds a point out of',
       /접는 단위 WaferLeg/.test(legend.textContent), legend.textContent.slice(0, 90));
   }
@@ -305,6 +309,10 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { id: 'M13', what: 'a point states counts without the grain they were taken at',
+    catches: 'C9',
+    mutate: { 'main_trend_panel.js': (s) => s.replace(
+      "        + (grainWord ? ` · ${grainWord} 기준` : '')", "        + ''") } },
   { id: 'M12', what: 'a trend point shows only its ratio, hiding the two counts it was made of',
     catches: 'C8',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
