@@ -26,20 +26,15 @@ export default defineConfig({
         // nobody can reach is how a retired screen keeps looking shipped.
         graph: resolve(__dirname, 'graph.html'),
         trace: resolve(__dirname, 'trace.html'),
-        // Ledger lineage (slice 1, layer 3). A SEPARATE entry from `trace` above:
-        // that one is the G2 knowledge-graph report over `/graph/trace`, this one
-        // is the canonical ledger walk over `/api/ledger/trace`. Two questions,
-        // two answers, and folding them into one page would put a screen that
-        // shows WHY a claim won behind a screen that shows what is connected.
-        ledger: resolve(__dirname, 'ledger.html'),
+        // `ledger` was here until 2026-08-24, and `ledger_graph` below it. Both pages were
+        // DELETED by owner ruling 「ㅇㅇ 버려」 -- not retired from navigation like
+        // `enrichment` above, deleted, so there is no file left to name here. The lineage
+        // question those two asked is answered by the R&D board`s walk (`rnd_board` below).
         // The assembled R&D diagnosis board (`src/rnd_board/`). A SEPARATE entry from
-        // `ledger` above: that page is one walk, this one is a grid of independent parts that
+        // `ledger` (deleted 2026-08-24): that page was one walk, this one is a grid of parts that
         // share a marking store. It is an entry rather than a route on an existing page
         // because the parts are seated by a layout declaration, not by that page's markup.
-        rnd_board: resolve(__dirname, 'rnd-board.html'),
-        // Isolated R&D investigation entry. It does not replace ledger.html until
-        // product-owner cutover approval; keeping both inputs makes rollback trivial.
-        ledger_graph: resolve(__dirname, 'ledger-graph.html')
+        rnd_board: resolve(__dirname, 'rnd-board.html')
       }
     }
   }

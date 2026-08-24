@@ -96,8 +96,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
 const CORE_PATH = join(SRC, 'ledger_trace_core.js');
 const VIEW_PATH = join(SRC, 'ledger_trace_view.js');
-const ENTRY_PATH = join(SRC, 'ledger_trace.js');
-const PAGE_PATH = join(HERE, '..', 'ledger.html');
 const VITE_PATH = join(HERE, '..', 'vite.config.js');
 const LIVE_PATH = join(HERE, 'fixtures', 'ledger_trace_live.json');
 const PROBE_PATH = join(HERE, 'fixtures', 'ledger_trace_probe.json');
@@ -123,15 +121,13 @@ const die = (msg) => {
   process.exit(2);
 };
 
-for (const p of [CORE_PATH, VIEW_PATH, ENTRY_PATH, PAGE_PATH, VITE_PATH, LIVE_PATH, PROBE_PATH,
+for (const p of [CORE_PATH, VIEW_PATH, VITE_PATH, LIVE_PATH, PROBE_PATH,
                  NOTHINGS_PATH, COVERAGE_PATH, CONTESTED_PATH]) {
   if (!existsSync(p)) die(`missing ${p}`);
 }
 
 const CORE_PRISTINE = readFileSync(CORE_PATH, 'utf8');
 const VIEW_PRISTINE = readFileSync(VIEW_PATH, 'utf8');
-const ENTRY_SRC = readFileSync(ENTRY_PATH, 'utf8');
-const PAGE_SRC = readFileSync(PAGE_PATH, 'utf8');
 const VITE_SRC = readFileSync(VITE_PATH, 'utf8');
 const LIVE = JSON.parse(readFileSync(LIVE_PATH, 'utf8'));
 const PROBE = JSON.parse(readFileSync(PROBE_PATH, 'utf8'));
@@ -1217,82 +1213,18 @@ function census() {
     failed.push(detail ? `${name} — ${detail}` : name);
   };
 
-  ok('H1 the entry imports the core', ENTRY_SRC.includes("from './ledger_trace_core.js'"));
-  ok('H2 the entry imports the view', ENTRY_SRC.includes("from './ledger_trace_view.js'"));
-  ok('H3 the entry calls the pinned route', ENTRY_SRC.includes('/api/ledger/trace?'));
-  ok('H4 the entry renders through the view',
-    ENTRY_SRC.includes('renderTrace(') && ENTRY_SRC.includes('renderNotice('));
-  // 🔴 THE SESSION GUARD, COUNTED. Two questions in flight resolve in arrival order, and a
-  // check at only the first await passes every test that does not stall the body. The
-  // suspension points are fetch, refusal body, json body, and — since P4 — the coverage body
-  // on all three of the empty / refusal / answer paths. Raised 4 -> 8 with those: a coverage
-  // response landing after the operator has moved on would repaint a stale screen just as a
-  // stale trace would.
-  ok('H5 the session guard is checked after every await',
-    countOccurrences(ENTRY_SRC, 'mine !== session') >= 8,
-    `found ${countOccurrences(ENTRY_SRC, 'mine !== session')}`);
-  // 🔴 READ-ONLY. This screen issues one GET and the route writes nothing.
-  ok('H6 the entry issues no write', !/method\s*:\s*['"](POST|PUT|PATCH|DELETE)/i.test(ENTRY_SRC));
-  // `change` also fires on BLUR, so binding it would re-ask a question the operator did not
-  // ask again — the same trap the map editor's confirm control paid for.
-  // 🔴 NARROWED 2026-08-14 (surprise view). The predicate used to be "the entry
-  // contains no `addEventListener('change'` ANYWHERE", which is broader than the
-  // reason above: the trap is `change` ON A TEXT INPUT, because that fires on
-  // blur. A checkbox's `change` fires on toggle and on nothing else, and the
-  // surprise view's marking is a delegated checkbox listener on its own mount.
-  // The assertion now says what it always meant — the LINEAGE BOX commits on
-  // keydown — and a `change` binding is only allowed where it is delegated to a
-  // mount rather than bound to `lt-query`.
-  ok('H7 the input commits on keydown only',
-    ENTRY_SRC.includes("addEventListener('keydown'")
-    && !/(box|input)\.addEventListener\('change'/.test(ENTRY_SRC));
-  ok('H7b and any change listener is delegated to a mount, never to the query box',
-    [...ENTRY_SRC.matchAll(/(\w+)\.addEventListener\('change'/g)]
-      .every((m) => m[1] === 'mount'));
-  // The zone ruling, enforced across all three modules at once.
+  // 🔴 H1..H7b, H10..H20b WERE CUT WITH THEIR SUBJECT (2026-08-24). Every one of them read
+  //    `src/ledger_trace.js` or `ledger.html` -- the entry and the page, both deleted by
+  //    owner ruling 「ㅇㅇ 버려」. `ledger_trace_core.js` survives (admin reaches it through
+  //    `ledger_map_panel.js`) and `ledger_trace_view.js` survives as a file, so the two
+  //    assertions below still have a subject and the whole mutation corpus below is intact.
+  //    🔴 WHAT THIS FILE NO LONGER SCORES IS «WIRED»: nothing mounts these two modules on a
+  //    page any more. If they are mounted again, the census belongs where that mount is.
+  // The zone ruling, now over the two modules that are left.
   ok('H8 nothing re-localises the server instants',
-    !/toLocale(Date|Time)?String/.test(stripComments(ENTRY_SRC + CORE_PRISTINE + VIEW_PRISTINE)));
+    !/toLocale(Date|Time)?String/.test(stripComments(CORE_PRISTINE + VIEW_PRISTINE)));
   ok('H9 the view never builds markup from data',
     !/innerHTML|outerHTML|insertAdjacentHTML/.test(stripComments(VIEW_PRISTINE)));
-  ok('H10 the page declares the hooks the entry reads',
-    PAGE_SRC.includes('id="lt-query"') && PAGE_SRC.includes('id="lt-result"'));
-  ok('H11 the page loads the entry', PAGE_SRC.includes('/src/ledger_trace.js'));
-  // "Landed is not wired": an entry nobody builds is a file, not a screen.
-  ok('H12 the page is a build entry', /ledger:\s*resolve\(__dirname, 'ledger\.html'\)/.test(VITE_SRC));
-  // 🔴 COMPLEXITY BUDGET, ASSERTED. The screen is one question and one answer: exactly one
-  // form control on the page, no modal, no second mode. A later round that grows a filter bar
-  // goes red here and has to argue for it.
-  const controls = (PAGE_SRC.match(/<(input|select|textarea)\b/gi) || []).length;
-  ok('H13 the page carries exactly one input', controls === 1, `found ${controls}`);
-  const buttons = (PAGE_SRC.match(/<button\b/gi) || []).length;
-  ok('H14 and no buttons at all', buttons === 0, `found ${buttons}`);
-  // P4's wiring. The reading of coverage could be perfect and never asked for.
-  ok('H15 the entry asks the coverage route', ENTRY_SRC.includes('/api/ledger/coverage'));
-  ok('H16 the empty state goes through the view', ENTRY_SRC.includes('renderCoverage('));
-  ok('H17 and the answer is told WHICH nothing it is', ENTRY_SRC.includes('nothingVerdict('));
-  // The refusal's reading lives in the core, where the harness can score it (section J23-J28).
-  // Re-deriving it in the entry would put an unmeasurable branch on the path that runs when
-  // the ledger is not deployed — the exact path the product owner was on.
-  ok('H17b the refusal is read by the core', ENTRY_SRC.includes('refusalReading('));
-  // 🔴 STILL READ-ONLY, AND NOW OVER TWO ROUTES. `/coverage` is a GET like `/trace`, and H6
-  // above already forbids a method on either — this pins that the second route did not arrive
-  // with a write path of its own.
-  ok('H18 the coverage call is a bare GET',
-    /fetch\(`\$\{API_BASE\}\/api\/ledger\/coverage`\)/.test(ENTRY_SRC));
-  // The four sentences live in the CORE, where the harness can score them, not in the entry —
-  // which is text-only here and would make them unmeasurable.
-  ok('H19 the four sentences are not composed in the entry',
-    !ENTRY_SRC.includes('원장이 이 DB에 설치되지 않았습니다')
-    && !ENTRY_SRC.includes('등재됐으나 혈통 주장 없음'));
-  // 🔴 "LANDED IS NOT WIRED", ON THE ONE ARGUMENT ROW 3 DEPENDS ON. The core can compute the
-  // way forward perfectly and the entry can still call `nothingVerdict` with two arguments —
-  // in which case the dead end is exactly as it was and every assertion in K and M passes.
-  // The entry awaits that body already; these two pin that it is BOUND rather than discarded,
-  // and that it reaches the verdict.
-  ok('H20 the coverage body is bound, not just awaited',
-    /(const|let)\s+\w+\s*=\s*await\s+coverageReady/.test(ENTRY_SRC));
-  ok('H20b and it is what the verdict is fed',
-    /nothingVerdict\(\s*trace\s*,\s*ledgerState\s*,\s*\w+\s*\)/.test(ENTRY_SRC));
 
   return { pass, fail: failed.length, failed };
 }

@@ -52,15 +52,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
 const CORE_PATH = join(SRC, 'ontology_structure_core.js');
 const VIEW_PATH = join(SRC, 'ontology_structure_view.js');
-const ENTRY_PATH = join(SRC, 'ledger_trace.js');
-const PAGE_PATH = join(HERE, '..', 'ledger.html');
 
 const die = (msg) => { console.error(`HARNESS BROKEN: ${msg}`); process.exit(2); };
 
 const CORE_SRC = readFileSync(CORE_PATH, 'utf8');
 const VIEW_SRC = readFileSync(VIEW_PATH, 'utf8');
-const ENTRY_SRC = readFileSync(ENTRY_PATH, 'utf8');
-const PAGE_SRC = readFileSync(PAGE_PATH, 'utf8');
 const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures', 'ontology_structure.json'), 'utf8'));
 
 // ── the stylesheet, from BOTH of its files ──────────────────────────────────────────
@@ -256,8 +252,10 @@ console.log('\n── B. no hardcoded structure ──────────�
   //: the `os-` rules left the page, so asking the PAGE whether a stylesheet injects node labels
   //: became a question about a file that has no stylesheet in it — true, and about nothing. It
   //: asks the stylesheet now, which is where such a rule could actually be written.
-  ok('B3 neither the page nor the stylesheet carries node or edge content',
-    !/data-node=/.test(PAGE_SRC) && !/os-node--subject[^{]*\{[^}]*content/.test(STRUCTURE_CSS));
+  //: 🔴 And on 2026-08-24 the FIRST clause lost its source too — `ledger.html` was deleted.
+  //:    The page half is gone rather than rewritten: there is no page left to ask.
+  ok('B3 the stylesheet carries no node or edge content',
+    !/os-node--subject[^{]*\{[^}]*content/.test(STRUCTURE_CSS));
 }
 
 // ── C. the two origins, and the zero that is a measurement ──────────────────────────
@@ -536,26 +534,11 @@ console.log('\n── K. which nothing is this ───────────
 // ── L. wiring — it is on the page, at its own URL ───────────────────────────────────
 console.log('\n── L. wiring ─────────────────────────────────────────────────────');
 {
-  ok('L1 the page carries the mount', /id="lt-structure"/.test(PAGE_SRC));
-  ok('L2 the entry imports the renderer', /renderStructure/.test(ENTRY_SRC));
-  ok('L3 and asks the aggregate route', /api\/ledger\/structure/.test(ENTRY_SRC));
-  ok('L4 the view is a URL, not a mode', /view=structure/.test(PAGE_SRC));
-  // 🔴 THE INTENT SURVIVED ITS PROBE. This asserted `if (isStructure) … return;`
-  // until `ledger_trace.js` was rewritten and `isStructure` ceased to exist —
-  // which made the test red for a reason that had nothing to do with the property
-  // it defends. The PROPERTY is still real and still worth defending: a view
-  // fetches only its own question, so opening the structure screen must not also
-  // start the console's work. Re-expressed against what `render(params)` does
-  // today — the structure branch RETURNS, and the console-only fetch is reachable
-  // only after that return. Tangle the two again and this goes red.
-  const renderBody = ENTRY_SRC.slice(ENTRY_SRC.indexOf('function render(params)'));
-  const structAt = renderBody.indexOf('STRUCTURE_VIEW');
-  const structReturn = renderBody.indexOf('return;', structAt);
-  const coverageAt = renderBody.indexOf('loadCoverage(');
-  ok('L5 the structure view returns before any of the console view\'s work',
-    structAt > 0 && structReturn > structAt && coverageAt > structReturn,
-    `structure@${structAt} return@${structReturn} loadCoverage@${coverageAt}`);
-  ok('L6 it has its own session guard', /structureSession/.test(ENTRY_SRC));
+  // 🔴 L1..L6 were CUT WITH THEIR SUBJECT (2026-08-24). They read `ledger.html` and
+  //    `src/ledger_trace.js` — the screen and its entry, both deleted by owner ruling
+  //    「ㅇㅇ 버려」. The renderer they were wiring is now mounted by `ledger_map_panel.js`
+  //    inside admin, and THAT wiring is measured where that panel is measured. Keeping
+  //    these here would have left six assertions pointing at nothing.
   ok('L7 no new dependency was added',
     !/from '(?!\.\/)/.test(stripComments(VIEW_SRC).replace(/from 'node:[^']*'/g, '')));
 }

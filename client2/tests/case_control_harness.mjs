@@ -72,16 +72,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
 const CORE_PATH = join(SRC, 'case_control_core.js');
 const VIEW_PATH = join(SRC, 'case_control_view.js');
-const ENTRY_PATH = join(SRC, 'ledger_trace.js');
-const PAGE_PATH = join(HERE, '..', 'ledger.html');
 const LEDGER_CORE_URL = pathToFileURL(join(SRC, 'ledger_trace_core.js')).href;
 
 const die = (msg) => { console.error(`HARNESS BROKEN: ${msg}`); process.exit(2); };
 
 const CORE_PRISTINE = readFileSync(CORE_PATH, 'utf8');
 const VIEW_PRISTINE = readFileSync(VIEW_PATH, 'utf8');
-const ENTRY_SRC = readFileSync(ENTRY_PATH, 'utf8');
-const PAGE_SRC = readFileSync(PAGE_PATH, 'utf8');
 const FIX = JSON.parse(readFileSync(join(HERE, 'fixtures', 'case_control.json'), 'utf8'));
 
 // ── the fixture is load-bearing; assert its SHAPE before scoring anything ────────────
@@ -358,7 +354,6 @@ async function suite(coreSource, viewSource) {
     ok('D6 and that one is an assignment, not a comparison',
       /DEFAULT_FINDING_KIND\s*=\s*'void'/.test(coreBody) && !/===\s*'void'|'void'\s*===/.test(coreBody));
     ok('D7 the view never mentions it at all', !stripComments(viewSource).includes("'void'"));
-    ok('D8 nor does the entry', !stripComments(ENTRY_SRC).includes("'void'"));
     // And the picker follows the catalog rather than a list in the view.
     const { mount } = render(FIX.siblings, { finding: '', slices: {} });
     const chips = hasAttr(mount, 'data-kind');
@@ -698,13 +693,12 @@ async function suite(coreSource, viewSource) {
     for (const value of ['interfacial', 'bulk', 'die_edge']) {
       ok(`L17 no class value «${value}» is written into the client`,
         !stripComments(coreSource).includes(`'${value}'`)
-        && !stripComments(viewSource).includes(`'${value}'`)
-        && !stripComments(ENTRY_SRC).includes(`'${value}'`));
+        && !stripComments(viewSource).includes(`'${value}'`));
     }
     // Today's scope is READING the class. Reclassification (`classified_as`) is reserved
     // vocabulary and must not grow a write path on this screen.
-    ok('L18 no reclassification write path exists', !ENTRY_SRC.includes('classified_as')
-      && !stripComments(viewSource).includes('classified_as'));
+    ok('L18 no reclassification write path exists',
+      !stripComments(viewSource).includes('classified_as'));
   }
 
   // ── N. 🔴 THE LIVE CAPTURE — the shape the box actually answers ───────────────────
@@ -858,38 +852,13 @@ function census() {
     else failed.push(detail ? `${name} — ${detail}` : name);
   };
   // "Landed is not wired": a renderer nobody calls is a file, not a screen.
-  ok('W1 the entry imports the console core', ENTRY_SRC.includes("from './case_control_core.js'"));
-  ok('W2 the entry imports the console view', ENTRY_SRC.includes("from './case_control_view.js'"));
-  ok('W3 the entry renders the console', ENTRY_SRC.includes('renderConsole('));
-  ok('W4 the entry asks the kind catalog', ENTRY_SRC.includes('/api/ledger/kinds'));
-  ok('W5 the entry asks the siblings route', ENTRY_SRC.includes('/api/ledger/siblings?'));
-  ok('W6 and asks for the contrast framing on the SAME call', ENTRY_SRC.includes('mode=contrast'));
-  // 🔴 ONE CALL, NOT TWO. A second endpoint would let the two panels disagree.
-  ok('W7 there is no second analysis endpoint', !ENTRY_SRC.includes('/api/ledger/contrast'));
-  ok('W8 the console runs on every load', /runConsole\(consoleAsked\)/.test(ENTRY_SRC));
-  ok('W9 the page declares the console mount', PAGE_SRC.includes('id="lt-console"'));
-  ok('W10 and still declares the lineage hooks',
-    PAGE_SRC.includes('id="lt-query"') && PAGE_SRC.includes('id="lt-result"'));
-  // 🔴 THE COMPLEXITY BUDGET IS UNTOUCHED, and that is the claim rather than an accident: the
-  // console added five kinds of navigation and zero form controls, because every one of them
-  // is a link.
-  const controls = (PAGE_SRC.match(/<(input|select|textarea)\b/gi) || []).length;
-  ok('W11 the page still carries exactly one input', controls === 1, `found ${controls}`);
-  const buttons = (PAGE_SRC.match(/<button\b/gi) || []).length;
-  ok('W12 and still no buttons', buttons === 0, `found ${buttons}`);
-  // Still read-only. The write axis (`POST /api/ledger/actions`) is not in this round.
-  ok('W13 the console adds no write',
-    !/method\s*:\s*['"](POST|PUT|PATCH|DELETE)/i.test(ENTRY_SRC));
-  // The session guard, on the SECOND question too. A shared counter would make one question
-  // cancel the other.
-  ok('W14 the console has its own session guard',
-    countOccurrences(ENTRY_SRC, 'mine !== consoleSession') >= 5,
-    `found ${countOccurrences(ENTRY_SRC, 'mine !== consoleSession')}`);
-  ok('W15 and the lineage guard is untouched',
-    countOccurrences(ENTRY_SRC, 'mine !== session') >= 8,
-    `found ${countOccurrences(ENTRY_SRC, 'mine !== session')}`);
-  // The lineage answer keeps the console's question in the address bar.
-  ok('W16 the lineage URL keeps the finding kind', ENTRY_SRC.includes('consoleQuery(consoleAsked)'));
+  // 🔴 W1..W16 WERE CUT WITH THEIR SUBJECT (2026-08-24). They asked `src/ledger_trace.js`
+  //    and `ledger.html` whether this console was wired onto that screen. The screen was
+  //    deleted by owner ruling 「ㅇㅇ 버려」, so those sixteen had nothing left to read.
+  //    `case_control_core.js` and `case_control_view.js` survive because ADMIN reaches
+  //    them (admin.js → ledger_map_panel.js), and everything below still measures them.
+  //    🔴 So this file no longer scores «wired» at all — no live page imports the console.
+  //    If it is mounted again, the wiring census belongs where that mount is.
   // No markup path, ever — an operator's note out of the ledger must not become markup.
   ok('W17 the view builds nodes, never markup',
     !/innerHTML|outerHTML|insertAdjacentHTML/.test(stripComments(VIEW_PRISTINE)));
