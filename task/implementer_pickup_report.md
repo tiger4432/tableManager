@@ -1,3 +1,66 @@
+# 🔴🔴 트렌드 0% — **원인이 «셋»이고, finding_kind 는 그중 «하나도» 아닙니다** (구현자 17:2x)
+
+①(접근자 배선) 끝내고 재 봤습니다. **여전히 0 입니다.** 그래서 절마다 «값을 매겼습니다».
+
+## 절별 실측 — 어느 조건이 «죽이는지»
+```
+observed 원자 (kind void/delam, 접근자로)          115,423
+  AND subject_type = «'Wafer'»   <- 코드 리터럴          «0»   🔴 여기서 전멸
+  AND subject_type =  'wafer'    <- 데이터의 실제 값     11,570
+  AND subject_keys ? 'wafer'     <- 축1 numerator        11,582
+  AND object_payload ? «'bonding_leg'» <- 축2 numerator      «12»   🔴 여기서 또 전멸
+  AND payload 에 die/position    <- found_chips          11,582
+```
+```
+kind별 · 주어별
+   void   subject_type=«die»       103,841     <- v5 (총괄 die 주어 판정의 결과)
+   delam  subject_type= wafer       11,561     <- v1
+   void   subject_type= wafer            9
+```
+
+## 🔴 원인 셋 — 서로 «독립»입니다
+```
+① ledger_identity.py:13   SUBJECT_TYPE = «"Wafer"»  «대문자 리터럴»
+   -> 제 소문자 마이그레이션과 «오늘 만났습니다». 매칭 «0».
+   -> 🔴 void «와» delam 을 «둘 다» 죽입니다. 총괄이 따로 물으신 ③(delam)의 답이 «이것»입니다
+   -> 오늘 아침 카탈로그 A-1 과 «같은 부류»입니다 (「가드는 도달 가능해지는 날 틀린다」)
+
+② v5 void 원자의 주어가 «die»       103,841건
+   -> ①을 고쳐 'wafer' 로 맞춰도 «여전히 안 맞습니다». subject_keys 에 'wafer' 키가 «없습니다»
+   -> die 주어 판정의 «직접 결과»입니다. 트렌드 grain 은 «웨이퍼 주어»를 전제합니다
+
+③ 축2 numerator = object_payload ? 'bonding_leg'
+   -> 원장 «전체»에서 그 키를 가진 observed 원자가 «12개»입니다
+   -> ①②를 다 고쳐도 delam 11,561 이 «12»로 걸러집니다
+```
+🔴 **즉 DEFAULT_GRAIN 이 기술하는 원자 모양이 «지금 원장에 거의 없습니다».**
+   그 모양은 v1 `syn_complex_composite` 시절 것이고, 남은 게 12개입니다.
+
+## finding_kind 는 왜 답이 아니었나
+①(접근자)은 «필요했지만» 저 세 조건 중 «하나도» 안 건드립니다. 접근자는 「어느 칸에서 읽나」이고,
+막고 있는 것은 「어느 주어인가 · 어떤 키를 들고 있나」입니다. **다른 층입니다.**
+📌 그래도 ①은 옳았고 남겨 둡니다 — 접근자 없이는 ②③을 고쳐도 kind 가 15개만 잡힙니다.
+
+## 🔴 판정 요청 — 제가 고를 자리가 아닙니다
+```
+ⓐ 리터럴만 소문자로        ①만 해결. delam 12점이 «값을 얻습니다». void 는 «그대로 0»
+                           가장 작고, 오늘 안에 화면이 «조금» 삽니다
+ⓑ grain 을 지금 원자 모양에  축을 subject_keys 대신 «die 주어»에서 웨이퍼를 얻게
+                           -> void 103,841 이 살아납니다. 다만 grain 은 «코드»입니다(DEFAULT_GRAIN)
+ⓒ 선언이 bonding_leg·wafer 를 qualifier 로 나르게
+                           -> 재번역 또 한 번. 그리고 「원자에 무엇을 실을까」는 총괄 파일입니다
+```
+📌 제 기울기는 **ⓐ 를 «지금» + ⓑ/ⓒ 는 판정** 입니다 — ⓐ는 리터럴 하나이고 delam 을 즉시 살립니다.
+   다만 ⓐ만으로 「트렌드가 살았다」고 보고하면 «거짓»입니다. void 는 여전히 0 입니다.
+
+## ①에서 실제로 한 것 (커밋)
+```
+배선 완료   ledger_selection.py 3곳 (747·817·1041) · ledger_subgraph.py 4곳 (497·501·544·1351)
+안 바꾼 것  scripts/seed_syn_complex_composite.py:1139
+            -> source_who='syn_complex_composite' «로 한정»된 질의입니다. 그 소스 원자는
+               finding_kind 를 «최상위에 들고 있습니다». 여기 접근자를 넣는 건 «흉내»라 안 했습니다
+시험        35 passed · 1 skipped
+```
 # 🔴 밀도 «원인 재수립» 완료 — 검사가 «모자란 게 아니라 남습니다». 제 인계 문서가 또 틀렸습니다 (구현자 15:3x)
 
 지시대로 원인을 «처음부터» 다시 세웠습니다. 앞 가설(뷰의 INNER JOIN)은 총괄이 반증했으니

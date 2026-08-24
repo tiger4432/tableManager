@@ -8,6 +8,7 @@ import json
 import math
 from urllib.parse import quote
 
+from ledger_api import finding_kinds
 from ledger_api import ledger_siblings
 from ledger_api import ledger_identity
 from ledger import vocabulary as ledger_vocabulary
@@ -744,7 +745,7 @@ def resolve(connection, payload, now=None, relation=LEDGER_RELATION):
     selected_focuses = [{**s["map_focus"], "selection_id": s["selection_id"]}
                         for s in selections if s["map_focus"]]
     maps = _build_maps(connection, components, final_units, selected_focuses,
-                       payload.get("finding_kind"))
+                       finding_kinds.payload_field(payload, "finding_kind"))
 
     answers = []
     for selection in selections:
@@ -814,7 +815,7 @@ def resolve(connection, payload, now=None, relation=LEDGER_RELATION):
                            if selection["map_focus"] else {})})
 
     comparison = _comparison(answers, components, process_by_wafer,
-                             payload.get("finding_kind"),
+                             finding_kinds.payload_field(payload, "finding_kind"),
                              measurement_by_subject=measurement_by_subject)
     top_maps = {}
     for answer in answers:
@@ -1038,7 +1039,8 @@ def _measurement_state(events):
             state = "unknown"
         elif state == "recorded" and (
                 "value" not in payload or payload.get("value") is None
-                or not str(payload.get("run_uid") or "").strip()):
+                or not str(finding_kinds.payload_field(payload, "run_uid")
+                           or "").strip()):
             state = "unknown"
         elif state != "recorded" and "value" in payload:
             state = "unknown"

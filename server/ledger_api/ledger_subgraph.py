@@ -494,12 +494,13 @@ class InMemoryEvidenceLookup:
                 continue
             payload = atom.object_payload or {}
             key = (atom.subject_type, _canonical(atom.subject_keys),
-                   str(payload.get("finding_kind") or "unknown"),
+                   str(_payload_field(payload, "finding_kind") or "unknown"),
                    payload.get("method") or None, payload.get("map_id") or None)
             bucket = grouped.setdefault(key, {"atoms": [], "runs": set()})
             bucket["atoms"].append(atom)
-            if payload.get("run_uid") not in (None, ""):
-                bucket["runs"].add(str(payload["run_uid"]))
+            run_uid = _payload_field(payload, "run_uid")
+            if run_uid not in (None, ""):
+                bucket["runs"].add(str(run_uid))
         summaries = []
         for key, bucket in grouped.items():
             atoms = bucket["atoms"]
@@ -541,7 +542,7 @@ class InMemoryEvidenceLookup:
         for atom in self.atoms:
             payload = atom.object_payload or {}
             key = (atom.subject_type, _canonical(atom.subject_keys),
-                   str(payload.get("finding_kind") or "unknown"),
+                   str(_payload_field(payload, "finding_kind") or "unknown"),
                    payload.get("method") or None, payload.get("map_id") or None)
             if atom.predicate == "observed" and key in wanted:
                 rows.append(atom)
@@ -1348,8 +1349,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 payload = atom.object_payload or {}
                 collection_id = finding_collection_node_id(
                     atom.subject_type, atom.subject_keys,
-                    payload.get("finding_kind"), payload.get("method"),
-                    payload.get("map_id"))
+                    _payload_field(payload, "finding_kind"),
+                    payload.get("method"), payload.get("map_id"))
                 if collection_id in frontier_collections:
                     point = _finding_point_node(atom)
                     point_ref = decode_node_id(point["id"])
