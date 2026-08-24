@@ -40,7 +40,8 @@
    "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
    "type": "wafer",
    "key": "wafer",
-   "column": "base_wafer_id"
+   "column": "base_wafer_id",
+   "__comment_grain": "🔴 THE SUBJECT'S GRAIN DECIDES WHICH AXES CAN CONTRAST, and it is measured rather than argued. `scope=` splits SUBJECTS into a case side and a control side; a subject holding units on both sides is neither, and lands in the `mixed` bucket. So an axis whose values partition something FINER than this subject can never form a case side -- every wafer straddles. MEASURED on assy_manager 2026-08-24, finding=void: `bond_lot` and `wafer` answer (case 25 / control 2,635 and case 1 / control 2,659, candidates 20 each) because a wafer sits in exactly one bond lot; `leg` and `scan_recipe` answer `empty_case_side` with mixed 36 and mixed 855-904, because a wafer's packages span both legs and several scan recipes. That is the engine reporting honestly, NOT a defect -- the pill says 「대조 0 · 겹침 N」. Contrasting those two axes needs the walk run at THEIR grain (package, run), which is a question for the owner and not a thing to add here quietly."
   },
   "universe": {
    "__comment": "What COULD have been scanned -- the third bucket. Without it `never_scanned` would have to be guessed, and a guessed third bucket is how a never-scanned package quietly joins the clean side.",
