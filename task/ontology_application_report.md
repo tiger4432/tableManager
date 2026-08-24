@@ -6,6 +6,51 @@
 
 ---
 
+# ⚠️ 「모든 웨이퍼가 depth 로 잘린다」 — **제 측정에서는 재현이 안 됩니다.** 조건을 붙입니다 (11:3x)
+
+보드가 남은 것 중 제일 큰 것으로 꼽으셨기에 재 봤습니다. **제가 본 것은 «nodes» 이고 depth 가 아닙니다.**
+
+```
+node_limit=1000 · hops 12/20/40   (웨이퍼 셋)
+  SYN-BW-103-11   reason «none» · complete «true» · ranked 208   (세 홉수 «전부 동일»)
+  SYN-BW-001-07   reason «none» · complete «true» · ranked  34
+  SYN-BW-045-08   reason «none» · complete «true» · ranked  59
+-> 홉을 40 까지 올려도 «달라지는 것이 없습니다». depth 로 잘리지 «않습니다»
+```
+```
+기본 요청 (hops·node_limit 미지정)
+  SYN-BW-103-11   reason «nodes» · depth=false · complete=false · ranked 58
+                  🔴 hops_reached «2» / requested 12   <- 예산이 «먼저» 멈춥니다
+  SYN-BW-001-07   reason «none»  · complete «true»  · ranked 34
+```
+🔴 **`hops_reached 2 / requested 12` 이 열쇠입니다.** 노드 상한이 먼저 걸려서
+   걷기가 2홉에서 서고, 그래서 «depth 가 아니라 nodes» 로 보고됩니다.
+   홉을 낮게 주면 depth 가 뜹니다 — 제가 오늘 새벽 hops=2 로 잴 때 그랬습니다.
+
+```
+그래서 여쭙니다   그 측정의 hops·node_limit 이 무엇이었습니까?
+                 조건이 다르면 «둘 다 참»입니다. 제 조건은 위에 적었습니다
+⚠️ 시각          재번역이 «끝난 뒤» 잰 것입니다. 아까 63 이던 것이 지금 58 입니다
+```
+
+## 그런데 «화면이 아무 말도 안 한다»는 그대로 참입니다 — 그게 핵심입니다
+```
+기본 설정에서 목업의 그 웨이퍼가   208 중 «58» 만 옵니다  (150 이 안 보입니다)
+응답은 정직합니다                 truncated.reason="nodes" · complete=false
+화면은                            «한 글자도» 안 합니다
+```
+🔴 **원인이 depth 든 nodes 든 화면이 말해야 하는 것은 같습니다.**
+   제 `APPLICATION_EMPTY_REASON_BRIEF` 의 읽는 규칙이 그대로 적용됩니다:
+```
+complete=true             다 봤다
+reason="nodes"/"edges"    🔴 «미검사». 「없다」로 그리지 말 것
+reason="depth"            홉을 늘리면 더 나온다.  「홉 N 까지」로 표기
+```
+📎 지금 목업 대조를 하면 **밀도가 목업의 28%** 입니다. 이걸 모르고 보면
+   「구현이 덜 됐다」로 읽힙니다 — 실제로는 «상한이 자른 것»입니다.
+
+---
+
 # ⚠️ 추천 씨앗 `SYN-BW-103-11` 은 **기본 설정에서 «잘립니다»** — 쓰기 전에 하나만 (11:0x)
 
 씨앗 안내 잘 받았습니다. 원장에 199 가 있다는 것도 맞습니다. 다만 **API 를 통과하면 다릅니다:**
