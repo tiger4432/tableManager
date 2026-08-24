@@ -365,6 +365,8 @@ export class MapPanel extends Panel {
     // 🔴 좌표계 «값». 확대는 여기 값 하나입니다 -- 부품에 모드가 없습니다.
     //    값은 소스가 쓰는 철자 그대로입니다: die:base · die:core · die:dt · inchip.
     //    그리는 방식은 «앞부분»이 정합니다 (die 는 칸, inchip 은 점).
+    // 🔴 시작점 선언. 값이 아니라 «마킹 이름»일 수 있고, 그러면 주어는 사용자가 정합니다.
+    this.start = options.start || null;
     this.space = options.space || 'die';
     // 🔴 소스가 «설 수 있다고 선언한» 좌표계 목록. 여기에 내 space 가 없으면 이 인스턴스는
     //    «서지 않습니다» -- 거절이 아니라 「해당 없음」입니다 (소유자 2026-08-24: MI 는 원래
@@ -493,11 +495,24 @@ export class MapPanel extends Panel {
   /** Fetch, then paint. Stale answers are dropped by sequence, not painted over the current. */
   reload() {
     if (!this.load) return Promise.resolve();
+    // 🔴 주어가 없으면 «묻지 않습니다». 마킹이 빈 채로 물으면 라우트가 422 로 거절하고,
+    //    화면엔 「서버가 거절했습니다」가 뜹니다 -- 그건 «서버 잘못처럼» 읽히는데 사실은
+    //    「아직 아무것도 안 골랐다」입니다. 넷 중 첫째 부재를 거절문으로 그리면 안 됩니다.
+    if (this.start && this.start.marking && !this.startFor()) {
+      this.model = null;
+      this.status = 'awaiting';
+      this.render();
+      return Promise.resolve();
+    }
     const mine = ++this._session;
     this.status = 'loading';
     this.render();
     return Promise.resolve()
-      .then(() => (this.slot ? this.load({ slot: this.slot }) : this.load()))
+      // 🔴 시작점을 선언한 인스턴스는 «마킹에서» 묻습니다 -- 씨앗이 박힌 맵은 종전 그대로
+      //    슬롯을 넘깁니다. 어느 쪽인지는 «선언»이 답하지 부품이 분기하지 않습니다.
+      .then(() => (this.start
+        ? this.load({ start: this.startFor() })
+        : (this.slot ? this.load({ slot: this.slot }) : this.load())))
       .then((body) => {
         if (mine !== this._session) return;
         // 🔴 ONE RESPONSE ALREADY CARRIES ALL THREE PROJECTIONS (measured: bond 141 · dt 11 ·
@@ -570,6 +585,9 @@ export class MapPanel extends Panel {
     if (this.status === 'loading') {
       n.sub.textContent = CHROME.LOADING;
       n.counts.textContent = '';
+    } else if (this.status === 'awaiting') {
+      n.sub.textContent = `${this.start.marking} 이 이 맵의 주어입니다`;
+      n.counts.textContent = `${this.start.marking} 이 비었습니다 — 찍으면 그립니다`;
     } else if (this.status === 'error') {
       n.sub.textContent = CHROME.FAILED;
       n.counts.textContent = this.failure || '';

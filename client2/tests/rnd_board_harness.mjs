@@ -839,6 +839,22 @@ async function suite(mods) {
       Boolean(badge) && /따라감 subject:wafer/.test(badge.textContent),
       String(badge && badge.textContent));
     follower.destroy();
+
+    // 🔴 주어가 «아직 없는» 인스턴스는 묻지 않습니다. 물으면 라우트가 422 로 거절하고 화면엔
+    //    「서버가 거절했습니다」가 떠서, 「아직 안 골랐다」가 «서버 잘못»으로 읽힙니다.
+    let askedZoom = 0;
+    const zoomHost2 = doc2.createElement('div');
+    const zoom3 = new MapPanel(zoomHost2, { doc: doc2, markings: store2,
+      reads: 'm:zoom', writes: 'm:zoom', start: { groupby: 'wafer', marking: 'm:zoom' },
+      space: 'inchip', extent: { x: 20000, y: 20000 },
+      load: () => { askedZoom += 1; return Promise.resolve({ nodes: [] }); } });
+    zoom3.mount();
+    await flush(); await flush();
+    eq('F17 a map whose marking is empty does not ask', askedZoom, 0);
+    ok('F17b ... and says it is waiting, not that the server refused',
+      /비었습니다/.test(zoomHost2.textContent) && !/거절/.test(zoomHost2.textContent),
+      zoomHost2.textContent.slice(0, 80));
+    zoom3.destroy();
   }
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
@@ -853,8 +869,12 @@ async function suite(mods) {
       `registered ${Object.keys(PARTS).join(',')} | seated ${[...seated].join(',')}`);
     const maps = BOARD.panels.filter((p) => p.part === 'map');
     ok('H2 one part stands twice on the same screen', maps.length >= 2);
-    ok('H3 the two instances read different marking names',
-      maps[0].reads !== maps[1].reads);
+    // 🔴 «자리»가 아니라 «구성원»으로 잽니다. 셋째 맵(칩 확대)이 앞에 앉는 순간 maps[0]과
+    //    maps[1] 이 같은 이름을 읽게 되는데, 그건 「한 부품이 여러 이름으로 선다」가 깨진 것이
+    //    아닙니다 -- 자리로 세는 단언이 정당한 추가를 결함으로 찍는 그 부류입니다.
+    ok('H3 the instances of one part read more than one marking name',
+      new Set(maps.map((p) => p.reads)).size >= 2,
+      maps.map((p) => `${p.id}:${p.reads}`).join(' | '));
     ok('H4 every declared part is registered',
       BOARD.panels.every((p) => Boolean(PARTS[p.part])));
     ok('H5 placement is in the declaration, not in the part',
@@ -889,6 +909,10 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  { id: 'M12', what: 'a map with an empty marking asks anyway, so 「not chosen yet」 reads as a refusal',
+    catches: 'F17',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '    if (this.start && this.start.marking && !this.startFor()) {', '    if (false) {') } },
   { id: 'M09', what: 'the map ignores a walk model and only ever reads lot_map cells',
     catches: 'F16',
     mutate: { 'map_panel.js': (s) => s.replace(
