@@ -356,10 +356,12 @@ const MUTANTS = [
     mutate: { 'panel.js': (s) => s.replace(
       'return this.markings.set(this.writes, nodeId, sign);',
       "return this.markings.set('axis:fixed', nodeId, sign);") } },
-  { id: 'M5', what: 'the trend marks the wafer NAME it assembled instead of the ledgers mark_key',
+  // 🔴 찍는 것은 «노드»입니다. 웨이퍼 «이름»을 찍으면 그 문자열은 어느 노드도 아니고,
+  //    다음 walk 이 그것을 씨앗으로 못 씁니다 (오늘 아침 「지어낸 id」와 같은 부류).
+  { id: 'M5', what: 'the trend marks the wafer NAME it assembled instead of the node the ledger gave',
     catches: 'C3',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      '          this.mark(p.markKey, intent.sign, intent.mode);',
+      '          this.mark(markIdOf(p), intent.sign, intent.mode);',
       '          this.mark(p.wafer, intent.sign, intent.mode);') } },
   { id: 'M6', what: 'a point with no rate is plotted at zero (absence read as a measurement)',
     catches: 'C1',

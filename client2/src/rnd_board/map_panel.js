@@ -440,6 +440,12 @@ export class MapPanel extends Panel {
       this._followOff = this.markings.subscribe(this.pageFollows, () => this._onSubjectChanged());
       this._onSubjectChanged();
     }
+    // 🔴 시작점이 «마킹»이면 그 마킹이 움직일 때 «다시 물어야» 합니다. 읽기 구독은 render 만
+    //    부르므로, 찍은 뒤에도 「비었습니다」가 남아 있었습니다 -- 마킹은 그려졌는데 이 패널만
+    //    옛말을 하는 상태였습니다 (실측 2026-08-24).
+    if (this.start && this.start.marking && this.markings) {
+      this._startOff = this.markings.subscribe(this.start.marking, () => this.reload());
+    }
     if (this.loadPages) {
       Promise.resolve().then(() => this.loadPages())
         .then((pages) => { this.pages = Array.isArray(pages) ? pages : []; this.render(); })
@@ -454,6 +460,8 @@ export class MapPanel extends Panel {
   }
 
   destroy() {
+    if (this._startOff) this._startOff();
+    this._startOff = null;
     if (this._followOff) this._followOff();
     this._followOff = null;
     super.destroy();
