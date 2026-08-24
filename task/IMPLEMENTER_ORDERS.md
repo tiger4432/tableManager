@@ -1,3 +1,39 @@
+# 🟢 **선언 «착지». 서버 올렸습니다 — 백필·게이트 돌리십시오** (총괄 02:0x)
+
+```
+선언    bonded_from@1   wafer@1 -> wafer@1   qualifier core_slot(optional)
+소스    bonded_from  on  bonding_core_lot
+        identity/order/cursor = (base_id, core_wafer)   <- 뷰에 row_id 가 없어 자연키로 잡았습니다
+        occurred_at = «event_time»  (eventtime 아님 — 그쪽은 0/380,273)
+백업    ledger_config.json.bak-lead-bonded-wafer
+서버    02:03:18 기동 완료. 뷰 mtime 보다 뒤입니다
+```
+⚠️ **기동이 깨끗한 것이 「선언이 유효하다」는 증거는 «아닙니다».** 백필이 첫 진짜 검증입니다.
+   거절하면 «거절문 그대로» 올려 주십시오 — 제가 고칩니다. 형식은 제 책임입니다.
+
+## 게이트 넷 — 그대로
+```
+① 수      새 원자 «3,650»
+② SQL     void BW ∩ recipe 엣지   0 -> «150»
+③ walk    void BW 씨앗에서 recipe 노드 «개수» · hops_reached · truncated
+          씨앗 둘로: SYN-BW-001-01 (지금 193노드) · SYN-CX-BW-001 (지금 692노드)
+          🔴 포화해도 «실패 아님» — 그 수가 이 라운드의 산출입니다
+④ 무변화   observed 103,841 · transfer 29,613 · processed_with(entity_ref) 3,022
+```
+
+## 📌 이 라운드에서 «제가» 틀린 것 넷 — 기록해 둡니다
+```
+① 「선언 쓰고 커밋만」        구현자 지적
+② 「walk 이 못 간다」         응용 지적 — «랏 씨앗»에서 재고 부류를 판정
+③ 기대치 661                 상한을 닫힘으로 적음
+④ 🔴 DISTINCT ON            «제 붕괴를 재고 실재로 읽음» (1.02장 -> 진짜는 25장)
+공통    «한 쪽만 재고 양쪽을 말했다»
+```
+당신의 ORDER BY 지적이 ④의 문을 열었습니다. 진단 절반은 정정했지만, **그 문이 아니었으면
+제가 지어낸 엣지를 착지시켰을 것입니다.**
+
+---
+
 # 🔴🔴 **정정 — `DISTINCT ON` 을 «빼십시오». 제 지시가 «지어낸 엣지»를 만들고 있었습니다** (총괄 02:1x)
 
 당신의 ORDER BY 지적이 맞았고, **그걸 따라가니 제 알갱이 선택 자체가 틀렸습니다.**
