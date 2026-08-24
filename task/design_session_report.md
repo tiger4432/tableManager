@@ -1,4 +1,63 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 무리 삭제 «완료» — `npm run build` **초록**입니다 (`f9a8a73c`). 하나는 목록에 남아 있지만 «안 지웠습니다»
+
+정정본(`5b5faf37`)대로 마저 지웠습니다. 되돌리지 않았습니다.
+
+## 지운 것
+```
+src/surprise_view.js · surprise_map_view.js · surprise_map_core.js · surprise_axis.js
+src/contrast_core.js · contrast_view.js
+src/lot_reference_core.js · lot_reference_view.js
+tests/surprise_harness.mjs · tests/lot_reference_harness.mjs
+```
+(`surprise_core.js` 는 앞 커밋 `57d25d17` 에서 이미 지웠습니다)
+
+## 🔴 `ledger_trace_harness` 는 정정본 목록에 «아직 있는데», 안 지웠습니다
+```
+case_control_core.js  살아 있습니다 (당신 정정 그대로)
+   ↑ 그 파일 44행:  import { ... } from './ledger_trace_core.js'
+= ledger_trace_core.js 도 «살아 있습니다» -> 이 하니스의 subject 가 살아 있습니다
+실측    ASSERTIONS 360, failed 0
+```
+📎 응용 레인이 `f5547aa9` 로 같은 것을 냈습니다 — 두 레인이 «따로» 재서 같은 답입니다.
+   `case_control_core` 를 빼는 정정이 «한 칸 더» 가야 했던 것입니다. 목록에서 빼 주십시오.
+
+## 🔴 FLOORS 두 줄 — «게이트가 시켜서» 고쳤습니다. 덮은 게 아닙니다
+```
+게이트 원문   ledger_trace_harness [BLOCKING] ran 360, failed 0, but the recorded floor is
+             ran >= 380 ― "say so and lower the floor on purpose"
+조치 ①       380 -> 360, «이유를 그 자리에» 적었습니다
+             (H1..H7b·H10..H20b 21개가 지운 entry·page 를 읽던 것. 변이 corpus 무손상)
+조치 ②       ledger_graph_harness 의 floor 42 «삭제» -- 그 하니스가 없어졌습니다
+⛔ KNOWN_RED 는 «안 썼습니다». 게이트가 그걸 금지하고, 이 경우는 그 금지의 반대편입니다
+```
+
+## 게이트 — 셋 다 통과
+```
+🟢 npm run build   exit 0     «프로젝트 명령»으로 쟀습니다. vite build 아닙니다
+🟢 보드            14요청     구성도 그대로. 패널 14개 렌더 확인
+🟢 admin           여섯 모듈  전부 «진짜 모듈»로 서빙 (fallback HTML 아님)
+```
+남은 ✗ 여섯은 전부 이전부터의 KNOWN_RED 부채입니다(alignment_verdict · reposition_regime ·
+split_registry · valid_die ×2 등). 제 라운드와 무관합니다.
+
+## ⚠️ dist 는 이 커밋에 «안 넣었습니다» — 이번엔 이유가 다릅니다
+게이트를 통과시킨 그 빌드는 소스를 «임시 LF» 로 바꿔 놓고 돈 것입니다(이 워크트리가 CRLF 로
+체크아웃돼서 여러 줄 앵커가 안 맞습니다). **줄바꿈이 다른 소스로 구운 번들은 이 트리가 낼
+번들이 아닙니다** — 템플릿 리터럴 안의 개행이 그대로 실립니다. 소스가 이미 LF 인 곳에서
+구우시는 게 맞습니다. 지난번처럼 총괄이 구우시면 됩니다.
+
+## 📌 판단 하나만 여쭙니다 — floor 없는 하니스 «일곱», 그중 «다섯»이 제 보드 것입니다
+```
+case_control_harness · ontology_structure_harness
+rnd_board_harness · rnd_board_walk · rnd_board_composition
+rnd_board_control_trend · rnd_board_intersection
+```
+게이트가 「NOT protected against silently scoring less」라고 알려 줍니다 — 지금은 이것들이
+«조용히 적게 채점돼도» 아무도 모릅니다. 오늘 `ledger_trace_harness` 가 바로 그 자리에서
+막혔고, floor 가 있었기 때문에 막힌 것입니다. 지시 범위 밖이라 손대지 않았습니다.
+**넣을까요?** 넣는다면 오늘 세는 수를 그대로 넣습니다(한 줄씩, 다른 변경 없음).
+
 # 🔴 «메인 트리»에서 실측했습니다 — `npm run build` 는 **아직 막혀 있습니다**. 빨강은 «정확히 둘»
 
 총괄 커밋(`378bc1ee`)의 「the client build passes」와 제 보고가 어긋나 보여서, 추측하지 않고
