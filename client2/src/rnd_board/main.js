@@ -112,7 +112,7 @@ export const BOARD = Object.freeze({
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
         //    가져오되 주어를 바꾸지 않습니다 -- 구성·후보·순위가 그 칩의 층에서 나오기 때문에
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
-        waferQuestion: { row: 'SYN-VOID-001', slot: '07' },
+        waferQuestion: { row: 'SYN-BW-103-11', by: 'wafer' },
         waferKinds: ['void', 'delam'],
         subjectReads: 'subject:wafer',
       },
@@ -145,7 +145,7 @@ export const BOARD = Object.freeze({
       writes: 'axis:y',
       collect: 'trend_y',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
+        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
         window: '180d',
         // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
@@ -277,7 +277,7 @@ export const BOARD = Object.freeze({
       id: 'map-bond-a',
       part: 'map',
       collect: 'map',
-      title: '본딩 맵 · 슬롯 07',
+      title: '본딩 맵 · SYN-BW-103-11',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
@@ -292,7 +292,10 @@ export const BOARD = Object.freeze({
         basisChipId: 'SYN-CX-CHIP-001',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
-        question: { row: 'SYN-VOID-001', slot: '07', kind: 'void' },
+        // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
+        //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
+        //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
+        question: { row: 'SYN-BW-103-11', kind: 'void', by: 'wafer' },
       },
     },
     {
@@ -316,7 +319,10 @@ export const BOARD = Object.freeze({
         basisChipId: 'SYN-CX-CHIP-001',
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
-        question: { row: 'SYN-VOID-001', slot: '07', kind: 'void' },
+        // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
+        //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
+        //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
+        question: { row: 'SYN-BW-103-11', kind: 'void', by: 'wafer' },
       },
     },
     {
@@ -324,27 +330,27 @@ export const BOARD = Object.freeze({
       //    그것이 「마킹은 부품 밖에 산다」가 화면에서 보이는 자리다.
       id: 'candidate-list',
       part: 'candidateList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
       collect: 'candidate',
-      title: '원인 후보 · SYN-BW-001-07',
+      title: '원인 후보 · SYN-BW-103-11',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
+        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
       },
     },
     {
       id: 'rank-list',
       part: 'rankList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
       collect: 'candidate',
-      title: '순위 · SYN-BW-001-07',
+      title: '순위 · SYN-BW-103-11',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0',
+        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
       },
     },
   ],
@@ -380,7 +386,7 @@ export function bindLoaders(layout, deps) {
               walk({ collect: 'trend_y', window: '180d' }),
               walk({
                 start: { groupby: 'wafer',
-                  value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0wMDEtMDcifV0' },
+                  value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
                 collect: 'candidate',
               }),
             ]).then(([trends, candidates]) => {
