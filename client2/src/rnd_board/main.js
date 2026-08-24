@@ -40,6 +40,7 @@ import { ControlBarPanel } from './control_bar_panel.js';
 import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
 import { DeclarationPanel } from './declaration_panel.js';
+import { ExpandedLayerPanel } from './expanded_layer_panel.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   createWalk,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
@@ -50,7 +51,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
   mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,
-  declaration: DeclarationPanel };
+  declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -268,7 +269,7 @@ export const BOARD = Object.freeze({
       start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
       collect: 'wafer_process',
       title: '구성 · SYN-CX-CHIP-001',
-      at: { column: 1, row: 5, columnSpan: 4 },
+      at: { column: 1, row: 5, columnSpan: 3 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: { finalChipId: 'SYN-CX-CHIP-001' },
@@ -297,6 +298,19 @@ export const BOARD = Object.freeze({
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
         question: { row: 'SYN-BW-103-11', kind: 'void', by: 'wafer' },
       },
+    },
+    {
+      // 🔴 목업 구성의 «셋째 칸». 질의를 새로 하지 않습니다 -- 구성 walk 이 이미 걸어 온 답에서
+      //    «찍은 층»을 펼칩니다. 그래서 marking:1 을 읽고 그 외에는 선언이 없습니다.
+      id: 'expanded-layer',
+      part: 'expandedLayer',
+      title: '펼친 층',
+      at: { column: 4, row: 5 },
+      reads: 'marking:1',
+      writes: null,
+      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
+      collect: 'wafer_process',
+      options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
       // 🔴 목업의 둘째 맵은 «코어 맵»입니다 (마킹 2 · 후보가 걸린 점). 우리는 본딩 맵을 한 장

@@ -110,6 +110,7 @@ async function loadModules(mutate = {}) {
     .replaceAll("'./main_trend_panel.js'", `'${trendUrl}'`)
     .replaceAll("'./marking_status_panel.js'", `'${statusUrl}'`)
     .replaceAll("'./declaration_panel.js'", `'${declUrl}'`)
+    .replaceAll("'./expanded_layer_panel.js'", `'${partUrl('expanded_layer_panel.js')}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const [store, api, panel, map, shell, main] = await Promise.all([
     import(storeUrl), import(apiUrl), import(panelUrl),
