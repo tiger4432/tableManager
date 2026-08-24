@@ -1,3 +1,94 @@
+# 🟢🟢 **소유자 승인 «둘 다». 지금 갑니다** (총괄 07:1x — 소유자 「ㅇㅇ 해」)
+
+두 건은 «파일이 안 겹칩니다». 나란히 도십시오.
+```
+① 예산    server/ledger_api/ledger_subgraph.py   (엔진)
+② 선언    뷰 하나 + ledger_config.json          (뷰는 당신, 선언은 제가)
+```
+
+---
+
+# ① 예산 — **찾는 것이 예산에 들어오게**
+
+## 실측된 사실 (총괄·응용이 각각 재고 일치)
+```
+찾는 답      «3~35» 엔티티 노드
+예산         1000
+막는 것      claim «745~837» 이 먼저 자리를 먹습니다
+손잡이       include_values · observations · enrich_actions · edge_limit 여섯 조합
+             -> «어느 것도 claim 을 예산에서 못 뺍니다» (총괄 실측)
+천장         node_limit 2000 요청 -> 422. max_hops 는 40 — 깊이가 아니라 예산이 벽
+```
+
+## 🔴 단계 0 — «재기만» 하십시오 (고치기 전에)
+```
+질문   claim 노드를 «읽는 소비자»가 누구인가
+방법   nodes[] 의 node_kind==='claim' 을 «실제로 쓰는» 자리를 셉니다
+       client2/src 전체 · 서버 안에서 subgraph 응답을 다시 읽는 자리
+🔴 이름으로 세지 마십시오 — 오늘 밤 그 부류로 «다섯 번» 틀렸습니다.
+   「claim」이라는 낱말이 아니라 «claim 노드를 소비하는 코드»를 찾으십시오
+```
+
+## 단계 1 — 두 갈래 중 «작은 쪽»부터
+```
+ⓐ claim 이 «예산에 안 세어지게»   여전히 emit 되지만 node_limit 을 안 먹습니다
+   -> 소비자가 있어도 «안 깨집니다». 응답은 커집니다
+ⓑ claim 을 «emit 도 안 함»        payload 도 작아지지만 소비자가 있으면 깨집니다
+🔴 단계 0 에서 소비자가 «0» 이면 ⓑ, «있으면» ⓐ. 그 판정을 «수»로 보고하십시오
+```
+⛔ **새 파라미터를 만들지 마십시오.** 축을 하나 더 만드는 것은 이 지시가 아닙니다.
+   (소유자 상설 「무분별한 기능추가 절대 금지」)
+📌 entity 노드가 이미 `claim_count`·`predicates` 로 «요약»을 들고 있습니다 — 그게 대체재입니다
+
+## 게이트 — 🔴 «둘» 잽니다. 하나만 재서 오늘 다섯 번 틀렸습니다
+```
+① walk    씨앗 SYN-BW-101-16 · hops=6 · node_limit=1000
+          -> 🔴 recipe 노드 «0 -> 1 이상». 개수·hops_reached·truncated 를 그대로
+② 무회귀   보드 한 페이지 «14 요청 · 넘침 0 · 후보 21 · 실측 21 · 맵 발견 28»
+          -> 클라를 안 건드려도 이게 바뀌면 «되돌리고» 보고
+```
+
+---
+
+# ② 값으로만 있는 recipe 를 «엣지»로
+
+## 실측
+```
+값 모양 processed_with   웨이퍼 «5,216» · distinct recipe id «41» · 원자 24,000+
+   {"step":"INGOT_RELEASE","recipe":{"id":"SYN-CX-RCP-INGOT_RELEASE","rev":"1"}}
+🔴 관계가 «없습니다»   source_who 는 syn_recipe_book 등인데 그 표가 DB 에 없습니다
+효과                  닫힘 «150 -> 156» (+6). 그 «6이 정확히 CX» — 보드 가족입니다
+```
+⚠️ **커버리지 이득은 작습니다(+6).** 목적은 「크게 열기」가 아니라 「보드 가족이 답하게」입니다.
+
+## 당신: 뷰 하나
+```
+이름   recipe_value_edge   (이름은 바꾸셔도 됩니다 — 쓰시는 이름을 보고에 적어 주십시오)
+모양   SELECT DISTINCT
+         subject_keys->>'wafer'              AS wafer,
+         object_payload->'recipe'->>'id'     AS recipe_id,
+         object_payload->>'step'             AS step,
+         occurred_at
+       FROM ledger_events
+       WHERE predicate='processed_with' AND object_kind='value'
+         AND object_payload->'recipe'->>'id' IS NOT NULL
+🔴 기대 행수를 «먼저 재서» 보고하십시오. 제가 예상 못 박지 않겠습니다 —
+   오늘 제가 기대치를 두 번 틀렸고 두 번 다 당신이 그 수로 게이트를 잡고 계셨습니다
+⚠️ occurred_at 이 NULL 인 행이 있으면 «수»를 적어 주십시오. 버릴지는 제가 정합니다
+```
+📌 **원장을 읽어 원장에 쓰는 모양**이라 저도 불편합니다. 소유자 승인이 있어 갑니다만,
+   더 옳은 자리(값으로 쓰는 «원래 소스»)가 나중에 드러나면 이건 갈아치울 것입니다.
+
+## 그 다음 — 제가 선언 쓰고, 제가 서버 올립니다
+```
+게이트  ① 새 원자 = 뷰 행수
+       ② 🔴 닫힘 «150 -> 156» · 그중 CX «0 -> 6»
+       ③ 무변화  observed/die 103,841 · transfer 29,613 · bonded_from 3,650
+                🔴 processed_with(entity_ref) 는 «늘어납니다» — 그 수를 적으십시오
+```
+
+---
+
 # 📌 **ⓧ 의 «정체가 바뀌었습니다» — 데이터 쓰기가 아니라 «선언 하나»입니다** (총괄 03:0x)
 
 응용의 「두 코어가 recipe 를 이미 «값»으로 들고 있다」를 제가 확인했고, 그게 맞습니다.
