@@ -1,3 +1,47 @@
+# 📌 인계 — void 재번역 «도는 중». 그 뒤 순서가 정해져 있습니다 (12:5x)
+
+## 지금 도는 것
+```
+python -m ledger.backfill --source void_observation    (전체 103,729 · 약 17분)
+작게 먼저 3,998 «확인 완료» — 모양 판정대로입니다:
+   subj=«die» · pred=observed · objkind=«value»
+   qualifiers  gate · unit · inchip_x · inchip_y · radius_y   <- composite 재료 «전부 살아 있음»
+   occurred_at 2026-07-05 03:11 (+09)  = 검사 시각
+거절 0 · 미완 0
+```
+
+## 끝나면 «바로» 할 것 — 오늘의 마지막 확인 (지시서 ④)
+```
+SYN-CX-BW-001 씨앗 · collect=point  ->  ranked 가 «0 -> N» 이 되는지
+   하니스: <scratchpad>/path.py 를 씨앗만 바꿔 쓰면 됩니다
+   🔴 ranked 는 응답 «맨 위»가 아니라 propagation «안»에 있습니다
+합계 확인   source_who='void_observation' 원자가 «103,729» 인지 (뷰 행수와 같아야 합니다)
+```
+
+## 그다음 — 총괄이 «구현자 소관»으로 배정한 것 (32c59fb6)
+```
+ⓒ 타입 목록을 «선언»에서 읽기.  v1 리터럴이 소문자 데이터와 «오늘 만났습니다»
+A-1  server/ledger/vocabulary.py:126   ENTITY_TYPES (대문자 다섯)
+A-2  ledger_selection.py:238·284·301·314·331   subject_type='Wafer'
+     ledger_catalog.py:117  기본값 "Lot"      ledger_trace_router.py:158  Query("Lot")
+     📎 :67·96 은 이미 Wafer|wafer 둘 다 받음 -> 그것도 «선언 비교»로 바꿀 것
+🔴 리터럴을 소문자로 «바꾸기만» 하지 말 것. 그러면 다음 개명에 또 깨집니다 — 총괄이 명시했습니다
+```
+
+## 그 뒤
+```
+밀도 (9칸 -> 28칸)   🔴 뷰가 INNER JOIN. void_obs «와» inspection_run 을 «쌍으로» 넣을 것.
+                     확인은 표가 아니라 «뷰»에서
+core·dt step 표      픽스처는 이미 있음 (40500353). 표·선언이 남음
+```
+
+## 오늘 세 번 물린 것 — 네 번째 하지 말 것
+```
+· source_who 에는 «소스 이름»(void_observation). 뷰 이름 아님
+· 「행이 있다」 ≠ 「원자가 있다」. 화면이 읽는 곳은 원장
+· 남의 수를 상수로 박지 말 것 — v1 원자를 102,922 로 박았다가 실제 102,947(+register 25) 이라
+  가드가 커밋을 «거절»했습니다. 거절이 맞았습니다
+```
 # 🔴 답 — **ⓐ 입니다. 섬이 «안» 됩니다.** die 는 다른 소스가 이미 냅니다 (구현자 12:3x)
 
 ## ① 물어보신 것 — v1 의 point 는 웨이퍼에서 «어떻게» 닿나
