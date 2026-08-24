@@ -85,7 +85,10 @@ SCAN_SOURCE = {
 }
 
 DEFAULT_GRAIN = {
-    "subject_type": ledger_identity.SUBJECT_TYPE,
+    # 🔴 DECLARED HERE, because the grain is what knows which subject it aggregates.
+    # It used to be read off `ledger_identity`, which inverted the dependency: a mark
+    # helper decided what the query would match.
+    "subject_type": "wafer",
     "identity_fields": ["wafer"],
     "aggregation_unit": "void_by_experiment_unit",
     "context_fields": ["bonding_leg"],
@@ -518,10 +521,11 @@ ORDER BY f.wafer, f.bonding_leg
 """
 
 
-def _identity(unit):
+def _identity(unit, subject_type):
     # The mark layer still takes the axis values positionally; that positional contract
     # is what fences the axis names, and it is the node-id step that retires it.
-    return ledger_identity.identity(*(str(value) for value in unit))
+    return ledger_identity.identity(*(str(value) for value in unit),
+                                    subject_type=subject_type)
 
 
 def _split(raw, arity):
@@ -539,7 +543,7 @@ def _make_series(rows, grain):
          scan_denominator, metric_state, rn, n) = rest
         series_id = f"{kind}:{subtype or 'all'}"
         grouped[series_id].append({
-            "identity": _identity(unit),
+            "identity": _identity(unit, grain.declared["subject_type"]),
             "occurred_at": last_at.isoformat(),
             "value": {"event_count": int(events or 0),
                       "found_chip_count": int(found_chips or 0),
@@ -569,7 +573,8 @@ def _make_table(rows, limit, grain):
         (last_at, kind, subtype, events, found_chips,
          scan_denominator, metric_state) = rest
         if unit not in by_unit:
-            by_unit[unit] = {"identity": _identity(unit),
+            by_unit[unit] = {"identity": _identity(
+                unit, grain.declared["subject_type"]),
                              "occurred_at": last_at.isoformat(), "metrics": []}
             order.append(unit)
         by_unit[unit]["metrics"].append({

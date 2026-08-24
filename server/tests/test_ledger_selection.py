@@ -128,10 +128,13 @@ def test_syn_cx_final_wafer_marks_resolve_all_paths_and_group_signal(monkeypatch
         "finding_kind": "void", "window": "365d",
         "selection": [
             {"mark_id": "defect", "group_id": "A", "kind": "entity_set",
-             "identity": ledger_identity.identity(**fixture.aggregation_unit(defect))},
+             "identity": ledger_identity.identity(
+                 **fixture.aggregation_unit(defect),
+                 subject_type=ledger_selection._AGGREGATION_SUBJECT_TYPE)},
             {"mark_id": "reference", "group_id": "B", "kind": "entity_set",
              "selector": {"subjects": [ledger_identity.identity(
-                 **fixture.aggregation_unit(reference))]}},
+                 **fixture.aggregation_unit(reference),
+                 subject_type=ledger_selection._AGGREGATION_SUBJECT_TYPE)]}},
         ],
     }
     body = ledger_selection.resolve(object(), payload,
@@ -159,7 +162,10 @@ def test_syn_cx_final_wafer_marks_resolve_all_paths_and_group_signal(monkeypatch
         assert scoped
         assert all((row["subject_wafer"], row["subject_leg"]) ==
                    (unit["wafer"], unit["bonding_leg"]) for row in scoped)
-        assert all(row["subject_identity"]["type"] == "Wafer"
+        # Compared to the DECLARED subject type, not a literal: pinning "Wafer" here is
+        # the same sentence that made the trend answer 0% after the rename.
+        assert all(row["subject_identity"]["type"]
+                   == ledger_selection._AGGREGATION_SUBJECT_TYPE
                    and row["subject_identity"]["keys"] == {"wafer": unit["wafer"]}
                    and row["subject_identity"]["context"]["bonding_leg"] == unit["bonding_leg"]
                    and row["wafer_mark_key"] == row["subject_identity"]["mark_key"]

@@ -1,3 +1,52 @@
+# ✅ ① 착지 — 상수 «지웠습니다». 그리고 「여전히 0」이 ③의 «증거»입니다 (구현자 18:0x)
+
+## 고친 것 — 소문자로 «안» 내렸습니다 (지시대로)
+```
+ledger_identity.py   SUBJECT_TYPE = "Wafer"   -> 🔴 «상수 삭제»
+                     identity(wafer, leg, «subject_type») — 호출자가 «선언»에서 받아 넘깁니다
+ledger_trends.py     DEFAULT_GRAIN 이 "subject_type": "wafer" 를 «직접 선언»
+                     (전에는 identity 에서 읽었습니다 — 의존이 «거꾸로»였습니다:
+                      마크 헬퍼가 질의의 매칭 대상을 정하고 있었습니다)
+ledger_selection.py  _AGGREGATION_SUBJECT_TYPE = DEFAULT_GRAIN["subject_type"]
+                     같은 집계 단위라 «같은 선언»에서 읽습니다. 리터럴 재진술 «없음»
+```
+
+## 🔴 절별 증거 — ①이 «실제로» 뚫렸습니다
+```
+kind 일치                                     115,423
++ subject_type = 선언값 'wafer'                11,570    <- 🔴 전에는 «0». ①이 뚫은 자리
++ subject_keys ? 'wafer'                       11,570
++ object_payload ? 'bonding_leg'  (축2)             «0»   <- 🔴 ③ 이 여기서 죽입니다
+```
+**①은 0 -> 11,570 으로 열렸고, ③이 11,570 -> 0 으로 닫습니다.**
+지시서에 적어 주신 그대로입니다 — 「여전히 0이면 그건 ③의 증거이지 실패가 아니다」.
+
+## ③ 보강 실측 — 축이 «틀린 자리»를 본다는 것까지 확인
+```
+bonding_leg 가 사는 곳 (observed 전체)
+   object_payload    «18»      <- 축2가 «여기»를 봅니다
+   subject_keys      «18»      <- 같은 18개입니다
+   qualifiers          0
+```
+즉 원장 전체에서 축2를 통과할 수 있는 observed 원자가 «18개»이고, 그중 kind/주어 조건까지
+겹치는 것이 «0»입니다. **총괄 판정대로 ③은 mark_key -> 노드 id 안건에 흡수되는 자리이고
+지금 손대지 않았습니다.**
+
+## 트렌드 현재 상태 — 정직하게
+```
+void:all   72점 · found_chip_count 0 · found_rate FLAT · scan_denominator 34~64 «살아 있음»
+delam:all  12점 · 동일
+```
+🔴 **「트렌드가 살아났다」고 보고하지 않습니다.** ①만 착지했고 화면 값은 아직 0입니다.
+   달라진 것은 «막힌 자리가 하나로 좁혀졌다»는 것입니다.
+
+## 부수 — 시험에 있던 «같은 문장» 하나
+`tests/test_ledger_selection.py:165` 가 `subject_identity["type"] == «"Wafer"»` 를 박고
+있었습니다. 리터럴을 다시 박지 않고 «선언값과 대조»하도록 바꿨습니다 —
+그 문장의 사본이 하나 더 있었던 셈입니다.
+```
+시험   35 passed · 1 skipped
+```
 # 🔴🔴 트렌드 0% — **원인이 «셋»이고, finding_kind 는 그중 «하나도» 아닙니다** (구현자 17:2x)
 
 ①(접근자 배선) 끝내고 재 봤습니다. **여전히 0 입니다.** 그래서 절마다 «값을 매겼습니다».

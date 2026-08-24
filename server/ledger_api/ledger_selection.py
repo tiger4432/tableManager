@@ -11,8 +11,14 @@ from urllib.parse import quote
 from ledger_api import finding_kinds
 from ledger_api import ledger_siblings
 from ledger_api import ledger_identity
+from ledger_api import ledger_trends
 from ledger import vocabulary as ledger_vocabulary
 from ledger_trace import _fetch, relation_exists
+
+#: The aggregation unit here is the SAME unit the trend grain declares, so its subject
+#: type is read from that declaration rather than restated. A literal in this file was
+#: exactly what went dark when the ledger's type names became lowercase.
+_AGGREGATION_SUBJECT_TYPE = ledger_trends.DEFAULT_GRAIN["subject_type"]
 
 
 LEDGER_RELATION = "ledger_events"
@@ -490,7 +496,8 @@ def _build_maps(connection, components, final_units, selected_focuses, finding_k
         valid_ref = meta.get("valid_die_ref") or {}
         if valid_ref.get("map_id"):
             valid_refs.add(valid_ref["map_id"])
-        subject_identity = (ledger_identity.identity(subject_wafer, subject_leg)
+        subject_identity = (ledger_identity.identity(
+            subject_wafer, subject_leg, _AGGREGATION_SUBJECT_TYPE)
                             if subject_wafer and subject_leg else None)
         scope_id = (subject_identity["mark_key"] if subject_identity else
                     component_id or selection_id)
@@ -790,8 +797,10 @@ def resolve(connection, payload, now=None, relation=LEDGER_RELATION):
                                               for chip in final_chips],
                         "subjects": [{"type": "FinalChip", "id": chip}
                                      for chip in final_chips],
-                        "aggregation_units": [ledger_identity.identity(wafer, leg)
-                                              for wafer, leg in sorted(selected_units)],
+                        "aggregation_units": [
+                            ledger_identity.identity(wafer, leg,
+                                                     _AGGREGATION_SUBJECT_TYPE)
+                            for wafer, leg in sorted(selected_units)],
                         "final_chip_ids": final_chips,
                         "wafer_mark_keys": sorted(ledger_identity.encode_mark(wafer, leg)
                                                   for wafer, leg in selected_units),

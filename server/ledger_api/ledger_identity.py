@@ -10,7 +10,6 @@ import base64
 import json
 
 
-SUBJECT_TYPE = "Wafer"
 UNIT_KIND = "bonding_experiment_unit"
 CONTEXT_ROLE = "planned_bonding_experiment_unit"
 MARK_PREFIX = "experiment-unit:v1:"
@@ -50,11 +49,21 @@ def decode_mark(mark_key):
     return {"wafer": wafer, "bonding_leg": bonding_leg}
 
 
-def identity(wafer, bonding_leg):
+#: 🔴 THE SUBJECT TYPE IS THE CALLER'S DECLARATION, NOT THIS MODULE'S CONSTANT.
+#: This held `SUBJECT_TYPE = "Wafer"` and every caller inherited it. On 2026-08-24 the
+#: ledger's type names became lowercase and that literal started matching ZERO rows --
+#: the void trend answered 0% while its own map read 50%, and delam went dark with it,
+#: because `AND subject_type = 'Wafer'` excluded all 115,423 observation atoms. Nothing
+#: raised; the series simply came back flat.
+#:
+#: ⚠️ THE REPAIR IS NOT SPELLING IT LOWERCASE. That survives exactly until the next rename.
+#: The grain already declares which subject it aggregates, so the value arrives as an
+#: argument and this module stops having an opinion about it.
+def identity(wafer, bonding_leg, subject_type):
     wafer = _part(wafer, "wafer")
     bonding_leg = _part(bonding_leg, "bonding_leg")
     return {
-        "type": SUBJECT_TYPE,
+        "type": _part(subject_type, "subject_type"),
         "keys": {"wafer": wafer},
         "context": {"role": CONTEXT_ROLE, "bonding_leg": bonding_leg},
         "aggregation": {"kind": "void_by_experiment_unit", "finding_kind": "void"},
