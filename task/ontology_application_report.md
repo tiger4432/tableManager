@@ -6,6 +6,49 @@
 
 ---
 
+# 📋 오늘 착지분 «계약 대조» — 어긴 곳 «하나». 고치지 않았습니다 (17:0x)
+
+지시대로 `MARKING_CONTRACT` · `SERVER_POSITION_CONTRACT` 대비로 훑고 **목록만** 냅니다.
+
+## 🔴 하나 — `space` 낱말이 계약과 다릅니다. **placements 오는 날 두 맵이 빕니다**
+```
+map_panel.js:370    this.space = options.space || «'die'»
+선언 실측           space 를 «명시»하는 부품: 칩 확대 «하나»뿐 (main.js:326  space:'inchip')
+                    본딩 맵(main.js:288)·코어 맵(:367) 은 axis:'bond'/'core' 만 주고
+                    space 를 «안 줍니다» -> 둘 다 기본값 «'die'» 로 떨어집니다
+계약 §10·§16        space = die:base · die:core · die:dt · inchip
+                    (총괄 판정: 「die 하나로 두면 dt_map 이 두 die 자리를 갖는 것을 못 쓴다」
+                     「당신 것이 맞습니다 — 제 명세를 당신 낱말로 고치겠습니다」)
+판별                placementOf 는 «정확히 같은 문자열»만 찾습니다:  p.space === space
+                    -> placements 가 die:base / die:core 로 오면 «둘 다 nowhere»
+```
+🔴 **오늘 아침 빈 화면과 «같은 부류»입니다** — 지금은 옛 경로(`cells[].points`)로 그려서 «안 보입니다».
+   `placements` 가 착지하는 날 조용히 빕니다.
+⛔ **고치지 않았습니다** (지시: 목록만). 그리고 오후에 손대는 것은 총괄이 «닫은» 범위입니다.
+📌 고치는 비용은 «선언 두 줄»입니다 — 본딩·코어 선언에 `space:'die:base'` · `space:'die:core'`.
+
+## ✅ 안 깨진 것 — 확인했습니다
+```
+§4 게이트      isStampedNodeId 살아 있음(api.js:339) ·
+               map_panel.js:1014 이 nodeIdResolved !== true 면 «마킹을 막습니다»
+               -> 「그릴 수는 있어도 마킹은 안 된다」가 성립합니다
+§18 세 갈래     placeState 가 awaiting / nowhere / here 로 갈립니다 (map_panel.js:320)
+§19 운반체      cells[].points 를 읽고, 주석이 「옛 경로. 지금 화면이 이걸로 돕니다」라고
+               «스스로» 적어 뒀습니다 -> 계약의 「lot_map 이 사는 동안은 cell 로 온다」와 일치
+§3 마킹 이름    marking:0 · marking:3 의 «코드 사용 0». 남은 한 줄은 «은퇴 주석»입니다
+§14 extent      확대 선언이 extent 를 «자리»에 두고 있습니다 (options.extent) — 점이 아니라 자리
+```
+
+## ⚠️ 판단 못 한 것 — 미상으로 남깁니다
+```
+· `space:'die'` 가 «의도된 임시»인지 «빠뜨린 것»인지 — 주석에 근거가 없어 모릅니다
+  (옛 경로에서는 space 가 안 쓰이므로 «지금은 아무 차이가 없습니다». 그래서 조용합니다)
+· 코어 맵이 marking:2 를 읽는 것과 계약 §3 은 «일치»합니다. 다만 코어 맵의 space 가
+  die:core 인지 die:dt 인지는 «제가 정할 것이 아닙니다» — 선언이 답할 자리입니다
+```
+
+---
+
 # 📎 전사 엣지 — **그 측정은 «이미 있습니다».** 방금 다시 재서 «전부 그대로»입니다 (17:4x)
 
 보드의 「walk 이 못 건너는 것은 나머지 72,964 가 쓰는 «모양»」에 대해서입니다.
