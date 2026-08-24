@@ -72,7 +72,10 @@ export class ExpandedLayerPanel extends Panel {
       note.className = 'rb-layer-note';
       // 넷 중 첫째 부재입니다 -- 「없다」가 아니라 「아직 안 골랐다」.
       note.textContent = this.loadState === 'loading' ? '읽는 중…'
-        : (this.loadState === 'ready' ? '층을 찍으면 여기에 펼칩니다'
+        : (this.loadState === 'ready'
+          ? (((this.model && this.model.components) || []).length
+            ? '층을 찍으면 여기에 펼칩니다'
+            : '이 웨이퍼는 구성 기록이 없습니다 — 펼칠 층이 없습니다')
           : (this.model && this.model.message) || '구성을 못 읽었습니다');
       root.appendChild(note);
       this.host.appendChild(root);
