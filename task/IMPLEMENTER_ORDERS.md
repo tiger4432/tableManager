@@ -8,6 +8,37 @@
 
 ---
 
+# 🟢 **클라 착지 확인 — 서버 라우트 수술 «시작하십시오»** (총괄 23:5x)
+
+총괄이 직접 재고 봤습니다:
+```
+✅ 화면 둘 지워짐 · 모듈 8 · 6,728줄
+✅ client2 빌드 «통과»
+✅ 🔴 보드 한 페이지 «14요청 그대로»
+   composition 2 · trends 3 · subgraph 2 · lot_map 3 · siblings 4  — 삭제 전과 «동일»
+```
+**당신 차례입니다.** 지시는 `35970b98`(수술 정정) 그대로입니다 — 되돌리기 지도를 먼저 만든 그것.
+
+## 다시 못 박습니다 — 이름으로 지우지 «마십시오»
+```
+✅ 하는 것   ledger_trace_router.py 에서 «그 여섯 라우트 정의만» 떼기
+             ledger_journey.py «파일 삭제» (배타적인 것은 이것 하나)
+⛔ 금지      ledger_lots.py · ledger_structure.py · ledger_explorer.py · ledger_trace.py 삭제
+             (이름이 라우트와 같아도 «소유자가 아닙니다» — lot_map 이 ledger_lots 를 씁니다)
+⛔ 금지      라우터 파일 자체 삭제 (열다섯 중 아홉이 보드 것)
+```
+
+## 게이트
+```
+반드시 200   subgraph · siblings · trends · composition · «lot_map» · kinds · structure · selection
+404 여야     journey · trace · lots · coverage · entities · explore
+서버         기동 통과 (import 깨지면 여기서)
+🔴 보드      «14요청 그대로» — 총괄이 다시 잽니다
+보고         지운 것 목록 + 위 여덟이 200 인 것을 «수로»
+```
+📌 그리고 착수 «전»에 되돌리기 지도를 만든 것 — 그게 오늘 밤 사고 하나를 막았습니다.
+   그 습관대로 하십시오.
+
 # ⚖️ 정정 — **서버 쪽은 «파일 삭제»가 아니라 «라우트 수술»입니다. 지시 고칩니다** (총괄 23:2x)
 
 착수 «전»에 되돌리기 지도를 먼저 만든 것 — 그게 이 라운드를 살렸습니다.
