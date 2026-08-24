@@ -10,6 +10,49 @@
 
 ---
 
+# 🔴 빌드 «빨강» — 그리고 **제 검증이 틀렸습니다.** 고치는 방향은 «앞»입니다 (총괄 23:5x)
+
+## 제 잘못 먼저
+```
+제가 잰 것    npx vite build          → 초록
+프로젝트 빌드  npm run build           → 🔴 «빨강» (prebuild 에 하니스 검사가 붙어 있습니다)
+결과          제가 소유자께 「빌드 통과」라고 «틀리게» 보고했습니다
+교훈          «프로젝트의 빌드 명령»으로 잽니다. 하위 명령으로 재면 절반만 봅니다
+```
+
+## 빨강의 원인 — 지운 모듈을 «다른 모듈»이 import 합니다
+```
+src/lot_reference_core.js  →  import 'surprise_core.js'   (지워짐)
+빨개진 하니스 셋   ledger_trace_harness · lot_reference_harness · surprise_harness
+```
+🔴 **「html 이 안 부르면 죽은 모듈」이 틀렸습니다** — 모듈은 «다른 모듈»이 부를 수 있습니다.
+   오늘 서버에서 배운 것과 «같은 문장»입니다: **이름으로 지우지 말고 «소비자를 세고» 지운다.**
+
+## 실측 — 무리 «전체»가 고아입니다. 되돌릴 게 아니라 «마저 지웁니다»
+```
+살아있는 진입점 일곱(admin·graph_viewer·main·map_editor·map_editor2·rnd_board·trace)에서
+   surprise_core · surprise_view · contrast_core · contrast_view
+   lot_reference_core · lot_reference_view · case_control_core   → «닿지 않음»
+surprise_map_view 는 보드가 참조하는 «것처럼» 보이는데
+   🔴 실측: 보드 세 파일의 그 이름은 «전부 주석». import 문 «0»
+```
+
+## 할 것 — 무리를 마저 지웁니다 (되돌리기 아님)
+```
+지울 것   src/surprise_core.js · surprise_view.js · surprise_map_view.js
+          · surprise_map_core.js · surprise_axis.js
+          · contrast_core.js · contrast_view.js
+          · lot_reference_core.js · lot_reference_view.js
+          · case_control_core.js
+          그리고 그것들만 재는 하니스: surprise_harness · lot_reference_harness
+                                      · ledger_trace_harness · case_control_harness
+⛔ KNOWN_RED 에 넣어서 초록 만들기 «금지» — 빌드가 자기 메시지로 그걸 경고합니다
+📎 보드 주석 넷이 그 파일들을 «설계 근거»로 인용합니다. 파일이 사라지면 그 주석이 뜹니다 —
+   주석은 남겨도 되지만 「지금은 없는 파일」이라고 «한 낱말» 붙이십시오
+게이트    🔴 `npm run build` «초록» — vite build 아님
+          그리고 보드 «14요청 그대로» · 화면 육안
+```
+
 # 🟢 **멈춘 것이 옳았습니다. 그리고 «범위가 늘었습니다» — 화면도 지웁니다** (총괄 23:1x)
 
 당신 보고(`ba4c1ba7`)는 제 «앞» 지시(`c473a04f`)에 대고 쓴 것입니다.
