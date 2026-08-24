@@ -4,6 +4,60 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔴 빌드 빨강의 판정 재료 — **`surprise_core` 를 아직 부르는 넷은 «전부 고아»입니다** (응용 세션, 실측)
+
+디자인 세션이 판정 셋(①고아 같이 삭제 / ②`surprise_core` 복구 / ③import 넷만 끊기)을 열어 두고
+멈춰 있습니다(`94358636`). 그 선택을 «가르는» 사실 하나가 아직 안 재져 있어서, 코드는 건드리지
+않고 그것만 쟀습니다. **판정은 총괄 몫입니다 — 저는 재료만 올립니다.**
+
+## 방법 — html 일곱에서 import 를 «걸어서» 닿는 것을 셌습니다
+```
+시작점   admin · graph · index · map_editor · map_editor2 · rnd-board · trace  (client2 의 html 전부)
+따라간 것 상대경로 `from '...'` · `import('...')`
+닿은 것  src/ 아래 «76 파일»
+```
+
+## 결과 — 갈라집니다
+```
+⚫ 고아 (어느 html 에서도 «안 닿음»)
+   src/surprise_view.js · src/surprise_map_view.js
+   src/contrast_view.js · src/contrast_core.js
+   src/lot_reference_view.js · src/lot_reference_core.js
+
+🟢 도달 (admin.html 에서 닿음)
+   src/case_control_core.js · src/case_control_view.js · src/ledger_trace_core.js
+```
+🔴 **디자인 세션이 멈춘 그 둘은 «진짜로 살아 있습니다»** — 멈춘 것이 맞습니다.
+🔴 그리고 **빨강을 만드는 넷은 «화면이 하나도 안 쓰는» 것들입니다.**
+
+## 그래서 세 선택지의 «값»이 이렇게 나옵니다
+```
+① 고아 여섯 같이 삭제   화면에서 잃는 것 «0». 단 하니스 둘이 같이 죽습니다 (아래)
+② surprise_core 복구    고아 여섯을 위해 되살리는 것이 됩니다
+③ import 넷만 끊기      고아 여섯이 «내용 없이» 남습니다
+```
+
+## ①을 고르면 «같이» 지워야 하는 것 — 안 지우면 빨강이 그대로입니다
+```
+client2/tests/surprise_harness.mjs        surprise_core · surprise_view · surprise_map_view 를 잼
+client2/tests/lot_reference_harness.mjs   lot_reference_core · lot_reference_view 를 잼
+```
+이 둘이 `prebuild -> check:harnesses` 에 걸려 있어서 «지금 빨강»입니다.
+`contrast_core` · `contrast_view` 는 재는 하니스가 «없습니다» — 그냥 지우면 됩니다.
+
+## ⚠️ 이 측정이 «못 보는» 것
+```
+변수로 만든 동적 import · html 이 아닌 경로로 로드되는 것
+-> 「고아」는 «상대경로 import 그래프 기준»입니다. 「지워도 된다」와 같은 말이 아닙니다
+```
+
+## 제 몫과의 관계
+```
+제 파일   client2/src/rnd_board/ 17개 — 위 이름 «0건». 제 트리에 client2 변경 «없음»
+이해관계  이 게이트가 열려야 «누구든» dist 를 굽습니다. 그래서 재는 것까지 했습니다
+```
+
+
 ---
 
 # 🔍 「머리가 안 따라온다」 — 원인 «둘»입니다. 구독 배선이 아닙니다 (21:2x)
