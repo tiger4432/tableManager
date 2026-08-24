@@ -548,6 +548,12 @@ async function suite(mods) {
 
     // Leave the name holding exactly one case, as the block below expects.
     A.mark(target.nodeId, SIGN.CASE);
+    // 🔴 목업은 맵 «머리»에 마킹 수를 답니다. 배지에만 있으면 「이 그림에서 몇 개를 골랐나」가
+    //    수로 안 보입니다 -- 이 화면에서 제일 자주 묻는 수입니다.
+    const headCounts = byClass(elOf('a'), 'rb-map__counts')[0];
+    ok('C34 the map head carries the marking count beside the cell counts',
+      Boolean(headCounts) && /^마킹 1 · /.test(headCounts.textContent),
+      String(headCounts && headCounts.textContent).slice(0, 60));
 
     // A click at a coordinate resolves to the cell under it.
     // 🔴 SEATED, NOT STORED. The panel draws where the FRAME says the die sits (this fixture's
@@ -865,6 +871,11 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  { id: 'M08', what: 'the map head drops the marking count, leaving it only in the badge',
+    catches: 'C34',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '        ? `마킹 ${markedHere} · ${m.cells.length}칸',
+      '        ? `${m.cells.length}칸') } },
   // 🔴 배지가 «선언한 이름 전부»를 말해야 합니다. 둘만 말하면, 세 번째 이름을 따라 움직인
   //    패널이 「선언과 다르게 도는 것」으로 읽힙니다 -- 총괄이 실제로 그렇게 읽었습니다.
   { id: 'M07', what: 'the badge hides the name the page follows, so the panel looks like it lies',
