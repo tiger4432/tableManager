@@ -1,3 +1,94 @@
+# 🔴🔴 **우선순위 «전환» — 지우기 끝. 이제 빠진 엣지가 1순위입니다** (총괄 00:4x — 소유자 지시)
+
+> 소유자 00:4x: 「빈 엣지를 채우는게 1순위여야 하지 않을까? 레거시 삭제보다」
+> 「레거시 삭제에 3시간이나 쓰고있어」 — **맞는 지적입니다. 순서를 바꿉니다.**
+
+라우트 수술(`67cc2e8a`) 게이트 «통과»입니다. 제가 서버를 올리고 직접 쟀습니다:
+```
+200  lot_map · subgraph · trends · composition · siblings · structure
+404  journey · trace
+📌 당신 잘못이 아닌 것 하나: 제가 처음 재니 422 였습니다 — «서버가 22:01 옛 프로세스»였습니다.
+   올리고 다시 재니 404. (그리고 서버는 «assy_manager» conda 파이썬으로 올려야 합니다.
+   base 파이썬엔 psycopg2 가 없어 조용히 죽습니다 — 제가 방금 그걸로 한 번 헛돌았습니다.)
+```
+**지우기는 여기서 «닫습니다».** 더 지우지 마십시오.
+
+---
+
+# 🎯 도착지 — 소유자의 체인이 «끝까지» 도는 것
+
+```
+소유자 질의   「보이드 있던 wf 의 cmp rcp 로 진행한 wf 의 보이드를 다시 추적」
+형태         a --walk--> b --walk--> a'
+```
+
+## 제가 실측한 «지금»의 지형 — 체인이 «정확히 한 곳»에서 끊깁니다
+```
+SYN-BW-*  본딩 웨이퍼   void 2,660장 · 102,922 원자          ← a (여기 서 있습니다)
+   ↑  ❌ «끊긴 자리»    DTJ 주어 술어가 has_netdie(값)·register 뿐
+SYN-DTJ-* DT job
+   ↑  ✅ transfer 29,613  (die→die, entity_ref)
+SYN-CW-*  코어 웨이퍼   600장
+   ↓  ✅ processed_with 3,022 (entity_ref)
+recipe 12개  (SYN-R-CMP-01 …)                                 ← b
+```
+🔴 **교집합 실측: void 웨이퍼 ∩ recipe 엣지 웨이퍼 = «0»**
+(void ∩ recipe 가 «값»인 웨이퍼 = 2,605 — 값이라 못 걷습니다)
+
+## 재료는 «이미 있습니다» — 100%
+```
+bonding_log        380,273 행
+   base_id · bx/by · bond_x/bond_y      -> BW die
+   dt_lot · dt_slot · dt_x · dt_y       -> DT die
+   core_lot · core_slot · cx · cy       -> core die  (단, core_lot 이 73% NULL)
+🔴 커버리지 실측:  void BW  ∩  bonding_log.base_id  =  «2,660 / 2,660»   (전부)
+```
+
+---
+
+# 할 것 — «단계 0 먼저». 0 에서 멈출 수도 있습니다
+
+## 단계 0 — 재기만 하십시오 (선언 쓰지 마십시오)
+```
+질문   bonding_log 의 DT 끝이 «이미 착지한» transfer 의 DT 끝과 «맞물리나»
+사실   transfer 목적어 = die{mat_id: 'SYN-DTJ-…', mat_type:'DT'}
+       bonding_log    = (dt_lot, dt_slot, dt_x, dt_y)   ← 다른 식별자
+       dt_job_attribution 이 다리처럼 보이지만 «252행»이고 표본 3개가 dt_lot NULL
+       ⚠️ 타입도 어긋납니다 (dt_slot double vs varchar) — INTERSECT 가 거절했습니다
+재라   맞물리는 (lot,slot)→dt_job 쌍이 «몇 개»인가. 그리고 그게 bonding_log 의 몇 %인가
+```
+🔴 **맞물리지 않으면 거기서 «멈추고 보고»하십시오. 다리를 지어내지 마십시오.**
+   그 경우 대안은 「BW die → core die 직결」(bonding_log 의 core_lot/cx/cy)이고,
+   그건 73% NULL 이라 **소유자 판정 사안**입니다. 제가 받겠습니다.
+
+## 단계 1 — 맞물릴 때만. 선언 «하나»
+```
+bonded@1     주어 die(BW)  ->  목적어 entity_ref die(DT)
+소스         bonding_log
+✅ 하는 법   `dt_transfer` 소스를 «복사»해서 관계·컬럼·bind 만 갈아끼웁니다
+             (제가 그렇게 썼고 그게 통과한 유일한 방법입니다 — 기억으로 쓰지 마십시오)
+⚠️ 검증기    bind 에 쓰는 컬럼은 prepare.input_columns «와» map.input_columns «둘 다»에
+             있어야 합니다. 없으면 거절합니다
+```
+
+## 게이트 — 🔴 «수» 하나와 «분류» 하나. 둘 다 보고하십시오
+```
+① 수      새 원자 수 = bonding_log 유효행 수와 일치하나
+② 🔴 분류  void BW  ∩  recipe 엣지 웨이퍼  =  «지금 0».
+          이게 0 이 아니게 되는 것이 이 라운드의 «정의»입니다. 수를 적어 주십시오
+③ 무변화   observed 103,841 · transfer 29,613 · processed_with(entity_ref) 3,022
+          🔴 이 셋 중 하나라도 움직이면 «되돌리고» 보고하십시오
+```
+📌 서버 재기동은 «제»가 합니다. 선언을 쓰고 커밋만 하십시오 — 제가 올리고 잽니다.
+
+## ⛔ 이 라운드에서 «하지 마십시오»
+```
+라우트 추가 · 클라 수정 · 다른 술어 손보기 · 「나중을 위한」 헬퍼
+끊긴 자리는 «하나»입니다. 그 하나만 이으십시오
+```
+
+---
+
 # 🟢🟢 **재개 조건 «충족». 서버 라우트 수술 «지금 하십시오»** (총괄 00:2x — 소유자 승인)
 
 위의 ⏸️ 대기를 «해제»합니다. 제가 직접 재고 확인했습니다:
