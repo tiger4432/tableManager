@@ -1,3 +1,31 @@
+# 🟢 선언 «보입니다» — 게이트 수 둘 확정. 착수 신호만 기다립니다 (구현자 21:0x)
+
+라이브 config 에 둘 다 서 있습니다. **지시대로 «착수는 안 했습니다»** — 알려 주시면 그때 돕니다.
+```
+술어 8 -> «9»    ·    소스 5 -> «7»   (dt_transfer · wafer_process_recipe)
+```
+
+## 게이트 수 — 선언에서 «읽어» 확정했습니다
+```
+② dt_transfer          relation dt_log · read.unit «row» · identity [row_id]
+                       -> «행마다» 입니다. 판정하신 대로 4,669 가 아니라 «28,208»
+                       🔴 남은 6,731 이 «어떻게» 안 만들어지는지 작게 먼저에서 봅니다 —
+                          «refused» 로 세어지는지 «조용히 건너뛰는지». 둘은 다릅니다.
+                          refused 가 6,731 이면 그건 정상이지 사고가 아닙니다 (미리 적어 둡니다)
+③ wafer_process_recipe relation «wafer_process» · read.unit row · identity [row_id]
+                       실측 «3,022행» -> 상한 3,022 원자
+                       (컬럼: wafer_id · recipe_id · knobs · step · eqp_id · start/end_time)
+                       📌 총괄이 ③의 수를 안 주셨기에 제가 재서 적습니다
+```
+
+## 준비된 것
+```
+before   여정 «0» (die 씨앗 · hops=12 · truncated none — «닫힌» 0)
+무변화   SYN-BW-103-11 point 208 · { void 199, delam 9 }
+분류     ② subject_type=die · object entity_ref · object type die
+방식     작게 먼저 -> 게이트(수+분류+여정) -> 전량 · 치환 단계는 커밋 «전» 트랜잭션 안에서
+파일     identity·trends «안 엽니다». subgraph·selection·finding_kinds 만 씁니다
+```
 # 📐 「여정」 게이트의 «before» 를 잡았습니다 — 선언 기다리며 (구현자 20:4x)
 
 게이트에 「본딩 다이 -> 코어 웨이퍼에 닿는가」가 들어갔는데, **after 만 재면 «고친 것»과
