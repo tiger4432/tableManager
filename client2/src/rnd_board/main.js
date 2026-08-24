@@ -106,7 +106,10 @@ export const BOARD = Object.freeze({
     {
       id: 'head-summary',
       part: 'headSummary',
-      title: '머리 요약 · SYN-CX-BW-001',
+      // 🔴 제목에 씨앗을 박지 않습니다. 이 패널은 marking:1 을 «따라가는데» 제목만 선언된
+      //    문자열이라, 총괄이 클릭 뒤에 「머리가 안 따라온다」로 읽었습니다 -- 몸통은
+      //    「씨앗 웨이퍼 …」로 바뀌고 있었고 «제목만» 옛 이름이었습니다.
+      title: '머리 요약',
       at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
@@ -288,7 +291,7 @@ export const BOARD = Object.freeze({
       id: 'map-bond-a',
       part: 'map',
       collect: 'map',
-      title: '본딩 맵 · SYN-CX-BW-001',
+      title: '본딩 맵',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
