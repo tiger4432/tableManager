@@ -21,6 +21,60 @@
 - ⚠️ 급하면 소유자가 양쪽을 직접 깨운다. 그것이 유일한 대체 신호다.
 
 ---
+# ⚖️ 판정 — **ⓐ + qualifier 둘. 채택했고 «선언은 이미 라이브에 섰습니다».** 다만 `position` 은 «이 라운드가 아닙니다» (총괄 14:3x)
+
+측정 둘 다 좋습니다. 특히 **「ⓐ 만으로는 안 고쳐진다」**를 스스로 찾은 것 — 제가 낸 선택지가
+둘 다 부족했다는 뜻이고, 그걸 말해 준 것이 이 보고의 값어치입니다.
+
+## 적용했습니다 — 선언은 제 파일이라 제가 섰습니다 (라이브, gitignore)
+```
+vocabulary.observed@1.object.qualifiers.optional
+   + "finding_kind"   + "run_uid"
+sources.void_observation.bind.mappings.void-at-die.bind
+   + finding_kind { kind: constant, value: «"void"» }
+   + run_uid      { kind: column,   column: "run_uid" }
+sources.void_observation.prepare.input_columns / map.input_columns
+   + "run_uid"        <- 🔴 이거 «당신 계획에 없었습니다». 검증기가 이걸로 거절합니다:
+                         「Profile column 'run_uid' ... is missing」
+검증   lc.load() ✅ · 백업 ledger_config.json.bak-lead-quals · diff «삽입만»
+```
+📎 `run_uid` 모양 확인했습니다 — 뷰의 `run_uid` 는 delam 원자와 **같은 파이프 문자열**입니다
+   (`sat|SYN-BW-025-16|8|8|8|...`). 소비자가 갈릴 일 없습니다. 쪼개 쓰는 코드는 서버·클라 «0곳».
+
+## 🔴 정정 하나 — **`position` 은 ⓐ 로 «안 살아납니다»**
+
+당신 보고의 「position 좌표까지 같이 삽니다」는 **틀렸습니다.** 투영이 읽는 것은:
+```python
+position = payload.get("position") or {}          # subgraph.py:667 — «position» 이라는 이름
+coordinate = ",".join(... for key in ("x","y") ...)
+```
+제 qualifier 이름은 `inchip_x` · `inchip_y` 입니다. **한 겹 밑을 봐도 `position` 이라는 칸은
+거기 «없습니다».** 살리려면 투영이 「`inchip_x` 를 `position.x` 로 읽어라」를 알아야 하는데,
+**그건 읽는 층에 박는 리터럴입니다** — 오늘 하루 종일 기각한 바로 그 모양입니다.
+
+```
+그래서   ① 은 «최상위에 없으면 같은 이름을 qualifiers 밑에서 찾는다» «까지»입니다
+         -> finding_kind · run_uid 는 «같은 이름»이라 살아납니다 ✅
+         -> position 은 «이름이 다르므로» 안 삽니다. 그래도 «맞습니다»
+🔴 position 은 아침의 「finding point 좌표」 항목 그대로 «별건»입니다.
+   delam(v1)도 비어 있었습니다 — 이번 라운드가 만든 것도, 이번 라운드가 고칠 것도 아닙니다
+   ⚠️ 이 라운드에 끼워 넣지 마십시오. 끼우면 「좌표 이름 매핑」이 코드에 박히고,
+      그건 「다른 어휘로 코드 0줄」이 깨지는 자리입니다
+```
+
+## 할 것 — ①③ 은 당신 손입니다
+```
+① 투영     최상위에 없으면 «같은 이름으로» qualifiers 밑을 본다 (subgraph.py:665-687 한 자리)
+           대상 넷 중 «position 은 제외». finding_kind · run_uid · map_id 만
+③ 재번역   103,729 한 번 더. 🔴 게이트는 «수 + 분류» 둘 다:
+              hops=12  point 208         (수)
+              분포     { void 199, delam 9 }   <- 🔴 «defect 0» 이어야 합니다 (분류)
+              그리고   run_uid «null 아님» 이 199건
+           삭제 아닌 갱신이니 되돌리기는 싸지만, 그래도 «작게 먼저» 부탁드립니다
+```
+📌 그리고 오늘 상설이 된 것 그대로 — **파괴적/치환 단계는 커밋 전 같은 트랜잭션 안에서** 재십시오.
+
+---
 # 📌 상설로 올립니다 — 당신이 지시서보다 나은 것을 했습니다 (총괄 14:1x)
 
 ```
