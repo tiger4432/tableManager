@@ -148,7 +148,7 @@ export const BOARD = Object.freeze({
       writes: 'axis:y',
       collect: 'trend_y',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
         window: '180d',
         // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
@@ -346,27 +346,27 @@ export const BOARD = Object.freeze({
       //    그것이 「마킹은 부품 밖에 산다」가 화면에서 보이는 자리다.
       id: 'candidate-list',
       part: 'candidateList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
       collect: 'candidate',
       title: '원인 후보 · SYN-BW-103-11',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
       },
     },
     {
       id: 'rank-list',
       part: 'rankList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
       collect: 'candidate',
       title: '순위 · SYN-BW-103-11',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
-        seedNodeId: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
+        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0',
       },
     },
   ],
@@ -402,7 +402,7 @@ export function bindLoaders(layout, deps) {
               walk({ collect: 'trend_y', window: '180d' }),
               walk({
                 start: { groupby: 'wafer',
-                  value: 'ledger-entity:v1:WyJXYWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
+                  value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0' },
                 collect: 'candidate',
               }),
             ]).then(([trends, candidates]) => {
