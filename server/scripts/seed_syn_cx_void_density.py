@@ -110,9 +110,15 @@ def main(argv=None):
                   % (WAFER, before["cells"], before["voids"], GATE_WAFER,
                      before["gate_wafer_rows"], before["view"]))
 
+            # 🔴 CLEAR OWN ROWS FIRST, THEN TAKE THE BASELINE. Sizing the insert from the
+            # PRE-clear count made the script destroy its own fixture: run it a second time
+            # and `before["cells"]` was already 28, so it deleted the 19 it had added, asked
+            # for 28-28 = 0 more, and failed its own gate at 9. A seeder that cannot be run
+            # twice is not a reproduction path, which is the one thing committing it claimed.
             c.execute(text("DELETE FROM void_obs WHERE work_id = :m"), {"m": MARK})
+            baseline = _counts(c)
             free = _cells(c)
-            need = TARGET_CELLS - before["cells"]
+            need = TARGET_CELLS - baseline["cells"]
             if need > len(free):
                 raise SystemExit("only %d free inspected cells, need %d" % (len(free), need))
             chosen = rng.sample(free, need) if need > 0 else []
@@ -140,8 +146,9 @@ def main(argv=None):
 
             after = _counts(c)
             print("\nAFTER (uncommitted)")
-            print("   %s cells %d -> %d   voids %d -> %d"
-                  % (WAFER, before["cells"], after["cells"], before["voids"], after["voids"]))
+            print("   %s cells %d (own rows cleared -> %d) -> %d   voids %d -> %d"
+                  % (WAFER, before["cells"], baseline["cells"], after["cells"],
+                     before["voids"], after["voids"]))
             print("   %s rows %d -> %d" % (GATE_WAFER, before["gate_wafer_rows"],
                                            after["gate_wafer_rows"]))
             print("   view %d -> %d   void_obs %d -> %d"
@@ -152,8 +159,9 @@ def main(argv=None):
                 "%s untouched" % GATE_WAFER:
                     after["gate_wafer_rows"] == before["gate_wafer_rows"],
                 "join still total (view == void_obs)": after["view"] == after["void_obs"],
+                # measured from the POST-clear baseline, so re-running compares like with like
                 "view grew by exactly the insert":
-                    after["view"] - before["view"] == len(rows),
+                    after["view"] - baseline["view"] == len(rows),
             }
             for name, ok in checks.items():
                 print("   %-38s %s" % (name, "OK" if ok else "FAIL"))
