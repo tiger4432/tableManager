@@ -396,6 +396,20 @@ export function measuredFromHops__untilServerServesIt(row) {
  *      incomparable            종류가 다름            != 더 낮음
  *    A part that collapses any two of these has told the operator something the ledger did not.
  */
+// 🔴 THE SERVER SAYS WHICH BUDGET BOUND, AS FLAGS; THE PARTS WANT NAMES. This carries it
+//    across and does not interpret: every flag the server set true becomes its own name and
+//    nothing is merged, because 「깊이에서 잘림」 and 「노드 상한에서 잘림」 are different
+//    answers -- one is 「홉을 늘리면 더 나온다」 and the other 「더 있는데 못 봤다」.
+//
+// 🔴 ABSENT IS NOT FALSE. A response with no `truncated` is a boundary that has not landed,
+//    NOT a walk that ran to completion, so it returns `null` rather than `[]`. Turning an
+//    absent field into a confident empty is exactly what blanked the maps this morning
+//    (`placements`), and that mistake is not repeating in this file.
+function truncationNames(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return Object.keys(raw).filter((key) => raw[key] === true);
+}
+
 export function subgraphModel(result) {
   const failed = !result || result.ok === false;
   const body = (result && result.body) || null;
@@ -410,6 +424,8 @@ export function subgraphModel(result) {
         ? '이 자리는 아직 원장 노드가 아닙니다 — 그릴 수는 있어도 마킹은 안 됩니다'
         : (status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다'),
       contrast: null, complete: null, candidates: [], topSet: [],
+      // Refused: nothing was walked, so whether it would have truncated is UNKNOWN.
+      truncated: null,
       graph: { nodes: 0, edges: 0 },
       counts: { total: 0, measured: 0, nameOnly: 0, tied: 0, incomparable: 0 },
     };
@@ -462,6 +478,8 @@ export function subgraphModel(result) {
     },
     contrast: prop.contrast || null,
     complete: prop.complete === true,
+    truncated: truncationNames(body.truncated),
+    truncationReason: (body.truncated && body.truncated.reason) || null,
     candidates,
     topSet: Array.isArray(prop.top_set) ? prop.top_set.slice() : [],
     counts: {
