@@ -259,6 +259,16 @@ export class HeadSummaryPanel extends Panel {
     const absences = doc.createElement('div');
     absences.className = 'rb-head-absences';
 
+    // 🔴 이 패널의 «칩»은 마킹을 안 따릅니다 -- 구성 라우트가 칩 id 로만 풀고, 웨이퍼에서
+    //    칩으로 걸어갈 엣지가 아직 «원장에 없습니다» (총괄 실측: 그 웨이퍼 씨앗이 개체 129개에
+    //    닿는데 칩이 «하나도» 없음). 그래서 리터럴을 빼면 낡은 값이 «빈 값»이 됩니다.
+    //    ⚠️ 그때까지 화면이 «자기가 고정임을 말합니다» — 맵이 004 를 그리는데 이 칩이 001 을
+    //       말하면서 둘 다 사실인 «척» 하는 것이 지금 제일 나쁩니다. 요청 0개입니다.
+    if (this.finalChipId) {
+      absences.appendChild(this._chip(
+        '칩', '고정 씨앗 — 마킹을 안 따릅니다 (웨이퍼→칩 엣지 대기)', 'absent'));
+    }
+
     if (m.window.defaulted) {
       // 「기간을 안 골랐다」 ≠ 「기간이 없다」. The server applied its own; say whose it is.
       absences.appendChild(this._chip(

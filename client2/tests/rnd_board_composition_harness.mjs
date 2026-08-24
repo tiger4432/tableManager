@@ -305,11 +305,30 @@ async function suite(mods) {
     l.destroy();
   }
 
+  // ── H9. 고정 씨앗은 «자기가 고정임을» 말합니다 ─────────────────────────────────
+  {
+    const hostF = doc.createElement('div');
+    const f = new head.HeadSummaryPanel(hostF, { doc, markings, reads: 'marking:1', writes: null,
+      apiBase: '', finalChipId: 'CHIP-A', fetchImpl: okFetch() });
+    f.mount();
+    await flush(); await flush();
+    truthy('H9 a fixed chip seed says it does not follow the marking',
+      /고정 씨앗/.test(hostF.textContent), hostF.textContent.slice(0, 90));
+    f.destroy();
+  }
+
   return { ran, failures };
 }
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  // 🔴 고정 씨앗이 «고정이라고 말하지 않으면», 맵이 다른 웨이퍼를 그리는 동안 이 패널의 값이
+  //    「같이 따라온 것」으로 읽힙니다 -- 둘 다 사실인 척하는 화면이 제일 나쁩니다.
+  { id: 'H-M1', what: 'the head hides that its chip is a fixed seed while the maps follow the marking',
+    catches: 'H9',
+    mutate: { 'head_summary_panel.js': (s) => s.replace(
+      "        '칩', '고정 씨앗 — 마킹을 안 따릅니다 (웨이퍼→칩 엣지 대기)', 'absent'));",
+      "        '칩', '', 'absent'));") } },
   // 🔴 마킹을 안 보고 «첫 층»을 펼치면, 아무것도 안 찍은 화면이 「이 층이 답」이라고 말합니다.
   { id: 'L-M1', what: 'the expanded layer opens the first component instead of the marked one',
     catches: 'L1',
