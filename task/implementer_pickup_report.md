@@ -1,3 +1,70 @@
+# ✅ core·dt step 관측 «착지». inchip 이 상류까지 내려갔습니다 (구현자)
+
+## 표 둘 — 선언했고 «생성됐습니다»
+```
+table_config.json   30 -> 32   기존 30개 항목 «바이트 동일» (대조 확인)
+백업                table_config.json.bak-impl-steptables
+PG                  step_inspection_run · step_defect_obs   «둘 다 생성 확인»
+                    (config_watcher 가 선언 변경을 받아 만들었습니다)
+```
+
+## 픽스처 — 🔴 **판별식이 «섭니다»**
+```
+step_inspection_run  5,040   «분모» — 봤는데 안 난 자리가 세어집니다
+step_defect_obs      1,371   inchip 위치 + 전폭(extent) + 단위
+```
+칩 안 5x5 합성 그림, 단계마다 «다른 자리»에 섭니다:
+```
+core   peak (0,0) = 406   평균의 «14.65배»      dt     peak (4,4) = 386   평균의 «14.23배»
+   406   12    9    8   12                        14   17    9   14   17
+    16    8    8    9   12                        14   12   11   17   13
+    14    8   15    9   14                         9    7   15   13   11
+    14   13   18   16    4                        12    7    8    9   12
+    14   15   13   15   11                        18   12   12    9  «386»
+```
+🔴 **두 그림이 «서로 다릅니다». 그리고 void(총괄 실측 2.19배)와도 다릅니다.**
+```
+셋을 나란히 놓아 «다르게» 보이면   -> 뷰가 돕니다. 그리고 「core 에서 이미 튀나」를 «가릅니다»
+셋이 같아 보이면                  -> 뷰가 «고장»입니다
+```
+균일 난수였으면 이 구분 자체가 «불가능»했습니다 — 지시하신 그대로입니다.
+
+📌 **다만 세기는 판정 받고 싶습니다**: 한 칸에 55%(평균의 14배)는 «매우 셉니다».
+   실제 핫스팟은 보통 이보다 순합니다. 저는 「틀렸을 때 확실히 보이게」를 택했는데,
+   너무 세서 «비현실적»이라 판단되시면 한 상수(`HOT_SHARE`)만 낮추면 됩니다.
+
+## 모양 — 못 박으신 둘, 그대로 들어갔습니다
+```
+step        «컬럼»입니다. 셋째 단계는 값 하나
+die 키      mat_type · mat_id · x · y   -> die@1 그대로 -> 선언은 die_inspection 갈아끼우기
+mat_id      map_overlay.compose_map_id 로 만듭니다 — 맵이 프레임 id 를 만드는 «그 함수»
+            -> 여기의 다이와 맵의 칸이 «같은 자재»를 가리킵니다. 철자가 둘이 아닙니다
+extent_x/y  «전폭». radius(반폭)와 헷갈리지 않게 이름이 말합니다
+val         'F' 코드. 숫자로 «안 바꿨습니다» — 선언의 value 에는 안 묶습니다
+```
+
+## 되돌리기 — 두 줄
+```sql
+DELETE FROM step_defect_obs     WHERE mat_id LIKE 'SYN-AUG-%';
+DELETE FROM step_inspection_run WHERE mat_id LIKE 'SYN-AUG-%';
+```
+스크립트는 다시 돌려도 안전합니다(쓰기 전에 자기 네임스페이스를 지웁니다).
+
+## 다음 — 선언 조각은 «총괄 몫»이라 여기 둡니다
+`die_inspection` 과 «같은 모양»이고 컬럼만 다릅니다:
+```
+relation        step_inspection_run   (분모 · 「봤다」)
+subject die@1   mat_id=$mat_id · mat_type=$mat_type · x=$x · y=$y
+occurred_at     observed_at (Asia/Seoul)
+value           «숫자 컬럼이 없습니다» — 이 표엔 gate 같은 수가 없습니다
+                -> 총괄 판정 필요: value 를 무엇으로 둘지, 아니면 다른 술어를 쓸지
+관측 쪽         step_defect_obs 는 extent_x/extent_y 가 숫자라 value 자리가 «있습니다»
+```
+🔴 분모 쪽에 묶을 «수»가 없는 것이 오늘 아침 `die_inspection` 과 같은 자리입니다
+   (거기선 `stack_gate` 가 있었습니다). 이 표엔 그런 컬럼이 없으니 판정 부탁드립니다.
+
+---
+
 # ✅ `die_inspection` 백필 «완료» — 원자 117,662개. 전/후 표 (구현자)
 
 ## 전 / 후
