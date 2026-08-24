@@ -285,17 +285,39 @@ class SqlEvidenceLookup:
         cut = len(rows) > limit
         return [_atom_from_row(row) for row in rows[:limit]], cut
 
-    def claims_for_entities(self, entities, direction, limit, *, include_observed=True):
+    def claims_for_entities(self, entities, direction, limit, *, include_observed=True,
+                            follow=None):
+        """`follow` narrows which predicates the walk fetches at all.
+
+        🔴 IT BELONGS IN THE SQL, NOT IN A PROJECTION, because a predicate filtered here is
+        never fetched and therefore never spends the budget. Filtering after the fetch would
+        leave the walk stopping at the same wall and merely hiding what it collected.
+        `include_observed` was already a predicate condition in this same clause; this is the
+        general form of it, and the two combine with AND.
+
+        `None` means follow everything, which is what every caller did before this existed.
+        """
         if not entities or limit <= 0:
             return [], False
         frontier = [{"type": item[0], "keys": item[1]} for item in entities]
+        params = {"frontier": _canonical(frontier), "fetch": int(limit) + 1}
+        follow_clause = ""
+        if follow:
+            params["follow"] = list(follow)
+            follow_clause = "e.predicate = ANY(%(follow)s)"
+
+        def _where(*conditions):
+            kept = [item for item in conditions if item]
+            return ("WHERE " + " AND ".join(kept)) if kept else ""
+
         arms = []
         if direction in ("outgoing", "both"):
             arms.append(f"""
                 SELECT {EVIDENCE_COLUMNS} FROM frontier f
                 JOIN {self.relation} e
                   ON e.subject_type = f.type AND e.subject_keys = f.keys
-                {"" if include_observed else "WHERE e.predicate <> 'observed'"}
+                {_where(None if include_observed else "e.predicate <> 'observed'",
+                        follow_clause)}
             """)
         if direction in ("incoming", "both"):
             arms.append(f"""
@@ -304,6 +326,7 @@ class SqlEvidenceLookup:
                   ON e.object_kind = 'entity_ref'
                  AND e.object_payload->>'type' = f.type
                  AND e.object_payload->'keys' = f.keys
+                {_where(follow_clause)}
             """)
         union = " UNION ".join(arms)
         rows = self._execute(f"""
@@ -314,7 +337,7 @@ class SqlEvidenceLookup:
             SELECT * FROM ({union}) claims
             ORDER BY occurred_at DESC, id DESC
             LIMIT %(fetch)s
-        """, {"frontier": _canonical(frontier), "fetch": int(limit) + 1})
+        """, params)
         return self._bounded(rows, limit)
 
     def finding_summaries_for_entities(self, entities, direction, limit):
@@ -468,11 +491,14 @@ class InMemoryEvidenceLookup:
         ordered = sorted(rows, key=lambda atom: (atom.occurred_at, atom.id), reverse=True)
         return ordered[:limit], len(ordered) > limit
 
-    def claims_for_entities(self, entities, direction, limit, *, include_observed=True):
+    def claims_for_entities(self, entities, direction, limit, *, include_observed=True,
+                            follow=None):
         wanted = {(item[0], _canonical(item[1])) for item in entities}
         rows = []
         for atom in self.atoms:
             if not include_observed and atom.predicate == "observed":
+                continue
+            if follow and atom.predicate not in follow:
                 continue
             subject = (atom.subject_type, _canonical(atom.subject_keys))
             payload = atom.object_payload or {}
@@ -1148,7 +1174,7 @@ _WORLDLESS_KINDS = frozenset({"claim", "event", "value"})
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              include_values=True, node_limit=DEFAULT_NODE_LIMIT,
              edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
-             action_lookup=None, collect=None):
+             action_lookup=None, collect=None, follow=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1334,7 +1360,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             batch, cut = lookup.claims_for_entities(
                 [(item["type"], item["keys"]) for item in full_entity_refs],
                 direction, remaining,
-                include_observed=observation_mode == "claims")
+                include_observed=observation_mode == "claims", follow=follow)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in full_entity_refs}

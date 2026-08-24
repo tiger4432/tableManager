@@ -1,3 +1,53 @@
+# ✅ `follow` 착지 — 노드 «−34%», recipe «그대로 5». 그리고 제 거절문이 «정답을 거절»할 뻔했습니다 (구현자 09:1x)
+
+## 게이트 ① 효과 — 통과
+```
+씨앗 SYN-BW-101-16 · hops=6 · node_limit=1000
+   follow 없음                        nodes «8,244»  edges 9,236  recipe «5»
+   follow=bonded_from,processed_with  nodes «5,448»  edges 6,379  recipe «5»
+                                      -> 노드 «−34%» · 엣지 «−31%» · 답은 «그대로»
+   recipes  SYN-R-CLEAN-01 · «SYN-R-CMP-01» · SYN-R-DEPO-01 · SYN-R-ETCH-01 · SYN-R-PHOTO-01
+```
+
+## 게이트 ② 무회귀 — 통과
+```
+follow 를 «안 보내면» nodes 8,244 · edges 9,236 · recipe 5 · trunc=claims  «전과 동일»
+(두 번 돌려 같은 수 확인)
+```
+
+## 만든 것 — 파라미터 «하나», SQL 안
+```
+라우트   GET /api/ledger/subgraph  ?follow=... (반복). 없으면 «전부»
+자리     claims_for_entities 의 «두 arm» 에  AND e.predicate = ANY(%(follow)s)
+         include_observed 조건과 «AND» 로 나란히 — 알려 주신 그 전례 자리입니다
+효과     거른 술어는 «가져오지도» 않습니다 -> 예산을 아예 안 씁니다
+```
+📌 관측(`observed`)은 `follow` 로 «안 걸립니다» — 요약 경로(finding_summaries)가 따로 가져옵니다.
+   follow 에 observed 를 넣어도 수가 «안 변합니다»(5,448 그대로). 알고 계시라고 적습니다.
+
+## 🔴 그리고 «제가 만든 거절문이 이 라운드의 술어를 거절»할 뻔했습니다
+```
+처음   `vocabulary.all_predicates()` 로 422 판정 -> 「선언에 없으면 거절」 지시 그대로
+실측   all_predicates() = «v1 코드 목록 13개» · config_predicates() = «빈 값»
+       -> «bonded_from» 이 그 목록에 «없습니다». HTTP 로 오면 422 였습니다
+       (게이트가 통과한 건 제가 subgraph() 를 직접 불러 라우트 검사를 «건너뛰었기» 때문입니다)
+```
+```
+거절될 뻔한 술어 넷   inspected 117,662 · transfer 29,613 · bonded_from 3,650 · has_netdie 396
+                     = 원자 «151,321»
+```
+🔴 오늘 그 부류입니다 — **「선언에서 읽는 건 그게 정답지일 때만」.**
+   여기선 코드 목록도 선언도 «혼자서는» 정답지가 아닙니다. 그래서 «합집합»으로 고쳤습니다:
+```
+_followable_predicates() = 코드 all_predicates() ∪ 라이브 선언 vocabulary(@N 뗀 이름)
+확인   원장의 술어 «13개 중 거절되는 것 0» · 오타(bonded_form·nonsense)는 «여전히 422»
+```
+
+## 시험
+```
+35 passed · 1 skipped
+```
+⛔ 보드 무회귀(14요청·후보 21·맵 28)는 서버 재기동+브라우저라 «총괄 몫»입니다. 클라 안 건드렸습니다.
 # ✅🔴 **게이트 ① 통과 — recipe «0 -> 5». 소유자의 체인이 «끝까지» 돕니다** (구현자 08:1x)
 
 ## 결과

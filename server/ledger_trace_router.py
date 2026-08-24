@@ -123,15 +123,29 @@ def evidence_subgraph(
         None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
     collect: str | None = Query(
         None, description="산출을 노드 종류 하나로 좁혀 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다"),
+    follow: list[str] | None = Query(
+        None, description="이 술어만 따라간다. 없으면 «전부» — 오늘 동작 그대로"),
     db: Session = Depends(get_db),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
+    # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
+    # can never match returns exactly what "there is nothing here" returns, and the caller
+    # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
+    # other layers. The declared set is read from the vocabulary, never restated here.
+    if follow:
+        unknown = sorted(set(follow) - _followable_predicates())
+        if unknown:
+            raise HTTPException(status_code=422, detail={
+                "reason": "predicate_not_declared", "unknown": unknown,
+                "declared": sorted(declared),
+                "message": "선언에 없는 술어입니다: " + ", ".join(unknown),
+            })
     try:
         graph = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction, include_values=include_values,
             node_limit=node_limit, edge_limit=edge_limit,
-            observation_mode=observations, collect=collect,
+            observation_mode=observations, collect=collect, follow=follow,
             action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)
                            if include_actions else None))
         return (ledger_subgraph.tabular_projection(graph, property_limit)
@@ -161,9 +175,34 @@ def _signed_start(node_id, positive, negative):
             "negative": list(negative or [])}
 
 
+def _followable_predicates():
+    """Every predicate a caller may name in `follow` -- the CODE set and the LIVE declaration.
+
+    🔴 NEITHER ONE ALONE IS THE AUTHORITY, which is why this is a union and not a lookup.
+    MEASURED 2026-08-25: `vocabulary.all_predicates()` returns the v1 code list of thirteen
+    and `config_predicates()` is empty, so a check against it alone refuses `bonded_from`,
+    `inspected`, `transfer` and `has_netdie` -- four predicates holding 151,321 atoms, one of
+    them the edge this filter exists to follow. The live declaration alone misses the v1 names
+    (`transferred`, `measured`, `has_param`) that are still in the ledger.
+
+    The union covers all thirteen predicates the ledger actually holds, and still refuses a
+    typo, which is the whole point of refusing. Read, never restated: adding a predicate to
+    either source makes it followable without editing this file.
+    """
+    from ledger import vocabulary as _vocabulary
+    names = set(_vocabulary.all_predicates())
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("vocabulary") or {}
+        names |= {str(key).split("@", 1)[0] for key in declared}
+    except Exception:      # an unreadable declaration must not widen or narrow the code set
+        pass
+    return names
+
+
 def _evidence_graph(connection, *, node_id, hops, direction, include_values,
                     node_limit, edge_limit, observation_mode="summary",
-                    action_lookup=None, collect=None):
+                    action_lookup=None, collect=None, follow=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -180,7 +219,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, include_values,
         hops=hops, direction=direction, include_values=include_values,
         node_limit=node_limit, edge_limit=edge_limit,
         observation_mode=observation_mode, action_lookup=action_lookup,
-        collect=collect)
+        collect=collect, follow=follow)
 
 
 def _csv_safe(value):
