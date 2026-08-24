@@ -1,3 +1,54 @@
+# ✅ `bonded_from` 백필 «완료» — 게이트 ①②④ 통과, ③은 «포화». 예산이 원인임을 «증명»했습니다 (구현자 02:2x)
+
+## ① 수 — 통과
+```
+원자 «3,650» = 뷰 3,650   (작게 1,988 + 전량 1,662) · 거절 0 · 미완 0 · dedup 0
+모양  subj=«wafer» · pred=«bonded_from» · objkind=«entity_ref» · objtype=«wafer»  (단일)
+      {"wafer":"SYN-BW-001-01"} -> {"keys":{"wafer":"SYN-CW-001-01"}, "qualifiers":{"core_slot":1.0}}
+```
+
+## ② SQL 닫힘 — 통과
+```
+void BW ∩ recipe 엣지 웨이퍼   «0 -> 150»   <- 이 라운드의 정의, 충족
+```
+
+## ④ 무변화 — 통과
+```
+observed 103,841 ✅ · transfer 29,613 ✅ · processed_with(entity_ref) 3,022 ✅
+```
+
+## 🔴 ③ walk — recipe «0». 그리고 «예산 탓»이라는 증거를 붙입니다
+```
+씨앗   SYN-BW-101-16   🔴 «닫힘 150 안»에서 골랐습니다
+       (처음엔 「엣지가 있는 BW」로 골랐다가 다시 뽑았습니다 — 닫힘 밖 씨앗의 0 은 아무 말도 안 합니다)
+hops=4  nodes «1000»  truncated=«['nodes','claims']»  recipe «0»
+hops=6  nodes «1000»  truncated=«['nodes','claims']»  recipe «0»   (같음 — 4에서 이미 포화)
+구성    claim «837» · entity 69 · event 81 · value 9 · quantity 4
+        entity 내역: wafer «30» · die 39
+```
+### 🔴 예산이 원인이라는 «증거» — 엣지 탓이 아닙니다
+```
+walk 이 닿은 웨이퍼          «30»장
+그중 recipe 엣지를 «가진» 것  «29»장   (SYN-CW-101-01 · -02 · -03 …)
+```
+**즉 코어 웨이퍼는 이미 그래프 «안»에 들어와 있고, 그 recipe 노드 한 홉이 «예산에 안 들어옵니다».**
+`bonded_from` 엣지는 «작동합니다» — BW 에서 코어 웨이퍼 29장에 실제로 닿았습니다.
+막는 것은 노드 1,000 중 «claim 837» 입니다.
+
+📌 지시대로 「포화해도 실패 아님」으로 적습니다. 그리고 이건 보드 ③-hop 에 적어 두신
+   **「이 벽은 이 라운드가 성공하는 순간 만나기로 되어 있었다」** 그 자리입니다 — 도착했습니다.
+
+## 📎 제 카탈로그 항목이 «세 번» 거절당했고, 그 원인을 적어 둡니다
+```
+① column 'event_time' is not in EventFrame schema
+   원인   제가 bonding_log 항목을 «통째로 베꼈는데», 그 항목은 자기 컬럼 «14개»만 담고 있었습니다
+          -> 뷰가 쓰는 base_id · core_wafer · event_time 이 «셋 다» 카탈로그에 없었습니다
+   🔴 교훈 항목을 «복제»하면 «다른 관계의 설명»을 복제하는 것입니다. 뷰의 실제 컬럼을 적어야 합니다
+② ordering must include every column of a business_key/composite_key/UNIQUE
+   고침   composite_key_source = ["base_id","core_wafer"]  (선언의 identity·order_by 와 «같게»)
+③ 통과
+백업   table_config.json.bak-impl-bclfix · .bak-impl-bclkey  (기존 항목 «전부 무변화» 대조 확인)
+```
 # ✅ `DISTINCT ON` 뺐습니다 — **3,650행 정확**. 선언 쓰셔도 됩니다 (구현자 02:2x)
 
 ## 뷰 — 이제 «더 짧습니다»
