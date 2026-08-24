@@ -105,26 +105,39 @@
 > 📎 정정 둘 (제 실측): 뷰의 INNER JOIN 은 «한 행도 안 버립니다» (고아 run_uid 0 · NULL 0) —
 >    밀도 9→28 의 원인이 «아닙니다». 그리고 축 엔진은 처음부터 멀쩡했습니다.
 >
-> ### ③-kind 🔴 «도는 중» — 보이드가 자기를 「defect」이라 부릅니다. 재번역 대기 (14:5x)
+> ### ③-kind ✅ **닫혔습니다** — 보이드가 다시 「void」입니다 (15:3x)
 > ```
-> 증상   point 208 의 분포 { delam 9, «defect» 199 }.  run_uid «null».  position «{}»
-> 원인   투영은 payload «최상위» 넷을 읽습니다 (subgraph.py:665-687, 없으면 finding_kind="defect")
->        v5 런타임은 payload 를 {"value":…} + {"qualifiers":…} «로만» 짓습니다 (roleframe.py:1172)
->        -> 「한 사실, 읽는 쪽과 쓰는 쪽이 «다른 칸»을 본다」
+> 게이트   hops=12 point 208 · 분포 { void «199», delam 9 } · defect «0» · run_uid 채워짐 ✅
+> 🔴 첫 측정이 «실패»로 나왔는데 원인은 «서버 미재시작»이었습니다 (제 몫).
+>    투영 커밋 658514bb 은 15:xx, 돌던 프로세스는 12:32 시작 -> 옛 코드가 돌고 있었습니다
+>    「빌드했다고 로드된 건 아니다 · 서버는 «프로세스 시작 시각»」 그대로입니다
+> ```
+>
+> ### ③-xfer 🔴🔴 **소유자 지적 (15:5x): 「본딩 dt core 이고 이거는 각각 transfer 로 연결되지」 — 맞습니다. 그리고 «모양» 때문에 walk 이 못 건넙니다**
+> ```
+> 사슬이 «기록돼» 있습니다
+>    코어 웨이퍼 ─transferred→ {from: wafer_grid, to: dt_slot}                syn_complex_composite
+>    코어 웨이퍼 ─transferred→ {from: dt_slot,    to: package_gate{base_wafer}}  syn_eqp_log
+>    -> 코어 → DT 슬롯 → 패키지 게이트(= 본딩 base 웨이퍼)
 > ```
 > ```
-> ✅ 선언 (총괄, 라이브)   observed@1 optional + finding_kind · run_uid
->                          void-at-die bind + finding_kind=상수 "void" · run_uid=컬럼
->                          🔴 prepare/map.input_columns 에도 run_uid — «검증기가 이걸로 거절»했음
->                          lc.load() ✅ · 백업 .bak-lead-quals · diff 삽입만 · 줄끝 LF 유지
-> ✅ 투영 (구현자)         658514bb — 최상위에 없으면 «같은 이름»으로 qualifiers 밑을 봄
-> ⏳ 재번역 103,729        게이트 = «수 + 분류»:  hops=12 point 208
->                          분포 { void 199, delam 9 } · «defect 0» · run_uid 비어 있지 않음 199
+> ✅ walk 은 transfer 를 «건넙니다» — 실측: 코어 다이 → DT 다이, «2홉»
+>    (제 앞 답 정정: derived_from 은 «혈통 재귀»의 술어이고,
+>     하위그래프 확장은 entity_ref 엣지를 일반적으로 따라갑니다)
+> 🔴 그런데 «건널 수 있는 모양»이 1,405개뿐입니다
+>    transfer_event   subj=die → «entity_ref» die      1,405   ✅ 건넘  ← 본보기가 이미 있음
+>    syn_eqp_log      subj=wafer → «value» {to,from}  67,240   🔴 값 안이라 못 건넘
+>    dt_log 4,669 · syn_dt_handler 576 · complex_composite 425 · composite_chip 54  🔴
 > ```
-> 🔴 **`position` 은 «이 라운드 아님»** — 투영이 찾는 이름은 `position` 인데 제 칸은 `inchip_x/y`.
->    이름 매핑을 코드에 박으면 「다른 어휘로 코드 0줄」이 깨집니다. 아침의 「finding point 좌표」 별건.
->    (v1 delam 도 position 은 «비어 있었습니다» — 이번 라운드가 만든 것이 아닙니다)
-> ⚠️ **밀도는 그 뒤** — 지금 올리면 이름 못 말하는 원자가 9,000건 더 생깁니다
+> 🔴 **그래서 사슬이 있는데 walk 이 못 따라갑니다.** 고칠 자리는 코드가 아니라 «선언의 모양»입니다.
+> ```
+> 🔴 소유자 판정 대기 (제가 물었습니다)
+>    ⓐ 중간 그릇(dt_slot·package_gate·wafer_grid)을 «개체»로 세운다 — 사슬이 있는 그대로 보임
+>    ⓑ 풀린 웨이퍼/다이로 «바로» 엣지 — 개체 안 늘고, 슬롯·게이트 단계는 값으로 남음
+>    ⚠️ 72,964건 재번역이라 «밀도 라운드보다 큽니다». 순서도 같이 판정 필요
+> ```
+> 📎 그리고 이것이 「본딩 다이에서 코어 CMP 까지」의 «유일한» 빈칸입니다 —
+>    코어 쪽은 이미 걸립니다 (코어 웨이퍼 walk 836 노드 중 «108»이 CMP. `CLN_POST_CMP_01` 등)
 >
 > ### ③-catalog ⚖️ 제 ⓒ 판정 «철회» — 선언이 그 질문의 정답지가 아니었습니다 (14:5x)
 > ```
