@@ -17,7 +17,7 @@
 //    SHELL's data: a part carries no coordinates because it cannot see any.
 //
 // 🔴 `document` IS A DEPENDENCY, NOT A GLOBAL -- so a part is scorable under bare node.
-//    (`surprise_map_view.js` established that discipline; its header carries the reason.)
+//    (`surprise_map_view.js` established that discipline. 지금은 없는 파일 -- 근거는 이 줄이 마지막입니다.)
 //
 // MARKINGS: a part declares the name it READS and the name it WRITES, SEPARATELY. They may
 // differ -- a rank table reads marking:2 and writes nothing; a map may write marking:1 while

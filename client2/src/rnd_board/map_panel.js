@@ -3,7 +3,7 @@
 // marking contract (it reads one name and writes one, and they need not be the same).
 //
 // 🔴 NO NEW RENDERER. `map2/painter.js` is the canonical one (`layoutFor`, `paintSeating`,
-//    `createCanvasSurface`) and it draws every die here. `surprise_map_view.js` already
+//    `createCanvasSurface`) and it draws every die here. `surprise_map_view.js` (지금은 없는 파일) already
 //    reuses it and its header carries the reason; a second implementation of this arithmetic
 //    is how the picture and the numbers come to disagree.
 //
@@ -110,7 +110,7 @@ function parseGrid(grid) {
 
 /**
  * `grid_metadata` -> the seat frame `map2/seating.js` consumes. A TRANSCRIPTION: every field is
- * copied, none is computed. `surprise_map_core.js::seatFrameOf` does the same from ITS frame
+ * copied, none is computed. `surprise_map_core.js::seatFrameOf` (지금은 없는 파일) did the same from ITS frame
  * model; this one reads the ledger route's spelling (`grid_cols`, `grid_y_invert`, ...).
  * `null` when the declaration cannot seat anything -- then the cells stand exactly as they are.
  */

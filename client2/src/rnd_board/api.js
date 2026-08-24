@@ -207,7 +207,7 @@ export async function fetchComposition(params) {
 
 /**
  * The view model both parts read. NO DOM -- so it is scorable under bare node, the discipline
- * `surprise_map_view.js` established and `panel.js` restates.
+ * `surprise_map_view.js` (지금은 없는 파일, 2026-08-25 삭제) established and `panel.js` restates.
  *
  * 🔴 EVERY FIELD IS SOURCED. Nothing is defaulted into a number that looks measured: a missing
  *    count is `null` and the parts print 「-」 for it. `cardinality` arrives as the WORD the
