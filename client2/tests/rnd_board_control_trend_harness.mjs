@@ -180,12 +180,17 @@ async function suite(mods) {
       peers: [{ label: '같은 레그', scope: 'leg:X' }],
       loadPeerCount: async () => ({ state: 'resolved', subjects: 6, units: 384,
         analysis: 'empty', reason: 'empty_case_side', message: '케이스 쪽 주어 0',
-        straddling: 6, straddleMessage: '양쪽에 걸침' }),
+        straddling: 6, straddleMessage: '양쪽에 걸침',
+        relation: 'bonding_log', column: 'leg' }),
     });
     straddleBar.mount();
     await flush(); await flush(); await flush();
     const straddlePill = byClass(straddleBar.host, 'rb-pill')
       .find((p) => p.textContent.includes('같은 레그'));
+    // 🔴 수를 쓰면 «어디서 왔는지»도 씁니다. 맵은 이미 그러고 있었고 알약만 안 그랬습니다.
+    ok('A7 a peer count names the relation it was counted from',
+      Boolean(straddlePill) && /bonding_log\.leg 기준/.test(straddlePill.getAttribute('title') || ''),
+      String(straddlePill && straddlePill.getAttribute('title')));
     ok('A6 a straddled peer says so instead of printing a comparable number',
       Boolean(straddlePill) && straddlePill.textContent.includes('대조 0')
       && straddlePill.textContent.includes('걸침 6'), straddlePill && straddlePill.textContent);
@@ -293,6 +298,11 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { id: 'M11', what: 'a peer count is shown without saying which relation it came from',
+    catches: 'A7',
+    mutate: { 'control_bar_panel.js': (s) => s.replace(
+      "    if (got.relation) parts.push(`${got.relation}${got.column ? `.${got.column}` : ''} 기준`);",
+      '    if (false) parts.push();') } },
   { id: 'M10', what: 'the chart hides what it folds a point out of',
     catches: 'C7',
     mutate: { 'main_trend_panel.js': (s) => s.replace(

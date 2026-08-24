@@ -160,7 +160,8 @@ export class ControlBarPanel extends Panel {
           text: `${peer.label} · 대조 0 · 걸침 ${got.straddling === null ? got.subjects : got.straddling}`,
           count: undefined,
           unsourced: true,
-          title: got.message || got.straddleMessage || null,
+          title: [got.message || got.straddleMessage, this._peerTitle(got)]
+            .filter(Boolean).join(' · ') || null,
         });
       }
       return this._pill({
@@ -169,8 +170,10 @@ export class ControlBarPanel extends Panel {
         // 🔴 「—」 is the honest count. Not 0, which would say 「또래가 없다」.
         count: has ? got.subjects : null,
         unsourced: !has,
-        // The other number the same answer carried, kept where it cannot be mistaken for the first.
-        title: got && typeof got.units === 'number' ? `유닛 ${got.units}` : null,
+        // 🔴 수를 쓰면 «어디서 왔는지»도 씁니다 -- 맵은 「bonding_log ∩ inspection_run 기준」이라
+        //    적는데 이 알약만 안 적고 있었습니다. 경로가 한쪽만 죽는 날 두 회계가 «같은 수»처럼
+        //    읽힙니다. 서버가 이미 싣는 것이고 (scope.relation · scope.column), 지어내지 않습니다.
+        title: this._peerTitle(got),
       });
     });
   }
@@ -202,6 +205,15 @@ export class ControlBarPanel extends Panel {
       pills.push(this._pill({ id: null, text: '축 없음 — 아직 못 읽었습니다', count: null, dim: true }));
     }
     return pills;
+  }
+
+  /** 알약 하나의 «출처와 곁수». 안 온 것은 안 적습니다 -- 빈 문자열도 지어낸 값입니다. */
+  _peerTitle(got) {
+    if (!got) return null;
+    const parts = [];
+    if (typeof got.units === 'number') parts.push(`유닛 ${got.units}`);
+    if (got.relation) parts.push(`${got.relation}${got.column ? `.${got.column}` : ''} 기준`);
+    return parts.length ? parts.join(' · ') : null;
   }
 
   _pill(spec) {
