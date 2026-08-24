@@ -46,13 +46,41 @@ from database import database as db                                  # noqa: E40
 VIEW = "bonding_core_lot"
 EXPECTED = 1267
 
+#: 🔴 THE EDGE GOES STRAIGHT TO THE WAFER, BECAUSE THREE EDGES CANNOT BE WALKED.
+#: The first version of this view fed `BW -> lot -> wafer -> recipe`: three edges, six hops.
+#: MEASURED 2026-08-25 -- that walk stops at hop 5 with the node budget saturated, and no
+#: combination of include_values / observations / enrich_actions / edge_limit frees it. So it
+#: closed in SQL for 250 wafers and showed the owner nothing. Resolving the wafer HERE makes
+#: it `BW -> wafer -> recipe`: two edges, four hops, inside the budget. 149 that can be walked
+#: beats 250 that cannot.
+#:
+#: ⚠️ THE SLOT JOIN NEEDS BOTH SIDES IN THE SAME TYPE: core_wafer_map holds '02' and
+#: bonding_log holds 2.0. Comparing them as text yields zero and looks like absence.
+#:
+#: 🔴 `m.wafer_id` IS IN THE ORDER BY AS A TIEBREAK, NOT FOR SORTING. The join fans out
+#: -- 1,265 of the 1,267 pairs match several map rows, because one (wafer, lot) spans
+#: many slots and each slot is a different core wafer. Ordering only by event_time
+#: leaves those tied, so DISTINCT ON would keep an ARBITRARY one and a rerun could
+#: keep a different one. Which core wafer this edge names would then depend on plan
+#: choice rather than on the data.
+#:
+#: ⚠️ AND IT IS ONE OF MANY: no pair touches a single core wafer -- the distribution
+#: runs 2 to 25. Keeping one is deliberate and cheap (293 atoms against 3,650), and
+#: MEASURED it costs almost nothing: closure is 149 here against 150 if every pair were
+#: kept. But a reader must not take `core_wafer` as "the" core wafer.
+#:
+#: `core_wafer` stays NULL where the lot does not resolve -- 24 of 33 lots -- so the gap
+#: remains countable instead of disappearing behind an inner join.
 CREATE_SQL = f"""
 CREATE OR REPLACE VIEW {VIEW} AS
-SELECT DISTINCT ON (base_id, core_lot)
-       base_id, core_lot, core_slot, event_time
-FROM bonding_log
-WHERE base_id IS NOT NULL AND core_lot IS NOT NULL
-ORDER BY base_id, core_lot, event_time"""
+SELECT DISTINCT ON (b.base_id, b.core_lot)
+       b.base_id, b.core_lot, b.core_slot, b.event_time, m.wafer_id AS core_wafer
+FROM bonding_log b
+LEFT JOIN core_wafer_map m
+       ON m.core_lot = b.core_lot
+      AND regexp_replace(m.core_slot::text, '\D', '', 'g')::int = b.core_slot::int
+WHERE b.base_id IS NOT NULL AND b.core_lot IS NOT NULL
+ORDER BY b.base_id, b.core_lot, b.event_time, m.wafer_id"""
 
 #: how many pairs had more than one slot, i.e. how much the DISTINCT ON actually dropped
 SLOT_LOSS_SQL = """
@@ -79,6 +107,21 @@ def main(argv=None):
             no_time = c.execute(text(
                 f"SELECT count(*) FROM {VIEW} WHERE event_time IS NULL")).scalar()
             lost, pairs, worst = c.execute(text(SLOT_LOSS_SQL)).fetchone()
+            resolved = c.execute(text(
+                f"SELECT count(*) FROM {VIEW} WHERE core_wafer IS NOT NULL")).scalar()
+            wpairs = c.execute(text(
+                f"SELECT count(*) FROM (SELECT DISTINCT base_id, core_wafer FROM {VIEW} "
+                "WHERE core_wafer IS NOT NULL) t")).scalar()
+            fanout = c.execute(text("""
+                SELECT count(*) FROM (
+                    SELECT b.base_id, b.core_lot, count(*) AS n
+                    FROM bonding_log b
+                    LEFT JOIN core_wafer_map m
+                           ON m.core_lot = b.core_lot
+                          AND regexp_replace(m.core_slot::text,'\D','','g')::int
+                              = b.core_slot::int
+                    WHERE b.base_id IS NOT NULL AND b.core_lot IS NOT NULL
+                    GROUP BY 1,2 HAVING count(*) > 1) t""")).scalar()
 
             print("   bonding_log rows             %8d" % source_rows)
             print("   view keeps (pairs)           %8d   %s"
@@ -87,6 +130,11 @@ def main(argv=None):
                   % (no_time, "OK" if no_time == 0 else "<- the wrong time column"))
             print("   pairs that LOST a slot       %8d   of %d  (worst pair had %d slots)"
                   % (lost, pairs, worst))
+            print("   rows with core_wafer         %8d   (NULL kept: the unresolved lots)"
+                  % resolved)
+            print("   distinct (base_id, core_wafer) %6d   %s"
+                  % (wpairs, "OK" if wpairs == 281 else "<- expected 281"))
+            print("   pairs the join fanned out    %8d   (collapsed by DISTINCT ON)" % fanout)
 
             ok = kept == EXPECTED and no_time == 0
             print("\n   GATE: %s" % ("PASS" if ok else "FAIL"))
