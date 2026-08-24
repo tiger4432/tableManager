@@ -58,6 +58,43 @@
 > 구현자   서버 — 선언 로드 살리기 · 접힘 통과 · finding point 좌표 · 자재
 > ```
 >
+> ### ③-migrate 🔴🔴 «도는 중일 수 있음» — 소문자 일괄 마이그레이션. 깨어나면 «이것부터» 확인
+> ```
+> 소유자 판정   「소문자로 다 해」 -> 「그냥 일괄 마이그레이션」
+> 🔴 깨어나서 «제일 먼저» 할 일 — 지금 어디까지 갔는지 «세십시오»:
+>    SELECT count(*) FROM ledger_events WHERE subject_type <> lower(subject_type)
+>      340,548  -> 착수 «전». 그대로 진행하면 됩니다
+>      0        -> ① 끝. «선언»을 바꿀 차례입니다 (아래)
+>      그 사이   -> 🔴 «반쯤 된 상태». 트랜잭션이 깨진 것이니 «되돌리고» 다시 하십시오
+> ```
+> **범위 (총괄이 확정, 39026f0c)**
+> ```
+> ✅ ① subject_type                        대문자 «340,548»
+>       Wafer 337,389 · Lot 2,281 · DTJob 792 · Recipe 44 · WaferLeg 42  (die 1,405 는 이미 소문자)
+> ✅ ② object_payload->>'type' · object_kind=«entity_ref» 만   Wafer 1,645 · Lot 544 = «2,189»
+> ⛔ ③ value payload 의 중첩 from/to.type  «제외» — 엔티티 타입이 «아님»
+>       dt_slot · package_gate · wafer_grid · dt_job · bond_layer = 72,964, 이미 소문자
+>       (화면 「기반」 알약의 그 낱말들. 문자열 치환하면 «여기를 밟습니다»)
+> ```
+> **왜 일괄이어야 했나** — 대문자 340,548 중 «219,576»이 v1 은퇴분이라 «재번역 불가».
+> 선언만 바꾸면 새 원자 `wafer` 와 옛 원자 `Wafer` 가 «서로 안 닿는 두 세계»가 되고 «오류는 안 납니다».
+> 📌 원장 원칙엔 «안 걸립니다** — subject_type 은 «주장»이 아니라 «타입 이름표»이고
+>    소스 표가 전부 살아 있으니 오늘 기준으로 «투영»입니다. 주장 내용은 한 글자도 안 바뀝니다.
+>
+> **① 이 끝난 뒤 총괄이 할 것 — 순서대로**
+> ```
+> ⓐ 선언 소문자판 적용   «이미 만들어 검증해 뒀습니다»
+>    스크립트: <scratchpad>/prep_lower.py  ·  `--apply` 를 주면 백업 뜨고 적용
+>    바꾸는 것: entities 키 · vocabulary.subjects[] · object.types[] · sources 의 entity_type (재귀)
+>    DTJob@1->dtjob@1 · Lot@1->lot@1 · Wafer@1->wafer@1 · die@1(그대로)
+> ⓑ 서버 재기동          선언이 프로세스에 캐시됩니다 (오늘 8시간 묵은 프로세스에 한 번 물렸음)
+>    cd server && "C:/Users/kk980/anaconda3/envs/assy_manager/python.exe" -m uvicorn main:app --host "" --port 8080
+> ⓒ 총괄이 «직접» 확인   subject_type 전수 소문자 · 웨이퍼 씨앗 walk 이 entity+point 를 내는지
+>                        · 화면이 뜨는지 «픽셀»로
+> ```
+> **부작용 (미리 적음)**: 노드 id 가 타입 이름을 인코딩하므로 «id 문자열이 전부 바뀝니다».
+> 화면은 매번 계산하니 따라오지만, **오늘 보고서에 적힌 id 로는 재현이 안 됩니다.** 정상입니다.
+>
 > ### ③-now 10:2x — **소유자 도식이 «끝까지 돕니다».** 남은 것은 다듬기입니다
 > ```
 > ✅ 재번역 완주   die_inspection 117,662 / 117,662 · 거절 «0»
