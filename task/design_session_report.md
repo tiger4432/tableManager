@@ -1,6 +1,45 @@
 # Design Session — Report Channel (design session -> lead PM)
 
 
+# 📋 레거시 삭제 1단계 — **여섯 다 «쓰입니다». 지우면 화면이 꺼집니다** (실측 · 착수 중지)
+
+지시대로 「지우기 전에 다른 화면이 쓰는지」를 client2 전수로 쟀습니다. 낱말이 아니라
+«그 URL 을 부르는 자리»로 훑었습니다.
+
+## 실측 — 여섯 라우트의 «호출자»와 그 «살아 있는 화면»
+```
+라우트      부르는 모듈                                   그 모듈을 여는 «페이지»
+journey     journey_core · journey_view · ledger_trace     ledger.html
+trace       ledger_trace · ledger_trace_core               ledger.html
+lots        ledger_trace · surprise_core                   ledger.html
+coverage    case_control_core · ledger_trace(_core)        ledger.html
+entities    ledger_graph/entity_catalog                    ledger-graph.html
+explore     ledger_graph/main                              ledger-graph.html
+```
+🔴 **여섯 «전부» 살아 있는 페이지에서 호출됩니다.** 그래서 1단계의 「막는 것이 없는 것」에
+   해당하는 라우트는 «하나도 없습니다» — 지시하신 대로 «적고 멈춥니다».
+
+## 두 무리로 갈립니다 — 처분이 다릅니다
+```
+ledger.html      journey · trace · lots · coverage
+                 -> 총괄 앞 분류의 «A(이 화면의 이전 시도)» 그대로입니다.
+                    ledger_trace.js 한 파일이 넷을 다 부르고, 그 파일이 그 페이지의 «전부»입니다
+                    -> 「페이지를 은퇴시킨다」는 판정이 먼저이고, 라우트 삭제는 그 «결과»입니다
+ledger-graph.html  entities · explore
+                 -> «C(다른 제품 표면)». 총괄이 앞서 «제외»한 그 무리입니다
+                    -> 소유자가 「그것도 버려라」 하시기 전엔 안 건드립니다
+```
+
+## 그래서 판정 부탁드립니다 (둘 중 하나)
+```
+ⓐ ledger.html 은퇴  -> journey·trace·lots·coverage 가 «호출자 0» 이 됩니다. 그다음 서버 삭제
+ⓑ 그 페이지 유지    -> 네 라우트는 «레거시가 아니라 다른 화면의 재료»입니다. 목록에서 뺍니다
+```
+📌 게이트(「지운 뒤 보드 14요청이 그대로」)는 어느 쪽이든 지켜집니다 — 이 여섯 중 «보드가 부르는 것은
+   하나도 없습니다». 확인했습니다.
+
+---
+
 # ✅ 여정 게이트 — **제 쪽에서 «둘 다» 통과했습니다** (실측, 인앱 브라우저 진짜 dispatch)
 
 지시대로 «맵 씨앗이 아닌» SYN-CX 점을 골라 눌렀습니다. 자리는 «안 옮겼습니다».
