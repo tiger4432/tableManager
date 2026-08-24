@@ -662,12 +662,36 @@ def _value_label(atom):
     return compact if len(compact) <= 72 else compact[:69] + "…"
 
 
+#: 🔴 THE SAME NAME, ONE LEVEL DOWN -- NOT A TRANSLATION TABLE.
+#: v1 translators wrote these at the payload's top level. The v5 runtime cannot: it builds a
+#: value payload as exactly `{"value": ...}` plus `{"qualifiers": {...}}`
+#: (`ledger/roleframe.py:1172-1183`, hardcoded), so everything a declaration names lands one
+#: level down. MEASURED 2026-08-24: 103,729 re-translated void atoms projected as
+#: `finding_kind = "defect"` with a null `run_uid`, because the reader looked only on top --
+#: the same fact, with the writer and the reader looking in different places.
+#:
+#: ⚠️ THIS LOOKS UP THE IDENTICAL NAME AND NOTHING ELSE. `position` is deliberately absent:
+#: the declaration spells those `inchip_x`/`inchip_y`, and teaching the reader that
+#: `inchip_x` means `position.x` would put a coordinate-naming rule in the READ layer -- the
+#: shape that breaks "a different vocabulary costs zero lines of code". Empty `position` is a
+#: separate, older item (v1's delam atoms are empty there too) and is not this round's.
+_QUALIFIED_FIELDS = ("finding_kind", "run_uid", "map_id")
+
+
+def _payload_field(payload, name):
+    """Read a projected field from the payload top level, else from `qualifiers`."""
+    if name in payload:
+        return payload.get(name)
+    return (payload.get("qualifiers") or {}).get(name)
+
+
 def _finding_point_node(atom):
     payload = atom.object_payload or {}
     position = payload.get("position") or {}
     coordinate = ",".join(str(position[key]) for key in ("x", "y")
                           if position.get(key) is not None)
-    finding_kind = str(payload.get("finding_kind") or "defect")
+    qualified = {name: _payload_field(payload, name) for name in _QUALIFIED_FIELDS}
+    finding_kind = str(qualified["finding_kind"] or "defect")
     return {
         "id": atom.finding_point_node_id,
         "type": "Finding Point",
@@ -676,8 +700,8 @@ def _finding_point_node(atom):
         "label": f"{finding_kind}{f' @ {coordinate}' if coordinate else ''}",
         "keys": {
             "finding_kind": finding_kind,
-            "run_uid": payload.get("run_uid"),
-            "map_id": payload.get("map_id"),
+            "run_uid": qualified["run_uid"],
+            "map_id": qualified["map_id"],
             "position": position,
         },
         "finding_kind": finding_kind,
