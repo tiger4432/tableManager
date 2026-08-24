@@ -916,6 +916,19 @@ async function suite(mods) {
       declaresRow('rb-head-steps'), 'rb-head-steps');
     ok('S2 ... and so does the expanded layer step chain',
       declaresRow('rb-layer-steps'), 'rb-layer-steps');
+    // 🔴 부모만 잠그면 자식이 «0 쪽으로 찌그러집니다» -- 컨테이너 높이가 0 이 되어 넘침
+    //    단언은 통과하는데 사람은 못 읽습니다 (총괄 실측: 칩 폭 18px · 글자가 세로로 쌓임).
+    //    「없앴다」를 「고쳤다」로 세지 않으려면 자식 규칙이 «한 짝»으로 있어야 합니다.
+    const childHolds = (cls) => {
+      const at = css.indexOf(`.${cls} > * {`);
+      if (at < 0) return false;
+      const block = css.slice(at, css.indexOf('}', at));
+      return /flex:\s*0 0 auto/.test(block) && /white-space:\s*nowrap/.test(block);
+    };
+    ok('S3 every chip in the head chain keeps its own width',
+      childHolds('rb-head-steps'), 'rb-head-steps > *');
+    ok('S4 ... and in the expanded layer chain',
+      childHolds('rb-layer-steps'), 'rb-layer-steps > *');
   }
 
   return { ran, failures };
@@ -934,6 +947,11 @@ const MUTANTS = [
     mutate: { 'board.css': (s) => s.replace(
       '.rb-head-steps { display: flex; flex-wrap: nowrap;',
       '.rb-head-steps { display: flex; flex-wrap: wrap;') } },
+  { id: 'M14', what: 'the chips are allowed to shrink, so the row collapses to zero height and reads vertically',
+    catches: 'S3',
+    mutate: { 'board.css': (s) => s.replace(
+      '.rb-head-steps > * { flex: 0 0 auto; white-space: nowrap; }',
+      '.rb-head-steps > * { white-space: nowrap; }') } },
   { id: 'M12', what: 'a map with an empty marking asks anyway, so 「not chosen yet」 reads as a refusal',
     catches: 'F17',
     mutate: { 'map_panel.js': (s) => s.replace(

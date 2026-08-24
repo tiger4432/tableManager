@@ -134,6 +134,10 @@ body {
    borrows the danger tokens. */
 .rb-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
   min-height: 0; overflow: auto; }
+/* 🔴 «한 층 위»에서도 같은 일이 일어납니다. 머리는 세로 flex 인데 줄들이 안 잠겨 있으면
+   높이가 모자랄 때 스텝 줄이 0 으로 눌립니다 -- 자식은 자기 폭을 지키는데 «줄 자체»가
+   사라져 여전히 못 읽습니다. 줄은 자기 높이를 지키고, 넘치면 머리가 스크롤합니다. */
+.rb-head > * { flex: 0 0 auto; }
 .rb-head-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rb-head-absences { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .rb-head-subject { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
@@ -573,7 +577,7 @@ body {
 /* 같은 이유로 여기도 «한 줄»입니다 -- 펼친 층의 스텝도 267개가 될 수 있습니다. */
 .rb-layer-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
   padding: 0 10px; overflow-x: auto; min-width: 0; }
-.rb-layer-step { flex: 0 0 auto; }
+.rb-layer-steps > * { flex: 0 0 auto; white-space: nowrap; }
 .rb-layer-step { border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px;
   font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
 .rb-layer-step.is-absent { border-style: dashed; }
@@ -590,7 +594,11 @@ body {
    넓은 내용은 «자기 컨테이너에서» 스크롤합니다. */
 .rb-head-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
   font-size: 11px; overflow-x: auto; min-width: 0; }
-.rb-head-step { flex: 0 0 auto; }
+/* 🔴 «모든» 자식이 자기 폭을 지킵니다. nowrap 만 두고 자식을 안 잠그면 flex 가 전부 0 쪽으로
+   찌그러뜨려, 컨테이너 높이가 0 이 되고 글자가 18px 폭에 «세로로» 쌓입니다 (총괄 실측).
+   넘침 단언은 그래도 통과합니다 -- 높이가 0 이니까요. 「고쳤다」가 아니라 「없앴다」가 되는 자리라
+   자식 규칙이 «부모 규칙과 한 짝»입니다. */
+.rb-head-steps > * { flex: 0 0 auto; white-space: nowrap; }
 .rb-head-steps-key { color: var(--text-muted); }
 .rb-head-steps-absent { color: var(--text-muted); font-style: italic; }
 .rb-head-step { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px;
