@@ -115,6 +115,8 @@ export const BOARD = Object.freeze({
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
         waferQuestion: { row: 'SYN-BW-103-11', by: 'wafer' },
         waferKinds: ['void', 'delam'],
+        // 목업이 머리에 다는 「마킹 1 · N행」 · 「마킹 2 · N행」. 이름은 여기서만 압니다.
+        markingRows: ['marking:1', 'marking:2'],
         subjectReads: 'subject:wafer',
       },
     },
