@@ -1,3 +1,58 @@
+# ⚠️ ① claim 예산 제외 «착지». 그런데 게이트 ①은 «미달»입니다 — 그리고 원인을 «수»로 냈습니다 (구현자 07:5x)
+
+## 단계 0 — 소비자 세기. 판정은 «ⓐ»
+```
+nodes[] 에서 claim 을 읽는 소비자        «0»
+evidence.hops 에서 읽는 소비자           «2»   rnd_board/api.js:389 · candidate_list_panel.js:215
+expanded_layer_panel 의 claims_present   무관 (upstream_process.events 발)
+🔴 결정적    hops 는 `nodes[item]` 을 «읽어» 만들어집니다 (ledger_subgraph.py:975-982)
+            -> claim 을 emit 안 하면(ⓑ) 증거 경로가 «빕니다». 보드의 「측정됨」 판정이 거기 걸려 있습니다
+=> ⓐ  emit 은 하되 예산을 «안 먹게»
+```
+
+## 고친 것 — 새 파라미터 «없음»
+```
+add_node 가 세는 것을 len(nodes) -> «budgeted» 로. claim 은 안 셉니다
+같은 카운터를 쓰는 자리 «셋» 다 맞췄습니다 (claim fetch 크기 · action 예산)
+claim 은 여전히 «claim_limit» 로 따로 묶입니다 -> 무제한 아님
+시험   35 passed (cap 시험은 «새 계약»으로 고쳐 못 박음: budgeted<=limit «그리고» claim 은 남아 있음)
+```
+
+## 🔴 게이트 ① — **recipe 여전히 0. 미달입니다**
+```
+씨앗 SYN-BW-101-16 · hops=6 · node_limit=1000
+   전   entity 118  claim 837/1000  recipe 0
+   후   entity «144»  claim 2,170(무료)  recipe «0»   trunc=[nodes, edges]
+-> claim 을 빼자 그 자리를 «event 836» 이, collect 를 주면 «value 819» 가 채웁니다
+   예산 포식자가 «옮겨갈» 뿐입니다
+```
+
+## 🔴 그런데 «상한»을 올리면 닿습니다 — 이게 이 라운드의 산출입니다
+```
+상한 (node/edge/claim)        entity    recipe   truncated
+   1000 / 3000 / 5000           144       «0»    nodes, edges
+   4000 / 12000 / 20000       2,851       «5»    depth, nodes, edges
+  20000 / 60000 / 100000      3,648       «5»    «depth» 뿐
+```
+🔴 **답은 «거기 있습니다». 지금 상한으로는 못 실어 옵니다.**
+   `MAX_NODE_LIMIT=1000` · `MAX_EDGE_LIMIT=3000` 이 라우트 천장이고,
+   그래서 총괄이 보신 「node_limit 2000 -> 422」가 납니다.
+
+## 📎 제 실수 하나 — 하마터면 «반대로» 보고할 뻔했습니다
+```
+처음   node_limit 을 1000->8000 으로 올려 보고 「숫자가 안 변한다 -> 예산이 벽이 아니다」로 갈 뻔
+사실   node_limit 은 «MAX_NODE_LIMIT 으로 잘립니다». 네 번 다 «같은 1000» 을 잰 것이었습니다
+🔴 오늘 제가 남에게 여러 번 지적한 그 부류입니다 — 「깎이는 인자를 흔들고 무변화를 원인 배제로 읽기」
+```
+
+## 판정 요청 — 제 손으로 정할 자리가 아닙니다
+```
+상한을 올릴지 (MAX_NODE_LIMIT·MAX_EDGE_LIMIT)  -> 총괄이 아침에 「상한 말고 질문을 좁혀라」로
+                                                 한 번 기각하신 자리라 다시 묻습니다
+필요치   recipe 가 나오는 최소는 «4배» 근방입니다 (4000/12000/20000 에서 이미 5개)
+대안     value·event 도 예산에서 빼기 -> 그건 «축을 늘리는» 일이라 안 했습니다 (상설 위반)
+```
+⛔ 게이트 ②(무회귀 14요청)는 서버 재기동·브라우저가 필요해 «총괄 몫»입니다. 클라는 안 건드렸습니다.
 # ✅ `bonded_from` 백필 «완료» — 게이트 ①②④ 통과, ③은 «포화». 예산이 원인임을 «증명»했습니다 (구현자 02:2x)
 
 ## ① 수 — 통과

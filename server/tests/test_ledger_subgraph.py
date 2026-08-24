@@ -185,7 +185,14 @@ def test_caps_are_reported_instead_of_looking_complete():
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(many),
         hops=4, node_limit=10, edge_limit=20)
-    assert len(body["nodes"]) == 10
+    # 🔴 `node_limit` caps the nodes the CALLER ASKED FOR, and from 2026-08-25 claims are not
+    # among them: they are provenance the trails read, capped separately by `claim_limit`.
+    # Asserting on len(nodes) again would re-pin the old contract, in which 837 claims could
+    # crowd out the 3-to-35 entities a walk exists to find.
+    budgeted = [node for node in body["nodes"] if node["node_kind"] != "claim"]
+    assert len(budgeted) == 10
+    assert any(node["node_kind"] == "claim" for node in body["nodes"]), (
+        "claims must still be emitted -- evidence.hops is built by reading them")
     assert body["truncated"]["nodes"] is True
     assert body["truncated"]["reason"]
 

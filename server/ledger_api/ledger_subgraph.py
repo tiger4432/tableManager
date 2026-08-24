@@ -1196,20 +1196,43 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     atom_cache = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
+    #: nodes that have spent the node budget -- see `_spends_budget` below
+    budgeted = 0
     claims_scanned = 0
     actions_scanned = 0
 
+    #: 🔴 CLAIMS DO NOT SPEND THE NODE BUDGET, BECAUSE THEY ARE NOT WHAT ANYONE ASKED FOR.
+    #: MEASURED 2026-08-25 on `SYN-BW-101-16`: a walk that needs to reach between 3 and 35
+    #: entity nodes saturates at 1,000 with 745-837 of them claims, and the recipe the caller
+    #: came for never enters the graph -- 29 of the 30 wafers reached carry recipe edges that
+    #: cannot be followed. No caller-facing handle changes this: include_values, observations,
+    #: enrich_actions and edge_limit were all tried and none of them removes a claim.
+    #:
+    #: Claims stay EMITTED, only unbudgeted. They are still the spine of the evidence trails:
+    #: `_propagation` builds every hop by reading `nodes[item]`, so a walk that stopped
+    #: emitting them would empty `evidence.hops` -- which the board reads to decide whether a
+    #: candidate is measured (`rnd_board/api.js:389`, `candidate_list_panel.js:215`). Nothing
+    #: reads a claim out of `nodes[]` directly; two things read it out of the trails.
+    #:
+    #: ⚠️ THIS DOES NOT MAKE THEM UNBOUNDED. `claim_limit` already caps how many are scanned
+    #: and raises `claim_cut` on its own, so the ceiling moves from "shares one budget with
+    #: the answer" to "has its own", which is what it was for.
+    def _spends_budget(node):
+        return node.get("node_kind") != "claim"
+
     def add_node(node, ref, depth):
-        nonlocal node_cut
+        nonlocal node_cut, budgeted
         node_id = node["id"]
         if node_id in nodes:
             if depth < depths[node_id]:
                 depths[node_id] = depth
             nodes[node_id].update({k: v for k, v in node.items() if v is not None})
             return True
-        if len(nodes) >= node_limit:
-            node_cut = True
-            return False
+        if _spends_budget(node):
+            if budgeted >= node_limit:
+                node_cut = True
+                return False
+            budgeted += 1
         nodes[node_id] = node
         refs[node_id] = ref
         depths[node_id] = depth
@@ -1291,7 +1314,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if entity_refs and observation_mode == "summary" and remaining > 0:
                 summaries, cut = lookup.finding_summaries_for_entities(
                     [(item["type"], item["keys"]) for item in entity_refs],
-                    direction, min(remaining, max(1, node_limit - len(nodes) + 1)))
+                    direction, min(remaining, max(1, node_limit - budgeted + 1)))
                 claim_cut |= cut
                 frontier_entities = {item["id"] for item in entity_refs}
                 for summary in summaries:
@@ -1522,7 +1545,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     continue
                 action_claims_seen.add(atom.claim_node_id)
                 action_atoms.append(atom)
-            action_budget = min(node_limit - len(nodes), edge_limit - len(edges))
+            action_budget = min(node_limit - budgeted, edge_limit - len(edges))
             if not action_atoms:
                 pass
             elif action_budget <= 0:
