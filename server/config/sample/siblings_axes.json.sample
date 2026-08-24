@@ -37,8 +37,8 @@
   "run_time_column": "observed_at",
   "observation_run_ref_column": "run_uid",
   "ledger_subject": {
-   "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `Wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
-   "type": "Wafer",
+   "__comment": "How a population unit becomes a LEDGER SUBJECT, for the walk contrast. A package's `base_wafer_id` is literally the `wafer` subject's `wafer` key -- measured: bonding_log.base_id and ledger subject_keys->>'wafer' are the same 2,575 SYN-BW-... identifiers. 🔴 Declared rather than assumed: taking unit_columns[0] happens to be right for packages and would silently join the wrong column the day a kind counts something else. `column` MUST be one of `unit_columns`. Omit this block and the walk answers 「걷기 불가 — 원장 주어 선언 없음」 instead of guessing.",
+   "type": "wafer",
    "key": "wafer",
    "column": "base_wafer_id"
   },
