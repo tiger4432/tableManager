@@ -1109,6 +1109,12 @@ def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
     return seed_node
 
 
+#: The node kinds that summary mode folds away. Asking to collect one of these is asking
+#: for the inside of the fold, so the walk unfolds rather than answering an empty set.
+#: MEASURED 2026-08-24: with the fold on these two rank 0 and 1; with it off, 30 and 31.
+FOLDED_KINDS = frozenset({"point", "claim"})
+
+
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              include_values=True, node_limit=DEFAULT_NODE_LIMIT,
              edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
@@ -1133,6 +1139,25 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         raise ValueError("direction must be outgoing, incoming, or both")
     if observation_mode not in {"summary", "claims"}:
         raise ValueError("observation_mode must be summary or claims")
+    # 🔴 `collect` NAMES WHAT THE CALLER WANTS, AND THE FOLD IS AN INTERNAL ECONOMY.
+    # Summary mode replaces a wafer's observations with ONE collection node, so the point
+    # and claim nodes are never emitted at all -- not filtered late, not walked past:
+    # never made. MEASURED 2026-08-24 on `SYN-BW-K1-201-01`: `collect=point` ranked 0 with
+    # the fold on and 30 with it off, and `collect=claim` 1 against 31. A caller asking for
+    # a kind that only exists behind the fold was answered "none", which is a false
+    # statement about the data rather than a limit of the request.
+    #
+    # So the fold yields to the request. It stays on for every other call -- thirty
+    # observations collapsing to one node is why a wafer's graph is readable at all -- and
+    # unfolds only when the collected kind lives inside it. This is not a second route and
+    # not a flag the client passes: the client declares what it collects, which is the
+    # contract the marking rule asks for.
+    #
+    # ⚠️ THE NODE BUDGET IS REAL AND IS ANSWERED WITH `truncated`, NOT WITH SILENCE. A wafer
+    # with thousands of observations will hit the cap once unfolded; the response says so.
+    # Answering 0 because the fold was cheaper is the behaviour this replaces.
+    if collect in FOLDED_KINDS and observation_mode == "summary":
+        observation_mode = "claims"
     claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
     # Declared, not queried.  An absent or broken declaration yields no models and no
     # bindings, so the projection simply carries no Quantity nodes — the same «state, not
