@@ -244,7 +244,7 @@ export const BOARD = Object.freeze({
       id: 'candidate-trend',
       part: 'mainTrend',
       title: '마킹한 후보 트렌드 · 마킹 2',
-      at: { column: 1, row: 4, columnSpan: 4 },
+      at: { column: 1, row: 4, columnSpan: 3 },
       reads: 'marking:2',
       writes: 'marking:2',
       // walk ⑦ — 후보에서 찍은 것이 이 차트의 «주어»입니다. 비어 있으면 묻지 않습니다.
@@ -307,6 +307,26 @@ export const BOARD = Object.freeze({
         //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
         question: { row: 'SYN-CX-BW-001', kind: 'void', by: 'wafer' },
+      },
+    },
+    {
+      // 🔴 목업의 «칩 확대». 새 부품이 아니라 «좌표계 선언이 다른 두 번째 인스턴스»입니다 --
+      //    space 하나와 collect 하나. 부품에는 `if (zoom)` 이 없습니다 (총괄 합격 판정 F).
+      //    ⚠️ 오늘은 «없음»이 나오는 게 정상입니다: Finding Point 의 position 이 아직 빈
+      //       객체라 inchip 자리를 가진 점이 0개입니다. 그 상태가 F 의 재료입니다.
+      id: 'chip-zoom',
+      part: 'map',
+      title: '칩 확대 · 마킹 1',
+      at: { column: 4, row: 4 },
+      reads: 'marking:1',
+      writes: 'marking:1',
+      start: { groupby: 'wafer', marking: 'marking:1' },
+      collect: 'point',
+      options: {
+        space: 'inchip',
+        // 칩 한 변의 물리 크기. 실측(총괄): 칩 20,000um 안에 반경 8um -- 1/2,500 이라
+        // 웨이퍼 맵 위에서는 0.008px 이고 «확대에서만» 뜻이 있습니다.
+        extent: { x: 20000, y: 20000 },
       },
     },
     {
@@ -474,7 +494,14 @@ export function bindLoaders(layout, deps) {
           start: { groupby: 'chip', value: options.basisChipId }, collect: 'basis',
         });
       }
-      if (!options.question) return { ...decl, options: bound };
+      // 🔴 질문이 «박히지 않은» 맵은 walk 에서 옵니다. 라우트 이름은 여기서도 안 나옵니다 --
+      //    선언의 collect 하나가 어디로 갈지 정합니다.
+      if (!options.question) {
+        if (decl.part === 'map' && decl.collect) {
+          bound.load = (override) => walk({ collect: decl.collect, ...(override || {}) });
+        }
+        return { ...decl, options: bound };
+      }
       return {
         ...decl,
         options: {

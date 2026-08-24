@@ -59,6 +59,11 @@ body {
   display: grid;
   min-width: 0;
   min-height: 0;
+  /* 🔴 넘치는 내용은 «자기 패널 안»에 머뭅니다. 격자는 자리를 정하고, 그 자리보다 큰 내용은
+     아래 패널을 덮는 것이 아니라 자기 상자에서 스크롤합니다. 실측 2026-08-24: 씨앗을 바꾸자
+     머리가 517px 넘쳐 아래 «패널 둘»을 덮었습니다 -- 개수는 데이터가 정하므로 자리로는
+     못 막습니다. */
+  overflow: hidden;
   border: 1px solid var(--border-strong);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
@@ -127,7 +132,8 @@ body {
    `--danger`: this board's whole job is keeping 「없음」 and 「고장」 apart, and a red chip
    collapses them again. A refusal -- the server answering no -- is the only thing that
    borrows the danger tokens. */
-.rb-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; }
+.rb-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  min-height: 0; overflow: auto; }
 .rb-head-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rb-head-absences { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .rb-head-subject { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
@@ -564,7 +570,10 @@ body {
 .rb-layer { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
 .rb-layer-note { padding: 8px 10px; color: var(--text-muted); font-size: 11.5px; }
 .rb-layer-head { padding: 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text); }
-.rb-layer-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 0 10px; }
+/* 같은 이유로 여기도 «한 줄»입니다 -- 펼친 층의 스텝도 267개가 될 수 있습니다. */
+.rb-layer-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
+  padding: 0 10px; overflow-x: auto; min-width: 0; }
+.rb-layer-step { flex: 0 0 auto; }
 .rb-layer-step { border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px;
   font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
 .rb-layer-step.is-absent { border-style: dashed; }
@@ -575,7 +584,13 @@ body {
 .rb-head-wafer-mark { font-family: var(--font-mono); color: var(--text-muted); }
 .rb-head-wafer-mark.is-live { color: var(--accent); }
 /* 목업 머리의 «둘째 줄» — 이 웨이퍼 자신의 스텝 사슬. 비어도 자리는 섭니다. */
-.rb-head-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; }
+/* 🔴 개수와 «무관하게» 상자 안에 있어야 합니다. 새 씨앗의 칩이 공정 스텝 267개를 물고 왔고,
+   wrap 이 그걸 534개 칩으로 펼쳐 머리 패널이 «517px» 넘쳐 아래 패널 둘을 덮었습니다.
+   패널을 키우는 것은 답이 아닙니다 -- 다음 칩이 400스텝이면 또 넘칩니다. 한 줄로 두고
+   넓은 내용은 «자기 컨테이너에서» 스크롤합니다. */
+.rb-head-steps { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center;
+  font-size: 11px; overflow-x: auto; min-width: 0; }
+.rb-head-step { flex: 0 0 auto; }
 .rb-head-steps-key { color: var(--text-muted); }
 .rb-head-steps-absent { color: var(--text-muted); font-style: italic; }
 .rb-head-step { border: 1px solid var(--border); border-radius: 3px; padding: 0 5px;
