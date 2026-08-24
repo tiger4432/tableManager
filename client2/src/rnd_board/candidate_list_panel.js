@@ -112,6 +112,10 @@ export class CandidateListPanel extends Panel {
     //    세 웨이퍼 전부 `truncated: ['depth']` 인데 화면은 아무 말도 안 했습니다 -- 그러면
     //    「보이드 60개인 웨이퍼」와 「208개인데 60개만 실려 온 웨이퍼」가 «같아 보입니다».
     //    서버가 «어디서» 잘렸는지 말해 주므로 그 낱말을 그대로 답니다.
+    // 🔴 목업은 부류를 «다섯»으로 나눕니다 (계측 · 모델 · 공정 split · 사고 · 코멘트).
+    //    이 walk 은 앞의 둘만 싣습니다 -- 나머지 셋은 «없는 것»이 아니라 «안 오는 것»이고,
+    //    이름을 대야 그 차이가 읽힙니다.
+    head.appendChild(this._stat('공정 split · 사고 · 코멘트 — 이 walk 이 안 싣습니다', 'absent'));
     if (Array.isArray(m.truncated) && m.truncated.length) {
       head.appendChild(this._stat(`${m.truncated.join(' · ')} 에서 잘림 — 더 있을 수 있습니다`, 'absent'));
     }
@@ -167,6 +171,11 @@ export class CandidateListPanel extends Panel {
     // Each of these is a DIFFERENT absence/state and gets its own chip. None is an error.
     if (c.top) top.appendChild(this._tag('최상위', 'top'));
     if (c.tied) top.appendChild(this._tag('동률', 'absent'));
+    // 🔴 «어느 마킹으로» 찍혔는지. 파란 배경만으로는 이름을 못 읽고, 이 화면의 요점이
+    //    「마킹 1 과 마킹 2 는 다른 질문」이라는 것입니다.
+    if (c.id && this.writes && this.signOf(c.id) !== SIGN.ABSENT) {
+      top.appendChild(this._tag(this.writes, 'top'));
+    }
     if (c.incomparable) top.appendChild(this._tag('종류 다름', 'absent'));
     el.appendChild(top);
 

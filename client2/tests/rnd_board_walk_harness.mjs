@@ -180,6 +180,9 @@ async function suite(mods) {
   //    웨이퍼」와 「208개인데 60개만 실려 온 웨이퍼」가 «같아 보입니다».
   //    ⚠️ 오늘 이 필드는 모델까지 «안 옵니다» (`subgraphModel` 이 안 싣습니다. api.js 는 응용
   //       레인 파일이라 여기서 안 고쳤고 보고했습니다). 배선만 먼저 깔고 단언은 모델에 겁니다.
+  // 🔴 목업의 다섯 부류 중 «안 오는 셋»을 이름으로 말합니다 -- 자리를 비우면 「없다」로 읽힙니다.
+  truthy('Z11 the categories this walk does not carry are named, not omitted',
+    /공정 split · 사고 · 코멘트/.test(hostC.textContent), hostC.textContent.slice(0, 80));
   truthy('Z9 nothing is said about truncation while the walk was not truncated',
     !/잘림/.test(hostR.textContent));
   r.model.truncated = ['depth'];
@@ -242,6 +245,11 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { id: 'X10', what: 'the unserved candidate categories are omitted, so they read as absent',
+    catches: 'Z11',
+    mutate: { 'candidate_list_panel.js': (s) => s.replace(
+      "    head.appendChild(this._stat('공정 split · 사고 · 코멘트 — 이 walk 이 안 싣습니다', 'absent'));",
+      '    if (false) head.appendChild(null);') } },
   // 🔴 잘린 것을 안 말하면 「지금까지 본 것 중 1위」가 「1위」로 읽힙니다.
   { id: 'X9', what: 'a truncated walk says nothing, so a partial ranking reads as the whole one',
     catches: 'Z10',
