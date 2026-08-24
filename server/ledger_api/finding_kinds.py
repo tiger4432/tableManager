@@ -64,6 +64,44 @@ import threading
 #: The kind a caller gets when it does not name one. 🔴 This is the ONE permitted
 #: appearance of a kind name as a literal in code - the ruling calls out "기본값이지
 #: 특례가 아니다" - and it is a default parameter value, not a condition.
+#: 🔴 WHERE A PROJECTED FIELD LIVES, STATED ONCE. Measured 2026-08-24 on `observed`:
+#:
+#:      finding_kind   top level 11,588   ·  under `qualifiers` «103,841»
+#:      run_uid        top level 11,588   ·  under `qualifiers` «103,841»
+#:      method · class · map_id           ·  under `qualifiers` «0»  -- simply ABSENT on v5
+#:                                           atoms, so a fallback cannot help them and this
+#:                                           tuple deliberately does NOT list them
+#:
+#: The v5 declaration puts the value at the top and everything else beside it, so a reader
+#: that looks only at the top level counts the v1 remnant and misses every new atom. That is
+#: how the void trend read 0% while its map read 50%: 15 atoms answered and 103,841 did not.
+#:
+#: 🔴 ONE STATEMENT, TWO LANGUAGES. `payload_field` is for Python and `payload_field_sql` for
+#: a query, and they are here together so the rule cannot drift between them. Eight copies of
+#: 「finding_kind is at the top level」 is what produced this incident -- one was repaired in
+#: the morning and the rest stayed.
+QUALIFIED_FIELDS = ("finding_kind", "run_uid")
+
+
+def payload_field(payload, name):
+    """The field from the payload top level, else from `qualifiers`, else None."""
+    if not isinstance(payload, dict):
+        return None
+    if name in payload:
+        return payload.get(name)
+    return (payload.get("qualifiers") or {}).get(name)
+
+
+def payload_field_sql(payload_expr, name):
+    """The same rule as a SQL expression over `payload_expr` (e.g. `e.object_payload`).
+
+    Returns NULL when neither place carries it, so callers keep whatever COALESCE or NULLIF
+    they already wrap it in -- this changes WHERE the value is read, not what absence means.
+    """
+    return (f"COALESCE(NULLIF({payload_expr}->>'{name}', ''), "
+            f"NULLIF({payload_expr}->'qualifiers'->>'{name}', ''))")
+
+
 DEFAULT_KIND = "void"
 
 #: The universe of packages, for the "never scanned" third. A package is a bonded

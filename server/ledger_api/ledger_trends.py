@@ -363,14 +363,14 @@ WITH declared AS MATERIALIZED (
     GROUP BY {", ".join(grain.denominators)}, d.kind
 ), observed AS MATERIALIZED (
     SELECT {projection},
-           object_payload->>'finding_kind' AS kind,
+           {finding_kinds.payload_field_sql('object_payload', 'finding_kind')} AS kind,
            NULLIF(object_payload->>'class', '') AS subtype,
            occurred_at,
            COALESCE(object_payload->'die', object_payload->'position') AS die
     FROM ledger_events
     WHERE predicate = 'observed'
       AND occurred_at >= %(from)s AND occurred_at < %(to)s
-      AND object_payload->>'finding_kind' = ANY(%(kinds)s)
+      AND {finding_kinds.payload_field_sql('object_payload', 'finding_kind')} = ANY(%(kinds)s)
       AND subject_type = %(grain_subject_type)s
       AND {" AND ".join(f"{path} ? %({param})s"
                         for path, param in grain.numerators)}

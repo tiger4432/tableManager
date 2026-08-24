@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 import ledger_explorer
 import ledger_trace
 import enrichment_actions
+from ledger_api import finding_kinds
 from ledger_api import mechanism_gate
 
 
@@ -327,11 +328,11 @@ class SqlEvidenceLookup:
                      AS item(type text, keys jsonb)
             )
             SELECT e.subject_type, e.subject_keys,
-                   COALESCE(NULLIF(e.object_payload->>'finding_kind', ''), 'unknown'),
+                   COALESCE({finding_kinds.payload_field_sql('e.object_payload', 'finding_kind')}, 'unknown'),
                    NULLIF(e.object_payload->>'method', ''),
                    NULLIF(e.object_payload->>'map_id', ''),
                    count(*)::bigint,
-                   count(DISTINCT NULLIF(e.object_payload->>'run_uid', ''))::bigint,
+                   count(DISTINCT {finding_kinds.payload_field_sql('e.object_payload', 'run_uid')})::bigint,
                    min(e.occurred_at), max(e.occurred_at),
                    count(*) FILTER (WHERE e.object_payload->>'value'
                      ~ '^-?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?$')::bigint,
@@ -357,7 +358,7 @@ class SqlEvidenceLookup:
               ON e.subject_type = f.type AND e.subject_keys = f.keys
             WHERE e.predicate = 'observed'
             GROUP BY e.subject_type, e.subject_keys,
-                     COALESCE(NULLIF(e.object_payload->>'finding_kind', ''), 'unknown'),
+                     COALESCE({finding_kinds.payload_field_sql('e.object_payload', 'finding_kind')}, 'unknown'),
                      NULLIF(e.object_payload->>'method', ''),
                      NULLIF(e.object_payload->>'map_id', '')
             ORDER BY count(*) DESC, e.subject_type, e.subject_keys
@@ -395,7 +396,7 @@ class SqlEvidenceLookup:
             JOIN {self.relation} e
               ON e.subject_type = f.type AND e.subject_keys = f.keys
              AND e.predicate = 'observed'
-             AND COALESCE(NULLIF(e.object_payload->>'finding_kind', ''), 'unknown')
+             AND COALESCE({finding_kinds.payload_field_sql('e.object_payload', 'finding_kind')}, 'unknown')
                  = f.finding_kind
              AND NULLIF(e.object_payload->>'method', '') IS NOT DISTINCT FROM f.method
              AND NULLIF(e.object_payload->>'map_id', '') IS NOT DISTINCT FROM f.map_id
@@ -679,10 +680,8 @@ _QUALIFIED_FIELDS = ("finding_kind", "run_uid", "map_id")
 
 
 def _payload_field(payload, name):
-    """Read a projected field from the payload top level, else from `qualifiers`."""
-    if name in payload:
-        return payload.get(name)
-    return (payload.get("qualifiers") or {}).get(name)
+    """Delegate: the rule lives in `finding_kinds.payload_field`, stated once."""
+    return finding_kinds.payload_field(payload, name)
 
 
 def _finding_point_node(atom):
