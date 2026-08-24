@@ -258,9 +258,18 @@ export class MainTrendPanel extends Panel {
       dot.setAttribute('data-wafer', p.wafer || '');
       if (p.markKey) dot.setAttribute('data-node-id', p.markKey);
       // The title is the whole point, in the vocabulary the ledger used.
+      // 🔴 소유자 요청 (2026-08-24): 「몇 칩 있고 몇 칩 보이드인지 호버하면 어노테이션」.
+      //    비율은 «그 둘로 만든 것»이라는 게 보여야 합니다 -- 오늘 「맵은 50%인데 트렌드는 0%」를
+      //    못 알아본 자리가 여기입니다. 수는 «응답에 있는 그대로» 띄우고 계산하지 않습니다.
+      //    ⚠️ 분자(`found_chip_count`)는 경계 모델이 아직 안 싣습니다 (api.js = 응용 레인).
+      //       그래서 그 칸은 «지어내지 않고» 없다고 말합니다 -- 0 이라고 쓰면 「보이드 없음」이
+      //       되는데 그건 다른 사실입니다.
+      const seen = p.denominator === null ? '—' : p.denominator;
+      const hit = typeof p.found === 'number' ? p.found : '— (경계가 아직 안 싣습니다)';
       dot.setAttribute('title',
-        `${p.wafer || '(웨이퍼 없음)'} · ${(p.rate * 100).toFixed(2)}%`
-        + (p.denominator === null ? '' : ` · 분모 ${p.denominator}`)
+        `${p.wafer || '(웨이퍼 없음)'}`
+        + ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`
+        + ` · 비율 ${(p.rate * 100).toFixed(2)}%`
         + (p.state ? ` · ${p.state}` : ''));
       if (p.markKey) {
         dot.addEventListener('click', (event) => {
