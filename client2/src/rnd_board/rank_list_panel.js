@@ -95,6 +95,7 @@ export class RankListPanel extends Panel {
     caption.textContent = '순위는 판정이 아닙니다 · 점수·확률 없음';
     root.appendChild(caption);
 
+
     if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
       const note = doc.createElement('div');
       note.className = this.loadState === 'refused'
@@ -108,6 +109,14 @@ export class RankListPanel extends Panel {
     }
 
     const m = this.model;
+    // 🔴 잘린 것을 «말합니다». 순위표에서 이것이 빠지면 「1위가 진짜 1위」인지 알 수 없습니다 --
+    //    걸어오다 끊긴 walk 의 1위는 「지금까지 본 것 중 1위」입니다 (총괄 판정 2026-08-24).
+    if (Array.isArray(m.truncated) && m.truncated.length) {
+      const cut = doc.createElement('div');
+      cut.className = 'rb-rank-note rb-rank-note--absent';
+      cut.textContent = `${m.truncated.join(' · ')} 에서 잘림 — 더 있을 수 있습니다`;
+      root.appendChild(cut);
+    }
     if (m.state === 'empty') {
       const note = doc.createElement('div');
       note.className = 'rb-rank-note rb-rank-note--absent';

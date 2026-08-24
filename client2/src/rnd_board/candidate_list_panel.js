@@ -108,6 +108,14 @@ export class CandidateListPanel extends Panel {
     if (!m.complete) {
       head.appendChild(this._stat('예산에서 끊김 — 아래는 미검사', 'absent'));
     }
+    // 🔴 «잘렸다고 말하는 것»이 자르는 것보다 먼저입니다 (총괄 판정 2026-08-24). 지금 응답은
+    //    세 웨이퍼 전부 `truncated: ['depth']` 인데 화면은 아무 말도 안 했습니다 -- 그러면
+    //    「보이드 60개인 웨이퍼」와 「208개인데 60개만 실려 온 웨이퍼」가 «같아 보입니다».
+    //    서버가 «어디서» 잘렸는지 말해 주므로 그 낱말을 그대로 답니다.
+    if (Array.isArray(m.truncated) && m.truncated.length) {
+      head.appendChild(this._stat(`${m.truncated.join(' · ')} 에서 잘림 — 더 있을 수 있습니다`, 'absent'));
+    }
+
     root.appendChild(head);
 
     if (m.state === 'empty') {
