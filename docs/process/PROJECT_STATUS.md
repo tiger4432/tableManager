@@ -90,7 +90,13 @@
 > 총괄 기울기 ⓐ. 구현자 의견을 듣고 판정 (34b0b81f)
 > ```
 > ### ③-oneline 🔴🔴 그리고 «한 줄»이 아직 안 들어갔습니다 — 아침 지적 ④ 의 전부
-> 
+> ```
+> main.js:175  main-trend   reads/writes «marking:0»
+> main.js:276  map(본딩)     reads/writes «marking:1»      -> 잇는 것이 «없음»
+> main.js:286  map(코어)     reads/writes «marking:1»
+> grep         marking:0 «4회» · marking:3 «4회»  — 둘 다 살아 있음
+> 판정은 af5337a5 에 이미 났음:  writes: marking:0 -> marking:1 «한 줄» · 0 과 3 은 은퇴
+> ```
 > 🔴 마킹1 은 소유자 도식에서 «세 walk 의 시작점»입니다. 여기가 안 이어지면
 >    부품을 아무리 잘 만들어도 «도식이 안 돕니다». 맵 부품 완성보다 «먼저»로 올렸습니다 (ecbdf799)
 > 📎 오늘 「잘 만들었는데 아무 데도 안 연결된 것」이 이미 둘 —
