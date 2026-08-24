@@ -233,11 +233,20 @@ const SPACES = {
     //    4억 번의 반복입니다 (실제로 힙을 터뜨렸습니다). 없는 개념은 선언에서 «없다»고 말합니다.
     lattice: false,
     // 칸이 무는 관측들. die 하나가 point 를 여럿 뭅니다 (실측 평균 2.06 · 최대 13).
-    items: (model) => (model.cells || []).reduce((out, cell) => {
+    // 🔴 자리는 «점이 말합니다» (`placements`). 그 좌표계에 자리가 없는 점은 «안 그리고 셉니다» --
+    //    조용히 빠지면 「그런 게 없다」로 읽힙니다.
+    items: (model, panel) => (model.cells || []).reduce((out, cell) => {
       for (const p of cell.points || []) {
-        if (!p || typeof p.inchip_x !== 'number' || typeof p.inchip_y !== 'number') continue;
-        out.push({ ...p, x: p.inchip_x, y: p.inchip_y, nodeId: p.node_id || null,
-          nodeIdResolved: Boolean(p.node_id), colorRole: p.color_role || p.state || null });
+        const at = placementOf(p, panel.space);
+        if (!at) { panel._offSpace += 1; continue; }
+        out.push({ ...p,
+          x: at.x,
+          y: at.y,
+          // 크기는 점이 아니라 «자리»의 속성입니다 -- 다이 칸에 반경은 뜻이 없습니다.
+          extent: at.extent || null,
+          nodeId: p.node_id || null,
+          nodeIdResolved: Boolean(p.node_id),
+          colorRole: p.color_role || p.state || null });
       }
       return out;
     }, []),
@@ -256,6 +265,21 @@ const SPACES = {
  * ⚠️ 색조는 그대로입니다. 역할(found·scanned·unscanned)이 색이고, 수는 «농도»입니다 --
  *    둘을 같은 축에 얹으면 둘 다 안 읽힙니다.
  */
+/**
+ * 🔴 한 점은 자리를 «여럿» 가집니다 (총괄 판정 2026-08-24, `placements`).
+ *    같은 void 점이 die:base 에도 있고 inchip 에도 있습니다 -- 그래서 확대는 «새 질의»가 아니라
+ *    같은 점의 «다른 자리»를 읽는 일입니다. `placements` 는 dt_map 예외처리가 아니라 좌표의
+ *    «정상 모양»입니다.
+ *
+ * `null` 은 「이 점은 그 좌표계에 자리가 없다」입니다 -- 「이 소스는 그 맵이 없다」와 «다른 말»이고,
+ * 앞의 것은 그 점만 빠지고 맵은 서며, 뒤의 것은 인스턴스가 아예 안 섭니다 (`stands()`).
+ */
+function placementOf(item, space) {
+  const list = item && item.placements;
+  if (!Array.isArray(list)) return null;
+  return list.find((p) => p && p.space === space) || null;
+}
+
 const WEIGHT_SHADES = [
   { from: 4, shade: 0.58 },
   { from: 3, shade: 0.72 },
@@ -316,6 +340,9 @@ export class MapPanel extends Panel {
     this.pages = [];
     // 마킹이 거절된 자리의 «문장». null 이면 거절이 없었다는 뜻입니다.
     this.unmarkable = null;
+    // 이 좌표계에 자리가 없어 빠진 점의 수 -- 칠할 때 세고, 머리가 그 수를 말합니다.
+    this._offSpace = 0;
+    this._headOffSpace = 0;
     this.loadPages = options.loadPages || null;
     // 🔴 「점을 찍으면 그것이 씨앗」 REACHES THE MAP. The trend names the wafer it picked; a map
     //    that declares it follows that name re-targets onto it. Paging never clears a marking.
@@ -538,8 +565,14 @@ export class MapPanel extends Panel {
     //    at all. It is said as a COUNT when the server counted it, and as 「귀속 불가」 -- with
     //    the server's own sentence -- when it could not. Never as a zero: 「모른다」 and 「없다」
     //    are the two things this whole board refuses to fold together.
+    // 🔴 이 좌표계에 «자리가 없어» 빠진 점들. 서버가 못 붙인 것(unplaced)과 «다른 말»이라
+    //    문장도 따로입니다: 하나는 「어디 것인지 모른다」, 이건 「이 그림에 자리가 없다」입니다.
+    const offSpace = this.lastPaint && this.lastPaint.offSpace;
     const un = m && m.unplaced;
-    if (!un) {
+    if (!un && offSpace) {
+      n.outside.className = 'rb-map__outside is-measured';
+      n.outside.textContent = `이 좌표계에 자리 없음 · ${offSpace}`;
+    } else if (!un) {
       n.outside.textContent = '';
       n.outside.className = 'rb-map__outside';
     } else if (un.state === 'measured') {
@@ -694,6 +727,8 @@ export class MapPanel extends Panel {
     // 🔴 좌표계 선언이 «무엇을 그릴지»와 «어느 판에 그릴지»를 답합니다. 축 이름도, 확대
     //    여부도 여기서 묻지 않습니다 -- 선언을 찾아 쓸 뿐입니다.
     const space = this._space();
+    // 이 좌표계에 자리가 없어 «빠진» 점의 수. 한 칠마다 다시 셉니다.
+    this._offSpace = 0;
     const cells = space.items(model, this) || [];
     const declared = space.bounds(model, this);
     const bounds = declared ? unionBounds(declared, boundsOf(cells)) : boundsOf(cells);
@@ -789,7 +824,13 @@ export class MapPanel extends Panel {
 
     this._layout = layout;
     this._byXY = new Map(cells.map((c) => [`${c.x},${c.y}`, c]));
-    this.lastPaint = { cells: painted, marks, vacant };
+    this.lastPaint = { cells: painted, marks, vacant, offSpace: this._offSpace };
+    // 🔴 머리는 칠보다 «먼저» 쓰입니다. 그래서 여기서 «세어진» 수는 다음 render 까지 머리에
+    //    안 보입니다 -- 한 박자 늦은 수는 틀린 수입니다. 바뀐 때만 머리를 다시 씁니다.
+    if (this._headOffSpace !== this._offSpace) {
+      this._headOffSpace = this._offSpace;
+      this._writeHead();
+    }
   }
 
   // ── CLICK -> MARK ────────────────────────────────────────────────────────────

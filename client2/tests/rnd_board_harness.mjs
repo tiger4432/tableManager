@@ -699,13 +699,23 @@ async function suite(mods) {
     //    줄이면서 `points` 를 버립니다. 그 파일은 응용 레인 소관이라 여기서 안 고치고
     //    보고했습니다. 그래서 단언은 «이 부품이 보증하는 것»에 겁니다: 셀이 점을 물고 있으면
     //    inchip 선언이 그것을 그린다.
+    // 🔴 자리는 «점이 말합니다» -- 총괄이 승인한 `placements` 모양 그대로입니다. 같은 점이
+    //    die:base 와 inchip 에 «둘 다» 있고, 확대는 그 중 다른 자리를 읽는 일입니다.
     zoom.model.cells[0].points = [
-      { inchip_x: 14041.75, inchip_y: 9879.75, node_id: 'ledger-entity:v1:a-point', state: 'found' },
-      { inchip_x: 5000, inchip_y: 12000, node_id: 'ledger-entity:v1:another-point', state: 'found' },
+      { node_id: 'ledger-entity:v1:a-point', state: 'found',
+        placements: [{ space: 'die:base', x: 13, y: 5 },
+          { space: 'inchip', x: 14041.75, y: 9879.75, extent: { x: 9.8, y: 8.0 } }] },
+      { node_id: 'ledger-entity:v1:another-point', state: 'found',
+        placements: [{ space: 'inchip', x: 5000, y: 12000 }] },
+      // 🔴 그 좌표계에 «자리가 없는» 점. 조용히 빠지면 「그런 게 없다」로 읽힙니다.
+      { node_id: 'ledger-entity:v1:die-only', state: 'found',
+        placements: [{ space: 'die:base', x: 4, y: 9 }] },
     ];
     zoom.render();
     eq('F8 the same declaration draws the points the day a cell carries them',
       zoom.lastPaint.cells, 2);
+    eq('F8b a point with no place in THIS space is counted, not dropped',
+      zoom.lastPaint.offSpace, 1);
     zoom.destroy();
 
     // 🔴 한 칸이 «몇 개»를 물었나가 화면에 남아야 합니다. 실측: 다이당 최대 13, 4개 이상인
@@ -801,6 +811,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 「이 좌표계에 자리가 없다」와 「그런 점이 없다」를 같은 그림으로 만드는 변이입니다.
+  { id: 'M04', what: 'a point with no place in this space is dropped silently instead of counted',
+    catches: 'F8b',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      '        if (!at) { panel._offSpace += 1; continue; }',
+      '        if (!at) { continue; }') } },
   // 🔴 「좌표가 없다」와 「좌표가 있어야 하는데 빈다」를 같은 그림으로 만드는 변이입니다.
   { id: 'M03', what: 'a map stands even for a source that declares no such coordinate space',
     catches: 'F10',
