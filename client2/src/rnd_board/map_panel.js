@@ -557,8 +557,14 @@ export class MapPanel extends Panel {
       //    never reached the picture. The relations the server joined are printed beside the
       //    numbers, so the words change when the join does.
       const source = (m.relations || []).join(' ∩ ');
+      // 🔴 목업은 맵 머리에 «마킹 수»를 답니다 (「마킹 34 · void 165 · delam 9」). 마킹이
+      //    배지에만 있으면 「이 그림에서 몇 개를 골랐나」가 수로 안 보입니다 -- 이 화면에서
+      //    제일 자주 묻는 수인데도요. 종류별(void·delam)은 이 질문이 한 종류만 묻기 때문에
+      //    아직 하나입니다; 그 사실은 알약이 이미 말합니다.
+      const markedHere = m.cells.reduce(
+        (sum, c) => sum + (this.signOf(c.nodeId) !== SIGN.ABSENT ? 1 : 0), 0);
       n.counts.textContent = m.cells.length
-        ? `${m.cells.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
+        ? `마킹 ${markedHere} · ${m.cells.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
           + (source ? ` · ${source} 기준` : '')
         : '';
       if (m.cells.length && !m.ledgerBacked) {
