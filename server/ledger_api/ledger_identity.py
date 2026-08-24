@@ -9,6 +9,8 @@ from __future__ import annotations
 import base64
 import json
 
+import ledger_explorer
+
 
 UNIT_KIND = "bonding_experiment_unit"
 CONTEXT_ROLE = "planned_bonding_experiment_unit"
@@ -62,9 +64,20 @@ def decode_mark(mark_key):
 def identity(wafer, bonding_leg, subject_type):
     wafer = _part(wafer, "wafer")
     bonding_leg = _part(bonding_leg, "bonding_leg")
+    subject_type = _part(subject_type, "subject_type")
+    keys = {"wafer": wafer}
     return {
-        "type": _part(subject_type, "subject_type"),
-        "keys": {"wafer": wafer},
+        "type": subject_type,
+        # 🔴 THE MARK IS A NODE, AND THIS IS ITS ID. Owner ruling 2026-08-24: 「키는 노드
+        #    아이디와 노드 타입」. Until now the trend's key was `experiment-unit:v1:…`, a
+        #    FIFTH id space that no other part could meet -- a click on a trend point and a
+        #    click on the same wafer's map cell were different strings, so the maps never
+        #    followed the trend. The same builder the map and the candidate list already use
+        #    produces this, so the two now collide on purpose.
+        # ⚠️ `mark_key` stays until every reader carries the pair (`MARKING_CONTRACT` §10.4):
+        #    the reading side moving first is what blanked the maps this morning.
+        "node_id": ledger_explorer.entity_id(subject_type, keys),
+        "keys": keys,
         "context": {"role": CONTEXT_ROLE, "bonding_leg": bonding_leg},
         "aggregation": {"kind": "void_by_experiment_unit", "finding_kind": "void"},
         "mark_key": encode_mark(wafer, bonding_leg),
