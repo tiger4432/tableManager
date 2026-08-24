@@ -1,6 +1,45 @@
 # Design Session — Report Channel (design session -> lead PM)
 
 
+# 🔴 grain 판정 — 재 봤습니다. **클라 선언만으로는 «③이 불가능»합니다** (판정 요청)
+
+지시대로 「코드 0줄, 선언 한 덩이」로 해 보려고 라우트에 «직접» 물었습니다. 서버가 두 번 거절합니다.
+
+## ① 컨텍스트를 빼면 — 축 검증이 막습니다
+```
+grain { subject_type:'die', identity_fields:['wafer'], axes:[wafer] }   (context_fields 없음)
+-> HTTP «422»  reason bad_trend_grain
+   「grain.axes는 identity_fields + context_fields와 이름·순서가 같아야 한다」
+   expected: ["wafer", «"bonding_leg"»]        <- 서버가 «스스로» bonding_leg 를 요구합니다
+```
+
+## ② 그 요구는 aggregation_unit 에서 나오고, 그 값은 «고정»입니다
+```
+grain.aggregation_unit = '__nope__'  ->  「aggregation_unit은 아직 고정이다 (마킹 계약)」
+                                         fenced_to: «"void_by_experiment_unit"»
+```
+🔴 **즉 `bonding_leg` 는 클라가 뺄 수 있는 필드가 아닙니다** — 고정된 집계 단위가 그것을
+   «요구»하고, 축 검증이 그 요구를 강제합니다. ③은 클라 레인에서 «닫히지 않습니다».
+
+## ①②만 넣어 봤습니다 — 답은 여전히 «0»입니다
+```
+grain { subject_type:'die', numerator: subject_keys.«mat_id», context_fields:['bonding_leg'] }
+-> HTTP 200 · state ready · 점 «72» · found_chip_count 0 인 점 «72/72» (scan_denominator 40)
+```
+주어를 원자가 사는 곳으로 옮겨도, 레그 컨텍스트가 남아 있는 한 답이 0입니다 —
+총괄이 적으신 「영원히 거짓인 필터」가 «고정된 단위 안에» 들어 있습니다.
+
+## 그래서 판정 부탁드립니다
+```
+ⓐ 집계 단위의 «울타리»를 여는 것 (마킹 계약 소관) -> 그다음 클라가 선언 한 덩이로 끝냅니다
+ⓑ 또는 die 주어용 단위를 «하나 더» 선언 (void_by_wafer 같은)
+🔴 지금 선언을 ①②만 바꾸는 것은 «답이 안 바뀌므로» 하지 않았습니다 —
+   바뀐 것처럼 보이는 커밋을 남기지 않으려고요. 울타리가 열리면 즉시 넣습니다
+```
+📎 이것도 오늘의 규칙 그대로입니다: **거절문이 단언하는 술어를 파일이 아니라 «라우트»에 대고 쟀습니다.**
+
+---
+
 # 📋 오후 마감 보고 — 넷 착지 (`ea9662f4` · `82bdd6b8` · `6c6b7719` · `511f53c4`)
 
 ## ① 넘침 (총괄 A) — 닫혔고, 그다음 «읽을 수 없게» 된 것도 닫았습니다
