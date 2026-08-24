@@ -570,6 +570,11 @@ export function trendsModel(result) {
         at: p.occurred_at || null,
         rate: typeof value.found_rate === 'number' ? value.found_rate : null,
         denominator: typeof value.scan_denominator === 'number' ? value.scan_denominator : null,
+        // 🔴 THE NUMERATOR TRAVELS SEPARATELY, and that is the point. The rate alone cannot say
+        //    whether zero means nobody was found or nobody looked, which is exactly the reading
+        //    that let a 50% map sit beside a 0% line (owner, 2026-08-24). `null` when the key is
+        //    absent -- never 0, because 0 asserts a clean scan the server did not report.
+        found: typeof value.found_chip_count === 'number' ? value.found_chip_count : null,
         state: value.state || null,
         markKey: identity.mark_key || null,
       });
