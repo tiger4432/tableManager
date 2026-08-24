@@ -1,3 +1,60 @@
+# ✅ 서버 라우트 «여섯» 도려냈습니다 — `lot_map` «살아 있습니다» (구현자 00:3x)
+
+## 지운 것 — «되돌릴 지도»
+```
+server/ledger_trace_router.py   라우트 함수 «6개» 제거 (786행 -> 575행)
+   /trace      trace_lineage()              70-125
+   /explore    explore_lineage()           128-153
+   /entities   registered_entity_catalog()  156-178
+   /journey    ledger_journey_route()       472-515
+   /lots       ledger_lot_grid()            689-723
+   /coverage   ledger_coverage()            759-785
+   + 고아가 된 import 셋: ledger_journey · ledger_explorer · ledger_catalog
+server/ledger_journey.py        «파일 삭제» (단독 소비자였음)
+server/tests/…                  아래 ②③
+```
+🔴 **함수 경계는 AST 로 잡았습니다** — 「데코레이터에서 다음 데코레이터까지」로 자르면
+라우트 «사이»에 있는 헬퍼가 같이 갑니다. 179-207행처럼 남겨야 할 구간이 실제로 있었습니다.
+
+## 게이트 ①② — 라우터 실측
+```
+마운트 «9»   composition · kinds · «lot_map» · selection/resolve · siblings
+             · structure · subgraph · subgraph/table · trends
+없어짐 «6»   trace · explore · entities · journey · lots · coverage   전부 absent
+🔴 lot_map   «present: True»   <- 제일 걱정하신 자리입니다
+```
+📌 «HTTP 200/404»는 서버 재기동이 있어야 잽니다(재기동은 총괄 소관). 위는 «라우터 인벤토리»로
+   같은 사실을 잰 것입니다 — 지금 도는 프로세스는 아직 옛 코드를 들고 있습니다.
+
+## 지우지 «않은» 것 — 이름이 함정인 자리
+```
+ledger_lots.py       /structure · /lot_map 이 «같이» 씁니다 (+시더 둘)   -> 남김
+ledger_structure.py · ledger_explorer.py · ledger_trace.py               -> 남김 (생존 소비자 있음)
+ledger_catalog.py    🔴 이번 삭제로 «고아»가 됐습니다 (소비자: 자기 테스트뿐)
+                     -> 지시가 「여섯 + 파일 하나」라 «안 지웠습니다». 범위 키우지 말라 하셨으니
+                        판정만 요청드립니다
+```
+
+## 테스트 둘 — «재던 코드와 같은 커밋»에서 정리
+```
+test_ledger_subgraph  「frozen 라우트는 서명 씨앗을 안 받는다」
+                      -> 그 라우트가 «없어졌으므로» 더 센 단언으로 바꿨습니다:
+                         여섯 + explore_entity 가 «마운트되지 않았다». 파일이 쓰던 방식 그대로
+test_ledger_admin_setup  ledger_journey 소스를 읽던 절반을 뺐습니다.
+                      ledger_walk_contrast 쪽 «같은 불변식»은 그대로 섭니다 — 사라진 건
+                      「없는 모듈을 시험하던」 절반뿐입니다
+결과   test_ledger_subgraph 24 passed · admin_setup 53 passed
+```
+
+## 🔴 그리고 «제 것이 아닌» 빨강 하나 — 보고만 합니다
+```
+test_the_previews_translator_version_is_the_one_a_real_run_would_stamp   FAILED
+   assert 'lot_event/1/rules:8b26d41f' == 'lot_event/0/rules:8b26d41f'
+```
+`ledger_config.load()` 의 «라이브 선언»을 읽는 시험입니다. 제 파일 셋을 «stash 로 되돌리고»
+돌려도 그대로 빨강이었습니다 — **제 수술 이전부터 빨강**입니다.
+오늘 선언을 여러 번 고치셨으니 그쪽 드리프트로 보입니다. **고치지 않았습니다** —
+남의 파일이고, 시험을 손보면 그게 «가리는» 것이 됩니다.
 # 🗺️ 삭제 «지도» — 클라 착지 전에 만들어 뒀습니다. **파일 삭제가 아니라 «수술»입니다** (구현자 23:1x)
 
 지시가 「구현자는 클라 착지 뒤」라 **착수 안 했습니다.** 그 사이 되돌릴 지도를 만들었습니다

@@ -556,9 +556,14 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     # does not accept an argument it would echo and never consume.
     assert "collect" not in params("/api/ledger/subgraph/table")
     # `/api/ledger/explore_entity` was retired 2026-08-23; `/subgraph` answers it.
-    for frozen in ("/api/ledger/trace", "/api/ledger/explore"):
-        assert not ({"positive", "negative", "collect"} & params(frozen))
-    assert "/api/ledger/explore_entity" not in routes
+    # `/trace` and `/explore` were DELETED 2026-08-25 with the legacy screens, so the
+    # assertion becomes the stronger one the line below already uses: they are not routes
+    # at all. Asserting "they do not take signed seeds" would pass vacuously on a
+    # KeyError-free dict lookup only because there is nothing left to ask.
+    for retired in ("/api/ledger/explore_entity", "/api/ledger/trace",
+                    "/api/ledger/explore", "/api/ledger/entities",
+                    "/api/ledger/journey", "/api/ledger/lots", "/api/ledger/coverage"):
+        assert retired not in routes, f"{retired} is still mounted"
     # `id` alone must reach subgraph() as the very same argument it always was.
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     assert ledger_trace_router._signed_start(seed, None, None) == seed

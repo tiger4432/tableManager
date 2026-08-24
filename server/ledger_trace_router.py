@@ -21,10 +21,7 @@ from database.database import get_db
 
 from ledger_api import finding_kinds
 import enrichment_actions
-from ledger_api import ledger_catalog
 from ledger_api import ledger_composition
-import ledger_explorer
-import ledger_journey
 from ledger_api import ledger_kinds
 import ledger_lots
 from ledger_api import ledger_selection
@@ -67,115 +64,10 @@ def _lookup_for(db):
     return ledger_trace.SqlClaimLookup(db.connection(), relation=LEDGER_RELATION)
 
 
-@router.get("/trace")
-def trace_lineage(
-    lot: str = Query(..., description="추적 시작 랏"),
-    slot: str = Query(None, description="위치(슬롯). 없으면 랏 단위 사슬만"),
-    db: Session = Depends(get_db),
-):
-    """`(lot, slot)`의 혈통 사슬을 홉별 상태와 함께 돌려준다. 읽기 전용.
-
-    🔴 A 200 with an empty `hops` list is not a possible answer. Where the chain
-    breaks, the hop that broke and the reason it broke ARE the answer — that is
-    what this screen exists for (brief §3-2). The only non-200 outcomes are a
-    malformed request (422 from FastAPI) and the ledger relation being absent
-    (503, below), and the second one says so instead of returning nothing.
-    """
-    lot = (lot or "").strip()
-    if not lot:
-        raise HTTPException(status_code=422, detail="lot 필요")
-
-    try:
-        # 🔴 ASK THE CATALOGUE FIRST — do not learn it from an exception.
-        # This is the case that sent the product owner to a blank screen on
-        # 2026-08-13: `assy_manager` had no `ledger_events` at all.
-        #
-        # WHAT WAS ACTUALLY MEASURED, because the tempting story is wrong. This
-        # branch shipped with NO test, so nothing had ever driven it. Driving it
-        # (mutant run, 2026-08-13) shows the previous string match DID fire — but
-        # only on the half of its `or` that nothing guarantees. This PostgreSQL
-        # speaks Korean, so `"does not exist"` is already dead here:
-        #     (psycopg2.errors.UndefinedTable) 오류: "…" 이름의 릴레이션(relation)
-        #     이 없습니다
-        # It matched on `"UndefinedTable"` instead — a driver class name that
-        # appears only because SQLAlchemy's `__str__` prefixes it. Nothing
-        # promises that: a bare psycopg2 path, or a change in how SQLAlchemy
-        # formats a wrapped error, and the deployment fact silently becomes a 500
-        # that reads like a code defect.
-        #
-        # So the judgement moved to two things that ARE contracts: the catalogue,
-        # and SQLSTATE. `to_regclass` returns NULL instead of raising, which also
-        # keeps the request's transaction clean — one `UndefinedTable` poisons it
-        # and every later statement fails for an unrelated-looking reason.
-        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
-            raise _relation_absent()
-        return ledger_trace.trace(lot, slot, lookup=_lookup_for(db))
-    except ledger_trace.ResolverConfigError as exc:
-        # A declared-but-broken resolver config is refused at the door and
-        # counted, never half-applied (brief §3-1 gate discipline).
-        logger.error("ledger resolver config refused: %s", exc)
-        raise HTTPException(status_code=503, detail=f"해결기 config 거절: {exc}")
-    except HTTPException:
-        raise
-    except Exception as exc:                       # noqa: BLE001 - see below
-        # BACKSTOP for the race the gate cannot close: the relation is dropped
-        # between the catalogue lookup and the walk.
-        if _is_undefined_table(exc):
-            raise _relation_absent()
-        raise
 
 
-@router.get("/explore")
-def explore_lineage(
-    lot: str = Query(..., description="그래프 탐색을 시작할 랏"),
-    hops: int = Query(20, ge=1, le=20, description="혈통 관계 탐색 깊이"),
-    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
-    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
-    db: Session = Depends(get_db),
-):
-    """해결 전의 분기 전체를 원장 개체 그래프로 답한다. 읽기 전용."""
-    lot = (lot or "").strip()
-    if not lot:
-        raise HTTPException(status_code=422, detail={
-            "reason": "lot_required", "message": "탐색 시작 랏이 필요합니다"})
-    try:
-        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
-            raise _relation_absent()
-        return ledger_explorer.explore(
-            lot, _lookup_for(db), hops=hops,
-            node_limit=node_limit, edge_limit=edge_limit)
-    except ledger_trace.ResolverConfigError as exc:
-        raise HTTPException(status_code=503, detail={
-            "reason": "resolver_config_refused", "message": str(exc)})
-    except Exception as exc:                       # noqa: BLE001 - same backstop as trace
-        if _is_undefined_table(exc):
-            raise _relation_absent()
-        raise
 
 
-@router.get("/entities")
-def registered_entity_catalog(
-    subject_type: str = Query("Lot", alias="type", description="어휘에 등록된 issued 개체 타입"),
-    q: str = Query(None, max_length=120, description="구조화 신원 전체의 부분 문자열"),
-    after: str = Query(None, description="직전 응답의 불투명 keyset 커서"),
-    limit: int = Query(40, ge=1, le=100, description="한 페이지 개체 수"),
-    db: Session = Depends(get_db),
-):
-    """원장에 register된 모든 issued 개체를 타입별로 나열한다. OFFSET 없음."""
-    try:
-        if not ledger_trace.relation_exists(db.connection(), LEDGER_RELATION):
-            raise _relation_absent()
-        return ledger_catalog.entity_catalog(
-            db.connection(), subject_type=subject_type, q=q, after=after, limit=limit,
-            relation=LEDGER_RELATION)
-    except ledger_catalog.CatalogRequestError as exc:
-        raise HTTPException(status_code=422, detail=exc.detail)
-    except ledger_catalog.CatalogUnavailable as exc:
-        raise HTTPException(status_code=503, detail=exc.detail)
-    except Exception as exc:                       # noqa: BLE001 - same DDL-race backstop
-        if _is_undefined_table(exc):
-            raise _relation_absent()
-        raise
 
 
 # `GET /api/ledger/explore_entity` was retired 2026-08-23 (round 3, "v1 retirement").
@@ -469,50 +361,6 @@ def ledger_siblings_route(
         raise
 
 
-@router.get("/journey")
-def ledger_journey_route(
-    scope: str = Query(..., description="마킹 — <축이름>:<값>,<값>. 주어 2개로 풀려야 한다"),
-    finding: str = Query(None, description="관측 종류. 미지정 시 등록부의 기본값"),
-    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
-    db: Session = Depends(get_db),
-):
-    """WF 2장의 «여정 대조» — 두 주어가 걸은 공정 서열을 위에서 아래로. 읽기 전용.
-
-    🔴 A SEPARATE ROUTE, NOT A MODE OF `/siblings`, AND THAT IS THE POINT. `/siblings`'s
-    rows carry 배수·신뢰구간·「우연 아님」; this shape carries none of them because two
-    subjects cannot support them. Folding an n=2 answer into an endpoint whose contract
-    includes population statistics is how a field that must not exist gets emitted as null
-    「and the client will hide it」 — and a field that exists gets rendered eventually.
-    The existing `/siblings?scope=` answer is UNCHANGED by this route existing.
-
-    🔴 3장 이상은 여기서 답하지 않는다 — 422 `scope_is_not_a_pair`, 해결된 주어 목록과
-    함께. 순위 레일이 그 질문의 답이고, 이 화면이 다섯 열짜리 표로 번지면 그건 소유자가
-    치우라고 한 바로 그 표다.
-    """
-    try:
-        return ledger_journey.journey(
-            db.connection(), kind=finding, scope=scope, window=window)
-    except ledger_walk_contrast.WalkRequestError as exc:
-        raise HTTPException(status_code=422, detail=exc.detail)
-    except ledger_siblings.SiblingsRequestError as exc:
-        raise HTTPException(status_code=422, detail=exc.detail)
-    except ledger_siblings.SiblingsConfigError as exc:
-        logger.error("journey axis geometry refused: %s", exc)
-        raise HTTPException(status_code=503, detail={
-            "reason": "axes_config_refused", "message": f"요인 선언 거절: {exc}"})
-    except ledger_trace.ResolverConfigError as exc:
-        logger.error("ledger resolver config refused: %s", exc)
-        raise HTTPException(status_code=503, detail={
-            "reason": "resolver_config_refused", "message": f"해결기 config 거절: {exc}"})
-    except finding_kinds.FindingKindError as exc:
-        logger.error("finding-kind registry refused: %s", exc)
-        raise HTTPException(status_code=503, detail={
-            "reason": "finding_kind_registry_refused",
-            "message": f"관측 종류 등록부 거절: {exc}"})
-    except Exception as exc:                       # noqa: BLE001 - same backstop
-        if _is_undefined_table(exc):
-            raise _relation_absent()
-        raise
 
 
 @router.get("/trends")
@@ -686,41 +534,6 @@ def _lot_grid_refusals(exc):
     return None
 
 
-@router.get("/lots")
-def ledger_lot_grid(
-    columns: str = Query(None, description="열 명세 CSV — <종류>:<집계>. 미지정 시 선언된 기본값"),
-    by: str = Query(None, description="행 축 이름. 미지정 시 선언된 기본 축"),
-    window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD"),
-    kind: str = Query(None, description="행 축·기하를 고를 때 기준이 되는 종류"),
-    limit: int = Query(None, description="행 수 상한"),
-    offset: int = Query(None, description="행 오프셋"),
-    db: Session = Depends(get_db),
-):
-    """놀라움 장치 — 행 = 선언된 축, 열 = {항목 × 집계}. 읽기 전용.
-
-    🔴 「미검사」와 「0」은 다른 답이고 `cells[].state`가 그 둘을 가른다. 클라가 0에서
-    미검사를 «추론»하지 않는다 — 실측으로 랏의 20.6%만 검사되므로, 랏 크기를 분모로
-    쓰면 5배 틀린다.
-
-    🔴 지표 목록은 이 파일에도 라우트에도 없다. 항목은 `finding_kinds` 등록부,
-    집계는 `ledger_lots.AGGREGATES`, 행 축은 `siblings_axes.json`이 선언한다 —
-    종류를 하나 선언하면 열 계열이 통째로 늘고 여기는 한 줄도 안 바뀐다.
-
-    🔴 스캔이 상한을 넘으면 window가 «강제»되고 응답이 그렇게 말한다
-    (`window.forced` + `forced_reason`). 한 달 치를 전 기간으로 표기하는 화면은 없다.
-    """
-    try:
-        return ledger_lots.lots(db.connection(), columns=columns, by=by, window=window,
-                                kind=kind, limit=limit, offset=offset)
-    except Exception as exc:                       # noqa: BLE001 - mapped below
-        mapped = _lot_grid_refusals(exc)
-        if mapped is not None:
-            raise mapped
-        if _is_undefined_table(exc):
-            # The race the catalogue gate cannot close: a relation dropped between the
-            # `to_regclass` lookup and the scan. Judged on SQLSTATE.
-            raise _relation_absent()
-        raise
 
 
 @router.get("/lot_map")
@@ -756,30 +569,3 @@ def ledger_lot_map(
         raise
 
 
-@router.get("/coverage")
-def ledger_coverage(db: Session = Depends(get_db)):
-    """이 박스의 원장이 «무엇을 덮고 있는지» — 화면이 로드할 때 한 번 묻는다.
-
-    🔴 200 AND A `state`, NEVER AN ERROR, FOR AN ABSENT OR EMPTY LEDGER. Those
-    are the two answers this endpoint exists to give; raising for them would put
-    the operator back in front of the same blank screen with a different colour.
-
-        absent  마이그레이션 미실행 — 배포 문제
-        empty   테이블은 있고 원자 0 — 백필 미실행
-        ready   추적 가능
-
-    The two remaining "nothings" — an unknown lot, and a known lot with no
-    lineage claim — are properties of one lot rather than of the box, and
-    `GET /trace` already answers them apart (`[unknown_subject]` vs
-    `[root] … (register 있음)`). This endpoint deliberately does not duplicate
-    that judgement; it tells the screen WHICH WORLD it is in, so an
-    `[unknown_subject]` against `state: "empty"` reads as "백필 미실행" and the
-    same hop against `state: "ready"` reads as "없는 랏".
-    """
-    try:
-        return ledger_trace.coverage(
-            db.connection(), relation=LEDGER_RELATION,
-            cursor_relation=LEDGER_CURSOR_RELATION)
-    except ledger_trace.ResolverConfigError as exc:
-        logger.error("ledger resolver config refused: %s", exc)
-        raise HTTPException(status_code=503, detail=f"해결기 config 거절: {exc}")

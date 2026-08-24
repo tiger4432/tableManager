@@ -630,18 +630,21 @@ def test_chained_rollups_are_refused_rather_than_silently_truncated(monkeypatch)
 
 
 def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
-    """🔴 THE POINT OF THE RULING, asserted where it can actually regress: the three
-    wafer-scope readers must bind a LIST. Pinning one `subject_type` is what made 42
+    """🔴 THE POINT OF THE RULING, asserted where it can actually regress: a
+    wafer-scope reader must bind a LIST. Pinning one `subject_type` is what made 42
     `WaferLeg` atoms invisible and the screen say「본딩 조건 차이 없음」falsely.
+
+    `ledger_journey` was the second source checked here and was deleted with the /journey
+    route on 2026-08-25; its half of this guard goes with it rather than lingering as a
+    test of nothing. `ledger_walk_contrast` still carries the same query shape, so the
+    invariant is still asserted where it still exists.
 
     Asserted on the SQL text because these are hand-built query strings — there is no
     object to interrogate, and a future edit back to `= %(stype)s` is exactly the
     regression this guards."""
-    import ledger_journey
     from ledger_api import ledger_walk_contrast
 
     sources = [
-        ("ledger_journey", open(ledger_journey.__file__, encoding="utf-8").read()),
         ("ledger_walk_contrast",
          open(ledger_walk_contrast.__file__, encoding="utf-8").read()),
     ]
