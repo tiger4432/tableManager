@@ -99,7 +99,7 @@ export class HeadSummaryPanel extends Panel {
       n.textContent = text;
       el.appendChild(n);
     };
-    if (first.wafer) put(`웨이퍼 ${first.wafer}`, 'rb-head-wafer-subject');
+    if (first.wafer) put(`씨앗 웨이퍼 ${first.wafer}`, 'rb-head-wafer-subject');
     if (first.lot) put(`랏 ${first.lot}`);
     if (typeof first.cells === 'number') put(`${first.cells}칸`);
     for (const kind of kinds) {
@@ -184,9 +184,12 @@ export class HeadSummaryPanel extends Panel {
 
     // The wafer, or the fact that there isn't one. `resolution.state` names WHICH absence.
     if (m.wafer && m.wafer.id) {
-      line.appendChild(this._chip('웨이퍼', m.wafer.id, 'fact'));
+      // 🔴 이 칩이 «앉은» 웨이퍼입니다 -- 아래 줄의 「씨앗 웨이퍼」와 «다른 대상»일 수 있고,
+      //    실제로 지금 다릅니다(칩 계열과 목업 웨이퍼는 서로 다른 자재입니다). 둘 다 「웨이퍼」로
+      //    적으면 두 대상의 수가 «한 대상»의 것으로 읽힙니다.
+      line.appendChild(this._chip('칩이 앉은 웨이퍼', m.wafer.id, 'fact'));
     } else {
-      line.appendChild(this._chip('웨이퍼', `해결 안 됨 · ${m.resolution.state}`, 'absent'));
+      line.appendChild(this._chip('칩이 앉은 웨이퍼', `해결 안 됨 · ${m.resolution.state}`, 'absent'));
     }
 
     line.appendChild(this._chip('상태', m.state, 'fact'));
