@@ -484,7 +484,11 @@ export function subgraphModel(result) {
       edges: Array.isArray(body.edges) ? body.edges.length : 0,
     },
     contrast: prop.contrast || null,
-    complete: prop.complete === true,
+    // 🔴 «안 온 것»과 «끊겼다»는 다릅니다. `=== true` 로 접으면 필드가 아직 없는 응답이
+    //    「예산에서 끊김」으로 읽히고, 데이터가 오기 «전에» 배너가 뜹니다 -- 오늘 하루의
+    //    「없음을 고장으로 읽는」 부류입니다. 모르면 null 로 둡니다.
+    complete: prop.complete === undefined || prop.complete === null
+      ? null : prop.complete === true,
     truncated: truncationNames(body.truncated),
     truncationReason: (body.truncated && body.truncated.reason) || null,
     candidates,

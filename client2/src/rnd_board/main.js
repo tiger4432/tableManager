@@ -404,6 +404,11 @@ export const BOARD = Object.freeze({
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
+        // 🔴 이 걷기의 «예산»입니다 (총괄 실측 2026-08-24): 기본 400 에서는 nodes·claims 가
+        //    끊겨 ranked 가 «0» 이고, 1000 이면 후보 «21» 이 나옵니다. 구성이 스텝 267개를
+        //    물고 오기 때문에 이 화면에서는 400 이 모자랍니다. 컨트롤이 아니라 «선언»입니다 --
+        //    버튼도 자동 재시도도 없습니다.
+        nodeLimit: 1000,
       },
     },
     {
@@ -417,6 +422,11 @@ export const BOARD = Object.freeze({
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
+        // 🔴 이 걷기의 «예산»입니다 (총괄 실측 2026-08-24): 기본 400 에서는 nodes·claims 가
+        //    끊겨 ranked 가 «0» 이고, 1000 이면 후보 «21» 이 나옵니다. 구성이 스텝 267개를
+        //    물고 오기 때문에 이 화면에서는 400 이 모자랍니다. 컨트롤이 아니라 «선언»입니다 --
+        //    버튼도 자동 재시도도 없습니다.
+        nodeLimit: 1000,
       },
     },
   ],

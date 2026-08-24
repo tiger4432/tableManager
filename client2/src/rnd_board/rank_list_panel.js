@@ -31,6 +31,9 @@ export class RankListPanel extends Panel {
     this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
     // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
     this.start = options.start || null;
+    // 이 걷기의 «예산». 화면이 선언하고 부품은 나르기만 합니다 -- 기본값에 기대면 끊긴 걷기가
+    // 「후보 없음」으로 보입니다 (오늘 두 번 그렇게 읽혔습니다).
+    this.nodeLimit = options.nodeLimit || null;
     this.seedNodeId = options.seedNodeId || null;
     this.collect = options.collect || 'candidate';
     this.fetchImpl = options.fetchImpl || null;
@@ -51,6 +54,7 @@ export class RankListPanel extends Panel {
     this.model = await this.walk({
       start: this.start || { groupby: 'wafer', value: this.seedNodeId },
       collect: this.collect,
+      ...(this.nodeLimit ? { node_limit: this.nodeLimit } : {}),
     });
     this.loadState = this.model.ok ? 'ready' : 'refused';
     this.render();
@@ -184,7 +188,7 @@ export class RankListPanel extends Panel {
     if (c.incomparable) words.push('종류 다름');
     // `complete:false` means the budget cut the walk short: what is below is UNEXAMINED, and
     // that is a different sentence from 「없다」.
-    if (!m.complete) words.push('미검사');
+    if (m.complete === false) words.push('미검사');
     return words;
   }
 
