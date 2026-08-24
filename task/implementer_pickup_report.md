@@ -1,3 +1,60 @@
+# 🔴 ② 막혔습니다 — **번역기가 6,731을 «건너뛰지 않고 «던집니다»**. 원자 «0» (구현자 21:2x)
+
+작게 먼저에서 «즉시» 섰습니다. 제가 미리 적어 둔 두 갈래(refused / 조용히 건너뜀) 중
+**어느 쪽도 아니고 «세 번째»였습니다.**
+```
+ledger.source_preparation.SourcePreparationError:
+   event_frame.rows[«3»].core_wafer: entity identity value is missing after preparation
+-> 첫 배치 «4행째»에서 예외. 배치 통째로 중단
+착지 원자   dt_transfer «0»
+```
+🔴 **「엣지를 안 만든다」와 「그 행을 만나면 멈춘다」는 다릅니다.** 지금은 후자입니다.
+
+## 왜 — `read` 문법에 «거르는 자리»가 없습니다
+```
+setup_bundle.py:1259   read 가 받는 키
+   required  unit · identity · group_by · order_by · occurred_at
+   optional  registration_probe        ignored  cursor
+   🔴 «where / filter 가 없습니다»
+```
+그래서 «선언으로는» 「core_wafer 있는 행만」을 말할 방법이 없습니다.
+바인딩은 core_wafer 를 «개체 신원»으로 요구하고, 신원이 비면 준비 단계가 «거절»합니다 —
+그건 옳은 동작입니다(신원을 추정으로 채우지 않는 것). 막힌 것은 «거르는 자리»가 없다는 쪽입니다.
+
+## 🔴 그리고 총괄이 물으신 522 — **정확히 같은 집합입니다**
+```
+event_time NULL              «522»
+product = 'SYNTHETIC'        «522»
+둘 다                        «522»    <- 🔴 동일 집합. 추측이 맞았습니다
+그 522 는 core_wafer 도 전부 없음      (522/522)
+```
+```
+두 제외가 «포개집니다»
+   core_wafer 없음  6,731
+   event_time 없음    522     <- 6,731 «안»에 들어 있습니다
+   둘 중 하나라도    6,731
+   🔴 쓸 수 있는 행   «28,208»   <- 게이트 수와 «정확히» 일치
+```
+📌 즉 **조건이 «하나»면 됩니다**: `core_wafer IS NOT NULL` -> 28,208. 522 는 «저절로» 빠집니다.
+
+## 제안 — 오늘 이미 쓴 방법입니다
+```
+ⓐ 🔴 뷰 하나   CREATE VIEW dt_log_transferable AS
+                  SELECT * FROM dt_log WHERE NULLIF(core_wafer::text,'') IS NOT NULL
+                -> relation 을 그 뷰로. «선언 한 줄»만 바뀝니다
+                ✅ void_obs_observed 로 «오늘 검증된 경로»입니다 (table_config 새 항목 + 선언)
+                ✅ 제외가 «DDL 에 보입니다» — 조용히 버려지지 않습니다
+                ⚠️ 대가는 같습니다: 조인/필터가 config 가 아니라 DDL 에 삽니다
+ⓑ read 에 filter 축 추가        문법 확장. 오늘 일이 아닙니다
+ⓒ 신원 없으면 «행을 건너뛴다»    기계 변경. 그리고 «조용히 버리는» 동작이라 위험합니다
+```
+🔴 **제 기울기는 ⓐ 입니다.** 뷰·table_config 항목은 «제 손»이고(오늘 한 번 했습니다),
+   선언의 relation 한 줄은 총괄 파일입니다. 승인 주시면 뷰부터 세우겠습니다.
+
+## ③ 는 어떻게 할까요
+`wafer_process` 는 «전 컬럼 100%» 라고 하셨으니 이 문제가 «없을» 것입니다.
+**②가 막힌 동안 ③을 먼저 돌릴까요?** 순서가 지시서엔 ②->③ 인데, ②가 판정 대기라
+③을 먼저 태우면 오늘 안에 하나는 끝납니다. 지시 주십시오.
 # 🟢 선언 «보입니다» — 게이트 수 둘 확정. 착수 신호만 기다립니다 (구현자 21:0x)
 
 라이브 config 에 둘 다 서 있습니다. **지시대로 «착수는 안 했습니다»** — 알려 주시면 그때 돕니다.
