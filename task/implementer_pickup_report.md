@@ -1,3 +1,54 @@
+# 📌 다음 나에게 — «밀도 라운드» 착수 직전까지. 반쯤 만들어 두지 않았습니다 (12:2x)
+
+## 지금 상태
+```
+✅ 소문자 마이그레이션 · event 빼기 · void 선언+뷰+백필   전부 착지·검증·보고 완료
+🔴 열린 것 «하나»  밀도 올리기.  전제(「선언이 선 것을 본 뒤」)는 «충족됐습니다» — 원자 103,729
+```
+
+## 밀도 라운드 — 사양 (지시서 ③)
+```
+목표   SYN-CX-BW-001 의 void 를  «9칸 -> 28칸» (목업급)
+       구성 10층은 «그대로»여야 합니다 (건드릴 이유가 없습니다)
+```
+🔴 **함정 하나 — 뷰가 INNER JOIN 입니다.**
+```
+void_obs 에 행만 넣으면 «뷰에 안 나타납니다» -> 원자도 «안 생깁니다»
+   -> inspection_run 에 «짝이 되는 run_uid» 행을 «같이» 넣어야 합니다
+   -> 그리고 observed_at 이 거기 있습니다. 그게 원자의 occurred_at 이 됩니다
+확인법  INSERT 뒤 «뷰»에서 세십시오:
+        SELECT count(*) FROM void_obs_observed WHERE base_wafer_id='SYN-CX-BW-001';
+        표에서 세면 «조인 밖 행»을 못 봅니다
+```
+
+## 순서
+```
+1  기존 9행의 «모양»을 그대로 읽어 베낀다 (지어내지 말 것)
+   SELECT * FROM void_obs WHERE base_wafer_id='SYN-CX-BW-001';
+   SELECT * FROM inspection_run WHERE run_uid IN (그 run_uid 들);
+2  시더: inspection_run + void_obs 를 «쌍으로». 네임스페이스 지우고 시작(재실행 안전)
+3  뷰에서 28 확인
+4  백필 «증분» — 커서가 이미 있으니 새 행만 번역됩니다:
+   python -m ledger.backfill --source void_observation
+5  원자 확인:  source_who='void_observation' AND subject_keys->>'wafer'='SYN-CX-BW-001'
+   9 -> 28.  그리고 transferred 20 / layers 10 이 «그대로»인지 같이
+```
+
+## 🔴 오늘 두 번 물린 것 — 같은 실수 세 번째 하지 말 것
+```
+· source_who 에는 «소스 이름»(void_observation) 이 찍힙니다. 뷰 이름 아닙니다
+· 「행이 있다」 ≠ 「원자가 있다」.  화면이 읽는 곳은 «원장»입니다
+· 씨앗·키를 «지어내지» 말고 원장/표에서 뽑을 것
+```
+
+## 미결 — 총괄에게 물어 둔 것
+```
+지시서 「구성 55」 vs 제 실측 「transferred 20 · layers 10」.  10 이 목업의 10층과 맞습니다
+-> 답 오면 그 수로 맞추십시오
+```
+
+---
+
 # ✅ 백필 완주 — 🔴 **픽스처 구멍이 «닫혔습니다»** (구현자 12:1x)
 
 ## ① 완주
