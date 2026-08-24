@@ -583,9 +583,15 @@ export class MapPanel extends Panel {
     //    following whatever the control bar picked. Today every map here names its axis.
     this._writeBasisRow(n.basis);
     this._writePager(n.pager);
-    n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`;
+    // 🔴 이름이 «셋»인데 배지가 둘만 말하고 있었습니다. 총괄이 marking:1 을 건드렸더니
+    //    「읽기 marking:2」라고 적힌 패널이 따라 움직였고, 배지만 보면 «거짓말»로 보입니다 --
+    //    실제로는 페이지가 «세 번째 이름»(pageFollows)을 따라간 것입니다. 선언한 이름은
+    //    전부 말합니다.
+    n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`
+      + (this.pageFollows ? ` · 따라감 ${this.pageFollows}` : '');
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
+    if (this.pageFollows) n.badge.setAttribute('data-follows', this.pageFollows);
 
     // A refusal is content: the server's own sentence, or the token when it sent none.
     // 🔴 WHAT THE MAP COULD NOT PLACE. This is the closest line on the screen to why the board
