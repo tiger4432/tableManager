@@ -6,6 +6,86 @@
 
 ---
 
+# 📋 대문자 훑기 «완료» — id 만드는 자리 · 라벨 · 미상으로 갈랐습니다 (16:2x)
+
+## 0. 먼저 총괄 수리를 «제가» 확인했습니다
+```
+/siblings   state «ready» · subject.type «wafer» · candidates 20 · fields 54
+            atoms_per_case_subject 69 · control 92   (전: empty · no_atoms_for_subjects)
+```
+✅ 닫혔습니다. 🔴 **다만 제 옛 발견은 «그대로 살아 있습니다»** — 또래 넷 중 둘이 여전히 빈 답입니다:
+```
+bond_lot  ready · candidates 20        bond_eqp  ready · candidates 20
+leg       «empty» · candidates 0        scan_recipe  «empty» · candidates 0
+(va.subjects 는 재번역으로 늘었습니다: leg 6->36 · recipe 124->154)
+```
+그 둘은 「전부 걸침 · 대조 0」이라 **이번 수리와 다른 결함**입니다. 닫힌 것으로 세지 마십시오.
+
+---
+
+## 1. 🔴 id·요청값을 «만드는» 자리 — 남은 것 셋. **전부 그래프 뷰어입니다**
+```
+client2/src/ledger_graph/entity_catalog.js:46   selectedType = typeSelect.value || 'Lot'
+client2/src/ledger_graph/entity_catalog.js:94   같은 자리(change 핸들러)
+client2/src/ledger_graph/main.js:239            `/explore?…` 에 {type:'Lot', …}
+```
+📌 **이 셋이 오늘 죽은 `/entities`·`/explore` 의 «클라 쪽 짝»입니다.**
+   ⓒ 가 서버를 고쳐도 이쪽이 대문자를 보내면 그대로입니다.
+   그리고 **그래프 뷰어는 「레거시 다 버려」의 삭제 후보**라 «같이 사라질» 자리입니다.
+
+## 2. ✅ 지금 «안 깨지는» 것 — 불러서 확인했습니다
+```
+client2/src/rnd_board/main.js:194·254   grain.subject_type = 'WaferLeg'  (살아 있는 보드)
+실측   grain 을 «대문자»로 보내면   state ready · series 2 · rows 72
+       grain 을 «소문자»로 보내면   state ready · series 2 · rows 72   <- 같습니다
+```
+⚠️ **미상**: 두 철자가 «같은 답»이라 그 필드가 실제로 원장과 «대조되는지»는 모릅니다.
+   안 깨진다는 것만 확인했고, 왜 안 깨지는지는 «안 쟀습니다». 한쪽으로 분류하지 않습니다.
+
+## 3. 📄 시험 픽스처 — «자기 데이터». 고치지 마십시오
+```
+client2/tests/fixtures/case_control.json          4
+client2/tests/fixtures/ledger_trace_contested.json 9   · ledger_trace_live.json    20
+client2/tests/fixtures/ledger_trace_nothings.json 16   · ledger_trace_probe.json   19
+client2/tests/ledger_graph_harness.mjs            11   · ledger_trace_harness.mjs   3
+client2/tests/rnd_board_control_trend_harness.mjs  1   · fixtures/gen_…contested.py  1
+```
+하니스가 이 픽스처를 «먹여 넣고» 그리기를 단언합니다 — 라이브 원장을 안 봅니다.
+
+🔴 **예외 둘 — 「고칠 것」이 아니라 «신호»입니다:**
+```
+client2/tests/ontology_structure_harness.mjs:230
+   REAL_TYPES = ['Lot','Wafer','Product','Equipment','Recipe','Die']
+   -> v1 어휘가 «실재한다»고 못 박는 시험. 어휘를 갈면 «이게 먼저» 빨개집니다
+server/tests/test_enrichment_actions.py:68·107·118·150
+   entity_id("Wafer", …) — 공용 빌더. ⓒ 로 정규화하면 «먼저» 빨개집니다
+```
+**둘 다 그렇게 빨개지는 것이 «정상 동작»입니다.** 미리 고치면 그 신호가 사라집니다.
+
+## 4. 📄 문서 — 앞 라운드에서 이미 갈랐습니다
+```
+🔴 붙여 넣으면 틀리는 예제 «6»   spec 넷 · guide 하나 · architecture 하나
+🔴 인코딩된 옛 id «9»            task/sample_walk_response.json  (base64 라 «안 보입니다»)
+📄 산문·과거 실측 인용 «54»      ⛔ 고치면 «그때의 기록»이 거짓이 됩니다
+```
+
+---
+
+## 미상으로 «남기는» 것 — 추측해서 한쪽에 안 넣습니다
+```
+1  grain.subject_type 이 원장과 실제로 대조되는지 (두 철자가 같은 답을 냅니다)
+2  픽스처들이 «렌더링만» 재는지, 타입 문자열로 «분기»도 하는지 — 전수로 안 봤습니다
+3  docs/_archive/** 의 대문자 — 아카이브라 손댈 일이 없다고 «판단»했지 재지 않았습니다
+```
+
+## census 형식대로 — 부른 것 · 안 부른 것
+```
+부른 것   siblings(scope 넷) · trends(grain 두 철자) · entities · explore · journey
+          structure · kinds · subgraph · composition · lot_map · trace · lots · coverage
+안 부른 것 subgraph/table  -> 형태로만 분류했습니다
+```
+---
+
 # 📊 라우트 «열넷 전수» — 소유자 질문 「지금 안 되는 거 다 레거시 아님?」에 답합니다 (15:4x)
 
 **거의 맞습니다. 넷이 비어 있고 «셋»은 레거시·다른 제품, «하나»만 현역입니다.**
