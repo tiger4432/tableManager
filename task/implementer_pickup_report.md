@@ -1,3 +1,105 @@
+# 🔴 재 왔습니다 — **ⓑ 는 «문법 확장»이라 오늘 일이 아니고, ⓐ 는 «혼자서는 못 고칩니다»** (구현자 14:2x)
+
+## (1) v5 문법이 payload 최상위 칸을 선언할 수 있나 — **없습니다. 코드에 박혀 있습니다**
+```python
+ledger/roleframe.py:1172-1183   (v5 런타임이 payload 를 «짓는» 자리)
+   elif emission.object_kind == "value":
+       object_payload = {"value": _plain(obj_value)}      <- 🔴 «value» 하나. 끝입니다
+   ...
+   if qualifiers:
+       object_payload["qualifiers"] = _plain(qualifiers)  <- 나머지는 «전부» 여기 밑
+```
+**선언이 최상위 칸 이름을 «댈 방법이 없습니다».** `finding_kind`·`run_uid` 를 최상위에 놓으려면
+저 함수를 고쳐야 합니다 = 문법 확장. 총괄 말씀대로 «오늘 일이 아닙니다».
+```
+📎 옛 emit 문법에는 있었습니다 (source_contract.py:158  payload_fields = declared_object["payload"])
+   -> v5 bind 로 오면서 그 축이 «없어졌습니다». v1 원자가 최상위 칸을 가진 건 그래서입니다
+```
+
+## (2) qualifiers 밑을 보면 다른 소스가 깨지나 — **안 깨집니다. 쓰는 소스가 «하나»뿐입니다**
+```
+object_kind='value' 원자 중 qualifiers 를 «쓰는» 소스   void_observation «단 하나»
+그 밑의 이름   gate · inchip_x · inchip_y · radius_y · unit
+투영이 읽는 이름과 충돌   🔴 «없음» (finding_kind · run_uid · map_id · position 중 하나도 안 겹침)
+```
+✅ **ⓐ 는 안전합니다.** 반경이 void_observation 하나이고 이름이 안 부딪힙니다.
+
+## 🔴 그런데 — **ⓐ 만으로는 「void」가 «안 돌아옵니다»**
+```
+제 원자 payload    {"value": 7.691, "qualifiers": {gate, unit, inchip_x, inchip_y, radius_y}}
+찾는 것            finding_kind · run_uid
+어디에 있나        🔴 «둘 다 없습니다». 최상위에도, qualifiers 밑에도
+```
+**qualifiers 를 읽어도 없는 것은 못 읽습니다.** ⓐ 가 살리는 것은 `position {}` 쪽입니다
+(inchip_x·inchip_y·unit 이 실제로 거기 있으니 좌표가 «생깁니다»).
+**「defect」→「void」 와 run_uid=null 은 ⓐ 로 «안 고쳐집니다».**
+
+## 그래서 제 추천 — **ⓐ + 선언에 두 칸을 «qualifier 로» 추가**
+```
+① 읽는 쪽   투영이 최상위에 없으면 qualifiers 밑도 본다   (subgraph.py:665-687 한 자리)
+            -> 안전함 측정 완료. 소비자 하나, 충돌 0
+② 쓰는 쪽   선언의 qualifier 에 «둘» 추가 — 문법 확장 «불필요»합니다:
+               finding_kind = 상수 "void"        (v1 이 최상위에 쓰던 그 값)
+               run_uid      = 컬럼 run_uid       🔴 «뷰에 이미 실려 있습니다»
+            ⚠️ vocabulary 의 observed@1 optional qualifiers 에 그 둘을 «허용»해 주셔야 합니다
+               (roleframe.py:1157 이 allowed 목록 밖 이름을 «unknown_payload_field» 로 거절합니다)
+③ 재번역    103,729 한 번 더 (제가 합니다)
+```
+```
+얻는 것   finding_kind «void» · run_uid 복구 · position 좌표까지 «같이» 삽니다
+안 하는 것 문법 확장 «안 합니다». roleframe 의 payload 조립부를 «안 건드립니다»
+```
+📌 ②의 vocabulary 두 줄은 총괄 파일이라 제가 안 만집니다. **허용해 주시면 ①③ 은 제 손입니다.**
+
+⚠️ 밀도는 여전히 «그 다음»입니다 — 지금 올리면 「defect」 9,000건이 더 생깁니다.
+# ✅ v1 은퇴 «완료» — 게이트 «둘 다» 정확히 맞았습니다 (구현자 13:3x)
+
+소유자 「진행」 지시로 착수했습니다.
+
+## 🔴 게이트를 «커밋 전»에 트랜잭션 «안»에서 태웠습니다
+지시서는 「지우고 → 재고 → 어긋나면 되돌린다」였는데, 그러면 실패가 «두 번째 파괴적 조작»을
+필요로 합니다. 같은 커넥션에서 지운 «뒤 커밋 전»에 걷기를 태우면 **실패가 공짜**입니다 —
+안 맞으면 삭제가 «아예 착지하지 않습니다».
+```
+결과   지우고 -> 재고 -> PASS 확인 -> «그제서야» 커밋
+```
+
+## 전 / 후
+```
+                    전          후
+void_obs        102,947    ->      «0»      은퇴
+void_observation 103,729    ->  103,729     그대로
+delam_obs         11,561    ->   11,561     «안 건드림» (v1 이지만 대상 아님 — 지시서대로)
+v1 커서             1행     ->      «0»      재발화 안 함 (②)
+ledger_events 총                 342,735
+```
+
+## 게이트 ③ — 두 수 «전부» 기대값과 일치
+```
+SYN-BW-103-11 · collect=point
+   hops=12   407  ->  «208»   = 199(새 void · die 경로) + 9(delam)      ✅ 기대값 208
+   hops=2    208  ->    «9»   = delam 만                                 ✅ 기대값 9
+```
+🔴 **hops=2 가 208 그대로였으면 「삭제가 안 먹은 것」, 0 이었으면 「delam 까지 지운 것」** —
+   둘 다 아니고 «9» 입니다. 총괄이 두 수를 다 적으라 하신 이유가 이것이었습니다.
+   수 하나만 봤으면 「208 유지」로 «아무 일도 없었다»고 읽혔을 것입니다. 재료가 바뀌었습니다.
+
+## 그리고 이중 계수가 «닫혔습니다»
+```
+전   hops=4/12 에서 407 = 같은 관측 199개가 «두 번» (v1 wafer 경로 + 새 die 경로)
+후   208. 한 관측 = 한 원자 = 한 point
+```
+
+## 남은 것 — 지시서 ④ 순서 그대로
+```
+1  밀도 9칸 -> 28칸    🔴 원인 «미상»입니다. 제 「뷰가 INNER JOIN」 괄호는 반증됐습니다.
+                        착수 전에 «원인부터 새로» 세울 것
+2  타입 목록을 선언에서  vocabulary.py:126 · ledger_selection.py 다섯 · ledger_catalog.py:117
+                        · ledger_trace_router.py:158  (리터럴 소문자화 «금지» — 선언에서 읽기)
+3  core·dt step 표      픽스처는 있음(40500353). 표·선언 남음
+```
+📌 화면 확인은 총괄 몫입니다 — 「그 패널의 수」를 은퇴 전후로 적으라 하셨는데,
+   제가 잰 것은 «collect=point» 쪽뿐입니다. 모집단 경로 수치는 총괄이 봐 주십시오.
 # ✏️ 제 앞 보고 «정정» — 이중 계수의 반경을 제가 넓게 말했습니다 (구현자 13:2x)
 
 ```
