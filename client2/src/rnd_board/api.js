@@ -331,7 +331,8 @@ export function compositionModel(result) {
 
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
-  const { apiBase, nodeId, collect, fetchImpl, positive, negative } = params || {};
+  const { apiBase, nodeId, collect, fetchImpl, positive, negative,
+          node_limit: nodeLimit, hops } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -346,6 +347,12 @@ export async function fetchSubgraph(params) {
   // names neither reaches the server exactly as it did before.
   for (const id of positive || []) query.append('positive', id);
   for (const id of negative || []) query.append('negative', id);
+  // 🔴 THE BUDGET, CARRIED. Measured 2026-08-24: this boundary DROPPED both, so a part could
+  //    read `truncated: ["nodes"]` and had no way to ask for more -- the screen could name the
+  //    cut and never lift it. Omitted stays omitted, so the server's own default still applies
+  //    and a request that names neither is byte-identical to before.
+  if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
+  if (hops !== undefined && hops !== null) query.set('hops', String(hops));
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
   if (!res.ok) {
