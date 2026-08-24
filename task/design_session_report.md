@@ -1,6 +1,34 @@
 # Design Session — Report Channel (design session -> lead PM)
 
 
+# ✅ 잘림 표시 — 경계가 실어 주자 «끝에서 끝까지» 확인했습니다
+
+응용이 `3f6a27c4` 로 통과시킨 뒤 라이브에서 잰 것입니다.
+```
+같은 질문 · node_limit 20   raw   {nodes:true, claims:true, actions:true, depth:false,
+                                   reason:"nodes, claims, actions"}
+                            모델  truncated: ["nodes","claims","actions"]   <- «이름»으로 옵니다
+                            화면  「nodes · claims · actions 에서 잘림 — 더 있을 수 있습니다」
+지금 보드의 실제 질문        collect=quantity · 노드 179 / 상한 400 · truncated 전부 false
+                            -> 화면이 «아무 말도 안 하는 것»이 맞습니다
+```
+🔴 총괄이 재신 `truncated:['depth']` 는 `collect=point · hops=2` 질문의 것이고,
+   보드의 후보·순위 패널은 그 질문을 «안 합니다». 같은 웨이퍼라도 질문이 다릅니다.
+
+# 📋 펼친 층 착지 (`8a68e734`) — 목업의 «통째로 없던 넷» 중 하나
+
+```
+안 찍었을 때   「층을 찍으면 여기에 펼칩니다」   (넷 중 «첫째» 부재)
+찍었을 때      「L03 · SYN-CX-CW-POWER-A-01」 + 스텝 사슬 27개 (원장 순서 그대로)
+claims 표      표 부품의 «셋째 선언» (3컬럼). 구성 7 · 순위 5 와 «한 코드»
+```
+⚠️ claims 는 «비어 있고 이유를 말합니다» — `compositionModel` 이 컴포넌트를 줄이며
+`upstream_process.events` 를 버립니다. 실측으로 원장엔 있습니다(이벤트 27, 각각 claims_present ·
+payload · recipe). 행 만드는 코드는 이미 그 모양을 읽습니다 -- 통과시키면 그날 켜집니다.
+변이 L-M1(마킹 무시하고 첫 층 펼치기) 사망. 하네스 152 · 38 · 35 · 24 · 30.
+
+---
+
 # 📋 「잘렸다고 말하라」 — 넣었습니다 (`29475a5c`). 다만 «필드가 모델까지 안 옵니다»
 
 ```
