@@ -1,3 +1,54 @@
+# 🔴 「측정 원자 씨딩」 착수 전 — **전제가 반은 틀렸고, 나머지 반은 «또 선언 벽»입니다** (구현자 18:3x)
+
+## ① 전제 정정 — quantity 는 «0이 아닙니다»
+```
+지시서   「지금 그 웨이퍼 하위그래프에 quantity·value «0개»라 두 패널이 빕니다」
+실측     SYN-CX-BW-001  hops=12
+         {entity 129, claim 257, event 257, collection 28, «quantity 21», value «0»}
+         SYN-BW-103-11  {… quantity 25, value 9}
+```
+🔴 **quantity 는 «21개» 있습니다.** 없는 것은 «value» 뿐입니다.
+   (quantity 예: 「void · void_formation」 「void_observed · void_observation_bias」
+    — 메커니즘 모델에서 옵니다. 그 웨이퍼도 이미 붙어 있습니다)
+
+## ② value 가 0인 «진짜» 이유 — processed_with 원자가 둘뿐
+```
+value 노드는 «processed_with» 원자에서 옵니다 (실측 1:1)
+   SYN-BW-103-11   processed_with «9»  ->  value 노드 «9»
+   SYN-CX-BW-001   processed_with «2»  ->  value 노드 «0»
+```
+📌 즉 「측정 원자」의 정체는 «공정 파라미터»(recipe setpoint · chamber · eqp)입니다.
+   목업 웨이퍼의 value 9개가 전부 그 모양입니다.
+
+## 🔴 ③ 그런데 씨딩으로 못 넘습니다 — void 때와 «같은 벽»
+```
+라이브 선언 vocabulary   has_netdie · register · has_wafer · derived_from · slot_map
+                         · transfer · inspected · observed
+                         🔴 «processed_with 가 없습니다»
+sources                  dt_job · lot_event · transfer_event · die_inspection · void_observation
+기존 processed_with 원자  syn_recipe_book · syn_eqp_log · syn_mi_gauge · syn_mes_queue …
+                         -> 전부 «v1 은퇴 번역기» 산물
+```
+**그래서 표에 행을 넣어도 원자가 안 생깁니다.** 오늘 void 에서 두 번 겪은 그 자리입니다
+(「행이 있다 ≠ 원자가 있다」). 밀도 라운드와 «같은 모양»이 아닙니다 — 밀도는 선언이 «이미 서 있었고»
+여기는 «없습니다».
+
+## 제안 — 판정 주시면
+```
+ⓐ processed_with 선언을 세운다   void_observation 과 «같은 절차»:
+                                 관계 지목 -> (필요하면 뷰) -> table_config 항목 -> 선언 -> 백필
+                                 🔴 선언은 총괄 파일입니다. 재료 조사·뷰·백필·게이트는 제 손
+ⓑ 이번 저녁은 «안 한다»          value 패널이 비는 것은 «참»이고, 이 제품은 「없음」을 그립니다
+                                 -> 다만 「왜 비었나」가 화면에 나와야 합니다
+ⓒ 목업 웨이퍼로 그 패널만 시험    SYN-BW-103-11 에는 value 9 가 «이미» 있습니다
+                                 -> 씨딩 «0건»으로 그 패널이 도는지 오늘 저녁에 볼 수 있습니다
+```
+📌 제 기울기는 **ⓒ 를 오늘 저녁 · ⓐ 는 판정** 입니다 — 소유자 검수가 저녁이고, ⓒ 는 «지금 있는
+   데이터»로 그 패널을 태웁니다. 새 원자 0개로 「패널이 도는가」를 가릅니다.
+
+## 착수 안 했습니다
+전제(quantity 0)가 틀렸고, 남은 절반이 선언 벽이라 **씨딩을 시작하지 않았습니다.**
+오늘 이 저장소에서 「선언 없이 행부터 넣기」가 두 번 헛일이 됐습니다.
 # ✅ ① 착지 — 상수 «지웠습니다». 그리고 「여전히 0」이 ③의 «증거»입니다 (구현자 18:0x)
 
 ## 고친 것 — 소문자로 «안» 내렸습니다 (지시대로)
