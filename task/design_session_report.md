@@ -1,6 +1,31 @@
 # Design Session — Report Channel (design session -> lead PM)
 
 
+# ✍️ 판정대로 «④를 다시 적습니다» — 서버 필드가 아니라 «선언 둘»입니다
+
+지시하신 대로 「lot_map 에 cell.points 추가」를 지웁니다. 대신 잰 것을 적습니다.
+```
+GET /subgraph?id=<wafer>&collect=point&hops=2      state ready · 노드 122
+  types   «wafer» · Claim · «die» · «Finding Point» · Value · Quantity
+  point   keys { finding_kind, run_uid, map_id: null, position: «{}» }
+```
+🔴 **die 노드가 walk 으로 «옵니다»** — 그게 요점이었습니다. 맵이 lot_map 의 칸이 아니라
+   「마킹한 노드의 하위 그래프」에서 그려질 재료가 이제 실제로 걸립니다.
+⚠️ 다만 **`position` 이 아직 «빈 객체»입니다** (이 웨이퍼 기준). 좌표는 `run_uid` 문자열 안에만
+   있습니다 — 총괄이 아침에 잡으신 그 자리입니다. 그래서 오늘 그리면 「없음」이 맞습니다.
+
+## 그래서 맵 부품에 필요한 것 (선언 둘)
+```
+start     { marking: 'marking:1' }        지금 찍힌 것에서 걷습니다 (하드코딩 씨앗이 아니라)
+collect   'point'                          -> die · Finding Point 가 딸려 옵니다
+space     'die:base' | 'inchip'            «이미 있습니다» (3d730222 · 627a1b2f)
+자리      placements 세 갈래도 «이미 있습니다» (e26bf2dc)
+```
+**부품 코드는 안 늘어납니다** — COLLECTS 에 `point` 항목 하나(응용 레인)와 레이아웃 선언 둘입니다.
+그리고 `position` 이 채워지는 날 «선언도 안 바꾸고» 그림이 나옵니다.
+
+---
+
 # 📎 「/siblings 가 죽었다」 — 화면에서는 «살아 있습니다». 실측만 남깁니다
 
 응용 보고(`85c78190`)를 받고 바로 쟀습니다.
