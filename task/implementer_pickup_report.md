@@ -1,3 +1,124 @@
+# ✅ ③ `processed_with` «완료» — 여정이 «레시피를 지나 다른 웨이퍼로» 나갑니다 (구현자 21:4x)
+
+②가 판정 대기라 ③을 먼저 태웠습니다(지시서의 「go」가 둘 다 열어 뒀습니다).
+
+## 게이트 — 셋 다 통과
+```
+수        원자 «3,022 / 3,022»   거절 0 · 미완 0 · dedup 0 · 23초
+분류      subj=«wafer» · pred=«processed_with» · objkind=«entity_ref» · objtype=«recipe»  3,022
+          -> 단일 모양입니다. 다른 조합이 «0» 입니다
+무변화    SYN-BW-103-11  point 208 · { void 199, delam 9 } · run_uid 208/208   «그대로»
+```
+
+## 🔴 여정 — ⓒ 를 고른 «이유»가 실제로 걸립니다
+```
+씨앗   WF-LOT-A-05   (원장에서 뽑음 · 이 원자를 실제로 가진 웨이퍼)
+       hops=12 · nodes 53 · truncated «none»   <- «닫힌» 답입니다
+결과   recipe 개체 «7»   (R-ANNEAL-01 · R-CLEAN-01 · R-CMP-01 …)
+       🔴 다른 wafer «1»  (WF-LOT-A-12)   <- 레시피를 지나 «밖으로» 나갑니다
+```
+**「wafer -> recipe -> 다른 wafer」가 됩니다.** 총괄이 ⓒ 를 고른 근거가 데이터로 섰습니다 —
+「같은 레시피를 쓴 다른 웨이퍼」가 이제 walk 으로 «닿습니다».
+
+📌 그리고 총괄이 미리 적으신 대로 **오늘 화면은 안 바뀝니다** — wafer_process 가 화면의 세 웨이퍼를
+   0행씩 덮습니다. 이건 «운영 어휘가 올라올 자리»이고, 지금 값어치는 «경로가 열린 것»입니다.
+   화면에서 안 보인다고 «안 된 것»이 아니라는 것을 적어 둡니다.
+
+## ② 는 여전히 «막혀 있습니다»
+```
+증상   준비 단계가 core_wafer 없는 행에서 «예외». 배치 중단 · 원자 0
+원인   read 문법에 «거르는 자리»가 없습니다 (unit·identity·group_by·order_by·occurred_at 뿐)
+제안   dt_log 를 core_wafer IS NOT NULL 로 «거른 뷰» -> relation 을 그 뷰로
+       (오늘 void_obs_observed 로 검증된 경로. 뷰·table_config 는 제 손, 선언 한 줄은 총괄)
+확인   그 조건 하나가 «정확히» 28,208 을 냅니다. 522(event_time 없음)는 그 안에 «포함»됩니다
+```
+🔴 **「refused 를 게이트에 넣으라」는 지시는 이 자리에선 «못 셉니다»** — refused 가 아니라
+   «예외»라서 카운터에 안 잡히고 배치가 섭니다. 그 차이가 이번 라운드의 실물입니다.
+# 🔴 ② 막혔습니다 — **번역기가 6,731을 «건너뛰지 않고 «던집니다»**. 원자 «0» (구현자 21:2x)
+
+작게 먼저에서 «즉시» 섰습니다. 제가 미리 적어 둔 두 갈래(refused / 조용히 건너뜀) 중
+**어느 쪽도 아니고 «세 번째»였습니다.**
+```
+ledger.source_preparation.SourcePreparationError:
+   event_frame.rows[«3»].core_wafer: entity identity value is missing after preparation
+-> 첫 배치 «4행째»에서 예외. 배치 통째로 중단
+착지 원자   dt_transfer «0»
+```
+🔴 **「엣지를 안 만든다」와 「그 행을 만나면 멈춘다」는 다릅니다.** 지금은 후자입니다.
+
+## 왜 — `read` 문법에 «거르는 자리»가 없습니다
+```
+setup_bundle.py:1259   read 가 받는 키
+   required  unit · identity · group_by · order_by · occurred_at
+   optional  registration_probe        ignored  cursor
+   🔴 «where / filter 가 없습니다»
+```
+그래서 «선언으로는» 「core_wafer 있는 행만」을 말할 방법이 없습니다.
+바인딩은 core_wafer 를 «개체 신원»으로 요구하고, 신원이 비면 준비 단계가 «거절»합니다 —
+그건 옳은 동작입니다(신원을 추정으로 채우지 않는 것). 막힌 것은 «거르는 자리»가 없다는 쪽입니다.
+
+## 🔴 그리고 총괄이 물으신 522 — **정확히 같은 집합입니다**
+```
+event_time NULL              «522»
+product = 'SYNTHETIC'        «522»
+둘 다                        «522»    <- 🔴 동일 집합. 추측이 맞았습니다
+그 522 는 core_wafer 도 전부 없음      (522/522)
+```
+```
+두 제외가 «포개집니다»
+   core_wafer 없음  6,731
+   event_time 없음    522     <- 6,731 «안»에 들어 있습니다
+   둘 중 하나라도    6,731
+   🔴 쓸 수 있는 행   «28,208»   <- 게이트 수와 «정확히» 일치
+```
+📌 즉 **조건이 «하나»면 됩니다**: `core_wafer IS NOT NULL` -> 28,208. 522 는 «저절로» 빠집니다.
+
+## 제안 — 오늘 이미 쓴 방법입니다
+```
+ⓐ 🔴 뷰 하나   CREATE VIEW dt_log_transferable AS
+                  SELECT * FROM dt_log WHERE NULLIF(core_wafer::text,'') IS NOT NULL
+                -> relation 을 그 뷰로. «선언 한 줄»만 바뀝니다
+                ✅ void_obs_observed 로 «오늘 검증된 경로»입니다 (table_config 새 항목 + 선언)
+                ✅ 제외가 «DDL 에 보입니다» — 조용히 버려지지 않습니다
+                ⚠️ 대가는 같습니다: 조인/필터가 config 가 아니라 DDL 에 삽니다
+ⓑ read 에 filter 축 추가        문법 확장. 오늘 일이 아닙니다
+ⓒ 신원 없으면 «행을 건너뛴다»    기계 변경. 그리고 «조용히 버리는» 동작이라 위험합니다
+```
+🔴 **제 기울기는 ⓐ 입니다.** 뷰·table_config 항목은 «제 손»이고(오늘 한 번 했습니다),
+   선언의 relation 한 줄은 총괄 파일입니다. 승인 주시면 뷰부터 세우겠습니다.
+
+## ③ 는 어떻게 할까요
+`wafer_process` 는 «전 컬럼 100%» 라고 하셨으니 이 문제가 «없을» 것입니다.
+**②가 막힌 동안 ③을 먼저 돌릴까요?** 순서가 지시서엔 ②->③ 인데, ②가 판정 대기라
+③을 먼저 태우면 오늘 안에 하나는 끝납니다. 지시 주십시오.
+# 🟢 선언 «보입니다» — 게이트 수 둘 확정. 착수 신호만 기다립니다 (구현자 21:0x)
+
+라이브 config 에 둘 다 서 있습니다. **지시대로 «착수는 안 했습니다»** — 알려 주시면 그때 돕니다.
+```
+술어 8 -> «9»    ·    소스 5 -> «7»   (dt_transfer · wafer_process_recipe)
+```
+
+## 게이트 수 — 선언에서 «읽어» 확정했습니다
+```
+② dt_transfer          relation dt_log · read.unit «row» · identity [row_id]
+                       -> «행마다» 입니다. 판정하신 대로 4,669 가 아니라 «28,208»
+                       🔴 남은 6,731 이 «어떻게» 안 만들어지는지 작게 먼저에서 봅니다 —
+                          «refused» 로 세어지는지 «조용히 건너뛰는지». 둘은 다릅니다.
+                          refused 가 6,731 이면 그건 정상이지 사고가 아닙니다 (미리 적어 둡니다)
+③ wafer_process_recipe relation «wafer_process» · read.unit row · identity [row_id]
+                       실측 «3,022행» -> 상한 3,022 원자
+                       (컬럼: wafer_id · recipe_id · knobs · step · eqp_id · start/end_time)
+                       📌 총괄이 ③의 수를 안 주셨기에 제가 재서 적습니다
+```
+
+## 준비된 것
+```
+before   여정 «0» (die 씨앗 · hops=12 · truncated none — «닫힌» 0)
+무변화   SYN-BW-103-11 point 208 · { void 199, delam 9 }
+분류     ② subject_type=die · object entity_ref · object type die
+방식     작게 먼저 -> 게이트(수+분류+여정) -> 전량 · 치환 단계는 커밋 «전» 트랜잭션 안에서
+파일     identity·trends «안 엽니다». subgraph·selection·finding_kinds 만 씁니다
+```
 # 📐 「여정」 게이트의 «before» 를 잡았습니다 — 선언 기다리며 (구현자 20:4x)
 
 게이트에 「본딩 다이 -> 코어 웨이퍼에 닿는가」가 들어갔는데, **after 만 재면 «고친 것»과
