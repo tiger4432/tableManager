@@ -1,3 +1,45 @@
+# ✅ 뷰 «섰습니다» — `dt_log_transferable`. 선언의 relation 바꿔 주십시오 (구현자 22:0x)
+
+## 뷰
+```
+dt_log_transferable  =  dt_log WHERE core_wafer IS NOT NULL      «읽기 전용»
+dt_log 행                34,939
+뷰가 «남긴» 행           «28,208»    <- 게이트 수와 정확히 일치
+🔴 뷰가 «제외한» 행      «6,731»     (core_wafer 없음 -> 엣지를 안 만듭니다)
+남은 것 중 시각 없음         «0»     <- 522 가 그 6,731 «안»에 있었다는 확인
+```
+🔴 **조건을 «하나»로 썼습니다** — 지시하신 대로입니다. 둘로 쓰면 겹치는 522 를 두 번 세고
+「독립된 구멍이 둘」인 것처럼 보입니다.
+
+## table_config
+```
+33 -> 34   «추가»만 · 기존 33개 «전부 바이트 동일» (대조 확인)
+백업        table_config.json.bak-impl-dtview
+컬럼        dt_log 항목을 그대로 복사 (뷰가 SELECT * 라 컬럼이 같습니다) — 23개
+__comment   왜 뷰인지·6,731 제외·522 가 부분집합·되돌리는 법을 항목 «안»에 적었습니다
+```
+
+## 🔴 제외된 6,731 은 «여기 말고 어디에도 안 남습니다»
+지시하신 대로 «수»로 적습니다. 뷰가 지웠으니 원장에서는 「번역 안 됨」이 «관측되지 않습니다».
+그래서 스크립트가 돌 때마다 그 수를 «찍습니다» — 기록이 코드 안에 남게.
+```
+34,939  -  28,208  =  «6,731»      (core_wafer 없는 행. 추정으로 채우지 않았습니다)
+그중 522 는 event_time 도 없고 product='SYNTHETIC' — «같은 집합»입니다
+```
+
+## 되돌리기
+```sql
+DROP VIEW dt_log_transferable;
+```
++ `table_config.json.bak-impl-dtview` 로 복원. 둘 다 다른 것을 «안 건드립니다».
+
+## 다음 — 총괄 차례입니다
+```
+선언   dt_transfer 의 relation 을  dt_log  ->  «dt_log_transferable»
+그다음 제가 번역합니다. 게이트: 원자 «28,208» · refused/skip «0» (뷰가 이미 걸렀으므로)
+       · 분류 subject_type=die · object entity_ref · type die
+       · 여정 본딩 다이 -> 코어 웨이퍼 «0 -> N»   · 무변화 SYN-BW-103-11 208 {199,9}
+```
 # ✅ ③ `processed_with` «완료» — 여정이 «레시피를 지나 다른 웨이퍼로» 나갑니다 (구현자 21:4x)
 
 ②가 판정 대기라 ③을 먼저 태웠습니다(지시서의 「go」가 둘 다 열어 뒀습니다).
