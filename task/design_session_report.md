@@ -1,4 +1,113 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 레거시 화면 둘 + 죽은 모듈 — **지웠습니다** (`57d25d17`). 그리고 «둘은 멈췄습니다»
+
+지시(`50c376b9`·`b44eec62`)대로 클라 먼저 지웠습니다. 서버 라우트 여섯은 그대로 두었습니다 —
+구현자 차례입니다.
+
+## 🔴 지운 파일 목록 — «되돌릴 때의 지도»입니다
+```
+화면   client2/ledger.html
+       client2/ledger-graph.html
+모듈   client2/src/ledger_trace.js
+       client2/src/journey_core.js
+       client2/src/journey_view.js
+       client2/src/surprise_core.js
+       client2/src/ledger_graph/entity_catalog.js
+       client2/src/ledger_graph/graph_core.js
+       client2/src/ledger_graph/main.js
+       client2/src/ledger_graph/styles.css
+하니스 client2/tests/ledger_graph_harness.mjs   (읽던 것이 «전부» 위 목록이었습니다)
+```
+같이 고친 것 — 지운 화면을 «가리키던» 자리 셋:
+```
+vite.config.js   rollup 입력 `ledger` · `ledger_graph` 둘 (안 지우면 빌드가 여기서 죽습니다)
+index.html       메뉴의 「원장 혈통 추적」 항목
+graph.html       「원장 구조 뷰로」 버튼 -> 그 뷰가 «지금 어디 있는지» 말하는 문장으로
+```
+
+## 🔴 목록의 «둘»은 안 지웠습니다 — 「보도도 쓰더라」가 나왔습니다
+지시서의 ⚠️ 「지우다 «다른 화면이 쓰더라»가 나오면 «멈추고 적으십시오»」에 걸립니다.
+```
+case_control_core.js    admin.html -> src/admin.js -> ledger_map_panel.js -> «직접 import»
+ledger_trace_core.js    그 case_control_core.js 가 다시 import
+```
+지시서는 이 넷을 「어느 html 에도 안 걸려 있습니다 — 이미 죽은 모듈」로 묶으셨는데,
+**journey_core · journey_view · surprise_core 셋은 맞고 case_control_core 는 틀립니다.**
+지우면 admin 의 원장 지도 패널이 깨집니다. 그래서 그 둘과, 그 둘이 끌고 오는
+`ontology_structure_core/view` · `case_control_view` 까지 «넷»이 살아 있습니다.
+실측: 지운 뒤에도 admin 이 여섯을 «진짜 모듈»로 받습니다 (fallback HTML 아님).
+
+## 게이트 — 셋 중 둘 통과, 하나는 «막혔고 원인이 삭제가 아닙니다»
+```
+🟢 보드 14요청   한 페이지 로드에 «14 그대로». 전부 200. 지운 여섯 라우트 호출 0
+🟢 vite build    통과 (761ms, 남은 일곱 entry 전부). 지운 모듈을 남이 import 하지 «않습니다»
+🔴 npm run build 막힘 -- prebuild 의 하니스 게이트에서. 아래가 그 이유입니다
+```
+
+## 🔴 멈춘 자리 — `surprise_core.js` 를 «네 모듈»이 아직 import 합니다
+지시서의 근거는 「어느 html 에도 안 걸려 있다」였고 그건 «맞습니다». 그런데 html 이 아니라
+«모듈»이 넷 걸려 있습니다:
+```
+src/contrast_view.js       import { valueText }    from './surprise_core.js'
+src/lot_reference_core.js  import { bucketLabel }  from './surprise_core.js'
+src/surprise_map_view.js   import { surpriseQuery } from './surprise_core.js'
+src/surprise_view.js       import { ... }          from './surprise_core.js'
+```
+넷 «다» 어느 살아 있는 페이지에서도 안 닿습니다(고아). 그래서 **vite 는 못 봅니다** —
+빌드가 통과하는 이유입니다. 그런데 **하니스는 봅니다**:
+```
+lot_reference_harness   lot_reference_core 를 import 하는 순간 ERR_MODULE_NOT_FOUND
+surprise_harness        subject 가 surprise_core.js 자체. 나머지 subject 둘도 위 목록에 있음
+```
+🔴 **여기서 「테스트 단위로 자르기」가 안 됩니다** — 자를 단언이 아니라 «읽을 모듈»이
+깨진 것이라서, 고치려면 목록에 없는 `lot_reference_core.js` 를 고쳐야 합니다.
+지시서의 「억지로 떼어내지 마십시오」에 걸려 **멈추고 적습니다.**
+
+**판정을 청합니다 — 셋 중 하나입니다:**
+```
+①  고아 여섯도 «같이» 지운다     contrast_core/view · lot_reference_core/view ·
+                                surprise_axis · surprise_map_core/view · surprise_view
+                                + 하니스 둘. 근거는 지시서와 «같은» 근거(어느 화면도 안 씀)
+②  surprise_core.js 를 «되살린다»  그러면 오늘 목록에서 하나가 빠집니다
+③  네 import 만 «끊는다»          목록 밖 파일 넷을 고치는 것이라 제 권한 밖입니다
+```
+제 소견은 ①입니다 — 넷이 이미 아무 화면에서도 안 닿으므로, 「어느 html 에도 안 걸려
+있다」는 지시서의 기준을 «그대로» 적용하면 같은 결론입니다. 다만 소유자께서 «이름으로»
+승인하신 목록에 없어서 제가 늘리지 않았습니다.
+
+## 하니스는 «파일»이 아니라 «테스트 단위»로 잘랐습니다
+subject 가 죽은 단언만 죽이고, subject 가 살아 있는 단언은 남겼습니다.
+```
+ledger_trace_harness         381 -> 360   H1..H7b·H10..H20b 가 entry/page 를 읽었습니다
+                                          H8·H9 는 core·view 도 읽어서 «그 절반»만 남겼습니다
+case_control_harness         241 -> 224   W1..W16 · D8. L17·L18 은 절 하나씩 잃고 살았습니다
+ontology_structure_harness   113 -> 107   L1..L6. B3 는 page 절을 잃고 CSS 절로 남았습니다
+ledger_graph_harness          42 -> 0     읽던 것이 전부 지운 모듈이라 파일째
+```
+
+## ⚠️ 제 워크트리의 «계측기 고장» 하나 — 제품 결함이 아닙니다
+`load_shows_loaded_map_harness` 가 이 워크트리에서 빨갛습니다. **제 삭제와 무관합니다** —
+그 하니스가 읽는 `map_editor.js` 는 제가 한 줄도 안 건드렸고, 실패는
+「mutation anchor is GONE」입니다.
+```
+원인   worktree add 가 core.autocrlf=true (Git-for-Windows «시스템» 설정) 로 체크아웃해서
+       이 트리의 src/*.js 가 CRLF 입니다. 하니스의 여러 줄 앵커는 \n 으로 적혀 있어
+       «안 맞습니다» -- 앵커가 안 맞으면 변이가 조용히 무력해집니다
+증거   같은 하니스가 «메인 트리»(LF)에서 ASSERTIONS 57 0 으로 초록입니다
+       제 세 하니스도 소스를 잠깐 LF 로 바꿔 돌리면 360·224·107 전부 «0 failed» 입니다
+```
+🔴 이건 이 워크트리만의 조건이고 커밋 내용과 무관합니다(git 이 정규화해서 저장합니다).
+다만 **이 트리에서 여러 줄 앵커를 쓰는 하니스는 전부 이 함정 위에 있습니다** — 다른 레인이
+같은 방식으로 워크트리를 만들면 같은 것을 봅니다. 소유자 판정이 필요한 자리는 아니고,
+제가 검증할 때는 위 방식(임시 LF -> 실행 -> 원래 바이트 복원)으로 돌리고 있습니다.
+
+## 안 한 것
+```
+dist/     이번 커밋에 «안 넣었습니다». 게이트가 아직 초록이 아니라, 확인 안 된 번들을
+          사용자 앞에 두지 않았습니다. 위 판정이 나면 그때 한 번에 굽겠습니다
+서버      라우트 여섯 그대로. 구현자 차례입니다 (제 착지 = `57d25d17`)
+```
+
 
 
 # 📋 레거시 삭제 1단계 — **여섯 다 «쓰입니다». 지우면 화면이 꺼집니다** (실측 · 착수 중지)
