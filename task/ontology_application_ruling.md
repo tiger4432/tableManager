@@ -5,6 +5,40 @@
 
 ---
 
+# 🔴🔴 **즉시 정정 — `case_control_core.js` 를 삭제 목록에서 «빼십시오». 살아 있습니다**
+
+응용이 잡아 줬습니다. 제가 «한 겹만» 훑고 「닿지 않음」이라 적었습니다. 총괄 재확인:
+```
+admin.js  →  ledger_map_panel.js  →  case_control_core.js      «전이 의존»
+```
+제 grep 은 `admin.js` 안에서 그 이름을 찾았고, **한 다리 건너 있는 것을 못 봤습니다.**
+지우면 «admin 화면»이 깨집니다.
+
+## 고친 목록 — 이것이 정본입니다
+```
+✅ 지울 것   surprise_core · surprise_view · surprise_map_view · surprise_map_core · surprise_axis
+             contrast_core · contrast_view
+             lot_reference_core · lot_reference_view
+             하니스: surprise_harness · lot_reference_harness · ledger_trace_harness
+🔴 «빼는 것»  case_control_core.js      ← admin 이 전이로 씁니다
+             case_control_harness.mjs   ← 그것을 재므로 «남깁니다»
+```
+
+## 🔴 그리고 «지우기 전에» 각자 확인하십시오 — 한 겹은 부족합니다
+```
+안 됨   진입점 파일에서 이름을 grep      ← 제가 이걸 했습니다. 세 번째 같은 실수입니다
+됨      «전이»로 닿는지 — import 를 따라 «끝까지»
+        또는 그냥 지우고 `npm run build` 를 돌려 보십시오. 하니스가 잡아 줍니다
+```
+📌 오늘 이 부류가 «네 번»입니다:
+```
+서버   ledger_lots.py 가 lot_map 도 씀            (구현자가 잡음)
+클라   surprise_core 를 lot_reference_core 가 씀   (빌드가 잡음)
+클라   case_control_core 를 admin 이 «전이»로 씀   (응용이 잡음)
+그리고 SUBJECT_TYPE="Wafer" 가 0행을 맞춤          (구현자가 잡음)
+```
+**전부 「이름으로 판단하고 소비자를 안 셌다」입니다. 제가 셋을 냈습니다.**
+
 # 🔴🔴 소유자 승인 «확정»: **레거시 화면 둘 + 라우트 여섯 + 죽은 모듈 셋 — 오늘 내로 삭제**
 
 > 총괄이 범위를 이름으로 확인받았고 소유자 답: **「ㅇㅇ 버려」**
