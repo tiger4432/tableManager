@@ -4,6 +4,76 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 📐 walk 개선 «단계 0» — ①②③ 답입니다 (재기만 했습니다. 고친 것 «0»)
+
+씨앗 `SYN-BW-101-16` · hops=6 · node_limit=1000 · 살아 있는 라우트.
+
+## ⚠️ 먼저 — 보드의 walk 은 «quantity» 와 «point» 입니다
+```
+클라 선언명   candidate  ·  point
+서버 collect  🔴 candidate 는 «서버 collect 가 아닙니다» — 인자를 «안 보냅니다»
+             api.js:778  params: (start) => ({ nodeId, positive, negative })   <- collect 없음
+             -> fetchSubgraph 기본값 «quantity» 로 갑니다
+제가 처음에    collect=candidate 로 재서 「노드 0」이 나왔습니다. 그건 «없는 collect» 였습니다
+```
+아래 수는 전부 «quantity·point» 로 다시 잰 것입니다.
+
+## ① 응답에 오는 술어 «9~10» · 부품이 «읽는» 술어 «0»
+```
+quantity  subject 2330 · bonded_from 888 · transferred 849 · processed_with 328
+          finding 56 · inspected 41 · has_findings 28 · mechanism 13 · binding 10 · has_wafer 4
+point     subject 2330 · bonded_from 888 · transferred 849 · processed_with 328
+          observed 89 · inspected 41 · binding 10 · mechanism 8 · has_wafer 4
+```
+```
+부품이 predicate 를 «읽는» 자리   «0»
+   subgraphModel 이 predicate 를 «안 내보냅니다» (내보내는 키: state·graph수·candidates·
+   topSet·counts·truncated·complete)
+   api.js 의 predicate 두 자리는 «composition» 응답입니다 — walk 아님
+부품이 «쓰는» 것                  ranked/top_set (quantity 16/1 · point 89/2) · 자리 있는 노드 · 수 둘
+```
+🔴 **즉 술어는 «걷는 데»만 쓰이고 «읽히지 않습니다». 그래서 지금 «고를 수도 없습니다».**
+
+## ② 술어 필터가 있었다면 — **3,611 -> «299». 12배**
+응답으로 온 엣지 위에서 씨앗부터 BFS 를 다시 돌려 «부분집합»으로 세었습니다:
+```
+필터                                                     노드     세상것
+전체 (지금)                                              3,611     249
+관측만  subject·observed·inspected                       🔴 «299»   129
+관측+발견  +finding·has_findings                            299     129
+계보만  subject·bonded_from·transferred·processed_with     3,383     110
+```
+🔴 **맵이 쓰는 답(Finding Point 89)은 «299 노드» 안에 다 있습니다.**
+   나머지 3,312 는 계보이고, 그 계보가 내놓는 세상것은 «110» 입니다.
+📌 «둘 다 필요합니다» — 계보는 이번 라운드가 만든 그 체인입니다.
+   문제는 「둘 다 오는 것」이 아니라 **「어느 쪽인지 «말할 수 없는 것»」**입니다.
+
+## ③ 어디에 넣나 — **SQL 입니다. 이유가 «LIMIT 의 자리»입니다**
+```
+ledger_subgraph.py:288  SqlEvidenceLookup.claims_for_entities
+   ... SELECT * FROM (union) claims
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT %(fetch)s              <- 🔴 «SQL 안»에서 잘립니다
+```
+🔴 **한도가 SQL 에서 소모되므로, 투영에서 거르면 「이미 값을 치른 행」을 버리는 것입니다.**
+   즉 투영 필터는 화면은 깨끗해져도 «예산은 그대로» 씁니다. SQL 이어야 예산이 남습니다.
+
+**그리고 «전례가 같은 함수 안»에 있습니다 — 새 축이 아닙니다**
+```
+지금도 있는 것   include_observed=False  ->  WHERE e.predicate <> 'observed'   (:297)
+없는 것          그 절이 «outgoing 팔에만» 있습니다. incoming 팔(:300~)에는 술어 절이 «없습니다»
+                -> 술어 허용목록은 «두 팔 다»에 들어가야 합니다
+```
+
+## 「모르겠다」 항목 — «없습니다». 다만 한계 둘
+```
+② 의 수는 «돌아온 부분그래프» 위의 시뮬레이션입니다. 응답이 claims 2,400 에서 잘려 있으므로
+   299 도 3,611 도 «바닥값»입니다. 필터가 실제로 붙으면 같은 예산으로 «더 깊이» 가므로
+   299 는 늘어날 수 있습니다 — 줄어들지는 않습니다
+③ 은 코드를 읽고 답한 것입니다. SQL 필터를 «넣어 보고» 잰 것이 아닙니다 (고치지 말라 하셨으므로)
+```
+
+
 # 🟢🟢 게이트 «넘었습니다» — 같은 씨앗의 «세 지점»으로 확인했습니다 (응용, 08:1x)
 
 게이트 「recipe 0 -> 1 이상」이 통과입니다. 제가 어젯밤 «엣지 착지 전»부터 잰 씨앗이라
