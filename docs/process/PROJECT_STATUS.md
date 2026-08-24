@@ -4,14 +4,19 @@
 > 컴팩트(자동 포함)는 이 절을 위해 있습니다. 준비를 «미리» 하지 않아도 되게, 이 절이 항상 최신입니다.
 >
 > ### ① 감시 재장착 — 세션이 «끝나면» 감시는 같이 죽습니다 (컴팩트는 안 죽입니다)
-> Monitor 넷을 겁니다. 전부 `persistent: true`:
+> Monitor «다섯»을 겁니다. 전부 `persistent: true`:
 > ```
 > 1  구현자·응용 착지    60초  git log 새 커밋 + implementer_pickup_report / application_report mtime
 >                       제외 접두: docs(orders) docs(board) docs(application) docs(agents)
 >                                 docs(design) build(client) docs: feat(orders)
 > 2  디자인 푸시        90초  git fetch origin design + main..origin/design 개수
 > 3  라이브 config      30초  server/config/ontology/ledger_config.json 의 stat 변화
-> 4  🔴 심박           3600초 「HEARTBEAT hh:mm 감시프로세스 N 서버8080 up」
+> 4  레인 정지 감시     900초 셋의 «나이» + 🔴 «마지막 커밋 시각»을 «같이»
+>                       -> 나이만 보면 「보고가 조용한 것」을 「멈춤」으로 읽습니다.
+>                          2026-08-24 에 그것으로 소유자께 «두 번» 틀리게 보고했습니다
+> 5  🔴 심박           3600초 「HEARTBEAT hh:mm 서버8080 up/DOWN」
+>                       -> 🔴 서버를 «실제로 부릅니다». 옛 심박은 「up」을 «찍기만» 해서
+>                          08-24 밤 서버가 꺼진 것을 «못 잡았습니다»
 >                       -> 이 줄이 «한 시간 넘게 안 오면» 배관이 끊긴 것입니다
 > ```
 > 🔴 **생존 판정법**: 출력 파일 mtime 도, 프로세스 존재도 «둘 다 틀렸습니다»(2026-08-23 실측).
@@ -33,7 +38,9 @@
 > **소유자가 그 창에 한 글자** 쳐야 하고, 그다음부터 스스로 돕니다.
 > ### ② 서버 — 재기동은 총괄 몫 (소유자 상설)
 > ```
-> cd server && "C:/Users/kk980/anaconda3/envs/assy_manager/python.exe" -m uvicorn main:app --host "" --port 8080
+> PowerShell: Start-Process python.exe -ArgumentList @('-m','uvicorn','main:app','--host','0.0.0.0','--port','8080')
+>             -WorkingDirectory server -WindowStyle Hidden
+> 🔴 `--host ""` 는 PowerShell 이 «빈 인자로 거절»합니다 — `0.0.0.0` 을 쓰십시오 (08-24 실측)
 > 확인: 포트 8080 리슨 + «프로세스 시작 시각»이 최근 수리보다 뒤인지
 > ```
 >
