@@ -221,6 +221,8 @@ async function suite(mods) {
     const t = new trend.MainTrendPanel(host, {
       doc, markings, reads: 'marking:0', writes: 'marking:0',
       apiBase: '', fetchImpl: routedFetch(TRENDS),
+      // 화면이 실제로 선언하는 것과 같은 모양 -- 「접는 단위」 줄이 이 선언에서 나옵니다.
+      grain: { subject_type: 'WaferLeg', identity_fields: ['wafer'] },
     });
     t.mount();
     await flush(); await flush();
@@ -240,6 +242,10 @@ async function suite(mods) {
       legend.textContent.includes('observed') && legend.textContent.includes('inspection_run'),
       legend.textContent);
     ok('C6 ... including absence_is_zero', legend.textContent.includes('absence_is_zero false'));
+    // 🔴 목업의 「접는 단위」 줄 — 선언에 있는 것을 그대로 말합니다. 이게 없으면 «접힌» 차트가
+    //    안 접힌 차트처럼 읽힙니다 (점 하나가 웨이퍼 하나인지 웨이퍼×레그인지 모릅니다).
+    ok('C7 the chart says what it folds a point out of',
+      /접는 단위 WaferLeg/.test(legend.textContent), legend.textContent.slice(0, 90));
   }
 
   // ── D. A DEGENERATE AXIS IS SAID, NOT DRAWN AROUND ───────────────────────────
@@ -287,6 +293,10 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { id: 'M10', what: 'the chart hides what it folds a point out of',
+    catches: 'C7',
+    mutate: { 'main_trend_panel.js': (s) => s.replace(
+      '    if (this.grain && this.grain.subject_type) {', '    if (false) {') } },
   { id: 'M1', what: 'the control bar keeps its own list of ratio axes instead of the served one',
     catches: 'A1',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
