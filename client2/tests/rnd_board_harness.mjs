@@ -544,6 +544,7 @@ async function suite(mods) {
       String(badgeB && badgeB.textContent));
     markings.set('marking:2', 'ledger-quantity:v1:not-a-cell-of-any-map', SIGN.ABSENT);
 
+
     // Leave the name holding exactly one case, as the block below expects.
     A.mark(target.nodeId, SIGN.CASE);
 
@@ -797,6 +798,22 @@ async function suite(mods) {
       inkOps.length >= 141 && inked > 0.2 * blindCanvas.width * blindCanvas.height,
       `${inkOps.length} fills · ${Math.round(inked)} of ${blindCanvas.width * blindCanvas.height}`);
     blind.destroy();
+
+    // 🔴 선언한 이름이 «셋»이면 배지도 셋을 말합니다. 총괄이 marking:1 을 건드렸더니
+    //    「읽기 marking:2」라 적힌 패널이 따라 움직였고, 배지만 보면 «거짓말»로 보였습니다 --
+    //    실제로는 페이지가 세 번째 이름을 따라간 것입니다. 감추면 패널이 자기 선언을 어기는
+    //    것처럼 읽힙니다.
+    const followHost = doc2.createElement('div');
+    const follower = new MapPanel(followHost, { doc: doc2, markings: store2,
+      reads: 'marking:2', writes: 'marking:2', pageFollows: 'subject:wafer',
+      axis: 'bond', load: () => Promise.resolve(FIX_07), loadByWafer: () => Promise.resolve(FIX_03) });
+    follower.mount();
+    await flush(); await flush();
+    const badge = walk(followHost).find((n) => n.getAttribute && n.getAttribute('data-follows'));
+    ok('F15 the badge names what the page follows, not only what it reads and writes',
+      Boolean(badge) && /따라감 subject:wafer/.test(badge.textContent),
+      String(badge && badge.textContent));
+    follower.destroy();
   }
 
   // ── H. THE COMPOSITION ROOT DECLARES THE SCREEN ──────────────────────────────
@@ -847,6 +864,12 @@ async function suite(mods) {
 // the wrong thing, is reported as a hole in the suite.
 
 const MUTANTS = [
+  // 🔴 배지가 «선언한 이름 전부»를 말해야 합니다. 둘만 말하면, 세 번째 이름을 따라 움직인
+  //    패널이 「선언과 다르게 도는 것」으로 읽힙니다 -- 총괄이 실제로 그렇게 읽었습니다.
+  { id: 'M07', what: 'the badge hides the name the page follows, so the panel looks like it lies',
+    catches: 'F15',
+    mutate: { 'map_panel.js': (s) => s.replace(
+      "      + (this.pageFollows ? ` · 따라감 ${this.pageFollows}` : '');", "      + '';") } },
   // 🔴 「아직 안 왔다」를 「없다」로 접는 변이. 화면은 조용히 「그런 건 없습니다」라고 말합니다.
   { id: 'M06', what: 'a placement that has not arrived is folded into "this point is nowhere"',
     catches: 'F8c',
