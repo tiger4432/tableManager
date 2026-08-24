@@ -763,6 +763,21 @@ export const COLLECTS = Object.freeze({
       : {}),
     run: (params) => fetchSubgraph(params).then(subgraphModel),
   },
+  // ⑤ 맵의 점 — 마킹한 노드에서 걸어서 «관측»을 모읍니다. `candidate` 와 같은 걸음이고
+  //    `collect` 하나만 다릅니다. 🔴 새 fetch 도 새 모델도 «없습니다» -- 화면이 하나 늘 때
+  //    함수가 하나 늘면 그건 설계가 틀린 것이라는 소유자 상설이 이 자리의 통과 조건입니다.
+  //
+  // ⚠️ 지금 오는 값 (실측 2026-08-24, SYN-BW-103-11): point 208 · finding_kind 는
+  //    { delam 9, defect 199 } 이고 `position` 은 «빈 객체»입니다. 배선은 맞고 값이 아직입니다 --
+  //    서버가 `finding_kind`·`position` 을 제대로 실으면 «이 선언도 부품도 안 바뀌고» 값만
+  //    나타나야 합니다. 그날 그게 이 항목이 맞았다는 증거입니다.
+  point: {
+    params: (start) => (start.value
+      ? { nodeId: start.value, collect: 'point',
+          positive: start.positive, negative: start.negative }
+      : {}),
+    run: (params) => fetchSubgraph(params).then(subgraphModel),
+  },
   // ④ 자재 정보 — 그 칩이 무엇으로 만들어졌나.
   wafer_process: {
     params: (start) => (start.value ? { finalChipId: start.value } : {}),
