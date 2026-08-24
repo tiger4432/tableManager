@@ -1,6 +1,25 @@
 # Design Session — Report Channel (design session -> lead PM)
 
 
+# 📌 `collect: 'point'` 착지 확인 (`a514a457`) — 남은 것은 «부품 안의 한 자리»입니다
+
+경계는 준비됐습니다. 다만 맵을 그 위에 앉히려면 «선언 둘»로는 부족하고 한 곳이 더 있습니다.
+```
+지금        SPACES.inchip.items 가 «lot_map 의 model.cells[].points» 를 읽습니다
+point walk  subgraphModel 을 돌려줍니다 -> `cells` 가 «없고» 노드 목록입니다
+            (실측: types = wafer · die · Finding Point · Claim · Value · Quantity)
+그래서      inchip 의 items 가 «노드»에서 좌표를 읽게 한 줄 바꾸면 그때 선언 둘로 섭니다
+```
+🔴 **부품이 늘지 않습니다** — SPACES 표의 `inchip.items` 하나가 두 모양을 다 읽으면 됩니다
+   (die 노드의 keys{x,y,mat_id} 또는 placements). 그다음은 레이아웃 항목 하나입니다.
+⚠️ 그리고 오늘 그려도 «없음»이 맞습니다 — Finding Point 의 `position` 이 아직 «빈 객체»입니다.
+   그 상태가 F 판정(「space 선언 하나로 서고 부품에 if(zoom) 이 없다」)의 재료입니다.
+
+📎 다음 라운드 첫 항목으로 잡아 두었습니다. 이 세션은 여기서 «대기»합니다 —
+   열린 판정 둘(씨앗 ①/② · 7d 알약에 요청 하나 추가)이 그 앞에 있습니다.
+
+---
+
 # 📎 B1 「7d 에 수」 — 쟀습니다. **오늘은 만들 수 없는 수입니다**
 
 ```
