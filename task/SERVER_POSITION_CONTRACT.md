@@ -374,18 +374,32 @@ api.js 셀 모델      { x, y, n, colorRole, nodeId, nodeIdResolved } -> points 
 §7·§10 은 「finding point 가 placements 를 들고 나올 것」이라고만 적었고
 **그 point 가 «무엇에 실려» 오는지**를 안 적었습니다. 클라는 «셀 안»을 골랐습니다.
 
+> 🔴 **정정 (총괄 판정 13:4x).** 제가 이걸 `cell` 로 박을 뻔했는데 **`cell` 은 «lot_map 의 낱말»이고
+> 그 route 는 버려집니다.** 없어질 이름에 계약을 매다는 것이 오늘 이 저장소가 «세 번» 물린 것입니다
+> (marking:0 · 옛 철자 씨앗 · lot_map 축 낱말). 넷째를 만들지 않습니다.
+
 ```
-계약에 박습니다   맵 응답의 셀은 자기 칸에 앉은 point 를 «안에» 싣는다:
-                 cell: { x, y, n, state, points: [ { node_id, placements: [ {space,x,y,extent?} ] } ] }
-근거             부품이 그렇게 읽고 있고(`cell.points || []`), 그 모양이 §8⑥(겹침)과 «같은 답»입니다
-                 — 한 칸에 point 가 여럿이면 n 과 points.length 가 «같아야» 합니다
+계약에 박습니다   맵이 그리는 «자리»는 die 노드다.
+                 그 자리는 자기에게 걸린 finding point 들을 «안에» 싣는다.
+                 point 는 placements 를 싣는다.
+                   die   { …, points: [ { node_id, placements: [ {space,x,y,extent?} ] } ] }
+근거             부품이 그렇게 읽고 있고, 그 모양이 §8⑥(겹침)과 «같은 답»입니다
+낱말            lot_map 이 사는 동안은 그 자리가 `cell` 로 옵니다 — «구현이지 계약이 아닙니다».
+                 그 route 가 죽어도 이 문장은 «그대로»입니다
 ```
-🔴 **`n` 과 `points.length` 가 어긋나면 그것이 결함입니다** — 지금은 `n` 만 오고 points 가 없어
-   그 대조가 «불가능»합니다. 실리는 순간 이 단언이 섭니다.
+
+## 불변식 — «잘림»을 조건에 넣습니다 (총괄 판정)
+```
+n === points.length      «또는»      응답이 «잘렸다»고 말한다 (truncated)
+```
+🔴 **잘렸을 때 어긋나는 것은 «정상»입니다.** 이 조건이 없으면
+   「28자리인데 3개만 실려 온」 경우가 «불변식 위반»으로 잡히거나,
+   반대로 조용히 통과해 「3개뿐」으로 읽힙니다. 둘 다 오늘 겪은 오독입니다.
+📎 지금은 `n` 만 오고 points 가 없어 이 대조가 «불가능»합니다. 실리는 순간 섭니다.
 
 ## 수락 단언 — §19
 ```
-W  셀이 자기 point 를 «안에» 싣는다
-X  한 셀에서  n === points.length
+W  자리(die)가 자기 point 를 «안에» 싣는다
+X  n === points.length  «또는»  truncated 가 이유를 말한다
 Y  points 가 없는 응답에서 부품이 'awaiting' 으로 «갈린다» (이미 구현돼 있습니다)
 ```
