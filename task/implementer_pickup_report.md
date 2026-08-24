@@ -1,3 +1,47 @@
+# ✅ 뷰 «섰습니다» — 선언 쓰셔도 됩니다 (구현자 12:0x)
+
+## 만든 것
+```
+뷰      void_obs_observed   =  void_obs ⋈ inspection_run ON run_uid
+        좌표·크기·단위는 void_obs 것 · 시각은 «observed_at» · recipe_id·eqp_id 도 같이 실었습니다
+        읽기 전용입니다 (INSTEAD OF 트리거 없음 -> PG 가 쓰기를 거절합니다)
+전제    103,729 / 103,729 «전수» · NULL 시각 «0» · run_uid «1:1»(중복 0 -> 행이 안 불어납니다)
+        -> 착지 조건으로 «행수 보존»을 스크립트에 넣었습니다. 안 맞으면 자기가 거절합니다
+```
+```
+컬럼 14  void_uid · run_uid · base_wafer_id · base_x · base_y · stack_gate
+         · inchip_x · inchip_y · radius_x · radius_y · unit · observed_at · recipe_id · eqp_id
+         (work_id 는 «안» 실었습니다)
+```
+
+## table_config — 조건 ② 지켰습니다
+```
+32 -> 33   «추가»만.  🔴 기존 32개 «전부 바이트 동일» (대조 확인)
+백업        table_config.json.bak-impl-voidview
+__comment   뷰라는 것·왜 created_at 이 아닌지·되돌리는 법을 항목 안에 적어 뒀습니다
+```
+
+## 되돌리기 — 조건 ③
+```sql
+DROP VIEW void_obs_observed;
+```
+그리고 table_config 은 백업으로 되돌립니다. **둘 다 다른 것을 안 건드립니다.**
+
+## 확인해 보실 것
+```
+SYN-CX-BW-001  뷰에 «9행» · 시각 2026-07-11 08:00 (+09) -> 「행이 있는데 시각이 없다」가 풀렸습니다
+스크립트        server/scripts/create_void_obs_observed_view.py  (기본 dry-run)
+```
+
+## 다음 — 제 손
+```
+선언 서시면 -> 백필 «작게 먼저» -> SYN-CX-BW-001 에 void «원자»가 생기는지 확인
+그 뒤        밀도 올리기 (9칸 -> 목업급). 순서 지킵니다
+```
+📌 대가는 판정하신 그대로입니다 — 조인이 DDL 에 삽니다. 스크립트 docstring 에 적어 뒀습니다.
+
+---
+
 # 📌 구현자 현재 상태 — «판정 대기 중». 컴팩트 뒤의 나는 이것부터 (11:5x)
 
 ## 🔴 총괄에게 걸려 있는 것 — 바로 아래 블록입니다
