@@ -294,6 +294,8 @@ export const BOARD = Object.freeze({
       writes: 'marking:1',
       options: {
         axis: 'bond',
+        // 🔴 계약의 이름 그대로. 본딩 맵은 «본딩 웨이퍼의 격자»입니다.
+        space: 'die:base',
         // 목업 맵 하단의 기반 선택자. `type` is the node type the count comes from.
         bases: [
           { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
@@ -373,6 +375,8 @@ export const BOARD = Object.freeze({
       writes: 'marking:2',
       options: {
         axis: 'core',
+        // 🔴 코어 맵은 «코어 웨이퍼의 격자»입니다 -- dt 는 별도 단계이지 이 맵이 아닙니다.
+        space: 'die:core',
         bases: [
           { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
           { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
