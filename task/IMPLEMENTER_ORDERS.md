@@ -1,3 +1,50 @@
+# 🟢 **walk 개선 ① — 술어 선택. 재기 단계 «건너뜁니다». 제가 코드를 읽고 정했습니다** (총괄 08:3x)
+
+앞 지시의 「단계 0 재기」는 «취소»합니다. `claims_for_entities` 를 제가 직접 읽었고 답이 나왔습니다.
+
+## 어디에 넣나 — **SQL 입니다.** 그리고 «전례가 이미 있습니다»
+```python
+# ledger_subgraph.py  SqlEvidenceLookup.claims_for_entities
+arms.append(f"""
+    SELECT {EVIDENCE_COLUMNS} FROM frontier f
+    JOIN {self.relation} e
+      ON e.subject_type = f.type AND e.subject_keys = f.keys
+    {"" if include_observed else "WHERE e.predicate <> 'observed'"}   # ← 🔴 이미 술어 조건입니다
+""")
+```
+**`include_observed` 가 이미 술어로 거르고 있습니다.** 같은 자리에 목록을 받으면 됩니다.
+투영이 아니라 SQL 이므로 **거른 술어는 «가져오지도 않습니다»** — 예산을 아예 안 먹습니다.
+
+## 만들 것 — 파라미터 «하나». 기본값은 «지금 그대로»
+```
+라우트   GET /api/ledger/subgraph  에  `follow` 추가 (반복 가능, 술어 이름)
+         없으면 = «전부 따라감» -> 오늘 동작 «무회귀»
+전달     subgraph(..., follow=None) -> lookup.claims_for_entities(..., follow=follow)
+SQL      두 arm «둘 다»에  AND e.predicate = ANY(%(follow)s)
+         (outgoing 은 기존 include_observed 조건과 «AND» 로 나란히)
+거절     선언에 없는 술어 이름이면 «422». 조용히 빈 답 금지
+         -> 오늘 밤 그 규칙 그대로: 「영원히 거짓인 필터는 부재와 구별이 안 된다」
+```
+⛔ **이것 «말고» 만들지 마십시오.** 경로 패턴·깊이별 필터·부정 목록 전부 이 지시 아닙니다.
+
+## 게이트 — 🔴 «둘». 하나만 재지 마십시오
+```
+① 효과   SYN-BW-101-16 · hops=6 · node_limit=1000
+         follow 없이            -> 지금 nodes «5,644» (기준선)
+         follow=bonded_from,processed_with  -> 노드 «몇»인가 · recipe «몇»인가
+         🔴 노드가 크게 줄고 recipe 는 «그대로»여야 합니다. 둘 다 적어 주십시오
+② 무회귀  follow 를 «안 보내면» 오늘과 «똑같아야» 합니다
+         보드 14패널 · 14요청 · 후보 21 · 실측 21 · 맵 발견 28
+```
+📌 서버 재기동은 제가 합니다. 커밋만 하십시오.
+
+## 참고 — 소유자 원문과 다른 점 «하나»
+소유자 정본: 「walk은 다 걷되 «클라에서» 필터」.
+🔴 실측상 클라 필터는 «안 됩니다» — 예산이 클라에 닿기 «전»에 찹니다.
+   그래서 서버로 올립니다. 뜻(「다 걷지 말고 고를 수 있게」)은 같습니다.
+
+---
+
 # 🛑🛑 **전환 — 원장 작업 «전부 정지». walk 개선에만 집중합니다** (총괄 08:2x — 소유자 지시)
 
 > 소유자 08:2x: 「너무 어렵게 만드는데 **레거시 쓰레기 스키마 원장 살릴생각하지마**」
