@@ -4,6 +4,60 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 📐 「측정 노드 -> quantity 엣지가 있나」 — **있습니다(`binding`). 그런데 «게이트의 follow 가 그 길을 지웁니다»**
+
+재기만 했습니다. 고친 것 «0». 씨앗 `SYN-BW-101-16` · collect=quantity · hops=8 · node_limit=1000.
+
+## ① 엣지 «있습니다» — 다만 두 설정의 «위상이 다릅니다»
+```
+follow=observed,inspected,measured,has_param
+   node_kind   entity 40 · collection 28 · quantity 21   🔴 value «0개»
+   quantity 로  collection --finding--> 56  ·  quantity --mechanism--> 19
+   value 에서   «없음»  (value 노드가 아예 없으므로)
+
+follow 없음
+   node_kind   entity 179 · «value 1,032» · collection 28 · quantity «9»
+   quantity 로  🔴 value --binding--> «10»
+   value 로     entity --processed_with--> 38  ·  entity --transferred--> «225»
+```
+🔴 **`value --binding--> quantity` 는 «있습니다».**
+   그런데 `value` 는 «`processed_with` · `transferred` 로만» 닿습니다 — 그 둘이 게이트의
+   follow 집합에 «없습니다». 즉 자취가 collection 을 «고른» 게 아니라,
+   **측정 노드가 애초에 그래프에 «안 들어옵니다».**
+
+## 🔴 ② 그래서 두 길이 «서로 다른 후보»를 냅니다 — 어느 쪽도 전부가 아닙니다
+```
+follow 있음   ranked «21»  complete «True»   trunc None                 (finding 경로)
+follow 없음   ranked  «9»  complete «False»  trunc[edges,claims,actions] (binding 경로)
+교집합 «7» · follow 에만 «14» · 🔴 no-follow 에만 «2»
+no-follow 에만 있는 둘:  bond_pressure · delam_formation
+                        die_stress    · delam_formation
+```
+📌 그 둘은 `ranked` 에 «실제로 들어 있습니다» — 화면에 뜰 후보인데 게이트 조건에서 «안 나옵니다».
+🔴 **즉 참값은 «23 이상»이고, 지금 둘 중 어느 측정도 그걸 안 갖고 있습니다.**
+   (no-follow 쪽은 `complete: False` 라 9 도 잘린 수입니다)
+
+## 🔴 ③ 제 앞 기여를 «한정»합니다 — `complete: True` 의 뜻
+```
+제가 적은 것   「complete 를 게이트에 넣으십시오」  -> 방향은 맞습니다
+빠진 한정      complete 는 **«이 선언을 다 걸었다»**는 뜻이지
+              «이게 후보 전부다»는 뜻이 «아닙니다»
+증거          follow 집합에서 complete=True 인 21 이 «2를 빠뜨리고» 있습니다
+그래서        게이트 문장은 「ranked 21 · complete True」가 아니라
+              **「선언 X 에서 ranked 21 · complete True」**여야 합니다. 선언이 바뀌면 수가 바뀝니다
+```
+
+## ④ 판정 재료 — ⓑ 가 무엇을 요구하는지
+```
+ⓑ 를 하려면   follow 에 processed_with·transferred 가 «들어와야» 합니다 (value 가 그것으로만 닿음)
+그 대가       그 둘이 계보 walk 을 3,466 노드 · 1.6초로 만들던 그 술어입니다 (앞 보고)
+              transferred 는 특히 «답에 아무것도 안 더하고» 노드 4배였습니다
+그래서        「측정 노드를 자취에 싣기」는 «follow 를 넓히는 것»과 같은 값입니다 — 공짜가 아닙니다
+대안 하나     value 를 «걷지 않고» 그 quantity 를 후보에 넣는 길이 있는지는 서버 설계 문제이고
+              제가 답할 자리가 아닙니다. 다만 **후보 둘이 지금 안 보인다**는 사실은 확정입니다
+```
+
+
 # 🛑 ① `npm run build` «빨강» — 멈춥니다. **판별식이 하니스의 예제를 «거꾸로» 분류합니다**
 
 지시 ①(빌드 초록)에서 섰습니다. 커밋·게이트는 «안 했습니다». 하니스가 스스로 적어 둔
