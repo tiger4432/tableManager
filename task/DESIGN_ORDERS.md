@@ -1,3 +1,107 @@
+# 🔴 **소유자 새 지시 — 이 라운드를 «둘로 자릅니다». 커밋 1 을 먼저 올리십시오** (총괄 23:5x)
+
+소유자 원문:
+> 「원장 선언은 **눈에라도 안보이게 일단 지워놔 클라 메뉴에서라도**」
+> 「그리고 **메인 그리드 menu 목록에 맵 정렬기 (map editor2) 메뉴 추가**해」
+
+**「일단」이 이 지시의 전부입니다.** 아래 사슬 삭제는 파일 11 · 하니스 3 · 대조군 수술까지
+붙은 «라운드»이고, 소유자가 원하는 것은 «지금 화면에서 안 보이는 것»입니다. 그래서 자릅니다.
+
+```
+커밋 1  «배선을 뗀다» + 메뉴 항목 하나   — 파일 3 · 몇 줄.  ⏩ 먼저, 단독으로 올리십시오
+커밋 2  «고아가 된 사슬을 지운다»        — 아래 기존 지시 그대로 (게이트 포함)
+```
+이 순서면 커밋 1 뒤에 사슬은 «소비자 0» 이 되므로, 커밋 2 의 도달성 계산이 오히려 쉬워집니다.
+
+---
+
+## 커밋 1 — ① 탭 배선 제거 (파일 «둘», 사슬 파일은 «한 개도» 안 지웁니다)
+
+```
+admin.html   1183  <button id="tab-ledger-btn" class="tab-btn">원장 선언</button>   삭제
+             1541  <div id="ledger-tab-wrapper" ...></div>                          삭제
+admin.js       33  import { initLedgerMap, renderLedgerMap, parseMapQuestion, STRUCTURE_VIEW }
+              240  tabLedgerBtn        248  ledgerTabWrapper
+              331  initLedgerMap({...})
+              565  { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper }
+```
+🔴 `src/ledger_map_panel.js` 이하 사슬 파일은 **커밋 1 에서 손대지 마십시오.** 이 커밋의
+   diff 는 「탭이 사라짐」이어야 하고, 그래야 되돌릴 일이 생겨도 되돌릴 것이 두 파일뿐입니다.
+
+## 커밋 1 — ② 메인 그리드 메뉴에 「맵 정렬기」 추가
+
+`client2/index.html` 의 🧭 Menu 드롭다운(`#nav-dropdown`, 259 줄 부근).
+`🗺️ Wafer Map Editor` 바로 «아래»에 형제 한 줄을 같은 모양으로 넣습니다.
+
+```html
+<a href="/map_editor2.html" class="dropdown-item nav-link">📐 맵 정렬기</a>
+```
+```
+경로    /map_editor2.html   — 존재 확인함. vite.config.js:22 의 «선언된 진입점»입니다
+라벨    「맵 정렬기」        — 소유자가 부른 이름 그대로. 번역·의역하지 마십시오
+        (그 화면 자기 h1 은 「좌표계 확정」입니다. 그래도 소유자 낱말이 이깁니다)
+모양    옆 형제와 «같은 클래스». 새 스타일·새 아이콘 규칙 만들지 마십시오
+```
+⛔ 드롭다운의 «주석 둘»(graph.html · ledger.html 은퇴 기록)은 그대로 두십시오. 기록입니다.
+
+## 커밋 1 게이트 — 넷뿐입니다
+```
+① 빌드    `npm run build` 초록  (⛔ `npx vite build` 아님 — prebuild 검사가 빠집니다)
+② admin   열리고 «탭 여섯»이 다 동작. 🔴 Ontology Explorer 를 «눌러» 내용까지 보십시오
+③ 메뉴    index 에서 🧭 Menu 를 «열어» 항목 넷 · 「맵 정렬기」 클릭 → map_editor2 가 «뜹니다»
+④ 커밋    소스 «와» dist 를 «같은 커밋»에. 경로는 보고서가 아니라 `git status` 에서
+```
+📌 ③ 은 «눌러서» 확인하십시오. 링크가 붙었다는 것과 화면이 뜬다는 것은 다른 수입니다.
+
+---
+
+# ✅ 세 질문에 답합니다 — «다시 세라」에 멈춘 것, 잘하셨습니다
+
+세 개 다 제가 직접 재고 답합니다.
+
+## ③ 하니스 양성 대조군 — **제안대로 하십시오** (판정)
+
+```
+tests/rnd_board_harness.mjs:673  const legacy = scan(readFileSync(... 'ledger_map_panel.js'))
+```
+확인했습니다. 그리고 그 자리 주석이 «이미» 측정된 모양 세 줄을 인용하고 있는 것도 봤습니다.
+**리터럴로 옮기는 것이 맞습니다.** 근거는 두 가지입니다.
+
+```
+① 대조군의 «값»은 파일이 아니라 «모양»이다
+   F2 가 재는 것은 「ledger_map_panel 이 존재한다」가 아니라 「스캐너가 이 모양을 본다」입니다
+   모양은 리터럴 세 줄로 완전히 재현됩니다. 43KB 모듈을 그것 하나 때문에 살릴 이유가 없습니다
+② 파일로 두면 «대조군이 남의 수명에 묶인다»
+   오늘 그 파일이 지워지듯, 리팩터가 그 세 줄을 고치면 F2 는 «조용히» 공허해집니다
+   -> 하니스가 재는 것은 하니스 «안»에 있어야 합니다
+```
+🔴 그리고 원본이 사라졌다는 것을 그 자리에 «적어» 두십시오 — 지금 주석이 「the measured
+original」이라고 파일을 가리키고 있는데, 그 파일이 없어지면 주석이 «없는 곳»을 가리킵니다.
+커밋 해시(사슬 삭제 커밋)를 적으면 다음 사람이 원본을 찾을 수 있습니다.
+
+## ① `ledger_setup_view.js` · `ledger_setup.css` — **같이 죽습니다** (승인)
+
+제가 다시 셌습니다. 두 파일의 소비자는 `ledger_setup.js` «하나»뿐입니다:
+```
+src/ledger_setup.js:28   import './ledger_setup.css';
+src/ledger_setup.js:35   } from './ledger_setup_view.js';
+그 밖의 소비자  «0»  (src · tests · *.html 전수)
+```
+목록에 없던 것을 «세서 찾아» 멈춘 것이 정확한 행동입니다. 커밋 2 에 같이 넣으십시오.
+
+## ② `ledger_console.css` — **삽니다. `tokens.css` 를 손대지 마십시오** (확인)
+
+```
+src/tokens.css:21   @import './ledger_console.css';     ← «전역» 토큰 시트가 빨아들입니다
+```
+그리고 한 가지 더 재서 확인했습니다 — `tokens.css:13` 의 주석은 「제 자리는 `ledger_trace.js`
+의 import 다」라고 하는데, **`src/ledger_trace.js` 는 이미 없습니다.** 즉 tokens.css 의 그
+import 가 지금 이 파일의 «유일한» 생명선입니다. 지우면 모든 화면이 갑니다. 정확했습니다.
+
+⚠️ 다만 `tests/ontology_structure_harness.mjs:89` 가 `ledger_console.css` 를 «읽습니다».
+   그 하니스는 커밋 2 에서 죽으므로 참조도 같이 갑니다 — «css 파일은 남기고 하니스만» 입니다.
+
+---
 # 🟢 **admin 「원장 선언」 탭 삭제** (총괄 23:0x · 소유자 「안 쓰니까 지우라하겠지」)
 
 ## 지울 것 — 탭 «하나»와 그 아래 사슬
