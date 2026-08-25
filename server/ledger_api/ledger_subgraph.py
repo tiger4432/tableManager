@@ -45,10 +45,27 @@ from ledger_api import mechanism_gate
 DEFAULT_HOPS = 12
 MAX_HOPS = 40
 DEFAULT_NODE_LIMIT = 400
-DEFAULT_EDGE_LIMIT = 1200
+DEFAULT_EDGE_LIMIT = 6000
 MAX_NODE_LIMIT = 1000
-MAX_EDGE_LIMIT = 3000
-MAX_CLAIM_SCAN = 5000
+#: 🔴 THESE THREE WERE SIZED FOR A GRAPH THAT WAS TWO THIRDS PLUMBING, and on 2026-08-25 the
+#: plumbing stopped being nodes and edges of its own. The same numbers then described a much
+#: smaller graph, so the walk began truncating a shape it used to fit. Re-measured rather than
+#: re-guessed, on the board's own default path (SYN-BW-101-16, no follow, hops=6):
+#:
+#:      edge_limit 1200   1,248 nodes, cut at edges AND claims
+#:      edge_limit 3000   1,741 nodes, still cut at edges
+#:      edge_limit 6000   settles at 5,079 edges -- `edges` stops binding
+#:      claim scan 5000   still cut at claims;  6000 settles at 1,805 nodes / 720 entities
+#:
+#: So 6,000 and 6,000: each is the first value at which its own ceiling stops being the thing
+#: that ends the walk. What remains is `depth`, which is an honest statement that the graph
+#: continues, not a budget hiding it.
+#:
+#: ⚠️ The node ceiling did NOT need to move: at settle the walk holds ~750 budgeted nodes
+#: against 1,000, because measurement nodes do not spend it. Raising a limit that was not
+#: binding would have been a number chosen to feel safe.
+MAX_EDGE_LIMIT = 6000
+MAX_CLAIM_SCAN = 6000
 DEFAULT_PROPERTY_LIMIT = 10000
 MAX_PROPERTY_LIMIT = 20000
 EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
@@ -171,6 +188,14 @@ def decode_node_id(value):
         if quantity_node_id(model, quantity) != text:
             raise ValueError("node id is not in canonical spelling")
         return {"kind": "quantity", "model": model, "quantity": quantity, "id": text}
+    #: 🔴 A CLAIM ID IS NO LONGER A PLACE. Claims became edges on 2026-08-25, so a claim seed
+    #: names something the graph has no node for. Refusing says that; answering with a graph
+    #: built around a node that does not exist would be a fiction, and answering empty would be
+    #: indistinguishable from "this claim has nothing attached". Marking was checked first:
+    #: nothing marks a claim.
+    if text.startswith("ledger-claim-atom:v1:"):
+        raise ValueError(
+            "claim ids are no longer seeds -- a claim is an edge, seed its subject instead")
     prefixes = {
         "ledger-event:v1:": "event",
         "ledger-claim-atom:v1:": "claim",
@@ -1162,13 +1187,15 @@ def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
 #: The node kinds that summary mode folds away. Asking to collect one of these is asking
 #: for the inside of the fold, so the walk unfolds rather than answering an empty set.
 #: MEASURED 2026-08-24: with the fold on these two rank 0 and 1; with it off, 30 and 31.
-FOLDED_KINDS = frozenset({"point", "claim"})
+#: `claim` left this set on 2026-08-25: there is no claim node to unfold to any more.
+FOLDED_KINDS = frozenset({"point"})
+
+#: Kinds that stopped existing when one fact became one edge. Collecting one of these
+#: would return an empty ranking that reads exactly like "nothing was found", which is
+#: the confusion this module refuses everywhere else.
+RETIRED_NODE_KINDS = frozenset({"claim", "event"})
 
 
-#: Kinds that are parts of one assertion rather than things in the world. See the
-#: reasoning beside `_spends_budget`. Module scope so a test can assert THE rule
-#: instead of restating it and drifting.
-_WORLDLESS_KINDS = frozenset({"claim", "event", "value"})
 
 
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
@@ -1195,6 +1222,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         raise ValueError("direction must be outgoing, incoming, or both")
     if observation_mode not in {"summary", "claims"}:
         raise ValueError("observation_mode must be summary or claims")
+    if collect in RETIRED_NODE_KINDS:
+        raise ValueError(
+            f"{collect!r} is no longer a node kind -- a claim is an edge and its source event "
+            "is an edge attribute, so this can never rank anything")
     # 🔴 `collect` NAMES WHAT THE CALLER WANTS, AND THE FOLD IS AN INTERNAL ECONOMY.
     # Summary mode replaces a wafer's observations with ONE collection node, so the point
     # and claim nodes are never emitted at all -- not filtered late, not walked past:
@@ -1234,48 +1265,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     claims_scanned = 0
     actions_scanned = 0
 
-    #: 🔴 CLAIMS DO NOT SPEND THE NODE BUDGET, BECAUSE THEY ARE NOT WHAT ANYONE ASKED FOR.
-    #: MEASURED 2026-08-25 on `SYN-BW-101-16`: a walk that needs to reach between 3 and 35
-    #: entity nodes saturates at 1,000 with 745-837 of them claims, and the recipe the caller
-    #: came for never enters the graph -- 29 of the 30 wafers reached carry recipe edges that
-    #: cannot be followed. No caller-facing handle changes this: include_values, observations,
-    #: enrich_actions and edge_limit were all tried and none of them removes a claim.
-    #:
-    #: Claims stay EMITTED, only unbudgeted. They are still the spine of the evidence trails:
-    #: `_propagation` builds every hop by reading `nodes[item]`, so a walk that stopped
-    #: emitting them would empty `evidence.hops` -- which the board reads to decide whether a
-    #: candidate is measured (`rnd_board/api.js:389`, `candidate_list_panel.js:215`). Nothing
-    #: reads a claim out of `nodes[]` directly; two things read it out of the trails.
-    #:
-    #: ⚠️ THIS DOES NOT MAKE THEM UNBOUNDED. `claim_limit` already caps how many are scanned
-    #: and raises `claim_cut` on its own, so the ceiling moves from "shares one budget with
-    #: the answer" to "has its own", which is what it was for.
-    #: 🔴 `event` JOINED `claim` HERE ON 2026-08-25, BECAUSE IT INHERITED THE SAME SEAT.
-    #: Unbudgeting claims alone freed nothing: the Source Event took the vacancy one for one --
-    #: 836 of the 1,000 remaining slots -- and the recipe still never arrived. Both are the
-    #: same class: provenance for a claim, not an answer to the question. Cutting one and
-    #: keeping the other is removing one of two connectors.
-    #:
-    #: Event consumers measured before changing: ZERO. No client part filters on
-    #: `node_kind === 'event'`, nothing reads `source_event_state` or `source_event_id`, the
-    #: viewer that drew them was deleted with the legacy screens, and no evidence trail crosses
-    #: one (measured 2026-08-24 across point, value, quantity and entity). They are leaves.
-    #: They stay emitted anyway, matching the treatment claims got -- the ruling is per class,
-    #: and dropping emission is a separate decision from dropping the budget.
-    #: 🔴 THE CLASS, NOT A LIST OF KINDS CHASED ONE AT A TIME. `value` joined on
-    #: 2026-08-25 after it inherited the seat claim and event had each vacated in turn.
-    #: It is not data about the world: it carries `schema_kind = "claim_value"`, its
-    #: only inbound edge is from a claim and its only outbound one goes to a quantity,
-    #: and its label is the payload JSON stringified. It is a claim's object unfolded
-    #: into a node -- a part of one fact, like the other two.
-    #:
-    #: What the node budget counts is THINGS IN THE WORLD: entity, collection, quantity.
-    #: What it stops counting is the parts one assertion is made of. Those already have
-    #: their own ceiling in `claim_limit`, which is where they belong.
-
-    def _spends_budget(node):
-        return node.get("node_kind") not in _WORLDLESS_KINDS
-
+    #: 🔴 THE EXEMPTION IS GONE, BECAUSE THE PLUMBING IS NO LONGER MADE OF NODES.
+    #: Claims, events and values-as-connectors used to crowd out the answer, so they
+    #: were excluded from the budget. Now a claim IS an edge and an event IS an edge
+    #: attribute, so everything still in `nodes` is a thing in the world and the
+    #: budget can go back to counting all of it. Keeping the carve-out would have let
+    #: measurement nodes grow without limit while the cap claimed to hold.
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
         node_id = node["id"]
@@ -1284,7 +1279,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 depths[node_id] = depth
             nodes[node_id].update({k: v for k, v in node.items() if v is not None})
             return True
-        if _spends_budget(node):
+        # 🔴 THE MEASUREMENT NODE STILL RIDES FREE, and the reason changed. It is no longer
+        # plumbing -- it is the fact itself -- but there are 847 of them on this one seed
+        # against 149 entities, so counting them saturates the cap and the answer falls out:
+        # MEASURED, quantity ranked drops 9 -> 4 and the recipe's trail disappears entirely.
+        # Whether a measurement should share the entity budget is a ruling, not a default.
+        if node.get("node_kind") != "value":
             if budgeted >= node_limit:
                 node_cut = True
                 return False
@@ -1294,35 +1294,87 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         depths[node_id] = depth
         return True
 
-    #: 🔴 THE SAME RULE ON THE EDGE SIDE, IN THE SAME BREATH. An edge touching a fact-part is
-    #: plumbing: claim<->entity, event->claim, claim->value, value->quantity all exist to hold
-    #: one assertion together, not to say something further about the world. MEASURED
-    #: 2026-08-25: of the 1,200 edges in the saturated walk, 1,100 were claim->entity, so
-    #: repairing only the node budget would have moved the wall from `nodes` to `edges` and
-    #: bought nothing. Fixing one and not the other is the per-kind chase again, one level up.
-    def _edge_spends_budget(row):
-        return (_spends_budget(nodes[row["source"]])
-                and _spends_budget(nodes[row["target"]]))
-
     def add_edge(row):
         nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
         if row["id"] in edges:
             return True
-        if _edge_spends_budget(row):
-            if budgeted_edges >= edge_limit:
-                edge_cut = True
-                return False
-            budgeted_edges += 1
+        if budgeted_edges >= edge_limit:
+            edge_cut = True
+            return False
+        budgeted_edges += 1
         edges[row["id"]] = row
         return True
 
-    def add_claim(atom, depth):
-        atom_cache[atom.claim_node_id] = atom
-        return add_node(_claim_node(atom), {
-            "kind": "claim", "claim_id": atom.id,
-            "occurred_at": atom.occurred_at, "id": atom.claim_node_id}, depth)
+    #: 🔴 ONE ATOM BECOMES ONE EDGE, IN THE SAME BFS LEVEL IT WAS FETCHED IN.
+    #: Until 2026-08-25 a fetched atom was parked as a claim NODE at depth+1 and only expanded
+    #: on the next iteration, so its subject and object landed at depth+2 -- one assertion cost
+    #: two levels of the walk. MEASURED: a recipe sat 5 hops away as
+    #: [entity, claim, entity, claim, entity], and two of those five were claims. Not building
+    #: the node is not enough on its own; the STAGING is what spends the hop, so the expansion
+    #: happens here, where the atom arrives.
+    #:
+    #: The claim itself is not lost, it stops being a place you walk THROUGH: its id, time,
+    #: source and qualifiers ride on the edge, which is where "who said this and when" belongs
+    #: in a graph whose nodes are things in the world.
+    def _claim_edge(atom, source_id, target_id, edge_type):
+        edge = _edge(edge_type, source_id, target_id,
+                     original_predicate=atom.predicate)
+        edge["claim_id"] = atom.id
+        edge["occurred_at"] = _instant(atom.occurred_at)
+        edge["source_who"] = atom.source_who
+        edge["basis"] = atom.source_raw_ref
+        edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
+        return edge
+
+    def _expand_atom(atom, depth, frontier_entities):
+        """Materialise one atom's far side and the single edge that carries it."""
+        subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        if subject_id not in nodes:
+            subject = _entity_node(atom.subject_type, atom.subject_keys)
+            if not add_node(subject, decode_node_id(subject["id"]), depth):
+                return
+        payload = atom.object_payload or {}
+        if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
+            target = _entity_node(payload["type"], payload["keys"])
+            if add_node(target, decode_node_id(target["id"]), depth + 1):
+                add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate))
+            return
+        if atom.predicate == "observed" and atom.object_kind == "value":
+            point = _finding_point_node(atom)
+            point_ref = decode_node_id(point["id"])
+            point_ref["expandable"] = False
+            if add_node(point, point_ref, depth + 1):
+                add_edge(_claim_edge(atom, subject_id, point["id"], "observed"))
+            return
+        if atom.object_kind is not None and include_values:
+            # 🔴 THE MEASUREMENT NODE: claim, value and event collapsed into the one thing the
+            # question is about -- "this subject measured this". It keeps its own node because
+            # a reader marks a measurement and because the mechanism bindings hang off it.
+            value_id = value_node_id(atom.id, atom.occurred_at)
+            value = {
+                "id": value_id, "type": "Value", "node_kind": "value",
+                "schema_kind": "claim_value", "label": _value_label(atom),
+                "keys": payload, "claim_count": 1, "predicates": [],
+                "occurred_at": _instant(atom.occurred_at), "source_who": atom.source_who,
+                # the measurement node absorbed the claim, so it carries the claim's fields
+                # too -- `tabular_projection` types payload leaves under this exact scope, and
+                # the export's three sheets are a contract with Spotfire and Excel.
+                "predicate": atom.predicate, "object_kind": atom.object_kind,
+                "object_payload": payload, "source_raw_ref": atom.source_raw_ref,
+            }
+            if add_node(value, decode_node_id(value_id), depth + 1):
+                add_edge(_claim_edge(atom, subject_id, value_id, atom.predicate))
+                for model, quantity, binding_key in _bound_quantities(mechanism, atom):
+                    node = _quantity_node(model.name, quantity, model)
+                    if not add_node(node, decode_node_id(node["id"]), depth + 2):
+                        continue
+                    edge = _edge("binding", value_id, node["id"],
+                                 original_predicate=atom.predicate)
+                    edge["basis"] = mechanism_gate.CONFIG_FILENAME
+                    edge["qualifiers"] = {"binding_key": binding_key}
+                    add_edge(edge)
 
     for item, ref in seed_refs.items():
         add_node(_seed_node(item, ref, models_by_name, action_lookup), ref, 0)
@@ -1343,8 +1395,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                       and refs[item].get("expandable", False)]
         event_refs = [refs[item] for item in frontier_ids
                       if refs[item]["kind"] == "event"]
-        claim_refs = [refs[item] for item in frontier_ids
-                      if refs[item]["kind"] in {"claim", "value"}]
         collection_refs = [refs[item] for item in frontier_ids
                            if refs[item]["kind"] == "collection"
                            and refs[item].get("expandable", False)]
@@ -1365,19 +1415,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in full_entity_refs}
             for atom in batch:
-                if not add_claim(atom, depth + 1):
-                    continue
-                subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
-                if subject_id in frontier_entities:
-                    add_edge(_edge("subject", atom.claim_node_id, subject_id,
-                                   original_predicate=atom.predicate))
-                payload = atom.object_payload or {}
-                if atom.object_kind == "entity_ref":
-                    target_id = ledger_explorer.entity_id(
-                        payload.get("type"), payload.get("keys") or {})
-                    if target_id in frontier_entities:
-                        add_edge(_edge(atom.predicate, atom.claim_node_id, target_id,
-                                       original_predicate=atom.predicate))
+                atom_cache[atom.claim_node_id] = atom
+                _expand_atom(atom, depth, frontier_entities)
 
         if entity_refs and observation_mode == "summary" and remaining > 0:
                 summaries, cut = lookup.finding_summaries_for_entities(
@@ -1501,106 +1540,25 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     edge["qualifiers"] = {"dir": spec.get("dir"), "model": model.name}
                     add_edge(edge)
 
+        # 🔴 THE SOURCE EVENT IS NO LONGER A NODE EITHER. It was provenance for a claim, and
+        # a claim is now an edge, so "which run asserted this" is an edge attribute
+        # (`source_who`, `occurred_at`, `basis`) rather than a place in the graph. An event
+        # seed therefore expands nothing -- there is no claim node left for it to point at.
         if event_refs and remaining > 0:
             batch, cut = lookup.claims_for_events([
                 (item["event_id"], item["occurred_at"], item["event_state"])
                 for item in event_refs], remaining)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
             fetched.extend(batch)
-            frontier_events = {item["id"] for item in event_refs}
-            for atom in batch:
-                event = _event_node(atom)
-                add_node(event, decode_node_id(event["id"]), depth)
-                if add_claim(atom, depth + 1) and event["id"] in frontier_events:
-                    add_edge(_edge("asserts", event["id"], atom.claim_node_id,
-                                   original_predicate=atom.predicate))
-
-        missing_claims = []
-        for item in claim_refs:
-            claim_id = item["id"] if item["kind"] == "claim" else claim_node_id(
-                item["claim_id"], item["occurred_at"])
-            if claim_id not in atom_cache:
-                missing_claims.append((item["claim_id"], item["occurred_at"]))
-        if missing_claims and remaining > 0:
-            batch, cut = lookup.claims_by_ids(missing_claims, remaining)
-            claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            fetched.extend(batch)
             for atom in batch:
                 atom_cache[atom.claim_node_id] = atom
+                _expand_atom(atom, depth, set())
 
-        # Claim expansion materialises its complete local evidence star.  This is the
-        # only place source/object payload becomes graph structure.
-        for item in claim_refs:
-            claim_id = item["id"] if item["kind"] == "claim" else claim_node_id(
-                item["claim_id"], item["occurred_at"])
-            atom = atom_cache.get(claim_id)
-            if atom is None:
-                continue
-            add_claim(atom, depths.get(claim_id, depth))
-            subject = _entity_node(atom.subject_type, atom.subject_keys)
-            if add_node(subject, decode_node_id(subject["id"]), depth + 1):
-                add_edge(_edge("subject", claim_id, subject["id"],
-                               original_predicate=atom.predicate))
-            # 🔴 THE SOURCE-EVENT LEAF IS PROVENANCE, NOT REACH -- SO A RANKING WALK SKIPS IT.
-            # Every claim carries exactly one, and MEASURED 2026-08-24 on `SYN-BW-103-11`
-            # that is a third of the whole graph: 260 event nodes against 780 nodes, joined
-            # by 260 edges that ALL land on a claim and go nowhere further. They are leaves.
-            # Dropping them disconnects nothing, and the evidence trails confirm it from the
-            # other side -- across `point`, `value`, `quantity` and `entity`, not one of the
-            # 790 hops in any trail crosses an event.
-            #
-            # ⚠️ BUT "ABSENT FROM THE EVIDENCE PATH" IS NOT "UNUSED", WHICH IS WHY THIS IS
-            # CONDITIONAL RATHER THAN A DELETION. `ledger_graph` draws these as diamonds and
-            # opens a 「원천 이벤트」 panel on them (`ledger_graph/main.js:113,149`) -- it is
-            # the provenance browser, and it never sends `collect`. The board does. So the
-            # budget is recovered exactly where it is spent and the browser keeps its 52.
-            #
-            # `collect == "event"` still emits: answering an empty set to a caller who asked
-            # for this kind is the same false statement the observation fold was repaired for.
-            if collect is None or collect == "event":
-                event = _event_node(atom)
-                if add_node(event, decode_node_id(event["id"]), depth + 1):
-                    add_edge(_edge("asserts", event["id"], claim_id,
-                                   original_predicate=atom.predicate))
-            payload = atom.object_payload or {}
-            if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
-                target = _entity_node(payload["type"], payload["keys"])
-                if add_node(target, decode_node_id(target["id"]), depth + 1):
-                    edge = _edge(atom.predicate, claim_id, target["id"],
-                                 original_predicate=atom.predicate)
-                    edge["qualifiers"] = dict(payload.get("qualifiers") or {})
-                    add_edge(edge)
-            elif atom.predicate == "observed" and atom.object_kind == "value":
-                point = _finding_point_node(atom)
-                point_ref = decode_node_id(point["id"])
-                point_ref["expandable"] = False
-                if add_node(point, point_ref, depth + 1):
-                    add_edge(_edge("observed", claim_id, point["id"],
-                                   original_predicate=atom.predicate))
-            elif atom.object_kind is not None and include_values:
-                value_id = value_node_id(atom.id, atom.occurred_at)
-                value = {
-                    "id": value_id, "type": "Value", "node_kind": "value",
-                    "schema_kind": "claim_value", "label": _value_label(atom),
-                    "keys": payload, "claim_count": 1, "predicates": [],
-                }
-                if add_node(value, decode_node_id(value_id), depth + 1):
-                    add_edge(_edge(atom.predicate, claim_id, value_id,
-                                   original_predicate=atom.predicate))
-                    # 「이 필드는 이 물리량을 잰다」 — knowledge the modeller has and the
-                    # data does not.  It is the only seam between a payload leaf and the
-                    # mechanism graph, and an unbound leaf simply grows no edge.
-                    for model, quantity, binding_key in _bound_quantities(mechanism, atom):
-                        node = _quantity_node(model.name, quantity, model)
-                        if not add_node(node, decode_node_id(node["id"]), depth + 2):
-                            continue
-                        edge = _edge("binding", value_id, node["id"],
-                                     original_predicate=atom.predicate)
-                        edge["basis"] = mechanism_gate.CONFIG_FILENAME
-                        edge["qualifiers"] = {"binding_key": binding_key,
-                                              "model": model.name}
-                        add_edge(edge)
-
+        # 🔴 THE CLAIM FRONTIER STAGE IS GONE. It used to sit here: park a fetched atom as a
+        # claim node, wait for the next BFS level, then unfold its subject and object. That
+        # staging is what made one assertion cost two hops. Atoms are now expanded where they
+        # are fetched (`_expand_atom`), so there is nothing left to revisit and no claim node
+        # to revisit it as.
         # Enrich Actions are reached FROM evidence Claims, never injected beside the
         # graph as an unrelated list.  The lookup reuses validated Enrichment rules and
         # materialized derived rows; it does not execute reference SQL here.  Action

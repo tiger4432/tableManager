@@ -72,29 +72,40 @@ def test_source_event_identity_groups_one_utterance_but_not_sources_or_times():
     assert record[1] == "source_record"
 
 
-def test_entity_event_and_claim_are_all_valid_subgraph_seeds():
+def test_a_fact_is_one_edge_and_a_claim_is_no_longer_a_place():
+    """🔴 THE SHAPE AFTER 2026-08-25: one atom is one edge between things in the world.
+
+    This test used to assert the opposite -- that claim and event nodes exist and can be
+    seeded -- and it was right until the walk stopped staging claims as nodes. It is rewritten
+    rather than deleted because the questions it asked are still the right ones; only the
+    answers moved. What it now pins is that the retired kinds are GONE rather than merely
+    rare, and that asking for one is refused instead of answered with an empty result.
+    """
     lookup = ledger_subgraph.InMemoryEvidenceLookup(fixture())
     entity_id = ledger_explorer.entity_id("Lot", {"lot": "A"})
-    entity_graph = ledger_subgraph.subgraph(entity_id, lookup, hops=3)
-    kinds = {node["node_kind"] for node in entity_graph["nodes"]}
-    assert {"entity", "event", "claim", "value"} <= kinds
-    assert {node["label"] for node in entity_graph["nodes"] if node["node_kind"] == "entity"} >= {"A", "B", "C"}
-    assert sum(node["node_kind"] == "event" for node in entity_graph["nodes"]) == 2
-    assert sum(node["node_kind"] == "claim" for node in entity_graph["nodes"]) == 3
+    graph = ledger_subgraph.subgraph(entity_id, lookup, hops=3)
+    kinds = {node["node_kind"] for node in graph["nodes"]}
 
-    event_id = next(node["id"] for node in entity_graph["nodes"]
-                    if node["node_kind"] == "event" and node["keys"]["source_event_id"] == EVENT)
-    event_graph = ledger_subgraph.subgraph(event_id, lookup, hops=2)
-    assert sum(node["node_kind"] == "claim" for node in event_graph["nodes"]) == 2
+    assert {"entity", "value"} <= kinds
+    assert not (kinds & ledger_subgraph.RETIRED_NODE_KINDS), (
+        "a claim is an edge now and its source event is an edge attribute")
+    assert {node["label"] for node in graph["nodes"]
+            if node["node_kind"] == "entity"} >= {"A", "B", "C"}
 
-    claim_id = next(node["id"] for node in entity_graph["nodes"]
-                    if node["node_kind"] == "claim" and node["predicate"] == "measured")
-    claim_graph = ledger_subgraph.subgraph(claim_id, lookup, hops=1)
-    assert {node["node_kind"] for node in claim_graph["nodes"]} == {
-        "claim", "entity", "event", "value"}
+    # the assertion still travels -- on the edge, where "who said it and when" belongs
+    carried = [edge for edge in graph["edges"] if edge.get("claim_id")]
+    assert carried, "every fact must arrive as an edge carrying its claim"
+    assert all(edge.get("occurred_at") for edge in carried)
 
-    for node in entity_graph["nodes"]:
-        assert ledger_subgraph.decode_node_id(node["id"])["kind"] == node["node_kind"]
+    # and a claim id names nothing to stand on
+    claim_seed = ledger_subgraph.claim_node_id(
+        str(uuid.UUID(int=1)), datetime(2026, 8, 15, 3, tzinfo=timezone.utc))
+    with pytest.raises(ValueError):
+        ledger_subgraph.subgraph(claim_seed, lookup, hops=1)
+
+    for retired in sorted(ledger_subgraph.RETIRED_NODE_KINDS):
+        with pytest.raises(ValueError):
+            ledger_subgraph.subgraph(entity_id, lookup, hops=2, collect=retired)
 
 
 def test_direction_and_value_projection_are_explicit_parameters():
@@ -173,10 +184,13 @@ def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
     lookup = ledger_subgraph.InMemoryEvidenceLookup([legacy])
     entity_id = ledger_explorer.entity_id("Lot", {"lot": "OLD"})
     body = ledger_subgraph.subgraph(entity_id, lookup, hops=2)
-    event = next(node for node in body["nodes"] if node["node_kind"] == "event")
-    assert event["source_event_state"] == "legacy_atom"
-    reseeded = ledger_subgraph.subgraph(event["id"], lookup, hops=1)
-    assert any(node["node_kind"] == "claim" for node in reseeded["nodes"])
+    # 🔴 a legacy atom no longer becomes an event NODE -- it is still one honest fact, now
+    # carried as an edge. `register` has no object, so what it leaves is the subject itself.
+    assert not any(node["node_kind"] in ledger_subgraph.RETIRED_NODE_KINDS
+                   for node in body["nodes"])
+    assert any(node["label"] == "OLD" for node in body["nodes"])
+    reseeded = ledger_subgraph.subgraph(entity_id, lookup, hops=1)
+    assert any(node["label"] == "OLD" for node in reseeded["nodes"])
 
 
 def test_caps_are_reported_instead_of_looking_complete():
@@ -193,13 +207,13 @@ def test_caps_are_reported_instead_of_looking_complete():
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(many),
         hops=4, node_limit=10, edge_limit=20)
-    world = [node for node in body["nodes"]
-             if node["node_kind"] not in ledger_subgraph._WORLDLESS_KINDS]
+    # measurement nodes still ride free; everything else shares node_limit
+    world = [node for node in body["nodes"] if node["node_kind"] != "value"]
     assert len(world) == 10
     assert body["truncated"]["nodes"] is True
     assert body["truncated"]["reason"]
-    # and the parts of a fact are still carried, since the trails are built by reading them
-    assert any(node["node_kind"] == "claim" for node in body["nodes"])
+    # and the facts are still carried -- as edges, which is where they live now
+    assert any(edge.get("claim_id") for edge in body["edges"])
 
 
 def test_tabular_projection_is_stable_and_dynamic_fields_stay_typed():
@@ -481,7 +495,9 @@ def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
     hops = top["evidence"][0]["hops"]
     assert hops[0]["id"] in (marked, control)
     assert hops[-1]["label"] == "ORIGIN"
-    assert any(hop["node_kind"] == "claim" and hop["atom"] for hop in hops)
+    # 🔴 a trail no longer STEPS THROUGH a claim -- it steps between things in the world and
+    # the assertion is the edge it crosses. Asserting a claim hop would pin the old shape.
+    assert all(hop["node_kind"] not in ledger_subgraph.RETIRED_NODE_KINDS for hop in hops)
     # 「정도가 아니라 종류가 다르다」 has to be reachable or the mark is decoration:
     # more reach from the marked subjects AND more from the controls is a trade-off, so
     # neither dominates and both stay top.
