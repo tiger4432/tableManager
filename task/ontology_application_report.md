@@ -4,6 +4,84 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 📐 「키를 받는 라우트 넷이 walk 으로 표현되나」 — **하나는 이미 walk, 하나는 반, 둘은 못 합니다**
+
+재기만 했습니다. 라우트·부품 «안 건드렸습니다». 씨앗 `SYN-BW-101-16` / `SYN-CX-CHIP-001`.
+
+## 요약
+```
+siblings      🟢 «이미 walk 입니다»       engine:"walk" — 레거시 모양이 아니었습니다
+lot_map       🟡 «반»                    발견은 있고 «자리»가 없습니다
+trends        🔴 «못 합니다»              «분모»가 원장에 없습니다
+composition   🔴 «못 합니다»              «그리는 것»이 원장에 없습니다
+```
+
+## ④ `siblings` — 이미 walk 입니다
+```
+① 질문   「이 축:값 주위의 또래는 무엇이고 몇인가」 (알약마다 하나씩, 보드 4요청)
+② walk   scope=<axis>:<value> 를 받고 «내부가 walk 입니다»
+③ 실측   응답에 «engine: "walk"» · mode: "contrast" · candidates/gates/mechanism
+         축은 «선언»에서 옵니다 — wafer · bond_eqp · bond_lot · dt_lot · core_lot
+                              · b_bn · stack_height · scan_recipe · scan_eqp · leg
+         선언에 없는 축은 «422 unknown_marking_axis» (finding 으로 불러 확인)
+```
+📌 **이건 「고칠 것」 목록에서 빼도 됩니다.** 인자가 «키»처럼 보이지만 축이 선언이고 엔진이 walk 입니다.
+
+## ② `lot_map` — 발견은 walk 에 «있고», 자리는 «없습니다»
+```
+① 질문   「이 행의 발견이 «어느 격자의 어디»에 있나」 — 프레임 셋을 동시에
+③ 라우트 답  row=SYN-BW-101-16&by=wafer&kind=void
+            proj bond  cells «141» · proj dt cells 11 · proj core cells «120»
+            found «28» · scanned 29        (보드 게이트의 「발견 28」이 이 수입니다)
+            provenance  ledger_backed «false» · relations [bonding_log, inspection_run]
+③ walk 답   collect=point · follow=observed,inspected · hops 8
+            Finding Point «89» (전부 void)   -> 🔴 발견은 «더 많이» 있습니다
+🔴 없는 것   «좌표»입니다.  point 노드의 keys.position 이 «{} 빈 객체»이고
+            placements 필드도 «없습니다». 격자(141/11/120 셀)도 walk 이 «안 냅니다»
+📎 그런데 좌표가 «payload 안에는 있습니다» — run_uid 가
+   "sat|SYN-BW-101-16|«4|7|1»|2026-11-22T02:26:00+09:00" 입니다. 투영이 안 꺼낼 뿐입니다
+```
+**결론: 「어떤 발견인가」는 walk 이 «지금» 답합니다. 「어느 자리인가」는 못 답합니다.**
+
+## ③ `trends` — 분자는 walk, **분모가 원장에 없습니다**
+```
+① 질문   「웨이퍼마다 이 발견 종류의 «비율»이 얼마인가」 (72점 = 웨이퍼 72장)
+③ 실측   provenance
+            numerator    source «ledger_events» · predicate observed · ledger_backed «true»
+            denominator  source «inspection_run» · declared_by finding_kinds.methods
+                         · absence_is_zero false          -> 🔴 «원장 밖 표»입니다
+         grain  subject_type wafer · identity_fields[wafer] · aggregation void_by_experiment_unit
+         점마다 identity.node_id 가 «walk 씨앗 그대로»입니다 (ledger-entity:v1:...)
+```
+**결론: 분자는 `collect=point` 로 이미 나옵니다(값도 실려 있습니다 — 표본 value 14.019).
+분모(검사 모집단)가 원장에 원자로 «없어서» 비율을 walk 으로 못 만듭니다.**
+
+## ① `composition` — **그리는 것 자체가 원장에 없습니다**
+```
+① 질문   「이 칩이 «무엇으로» 만들어졌나」 — 자재 구성
+③ 라우트 답  final_chip_id=SYN-CX-CHIP-001 -> graph 노드 «38» 엣지 28
+            node types  wafer_grid «10» · dt_slot «18» · bond_layer «10»
+🔴 원장 실측
+            ledger subject_type 전수   wafer · die · lot · dtjob · recipe · waferleg  «여섯»
+            wafer_grid   subject «0»  entity_ref «0»
+            dt_slot      subject «0»  entity_ref «0»
+            bond_layer   subject «0»  entity_ref «0»
+            그리고 씨앗도 없습니다 — chip 을 주어로 갖는 원자 «0» (어제 실측)
+```
+**결론: 씨앗도 없고 그릴 노드도 없습니다. walk 으로 «바꿀» 것이 아니라
+«그 개념들이 원장에 들어오는 것»이 선행입니다.**
+
+## 그래서 3단계 착수 판단에 쓰실 수 있게 «없는 것»만 모으면
+```
+lot_map      point 의 «좌표 투영» (run_uid 에 있는 것을 position/placements 로)
+             + 격자(프레임) 선언
+trends       «검사 모집단»이 원장 원자로 (inspection_run -> 술어)
+composition  wafer_grid · dt_slot · bond_layer «엔티티», 그리고 chip 씨앗
+siblings     «없음» — 이미 walk
+```
+⚠️ 「전부 된다/전부 안 된다」를 의심하라 하셨는데, 실제로 넷이 «네 가지 상태»입니다.
+
+
 # ✅ 마무리 «완료» — `f2e44ae0`. 빌드 초록 · 소스와 dist «한 커밋»
 
 ## ①②③④ 전부
