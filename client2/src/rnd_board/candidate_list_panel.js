@@ -212,7 +212,11 @@ export class CandidateListPanel extends Panel {
   _firstMeasuredRef(c) {
     for (const ev of c.evidence || []) {
       for (const hop of ev.hops || []) {
-        if ((hop.kind === 'claim' || hop.kind === 'value') && hop.ref) return hop.ref;
+        // same rule as `measuredFromHops__untilServerServesIt`: the hop that makes a
+        // candidate measured is the `value` one -- the old test was `claim || value` and the
+        // `claim` arm died when a claim became an edge. `ref` rides on that same hop, so it
+        // is read from the hop that answered, never from a neighbour.
+        if (hop.kind === 'value' && hop.ref) return hop.ref;
       }
     }
     return null;

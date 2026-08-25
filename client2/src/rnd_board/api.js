@@ -386,7 +386,19 @@ export function measuredFromHops__untilServerServesIt(row) {
 
   for (const ev of row.evidence || []) {
     for (const hop of ev.hops || []) {
-      if (hop && (hop.node_kind === 'value' || hop.node_kind === 'claim')) return true;
+      // 🔴 THE QUESTION IS UNCHANGED; ONE OF ITS TWO NAMES STOPPED EXISTING. This read
+      // `claim || value`. On 2026-08-25 a claim became an EDGE, so the `claim` arm can never
+      // be true again and only `value` survives -- the rule is the old rule with a dead name
+      // removed, not a new rule.
+      //
+      // 🔴 AND THE ARM THAT DIED WAS THE ONE CARRYING THE COUNT. Under the old projection
+      // EVERY atom was a claim node, so any trail that walked at all passed one. MEASURED on
+      // the old code, seed `SYN-CX-BW-001`: 21 of 21 candidates had a claim hop and 0 of 21
+      // had a value hop, and the claim hop was always the SECOND -- the first step out of the
+      // seed. So "measured 21/21" said only "the walk ran". It counted nothing. The screen
+      // now reads 0 measured on that seed and 4 of 25 on `SYN-BW-101-16`, where trails really
+      // are entity -> value -> quantity. A zero here is an answer, not a fault.
+      if (hop && hop.node_kind === 'value') return true;
     }
   }
   return false;

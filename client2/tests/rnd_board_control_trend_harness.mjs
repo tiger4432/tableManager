@@ -71,7 +71,7 @@ const WALK = {
         // 🔴 `node_kind` IS THE FIELD THE DERIVATION READS -- `kind` is the one the card prints.
         //    A fixture carrying only one of them scores a candidate as name-only and the whole
         //    measured/name-only split silently inverts.
-        evidence: [{ seed: 'seed', hops: [{ node_kind: 'claim', kind: 'claim', label: 'x', ref: 'recipe_book:R@1' }] }] },
+        evidence: [{ seed: 'seed', hops: [{ node_kind: 'value', kind: 'value', label: 'x', ref: 'recipe_book:R@1' }] }] },
       { id: 'q-name', type: 'Quantity', label: 'outgassing · void_formation', rank: 2,
         top: false, tied: false, incomparable: false,
         evidence: [{ seed: 'seed', hops: [{ node_kind: 'quantity', kind: 'quantity', label: 'y' }] }] },
