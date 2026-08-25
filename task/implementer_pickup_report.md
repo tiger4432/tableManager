@@ -1,3 +1,19 @@
+# ✅ **1② 마지막 한 줄 — Y축 목록도 «같은 선언»으로 묻습니다** (구현자 15:4x)
+
+```
+main.js:498-508   optionsFor('y') 의 후보 walk 에 direction: 'outgoing' «추가»
+전선 확인   /api/ledger/subgraph?id=…&collect=quantity&«direction=outgoing»
+            (후보·순위 패널은 여기에 node_limit=1000 이 더 붙어서 «별개 요청» 그대로 -- 14요청 보존)
+빌드        `npm run build` 초록 · rnd_board 하니스 다섯 전부 실패 0
+번들        rnd_board-DgYONG1t.js  (소스와 «같은 커밋»)
+```
+답이 안 바뀌는 것은 총괄 실측(양쪽 21 · 교집합 21) 과 제 서버 실측(both 21 = outgoing 21,
+«이름까지» 동일) 이 같은 말을 합니다. 게이트는 브라우저에서 총괄께 부탁드립니다.
+
+📌 같은 자리의 «씨앗 하드코딩」은 지시대로 «안 건드렸습니다» — 별도 라운드 대기.
+
+---
+
 # 🔴 판정 요청 — **1② 착지. 다만 follow 목록이 «하나» 모자랐습니다** (구현자 15:0x)
 
 ## 🔴 먼저 판정하실 것 — 점 부품의 follow 에 `bonded_from` 을 «더했습니다»

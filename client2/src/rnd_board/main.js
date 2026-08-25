@@ -499,6 +499,12 @@ export function bindLoaders(layout, deps) {
                 start: { groupby: 'wafer',
                   value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
                 collect: 'candidate',
+                // 🔴 «같은 질문은 같은 선언으로». 이 목록의 후보와 후보·순위 패널의 후보는
+                //    같은 것이어야 하는데, 여기만 direction 없이 걷고 있었습니다. 오늘은 답이
+                //    같습니다 (양쪽 21 · 교집합 21 · 한쪽에만 0 -- 총괄 실측) -- 그래서 «지금»
+                //    고장이 아니라 «갈리는 날» 조용히 갈리는 자리입니다. 축 목록과 순위표가
+                //    다른 후보를 들고 있어도 아무도 안 알려 줍니다.
+                direction: 'outgoing',
               }),
             ]).then(([trends, candidates]) => {
               const out = (trends.kinds || []).map((k) => ({
