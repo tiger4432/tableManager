@@ -1,3 +1,56 @@
+# ⚖️ 판정 — **효과 «통과» · 무회귀 «통과» · 🔴 거절이 «500» 입니다** (총괄 09:2x)
+
+서버 09:18:16 올렸습니다 (파일 08:55:58 보다 뒤). 총괄이 직접 잰 값만 적습니다.
+
+## ✅ ① 효과 — 먹었습니다. 그리고 «둘 다» 의미가 있습니다
+```
+follow 없음                            nodes «5,644»  세상것 193  recipe 5  홉5  trunc[claims]
+follow=bonded_from,processed_with      nodes «3,152»  세상것 120  recipe «5»  홉5  trunc[claims]
+follow=observed,inspected              nodes «168»    세상것  86  recipe 0   홉6  trunc«[depth]»
+```
+🔴 **관측 필터는 «완주»합니다** — trunc 가 depth «뿐»입니다. 33배 줄고 예산에 안 걸립니다.
+🔴 **계보 필터는 recipe 를 «그대로» 지킵니다** — 5개. 답을 안 잃고 노드만 44% 줍니다.
+
+## ✅ ② 무회귀 — 통과. 브라우저로 직접 봤습니다
+```
+14패널 · 14요청 · composition2·trends3·subgraph2·lot_map3·siblings4
+후보 21 · 실측 21 · 발견 28 · 검사 128 · 오류 없음
+follow 없는 walk = 5,644 = 기준선 «그대로»
+```
+
+## 🔴 ③ 거절이 «500» 입니다 — 422 여야 합니다. 원인까지 잡았습니다
+```
+요청   follow=not_a_predicate
+응답   «500 Internal Server Error»
+로그   File "server/ledger_trace_router.py", line 140, in evidence_subgraph
+           "declared": sorted(declared),
+       NameError: name 'declared' is not defined
+```
+**거절 경로가 «한 번도 안 밟혀서» 안 잡혔습니다.** 커밋 제목에 「the refusal nearly rejected its
+own predicate」라고 쓰셨으니 그 자리를 손보시다 남은 것 같습니다.
+
+📌 이건 제 상설 메모 그대로입니다 — **「가드는 «도달 가능해지는 날» 틀린다」.**
+   그리고 오늘은 그날이 «만든 날»이었습니다.
+
+## 할 것 — 한 줄. 그리고 «밟아 보고» 커밋하십시오
+```
+① line 140 의 `declared` 를 실제 선언 목록으로 바꿉니다 (그 함수 안에서 «이름이 뭔지» 확인)
+② 🔴 «직접 호출해 보고» 커밋하십시오:
+   curl -s -o NUL -w "%{http_code}" "http://127.0.0.1:8080/api/ledger/subgraph?id=<seed>&follow=not_a_predicate"
+   -> «422» 를 눈으로 본 다음에
+③ 그리고 «맞는» 술어 하나로도 한 번 — 200 이 그대로인지 (거절 고치다 통과를 막는 일이 흔합니다)
+```
+⛔ 다른 것 손대지 마십시오. `follow` 자체는 «돌고 있습니다».
+
+## 📎 그리고 이 라운드로 확정된 것
+```
+관측 필터가 «완주»한다는 것은 -> 1④(방향 제한)이 «따로 필요 없다»는 뜻입니다
+   클래스 노드를 「통과지로 안 쓰기」가 곧 「그 술어를 follow 에 안 넣기」입니다
+   계획의 1④ 를 «닫습니다». 새로 만들 것 없음
+```
+
+---
+
 # 🟢 **walk 개선 ① — 술어 선택. 재기 단계 «건너뜁니다». 제가 코드를 읽고 정했습니다** (총괄 08:3x)
 
 앞 지시의 「단계 0 재기」는 «취소»합니다. `claims_for_entities` 를 제가 직접 읽었고 답이 나왔습니다.
