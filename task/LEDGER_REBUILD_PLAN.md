@@ -153,10 +153,42 @@ walk   BFS 로 펼칠 뿐 «순서를 안 본다»
 
 | 구간 | 지금 | 필요 |
 |---|---|---|
-| `bonding pkg → dt_lot_slot,x,y` | ❌ `bonded_from` 이 **wafer→wafer** (3,650) | die→die 로 |
-| `dt_lot_slot,x,y → dt_lot_slot,x,y` (3회) | ❌ `slot_map` 이 **lot→lot** (443) | die→die 로 |
+| `bonding pkg → dt_lot_slot,x,y` | ❌ `bonded_from` 이 **wafer→wafer** (3,650) | 🔴 **relation 을 넓힌다** (아래) |
+| `dt_lot_slot,x,y → dt_lot_slot,x,y` (3회) | ❌ `slot_map` 이 **lot→lot** (443) | lot_slot→lot_slot, 선언만으로 |
 | `dt_lot_slot,x,y → dt_job,x,y` | ⚠️ `transfer@1` die→die 는 있으나 `DTLotSlot` 자리가 없음 | mat_type 추가 |
 | `dt_job,x,y → core,x,y` | ✅ **이미 있다** — `dt_transfer / core-die-to-dt-die` 28,208 | 그대로 |
+
+### 🔴 3-0. 재료는 «한 표»에 통째로 있다 — 없던 것은 relation 의 «폭»이다
+(구현자 발견 2026-08-26, 총괄 실측 확인)
+```
+bonding_log  380,273행
+  base_id+bx+by       채워짐 374,977 · «서로 다른 조합 374,977»   <- 행 하나 = die 하나
+  dt_lot+dt_slot      376,889 · 2,752조합       dt_x+dt_y  376,889 · 179조합
+  core_lot+core_slot   93,118 ·   657조합       cx+cy       93,118 ·  378조합
+
+선언이 읽는 relation:  bonding_core_lot  «3,650»   <- 104배 붕괴 · x,y 계열 «없음»
+   SELECT DISTINCT base_id, core_wafer, core_slot, event_time  (좌표가 SELECT 목록에 없다)
+```
+🔴 **`bonding_log` 는 이미 die 결이다.** 뷰가 누르면서 좌표를 버린 것이지 재료가 없던 게 아니다.
+-> 그러므로 「bonded_from 을 die→die 로」는 **선언만으로 안 된다.** 고칠 자리는 «relation» 이다.
+
+**총괄 판정 (2026-08-26):** `bonding_core_die` 뷰를 만든다. `relation` 은 선언이 «자기 입력으로
+지목하는 것»이고 그 폭을 넓히는 것은 선언 층의 일이다 — 서버 코드가 아니다. 그리고 없으면
+**목표 첫 구간에 못 닿는다**(목표에 못 닿는 수정은 작은 게 아니라 0이다).
+```
+조건 ①  server/scripts/create_bonding_core_lot_view.py 와 «같은 패턴»
+        추적되는 스크립트 · dry-run 기본 · --apply + --i-accept-writing-to-owner-database
+조건 ②  옛 뷰 bonding_core_lot 을 «DROP 하지 않는다» — 되돌릴 자리
+조건 ③  «누르지 않는다». DISTINCT 로 접으면 x,y 가 다시 사라진다. 행 하나 = die 하나가 계약
+```
+
+### 🔴 미리 아는 커버리지 — core 구간은 «24.5%» 만 재료가 있다
+```
+core_lot+core_slot 이 채워진 행:  93,118 / 380,273  =  24.5%
+```
+나머지 75%는 dt 까지만 가고 코어로 안 간다. **막힘이 아니라 «알아야 할 수»다.**
+목표 걷기를 태울 때 「몇 %가 끝까지 가나」를 같이 적는다 — 안 닫히는 것이
+«데이터가 없어서»인지 «걷기가 못 가서»인지 구별되어야 한다.
 
 ### 3-1. 결이 틀린 선언 «넷» (전부 `ledger_config.json` 안)
 ```
