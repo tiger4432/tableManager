@@ -4,6 +4,68 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔴 1② 지시서에 «셋째 칸»이 필요합니다 — `follow` · `hops` «그리고 `direction`»
+
+판정에서 「계보 부품의 홉 수는 재서 정합니다」라고 남기셨는데, **재 보니 «홉으로는 안 됩니다».**
+그리고 답은 이미 있는 인자였습니다.
+
+## ① 계보 집합은 «홉을 아무리 올려도» 완주하지 않습니다
+```
+follow=bonded_from,transferred,processed_with,has_wafer · collect=entity · direction=both(기본)
+  hops=4    노드 3,219  recipe 5  닿은홉 4  complete False  trunc depth
+  hops=6    노드 3,466  recipe 5  닿은홉 5  complete False  trunc claims
+  hops=8    노드 3,466  recipe 5  닿은홉 5  complete False  trunc claims
+  hops=10   노드 3,466  recipe 5  닿은홉 5  complete False  trunc claims
+  hops=14   노드 3,466  recipe 5  닿은홉 5  complete False  trunc claims
+```
+🔴 관측 집합이 홉 8에서 «완주»한 것과 정반대입니다. **계보는 follow 만으로는 안 끝납니다.**
+
+## ② 좁혀 보니 «bonded_from 하나»로도 예산이 찹니다
+```
+bonded_from + processed_with   노드 1,936  recipe 5  complete False  trunc claims   0.97s
+bonded_from «만»               노드 1,651  recipe 0  complete False  trunc claims   0.93s
+transferred «만»               노드     1  recipe 0  complete «True»                0.02s   <- 이 씨앗에선 «안 나갑니다»
+```
+🔴 이유는 제가 03:0x 에 잰 그것입니다 — **코어 웨이퍼가 «공유 허브»입니다.**
+   씨앗 자기 `bonded_from` 은 «29» 인데 `direction=both` 가 그 코어에 붙은 «다른 BW» 들을
+   통째로 끌어옵니다 (엣지 888).
+
+## 🔴 ③ `direction=outgoing` 을 주면 «완주합니다». 그리고 그 인자는 «이미 있습니다»
+```
+follow=bonded_from,processed_with · hops=10 · node_limit=1000
+  direction=both       노드 1,936  recipe 5  wafer 104  닿은홉 5  complete False  trunc claims
+  direction=outgoing   🔴 노드 600  recipe 5  wafer  30  닿은홉 8  complete «True»  trunc «None»
+```
+```
+라우트 선언   ledger_trace_router.py:105  direction: str = Query("both", pattern="^(outgoing|incoming|both)$")
+즉           «만들 것이 없습니다». 부품이 «선언을 안 하고 있을 뿐»입니다
+```
+
+## ④ 그래서 1④(방향 제한)의 «결론은 맞고 이유가 다릅니다»
+```
+적으신 것   「관측 필터가 완주하므로 새로 만들 것이 없습니다」  -> 만들 것 없음: «맞습니다»
+그러나      그 이유는 관측 walk 에만 참입니다. 계보 walk 은 방향이 «있어야» 완주합니다
+정정        1④ 는 「필요 없다」가 아니라 **「이미 있으니 부품이 «선언»하면 된다」**입니다
+```
+
+## ⑤ 그래서 부품 선언은 «세 칸»입니다 (측정에서 나온 값)
+```
+부품        collect     follow                                  hops   direction   결과
+맵·점       point       observed, inspected                      8     both        259 노드 · 답 동일 · 0.13s
+후보        quantity    observed, inspected, measured, has_param 8     both        130 노드 · ranked «21» 완주
+계보        entity      bonded_from, processed_with             10     🔴 outgoing 600 노드 · recipe 5 «완주»
+```
+
+## ⚠️ `outgoing` 이 «공짜가 아닙니다» — 무엇을 버리는지
+```
+both      wafer 104 — 같은 코어를 공유하는 «다른 BW» 들이 들어옵니다
+outgoing  wafer  30 — 씨앗과 그 코어 29장
+-> 「이 웨이퍼의 코어가 탄 레시피」에는 outgoing 이 «맞습니다» (나머지 74는 형제이지 조상이 아님)
+-> 「이 코어를 같이 쓴 다른 웨이퍼」를 묻는 부품이 생기면 그건 both 이고, 그건 «완주 못 합니다»
+   그 질문이 생기는 날 다시 재야 합니다. 지금 그 부품은 «없습니다»
+```
+
+
 # 🔴🔴 1② 준비 실측 — **`follow` 는 «싸게» 만드는 게 아니라 «답을 완성»시킵니다 (후보 16 -> 21)**
 
 1② 가 「부품이 follow 를 선언」이고 그게 제 파일이라, 넣기 «전»에 두 가지를 쟀습니다.
