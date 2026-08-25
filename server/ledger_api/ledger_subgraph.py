@@ -1610,26 +1610,30 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     if any(depth == hops for depth in depths.values()):
         depth_cut = True
-    attached_claims = {node_id: set() for node_id in nodes}
+    # 🔴 ONE EDGE IS ONE CLAIM, so the predicate is read off the edge rather than off a node
+    # that no longer exists.  This used to walk edge -> claim NODE -> its predicate; claims
+    # stopped being nodes when a fact became an edge, so `claim_id` was ALWAYS None here and
+    # the loop skipped every edge -- `claim_count` 0 and `predicates` [] on every entity.
+    #
+    # 🔴 WHAT IS COUNTED: an edge that carries `claim_id`, i.e. an edge that IS one ledger
+    # atom.  What is NOT: the plumbing this graph draws around those atoms -- `binding`,
+    # `has_findings`, `on_subject`, `contains`, `finding`, `mechanism`, `needs_enrichment`.
+    # Those carry a BORROWED `original_predicate` (mostly "observed"), so counting them would
+    # report observations nobody recorded.  `claim_id` is the discriminant because it is the
+    # atom's own id: no name matching, and nothing to keep in step with a rename.
+    attached_claims = {node_id: {} for node_id in nodes}
     for edge in edges.values():
-        claim_id = None
-        if nodes[edge["source"]].get("node_kind") == "claim":
-            claim_id = edge["source"]
-        elif nodes[edge["target"]].get("node_kind") == "claim":
-            claim_id = edge["target"]
-        if claim_id is None:
+        claim_id = edge.get("claim_id")
+        if not claim_id:
             continue
         for endpoint in (edge["source"], edge["target"]):
-            if endpoint == claim_id:
-                continue
-            attached_claims[endpoint].add(claim_id)
+            attached_claims[endpoint][claim_id] = edge["predicate"]
     for node_id, node in nodes.items():
         node["depth"] = depths[node_id]
         if node.get("node_kind") in {"entity", "event"}:
             node["claim_count"] = len(attached_claims[node_id])
             counts = {}
-            for claim_id in attached_claims[node_id]:
-                predicate = nodes[claim_id].get("predicate")
+            for predicate in attached_claims[node_id].values():
                 if predicate:
                     counts[predicate] = counts.get(predicate, 0) + 1
             node["predicates"] = [

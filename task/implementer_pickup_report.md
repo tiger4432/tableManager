@@ -1,3 +1,62 @@
+# ✅ **회귀 수리 — 술어를 «엣지에서» 읽습니다. 게이트 넷** (구현자 22:4x)
+
+## 무엇을 세고 무엇을 뺐나 — 판별식은 **`claim_id` 를 지녔나** 하나입니다
+```
+셉니다   claim_id 를 «지닌» 엣지 = 그 엣지가 «원장 원자 하나» 그 자체
+빼냅니다  배관 — binding · has_findings · on_subject · contains · finding · mechanism
+         · needs_enrichment.  이것들은 original_predicate 를 «빌려» 답니다(대개 "observed")
+         -> 세면 «아무도 기록하지 않은 관측»을 보고하게 됩니다
+```
+🔴 이름이 아니라 «원자의 id»로 가릅니다 — 개명과 함께 죽지 않습니다. (이번 회귀가 정확히
+   「사라진 이름으로 판정」이었습니다.)
+
+## ① 채워짐 · ② 일치 — 씨앗 SYN-BW-101-16 · hops=1
+```
+seed  claim_count «77»
+      predicates  bonded_from «29» · inspected «39» · processed_with «9»
+엔티티  predicates 채워진 것 «69 / 69»       (전: 0 / 82)
+```
+🔴 **노드의 수를 `edges[]` 에서 «따로» 센 수와 대조했습니다 — 같습니다.**
+```
+씨앗에 닿는 엣지 · claim_id 있음 : {bonded_from 29, inspected 39, processed_with 9}
+씨앗에 닿는 엣지 · 배관          : {}          <- 씨앗엔 배관이 «안 닿습니다»
+node == census(claim edges)     : True
+```
+
+### 총괄의 넷 중 «binding 10» 이 제 목록에 없는 이유
+```
+그래프 전체 · claim 엣지 : bonded_from 29 · inspected 39 · processed_with 9
+그래프 전체 · 배관       : binding «10»
+```
+`binding` 은 `mechanism_models.json` 이 «선언»한 모델 연결이고 원장에 적힌 원자가 아닙니다
+(값 노드 → 물리량 노드). 게다가 씨앗에 «닿지도» 않습니다 — 그래서 씨앗의 predicates 에는
+어떻게 세든 안 들어갑니다. 지시서의 「배관은 세지 마십시오」 그대로입니다.
+
+## ③ 무회귀 — 보드
+서버 변경은 이 루프 «하나»입니다. 요청 수는 클라 성질이고 클라는 «한 줄도» 안 바뀌었습니다
+(응답에 `predicates`·`claim_count` 가 «되돌아온» 것뿐이라 요청이 늘 자리가 없습니다).
+브라우저 13 확인은 총괄 몫입니다.
+
+## ④ 테스트 — 🔴 «둘이 빨간데 제 것이 아닙니다»
+```
+test_ledger_subgraph · test_ledger_trace · test_ledger_structure_pg   초록
+test_ledger_trace_contract   «2 failed»
+   test_every_declared_derivation_is_explicitly_classified
+   test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
+합계 72 passed · 9 skipped · 2 failed
+```
+**제 변경 «전»에도 같은 둘이 빨갛습니다** — 제 파일을 HEAD 로 되돌리고 같은 조건에서 다시
+쟀습니다 (2 failed · 9 passed, 동일). 원인은 제 코드가 아니라 «선언»입니다:
+```
+server/config/sample/ledger_config.json.sample
+profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared in packs [unknown_pack]
+```
+그 파일은 총괄 소관이라 «손대지 않았습니다». 판정 부탁드립니다.
+📌 세션 시작 시점엔 그 sample 이 «미커밋 수정» 상태였는데 지금은 커밋돼 있습니다 —
+   즉 이 빨강은 지금 main 에 «들어가 있습니다».
+
+---
+
 # ✅ **zip + 다운로드 라우트 착지 — 게이트 넷 실측** (구현자 16:2x)
 
 ## ① zip 실측 — 610MB 가 «235.5MB» 로
