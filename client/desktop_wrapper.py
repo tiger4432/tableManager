@@ -8,8 +8,21 @@ import os
 # extend_no_proxy(). Keep the loopback baseline regardless: it stays the common case.
 os.environ["NO_PROXY"] = "127.0.0.1,localhost"
 
-# ── 원격 개발자 도구 디버깅 포트 설정 (Chrome 브라우저에서 http://localhost:9222 접속 가능) ──
-os.environ["QTWEBENGINE_REMOTE_DEBUGGING"] = "9222"
+# ── 원격 개발자 도구 디버깅 포트 (Chrome 브라우저에서 http://localhost:9222 접속) ──
+# 🔴 OPT-IN, NOT ALWAYS-ON. This was unconditional, so every shipped build ran a DevTools
+#    protocol server: overhead on a shell whose whole job is to feel native, and an open
+#    door -- anything on loopback can drive the browser with no authentication.
+#    The in-app inspector (toggle_devtools) uses setDevToolsPage() and does NOT need this,
+#    so turning it off costs no developer affordance.
+#    Set ASSY_DEVTOOLS=1 (or ASSY_DEVTOOLS=<port>) to get it back.
+#    ⚠️ `1` means ON, not "port 1". A bare digit is only read as a port when it is one a
+#    non-admin process can actually bind (>=1024); anything else falls back to 9222. The
+#    first draft of this took `ASSY_DEVTOOLS=1` literally, handed Chromium port 1, and the
+#    switch silently did nothing -- caught by running it rather than reading it.
+_devtools = (os.environ.get("ASSY_DEVTOOLS") or "").strip()
+if _devtools:
+    _port = _devtools if (_devtools.isdigit() and 1024 <= int(_devtools) <= 65535) else "9222"
+    os.environ["QTWEBENGINE_REMOTE_DEBUGGING"] = _port
 
 import httpx
 import getpass
@@ -247,7 +260,17 @@ class DropEventFilter(QObject):
         super().__init__(parent)
         self.callback = callback
         
+    #: 🔴 THE THREE THIS FILTER EXISTS FOR. Everything else must leave in one comparison.
+    #  This filter sits on the QtWebEngine render widget, which receives every mouse move --
+    #  and each one crosses C++ into Python. The tail below used to end in
+    #  `super().eventFilter(...)`, a second boundary crossing per event, on a board whose
+    #  hover annotations make mouse moves the densest event there is. Returning False is
+    #  what QObject.eventFilter() returns anyway, so behaviour is identical.
+    _DRAG_EVENTS = frozenset({QEvent.DragEnter, QEvent.DragMove, QEvent.Drop})
+
     def eventFilter(self, watched, event):
+        if event.type() not in self._DRAG_EVENTS:
+            return False
         if event.type() == QEvent.DragEnter:
             if event.mimeData().hasUrls():
                 event.acceptProposedAction()
@@ -265,7 +288,7 @@ class DropEventFilter(QObject):
                         self.callback(file_path)
                 event.acceptProposedAction()
                 return True
-        return super().eventFilter(watched, event)
+        return False
 
 class DevToolsWindow(QMainWindow):
     def __init__(self, devtools_page, parent=None):
