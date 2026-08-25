@@ -481,15 +481,10 @@ const FLOORS = new Map([
   // DELETED, with the screen it measured (`ledger-graph.html`, owner ruling 「ㅇㅇ 버려」).
   // It read `src/ledger_graph/**` and nothing else, so every one of its 42 assertions lost
   // its subject at once -- a floor left behind would be a floor over nothing.
-  // 🔴 380 -> 360 ON PURPOSE (2026-08-25), which is what this floor is for: the runner
-  //    BLOCKED on 「ran 360, failed 0, but the recorded floor is ran >= 380」 and told the
-  //    lane to say so and lower it deliberately. Twenty-one assertions were removed with
-  //    their SUBJECT: H1..H7b and H10..H20b read `src/ledger_trace.js` and `ledger.html`,
-  //    the entry and the page, both deleted. H8 and H9 stayed because they also read the
-  //    core and the view, and `ledger_trace_core.js` is still reached by admin
-  //    (admin.js -> ledger_map_panel.js -> case_control_core.js -> here). The mutation
-  //    corpus is untouched: what this file no longer scores is «wired», not «correct».
-  ['ledger_trace_harness.mjs', 360],
+  // `ledger_trace_harness.mjs` had a floor here -- 380, lowered to 360 on purpose the same
+  // morning it was deleted. The harness is gone with `ledger_trace_core/view.js`, and those
+  // went with admin's 원장 선언 tab (owner: 「안 쓰니까」). A floor outlives its harness by
+  // exactly as long as nobody looks, so it leaves in the same commit.
   // New 2026-08-06 with `opts.restoreDraft` (e34d57d, 「맵을 로드하면 로드한 맵이 나온다」).
   // Same rule as the other new entries: the floor is the count it reports on the commit that
   // introduces it. 14 of its assertions are the mutation corpus itself (12 defects + 2

@@ -669,10 +669,25 @@ async function suite(mods) {
       eq(`F1 ${file} declares no module-level mutable state`, found.join(' | '), '');
     }
     // 🔴 THE POSITIVE CONTROL. If the scan cannot see the defect it was written for, its
-    // silence above means nothing. `ledger_map_panel.js` is the measured original.
-    const legacy = scan(readFileSync(path.join(SRC_DIR, 'ledger_map_panel.js'), 'utf8'));
-    ok('F2 the scan finds the measured defect in ledger_map_panel.js', legacy.length >= 3,
-      `found ${legacy.length}`);
+    // silence above means nothing.
+    //
+    // 🔴 IT IS A LITERAL, NOT A FILE, AND THAT IS THE POINT (Lead PM ruling 2026-08-25).
+    //    It used to read `src/ledger_map_panel.js` -- the measured original, three module-level
+    //    bindings that made that file impossible to place twice on one page. That file was
+    //    deleted with admin's 원장 선언 tab (the tab left in 9cdf224c; the chain in the commit
+    //    that carries this line -- `git log -- client2/src/ledger_map_panel.js` finds it).
+    //    What F2 measures was never 「that file exists」; it is 「the scan sees this SHAPE」, and
+    //    the shape is reproduced exactly here. Keeping it in a file also tied the control to
+    //    someone else's lifetime: a refactor of those three lines would have emptied F2
+    //    SILENTLY, and F1's green would have gone with it without a word.
+    const MEASURED_ORIGINAL = [
+      'let deps = null;',
+      'let mountEl = null;',
+      'let session = 0;',
+    ].join(String.fromCharCode(10));
+    const legacy = scan(MEASURED_ORIGINAL);
+    ok('F2 the scan finds the measured defect in the shape it was written for',
+      legacy.length >= 3, `found ${legacy.length}`);
     // And the behavioural half: two fresh instances share nothing.
     const doc2 = makeDoc('light');
     const h1 = doc2.createElement('div');
