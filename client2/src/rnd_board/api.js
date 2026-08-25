@@ -332,7 +332,7 @@ export function compositionModel(result) {
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, collect, fetchImpl, positive, negative,
-          node_limit: nodeLimit, hops } = params || {};
+          node_limit: nodeLimit, hops, follow, direction } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -353,6 +353,14 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
+  // 🔴 THE DECLARED QUESTION, CARRIED. `follow` is NOT a speed knob -- it decides WHICH
+  //    ANSWERS CAN EXIST. Measured by the Lead PM 2026-08-24: narrowing it to the observation
+  //    predicates loses four `delam_formation` candidates outright, because those reach through
+  //    `processed_with`/`transferred`. So the DECLARATION names it, never this function.
+  //    Same shape as the signed sets and the budget above: absent stays absent, so a request
+  //    that names neither is byte-identical to the one this boundary sent before.
+  for (const p of follow || []) query.append('follow', p);
+  if (direction) query.set('direction', direction);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
   if (!res.ok) {
@@ -791,8 +799,12 @@ export const COLLECTS = Object.freeze({
     // 🔴 `positive`/`negative` are the marking itself, carried through unchanged. A start with
     //    neither is the single-seed call this screen already makes; the contract's control
     //    side arrives the day a part passes them (`task/MARKING_CONTRACT.md` §1).
+    // 🔴 `collect` IS NAMED HERE. `candidate` is the CLIENT's name for this walk; the server
+    //    argument is `quantity`. It was being left off and landing on the server default -- the
+    //    same value, but by accident, so the day that default moves this screen moves with it.
     params: (start) => (start.value
-      ? { nodeId: start.value, positive: start.positive, negative: start.negative }
+      ? { nodeId: start.value, collect: 'quantity',
+          positive: start.positive, negative: start.negative }
       : {}),
     run: (params) => fetchSubgraph(params).then(subgraphModel),
   },
