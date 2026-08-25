@@ -788,6 +788,80 @@ export function waferFactsFromLotMap(result, axis) {
  * 「일단 wafer 로 고정」 -- it is a VALUE here, not a configuration axis, and it becomes two
  * the day something needs two.
  */
+/**
+ * 「닿는 곳」 -- 한 홉 walk 의 `edges[]` 를 «술어별»로 묶습니다.
+ *
+ * 🔴 새 라우트도 새 fetch 도 «없습니다». `fetchSubgraph` 를 그대로 쓰고 `hops` 만 1 로
+ *    선언합니다 -- 화면이 하나 늘 때 함수가 하나 늘면 설계가 틀린 것이라는 소유자 상설
+ *    그대로입니다. 다른 것은 «읽는 법»뿐입니다: `subgraphModel` 은 `graph:{nodes,edges}` 로
+ *    «수»만 남기고 엣지를 버리는데, 이 질문의 답이 바로 그 버려진 엣지입니다.
+ *
+ * 🔴 `truncated.depth` 는 «잘림이 아닙니다». hops=1 로 물었으니 깊이에서 끊기는 것이 질문
+ *    자체이고, 실제 손실은 nodes·edges·claims 쪽입니다. 둘을 같은 낱말로 부르면 「한 홉만
+ *    물었다」가 「답이 모자라다」로 읽힙니다.
+ */
+export function reachModel(result) {
+  const failed = !result || result.ok === false;
+  const body = (result && result.body) || null;
+  if (failed || !body) {
+    const status = (result && result.status) || null;
+    const reason = (result && result.detail && result.detail.detail && result.detail.detail.reason) || null;
+    return {
+      ok: false, state: 'refused', status, reason,
+      message: reason === 'seed_is_not_a_server_node'
+        ? '이 자리는 아직 원장 노드가 아닙니다 -- 걸어 나갈 수 없습니다'
+        : (status ? `서버가 거절했습니다 (HTTP ${status})` : '응답이 없습니다'),
+      seedId: null, seedLabel: null, rows: [], nodes: 0, edges: 0, cut: null,
+    };
+  }
+  const seed = body.seed || null;
+  const seedId = (seed && seed.id) || null;
+  const nodes = Array.isArray(body.nodes) ? body.nodes : [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const edges = Array.isArray(body.edges) ? body.edges : [];
+  const groups = new Map();
+  for (const e of edges) {
+    const predicate = e && e.predicate;
+    if (!predicate) continue;
+    // 「어디로」 는 씨앗의 «반대편»입니다. 방향은 묻지 않았으므로 양쪽 다 나올 수 있습니다.
+    const otherId = e.source === seedId ? e.target : e.source;
+    if (!otherId || otherId === seedId) continue;
+    let g = groups.get(predicate);
+    if (!g) { g = { predicate, ids: new Set(), kinds: new Map(), edges: 0 }; groups.set(predicate, g); }
+    g.ids.add(otherId);
+    g.edges += 1;
+    // 🔴 종류도 «노드»로 셉니다. 엣지로 세면 「Value 10」 옆에 「닿는 수 4」 가 서고,
+    //    한 줄 안에서 두 수가 서로를 반박합니다.
+    const type = ((byId.get(otherId) || {}).type) || '?';
+    let ofType = g.kinds.get(type);
+    if (!ofType) { ofType = new Set(); g.kinds.set(type, ofType); }
+    ofType.add(otherId);
+  }
+  const rows = [...groups.values()].map((g) => ({
+    predicate: g.predicate,
+    // 🔴 «닿는 노드»의 수이지 엣지 수가 아닙니다. 한 노드로 두 엣지가 가면 그것은 «한 곳»입니다.
+    count: g.ids.size,
+    // 🔴 엣지 수도 «같이» 나릅니다. 실측 2026-08-25, 씨앗 SYN-BW-101-16: `binding` 은
+    //    엣지 «10» 인데 닿는 곳은 «4» 입니다 -- 여섯 엣지가 이미 센 노드로 갑니다.
+    //    총괄이 준 넷(39·29·10·9)은 엣지를 센 수이고, 클릭이 마킹하는 것은 «노드 집합»이라
+    //    「10 이라 적어 놓고 4 를 마킹」이 됩니다. 두 수를 다 들고 화면이 고르게 합니다.
+    edges: g.edges,
+    kinds: [...g.kinds.entries()].map(([type, ids]) => ({ type, count: ids.size }))
+      .sort((a, b) => b.count - a.count || String(a.type).localeCompare(String(b.type))),
+    nodeIds: [...g.ids],
+  }));
+  // 큰 것부터. 동수는 «이름»으로 갈라 응답 순서가 대표를 정하지 못하게 합니다.
+  rows.sort((a, b) => b.count - a.count || String(a.predicate).localeCompare(String(b.predicate)));
+  const t = body.truncated || {};
+  return {
+    ok: true, state: body.state || 'ready', status: null, reason: null, message: null,
+    seedId, seedLabel: (seed && seed.label) || null,
+    rows, nodes: nodes.length, edges: edges.length,
+    // depth 는 «질문»이라 여기 없습니다. 이 셋이 참이면 답이 «실제로» 모자란 것입니다.
+    cut: [t.nodes ? 'nodes' : null, t.edges ? 'edges' : null, t.claims ? 'claims' : null].filter(Boolean),
+  };
+}
+
 export const COLLECTS = Object.freeze({
   // 기본 트렌드 ① · 맵 ⑤ — 같은 collect. 트렌드는 창 전체를, 맵은 한 그룹을 그립니다.
   trend_y: {
@@ -842,6 +916,17 @@ export const COLLECTS = Object.freeze({
   peer: {
     params: (start) => (start.value ? { scope: start.value } : {}),
     run: (params) => fetchSiblings(params).then(peerCountFromSiblings),
+  },
+  // 「닿는 곳」 -- 마킹에서 «어느 술어로 무엇에» 닿는가. `candidate`·`point` 와 «같은 걸음»이고
+  //    다른 것은 `hops` 와 «읽는 모델»뿐입니다. 부품이 hops 를 선언하지 않아도 1 입니다 --
+  //    이 질문은 「한 홉에 무엇이 있나」이지 「멀리 무엇이 있나」가 아니어서, 홉 수가 부품의
+  //    손잡이가 아니라 이 선언의 «뜻»입니다.
+  reach: {
+    params: (start) => (start.value
+      ? { nodeId: start.value, collect: 'quantity', hops: 1,
+          positive: start.positive, negative: start.negative }
+      : {}),
+    run: (params) => fetchSubgraph(params).then(reachModel),
   },
 });
 
