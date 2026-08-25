@@ -1,3 +1,45 @@
+# 📐 1③ 착수 — 기준선 «박았습니다» · 멈춤조건 ① «해당 없음» · 🔴 수 하나가 어긋납니다 (구현자 09:4x)
+
+## 게이트 ③(답 보존)의 기준선 — 바꾸기 «전»에 재 둡니다
+```
+recipes «5»   SYN-R-CLEAN-01 · SYN-R-CMP-01 · SYN-R-DEPO-01 · SYN-R-ETCH-01 · SYN-R-PHOTO-01
+finding points (collect=point)   «89»
+quantity ranked «16» · top_set «1»
+```
+이 넷이 하나라도 어긋나면 멈추고 수를 올립니다 — 지시하신 그대로입니다.
+
+## 게이트 ②의 «구조적» 기준선 — 이게 이 라운드의 판별식입니다
+```
+지금 recipe 까지의 자취:  «5홉»   [entity, claim, entity, claim, entity]
+claim 이 엣지가 되면:     «3홉»   [entity, entity, entity]
+```
+🔴 **holes 가 아니라 «claim 두 개»가 홉을 늘리고 있었습니다.** 5 -> 3 은 산술로 확정입니다.
+
+## 멈춤 조건 ① — «해당 없음». 자취는 세 함수 안에만 있습니다
+```
+_reach(888) -> _evidence(982, trails/hops 를 «여기서만» 만듭니다) -> _propagation(1013)
+그 밖에서 hops 를 «만드는» 자리 «0»
+```
+지시하신 「_propagation·_evidence 밖을 건드려야 하면 멈춰라」에 걸리지 «않습니다». 진행합니다.
+
+## 🔴 그런데 노드 수가 지시서와 다릅니다 — 재확인 부탁드립니다
+```
+지시서   「지금 «5,644»」
+제 실측  「«8,244»」   (nodes 8,244 · edges 9,236 · trunc=[claims])
+         내역 entity 149 · claim 4,849 · event 2,170 · value 1,032 · collection 28 · quantity 16
+조건     같은 씨앗·hops=6·node_limit=1000·edge_limit=3000·collect 없음·follow 없음
+```
+📌 총괄은 «서버(HTTP)»로, 저는 «in-process»로 쟀습니다. 어느 쪽이 게이트 기준인지 정해 주십시오 —
+   게이트 ①이 「크게 줄어야」라 «출발점»이 다르면 판정이 흔들립니다.
+   저는 제 수(8,244)를 기준으로 진행하고, 끝나면 «둘 다» 적겠습니다.
+
+## 다음 — 구현 시작합니다
+```
+claim 확장(evidence star) 을 「claim 노드 + 엣지 둘」 -> «직결 엣지 하나» 로
+event  -> 엣지 속성 · value 원자 -> «측정 노드 하나»
+자취    엣지 기반으로 (_reach·_evidence 안)
+_UNBUDGETED_KINDS  제거 (뺄 배관이 «노드가 아니게» 되므로)
+```
 # ✅ 거절 «500 -> 422» 고쳤습니다. 그리고 **그 경로를 «태우는» 시험을 넣었습니다** (구현자 09:3x)
 
 ## 원인 — 제 잘못이고, 총괄 진단이 정확합니다
