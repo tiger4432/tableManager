@@ -4,6 +4,60 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔴🔴 1② 준비 실측 — **`follow` 는 «싸게» 만드는 게 아니라 «답을 완성»시킵니다 (후보 16 -> 21)**
+
+1② 가 「부품이 follow 를 선언」이고 그게 제 파일이라, 넣기 «전»에 두 가지를 쟀습니다.
+넣지는 않았습니다.
+
+## ⚠️ 먼저 «함정» — 응답의 엣지 라벨과 follow 의 어휘가 «다른 집합»입니다
+```
+응답 엣지에 오는 라벨   subject · finding · has_findings · mechanism · binding ...
+follow 가 받는 것       422 predicate_not_declared 로 «거절»합니다
+declared (17)          assigned_to_experiment · bonded_from · derived_from · frame_confirmed
+                       has_netdie · has_param · has_wafer · inspected · measured · observed
+                       pin · processed_with · register · same_as · slot_map · transfer · transferred
+```
+🔴 **부품이 「내가 본 엣지」에서 follow 를 «유도하면 거절당합니다».**
+   앞의 다섯은 «투영이 만든 라벨»이고 원장 술어가 아닙니다. 선언은 «원장 술어»로만 씁니다.
+   -> 1② 지시서에 이 문장이 없으면 배선한 사람이 422 를 먼저 만납니다.
+
+## ① 후보 walk(collect=quantity) — 씨앗 `SYN-BW-101-16`
+```
+follow                                      노드    ranked  닿은홉  trunc     시간
+없음 (지금)                                 3,555     16      5     claims   1.67 s
+measured                                        1      0      0     None     0.02 s   <- 이것만으론 «끊깁니다»
+observed,inspected,measured,has_param  hops=6    127     18      6     depth    0.078 s
+                                       hops=8    130   🔴 21      7     🔴 None  0.078 s
+                                       hops=12   130      21      7     None     0.105 s
+                                       hops=20   130      21      7     None     0.077 s
+```
+
+## 🔴 ② 그래서 이건 «최적화»가 아닙니다 — 지금 답이 «틀린 답»입니다
+```
+지금        후보 «16» · trunc[claims] — 즉 «잘린 답»입니다
+follow 후   후보 «21» · trunc «None» — 홉 7에서 «소진». 이게 «전부»입니다
+차이        후보 «다섯»이 지금 안 보입니다 (+31%)
+비용        노드 27배↓ (3,555->130) · 시간 21배↓ (1.67s->0.078s)
+```
+🔴 **싸지면서 «더 나옵니다».** 배관이 예산을 먹어 진짜 후보가 밀려나 있었습니다.
+   그리고 hops 를 8·12·20 으로 올려도 21 에서 «안 늘어납니다» — 잘린 게 아니라 «다 본 것»입니다.
+
+## ③ 그래서 두 walk 의 «선언»이 이렇게 나옵니다 (측정 결과이지 제안이 아닙니다)
+```
+맵     collect=point     follow = observed, inspected              -> 259 노드 · 답 동일 · 0.13s
+후보   collect=quantity  follow = observed, inspected, measured, has_param
+                                                                   -> 130 노드 · 답 «21» · 0.078s
+🔴 후보 쪽은 hops 도 «6 -> 8» 이어야 21 이 다 나옵니다 (6 이면 18에서 depth 로 끊깁니다)
+```
+
+## ⚠️ 이 수의 «범위»
+```
+씨앗 하나   SYN-BW-101-16 입니다. 보드 라이브 씨앗(SYN-CX-BW-001)은 CX 라 다를 수 있습니다
+           (보드 무회귀 게이트의 「후보 21」은 «그 씨앗»의 수이고 이 21 과 «같은 수인지 확인 안 했습니다»)
+안 했다    배선 안 했습니다 · 선언 안 고쳤습니다 · hops 도 안 바꿨습니다
+```
+
+
 # ⏱️ `follow` 는 예산만이 아닙니다 — **맵 walk 이 «1.75초 -> 0.13초». 13배**
 
 보드 ③-ctrl 의 엔진 실측(「나가는 홉 0.401ms · Planning 54.6ms · 속도로 막힌 적 없다」)은
