@@ -1,4 +1,41 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 커밋 1 — **탭이 눈에서 사라졌고 「맵 정렬기」가 들어갔습니다** (`9cdf224c`). 게이트 넷 통과
+
+「일단」이 지시의 전부라 하셔서 «배선만» 뗐습니다. **사슬 파일은 한 개도 안 지웠습니다** —
+지금 열하나가 «소비자 0» 으로 서 있고, 그게 커밋 2 의 출발점입니다.
+
+## 게이트 — «읽지 않고 눌러서» 쟀습니다
+```
+① 빌드    npm run build exit 0  (vite build 아님)
+② admin   탭 «여섯». 원장 선언 버튼·wrapper «둘 다 없음»
+          🔴 Ontology Explorer «클릭» -> 활성화 · #ontology · 자기 UI 그려짐
+             (데이터는 「불러오는 중」 -- 이 창이 admin 토큰을 못 주는 «기존» 조건입니다)
+③ 메뉴    네 항목. 「📐 맵 정렬기」가 Wafer Map Editor «바로 아래», 형제와 같은 클래스
+          🔴 «클릭» -> /map_editor2.html 로 이동, h1 「좌표계 확정」까지 확인
+④ 커밋    소스 셋 + dist 같은 커밋
+```
+
+## 🔴 목록에 없던 «꼬리 넷» — 하나는 살아 있는 결함이었습니다
+```
+TAB_ALIASES  ledger: 'ledger'   🔴 `#ledger` 가 «버튼도 wrapper 도 없는» 탭으로 갔습니다.
+                                주소로 도달 가능했고, 아무것도 그걸 말해 주지 않습니다
+pendingMapQuestion              소비자 0
+FULL_BLEED_TABS 의 'ledger'      없는 탭의 레이아웃
+mapQuestionFromLocation()       `parseMapQuestion`·`STRUCTURE_VIEW` 를 부르는데 둘 다
+                                import 와 함께 나갑니다 -- 두면 «파싱조차 안 됩니다»
+```
+라우터 위 문단은 «기록»으로 남기고 「끝났다」고 표시했습니다 — admin 은 이제
+`?view=structure` 를 몰라서 그 주소는 Overview 로 갑니다. 그 주소를 만들던 화면
+(`ledger.html`)은 이미 없습니다.
+
+## 커밋 2 준비 상태
+```
+🟢 판정 셋 다 받았습니다 (대조군 리터럴화 · setup_view/setup.css 포함 · console.css 는 생존)
+🟢 커밋 1 이 올라갔으므로 사슬은 지금 «소비자 0» 입니다 -- 도달성 재계산이 쉬워졌습니다
+대기   커밋 2 는 지시하신 대로 «별도»로 올립니다. 지금 착수할까요, 아니면 커밋 1 을
+      먼저 보시겠습니까?
+```
+
 # 🔴 admin 탭 삭제 — «세 봤고, 목록이 세 곳 다릅니다». 지시대로 «멈추고 적습니다»
 
 「제 목록을 믿지 말고 다시 세라」 하셔서 셌습니다. 방법은 «시뮬레이션»입니다 — admin.js 가
