@@ -4,6 +4,60 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 📐 1② 계보 선언 — **`hops=6` 은 모자라고, `transferred` 는 «값이 0인데 4배»입니다**
+
+판정의 계보 선언이 `follow=bonded_from,transferred,processed_with · direction=outgoing · hops=6`
+인데, 그 셋 중 «둘»이 실측과 어긋납니다. 배선은 안 했습니다(1③ 도는 중 — 지시 그대로).
+
+## ① `hops=6` 으로는 «완주 표시가 안 뜹니다». 실제 깊이가 «8» 입니다
+```
+follow=bonded_from,processed_with · direction=outgoing · collect=entity · node_limit=1000
+  hops=8    노드 600  recipe 5  닿은홉 8  complete «False»  trunc «depth»   0.42s
+  hops=10   노드 600  recipe 5  닿은홉 8  complete «True»   trunc «None»    0.29s
+  hops=12   노드 600  recipe 5  닿은홉 8  complete  True    trunc  None     0.29s
+  hops=16   노드 600  recipe 5  닿은홉 8  complete  True    trunc  None     0.29s
+```
+🔴 **hops=8 과 hops=10 은 «같은 600 노드»를 냅니다 — 답이 같습니다.**
+   다른 것은 «완주했다고 말할 수 있느냐»입니다. 요청 홉이 실제 깊이와 «같으면»
+   walk 은 「더 있는지 모른다」로 끝나 `complete=False · trunc[depth]` 를 답니다.
+```
+📌 규칙   요청 hops 는 실제 깊이보다 «한 칸 이상 커야» 합니다.
+         안 그러면 «완전한 답»이 «잘린 답»으로 표시됩니다 — 게이트에 complete 를 넣으신
+         그 판단이 정확히 이 자리를 잡습니다
+```
+
+## ② `transferred` — 노드 4배 · 시간 4배 · **답은 «한 글자도» 안 바뀝니다**
+```
+direction=outgoing · hops=10
+  bonded_from, processed_with                 노드   «600»  recipe 5  wafer 30  complete True  0.29s
+  bonded_from, transferred, processed_with    노드 «2,298»  recipe 5  wafer 30  complete True  1.08s
+                                                    ^ +1,698           ^ 동일    ^ 동일        ^ +0.79s
+```
+🔴 **recipe 5 · wafer 30 이 «양쪽 동일»합니다.** `transferred` 는 이 질문에 아무것도 안 더하고
+   노드 «4배» · 시간 «3.7배» 를 씁니다.
+📎 왜 그런지도 쟀습니다(앞 보고) — 이 씨앗에서 `transferred` «단독»은 «노드 1 · 홉 0» 입니다.
+   즉 씨앗에서 «안 나갑니다». 다른 술어로 닿은 노드들의 전사 이력을 «곁가지»로 붙일 뿐입니다.
+
+## ③ 그래서 제 실측 기준 계보 선언은 이렇습니다
+```
+계보 부품   collect=entity
+           follow= bonded_from, processed_with        <- transferred «빼기»
+           direction= outgoing
+           hops= 10                                    <- 6 아님. 실제 깊이 8 + 여유
+           결과: 600 노드 · recipe 5 · complete «True» · 0.29 s
+```
+⚠️ **`transferred` 를 빼는 것이 「전사를 안 본다」는 뜻은 아닙니다** — 전사를 «묻는» 부품이
+   생기면 그 부품이 자기 선언에 넣으면 됩니다. 계보 부품의 질문에 «안 쓰인다»는 뜻입니다.
+
+## ⚠️ 총괄 수와 제 수가 «다릅니다» — 어느 쪽이 맞다고 말하지 않습니다
+```
+총괄   계보·outgoing  nodes 3,490 · trunc[claims] · 1,757ms   (h8/h12 동일)
+저     계보·outgoing  nodes 2,298 (transferred 포함) / 600 (뺀 것) · complete True · 1.08s / 0.29s
+차이 후보   collect · node_limit · has_wafer 포함 여부 — 저는 collect=entity · node_limit=1000 입니다
+-> 같은 인자로 한 번 맞춰 보면 갈립니다. 제 인자를 위에 그대로 적어 두었습니다
+```
+
+
 # 🔴 1② 지시서에 «셋째 칸»이 필요합니다 — `follow` · `hops` «그리고 `direction`»
 
 판정에서 「계보 부품의 홉 수는 재서 정합니다」라고 남기셨는데, **재 보니 «홉으로는 안 됩니다».**
