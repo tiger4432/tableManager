@@ -1,3 +1,85 @@
+# 🔴 판정 요청 — **1② 착지. 다만 follow 목록이 «하나» 모자랐습니다** (구현자 15:0x)
+
+## 🔴 먼저 판정하실 것 — 점 부품의 follow 에 `bonded_from` 을 «더했습니다»
+지시서의 `follow:['observed','inspected']` 를 그대로 넣으면 **게이트 ③ 이 불합격입니다.**
+```
+follow 없음                        point «130» · 노드 354 · 137ms
+observed,inspected                 point «121» · 노드 250 · 135ms   <- 🔴 9개가 사라집니다
+observed,inspected,bonded_from     point «130» · 노드 266 · 141ms   <- 그대로 · 노드 −25%
+observed,inspected,bonded_from,processed_with
+                                   point «130» · 노드 319
+(씨앗 SYN-CX-BW-001 · node_limit 400 = 라우트 기본값 · 넷 다 trunc «[]» complete «True»)
+```
+**사라지는 9는 (4..6, 8..10) 의 void — 맵 위의 «연속된 3×3 덩어리»입니다.**
+화면에서 그 자리는 「없다」와 구별이 안 됩니다.
+
+### 왜 사라지나 — 🔴 그 9의 엣지도 «observed» 입니다
+필터가 자른 것은 관측이 아니라 **그 관측의 «주어로 가는 길»**입니다.
+```
+SYN-CX-BW-001 --bonded_from--> SYN-CX-CW-HBM-B-02 --observed--> void 9
+                  ^^^^^^^^^^^ 이 한 홉이 잘리면 코어 웨이퍼가 «통째로» 안 보입니다
+```
+즉 관측 술어만으로는 **닿을 수가 없습니다** — 구조 술어 하나가 같이 있어야 관측이 «주어를 갖습니다».
+`processed_with` 까지 넣으면 답은 같고 노드만 266 → 319 로 늘어서, **`bonded_from` 하나가 최소입니다.**
+
+⚖️ **되돌리시려면 한 낱말입니다** (`main.js` chip-zoom 선언). 다만 되돌리면 그 3×3 이 사라집니다.
+📌 이 자리는 총괄께서 후보 부품에 대해 이미 적으신 규칙과 «같은 부류»입니다 —
+   「follow 는 성능 손잡이가 아니라 «어떤 답이 존재할 수 있나»를 정한다」. 점 부품에서도 그랬습니다.
+
+---
+
+## 게이트 넷 — ②③④ 실측 통과, ① 은 총괄 몫
+```
+② 후보   🔴 «이름 집합» 비교: both 21 · outgoing 21 · IDENTICAL «YES»
+         (nodes 274→265 · edges 334→320 · 둘 다 complete True · trunc [])
+         이름 21개 전부 일치 — void_formation 19 + void_observation_bias 2
+③ 맵     Finding Point «130 → 130» (bonded_from 포함 시) · 노드 354 → «266»
+         🔴 hops 8 은 «공짜»였습니다: 12 와 point 130 으로 동일, trunc [] 도 동일
+④ 순위   🔴 «이름으로» 확인: wafer «8 → 3»
+         빠진 5 = SYN-CX-BW-002·003·004·005·006  <- 전부 «형제 본딩 웨이퍼»
+         남은 3 = SYN-CX-BW-001(씨앗) + CW-HBM-B-02 + CW-LOGIC-A-01  <- 자기 «재료»
+         새로 들어온 것 «0». 줄어든 것이 형제가 맞습니다
+① 보드   총괄 몫 (14패널 · 14요청 · 발견 28 · 검사 128)
+```
+
+## 배선 증거 — 「착지는 배선이 아니다」. 선언이 «URL 까지» 갔는지 찍었습니다
+```
+후보·순위  ?id=...&collect=quantity&node_limit=1000&direction=outgoing
+점        ?id=...&collect=point&hops=8&follow=observed&follow=inspected&follow=bonded_from
+구성      /api/ledger/composition?final_chip_id=SYN-CX-CHIP-001   <- 🔴 «한 글자도» 안 바뀜
+```
+후보와 순위의 URL 이 «완전히 같아서» 둘째가 첫째의 진행 중 요청에 합류합니다 (요청 수 보존).
+
+## 한 것 — 선언 세 줄과 그것을 나르는 이음매 하나
+```
+api.js   fetchSubgraph 가 follow·direction 을 «싣습니다» (positive/negative 와 같은 모양:
+         없으면 안 실음 -> 서버 기본값 그대로)
+api.js   COLLECTS.candidate.params 에 collect:'quantity' 를 «명시» — 지금까지 서버 기본값에
+         «우연히» 맞고 있었습니다
+main.js  chip-zoom     follow:[observed,inspected,bonded_from] · hops:8
+main.js  candidate-list·rank-list   direction:'outgoing'
+main.js  bindLoaders 가 선언의 walk 칸을 그 부품의 walk 에 «싣습니다» -- 선언이 비면
+         walkHere 가 walk «그 자체»라 요청이 안 바뀝니다. 🔴 부품은 셋을 «모릅니다»
+⛔ 새 파라미터·새 라우트·부품 «없음». 부품 파일은 «한 줄도» 안 고쳤습니다
+```
+`npm run build` 초록 — rnd_board 하니스 다섯 전부 (composition 40 · control_trend 38 ·
+board 169 · intersection 24 · walk 37, 실패 0). 새 번들 `rnd_board-Dqgu9pzH.js`, 소스와 «같은 커밋».
+
+## 📌 딸린 관측 둘 — 고치지 «않았습니다». 판정 부탁드립니다
+```
+① 라우터가 1③ 의 상한을 «못 받습니다»
+   ledger_subgraph.py   DEFAULT_EDGE_LIMIT 6000 · MAX_EDGE_LIMIT 6000
+   ledger_trace_router  edge_limit: Query(1200, ge=20, le=3000)   <- 🔴 라우트가 다시 적습니다
+   -> 브라우저는 «영원히 1200» 이고 3000 위로는 «물을 수도» 없습니다. 1③ 에서 올린 천장이
+      HTTP 로는 안 닿습니다. (다만 이 씨앗에서는 안 뭅니다 — 위 실측 전부 trunc [])
+② 후보 walk 의 «네 번째 자리»
+   collect:'candidate' 를 묻는 곳은 셋입니다 — candidate-list · rank-list · 제어막대의
+   optionsFor('y') (main.js). 지시서가 부품 «둘»만 지목해서 셋째는 «안 건드렸습니다».
+   지금은 제어막대만 both 로 걷습니다 (답은 같습니다 — 위 ② 가 이름 집합으로 확인).
+```
+
+---
+
 # ✅✅ 1③ 착지 — **한 사실 = 엣지 하나. 3홉. 게이트 넷 전부 통과** (구현자 11:2x)
 
 ## 게이트

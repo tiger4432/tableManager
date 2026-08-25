@@ -327,6 +327,21 @@ export const BOARD = Object.freeze({
       writes: 'marking:1',
       start: { groupby: 'wafer', marking: 'marking:1' },
       collect: 'point',
+      // 🔴 이 부품의 «질문»입니다. 좁혀도 되는 것은 «점 부품뿐»입니다 -- 후보·순위는 좁히면
+      //    delam 계열 넷을 잃습니다 (총괄 실측 2026-08-24).
+      //
+      // 🔴 `bonded_from` 이 «왜» 이 목록에 있나 -- 구현자 실측 2026-08-25, 씨앗 SYN-CX-BW-001:
+      //      follow 없음                          point «130» · 노드 354
+      //      observed,inspected                   point «121» · 노드 250   <- 9개가 «사라집니다»
+      //      observed,inspected,bonded_from       point «130» · 노드 266   <- 그대로 · 노드 −25%
+      //    사라진 9는 (4..6, 8..10) 의 void 로 «맵 위의 연속된 3×3 덩어리»입니다. 그런데 그 9의
+      //    엣지도 «observed» 입니다 -- 필터가 자른 것은 관측이 아니라 «그 관측의 주어로 가는 길»
+      //    (SYN-CX-BW-001 --bonded_from--> SYN-CX-CW-HBM-B-02) 이었습니다. 코어 웨이퍼에서 난
+      //    void 가 통째로 안 보이는 것이고, 화면에서는 「없다」와 구별이 안 됩니다.
+      //    ⚠️ 그래서 관측 술어만으로는 «닿을 수 없습니다». 구조 술어 하나가 같이 있어야 합니다.
+      follow: ['observed', 'inspected', 'bonded_from'],
+      // hops 8 은 «공짜»입니다 -- 12 와 point 130 으로 «동일»하고 trunc 도 []. (같은 실측)
+      hops: 8,
       options: {
         space: 'inchip',
         // 칩 한 변의 물리 크기. 실측(총괄): 칩 20,000um 안에 반경 8um -- 1/2,500 이라
@@ -401,6 +416,11 @@ export const BOARD = Object.freeze({
       part: 'candidateList',
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
       collect: 'candidate',
+      // 🔴 계보를 «나가는 쪽»으로만 걷습니다 (총괄 실측 2026-08-24): 형제 웨이퍼 74장이 빠지고
+      //    답은 그대로입니다 (wafer 104 → 30 · recipe 5 → 5 · 3,490 → 241 노드 · 1,757 → 210ms).
+      //    🔴 follow 는 «없습니다» -- 좁히면 `processed_with`/`transferred` 로만 닿는 delam 후보
+      //    넷을 영영 못 봅니다. 여기서 follow 는 속도 손잡이가 아니라 «답의 존재 범위»입니다.
+      direction: 'outgoing',
       title: '원인 후보 · SYN-CX-BW-001',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
@@ -419,6 +439,8 @@ export const BOARD = Object.freeze({
       part: 'rankList',
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
       collect: 'candidate',
+      // 순위표는 후보표와 «같은 걸음»입니다 -- 선언이 같아야 둘이 같은 진행 중 요청에 합류합니다.
+      direction: 'outgoing',
       title: '순위 · SYN-CX-BW-001',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
@@ -449,10 +471,20 @@ export function bindLoaders(layout, deps) {
     ...layout,
     panels: (layout.panels || []).map((decl) => {
       const options = decl.options || {};
+      // 🔴 부품이 «자기 질문»을 선언합니다. `collect` 와 같은 자리에 서는 세 칸이고, 적힌 것만
+      //    실립니다 -- 빈 선언이면 `walkHere` 가 `walk` «그 자체»라 요청이 한 글자도 안 바뀝니다.
+      //    부품은 이것을 모릅니다: 질문은 «선언»에 있고 부품은 자기 마킹과 collect 만 들고 걷습니다.
+      const question = {};
+      if (decl.follow) question.follow = decl.follow;
+      if (decl.direction) question.direction = decl.direction;
+      if (decl.hops !== undefined && decl.hops !== null) question.hops = decl.hops;
+      const walkHere = Object.keys(question).length
+        ? (spec) => walk({ ...question, ...(spec || {}) })
+        : walk;
       // 🔴 THE ADDRESS IS INJECTED, NEVER DECLARED. `apiBase` is a fact about where this page
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
-      const bound = { ...options, walk, apiBase, fetchImpl, dpr: dpr || 1 };
+      const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1 };
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
       if (options.fields) {
@@ -462,8 +494,8 @@ export function bindLoaders(layout, deps) {
         bound.optionsFor = (key) => {
           if (key === 'y') {
             return Promise.all([
-              walk({ collect: 'trend_y', window: '180d' }),
-              walk({
+              walkHere({ collect: 'trend_y', window: '180d' }),
+              walkHere({
                 start: { groupby: 'wafer',
                   value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
                 collect: 'candidate',
@@ -496,18 +528,18 @@ export function bindLoaders(layout, deps) {
         // answered yet stays BLANK on screen -- never 0.
         // A wafer given means the screen moved: same route, wafer axis (the one that answers
         // for a wafer picked out of a trend rather than a slot of a lot).
-        bound.loadWaferFacts = (kind, wafer) => walk(wafer
+        bound.loadWaferFacts = (kind, wafer) => walkHere(wafer
           ? { start: { groupby: 'wafer', value: wafer }, collect: 'map', kind }
           : { collect: 'map', ...options.waferQuestion, kind })
           .then((body) => waferFactsFromLotMap(body, 'bond'));
       }
       if (options.peers) {
-        bound.loadPeerCount = (scope) => walk({
+        bound.loadPeerCount = (scope) => walkHere({
           start: { groupby: 'scope', value: scope }, collect: 'peer', window: options.window,
         });
       }
       if (options.basisChipId) {
-        bound.loadBasisCounts = () => walk({
+        bound.loadBasisCounts = () => walkHere({
           start: { groupby: 'chip', value: options.basisChipId }, collect: 'basis',
         });
       }
@@ -515,7 +547,7 @@ export function bindLoaders(layout, deps) {
       //    선언의 collect 하나가 어디로 갈지 정합니다.
       if (!options.question) {
         if (decl.part === 'map' && decl.collect) {
-          bound.load = (override) => walk({ collect: decl.collect, ...(override || {}) });
+          bound.load = (override) => walkHere({ collect: decl.collect, ...(override || {}) });
         }
         return { ...decl, options: bound };
       }
@@ -525,16 +557,16 @@ export function bindLoaders(layout, deps) {
           ...bound,
           // The override is how a part turns a page without learning a route: it hands back
           // the one field it is changing and the question stays the composition root's.
-          load: (override) => walk({
+          load: (override) => walkHere({
             collect: 'map', ...options.question, ...(override || {}),
           }),
           // 씨앗으로 찍힌 웨이퍼를 그리는 길. 같은 라우트, 축만 웨이퍼.
-          loadByWafer: (wafer) => walk({
+          loadByWafer: (wafer) => walkHere({
             start: { groupby: 'wafer', value: wafer },
             collect: 'map', ...options.question, slot: undefined,
           }),
           // 목업의 페이지 목록. Measured: a slot-less call carries the row's whole slot list.
-          loadPages: () => walk({
+          loadPages: () => walkHere({
             collect: 'map', ...options.question, slot: undefined,
           }).then(slotPagesFromLotMap),
         },
