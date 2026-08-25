@@ -1,4 +1,60 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 「데스크톱 다운로드」 버튼 — **착지**했습니다 (`3c5162c7`). 게이트 넷 다 통과
+
+## 만든 것 — 버튼 하나입니다
+```
+index.html   <button id="desktop-download-btn" class="glass-btn">💻 Desktop</button>
+             🔄 Refresh · ➕ Row · 🗑️ Row 옆, «같은 glass-btn». 새 스타일 0
+             title 에 「약 245 MB」 -- 누르기 «전에» 알게
+main.js      클릭 하나. 이 페이지 진입점의 다른 툴바 배선 옆
+```
+⛔ 새 화면·모달·메뉴 없습니다. `src/rnd_board/**` 안 열었습니다.
+
+## 🔴 착수 중에 «제가 만든 결함»을 잡았습니다 — HEAD 로 물으면 안 됩니다
+처음엔 `HEAD` 로 물었습니다. 그런데 이 서버 실측이 이렇습니다:
+```
+HEAD /tables                  405        GET /tables                  200 ok
+HEAD /api/desktop/download    405        GET /api/desktop/download    404
+```
+🔴 **HEAD 는 «있는» 라우트에도 405 를 줍니다.** 405 도 404 도 똑같이 `!res.ok` 라,
+   HEAD 로 재면 **exe 가 실제로 서는 날** 이 버튼이 「데스크톱 빌드가 없습니다」라고
+   말합니다 — 오늘은 맞고 «도달 가능해지는 날» 틀리는 가드입니다.
+
+고친 방법: `GET` 으로 묻고 헤더가 오는 즉시 `abort`. fetch 는 헤더에서 resolve 하므로
+245 MB 는 «흐르지 않습니다». 「먼저 묻고 이동」 자체는 지시하신 404 요구 때문입니다 —
+그냥 이동시키면 사용자가 날 JSON 을 보거나 «아무 일도 안 일어난 것처럼» 보입니다.
+
+## 게이트 — 브라우저에서 «넷 다» 쟀습니다
+```
+① 툴바 안 깨짐        index.html 열림
+② 같은 모양           computed 7속성이 🔄 Refresh 와 «동일», y·height 동일
+③ 404 → 문장          toast-error 「데스크톱 빌드가 없습니다 — 서버에 exe 가 아직 없습니다.」
+                      그리고 navigated=false (이동 안 함)
+④ npm run build       exit 0. «프로젝트 명령»입니다. dist 를 «같은 커밋»에 넣었습니다
+```
+
+## 📎 지난 보고의 «제 문장 하나»를 정정합니다 — 이번엔 재서 말합니다
+제가 「LF 로 구운 번들은 이 트리가 낼 번들이 아니다」라고 적었습니다. **아닙니다. 같습니다.**
+양쪽으로 굽고 대조했습니다:
+```
+CRLF 소스 → dist/assets/main-D7JC2h4J.js   md5 4ffcdd3b5fa2a8fd0768b2a39570130d
+LF   소스 → dist/assets/main-D7JC2h4J.js   md5 4ffcdd3b5fa2a8fd0768b2a39570130d
+                dist/index.html            양쪽 ff06265a260c8113d2b84c08d7e7812e
+```
+줄바꿈은 번들에 «닿지 않습니다». 앞으로 제가 dist 를 같은 커밋에 넣겠습니다.
+
+## 📎 dist HTML 셋은 «일부러» 뺐습니다
+`map_editor.html` · `map_editor2.html` · `rnd-board.html` 은 다시 구우면 LF 로 쓰이는데
+인덱스 blob 이 CRLF 라 **글자는 같은데 1,754 줄이 바뀐 것처럼** 뜹니다. 내용이 아니라
+잡음이고 이번 라운드가 그 페이지들을 안 건드렸으므로 커밋에 넣지 않았습니다.
+(dist 의 `.js`·`.css` 는 인덱스가 LF 라 git 이 알아서 지웁니다 — HTML 셋만 그렇습니다.)
+
+## 남은 것
+```
+서버 라우트   GET /api/desktop/download 는 구현자 몫입니다. 서면 버튼이 «그날» 동작합니다
+             (제 프로브가 GET 이라 그날 「없습니다」라고 말하지 않습니다 -- 위가 그 이야기입니다)
+```
+
 # 🟢 무리 삭제 «완료» — `npm run build` **초록**입니다 (`f9a8a73c`). 하나는 목록에 남아 있지만 «안 지웠습니다»
 
 정정본(`5b5faf37`)대로 마저 지웠습니다. 되돌리지 않았습니다.
