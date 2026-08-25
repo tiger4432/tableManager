@@ -6284,6 +6284,123 @@ pack 을 평평하게              근거는 위 「pack 은 claim 의 네임스
 T1 과 pack 질문을 «묶어서»    T1(프로필 검증기 하드코딩)이 「팩이 무엇인가」를 묻고 있어 같은 자리다
 ```
 
+## 🔬 원장 — 「미확정이면 어떻게 도나」 · 「왜 못 걷나」 (총괄 실측 2026-08-25 밤)
+
+소유자 질문 둘에 답하며 잰 것. **대화에만 있으면 사라지므로 여기 옮긴다.**
+
+### ① 무엇이 «걸리고» 무엇이 «끊기나» — 술어별 목적어 모양
+```
+inspected       엔티티 117,662                    걸림
+transfer        엔티티  29,613                    걸림
+bonded_from     엔티티   3,650                    걸림
+has_wafer       엔티티   1,645  ·  slot_map 443  ·  derived_from 101
+observed        값     115,429   ← 끊김
+transferred     값      72,964   ← 끊김  🔴 두 번째로 큰 가족
+processed_with  엔티티 3,022 / 값 25,132  ← 섞임
+register 7,491 · has_netdie 396 · measured 144 · has_param 35  전부 값
+```
+
+### ② 🔴 못 걷는 이유는 «이름이 없어서»다 — 재료는 값 안에 있다
+`transferred` 값을 열면 엣지가 통째로 들어 있고, 표본 2,000 중 **2,000** 이 웨이퍼 이름을 품는다:
+```json
+{"from": {"type":"wafer_grid","keys":{"wafer":"WF.010120"}},
+ "to":   {"type":"dt_job",   "keys":{"dt_job":"DT-EQP-01_..."}}, "qty": 40}
+```
+그런데 그 type 이름이 **노드로 사는 이름과 한 개도 안 겹친다**:
+```
+값 안에 사는 type   bond_layer · dt_job · dt_slot · package_gate · wafer_grid
+노드로 사는 type    die · dtjob · lot · recipe · wafer · waferleg
+겹침 «0»            🔴 dt_job vs dtjob 은 «밑줄 하나» 차이다
+```
+→ 값→엣지 승격은 «투영»만으로 될 «가능성»이 있다(모양이 `decode_node_id` 가 먹는 `{type,keys}`).
+   **가설이다.** `transferred` 의 wafer_grid→dt_job «4,640 하나»로 시험을 태우면 그날 갈린다.
+
+### ③ 「dt lot/slot 미확정이면?」 — 설계된 답이 있다. 「얼리되 확정을 사칭하지 않는다」
+원자는 그대로 쓰이고 **파생 규칙 이름**이 갈린다:
+```
+job_run_to_confirmed_container   목적지에 «확정된 물리적 정체»가 있다
+job_run_to_job                   목적지를 «작업»으로만 이름 붙일 수 있었다
+질의   WHERE source_translator_ver LIKE '%#job_run_to_confirmed_container'
+```
+실측 — 셋으로 갈린다:
+```
+confirmed=False  container_recorded=False   68,346   적힌 것도 없음
+confirmed=False  container_recorded=True     4,589   🔴 «적혀는 있는데 확정은 아님»
+confirmed=True   container_recorded=True        29
+미확정의 목적지   to.type = dt_job  4,640
+```
+근거는 `ledger/config.py:270` — 소스 자기 추론이 「40% absent, 10% **PRESENT BUT WRONG**」이라
+적힌 lot/slot 은 «발언»으로 보존되고 정체는 확정 관계에서만 온다
+(`TRANSFER_OPTIONAL_COLUMNS = (recorded_lot, recorded_slot)` — `recorded`, `confirmed` 가 아니다).
+⚠️ **이 박스 확정률 29/4,669 = 0.6%.** 여기는 운영이 아니므로 이 수로 운영을 말하지 않는다.
+   다만 ②의 「transferred 가 값이라 못 걷는다」와 «같은 자리»다.
+
+### ④ 좌표계 확정 — 같은 무늬, 어휘가 더 정교하다. 그리고 «돌고 있다»
+```
+확정 99판 · 기여 소스 149행
+ruling_state   scored 75 · no_winner 15 · state_not_transported 6 · unscored 3
+rule_name      dt_frame_confrimation 81 · dt_job_lot_slot_attribution 14
+               · eqp_product_frame_attribution 2
+```
+🔴 `dt_job_lot_slot_attribution` 14판 — **③의 그 확정이 여기 있다. 두 질문이 같은 표에서 만난다.**
+
+미확정을 부르는 이름 넷: `WARRANT_NOT_DECLARED` · `STATE_NOT_TRANSPORTED` ·
+`GEOMETRY_ASSUMED` · `no_winner`.
+`state_not_transported` 가 왜 `unscored` 가 아닌지는 그 자리 주석이 적고 있다 —
+후자는 「채점이 없었다」는 **주장**이고, 2026-08-06 실측에서 `winner: rot0_front, margin: 87` 로
+답한 단위가 `unscored` 로 남았다. 「안 쟀다」와 「잰 말이 여기까지 안 왔다」는 다른 질문이다.
+
+**미확정일 때 실제 동작** — `bonding_plan.py:267`: `meta` 가 없으면 퇴화형으로 간다.
+`CANONICAL_FRAME_ROLES = ("total_chips","defect","eds_fail")` 의 «선언 순서 첫째»가 기준 프레임.
+모듈이 스스로 적고 있다 — 「N항 합의 결정을 config 순서에 맡긴 것이고 기록도 판도 소스 목록도 없다」.
+다만 조용히 넘어가지 않고 `warrant: not_declared` 로 **표시되어 나간다**(`bonding_plan.py:314`).
+
+### ⑤ 자재 트레이서(소유자 아이디어) — 「찾기」는 문제가 아니다
+```
+노드 id 는 «저장»이 아니라 «계산»이다   ledger-entity:v1:token(type, keys)
+wafer keys = {"wafer": <문자열>}         키가 «하나»
+lot   keys = {"lot":   <문자열>}         키가 «하나»
+이름 충돌   wafer 6,376 · lot 92 · 겹침 «0»  -> 「랏이냐 웨이퍼냐」를 물을 필요조차 없다
+die keys = {x, y, mat_id, mat_type}      🔴 맨 문자열로는 die 를 «못 부른다»
+```
+→ 검색창은 **서버 새 것 없이** 된다. 새 라우트가 아니라 walk 의 «창» 하나.
+→ 오늘 답하는 것: 본딩 조합 ✅ · 원본 웨이퍼 ✅ · 랏↔웨이퍼 ✅ / **어디서 쪼개졌나 ❌**(②가 벽)
+소유자: **「그냥 나중에 하고」** — 착수 안 함. 위 시험(②)이 먼저 갈릴 자리다.
+
+### 곁들여 잡힌 것 둘
+```
+🐞 GET /dashboard/summary -> 500   인증과 무관한 자리(401 아님) = «진짜 서버 오류». 미조사
+📎 dt_frame_confrimation 은 오타(confirmation)   config·테스트·데이터 81행이 «전부 같은 철자»이고
+   바른 철자를 읽는 곳이 «0» -> 결함 아님. 고치려면 데이터까지 같이 가야 해 지금 자리가 아니다
+```
+
+---
+
+## ✅ admin 「원장 선언」 탭 — 배선 제거 + 사슬 삭제 «둘 다 착지» (2026-08-25 밤, 총괄 브라우저 검증)
+
+```
+9cdf224c  탭 배선 제거 + 「📐 맵 정렬기」 메뉴 항목      파일 3 + dist
+5e3f263f  사슬 삭제                                   파일 25 · 13,755줄
+```
+총괄이 «직접 눌러» 확인한 것:
+```
+메뉴 넷 · 「맵 정렬기」 클릭 -> /map_editor2.html 이동 -> h1 「좌표계 확정」 · 자산 전부 200
+admin 탭 «여섯» · tab-ledger-btn/ledger-tab-wrapper 없음 · Ontology Explorer 눌러서 마운트 확인
+#ledger 별칭 -> #overview 로 되돌리고 Overview 착지  (레인이 찾은 결함, 고쳐진 것 재현 확인)
+살아남은 것: ledger_console.css · tokens.css(두 커밋이 한 줄도 안 건드림) · ontology_explorer
+```
+🔴 첫 로드에서 `addEventListener` on null 이 한 번. **재현 안 됨**(DOMContentLoaded 재던지기 ·
+토큰 넣고 새로고침 둘 다 조용). 구/신 번들 init 순서 diff 는 «initLedgerMap 호출 하나 빠진 것»뿐.
+「이 커밋 이전에도 있었다」는 **증명 못 했다** — 말할 수 있는 건 여기까지다.
+⚠️ 브라우저 창에서 `/admin/*` 이 전부 401 인 것은 창이 `prompt()` 를 못 띄워서다(서버에
+`ASSY_ADMIN_TOKEN` 없음). 커밋과 무관하고, Ontology Explorer 의 「불러오는 중」도 그 하류다.
+
+**대기열 ①(부품 follow 를 선언으로)은 «이미 착지»** — `main.js` 의 `BOARD` 선언 안에 있고,
+그 자리 주석이 08-24 판정(「좁혀도 되는 것은 점 부품뿐」)을 들고 있다. 라운드 태울 자리 없음.
+남은 승인 항목은 **② 관측 술어를 선언으로** (서버 ~10곳 · fold·맵·트렌드가 붙음) — 소유자 확인 대기.
+
+---
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
