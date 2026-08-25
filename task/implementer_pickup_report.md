@@ -1,3 +1,66 @@
+# 🔴 판정 요청 — **셋은 «같은 질문»입니다. 씨앗도 답도 이름까지 같습니다** (구현자 16:2x)
+
+## ① 표 — 세 호출을 «전선에서» 떴습니다 (선언을 읽은 게 아니라 부팅해서 찍었습니다)
+```
+                                       start(씨앗)          collect    나머지
+① control_bar_panel.js:70  load()      SYN-CX-BW-001       quantity   «없음»
+② candidate-list · rank-list load()    SYN-CX-BW-001       quantity   node_limit=1000 · direction=outgoing
+③ main.js optionsFor('y')              SYN-CX-BW-001       quantity   direction=outgoing
+                                       🔴 distinct 씨앗 «1» — 셋이 같은 웨이퍼입니다
+```
+```
+/api/ledger/subgraph?id=<seed>&collect=quantity
+/api/ledger/subgraph?id=<seed>&collect=quantity&node_limit=1000&direction=outgoing
+/api/ledger/subgraph?id=<seed>&collect=quantity&direction=outgoing
+```
+📌 재는 방법: `boot()` 을 그대로 태우고 fetch 를 기록했습니다 — 부팅 실측 «요청 14 · subgraph 3»
+   (총괄 브라우저 15와는 trends 하나 차이입니다: 여기선 2, 브라우저 3. 축 마킹 뒤 트렌드가
+   한 번 더 도는 것으로 보이고, subgraph «셋»은 총괄 실측과 «정확히» 같습니다.)
+
+## ② 답 — «같은 질문»입니다. 셋의 결과가 이름까지 동일합니다
+```
+① both      · node_limit 400    ranked 21 · 노드 274 · complete True · trunc []
+③ outgoing  · node_limit 400    ranked 21 · 노드 265 · complete True · trunc []
+② outgoing  · node_limit 1000   ranked 21 · 노드 265 · complete True · trunc []
+   ① vs ② : IDENTICAL      ③ vs ② : IDENTICAL      (이름 21개 전부)
+```
+🔴 **`node_limit` 은 «오늘 안 뭅니다».** 이 walk 은 265 노드라 400 «근처에도» 안 갑니다.
+   패널의 「기본 400 이면 ranked 0」 주석은 **2026-08-24**, 즉 1③ 이 노드를 5,644 → 1,805 로
+   깎기 «전»에 잰 수입니다. 그 주석이 재던 walk 은 이제 없습니다.
+
+## ③ 그래서 예상 — 선언을 맞추면 subgraph «3 → 1» · 요청 «13»
+총괄 예측과 같습니다. 다만 정직하게 덧붙입니다:
+```
+합침은 «진행 중»인 것만 합칩니다 (api.js:863, inflight). 셋이 마운트에서 겹치므로 실측상
+합쳐집니다 -- 겹치지 않는 순간이 생기면 다시 갈라집니다. 이건 캐시가 아닙니다.
+```
+
+## 🔴 그런데 «어느 쪽으로» 맞출지가 남습니다 — 저는 안 골랐습니다
+```
+A. 셋 다 node_limit «없음»   -> 오늘 답 동일. 다만 큰 웨이퍼에서 400 이 굶는지 «아직 못 쟀습니다»
+B. 셋 다 node_limit «1000»   -> 오늘 답 동일 + 굶을 여지 없음.  ← 제 권고
+```
+⚠️ 총괄 씨앗(SYN-BW-101-16, 그때 3,490 노드)으로 400 vs 1000 을 재려 했는데 **질의가 10분에
+   안 끝나 중단**했습니다(공유 DB라 오래 물고 있지 않았습니다). 120s 상한으로 재시도 중이고,
+   나오는 대로 이 문단만 갱신하겠습니다. **그 수 없이 A를 고르면 「이 씨앗에서 안 문다」를
+   「안 문다」로 읽는 것**이라 B가 안전합니다.
+
+## ③-2 「부품이 자기 안에서 걷는다」 — 실물은 이렇습니다
+```js
+// control_bar_panel.js:44   생성자
+this.candidateCollect = options.candidateCollect || 'candidate';
+this.seedNodeId       = options.seedNodeId || null;
+// :69                        load()
+this.walk({ start: { groupby:'wafer', value: this.seedNodeId }, collect: this.candidateCollect })
+```
+부품이 걷는 것 자체는 문제가 아니고, **선언 칸을 «받을 자리가 없는»** 것이 문제입니다 —
+`collect` 는 옵션으로 받는데 `direction`·`follow`·`hops` 는 받는 통로가 없습니다.
+그래서 이 부품만 «맨몸»으로 나갑니다. 고치는 건 지시 기다립니다.
+
+⛔ 지시대로 «아무것도 안 고쳤습니다». 커밋에 코드 변경 없습니다.
+
+---
+
 # ✅ **1② 마지막 한 줄 — Y축 목록도 «같은 선언»으로 묻습니다** (구현자 15:4x)
 
 ```
