@@ -1,4 +1,55 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 커밋 2 — **사슬 삭제 완료** (`5e3f263f`). 23파일 · 13,742줄. 게이트 넷 통과
+
+## 지운 목록 (되돌릴 때의 지도)
+```
+src 11    ledger_map_panel · ontology_structure_view · ontology_structure_core
+          ontology_structure.css · ledger_setup · ledger_setup_view · ledger_setup.css
+          case_control_core · case_control_view · ledger_trace_core · ledger_trace_view
+하니스 3   ontology_structure_harness · case_control_harness · ledger_trace_harness
+픽스처 7   ledger_trace_live · _probe · _nothings · ledger_coverage
+          ledger_trace_contested · case_control · ontology_structure
+그 밖 2    backfill_basis.py · gen_ledger_trace_contested.py
+설정       check_harnesses.mjs 의 ledger_trace_harness floor (오늘 아침 360 으로 내린 그 줄)
+```
+
+## 🔴 목록에 없던 둘 — «한 겹 더 세어서» 찾았습니다
+```
+tests/fixtures/backfill_basis.py             그 셋만 읽는 캡처 셋을 «유지하는» 스크립트
+tests/fixtures/gen_ledger_trace_contested.py 그 셋만 읽는 픽스처의 «생성기»
+```
+파일을 세고 멈췄더니 그 파일들의 «재료»가 또 있었습니다. 라운드 시작 전에 찾은
+`ledger_setup_view` · `ledger_setup.css` 와 같은 자리입니다.
+
+## 🔴 `ledger_console.css` 는 «지키고» 있습니다
+`tokens.css:21` 의 `@import` 가 지금 이 파일의 «유일한» 생명선입니다 — 그 파일 자기 주석은
+아직 「제 자리는 `ledger_trace.js` 의 import 다」라고 하는데 그 파일은 이미 없습니다.
+지웠으면 admin 이 아니라 «모든 화면»이 갔습니다.
+
+## 🔴 F2 대조군 — 판정대로 «리터럴»로 옮겼습니다
+```
+전   scan(readFileSync('ledger_map_panel.js'))     ← 남의 파일 수명에 묶인 대조군
+후   scan(['let deps = null;', 'let mountEl = null;', 'let session = 0;'].join(LF))
+```
+이유와 «원본을 어디서 찾는지»(`git log -- client2/src/ledger_map_panel.js`)를 그 자리에
+적었습니다. 이제 리팩터가 남의 파일 세 줄을 고쳐도 F2 가 «조용히» 비지 않습니다.
+
+## 게이트
+```
+① 빌드    npm run build exit 0 · 「every gated harness is green」
+          남은 ✗ 다섯은 전부 «이전부터의» KNOWN_RED 부채. 이 사슬과 무관합니다
+② admin   탭 여섯 · Ontology Explorer «클릭» 후 렌더 확인
+          지운 모듈 다섯 전부 dev 서버의 index fallback (진짜 내용 아님)
+          ledger_console.css 는 13,428 바이트로 «살아 있습니다»
+③ 무회귀   보드 13요청 · 15패널 · 후보 21 · 실측 0 · 발견 28 · 검사 128
+④ dist    «변화 없음». 건너뛴 게 아니라 그게 맞는 답입니다 — 커밋 1 이 이미 admin 청크에서
+          이 모듈들을 뺐으므로 번들에는 처음부터 없었습니다
+```
+
+## 📎 남긴 것 하나
+`docs/architecture/CODE_MAP.md:2756` 이 지운 픽스처들을 아직 나열합니다. 문서 레인 몫이라
+손대지 않고 적어 둡니다.
+
 # 🟢 커밋 1 — **탭이 눈에서 사라졌고 「맵 정렬기」가 들어갔습니다** (`9cdf224c`). 게이트 넷 통과
 
 「일단」이 지시의 전부라 하셔서 «배선만» 뗐습니다. **사슬 파일은 한 개도 안 지웠습니다** —
