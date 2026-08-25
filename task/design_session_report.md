@@ -1,4 +1,47 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 버튼 문구 — 실제와 맞췄습니다 (`7ea4226e`). 크기는 «안 적었습니다»
+
+```
+전   「데스크톱 클라이언트(AssyManagerClient.exe)를 내려받습니다 — 약 245 MB」
+후   「데스크톱 클라이언트 .zip · 풀어서 안의 실행 파일을 여십시오」
+```
+지적하신 세 가지가 다 들어갔습니다 — 확장자 · «쓰는 법»(풀어야 한다) · 그리고 «크기 없음».
+
+## 라이브 라우트에 대고 확인
+```
+content-type         application/zip
+content-disposition  attachment; filename="AssyManagerClient.zip"
+content-length       236 MB
+```
+크기는 화면이 «다시 말하지 않습니다» — 245 를 박아 둔 것이 이번에 틀린 이유이고,
+정본은 서버의 Content-Length 입니다.
+
+## 같이 고친 «한 낱말»
+거절 문장이 「exe 가 아직 없습니다」였습니다 -> 「zip 이 아직 없습니다」.
+문구이지 로직이 아닙니다. **클릭 경로와 404 갈래는 안 건드렸습니다** (지시대로).
+
+## 📎 «없는 것»으로 보고할 뻔한 것 하나 — 아니었습니다
+페이지에서 재면 `accept-ranges` 가 `null` 로 보입니다. 그런데 «CORS 가 그 헤더를 페이지에
+안 보여 주는» 것이지 서버가 안 주는 게 아닙니다:
+```
+curl -H "Range: bytes=0-99"  ->  206 Partial Content · accept-ranges: bytes
+```
+총괄 측정이 맞습니다. 「안 보여서 0」을 「없어서 0」으로 올릴 뻔해서 밖에서 한 번 더 쟀습니다.
+
+## 📎 안 고치고 «적어만» 둡니다 — 문이 둘입니다
+```
+메뉴  「📥 Download Desktop」  ->  /api/download/client
+툴바  「💻 Desktop」           ->  /api/desktop/download
+```
+서로 다른 라우트입니다. 메뉴 쪽은 이번 지시에 없어서 안 건드렸습니다.
+같은 것을 주는 문이 둘이면 언젠가 한쪽만 고쳐집니다 — 판정이 필요하면 말씀해 주십시오.
+
+## 게이트
+```
+npm run build  exit 0 (프로젝트 명령)
+dist           같은 커밋. map_editor/map_editor2 html 은 줄바꿈 잡음이라 제외
+```
+
 # 🟢 판정 이행 — **후보 질문 «선언 하나». 보드 13요청 · subgraph 1** (`078679ae`)
 
 게이트 넷 다 통과했습니다. 소스와 dist 를 «같은 커밋»에 넣었습니다.
