@@ -1,0 +1,165 @@
+# 원장 전체 재건 — 큰 그림 (총괄, 2026-08-26 · 소유자 지시)
+
+## 0. 목표 — 소유자 정본
+
+> 「원장 전체 다시 만들고, **주어는 die 로 박아**」
+> 「목표 걷기 **bonding pkg → dt_lot_slot,x,y → dt_lot_slot,x,y … (3회 split·merge)
+>   → dt_job x,y → core x,y**」
+> 「A 가 맞지」 (자리가 물건을 가리킨다: `lot_slot --holds--> wafer`)
+
+**도착지는 저 걷기 한 줄이다.** 이 문서의 모든 항목은 그것에 대조한다.
+「합리적인 다음 증분인가」가 아니라 **「이걸로 저 걷기가 끝까지 가나」**.
+
+---
+
+## 1. 🔴 먼저 — 「전체 재건」의 실질은 «선언을 고치는 것»이 아니다
+
+원자를 «누가 썼나»로 세었다 (실측 2026-08-26):
+
+```
+선언된 파이프라인 (`ledger-v2:<hash>#<mapping>`)      259,903   «69%»
+씨앗·레거시 스크립트 (syn_process_ledger · dt_log …)  117,824   «31%»
+                                                    ───────
+                                                     377,727
+```
+
+🔴 **그리고 벽이던 것은 «전부» 스크립트 쪽이다:**
+```
+transferred  72,964  <- syn_process_ledger 67,240 · dt_log 4,669 · syn_world 576 …
+             선언에 `transferred` 라는 술어가 «아예 없다»
+measured · has_param 도 선언에 없다
+```
+반대로 **선언된 파이프라인은 이미 소유자가 원하는 모양을 낸다:**
+```
+transfer@1   die -> die   entity_ref   29,613   (dt_transfer 28,208 + transfer_event 1,405)
+```
+
+**그러므로 재건의 실질은 두 가지다:**
+```
+① 선언 «밖»에서 쓴 117,824 를 선언 «안»으로 들인다   (또는 버린다)
+② 선언 «안»의 결이 틀린 것 넷을 고친다              (아래 3절)
+```
+⚠️ 「전부 다시 만든다」를 「전부 다시 «쓴다»」로 읽으면 69% 를 헛되이 건드린다.
+
+---
+
+## 2. 노드 문법 — **이미 있다. 새로 만들지 않는다**
+
+`ledger_config.json` 의 `entities`:
+```
+die@1     keys = [mat_id, x, y, mat_type]     ← 소유자의 「자리 + x,y」가 «이것»이다
+wafer@1   keys = [wafer]
+lot@1     keys = [lot]
+dtjob@1   keys = [dt_job]
+recipe@1  keys = [recipe]
+```
+소유자의 `dt_lot_slot,x,y` 는 **`die@1` 에 `mat_type` 을 하나 더 주는 것**이다:
+```
+mat_type   "Wafer"(코어) · "DT"(dt_job) 는 «이미 쓰인다»
+           -> "DTLotSlot" 하나를 더 세운다.  mat_id = dt_lot|slot
+```
+🔴 **새 엔티티 타입을 만들지 않는다.** `die@1` 하나가 모든 자리를 표현한다 —
+그게 「주어는 die 로 박아」의 코드적 의미다.
+
+추가로 필요한 것 하나: **`lot_slot@1`** (lot lineage 쪽).
+```
+lot_slot@1  keys = [lot, slot]
+```
+이건 die 가 아니다 — 웨이퍼 한 장이 들어앉는 «자리»이고 x,y 가 없다.
+
+---
+
+## 3. 목표 걷기의 네 구간 — **하나는 이미 있고 셋이 없다**
+
+| 구간 | 지금 | 필요 |
+|---|---|---|
+| `bonding pkg → dt_lot_slot,x,y` | ❌ `bonded_from` 이 **wafer→wafer** (3,650) | die→die 로 |
+| `dt_lot_slot,x,y → dt_lot_slot,x,y` (3회) | ❌ `slot_map` 이 **lot→lot** (443) | die→die 로 |
+| `dt_lot_slot,x,y → dt_job,x,y` | ⚠️ `transfer@1` die→die 는 있으나 `DTLotSlot` 자리가 없음 | mat_type 추가 |
+| `dt_job,x,y → core,x,y` | ✅ **이미 있다** — `dt_transfer / core-die-to-dt-die` 28,208 | 그대로 |
+
+### 3-1. 결이 틀린 선언 «넷» (전부 `ledger_config.json` 안)
+```
+bonded_from / bonded-wafer-from-core-wafer   wafer -> wafer     -> die -> die
+lot_event   / merge_slot_join  (slot_map)    lot   -> lot       -> lot_slot -> lot_slot
+lot_event   / split_slot_carry (slot_map)    lot   -> lot       -> lot_slot -> lot_slot
+lot_event   / in_slot          (has_wafer)   lot   -> wafer     -> lot_slot -> wafer  (판정 A)
+die_inspection / die-inspected               wafer -> die       -> die -> 값(관측)
+```
+📎 근거 — `slot_map` 실측: 한정어에 `{from:"02", to:"02", wafer:"NAB539-W02"}` 가 있고
+**엣지는 정보를 안 나른다.** 443 원자가 주어 46 · 목적어 49 로 붕괴하고 한 쌍이 «25번» 반복된다.
+그중 **21건은 슬롯이 실제로 바뀐다**(10→02 · 13→03 · 20→04) — 지금 모양으로는 표현 불가.
+그리고 한정어의 `wafer` 이름 **245개가 전부 wafer 노드로 실재**한다(245/245).
+
+---
+
+## 4. 선언 규칙 다섯 — 소유자 판정
+
+```
+① 주어도 목적어도 «자리»            bond·transfer·lot lineage 전부. 물건은 자리가 가리킨다(A)
+② 목적어는 «엔티티 하나»            값 목적어는 «관측»(observed·inspected·measured)에만
+③ 사건 노드를 «세우지 않는다»        claim·event 는 엣지 속성 (2026-08-25 착지분을 되살리지 않는다)
+④ 이름은 «한 철자»                 dt_job/dtjob · wafer_grid/wafer 두 철자를 만들지 않는다
+⑤ 한정어에 «식별자»를 넣지 않는다    한정어는 그 엣지의 성질만 (qty·core_slot)
+                                  이름이 노드로 존재하면 그건 «엣지»다
+```
+
+---
+
+## 5. 단계 — 넷, 각 단계가 «목표 걷기»의 한 구간을 연다
+
+```
+1단계  자리 어휘를 세운다
+       entities 에 lot_slot@1 · die@1 의 mat_type 에 "DTLotSlot"
+       -> 이 단계만으로는 화면이 안 바뀐다. 다음 셋의 전제다
+
+2단계  결이 틀린 선언 넷을 고친다  (3-1)
+       bonded_from · merge_slot_join · split_slot_carry · in_slot
+       -> 「bonding pkg → dt_lot_slot」과 split/merge 구간이 열린다
+
+3단계  선언 «밖» 117,824 를 판정한다
+       syn_* 씨앗 스크립트 = 픽스처. 운영엔 안 간다 -> «버린다»
+       dt_log 5,415 · delam_obs 11,561 · lot_event 1,195 = 진짜 소스 -> 선언으로 «들인다»
+       -> `transferred` 술어가 사라지고 `transfer@1` 하나로 합쳐진다
+
+4단계  재적재 후 목표 걷기를 «끝까지» 태운다
+       실패하면 그 구간이 답이다
+```
+
+---
+
+## 6. 검수 — **이것만이 완료 판정이다**
+
+```
+소유자 목표 걷기가 «한 번의 walk 으로» 끝까지 간다:
+  bonding pkg → dt_lot_slot,x,y → …3회… → dt_job,x,y → core,x,y
+
+그리고 회귀:
+  보드 13요청 · 15패널 · 오류 0
+  소유자 08-24 체인(a → 코어 29장 → recipe 5 → 코어 600장 → BW 25장) 그대로
+```
+🔴 **홉 수를 «먼저» 적어 둔다.** 지금 소유자 체인은 3홉이다. 자리 노드가 늘면 홉도 는다 —
+재건 뒤에 몇 홉인지 재고, `DEFAULT_HOPS 12` 안에 드는지 본다.
+
+---
+
+## 7. 안 하는 것 (명시)
+
+```
+⛔ 선언된 파이프라인이 쓴 259,903 을 «다시 쓰기» — 69% 는 이미 옳은 모양이다
+⛔ 새 엔티티 타입을 늘리기 — die@1 + lot_slot@1 로 끝낸다
+⛔ 사건 노드 복원 — 08-25 에 없앤 것 (노드 5,644→1,248 · 홉 5→3)
+⛔ 좌표계·메타 액션·자재 트레이서 — 재건 뒤 안건. 이 문서 범위 밖
+⛔ 0번 시험(값→엣지 투영 승격) — 재건이 이걸 대체하므로 «접는다»
+```
+
+---
+
+## 8. 열린 판정 둘 (소유자 확인 필요)
+
+```
+① 3단계의 「버린다」  syn_* 117,824 중 픽스처 확정분을 정말 버리나
+                    -> 보드 씨앗(SYN-BW-101-16 등)이 거기서 나온다. 버리면 «화면 표본»이 빈다
+② dt_lot_slot 의 키   mat_id 를 「dt_lot|slot」 한 문자열로 붙이나, lot_slot@1 을 따로 쓰나
+                    -> 붙이면 die@1 하나로 끝나고, 나누면 자리 어휘가 둘이 된다
+```
