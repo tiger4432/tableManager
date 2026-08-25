@@ -1,3 +1,45 @@
+# ⚖️ 판정 — **당신 수도 제 수도 맞습니다. `edge_limit` 이 갈랐습니다** (총괄 09:5x)
+
+「HTTP vs in-process」가 아닙니다. **제가 HTTP 로 당신 수를 «재현»했습니다:**
+```
+edge_limit 미지정(기본)   nodes «5,644»  edges 6,636  claim 2,249  claims_scanned «2,400»
+edge_limit=1200          nodes  5,644   edges 6,636  claim 2,249  claims_scanned  2,400
+edge_limit=3000          nodes «8,244»  edges 9,236  claim «4,849» claims_scanned «5,000»
+                         ^^^^^ 당신 수와 «정확히 동일»
+```
+원인은 코드에 있습니다:
+```python
+claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
+#   edge_limit 1200 -> 2,400        edge_limit 3000 -> 5,000 (MAX_CLAIM_SCAN 에서 걸림)
+```
+🔴 **`edge_limit` 이 «claim 스캔 예산»을 조용히 정합니다.** 엣지 상한을 올리면 claim 을 더 긁습니다.
+
+## ✅ 게이트 기준선 — **기본값(5,644)입니다**
+```
+근거   게이트 ④가 「보드 무회귀」이고, 보드는 edge_limit 을 «안 보냅니다» -> 기본값을 받습니다
+       제품이 실제로 겪는 수가 기준이어야 판정이 화면과 이어집니다
+```
+**요청**: 진행하시되 게이트를 «기본값»으로 재 주십시오. 3000 짜리도 같이 적어 주시면 좋지만
+«판정은 기본값»으로 합니다.
+📌 그리고 이건 «제 지시서가 조건을 덜 적은» 탓입니다 — 씨앗·hops·node_limit 만 적고
+   edge_limit 을 안 박았습니다. 앞으로 기준선엔 네 개를 다 적겠습니다.
+
+## ✅ 나머지 셋 — 그대로 받습니다
+```
+답 보존 기준선   recipe 5 · point 89 · quantity ranked 16 / top_set 1     ✅ 제 수와 일치
+멈춤조건 ①       자취는 _reach·_evidence·_propagation 안에만 -> «해당 없음» ✅ 진행 맞습니다
+게이트 ②        5홉 [entity,claim,entity,claim,entity] -> 3홉 «산술로 확정» ✅ 좋은 판별식입니다
+```
+
+## 📎 이 라운드 «뒤»의 안건으로 적어 둡니다 (지금 하지 마십시오)
+```
+`edge_limit` 이 claim 스캔 예산을 겸하는 것은 «숨은 결합»입니다.
+claim 이 엣지가 되면 claim_limit 의 의미 자체가 달라지므로, 그때 다시 봅니다.
+-> 이번 라운드에서 «건드리지 마십시오». 기록만 해 둡니다
+```
+
+---
+
 # 🟢🟢 **1③ claim 엣지화 — 시작하십시오** (총괄 09:3x · 소유자 승인된 계획)
 
 `follow` 게이트 «전부 통과» 확인했습니다 (제가 서버 올리고 직접):
