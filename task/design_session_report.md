@@ -1,4 +1,51 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟢 판정 이행 — **후보 질문 «선언 하나». 보드 13요청 · subgraph 1** (`078679ae`)
+
+게이트 넷 다 통과했습니다. 소스와 dist 를 «같은 커밋»에 넣었습니다.
+
+## 고른 방법과 «고른 이유» (지시하신 한 줄)
+```
+🔴 예산(node_limit)을 «선언 쪽»으로 옮겼습니다. options.nodeLimit 을 막지 않고요.
+이유  두 칸이 «다른 길»로 전선에 닿고 있었습니다 --
+        direction  -> 패널 선언 -> bindLoaders 의 질문
+        node_limit -> options.nodeLimit -> 부품이 자기 walk 에 실음
+      한 질문이 «두 군데»서 조립되니, 2aaf194b 가 direction 을 맞춰도 ②에 못 닿았습니다.
+      bindLoaders 가 node_limit 도 같이 싣게 하면 «한 줄»이고, 그 순간 선언이 단일 출처가 됩니다.
+      부품의 nodeLimit 은 «혼자 설 때»를 위해 남겼고, 읽는 자리에 그렇게 적었습니다.
+```
+
+## 🔴 그리고 «통째로» 펼쳤습니다 — 칸을 골라 베끼지 않았습니다
+```
+createWalk 의 합침 열쇠 = JSON.stringify([collect, start, rest])
+JSON.stringify 는 «삽입 순서»를 보존합니다
+-> 같은 두 칸을 «다른 순서»로 적으면 같은 질문이 «다른 열쇠»가 되어 안 합쳐집니다
+-> 한 객체를 세 번 펼치면 순서가 «정의상» 같습니다
+```
+이게 「선언 하나」가 문서상 구호가 아니라 «합쳐지는 조건»인 이유입니다.
+
+## 바뀐 자리 넷
+```
+main.js                  CANDIDATE_QUESTION 선언 · bindLoaders 가 node_limit 도 실음 · 세 자리가 펼침
+control_bar_panel.js     `candidateCollect`(한 칸) -> `candidateQuestion`(질문 전체) 를 받아 펼침
+candidate_list_panel.js  주석만 -- 예산이 «이제 어디서 오는지»
+rank_list_panel.js       같음
+```
+
+## 게이트
+```
+① 요청     «13» · subgraph «1» · 전부 200
+          composition 2 · trends 3 · subgraph 1 · lot_map 3 · siblings 4
+② 답 동일   후보 21 · 실측 0 · 이름뿐 21
+          Y축 목록 박리 비율 · 보이드 비율 · 값 없음 21
+          14패널 · 발견 28 · 검사 128 · 이 페이지發 오류 «없음»
+③ 하니스   npm run build «exit 0» (vite build 아닙니다)
+④ 커밋     소스 4 + dist(rnd_board 청크 · rnd-board.html) «같은 커밋». 경로는 git status 에서
+```
+커밋 메시지 첫 문단에 「14는 우연, 13이 합쳐진 수」를 적어 두었습니다 — 지시하신 그 한 줄입니다.
+
+📎 `dist/map_editor.html` · `map_editor2.html` 은 이번에도 뺐습니다(줄바꿈 잡음, 글자는 동일).
+   이 라운드가 그 페이지들을 안 건드렸습니다.
+
 # 🟢 「넷째 호출자」 실측 — **셋은 «같은 질문»입니다. 맞추면 «13» 입니다** (재 봤습니다)
 
 지시(`ea63bdc1`) ①②③ 그대로. 고치지 않았습니다 — ②의 13 은 «임시 편집 -> 세기 -> 원래
