@@ -30,7 +30,6 @@ import {
 } from './retroactive_view.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
-import { initLedgerMap, renderLedgerMap, parseMapQuestion, STRUCTURE_VIEW } from './ledger_map_panel.js';
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 
 const isDevServer = window.location.port === '5173';
@@ -168,9 +167,7 @@ async function adminFetch(url, init) {
 }
 
 // ── State Cache ─────────────────────────────────────────────
-// switchTab이 받은 지도 질문을 fetchData까지 옮기는 자리 (탭 전환과 렌더가 분리돼 있다).
-let pendingMapQuestion = null;
-let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment' | 'ledger'
+let currentTab = 'overview'; // 'overview' | 'file' | 'chain' | 'autoupdate' | 'enrichment' | 'ontology'
 
 let outboxPage = 1;
 let outboxLimit = 10;
@@ -223,7 +220,6 @@ const TAB_ALIASES = {
   chain: 'chain',
   autoupdate: 'autoupdate',
   enrichment: 'enrichment',
-  ledger: 'ledger',
   ontology: 'ontology',
   outbox: 'chain',      // 구 Outbox Failures 탭 (outbox fail = chain fail)
   workspace: 'file',    // 구 Workspaces 탭
@@ -237,7 +233,6 @@ const tabFileBtn = byId('tab-file-btn');
 const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
 const tabEnrichmentBtn = byId('tab-enrichment-btn');
-const tabLedgerBtn = byId('tab-ledger-btn');
 const tabOntologyBtn = byId('tab-ontology-btn');
 
 const overviewWrapper = byId('overview-wrapper');
@@ -245,7 +240,6 @@ const fileTabWrapper = byId('file-tab-wrapper');
 const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
 const enrichmentTabWrapper = byId('enrichment-tab-wrapper');
-const ledgerTabWrapper = byId('ledger-tab-wrapper');
 const ontologyTabWrapper = byId('ontology-tab-wrapper');
 const ontologyExplorerRoot = byId('ontology-explorer-root');
 
@@ -326,15 +320,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initMonacoEditor();
   initConfigResolveLine();
   initRetroactiveLine();
-  // 원장 선언 지도. `adminFetch`·`failureFactOf`·resolve 렌더러를 **넘겨준다** — 토큰 재시도
-  // 규율과 401 판별(`isGateRejection`)과 「먹었는가」 판정기의 두 번째 사본을 만들지 않는다.
-  initLedgerMap({
-    root: ledgerTabWrapper,
-    apiBase: API_BASE,
-    adminFetch,
-    failureFactOf,
-    renderResolveInto,
-  });
   initOntologyExplorer({
     root: ontologyExplorerRoot,
     apiBase: API_BASE,
@@ -437,27 +422,15 @@ function parseRoute() {
  * `?view=structure&layer=…&edge=…` — that is its 「컨트롤 0개 추가」 property, and it is the
  * reason the map has no state to get out of sync with its URL.
  *
- * Admin's own router reads the HASH first and falls back to `?tab=`. Left alone, a click on the
- * map inside admin would full-page-load `/admin.html?view=structure&layer=…`, admin would find
- * no hash and no `?tab=`, and land on Overview — the selection lost on every single click.
- *
- * So the HOST absorbs the conflict, not the reader: admin learns to recognise `view=structure`
- * as an address for the ledger tab and hands the whole question through. Not one line of the
- * map changed to make this work.
+ * ⚰️ 2026-08-25 그 협상은 «끝났습니다». 원장 선언 탭이 메뉴에서 빠지면서 admin 은
+ *    `view=structure` 를 더 이상 알아보지 않습니다 — 그 주소로 들어오면 Overview 가 뜹니다.
+ *    윗 문단은 그 탭이 있던 동안 왜 호스트가 충돌을 흡수했는지의 기록으로 남깁니다.
  */
-function mapQuestionFromLocation() {
-  const params = new URLSearchParams(window.location.search);
-  const question = parseMapQuestion(params);
-  return question.view === STRUCTURE_VIEW ? question : null;
-}
-
+// ⚰️ 2026-08-25 `mapQuestionFromLocation()` 이 여기 있었고, `?view=structure` 를 원장 선언
+// 탭의 «주소»로 알아보는 자리였다. 그 탭이 메뉴에서 빠졌으므로 라우터도 그 주소를 모른다 --
+// 지금 그 링크로 들어오면 아래 기본 갈래를 타 Overview 가 뜬다. 그 주소를 만들던 화면
+// (`ledger.html`)은 이미 없고, 지도의 앵커를 아는 유일한 곳이 그 탭이었다.
 function applyRoute(isInitial) {
-  const mapQuestion = mapQuestionFromLocation();
-  if (mapQuestion) {
-    if (isInitial || currentTab !== 'ledger') switchTab('ledger', { mapQuestion });
-    else renderLedgerMap(mapQuestion);
-    return;
-  }
   const { key, value } = parseRoute();
   if (key === 'editor') {
     // 구 Code Editor 탭 URL → 공용 에디터 뷰. #editor=<path>는 해당 파일 즉시 오픈.
@@ -476,8 +449,8 @@ function isEditorViewOpen() {
 }
 
 // 좌패널 전폭으로 도는 탭 — 우패널의 진단·에디터를 쓰지 않고 자기 본문이 넓어야 하는 것들.
-// 원장 선언 지도는 `os-panel--wide` 패널을 여러 개 나란히 그리는 화면이라 여기 속한다.
-const FULL_BLEED_TABS = ['overview', 'ledger', 'ontology'];
+// (원장 선언 지도가 여기 있었다. 2026-08-25 탭과 함께 빠졌다.)
+const FULL_BLEED_TABS = ['overview', 'ontology'];
 
 function updatePanelLayout() {
   // 전폭 탭은 우패널·리사이저를 숨긴다. 단, 에디터 뷰가 열리면 우패널을 되살린다.
@@ -538,14 +511,7 @@ function switchTab(tabName, opts = {}) {
   clearDiagnostics();
 
   updatePanelLayout();
-  // 🔴 지도 탭에서는 주소를 «건드리지 않는다». `#ledger`를 찍으면 `?view=structure&edge=…`가
-  // 그대로 남은 채 해시가 덧붙어, 다음 새로고침에서 어느 쪽이 주소인지 화면이 대답하지
-  // 못한다. 지도의 주소는 지도의 앵커가 소유한다.
-  if (t.tab === 'ledger') {
-    pendingMapQuestion = opts.mapQuestion || mapQuestionFromLocation()
-      || { view: STRUCTURE_VIEW, layer: '', edge: '' };
-  }
-  else if (t.tab === 'ontology') history.replaceState(null, '', '#ontology');
+  if (t.tab === 'ontology') history.replaceState(null, '', '#ontology');
   else history.replaceState(null, '', `#${t.tab}`);
 
   if (!FULL_BLEED_TABS.includes(t.tab)) refreshHealthStrip();
@@ -562,7 +528,6 @@ function setupEventListeners() {
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
     { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper },
-    { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper },
     { btn: tabOntologyBtn, tab: 'ontology', wrapper: ontologyTabWrapper }
   ];
 
@@ -902,12 +867,6 @@ async function fetchData(options = {}) {
       const status = await fetchEnrichmentStatus();
       if (isStale()) return false;
       renderEnrichmentTable(status);
-    } else if (tab === 'ledger') {
-      // 이 탭은 자기 실패를 자기 화면에 «그린다»(구조 뷰의 notice + 편집기의 조회 실패 줄).
-      // 여기서 throw하면 아래 catch의 토스트가 두 번째 사유를 만든다.
-      await renderLedgerMap(pendingMapQuestion
-        || { view: STRUCTURE_VIEW, layer: '', edge: '' });
-      pendingMapQuestion = null;
     }
     markRefreshed();
     return true;

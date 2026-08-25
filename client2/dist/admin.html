@@ -1126,13 +1126,13 @@
       pointer-events: none !important;
     }
   </style>
-  <script type="module" crossorigin src="/assets/admin-CCGHPzc0.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BisRNQW3.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CEPsXi2l.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CYDDxuNb.js">
   <link rel="modulepreload" crossorigin href="/assets/theme-DDt32gF5.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
-  <link rel="stylesheet" crossorigin href="/assets/admin-B4G55ez7.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-BNXK8QC1.css">
 </head>
 <body>
   <header>
@@ -1187,7 +1187,6 @@
           <button id="tab-chain-btn" class="tab-btn">Chain</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
           <button id="tab-enrichment-btn" class="tab-btn">Enrichment</button>
-          <button id="tab-ledger-btn" class="tab-btn">원장 선언</button>
           <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
@@ -1540,12 +1539,10 @@
           </div>
         </div>
 
-        <!-- ═══ 원장 선언 탭: 구조 맵이 그대로 온다 ═══
-             새 화면이 아니라 `ledger.html?view=structure`의 지도를 admin이 호스트하는 것이다.
-             리더(`ontology_structure_*.js`)는 한 줄도 안 바뀌었고, 바뀐 것은 구동기와
-             주소 체계다 — 지도의 앵커는 `?view=structure&layer=&edge=`로 남고
-             admin의 라우터가 그것을 배운다. -->
-        <div id="ledger-tab-wrapper" style="flex: 1; overflow: auto; display: none;"></div>
+        <!-- ⚰️ 2026-08-25 「원장 선언」 탭이 여기 있었다. 소유자: 「안 쓰니까」 ·
+             「눈에라도 안 보이게 일단 지워놔」. 이 커밋은 «배선만» 뗀다 — 사슬 파일
+             (`src/ledger_map_panel.js` 이하 열하나)은 한 개도 안 지웠다. 되돌릴 것이
+             두 파일이어야 되돌릴 수 있기 때문이고, 파일 삭제는 다음 커밋이다. -->
 
         <!-- Ledger V2 compiled snapshot을 읽는 구성 탐색기. DOM/상태/편집 흐름은
              ontology_explorer 모듈이 전담하고 admin은 인증 fetch와 탭 자리만 제공한다. -->
