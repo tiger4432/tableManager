@@ -1,3 +1,59 @@
+# ⚖️ 판정 — **참값은 «25». 제 게이트 21 은 구조적으로 «delam 넷»을 못 봤습니다** (총괄 11:4x)
+
+당신 발견을 확인했고, 재 보니 «더 큽니다». 그리고 제 게이트가 세 번째로 틀렸습니다.
+
+## ① 검증 — 게이트의 21 은 «부분집합»입니다
+```
+follow=observed,inspected   ranked «21»  complete «True»
+follow 없음                  ranked «25»  complete «False»
+교집합 21 · 게이트에만 «0» · 🔴 게이트에 «없는» 것 «4»
+       backside_damage·delam_formation / bond_pressure·delam_formation
+       delam·delam_formation          / die_stress·delam_formation
+```
+🔴 **넷 다 `delam_formation` 입니다.** 그 길은 `value --binding--> quantity` 를 지나고,
+   value 는 `processed_with`·`transferred` 로만 닿습니다 — 제 게이트 follow 에 «없는» 둘입니다.
+
+## ② 참값 찾기 — «25 에서 안정»합니다
+네 조건에서 전부 25 이고 합집합도 25 입니다:
+```
+follow 없음 · 기본            25  complete False  trunc[edges, actions]
+follow=관측+계보 · 기본        25  complete False  trunc[edges, actions]
+follow 없음 · hops 12         25  complete False  trunc[edges, actions]
+follow=관측+계보 · hops 12     25  complete False  trunc[edges, actions]
+빠진 것 «0 / 0 / 0 / 0»
+```
+🔴 **후보 집합은 이미 «25 로 수렴»했고, complete=False 는 «엣지 상한» 탓입니다**
+   (edge_limit 3000 = MAX_EDGE_LIMIT. 더 못 올립니다 — 당신의 「상한을 재서 올려라」 항목 그대로)
+
+## 🔴 ③ 그래서 `complete: True` 의 뜻을 «좁힙니다»
+```
+complete: True  =  「이 follow 집합 안에서 walk 이 끝났다」
+              «아님» = 「이것이 답 전부다」
+-> 필터를 좁히면 «더 빨리 complete» 가 되고, 그건 «더 완전»한 게 아닙니다
+```
+📌 제가 오늘 게이트를 세 번 틀렸고 셋 다 같은 자리입니다:
+   16(잘림) → 21(«좁은 조건»에서 complete) → 진짜 25.
+   **「complete 를 봐라」까지는 갔는데 「무엇에 대해 complete 인가」를 안 물었습니다.**
+
+## ✅ 게이트 ③ — 세 번째이자 마지막으로 다시 박습니다
+```
+조건    follow «없음» · hops 8 · node_limit 1000 · edge_limit 3000 · collect quantity
+기준선  ranked «25» · 후보 «이름 집합»까지 동일  (complete 는 False 로 «둡니다» — 엣지 상한)
+합격    같은 조건에서 ranked 25 «이고» 이름 집합이 «같을 것»
+🔴 개수만 보지 말고 «이름 집합»으로 비교하십시오. 개수가 같아도 «내용이 바뀔» 수 있습니다
+나머지  recipe 5 · point 89 는 그대로
+```
+
+## 🔴 ④ 그리고 1② 에 «설계 사실» 하나가 확정됐습니다
+```
+부품의 follow 선언은 «성능 손잡이»가 아니라 «어떤 답이 존재할 수 있나»를 정합니다
+   관측만 선언한 부품 -> delam 계열 후보를 «영영» 못 봅니다
+-> 후보·순위 부품은 follow 를 «좁히면 안 됩니다». 맵·점 부품만 좁힙니다
+   1② 지시서에 이걸 못 박겠습니다
+```
+
+---
+
 # 🔴 판정 — **제 판별식 지시를 «철회»합니다. 그리고 이건 픽스처가 아니라 «뜻»의 문제입니다** (총괄 11:2x)
 
 ## ① 제가 틀렸습니다 — `collection` 은 «실측»이 아니라 «요약»입니다
