@@ -571,6 +571,13 @@ body {
 
 /* ── 펼친 층 — 목업 구성의 셋째 칸 ────────────────────────────────────────────────
    🔴 「아직 안 골랐다」가 «빈 상자»로 보이면 안 됩니다. 문장이 자리를 차지합니다. */
+/* 닿는 곳 -- 층 패널과 «같은 뼈대»입니다. 머리 한 줄 + 표 부품 하나.
+   새 표 양식을 만들지 않습니다 (소유자 상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). */
+.rb-reach { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.rb-reach-head { padding: 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.rb-reach-table { min-height: 0; overflow: auto; }
+.rb-reach .rb-table-row { cursor: pointer; }
+
 .rb-layer { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
 .rb-layer-note { padding: 8px 10px; color: var(--text-muted); font-size: 11.5px; }
 .rb-layer-head { padding: 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text); }

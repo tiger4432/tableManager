@@ -1,0 +1,3184 @@
+{
+ "schema_version": 3,
+ "state": "ready",
+ "generated_at": "2026-08-25T13:03:13.148828+00:00",
+ "seed": {
+  "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+  "type": "wafer",
+  "keys": {
+   "wafer": "SYN-BW-101-16"
+  },
+  "label": "SYN-BW-101-16",
+  "depth": 0,
+  "claim_count": 0,
+  "predicates": [],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-BW-101-16"
+   },
+   "label": "SYN-BW-101-16",
+   "depth": 0,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjYuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 0.0,
+    "y": 6.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 0.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjguMH1d",
+   "type": "die",
+   "keys": {
+    "x": 0.0,
+    "y": 8.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 0.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5Ijo0LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 10.0,
+    "y": 4.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 10.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5Ijo4LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 10.0,
+    "y": 8.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 10.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5IjoxMC4wfV0",
+   "type": "die",
+   "keys": {
+    "x": 10.0,
+    "y": 10.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 10.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5IjoxMi4wfV0",
+   "type": "die",
+   "keys": {
+    "x": 10.0,
+    "y": 12.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 10.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5Ijo0LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 11.0,
+    "y": 4.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 11.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5IjoyLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 11.0,
+    "y": 2.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 11.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5IjozLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 11.0,
+    "y": 3.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 11.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMi4wLCJ5Ijo1LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 12.0,
+    "y": 5.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 12.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMi4wLCJ5Ijo5LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 12.0,
+    "y": 9.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 12.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMy4wLCJ5Ijo2LjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 13.0,
+    "y": 6.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 13.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjQuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 2.0,
+    "y": 4.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 2.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjUuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 2.0,
+    "y": 5.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 2.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjkuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 2.0,
+    "y": 9.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 2.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjozLjAsInkiOjUuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 3.0,
+    "y": 5.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 3.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjozLjAsInkiOjYuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 3.0,
+    "y": 6.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 3.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjExLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 4.0,
+    "y": 11.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 4.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjQuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 4.0,
+    "y": 4.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 4.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjcuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 4.0,
+    "y": 7.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 4.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjEwLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 5.0,
+    "y": 10.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 5.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjEyLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 5.0,
+    "y": 12.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 5.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjMuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 5.0,
+    "y": 3.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 5.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjguMH1d",
+   "type": "die",
+   "keys": {
+    "x": 5.0,
+    "y": 8.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 5.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjEuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 6.0,
+    "y": 1.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 6.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjEyLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 6.0,
+    "y": 12.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 6.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjIuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 6.0,
+    "y": 2.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 6.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjMuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 6.0,
+    "y": 3.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 6.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjAuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 7.0,
+    "y": 0.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 7.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjUuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 7.0,
+    "y": 5.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 7.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjkuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 7.0,
+    "y": 9.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 7.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjEuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 8.0,
+    "y": 1.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 8.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjYuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 8.0,
+    "y": 6.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 8.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjcuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 8.0,
+    "y": 7.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 8.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjExLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 9.0,
+    "y": 11.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 9.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjEzLjB9XQ",
+   "type": "die",
+   "keys": {
+    "x": 9.0,
+    "y": 13.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 9.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjQuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 9.0,
+    "y": 4.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 9.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjUuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 9.0,
+    "y": 5.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 9.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjcuMH1d",
+   "type": "die",
+   "keys": {
+    "x": 9.0,
+    "y": 7.0,
+    "mat_id": "SYN-BW-101-16",
+    "mat_type": "Wafer"
+   },
+   "label": "SYN-BW-101-16 / 9.0",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDEifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-01"
+   },
+   "label": "SYN-CW-101-01",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDIifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-02"
+   },
+   "label": "SYN-CW-101-02",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDMifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-03"
+   },
+   "label": "SYN-CW-101-03",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDQifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-04"
+   },
+   "label": "SYN-CW-101-04",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDUifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-05"
+   },
+   "label": "SYN-CW-101-05",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDYifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-06"
+   },
+   "label": "SYN-CW-101-06",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDcifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-07"
+   },
+   "label": "SYN-CW-101-07",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDgifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-08"
+   },
+   "label": "SYN-CW-101-08",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDkifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-09"
+   },
+   "label": "SYN-CW-101-09",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTAifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-10"
+   },
+   "label": "SYN-CW-101-10",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTEifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-11"
+   },
+   "label": "SYN-CW-101-11",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTIifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-12"
+   },
+   "label": "SYN-CW-101-12",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTMifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-13"
+   },
+   "label": "SYN-CW-101-13",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTQifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-14"
+   },
+   "label": "SYN-CW-101-14",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTUifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-15"
+   },
+   "label": "SYN-CW-101-15",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTYifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-16"
+   },
+   "label": "SYN-CW-101-16",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTcifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-17"
+   },
+   "label": "SYN-CW-101-17",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTgifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-18"
+   },
+   "label": "SYN-CW-101-18",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTkifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-19"
+   },
+   "label": "SYN-CW-101-19",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjAifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-20"
+   },
+   "label": "SYN-CW-101-20",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjEifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-21"
+   },
+   "label": "SYN-CW-101-21",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjIifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-22"
+   },
+   "label": "SYN-CW-101-22",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjMifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-23"
+   },
+   "label": "SYN-CW-101-23",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjQifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-24"
+   },
+   "label": "SYN-CW-101-24",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjUifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-101-25"
+   },
+   "label": "SYN-CW-101-25",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMDUifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-102-05"
+   },
+   "label": "SYN-CW-102-05",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMTAifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-102-10"
+   },
+   "label": "SYN-CW-102-10",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMjAifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-102-20"
+   },
+   "label": "SYN-CW-102-20",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMjUifV0",
+   "type": "wafer",
+   "keys": {
+    "wafer": "SYN-CW-102-25"
+   },
+   "label": "SYN-CW-102-25",
+   "depth": 1,
+   "claim_count": 0,
+   "predicates": [],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-02\",\"inferr…",
+   "keys": {
+    "eqp": "SYN-BD-02",
+    "step": "BONDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "5"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "temp_C": 150.0,
+     "time_s": 12.0,
+     "vacuum_Pa": 5.0,
+     "pressure_MPa": 0.22,
+     "purge_delay_s": 0,
+     "vacuum_assist": true
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-11T16:55:00+00:00",
+   "source_who": "syn_recipe_book",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-BD-02",
+    "step": "BONDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "5"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "temp_C": 150.0,
+     "time_s": 12.0,
+     "vacuum_Pa": 5.0,
+     "pressure_MPa": 0.22,
+     "purge_delay_s": 0,
+     "vacuum_assist": true
+    }
+   },
+   "source_raw_ref": "recipe_book:SYN-RCP-BOND@5:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMjktYmMyMi0yOGIxZjdiZDY4NzciLCIyMDI2LTA4LTExVDE2OjE1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-EXC\",\"infer…",
+   "keys": {
+    "eqp": "SYN-BD-EXC",
+    "step": "BONDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "6"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "temp_C": 150.0,
+     "time_s": 9.0,
+     "vacuum_Pa": 5.0,
+     "pressure_MPa": 0.16,
+     "purge_delay_s": 0,
+     "vacuum_assist": true
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-11T16:15:00+00:00",
+   "source_who": "syn_recipe_book",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-BD-EXC",
+    "step": "BONDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "6"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "temp_C": 150.0,
+     "time_s": 9.0,
+     "vacuum_Pa": 5.0,
+     "pressure_MPa": 0.16,
+     "purge_delay_s": 0,
+     "vacuum_assist": true
+    }
+   },
+   "source_raw_ref": "recipe_book:SYN-RCP-BOND@6:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWMtOWY5My0zYzIzYWJkNWFlNzEiLCIyMDI2LTA4LTExVDE1OjU1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-DIF-01\",\"infer…",
+   "keys": {
+    "eqp": "SYN-DIF-01",
+    "step": "DIFFUSION",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-DIFF",
+     "rev": "2"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "fab",
+    "params_setpoint": {
+     "o2_slm": 2.0,
+     "dwell_min": 45.0,
+     "furnace_C": 1050.0,
+     "ramp_C_min": 8.0
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-11T15:55:00+00:00",
+   "source_who": "syn_recipe_book",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-DIF-01",
+    "step": "DIFFUSION",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-DIFF",
+     "rev": "2"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "fab",
+    "params_setpoint": {
+     "o2_slm": 2.0,
+     "dwell_min": 45.0,
+     "furnace_C": 1050.0,
+     "ramp_C_min": 8.0
+    }
+   },
+   "source_raw_ref": "recipe_book:SYN-RCP-DIFF@2:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWUtOGJkNC05OTVlNmZlMjIwY2MiLCIyMDI2LTA4LTExVDE3OjU1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-MLD-01\",\"infer…",
+   "keys": {
+    "eqp": "SYN-MLD-01",
+    "step": "MOLDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-MOLD",
+     "rev": "1"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "cure_s": 120.0,
+     "clamp_kN": 60.0,
+     "mold_temp_C": 175.0,
+     "transfer_mm_s": 4.5
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-11T17:55:00+00:00",
+   "source_who": "syn_recipe_book",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-MLD-01",
+    "step": "MOLDING",
+    "basis": "recipe_setpoint",
+    "recipe": {
+     "id": "SYN-RCP-MOLD",
+     "rev": "1"
+    },
+    "chamber": "CH-A",
+    "inferred": true,
+    "step_family": "packaging",
+    "params_setpoint": {
+     "cure_s": 120.0,
+     "clamp_kN": 60.0,
+     "mold_temp_C": 175.0,
+     "transfer_mm_s": 4.5
+    }
+   },
+   "source_raw_ref": "recipe_book:SYN-RCP-MOLD@1:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMmEtOTBjNy1kZmE4YzQzNThmZDciLCIyMDI2LTA4LTA5VDE2OjE1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-EXC\",\"params_actual\":{\"pressure_MPa\":…",
+   "keys": {
+    "eqp": "SYN-BD-EXC",
+    "step": "BONDING",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "6"
+    },
+    "chamber": "CH-A",
+    "step_family": "packaging",
+    "params_actual": {
+     "temp_C": 149.526,
+     "time_s": 9.1562,
+     "vacuum_Pa": 4.991,
+     "pressure_MPa": 0.1648,
+     "purge_delay_s": 0.0,
+     "vacuum_assist": true
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-09T16:15:00+00:00",
+   "source_who": "syn_eqp_log",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-BD-EXC",
+    "step": "BONDING",
+    "recipe": {
+     "id": "SYN-RCP-BOND",
+     "rev": "6"
+    },
+    "chamber": "CH-A",
+    "step_family": "packaging",
+    "params_actual": {
+     "temp_C": 149.526,
+     "time_s": 9.1562,
+     "vacuum_Pa": 4.991,
+     "pressure_MPa": 0.1648,
+     "purge_delay_s": 0.0,
+     "vacuum_assist": true
+    }
+   },
+   "source_raw_ref": "eqp_log:SYN-BD-EXC:SYN-BW-101-16:BONDING",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDItODIxYi0zOWEyZjRjMzI3NWEiLCIyMDI2LTA4LTEwVDE2OjMwOjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"eqp\":\"SYN-MI-01\",\"params_actual\":{\"thickness_um\":742.0},\"recipe\":{\"…",
+   "keys": {
+    "eqp": "SYN-MI-01",
+    "step": "MI_THICKNESS",
+    "recipe": {
+     "id": "SYN-RCP-MI",
+     "rev": "1"
+    },
+    "step_family": "metrology",
+    "params_actual": {
+     "thickness_um": 742.0
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-10T16:30:00+00:00",
+   "source_who": "syn_mi_gauge",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-MI-01",
+    "step": "MI_THICKNESS",
+    "recipe": {
+     "id": "SYN-RCP-MI",
+     "rev": "1"
+    },
+    "step_family": "metrology",
+    "params_actual": {
+     "thickness_um": 742.0
+    }
+   },
+   "source_raw_ref": "mi_gauge:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDMtYjc2My05Mjg4OGY2MmQ1NTYiLCIyMDI2LTA4LTA4VDE1OjIwOjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"eqp\":\"SYN-PC-03\",\"params_actual\":{\"clean_time_s\":65.9},\"pass_no\":1,…",
+   "keys": {
+    "eqp": "SYN-PC-03",
+    "step": "PLASMA_CLEAN",
+    "recipe": {
+     "id": "SYN-RCP-CLEAN",
+     "rev": "1"
+    },
+    "pass_no": 1,
+    "step_family": "packaging",
+    "params_actual": {
+     "clean_time_s": 65.9
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-08T15:20:00+00:00",
+   "source_who": "syn_eqp_log",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-PC-03",
+    "step": "PLASMA_CLEAN",
+    "recipe": {
+     "id": "SYN-RCP-CLEAN",
+     "rev": "1"
+    },
+    "pass_no": 1,
+    "step_family": "packaging",
+    "params_actual": {
+     "clean_time_s": 65.9
+    }
+   },
+   "source_raw_ref": "eqp_log:SYN-PC-03:SYN-BW-101-16:PLASMA_CLEAN:p1",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDQtYjg1NC00ODJhMDJiZjI0OTEiLCIyMDI2LTA4LTA4VDE2OjA1OjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"eqp\":\"SYN-PC-03\",\"params_actual\":{\"clean_time_s\":72.1},\"pass_no\":2,…",
+   "keys": {
+    "eqp": "SYN-PC-03",
+    "step": "PLASMA_CLEAN",
+    "recipe": {
+     "id": "SYN-RCP-CLEAN",
+     "rev": "1"
+    },
+    "pass_no": 2,
+    "step_family": "packaging",
+    "params_actual": {
+     "clean_time_s": 72.1
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-08T16:05:00+00:00",
+   "source_who": "syn_eqp_log",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-PC-03",
+    "step": "PLASMA_CLEAN",
+    "recipe": {
+     "id": "SYN-RCP-CLEAN",
+     "rev": "1"
+    },
+    "pass_no": 2,
+    "step_family": "packaging",
+    "params_actual": {
+     "clean_time_s": 72.1
+    }
+   },
+   "source_raw_ref": "eqp_log:SYN-PC-03:SYN-BW-101-16:PLASMA_CLEAN:p2",
+   "depth": 1
+  },
+  {
+   "id": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDEtODNmMC1jMDg2MzM0YWYwNjgiLCIyMDI2LTA4LTEwVDE1OjMwOjAwKzAwOjAwIl0",
+   "type": "Value",
+   "node_kind": "value",
+   "schema_kind": "claim_value",
+   "label": "{\"eqp\":\"SYN-STK-B\",\"params_actual\":{\"post_bond_queue_h\":60.3},\"recipe…",
+   "keys": {
+    "eqp": "SYN-STK-B",
+    "step": "POST_BOND_QUEUE",
+    "recipe": {
+     "id": "SYN-RCP-QUEUE",
+     "rev": "1"
+    },
+    "step_family": "packaging",
+    "params_actual": {
+     "post_bond_queue_h": 60.3
+    }
+   },
+   "claim_count": 1,
+   "predicates": [],
+   "occurred_at": "2026-08-10T15:30:00+00:00",
+   "source_who": "syn_mes_queue",
+   "predicate": "processed_with",
+   "object_kind": "value",
+   "object_payload": {
+    "eqp": "SYN-STK-B",
+    "step": "POST_BOND_QUEUE",
+    "recipe": {
+     "id": "SYN-RCP-QUEUE",
+     "rev": "1"
+    },
+    "step_family": "packaging",
+    "params_actual": {
+     "post_bond_queue_h": 60.3
+    }
+   },
+   "source_raw_ref": "mes_queue:SYN-BW-101-16",
+   "depth": 1
+  },
+  {
+   "id": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+   "type": "Quantity",
+   "node_kind": "quantity",
+   "schema_kind": "mechanism_quantity_projection",
+   "label": "bond_pressure · delam_formation",
+   "keys": {
+    "model": "delam_formation",
+    "quantity": "bond_pressure"
+   },
+   "quantity": "bond_pressure",
+   "model": "delam_formation",
+   "basis": "mechanism_models.json",
+   "claim_count": 0,
+   "predicates": [],
+   "model_role": "formation",
+   "finding_kind": "delam",
+   "is_target": false,
+   "depth": 2
+  },
+  {
+   "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+   "type": "Quantity",
+   "node_kind": "quantity",
+   "schema_kind": "mechanism_quantity_projection",
+   "label": "bond_pressure · void_formation",
+   "keys": {
+    "model": "void_formation",
+    "quantity": "bond_pressure"
+   },
+   "quantity": "bond_pressure",
+   "model": "void_formation",
+   "basis": "mechanism_models.json",
+   "claim_count": 0,
+   "predicates": [],
+   "model_role": "formation",
+   "finding_kind": "void",
+   "is_target": false,
+   "depth": 2
+  },
+  {
+   "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+   "type": "Quantity",
+   "node_kind": "quantity",
+   "schema_kind": "mechanism_quantity_projection",
+   "label": "bond_temp · void_formation",
+   "keys": {
+    "model": "void_formation",
+    "quantity": "bond_temp"
+   },
+   "quantity": "bond_temp",
+   "model": "void_formation",
+   "basis": "mechanism_models.json",
+   "claim_count": 0,
+   "predicates": [],
+   "model_role": "formation",
+   "finding_kind": "void",
+   "is_target": false,
+   "depth": 2
+  },
+  {
+   "id": "ledger-quantity:v1:WyJ2b2lkX29ic2VydmF0aW9uX2JpYXMiLCJwb3N0X2JvbmRfcXVldWVfaCJd",
+   "type": "Quantity",
+   "node_kind": "quantity",
+   "schema_kind": "mechanism_quantity_projection",
+   "label": "post_bond_queue_h · void_observation_bias",
+   "keys": {
+    "model": "void_observation_bias",
+    "quantity": "post_bond_queue_h"
+   },
+   "quantity": "post_bond_queue_h",
+   "model": "void_observation_bias",
+   "basis": "mechanism_models.json",
+   "claim_count": 0,
+   "predicates": [],
+   "model_role": "observation_bias",
+   "finding_kind": "void",
+   "is_target": false,
+   "depth": 2
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRE1pZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDMifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-03\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-03\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 3.0
+   },
+   "claim_id": "01a034c3-0425-7018-8960-4d307423828e",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNREVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDEifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-01\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-01\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 1.0
+   },
+   "claim_id": "01a034c3-0425-7016-a8a6-af54832662ee",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRElpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDIifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-02\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-02\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 2.0
+   },
+   "claim_id": "01a034c3-0425-7017-b390-3aabcd6ddc25",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRFFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDQifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-04\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-04\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 4.0
+   },
+   "claim_id": "01a034c3-0425-7019-bce3-f8df412d4146",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRFVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDUifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-05\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-05\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 5.0
+   },
+   "claim_id": "01a034c3-0425-701a-854a-eb7413730cfe",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRFlpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDYifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-06\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-06\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 6.0
+   },
+   "claim_id": "01a034c3-0425-701b-ba82-5827dcc389e3",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRGNpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDcifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-07\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-07\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 7.0
+   },
+   "claim_id": "01a034c3-0425-701c-8225-e0d74072388e",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRGdpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDgifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-08\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-08\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 8.0
+   },
+   "claim_id": "01a034c3-0425-701d-b614-182649d9ec12",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNRGtpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMDkifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-09\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-09\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 9.0
+   },
+   "claim_id": "01a034c3-0425-701e-a6f3-19ac6d54e666",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVE1pZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTMifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-13\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-13\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 13.0
+   },
+   "claim_id": "01a034c3-0425-7022-b923-0a19fc166d40",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVEFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTAifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-10\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-10\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 10.0
+   },
+   "claim_id": "01a034c3-0425-701f-a045-f54c619ad2a5",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVEVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTEifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-11\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-11\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 11.0
+   },
+   "claim_id": "01a034c3-0425-7020-87f3-a9241534bf1e",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVElpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTIifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-12\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-12\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 12.0
+   },
+   "claim_id": "01a034c3-0425-7021-b337-2160d6086d66",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVFFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTQifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-14\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-14\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 14.0
+   },
+   "claim_id": "01a034c3-0425-7023-ada0-d10471b8dba4",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVFVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTUifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-15\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-15\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 15.0
+   },
+   "claim_id": "01a034c3-0425-7024-adda-c29aaf1e5959",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVFlpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTYifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-16\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-16\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 16.0
+   },
+   "claim_id": "01a034c3-0425-7025-91ad-0946c78bea38",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVGNpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTcifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-17\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-17\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 17.0
+   },
+   "claim_id": "01a034c3-0425-7026-9278-29ad4f6c5001",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVGdpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTgifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-18\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-18\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 18.0
+   },
+   "claim_id": "01a034c3-0425-7027-ad2c-dc88ff554d86",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNVGtpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMTkifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-19\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-19\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 19.0
+   },
+   "claim_id": "01a034c3-0425-7028-ac06-47653d5fc8e9",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNak1pZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjMifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-23\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-23\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 23.0
+   },
+   "claim_id": "01a034c3-0425-702c-9675-e80ecaec535c",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNakFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjAifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-20\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-20\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 20.0
+   },
+   "claim_id": "01a034c3-0425-7029-a827-b97cefeb454a",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNakVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjEifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-21\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-21\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 21.0
+   },
+   "claim_id": "01a034c3-0425-702a-a0eb-7392f740ef33",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNaklpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjIifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-22\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-22\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 22.0
+   },
+   "claim_id": "01a034c3-0425-702b-b3e2-14451d37dcda",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNalFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjQifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-24\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-24\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 24.0
+   },
+   "claim_id": "01a034c3-0425-702d-846f-3588f86205fe",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ERXRNalVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDEtMjUifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-101-25\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-101-25\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 25.0
+   },
+   "claim_id": "01a034c3-0425-702e-b379-eff50680365b",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ESXRNRFVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMDUifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-102-05\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-102-05\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 5.0
+   },
+   "claim_id": "01a034c3-0425-702f-975b-69b42af3cd64",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ESXRNVEFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMTAifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-102-10\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-102-10\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 10.0
+   },
+   "claim_id": "01a034c3-0425-7030-97a9-62efcdb4236f",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ESXRNakFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMjAifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-102-20\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-102-20\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 20.0
+   },
+   "claim_id": "01a034c3-0425-7031-ad18-cde7697052fa",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJib25kZWRfZnJvbSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFEVnkweE1ESXRNalVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDItMjUifV0",
+   "predicate": "bonded_from",
+   "predicate_label": "bonded_from",
+   "original_predicate": "bonded_from",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"bonding_core_lot\\\",\\\"rows\\\":[\\\"bonding_core_lot:{\\\\\\\"base_id\\\\\\\":\\\\\\\"SYN-BW-101-16\\\\\\\",\\\\\\\"core_wafer\\\\\\\":\\\\\\\"SYN-CW-102-25\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"bonding_core_lot:{\\\"base_id\\\":\\\"SYN-BW-101-16\\\",\\\"core_wafer\\\":\\\"SYN-CW-102-25\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {
+    "core_slot": 25.0
+   },
+   "claim_id": "01a034c3-0425-7032-97b1-9290da85f791",
+   "occurred_at": "2026-08-12T15:00:00+00:00",
+   "source_who": "bonded_from"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam80TGpBc0lua2lPakV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjEuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|8|1|9|2026-11-22T00:55:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|8|1|9|2026-11-22T00:55:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7015-9837-70956c196fce",
+   "occurred_at": "2026-11-21T15:55:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam80TGpBc0lua2lPall1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjYuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|8|6|5|2026-11-22T02:12:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|8|6|5|2026-11-22T02:12:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7016-8bac-b8a5c1512aa1",
+   "occurred_at": "2026-11-21T17:12:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam80TGpBc0lua2lPamN1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo4LjAsInkiOjcuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|8|7|6|2026-08-13T02:19:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|8|7|6|2026-08-13T02:19:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-702b-99ab-50120646cfb0",
+   "occurred_at": "2026-08-12T17:19:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam81TGpBc0lua2lPakV4TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjExLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|9|11|5|2026-11-22T03:43:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|9|11|5|2026-11-22T03:43:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7017-b594-09d63c1a6f6b",
+   "occurred_at": "2026-11-21T18:43:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam81TGpBc0lua2lPakV6TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjEzLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|9|13|6|2026-11-22T04:04:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|9|13|6|2026-11-22T04:04:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7018-bc01-0859593ac04a",
+   "occurred_at": "2026-11-21T19:04:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam81TGpBc0lua2lPalF1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjQuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|9|4|5|2026-11-22T01:37:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|9|4|5|2026-11-22T01:37:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7019-8e1e-471c3b7d9ebb",
+   "occurred_at": "2026-11-21T16:37:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam81TGpBc0lua2lPalV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjUuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|9|5|9|2026-08-13T02:22:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|9|5|9|2026-08-13T02:22:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-702c-9570-7393294303d9",
+   "occurred_at": "2026-08-12T17:22:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam81TGpBc0lua2lPamN1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo5LjAsInkiOjcuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|9|7|7|2026-11-22T02:33:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|9|7|7|2026-11-22T02:33:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-701a-8282-d068262b6bd7",
+   "occurred_at": "2026-11-21T17:33:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8wTGpBc0lua2lPakV4TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjExLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|4|11|7|2026-11-22T03:36:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|4|11|7|2026-11-22T03:36:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700a-9a70-4262b42b5df6",
+   "occurred_at": "2026-11-21T18:36:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8wTGpBc0lua2lPalF1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjQuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|4|4|9|2026-11-22T01:30:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|4|4|9|2026-11-22T01:30:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700b-8639-bff2ab6da600",
+   "occurred_at": "2026-11-21T16:30:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8wTGpBc0lua2lPamN1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo0LjAsInkiOjcuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|4|7|1|2026-11-22T02:26:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|4|7|1|2026-11-22T02:26:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700c-8dac-09070c577328",
+   "occurred_at": "2026-11-21T17:26:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8xTGpBc0lua2lPak11TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjMuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|5|3|5|2026-08-13T02:07:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|5|3|5|2026-08-13T02:07:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7027-bfd6-b2c8e9c7f1e8",
+   "occurred_at": "2026-08-12T17:07:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8xTGpBc0lua2lPakV3TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjEwLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|5|10|6|2026-11-22T03:22:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|5|10|6|2026-11-22T03:22:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700d-a741-428b7c5409e1",
+   "occurred_at": "2026-11-21T18:22:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8xTGpBc0lua2lPakV5TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjEyLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|5|12|3|2026-11-22T03:50:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|5|12|3|2026-11-22T03:50:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700e-a960-46e01e1566ad",
+   "occurred_at": "2026-11-21T18:50:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8xTGpBc0lua2lPamd1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo1LjAsInkiOjguMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|5|8|7|2026-11-22T02:47:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|5|8|7|2026-11-22T02:47:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-700f-ac5c-20b41a1a9037",
+   "occurred_at": "2026-11-21T17:47:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8yTGpBc0lua2lPak11TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjMuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|6|3|3|2026-11-22T01:16:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|6|3|3|2026-11-22T01:16:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7011-bdf7-85a6ca9f07a2",
+   "occurred_at": "2026-11-21T16:16:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8yTGpBc0lua2lPakV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjEuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|6|1|5|2026-08-13T02:10:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|6|1|5|2026-08-13T02:10:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7028-a920-84af0bd6dd3e",
+   "occurred_at": "2026-08-12T17:10:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8yTGpBc0lua2lPakV5TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjEyLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|6|12|11|2026-08-13T02:13:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|6|12|11|2026-08-13T02:13:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7029-8a7c-601246941826",
+   "occurred_at": "2026-08-12T17:13:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8yTGpBc0lua2lPakl1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo2LjAsInkiOjIuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|6|2|9|2026-11-22T01:02:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|6|2|9|2026-11-22T01:02:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7010-9394-36d5726ca027",
+   "occurred_at": "2026-11-21T16:02:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8zTGpBc0lua2lPakF1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjAuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|7|0|9|2026-11-22T00:48:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|7|0|9|2026-11-22T00:48:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7012-88d4-03bfde573be0",
+   "occurred_at": "2026-11-21T15:48:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8zTGpBc0lua2lPalV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjUuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|7|5|1|2026-11-22T01:51:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|7|5|1|2026-11-22T01:51:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7013-a514-ee1a4282fcb6",
+   "occurred_at": "2026-11-21T16:51:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam8zTGpBc0lua2lPamt1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4Ijo3LjAsInkiOjkuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|7|9|8|2026-11-22T03:08:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|7|9|8|2026-11-22T03:08:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7014-8ee6-cdcccae4f7cf",
+   "occurred_at": "2026-11-21T18:08:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam93TGpBc0lua2lPall1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjYuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|0|6|2|2026-08-13T01:55:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|0|6|2|2026-08-13T01:55:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7021-812d-e380464a5f30",
+   "occurred_at": "2026-08-12T16:55:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam93TGpBc0lua2lPamd1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjguMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|0|8|3|2026-11-22T02:40:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|0|8|3|2026-11-22T02:40:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b4-701a-aeb8-86a628d21fe1",
+   "occurred_at": "2026-11-21T17:40:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TUM0d0xDSjVJam80TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5Ijo4LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|10|8|4|2026-11-22T02:54:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|10|8|4|2026-11-22T02:54:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7001-9712-6598a704ac5b",
+   "occurred_at": "2026-11-21T17:54:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TUM0d0xDSjVJam8wTGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5Ijo0LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|10|4|6|2026-08-13T02:25:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|10|4|6|2026-08-13T02:25:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7022-9c69-f81f939ba27b",
+   "occurred_at": "2026-08-12T17:25:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TUM0d0xDSjVJam94TUM0d2ZWMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5IjoxMC4wfV0",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|10|10|8|2026-11-22T03:29:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|10|10|8|2026-11-22T03:29:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b4-701b-816c-0b44b8abb0eb",
+   "occurred_at": "2026-11-21T18:29:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TUM0d0xDSjVJam94TWk0d2ZWMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMC4wLCJ5IjoxMi4wfV0",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|10|12|7|2026-11-22T03:57:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|10|12|7|2026-11-22T03:57:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7000-8acf-b8f53f8d25bf",
+   "occurred_at": "2026-11-21T18:57:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TVM0d0xDSjVJam8wTGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5Ijo0LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|11|4|9|2026-08-13T02:28:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|11|4|9|2026-08-13T02:28:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7023-9df4-ad9529566114",
+   "occurred_at": "2026-08-12T17:28:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TVM0d0xDSjVJam95TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5IjoyLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|11|2|4|2026-11-22T01:09:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|11|2|4|2026-11-22T01:09:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7002-b3a2-2d0b1bf061ff",
+   "occurred_at": "2026-11-21T16:09:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TVM0d0xDSjVJam96TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMS4wLCJ5IjozLjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|11|3|4|2026-11-22T01:23:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|11|3|4|2026-11-22T01:23:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7003-ac3f-71b126794be2",
+   "occurred_at": "2026-11-21T16:23:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TWk0d0xDSjVJam81TGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMi4wLCJ5Ijo5LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|12|9|8|2026-11-22T03:15:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|12|9|8|2026-11-22T03:15:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7005-953c-df12d76c1f47",
+   "occurred_at": "2026-11-21T18:15:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TWk0d0xDSjVJam8xTGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMi4wLCJ5Ijo1LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|12|5|7|2026-11-22T01:58:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|12|5|7|2026-11-22T01:58:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7004-a774-2474dfd0db5a",
+   "occurred_at": "2026-11-21T16:58:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam94TXk0d0xDSjVJam8yTGpCOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxMy4wLCJ5Ijo2LjB9XQ",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|13|6|2|2026-11-22T02:19:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|13|6|2|2026-11-22T02:19:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7006-b4e4-22c84cf6a099",
+   "occurred_at": "2026-11-21T17:19:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam95TGpBc0lua2lPalF1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjQuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|2|4|2|2026-08-13T01:58:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|2|4|2|2026-08-13T01:58:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7024-b921-200b01e3c87b",
+   "occurred_at": "2026-08-12T16:58:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam95TGpBc0lua2lPalV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjUuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|2|5|9|2026-11-22T01:44:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|2|5|9|2026-11-22T01:44:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7007-bfd9-4585b10ccb58",
+   "occurred_at": "2026-11-21T16:44:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam95TGpBc0lua2lPamt1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoyLjAsInkiOjkuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|2|9|2|2026-11-22T03:01:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|2|9|2|2026-11-22T03:01:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7008-9934-0955114997fc",
+   "occurred_at": "2026-11-21T18:01:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam96TGpBc0lua2lPalV1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjozLjAsInkiOjUuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"scat|SYN-BW-101-16|3|5|3|2026-08-13T02:01:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"scat|SYN-BW-101-16|3|5|3|2026-08-13T02:01:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a0314e-9b89-7025-a011-0610709a3881",
+   "occurred_at": "2026-08-12T17:01:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbnNwZWN0ZWQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsTlpUaTFDVnkweE1ERXRNVFlpZlYwIiwibGVkZ2VyLWVudGl0eTp2MTpXeUprYVdVaUxIc2liV0YwWDJsa0lqb2lVMWxPTFVKWExURXdNUzB4TmlJc0ltMWhkRjkwZVhCbElqb2lWMkZtWlhJaUxDSjRJam96TGpBc0lua2lPall1TUgxZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMS0xNiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjozLjAsInkiOjYuMH1d",
+   "predicate": "inspected",
+   "predicate_label": "inspected",
+   "original_predicate": "inspected",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"inspection_run\\\",\\\"rows\\\":[\\\"inspection_run:{\\\\\\\"run_uid\\\\\\\":\\\\\\\"sat|SYN-BW-101-16|3|6|9|2026-11-22T02:05:00+09:00\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"inspection_run:{\\\"run_uid\\\":\\\"sat|SYN-BW-101-16|3|6|9|2026-11-22T02:05:00+09:00\\\"}\"]}",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "01a03149-67b5-7009-98e8-f15dd947fbcc",
+   "occurred_at": "2026-11-21T17:05:00+00:00",
+   "source_who": "die_inspection"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVUzTUMwNVlUZGhMVGN3TW1FdE9UQmpOeTFrWm1FNFl6UXpOVGhtWkRjaUxDSXlNREkyTFRBNExUQTVWREUyT2pFMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMmEtOTBjNy1kZmE4YzQzNThmZDciLCIyMDI2LTA4LTA5VDE2OjE1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "eqp_log:SYN-BD-EXC:SYN-BW-101-16:BONDING",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019ffe70-9a7a-702a-90c7-dfa8c4358fd7",
+   "occurred_at": "2026-08-09T16:15:00+00:00",
+   "source_who": "syn_eqp_log"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVUzTUMwNVlUZGhMVGN3TWprdFltTXlNaTB5T0dJeFpqZGlaRFk0TnpjaUxDSXlNREkyTFRBNExURXhWREUyT2pFMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMjktYmMyMi0yOGIxZjdiZDY4NzciLCIyMDI2LTA4LTExVDE2OjE1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "recipe_book:SYN-RCP-BOND@6:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019ffe70-9a7a-7029-bc22-28b1f7bd6877",
+   "occurred_at": "2026-08-11T16:15:00+00:00",
+   "source_who": "syn_recipe_book"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVUzTVMwMk5USXlMVGN3TVdNdE9XWTVNeTB6WXpJellXSmtOV0ZsTnpFaUxDSXlNREkyTFRBNExURXhWREUxT2pVMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWMtOWY5My0zYzIzYWJkNWFlNzEiLCIyMDI2LTA4LTExVDE1OjU1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "recipe_book:SYN-RCP-DIFF@2:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019ffe71-6522-701c-9f93-3c23abd5ae71",
+   "occurred_at": "2026-08-11T15:55:00+00:00",
+   "source_who": "syn_recipe_book"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVUzTVMwMk5USXlMVGN3TVdRdE9HWXlOUzAyTm1aaFpUVTNOalZqT0RNaUxDSXlNREkyTFRBNExURXhWREUyT2pVMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "recipe_book:SYN-RCP-BOND@5:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019ffe71-6522-701d-8f25-66fae5765c83",
+   "occurred_at": "2026-08-11T16:55:00+00:00",
+   "source_who": "syn_recipe_book"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVUzTVMwMk5USXlMVGN3TVdVdE9HSmtOQzA1T1RWbE5tWmxNakl3WTJNaUxDSXlNREkyTFRBNExURXhWREUzT2pVMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWUtOGJkNC05OTVlNmZlMjIwY2MiLCIyMDI2LTA4LTExVDE3OjU1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "recipe_book:SYN-RCP-MOLD@1:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019ffe71-6522-701e-8bd4-995e6fe220cc",
+   "occurred_at": "2026-08-11T17:55:00+00:00",
+   "source_who": "syn_recipe_book"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVppTUMwM09XSXlMVGN3TURFdE9ETm1NQzFqTURnMk16TTBZV1l3TmpnaUxDSXlNREkyTFRBNExURXdWREUxT2pNd09qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDEtODNmMC1jMDg2MzM0YWYwNjgiLCIyMDI2LTA4LTEwVDE1OjMwOjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mes_queue:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019fffb0-79b2-7001-83f0-c086334af068",
+   "occurred_at": "2026-08-10T15:30:00+00:00",
+   "source_who": "syn_mes_queue"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVppTUMwM09XSXlMVGN3TURJdE9ESXhZaTB6T1dFeVpqUmpNekkzTldFaUxDSXlNREkyTFRBNExURXdWREUyT2pNd09qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDItODIxYi0zOWEyZjRjMzI3NWEiLCIyMDI2LTA4LTEwVDE2OjMwOjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mi_gauge:SYN-BW-101-16",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019fffb0-79b2-7002-821b-39a2f4c3275a",
+   "occurred_at": "2026-08-10T16:30:00+00:00",
+   "source_who": "syn_mi_gauge"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVppTUMwM09XSXlMVGN3TURNdFlqYzJNeTA1TWpnNE9HWTJNbVExTlRZaUxDSXlNREkyTFRBNExUQTRWREUxT2pJd09qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDMtYjc2My05Mjg4OGY2MmQ1NTYiLCIyMDI2LTA4LTA4VDE1OjIwOjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "eqp_log:SYN-PC-03:SYN-BW-101-16:PLASMA_CLEAN:p1",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019fffb0-79b2-7003-b763-92888f62d556",
+   "occurred_at": "2026-08-08T15:20:00+00:00",
+   "source_who": "syn_eqp_log"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJwcm9jZXNzZWRfd2l0aCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURFdE1UWWlmVjAiLCJsZWRnZXItdmFsdWU6djE6V3lJd01UbG1abVppTUMwM09XSXlMVGN3TURRdFlqZzFOQzAwT0RKaE1ESmlaakkwT1RFaUxDSXlNREkyTFRBNExUQTRWREUyT2pBMU9qQXdLekF3T2pBd0lsMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "target": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDQtYjg1NC00ODJhMDJiZjI0OTEiLCIyMDI2LTA4LTA4VDE2OjA1OjAwKzAwOjAwIl0",
+   "predicate": "processed_with",
+   "predicate_label": "processed_with",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "eqp_log:SYN-PC-03:SYN-BW-101-16:PLASMA_CLEAN:p2",
+   "sources": [],
+   "qualifiers": {},
+   "claim_id": "019fffb0-79b2-7004-b854-482a02bf2491",
+   "occurred_at": "2026-08-08T16:05:00+00:00",
+   "source_who": "syn_eqp_log"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01qa3RZbU15TWkweU9HSXhaamRpWkRZNE56Y2lMQ0l5TURJMkxUQTRMVEV4VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZjSEpsYzNOMWNtVWlYUSJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMjktYmMyMi0yOGIxZjdiZDY4NzciLCIyMDI2LTA4LTExVDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01qa3RZbU15TWkweU9HSXhaamRpWkRZNE56Y2lMQ0l5TURJMkxUQTRMVEV4VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZkR1Z0Y0NKZCJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMjktYmMyMi0yOGIxZjdiZDY4NzciLCIyMDI2LTA4LTExVDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.temp_C"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01qa3RZbU15TWkweU9HSXhaamRpWkRZNE56Y2lMQ0l5TURJMkxUQTRMVEV4VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKa1pXeGhiVjltYjNKdFlYUnBiMjRpTENKaWIyNWtYM0J5WlhOemRYSmxJbDAiXQ",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMjktYmMyMi0yOGIxZjdiZDY4NzciLCIyMDI2LTA4LTExVDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01tRXRPVEJqTnkxa1ptRTRZelF6TlRobVpEY2lMQ0l5TURJMkxUQTRMVEE1VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZjSEpsYzNOMWNtVWlYUSJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMmEtOTBjNy1kZmE4YzQzNThmZDciLCIyMDI2LTA4LTA5VDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_actual.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01tRXRPVEJqTnkxa1ptRTRZelF6TlRobVpEY2lMQ0l5TURJMkxUQTRMVEE1VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZkR1Z0Y0NKZCJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMmEtOTBjNy1kZmE4YzQzNThmZDciLCIyMDI2LTA4LTA5VDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_actual.temp_C"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01DMDVZVGRoTFRjd01tRXRPVEJqTnkxa1ptRTRZelF6TlRobVpEY2lMQ0l5TURJMkxUQTRMVEE1VkRFMk9qRTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKa1pXeGhiVjltYjNKdFlYUnBiMjRpTENKaWIyNWtYM0J5WlhOemRYSmxJbDAiXQ",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MC05YTdhLTcwMmEtOTBjNy1kZmE4YzQzNThmZDciLCIyMDI2LTA4LTA5VDE2OjE1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_actual.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01TMDJOVEl5TFRjd01XUXRPR1l5TlMwMk5tWmhaVFUzTmpWak9ETWlMQ0l5TURJMkxUQTRMVEV4VkRFMk9qVTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZjSEpsYzNOMWNtVWlYUSJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01TMDJOVEl5TFRjd01XUXRPR1l5TlMwMk5tWmhaVFUzTmpWak9ETWlMQ0l5TURJMkxUQTRMVEV4VkRFMk9qVTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMlp2Y20xaGRHbHZiaUlzSW1KdmJtUmZkR1Z0Y0NKZCJd",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.temp_C"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1VM01TMDJOVEl5TFRjd01XUXRPR1l5TlMwMk5tWmhaVFUzTmpWak9ETWlMQ0l5TURJMkxUQTRMVEV4VkRFMk9qVTFPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKa1pXeGhiVjltYjNKdFlYUnBiMjRpTENKaWIyNWtYM0J5WlhOemRYSmxJbDAiXQ",
+   "source": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_setpoint.pressure_MPa"
+   }
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJiaW5kaW5nIiwibGVkZ2VyLXZhbHVlOnYxOld5SXdNVGxtWm1aaU1DMDNPV0l5TFRjd01ERXRPRE5tTUMxak1EZzJNek0wWVdZd05qZ2lMQ0l5TURJMkxUQTRMVEV3VkRFMU9qTXdPakF3S3pBd09qQXdJbDAiLCJsZWRnZXItcXVhbnRpdHk6djE6V3lKMmIybGtYMjlpYzJWeWRtRjBhVzl1WDJKcFlYTWlMQ0p3YjNOMFgySnZibVJmY1hWbGRXVmZhQ0pkIl0",
+   "source": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDEtODNmMC1jMDg2MzM0YWYwNjgiLCIyMDI2LTA4LTEwVDE1OjMwOjAwKzAwOjAwIl0",
+   "target": "ledger-quantity:v1:WyJ2b2lkX29ic2VydmF0aW9uX2JpYXMiLCJwb3N0X2JvbmRfcXVldWVfaCJd",
+   "predicate": "binding",
+   "predicate_label": "binding",
+   "original_predicate": "processed_with",
+   "witnesses": 1,
+   "rank": null,
+   "basis": "mechanism_models.json",
+   "sources": [],
+   "qualifiers": {
+    "binding_key": "processed_with:params_actual.post_bond_queue_h"
+   }
+  }
+ ],
+ "seeds": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+   "sign": "+",
+   "node_kind": "entity"
+  }
+ ],
+ "propagation": {
+  "collect": "quantity",
+  "state": "ranked",
+  "contrast": "unexamined",
+  "complete": false,
+  "ranked": [
+   {
+    "id": "ledger-quantity:v1:WyJ2b2lkX29ic2VydmF0aW9uX2JpYXMiLCJwb3N0X2JvbmRfcXVldWVfaCJd",
+    "type": "Quantity",
+    "label": "post_bond_queue_h · void_observation_bias",
+    "rank": 1,
+    "top": true,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-101-16",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-value:v1:WyIwMTlmZmZiMC03OWIyLTcwMDEtODNmMC1jMDg2MzM0YWYwNjgiLCIyMDI2LTA4LTEwVDE1OjMwOjAwKzAwOjAwIl0",
+        "node_kind": "value",
+        "label": "{\"eqp\":\"SYN-STK-B\",\"params_actual\":{\"post_bond_queue_h\":60.3},\"recipe…",
+        "atom": null,
+        "ref": "mes_queue:SYN-BW-101-16"
+       },
+       {
+        "id": "ledger-quantity:v1:WyJ2b2lkX29ic2VydmF0aW9uX2JpYXMiLCJwb3N0X2JvbmRfcXVldWVfaCJd",
+        "node_kind": "quantity",
+        "label": "post_bond_queue_h · void_observation_bias",
+        "atom": null,
+        "ref": "mechanism_models.json"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+    "type": "Quantity",
+    "label": "bond_temp · void_formation",
+    "rank": 2,
+    "top": false,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-101-16",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+        "node_kind": "value",
+        "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-02\",\"inferr…",
+        "atom": null,
+        "ref": "recipe_book:SYN-RCP-BOND@5:SYN-BW-101-16"
+       },
+       {
+        "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfdGVtcCJd",
+        "node_kind": "quantity",
+        "label": "bond_temp · void_formation",
+        "atom": null,
+        "ref": "mechanism_models.json"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+    "type": "Quantity",
+    "label": "bond_pressure · void_formation",
+    "rank": 2,
+    "top": false,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-101-16",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+        "node_kind": "value",
+        "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-02\",\"inferr…",
+        "atom": null,
+        "ref": "recipe_book:SYN-RCP-BOND@5:SYN-BW-101-16"
+       },
+       {
+        "id": "ledger-quantity:v1:WyJ2b2lkX2Zvcm1hdGlvbiIsImJvbmRfcHJlc3N1cmUiXQ",
+        "node_kind": "quantity",
+        "label": "bond_pressure · void_formation",
+        "atom": null,
+        "ref": "mechanism_models.json"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+    "type": "Quantity",
+    "label": "bond_pressure · delam_formation",
+    "rank": 2,
+    "top": false,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-101-16",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-value:v1:WyIwMTlmZmU3MS02NTIyLTcwMWQtOGYyNS02NmZhZTU3NjVjODMiLCIyMDI2LTA4LTExVDE2OjU1OjAwKzAwOjAwIl0",
+        "node_kind": "value",
+        "label": "{\"basis\":\"recipe_setpoint\",\"chamber\":\"CH-A\",\"eqp\":\"SYN-BD-02\",\"inferr…",
+        "atom": null,
+        "ref": "recipe_book:SYN-RCP-BOND@5:SYN-BW-101-16"
+       },
+       {
+        "id": "ledger-quantity:v1:WyJkZWxhbV9mb3JtYXRpb24iLCJib25kX3ByZXNzdXJlIl0",
+        "node_kind": "quantity",
+        "label": "bond_pressure · delam_formation",
+        "atom": null,
+        "ref": "mechanism_models.json"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "top_set": [
+   "ledger-quantity:v1:WyJ2b2lkX29ic2VydmF0aW9uX2JpYXMiLCJwb3N0X2JvbmRfcXVldWVfaCJd"
+  ],
+  "message": null
+ },
+ "walk": {
+  "mode": "evidence_graph",
+  "direction": "both",
+  "observation_mode": "summary",
+  "collect": "quantity",
+  "start": {
+   "positive": 1,
+   "negative": 0
+  },
+  "hops_requested": 1,
+  "hops_reached": 2,
+  "claims_scanned": 81,
+  "actions_scanned": 0,
+  "enrich_actions": true,
+  "raw_claims": true,
+  "resolver_applied": false
+ },
+ "limits": {
+  "nodes": 400,
+  "edges": 1200,
+  "claims": 2400,
+  "actions": 1200,
+  "max_hops": 40
+ },
+ "truncated": {
+  "depth": true,
+  "nodes": false,
+  "edges": false,
+  "claims": false,
+  "actions": false,
+  "reason": "depth"
+ },
+ "message": null,
+ "_what": "REAL server output. GET /api/ledger/subgraph?collect=quantity&hops=1 over the live ledger, seed SYN-BW-101-16, captured 2026-08-25. Regenerate by re-running that call -- never by hand. The counts this fixture pins (inspected 39 die / bonded_from 29 wafer / binding 10 Value / processed_with 9 Value) are the Lead PM's own measurement, reproduced independently."
+}

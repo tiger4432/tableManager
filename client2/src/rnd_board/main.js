@@ -41,6 +41,7 @@ import { MainTrendPanel } from './main_trend_panel.js';
 import { MarkingStatusPanel } from './marking_status_panel.js';
 import { DeclarationPanel } from './declaration_panel.js';
 import { ExpandedLayerPanel } from './expanded_layer_panel.js';
+import { ReachPanel } from './reach_panel.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   createWalk,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
@@ -51,7 +52,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
   mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,
-  declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel };
+  declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel, reach: ReachPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -116,7 +117,9 @@ export const BOARD = Object.freeze({
   //    ⚠️ 92px WAS THE FLOOR UNTIL THE WAFER LINE LANDED: measured content 112px in a 92px
   //       row, so the new line was clipped. An `auto` row cannot grow here -- the fixed rows
   //       below already overflow the viewport, so auto sinks to its own minimum.
-  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 190px 360px 340px',
+  // 7행은 「닿는 곳」의 자리입니다. 앞 여섯 행은 목업의 띠이고 이건 그 «아래»에 붙습니다 --
+  // 목업에 없는 부품이라 목업의 배치를 밀어내지 않는 것이 맞습니다.
+  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 190px 360px 340px 240px',
   gap: '10px',
   // 🔴 마킹은 «둘»입니다 (소유자 도식 · MARKING_CONTRACT §3). 트렌드에서 찍은 것이 마킹 1 이고
   //    그것이 후보·자재정보·맵 «셋»의 시작점입니다. 후보에서 찍은 것이 마킹 2 입니다.
@@ -463,6 +466,23 @@ export const BOARD = Object.freeze({
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
       },
+    },
+    {
+      // 🔴 「어느 것들로 닿을 수 있는지」 (소유자 2026-08-25). 마킹 1 을 주어로 «한 홉» 걷고,
+      //    술어마다 「무엇에 몇 개」를 보여 줍니다. 한 줄을 찍으면 그 술어로 닿는 노드 집합이
+      //    마킹 2 에 들어갑니다 -- 그래서 후보 트렌드·후보 맵이 «따라 움직입니다».
+      //
+      // 🔴 start 가 «리터럴이 아니라 마킹»입니다. 이 부품에서 씨앗을 박으면 「마킹에서 어디로」가
+      //    「그 웨이퍼에서 어디로」가 되어 질문 자체가 바뀝니다. 마킹이 비면 「아직 안 골랐다」
+      //    라고 말하고 기다립니다 -- 빈 표가 아니라 문장입니다.
+      id: 'reach',
+      part: 'reach',
+      start: { marking: 'marking:1', groupby: 'wafer' },
+      collect: 'reach',
+      title: '닿는 곳 · 마킹 1 에서 한 홉',
+      at: { column: 1, row: 7, columnSpan: 2 },
+      reads: 'marking:1',
+      writes: 'marking:2',
     },
   ],
 });
