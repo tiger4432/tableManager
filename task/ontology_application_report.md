@@ -4,6 +4,62 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🛑 마무리 «3분의 2» — 지시 ②(픽스처 손대지 말 것)가 **하니스 «둘 중 하나»만 덮습니다**
+
+①(판별식 `value` 단독) 두 자리 다 했습니다. ③에서 «한 하니스» 때문에 섰습니다.
+④(커밋)는 «안 했습니다». dist 도 «안 구워졌습니다»(00:19 그대로 — prebuild 에서 멈추므로).
+
+## ① 한 것 — 판별식 둘, 주석까지
+```
+api.js:399                    hop.node_kind === 'value'
+candidate_list_panel.js:218   hop.kind === 'value' && hop.ref
+주석                          철회된 collection|point 설명이 그대로 남아 있어서 «실측한 사실»로 교체했습니다
+                             (옛 21 이 claim 홉 21/21 · value 0/21 이었다는 것과 그 뜻)
+```
+
+## ✅ ③ 결과 — `rnd_board_walk_harness` «초록». 총괄 예측대로입니다
+```
+전   24 passed, 3 failed  (M1·M2·M4)
+후   🟢 통과 — 빨강 목록에서 빠졌습니다
+```
+
+## 🔴 그런데 `rnd_board_control_trend_harness` 는 «여전히 2 실패»입니다
+```
+FAIL A2 a measured candidate becomes an axis
+FAIL A4 the name-only rest is one folded pill carrying its count  (「값 없음2」 — 1이어야 함)
+```
+**원인 — 그 하니스의 «실측» 픽스처에 value 가 «없습니다». claim «뿐»입니다:**
+```js
+// tests/rnd_board_control_trend_harness.mjs:74
+{ id: 'q-measured', ...,
+  evidence: [{ seed:'seed', hops: [{ node_kind: «'claim'», kind: «'claim'», label:'x', ref:'recipe_book:R@1' }] }] }
+```
+```
+walk 하니스     REACHED = [entity, claim, «value», quantity]   -> value 있음 -> 통과 ✅
+trend 하니스    q-measured = [«claim» 하나뿐]                   -> value 없음 -> 이름뿐 ❌
+```
+🔴 지시 ②의 근거(「REACHED 에 value 가 있으니 무해」)는 **walk 하니스에만 참입니다.**
+   trend 하니스의 실측 예제는 «죽은 이름 하나»로만 되어 있어서, 규칙이 그걸 «안 봅니다».
+
+## 필요한 판정 — 한 낱말입니다
+```
+제안   그 픽스처 한 줄의 node_kind·kind 를 'claim' -> «'value'»
+근거   행 이름이 «q-measured» 입니다. 「실측 후보」를 뜻하도록 쓰인 것이고,
+       그 뜻을 지금 규칙으로 «표현»하는 이름이 value 입니다. 단언은 «그대로» 둡니다
+크기   한 줄, 낱말 둘. 픽스처 «추가»도 단언 «변경»도 없습니다
+```
+⛔ **제가 안 했습니다** — 지시 ②가 「픽스처 건드리지 마십시오」였고, 하니스 자신도
+   「계약이 바뀐 거면 총괄에게」라고 적어 두었습니다. **한 마디 주시면 그 줄만 고치고
+   ③④(빌드·커밋)를 이어서 끝냅니다.**
+
+## 지금 상태
+```
+소스   api.js · candidate_list_panel.js  «수정됨, 미커밋»
+dist   «08-25 00:19 그대로» — prebuild 에서 멈추므로 안 구워졌습니다
+커밋   «안 했습니다»
+```
+
+
 # ✅ 「옛 21 이 claim 이냐 value 냐」 — **claim 입니다. 21 / 21. value 는 «0».** 즉 ⓐ 입니다
 
 지시대로 «재기만» 했습니다. 그리고 **공유 서버는 안 건드렸습니다** — 되돌리면 다른 레인이 섭니다.
