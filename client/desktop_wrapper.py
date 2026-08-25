@@ -302,7 +302,14 @@ class DevToolsWindow(QMainWindow):
 class HybridDesktopClient(QMainWindow):
     def __init__(self, server_base):
         super().__init__()
-        self.setWindowTitle("AssyManager Enterprise - Desktop Client")
+        # 🔴 THE SERVER IS IN THE TITLE BECAUSE THE FROZEN BUILD HAS NOWHERE ELSE TO SAY IT.
+        # `AssyManagerClient.spec` sets console=False, so the startup line that names the
+        # resolved target ("Server target: http://...") goes nowhere in a packaged client.
+        # An operator who attached this shell to a different server with --server or
+        # ASSY_SERVER had no way to confirm it took -- and a shell pointed at the wrong box
+        # looks exactly like one pointed at the right box. The title always shows, and it is
+        # the one surface that survives packaging.
+        self.setWindowTitle(f"AssyManager Enterprise - {server_base}")
         self.setGeometry(100, 100, 1400, 900)
         # Both consumers hang off this one resolved base: the page below and the native
         # upload in _do_upload(). Do not re-derive the address in either of them.
