@@ -42,7 +42,10 @@ export class ControlBarPanel extends Panel {
     // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
     this.start = options.start || null;
     this.collect = options.collect || 'trend_y';
-    this.candidateCollect = options.candidateCollect || 'candidate';
+    // 🔴 후보 «질문 전체»를 받습니다. 전에는 `candidateCollect` 한 칸만 받아서 맨몸으로
+    //    걸었고, 그래서 같은 질문이 화면에서 세 갈래로 나갔습니다 (총괄 실측 2026-08-25).
+    //    통째로 받아 통째로 펼치면 walk 의 합침 열쇠가 다른 두 자리와 «글자 그대로» 같습니다.
+    this.candidateQuestion = options.candidateQuestion || { collect: 'candidate' };
     this.fetchImpl = options.fetchImpl || null;
     this.seedNodeId = options.seedNodeId || null;
     this.window = options.window || '180d';
@@ -70,7 +73,7 @@ export class ControlBarPanel extends Panel {
       this.seedNodeId
         ? this.walk({
           start: { groupby: 'wafer', value: this.seedNodeId },
-          collect: this.candidateCollect,
+          ...this.candidateQuestion,
         })
         : Promise.resolve(null),
     ]);

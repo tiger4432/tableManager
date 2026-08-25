@@ -31,8 +31,11 @@ export class RankListPanel extends Panel {
     this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
     // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
     this.start = options.start || null;
-    // 이 걷기의 «예산». 화면이 선언하고 부품은 나르기만 합니다 -- 기본값에 기대면 끊긴 걷기가
-    // 「후보 없음」으로 보입니다 (오늘 두 번 그렇게 읽혔습니다).
+    // 이 걷기의 «예산». 기본값에 기대면 끊긴 걷기가 「후보 없음」으로 보입니다
+    // (오늘 두 번 그렇게 읽혔습니다).
+    // 🔴 이 화면에서는 «여기로 안 들어옵니다» -- `CANDIDATE_QUESTION` 이 선언에 실려
+    //    `bindLoaders` 의 질문으로 들어오고, 그게 세 자리를 한 요청으로 합치는 조건입니다.
+    //    남겨 둔 이유는 이 부품이 «혼자 설» 때입니다: 그때는 질문을 얹어 줄 선언이 없습니다.
     this.nodeLimit = options.nodeLimit || null;
     this.seedNodeId = options.seedNodeId || null;
     this.collect = options.collect || 'candidate';

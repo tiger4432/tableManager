@@ -74,6 +74,28 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
 //    웨이퍼에 앉아 있고, 그래서 한 화면에 주어가 하나입니다. 라우트가 서로 다른 id 를 받을 뿐입니다.
 //    ⚠️ 다음 항목이 `start { marking: 'marking:1' }` 이고, 마킹이 시작점을 몰고 오는 날
 //       이 줄들은 «사라집니다». 계약으로 읽지 마십시오.
+// ═══════════════════════════════════════════════════════════════════════════════
+// 후보 질문 «하나». 세 자리가 이것을 씁니다 -- 컨트롤 바 · Y축 목록 · 후보/순위 표.
+//
+// 🔴 세 자리가 같은 질문을 «각자» 적고 있었습니다: 씨앗도 collect 도 셋 다 같은데
+//    (["wafer",{"wafer":"SYN-CX-BW-001"}] · quantity) direction 과 node_limit 만 달라서
+//    한 화면이 같은 답을 «세 번» 길었습니다. 총괄 판정 2026-08-25: 선언 하나를 나눠 쓴다.
+//
+// 🔴 «통째로» 씁니다 -- 칸을 골라 베끼지 않습니다. walk 의 합침 열쇠가
+//    `JSON.stringify([collect, start, rest])` 라 «키 순서»에 민감해서, 같은 두 칸을 다른
+//    순서로 적으면 같은 질문이 다른 열쇠가 되고 합쳐지지 않습니다. 한 객체를 펼치면
+//    순서가 «정의상» 같습니다.
+//
+// direction  계보를 나가는 쪽으로만 (총괄 실측 2026-08-24): 형제 웨이퍼 74장이 빠지고
+//            답은 그대로 (wafer 104 → 30 · 3,490 → 241 노드 · 1,757 → 210ms).
+//            follow 는 «없습니다» -- 좁히면 processed_with/transferred 로만 닿는 delam
+//            후보 넷을 영영 못 봅니다. 여기서 follow 는 속도가 아니라 «답의 존재 범위».
+// node_limit 이 걷기의 «예산» (총괄 실측 2026-08-24): 기본 400 이면 nodes·claims 가 끊겨
+//            ranked 가 0 이고, 1000 이면 후보 21 이 나옵니다. 구성이 스텝 267개를 물고
+//            옵니다. 컨트롤이 아니라 «선언»입니다 -- 버튼도 자동 재시도도 없습니다.
+// ═══════════════════════════════════════════════════════════════════════════════
+const CANDIDATE_QUESTION = { collect: 'candidate', direction: 'outgoing', node_limit: 1000 };
+
 export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
   // 🔴 목업의 아래 띠는 «가로»입니다 — 본딩 맵 | 코어 맵 | 후보 | 순위 가 나란히. 우리가 맵을
@@ -158,6 +180,9 @@ export const BOARD = Object.freeze({
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
         window: '180d',
+        // 🔴 이 부품은 후보를 «자기가» 걷습니다. 그러니 질문도 자기가 받아야 합니다 --
+        //    안 주면 맨몸으로 걸어 나가 같은 답을 «네 번째»로 긷습니다 (총괄 실측).
+        candidateQuestion: CANDIDATE_QUESTION,
         // 🔴 THE SCREEN PICKS WHICH LOT AND WHICH EQUIPMENT IT MEANS. The route answers several
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
         //    window, not a peer axis -- so it stays 「—」 until it is given one.
@@ -415,43 +440,28 @@ export const BOARD = Object.freeze({
       id: 'candidate-list',
       part: 'candidateList',
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
-      collect: 'candidate',
-      // 🔴 계보를 «나가는 쪽»으로만 걷습니다 (총괄 실측 2026-08-24): 형제 웨이퍼 74장이 빠지고
-      //    답은 그대로입니다 (wafer 104 → 30 · recipe 5 → 5 · 3,490 → 241 노드 · 1,757 → 210ms).
-      //    🔴 follow 는 «없습니다» -- 좁히면 `processed_with`/`transferred` 로만 닿는 delam 후보
-      //    넷을 영영 못 봅니다. 여기서 follow 는 속도 손잡이가 아니라 «답의 존재 범위»입니다.
-      direction: 'outgoing',
+      // 후보 질문 «통째로». 위 CANDIDATE_QUESTION 이 이 셋의 «유일한» 출처입니다.
+      ...CANDIDATE_QUESTION,
       title: '원인 후보 · SYN-CX-BW-001',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
-        // 🔴 이 걷기의 «예산»입니다 (총괄 실측 2026-08-24): 기본 400 에서는 nodes·claims 가
-        //    끊겨 ranked 가 «0» 이고, 1000 이면 후보 «21» 이 나옵니다. 구성이 스텝 267개를
-        //    물고 오기 때문에 이 화면에서는 400 이 모자랍니다. 컨트롤이 아니라 «선언»입니다 --
-        //    버튼도 자동 재시도도 없습니다.
-        nodeLimit: 1000,
       },
     },
     {
       id: 'rank-list',
       part: 'rankList',
       start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
-      collect: 'candidate',
-      // 순위표는 후보표와 «같은 걸음»입니다 -- 선언이 같아야 둘이 같은 진행 중 요청에 합류합니다.
-      direction: 'outgoing',
+      // 후보 질문 «통째로». 위 CANDIDATE_QUESTION 이 이 셋의 «유일한» 출처입니다.
+      ...CANDIDATE_QUESTION,
       title: '순위 · SYN-CX-BW-001',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
-        // 🔴 이 걷기의 «예산»입니다 (총괄 실측 2026-08-24): 기본 400 에서는 nodes·claims 가
-        //    끊겨 ranked 가 «0» 이고, 1000 이면 후보 «21» 이 나옵니다. 구성이 스텝 267개를
-        //    물고 오기 때문에 이 화면에서는 400 이 모자랍니다. 컨트롤이 아니라 «선언»입니다 --
-        //    버튼도 자동 재시도도 없습니다.
-        nodeLimit: 1000,
       },
     },
   ],
@@ -478,6 +488,10 @@ export function bindLoaders(layout, deps) {
       if (decl.follow) question.follow = decl.follow;
       if (decl.direction) question.direction = decl.direction;
       if (decl.hops !== undefined && decl.hops !== null) question.hops = decl.hops;
+      // 예산도 «선언»입니다. 이걸 안 실으면 후보 질문의 세 칸 중 하나가 부품 options 로
+      // 새고, 그 순간 세 자리가 다시 «다른 열쇠»가 됩니다 (그게 2aaf194b 가 15 로 늘어난
+      // 이유입니다 -- direction 만 맞추고 node_limit 은 다른 길로 들어왔습니다).
+      if (decl.node_limit !== undefined && decl.node_limit !== null) question.node_limit = decl.node_limit;
       const walkHere = Object.keys(question).length
         ? (spec) => walk({ ...question, ...(spec || {}) })
         : walk;
@@ -498,13 +512,8 @@ export function bindLoaders(layout, deps) {
               walkHere({
                 start: { groupby: 'wafer',
                   value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
-                collect: 'candidate',
-                // 🔴 «같은 질문은 같은 선언으로». 이 목록의 후보와 후보·순위 패널의 후보는
-                //    같은 것이어야 하는데, 여기만 direction 없이 걷고 있었습니다. 오늘은 답이
-                //    같습니다 (양쪽 21 · 교집합 21 · 한쪽에만 0 -- 총괄 실측) -- 그래서 «지금»
-                //    고장이 아니라 «갈리는 날» 조용히 갈리는 자리입니다. 축 목록과 순위표가
-                //    다른 후보를 들고 있어도 아무도 안 알려 줍니다.
-                direction: 'outgoing',
+                // 같은 후보 질문입니다 -- 목록도 표도 같은 답을 보아야 합니다.
+                ...CANDIDATE_QUESTION,
               }),
             ]).then(([trends, candidates]) => {
               const out = (trends.kinds || []).map((k) => ({
