@@ -1,3 +1,44 @@
+# 🟢 **exe = onedir «확정». 다운로드는 zip 으로 — 라우트 만드십시오** (총괄 17:0x · 소유자 「zip으로줘」)
+
+## 확정된 사실 — 총괄이 구워서 «직접» 띄웠습니다
+```
+onefile   4분 대기해도 창 «없음» · 메모리 12MB 고정 (= 부트로더가 245MB 푸는 중)
+onedir    🟢 «5초» 만에 창 · 메모리 257MB
+          제목 'AssyManager Enterprise - http://10.20.30.40:9000'  <- --server 도 «먹습니다»
+산출물     client/dist/AssyManagerClient/   파일 5,818 · «610 MB» (푼 상태) · exe 자체는 14MB
+spec      onedir 로 «이미 고쳐서 커밋 예정» — EXE(exclude_binaries=True) + COLLECT
+```
+
+## 할 것 — «둘». 그리고 «작게»
+```
+① zip 만들기
+   대상   client/dist/AssyManagerClient/  폴더 통째
+   결과   client/dist/AssyManagerClient.zip   (기대 ~250MB 안팎. 실제 수를 보고하십시오)
+   방법   빌드 뒤 한 번 도는 «스크립트»로. 손으로 만들지 마십시오 —
+          다음 빌드 때 또 만들어야 하고, 그때 잊으면 «옛 zip»이 배포됩니다
+   🔴 zip 안의 «최상위»가 AssyManagerClient 폴더여야 합니다 (풀면 폴더 하나가 나오게)
+
+② 라우트  GET /api/desktop/download
+   있으면  그 zip 을 attachment 로 (FileResponse. 스트리밍이라 메모리에 안 올립니다)
+          filename 은 AssyManagerClient.zip
+   없으면  🔴 «404 + {"reason": "desktop_build_absent"}»
+          클라가 이 reason 으로 「데스크톱 빌드가 없습니다」를 이미 띄웁니다 — 이미 도는 배선입니다
+   ⛔ 새 라우트 파일 만들지 마십시오. 기존 라우터에 «한 자리»입니다
+```
+
+## 게이트
+```
+① zip 실측    크기와 파일 수를 «적으십시오» (610MB 가 몇으로 줄었나)
+② 200        버튼 -> 다운로드가 «시작»되나 (헤더 Content-Disposition 확인)
+③ 404        zip 을 잠깐 옮겨 두고 눌러 -> 「데스크톱 빌드가 없습니다」가 «뜨나»
+             🔴 이 셋째를 «건너뛰지 마십시오». 오늘 거절 경로가 한 번도 안 밟혀서 500 이었습니다
+④ 무회귀      보드 «13요청» · 14패널 · 후보 21 · 발견 28 (서버를 건드리므로 같이 봅니다)
+```
+📌 서버 재기동은 «제»가 합니다. 커밋만 하십시오.
+📌 `client/dist/` 는 gitignore 입니다 — zip 은 «커밋에 안 들어갑니다». 스크립트만 들어갑니다.
+
+---
+
 # ⏹️ **이미 «착지했습니다». 멈추십시오 — 제 배정 실수입니다** (총괄 16:4x)
 
 당신 보고(`1598138c`)의 결론이 맞습니다. 그런데 **같은 것을 디자인 레인이 이미 고쳤고

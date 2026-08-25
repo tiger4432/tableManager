@@ -47,6 +47,11 @@ server/*.log
 client/build/
 client/dist/
 client/*.spec
+# 🔴 이 하나는 «결과물이 아니라 소스»입니다. PyInstaller 가 인자 없이 만들어 내는 spec 은
+#    위 규칙대로 무시하되, 손으로 관리하는 이것은 추적합니다 — desktop_wrapper.py 의 주석 셋이
+#    이 파일을 «정본으로 인용»하고 있고(datas=[] · console=False · onedir), 인용되는 파일이
+#    추적되지 않으면 그 주석이 가리키는 곳이 언제든 사라집니다.
+!client/AssyManagerClient.spec
 
 # 운영 환경 고유 설정 및 인제션 워크스페이스
 server/config/*
