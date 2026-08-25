@@ -1,3 +1,57 @@
+# 📋 **재료 실측 (읽기 전용) — 🔴 목표 걷기의 재료가 «한 표»에 통째로 있습니다** (구현자 07:2x)
+
+답을 기다리는 동안 지시서의 멈춤 조건 그대로 「소스에 재료가 있나」를 «세어» 봤습니다.
+**아무것도 안 썼습니다.**
+
+## 🔴 가장 큰 것 — `bonding_log` 가 소유자 걷기를 «전 구간» 들고 있습니다
+```
+bonding_log   380,273행
+   base_id · bx,by      374,977   <- bonding pkg 의 «die»
+   dt_lot · dt_slot     376,889   <- dt_lot_slot
+   dt_x · dt_y          376,889   <- dt_lot_slot 의 «x,y»
+   cx,cy                 93,118   <- core 의 «die»
+   core_lot · core_slot           <- core_wafer_map 으로 wafer_id 에 닿음
+   distinct base_id 2,660 · (core_lot,core_slot) 658 · (dt_lot,dt_slot) «2,753»
+```
+**즉 `bonding pkg → dt_lot_slot,x,y → … → core,x,y` 가 이 한 표 안에 있습니다.**
+
+## 그런데 선언은 그 표를 «4컬럼으로 눌러» 읽고 있습니다
+```
+bonded_from 의 relation = bonding_core_lot  ← «뷰»입니다 (제가 08-25에 만든 웨이퍼용)
+   SELECT DISTINCT b.base_id, m.wafer_id AS core_wafer, b.core_slot, b.event_time
+     FROM bonding_log b JOIN core_wafer_map m ...
+   -> 380,273행이 «3,650»으로 붕괴합니다. x,y 는 SELECT 목록에 «아예 없습니다»
+```
+🔴 **그래서 「bonded_from 을 die→die 로」는 선언만 고쳐서는 안 됩니다** — 지금 relation 에
+   x,y 가 없으니까요. 고칠 자리는 «relation» 입니다: `bonding_log` 위에 die 단위 뷰를 세우고
+   선언이 그것을 읽게 하는 것. 재료는 «있습니다». 없는 것은 그 표의 «폭»입니다.
+```
+제안   bonding_core_die (새 뷰) = base_id,bx,by · dt_lot,dt_slot,dt_x,dt_y · core_wafer,cx,cy
+       -> bonded_from 이 die→die 로 서고, dt_lot_slot 구간도 «같은 표»에서 나옵니다
+⚠️ 이건 「선언만 고친다」의 범위를 넘습니다. 총괄 판정 부탁드립니다.
+```
+
+## 나머지 셋 — 재료 «있습니다». 다만 이름이 다릅니다
+```
+lot_event (142행)  실제 컬럼   lot · event_type · parent_lot · child_lot
+                              slot_numbers · wafer_ids  (+ 중복 철자 slotnumbers · waferids)
+선언의 input_columns 는       slots · wafers · row_identity · event_group_key
+                              -> 표에 «그 이름»은 없습니다. prepare(direct-join)가 만드는 이름입니다
+lot_slot@1[lot,slot] 에 필요한 재료:  lot ✅ · slot(slot_numbers / 한정어 from·to) ✅ · wafer ✅
+x,y 는 «필요 없습니다» (계획서 §2 대로 lot_slot 엔 x,y 가 없습니다)
+```
+즉 `merge_slot_join` · `split_slot_carry` · `in_slot` 셋은 **선언만으로 고칠 수 있습니다.**
+
+## 정리 — 매핑 넷의 판정
+```
+merge_slot_join    lot→lot     ⇒ lot_slot→lot_slot   ✅ 선언만으로 가능
+split_slot_carry   lot→lot     ⇒ lot_slot→lot_slot   ✅ 선언만으로 가능
+in_slot            lot→wafer   ⇒ lot_slot→wafer      ✅ 선언만으로 가능
+bonded_from        wafer→wafer ⇒ die→die             🔴 relation 을 넓혀야 함 (재료는 있음)
+```
+
+---
+
 # 📋 **착수 전 요약 — 원장 재건. 그리고 «태우기 전에» 답이 필요한 것 둘** (구현자 06:5x)
 
 읽었습니다: 지시서 + `LEDGER_REBUILD_PLAN.md` §2-bis · §7. 아래는 «요청 → 제가 할 일» 매핑과,
