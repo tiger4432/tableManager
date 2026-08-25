@@ -442,9 +442,18 @@ def register_uri_scheme():
         python_exe = sys.executable
         script_dir = os.path.dirname(os.path.abspath(__file__))
         wrapper_path = os.path.abspath(os.path.join(script_dir, "desktop_wrapper.py"))
-        
+
         # 브라우저에서 assymanager:// 호출 시 실행할 커맨드 라인
-        cmd_str = f'"{python_exe}" "{wrapper_path}" "%1"'
+        # 🔴 A FROZEN BUILD HAS NO SCRIPT TO PASS. `AssyManagerClient.spec` ships `datas=[]`,
+        #    so `desktop_wrapper.py` is not next to the exe and `__file__` points inside the
+        #    PyInstaller bundle. Registering the source-run command there yields
+        #    `"AssyManagerClient.exe" "<nonexistent>.py" "%1"` -- and argv[1] is exactly where
+        #    the clicked assymanager:// URL is expected, so every click would arrive as that
+        #    bogus path instead of the URL. Frozen: the exe IS the target, so it takes %1 itself.
+        if getattr(sys, "frozen", False):
+            cmd_str = f'"{python_exe}" "%1"'
+        else:
+            cmd_str = f'"{python_exe}" "{wrapper_path}" "%1"'
         
         # HKCU\\Software\\Classes\\assymanager 에 등록 (관리자 권한 불필요)
         key_path = r"Software\Classes\assymanager"
