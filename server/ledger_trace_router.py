@@ -133,11 +133,12 @@ def evidence_subgraph(
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
     # other layers. The declared set is read from the vocabulary, never restated here.
     if follow:
-        unknown = sorted(set(follow) - _followable_predicates())
+        followable = _followable_predicates()
+        unknown = sorted(set(follow) - followable)
         if unknown:
             raise HTTPException(status_code=422, detail={
                 "reason": "predicate_not_declared", "unknown": unknown,
-                "declared": sorted(declared),
+                "declared": sorted(followable),
                 "message": "선언에 없는 술어입니다: " + ", ".join(unknown),
             })
     try:

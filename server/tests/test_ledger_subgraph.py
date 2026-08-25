@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ledger.envelope import source_event_identity
 import ledger_explorer
 from ledger_api import ledger_subgraph
+import pytest
+from fastapi import HTTPException
 import ledger_trace_router
 from ledger_api import mechanism_gate
 
@@ -582,6 +584,37 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
         "positive": [seed, "b"], "negative": ["c"]}
     assert ledger_trace_router._signed_start(seed, None, ["c"]) == {
         "positive": [seed], "negative": ["c"]}
+
+
+def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
+    """🔴 THE REFUSAL PATH IS EXECUTED HERE, not merely described.
+
+    It shipped broken on 2026-08-25: the check was rewritten to use
+    `_followable_predicates()` while the error body still read a `declared` variable that no
+    longer existed, so a typo answered 500 instead of 422. Nothing caught it because every
+    test called `subgraph()` directly and the route's own guard had never once been run --
+    a guard goes wrong on the day it becomes reachable, and that day was the day it was
+    written.
+
+    Calling the route function is the point of this test. Asserting the message without
+    executing the branch would reproduce exactly the hole it closes.
+    """
+    followable = ledger_trace_router._followable_predicates()
+    assert "processed_with" in followable, "a real predicate must be followable"
+
+    with pytest.raises(HTTPException) as raised:
+        ledger_trace_router.evidence_subgraph(
+            node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
+            hops=4, direction="both", include_values=True, observations="summary",
+            include_actions=False, node_limit=100, edge_limit=200, shape="graph",
+            property_limit=1000, positive=None, negative=None, collect=None,
+            follow=["definitely_not_a_predicate"], db=None)
+    assert raised.value.status_code == 422
+    detail = raised.value.detail
+    assert detail["reason"] == "predicate_not_declared"
+    assert detail["unknown"] == ["definitely_not_a_predicate"]
+    # the body must be able to say what WAS allowed -- that is the field that was undefined
+    assert "processed_with" in detail["declared"]
 
 
 def test_entity_label_takes_its_key_order_from_the_live_declaration():
