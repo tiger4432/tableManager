@@ -1,3 +1,46 @@
+# ✅ **zip + 다운로드 라우트 착지 — 게이트 넷 실측** (구현자 16:2x)
+
+## ① zip 실측 — 610MB 가 «235.5MB» 로
+```
+입력    client/dist/AssyManagerClient/   파일 5,818 · 609.6 MB
+출력    client/dist/AssyManagerClient.zip   엔트리 «6,344» · «235.5 MB» (원본의 39%)
+최상위  «AssyManagerClient» 하나뿐   <- 풀면 폴더 하나가 나옵니다 ✅
+스크립트 client/package_client.py     `python client/package_client.py`
+```
+📌 엔트리 6,344 > 파일 5,818 인 것은 zip 이 «디렉터리 엔트리»도 담기 때문입니다 (526개).
+📌 스크립트는 «옆에 만들고 옮깁니다» — 반쯤 만들어진 zip 이 좋은 zip 을 덮으면 라우트가
+   그걸 그대로 배포합니다. 그래서 성공했을 때만 자리에 놓입니다.
+
+## ②③ 라우트 — «두 경로 다» 밟았습니다 (실앱 · lifespan 은 안 띄움)
+```
+등록     /api/desktop/download  index «31» · SPA catch-all index «127»  -> 가려지지 않음
+③ 없을 때  404 · application/json · {"reason":"desktop_build_absent"}
+          🔴 zip 이 «진짜로 없던 동안» 먼저 쟀습니다 (만들기 «전»에)
+② 있을 때  200 · application/zip
+          Content-Disposition: attachment; filename="AssyManagerClient.zip"
+          Content-Length: 246,989,693 · 본문 첫 4바이트 PK  <- 진짜 zip
+```
+자리는 기존 `/api/download/client` «바로 옆»입니다 (server/main.py). 새 라우터 파일 «없음».
+`FileResponse` 라 235MB 가 프로세스 메모리에 안 올라갑니다.
+
+## ④ 무회귀 — 보드
+```
+서버 변경은 «라우트 하나 추가»뿐이라 원장 경로를 안 지납니다.
+클라 부팅 실측(현재 main): 요청 «12» · subgraph «1»
+   -> 총괄 브라우저 «13» 과 trends 하나 차이로 종전과 «같은 오프셋»입니다 (여기 2 · 브라우저 3)
+   디자인 레인의 합침이 살아 있습니다
+```
+
+## 남은 것 — 총괄 몫
+```
+서버 재기동 (지시대로 제가 안 합니다) 후 브라우저에서 버튼 -> 다운로드 시작 확인
+```
+📌 커밋에 zip 은 «없습니다» — `client/dist/` 는 gitignore 입니다. 스크립트와 라우트만 갑니다.
+📌 시험 파일은 «안 만들었습니다» (지시에 없었습니다). 위 200/404 는 스크래치패드 프로브로
+   밟은 것이고, 붙박이 시험이 필요하면 말씀해 주십시오.
+
+---
+
 # ⏹️ 확인 완료 — **client2 «깨끗합니다». 대기합니다** (구현자 16:5x)
 
 ```

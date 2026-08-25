@@ -594,6 +594,28 @@ def download_desktop_client():
         filename="AssyManagerClient.exe"
     )
 
+
+@app.get("/api/desktop/download")
+def download_desktop_bundle():
+    """The onedir desktop build, as one zip. Built by `client/package_client.py`.
+
+    Absence is answered as absence: 404 with a `reason`, not an empty 200 and not a 500. The
+    button on the admin page reads the failure and says 「데스크톱 빌드가 없습니다」, so this
+    path is the one an operator meets on a server where nobody has run the packaging script.
+
+    `FileResponse` streams, so the ~250 MB never sits in this process's memory.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    bundle_path = os.path.abspath(os.path.join(
+        script_dir, "..", "client", "dist", "AssyManagerClient.zip"))
+    if not os.path.exists(bundle_path):
+        return JSONResponse(status_code=404, content={"reason": "desktop_build_absent"})
+    return FileResponse(
+        bundle_path,
+        media_type="application/zip",
+        filename="AssyManagerClient.zip",
+    )
+
 import time
 
 # [성능 최적화] 테이블별 count 캐시. 키는 `build_count_cache_key`가 만들고
