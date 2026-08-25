@@ -1,3 +1,54 @@
+# 🟢 **회귀 하나 — `predicates`·`claim_count` 가 «사라진 이름»을 찾고 있습니다** (총괄 22:2x)
+
+클라 레인이 「닿는 곳」 부품을 도는 중이라 «서버 쪽»입니다. 겹치지 않습니다.
+
+## 증상
+```
+엔티티 노드의 predicates  «0 / 82»   ·  claim_count «0»
+오늘 아침엔 채워져 있었습니다: predicates: [{"predicate":"inspected","count":2}] · claim_count 2
+```
+
+## 🔴 원인 — 제가 자리를 짚었습니다. `ledger_subgraph.py:1615-1625`
+```python
+if nodes[edge["source"]].get("node_kind") == "claim":      # ← claim «노드»를 찾습니다
+    claim_id = edge["source"]
+elif nodes[edge["target"]].get("node_kind") == "claim":
+    claim_id = edge["target"]
+if claim_id is None:
+    continue                                                # ← 못 찾으면 «건너뜀»
+...
+    predicate = nodes[claim_id].get("predicate")            # ← claim 노드에서 술어를 읽음
+```
+**claim 이 노드가 아니게 됐으므로 `claim_id` 가 «항상 None»이고, 루프가 «항상 건너뜁니다».**
+그래서 `attached_claims` 가 비고 → `claim_count` 0 · `predicates` [].
+
+📌 오늘 열 번 본 그 부류입니다 — **「사라진 이름으로 판정한다」.**
+   클라의 `hop.node_kind === 'claim'` 과 «똑같은 모양»이고, 그건 이미 고쳤습니다.
+
+## ✅ 고치는 법 — «더 짧아집니다»
+```
+지금  엣지 → claim 노드를 «찾아» → 그 노드에서 predicate 를 읽음  (두 단계)
+후    엣지의 `predicate` 를 «바로» 읽어 양끝 엔티티에 센다        (한 단계)
+      -> claim 엣지화가 predicate 를 «엣지 속성»으로 옮겨 놨으니 거기서 읽으면 됩니다
+```
+⚠️ 배관 엣지는 세지 마십시오 — `subject` · `asserts` 같은 «구조» 엣지가 아니라
+   원장 술어만 셉니다. 무엇을 세고 무엇을 뺐는지 «한 줄» 적어 주십시오.
+
+## 게이트 — 넷
+```
+① 채워짐   씨앗 SYN-BW-101-16 · hops=1 -> 씨앗 노드의 predicates 가 «비지 않음»
+② 🔴 일치  그 수가 edges[] 를 술어별로 «직접 센 수»와 «같아야» 합니다
+           총괄 실측(hops=1): inspected «39» · bonded_from «29» · binding «10» · processed_with «9»
+           -> 배관을 어떻게 세느냐에 따라 이 넷과 다를 수 있습니다. 다르면 «왜»를 적으십시오
+③ 무회귀   보드 «13요청» · 14패널 · 후보 21 · 실측 0 · 발견 28 · 오류 없음
+④ 테스트   서버 하니스 «초록»
+```
+📌 서버 재기동은 «제»가 합니다. 커밋만 하십시오.
+📌 이게 들어가면 클라의 「닿는 곳」 부품이 edges 를 «직접 묶지 않아도» 됩니다 —
+   다만 그 부품은 «지금 모양대로» 진행합니다. 둘이 착지한 뒤 제가 합칠지 판정하겠습니다.
+
+---
+
 # 🟢 **exe = onedir «확정». 다운로드는 zip 으로 — 라우트 만드십시오** (총괄 17:0x · 소유자 「zip으로줘」)
 
 ## 확정된 사실 — 총괄이 구워서 «직접» 띄웠습니다
