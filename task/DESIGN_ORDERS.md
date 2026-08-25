@@ -1,3 +1,63 @@
+# 🟢 **admin 「원장 선언」 탭 삭제** (총괄 23:0x · 소유자 「안 쓰니까 지우라하겠지」)
+
+## 지울 것 — 탭 «하나»와 그 아래 사슬
+```
+admin.html   1183  <button id="tab-ledger-btn">원장 선언</button>
+             1541  <div id="ledger-tab-wrapper">
+admin.js       33  import { initLedgerMap, renderLedgerMap, parseMapQuestion, STRUCTURE_VIEW }
+              240  tabLedgerBtn        248  ledgerTabWrapper
+              331  initLedgerMap({...})
+              565  { btn: tabLedgerBtn, tab: 'ledger', wrapper: ledgerTabWrapper }
+```
+
+## 🔴 사슬 — 총괄이 «import 로» 셌습니다. 그래도 «다시 세십시오»
+```
+ledger_map_panel.js          유일 소비자 = admin 의 그 탭
+  ├ ontology_structure_view.js   유일 소비자 = ledger_map_panel
+  ├ ontology_structure_core.js   소비자 = ledger_map_panel + ontology_structure_view (둘 다 죽음)
+  ├ ledger_setup.js              유일 소비자 = ledger_map_panel
+  ├ ontology_structure.css
+  └ case_control_core.js         소비자 = ledger_map_panel + case_control_view
+       └ case_control_view.js    소비자 = ontology_structure_view (죽음)
+            └ ledger_trace_core.js   소비자 = case_control_core + ledger_trace_view
+                 └ ledger_trace_view.js  소비자 «0» (이미 고아)
+하니스   ontology_structure_harness · case_control_harness · ledger_trace_harness
+        + 그 픽스처
+```
+🔴 **오늘 아침 제가 «살린» 것들입니다** — 살린 이유가 그 탭이었고, 탭이 가면 같이 갑니다.
+   (그때 판정: 「admin 이 전이로 씁니다」. 그 전이의 «출발점»이 지금 지울 탭입니다)
+
+## ✅ 남는 것 — 헷갈리기 쉬우니 못 박습니다
+```
+🟢 「Ontology Explorer」 탭은 «그대로»입니다 — 이름이 비슷하지만 «다른 모듈»입니다
+   ontology_explorer.js → ontology_explorer_store / _view / ontology_path / ontology_skeleton
+   위 사슬과 «한 파일도 안 겹칩니다». 총괄이 import 로 확인했습니다
+```
+
+## ⚠️ 먼저 «다시 세십시오» — 제 목록을 믿지 마십시오
+```
+오늘 이 부류로 «다섯 번» 틀렸습니다 (ledger_lots · surprise_core · case_control_core
+· SUBJECT_TYPE · 심박 프로브). 전부 「이름으로 판정하고 소비자를 안 셌다」입니다
+-> 지우기 전에 파일마다 «import 하는 곳»을 직접 세고, 제 목록과 «다르면» 멈추고 알리십시오
+-> 특히 ledger_trace_core.js 는 오늘 아침 «전이 소비자» 때문에 살았습니다. 지금은 정말 0인지
+```
+⛔ 서버 «건드리지 마십시오». 이건 클라 화면 하나입니다.
+⛔ 하니스를 «남기지» 마십시오 — 재던 코드가 가면 «같은 커밋»에서 갑니다 (오늘 그 규칙을 썼습니다)
+
+## 게이트
+```
+① 빌드    `npm run build` «초록» — prebuild 하니스 검사가 «고아»를 잡습니다
+          (오늘 아침 surprise_core 를 그게 잡았습니다. npx vite build 는 «못 잡습니다»)
+② admin   페이지가 열리고 «탭 여섯»이 다 동작
+          Overview · File Ingestion · Chain · Auto Update · Enrichment · Ontology Explorer
+          🔴 Ontology Explorer 를 «눌러서» 내용이 나오는지 «직접» 보십시오
+③ 무회귀   보드 «13요청» · 15패널 · 후보 21 · 발견 28 · 오류 없음
+④ 커밋    소스 «와» dist 를 «같은 커밋»에 · 경로는 git status 에서
+```
+📌 지운 줄 수와 파일 수를 보고에 적어 주십시오.
+
+---
+
 # 🟢 **다음 라운드 — 「마킹에서 어디로 갈 수 있나」 부품** (총괄 21:2x · 소유자 지시)
 
 소유자: 「마킹 펼치는거 시각화 하는 차트 만들든가 **어느 것들로 닿을수 있는지 보여주는거**」
