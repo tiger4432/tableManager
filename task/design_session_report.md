@@ -1,4 +1,67 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🔴 admin 탭 삭제 — «세 봤고, 목록이 세 곳 다릅니다». 지시대로 «멈추고 적습니다»
+
+「제 목록을 믿지 말고 다시 세라」 하셔서 셌습니다. 방법은 «시뮬레이션»입니다 — admin.js 가
+ledger_map_panel 을 import 하지 «않는다»고 가정하고, 살아 있는 진입점 일곱에서 도달성을
+다시 계산해 «무엇이 고아가 되는지»를 봤습니다.
+
+## ✅ 총괄 사슬 — 여덟 다 «맞습니다»
+```
+DIES  ledger_map_panel · ontology_structure_view · ontology_structure_core · ledger_setup
+      ontology_structure.css · case_control_core · case_control_view · ledger_trace_core
+이미 고아  ledger_trace_view      (총괄 표기 그대로)
+```
+그리고 **Ontology Explorer 는 위 사슬과 «한 파일도» 안 겹칩니다** — 총괄 확인과 일치합니다.
+```
+explorer: ontology_explorer(.css) · _store · _view · ontology_path · ontology_skeleton · dom_patch
+```
+
+## 🔴 다른 곳 ① — 목록에 «없는데» 같이 죽는 것 둘
+```
+src/ledger_setup_view.js   570줄   유일 소비자 = ledger_setup.js
+src/ledger_setup.css       106줄   유일 소비자 = ledger_setup.js
+```
+남기면 그날부터 고아입니다. 같이 지우는 게 맞다고 봅니다만 목록에 없어 «적습니다».
+
+## 🔴 다른 곳 ② — 이름이 사슬처럼 생겼는데 «살아 있습니다». 쓸어담지 마십시오
+```
+src/ledger_console.css   ← `src/tokens.css:21` 이 `@import './ledger_console.css'` 합니다
+```
+사슬 밖입니다. 지우면 **admin 이 아니라 «모든 화면»의 토큰 시트가 깨집니다.**
+
+## 🔴🔴 다른 곳 ③ — «제 보드 하니스»가 `ledger_map_panel.js` 를 읽습니다. 여기서 멈춥니다
+```
+tests/rnd_board_harness.mjs:673
+  const legacy = scan(readFileSync(path.join(SRC_DIR, 'ledger_map_panel.js'), 'utf8'));
+  ok('F2 the scan finds the measured defect in ledger_map_panel.js', legacy.length >= 3)
+```
+🔴 **이건 F1 의 «양성 대조군»입니다.** 그 자리 주석이 그렇게 적혀 있습니다 —
+   「If the scan cannot see the defect it was written for, its silence above means nothing」.
+```
+F1  panel · map_panel · grid_shell · marking_store 에 모듈 수준 가변 바인딩이 «없다»
+F2  그런데 그 스캐너가 «있는 것»은 찾을 수 있나  ← ledger_map_panel 이 그 증거였습니다
+```
+지우면 F1 의 초록이 «공허»해집니다 — 스캐너가 고장 나도 「없음」이 나오고 아무도 모릅니다.
+오늘 이 프로젝트가 여러 번 부딪힌 그 부류입니다(「범례가 단언을 공허하게 만든다」).
+
+**제안 (판정 청합니다):** 대조군을 «리터럴로» 옮깁니다. 그 자리 주석이 이미 인용하고 있는
+측정된 모양 세 줄(`let deps = null; let mountEl = null; let session = 0;`)을 하니스 안에
+넣고, F2 를 「스캐너가 그 모양을 찾는다」로 다시 세웁니다. 43KB 모듈을 살려 둘 이유는 없고,
+스캐너의 «양성 대조»는 남습니다. 원본 파일이 admin 탭과 함께 사라졌다는 것도 그 자리에 적겠습니다.
+
+## 지우면 사라지는 양 (참고)
+```
+소스 11파일  8,035줄   (setup_view·setup.css 포함)
+하니스 3파일 3,393줄   ontology_structure · case_control · ledger_trace
+픽스처       ledger_trace_live.json · ledger_trace_probe.json (+ 그 셋만 읽는 나머지)
+그 밖        check_harnesses.mjs 의 FLOORS 항목 `ledger_trace_harness.mjs` 360
+             (오늘 아침 제가 «의도적으로 내린» 그 줄입니다 — 하니스와 같이 갑니다)
+```
+
+## 안 한 것
+지시대로 **한 줄도 안 지웠습니다.** ③에 한 마디 주시면 ①②는 그 커밋에 같이 처리하고
+게이트 넷(빌드 · admin 탭 여섯 · 보드 13요청 · 소스+dist 한 커밋)까지 돌려 보고하겠습니다.
+
 # 🟢 「닿는 곳」 부품 — **착지** (`8f36a1ae`). 게이트 다섯 다 통과, 그리고 «숫자 하나가 갈렸습니다»
 
 ## 🔴 먼저 갈린 숫자부터 — 주신 넷은 «엣지 수»입니다
