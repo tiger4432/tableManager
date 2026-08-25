@@ -112,6 +112,56 @@
 > 📎 정정 둘 (제 실측): 뷰의 INNER JOIN 은 «한 행도 안 버립니다» (고아 run_uid 0 · NULL 0) —
 >    밀도 9→28 의 원인이 «아닙니다». 그리고 축 엔진은 처음부터 멀쩡했습니다.
 >
+> ### ③-edge 🔄 **1③ claim 엣지화 — 서버 «합격», 화면 판정 «하나» 열려 있음 (08-25 11:0x)**
+>
+> ## 서버 — 게이트 ①②③ + 거절 통과 (총괄이 올리고 직접 측정)
+> ```
+> ① 노드   5,644 → «1,248»  claim «0» · event «0»        기본 walk 2,440ms → «802ms»
+> ② 홉     recipe depth «2» → 자취 «3홉»                   (기준선 depth 4 · 5홉)
+> ③ 답     recipe 5 · point 89 · ranked/complete (아래 정정 참조)
+> 거절     collect=claim «422» · collect=event «422»
+> 🔴 계보 walk  3,490 → «241» · 1,757ms → «210ms» · trunc[claims] → «[depth]»
+>              claims 잘림이 «사라졌습니다». 이 라운드가 산 것 중 제일 큼
+> 코드     91 추가 / «173 삭제»
+> ```
+>
+> ## 🔴 총괄이 게이트를 «세 번» 잘못 박았습니다 — 같은 자리
+> ```
+> 16   «잘린» 수를 기준선으로            (complete 를 안 봄)
+> 21   «좁은 follow»에서 complete=True   (무엇에 대해 complete 인지 안 물음)
+> 25   진짜 — 네 조건에서 전부 25, 합집합도 25
+>      🔴 게이트 21 에 «없던» 넷: backside_damage·bond_pressure·delam·die_stress
+>         전부 «delam_formation». value--binding-->quantity 를 지나고
+>         value 는 processed_with·transferred 로만 닿는데 그 둘이 제 follow 에 없었음
+> ```
+> 🔴 **`complete: True` = 「이 follow 집합 안에서 끝났다」이지 「답 전부」가 «아닙니다».**
+>    필터를 좁힐수록 더 «빨리» complete 가 되고 그건 더 «완전»한 게 아닙니다.
+>
+> ## 🔴 설계 사실 — 부품의 `follow` 는 «성능 손잡이»가 아닙니다
+> ```
+> follow 선언이 「어떤 답이 «존재할 수 있나»」를 정합니다
+>   관측만 선언한 부품 -> delam 계열 후보를 «영영» 못 봄
+> -> 후보·순위 부품은 follow 를 «좁히면 안 됨». 맵·점 부품만 좁힘  (1② 에 못 박음)
+> 그리고 부품이 «선언 안 하고» 서버 기본값에 기대던 것이 «셋»:  collect · follow · direction
+> ```
+>
+> ## ⏸️ 열린 판정 — 화면의 「실측 / 이름뿐」
+> ```
+> 판별식   옛 `claim || value` 에서 claim 이 «노드로 없어짐» -> 새 규칙은 «value 단독»
+>          (총괄이 지시한 collection|point 은 «발명»이었고 철회. 픽스처가 반대라고 말함)
+> 자취 세 모양 (실측)
+>   실측    entity → «value» → quantity          value 가 «실제 설정값/측정값»
+>   이름뿐   entity → entity → «collection» → quantity   collection 은 «개수»만
+>   없음    자취가 «빔»                            모델 선언에만 있는 물리량
+> 🔴 씨앗마다 다름   SYN-BW-101-16  9개 중 value 4
+>                  SYN-CX-BW-001 «21개 전부» collection -> value «0»  ← 보드 씨앗
+> 갈림     옛 21 이 «claim 홉»이었으면 -> 옛 「실측 21」이 거의 공허한 참. 화면 뒤집는 게 맞음
+>          옛 21 이 «value 홉»이었으면 -> 이번 변경이 길을 끊음. 고쳐야 함
+> 방법     구현자가 top_set 때 쓴 «stash 하고 옛 코드를 같은 조건으로» — 지시함
+> 🔴 결과는 소유자 판정 사안 (화면 숫자가 뒤집힘)
+> ```
+> ⏸️ 빌드 «빨강»으로 멈춤 — 하니스가 맞는 말을 하고 있어 «그대로» 둠. 커밋·픽스처 손대지 말 것.
+
 > ### ③-ctrl ✅ **walk 제어 1① 착지 — `follow`. 그리고 계획 1④ 는 «닫힘» (08-25 09:3x)**
 >
 > 소유자 전환 지시(08:2x): 「레거시 쓰레기 스키마 원장 살릴 생각하지 마」 · 「**walk 개선 집중**」
