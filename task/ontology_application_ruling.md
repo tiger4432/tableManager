@@ -1,3 +1,47 @@
+# ⚖️ 판정 — **direction 이 맞습니다. 그리고 «절반»입니다 — 나머지 절반이 1③ 입니다** (총괄 10:3x)
+
+재현했습니다:
+```
+전체·both            nodes 5,644  recipe 5  wafer «104»  2,438ms  trunc[claims]
+계보·both            nodes 5,498  recipe 5  wafer  104   2,191ms  trunc[claims]
+계보·outgoing        nodes «3,490» recipe «5» wafer «30»  1,757ms  trunc[claims]
+계보·outgoing h8/h12  nodes  3,490  recipe  5  wafer  30   «동일»   trunc[claims]
+```
+
+## ✅ 맞는 것 — 그리고 «정확성»입니다, 속도가 아니라
+```
+wafer «104 → 30»   recipe 는 «5 그대로»
+-> 사라진 74장은 «같은 코어에서 나온 다른 BW» 입니다. 들어오는 방향으로 딸려온 것들
+-> 「이 웨이퍼를 만든 것」을 묻는데 「같은 코어를 쓴 남들」이 순위에 섞여 있었습니다
+🔴 후보·순위 패널이 그 74장 위에서 순위를 매기고 있었다는 뜻입니다
+```
+그리고 「홉이 아니라 방향」도 맞습니다 — h6/h8/h12 가 «완전히 동일»합니다.
+
+## 🔴 그런데 «절반»입니다 — 여전히 claims 에서 잘리고 1.7초입니다
+```
+계보 walk   trunc «[claims]» · 1,757ms · nodes 3,490
+관측 walk   trunc «[]»       ·   108ms · nodes   168   (follow+hops=8 로 «완주»)
+```
+관측 쪽은 follow 로 «닫혔고», 계보 쪽은 direction 으로 «줄었지만 안 닫혔습니다».
+남은 것이 claim 이고, **그게 지금 구현자가 도는 1③ 입니다.** 그러니 이 자리는
+「1③ 이 무엇을 사는지」를 보여 주는 «가장 좋은 증거»입니다 — 게이트에 넣겠습니다.
+
+## 📌 그래서 1② 의 선언은 «셋 짝»입니다
+```
+부품 선언 = { follow, direction, hops }
+   맵·점 부품    follow=observed,inspected      direction=both(기본)   hops>=8   -> 완주
+   계보 부품     follow=bonded_from,transferred,processed_with
+                direction=«outgoing»           hops=6 로 충분 (더 줘도 동일)
+```
+🔴 **`direction` 도 «이미 있는» 파라미터인데 보드가 «안 보냅니다»** — `collect`·`follow` 와 같은 부류입니다.
+   부품이 자기 질문을 «선언»하지 않고 서버 기본값에 기대고 있었던 자리가 이걸로 «셋»입니다.
+
+## ⛔ 지금 하지 마십시오
+1③ 이 돌고 있습니다. 계보 walk 의 claims 잘림은 그것이 착지한 «뒤에» 다시 잽니다 —
+지금 direction 을 부품에 넣으면 1③ 게이트의 «무회귀»가 무엇 때문에 바뀌었는지 안 갈립니다.
+
+---
+
 # ⚖️ 판정 — **당신이 맞습니다. 그리고 이건 «싸짐»이 아니라 «정확성»입니다** (총괄 10:2x)
 
 제가 처음에 «계보» 술어로 재서 16→11 이 나왔고 당신 수와 안 맞았습니다.
