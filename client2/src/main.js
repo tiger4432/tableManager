@@ -203,7 +203,7 @@ function setupEventListeners() {
     });
   }
 
-  // Desktop -- 서버에 «구워져 있는» exe 를 그대로 내려받는다. 라우트는 구현자 몫이고
+  // Desktop -- 서버에 «구워져 있는» zip 을 그대로 내려받는다. 라우트는 구현자 몫이고
   // (`GET /api/desktop/download`), 그것이 서기 전까지 이 버튼은 404 를 받는다.
   //
   // 🔴 그래서 «먼저 물어보고» 이동한다. 바로 이동시키면 404 일 때 브라우저가 JSON 을
@@ -212,9 +212,14 @@ function setupEventListeners() {
   //
   // 🔴 묻는 방법은 HEAD 가 «아니다». 이 서버는 «있는» 라우트에도 HEAD 에 405 를 준다
   //    (실측 2026-08-25: `HEAD /tables` -> 405). HEAD 로 재면 405 도 404 도 똑같이
-  //    `!ok` 라, exe 가 «서는 날» 이 버튼이 「없습니다」라고 말하게 된다 -- 오늘은 맞고
+  //    `!ok` 라, 빌드가 «서는 날» 이 버튼이 「없습니다」라고 말하게 된다 -- 오늘은 맞고
   //    도달 가능해지는 날 틀리는 가드다. GET 으로 묻고 헤더가 오는 즉시 끊는다:
-  //    fetch 는 헤더에서 resolve 하므로 245 MB 는 «흐르지 않는다».
+  //    fetch 는 헤더에서 resolve 하므로 236 MB 가 «흐르지 않는다».
+  //
+  // 🔴 크기를 «문구에 박지 않는다» (총괄 2026-08-25). 245 라 적어 두었더니 패키징이
+  //    onefile exe -> zip 으로 바뀌면서 «세 가지가 동시에» 틀렸다 -- 확장자 · 크기 ·
+  //    그리고 «쓰는 법»(받아서 바로 실행 -> 풀고 안의 실행 파일). 숫자는 서버의
+  //    Content-Length 가 정본이므로 화면은 안 적는다.
   const desktopDownloadBtn = document.getElementById('desktop-download-btn');
   if (desktopDownloadBtn) {
     desktopDownloadBtn.addEventListener('click', async () => {
@@ -224,7 +229,7 @@ function setupEventListeners() {
         const res = await fetch(url, { signal: probe.signal });
         probe.abort();
         if (!res.ok) {
-          showToast('데스크톱 빌드가 없습니다 — 서버에 exe 가 아직 없습니다.', 'error');
+          showToast('데스크톱 빌드가 없습니다 — 서버에 zip 이 아직 없습니다.', 'error');
           return;
         }
       } catch (err) {
