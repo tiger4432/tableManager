@@ -1,4 +1,54 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🔴🔴 `2aaf194b` 뒤 보드가 «15요청»입니다 — 게이트가 14 인데, 그리고 「같은 선언」이 «아직 아닙니다»
+
+총괄 게이트(`4006fc82`)의 그 줄 그대로 재 봤습니다: 「보드 14/14 · 후보 21 · Y축 목록 그대로」.
+**후보와 Y축 목록은 그대로인데, 요청이 «하나 늘었습니다».**
+
+## 실측 — `performance.getEntriesByType('resource')`, 한 로드
+```
+총괄 게이트 기록   composition2 · trends3 · «subgraph2» · lot_map3 · siblings4  = 14
+지금 (2aaf194b)   composition2 · trends3 · «subgraph3» · lot_map3 · siblings4  = 🔴 15
+```
+
+## 왜 늘었나 — 「direction 만」 맞췄고 «node_limit 은 안 맞췄습니다»
+subgraph 셋이 지금 이렇게 나갑니다:
+```
+①  collect=quantity                                       ← 그냥 걷는 것
+②  collect=quantity & node_limit=1000 & direction=outgoing ← 후보·순위 패널
+③  collect=quantity &                   direction=outgoing ← 🔴 Y축 목록 (494-501)
+```
+🔴 **③ 은 ① 과도 ② 와도 다릅니다.** 그래서 어느 진행 중 요청에도 «합류하지 못합니다».
+
+수정 «전»에는 ③ 이 `collect=quantity` 라 ① 과 «글자 그대로 같아서» 합류했습니다 —
+그게 그때 subgraph 가 2 였던 이유입니다. `direction` 만 붙이자 ① 에서 떨어져 나왔고,
+`node_limit` 이 없어 ② 에도 못 붙었습니다. **순 효과: 중복 제거 하나를 잃었습니다.**
+
+## 🔴 그리고 지시의 «취지»가 아직 안 이뤄졌습니다
+지시 근거는 「같은 질문(후보가 뭐냐)을 두 가지 다른 선언으로 묻고 있다」였습니다.
+지금도 «두 가지 다른 선언»입니다 — 축이 `direction` 에서 `node_limit` 으로 옮겨갔을 뿐입니다.
+```
+Y축 목록   direction=outgoing                    (node_limit 없음)
+후보·순위  direction=outgoing & node_limit=1000
+```
+갈리는 날 갈립니다: node_limit 이 무는 날 «Y축 목록만» 잘리지 않고, 패널만 잘립니다.
+
+## 답은 «안 바뀌었습니다» — 그래서 조용합니다
+```
+후보 21 · 실측 0        (수정 전과 동일)
+Y축 목록  박리 비율 · 보이드 비율 · 값 없음 21   (그대로)
+패널 14개               (그대로)
+```
+
+## 제 소견 — 「한 줄」이 아직 한 줄 남았습니다
+```
+494-501 의 그 호출에 node_limit: 1000 «도» 붙이면
+  -> ③ 이 ② 와 «글자 그대로 같아져» 합류하고
+  -> subgraph 가 2 로 돌아가 총 «14» 가 됩니다
+  -> 그리고 그때야 「같은 질문 = 같은 선언」이 «참»이 됩니다
+```
+⚠️ 제가 고치지 않았습니다 — `src/rnd_board/**` 는 제 지시서가 「열지 마십시오」로 막아 둔
+   자리이고 구현자 라운드입니다. **재서 적기만 합니다.**
+
 # 🟢 `de514635` (부품이 자기 질문을 선언) — 제 쪽에서 «따로» 재 봤습니다. 이상 없습니다
 
 제 파일(`rnd_board/main.js`)에 손이 와서 감시가 물어 왔고, 보고를 믿지 않고 «화면으로»
