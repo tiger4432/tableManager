@@ -1,3 +1,71 @@
+# 🔴🔴 **`server/ledger/vocabulary.py` 를 «지운다». 정답지는 선언이다** (소유자 판정)
+
+> 「무조건 지워. **잘못된 설계의 씨앗**이야」
+> 「소비자고 뭐고 `server/ledger/vocabulary.py` 지우기로 한 거잖아. 지금 지워」
+> 「그 위에 있는 건 **아무것도 개발된 거 아니야. 다시 개발해**」
+
+총괄이 「소비자 12곳」이라 크기를 말씀드렸고 소유자가 **재확인**했습니다. 그대로 갑니다.
+
+## 🔴 그리고 실측이 판정을 뒷받침합니다 — «살아 있는 결함»입니다
+```
+술어    코드 «13»  vs  선언 «10»   겹치는 것 «6»뿐
+  코드에만  assigned_to_experiment · frame_confirmed · has_param · measured
+           pin · same_as · «transferred»        <- transferred 는 «오늘 지운» 것이다
+  선언에만  bonded_from · has_netdie · inspected · transfer
+필드 모양   코드 layer·traversable·direction·semi_ref·since  /  선언 status·subjects·object
+```
+```
+🔴 GET /subgraph?follow=transferred      -> «200». 오늘 지운 술어인데 «받는다»
+   follow=same_as / pin / frame_confirmed -> 전부 «200»
+   이유: `_followable_predicates()` 가 코드 «와» 선언을 «합집합»으로 쓴다
+   결과: 오늘 아침 세운 422 가드가 «무력화»돼 있다. 없는 낱말이 «빈 답»으로 나온다
+```
+**「없는 것을 거절이 아니라 빈 답으로 내는 것」** — 이 프로젝트가 반복해서 당한 그 부류이고,
+여기서는 «가드 자신»이 그렇게 되어 있었다.
+
+## 목표
+```
+server/ledger/vocabulary.py   «파일이 없어진다»
+정답지                         server/config/ontology/ledger_config.json (entities + vocabulary)
+소비자 12곳                    선언에서 읽게 «다시 만든다»
+```
+소비자 (총괄 실측): `chain_ingestion_worker` · `config_resolve_report` · `enrichment_config`
+· `ledger/config`(2) · `ledger_admin`(4) · `ledger_api/ledger_catalog` · `ledger_api/ledger_selection`
+· `ledger_explorer` + 테스트 다수
+
+## 🔴 먼저 «무엇이 같이 죽는지» 세십시오 — 이 라운드의 첫 걸음
+코드에 있고 선언에 «없는» 필드가 있습니다:
+```
+traversable · direction · layer · semi_ref · since · superseded_by
+PROJECTION_ONLY_WORDS · LAYER_CANONICAL / LAYER_ONTOLOGY · EDITABLE_LAYER
+DECL_REFUSALS · SIGNATURE_FIELDS · WALK_DIRECTIONS · OBJECT_KINDS · ISSUED_TYPES
+```
+각각에 대해 **«읽는 곳을 세고»** 셋으로 가르십시오:
+```
+A. 아무도 안 읽는다        -> 같이 «간다». 목록에 적고 지운다
+B. 읽는데 선언에 자리 없다  -> 🔴 «멈추고 알리십시오». 선언에 칸을 만드는 건 총괄 판정입니다
+C. 읽고 선언에 이미 있다    -> 선언에서 읽게 바꾼다
+```
+⚠️ **B 를 «지어내지 마십시오».** 오늘 그 부류(산문을 배선으로 받기)로 두 번 데었습니다.
+
+## 게이트
+```
+① 파일이 «없다» · `vocabulary` import «0» (테스트 포함)
+② 🔴 GET /subgraph?follow=transferred  ->  «422» (지금은 200)
+   같이: same_as · pin · frame_confirmed 도 422
+③ 서버가 «뜬다» · 목표 걷기 무회귀 (코어 29 · recipe 5 는 A′ 착지 후 기준)
+④ 보드 13요청 · 15패널 · 오류 0
+⑤ 「같이 죽은 것」 목록을 보고에 «적는다» (A 로 분류한 것들)
+```
+
+## 순서
+```
+A′ 의 setup_bundle 검증기 문법을 «먼저» 끝내십시오 (작고 거의 다 됐습니다)
+   -> 그것과 이 라운드가 ledger/config.py 를 «같이» 건드립니다
+A′ 가 이미 끝났으면 «바로» 시작하십시오
+```
+
+---
 # 🟢 **다음 라운드 — A′ : 「담는 통」을 선언이 말하고 투영이 읽는다** (소유자 승인 «a' 의견대로 해»)
 
 ## 왜 A′ 인가 — A 는 DoD 를 깬다
