@@ -1,3 +1,97 @@
+# 📋 [양쪽] **삭제 대상 API 를 walk 선언으로 — 표** (소유자 요청 2026-08-27)
+
+> 소유자: 「이사 목적은 하드코딩 제거하고 **walk 선언 제어**로 하려는 거 알지?」 · 「각 삭제 API 들
+> walk 선언 어떻게 할지 표 작성」
+
+🔴 그래서 이사의 «시험»은 「어느 파일로 옮겼나」가 아닙니다. **「선언이 정하나, 코드가 정하나」**입니다.
+파일만 바꾸면 하드코딩이 «이름만 바꿔» 살아남습니다.
+
+## ① 표 — 지금 무엇을 받고, walk 선언으로는 무엇이 되나
+
+```
+라우트          지금 받는 것              walk 선언 { start · collect · follow }        재료 상태
+──────────────────────────────────────────────────────────────────────────────────────────────
+/composition    final_chip_id (칩 «하나»)  start   = 마킹 (칩/웨이퍼 노드)              🔴 지금 죽음
+                                         collect = entity                             transferred
+                                         follow  = transfer · bonded_from             원자 «0»
+                                                   · processed_with · has_wafer       -> transfer 로
+                                         「무엇으로 만들어졌나」 = 계보 방향 walk        갈아끼우면 산다
+
+/lot_map        row · kind · by · slot    start   = 마킹 (그 행의 웨이퍼들)             ⚠️ 절반만 walk
+                                         collect = point  (Finding Point)             ledger_events 2회
+                                         follow  = inspected · observed                + bonding_log ·
+                                         ⚠️ 「격자 자리」와 분모(scanned)는 «관계»에서    RUN_TABLE 도 읽음
+                                            옵니다 — walk 이 아니라 SQL 집계
+
+/trends         kinds · window · grain    start   = 마킹                                ⚠️ 절반만 walk
+                                         collect = point -> «시간축 집계»               ledger_events 4회
+                                         follow  = observed · inspected                 + transferred 2회
+                                         🔴 transferred 갈래 하나는 «영원히 빈 값»       (죽은 갈래)
+
+/siblings       finding · scope · window  🔴 walk «아님». ledger_events 를 «0회» 읽습니다
+                                         inspection_run(분모) ↔ 관측표(분자)의 «비율 집계»
+                                         -> 「같은 조건의 다른 것들」은 그래프가 아니라 «모집단» 질문
+```
+
+## ② 그래서 부류가 «셋»입니다 — 하나로 못 묶습니다
+```
+Ⓐ 그대로 walk 이 되는 것      /composition
+   -> 고치는 방법이 곧 통합입니다. 마킹 + collect + follow 로 다시 세우고 라우트는 소비자 0 일 때 삭제
+
+Ⓑ walk «+ 집계»인 것          /lot_map · /trends
+   -> walk 이 «어느 원자냐»를 정하고, 격자 자리·분모·시간 버킷은 «관계 집계»가 답합니다
+   🔴 walk 으로 «전부» 만들려 하지 마십시오. 분모(몇 장을 봤나)는 원장에 없습니다 —
+      inspection_run 이 그것 때문에 존재합니다(그 표의 __comment 가 그렇게 적고 있습니다)
+   -> 도착지: 「무엇을 세나」는 마킹이 정하고, 「어떻게 세나」는 선언(grain)이 정한다
+
+Ⓒ walk 이 «아닌» 것           /siblings
+   -> ledger_events 를 한 번도 안 읽습니다. 은퇴 대상이 «아닙니다»
+   -> 다만 `scope=leg:…` 같은 «키»를 받는 것은 그대로 문제라, 받는 것을 «마킹»으로 바꿉니다
+      (라우트는 남고 «인자 모양»만 바뀝니다 — 요청 수가 4 -> 1 로 줄어드는 자리입니다)
+```
+
+## ③ 이사에도 같은 시험을 겁니다 — 「선언이 정하나」
+```
+심볼                        지금            가야 할 곳          이유
+────────────────────────────────────────────────────────────────────────────────────
+PREDICATES · ENTITY_TYPES   코드            🔴 «선언»           도메인 내용입니다. 오늘 코드 판은
+                                                              원장의 99.5% 에 대해 틀립니다
+OBJECT_KINDS                코드(둘)        검증기 «하나»       ✅ 완료. 선언 파일의 «문법»입니다
+PROJECTION_ONLY_WORDS       vocabulary      🔴 «검증기»         제가 ledger_subgraph 라 적었는데
+                                                              «틀렸습니다» — 소비자가 선언 «거절»이고
+                                                              (vocabulary.py:724) 예약어 목록이므로
+                                                              OBJECT_KINDS 와 «같은 부류»입니다
+SIGNATURE_FIELDS            vocabulary      검증기              선언 항목이 가질 수 있는 «칸»
+LAYER_* · EDITABLE_LAYER    vocabulary      검증기              「layer 는 ontology 만」이라는 «거절 규칙»
+                                                              (:748). 화면 표시는 그 값을 «읽을» 뿐
+DECL_REFUSALS · ISSUED_TYPES vocabulary     미분류             판별식으로 가르고 한 줄씩
+traversable · direction     vocabulary      «사라짐»            ✅ 계보 walk 은퇴로 소비자가 0 이 됐습니다
+                                                              -> walk 정책은 이제 요청의 `follow` +
+                                                                 선언의 `subjects`/`object.types` 입니다
+```
+🔴 **제 앞 지시서의 분류표를 정정합니다.** 저는 「① 문법 -> 검증기 · ② 투영이 내는 것 ->
+   ledger_subgraph · ③ 낱말 -> 선언」 셋으로 적었는데, 실제로 ②에 해당하는 것은
+   `NODE_KINDS` «하나»뿐이고 이미 제자리에 있습니다. 나머지는 전부 ① 아니면 ③입니다.
+   제 표가 «코드에 남을 자리»를 실제보다 넓게 열어 두고 있었습니다 — 소유자 지적 그대로입니다.
+
+## ④ 판별식 — 앞으로 심볼마다 이 한 줄로 가르십시오
+```
+「이 값이 바뀌면 «답»이 바뀌나, 아니면 «선언 파일이 무엇을 쓸 수 있나»가 바뀌나」
+   답이 바뀐다            -> 🔴 선언으로
+   쓸 수 있는 것이 바뀐다  -> 검증기로 (그것이 «문법»입니다)
+   둘 다 아니다           -> 멈추고 이 파일에 쓰십시오
+```
+
+## ⑤ 순서 — 소유자 확정
+```
+1  이사 (위 표대로, 판별식으로)         <- 지금
+2  vocabulary.py 삭제                  <- 독자 0 + 서버가 뜨는가
+3  Ⓐ /composition 복구 = 통합           <- ⑦의 첫 발
+4  Ⓑ /lot_map · /trends                 <- 마킹이 「무엇을」, 선언이 「어떻게」
+5  Ⓒ /siblings 는 인자 모양만            <- 키 -> 마킹. 라우트는 남습니다
+```
+
+---
 # 🔢 [구현자] **순서 확정 — 이사 «먼저», ⑦은 그다음** (소유자 2026-08-27 「이사 먼저」)
 
 계보 은퇴 검수 통과했습니다(게이트 다섯, 총괄 실측). 다음은 **`vocabulary.py` 독자 이사**입니다.
