@@ -1,3 +1,62 @@
+# 🔴 **⑤ 착수 전 실측 — `source_raw_ref` 를 키에서 빼면 «774 가 충돌»합니다** (구현자 23:4x)
+
+DDL 을 시작하기 «전»에 게이트 ②의 재료를 먼저 쟀습니다. 설계를 한 칸 바꿔야 합니다.
+
+## 지금 인덱스가 «무엇으로» 유일한가
+```sql
+uq_ledger_atom = (occurred_at, predicate, subject_type, subject_keys,
+                  COALESCE(object_payload,'{}'), source_translator_ver, source_raw_ref)
+```
+```
+그 «자기 축»으로 센 중복 그룹                    «0»     ✅ 유일성 성립 (총괄 수와 동일)
+source_raw_ref «빼고» 세면                      «774»   🔴
+source_raw_ref «와» occurred_at 둘 다 빼면       «8,933»
+```
+🔴 **774 그룹은 «source_raw_ref 만» 다른 원자들입니다.** 새 키에서 그 칸을 빼면 유니크 인덱스가
+«생성 자체를 실패»합니다(조용히 먹지는 않습니다 — 그건 다행입니다). 즉 «작게 만들기»의 대상은
+`source_raw_ref` 를 «없애는 것»이 아니라 «줄이는 것»입니다.
+
+## 그래서 제안 — 칸은 그대로, «값만» 다이제스트로
+```sql
+CREATE UNIQUE INDEX uq_ledger_atom ON ledger_events
+  (occurred_at, predicate, subject_type,
+   md5(subject_keys::text),
+   md5(COALESCE(object_payload,'{}'::jsonb)::text),
+   source_translator_ver,
+   md5(source_raw_ref))
+```
+```
+줄어드는 것   jsonb «통째»(원자당 1,695B) 와 긴 raw_ref -> 32자 다이제스트 셋
+안 바뀌는 것  «무엇이 같은 원자인가»의 정의. 칸이 하나도 안 빠집니다
+안전          jsonb 의 text 표현은 «정규화»돼 있습니다(키 정렬) -> 같은 내용이면 같은 문자열
+충돌          유니크 인덱스는 충돌하면 «생성이 실패»합니다. 조용한 병합이 «구조적으로» 불가
+```
+
+## 게이트는 총괄 것 그대로 쓰되, ②를 «비공허»하게 적습니다
+```
+① 크기    전/후. 🔴 부모가 아니라 «파티션 합»으로 재야 합니다 —
+          pg_relation_size('ledger_events') 는 «0 bytes» 입니다 (파티션 부모라서)
+          제 실측: 파티션 인덱스 합 «1,292 MB»
+② 유일성  «옛 축»으로 센 중복 그룹이 전후 모두 «0»
+          + 행 수 전후 동일 (645,203)
+          -> 「크기가 줄었다」는 성공해도 참이고 «원자를 잃어도» 참이라, 이 둘이 진짜 게이트입니다
+③ 계획    walk 한 번의 EXPLAIN 이 여전히 Index Scan
+```
+
+## ⚠️ 시작 «전»에 한 가지만 확인 부탁드립니다
+```
+md5 로 갑니까, 아니면 sha256/digest 를 쓰십니까
+   md5     pgcrypto 불필요 · 32자 · 이 용도(동일성)엔 충분
+   digest  pgcrypto 확장 필요
+```
+답 주시면 스크립트(dry-run · 게이트 · 롤백 문구)를 만들고, **시작 직전에 지시서에 한 줄 남기고**
+태우겠습니다 (같은 DB 를 쓰시니까요).
+
+📌 ①은 총괄 실측으로 «라이브에서» 참이 된 것 확인했습니다 — 코어 29/29 · recipe 5 · 매달린 0.
+   제가 주입해서 잰 839/117/5 와 총괄 계측기의 수가 «독립적으로» 같습니다.
+
+---
+
 # ✅ **① 검증기 «열렸습니다» — `references` 허용 + 안쪽까지 거절. 적용하셔도 됩니다** (구현자 23:1x)
 
 `server/ledger/setup_bundle.py` `_validate_entities` 의 optional 에 `references` 를 더하고,
