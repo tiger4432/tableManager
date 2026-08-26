@@ -1,0 +1,363 @@
+/**
+ * rnd_board — 걷기 검색창 scoring
+ *
+ * WHAT THIS SCORES (the order's five gates, each woken by a mutant):
+ *   A  changing NODE TYPE changes the KEY fields -- their COUNT and their NAMES
+ *   B  `recipe@1` says in a SENTENCE that nothing leaves it; an empty list is not an answer
+ *   C  FOLLOW unpicked means `follow` is NOT on the request -- an empty array is the opposite
+ *   D  two instances, different type and collect, no interference
+ *   E  the three absences are three different sentences
+ *
+ * 🔴 THE DECLARATION FIXTURE IS THE LEAD PM'S MEASUREMENT, not an invention: six entities, ten
+ *    predicates, eight collects, and the `subjects` links they measured off the live
+ *    declaration. `recipe@1` having no outgoing predicate is the shape that decides B.
+ *
+ * 🔴 THE ROUTE DOES NOT EXIST YET. That is why every fetch here is injected and why E scores
+ *    「서버가 아직 못 준다」 as its own sentence: a contract adopted before its material blanks
+ *    the screen while the harness stays green, and this file refuses to be that harness.
+ *
+ * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe) except for the sentences it quotes.
+ */
+
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
+const LF = String.fromCharCode(10);
+const CRLF = String.fromCharCode(13, 10);
+const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
+
+// The shape the Lead PM measured (`GET /api/ledger/declaration`).
+const DECL = {
+  ok: true,
+  entities: [
+    { type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
+    { type: 'wafer@1', keys: ['wafer'] },
+    { type: 'lot@1', keys: ['lot'] },
+    { type: 'lot_slot@1', keys: ['lot', 'slot'] },
+    { type: 'dtjob@1', keys: ['job_id'] },
+    { type: 'recipe@1', keys: ['recipe'] },
+  ],
+  predicates: [
+    { name: 'transfer@1', subjects: ['die@1'] },
+    { name: 'observed@1', subjects: ['die@1'] },
+    { name: 'bonded_from@1', subjects: ['die@1', 'wafer@1'] },
+    { name: 'inspected@1', subjects: ['wafer@1'] },
+    { name: 'processed_with@1', subjects: ['wafer@1'] },
+    { name: 'register@1', subjects: ['wafer@1', 'dtjob@1', 'lot@1'] },
+    { name: 'has_wafer@1', subjects: ['lot_slot@1'] },
+    { name: 'slot_map@1', subjects: ['lot_slot@1'] },
+    { name: 'has_netdie@1', subjects: ['dtjob@1'] },
+    { name: 'derived_from@1', subjects: ['lot@1'] },
+  ],
+  collect: ['entity', 'event', 'claim', 'collection', 'point', 'value', 'quantity', 'action'],
+};
+
+let ran = 0;
+let failedList = [];
+const ok = (name, cond, detail) => {
+  ran += 1;
+  if (cond) { console.log(`  ok   ${name}`); return; }
+  failedList.push(detail ? `${name} -- ${detail}` : name);
+  console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
+};
+const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
+
+async function loadModules(mutate = {}) {
+  const read = (file) => {
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').split(CRLF).join(LF);
+    const fn = mutate[file];
+    const out = fn ? fn(text) : text;
+    if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);
+    return out;
+  };
+  const storeUrl = dataUrl(read('marking_store.js'));
+  const panelUrl = dataUrl(read('panel.js').split("'./marking_store.js'").join(`'${storeUrl}'`));
+  const tableUrl = dataUrl(read('table_part.js')
+    .split("'./panel.js'").join(`'${panelUrl}'`)
+    .split("'./marking_store.js'").join(`'${storeUrl}'`));
+  const boxUrl = dataUrl(read('walk_box_panel.js')
+    .split("'./panel.js'").join(`'${panelUrl}'`)
+    .split("'./marking_store.js'").join(`'${storeUrl}'`)
+    .split("'./table_part.js'").join(`'${tableUrl}'`));
+  return { store: await import(storeUrl), box: await import(boxUrl) };
+}
+
+/** A document just large enough for selects, inputs and buttons. No jsdom, no globals. */
+function makeDoc() {
+  const make = (tag) => ({
+    tagName: tag, children: [], style: {}, attrs: {}, _text: '', className: '', listeners: {},
+    appendChild(c) { this.children.push(c); return c; },
+    append(...cs) { cs.forEach((c) => this.appendChild(c)); },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; },
+    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
+    fire(type, event) { (this.listeners[type] || []).forEach((fn) => fn(event || {})); },
+    click(event) { this.fire('click', event); },
+    get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
+    set textContent(v) { this._text = String(v); this.children = []; },
+  });
+  return { createElement: make };
+}
+
+const walkAll = (el, out = []) => { out.push(el); el.children.forEach((c) => walkAll(c, out)); return out; };
+const byAttr = (host, name, value) => walkAll(host)
+  .filter((e) => e.getAttribute && e.getAttribute(name) !== null
+    && (value === undefined || e.getAttribute(name) === value));
+const textOf = (host) => walkAll(host).map((e) => e._text).join(' ');
+const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
+
+const NODES = [
+  { id: 'ledger-entity:v1:AAA', type: 'die@1', label: 'D-1' },
+  { id: 'ledger-entity:v1:BBB', type: 'die@1', label: 'D-2' },
+];
+
+async function suite(mods) {
+  const { store: S, box: B } = mods;
+  const { MarkingStore, SIGN } = S;
+  const { WalkBoxPanel } = B;
+
+  const doc = makeDoc();
+  const markings = new MarkingStore();
+  const asked = [];
+  const host = doc.createElement('div');
+  const panel = new WalkBoxPanel(host, {
+    doc, markings, reads: 'marking:1', writes: 'marking:2',
+    loadDeclaration: () => Promise.resolve(DECL),
+    walk: (spec) => { asked.push(spec); return Promise.resolve({ ok: true, nodes: NODES }); },
+  });
+  panel.mount();
+  await settle();
+
+  console.log(`${LF}-- A. the KEY fields follow the type, in count and in name --`);
+  const keyNames = () => byAttr(host, 'data-key').map((e) => e.getAttribute('data-key'));
+  eq('A1 nothing is chosen, so no key field is drawn', keyNames().length, 0);
+  panel.setType('die@1');
+  eq('A2 die@1 draws FOUR', keyNames().join(','), 'mat_id,x,y,mat_type');
+  panel.setType('wafer@1');
+  eq('A3 wafer@1 draws ONE, and it is named', keyNames().join(','), 'wafer');
+  panel.setType('lot_slot@1');
+  eq('A4 lot_slot@1 draws TWO', keyNames().join(','), 'lot,slot');
+  // 🔴 THE COUNT ALONE DOES NOT DECIDE IT. A fixed four-field form would pass 「four」 on die@1
+  //    and fail here, but a form that draws the right COUNT with the wrong NAMES would pass a
+  //    count-only assertion everywhere. A2/A3/A4 compare names.
+  ok('A5 a value typed under one type does not survive a type that lacks that key',
+    (() => {
+      panel.setType('die@1');
+      panel.keyValues.mat_id = 'M-9';
+      panel.setType('wafer@1');
+      return panel.keyValues.mat_id === undefined;
+    })());
+
+  console.log(`${LF}-- B. a type nothing leaves says so in a sentence --`);
+  panel.setType('die@1');
+  eq('B1 die@1 offers exactly what the declaration says leaves it',
+    panel.followOptions().join(','), 'transfer@1,observed@1,bonded_from@1');
+  eq('B2 wafer@1 offers its own three',
+    panel.followOptions.call(Object.assign(Object.create(Object.getPrototypeOf(panel)),
+      panel, { nodeType: 'wafer@1' })).join(','),
+    'bonded_from@1,inspected@1,processed_with@1,register@1');
+  panel.setType('recipe@1');
+  eq('B3 recipe@1 offers nothing -- it is an object, never a subject', panel.followOptions().length, 0);
+  const recipeText = textOf(host);
+  ok('B4 and the screen SAYS so rather than drawing an empty list',
+    recipeText.includes('나가는 술어가 없습니다'), recipeText.slice(0, 90));
+  ok('B5 the sentence names the type it is talking about', recipeText.includes('recipe@1'));
+  eq('B6 no follow checkbox is drawn', byAttr(host, 'data-follow').length, 0);
+
+  console.log(`${LF}-- C. unpicked FOLLOW is ABSENT from the request, not an empty list --`);
+  panel.setType('die@1');
+  panel.collect = 'quantity';
+  await panel.run();
+  await settle();
+  eq('C1 one walk went out', asked.length, 1);
+  ok('C2 and it carries NO follow key at all', !('follow' in asked[0]), JSON.stringify(asked[0]));
+  eq('C3 the type and collect are the ones on screen', `${asked[0].type}/${asked[0].collect}`, 'die@1/quantity');
+  panel.toggleFollow('observed@1');
+  await panel.run();
+  await settle();
+  eq('C4 picking one puts it on the request', JSON.stringify(asked[1].follow), '["observed@1"]');
+  panel.toggleFollow('observed@1');
+  await panel.run();
+  await settle();
+  ok('C5 un-picking it takes the key away again, not leaving []', !('follow' in asked[2]),
+    JSON.stringify(asked[2]));
+  // 🔴 C6 NEEDS A BOX THAT WAS TYPED IN AND THEN CLEARED. If nothing was ever typed the
+  //    map is empty and both rules answer `{}` -- the rule would be unfalsifiable on the
+  //    only input a test naturally produces. A cleared box is the real case: the operator
+  //    typed a lot number, changed their mind, and an empty string is NOT a filter for
+  //    「키가 빈 것」 -- it would ask the server for rows whose mat_id is the empty string.
+  panel.keyValues.mat_id = '';
+  panel.keyValues.x = '12';
+  await panel.run();
+  await settle();
+  eq('C6 a cleared key box is not sent as a filter', JSON.stringify(asked[3].keys), '{"x":"12"}');
+  ok('C6b and the one that still has a value is', asked[3].keys.x === '12');
+
+  console.log(`${LF}-- result rows and the marking --`);
+  const rowsOf = (h) => walkAll(h).filter((e) => (e.className || '').includes('rb-table-row'));
+  eq('R1 the collected return is drawn as rows', rowsOf(host).length, 2);
+  rowsOf(host)[0].click({});
+  eq('R2 clicking a row marks that node', markings.count('marking:2'), 1);
+  eq('R3 under the name this instance declared it writes',
+    markings.signOf('marking:2', NODES[0].id), SIGN.CASE);
+
+  console.log(`${LF}-- D. two on one screen, different declarations, no interference --`);
+  const hostA = doc.createElement('div');
+  const hostB = doc.createElement('div');
+  const askedA = []; const askedB = [];
+  const a = new WalkBoxPanel(hostA, {
+    doc, markings, reads: 'marking:1', writes: 'marking:3',
+    loadDeclaration: () => Promise.resolve(DECL),
+    walk: (s) => { askedA.push(s); return Promise.resolve({ ok: true, nodes: NODES }); },
+  });
+  const b = new WalkBoxPanel(hostB, {
+    doc, markings, reads: 'marking:2', writes: 'marking:4',
+    loadDeclaration: () => Promise.resolve(DECL),
+    walk: (s) => { askedB.push(s); return Promise.resolve({ ok: true, nodes: [NODES[1]] }); },
+  });
+  a.mount(); b.mount();
+  await settle();
+  a.setType('die@1'); a.collect = 'point';
+  b.setType('lot_slot@1'); b.collect = 'event';
+  a.toggleFollow('observed@1');
+  await a.run(); await b.run();
+  await settle();
+  eq('D1 A asked with its own type and collect', `${askedA[0].type}/${askedA[0].collect}`, 'die@1/point');
+  eq('D2 B asked with its own', `${askedB[0].type}/${askedB[0].collect}`, 'lot_slot@1/event');
+  eq('D3 A carried its follow', JSON.stringify(askedA[0].follow), '["observed@1"]');
+  ok('D4 B carried none', !('follow' in askedB[0]));
+  ok('D5 their key fields differ',
+    byAttr(hostA, 'data-key').map((e) => e.getAttribute('data-key')).join(',') === 'mat_id,x,y,mat_type'
+    && byAttr(hostB, 'data-key').map((e) => e.getAttribute('data-key')).join(',') === 'lot,slot');
+  rowsOf(hostA)[0].click({});
+  eq('D6 A wrote its own marking', markings.count('marking:3'), 1);
+  eq('D7 and B name stayed empty', markings.count('marking:4'), 0);
+  ok('D8 each holds its own result', a.result !== b.result && a.result.nodes.length === 2
+    && b.result.nodes.length === 1);
+
+  console.log(`${LF}-- E. three absences, three sentences --`);
+  // ② the route is not there yet -- the state this whole round is written under.
+  const hostR = doc.createElement('div');
+  const pr = new WalkBoxPanel(hostR, {
+    doc, markings, reads: 'marking:1', writes: 'marking:2',
+    loadDeclaration: () => Promise.resolve({ ok: false, message: null }),
+    walk: () => Promise.resolve({ ok: true, nodes: [] }),
+  });
+  pr.mount();
+  await settle();
+  const noDecl = textOf(hostR);
+  ok('E1 no declaration says the SERVER cannot answer yet',
+    noDecl.includes('서버가 아직 선언을 못 줍니다'), noDecl.slice(0, 90));
+  eq('E2 and it draws no controls to click', byAttr(hostR, 'data-field').length, 0);
+
+  // ① chosen nothing yet, ③ walked and found nothing -- on the SAME panel, different sentences.
+  const hostN = doc.createElement('div');
+  const pn = new WalkBoxPanel(hostN, {
+    doc, markings, reads: 'marking:1', writes: 'marking:2',
+    loadDeclaration: () => Promise.resolve(DECL),
+    walk: () => Promise.resolve({ ok: true, nodes: [] }),
+  });
+  pn.mount();
+  await settle();
+  const before = textOf(hostN);
+  ok('E3 nothing chosen yet is its own sentence', before.includes('타입을 고르고 걸으십시오'),
+    before.slice(-90));
+  pn.setType('die@1');
+  await pn.run();
+  await settle();
+  const after = textOf(hostN);
+  ok('E4 walked-and-empty is a DIFFERENT sentence', after.includes('걸었는데 닿은 것이 없습니다'),
+    after.slice(-90));
+  ok('E5 and it is not the not-chosen one', !after.includes('타입을 고르고 걸으십시오'));
+
+  const hostF = doc.createElement('div');
+  const pf = new WalkBoxPanel(hostF, {
+    doc, markings, reads: 'marking:1', writes: 'marking:2',
+    loadDeclaration: () => Promise.resolve(DECL),
+    walk: () => Promise.resolve({ ok: false, message: '서버가 거절했습니다 (HTTP 503)' }),
+  });
+  pf.mount();
+  await settle();
+  pf.setType('die@1');
+  await pf.run();
+  await settle();
+  const refused = textOf(hostF);
+  ok('E6 a refused walk carries the server sentence', refused.includes('HTTP 503'), refused.slice(-90));
+  ok('E7 which is neither of the other two',
+    !refused.includes('걸었는데 닿은 것이 없습니다') && !refused.includes('타입을 고르고 걸으십시오'));
+
+  return { ran, failed: failedList.slice() };
+}
+
+const MUTANTS = [
+  // ① the gate the order names: a fixed four-field form.
+  { name: 'the-key-form-is-four-fixed-fields', wakes: 'A2/A3/A4',
+    from: "    return (found && found.keys) || [];",
+    to: "    return ['mat_id', 'x', 'y', 'mat_type'];" },
+  { name: 'keys-survive-a-type-that-lacks-them', wakes: 'A5',
+    from: "    for (const k of keys) if (this.keyValues[k] !== undefined) kept[k] = this.keyValues[k];\n    this.keyValues = kept;",
+    to: "    for (const k of keys) if (this.keyValues[k] !== undefined) kept[k] = this.keyValues[k];" },
+  // ② the touchstone: an empty dropdown instead of a sentence.
+  { name: 'an-empty-follow-list-is-drawn-as-a-list', wakes: 'B4/B6',
+    from: "      box.appendChild(this._note(this.nodeType",
+    to: "      return box; box.appendChild(this._note(this.nodeType" },
+  { name: 'follow-is-not-narrowed-by-subjects', wakes: 'B1/B3',
+    from: "    return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);",
+    to: "    return all.map((p) => p.name);" },
+  // ③ an empty array is the OPPOSITE of the server default.
+  { name: 'unpicked-follow-is-sent-as-an-empty-array', wakes: 'C2/C5',
+    from: "    if (this.follow.size) spec.follow = [...this.follow];",
+    to: "    spec.follow = [...this.follow];" },
+  { name: 'blank-key-boxes-are-sent-as-filters', wakes: 'C6',
+    from: "    for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;",
+    to: "    for (const [k, v] of Object.entries(this.keyValues)) keys[k] = v;" },
+  // ⑤ one sentence for every absence.
+  { name: 'every-absence-shares-one-sentence', wakes: 'E4/E6',
+    from: "    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';",
+    to: "    if (this.walkState === 'ready') return '타입을 고르고 걸으십시오';" },
+  { name: 'a-missing-route-reads-as-an-empty-result', wakes: 'E1',
+    from: "    if (this.declState !== 'ready') {",
+    to: "    if (false) {" },
+];
+
+const main = async () => {
+  console.log('== baseline ==');
+  const base = await suite(await loadModules());
+  console.log(`${LF}${base.ran - base.failed.length} passed, ${base.failed.length} failed.`);
+  if (base.failed.length) {
+    console.log(`ASSERTIONS ${base.ran} ${base.failed.length}`);
+    process.exit(1);
+  }
+
+  console.log(`${LF}== defect mutants (each must be CAUGHT) ==`);
+  let escaped = 0;
+  for (const m of MUTANTS) {
+    let mods;
+    try {
+      mods = await loadModules({
+        'walk_box_panel.js': (src) => (src.includes(m.from) ? src.split(m.from).join(m.to) : src),
+      });
+    } catch (err) {
+      console.error(`HARNESS FAILURE: ${err.message} (${m.name})`);
+      console.error('(This is not a passing result. Nothing was compared.)');
+      process.exit(2);
+    }
+    const real = console.log;
+    console.log = () => {};
+    ran = 0; failedList = [];
+    let result;
+    try { result = await suite(mods); } catch (err) { result = { failed: ['threw: ' + err.message] }; }
+    console.log = real;
+    if (result.failed.length) {
+      real(`  caught  ${m.name}  (${m.wakes}) -- ${String(result.failed[0]).slice(0, 62)}`);
+    } else { real(`  ESCAPED ${m.name}  (${m.wakes})`); escaped += 1; }
+  }
+
+  console.log(`${LF}ASSERTIONS ${base.ran} ${base.failed.length}`);
+  process.exit(escaped ? 1 : 0);
+};
+
+main();

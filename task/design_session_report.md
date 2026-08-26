@@ -1,4 +1,60 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟡 ⑥ 걷기 검색창 — **부품과 하니스 착지** (`b0cebe77`). 🔴 «배선은 아직 안 했습니다»
+
+지시하신 순서 그대로입니다: 「지금 하십시오 = 부품 + 하니스를 계약 모양에 대고」,
+「🛑 하지 마십시오 = 라우트가 뜨기 전에 됐다고 보고하는 것」.
+
+```
+🟢 부품     src/rnd_board/walk_box_panel.js
+🟢 하니스   tests/rnd_board_walk_box_harness.mjs   ASSERTIONS 36 0 · 변이 «8/8 caught»
+🔴 배선     BOARD 에 «안 앉혔습니다». 오늘 화면에서 이 부품을 mount 하는 곳은 «없습니다»
+🟢 빌드     npm run build exit 0 · 「every gated harness is green」
+📎 dist    «무변화» -- 아무도 import 하지 않으므로 번들이 바이트 동일합니다
+```
+
+## 게이트 다섯 — 전부 «변이로» 보였습니다
+```
+① 타입→KEY 칸    the-key-form-is-four-fixed-fields · keys-survive-a-type-that-lacks-them
+② recipe 문장     an-empty-follow-list-is-drawn-as-a-list · follow-is-not-narrowed-by-subjects
+③ follow 부재     unpicked-follow-is-sent-as-an-empty-array · blank-key-boxes-are-sent-as-filters
+④ 두 인스턴스     D1~D8 (타입·collect·follow·키·마킹이 각자)
+⑤ 부재 셋 문장 셋  every-absence-shares-one-sentence · a-missing-route-reads-as-an-empty-result
+```
+
+## 🔴 시금석은 지시하신 그대로 «recipe@1» 입니다
+```
+die@1      -> transfer · observed · bonded_from
+wafer@1    -> bonded_from · inspected · processed_with · register
+lot_slot@1 -> has_wafer · slot_map
+recipe@1   -> «없음»  ->  「recipe@1 에서 나가는 술어가 없습니다 — 이 타입은 목적어로만 나옵니다」
+```
+좁히는 것은 «서버의 subjects» 이지 화면이 만든 규칙이 아닙니다. 그걸 「전부 보여주기」로
+되돌리는 변이가 B1/B3 을 깨웁니다.
+
+## 🔴 빈 배열은 «기본값의 정반대»입니다
+```
+안 고름   ->  요청에 `follow` 키가 «없음»      (서버 기본값 = 전부)
+[] 을 실음 ->  「아무것도 따르지 마라」          <- 정반대
+```
+키 칸도 같습니다 — 쳤다가 «지운» 칸은 필터가 아닙니다. 빈 문자열을 보내면
+「키가 빈 문자열인 행」을 달라는 뜻이 됩니다.
+
+## 📎 빠져나간 변이 둘 — 자연스러운 시험이 «못 만드는 입력»이 필요했습니다
+```
+빈 키 칸    아무것도 안 치면 map 이 애초에 비어 있어 두 규칙이 «같은 {}» 를 냅니다
+           -> 「쳤다가 지운 칸」을 만들어 먹였습니다 (실제 조작자가 하는 일입니다)
+칸 개수만   개수만 세면 «개수는 맞고 이름이 틀린» 폼이 어디서나 통과합니다
+           -> A2/A3/A4 가 «이름»을 비교합니다
+```
+
+## 남은 것 — 제가 임의로 하지 않겠습니다
+```
+① 라우트    GET /api/ledger/declaration 이 뜨면 그때 «주입 함수 둘»을 실제 fetch 에 잇습니다
+② 배선      BOARD 에 앉힐 자리(행·열)와 읽을/쓸 마킹 이름은 «선언»이라 판정이 필요합니다
+           -- 어느 마킹을 읽고 어디에 쓸지 지시서에 없습니다. 한 줄 주시면 그 라운드로 갑니다
+③ floor    새 하니스가 floor 없는 목록에 들어가 «일곱»이 됐습니다. 그 판정도 아직 열려 있습니다
+```
+
 # 🟢 「사슬을 시간 순으로」 — **착지** (`62aac1c8`). 게이트 여섯 통과 · 변이 12/12 caught
 
 ## 고친 두 자리 (지시서 ①②)
