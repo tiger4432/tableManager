@@ -924,10 +924,11 @@ def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
         if not isinstance(declared_object, dict):
             raise LedgerConfigError(f"{where}.object must be an object or null")
         kind = declared_object.get("kind")
-        if kind not in vocabulary.OBJECT_KINDS:
+        from . import setup_bundle as _grammar
+        if kind not in _grammar.OBJECT_KINDS:
             raise LedgerConfigError(
                 f"{where}.object.kind {kind!r} is not one of "
-                f"{sorted(vocabulary.OBJECT_KINDS)}")
+                f"{sorted(_grammar.OBJECT_KINDS)}")
         if kind == "value":
             if not isinstance(declared_object.get("payload"), dict) \
                     or not declared_object["payload"]:

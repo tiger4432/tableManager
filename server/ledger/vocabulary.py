@@ -72,7 +72,9 @@ import re
 
 #: Object kinds, exactly as pinned for slice 1. `None` additionally means ∅ and is
 #: legal only for a predicate whose signature declares `object` as `None`.
-OBJECT_KINDS = frozenset({"value", "entity_ref", "event_ref"})
+#: RETIRED 2026-08-27 -- this held a second, SHORTER spelling of the object kinds (no
+#: "none"), and the live declaration uses `none`. The one spelling is
+#: `ledger.setup_bundle.OBJECT_KINDS`, with the validator that refuses by it.
 
 
 #: 🔴 `label_ko` IS PART OF THE DECLARATION, NOT DECORATION.

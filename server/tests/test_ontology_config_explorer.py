@@ -1843,7 +1843,7 @@ def test_closed_lists_come_from_the_validators_own_constants():
     from ledger import setup_bundle
 
     lists = closed_lists()
-    assert set(lists["object_kind"]) == set(setup_bundle._OBJECT_KINDS)
+    assert set(lists["object_kind"]) == set(setup_bundle.OBJECT_KINDS)
     assert set(lists["role_kind"]) == set(setup_bundle._ROLE_KINDS)
     assert set(lists["source_unit"]) == set(setup_bundle._SOURCE_UNITS)
     assert set(lists["mapper_unit"]) == set(setup_bundle._MAPPER_UNITS)

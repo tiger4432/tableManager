@@ -73,7 +73,7 @@ from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
 from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _MAPPER_UNITS,
-    _OBJECT_KINDS,
+    OBJECT_KINDS,
     _OCCURRED_AT_BASES,
     _ROLE_KINDS,
     _SCALAR_ROLE_KINDS,
@@ -542,7 +542,7 @@ def closed_lists() -> dict[str, Any]:
     return {
         **schema,
         "predicate_status": list(PREDICATE_STATUSES),
-        "object_kind": sorted(_OBJECT_KINDS),
+        "object_kind": sorted(OBJECT_KINDS),
         "role_kind": sorted(_ROLE_KINDS),
         "scalar_role_kind": sorted(_SCALAR_ROLE_KINDS),
         "source_unit": sorted(_SOURCE_UNITS),
@@ -739,7 +739,7 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
             path=f"{base}.object.kind", step="vocabulary", label="목적어 종류",
             state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
             value=kind, declared=kind if kind else _ABSENT,
-            candidates=tuple(sorted(_OBJECT_KINDS)),
+            candidates=tuple(sorted(OBJECT_KINDS)),
         )
         if kind == "entity_ref":
             types = _listed(obj.get("types"))

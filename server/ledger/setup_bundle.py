@@ -121,7 +121,13 @@ _ROLE_KINDS = frozenset({
 _SCALAR_ROLE_KINDS = frozenset({
     "quantity", "identity", "order", "attribute", "symbolic",
 })
-_OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
+#: 🔴 THE OBJECT KINDS A DECLARATION MAY WRITE -- one spelling, and it lives with
+#: the validator because grammar's authority is by definition the thing that refuses.
+#: `ledger.vocabulary` held a second copy WITHOUT "none"; measured 2026-08-27 the live
+#: declaration uses `none` (register@1, 396 atoms), so the set without it was the wrong
+#: one, and the admin catalogue built from it could not offer a value the declaration
+#: actually uses. No underscore: three modules outside this one read it.
+OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 # A source whose table carries no world time declares that instead of naming a column.
@@ -983,9 +989,9 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                 obj, f"{path}.object", required=("kind", "qualifiers"),
                 optional=("types",)):
             kind = obj.get("kind")
-            if not isinstance(kind, str) or kind not in _OBJECT_KINDS:
+            if not isinstance(kind, str) or kind not in OBJECT_KINDS:
                 problems.add("invalid_predicate", f"{path}.object.kind",
-                             f"must be one of {sorted(_OBJECT_KINDS)}")
+                             f"must be one of {sorted(OBJECT_KINDS)}")
             if kind == "entity_ref":
                 if "types" not in obj:
                     problems.add("missing_field", f"{path}.object.types",

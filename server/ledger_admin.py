@@ -725,6 +725,17 @@ def sources_view() -> dict:
     }
 
 
+def _grammar_object_kinds():
+    """The object kinds the DECLARATION may write, read from the validator.
+
+    🔴 This page used to build the list from `ledger.vocabulary`, whose copy
+    was missing "none" -- so the catalogue could not offer a value the live
+    declaration actually uses (`register@1`). One spelling, and it is the one that
+    refuses.
+    """
+    from ledger.setup_bundle import OBJECT_KINDS
+    return OBJECT_KINDS
+
 def vocabulary_view() -> dict:
     from ledger import vocabulary
 
@@ -758,7 +769,7 @@ def vocabulary_view() -> dict:
     return {
         "predicates": predicates,
         "entity_types": entity_types,
-        "object_kinds": sorted(vocabulary.OBJECT_KINDS),
+        "object_kinds": sorted(_grammar_object_kinds()),
         "walk_directions": sorted(vocabulary.WALK_DIRECTIONS),
         "traversable_states": [dict(s) for s in TRAVERSABLE_STATES],
         "statuses": list(vocabulary.PREDICATE_STATUSES),

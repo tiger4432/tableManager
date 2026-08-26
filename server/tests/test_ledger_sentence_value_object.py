@@ -150,7 +150,7 @@ def test_an_object_kind_say_does_not_answer_is_refused_by_name(monkeypatch):
 
     🔴 TWO SETS ARE WIDENED SINCE 2026-08-21, AND THAT IS THE POINT OF THE UPDATE.  With
     the `packs` section gone, the Role a scalar object carries is DERIVED, from
-    `_OBJECT_VALUE_ROLE_KINDS`.  So a fifth kind added to `_OBJECT_KINDS` alone derives no
+    `_OBJECT_VALUE_ROLE_KINDS`.  So a fifth kind added to `OBJECT_KINDS` alone derives no
     object Role at all and is refused one stage earlier, as `unknown_role` on the binding
     -- which is a different refusal about a different mistake.  The mistake this test is
     for is "the derivation learned the new kind and `_object_value` did not", and that is
@@ -162,8 +162,8 @@ def test_an_object_kind_say_does_not_answer_is_refused_by_name(monkeypatch):
     from ledger import setup_bundle as bundle_module
 
     monkeypatch.setattr(
-        bundle_module, "_OBJECT_KINDS",
-        frozenset(bundle_module._OBJECT_KINDS | {"tally"}))
+        bundle_module, "OBJECT_KINDS",
+        frozenset(bundle_module.OBJECT_KINDS | {"tally"}))
     monkeypatch.setattr(
         bundle_module, "_OBJECT_VALUE_ROLE_KINDS",
         {**bundle_module._OBJECT_VALUE_ROLE_KINDS, "tally": "quantity"})
