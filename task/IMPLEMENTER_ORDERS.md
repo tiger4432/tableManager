@@ -1,3 +1,90 @@
+# 🌙 밤 대기열 — ① 뒤에 ⑤ · ② (총괄 22:5x)
+
+도착지 여섯은 바로 위 블록입니다. 여기는 **①이 끝난 뒤의 순서**와, ③의 **판정 결과**입니다.
+
+## ⑤ `uq_ledger_atom` 을 «해시 키»로 — ① 다음
+```
+지금   639MB. 인덱스 849MB 의 75% · 원장 1,233MB 의 «69%가 인덱스»
+원인   jsonb 페이로드 «통째»를 인덱싱해서 원자당 1,695 B
+🔴     스캔 1,600만 회로 «가장 많이 읽히는» 인덱스입니다 -> 지울 수 없고 «줄일» 수만 있습니다
+```
+🔴 **게이트는 «크기»가 아닙니다.** 크기는 성공해도 참이고 «중복이 새로 들어와도» 참입니다:
+```
+① 크기        전/후 pg_size_pretty
+② 유일성 보존  바꾸기 «전» (술어,주어,목적어,translator_ver) 중복 그룹 «0» 이었는가,
+              바꾼 «뒤»에도 «0» 인가
+              -> 해시 충돌이 «다른 원자를 같은 것»으로 만들면 조용히 먹습니다
+③ 계획        바꾼 뒤 walk 한 번의 EXPLAIN 이 여전히 Index Scan 인가 (Seq Scan 이면 실패)
+```
+⚠️ 라이브 원장 645,203 행 위의 DDL 입니다. **시작 전에 이 파일에 한 줄 남기고** 시작하십시오 —
+제가 같은 DB 를 씁니다 (상설: 「내 느린 질의는 남의 대기 시간이다」).
+
+## ② 구설계 삭제 A 묶음 — «셋 다 같은 커밋»
+`server/ledger/{vocabulary,legacy_import,shadow_parity}.py`.
+근거는 아래 기존 블록에 있습니다 (재적재 후 `legacy_atom` «0» — 열 문도, 대조할 그림자도 없음).
+```
+게이트  follow=transferred -> «422»   (선언에 없는 술어를 조용히 «빈 답»으로 만들지 말 것)
+       보드 14패널 무회귀
+```
+🔴 **부작용 하나를 «미리»** 말합니다. `vocabulary.py` 는 «선언에 자리가 없는» 것들도 들고 있고,
+그것들엔 진짜 소비자가 있습니다:
+```
+OBJECT_KINDS           «8파일»   <- 낱말이 아니라 «물리 열거»입니다
+traversable/direction    3       (config_resolve_report ×2 · source_contract ×1)
+PROJECTION_ONLY_WORDS    3   LAYER_CANONICAL 3   EDITABLE_LAYER 3
+SIGNATURE_FIELDS         3   DECL_REFUSALS  2   LAYER_ONTOLOGY 2   ISSUED_TYPES 1
+```
+지울 것이 아니라 «옮길» 것이고, **어디로 옮길지 모르겠으면 멈추고 이 파일에 쓰십시오.**
+지우고 나서 알면 8파일이 «같이» 멈춥니다.
+
+---
+
+# ✅ ③ void 배선 — 총괄이 판정하고 «적용했습니다». 당신 (b)는 그대로는 안 됩니다
+
+당신이 준 (b)「void_obs 항목에 `workspace_name: "void"`」를 그대로 넣으면 **무효 처리됩니다.**
+`find_workspace_alias` 의 D3-① 섀도잉 차단 때문입니다:
+```python
+if folder_name in table_config:                        # "void" 가 table_config 에 «있다»
+    others = [t for t in matches if t != folder_name]  # ["void_obs"]
+    if others: -> 별칭 «무시» · 폴더는 테이블 'void' 소유로 유지 · ERROR 로그 1회
+```
+**`void` 선언이 살아 있는 한 별칭은 안 붙습니다.** 당신 결선 독해는 맞았고(폴백이 아니라 «해석»),
+그 한 칸 더 아래에 가드가 하나 더 있었습니다.
+
+## 그래서 «잰 뒤» 이렇게 판정했습니다 — 별도 운영 판정이 아니라 ② 구설계 청소입니다
+```
+void 표     DB «0행» · 56 kB · business_key «없음»
+           __comment 「source_config.xlsx 자동 생성 · Unique Key 미선언」   <- «자동 생성» 세대
+void_obs   103,841행 · void_uid 키 + inspection_run 분모
+           __comment 「소유자 2026-08-13 설계」                          <- «설계된» 세대
+원장 선언    void_obs_observed 를 읽습니다. void 를 읽는 선언 «0»
+코드         void «표» 소비자 «0» (전부 finding_kind 값 'void' 이지 표가 아닙니다)
+DDL         table_config 항목을 빼도 «DROP 은 없습니다» — 지운 것은 «선언»이지 표가 아닙니다
+```
+
+## 적용 — 라이브 `server/config/table_config.json` (백업 `.bak-0826_2249`)
+```
+sha256   14601241 (54,321B)  ->  eb4f3a98 (53,721B)
+바뀐 것   void 항목 «제거» + void_obs 에 "workspace_name": "void"
+
+게이트   resolve_workspace_table("void")            -> «void_obs»   (전: void)
+        resolve_workspace_table("void_obs")        -> void_obs
+        resolve_workspace_table("inspection_run")  -> inspection_run
+        원장 선언 재검증 (catalog 붙여서)             -> «()»
+        DB 의 void 표                              -> «그대로 있고 0행»
+```
+폴더는 **둘 다 삽니다** — `void/` 는 별칭으로, `void_obs/` 는 이름으로. **지운 폴더 없습니다.**
+
+---
+
+# 📌 채널 정정 (소유자 22:5x) — **메시지 쓰지 마십시오. 파일 감시입니다**
+
+> 소유자: 「메시지 안쓰고 파일 감시로 하기로 했잖아」
+
+제가 방금 세션 메시지를 하나 보냈습니다. **그건 제 잘못이고, 그 내용이 이 블록입니다.**
+앞으로 양쪽 다 **이 파일 + 커밋**만 씁니다. 당신 보고도 `task/implementer_pickup_report.md` 맨 위로.
+
+---
 # 🎯 오늘 밤의 «도착지» — 아침에 이 여섯이 참이면 완수 (총괄 22:4x, 소유자 「오늘 밤동안 완수해놔」)
 
 소유자 상설: 「목표달성 못하면 말짱꽝」. 그래서 «할 일»이 아니라 «참이어야 할 문장»으로 적습니다.
