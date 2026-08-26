@@ -1,3 +1,88 @@
+# 🔴 ②를 막고 있던 것이 «없어졌습니다» — 그 근거가 오늘 새벽에 낡았습니다 (총괄 23:0x 실측)
+
+`ledger_trace_router._followable_predicates()` 는 지금 **코드 ∪ 선언**의 합집합이고,
+그 이유가 함수 주석에 이렇게 적혀 있습니다:
+```
+MEASURED 2026-08-25: `config_predicates()` is empty, so a check against it alone refuses
+`bonded_from`, `inspected`, `transfer`, `has_netdie` -- 151,321 atoms
+```
+🔴 **그 문장은 재적재 «전»에 잰 것입니다.** 방금 다시 쟀습니다:
+```
+원장의 술어 «8»       transfer 401,206 · inspected 117,662 · observed 103,841 · bonded_from 18,545
+                     processed_with 3,022 · register 396 · has_netdie 396 · slot_map 135
+선언의 술어 «10»       위 8 «전부» + derived_from · has_wafer (원자 0 — 선언은 있고 아직 안 쓰임)
+코드 v1 의 술어 «13»   그중 «7»은 원장에 원자가 «0» 입니다:
+                     assigned_to_experiment · frame_confirmed · has_param · measured
+                     · pin · same_as · transferred
+
+🔴 원장에 있는데 선언에 없는 술어 :  «NONE»
+```
+-> **합집합의 근거가 사라졌습니다.** `vocabulary.py` 를 지우면 `_followable_predicates()` 는
+선언의 10이 되고, 그것이 원장 원자의 «100%» 를 덮습니다. 그리고
+```
+follow=transferred  ->  «422»       (원자 0 인 이름이므로 «옳게» 거절됩니다)
+```
+이게 ②의 게이트이고, 이제 «손해 없이» 참이 됩니다. 지우실 때 이 함수의 주석도 같이 고치십시오 —
+그 주석이 «지금은 틀린 이유»를 들고 있습니다.
+
+⚠️ 그래도 `OBJECT_KINDS` 외 여덟 부류는 그대로입니다. 위 블록의 「옮길 것」 목록을 보십시오.
+
+---
+
+# 🔴 ⑥의 «서버 조각» — 라우트 «하나». 걷기 검색창이 이것 없이는 못 뜹니다
+
+소유자 요청(원문): 「검색창에는 NODE TYPE과 KEY FOLLOW 리스트 COLLECT 대상으로 모든 요소는
+**현재 걸린 필터 수준에 따라 드롭다운 리스트를 제안**할것」 · 「결과는 COLLECT된 RETURN으로」.
+
+## 재료는 «전부 있습니다» — 총괄이 넷 다 찾았습니다
+```
+NODE TYPE  <- 선언 `entities` «6»       dtjob@1 · lot@1 · wafer@1 · die@1 · recipe@1 · lot_slot@1
+KEY        <- `entities[t].keys`        die@1 은 «넷» (mat_id · x · y · mat_type)
+FOLLOW     <- 선언 `vocabulary` «10»    각 술어가 `subjects` 를 들고 있습니다
+COLLECT    <- `ledger_subgraph.NODE_KINDS` «8»
+              entity · event · claim · collection · point · value · quantity · action
+```
+🔴 **「필터 수준에 따라 제안」의 기전이 `subjects` 입니다.** NODE TYPE 을 고르면 FOLLOW 는
+그 타입을 `subjects` 에 가진 술어만 남습니다 — 서버 로직이 «필요 없습니다», 그 자리에 이미 있습니다:
+```
+die@1     -> transfer · observed · bonded_from
+wafer@1   -> inspected · processed_with · register
+lot_slot@1-> has_wafer · slot_map
+dtjob@1   -> has_netdie · register
+lot@1     -> derived_from · register
+recipe@1  -> «없음»  (recipe 는 목적어로만 나옵니다 — 그것도 «답»이고 빈 목록으로 말해야 합니다)
+```
+
+## 만들 것 — `GET /api/ledger/declaration` «하나»
+```json
+{ "entities":   [{"type":"die@1","keys":["mat_id","x","y","mat_type"]}, …],
+  "predicates": [{"name":"bonded_from@1","subjects":["die@1"],
+                  "object":{"kind":"entity_ref","types":["die@1"],
+                            "qualifiers":{"required":[],"optional":[]}}}, …],
+  "collect":    ["entity","event","claim","collection","point","value","quantity","action"] }
+```
+```
+읽는 곳   선언 «그대로». 코드에 목록을 다시 적지 마십시오 (선언이 유일한 정답지입니다)
+성격      데이터가 아니라 «무엇을 물을 수 있나»입니다. 「라우트를 더 파지 마라」의 예외이자,
+          ②가 클라를 안 깨뜨리게 하는 «바로 그» 자리입니다
+```
+🔴 **`ledger_catalog.entity_types()` 를 그대로 쓰지 마십시오 — 두 군데가 틀렸습니다:**
+```
+① `vocabulary.ENTITY_TYPES` 를 읽습니다        -> ②에서 죽습니다
+② `requires_register(name)` 로 «거릅니다»      -> register 는 이제 «396» 뿐이라 거의 다 사라집니다
+```
+선언의 `entities` 를 읽도록 돌리십시오. 그게 「선언으로 해」의 뜻입니다.
+
+## 게이트
+```
+① 여섯 · 열 · 여덟   entities 6 · predicates 10 · collect 8 이 그대로 나오는가
+② 선언이 정답지      선언에서 술어를 «하나 지우면» 라우트의 목록도 «하나 줄어드는가»
+                    (코드에 사본이 있으면 안 줄어듭니다 — 그게 이 게이트의 «판별식»입니다)
+③ 빈 목록도 답       recipe@1 을 물으면 «빈 predicates 목록 + 200». 404 도 오류도 아닙니다
+```
+
+---
+
 # 🌙 밤 대기열 — ① 뒤에 ⑤ · ② (총괄 22:5x)
 
 도착지 여섯은 바로 위 블록입니다. 여기는 **①이 끝난 뒤의 순서**와, ③의 **판정 결과**입니다.
