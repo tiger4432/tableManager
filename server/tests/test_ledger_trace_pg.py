@@ -495,40 +495,6 @@ def test_an_empty_ledger_table_still_answers(ledger):
 # 🔴 THE SEAM — the lookup is replaceable, demonstrated rather than asserted
 # ---------------------------------------------------------------------------
 
-def test_the_sql_lookup_and_an_in_memory_lookup_give_the_identical_answer(ledger):
-    """The swappability of the lookup, as a CHECKED property.
-
-    `SqlClaimLookup` overrides `neighbourhood` with one recursive CTE;
-    `InMemoryClaimLookup` implements only the two primitives and inherits the
-    default `neighbourhood`. Both feed the same resolver, and the two answers
-    must be byte-identical apart from `generated_at`. A materialised lookup for
-    week 2's slot-level lineage (452 ms inline vs 0.58 ms materialised, measured)
-    slots into exactly this hole: implement the two primitives, change nothing
-    else.
-    """
-    rows = straight_chain(LOTS, SLOTS, WAFERS)
-    rows += [
-        atom("df-L-D-alt", "L-D", "derived_from", {"lot": "L-ALT"},
-             occurred_at=T0 + timedelta(days=1)),
-        atom("conf-L-C", "L-C", "has_wafer",
-             {"slot": "7", "wafer": "W-C-CONFIRMED"},
-             occurred_at=T0 - timedelta(days=90), who="chain_confirm"),
-    ]
-    with ledger.begin() as conn:
-        insert(conn, rows)
-        sql_answer = trace_on(conn, "L-D", "3", config=CONFIRMED_CFG)
-        # the SAME claims, pulled out flat, served from memory
-        flat = lt.SqlClaimLookup(conn, "ledger_events").claims_for_lots(
-            LOTS + ["L-ALT"])
-    mem_answer = lt.trace("L-D", "3", lookup=lt.InMemoryClaimLookup(flat),
-                          config=CONFIRMED_CFG)
-
-    assert sql_answer["hops"] == mem_answer["hops"]
-    assert sql_answer["terminal_reason"] == mem_answer["terminal_reason"]
-    # and the interesting hops really were exercised
-    kinds = {(h["predicate"], h["state"]) for h in sql_answer["hops"]}
-    assert ("derived_from", "candidate") in kinds
-    assert ("has_wafer", "resolved") in kinds
 
 
 def test_the_one_shot_cte_and_the_two_primitives_ask_the_same_question(ledger):
@@ -1048,7 +1014,9 @@ def test_cost_per_hop_at_two_ledger_sizes_interleaved(ledger, capsys):
                     "EXPLAIN (ANALYZE) "
                     + lt._TRACE_CTE.format(relation=relation),
                     {"start_lot": "C7-0", "max_depth": 20,
-                     "predicates": list(lt.LINEAGE_PREDICATES)}).fetchall()
+                     # `LINEAGE_PREDICATES` retired 2026-08-27 with the lineage walk;
+                     # the plan SHAPE this asserts does not depend on which words are asked.
+                     "predicates": ["derived_from"]}).fetchall()
                 joins = [ln[0].strip() for ln in plan
                          if ln[0].strip().startswith(("Hash Join", "Nested Loop",
                                                       "Merge Join"))]

@@ -1,3 +1,39 @@
+# ✅ **다음 고리도 나왔습니다 — 그리고 게이트를 «기계적인 것»으로 바꿨습니다** (구현자 07:5x)
+
+세 번째라는 지적 그대로입니다. 판단으로는 안 잡히는 부류였고, 주신 두 줄로 잡았습니다.
+
+## 마저 지운 것
+```
+traversal_predicate · reachable_lots (세 판) · 모듈 __getattr__ 의 LINEAGE_PREDICATES 갈래
+시험  test_ledger_trace_pg 의 LINEAGE_PREDICATES 독자 · claims_for_lots 를 재던 시험 하나
+```
+🔴 **남긴 것**: `_WALK_CACHE` · `reset_walk_cache` · `rollup_subject_types` — 지시대로 캐시째
+안 건드렸습니다(라이브가 씁니다). `_fetch` · `relation_exists` · `ResolverConfigError` ·
+`load_resolver_config` · `coverage` 도 그대로입니다.
+
+## 🔴 게이트를 그대로 씁니다 — 이번엔 «먼저» 돌렸습니다
+```
+① 이름을 저장소 «전체»에서 grep -> 코드 «0»
+   lineage_predicates 0 · traversal_predicate 0 · reachable_lots 0 · LINEAGE_PREDICATES 0
+   traversable_predicates 0 · walk_direction 0 · claims_for_lots 0
+   (남은 것은 «전부 산문»입니다 — docstring 안의 언급. 규칙대로 허용)
+② 그 다음 «불러» 봄
+   reset_walk_cache() -> ok · relation_exists(...) -> True · rollup_subject_types 존재
+시험  118 passed · 55 skipped · 2 failed
+      그 둘은 «전부터 빨간» trace_contract (sample 의 dt-job@1 미선언 팩)
+```
+
+## 📌 제 쪽 규칙으로 옮겨 적었습니다
+```
+심볼을 지우거나 옮겼으면
+   ① 그 이름을 «저장소 전체»에서 grep -> 코드가 «0» 인가 (내가 방금 편집한 파일 «안»까지)
+   ② 그 다음 «불러» 본다. 존재 확인은 이 부류를 «한 번도» 못 잡았습니다
+```
+오늘 이 부류로 셋(총괄 하나 · 제가 둘)이 났고, 셋 다 이 두 줄이면 «편집 중»에 잡혔습니다.
+앞으로 심볼 이동·삭제 라운드는 이 두 줄을 게이트로 씁니다.
+
+---
+
 # ✅ **ⓑ 착지 — 계보 사슬이 «통째로» 나왔습니다. 능력은 그대로입니다** (구현자 07:3x)
 
 ## 지운 것 — 사슬 전부 + 그것만 재던 시험, «같은 커밋»에

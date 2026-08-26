@@ -108,38 +108,6 @@ def rollup_subject_types(root_type: str) -> tuple:
     return _WALK_CACHE[key]
 
 
-def traversal_predicate():
-    """The ONE predicate the recursion follows, checked against what it can execute.
-
-    🔴 A declaration this walk cannot honour is REFUSED BY NAME rather than approximated.
-    Two arms of that: a second traversable word would need a different recursive CTE (the
-    current one joins on one predicate), and a `direction` other than `subject_to_object`
-    would need the join written the other way round. Falling back to the hard-coded
-    behaviour in either case is how a declaration becomes decoration — the walk would keep
-    following `derived_from` while the declaration said something else, and every test
-    would stay green.
-    """
-    if "traverse" not in _WALK_CACHE:
-        vocabulary = _vocabulary()
-        traversable = list(vocabulary.traversable_predicates())
-        if len(traversable) != 1:
-            raise ResolverConfigError(
-                f"the vocabulary declares {len(traversable)} traversable predicate(s) "
-                f"({', '.join(traversable) or 'none'}) and this walk implements exactly "
-                f"one. A second lineage edge needs the recursive CTE to join on a set "
-                f"rather than a value, which is a measured change to the one query whose "
-                f"plan this system has already argued about - it is not a default this "
-                f"function may pick.")
-        predicate = traversable[0]
-        direction = vocabulary.walk_direction(predicate)
-        if direction != "subject_to_object":
-            raise ResolverConfigError(
-                f"predicate '{predicate}' declares walk direction {direction!r}; this "
-                f"walk implements 'subject_to_object' only (subject_keys->>'lot' joined "
-                f"to the object's lot). Walking it the other way is a different query, "
-                f"not a flag.")
-        _WALK_CACHE["traverse"] = predicate
-    return _WALK_CACHE["traverse"]
 
 
 def reset_walk_cache():
@@ -147,17 +115,6 @@ def reset_walk_cache():
     _WALK_CACHE.clear()
 
 
-def __getattr__(name):
-    """`LINEAGE_PREDICATES`, resolved on access rather than at import.
-
-    Module-level `__getattr__` (PEP 562) is what lets the name keep working for readers
-    and tests while the VALUE comes from the declaration - and it is what keeps the lazy
-    import lazy, because a module-level constant would have to import `server/ledger` at
-    the web server's boot.
-    """
-    if name == "LINEAGE_PREDICATES":
-        return lineage_predicates()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 #: How deep the walk goes before it stops and SAYS it stopped. A cap that ends
 #: the answer without a `terminal_reason` would be indistinguishable from a root.
@@ -870,8 +827,6 @@ class ClaimLookup:
     one round trip. Neither override touches the resolver, and that is the point.
     """
 
-    def reachable_lots(self, lot, max_depth):
-        raise NotImplementedError
 
 
 
@@ -884,31 +839,6 @@ class InMemoryClaimLookup(ClaimLookup):
     def __init__(self, claims):
         self._claims = list(claims)
 
-    def reachable_lots(self, lot, max_depth):
-        traverse = traversal_predicate()
-        by_lot = {}
-        for c in self._claims:
-            if c.predicate == traverse and c.subject_lot:
-                parent = _payload_lot(c)
-                if parent:
-                    by_lot.setdefault(c.subject_lot, []).append(parent)
-        seen = [lot]
-        seen_set = {lot}
-        frontier = [lot]
-        depth = 0
-        while frontier and depth < max_depth:
-            nxt = []
-            for cur in frontier:
-                for parent in by_lot.get(cur, ()):
-                    if parent not in seen_set:
-                        seen_set.add(parent)
-                        seen.append(parent)
-                        nxt.append(parent)
-            frontier = nxt
-            depth += 1
-        truncated = bool(frontier)
-        return seen, truncated, ("[depth_cap] %d홉에서 조회 중단" % max_depth
-                                 if truncated else None)
 
 
 
@@ -995,14 +925,6 @@ class SqlClaimLookup(ClaimLookup):
         self.connection = connection
         self.relation = relation
 
-    def reachable_lots(self, lot, max_depth):
-        sql = _REACH_ONLY_CTE.format(relation=self.relation)
-        rows = self._execute(sql, {"start_lot": lot, "max_depth": int(max_depth),
-                                   "traverse": traversal_predicate()})
-        lots = [r[0] for r in rows if r[0] is not None]
-        truncated = any(int(r[1] or 0) >= int(max_depth) for r in rows)
-        return lots, truncated, (f"[depth_cap] {max_depth}홉에서 조회 중단"
-                                 if truncated else None)
 
 
     def _execute(self, sql, params):
