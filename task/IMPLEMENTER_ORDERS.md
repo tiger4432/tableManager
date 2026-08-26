@@ -1,3 +1,68 @@
+# 🔴 **구설계 잔재 청소 — «순서대로»** (소유자 지시 「순서대로해」)
+
+총괄이 훑어 부류로 나눴습니다. **A → B → C → D 순서**이고, D 는 성격이 다릅니다.
+
+## A. 「두 세대」 — 같은 라운드에 «셋 다»
+```
+① server/ledger/vocabulary.py      (이미 지시 나감. 위 지시서 참조)
+② server/ledger/legacy_import.py   🔴 «열 것이 없는 문»
+③ server/ledger/shadow_parity.py   🔴 «비교 대상이 없는 비교기»
+```
+🔴 **②③이 ①과 «같은 근거»로 죽습니다** — 재적재 후 원장의 `legacy_atom` 이 «0» 입니다
+(645,203 전부 `source_molecule`). 총괄 실측.
+```
+legacy_import  자기 설명: 「legacy_atom ID 를 가진 과거 LedgerFrame 의 «명시적 실행 문»」
+               -> 열 것이 없다
+shadow_parity  자기 설명: 「legacy <-> Ledger v2 의미 «그림자 대조»」
+               -> 대조할 legacy 가 없다
+```
+```
+각각 «테스트 1개»씩 붙어 있습니다 -> 「테스트는 자기가 재던 코드와 «같은 커밋»에서 죽는다」
+🔴 지우기 «전»에 각 모듈의 소비자를 «다시 세십시오». 제 수와 다르면 «멈추고 알리십시오»
+```
+
+## B. config 가 이름으로도 안 부르는 매퍼 «넷» — 확인 먼저
+```
+inv_man · ledger_dt_job_mapper · ledger_v2_dt_job_mapper · ledger_v2_lot_event_role_mapper
+   table_config · chain_rules · enrichment_rules · ledger_config «어디에도 없음»
+⚠️ 그런데 `ledger_v2_*` 는 .gitignore 가 «일부러 예외»로 추적하는 것들입니다
+   (「config 가 이름으로 부르는 절반」이라는 이유가 그 파일에 적혀 있습니다)
+   -> «다른 환경의 config» 가 부를 수 있습니다
+🔴 그래서 «지우기 전에» 그 예외가 왜 적혔는지 읽고, 지워도 되는지 «판정을 청하십시오»
+```
+
+## C. `server/scratch/` — 조용히 지웁니다
+```
+generate_large_table · generate_random_rows · migrate_indices · profile_query
+scratch_migration_txid · test_sanitize
+   운영 소비자 «0» · 테스트 «0»
+판정거리가 아닙니다. 지우고 목록만 보고에 적으십시오
+```
+
+## 🔴 D. 선언은 됐는데 «비어 있는» 표 여섯 — **지울 게 아니라 «봐야 할» 것**
+```
+slot_trace_for_dt · slot_trace_for_bonding · bonding_inventory · void · defect · metro
+```
+🔴 **`void` 와 `defect` 가 0 인 것이 제일 이상합니다** — 파이프라인이 있는데 비었습니다
+(`ingestion_workspace/void/` 에 전용 파서까지 있습니다).
+```
+「비어 있음」은 두 가지다
+   ① 원래 안 쓰는 표      -> 선언에서 빼도 된다
+   ② «인제션이 끊긴» 표    -> 🔴 지우면 «고장을 지우는» 것이다
+이 여섯을 «각각» 갈라서 근거와 함께 보고하십시오. «지우지 마십시오»
+```
+📌 오늘 「없음 ≠ 무해」로 여러 번 데었습니다. D 는 조사이지 청소가 아닙니다.
+
+## 순서와 게이트
+```
+A  vocabulary + legacy_import + shadow_parity 를 «한 커밋»에 (테스트 포함)
+   게이트: 파일 셋 없음 · import 0 · follow=transferred «422» · 서버 뜸 · 보드 무회귀
+B  판정 청하고 대기
+C  지우고 목록 보고
+D  «조사». 여섯을 ①/② 로 가르고 근거를 적어 보고
+```
+
+---
 # 🔴🔴 **`server/ledger/vocabulary.py` 를 «지운다». 정답지는 선언이다** (소유자 판정)
 
 > 「무조건 지워. **잘못된 설계의 씨앗**이야」
