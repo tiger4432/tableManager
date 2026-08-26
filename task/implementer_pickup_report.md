@@ -1,3 +1,73 @@
+# 🔴 판정 요청 — **패치 파일과 die 뷰 착지. 다만 매핑 «둘»은 제가 틀렸습니다** (구현자 10:3x)
+
+판정 넷 받고 ③(패치 파일)부터 시작했습니다. 라이브 선언은 **쓰지 않았습니다** —
+정확히 인용하려고 «읽기»만 했습니다.
+
+## 낸 것 둘
+```
+task/LEDGER_DECL_PATCH_2026-08-26.md          어느 키를 무엇으로 (before/after)
+server/scripts/create_bonding_core_die_view.py  dry-run 기본 · --apply + --i-accept-… 필요
+```
+
+## ④ `bonding_core_die` — dry-run **PASS**. 아직 «커밋 안 했습니다»
+```
+bonding_log                380,273
+뷰 행 (die 하나 = 행 하나)   «371,593»   조건 ③ 충족
+키 빠져서 버린 행              8,680
+distinct (base_id,bx,by)     371,593   = 행 수  -> «행이 곧 die»
+distinct (주어 die, 목적 die) 371,593   = 행 수  -> §2-ter 충돌 «0»
+event_time NULL                    0
+distinct (dt_lot,dt_slot)      2,632   <- DTLotSlot 자리
+cx,cy 있는 행                  93,118   (25.1%) <- core 구간이 닫히는 만큼
+```
+🔴 **`core_wafer_map` 을 조인하지 «않았습니다»** — 옛 뷰와 같은 LEFT JOIN 을 걸면
+371,593 → **6,444,693** 으로 17배 부풀어 「행 하나 = die 하나」가 깨집니다. 옛 뷰는 뒤에
+DISTINCT 로 접어서 감당했지만 여기선 접는 게 금지입니다. core 는 `bonding_log` 의
+`core_lot·core_slot·cx·cy` 로 «조인 없이» 싣습니다.
+🔴 `dt_seat` (= `dt_lot||'|'||dt_slot`) 을 «뷰가» 만듭니다 — `mat_id` 는 컬럼 하나를 받고
+문법엔 `column`·`constant` 뿐입니다(작동 예제 `core-die-to-dt-die` 에서 확인). 두 컬럼짜리
+정체는 컬럼 하나로 «도착해야» 합니다. 지어낸 형식이 아니라 검증기에 있는 형식입니다.
+⚠️ 옛 뷰 `bonding_core_lot` 은 **그대로 둡니다** (조건 ②).
+
+## 🔴 제가 틀린 것 — `merge_slot_join` · `split_slot_carry` 는 «선언만으로 안 됩니다»
+앞 보고에서 「셋 다 선언만으로 가능」이라 했는데, 그건 컬럼 «존재»로 판정한 것이었습니다.
+«내용»으로 보면 아닙니다:
+```
+지금   "from" 과 "to" 가 «같은» slots 컬럼을 봅니다.  subject 와 target 도 «같은» lot 컬럼
+       -> 슬롯 변화를 «적을 수가 없습니다». 443 원자가 46×49 로 붕괴하는 이유입니다
+행     lot=CL-2601-002-A4  child_lot=CL-2601-005-A5  slots=01:05:07…  wafers=WF.010201:…
+       상대편에서 그 웨이퍼가 «몇 번 자리»에 앉는지는 이 행에 «없습니다»
+```
+복구는 됩니다 — 두 `lot_event` 행을 웨이퍼 id 로 «짝지으면». 실측:
+```
+짝지은 자리→자리 엣지        «97»
+   그중 슬롯이 실제로 바뀜   «21»   <- 계획서가 말한 그 21과 «정확히» 일치
+지금 slot_map 원자           443    (46 주어 × 49 목적어, 한 쌍이 25번)
+```
+그러면 그건 «relation» 이지 binding 이 아닙니다 — `lot_slot_move`(from_lot, from_slot,
+to_lot, to_slot, wafer, event_time) 하나. 지시서가 «지목하지 않은» 두 번째 relation 이라
+**만들지 않고 제안만 합니다.** 판정 부탁드립니다.
+🔴 없으면 목표 걷기의 split·merge 구간이 «안 열립니다» (그 21건이 표현 불가로 남습니다).
+
+## 📌 그리고 «미리» 말씀드립니다 — DTLotSlot → dt_job 링크가 «없습니다»
+```
+패치대로면   bonding die --bonded_from--> DTLotSlot die   (dt_seat, dt_x, dt_y)
+이미 있는 것  core die --transfer--> DT die               (dt_job,  dt_x, dt_y)
+```
+둘은 같은 (dt_x, dt_y) 를 쓰지만 `mat_id` 가 다릅니다 — **한 자리를 두 이름으로 부르고
+있고, 그걸 잇는 선언이 없습니다.** `bonding_log` 에 `dt_job` 컬럼이 없어서 이 relation 으로는
+못 잇습니다. 5)에서 걷기가 «여기서 설» 겁니다. 미리 적어 둡니다.
+
+## 다음 (지시 주시면)
+```
+① lot_slot_move 판정 -> 나오면 패치에 매핑 둘 추가
+② 총괄이 패치 적용 (적용 전후 hash)
+③ 뷰 --apply
+④ 3) 개명(부모+자식 8) -> 4) 재적재 -> 5) 목표 걷기
+```
+
+---
+
 # 📋 **재료 실측 (읽기 전용) — 🔴 목표 걷기의 재료가 «한 표»에 통째로 있습니다** (구현자 07:2x)
 
 답을 기다리는 동안 지시서의 멈춤 조건 그대로 「소스에 재료가 있나」를 «세어» 봤습니다.

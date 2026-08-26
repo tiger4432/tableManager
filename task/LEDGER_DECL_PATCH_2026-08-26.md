@@ -1,0 +1,158 @@
+# Declaration patch — `server/config/ontology/ledger_config.json` (implementer, 2026-08-26)
+
+Per the Lead PM's ruling ③, the implementer does not write the live declaration. This file is
+the patch: which key becomes what, quoted against the live file's current contents. The live
+file was read to quote it exactly and was never opened for writing.
+
+**Apply order matters**: change ③ needs the view from
+`server/scripts/create_bonding_core_die_view.py` to exist first, or `bonded_from` reads a
+relation that is not there.
+
+---
+
+## ① `entities` — add one seat type
+
+**Path** `entities`
+
+```json
++  "lot_slot@1": { "keys": ["lot", "slot"] }
+```
+
+No other entity changes. `die@1` already keys on `[mat_id, x, y, mat_type]`, and `"DTLotSlot"`
+is a **value** bound in a mapping (change ③), not something `entities` declares — the working
+example `dt_transfer / core-die-to-dt-die` binds `"Wafer"` and `"DT"` the same way.
+
+Per the plan §2-bis, `lot_slot@1` carries **no time in its key**. Order rides on the edge.
+
+---
+
+## ② `sources.lot_event.bind.mappings.in_slot` — the seat holds the wafer
+
+**Path** `sources.lot_event.bind.mappings.in_slot.bind.subject`
+
+Before (live):
+```json
+"subject": {
+  "approval_status": "approved", "kind": "entity", "entity_type": "lot@1",
+  "keys": { "lot": { "approval_status": "approved", "kind": "column", "column": "lot" } }
+}
+```
+After:
+```json
+"subject": {
+  "approval_status": "approved", "kind": "entity", "entity_type": "lot_slot@1",
+  "keys": {
+    "lot":  { "approval_status": "approved", "kind": "column", "column": "lot"   },
+    "slot": { "approval_status": "approved", "kind": "column", "column": "slots" }
+  }
+}
+```
+Then **delete** the now-duplicated qualifier, because the seat is the subject rather than a note
+about it (plan §4 ⑤ — a qualifier holds no identifier):
+```json
+-  "slot": { "approval_status": "approved", "kind": "column", "column": "slots" }
+```
+`target` is untouched: `wafer@1{wafer: wafers}`. Predicate stays `has_wafer@1`.
+
+`slots` and `wafers` are the singular names `prepare` produces; the raw table holds
+`slot_numbers` and `wafer_ids` as colon-separated lists paired by position (measured: 666
+exploded (lot, slot, wafer) rows over 331 wafers).
+
+---
+
+## ③ `sources.bonded_from` — wafer→wafer becomes die→die
+
+### 3a. relation and read
+
+```json
+-  "relation": "bonding_core_lot"
++  "relation": "bonding_core_die"
+```
+```json
+"read": {
+  "unit": "row",
+-  "identity":  ["base_id", "core_wafer"],
++  "identity":  ["base_id", "bx", "by"],
+   "group_by":  [],
+-  "order_by":  ["base_id", "core_wafer"],
++  "order_by":  ["base_id", "bx", "by"],
+-  "cursor":    { "columns": ["base_id", "core_wafer"] },
++  "cursor":    { "columns": ["base_id", "bx", "by"] },
+   "occurred_at": { "column": "event_time", "timezone": "Asia/Seoul" }
+}
+```
+`(base_id, bx, by)` identifies a row exactly: 371,593 rows, 371,593 distinct triples.
+
+### 3b. `map.input_columns` and `prepare.input_columns` — both lists, identically
+
+```json
+-  ["base_id", "core_wafer", "core_slot", "event_time"]
++  ["base_id", "bx", "by", "dt_seat", "dt_x", "dt_y", "event_time"]
+```
+
+### 3c. the mapping itself
+
+**Rename** `bonded-wafer-from-core-wafer` → `bonded-die-from-dt-seat`. The old name describes a
+target that no longer exists; the Lead PM already expects this source's atom ids to change
+wholesale because the relation changed.
+
+```json
+"bonded-die-from-dt-seat": {
+  "predicate": "bonded_from@1",
+  "bind": {
+    "occurred_at": { "kind": "column", "column": "event_time" },
+    "subject": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "base_id" },
+        "x":        { "kind": "column",   "column": "bx" },
+        "y":        { "kind": "column",   "column": "by" },
+        "mat_type": { "kind": "constant", "value":  "Wafer" }
+      }
+    },
+    "target": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "dt_seat" },
+        "x":        { "kind": "column",   "column": "dt_x" },
+        "y":        { "kind": "column",   "column": "dt_y" },
+        "mat_type": { "kind": "constant", "value":  "DTLotSlot" }
+      }
+    }
+  }
+}
+```
+The `core_slot` qualifier is **dropped** — the old relation's column is gone, and the core side
+now travels as its own segment.
+
+`dt_seat` is `dt_lot || '|' || dt_slot`, composed in the view: `mat_id` takes one column and the
+grammar offers only `column` and `constant`, so a two-column identity has to arrive as one
+column. 2,632 distinct seats.
+
+---
+
+## 🔴 ④ `merge_slot_join` / `split_slot_carry` — **NOT in this patch. I was wrong earlier.**
+
+I reported these as fixable in the declaration alone. That was read off column *presence*. Read
+off the *content*, they are not:
+
+```
+today   "from" and "to" BOTH bind the same column `slots`
+        subject and target BOTH bind the same column `lot`
+        -> a slot change cannot be written down at all; 443 atoms collapse to 46 x 49
+row     lot=CL-2601-002-A4  child_lot=CL-2601-005-A5  slots=01:05:07…  wafers=WF.010201:…
+        the counterparty's SLOT for that wafer is not on this row
+```
+The move is recoverable, but only by pairing the two `lot_event` rows on wafer id — a relation,
+not a binding. Measured:
+```
+paired seat-to-seat edges                97
+   of which the slot actually CHANGES    21   <- exactly the 21 the plan cites
+today's slot_map atoms                  443   (46 subjects x 49 objects, one pair 25 times)
+```
+So the honest shape is a second relation (`lot_slot_move`: from_lot, from_slot, to_lot, to_slot,
+wafer, event_time) with these two mappings binding `lot_slot@1 -> lot_slot@1` over it. That is a
+relation the order did not name, so it is proposed rather than built. **Ruling requested.**
+
+Without it the split/merge segment of the target walk stays shut, and the 21 real moves remain
+unrepresentable.
