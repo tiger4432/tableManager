@@ -1,3 +1,56 @@
+# 🔴 **판정 요청 둘 — 옛 원자 371,593 과 커서. 둘 다 «승인 경계»라 안 건드렸습니다** (구현자 17:3x)
+
+## 된 것
+```
+bw_dt_seat  «신규»   molecules 371,593  적재 완료
+게이트 ③ 절반  transfer «401,206» == 371,593 + 29,613  ✅ 총괄 기대치와 «정확히» 일치
+게이트 ②      인덱스 8/8 · INVALID «0»  (세었습니다)
+```
+
+## 🔴 막힌 것 둘 — 같은 뿌리
+### ① 옛 `bonded_from` 원자 371,593 이 남아 있습니다
+```
+predicate bonded_from · translator_ver «ledger-v2:aebdbfcd659d3ff5a8…» · 371,593
+target mat_type = «DTLotSlot»       <- 옛 뜻(BW die가 DT 자리에 있다)
+그 translator_ver 는 «지금 선언에 없습니다»
+```
+게이트 ③의 「bonded_from == 18,545」에 닿으려면 이것이 나가야 합니다.
+🔴 **「원자 지우지마」라서 안 지웠습니다.** 다만 소유자 판별식에는 답할 수 있습니다 —
+**「지워도 그 사실이 다른 곳에 남아 있나」 → «예».** 같은 사실을 `bw_dt_seat` 가
+`transfer@1` 로 다시 썼고, 수가 «정확히» 371,593 으로 일치합니다.
+
+### ② `bonded_from` 커서가 옛 모양입니다 — 프레임이 «별도 승인»을 요구합니다
+```
+LedgerSetupError: ledger_cursor.bonded_from.cursor_value:
+   existing cursor shape does not match the v2 physical cursor;
+   inspect, back up, and obtain separate reset approval
+커서 행   bonded_from -> ledger-v2:41533a37a198cc5f…  (지금 선언의 것도, 옛 원자의 것도 아님)
+```
+우회하지 않았습니다. 이 승인 없이는 `bonded_from` 이 «한 원자도» 못 들어갑니다.
+
+## 선택지 둘 — 제 권고는 A
+```
+A. 겨냥해서 둘만        DELETE ... WHERE source_translator_ver='ledger-v2:aebdbfcd…'  (371,593)
+                      + ledger_translator_cursor 의 bonded_from 행 «하나» 제거
+   근거   지우는 대상이 «지금 선언에 없는 버전» 하나로 정확히 갈립니다
+          사실은 transfer 401,206 에 «남아 있습니다» (수로 확인됨)
+   비용   초 단위. 게이트 나머지를 바로 잽니다
+
+B. 원장 TRUNCATE 후 «10소스 전량 재적재»
+   근거   「원장 = 선언의 출력」이 정의상 참이 됩니다. 커서도 같이 초기화됩니다
+   비용   «45분+». 이미 옳게 들어간 626,658 원자를 다시 씁니다
+```
+어느 쪽이든 스크립트로(백업·게이트·롤백 문구 포함) 만들고 dry-run 먼저 보여 드리겠습니다.
+
+## 남은 게이트 — ①이 풀리면 바로
+```
+① 소유자 체인이 «코어 29 · recipe 5» (direction=both)
+③ bonded_from 원자 «18,545»
+④ 「코어 구간은 «5%»에서 닫힌다」  <- 보고서·패치에 이미 명시했습니다
+```
+
+---
+
 # 🔴 **dry-run 이 답했습니다 — «거절 수»가 아니라 «소스가 통째로 죽습니다»** (구현자 16:2x)
 
 지시대로 재적재 «전»에 쟀습니다. 그리고 답은 총괄이 미리 적어 둔 두 갈래보다 «더 나쁜 쪽»입니다.
