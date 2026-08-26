@@ -1,3 +1,47 @@
+# ✅ **④의 셋 다 «잽니다» — 셋 다 «된다» 쪽입니다. 멈춤 조건엔 안 걸립니다** (구현자 09:3x)
+
+## ① 레벨 질의가 «집계로» 나올 수 있나 — **예. 바뀌는 것은 «바깥 SELECT» 하나입니다**
+```python
+ledger_subgraph.SqlEvidenceLookup.claims_for_entities  (:313)
+   WITH frontier AS (jsonb_to_recordset(...))      <- 그대로
+   arms = [outgoing UNION incoming]                <- 그대로 (follow 절도 여기 있습니다)
+   SELECT * FROM (union) claims ORDER BY … LIMIT   <- 🔴 «이 줄만» 집계로 바뀝니다
+```
+🔴 그래서 **walk 엔진의 «다른 층»을 안 건드립니다.** 멈춤 조건(「행을 돌려주는 모양이 아니다」)에
+   해당하지 않습니다 — 프론티어와 두 팔이 이미 «재사용 가능한 조각»으로 서 있습니다.
+
+## ② 계획이 견디나 — **Index Scan. Seq Scan «없음»**
+같은 프론티어·같은 follow 로 바깥만 GROUP BY 로 바꿔 EXPLAIN 했습니다:
+```
+GroupAggregate
+  -> Function Scan on jsonb_to_recordset          (프론티어)
+  -> Index Scan  ledger_events_2026_05..11_subject_type_subject_keys_idx  «파티션 여섯 전부»
+실행 37 ms
+```
+`inspected` 117,662 · `observed` 103,841 위에서 **파티션마다 인덱스로** 들어갑니다.
+
+## ③ 「봤는데 안 났다」가 집계에서 나오나 — **예. «같은 GROUP BY 안»에서 나옵니다**
+```sql
+count(*) FILTER (WHERE predicate='inspected') AS looked
+count(*) FILTER (WHERE predicate='observed')  AS found
+```
+```
+씨앗 SYN-BW-101-16 실측   groups 1 · looked «41» · found «0»
+                        -> 「봤는데 안 났다」 그룹 «1»
+```
+🔴 **모집단을 노드로 «펴지 않고» 그 구분이 나옵니다.** 이게 시금석이라 하신 그 자리이고,
+   `looked > 0 AND found = 0` 한 줄이 답입니다 — 두 층이 같은 walk 안에 있어서입니다.
+
+## 📌 그래서 ②의 「16 씨앗과 40 씨앗이 같은 수」가 «사라지는» 이유
+지금은 노드를 쌓다가 한도에서 끊고 «그 위»에서 세니 모집단이 달라도 같은 답이 납니다.
+집계로 내려가면 «세는 것»이 한도를 안 지납니다 — `node_limit` 은 돌려줄 행에만 걸립니다.
+그래서 한도 «값»을 안 올려도 됩니다. 총괄 진단(「문제는 세는 «자리»」)과 같습니다.
+
+⚠️ 제가 «안 잰» 것: 여러 씨앗(16·40)에서의 집계 수치와 계획. 위는 씨앗 하나입니다.
+   설계가 채택되면 그 수부터 재겠습니다 — 그게 이 설계가 고치려는 바로 그 자리니까요.
+
+---
+
 # ✅ **다음 고리도 나왔습니다 — 그리고 게이트를 «기계적인 것»으로 바꿨습니다** (구현자 07:5x)
 
 세 번째라는 지적 그대로입니다. 판단으로는 안 잡히는 부류였고, 주신 두 줄로 잡았습니다.
