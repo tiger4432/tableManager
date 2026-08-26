@@ -1,3 +1,49 @@
+# ✅ **① 검증기 «열렸습니다» — `references` 허용 + 안쪽까지 거절. 적용하셔도 됩니다** (구현자 23:1x)
+
+`server/ledger/setup_bundle.py` `_validate_entities` 의 optional 에 `references` 를 더하고,
+그 «안»을 재는 `_validate_references` 를 붙였습니다. **라이브 파일은 안 열었습니다.**
+
+## 실측 — 열 가지를 먹여 봤습니다 (catalog = live_physical_catalog)
+```
+BASELINE (지금 라이브 파일)                    «()»            <- 총괄 수와 동일
+패치가 제안한 블록                              ACCEPTED  ✅
+reference 안의 «모르는 칸» (predicate)          references[0].predicate :: field is not allowed
+매핑 낱말로 씀 (subject/predicate/target)       거절
+edge 없음                                      거절
+to.entity 가 «선언 안 된» 엔티티                 to.entity :: must name a declared entity
+to.keys 가 «대상에 없는» 키                     to.keys :: keys must name the target entity's identity keys
+바인딩이 «내게 없는» 키를 가리킴                 to.keys.wafer.key :: must name one of this entity's identity keys
+when 이 «내게 없는» 키를 봄                     from.when.mat_typ :: 거절
+옛 단수 모양 (from.key + to.key)                from.key :: field is not allowed; allowed here: when
+references 가 빈 목록                           must be a list with at least one item
+```
+🔴 오타가 «조용히 통과»하면 화면엔 「닿는 곳이 없다」로 보이고 그건 정직한 부재와 구별이 안 됩니다.
+그래서 모르는 칸도, 없는 키도 전부 «이름으로» 거절합니다.
+
+## 🔴 첫 측정이 «거짓 초록»이었습니다 — 적어 둡니다
+처음엔 `catalog=None` 으로 쟀고 열 가지가 «전부 ACCEPTED» 였습니다. 그런데
+`validate_bundle_errors` 는 catalog 가 없으면 «즉시 거절하고 반환»합니다 — 즉 그 초록은
+「통과」가 아니라 **「검사가 한 번도 안 돌았다」**였습니다. BASELINE 이 `['table_config.json']`
+로 나온 것이 그 표지였는데 처음엔 그냥 지나쳤습니다. 총괄이 쓰신 그대로
+catalog 를 붙이니 열 줄이 갈렸습니다.
+
+## 시험
+```
+setup_bundle · ledger_setup · config_reload 계열   200 passed · 1 skipped · «4 failed»
+그 넷은 test_ledger_setup_boundary.py 이고 «제 변경 전에도 같은 넷»입니다
+   (제 파일을 HEAD 로 되돌리고 같은 조건에서 재확인)
+```
+
+## 총괄께 — 다음은 그쪽 두 걸음입니다
+```
+1  라이브 ledger_config.json 의 die@1 에 references 블록 적용 (패치 REVISION 4)
+2  서버 재기동 (PID 44040 · 24.5시간 묵음)
+그 뒤 제가 «라이브에서» 다시 재겠습니다 — 코어 29/29 · recipe 5 · 매달린 엣지 0
+```
+📌 채널 정정 확인했습니다 — 메시지 안 씁니다. 이 파일과 커밋만 씁니다.
+
+---
+
 # ✅ **D-1 확인 — 가정은 «맞습니다». 다만 기전이 한 칸 다르고, 그게 갈래를 바꿉니다** (구현자 21:2x)
 
 배선을 읽었습니다 (`server/parsers/directory_watcher.py`). 결론부터: **결함은 실재합니다.**

@@ -1022,7 +1022,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         _versioned_id(entity_id, path, problems)
         item = section[entity_id]
         if not problems.exact(
-                item, path, required=("keys",), optional=("key_types", "allow_null")):
+                item, path, required=("keys",), optional=("key_types", "allow_null", "references")):
             continue
         keys = item.get("keys")
         _nonblank_list(keys, f"{path}.keys", problems)
@@ -1045,6 +1045,88 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                             "key type must be a non-blank trimmed string")
         if "allow_null" in item and not isinstance(item["allow_null"], bool):
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
+        if "references" in item:
+            _validate_references(item["references"], f"{path}.references",
+                                 keys, section, problems)
+
+
+def _validate_references(value, path, own_keys, section, problems):
+    """「이 엔티티의 키 하나가 «다른 엔티티»를 가리킨다」 -- the walk composes an edge from it.
+
+    🔴 A REFERENCE IS NOT A MAPPING, AND THE WORDS SAY SO. A mapping writes an atom and is
+    spelled `subject`/`predicate`/`target`; a reference composes an edge no atom backs, and is
+    spelled `from`/`edge`/`to`. Reusing the mapping words would promise a reader that the
+    predicate's atoms can be found. They cannot.
+
+    🔴 EVERY UNKNOWN FIELD IS REFUSED, and so is every key name the entity does not have. A
+    typo here does not fail loudly at run time -- it composes no edge, and the screen shows
+    that as 「닿는 곳이 없다」, which is indistinguishable from an honest absence. The refusal is
+    what keeps those two apart.
+
+    `to.keys` is PLURAL because a container can need more than one key to be named (a lot slot
+    is (lot, slot)), spelled `{target key: binding}` exactly as `bind.….keys` is, so the file
+    reads one way throughout. A binding is `{"key": <own key>}` or `{"value": <const>}`, and a
+    bare string is shorthand for the first.
+    """
+    if not _is_list(value) or not value:
+        problems.add("invalid_type", path, "must be a list with at least one item")
+        return
+    own = set(_column_values(own_keys)) if _is_list(own_keys) else set()
+    for index, ref in enumerate(value):
+        here = f"{path}[{index}]"
+        if not problems.exact(ref, here, required=("edge", "to"), optional=("from",)):
+            continue
+        edge = ref.get("edge")
+        if not isinstance(edge, str) or not edge.strip() or edge != edge.strip():
+            problems.add("invalid_type", f"{here}.edge",
+                         "edge name must be a non-blank trimmed string")
+        source = ref.get("from")
+        if source is not None and problems.exact(
+                source, f"{here}.from", required=(), optional=("when",)):
+            when = source.get("when")
+            if when is not None:
+                if not isinstance(when, Mapping) or not when:
+                    problems.add("invalid_type", f"{here}.from.when",
+                                 "must be a non-empty object")
+                else:
+                    for name in sorted(when, key=str):
+                        if own and name not in own:
+                            problems.add(
+                                "invalid_entity_ref", f"{here}.from.when.{name}",
+                                "condition must name one of this entity's identity keys")
+        target = ref.get("to")
+        if not problems.exact(target, f"{here}.to", required=("entity", "keys")):
+            continue
+        entity = target.get("entity")
+        if not isinstance(entity, str) or entity not in section:
+            problems.add("invalid_entity_ref", f"{here}.to.entity",
+                         "must name a declared entity")
+        bindings = target.get("keys")
+        if not isinstance(bindings, Mapping) or not bindings:
+            problems.add("invalid_type", f"{here}.to.keys", "must be a non-empty object")
+            continue
+        declared = (section.get(entity) or {}).get("keys") if isinstance(entity, str) else None
+        target_keys = set(_column_values(declared)) if _is_list(declared) else set()
+        if target_keys and set(bindings) - target_keys:
+            problems.add("invalid_entity_ref", f"{here}.to.keys",
+                         "keys must name the target entity's identity keys")
+        for name in sorted(bindings, key=str):
+            binding = bindings[name]
+            spot = f"{here}.to.keys.{name}"
+            if isinstance(binding, str):
+                binding = {"key": binding}
+            if not isinstance(binding, Mapping):
+                problems.add("invalid_type", spot, "must be an object or a key name")
+                continue
+            if len(binding) != 1 or not ({"key", "value"} & set(binding)):
+                problems.add("invalid_type", spot,
+                             "binding takes exactly one of 'key' or 'value'")
+                continue
+            if "key" in binding:
+                source_key = binding["key"]
+                if not isinstance(source_key, str) or (own and source_key not in own):
+                    problems.add("invalid_entity_ref", f"{spot}.key",
+                                 "must name one of this entity's identity keys")
 
 
 def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
