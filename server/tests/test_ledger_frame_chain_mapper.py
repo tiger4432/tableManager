@@ -562,25 +562,23 @@ def test_legacy_atom_is_refused_by_general_mapper_and_allowed_only_by_import_api
         run_registered_mapper(
             "historical-import", 1, {}, registry=registry)
     assert exc.value.code == "legacy_atom_forbidden"
-
-    from ledger.legacy_import import run_registered_legacy_import_mapper
-    imported = run_registered_legacy_import_mapper(
-        "historical-import", 1, {}, registry=registry)
-    assert imported.iloc[0]["source_event_state"] == "legacy_atom"
+    # The escape hatch this used to exercise -- `ledger.legacy_import` -- retired on
+    # 2026-08-27 with `legacy_atom` itself: the rebuilt ledger holds 0 of them, so there was
+    # nothing left for that door to open. The REFUSAL above is the half that still has a
+    # subject, and it stays.
 
 
 def test_mapper_layer_has_no_store_cursor_or_worker_capability():
     """The mapper layer may not reach the store, the cursor, or the worker.
 
     The ``mappers/ledger_lot_event_mapper.py`` half of this assertion went with that
-    module on 2026-08-18.  The ``ledger/`` half below is the live boundary and is the
-    reason this test is trimmed rather than deleted: nothing else asserts that these
-    five modules stay free of the writing layer.
+    module on 2026-08-18, and ``ledger/legacy_import.py`` on 2026-08-27.  The ``ledger/``
+    half below is the live boundary and is the reason this test is trimmed rather than
+    deleted: nothing else asserts that these modules stay free of the writing layer.
     """
     phase3_modules = [
         Path(__file__).parents[1] / "ledger" / "ledger_frame.py",
         Path(__file__).parents[1] / "ledger" / "chain_mapper.py",
-        Path(__file__).parents[1] / "ledger" / "legacy_import.py",
         Path(__file__).parents[1] / "ledger" / "profile_chain_mapper.py",
         Path(__file__).parents[1] / "ledger" / "profile_lookup_adapters.py",
     ]

@@ -1,3 +1,55 @@
+# ✅ **② 절반 착지 — 두 모듈 «삭제». `vocabulary.py` 는 판정 청합니다** (구현자 00:4x)
+
+지시대로 지우기 «전»에 소비자를 다시 셌습니다. **총괄 수와 같습니다** — 다만 하나는 «세는 법»을
+바꿔야 맞았습니다.
+
+## 소비자 재계수
+```
+legacy_import   진짜 소비자 «0»
+                chain_mapper.py:177 은 «독스트링 한 줄»이지 import 가 아닙니다
+                (리터럴 grep 으로는 소비자처럼 보입니다 — 심볼로 다시 셌습니다)
+                + 시험 «둘» — test_ledger_shadow_parity 는 아니고
+                  test_ledger_frame_chain_mapper 안의 «두 자리»
+shadow_parity   진짜 소비자 «0» · 전용 시험 파일 «1»
+vocabulary      «12 파일 · import 19 자리»   <- 이건 못 지웁니다. 아래 참조
+```
+
+## 지운 것 — 셋
+```
+server/ledger/legacy_import.py         (31줄)
+server/ledger/shadow_parity.py        (241줄)
+server/tests/test_ledger_shadow_parity.py  (153줄)
+```
+그리고 `test_ledger_frame_chain_mapper.py` 의 «두 자리»를 같은 커밋에서 손봤습니다:
+```
+① 「legacy_atom 을 거절한다」 단언은 «남깁니다» — 주어가 살아 있습니다
+   그 아래 「escape hatch 로는 된다」 세 줄만 지웠습니다 (문이 없어졌으니까)
+② 「매퍼 층은 쓰기 층에 닿지 않는다」의 «다섯 모듈 목록»에서 legacy_import.py 를 뺐습니다
+   -> 안 빼면 «없는 파일»을 읽어 시험이 죽습니다. 시험 자체는 살아 있어야 합니다
+시험  test_ledger_frame_chain_mapper  «22 passed»
+```
+
+## 🔴 `vocabulary.py` — 멈추고 묻습니다. 「옮길 곳」이 부류마다 다릅니다
+총괄이 미리 주신 목록 그대로이고, 제 실측도 같습니다. 다만 **한 상자에 넣을 것이 아닙니다**:
+```
+OBJECT_KINDS          8파일   «물리 열거»입니다 (value · entity_ref · event_ref · none …)
+                      -> 선언의 낱말이 아니라 «원장 스키마의 값»입니다
+                         제 생각: server/ledger/schema.py  (그 열이 사는 곳)
+traversable/direction  3      walk 이 술어를 어떻게 걷나 -> ledger_api/ledger_subgraph.py?
+PROJECTION_ONLY_WORDS  3      투영이 «그리기만» 하는 이름들 -> 같은 자리?
+LAYER_* · EDITABLE_*   3+3    화면 층 어휘 -> ledger_structure.py?
+SIGNATURE_FIELDS       3      원자의 서명 칸 -> schema.py?
+DECL_REFUSALS          2      거절문 -> setup_bundle.py?
+ISSUED_TYPES           1
+```
+🔴 **제가 고르면 「이 온톨로지의 규칙을 코드 어딘가에 박는」 오늘의 그 실수를 반복할 위험이 있습니다.**
+특히 `OBJECT_KINDS` 는 8파일이 «같이» 멈출 수 있는 자리라, 옮길 곳을 총괄이 정해 주시면
+한 커밋에 옮기고 `vocabulary.py` 를 지우겠습니다.
+📌 그때 `ledger_trace_router._followable_predicates()` 의 주석도 같이 고칩니다 — 그 주석이
+   「재적재 전」에 잰 근거를 들고 있다고 총괄이 짚으신 그것입니다.
+
+---
+
 # ✅ **⑤ 착지 — `uq_ledger_atom` «1,123.6 MB -> 159.7 MB» (14%)** (구현자 00:1x)
 
 `md5` 판정대로, 칸은 하나도 안 빼고 «값만» 다이제스트로. 스크립트
