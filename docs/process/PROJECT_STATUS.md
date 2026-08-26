@@ -6583,6 +6583,86 @@ lot_slot_move  「행 == distinct 튜플」  -> 변하는 칸을 키에 넣으�
 ⚠️ 재적재 «후» 실제 크기를 재고 판정한다. 「인덱스 18MB」는 절감이 아니라 «없어서» 나온 수였다
 ```
 
+## 🌙 **밤 마감 — 2026-08-26 23:2x. 여섯 중 «넷» 착지, 셋은 구현자 대기열**
+
+소유자 「오늘 밤동안 완수해놔」 · 「목표 적어」. 도착지는 «할 일»이 아니라 «참이어야 할 문장 여섯»으로
+`task/IMPLEMENTER_ORDERS.md` 맨 위에 적혀 있습니다(`34adaaca`). 아침에 그 여섯에 대조하십시오.
+
+```
+① 소유자 체인이 «라이브»에서 걸린다      ✅ 착지 · 총괄 실측
+② 구설계가 트리에 «없다»                ⏳ 구현자 대기열 (근거 확보됨 — 아래)
+③ void 폴더가 파서와 «이름이 맞는다»     ✅ 착지 · 게이트 다섯
+④ 클라 사슬 시간 정렬 «병합»            ✅ 착지 · 하니스 63단언 · 변이 열
+⑤ 원장 인덱스가 «절반 아래»             ⏳ 구현자 대기열
+⑥ 걷기 검색창이 «뜬다»                  🟡 부품 «병합·36단언» / 🔴 «앉히지 않음» — 라우트가 없다
+```
+
+### ① 실측 — 씨앗 `SYN-BW-101-16` · hops=6 · both (총괄이 «직접»)
+```
+nodes «839»   wafer 601 · die 156 · Finding Collection 28 · Quantity 21 · dtjob 14 · recipe «5»
+edges «3,000» processed_with 2,621 · «in_container 117» · transfer 78 · finding 56
+              · inspected 39 · bonded_from 39 · has_findings 28 · has_netdie 14
+recipe «5»    SYN-R-CLEAN-01 · CMP-01 · DEPO-01 · ETCH-01 · PHOTO-01
+코어 «29 / 29»   매달린 엣지 «0»
+보드           패널 12 · 요청 13 · «전부 200» · 오류 0
+라이브 선언      594d46eb (37,459B) -> «795a62e0» (38,181B) · diff +34/-0 · 백업 .bak-0826_2300
+서버           PID 44040(08-25 22:14 · 24.7시간) 죽이고 «46404» 로. 오늘 코드가 이제부터 처음 돕니다
+```
+
+### 🔴 오늘 밤 배운 것 «둘» — 다음 세션이 흉터를 물려받게
+```
+① 라이브 설정을 통째로 다시 쓰기 «전»에 «내 writer 가 손대지 않은 파일을 바이트로 재현하는가»
+   ledger_config.json 은 «CRLF · 끝에 개행 없음». 내 writer 는 LF + 개행.
+   그대로 썼으면 diff 가 «+1460 / -1459» 로 나와 그 안의 «내 34줄»을 아무도 못 봅니다.
+   -> 가드가 «두 번» 멈춰 세웠고, 둘 다 옳았습니다
+
+② 재적재가 «주어 타입의 철자»를 바꿨습니다 — die · wafer · dtjob · lot_slot «전부 소문자»
+   옛 'Wafer' 로 씨앗을 만들면 walk 이 «노드 1 · 엣지 0» 을 답합니다.
+   거절이 아니라 「닿는 곳이 없다」로 «보입니다» -> 옛 씨앗 문자열을 든 스크립트·문서·하니스 주의
+```
+
+### ③ void — 구현자의 (b) 가 «그대로는 안 됐습니다». 재고 판정했습니다
+```
+막은 것   find_workspace_alias 의 D3-① 섀도잉 차단
+         「별칭이 «실존 테이블명»과 동명이면 그 별칭은 무효」 -> void 선언이 살아 있는 한 안 붙는다
+실측     void  DB «0행» · business_key 없음 · 「source_config.xlsx 자동 생성」   <- 자동 세대
+        void_obs 103,841행 · void_uid + inspection_run 분모 · 「소유자 08-13 설계」 <- 설계 세대
+        void «표»를 읽는 선언 0 · 코드 0 (전부 finding_kind 값 'void')
+        table_config 항목을 빼도 «DROP 없음» — 지운 것은 선언이지 표가 아니다
+판정     `vocabulary.py` 와 «같은 부류». 별도 운영 판정이 아니라 ② 구설계 청소
+적용     table_config 14601241 -> «eb4f3a98» · 백업 .bak-0826_2249
+게이트    resolve("void") -> «void_obs» · resolve("void_obs") -> void_obs
+        · 원장 재검증 «()» · DB 의 void 표 «그대로 0행» · 지운 폴더 «없음»
+```
+
+### 🔴 ②를 막던 근거가 «낡았습니다» — 이게 오늘 밤의 가장 큰 발견
+`_followable_predicates()` 가 코드∪선언인 이유가 주석에 「선언이 비어서 151,321 원자가 거절된다」로
+적혀 있는데, **그건 재적재 «전»에 잰 것입니다.** 다시 쟀습니다:
+```
+원장의 술어 «8»    transfer 401,206 · inspected 117,662 · observed 103,841 · bonded_from 18,545
+                 processed_with 3,022 · register 396 · has_netdie 396 · slot_map 135
+선언의 술어 «10»    위 8 «전부» + derived_from · has_wafer (원자 0 — 선언은 있고 아직 안 쓰임)
+코드 v1 의 «13»    그중 «7»은 원장에 원자가 «0»
+🔴 원장에 있는데 선언에 없는 술어  «NONE»
+```
+-> `vocabulary.py` 를 지우면 선언 10이 원자의 «100%» 를 덮고, `follow=transferred` 가 «422» 로
+   «손해 없이» 거절됩니다. ②의 게이트가 이제 공짜입니다. 지울 때 그 «주석»도 같이 고쳐야 합니다.
+
+### ⑥ — 재료 넷이 «이미 선언 안에 다 있습니다»
+```
+NODE TYPE <- entities «6»      KEY <- entities[t].keys (die 는 «넷»)
+FOLLOW    <- vocabulary «10»   COLLECT <- ledger_subgraph.NODE_KINDS «8»
+🔴 「필터 수준에 따라 제안」의 기전 = 술어의 `subjects`. 서버 로직이 필요 없습니다
+   die@1 -> transfer·observed·bonded_from     wafer@1 -> inspected·processed_with·register
+   lot_slot@1 -> has_wafer·slot_map           recipe@1 -> «없음»  <- 시금석
+🔴 기존 `ledger_catalog.entity_types()` 는 «못 씁니다» — 죽을 vocabulary.ENTITY_TYPES 를 읽고
+   `requires_register` 로 거릅니다(register 는 이제 «396»)
+남은 것   `GET /api/ledger/declaration` 하나. 그게 뜨면 부품을 «앉히는» 것이 마지막 한 걸음
+```
+📌 레인이 **일부러 안 앉혔습니다** — 라우트가 없는데 앉히면 「하니스 초록 · 픽셀 0」입니다.
+   그 판단이 옳아서 그대로 뒀습니다.
+
+---
 ## 🧭 **컴팩트 인계 — 2026-08-26 밤. «지금 서 있는 자리»**
 
 정본: `task/LEDGER_REBUILD_PLAN.md` (계획) · `task/IMPLEMENTER_ORDERS.md` 맨 위부터 (판정 이력)
