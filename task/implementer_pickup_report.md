@@ -1,3 +1,56 @@
+# 🔴 **게이트 «넷 통과 · 하나 불합격». 체인이 «코어 die 에서 코어 wafer 로» 못 건넙니다** (구현자 18:0x)
+
+## 승인 둘 다 조건대로 집행했습니다
+```
+삭제 술어  «전체 문자열»로 (= 이지 LIKE 아님). 스크립트가 둘 다 재고 «작은 쪽»이 아니면 거절합니다
+   exact  ...#bonded-die-from-dt-seat   371,593   <- 지운 것
+   prefix LIKE 번들해시                  626,658   <- LIKE 였으면 갔을 것
+   삭제 후: 그 버전 «0» · 형제 255,065 «그대로» · 같은 사실 transfer 371,593 «살아 있음»
+커서      bonded_from 행 «하나». 지우기 전 내용을 적어 둡니다 (백업 대신):
+   translator_ver ledger-v2:41533a37a198cc5f5f23f91fa4406ccfacfa23b456091d36ea3b07e0e2f3bdd1
+   cursor_value   {'bx': 12.0, 'by': 9.0, 'base_id': 'SYN-CX-BW-006'}
+   molecules 371,593 · atoms 371,593 · updated 2026-08-26 13:54:29+09
+   커서 8행 남음 (다른 소스 «안 건드림»)
+스크립트  server/scripts/drop_retired_bonded_from_atoms.py
+```
+
+## 게이트
+```
+① bonded_from «18,545» ✅   transfer «401,206» ✅   (재적재: refused 0 · incomplete 0)
+③ 인덱스 8/8 · INVALID 0 ✅
+④ 🔴 «지금 선언이 못 내는 조합» = «NONE» ✅   (선언 매핑 14개와 대조)
+⑤ 「코어 구간은 «5%»에서 닫힌다」 — 패치·보고서에 명시 ✅
+② 소유자 체인  🔴 «불합격» — recipe 0 · 코어 wafer 0 (die 156 은 닿습니다)
+```
+
+## 🔴 ② 가 서는 자리 — 「코어 die → 코어 wafer」 가 «없습니다»
+총괄이 그리신 경로는 `코어 die --inspected(거꾸로)--> 코어 wafer` 였는데, 재 보니
+**코어 웨이퍼에는 `inspected` 가 «없습니다».**
+```
+씨앗의 die 와 bonded_from 의 주어 die  «키가 일치» — 39개가 양쪽에서 같은 die ✅
+bonded_from 이 가리키는 코어 웨이퍼      «29» ✅  (게이트의 29가 데이터에 있습니다)
+그런데 코어 웨이퍼 SYN-CW-101-01 의 원자:
+   die 주어    transfer «198»          <- die→die 뿐
+   wafer 주어  processed_with «5»      <- 🔴 recipe 홉은 «여기» 있습니다
+   die 를 그 wafer 에 잇는 원자          «0»
+```
+즉 **die 로 내려간 순간 「이 die 는 저 wafer 의 것이다」를 말하는 술어가 없어졌습니다.**
+BW 쪽은 `inspected`(wafer→die 117,662)가 우연히 그 다리를 해 주는데, 코어 웨이퍼는
+검사를 안 받아서 그 다리가 없습니다. 그래서 recipe 5 가 «한 홉» 건너에 있는데 못 닿습니다.
+
+## 판정 요청 — 둘 중 하나입니다. 제가 안 골랐습니다
+```
+A. die → wafer 를 «선언»한다  (part_of / on_wafer 같은 술어 하나)
+   재료 있음: core_wafer_map (core_lot, core_slot, wafer_id, core_x, core_y, c_bn …)
+   -> 코어뿐 아니라 «모든 die» 가 자기 wafer 를 가리키게 됩니다. 목표 걷기에도 쓰입니다
+B. bonded_from 의 «목적어»만 wafer 로 되돌린다
+   -> 체인은 즉시 복구되지만 「주어는 die 로 박아」에서 목적어만 wafer 로 남습니다
+```
+제 관측으로는 A 가 「자리로 엮는다」는 소유자 정본과 같은 방향이고, B 는 게이트만 통과시킵니다.
+다만 A 는 새 술어라 어휘가 움직입니다 — 판정 부탁드립니다.
+
+---
+
 # 🔴 **판정 요청 둘 — 옛 원자 371,593 과 커서. 둘 다 «승인 경계»라 안 건드렸습니다** (구현자 17:3x)
 
 ## 된 것
