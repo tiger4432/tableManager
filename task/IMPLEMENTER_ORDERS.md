@@ -1,3 +1,66 @@
+# ⚖️ [구현자] **소유자 판정 — ⓑ 채택. 계보 탐색을 은퇴시킵니다** (총괄 06:1x)
+
+소유자께 두 갈래를 수와 함께 올렸고 **ⓑ** 로 판정 나왔습니다.
+
+## 왜 ⓑ 인가 — 두 문장
+```
+ⓐ 는 방향이 옳지만(코드 -> 선언) «옮길 값이 오늘 틀린 값»입니다.
+   v1 어휘는 원장 술어 8 중 7, 원자의 99.5% 에 대해 틀립니다. 그걸 선언에 박으면
+   나중에 「선언에 있으니 맞겠지」로 읽힙니다
+ⓑ 는 잃는 것이 «실측상 0» 입니다 — 아래
+```
+
+## 🔴 전제를 «증명»했습니다 — 능력은 사라지는 게 아니라 «옮겨 가 있습니다»
+```
+계보 탐색(`ledger_explorer.explore`)   라우트 «0» · 산 호출자 «0» (자기 시험 3개뿐)
+                                     따르는 유일한 술어 derived_from = 원자 «0»
+                                     쓰는 주어 어휘가 Lot 단위 — 오늘 원장은 die·wafer·lot_slot
+보드의 walk 과의 관계                  «다른 길». /subgraph 는 lineage_predicates() 를 안 씁니다
+
+🔴 같은 질문이 한 walk 으로 답해집니다 (총괄 실측, 재현하십시오)
+   랏 씨앗 + follow=derived_from        -> «200» · nodes 1 (원자 0 이므로 빈 답이 정답. «422 아님»)
+   lot_slot 씨앗 + follow=slot_map      -> «nodes 2 · edges 1 · slot_map»
+   -> 원자가 «있는» 술어로 기전을 증명했습니다. derived_from 은 «같은 코드 경로»입니다
+```
+📌 마지막 줄이 이 판정의 근거입니다. `derived_from` 이 0이라 그것만으로는 「돈다」를 증명할 수
+   없어서, **원자가 있는 술어로 같은 기전을 태웠습니다.**
+
+## 은퇴 범위 — 🔴 «세고» 지우십시오. 오늘 밤 제가 이걸로 한 번 틀렸습니다
+```
+지웁니다   ledger_explorer.explore  (+ 그 전용 시험 3)
+          ledger_trace 의 lineage_predicates() 와 그것에 의존하는 것들
+          그리고 :126-140 의 traversable/direction 해석
+🔴 남습니다 (지우지 마십시오 — 라이브가 씁니다)
+          ledger_explorer.entity_id · decode_entity_id      <- ledger_subgraph 포함 «5곳»
+          ledger_trace.SqlClaimLookup · _fetch · relation_exists · ResolverConfigError
+                                                            <- ledger_trace_router :64 :82 :207 :587
+⚠️ `SqlClaimLookup` 은 «클래스가 남고» 그 `claims_for_lots` 만 갑니다 — 다른 소비자가 없을 때만.
+   «세고» 그 수를 보고에 적으십시오. 「없을 것이다」로 지우지 마십시오
+```
+
+## 🔴 그리고 이것으로 `vocabulary.py` 가 «지워지지 않습니다»
+막고 있던 것 «하나»가 없어질 뿐입니다. 남은 독자는 진행 중인 분류 작업입니다:
+```
+PROJECTION_ONLY_WORDS -> ledger_subgraph      LAYER_* · EDITABLE_LAYER -> ledger_structure
+SIGNATURE_FIELDS -> setup_bundle              DECL_REFUSALS · ISSUED_TYPES -> 아직 미분류
+그리고 «가장 큰 것»: PREDICATES · ENTITY_TYPES 자체의 독자들
+   (ledger_catalog.entity_types · main.py:4962 · config.py · ledger_admin …)
+```
+📌 `ledger_catalog.entity_types()` 는 이미 제가 표시해 둔 자리입니다 — 죽을 어휘를 읽고
+   `requires_register` 로 거릅니다(register 는 이제 396). 선언의 `entities` 로 돌리십시오.
+
+## 게이트
+```
+① 소비자 0     lineage_predicates 를 읽는 자리 «0» · explore 호출자 «0»  (grep 수를 적을 것)
+② 능력 보존    랏 씨앗 + follow=derived_from -> «200» (422 가 아님)
+              lot_slot 씨앗 + follow=slot_map -> «nodes 2 · edges 1»  (위 수 재현)
+③ 무회귀      보드 좌석 «16» · 로드 요청 «14» · 오류 0 · /subgraph 응답 무변
+④ 남는 것     trace 라우터의 «네» 사용처와 entity_id/decode_entity_id 가 그대로 도는가
+              -> 🔴 존재 확인이 아니라 «불러» 보십시오. 오늘 밤 그 차이로 회귀가 하나 났습니다
+⑤ 아직 안 함   `vocabulary.py` 삭제는 «이 라운드가 아닙니다»
+```
+
+---
 > 📌 **시각 표기 정정 (총괄 04:0x).** 위 다섯 블록을 제가 «06:3x ~ 07:5x» 로 적었는데
 > 실제 착지는 «01:2x ~ 02:2x» 입니다 — 제 시계가 다섯 시간 앞서 있었습니다. 커밋 시각으로
 > 맞췄습니다. 순서는 그대로이고 내용도 그대로입니다. 로그와 대조하실 때 이 줄을 보십시오.
