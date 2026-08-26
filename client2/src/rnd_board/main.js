@@ -50,7 +50,20 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   waferFactsFromLotMap,
   fetchDeclaration, createWalkBoxWalk } from './api.js';
 
-/** part name -> class. The shell resolves a declaration through this and nothing else. */
+/**
+ * part name -> class. The shell resolves a declaration through this and nothing else.
+ *
+ * 🔴 ADDING A PART HERE? ADD IT TO `tests/rnd_board_harness.mjs`'s REWRITE LIST TOO.
+ *    That harness carries this file as a `data:` URL and rewrites every relative import; a part
+ *    it does not know throws `Failed to resolve module specifier` and takes the WHOLE harness
+ *    down -- not one assertion. The warning used to live only beside that list, which is read
+ *    by people who already know. This is the line a person adding a part actually walks past.
+ *
+ * 🔴 AND JUDGE THE BUILD BY THE `dist` HASH, NEVER BY THE EXIT CODE. When that happens,
+ *    `npm run build` still reports exit 0 -- prebuild fails, vite never runs, and dist keeps
+ *    its previous hash. Measured twice on 2026-08-26/27, once by the Lead PM and once by a run
+ *    that executed in the wrong directory.
+ */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
   mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,

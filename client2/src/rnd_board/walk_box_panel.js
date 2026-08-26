@@ -293,7 +293,19 @@ export class WalkBoxPanel extends Panel {
     const box = doc.createElement('div');
     box.className = 'rb-walkbox-result';
     const rows = (this.walkState === 'ready' && this.result && this.result.nodes) || [];
-    const table = new TablePart(box, {
+    // 🔴 끊긴 답을 «전부»로 읽게 두지 않습니다. 실측 2026-08-27, wafer@1 SYN-BW-101-16:
+    //    `truncated` 가 nodes·edges·claims·actions «전부 true» 이고 depth 만 false 입니다 --
+    //    예산에서 잘린 진짜 끊김입니다. 이 부품은 hops 를 선언하지 않으므로 depth 도 끊김이지
+    //    질문이 아닙니다(그 구분은 「닿는 곳」쪽 이야기입니다). 서버가 부른 이름을 그대로 씁니다.
+    const cut = this.walkState === 'ready' && this.result && this.result.truncated
+      && this.result.truncated.reason ? String(this.result.truncated.reason) : null;
+    // 🔴 문장은 표 «밖»에 답니다. `TablePart.render()` 가 첫 줄에서 자기 host 를 비우므로,
+    //    같은 상자에 붙이면 표가 그려지는 순간 «조용히 지워집니다» -- 오류도 안 나고 픽셀만
+    //    사라집니다. 하니스 T1 이 그것을 잡았습니다.
+    if (cut) box.appendChild(this._note(`예산에서 끊겼습니다 — ${cut}. 이게 전부가 아닙니다`, 'is-cut'));
+    const tableHost = doc.createElement('div');
+    box.appendChild(tableHost);
+    const table = new TablePart(tableHost, {
       doc,
       markings: this.markings,
       reads: this.reads,
