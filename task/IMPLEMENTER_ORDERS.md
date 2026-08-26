@@ -27,20 +27,37 @@ mat_type=DTLotSlot   mat_id 2,632  ->  «둘 다 0»  (그 엔티티가 아직 �
                           합성 엣지를 넣으면 「이 술어의 원자를 찾을 수 있다」가 된다
                           -> 실측: has_findings·binding 둘 다 vocabulary 에 «없다». 그게 전례다
 ```
+🔴 **키 이름은 «from · to · edge» 다** (소유자 정정). `container`·`id_key`·`kind_key` 는
+총괄이 지어낸 «도메인 낱말»이라 다른 타입에 안 맞는다. 범용 이름으로 간다.
 ```json
 "die@1": {
   "keys": ["mat_id", "x", "y", "mat_type"],
-  "container": {
-    "edge":     "in_container",
-    "id_key":   "mat_id",
-    "kind_key": "mat_type",
-    "kinds": {
-      "Wafer": { "entity_type": "wafer@1", "key": "wafer"   },
-      "DT":    { "entity_type": "dtjob@1", "key": "dt_job"  }
-    }
-  }
+  "references": [
+    { "edge": "in_container",
+      "from": { "key": "mat_id", "when": { "mat_type": "Wafer" } },
+      "to":   { "entity": "wafer@1", "key": "wafer"  } },
+    { "edge": "in_container",
+      "from": { "key": "mat_id", "when": { "mat_type": "DT" } },
+      "to":   { "entity": "dtjob@1", "key": "dt_job" } }
+  ]
 }
 ```
+```
+목록이다        참조가 «여럿»인 것이 기본. die 는 지금 둘이고 앞으로 늘 수 있다
+from.key       «내 키» 중 어느 것이 남을 가리키나
+from.when      그 참조가 «언제» 성립하나. 판별자를 «키 이름»이 아니라 «조건»으로 쓴다
+               -> kind_key 같은 축을 따로 만들지 않는다. when 이 그 일을 한다
+to.entity/key  가리키는 «타입»과 그 타입의 «어느 키»에 값이 들어가나
+edge           합성될 엣지의 이름
+```
+🔴 **낱말이 매핑과 «다른» 것이 요지다**
+```
+매핑(원자를 낸다)   subject · predicate · target
+참조(합성 엣지)     from    · edge      · to
+```
+같은 낱말을 쓰면 읽는 사람이 「이 술어의 원자를 찾을 수 있다」고 읽는다. 못 찾는다.
+📌 절 이름을 `container` -> `references` 로 바꾼 것은 총괄 판단이다 — `container` 는
+   die 에만 맞는 낱말이고, 이 문법은 «어느 타입이든» 쓸 수 있어야 한다. 다르게 보시면 말씀 주십시오.
 🔴 **엣지 «이름»도 선언이 준다** (`edge`). 이름을 코드에 박으면 **A′ 가 다시 A 가 된다.**
 🔴 **합성한 엣지의 `basis` 는 «그 선언 파일 이름»을 담는다** — `binding` 이
    `mechanism_gate.CONFIG_FILENAME` 을 담는 것과 «같은 자리». 화면이 「이게 어디서 왔나」를
