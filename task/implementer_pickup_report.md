@@ -1,3 +1,56 @@
+# ✅ **D-1 확인 — 가정은 «맞습니다». 다만 기전이 한 칸 다르고, 그게 갈래를 바꿉니다** (구현자 21:2x)
+
+배선을 읽었습니다 (`server/parsers/directory_watcher.py`). 결론부터: **결함은 실재합니다.**
+그런데 「감시기가 «폴더 이름»을 table_name 으로 넘긴다」는 정확히는 아닙니다 —
+**폴더 이름을 `table_config` 로 «해석»한 뒤 넘깁니다.** 그 차이가 (a)/(b) 판단을 바꿉니다.
+
+## 실제 배선 — 세 줄
+```python
+:2923  folder_name    = os.path.basename(workspace_root)
+:2925  resolved_table = resolve_workspace_table(folder_name, table_config)
+:2947  table_name     = resolved_table or folder_name          -> handler(default_table_name=…)
+```
+```python
+:702 resolve_workspace_table
+     ① workspace_name 별칭이 폴더명과 일치하는 항목        -> 그 테이블
+     ② 폴더명이 «table_config 에 있는 테이블»이면          -> 폴더명
+     ③ 아니면 None                                       -> 호출부가 폴더명으로 폴백
+:1050 처리 시점의 _resolve_table_name 도 «같은 우선순위» (별칭 > 레거시 config > default)
+```
+
+## 🔴 그래서 「void」는 «폴백»이 아니라 «해석 결과»입니다
+```
+table_config 실측    void «선언돼 있음» · void_obs «선언돼 있음» · inspection_run «선언돼 있음»
+                    workspace_name 별칭을 가진 항목 «0»  <- 이 축은 아직 «아무도 안 씁니다»
+```
+`void` 가 «테이블로 선언돼 있어서» 규칙 ②가 `"void"` 를 돌려줍니다. 로그의 「Table: void」는
+그래서 나온 것이고, 파일이 오면 파서가 «거절»합니다 — 총괄 결론 그대로입니다.
+
+## 🔴 (a)「폴더를 지운다」는 «안 됩니다» — 다시 생깁니다
+```python
+:2877 _provision_workspaces  「table_config 에 등록된 각 테이블에 대해 표준 워크스페이스를 보충 생성」
+      discover_and_watch() 가 «매 기동마다» 먼저 호출합니다
+```
+`void` 가 table_config 에 선언돼 있는 한, 폴더를 지워도 **다음 기동에 되살아납니다.**
+지우려면 «테이블 선언»을 지워야 하고, 그건 「받을 능력을 없앤다」는 총괄 지적 그대로입니다.
+
+## 그래서 갈래는 «둘»입니다 — 판정 청합니다
+```
+(b) table_config 의 void 항목에  "workspace_name": …  선언
+    -> 별칭 축은 «이미 있고 소비자가 0» 입니다. 첫 사용이 됩니다
+    ⚠️ 방향에 주의: 별칭은 «폴더명 -> 테이블명»입니다. void/ 로 온 파일을 void_obs 로 보내려면
+       «void_obs 항목»에 "workspace_name": "void" 를 답니다 (void 항목이 아니라)
+    ⚠️ 그러면 void_obs 워크스페이스 폴더와 «둘»이 됩니다 -> 총괄이 말씀하신 「통로가 둘」
+(c) void 테이블 선언 자체를 은퇴시킨다  -> 폴더도 안 생기고 통로도 하나
+    ⛔ 「받을 능력」을 없애는 것이라 «운영 판정»입니다. 이 박스의 raws 0 은 근거가 못 됩니다
+```
+저는 안 골랐습니다. (b) 는 별칭 «방향»만 맞으면 코드 0줄이고, (c) 는 운영 영향이 있습니다.
+
+📌 그리고 총괄이 「제 추론에 검증 안 된 고리가 있다」고 «먼저» 표시하신 것 — 그 자리가
+   실제로 한 칸 어긋나 있었습니다(폴백 ≠ 해석). 표시가 없었으면 저도 그냥 확인만 했을 겁니다.
+
+---
+
 # ✅ **`to.keys` «여럿»으로 맞췄습니다 — 수는 그대로** (구현자 20:5x)
 
 📌 소유자가 「메시지체크」 하라고 하셔서 봤습니다. **총괄 메시지가 제 쪽에 안 닿아 있었습니다** —
