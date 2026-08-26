@@ -1,3 +1,81 @@
+# 🔴🔴 [구현자] ② — **`vocabulary.py` 를 지금 지우면 안 됩니다. 살아 있는 소비자가 있습니다** (총괄 06:5x)
+
+지시서에 「셋 다 같은 커밋」이라 적은 것은 **제 잘못입니다.** 앞의 둘(`legacy_import` ·
+`shadow_parity`)은 옳았고, 셋째는 **재 보니 성격이 다릅니다.** 지우기 전에 쟀습니다.
+
+## 무엇을 찾았나 — `ledger_trace.py:126-140`
+```python
+traversable = list(vocabulary.traversable_predicates())
+if len(traversable) != 1:
+    raise ResolverConfigError(...)          # 🔴 «정확히 하나»를 요구합니다
+predicate = traversable[0]                  # 오늘: derived_from
+direction  = vocabulary.walk_direction(predicate)
+```
+```
+ledger_trace 는 «라이브»입니다 — ledger_trace_router 가 SqlClaimLookup · _fetch ·
+relation_exists · ResolverConfigError 를 씁니다 (:64 · :82 · :207 · :587)
+```
+🔴 즉 `vocabulary.py` 를 지우면 **계보 walk 이 「없는 목록」을 세게 되고**, 그 자리는
+`len != 1` 이라 «거절»을 던집니다. 목록이 조용히 비는 게 아니라 «라우트가 하나 넘어갑니다».
+
+## 그리고 그 축은 «선언에 자리가 없습니다»
+```
+선언의 vocabulary 항목이 가진 칸   status · subjects · object
+vocabulary.py 가 더 가진 칸       traversable · direction · label_ko · layer · since …
+```
+`traversable` 은 «세 상태»입니다(True 통과 · False 도달만 · None 안 가져옴). 선언으로 옮기지
+않고 지우면 열 술어가 «전부 None» 이 되는데, 그건 「안 가져온다」는 뜻입니다 —
+**지우는 것이 «가장 제한적인 값으로 설정»이 됩니다.** 조용하고, 테스트는 초록입니다.
+
+## 📌 그런데 오늘 데이터에서는 그 walk 이 이미 «빈 답»입니다
+```
+유일한 traversable   derived_from
+그 술어의 원자        «0»   (선언엔 있고 원장엔 없습니다)
+```
+그래서 «지금 당장» 화면이 달라지지는 않습니다. 그게 이 자리를 위험하게 만듭니다 —
+「지워도 아무 일 없다」로 보이고, `derived_from` 이 들어오는 날 틀립니다.
+
+## ⚖️ 판정 — ②는 «오늘 밤 안 닫습니다». 갈래가 둘이고 둘 다 «소유자 판정»입니다
+```
+ⓐ 선언에 칸을 «만든다»   vocabulary 항목에 traversable · direction 을 추가
+                       -> 검증기 문법 + 라이브 선언 열 항목 + ledger_trace 가 선언에서 읽기
+                       한 축을 «코드에서 선언으로» 옮기는 것이라 이 프로젝트 방향과 맞습니다
+ⓑ 계보 walk 을 «은퇴»시킨다  derived_from 원자 0 이고, 걷기는 /subgraph 가 합니다
+                       -> 라우트가 하나 줄고 vocabulary.py 가 «그냥» 지워집니다
+                       ⛔ 「받을 능력」을 없애는 쪽이라 라우트 소비자를 «세고» 판정해야 합니다
+```
+**어느 쪽도 제가 새벽에 혼자 밀 것이 아닙니다.** 아침에 소유자 판정을 받겠습니다.
+
+## ✅ 지금 바로 할 수 있는 것 — 부류 나누기 «판별식»과 첫 판정 하나
+
+`vocabulary.py` 의 나머지 칸들은 이 셋으로 갈립니다:
+```
+① 선언의 «문법»       선언 파일이 «무엇을 말할 수 있나»       -> `setup_bundle.py`
+② 투영이 «내는 것»    walk 이 «무엇을 만들 수 있나»           -> `ledger_subgraph.py` (NODE_KINDS 옆)
+③ 도메인 «낱말»       어떤 술어·엔터티가 «있나»                -> «선언». 코드에 안 남깁니다
+   그 어느 것도 아니면 -> «멈추고 이 파일에 쓰십시오»
+```
+
+### 판정 ①: `OBJECT_KINDS` -> `setup_bundle.py`
+```
+값     frozenset{"value", "entity_ref", "event_ref"}
+정체   도메인 낱말이 «아닙니다» — 선언의 `object.kind` 가 «가질 수 있는 값»입니다. 즉 «문법»
+근거   가장 큰 소비자가 이미 거기입니다 (setup_bundle.py:827 의 undeclared_object_kind 거절)
+       그리고 문법의 «권위»는 정의상 검증기입니다
+소비자  config · config_authoring · roleframe · setup_bundle · ledger_admin · ledger_structure (+시험 2)
+```
+⛔ 새 모듈(`grammar.py` 류)을 «만들지 마십시오». 자연스러운 집이 이미 있습니다.
+
+나머지(`PROJECTION_ONLY_WORDS` · `LAYER_*` · `EDITABLE_LAYER` · `SIGNATURE_FIELDS` ·
+`DECL_REFUSALS` · `ISSUED_TYPES`)는 위 판별식으로 갈라서 **부류별로 한 줄씩 적어** 주십시오.
+`traversable`/`direction` 처럼 «어느 부류도 아닌» 것이 또 나오면 그것도 멈추는 자리입니다.
+
+## 📌 제가 오늘 밤 여기서 배운 것
+「같은 근거로 죽는다」고 셋을 한 묶음으로 적었는데, **근거가 같았던 것은 둘뿐**이었습니다.
+`legacy_atom 0` 은 앞의 둘을 죽이지만 셋째와는 «상관이 없습니다» — 셋째는 자기 소비자가 따로
+있었고, 저는 그 소비자를 «세지 않고» 묶었습니다. 부류로 판정할 때도 «구성원은 세야» 합니다.
+
+---
 # ⚖️ [양쪽] ⑥ 검수 판정 — **두 레인이 제 수를 잡았고, 둘 다 맞습니다** (총괄 06:3x)
 
 ## ① 제 수 «둘 다» 틀렸습니다. 다시 재서 확인했습니다
