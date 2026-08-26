@@ -6434,6 +6434,82 @@ admin 탭 «여섯» · tab-ledger-btn/ledger-tab-wrapper 없음 · Ontology Exp
 
 ---
 
+## 🧭 핵심가치 5개 — 현상태 광범위 점검 (총괄 실측 2026-08-26, 소유자 요청)
+
+**둘이 «조용히 꺼져» 있다.** 오류도 안 나고 아무도 모른다.
+
+### ① 최소 공수 교정 — 🔴 «계기»가 죽어 있다
+```
+GET /dashboard/summary  ->  «500»
+   그 응답이 나르는 것:  effort (정본 계기) · recorrection (보조 계기)
+```
+SSOT §1 이 「이 값은 **소급 산출 불가**」라 못 박는다 -> **꺼져 있는 동안의 공수는 영영 없다.**
+📌 원인 미특정. 서버 로그에 트레이스백이 «안 남는다»(로그 파일이 기동 이후 안 자람) — 그 자체도 문제.
+
+### ② 온톨로지 / 지식 그래프 — 🟡 돈다. 다만 «83%가 잎»
+```
+BW 씨앗 6홉 -> 노드 1,248
+  Value 1,032 «83%» · wafer 134 · die 39 · Finding Collection 28 · Quantity 9 · recipe 5 · lot 1
+  🔴 dtjob «0»   ·   mat_type='DT' die «0»
+```
+「불량 WF 선택 -> 연관 공정 이력 전부 소환」이 정의인데 소환된 것의 83%가 «더 못 걷는 잎»이다.
+-> 재건이 이걸 고치는 중.
+
+### ③ 실시간 신뢰 전파 — 🔴 두 곳이 끊겨 있다
+```
+삭제       철회 컬럼 «없음» · supersedes «0건»   -> 소스가 지워져도 원장은 계속 말한다
+늦은 도착   백필 커서 = event_time (세상 시각)
+           -> 늦게 온 «옛 타임스탬프» 행을 백필이 못 본다 (backfill.py 주석이 스스로 적음)
+```
+
+### ④ 다중 소스 레이어링 — ⚪ 판정 보류 (안 쟀다)
+원장 층에서 보이는 것만: `supersedes` «0건». 레이어링은 셀 층(`cell_overwrites`)에 있고
+원장 층엔 «없다». 설계인지 누락인지 «재 보지 않았으므로 판정하지 않는다».
+
+### ⑤ 변경 이력 추적 — 🟢 남는다. 다만 재적재가 지운다
+append-only 라 남고, `frame_confirmation` 은 `superseded_by` 로 판 이력까지 (75중 52).
+재적재가 그걸 지우는데 -> 이번 `ledger_events_pre_rebuild` 가 정확히 그 답이다
+(**지우지 말고 직전 판을 남긴다**). 재투영마다 이 패턴을 쓴다.
+
+---
+
+## 🎯 온톨로지 액션 산출까지 — **걸음 «하나»** (실측 2026-08-26)
+
+배선을 끝까지 따라갔다:
+```
+액션 층 코드     ✅ enrichment_actions.py — 두 결(claim_resolution · source_contract) 선언됨
+씨앗으로 받기     ✅ decode_node_id 가 ledger-enrich-action:v1: 을 받는다
+walk 에 배선     ✅ 라우트 기본값 enrich_actions = True — «매 walk 마다» 요청된다
+규칙            ✅ 4개, 그리고 «돌고 있다» (frame_confirmation 99판이 그 산물)
+────────────────────────────────────────────────────
+🔴 산출          «0»   씨앗 wafer 로도 0, dtjob 으로 «직접» 줘도 0 (노드 2 · 엣지 1)
+```
+원인은 walk 이 아니다. **`enrichment_actions.py:194`**:
+```python
+self.rules = { rule["name"]: rule for rule in (rules or [])
+               if rule.get("claim_contract") }      # ← 없으면 «조용히» 빠진다
+```
+실측 — `claim_contract` 선언: **0 / 4**
+```
+dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log
+전부 «없음»
+```
+🔴 **액션 층이 규칙을 «하나도 안 본다».** 층은 완성 · 배선됨 · 기본값 켜짐 — 그런데 «선택 선언»
+하나가 어디에도 없어서 목록이 빈 채로 돈다. 오류도 안 나고 아무 일도 안 일어난다.
+[[deleting-an-optional-declaration-turns-it-off]] · [[landed-is-not-wired]] 그대로, 그것도 «넷 전부».
+
+**남은 걸음:**
+```
+1걸음   규칙 넷에 claim_contract 를 «선언»한다
+        (label_ko · version · 관측 소스 · coverage · translator · 확정 권한)
+        -> 그 순간 액션이 나온다. 코드 변경 «0»
+```
+📌 **지금 시키지 않는다.** 재건이 `dt_job` 결과 `lot_slot` 어휘를 바꾸는 중이고 `claim_contract` 는
+그 어휘를 가리켜야 한다. 재건 «뒤»에 써야 한 번에 맞는 선언이 된다. 지금 쓰면 이틀 뒤 다시 쓴다.
+
+**요약:** 다섯 중 «둘이 조용히 꺼져» 있고(①의 계기 · 액션 층), 둘은 재건이 고치는 중이고(②·③ 일부),
+하나는 답이 이미 잡혀 있다(⑤). ④는 안 쟀다.
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
