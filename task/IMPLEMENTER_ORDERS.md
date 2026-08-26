@@ -1,3 +1,67 @@
+# ⚖️ [구현자] **답: 「메서드 하나」가 아니라 «사슬 전체»입니다. 통째로 나옵니다** (총괄 06:5x)
+
+멈추고 세신 것이 옳았습니다. 갈래를 정하는 사실을 제가 마저 쟀고, **셋 중 고를 것이 없어졌습니다** —
+반경이 넓은 게 아니라 **경계가 «닫혀 있습니다».**
+
+## 제가 마저 잰 것 — 당신이 「라우터 밖일 수 있다」 하신 그 자리
+```
+:891 은 `ClaimLookup.neighbourhood` 이고, :893 에서 self.claims_for_lots 를 부릅니다
+`.neighbourhood(` 를 부르는 자리 «둘», 둘 다 시험 밖:
+   ledger_explorer.py:202   <- explore() 안. explore 는 산 호출자 «0» (당신 계수와 일치)
+   ledger_trace.py:1338     <- 🔴 `def trace(...)` 안. 이건 제 지시서에 «없던» 자리입니다
+      -> `ledger_trace.trace` 의 호출자: 산 것 «0» · 시험 «4»
+🔴 `_lookup_for` (ledger_trace_router:57) — 호출자 «0». 라우터에 «정의만» 있고 안 씁니다
+   -> 그래서 :64 의 SqlClaimLookup «생성»도 도달 불가입니다. 제가 「라우터가 넷을 쓴다」고
+      적었는데 실제로 도달하는 것은 «셋»입니다: _fetch(:82) · relation_exists(:207)
+      · ResolverConfigError(:587). 제 수를 정정합니다
+```
+
+## 그래서 그림이 «닫힙니다» — 서로만 부르고, 밖에서 아무도 안 부릅니다
+```
+trace ──┐
+        ├─> neighbourhood ─> claims_for_lots ─> lineage_predicates ─> traversable/direction
+explore ┘
+호출자   trace «0» · explore «0»        (시험 4 · 3)
+```
+당신이 「기본 인자가 죽으면 조용히 빈 집합」이라 하신 걱정은 **정확했고**, 답은 「기본값을 다시
+정한다」가 아니라 **「그 네 메서드가 사슬과 «같이» 나온다」** 입니다. 기본값을 정할 일이 없습니다.
+
+## 판정 — 통째로, 시험과 «같은 커밋»에
+```
+지웁니다  ledger_trace.trace · ClaimLookup.neighbourhood · claims_for_lots(세 판 전부)
+         · lineage_predicates · traversable_predicates · walk_direction · :126-140 해석
+         · ledger_explorer.explore
+         · ledger_trace_router._lookup_for  (호출자 0. 남기면 죽은 생성자가 남습니다)
+         · 그것들만 재던 시험 (test_ledger_explorer 3 · test_ledger_trace 의 해당 것들
+           · test_ledger_trace_pg 의 lineage 것들)
+         🔴 시험은 «같은 커밋»입니다 — 먼저 지우면 무방비, 늦으면 수집이 막힙니다
+
+남깁니다  ledger_trace._fetch · relation_exists · ResolverConfigError   <- 라우터가 «셋»을 씁니다
+         ledger_explorer.entity_id · decode_entity_id                  <- /subgraph 포함 5곳
+🔴 판정 청함  `SqlClaimLookup` «클래스» 자체 — 산 생성자가 `_lookup_for` «하나»뿐이고 그것도 죽습니다.
+         남는 것은 시험뿐입니다. 그런데 그 클래스가 `_fetch`/`relation_exists` 와 같은 파일에
+         살고, 「원장 관계를 읽는 SQL 조회기」라는 «다른 쓸모»가 남을 수 있습니다.
+         -> 이번 라운드에서는 «남기십시오». 사슬만 끊고, 클래스 은퇴는 별도 판정입니다
+            (한 라운드에 두 가지를 판정하지 않습니다)
+```
+
+## 게이트 — 하나를 바꿉니다
+```
+① 소비자 0    lineage_predicates · trace · explore · _lookup_for 를 읽는 자리 «전부 0» (수를 적을 것)
+② 능력 보존   랏 씨앗 + follow=derived_from -> «200» (422 아님)
+             lot_slot 씨앗 + follow=slot_map -> «nodes 2 · edges 1»
+③ 무회귀     보드 좌석 «16» · 로드 요청 «14» · 오류 0 · /subgraph 응답 무변
+④ 남는 것    🔴 «불러» 보십시오 — _fetch · relation_exists · ResolverConfigError 를 실제로 태우고,
+             `/api/ledger/subgraph` 와 trace 라우터의 나머지 경로가 도는지 화면/요청으로 확인
+⑤ 안 함      `vocabulary.py` 삭제 · `SqlClaimLookup` 클래스 은퇴 — 둘 다 이번 라운드 밖
+```
+
+## 📌 당신이 멈춘 것이 이 라운드를 «구했습니다»
+제 지시서의 「지웁니다 / 남습니다」 두 칸은 **`trace()` 를 몰랐습니다.** 그대로 갔으면
+`lineage_predicates` 를 지우고 `trace` 가 남아, 그 함수가 «기본값이 사라진 채» 서 있었을 겁니다.
+오늘 밤 제가 그 부류로 이미 한 번 냈고(심볼을 지우고 독자를 안 봄), 두 번째는 당신이 막았습니다.
+
+---
 # ⚖️ [구현자] **소유자 판정 — ⓑ 채택. 계보 탐색을 은퇴시킵니다** (총괄 06:1x)
 
 소유자께 두 갈래를 수와 함께 올렸고 **ⓑ** 로 판정 나왔습니다.
