@@ -1,3 +1,54 @@
+# ✅ 회귀 수정 확인 (`02ff6abd`) — **불러서** 봤습니다 (총괄 07:5x)
+```
+_check_object_declaration(value)  ->  「required 가 필요하다」는 «내용 있는» 거절  (NameError 아님)
+_check_object_declaration(none)   ->  «[]»  통과            <- 합친 집합이 실제로 적용됩니다
+_check_object_declaration(nope)   ->  «undeclared_object_kind»  <- 가드가 삽니다
+check_signature_against(...)      ->  두 호출 다 문장을 돌려줍니다 (:1059 도 해결)
+동일성                             vocabulary.OBJECT_KINDS «is» setup_bundle.OBJECT_KINDS  -> True
+```
+「같은 객체」까지 본 이유는, 두 이름이 «같은 값의 다른 객체»면 나중에 한쪽만 고쳐지기 때문입니다.
+
+---
+
+# 🔴🔴 그러다 나온 것 — **v1 어휘는 «낡은 게 아니라 틀렸습니다». 원장의 8 중 «7»이 어긋납니다**
+
+②의 열린 판정(ⓐ 선언으로 옮기기 / ⓑ 계보 walk 은퇴)에 필요한 수라 재 봤습니다.
+
+```
+predicate        v1 어휘의 subject          원장 실측      판정
+bonded_from      «없음»                     die           🔴 v1 에 술어 자체가 «없음»   18,545
+has_netdie       «없음»                     dtjob         🔴 «없음»                      396
+inspected        «없음»                     wafer         🔴 «없음»                  117,662
+transfer         «없음»                     die           🔴 «없음»                  401,206
+observed         ['Wafer']                  die           🔴 어긋남                  103,841
+register         ['Lot','Wafer','Product'…] dtjob         🔴 어긋남                      396
+slot_map         ['Lot']                    lot_slot      🔴 어긋남                      135
+processed_with   ['Wafer']                  wafer         ✅ 맞음                      3,022
+```
+```
+어긋나는 술어   «7 / 8»
+그 술어들이 든 원자   642,181 / 645,203  =  «99.5%»
+맞는 것       processed_with 하나 (3,022 원자 = 0.5%)
+```
+
+## 🔴 그래서 ②의 질문이 «좁아집니다»
+「v1 어휘를 유지할까」는 이제 **선택지가 아닙니다.** 그 파일을 «권위»로 쓰는 게이트는
+원장 원자의 99.5% 에 대해 «틀린 답»을 들고 있습니다. 오늘 조용한 이유는 그 게이트들이
+대부분 도달 불가 경로에 있기 때문이고, 그건 안전이 아니라 [[a-guard-goes-wrong-the-day-it-becomes-reachable]] 입니다.
+
+남는 질문은 «하나»뿐입니다 — **`traversable`/`direction` 을 어떻게 하나.**
+그건 어휘가 아니라 «walk 정책» 축이고, 그래서 선언에 자리가 없는 것도 이해가 됩니다.
+```
+ⓐ 선언에 칸을 «만든다»      vocabulary 항목에 traversable · direction
+                          -> 검증기 문법 + 라이브 열 항목 + ledger_trace 가 선언에서 읽기
+ⓑ 계보 walk 을 «은퇴»       유일한 traversable = derived_from, 원자 «0»
+                          걷기는 /subgraph 가 하고, ⑦이 라우트를 줄이는 방향입니다
+```
+📌 위 표는 **ⓑ 쪽을 가리킵니다** — 그 walk 이 서 있는 어휘가 오늘 원장과 안 맞고, 그 walk 이
+   따라가는 유일한 술어는 원자가 0 입니다. 다만 「받을 능력을 없앤다」이므로 **소유자 판정**입니다.
+   ⓐ 를 고르셔도 그 표는 그대로 필요합니다 — 열 술어의 traversable 값을 «누가 정하나»가 남습니다.
+
+---
 # 🔴🔴 [구현자] `6da3a177` — **지운 심볼을 «읽는 자리 둘»이 남았습니다. 하나는 라이브 경로입니다** (총괄 07:4x)
 
 판정은 맞았고 이동도 맞습니다. 게이트 넷 중 셋은 통과합니다:
