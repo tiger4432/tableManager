@@ -455,14 +455,29 @@ One block, in `entities`. Nothing else in the declaration moves; the vocabulary 
   "keys": ["mat_id", "x", "y", "mat_type"],
   "references": [
     { "edge": "in_container",
-      "from": { "key": "mat_id", "when": { "mat_type": "Wafer" } },
-      "to":   { "entity": "wafer@1", "key": "wafer"  } },
+      "from": { "when": { "mat_type": "Wafer" } },
+      "to":   { "entity": "wafer@1", "keys": { "wafer":  { "key": "mat_id" } } } },
     { "edge": "in_container",
-      "from": { "key": "mat_id", "when": { "mat_type": "DT" } },
-      "to":   { "entity": "dtjob@1", "key": "dt_job" } }
+      "from": { "when": { "mat_type": "DT" } },
+      "to":   { "entity": "dtjob@1", "keys": { "dt_job": { "key": "mat_id" } } } }
   ]
 }
 ```
+
+🔴 `to.keys` IS PLURAL (owner's ruling, reason: 「문법을 두 번 건드리지 않는다」). A container can
+need more than one key -- a lot slot is (lot, slot) -- so a singular `to.key` would have to be
+widened the day the DT tray arrives. It is spelled the way `bind.….keys` already is,
+`{target key: binding}`, so the file reads one way throughout and a `{"value": …}` binding can
+join later without another grammar change. `{"wafer": "mat_id"}` is accepted as shorthand.
+⚠️ That spelling is my choice, not a quote -- the reader is the only thing that defines this
+grammar today. If the owner meant a different spelling it is one line in
+`entity_references.targets_for`.
+
+`from.key` is gone: with the target naming which of my keys fills each of its own, `from` is
+left holding only `when`, the condition that decides whether the reference applies at all.
+
+Measured with the plural shape: identical to the singular run -- 839 nodes, 117 in_container,
+601 wafers, 14 dtjobs, 5 recipes, 0 dangling. The shape changed, not the meaning.
 
 `DTLotSlot` is deliberately absent: that entity does not exist yet, and declaring it would draw
 edges to nodes that open empty.

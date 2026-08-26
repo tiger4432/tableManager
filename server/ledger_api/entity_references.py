@@ -11,8 +11,8 @@ module only reads what it says.
       "keys": ["mat_id", "x", "y", "mat_type"],
       "references": [
         { "edge": "in_container",
-          "from": { "key": "mat_id", "when": { "mat_type": "Wafer" } },
-          "to":   { "entity": "wafer@1", "key": "wafer" } }
+          "from": { "when": { "mat_type": "Wafer" } },
+          "to":   { "entity": "wafer@1", "keys": { "wafer": { "key": "mat_id" } } } }
       ]
     }
 
@@ -26,6 +26,13 @@ precedent -- both are drawn by the projection and neither appears in the vocabul
 
 ⚠️ THE WORDS ARE `from` / `edge` / `to`, NOT `subject` / `predicate` / `target`. A mapping emits
 an atom; a reference composes an edge. Same words would promise the wrong thing.
+
+🔴 `to.keys` IS PLURAL, AND THAT IS THE POINT (owner's ruling, 2026-08-26). A container can need
+more than one key to be named -- a lot slot is (lot, slot) -- so a singular `to.key` would have
+to be widened the day the DT tray arrives, and the reason given for plural was 「문법을 두 번
+건드리지 않는다」. It is spelled the way `bind.…​.keys` already is, `{target key: binding}`, so the
+same file reads one way throughout and a `{"value": …}` binding can join later without another
+grammar change. `{"wafer": "mat_id"}` is accepted as shorthand for `{"wafer": {"key": "mat_id"}}`.
 """
 from __future__ import annotations
 
@@ -97,15 +104,30 @@ def targets_for(entity_type, keys):
     for ref in load().get(_bare(entity_type), ()):
         source = ref.get("from") or {}
         target = ref.get("to") or {}
-        edge = ref.get("edge")
-        key, entity, target_key = source.get("key"), target.get("entity"), target.get("key")
-        if not (edge and key and entity and target_key):
+        edge, entity = ref.get("edge"), target.get("entity")
+        bindings = target.get("keys")
+        if not (edge and entity and isinstance(bindings, dict) and bindings):
             continue
         when = source.get("when") or {}
-        if any(str(keys.get(k)) != str(v) for k, v in when.items()):
+        if any(str(keys.get(name)) != str(value) for name, value in when.items()):
             continue
-        value = keys.get(key)
-        if value in (None, ""):
-            continue
-        out.append((str(edge), _bare(entity), {str(target_key): value}))
+        target_keys, complete = {}, True
+        for target_key, binding in bindings.items():
+            if isinstance(binding, str):
+                binding = {"key": binding}
+            if not isinstance(binding, dict):
+                complete = False
+                break
+            if "value" in binding:
+                value = binding["value"]
+            else:
+                value = keys.get(binding.get("key"))
+            # 🔴 A PARTLY NAMED CONTAINER IS NOT A CONTAINER. One missing key would compose an
+            # edge to an id built from a hole, which resolves to nothing and opens empty.
+            if value in (None, ""):
+                complete = False
+                break
+            target_keys[str(target_key)] = value
+        if complete:
+            out.append((str(edge), _bare(entity), target_keys))
     return out
