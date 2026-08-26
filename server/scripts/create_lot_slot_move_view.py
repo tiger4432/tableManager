@@ -24,6 +24,18 @@ The dedup is identity dedup -- the SAME move seen from two sides -- not a fold t
 information, so "one row is one move" still holds. The gate asserts it: row count must equal the
 distinct-tuple count.
 
+🔴 `event_type` IS CARRIED, NOT INFERRED. The source records split / merge / track_in, and an
+earlier draft of this view dropped it on the grounds that "the lot names say which way it went".
+That is a derivation standing in for a record, which is the failure this project keeps meeting.
+
+⚠️ WHICH ROW'S TYPE, MEASURED: taking the GIVING row's type in both arms breaks the contract --
+187 rows for 135 moves, because a move seen from both sides then carries two types. Taking the
+type of the row that RECORDED each arm keeps 135 = 135. So the type belongs to the record, not
+to the move, and the dedup stays honest.
+
+📌 `track_in` never becomes a move: 0 of the 5 track_in rows have a child_lot or a parent_lot,
+so there is no counterparty to pair with. That is correct -- a track-in is not a move.
+
 🔴 THE GATE IS 21. Independently of this view, the ledger's own `slot_map` qualifiers say 21
 moves change slot. Two unrelated paths -- pairing lot_event rows here, and reading the existing
 atoms' qualifiers -- have to land on the same 21. If they do not, the pairing is wrong.
@@ -56,7 +68,7 @@ EXPECTED_CHANGES = 21
 
 #: (lot, slot, wafer), one row per occupied seat, from the two positionally-paired lists.
 SEATS = """
-    SELECT e.lot, e.parent_lot, e.child_lot, e.event_time, s.slot, w.wafer
+    SELECT e.lot, e.parent_lot, e.child_lot, e.event_time, e.event_type, s.slot, w.wafer
       FROM lot_event e
       CROSS JOIN LATERAL unnest(string_to_array(e.slot_numbers, ':'))
                   WITH ORDINALITY AS s(slot, i)
@@ -72,14 +84,14 @@ CREATE_SQL = f"""
 CREATE VIEW {VIEW} AS
 SELECT a.lot AS from_lot, a.slot AS from_slot,
        b.lot AS to_lot,   b.slot AS to_slot,
-       a.wafer, a.event_time
+       a.wafer, a.event_time, a.event_type
   FROM ({SEATS}) a
   JOIN ({SEATS}) b ON b.lot = a.child_lot AND b.wafer = a.wafer
  WHERE a.child_lot IS NOT NULL
 UNION
 SELECT b.lot AS from_lot, b.slot AS from_slot,
        a.lot AS to_lot,   a.slot AS to_slot,
-       a.wafer, a.event_time
+       a.wafer, a.event_time, a.event_type
   FROM ({SEATS}) a
   JOIN ({SEATS}) b ON b.lot = a.parent_lot AND b.wafer = a.wafer
  WHERE a.parent_lot IS NOT NULL"""
@@ -114,6 +126,8 @@ def main(argv=None):
             wafers = c.execute(text(f"SELECT count(DISTINCT wafer) FROM {VIEW}")).scalar()
             no_time = c.execute(text(
                 f"SELECT count(*) FROM {VIEW} WHERE event_time IS NULL")).scalar()
+            typed = c.execute(text(
+                f"SELECT count(*) FROM {VIEW} WHERE event_type IS NOT NULL")).scalar()
             ledger_changes = c.execute(text(LEDGER_CHANGES_SQL)).scalar()
 
             print("   lot_event rows               %8d" % events)
@@ -131,10 +145,16 @@ def main(argv=None):
             print("   distinct wafers moved        %8d" % wafers)
             print("   rows with no event_time      %8d   %s"
                   % (no_time, "OK" if no_time == 0 else "<- no time to order the chain by"))
+            print("   rows carrying event_type     %8d   %s"
+                  % (typed, "OK - the record is kept" if typed == rows
+                     else "<- %d moves lost what the source recorded" % (rows - typed)))
+            for kind, n in c.execute(text(
+                    f"SELECT event_type, count(*) FROM {VIEW} GROUP BY 1 ORDER BY 2 DESC")):
+                print("      %-12s %8d" % (kind, n))
 
             ok = (rows == EXPECTED_ROWS and distinct == rows
                   and changes == EXPECTED_CHANGES and changes == ledger_changes
-                  and no_time == 0)
+                  and no_time == 0 and typed == rows)
             print("\n   GATE: %s" % ("PASS" if ok else "FAIL"))
             if ok and args.apply and args.allow_owner:
                 c.commit()

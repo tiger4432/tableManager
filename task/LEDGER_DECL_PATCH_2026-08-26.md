@@ -181,14 +181,16 @@ own names say which direction it went.
   },
   "map": {
     "implementation_id": "declarative-role", "implementation_version": 1,
-    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer", "event_time"],
+    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer",
+                      "event_time", "event_type"],
     "unit": { "kind": "row" }
   },
   "prepare": {
     "accepts_verified_join_rules": false,
     "implementation_id": "direct-join", "implementation_version": 1,
     "inherit_virtual_join_rules": [],
-    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer", "event_time"],
+    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer",
+                      "event_time", "event_type"],
     "output_columns": {}
   },
   "bind": {
@@ -210,13 +212,20 @@ own names say which direction it went.
               "lot":  { "kind": "column", "column": "to_lot"  },
               "slot": { "kind": "column", "column": "to_slot" }
             }
-          }
+          },
+          "event_type": { "kind": "column", "column": "event_type" }
         }
       }
     }
   }
 }
 ```
+
+**`event_type` IS a qualifier, and must be.** The source records split / merge / track_in; an
+earlier draft dropped it because "the lot names say which way it went", which is a derivation
+standing in for a record. It is the move's property, not an identifier, so the qualifier is
+where it belongs -- the same seat `bonded_from` used for `core_slot`. Measured after carrying
+it: 135 of 135 rows typed, split 85 / merge 50.
 
 **No `wafer` qualifier.** Plan §4 ⑤: a qualifier holds no identifier, and if the name exists as
 a node the fact is an edge. The wafer link is already an edge — change ② makes `in_slot` emit
