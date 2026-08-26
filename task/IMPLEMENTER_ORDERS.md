@@ -1,3 +1,82 @@
+# ✅ ① 착지 — 소유자 체인이 «라이브»에서 걸립니다. 서버도 올렸습니다 (총괄 23:0x)
+
+당신의 검증기(`e174a831`)를 받아 **총괄이 직접** 여섯 모양을 다시 먹여 보고, 라이브에 적용하고,
+서버를 올리고, 체인을 **제 계측기로** 걸었습니다.
+
+## ⓪ 검증기 재확인 — 받아들일 것은 받고, 틀린 철자는 «이름으로» 거절합니다
+```
+BASELINE (references 없음)      ACCEPTED
+제안된 블록                      ACCEPTED
+target 이 선언 안 된 엔터티        refused  to.entity: must name a declared entity
+내가 없는 키를 바인딩              refused  to.keys.wafer.key: must name one of this entity's identity keys
+옛 단수 from.key/to.key          refused  from.key: field is not allowed; allowed here: when
+빈 목록                         refused  references: must be a list with at least one item
+```
+
+## ① 적용 — 라이브 `server/config/ontology/ledger_config.json`
+```
+sha256   594d46eb (37,459B)  ->  «795a62e0» (38,181B)      백업 .bak-0826_2300
+diff     +34  /  -0            <- 지운 줄 «없음»
+검증     쓰기 «직전의 그 바이트»에 validate_bundle_errors(catalog=live) -> ()
+```
+🔴 **가드가 두 번 멈춰 세웠습니다 — 그리고 그게 옳았습니다.** 제 writer 가 파일을 재현하지 못했고,
+원인은 내용이 아니라 «줄바꿈»이었습니다:
+```
+파일    CRLF · 1,459줄 · «끝에 개행 없음»
+내 것   LF   · 끝에 개행 «있음»          -> 통째로 다시 쓰면 1,460줄이 전부 바뀝니다
+```
+그대로 썼으면 diff 가 「+1460 -1459」로 나와, 그 안의 제 34줄을 **아무도 못 봤을 겁니다.**
+「손대지 않은 파일을 내 writer 가 바이트로 재현하는가」를 먼저 물은 것이 그것을 잡았습니다.
+
+## ② 서버 재기동 — «제가» 했습니다
+```
+죽임   PID 44040 (2026-08-25 22:14 기동 · 24.7시간)
+올림   PID 46404  python -m uvicorn main:app --host 0.0.0.0 --port 8080  (conda assy_manager)
+확인   GET /api/ledger/kinds -> 200
+```
+🔴 **당신이 오늘 착지시킨 코드는 이제부터 «처음» 돕니다.** 그 전 측정은 전부 옛 프로세스입니다.
+
+## ③ 소유자 체인 — 총괄 실측 (당신 수와 «독립적으로» 같습니다)
+```
+씨앗   ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDEtMTYifV0
+       hops=6 · direction=both · node_limit=1000 · edge_limit=3000
+
+nodes «839»   wafer 601 · die 156 · Finding Collection 28 · Quantity 21 · dtjob 14 · Value 14 · recipe «5»
+edges «3,000» processed_with 2,621 · «in_container 117» · transfer 78 · finding 56
+              · inspected 39 · bonded_from 39 · has_findings 28 · has_netdie 14
+recipe «5»    SYN-R-CLEAN-01 · SYN-R-CMP-01 · SYN-R-DEPO-01 · SYN-R-ETCH-01 · SYN-R-PHOTO-01
+코어  «29 / 29»  (SQL 로 따로 뽑은 29개가 walk 의 wafer 노드에 «전부» 있습니다)
+매달린 엣지 «0»
+```
+**도착지 ①의 문장이 그대로 참입니다.**
+
+## ④ 보드 무회귀 — 브라우저로 직접
+```
+패널 12 · 요청 13 · «전부 200» · 보드 자체 오류 0
+부재는 문장으로: 「이 웨이퍼는 구성 기록이 없습니다 — 구성은 본딩된 «칩»에만 있습니다」
+닿는 곳: 「marking:1 이 이 목록의 주어입니다」 = «아직 안 골랐다» (마킹이 비었으니 옳습니다)
+```
+⚠️ 콘솔의 `admin-*.js` 오류와 410 둘은 **루트 페이지(`/`)의 것**이고 보드 것이 아닙니다.
+
+---
+
+# 📌 재적재가 «주어 타입의 철자»를 바꿨습니다 — 씨앗을 만드시는 분은 보십시오
+제가 여기서 한 번 헛돌았습니다. 옛 철자로 씨앗을 만들면 **walk 이 «노드 1 · 엣지 0»** 을 답합니다 —
+거절이 아니라 「닿는 곳이 없다」로 보입니다.
+```
+지금의 주어 타입   die 523,592 · wafer 120,684 · dtjob 792 · lot_slot 135      <- «전부 소문자»
+옛 철자          'Wafer' 로 물으면 주어 원자 «0» -> 씨앗만 돌아옵니다
+```
+🔴 **이건 결함이 아니라 «선언대로»입니다** (`wafer@1` -> `wafer`). 다만 옛 씨앗 문자열을 들고 있는
+스크립트·문서·하니스가 있으면 «조용히 빈 답»을 받습니다. 그런 자리를 만나면 보고하십시오.
+
+---
+
+# 그래서 지금 대기열 — ⑤ · ② · ⑥ 이 «전부 열렸습니다»
+①이 막고 있던 것이 없어졌으니 위 블록의 순서대로 진행하십시오.
+⑤(인덱스)는 시작 전에 이 파일에 한 줄, ②(구설계 삭제)는 `OBJECT_KINDS` 옮길 곳을 모르면 멈추고 물으십시오.
+
+---
 # 🔴 ②를 막고 있던 것이 «없어졌습니다» — 그 근거가 오늘 새벽에 낡았습니다 (총괄 23:0x 실측)
 
 `ledger_trace_router._followable_predicates()` 는 지금 **코드 ∪ 선언**의 합집합이고,
