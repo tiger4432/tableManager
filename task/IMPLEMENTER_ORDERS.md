@@ -1,3 +1,49 @@
+# 🔴 **다음 걸음 = dry-run «먼저». 재적재는 그다음** (총괄 16:0x)
+
+⚠️ 이 지시를 14:3x 에 «메시지로만» 보냈습니다. 총괄 규율(판정은 파일에 «먼저»)을 제가 어겼고,
+그래서 100분간 라운드가 서 있었습니다. 파일에 옮깁니다 — 이것이 정본입니다.
+
+## 선언은 «이미 적용»돼 있습니다
+```
+ledger_config  27f1dc05 (33,716B)  ->  6de3360d (36,007B)
+table_config   fb19a1be           ->  79dff61d
+백업 둘 · 사본 검증 PASS -> 라이브 재검증 PASS
+매핑  bonded-die-from-core-die (bonded_from@1)  ·  bw-die-to-dt-seat (transfer@1)
+```
+📌 총괄도 자기 체크리스트 ③에 걸렸습니다 — 뷰가 `core_seat`·`core_wafer` 를 얻었는데
+`table_config` 선언에 없어 「column 'core_wafer' is not in EventFrame schema」로 거절당했습니다.
+검증기가 잡았고 같이 넣었습니다. **선언은 «세 곳»이 같이 움직인다는 그 규칙 그대로입니다.**
+
+## 🔴 재적재 «전»에 dry-run — 구현자가 「결정 못 하겠다」고 남긴 것의 답을 «잰다»
+```
+gate.py:52     「분자의 어느 조각이든 refuse 가 나면 그 분자는 끝」
+               -> 코어가 NULL 인 278,475행에서 DT 자리 엣지까지 같이 죽을 수 있다
+refuse() 주석   「a molecule with no resolvable «subject»」
+               -> 여기서 널인 건 «target». 문서로는 «안 갈린다»
+```
+**추측 금지. `server/ledger/dry_run.py` 로 잰다.** 판정 규칙은 미리 적는다:
+```
+refused_molecules ≈ 0        -> 널 target 은 «그 매핑만» 건너뛴다. 한 relation 그대로  ✅
+refused_molecules ≈ 278,475  -> 분자가 통째로 죽는다 -> 🔴 relation 을 «둘로»
+                               (bonded_from 은 core_wafer IS NOT NULL 로 거른 뷰에서)
+그 사이 수                    -> 그 수가 «무엇인지» 적고 멈춘다
+```
+기대치도 «먼저» 적는다 — 그래야 그럴싸한 수에 안 속는다:
+```
+bonded_from  약 «18,545»  (core_wafer 가 있는 행)
+transfer     약 «371,593» + 기존 29,613
+```
+
+## 게이트 (재적재 후)
+```
+① 소유자 체인이 «코어 29 · recipe 5» 에 닿는다 (direction=both)
+② 인덱스 8/8 «유효» — 세어서 확인 (개명이 없으니 안 걸릴 것이나 «센다»)
+③ bonded_from 원자 수 == core_wafer 있는 행 수(18,545). 다르면 그 차이가 답이다
+④ 「코어 구간은 «5%»에서 닫힌다」를 보고에 적는다 (25% 아님)
+```
+⛔ 3구간(dt_seat -> dt_job) · 2구간(dt 자리 ×3) 은 이번 라운드 밖.
+
+---
 # ✅ **술어 이름 = `transfer@1` (새로 안 만든다). 그리고 «판정 ③은 제가 틀렸습니다»** (총괄 15:2x)
 
 ## 총괄 검증 — 뷰 확장 통과
