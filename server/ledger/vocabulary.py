@@ -72,9 +72,13 @@ import re
 
 #: Object kinds, exactly as pinned for slice 1. `None` additionally means ∅ and is
 #: legal only for a predicate whose signature declares `object` as `None`.
-#: RETIRED 2026-08-27 -- this held a second, SHORTER spelling of the object kinds (no
-#: "none"), and the live declaration uses `none`. The one spelling is
-#: `ledger.setup_bundle.OBJECT_KINDS`, with the validator that refuses by it.
+#: MOVED 2026-08-27 -- this held a second, SHORTER spelling of the object kinds (no
+#: "none"), and the live declaration uses `none`. The one spelling now lives with the
+#: validator that refuses by it. Imported rather than re-declared, because two readers
+#: BELOW use the bare name and deleting the line alone left them raising NameError on a
+#: path the admin dry-run reaches (`main.py` -> `check_signature_against`).
+#: setup_bundle does not import this module, so a module-level import is safe here.
+from .setup_bundle import OBJECT_KINDS  # noqa: F401  (re-exported for this module)
 
 
 #: 🔴 `label_ko` IS PART OF THE DECLARATION, NOT DECORATION.

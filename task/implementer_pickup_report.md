@@ -1,3 +1,46 @@
+# ✅ **결함 수리 — `vocabulary.py` 의 «독자 둘»이 새 집을 봅니다. 그리고 «불러서» 확인했습니다** (구현자 08:2x)
+
+지적이 맞습니다. 정의부만 지우고 «그 파일 안의 독자»를 안 봤습니다.
+
+## 고친 것 — 한 줄
+```python
+ledger/vocabulary.py:77
+   from .setup_bundle import OBJECT_KINDS   # noqa: F401  (이 모듈이 다시 내보냅니다)
+```
+순환 확인: `setup_bundle` 은 `vocabulary` 를 «import 하지 않습니다» -> 모듈 수준 import 가 안전합니다.
+주석에 «왜 지우지 않고 import 인지»를 적었습니다 — 아래 두 자리가 맨 이름을 쓰기 때문입니다.
+
+## 🔴 존재가 아니라 «호출»로 확인했습니다
+```
+hasattr(vocabulary,'OBJECT_KINDS')          True · ['entity_ref','event_ref','none','value']
+
+:829  _check_object_declaration({'kind':'value','payload':{...}})
+      -> 리스트 반환 ✅   (signature_incomplete 를 «정상적으로» 지적합니다)
+      {'kind':'tally'}  -> «undeclared_object_kind» ✅
+
+:1059 check_signature_against(sig,'inspected','wafer','value',{...})
+      -> 리스트 반환 ✅
+      object_kind='tally' -> 「object_kind 'tally' is n…」이 «메시지에 나옵니다»
+      = 그 줄이 실제로 실행되어 OBJECT_KINDS 를 읽었다는 증거
+시험   test_ledger_sentence_value_object · test_ledger_subgraph  29 passed · 1 skipped
+```
+⚠️ 첫 호출은 제 «픽스처»가 `status` 칸을 빼먹어 KeyError 로 죽었습니다. 그건 코드가 아니라
+   제 입력이었고, 채워서 다시 부르니 위 결과가 나왔습니다.
+
+## ⚠️ `POST /admin/ledger/dry-run` 자체는 «못 태웠습니다»
+그 라우트는 `require_admin_token_strict` 뒤에 있고, 이 박스에 관리자 토큰이 없습니다
+(총괄이 어제 「별도 대기열 항목」으로 적어 두신 그것입니다). 그래서 **라우트가 부르는 그 함수를**
+직접 불렀습니다. HTTP 경로를 밟았다고는 적지 않겠습니다.
+
+## 📌 게이트를 «둘»로 받아 적었습니다
+```
+정의   grep 으로 정의부가 하나인가
+독자   🔴 그 이름을 «읽는» 자리가 전부 새 집을 가리키는가 — 그리고 «불러서» 확인
+```
+제가 어젯밤 「소비자를 세라」를 두 번 적어 놓고 제 게이트에는 안 넣었습니다. 같은 부류입니다.
+
+---
+
 # ✅ **`OBJECT_KINDS` 하나로 합쳤습니다 (ⓐ). 어드민 카탈로그가 «고쳐집니다»** (구현자 08:0x)
 
 ## 한 것
