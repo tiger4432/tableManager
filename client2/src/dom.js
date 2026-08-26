@@ -46,6 +46,8 @@ export const elements = {
   get ingestFileBtn() { return document.getElementById('ingest-file-btn'); },
   get smartPasteBtn() { return document.getElementById('smart-paste-btn'); },
   get toolbarFileInput() { return document.getElementById('toolbar-file-input'); },
+  get toolbarFolderInput() { return document.getElementById('toolbar-folder-input'); },
+  get folderUploadBtn() { return document.getElementById('folder-upload-btn'); },
   get copyHeaderToggle() { return document.getElementById('copy-header-toggle'); },
   // The SAME stored value, seen from the Options menu. Two places to look at one setting is
   // already this repo's answer -- `map_editor.js` keeps its own `map-copy-header-toggle` on

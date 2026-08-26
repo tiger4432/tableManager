@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-lduzZstQ.js"></script>
+    <script type="module" crossorigin src="/assets/main-BE84Q92y.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CEPsXi2l.js">
     <link rel="modulepreload" crossorigin href="/assets/effort_meter-CYDDxuNb.js">
@@ -73,6 +73,13 @@
               title="Delete Selected Rows"
             >
               🗑️ Row
+            </button>
+            <button
+              id="folder-upload-btn"
+              class="glass-btn"
+              title="폴더를 고르면 그 안의 파일이 전부 인제션됩니다"
+            >
+              📁 폴더 업로드
             </button>
             <button
               id="desktop-download-btn"
@@ -178,6 +185,18 @@
             <input
               type="file"
               id="toolbar-file-input"
+              multiple
+              style="display: none"
+            />
+            <!-- 소유자 2026-08-27: 「폴더째로 업로드」. 🔴 «두 번째» input 인 이유는
+                 `webkitdirectory` 가 그 input 을 «폴더 전용»으로 만들기 때문이다 -- 한 input 이
+                 파일 고르기와 폴더 고르기를 동시에 못 한다. 파이프라인은 안 늘었고 입력만 하나
+                 늘었다: 아래 버튼이 이걸 열고, 기존 change 처리기·루프·라우트를 그대로 탄다. -->
+            <input
+              type="file"
+              id="toolbar-folder-input"
+              webkitdirectory
+              directory
               multiple
               style="display: none"
             />
