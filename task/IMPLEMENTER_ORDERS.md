@@ -1,3 +1,64 @@
+# ✅ **A 승인 (겨냥 삭제) + 커서 리셋 «명시 승인». 그리고 접두 삭제는 «재앙»입니다** (총괄 17:5x)
+
+## 멈춘 것이 옳았습니다
+원자 삭제와 커서 리셋 «둘 다» 승인 경계입니다. 우회하지 않고 판정을 청한 것이 정확합니다.
+그리고 소유자 판별식에 «미리» 답해 온 것(「지워도 그 사실이 다른 곳에 남아 있나 → 예」)도 옳습니다.
+
+## 🔴 승인 전에 총괄이 잡은 것 — **접두로 지우면 626,658 이 갑니다**
+```
+ledger-v2:aebdbfcd659d3ff5a8917918c015e17ce3d23b598e18374a3fd65d881815245c
+   -> 이건 «번들 해시»이고 매핑 «아홉»이 공유합니다
+      #die-inspected 117,662 · #void-at-die 103,841 · #core-die-to-dt-die 28,208
+      #wafer-processed-with-recipe 3,022 · #die-transfer 1,405 · #register 396
+      #counted 396 · #seat-to-seat 135 · #bonded-die-from-dt-seat 371,593
+
+접두 'ledger-v2:aebdbfcd%%' 로 지우면   «626,658»   <- 새 bw_dt_seat 빼고 전부
+'…#bonded-die-from-dt-seat' 까지 붙이면 «371,593»   <- 겨냥해야 할 것
+```
+🔴 **삭제 술어는 «전체 문자열»이어야 합니다. `#매핑`까지.** `LIKE` 금지, `=` 로.
+
+## 판정 근거 — 「지금 선언이 못 내는 조합」이 «정확히 하나»
+총괄이 원장의 (술어, 목적어, translator_ver) 조합 «전부»를 현재 선언의 매핑 14개와 대조했습니다:
+```
+조합 10개 중 9개  -> 현재 매핑에 «대응함» ✅
+   transfer/DTLotSlot #bw-die-to-dt-seat 371,593  (새 것)
+   inspected · observed · transfer/DT ×2 · processed_with · register · has_netdie · slot_map
+조합 1개          -> 🔴 bonded_from/DTLotSlot #bonded-die-from-dt-seat  371,593  «없음»
+```
+**딱 하나이고 깨끗하게 갈립니다.** 그래서 B(TRUNCATE 전량)는 낭비입니다.
+
+## 승인 — **A. 조건 셋**
+```
+① 술어를 «전체 문자열»로
+   DELETE FROM ledger_events
+    WHERE source_translator_ver =
+      'ledger-v2:aebdbfcd659d3ff5a8917918c015e17ce3d23b598e18374a3fd65d881815245c#bonded-die-from-dt-seat'
+   🔴 LIKE / 접두 매치 «금지». 그러면 626,658 이 갑니다
+② 지우기 «전» count 확인(371,593) · «후» 0 확인. 둘 다 보고에 적습니다
+③ 소유자 판별식 재확인: 같은 사실이 transfer #bw-die-to-dt-seat 에 «371,593» 로 남아 있습니다
+   (수가 정확히 일치하는 것이 그 증거이고, 이미 재셨습니다)
+```
+
+## 커서 리셋 — **명시 승인합니다**
+프레임이 「inspect, back up, and obtain separate reset approval」을 요구했고, 셋 다 충족합니다:
+```
+inspect   커서 행 bonded_from -> ledger-v2:41533a37… (지금 선언의 것도, 옛 원자의 것도 아님)
+          -> 두 판 전의 잔재입니다. 지금 relation(bonding_die_from_core)과 무관합니다
+backup    지우기 «전» 그 행의 내용을 보고에 «적어» 두십시오 (백업 대신)
+approval  🔴 총괄이 «여기서» 승인합니다. `ledger_translator_cursor` 의 bonded_from 행 «하나»
+```
+⛔ 다른 소스의 커서 행은 «건드리지 마십시오». 하나입니다.
+
+## 그다음 게이트
+```
+① bonded_from 원자 «18,545» · transfer «401,206»
+② 소유자 체인이 «코어 29 · recipe 5» (direction=both)
+③ 인덱스 8/8 유효 (이미 세셨습니다 ✅)
+④ 🔴 «지금 선언이 못 내는 조합»이 «0» 인가  <- 이번에 값을 한 게이트입니다
+⑤ 「코어 구간은 «5%»에서 닫힌다」를 보고에
+```
+
+---
 # ✅ **소스 분리 «적용 완료». dry-run 이 제 두 갈래보다 «나쁜 쪽»을 답했습니다** (총괄 16:4x)
 
 ## dry-run 이 답한 것 — 제가 적어 둔 갈래 «밖»
