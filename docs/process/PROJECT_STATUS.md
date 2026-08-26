@@ -6583,6 +6583,69 @@ lot_slot_move  「행 == distinct 튜플」  -> 변하는 칸을 키에 넣으�
 ⚠️ 재적재 «후» 실제 크기를 재고 판정한다. 「인덱스 18MB」는 절감이 아니라 «없어서» 나온 수였다
 ```
 
+## 🧭 **컴팩트 인계 — 2026-08-26 밤. «지금 서 있는 자리»**
+
+정본: `task/LEDGER_REBUILD_PLAN.md` (계획) · `task/IMPLEMENTER_ORDERS.md` 맨 위부터 (판정 이력)
+
+### 지금 원장 (실측 22:xx)
+```
+새 645,203 · 옛 보존 377,727 (ledger_events_pre_rebuild)
+  transfer 401,206 · inspected 117,662 · observed 103,841 · bonded_from 18,545
+  processed_with 3,022 · register 396 · has_netdie 396 · slot_map 135
+주어  die «523,592» · wafer 120,684 · dtjob 792 · lot_slot 135
+인덱스 8/8 · INVALID 0 · legacy_atom «0»
+```
+
+### 🔴 열린 판정 / 대기 — 다음 세션이 «여기부터»
+```
+1  A′ 검증기 문법        구현자가 setup_bundle.py 에 `references` 허용 추가 중
+                       -> 오면 «총괄»이 라이브 적용 + 🔴 «서버 재기동»(프로세스가 08-25 10:14 시작)
+                       A′ 자체는 «증명 끝»: 침묵 206/259/0 -> 말함 839/3,000/117(recipe 5) -> 침묵
+2  구설계 청소 «순서대로»  A(vocabulary+legacy_import+shadow_parity) -> B(매퍼4) -> C(scratch7) -> D
+3  D-1 void 배선         🔴 «결함 실재». 아래 참조. (a)폴더 삭제 / (b)workspace_name 별칭 «판정 대기»
+4  클라 사슬 시간 정렬     «게이트 넷 통과»(총괄 검증). 병합은 A′ 착지와 «같이»
+5  용량                 uq_ledger_atom 해시 키 (639MB -> 추정 150~200MB). 재적재 직후가 제일 쌈
+6  걷기 검색창           소유자 요청. 「정답지가 코드냐 선언이냐」 -> «선언»으로 판정 받음
+                       -> 2번(A) 이 끝나야 시작 가능
+```
+
+### D-1 `void` 배선 — 구현자가 배선을 «읽고» 확인
+```
+directory_watcher:2923-2947  folder_name -> resolve_workspace_table(folder, table_config) -> handler
+resolve_workspace_table:702  ① workspace_name 별칭 일치 -> 그 테이블
+                             ② 폴더명이 table_config 에 «있으면» -> 폴더명
+                             ③ 아니면 None -> 폴더명 폴백
+실측  table_config 에 void·void_obs·inspection_run «다 선언됨»
+      🔴 workspace_name 별칭을 가진 항목 «0» — 이 축은 «아직 아무도 안 씁니다»
+=> 「void」는 «폴백»이 아니라 규칙②의 «해석 결과». 파서는 void_obs/inspection_run 만 받으므로 «거절»
+```
+🔴 총괄 가정(「폴더명을 그대로 넘긴다」)은 **결과는 맞고 기전이 한 칸 달랐다.**
+   그리고 그 차이가 갈래를 바꾼다 — (b)가 «설계된 축»을 쓰는 길이 된다.
+
+### 구설계 삭제의 «부작용과 대책» (총괄 실측)
+```
+① 선언에 «자리 없는» 것들이 소비자를 잃는다  <- 제일 큼
+   traversable·direction  config_resolve_report(2)·source_contract(1)  「walk 에 끼나·어느 방향」
+   OBJECT_KINDS «8파일»   value|entity_ref|event_ref -> «물리 enum». 어휘가 아니다
+   PROJECTION_ONLY_WORDS 3 · LAYER_* 3/2 · EDITABLE_LAYER 3 · SIGNATURE_FIELDS 3 · DECL_REFUSALS 2
+   대책  «셋으로 가른다»  선언으로 옮길 것 / 어휘 아니니 이사시킬 것 / 같이 죽을 것
+② 술어 «일곱»이 이름을 잃는다 (원자 0이라 대개 무해)
+   🔴 `frame_confirmed` 만 `frame_confirmation`(99판)과 «같은 이름» -> 연결 확인 후 삭제
+③ 422 가드가 «좁아진다» (의도)
+   ✅ 확인함: 클라가 보내는 follow 는 observed·inspected·bonded_from 셋뿐이고 «전부 선언에 있다»
+④ shadow_parity 삭제 = «대조 능력»이 사라짐 -> 「왜 지웠나」를 커밋에 남긴다
+⑤ B(매퍼4) 는 «다른 환경»을 깰 수 있다 (.gitignore 예외의 이유) -> 판정 전까지 «동결»
+```
+
+### 오늘 총괄이 배운 것 (반복 방지)
+```
+게이트가 «세 번» 한 칸 모자랐다 — 전부 「있나」를 묻고 「자기 일을 하나」를 안 물었다
+   행==distinct 튜플(공허) · 이름말고 개수·정의(INVALID 못 봄) · 원자 수(구성 못 봄)
+«남의 산문»을 근거로 두 번  「core 는 따로 간다」 · 「같은 자리를 두 이름으로」
+«한 표»를 보고 「없다」 두 번  core 조인 · 3구간 재료(dt_log_transferable 에 27,402행 있었다)
+그리고 «내 규율»을 내가 어겨 라운드가 100분 섰다 (판정을 파일 아닌 메시지로만)
+```
+
 ## 🐞 열린 문제 (Open Problems)
 
 | #   | 심각도                               | 문제                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 도메인              | 상태                             |
