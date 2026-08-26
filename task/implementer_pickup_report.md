@@ -1,3 +1,59 @@
+# 🔴 **dry-run 이 답했습니다 — «거절 수»가 아니라 «소스가 통째로 죽습니다»** (구현자 16:2x)
+
+지시대로 재적재 «전»에 쟀습니다. 그리고 답은 총괄이 미리 적어 둔 두 갈래보다 «더 나쁜 쪽»입니다.
+
+## 잰 것 — 진짜 번역기 · 쓰기 «0»
+⚠️ `dry_run.py` 의 `preview()` 는 은퇴했습니다(`DryRunUnavailable`). 그 모듈 «자기 주석»이
+가리키는 `preview_selected_cursor_batch` 를 `backfill.preview_first_batch` 가 몹니다 —
+같은 보장(실제 번역기 · 쓰기 없음)이라 그걸로 쟀습니다.
+```
+SourcePreparationError: event_frame.rows[0].core_wafer:
+    entity identity value is missing after preparation
+```
+```
+refused_molecules ≈ 0         -> 아님
+refused_molecules ≈ 278,475   -> 아님
+🔴 실제                        «준비 단계»에서 예외. 분자를 세기도 «전»에 소스가 섭니다
+                              -> 한 relation 에 두면 DT 자리 엣지 371,593 까지 «같이» 죽습니다
+```
+**추측했으면 이걸 못 봤습니다.** 「그 사이 수면 적고 멈춘다」의 정신대로, 갈래를 미리
+적어 두신 덕에 판정이 이미 있습니다 — **relation 을 둘로.**
+
+## 그래서 «둘로» 나눴습니다 — 뷰 커밋 완료
+```
+bonding_core_die       371,593   모든 bonded die   -> DT 자리 사실 (transfer@1)
+bonding_die_from_core   18,545   코어를 «가진» 행  -> 계보 사실 (bonded_from@1)
+```
+```
+게이트  행 18,545 == 원본의 non-null 수 · distinct(bonded die, core die) 18,545 (충돌 0)
+       event_time NULL 0 · 코어 웨이퍼 128종
+       🔴 SYN-BW-101-16 -> 코어 웨이퍼 «29»   <- 소유자 게이트가 뷰에서 재현
+COMMITTED.  Rollback: DROP VIEW bonding_die_from_core;
+```
+⚠️ 접은 것 «없습니다» — 기존 뷰 위의 WHERE 하나라 행 하나가 여전히 die 하나입니다.
+
+## 패치 개정3 넘깁니다
+```
+bonded_from 소스        매핑 «하나»만 남김 — bw-die-to-dt-seat (transfer@1)
+                       input_columns -> base_id,bx,by,dt_seat,dt_x,dt_y,event_time
+새 소스 bonding_die_from_core   매핑 bonded-die-from-core-die (bonded_from@1)
+                       die{base_id,bx,by,"Wafer"} -> die{core_wafer,cx,cy,"Wafer"}
+어휘 변경  «없음»       (둘 다 die@1 -> die@1 을 이미 받습니다)
+🔴 table_config 에 relation 등재가 «먼저» 필요합니다 — 안 그러면 검증기가 거절합니다
+   (총괄이 방금 core_seat·core_wafer 로 겪으신 그 자리입니다)
+```
+재적재 후 기대치: `bonded_from` ≈ «18,545» · `transfer` ≈ 371,593 + 29,613
+
+## 다음
+```
+총괄  table_config 등재 + 패치 적용
+저    bonded_from · bonding_die_from_core 재적재 -> 게이트 넷
+     ① 체인이 코어 29 · recipe 5 (both)  ② 인덱스 8/8 «유효» 세기
+     ③ bonded_from 원자 == 18,545        ④ 「코어 구간은 5%」 명시
+```
+
+---
+
 # 📦 **패치 확정 — `transfer@1` 로 채웠습니다. 어휘 변경 «0»** (구현자 15:4x)
 
 ## 패치 최종 (`task/LEDGER_DECL_PATCH_2026-08-26.md` REVISION 2)

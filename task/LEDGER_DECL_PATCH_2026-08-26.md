@@ -345,3 +345,100 @@ hunting a defect that is really absent source data.
 📌 The gate the ruling asks for is already reachable in the data: the owner's seed
 `SYN-BW-101-16` resolves **29 distinct core wafers** in the new view -- the same 29 the old
 `bonding_core_lot` gave.
+
+
+---
+
+# REVISION 3 (2026-08-26 16:xx) — the dry run answered it: the relation must split
+
+The dry run the Lead PM ordered was run before anything was written, and it did not return a
+count of refusals. It raised:
+
+```
+SourcePreparationError: event_frame.rows[0].core_wafer:
+    entity identity value is missing after preparation
+```
+
+Preparation stops, so the whole SOURCE dies -- worse than the "278,475 refused" branch, because
+the DT-seat edges would go down with the core ones. Per the branch written in advance, the
+relation splits.
+
+`server/scripts/create_bonding_die_from_core_view.py` is applied:
+```
+bonding_core_die        371,593   every bonded die
+bonding_die_from_core    18,545   those that name a core die (a WHERE, nothing folded)
+                                  SYN-BW-101-16 -> 29 core wafers  ✅
+```
+
+## ③-b `sources.bonded_from` keeps ONE mapping — the DT seat
+
+```json
+-  "bonded-die-from-core-die": { … }        <- moves to the new source below
+   "bw-die-to-dt-seat": { "predicate": "transfer@1", … }   <- unchanged, stays here
+```
+`map.input_columns` and `prepare.input_columns` shrink to what that mapping reads:
+```json
+["base_id", "bx", "by", "dt_seat", "dt_x", "dt_y", "event_time"]
+```
+
+## ⑦ NEW source `bonding_die_from_core` — the lineage fact
+
+⚠️ `table_config.json` must declare the relation first, or the validator refuses with
+「relation is not declared in table_config.json」 -- the third place a declaration change moves.
+
+```json
+"bonding_die_from_core": {
+  "relation": "bonding_die_from_core",
+  "read": {
+    "unit": "row",
+    "identity":  ["base_id", "bx", "by"],
+    "group_by":  [],
+    "order_by":  ["base_id", "bx", "by"],
+    "cursor":    { "columns": ["base_id", "bx", "by"] },
+    "occurred_at": { "column": "event_time", "timezone": "Asia/Seoul" }
+  },
+  "map": {
+    "implementation_id": "declarative-role", "implementation_version": 1,
+    "input_columns": ["base_id", "bx", "by", "core_wafer", "cx", "cy", "event_time"],
+    "unit": { "kind": "row" }
+  },
+  "prepare": {
+    "accepts_verified_join_rules": false,
+    "implementation_id": "direct-join", "implementation_version": 1,
+    "inherit_virtual_join_rules": [],
+    "input_columns": ["base_id", "bx", "by", "core_wafer", "cx", "cy", "event_time"],
+    "output_columns": {}
+  },
+  "bind": {
+    "mappings": {
+      "bonded-die-from-core-die": {
+        "predicate": "bonded_from@1",
+        "bind": {
+          "occurred_at": { "kind": "column", "column": "event_time" },
+          "subject": {
+            "kind": "entity", "entity_type": "die@1",
+            "keys": {
+              "mat_id":   { "kind": "column",   "column": "base_id" },
+              "x":        { "kind": "column",   "column": "bx" },
+              "y":        { "kind": "column",   "column": "by" },
+              "mat_type": { "kind": "constant", "value":  "Wafer" }
+            }
+          },
+          "target": {
+            "kind": "entity", "entity_type": "die@1",
+            "keys": {
+              "mat_id":   { "kind": "column",   "column": "core_wafer" },
+              "x":        { "kind": "column",   "column": "cx" },
+              "y":        { "kind": "column",   "column": "cy" },
+              "mat_type": { "kind": "constant", "value":  "Wafer" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+Vocabulary changes: still **none**. Both predicates already accept `die@1` on both sides.
+
+Expected after the reload: `bonded_from` ≈ **18,545** and `transfer` ≈ 371,593 + 29,613.
