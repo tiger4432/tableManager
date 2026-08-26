@@ -113,6 +113,9 @@ export class ReachPanel extends Panel {
         { key: 'predicate', label: '술어', width: 'minmax(0, 1fr)', kind: 'mono' },
         { key: 'count', label: '닿는 수', width: '5rem', align: 'right', kind: 'number' },
         { key: 'kindText', label: '어디로', width: 'minmax(0, 1fr)' },
+        // 🔴 순서가 «우연이 아니라는 것»이 화면에 있어야 합니다. 아래 목록은 시간 순으로
+        //    마킹되는데, 그 근거가 안 보이면 읽는 사람에게는 여전히 임의의 순서입니다.
+        { key: 'whenText', label: '언제', width: 'minmax(0, 1fr)', kind: 'mono' },
       ],
       rows: rows.map((r) => ({
         predicate: r.predicate,
@@ -122,6 +125,10 @@ export class ReachPanel extends Panel {
         //    `binding` 은 엣지 10 이 노드 4 로 갑니다.
         kindText: r.kinds.map((k) => `${k.type} ${k.count}`).join(' · ')
           + (r.edges !== r.count ? ` · 엣지 ${r.edges}` : ''),
+        // 🔴 시각이 «없는» 술어는 `null` 을 넘깁니다 -- 표가 「-」 로 그리고 is-absent 를 답니다.
+        //    빈 문자열이나 0 을 쓰면 「시각이 없다」와 「시각이 0 이다」가 같은 픽셀이 됩니다.
+        //    파생 엣지(`binding` 같은)가 그 자리입니다: 실측 10 엣지 전부 occurred_at 이 없습니다.
+        whenText: this._span(r.span),
       })),
       onRowClick: (predicate) => this._expand(predicate),
     });
@@ -129,6 +136,19 @@ export class ReachPanel extends Panel {
     root.appendChild(tableHost);
 
     this.host.appendChild(root);
+  }
+
+  /**
+   * 「언제」 칸 -- 그 술어가 «처음~마지막» 닿은 때. 하루 안이면 한 번만 적습니다.
+   * 🔴 `null` 을 «그대로» 돌려줍니다. 없는 것을 문자열로 만들면 표가 그것을 값으로 그립니다.
+   */
+  _span(span) {
+    if (!span || !span.first) return null;
+    const day = (t) => String(t).slice(0, 10);
+    const minute = (t) => String(t).slice(0, 16).replace('T', ' ');
+    if (span.first === span.last) return minute(span.first);
+    if (day(span.first) === day(span.last)) return `${minute(span.first)} ~ ${String(span.last).slice(11, 16)}`;
+    return `${day(span.first)} ~ ${day(span.last)}`;
   }
 
   /** 머리 한 줄 — 무엇을 걸었고, 무엇이 왔고, 무엇이 펼쳐져 있나. */

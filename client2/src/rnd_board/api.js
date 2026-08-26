@@ -827,8 +827,16 @@ export function reachModel(result) {
     const otherId = e.source === seedId ? e.target : e.source;
     if (!otherId || otherId === seedId) continue;
     let g = groups.get(predicate);
-    if (!g) { g = { predicate, ids: new Set(), kinds: new Map(), edges: 0 }; groups.set(predicate, g); }
-    g.ids.add(otherId);
+    // 🔴 A MAP, NOT A SET: the value is WHEN this destination was first reached. A Set keeps
+    //    insertion order, which is the SERVER'S response order -- an order nobody chose and
+    //    nothing guarantees. 「자리로 엮어두면 한 자리의 정체만 알아도 남은 자리가 모두
+    //    확정된다」(소유자) only holds if the chain is in the order the facts happened.
+    if (!g) { g = { predicate, when: new Map(), kinds: new Map(), edges: 0 }; groups.set(predicate, g); }
+    // Several edges can land on one destination; the EARLIEST is when the walk first got there.
+    const at = (e && e.occurred_at) || null;
+    const seen = g.when.get(otherId);
+    if (seen === undefined) g.when.set(otherId, at);
+    else if (at && (!seen || at < seen)) g.when.set(otherId, at);
     g.edges += 1;
     // 🔴 종류도 «노드»로 셉니다. 엣지로 세면 「Value 10」 옆에 「닿는 수 4」 가 서고,
     //    한 줄 안에서 두 수가 서로를 반박합니다.
@@ -840,7 +848,7 @@ export function reachModel(result) {
   const rows = [...groups.values()].map((g) => ({
     predicate: g.predicate,
     // 🔴 «닿는 노드»의 수이지 엣지 수가 아닙니다. 한 노드로 두 엣지가 가면 그것은 «한 곳»입니다.
-    count: g.ids.size,
+    count: g.when.size,
     // 🔴 엣지 수도 «같이» 나릅니다. 실측 2026-08-25, 씨앗 SYN-BW-101-16: `binding` 은
     //    엣지 «10» 인데 닿는 곳은 «4» 입니다 -- 여섯 엣지가 이미 센 노드로 갑니다.
     //    총괄이 준 넷(39·29·10·9)은 엣지를 센 수이고, 클릭이 마킹하는 것은 «노드 집합»이라
@@ -848,7 +856,26 @@ export function reachModel(result) {
     edges: g.edges,
     kinds: [...g.kinds.entries()].map(([type, ids]) => ({ type, count: ids.size }))
       .sort((a, b) => b.count - a.count || String(a.type).localeCompare(String(b.type))),
-    nodeIds: [...g.ids],
+    // 🔴 STABLE, AND NEVER SHAKEN BY NAME. Sorted by first-reached time; entries with no time,
+    //    or with the SAME time, keep the order they arrived in. Measured 2026-08-26, seed
+    //    SYN-BW-101-16: `bonded_from` reaches 29 destinations at ONE instant and `binding`
+    //    carries no time at all -- if a name were the tiebreaker, those two rows would be
+    //    ordered by a fact that is not in the data. 「시간이 없으면 없는 대로」 (총괄).
+    nodeIds: [...g.when.entries()]
+      .map(([id, at], i) => ({ id, at, i }))
+      .sort((a, b) => {
+        if (a.at && b.at && a.at !== b.at) return a.at < b.at ? -1 : 1;
+        if (a.at && !b.at) return -1;
+        if (!a.at && b.at) return 1;
+        return a.i - b.i;
+      })
+      .map((x) => x.id),
+    // 그 술어가 «언제부터 언제까지» 닿았나. 시각이 하나도 없으면 `null` -- 「없음」이지 0 이
+    // 아니고, 화면이 그 칸을 «비웁니다».
+    span: (() => {
+      const times = [...g.when.values()].filter(Boolean).sort();
+      return times.length ? { first: times[0], last: times[times.length - 1] } : null;
+    })(),
   }));
   // 큰 것부터. 동수는 «이름»으로 갈라 응답 순서가 대표를 정하지 못하게 합니다.
   rows.sort((a, b) => b.count - a.count || String(a.predicate).localeCompare(String(b.predicate)));
