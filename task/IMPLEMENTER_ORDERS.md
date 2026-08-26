@@ -17,11 +17,21 @@ mat_type=DTLotSlot   mat_id 2,632  ->  «둘 다 0»  (그 엔티티가 아직 �
 **`die@1` 은 「어떤 통의 어느 자리」다.** `mat_type` = 통의 «종류», `mat_id` = 그 통의 «id».
 그러니 선언할 것은 「die 는 wafer 를 가리킨다」가 아니라 **「die 의 통이 무엇인가」**다.
 
-## 선언 — `entities.die@1` 에 칸 «하나»
+## 선언 — 🔴 «entities» 에 넣는다 (소유자 확인 «ㅇㅇ»). 자리를 고른 근거 셋
+```
+① 담김은 «정체»의 성질이다   mat_id 가 «키의 일부»이고 그 뜻이 「통의 id」다
+                          「이 키가 무엇을 뜻하나」= entities 의 질문
+                          「어떤 술어가 어떤 주어를 받나」= vocabulary 의 질문. «다른 질문»
+② 타입과 «같이 이동»한다     die@1 을 다른 config 로 옮기면 규칙이 따라간다
+③ 🔴 vocabulary 에 넣으면 «거짓말»  거기 열 개는 전부 «원자가 되는» 술어다
+                          합성 엣지를 넣으면 「이 술어의 원자를 찾을 수 있다」가 된다
+                          -> 실측: has_findings·binding 둘 다 vocabulary 에 «없다». 그게 전례다
+```
 ```json
 "die@1": {
   "keys": ["mat_id", "x", "y", "mat_type"],
   "container": {
+    "edge":     "in_container",
     "id_key":   "mat_id",
     "kind_key": "mat_type",
     "kinds": {
@@ -31,6 +41,10 @@ mat_type=DTLotSlot   mat_id 2,632  ->  «둘 다 0»  (그 엔티티가 아직 �
   }
 }
 ```
+🔴 **엣지 «이름»도 선언이 준다** (`edge`). 이름을 코드에 박으면 **A′ 가 다시 A 가 된다.**
+🔴 **합성한 엣지의 `basis` 는 «그 선언 파일 이름»을 담는다** — `binding` 이
+   `mechanism_gate.CONFIG_FILENAME` 을 담는 것과 «같은 자리». 화면이 「이게 어디서 왔나」를
+   물으면 「원자」가 아니라 «선언»이라고 답해야 한다.
 🔴 **`DTLotSlot` 은 «일부러» 없다.** 그 자리의 엔티티가 아직 없고, 없는 것을 선언하면
 없는 노드로 가는 엣지가 생긴다. **없으면 «없는 대로» 둔다** — 그게 정직한 상태다.
 
