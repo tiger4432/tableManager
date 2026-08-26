@@ -1,3 +1,46 @@
+# 🔢 [구현자] **순서 확정 — 이사 «먼저», ⑦은 그다음** (소유자 2026-08-27 「이사 먼저」)
+
+계보 은퇴 검수 통과했습니다(게이트 다섯, 총괄 실측). 다음은 **`vocabulary.py` 독자 이사**입니다.
+
+```
+지금    vocabulary.py 72,317 B · 분류표는 이미 나가 있습니다
+순서    이사 «전부» -> 그 뒤 파일 삭제 -> 그다음 ⑦(라우트 통합)
+```
+
+## 이사 목록 — 분류표대로. 판정이 필요한 것은 «없습니다»
+```
+PROJECTION_ONLY_WORDS                    -> ledger_subgraph.py
+LAYER_CANONICAL · LAYER_ONTOLOGY         -> ledger_structure.py
+EDITABLE_LAYER                           -> 🔴 LAYER_ONTOLOGY 의 «별칭»이면 옮기지 말고 «지우고»
+                                            호출자를 본체로. 별칭째 옮기면 새 집에서도 이름이 둘입니다
+SIGNATURE_FIELDS                         -> setup_bundle.py
+DECL_REFUSALS · ISSUED_TYPES             -> 아직 미분류. 판별식으로 가르고 한 줄씩 적으십시오
+🔴 가장 큰 것: PREDICATES · ENTITY_TYPES 자체의 독자들
+   ledger_catalog.entity_types · main.py:4962 · config.py · ledger_admin …
+   -> `ledger_catalog.entity_types()` 는 이미 표시해 둔 자리입니다: 죽을 어휘를 읽고
+      `requires_register` 로 거릅니다(register 는 이제 «396»). 선언의 `entities` 로 돌리십시오
+```
+판별식은 그대로입니다 — ① 선언의 «문법» -> setup_bundle · ② 투영이 «내는 것» -> ledger_subgraph
+· ③ 도메인 «낱말» -> «선언». 어느 부류도 아니면 «멈추고 이 파일에 쓰십시오».
+
+## 게이트 — 이사할 때마다 «두 줄», 그리고 파일을 지울 때 한 번 더
+```
+🔴 심볼마다   그 이름을 «저장소 전체»에서 grep -> 코드 «0» (방금 편집한 파일 «안»까지)
+             그 다음 «불러» 본다
+             ⚠️ 0 을 답으로 받는 게이트는 «0 이 아닌 것도 낼 수 있는지» 먼저 확인하고 쓰십시오
+             (제 첫 실행이 이 환경이 거부하는 grep 플래그를 써서 일곱 심볼이 전부 0 이었습니다)
+파일 삭제 시   `from ledger import vocabulary` · `from . import vocabulary` 를 grep -> «0»
+             + 서버가 «뜨는가» (import 시점에 죽는 부류입니다)
+무회귀        보드 좌석 «16» · 로드 요청 «14» · non-200 «0»
+             admin 드라이런(`POST /admin/ledger/dry-run`)을 «태워» 보십시오 — 오늘 밤 그 경로에서
+             회귀가 하나 났습니다
+```
+
+## ⑦은 그다음 — 첫 발이 «복구»라는 것만 기억하십시오
+`/composition` 이 `transferred`(원자 0)를 읽어 «무엇을 물어도 빈 답»이고, 화면은 그걸
+「구성 기록이 없습니다」로 말합니다. 통합이 곧 수리입니다. 상세는 아래 ⑦ 블록 그대로입니다.
+
+---
 # ✅ [구현자] 계보 은퇴 «검수 통과» — 게이트 다섯, 서버 재기동 뒤 실측 (총괄 07:2x)
 
 두 번째 커밋(`126dcfee`)으로 다음 고리까지 나왔습니다. 서버를 올리고 «다섯 다» 쟀습니다.
