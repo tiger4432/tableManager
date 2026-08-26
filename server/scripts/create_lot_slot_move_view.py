@@ -24,6 +24,14 @@ The dedup is identity dedup -- the SAME move seen from two sides -- not a fold t
 information, so "one row is one move" still holds. The gate asserts it: row count must equal the
 distinct-tuple count.
 
+🔴 A MOVE'S IDENTITY INCLUDES ITS INSTANT, so the gate is measured twice. "Row count equals the
+distinct-tuple count" passes by definition once event_time is in the tuple -- putting a varying
+column in the key empties the assertion. The check that can fail is: the same five-column move
+recorded twice AT THE SAME INSTANT. Measured 0. Thirteen seat-pairs do repeat at OTHER instants
+(e.g. WF.010508 leaves CL-2601-005 for A5 as a split at 11:25 and as a merge at 20:33) and those
+are two events, not one duplicated -- exactly what plan section 2-bis means by a seat-instant
+being unique.
+
 🔴 `event_type` IS CARRIED, NOT INFERRED. The source records split / merge / track_in, and an
 earlier draft of this view dropped it on the grounds that "the lot names say which way it went".
 That is a derivation standing in for a record, which is the failure this project keeps meeting.
@@ -121,6 +129,18 @@ def main(argv=None):
             distinct = c.execute(text(
                 f"SELECT count(*) FROM (SELECT DISTINCT from_lot, from_slot, to_lot, to_slot, "
                 f"wafer, event_time FROM {VIEW}) t")).scalar()
+            # 🔴 THE NON-VACUOUS HALF. The check above compares the row count against a
+            # DISTINCT that includes event_time, so it passes by definition once the time is in
+            # the key -- a varying column in the key empties the assertion. This one asks the
+            # question that can actually fail: is the same move recorded twice AT THE SAME
+            # INSTANT? A seat that moves twice nine hours apart is two events, not a duplicate.
+            same_instant = c.execute(text(
+                f"SELECT coalesce(sum(n - 1), 0) FROM (SELECT count(*) AS n FROM {VIEW} "
+                f"GROUP BY from_lot, from_slot, to_lot, to_slot, wafer, event_time "
+                f"HAVING count(*) > 1) t")).scalar()
+            repeats = c.execute(text(
+                f"SELECT count(*) FROM (SELECT from_lot, from_slot, to_lot, to_slot, wafer "
+                f"FROM {VIEW} GROUP BY 1,2,3,4,5 HAVING count(*) > 1) t")).scalar()
             changes = c.execute(text(
                 f"SELECT count(*) FROM {VIEW} WHERE from_slot <> to_slot")).scalar()
             wafers = c.execute(text(f"SELECT count(DISTINCT wafer) FROM {VIEW}")).scalar()
@@ -136,6 +156,11 @@ def main(argv=None):
             print("   distinct move tuples         %8d   %s"
                   % (distinct, "OK - a row IS a move"
                      if distinct == rows else "<- rows are NOT one per move"))
+            print("   same move at the SAME instant %7d   %s"
+                  % (same_instant, "OK - no real duplicate"
+                     if same_instant == 0 else "<- the pairing double-counts"))
+            print("   same seats at OTHER instants %8d   (distinct events, not duplicates)"
+                  % repeats)
             print("   moves that CHANGE slot       %8d   %s"
                   % (changes, "OK" if changes == EXPECTED_CHANGES
                      else "<- expected %d" % EXPECTED_CHANGES))
@@ -152,7 +177,7 @@ def main(argv=None):
                     f"SELECT event_type, count(*) FROM {VIEW} GROUP BY 1 ORDER BY 2 DESC")):
                 print("      %-12s %8d" % (kind, n))
 
-            ok = (rows == EXPECTED_ROWS and distinct == rows
+            ok = (rows == EXPECTED_ROWS and distinct == rows and same_instant == 0
                   and changes == EXPECTED_CHANGES and changes == ledger_changes
                   and no_time == 0 and typed == rows)
             print("\n   GATE: %s" % ("PASS" if ok else "FAIL"))

@@ -1,3 +1,41 @@
+# 📦 **패치 최종본 넘깁니다. 게이트도 «비공허»하게 고쳤습니다** (구현자 12:2x)
+
+## 1) 게이트 문구 — 지적대로 «둘»로 잽니다. 지금 값 둘 다 통과
+```
+① 정체 계약   행 수 == distinct(5칸 + event_time)     135 == 135  ✅
+② 진짜 중복   «같은 시각»에 같은 이동(5칸)이 2행 이상    «0»        ✅  <- 실패할 수 있는 쪽
+   참고        «다른 시각»에 같은 자리쌍                 13         (서로 다른 사건)
+```
+①은 event_time 을 키에 넣는 순간 «정의상» 통과합니다 — 변하는 칸을 키에 넣어 단언을 비우는
+그 부류라, ②를 게이트에 «넣었습니다». 스크립트가 둘 다 찍고 ②가 0이 아니면 FAIL 입니다.
+그리고 그 13쌍의 예를 스크립트 머리에 적어 뒀습니다 (WF.010508 이 11:25 split · 20:33 merge).
+
+## 2) 📦 패치 최종본 — `task/LEDGER_DECL_PATCH_2026-08-26.md`
+```
+① entities        + lot_slot@1 [lot, slot]                       (시간은 키에 «없음»)
+② in_slot         subject: lot@1 -> «lot_slot@1{lot, slot}»       + 중복 한정어 slot 삭제
+③ bonded_from     relation bonding_core_lot -> «bonding_core_die»
+                  read.identity/order_by/cursor -> [base_id, bx, by]
+                  input_columns 둘 -> [base_id,bx,by,dt_seat,dt_x,dt_y,event_time]
+                  매핑 개명 bonded-wafer-from-core-wafer -> «bonded-die-from-dt-seat»
+                  die@1{base_id,bx,by,"Wafer"} -> die@1{dt_seat,dt_x,dt_y,"DTLotSlot"}
+⑤ NEW source      lot_slot_move · 매핑 «seat-to-seat» 하나
+                  lot_slot@1{from_lot,from_slot} -> lot_slot@1{to_lot,to_slot}
+                  한정어 event_type · 🔴 wafer 는 «없음»(엣지는 in_slot 이 냅니다)
+⑥ 삭제            merge_slot_join · split_slot_carry
+```
+전제: 뷰 둘 다 «이미 적용»돼 있습니다 (`bonding_core_die` · `lot_slot_move`).
+라이브 선언은 **끝까지 열지 않았습니다** — 인용은 읽기로만 했습니다.
+
+## 3) 제 쪽 남은 것 — 지시 주시면 바로
+```
+개명(부모 + 자식 여덟) -> 재적재 -> 목표 걷기
+게이트 ④는 술어별로 «사라진 것·생긴 것»을 이름으로 적겠습니다 (수만으로는 안 가려지는 것 확인)
+slot_map 은 «따로» 적습니다: 지금 선언 226 + 스크립트 217 = 443  ->  후 «135»
+```
+
+---
+
 # ✅ **`event_type` 실었습니다 — 그리고 «어느 행의 것이냐»가 계약을 갈랐습니다** (구현자 11:5x)
 
 지적이 맞습니다. 「랏 이름이 말한다」는 **기록이 아니라 도출**이었고, 이 프로젝트가 반복해서
