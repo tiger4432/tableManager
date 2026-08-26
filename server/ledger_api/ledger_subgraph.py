@@ -40,6 +40,7 @@ import ledger_trace
 import enrichment_actions
 from ledger_api import finding_kinds
 from ledger_api import mechanism_gate
+from ledger_api import entity_references
 
 
 DEFAULT_HOPS = 12
@@ -364,6 +365,44 @@ class SqlEvidenceLookup:
             LIMIT %(fetch)s
         """, params)
         return self._bounded(rows, limit)
+
+    def entities_that_exist(self, entities):
+        """Which of these entities the ledger actually MENTIONS, as `{(type, keys_json)}`.
+
+        🔴 A SYNTHESISED EDGE MAY NOT POINT AT NOTHING. Measured 2026-08-26: of 3,625 die
+        `mat_id` values under `mat_type='Wafer'`, 2,810 exist as wafer entities and 815 do not;
+        under 'DT' it is 348 of 358. Drawing all of them would put 825 nodes on the screen that
+        open empty -- the shape the owner met eight times in one evening.
+
+        Batched by (type, key), so a walk asks two questions rather than one per die.
+        """
+        by_type = {}
+        for entity_type, keys in entities:
+            if not isinstance(keys, dict) or len(keys) != 1:
+                continue
+            (key, value), = keys.items()
+            if value in (None, ""):
+                continue
+            by_type.setdefault((str(entity_type), str(key)), set()).add(str(value))
+        live = set()
+        for (entity_type, key), values in by_type.items():
+            params = {"key": key, "type": entity_type, "values": sorted(values)}
+            found = set()
+            for sql in (
+                    f"SELECT DISTINCT subject_keys ->> %(key)s AS value FROM {self.relation} "
+                    "WHERE subject_type = %(type)s "
+                    "AND subject_keys ->> %(key)s = ANY(%(values)s)",
+                    f"SELECT DISTINCT object_payload -> 'keys' ->> %(key)s AS value "
+                    f"FROM {self.relation} WHERE object_kind = 'entity_ref' "
+                    "AND object_payload ->> 'type' = %(type)s "
+                    "AND object_payload -> 'keys' ->> %(key)s = ANY(%(values)s)"):
+                for row in self._execute(sql, params):
+                    value = row["value"] if isinstance(row, dict) else row[0]
+                    if value is not None:
+                        found.add(str(value))
+            for value in found:
+                live.add((entity_type, json.dumps({key: value}, sort_keys=True)))
+        return live
 
     def finding_summaries_for_entities(self, entities, direction, limit):
         """Group observed claims only after an exact subject-key lookup."""
@@ -1376,12 +1415,58 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     edge["qualifiers"] = {"binding_key": binding_key}
                     add_edge(edge)
 
+    def _link_containers(source_ids):
+        """Compose the declared container edges for these nodes, and RETURN the ids added.
+
+        🔴 CALLED INSIDE THE WALK, NOT AFTER IT. Composed after the loop the edges appear but
+        the nodes they reach are never expanded, so a core die reaches its wafer and the walk
+        stops one hop before the recipe that wafer was processed with -- measured: 117 edges,
+        17 wafers, and still zero recipes. Linking per level makes the container a place the
+        walk can go ON from, which is the whole point of drawing it.
+
+        🔴 A die is "a seat in some container", and WHICH key names the container is a fact
+        about this ontology, so the declaration says it (`entities.<type>.references`) and this
+        only reads it -- the edge's NAME included. Naming it here would put the ontology back
+        into the code through a smaller door.
+
+        🔴 NOTHING IS DRAWN TOWARDS AN ENTITY THE LEDGER NEVER MENTIONS: the targets are
+        checked first, in one batched question, because an edge to an absent node is a node
+        that opens empty. `basis` carries the declaration's filename, the way `binding` carries
+        the mechanism file -- asked where this came from, the answer is a declaration.
+        """
+        referenced = []
+        for node_id in source_ids:
+            node = nodes.get(node_id)
+            if not node or node.get("node_kind") != "entity":
+                continue
+            for edge_name, target_type, target_keys in entity_references.targets_for(
+                    node.get("type"), node.get("keys") or {}):
+                referenced.append((node_id, edge_name, target_type, target_keys))
+        if not referenced:
+            return
+        probe = getattr(lookup, "entities_that_exist", None)
+        live = probe([(t, k) for _, _, t, k in referenced]) if probe else set()
+        for source_id, edge_name, target_type, target_keys in referenced:
+            if (target_type, json.dumps(target_keys, sort_keys=True)) not in live:
+                continue
+            target = _entity_node(target_type, target_keys)
+            if target["id"] not in nodes:
+                if not add_node(target, decode_node_id(target["id"]),
+                                depths[source_id] + 1):
+                    continue
+            edge = _edge(edge_name, source_id, target["id"])
+            edge["basis"] = entity_references.CONFIG_FILENAME
+            add_edge(edge)
+
     for item, ref in seed_refs.items():
         add_node(_seed_node(item, ref, models_by_name, action_lookup), ref, 0)
 
     for depth in range(hops):
         frontier_ids = [node_id for node_id, seen_depth in depths.items()
                         if seen_depth == depth]
+        _link_containers(frontier_ids)
+        frontier_ids = [node_id for node_id, seen in depths.items()
+                        if seen == depth]
         if not frontier_ids:
             break
         remaining = claim_limit - claims_scanned

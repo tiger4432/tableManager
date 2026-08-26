@@ -1,3 +1,838 @@
+# ✅ **`to.keys` «여럿»으로 맞췄습니다 — 수는 그대로** (구현자 20:5x)
+
+📌 소유자가 「메시지체크」 하라고 하셔서 봤습니다. **총괄 메시지가 제 쪽에 안 닿아 있었습니다** —
+`to.key`(단수)를 `to.keys`(여럿)로 바꾸라는 소유자 판정이었고, 이유가
+「문법을 두 번 건드리지 않는다」였습니다. 반영했습니다.
+
+## 바뀐 모양
+```json
+{ "edge": "in_container",
+  "from": { "when": { "mat_type": "Wafer" } },
+  "to":   { "entity": "wafer@1", "keys": { "wafer": { "key": "mat_id" } } } }
+```
+```
+to.keys   «여럿». 통이 키를 둘 이상 요구할 수 있습니다 (자리 = lot+slot)
+철자      bind 의 keys 와 «같은 모양» ({대상 키: 바인딩}) -> 파일이 한 결로 읽힙니다
+          나중에 {"value": …} 바인딩이 붙어도 «문법을 다시 안 건드립니다»
+줄임      {"wafer": "mat_id"} 도 받습니다
+from.key  «사라졌습니다» — 대상이 「내 어느 키가 자기 어느 키를 채우나」를 말하므로
+          from 에는 «성립 조건(when)»만 남습니다
+```
+⚠️ 이 철자는 «제 선택»입니다(인용이 아닙니다) — 오늘 이 문법을 정의하는 것은 읽는 코드뿐이라
+   소유자 뜻이 다르면 `entity_references.targets_for` 한 줄입니다.
+
+## 실측 — 단수 판과 «동일»
+```
+침묵    nodes 206 · edges 259 · in_container 0
+여럿    nodes 839 · edges 3,000 · in_container 117
+        wafer 601 · die 156 · dtjob 14 · recipe «5» · 매달린 엣지 «0»
+시험    test_ledger_subgraph · test_ledger_trace  63 passed · 1 skipped
+```
+**모양이 바뀐 것이지 뜻이 바뀐 게 아니라는 증거**로 두 판의 수가 같은 것을 씁니다.
+
+## 📌 채널 — 메시지가 안 왔습니다
+총괄 기록에는 보내신 것으로 돼 있는데 제 쪽 대화엔 «없습니다». 커밋 기반 채널은 잘 도니
+(오늘 하루 그것으로 왕복했습니다), **모양 판정 같은 것은 지시서 파일에 한 줄 남겨 주시면**
+제가 15분 안에 집습니다. 이번엔 소유자가 알려 주셔서 잡았습니다.
+
+---
+
+# ✅ **A′ 착지 — 소유자 체인이 «recipe 5» 에 닿습니다. 선언을 지우면 «사라집니다»** (구현자 19:2x)
+
+## 실측 — 같은 코드, 선언만 바꿔 세 번
+```
+선언 «침묵»    nodes 206 · edges 259 · in_container «0»        <- 오늘과 «동일»
+선언 «말함»    nodes 839 · edges 3,000 · in_container «117»
+              wafer «601» · die 156 · dtjob «14» · recipe «5»
+              SYN-R-CLEAN-01 · CMP-01 · DEPO-01 · ETCH-01 · PHOTO-01
+              씨앗의 코어 웨이퍼 «29 / 29» 전부 walk 안에 있음
+              🔴 매달린 엣지 «0» · 가장 깊은 홉 6 (한도 12)
+다시 «침묵»    nodes 206 · edges 259                            <- 엣지가 «사라집니다»
+```
+🔴 가운데 줄이 소유자 08-24 체인입니다 — 씨앗 → 코어 29 → recipe 5 → 코어 600 → BW.
+`truncated:["edges"]` 는 정직한 표시입니다 (이제 601 웨이퍼까지 닿습니다).
+
+## 게이트
+```
+① 소유자 체인   코어 29/29 · recipe «5» ✅
+② 매달린 엣지   «0» ✅  (Wafer 815 · DT 10 은 «엣지를 안 만듭니다» — 존재 확인이 먼저)
+③ 원자 변화     «0» ✅  (원장을 한 줄도 안 건드렸습니다)
+⑤ 선언 교체     침묵 -> 말함 -> 침묵 이 «같은 코드»에서 갈립니다 ✅
+                = A′ 가 A 와 다르다는 «유일한» 증명
+④ 무회귀       보드는 총괄 재기동 후 부탁드립니다
+시험           test_ledger_subgraph · test_ledger_trace  63 passed · 1 skipped
+```
+
+## 🔴 설계에서 한 번 틀렸다가 실측으로 잡았습니다 — 「루프 «안»이어야 합니다」
+처음엔 BFS «끝난 뒤» 합성했습니다. 그러면:
+```
+in_container 117 · wafer 17 · recipe «0»    <- 엣지는 «생기는데» 체인이 한 홉 모자랍니다
+```
+합성 노드가 «걸어 나갈 자리»가 되지 못했기 때문입니다. 레벨마다 합성하도록 옮기니
+601 웨이퍼와 recipe 5 가 나왔습니다. 스크립트가 아니라 «수»가 알려 줬습니다.
+
+## 낸 것
+```
+server/ledger_api/entity_references.py   선언을 «읽기만» 합니다 (엣지 이름도 선언이 줍니다)
+server/ledger_api/ledger_subgraph.py     _link_containers() 를 walk «안»에서 레벨마다
+                                         + SqlEvidenceLookup.entities_that_exist() (배치 존재 확인)
+task/LEDGER_DECL_PATCH_2026-08-26.md     REVISION 4 — entities.die@1.references 블록 하나
+```
+`basis` 에 «선언 파일 이름»을 담았습니다 (`binding` 이 mechanism 파일을 담는 그 자리).
+`DTLotSlot` 은 «일부러» 안 넣었습니다.
+
+⚠️ 위 수치는 그 블록을 «주입»해서 잰 것입니다 — 라이브 선언은 여전히 안 열었습니다.
+총괄이 적용하시면 같은 수가 «라이브에서» 나오는지 다시 재겠습니다.
+
+---
+
+# 🔴 **게이트 «넷 통과 · 하나 불합격». 체인이 «코어 die 에서 코어 wafer 로» 못 건넙니다** (구현자 18:0x)
+
+## 승인 둘 다 조건대로 집행했습니다
+```
+삭제 술어  «전체 문자열»로 (= 이지 LIKE 아님). 스크립트가 둘 다 재고 «작은 쪽»이 아니면 거절합니다
+   exact  ...#bonded-die-from-dt-seat   371,593   <- 지운 것
+   prefix LIKE 번들해시                  626,658   <- LIKE 였으면 갔을 것
+   삭제 후: 그 버전 «0» · 형제 255,065 «그대로» · 같은 사실 transfer 371,593 «살아 있음»
+커서      bonded_from 행 «하나». 지우기 전 내용을 적어 둡니다 (백업 대신):
+   translator_ver ledger-v2:41533a37a198cc5f5f23f91fa4406ccfacfa23b456091d36ea3b07e0e2f3bdd1
+   cursor_value   {'bx': 12.0, 'by': 9.0, 'base_id': 'SYN-CX-BW-006'}
+   molecules 371,593 · atoms 371,593 · updated 2026-08-26 13:54:29+09
+   커서 8행 남음 (다른 소스 «안 건드림»)
+스크립트  server/scripts/drop_retired_bonded_from_atoms.py
+```
+
+## 게이트
+```
+① bonded_from «18,545» ✅   transfer «401,206» ✅   (재적재: refused 0 · incomplete 0)
+③ 인덱스 8/8 · INVALID 0 ✅
+④ 🔴 «지금 선언이 못 내는 조합» = «NONE» ✅   (선언 매핑 14개와 대조)
+⑤ 「코어 구간은 «5%»에서 닫힌다」 — 패치·보고서에 명시 ✅
+② 소유자 체인  🔴 «불합격» — recipe 0 · 코어 wafer 0 (die 156 은 닿습니다)
+```
+
+## 🔴 ② 가 서는 자리 — 「코어 die → 코어 wafer」 가 «없습니다»
+총괄이 그리신 경로는 `코어 die --inspected(거꾸로)--> 코어 wafer` 였는데, 재 보니
+**코어 웨이퍼에는 `inspected` 가 «없습니다».**
+```
+씨앗의 die 와 bonded_from 의 주어 die  «키가 일치» — 39개가 양쪽에서 같은 die ✅
+bonded_from 이 가리키는 코어 웨이퍼      «29» ✅  (게이트의 29가 데이터에 있습니다)
+그런데 코어 웨이퍼 SYN-CW-101-01 의 원자:
+   die 주어    transfer «198»          <- die→die 뿐
+   wafer 주어  processed_with «5»      <- 🔴 recipe 홉은 «여기» 있습니다
+   die 를 그 wafer 에 잇는 원자          «0»
+```
+즉 **die 로 내려간 순간 「이 die 는 저 wafer 의 것이다」를 말하는 술어가 없어졌습니다.**
+BW 쪽은 `inspected`(wafer→die 117,662)가 우연히 그 다리를 해 주는데, 코어 웨이퍼는
+검사를 안 받아서 그 다리가 없습니다. 그래서 recipe 5 가 «한 홉» 건너에 있는데 못 닿습니다.
+
+## 판정 요청 — 둘 중 하나입니다. 제가 안 골랐습니다
+```
+A. die → wafer 를 «선언»한다  (part_of / on_wafer 같은 술어 하나)
+   재료 있음: core_wafer_map (core_lot, core_slot, wafer_id, core_x, core_y, c_bn …)
+   -> 코어뿐 아니라 «모든 die» 가 자기 wafer 를 가리키게 됩니다. 목표 걷기에도 쓰입니다
+B. bonded_from 의 «목적어»만 wafer 로 되돌린다
+   -> 체인은 즉시 복구되지만 「주어는 die 로 박아」에서 목적어만 wafer 로 남습니다
+```
+제 관측으로는 A 가 「자리로 엮는다」는 소유자 정본과 같은 방향이고, B 는 게이트만 통과시킵니다.
+다만 A 는 새 술어라 어휘가 움직입니다 — 판정 부탁드립니다.
+
+---
+
+# 🔴 **판정 요청 둘 — 옛 원자 371,593 과 커서. 둘 다 «승인 경계»라 안 건드렸습니다** (구현자 17:3x)
+
+## 된 것
+```
+bw_dt_seat  «신규»   molecules 371,593  적재 완료
+게이트 ③ 절반  transfer «401,206» == 371,593 + 29,613  ✅ 총괄 기대치와 «정확히» 일치
+게이트 ②      인덱스 8/8 · INVALID «0»  (세었습니다)
+```
+
+## 🔴 막힌 것 둘 — 같은 뿌리
+### ① 옛 `bonded_from` 원자 371,593 이 남아 있습니다
+```
+predicate bonded_from · translator_ver «ledger-v2:aebdbfcd659d3ff5a8…» · 371,593
+target mat_type = «DTLotSlot»       <- 옛 뜻(BW die가 DT 자리에 있다)
+그 translator_ver 는 «지금 선언에 없습니다»
+```
+게이트 ③의 「bonded_from == 18,545」에 닿으려면 이것이 나가야 합니다.
+🔴 **「원자 지우지마」라서 안 지웠습니다.** 다만 소유자 판별식에는 답할 수 있습니다 —
+**「지워도 그 사실이 다른 곳에 남아 있나」 → «예».** 같은 사실을 `bw_dt_seat` 가
+`transfer@1` 로 다시 썼고, 수가 «정확히» 371,593 으로 일치합니다.
+
+### ② `bonded_from` 커서가 옛 모양입니다 — 프레임이 «별도 승인»을 요구합니다
+```
+LedgerSetupError: ledger_cursor.bonded_from.cursor_value:
+   existing cursor shape does not match the v2 physical cursor;
+   inspect, back up, and obtain separate reset approval
+커서 행   bonded_from -> ledger-v2:41533a37a198cc5f…  (지금 선언의 것도, 옛 원자의 것도 아님)
+```
+우회하지 않았습니다. 이 승인 없이는 `bonded_from` 이 «한 원자도» 못 들어갑니다.
+
+## 선택지 둘 — 제 권고는 A
+```
+A. 겨냥해서 둘만        DELETE ... WHERE source_translator_ver='ledger-v2:aebdbfcd…'  (371,593)
+                      + ledger_translator_cursor 의 bonded_from 행 «하나» 제거
+   근거   지우는 대상이 «지금 선언에 없는 버전» 하나로 정확히 갈립니다
+          사실은 transfer 401,206 에 «남아 있습니다» (수로 확인됨)
+   비용   초 단위. 게이트 나머지를 바로 잽니다
+
+B. 원장 TRUNCATE 후 «10소스 전량 재적재»
+   근거   「원장 = 선언의 출력」이 정의상 참이 됩니다. 커서도 같이 초기화됩니다
+   비용   «45분+». 이미 옳게 들어간 626,658 원자를 다시 씁니다
+```
+어느 쪽이든 스크립트로(백업·게이트·롤백 문구 포함) 만들고 dry-run 먼저 보여 드리겠습니다.
+
+## 남은 게이트 — ①이 풀리면 바로
+```
+① 소유자 체인이 «코어 29 · recipe 5» (direction=both)
+③ bonded_from 원자 «18,545»
+④ 「코어 구간은 «5%»에서 닫힌다」  <- 보고서·패치에 이미 명시했습니다
+```
+
+---
+
+# 🔴 **dry-run 이 답했습니다 — «거절 수»가 아니라 «소스가 통째로 죽습니다»** (구현자 16:2x)
+
+지시대로 재적재 «전»에 쟀습니다. 그리고 답은 총괄이 미리 적어 둔 두 갈래보다 «더 나쁜 쪽»입니다.
+
+## 잰 것 — 진짜 번역기 · 쓰기 «0»
+⚠️ `dry_run.py` 의 `preview()` 는 은퇴했습니다(`DryRunUnavailable`). 그 모듈 «자기 주석»이
+가리키는 `preview_selected_cursor_batch` 를 `backfill.preview_first_batch` 가 몹니다 —
+같은 보장(실제 번역기 · 쓰기 없음)이라 그걸로 쟀습니다.
+```
+SourcePreparationError: event_frame.rows[0].core_wafer:
+    entity identity value is missing after preparation
+```
+```
+refused_molecules ≈ 0         -> 아님
+refused_molecules ≈ 278,475   -> 아님
+🔴 실제                        «준비 단계»에서 예외. 분자를 세기도 «전»에 소스가 섭니다
+                              -> 한 relation 에 두면 DT 자리 엣지 371,593 까지 «같이» 죽습니다
+```
+**추측했으면 이걸 못 봤습니다.** 「그 사이 수면 적고 멈춘다」의 정신대로, 갈래를 미리
+적어 두신 덕에 판정이 이미 있습니다 — **relation 을 둘로.**
+
+## 그래서 «둘로» 나눴습니다 — 뷰 커밋 완료
+```
+bonding_core_die       371,593   모든 bonded die   -> DT 자리 사실 (transfer@1)
+bonding_die_from_core   18,545   코어를 «가진» 행  -> 계보 사실 (bonded_from@1)
+```
+```
+게이트  행 18,545 == 원본의 non-null 수 · distinct(bonded die, core die) 18,545 (충돌 0)
+       event_time NULL 0 · 코어 웨이퍼 128종
+       🔴 SYN-BW-101-16 -> 코어 웨이퍼 «29»   <- 소유자 게이트가 뷰에서 재현
+COMMITTED.  Rollback: DROP VIEW bonding_die_from_core;
+```
+⚠️ 접은 것 «없습니다» — 기존 뷰 위의 WHERE 하나라 행 하나가 여전히 die 하나입니다.
+
+## 패치 개정3 넘깁니다
+```
+bonded_from 소스        매핑 «하나»만 남김 — bw-die-to-dt-seat (transfer@1)
+                       input_columns -> base_id,bx,by,dt_seat,dt_x,dt_y,event_time
+새 소스 bonding_die_from_core   매핑 bonded-die-from-core-die (bonded_from@1)
+                       die{base_id,bx,by,"Wafer"} -> die{core_wafer,cx,cy,"Wafer"}
+어휘 변경  «없음»       (둘 다 die@1 -> die@1 을 이미 받습니다)
+🔴 table_config 에 relation 등재가 «먼저» 필요합니다 — 안 그러면 검증기가 거절합니다
+   (총괄이 방금 core_seat·core_wafer 로 겪으신 그 자리입니다)
+```
+재적재 후 기대치: `bonded_from` ≈ «18,545» · `transfer` ≈ 371,593 + 29,613
+
+## 다음
+```
+총괄  table_config 등재 + 패치 적용
+저    bonded_from · bonding_die_from_core 재적재 -> 게이트 넷
+     ① 체인이 코어 29 · recipe 5 (both)  ② 인덱스 8/8 «유효» 세기
+     ③ bonded_from 원자 == 18,545        ④ 「코어 구간은 5%」 명시
+```
+
+---
+
+# 📦 **패치 확정 — `transfer@1` 로 채웠습니다. 어휘 변경 «0»** (구현자 15:4x)
+
+## 패치 최종 (`task/LEDGER_DECL_PATCH_2026-08-26.md` REVISION 2)
+```
+bonded-die-from-core-die   bonded_from@1   die{base_id,bx,by,"Wafer"} -> die{core_wafer,cx,cy,"Wafer"}
+bw-die-to-dt-seat          transfer@1      die{base_id,bx,by,"Wafer"} -> die{dt_seat,dt_x,dt_y,"DTLotSlot"}
+input_columns (map · prepare 둘 다)
+   base_id, bx, by, core_wafer, cx, cy, dt_seat, dt_x, dt_y, event_time
+어휘 변경  «없음»
+```
+`transfer@1` 이 이미 die→die 이고 지금도 die/Wafer → die/DT 29,613 을 나릅니다 —
+「die 가 자리로 옮겨 갔다」를 그것이 이미 말합니다. 이름을 하나 더 만들지 않는 판단에 동의합니다.
+
+## 🔴 「코어 구간은 «5%»에서 닫힌다」 — 패치에 그렇게 적었습니다
+```
+행 371,593
+   core_lot+core_slot 있는 행   93,118  (25%)
+   코어 «웨이퍼»까지 풀린 행     18,545  (5%)   <- 여기가 닫히는 지점
+   짝을 못 찾은 행              74,573
+   (core_lot,core_slot) 657쌍 중 core_wafer_map 에 있는 것 «128»
+```
+25%로 알고 있으면 나중에 «없는 결함»을 쫓게 된다는 지적 그대로, 5%를 정본으로 적었습니다.
+
+## 그리고 제 문장이 총괄 판정에 잘못 들어간 건 — 제 쪽에서도 규칙으로 적습니다
+「같은 자리를 두 이름으로 부른다」는 제가 «세지 않고» 쓴 문장이었습니다.
+```
+dt_seat  2,632종  = 트레이 «자리»
+dt_job     348종  = «작업(런)»          -> 다른 것. 통일할 이름이 아니었습니다
+```
+앞으로 보고에 「A와 B는 같은 것이다」를 적기 전에 **양쪽 종수를 먼저 세겠습니다.**
+
+## 다음 — 총괄이 패치 적용하시면
+```
+1  bonded_from 재적재 (그 소스만)
+2  게이트  소유자 체인이 «코어 29 · recipe 5» (direction=both)
+         + 인덱스 8/8 «유효»를 세어 확인
+3  refused_molecules / incomplete_molecules 를 «그대로» 보고
+   (코어가 NULL 인 278,475 행을 프레임이 어떻게 다루는지가 거기서 드러납니다)
+```
+
+---
+
+# 📦 **뷰 확장 «착지» · 패치 개정2 넘깁니다 — 그리고 씨앗이 코어 29장에 닿습니다** (구현자 15:0x)
+
+정정 받았습니다: 제가 «다른 주어»를 셌습니다. recipe 홉은 씨앗 자신의 9건이 아니라 «코어
+웨이퍼들»의 것이고 선언 145건입니다. 원인은 스크립트 폐기가 아니라 `bonded_from` 이 다른
+사실이 된 것 — 판정 ②가 맞았습니다.
+
+## 1) 뷰 확장 — **커밋했습니다.** 행 수 «안 늘었습니다»
+```
+행 371,593  (확장 전과 «동일») · distinct(base_id,bx,by) 371,593 · 충돌 0
++ core_seat  = core_lot||'|'||core_slot
++ core_wafer = «dedup 된 조회» (SELECT DISTINCT core_lot, core_slot, wafer_id)
+```
+🔴 dedup 이 안전하다는 것을 «먼저 쟀습니다»: (core_lot,core_slot) 355쌍 · 78,555행 ·
+**두 웨이퍼를 가리키는 쌍 «0»**. 즉 17배는 «모호함»이 아니라 «중복»이었습니다.
+조건 ③(누르지 마라)은 «결과»에 걸리는 것이고, 행 수가 안 움직인 것이 그 증거입니다.
+
+## 2) 🔴 게이트가 «데이터에서» 재현됩니다 — 씨앗이 29장에 닿습니다
+```
+SYN-BW-101-16   새 뷰의 코어 웨이퍼 «29»   ==   옛 bonding_core_lot 의 «29»
+```
+매핑이 서면 소유자 체인의 첫 홉이 그대로 돌아옵니다.
+
+## 3) 패치 개정2 — 매핑 «둘»로 분리
+```
+bonded-die-from-core-die   bonded_from@1   die{base_id,bx,by,"Wafer"} -> die{core_wafer,cx,cy,"Wafer"}
+<총괄이 이름 주실 것>       <새 술어>@1     die{base_id,bx,by,"Wafer"} -> die{dt_seat,dt_x,dt_y,"DTLotSlot"}
+input_columns 둘 다: base_id,bx,by,core_wafer,cx,cy,dt_seat,dt_x,dt_y,event_time
+```
+술어 이름과 어휘 등재는 총괄 몫으로 «비워 뒀습니다».
+
+## ⚠️ 패치가 «결정 못 하는» 것 하나 — 코어 쪽이 대부분 NULL 입니다
+```
+행 371,593
+   cx,cy 있는 행           93,118  (25.1%)
+   코어 «웨이퍼»까지 풀린 행 18,545  (5.0%)
+distinct (core_lot,core_slot) 657  ->  core_wafer_map 에 있는 것 «128»   (529쌍은 맵에 없음)
+```
+`bonded-die-from-core-die` 는 코어가 있는 행만 말할 수 있습니다. 나머지 278,475 행을 프레임이
+«거절»하는지 «미완»으로 두는지 «널 키 원자»를 쓰는지는 선언에서 읽을 수 없습니다 —
+지어내면 틀린 모양이 원장에 박힙니다. **첫 재적재의 `refused_molecules` /
+`incomplete_molecules` 에 나옵니다. 거절이면 그 매핑은 «자기 relation»이 필요합니다.**
+📌 이건 「걷기가 못 간다」가 아니라 «데이터가 여기까지»입니다 — 판정 ④와 같은 부류로 적습니다.
+
+## 다음
+```
+총괄  술어 이름 · 어휘 등재 · 패치 적용
+저    적용되면 bonded_from 재적재 -> 게이트(체인이 recipe 5 · 코어 29) 실측
+```
+
+---
+
+# 🔴 **재적재 끝. 게이트 «둘 통과 · 둘 불합격». 멈추고 올립니다** (구현자 14:0x)
+
+## 적재 결과 — 626,658 원자 (8소스). `lot_event` 만 거절
+```
+bonded_from 371,593 · inspected 117,662 · observed 103,841 · transfer 29,613
+wafer_process_recipe 3,022 · transfer_event 1,405 · dt_job 792 · lot_slot_move «135»
+lot_event  ❌ RoleFrameError (판정 대기 중이던 그것)
+```
+
+## ① 목표 걷기 — 🔴 «끝까지 안 갑니다». 어디서 서는지 적습니다
+원장에 실제로 존재하는 die→die 구간은 «둘»뿐입니다:
+```
+Wafer --bonded_from--> DTLotSlot    371,593   <- 🟢 «새로 열렸습니다» (1구간)
+Wafer --transfer-----> DT            29,613   <- 원래 있던 것 (core die → dt_job)
+```
+```
+🔴 DTLotSlot 이 «주어»로 나오는 원자가 «0» 입니다. 그래서 한 홉 가고 «섭니다».
+   die 주어의 mat_type 은 전부 'Wafer' 하나뿐입니다 (505,047).
+```
+**서는 이유 둘 — 둘 다 재적재 «전»에 제가 예고한 그것입니다:**
+```
+② 구간  DTLotSlot -> dt_job 를 «아무 선언도 잇지 않습니다»
+        같은 자리를 두 이름으로 부릅니다: die{dt_lot|dt_slot,…,"DTLotSlot"} 와 die{dt_job,…,"DT"}
+        bonding_log 에 dt_job 컬럼이 «없어» 이 relation 으로는 못 잇습니다
+③ 구간  split·merge 는 `lot_slot@1{lot,slot}` 에 삽니다 (slot_map 135)
+        DT 자리는 `die@1{...,"DTLotSlot"}` 입니다 -> «어휘가 둘»이라 서로 만나지 않습니다
+```
+📌 즉 「자리」가 두 문법으로 나뉘어 있습니다. 하나로 합치는 것이 다음 판정입니다.
+
+## ② 홉 — 여유 있습니다
+```
+가장 깊은 홉 «6»  (DEFAULT_HOPS 12)   trunc []
+```
+
+## ③ 무회귀 — 🔴 **소유자 08-24 체인이 «깨졌습니다»**. 원인 둘, 둘 다 «지시된 변경»입니다
+```
+지금   SYN-BW-101-16:  entity {wafer 1, die 78} · recipe «[]» · 코어 웨이퍼 «0» · BW «0»
+```
+누가 그 홉들을 썼었는지 세었습니다:
+```
+옛 표  bonded_from    wafer 주어 · 선언 «29»   <- 「코어 29장」이 이 홉이었습니다
+      processed_with wafer 주어 · «스크립트» 9  <- 「recipe 5」가 이 홉이었습니다
+새 표  bonded_from    die 주어 · 선언 141      <- die 로 내려갔으므로 wafer 는 «안 이어집니다»
+      processed_with  «없음»                  <- 스크립트가 쓴 것이라 재적재가 안 씁니다
+```
+🔴 **판정 ②의 「스크립트 processed_with 는 전부 값 목적어라 recipe 에 안 닿는다」가
+이 씨앗에서는 참이 아니었습니다.** 이 웨이퍼의 recipe 홉은 «스크립트가 쓴 9건»이었습니다.
+그리고 「코어 29장」 홉은 wafer→wafer `bonded_from` 이었고, 그걸 die→die 로 바꾸라는 것이
+이번 지시였습니다. **즉 게이트 ③의 「같아야」는 이 라운드의 지시와 «양립하지 않습니다».**
+어느 쪽을 살릴지는 총괄 판정입니다.
+
+## ④ 대조 — 술어별. 「사라진 것」은 «전부 설명됩니다»
+```
+술어              옛 -> 새          사라진 원자(anti-join)   설명
+bonded_from    3,650 -> 371,593        3,650    relation 교체 -> id 통째 변경 (총괄이 예고)
+slot_map         443 ->     135          443    선언 226(둘->하나) + 스크립트 217
+observed     115,429 -> 103,841       11,588    전부 스크립트
+processed_with 28,154 ->   3,022       25,132    전부 스크립트
+transferred   72,964 ->       0       72,964    전부 스크립트
+measured/has_param  179 ->    0          179    전부 스크립트
+register       7,491 ->     396        7,095    스크립트 6,945 + 🔴 «선언 150»
+has_wafer      1,645 ->       0        1,645    🔴 «선언 907» + 스크립트 738
+derived_from     101 ->       0          101    🔴 «선언 40» + 스크립트 61
+inspected/transfer/has_netdie  «동일»
+새로 생긴 id     bonded_from 371,593 · slot_map 135  (그 둘뿐)
+```
+🔴 **멈춤 조건에 걸리는 것은 «하나»입니다: 선언이 썼는데 다시 못 쓴 원자 «1,097»**
+(register 150 + has_wafer 907 + derived_from 40) — **전부 `lot_event` 하나에서 나옵니다.**
+그 소스가 거절당해서입니다. 다른 손실은 전부 스크립트이거나 설계상 교체입니다.
+
+## §2-ter — 🔴 «435 를 재현하지 못했습니다»
+```
+die→die 충돌 (시각 포함)          옛 «0» · 새 «0»
+die→die 충돌 (시각 무시)          옛 «0» · 새 «0»
+die→die 충돌 (시각·술어 무시)      옛 «0» · 새 «0»
+```
+제 축에서는 «전»에도 0입니다. 435 가 어느 축의 수인지 알려 주시면 그 축으로 다시 재겠습니다.
+재현 못 한 수를 「0으로 줄였다」고 적지 않겠습니다.
+
+## 멈춥니다 — 판정 필요한 것 셋
+```
+① lot_event 매퍼 키 하나 제약     -> in_slot 을 자리 뷰 위 declarative 소스로 옮길까요
+                                 (그러면 1,097 이 돌아오고 has_wafer 가 lot_slot 결로 섭니다)
+② DTLotSlot ↔ dt_job / lot_slot   -> 「자리」 어휘가 둘입니다. 합칠 방향을 정해 주십시오
+③ 게이트 ③                       -> 08-24 체인은 이번 지시와 «양립 불가»입니다
+```
+⚠️ 보드 화면은 총괄 재기동 후 확인 부탁드립니다 (원장이 통째로 바뀌었습니다).
+
+---
+
+# 🔧 **인시던트 수리 완료 — 인덱스 8/8 «전부 유효». 재적재 재개** (구현자 13:1x)
+
+인시던트는 «제 개명»이 만든 것이 맞습니다. 지시 1~5 그대로 태웠고, 그 과정에서 «같은 함정이
+한 층 더 아래»에 또 있었습니다.
+
+## 지시대로 한 것
+```
+1  적재 중지 ✅
+2  옛 인덱스 이름 7개 비우기 ✅   (uq_ledger_atom · idx_ledger_source_event ·
+   idx_ledger_object_entity · idx_ledger_subject_entity · idx_ledger_subject_lot ·
+   idx_ledger_register · idx_ledger_register_search)
+3  새 ledger_events TRUNCATE (533,259 → 0) · 커서 초기화 ✅
+4  ensure_schema 재실행 → 인덱스 «수와 정의»로 대조 ✅
+5  전량 재적재 — «지금 도는 중»
+```
+스크립트: `server/scripts/repair_rebuild_indexes.py` (dry-run 기본 · 게이트 후 커밋)
+
+## 🔴 함정이 «두 겹» 더 있었습니다 — 셋 다 같은 부류입니다
+```
+① 부모 인덱스 이름   개명이 «표»만 옮기고 인덱스 이름은 두고 감 -> IF NOT EXISTS 가 건너뜀
+② 파티션 인덱스 이름  마이그레이션이 idx_..._2026_05 를 «IF NOT EXISTS»로 만들고 ATTACH 함
+                    그 이름을 «옛 파티션»이 쥐고 있어 -> 만들기는 건너뛰고 ATTACH 가 «옛 것»을
+                    잡아 「이미 다른 인덱스에 붙어 있음」으로 거절
+③ 존재 ≠ 유효        위를 고치기 «전»에 이미 8/8 이었는데 «둘이 INVALID» 였습니다
+                    파티션 부모 인덱스는 모든 파티션이 짝을 가질 때까지 INVALID 입니다
+```
+🔴 **③이 아니었으면 제가 「8개 다 있습니다」로 초록 보고를 했을 겁니다.** 총괄이 말씀하신
+「이름이 아니라 개수와 정의로」에 «유효성»을 한 칸 더 붙였습니다 — 게이트가 그걸 셉니다.
+```
+GATE (parity by DEFINITION, and every index VALID): PASS
+   정의 부족 none · 새 표에만 있는 것 none · INVALID «none»
+```
+⚠️ ②를 풀 때 `<name>_pre_rebuild` 접미사가 «63바이트 한계»에 잘려 서로 충돌했습니다.
+   그래서 파티션 인덱스는 `preidx_<oid>` 로 옮겼습니다 — 짧고 유일하고, 다시 이름으로
+   불릴 일이 없는 것들입니다.
+
+## 지금
+```
+9소스 재적재 «진행 중» (커서가 비었으므로 전부 처음부터)
+lot_event 는 여전히 거절될 것입니다 — 「매퍼 경로는 엔티티 키를 하나만 받는다」 판정 대기 중
+```
+끝나면 게이트 전부(술어별 anti-join · die 충돌 · 목표 걷기 % · 보드) 재고 올리겠습니다.
+
+---
+
+# 📦 **패치 최종본 넘깁니다. 게이트도 «비공허»하게 고쳤습니다** (구현자 12:2x)
+
+## 1) 게이트 문구 — 지적대로 «둘»로 잽니다. 지금 값 둘 다 통과
+```
+① 정체 계약   행 수 == distinct(5칸 + event_time)     135 == 135  ✅
+② 진짜 중복   «같은 시각»에 같은 이동(5칸)이 2행 이상    «0»        ✅  <- 실패할 수 있는 쪽
+   참고        «다른 시각»에 같은 자리쌍                 13         (서로 다른 사건)
+```
+①은 event_time 을 키에 넣는 순간 «정의상» 통과합니다 — 변하는 칸을 키에 넣어 단언을 비우는
+그 부류라, ②를 게이트에 «넣었습니다». 스크립트가 둘 다 찍고 ②가 0이 아니면 FAIL 입니다.
+그리고 그 13쌍의 예를 스크립트 머리에 적어 뒀습니다 (WF.010508 이 11:25 split · 20:33 merge).
+
+## 2) 📦 패치 최종본 — `task/LEDGER_DECL_PATCH_2026-08-26.md`
+```
+① entities        + lot_slot@1 [lot, slot]                       (시간은 키에 «없음»)
+② in_slot         subject: lot@1 -> «lot_slot@1{lot, slot}»       + 중복 한정어 slot 삭제
+③ bonded_from     relation bonding_core_lot -> «bonding_core_die»
+                  read.identity/order_by/cursor -> [base_id, bx, by]
+                  input_columns 둘 -> [base_id,bx,by,dt_seat,dt_x,dt_y,event_time]
+                  매핑 개명 bonded-wafer-from-core-wafer -> «bonded-die-from-dt-seat»
+                  die@1{base_id,bx,by,"Wafer"} -> die@1{dt_seat,dt_x,dt_y,"DTLotSlot"}
+⑤ NEW source      lot_slot_move · 매핑 «seat-to-seat» 하나
+                  lot_slot@1{from_lot,from_slot} -> lot_slot@1{to_lot,to_slot}
+                  한정어 event_type · 🔴 wafer 는 «없음»(엣지는 in_slot 이 냅니다)
+⑥ 삭제            merge_slot_join · split_slot_carry
+```
+전제: 뷰 둘 다 «이미 적용»돼 있습니다 (`bonding_core_die` · `lot_slot_move`).
+라이브 선언은 **끝까지 열지 않았습니다** — 인용은 읽기로만 했습니다.
+
+## 3) 제 쪽 남은 것 — 지시 주시면 바로
+```
+개명(부모 + 자식 여덟) -> 재적재 -> 목표 걷기
+게이트 ④는 술어별로 «사라진 것·생긴 것»을 이름으로 적겠습니다 (수만으로는 안 가려지는 것 확인)
+slot_map 은 «따로» 적습니다: 지금 선언 226 + 스크립트 217 = 443  ->  후 «135»
+```
+
+---
+
+# ✅ **`event_type` 실었습니다 — 그리고 «어느 행의 것이냐»가 계약을 갈랐습니다** (구현자 11:5x)
+
+지적이 맞습니다. 「랏 이름이 말한다」는 **기록이 아니라 도출**이었고, 이 프로젝트가 반복해서
+당한 그 부류였습니다. 실었습니다.
+
+## 🔴 그런데 «누구의 event_type 이냐»로 계약이 깨졌다 살아났습니다 — 실측
+```
+«주는 쪽»의 type 을 양쪽 팔에 쓰면    행 187 · 이동 135   <- 🔴 한 이동이 type 을 «둘» 가짐
+«기록한 행»의 type 을 각 팔에 쓰면    행 135 · 이동 135   ✅ 계약 유지
+```
+즉 **type 은 «이동»의 성질이 아니라 «기록»의 성질**입니다. 후자로 갔습니다.
+(둘 중 뭘 쓰든 21은 그대로였습니다 — 그래서 21만 보고 골랐으면 187 을 못 봤습니다.)
+
+## 게이트 — 전부 통과, `--apply` 했습니다
+```
+뷰 행 135 = distinct 이동 135        접지 않음 ✅
+슬롯 바뀜 21 = 원장 자신의 21        두 경로 일치 ✅
+event_time NULL 0                   ✅
+event_type 실린 행 «135 / 135»       split 85 · merge 50   ✅
+COMMITTED.  Rollback: DROP VIEW lot_slot_move;
+```
+
+## 📌 `track_in` 5건 — **135 에 «안 들어옵니다». 정상입니다**
+```
+event_type='track_in' 이면서 child_lot 이나 parent_lot 이 있는 행: «0»
+-> 짝지을 상대가 아예 없습니다. track-in 은 이동이 아니니까요
+```
+🔴 그리고 앞서 「주는 쪽 type」으로 재던 판에서는 `track_in` 이 «20건» 떠 있었습니다 —
+상대편이 track_in 행이라서 딸려 온 것이고, 「기록한 행」으로 바꾸자 사라졌습니다.
+**같은 뷰가 잘못된 축에서는 없는 track_in 이동 20건을 만들어 내고 있었습니다.**
+
+## 패치 파일 갱신
+```
+⑤ bind 에  "event_type": { "kind": "column", "column": "event_type" }  추가
+   input_columns 둘(map · prepare)에 "event_type" 추가
+   -> bonded_from 의 qualifiers{core_slot} 와 «같은 자리»입니다
+```
+
+## 게이트 ④ 메모 — 지시대로 `slot_map` 을 «따로» 적겠습니다
+```
+지금   선언 226 (#merge_slot_join 113 + #split_slot_carry 113) + 스크립트 217 = 443
+후     «135» (선언 하나)
+226 -> 135 는 «두 번 적던 것이 한 번»이 된 것이지 손실이 아닙니다
+```
+
+## 다음 — 지시 주시면
+```
+① 총괄이 패치 적용 (적용 전후 hash)
+② 개명(부모+자식 8) -> 재적재 -> 목표 걷기 (「몇 %가 끝까지 가나」 포함)
+```
+
+---
+
+# ✅ **`lot_slot_move` 게이트 «21 재현». die 뷰 커밋 완료. 패치에 매핑 추가** (구현자 11:1x)
+
+## 1) `lot_slot_move` — dry-run **PASS**. 🔴 두 경로가 «같은 21»에 닿았습니다
+```
+lot_event 행                     142
+뷰 행 (이동 하나 = 행 하나)       «135»
+distinct 이동 튜플                135   = 행 수  -> 접지 않았습니다 (조건 ③)
+슬롯이 «바뀌는» 이동              «21»   <- 게이트
+🔴 원장 자신의 수                 «21»   <- slot_map 한정어 from<>to 를 «따로» 센 것
+                                        두 경로가 «일치»합니다
+움직인 웨이퍼 91 · event_time NULL 0
+```
+**아직 `--apply` 안 했습니다** — 지시가 「dry-run 후 보고」였습니다. 말씀 주시면 적용합니다.
+
+### 짝짓기를 «양방향»으로 했습니다 — 한쪽만 보면 «놓칩니다»
+```
+child 방향만    97 엣지
+parent 방향만  197 «행» (중복 포함)
+UNION 중복제거 «135» 엣지        <- 받는 쪽만 본 이동이 «38» 더 있습니다
+슬롯 바뀜은 셋 다 «21»           <- 중복이 걷히면 같은 수로 모입니다
+```
+UNION 의 중복 제거는 «같은 이동을 양쪽에서 본 것»을 하나로 만드는 것이지 정보를 접는 게
+아닙니다. 그래서 게이트에 「행 수 == distinct 튜플 수」를 넣었습니다 — 통과했습니다.
+
+## 2) `bonding_core_die` — **커밋했습니다** (총괄 승인대로)
+```
+COMMITTED.  Rollback: DROP VIEW bonding_core_die;
+371,593행 · 충돌 0 · DTLotSlot 자리 2,632 · cx,cy 93,118(25.1%)
+```
+옛 뷰 `bonding_core_lot` 은 그대로 살아 있습니다.
+
+## 3) 패치 파일에 «⑤⑥» 추가 — 🔴 매핑이 «둘»이 아니라 «하나»입니다
+```
+⑤ 새 source `lot_slot_move` · 매핑 «seat-to-seat» 하나
+⑥ 옛 `merge_slot_join` · `split_slot_carry` «삭제»
+```
+🔴 **둘을 그대로 두면 이동이 두 번 적힙니다.** 둘 다 같은 `slot_map@1` 을 같은 행에서 내는데,
+이제 relation 이 하나이므로 매핑 둘 = 원자 둘입니다. 뷰는 merge 와 split 을 구분하지 «않고»,
+구분할 필요도 없습니다 — 어느 쪽으로 갔는지는 «랏 이름»이 말합니다.
+```
+443 원자 (46 주어 × 49 목적어, 한 쌍 25번)  ->  135 원자 (이동 하나 = 원자 하나)
+```
+🔴 **`wafer` 한정어는 «넣지 않았습니다»** — 계획서 §4⑤(한정어에 식별자 금지, 이름이 노드면
+그건 엣지). 웨이퍼 연결은 이미 엣지입니다: 변경 ②가 `in_slot` 을
+`lot_slot@1 --has_wafer--> wafer@1` 로 만듭니다. 자리가 «무엇을 들고 있나»를 말하고,
+이동이 «그 자리가 어디로 갔나»를 말합니다.
+
+## 다음 — 지시 주시면
+```
+① lot_slot_move --apply
+② 총괄이 패치 적용 (적용 전후 hash)
+③ 개명(부모+자식 8) -> 재적재 -> 목표 걷기
+```
+
+---
+
+# 🔴 판정 요청 — **패치 파일과 die 뷰 착지. 다만 매핑 «둘»은 제가 틀렸습니다** (구현자 10:3x)
+
+판정 넷 받고 ③(패치 파일)부터 시작했습니다. 라이브 선언은 **쓰지 않았습니다** —
+정확히 인용하려고 «읽기»만 했습니다.
+
+## 낸 것 둘
+```
+task/LEDGER_DECL_PATCH_2026-08-26.md          어느 키를 무엇으로 (before/after)
+server/scripts/create_bonding_core_die_view.py  dry-run 기본 · --apply + --i-accept-… 필요
+```
+
+## ④ `bonding_core_die` — dry-run **PASS**. 아직 «커밋 안 했습니다»
+```
+bonding_log                380,273
+뷰 행 (die 하나 = 행 하나)   «371,593»   조건 ③ 충족
+키 빠져서 버린 행              8,680
+distinct (base_id,bx,by)     371,593   = 행 수  -> «행이 곧 die»
+distinct (주어 die, 목적 die) 371,593   = 행 수  -> §2-ter 충돌 «0»
+event_time NULL                    0
+distinct (dt_lot,dt_slot)      2,632   <- DTLotSlot 자리
+cx,cy 있는 행                  93,118   (25.1%) <- core 구간이 닫히는 만큼
+```
+🔴 **`core_wafer_map` 을 조인하지 «않았습니다»** — 옛 뷰와 같은 LEFT JOIN 을 걸면
+371,593 → **6,444,693** 으로 17배 부풀어 「행 하나 = die 하나」가 깨집니다. 옛 뷰는 뒤에
+DISTINCT 로 접어서 감당했지만 여기선 접는 게 금지입니다. core 는 `bonding_log` 의
+`core_lot·core_slot·cx·cy` 로 «조인 없이» 싣습니다.
+🔴 `dt_seat` (= `dt_lot||'|'||dt_slot`) 을 «뷰가» 만듭니다 — `mat_id` 는 컬럼 하나를 받고
+문법엔 `column`·`constant` 뿐입니다(작동 예제 `core-die-to-dt-die` 에서 확인). 두 컬럼짜리
+정체는 컬럼 하나로 «도착해야» 합니다. 지어낸 형식이 아니라 검증기에 있는 형식입니다.
+⚠️ 옛 뷰 `bonding_core_lot` 은 **그대로 둡니다** (조건 ②).
+
+## 🔴 제가 틀린 것 — `merge_slot_join` · `split_slot_carry` 는 «선언만으로 안 됩니다»
+앞 보고에서 「셋 다 선언만으로 가능」이라 했는데, 그건 컬럼 «존재»로 판정한 것이었습니다.
+«내용»으로 보면 아닙니다:
+```
+지금   "from" 과 "to" 가 «같은» slots 컬럼을 봅니다.  subject 와 target 도 «같은» lot 컬럼
+       -> 슬롯 변화를 «적을 수가 없습니다». 443 원자가 46×49 로 붕괴하는 이유입니다
+행     lot=CL-2601-002-A4  child_lot=CL-2601-005-A5  slots=01:05:07…  wafers=WF.010201:…
+       상대편에서 그 웨이퍼가 «몇 번 자리»에 앉는지는 이 행에 «없습니다»
+```
+복구는 됩니다 — 두 `lot_event` 행을 웨이퍼 id 로 «짝지으면». 실측:
+```
+짝지은 자리→자리 엣지        «97»
+   그중 슬롯이 실제로 바뀜   «21»   <- 계획서가 말한 그 21과 «정확히» 일치
+지금 slot_map 원자           443    (46 주어 × 49 목적어, 한 쌍이 25번)
+```
+그러면 그건 «relation» 이지 binding 이 아닙니다 — `lot_slot_move`(from_lot, from_slot,
+to_lot, to_slot, wafer, event_time) 하나. 지시서가 «지목하지 않은» 두 번째 relation 이라
+**만들지 않고 제안만 합니다.** 판정 부탁드립니다.
+🔴 없으면 목표 걷기의 split·merge 구간이 «안 열립니다» (그 21건이 표현 불가로 남습니다).
+
+## 📌 그리고 «미리» 말씀드립니다 — DTLotSlot → dt_job 링크가 «없습니다»
+```
+패치대로면   bonding die --bonded_from--> DTLotSlot die   (dt_seat, dt_x, dt_y)
+이미 있는 것  core die --transfer--> DT die               (dt_job,  dt_x, dt_y)
+```
+둘은 같은 (dt_x, dt_y) 를 쓰지만 `mat_id` 가 다릅니다 — **한 자리를 두 이름으로 부르고
+있고, 그걸 잇는 선언이 없습니다.** `bonding_log` 에 `dt_job` 컬럼이 없어서 이 relation 으로는
+못 잇습니다. 5)에서 걷기가 «여기서 설» 겁니다. 미리 적어 둡니다.
+
+## 다음 (지시 주시면)
+```
+① lot_slot_move 판정 -> 나오면 패치에 매핑 둘 추가
+② 총괄이 패치 적용 (적용 전후 hash)
+③ 뷰 --apply
+④ 3) 개명(부모+자식 8) -> 4) 재적재 -> 5) 목표 걷기
+```
+
+---
+
+# 📋 **재료 실측 (읽기 전용) — 🔴 목표 걷기의 재료가 «한 표»에 통째로 있습니다** (구현자 07:2x)
+
+답을 기다리는 동안 지시서의 멈춤 조건 그대로 「소스에 재료가 있나」를 «세어» 봤습니다.
+**아무것도 안 썼습니다.**
+
+## 🔴 가장 큰 것 — `bonding_log` 가 소유자 걷기를 «전 구간» 들고 있습니다
+```
+bonding_log   380,273행
+   base_id · bx,by      374,977   <- bonding pkg 의 «die»
+   dt_lot · dt_slot     376,889   <- dt_lot_slot
+   dt_x · dt_y          376,889   <- dt_lot_slot 의 «x,y»
+   cx,cy                 93,118   <- core 의 «die»
+   core_lot · core_slot           <- core_wafer_map 으로 wafer_id 에 닿음
+   distinct base_id 2,660 · (core_lot,core_slot) 658 · (dt_lot,dt_slot) «2,753»
+```
+**즉 `bonding pkg → dt_lot_slot,x,y → … → core,x,y` 가 이 한 표 안에 있습니다.**
+
+## 그런데 선언은 그 표를 «4컬럼으로 눌러» 읽고 있습니다
+```
+bonded_from 의 relation = bonding_core_lot  ← «뷰»입니다 (제가 08-25에 만든 웨이퍼용)
+   SELECT DISTINCT b.base_id, m.wafer_id AS core_wafer, b.core_slot, b.event_time
+     FROM bonding_log b JOIN core_wafer_map m ...
+   -> 380,273행이 «3,650»으로 붕괴합니다. x,y 는 SELECT 목록에 «아예 없습니다»
+```
+🔴 **그래서 「bonded_from 을 die→die 로」는 선언만 고쳐서는 안 됩니다** — 지금 relation 에
+   x,y 가 없으니까요. 고칠 자리는 «relation» 입니다: `bonding_log` 위에 die 단위 뷰를 세우고
+   선언이 그것을 읽게 하는 것. 재료는 «있습니다». 없는 것은 그 표의 «폭»입니다.
+```
+제안   bonding_core_die (새 뷰) = base_id,bx,by · dt_lot,dt_slot,dt_x,dt_y · core_wafer,cx,cy
+       -> bonded_from 이 die→die 로 서고, dt_lot_slot 구간도 «같은 표»에서 나옵니다
+⚠️ 이건 「선언만 고친다」의 범위를 넘습니다. 총괄 판정 부탁드립니다.
+```
+
+## 나머지 셋 — 재료 «있습니다». 다만 이름이 다릅니다
+```
+lot_event (142행)  실제 컬럼   lot · event_type · parent_lot · child_lot
+                              slot_numbers · wafer_ids  (+ 중복 철자 slotnumbers · waferids)
+선언의 input_columns 는       slots · wafers · row_identity · event_group_key
+                              -> 표에 «그 이름»은 없습니다. prepare(direct-join)가 만드는 이름입니다
+lot_slot@1[lot,slot] 에 필요한 재료:  lot ✅ · slot(slot_numbers / 한정어 from·to) ✅ · wafer ✅
+x,y 는 «필요 없습니다» (계획서 §2 대로 lot_slot 엔 x,y 가 없습니다)
+```
+즉 `merge_slot_join` · `split_slot_carry` · `in_slot` 셋은 **선언만으로 고칠 수 있습니다.**
+
+## 정리 — 매핑 넷의 판정
+```
+merge_slot_join    lot→lot     ⇒ lot_slot→lot_slot   ✅ 선언만으로 가능
+split_slot_carry   lot→lot     ⇒ lot_slot→lot_slot   ✅ 선언만으로 가능
+in_slot            lot→wafer   ⇒ lot_slot→wafer      ✅ 선언만으로 가능
+bonded_from        wafer→wafer ⇒ die→die             🔴 relation 을 넓혀야 함 (재료는 있음)
+```
+
+---
+
+# 📋 **착수 전 요약 — 원장 재건. 그리고 «태우기 전에» 답이 필요한 것 둘** (구현자 06:5x)
+
+읽었습니다: 지시서 + `LEDGER_REBUILD_PLAN.md` §2-bis · §7. 아래는 «요청 → 제가 할 일» 매핑과,
+착수 전에 읽기 전용으로만 재 본 것들입니다. **아직 아무것도 안 썼습니다.**
+
+## 요청 → 작업 매핑
+```
+1) 자리 어휘      ledger_config.json  entities += lot_slot@1[lot,slot]
+                  die@1 mat_type += "DTLotSlot"  (mat_id = dt_lot|slot)   ⚠️ 질문 ① 참조
+2) 매핑 넷        bonded_from(wafer→wafer ⇒ die→die) · merge_slot_join · split_slot_carry
+                  (lot→lot ⇒ lot_slot→lot_slot) · in_slot(lot→wafer ⇒ lot_slot→wafer)
+                  -> 고치기 «전»에 각 소스 표에 재료 컬럼이 실제로 있는지 «세어» 보고 보고
+3) 이름 바꾸기     ALTER TABLE … RENAME.  🔴 파티션 확인 결과는 아래 «멈춤 신호 ①»
+4) 전량 재적재     선언 8소스.  🔴 결과는 아래 «멈춤 신호 ②» — 게이트 ③과 충돌합니다
+5) 목표 걷기       끝까지 태우고, 서면 «어느 구간»인지 보고
+안 함             서버 코드(목표 0줄) · 클라 · syn_* 스크립트 · 사건 노드 복원
+```
+
+## 🔴 멈춤 신호 ① — 파티션. **rename 은 됩니다. 다만 «부모만» 바꾸면 재적재가 깨집니다**
+```
+ledger_events   relkind «p» (파티션 부모) · 자식 «8»
+                ledger_events_2026_01 · _05 · _06 · _07 · _08 · _09 · _10 · _11
+```
+부모 이름은 바꿀 수 있고 자식들은 «자기 이름 그대로» 붙어 있습니다. 그래서 —
+```
+🔴 새 ledger_events 를 만들고 ensure_partition 이 2026_09 를 만들려 하면
+   그 이름은 «옛 부모 밑에 아직 살아 있어» 충돌합니다
+=> 부모 «와» 자식 여덟을 «같이» 개명해야 합니다 (ledger_events_pre_rebuild_2026_09 …)
+   재생성 경로는 이미 있습니다: ledger/schema.py  ensure_schema · ensure_partitions_for_range
+```
+이대로 진행해도 되겠습니까? (총괄 지시엔 부모 한 줄만 있었습니다)
+
+## 🔴 멈춤 신호 ② — **재적재가 117,824 를 «지웁니다». 게이트 ③이 그걸 못 견딥니다**
+선언이 쓴 것과 스크립트가 쓴 것을 술어별로 갈랐습니다:
+```
+술어                선언       스크립트
+transferred             0     72,964    <- 전부 스크립트
+processed_with      3,022     25,132    <- 🔴 89%가 스크립트
+observed          103,841     11,588
+register              546      6,945
+has_wafer             907        738
+slot_map              226        217
+measured                0        144    <- 전부 스크립트
+has_param               0         35    <- 전부 스크립트
+derived_from           40         61
+bonded_from · inspected · transfer · has_netdie   전부 «선언» (안전)
+```
+🔴 **게이트 ③은 소유자 08-24 체인(a → 코어 29장 → «recipe 5» → 코어 600장 → BW 25장)을
+   그대로 요구하는데, 그 recipe 홉이 `processed_with` 이고 그중 «25,132/28,154 가 스크립트»입니다.**
+   지금 순서대로 태우면 게이트 ①(목표 걷기)은 열리고 게이트 ③은 «깨질 가능성이 높습니다».
+```
+계획서 §8 ①이 바로 이 판정입니다 — 「버리면 화면 표본이 빈다」. 그런데 그 판정은 «3단계»에
+있고, 이번 라운드는 4단계(재적재)를 «먼저» 합니다. 순서상 판정이 뒤에 옵니다.
+```
+📌 보드 씨앗 SYN-BW-101-16 자체는 선언 159 · 스크립트 36 이라 «반쯤» 남습니다 —
+   즉 「없어짐」이 아니라 «부분적으로 빈 화면»이 됩니다. 그게 더 읽기 어렵습니다.
+
+**제안**: 3)·4)를 태우기 전에 총괄이 §8 ①을 먼저 판정해 주시거나, 재적재를 «선언 8소스 +
+스크립트 원자 보존»으로 한정해 주십시오(옛 표에서 스크립트 행만 되돌려 붓는 것도 가능합니다).
+
+## 📎 덤 — 총괄 census 는 «정확히» 재현됩니다. 다만 표지는 다른 칸에 있습니다
+```
+ledger-v2: 를 담은 칸 = source_translator_ver   259,903   <- 총괄 수와 «일치»
+source_who · source_raw_ref 에는 «0»           (제가 처음 여기서 재고 0을 봤습니다)
+```
+「원장 = 선언의 출력」을 나중에 «정의상 참»으로 검증할 때 이 칸을 씁니다.
+
+## 📌 게이트 ④의 «옛 표» — 지금 못 박아 둡니다 (377,727)
+```
+inspected 117,662 · observed 115,429 · transferred 72,964 · transfer 29,613
+processed_with 28,154 · register 7,491 · bonded_from 3,650 · has_wafer 1,645
+slot_map 443 · has_netdie 396 · measured 144 · derived_from 101 · has_param 35
+```
+
+## ⚠️ 질문 ① — `ledger_config.json` 을 «제가» 편집합니까
+지금까지의 상설은 「선언 파일은 총괄이 쓴다, 구현자는 조각을 낸다」였습니다. 이번 지시는
+1)·2)가 그 파일 «안»입니다. 둘 중 하나로 정해 주십시오:
+```
+A. 제가 직접 편집합니다 (백업 먼저 · 읽고-고치고-쓰기 · 쓴 뒤 파싱+항목수 검증)
+B. 제가 «조각»을 내고 총괄이 붙입니다   <- 지금까지의 규칙
+```
+답 주시면 바로 태우겠습니다. 그 사이 2)의 「소스에 재료가 있나」는 읽기 전용이라 «먼저»
+세어 두겠습니다.
+
+---
+
 # ✅ **회귀 수리 — 술어를 «엣지에서» 읽습니다. 게이트 넷** (구현자 22:4x)
 
 ## 무엇을 세고 무엇을 뺐나 — 판별식은 **`claim_id` 를 지녔나** 하나입니다
