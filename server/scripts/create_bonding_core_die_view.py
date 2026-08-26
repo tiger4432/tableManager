@@ -14,12 +14,16 @@ already in `bonding_log`, only the projection was narrow.
 already one per die, so any folding here would be inventing, exactly as the collapse in
 `bonding_core_lot` did. The (subject die, target die) pair is likewise unique 371,593/371,593.
 
-🔴 `core_wafer_map` IS NOT JOINED. Measured: the same LEFT JOIN the lot view uses fans 371,593
-rows out to 6,444,693 -- roughly seventeen map rows per (core_lot, core_slot). The lot view can
-afford that because it folds with DISTINCT afterwards; here folding is forbidden, so the join
-would multiply every die by seventeen. The core side travels as `core_lot`/`core_slot`/`cx`/`cy`
-straight off `bonding_log` instead, and the `dt_job -> core` segment is already served by
-`dt_transfer / core-die-to-dt-die`.
+🔴 `core_wafer_map` IS JOINED THROUGH A DEDUPED LOOKUP, and the distinction matters. The raw
+join fans 371,593 rows out to 6,444,693 -- but measured, that is DUPLICATION, not ambiguity:
+355 distinct (core_lot, core_slot) pairs, 78,555 rows, and ZERO pairs naming more than one
+wafer. So `SELECT DISTINCT core_lot, core_slot, wafer_id` is a lookup table, not a fold of the
+answer. "Do not squash" governs the RESULT -- one row per die -- and the gate proves it held:
+the row count does not move.
+
+⚠️ `core_wafer` and `cx`/`cy` are NULL on 278,475 of the 371,593 rows; only 93,118 bonded dies
+record which core die they came from. A mapping that binds the core side speaks for those rows
+only.
 
 WHAT IS FILTERED AND WHY HERE: rows missing any of the seven key columns are excluded. A v5
 `read` declares only unit/identity/group_by/order_by/occurred_at -- there is no filter axis --
@@ -82,8 +86,13 @@ SELECT b.base_id, b.bx, b.by,
        b.dt_lot, b.dt_slot, b.dt_x, b.dt_y,
        b.dt_lot || '|' || b.dt_slot AS dt_seat,
        b.core_lot, b.core_slot, b.cx, b.cy,
+       b.core_lot || '|' || b.core_slot AS core_seat,
+       m.wafer_id AS core_wafer,
        b.event_time
 FROM bonding_log b
+LEFT JOIN (SELECT DISTINCT core_lot, core_slot, wafer_id FROM core_wafer_map) m
+  ON m.core_lot = b.core_lot
+ AND regexp_replace(m.core_slot::text, '\D', '', 'g')::int = b.core_slot::int
 WHERE {KEYS_PRESENT}"""
 
 
@@ -112,6 +121,8 @@ def main(argv=None):
                 f"SELECT count(*) FROM {VIEW} WHERE cx IS NOT NULL AND cy IS NOT NULL")).scalar()
             seats = c.execute(text(
                 f"SELECT count(*) FROM (SELECT DISTINCT dt_lot, dt_slot FROM {VIEW}) t")).scalar()
+            cored = c.execute(text(
+                f"SELECT count(*) FROM {VIEW} WHERE core_wafer IS NOT NULL")).scalar()
 
             print("   bonding_log rows             %8d" % source_rows)
             print("   view rows (one per die)      %8d   %s"
@@ -126,6 +137,8 @@ def main(argv=None):
             print("   distinct (dt_lot, dt_slot)   %8d   (the DTLotSlot seats)" % seats)
             print("   rows carrying cx,cy          %8d   (%.1f%% - how far the core segment closes)"
                   % (with_core, 100.0 * with_core / kept if kept else 0))
+            print("   rows with a core WAFER named %8d   (the deduped lookup resolved these)"
+                  % cored)
 
             ok = kept == EXPECTED and dies == kept and pairs == kept and no_time == 0
             print("\n   GATE: %s" % ("PASS" if ok else "FAIL"))

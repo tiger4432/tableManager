@@ -242,3 +242,100 @@ Both are replaced by ⑤. Left in place they would keep writing the collapsed sh
 46 subjects x 49 objects, one pair 25 times) alongside the real one.
 
 `descent`, `first_sight_holder`, `first_sight_item` and `in_slot` stay.
+
+
+---
+
+# REVISION 2 (2026-08-26 afternoon) — `bonded_from` splits into two facts
+
+The first version pointed `bonded_from` at the DT seat, which quietly changed what the predicate
+MEANS: "this BW came from that core wafer" became "this BW die sits in that DT seat". Core
+lineage disappeared with it. Per the Lead PM's ruling, the relation carries two facts and they
+get two mappings and two predicates.
+
+`bonding_core_die` now also provides `core_seat` (`core_lot||'|'||core_slot`) and `core_wafer`,
+the latter through a DEDUPED lookup: `SELECT DISTINCT core_lot, core_slot, wafer_id`. Measured
+before relying on it -- 355 pairs, 78,555 rows, and ZERO pairs naming two different wafers, so
+the fan-out was duplication rather than ambiguity. The row count stayed at 371,593, which is the
+proof that nothing was squashed.
+
+## ③-a REPLACE the single mapping with TWO
+
+`sources.bonded_from.map.input_columns` and `.prepare.input_columns` (both):
+```json
+["base_id", "bx", "by", "core_wafer", "cx", "cy", "dt_seat", "dt_x", "dt_y", "event_time"]
+```
+
+`sources.bonded_from.bind.mappings` -- replace `bonded-die-from-dt-seat` with:
+
+```json
+"bonded-die-from-core-die": {
+  "predicate": "bonded_from@1",
+  "bind": {
+    "occurred_at": { "kind": "column", "column": "event_time" },
+    "subject": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "base_id" },
+        "x":        { "kind": "column",   "column": "bx" },
+        "y":        { "kind": "column",   "column": "by" },
+        "mat_type": { "kind": "constant", "value":  "Wafer" }
+      }
+    },
+    "target": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "core_wafer" },
+        "x":        { "kind": "column",   "column": "cx" },
+        "y":        { "kind": "column",   "column": "cy" },
+        "mat_type": { "kind": "constant", "value":  "Wafer" }
+      }
+    }
+  }
+},
+"<NAME THE LEAD PM GIVES>": {
+  "predicate": "<NEW PREDICATE>@1",
+  "bind": {
+    "occurred_at": { "kind": "column", "column": "event_time" },
+    "subject": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "base_id" },
+        "x":        { "kind": "column",   "column": "bx" },
+        "y":        { "kind": "column",   "column": "by" },
+        "mat_type": { "kind": "constant", "value":  "Wafer" }
+      }
+    },
+    "target": {
+      "kind": "entity", "entity_type": "die@1",
+      "keys": {
+        "mat_id":   { "kind": "column",   "column": "dt_seat" },
+        "x":        { "kind": "column",   "column": "dt_x" },
+        "y":        { "kind": "column",   "column": "dt_y" },
+        "mat_type": { "kind": "constant", "value":  "DTLotSlot" }
+      }
+    }
+  }
+}
+```
+The vocabulary needs the new predicate declared with `die@1` on both sides, and `bonded_from@1`
+keeps `die@1 -> die@1` as revision 1 already set it.
+
+## ⚠️ ONE THING THE PATCH CANNOT DECIDE — the core side is NULL on most rows
+
+```
+rows in the relation                     371,593
+   with cx,cy (a core die recorded)       93,118   (25.1%)
+   with a core WAFER resolved             18,545   (5.0%)
+distinct (core_lot,core_slot) in view        657
+   resolved through core_wafer_map           128   <- 529 pairs have no map row
+```
+`bonded-die-from-core-die` can only speak for the rows that carry a core wafer. What the
+framework does with the other 278,475 -- refuse the molecule, mark it incomplete, or write a
+null-keyed atom -- is not something I can read out of the declaration, and guessing it would put
+a wrong shape into the ledger. **It shows up as `refused_molecules` / `incomplete_molecules` on
+the first reload; if it refuses, the mapping needs its own relation.**
+
+📌 The gate the ruling asks for is already reachable in the data: the owner's seed
+`SYN-BW-101-16` resolves **29 distinct core wafers** in the new view -- the same 29 the old
+`bonding_core_lot` gave.
