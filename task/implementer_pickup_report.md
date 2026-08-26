@@ -1,3 +1,61 @@
+# 🔴 **ⓑ 착수 전 계수 — 반경이 지시서보다 «넓습니다». 수를 먼저 올립니다** (구현자 06:4x)
+
+「«세고» 지우십시오. 「없을 것이다」로 지우지 마십시오」 그대로 셌고, **지우기 전에 멈춥니다.**
+
+## 게이트 ① 계수 — grep 수 그대로
+```
+ledger_explorer.explore 호출자
+   산 것 «0» · 시험 «3» (test_ledger_explorer.py:43,62,71)
+   ledger_trace_router:77 은 «주석 한 줄» (라우트 아님)
+   test_ledger_subgraph:587-592 는 「/explore 는 08-25 에 삭제됐다」는 «단언»
+   -> 지시서 수와 «일치»합니다 ✅
+
+lineage_predicates() 를 읽는 자리
+   🔴 «6»  ledger_explorer.py:251  ·  ledger_trace.py:164 · 891 · 934 · 1041 · 1092
+   그중 다섯이 «ledger_trace 자기 안»이고, 넷은 «메서드의 기본 인자»입니다:
+      :891   (이름 미상 메서드) predicates = lineage_predicates() if predicates is None
+      :934   claims_for_lots(self, lots, predicates=None)
+      :1041  같은 꼴
+      :1092  neighbourhood(self, lot, max_depth=…, predicates=None)
+   -> 즉 「lineage_predicates 를 지운다」는 그 «네 메서드의 기본값»을 함께 정하는 일입니다
+
+claims_for_lots 소비자
+   ledger_trace.py:893  (같은 파일의 :891 메서드가 부릅니다)  ·  시험 «1» (test_ledger_trace_pg:521)
+   -> 「다른 소비자가 없을 때만」의 조건이 «성립하지 않습니다». 파일 안에서 하나가 씁니다
+
+traversable_predicates / walk_direction
+   ledger_trace.py:129 · :139  (지시서가 지목한 :126-140 그 자리) + 시험 «4»
+```
+
+## 🔴 그래서 지시서의 「지웁니다 / 남습니다」 두 칸으로는 안 갈립니다
+```
+남기라 하신 것   SqlClaimLookup «클래스»  <- 라우터 :64 가 «생성»합니다 ✅
+지우라 하신 것   claims_for_lots          <- 그런데 그 클래스의 «다른 메서드»가 부릅니다 (:893)
+                                          그 메서드( :891 )가 라우터에서 도달하는지가 갈래입니다
+```
+`ledger_trace_router` 가 부르는 것은 실측상 «넷»입니다 — `SqlClaimLookup(...)` 생성(:64) ·
+`_fetch`(:82) · `relation_exists`(:207) · `ResolverConfigError`(:587). **메서드 이름으로는
+아무것도 안 부릅니다.** 즉 :891·:934·:1041·:1092 는 «생성된 객체를 통해» 불릴 수 있고,
+그게 어디인지는 라우터 밖(ledger_selection 등)일 수 있습니다.
+
+## 멈추는 이유 — 한 문장
+「기본 인자가 죽으면 그 메서드가 «조용히 빈 집합»으로 돕니다.」 오늘 밤 제가 정확히 그 부류로
+회귀를 하나 냈고(심볼을 지우고 독자를 안 봄), 이번엔 **네 메서드가 그 자리에 있습니다.**
+
+## 판정 청합니다 — 셋 중 하나
+```
+ⓑ-1  네 메서드도 «같이 은퇴»   (계보 walk 전체가 은퇴라면 이게 일관됩니다)
+      -> 그 넷의 «산 호출자»를 제가 먼저 세어 올리겠습니다. 0 이면 통째로 갑니다
+ⓑ-2  메서드는 남기고 기본값만 «명시»  (predicates=() 또는 호출자가 반드시 준다)
+      -> 「조용히 빈 집합」을 「없으면 거절」로 바꾸는 것이라 안전한 쪽입니다
+ⓑ-3  이번 라운드는 explore + traversable/direction «만»  (:126-140 + explore + 시험 3)
+      -> 반경이 확실히 0 인 부분만 먼저. lineage_predicates 는 다음 라운드
+```
+제 관측으로는 **ⓑ-3 → ⓑ-1** 이 순서상 안전합니다. 다만 「어디까지가 이번 은퇴인가」는
+소유자 판정의 범위 문제라 제가 정하지 않겠습니다.
+
+---
+
 # ✅ **결함 수리 — `vocabulary.py` 의 «독자 둘»이 새 집을 봅니다. 그리고 «불러서» 확인했습니다** (구현자 08:2x)
 
 지적이 맞습니다. 정의부만 지우고 «그 파일 안의 독자»를 안 봤습니다.
