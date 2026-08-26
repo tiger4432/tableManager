@@ -142,6 +142,69 @@ async function suite(mods) {
   ok('F1 the fixture really did cut depth', BODY.truncated.depth === true);
   eq('F2 and the model does not call that a cut', JSON.stringify(model.cut), '[]');
 
+  console.log(`${LF}-- G. the chain is in the order the facts happened --`);
+  {
+    // ORDER MUST BE REPRODUCIBLE. Before this round `nodeIds` came out of a Set, so its order
+    // was the server's response order -- something no one chose and nothing holds still.
+    const again = reachModel({ ok: true, status: 200, body: BODY });
+    eq('G1 the same answer yields the same order',
+      JSON.stringify(again.rows.map((r) => r.nodeIds)), JSON.stringify(model.rows.map((r) => r.nodeIds)));
+
+    // The chain: `inspected` reaches 39 destinations spread over three months.
+    const firstAt = (predicate, id) => {
+      const times = BODY.edges
+        .filter((e) => e.predicate === predicate && (e.source === id || e.target === id) && e.occurred_at)
+        .map((e) => e.occurred_at).sort();
+      return times[0] || null;
+    };
+    const inspOrder = by.inspected.nodeIds.map((id) => firstAt('inspected', id));
+    ok('G2 inspected is walked oldest-first',
+      inspOrder.every((t, i) => i === 0 || inspOrder[i - 1] <= t), JSON.stringify(inspOrder.slice(0, 3)));
+    eq('G2b and its span says so', `${by.inspected.span.first.slice(0, 10)}..${by.inspected.span.last.slice(0, 10)}`,
+      '2026-08-12..2026-11-21');
+
+    // 🔴 THE ROW THAT DECIDES THE TIEBREAK. `bonded_from` reaches 29 destinations at ONE
+    //    instant, so time cannot order them and a NAME would. Sorting by name here would put
+    //    the list in an order that is not in the data -- 「시간이 없으면 없는 대로」. The only
+    //    honest answer is the order they arrived in, so that is what G3 pins.
+    const responseOrder = [];
+    for (const e of BODY.edges) {
+      if (e.predicate !== 'bonded_from') continue;
+      const other = e.source === SEED ? e.target : e.source;
+      if (!responseOrder.includes(other)) responseOrder.push(other);
+    }
+    eq('G3 an all-at-once predicate keeps the order it arrived in',
+      by.bonded_from.nodeIds.join(','), responseOrder.join(','));
+    ok('G3b and that is NOT alphabetical, which is what makes G3 decide something',
+      by.bonded_from.nodeIds.join(',') !== [...by.bonded_from.nodeIds].sort().join(','));
+    eq('G3c its span is one instant', by.bonded_from.span.first, by.bonded_from.span.last);
+
+    // 🔴 NO TIME IS NOT TIME ZERO. `binding` is a derived edge and carries none.
+    ok('G4 a predicate with no time has NO span', by.binding.span === null, JSON.stringify(by.binding.span));
+    ok('G4b and every one of its edges really lacks a time',
+      BODY.edges.filter((e) => e.predicate === 'binding').every((e) => !e.occurred_at));
+
+    // 🔴 EARLIEST-WINS NEEDS A DESTINATION REACHED TWICE, AND THE REAL ANSWER HAS NONE:
+    //    `inspected` is 39 edges to 39 places, one each, so earliest and latest are the same
+    //    value and swapping them changes nothing. On that input the rule is unfalsifiable.
+    //    This feeds the case the ledger will produce the day a die is inspected again: the
+    //    FIRST visit is when the walk got there, and a later re-visit must not move it to
+    //    the back of the chain.
+    const revisited = by.inspected.nodeIds[0];
+    const twice = reachModel({ ok: true, status: 200, body: { ...BODY,
+      edges: [...BODY.edges, { predicate: 'inspected', source: SEED, target: revisited,
+        occurred_at: '2027-01-01T00:00:00+00:00' }] } });
+    const twiceRow = twice.rows.find((r) => r.predicate === 'inspected');
+    eq('G6 a re-visited destination keeps its FIRST arrival', twiceRow.nodeIds[0], revisited);
+    eq('G6b and the extra edge is counted without adding a place', twiceRow.count, by.inspected.count);
+    // 🔴 AND THE SPAN DOES *NOT* STRETCH -- measured, and it is the right answer. The span
+    //    is the range of FIRST ARRIVALS, which is exactly the ordering the list under it
+    //    shows. If a re-visit moved `last`, the column would print an instant that belongs
+    //    to no row in the list: 「언제」 would stop describing what is on screen.
+    eq('G6c and the span still describes the arrivals, not the edges',
+      twiceRow.span.last, by.inspected.span.last);
+  }
+
   console.log(`${LF}-- C. clicking a row expands into the write marking --`);
   const markings = new MarkingStore();
   markings.set('marking:1', SEED, SIGN.CASE);
@@ -166,6 +229,18 @@ async function suite(mods) {
     JSON.stringify(asked[0].start && asked[0].start.value));
   ok('C4 the part does not carry hops', asked[0].hops === undefined, String(asked[0].hops));
   eq('C5 four rows are drawn', rowsOf(host).length, 4);
+  const cellOf = (rowName, col) => {
+    const row = rowsOf(host).find((r) => r.getAttribute('data-row-id') === rowName);
+    return row && walkAll(row).find((e) => e.getAttribute && e.getAttribute('data-col') === col);
+  };
+  ok('G5 the 「when」 column is on the screen', Boolean(cellOf('inspected', 'whenText')));
+  ok('G5b it shows the span for a predicate that has one',
+    (cellOf('inspected', 'whenText')._text || '').includes('2026-08-12'),
+    JSON.stringify(cellOf('inspected', 'whenText')._text));
+  eq('G5c and it is BLANK, not zero, where there is no time',
+    cellOf('binding', 'whenText')._text, '-');
+  ok('G5d blank is marked absent so it cannot read as a value',
+    (cellOf('binding', 'whenText').className || '').includes('is-absent'));
 
   const rowNamed = (h, name) => rowsOf(h).find((r) => r.getAttribute('data-row-id') === name);
   const inspectedRow = rowNamed(host, 'inspected');
@@ -260,7 +335,7 @@ async function suite(mods) {
 
 const MUTANTS = [
   { name: 'count-edges-instead-of-places', target: 'api.js', wakes: 'B1',
-    from: '    count: g.ids.size,',
+    from: '    count: g.when.size,',
     to: '    count: g.kinds.size,' },
   { name: 'the-seed-counts-as-its-own-destination', target: 'api.js', wakes: 'B3',
     from: '    if (!otherId || otherId === seedId) continue;',
@@ -271,6 +346,22 @@ const MUTANTS = [
   { name: 'rows-arrive-in-response-order', target: 'api.js', wakes: 'A11',
     from: '  rows.sort((a, b) => b.count - a.count || String(a.predicate).localeCompare(String(b.predicate)));',
     to: '  rows.sort((a, b) => a.count - b.count);' },
+  { name: 'destinations-sorted-by-name', target: 'api.js', wakes: 'G3',
+    from: '        return a.i - b.i;',
+    to: '        return String(a.id).localeCompare(String(b.id));' },
+  { name: 'latest-wins-instead-of-earliest', target: 'api.js', wakes: 'G2',
+    from: '    else if (at && (!seen || at < seen)) g.when.set(otherId, at);',
+    to: '    else if (at && (!seen || at > seen)) g.when.set(otherId, at);' },
+  // 🔴 THE MUTANT IS `'0'`, NOT `''`, AND THE DIFFERENCE IS THE POINT. Returning `''` is
+  //    UNOBSERVABLE: `TablePart` treats `null`, `undefined` and `''` alike, so the cell still
+  //    draws 「-」 with `is-absent` and no assertion moves. Returning `'0'` is the failure the
+  //    order actually names -- 「없음」과 「0」을 같은 칸에 쓰지 마십시오 -- and it is visible.
+  { name: 'no-time-is-drawn-as-zero', target: 'reach_panel.js', wakes: 'G5c/G5d',
+    from: "    if (!span || !span.first) return null;",
+    to: "    if (!span || !span.first) return '0';" },
+  { name: 'the-order-is-whatever-the-server-said', target: 'api.js', wakes: 'G2',
+    from: '      .sort((a, b) => {',
+    to: '      .sort(() => 0).sort((a, b) => { if (true) return 0;' },
   { name: 'clicking-accumulates-instead-of-replacing', target: 'reach_panel.js', wakes: 'C10',
     from: "    row.nodeIds.forEach((id, i) => this.mark(id, SIGN.CASE, i === 0 ? 'replace' : 'add'));",
     to: "    row.nodeIds.forEach((id) => this.mark(id, SIGN.CASE, 'add'));" },
