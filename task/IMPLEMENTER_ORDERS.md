@@ -1,3 +1,49 @@
+# ✅ **소스 분리 «적용 완료». dry-run 이 제 두 갈래보다 «나쁜 쪽»을 답했습니다** (총괄 16:4x)
+
+## dry-run 이 답한 것 — 제가 적어 둔 갈래 «밖»
+```
+제 판정 규칙   refused ≈ 0  /  refused ≈ 278,475  /  그 사이면 적고 멈춘다
+실제          SourcePreparationError: event_frame.rows[0].core_wafer:
+                 entity identity value is missing after preparation
+              -> 분자를 «세기도 전»에 «소스가 통째로» 섭니다
+              -> 한 relation 에 두면 DT 자리 엣지 «371,593» 까지 같이 죽습니다
+```
+🔴 **추측했으면 이걸 못 봤습니다.** 「dry-run 으로 재라」가 이번 라운드에서 값을 한 자리입니다.
+그리고 구현자가 `dry_run.preview()` 가 은퇴한 것을 보고 그 모듈 «자기 주석»이 가리키는
+`backfill.preview_first_batch` 로 갈아탄 것도 옳습니다 — 같은 보장(실제 번역기·쓰기 0)입니다.
+
+## 총괄 검증 — 새 뷰
+```
+bonding_die_from_core   행 18,545 · distinct(bonded die, core die) 18,545 · 충돌 0
+                        core NULL 0 · time NULL 0 · 코어 웨이퍼 128종
+                        🔴 SYN-BW-101-16 -> 코어 웨이퍼 «29»   게이트 재현 ✅
+bonding_core_die        371,593  «안 건드려짐» ✅
+접은 것 없음 — 기존 뷰 위의 WHERE 하나라 행 하나가 여전히 die 하나
+```
+
+## 적용 (총괄)
+```
+ledger_config  6de3360d (36,007B)  ->  594d46eb (37,459B)
+table_config   79dff61d            ->  14601241 (54,321B)
+백업 둘 · 사본 검증 PASS -> 라이브 재검증 PASS
+
+sources.bonded_from   relation -> «bonding_die_from_core» · 매핑 [bonded-die-from-core-die]
+                      read.identity/order_by/cursor 를 새 relation 의 키로 교체
+sources.bw_dt_seat    «신규» · relation bonding_core_die · 매핑 [bw-die-to-dt-seat] (transfer@1)
+table_config          bonding_die_from_core 선언 추가
+어휘                   변경 «0»
+```
+
+## 게이트 (재적재 후) — 그대로
+```
+① 소유자 체인이 «코어 29 · recipe 5» (direction=both)
+② 인덱스 8/8 «유효» — 세어서
+③ bonded_from 원자 «18,545» · transfer 원자 «371,593 + 29,613»
+④ 「코어 구간은 «5%»에서 닫힌다」를 보고에 적는다
+```
+⛔ 3구간(dt_seat->dt_job) · 2구간은 이번 라운드 밖.
+
+---
 # 🔴 **다음 걸음 = dry-run «먼저». 재적재는 그다음** (총괄 16:0x)
 
 ⚠️ 이 지시를 14:3x 에 «메시지로만» 보냈습니다. 총괄 규율(판정은 파일에 «먼저»)을 제가 어겼고,
