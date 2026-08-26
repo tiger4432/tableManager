@@ -1,3 +1,77 @@
+# ✅ **선언 «적용 완료». 그리고 패치에 없던 것이 셋 있었습니다** (총괄 2026-08-26 12:3x)
+
+## 적용 기록 — 전후 hash
+```
+ledger_config.json   BEFORE 26d4a5d807e5b1ac (23,715 B)  ->  AFTER 27f1dc05f4ee3c8d (33,716 B)
+table_config.json    BEFORE 579ea68e26d118e7 (51,102 B)  ->  AFTER fb19a1bebd355451 (53,291 B)
+
+백업   server/config/ontology/backup/ledger_config.lead_before_die_rebuild_20260826_1230.json.bak
+       server/config/backup/table_config.lead_before_die_rebuild_20260826_1230.json.bak
+방법   백업 -> 임시파일에 완성본 -> JSON 파싱 확인 -> os.replace (원자적)
+검증   적용 «전» 사본에서 PASS · 적용 «후» 라이브에서 다시 PASS
+```
+
+## 🔴 패치에 «없던» 것 셋 — 검증기가 하나씩 잡아냈습니다
+추측으로 안 쓰고 검증기에 먹인 것이 맞았습니다. 세 번 거절당했습니다.
+
+### ① `table_config.json` 에 relation 선언이 «없었습니다»
+```
+거절문: relation 'bonding_core_die' is not declared in table_config.json;
+        declare the table there first -- 원장은 물리 스키마를 그 파일에서 읽고,
+        선언 안 된 표는 «컬럼도 키도 드리프트 검사도» 없다
+```
+`bonding_core_lot` 선언을 템플릿으로 두 relation 을 추가했습니다(column_types ·
+composite_key_source · composite_key_separator · __comment).
+
+### ② `vocabulary` 가 «옛 결»을 그대로 들고 있었습니다
+```
+거절문: entity 'die@1' is not an allowed predicate subject
+```
+매핑만 고치고 어휘를 안 고치면 선언이 자기 자신과 어긋납니다. 셋을 고쳤습니다:
+```
+bonded_from@1   subjects [wafer@1]->[die@1] · object [wafer@1]->[die@1]
+                qualifiers optional [core_slot] -> []           (패치가 core_slot 을 뺐으므로)
+slot_map@1      subjects [lot@1]->[lot_slot@1] · object 같음
+                qualifiers required [from,to,wafer] -> [] · optional [event_type]
+                🔴 wafer 가 required 였습니다 — 이제 «엣지»로 가므로 한정어에서 빠집니다
+has_wafer@1     subjects [lot@1]->[lot_slot@1]
+                qualifiers required [slot] -> []                (slot 이 «주어»로 올라갔으므로)
+📎 transfer@1 은 «이미» die@1 -> die@1 입니다. 본보기가 선언 안에 있었습니다
+```
+
+### ③ 🔴 `lot_slot_move.read.identity` — **총괄이 정정했습니다**
+```
+패치     ["from_lot","from_slot","to_lot","to_slot","wafer"]
+실측     그 5칸의 distinct = «122» · 행 = 135   -> 13쌍이 «같은 키»가 됩니다
+정정     + "event_time"   -> distinct 135 = 행 135
+```
+「이동의 정체엔 시각이 들어간다」는 어제 판정 그대로이고, `composite_key_source` 에도 같이
+넣었습니다. 이게 없으면 «다른 시각의 두 이동»이 한 업무키를 공유합니다.
+
+## 그래서 — 패치의 완성도
+```
+구현자가 낸 것   매핑·relation·read 의 «형태»    (전부 맞았습니다)
+빠져 있던 것     그 형태가 «성립하려면» 필요한 선언 셋
+                relation 등재 · 어휘 · 정체 키
+```
+비난이 아니라 «다음 패치의 체크리스트»입니다. 선언을 바꿀 때 «세 곳»이 같이 움직입니다:
+```
+① sources.<name>       무엇을 어떻게 읽고 무엇을 내나
+② vocabulary.<pred>    그 술어가 «누구를 주어로 받나»
+③ table_config.<rel>   그 relation 의 «물리 모양»
+```
+
+## 다음 — 구현자에게
+```
+1  개명: 부모 + 자식 «아홉» -> ledger_events_pre_rebuild(_2026_01 … _11)
+2  전량 재적재 (선언 8소스 -> 이제 «9»입니다. lot_slot_move 가 늘었습니다)
+3  게이트: id anti-join(술어별) · (주어 die, 목적지 die) 충돌 435->0 ·
+          목표 걷기 «몇 %가 끝까지 가나» · 보드 무회귀
+```
+⚠️ 라이브 선언은 이제 «새 결»입니다. 재적재 전에 서버가 옛 원장 위에서 새 선언을 읽는
+구간이 잠깐 있습니다 — 화면이 이상해도 그건 재적재 전이라서입니다. **빨리 태우십시오.**
+
+---
 # ✅ **`lot_slot_move` 착지 승인. 그리고 «제 경보가 틀렸습니다»** (총괄 2026-08-26 12:0x)
 
 ## 총괄이 경보를 울렸다가 «스스로 기각»했습니다 — 기록으로 남깁니다
