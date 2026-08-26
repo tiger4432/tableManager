@@ -42,17 +42,20 @@ import { MarkingStatusPanel } from './marking_status_panel.js';
 import { DeclarationPanel } from './declaration_panel.js';
 import { ExpandedLayerPanel } from './expanded_layer_panel.js';
 import { ReachPanel } from './reach_panel.js';
+import { WalkBoxPanel } from './walk_box_panel.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   createWalk,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
-  waferFactsFromLotMap } from './api.js';
+  waferFactsFromLotMap,
+  fetchDeclaration, createWalkBoxWalk } from './api.js';
 
 /** part name -> class. The shell resolves a declaration through this and nothing else. */
 export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition: CompositionPanel,
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
   mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,
-  declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel, reach: ReachPanel };
+  declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel, reach: ReachPanel,
+  walkBox: WalkBoxPanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -484,6 +487,21 @@ export const BOARD = Object.freeze({
       reads: 'marking:1',
       writes: 'marking:2',
     },
+    {
+      // 🔴 「걷기 API 사용 위한 검색창」 (소유자 2026-08-26). 다른 부품이 «선언»으로 들고
+      //    태어나는 네 칸(타입·키·follow·collect)을 사람이 그 자리에서 고릅니다. 그래서
+      //    걷기 API 는 여전히 «하나»이고, 늘어난 것은 갈래가 아니라 선언입니다.
+      //
+      // 🔴 이 부품은 마킹을 «읽지 않습니다». 키를 손으로 넣는 것이 이 부품의 존재 이유라,
+      //    마킹을 주어로 삼으면 그 순간 「닿는 곳」과 같은 부품이 됩니다. 대신 결과 행을
+      //    찍으면 마킹 2 에 «쓰므로», 손으로 시작한 걸음도 체인에 들어옵니다.
+      id: 'walkBox',
+      part: 'walkBox',
+      title: '걷기 -- 타입 · 키 · 따라갈 술어 · 모을 것',
+      at: { column: 1, row: 8, columnSpan: 2 },
+      reads: null,
+      writes: 'marking:2',
+    },
   ],
 });
 
@@ -519,6 +537,16 @@ export function bindLoaders(layout, deps) {
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
       const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1 };
+      // 🔴 걷기 검색창은 «다른 모양의 walk» 을 받습니다. 이 부품의 `collect` 는 화면이 선언한
+      //    질문 이름이 아니라 «서버의 노드 종류»이고, 씨앗도 마킹이 아니라 사람이 넣은 키에서
+      //    만들어집니다. 같은 이름이 두 뜻이라 섞으면 오류 없이 «빈 답»이 나옵니다.
+      // 🔴 `decl.part` 이지 `options.part` 이 «아닙니다» -- `options` 는 `decl.options` 이고
+      //    좌석이 아닙니다. 틀리면 조건이 «영원히 거짓»이라 주입이 조용히 안 되고, 화면은
+      //    「선언을 받지 못했습니다」를 그립니다 -- 라우트가 200 을 주는 동안에도.
+      if (decl.part === 'walkBox') {
+        bound.loadDeclaration = () => fetchDeclaration({ apiBase, fetchImpl });
+        bound.walk = createWalkBoxWalk({ apiBase, fetchImpl });
+      }
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
       if (options.fields) {

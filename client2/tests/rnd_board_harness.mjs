@@ -118,6 +118,7 @@ async function loadModules(mutate = {}) {
     //    composition root's import throws ERR_INVALID_URL before a single check runs.
     //    Every part `main.js` imports has to be here.
     .replaceAll("'./reach_panel.js'", `'${partUrl('reach_panel.js')}'`)
+    .replaceAll("'./walk_box_panel.js'", `'${partUrl('walk_box_panel.js')}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   const [store, api, panel, map, shell, main] = await Promise.all([
     import(storeUrl), import(apiUrl), import(panelUrl),

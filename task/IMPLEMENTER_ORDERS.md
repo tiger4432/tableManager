@@ -1,3 +1,58 @@
+# 🌙 [양쪽] ⑥ 라우트 + 앉히기 — **총괄이 직접 했습니다.** 왜 그랬는지 적습니다 (01:0x~01:2x)
+
+레인 셋이 전부 대기 상태였고(마지막 착지 23:42), 남은 둘이 «82분» 안 움직였습니다.
+커밋은 초인종이 아니고 메시지는 안 쓰기로 했으니, 소유자 지시(「오늘 밤동안 완수해놔」)를 지키려면
+제가 잡는 수밖에 없었습니다. **평소 규율의 예외이고, 아침에 두 레인이 «검수»해 주십시오.**
+
+## ① 라우트 — `GET /api/ledger/declaration` (`b7877d8f`)
+```
+답      state · entities «6» · predicates «10» · collect «8»
+좁히기   subjects 를 «그대로» 실어 보냅니다 — 서버가 대신 좁히지 않습니다
+        die@1 -> transfer·observed·bonded_from      wafer@1 -> inspected·processed_with·register
+        lot_slot@1 -> has_wafer·slot_map            recipe@1 -> «없음»
+```
+🔴 **게이트 ②를 «양방향»으로 걸었습니다** — 라이브 선언을 바이트로 복원하며:
+```
+선언에 술어 «하나 더»       -> 라우트가 «11» 이라 답하고 그 이름을 «부릅니다»  -> 코드에 사본 «없음»
+선언에서 «하나 뺌»          -> 소스가 그걸 bind 하고 있어 선언이 «통째로 무효» -> 503
+                           (목록이 하나 주는 것보다 «낫습니다». 반쪽 수정이 조용히 틀린
+                            카탈로그를 못 만듭니다)
+복원                      -> sha 795a62e0 «동일»
+```
+
+## ② 앉히기 — 부품이 화면에 «올라갔습니다»
+```
+main.js    import + PARTS 등록 + BOARD 좌석 (column 1 · row 8 · span 2)
+           reads «null» (마킹을 안 읽습니다 — 키를 손으로 넣는 게 이 부품의 이유입니다)
+           writes «marking:2» (결과를 찍으면 체인에 들어옵니다)
+api.js     entitySeedId · fetchDeclaration · createWalkBoxWalk
+```
+🔴 `createWalk` 을 «안 썼습니다» — 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고 이쪽은
+   «서버의 노드 종류»입니다. 같은 낱말이 두 뜻이라 섞으면 오류 없이 빈 답이 됩니다.
+🔴 `entitySeedId` 가 «타입을 벗깁니다»(`wafer@1` -> `wafer`). 안 벗기면 walk 이 «씨앗 하나»를
+   답하고, 그건 거절이 아니라 「닿는 곳이 없다」로 «보입니다». 제가 오늘 밤 한 번 당했습니다.
+
+## 🔴 그리고 제가 하니스를 «죽였습니다» — 하니스가 자기 주석에 미리 적어 둔 그대로
+```
+rnd_board_harness.mjs 는 main.js 를 «data: URL» 로 실어 채점합니다.
+그래서 main.js 가 import 하는 부품이 «전부» 그 재작성 목록에 있어야 합니다.
+주석 원문: 「A PART THIS LIST FORGETS TAKES THE WHOLE HARNESS DOWN, not one assertion」
+증상     Failed to resolve module specifier "./walk_box_panel.js"  -> spawnSync ENOBUFS
+        -> 러너: 「초록이던 하니스 1개가 빨개졌습니다」  -> prebuild 가 막아 «vite 가 안 돌았습니다»
+```
+⚠️ **그때 `npm run build` 가 «exit 0» 이었고 dist 는 22:51 그대로였습니다.**
+   종료코드만 봤으면 「빌드했다」고 적었을 겁니다 — 판정은 «dist 해시»로 하십시오.
+고친 것: 목록에 한 줄. 하니스 169 단언 초록.
+
+## 아침에 봐 주실 것 — 제가 «못 하는» 판정 둘
+```
+① 좌석 자리   column 1 · row 8 은 제가 «고른» 것입니다. 목업 대조는 클라 레인 몫입니다
+② 결과의 뜻   지금은 walk 의 노드를 `node_kind === collect` 로 «거릅니다».
+             소유자 「결과는 COLLECT된 RETURN」의 뜻이 `propagation.ranked` 라면 그게 맞습니다.
+             제 것이 틀렸으면 그건 «한 줄»이고, 부품은 안 바뀝니다
+```
+
+---
 # ✅ ⑤ 검수 통과 — 총괄이 «직접» 다섯을 다시 쟀습니다 (23:5x)
 
 ```

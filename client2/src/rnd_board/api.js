@@ -985,3 +985,83 @@ export function createWalk(deps) {
     return running;
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DECLARATION -- 「무엇을 물을 수 있나」. 걷기 검색창의 드롭다운 넷이 여기서 나옵니다.
+//
+// 🔴 데이터가 아니라 «선언»입니다. `GET /api/ledger/declaration` 은 원장을 한 줄도 안 읽고
+//    entities · vocabulary · 투영이 낼 수 있는 노드 종류를 그대로 답합니다. 그래서 목록을
+//    여기 다시 적지 않습니다 -- 선언이 술어를 하나 더 가지면 드롭다운도 하나 늘어납니다
+//    (총괄 실측 2026-08-27: 선언에 하나 넣으면 10 -> 11, 빼서 무효가 되면 503).
+//
+// 🔴 좁히기는 «서버의 subjects» 입니다. 이 파일은 좁히지 않습니다 -- 부품이 고른 타입으로
+//    거르고, 비면 «문장»으로 말합니다. 여기서 미리 걸러 보내면 화면은 「왜 짧은가」를
+//    물을 수 없게 됩니다.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `["wafer", {wafer: "SYN-…"}]` -> `ledger-entity:v1:<base64url>`. 서버 `decode_entity_id` 의 짝. */
+export function entitySeedId(type, keys) {
+  // 🔴 «타입은 벗겨서» 보냅니다. 선언은 `wafer@1` 로 버전을 달고 원장은 `wafer` 로 삽니다.
+  //    `wafer@1` 을 그대로 실으면 주어가 하나도 안 맞아 walk 이 «씨앗 하나»를 답하는데,
+  //    그건 거절이 아니라 「닿는 곳이 없다」로 보입니다 (총괄이 오늘 밤 한 번 당했습니다).
+  const bare = String(type || '').split('@')[0];
+  const json = JSON.stringify([bare, keys || {}]);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  return 'ledger-entity:v1:' + b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** `GET /api/ledger/declaration`. 한 모양 -- 성공도 실패도 `{ok}` 를 답니다. */
+export async function fetchDeclaration(params) {
+  const { apiBase, fetchImpl } = params || {};
+  const doFetch = fetchImpl || fetch;
+  try {
+    const res = await doFetch(`${apiBase || ''}/api/ledger/declaration`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) {
+      return { ok: false, message: (body && body.detail && body.detail.message)
+        || `선언을 읽지 못했습니다 (${res.status})` };
+    }
+    return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
+             collect: body.collect || [] };
+  } catch (err) {
+    return { ok: false, message: `선언에 닿지 못했습니다 — ${err && err.message}` };
+  }
+}
+
+/**
+ * 걷기 검색창 전용 walk. 부품이 «고른 것»을 그대로 받습니다: `{type, keys, follow?, collect}`.
+ *
+ * 🔴 `createWalk` 을 못 씁니다 -- 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고, 이쪽은
+ *    «서버의 노드 종류»입니다. 같은 낱말이 두 뜻이라 섞으면 조용히 빈 답이 됩니다.
+ * 🔴 결과는 «COLLECT 된 것»입니다 (소유자: 「결과는 COLLECT된 RETURN으로 보여줘」).
+ *    walk 은 노드를 전부 실어 보내므로 «고른 종류»로 거르는 것이 그 문장의 뜻입니다.
+ */
+export function createWalkBoxWalk(deps) {
+  const { apiBase, fetchImpl } = deps || {};
+  const doFetch = fetchImpl || fetch;
+  return async function walkBoxWalk(spec) {
+    const { type, keys, follow, collect } = spec || {};
+    if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
+    const query = new URLSearchParams();
+    query.set('id', entitySeedId(type, keys));
+    if (collect) query.set('collect', collect);
+    // 🔴 «안 고르면 안 싣습니다». 빈 배열은 「아무것도 따르지 마라」이고 서버 기본값의 반대입니다.
+    (follow || []).forEach((p) => query.append('follow', String(p).split('@')[0]));
+    try {
+      const res = await doFetch(`${apiBase || ''}/api/ledger/subgraph?${query}`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body) {
+        const detail = body && body.detail;
+        return { ok: false, message: (detail && detail.message)
+          || `걷지 못했습니다 (${res.status})` };
+      }
+      const wanted = collect || null;
+      const nodes = (body.nodes || [])
+        .filter((n) => !wanted || n.node_kind === wanted)
+        .map((n) => ({ id: n.id, type: n.type, label: n.label }));
+      return { ok: true, nodes, truncated: body.truncated || null };
+    } catch (err) {
+      return { ok: false, message: `걷기에 닿지 못했습니다 — ${err && err.message}` };
+    }
+  };
+}
