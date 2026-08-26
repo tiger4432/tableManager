@@ -1,3 +1,51 @@
+# 🔴 **D-1 «void 워크스페이스가 파서를 못 만난다» — 확인 부탁드립니다** (총괄 실측, 소유자 지시)
+
+D 조사 중 «지금 확인시킬 것» 하나가 나왔습니다. 나머지 다섯(defect·step_defect_obs·
+bonding_inventory·metro·slot_trace_*)은 「아직 안 쓴 통로」로 닫습니다 — 아래 근거 참조.
+
+## 총괄이 잰 것
+```
+server/parsers/void_sat_format.py:80
+   VOID_TABLE = «void_obs»        RUN_TABLE = «inspection_run»
+
+파서(voids_json.py:415)가 그 둘 «말고는 거절»합니다:
+   "voids_json parser targets only 'void_obs' and 'inspection_run', not {table_name!r}."
+
+워크스페이스 폴더    server/ingestion_workspace/«void»/          raws 0 · archives 0
+아침 감시기 로그     「Watching: …/void/raws (Pipeline-only workspace, Table: «void»)」
+그리고 «void_obs» 워크스페이스가 «따로» 있습니다              raws 0 · archives 0
+```
+**-> `void/` 로 파일이 오는 날, 파서가 «거절»하고 한 건도 안 들어갑니다.**
+조용히 틀리는 게 아니라 «시끄럽게» 틀립니다(그건 다행입니다). 다만 그 통로는 «영원히» 못 씁니다.
+
+## 🔴 제 추론에서 «검증 안 된 고리» 하나 — 그것을 확인해 주십시오
+```
+저는 「감시기가 «폴더 이름»을 table_name 으로 넘긴다」고 «가정»했습니다
+   근거는 로그 한 줄(「Table: void」)뿐이고, 그 결선 코드를 «읽지 않았습니다»
+-> 그 결선을 «읽고» 확인해 주십시오. 제 가정이 틀렸으면 이 항목은 «없는 결함»입니다
+```
+📌 오늘 「산문을 배선으로 받았다」로 두 번 데었습니다. 이번엔 «제가» 그 자리에 있습니다.
+
+## 확인 뒤 갈래
+```
+가정이 맞다  -> `void/` 는 «이름이 바뀌기 전의 잔재 통로»다
+             선택지: (a) 폴더를 지운다  (b) table_config 에 workspace_name 을 선언해 void_obs 로 묶는다
+             🔴 «판정을 청하십시오». 지우면 받을 능력이 없어지고, 묶으면 통로가 둘이 됩니다
+가정이 틀리다 -> 「없는 결함」으로 적고 닫습니다. 그것도 답입니다
+```
+
+## 나머지 다섯은 «닫습니다» — 근거
+```
+void · defect · step_defect_obs · bonding_inventory · metro
+   raws 0 · archives «0»  -> 처리한 적이 «한 번도 없다». 끊긴 게 아니라 «안 온» 것
+   (파일이 지나간 유일한 곳은 core_defect_map, archives «49»)
+그리고 실제 데이터는 «다른 길»로 들어왔습니다:
+   void_obs 표 103,841행  ↔  void_obs 워크스페이스 archives «0»  -> 씨앗 스크립트가 넣은 것
+⚠️ 그리고 «여기는 운영이 아닙니다». 이 박스에 파일이 안 왔다는 것이 운영에서도 안 온다는 뜻이
+   아닙니다. 선언을 지우면 «받을 능력»을 없애는 것이므로 지우지 않습니다
+```
+
+---
 # 🔴 **구설계 잔재 청소 — «순서대로»** (소유자 지시 「순서대로해」)
 
 총괄이 훑어 부류로 나눴습니다. **A → B → C → D 순서**이고, D 는 성격이 다릅니다.
