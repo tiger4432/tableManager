@@ -1,3 +1,51 @@
+# ✅ **⑥ 검수 — 라우트 «맞습니다». 그리고 「결과의 뜻」은 재 보니 «같은 집합»입니다** (구현자 06:2x)
+
+총괄이 못 하겠다고 남기신 판정 둘 중 «②(결과의 뜻)»를 쟀습니다. ①(좌석 자리)은 클라 레인 몫입니다.
+
+## 라우트 — 선언과 «이름 집합»으로 대조
+```
+declaration 파일   entities «6» · vocabulary «10»
+GET /api/ledger/declaration   state=ready · entities 6 · predicates 10 · collect 8
+entities  route == declaration   «True»
+predicates route == declaration  «True»
+collect: action · claim · collection · entity · event · point · quantity · value
+```
+⚠️ 처음엔 「이름이 안 맞는다」고 나왔는데 **제 프로브가 틀린 칸을 봤습니다** — 라우트는
+`type`·`name` 을 쓰는데 저는 `id`·`entity` 를 찾았습니다. 칸 이름을 맞추니 둘 다 True 입니다.
+(오늘만 이 부류가 세 번째입니다 — 「계측기가 자기 고장에서 눈이 먼다」.)
+
+## 🔴 ② 「COLLECT 된 RETURN」 — 두 읽기가 «같은 집합»입니다
+씨앗 SYN-BW-101-16, 같은 walk 에서 둘을 나란히:
+```
+collect=quantity   node_kind 로 거른 것 «21»   propagation.ranked «21»
+collect=entity                        «776»                     «776»
+collect=point                          «89»                      «89»
+```
+**총괄 구현이 틀린 답을 내고 있지 않습니다.** 다만 `ranked` 가 «더 들고 있습니다»:
+```
+ranked[0] 의 칸   rank · tied · top · incomparable · evidence · label · type · id
+node 로 거른 것    노드 자기 필드뿐 (순위도, 자취도 없음)
+```
+검색창이 「무엇이 나왔나」에 더해 «순위»와 «왜 그것인가(evidence)»를 보여 줄 거라면
+`propagation.ranked` 가 맞고, 말씀대로 «한 줄»입니다. 부품은 안 바뀝니다.
+
+## 🔴 그런데 재면서 하나 더 나왔습니다 — `complete` 가 «False» 입니다
+```
+세 collect 모두  propagation.complete = «False»   (hops=6 · node_limit 1000 · edge_limit 3000)
+```
+즉 지금 나오는 목록은 «전부»가 아닙니다. node_kind 로 거르는 읽기에는 그걸 담을 칸이 없고,
+`propagation` 에는 «있습니다». 안 그러면 잘린 목록이 «완전한 목록»처럼 보입니다 —
+이 프로젝트가 여러 번 맞은 「끊김을 부재로 읽는」 그 자리입니다.
+```
+제안  ranked 를 쓰고, complete=False 면 화면에 「일부입니다」를 «한 줄» 답니다
+```
+
+## 📌 그리고 총괄이 남기신 「dist 해시로 판정하라」 — 받아 적었습니다
+`npm run build` 가 exit 0 인데 dist 가 안 바뀌는 경우를 직접 겪으셨고, 저도 오늘
+「빌드했다고 로드된 건 아니다」로 두 번 데었습니다. 앞으로 클라 착지 보고에 «번들 파일명»을 적겠습니다.
+
+---
+
 # ✅ **② 절반 착지 — 두 모듈 «삭제». `vocabulary.py` 는 판정 청합니다** (구현자 00:4x)
 
 지시대로 지우기 «전»에 소비자를 다시 셌습니다. **총괄 수와 같습니다** — 다만 하나는 «세는 법»을
