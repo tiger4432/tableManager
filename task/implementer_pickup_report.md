@@ -1,3 +1,52 @@
+# ✅ **A′ 착지 — 소유자 체인이 «recipe 5» 에 닿습니다. 선언을 지우면 «사라집니다»** (구현자 19:2x)
+
+## 실측 — 같은 코드, 선언만 바꿔 세 번
+```
+선언 «침묵»    nodes 206 · edges 259 · in_container «0»        <- 오늘과 «동일»
+선언 «말함»    nodes 839 · edges 3,000 · in_container «117»
+              wafer «601» · die 156 · dtjob «14» · recipe «5»
+              SYN-R-CLEAN-01 · CMP-01 · DEPO-01 · ETCH-01 · PHOTO-01
+              씨앗의 코어 웨이퍼 «29 / 29» 전부 walk 안에 있음
+              🔴 매달린 엣지 «0» · 가장 깊은 홉 6 (한도 12)
+다시 «침묵»    nodes 206 · edges 259                            <- 엣지가 «사라집니다»
+```
+🔴 가운데 줄이 소유자 08-24 체인입니다 — 씨앗 → 코어 29 → recipe 5 → 코어 600 → BW.
+`truncated:["edges"]` 는 정직한 표시입니다 (이제 601 웨이퍼까지 닿습니다).
+
+## 게이트
+```
+① 소유자 체인   코어 29/29 · recipe «5» ✅
+② 매달린 엣지   «0» ✅  (Wafer 815 · DT 10 은 «엣지를 안 만듭니다» — 존재 확인이 먼저)
+③ 원자 변화     «0» ✅  (원장을 한 줄도 안 건드렸습니다)
+⑤ 선언 교체     침묵 -> 말함 -> 침묵 이 «같은 코드»에서 갈립니다 ✅
+                = A′ 가 A 와 다르다는 «유일한» 증명
+④ 무회귀       보드는 총괄 재기동 후 부탁드립니다
+시험           test_ledger_subgraph · test_ledger_trace  63 passed · 1 skipped
+```
+
+## 🔴 설계에서 한 번 틀렸다가 실측으로 잡았습니다 — 「루프 «안»이어야 합니다」
+처음엔 BFS «끝난 뒤» 합성했습니다. 그러면:
+```
+in_container 117 · wafer 17 · recipe «0»    <- 엣지는 «생기는데» 체인이 한 홉 모자랍니다
+```
+합성 노드가 «걸어 나갈 자리»가 되지 못했기 때문입니다. 레벨마다 합성하도록 옮기니
+601 웨이퍼와 recipe 5 가 나왔습니다. 스크립트가 아니라 «수»가 알려 줬습니다.
+
+## 낸 것
+```
+server/ledger_api/entity_references.py   선언을 «읽기만» 합니다 (엣지 이름도 선언이 줍니다)
+server/ledger_api/ledger_subgraph.py     _link_containers() 를 walk «안»에서 레벨마다
+                                         + SqlEvidenceLookup.entities_that_exist() (배치 존재 확인)
+task/LEDGER_DECL_PATCH_2026-08-26.md     REVISION 4 — entities.die@1.references 블록 하나
+```
+`basis` 에 «선언 파일 이름»을 담았습니다 (`binding` 이 mechanism 파일을 담는 그 자리).
+`DTLotSlot` 은 «일부러» 안 넣었습니다.
+
+⚠️ 위 수치는 그 블록을 «주입»해서 잰 것입니다 — 라이브 선언은 여전히 안 열었습니다.
+총괄이 적용하시면 같은 수가 «라이브에서» 나오는지 다시 재겠습니다.
+
+---
+
 # 🔴 **게이트 «넷 통과 · 하나 불합격». 체인이 «코어 die 에서 코어 wafer 로» 못 건넙니다** (구현자 18:0x)
 
 ## 승인 둘 다 조건대로 집행했습니다

@@ -442,3 +442,49 @@ bonding_die_from_core    18,545   those that name a core die (a WHERE, nothing f
 Vocabulary changes: still **none**. Both predicates already accept `die@1` on both sides.
 
 Expected after the reload: `bonded_from` ≈ **18,545** and `transfer` ≈ 371,593 + 29,613.
+
+
+---
+
+# REVISION 4 (2026-08-26 evening) — A′ : `entities.die@1.references`
+
+One block, in `entities`. Nothing else in the declaration moves; the vocabulary does not change.
+
+```json
+"die@1": {
+  "keys": ["mat_id", "x", "y", "mat_type"],
+  "references": [
+    { "edge": "in_container",
+      "from": { "key": "mat_id", "when": { "mat_type": "Wafer" } },
+      "to":   { "entity": "wafer@1", "key": "wafer"  } },
+    { "edge": "in_container",
+      "from": { "key": "mat_id", "when": { "mat_type": "DT" } },
+      "to":   { "entity": "dtjob@1", "key": "dt_job" } }
+  ]
+}
+```
+
+`DTLotSlot` is deliberately absent: that entity does not exist yet, and declaring it would draw
+edges to nodes that open empty.
+
+## Measured with this exact block injected (the live file is the Lead PM's)
+
+```
+declaration SILENT     nodes 206 · edges 259 · in_container 0        <- byte-identical to today
+declaration SPEAKS     nodes 839 · edges 3,000 · in_container 117
+                       wafer 601 · die 156 · dtjob 14 · recipe «5»
+                       recipes: SYN-R-CLEAN-01 · SYN-R-CMP-01 · SYN-R-DEPO-01
+                                SYN-R-ETCH-01 · SYN-R-PHOTO-01
+                       the seed's 29 core wafers: 29 of 29 present
+                       dangling edges «0» · deepest hop 6 (limit 12)
+silent AGAIN           nodes 206 · edges 259                          <- the edges vanish
+```
+🔴 The middle row is the owner's 08-24 chain: seed → core 29 → recipe 5 → core 600 → BW.
+`truncated: ["edges"]` at edge_limit 3,000 is honest -- the walk now reaches 601 wafers.
+
+## The projection
+
+`server/ledger_api/entity_references.py` reads the block; `ledger_subgraph.py` composes the edge
+INSIDE the walk, per level, so a container is somewhere the walk can go on from. Composed after
+the loop instead, the edges appear and the chain still stops one hop short -- measured: 117
+edges, 17 wafers, zero recipes.
