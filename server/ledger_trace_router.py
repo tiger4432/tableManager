@@ -505,6 +505,51 @@ def ledger_kind_catalog(db: Session = Depends(get_db)):
         raise
 
 
+@router.get("/declaration")
+def ledger_declaration_catalog():
+    """무엇을 물을 수 있나 — 노드 타입 · 그 타입의 키 · 따라갈 술어 · 모을 노드 종류.
+
+    🔴 데이터 라우트가 «아니다». 원장을 한 줄도 읽지 않는다 — 답은 «선언»이고, 그래서
+    선언이 바뀌면 이 답이 바뀌고 코드는 안 바뀐다. 걷기 검색창의 드롭다운 넷이 여기서 나온다.
+
+    🔴 목록을 여기 다시 적지 않는다. 선언에서 «읽어» 내보내므로, 술어를 선언에서 하나 지우면
+    이 답도 하나 줄어든다. 코드에 사본이 있으면 안 줄어들고, 그게 이 라우트가 틀렸다는 판별식이다.
+
+    🔴 `subjects` 를 «그대로» 실어 보낸다. 「고른 타입에서 나갈 수 있는 술어」를 좁히는 것은
+    화면이 만드는 규칙이 아니라 선언이 이미 들고 있는 사실이다. 좁히기를 서버가 «대신»
+    해 주면 화면은 「왜 이것만 나오나」를 물을 수 없게 된다.
+
+    🔴 빈 목록은 «답»이지 오류가 아니다. 목적어로만 나오는 타입(recipe)은 나가는 술어가 없고,
+    그것을 404 나 500 으로 말하면 「없다」와 「고장」이 한 낱말이 된다. 읽을 수 없는 선언만
+    503 이며, 그건 배포 사실이지 물음에 대한 답이 아니다.
+    """
+    try:
+        from ledger import config as _config
+        declared = _config.load() or {}
+    except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
+        logger.error("declaration unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"선언을 읽지 못했습니다: {exc}"})
+
+    entities = [
+        {"type": name, "keys": list((spec or {}).get("keys") or [])}
+        for name, spec in sorted((declared.get("entities") or {}).items())
+    ]
+    predicates = [
+        {"name": name,
+         "subjects": list((spec or {}).get("subjects") or []),
+         "object": (spec or {}).get("object") or {}}
+        for name, spec in sorted((declared.get("vocabulary") or {}).items())
+    ]
+    return {
+        "state": "ready" if entities else "empty",
+        "entities": entities,
+        "predicates": predicates,
+        "collect": list(ledger_subgraph.NODE_KINDS),
+    }
+
+
 @router.get("/structure")
 def ledger_structure_view(
     window: str = Query(None, description="7d 또는 YYYY-MM-DD..YYYY-MM-DD. 건수만 좁힌다"),
