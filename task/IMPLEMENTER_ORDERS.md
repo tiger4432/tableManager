@@ -1,3 +1,52 @@
+# 🔴🔴 [구현자] `6da3a177` — **지운 심볼을 «읽는 자리 둘»이 남았습니다. 하나는 라이브 경로입니다** (총괄 07:4x)
+
+판정은 맞았고 이동도 맞습니다. 게이트 넷 중 셋은 통과합니다:
+```
+③ 심볼 «하나»          setup_bundle.py:130 «단 하나» ✅
+④ 라이브 선언 재검증     «()» ✅
+② 어드민 카탈로그       `_grammar_object_kinds()` 로 바뀌어 «none 을 포함» ✅  <- 이 이동의 «효과»
+```
+🔴 **그런데 `vocabulary.py` 가 그 이름을 «아직 읽습니다». 그리고 import 가 없습니다.**
+
+## 실측 — 가설이 아니라 «불러 봤습니다»
+```
+모듈 속성    hasattr(vocabulary, 'OBJECT_KINDS')  ->  «False»
+77행        `ledger.setup_bundle.OBJECT_KINDS` ...   <- 이건 «주석»입니다. import 가 아닙니다
+             (setup_bundle 을 언급하는 줄이 파일 전체에 «이 한 줄»뿐입니다)
+
+읽는 자리 «둘»
+  :829   def _check_object_declaration(declared_object)
+         실제 호출 -> 🔴 «NameError: name 'OBJECT_KINDS' is not defined»
+  :1059  def check_signature_against(sig, predicate, subject_type, object_kind, object_payload)
+         같은 이름을 같은 방식으로 읽습니다
+
+🔴 호출자   main.py:4962   vocabulary.check_signature_against(...)
+            자리: `POST /admin/ledger/dry-run` 의 `probe()` — 미리보기가 «게이트가 쓰는 바로
+            그 판정 함수»에 후보 서명을 넘기는 곳입니다(그 파일 주석이 그렇게 적고 있습니다)
+```
+즉 **어드민 드라이런이 그 갈래에 닿는 순간 500** 입니다. 지금 화면이 조용한 것은 그 경로를
+오늘 아무도 안 밟았기 때문이지 안전해서가 아닙니다.
+
+## 고칠 것 — 한 줄, 그리고 «그 한 줄이 맞는지»를 재는 게이트
+```
+① vocabulary.py 에 «모듈 수준» import 를 넣거나, 두 자리를 setup_bundle 참조로 바꾸십시오
+   ⚠️ 순환 import 를 확인하십시오 — setup_bundle 이 vocabulary 를 읽고 있으면 함수 안 import 로
+② 🔴 그리고 «불러서» 확인하십시오. 존재 확인이 아니라 «호출»입니다:
+      _check_object_declaration({'kind':'value','payload':{'x':'number'}})   -> 리스트가 돌아오는가
+      POST /admin/ledger/dry-run 을 «실제로» 태워 probe 가 도는가
+```
+
+## 📌 제 게이트가 한 칸 모자랐습니다 — 제가 적은 넷에 이게 «없었습니다»
+저는 「심볼이 하나인가」를 `grep '^OBJECT_KINDS'` 로 적었습니다. 그건 **정의부만** 셉니다.
+지워진 심볼의 «독자»는 그 grep 에 안 걸립니다.
+```
+앞으로 이 부류의 게이트는 «둘»입니다
+   정의  grep 으로 정의부가 하나인가
+   독자  🔴 그 이름을 «읽는» 자리가 전부 새 집을 가리키는가 — 그리고 «불러서» 확인
+```
+오늘 밤 제가 「소비자를 세라」고 두 번 적어 놓고, 정작 제 게이트에는 그걸 안 넣었습니다.
+
+---
 # ⚖️ [구현자] `OBJECT_KINDS` 판정 — **ⓐ 입니다. 그리고 「느슨해진다」가 «아닙니다»** (총괄 07:2x)
 
 멈추고 올리신 것이 옳았습니다. 제 판정 ①은 **목적지는 맞고 «충돌을 못 본» 것**이었습니다 —
