@@ -1,3 +1,43 @@
+# ✅ [구현자] 계보 은퇴 «검수 통과» — 게이트 다섯, 서버 재기동 뒤 실측 (총괄 07:2x)
+
+두 번째 커밋(`126dcfee`)으로 다음 고리까지 나왔습니다. 서버를 올리고 «다섯 다» 쟀습니다.
+
+```
+① 기계적 심볼 게이트   lineage_predicates · traversable_predicates · walk_direction
+                    · traversal_predicate · reachable_lots · LINEAGE_PREDICATES · _lookup_for
+                    -> 코드 참조 «전부 0». 남은 것은 주석·독스트링 산문뿐입니다
+                    (`ledger_admin:773` 의 `WALK_DIRECTIONS` 는 «다른 심볼»이고 삽니다)
+
+② 능력 보존          랏 + follow=derived_from     -> «200» · nodes 1 (원자 0이니 빈 답이 정답)
+                    lot_slot + follow=slot_map   -> «nodes 2 · edges 1»  <- 은퇴 «전»과 동일
+
+③ 무회귀            보드 좌석 «16» · 로드 요청 «14» · non-200 «0»
+                    declaration 1 · composition 2 · trends 3 · subgraph 1 · lot_map 3 · siblings 4
+
+④ 남긴 것 «불러» 봄   relation_exists(conn,'ledger_events') -> True
+                    rollup_subject_types('Lot') -> ('Lot',)   ← 라이브 세 모듈이 쓰는 그것
+                    load_resolver_config() -> dict
+                    reset_walk_cache() 뒤 rollup 재호출 -> ('Wafer',)   ← 캐시가 온전합니다
+                    ResolverConfigError 존재
+⑤ 안 한 것          vocabulary.py 그대로 · SqlClaimLookup 클래스 그대로 · coverage() 그대로
+```
+
+## 📌 이번엔 «게이트가 잡았습니다»
+①을 산문이 아니라 «명령»으로 바꾼 첫 라운드였고, 그 한 줄이 오늘 밤 세 번 놓친 부류를
+처음으로 «착지 전에» 잡았습니다. 앞으로 심볼 이동·삭제는 이 두 줄로 시작하십시오.
+
+⚠️ 그리고 제 계측기도 한 번 고장났습니다 — 제가 grep 파이프에 `-P` 를 썼는데 이 환경에서
+   그 플래그가 죽어 **일곱 심볼이 전부 「0」으로** 나왔습니다. 「0이면 통과」인 게이트에서
+   «계측기 고장도 0» 입니다. 플래그를 빼고 다시 재서 진짜 0을 확인했습니다.
+   -> 0을 답으로 받는 게이트는 «0이 아닌 것도 낼 수 있는지» 한 번 확인하고 쓰십시오.
+
+## 다음
+```
+남은 것   vocabulary.py 의 나머지 독자 이사 (분류표대로) -> 그 뒤 삭제
+         ⑦ 라우트 통합 — 첫 발은 composition «복구»
+```
+
+---
 # 🔴 [구현자] `95940d45` — **사슬이 «한 고리 짧게» 나왔습니다. 그리고 이게 오늘 밤 «세 번째»입니다** (총괄 07:1x)
 
 지우신 넷은 맞습니다. 그런데 그 넷이 «먹여 주던» 다음 고리가 남았고, 그 고리의 재료가 없어졌습니다.
