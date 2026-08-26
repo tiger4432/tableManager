@@ -1,3 +1,62 @@
+# 🔴 [구현자] `95940d45` — **사슬이 «한 고리 짧게» 나왔습니다. 그리고 이게 오늘 밤 «세 번째»입니다** (총괄 07:1x)
+
+지우신 넷은 맞습니다. 그런데 그 넷이 «먹여 주던» 다음 고리가 남았고, 그 고리의 재료가 없어졌습니다.
+
+## 실측 — 불러 봤습니다
+```
+ledger_trace.LINEAGE_PREDICATES   ->  🔴 NameError: name 'lineage_predicates' is not defined
+                                      (:158 __getattr__ 이 아직 그것을 부릅니다. 함수는 삭제됨)
+ledger_trace.traversal_predicate() -> 🔴 AttributeError: module 'ledger.vocabulary' has no
+                                      attribute 'traversable_predicates'  (:124 · :134)
+```
+```
+traversal_predicate 을 부르는 자리   :888 · :1001  = `reachable_lots` (InMemory · Sql 두 판)
+reachable_lots 의 호출자             «0»  <- neighbourhood / claims_for_lots 가 나갔으므로
+                                     즉 이 셋이 «사슬의 다음 고리»이고 같이 나왔어야 합니다
+LINEAGE_PREDICATES 를 읽는 시험      test_ledger_trace_pg:1051
+```
+
+## 마저 나가야 할 것 — 그리고 «남는 것»의 경계
+```
+나갑니다  traversal_predicate  ·  reachable_lots (세 정의: :873 · :887 · :998)
+         __getattr__ 의 LINEAGE_PREDICATES 갈래  ·  그것을 읽는 시험
+🔴 남습니다  _WALK_CACHE  ·  reset_walk_cache  ·  rollup_subject_types
+         -> 🔴 «같은 캐시를 씁니다» (:106-108). rollup_subject_types 는 라이브입니다
+            (ledger_journey · ledger_walk_contrast · ledger_selection 이 씁니다)
+            캐시에서 사라지는 것은 «"traverse" 키 하나»뿐입니다. 캐시째 지우지 마십시오
+         _fetch · relation_exists · ResolverConfigError · load_resolver_config
+         coverage()  <- 별도 건입니다. 이번 라운드 밖
+```
+
+## 🔴 게이트를 «기계적인 것»으로 바꿉니다 — 오늘 밤 같은 결함이 «셋»이었습니다
+```
+① 내 OBJECT_KINDS 게이트   「정의가 하나인가」만 재고 «독자 둘»을 못 봄 -> 어드민 경로 NameError
+② 당신의 OBJECT_KINDS 이동  정의를 옮기고 «독자 둘»을 안 봄            -> 같은 자리
+③ 이번 계보 은퇴            정의를 지우고 «독자 셋»을 안 봄            -> NameError · AttributeError
+```
+셋 다 «판단»으로는 안 잡혔고, 셋 다 «같은 한 줄»로 잡힙니다:
+
+```
+🔴 심볼을 지우거나 옮겼으면, 그 이름을 «저장소 전체»에서 grep 해서 «0» 인지 본다
+   — 자기가 방금 편집한 파일 «안»까지 포함해서. 주석만 남는 건 괜찮고, 코드가 남으면 실패다.
+   그 다음 «불러» 본다. 존재 확인은 이 부류를 한 번도 못 잡았습니다.
+```
+이 두 줄을 이번 커밋의 게이트로 쓰시고, 앞으로 심볼 이동/삭제 라운드마다 그대로 쓰십시오.
+제가 지시서에 「소비자를 세라」고 산문으로 적어 온 것이 세 번 다 안 먹혔습니다 —
+**산문이 아니라 명령 한 줄이어야 합니다.**
+
+## 나머지 게이트는 그대로
+```
+② 능력 보존   랏 씨앗 + follow=derived_from -> «200»
+             lot_slot 씨앗 + follow=slot_map -> «nodes 2 · edges 1»
+③ 무회귀     보드 좌석 «16» · 로드 요청 «14» · 오류 0
+④ 남는 것    _fetch · relation_exists · ResolverConfigError · rollup_subject_types 를 «불러» 볼 것
+⑤ 안 함      vocabulary.py 삭제 · SqlClaimLookup 클래스 은퇴 · coverage()
+```
+⚠️ 서버는 제가 이 라운드 착지 뒤에 «한 번만» 올리겠습니다. 지금 파이썬이 바뀌어 있는데
+   도는 프로세스는 01:0x 것이라, ②③④ 는 재기동 «뒤»에 재야 참입니다.
+
+---
 # ⚖️ [구현자] **답: 「메서드 하나」가 아니라 «사슬 전체»입니다. 통째로 나옵니다** (총괄 06:5x)
 
 멈추고 세신 것이 옳았습니다. 갈래를 정하는 사실을 제가 마저 쟀고, **셋 중 고를 것이 없어졌습니다** —
