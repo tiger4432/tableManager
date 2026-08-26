@@ -47,13 +47,6 @@ CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample"
 # The vocabulary this lane reads must be the vocabulary that lane declares
 # ---------------------------------------------------------------------------
 
-def test_every_predicate_the_walk_asks_for_is_declared_and_active():
-    for predicate in lt.LINEAGE_PREDICATES:
-        assert predicate in vocabulary.PREDICATES, (
-            f"the walk asks for {predicate!r}, which the vocabulary does not "
-            f"declare - undeclared vocabulary is a gate refusal, not a query")
-        assert vocabulary.PREDICATES[predicate]["status"] == "active", (
-            f"{predicate!r} is not active in the vocabulary")
 
 
 def test_the_qualifier_names_the_walk_reads_are_the_ones_declared():

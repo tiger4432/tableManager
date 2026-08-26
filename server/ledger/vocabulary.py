@@ -935,15 +935,8 @@ def walk_predicates():
                         if sig.get("traversable") is not None))
 
 
-def traversable_predicates():
-    """The predicates the walk RECURSES through. A subset of `walk_predicates()`."""
-    return tuple(sorted(name for name, sig in all_predicates().items()
-                        if sig.get("traversable") is True))
 
 
-def walk_direction(predicate):
-    """Which way a traversable edge is followed, or `None` if it is not traversed."""
-    return (all_predicates().get(predicate) or {}).get("direction")
 
 
 def check_walk_declaration():

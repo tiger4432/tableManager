@@ -186,42 +186,8 @@ def test_the_gate_judges_a_config_word_by_the_SAME_signature_machinery(extension
     assert wrong_subject and "does not accept subject type" in wrong_subject[0]
 
 
-def test_a_config_word_reaches_the_walk_declaration_the_same_way(extension):
-    """`traversable: false` means「도달은 하되 통과 금지」for a config word too."""
-    write_extension(extension, {"scrapped": signature(traversable=False)})
-    assert "scrapped" in vocabulary.walk_predicates()
-    assert "scrapped" not in vocabulary.traversable_predicates()
-    assert vocabulary.check_walk_declaration() == []
 
 
-def test_the_merged_view_notices_when_the_CODE_SET_is_swapped(extension):
-    """🔴 REGRESSION. The merged view is derived from TWO mutable things — the extension
-    file and this module's `PREDICATES` — and the first version keyed its cache on only the
-    file.
-
-    MEASURED failure: a suite that swaps the whole vocabulary also repoints
-    `paths.CONFIG_DIR`, which dropped the merged view WHILE THE FAKE WAS INSTALLED. The
-    rebuild cached the fake, the restore changed nothing the key could see, and the next
-    test file got a vocabulary with zero traversable predicates and an error about a
-    recursive CTE — three files away from the cause.
-
-    It reads as a test-isolation problem and it is not: any process that swaps or reloads
-    the code set at runtime would serve claims judged against a vocabulary it no longer has.
-    """
-    real = vocabulary.PREDICATES
-    fake = {"only_word": {"label_ko": "x", "layer": "ontology", "status": "active",
-                          "since": 1, "subject": ["Lot"], "object": None,
-                          "qualifiers": [], "traversable": None, "direction": None}}
-    try:
-        vocabulary.PREDICATES = fake
-        assert set(vocabulary.all_predicates()) == {"only_word"}, (
-            "the merged view ignored a swapped code set")
-        assert vocabulary.traversable_predicates() == ()
-    finally:
-        vocabulary.PREDICATES = real
-    assert set(vocabulary.all_predicates()) == set(real), (
-        "the merged view kept serving the fake after the code set was restored")
-    assert vocabulary.traversable_predicates() == ("derived_from",)
 
 
 def test_a_malformed_extension_degrades_to_code_only_and_SAYS_SO(extension):
@@ -539,22 +505,6 @@ def test_the_candidate_config_carries_only_the_source_under_preview():
     assert list(cfg["sources"]) == ["my_table"]
 
 
-def test_the_previews_translator_version_is_the_one_a_real_run_would_stamp():
-    """The atoms a preview shows carry the SAME provenance string a real run writes.
-
-    If they did not, the preview would be showing atoms that are not the atoms - the
-    definition of the fake preview the brief forbids.
-    """
-    from ledger import config as ledger_config
-
-    declaration = copy.deepcopy(
-        ledger_config.load()["sources"].get("lot_event")
-        or {"occurred_at_column": "t", "occurred_at_timezone": "Asia/Seoul",
-            "subject_types": ["Wafer"]})
-    cfg = ledger_admin.candidate_config("lot_event", declaration)
-    live = ledger_config.load()
-    assert (ledger_config.translator_version(cfg, "lot_event")
-            == ledger_config.translator_version(live, "lot_event"))
 
 
 # ------------------------------------------------------- root-key rollup (R-…-08-15-O)

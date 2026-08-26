@@ -87,11 +87,6 @@ def _vocabulary():
     return vocabulary
 
 
-def lineage_predicates():
-    """Every predicate the walk may FETCH for a lot it reached. Derived, order stable."""
-    if "fetch" not in _WALK_CACHE:
-        _WALK_CACHE["fetch"] = tuple(_vocabulary().walk_predicates())
-    return _WALK_CACHE["fetch"]
 
 
 def rollup_subject_types(root_type: str) -> tuple:
@@ -878,21 +873,7 @@ class ClaimLookup:
     def reachable_lots(self, lot, max_depth):
         raise NotImplementedError
 
-    def claims_for_lots(self, lots, predicates=None):
-        raise NotImplementedError
 
-    def neighbourhood(self, lot, max_depth=DEFAULT_MAX_DEPTH,
-                      predicates=None):
-        # `None` means "whatever the vocabulary declares", resolved HERE rather than in a
-        # default argument: a default is evaluated at import time and would drag
-        # `server/ledger` onto the web server's boot path (`LEDGER_GUIDE` §0). A caller
-        # that passes a list still gets exactly that list - the scoped-query path depends
-        # on it.
-        predicates = lineage_predicates() if predicates is None else predicates
-        lots, truncated, reason = self.reachable_lots(lot, max_depth)
-        claims = self.claims_for_lots(lots, predicates)
-        return Neighbourhood(claims=list(claims), lots=tuple(lots),
-                             truncated=truncated, truncation_reason=reason)
 
 
 class InMemoryClaimLookup(ClaimLookup):
@@ -929,12 +910,6 @@ class InMemoryClaimLookup(ClaimLookup):
         return seen, truncated, ("[depth_cap] %d홉에서 조회 중단" % max_depth
                                  if truncated else None)
 
-    def claims_for_lots(self, lots, predicates=None):
-        wanted = set(lots)
-        preds = set(lineage_predicates() if predicates is None else predicates)
-        return [c for c in self._claims
-                if c.subject_type == "Lot" and c.subject_lot in wanted
-                and c.predicate in preds]
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1029,19 +1004,6 @@ class SqlClaimLookup(ClaimLookup):
         return lots, truncated, (f"[depth_cap] {max_depth}홉에서 조회 중단"
                                  if truncated else None)
 
-    def claims_for_lots(self, lots, predicates=None):
-        if not lots:
-            return []
-        sql = (f"SELECT id, subject_type, subject_keys, predicate, object_kind, "
-               f"object_payload, occurred_at, source_who, source_translator_ver, "
-               f"source_raw_ref, supersedes FROM {self.relation} "
-               f"WHERE subject_type = 'Lot' "
-               f"AND subject_keys->>'lot' = ANY(%(lots)s) "
-               f"AND predicate = ANY(%(predicates)s)")
-        predicates = lineage_predicates() if predicates is None else predicates
-        rows = self._execute(sql, {"lots": [str(x) for x in lots],
-                                   "predicates": list(predicates)})
-        return [_claim_from_row(r) for r in rows]
 
     def _execute(self, sql, params):
         """Run `sql` on either a DBAPI connection or a SQLAlchemy Connection."""
@@ -1087,28 +1049,6 @@ class OneShotSqlClaimLookup(SqlClaimLookup):
     code change. That is the kind of defect that ships green.
     """
 
-    def neighbourhood(self, lot, max_depth=DEFAULT_MAX_DEPTH,
-                      predicates=None):
-        predicates = lineage_predicates() if predicates is None else predicates
-        sql = _TRACE_CTE.format(relation=self.relation)
-        rows = self._execute(sql, {"start_lot": lot, "max_depth": int(max_depth),
-                                   "predicates": list(predicates),
-                                   "traverse": traversal_predicate()})
-        claims = []
-        lots = []
-        max_seen = 0
-        for row in rows:
-            claims.append(_claim_from_row(row))
-            subj = (row[2] or {}).get("lot")
-            if subj is not None and subj not in lots:
-                lots.append(subj)
-            if row[11] is not None:
-                max_seen = max(max_seen, int(row[11]))
-        truncated = max_seen >= int(max_depth)
-        return Neighbourhood(
-            claims=claims, lots=tuple(lots), truncated=truncated,
-            truncation_reason=(f"[depth_cap] {max_depth}홉에서 조회 중단"
-                               if truncated else None))
 
 
 def _claim_from_row(row):
@@ -1308,146 +1248,6 @@ def _hop(frm, to, resolution, predicate, zone, config=None):
     }
 
 
-def trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH):
-    """Walk the lineage of `(lot, slot)` and return the pinned response shape.
-
-    🔴 **AN EMPTY `hops` LIST IS IMPOSSIBLE BY CONSTRUCTION AND THAT IS THE WHOLE
-    FEATURE.** Brief §3-2: "끊긴 자리가 이유와 함께 나와야 한다. 빈 결과 금지 —
-    어느 홉에서 왜 끊겼는지가 이 화면의 존재 이유다." Against an EMPTY ledger this
-    returns one `unresolvable` hop naming the lot that has no atoms, plus a
-    `terminal_reason`. `test_ledger_trace.py::test_empty_ledger_still_answers`
-    holds that door shut.
-
-    Every hop is one QUESTION and its answer, in the order the walk asks them:
-
-        has_wafer(lot, slot)          -> which wafer sits at this position
-        derived_from(lot)             -> which lot this one came from
-        slot_map(lot -> parent, slot) -> where this position was in the parent
-
-    so a broken chain names the question that could not be answered, not just
-    "the chain is short".
-    """
-    cfg = config or load_resolver_config()
-    if lookup is None:
-        raise ValueError("trace() needs a ClaimLookup - resolution and lookup "
-                         "are separate on purpose")
-
-    lot = _as_text(lot)
-    slot = _slot_text(slot)
-
-    nb = lookup.neighbourhood(lot, max_depth=max_depth)
-    claims = live_claims(nb.claims)
-
-    index = {}
-    lots_with_atoms = set()
-    for c in claims:
-        if c.subject_type != "Lot":
-            continue
-        index.setdefault((c.subject_lot, c.predicate), []).append(c)
-        lots_with_atoms.add(c.subject_lot)
-
-    def at(l, predicate):
-        return index.get((l, predicate), [])
-
-    # Resolved ONCE for the whole answer, so every instant in one response is on
-    # one clock even if the config were reloaded mid-walk.
-    zone = resolve_display_zone(cfg)
-
-    hops = []
-    terminal_reason = None
-    cur_lot, cur_slot = lot, slot
-    visited = [lot]
-    depth = 0
-
-    while True:
-        if cur_lot not in lots_with_atoms:
-            res = Resolution(
-                state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
-                reason=f"[unknown_subject] lot={cur_lot} · 원장에 원자 0")
-            hops.append(_hop(_lot_node(cur_lot, cur_slot), None, res,
-                             "register", zone, cfg))
-            terminal_reason = (f"[unknown_subject] lot={cur_lot} · 원장에 원자 0 "
-                               f"— 번역 안 됨 또는 없는 랏")
-            break
-
-        # --- question 1: which wafer sits at (cur_lot, cur_slot)? --------
-        if cur_slot is not None:
-            wafer_claims = [c for c in at(cur_lot, "has_wafer")
-                            if _payload_slot(c) == cur_slot]
-            res = resolve(wafer_claims, _payload_wafer, cfg,
-                          subject_label=f"lot={cur_lot} slot={cur_slot}",
-                          predicate="has_wafer")
-            hops.append(_hop(
-                _lot_node(cur_lot, cur_slot),
-                _wafer_node(res.answer) if res.answer is not None else None,
-                res, "has_wafer", zone, cfg))
-
-        # --- question 2: which lot did this one come from? ---------------
-        parent_claims = at(cur_lot, "derived_from")
-        if not parent_claims:
-            registered = bool(at(cur_lot, "register"))
-            res = Resolution(
-                state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
-                reason=(f"[root] lot={cur_lot} · derived_from 없음"
-                        + (" (register 있음)" if registered else " (register 없음)")))
-            hops.append(_hop(_lot_node(cur_lot, cur_slot), None, res,
-                             "derived_from", zone, cfg))
-            terminal_reason = (
-                f"[root] lot={cur_lot} · derived_from 주장 없음 — 사슬의 뿌리"
-                if registered else
-                f"[dead_end] lot={cur_lot} · derived_from 없고 register도 없음 — "
-                f"원장이 이 랏의 혈통을 모름")
-            break
-
-        res = resolve(parent_claims, _payload_lot, cfg,
-                      subject_label=f"lot={cur_lot}", predicate="derived_from")
-        parent = res.answer
-        hops.append(_hop(_lot_node(cur_lot, cur_slot),
-                         _lot_node(parent, None) if parent is not None else None,
-                         res, "derived_from", zone, cfg))
-        if parent is None:
-            terminal_reason = (f"[broken] hop {len(hops)} · derived_from "
-                               f"{len(parent_claims)}건이 부모 랏을 못 준다")
-            break
-
-        # --- question 3: where was this position in the parent? ----------
-        parent_slot = None
-        if cur_slot is not None:
-            sm_res = _map_slot(index, cur_lot, parent, cur_slot, cfg)
-            parent_slot = sm_res.answer
-            hops.append(_hop(_lot_node(cur_lot, cur_slot),
-                             _lot_node(parent, parent_slot),
-                             sm_res, "slot_map", zone, cfg))
-
-        depth += 1
-        if parent in visited:
-            terminal_reason = (f"[cycle] lot={parent} 재방문 · 사슬이 순환한다 — "
-                               f"원장에 모순 원자")
-            break
-        visited.append(parent)
-        cur_lot, cur_slot = parent, parent_slot
-
-        if depth >= max_depth:
-            terminal_reason = (f"[depth_cap] {max_depth}홉 도달 · lot={cur_lot} "
-                               f"에서 사슬이 계속된다 (끝 아님)")
-            break
-
-    if terminal_reason is None:                           # pragma: no cover
-        terminal_reason = "[unknown] 워크가 이유 없이 멈췄다"
-    if nb.truncated and nb.truncation_reason and "depth_cap" not in terminal_reason:
-        terminal_reason += f" · 조회도 잘림: {nb.truncation_reason}"
-
-    # The invariant, asserted rather than trusted. Brief §3-2: 빈 결과 금지.
-    assert hops, "trace() produced an empty hop list - the one forbidden answer"
-
-    return {
-        "hops": hops,
-        "terminal_reason": terminal_reason,
-        # The DECLARED zone, same as every `occurred_at` in `hops`. A
-        # `generated_at` from a different clock than the hop times is an
-        # invitation to subtract nine hours by eye.
-        "generated_at": _iso(datetime.now(timezone.utc), zone),
-    }
 
 
 def _map_slot(index, cur_lot, parent, cur_slot, cfg):

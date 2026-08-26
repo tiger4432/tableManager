@@ -54,14 +54,6 @@ LEDGER_RELATION = "ledger_events"
 LEDGER_CURSOR_RELATION = "ledger_translator_cursor"
 
 
-def _lookup_for(db):
-    """A `ClaimLookup` bound to the request's connection.
-
-    The route knows one lookup exists; it does not know it is SQL-shaped beyond
-    handing it a connection. Swapping the class here is the entire migration to
-    a materialised lookup.
-    """
-    return ledger_trace.SqlClaimLookup(db.connection(), relation=LEDGER_RELATION)
 
 
 

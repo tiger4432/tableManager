@@ -33,7 +33,7 @@ from ledger.source_preparation import (
     SourcePreparerImplementationRegistry,
 )
 from ledger.store import CursorVersionConflict, LedgerStore
-from ledger_trace import DEFAULT_RESOLVER_CONFIG, SqlClaimLookup, coverage, trace
+from ledger_trace import DEFAULT_RESOLVER_CONFIG, coverage
 from ledger_structure import structure
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations

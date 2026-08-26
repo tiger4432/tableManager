@@ -87,51 +87,11 @@ def test_a_column_mapping_nothing_reads_is_refused():
     assert "radius" in str(excinfo.value)
 
 
-def test_the_lineage_declaration_still_validates_unchanged():
-    """A source that does not declare `kind` is a LINEAGE source, so every declaration
-    written before this ruling means exactly what it meant. The default is a fact about
-    history, not a preference."""
-    cfg = ledger_config.load()
-    assert ledger_config.source_kind(cfg, "lot_event") == "lineage"
-    assert ledger_config.source_kind(cfg, "void_obs") == "observation"
-    assert sorted(ledger_config.declared_derivations(cfg, "void_obs")) == [
-        "first_sight", "observation_row"]
 
 
 # ------------------------------------------------------------- the walk (R-2026-08-14-E)
-def test_observed_is_not_in_the_walk_at_all():
-    """🔴 ADDENDUM ① OF R-2026-08-14-D, and this is the assertion that protects the trace
-    screen from the translation this same file tests.
-
-    `claims_for_lots` drags back EVERY claim of EVERY lot the walk reaches. A wafer carries
-    tens of thousands of observations, so `observed` joining that set would mean the trace
-    screen dies on the day the defect translator first succeeds - which is today. The
-    declaration says so, and both the derived fetch set and the constant readers use are
-    asserted, because a reader could reach for either.
-    """
-    import ledger_trace
-
-    assert vocabulary.PREDICATES["observed"]["traversable"] is None
-    assert "observed" not in vocabulary.walk_predicates()
-    assert "observed" not in vocabulary.traversable_predicates()
-    assert "observed" not in ledger_trace.LINEAGE_PREDICATES
 
 
-def test_the_walk_vocabulary_is_derived_and_still_says_what_it_said():
-    """🔴 THE BEHAVIOUR-INVARIANCE PROOF for lifting the walk into the declaration.
-
-    Before R-2026-08-14-E `ledger_trace.LINEAGE_PREDICATES` was the literal tuple below and
-    the recursive CTE joined on the literal `'derived_from'`. Both now come from the
-    vocabulary, so this asserts the derived answers are EXACTLY the historical ones - a
-    refactor that quietly changed which atoms a trace fetches would change what the screen
-    says while every other test stayed green.
-    """
-    import ledger_trace
-
-    assert set(ledger_trace.LINEAGE_PREDICATES) == {
-        "derived_from", "slot_map", "has_wafer", "register"}
-    assert ledger_trace.traversal_predicate() == "derived_from"
-    assert vocabulary.walk_direction("derived_from") == "subject_to_object"
 
 
 def test_the_walk_declaration_is_complete_and_binds_nothing_it_should_not():

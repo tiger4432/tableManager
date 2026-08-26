@@ -39,41 +39,10 @@ def fixture():
     ]
 
 
-def test_branching_neighbourhood_is_not_resolved_to_one_winner():
-    body = ledger_explorer.explore(
-        "MERGED", ledger_trace.InMemoryClaimLookup(fixture()), hops=20)
-    assert body["state"] == "ready"
-    assert body["walk"]["hops_requested"] == 20
-    parents = {e["target"] for e in body["edges"]
-               if e["predicate"] == "derived_from"
-               and e["source"] == body["seed"]["id"]}
-    assert len(parents) == 2
-    assert {n["label"] for n in body["nodes"]} >= {
-        "MERGED", "BRANCH-A", "BRANCH-B", "ROOT", "WF-01"}
 
 
-def test_caps_are_explicit_and_keep_the_seed():
-    claims = fixture()
-    for index in range(12):
-        leaf = f"LEAF-{index:02d}"
-        claims.append(claim(f"x{index}", "MERGED", "derived_from",
-                            "Lot", {"lot": leaf}))
-        claims.append(claim(f"xr{index}", leaf, "register"))
-    body = ledger_explorer.explore(
-        "MERGED", ledger_trace.InMemoryClaimLookup(claims),
-        hops=20, node_limit=10, edge_limit=20)
-    assert body["truncated"]["nodes"] is True
-    assert len(body["nodes"]) == 10  # public floor prevents a misleading tiny graph
-    assert body["nodes"][0]["id"] == body["seed"]["id"]
 
 
-def test_unknown_lot_is_a_named_empty_answer():
-    body = ledger_explorer.explore(
-        "MISSING", ledger_trace.InMemoryClaimLookup(fixture()), hops=20)
-    assert body["state"] == "empty"
-    assert len(body["nodes"]) == 1
-    assert body["edges"] == []
-    assert "걷기 가능한" in body["message"]
 
 
 def test_entity_ids_are_order_independent_and_opaque():

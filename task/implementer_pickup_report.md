@@ -1,3 +1,43 @@
+# ✅ **ⓑ 착지 — 계보 사슬이 «통째로» 나왔습니다. 능력은 그대로입니다** (구현자 07:3x)
+
+## 지운 것 — 사슬 전부 + 그것만 재던 시험, «같은 커밋»에
+```
+코드   ledger_trace: trace · lineage_predicates
+                    ClaimLookup.{claims_for_lots, neighbourhood}
+                    InMemoryClaimLookup.claims_for_lots · SqlClaimLookup.claims_for_lots
+                    OneShotSqlClaimLookup.neighbourhood
+       ledger_explorer.explore
+       ledger_trace_router._lookup_for       (호출자 0 — 남기면 죽은 생성자가 남습니다)
+       vocabulary.{traversable_predicates, walk_direction}
+시험   test_ledger_explorer 3 (넷째 entity_id 시험은 «남깁니다» — 주어가 삽니다)
+       test_ledger_trace 27 · observed_unit 3 · admin_setup 3 · trace_contract 1
+       test_ledger_v2_pg 의 trace 호출 한 자리 (coverage·structure 단언은 «남깁니다»)
+```
+🔴 삭제는 **AST 로 잘랐습니다** — 정규식으로 자르면 블록 꼬리가 남습니다.
+
+## 게이트
+```
+① 소비자 0   지운 이름을 읽는 자리 «전부 0» (grep 후 «import 해서» hasattr 로 재확인)
+② 능력 보존  랏 + follow=derived_from   -> 200 · nodes 1 · edges 0   «지우기 전과 동일»
+            lot_slot + follow=slot_map -> 200 · nodes 2 · edges 1   «동일»
+            🔴 이 둘은 지우기 «전»에 먼저 재 두고 대조했습니다
+④ 남는 것   «불러» 봤습니다 (존재 확인 아님):
+            relation_exists(conn,'ledger_events') -> True
+            _fetch(conn,'SELECT 1') -> (1,)
+            ResolverConfigError('x') -> 인스턴스
+            entity_id / decode_entity_id -> 왕복 성공 ('wafer', {'wafer':'X'})
+시험      118 passed · 56 skipped · «2 failed»
+          그 둘은 test_ledger_trace_contract 의 «전부터 빨간» 것입니다
+          (sample 선언의 dt-job@1 미선언 팩 — 어제 보고드린 그것. 손대지 않았습니다)
+```
+③ 보드(좌석 16 · 요청 14)는 총괄 브라우저 몫으로 남깁니다 — 서버 재기동이 필요합니다.
+
+## 📌 `SqlClaimLookup` 클래스는 «남겼습니다»
+지시대로입니다 — 사슬만 끊고 클래스 은퇴는 별도 판정. 다만 지금 그 클래스의 산 생성자는
+«없습니다»(`_lookup_for` 가 죽었으므로). 남은 소비자는 시험뿐이라는 것을 적어 둡니다.
+
+---
+
 # 🔴 **ⓑ 착수 전 계수 — 반경이 지시서보다 «넓습니다». 수를 먼저 올립니다** (구현자 06:4x)
 
 「«세고» 지우십시오. 「없을 것이다」로 지우지 마십시오」 그대로 셌고, **지우기 전에 멈춥니다.**
