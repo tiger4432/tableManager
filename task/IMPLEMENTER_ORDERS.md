@@ -29,27 +29,33 @@ mat_type=DTLotSlot   mat_id 2,632  ->  «둘 다 0»  (그 엔티티가 아직 �
 ```
 🔴 **키 이름은 «from · to · edge» 다** (소유자 정정). `container`·`id_key`·`kind_key` 는
 총괄이 지어낸 «도메인 낱말»이라 다른 타입에 안 맞는다. 범용 이름으로 간다.
+🔴 **`to.keys` 는 «여럿»이다** (소유자 지시). 그리고 그 결과 **`from.key` 가 없어진다** —
+`to.keys` 가 「내 어느 키가 그쪽 어느 키로 가나」를 «다» 말하기 때문이다. 필드가 하나 줄었다.
 ```json
 "die@1": {
   "keys": ["mat_id", "x", "y", "mat_type"],
   "references": [
     { "edge": "in_container",
-      "from": { "key": "mat_id", "when": { "mat_type": "Wafer" } },
-      "to":   { "entity": "wafer@1", "key": "wafer"  } },
+      "from": { "when": { "mat_type": "Wafer" } },
+      "to":   { "entity": "wafer@1", "keys": { "wafer":  "mat_id" } } },
     { "edge": "in_container",
-      "from": { "key": "mat_id", "when": { "mat_type": "DT" } },
-      "to":   { "entity": "dtjob@1", "key": "dt_job" } }
+      "from": { "when": { "mat_type": "DT" } },
+      "to":   { "entity": "dtjob@1", "keys": { "dt_job": "mat_id" } } }
   ]
 }
 ```
 ```
-목록이다        참조가 «여럿»인 것이 기본. die 는 지금 둘이고 앞으로 늘 수 있다
-from.key       «내 키» 중 어느 것이 남을 가리키나
-from.when      그 참조가 «언제» 성립하나. 판별자를 «키 이름»이 아니라 «조건»으로 쓴다
-               -> kind_key 같은 축을 따로 만들지 않는다. when 이 그 일을 한다
-to.entity/key  가리키는 «타입»과 그 타입의 «어느 키»에 값이 들어가나
-edge           합성될 엣지의 이름
+목록이다      참조가 «여럿»인 것이 기본. die 는 지금 둘이고 앞으로 늘 수 있다
+from.when    그 참조가 «언제» 성립하나. 판별자를 «축»이 아니라 «조건»으로 쓴다
+             -> kind_key 같은 것을 따로 만들지 않는다. when 이 그 일을 한다
+to.entity    가리키는 «타입»
+to.keys      { 그쪽 키 : 내 키 }  «여럿». 대상 타입의 키 «전부»를 채워야 한다
+             -> 부분 정체는 「연결 사고 한 컬럼 옆」이다 (config.py:918 이 같은 말을 한다)
+edge         합성될 엣지의 이름
 ```
+📌 «여럿»으로 한 이유: `lot_slot@1{lot,slot}` · `recipe@1{rev,recipe}` 가 이미 키 둘이고,
+   곧 올 DT 트레이 안건이 `to.keys {lot: dt_lot, slot: dt_slot}` 을 «필요로 한다».
+   지금 좁게 만들면 그때 문법을 «다시» 건드린다.
 🔴 **낱말이 매핑과 «다른» 것이 요지다**
 ```
 매핑(원자를 낸다)   subject · predicate · target
