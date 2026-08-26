@@ -597,8 +597,11 @@ function setupEventListeners() {
     });
   }
 
-  // Handle selected file(s) ingestion
-  elements.toolbarFileInput.addEventListener('change', async (e) => {
+  // 🔴 하나의 처리기를 «두 입력»이 나눠 씁니다. 폴더 업로드는 파이프라인이 아니라 입력이
+  //    하나 는 것이라, 이 루프를 두 번째로 그리면 그날부터 둘이 갈라집니다 (소유자 상설:
+  //    「근원 템플릿 요소 개발 후 데이터 갈아끼우기」). 폴더 input 은 `webkitdirectory` 때문에
+  //    «하위 폴더까지» 훑어 `files` 에 담아 주므로, 이 루프가 보는 것은 여전히 파일 목록입니다.
+  const ingestSelectedFiles = async (e) => {
     if (!state.currentTable) return;
     const files = e.target.files;
     if (files.length === 0) return;
@@ -633,9 +636,17 @@ function setupEventListeners() {
         showToast(`❌ [${file.name}] 파일 인제션에 실패했습니다.`, 'error');
       }
     }
-    // Reset file input value
-    elements.toolbarFileInput.value = '';
-  });
+    // 🔴 «불을 지른 input» 을 비웁니다. `toolbarFileInput` 을 고정으로 비우면 폴더 쪽은
+    //    값이 남아 «같은 폴더를 두 번» 고를 때 change 가 안 옵니다.
+    e.target.value = '';
+  };
+  elements.toolbarFileInput.addEventListener('change', ingestSelectedFiles);
+  if (elements.toolbarFolderInput) {
+    elements.toolbarFolderInput.addEventListener('change', ingestSelectedFiles);
+  }
+  if (elements.folderUploadBtn) {
+    elements.folderUploadBtn.addEventListener('click', () => elements.toolbarFolderInput.click());
+  }
 
   // Smart Paste Button
   if (elements.smartPasteBtn) {
