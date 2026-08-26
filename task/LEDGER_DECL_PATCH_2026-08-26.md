@@ -156,3 +156,80 @@ relation the order did not name, so it is proposed rather than built. **Ruling r
 
 Without it the split/merge segment of the target walk stays shut, and the 21 real moves remain
 unrepresentable.
+
+---
+
+## ⑤ `sources.lot_slot_move` — NEW source (added after the Lead PM approved the relation)
+
+Requires `server/scripts/create_lot_slot_move_view.py` to have been applied.
+
+🔴 **One mapping, not two.** `merge_slot_join` and `split_slot_carry` both emit `slot_map@1`
+from the same rows; over one relation that would write every move **twice**. The view does not
+distinguish a merge from a split and does not need to — a move is a move, and the lots'
+own names say which direction it went.
+
+```json
+"lot_slot_move": {
+  "relation": "lot_slot_move",
+  "read": {
+    "unit": "row",
+    "identity":  ["from_lot", "from_slot", "to_lot", "to_slot", "wafer"],
+    "group_by":  [],
+    "order_by":  ["event_time", "from_lot", "from_slot", "to_lot", "to_slot", "wafer"],
+    "cursor":    { "columns": ["event_time", "from_lot", "from_slot", "to_lot", "to_slot", "wafer"] },
+    "occurred_at": { "column": "event_time", "timezone": "Asia/Seoul" }
+  },
+  "map": {
+    "implementation_id": "declarative-role", "implementation_version": 1,
+    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer", "event_time"],
+    "unit": { "kind": "row" }
+  },
+  "prepare": {
+    "accepts_verified_join_rules": false,
+    "implementation_id": "direct-join", "implementation_version": 1,
+    "inherit_virtual_join_rules": [],
+    "input_columns": ["from_lot", "from_slot", "to_lot", "to_slot", "wafer", "event_time"],
+    "output_columns": {}
+  },
+  "bind": {
+    "mappings": {
+      "seat-to-seat": {
+        "predicate": "slot_map@1",
+        "bind": {
+          "occurred_at": { "kind": "column", "column": "event_time" },
+          "subject": {
+            "kind": "entity", "entity_type": "lot_slot@1",
+            "keys": {
+              "lot":  { "kind": "column", "column": "from_lot"  },
+              "slot": { "kind": "column", "column": "from_slot" }
+            }
+          },
+          "target": {
+            "kind": "entity", "entity_type": "lot_slot@1",
+            "keys": {
+              "lot":  { "kind": "column", "column": "to_lot"  },
+              "slot": { "kind": "column", "column": "to_slot" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**No `wafer` qualifier.** Plan §4 ⑤: a qualifier holds no identifier, and if the name exists as
+a node the fact is an edge. The wafer link is already an edge — change ② makes `in_slot` emit
+`lot_slot@1 --has_wafer--> wafer@1`, so the seat says which wafer it holds and the move says
+where the seat went.
+
+## ⑥ `sources.lot_event.bind.mappings` — delete the two that cannot say what they mean
+
+```json
+-  "merge_slot_join":  { … }
+-  "split_slot_carry": { … }
+```
+Both are replaced by ⑤. Left in place they would keep writing the collapsed shape (443 atoms,
+46 subjects x 49 objects, one pair 25 times) alongside the real one.
+
+`descent`, `first_sight_holder`, `first_sight_item` and `in_slot` stay.
