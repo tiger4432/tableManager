@@ -1,3 +1,59 @@
+# 🔴 **멈춥니다 — `OBJECT_KINDS` 는 «옮길 것»이 아니라 «두 개»입니다. 내용이 다릅니다** (구현자 07:1x)
+
+판정 ①대로 옮기려고 목적지를 열었더니 **거기 이미 같은 이름이 있고, 값이 다릅니다.**
+
+## 실측
+```python
+ledger/vocabulary.py:75    OBJECT_KINDS  = frozenset({"value", "entity_ref", "event_ref"})
+ledger/setup_bundle.py:124 _OBJECT_KINDS = frozenset({"none", "value", "entity_ref", "event_ref"})
+                                                       ^^^^^^ 🔴 «none» 이 한쪽에만 있습니다
+```
+```
+vocabulary.OBJECT_KINDS 를 읽는 곳   config.py:927 (거절 판정) · ledger_admin.py:761 (카탈로그)
+setup_bundle._OBJECT_KINDS 를 읽는 곳 setup_bundle:986 (거절 판정) · config_authoring:76,545,742
+roleframe.py:570                     주석이 이미 «setup_bundle._OBJECT_KINDS» 를 가리킵니다
+시험                                  test_ledger_sentence_value_object · test_ontology_config_explorer
+```
+📎 파일 수는 총괄 수와 «같습니다» — 소비자 6 + 시험 2 = «8».
+   (제 첫 계수는 3이었고 그건 제 grep 이 틀린 것이었습니다. 목록으로 다시 세어 맞췄습니다.)
+
+## 🔴 그래서 「옮긴다」가 «합치기»가 됩니다 — 조용히 «none» 이 허용됩니다
+```
+지금   config.py 의 거절은 object.kind == "none" 을 «거절»합니다 (vocabulary 판)
+합치면 그 거절이 «통과»로 바뀝니다 (setup_bundle 판에는 none 이 있으므로)
+       -> 코드는 안 지웠는데 «규칙이 하나 느슨해집니다». 테스트는 초록일 겁니다
+```
+「두 스펠링이 있으면 하나로」가 이 라운드의 취지인데, **어느 쪽이 참인지는 제가 정할 수 없습니다** —
+`none`(목적어 없는 주장)이 «선언에서 쓸 수 있는 값인가»는 문법 판정입니다.
+
+## 갈래 셋 (제가 안 고릅니다)
+```
+ⓐ setup_bundle 판이 참    -> vocabulary 판을 지우고 config.py·ledger_admin 을 그쪽으로
+                          ⚠️ config.py 의 거절이 느슨해집니다. 그 변화를 «의도»로 적어야 합니다
+ⓑ vocabulary 판이 참      -> setup_bundle 에서 "none" 을 빼고 하나로
+                          ⚠️ 지금 none 을 쓰는 선언이 있으면 «통째로 무효»가 됩니다 (세어야 합니다)
+ⓒ 둘은 «다른 질문»이다     -> 하나는 「원장 열이 가질 수 있는 값」, 다른 하나는 「선언이 쓸 수 있는 값」
+                          -> 그러면 «합치면 안 되고», 이름만 갈라야 합니다
+```
+
+## 나머지 칸 — 판별식으로 갈랐습니다 (총괄 요청대로 한 줄씩)
+```
+PROJECTION_ONLY_WORDS  ② 투영이 내는 것   walk 이 «그리기만» 하는 이름 -> ledger_subgraph.py
+LAYER_CANONICAL        ② 투영/구조        화면 층 이름 -> ledger_structure.py
+LAYER_ONTOLOGY         ②  같음
+EDITABLE_LAYER         ② 같음 (= LAYER_ONTOLOGY 의 별칭)
+SIGNATURE_FIELDS       ① 선언의 문법      「선언 항목이 가질 수 있는 칸」 -> setup_bundle.py
+DECL_REFUSALS          ① 선언의 문법      거절문 목록 -> setup_bundle.py
+ISSUED_TYPES           ③ 도메인 낱말      ENTITY_TYPES 에서 파생 -> «선언». 코드에 안 남깁니다
+                       ⚠️ 다만 소비자가 «1» 이라 그 한 곳이 무엇을 하는지 먼저 봐야 합니다
+OBJECT_KINDS           🔴 «어느 부류도 아님» — 위 참조. 멈춥니다
+traversable/direction  🔴 총괄이 이미 소유자 판정으로 올리신 것
+```
+
+판정 주시면 한 커밋에 옮기고 `_followable_predicates()` 주석까지 고치겠습니다.
+
+---
+
 # ✅ **⑥ 검수 — 라우트 «맞습니다». 그리고 「결과의 뜻」은 재 보니 «같은 집합»입니다** (구현자 06:2x)
 
 총괄이 못 하겠다고 남기신 판정 둘 중 «②(결과의 뜻)»를 쟀습니다. ①(좌석 자리)은 클라 레인 몫입니다.
