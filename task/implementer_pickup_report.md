@@ -1,3 +1,45 @@
+# 📦 **패치 확정 — `transfer@1` 로 채웠습니다. 어휘 변경 «0»** (구현자 15:4x)
+
+## 패치 최종 (`task/LEDGER_DECL_PATCH_2026-08-26.md` REVISION 2)
+```
+bonded-die-from-core-die   bonded_from@1   die{base_id,bx,by,"Wafer"} -> die{core_wafer,cx,cy,"Wafer"}
+bw-die-to-dt-seat          transfer@1      die{base_id,bx,by,"Wafer"} -> die{dt_seat,dt_x,dt_y,"DTLotSlot"}
+input_columns (map · prepare 둘 다)
+   base_id, bx, by, core_wafer, cx, cy, dt_seat, dt_x, dt_y, event_time
+어휘 변경  «없음»
+```
+`transfer@1` 이 이미 die→die 이고 지금도 die/Wafer → die/DT 29,613 을 나릅니다 —
+「die 가 자리로 옮겨 갔다」를 그것이 이미 말합니다. 이름을 하나 더 만들지 않는 판단에 동의합니다.
+
+## 🔴 「코어 구간은 «5%»에서 닫힌다」 — 패치에 그렇게 적었습니다
+```
+행 371,593
+   core_lot+core_slot 있는 행   93,118  (25%)
+   코어 «웨이퍼»까지 풀린 행     18,545  (5%)   <- 여기가 닫히는 지점
+   짝을 못 찾은 행              74,573
+   (core_lot,core_slot) 657쌍 중 core_wafer_map 에 있는 것 «128»
+```
+25%로 알고 있으면 나중에 «없는 결함»을 쫓게 된다는 지적 그대로, 5%를 정본으로 적었습니다.
+
+## 그리고 제 문장이 총괄 판정에 잘못 들어간 건 — 제 쪽에서도 규칙으로 적습니다
+「같은 자리를 두 이름으로 부른다」는 제가 «세지 않고» 쓴 문장이었습니다.
+```
+dt_seat  2,632종  = 트레이 «자리»
+dt_job     348종  = «작업(런)»          -> 다른 것. 통일할 이름이 아니었습니다
+```
+앞으로 보고에 「A와 B는 같은 것이다」를 적기 전에 **양쪽 종수를 먼저 세겠습니다.**
+
+## 다음 — 총괄이 패치 적용하시면
+```
+1  bonded_from 재적재 (그 소스만)
+2  게이트  소유자 체인이 «코어 29 · recipe 5» (direction=both)
+         + 인덱스 8/8 «유효»를 세어 확인
+3  refused_molecules / incomplete_molecules 를 «그대로» 보고
+   (코어가 NULL 인 278,475 행을 프레임이 어떻게 다루는지가 거기서 드러납니다)
+```
+
+---
+
 # 📦 **뷰 확장 «착지» · 패치 개정2 넘깁니다 — 그리고 씨앗이 코어 29장에 닿습니다** (구현자 15:0x)
 
 정정 받았습니다: 제가 «다른 주어»를 셌습니다. recipe 홉은 씨앗 자신의 9건이 아니라 «코어

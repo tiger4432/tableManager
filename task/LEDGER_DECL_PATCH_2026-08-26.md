@@ -293,8 +293,8 @@ proof that nothing was squashed.
     }
   }
 },
-"<NAME THE LEAD PM GIVES>": {
-  "predicate": "<NEW PREDICATE>@1",
+"bw-die-to-dt-seat": {
+  "predicate": "transfer@1",
   "bind": {
     "occurred_at": { "kind": "column", "column": "event_time" },
     "subject": {
@@ -318,15 +318,17 @@ proof that nothing was squashed.
   }
 }
 ```
-The vocabulary needs the new predicate declared with `die@1` on both sides, and `bonded_from@1`
-keeps `die@1 -> die@1` as revision 1 already set it.
+🔴 **VOCABULARY CHANGES: NONE.** `transfer@1` already declares `die@1` on both sides and already
+carries 29,613 die/Wafer -> die/DT atoms; "a die moved to a seat" is what it says. Coining a
+second name would give one fact two words. `bonded_from@1` keeps the `die@1 -> die@1` shape
+revision 1 already set.
 
 ## ⚠️ ONE THING THE PATCH CANNOT DECIDE — the core side is NULL on most rows
 
 ```
 rows in the relation                     371,593
    with cx,cy (a core die recorded)       93,118   (25.1%)
-   with a core WAFER resolved             18,545   (5.0%)
+   with a core WAFER resolved             18,545   (5.0%)  <- 🔴 the core segment closes HERE
 distinct (core_lot,core_slot) in view        657
    resolved through core_wafer_map           128   <- 529 pairs have no map row
 ```
@@ -335,6 +337,10 @@ framework does with the other 278,475 -- refuse the molecule, mark it incomplete
 null-keyed atom -- is not something I can read out of the declaration, and guessing it would put
 a wrong shape into the ledger. **It shows up as `refused_molecules` / `incomplete_molecules` on
 the first reload; if it refuses, the mapping needs its own relation.**
+
+🔴 **Read the closure as 5%, not 25%.** 93,118 rows name a core lot and slot, but only 18,545
+resolve to a wafer -- 74,573 find no row in the lookup. Carrying 25% in mind would send someone
+hunting a defect that is really absent source data.
 
 📌 The gate the ruling asks for is already reachable in the data: the owner's seed
 `SYN-BW-101-16` resolves **29 distinct core wafers** in the new view -- the same 29 the old
