@@ -1007,6 +1007,12 @@ export function entitySeedId(type, keys) {
   const bare = String(type || '').split('@')[0];
   const json = JSON.stringify([bare, keys || {}]);
   const b64 = btoa(unescape(encodeURIComponent(json)));
+  // 🔴 base64URL 은 «서버가 요구하는 것»이지 취향이 아닙니다. 클라 레인 실측 2026-08-27,
+  //    키 `SYN-BW-101-16>` (base64 에 `+` 가 들어가는 첫 키):
+  //      표준 base64  ->  HTTP «422»        base64url  ->  «200»
+  //    오늘 쓰는 씨앗 셋은 `+`·`/` 를 안 만들어서 «두 방식이 같은 답»입니다 -- 그래서 이 줄은
+  //    맞은 채로 검증되지 않고 있었고, 「단순화」로 되돌리면 그날부터 «특정 키만» 422 입니다.
+  //    `rnd_board_walk_box_harness` 의 S 절이 그 판별 키로 못 박습니다.
   return 'ledger-entity:v1:' + b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 

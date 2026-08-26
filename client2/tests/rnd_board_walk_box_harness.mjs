@@ -82,7 +82,8 @@ async function loadModules(mutate = {}) {
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`)
     .split("'./table_part.js'").join(`'${tableUrl}'`));
-  return { store: await import(storeUrl), box: await import(boxUrl) };
+  const apiUrl = dataUrl(read('api.js'));
+  return { store: await import(storeUrl), box: await import(boxUrl), api: await import(apiUrl) };
 }
 
 /** A document just large enough for selects, inputs and buttons. No jsdom, no globals. */
@@ -115,7 +116,7 @@ const NODES = [
 ];
 
 async function suite(mods) {
-  const { store: S, box: B } = mods;
+  const { store: S, box: B, api: A } = mods;
   const { MarkingStore, SIGN } = S;
   const { WalkBoxPanel } = B;
 
@@ -204,6 +205,30 @@ async function suite(mods) {
   eq('R3 under the name this instance declared it writes',
     markings.signOf('marking:2', NODES[0].id), SIGN.CASE);
 
+  console.log(`${LF}-- S. the seed id is base64URL, and the server requires it --`);
+  {
+    const { entitySeedId } = A;
+    // 🔴 THE KEY THAT DECIDES IT. Every seed this screen uses today encodes without a `+` or a
+    //    `/`, so standard base64 and base64url produce the SAME string and the rule cannot be
+    //    falsified by real data. `SYN-BW-101-16>` is the first key whose JSON base64 carries a
+    //    `+`. Measured live 2026-08-27: standard base64 -> HTTP 422, base64url -> 200. This is
+    //    a contract the server enforces, not a taste, and it was correct-but-unverified until
+    //    an input was MADE that could tell the two apart.
+    const withPlus = entitySeedId('wafer@1', { wafer: 'SYN-BW-101-16>' });
+    ok('S1 the discriminating key really does produce a + under standard base64',
+      Buffer.from(JSON.stringify(['wafer', { wafer: 'SYN-BW-101-16>' }]), 'utf8')
+        .toString('base64').includes('+'));
+    ok('S2 and the seed id carries none', !withPlus.includes('+'), withPlus.slice(-24));
+    ok('S3 it carries the base64url substitute instead', withPlus.includes('-'), withPlus.slice(-24));
+    ok('S4 padding is stripped', !withPlus.includes('='), withPlus.slice(-24));
+    // The version tag is stripped from the TYPE, not from the id.
+    eq('S5 the type loses its @version', Buffer.from(withPlus.split(':').pop()
+      .replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8').slice(0, 8), '["wafer"');
+    eq('S6 a plain key round-trips to the id the board already uses',
+      entitySeedId('wafer@1', { wafer: 'SYN-CX-BW-001' }),
+      'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
+  }
+
   console.log(`${LF}-- D. two on one screen, different declarations, no interference --`);
   const hostA = doc.createElement('div');
   const hostB = doc.createElement('div');
@@ -237,6 +262,50 @@ async function suite(mods) {
   eq('D7 and B name stayed empty', markings.count('marking:4'), 0);
   ok('D8 each holds its own result', a.result !== b.result && a.result.nodes.length === 2
     && b.result.nodes.length === 1);
+
+  console.log(`${LF}-- T. a cut walk says it was cut --`);
+  {
+    const hostT = doc.createElement('div');
+    const pt = new WalkBoxPanel(hostT, {
+      doc, markings, reads: 'marking:1', writes: 'marking:2',
+      loadDeclaration: () => Promise.resolve(DECL),
+      // The shape the live route really returns -- measured 2026-08-27, wafer@1 SYN-BW-101-16:
+      // depth false, everything else true. A budget cut, not a question about depth.
+      walk: () => Promise.resolve({ ok: true, nodes: NODES, truncated: {
+        depth: false, nodes: true, edges: true, claims: true, actions: true,
+        reason: 'nodes, edges, claims, actions' } }),
+    });
+    pt.mount();
+    await settle();
+    pt.setType('die@1');
+    await pt.run();
+    await settle();
+    const cutText = textOf(hostT);
+    ok('T1 a truncated walk says so', cutText.includes('예산에서 끊겼습니다'), cutText.slice(-100));
+    ok('T2 and it names what the server named', cutText.includes('nodes, edges, claims, actions'));
+    // 🔴 THE ROWS ARE STILL THERE. 「끊겼다」 is not 「없다」 -- a cut answer still answers.
+    eq('T3 the rows it did get are still drawn', rowsOf(hostT).length, 2);
+    // 🔴 T4 NEEDS `truncated` PRESENT AND EMPTY, which is what the route actually sends when
+    //    nothing was cut. The panel above returns no `truncated` key at all, so a mutant that
+    //    drops the `.reason` guard is inert there -- `undefined` is falsy either way. The
+    //    real shape has every flag false and an empty reason, and only that tells the two apart.
+    const hostQ = doc.createElement('div');
+    const pq = new WalkBoxPanel(hostQ, {
+      doc, markings, reads: 'marking:1', writes: 'marking:2',
+      loadDeclaration: () => Promise.resolve(DECL),
+      walk: () => Promise.resolve({ ok: true, nodes: NODES, truncated: {
+        depth: false, nodes: false, edges: false, claims: false, actions: false, reason: '' } }),
+    });
+    pq.mount();
+    await settle();
+    pq.setType('die@1');
+    await pq.run();
+    await settle();
+    ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('예산에서 끊겼습니다'),
+      textOf(hostQ).slice(-80));
+    ok('T4b and a walk with no truncated key at all stays silent too',
+      !textOf(host).includes('예산에서 끊겼습니다'));
+  }
 
   console.log(`${LF}-- E. three absences, three sentences --`);
   // ② the route is not there yet -- the state this whole round is written under.
@@ -315,6 +384,16 @@ const MUTANTS = [
     from: "    for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;",
     to: "    for (const [k, v] of Object.entries(this.keyValues)) keys[k] = v;" },
   // ⑤ one sentence for every absence.
+  { name: 'the-cut-is-not-mentioned', wakes: 'T1/T2',
+    from: "    if (cut) box.appendChild(this._note(",
+    to: "    if (false) box.appendChild(this._note(" },
+  // 🔴 THE MUTANT TARGETS THE *RENDER* CONDITION, NOT THE `.reason` GUARD, BECAUSE THAT GUARD
+  //    IS REDUNDANT: `if (cut)` already rejects the empty string the route sends when nothing
+  //    was cut, so removing `.reason` changes nothing and the mutant sat inert. The defect that
+  //    IS observable is announcing a cut whenever the KEY is present -- which is every walk.
+  { name: 'a-cut-is-reported-whenever-the-key-is-present', wakes: 'T4',
+    from: "    if (cut) box.appendChild(this._note(",
+    to: "    if (this.result && this.result.truncated) box.appendChild(this._note(" },
   { name: 'every-absence-shares-one-sentence', wakes: 'E4/E6',
     from: "    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';",
     to: "    if (this.walkState === 'ready') return '타입을 고르고 걸으십시오';" },
