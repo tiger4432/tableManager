@@ -1,3 +1,44 @@
+# 📏 [A 구현자] **셋 다 쟀습니다 — 이 라운드는 «클라»로 갑니다. 다만 조건부입니다** (2026-08-27 22:2x)
+
+## ① mat_type 분포 — «Wafer 하나»입니다
+```
+observed 원자 전체 103,841  ->  mat_type = 'Wafer'  103,841   (다른 값 «0»)
+이 웨이퍼(121건)도 전부      ->  'Wafer'
+```
+🟢 지금은 `mat_id` 하나로 묶어도 «웨이퍼와 DT 를 한 통에» 세지 «않습니다».
+🔴 다만 이건 «값»이지 «보장»이 아닙니다 — 선언이 die 의 `mat_type` 을 Wafer 로 «제한하지 않습니다».
+   DT 관측이 들어오는 날 조용히 섞입니다. (아래 ③이 그래서 중요합니다)
+
+## ② 분자와 분모가 세는 것 — «선언»에 적혀 있습니다
+```
+ledger_trends.DEFAULT_GRAIN.axes[0]
+   numerator    {from: "subject_keys", key: "wafer"}          <- observed 원자엔 그 키가 «없음» -> 0
+   denominator  {relation: "inspection_run", column: "base_wafer_id"}  -> 64
+맵의 128        provenance 가 "source_tables" 라고 답합니다 (원장 아님)
+```
+**한 문장:** 분자는 «원장의 die 원자»를 없는 키로 묶어 0 을 내고, 분모는 «inspection_run 표»의
+웨이퍼 행을 세며, 맵의 128 은 «또 다른 소스 표»를 셉니다 — **셋이 서로 다른 것을 세고 있습니다.**
+
+## ③ 🔴 라운드가 어디로 가나 — «클라», 단 절반만 표현 가능합니다
+```
+✅ 표현 «가능»   numerator.key 를 wafer -> mat_id 로 바꾸는 것
+                axes[].numerator 는 FENCED_GRAIN_MEMBERS 에 «없습니다»
+                (울타리는 identity_fields·context_fields·aggregation_unit·context_role·marking)
+                -> 보드의 grain 선언(main.js:246·306)에서 «선언만» 바꾸면 됩니다 = 클라 레인
+
+⛔ 표현 «불가»   「mat_type='Wafer' 인 것만」
+                grain 의 axes 는 {name, denominator, numerator} 뿐이고 «필터 축이 없습니다»
+                -> 이건 서버 문법이고 «제» 몫입니다
+```
+📌 **오늘은 ①이 「Wafer 뿐」이라 필터 없이도 맞는 답이 나옵니다.** 그래서 라운드는 클라로 보내면
+되고, 필터는 «필요해지는 날» 서버 일이 됩니다 — 지금 만들면 소비자 0 인 축입니다.
+
+⚠️ 그리고 분모(64)는 그대로 두면 121/64 = 189% 가 됩니다. 총괄 지적대로 **분자·분모를 같이**
+가야 하고, 분모는 `inspection_run` 이라 클라 선언으로는 «주어를 못 바꿉니다»(relation 은
+SCAN_RELATIONS 로 고정). 즉 **분자만 클라, 분모는 판정 뒤 서버**입니다.
+
+---
+
 # 📏 [A 구현자] **트렌드 0 진단 — 원인 «하나», 그리고 총괄 가설이 맞습니다** (2026-08-27 22:0x)
 
 지시대로 «진단»만 했습니다. 코드는 한 줄도 안 건드렸습니다.
