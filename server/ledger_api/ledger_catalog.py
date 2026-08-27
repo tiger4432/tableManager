@@ -19,6 +19,8 @@ from datetime import datetime
 import ledger_explorer
 from ledger_trace import _fetch
 
+from . import entity_references
+
 
 DEFAULT_LIMIT = 40
 MAX_LIMIT = 100
@@ -40,20 +42,29 @@ class CatalogUnavailable(RuntimeError):
         self.detail = {"reason": reason, "message": message}
 
 
-def _vocabulary():
-    from ledger import vocabulary
-    return vocabulary
-
-
 def entity_types():
-    vocabulary = _vocabulary()
-    return [{
-        "type": name,
-        "label": entry.get("label_ko") or name,
-        "keys": list(entry.get("keys") or []),
-        "entity_class": entry.get("class"),
-    } for name, entry in sorted(vocabulary.ENTITY_TYPES.items())
-      if vocabulary.requires_register(name)]
+    """The entity types this catalogue can page, from the DECLARATION.
+
+    🔴 IT USED TO READ `vocabulary.ENTITY_TYPES`, FILTERED BY `requires_register`, AND
+    EVERY NAME IT RETURNED WAS DEAD. Measured 2026-08-27 against the live ledger:
+
+        ledger_events.subject_type, distinct  ->  die, dtjob, lot_slot, wafer
+        this function returned                ->  Equipment, Lot, Product, Recipe, Wafer
+        atoms carrying any of those five      ->  0
+        register atoms                        ->  396, all of them `dtjob`
+
+    So the catalogue listed five types whose every page was empty, and `_validate_type`
+    refused every type the ledger actually holds as「register 목록을 가진 개체 타입이
+    아닙니다」. The two namespaces did not intersect at all -- this was not a filter that had
+    grown stale, it was a filter reading a different vocabulary from the one the atoms use.
+
+    `entity_class` left with it: the declaration has no `class` field (`bundle.entities.<id>`
+    takes `keys` and optionally `key_types`/`allow_null`/`references`, and refuses anything
+    else), and nothing read the key. The label is the type's own name for the same reason.
+    """
+    return [{"type": name, "label": name,
+             "keys": entity_references.identity_keys(name)}
+            for name in entity_references.declared_types()]
 
 
 def _canonical(value):
@@ -90,8 +101,9 @@ def _iso(value):
 
 
 def _label(subject_type, keys):
-    entry = _vocabulary().ENTITY_TYPES[subject_type]
-    values = [str(keys.get(name)) for name in entry.get("keys") or []
+    # Same source as `entity_types` -- and the old spelling raised KeyError for any type the
+    # dying vocabulary did not happen to carry, which is now every type the ledger has.
+    values = [str(keys.get(name)) for name in entity_references.identity_keys(subject_type)
               if keys.get(name) not in (None, "")]
     return " / ".join(values) or subject_type
 
@@ -116,7 +128,7 @@ def _require_search_index(connection):
 
 def entity_catalog(connection, subject_type="Lot", q=None, after=None,
                    limit=DEFAULT_LIMIT, relation="ledger_events"):
-    """Return one keyset page for any vocabulary-declared issued entity type."""
+    """Return one keyset page for any entity type the DECLARATION names."""
     subject_type = str(subject_type or "").strip()
     types = _validate_type(subject_type)
     query = str(q or "").strip()

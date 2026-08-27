@@ -47,6 +47,10 @@ CONFIG_FILENAME = "ledger_config.json"
 CONFIG_SUBDIR = "ontology"
 
 _cache = None
+#: The identity keys of every declared entity, from the SAME parse as `_cache`. The
+#: declaration is the only place that knows them, and two readers of one file would be two
+#: chances to disagree about it.
+_keys = None
 _lock = threading.Lock()
 
 
@@ -67,12 +71,13 @@ def load(force_reload=False):
     before this existed -- and it is what makes gate ⑤ meaningful: delete the declaration and
     the edges go, because nothing here knows their names.
     """
-    global _cache
+    global _cache, _keys
     with _lock:
         if _cache is not None and not force_reload:
             return _cache
         path = _config_path()
         table = {}
+        keys = {}
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
@@ -80,12 +85,29 @@ def load(force_reload=False):
                 refs = (spec or {}).get("references")
                 if isinstance(refs, list) and refs:
                     table[_bare(name)] = [r for r in refs if isinstance(r, dict)]
+                declared = (spec or {}).get("keys")
+                if isinstance(declared, list):
+                    keys[_bare(name)] = [str(k) for k in declared if isinstance(k, str)]
         except FileNotFoundError:
             pass
         except Exception as exc:                                  # pragma: no cover
             logger.error("entity references unreadable at %s: %s", path, exc)
         _cache = table
+        _keys = keys
         return _cache
+
+
+def declared_types():
+    """Every entity type the declaration names, bare and sorted. `[]` says the declaration
+    names none -- an absent or broken file is an ANSWER here too."""
+    load()
+    return sorted(_keys or {})
+
+
+def identity_keys(entity_type):
+    """That entity's identity keys, in declared order. `[]` when it is not declared."""
+    load()
+    return list((_keys or {}).get(_bare(entity_type)) or ())
 
 
 def _bare(entity_type):
