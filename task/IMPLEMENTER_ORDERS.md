@@ -16071,3 +16071,40 @@ dtjob · lot_slot 에서 찍으면 어떻게 되는지 «못 쟀습니다»
    derived_from 도 «원자 0»
    -> lot_slot 에서 자재로 건너갈 다리가 «선언만 있고 데이터가 없습니다»
 ```
+
+---
+
+# ➕ 위 조립 walk 지시에 «한 줄» 얹습니다 — 착수 «전»입니다 (총괄, 2026-08-27 19:3x)
+
+클라 레인이 착수 전에 구멍을 잡았습니다. 지금 넣으면 공짜, 나중이면 두 번 고칩니다.
+
+```
+지시 (위 「follow 가 참조 엣지도」)에 추가:
+🔴 follow 가 받는 것이 늘면 GET /api/ledger/declaration 도 «같이» 그것을 광고한다
+```
+**근거는 이미 선 원칙입니다** — `148248be` 「`/declaration` advertises what the walk accepts」.
+그때 카탈로그가 «받지 않는 둘»을 광고해서 고쳤습니다. 이번엔 반대로 «받는데 광고를 안 하는» 쪽입니다.
+
+## 왜 지금인가 — 실측
+```
+/api/ledger/declaration   predicates[] 열 개 {name, subjects, object}   <- 참조 엣지 «없음»
+                          entities[]   {type, keys}                     <- references 블록 «없음»
+클라   walk_box_panel.followOptions() 가 declaration.predicates 를 읽어 subjects 로 거른다
+결과   서버가 in_container 를 «받아도» FOLLOW 목록은 열 개 그대로
+       -> 판정이 「조립 walk 의 유일한 다리」라고 지목한 엣지를 «사용자가 못 고른다»
+```
+
+## 모양 — 클라가 코드 0줄이 되게
+```
+predicates[] 에 «같은 모양»으로 실으십시오: {name, subjects, object}
+   (collect 8->6 때 클라 수정이 «0» 이었던 것과 같은 이유입니다)
+⛔ 새 배열(references[] 같은 것)을 «따로» 만들지 마십시오 — 그러면 클라가 갈래를 하나 더 씁니다
+📎 참조 엣지와 술어를 구별할 필요가 있으면 «필드 하나»로 (예: origin), 배열을 나누지 말 것
+```
+
+## 게이트에 하나 추가
+```
+③ /api/ledger/declaration 의 predicates[] 에 in_container 가 «있고»,
+   그 항목의 subjects 가 die@1 인가
+   (클라가 subjects 로 거르므로 이게 틀리면 목록에 있어도 화면에 안 나옵니다)
+```
