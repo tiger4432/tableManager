@@ -414,6 +414,9 @@ cost = declared_edge_cost
 
 ## 11. Spatial Causal Hypothesis Bot (제안)
 
+> ⚠️ 이 절이 이름 대는 `frame_confirmed` 는 **선언에 없습니다**(2026-08-27 실측, 어휘 열 개).
+> 이 절은 선언이 그 술어를 싣는 날 발화합니다. `observed` · `transfer` 는 선언에 있습니다.
+
 ### 11.1 가능한가
 
 가능하다. 봇은 새 finding, frame 확정, transfer/lineage 근거가 들어올 때 증분 실행해 서로 다른

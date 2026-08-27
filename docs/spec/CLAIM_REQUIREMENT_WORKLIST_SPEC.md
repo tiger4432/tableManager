@@ -67,10 +67,10 @@ Resolution과 Work Item을 원장 사실처럼 쓰지 않는다. 원장과 선�
 | 범주 | 질문 | 예 |
 |---|---|---|
 | Existence | 이 Entity가 발급됐는가 | `register` |
-| Identity equivalence | 두 표기가 같은 Entity인가 | `same_as`, 사람 `pin` |
-| Assignment | 이 기록/영역이 어느 Entity·실험 단위에 속하는가 | `has_wafer`, `assigned_to_experiment` |
-| Frame | 좌표를 어떤 물리 좌표계로 읽는가 | `frame_confirmed` |
-| Lifecycle | 어디에서 와서 어디로 이동했는가 | `derived_from`, `transferred` |
+| Identity equivalence | 두 표기가 같은 Entity인가 | 🔴 `same_as` · `pin` 은 «선언에 없습니다»(제안) |
+| Assignment | 이 기록/영역이 어느 Entity·실험 단위에 속하는가 | `has_wafer` · 🔴 `assigned_to_experiment` 은 «선언에 없습니다»(제안) |
+| Frame | 좌표를 어떤 물리 좌표계로 읽는가 | 🔴 `frame_confirmed` 은 «선언에 없습니다»(제안) |
+| Lifecycle | 어디에서 와서 어디로 이동했는가 | `derived_from`, `transfer` |
 | Disposition | 요구된 Claim이 왜 없거나 적용되지 않는가 | 제안 `requirement_disposition` |
 
 ### 2.3 Frame은 Claim bundle이다
@@ -422,7 +422,7 @@ Result:
 
 `frame_confirmation`은 이미 사람 확인과 provenance를 저장하는 Claim 유사 구현이다. 이것을 다시
 만들지 말고 같은 transaction/outbox에서 canonical `frame_confirmed` Claim을 발행하도록 연결한다.
-현재 vocabulary의 `frame_confirmed`가 reserved인 동안에는 발행하지 않으며, translator와 gate가
+`frame_confirmed` 가 «선언에 없는 동안»에는 발행하지 않으며(선언이 그 술어를 싣는 날 발행합니다), translator와 gate가
 준비된 시점에 함께 활성화한다.
 
 현재 `dt_frame_confrimation`은 안정 rule ID의 오탈자까지 포함해 호환 이름으로 취급한다. 조용히
