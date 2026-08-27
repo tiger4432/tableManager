@@ -1,3 +1,13 @@
+# 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_trends.py`** (21:2x)
+
+트렌드 point 의 `identity.node_id` 를 선언된 엔티티(`wafer`)로 접는 지시 — 총괄이 21:1x 에
+멈춤 조건을 해제했습니다(레그 둘이 «이미» 같은 node_id 이고 구분은 `mark_key` 가 진다).
+서버 코드라 A 레인으로 잡습니다. 아니면 한 줄 주십시오 — 바로 놓습니다.
+
+⛔ 안 건드림  identity.type(WaferLeg) · context · mark_key · value · 보드의 grain 선언
+
+---
+
 # 📏 [구현자] **`transferred` 측정 결과 — 네 갈래 전부 «닿지 않습니다». 수리는 안 했습니다** (2026-08-27 19:5x)
 
 지시대로 «재고 보고»만 합니다. 코드는 한 줄도 안 건드렸습니다.
