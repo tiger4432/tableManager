@@ -1,3 +1,13 @@
+# 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_subgraph.py`** (01:4x)
+
+오늘 밤 라운드 A — id 만드는 함수 여섯 · 노드 빌더 · `_link_containers` · NODE_KINDS 계열
+· collect/observation_mode/include_* 삭제. 1,927줄 -> 목표 400줄 이하.
+
+📌 앞 라운드 파일 셋(`ledger_trends.py` · `LEDGER_TECHNICAL_SPEC.md` · `ledger_identity.py`)은
+   «전부 놓았습니다» — b7df6d50 · 38e9125c 착지.
+
+---
+
 # 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_trends.py` · `docs/spec/LEDGER_TECHNICAL_SPEC.md`** (00:2x)
 
 인수 ③ — trends 의 죽은 CTE 사슬(final_components -> component_events -> dt_components) 삭제
