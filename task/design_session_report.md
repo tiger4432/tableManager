@@ -1,4 +1,52 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🔴 [클라] 세라 하신 것 — **읽는 파서가 «0이 아닙니다». 하나 있고, 그것은 «요구»합니다**
+
+지시대로 코드가 아니라 «세는 것»부터 했습니다. `default_table_name` 말고 «디렉터리 이름·상대
+경로»를 읽는 파서를 전수로 훑었습니다.
+
+## 답: «1» — `voids_json` (테이블 `void`)
+```
+server/parsers/voids_json_format.py      parse_relative_source_path(rel_path, ...)
+server/ingestion_workspace/void/scripts/voids_json.py:101   같은 함수 (워크스페이스 사본)
+호출     같은 파일 :424 / :382 -- 파싱의 «본류»입니다. 곁가지가 아닙니다
+```
+🔴 그리고 «선택»이 아니라 «요구»입니다. 그 함수의 첫 거절문이 이렇습니다:
+```
+「voids_json requires the watcher-provided relative source path;
+  an absolute filename alone cannot identify the wafer directory safely.」
+```
+읽는 모양: **`WAFERID/WORK_DATETIME/voids.json` — 정확히 «세 성분»**.
+즉 **웨이퍼 식별자와 작업 시각이 «폴더 이름»에서 나옵니다.** 파일 안에 없습니다.
+
+## 그래서 두 문이 «다른 답»을 냅니다 — 가설이 아니라 결함입니다
+```
+기계에서 raws/ 에 폴더를 떨어뜨림   -> rel_path 가 살아 파서가 웨이퍼를 «식별»합니다
+브라우저·랩퍼로 업로드              -> _safe_component 가 성분을 접어 basename 만 남깁니다
+                                 -> rel_path 가 «한 성분» -> 위 거절문이 «반드시» 뜹니다
+                                 -> 그 파일은 «인제션 불가». 조용한 오답이 아니라 «거절»입니다
+```
+📌 거절이라는 것이 그나마 다행입니다 — 틀린 웨이퍼로 들어가는 게 아니라 «안 들어갑니다».
+   다만 사용자에게는 「폴더 업로드가 되는데 void 만 안 된다」로 보입니다.
+
+## ⚠️ 다만 하나 정직하게 — «오늘 이 박스에 void 데이터가 없습니다»
+```
+server/ingestion_workspace/void/   scripts/ 만 있고 archives·raws 에 파일 «0»
+-> 즉 「지금 이 결함으로 아무도 데였다」는 증거는 «없습니다»
+-> 그러나 파서는 살아 있고 config 에 등록돼 있습니다. 도달 가능해지는 날 틀립니다
+```
+그래서 「0이면 나중을 위한 축」이라는 갈래에는 «안 들어갑니다» — 읽는 파서가 실재하고,
+그 파서에 대해 두 문이 이미 다른 답을 냅니다.
+
+## 그래서 제 판단은 «③ 모양으로 진행»입니다 (판정은 총괄)
+그리고 클라 절반은 «이미 재료를 들고 있습니다»:
+```
+브라우저   file.webkitRelativePath  -- webkitdirectory 가 «공짜로» 줍니다. 지금은 «안 보냅니다»
+랩퍼      _files_under 가 절대 경로를 내므로 드롭 루트 기준 relpath 가 «한 줄»입니다
+서버      성분마다 소독 + 결과 검증을 «직접 자식» -> «아래»(commonpath) 로 넓히는 일
+```
+⛔ 저는 착수하지 않았습니다 — 업로드 «라우트»를 건드리는 서버 라운드라고 총괄이 적으셨고,
+   클라 두 줄만 먼저 보내면 서버가 «안 읽는 값»을 받게 됩니다. 서버가 먼저이거나 «같이»여야 합니다.
+
 # 🟡 [클라] 랩퍼 드롭 + 토스트 — **코드 착지** (`e8567dea`). 게이트 ①은 «사람 손»이 필요합니다
 
 ## 🔴 먼저 정정 — 제가 지시서에 «틀린 사실»을 넣었습니다
