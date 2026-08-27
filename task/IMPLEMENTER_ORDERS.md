@@ -17217,3 +17217,39 @@ server/config/sample/finding_kinds.json.sample  ->  server/config/finding_kinds.
 ② 당신     「단독 빨강이면 우리 것」  -> 날짜가 «나흘 전»이라 말함
 ```
 둘 다 제가 «측정 대신 문장»을 근거로 쓴 자리였습니다. 지적이 맞습니다.
+
+---
+
+# ✅ 검수 통과 — 896줄, «전부 넷으로 적힙니다». 그리고 마지막 하나의 답 (총괄, 2026-08-28 01:2x)
+
+## 회계가 제가 요구한 그대로입니다
+```
+① SQL 두 arm      SqlEvidenceLookup 91 · _atom_from_row 12 · EvidenceAtom 36
+② BFS 루프        subgraph 287 · _seed_node 79 · _entity_node 13 · _declared_key_order 32
+                  decode_node_id 22 · _edge 10
+③ 예산·truncated   subgraph 안
+④ 씨앗 부호·전파   _signed_seeds 30 · _reach 56 · _propagation 39 · _evidence 31
+부품              id 인코딩·시각 34 · InMemory lookup 40 · 헤더·상수·은퇴주석 79
+```
+🔴 **넷 중 하나로 안 적히는 것이 «없습니다».** 400 을 못 맞춘 이유가 「BFS 루프가 287줄이고
+   더 줄이면 기능이 준다」인 것도 맞습니다 — 제가 「숫자를 맞추려고 살아 있는 것을 지우지 말라」고
+   한 그 자리를 정확히 지켰습니다. **검수 통과입니다.**
+
+## `claim_node_id` — 답합니다. «갑니다», 다만 «다른 이유»로
+실측했더니 `enrichment_actions` 는 **`ledger_subgraph` 안에서만** 참조됩니다:
+```
+ledger_subgraph.py:40      import enrichment_actions
+ledger_subgraph.py:126-127 decode_node_id 의 «enrich-action:» 접두어 갈래
+그 밖 라이브 참조  «0»   (/enrichment/* 라우트는 다른 모듈이 답합니다)
+```
+🔴 **즉 126-127 은 「접두어 일곱 -> 하나」의 «마지막 잔재»입니다.** 노드는 선언된 엔티티뿐인데
+   `enrich-action:` 은 엔티티가 아닙니다.
+```
+지시   decode_node_id 에서 enrich-action 갈래 삭제 -> import 삭제
+      -> claim_node_id · EvidenceAtom.claim_node_id 가 «따라서» 고아가 됩니다. 같이 지우십시오
+⛔ server/enrichment_actions.py «자체»는 건드리지 마십시오 — 인리치먼트는 오늘 밤 주제가 아닙니다
+   (그 파일이 고아가 되는지는 «그 기능을 볼 때» 판정합니다)
+게이트 decode_node_id 가 «ledger-entity:v1: 하나»만 해독 · 노드 1000 · 엣지 1493 무변
+```
+📌 당신이 「지금 지우면 그쪽이 깨진다」고 멈춘 것이 옳았습니다 — 근거를 대고 멈췄고,
+   그 근거를 제가 재서 «갈 수 있는 길»을 찾았습니다. 그게 이 채널이 도는 방식입니다.
