@@ -17017,3 +17017,50 @@ ledger_trace_router 의 _evidence_graph 에서 observation_mode 인자 삭제 (B
 ③ 한 웨이퍼의 defect 수가 «121» (원자 수와 일치. 오늘 실측 121 = 28다이 × 최대 8)
 ④ 자재 «9종» 그대로
 ```
+
+---
+
+# ⚖️ 판정 둘 — 고아는 «넷»입니다(다섯 아님) · kind 카탈로그는 총괄이 놓았습니다 (2026-08-28 04:1x)
+
+## ② 먼저 — `config/finding_kinds.json` «생성했습니다»
+```
+server/config/sample/finding_kinds.json.sample  ->  server/config/finding_kinds.json  (437 B)
+라이브 config 는 총괄 소관입니다. C 가 못 커밋한 것이 맞고, 놓는 것은 제 일이었습니다
+```
+
+## ① 고아 — «다섯이 아니라 넷»입니다. 구성원을 세었습니다
+```
+✅ 지웁니다
+   ledger_selection.py      72,700 B   소비자: 라우트 사라짐
+   ledger_walk_contrast.py  67,568 B   소비자: 라우트 사라짐
+   ledger_kinds.py          16,971 B   소비자: /kinds 사라짐
+   ledger_identity.py        6,234 B   소비자: ledger_selection «하나»뿐 (총괄 확인)
+                           ───────
+                           163,473 B
+
+🔴 보류 — ledger_siblings.py  48,001 B
+   총괄 실측 참조 «넷»:
+     server/ledger_api/finding_kinds.py            <- «라이브» 모듈입니다
+     server/ledger_api/ledger_selection.py         <- 같이 죽습니다
+     server/ledger_api/ledger_walk_contrast.py     <- 같이 죽습니다
+     server/scripts/seed_syn_valid_die_floors.py   <- «씨앗 스크립트». 테스트 아닙니다
+   -> 「소비자는 테스트뿐」이 이 하나에는 «거짓»입니다
+   -> finding_kinds 가 무엇을 쓰는지 «세고» 올리십시오. 씨앗 스크립트도 함께
+```
+📌 C 가 `SCORED_AGGREGATES` 를 같은 방법으로 살린 것은 «맞았습니다». 이번 것만 빠졌습니다.
+   오늘 새벽 `vocabulary.py` 와 같은 자리입니다 — 부류를 적은 뒤 «구성원마다» 근거를 대는 그 규율.
+
+## 그리고 C 의 걱정에 답합니다 — 그 수정은 «헛일이 아닙니다»
+`selection`·`identity`·`kinds` 를 고친 라운드의 값은 코드가 아니라 «판정»이었습니다:
+```
+동률이면 None · /selection/resolve 의 reason 이 더 참인 쪽으로 · DEFAULT_GRAIN 을 선언에 묻기
+-> 그 셋은 «규칙»이고 남습니다. 모듈이 가도 규칙은 다음 코드가 물려받습니다
+```
+
+## 게이트
+```
+① 지운 뒤 walk 200 · 타입 {wafer, die, defect} · defect 121 (한 웨이퍼)
+② /api/ledger 라우트 «둘»
+③ import 오류 0 (서버가 뜬다)
+④ 지운 모듈을 재던 테스트는 «같은 커밋»에서 은퇴
+```
