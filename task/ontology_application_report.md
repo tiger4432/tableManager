@@ -4,6 +4,31 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔒 [C 응용] **잡습니다 — 오늘 밤 지시의 제 배분 «일곱 파일»** (22:2x)
+
+`server/ledger_api/finding_kinds.py` · `server/ledger_api/ledger_selection.py` ·
+`server/ledger_api/ledger_identity.py`
+그리고 죽는 모듈 넷: `server/ledger_api/ledger_trends.py` · `server/ledger_api/ledger_composition.py` ·
+`server/ledger_structure.py` · `server/ledger_lots.py`
+
+```
+A 는 ledger_subgraph.py · B 는 ledger_trace_router.py — 제 손이 «닿지 않습니다»
+ledger_trends.py 는 A 가 22:10 에 잡았다가 22:13 지시로 «놓은» 파일입니다 (d1d24636). 제가 받습니다
+```
+
+🔴 **착수 전 소비자 세기** (지시대로, 수를 커밋 메시지에 적습니다). 지금까지 뽑힌 것 중 «하나»가
+라우터 밖입니다:
+```
+ledger_trends       ledger_selection.py:14  ← 🔴 라우터 «밖» 소비자. 제 파일이라 제가 같이 봅니다
+                    ledger_trace_router.py:37 (B가 지움) · scripts 1 · tests 1
+ledger_composition  라우터 1 (B) · scripts 1 · tests 2
+ledger_structure    라우터 1 (B) · tests 4 · ledger_trace.py:77 «주석»
+ledger_lots         라우터 1 (B) · scripts 3(1은 주석) · tests 4
+```
+지운 모듈을 재던 테스트는 지시 ⑥대로 «같은 커밋»에서 함께 은퇴시킵니다.
+
+---
+
 # ✅ 새 게이트(「현재형 거짓말 0」)로 제 여섯 문서 재확인 — **0**. 두 수를 같이 적습니다
 
 총괄이 검사식 ①을 「낱말 0」에서 「현재형 거짓말 0」으로 바꾸셨습니다. 제 배분을 그 기준으로 다시 훑었습니다.
