@@ -1,3 +1,62 @@
+# 🔁 [클라 B] **병합 완료 — 시험 둘은 «A 레인 것»으로 접었고, `main` 의 빨강 하나를 이 병합이 끕니다** (`b6745316`)
+
+`origin/main` 을 받았습니다. v1 삭제는 끝났습니다(`ledger/vocabulary.py` 없음 · `import vocabulary` 0).
+**사이트 ④⑤ 를 A 레인과 «둘 다» 각자 했습니다.** 그래서 충돌 둘이 났고, 순서가 아니라 «비교해서» 접었습니다.
+
+## 둘 다 «A 레인 것»을 남겼습니다 — 그쪽이 낫습니다
+```
+④ test_ledger_subgraph
+   A 의 변이는 선언을 «소문자로 안 눕히고» 씁니다 -> `DTJob` 이 «미선언 철자»로 거절됩니다
+   제 것은 entity_references.identity_keys 를 빌려 썼는데 그건 «읽기 편의로» 대소문자를 눕힙니다
+   -> 게이트로 쓰면 «받는 범위가 조용히 넓어집니다». 재현하는 규칙보다 무른 대조군이라 제 것을 버렸습니다
+
+⑤ test_ledger_trace_contract
+   A 는 그 가드를 «남기고 선언에 물어» 빨갛게 뒀습니다. 저는 재고 나서 «지웠습니다»
+   -> 결론은 같습니다(from/to/slot 은 선언에도 원자에도 없음). 하지만 «빈틈을 이름 붙인 빨강»이
+      «이름 없이 사라진 가드»보다 낫습니다. A 것을 남겼습니다
+```
+📌 두 레인이 같은 자리를 두 번 했습니다. 지시서가 「아무나」였고 제가 「B 는 끝났으니」 가져갔는데,
+   **가져가기 전에 그 자리가 비었는지 확인할 방법이 없었습니다.** 다음엔 착수를 «먼저 알리겠습니다».
+
+## 🔴 이 병합이 `main` 의 빨강 하나를 끕니다 — 제 앞 커밋이 낸 것입니다
+```
+main 현재      ledger_explorer._entity 가 entity_references.identity_keys 를 읽습니다 (제 c0497d45)
+그런데         ledger_subgraph._declared_key_order 가 «한 층 위»에서 이미 그걸 하고 캐시합니다
+결과           test_entity_label_takes_its_key_order_from_the_live_declaration «빨강»
+확인 방법      추론이 아니라 «돌려서» 봤습니다 — main 의 두 파일(explorer + subgraph 시험)을
+              그대로 이 트리에 올려 실행: 1 failed, 24 passed
+              (ledger_subgraph.py · entity_references.py 는 main 과 제 트리가 «동일»합니다)
+고침           `0f8b8e58` — _entity 는 키 순서를 «안 봅니다». 병합 후 그 시험 초록
+```
+
+## ⚠️ 그리고 이번 병합으로 «제가 이번 라운드에 만든 것 일부»가 소비자 0이 됐습니다
+lane C 의 `f9846b58` 이 `GET /admin/ledger/vocabulary` 라우트를 «걷어냈습니다».
+그 라우트가 유일한 호출자였습니다.
+```
+ledger_admin.py 안에서 이제 호출자 «0»:
+   vocabulary_view()        ← 이번 라운드에 제가 선언으로 다시 만든 것
+   _grammar_object_kinds()  · _registering_types()  · TRAVERSABLE_STATES   (전부 그것만 씀)
+살아 있는 것:
+   entity_types() · _declaration() · _bare()  -> check_source_declaration 이 씁니다
+```
+🔴 **제 판단으로 지우지 않았습니다.** 바로 그 자리의 main.py 주석이 같은 상황에 이렇게 적었습니다 —
+「Left standing rather than removed on my own judgement - that is a ruling, not a cleanup」.
+**판정만 주시면 지웁니다.** (화면 소비자는 원래 «0» 이었습니다 — client2 전수에 admin/ledger 호출 0)
+
+## 병합 후 실측
+```
+ledger/vocabulary.py    없음        ·  import vocabulary  «0»
+GET /api/ledger/structure   200     ·  GET /api/ledger/declaration  200
+GET /api/ledger/subgraph    200     ·  소유자 체인 nodes «89» (그대로)
+GET /admin/ledger/vocabulary 404    ← 위 라우트 제거의 결과입니다
+시험  55 passed · 9 skipped · 3 failed
+      빨강 셋은 전부 test_ledger_trace_contract 이고 «제 것이 아닙니다»:
+        · 자격자 가드 1  -> A 가 «일부러» 빨갛게 둔 것
+        · 샘플 config 2  -> 제 편집 전부터 빨강 (stash 로 확인함)
+```
+
+---
+
 # ✅ [클라 B] **남은 다섯 중 «시험 둘»(④⑤) 착지 — `0f8b8e58` · `1dfb1d97` 푸시 완료**
 
 지시서가 「아무나 — 시험 둘」이라 했고 B 는 끝나 있어서 «둘 다» 가져갔습니다.
