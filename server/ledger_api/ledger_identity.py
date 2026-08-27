@@ -2,7 +2,9 @@
 
 The mark is deliberately *not* an ontology entity identity.  A physical Wafer is the
 subject.  ``bonding_leg`` names the human-planned experiment unit asserted by
-``bonding_map`` and is used as the context for void aggregation inside that wafer.
+``bonding_map`` and is the context findings are aggregated in inside that wafer.
+No defect kind is named here any more: the identity used to carry an `aggregation` pair
+spelling one kind's name, which made that kind the built-in meaning of the aggregate.
 """
 from __future__ import annotations
 
@@ -113,6 +115,5 @@ def identity(wafer, bonding_leg, subject_type):
                                              keys),
         "keys": keys,
         "context": {"role": CONTEXT_ROLE, "bonding_leg": bonding_leg},
-        "aggregation": {"kind": "void_by_experiment_unit", "finding_kind": "void"},
         "mark_key": encode_mark(wafer, bonding_leg),
     }

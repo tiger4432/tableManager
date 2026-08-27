@@ -284,7 +284,7 @@ def scan_rows(base_id, branch, bond, index):
     """
     from ledger_api import finding_kinds
 
-    void_method = finding_kinds.methods(finding_kinds.DEFAULT_KIND)[0]
+    void_method = finding_kinds.methods("void")[0]
     delam_method = finding_kinds.methods(apl.DELAM_METHOD_KIND)[0]
     p_void = P_PLANTED if branch == "A" else P_BASE
     p_delam = P_PLANTED if branch == "B" else P_BASE

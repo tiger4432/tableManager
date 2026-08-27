@@ -126,11 +126,11 @@ def test_syn_cx_final_wafer_marks_resolve_all_paths_and_group_signal(monkeypatch
             {"mark_id": "defect", "group_id": "A", "kind": "entity_set",
              "identity": ledger_identity.identity(
                  **fixture.aggregation_unit(defect),
-                 subject_type=ledger_selection._AGGREGATION_SUBJECT_TYPE)},
+                 subject_type=ledger_selection._aggregation_subject_type())},
             {"mark_id": "reference", "group_id": "B", "kind": "entity_set",
              "selector": {"subjects": [ledger_identity.identity(
                  **fixture.aggregation_unit(reference),
-                 subject_type=ledger_selection._AGGREGATION_SUBJECT_TYPE)]}},
+                 subject_type=ledger_selection._aggregation_subject_type())]}},
         ],
     }
     body = ledger_selection.resolve(object(), payload,
@@ -161,16 +161,19 @@ def test_syn_cx_final_wafer_marks_resolve_all_paths_and_group_signal(monkeypatch
         # Compared to the DECLARED subject type, not a literal: pinning "Wafer" here is
         # the same sentence that made the trend answer 0% after the rename.
         assert all(row["subject_identity"]["type"]
-                   == ledger_selection._AGGREGATION_SUBJECT_TYPE
+                   == ledger_selection._aggregation_subject_type()
                    and row["subject_identity"]["keys"] == {"wafer": unit["wafer"]}
                    and row["subject_identity"]["context"]["bonding_leg"] == unit["bonding_leg"]
                    and row["wafer_mark_key"] == row["subject_identity"]["mark_key"]
                    for row in scoped)
     assert all("supply_material" in row["layers"]
                for selection in body["selections"] for row in selection["maps"])
+    # The `defect` layer was asserted here too. It is gone with the void-only branch that
+    # built it (2026-08-27): the producer read `void_obs` by name, so a kind that is not
+    # void got no layer and the map said so in no way a reader could notice. `valid_die`
+    # is unchanged and still measured.
     assert any(row["stage"] == "core"
                and row["layers"]["valid_die"]["state"] == "ready"
-               and row["layers"]["defect"]["state"] == "ready"
                for selection in body["selections"] for row in selection["maps"])
     signatures = [row for row in body["comparison"]["facets"]["process"]
                   if row["signature"].get("core_type") == "HBM"

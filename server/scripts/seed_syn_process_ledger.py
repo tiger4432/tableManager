@@ -285,7 +285,7 @@ def _void_methods():
     """
     from ledger_api import finding_kinds
 
-    return finding_kinds.methods(finding_kinds.DEFAULT_KIND)
+    return finding_kinds.methods("void")
 
 
 def assign_factors(void_rates, causal_top_fraction: float = 0.10):

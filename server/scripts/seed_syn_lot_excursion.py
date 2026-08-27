@@ -149,6 +149,10 @@ RECIPE_PARAMS = {
 
 #: The aggregates the answer key scores, and the ONE that cannot be scored. Declared so a
 #: reader does not have to rediscover the saturation argument from the numbers.
+#: The kind THIS FIXTURE plants. A seeder names its own kind: the generalization rule
+#: forbids a literal in product code, and `finding_kinds` no longer holds a default.
+FIXTURE_KIND = "void"
+
 SCORED_AGGREGATES = ("per_chip", "extent_mean")
 UNSCORABLE_AGGREGATES = {
     "found_rate": ("bounded by 1.0; with a baseline of ~0.61 the maximum possible ratio "
@@ -351,7 +355,7 @@ def lot_table(db, kind: str = None):
     from ledger_api import finding_kinds
     from sqlalchemy import text
 
-    kind = kind or finding_kinds.DEFAULT_KIND
+    kind = kind or FIXTURE_KIND
     table = finding_kinds.observation_table(kind)
     extent = finding_kinds.spec(kind).get("extent_columns") or []
     extent_expr = " * ".join("o.%s" % c for c in extent) or "NULL::double precision"
@@ -426,7 +430,7 @@ def prove_cause_connects(db, kind: str = None):
     from ledger_api import finding_kinds
     import seed_syn_process_ledger as proc
 
-    result = proc.contrast(db, kind or finding_kinds.DEFAULT_KIND)
+    result = proc.contrast(db, kind or FIXTURE_KIND)
     entry = result["factors"].get(EXCURSION_FACTOR)
     return {"factor": EXCURSION_FACTOR, "entry": entry,
             "cases": result["cases"], "controls": result["controls"]}

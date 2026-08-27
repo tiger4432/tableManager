@@ -45,7 +45,7 @@ WHERE THE DECLARATIONS LIVE, AND WHY IN TWO PLACES
 * **`server/finding_kinds.py`** — what a KIND is: its label, its `observed_by` methods,
   its observation table. That registry is another lane's and is the SSOT; this module
   reads it and deliberately keeps no second copy. `finding=<kind>` is a parameter from
-  the first line here, and `void` appears exactly once, as `finding_kinds.DEFAULT_KIND`.
+  the first line here, and no kind name appears in this file at all.
 * **`server/config/siblings_axes.json`** — how a population is ATTRIBUTED to factors:
   which relations to join, on which columns, and which columns are axes. The kind
   registry models none of that, so this is an addition rather than a duplicate.
@@ -527,7 +527,7 @@ def siblings(connection, kind=None, mode=MODE_INTERSECTION, window=None, limit=N
     """The whole answer, in the pinned envelope. Read-only: never writes, never DDLs."""
     config = load_axes_config()
     defaults = config.defaults
-    kind = (kind or finding_kinds.DEFAULT_KIND).strip()
+    kind = (kind or "").strip()
     mode = (mode or MODE_INTERSECTION).strip()
     if mode not in MODES:
         raise SiblingsRequestError({"reason": REASON_BAD_MODE, "mode": mode,

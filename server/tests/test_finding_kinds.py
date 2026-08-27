@@ -15,43 +15,25 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger_api import finding_kinds  # noqa: E402
 
 
+#: 🔴 THE KINDS ARE DECLARED HERE NOW, BY THE TEST. `finding_kinds` used to ship a
+#: code-held catalogue and these rules were measured against it; the catalogue is gone
+#: (2026-08-27) and the registry starts empty, so a rule stated over `kinds()` would pass
+#: over an EMPTY loop and assert nothing. Two kinds, with DIFFERENT scan methods, because
+#: that difference is what one of these rules is about.
+TWO_KINDS = {
+    "alpha": {"label": "A", "observed_by": ["scan_a"], "observation_table": "void_obs",
+              "extent_columns": ["radius_x", "radius_y"], "unit_column": "unit"},
+    "beta": {"label": "B", "observed_by": ["scan_b"], "observation_table": "delam_obs",
+             "extent_columns": ["extent_x"], "unit_column": "unit",
+             "classes": ["one", "two"]},
+}
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry():
     finding_kinds.set_registry(None)
     yield
     finding_kinds.set_registry(None)
-
-
-def test_the_default_kind_is_a_default_and_not_a_special_case():
-    """`void` may appear as a default parameter value and nowhere else.
-
-    The product owner's words: "코드에 기본값 아닌 finding_kind='void' 하드코딩이 보이면
-    일반화가 소실된 것." So the default has to BE a declared kind like any other, with no
-    field the others lack.
-
-    ⚠️ THE ASSERTION IS ONE-DIRECTIONAL, AND IT WAS NOT (repaired 2026-08-14, ruling
-    R-2026-08-14-D). It used to be `set(default) == set(other)`, which is a STRICTER
-    sentence than the paragraph above and a wrong one: it also fires when a NON-default
-    kind declares something the default does not. That happened the moment `delam` got its
-    closed class set (§6-quater) - a legitimate per-kind declaration, on the kind whose
-    tool actually utters a class - and it made another lane's round go red for a reason
-    that had nothing to do with a special case.
-
-    What this test protects is the DEFAULT being privileged. A kind carrying a field its
-    neighbours lack is only a defect when that kind is the default, because that is the
-    shape a hidden `finding_kind='void'` branch grows out of. So the difference is asked
-    for in one direction only, and both fields the registry documents as optional
-    (`classes`, `unit_column`) stay optional in the direction where they mean something.
-    """
-    assert finding_kinds.DEFAULT_KIND in finding_kinds.kinds()
-    default = finding_kinds.spec()
-    for other_kind in finding_kinds.kinds():
-        if other_kind == finding_kinds.DEFAULT_KIND:
-            continue
-        extra = set(default) - set(finding_kinds.spec(other_kind))
-        assert not extra, (
-            f"the default kind carries field(s) {sorted(extra)} that {other_kind!r} does "
-            f"not, which is how a special case starts")
 
 
 def test_an_undeclared_kind_is_refused_by_name_and_never_silently_defaulted():
@@ -73,6 +55,7 @@ def test_switching_kind_actually_switches_the_denominator():
     that changes the numerator and nothing else - and a console with a hidden
     `WHERE finding_kind='void'` in its DENOMINATOR would pass every test anyone wrote.
     """
+    finding_kinds.set_registry(TWO_KINDS)
     seen = {}
     for kind in finding_kinds.kinds():
         for method in finding_kinds.methods(kind):
@@ -106,18 +89,26 @@ def test_a_kind_with_no_scan_has_no_denominator_and_says_so():
 
 
 def _load_with(registry):
-    """Drive `load`'s validation over a hand-built registry without a config file."""
-    import copy
+    """Drive `load`'s validation over a hand-built registry.
 
-    saved = copy.deepcopy(finding_kinds.DEFAULT_FINDING_KINDS)
+    It used to swap the code-held catalogue in and out. That catalogue is gone, so the
+    registry arrives the way every registry arrives now - through the config file - and
+    the validation being measured is the same validation production runs.
+    """
+    import json
+    import tempfile
+
+    directory = tempfile.mkdtemp()
+    path = os.path.join(directory, finding_kinds.CONFIG_FILENAME)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(registry, handle)
+    saved = finding_kinds._config_path
     try:
-        finding_kinds.DEFAULT_FINDING_KINDS.clear()
-        finding_kinds.DEFAULT_FINDING_KINDS.update(registry)
+        finding_kinds._config_path = lambda: path
         finding_kinds._cache = None
         return finding_kinds.load(force_reload=True)
     finally:
-        finding_kinds.DEFAULT_FINDING_KINDS.clear()
-        finding_kinds.DEFAULT_FINDING_KINDS.update(saved)
+        finding_kinds._config_path = saved
         finding_kinds._cache = None
 
 
@@ -150,7 +141,8 @@ def test_clean_is_scanned_minus_found_and_never_absence_of_a_finding():
     two populations that both require a run, and `kind_unscanned` is what is left of the
     package universe.
     """
-    sql = finding_kinds.population_ctes()
+    finding_kinds.set_registry(TWO_KINDS)
+    sql = finding_kinds.population_ctes("alpha")
     clean = sql.split("kind_clean AS (")[1].split("),")[0]
     assert "EXCEPT" in clean, "kind_clean must be a set difference"
     assert "kind_scanned" in clean and "kind_found" in clean
@@ -163,6 +155,8 @@ def test_clean_is_scanned_minus_found_and_never_absence_of_a_finding():
 
 def test_no_kind_name_is_baked_into_the_generated_sql():
     """The CTEs are the same text for every kind except the observation table."""
+    finding_kinds.set_registry(TWO_KINDS)
+    assert len(finding_kinds.kinds()) > 1, "this rule needs at least two kinds to mean anything"
     for kind in finding_kinds.kinds():
         sql = finding_kinds.population_ctes(kind)
         for other in finding_kinds.kinds():

@@ -90,7 +90,7 @@ def consuming_relation():
     from ledger_api import ledger_siblings
     from ledger_api import finding_kinds
     config = ledger_siblings.load_axes_config()
-    geometry, attribution = config.for_kind(finding_kinds.DEFAULT_KIND)
+    geometry, attribution = config.for_kind("void")
     for source in attribution:
         if getattr(source, "about", None) == "process":
             return source.relation

@@ -8,9 +8,10 @@
 Void is ONE example. The case-control console has to give every observed defect kind the
 same analysis, so the kind has to be a PARAMETER everywhere and a literal nowhere. The
 only way that survives contact with a second author is for the kind's definition to be a
-lookup rather than a condition: this module is that lookup, and `DEFAULT_KIND` is the one
-place the word "void" is allowed to appear as a value (a default parameter, which is what
-the ruling explicitly permits).
+lookup rather than a condition: this module is that lookup, and as of 2026-08-27 NO kind
+name appears in this file at all. The default-kind constant used to hold `void` as a
+default parameter - the one appearance the ruling permitted - and it went with the
+catalogue below it: every caller now NAMES the kind it means.
 
 WHAT A KIND DECLARES, AND WHY EACH FIELD IS LOAD-BEARING
 ---------------------------------------------------------
@@ -102,7 +103,6 @@ def payload_field_sql(payload_expr, name):
             f"NULLIF({payload_expr}->'qualifiers'->>'{name}', ''))")
 
 
-DEFAULT_KIND = "void"
 
 #: The universe of packages, for the "never scanned" third. A package is a bonded
 #: position, addressed the way `void_obs` addresses it: (base wafer, base x, base y).
@@ -111,52 +111,13 @@ PACKAGE_COLUMNS = ("base_id", "bx", "by")
 
 RUN_TABLE = "inspection_run"
 
-#: Declared kinds. Data, and overridable by `config/finding_kinds.json` (config-over-
-#: hardcode) so a site that names its kinds differently does not need a code change.
-DEFAULT_FINDING_KINDS = {
-    "void": {
-        "label": "보이드",
-        "observed_by": ["sat"],
-        "observation_table": "void_obs",
-        "extent_columns": ["radius_x", "radius_y"],
-        "unit_column": "unit",
-        # 🔴 EMPTY, DECLARED OUT LOUD - and that is this file's own `observed_by` rule
-        # applied one field over. MEASURED 2026-08-14: `void_obs` has no class column at
-        # all, so the SAT tool utters no classification and the console renders no class
-        # axis for a void. Leaving the field absent would have said the same thing to
-        # `classes()` (it reads with `.get`) and a DIFFERENT thing to a reader: "nobody
-        # has decided yet" rather than "the source says nothing". §6-quater names
-        # 계면/벌크/에지 as a void's eventual set, so this is a real open question and the
-        # empty list is where the answer will land - beside the tool that starts uttering
-        # one.
-        "classes": [],
-    },
-    "delam": {
-        # Interface delamination. A DIFFERENT method looks for it, which is what makes
-        # the denominator swing when the console's kind parameter changes - if both kinds
-        # shared one method the generalization would be untested, because every kind
-        # would be counted against the same rows.
-        "label": "박리",
-        "observed_by": ["scat"],
-        "observation_table": "delam_obs",
-        "extent_columns": ["extent_x", "extent_y"],
-        "unit_column": "unit",
-        # 🔴 THE CLOSED CLASS SET, AND IT NOW HAS A SECOND ENFORCEMENT POINT.
-        # §6-quater: a defect's class is a CLAIM the tool utters, and the values it may
-        # use are per-kind, closed and add-only. These two are MEASURED from the source
-        # (`SELECT interface, count(*) FROM delam_obs GROUP BY 1` on 2026-08-14:
-        # die-to-substrate 5,332 / die-to-die 5,089), not invented here.
-        #
-        # Until ruling R-2026-08-14-D this list only made a console axis appear. It is now
-        # also what the ledger's observation translator screens `delam_obs.interface`
-        # against: a value outside it refuses the atom BY NAME rather than putting an
-        # unreviewed word in the ledger. That is the check §6-quater asks for - "두 장비가
-        # 같은 class 이름을 쓰면 프레임 검사 먼저" - and it only happens if a new spelling
-        # cannot arrive quietly.
-        "classes": ["die-to-die", "die-to-substrate"],
-    },
-}
-
+#: 🔴 THE CATALOGUE IS NOT IN THIS FILE. It was a dict here declaring `void` and `delam`
+#: with their methods, tables and class sets - the last domain words this module spelled.
+#: The registry now starts EMPTY and is whatever `config/finding_kinds.json` declares, so
+#: a site whose kinds are named differently changes a declaration and not this code.
+#: ⚠️ EMPTY IS AN ANSWER, AND ON A BOX WITH NO CONFIG FILE IT IS THE ANSWER: `kinds()`
+#: returns `[]` and `spec()` refuses every name. That is the refusal an undeclared kind
+#: always got, arriving earlier.
 CONFIG_FILENAME = "finding_kinds.json"
 
 _lock = threading.Lock()
@@ -184,7 +145,7 @@ def load(force_reload: bool = False) -> dict:
     with _lock:
         if _cache is not None and not force_reload:
             return _cache
-        merged = {name: dict(spec) for name, spec in DEFAULT_FINDING_KINDS.items()}
+        merged = {}
         path = _config_path()
         if os.path.exists(path):
             try:
@@ -233,8 +194,7 @@ def set_registry(registry):
     """Install a registry for this process. Tests use it; nothing else should."""
     global _cache
     with _lock:
-        _cache = ({name: dict(spec) for name, spec in DEFAULT_FINDING_KINDS.items()}
-                  if registry is None else
+        _cache = ({} if registry is None else
                   {name: dict(spec) for name, spec in registry.items()})
         return _cache
 
@@ -244,12 +204,12 @@ def kinds():
     return sorted(load())
 
 
-def spec(kind: str = DEFAULT_KIND) -> dict:
+def spec(kind: str) -> dict:
     """One kind's declaration. An undeclared kind is refused BY NAME, never defaulted.
 
-    Falling back to `DEFAULT_KIND` here would be the worst possible kindness: a
-    misspelled kind in a URL would silently render void's numbers under the misspelled
-    kind's heading, and every figure on the screen would be true of something else.
+    Falling back to some default kind here would be the worst possible kindness: a
+    misspelled kind in a URL would silently render another kind's numbers under the
+    misspelled heading, and every figure on the screen would be true of something else.
     """
     registry = load()
     found = registry.get(kind)
@@ -257,16 +217,16 @@ def spec(kind: str = DEFAULT_KIND) -> dict:
         raise FindingKindError(
             f"finding kind {kind!r} is not declared (declared: {', '.join(kinds())}). "
             f"Adding a kind is a registry decision - declare it in "
-            f"{CONFIG_FILENAME} or in `DEFAULT_FINDING_KINDS`.")
+            f"{CONFIG_FILENAME}.")
     return found
 
 
-def methods(kind: str = DEFAULT_KIND):
+def methods(kind: str):
     """The `inspection_run.method` values that define this kind's denominator."""
     return list(spec(kind).get("observed_by") or ())
 
 
-def has_denominator(kind: str = DEFAULT_KIND) -> bool:
+def has_denominator(kind: str) -> bool:
     """Can a RATE be computed for this kind at all?
 
     False means the console must render "분모 없음 - 대조 불가" as CONTENT (the brief's
@@ -275,7 +235,7 @@ def has_denominator(kind: str = DEFAULT_KIND) -> bool:
     return bool(methods(kind))
 
 
-def classes(kind: str = DEFAULT_KIND):
+def classes(kind: str):
     """This kind's CLOSED class set, or `[]` when it declares none.
 
     `MI_LEDGER_SCHEMA_PROPOSAL` §6-quater: a defect's class (계면/벌크/에지 for a void)
@@ -292,7 +252,7 @@ def classes(kind: str = DEFAULT_KIND):
     return [str(c) for c in (spec(kind).get("classes") or ())]
 
 
-def observation_table(kind: str = DEFAULT_KIND) -> str:
+def observation_table(kind: str) -> str:
     """The table holding this kind's observations, validated against the registry.
 
     Validated because the name is interpolated into SQL: it can only ever be a value the
@@ -306,7 +266,7 @@ def observation_table(kind: str = DEFAULT_KIND) -> str:
     return table
 
 
-def population_ctes(kind: str = DEFAULT_KIND) -> str:
+def population_ctes(kind: str) -> str:
     """The THREE-WAY SPLIT as SQL CTEs. One spelling, for every consumer.
 
     Produces `kind_run`, `kind_found`, `kind_scanned`, `kind_clean`, `kind_unscanned`,

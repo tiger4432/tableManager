@@ -279,7 +279,7 @@ def contrast(connection, kind=None, scope=None, window=None, limit=None,
     walk_cfg.update(defaults.get("walk") or {})
     walk_cfg.update(walk_overrides or {})
 
-    kind = (kind or finding_kinds.DEFAULT_KIND).strip()
+    kind = (kind or "").strip()
     try:
         spec = finding_kinds.spec(kind)
     except finding_kinds.FindingKindError as exc:

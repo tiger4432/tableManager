@@ -1,0 +1,18 @@
+{
+  "void": {
+    "label": "보이드",
+    "observed_by": ["sat"],
+    "observation_table": "void_obs",
+    "extent_columns": ["radius_x", "radius_y"],
+    "unit_column": "unit",
+    "classes": []
+  },
+  "delam": {
+    "label": "박리",
+    "observed_by": ["scat"],
+    "observation_table": "delam_obs",
+    "extent_columns": ["extent_x", "extent_y"],
+    "unit_column": "unit",
+    "classes": ["die-to-die", "die-to-substrate"]
+  }
+}

@@ -7,8 +7,35 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts")))
 
+import pytest  # noqa: E402
+
+from ledger_api import finding_kinds  # noqa: E402
 from ledger_api import ledger_selection  # noqa: E402
 import seed_syn_complex_composite as fixture  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fixture_finding_kinds():
+    """This world's finding kinds, declared BY THE FIXTURE.
+
+    `finding_kinds` used to ship these two in a dict inside the module; that catalogue is
+    gone (2026-08-27) and the registry is now whatever `config/finding_kinds.json`
+    declares - a file the operator materializes from `config/sample/`, and which a test
+    box has no business writing. So the fixture that plants these findings also declares
+    them, and the shape asserted below is the shape the seeder actually writes.
+    """
+    finding_kinds.set_registry({
+        "void": {"label": "보이드", "observed_by": ["sat"],
+                 "observation_table": "void_obs",
+                 "extent_columns": ["radius_x", "radius_y"], "unit_column": "unit",
+                 "classes": []},
+        "delam": {"label": "박리", "observed_by": ["scat"],
+                  "observation_table": "delam_obs",
+                  "extent_columns": ["extent_x", "extent_y"], "unit_column": "unit",
+                  "classes": ["die-to-die", "die-to-substrate"]},
+    })
+    yield
+    finding_kinds.set_registry(None)
 
 
 def test_lot_split_rework_resort_and_multi_parent_merge_cardinality():

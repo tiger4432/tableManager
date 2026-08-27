@@ -429,40 +429,7 @@ ORDER BY r.map_id, v.x, v.y
 """
 
 
-def _void_map_cells_sql():
-    return """
-WITH units AS (
-  SELECT * FROM jsonb_to_recordset(%(units)s::jsonb)
-    AS u(wafer text, bonding_leg text)
-), hits AS (
-  SELECT DISTINCT b.base_id, bm.leg::text AS bonding_leg,
-         b.bond_lot, b.bond_slot, b.bond_x, b.bond_y,
-         b.dt_lot, b.dt_slot, b.dt_x, b.dt_y,
-         b.core_lot, b.core_slot, b.cx, b.cy, v.run_uid
-  FROM units u
-  JOIN bonding_log b ON b.base_id = u.wafer
-  JOIN bonding_map bm ON bm.base = b.base_id AND bm.x = b.bx AND bm.y = b.by
-                     AND bm.leg::text = u.bonding_leg
-  JOIN inspection_run r ON r.base_wafer_id = b.base_id
-                       AND r.base_x = b.bx AND r.base_y = b.by
-  JOIN void_obs v ON v.run_uid = r.run_uid
-)
-SELECT 'bonding_log', base_id, bonding_leg,
-       concat_ws('_', bond_lot, bond_slot), bond_x, bond_y, run_uid
-FROM hits
-UNION ALL
-SELECT 'dt_map', base_id, bonding_leg,
-       concat_ws('_', dt_lot, dt_slot), dt_x, dt_y, run_uid
-FROM hits WHERE dt_lot IS NOT NULL AND dt_slot IS NOT NULL
-UNION ALL
-SELECT 'core_wafer_map', base_id, bonding_leg,
-       concat_ws('_', core_lot, core_slot), cx, cy, run_uid
-FROM hits WHERE core_lot IS NOT NULL AND core_slot IS NOT NULL
-ORDER BY 1, 2, 3, 4
-"""
-
-
-def _build_maps(connection, components, final_units, selected_focuses, finding_kind=None):
+def _build_maps(connection, components, final_units, selected_focuses):
     refs = []
     seen = set()
     def add(stage, table, map_id, component_id=None, subject_wafer=None,
@@ -565,15 +532,6 @@ def _build_maps(connection, components, final_units, selected_focuses, finding_k
         for map_id, x, y in _fetch(connection, _valid_die_sql(),
                                    {"map_ids": sorted(valid_refs)}):
             valid_cells[map_id].append({"x": x, "y": y})
-    defect_cells = defaultdict(list)
-    if finding_kind == "void" and final_units:
-        unit_rows = [{"wafer": wafer, "bonding_leg": leg}
-                     for wafer, leg in sorted(final_units)]
-        for table, wafer, leg, map_id, x, y, run_uid in _fetch(
-                connection, _void_map_cells_sql(),
-                {"units": json.dumps(unit_rows, separators=(",", ":"))}):
-            defect_cells[(table, map_id, wafer, leg)].append({
-                "x": x, "y": y, "evidence_id": f"source:void_obs:{run_uid}"})
     for row in maps:
         cells = cells_by_map[(row["frame"]["table"], row["frame"]["mapId"])]
         row["layers"]["process_area"]["cells"] = cells
@@ -589,11 +547,6 @@ def _build_maps(connection, components, final_units, selected_focuses, finding_k
             row["layers"]["valid_die"] = {"state": "ready",
                                             "cells": valid_cells[ref["map_id"]],
                                             "ref": ref}
-        defects = defect_cells[(row["frame"]["table"], row["frame"]["mapId"],
-                                row.get("subject_wafer"), row.get("subject_leg"))]
-        if defects:
-            row["layers"]["defect"] = {"state": "ready", "cells": defects,
-                                         "finding_kind": finding_kind}
     return maps
 
 
@@ -770,8 +723,7 @@ def resolve(connection, payload, now=None, relation=LEDGER_RELATION):
                    row["bond"].get("bonding_leg")}
     selected_focuses = [{**s["map_focus"], "selection_id": s["selection_id"]}
                         for s in selections if s["map_focus"]]
-    maps = _build_maps(connection, components, final_units, selected_focuses,
-                       finding_kinds.payload_field(payload, "finding_kind"))
+    maps = _build_maps(connection, components, final_units, selected_focuses)
 
     answers = []
     for selection in selections:

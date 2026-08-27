@@ -338,12 +338,10 @@ def _ledger_position(translation, ledger_atoms):
 def _default_kind(names):
     """The kind the console opens on: the registry's default WHEN IT IS DECLARED.
 
-    🔴 `DEFAULT_KIND` is a code constant and the registry is config-overridable, so a
-    site that declares neither `void` nor anything named like it would otherwise be sent
-    a default the very next request refuses by name (`spec()` never falls back — that is
-    its whole point). Naming the first declared kind instead keeps the screen pointed at
-    something askable, and it is still the registry answering rather than this file.
+    🔴 THE FIRST DECLARED KIND, AND NOTHING ELSE. This used to prefer a code constant
+    (`finding_kinds.DEFAULT_KIND`) when the registry happened to declare it; that constant
+    is gone, and with it the last way a site that declares neither of the two old names
+    could be sent a default the very next request refuses by name (`spec()` never falls
+    back — that is its whole point). The registry answers, not this file.
     """
-    if finding_kinds.DEFAULT_KIND in names:
-        return finding_kinds.DEFAULT_KIND
     return names[0] if names else ""
