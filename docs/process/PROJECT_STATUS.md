@@ -47,12 +47,18 @@
 
 ---
 
-## 🏛️ 지금 서 있는 자리 (2026-08-27 15:0x)
+## 🏛️ 지금 서 있는 자리 (2026-08-27 19:2x)
 
 ```
 원장     645,203 원자 · die 81% · legacy_atom «0» · 인덱스 uq 159.7 MB
 선언     entities «6» · 술어 «10» — 원장 술어 «8» 을 «전부» 덮는다
 walk    GET /api/ledger/subgraph «하나». follow(술어) · collect(모을 것) · positive/negative(마킹)
+        collect 받는 것 «여섯» (claim·event 는 은퇴 — 「claim 은 엣지다」)
+        follow 는 «반복 파라미터» (follow=a&follow=b). 쉼표 목록은 422
+        상한 node_limit ≤ 1000 · edge_limit ≤ 3000 — 둘 다 «필드 이름을 대며» 422
+술어    transfer 401,206(62%) · inspected 117,662 · observed 103,841 · bonded_from 18,545
+        processed_with 3,022 · register/has_netdie 396 · slot_map 135
+        🔴 선언 10 중 «둘»이 원자 0 — derived_from · has_wafer
         소유자 체인 라이브: 839노드 · in_container 117 · recipe 5 · 코어 29/29 · 매달린 0
 보드     좌석 «16» · 로드 요청 «14» · non-200 «0» · 정확히 중복 «2»
 서버     conda assy_manager · uvicorn 8080
@@ -65,6 +71,11 @@ v1 어휘 «완전 삭제»    server/ 에 흔적 «0» · 게이트 일곱 초�
 폴더/트리 보존 업로드   두 문(브라우저·랩퍼)이 «같은 트리». 탈출 시도 전부 raws 안
 걷기 검색창           선언에서 드롭다운 · 결과 표 · 잘림을 «문장»으로
 원장 인덱스           1,123.6 -> 159.7 MB (같은 원자 수 · 옛 축 중복 0)
+묘비 후계             410 일곱이 «없는 주소»(/api/ledger/trace)로 보내고 있었다
+                     -> /api/ledger/subgraph. 게이트는 «이름 대조가 아니라 호출»
+카탈로그 8 -> 6       /declaration 이 walk 이 «거절하는» claim·event 를 광고했다
+                     화면 드롭다운까지 확인 (요청 14 · 전부 200 · 콘솔 0)
+문서 3차              backend.md(동결 울타리·낡은 줄 수) · 체크리스트 · 브리프 · api 문서
 ```
 
 ### 🔴 지금 열린 것
@@ -72,7 +83,14 @@ v1 어휘 «완전 삭제»    server/ 에 흔적 «0» · 게이트 일곱 초�
 1 문서 정비        «concat 금지 · 현 상태로 다시 쓰기» — 네 갈래 진행 중
 2 「전부 노드로」   투영의 type 을 도메인 낱말로 · collect 축을 화면에서 제거
                  🛑 전제: 발견 «종류»가 선언에 없다 -> 넣을지가 «별도 판정»
-3 composition 복구 transferred(원자 0)를 읽어 «빈 답». 고치는 방법이 곧 «통합»
+3 composition      🔴 소유자 판정 2026-08-27 — final_chip 은 선언에 «안 넣는다»(「아니 넣지마」)
+                 -> 그 라우트는 «고칠 수 없다». 주어가 선언에 없다
+                 -> 대신 「어느 중간과정에서 마킹 찍어도 조립 자재 다 보이게」
+                 실측: wafer/die 씨앗 -> 자재 «10종» 이미 보인다
+                 🛑 막는 것 «하나»: 조립의 척추 in_container 를 follow 가 «이름 못 댄다»
+                    (die@1.references 의 참조 엣지 — 선언 술어 10에 없어서 422)
+                    지시: follow 검증 = 술어 10 + «선언된 참조 엣지», 카탈로그도 같이 광고
+                 ⏳ 소유자 대기: /composition 을 «지금» 은퇴시키나, walk 이 채운 «뒤»에 하나
 4 collect 이 «센다» 분모=inspected · 분자=observed (둘 다 원장 안)
                  🔴 판별식: 씨앗 16개와 40개가 «다른 수»를 낼 것
 5 부품 이전        컨트롤 바(12중 4)부터. 완료 판정은 아래 «수 셋»
