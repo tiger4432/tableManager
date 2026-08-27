@@ -4938,8 +4938,17 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
         if refusal is not None:
             raise _ledger_admin_refusal([refusal])
 
+    # 🔴 THE PREDICATE HALF RETIRED 2026-08-27, WITH THE SAVE IT PREVIEWED. A preview
+    # whose「저장하면」cannot happen is the same false signpost the structure rows just lost,
+    # and this one issued a `token` for a route that no longer exists. The SOURCE half stays -
+    # it is the whole reason this route is not retired with the others.
     if target == ledger_admin.TARGET_PREDICATE:
-        return _ledger_predicate_dry_run(name, declaration)
+        raise _ledger_admin_refusal([ledger_admin.violation(
+            "declaration_rejected", "target",
+            "술어는 이제 «선언 문서»의 일부로 편집합니다 — 온톨로지 화면에서 초안을 "
+            "만들어 문서를 고치고 활성화하세요. 술어만 따로 미리보고 저장하는 경로는 "
+            "은퇴했습니다.",
+            "the predicate dry-run retired with the v1 save route it previewed")])
 
     violations = ledger_admin.check_source_declaration(db, name, declaration)
     if violations:
@@ -4970,71 +4979,6 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
            if result["molecules_refused"] else "")
         + ". 이 미리보기는 아무것도 쓰지 않았습니다.")
     return result
-
-
-def _ledger_predicate_dry_run(name, declaration):
-    """술어 선언의 2단. 원자를 «만들지» 않고, 서명이 무엇을 받고 무엇을 거절하는지 보인다.
-
-    🔴 원자를 만들 수 없는 것이 이 화면의 한계가 아니라 **오늘의 사실**이다: 새 술어를
-    발화할 번역기가 아직 없다(`derivation` 종류는 R-M ⑤로 판정만 났다). 그래서 여기서
-    보여 줄 수 있는 진짜는 「이 서명이 실제로 무엇을 판정하는가」이고, 그것은 게이트가
-    쓰는 바로 그 함수(`vocabulary.check_signature`)를 태워서 얻는다 — 서명을 설명하는
-    문장을 지어내면 그것이야말로 가짜 미리보기다.
-    """
-    import ledger_admin
-    from ledger import vocabulary
-
-    existing = {n: sig for n, sig in vocabulary.config_predicates().items() if n != name}
-    violations = vocabulary.check_predicate_declaration(name, declaration,
-                                                        against=existing)
-    if violations:
-        raise _ledger_admin_refusal(violations)
-
-    declared_object = declaration.get("object") or {}
-    subject_type = (declaration.get("subject") or [None])[0]
-    probes = []
-
-    def probe(label_ko, payload, object_kind=None):
-        # 🔴 게이트가 쓰는 **바로 그 판정 함수**에 후보 서명을 «인자로» 넘긴다. 공유
-        # 캐시에 후보를 잠깐 끼워 넣는 방식은 같은 프로세스의 동시 번역이 그 사이에
-        # 미등재 낱말을 인정하게 만든다 — 미리보기가 남의 게이트를 바꾸는 것이다.
-        found = vocabulary.check_signature_against(
-            declaration, name, subject_type,
-            object_kind if object_kind is not None else declared_object.get("kind"),
-            payload)
-        probes.append({"case_ko": label_ko, "accepted": not found,
-                       "violations": found})
-
-    if declared_object.get("kind") == "value":
-        required = list(declared_object.get("required") or [])
-        probe("필수 필드를 모두 실은 원자",
-              {field: f"<{field}>" for field in required})
-        if required:
-            short = {field: f"<{field}>" for field in required[1:]}
-            probe(f"필수 필드 '{required[0]}'이 빠진 원자", short)
-    elif declared_object.get("kind") == "entity_ref":
-        target_type = (declared_object.get("types") or [None])[0]
-        keys = {k: f"<{k}>" for k in
-                (vocabulary.ENTITY_TYPES.get(target_type, {}).get("keys") or [])}
-        probe("완결된 개체 참조를 실은 원자", {"type": target_type, "keys": keys})
-        probe("개체 참조의 식별자가 빈 원자",
-              {"type": target_type, "keys": {k: "" for k in keys}})
-
-    return {
-        "ok": True, "target": ledger_admin.TARGET_PREDICATE, "name": name,
-        "writes": 0, "read_only_enforced": True,
-        "atoms": 0, "atoms_rendered": [], "truncated": False,
-        "rows_read": 0, "molecules": 0, "molecules_refused": 0,
-        "refusals": [], "refusals_by_reason": {},
-        "signature_probes": probes,
-        "notes": ["이 술어를 발화하는 번역기가 아직 없으므로 원자는 만들어지지 "
-                  "않습니다. 위 항목은 게이트가 이 서명으로 실제 무엇을 받고 무엇을 "
-                  "거절하는지를 같은 함수로 판정한 결과입니다."],
-        "token": ledger_admin.declaration_token(ledger_admin.TARGET_PREDICATE, name,
-                                                declaration),
-        "sentence_ko": (f"'{name}' 서명은 완결됐습니다. 저장하면 게이트가 이 서명으로 "
-                        f"원자를 검사하고 구조 뷰에 «선언 출처: config»로 뜹니다."),
-    }
 
 
 # ---------------------------------------------- v1 ledger authoring, RETIRED 2026-08-27
