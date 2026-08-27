@@ -1125,9 +1125,16 @@ Trend Table의 DT/Core 추적 열은 응답 `trace_dimensions[]` 선언과 행�
 분모로 삼아 `ready|partial|absent`, count, component denominator, evidence ID를 계산한다.
 page wafer+LEG와 같은 시간창으로 유계화하며 finding 부재를 추적 부재로 해석하지 않는다.
 
-`mark_key`는 `wafer-leg:v1:` 뒤에 canonical UTF-8 JSON 배열
-`["WaferLeg",wafer,bonding_leg]`의 unpadded base64url을 붙인다. decode 뒤 canonical
-재인코딩이 일치해야 하므로 구분자 충돌이 없다. cursor v2도
+`mark_key`는 접두 뒤에 canonical UTF-8 JSON 배열의 unpadded base64url을 붙이고,
+decode 뒤 canonical 재인코딩이 일치해야 하므로 구분자 충돌이 없다.
+🔴 **실측 2026-08-27 — 응답에 «키가 둘»이고 담는 것이 다르다.** 종전 이 자리는 하나만 적었다.
+```
+mark_key   experiment-unit:v1:…   실험 단위 — 웨이퍼와 «구간»을 «둘 다» 담는다 (레그마다 다르다)
+node_id    ledger-entity:v1:…     디코드하면 ["WaferLeg",{"wafer": …}] — «구간이 없다»
+```
+🔴 **그래서 한 웨이퍼의 두 레그가 «같은 `node_id`»를 갖는다** (실측: 점 72개 · 웨이퍼 36장 ·
+distinct node_id «36»). `identity_fields` 가 `["wafer"]` 이므로 id 가 그것만 담는 것이고,
+구간은 `context.bonding_leg` 에 있다. **id 에 구간이 들어 있다고 읽으면 안 된다.** cursor v2도
 `(occurred_at,wafer,bonding_leg)`를 보존한다. 기존 `Wafer` observed atom은 LEG를 추측해
 fan-out하지 않고 복합 Trend에서 제외한다. 이는 JSON identity/vocabulary의 additive 확장이므로
 DDL migration은 없지만, 그것이 참이 되려면 생산 translator가 `WaferLeg` 원자를 «발화해야 하고» 기존 데이터는 declared LEG bridge로 재번역돼야 한다. 🔴 **실측 2026-08-27: 둘 다 «안 됐다»** — `WaferLeg` 원자 «0», 선언의 개체 여섯에도 없음. **즉 이 문단은 «요구사항»이지 «현재 상태»가 아니다.**
