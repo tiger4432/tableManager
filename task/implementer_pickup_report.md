@@ -1,3 +1,47 @@
+# ✅ [A 구현자] **문서 둘 «완료» — 세 수와 함께. 셋째 부류는 «0» 이고, 그 0을 어떻게 쟀는지** (2026-08-27 16:0x)
+
+```
+backend.md      260,553 -> 221,970 바이트  (−15%)   커밋 42e4fa6b
+data_model.md   147,726 -> 134,618 바이트  (−9%)    커밋 de8a0346
+```
+
+## 요구하신 «세 수»
+```
+고친 현재형   «21»    backend 15 (죽은 라우트 행 10 · 후계 안내 1 · vocabulary 출처 문장 1
+                     · LINEAGE_PREDICATES 절 1 · 없는 모듈 넷 서술 1 · 목록 속 죽은 모듈 1)
+                     data_model 6 (이사한 경로 5 · vocabulary 출처 문장 1)
+남긴 기록     «2»    두 문서의 ⚰️ 블록. «둘 다 태워 보고 남겼습니다» (아래)
+바꾼 예시     «0»    -- 그런데 이 0 은 «안 찾아서 0» 이 아닙니다
+```
+
+## 셋째 부류를 «어떻게» 쟀나 — 0 이 통과인 게이트라서 두 번 훑었습니다
+```
+① 죽은 심볼 예시   traversable · emittable · PROJECTION_ONLY_WORDS · SIGNATURE_FIELDS
+                  · EDITABLE_LAYER · LAYER_CANONICAL · requires_register · check_signature
+                  · check_subject_keys · ENTITY_TYPES · PREDICATES · _slot_move · _map_slot
+                  · packs · profile_id           -> 두 문서 합쳐 «0»
+② 죽은 «설정 키» 예시  occurred_at_column · subject_types · slot_pairing · emit_register
+                  · register_entity_types · watermark · declared_derivations
+                  -> 두 개 걸렸는데 «둘 다 살아 있었습니다»:
+                     backend 의 것은 `rollup_subject_types(...)` — v3 설정 키가 아니라 «SQL 함수»
+                     data_model 의 `source_translator_ver` — 원장의 «살아 있는 컬럼»
+③ 이름 실재 확인    문서가 대는 server/*.py 경로 «49» · 함수 «18» -> 실재 «전부»
+```
+
+## 🔴 ⚰️ 블록 둘을 «남긴» 근거 — 규칙 ③만 보고 지웠으면 살아 있는 계약을 죽였습니다
+```
+backend    「구 그래프 라우트는 410 을 답한다」   -> 태워 봄: chip-trace 410 · mapping-summary 410
+                                                 (404 가 아니라 «의도된» 410. 정적 catch-all 대신)
+data_model 「부활 경로 셋이 봉인됐다」            -> 찾아봄: models.py:1012 · :1073 에 묘비 주석 실재
+```
+말투는 「그때 이랬다」인데 **내용은 오늘의 계약**입니다. 총괄 분류의 ②가 맞는 자리지만,
+「⚰️ 표시 = 지운다」로 기계적으로 갔으면 **그 호출이 왜 돌아오면 안 되는지 적힌 유일한 문장**이
+사라졌을 것입니다.
+
+📌 A 레인 배분은 이것으로 끝입니다. CODE_MAP·PRIMITIVES 는 C, 화면 문서는 B 몫입니다.
+
+---
+
 # 🔴 판정 요청 — 빨강 ① 은 «죽은 시험»이 아닙니다. **읽는 코드가 살아 있고 데이터가 없습니다** (구현자 2026-08-27 15:1x)
 
 지시서의 「지우기 전에 한 줄 확인하십시오 — slot_map 의 from/to 를 읽는 «다른» 자리가 없는가」
