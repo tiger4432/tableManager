@@ -1,3 +1,54 @@
+# ⚖️ **빨강 «셋» 판정 — 둘은 «샘플 config», 하나는 «죽은 대상을 재는 시험»** (총괄 실측 14:1x)
+
+레인이 「main 이 빨강을 들고 있다」고 올려 «제가 직접» 돌렸습니다. 원인이 «서로 다릅니다».
+
+## 실측
+```
+tests/test_ledger_trace_contract.py   3 failed · 6 passed
+
+① test_the_qualifier_names_the_walk_reads_are_the_ones_declared
+   E  assert {'from','to'} <= {'event_type'}
+   메시지  「`ledger_trace._slot_move` 가 slot_map 의 from/to 를 «이름으로» 읽는다」
+   🔴 실측  `_slot_move` 가 `ledger_trace.py` 에 «없습니다» — 오늘 계보 은퇴 때 나갔습니다
+        slot_map 원자 «135» 전부 qualifiers = {event_type: "split"}
+        from/to 를 가진 원자 «0 / 135» · 선언도 event_type «하나»뿐
+   -> 이 시험은 «없어진 코드»에 대한 계약을 재고 있습니다. 지키던 것이 사라졌습니다
+
+②③ test_every_declared_derivation_is_explicitly_classified
+    test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
+   E  ledger.config.LedgerConfigError:
+      config/sample/ledger_config.json.sample.profiles["dt-job@1"].mappings[0].use:
+      pack 'dt-job@1' is not declared in packs [unknown_pack]
+   🔴 «샘플 설정»이 자기 검증기를 통과 못 합니다. v1 과 «무관»합니다
+      (`packs` 는 오래전에 도출로 바뀐 축입니다 — 샘플만 옛 모양으로 남아 있습니다)
+```
+
+## 판정
+```
+① «시험을 지웁니다»
+   재던 대상(`_slot_move` 가 from/to 를 읽는 것)이 «없어졌습니다».
+   이 저장소 규율 그대로입니다 — 「테스트는 자기가 재던 코드와 «같은 커밋»에서 죽는다」
+   ⚠️ 다만 «지우기 전에» 한 줄 확인하십시오: slot_map 의 from/to 를 읽는 «다른» 자리가 없는가
+      (grep 으로 0 이면 지웁니다. 있으면 그 자리가 진짜 결함입니다)
+
+②③ «샘플 설정을 고칩니다» — 시험이 아니라 «샘플»이 틀렸습니다
+   config/sample/ledger_config.json.sample 의 `dt-job@1` 프로필이 «없는 pack» 을 씁니다
+   -> 라이브 선언은 «통과»합니다(총괄이 오늘 여러 번 확인). 샘플만 낡았습니다
+   🔴 이건 v1 청소가 «만든» 것이 아니라 «드러낸» 것입니다 — 레인 보고대로 «앞선» 빨강입니다
+```
+
+## 그래서 이 라운드의 결론은 «안 바뀝니다»
+```
+v1 은 server/ 에서 사라졌고 게이트 일곱은 초록입니다
+빨강 셋 중  ① 은 «이 청소가 남긴 잔해» (시험 하나)
+           ②③ 은 «이 청소 이전»부터 있던 것 (샘플 설정)
+```
+🔴 다만 제 게이트 일곱에 «시험»이 없었습니다. 그건 제 설계 실수입니다 —
+   다음 삭제 라운드부터 「고친 파일의 시험이 초록인가」를 게이트에 넣겠습니다.
+   (전체 스위트는 «아닙니다» — 이 저장소 규율은 「고친 것의 테스트만」입니다)
+
+---
+
 # 🔴 **남은 것 «다섯 자리» — 끝내십시오 (총괄 실측 13:44, 마감까지 ~40분)**
 
 B·C 병합 완료, 서버 재기동 완료. **코드에서 `import vocabulary` 가 «0» 입니다.** 남은 것만 적습니다.
