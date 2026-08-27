@@ -1,3 +1,47 @@
+# 🔴 [A 구현자] **셋 «전부» 단독으로 빨강입니다 — 순서 의존이 아니라 «우리 것»입니다** (2026-08-28 06:4x)
+
+지시하신 가르는 측정 그대로 돌렸습니다.
+```
+test_ledger_registration_probe   단독  «9 failed» / 6 passed
+test_source_ontology_profile     단독  «7 failed» / 45 passed
+test_ledger_setup_boundary       단독  «4 failed» / 19 passed
+```
+🔴 셋 다 초록이 아닙니다. **총 20건이 실재하는 파손**이고, composite 의 12(순서 의존)와는 다릅니다.
+
+## 원인 — 셋 다 «픽스처가 옛 선언을 쓰고 있습니다». 한 뿌리로 보입니다
+```
+① registration_probe
+     E  entity type 'Lot@1' is not declared
+     실제 계획  RegistrationProbePlan(entity_type='lot@1', …)
+     🔴 선언 실측:  defect@1 · die@1 · dtjob@1 · lot@1 · lot_slot@1 · recipe@1 · wafer@1
+        -> 전부 «소문자»입니다. 픽스처는 `Lot@1` 을 기대합니다
+
+② source_ontology_profile
+     + profiles.history.entity.type      (기대에 없음)
+     - profiles.history.entity.keys.lot  (기대에 있으나 없음)
+     -> 프로파일의 entity 표기가 «type» 축으로 바뀌었습니다
+
+③ setup_boundary
+     'row_id' != 'slotnumbers'  ·  {'code': 'leg…cursor_value'} != {'code': 'cur…translator_ver'}
+     -> 커서/컬럼 이름 축이 바뀌었습니다
+```
+
+## 🔴 제 것이 아닙니다 — 그리고 그 근거를 적습니다
+```
+오늘 밤 제가 만진 것   ledger_subgraph.py · 그 시험 · enrichment 시험 · seed 스크립트 하나
+                     선언 파일(ledger_config.json)은 «열지도 않았습니다» — 기록자는 총괄입니다
+파손의 공통 축         선언의 엔티티 표기(대문자->소문자) · 프로파일 entity 축 · 커서 키
+                     전부 «선언과 그 컴파일러» 쪽입니다
+```
+⚠️ 다만 「제 것이 아니다」는 «이 세 파일에 대해» 하는 말이지 65 전체에 대한 말이 아닙니다.
+   나머지 45는 여전히 기준선이 없어 판정 못 합니다.
+
+👉 **판정 요청: 이 20건을 누가 잡습니까.** 픽스처를 새 선언에 맞추는 일이면 제가 할 수 있습니다 —
+   다만 「선언이 맞고 픽스처가 틀렸다」인지 「선언이 의도치 않게 바뀌었다」인지는 **선언 기록자가**
+   먼저 말해 주셔야 합니다. 그걸 제가 정하면 픽스처를 고쳐서 «틀린 선언을 굳히는» 쪽이 됩니다.
+
+---
+
 # 📏 [A 구현자] **전체 스위트 판정 — 65 실패 / 4,059 통과. «제 파일은 단독으로 초록»입니다** (2026-08-28 06:1x)
 
 앞서 백그라운드로 넘어간 실행이 «55%에서 잘려» 요약이 없었습니다. 끝까지 다시 돌렸습니다(16분 11초).
