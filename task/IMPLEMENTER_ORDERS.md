@@ -16383,3 +16383,16 @@ node_id 는 클라에서 «마킹 키»로도 쓰입니다 (api.js:607 · main_t
 ② 트렌드 응답의 series·points 수·value 가 «전과 동일»
 ③ 보드 로드: 요청 14 · non-200 0 · 레그 둘이 화면에서 «구분되는가» (총괄이 브라우저로 봅니다)
 ```
+
+## ✅ 위 멈춤 조건 «해제» — 총괄이 쟀습니다 (21:1x)
+```
+웨이퍼 36개 전수 · 전부 레그가 «둘 이상»
+  leg HBM-B_LOW-P   node_id 해독 = ["WaferLeg",{"wafer":"SYN-AUG-BW-001-01"}]
+  leg LOGIC-A_REF   node_id 해독 = ["WaferLeg",{"wafer":"SYN-AUG-BW-001-01"}]
+  node_id 서로 다른가?   «False»   <- 레그 둘이 «이미» 같은 id 다
+  mark_key 서로 다른가?  «True»    <- 레그 구분은 «이미» mark_key 가 진다
+```
+🔴 **씨앗을 wafer 로 접어도 «새로 접히는 것이 없습니다».** 이미 접혀 있고, 레그 구분은
+`mark_key` 가 들고 있습니다. 그러니 그대로 진행하십시오 — `identity.type` 과 `mark_key` 는 손대지 말고,
+**바뀌는 것은 `node_id` 의 «타입 낱말» 하나**입니다 (`WaferLeg` -> 선언된 `wafer`).
+게이트 ③의 「레그 둘이 화면에서 구분되는가」는 그대로 봅니다 — 총괄이 브라우저로 확인합니다.
