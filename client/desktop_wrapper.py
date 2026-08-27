@@ -281,11 +281,11 @@ class DropEventFilter(QObject):
                 return True
         elif event.type() == QEvent.Drop:
             if event.mimeData().hasUrls():
-                urls = event.mimeData().urls()
-                for url in urls:
-                    file_path = url.toLocalFile()
-                    if file_path:
-                        self.callback(file_path)
+                # 🔴 한 번에 «목록»으로 넘긴다. 경로마다 부르면 폴더 하나가 알림 수십 개가 되고,
+                #    브라우저 쪽(`ingestSelectedFiles`)은 이미 「끝에 한 번」이다 -- 두 길이
+                #    다르면 「랩퍼에서만 다르다」가 된다.
+                paths = [u.toLocalFile() for u in event.mimeData().urls()]
+                self.callback([p for p in paths if p])
                 event.acceptProposedAction()
                 return True
         return False
@@ -375,58 +375,101 @@ class HybridDesktopClient(QMainWindow):
 
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            for url in urls:
-                file_path = url.toLocalFile()
-                if file_path and os.path.exists(file_path):
-                    self.upload_file_natively(file_path)
+            paths = [u.toLocalFile() for u in event.mimeData().urls()]
+            self.upload_file_natively([p for p in paths if p])
             event.acceptProposedAction()
         else:
             event.ignore()
 
-    def upload_file_natively(self, file_path):
+    #: 🔴 A DROPPED DIRECTORY USED TO FAIL IN SILENCE. `os.path.exists` is true for a folder,
+    #  so it reached `open(path,'rb')`, raised, and the operator saw one generic
+    #  「파일 업로드 중 오류 발생」. The browser half gets folders from `webkitdirectory`;
+    #  this is the same expansion for the drop path, which is the door people actually use.
+    #
+    #  What it collects, measured: every FILE under the tree, hidden ones included, empty
+    #  directories contributing nothing (they hold no files). Symlinked directories are NOT
+    #  followed -- `os.walk` does not by default -- because a link out of the dropped tree
+    #  would upload files the operator did not drop.
+    @staticmethod
+    def _files_under(path):
+        if os.path.isfile(path):
+            return [path]
+        found = []
+        for dirpath, _dirnames, filenames in os.walk(path):
+            for name in sorted(filenames):
+                found.append(os.path.join(dirpath, name))
+        return found
+
+    def upload_file_natively(self, paths):
+        """Upload one drop. `paths` is a LIST; a directory in it becomes its files."""
+        if isinstance(paths, str):
+            paths = [paths]
+        files = []
+        for p in paths:
+            if p and os.path.exists(p):
+                files.extend(self._files_under(p))
+        if not files:
+            return
         try:
             current_user = getpass.getuser()
         except Exception:
             current_user = "unknown_user"
 
-        filename = os.path.basename(file_path)
-        print(f"[Desktop Wrapper] OS Drag & Drop detected: {file_path} for user: {current_user}")
+        print(f"[Desktop Wrapper] OS Drag & Drop detected: {len(files)} file(s) for user: {current_user}")
+        # 🔴 테이블은 «한 번» 묻는다. 파일마다 물으면 왕복이 N 번이고, 그 사이에 사용자가
+        #    테이블을 바꾸면 한 드롭이 «두 테이블»에 나뉘어 들어간다.
         self.web_view.page().runJavaScript(
-            "window.currentTable", 
-            0, 
-            lambda table_name: self._do_upload(table_name, file_path, filename, current_user)
+            "window.currentTable",
+            0,
+            lambda table_name: self._do_upload_batch(table_name, files, current_user)
         )
 
-    def _do_upload(self, table_name, file_path, filename, user_name):
+    def _do_upload_batch(self, table_name, files, user_name):
+        """One drop -> N uploads -> ONE notification. Same rule as the browser half."""
         if not table_name:
             QMessageBox.warning(self, "경고", "먼저 화면에서 대상을 업로드할 테이블을 선택하세요.")
             return
+        done = 0
+        for file_path in files:
+            if self._do_upload(table_name, file_path, os.path.basename(file_path), user_name):
+                done += 1
+        failed = len(files) - done
+        # 🔴 전부 실패하면 「0개 완료」를 안 띄운다 -- 0 을 성공으로 그리지 않는다.
+        if done:
+            self._toast(f"📤 {done}개 업로드 완료", "success")
+        if failed:
+            self._toast(f"❌ {len(files)}개 중 {failed}개 실패", "error")
 
+    def _toast(self, message, level):
+        safe = message.replace("\\", "\\\\").replace("'", "\'")
+        self.web_view.page().runJavaScript(
+            f"if (typeof showToast === 'function') {{ showToast('{safe}', '{level}'); }}"
+        )
+
+    #: One file. Returns True on success and NOTIFIES NOTHING -- the caller counts and speaks
+    #  once per drop. Toasting here made a dropped folder raise one notification per file,
+    #  which is the same defect the browser half carried until 32c53c30.
+    def _do_upload(self, table_name, file_path, filename, user_name):
         # Same resolved base as the loaded page - see HybridDesktopClient.__init__.
         api_url = f"{self.server_base}/tables/{table_name}/upload"
-        
+
         try:
             with open(file_path, 'rb') as f:
                 files = {'file': (filename, f, 'text/plain')}
                 params = {'user': user_name}
                 response = httpx.post(api_url, files=files, params=params, timeout=30.0)
-                
+
             if response.status_code == 200:
                 res_data = response.json()
                 saved_path = res_data.get("path", "")
                 saved_filename = os.path.basename(saved_path) if saved_path else filename
                 print(f"[Desktop Wrapper] Upload successful. RAW file: {saved_filename}")
-                
-                # 웹앱 화면에 성공 토스트 알림창 호출
-                js_code = f"if (typeof showToast === 'function') {{ showToast('📤 드롭 업로드 완료! (RAW 파일: {saved_filename})', 'success'); }}"
-                self.web_view.page().runJavaScript(js_code)
-            else:
-                print(f"[Desktop Wrapper] Upload failed with status code: {response.status_code}")
-                self.web_view.page().runJavaScript(f"if (typeof showToast === 'function') {{ showToast('❌ 업로드 실패 (HTTP {response.status_code})', 'error'); }}")
+                return True
+            print(f"[Desktop Wrapper] Upload failed with status code: {response.status_code}")
+            return False
         except Exception as e:
             print(f"[Desktop Wrapper] Exception during upload: {e}")
-            self.web_view.page().runJavaScript(f"if (typeof showToast === 'function') {{ showToast('❌ 파일 업로드 중 오류 발생', 'error'); }}")
+            return False
 
     def handle_download_request(self, download):
         suggested_name = download.suggestedFileName()
