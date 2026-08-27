@@ -1,3 +1,56 @@
+# 🔴 **이사 착수 — `SIGNATURE_FIELDS` 가 «세 번째 갈래»입니다. 멈추고 적습니다** (구현자 10:3x)
+
+판별식(「답이 바뀌나 / 선언이 쓸 수 있는 것이 바뀌나 / 둘 다 아니면 멈춘다」)을 첫 심볼에 대니
+**셋째**로 떨어졌습니다.
+
+## 실측
+```python
+vocabulary.py:505
+SIGNATURE_FIELDS = ("label_ko", "subject", "object", "traversable", "direction",
+                    "since", "layer", "status")
+소비자   vocabulary.py:737   그 필드가 «없으면 거절» (이 파일 자신의 거절)
+        ledger_admin.py:776 어드민 카탈로그가 «목록으로 보여줌»
+        시험 1 (test_ledger_admin_setup)
+        ⚠️ ledger_selection 의 `_MEASUREMENT_SIGNATURE_FIELDS` 는 «다른 심볼»입니다. 안 건드립니다
+```
+
+## 🔴 왜 `setup_bundle` 이 아닌가 — 두 가지
+```
+① «다른 파일»의 문법입니다
+   setup_bundle 은 ledger_config.json(v5 선언)을 검증합니다
+   SIGNATURE_FIELDS 는 ledger_vocabulary.json(v1 «확장 파일»)이 가져야 할 칸입니다
+   -> 옮기면 «v5 검증기»가 «v1 확장 파일»의 문법을 들고 있게 됩니다
+② 이미 죽은 이름을 «둘» 들고 있습니다
+   traversable · direction  <- 오늘 새벽에 그 함수들을 은퇴시켰습니다
+   -> 그 둘을 포함한 채로 옮기면 「선언에 이 칸이 있어야 한다」가 «검증기 안에서» 되살아납니다
+```
+
+## 그래서 물을 것 — 이건 「어디로 옮기나」가 아니라 「이 파일이 사나」입니다
+```
+v1 확장 파일(ledger_vocabulary.json) 이 «오늘 쓰이나»
+   -> 쓰인다면  SIGNATURE_FIELDS 는 «그 파일의 검증기»와 함께 남아야 하고,
+                traversable/direction 두 칸을 «빼는» 것이 먼저입니다
+   -> 안 쓰인다면 이 심볼은 «옮길 것이 아니라 같이 죽는» 것입니다
+      (그러면 ledger_admin:776 의 카탈로그 항목도 같이 갑니다)
+```
+🔴 제가 세어 보려다 멈춘 이유: 그 답이 「vocabulary.py 를 지우나 마나」와 «같은 질문»이고,
+   그건 지금 진행 중인 이사 전체의 «전제»입니다. 심볼 하나씩 옮기다가 마지막에 이걸 만나면
+   그때 되돌려야 합니다.
+
+## 제안 — 순서를 하나 바꿉니다
+```
+지금 순서   심볼을 하나씩 옮기고 -> 마지막에 vocabulary.py 를 지운다
+제안       «v1 확장 파일이 사는가»를 «먼저» 판정한다
+           -> 죽으면 SIGNATURE_FIELDS · DECL_REFUSALS · PREDICATES · ENTITY_TYPES 가
+              «옮길 것이 아니라 같이 죽습니다». 이사할 심볼이 크게 줍니다
+           -> 살면 그 파일의 검증기가 어디 사는지가 정해지고, 그때 옮길 곳이 «명확»해집니다
+```
+그 판정 전에 옮기면 「옮겼다가 지우는」 왕복이 납니다. 판정 주시면 바로 태우겠습니다.
+
+📌 트리 업로드 쪽은 커밋을 «따로» 했습니다 (`2c4027f3` 코드 · `9cd643da` 보고) — 지시대로입니다.
+
+---
+
 # 🔴 **트리는 보존됩니다. 그런데 게이트 ①이 «uuid 접미»에서 막힙니다** (구현자 10:0x)
 
 ## 한 것 — 서버 라우트 (`main.py` upload_file, 커밋 2c4027f3)
