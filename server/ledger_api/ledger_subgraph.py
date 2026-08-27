@@ -1100,48 +1100,13 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # an entity_ref object - a reload of 103,841 atoms, and the owner's call. The day that
         # lands, this function needs no branch: the entity_ref arm above already draws it.
 
-    def _link_containers(source_ids):
-        """Compose the declared container edges for these nodes, and RETURN the ids added.
-
-        🔴 CALLED INSIDE THE WALK, NOT AFTER IT. Composed after the loop the edges appear but
-        the nodes they reach are never expanded, so a core die reaches its wafer and the walk
-        stops one hop before the recipe that wafer was processed with -- measured: 117 edges,
-        17 wafers, and still zero recipes. Linking per level makes the container a place the
-        walk can go ON from, which is the whole point of drawing it.
-
-        🔴 A die is "a seat in some container", and WHICH key names the container is a fact
-        about this ontology, so the declaration says it (`entities.<type>.references`) and this
-        only reads it -- the edge's NAME included. Naming it here would put the ontology back
-        into the code through a smaller door.
-
-        🔴 NOTHING IS DRAWN TOWARDS AN ENTITY THE LEDGER NEVER MENTIONS: the targets are
-        checked first, in one batched question, because an edge to an absent node is a node
-        that opens empty. `basis` carries the declaration's filename, the way `binding` carries
-        the mechanism file -- asked where this came from, the answer is a declaration.
-        """
-        referenced = []
-        for node_id in source_ids:
-            node = nodes.get(node_id)
-            if not node or node.get("node_kind") != "entity":
-                continue
-            for edge_name, target_type, target_keys in entity_references.targets_for(
-                    node.get("type"), node.get("keys") or {}):
-                referenced.append((node_id, edge_name, target_type, target_keys))
-        if not referenced:
-            return
-        probe = getattr(lookup, "entities_that_exist", None)
-        live = probe([(t, k) for _, _, t, k in referenced]) if probe else set()
-        for source_id, edge_name, target_type, target_keys in referenced:
-            if (target_type, json.dumps(target_keys, sort_keys=True)) not in live:
-                continue
-            target = _entity_node(target_type, target_keys)
-            if target["id"] not in nodes:
-                if not add_node(target, decode_node_id(target["id"]),
-                                depths[source_id] + 1):
-                    continue
-            edge = _edge(edge_name, source_id, target["id"])
-            edge["basis"] = entity_references.CONFIG_FILENAME
-            add_edge(edge)
+    # 🔴 `_link_containers` REMOVED 2026-08-28. It composed the declared
+    # reference edges (a die -> its wafer / its dt-job). The declaration stopped
+    # declaring them the same night - `entities.die@1.references` was deleted and
+    # those 128 edges vanished with NO code change, which is the cleanest proof this
+    # projection draws only what is declared.
+    # Nothing moves out of reach: `inspected` (128 atoms) already crosses wafer to
+    # die forwards, so the material set is unchanged. What left is a drawing.
 
     for item, ref in seed_refs.items():
         add_node(_seed_node(item, ref, models_by_name, action_lookup), ref, 0)
@@ -1149,7 +1114,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     for depth in range(hops):
         frontier_ids = [node_id for node_id, seen_depth in depths.items()
                         if seen_depth == depth]
-        _link_containers(frontier_ids)
         frontier_ids = [node_id for node_id, seen in depths.items()
                         if seen == depth]
         if not frontier_ids:
