@@ -144,7 +144,20 @@ async function suite(mods) {
   // The discriminating click: the instance whose name is NOT the one a hardcode would pick.
   byClass(hostB, 'rb-cand-card')[0].click();
   await flush();
-  eq('A2 a part writes the name IT declared', [markings.count('marking:2'), markings.count('marking:1')], [1, 0]);
+
+  // 🔴 은퇴 2026-08-28 — 「없어진 세상」을 재고 있었습니다. 지우지 않고 «행선지»를 답니다.
+  //    무엇이 사라졌나: 후보 «순위»가 `collect` 축과 함께 꺼졌습니다
+  //                    (실측: /subgraph -> propagation.state="not_requested" · ranked=0).
+  //                    후보가 0 이므로 `candidate.measured` 는 적용 대상이 없습니다.
+  //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹입니다.
+  //                    서버 실측은 `{ entity: 400 }` 입니다 — 그 종류는 더 이상 안 옵니다.
+  //                    픽스처를 «지금 값»으로 바꾸면 정확히 이 단언들이 같은 이름으로 깨집니다.
+  //    어디로 가나:     「후보 패널을 walk 부품으로 다시 짓는 라운드」가 데려갑니다.
+  //                    그때 `measured` 의 답은 «노드 종류»가 아니라 «술어»입니다 —
+  //                    자취가 `observed` 엣지를 지났나. 그 엣지는 지금도 walk 응답에 옵니다.
+  //    🟢 조립식 정의(「부품이 «자기가 선언한» 이름에 쓴다」)는 «여기서만» 재던 것이 아닙니다 —
+  //       rnd_board_composition_harness A3 · rnd_board_harness D6 · walk_box D 절이 살아 있습니다.
+  // RETIRED: eq('A2 a part writes the name IT declared', [markings.count('marking:2'), markings.count('marking:1')], [1, 0]);
 
   // ── Z. the five absences, each its own words ──────────────────────────────────
   const hostC = doc.createElement('div');
@@ -210,11 +223,11 @@ async function suite(mods) {
     .filter((n) => n.getAttribute && n.getAttribute('data-col') === 'measured'
       && !String(n.className).includes('--head'))
     .map((n) => n.textContent);
-  eq('M1 the rank table prints `-` for a name-only candidate', measuredCells.filter((s) => s === '-').length, 4);
-  eq('M2 and 있음 for the one that reaches a claim', measuredCells.filter((s) => s === '있음').length, 1);
+  // RETIRED: eq('M1 the rank table prints `-` for a name-only candidate', measuredCells.filter((s) => s === '-').length, 4);
+  // RETIRED: eq('M2 and 있음 for the one that reaches a claim', measuredCells.filter((s) => s === '있음').length, 1);
   truthy('M3 the candidate list folds the name-only ones into one card',
     byClass(hostC, 'rb-cand-card--folded').length === 1);
-  truthy('M4 and says how many', byClass(hostC, 'rb-cand-card--folded')[0].textContent.includes('4'));
+  // RETIRED: truthy('M4 and says how many', byClass(hostC, 'rb-cand-card--folded')[0].textContent.includes('4'));
 
   // ── L. two lines, never merged ────────────────────────────────────────────────
   // 🔴 STILL TWO LINES, and now they are the SHARED table's two lines -- the `two_line` column
@@ -270,9 +283,12 @@ const MUTANTS = [
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       '      rank: c.rank === null ? null : String(c.rank),',
       '      rank: String(this._n = (this._n || 0) + 1),') } },
-  { id: 'X5', what: 'a name-only candidate is shown as measured', catches: 'M1',
-    mutate: { 'rank_list_panel.js': (s) => s.replace(
-      "      measured: c.measured ? '있음' : null,", "      measured: '있음',") } },
+  // 🔴 X5 은퇴 2026-08-28 — 그것을 «잡던» 단언(M1)이 위에서 은퇴했습니다.
+  //    잡는 것이 없는 변이는 「탈출」로 찍히고, 그 빨강은 «제품»이 아니라 «하니스»에 대한 것입니다.
+  //    「실측/이름뿐」이 다시 데이터로 갈리는 날 M1 과 «함께» 돌아옵니다.
+  // { id: 'X5', what: 'a name-only candidate is shown as measured', catches: 'M1',
+  //   mutate: { 'rank_list_panel.js': (s) => s.replace(
+  //     "      measured: c.measured ? '있음' : null,", "      measured: '있음',") } },
   { id: 'X6', what: 'quantity and model are merged into one string', catches: 'L1',
     mutate: { 'api.js': (s) => s.replace(
       "      quantity: (parts[0] || '').trim() || String(row.label || ''),",

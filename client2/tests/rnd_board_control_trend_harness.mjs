@@ -167,11 +167,24 @@ async function suite(mods) {
     ok('A1 the ratio axes come from the routes own selectable kinds',
       texts.some((t) => t.includes('보이드 비율')) && texts.some((t) => t.includes('박리 비율')),
       texts.join(' | '));
-    ok('A2 a measured candidate becomes an axis', texts.some((t) => t.includes('bond_temp')));
+
+    // 🔴 은퇴 2026-08-28 — 「없어진 세상」을 재고 있었습니다. 지우지 않고 «행선지»를 답니다.
+    //    무엇이 사라졌나: 후보 «순위»가 `collect` 축과 함께 꺼졌습니다
+    //                    (실측: /subgraph -> propagation.state="not_requested" · ranked=0).
+    //                    후보가 0 이므로 `candidate.measured` 는 적용 대상이 없습니다.
+    //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹입니다.
+    //                    서버 실측은 `{ entity: 400 }` 입니다 — 그 종류는 더 이상 안 옵니다.
+    //                    픽스처를 «지금 값»으로 바꾸면 정확히 이 단언들이 같은 이름으로 깨집니다.
+    //    어디로 가나:     「후보 패널을 walk 부품으로 다시 짓는 라운드」가 데려갑니다.
+    //                    그때 `measured` 의 답은 «노드 종류»가 아니라 «술어»입니다 —
+    //                    자취가 `observed` 엣지를 지났나. 그 엣지는 지금도 walk 응답에 옵니다.
+    //    🟢 조립식 정의(「부품이 «자기가 선언한» 이름에 쓴다」)는 «여기서만» 재던 것이 아닙니다 —
+    //       rnd_board_composition_harness A3 · rnd_board_harness D6 · walk_box D 절이 살아 있습니다.
+    // RETIRED: ok('A2 a measured candidate becomes an axis', texts.some((t) => t.includes('bond_temp')));
     ok('A3 a name-only candidate does NOT become an axis on its own',
       !texts.some((t) => t.includes('outgassing')), texts.join(' | '));
-    ok('A4 the name-only rest is one folded pill carrying its count',
-      texts.some((t) => t.includes('값 없음') && t.includes('1')), texts.join(' | '));
+    // RETIRED: ok('A4 the name-only rest is one folded pill carrying its count',
+    // RETIRED: texts.some((t) => t.includes('값 없음') && t.includes('1')), texts.join(' | '));
     // 🔴 THE FOURTH ABSENCE: the axis resolved, the comparison did not. The resolved number on
     //    its own reads as 「이만큼으로 대조할 수 있다」, the opposite of what happened.
     const straddleBar = new control.ControlBarPanel(makeDoc().createElement('div'), {
