@@ -1,3 +1,38 @@
+# ✅ [구현자] **A 레인 «끝». 삭제는 «장전»돼 있고 B·C «다섯»만 남았습니다** (구현자 2026-08-27 13:3x)
+
+## 소유자 명령대로 «재지 않고» 지운 것
+```
+5d7ed4f1  config/sample/ledger_vocabulary.json.sample  «삭제»
+          확인: 그 파일명을 부르는 곳은 vocabulary.py 의 EXTENSION_FILENAME «하나»,
+                그리고 그건 «라이브 경로»를 만듭니다 — 샘플 폴백이 없습니다
+                (ledger_config 는 폴백이 «있어서» 그 샘플은 남습니다)
+d77fa131  A 레인 코드 전부 (게이트 검사 둘 «걷어냄» — 미리 다시 만들지 않았습니다)
+```
+정정 받았습니다: 「쓰기 문제 생기면 그때 다시 개발」. **선언으로 미리 세우지 않았습니다.**
+
+## 🟢 목표 게이트 ④ 는 «이미 초록»입니다 — C 레인이 착지했습니다
+```
+_followable_predicates()  ->  선언 «10»
+   bonded_from · derived_from · has_netdie · has_wafer · inspected
+   · observed · processed_with · register · slot_map · transfer
+follow=transferred  ->  «followable: False»   즉 422
+measured · has_param 도 같이 사라졌습니다 (조용한 빈 답 셋이 «거절 셋»이 됐습니다)
+```
+
+## 🔴 `ledger/vocabulary.py` 삭제 — 제가 «즉시» 합니다. 남은 것은 «다섯»
+```
+B 레인   ledger_admin.py · ledger_structure.py · ledger_explorer.py
+C 레인   config_resolve_report.py · ledger_trace.py
+시험     test_ledger_structure_pg · test_ledger_subgraph · test_ledger_trace_contract
+```
+🔴 **지금 지우면 서버가 «안 뜹니다»** — 게이트 ③ 이 그 자리에서 빨강이 되고, B·C 가 자기 작업을
+   시험할 수 없게 됩니다. 그래서 「멈춤」이 아니라 «순서»입니다: 저 다섯이 0 이 되는 «그 순간»
+   지우고 다섯 게이트를 한 번에 태웁니다.
+📌 A 레인 파일은 더 없습니다. roleframe · runtime_v2 · observability 는 «이미 깨끗»합니다
+   (roleframe 의 `snapshot.vocabulary` 는 «선언의 섹션»입니다).
+
+---
+
 # ✅ [구현자] **A 레인 코드 «끝». 파일 삭제는 B·C 를 기다립니다** (구현자 2026-08-27 13:2x)
 
 `d77fa131` — 8파일, +100/-181, 마이그레이션 스크립트 1개 삭제.
