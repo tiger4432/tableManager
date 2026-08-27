@@ -16931,3 +16931,45 @@ defect@1 을 «진짜 엔티티»로 만들려면 observed@1 의 목적어가 va
 ⑤ 남은 라우트가 «둘»: /subgraph · /declaration   (openapi.json 으로 확인)
 ⑥ pytest — 지운 모듈을 재던 테스트는 «같은 커밋에서» 함께 은퇴
 ```
+
+---
+
+# 🔓 A 막힘 해제 + B 한 걸음 더 (총괄 실측, 2026-08-28 02:4x · 서버 PID 58400)
+
+## A 가 걱정한 「받아들여지는데 아무것도 안 걷는 낱말」 — «이미 없습니다»
+```
+/api/ledger/declaration   predicates «10» · in_container 없음 · collect 키 없음
+follow=in_container        -> «422»
+```
+B 의 라우터 스트립(`2cb9a8b9`)이 그 구멍을 이미 닫았습니다. **A 의 판정 요청은 해소됐습니다.**
+
+## 그리고 참조는 «선언»에서 빠졌습니다 — 총괄이 방금 했습니다
+```
+ledger_config.json  38,646 -> 37,924 B   (entities.die@1.references 삭제)
+재기동 후 실측:  in_container «128 -> 0» · 자재 «9종» 그대로 · 엣지 1,342 -> 1,214
+```
+🔴 **코드는 한 줄도 안 고쳤습니다.** 선언을 지우니 투영이 저절로 안 그립니다 —
+「엣지는 선언된 술어뿐」이 실제로 그렇게 도는 증거입니다.
+👉 그러므로 `_link_containers` 는 이제 «죽은 코드»입니다. A 가 지우면 됩니다. 게이트는 «무변»입니다.
+⚠️ 캐시 주의: `entity_references.load()` 는 모듈 캐시라 «재기동해야» 반영됩니다.
+   저도 선언 지운 직후 128 을 보고 「가설이 틀렸나」 했는데 캐시였습니다.
+
+## 🛠️ B — 한 걸음 남았습니다: 살아남은 `/subgraph` 의 «서명»
+```
+지금 /subgraph 가 받는 인자 (openapi 실측):
+   id · hops · direction · «include_values» · «enrich_actions» · node_limit · edge_limit
+   · «shape» · «property_limit» · positive · negative · «collect» · follow
+지울 것   include_values · enrich_actions · shape · property_limit · collect
+         그리고 :134 의 tabular_projection 호출 · :190~208 의 observation_mode 전달
+남길 것   id · hops · direction · node_limit · edge_limit · positive · negative · follow
+```
+🔴 **이게 A 를 막고 있는 «유일한» 것입니다** — A 는 `subgraph()` 에서 그 인자들을 지우려는데
+   라우터가 아직 넘기고 있어 지우면 B 트리가 깨집니다.
+
+## 순서
+```
+① B   위 서명 정리 -> 커밋 -> 「놓습니다」
+② A   subgraph() 에서 collect · observation_mode · include_values · NODE_KINDS 계열
+      · tabular_projection · _link_containers 삭제 -> 400줄 목표
+③ 총괄 재기동 + 게이트
+```
