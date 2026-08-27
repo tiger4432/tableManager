@@ -76,7 +76,7 @@ def test_direction_and_value_projection_are_explicit_parameters():
     lookup = ledger_subgraph.InMemoryEvidenceLookup(fixture())
     entity_id = ledger_explorer.entity_id("Lot", {"lot": "A"})
     outgoing = ledger_subgraph.subgraph(
-        entity_id, lookup, hops=3, direction="outgoing", include_values=False)
+        entity_id, lookup, hops=3, direction="outgoing")
     labels = {node["label"] for node in outgoing["nodes"]}
     assert "C" not in labels
     assert not any(node["node_kind"] == "value" for node in outgoing["nodes"])
@@ -91,7 +91,9 @@ def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
     body = ledger_subgraph.subgraph(entity_id, lookup, hops=2)
     # 🔴 a legacy atom no longer becomes an event NODE -- it is still one honest fact, now
     # carried as an edge. `register` has no object, so what it leaves is the subject itself.
-    assert not any(node["node_kind"] in ledger_subgraph.RETIRED_NODE_KINDS
+    # 🔴 `RETIRED_NODE_KINDS` left with `collect` on 2026-08-28: there is one kind
+    # now, so a roster of the retired ones has nothing to exclude from. Asserted directly.
+    assert not any(node["node_kind"] != "entity"
                    for node in body["nodes"])
     assert any(node["label"] == "OLD" for node in body["nodes"])
     reseeded = ledger_subgraph.subgraph(entity_id, lookup, hops=1)
@@ -180,12 +182,12 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
     # No control seed is NOT 「controls came back clean」 — the axis was never examined,
     # and an unlisted subject is never promoted into the negative list to fill it.
     solo = ledger_subgraph.subgraph({"positive": [marked]}, lookup, hops=4,
-                                    collect="entity")
+                                    )
     assert solo["propagation"]["contrast"] == "unexamined"
     assert solo["walk"]["start"] == {"positive": 1, "negative": 0}
 
     contrasted = ledger_subgraph.subgraph(
-        {"positive": [marked], "negative": [control]}, lookup, hops=4, collect="entity")
+        {"positive": [marked], "negative": [control]}, lookup, hops=4)
     assert contrasted["propagation"]["contrast"] == "contrasted"
     assert {item["sign"] for item in contrasted["seeds"]} == {"+", "-"}
     assert contrasted["walk"]["start"] == {"positive": 1, "negative": 1}
@@ -216,78 +218,6 @@ def uneven_fixture():
         atom(25, "FAT", "measured", value={"metric": "ov", "value": 3.0},
              event=events[4]),
     ]
-
-
-def test_the_first_hop_is_not_divided_by_the_seeds_own_degree():
-    """The rule with a stated reason, on the fixture where the two rules disagree.
-
-    `THIN` carries two claims and `FAT` three.  Their factors are otherwise identical, so
-    under the rule they are reached with the same weight and come out TIED.  Divide the
-    seed's own hop by its degree and the thinner subject's factor wins on nothing but its
-    subject having had fewer claims recorded — the artefact the rule exists to prevent.
-    """
-    lookup = ledger_subgraph.InMemoryEvidenceLookup(uneven_fixture())
-    body = ledger_subgraph.subgraph({"positive": [
-        ledger_explorer.entity_id("Lot", {"lot": "THIN"}),
-        ledger_explorer.entity_id("Lot", {"lot": "FAT"}),
-    ]}, lookup, hops=4, collect="entity")
-    ranked = {row["label"]: row for row in body["propagation"]["ranked"]}
-    assert ranked["FACTOR-THIN"]["rank"] == ranked["FACTOR-FAT"]["rank"]
-    assert ranked["FACTOR-THIN"]["tied"] and ranked["FACTOR-FAT"]["tied"]
-
-
-def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
-    lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
-    marked = ledger_explorer.entity_id("Lot", {"lot": "MARK"})
-    control = ledger_explorer.entity_id("Lot", {"lot": "CTRL"})
-    # deep enough to reach the far ancestor, so `complete` still means something
-    body = ledger_subgraph.subgraph(
-        {"positive": [marked], "negative": [control]}, lookup, hops=8, collect="entity")
-    prop = body["propagation"]
-    prop_seeds = body["seeds"]
-    ranked = {row["label"]: row for row in prop["ranked"]}
-    assert prop["top_set"] == [row["id"] for row in prop["ranked"] if row["top"]]
-    assert prop["complete"] is True
-    # Every ranked entry that is NOT top is dominated by something in the top set, and
-    # nothing in the top set dominates anything else there.
-    assert all(row["rank"] > 1 for row in prop["ranked"] if not row["top"])
-    # 「걸은 경로도 나와?」 — on EVERY rank, not only on the winner.  A reader has to be
-    # able to say 「this one was never reached from a control」 about something that is
-    # not first, and that judgement needs the trail and the sign, not the position.
-    # Every ranked candidate the WALK reached carries its trail.  A seed may carry none
-    # and that is not a hole: the caller named its sign, so there is no path to report --
-    # measured on live data, where a control in another lineage branch is reached by no
-    # other seed.  Asserting `all(...)` here would be a fixture-specific premise.
-    seeded = {item["id"] for item in prop_seeds}
-    assert all(row["evidence"] for row in prop["ranked"] if row["id"] not in seeded)
-    assert any(row["rank"] > 1 for row in prop["ranked"]), "fixture must rank below 1"
-    below = next(row for row in prop["ranked"]
-                 if row["rank"] > 1 and row["id"] not in seeded)
-    assert below["evidence"] and below["evidence"][0]["hops"]
-    # The sign is what carries the judgement, and it is on every rank's trails.
-    assert {trail["sign"] for row in prop["ranked"] for trail in row["evidence"]} == {
-        "+", "-"}
-    assert {trail["sign"] for trail in below["evidence"]} <= {"+", "-"}
-    top = ranked["ORIGIN"]
-    assert top["evidence"], "the top set carries its hop-by-hop basis"
-    hops = top["evidence"][0]["hops"]
-    assert hops[0]["id"] in (marked, control)
-    assert hops[-1]["label"] == "ORIGIN"
-    # 🔴 a trail no longer STEPS THROUGH a claim -- it steps between things in the world and
-    # the assertion is the edge it crosses. Asserting a claim hop would pin the old shape.
-    assert all(hop["node_kind"] not in ledger_subgraph.RETIRED_NODE_KINDS for hop in hops)
-    # 「정도가 아니라 종류가 다르다」 has to be reachable or the mark is decoration:
-    # more reach from the marked subjects AND more from the controls is a trade-off, so
-    # neither dominates and both stay top.
-    layers = ledger_subgraph._rank_layers([
-        {"id": "trade", "reach": [0.5, 0.2]},
-        {"id": "clean", "reach": [0.3, 0.0]},
-        {"id": "twin", "reach": [0.3, 0.0]},
-        {"id": "weak", "reach": [0.1, 0.9]}])
-    assert [item["id"] for item in layers[0]] == ["trade", "clean", "twin"]
-    assert all(item["incomparable"] for item in layers[0])
-    assert [item["tied"] for item in layers[0]] == [False, True, True]
-    assert [item["id"] for item in layers[1]] == ["weak"]
 
 
 def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
@@ -573,3 +503,7 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
 #: source-event nodes, the `collect` switch and the retired id prefixes -- every one of them
 #: a place the walk no longer has. What survives is the walk's own contract: declared
 #: entities, the edges between them, the budget and `truncated`.
+
+#: 🔴 TWO MORE RETIRED 2026-08-28: the ranked-answer tests. `collect` turned the walk
+#: into a ranking over one node KIND, and there is one kind now, so the ranking has nothing to
+#: choose between. `_rank_layers` went with them.

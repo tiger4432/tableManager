@@ -70,12 +70,11 @@ MAX_CLAIM_SCAN = 6000
 DEFAULT_PROPERTY_LIMIT = 10000
 MAX_PROPERTY_LIMIT = 20000
 EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
-#: Every node kind this projection can emit.  `collect` names exactly one of them and an
-#: unknown name is REFUSED rather than answered with an empty list: a filter that can never
-#: be true is indistinguishable from a true absence, and this walk's whole job is telling
-#: those two apart.
-NODE_KINDS = ("entity", "event", "claim", "collection", "point", "value",
-              "quantity", "action")
+#: 🔴 `NODE_KINDS`, `RETIRED_NODE_KINDS` and `FOLDED_KINDS` left on 2026-08-28.
+#: A projection that emits ONE kind needs no roster of kinds, and the two retired
+#: names existed only so `collect` could refuse them by name. `collect` went too.
+
+#: A SQL identifier, so a caller-named relation cannot smuggle anything else in.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -481,44 +480,6 @@ def _reach(nodes, edges, seed_signs):
     return reach, parents
 
 
-def _rank_layers(items):
-    """Layer candidates by DOMINANCE, never by one number.
-
-    A dominates B when A was reached at least as much from the marked subjects and at most
-    as much from the controls, strictly better on one of the two.  Two candidates that each
-    beat the other on one axis are not ranked against each other at all — they differ in
-    KIND, not in degree — and both stay in the top set.  The answer is a set, and 「1등」 is
-    a question this function refuses to answer when the evidence does not.
-
-    [SCALE] Layering is O(n log n) over the two axes rather than the pairwise sweep: a
-    lineage answer can collect the whole node budget, where the pairwise form is n³.
-    """
-    ordered = sorted(items, key=lambda item: (-item["reach"][0], item["reach"][1]))
-    floors, layers, index = [], [], 0
-    while index < len(ordered):
-        stop, coordinate = index, ordered[index]["reach"]
-        while stop < len(ordered) and ordered[stop]["reach"] == coordinate:
-            stop += 1
-        # Everything already placed has at least this observed-reach, so this group is
-        # dominated by exactly those layers already holding a smaller control-reach.
-        layer = bisect.bisect_right(floors, coordinate[1])
-        if layer == len(floors):
-            floors.append(coordinate[1])
-            layers.append([])
-        else:
-            floors[layer] = coordinate[1]
-        for item in ordered[index:stop]:
-            item["rank"] = layer + 1
-            item["tied"] = stop - index > 1
-            layers[layer].append(item)
-        index = stop
-    for layer in layers:
-        distinct = {tuple(item["reach"]) for item in layer}
-        for item in layer:
-            item["incomparable"] = len(distinct) > 1
-    return layers
-
-
 def _evidence(nodes, parents, seed_signs, node_id):
     """The hop-by-hop path from every seed that reached this candidate.
 
@@ -697,75 +658,25 @@ def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
             "predicates": [],
         }
     return seed_node
-
-
-#: The node kinds that summary mode folds away. Asking to collect one of these is asking
-#: for the inside of the fold, so the walk unfolds rather than answering an empty set.
-#: MEASURED 2026-08-24: with the fold on these two rank 0 and 1; with it off, 30 and 31.
-#: `claim` left this set on 2026-08-25: there is no claim node to unfold to any more.
-FOLDED_KINDS = frozenset({"point"})
-
-#: Kinds that stopped existing when one fact became one edge. Collecting one of these
-#: would return an empty ranking that reads exactly like "nothing was found", which is
-#: the confusion this module refuses everywhere else.
-RETIRED_NODE_KINDS = frozenset({"claim", "event"})
-
-
-
-
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
-             include_values=True, node_limit=DEFAULT_NODE_LIMIT,
-             edge_limit=DEFAULT_EDGE_LIMIT, observation_mode="summary",
-             action_lookup=None, collect=None, follow=None):
+             node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
+             action_lookup=None, follow=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
-    `collect` names one node kind and turns the walk into a ranked answer over it.  Both
-    are optional and neither changes what a single-seed caller already receives.
+
+    🔴 `collect`, `observation_mode` and `include_values` left on 2026-08-28 with their
+    last caller. They chose among node KINDS, and there is one kind now: a declared entity.
+    What narrows a walk is `follow`, and nothing else.
     """
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
-    if collect is not None:
-        collect = str(collect).strip().lower()
-        if collect not in NODE_KINDS:
-            raise ValueError("collect must be one of " + ", ".join(NODE_KINDS))
     hops = max(1, min(int(hops), MAX_HOPS))
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
         raise ValueError("direction must be outgoing, incoming, or both")
-    # ⚠️ `observation_mode` IS ACCEPTED AND IGNORED, and only until lane B's router
-    # stops passing it (`ledger_trace_router.py:208`). Deleting the keyword now would
-    # TypeError that call, so the BEHAVIOUR left tonight and the parameter follows when its
-    # last caller does. It steers nothing: observations are always fetched.
-    if collect in RETIRED_NODE_KINDS:
-        raise ValueError(
-            f"{collect!r} is no longer a node kind -- a claim is an edge and its source event "
-            "is an edge attribute, so this can never rank anything")
-    # 🔴 `collect` NAMES WHAT THE CALLER WANTS, AND THE FOLD IS AN INTERNAL ECONOMY.
-    # Summary mode replaces a wafer's observations with ONE collection node, so the point
-    # and claim nodes are never emitted at all -- not filtered late, not walked past:
-    # never made. MEASURED 2026-08-24 on `SYN-BW-K1-201-01`: `collect=point` ranked 0 with
-    # the fold on and 30 with it off, and `collect=claim` 1 against 31. A caller asking for
-    # a kind that only exists behind the fold was answered "none", which is a false
-    # statement about the data rather than a limit of the request.
-    #
-    # So the fold yields to the request. It stays on for every other call -- thirty
-    # observations collapsing to one node is why a wafer's graph is readable at all -- and
-    # unfolds only when the collected kind lives inside it. This is not a second route and
-    # not a flag the client passes: the client declares what it collects, which is the
-    # contract the marking rule asks for.
-    #
-    # ⚠️ THE NODE BUDGET IS REAL AND IS ANSWERED WITH `truncated`, NOT WITH SILENCE. A wafer
-    # with thousands of observations will hit the cap once unfolded; the response says so.
-    # Answering 0 because the fold was cheaper is the behaviour this replaces.
-    # 🔴 THE FOLD IS GONE (2026-08-28). `observation_mode="summary"` added
-    # "e.predicate <> 'observed'" to the fetch, and `follow` adds "e.predicate = ANY(...)".
-    # Those AND together, so a caller asking to follow `observed` got an empty intersection -
-    # findings became UNREACHABLE the moment the route stopped exposing `observations` while
-    # this default stayed behind. Observations are now always fetched and `follow` is the one
-    # control, which is the owner's rule: walking is steered by `follow`.
     claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
     # Declared, not queried.  An absent or broken declaration yields no models and no
     # bindings, so the projection simply carries no Quantity nodes — the same «state, not
@@ -992,12 +903,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(
-            nodes, ordered_edges, seed_signs, collect,
+            nodes, ordered_edges, seed_signs, None,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
-
-            "collect": collect,
             "start": {
                 "positive": sum(1 for s in seed_signs.values() if s > 0),
                 "negative": sum(1 for s in seed_signs.values() if s < 0),
