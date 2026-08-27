@@ -4,6 +4,65 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# ✅ [C 응용] **오늘 밤 배분 «전부» 착지 — 그리고 «고아 다섯»을 실측했습니다** (22:4x)
+
+커밋 셋: `cb504254`(죽는 모듈 넷) · `73cdfdbf`(하드코딩) · 그 앞에 `8925e899`(잡기 노트).
+
+## 지시대로 지운 것 — «소비자를 먼저 세고» 지웠습니다
+```
+모듈 넷      ledger_trends(4) · ledger_composition(4) · ledger_structure(6) · ledger_lots(9)
+             괄호는 «착수 전에 센» 임포터 수입니다. 라우터 «밖»의 살아 있는 소비자는 «하나»뿐 —
+             ledger_selection 이 ledger_trends.DEFAULT_GRAIN 에서 subject_type 을 읽고 있었습니다
+             -> 선언에 물어보게 바꿨습니다. 실측 답 'wafer' — 그램이 들고 있던 값과 «같습니다»
+같이 은퇴     테스트 파일 «여섯» · 살아남는 파일 안의 테스트 «다섯» + v2_pg 두 줄
+             스크립트 진입점 «둘» (verify_live · prove). --prove 는 살렸습니다 —
+             prove_cause_connects 는 이 모듈들을 안 씁니다
+안 지운 것    SCORED_AGGREGATES. 지운 prove() 의 고아처럼 보였는데
+             seed_syn_aug_material.py:259 가 «지금도» 읽습니다
+하드코딩      DEFAULT_KIND · void/delam 카탈로그 · selection 의 void 전용 defect 층 ·
+             identity 의 aggregation 낱말쌍. 기본값 인자 여섯이 «kind 를 이름 대게» 바뀌었습니다
+```
+🔴 **제품 코드에 defect kind 이름이 «0» 입니다.** 픽스처(seed_*)는 자기 kind 를 스스로 이름 댑니다.
+
+## 게이트
+```
+⑤ 라우트 둘   ✅ /api/ledger/subgraph · /api/ledger/declaration «만». main 도 import 됩니다
+⑥ pytest     ✅ 4,384 수집 오류 0 · 제 모듈을 만지는 테스트 파일 여덟 «107 통과 / 22 skip(PG)»
+①②③        ⏸ A 의 ledger_subgraph 가 아직입니다 — 서명에 collect·include_values·
+             observation_mode 가 «그대로» 있어 지금 재면 «옛 투영»을 재게 됩니다
+④ 자재 9종    ⏸ 위와 같은 이유
+```
+
+## 🔴 판정 필요 ① — 「읽히는 코드」를 재 보니 «고아 다섯 · 211 KB» 입니다
+B 가 라우트를 둘로 줄인 «뒤»에 main.py 에서 import 그래프를 걸어 봤습니다(함수 안 import 포함):
+```
+ledger_selection.py      72,700 B   <- 유일한 소비자였던 /selection/resolve 가 사라졌습니다
+ledger_walk_contrast.py  67,568 B
+ledger_siblings.py       48,001 B   <- ledger_selection 을 통해서만 닿습니다
+ledger_kinds.py          16,971 B   <- /kinds 가 사라졌습니다
+ledger_identity.py        6,234 B   <- ledger_selection 을 통해서만 닿습니다
+                        ───────
+                        211,474 B   전부 «main.py 에서 닿지 않습니다». 소비자는 테스트뿐입니다
+```
+오늘 밤 산출물이 「남는 코드가 읽히게」인데, **이 다섯이 남으면 읽는 사람이 먼저 만나는 것이 이것들입니다.**
+⚠️ 제 배분에 «없어서» 손대지 않았습니다. 지우라고 하시면 지웁니다 — 다만 셋(selection·identity·kinds)은
+   제가 방금 «고친» 파일이라, 지울 것이면 그 수정은 헛일이었다는 뜻이므로 먼저 여쭙습니다.
+
+## 🔴 판정 필요 ② — kind 카탈로그의 «집»
+`server/config/*` 가 gitignore 라 대체 선언을 커밋할 수 없어 **`config/sample/finding_kinds.json.sample`**
+로 올렸습니다(같은 load() 로 검증 통과). 그래서 지금 이 박스는:
+```
+config/finding_kinds.json 이 «없습니다»  ->  registry = []  ->  모든 kind 가 «이름으로 거절»됩니다
+```
+조용하지 않고 «시끄럽게» 거절합니다. 테스트는 자기 kind 를 선언해서 초록입니다.
+🔴 **저는 server/config/ 안에 쓰지 않았습니다 — 소유자의 라이브 설정입니다.** 둘 중 하나를 정해 주십시오:
+```
+(가) 샘플을 라이브로 materialize   — 다른 설정들과 같은 관례. 씨딩 스크립트가 바로 돕니다
+(나) kind 를 ledger_config.json 선언으로  — 개정안 6의 방향(defect@1)과 같은 자리
+```
+
+---
+
 # 🔒 [C 응용] **잡습니다 — 오늘 밤 지시의 제 배분 «일곱 파일»** (22:2x)
 
 `server/ledger_api/finding_kinds.py` · `server/ledger_api/ledger_selection.py` ·
