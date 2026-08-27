@@ -68,7 +68,7 @@ export class WalkBoxPanel extends Panel {
     const got = await this.loadDeclaration();
     this.declaration = got && got.ok ? got : null;
     this.declState = this.declaration ? 'ready' : 'refused';
-    if (this.declaration && !this.collect) this.collect = (this.declaration.collect || [])[0] || null;
+    if (this.declaration && !this.collect) this.collect = (this.collects()[0] || {}).id || null;
     this.render();
   }
 
@@ -94,8 +94,20 @@ export class WalkBoxPanel extends Panel {
     return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);
   }
 
+  /**
+   * COLLECT 목록을 «한 모양»으로 폅니다: `{ id, label }`.
+   *
+   * 🔴 선언이 «두 모양»으로 올 수 있습니다 -- 오늘은 `["entity", …]` 이고, 라벨이 붙는 날
+   *    `[{id, label_ko}, …]` 입니다. 여기서 한 번 펴 두면 그날 이 부품은 «한 줄도» 안 바뀝니다.
+   *
+   * 🔴 라벨이 없으면 «id 를 그대로» 그립니다. 숨기거나 지어내지 않습니다 -- 종류가 하나 늘고
+   *    라벨이 아직 없을 때 화면이 «빈 칸»이 되면, 그건 「없는 것」이 아니라 「고장」으로 읽힙니다.
+   */
   collects() {
-    return (this.declaration && this.declaration.collect) || [];
+    const raw = (this.declaration && this.declaration.collect) || [];
+    return raw.map((c) => (c && typeof c === 'object'
+      ? { id: c.id, label: c.label_ko || c.label || c.id }
+      : { id: c, label: c })).filter((c) => c.id);
   }
 
   /** 타입을 바꾸면 «그 타입에 없는» 키와 술어는 따라올 자격이 없습니다. */
@@ -263,9 +275,10 @@ export class WalkBoxPanel extends Panel {
     sel.setAttribute('data-field', 'collect');
     for (const c of this.collects()) {
       const opt = doc.createElement('option');
-      opt.setAttribute('value', c);
-      opt.textContent = c;
-      if (c === this.collect) opt.setAttribute('selected', 'selected');
+      // 🔴 값은 «id», 글자는 «라벨». 서버가 받는 것은 id 이고 사람이 읽는 것은 라벨입니다.
+      opt.setAttribute('value', c.id);
+      opt.textContent = c.label;
+      if (c.id === this.collect) opt.setAttribute('selected', 'selected');
       sel.appendChild(opt);
     }
     sel.addEventListener('change', (e) => { this.collect = (e && e.target && e.target.value) || null; this.render(); });
