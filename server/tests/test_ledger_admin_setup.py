@@ -9,12 +9,19 @@ either a WRITE GATE (what a declaration must satisfy before it is allowed to cha
 the ledger will accept) or the DRY RUN'S ZERO-WRITE GUARANTEE. Nothing here checks how a
 screen renders a list.
 
-THE TWO-SIDED ASSERTION THAT MATTERS MOST
--------------------------------------------
-`test_a_config_word_joins_the_gate_without_moving_the_pinned_code_set` is the whole of
-R-M ④ in one test: the merged set grows, `PREDICATES` does NOT, and the gate's signature
-check judges the new word by the same machinery. One side alone would be worthless -
-"the config word works" is compatible with the fixed v0 test having been quietly widened.
+WHAT LEFT ON 2026-08-27, AND WHY IT IS NOT A GAP
+--------------------------------------------------
+Half this file used to measure the v1 predicate layer: a per-predicate signature checker,
+an operator-editable EXTENSION FILE beside the code list, and the save/retire pair that
+wrote to it. All three are gone, so the tests that measured them are gone in the same
+commit rather than left as tests of nothing. What replaced them is not a smaller version
+of the same thing — the declaration is now the only list, its edit unit is the WHOLE
+DOCUMENT, and `test_ledger_structure_pg` is where "the picture follows whatever is
+declared" is asserted.
+
+What stays here is what still exists: the SQL-identifier refusals, the source surface
+(undeclared table, unparsable raw, stale base), the dry-run token, the closed refusal
+set, and the guarantee that a preview writes nothing.
 """
 import copy
 import json
@@ -25,188 +32,18 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger import gate, vocabulary                                  # noqa: E402
+from ledger import gate                                              # noqa: E402
 import ledger_admin                                                  # noqa: E402
 
 
 # --------------------------------------------------------------------------- fixtures
-def signature(**overrides):
-    """A COMPLETE ontology signature. Tests remove exactly the field under test.
-
-    Written positively rather than as a pile of partial dicts so that "what a complete
-    signature is" is stated once here and can be compared against
-    `vocabulary.SIGNATURE_FIELDS` - which the first test below actually does.
-    """
-    entry = {
-        "label_ko": "폐기",
-        "layer": "ontology",
-        "status": "active",
-        "since": 5,
-        "subject": ["Wafer"],
-        "object": {"kind": "value", "required": ["reason", "run_uid"]},
-        "qualifiers": [],
-        "traversable": None,
-        "direction": None,
-    }
-    entry.update(overrides)
-    return entry
-
-
-@pytest.fixture
-def extension(tmp_path, monkeypatch):
-    """Point the vocabulary's config layer at a scratch file.
-
-    `extension_path` is monkeypatched rather than `paths.CONFIG_DIR`, because the
-    operator's real config directory holds files five processes read and a test that
-    could write there would be one typo from editing the box's live vocabulary.
-    """
-    path = str(tmp_path / "ledger_vocabulary.json")
-    monkeypatch.setattr(vocabulary, "extension_path", lambda: path)
-    monkeypatch.setattr(ledger_admin, "vocabulary_path", lambda: path)
-    vocabulary.reset_cache()
-    yield path
-    vocabulary.reset_cache()
-
-
-def write_extension(path, predicates):
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump({"version": 1, "predicates": predicates}, handle, ensure_ascii=False)
-    vocabulary.reset_cache()
 
 
 def codes(violations):
     return [v["code"] for v in violations]
 
 
-# ------------------------------------------------- ② signature completeness (the gate)
-def test_the_declared_signature_fields_are_the_ones_the_checker_enforces():
-    """The list and the enforcement are the same list, not two lists that agree today."""
-    complete = signature()
-    for field in vocabulary.SIGNATURE_FIELDS:
-        partial = dict(complete)
-        partial.pop(field, None)
-        assert "signature_incomplete" in codes(
-            vocabulary.check_predicate_declaration("scrapped", partial)), (
-            f"removing '{field}' - which SIGNATURE_FIELDS declares required - did not "
-            f"refuse the declaration")
-
-
-def test_traversable_must_be_CHOSEN_and_null_is_a_choice():
-    """🔴 R-M ②'s sharpest edge: a defaulted tri-state is a declaration nobody made.
-
-    The two halves are the point. An ABSENT key is refused - otherwise "I did not think
-    about the walk" and "the walk must never fetch this" would be the same declaration.
-    An EXPLICIT null is accepted, because `None` is a real state (`observed` carries it
-    deliberately) and refusing it would leave the third state unreachable from the screen.
-    """
-    absent = signature()
-    absent.pop("traversable")
-    violations = vocabulary.check_predicate_declaration("scrapped", absent)
-    assert codes(violations) == ["signature_incomplete"]
-    assert violations[0]["field"] == "traversable"
-
-    explicit_null = signature(traversable=None)
-    assert vocabulary.check_predicate_declaration("scrapped", explicit_null) == []
-
-    explicit_false = signature(traversable=False)
-    assert vocabulary.check_predicate_declaration("scrapped", explicit_false) == []
-
-
-def test_a_value_object_with_nothing_required_is_refused():
-    """A `value` object's ONLY enforcement point is `required` (R-2026-08-13-D)."""
-    violations = vocabulary.check_predicate_declaration(
-        "scrapped", signature(object={"kind": "value"}))
-    assert "signature_incomplete" in codes(violations)
-    assert any(v["field"] == "object.required" for v in violations)
-
-
-def test_an_undeclared_entity_type_cannot_be_minted_from_a_declaration():
-    violations = vocabulary.check_predicate_declaration(
-        "scrapped", signature(subject=["Cassette"]))
-    assert "undeclared_entity_type" in codes(violations)
-
-
-# ------------------------------------------------------- ① canonical stays out of reach
-def test_the_canonical_layer_has_no_door_from_a_declaration():
-    violations = vocabulary.check_predicate_declaration(
-        "asserted", signature(layer="canonical"))
-    assert "canonical_layer_forbidden" in codes(violations)
-
-
-@pytest.mark.parametrize("name", ["register", "pin", "same_as", "observed"])
-def test_a_code_loaded_word_cannot_be_redefined_from_a_declaration(name):
-    violations = vocabulary.check_predicate_declaration(name, signature())
-    assert "duplicate_predicate" in codes(violations)
-
-
-def test_a_second_traversable_word_is_refused_because_the_walk_cannot_run_it():
-    """Not squeamishness: `ledger_trace.traversal_predicate` raises on two of them.
-
-    Accepting this declaration would take the trace screen down at the NEXT request,
-    while the operator held a green save message.
-    """
-    violations = vocabulary.check_predicate_declaration(
-        "scrapped", signature(traversable=True, direction="subject_to_object"))
-    assert codes(violations) == ["traversable_true_unavailable"]
-    assert "derived_from" in violations[0]["detail_ko"]
-
-
-# ------------------------------------------ ④ the merged set, and the pin that holds
-def test_a_config_word_joins_the_gate_without_moving_the_pinned_code_set(extension):
-    """🔴 THE TWO-SIDED ASSERTION. Both halves, or neither means anything."""
-    before_code = set(vocabulary.PREDICATES)
-    before_all = set(vocabulary.all_predicates())
-
-    write_extension(extension, {"scrapped": signature()})
-
-    # (a) the pinned code set did NOT move - the v0 fixed test still pins what it pinned
-    assert set(vocabulary.PREDICATES) == before_code
-    # (b) the merged set DID
-    assert set(vocabulary.all_predicates()) == before_all | {"scrapped"}
-    assert vocabulary.predicate_origin("scrapped") == "config"
-    assert vocabulary.predicate_origin("observed") == "code"
-    # (c) and the GATE reads the merged one
-    assert vocabulary.is_declared("scrapped")
-    assert "scrapped" in vocabulary.emittable()
-
-
-def test_the_gate_judges_a_config_word_by_the_SAME_signature_machinery(extension):
-    write_extension(extension, {"scrapped": signature()})
-
-    good = vocabulary.check_signature("scrapped", "Wafer", "value",
-                                      {"reason": "chipping", "run_uid": "r1"})
-    assert good == []
-
-    missing = vocabulary.check_signature("scrapped", "Wafer", "value",
-                                         {"reason": "chipping"})
-    assert missing and "run_uid" in missing[0]
-
-    wrong_subject = vocabulary.check_signature("scrapped", "Lot", "value",
-                                               {"reason": "x", "run_uid": "r1"})
-    assert wrong_subject and "does not accept subject type" in wrong_subject[0]
-
-
-
-
-
-
-def test_a_malformed_extension_degrades_to_code_only_and_SAYS_SO(extension):
-    """Never raises. Five processes import this module; a stray comma must not stop them.
-
-    But the degradation is REPORTED - a vocabulary that quietly shrank would refuse every
-    atom of a config word with `undeclared_vocabulary` and nothing would say why.
-    """
-    with open(extension, "w", encoding="utf-8") as handle:
-        handle.write('{"predicates": {"scrapped": {"layer": "canonical"}}}')
-    vocabulary.reset_cache()
-
-    assert set(vocabulary.all_predicates()) == set(vocabulary.PREDICATES)
-    status = vocabulary.extension_status()
-    assert status["ok"] is False
-    assert status["error"] and "scrapped" in status["error"]
-
-
-# --------------------------------------------------------- ③ retirement, never deletion
+# --------------------------------------------------------- retirement, never deletion
 def test_there_is_no_delete_route_anywhere_under_admin_ledger():
     """R-M ③ as a route-table fact, not a promise in a docstring."""
     from main import app
@@ -217,33 +54,6 @@ def test_there_is_no_delete_route_anywhere_under_admin_ledger():
             assert "DELETE" not in (getattr(route, "methods", None) or set()), (
                 f"{path} offers DELETE; a registered predicate can never be deleted - "
                 f"atoms are already lying in the ledger under that word")
-
-
-def test_retirement_stops_emission_and_leaves_reading_alone(extension):
-    write_extension(extension, {"scrapped": signature()})
-    assert "scrapped" in vocabulary.emittable()
-
-    ledger_admin.retire_predicate("scrapped", superseded_by="observed")
-    vocabulary.reset_cache()
-
-    entry = vocabulary.all_predicates()["scrapped"]
-    assert entry["status"] == "retired"
-    assert entry["superseded_by"] == "observed"
-    # Emission stops...
-    assert "scrapped" not in vocabulary.emittable()
-    refused = vocabulary.check_signature("scrapped", "Wafer", "value",
-                                         {"reason": "x", "run_uid": "r"})
-    assert refused and "RETIRED" in refused[0]
-    # ...and reading does not: the word is still declared, so atoms written under it
-    # still resolve to a signature rather than becoming unreadable.
-    assert vocabulary.is_declared("scrapped")
-    assert vocabulary.signature("scrapped") is not None
-
-
-def test_a_code_loaded_word_cannot_be_retired_from_the_screen(extension):
-    write_extension(extension, {"scrapped": signature()})
-    with pytest.raises(ValueError):
-        ledger_admin.retire_predicate("observed")
 
 
 # ------------------------------------------------- SQL identifiers (a NEW risk, today)
@@ -384,18 +194,17 @@ def test_every_declaration_row_says_whether_it_can_be_edited_and_by_what():
         assert handle["detail_ko"], "a non-editable row must say WHY, not just refuse"
 
 
-def test_no_predicate_row_points_at_a_retiring_v1_route():
-    """🔴 REVERSED 2026-08-27. This used to assert the retire route was PRESENT.
+def test_no_predicate_row_claims_an_edit_surface():
+    """🔴 The predicate rows no longer name a door at all (2026-08-27).
 
-    Both v1 routes are being retired, and v5's edit unit is the declaration DOCUMENT
-    (drafts -> review -> activate), so「this predicate, at this route」was never true of a
-    v5 word. A row naming a door that is going away is worse than a row that says it has
-    no door.
+    They used to name the v1 pair (`/admin/ledger/save`, `/admin/ledger/vocabulary/retire`)
+    and then, briefly, an `edit` verdict explaining why neither applied. Both are gone with
+    the routes: v5's edit unit is the declaration DOCUMENT (drafts -> review -> activate),
+    so a per-predicate verdict has nothing to be a verdict ABOUT.
 
-    ⚠️ The two absence assertions are checked against the PAYLOAD spellings, not the
-    prose: the module's comments still name both routes to record why they left. The two
-    presence assertions below are the control - they read the same body, so a broken or
-    empty read fails them instead of passing this test vacuously.
+    ⚠️ Checked against PAYLOAD spellings, not prose — the module's comments still name the
+    routes to record why they left. The last assertion is the CONTROL: it reads the same
+    text, so an empty or broken read fails there instead of passing this test vacuously.
     """
     import ledger_structure
 
@@ -403,8 +212,9 @@ def test_no_predicate_row_points_at_a_retiring_v1_route():
     assert '"route": "/admin/ledger/save"' not in body, (
         "a row still hands out the v1 save route")
     assert '"retire_route"' not in body, "a row still hands out the v1 retire route"
-    assert '"reason": ("canonical" if' in body
-    assert '"reason": "document"' in body
+    assert '"editable": False, "reason": "canonical"' not in body, (
+        "a predicate row still renders an edit verdict")
+    assert 'def _vocabulary_panel(declaration, edges):' in body
 
 
 def test_the_class_1_key_is_rendered_on_the_declaration_map():
@@ -433,167 +243,45 @@ def test_the_token_binds_a_save_to_the_EXACT_declaration_that_was_previewed():
     would intermittently refuse legitimate saves the moment there is more than one worker
     process.
     """
-    declaration = signature()
-    token = ledger_admin.declaration_token("predicate", "scrapped", declaration)
+    declaration = {"kind": "observation", "relation": "void_obs",
+                   "occurred_at_column": "t", "columns": {"wafer": "wafer_id"}}
+    token = ledger_admin.declaration_token("source", "void_obs", declaration)
 
-    assert ledger_admin.declaration_token("predicate", "scrapped", declaration) == token
-    edited = signature(label_ko="폐기됨")
-    assert ledger_admin.declaration_token("predicate", "scrapped", edited) != token
-    assert ledger_admin.declaration_token("predicate", "other", declaration) != token
-    assert ledger_admin.declaration_token("source", "scrapped", declaration) != token
+    assert ledger_admin.declaration_token("source", "void_obs", declaration) == token
+    edited = dict(declaration, columns={"wafer": "base_wafer_id"})
+    assert ledger_admin.declaration_token("source", "void_obs", edited) != token, (
+        "one edited character must invalidate the preview it was issued against")
+    assert ledger_admin.declaration_token("source", "other", declaration) != token
+    assert ledger_admin.declaration_token("predicate", "void_obs", declaration) != token
 
 
 def test_key_order_does_not_change_the_token():
     """A screen that serialises its form in a different order must not be refused."""
-    a = {"label_ko": "x", "layer": "ontology", "since": 5}
-    b = {"since": 5, "layer": "ontology", "label_ko": "x"}
-    assert (ledger_admin.declaration_token("predicate", "n", a)
-            == ledger_admin.declaration_token("predicate", "n", b))
+    a = {"kind": "observation", "relation": "r", "occurred_at_column": "t"}
+    b = {"occurred_at_column": "t", "relation": "r", "kind": "observation"}
+    assert (ledger_admin.declaration_token("source", "n", a)
+            == ledger_admin.declaration_token("source", "n", b))
 
 
 def test_the_refusal_codes_are_closed():
     """A code invented at a call site is a refusal the screen cannot render."""
     with pytest.raises(ValueError):
         ledger_admin.violation("something_went_wrong", None, "…")
-    for code in vocabulary.DECL_REFUSALS:
-        assert code in ledger_admin.REFUSAL_CODES, (
-            f"vocabulary can emit '{code}' but the route's closed set does not carry it, "
-            f"so the client would meet a code its vocabulary does not contain")
-
-
-# ------------------------------------------------------ the save writes, and backs up
-def test_saving_twice_leaves_a_backup_because_config_has_no_history(extension):
-    """Config files are gitignored by design (R-2026-08-13-G): the copy IS the undo."""
-    first = ledger_admin.save_predicate("scrapped", signature())
-    assert first["backup"] == ""            # nothing to back up on the first write
-    assert first["replaced"] is False
-
-    second = ledger_admin.save_predicate("scrapped", signature(label_ko="폐기 v2"))
-    assert second["replaced"] is True
-    assert os.path.exists(second["backup"])
-    assert os.path.basename(os.path.dirname(second["backup"])) == "backup"
-    with open(second["backup"], "r", encoding="utf-8") as handle:
-        assert json.load(handle)["predicates"]["scrapped"]["label_ko"] == "폐기"
-
-
-def test_the_FIRST_save_on_a_fresh_box_does_not_poison_the_empty_default(extension):
-    """Regression. The default document was shallow-copied, so the first save on a box
-    with no file wrote the new predicate INTO the module constant - and every later
-    "there is no file" default in that process already contained it. Invisible on any box
-    that already has the file, which is every box that has ever been tested by hand."""
-    ledger_admin.save_predicate("scrapped", signature())
-    assert ledger_admin._EMPTY_VOCABULARY["predicates"] == {}, (
-        "the first save mutated the module-level empty document")
-
-    os.remove(extension)
-    ledger_admin.save_predicate("other_word", signature(label_ko="다른 낱말"))
-    with open(extension, "r", encoding="utf-8") as handle:
-        assert list(json.load(handle)["predicates"]) == ["other_word"], (
-            "a save after the file was removed resurrected the previous predicate")
-
-
-def test_the_save_never_leaves_a_half_written_file(extension, monkeypatch):
-    """A partially written vocabulary is the worst outcome: the loader would then refuse
-    the whole file and the gate would refuse every atom of every config word."""
-    ledger_admin.save_predicate("scrapped", signature())
-    original = open(extension, "r", encoding="utf-8").read()
-
-    real_replace = os.replace
-
-    def explode(src, dst):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(os, "replace", explode)
-    with pytest.raises(OSError):
-        ledger_admin.save_predicate("scrapped", signature(label_ko="새 이름"))
-    monkeypatch.setattr(os, "replace", real_replace)
-
-    assert open(extension, "r", encoding="utf-8").read() == original
+    # The control: a code that IS in the closed set builds, so the assertion above is
+    # about the CODE and not about `violation` raising for everything.
+    assert ledger_admin.violation("invalid_identifier", "columns.wafer", "…")
 
 
 # ---------------------------------------------------------------- the dry run's config
 def test_the_candidate_config_carries_only_the_source_under_preview():
     """A broken NEIGHBOUR must not be able to refuse this preview - and vice versa."""
     declaration = {"occurred_at_column": "t", "occurred_at_timezone": "Asia/Seoul",
-                   "subject_types": ["Wafer"]}
+                   "subject_types": ["wafer"]}
     cfg = ledger_admin.candidate_config("my_table", declaration)
     assert list(cfg["sources"]) == ["my_table"]
 
 
-
-
-# ------------------------------------------------------- root-key rollup (R-…-08-15-O)
-def test_the_rollup_declaration_is_self_consistent():
-    """A rollup that could only ever be right by accident is the decoy declaration again:
-    a `root_key` that is not a key part of BOTH types produces a join on a jsonb field one
-    side never carries, and THAT RETURNS ZERO EXTRA ROWS rather than an error — which is
-    indistinguishable from the bug the declaration exists to fix."""
-    assert vocabulary.check_entity_type_declaration() == []
-
-
-def test_a_root_type_with_no_derived_types_rolls_up_to_itself_alone():
-    """The helper must be safe to call for every subject, not only the one that has a
-    derived type today — a reader that special-cased `Wafer` would break the day a second
-    aggregation unit arrived."""
-    assert vocabulary.rollup_subject_types("Lot") == ("Lot",)
-    assert vocabulary.rollup_subject_types("Recipe") == ("Recipe",)
-
-
-def test_composed_types_do_NOT_roll_up_even_though_their_keys_contain_the_root():
-    """🔴 The reason the rollup is DECLARED and not inferred from key containment.
-    `Die`'s keys are (wafer, x, y) — a superset of `Wafer`'s — so "rolls up if its keys
-    contain yours" would fold every die atom into every wafer-scope read. There are 160M
-    dies by construction."""
-    assert "Die" not in vocabulary.rollup_subject_types("Wafer")
-    assert vocabulary.ENTITY_TYPES["Die"].get("rolls_up_to") is None
-
-
-@pytest.mark.parametrize("broken,expected", [
-    ({"rolls_up_to": "Wafer"}, "only one of"),                      # no root_key
-    ({"root_key": "wafer"}, "only one of"),                         # no rolls_up_to
-    ({"rolls_up_to": "Nope", "root_key": "wafer"}, "not a declared entity type"),
-    ({"rolls_up_to": "Wafer", "root_key": "nonesuch"}, "not one of its own key parts"),
-    ({"rolls_up_to": "Recipe", "root_key": "wafer"}, "not a key part of its root"),
-])
-def test_a_broken_rollup_declaration_is_caught_by_name(monkeypatch, broken, expected):
-    types = dict(vocabulary.ENTITY_TYPES)
-    types["Trial"] = {"class": "issued", "keys": ["wafer", "trial"], "semi_ref": None,
-                      "label_ko": "시험", **broken}
-    monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
-    violations = vocabulary.check_entity_type_declaration()
-    assert any(expected in v for v in violations), violations
-
-
-def test_chained_rollups_are_refused_rather_than_silently_truncated(monkeypatch):
-    """A reader follows ONE hop and stops, so a second hop's atoms would go missing with
-    no error - the exact shape of the defect the rollup declaration exists to prevent,
-    one level down.
-
-    🔴 THE CHAIN IS BUILT OUT OF SYNTHETIC TYPES ON PURPOSE. An earlier version of this
-    test hung the second hop off a real declared member, and the day that member was
-    retired the test started failing for a reason that had nothing to do with chaining.
-    A rule about SHAPE must be stated in shapes, not in today's membership list.
-    """
-    types = dict(vocabulary.ENTITY_TYPES)
-    # Hop 1 - a legal rollup: rolls into a root that does not itself roll up.
-    types["SynthMiddle"] = {"class": "issued", "keys": ["wafer", "middle"],
-                            "semi_ref": None, "label_ko": "중간",
-                            "rolls_up_to": "Wafer", "root_key": "wafer"}
-    # Hop 2 - the same legal shape, but its root is hop 1. That is the chain.
-    types["SynthLeaf"] = {"class": "issued", "keys": ["wafer", "leaf"], "semi_ref": None,
-                          "label_ko": "말단", "rolls_up_to": "SynthMiddle",
-                          "root_key": "wafer"}
-    monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
-
-    violations = vocabulary.check_entity_type_declaration()
-    chained = [v for v in violations if "chained rollups" in v]
-    assert chained, violations
-    assert "SynthLeaf" in chained[0], chained
-    # Hop 1 alone is legal - the refusal is aimed at the chain, not at rolling up at all.
-    assert not [v for v in violations if "SynthMiddle" in v and "chained" not in v], (
-        "a single legal rollup was refused; the chain check is over-firing")
-
-
+# ---------------------------- the hand-built read queries (R-…-08-15-O)
 def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
     """🔴 THE POINT OF THE RULING, asserted where it can actually regress: a
     wafer-scope reader must bind a LIST. Pinning one `subject_type` is what made 42
@@ -658,47 +346,6 @@ def test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier():
             assert "ANY(%(stypes)s)" not in arm, (
                 f"a {grain} two-grain arm was widened to the rollup set, merging what "
                 f"these two queries exist to hold apart")
-
-
-def test_the_rollup_helper_has_one_spelling_for_every_reader(monkeypatch):
-    """Three copies of one fact is how a derived subject type comes to be visible to one
-    query and invisible to the next.
-
-    🔴 ASSERTED AS AN AGREEMENT BETWEEN THE TWO HELPERS, NOT AGAINST A MEMBER LIST.
-    `ledger_trace.rollup_subject_types` is the query layer's adapter over
-    `vocabulary.rollup_subject_types`, and what must hold is that they answer the SAME for
-    every declared subject - whatever is declared today. A pinned literal list asserted
-    the membership instead of the agreement, and died the day the membership changed
-    while the two helpers were still in perfect agreement.
-
-    The second half asserts the other half of "one spelling": the adapter CACHES, so a
-    vocabulary that gains a derived type must reach it after `reset_walk_cache()` (which
-    `/admin/reload-configs` calls) or the two spellings silently diverge until a restart.
-    """
-    import ledger_trace
-
-    try:
-        for subject in vocabulary.ENTITY_TYPES:
-            assert (ledger_trace.rollup_subject_types(subject)
-                    == vocabulary.rollup_subject_types(subject)), (
-                f"the two rollup spellings disagree for '{subject}'")
-
-        types = dict(vocabulary.ENTITY_TYPES)
-        types["SynthDerived"] = {"class": "issued", "keys": ["wafer", "synth"],
-                                 "semi_ref": None, "label_ko": "합성",
-                                 "rolls_up_to": "Wafer", "root_key": "wafer"}
-        monkeypatch.setattr(vocabulary, "ENTITY_TYPES", types)
-        assert vocabulary.check_entity_type_declaration() == [], (
-            "the fixture itself must be a legal declaration, or this asserts nothing")
-
-        ledger_trace.reset_walk_cache()
-        assert "SynthDerived" in ledger_trace.rollup_subject_types("Wafer"), (
-            "the adapter kept a stale rollup set across reset_walk_cache() - a reload "
-            "would leave the query layer reading a different vocabulary than this one")
-        assert (ledger_trace.rollup_subject_types("Wafer")
-                == vocabulary.rollup_subject_types("Wafer"))
-    finally:
-        ledger_trace.reset_walk_cache()
 
 
 # ------------------------------------------------ the gate's counters survive a preview

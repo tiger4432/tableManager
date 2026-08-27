@@ -35,38 +35,20 @@ def entity_id(entity_type, keys):
 def decode_entity_id(value):
     """Inverse of :func:`entity_id`, strict enough to reject forged URL state.
 
-    🔴 A READ DOES NOT ASK THE WRITE GATE WHETHER A SUBJECT TYPE IS DECLARED
-    (ruling 2026-08-23, round 3 "v1 retirement").
+    🔴 A READ DOES NOT ASK WHETHER A SUBJECT TYPE IS DECLARED (ruling 2026-08-23).
+    Writing asks "may this word be spoken?"; reading asks "what was already said?", and the
+    atoms exist either way. A ledger keeps atoms written before a declaration changed, so a
+    read that gates on today's declaration loses the past the first time someone edits one --
+    and reports that loss as `422` rather than as an empty result.
 
-    This used to end by calling `vocabulary.check_subject_keys` - the same function
-    `ledger.gate` runs before an atom is WRITTEN - and refusing the id on any violation.
-    That made the closed vocabulary a condition of READING, and the two questions are not
-    the same one:
-
-        writing   "may this word be spoken?"      a declaration is the whole point
-        reading   "what was already said?"        the atoms exist either way
-
-    MEASURED 2026-08-23 on the live ledger, three subject types were refused as seeds
-    while holding atoms nobody disputes: `die` (1,405), `DTJob` (792) and `WaferLeg` (42,
-    over 12 subjects). `WaferLeg` is the sharp case - it is declared by NEITHER generation,
-    v1 having retired it and v5 never carrying it, so no edit to any declaration could have
-    reached it. A production ledger keeps atoms written before a declaration changed, so a
-    read that gates on the current declaration loses the past the first time someone edits
-    one, and reports that loss as `422` rather than as an empty result.
-
-    🔴 ABSENCE IS NOT A FAULT. An undeclared type ANSWERS; it simply answers without the
-    extras a declaration would have supplied (`_entity` falls back to insertion order for
+    🔴 ABSENCE IS NOT A FAULT. An undeclared type ANSWERS; it simply answers without
+    the extras a declaration would have supplied (`_entity` falls back to insertion order for
     key order, and to the raw type name for a label).
 
-    WHAT STILL REJECTS A FORGED ID, and why that was never the vocabulary's job: the
-    canonical-spelling check below re-encodes the decoded pair and compares it to the
-    text. An id that is not the exact output of :func:`entity_id` is refused there,
-    independently of which words happen to be declared today. Structure - a two-item
-    list, a string type, a non-empty mapping of keys - is checked here too. What is gone
-    is only the judgement about whether the WORD is in the book.
-
-    ⚠️ THE WRITE PATH IS UNTOUCHED. `ledger.gate` still calls `check_subject_keys` and
-    `check_signature` itself; this function was never on the way to a write.
+    WHAT REJECTS A FORGED ID: the canonical-spelling check below re-encodes the decoded pair
+    and compares it to the text, so an id that is not the exact output of :func:`entity_id` is
+    refused independently of which words are declared today. Structure -- a two-item list, a
+    string type, a non-empty mapping of keys -- is checked here too.
     """
     text = str(value or "").strip()
     prefix = "ledger-entity:v1:"
@@ -90,8 +72,8 @@ def decode_entity_id(value):
 def _entity(entity_type, keys):
     keys = dict(keys or {})
     try:
-        from ledger import vocabulary
-        key_order = vocabulary.ENTITY_TYPES.get(str(entity_type), {}).get("keys") or keys.keys()
+        from ledger_api import entity_references
+        key_order = entity_references.identity_keys(entity_type) or keys.keys()
     except Exception:  # pragma: no cover - deployment failure is reported by the route
         key_order = keys.keys()
     values = [str(keys.get(name)) for name in key_order

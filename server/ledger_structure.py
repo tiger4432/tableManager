@@ -7,11 +7,11 @@
 > 「지금 너무 구조가 숨겨져 있어서 UI 어떻게 설계해야 할지 모르겠어. 일단 온톨로지
 > 구조가 드러나게 하나 만들어줘.」
 
-The ledger's structure today lives in three places that never meet on a screen: the
-closed vocabulary (`server/ledger/vocabulary.py`), the translator declarations
-(`ledger_config.json`), and 84,747 atoms in a partitioned table. An operator can read
-any one of them and still not be able to say what is connected to what, or where the
-data actually is. This endpoint answers both questions in one call.
+The ledger's structure today lives in two places that never meet on a screen: the
+declaration (`config/ontology/ledger_config.json`, whose `entities` and `vocabulary`
+sections say what may be said) and the atoms in a partitioned table. An operator can read
+either one and still not be able to say what is connected to what, or where the data
+actually is. This endpoint answers both questions in one call.
 
 **It is the TYPE level, not the instance level.** No lot, no wafer, no void appears here.
 The nodes are entity TYPES and the edges are (subject type, predicate, object) triples.
@@ -25,13 +25,11 @@ complement.
 So there is no list of nodes and no list of edges anywhere in this file. Both halves are
 GENERATED:
 
-  * the DECLARED half from `vocabulary.ENTITY_TYPES` x `vocabulary.all_predicates()` —
-    adding a predicate to the vocabulary puts an edge on the screen and costs nothing
-    here. 🔴 `all_predicates()` rather than `PREDICATES` since ruling R-2026-08-15-M: the
-    vocabulary now has TWO sources (code and the operator's declaration) and each row and
-    edge carries `origin: "code" | "config"`. Reading only the code-loaded set would have
-    made a word an operator registered from admin invisible on the one screen that exists
-    to show what the ledger can say;
+  * the DECLARED half from the declaration's `entities` x its `vocabulary` section —
+    adding a predicate to the declaration puts an edge on the screen and costs nothing
+    here. 🔴 THE DECLARATION IS THE ONLY SOURCE. There is no code-loaded second list to
+    merge with, so a word the operator declares is visible here by construction rather
+    than by a provenance field;
   * the OBSERVED half from one `GROUP BY` over `ledger_events` — a source that starts
     emitting a shape nobody declared appears as an `undeclared` edge rather than being
     silently dropped.
@@ -40,7 +38,7 @@ The two halves are then merged, which is the whole point: an edge in the declara
 not in the data is `declared_only`, and an edge in the data and not in the declaration is
 `undeclared`. Those are the two answers a hand-drawn picture can never give.
 
-The only literals in this module are the LABELS of things the vocabulary does not name —
+The only literals in this module are the LABELS of things the declaration does not name —
 the four resolution classes, the three object kinds — and each falls back to its raw
 identifier for a value it has never seen, so a new one is rendered in English rather than
 dropped.
@@ -59,7 +57,7 @@ Every edge and node therefore carries ONE structured word the client branches on
 
     flowing              declared AND carrying atoms
     declared_only        declared, counted, zero atoms      <- the honest empty axis
-    undeclared           atoms exist for a shape the vocabulary does not declare <- drift
+    undeclared           atoms exist for a shape the declaration does not declare <- drift
     unmeasured           nothing was counted (relation absent)
     declared_unconsumed  declared, and NOTHING reads it     <- the mechanism layer
 
@@ -111,7 +109,7 @@ than a cache:
     prunes to the partitions it needs.
 
 🔴 THE DECLARED HALF IS NEVER WINDOWED. A window scopes COUNTS, never the structure — an
-axis declared in the vocabulary is on the screen whatever the window is, at `atoms: 0`.
+axis declared in the declaration is on the screen whatever the window is, at `atoms: 0`.
 Otherwise the honest-empty-axis rule above would be defeated by the scale defence.
 
 **No cache, deliberately**, and for the reason `ledger_trace.coverage`'s docstring already
@@ -191,14 +189,15 @@ EDGE_UNMEASURED = "unmeasured"
 #: visible — 「선언만 있고 소비자가 0인 축」.
 EDGE_DECLARED_UNCONSUMED = "declared_unconsumed"
 
-#: The object kinds' Korean, keyed by the value `vocabulary.OBJECT_KINDS` declares. NOT a
-#: list of kinds — an unknown key falls through to the raw identifier below.
+#: The object kinds' Korean, keyed by the value the declaration's `object.kind` carries. NOT
+#: a list of kinds — an unknown key falls through to the raw identifier below.
 OBJECT_KIND_LABELS = {
     "entity_ref": "개체 참조",
     "value": "값",
     "event_ref": "이벤트 참조",
 }
-#: `register`'s object is ∅ (`object_kind IS NULL`) — see `vocabulary`'s module docstring.
+#: A registration's object is ∅ (`object_kind IS NULL`) — the declaration spells it
+#: `"object": {"kind": "none"}`.
 OBJECT_KIND_NONE_LABEL = "없음 (∅)"
 
 #: The four resolution classes, from `ledger_trace.CLASS_NAMES` so the names are not
@@ -240,8 +239,8 @@ def edge_id(subject_type, predicate, object_kind, object_type):
 
 
 def _label(entry, name):
-    """A declaration's Korean label, or the raw identifier. NEVER raises: a word added to
-    the vocabulary without a label renders in English rather than blanking the screen."""
+    """A declaration's Korean label, or the raw identifier. NEVER raises: a word declared
+    without a label renders in English rather than blanking the screen."""
     return (entry or {}).get("label_ko") or name
 
 
@@ -250,49 +249,100 @@ def _empty_classes():
 
 
 # ------------------------------------------------------------------- the declared half
-def _vocabulary():
-    """The closed vocabulary, imported LAZILY.
+def _declaration():
+    """The declaration, loaded LAZILY through its own loader.
 
     🔴 `server/ledger/` is deliberately not on any boot path (`LEDGER_GUIDE` §0: "안 돌아도
     아무것도 안 깨진다 — `server/`에서 `server/ledger`를 import하는 부팅 경로가 없다"), and
-    this module is imported by the web server's router. `vocabulary.py` is pure data with
-    no imports of its own, so importing it costs nothing — but the guarantee is about the
-    BOOT PATH, and keeping the import inside the call keeps it literally true rather than
-    almost true.
+    this module is imported by the web server's router, so the import stays inside the call
+    and the guarantee stays literally true rather than almost true.
     """
     try:
-        from ledger import vocabulary
+        from ledger import config as ledger_config
+        return ledger_config.load() or {}
     except Exception as exc:                                       # pragma: no cover
         raise StructureError(
-            "어휘 선언(server/ledger/vocabulary.py)을 읽을 수 없음: %s" % exc)
-    return vocabulary
+            "선언(config/ontology/ledger_config.json)을 읽을 수 없음: %s" % exc)
 
 
-def declared_edges(vocabulary):
-    """Every (subject type, predicate, object) the vocabulary allows. Generated.
+def _bare(name):
+    """`wafer@1` -> `wafer`. The ledger stores the bare name; the declaration versions it.
 
-    One edge per DECLARED TARGET, not one per predicate: `same_as` accepts six subject
-    types and six object types, so it is 36 edges and every one of them is a real thing
-    the grammar permits. Collapsing them would be the hand-drawn picture this endpoint
-    exists to replace — and `status: "reserved"` is already on each of them, which is the
-    field a screen dims them by.
+    🔴 THE TWO HALVES MUST AGREE ON THIS SPELLING or every edge appears twice, once
+    empty from the declaration and once full from the census. MEASURED 2026-08-27 on the live
+    ledger: `subject_type` is `die` / `wafer` / `dtjob` / `lot_slot` and `predicate` is
+    `transfer` / `inspected` / ... — bare and lower-case, exactly what this returns.
+    """
+    return str(name or "").split("@", 1)[0].strip()
+
+
+def _predicates(declaration):
+    """`{bare predicate: declared rule}`, from the declaration's `vocabulary` section."""
+    return {_bare(name): (rule or {})
+            for name, rule in ((declaration or {}).get("vocabulary") or {}).items()}
+
+
+def _entities(declaration):
+    """`{bare entity type: declared entry}`, from the declaration's `entities` section."""
+    return {_bare(name): (entry or {})
+            for name, entry in ((declaration or {}).get("entities") or {}).items()}
+
+
+def _registering_types(declaration):
+    """The entity types whose existence is claimed by an OBJECTLESS predicate.
+
+    🔴 IDENTIFIED BY SHAPE, NOT BY NAME — the same rule the census half applies at
+    `_merge`. A declaration that spells its registration word differently still counts,
+    because what makes an atom an existence claim is that it has no object.
+    """
+    out = set()
+    for rule in _predicates(declaration).values():
+        if ((rule.get("object") or {}).get("kind") or "none") != "none":
+            continue
+        for subject in rule.get("subjects") or []:
+            out.add(_bare(subject))
+    return out
+
+
+def _object_of(rule):
+    return rule.get("object") or {}
+
+
+def _qualifiers(rule):
+    """The declared qualifier names, in the declaration's own two buckets.
+
+    🔴 SERVED IN THE DECLARATION'S SHAPE rather than flattened. `required` and
+    `optional` are different answers — `observed`'s seven optional qualifiers are what a
+    finding may carry, not what it must — and a single list would say neither.
+    """
+    declared = _object_of(rule).get("qualifiers") or {}
+    return {"required": [str(q) for q in declared.get("required") or []],
+            "optional": [str(q) for q in declared.get("optional") or []]}
+
+
+def declared_edges(declaration):
+    """Every (subject type, predicate, object) the declaration allows. Generated.
+
+    One edge per DECLARED TARGET, not one per predicate: a predicate that accepts several
+    subject types and several object types is that many edges, and every one of them is a
+    real thing the grammar permits. Collapsing them would be the hand-drawn picture this
+    endpoint exists to replace — and `status` is already on each of them, which is the field
+    a screen dims them by.
     """
     edges = {}
-    # 🔴 `all_predicates()`, NOT `PREDICATES` (ruling R-2026-08-15-M ④). The whole point of
-    # letting an operator register an ontology word from admin is that they can then SEE it
-    # here - the brief's completion journey ends at「새 술어·새 엣지가 «선언 출처: config»로
-    # 뜬다」. Reading only the code-loaded set would have made a registered word invisible
-    # on the one screen that exists to show what the ledger can say.
-    for predicate, sig in vocabulary.all_predicates().items():
-        declared_object = sig.get("object")
-        for subject_type in sig.get("subject") or []:
-            if declared_object is None:
+    entity_types = sorted(_entities(declaration))
+    for predicate, rule in _predicates(declaration).items():
+        declared_object = _object_of(rule)
+        kind = declared_object.get("kind") or "none"
+        for subject in rule.get("subjects") or []:
+            subject_type = _bare(subject)
+            if kind == "none":
                 targets = [(None, None)]
-            elif declared_object.get("kind") == "entity_ref":
-                types = declared_object.get("types") or sorted(vocabulary.ENTITY_TYPES)
-                targets = [("entity_ref", t) for t in types]
+            elif kind == "entity_ref":
+                types = [_bare(t) for t in declared_object.get("types") or []]
+                targets = [("entity_ref", t) for t in (types or entity_types)]
             else:
-                targets = [(declared_object["kind"], None)]
+                targets = [(kind, None)]
             for object_kind, object_type in targets:
                 eid = edge_id(subject_type, predicate, object_kind, object_type)
                 edges[eid] = {
@@ -301,31 +351,19 @@ def declared_edges(vocabulary):
                     "target": object_type,
                     "subject_type": subject_type,
                     "predicate": predicate,
-                    "predicate_label": _label(sig, predicate),
                     "object_kind": object_kind,
                     "object_kind_label": (OBJECT_KIND_NONE_LABEL if object_kind is None
                                           else OBJECT_KIND_LABELS.get(object_kind,
                                                                       object_kind)),
                     "object_type": object_type,
-                    # 🔴 The `value` object's REQUIRED FIELDS, served. This is where
-                    # `processed_with` admits that it names an equipment and a recipe
-                    # INSIDE a payload rather than as entity refs — which is why
-                    # `Equipment` is an isolated node on this graph. The operator can only
-                    # see that if the fields are on the wire.
-                    "object_fields": list((declared_object or {}).get("required") or []),
-                    "qualifiers": list(sig.get("qualifiers") or []),
-                    "status": sig.get("status"),
-                    "emittable": sig.get("status") == "active",
-                    "layer": sig.get("layer"),
-                    "since": sig.get("since"),
-                    "unit": sig.get("unit"),
-                    "semi_ref": sig.get("semi_ref"),
-                    "superseded_by": sig.get("superseded_by"),
-                    # ADDITIVE field: which of the two sources declared this word
-                    # ("code" | "config"). An existing consumer is untouched; a screen that
-                    # wants to say「선언으로 늘었다」reads this instead of guessing from
-                    # `since`, which is a slice number and not a provenance.
-                    "origin": sig.get("origin", "code"),
+                    # The object's declared QUALIFIERS, served. This is where `observed`
+                    # admits that a finding names its kind, its unit and its scan INSIDE a
+                    # payload rather than as entity refs — which is why those are not nodes
+                    # on this graph. The operator can only see that if the names are on the
+                    # wire.
+                    "qualifiers": _qualifiers(rule),
+                    "status": rule.get("status"),
+                    "emittable": rule.get("status") == "active",
                     "declared": True,
                     "atoms": None,
                     "first_at": None,
@@ -337,17 +375,16 @@ def declared_edges(vocabulary):
     return edges
 
 
-def declared_nodes(vocabulary):
+def declared_nodes(declaration):
+    registering = _registering_types(declaration)
     nodes = {}
-    for name, entry in vocabulary.ENTITY_TYPES.items():
+    for name, entry in _entities(declaration).items():
         nodes[name] = {
             "id": name,
             "type": name,
             "label": _label(entry, name),
-            "entity_class": entry.get("class"),
             "keys": list(entry.get("keys") or []),
-            "semi_ref": entry.get("semi_ref"),
-            "requires_register": vocabulary.requires_register(name),
+            "requires_register": name in registering,
             "declared": True,
             "atoms_as_subject": None,
             "atoms_as_object": None,
@@ -491,14 +528,13 @@ def _merge(nodes, edges, rows, zone, config):
             edge = {
                 "id": eid, "source": subject_type, "target": object_type,
                 "subject_type": subject_type, "predicate": predicate,
-                "predicate_label": predicate,
                 "object_kind": object_kind,
                 "object_kind_label": (OBJECT_KIND_NONE_LABEL if object_kind is None
                                       else OBJECT_KIND_LABELS.get(object_kind,
                                                                   object_kind)),
-                "object_type": object_type, "object_fields": [], "qualifiers": [],
-                "status": None, "emittable": False, "layer": None, "since": None,
-                "unit": None, "semi_ref": None, "superseded_by": None,
+                "object_type": object_type,
+                "qualifiers": {"required": [], "optional": []},
+                "status": None, "emittable": False,
                 "declared": False, "atoms": 0, "first_at": None, "last_at": None,
                 "classes": _empty_classes(), "sources": [],
                 "edge_state": EDGE_UNDECLARED,
@@ -533,8 +569,8 @@ def _merge(nodes, edges, rows, zone, config):
         for name in (subject_type, object_type):
             if name and name not in nodes:
                 nodes[name] = {
-                    "id": name, "type": name, "label": name, "entity_class": None,
-                    "keys": [], "semi_ref": None, "requires_register": None,
+                    "id": name, "type": name, "label": name,
+                    "keys": [], "requires_register": None,
                     "declared": False, "atoms_as_subject": 0, "atoms_as_object": 0,
                     "registered": None, "node_state": EDGE_UNDECLARED,
                 }
@@ -575,12 +611,12 @@ def _settle(nodes, edges, measured):
             subject["atoms_as_subject"] += edge["atoms"] or 0
             # 🔴 THE REGISTRATION EDGE IS IDENTIFIED BY ITS SHAPE, NOT BY ITS NAME.
             # `if edge["predicate"] == "register"` was written here first and
-            # `test_the_graph_follows_a_swapped_vocabulary`'s sibling caught it: under a
-            # vocabulary whose registration word is spelled differently the count silently
-            # stayed `null`. The vocabulary's own rule is that the registration predicate
-            # is the one whose object is ∅ — `vocabulary`'s module docstring states it and
-            # the DDL's `ck_ledger_register_has_no_object` enforces it for that predicate
-            # ALONE — so an objectless edge IS the existence claim, whatever it is called.
+            # `test_the_graph_follows_a_swapped_declaration`'s sibling caught it: under a
+            # declaration whose registration word is spelled differently the count silently
+            # stayed `null`. The rule is that the registration predicate is the one whose
+            # object is ∅ — the declaration spells it `"object": {"kind": "none"}` and the
+            # DDL's `ck_ledger_register_has_no_object` enforces it for that predicate ALONE
+            # — so an objectless edge IS the existence claim, whatever it is called.
             #
             # The count is the number of DISTINCT entities of this type the ledger knows,
             # which is the one number an operator reads a node by. Composed types have no
@@ -600,15 +636,20 @@ def _settle(nodes, edges, measured):
 
 
 # ------------------------------------------------------------------ vocabulary panel
-def _vocabulary_panel(vocabulary, edges):
+def _vocabulary_panel(declaration, edges):
     """Panel 2 — one row per predicate, with the EDGE IDS it owns.
 
     The `edge_ids` linkage is the point: a client showing this panel beside the graph can
     highlight without matching on names, and「선언은 있는데 소비자가 없다」is visible as a
     predicate whose every edge is `declared_only`.
+
+    🔴 NO EDIT SURFACE, AND THE ROW NO LONGER PRETENDS OTHERWISE. The edit unit is the
+    WHOLE DECLARATION, authored through drafts -> review -> activate; there has never been a
+    per-predicate save route in v5, so a signpost pointing at one would point at nothing.
     """
+    rules = _predicates(declaration)
     rows = []
-    for predicate, sig in vocabulary.all_predicates().items():
+    for predicate, rule in rules.items():
         mine = [e for e in edges.values() if e["predicate"] == predicate]
         atoms = None
         classes = None
@@ -618,72 +659,34 @@ def _vocabulary_panel(vocabulary, edges):
             for e in mine:
                 for name, n in (e["classes"] or {}).items():
                     classes[name] = classes.get(name, 0) + n
-        declared_object = sig.get("object") or {}
+        declared_object = _object_of(rule)
+        kind = declared_object.get("kind") or "none"
         rows.append({
             "predicate": predicate,
-            "label": _label(sig, predicate),
-            "layer": sig.get("layer"),
-            "origin": sig.get("origin", "code"),   # ADDITIVE - see `declared_edges`
-            # ADDITIVE, and the same question the declaration rows now answer: is this row
-            # an edit surface? The answer is now NO for every predicate, and the three
-            # reasons differ: the canonical layer has no door by ruling, a code-loaded
-            # ontology word is code, and an operator-declared word (`origin == "config"`)
-            # is edited as part of a DOCUMENT.
-            #
-            # 🔴 THE ROUTE LEFT, THE ROW STAYED. It used to name the v1 pair
-            # (`/admin/ledger/save`, `/admin/ledger/vocabulary/retire`), which is being
-            # retired — and「this predicate, at this route」was never true of v5 anyway:
-            # v5's edit unit is the whole declaration, authored through
-            # drafts -> review -> activate. A signpost pointing at a door that is going
-            # away is worse than a row that says it has no door.
-            #
-            # ⚠️ MEASURED 2026-08-27: `origin == "config"` has ZERO subjects on this box
-            # — origin becomes "config" only for a predicate read from the v1 extension
-            # file, and that file does not exist here. So an unchanged screen proves
-            # nothing about this branch; it was never rendering.
-            "edit": ({"editable": False, "reason": "document",
-                      "detail_ko": ("술어 하나만 고치는 저장 경로는 없습니다 — 편집 "
-                                    "단위가 «선언 문서»입니다. 온톨로지 화면에서 "
-                                    "초안을 만들어 문서를 고치고 활성화하세요.")}
-                     if sig.get("origin") == "config" else
-                     {"editable": False,
-                      "reason": ("canonical" if sig.get("layer") == "canonical"
-                                 else "code"),
-                      "detail_ko": ("정준 층은 기록의 문법이라 화면에서 늘리거나 고칠 수 "
-                                    "없습니다 — 코드와 판정으로만 바뀝니다."
-                                    if sig.get("layer") == "canonical" else
-                                    "코드가 싣는 낱말입니다. 고치려면 "
-                                    "`server/ledger/vocabulary.py`와 어휘 고정 테스트를 "
-                                    "함께 바꿔야 합니다.")}),
-            "status": sig.get("status"),
-            "emittable": sig.get("status") == "active",
-            "since": sig.get("since"),
-            "subject_types": list(sig.get("subject") or []),
-            "object_kind": declared_object.get("kind") if sig.get("object") else None,
-            "object_types": list(declared_object.get("types") or []),
-            "object_fields": list(declared_object.get("required") or []),
-            "qualifiers": list(sig.get("qualifiers") or []),
-            "unit": sig.get("unit"),
-            "semi_ref": sig.get("semi_ref"),
-            "superseded_by": sig.get("superseded_by"),
+            "status": rule.get("status"),
+            "emittable": rule.get("status") == "active",
+            "subject_types": [_bare(t) for t in rule.get("subjects") or []],
+            "object_kind": None if kind == "none" else kind,
+            "object_types": [_bare(t) for t in declared_object.get("types") or []],
+            "qualifiers": _qualifiers(rule),
             "atoms": atoms,
             "classes": classes,
             "edge_ids": sorted(e["id"] for e in mine),
         })
     rows.sort(key=lambda r: (-(r["atoms"] or 0), r["predicate"]))
+    kinds = sorted({(_object_of(r).get("kind") or "none") for r in rules.values()}
+                   - {"none"})
     return {
         "predicates": rows,
         "object_kinds": ([{"kind": None, "label": OBJECT_KIND_NONE_LABEL}]
                          + [{"kind": k, "label": OBJECT_KIND_LABELS.get(k, k)}
-                            for k in sorted(vocabulary.OBJECT_KINDS)]),
+                            for k in kinds]),
         "classes": [{"name": name, "rank": rank,
                      "label": CLASS_LABELS.get(name, name)}
                     for rank, name in sorted(ledger_trace.CLASS_NAMES.items())],
-        "entity_types": [{"type": n, "label": _label(e, n), "class": e.get("class"),
-                          "keys": list(e.get("keys") or []),
-                          "semi_ref": e.get("semi_ref")}
-                         for n, e in vocabulary.ENTITY_TYPES.items()],
-        "projection_only_words": sorted(vocabulary.PROJECTION_ONLY_WORDS),
+        "entity_types": [{"type": n, "label": _label(e, n),
+                          "keys": list(e.get("keys") or [])}
+                         for n, e in _entities(declaration).items()],
     }
 
 
@@ -709,7 +712,7 @@ MECH_REASON_NO_MODEL_ENTITY = "no_model_entity_type"
 MECHANISM_DIRECTION_LABELS = {"+": "증가", "-": "감소", "u": "비단조"}
 
 
-def mechanism_layer(vocabulary):
+def mechanism_layer(declaration):
     """The M4 mechanism graph as a SECOND LAYER of the same picture. Read-only.
 
     🔴 MEASURED, 2026-08-14: **it does not exist as anything a process can open.** §4 of
@@ -725,17 +728,17 @@ def mechanism_layer(vocabulary):
 
     🔴 `ledger_link` is the answer to「이 축이 원장의 어느 엣지에 닿는가」, and it is
     computed rather than asserted: a mechanism node reaches the ledger through a `Model`
-    entity type, the vocabulary declares no such type, so the answer is that there is
+    entity type, the declaration declares no such type, so the answer is that there is
     nowhere for the linkage to attach. That is derived from the declaration in front of
     it, which means it stops being true by itself on the day a `Model` type is declared.
     """
-    model_entity = next((name for name in vocabulary.ENTITY_TYPES
+    model_entity = next((name for name in _entities(declaration)
                          if name.lower() == "model"), None)
     ledger_link = {
         "entity_type": model_entity,
         "reason": None if model_entity else MECH_REASON_NO_MODEL_ENTITY,
         "message": (None if model_entity else
-                    "어휘에 Model 개체 유형이 없다 — 기전 노드가 원장 엣지에 붙을 자리가 "
+                    "선언에 Model 개체 유형이 없다 — 기전 노드가 원장 엣지에 붙을 자리가 "
                     "아직 없음"),
     }
     origin, path = _origin(MECHANISM_CONFIG_FILENAME)
@@ -1222,10 +1225,10 @@ def structure(connection, window=None, relation=LEDGER_RELATION,
     """
     cfg = config or ledger_trace.load_resolver_config()
     zone = ledger_trace.resolve_display_zone(cfg)
-    vocabulary = _vocabulary()
+    declaration = _declaration()
 
-    nodes = declared_nodes(vocabulary)
-    edges = declared_edges(vocabulary)
+    nodes = declared_nodes(declaration)
+    edges = declared_edges(declaration)
 
     exists = relation_exists(connection, relation)
     size_bytes, partitions = (None, 0)
@@ -1265,7 +1268,7 @@ def structure(connection, window=None, relation=LEDGER_RELATION,
     kinds_panel = _kinds_panel(connection, edges)
     cursors = _cursors(connection, cursor_relation, zone)
 
-    mechanism = mechanism_layer(vocabulary)
+    mechanism = mechanism_layer(declaration)
 
     declarations = []
     declarations.extend(_translator_declarations(edges, cursors, seen_sources))
@@ -1315,7 +1318,7 @@ def structure(connection, window=None, relation=LEDGER_RELATION,
         },
         "graph": {"nodes": node_list, "edges": edge_list,
                   "layers": layers, "mechanism": mechanism},
-        "vocabulary": _vocabulary_panel(vocabulary, edges),
+        "vocabulary": _vocabulary_panel(declaration, edges),
         "kinds": kinds_panel,
         "declarations": declarations,
         "cursors": cursors,
@@ -1379,12 +1382,11 @@ def _kinds_panel(connection, edges):
     `Wafer|observed|value` at 102,177 atoms, `edge_state: "flowing"`, sourced from
     `void_obs` and `delam_obs`. One response contradicted itself and the other endpoint.
 
-    The cause was a predicate that could never match: the test was
-    `row["kind"] in edge["object_fields"]`, but `object_fields` holds the object's
-    REQUIRED FIELD NAMES (`["finding_kind", "method", "run_uid"]`) and `row["kind"]` holds
-    a VALUE (`"void"`). A name is compared against a value, so it was false for every kind
-    on every box, forever — including the boxes where the answer was `false` anyway, which
-    is why nothing noticed until the observations landed.
+    The cause was a predicate that could never match: the test compared `row["kind"]` against
+    the object's declared QUALIFIER NAMES (`["finding_kind", "unit", "run_uid", ...]`) while
+    `row["kind"]` holds a VALUE (`"void"`). A name is compared against a value, so it was
+    false for every kind on every box, forever — including the boxes where the answer was
+    `false` anyway, which is why nothing noticed until the observations landed.
 
     🔴 `in_ledger` HAS AN AUTHORITY AND IT IS NOT HERE. `ledger_kinds.catalog` answers it
     from the TRANSLATOR DECLARATION (ruling R-2026-08-14-D: a declaration fact, answerable
