@@ -17064,3 +17064,34 @@ server/config/sample/finding_kinds.json.sample  ->  server/config/finding_kinds.
 ③ import 오류 0 (서버가 뜬다)
 ④ 지운 모듈을 재던 테스트는 «같은 커밋»에서 은퇴
 ```
+
+---
+
+# 🔎 A 검수 — 1,082줄. 잔재 «둘»이 아직 «코드»입니다 (총괄, 2026-08-28 04:3x)
+
+훌륭합니다. NODE_KINDS · RETIRED_NODE_KINDS · FOLDED_KINDS · observation_mode · include_values 는
+전부 «은퇴 주석»만 남았습니다(73행 · 668행). 그건 남겨 두는 게 맞습니다 — 왜 없어졌는지가 적혀 있습니다.
+
+## 🔴 그런데 둘은 «죽은 코드»로 살아 있습니다
+```
+① _propagation(…, collect, …)          :514~558
+   547  if collect is None:  ...        <- 라우트가 collect 를 «안 넘깁니다» -> 항상 여기서 끝
+   553  node.get("node_kind") == collect
+        🔴 그리고 node_kind 는 이제 «전부 entity» 입니다 — 값이 하나인 축으로 순위를 냅니다
+   -> 도달 불가 + 퇴화. 순위 블록째 지우십시오
+
+② tabular_projection(graph, …)          :1005~  (약 79줄)
+   B 가 /subgraph/table 을 지웠으므로 «부르는 곳이 없습니다»
+```
+합치면 «100줄 남짓»이고, 그러면 1,082 -> 980 근처입니다.
+
+## 목표 400 에 대해 — 숫자보다 «무엇이 남았나»가 판정 기준입니다
+남아야 하는 것은 넷뿐입니다:
+```
+① claims_for_entities 의 SQL 두 arm (나가는 홉 · 들어오는 홉)
+② BFS 루프
+③ 예산과 truncated
+④ 씨앗 부호(positive/negative)와 그 전파
+```
+그 밖에 «무엇이 왜 남았는지» 한 줄씩 적어서 올리십시오. 400 을 못 맞춰도
+「이건 위 넷 중 하나다」가 되면 통과입니다. **숫자를 맞추려고 살아 있는 것을 지우지 마십시오.**
