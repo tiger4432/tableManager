@@ -1,3 +1,70 @@
+# 🔴 판정 요청 — v1 은퇴 «3단계까지» 착지. 4단계 앞에 «둘»이 서 있습니다 (구현자 2026-08-27 13:0x)
+
+## 착지한 것 넷 — 단계마다 따로, 전부 push 됨
+```
+3d1b3803  표지 둘을 비움      술어 행 · _EDIT_TARGETS
+c0de3b89  라우트 둘 은퇴      /admin/ledger/save · /vocabulary/retire  (+ 고아 헬퍼 하나)
+aed1876a  ledger_catalog      entity_types() 를 «선언»으로
+4f85ef6b  dry-run 술어 갈래   은퇴. 소스 갈래는 그대로 (총괄 지시대로)
+```
+
+## 🔴 판정 요청 ① — `PROJECTION_ONLY_WORDS` 는 «무덤이 아니라 집»이 필요합니다
+
+총괄 블록: 「셋 다 그 함수 «안»에만 삽니다 — 총괄 실측」. **셋 중 하나가 다릅니다.**
+```
+SIGNATURE_FIELDS   check_predicate_declaration «안»에만    ✅ 블록이 맞습니다
+LAYER_* 거절        check_predicate_declaration «안»에만    ✅ 맞습니다
+PROJECTION_ONLY_WORDS
+   ① vocabulary.py:724   check_predicate_declaration      <- 블록이 본 자리
+   ② vocabulary.py:998   check_signature                  <- 🔴 여기가 더 있습니다
+      그 함수를 부르는 곳  ledger/gate.py:456  = 원자가 «전부» 지나는 살아 있는 게이트
+      그 술어의 뜻       설계 §4.2 「투영 상태 낱말은 원장에 실릴 수 없다」
+```
+🔴 **`check_predicate_declaration` 과 같이 지우면 그 문이 «조용히» 열립니다.** 오류는 안 납니다 —
+투영 낱말로 원자가 들어올 «수 있게» 될 뿐이고, 그건 들어오는 날에만 보입니다.
+👉 **판정 요청: 이 낱말 집합을 어디에 두시겠습니까.** (선언의 어휘로? gate 옆의 상수로?)
+   저는 «만들지 않고» 여기서 멈춥니다.
+
+## 🔴 판정 요청 ② — `ledger_catalog` 는 «수입자 0» 입니다
+```
+ledger_api/ledger_catalog.py 를 import 하는 코드   «0»   (자기 시험 하나 제외)
+main.py 의 라우트                                 «0»
+클라 호출                                        «0»
+```
+지시하신 「첫 자리」라 고쳤고 실제로 «죽어 있던 것»이 맞았습니다(아래 ③). 다만 **아무도 안 부릅니다.**
+👉 살릴지(라우트를 붙일지) 지울지는 판정입니다. 저는 고쳐만 두었습니다.
+
+## ③ 그 자리에서 나온 실측 — 「카탈로그의 이름」과 「원장의 이름」이 «한 글자도» 안 겹쳤습니다
+```
+ledger_events.subject_type 실제 값   die · dtjob · lot_slot · wafer
+entity_types() 가 답하던 것          Equipment · Lot · Product · Recipe · Wafer
+그 다섯을 달고 있는 원자             «0»
+register 원자                       396, 전부 dtjob      <- 총괄이 말한 그 396입니다
+```
+즉 카탈로그는 «빈 페이지만 나오는 다섯»을 늘어놓고, 원장이 실제로 가진 넷을 전부 거절하고
+있었습니다(「register 목록을 가진 개체 타입이 아닙니다」). 낡은 필터가 아니라 **다른 어휘를 읽고
+있었던 것**입니다. 선언에서 읽게 바꾼 뒤 넷 전부 페이징됩니다.
+
+📌 곁가지로: 선언의 entities 는 **die · dtjob · lot · lot_slot · recipe · wafer «여섯»** 입니다 —
+   「전부 노드」 판정의 NODE TYPE 목록 절반이 이미 이 여섯으로 확정돼 있습니다.
+
+## 4단계(`vocabulary.py` 삭제) 앞의 지도 — 실측
+```
+남은 v1 사슬은 «한 가닥»입니다
+   _load_extension (vocabulary.py:560)      <- v1 확장 파일 로더
+      -> check_predicate_declaration         <- 이제 호출자 «이것 하나». 0 이 아닙니다
+         -> SIGNATURE_FIELDS · LAYER_* 거절   <- 이 셋은 «같이» 죽습니다
+
+같이 죽지 «않는» 것
+   PROJECTION_ONLY_WORDS   -> 판정 요청 ①
+   check_signature · ENTITY_TYPES · PREDICATES 등 -> gate/envelope/explorer 가 삽니다
+   ledger_admin.vocabulary_view()  -> 어휘 심볼 «여덟»을 읽습니다. GET /admin/ledger/vocabulary
+       (그중 signature_fields · editable_layer 는 클라 소비자 «0»)
+```
+⚠️ 4단계는 「파일 하나 지우기」가 아니라 **게이트를 선언 위로 옮기는 일**입니다. 시작하지 않았습니다.
+
+---
+
 # 📌 **표지 갈래는 «오늘 주어가 0» — 다음 사람이 「초록」을 「검증됨」으로 안 읽도록 적습니다**
 
 ```
