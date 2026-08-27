@@ -3071,7 +3071,8 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @app.post("/tables/{table_name}/upload")
-async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile = File(...)):
+async def upload_file(table_name: str, user: str = "Unknown",
+                      relative_path: str = "", file: UploadFile = File(...)):
     """
     클라이언트에서 보낸 로그 파일을 수신하여 해당 테이블의 인제션 워크스페이스(raws/)에 저장합니다.
     저장 시 directory_watcher.py가 이를 감지하여 자동으로 파싱을 시작합니다.
@@ -3104,22 +3105,48 @@ async def upload_file(table_name: str, user: str = "Unknown", file: UploadFile =
     orig_name, ext = os.path.splitext(_safe_component(file.filename))
     safe_user = _safe_component(user) or "Unknown"
     unique_name = f"user({safe_user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = os.path.join(target_dir, unique_name)
 
-    # 결과 검증: 반드시 target_dir의 **직접 자식**이어야 한다.
+    # 🔴 THE TREE IS KEPT, because a parser downstream reads the WAFER OUT OF THE FOLDERS.
+    #    `voids_json_format` refuses outright unless the relative path is
+    #    `WAFERID/WORK_DATETIME/<file>` -- the wafer id and the work time are not inside the
+    #    file at all. Dropping a folder into raws/ preserved that; uploading the same folder
+    #    through the browser flattened it to one component and hit that refusal. Two doors,
+    #    two answers, for the same tree.
+    #
+    # 🔴 THE GUARD IS NOT REMOVED, ITS SPELLING IS WIDENED. What it means is "cannot leave
+    #    raws/"; what it SAID was "must be a direct child". Every component is sanitised on
+    #    its own now, `.`/`..`/empty are DROPPED rather than substituted, and the result is
+    #    still verified against the directory -- by containment instead of parenthood,
+    #    because result-based verification is the rule this route already states.
+    parts = []
+    for chunk in str(relative_path or "").replace("\\", "/").split("/")[:-1]:
+        cleaned = _safe_component(chunk)
+        if cleaned and cleaned not in (".", ".."):
+            parts.append(cleaned)
+    #: A cap, because unbounded nesting stops being an ontology question and becomes a
+    #: filesystem one. Ten is far above the three this parser needs.
+    parts = parts[:10]
+    file_path = os.path.join(target_dir, *parts, unique_name)
+
+    # 결과 검증: 반드시 target_dir **아래**여야 한다 (직접 자식일 필요는 없다).
     norm_target = os.path.normpath(os.path.abspath(target_dir))
     norm_dest = os.path.normpath(os.path.abspath(file_path))
-    if (os.path.dirname(norm_dest) != norm_target
-            or os.path.basename(norm_dest) != unique_name):
+    try:
+        contained = os.path.commonpath([norm_target, norm_dest]) == norm_target
+    except ValueError:                                   # different drives on Windows
+        contained = False
+    if not contained or os.path.basename(norm_dest) != unique_name:
         raise HTTPException(
             status_code=400,
-            detail=("업로드 파일명을 안전한 경로로 정규화하지 못했습니다 — "
-                    f"파일명과 업로더 이름에서 경로 구분자를 제거한 뒤 다시 시도하십시오."),
+            detail=("업로드 경로를 안전하게 정규화하지 못했습니다 — "
+                    f"파일명·업로더 이름·상대 경로에서 상위 디렉터리 참조를 제거한 뒤 "
+                    f"다시 시도하십시오."),
         )
 
     # 3. 파일 저장
     try:
         content = await file.read()
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
             f.write(content)
         return {"status": "success", "filename": file.filename, "path": file_path}
