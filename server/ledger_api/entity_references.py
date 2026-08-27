@@ -51,6 +51,10 @@ _cache = None
 #: declaration is the only place that knows them, and two readers of one file would be two
 #: chances to disagree about it.
 _keys = None
+#: `{edge name: {subjects, targets}}` from the same parse -- what the walk may be asked to
+#: FOLLOW besides the declared predicates. A reference edge has no atoms, so it is not in
+#: `vocabulary`, but it is declared, and「declared」is what `follow` checks.
+_edges = None
 _lock = threading.Lock()
 
 
@@ -71,13 +75,14 @@ def load(force_reload=False):
     before this existed -- and it is what makes gate ⑤ meaningful: delete the declaration and
     the edges go, because nothing here knows their names.
     """
-    global _cache, _keys
+    global _cache, _keys, _edges
     with _lock:
         if _cache is not None and not force_reload:
             return _cache
         path = _config_path()
         table = {}
         keys = {}
+        edges = {}
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
@@ -88,14 +93,48 @@ def load(force_reload=False):
                 declared = (spec or {}).get("keys")
                 if isinstance(declared, list):
                     keys[_bare(name)] = [str(k) for k in declared if isinstance(k, str)]
+                # The VERSIONED owner id is kept here on purpose: the catalogue lists a
+                # reference edge beside the declared predicates, whose `subjects` are
+                # versioned (`die@1`), and a client that filters by subject would drop an
+                # edge spelled any other way.
+                for ref in (refs if isinstance(refs, list) else ()):
+                    if not isinstance(ref, dict):
+                        continue
+                    edge = ref.get("edge")
+                    target = ((ref.get("to") or {}).get("entity")
+                              if isinstance(ref.get("to"), dict) else None)
+                    if isinstance(edge, str) and edge.strip():
+                        edges.setdefault(edge, {"subjects": [], "targets": []})
+                        edges[edge]["subjects"].append(str(name))
+                        if isinstance(target, str) and target.strip():
+                            edges[edge]["targets"].append(target)
         except FileNotFoundError:
             pass
         except Exception as exc:                                  # pragma: no cover
             logger.error("entity references unreadable at %s: %s", path, exc)
         _cache = table
         _keys = keys
+        _edges = edges
         return _cache
 
+
+
+def reference_edges():
+    """`{edge: {"subjects": [...], "targets": [...]}}` for every declared reference edge.
+
+    Ids stay VERSIONED (`die@1`), matching how `vocabulary` spells a predicate's subjects,
+    so a caller can put these beside the declared predicates without respelling anything.
+    """
+    load()
+    return {name: {"subjects": sorted(set(item["subjects"])),
+                   "targets": sorted(set(item["targets"]))}
+            for name, item in (_edges or {}).items()}
+
+
+def reference_edge_names():
+    """Just the names -- what `follow` compares against."""
+    load()
+    return set(_edges or {})
 
 def declared_types():
     """Every entity type the declaration names, bare and sorted. `[]` says the declaration

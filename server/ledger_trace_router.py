@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 
+from ledger_api import entity_references
 from ledger_api import finding_kinds
 import enrichment_actions
 from ledger_api import ledger_composition
@@ -184,13 +185,25 @@ def _followable_predicates():
 
     Read, never restated -- adding a predicate to the declaration makes it followable
     without editing this file, and that is the only way to add one.
+
+    🔴 AND A REFERENCE EDGE IS DECLARED TOO. `entities.<type>.references[].edge`
+    (today: `in_container`, die -> wafer / die -> dtjob) has no atoms, so it is not in
+    `vocabulary` -- but it is the bridge a die crosses to reach its wafer, and refusing to
+    let a caller NAME it meant they could not narrow a walk without cutting that bridge.
+    `follow` stays one parameter; what widened is the list it is checked against.
     """
+    names = set()
     try:
         from ledger import config as _config
         declared = (_config.load() or {}).get("vocabulary") or {}
+        names |= {str(key).split("@", 1)[0] for key in declared}
     except Exception:      # an unreadable declaration refuses everything rather than guessing
         return set()
-    return {str(key).split("@", 1)[0] for key in declared}
+    try:
+        from . import entity_references as _refs
+    except ImportError:                                            # pragma: no cover
+        from ledger_api import entity_references as _refs
+    return names | _refs.reference_edge_names()
 
 
 def _evidence_graph(connection, *, node_id, hops, direction, include_values,
@@ -531,8 +544,21 @@ def ledger_declaration_catalog():
     predicates = [
         {"name": name,
          "subjects": list((spec or {}).get("subjects") or []),
-         "object": (spec or {}).get("object") or {}}
+         "object": (spec or {}).get("object") or {},
+         "origin": "vocabulary"}
         for name, spec in sorted((declared.get("vocabulary") or {}).items())
+    ]
+    # 🔴 THE SAME ARRAY, THE SAME SHAPE. A reference edge is followable, so the
+    # catalogue must offer it - and in `predicates[]` rather than a second array, because a
+    # client that had to read two arrays would grow a branch. `origin` tells them apart for
+    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
+    # the client filters options by subject and a bare spelling would match nothing.
+    predicates += [
+        {"name": name,
+         "subjects": item["subjects"],
+         "object": {"kind": "entity_ref", "types": item["targets"]},
+         "origin": "reference"}
+        for name, item in sorted(entity_references.reference_edges().items())
     ]
     return {
         "state": "ready" if entities else "empty",
