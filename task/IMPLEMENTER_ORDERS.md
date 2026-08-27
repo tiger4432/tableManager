@@ -15999,3 +15999,75 @@ server/ledger_trace_router.py:537
 마지막 커밋 17:28, 지금 19:05 — **105분 조용합니다.**
 막힌 게 있으면 한 줄만 주십시오. 없으면 위 둘 중 «작은 쪽»부터 잡으십시오.
 🔴 둘 다 «수리»가 아닙니다 — 하나는 문자열 넷, 하나는 «측정 후 보고»입니다.
+
+---
+
+# ✅ 묘비 착지 확인 — 게이트 셋 전부 (총괄 실측, 2026-08-27 19:17)
+```
+후계를 «그대로 호출»    /api/ledger/subgraph -> 422 (인자 없음 = 라우트 실재)   ✅
+은퇴 라우트 일곱        전부 410                                              ✅
+pytest 두 파일          37 passed · 1 skipped                                 ✅
+서버는 총괄이 올렸습니다 (PID 60564 · 19:16:43)
+```
+
+---
+
+# 🔴 소유자 판정 — final_chip 은 «안 넣는다». 대신 «마킹에서 조립이 보여야» 한다
+
+> 「아니 넣지마」
+> 「그냥 어느 중간과정에서 마킹 찍어도 조립 자재 다 보이게」
+
+`/composition` 을 살리는 길이 닫혔고, 대신 **walk 이 답해야 하는 요구**가 왔습니다.
+
+## 실측 — 지금 절반은 «됩니다» (총괄 직접, 라이브)
+```
+씨앗   wafer SYN-CX-BW-001  ·  hops 4 · direction both · collect entity
+결과   자재 «10종» 이 나옵니다
+       BW 6 (001·003·004·005·006 …) · CW 2 (HBM-B-02 · LOGIC-A-01) · DT 2 (DT-01|1 · DT-02|2)
+걸은 술어   transfer 515 · bonded_from 515 · in_container 128 · inspected 128 · has_findings 28
+die 씨앗도 «같은 10종» — 중간 단계에서 찍어도 보입니다
+```
+
+## 🔴 막는 것 «하나» — 조립의 척추를 `follow` 가 이름 못 댑니다
+```
+in_container   die -> wafer  ·  die -> dtjob      <- 자재를 잇는 그 엣지입니다
+follow=in_container   ->  422 predicate_not_declared
+   declared 열: bonded_from · derived_from · has_netdie · has_wafer · inspected
+                observed · processed_with · register · slot_map · transfer
+   in_container 는 die@1.references 의 «참조 엣지»라 이 목록에 없습니다
+🔴 그래서 follow=transfer&follow=bonded_from 만 주면 웨이퍼가 «1 노드 0 엣지»로 고립됩니다
+   — 다이로 건너가는 다리가 in_container 이기 때문입니다
+```
+
+## 그리고 그것이 왜 «지금» 문제가 되나 — 예산
+```
+node_limit ≤ 1000 · edge_limit ≤ 3000   (둘 다 «필드 이름을 대며» 422 — 정직합니다)
+그런데 씨앗 웨이퍼의 «자기 다이»가 771개입니다
+-> 예산이 형제 다이에 먼저 먹혀 노드 상한에서 끊깁니다
+-> 아끼려면 follow 인데 위 이유로 «못 아낍니다»
+```
+
+## 지시 — `follow` 가 «참조 엣지도» 이름 댈 수 있게 (바뀌는 층 «하나»)
+```
+지금   follow 의 검증 목록 = 선언된 술어 10
+뒤     선언된 술어 10  +  선언된 «참조 엣지 이름» (die@1.references[].edge)
+⛔ 새 파라미터를 만들지 마십시오 — follow 는 그대로 «하나»입니다
+⛔ walk 알고리즘 · 예산 상한 · 거절문 구조 — 건드리지 마십시오
+⛔ 거절문의 `declared` 목록도 «같이» 넓어져야 합니다 (지금 목록을 그대로 보여 주고 있으니)
+```
+### 게이트 둘
+```
+① follow=transfer&follow=bonded_from&follow=in_container 로 걸어서
+   자재가 «10종 전부» 나오는가 (지금 follow 없이 나오는 그 10종과 «집합 비교»)
+② 그 요청의 노드 수가 follow 없을 때보다 «줄어야» 한다 (예산을 아끼는 게 목적이므로)
+```
+
+## 제가 «못 잰» 것 — 정직하게 적습니다
+```
+dtjob · lot_slot 에서 찍으면 어떻게 되는지 «못 쟀습니다»
+   손으로 지은 씨앗 id 가 «1 노드 0 엣지»를 냈는데 그건 답이 아니라 «씨앗이 틀린 것»입니다
+다만 선언 사실 하나는 잽니다:
+   has_wafer (lot_slot -> wafer) 는 «원자 0» — 선언은 있는데 한 번도 안 쓰였습니다
+   derived_from 도 «원자 0»
+   -> lot_slot 에서 자재로 건너갈 다리가 «선언만 있고 데이터가 없습니다»
+```
