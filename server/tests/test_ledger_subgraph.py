@@ -713,24 +713,47 @@ def test_both_generations_seed_together_in_one_request():
 def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
     """🔴 THE MUTATION - without it the two tests above pass by not looking.
 
-    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ called
-    `vocabulary.check_subject_keys` - the same function the write gate runs - and refused
-    the id on any violation.  All three must go back to refusing, or the assertions above
-    are not measuring the removal of that call.
+    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ ran the
+    write gate's judgement and refused the id on any violation.  All three must go back to
+    refusing, or the assertions above are not measuring the removal of that call.
+
+    🔴 THE GUARD IS RESTATED FROM THE DECLARATION, not imported.  It used to call
+    `vocabulary.check_subject_keys`, and that module was the v1 word list this repository
+    retired on 2026-08-27.  A mutation may restate the rule it reinstates -- that is what
+    makes it a mutation -- but it must not restate it from a source the product no longer
+    reads, or the control would go on passing after the rule itself changed.
     """
-    from ledger import vocabulary
+    from ledger import config as ledger_config
+    declared_entities = {
+        str(key).split("@", 1)[0]: set((value or {}).get("keys") or ())
+        for key, value in ((ledger_config.load() or {}).get("entities") or {}).items()
+    }
     original = ledger_explorer.decode_entity_id
 
     def gate_guarded(value):
         entity_type, keys = original(value)
-        violations = vocabulary.check_subject_keys(entity_type, keys)
-        if violations:
-            raise ValueError("; ".join(violations))
+        if entity_type not in declared_entities:
+            raise ValueError(f"{entity_type} is not a declared entity type")
+        missing = declared_entities[entity_type] - set(keys or {})
+        if missing:
+            raise ValueError(
+                f"{entity_type} is not a declared entity type with these keys "
+                f"(missing {sorted(missing)})")
         return entity_type, keys
 
+    # 🔴 `die` IS DECLARED NOW and so it is not part of the mutation's refusing set.
+    #    The 2026-08-27 rebuild moved the ledger's subject onto `die@1`, so the spelling
+    #    that v1 refused is the spelling v5 emits.  Asserting it still refuses would be
+    #    asserting the old rule, and the mutation would then be measuring history rather
+    #    than the gate.  What remains undeclared is the CAPITALISED v1 generation, and
+    #    that is what the read had to stop asking about.
+    refused = {name: keys for name, keys in MIXED_GENERATION_SEEDS.items()
+               if name not in declared_entities}
+    assert refused, ("every mixed-generation seed is declared now - this mutation no "
+                     "longer restores anything and should be retired, not adjusted")
     ledger_explorer.decode_entity_id = gate_guarded
     try:
-        for subject_type, keys in sorted(MIXED_GENERATION_SEEDS.items()):
+        for subject_type, keys in sorted(refused.items()):
             try:
                 ledger_subgraph.decode_node_id(
                     ledger_explorer.entity_id(subject_type, keys))
@@ -740,19 +763,28 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
                 raise AssertionError(
                     f"{subject_type} was accepted with the write gate restored - the "
                     f"assertions above are not measuring the gate's removal")
-        # The mutation is SPECIFIC, not a blanket break: what v1 declares was never the
-        # part that stopped reading, so these two must survive it.
+        # The mutation is SPECIFIC, not a blanket break: what the DECLARATION declares was
+        # never the part that stopped reading, so a declared spelling must survive it.
+        # 🔴 READ, NOT RESTATED.  `STILL_DECLARED_SEEDS` spells its types the v1 way
+        # (`Wafer`, `Lot`), and those capitals stopped being declared at the lowercase
+        # migration -- a hand-kept second copy of the vocabulary going stale is the exact
+        # failure this whole retirement is about, so the survivor is taken from the
+        # declaration instead of from the fixture.
         for subject_type, keys in STILL_DECLARED_SEEDS.items():
+            declared_spelling = subject_type.lower()
+            if declared_spelling not in declared_entities:
+                continue
             assert ledger_subgraph.decode_node_id(
-                ledger_explorer.entity_id(subject_type, keys))["type"] == subject_type
+                ledger_explorer.entity_id(declared_spelling, keys))["type"]                 == declared_spelling
     finally:
         ledger_explorer.decode_entity_id = original
 
-    # 🔴 THE WRITE SIDE IS UNCHANGED, and this is where that is pinned.  The judgement
-    # still exists and still says no; only the READ stopped asking it.  If this ever goes
-    # empty, writing has been loosened and that is the wrong edit.
-    assert vocabulary.check_subject_keys("WaferLeg", {"wafer": "W", "bonding_leg": "L"})
-    assert vocabulary.check_subject_keys("die", MIXED_GENERATION_SEEDS["die"])
+    # 🔴 THE JUDGEMENT ITSELF IS UNCHANGED, and this is where that is pinned.  The
+    # declaration still refuses these two spellings; only the READ stopped asking.  If
+    # this ever goes empty, the declaration has been loosened and that is the wrong edit.
+    assert "WaferLeg" not in declared_entities
+    assert "DTJob" not in declared_entities
+    assert "die" in declared_entities      # the rebuild's subject, declared and emitted
 
 
 def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():

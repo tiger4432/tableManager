@@ -35,7 +35,6 @@ import ledger_trace as lt
 ledger_pkg = pytest.importorskip(
     "ledger", reason="the ledger translator package (L1) is not present")
 from ledger import config as ledger_config          # noqa: E402
-from ledger import vocabulary                       # noqa: E402
 from ledger.envelope import Atom, entity_ref        # noqa: E402
 
 
@@ -53,8 +52,25 @@ def test_the_qualifier_names_the_walk_reads_are_the_ones_declared():
     """`from`/`to`/`slot` are read by name. If the vocabulary renames one, the
     walk goes silently blind rather than loudly wrong — a hop would come back
     `unresolvable` and read as a broken chain in the data."""
-    assert set(vocabulary.PREDICATES["slot_map"]["qualifiers"]) >= {"from", "to"}
-    assert "slot" in vocabulary.PREDICATES["has_wafer"]["qualifiers"]
+    # 🔴 THIS USED TO ASK `vocabulary.PREDICATES`, the v1 word list, and that is why it
+    # stayed green while the thing it guards broke: the list still carried `from`/`to`
+    # long after the declaration stopped declaring them. A guard that reads a second copy
+    # of the rule cannot see the rule change. It asks the declaration now.
+    from ledger import config as ledger_config
+    declared = {str(k).split("@", 1)[0]: v
+                for k, v in ((ledger_config.load() or {}).get("vocabulary") or {}).items()}
+
+    def qualifiers(predicate):
+        obj = (declared.get(predicate) or {}).get("object") or {}
+        q = obj.get("qualifiers") or {}
+        return set(q.get("required") or ()) | set(q.get("optional") or ())
+
+    assert {"from", "to"} <= qualifiers("slot_map"), (
+        "`ledger_trace._slot_move` reads the `from`/`to` qualifiers of `slot_map` by "
+        "name, and the declaration does not declare them - the walk reads nothing there.")
+    assert "slot" in qualifiers("has_wafer"), (
+        "`ledger_trace._wafer_slot` reads the `slot` qualifier of `has_wafer` by name, "
+        "and the declaration does not declare it - the walk reads nothing there.")
 
 
 def test_the_payload_readers_read_the_translators_own_entity_ref():
@@ -305,25 +321,12 @@ def test_what_the_hop_basis_reports_for_a_class_1_claim():
         "distinction should now be asserted instead")
 
 
-def test_the_hop_states_are_the_designs_projection_words():
-    """🔴 The route's state enum against the design's own vocabulary.
-
-    `ledger/vocabulary.py::PROJECTION_ONLY_WORDS` declared `contested` before
-    this route emitted it — it is design §4.2's projection vocabulary, and the
-    gate uses it to REFUSE those words as predicates. `ledger_trace.py`
-    deliberately does not import that module (the web server must not import the
-    translator package), so the two spellings are held equal here instead.
-
-    That is what stops the route inventing a fifth state word under a private
-    spelling: a new hop state has to be a word the design already owns.
-    """
-    stray = set(lt.HOP_STATES) - vocabulary.PROJECTION_ONLY_WORDS
-    assert not stray, (
-        f"hop state(s) {sorted(stray)} are not in the design's projection "
-        f"vocabulary. Add them to `PROJECTION_ONLY_WORDS` (and to the design) "
-        f"before the route emits them.")
-    assert lt.STATE_CONTESTED in vocabulary.PROJECTION_ONLY_WORDS
-
+# REMOVED 2026-08-27: `test_the_hop_states_are_the_designs_projection_words` held
+# `lt.HOP_STATES` equal to `ledger/vocabulary.py::PROJECTION_ONLY_WORDS`. That module
+# was the v1 word list and it is gone; the declaration has no projection-word section,
+# because a hop state is a word the PROJECTION owns and never a predicate the ledger
+# emits. There is nothing left to hold it equal to, so the assertion goes rather than
+# being pointed at a section invented to receive it.
 
 #: Derivations this lane has judged to be UTTERANCES — the source said it, the
 #: translator only reshaped it. Held here rather than in `ledger_trace.py` on
