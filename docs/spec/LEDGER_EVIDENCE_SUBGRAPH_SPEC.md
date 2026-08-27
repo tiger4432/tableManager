@@ -1,7 +1,7 @@
 # Ledger Evidence Subgraph — 증거 노드와 문맥별 탐색
 
 > **Status:** Living · **Last verified:** 2026-08-15
-> **정본 코드:** `server/ledger_subgraph.py`, `server/enrichment_actions.py`, `server/ledger/envelope.py`,
+> **정본 코드:** `server/ledger_api/ledger_subgraph.py`, `server/enrichment_actions.py`, `server/ledger/envelope.py`,
 > `server/ledger/schema.py`, `server/ledger/store.py`, `client2/src/ledger_graph/`
 > **라우트 정본:** `docs/architecture/backend.md` §2
 > **범위:** 원장 증거를 보는 읽기 모델. `/trace`의 해소 결과나 R&D 원인 후보를 대체하지 않는다.
@@ -158,7 +158,7 @@ source_record = UUIDv5(namespace,
 
 🔴 **Entity 라벨의 키 «순서»는 라이브 `entities` 선언에서 온다** (`server/config/ontology/
 ledger_config.json`. 버전 접미사 `@N`은 떼고 맞춘다). `ledger_explorer._entity` 는 v1
-`ledger/vocabulary.py` 의 `ENTITY_TYPES` 를 보는데 나중에 선언된 유형은 거기 **없어서**
+선언(`ledger_config.json`)의 `entities` 를 보는데 나중에 선언된 유형은 거기 **없어서**
 payload JSON 의 삽입 순서로 떨어지고, `die` 의 경우 그것이 `x`·`y` 를 앞에 놓아 자재 이름인
 `mat_id` 를 두 칸짜리 라벨 밖으로 밀어낸다. 선언은 이미 답을 갖고 있다 — `die@1` 은 키를
 `mat_id` 부터 적는다. **선언에 없는 유형의 라벨은 손대지 않는다**(오늘 `WaferLeg` 가 그렇고,
