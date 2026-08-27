@@ -608,6 +608,12 @@ function setupEventListeners() {
 
     elements.performanceLog.textContent = `Uploading ${files.length} log file(s)...`;
 
+    // 🔴 토스트는 루프 «밖»에서 «한 번». 파일마다 띄우면 폴더 하나에 100개가 뜹니다 --
+    //    파일 몇 개를 고르던 시절엔 견딜 만했고, 「폴더」라는 입력이 생긴 순간 넘었습니다.
+    //    진행 표시는 아래 `performanceLog` 가 «덮어쓰며» 이미 하고 있습니다 (새 UI 없음).
+    let done = 0;
+    let failed = 0;
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       elements.performanceLog.textContent = `Uploading file [${file.name}] (${(file.size / 1024).toFixed(1)} KB)...`;
@@ -625,17 +631,22 @@ function setupEventListeners() {
           const resData = await res.json();
           const savedPath = resData.path || '';
           const savedFilename = savedPath.split(/[/\\]/).pop() || file.name;
-          elements.performanceLog.textContent = `✅ Successfully ingested [${file.name}]. Sync will refresh table shortly.`;
-          showToast(`📤 파일 업로드 완료! (RAW 파일: ${savedFilename})`, 'success');
+          elements.performanceLog.textContent = `✅ Successfully ingested [${file.name}] (RAW: ${savedFilename}). Sync will refresh table shortly.`;
+          done += 1;
         } else {
           throw new Error('Upload failed');
         }
       } catch (err) {
         console.error('File ingestion failed', err);
         elements.performanceLog.textContent = `❌ Ingestion failed for [${file.name}]`;
-        showToast(`❌ [${file.name}] 파일 인제션에 실패했습니다.`, 'error');
+        failed += 1;
       }
     }
+
+    // 🔴 성공은 «한 번», 실패는 «묶어서 한 번». 전부 실패하면 「0개 완료」를 안 띄웁니다 --
+    //    0 을 성공으로 그리는 것이 이 화면이 없애려는 오독입니다.
+    if (done) showToast(`📤 ${done}개 업로드 완료`, 'success');
+    if (failed) showToast(`❌ ${files.length}개 중 ${failed}개 실패`, 'error');
     // 🔴 «불을 지른 input» 을 비웁니다. `toolbarFileInput` 을 고정으로 비우면 폴더 쪽은
     //    값이 남아 «같은 폴더를 두 번» 고를 때 change 가 안 옵니다.
     e.target.value = '';
