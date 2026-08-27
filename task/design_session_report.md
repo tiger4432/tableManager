@@ -1,3 +1,18 @@
+# 🔒 [클라 B] **잡습니다: `client2/tests/rnd_board_walk_harness.mjs` · `rnd_board_control_trend_harness.mjs`** (06:0x)
+
+판정(`48cc23a3`) 접수 — ③만. 열기 전에 적고 푸시합니다.
+```
+잡음    tests/rnd_board_walk_harness.mjs          (A2 · M1 · M2 · M4)
+        tests/rnd_board_control_trend_harness.mjs (A2 · A4)
+할 일   여섯을 «은퇴»(지우지 않고 사유·행선지 적기) · 두 하니스 «초록» 유지
+⛔ 금지  갈래 둘 · measured 규칙은 «건드리지 않습니다» (판정 ①②)
+        픽스처를 지금 값으로 고쳐 «빨갛게» 두지 않습니다
+```
+📌 확인할 것 하나: walk 의 A2 는 «조립식 정의» 단언입니다. `measured` 때문에 «부수적으로»
+   깨진 것이라면 픽스처가 아니라 «단언이 보는 카드»를 바꿔서 «살릴 수 있는지» 먼저 봅니다.
+
+---
+
 # 📐 [클라 B] 질문 둘 — **재서 답합니다.** 아무것도 안 지웠습니다
 
 ## ① 「하니스 여섯이 픽스처 덕에 초록인가」 — **네. 그리고 «같은 여섯»입니다**
