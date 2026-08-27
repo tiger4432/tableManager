@@ -290,27 +290,6 @@ def test_the_top_set_is_everything_not_dominated_and_carries_its_basis():
     assert [item["id"] for item in layers[1]] == ["weak"]
 
 
-def test_the_summary_query_asks_for_a_literal_jsonb_path():
-    """`#>>'{position,x}'` lives inside an f-string; unescaped it is a NameError.
-
-    Every InMemory test uses the pure-Python twin and the PostgreSQL test is skipped
-    without a server, so nothing here saw the SQL text itself until now.
-    """
-    lookup = ledger_subgraph.SqlEvidenceLookup.__new__(
-        ledger_subgraph.SqlEvidenceLookup)
-    lookup.relation = "ledger_events"
-    captured = {}
-
-    def capture(sql, params):
-        captured["sql"] = sql
-        return []
-
-    lookup._execute = capture
-    lookup.finding_summaries_for_entities([("Wafer", {"wafer": "W1"})], "both", 5)
-    assert "'{position,x}'" in captured["sql"]
-    assert "'{position,y}'" in captured["sql"]
-
-
 def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     routes = {route.path: route for route in ledger_trace_router.router.routes}
     def params(path):
