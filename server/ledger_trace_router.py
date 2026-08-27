@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 
-import enrichment_actions
 from ledger_api import ledger_subgraph
 import ledger_trace
 
@@ -89,22 +88,12 @@ def evidence_subgraph(
     hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
-    include_values: bool = Query(True, description="값 목적어를 Value 노드로 표시"),
-    include_actions: bool = Query(
-        True, alias="enrich_actions",
-        description="관련된 미완 Enrichment를 terminal Action 노드로 투영"),
     node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
     edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
-    shape: str = Query("graph", pattern="^(graph|tables)$",
-                       description="graph 또는 Spotfire/Excel용 tables"),
-    property_limit: int = Query(10000, ge=100, le=20000,
-                                description="tables.properties 행 상한"),
     positive: list[str] | None = Query(
         None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),
     negative: list[str] | None = Query(
         None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
-    collect: str | None = Query(
-        None, description="산출을 노드 종류 하나로 좁혀 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다"),
     follow: list[str] | None = Query(
         None, description="이 술어만 따라간다. 없으면 «전부» — 오늘 동작 그대로"),
     db: Session = Depends(get_db),
@@ -124,15 +113,10 @@ def evidence_subgraph(
                 "message": "선언에 없는 술어입니다: " + ", ".join(unknown),
             })
     try:
-        graph = _evidence_graph(
+        return _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
-            hops=hops, direction=direction, include_values=include_values,
-            node_limit=node_limit, edge_limit=edge_limit,
-            collect=collect, follow=follow,
-            action_lookup=(enrichment_actions.SqlEnrichmentActionLookup(db)
-                           if include_actions else None))
-        return (ledger_subgraph.tabular_projection(graph, property_limit)
-                if shape == "tables" else graph)
+            hops=hops, direction=direction,
+            node_limit=node_limit, edge_limit=edge_limit, follow=follow)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -187,9 +171,8 @@ def _followable_predicates():
     return names
 
 
-def _evidence_graph(connection, *, node_id, hops, direction, include_values,
-                    node_limit, edge_limit, observation_mode="summary",
-                    action_lookup=None, collect=None, follow=None):
+def _evidence_graph(connection, *, node_id, hops, direction,
+                    node_limit, edge_limit, follow=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -203,10 +186,8 @@ def _evidence_graph(connection, *, node_id, hops, direction, include_values,
     return ledger_subgraph.subgraph(
         node_id, ledger_subgraph.SqlEvidenceLookup(
         connection, relation=LEDGER_RELATION),
-        hops=hops, direction=direction, include_values=include_values,
-        node_limit=node_limit, edge_limit=edge_limit,
-        observation_mode=observation_mode, action_lookup=action_lookup,
-        collect=collect, follow=follow)
+        hops=hops, direction=direction,
+        node_limit=node_limit, edge_limit=edge_limit, follow=follow)
 
 
 

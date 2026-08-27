@@ -295,7 +295,12 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     def params(path):
         return {field.alias or field.name
                 for field in routes[path].dependant.query_params}
-    assert {"positive", "negative", "collect"} <= params("/api/ledger/subgraph")
+    # 🔴 `collect` LEFT WITH THE KINDS IT CHOSE BETWEEN (2026-08-28). Every node is a
+    #    declared entity now, so a switch selecting a node kind has one value and is not a
+    #    switch. The signed seeds stay -- they change the WALK, not the projection.
+    assert {"positive", "negative"} <= params("/api/ledger/subgraph")
+    assert not ({"collect", "include_values", "enrich_actions", "shape", "property_limit"}
+                & params("/api/ledger/subgraph")), "a projection knob came back"
     # `/api/ledger/explore_entity` was retired 2026-08-23; `/subgraph` answers it.
     # `/trace` and `/explore` were DELETED 2026-08-25 with the legacy screens, so the
     # assertion becomes the stronger one the line below already uses: they are not routes
@@ -342,9 +347,9 @@ def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
     with pytest.raises(HTTPException) as raised:
         ledger_trace_router.evidence_subgraph(
             node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
-            hops=4, direction="both", include_values=True,
-            include_actions=False, node_limit=100, edge_limit=200, shape="graph",
-            property_limit=1000, positive=None, negative=None, collect=None,
+            hops=4, direction="both",
+            node_limit=100, edge_limit=200,
+            positive=None, negative=None,
             follow=["definitely_not_a_predicate"], db=None)
     assert raised.value.status_code == 422
     detail = raised.value.detail
