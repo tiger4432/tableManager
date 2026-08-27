@@ -16808,3 +16808,52 @@ vocabulary.seen_by@1     defect@1 -> scan@1
 ⛔ 예산 상한 · follow · positive/negative
 ⛔ 라이브 ledger_config.json — 총괄 파일입니다
 ```
+
+---
+
+# 🔴🔴🔴 범위 확정 — 「**오로지 walk 만**」 (소유자 2026-08-28 01:0x)
+
+앞 지시(투영 발명 삭제)보다 «넓습니다». 라우트까지입니다.
+
+## 🛑 A 구현자 — `96881095` 로 잡으신 `trends` 를 «놓으십시오»
+죽은 CTE 사슬만 지우려던 그 파일이 **통째로 사라지는 자리**가 됐습니다.
+지금 그 라운드를 돌면 **지워질 파일을 고치는 것**입니다. 제 지시가 늦었습니다.
+
+## 남는 것 — «하나»
+```
+GET /api/ledger/subgraph        walk. 이것만 데이터에 답합니다
+```
+
+## 사라지는 데이터 라우트 — 보드 실측 14요청 기준
+```
+/api/ledger/lot_map          보드 요청 «3»   맵 (지금 provenance: source_tables · 원장 밖)
+/api/ledger/trends           보드 요청 «3»   트렌드 (오늘 고친 것 포함)
+/api/ledger/siblings         보드 요청 «4»   또래
+/api/ledger/composition      보드 요청 «2»   이미 은퇴 예정이던 것
+/api/ledger/selection/resolve               마킹 해소
+/api/ledger/kinds                           종류 카탈로그 (dict 가 뒤에 있음)
+/api/ledger/structure                       유형 구조
+/api/ledger/subgraph/table                  walk 의 표 형태
+```
+🔴 **보드 14요청 중 12가 없어집니다.** 그 패널들은 «부품이 마킹+collect+follow 를 선언»하는
+walk 로 다시 지어져야 합니다. 그때까지 화면이 빕니다 — 소유자가 그 대가를 아십니다
+(「쓰기 문제 생기면 그때 다시 개발하는 걸로」 · 「나머지 지워서 문제가 생기더라도 실질적으로 안 쓰는 경로」).
+
+## 📌 총괄 판독 하나 — `/api/ledger/declaration` 은 «남깁니다»
+```
+근거   그건 «데이터»가 아니라 «선언 그 자체»를 내놓는 창구입니다.
+       지우면 부품이 무엇을 걸을 수 있는지 물을 곳이 없어지고, 그러면 다시 코드에 박게 됩니다
+       (= 오늘 지우는 바로 그 하드코딩)
+⚠️ 소유자께서 그것도 지우라 하시면 한 마디면 됩니다. 그때는 부품이 «선언 파일»을 직접 읽는 모양이 됩니다
+```
+`/admin/ledger/*` 는 설정 편집이라 이 지시 범위 «밖»입니다.
+
+## 착수 «전»에 올릴 것 — 앞 지시의 ①② 에 이것 하나 더
+```
+③ 위 여덟 라우트를 지우면 «같이 죽는 모듈»을 세십시오
+   ledger_trends.py · ledger_selection.py · ledger_composition.py · finding_kinds.py
+   · ledger_structure.py · ledger_lots.py … 그리고 그 각각의 «다른 소비자»
+   🔴 「같은 근거로 죽는다」고 묶기 «전»에 구성원마다 소비자를 세십시오
+      (오늘 새벽 vocabulary.py 를 그렇게 묶었다가 라이브 소비자가 있었습니다)
+⛔ 여전히 «지우지» 마십시오. 수를 먼저 올리십시오
+```
