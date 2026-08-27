@@ -48,30 +48,11 @@ CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample"
 
 
 
-def test_the_qualifier_names_the_walk_reads_are_the_ones_declared():
-    """`from`/`to`/`slot` are read by name. If the vocabulary renames one, the
-    walk goes silently blind rather than loudly wrong — a hop would come back
-    `unresolvable` and read as a broken chain in the data."""
-    # 🔴 THIS USED TO ASK `vocabulary.PREDICATES`, the v1 word list, and that is why it
-    # stayed green while the thing it guards broke: the list still carried `from`/`to`
-    # long after the declaration stopped declaring them. A guard that reads a second copy
-    # of the rule cannot see the rule change. It asks the declaration now.
-    from ledger import config as ledger_config
-    declared = {str(k).split("@", 1)[0]: v
-                for k, v in ((ledger_config.load() or {}).get("vocabulary") or {}).items()}
-
-    def qualifiers(predicate):
-        obj = (declared.get(predicate) or {}).get("object") or {}
-        q = obj.get("qualifiers") or {}
-        return set(q.get("required") or ()) | set(q.get("optional") or ())
-
-    assert {"from", "to"} <= qualifiers("slot_map"), (
-        "`ledger_trace._slot_move` reads the `from`/`to` qualifiers of `slot_map` by "
-        "name, and the declaration does not declare them - the walk reads nothing there.")
-    assert "slot" in qualifiers("has_wafer"), (
-        "`ledger_trace._wafer_slot` reads the `slot` qualifier of `has_wafer` by name, "
-        "and the declaration does not declare it - the walk reads nothing there.")
-
+# REMOVED 2026-08-27: the qualifier contract test went with its subject. It held that
+# the walk reads `from`/`to` on `slot_map` and `slot` on `has_wafer` by name -- true
+# of `_slot_map_pair` and `_payload_slot`, which were reachable only through
+# `_map_slot`, orphaned by the lineage retirement and deleted with it. No atom carried
+# those qualifiers either (0 of 135), so nothing was being read and nothing is lost.
 
 def test_the_payload_readers_read_the_translators_own_entity_ref():
     """Built with the translator's function, not with this lane's idea of it."""
@@ -80,19 +61,14 @@ def test_the_payload_readers_read_the_translators_own_entity_ref():
                   object_payload=entity_ref("Lot", {"lot": "PARENT"}))
     assert lt._payload_lot(df) == "PARENT"
 
-    hw = lt.Claim(id="b", subject_type="Lot", subject_keys={"lot": "L"},
-                  predicate="has_wafer", object_kind="entity_ref",
-                  object_payload=entity_ref("Wafer", {"wafer": "WF.01"}, slot="07"))
-    assert lt._payload_wafer(hw) == "WF.01"
-    assert lt._payload_slot(hw) == "7"
-
+    # 🔴 THE WAFER AND SLOT READERS ARE GONE (2026-08-27) and so are their assertions.
+    # `_payload_wafer` · `_payload_slot` · `_slot_map_pair` were reachable only through
+    # `_map_slot`, which the lineage retirement orphaned. What is left here is the reader
+    # that still has a caller.
     sm = lt.Claim(id="c", subject_type="Lot", subject_keys={"lot": "PARENT"},
                   predicate="slot_map", object_kind="entity_ref",
-                  object_payload=entity_ref("Lot", {"lot": "CHILD"},
-                                            **{"from": "10", "to": "02",
-                                               "wafer": "WF.01"}))
+                  object_payload=entity_ref("Lot", {"lot": "CHILD"}))
     assert lt._payload_lot(sm) == "CHILD"
-    assert lt._slot_map_pair(sm) == ("10", "2")
 
 
 def test_a_slot_is_not_mistaken_for_part_of_the_wafers_identity():

@@ -1033,16 +1033,6 @@ def _payload_lot(claim):
     return _object_key(claim, "lot")
 
 
-def _payload_wafer(claim):
-    """The wafer named by a `has_wafer` atom."""
-    return _object_key(claim, "wafer")
-
-
-def _payload_slot(claim):
-    """The slot a `has_wafer` atom puts its wafer in — a QUALIFIER, not identity."""
-    return _slot_text(_object_qualifier(claim, "slot"))
-
-
 def _slot_text(value):
     """Slots arrive as `3`, `"3"` and `"03"` from three sources. Compared as text
     with leading zeros stripped, because `3 != "3"` is how a chain silently
@@ -1055,24 +1045,6 @@ def _slot_text(value):
     if s.lstrip("0").isdigit():
         return str(int(s))
     return s
-
-
-def _slot_map_pair(claim):
-    """`(from, to)` of a `slot_map` atom, as the atom spells them.
-
-    Design §4.2 says `slot_map` is `Lot -> Lot + {from, to}` and does NOT say
-    which side `from` names. So this reads the pair verbatim and the WALK decides
-    the direction from which lot is the SUBJECT — see `_map_slot`. Guessing here
-    would put a wrong slot on the screen; the walk's way puts an honest
-    `unresolvable` there when the pair does not fit.
-
-    The translator's convention, read off its code and pinned by
-    `test_ledger_trace_contract.py`: subject = PARENT, object = CHILD,
-    `from` = the parent-side slot, `to` = the child-side slot.
-    """
-    a = _slot_text(_object_qualifier(claim, "from"))
-    b = _slot_text(_object_qualifier(claim, "to"))
-    return a, b
 
 
 # --------------------------------------------------------------------------
@@ -1168,49 +1140,6 @@ def _hop(frm, to, resolution, predicate, zone, config=None):
     }
 
 
-
-
-def _map_slot(index, cur_lot, parent, cur_slot, cfg):
-    """Carry `cur_slot` across one lineage hop through `slot_map`.
-
-    Both directions are searched because §4.2 does not pin which side `from`
-    names (see `_slot_map_pair`). The direction is decided by which lot is the
-    SUBJECT of the atom, which is a fact of the atom rather than a guess:
-
-        subject = child, object = parent  ->  from = child slot, to = parent slot
-        subject = parent, object = child  ->  from = parent slot, to = child slot
-
-    An atom that fits neither is not read at all, so a wrong slot never reaches
-    the screen — the hop comes back `unresolvable` with the pair that did not fit.
-    """
-    forward = []
-    for c in index.get((cur_lot, "slot_map"), []):
-        if _payload_lot(c) != parent:
-            continue
-        a, b = _slot_map_pair(c)
-        if a == cur_slot and b is not None:
-            forward.append((c, b))
-    backward = []
-    for c in index.get((parent, "slot_map"), []):
-        if _payload_lot(c) != cur_lot:
-            continue
-        a, b = _slot_map_pair(c)
-        if b == cur_slot and a is not None:
-            backward.append((c, a))
-
-    pairs = forward + backward
-    if not pairs:
-        present = len(index.get((cur_lot, "slot_map"), [])) + \
-            len(index.get((parent, "slot_map"), []))
-        return Resolution(
-            state=STATE_UNRESOLVABLE, winner=None, answer=None, rank=None, n=None,
-            reason=(f"[no_slot_map] {cur_lot}→{parent} slot={cur_slot} 짝 없음 · "
-                    f"두 랏의 slot_map 원자 {present}건 중 해당 없음"))
-
-    answers = {id(c): s for c, s in pairs}
-    return resolve([c for c, _ in pairs], lambda c: answers.get(id(c)), cfg,
-                   subject_label=f"{cur_lot}→{parent} slot={cur_slot}",
-                   predicate="slot_map")
 
 
 # --------------------------------------------------------------------------
