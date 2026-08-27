@@ -309,3 +309,47 @@ inchip_x/y · radius · gate · unit  -> 「물리 모델」 (칩 안 좌표 · 
 ⚠️ 크기가 커집니다. 그래서 계획 2단계의 «멈춤 조건»이 그대로 유효합니다 —
    발견 종류가 선언에 없으므로, 거기서 멈추고 «무엇을 선언에 넣을지»를 올리는 것이 먼저입니다.
    다만 목적지는 이제 분명합니다: **종점을 없애는 것**이지 이름을 고치는 것이 아닙니다.
+
+---
+
+# 🔴 아키텍처 상설 — 「**엔티티 · 어휘 · walk. 이게 끝**」 (소유자 2026-08-28)
+
+> 「그냥 다 엔티티 어휘로 전환」 · 「오로지 'walk'만」 · 「ref 도 다 엔티티로 하자 이제」
+> 「**엔티티 어휘 walk 이게 끝**」
+
+```
+엔티티   선언된 노드 타입. 노드는 이것«뿐»이다
+어휘     선언된 술어. 엣지는 이것«뿐»이다
+walk     GET /api/ledger/subgraph. 데이터에 답하는 것은 이것«뿐»이다
+```
+
+## 그래서 «없는» 것
+```
+투영이 지어낸 노드 타입   Finding Point · Finding Collection · Quantity · Value …
+투영이 지어낸 엣지        has_findings · finding · in_container · contains · on_subject …
+노드 종류 축              NODE_KINDS · collect(종류) · observations=summary|claims
+                         낱개/묶음은 «세는 방식»이지 타입이 아니다
+id 접두어 여럿            ledger-entity:v1: «하나»만 남는다
+키를 받는 데이터 라우트    lot_map · trends · siblings · composition · selection/resolve
+                         · kinds · structure · subgraph/table
+코드에 박힌 도메인 낱말    "void" · "delam" · finding_kind == "void" 같은 갈래
+```
+
+## 판별식 — 새 것을 만들기 «전»에
+```
+① 이건 술어인가?        -> 어휘에 «선언»한다
+② 아니면 노드인가?      -> 엔티티로 «선언»한다
+③ 둘 다 아닌가?         -> 만들지 «않는다». 투영이 지어내는 순간 선언이 거짓이 된다
+🔴 「지울 수 없다」가 나오면 그것이 하드코딩이다 (소유자 2026-08-28) — 무시하고 지운다
+```
+
+**왜 적혔나:** 2026-08-27~28 실측 — 노드 id 를 만드는 함수가 «일곱»이라 `decode_node_id` 가
+접두어로 갈래를 틀고, 그 갈래 수가 그대로 walk 루프의 갈래 수(entity·point·collection·quantity·event)가
+됐다. **그중 원장을 읽는 것은 «entity» 하나뿐**이고 나머지 넷은 투영이 접은 것을 투영이 다시 펴는
+자리였다. 합성 엣지 `in_container` 는 잇는 쌍 128 중 «유일한 연결»이 «0» 이었고
+(원자 엣지 `inspected` 가 이미 양방향으로 잇는다), `has_findings`·`finding`·`mechanism` 이
+「유일한 연결」이었던 이유는 **투영이 그렇게 박아서**였다. 종류 카탈로그(void·delam)는
+`finding_kinds.py` 의 «파이썬 dict» 였고, `ledger_selection.py:565` 는
+`if finding_kind == "void"` 꼴로 **코드가 도메인 낱말로 갈래를 텄다.**
+
+📎 개정안 정본: `task/DECLARATION_REVISION_6.md`
