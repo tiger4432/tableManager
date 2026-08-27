@@ -363,27 +363,6 @@ def _entity_node(entity_type, keys):
     return node
 
 
-def _claim_label(atom):
-    payload = atom.object_payload or {}
-    if atom.predicate == "processed_with":
-        detail = " · ".join(str(payload.get(key)) for key in ("step", "recipe")
-                            if payload.get(key) not in (None, ""))
-        return detail or atom.predicate
-    if atom.predicate == "measured":
-        metric = payload.get("metric") or "계측"
-        value = payload.get("value", payload.get("state", "—"))
-        return f"{metric} = {value} {payload.get('unit') or ''}".strip()
-    if atom.predicate == "observed":
-        return " · ".join(str(payload.get(key)) for key in ("finding_kind", "method")
-                          if payload.get(key) not in (None, "")) or atom.predicate
-    return atom.predicate
-
-
-def _payload_field(payload, name):
-    """Delegate: the rule lives in `finding_kinds.payload_field`, stated once."""
-    return finding_kinds.payload_field(payload, name)
-
-
 def _edge(edge_type, source, target, *, original_predicate=None):
     edge_id = f"ledger-evidence-edge:v1:{_token([edge_type, source, target])}"
     return {
@@ -914,30 +893,4 @@ PROPERTY_TABLE_COLUMNS = (
     "node_id", "node_kind", "property_scope", "property_path", "ordinal",
     "value_type", "value_text", "value_number", "value_boolean", "is_null",
 )
-
-
-def _json_cell(value):
-    return _canonical(value) if value not in (None, {}) else None
-
-
-def _property_scalar(node, scope, path, ordinal, value):
-    value_type = "null"
-    text = number = boolean = None
-    if isinstance(value, bool):
-        value_type, boolean = "boolean", value
-    elif isinstance(value, int) and not isinstance(value, bool):
-        value_type, number = "integer", value
-    elif isinstance(value, float):
-        value_type, number = "number", value
-    elif isinstance(value, str):
-        value_type, text = "string", value
-    elif value is not None:
-        value_type, text = "json", _canonical(value)
-    return {
-        "node_id": node["id"], "node_kind": node.get("node_kind"),
-        "property_scope": scope, "property_path": path or "$",
-        "ordinal": ordinal, "value_type": value_type, "value_text": text,
-        "value_number": number, "value_boolean": boolean,
-        "is_null": value is None,
-    }
 

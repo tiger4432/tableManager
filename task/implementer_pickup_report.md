@@ -1,3 +1,60 @@
+# 📋 [A 구현자] **남은 896줄, «무엇이 왜 남았나» 전수 — 검수 요청하신 것** (2026-08-28 07:0x)
+
+지목하신 잔재 «둘»(`_propagation` 순위 블록 · `tabular_projection`)은 `04855040` 에서 이미 갔습니다.
+검수의 «나머지 반»(무엇이 왜 남았는지 한 줄씩)을 이제 올립니다. 그 과정에서 **고아 넷을 더 찾았습니다.**
+
+## 이번에 추가로 지운 것 — 참조가 «자기 정의뿐»인 넷 (943 -> 896)
+```
+_property_scalar 22 · _claim_label 16 · _payload_field 5 · _json_cell 4
+```
+전부 노드 빌더가 쓰던 것들이라 그 삭제와 함께 고아가 됐습니다. 게이트 무변(노드 1000 · 엣지 1493).
+
+## 남은 것 전수 — 총괄이 정한 «넷» 기준으로
+```
+① claims_for_entities 의 SQL 두 arm
+   SqlEvidenceLookup            91   ← 그 두 arm 이 사는 곳
+   _atom_from_row               12   행 -> EvidenceAtom
+   EvidenceAtom                 36   원자의 모양. claim_node_id 프로퍼티 포함(아래 ※)
+   ATOM_COLUMNS 등 상수         (헤더)
+
+② BFS 루프
+   subgraph                    287   루프 · add_node/add_edge · _expand_atom
+   _seed_node                   79   씨앗 하나를 노드로. 호출 1
+   _entity_node                 13   선언된 엔티티 노드
+   _declared_key_order          32   키 순서를 «선언»에서 (id 안정성)
+   decode_node_id               22   ledger-entity:v1 «하나»만 해독
+   _edge                        10   엣지 하나
+
+③ 예산과 truncated
+   subgraph 안에 있습니다 (node_cut · edge_cut · claim_cut · depth_cut)
+
+④ 씨앗 부호와 전파
+   _signed_seeds                30   positive/negative 해석
+   _reach                       56   부호 전파
+   _propagation                 39   마킹이 읽는 전파 블록
+   _evidence                    31   한 노드의 근거
+
+그 밖 — 위 넷의 «부품»
+   _canonical · _token · _untoken · _instant · _parse_instant   34   id 인코딩과 시각 파싱
+   InMemoryEvidenceLookup                                       40   시험용 lookup (프로덕션 0)
+   모듈 헤더 · 상수 · 은퇴 주석                                   79
+```
+📌 **넷 중 하나로 안 적히는 것은 «없습니다».** 400 을 못 맞춘 이유도 여기 있습니다 —
+   287줄이 BFS 루프 «하나»이고, 그걸 더 줄이는 것은 «기능을 줄이는» 일입니다.
+
+## ※ 하나만 판정 요청 — `claim_node_id` (5줄)
+```
+walk 은 안 씁니다. `EvidenceAtom.claim_node_id` 프로퍼티가 쓰고,
+그 프로퍼티를 `enrichment_actions.py:268` 이 «라이브»로 씁니다 (오늘 새벽에도 보고드린 자리)
+-> enrichment_actions 를 어떻게 하실지 정해지면 같이 갑니다. 지금 지우면 그쪽이 깨집니다
+```
+
+## 시험
+```
+test_ledger_subgraph · test_enrichment_actions · test_syn_complex_composite  «전부 초록»
+```
+---
+
 # 🔴 [A 구현자] **셋 «전부» 단독으로 빨강입니다 — 순서 의존이 아니라 «우리 것»입니다** (2026-08-28 06:4x)
 
 지시하신 가르는 측정 그대로 돌렸습니다.
