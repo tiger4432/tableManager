@@ -1,10 +1,10 @@
 # Ledger Evidence Subgraph — 증거 노드와 문맥별 탐색
 
-> **Status:** Living · **Last verified:** 2026-08-15
-> **정본 코드:** `server/ledger_subgraph.py`, `server/enrichment_actions.py`, `server/ledger/envelope.py`,
-> `server/ledger/schema.py`, `server/ledger/store.py`, `client2/src/ledger_graph/`
+> **Status:** 🟢 Living · **Last verified:** 2026-08-27
+> **정본 코드:** `server/ledger_api/ledger_subgraph.py`, `server/enrichment_actions.py`, `server/ledger/envelope.py`,
+> `server/ledger/schema.py`, `server/ledger/store.py`, `client2/src/rnd_board/`
 > **라우트 정본:** `docs/architecture/backend.md` §2
-> **범위:** 원장 증거를 보는 읽기 모델. `/trace`의 해소 결과나 R&D 원인 후보를 대체하지 않는다.
+> **범위:** 원장 증거를 보는 읽기 모델. R&D 원인 후보를 대체하지 않는다 — 증거의 «양»은 인과가 아니다.
 > **Finding 정본:** Collection 집계, Point 상세, 방향별 탐색과 일반화 정책은
 > [RND_ONTOLOGY_REFERENT_MODEL](./RND_ONTOLOGY_REFERENT_MODEL.md)이 소유한다.
 
@@ -29,9 +29,9 @@
 
 | 노드 | 뜻 | 지속성 | 예 |
 |---|---|---|---|
-| **Entity** | 공정 세계에서 계속 같은 것으로 추적할 개체 | 여러 사건을 가로질러 지속 | Lot, Wafer, Equipment, Recipe |
+| **Entity** | 공정 세계에서 계속 같은 것으로 추적할 개체 | 여러 사건을 가로질러 지속 | 선언된 여섯: `lot` · `wafer` · `die` · `dtjob` · `lot_slot` · `recipe` |
 | **Source Event** | 한 소스가 한 번에 발화한 원천 사건/분자 | 한 `source + occurrence` 경계 | split 한 건, DT job run 한 건, inspection row 한 건 |
-| **Claim** | 사건이 낸 불변 주장 원자 한 건 | append-only 행 한 건 | `processed_with`, `measured`, `derived_from` |
+| **Claim** | 사건이 낸 불변 주장 원자 한 건 | append-only 행 한 건 | `processed_with`, `inspected`, `derived_from` |
 | **Finding Collection** | observed Claim의 집계 읽기 투영 | 조회 snapshot | void·SAT·map A의 count/mean/bbox |
 | **Finding Point** | 개별 맵 좌표 상세 투영 | observed Claim 한 건 | void @ (7,9). 일반 Entity처럼 자동 순회하지 않음 |
 | **Enrich Action** | 아직 필요한 Claim을 얻기 위한 행동 투영 | 조회 snapshot | 후보 확인, Claim 공급 경로 선언, Enrichment 배포 계약 복구 |
@@ -50,7 +50,7 @@
 flowchart LR
   EV["Source Event\n원천 발화 묶음"] -->|asserts| CL["Claim\n원장 원자"]
   CL -->|subject| S["Entity\n주어"]
-  CL -->|"원래 술어\n예: derived_from / measured"| O["Entity 또는 Value\n목적어"]
+  CL -->|"원래 술어\n예: derived_from / observed"| O["Entity 또는 Value\n목적어"]
   S -->|has_findings| FC["Finding Collection\n집계·맵"]
   FC -.->|명시적 펼침| FP["Finding Point\n말단 상세"]
   CL -->|needs_enrichment| EA["Enrich Action\n재계산 행동"]
@@ -157,12 +157,7 @@ source_record = UUIDv5(namespace,
 | Quantity | `ledger-quantity:v1:` | `[model_name, quantity_name]` — 모델 이름이 신원의 일부다 |
 
 🔴 **Entity 라벨의 키 «순서»는 라이브 `entities` 선언에서 온다** (`server/config/ontology/
-ledger_config.json`. 버전 접미사 `@N`은 떼고 맞춘다). `ledger_explorer._entity` 는 v1
-`ledger/vocabulary.py` 의 `ENTITY_TYPES` 를 보는데 나중에 선언된 유형은 거기 **없어서**
-payload JSON 의 삽입 순서로 떨어지고, `die` 의 경우 그것이 `x`·`y` 를 앞에 놓아 자재 이름인
-`mat_id` 를 두 칸짜리 라벨 밖으로 밀어낸다. 선언은 이미 답을 갖고 있다 — `die@1` 은 키를
-`mat_id` 부터 적는다. **선언에 없는 유형의 라벨은 손대지 않는다**(오늘 `WaferLeg` 가 그렇고,
-그건 이 코드의 구멍이 아니라 선언의 구멍이라 «선언되는 날» 코드 0줄로 고쳐진다).
+ledger_config.json`. 버전 접미사 `@N`은 떼고 맞춘다). `ledger_explorer._entity` 는 **키 순서를 «보지 않는다»** — 선언된 순서를 얹는 것은 `ledger_subgraph._declared_key_order` 이고, 그 한 층이 이 사실의 «유일한 독자»다. (한 파일을 두 층이 읽으면 두 층이 어긋날 자리가 생긴다.) `die` 가 그 예다: payload JSON 의 삽입 순서는 `x`·`y` 를 앞에 놓아 자재 이름 `mat_id` 를 두 칸짜리 라벨 밖으로 밀어내는데, 선언은 이미 답을 갖고 있다 — `die@1` 은 키를 `mat_id` 부터 적는다. **선언에 없는 유형의 라벨은 손대지 않는다** — 그건 코드의 구멍이 아니라 선언의 구멍이라 «선언되는 날» 코드 0줄로 고쳐진다.
 읽기는 한 번·캐시·**절대 예외를 올리지 않는다** — 선언이 없거나 깨져도 라벨이 오늘 그대로일 뿐
 걷기가 같이 죽지 않는다.
 
@@ -201,7 +196,8 @@ GET /api/ledger/subgraph
 | `property_limit` | 아니오 | 10000 | 100..20000 | `shape=tables`의 동적 property long-table 행 상한 |
 | `positive` | 아니오 | — | 노드 id, 반복 가능 | 추가 관측 씨앗. `id`는 항상 positive다 |
 | `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
-| `collect` | 아니오 | — | 노드 종류 하나 | 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다. 모르는 이름은 422 |
+| `collect` | 아니오 | — | 노드 종류 «하나» | 순위와 최상위 집합을 낸다. 없으면 순위를 내지 않는다. 받는 값 «여섯»: `entity` · `collection` · `point` · `value` · `quantity` · `action`. 🔴 `claim` · `event` 는 **422** 다 — 「claim 은 «엣지»이고 그 원천 사건은 …」이라고 이름 대어 거절한다(모르는 값이 아니라 «은퇴한» 값이라는 뜻) |
+| `follow` | 아니오 | — | 선언된 술어 이름, **반복 가능** | 어느 술어를 건너뛸지 좁힌다. 🔴 **반복 파라미터다** — `follow=inspected&follow=observed`. 쉼표 목록(`follow=a,b`)은 **422** `predicate_not_declared` 이고 `unknown` 에 그 «문자열 통째»가 실린다. 선언 열 개 밖의 이름도 같은 거절 — 참조 엣지 `in_container` 는 «오늘» 못 받는다 |
 
 내부 Claim scan 상한은 `min(5000, max(200, edge_limit × 2))`다. 요청자가 직접 늘릴 수 없다.
 
@@ -232,7 +228,9 @@ subgraph(id, lookup)                      # 오늘과 같다 — positive 씨앗
 | 인자 | 필수 | 기본 | 의미 |
 |---|---:|---:|---|
 | `seed_id` | 예 | — | 불투명 id 하나, 또는 `{"positive": [...], "negative": [...]}` |
+| `edge_limit` | 아니오 | `6000` | 🔴 **HTTP 기본(1200)과 다르다** — 라우트가 자기 기본을 따로 준다. 파이썬을 직접 부르면 이 값이다 |
 | `collect` | 아니오 | `None` | 산출을 노드 종류 하나로 좁힌다. 없으면 순위를 내지 않는다 |
+| `follow` | 아니오 | `None` | 건널 술어를 좁힌다. 파이썬 쪽은 «목록»을 받는다 — HTTP 의 반복 파라미터가 여기로 온다 |
 
 🔴 **부호는 셋이고 셋이다.**
 
@@ -321,8 +319,9 @@ subgraph(id, lookup)                      # 오늘과 같다 — positive 씨앗
 
 비-finding Claim은 정정 전 원자를 그대로 보존한다. finding은 기본적으로 Collection 집계를 쓰며,
 `observations=claims`에서만 observed Claim을 직접 펼친다. 어느 경로도 `live_claims()`나 4계급
-resolver로 승자만 남기지 않는다. 해결된 혈통 답은 `/trace`,
-R&D 비교·놀라움 답은 `/selection/resolve`가 소유한다.
+resolver로 승자만 남기지 않는다. 🔴 **해결된 혈통을 답하던 `/trace` 는 «없다»** — 그
+질문은 지금 이 걷기가 `follow` 로 좁혀서 답하고, 유형 수준의 그림은 `/structure` 가 답한다.
+R&D 비교·놀라움 답은 `/selection/resolve` 가 소유한다.
 
 ### 5.2-bis Spotfire/Excel 표 투영
 
@@ -363,7 +362,7 @@ GET /api/ledger/subgraph/table
 | 200 `empty` | seed는 유효하지만 연결 증거 없음 | seed 1개와 설명을 렌더 |
 | 422 | `subgraph_request_invalid` | ID 철자, 방향, 범위 오류를 이름 대어 표시 |
 | 503 | `source_event_projection_not_deployed` | 컬럼/필수 인덱스 중 빠진 이름을 `missing[]`에 반환 |
-| 503 | 원장 relation absent | 기존 `/coverage`와 같은 배포 부재 처리 |
+| 503 | 원장 relation absent | 배포 부재를 «이름 대어» 답한다 (원장 관계가 없는 박스) |
 
 ## 6. 탐색 알고리즘
 
@@ -419,16 +418,18 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
 
 ## 8. 기존 API와의 관계
 
+🔴 **실측 2026-08-27**: 종전 이 표는 `/trace` · `/explore` · `/explore_entity` 로 보내고 있었는데 **셋 다 라우트 표에 없다**. 지금 서빙되는 것만 적는다.
+
 | 질문 | API | 이유 |
 |---|---|---|
-| 이 랏의 해결된 혈통은? | `/trace` | resolver가 홉마다 승자·결측·경쟁 상태를 판정 |
-| split/merge 분기를 간단히 보고 싶다 | `/explore` | live lineage claim만 직접 Entity 엣지로 투영 |
-| 임의 Entity의 값 주장을 요약해 보고 싶다 | `/explore_entity` | 호환용 compact projection |
-| 이 원자와 원천 사건까지 감사하고 싶다 | **`/subgraph`** | Event·Claim을 1급 노드로 보존, raw evidence |
-| 결함군과 정상군의 차이/원인 후보는? | `/selection/resolve` | 집단 비교·기전 게이트·액션이 목적 |
+| 이 원자와 원천 사건까지 감사하고 싶다 | **`/subgraph`** | Event·Claim 을 1급 노드로 보존, raw evidence |
+| 같은 투영을 표로 받고 싶다 | `/subgraph/table` | Nodes·Edges·Properties 세 장. `collect` 는 «안 받는다» |
+| 유형 수준으로 무엇이 이어져 있나 | `/structure` | 선언된 절반과 센서스 절반을 병합. 인스턴스는 한 건도 안 나온다 |
+| 결함군과 정상군의 차이·원인 후보는? | `/selection/resolve` | 집단 비교·기전 게이트·액션이 목적 |
+| 이 결함들이 공유하는 요인은? | `/siblings` | 교집합 + 기저율 |
+| 선언 자체가 무엇을 말할 수 있나 | `/declaration` | 원장을 한 줄도 안 읽는다 |
 
-따라서 `/subgraph`를 `/trace` 대신 쓰거나, Claim 수가 많다는 이유로 원인 후보를 만들면 안 된다.
-증거 구조와 분석 판정은 서로 다른 메타 액션이다.
+따라서 `/subgraph` 로 원인 후보를 만들면 안 된다 — Claim 수가 많다는 것은 증거의 «양»이지 인과가 아니다. 증거 구조와 분석 판정은 서로 다른 메타 액션이다.
 
 ## 9. 검증 기준
 
@@ -470,5 +471,4 @@ Entity의 reverse object 탐색은 payload 전체를 문자열로 훑지 않는�
    검증 규칙이 생긴 뒤 추가한다.
 3. 큰 Wafer의 finding은 기본 Collection으로 접는다. `observations=claims`와 Collection→Point도
    400/1200/Claim scan cap을 UI 편의 때문에 풀지 않는다. 전체 점은 맵/표의 유계 페이지가 맡는다.
-4. 과거 `legacy_atom`은 임시 호환이다. 새 재적재가 끝난 뒤 분석 예시는 반드시
-   `source_molecule`/`source_record` 데이터를 사용한다.
+4. `legacy_atom` 호환은 **끝났다** — 실측 2026-08-27: `source_event_state` 가 원자 «645,203» 전부에서 `source_molecule` 이고 `legacy_atom` 은 «0» 이다. §9 의 `legacy_atom` 단언은 지금 태울 표본이 없다는 뜻이고, 그래서 «초록»이 「지켜졌다」가 아니라 「못 쟀다」이다.
