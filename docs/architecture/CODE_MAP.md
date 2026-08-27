@@ -1,90 +1,20 @@
 # 🗺️ CODE_MAP — 압축 구조 지도 (파일 전량 읽기 방지용)
 
-> **Status:** 🟡 **부분 검증(PARTIALLY VERIFIED)** | **Owner:** 전 에이전트 공용 | **Source-of-truth:** 각 표의 코드 경로
+> **무엇인가** — 파일을 전량 읽지 않고도 어디에 무엇이 있는지 찾는 «구조 지도»입니다.
+> 구현 설명은 리빙 문서([backend](./backend.md) · [data_model](./data_model.md))가 임자입니다.
 >
-> 🔴 **이 문서에는 문서 전체에 걸친 `Last-verified`가 없다 — 없앤 것이 아니라 *가질 자격이 없다*.** 아래 표에 적힌 절만 실측됐고 **나머지는 미검증**이다. 독립 감사(2026-08-06) 실측: **문서 전체 앵커의 약 55%만 정확하다.**
+> **기준 둘** — 이 지도가 서 있는 곳은 그 둘뿐입니다.
+> ① 원장은 **v5 선언** 위에 섭니다 (`server/config/ontology/ledger_config.json`).
+> ② 읽기는 **walk 이 답합니다** (`GET /api/ledger/subgraph`).
 >
-> ⚰️ **[2026-08-16 정정 · 2026-08-18 절 축약 완료] `graph_sync_worker`·`run_graph_sync`·`ontology_config`·`graph_materializer`·`graph_orphans`·`graph_stale_edges`는 트리에 없습니다.** 그 상세 절 82줄은 **삭제하고 자리마다 🪦 묘비로 대체**했습니다 — 🔴 **여기 이 한 줄만으로는 부족했습니다: §5 링크로 바로 들어온 사람은 문서 맨 위를 지나오지 않으므로, 살아 있는 API처럼 읽히는 표를 그대로 만납니다.** 부정은 부정되는 것 «옆»에 있어야 합니다. `main.py /graph/*`에는 410 호환 라우트만 남고, 현재 경로는 `server/ledger/*`입니다.
+> 🔴 **이 문서에 문서 전체의 `Last-verified` 는 없습니다 — 없앤 것이 아니라 가질 자격이 없습니다.**
+> 아래 표에 적힌 절만 실측됐고 나머지는 미검증입니다. 검증 주장이 검증 범위보다 넓으면
+> 그 주장은 다음 독자가 확인하는 것을 막고, 그래서 아무 주장도 없느니만 못합니다.
 >
-> 🔴 **직전 표지는 거짓이었고, 그 거짓이 이 문서가 고치려는 결함과 같은 계급이었다.** 표지는 「소스 앵커는 `87a944e`의 커밋된 blob 실측」이라 적었지만 그 패스가 실제로 잰 것은 **네 절뿐**이다. 나머지 파일은 **열지도 않은 채** 그 문장이 덮었다. 🔴 **`main.py`·`crud.py`·`admin.js`·`transfer_plan.py`·`map_overlay.py`는 `87a944e`와 HEAD 사이에 바이트 동일한데도 드리프트가 가득하다** — 즉 낡음은 그 측정보다 **앞선다**. **검증 주장이 검증 범위보다 넓으면, 그 주장은 다음 독자가 확인하는 것을 막는다. 그래서 아무 주장도 없느니만 못하다.**
+> 📎 **어떻게 여기까지 왔는지는 여기 없습니다.** 측정 패스마다의 리비전·범위·그날 무엇을 열었나는
+> `docs/history/` 가 임자이고 그쪽은 append-only 입니다. 지도는 «지금 무엇이 있나»만 말합니다.
 
-**📍 절별 검증 상태 — 이 표가 이 문서의 유일한 신뢰 기준이다.**
-
-> 🆕 **[2026-08-11 패스의 측정 기준]** 이 패스가 잰 것은 전부 **`7097a67`의 커밋된 blob**이다(`git show 7097a67:<path>` — 워킹트리 아님. 측정 시각에 클라 레인이 `client2/src/`를, 다른 문서 레인 둘이 `docs/history/`·리빙 문서를 동시 편집 중이었다). 🔴 **아래 🆕🆕 행이 이 패스의 범위이고, 그 밖은 이 패스가 열지 않았다.** 이 패스는 **삭제부터 훑었다** — `8d89b98..7097a67`의 `--diff-filter=D`는 `client2/dist/assets/*` 번들 2개뿐이고 **소스 파일 삭제는 0건**이다(사라진 것은 파일이 아니라 **심볼**이었다 → §0 ⑱).
->
-> 🔬 **측정 중 HEAD가 `7097a67` → `6cc7a6e`로 움직였고, 그것을 확인한 방법을 남긴다.** 들어온 넷 중 셋은 `docs/`만 건드렸고 하나(`1e29078`)가 `client2/src/`에 참조뷰 기능을 넣었다. 🔴 **그래서 「소스가 안 바뀌었다」를 가정하지 않고 blob 해시로 재확인했다** — 이 패스가 측정한 **서버 10파일과 `map2/` 4파일은 두 리비전에서 바이트 동일**하다(`git rev-parse <rev>:<path>` 대조). ⚠️ **`1e29078`이 바꾼 `client2/src/`의 나머지**(`api.js`·`grid.js`·`main.js`·`clipboard.js`·`dom.js`·`websocket.js`·`style.css`)**는 이 패스가 열지 않았다** — §7의 그 행들은 여전히 미검증이다.
->
-> 🆕 🔴 **[2026-08-11] 두 절의 제목에서 줄 수를 걷어냈다 — 제목이 크기를 이고 있으면 파일이 자랄 때마다 앵커가 깨진다.** 실측: 이 문서의 링크 **36개 중 6개가 아무 데도 가지 않았고**, 그중 넷이 `map_alignment.py` 제목의 낡은 줄 수(`#…5961줄…` · `#…5993줄…`)를 가리켰다. 크기는 본문으로 내렸다 — **제목은 이름이지 측정값이 아니다.** 나머지 **셋도 이 패스에서 고쳤다**(`push_columns.js` · `§1.8 column_filter.py` · `§7-A Map Editor 2` — 셋 다 제목의 **끝 토막을 흘린** 링크였다). 🔴 **남은 하나는 `§5-F ①`(`#-훑기walk--순번의-정본`)이고 판정을 보류한다** — 제목의 `①`(U+2460)을 GitHub 슬러거가 지우는지 남기는지에 따라 **맞을 수도 틀릴 수도** 있고, 이 문서 안에서는 확인할 방법이 없다. **모르는 것을 고친 척하지 않는다.**
->
-> 🆕🆕🆕 **[2026-08-11 후속 패스의 측정 기준]** 이 패스가 잰 것은 **`2630790`(HEAD)**의 커밋된 blob이다(`git show 2630790:<path>` — 워킹트리 아님. 측정 시각에 `server/scripts/diagnose_slow_after_ingest.py`가 다른 레인에서 동시 편집 중이었으므로 그 파일은 열지 않았다). `7097a67..2630790`(13개 커밋) 중 소스에 손을 댄 것은 다섯이다: `1e29078`(참조뷰 — 직전 패스가 이미 등재) · `5116f67`(enrichment 큐 페이지의 링크 철회, `ui.js` 축소) · `dab9152`(행/셀 이력 페이징 신설 — `audit_history.py`) · `ab36fab`(`enrichment.html`+vite 엔트리 삭제, 하니스 게이트 수리) · `68db020`(맵 좌표 바인딩 키별 상속 — `map_overlay`/`ontology_config`/`config_resolve_report`/`map_alignment`/`frame_confirmation`) · `2630790`(`audit_cache.py` 전면 재작성). 나머지 일곱은 `docs/`·보드 전용이라 이 지도의 대상이 아니다. **삭제부터 훑었다** — 이 구간의 `--diff-filter=D`는 dist 번들과 `client2/dist/enrichment.html` 외 **소스 파일 하나**(`client2/enrichment.html`)뿐이다.
->
-> 🔴 **`ui.js`·`admin.js`·`api.js`·`clipboard.js`·`dom.js`·`grid.js`·`style.css`·`main.js`·`websocket.js`는 이번에도 열지 않았다** — `5116f67`·`ab36fab`·`68db020`이 건드렸지만 이 패스의 지시 범위 밖이었다. 이 절들은 여전히 미검증이다(직전 패스의 같은 경고 참조).
->
-> 🆕🆕🆕🆕 **[2026-08-11 3차 후속 패스의 측정 기준]** 이 패스가 잰 것은 **`c4a3159`(HEAD)**의 커밋된 blob이다(`git show c4a3159:<path>` — 워킹트리 아님. 측정 시각에 `server/`와 `client2/`가 각각 다른 레인에서 동시 편집 중이었다). `2630790..c4a3159`(11개 커밋) 중 코드에 손을 댄 것은 여섯이다: `2b8a5ab`(진단 스크립트, 이 지도의 등재 대상 밖) · `fde424c`(`/audit_logs/recent`가 봉투로 전환 + `/enrichment` 404 문구 교체) · `1a1947b`(진단 스크립트) · `5b09d69`(신설 `chain_bindings.py` + 맵퍼 6종의 `dt_job` 리터럴 철회) · `3d43a6c`(맵2 확정 키가 규칙의 `decision_key`를 아리티 그대로 따름) · `347de78`(`compute_priority_value` tie-break 신설 + 미선언 컬럼 드롭 가시화). `c5e7bd0`은 직전 코드맵 패스 자신이고 `b0af883`·`b1b7f85`·`2fb1c44`는 `docs/`·보드 전용이라 이 지도의 대상이 아니다. **삭제부터 훑었다** — 이 구간의 `--diff-filter=D`는 `client2/dist/assets/*` 번들 2개뿐이고 **소스 파일 삭제는 0건**이다.
->
-> ⚠️ **`client2/src/map2/main.js`는 NUL 바이트를 품고 있다** — 평범한 `grep`은 이 파일을 바이너리로 판정해 0건을 낸다. 이 패스는 `grep -a`(또는 파일을 떠서 `grep -na`)로 다시 훑었다. **직전 패스가 이 파일을 평범한 grep으로 훑었다면 그 결과는 "매치 없음"이 아니라 "질문을 안 한 것"과 같다** — 이번엔 그 경로로 실제 변경분(`decisionKeyColumns` 게이트, `keyFrom` 삭제)을 확인했다.
->
-> 🔴 **표지 문장 삼중 사본 정정.** 「`compute_priority_value`는 우선순위 맵만 본다」는 문장이 이 문서에 최소 두 자리(§2 `compute_priority_value` 행, 무변경 쓰기 생략 각주)로 살아 있었고, `347de78`이 실제 동작을 **선언 우선순위 → `ingested_at` 내림차순 → `source_name` 오름차순**의 3단 전 순서로 바꿨다. 같은 문장의 다른 사본 둘은 `347de78`(`data_model.md`)·`2fb1c44`(spec 문서들)에서 이미 고쳐졌다 — 이 파일의 사본만 임자가 없었다. 아래 §2에서 두 자리 모두 3단 순서로 재서술했다.
->
-> 🆕🆕🆕🆕 **이 패스가 새로 등재/정정한 것 — 전건**: `server/chain_bindings.py`(신설 244줄) · 맵퍼 6종(`chain_rules` 5종 + `dt_map_mapper.py.sample`)의 job-column 해석 · `crud.compute_priority_value`/`resolution_ingested_at`(3단 tie-break) · `crud._warn_undeclared_column_once`/`undeclared_column_drops()`(드롭 카운트+10의 거듭제곱 재공지) · `chain_ingestion_worker._undeclared_drop_note`+하트비트 `note=` 배선 · `chain_replay.recompute_display_values`(R3)+공유 헬퍼 `_load_cell_state`/`_resolve_cell`+CLI `resolve` 서브커맨드 · `map_alignment.build_alignment_worklist`의 결정키-미충족 행 생존(`REASON_UNIT_KEY_INCOMPLETE`) · `main.fetch_and_merge_metadata`/`get_cell_sources`/`query_cells_sources`(`ORDER BY source_name` 3곳) · `GET /audit_logs/recent`의 `AuditLogGroupPage` 봉투 · `schemas.AuditLogGroupPage`(신설) · 퇴역 `/enrichment` 404 문구 · `client2/src/map2/view_model.js`의 `decisionKeyOf`/`DECISION_KEY`/`RULE_ADOPTION`/`declaredKeyColumns`/`decisionKeyRefusal`(신설, `keyFrom` 대체) · `client2/src/map_editor2.js`의 `keyFrom` 삭제 확인(0건) · `client2/src/map2/main.js`의 `decisionKeyColumns` 확정 전 가드 · `client2/src/timeline.js`의 `readHistoryPage(body, listKey='logs')`(파라미터화) + 전역 이력 탭의 `'groups'` 열기.
->
-> ⚠️ **확인 못 한 것**: `server/mappers/dt_map_mapper.py.sample`은 이 문서에 **애초에 등재된 적이 없었다**(별개의 구 체인 계열 `dt_log_to_dt_map`/`dt_job_attribution_to_dt_map`/`eqp_frame_attribution_to_dt_map`) — 이번에 확인한 것은 `chain_bindings.resolve_column` 채택 한 가지뿐이고, 그 파일의 전체 구조는 여전히 미등재·미검증이다(신규 섹션 신설은 이 패스의 지시 범위 밖). `client2/scripts/check_harnesses.mjs`의 하니스 floor 숫자(`fde424c`가 98→117, `3d43a6c`가 193→256으로 올렸다는 커밋 로그의 주장)는 **이 패스가 직접 재지 않았다** — 코드맵은 채점 결과가 아니라 구조를 등재하므로 범위 밖으로 남겼다. `client2/map_editor2.html`은 이 구간에서 무변동이 diff로 확인됐으나 실측 875줄이 이 문서의 기존 등재값(866줄)과 어긋난다 — **이 드리프트는 이번 구간이 만든 것이 아니라 그전부터 있었고**, 지시 범위 밖이라 고치지 않았다(다음 패스 참고용으로 남긴다).
-
-> 🆕⑤ **[2026-08-13 인제션 원장/tier-1 패스의 측정 기준]** 이 패스가 잰 것은 **`831ab68`(HEAD)**의 커밋된 blob이다(`git show 831ab68:<path>` — 워킹트리 아님. 측정 시각에 여섯 레인이 `server/**`·`client2/**`를 동시 편집 중이었으므로 워킹트리는 근거가 될 수 없다). 범위는 `b1dd2f0..831ab68`(12커밋). **삭제부터 훑었다** — 이 구간의 `--diff-filter=D`는 **0건**이다(소스도 dist도 없음). 🔴 **아래 🆕⑤ 행이 이 패스의 범위이고, 그 밖은 이 패스가 열지 않았다.**
->
-> 🆕⑤ **이 패스가 새로 등재/정정한 것 — 전건**: `ingestion_checkpoint.py`(258 → **587줄**, 표 전면 재작성 — `find_terminal_by_path_stat`/`find_terminal_by_path_stat_batch`/`TIER1_BATCH_SIZE`/`record_failure`/`adopt_new_location`/`read_file_stat`/`mtime_ns_to_datetime`/`stat_identity_signature`/`STATUS_FAILED`/`TERMINAL_STATUSES`/`STAT_SIGNATURE_PREFIX`) · `directory_watcher.py`(2,293 → **2,681줄** — `settle_already_terminal`/`_settle_terminal_hits`/`_try_path_stat_skip`/`_record_failure`/`_refuse_move_by_retention`/`dedup_by_path_stat_enabled`/`archive_processed_files_enabled`, `sweep_existing_files`·`_ingest_directory_tree`의 후보 튜플·반환 의미 변경) · `db_safety.py`(215 → **453줄** — 읽기 전용 가드 절 신설) · `models.FileIngestionCheckpoint`(컬럼 3종·인덱스 1종 추가, `STATUS_FAILED` 어휘) · `scripts/dev_env/snapshot_db.py`(자체 read-only 구현 철회 → `db_safety` 위임).
->
-> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: `server/schema_drift.py`(336 → **519줄**, `eb700e5`)는 **이 문서에 애초에 등재된 적이 없다** — 신규 섹션 신설은 이 패스의 지시 범위 밖이라 미등재로 남는다. `server/scripts/audit_schema_canon.py`(1,773 → **1,777줄**)도 마찬가지로 미등재다. `server/migrations/alter_dt_inventory_lot_slot_to_text.sql`(+reverse, `8bdc136`)·`add_ingestion_ledger_path_stat.sql`(+reverse, `ba664c5`)는 신설 확인만 했고 내용은 등재하지 않았다. `models.py`는 **984(구 등재) → 1,041줄**로 이번 구간(+25) 밖의 드리프트도 포함하는데, 이 패스는 `FileIngestionCheckpoint` 절만 실측했고 **나머지 앵커는 재측정하지 않았다 — 밀렸다고 가정하라.**
-
-> 🆕⑥ **[2026-08-13 정본 원장(canonical ledger) 신설 등재 패스의 측정 기준]** 이 패스가 잰 것은 **`aeddac8`(HEAD)**의 커밋된 blob이다(`git show aeddac8:<path>` — 워킹트리 아님). 🔴 **아래 🆕⑥ 행이 이 패스의 범위이고, 그 밖은 이 패스가 열지 않았다.** 이 패스는 **삭제부터 훑었다** — 등재 대상 18파일 중 `--diff-filter=D`에 걸린 것은 **0건**이다.
->
-> ⚠️ **측정 시각에 원장 읽기 측 일곱 파일이 워킹트리에서 modified였다** — `server/ledger_trace.py` · `server/ledger_trace_router.py` · `client2/src/ledger_trace.js` · `client2/src/ledger_trace_core.js` · `client2/src/ledger_trace_view.js` · `client2/tests/ledger_trace_harness.mjs` · **`client2/ledger.html`**(두 레인이 동시 편집 중). **그래서 워킹트리는 근거가 될 수 없고 위 값은 전부 커밋된 상태다.** 🔴 **`server/ledger/**` 11파일 · `server/migrations/add_ledger_events.py` · `client2/vite.config.js` · 채점자 5모듈은 `git status`로 워킹트리와 blob 동일함을 확인했다** — 가정하지 않고 물었다.
->
-> 🆕⑥ **이 패스가 새로 등재한 것 — 전건**: [§5-H](#5-h-정본-원장-canonical-ledger) 신설 — `server/ledger/` **11파일**(`__init__`/`envelope`/`vocabulary`/`uuid7`/`gate`/`config`/`schema`/`store`/`lot_event_translator`/`backfill`/`observability`, 합 **2,819줄**) · `server/ledger_trace.py`(**1,179**) · `server/ledger_trace_router.py`(**80**) · `server/migrations/add_ledger_events.py`(**96**) · 클라 `ledger_trace_core.js`(**286**)/`ledger_trace_view.js`(**173**)/`ledger_trace.js`(**149**)/`ledger.html`(**393**) · `client2/tests/ledger_trace_harness.mjs`(**674**) · 채점자 5모듈. **§7 도입부의 「6엔트리」도 정정했다**(실측 **7**이고 목록도 틀렸다 — 아래 행).
->
-> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: `docs/architecture/CANONICAL_LEDGER_DESIGN.md`·`DUPLICATION_LEDGER.md`·`docs/process/LEDGER_RULINGS.md`·`LEDGER_SLICE_1_BRIEF.md`는 **리빙 문서라 이 지도의 등재 대상이 아니다**(참조만). `server/config/sample/ledger_config.json.sample`은 **구조만** 적었다(gitignored 운영자 자산의 `.sample`). `server/config/ledger_resolver.json`은 **선택 파일이고 이 박스에 없어도 정상**이라 존재를 주장하지 않는다. 🔴 **`server/ledger/` 밖에서 이 패스가 연 파일은 `main.py`의 라우터 등록 두 줄과 `paths.py`·`crud.py`의 심볼 존재 확인뿐이다** — §1·§2의 나머지 앵커는 여전히 이 패스의 범위 밖이다.
-
-> 🆕⑦ **[2026-08-14 원장 콘솔·걷기 대조 패스의 측정 기준]** 이 패스가 잰 것은 **`a729a7f`(HEAD)**의 커밋된 blob이다(`git show a729a7f:<path>` — 워킹트리 아님. 측정 시각에 이 패스의 대상 파일은 `git status` 실측으로 전부 워킹트리와 blob 동일이었다). 범위는 `aeddac8..a729a7f`(**183커밋** — 대부분 docs·보드·리포트이고 소스는 원장 읽기/쓰기 측·콘솔 클라·픽스처 스크립트에 몰려 있다). **삭제부터 훑었다** — 이 구간의 소스 삭제는 **1건**, `server/migrations/migrate_map_meta_to_wafer_id.py`(`.RETIRED.md`로 대체)뿐이고 **이 문서에 등재된 적이 없어 묘비가 필요 없다**(그 밖의 `D`는 `client2/dist/assets/*` 번들뿐). 🔴 **아래 🆕⑦ 행이 이 패스의 범위이고, 그 밖은 이 패스가 열지 않았다.**
->
-> 🆕⑦ **이 패스가 새로 등재/정정한 것 — 전건**: [§5-H](#5-h-정본-원장-canonical-ledger) 읽기 측 대확장 — `ledger_trace_router.py`(80 → **419줄**, 라우트 1개 → **7개**: `/api/ledger/{trace,siblings,kinds,structure,lots,lot_map,coverage}`) · `ledger_trace.py`(1,179 → **1,937줄** — `STATE_CONTESTED`/`HOP_STATES`/`hop_basis` 구조화 basis, `LINEAGE_PREDICATES`의 PEP 562 전환, `coverage()`/`relation_exists()` 신설) · 신설 서버 모듈 **7종**(`finding_kinds.py`·`ledger_kinds.py`·`ledger_siblings.py`·`ledger_structure.py`·`ledger_lots.py`·`ledger_walk_contrast.py`·`mechanism_gate.py`) · `server/config/sample/mechanism_models.json.sample`(구조만) · 클라 콘솔(`ledger.html` 393 → **2,499** · `ledger_trace.js` 149 → **1,205** · core 286 → **603** · view 173 → **299** · 하니스 674 → **1,556**) · 놀라움 축 4모듈(`surprise_core.js`·`surprise_axis.js`·`surprise_map_core.js`·`surprise_map_view.js`) 실측 등재 · 쓰기 측 `server/ledger/` **11 → 13파일**(신설 `observation_translator.py`·`transfer_translator.py`, 줄 수 전건 재측정) · `vocabulary.PREDICATES` **7 → 11종** 정정 · 「읽기 측은 `server/ledger/`를 import하지 않는다」 정정(이제 **지연 import 한다**).
->
-> ⚠️ **이 패스가 확인 못 했거나 범위 밖으로 남긴 것**: 콘솔의 나머지 클라 9모듈(`case_control_core/view`·`lot_reference_core/view`·`ontology_structure_core/view`·`contrast_core/view`·`surprise_view.js`·`ledger_console.css`)은 **줄 수와 최상위 export 존재만** 실측했고 심볼 표는 미등재다. 쓰기 측 `server/ledger/` 기존 11파일의 **심볼 표는 재측정하지 않았다**(줄 수만 갱신 — `vocabulary.py`의 walk 선언 계열과 `PREDICATES` 키 목록만 실측). 이 구간이 건드린 `server/main.py`(라우터 등록 두 줄만 확인)·`map_alignment.py`·`models.py`·`config_resolve_report.py`·`transfer_plan.py`·`retroactive.py`·`run_auto_update.py`·`client2/src/main.js`·`graph_viewer.js`와 씨앗 스크립트 `scripts/seed_syn_*` 8종·신규 테스트들은 **열지 않았다**. `server/config/sample/*.json.sample` 중 이 패스가 연 것은 `mechanism_models.json.sample` 하나다.
-
-> 🆕⑨ **[2026-08-18 앵커·줄 수·미등재 패스의 측정 기준]** 이 패스가 잰 것은 **`5359fdd`(HEAD)의 커밋된 blob**이다(`git show 5359fdd:<path>` — 워킹트리 아님). 🔴 **워킹트리를 근거로 쓸 수 없는 이유가 측정 시각에 실재했다**: `server/ledger/`의 번역기 다섯(`declared_translator.py`·`lot_event_translator.py`·`observation_translator.py`·`transfer_translator.py`·`translator_pattern.py`)이 **워킹트리에서 삭제된 상태**였고 `server/config/ontology/`의 JSON 둘이 modified였다 — 다른 레인이 진행 중이다. 아래 값은 전부 커밋된 상태이고, **그 다섯 파일은 이 지도에서 아직 살아 있는 것으로 적혀 있다**(HEAD 기준으로 참이다. 그 레인이 착지하면 묘비가 필요하다).
->
-> 🆕⑨ **이 패스의 범위는 같은 날 앞선 패스가 «구조적으로 볼 수 없었던» 것 넷이다**: ① 라인 앵커(앞 패스는 심볼의 **존재**만 쟀다) ② 제목의 줄 수 주장 ③ **맵에 절이 아예 없는 파일**(맵이 주장하지 않는 것은 맵을 훑어서는 보이지 않는다) ④ 없는 파일을 가리키는 blob 핀.
->
-> 🆕⑨ 🔴 **가장 값비싼 발견은 심볼 존재 검사를 «통과한» 절이었다 — [§1.5](#15-그래프-조회-구간은-410으로-은퇴했다)다.** `get_chip_trace`·`get_graph_stats`·`search_graph_nodes` 등 일곱 핸들러(**접두어가 둘이다** — `/graph/`의 여섯 + `POST /api/graph/sync`)는 **이름이 전부 실재한다**. 그래서 파일 단위 감사도 심볼 단위 감사도 이 절을 초록으로 통과시켰다. 그런데 실측하면 **일곱 전부가 본체 한 줄짜리 `raise _graph_branch_retired()`**(410)다 — §1.5의 26줄짜리 캡·어휘·헬퍼 서술은 **한 줄도 남아 있지 않은 동작**을 기술하고 있었다(`_expand_graph_subgraph`·`_serialize_graph_edge`·`_chip_trace_leg`·`GRAPH_NEIGHBOR_NODE_CAP`·`GRAPH_CHIP_TRACE_SEED_LABEL` — grep **전부 0건**). **살아 있는 이름이 죽은 서술을 떠받치는 것**이 이 문서가 반복해 지는 실패의 최악형이다: 확인하러 온 사람이 이름을 grep해 찾고 통과시킨다.
->
-> 🆕⑨ ⚠️ **이 패스가 열지 않은 것**: `crud.py`·`directory_watcher.py`·`map_alignment.py`·`map_overlay.py`·`transfer_plan.py`·`bonding_plan.py`·`enrichment_*`·`map_editor.js`·`admin.js`·`timeline.js`의 **심볼 표**는 열지 않았다(줄 수만 쟀다 — 아래 「줄 수 실측표」). 그 절들은 여전히 미검증이다. §5-H 쓰기 측의 심볼 표도 재측정하지 않았다(줄 수와 파일 목록만).
-
-> 🆕⑩ **[2026-08-21 원장 쓰기 측·온톨로지 작성 표면 패스의 측정 기준]** 이 패스가 잰 것은 **`8d1e6c4c`(HEAD)의 커밋된 blob**이다(`git show 8d1e6c4c:<path>` — 워킹트리 아님). 범위는 `5359fdd..8d1e6c4c`(**449커밋**)이고 **지시받은 반경은 `server/ledger/` 패키지 + 온톨로지 config 작성/탐색 표면 하나**다. 🔬 **워킹트리 실측**: 이 패스의 대상 파일은 전부 blob과 동일했다(`git status --porcelain` 기준 dirty였던 것은 `client2/dist/*`·`client2/src/{dom,grid,style}`·`server/{dt_map_derivation,map_alignment,map_overlay}.py`·`server/config/sample/ledger_config.json.sample`뿐 — **전부 이 패스의 반경 밖**이다).
->
-> 🆕⑩ 🔴 **삭제부터 훑었고, 이 구간의 삭제가 이 문서에서 가장 비싼 항목이었다.** `--diff-filter=D`의 **소스 8건**: `ledger/declared_translator.py` · `ledger/lot_event_translator.py` · `ledger/observation_translator.py` · `ledger/transfer_translator.py` · `ledger/translator_pattern.py` · `ledger/cutover_v2.py` · `ledger/examples/grouped_translator_template.py` · `mappers/ledger_lot_event_mapper.py`. **🆕⑨가 「그 레인이 착지하면 묘비 다섯이 필요하다」고 적어 둔 바로 그 레인이 착지했다** — 그리고 그중 `lot_event_translator.py`는 §5-H에 **심볼 10행짜리 표를 통째로** 달고 살아 있었다. 그 표를 지우고 묘비로 대체했다(아래 §5-H). config 삭제는 **11건**이고 «세는 방법에 따라 6으로 보인다» — 🔴 **기본 rename 탐지가 그중 다섯을 «삭제가 아니라 이동»으로 짝지어 목록에서 지우기 때문이다**(`server/config/ontology/{manifest,catalog/tables,catalog/virtual_joins,dataflows/chains,dataflows/enrichments}.json` → `task/evidence/ontology_root_before_20260818/…`, R100). **`--no-renames`로 다시 세어 11을 얻었다.** 내역: ① 라이브 root의 다중 파일 6개(위 다섯 + `ledger_config.json`)가 사라지고 **`server/config/ontology/`엔 `README.md`만 tracked로 남았다** — 라이브 `ledger_config.json`은 **gitignored**이고 디스크에는 있다 ② `config/sample/ontology/transfer_explorer/`의 다중 파일 5개가 **단일 `ledger_config.json`으로 접혔다**(`scripts/convert_ontology_to_single_file.py`). ⚠️ **이 지도는 어느 쪽 실값도 옮겨 적지 않는다** — 구조만이다.
->
-> 🆕⑩ **이 패스가 새로 등재/정정한 것 — 전건**: §5-H 쓰기 측 표 전면 재작성(파일 목록 19→**33 + `examples/` 1**, 줄 수 전건 재측정, 묘비 7) · `lot_event_translator.py` 심볼 표 삭제→묘비 · `backfill.py` 행(1,574 → **983**, 드라이버 넷 소멸) + **고아 `fetch_*` 아홉의 실측 반박**(아래) · **[§5-H-bis 신설](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)** — `ontology_config_explorer_router`(**15**라우트 — 전건 계수) · `OntologyExplorerService.test_run` · `config_authoring`(`Ground`/`Field`/4상태/`disposition` 5종) · `implementations.py` · `column_stats.py` · `ledger_skeleton.json` · `source_preparation.SOURCE_ROW_EXCLUDED_COLUMN`/`_assemble_prepared_frame` · 클라 `ontology_explorer{,_store,_view}.js` + 신설 3종(`ontology_path`·`ontology_skeleton`·`dom_patch`) · §5-I의 낡은 워킹트리 경고 철회.
->
-> 🆕⑩ ⚠️ **이 패스가 열지 않은 것**: `server/ledger/` 안에서도 `envelope`·`vocabulary`·`gate`·`schema`·`store`·`config`·`observability`·`source_profile`·`source_contract`·`shadow_parity`·`profile_*`·`ledger_frame`·`legacy_import`의 **심볼 표는 재검증하지 않았다**(줄 수만 실측). 읽기 측(`ledger_trace*`·`ledger_explorer`·`ledger_subgraph`·`ledger_journey` 등)은 **한 파일도 열지 않았다** — §5-H 읽기 측 절과 §5-I 읽기 측 표는 여전히 `5359fdd`/`a729a7f` 기준이다. `roleframe`·`setup_registry`·`setup_bundle`은 **최상위 심볼 이름만** 실측했고 시그니처·서술은 등재하지 않았다. 이 문서의 나머지 절은 이 패스의 반경 밖이다.
-
-> 🆕⑪ **[2026-08-23 원장 v2 선언 축소 + 증거 투영 + 클라 디자인 패스의 측정 기준]** 이 패스가 잰 것은 **`b3e1ec83`(HEAD)의 커밋된 blob**이다(`git show b3e1ec83:<path>` — 워킹트리 아님. 측정 시각에 `server/{dt_map_derivation,map_alignment,map_overlay}.py`·`server/config/sample/ledger_config.json.sample`이 다른 레인에서 dirty였고 **넷 다 이 패스의 반경 밖**이다). 범위는 `7eb11dde..b3e1ec83`(**248커밋**, 2026-08-21 22:07 ~ 2026-08-23 10:00).
->
-> 🔬 🆕⑪ **측정 중 HEAD가 `b3e1ec83` → `1e23c720`으로 움직였고, 「소스가 안 바뀌었다」를 가정하지 않고 확인한 방법을 남긴다.** 들어온 셋(`d544e47f`·`e0f4eea5`·`1e23c720`)은 `docs/process/PROJECT_STATUS.md`·`task/*` 셋만 건드렸고, 그래도 **이 패스가 잰 33파일 전건을 `git rev-parse <rev>:<path>`로 두 리비전에서 대조해 바이트 동일을 확인했다**(불일치 0). 그래서 아래 숫자는 `b3e1ec83` 기준이자 `1e23c720` 기준이다.
->
-> 🆕⑪ **삭제부터 훑었다 — 이 구간의 `--diff-filter=D`는 `client2/dist/assets/*` 번들 2개뿐이고 «소스 파일 삭제는 0건»이다.** 🔴 **그래서 이 구간의 사라짐은 파일이 아니라 «심볼과 선언 필드»다**(직전 패스가 파일 여덟을 잡은 것과 다른 계급이다): `backfill.py`에서 고아 `fetch_*` **아홉 + `_transfer_select`**가 실제로 삭제됐고(🆕⑩이 「살아 있는 앵커로 쓰지 않는다」고만 적어 둔 바로 그 아홉이다), 선언에서 `approval_status`·`binding_origin`·`suggestion_reason`·`vocabulary.*.layer` **넷**이 은퇴했다. 신설 파일은 둘(`scripts/seed_syn_die_transfer.py`·`scripts/migrate_ledger_config_drop_vocabulary_layer.py`).
->
-> 🆕⑪ **이 패스가 새로 등재/정정한 것 — 전건**: §5-H 쓰기 측 표의 **줄 수 전건 재측정**(33파일, 8건 불일치) + `roleframe`의 time Role 규칙 · `setup_registry.source_cursor_fingerprint`의 `input_columns` 카브아웃 · `setup_bundle._RETIRED_BINDING_FIELDS`/`bundle_readiness_errors`의 「규칙 0」 · `source_preparation.locked_select_columns`(신설)/`base_select_columns` · `backfill.py`(983 → **748**, 고아 열 삭제 → **묘비**) · §5-H-bis의 `config_authoring`(1,548 → **1,937**, 신설 심볼) · `ledger_skeleton.json`(763 → **710**) · 클라 `ontology_explorer_view.js`(2,199 → **2,277**) · §5-I `ledger_subgraph.py`(1,254 → **1,625**, Quantity 투영 + 부호 있는 seed) · §5-I 읽기 측 **줄 수 전건 재측정** · §5-G 씨앗 스크립트 3 → **4** · §7 클라 9파일 줄 수 + **`visibleRangeColIds`의 `grid.js` → `state.js` 이사** + `enrichment_reference_view.js`(118 → **497**).
->
-> 🆕⑪ ⚠️ **이 패스가 열지 않은 것**: `server/ledger/`의 `envelope`·`vocabulary`·`gate`·`schema`·`store`·`config`·`observability`·`source_profile`·`source_contract`·`shadow_parity`·`profile_*`·`ledger_frame`·`legacy_import`·`config_explorer*`·`implementations`·`column_stats`의 **심볼 표**(줄 수만 실측). `ledger_trace`·`ledger_trace_router`·`ledger_walk_contrast`·`mechanism_gate`·`ledger_siblings`·`ledger_kinds`·`finding_kinds`의 심볼 표(줄 수만). `main.py`·`crud.py`·`admin.js`·`map_editor*`·`transfer_plan*`·`map2/*`·`value_suggest.js`·`effort_meter.js`는 **한 파일도 열지 않았다.** §7의 `style.css`(2,873줄)·`index.html`(616줄)은 이 구간에 크게 자랐으나 **이 지도는 CSS·HTML을 심볼로 등재하지 않으므로** 줄 수도 남기지 않는다.
->
-> 🆕⑪ 🔒 **은퇴 울타리 — 아래는 «동결»이고 이 패스가 살아 있는 표면으로 갱신하지 않았다.** 지도에서 지우지 않되 **새 작업의 출발점으로 읽지 마라**: **A군** `ledger_trace.py` · ~~`ledger_trace_router.py`~~(🆕⑫ **파일 통째 동결은 철회됐다 — 라우트별로 갈렸다**, 바로 아래 🆕⑫ 블록) · `ledger_admin.py` · `ledger/config.py` — **C군** `ledger_explorer.py` · `ledger_structure.py` · `ledger_journey.py` · `ledger_lots.py`. **동결이 아닌 것**(계속 사는 읽기 측): `ledger_subgraph` · `ledger_catalog` · `ledger_composition` · `ledger_selection` · `ledger_siblings` · `ledger_trends`.
->
-> 🆕⑫ **[2026-08-23 후속 — `ledger_trace_router.py` 울타리 재절단의 측정 기준]** 이 패스가 잰 것은 **`bd0c192e`(HEAD)의 커밋된 blob**이다 — `git show bd0c192e:server/ledger_trace_router.py`(blob `ca088aff`), 워킹트리 아님. 🔴 **반경은 그 한 파일의 라우트 16개와 그것이 부르는 심볼뿐이고, 이 문서의 다른 절은 한 곳도 열지 않았다.** 라우트 계수는 표본이 아니라 전건이다(`grep -c '^@router\.'` = **16**, `git log`상 이 파일을 마지막으로 바꾼 것은 `5aa666d5`).
->
-> 🔬 🆕⑫ **측정 중 HEAD가 `bd0c192e` → `093837f2`로 움직였고, 「소스가 안 바뀌었다」를 가정하지 않고 확인했다.** 들어온 일곱은 전부 `task/*`만 건드렸고, 그래도 이 패스가 읽은 **14파일 전건을 `git rev-parse <rev>:<path>`로 두 리비전에서 대조해 바이트 동일을 확인했다**(불일치 **0** — 라우터·`ledger_trace`·동결 넷·열림 여덟). 그래서 아래 판정은 `bd0c192e` 기준이자 `093837f2` 기준이다.
->
-> 🆕⑫ 🔴 **파일 통째 동결이 틀렸고, 지도는 그 판정을 내린 HEAD에서 이미 자기모순이었다.** 🆕⑪이 `ledger_trace_router.py`를 A군에 **통째로** 올렸는데, 같은 문단이 `ledger_subgraph`를 「동결이 아니고 이 구간에 가장 크게 자란 읽기 측 모듈」이라 적었고 **그 모듈의 유일한 HTTP 표면인 `@router.get("/subgraph")`가 동결 표지가 붙은 그 파일 안에 있다.** 파일 하나를 얼리면 **살아 있는 읽기 측 여섯 전부의 문이 잠긴다** — 그래서 울타리를 라우트별로 다시 그었다(**8 동결 / 8 열림**, 16행 전건은 §5-H `ledger_trace_router.py` 절).
->
-> 🆕⑫ 🔴 **가르는 규칙은 «라우트가 부르는 심볼»이지 «임포트하는 모듈»이 아니다.** 동결 모듈이 얹고 있는 **공용 배관은 아무것도 얼리지 않는다** — `ledger_trace.relation_exists` · **`ledger_trace._fetch`** · `ledger_trace.ResolverConfigError` · `ledger_trace.REASON_RELATION_ABSENT` · `ledger_trace.rollup_subject_types` · `ledger_trace.SqlClaimLookup` · `ledger_explorer`의 엔티티 id 코덱(`entity_id`/`decode_entity_id`/`_entity`). 🔴 **`_fetch`가 배관이라는 것은 취향이 아니라 실측이 강제한다: 열린 여덟 모듈이 «8/8 전부» `from ledger_trace import _fetch, relation_exists`로 시작한다**(`ledger_subgraph`·`ledger_siblings`·`ledger_trends`·`ledger_composition`·`ledger_selection`·`ledger_catalog`·`ledger_kinds`·`ledger_walk_contrast` — `bd0c192e` 실측). 그것을 동결 계산으로 세면 **16라우트 전부가 동결**이 되어 이 절단 자체가 공허해진다. **얼리는 것은 계산 심볼이다** — `ledger_trace.trace`/`coverage` · `ledger_explorer.explore`/`explore_entity` · `ledger_journey.journey` · `ledger_structure.structure` · `ledger_lots.lots`/`lot_map`.
+**📍 절별 검증 상태 — 이 표가 이 문서의 유일한 신뢰 기준입니다.**
 
 | 절 / 파일 | 상태 | 기준 리비전 | 비고 |
 |---|---|---|---|
@@ -109,7 +39,6 @@
 | 🆕⑦ §5-H 읽기 측 — `ledger_trace_router.py`(7라우트) · `ledger_trace.py` | 🟢 **심볼 실측 재측정(2026-08-14)** | **`a729a7f`**(HEAD) | 80 → **419** · 1,179 → **1,937**. 🆕⑥이 예고한 재측정이 이것이다. `ledger_trace.py`는 **기존 top-level 심볼 소실 0**(이름 수준 전건 대조) + 신설 심볼 실측, 단 **기존 행의 산문 서술은 재검증하지 않았다** |
 | 🆕⑦ §5-H 신설 서버 7종 — `finding_kinds`·`ledger_kinds`·`ledger_siblings`·`ledger_structure`·`ledger_lots`·`ledger_walk_contrast`·`mechanism_gate` | 🟢 **심볼 실측 신규 등재(2026-08-14)** | **`a729a7f`**(HEAD) | 종전 등재 **0**. `walk_contrast`·`lots`·`mechanism_gate`는 상세, 나머지는 압축 등재 |
 | 🆕⑦ §5-H 클라 콘솔 — `ledger.html` · `ledger_trace.js` · core · view · 하니스 + 놀라움 축 4모듈 | 🟢 **export 실측 재측정/신규 등재(2026-08-14)** | **`a729a7f`**(HEAD) | 다섯 파일 전부 자랐다(입력 1개·버튼 0개는 **여전히 참**). 콘솔의 나머지 9모듈은 줄 수만 실측 — 심볼 미등재 |
-| 🆕⑦ §5-H 쓰기 측 — `server/ledger/` 13파일 줄 수 + `vocabulary.py` walk 선언 | 🟠 **부분(2026-08-14)** | **`a729a7f`**(HEAD) | 신설 번역기 2종은 존재·줄 수만, 기존 11파일 심볼 표는 **재측정 안 함**. `PREDICATES` 7 → **11종** 정정 |
 | 🆕⑥ §5-H 정본 원장 — `server/ledger/` 패키지 11파일 | 🟢 **심볼 실측 신규 등재(2026-08-13)** | **`aeddac8`** | 종전 등재 **0**. 라인 번호 0개 — 심볼과 시그니처만. 🆕⑦ ⚠️ **줄 수는 13파일 기준으로 갱신됐고 심볼 표는 `aeddac8` 기준 그대로다** |
 | 🆕⑥ §5-H 읽기 측 — `ledger_trace.py` · `ledger_trace_router.py` | 🟢 **심볼 실측 신규 등재(2026-08-13)** | **`aeddac8`** | ⚠️ 두 파일 다 측정 시각에 워킹트리 modified였고 → 🆕⑦이 `a729a7f`에서 재측정했다(위 행) |
 | 🆕⑥ §5-H 클라 3종 + 하니스 + `client2/ledger.html` | 🟢 **export 실측 신규 등재(2026-08-13)** | **`aeddac8`** | 〃 → 🆕⑦이 `a729a7f`에서 재측정했다(위 행) |
@@ -139,7 +68,7 @@
 | 🆕🆕 인제션·outbox 경로(`database/crud.py` · `database/database.py` · `parsers/directory_watcher.py`) | 🟠 **심볼 무변동 확인만(2026-08-11)** | **`7097a67`**(HEAD) | 🔴 **이 패스는 세 파일의 top-level `def`/`class`/상수 집합이 `34d2518` 대비 *한 글자도* 다르지 않음을 확인했을 뿐이다**(`directory_watcher.py`는 `5609ff0` 대비로도 동일). `528dfcb`·`4738d84`는 `34d2518` **이전**에 착지했으므로 2026-08-08 패스의 범위였다. **산문 서술은 이 패스가 재검증하지 않았다**.<br>🆕⑤ ⚠️ **[2026-08-13] 이 행의 「심볼 집합 무변동」은 `directory_watcher.py`에 대해 더 이상 참이 아니다** — `ba664c5`+`831ab68`이 top-level 심볼 4종·메서드 5종을 추가했다(아래 🆕⑤ 행). `crud.py`·`database.py`는 이번 패스가 열지 않았다 |
 | 🆕 §2 `server/database/crud.py` | 🟢 **심볼 실측(2026-08-08)** | **`34d2518`**(HEAD) | 3,209 → **3,980**. `4738d84`·`528dfcb`·`818c9c0`. **[P3] 미착지 블록이 착지해 등재로 전환**했고, 예고에 없던 **두 번째 행당 관문 `_find_business_key_conflict`**를 실측으로 찾아 신설 등재했다. D3 재생 계열 6종 신설. ⚠️ **`apply_batch_updates`는 얇은 래퍼가 됐지만 시그니처·4-튜플·호출부 13곳 전부 무변경** |
 | 🆕 §5 `server/map_alignment.py` · §5-F 채점 계열 | 🟢 **심볼 실측(2026-08-08)** | **`34d2518`**(HEAD) | 5,961 → **5,993**. `serpentine_index`/`_rank`에 **`left_to_right`** 축 추가(🔴 **배선 전 — 채점기가 탐색하지 않는다**) · `compose_refusal` 분기 1건 · **`_ConsoleSafeHandler`가 클래스에서 별칭으로 바뀌었다**. 🔴 **지시서가 준 라인 셋(`~665`·`~712`·`~716`)은 전부 정의가 아니었다** — 실측 정의는 `confirmed_meta_for` **547** · `start_for_placement` **748** · `start_from_placement` **808** |
-| 🆕 §6 `utils/logger.py` · `event_constants.py` · `database/database.py` · 신설 3모듈 | 🟢 **실측(2026-08-08)** | **`34d2518`**(HEAD) | `logger.py` 145 → **221**(등재 앵커 셋 전부 낡았다) · `event_constants.py` 86 → **223**(outbox **접기** 절 신설) · `database.py`에 `stage_collapsed_event` · 신설 등재 **`outbox_expand.py`** · **`migrations/add_business_key_unique_index.py`** · **`scripts/check_missing_business_key.py`** |
+| 🆕 §6 `utils/logger.py` · `event_constants.py` · `database/database.py` · 신설 3모듈 | 🟢 **실측(2026-08-08)** | **`34d2518`**(HEAD) | `logger.py` 145 → **221**(등재 앵커 셋 전부 낡았다) · `event_constants.py` 86 → **223**(outbox **접기** 절 신설) · `database.py`에 `stage_collapsed_event` · 신설 등재 **`outbox_expand.py`** · **`migrations/add_business_key_unique_index.py`** · **`server/scripts/check_missing_business_key.py`** |
 | 🆕 §4 `server/chain_ingestion_worker.py` | 🟠 **라인 앵커만 재측정(2026-08-08)** | **`34d2518`**(HEAD) | 1,086 → **1,198**. 🔴 **밀림이 조각이다 — +4 / +55 / +96 세 구간.** 표의 「라인」 열은 절 머리의 재측정 블록이 대체한다. **산문 서술 자체는 재검증하지 않았다** |
 | 🆕 §7-A `map2/main.js`·`view_model.js` · §7 `enrichment.js` | 🟠 **부분(2026-08-08)** | **`34d2518`**(HEAD) | `main.js` 2,437 → **2,453** · `view_model.js` 1,197 → **1,226**(`spellFrame`/`startLabel`/확정 관문). 🔴 **`enrichment.js`의 등재값 905줄은 실측 1,266 — 그 낡음은 이번 라운드보다 앞선다**(`e943e46`에서 이미 1,252). 그 절의 `~NNN` 앵커는 **여전히 미검증** |
 | §7 `client2/src/map_editor.js` | 🟢 **심볼 실측** | `5609ff0` | 🔴 **이 절이 이번 판정의 증거다.** 앵커를 `cfa22ce`에서 전건 실측한 직후 `067f312`가 파일을 바꿔 **라인이 또 밀렸다**(+17 × 143). 그런데 **심볼 338개는 하나도 사라지지 않았다**(`5609ff0` 대조, 소실 0). **틀린 것은 심볼이 아니라 숫자였다** — 그래서 숫자를 버리니 절이 다시 맞았다 |
@@ -178,8 +107,8 @@
 | `server/map_meta_registrar.py` | 367 | **379** | +12 |
 | `server/virtual_join_config.py` | 687 | **697** | +10 |
 | `server/database/database.py`(§6) | 333 | **341** | +8 |
-| `server/ledger_walk_contrast.py` | 1,327 | **1,337** | +10 |
-| `server/mechanism_gate.py` | 368 | **370** | +2 |
+| `server/ledger_api/ledger_walk_contrast.py` | 1,327 | **1,337** | +10 |
+| `server/ledger_api/mechanism_gate.py` | 368 | **370** | +2 |
 | 🔻 `server/product_tables.py` | 232 | **158** | **−74** |
 | 🔻 `server/transfer_plan.py` | 3,826 | **3,731** | −95 |
 | 🔻 `server/retroactive.py` | 697 | **545** | **−152** |
@@ -204,7 +133,7 @@
 ⚠️ **일치한 26곳도 「그 절이 옳다」는 뜻이 아니다** — 크기가 같아도 내용이 바뀔 수 있고, 이 문서는 그 값을 이미 지불했다(§0 표지의 「바이트 동일한데 드리프트가 가득했다」).
 
 > 🔴 **[2026-08-07 이 패스가 실제로 고친 것 — 범위는 위 표의 세 행뿐이고 나머지는 열지 않았다]**
-> - 🔴 **경로 하나가 문서 전체에서 벗겨져 있었다.** 이 저장소에 **`server/crud.py`는 없다** — 실제 경로는 **`server/database/crud.py`** 하나다. 그런데 산문은 `crud.py:1623`·`crud.py **1969–1974**`처럼 파일명만 적어 왔고, 그 표기를 그대로 따라간 독자는 **존재하지 않는 파일**을 찾게 된다(2026-08-07에 실제로 그럴 뻔했다). 이번 패스에서 벗은 표기를 전부 온전한 경로로 바꿨다. **모듈 이름으로서의 `crud.xxx`**(파이썬 심볼 참조)는 그대로 둔다 — 그것은 파일명이 아니다.
+> - 🔴 **경로 하나가 문서 전체에서 벗겨져 있었다.** 이 저장소에 **`server/database/crud.py`는 없다** — 실제 경로는 **`server/database/crud.py`** 하나다. 그런데 산문은 `crud.py:1623`·`crud.py **1969–1974**`처럼 파일명만 적어 왔고, 그 표기를 그대로 따라간 독자는 **존재하지 않는 파일**을 찾게 된다(2026-08-07에 실제로 그럴 뻔했다). 이번 패스에서 벗은 표기를 전부 온전한 경로로 바꿨다. **모듈 이름으로서의 `crud.xxx`**(파이썬 심볼 참조)는 그대로 둔다 — 그것은 파일명이 아니다.
 > - 🔴 **`map_alignment.py`는 등재 이후 3,272 → 5,961줄이 됐고, 늘어난 절반이 통째로 미등재였다.** QA 둘이 독립으로 관찰한 「정렬 채점 계열이 어느 문서에도 없다」가 실측으로 확인된다. → [§5-F](#5-f--정렬-채점-계열-index-scoring-family--servermap_alignmentpy-2026-08-07-등재) 신설.
 > - 🔴 **`069b4e9`가 `map_alignment.py`에 +283/-8을 넣어 삽입 지점 뒤의 라인이 전부 밀렸다.** 이 문서의 §5 map_alignment 절은 이미 라인을 걷어낸 뒤였으므로 **표에서는 아무것도 깨지지 않았다** — 깨진 것은 이 문서 밖에서 라인으로 인용하던 쪽이다(실측 예: `direction_violations` **호출부**가 `3079` → **`3167`**로 이동, **정의는 `1513`**에 있다. 「보고서의 3079」는 호출부였고 정의가 아니었다). 🔴 **이것이 라인 인용이 실패하는 두 방식을 한 자리에서 보여 준다** — 숫자가 밀리는 것과, 밀리지 않았어도 **정의가 아니라 호출부**를 가리키는 것.
 > - 🔴 **`map2/` 모듈이 17이 아니라 18이었다**(`index_ramp.js` 미등재). 「개수를 적지 않는다」 규율이 절 제목에서 새고 있었다.
@@ -530,7 +459,7 @@
 >
 > ⚠️ **해시가 보증하지 않는 것**: 이 여섯 파일 밖의 앵커는 해시로 지켜지지 않으므로 **패스마다 다시 재야 한다.** 실사례(2026-07-27 패스): 그 범위가 **건드리지도 않은** 파일들이 이미 밀려 있었다 — `directory_watcher.py` 최대 +53줄, `process_supervisor.py`는 선언 431줄 대비 실제 **709줄**. 실사례(2026-07-28 패스): `main.py`는 이번 범위(`b35bc9f`·`280ebf0`)에 없지만 앞선 `ec75d4c`·`269b39e`로 **최대 +72줄** 밀려 있었다. 실사례(gate4 패스): `crud.py`가 **직전 pin(`0c6ac1a`) 시점에 이미 +93 밀려 있었다**(선언 1,952줄 vs 실측 2,045줄 — `apply_row_update_internal` 551 vs 644). pin 해시가 맞아도 해시 목록 **밖** 파일의 앵커는 아무것도 보증받지 않는다. 커밋 diff만 따라가는 갱신은 이런 것을 영원히 못 본다.
 >
-> ⚠️ **왜 "커밋된 blob"이라고 못박는가 — 2026-07-27 패스에서 실제로 일어난 일**: 착수 시점에 워킹트리가 클린이었으나, 그 절을 쓰는 동안 다른 에이전트들이 `server/main.py`·`server/database/crud.py`·`server/database/models.py`·`server/schemas.py`를 **동시 편집**해 트리가 갈라졌다. 앵커를 워킹트리에서 쟀다면 **아무도 리뷰하지 않은 중간 상태**가 지도에 박혔을 것이다. 그래서 이 지도의 모든 앵커는 `git show <Last-verified HEAD>:<path>` 기준이다 — 라인이 아니라 **함수명으로 Grep하라**는 규율이 특히 동시 편집이 잦은 파일들에 적용된다.
+> ⚠️ **왜 "커밋된 blob"이라고 못박는가 — 2026-07-27 패스에서 실제로 일어난 일**: 착수 시점에 워킹트리가 클린이었으나, 그 절을 쓰는 동안 다른 에이전트들이 `server/main.py`·`server/database/crud.py`·`server/database/models.py`·`server/database/schemas.py`를 **동시 편집**해 트리가 갈라졌다. 앵커를 워킹트리에서 쟀다면 **아무도 리뷰하지 않은 중간 상태**가 지도에 박혔을 것이다. 그래서 이 지도의 모든 앵커는 `git show <Last-verified HEAD>:<path>` 기준이다 — 라인이 아니라 **함수명으로 Grep하라**는 규율이 특히 동시 편집이 잦은 파일들에 적용된다.
 >
 > 🔴 **그리고 2026-07-29 오후 패스에서 그 규율이 실제로 값을 갈랐다 — 이번엔 반대 방향으로.** 이 패스에 보고된 드리프트 중 **다섯 건이 워킹트리에서만 참**이었다: `crud.load_table_config` 226 · `update_table_config` 245 · `main.startup_event` 226 · `config_watcher` engine 분기 ~151 · `map_overlay.apply_valid_die_ref` 1016. **커밋된 HEAD `b8307c2`에서는 각각 172 · 181 · 189 · 42 · (부재)**다. 워킹트리 값을 받아 적었다면 이 지도는 **커밋된 트리를 여는 모든 에이전트에게 틀린 좌표**를 줬을 것이고, 그 틀림은 "방금 실측했다"는 표지를 달고 있었을 것이다. **보고된 실측이라도 리비전을 확인하라** — 측정 자체는 정직해도 측정 대상이 다르면 값은 거짓이다.
 >
@@ -578,7 +507,7 @@
 | 🆕 **`server/column_filter.py`** (필터 DSL 번역기 — `main.py`에서 이사) | **181** (신설) | [§1.8](#18-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리-신설) |
 | **`server/admin_auth.py`** (어드민 토큰 게이트) | **463** (무변동 — blob 해시 초록) | [§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설) |
 | **`server/internal_event_client.py`** (내부 HTTP 호출의 단일 소유자) | **359** (235 → **+124**: 미배달 통지 마커 + `/health` 응답 *모양* 판별자) | [§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설) |
-| `server/database/crud.py` | 🆕🆕🆕🆕 **4,172** @`347de78`(3,980 → **+192**: `compute_priority_value`의 3단 tie-break 신설 + `resolution_ingested_at` 신설 + `_warn_undeclared_column_once` 재작성 + `undeclared_column_drops()` 신설 — 아래 §2) · 그전 3,980 @`7097a67`(top-level 심볼 집합 `34d2518` 대비 **무변동**) · 종전 등재 3,526 (@`e943e46` 재확인 — `d3ed167` 3,209 → **+317**: 🆕 **[P6] 복합 키 프리페치** · 🆕 **[`87a944e`] `replace_map` 차집합 경로**). ⚠️ **`server/crud.py`는 없다** | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
+| `server/database/crud.py` | 🆕🆕🆕🆕 **4,172** @`347de78`(3,980 → **+192**: `compute_priority_value`의 3단 tie-break 신설 + `resolution_ingested_at` 신설 + `_warn_undeclared_column_once` 재작성 + `undeclared_column_drops()` 신설 — 아래 §2) · 그전 3,980 @`7097a67`(top-level 심볼 집합 `34d2518` 대비 **무변동**) · 종전 등재 3,526 (@`e943e46` 재확인 — `d3ed167` 3,209 → **+317**: 🆕 **[P6] 복합 키 프리페치** · 🆕 **[`87a944e`] `replace_map` 차집합 경로**). ⚠️ **`server/database/crud.py`는 없다** | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
 | `server/parsers/directory_watcher.py` | 🆕⑤ **2,681** @`831ab68`(`ba664c5`+`831ab68`로 2,293에서 **+388**, 신설 top-level 심볼 4종·메서드 5종) · 구 등재 2,293 @`7097a67` | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | **`server/parsers/advanced_ingester.py`** (선언 검증 + 경로 메타 추출) | **508** (무변동 — blob 해시 초록) | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | 🆕 **`server/parsers/html_topology_parser.py`** (HTML 표 → 그래프/행렬) | **768** (638 → **+130**: 격자 원점 이중 유도 + 구조적 헤더 술어. **전부 `parse_matrix_to_records` 본체 안**) | [§3-ter](#-3-ter-serverparsershtml_topology_parserpy-768줄-ed9cfdb-638에서-130--html-표--그래프행렬) |
@@ -908,7 +837,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 ## 2. `server/database/crud.py` — 레이어링 코어
 
-> 🔴 **경로 주의 — 이 문서의 나머지가 이 파일을 `crud.py`라고만 부르는 곳이 있다.** 실제 경로는 **`server/database/crud.py`** 하나이고 **`server/crud.py`는 존재하지 않는다.** 위 표지 블록쿼트와 「핀 해시」 계열 산문에는 `main.py`·`models.py`와 나란히 짧은 이름으로 적힌 **역사 서술**이 남아 있다 — 그 문단들은 과거 패스의 기록이라 손대지 않았으나, **거기서 파일을 찾아 나설 때는 이 줄의 경로를 쓰라.** (파이썬 심볼 참조인 `crud.apply_batch_updates`·`crud.SOURCE_PRIORITY` 꼴은 파일명이 아니라 **모듈명**이므로 그대로다.)
+> 🔴 **경로 주의 — 이 문서의 나머지가 이 파일을 `crud.py`라고만 부르는 곳이 있다.** 실제 경로는 **`server/database/crud.py`** 하나이고 **`server/database/crud.py`는 존재하지 않는다.** 위 표지 블록쿼트와 「핀 해시」 계열 산문에는 `main.py`·`models.py`와 나란히 짧은 이름으로 적힌 **역사 서술**이 남아 있다 — 그 문단들은 과거 패스의 기록이라 손대지 않았으나, **거기서 파일을 찾아 나설 때는 이 줄의 경로를 쓰라.** (파이썬 심볼 참조인 `crud.apply_batch_updates`·`crud.SOURCE_PRIORITY` 꼴은 파일명이 아니라 **모듈명**이므로 그대로다.)
 
 > 🟢 **심볼 실측 완료** — 이 절의 심볼은 **`5609ff0`의 커밋된 blob에 존재함이 확인됐고, 그 뒤 HEAD가 움직인 다음 재대조에서도 동일했다**(워킹트리 아님). 🔴 **라인 번호는 싣지 않는다** — 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라. 숫자가 남아 있는 곳은 **파일 줄 수**이거나, 이름이 없는 덩어리를 가리키며 측정 sha가 함께 적힌 자리뿐이다.
 
@@ -2017,7 +1946,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 시그니처 / 상수 | 역할 |
 |---|---|
 | **`READONLY_REFUSAL = "[read-only guard] REFUSED"`** | 모든 거부 문구에 들어간다 — 호출자가 **예외 타입이 아니라 사유를 핀**하도록(위 `REFUSAL_MARKER`와 같은 규율). 없으면 도달 불가 호스트의 `OperationalError`가 맨 `pytest.raises(RuntimeError)`를 만족시킨다 |
-| **`CONNECT_TIME = "connect_time"` / `PER_TRANSACTION = "per_transaction"`** | 🔴 **작동하는 철자는 둘이고, 서로 대체 불가라 둘 다 노출한다.** **`CONNECT_TIME`** = `connect_args`의 `-c default_transaction_read_only=on` + **우리가 지은** `NullPool` 엔진 — 서버가 이 세션의 첫 트랜잭션이 존재하기 **전에** 적용하고 이후 모든 트랜잭션에 재적용한다. 가장 강하고 격리 수준과 무관하지만 **엔진을 지어야 하므로 URL을 가진 호출자만** 쓸 수 있다. **`PER_TRANSACTION`** = SQLAlchemy 자신의 `postgresql_readonly=True`(begin마다 트랜잭션 플래그). **빌려온 엔진**(앱 풀, `--url`로 남이 지은 것)에서 두 번째 엔진·두 번째 풀 없이 작동한다 — `scripts/audit_schema_canon.py`가 필요로 하는 것이 이것이다(진입점들이 `engine` 파라미터를 받고, 자기가 안 지은 것을 받아야 한다). 양쪽 다 실측: `transaction_read_only=on`, CREATE/INSERT/UPDATE 전부 `ReadOnlySqlTransaction`, 명시 `rollback()` **후에도**, 그다음 트랜잭션에서도 |
+| **`CONNECT_TIME = "connect_time"` / `PER_TRANSACTION = "per_transaction"`** | 🔴 **작동하는 철자는 둘이고, 서로 대체 불가라 둘 다 노출한다.** **`CONNECT_TIME`** = `connect_args`의 `-c default_transaction_read_only=on` + **우리가 지은** `NullPool` 엔진 — 서버가 이 세션의 첫 트랜잭션이 존재하기 **전에** 적용하고 이후 모든 트랜잭션에 재적용한다. 가장 강하고 격리 수준과 무관하지만 **엔진을 지어야 하므로 URL을 가진 호출자만** 쓸 수 있다. **`PER_TRANSACTION`** = SQLAlchemy 자신의 `postgresql_readonly=True`(begin마다 트랜잭션 플래그). **빌려온 엔진**(앱 풀, `--url`로 남이 지은 것)에서 두 번째 엔진·두 번째 풀 없이 작동한다 — `server/scripts/audit_schema_canon.py`가 필요로 하는 것이 이것이다(진입점들이 `engine` 파라미터를 받고, 자기가 안 지은 것을 받아야 한다). 양쪽 다 실측: `transaction_read_only=on`, CREATE/INSERT/UPDATE 전부 `ReadOnlySqlTransaction`, 명시 `rollback()` **후에도**, 그다음 트랜잭션에서도 |
 | **`READONLY_OPTIONS`** (`-c default_transaction_read_only=on -c client_encoding=utf8`) / **`readonly_options(statement_timeout_ms=None)`** | 기본 connect 옵션 문자열과, 타임아웃만 얹는 **빌더**(상수 7개가 아니라 함수인 이유: 호출자마다 정당하게 다른 부분이 타임아웃 하나뿐이다). ⚠️ **일부러 안 들어 있는 것**: `lock_timeout`·`idle_in_transaction_session_timeout` — 14 GB DB에서 `business_key_val`을 가진 전 테이블에 GROUP BY를 도는 패스에 타임아웃을 붙이면 **오늘 되는 프리플라이트가 실패하게 된다**(가드를 무장하는 것과 별개의 결정) |
 | **`open_readonly_engine(url=None, *, application_name="assy_readonly_pass", statement_timeout_ms=None)`** | 모든 트랜잭션이 connect 시점부터 읽기 전용인 엔진. 🔴 **`NullPool`은 정리정돈이 아니라 하중을 진다** — 이 커넥션들은 다른 무엇에도 넘겨져선 안 되고, 우리 엔진에는 오염시킬 다음 체크아웃이 없다. 구 코드가 필요로 하던 `invalidate()` 춤을 은퇴시킨 것도 이것이다(구 패턴은 **애플리케이션 풀**에서 빌린 커넥션에 세션 변수를 걸었고, 같은 프로세스에서 check 다음에 돈 apply가 모든 CREATE를 `ReadOnlySqlTransaction`으로 실패시켰다). `application_name`은 운영자가 `pg_stat_activity`에서 읽는 값이라 호출자마다 정하는 것이 맞다. `url=None`이면 `database.database.SQLALCHEMY_DATABASE_URL` |
 | **`readonly_state(conn) -> str`** | `SHOW transaction_read_only`의 값. **판정 없음** — 운영자에게 플래그를 **출력**하려는 스크립트가 이 문장을 두 번째로 철자하지 않게 한다. 리터럴이 정확히 한 파일에만 나타나는 것이 「되읽기가 옳은 변수를 보고 있나?」를 **답이 하나인 질문**으로 만든다 |
@@ -2351,7 +2280,6 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | `__init__.py` | **27** | 코드 0줄, docstring만. ⚠️ 🆕⑩ **그 docstring의 읽는 순서가 이미 낡았다** — `lot_event_translator.py`를 여섯째로 지목하는데 **그 파일이 없다**. 소스 소관이라 여기서 못 고치고, **이 지도가 그 순서를 복사하지 않는다**(종전 이 행이 복사하고 있었다) |
 | `envelope.py` | 🆕⑩ **329** | 봉투 7필드의 파이썬 표현 + 타입 보존 |
-| `vocabulary.py` | 🆕⑩ **1,280** | 닫힌 어휘와 기계 검사 가능한 시그니처. 🆕⑦ 🔴 **`PREDICATES`는 7이 아니라 11종**(`register`·`pin`·`same_as`·`derived_from`·`slot_map`·`has_wafer`·`frame_confirmed` + `processed_with`·`has_param`·`transferred`·`observed`). walk 선언 계열: `WALK_DIRECTIONS` · `walk_predicates()` · `traversable_predicates()` · `walk_direction(predicate)` · `check_walk_declaration()` |
 | `uuid7.py` | **123** | 단조 UUIDv7 — `id`이자 워터마크이자 기록 시각 (🆕⑩ 무변동) |
 | `gate.py` | 🆕⑩ **581** | 문 앞에서 거절하고 **센다**. 단위는 행이 아니라 **분자(molecule)** |
 | 🔒 `config.py` | 🆕⑩ **1,073** | **[동결 — 은퇴 울타리 A군]** v1 `ledger_config.json` 로더/검증 + 번역기 버전 해시. ⚠️ **v2 정본은 이 파일이 아니라 `setup_bundle.py`+`setup.py`다**(`SETUP_VERSION`·`CONFIG_FILENAME` 소유가 그쪽으로 갔다). 🆕⑪ **새 작업의 출발점으로 읽지 마라** |
@@ -2421,22 +2349,6 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `Atom.describe() -> str` | 운영자 로그용 한 줄. **소비자가 파싱할 것 아님** |
 | `ROW_COLUMNS` | 물리 insert의 컬럼 순서 **13개**(`id`…`supersedes`, `source_event_id`, `source_event_state`) 한 튜플. writer와 DDL이 같은 철자를 쓰므로 한쪽에만 컬럼을 더하면 문법 오류가 나고 조용히 밀리지 않는다 |
 | `check_envelope(atom) -> list` | 어휘와 무관하게 **모든** 원자에 묻는 것 — 세계 시각이 있는가(aware `datetime`인가) · 출처가 있는가 · 원 발화로 돌아갈 경로가 있는가 · 페이로드가 보존 가능한가 |
-
-#### `vocabulary.py`
-
-| 심볼 | 무엇인가 |
-|---|---|
-| `OBJECT_KINDS` | `frozenset({"value","entity_ref","event_ref"})` — 이 슬라이스에 핀된 목적어 종류 |
-| `ENTITY_TYPES` | **5종** — `Lot`/`Wafer`/`Product`/`Equipment`(전부 `class="issued"`) + `Die`(`class="composed"`, keys `wafer,x,y`). 🔴 **`Die`는 register를 받지 않는다** — 구성으로 존재하므로 등록하면 원자가 1.6억 개 |
-| `ISSUED_TYPES` | `ENTITY_TYPES`에서 유도(파생값이지 두 번째 목록이 아니다) |
-| `PREDICATES` | 🆕⑦ 🔴 **정정 — 「v0는 일곱」은 낡았다. `a729a7f` 실측 11종.** canonical — `register`(목적어 ∅) · `pin` · `same_as`(reserved). ontology — `derived_from` · `slot_map`(qualifiers `from`/`to`/**`wafer`**) · `has_wafer`(qualifier `slot`) · `frame_confirmed`(reserved). 🆕⑦ 신설 4종 — `processed_with` · `has_param` · `transferred` · `observed`(status·시그니처는 이 패스가 재검증하지 않았다 — 소스에서 확정하라). 각 항목이 `status`/`since`/`layer`/`subject`/`object`/`qualifiers`/`unit`/`semi_ref`/`superseded_by`를 들고, 🆕⑦ **`traversable` 키가 늘었다**(walk 선언 — `walk_predicates()`/`traversable_predicates()`/`walk_direction()`이 읽는다) |
-| `EMITTABLE` | `status == "active"`인 것만. `reserved` 둘(`same_as`·`frame_confirmed`)을 오늘 방출하면 **미선언 어휘 거절** |
-| `PROJECTION_ONLY_WORDS` | `{resolved, contested, candidate, unresolvable, pinned}` — 프로젝션의 상태어. 🔴 **게이트가 이름을 대고 거절하라고** 여기 적혀 있다 |
-| `is_declared(predicate)` / `signature(predicate)` | 조회 둘 |
-| `check_signature(predicate, subject_type, object_kind, object_payload) -> list` | 위반 목록. **순수** — 연결도 상태도 로그도 없다. 세는 것과 알리는 것은 게이트 소관 |
-| `check_subject_keys(subject_type, subject_keys) -> list` | 주어 정체성이 **구조적·완전·비공백**인가. 문자열은 거부. 설계 §3의 사건(접합 키가 한 조각이 비자 `a_b`→`a`로 붕괴, 17만 행) |
-| `requires_register(entity_type) -> bool` | issued면 참 |
-| `register`의 `object_kind IS NULL` | 🔴 **이 구현이 핀된 계약이 안 정한 것을 정한 유일한 자리.** enum에 ∅ 철자가 없어서 네 번째 값을 만들지 않고 NULL을 쓰며, DDL의 CHECK가 `register`에만 그것을 허용한다 |
 
 #### `uuid7.py`
 
@@ -2565,7 +2477,6 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 > 🆕⑫ 🔴 **이 «동결» 모듈이 얹고 있는 공용 배관은 아무것도 얼리지 않는다.** `relation_exists`(카탈로그 탐침) · `_fetch`(DBAPI/SQLAlchemy 두 모양을 받는 실행 어댑터) · `ResolverConfigError` · `REASON_RELATION_ABSENT` · `rollup_subject_types` · `SqlClaimLookup`. 🔬 **`_fetch`가 그 부류라는 것은 실측이 강제한다** — 열린 여덟 모듈이 **8/8 전부** `from ledger_trace import _fetch, relation_exists`로 시작하므로, `_fetch`를 동결 계산으로 세면 라우터의 16라우트가 **전부** 동결이 된다. 이 절에서 **얼리는 것은 계산 심볼 `trace`와 `coverage`뿐이다.**
 
 > 🆕⑦ **[2026-08-14 재측정 — 기존 top-level 심볼 소실 0(이름 수준 전건 대조), 신설·정정은 아래. 기존 행의 산문 서술은 재검증하지 않았다.]**
-> - 🔴 **`LINEAGE_PREDICATES`는 더 이상 상수가 아니다** — 모듈 `__getattr__`(PEP 562)이 접근 시점에 **`lineage_predicates()`**를 부르고, 값은 `ledger/vocabulary.walk_predicates()`에서 온다(`_WALK_CACHE` 캐시, `reset_walk_cache()`는 테스트용). **`traversal_predicate()`** 신설 — 재귀가 따라갈 **단 하나의** 술어를 선언에서 읽되, traversable이 1개가 아니거나 `walk_direction`이 `subject_to_object`가 아니면 **이름을 대고 `ResolverConfigError`로 거절**한다(선언이 장식이 되는 것을 막는 두 팔). `_vocabulary()`가 그 지연 import 지점이다.
 > - 🔴 **홉 상태가 넷이 됐다** — `STATE_RESOLVED`/`STATE_CONTESTED`(신설)/`STATE_CANDIDATE`/`STATE_UNRESOLVABLE` + **`HOP_STATES`** 튜플. `vocabulary.PROJECTION_ONLY_WORDS`와의 동일 철자는 import가 아니라 **테스트로** 고정된다(`test_ledger_trace_contract.py`).
 > - 🔴 **basis가 구조화 필드가 됐다** — `BASIS_CONVENTION`/`BASIS_MEASURED`/`BASIS_KINDS` + **`hop_basis(claim, config=None) -> {kind, name} | None`**. 종전엔 한국어 reason 문장을 정규식으로 읽어야 했고 **한 번 뒤집혀 읽혔다**(`candidate` reason은 진 쪽의 `convention:` 라벨도 인라인으로 담는다) — 안전 규칙(관습 홉은 confirmed 선마킹 금지)이 문장이 아니라 `kind == "convention"` 분기를 탄다. `_hop` 시그니처도 `_hop(frm, to, resolution, predicate, zone, config=None)`로 한 인자 늘었다.
 > - **커버리지 절 신설**(`GET /coverage`의 몸) — `REASON_RELATION_ABSENT = "ledger_relation_absent"` · `COVERAGE_STATES = ("absent", "empty", "ready")` · **`relation_exists(connection, relation)`**(`to_regclass` — 예외가 아니라 카탈로그에 묻는다) · **`coverage(connection, relation="ledger_events", cursor_relation=…)`** · `_atom_estimate`(`pg_class.reltuples` 추정, `ATOMS_UNKNOWN`) · `_partition_report` · `_cursor_rows`(`CURSOR_FIELDS`/`CURSOR_TIME_FIELDS`) · `_rendered_reasons` · `_unaccounted` · `_existing_columns` · `_last_atom` · `_coverage_sample`(`DEFAULT_SAMPLE_SIZE = 3` · `SAMPLE_CANDIDATE_WINDOW = 300`) · `_fetch`.
@@ -2576,7 +2487,6 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 심볼 | 무엇인가 |
 |---|---|
-| `LINEAGE_PREDICATES` | 🆕⑦ **정정 — 이제 상수가 아니라 PEP 562 동적 속성이다**(위 🆕⑦ 블록). `aeddac8` 당시의 값 `("derived_from","slot_map","has_wafer","register")`는 이제 `vocabulary.walk_predicates()`가 정한다 — **하드코딩 튜플을 이 파일에서 찾지 마라, 없다** |
 | `DEFAULT_MAX_DEPTH = 20` | 멈추고 **멈췄다고 말하는** 깊이. `terminal_reason` 없는 상한은 뿌리와 구별 불가 |
 | `@dataclass(frozen=True) class Claim` | `ledger_events` **컬럼명 그대로**. 🔴 confidence도 priority도 processed 플래그도 **더하지 않는다** — 우선순위는 해결기 config 소관이고 실제로 거기 있다. 프로퍼티 `subject_lot` |
 | `DEFAULT_RESOLVER_CONFIG` | 계급표는 `if` 사다리가 아니라 **선언 데이터**. 키 — `pin_predicates` · `confirmed_predicates` · `confirmed_sources` · `confirmed_payload_flag` · `inference_sources` · `inference_payload_flag` · **`inference_derivations`**(기본 `["slot_preserving"]`) · **`display_timezone`**(기본 `"Asia/Seoul"`) |
@@ -2593,7 +2503,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `_basis_label(claim, config=None)` / `_with_basis(reason, winner, config=None)` | `convention:<name>` 대 `basis=<name>` — 🔴 **낱말이 요점이다.** `basis=`를 읽은 운영자는 규칙 이름을 배우고 `convention:`을 읽은 운영자는 **이 홉이 측정이 아님**을 배운다. `_with_basis`가 **이긴 주장의** 라벨을 reason **끝에** 붙인다 |
 | `live_claims(claims)` | 나중 원자가 supersede한 주장을 버린다. 🔴 **룩업이 아니라 여기서** — 「어느 주장이 현재인가」의 일부라서, 룩업에 두면 모든 룩업 구현이 다시 철자한다 |
 | `@dataclass class Neighbourhood` | `claims` · `lots` · `truncated` · `truncation_reason`. **아직 어떤 순서 결정도 내리지 않았다** |
-| `class ClaimLookup` | 프리미티브 **둘**(`reachable_lots(lot, max_depth)` / `claims_for_lots(lots, predicates=LINEAGE_PREDICATES)`)과 그 둘로 쓴 `neighbourhood(lot, max_depth=DEFAULT_MAX_DEPTH, predicates=LINEAGE_PREDICATES)` |
+| `class ClaimLookup` | 🔴 **본체가 비어 있습니다** — 프리미티브 둘(`reachable_lots`·`claims_for_lots`)과 `neighbourhood` 는 계보 walk 은퇴(2026-08-27)와 함께 나갔고, 독스트링만 그것들을 설명한 채 남아 있습니다. 하위 `InMemoryClaimLookup`·`SqlClaimLookup` 도 같은 상태입니다 |
 | `class InMemoryClaimLookup(ClaimLookup)` | 리스트 위의 룩업. **기본 `neighbourhood` 경로를 태우므로** SQL 룩업과 같은 답이 나오는 것이 두 프리미티브와 one-shot CTE가 같은 집합을 계산한다는 증거가 된다 |
 | `_TRACE_CTE` / `_REACH_ONLY_CTE` | 🔴 **순위를 매기지 않고 superseded를 거르지 않는다** — 둘 다 해결기 몫이다. `CYCLE lot SET is_cycle USING path`(PG 14+)가 순환 가드이고 `UNION`은 가드가 **아니다**(같은 lot의 다른 깊이는 다른 행이라 진짜 순환이 깊이 상한까지 돌고 `depth_cap`으로 보고된다). `reached`가 **PATH당이 아니라 lot당 한 행**으로 접는다 — 다이아몬드 계보에서 증인 하나가 둘로 세어지지 않게 |
 | `class SqlClaimLookup(ClaimLookup)` | `__init__(connection, relation="ledger_events")`. 🔴 **`relation`이 이음매다** — 머티리얼라이즈 프로젝션으로 화면을 돌리려면 이 문자열 하나. SQL에 보간되므로 **맨 식별자 정규식으로 검증**한다(바운드 파라미터는 관계 이름을 못 준다). `_execute(sql, params)`가 DBAPI 연결과 SQLAlchemy Connection 양쪽을 받는다 |
@@ -2653,7 +2563,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🔒 `@router.get("/trace") trace_lineage(lot, slot=None, db)` | 🔴 **빈 `hops`의 200은 가능한 답이 아니다.** 비-200은 잘못된 요청(**422**, 빈 `lot`은 손으로)과 **503** 둘(`ResolverConfigError` / 관계 부재). 🆕⑦ **관계 부재를 예외에서 배우지 않는다** — `ledger_trace.relation_exists`(카탈로그 `to_regclass`)에 **먼저** 묻고, 그물 두 번째로 걷기 중 드롭 경합만 `_is_undefined_table` 백스톱이 잡는다(카탈로그를 먼저 묻는 이유 하나 더: `UndefinedTable` 예외 한 번이 트랜잭션을 오염시켜 뒤 질의가 엉뚱한 이유로 실패한다) |
 | 🟢 🆕⑦ `@router.get("/siblings") ledger_siblings_route(finding=None, mode="intersection", window=None, limit=None, min_support=None, axes=None, scope=None, db)` | 「이 결함들이 공유하는 요인은?」과 「난 쪽과 안 난 쪽은 뭐가 다른가?」. 🔴 **엔드포인트 하나에 프레이밍 둘** — `mode`는 파라미터지 두 번째 라우트가 아니다(행 모양이 동일해야 미끼 요인이 `intersection` 상단에 떴다가 `contrast`에서 떨어지는 것이 나란히 읽힌다). 🔴 **`scope`가 엔진을 바꾼다** — `scope`가 비면 `ledger_siblings.siblings(...)`(+`engine: "axes"`), 마킹이 있으면 **`ledger_walk_contrast.contrast(...)`**로 전환하고 응답의 `engine` 필드가 누가 답했는지 말한다. `finding`은 첫 줄부터 파라미터다(`void`는 등록부의 기본값이지 분기가 아니다). 422: `WalkRequestError`/`SiblingsRequestError`(구조화 본문) · 503: `SiblingsConfigError`(`axes_config_refused`)/`FindingKindError`(`finding_kind_registry_refused`) · 부재 관계는 **에러가 아니라 `state: "absent"`의 200** |
 | 🟢 🆕⑦ `@router.get("/kinds") ledger_kind_catalog(db)` | 어떤 불량 종류를 물을 수 있는지 — 화면 로드 시 한 번. 🔴 **관측 0건인 선언 종류도 전부 나열한다**(행이 없어 숨긴 종류는 존재하지 않는 종류와 구별 불가). 부재·빈 관계는 `state`의 200, 유일한 비-200은 등록부 읽기 실패 503 |
-| 🔒 🆕⑦ `@router.get("/structure") ledger_structure_view(window=None, db)` | 온톨로지 «구조» — **유형 수준**(인스턴스는 `/trace` 소관). 🔴 **응답에 손그림이 없다** — 노드·엣지는 `ledger/vocabulary.py`(선언)와 원장 위 `GROUP BY` 하나(관측)의 병합 생성이고, 선언 없는 관측 모양은 드롭되는 대신 `undeclared`로 뜬다. `window`는 **건수만** 좁힌다(선언 엣지는 `atoms: 0`으로 남는다). window 파싱은 `ledger_siblings.parse_window` **한 철자** — 422의 `reason` 토큰도 siblings와 같다 |
+| 🔒 🆕⑦ `@router.get("/structure") ledger_structure_view(window=None, db)` | 온톨로지 «구조» — **유형 수준**(인스턴스는 `/trace` 소관). 🔴 **응답에 손그림이 없다** — 노드·엣지는 선언(`ledger_config.json` 의 `vocabulary`·`entities`)와 원장 위 `GROUP BY` 하나(관측)의 병합 생성이고, 선언 없는 관측 모양은 드롭되는 대신 `undeclared`로 뜬다. `window`는 **건수만** 좁힌다(선언 엣지는 `atoms: 0`으로 남는다). window 파싱은 `ledger_siblings.parse_window` **한 철자** — 422의 `reason` 토큰도 siblings와 같다 |
 | 🆕⑦ `_lot_grid_refusals(exc)` | `/lots`·`/lot_map`이 공유하는 거절 매핑의 **유일한 철자** — `LotGridRequestError`/`SiblingsRequestError` → 422, `SiblingsConfigError`/`FindingKindError` → 503, 아니면 `None`(호출자가 `_is_undefined_table` 백스톱으로) |
 | 🔒 🆕⑦ `@router.get("/lots") ledger_lot_grid(columns=None, by=None, window=None, kind=None, limit=None, offset=None, db)` | 놀라움 장치 — 행 = 선언된 축, 열 = {항목 × 집계}. 🔴 **「미검사」와 「0」은 다른 답이고 `cells[].state`가 가른다**(실측: 랏의 20.6%만 검사 — 랏 크기를 분모로 쓰면 5배 틀린다). 🔴 지표 목록이 라우트에 없다 — 항목은 `finding_kinds` 등록부, 집계는 `ledger_lots.AGGREGATES`, 행 축은 `siblings_axes.json`. 스캔 상한 초과 시 window가 «강제»되고 응답이 그렇게 말한다(`window.forced` + `forced_reason`) |
 | 🔒 🆕⑦ `@router.get("/lot_map") ledger_lot_map(row, kind=None, by=None, slot=None, window=None, db)` | 마킹된 행의 불량 칩을 **선언된 축마다** 투영. 🔴 좌표는 오리진 기준 **칸수**(mm 아님 — 피치 안 곱한다). 🔴 닿지 않는 축은 숨기지 않고 `state: "unreachable"` + `reason`. ⚠️ **한 랏 = 한 프레임이 아니다** — 슬롯마다 격자 치수가 달라 `slot` 없이는 그리지 않고 슬롯 목록을 답한다 |
@@ -2685,15 +2595,15 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 줄 | 무엇인가 |
 |---|---|---|
-| `server/finding_kinds.py` | 🆕⑪ **313**(구 표기 310) | **관측 종류 등록부** — 「무엇을 셀 수 있나」의 유일한 선언 지점. `DEFAULT_KIND = "void"` · `DEFAULT_FINDING_KINDS`(코드 기본 선언) · `CONFIG_FILENAME = "finding_kinds.json"`(라이브 config가 이기고, gitignored — 실값은 이 문서에 옮기지 않는다) · `load(force_reload=False)` / `set_registry`(테스트) · 조회 계열 `kinds()` · `spec(kind)` · `methods(kind)` · `has_denominator(kind)` · `classes(kind)` · `observation_table(kind)` · `population_ctes(kind)` · `class FindingKindError(ValueError)`. `PACKAGE_TABLE = "bonding_log"` · `RUN_TABLE = "inspection_run"`. 🔴 **종류를 하나 선언하면 `/kinds` 카탈로그·`/lots` 열 계열·siblings/walk의 후보가 통째로 늘고 라우트는 한 줄도 안 바뀐다** — 이것이 이 모듈의 존재 이유다 |
-| `server/ledger_kinds.py` | **349** | `GET /kinds`의 몸 — `catalog(connection)`. 종류마다 관측 관계의 사실(`_relation_facts` — `to_regclass` + `pg_class`)과 건수(`EXACT_COUNT_MAX_BYTES = 256MB` 이하만 정확 카운트, 그 위는 `reltuples` 추정), 검사 런 수(`_run_counts`), **원장 위치 4상태**(`LEDGER_STATE_ABSENT`/`_DECLARED_ONLY`/`_FLOWING`/`_UNMEASURED` — `_declared_translations()`가 `ledger_config`의 선언을, `_ledger_atoms_by_source`가 실제 원자를 대조) · `_default_kind(names)` |
-| `server/ledger_siblings.py` | 🆕⑪ **946**(구 표기 845) | `GET /siblings`의 **축 엔진**(교집합/대조) + **공유 문법의 소유자**. `MODE_INTERSECTION`/`MODE_CONTRAST`/`MODES` · 거절 어휘 11종(`REASON_*`) · **`AXES_CONFIG_FILENAME = "siblings_axes.json"`**(요인 축의 선언 — gitignored, 구조만: 종류별 `geometry` + `attribution` 소스들의 `axes`) · 선언 계열 `class Axis`/`AttributionSource`/`Geometry`/`AxesConfig` · `load_axes_config(force_reload=False)`/`set_axes_config` · **`class Window` + `parse_window(spec, now=None)`**(`7d` 또는 `YYYY-MM-DD..YYYY-MM-DD` — `/structure`·`/lots`·걷기 대조까지 **전부 이 한 철자**) · `class _Plan` · `siblings(connection, kind, mode, window, limit, min_support, axes)` · `_identifier`(SQL 보간 앞의 맨 식별자 검증) |
+| `server/ledger_api/finding_kinds.py` | 🆕⑪ **313**(구 표기 310) | **관측 종류 등록부** — 「무엇을 셀 수 있나」의 유일한 선언 지점. `DEFAULT_KIND = "void"` · `DEFAULT_FINDING_KINDS`(코드 기본 선언) · `CONFIG_FILENAME = "finding_kinds.json"`(라이브 config가 이기고, gitignored — 실값은 이 문서에 옮기지 않는다) · `load(force_reload=False)` / `set_registry`(테스트) · 조회 계열 `kinds()` · `spec(kind)` · `methods(kind)` · `has_denominator(kind)` · `classes(kind)` · `observation_table(kind)` · `population_ctes(kind)` · `class FindingKindError(ValueError)`. `PACKAGE_TABLE = "bonding_log"` · `RUN_TABLE = "inspection_run"`. 🔴 **종류를 하나 선언하면 `/kinds` 카탈로그·`/lots` 열 계열·siblings/walk의 후보가 통째로 늘고 라우트는 한 줄도 안 바뀐다** — 이것이 이 모듈의 존재 이유다 |
+| `server/ledger_api/ledger_kinds.py` | **349** | `GET /kinds`의 몸 — `catalog(connection)`. 종류마다 관측 관계의 사실(`_relation_facts` — `to_regclass` + `pg_class`)과 건수(`EXACT_COUNT_MAX_BYTES = 256MB` 이하만 정확 카운트, 그 위는 `reltuples` 추정), 검사 런 수(`_run_counts`), **원장 위치 4상태**(`LEDGER_STATE_ABSENT`/`_DECLARED_ONLY`/`_FLOWING`/`_UNMEASURED` — `_declared_translations()`가 `ledger_config`의 선언을, `_ledger_atoms_by_source`가 실제 원자를 대조) · `_default_kind(names)` |
+| `server/ledger_api/ledger_siblings.py` | 🆕⑪ **946**(구 표기 845) | `GET /siblings`의 **축 엔진**(교집합/대조) + **공유 문법의 소유자**. `MODE_INTERSECTION`/`MODE_CONTRAST`/`MODES` · 거절 어휘 11종(`REASON_*`) · **`AXES_CONFIG_FILENAME = "siblings_axes.json"`**(요인 축의 선언 — gitignored, 구조만: 종류별 `geometry` + `attribution` 소스들의 `axes`) · 선언 계열 `class Axis`/`AttributionSource`/`Geometry`/`AxesConfig` · `load_axes_config(force_reload=False)`/`set_axes_config` · **`class Window` + `parse_window(spec, now=None)`**(`7d` 또는 `YYYY-MM-DD..YYYY-MM-DD` — `/structure`·`/lots`·걷기 대조까지 **전부 이 한 철자**) · `class _Plan` · `siblings(connection, kind, mode, window, limit, min_support, axes)` · `_identifier`(SQL 보간 앞의 맨 식별자 검증) |
 | 🔒 `server/ledger_structure.py` | 🆕⑪ **1,400**(구 표기 1,300) | **[동결 — C군]** `GET /structure`의 몸 — `structure(connection, window=None)`. **선언 절반**(`declared_edges(vocabulary)`/`declared_nodes(vocabulary)` — `_vocabulary()`가 `ledger.vocabulary`를 지연 import)과 **관측 절반**(`census(connection, …)` — `CENSUS_SQL` `GROUP BY` 하나, `FULL_CENSUS_MAX_BYTES = 256MB` 초과 시 `LARGE_LEDGER_WINDOW = "30d"`로 강제 + `REASON_LEDGER_TOO_LARGE`)을 `_merge`/`_settle`이 병합. 엣지 5상태 — `EDGE_FLOWING`/`_DECLARED_ONLY`/`_UNDECLARED`/`_UNMEASURED`/`_DECLARED_UNCONSUMED`. `edge_id(subject_type, predicate, object_kind, object_type)` · `_vocabulary_panel` · `class StructureError(RuntimeError)`(라우터가 503 `vocabulary_unreadable`) |
 | 🔒 `server/ledger_lots.py` | 🆕⑪ **1,573**(구 표기 1,392) | **[동결 — C군]** `GET /lots` + `GET /lot_map`의 몸. **격자** — `AGGREGATES`(집계 선언 — 열 공간의 한 축) · `class Column` + `parse_columns(text, default=None)`(`<종류>:<집계>` CSV) · `default_columns()` · `resolve_row_axis(config, kind, name=None)`/`axes_available` · **`apply_size_gate(connection, relations, window, now=None)`**(`FULL_GRID_MAX_BYTES = 512MB` 초과 시 `LARGE_GRID_WINDOW = "30d"` 강제 — 응답의 `window.forced`) · `class _GridPlan` · `lots(connection, columns=None, by=None, window=None, kind=None, limit=None, offset=None)` · 셀 4상태 `CELL_MEASURED`/`_UNSCANNED`/`_NO_DENOMINATOR`/`_UNMEASURABLE` · `_baseline(cells, thresholds)`(`DEFAULT_THRESHOLDS` · `BASELINE_MEDIAN_OF_ROWS`) · `_level`. **맵 투영** — `MAP_AXES`(bond/dt/core 3축 선언) · `lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=None)` · 상태 `MAP_STATE_READY`/`_NO_FRAME`/`_UNREACHABLE`(+`MAP_REASON_*`, `MAP_REASON_FRAME_AMBIGUOUS` — 슬롯마다 프레임이 달라 `slot` 없이 안 그린다) · `FRAME_RELATION = "wafer_map_metadata"` · `VALID_DIE_RELATION = map_overlay.VALID_DIE_TABLE` · `IDENTITY_FIELD = "wafer"`/`IDENTITY_ALIAS = "frame_identity"` · `_frame`/`_with_identity`/`_valid_die_pointer`/`_identity_column`/`_frame_key_columns`/`_slot_column_for` · `_provenance`(`PROVENANCE_SOURCE_TABLES`/`PROVENANCE_LEDGER` — 답이 어느 세계에서 왔는지) |
-| `server/ledger_walk_contrast.py` | 🆕⑪ **1,337**(표의 구 표기 1,327 — 전용 절 제목과 어긋나 있었다) | 아래 전용 절 |
-| `server/mechanism_gate.py` | 🆕⑪ **370**(표의 구 표기 368) | 아래 전용 절 |
+| `server/ledger_api/ledger_walk_contrast.py` | 🆕⑪ **1,337**(표의 구 표기 1,327 — 전용 절 제목과 어긋나 있었다) | 아래 전용 절 |
+| `server/ledger_api/mechanism_gate.py` | 🆕⑪ **370**(표의 구 표기 368) | 아래 전용 절 |
 
-### 🆕⑦ `server/ledger_walk_contrast.py` (**1,337줄**(🆕⑨ `5359fdd` 실측 — 구 표기 1,327)) — 걷기 대조 엔진
+### 🆕⑦ `server/ledger_api/ledger_walk_contrast.py` (**1,337줄**(🆕⑨ `5359fdd` 실측 — 구 표기 1,327)) — 걷기 대조 엔진
 
 **무엇인가.** `/siblings?scope=…`가 켜는 두 번째 엔진 — 마킹된 랏들(case)과 정상 양산(control)의 원장 걷기를 대조해 **후보를 항목 목록이 아니라 걷기가 닿은 전부**에서 뽑는다(소유자 판정 2026-08-14: 「항목에 가정이 들어가잖아」). 행 모양은 축 엔진과 같은 철자다(한 렌더러가 둘을 그린다).
 
@@ -2724,7 +2634,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `_gate_legend()` | 세 열의 뜻을 서빙 — 클라가 어휘를 하드코딩하지 않게 |
 | `_note_high_cardinality` · `_note_flat_but_separated` | 봉투 노트 — 고카디널리티 축·「밴드는 평평한데 산포는 멀다」(`std_diff_note_at`) |
 
-### 🆕⑦ `server/mechanism_gate.py` (**370줄**(🆕⑨ `5359fdd` 실측 — 구 표기 368)) + `server/config/sample/mechanism_models.json.sample`
+### 🆕⑦ `server/ledger_api/mechanism_gate.py` (**370줄**(🆕⑨ `5359fdd` 실측 — 구 표기 368)) + `server/config/sample/mechanism_models.json.sample`
 
 **무엇인가.** 3관문의 셋째 — 「이 후보가 이 불량에 닿는 **선언된 물리 경로**가 있나」. M4 기전 그래프(방향만 있는 인과 엣지, `PHYSICS_ONTOLOGY_SETUP.md` §4)를 읽는 **순수 조회**다(연결도 질의도 없다).
 
@@ -2822,7 +2732,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 **config root의 모양이 바뀌었다(구조만 — 실값은 여기 옮기지 않는다).** 🔴 **정본은 `server/config/ontology/`(= `setup.DEFAULT_ONTOLOGY_ROOT`)의 «단일 파일» `ledger_config.json`이다.** 종전 다중 파일 레이아웃(`manifest.json` + `catalog/tables.json` + `catalog/virtual_joins.json` + `dataflows/chains.json` + `dataflows/enrichments.json`)은 이 구간에 **접혔고**(이주기 `server/scripts/convert_ontology_to_single_file.py`), 샘플도 `server/config/sample/ontology/transfer_explorer/ledger_config.json` 하나로 남았다. 🔴 **라이브 `server/config/ontology/ledger_config.json`은 이 구간에 tracked에서 «빠졌다»** — `.gitignore:61`이 **`server/config/ontology/*`**(디렉터리 통째)를 무시하므로 tracked로 남은 것은 `README.md` 하나뿐이고, **디렉터리 훑기로는 sample만 뜬다.** 파일을 이름으로 지목할 것. 검사: `git check-ignore -v server/config/ontology/ledger_config.json`이 **그 61행을 지목해야** 한다(안 하면 무시 규칙이 바뀐 것이다). 물리 카탈로그는 같은 root의 `table_config.json`(`setup_bundle.PHYSICAL_CATALOG_FILENAME`)이고 `setup.live_physical_catalog()`가 읽는다.
 
-### `server/ontology_config_explorer_router.py` (🆕⑩ **264줄** — 구 표기 129)
+### `server/ledger_api/ontology_config_explorer_router.py` (🆕⑩ **264줄** — 구 표기 129)
 
 🆕⑪ **[2026-08-23 재계수] 15로 «무변동»이고 게이트 갈림도 6/9 그대로다**(`grep -c '^@router\.'` = 15 · `grep -c 'Depends(require_admin_token)'` = 6 @`b3e1ec83`). 파일 줄 수 264도 그대로다.
 
@@ -2996,14 +2906,14 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | 🔒 `server/ledger_explorer.py` | **445** | **[동결]** 원장 계보의 **경계 지어진 읽기 전용 그래프 투영**. 🔴 **두 번째 walk를 발명하지 않는다** — `/trace`와 **같은 `ClaimLookup`**을 소비한다고 docstring이 명시 |
 | `server/ledger_catalog.py` | **201** | 원장에 등록된 **엔티티 타입 전수의 페이지 카탈로그** |
-| `server/ledger_subgraph.py` | 🆕⑪ **1,625**(구 표기 1,254) | 증거와 물리 지시체 위의 **통합 경계 증거 서브그래프**. 🔴 **`ledger_events`의 투영이지 두 번째 그래프 저장소가 아니다**(은퇴한 `graph_nodes/edges`의 후계 자리). **↓ 아래 전용 항목** |
+| `server/ledger_api/ledger_subgraph.py` | 🆕⑪ **1,625**(구 표기 1,254) | 증거와 물리 지시체 위의 **통합 경계 증거 서브그래프**. 🔴 **`ledger_events`의 투영이지 두 번째 그래프 저장소가 아니다**(은퇴한 `graph_nodes/edges`의 후계 자리). **↓ 아래 전용 항목** |
 | 🔒 `server/ledger_journey.py` | 🆕⑪ **1,554**(구 표기 1,551) | **[동결]** **여정 대조** — 마킹된 «두» 주체를 걸어온 경로를 따라 나란히 |
-| `server/ledger_trends.py` | **511** | R&D 조사 워크벤치의 **동적 결함 추이**. 읽기 모델이 **웨이퍼 입도**임이 의도 |
-| `server/ledger_composition.py` | **301** | 최종 복합 CHIP의 **역방향 조성 추적**. 랏 계보 walk와 달리 **순서 있는 이동 경로를 주체마다 보존** |
-| `server/ledger_selection.py` | **1,423** | UI의 타입 있는 마킹을 **원장 근거의 최종 CHIP 증거·비교로 해석** (POST `/api/ledger/selection/resolve`) |
-| `server/ledger_identity.py` | **62** | Trend와 타입 있는 선택이 공유하는 **실험 단위 표식(mark)**. ⚠️ **온톨로지 엔티티 정체성이 «아니라고» docstring이 명시**한다 — 둘을 섞지 마라 |
+| `server/ledger_api/ledger_trends.py` | **511** | R&D 조사 워크벤치의 **동적 결함 추이**. 읽기 모델이 **웨이퍼 입도**임이 의도 |
+| `server/ledger_api/ledger_composition.py` | **301** | 최종 복합 CHIP의 **역방향 조성 추적**. 랏 계보 walk와 달리 **순서 있는 이동 경로를 주체마다 보존** |
+| `server/ledger_api/ledger_selection.py` | **1,423** | UI의 타입 있는 마킹을 **원장 근거의 최종 CHIP 증거·비교로 해석** (POST `/api/ledger/selection/resolve`) |
+| `server/ledger_api/ledger_identity.py` | **62** | Trend와 타입 있는 선택이 공유하는 **실험 단위 표식(mark)**. ⚠️ **온톨로지 엔티티 정체성이 «아니라고» docstring이 명시**한다 — 둘을 섞지 마라 |
 
-#### 🆕⑪ `server/ledger_subgraph.py` (**1,625줄** @`b3e1ec83`, 구 표기 1,254) — 증거 투영이 **선언된 물리량까지 잇는다**
+#### 🆕⑪ `server/ledger_api/ledger_subgraph.py` (**1,625줄** @`b3e1ec83`, 구 표기 1,254) — 증거 투영이 **선언된 물리량까지 잇는다**
 
 🔴 **이 구간에 노드 종류가 하나 늘고 seed가 부호를 얻었다**(`a7b107cb` · `c5b13cf7`). ⚠️ **최상위 심볼 이름과 지목한 본체만 실측했고, 이 파일의 전체 심볼 표는 여전히 없다.**
 
@@ -3031,7 +2941,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 줄 | docstring 첫 줄 (실측) |
 |---|---|---|
-| ⚰️ `server/ontology_config_explorer_router.py` | ~~129~~ → 🆕⑩ **264** | **[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다.** 🔴 여기 적혀 있던 **「라우트 7종」은 2026-08-21 실측 «16»이다** — 그 사이 `/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run`·`/bootstrap`·`/drafts/new`·`DELETE /declarations/{key:path}`가 섰다. 게이트 서술도 정정됐다(읽기 `/view`만 보통 토큰 → **여섯이 보통 토큰**) |
+| ⚰️ `server/ledger_api/ontology_config_explorer_router.py` | ~~129~~ → 🆕⑩ **264** | **[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다.** 🔴 여기 적혀 있던 **「라우트 7종」은 2026-08-21 실측 «16»이다** — 그 사이 `/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run`·`/bootstrap`·`/drafts/new`·`DELETE /declarations/{key:path}`가 섰다. 게이트 서술도 정정됐다(읽기 `/view`만 보통 토큰 → **여섯이 보통 토큰**) |
 | 🔒 `server/ledger_admin.py` | 🆕⑪ **848**(구 표기 844) | **[동결 — A군]** admin으로 소스를 원장에 잇고 어휘를 늘린다 — **문법 검증과 저장(1단·3단)**. 판정 정본은 `docs/process/LEDGER_RULINGS.md` **R-2026-08-15-M** |
 | `server/audit_changeset.py` | **416** | 🅿️ **파킹 — 배선 안 됨, 운영 호출자 0개.** 자기 테스트 파일 말고는 import하는 곳이 **레포 전체에 없다**(`crud.py` 쓰기·`main.py` 읽기 둘 다 **리팩터 이전 인코딩 그대로**). 레인은 **2026-08-12에 의도적으로 중단**됐고 `crud.py`/`main.py`/`schemas.py` hunk는 되돌려졌다 — 이 파일이 추적 대상이 된 건 6일 뒤 `1aeda91`의 **경로 없는 `git add`** 때문이다. `server/tests/test_audit_changeset.py`는 **23건 전부 skip**. docstring이 「감사 행의 CHANGESET 모양 — WRITE 1건당 1행」이라 **착지한 것처럼** 적혀 있으나 **제안일 뿐**이니 라이브 감사 모양으로 읽지 말 것. 서술된 결함 5종은 **여전히 열려 있다**(감사 «이력»만 손실, 셀 값은 정상). 판정: `docs/process/PROJECT_STATUS.md:1560-1568` |
 | `server/chain_key_gate.py` | **232** | 체인은 키 컬럼이 안 채워진 행을 낼 수 없다 — **관문 «하나», 일곱 개가 아니라** |
