@@ -4,6 +4,41 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# ✅ 고아 넷 «삭제» 착지 — 코드 −105 / +10. 그리고 제 빨강은 «없어졌습니다»
+
+확정 판정대로 «고치기»가 아니라 «지우기»로 했습니다.
+```
+ledger_trace.py     _map_slot(43줄) · _slot_map_pair(18) · _payload_slot(5) · _payload_wafer(5)
+                    합계 «71줄» 삭제 · py_compile 🟢 · 남은 참조 «0»
+시험                수식어 계약 시험 «삭제» (대상이 같이 갔으므로)
+                    payload readers 시험은 «살아남은 절반»(_payload_lot)만 남김
+```
+
+## 지금 그 파일의 빨강 — «둘», 그리고 제 것이 «아닙니다»
+```
+test_every_declared_derivation_is_explicitly_classified
+test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
+   원인  총괄 실측대로 «샘플 config» 가 자기 검증기를 통과 못 함
+        (`profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared`)
+   확인  제 커밋 «전»에도 빨강 (stash 로 두 번 확인)
+```
+
+## 📌 이 라운드가 남긴 것 — 제 시험 하나가 «논거 자체»가 됐습니다
+```
+그 시험은 아침 내내 «초록»이었습니다 — v1 목록을 물었기 때문입니다.
+그 목록은 선언이 from/to 를 놓은 지 한참 뒤까지 그것을 들고 있었습니다.
+선언에 물은 «그 순간» 빨개졌고, 열어 보니 재던 대상이 통째로 도달 불능이었습니다.
+-> 「규칙의 사본을 읽는 가드는 규칙이 바뀐 것을 볼 수 없다」가
+   그것을 잡으라고 세워 둔 가드 «자신»에게서 증명됐습니다
+```
+
+## ⚠️ 그리고 이 사슬이 오늘 «세 번» 짧았습니다 (총괄 기록)
+```
+새벽   traversal_predicate · reachable_lots · LINEAGE_PREDICATES
+지금   _map_slot 아래 넷
+공통   세 번 다 «지우려고 열어 봤기 때문에» 드러났습니다 — 재서가 아니라
+```
+
 # 🔴 제 정정 «셋째» — 시험 메시지의 «함수 이름 둘이 틀렸습니다». 그리고 그것이 판정을 흔듭니다
 
 총괄 판정 ①이 「`_slot_move` 가 `ledger_trace.py` 에 «없다» -> 시험이 죽은 대상을 잰다」인데,
