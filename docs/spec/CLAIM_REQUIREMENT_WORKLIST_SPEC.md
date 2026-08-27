@@ -1,7 +1,7 @@
 # Claim Requirement & Worklist Specification
 
 > **Status:** Partial implementation · **Last verified:** 2026-08-15
-> **관련 정본:** `ledger_events`, `server/ledger/vocabulary.py`,
+> **관련 정본:** `ledger_events`, 선언(`server/config/ontology/ledger_config.json`),
 > `server/config/enrichment_rules.json`, `server/enrichment_config.py`,
 > `server/enrichment_actions.py`, `server/ledger_subgraph.py`,
 > `server/enrichment_candidates.py`, `server/enrichment_analysis.py`,

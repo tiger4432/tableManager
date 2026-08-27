@@ -1,7 +1,7 @@
 # R&D Ontology Referent Model
 
 > **Status:** Living · **Last verified:** 2026-08-15
-> **정본 코드:** `server/ledger/vocabulary.py`, `server/ledger_subgraph.py`,
+> **정본 코드:** 선언(`server/config/ontology/ledger_config.json`), `server/ledger_api/ledger_subgraph.py`,
 > `server/ledger_identity.py`, `server/ledger_trends.py`, `server/ledger_selection.py`
 > **목적:** 비정형 원천을 스키마 변경 없이 연결하되, 질문과 무관한 고카디널리티 노드를
 > 자동 확장하지 않는 R&D 온톨로지 문법을 정한다.
