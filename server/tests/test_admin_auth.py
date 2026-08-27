@@ -63,16 +63,11 @@ STRICT_ADMIN_ROUTES = {
     # Not code execution, but the same class of harm from an unauthenticated
     # caller, and it reaches the same scheduler process by the same outbox.
     ("POST", "/admin/retroactive/{op}/run"),
-    # Writes an operator config file that every process reads (ruling
-    # R-2026-08-15-M): the source declarations the ledger translators run on, and
-    # the ontology layer of the closed vocabulary. Not code execution, but the
-    # same class of harm - a caller who can edit these can point a translator at
-    # a different table or register a word the gate will then accept. The files
-    # are gitignored by design, so an unauthenticated edit has no history to be
-    # recovered from either; the route's own timestamped backup is the only undo.
-    ("POST", "/admin/ledger/save"),
-    # Same file, same reach: retirement changes what the gate will emit.
-    ("POST", "/admin/ledger/vocabulary/retire"),
+    # 🔴 `/admin/ledger/save` and `/admin/ledger/vocabulary/retire` were pinned here
+    # until 2026-08-27 and are now RETIRED - see the tombstone in `main.py`. This set is
+    # compared for EQUALITY, so an entry left behind for a route that no longer exists
+    # fails just as loudly as a strict route that was never pinned. That is the point of
+    # pinning members rather than a count, and it works in both directions.
     # Ledger V2 ontology drafts write durable review state, and activation can
     # atomically replace the manifest-owned live declaration. Keep the whole
     # lifecycle strict so an open-token deployment remains read-only.

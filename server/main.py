@@ -5037,131 +5037,26 @@ def _ledger_predicate_dry_run(name, declaration):
     }
 
 
-@app.post("/admin/ledger/save", dependencies=[Depends(require_admin_token_strict)])
-def post_ledger_save(payload: dict = Body(...), db: Session = Depends(get_db)):
-    """3단 — 저장 → reload → 「먹었는가」 한 문장.
-
-    백업(사본이 곧 undo) → 임시 파일 → `os.replace`로 원자적 교체. config 파일은 설계상
-    gitignore라 **이력이 없으므로**(R-2026-08-13-G), 되돌릴 수 있는 사본을 남기는 것이
-    이 경로가 존재해도 되는 조건이다.
-    """
-    import ledger_admin
-    from ledger import vocabulary
-
-    target = payload.get("target")
-    name = str(payload.get("name") or "").strip()
-    declaration = payload.get("declaration")
-    token = payload.get("token")
-    if target not in ledger_admin.TARGETS:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "declaration_rejected", "target",
-            f"target은 {', '.join(ledger_admin.TARGETS)} 중 하나여야 합니다.")])
-
-    if declaration is None and payload.get("raw") is not None:
-        declaration, refusal = ledger_admin.parse_raw_declaration(payload["raw"])
-        if refusal is not None:
-            raise _ledger_admin_refusal([refusal])
-
-    # 🔴 동시 편집 가드. `base`를 보낸 경우에만 검사한다 — 원본 편집기는 자기가 연 파일을
-    # 지목할 수 있고 폼은 그럴 대상이 없다. 필수로 만들면 폼이 «뜻하지 않는 값»을 보내게
-    # 되고, 보내야 해서 보내는 필드는 아무도 검사하지 않는 필드가 된다.
-    stale = ledger_admin.check_base(
-        ledger_admin.sources_path() if target == ledger_admin.TARGET_SOURCE
-        else ledger_admin.vocabulary_path(), payload.get("base"))
-    if stale is not None:
-        raise _ledger_admin_refusal([stale])
-
-    expected = ledger_admin.declaration_token(target, name, declaration)
-    if token != expected:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "dry_run_stale", None,
-            "이 선언에 대한 드라이런 결과가 없습니다(또는 드라이런 후 선언이 "
-            "바뀌었습니다). 저장은 «방금 본 그 선언»에 대해서만 됩니다 — 드라이런을 "
-            "다시 돌린 뒤 저장하세요.",
-            "the token does not match a dry run of this exact declaration")])
-
-    if target == ledger_admin.TARGET_SOURCE:
-        violations = ledger_admin.check_source_declaration(db, name, declaration)
-        if violations:
-            raise _ledger_admin_refusal(violations)
-        written = ledger_admin.save_source(name, declaration)
-    else:
-        existing = {n: s for n, s in vocabulary.config_predicates().items() if n != name}
-        violations = vocabulary.check_predicate_declaration(name, declaration,
-                                                            against=existing)
-        if violations:
-            raise _ledger_admin_refusal(violations)
-        written = ledger_admin.save_predicate(name, declaration)
-
-    return _ledger_reload_and_report(db, target, name, written)
-
-
-@app.post("/admin/ledger/vocabulary/retire",
-          dependencies=[Depends(require_admin_token_strict)])
-def post_ledger_retire_predicate(payload: dict = Body(...), db: Session = Depends(get_db)):
-    """R-M ③ — 삭제는 없고 은퇴만 있다. 원자가 이미 그 낱말로 누워 있기 때문이다.
-
-    은퇴는 **읽기를 막지 않는다**: 게이트가 발화를 거절할 뿐이고, 기존 원자는 그대로
-    읽히며 구조 뷰에도 계속 뜬다.
-    """
-    import ledger_admin
-
-    name = str(payload.get("name") or "").strip()
-    superseded_by = payload.get("superseded_by") or None
-    try:
-        written = ledger_admin.retire_predicate(name, superseded_by)
-    except KeyError:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "retire_target_unknown", "name",
-            f"'{name}'은 선언 파일에 없는 술어입니다.")])
-    except ValueError as exc:
-        raise _ledger_admin_refusal([ledger_admin.violation(
-            "not_editable", "name", str(exc))])
-    return _ledger_reload_and_report(db, ledger_admin.TARGET_PREDICATE, name, written,
-                                     intent="retire")
-
-
-def _ledger_reload_and_report(db, target, name, written, intent="save"):
-    """저장의 나머지 절반 — 캐시 교체와 「먹었는가」.
-
-    `reload_local_process_cache()`는 `/admin/reload-configs`가 부르는 바로 그 함수이고,
-    SYSTEM_RELOAD 이벤트가 나머지 프로세스로 같은 교체를 퍼뜨린다. 그래서 **재기동이
-    필요 없다** — 이 라운드의 목표 중 절반이 그 문장이다.
-    """
-    import config_resolve_report
-
-    reload_system_configs(db=db)
-    report = config_resolve_report.resolve_report([config_resolve_report.DOMAIN_LEDGER])
-    domain = (report.get("domains") or [{}])[0]
-    counts = domain.get("counts") or {}
-    took = any(e.get("subject") == name for e in domain.get("effective") or [])
-    if target == "predicate":
-        took = took or any(name in str(e.get("subject") or "")
-                           for e in domain.get("effective") or [])
-    # 🔴 은퇴는 「유효 목록에서 빠지는 것」이 성공이다. 저장과 같은 문장을 쓰면 성공한
-    # 은퇴가 실패처럼 읽힌다 — 화면이 조용히 거짓말하지 않는다는 규율이 여기서도 성립한다.
-    head = (f"원장 선언 해석: 유효 {counts.get('effective', 0)} · 효과없음 "
-            f"{counts.get('ineffective', 0)} · 거절 {counts.get('rejected', 0)}.")
-    if intent == "retire":
-        sentence = (f"'{name}'을 은퇴 처리했고 캐시를 교체했습니다(재기동 없음). "
-                    f"이제 이 낱말로는 원자를 만들 수 없고, 이미 이 낱말로 실린 원자는 "
-                    f"그대로 읽힙니다. {head}"
-                    + ("" if not took else
-                       f" ⚠️ '{name}'이 아직 유효 목록에 있습니다 — 은퇴가 반영되지 "
-                       f"않았습니다."))
-    else:
-        sentence = (
-            f"저장했고 캐시를 교체했습니다(재기동 없음). {head} "
-            + (f"'{name}'은 지금 **유효**합니다."
-               if took else
-               f"'{name}'은 유효 목록에 없습니다 — 아래 사유 문장을 보세요."))
-    return {
-        "ok": True, "saved": True, "target": target, "name": name,
-        "path": written.get("path"), "backup": written.get("backup"),
-        "replaced": written.get("replaced", False),
-        "reloaded": True, "took": took,
-        "resolve": domain, "sentence_ko": sentence,
-    }
+# ---------------------------------------------- v1 ledger authoring, RETIRED 2026-08-27
+# 🔴 REMOVED: `POST /admin/ledger/save`, `POST /admin/ledger/vocabulary/retire`, and
+# `_ledger_reload_and_report`, whose only two callers they were.
+#
+# The declaration is the authority now, and both halves of `save` were already unreachable
+# in their own way:
+#   predicate  wrote `config/ledger_vocabulary.json`, the v1 extension file. v5 authors a
+#              predicate as part of the DOCUMENT - `POST /admin/ontology-explorer/drafts`
+#              -> review -> activate - which `client2/src/ontology_explorer.js` already
+#              calls. MEASURED: zero client code called this route.
+#   source     wrote one source into `ledger_config.json` after validating it through
+#              `ledger_config.validate`, the v3 validator. MEASURED by feeding that
+#              validator both shapes: a v5 source dies at its first key
+#              ("sources.probe.occurred_at_column is not declared"), so this half could
+#              not save today's grammar at all.
+#
+# `POST /admin/ledger/dry-run` STAYS - sources still preview through it.
+# ⚠️ Its `target: "predicate"` half now previews a save that cannot happen: it still
+# issues a `token` and its sentence still promises「저장하면」. Left standing rather than
+# removed on my own judgement - that is a ruling, not a cleanup.
 
 
 @app.get("/admin/config/virtual-join/verify", dependencies=[Depends(require_admin_token)])
