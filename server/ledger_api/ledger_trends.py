@@ -106,6 +106,29 @@ DEFAULT_GRAIN = {
 
 # relation -> the alias the scans FROM binds it to.  A declared denominator is resolved
 # against this, which is the whole of what a caller may choose about the scan side.
+# The FINDING side of the ratio, and it lives in this block for the same reason the scan
+# side does: `mat_id`, `x` and `y` are THIS fab's spelling of a die, and everything below
+# reads this object rather than the names inside it.
+#
+# 🔴 WHY THIS IS NEEDED AT ALL. A finding's subject is a DIE, so it carries neither the
+# wafer nor the leg the grain groups by: `subject_keys` is (mat_id, x, y, mat_type). The
+# wafer is `mat_id`, and the leg is not in the atom at all -- it is a fact of the plan,
+# which is why the scan side already opens `bonding_map`. Resolving both from the die is
+# what makes a finding land in the same bucket its scan does.
+#
+# 🔴 IT IS ALSO THE DIE IDENTITY. Counting rows here would count void POINTS, and one die
+# can carry several; MEASURED on SYN-CX-BW-001, 121 atoms over 28 dies. The map counts
+# dies, so the numerator counts dies.
+FINDING_SOURCE = {
+    "subject_type": "die",
+    "wafer_key": "mat_id",
+    "cell_keys": ("x", "y"),
+    # How a die reaches the plan relation the scan side already opens.  Same relation,
+    # same alias, so the two sides cannot drift onto different plans.
+    "plan": {"relation": "bonding_map", "alias": "p",
+             "base_column": "base", "x_column": "x", "y_column": "y"},
+}
+
 SCAN_RELATIONS = dict(
     [(SCAN_SOURCE["relation"], SCAN_SOURCE["alias"])]
     + [(join["relation"], join["alias"]) for join in SCAN_SOURCE["joins"]])
@@ -318,12 +341,38 @@ def _grain(stated):
         echo.append({"name": names[index], "denominator": denominator,
                      "numerator": numerator})
     params["grain_subject_type"] = subject_type
+    params["finding_subject_type"] = FINDING_SOURCE["subject_type"]
+    params["finding_wafer_key"] = FINDING_SOURCE["wafer_key"]
+    for index, cell in enumerate(FINDING_SOURCE["cell_keys"]):
+        params[f"finding_cell_{index}"] = cell
+    for index, key in enumerate((FINDING_SOURCE["wafer_key"],)
+                                + tuple(FINDING_SOURCE["cell_keys"])):
+        params[f"finding_die_{index}"] = key
     # Echoed in the key order the response has always used, so a reader diffing the two
     # eras sees the added `axes` and nothing else moved.
     reflected = {member: DEFAULT_GRAIN[member] for member in DEFAULT_GRAIN}
     reflected.update(fenced, subject_type=subject_type, axes=echo)
     return GrainPlan(declared=reflected, names=names, denominators=denominators,
                      numerators=numerators, params=params)
+
+
+def _finding_axis_sql(axis):
+    """One grain axis, answered for a die-subject finding.
+
+    The axis names a scan-side relation in its denominator, and that is what says WHICH
+    fact it groups by: an axis denominated on the plan relation is answered by the plan row
+    this die sits in; one denominated on the scan relation is answered by the die's own
+    wafer key.  Nothing here reads the axis NAME -- a deployment that calls the leg
+    something else keeps working.
+    """
+    plan = FINDING_SOURCE["plan"]
+    relation = (axis.get("denominator") or {}).get("relation")
+    column = (axis.get("denominator") or {}).get("column")
+    if relation == plan["relation"] and _IDENTIFIER.match(str(column or "")):
+        return f"{plan['alias']}.{column}::text"
+    if relation == SCAN_SOURCE["relation"]:
+        return "e.subject_keys->>%(finding_wafer_key)s"
+    return "NULL::text"
 
 
 def _join_on(grain, left, right):
@@ -351,6 +400,18 @@ def _base_ctes(grain):
     projection = (",\n" + " " * 11).join(
         f"{path}->>%({param})s AS {name}"
         for (path, param), name in zip(grain.numerators, grain.names))
+    # 🔴 THE FINDING SIDE RESOLVES ITS AXES FROM THE DIE, NOT FROM THE ATOM'S OWN KEYS.
+    #    A die-subject atom has neither the wafer nor the leg the grain names, so each axis
+    #    is answered by the scan side's own plan relation (leg) or by the die's wafer key.
+    #    An axis this cannot answer resolves to NULL and its bucket simply does not match,
+    #    which is the same silence an absent key produced before -- never a wrong bucket.
+    plan = FINDING_SOURCE["plan"]
+    finding_projection = (",\n" + " " * 11).join(
+        f"{_finding_axis_sql(axis)} AS {name}"
+        for axis, name in zip(grain.declared["axes"], grain.names))
+    die_identity = ", ".join(
+        f"e.subject_keys->>%(finding_die_{index})s" for index in
+        range(1 + len(FINDING_SOURCE["cell_keys"])))
     return f"""
 WITH declared AS MATERIALIZED (
     SELECT * FROM jsonb_to_recordset(%(kind_methods)s::jsonb)
@@ -365,18 +426,21 @@ WITH declared AS MATERIALIZED (
                         for expr in grain.denominators)}
     GROUP BY {", ".join(grain.denominators)}, d.kind
 ), observed AS MATERIALIZED (
-    SELECT {projection},
-           {finding_kinds.payload_field_sql('object_payload', 'finding_kind')} AS kind,
-           NULLIF(object_payload->>'class', '') AS subtype,
-           occurred_at,
-           COALESCE(object_payload->'die', object_payload->'position') AS die
-    FROM ledger_events
-    WHERE predicate = 'observed'
-      AND occurred_at >= %(from)s AND occurred_at < %(to)s
-      AND {finding_kinds.payload_field_sql('object_payload', 'finding_kind')} = ANY(%(kinds)s)
-      AND subject_type = %(grain_subject_type)s
-      AND {" AND ".join(f"{path} ? %({param})s"
-                        for path, param in grain.numerators)}
+    SELECT {finding_projection},
+           {finding_kinds.payload_field_sql('e.object_payload', 'finding_kind')} AS kind,
+           NULLIF(e.object_payload->>'class', '') AS subtype,
+           e.occurred_at,
+           ({die_identity}) AS die
+    FROM ledger_events e
+    JOIN {plan['relation']} {plan['alias']}
+      ON {plan['alias']}.{plan['base_column']} = e.subject_keys->>%(finding_wafer_key)s
+     AND {" AND ".join(
+         f"{plan['alias']}.{axis_col} = (e.subject_keys->>%(finding_cell_{i})s)::numeric"
+         for i, axis_col in enumerate((plan['x_column'], plan['y_column'])))}
+    WHERE e.predicate = 'observed'
+      AND e.occurred_at >= %(from)s AND e.occurred_at < %(to)s
+      AND {finding_kinds.payload_field_sql('e.object_payload', 'finding_kind')} = ANY(%(kinds)s)
+      AND e.subject_type = %(finding_subject_type)s
 )"""
 
 
