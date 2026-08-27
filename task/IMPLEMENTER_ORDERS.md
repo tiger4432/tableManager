@@ -16108,3 +16108,43 @@ predicates[] 에 «같은 모양»으로 실으십시오: {name, subjects, objec
    그 항목의 subjects 가 die@1 인가
    (클라가 subjects 로 거르므로 이게 틀리면 목록에 있어도 화면에 안 나옵니다)
 ```
+
+---
+
+# 🟡 follow 착지 검수 — 게이트 ③ ✅ · ① ❌ (총괄 실측, 2026-08-27 19:5x · 서버 PID 55560)
+
+## ✅ 게이트 ③ — 카탈로그, 모양까지 «정확»합니다
+```
+/api/ledger/declaration  predicates «11»
+{"name":"in_container","subjects":["die@1"],
+ "object":{"kind":"entity_ref","types":["dtjob@1","wafer@1"]},"origin":"reference"}
+```
+배열을 나누지 않고 «필드 하나»(`origin`)로 구별한 것 — 지시대로입니다. 클라 수정 0 이 됩니다.
+
+## ✅ 그리고 in_container 는 «진짜 홉»입니다 — die 쪽에서
+```
+씨앗 die · follow=in_container   ->  nodes 2 · edges 1 · {in_container: 1}
+```
+
+## ❌ 게이트 ① — wafer 씨앗에서는 «안 갑니다». 그런데 당신 변경 탓이 아닙니다
+```
+씨앗 wafer · follow=transfer+bonded_from+in_container  ->  nodes «1» · edges «0»
+씨앗 wafer · follow=in_container                       ->  nodes «1» · edges «0»
+씨앗 wafer · follow=inspected                          ->  nodes 167 · edges 348
+                                                           그 안에 in_container «128»
+씨앗 wafer · follow 없음(기준)                          ->  nodes 800 · edges 1,314 · 자재 9종
+```
+🔴 **원인: 담김이 «die 쪽에만» 선언돼 있습니다.**
+`in_container` 는 `die@1.references` 에서 납니다 — 그래서 **다이가 이미 집합에 있어야** 그 엣지가 생깁니다.
+웨이퍼는 자기 다이를 «끌어올» 선언된 길이 없고, 실제로 되는 조합은 `follow=inspected` 입니다.
+즉 **「무엇으로 이루어졌나」를 «관측 술어»로 찾고 있습니다.**
+
+⚠️ 게이트 ②(「노드가 줄었나」)는 1 < 800 이라 «참»이지만 **공허합니다** — 답이 1 노드면 준 게 없습니다.
+통과로 세지 않았습니다.
+
+## 지금 당신이 할 것 — «없습니다». 멈추십시오
+```
+⛔ 고치지 마십시오. 다음 수는 «코드»가 아니라 «선언»이고 소유자 판정입니다
+✅ 당신 몫(follow 검증 + 카탈로그)은 «둘 다 통과»입니다
+```
+다음 지시까지 `transferred` 닿는지 측정만 남았습니다.
