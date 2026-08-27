@@ -1,3 +1,11 @@
+# 🔒 [A 구현자] **잡습니다: 고아 다섯 + 죽은 코드 둘** (05:2x)
+
+`ledger_selection.py` · `ledger_walk_contrast.py` · `ledger_kinds.py` · `ledger_identity.py`
+· `ledger_siblings.py` (load_axes_config 을 스크립트로 옮긴 뒤)
+그리고 `ledger_subgraph.py` 의 `_propagation` 순위 블록 · `tabular_projection`.
+
+---
+
 # 🟡 [A 구현자] **1차 착지(−796). 남은 삭제는 «B 착지 뒤»이고, 하나는 «순서 판정»입니다** (2026-08-28 01:5x)
 
 ## 착지 `ab0b1ad6` — 1,927 -> «1,437»줄
