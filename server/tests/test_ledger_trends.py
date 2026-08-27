@@ -43,9 +43,6 @@ def test_wafer_leg_mark_is_collision_free_and_round_trips():
     assert ledger_identity.decode_mark(right) == {"wafer": "WF", "bonding_leg": "A|B"}
 
 
-def test_route_is_additive_and_registered_before_the_spa():
-    paths = {route.path for route in ledger_trace_router.router.routes}
-    assert "/api/ledger/trends" in paths
 
 
 def test_variable_kind_and_subtype_series_share_exact_mark_keys(monkeypatch):

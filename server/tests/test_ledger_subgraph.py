@@ -579,19 +579,23 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
         return {field.alias or field.name
                 for field in routes[path].dependant.query_params}
     assert {"positive", "negative", "collect"} <= params("/api/ledger/subgraph")
-    assert {"positive", "negative"} <= params("/api/ledger/subgraph/table")
-    # `collect` produces a ranking that the three tables do not carry, so the table route
-    # does not accept an argument it would echo and never consume.
-    assert "collect" not in params("/api/ledger/subgraph/table")
     # `/api/ledger/explore_entity` was retired 2026-08-23; `/subgraph` answers it.
     # `/trace` and `/explore` were DELETED 2026-08-25 with the legacy screens, so the
     # assertion becomes the stronger one the line below already uses: they are not routes
     # at all. Asserting "they do not take signed seeds" would pass vacuously on a
     # KeyError-free dict lookup only because there is nothing left to ask.
+    # 🔴 RETIRED 2026-08-28: the router keeps `/subgraph` and `/declaration` and
+    #    nothing else. Asserted as absence rather than by counting, so a route added back
+    #    by name fails here even if the count happens to match.
     for retired in ("/api/ledger/explore_entity", "/api/ledger/trace",
                     "/api/ledger/explore", "/api/ledger/entities",
-                    "/api/ledger/journey", "/api/ledger/lots", "/api/ledger/coverage"):
+                    "/api/ledger/journey", "/api/ledger/lots", "/api/ledger/coverage",
+                    "/api/ledger/subgraph/table", "/api/ledger/siblings",
+                    "/api/ledger/trends", "/api/ledger/composition",
+                    "/api/ledger/selection/resolve", "/api/ledger/kinds",
+                    "/api/ledger/structure", "/api/ledger/lot_map"):
         assert retired not in routes, f"{retired} is still mounted"
+    assert set(routes) == {"/api/ledger/subgraph", "/api/ledger/declaration"}
     # `id` alone must reach subgraph() as the very same argument it always was.
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     assert ledger_trace_router._signed_start(seed, None, None) == seed
@@ -621,7 +625,7 @@ def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
     with pytest.raises(HTTPException) as raised:
         ledger_trace_router.evidence_subgraph(
             node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
-            hops=4, direction="both", include_values=True, observations="summary",
+            hops=4, direction="both", include_values=True,
             include_actions=False, node_limit=100, edge_limit=200, shape="graph",
             property_limit=1000, positive=None, negative=None, collect=None,
             follow=["definitely_not_a_predicate"], db=None)
@@ -823,13 +827,6 @@ def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():
         "a three-way fork splits three ways, not four - the way in is not an outgoing edge")
 
 
-def test_graph_and_table_routes_are_both_declared_and_csv_is_safe():
-    paths = {route.path for route in ledger_trace_router.router.routes}
-    assert "/api/ledger/subgraph" in paths
-    assert "/api/ledger/subgraph/table" in paths
-    assert ledger_trace_router._csv_safe("=HYPERLINK('x')") == "'=HYPERLINK('x')"
-    assert ledger_trace_router._csv_safe("  @SUM(A1)") == "'  @SUM(A1)"
-    assert ledger_trace_router._csv_safe(-1.25) == -1.25
 
 
 def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):

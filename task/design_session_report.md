@@ -1,3 +1,68 @@
+# 🔓 [클라 B] **놓습니다: `server/ledger_trace_router.py`** — 착지 (`2cb9a8b9`)
+
+```
+679 -> 316 줄   ·   라우트 열 -> «둘»
+남김   GET /subgraph (walk)  ·  GET /declaration (부품이 «코드에 박지 않게» 하는 창구)
+```
+
+## 지운 것 — 지시서 그대로
+```
+라우트 «여덟»   /subgraph/table · /siblings · /trends · /composition
+               /selection/resolve · /kinds · /structure · /lot_map
+헬퍼 «둘»       _csv_safe · _lot_grid_refusals   (호출자가 그 라우트뿐이었습니다)
+임포트 «열둘»   읽는 쪽이 사라진 것만. AST 로 세서 지웠습니다
+지목 세 곳      /subgraph 의 observations 축 · follow 검증의 참조 광고 · /declaration 의 참조 광고
+```
+⛔ **그 라우트들이 부르던 «모듈»은 안 건드렸습니다** — C 레인 몫입니다.
+
+## 시험 — 라우트와 «같은 커밋»에, 그리고 «라우트 시험만»
+```
+지움   /subgraph/table + CSV 이스케이프를 «같이» 재던 것 (둘 다 사라짐)
+       /trends · /selection/resolve «라우트가 있다»만 재던 것 둘
+고침   서명 시험의 /subgraph/table 절반 · observations= 인자
+       그리고 부재 단언을 «집합 등식»으로 바꿨습니다 —
+       set(routes) == {"/subgraph", "/declaration"}   <- 이름으로 되살아나도 통과 못 합니다
+남김   같은 파일의 «모듈» 시험은 그대로 (C 레인이 모듈과 같이 가져갑니다)
+결과   61 passed · 87 skipped (PG 미선언)
+```
+
+## 🔴 제가 «닫은 게이트»와 «못 닫는 게이트»를 갈라 적습니다
+```
+✅ ⑤ 라우트 «둘»만 마운트         openapi 실측: /subgraph · /declaration
+✅ ① /subgraph 가 답한다          씨앗 wafer SYN-CX-BW-001 -> 200 · 노드 400 · 엣지 527
+✅    /declaration 200            선언 술어 «열» · origin=reference «0건»
+✅ ⑥ 시험 은퇴                    같은 커밋
+
+❌ ② 노드가 «전부» ledger-entity  실측 385 entity + «15 finding-collection»
+❌ ③ 엣지가 «전부» 선언된 술어     실측에 has_findings · in_container «남아 있음»
+```
+⚠️ **②③은 제 파일이 아닙니다** — `_finding_collection_node` · `_link_containers` 는
+`ledger_api/ledger_subgraph.py`(A 레인)에 있습니다. **A 가 착지해야 닫힙니다.**
+제가 닫은 것처럼 적지 않으려고 갈라 적습니다.
+
+## 판단 하나 — 안 지운 것 둘, 이유와 함께
+```
+shape=tables · property_limit   /subgraph 에 «남겼습니다». 지시서가 지목한 것은 «라우트»이고
+                               이 둘은 파라미터라 지목 밖입니다. 지우라면 한 줄입니다
+enrich_actions                 같은 이유로 남겼습니다 (A 의 _enrich_action_node 삭제와 짝이라면
+                               A 착지 때 같이 빼는 것이 맞아 보입니다 — 지목해 주십시오)
+```
+
+---
+
+# 🔒 [클라 B] **잡습니다: `server/ledger_trace_router.py`** (01:4x)
+
+지시(`322f04a6`) 접수. 규율대로 **열기 전에** 적고 푸시합니다.
+```
+잡음    server/ledger_trace_router.py     — 라우트 여덟 삭제, 둘만 남김
+남김    GET /subgraph (walk) · GET /declaration (선언을 내놓는 창구)
+⛔      다른 레인 파일 금지 — ledger_subgraph.py(A) · finding_kinds/selection/identity(C)
+        그리고 그 삭제로 죽는 모듈은 «C 몫»입니다. 저는 라우트만 뗍니다
+시험    지운 라우트를 재던 시험은 «같은 커밋»에
+```
+
+---
+
 # 🔓 [클라 B] **놓습니다: `server/ledger_api/ledger_trends.py`** — 착지했습니다 (`0912c69a`)
 
 정정(`83a2a3de`) 접수하고 «분자 하나»만 고쳤습니다. 분모 안 건드렸습니다.
