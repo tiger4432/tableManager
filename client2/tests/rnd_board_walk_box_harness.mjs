@@ -175,7 +175,8 @@ async function suite(mods) {
   await settle();
   eq('C1 one walk went out', asked.length, 1);
   ok('C2 and it carries NO follow key at all', !('follow' in asked[0]), JSON.stringify(asked[0]));
-  eq('C3 the type and collect are the ones on screen', `${asked[0].type}/${asked[0].collect}`, 'die@1/quantity');
+  eq('C3 the type on screen is the one asked', asked[0].type, 'die@1');
+  eq('C3-bis and no collect rides along', 'collect' in asked[0], false);
   panel.toggleFollow('observed@1');
   await panel.run();
   await settle();
@@ -229,47 +230,10 @@ async function suite(mods) {
       'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
   }
 
-  console.log(`${LF}-- L. the dropdown draws the label and sends the id --`);
-  {
-    // 🔴 THE COLLECT SELECT ONLY. The type dropdown has options too, and counting both
-    //    would make this assertion pass for the wrong reason -- it would be measuring
-    //    the page, not the list under test.
-    const optsOf = (h) => {
-      const sel = walkAll(h).find((e) => e.getAttribute
-        && e.getAttribute('data-field') === 'collect');
-      return sel ? sel.children.map((e) => `${e.getAttribute('value')}=${e._text}`) : [];
-    };
-
-    // ① TODAY'S SHAPE -- a list of strings. The label IS the id, and nothing is hidden.
-    eq('L1 a bare string list draws the id as its own label',
-      optsOf(host).filter((o) => o.startsWith('entity')).join(','), 'entity=entity');
-
-    // ② THE SHAPE THAT IS COMING -- {id, label_ko}. The part must not need a second round.
-    const hostL = doc.createElement('div');
-    const pl = new WalkBoxPanel(hostL, {
-      doc, markings, reads: 'marking:1', writes: 'marking:2',
-      loadDeclaration: () => Promise.resolve({ ...DECL, collect: [
-        { id: 'entity', label_ko: '대상' },
-        { id: 'point', label_ko: '발견(낱개)' },
-        // 🔴 A KIND WITH NO LABEL YET. This is the case that decides the rule: a new kind
-        //    lands before its wording does, and a blank cell would read as broken rather
-        //    than as 「no label yet」.
-        { id: 'brandnew' },
-      ] }),
-      walk: () => Promise.resolve({ ok: true, nodes: NODES }),
-    });
-    pl.mount();
-    await settle();
-    eq('L2 an object list draws label_ko and keeps the id as the value',
-      optsOf(hostL).join(','), 'entity=대상,point=발견(낱개),brandnew=brandnew');
-    eq('L3 the first id is selected, not the first LABEL', pl.collect, 'entity');
-    pl.setType('die@1');
-    await pl.run();
-    await settle();
-    // The walk must carry the id -- a label on the wire is a 422 waiting to happen.
-    ok('L4 the walk sends the id', true);
-  }
-
+  // 🔴 SECTION L RETIRED 2026-08-28 -- it measured the COLLECT dropdown, and the
+  //    dropdown is gone: every node the walk returns is a declared entity, so a switch
+  //    selecting a node kind had one value. What it guarded (a new kind with no label
+  //    yet must render its id rather than a blank) has no list left to render.
   console.log(`${LF}-- D. two on one screen, different declarations, no interference --`);
   const hostA = doc.createElement('div');
   const hostB = doc.createElement('div');
@@ -291,8 +255,8 @@ async function suite(mods) {
   a.toggleFollow('observed@1');
   await a.run(); await b.run();
   await settle();
-  eq('D1 A asked with its own type and collect', `${askedA[0].type}/${askedA[0].collect}`, 'die@1/point');
-  eq('D2 B asked with its own', `${askedB[0].type}/${askedB[0].collect}`, 'lot_slot@1/event');
+  eq('D1 A asked with its own type', askedA[0].type, 'die@1');
+  eq('D2 B asked with its own', askedB[0].type, 'lot_slot@1');
   eq('D3 A carried its follow', JSON.stringify(askedA[0].follow), '["observed@1"]');
   ok('D4 B carried none', !('follow' in askedB[0]));
   ok('D5 their key fields differ',
@@ -402,17 +366,13 @@ async function suite(mods) {
   return { ran, failed: failedList.slice() };
 }
 
+// 🔴 THREE MUTANTS RETIRED 2026-08-28 with the COLLECT dropdown they mutated
+//    (`a-kind-with-no-label-is-drawn-blank`, `the-label-is-sent-instead-of-the-id`,
+//    `the-object-shape-is-not-understood`). Their anchors are gone from the panel, and a
+//    mutant whose anchor is absent reports as a harness failure rather than as a caught
+//    defect -- which is the honest behaviour, and why they leave rather than linger.
 const MUTANTS = [
   // ① the gate the order names: a fixed four-field form.
-  { name: 'a-kind-with-no-label-is-drawn-blank', wakes: 'L2',
-    from: "      ? { id: c.id, label: c.label_ko || c.label || c.id }",
-    to: "      ? { id: c.id, label: c.label_ko || c.label || '' }" },
-  { name: 'the-label-is-sent-instead-of-the-id', wakes: 'L2/L3',
-    from: "      opt.setAttribute('value', c.id);",
-    to: "      opt.setAttribute('value', c.label);" },
-  { name: 'the-object-shape-is-not-understood', wakes: 'L2',
-    from: "    return raw.map((c) => (c && typeof c === 'object'",
-    to: "    return raw.map((c) => (false" },
   { name: 'the-key-form-is-four-fixed-fields', wakes: 'A2/A3/A4',
     from: "    return (found && found.keys) || [];",
     to: "    return ['mat_id', 'x', 'y', 'mat_type'];" },

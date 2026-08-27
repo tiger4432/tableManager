@@ -1046,11 +1046,10 @@ export function createWalkBoxWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
-    const { type, keys, follow, collect } = spec || {};
+    const { type, keys, follow } = spec || {};
     if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
     const query = new URLSearchParams();
     query.set('id', entitySeedId(type, keys));
-    if (collect) query.set('collect', collect);
     // 🔴 «안 고르면 안 싣습니다». 빈 배열은 「아무것도 따르지 마라」이고 서버 기본값의 반대입니다.
     (follow || []).forEach((p) => query.append('follow', String(p).split('@')[0]));
     try {
@@ -1061,9 +1060,9 @@ export function createWalkBoxWalk(deps) {
         return { ok: false, message: (detail && detail.message)
           || `걷지 못했습니다 (${res.status})` };
       }
-      const wanted = collect || null;
+      // 🔴 여기서 «거르지 않습니다». 거르는 것은 walk 이 할 일이고, 부품이 받은 것을
+      //    다시 좁히면 그 순간 화면이 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
       const nodes = (body.nodes || [])
-        .filter((n) => !wanted || n.node_kind === wanted)
         .map((n) => ({ id: n.id, type: n.type, label: n.label }));
       return { ok: true, nodes, truncated: body.truncated || null };
     } catch (err) {

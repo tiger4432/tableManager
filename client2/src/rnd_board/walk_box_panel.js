@@ -5,7 +5,7 @@
 //         대상으로 모든 요소는 현재 걸린 필터 수준에 따라 드롭다운 리스트를 제안할것」
 //         「결과는 COLLECT된 RETURN으로 보여줘」
 //
-// 🔴 새 축이 아닙니다. 다른 부품이 «선언»으로 들고 태어나는 그 네 칸(start·collect·follow)을,
+// 🔴 새 축이 아닙니다. 다른 부품이 «선언»으로 들고 태어나는 그 칸들(start·follow)을,
 //    이 부품은 사람이 고르게 할 뿐입니다. 그래서 걷기 API 도 하나입니다 -- 늘어야 하는 것은
 //    선언이지 갈래가 아닙니다(소유자 상설).
 //
@@ -24,8 +24,8 @@
 //
 // ── 주입되는 것 둘, 그리고 그 «모양» ────────────────────────────────────────────
 //   loadDeclaration()  -> { ok, entities:[{type,keys[]}], predicates:[{name,subjects[]}],
-//                           collect:[string], message? }
-//   walk({ type, keys, follow, collect })
+//                           message? }
+//   walk({ type, keys, follow })
 //                      -> { ok, nodes:[{id,type,label}], message? }
 // 🔴 «한 모양»입니다. 어떤 호출은 body 를 그냥 주고 어떤 호출은 {ok,body} 로 감싸면, 섞이는
 //    자리에서 오류 없이 «빈 값»이 나옵니다. 라우트를 이 모양에 맞추는 것은 조립하는 쪽 일이고,
@@ -50,7 +50,6 @@ export class WalkBoxPanel extends Panel {
     this.nodeType = options.nodeType || null;
     this.keyValues = {};
     this.follow = new Set();
-    this.collect = options.collect || null;
 
     this.result = null;
     this.walkState = 'idle';
@@ -68,7 +67,6 @@ export class WalkBoxPanel extends Panel {
     const got = await this.loadDeclaration();
     this.declaration = got && got.ok ? got : null;
     this.declState = this.declaration ? 'ready' : 'refused';
-    if (this.declaration && !this.collect) this.collect = (this.collects()[0] || {}).id || null;
     this.render();
   }
 
@@ -92,22 +90,6 @@ export class WalkBoxPanel extends Panel {
     const all = (this.declaration && this.declaration.predicates) || [];
     if (!this.nodeType) return all.map((p) => p.name);
     return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);
-  }
-
-  /**
-   * COLLECT 목록을 «한 모양»으로 폅니다: `{ id, label }`.
-   *
-   * 🔴 선언이 «두 모양»으로 올 수 있습니다 -- 오늘은 `["entity", …]` 이고, 라벨이 붙는 날
-   *    `[{id, label_ko}, …]` 입니다. 여기서 한 번 펴 두면 그날 이 부품은 «한 줄도» 안 바뀝니다.
-   *
-   * 🔴 라벨이 없으면 «id 를 그대로» 그립니다. 숨기거나 지어내지 않습니다 -- 종류가 하나 늘고
-   *    라벨이 아직 없을 때 화면이 «빈 칸»이 되면, 그건 「없는 것」이 아니라 「고장」으로 읽힙니다.
-   */
-  collects() {
-    const raw = (this.declaration && this.declaration.collect) || [];
-    return raw.map((c) => (c && typeof c === 'object'
-      ? { id: c.id, label: c.label_ko || c.label || c.id }
-      : { id: c, label: c })).filter((c) => c.id);
   }
 
   /** 타입을 바꾸면 «그 타입에 없는» 키와 술어는 따라올 자격이 없습니다. */
@@ -136,7 +118,7 @@ export class WalkBoxPanel extends Panel {
     this.render();
     const keys = {};
     for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;
-    const spec = { type: this.nodeType, keys, collect: this.collect };
+    const spec = { type: this.nodeType, keys };
     // 🔴 «안 고르면 안 싣습니다». 빈 배열을 실으면 「아무 술어도 따르지 마라」로 읽히고,
     //    서버 기본값(전부)과 «정반대»입니다. 없는 것은 없는 채로 보냅니다.
     if (this.follow.size) spec.follow = [...this.follow];
@@ -175,7 +157,6 @@ export class WalkBoxPanel extends Panel {
     root.appendChild(this._typeRow());
     root.appendChild(this._keyRow());
     root.appendChild(this._followRow());
-    root.appendChild(this._collectRow());
     root.appendChild(this._runRow());
     root.appendChild(this._resultBox());
 
@@ -264,25 +245,6 @@ export class WalkBoxPanel extends Panel {
       box.appendChild(wrap);
     }
     box.appendChild(this._note('안 고르면 서버 기본값 — 전부 따릅니다'));
-    return box;
-  }
-
-  _collectRow() {
-    const doc = this.doc;
-    const box = this._field('COLLECT');
-    const sel = doc.createElement('select');
-    sel.className = 'rb-walkbox-select';
-    sel.setAttribute('data-field', 'collect');
-    for (const c of this.collects()) {
-      const opt = doc.createElement('option');
-      // 🔴 값은 «id», 글자는 «라벨». 서버가 받는 것은 id 이고 사람이 읽는 것은 라벨입니다.
-      opt.setAttribute('value', c.id);
-      opt.textContent = c.label;
-      if (c.id === this.collect) opt.setAttribute('selected', 'selected');
-      sel.appendChild(opt);
-    }
-    sel.addEventListener('change', (e) => { this.collect = (e && e.target && e.target.value) || null; this.render(); });
-    box.appendChild(sel);
     return box;
   }
 
