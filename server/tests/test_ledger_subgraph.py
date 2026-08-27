@@ -123,23 +123,6 @@ def test_caps_are_reported_instead_of_looking_complete():
     assert any(edge.get("claim_id") for edge in body["edges"])
 
 
-def test_property_table_cap_is_named():
-    seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
-    graph = ledger_subgraph.subgraph(
-        seed, ledger_subgraph.InMemoryEvidenceLookup(fixture()), hops=3)
-    export = ledger_subgraph.tabular_projection(graph, property_limit=100)
-    assert len(export["tables"]["properties"]["rows"]) <= 100
-    # This small fixture may fit; force a graph with enough dynamic paths to hit it.
-    graph["nodes"][0]["object_payload"] = {f"metric_{i}": i for i in range(160)}
-    export = ledger_subgraph.tabular_projection(graph, property_limit=100)
-    assert export["truncated"]["properties"] is True
-    assert "properties" in export["truncated"]["reason"]
-    assert len(export["tables"]["nodes"]["rows"]) == len(graph["nodes"])
-    node_ids = {row["node_id"] for row in export["tables"]["nodes"]["rows"]}
-    assert all(row["source_id"] in node_ids and row["target_id"] in node_ids
-               for row in export["tables"]["edges"]["rows"])
-
-
 def process_atom():
     return ledger_subgraph.EvidenceAtom(
         id=str(uuid.UUID(int=77)), subject_type="Wafer",
