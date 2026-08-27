@@ -35,7 +35,6 @@ import ledger_trace as lt
 ledger_pkg = pytest.importorskip(
     "ledger", reason="the ledger translator package (L1) is not present")
 from ledger import config as ledger_config          # noqa: E402
-from ledger import vocabulary                       # noqa: E402
 from ledger.envelope import Atom, entity_ref        # noqa: E402
 
 
@@ -44,17 +43,22 @@ CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample"
 
 
 # ---------------------------------------------------------------------------
-# The vocabulary this lane reads must be the vocabulary that lane declares
+# What this lane reads must be what the declaration declares
 # ---------------------------------------------------------------------------
-
-
-
-def test_the_qualifier_names_the_walk_reads_are_the_ones_declared():
-    """`from`/`to`/`slot` are read by name. If the vocabulary renames one, the
-    walk goes silently blind rather than loudly wrong — a hop would come back
-    `unresolvable` and read as a broken chain in the data."""
-    assert set(vocabulary.PREDICATES["slot_map"]["qualifiers"]) >= {"from", "to"}
-    assert "slot" in vocabulary.PREDICATES["has_wafer"]["qualifiers"]
+# 🔴 `test_the_qualifier_names_the_walk_reads_are_the_ones_declared` LEFT WITH v1
+# (2026-08-27) and is not replaced, because there is nothing left for it to compare
+# against. It asserted `from`/`to`/`slot` were in v1's `PREDICATES` table for `slot_map`
+# and `has_wafer`. MEASURED against both surviving authorities on the live box that day:
+#
+#     declaration   slot_map@1 qualifiers = optional ["event_type"], required []
+#                   has_wafer@1 qualifiers = none
+#     the atoms     slot_map carries exactly one qualifier key, `event_type`
+#                   has_wafer has ZERO atoms
+#
+# So those three names are in neither the declaration nor the data, and the assertion was
+# measuring v1's table and only v1's table. `ledger_trace` does still read them by name
+# (`_object_qualifier(claim, "from" | "to" | "slot")`), which is a real thing for the lead
+# PM to rule on -- but a test cannot hold two spellings equal when only one of them exists.
 
 
 def test_the_payload_readers_read_the_translators_own_entity_ref():
@@ -305,24 +309,12 @@ def test_what_the_hop_basis_reports_for_a_class_1_claim():
         "distinction should now be asserted instead")
 
 
-def test_the_hop_states_are_the_designs_projection_words():
-    """🔴 The route's state enum against the design's own vocabulary.
-
-    `ledger/vocabulary.py::PROJECTION_ONLY_WORDS` declared `contested` before
-    this route emitted it — it is design §4.2's projection vocabulary, and the
-    gate uses it to REFUSE those words as predicates. `ledger_trace.py`
-    deliberately does not import that module (the web server must not import the
-    translator package), so the two spellings are held equal here instead.
-
-    That is what stops the route inventing a fifth state word under a private
-    spelling: a new hop state has to be a word the design already owns.
-    """
-    stray = set(lt.HOP_STATES) - vocabulary.PROJECTION_ONLY_WORDS
-    assert not stray, (
-        f"hop state(s) {sorted(stray)} are not in the design's projection "
-        f"vocabulary. Add them to `PROJECTION_ONLY_WORDS` (and to the design) "
-        f"before the route emits them.")
-    assert lt.STATE_CONTESTED in vocabulary.PROJECTION_ONLY_WORDS
+# 🔴 `test_the_hop_states_are_the_designs_projection_words` LEFT WITH v1 (2026-08-27).
+# It held `ledger_trace.HOP_STATES` equal to `vocabulary.PROJECTION_ONLY_WORDS`, a v1 list
+# with no counterpart in the declaration -- the declaration names PREDICATES and ENTITIES,
+# and a projection-only word is by definition neither. There is no second spelling left to
+# hold the enum against, so the guard goes rather than being pointed at a list invented to
+# receive it.
 
 
 #: Derivations this lane has judged to be UTTERANCES — the source said it, the
