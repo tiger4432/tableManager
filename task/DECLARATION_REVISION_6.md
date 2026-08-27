@@ -150,3 +150,52 @@ ledger_identity.py:116  "kind": "void_by_experiment_unit", "finding_kind": "void
 종류 카탈로그는 dict 가 아니라 «선언»(defect_kind@1)이 듭니다
 그래야 「다른 스키마 운영 환경에서 코드 0줄」이 참이 됩니다
 ```
+
+---
+
+# 7. 🔴 「ref 도 다 엔티티로」 (소유자 2026-08-28 01:1x)
+
+## 지금 — id 접두어가 «일곱», 그래서 kind 가 일곱
+```
+ledger-entity:v1:              엔티티            ← 유일하게 «선언»에서 온다
+ledger-event:v1:               이벤트            ← 이미 은퇴(엣지 속성)
+ledger-claim-atom:v1:          주장              ← 이미 은퇴(엣지)
+ledger-value:v1:               값
+ledger-finding-point:v1:       발견 낱개
+ledger-finding-collection:v1:  발견 묶음
+ledger-quantity:v1:            수량(기전 모델)
+enrich-action:…                인리치 액션
+```
+`decode_node_id`(:159) 가 **접두어로 갈래를 트는** 함수이고,
+그 갈래 수가 그대로 walk 루프(:1464)의 갈래 수입니다 — entity · point · collection · quantity · event.
+**원장을 읽는 것은 그중 «entity» 하나뿐**이고 나머지는 투영이 만든 것을 투영이 다시 펴는 자리입니다.
+
+## 개정 — 접두어 «하나»
+```
+ledger-entity:v1:  만 남습니다. 모든 노드가 엔티티입니다
+   defect@1 · defect_kind@1 · scan@1 · wafer@1 · die@1 …  전부 «선언된 타입»
+
+decode_node_id      갈래 «일곱» -> «하나». 접두어 판별이 사라집니다
+NODE_KINDS          삭제 (RETIRED_NODE_KINDS 도 같이)
+collect             «노드 종류»를 받던 축이 사라집니다
+                    고를 것이 있다면 그건 «엔티티 타입»이고, 선언이 이름을 압니다
+                    🔴 이것이 2026-08-27 소유자 지적의 종착점입니다 —
+                       「사용자가 claim, point, collection 이런 걸 어케 암」
+observation_mode    summary|claims 축 삭제 (낱개/묶음은 «세는 방식»이지 타입이 아님)
+walk 루프           다섯 갈래 -> «하나»
+```
+
+## 갈 곳이 필요한 둘 — 판정
+```
+quantity   출처가 config/mechanism_models.json (이미 선언). 엔티티로 올릴지, 아니면
+           기전 층을 walk «밖»에 둘지 — 소유자 판정
+action     enrichment 액션. 원장 노드가 아니라 «작업 대기열»에 가까움 — 소유자 판정
+```
+
+## 그러면 코드가 이렇게 됩니다
+```
+남는 것   ① claims_for_entities 의 SQL 두 arm (나가는 홉 · 들어오는 홉)
+          ② 그것으로 프론티어를 미는 BFS 루프
+          ③ 예산(node_limit · edge_limit)과 truncated 보고
+그 외     전부 삭제 대상
+```
