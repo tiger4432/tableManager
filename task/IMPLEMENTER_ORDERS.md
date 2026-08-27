@@ -16973,3 +16973,47 @@ ledger_config.json  38,646 -> 37,924 B   (entities.die@1.references 삭제)
       · tabular_projection · _link_containers 삭제 -> 400줄 목표
 ③ 총괄 재기동 + 게이트
 ```
+
+---
+
+# 🔴🔴 최우선 — 발견이 «API 로 도달 불가»입니다 (총괄 실측, 2026-08-28 03:2x · 서버 PID 56640)
+
+## 좋은 소식 먼저 — 재적재는 «저절로» 됐습니다
+선언을 바꾸니 `translator_ver` 지문이 바뀌어 원장이 «스스로» 다시 번역했습니다. 제가 안 돌렸습니다.
+```
+observed 원자 103,841  ·  object_kind «전부 entity_ref»
+  object {"type":"defect","keys":{"void_uid":"sat|SYN-AUG-BW-001-01|10|10|7|…|7475.16|4857.94"}}
+  qualifiers 일곱 보존 (gate·unit·run_uid·inchip_x·inchip_y·radius_x·radius_y)
+원장 전체 645,203 «그대로» — 늘지도 줄지도 않았습니다
+```
+🟢 「선언을 고치면 원장이 따라온다」가 실제로 그렇습니다. 코드 0줄.
+
+## 🔴 그런데 walk 이 그걸 «못 가져옵니다»
+```
+walk (기본)                     타입 {wafer 1, die 799}   defect «0»
+follow=observed&follow=inspected  술어 {inspected 128}      observed «0»  <- 따라가라 했는데 안 감
+```
+원인 — SQL 에서 조건 둘이 «AND» 로 붙습니다:
+```
+observation_mode="summary"  ->  "e.predicate <> 'observed'"
+follow=[observed,inspected] ->  "e.predicate = ANY(...)"
+=> 교집합에 observed 가 «영원히» 없습니다
+```
+그리고 `/subgraph` 인자 목록에 `observations` 가 «없습니다»(B가 라우트에서 뺌).
+그런데 `_evidence_graph` 의 기본값 `observation_mode="summary"` 는 «남아» 있습니다.
+🔴 **접을 것이 없는데 접기가 남아서, 발견이 도달 불가능해졌습니다.**
+
+## 지시 — A 의 남은 작업 중 «이것부터»
+```
+subgraph() 와 claims_for_entities 에서 observation_mode · include_observed «완전 삭제»
+   -> 관측은 «항상» 가져옵니다. 골라내는 것은 follow «하나»입니다
+   (소유자 판정: 「걷기 제어는 follow 로」 · 코드 주석: include_observed 는 follow 의 특수 케이스)
+ledger_trace_router 의 _evidence_graph 에서 observation_mode 인자 삭제 (B)
+```
+### 게이트
+```
+① follow 없이 walk -> 타입에 «defect» 가 나온다
+② follow=observed  -> observed 엣지가 «나온다» (지금 0)
+③ 한 웨이퍼의 defect 수가 «121» (원자 수와 일치. 오늘 실측 121 = 28다이 × 최대 8)
+④ 자재 «9종» 그대로
+```
