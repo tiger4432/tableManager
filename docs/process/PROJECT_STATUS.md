@@ -55,14 +55,25 @@
 walk 인자       id · hops · direction · node_limit · edge_limit · positive · negative · follow
                 (여덟 축 -> 넷 + 씨앗. collect · observations · include_values 소멸)
 노드 id 접두어   {ledger-entity: 1000}          일곱 -> «하나»
+                옛 접두어를 주면 «이름 대어 거절»:
+                  reason subgraph_request_invalid · "node id must be ledger-entity:v1:"
 노드 타입        wafer · die · «defect 121»     전부 «선언된 엔티티»
 엣지 술어        inspected · bonded_from · observed · transfer
                 🔴 has_findings · finding · mechanism · in_container  «0»
 자재            «9종» (기준선 그대로)
 삭제            trends · composition · structure · lots
                 selection · walk_contrast · kinds · identity · siblings   «211,474 B»
-subgraph.py     1,927 -> «943줄»
+subgraph.py     1,927 -> «882줄»  — 남은 줄이 «전부» 아래 넷으로 회계됨
 하드코딩         제품 코드에 결함 종류 철자 «0»
+
+남은 882줄의 회계 — 넷 «밖»이 없다
+  ① SQL 두 arm      SqlEvidenceLookup 91 · _atom_from_row 12 · EvidenceAtom 36
+  ② BFS 루프        subgraph 287 · _seed_node 79 · _entity_node 13
+                   _declared_key_order 32 · decode_node_id 22 · _edge 10
+  ③ 예산·truncated   subgraph 안 (node_cut · edge_cut · claim_cut · depth_cut)
+  ④ 씨앗 부호·전파   _signed_seeds 30 · _reach 56 · _propagation 39 · _evidence 31
+  부품              id 인코딩·시각 34 · InMemory lookup 40 · 헤더·상수·은퇴주석 79
+🔴 400 을 못 맞춘 이유 = BFS 루프가 «287줄». 더 줄이면 기능이 준다
 ```
 
 ### 🔴 오늘 밤 범위 «밖»으로 명시한 것 — 다음 라운드
