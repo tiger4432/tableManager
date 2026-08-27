@@ -92,8 +92,8 @@ from .setup_bundle import (
 PREDICATE_STATUSES = ("active", "retired")
 
 #: The canonical predicate whose emission makes `read.registration_probe` load-bearing.
-#: It is `vocabulary.PREDICATES["register"]`, and the atom spelling -- not the config's
-#: `register@1` address -- is what `runtime_v2._filtered_event_atoms` and
+#: The declaration addresses it as `register@1`; the atom spelling -- not that address --
+#: is what `runtime_v2._filtered_event_atoms` and
 #: its two `atom.predicate == "register"` tests compare against.  Named here rather
 #: than spelled inline so the three sites are one grep.
 REGISTER_PREDICATE = "register"

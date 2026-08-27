@@ -21,9 +21,11 @@ THE PREDICATE IS THE DESIGN'S FOUR ATOMICITY CHECKS
 `CANONICAL_LEDGER_DESIGN.md` §3 ends with four questions and this module is where they
 stop being prose:
 
-  1. **Is it true alone?** -> `vocabulary.check_subject_keys` + `check_signature`. A
-     structured, complete subject; an object that matches its declared shape; every
-     declared qualifier present. `REFUSE_NOT_TRUE_ALONE`.
+  1. **Is it true alone?** -> the DECLARATION answers this now. It used to be
+     `vocabulary.check_subject_keys` + `check_signature` against `ledger/vocabulary.py`;
+     that file retired 2026-08-27 and the v5 emit path assembles an atom from a compiled
+     Role map instead, so a shape the declaration does not describe never reaches here.
+     `REFUSE_NOT_TRUE_ALONE` remains for the checks below that still produce it.
   2. **Does it land without halves?** -> `screen_molecule` is all-or-nothing. One bad
      atom refuses the WHOLE molecule, and the writer is handed molecules, never atoms,
      so there is no call path that can write a fragment. `REFUSE_ATOMICITY`.
@@ -74,7 +76,7 @@ import contextlib
 import logging
 import threading
 
-from . import envelope, vocabulary
+from . import envelope
 
 logger = logging.getLogger("Ledger.Gate")
 
@@ -446,22 +448,19 @@ def screen_molecule(source: str, atoms, declared_derivations, declared_subject_t
                 f"atomicity check 3: an atom may only record a rule somebody declared")
             break
 
-        subject_violations = vocabulary.check_subject_keys(atom.subject_type,
-                                                          atom.subject_keys)
-        if subject_violations:
-            report.update(refused=True, reason=REFUSE_NO_IDENTITY)
-            report["violations"].extend(f"{where}: {v}" for v in subject_violations)
-            break
-
-        signature_violations = vocabulary.check_signature(
-            atom.predicate, atom.subject_type, atom.object_kind, atom.object_payload)
-        if signature_violations:
-            reason = (REFUSE_UNDECLARED_VOCABULARY
-                      if not vocabulary.is_declared(atom.predicate)
-                      else REFUSE_NOT_TRUE_ALONE)
-            report.update(refused=True, reason=reason)
-            report["violations"].extend(f"{where}: {v}" for v in signature_violations)
-            break
+        # 🔴 THE v1 VOCABULARY CHECKS LEFT HERE 2026-08-27, BY OWNER'S RULING:
+        #「그냥 걷어냅니다. 쓰기가 깨지면 그때 선언 위에서」. They were
+        # `vocabulary.check_subject_keys` (-> REFUSE_NO_IDENTITY) and
+        # `vocabulary.check_signature` (-> REFUSE_UNDECLARED_VOCABULARY / NOT_TRUE_ALONE),
+        # and both judged an atom against `server/ledger/vocabulary.py` - the file this
+        # retirement deletes. What they enforced is now the DECLARATION's business: the v5
+        # emit path builds an atom from a compiled Role map, so an atom whose shape the
+        # declaration does not describe cannot be assembled to arrive here.
+        #
+        # ⚠️ SAID PLAINLY, because it is a real change and not a tidy-up: an atom
+        # handed to this gate by any OTHER path is no longer signature-checked here. The two
+        # reason codes stay in `REASONS` - `refuse()` is called with them from elsewhere -
+        # but nothing in this function produces them any more.
 
         envelope_violations = envelope.check_envelope(atom)
         if envelope_violations:

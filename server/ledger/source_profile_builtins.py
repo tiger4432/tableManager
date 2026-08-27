@@ -1,7 +1,7 @@
 """Built-in registration data for Source Ontology Profile schema version 1."""
 from __future__ import annotations
 
-from . import config, vocabulary
+from . import config
 from .source_profile import (
     ClaimDescriptor,
     ContainerSlotDefinition,
@@ -74,12 +74,16 @@ def default_profile_registries() -> ProfileRegistries:
         ),
     )).seal()
 
+    # 🔴 FROM THE DECLARATION since 2026-08-27, not `vocabulary.ENTITY_TYPES`.
+    # The declaration carries `keys` and nothing else - it has no `label_ko` field and
+    # refuses one - so a type labels itself, which is what the old spelling fell back to
+    # for every type that had no label anyway.
+    from ledger_api import entity_references
     entity_types = TypeRegistry(
         "entity",
-        [TypeDefinition(name=name,
-                        keys=tuple(definition["keys"]),
-                        label=str(definition.get("label_ko") or name))
-         for name, definition in sorted(vocabulary.ENTITY_TYPES.items())],
+        [TypeDefinition(name=name, keys=tuple(entity_references.identity_keys(name)),
+                        label=name)
+         for name in entity_references.declared_types()],
     ).seal()
 
     container_types = TypeRegistry(

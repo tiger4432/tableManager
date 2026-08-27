@@ -473,7 +473,6 @@ def validate(cfg: dict, origin: str = "<memory>"):
                 f"are naive text; without a declared zone the stored instant would be "
                 f"whatever the translating machine happened to be set to.")
 
-        from . import vocabulary
         if "subject_type" in source:
             # The retired singular. Errors rather than being ignored, and the message
             # carries the fix: a config that silently means nothing is the defect ruling
@@ -492,14 +491,14 @@ def validate(cfg: dict, origin: str = "<memory>"):
         if not isinstance(subject_types, list) or not subject_types:
             raise LedgerConfigError(
                 f"{where}.subject_types must be a non-empty LIST of the entity types this "
-                f"source's atoms may be about ({', '.join(sorted(vocabulary.ENTITY_TYPES))}"
+                f"source's atoms may be about ({', '.join(_declared_entity_types())}"
                 f"). It is the translator's declared extension and the gate refuses "
                 f"anything outside it, so an absent list would refuse every atom.")
         for member in subject_types:
-            if member not in vocabulary.ENTITY_TYPES:
+            if not _identity_keys(member):
                 raise LedgerConfigError(
                     f"{where}.subject_types names {member!r}, which is not a declared "
-                    f"entity type ({', '.join(sorted(vocabulary.ENTITY_TYPES))}). Adding "
+                    f"entity type ({', '.join(_declared_entity_types())}). Adding "
                     f"an entity type is a vocabulary decision, not a config one.")
 
         kind = source.get("kind", SOURCE_KIND_LINEAGE)
@@ -852,9 +851,29 @@ def _validate_declared_source(source: dict, where: str):
                 f"at a type this source is allowed to speak about.")
 
 
+def _declared_entity_types():
+    """The entity types the DECLARATION names, and their identity keys.
+
+    🔴 REPLACES `vocabulary.ENTITY_TYPES` (retired 2026-08-27). The declaration is the
+    authority now, and it gives the same answer: `bundle.entities.<id>` carries `keys`, which
+    is the only thing these checks ever read. Types come back BARE and lowercased - the
+    spelling the ledger stores on an atom - so a declaration written `"Lot"` still matches
+    `lot@1`; `identity_keys` folds the case for the same reason.
+
+    The reader is the one `ledger_api.entity_references` already owns (cached, and an absent
+    file is an answer rather than an exception) rather than a second parse of one file.
+    """
+    from ledger_api import entity_references
+    return entity_references.declared_types()
+
+
+def _identity_keys(entity_type):
+    from ledger_api import entity_references
+    return entity_references.identity_keys(entity_type)
+
+
 def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
     """One row -> one atom, declared. The unit of this grammar."""
-    from . import vocabulary
 
     if not isinstance(rule, dict):
         raise LedgerConfigError(f"{where} must be an object")
@@ -904,13 +923,13 @@ def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
             f"{where}.subject must declare the atom's subject: "
             f"{{\"type\": \"Wafer\", \"keys\": {{\"wafer\": \"$base_wafer_id\"}}}}")
     subject_type = subject.get("type")
-    if subject_type not in vocabulary.ENTITY_TYPES:
+    if not _identity_keys(subject_type):
         raise LedgerConfigError(
             f"{where}.subject.type {subject_type!r} is not a declared entity type "
-            f"({', '.join(sorted(vocabulary.ENTITY_TYPES))}). Adding an entity type is a "
+            f"({', '.join(_declared_entity_types())}). Adding an entity type is a "
             f"vocabulary decision, not a config one.")
     keys = subject.get("keys")
-    expected = vocabulary.ENTITY_TYPES[subject_type]["keys"]
+    expected = _identity_keys(subject_type)
     if not isinstance(keys, dict) or sorted(keys) != sorted(expected):
         raise LedgerConfigError(
             f"{where}.subject.keys must name EXACTLY the key parts of "
@@ -937,11 +956,11 @@ def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
                     f"object - it is what the atom actually SAYS.")
         elif kind == "entity_ref":
             target = declared_object.get("type")
-            if target not in vocabulary.ENTITY_TYPES:
+            if not _identity_keys(target):
                 raise LedgerConfigError(
                     f"{where}.object.type {target!r} is not a declared entity type")
             target_keys = declared_object.get("keys")
-            target_expected = vocabulary.ENTITY_TYPES[target]["keys"]
+            target_expected = _identity_keys(target)
             if not isinstance(target_keys, dict) \
                     or sorted(target_keys) != sorted(target_expected):
                 raise LedgerConfigError(
