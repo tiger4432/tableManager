@@ -70,14 +70,23 @@
 subgraph.py  1,927 -> 1,169줄 (목표 400 · B의 라우트 서명 정리 대기)
 ```
 
-### 🔴 지금 살아 있는 결함 «하나»
+### ✅ 그 결함은 닫혔습니다 (2026-08-28 04:0x)
 ```
-발견이 «API 로 도달 불가» — 원장엔 멀쩡히 있는데 walk 이 못 가져온다
-  observation_mode 기본 summary -> SQL 에 "predicate <> 'observed'" 가 AND 로 붙는다
-  follow=observed 를 줘도 교집합이 비어 observed 가 «영원히» 안 온다
-  그리고 /subgraph 에 observations 인자가 «없다»(라우트에서 뺌) -> 끌 수가 없다
-지시    observation_mode · include_observed «완전 삭제». 제어는 follow 하나
-게이트  defect 가 타입에 나오고 한 웨이퍼에서 «121»개 (원자 수와 일치)
+발견이 «defect» 엔티티로 돌아왔다 — walk 실측:
+   타입 {wafer 1 · die 878 · defect «121»}   술어 {inspected 128 · observed «121» · …}
+   121 = 그 웨이퍼의 observed 원자 수와 «일치»
+   합성 엣지 has_findings · finding · mechanism · in_container  «전부 0»
+   노드 id 1,000 전부 ledger-entity:v1:
+원인이었던 것: 접을 것 없는데 남은 observation_mode 가 SQL 에서 follow 와 AND 로 충돌
+고친 방법: observation_mode · include_observed «삭제». 제어는 follow 하나
+```
+
+### 📌 화면 — 열둘이 «정직하게» 빈다
+```
+보드 좌석 16 중 12 가 「서버가 거절했습니다 (HTTP 404)」로 «이름 대며» 빈다
+  조용히 비는 것이 아니다 — 오늘 밤 내내 지운 그 모양의 «반대편»이다
+살아 있는 것: 걷기 검색창(NODE TYPE 에 defect@1 이 나온다) · 마킹 저장소 · 닿는 곳
+⚠️ 그 열둘을 walk 부품으로 다시 짓는 것은 «별도 라운드»다 — 오늘 밤 범위 밖
 ```
 
 ```
