@@ -377,10 +377,21 @@ def test_measurement_facets_preserve_values_missingness_evidence_and_marks():
 
 
 def test_declared_measurement_without_selected_evidence_is_explicit_absent():
+    """🔴 THE REASON CHANGED 2026-08-27, AND THE NEW ONE IS THE TRUER OF THE TWO.
+
+    `measured` was one of three words the CODE carried and the declaration never did
+    (`transferred`, `measured`, `has_param`). With the v1 word list retired, this facet now
+    answers `measured_predicate_not_declared` instead of `measured_evidence_absent` - it
+    says the WORD is undeclared rather than implying the word is fine and the rows are
+    missing. That distinction is the whole point of the retirement: an undeclared predicate
+    must not come back as a quiet empty.
+
+    The state is still `absent`, so a screen reading `state` sees no change.
+    """
     comparison = ledger_selection._comparison([], {}, {}, None,
                                               measurement_by_subject={})
     assert comparison["facets"]["measurement"] == [{
-        "state": "absent", "reason": "measured_evidence_absent",
+        "state": "absent", "reason": "measured_predicate_not_declared",
         "predicate": "measured", "wafer_mark_keys": [], "evidence_ids": []}]
 
 

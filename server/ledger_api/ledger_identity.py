@@ -63,10 +63,15 @@ def _declared_entity(keys):
     except ImportError:                                            # pragma: no cover
         from ledger_api import entity_references
     wanted = set(keys)
-    for name in entity_references.declared_types():
-        if set(entity_references.identity_keys(name)) == wanted:
-            return name
-    return None
+    hits = [name for name in entity_references.declared_types()
+            if set(entity_references.identity_keys(name)) == wanted]
+    # 🔴 A TIE IS AN ANSWER, AND THE ANSWER IS「I DO NOT KNOW」. Returning the first
+    # match would let declaration ORDER pick the name a mark is keyed by, and the day a
+    # second entity is declared with the same identity keys every existing mark would
+    # silently re-point. Today the six declared entities all have distinct key sets, so
+    # this never fires -- which is the SAFETY ARGUMENT, not a reason to skip it: it is
+    # exactly the day it becomes reachable that a first-match rule goes wrong.
+    return hits[0] if len(hits) == 1 else None
 
 
 #: 🔴 THE SUBJECT TYPE IS THE CALLER'S DECLARATION, NOT THIS MODULE'S CONSTANT.
