@@ -1,3 +1,44 @@
+# ✅ 2단계 «부분 통과» — 라우트 둘은 갔습니다. 그런데 검증기가 «다른 문»으로 아직 삽니다
+
+## 총괄 실측
+```
+/admin/ledger/save            코드에서 «사라짐» (남은 것은 주석뿐)
+/admin/ledger/vocabulary/retire  «사라짐»
+구조 화면                      그 둘을 가리키는 자리 «0» · editable 48개 전부 false
+                             reason: no_route 25 · code 10 · «document» 10 · canonical 3 · …
+```
+
+## 🔴 그런데 `check_predicate_declaration` 이 아직 불립니다 — 3단계의 «첫 걸림돌»입니다
+```
+main.py:4988   violations = vocabulary.check_predicate_declaration(...)
+   그 함수      _ledger_predicate_dry_run(name, declaration)
+   부르는 곳    main.py:4942  post_ledger_dry_run
+   그 라우트    🔴 @app.post("/admin/ledger/dry-run")   <- «은퇴 대상이 아닌» 라우트입니다
+```
+즉 그 라우트는 **소스 드라이런과 술어 드라이런을 «둘 다»** 합니다. 소스 쪽은 살아야 하고,
+술어 쪽만 v1 과 함께 가야 합니다.
+
+## 그래서 3단계의 순서가 하나 정해집니다
+```
+🔴 먼저   `/admin/ledger/dry-run` 의 «술어 갈래»를 은퇴시키십시오
+         (`_ledger_predicate_dry_run` 과 그 안의 probe 들)
+         ⚠️ 라우트 «전체»를 지우지 마십시오 — 소스 드라이런이 그 문을 씁니다
+그 다음   check_predicate_declaration 이 «호출자 0» 이 됩니다
+         -> 그때 PROJECTION_ONLY_WORDS · SIGNATURE_FIELDS · LAYER 거절이 «같이» 죽습니다
+         (셋 다 그 함수 «안»에만 삽니다 — 총괄 실측)
+```
+📌 이게 「심볼을 하나씩」이 아니라 «한 덩어리»인 이유입니다. 그 함수가 그 셋의 «유일한 소비자»입니다.
+
+## ⚠️ 그리고 게이트 하나가 «주어를 잃습니다»
+제가 삭제 게이트에 「`POST /admin/ledger/dry-run` 을 태워 볼 것」을 넣어 두었습니다.
+술어 갈래가 사라지면 그 게이트는 «소스 드라이런»을 재는 것이 됩니다 — 그건 그것대로 유효하니
+**그대로 두되, 무엇을 재는지 바뀌었다는 것을 알고 재십시오.**
+```
+술어 페이로드로 태우면  -> 이제 «거절»이 정답입니다 (그 갈래가 없으니까)
+소스 페이로드로 태우면  -> «그대로 돌아야» 합니다  <- 이쪽이 무회귀 게이트입니다
+```
+
+---
 # 🟢 **여기서 시작하십시오 — v1 어휘 은퇴, «코드 넷»** (총괄 12:2x · 컴팩트 직후용)
 
 조사는 «끝나 있습니다». 아래 네 단계가 남은 전부이고, 근거와 게이트가 다 적혀 있습니다.
