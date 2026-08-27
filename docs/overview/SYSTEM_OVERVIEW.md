@@ -42,7 +42,7 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 
 ## 2. 프로세스 토폴로지 (멀티프로세스)
 
-🔴 **[2026-08-14 `2ec78b9` — 판정 R-2026-08-14-H] 그래프 싱크 워커가 스택에서 빠져 백엔드 자식이 다섯에서 «넷»이 됐습니다.** 사본을 만들던 파이프라인(추출 → 머티리얼라이즈 → 저장)이 은퇴했습니다 — 원장(`ledger_events`)이 개체 층이고, 실측상 그 워커에는 `ledger` 참조가 **0건**이었습니다(두 갈래가 같은 소스 표를 각자 읽으며 서로를 몰랐다는 뜻입니다). 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 **DROP됐고**(약 841 MB), 진입 라우트 **일곱**은 `main.py::_graph_branch_retired`가 **410**으로 거절합니다. 혈통 추적의 후계는 `GET /api/ledger/trace`, 유형 구조는 `GET /api/ledger/structure`, 원자 증거 감사는 `GET /api/ledger/subgraph`입니다. 별도 그래프 저장소는 부활하지 않았고 모두 `ledger_events` 읽기 투영입니다. 세부는 [architecture/backend §2](../architecture/backend.md).
+🔴 **백엔드 자식은 «넷»입니다** — 그래프 싱크 워커(사본을 만들던 추출→머티리얼라이즈→저장 파이프라인)는 은퇴했습니다. 개체 층은 원장(`ledger_events`)이고, 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 DROP됐습니다.
 
 `run_decoupled_app.py`가 아래 프로세스를 통합 기동합니다. 프로세스 간 조정은 PostgreSQL **Transactional Outbox** 패턴(`database_outbox` + `LISTEN/NOTIFY` 채널 `outbox_event`)으로 이루어지며, 워커→웹서버 콜백은 HTTP `POST /internal/events/*`를 사용합니다.
 
@@ -107,7 +107,7 @@ graph TD
 - **상태 관리:** `state.js`의 단일 싱글턴 객체를 직접 변조하고 명시적 UI 리프레셔를 호출하는 **수동 반응성**(리액티브 프레임워크 아님).
 - **데스크톱 셸:** `client/desktop_wrapper.py`(514줄)는 `{해석된 서버}/?client=desktop`를 로드하는 **QtWebEngine 래퍼**. OS 드래그앤드롭 업로드, 네이티브 다운로드 다이얼로그, `assymanager://` URI 스킴을 제공. 서버 주소는 하드코딩이 아니라 `--server` > `ASSY_SERVER` > `client/client_settings.json` > `127.0.0.1:8080` 순으로 해석된다([frontend §1.1](../architecture/frontend.md)).
 - ⚠️ **구 PySide6 데스크톱 클라이언트 *애플리케이션*(`client/main.py`, `ui/`, `models/table_model.py`)은 제거되었습니다.**
-- 🔴 **[2026-08-06 정정] 「PySide6가 제거됐다」로 읽지 마십시오 — PySide6는 살아 있는 런타임 의존성입니다.** 바로 위의 `client/desktop_wrapper.py`가 `PySide6.QtWebEngineWidgets`·`QtWidgets`·`QtNetwork`·`QtGui`를 import합니다. 없어진 것은 **Qt 위젯으로 그리던 클라이언트 앱**이고, 남은 것은 **웹앱을 감싸는 QtWebEngine 셸**입니다. 두 문장을 섞으면 `environment.yml`에서 PySide6를 빼는 순간 데스크톱 셸이 죽습니다.
+- 🔴 **PySide6는 살아 있는 런타임 의존성입니다** — `client/desktop_wrapper.py` 가 `QtWebEngineWidgets`·`QtWidgets`·`QtNetwork`·`QtGui` 를 import 합니다. 없어진 것은 «Qt 위젯으로 그리던 클라이언트 앱»이고, 남은 것은 «웹앱을 감싸는 QtWebEngine 셸»입니다. `environment.yml` 에서 PySide6 를 빼면 데스크톱 셸이 죽습니다.
 - 🔴 **[2026-08-06 정정] 종전 이 자리는 「이를 참조하는 문서는 `_archive/`에 있습니다」로 끝났고 그것은 거짓입니다.** [guide/CONDA_SETUP_GUIDE](../guide/CONDA_SETUP_GUIDE.md)가 `_archive/` 밖에서 `client/main.py` 실행을 지시하고 있었고, **아래 §7이 운영자를 바로 그 문서로 보내고 있었습니다.** 이 라운드에 그 가이드를 현행 스택으로 다시 썼습니다.
 
 상세: [architecture/frontend.md](../architecture/frontend.md)
@@ -125,7 +125,6 @@ graph TD
 | `AuditLog` | 셀 단위 변경 이력(old/new, source, tx_id) |
 | `DatabaseOutbox` | 프로세스 간 이벤트(event_uuid, status, processed_chain) |
 | `FileIngestionLog` | 파일 적재 로그(FAILED/SUCCESS/PENDING_RETRY) |
-| ~~`GraphNode` / `GraphEdge` / `GraphSyncState`~~ | ⚰️ **[2026-08-14] 물리 테이블이 DROP됐습니다**(`server/migrations/drop_graph_storage.py` — 엣지 1,034,472행 517 MB · 노드 590,885행 324 MB · 합계 약 841 MB). 🔴 **[2026-08-18] ORM 클래스도 트리에서 제거됐습니다.** 표만 DROP하고 클래스를 남긴 중간 상태는 **재기동마다 「SCHEMA DRIFT: the database is missing 3 thing(s)」를 찍었습니다** — 부팅 스키마 점검은 `Base.metadata`를 「이 빌드가 요구하는 표」로 읽으므로, 없어야 할 표 셋을 **결손**으로 신고한 것입니다. 예외 목록으로는 못 고칩니다: **요구를 만드는 것이 선언 자체**라 선언이 사라져야 요구가 사라집니다. 되돌리는 SQL은 `drop_graph_storage_reverse.sql`이고 🔴 **모양만 복원할 뿐 갈래를 되살리지 않습니다**(그 docstring이 함께 되돌려야 할 코드 변경 다섯을 나열합니다) |
 | `FileIngestionCheckpoint` | 파일 인제션 오프셋 체크포인트 + 해시 dedup(`file_ingestion_checkpoints`, `UNIQUE(table_name, file_signature)`) |
 | `InteractionEffortLog` | **핵심가치 #1 정본 계기** — 교정 tx당 사람의 상호작용 원시 카운트(`interaction_effort_logs`, `UNIQUE(transaction_id)`) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |
@@ -225,7 +224,7 @@ cd client2 && npm run dev    # :5173 → API/WS는 127.0.0.1:8080로 자동 타�
 - `POST /tables/{t}/upload` — 파일 업로드 인제션
 - `WS /ws` — 실시간 브로드캐스트
 - `GET /api/ledger/*` — **원장 읽기 면**(read-only). 해결 답·분석 projection·raw evidence를 목적별 라우트로 분리하며 전체 목록과 파라미터 계약의 정본은 [backend §2](../architecture/backend.md)
-- ⚰️ `GET /graph/*` + `POST /graph/trace` + `POST /api/graph/sync` — **[2026-08-14] 라우트 일곱이 410**(`Cache-Control: no-store`). 본문은 산문이 아니라 구조화 필드다: `reason: old_graph_branch_retired` · `state: retired` · `successor: /api/ledger/trace` · `ruling: R-2026-08-14-H`. 🔴 **404가 아니라 410인 것이 판정이다** — 404는 「그런 것은 없다」이고 410은 「있었고 의도적으로 은퇴시켰다」이며, 이 화면을 다시 여는 사람이 알아야 하는 것은 후자다. 🔴 **`no-store`도 판정이다** — 410은 HTTP 기본값이 캐시 가능이라 거절이 거절보다 오래 산다
+- ⚰️ **옛 그래프 갈래는 «없습니다»** — `GET /graph/*` · `POST /graph/trace` · `POST /api/graph/sync` 는 라우트로 존재하지 않습니다(총괄 실측 2026-08-27: `/api/graph/sync` -> «404», `/graph/*` 는 SPA 폴백이라 «HTML»). 후속은 원장의 walk «하나» — `GET /api/ledger/subgraph`.
 - `GET /enrichment/rules`, `.../references/{i}` — Enrichment 규칙·참조뷰
 - `GET /api/maps/overlay`, `/api/maps/paint-rules` — **범용 맵 오버레이**(임의 맵을 타깃 맵 프레임으로 정렬) · 페인트 잠금 선언 정본
 - `GET /api/transfer-plan/{stages,source-summary,validate}`, `/api/bonding-plan/core-summary` — 전사 계획 stage·가용 집계·검증(계획 정체성 = `(ref_table, map_key)`). 🔒 저장 전 반영 확인은 **`GET /admin/transfer-plan/dry-run`**(파라미터 없음 · 행 조회 없음 · 어느 철자가 이겼는지까지 답한다)
