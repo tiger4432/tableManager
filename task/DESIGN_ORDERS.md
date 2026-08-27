@@ -1,3 +1,65 @@
+# 🔴🔴 **소유자 명령 — v1 «전부 삭제», 1시간. 없으면 처음부터 다시 개발** (2026-08-27 13:2x)
+
+> 「v1 은퇴 자꾸 뭐가 걸리는데 **그냥 재지 말고 다 삭제해**」
+> 「**v1을 사용하는 것은 모두 미사용하고 없으면 처음부터 다시 개발**」
+> 「**1시간 내로 v1 전부 삭제 후 처음부터 다시 개발**」
+
+**증분 은퇴를 중단합니다.** 제 앞 판정(「4단계는 오늘이 아니다」·「게이트는 건드리지 마라」)을
+**전부 취소합니다.** 지금부터는 «지우고, 필요하면 선언 위에서 다시 만든다» 하나입니다.
+
+## 규칙 셋 — 이게 전부입니다
+```
+① `server/ledger/vocabulary.py` 를 «지웁니다»
+② 그것을 쓰던 자리는 «미사용»으로 만듭니다 — 그 기능이 필요하면 «선언»에서 다시 만듭니다
+③ 재지 말고 지우십시오. 막히면 «그 자리를 선언으로 다시 개발»하는 것이 답입니다
+```
+🔴 옮기지 마십시오. «코드에서 코드로»는 이 명령이 없애려는 바로 그것입니다.
+
+## 병렬 — 파일이 «안 겹칩니다». 셋이 동시에 갑니다
+```
+[A 구현자]  «쓰기 경로»  ledger/vocabulary.py 삭제 · ledger/gate.py · ledger/config.py
+                      · ledger/roleframe.py · ledger/runtime_v2.py · ledger/observability.py
+   할 일   gate 의 서명 검사(check_signature · check_subject_keys)를 «선언»으로 다시 만듭니다
+          -> 선언의 `vocabulary.<술어>.subjects` 와 `object.kind/types/qualifiers` 가 정본입니다
+          🔴 그 셋이 이미 검증기(setup_bundle)가 쓰는 «같은 모양»입니다. 거기서 뽑아 쓰십시오
+   ⚠️ 원자가 «전부» 지나는 길입니다. 마지막에 «써 보십시오» — 원자 하나가 들어가는지
+
+[B 클라레인] «화면 카탈로그»  ledger_admin.py (13) · ledger_structure.py (6)
+   할 일   카탈로그가 내보내는 칸들을 «선언»에서 다시 만듭니다
+          없어지는 칸(signature_fields · editable_layer · projection_only_words 등)은
+          «지웁니다» — 화면이 그 칸을 그리면 그것도 같이 지우십시오
+   🔴 지어내지 마십시오. v1 개념이라 선언에 대응이 없으면 «그 칸은 없어지는 것»입니다
+
+[C 응용레인] «읽는 자리 나머지»  config_resolve_report.py (8) · main.py (2)
+                            · ledger_explorer.py · ledger_trace.py · ledger_trace_router.py
+                            · enrichment_config.py · chain_ingestion_worker.py
+                            · ledger_api/ledger_selection.py · ledger_api/ledger_catalog.py
+   할 일   전부 «선언»으로. `all_predicates()` 자리는 선언의 vocabulary 키가 답입니다
+   🔴 ledger_catalog 는 소비자 «0» 입니다 -> 다시 만들지 말고 «지우십시오»
+```
+⚠️ **커밋은 레인마다 따로.** 그리고 셋 다 «시험»을 같은 커밋에 넣으십시오
+   (v1 을 재던 시험은 지웁니다 — 먼저 지우면 무방비, 늦으면 수집이 막힙니다).
+
+## 1시간 뒤에 «참이어야 할» 것 — 이걸로 판정합니다
+```
+① server/ledger/vocabulary.py «없다»
+② `import vocabulary` 형태 grep -> «0»
+③ 🔴 서버가 «뜬다»  (import 시점에 죽는 부류입니다)
+④ 🔴 원자가 «써진다»  — 게이트를 통과해 한 건이 들어가는지 «실제로» 넣어 보십시오
+⑤ follow=transferred -> «422»   (이 청소의 출발점)
+⑥ 보드 좌석 «16» · 로드 요청 «14» · non-200 «0»
+```
+🛑 멈추는 조건은 «하나»뿐입니다: **④가 안 되면** 멈추고 이 파일에 쓰십시오.
+   나머지는 막히면 «지우고 선언으로 다시» 하십시오 — 물어보지 마십시오.
+
+## 시간
+```
+착수 즉시 · 30분에 중간 한 줄(어디까지 지웠나) · 1시간에 위 여섯
+총괄은 그동안 라이브 선언과 서버 재기동을 맡습니다. 선언에 칸이 필요하면 «말씀만» 하십시오
+```
+
+---
+
 # 🔴 상설 추가 — CLAUDE.md 에 박았습니다 (소유자 2026-08-27)
 
 ---
