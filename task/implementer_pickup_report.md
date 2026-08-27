@@ -1,3 +1,11 @@
+# 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_trends.py` · `docs/spec/LEDGER_TECHNICAL_SPEC.md`** (00:2x)
+
+인수 ③ — trends 의 죽은 CTE 사슬(final_components -> component_events -> dt_components) 삭제
++ 스펙 1124 의 그 문장을 «같은 커밋»에.
+B 가 둘 다 놓은 것 확인했습니다(design_session_report 1행 · 203행).
+
+---
+
 # 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_identity.py`** (23:5x)
 
 총괄 인수 ①② — 씨앗 변경의 폭발 반경(ledger_selection.py:514·816) 측정 + `_declared_entity`
