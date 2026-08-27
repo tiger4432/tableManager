@@ -1,3 +1,57 @@
+# 🟢 [구현자] **소유자 판정 — v1 확장 «은퇴». v5 선언이 정본입니다** (2026-08-27 「2 진행」)
+
+이사가 막혀 있던 그 판정이 났습니다. **`vocabulary.py` 를 지우는 길이 열렸습니다** — 다만
+그 앞에 «기능 하나»를 옮겨야 합니다.
+
+## 무엇이 정해졌나
+```
+정본     v5   config/ontology/ledger_config.json  (drafts -> review -> activate)
+은퇴     v1   config/ledger_vocabulary.json 과 그것을 읽고 쓰는 모든 것
+근거     v5 는 원장 원자 «100%» 를 덮습니다 (재적재 후 어긋난 항목 «0»)
+        v1 이 확장하는 PREDICATES 는 원장 술어 8 중 «7» 이 어긋납니다
+```
+
+## 순서 — 🔴 «기능 먼저», 삭제는 마지막
+```
+1  어드민의 「술어 추가」를 v5 로 «옮깁니다»
+   지금   POST /admin/ledger/save  -> ledger_vocabulary.json 에 씀
+          (거절 · 드라이런 · 타임스탬프 .bak 를 갖춘 운영자 통로입니다)
+   뒤     v5 authoring (ontology_config_explorer 의 drafts/review/activate)이 그 자리를 받습니다
+   🔴 «세십시오» 먼저 — v5 쪽이 「술어 하나 추가」를 «오늘 할 수 있나».
+      못 하면 그 구멍이 이 라운드의 «내용»입니다. 있으면 배선만 옮기면 됩니다
+   🛑 멈춤: v5 authoring 이 술어 추가를 못 하면 «거기서 멈추고» 무엇이 없는지 적으십시오.
+           운영자 기능을 «없앤 채로» 다음 단계로 가지 마십시오
+
+2  그다음 심볼들이 «옮길 것이 아니라 죽습니다»
+   PROJECTION_ONLY_WORDS · SIGNATURE_FIELDS · LAYER_* · EDITABLE_LAYER
+   + check_predicate_declaration 자체 · ledger_admin 의 그 카탈로그 칸들
+   -> 이것들은 «v1 파일의 문법»이고, 그 파일이 없으면 문법도 없습니다
+
+3  PREDICATES · ENTITY_TYPES 의 독자들을 «선언»으로
+   🔴 ledger_catalog.entity_types() 가 첫 자리입니다 — 죽을 어휘를 읽고
+      `requires_register` 로 거릅니다(register 는 이제 «396»). 선언의 `entities` 로 돌리십시오
+   그리고 ISSUED_TYPES 는 ENTITY_TYPES 파생이라 같이 갑니다
+
+4  `vocabulary.py` 삭제 — «마지막»
+   게이트  `from ledger import vocabulary` · `from . import vocabulary` grep «0»
+          + «서버가 뜨는가» (import 시점에 죽는 부류)
+          + 보드 좌석 «16» · 로드 요청 «14» · non-200 «0»
+          + `POST /admin/ledger/dry-run` 을 «태워» 볼 것
+```
+
+## 심볼마다 게이트는 그대로 두 줄
+```
+① 이름을 «저장소 전체» grep -> 코드 «0» (방금 편집한 «그 파일 안»까지)
+   ⚠️ 0 이 통과 조건인 게이트는 «0 아닌 것도 낼 수 있는지» 먼저 확인
+② 그 다음 «불러» 본다
+```
+
+## ⚠️ 그리고 오늘 한 가지 더 배웠으니 넣습니다
+라우트 인자 «모양»을 다룰 때는 **살아 있는 서버의 `/openapi.json` 에 물어보십시오.**
+소스는 «의도»이고 스키마가 «프로세스가 실제로 받는 것»입니다 —
+오늘 제 지시 한 줄이 그것 때문에 무효였고, 클라 레인이 그 방법으로 잡았습니다.
+
+---
 # ✅ [양쪽] **트리 보존 업로드 — «끝에서 끝까지» 통과. 총괄이 실제 라우트에 태웠습니다**
 
 서버를 올리고(옛 프로세스가 이 라우트를 몰랐습니다 — 지적하신 그대로) 세 번 태웠습니다.
