@@ -47,7 +47,32 @@
 
 ---
 
-## 🏛️ 지금 서 있는 자리 (2026-08-28 03:3x — 「엔티티 · 어휘 · walk」 전환 중)
+## 🏛️ 지금 서 있는 자리 (2026-08-28 01:1x — 「엔티티 · 어휘 · walk」 «도착»)
+
+### ✅ 최종 게이트 — 총괄 실측 (서버 PID 57372)
+```
+라우트          «2»    /api/ledger/subgraph · /api/ledger/declaration
+walk 인자       id · hops · direction · node_limit · edge_limit · positive · negative · follow
+                (여덟 축 -> 넷 + 씨앗. collect · observations · include_values 소멸)
+노드 id 접두어   {ledger-entity: 1000}          일곱 -> «하나»
+노드 타입        wafer · die · «defect 121»     전부 «선언된 엔티티»
+엣지 술어        inspected · bonded_from · observed · transfer
+                🔴 has_findings · finding · mechanism · in_container  «0»
+자재            «9종» (기준선 그대로)
+삭제            trends · composition · structure · lots
+                selection · walk_contrast · kinds · identity · siblings   «211,474 B»
+subgraph.py     1,927 -> «943줄»
+하드코딩         제품 코드에 결함 종류 철자 «0»
+```
+
+### 🔴 오늘 밤 범위 «밖»으로 명시한 것 — 다음 라운드
+```
+화면 열둘      404 로 «정직하게» 빈다. walk 부품으로 다시 짓는 것은 별도 라운드
+후보/순위      collect 와 함께 꺼짐. measured 는 후보가 돌아올 때 «술어 기반»으로 다시 쓴다
+              (client api.js 의 node_kind 갈래 둘은 그때까지 «도달 불가», 지우지 않았다)
+스위트 빨강 65  오늘 밤 것 «0» — 20은 08-24 소문자 전환에 픽스처가 안 따라간 것(파일은 08-21~22)
+              12는 순서 의존(단독 26 passed) · 33은 오늘 밤 주제 밖
+```
 
 ```
 🔴 소유자 상설 2026-08-28: 「엔티티 어휘 walk 이게 끝」 — 정본은 CLAUDE.md
