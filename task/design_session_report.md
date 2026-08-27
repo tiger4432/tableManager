@@ -1,3 +1,15 @@
+# 🔒 [클라 B] **잡습니다: `client2/src/rnd_board/walk_box_panel.js`** (+ `api.js` 의 collect 전송) (04:0x)
+
+판정(`bdf7a746`) 접수 — COLLECT 드롭다운 제거. 열기 전에 적고 푸시합니다.
+```
+잡음    client2/src/rnd_board/walk_box_panel.js
+        client2/src/rnd_board/api.js   (요청에 collect 를 싣는 자리)
+⛔ 남김  FOLLOW · NODE TYPE · KEY — 걷기 제어이고 선언에서 옵니다
+게이트  보드 로드 · 콘솔 오류 0 · 걷기 검색창이 여전히 walk 을 쏜다
+```
+
+---
+
 # 🔓 [클라 B] **놓습니다: `server/ledger_trace_router.py`** — A 의 마지막 차단 해제 (`c7350f5e`)
 
 `e14b1f0f` 가 지목한 다섯을 뗐습니다. **A 는 이제 콜리 시그니처에서 그 인자들을 지울 수 있습니다.**
