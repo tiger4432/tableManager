@@ -1,3 +1,129 @@
+# 🔁 [클라 B] **병합 완료 — 시험 둘은 «A 레인 것»으로 접었고, `main` 의 빨강 하나를 이 병합이 끕니다** (`b6745316`)
+
+`origin/main` 을 받았습니다. v1 삭제는 끝났습니다(`ledger/vocabulary.py` 없음 · `import vocabulary` 0).
+**사이트 ④⑤ 를 A 레인과 «둘 다» 각자 했습니다.** 그래서 충돌 둘이 났고, 순서가 아니라 «비교해서» 접었습니다.
+
+## 둘 다 «A 레인 것»을 남겼습니다 — 그쪽이 낫습니다
+```
+④ test_ledger_subgraph
+   A 의 변이는 선언을 «소문자로 안 눕히고» 씁니다 -> `DTJob` 이 «미선언 철자»로 거절됩니다
+   제 것은 entity_references.identity_keys 를 빌려 썼는데 그건 «읽기 편의로» 대소문자를 눕힙니다
+   -> 게이트로 쓰면 «받는 범위가 조용히 넓어집니다». 재현하는 규칙보다 무른 대조군이라 제 것을 버렸습니다
+
+⑤ test_ledger_trace_contract
+   A 는 그 가드를 «남기고 선언에 물어» 빨갛게 뒀습니다. 저는 재고 나서 «지웠습니다»
+   -> 결론은 같습니다(from/to/slot 은 선언에도 원자에도 없음). 하지만 «빈틈을 이름 붙인 빨강»이
+      «이름 없이 사라진 가드»보다 낫습니다. A 것을 남겼습니다
+```
+📌 두 레인이 같은 자리를 두 번 했습니다. 지시서가 「아무나」였고 제가 「B 는 끝났으니」 가져갔는데,
+   **가져가기 전에 그 자리가 비었는지 확인할 방법이 없었습니다.** 다음엔 착수를 «먼저 알리겠습니다».
+
+## 🔴 이 병합이 `main` 의 빨강 하나를 끕니다 — 제 앞 커밋이 낸 것입니다
+```
+main 현재      ledger_explorer._entity 가 entity_references.identity_keys 를 읽습니다 (제 c0497d45)
+그런데         ledger_subgraph._declared_key_order 가 «한 층 위»에서 이미 그걸 하고 캐시합니다
+결과           test_entity_label_takes_its_key_order_from_the_live_declaration «빨강»
+확인 방법      추론이 아니라 «돌려서» 봤습니다 — main 의 두 파일(explorer + subgraph 시험)을
+              그대로 이 트리에 올려 실행: 1 failed, 24 passed
+              (ledger_subgraph.py · entity_references.py 는 main 과 제 트리가 «동일»합니다)
+고침           `0f8b8e58` — _entity 는 키 순서를 «안 봅니다». 병합 후 그 시험 초록
+```
+
+## ⚠️ 그리고 이번 병합으로 «제가 이번 라운드에 만든 것 일부»가 소비자 0이 됐습니다
+lane C 의 `f9846b58` 이 `GET /admin/ledger/vocabulary` 라우트를 «걷어냈습니다».
+그 라우트가 유일한 호출자였습니다.
+```
+ledger_admin.py 안에서 이제 호출자 «0»:
+   vocabulary_view()        ← 이번 라운드에 제가 선언으로 다시 만든 것
+   _grammar_object_kinds()  · _registering_types()  · TRAVERSABLE_STATES   (전부 그것만 씀)
+살아 있는 것:
+   entity_types() · _declaration() · _bare()  -> check_source_declaration 이 씁니다
+```
+🔴 **제 판단으로 지우지 않았습니다.** 바로 그 자리의 main.py 주석이 같은 상황에 이렇게 적었습니다 —
+「Left standing rather than removed on my own judgement - that is a ruling, not a cleanup」.
+**판정만 주시면 지웁니다.** (화면 소비자는 원래 «0» 이었습니다 — client2 전수에 admin/ledger 호출 0)
+
+## 병합 후 실측
+```
+ledger/vocabulary.py    없음        ·  import vocabulary  «0»
+GET /api/ledger/structure   200     ·  GET /api/ledger/declaration  200
+GET /api/ledger/subgraph    200     ·  소유자 체인 nodes «89» (그대로)
+GET /admin/ledger/vocabulary 404    ← 위 라우트 제거의 결과입니다
+시험  55 passed · 9 skipped · 3 failed
+      빨강 셋은 전부 test_ledger_trace_contract 이고 «제 것이 아닙니다»:
+        · 자격자 가드 1  -> A 가 «일부러» 빨갛게 둔 것
+        · 샘플 config 2  -> 제 편집 전부터 빨강 (stash 로 확인함)
+```
+
+---
+
+# ✅ [클라 B] **남은 다섯 중 «시험 둘»(④⑤) 착지 — `0f8b8e58` · `1dfb1d97` 푸시 완료**
+
+지시서가 「아무나 — 시험 둘」이라 했고 B 는 끝나 있어서 «둘 다» 가져갔습니다.
+**제 트리에서 `import vocabulary` 가 «0» 입니다.** A 레인은 이제 시험 때문에 서지 않습니다.
+
+```
+④ tests/test_ledger_subgraph.py:721        ✅ 변이를 «선언 위에서» 다시 만들었습니다
+⑤ tests/test_ledger_trace_contract.py:38   ✅ 단언 «둘째» 지웠습니다 (재 보고 나서)
+남은 것  ① config_resolve_report.py:915 · ② main.py:4968 «문자열»  -> C
+        ③ server/ledger/vocabulary.py «파일 삭제»                 -> A (마지막)
+```
+
+## ④ — 변이를 지우지 않고 «기둥 위에서» 다시 만들었습니다
+그 시험이 지키는 것은 v5 사안입니다: **읽기는 선언을 묻지 않는다.** 변이 «도구»만 v1 이었습니다.
+```
+어느 씨앗이 물리나가 «바뀌었고, 재고 나서» 적었습니다
+   다섯 중 선언이 «모르는» 것은 WaferLeg «하나»뿐 — die · DTJob · Wafer · Lot 은 전부 풀립니다
+   v1 에선 셋이 거절, 선언에선 «하나»
+🔴 약해진 게 아닙니다 — WaferLeg 이 «원래 날카로운» 쪽입니다.
+   두 세대 어디에도 없어서 «어떤 선언을 고쳐도 닿지 않고», 원자 42(주어 12)가 실재합니다
+나머지 «넷»이 이제 «특이성 대조군»입니다 — 다 부수는 변이는 이 시험을 못 지나갑니다
+```
+
+## 🔴 그 작업이 «제 앞 커밋의 결함»을 드러냈습니다 — 기존 시험이 잡았습니다
+```
+제가 한 것   ledger_explorer._entity 가 키 순서를 «선언»에서 읽게 했다
+실제         ledger_subgraph._declared_key_order 가 «한 층 위»에서 이미 그걸 하고 캐시한다
+             -> 한 파일에 «독자 둘». 이 저장소가 이름 붙여 놓은 바로 그 결함입니다
+잡은 것      test_entity_label_takes_its_key_order_from_the_live_declaration (기존 시험)
+고침         _entity 는 «키 순서를 안 봅니다» (삽입 순서). 그게 원래 이 박스의 동작이기도 했습니다
+             — v1 조회가 대문자라 «한 번도 안 맞았습니다»
+확인         걷기 그대로: nodes «89» · 라벨 «선언 순서» (그 층이 줍니다)
+```
+📌 **앞 보고의 한 줄을 정정합니다** — 「ledger_explorer 가 선언에서 키 순서를 읽는다」는
+   틀렸습니다. **키 순서를 «안 읽는» 것이 맞는 답**이고, 커밋 `0f8b8e58` 이 그렇게 되돌렸습니다.
+
+## ⑤ — 지우기 «전에» 두 권위에 다 물어봤습니다
+```
+단언 1  slot_map · has_wafer 의 qualifiers 에 from/to/slot 이 있다  (v1 표)
+  선언   slot_map@1 = optional ["event_type"] · required []   /  has_wafer@1 = 없음
+  원자   slot_map 의 qualifier 키는 «event_type 하나»  /  has_wafer 는 «원자 0»
+  -> 그 셋은 «선언에도 데이터에도 없습니다». v1 표만 재던 단언이라 지웠습니다
+단언 2  HOP_STATES ⊆ PROJECTION_ONLY_WORDS  -> 선언에 대응 «없음»(술어도 개체도 아님). 지웠습니다
+```
+### 🔴 그런데 «코드는 아직 그 이름들을 읽습니다» — 총괄 판정 사안입니다
+`ledger_trace.py:1043·1073·1074` 가 `_object_qualifier(claim, "slot" | "from" | "to")` 를
+부릅니다. 선언에도 원자에도 없는 이름입니다. 오늘은 `has_wafer` 원자가 0이라 «조용»합니다.
+지우지 않고 **그 단언이 있던 자리에 적어 뒀습니다.** 선언에 칸이 필요하면 말씀만 하십시오.
+
+## ⚠️ 그 파일에 «이미» 빨강 둘이 있습니다 — 제 것이 아닙니다
+```
+test_every_declared_derivation_is_explicitly_classified
+test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
+확인 방법   제 편집을 stash 하고 돌려 봤습니다 -> «같은 둘»이 빨강 (2 failed, 8 passed)
+           제 편집 후 -> 2 failed, 6 passed. 제가 늘린 빨강 «0»
+원인       shipped 샘플 `config/sample/ledger_config.json.sample` 을 v5 프로필 검증기가 거절:
+           profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared in packs
+```
+
+## 시험
+```
+tests/test_ledger_subgraph.py · test_ledger_explorer.py
+· test_ledger_admin_setup.py · test_ledger_structure_pg.py  ->  49 passed · 9 skipped
+```
+
+---
+
 # ✅ [클라 B] v1 삭제 라운드 — 세 파일 + 시험 «착지», 푸시 완료 (`c0497d45`)
 
 지시서의 규칙 셋 그대로입니다 — «옮기지» 않았고, 답이 선언에 있으면 선언에서 읽고,

@@ -71,11 +71,15 @@ def decode_entity_id(value):
 
 def _entity(entity_type, keys):
     keys = dict(keys or {})
-    try:
-        from ledger_api import entity_references
-        key_order = entity_references.identity_keys(entity_type) or keys.keys()
-    except Exception:  # pragma: no cover - deployment failure is reported by the route
-        key_order = keys.keys()
+    # 🔴 INSERTION ORDER, AND NOT A SECOND DECLARATION READ. This used to consult v1's
+    # `ENTITY_TYPES`, whose names were capitalised while the ledger writes them lower case,
+    # so on this box it matched nothing and fell through to here anyway. The declared order
+    # is applied ONE LAYER UP by `ledger_subgraph._declared_key_order`, which exists for
+    # exactly this reason and caches its read; adding a second reader of the same file here
+    # would be two chances to disagree about one fact, and
+    # `test_entity_label_takes_its_key_order_from_the_live_declaration` is the assertion
+    # that says which layer owns it.
+    key_order = keys.keys()
     values = [str(keys.get(name)) for name in key_order
               if keys.get(name) is not None and str(keys.get(name)) != ""]
     label = " / ".join(values[:2]) or str(entity_type)
