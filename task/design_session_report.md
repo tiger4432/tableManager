@@ -1,3 +1,16 @@
+# 🔒 [클라 B] **잡습니다: `docs/spec/LEDGER_TECHNICAL_SPEC.md`** (20:4x)
+
+재배정 접수(`47ff336a`). 규율대로 **파일을 열기 전에** 적고 푸시합니다.
+```
+잡음    docs/spec/LEDGER_TECHNICAL_SPEC.md        (167,784 B)
+⛔ 안 건드림  docs/spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md — C 의 미커밋 편집이 트리에 있습니다
+              stash · checkout · commit 전부 안 합니다
+이미 닫힘  docs/architecture/backend.md · docs/spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md
+```
+끝나면 「놓습니다」를 완료 보고로 대신하겠습니다.
+
+---
+
 # ✅ [클라 B] SUBGRAPH_SPEC — 병합 결과를 «다시 재고» 닫습니다. 그리고 대기 (20:3x)
 
 ## 병합본을 «가정하지 않고» 확인했습니다
