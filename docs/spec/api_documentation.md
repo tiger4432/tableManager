@@ -1,6 +1,6 @@
 # assyManager Data Update Server API Documentation
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-18 §7.2-bis(원장 dry-run 거절) | **Owner:** Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Backend
 > **범위 주의:** 이 문서는 **행·셀 쓰기 계약**의 상세 레퍼런스이고 **전체 라우트 지도가 아니다.** 엔드포인트 전수는 [architecture/backend §2](../architecture/backend.md)가 정본이다.
 > ⚠️ **본문이 영어인 것은 이 파일의 기존 관례다**(나머지 `docs/`는 한국어). 한 파일 안에서 언어를 섞지 않으려고 신규 절도 영어로 썼다 — 언어 통일은 총괄 판단 대기.
 
@@ -412,7 +412,7 @@ Returns the column contract a client needs to build a grid for one table.
 
 ## 6. Retroactive (Backfill) Admin Surface
 
-Five retroactive operations that previously existed only as CLIs get an inventory route, a count route and a trigger route. The registry (`server/retroactive.py`) is **pure dispatch** — every count calls the operation's own dry-run and every run calls the same function with `apply=True`, so no operation is reimplemented here.
+Four retroactive operations that previously existed only as CLIs get an inventory route, a count route and a trigger route. The registry (`server/retroactive.py`) is **pure dispatch** — every count calls the operation's own dry-run and every run calls the same function with `apply=True`, so no operation is reimplemented here.
 
 All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../run` is **strict**: it refuses with `503` when no token is configured, rather than falling back to open.
 
@@ -433,13 +433,13 @@ All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../
 - **Route**: `/admin/retroactive/{op}/count`
 - **Query Parameters**: the operation's own declared parameters, plus `scan_limit` (integer, optional).
   - Unknown parameter names are refused with `400`. A silently ignored typo makes "0 affected" look like an answer.
-  - `scan_limit` is the **preview budget** and is not any CLI's `--limit` (that spelling means three different things across the five CLIs, and the orphan sweep has none). Default `200`, clamped to `2000` (`retroactive.DEFAULT_SCAN_LIMIT` / `MAX_SCAN_LIMIT`).
+  - `scan_limit` is the **preview budget** and is not any CLI's `--limit` (that spelling means different things across the CLIs, and one sweep has none). Default `200`, clamped to `2000` (`retroactive.DEFAULT_SCAN_LIMIT` / `MAX_SCAN_LIMIT`).
 - **Response**: `{op, mode: "dry-run", params, label, cli, deletes, restartable, commit_granularity, affected, affected_label, count_kind, scanned, scan_limit, truncated, detail, blocked_reason, extra}`.
   - **`count_kind` is part of the answer**, one of:
     - `exact` — a cheap query answered the whole question.
     - `sample` — a bounded scan; `scanned` and `truncated` say so, and `detail` states in words that the number is about the sample, not the table.
     - `upper_bound` — a cheap query answered a superset; `extra.why_upper_bound` names the missing half in words.
-  - Four of the five counts cannot be exact on a request path, and none of them claims to be. An exact R1 count is the operation itself, not a preview of it.
+  - Three of the four counts cannot be exact on a request path, and none of them claims to be. An exact R1 count is the operation itself, not a preview of it.
   - **`scan_limit` is `null` for operations that walk no rows.** Echoing the requested budget there would tell a reader a sample was taken when none was.
   - `blocked_reason` (e.g. `auto_confirm_off`) is non-null when the run would be refused, so a client disables the button instead of letting the operator discover the refusal by pressing it.
   - The route is read-only by construction: it rolls back on the way out regardless of which operation ran.
@@ -457,76 +457,81 @@ All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../
 
 ---
 
-## 7. Ledger Source Contract (additive fields)
+## 7. Ledger authoring surface — what is left of it
 
 The complete ledger route inventory remains [architecture/backend §2](../architecture/backend.md).
-This section owns only the Source Contract fields added to the existing authoring routes.
-Both routes require the shared `X-Admin-Token` gate.
+This section owns only the authoring routes that survive under `/admin/ledger/`.
+All of them require the shared `X-Admin-Token` gate.
 
-### 7.1 Translator profile inventory
+> 🔴 **Nothing under `/admin/ledger/` writes.** The edit unit is the **whole declaration
+> document**, authored through `POST /admin/ontology-explorer/drafts` → review → activate.
+> There is no per-source and no per-predicate save on this surface.
+
+### 7.1 Source inventory
 
 - **HTTP Method**: `GET`
 - **Route**: `/admin/ledger/sources`
 - **Query Parameters**: none.
-- **Additive Response Field**: every `kinds[]` entry keeps its outer `kind` and includes
-  `translator: {profile, implementation, molecule, operator}`.
-- **Meaning**: the selected source grammar and the executable translator profile are joined
-  in one response. Clients must render this server-owned metadata instead of maintaining a
-  second kind-to-translator map.
+- **Response**: `{kinds, unsupported_kinds, sources, config_path, error}`.
+  - `kinds[]` — each authoring grammar with `kind`, `label_ko`, `required_columns`,
+    `optional_columns`, `required_blocks`, and `translator: {profile, implementation,
+    molecule, operator}`.
+  - `sources` — the `sources` object of the live declaration, verbatim.
+  - `config_path` — which file answered, so an operator can tell the live declaration from
+    the shipped sample.
+  - `error` — a string when the declaration could not be read at all. An unreadable
+    declaration is **an answer here, not a 500**: this is the screen someone opens when
+    the declaration is broken.
 
-### 7.2 Compile and exercise one source declaration
+### 7.2 Relations and columns
 
-> 🗄️ **[2026-08-18 `ab8657f`] For `target: "source"` this route no longer previews anything.**
-> Everything under "Additive Response Field", "Static versus empirical evidence" and
-> "Writes" below describes the shape as of 2026-08-16 and is kept as the record of what a
-> restored preview must produce. See **7.2-bis** for what the route answers today.
+- **HTTP Method**: `GET`
+- **Route**: `/admin/ledger/relations`
+- **Query Parameters**: `q` (optional filter), `limit` (default `200`).
+- **Meaning**: the tables a source may be declared on. The list is what
+  `table_config.json` declares and nothing else — a table the rest of the system does not
+  know has no key columns, no ingestion and no chain, so an atom about its rows could not
+  be pointed at by anybody.
+
+### 7.3 Raw declaration read
+
+- **HTTP Method**: `GET`
+- **Route**: `/admin/ledger/config/raw`
+- **Query Parameters**: `source` (optional; omit for the whole document).
+- **Meaning**: the declaration text as stored, for the raw editing path. Paired with the
+  `base` fingerprint on write paths so two editors cannot silently clobber each other.
+
+### 7.4 Dry run — validates, and issues a token it can no longer be spent on
 
 - **HTTP Method**: `POST`
 - **Route**: `/admin/ledger/dry-run`
 - **Request Body**:
-  - `target`: must be `"source"` for a Source Contract response.
+  - `target`: `"source"` or `"predicate"`.
   - `name`: source/relation name.
-  - `declaration`: parsed source declaration object. Alternatively send `raw`, containing
-    the JSON text for one declaration; the server parses it through the same refusal gate.
+  - `declaration`: parsed declaration object, or `raw` containing the JSON text for one
+    declaration; the server parses `raw` through the same refusal gate.
   - `rows`: optional sample budget, default `20`, clamped to `1..200`.
-- **Additive Response Field** (🗄️ not produced today):
-  `source_contract: {source, state, translator, columns, emissions, issues, sentence_ko}`.
-  Each `emissions[]` item carries the possible predicate, subject and object shape, payload
-  fields, derivations, `configured_by`, event types, the matched live vocabulary signature,
-  compatibility state, and issues.
-- **Static versus empirical evidence** (🗄️ not produced today):
-  `source_contract.emissions[]` is the complete static set for the selected profile,
-  including branches absent from the sample. `atoms_rendered[]` is the empirical result of
-  running the real translator on sampled rows. Neither replaces the other.
-- **Refusal**: a source/translator/vocabulary mismatch returns `400` with violation code
-  `translator_vocabulary_mismatch` before source rows are read. Syntax, table and column
-  errors continue to use the existing named violations. 🗄️ These fire only once a preview
-  exists again — the refusal in 7.2-bis is reached first.
-- **Writes**: zero. The real preview ran inside a PostgreSQL read-only transaction and
-  reported `read_only_enforced: true`.
 
-### 7.2-bis What `target: "source"` answers today (2026-08-18)
+**Both targets refuse today, and for different reasons.**
 
-- **Step 1 still runs.** `target` validation, `raw` parsing and
-  `ledger_admin.check_source_declaration(...)` are unchanged, so a malformed declaration
-  still comes back as its own named violation.
-- **Step 2 refuses by name.** `ledger.dry_run.preview(...)` raises `DryRunUnavailable`
-  and the route renders it as a `declaration_rejected` violation — a sentence, not a `500`.
-  The four v1 translators this preview drove were retired on 2026-08-18; the v2 path that
-  can do the same work with zero writes is `ledger.setup.preview_selected_cursor_batch`,
-  and **no HTTP route calls it yet**.
-- **No `token` is issued for this target.** Everything after the `preview(...)` call —
-  `source_contract`, `atoms_rendered[]`, `sentence_ko` and `token` — is unreachable.
-- 🔴 **Consequence for `POST /admin/ledger/save`**: that route requires a `token` equal to
-  `declaration_token(target, name, declaration)` and refuses otherwise with
-  `dry_run_stale`. With no source dry-run token available, **saving a source declaration
-  through this surface is currently blocked.** This is recorded here as an observation, not
-  as an approved contract change; it awaits a lead-PM ruling.
-- **`target: "predicate"` is unaffected.** `_ledger_predicate_dry_run` returns before
-  `preview(...)` is called and still produces `signature_probes` and a `token`, so the
-  predicate validate → dry-run → save workflow is intact.
+- `target: "predicate"` → `400`, violation `declaration_rejected`. A predicate is now part
+  of the declaration document; there is no per-predicate preview because there is no
+  per-predicate save for it to preview.
+- `target: "source"` → declaration checks still run first, so a malformed declaration comes
+  back as its own named violation (`unknown_relation`, `unknown_column`,
+  `invalid_identifier`, `undeclared_entity_type`, …). Then
+  `ledger.dry_run.preview(...)` raises `DryRunUnavailable` and the route renders it as a
+  `declaration_rejected` violation — a sentence, not a `500`.
 
-`POST /admin/ledger/save` still requires the declaration token returned by this dry run.
-The Source Contract therefore participates in the existing validate → dry-run → fingerprint
-→ atomic save workflow; it does not add a second save path.
-→ atomic save workflow; it does not add a second save path.
+- **Why the preview is gone**: it drove the four v1 translators, which were retired. The v2
+  path that can do the same work with zero writes is
+  `ledger.setup.preview_selected_cursor_batch`, and **no HTTP route calls it yet**.
+- **Writes**: zero, on every path.
+- **Refusal codes are a closed set** (`ledger_admin.REFUSAL_CODES`). A code invented at a
+  call site is a refusal the screen cannot render, so `violation()` raises on an unknown
+  code rather than passing it through.
+
+> ⚠️ **Recorded as an observation, not as an approved contract change.** With no dry-run
+> token obtainable and no save route to spend one on, the `/admin/ledger/` surface is
+> read-and-validate only. Whether the source authoring path returns here or moves entirely
+> into the ontology-explorer drafts flow awaits a lead-PM ruling.
