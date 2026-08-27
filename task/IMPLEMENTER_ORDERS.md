@@ -15928,3 +15928,60 @@ server/ledger/config.py:293  TRANSFER_PREDICATE = "transferred"
 원자 0 이라 「지워도 아무 일 없다」로 «보인다». 그게 위험 신호다 —
 🔴 왜 0 인지부터 답이 있어야 지운다. 이번 라운드 아님
 ```
+
+---
+
+# 🔴 지시 — 카탈로그가 «라우트가 거절하는 값 둘»을 광고합니다 (총괄 판정, 2026-08-27)
+
+## 🔴 먼저: 이건 «제가 넣은 줄»입니다
+
+`/api/ledger/declaration` 은 제가 이 세션에 만든 라우트이고, 그 안의 collect 한 줄이 틀렸습니다.
+CLAUDE.md 에 「여덟 중 «둘»은 누르면 422」로 이미 적혀 있는 그 결함이고, **아직 삽니다.**
+
+## 측정 (총괄 직접 · 유효 씨앗으로)
+```
+씨앗   ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1BVUctQlctMDAxLTAxIn1d   (wafer)
+대조군 collect 안 보냄 -> 200            <- 계측기가 «산다»는 증거
+  collect=entity      200 · 50 nodes      collect=collection  200 · 50 nodes
+  collect=point       200 · 50 nodes      collect=value       200 · 50 nodes
+  collect=quantity    200 · 50 nodes      collect=action      200 · 50 nodes
+🔴 collect=event      422                 🔴 collect=claim     422
+거절문: "'claim' is no longer a node kind -- a claim is an edge and its source event
+         is an edge attribute, so this can never rank anything"
+```
+⚠️ 제 첫 측정은 «여덟 전부 422» 였습니다 — 씨앗 id 가 틀려서입니다. 8/8 이 같은 값이면
+그건 답이 아니라 «계측기 고장»입니다. 위 표는 대조군을 태운 뒤의 것입니다.
+
+## 원인 — 같은 모듈에 목록이 «둘»인데 제가 틀린 쪽을 읽었습니다
+```
+server/ledger_api/ledger_subgraph.py:77     NODE_KINDS          «여덟» (은퇴한 둘 포함)
+server/ledger_api/ledger_subgraph.py:1235   RETIRED_NODE_KINDS  {"claim","event"}
+server/ledger_api/ledger_subgraph.py:1264   그 둘을 422 로 거절 (거절문이 «이유»를 댄다)
+🔴 server/ledger_trace_router.py:537        "collect": list(ledger_subgraph.NODE_KINDS)
+                                            ^^^ 여기. 받는 목록이 아니라 «전체 목록»을 광고한다
+```
+
+## 바꾸는 것 — «한 줄»
+```
+server/ledger_trace_router.py:537
+  광고하는 값 = NODE_KINDS 에서 RETIRED_NODE_KINDS 를 뺀 것 (순서 보존)
+```
+
+## 그대로 두는 것 — 명시
+```
+⛔ NODE_KINDS 를 줄이지 마십시오 — 1255 의 「목록에 있나」와 1264 의 「은퇴했나」가
+   «두 단계»인 이유는 거절문이 「모르는 값」이 아니라 «왜 없어졌는지»를 대기 위해서입니다.
+   합치면 그 문장이 사라집니다
+⛔ RETIRED_NODE_KINDS · 422 · 거절문 — 한 글자도
+⛔ 클라의 COLLECT 드롭다운 — 설계 원칙(술어가 아닌 것은 노드)으로 «화면에서 사라질» 예정입니다.
+   그건 별도 라운드입니다. 지금 건드리지 마십시오.
+   🔴 그래도 이 한 줄은 고칩니다 — 드롭다운이 사라져도 «카탈로그가 거절되는 값을 광고하는 것»은
+      그대로 틀렸기 때문입니다
+```
+
+## 게이트 «둘»
+```
+① curl /api/ledger/declaration 의 collect 목록 «여섯». claim·event 없음
+② 그 여섯을 «전부 실제로 쏴서» 200 인가 (이름 대조 말고 호출)
+   + 대조군: collect 안 보내고도 200 인가  <- 이거 없으면 「전부 422」를 「전부 통과」로 읽는다
+```
