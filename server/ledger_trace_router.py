@@ -534,7 +534,12 @@ def ledger_declaration_catalog():
         "state": "ready" if entities else "empty",
         "entities": entities,
         "predicates": predicates,
-        "collect": list(ledger_subgraph.NODE_KINDS),
+        # 🔴 WHAT THE WALK ACCEPTS, NOT WHAT IT KNOWS. `NODE_KINDS` still lists
+        # `claim` and `event` on purpose - the walk needs them to answer「that kind
+        # RETIRED and here is why」rather than「unknown value」- so advertising the
+        # whole list handed a caller two values the route answers 422 to.
+        "collect": [k for k in ledger_subgraph.NODE_KINDS
+                    if k not in ledger_subgraph.RETIRED_NODE_KINDS],
     }
 
 
