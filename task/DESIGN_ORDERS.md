@@ -7800,3 +7800,74 @@ main_trend_panel.js:253   const marked = markIdOf(p) ? this.signOf(markIdOf(p)) 
 ## 그리고 이 라운드에서 제일 값나간 것은 «당신이 안 고친 것»입니다
 지시가 틀렸을 때 지시대로 해서 초록을 내는 것이 가장 비싼 실패입니다.
 제 게이트를 «검산해서» 반증한 것 — 그게 오늘 제가 세 번 말한 「측정이 문장을 이긴다」의 실행입니다.
+ · walk 만 남긴다」 (소유자 2026-08-28 01:3x)
+
+> 「오늘 밤내로 다 끝내, 저 세 요소만 남게」 · 「내가 파일 다 확인한다」
+
+**앞 지시의 「세고 나서 기다려라」는 «해제»합니다.** 세면서 «같이 지우십시오».
+소유자가 파일을 직접 보십니다 — 남는 코드가 «읽히게» 만드는 것이 이번 라운드의 산출물입니다.
+
+## 레인 분담 — 파일이 «안 겹칩니다». 착수 전 잡기 노트 필수
+```
+[A 구현자]  server/ledger_api/ledger_subgraph.py          ← 핵심. 1,927줄 -> 목표 «400줄 이하»
+[B 클라]    server/ledger_trace_router.py                 ← 라우트 여덟 삭제
+[C 응용]    server/ledger_api/finding_kinds.py · ledger_selection.py · ledger_identity.py
+            그리고 그 삭제로 죽는 모듈 (ledger_trends.py · ledger_composition.py · ledger_structure.py · ledger_lots.py)
+[총괄]      ledger_config.json 선언 · entity_references 의 참조 절반 · setup_bundle 문법
+```
+
+## A — `ledger_subgraph.py`
+```
+지운다   finding_point_node_id · finding_collection_node_id · quantity_node_id
+        value_node_id · event_node_id · claim_node_id            (id 만드는 함수 «여섯»)
+        _finding_point_node · _finding_collection_node · _quantity_node
+        _claim_node · _event_node · _value_label · _bound_quantities · _enrich_action_node
+        _link_containers                                          (참조 합성)
+        NODE_KINDS · RETIRED_NODE_KINDS · FOLDED_KINDS
+        decode_node_id 의 접두어 갈래 -> «ledger-entity:v1: 하나»
+        루프의 갈래 다섯 -> «entity 하나»
+        collect · observation_mode · include_values · include_observed
+남긴다   SqlEvidenceLookup.claims_for_entities 의 SQL 두 arm
+        subgraph() 의 BFS 루프 · 예산 · truncated
+        _entity_node · _declared_key_order · _signed_seeds · _reach · _propagation
+```
+
+## B — `ledger_trace_router.py`
+```
+지운다   /lot_map · /trends · /siblings · /composition
+        /selection/resolve · /kinds · /structure · /subgraph/table
+        107 의 observations=summary|claims · 206·561 의 참조 광고
+남긴다   GET /subgraph   (walk)
+        GET /declaration  ← 🔴 «남깁니다». 선언 그 자체를 내놓는 창구입니다
+                             지우면 부품이 다시 코드에 박게 됩니다
+```
+
+## C — 하드코딩 · 죽는 모듈
+```
+지운다   finding_kinds.py 의 DEFAULT_KIND="void" · "void":{…} · "delam":{…}  (dict 카탈로그)
+        ledger_selection.py:565  if finding_kind == "void" and final_units:
+        ledger_identity.py:116   "void_by_experiment_unit" · finding_kind "void"
+        B가 지운 라우트와 «같이 죽는» 모듈들
+🔴 모듈을 지우기 «전»에 소비자를 grep 으로 세고 «수를 커밋 메시지에» 적으십시오
+   (오늘 새벽 vocabulary.py 를 「같은 근거로 죽는다」고 묶었다가 라이브 소비자가 있었습니다)
+```
+
+## 🔴 오늘 밤 «못 끝나는» 것 하나 — 소유자 손이 필요합니다
+```
+defect@1 을 «진짜 엔티티»로 만들려면 observed@1 의 목적어가 value -> entity_ref 여야 하고,
+그건 원자 103,841건이 «다시 쓰여야» 한다는 뜻입니다 = 원장 재적재
+
+그때까지:  발견은 walk 에서 «안 보입니다» (Finding Point/Collection 을 지우므로)
+          맵·트렌드 패널은 어차피 라우트가 사라져 빕니다
+소유자가 재적재하시면 그날 defect@1 이 «선언 몇 줄»로 살아납니다 — 코드는 안 바뀝니다
+```
+
+## 게이트 — 착지마다
+```
+① GET /api/ledger/subgraph 가 «답한다»  (씨앗 wafer SYN-CX-BW-001)
+② 응답의 노드가 «전부» ledger-entity:v1: · 타입이 «전부» 선언된 엔티티
+③ 응답의 엣지가 «전부» 선언된 술어 (has_findings · finding · in_container · mechanism «0건»)
+④ 조립 자재 «9종» 그대로
+⑤ 남은 라우트가 «둘»: /subgraph · /declaration   (openapi.json 으로 확인)
+⑥ pytest — 지운 모듈을 재던 테스트는 «같은 커밋에서» 함께 은퇴
+```
