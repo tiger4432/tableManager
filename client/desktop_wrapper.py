@@ -390,14 +390,24 @@ class HybridDesktopClient(QMainWindow):
     #  directories contributing nothing (they hold no files). Symlinked directories are NOT
     #  followed -- `os.walk` does not by default -- because a link out of the dropped tree
     #  would upload files the operator did not drop.
+    #: Returns (absolute path, RELATIVE path) pairs. The relative path is measured from the
+    #  PARENT of what was dropped, so dropping `WF-001` yields
+    #  `WF-001/WORK_20260817_031405/voids.json` -- byte-for-byte what the browser's
+    #  `webkitRelativePath` gives for the same folder. If the two doors measured from
+    #  different roots, the same tree would arrive with different names.
+    #  A single dropped FILE gets an empty relative path, which is what the route calls
+    #  「no tree」 and handles exactly as before.
     @staticmethod
     def _files_under(path):
         if os.path.isfile(path):
-            return [path]
+            return [(path, "")]
+        base = os.path.dirname(os.path.abspath(path.rstrip("/" + os.sep)))
         found = []
         for dirpath, _dirnames, filenames in os.walk(path):
             for name in sorted(filenames):
-                found.append(os.path.join(dirpath, name))
+                abs_path = os.path.join(dirpath, name)
+                rel = os.path.relpath(abs_path, base).replace(os.sep, "/")
+                found.append((abs_path, rel))
         return found
 
     def upload_file_natively(self, paths):
@@ -430,8 +440,8 @@ class HybridDesktopClient(QMainWindow):
             QMessageBox.warning(self, "경고", "먼저 화면에서 대상을 업로드할 테이블을 선택하세요.")
             return
         done = 0
-        for file_path in files:
-            if self._do_upload(table_name, file_path, os.path.basename(file_path), user_name):
+        for file_path, rel_path in files:
+            if self._do_upload(table_name, file_path, os.path.basename(file_path), user_name, rel_path):
                 done += 1
         failed = len(files) - done
         # 🔴 전부 실패하면 「0개 완료」를 안 띄운다 -- 0 을 성공으로 그리지 않는다.
@@ -449,14 +459,14 @@ class HybridDesktopClient(QMainWindow):
     #: One file. Returns True on success and NOTIFIES NOTHING -- the caller counts and speaks
     #  once per drop. Toasting here made a dropped folder raise one notification per file,
     #  which is the same defect the browser half carried until 32c53c30.
-    def _do_upload(self, table_name, file_path, filename, user_name):
+    def _do_upload(self, table_name, file_path, filename, user_name, relative_path=""):
         # Same resolved base as the loaded page - see HybridDesktopClient.__init__.
         api_url = f"{self.server_base}/tables/{table_name}/upload"
 
         try:
             with open(file_path, 'rb') as f:
                 files = {'file': (filename, f, 'text/plain')}
-                params = {'user': user_name}
+                params = {'user': user_name, 'relative_path': relative_path or ''}
                 response = httpx.post(api_url, files=files, params=params, timeout=30.0)
 
             if response.status_code == 200:
