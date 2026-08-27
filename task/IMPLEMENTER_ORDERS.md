@@ -15791,3 +15791,66 @@ d6df6449  판별식 셋을 테스트로     → 변이 둘로 이빨 확인
    필요해 보이면 «만들지 말고 말하고 기다린다»
 🔴 셋은 «코드» 관점이다 — 요구사항을 자르는 근거가 아니다
 ```
+
+---
+
+# 🔴 지시 — 묘비가 «없는 곳»으로 보내고 있습니다 (총괄 판정, 2026-08-27)
+
+## 측정 (총괄 직접 · 라이브)
+```
+은퇴 라우트 «일곱» 전부 410 — 정상
+  GET /graph/stats · /graph/neighbors · /graph/nodes/search · /graph/chip-trace
+  · /graph/mapping-summary · POST /graph/trace · POST /api/graph/sync
+본문   successor = "/api/ledger/trace"
+🔴     그 주소가 «라이브 라우트 표에 없다» (openapi.json 실측)
+```
+🔴 **스위트가 이미 둘 다 알고 있고 둘 다 «초록»이다:**
+```
+tests/test_ledger_subgraph.py::test_the_two_open_routes_…    1 passed
+     assert "/api/ledger/trace" not in routes
+tests/test_graph_branch_retired.py                          12 passed
+     assert d["successor"] == "/api/ledger/trace"
+```
+
+## 판정 — 후계는 `/api/ledger/subgraph`
+은퇴한 일곱은 전부 «걷기»였고, 지금 걷기에 답하는 라우트는 그것 «하나»다.
+`/api/ledger/structure`(200)는 «유형» 층이라 인스턴스 추적의 후계가 아니다.
+
+## 바꾸는 것 «넷» — 이게 전부다
+```
+① server/main.py:3006     GRAPH_BRANCH_SUCCESSOR = "/api/ledger/subgraph"
+② server/main.py:~3021    message 「혈통 추적은 원장 구조 뷰를 사용하세요」
+                          -> «걷기»를 이름 대는 한 문장으로. successor 와 «같은 것»을 말해야 한다
+③ server/tests/test_graph_branch_retired.py:91   기대값 교체 (한 줄)
+④ server/ledger_trace_router.py:1  모듈 docstring 이 자기가 «안 여는» /trace·/coverage 를
+                          이름 대고 있다. 실제로 여는 것은 «열»이다:
+                          subgraph · subgraph/table · siblings · trends · composition
+                          · selection/resolve · kinds · declaration · structure · lot_map
+```
+
+## 그대로 두는 것 — 명시
+```
+⛔ 라우트 일곱 · 410 · Cache-Control: no-store · reason · state · ruling — 한 글자도
+⛔ server/database/models.py:474 · server/ledger_structure.py:18 의 주석 — 이번 라운드 아님
+⛔ server/tests/test_ledger_trace_pg.py — «지우지 마시오» (아래)
+⛔ 문서 — 문서 레인이 자기 규칙으로 돈다. 여기서 건드리지 말 것
+```
+
+## 게이트 «셋»
+```
+① 🔴 successor 를 «그대로 호출»한다 — 이름 대조가 아니다
+   curl -s http://127.0.0.1:8080/graph/stats  ->  본문의 successor 를 꺼내
+   그 주소로 curl  ->  «200 또는 422» 여야 한다. 404 면 실패
+   (인자 없는 /api/ledger/subgraph 는 422 가 정상 = 「라우트는 있다」)
+   이 결함이 «이름 대조를 이미 통과»했다. 그래서 호출로 잰다
+② 일곱 전부 여전히 410
+③ pytest tests/test_graph_branch_retired.py tests/test_ledger_subgraph.py -q  둘 다 초록
+```
+
+## 지우지 말 것 하나 — 이유가 중요하다
+```
+server/tests/test_ledger_trace_pg.py   82,209 B · 47 tests · 이 박스에서 «47 skipped»
+그 스킵은 «라우트 부재»가 아니라 ASSY_PG_TEST_DATABASE_URL «부재» 때문이다
+🔴 「47 skipped」는 «죽었다»와 «못 쟀다»가 «같은 값»이다 -> 판정 근거가 못 된다
+언젠가 접속을 주고 «몇이 실패하는지»를 센 뒤에 판정한다. 이번 라운드 일이 아니다
+```
