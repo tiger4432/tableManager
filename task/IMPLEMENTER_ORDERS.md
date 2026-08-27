@@ -1,3 +1,51 @@
+# ✅ [구현자] **1단계가 «더 작습니다» — v1 save 를 부르는 «화면이 없습니다»** (총괄 실측)
+
+계수 잘하셨습니다. 멈춤 조건 «해당 없음» 받습니다. 그런데 제가 1단계를 **틀리게 적었습니다.**
+
+## 제가 적은 것 vs 실측
+```
+제 지시   「어드민 화면의 「술어 추가」가 v1 save 대신 v5 drafts 를 부르게 하는 것」
+실측     `/admin/ledger/save` 를 부르는 «클라 코드 «0»»
+        (server 코드·시험·문서에만 나옵니다)
+        v5 drafts 는 client2/src/ontology_explorer.js 가 «이미 부릅니다»
+           :382 drafts/new · :416 PUT /drafts/{id} · :429 activate
+```
+🔴 **운영자의 길은 이미 v5 입니다.** 옮길 화면이 없습니다.
+
+## 그러면 v1 을 «가리키는» 것은 무엇인가 — 둘, 그리고 «안내 데이터»입니다
+```
+ledger_structure.py:632   구조 화면의 각 술어 행에 붙는 `edit` 객체
+                          {"editable": true, "route": "/admin/ledger/save",
+                           "retire_route": "/admin/ledger/vocabulary/retire"}
+                          -> 「이 항목은 이 라우트로 고친다」는 «표지»입니다
+             :838   _EDIT_TARGETS = {"translator": ("source", "/admin/ledger/save")}
+             :854   _edit_handle() 이 그 표를 읽어 행마다 붙입니다
+```
+즉 화면은 «그 주소를 보여 줄 뿐»이고, 누르는 코드는 없습니다.
+
+## 그래서 1단계의 «진짜» 내용
+```
+① 그 표지를 «고칩니다»  -> v5 경로를 가리키거나, editable:false + 사유로 바꿉니다
+   🔴 «지어내지 마십시오» — v5 의 편집 단위는 「술어 하나」가 아니라 «문서 전체(raw)»입니다.
+      「이 술어를 이 라우트로 고쳐라」가 v5 에선 «참이 아닐 수» 있습니다.
+      참이 아니면 route 를 «비우고» 사유를 적으십시오. 그게 이 저장소 규율입니다
+      (닿을 수 없는 곳을 가리키는 표지는 «없는 것보다 나쁩니다»)
+② v1 라우트 둘을 은퇴  /admin/ledger/save · /admin/ledger/vocabulary/retire
+   그리고 그 뒤의 check_predicate_declaration 과 그것이 쓰는 심볼들
+```
+
+## 게이트
+```
+① 표지     구조 화면(GET /api/ledger/structure)의 술어 행에 «닿을 수 없는 route 가 0» 인가
+          -> 남아 있으면 화면이 없는 문을 가리킵니다
+② 소비자   `/admin/ledger/save` · `/vocabulary/retire` 를 부르는 코드 «0» (시험 포함)
+③ v5 통로  ontology_explorer 의 drafts -> activate 가 «그대로» 도는가 — «불러» 보십시오
+④ 서버     뜨는가 (import 시점 결함 부류)
+```
+📌 제 오독의 모양: 「라우트가 있다」를 「화면이 그걸 쓴다」로 읽었습니다. 오늘 여러 번 나온
+   그 부류입니다 — «누가 부르는지»를 세지 않고 «있는지»만 봤습니다.
+
+---
 # 🟢 [구현자] **소유자 판정 — v1 확장 «은퇴». v5 선언이 정본입니다** (2026-08-27 「2 진행」)
 
 이사가 막혀 있던 그 판정이 났습니다. **`vocabulary.py` 를 지우는 길이 열렸습니다** — 다만
