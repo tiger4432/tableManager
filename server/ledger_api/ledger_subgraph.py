@@ -113,47 +113,9 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
-def event_node_id(source_event_id, occurred_at, state):
-    event_uuid = str(uuid.UUID(str(source_event_id)))
-    if state not in EVENT_STATES:
-        raise ValueError(f"unknown source event state: {state}")
-    return f"ledger-event:v1:{_token([event_uuid, _instant(occurred_at), state])}"
-
-
 def claim_node_id(claim_id, occurred_at):
     claim_uuid = str(uuid.UUID(str(claim_id)))
     return f"ledger-claim-atom:v1:{_token([claim_uuid, _instant(occurred_at)])}"
-
-
-def value_node_id(claim_id, occurred_at):
-    claim_uuid = str(uuid.UUID(str(claim_id)))
-    return f"ledger-value:v1:{_token([claim_uuid, _instant(occurred_at)])}"
-
-
-def finding_point_node_id(claim_id, occurred_at):
-    """Address one terminal spatial point without making it a traversable Entity."""
-    claim_uuid = str(uuid.UUID(str(claim_id)))
-    return f"ledger-finding-point:v1:{_token([claim_uuid, _instant(occurred_at)])}"
-
-
-def finding_collection_node_id(entity_type, keys, finding_kind, method, map_id):
-    """Address one exact display collection without turning it into a domain entity."""
-    return "ledger-finding-collection:v1:" + _token([
-        str(entity_type), dict(keys or {}), str(finding_kind or "unknown"),
-        str(method) if method not in (None, "") else None,
-        str(map_id) if map_id not in (None, "") else None,
-    ])
-
-
-def quantity_node_id(model, quantity):
-    """Address one declared physical quantity INSIDE one mechanism model.
-
-    The model name is part of the identity on purpose.  `bond_pressure` is a node of both
-    `void_formation` and `delam_formation`, and one shared node would splice two
-    modellers' assertions into a third one nobody made — the rule
-    `mechanism_gate.Model.reach` already states for its own BFS.
-    """
-    return "ledger-quantity:v1:" + _token([str(model), str(quantity)])
 
 
 def decode_node_id(value):
@@ -164,77 +126,17 @@ def decode_node_id(value):
         return {"kind": "entity", "type": entity_type, "keys": keys, "id": text}
     if text.startswith(enrichment_actions.ACTION_PREFIX):
         return enrichment_actions.decode_enrich_action_id(text)
-    collection_prefix = "ledger-finding-collection:v1:"
-    if text.startswith(collection_prefix):
-        payload = _untoken(text[len(collection_prefix):])
-        if (not isinstance(payload, list) or len(payload) != 5
-                or not isinstance(payload[1], dict)):
-            raise ValueError("finding collection node id has the wrong shape")
-        entity_type, keys, finding_kind, method, map_id = payload
-        canonical = finding_collection_node_id(
-            entity_type, keys, finding_kind, method, map_id)
-        if canonical != text:
-            raise ValueError("node id is not in canonical spelling")
-        return {
-            "kind": "collection", "type": str(entity_type), "keys": keys,
-            "finding_kind": str(finding_kind), "method": method,
-            "map_id": map_id, "id": text, "expandable": True,
-        }
-    quantity_prefix = "ledger-quantity:v1:"
-    if text.startswith(quantity_prefix):
-        payload = _untoken(text[len(quantity_prefix):])
-        if not isinstance(payload, list) or len(payload) != 2:
-            raise ValueError("quantity node id has the wrong shape")
-        model, quantity = str(payload[0]), str(payload[1])
-        if quantity_node_id(model, quantity) != text:
-            raise ValueError("node id is not in canonical spelling")
-        return {"kind": "quantity", "model": model, "quantity": quantity, "id": text}
     #: 🔴 A CLAIM ID IS NO LONGER A PLACE. Claims became edges on 2026-08-25, so a claim seed
     #: names something the graph has no node for. Refusing says that; answering with a graph
     #: built around a node that does not exist would be a fiction, and answering empty would be
     #: indistinguishable from "this claim has nothing attached". Marking was checked first:
     #: nothing marks a claim.
-    if text.startswith("ledger-claim-atom:v1:"):
-        raise ValueError(
-            "claim ids are no longer seeds -- a claim is an edge, seed its subject instead")
-    prefixes = {
-        "ledger-event:v1:": "event",
-        "ledger-claim-atom:v1:": "claim",
-        "ledger-finding-point:v1:": "point",
-        "ledger-value:v1:": "value",
-    }
-    prefix = next((item for item in prefixes if text.startswith(item)), None)
-    if prefix is None:
-        raise ValueError(
-            "node id must be ledger-entity/event/claim-atom/"
-            "finding-collection/finding-point/value/quantity/enrich-action v1")
-    payload = _untoken(text[len(prefix):])
-    kind = prefixes[prefix]
-    expected = 3 if kind == "event" else 2
-    if not isinstance(payload, list) or len(payload) != expected:
-        raise ValueError(f"{kind} node id has the wrong shape")
-    node_uuid = str(uuid.UUID(str(payload[0])))
-    occurred_at = _parse_instant(payload[1])
-    if kind == "event":
-        state = str(payload[2])
-        canonical = event_node_id(node_uuid, occurred_at, state)
-        decoded = {"kind": kind, "event_id": node_uuid,
-                   "occurred_at": occurred_at, "event_state": state, "id": text}
-    elif kind == "claim":
-        canonical = claim_node_id(node_uuid, occurred_at)
-        decoded = {"kind": kind, "claim_id": node_uuid,
-                   "occurred_at": occurred_at, "id": text}
-    elif kind == "point":
-        canonical = finding_point_node_id(node_uuid, occurred_at)
-        decoded = {"kind": kind, "claim_id": node_uuid,
-                   "occurred_at": occurred_at, "id": text, "expandable": True}
-    else:
-        canonical = value_node_id(node_uuid, occurred_at)
-        decoded = {"kind": kind, "claim_id": node_uuid,
-                   "occurred_at": occurred_at, "id": text}
-    if canonical != text:
-        raise ValueError("node id is not in canonical spelling")
-    return decoded
+    # 🔴 ONE PREFIX. Everything a caller may seed is an ENTITY, because everything that is
+    # not a predicate is a node and every node the walk returns is a declared entity. The
+    # branches for event / claim-atom / finding-point / value ids retired 2026-08-28 with
+    # the builders that minted them; a seed in one of those spellings is now refused by the
+    # line above rather than decoded into a node kind that no longer exists.
+    raise ValueError("node id must be ledger-entity:v1:")
 
 
 @dataclass(frozen=True)
@@ -265,14 +167,6 @@ class EvidenceAtom:
             return str(self.source_event_id), self.source_event_state
         return str(self.id), "legacy_atom"
 
-    @property
-    def event_node_id(self):
-        event_id, state = self.event_identity
-        return event_node_id(event_id, self.occurred_at, state)
-
-    @property
-    def finding_point_node_id(self):
-        return finding_point_node_id(self.id, self.occurred_at)
 
 ATOM_COLUMNS = (
     "id, subject_type, subject_keys, predicate, object_kind, object_payload, "
@@ -720,193 +614,9 @@ def _claim_label(atom):
     return atom.predicate
 
 
-def _claim_node(atom):
-    return {
-        "id": atom.claim_node_id, "type": "Claim", "node_kind": "claim",
-        "schema_kind": "claim_atom", "label": _claim_label(atom),
-        "keys": {"id": atom.id}, "predicate": atom.predicate,
-        "object_kind": atom.object_kind, "object_payload": atom.object_payload,
-        "occurred_at": _instant(atom.occurred_at), "source_who": atom.source_who,
-        "source_translator_ver": atom.source_translator_ver,
-        "source_raw_ref": atom.source_raw_ref, "supersedes": atom.supersedes,
-        "claim_count": 1,
-        "predicates": [{"predicate": atom.predicate, "count": 1}],
-    }
-
-
-def _event_node(atom):
-    event_id, state = atom.event_identity
-    return {
-        "id": atom.event_node_id, "type": "Source Event", "node_kind": "event",
-        "schema_kind": "source_event", "label": f"{atom.source_who or 'unknown'} · {_instant(atom.occurred_at)}",
-        "keys": {"source_event_id": event_id}, "occurred_at": _instant(atom.occurred_at),
-        "source_who": atom.source_who, "source_event_state": state,
-        "claim_count": 0, "predicates": [],
-    }
-
-
-def _value_label(atom):
-    payload = atom.object_payload or {}
-    scalar = payload.get("value") if isinstance(payload, dict) else None
-    if scalar is not None:
-        return str(scalar)
-    compact = _canonical(payload)
-    return compact if len(compact) <= 72 else compact[:69] + "…"
-
-
-#: 🔴 THE SAME NAME, ONE LEVEL DOWN -- NOT A TRANSLATION TABLE.
-#: v1 translators wrote these at the payload's top level. The v5 runtime cannot: it builds a
-#: value payload as exactly `{"value": ...}` plus `{"qualifiers": {...}}`
-#: (`ledger/roleframe.py:1172-1183`, hardcoded), so everything a declaration names lands one
-#: level down. MEASURED 2026-08-24: 103,729 re-translated void atoms projected as
-#: `finding_kind = "defect"` with a null `run_uid`, because the reader looked only on top --
-#: the same fact, with the writer and the reader looking in different places.
-#:
-#: ⚠️ THIS LOOKS UP THE IDENTICAL NAME AND NOTHING ELSE. `position` is deliberately absent:
-#: the declaration spells those `inchip_x`/`inchip_y`, and teaching the reader that
-#: `inchip_x` means `position.x` would put a coordinate-naming rule in the READ layer -- the
-#: shape that breaks "a different vocabulary costs zero lines of code". Empty `position` is a
-#: separate, older item (v1's delam atoms are empty there too) and is not this round's.
-_QUALIFIED_FIELDS = ("finding_kind", "run_uid", "map_id")
-
-
 def _payload_field(payload, name):
     """Delegate: the rule lives in `finding_kinds.payload_field`, stated once."""
     return finding_kinds.payload_field(payload, name)
-
-
-def _finding_point_node(atom):
-    payload = atom.object_payload or {}
-    position = payload.get("position") or {}
-    coordinate = ",".join(str(position[key]) for key in ("x", "y")
-                          if position.get(key) is not None)
-    qualified = {name: _payload_field(payload, name) for name in _QUALIFIED_FIELDS}
-    finding_kind = str(qualified["finding_kind"] or "defect")
-    return {
-        "id": atom.finding_point_node_id,
-        "type": "Finding Point",
-        "node_kind": "point",
-        "schema_kind": "terminal_finding_point_projection",
-        "label": f"{finding_kind}{f' @ {coordinate}' if coordinate else ''}",
-        "keys": {
-            "finding_kind": finding_kind,
-            "run_uid": qualified["run_uid"],
-            "map_id": qualified["map_id"],
-            "position": position,
-        },
-        "finding_kind": finding_kind,
-        "occurred_at": _instant(atom.occurred_at),
-        "value": payload.get("value"),
-        "evidence_claim_id": atom.claim_node_id,
-        "source_raw_ref": atom.source_raw_ref,
-        "expansion": "explicit_seed_to_wafer_only",
-        "claim_count": 1,
-        "predicates": [{"predicate": "observed", "count": 1}],
-    }
-
-
-def _finding_collection_node(summary):
-    node_id = finding_collection_node_id(
-        summary["subject_type"], summary["subject_keys"],
-        summary["finding_kind"], summary.get("method"), summary.get("map_id"))
-    qualifiers = [summary["finding_kind"]]
-    qualifiers.extend(str(value) for value in (
-        summary.get("method"), summary.get("map_id")) if value not in (None, ""))
-    return {
-        "id": node_id, "type": "Finding Collection", "node_kind": "collection",
-        "schema_kind": "finding_collection_projection",
-        "label": f"{' · '.join(qualifiers)} ({summary['occurrence_count']:,})",
-        "keys": {
-            "subject_type": summary["subject_type"],
-            "subject_keys": summary["subject_keys"],
-            "finding_kind": summary["finding_kind"],
-            "method": summary.get("method"), "map_id": summary.get("map_id"),
-        },
-        "finding_kind": summary["finding_kind"],
-        "method": summary.get("method"), "map_id": summary.get("map_id"),
-        "occurrence_count": summary["occurrence_count"],
-        "run_count": summary["run_count"],
-        "aggregates": {
-            "count": summary["occurrence_count"],
-            "run_count": summary["run_count"],
-            "value_count": summary.get("value_count", 0),
-            "value_mean": summary.get("value_mean"),
-            "value_min": summary.get("value_min"),
-            "value_max": summary.get("value_max"),
-        },
-        "spatial": {
-            "map_id": summary.get("map_id"),
-            "bbox": {
-                "min_x": summary.get("min_x"), "max_x": summary.get("max_x"),
-                "min_y": summary.get("min_y"), "max_y": summary.get("max_y"),
-            },
-        },
-        "first_at": summary["first_at"], "last_at": summary["last_at"],
-        "claim_count": summary["occurrence_count"],
-        "predicates": [{"predicate": "observed",
-                        "count": summary["occurrence_count"]}],
-    }
-
-
-def _quantity_node(model_name, quantity, model=None):
-    """A physical quantity, SYNTHESIZED from `mechanism_models.json`.
-
-    It is not an entity sitting in the ledger and it costs no query: the declaration is a
-    config file of tens of nodes that `mechanism_gate` loads once and caches.  `model` is
-    the loaded `mechanism_gate.Model` when the declaration still carries it — a node id
-    bookmarked before the modeller deleted a model still decodes and still names itself.
-    """
-    node = {
-        "id": quantity_node_id(model_name, quantity),
-        "type": "Quantity", "node_kind": "quantity",
-        "schema_kind": "mechanism_quantity_projection",
-        "label": f"{quantity} · {model_name}",
-        "keys": {"model": model_name, "quantity": quantity},
-        "quantity": quantity, "model": model_name,
-        "basis": mechanism_gate.CONFIG_FILENAME,
-        "claim_count": 0, "predicates": [],
-    }
-    if model is not None:
-        node.update({"model_role": model.role, "finding_kind": model.finding_kind,
-                     "is_target": quantity == model.target})
-    return node
-
-
-def _payload_paths(payload, prefix=""):
-    """Dotted leaf paths of one claim payload — the spelling bindings are keyed by."""
-    if isinstance(payload, dict):
-        for key in payload:
-            child = f"{prefix}.{key}" if prefix else str(key)
-            yield from _payload_paths(payload[key], child)
-    elif prefix:
-        yield prefix
-
-
-def _bound_quantities(mechanism, atom):
-    """The declared `(model, quantity, binding key)` triples one claim's payload binds to.
-
-    The lookup is `mechanism_gate`'s own `nodes_for`, including its two accepted binding
-    spellings and their precedence, so this projection never re-decides what a binding
-    means.  A quantity is emitted once per usable model that declares it, which is how
-    `bond_pressure` reaches both the void and the delam model without the two becoming
-    one node.
-    """
-    out, seen = [], set()
-    for path in _payload_paths(atom.object_payload or {}):
-        quantities, binding_key = mechanism.nodes_for(f"{atom.predicate}:{path}")
-        for quantity in quantities:
-            for model in mechanism.models:
-                if not model.usable or quantity not in model.nodes:
-                    continue
-                if (model.name, quantity) in seen:
-                    continue
-                seen.add((model.name, quantity))
-                out.append((model, quantity, binding_key))
-    return out
-
-
-def _enrich_action_node(action):
-    return enrichment_actions.action_node(action)
 
 
 def _edge(edge_type, source, target, *, original_predicate=None):
@@ -1380,40 +1090,15 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if add_node(target, decode_node_id(target["id"]), depth + 1):
                 add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate))
             return
-        if atom.predicate == "observed" and atom.object_kind == "value":
-            point = _finding_point_node(atom)
-            point_ref = decode_node_id(point["id"])
-            point_ref["expandable"] = False
-            if add_node(point, point_ref, depth + 1):
-                add_edge(_claim_edge(atom, subject_id, point["id"], "observed"))
-            return
-        if atom.object_kind is not None and include_values:
-            # 🔴 THE MEASUREMENT NODE: claim, value and event collapsed into the one thing the
-            # question is about -- "this subject measured this". It keeps its own node because
-            # a reader marks a measurement and because the mechanism bindings hang off it.
-            value_id = value_node_id(atom.id, atom.occurred_at)
-            value = {
-                "id": value_id, "type": "Value", "node_kind": "value",
-                "schema_kind": "claim_value", "label": _value_label(atom),
-                "keys": payload, "claim_count": 1, "predicates": [],
-                "occurred_at": _instant(atom.occurred_at), "source_who": atom.source_who,
-                # the measurement node absorbed the claim, so it carries the claim's fields
-                # too -- `tabular_projection` types payload leaves under this exact scope, and
-                # the export's three sheets are a contract with Spotfire and Excel.
-                "predicate": atom.predicate, "object_kind": atom.object_kind,
-                "object_payload": payload, "source_raw_ref": atom.source_raw_ref,
-            }
-            if add_node(value, decode_node_id(value_id), depth + 1):
-                add_edge(_claim_edge(atom, subject_id, value_id, atom.predicate))
-                for model, quantity, binding_key in _bound_quantities(mechanism, atom):
-                    node = _quantity_node(model.name, quantity, model)
-                    if not add_node(node, decode_node_id(node["id"]), depth + 2):
-                        continue
-                    edge = _edge("binding", value_id, node["id"],
-                                 original_predicate=atom.predicate)
-                    edge["basis"] = mechanism_gate.CONFIG_FILENAME
-                    edge["qualifiers"] = {"binding_key": binding_key}
-                    add_edge(edge)
+        # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
+        # something about its subject; it is not a second place to stand. The finding-point
+        # and measurement-value branches that used to mint nodes here retired 2026-08-28,
+        # with the id builders behind them.
+        #
+        # ⚠️ SAID PLAINLY: findings therefore do not appear in the walk. Making a
+        # finding a place again means declaring `defect@1` and re-emitting `observed@1` with
+        # an entity_ref object - a reload of 103,841 atoms, and the owner's call. The day that
+        # lands, this function needs no branch: the entity_ref arm above already draws it.
 
     def _link_containers(source_ids):
         """Compose the declared container edges for these nodes, and RETURN the ids added.
@@ -1503,190 +1188,15 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 atom_cache[atom.claim_node_id] = atom
                 _expand_atom(atom, depth, frontier_entities)
 
-        if entity_refs and observation_mode == "summary" and remaining > 0:
-                summaries, cut = lookup.finding_summaries_for_entities(
-                    [(item["type"], item["keys"]) for item in entity_refs],
-                    direction, min(remaining, max(1, node_limit - budgeted + 1)))
-                claim_cut |= cut
-                frontier_entities = {item["id"] for item in entity_refs}
-                for summary in summaries:
-                    collection = _finding_collection_node(summary)
-                    ref = decode_node_id(collection["id"])
-                    # A collection reached from an Entity is deliberately folded.
-                    # Passing its opaque id back as a new seed is the explicit unfold.
-                    ref["expandable"] = False
-                    if not add_node(collection, ref, depth + 1):
-                        continue
-                    subject_id = ledger_explorer.entity_id(
-                        summary["subject_type"], summary["subject_keys"])
-                    if subject_id in frontier_entities:
-                        edge = _edge("has_findings", subject_id, collection["id"],
-                                     original_predicate="observed")
-                        edge["witnesses"] = summary["occurrence_count"]
-                        add_edge(edge)
-
-        if point_refs and remaining > 0:
-            batch, cut = lookup.claims_by_ids([
-                (item["claim_id"], item["occurred_at"]) for item in point_refs
-            ], remaining)
-            claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            frontier_points = {item["id"] for item in point_refs}
-            for atom in batch:
-                point = _finding_point_node(atom)
-                point_ref = decode_node_id(point["id"])
-                point_ref["expandable"] = False
-                add_node(point, point_ref, depth)
-                if point["id"] not in frontier_points:
-                    continue
-                wafer = _entity_node(atom.subject_type, atom.subject_keys)
-                wafer_ref = decode_node_id(wafer["id"])
-                wafer_ref["observation_only"] = True
-                if add_node(wafer, wafer_ref, depth + 1):
-                    add_edge(_edge("on_subject", point["id"], wafer["id"],
-                                   original_predicate="observed"))
-
-        if collection_refs and remaining > 0:
-            summaries, _ = lookup.finding_summaries_for_entities(
-                [(item["type"], item["keys"]) for item in collection_refs],
-                "outgoing", MAX_NODE_LIMIT)
-            frontier_collections = {item["id"] for item in collection_refs}
-            for summary in summaries:
-                collection = _finding_collection_node(summary)
-                if collection["id"] in frontier_collections:
-                    add_node(collection, refs[collection["id"]], depth)
-            batch, cut = lookup.claims_for_collections([(
-                item["type"], item["keys"], item["finding_kind"],
-                item.get("method"), item.get("map_id"))
-                for item in collection_refs], remaining)
-            claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            fetched.extend(batch)
-            for atom in batch:
-                payload = atom.object_payload or {}
-                collection_id = finding_collection_node_id(
-                    atom.subject_type, atom.subject_keys,
-                    _payload_field(payload, "finding_kind"),
-                    payload.get("method"), payload.get("map_id"))
-                if collection_id in frontier_collections:
-                    point = _finding_point_node(atom)
-                    point_ref = decode_node_id(point["id"])
-                    point_ref["expandable"] = False
-                    if add_node(point, point_ref, depth + 1):
-                        add_edge(_edge("contains", collection_id, point["id"],
-                                       original_predicate="observed"))
-
-        # 🔴 Drawing what is already written.  Every model declares the `finding_kind`
-        # it is a model OF and the `target` it terminates in, so the link from an observed
-        # finding to that target is a READING of the declaration rather than a new
-        # assertion — the same class of edge as `binding`, keyed on `finding_kind` where
-        # that one is keyed on `bindings`.  No extra atom is read: the kind is already on
-        # the collection.
+        # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
+        # points, quantities and source events, plus the enrich-action tail. Each expanded a
+        # node kind that is no longer a node -- the walk returns declared ENTITIES and the
+        # edges between them, and nothing else. What used to be a place is now either an
+        # edge (a claim, a source event) or an attribute of one.
         #
-        # 🔴 One finding reaching TWO models is the point, not a collision.  A void
-        # attaches to `void_formation.void` AND to `void_observation_bias.void_observed`,
-        # and keeping them apart is how a real formation path stays distinguishable from
-        # something that only looks like one — the split `mechanism_gate` is built around.
-        for item in finding_refs:
-            for model in models_by_name.values():
-                if model.finding_kind != item["finding_kind"]:
-                    continue
-                node = _quantity_node(model.name, model.target, model)
-                if not add_node(node, decode_node_id(node["id"]), depth + 1):
-                    continue
-                edge = _edge("finding", item["id"], node["id"],
-                             original_predicate="observed")
-                edge["basis"] = mechanism_gate.CONFIG_FILENAME
-                edge["qualifiers"] = {"finding_kind": item["finding_kind"],
-                                      "model": model.name, "role": model.role}
-                add_edge(edge)
-
-        # Mechanism edges are DECLARED structure rather than ledger evidence, so they cost
-        # no claim budget and ignore `direction` the way the other structural edges do.
-        # Reachability is undirected; the emitted edge keeps the declaration's own `dir`.
-        # Traversal never leaves the model the frontier quantity belongs to.
-        for item in quantity_refs:
-            model = models_by_name.get(item["model"])
-            if model is None:
-                continue
-            for head, outgoing in model.adjacency.items():
-                for spec in outgoing:
-                    tail = spec["to"]
-                    if item["quantity"] not in (head, tail):
-                        continue
-                    endpoints = {}
-                    for name in (head, tail):
-                        node = _quantity_node(model.name, name, model)
-                        if add_node(node, decode_node_id(node["id"]),
-                                    depth if name == item["quantity"] else depth + 1):
-                            endpoints[name] = node["id"]
-                    if len(endpoints) != 2:
-                        continue
-                    edge = _edge("mechanism", endpoints[head], endpoints[tail])
-                    edge["basis"] = mechanism_gate.CONFIG_FILENAME
-                    edge["qualifiers"] = {"dir": spec.get("dir"), "model": model.name}
-                    add_edge(edge)
-
-        # 🔴 THE SOURCE EVENT IS NO LONGER A NODE EITHER. It was provenance for a claim, and
-        # a claim is now an edge, so "which run asserted this" is an edge attribute
-        # (`source_who`, `occurred_at`, `basis`) rather than a place in the graph. An event
-        # seed therefore expands nothing -- there is no claim node left for it to point at.
-        if event_refs and remaining > 0:
-            batch, cut = lookup.claims_for_events([
-                (item["event_id"], item["occurred_at"], item["event_state"])
-                for item in event_refs], remaining)
-            claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            fetched.extend(batch)
-            for atom in batch:
-                atom_cache[atom.claim_node_id] = atom
-                _expand_atom(atom, depth, set())
-
-        # 🔴 THE CLAIM FRONTIER STAGE IS GONE. It used to sit here: park a fetched atom as a
-        # claim node, wait for the next BFS level, then unfold its subject and object. That
-        # staging is what made one assertion cost two hops. Atoms are now expanded where they
-        # are fetched (`_expand_atom`), so there is nothing left to revisit and no claim node
-        # to revisit it as.
-        # Enrich Actions are reached FROM evidence Claims, never injected beside the
-        # graph as an unrelated list.  The lookup reuses validated Enrichment rules and
-        # materialized derived rows; it does not execute reference SQL here.  Action
-        # nodes are terminal during this automatic walk, but their opaque id is a valid
-        # next seed for explicit inspection.
-        if action_lookup is not None and fetched:
-            action_atoms = []
-            for atom in fetched:
-                if atom.claim_node_id in action_claims_seen:
-                    continue
-                action_claims_seen.add(atom.claim_node_id)
-                action_atoms.append(atom)
-            action_budget = min(node_limit - budgeted, edge_limit - budgeted_edges)
-            if not action_atoms:
-                pass
-            elif action_budget <= 0:
-                action_cut = True
-            else:
-                action_rows, cut = action_lookup.actions_for_claims(
-                    action_atoms, action_budget)
-                actions_scanned += len(action_rows)
-                action_cut |= cut
-                for action, anchor_claim_id in action_rows:
-                    anchor_depth = depths.get(anchor_claim_id)
-                    if anchor_depth is None or anchor_depth >= hops:
-                        depth_cut = True
-                        continue
-                    action_node = _enrich_action_node(action)
-                    action_ref = decode_node_id(action_node["id"])
-                    # A reached action is deliberately folded/terminal.  Re-seeding its
-                    # id is the explicit expansion act, just like a Finding Collection.
-                    action_ref["expandable"] = False
-                    if not add_node(action_node, action_ref, anchor_depth + 1):
-                        continue
-                    edge = _edge(
-                        "needs_enrichment", anchor_claim_id, action_node["id"],
-                        original_predicate=nodes[anchor_claim_id].get("predicate"))
-                    edge["qualifiers"] = {
-                        "rule": action.rule_name,
-                        "state": action.state,
-                        "action_kind": action.action_kind,
-                    }
-                    add_edge(edge)
+        # ⚠️ The budget flags they wrote (`claim_cut`, `node_cut`, `edge_cut`) are set
+        # by `add_node`/`add_edge` and by the entity fetch above, so `truncated` still tells
+        # the truth about a walk that ran out of room.
 
         if any(depth_value > hops for depth_value in depths.values()):
             depth_cut = True

@@ -72,42 +72,6 @@ def test_source_event_identity_groups_one_utterance_but_not_sources_or_times():
     assert record[1] == "source_record"
 
 
-def test_a_fact_is_one_edge_and_a_claim_is_no_longer_a_place():
-    """🔴 THE SHAPE AFTER 2026-08-25: one atom is one edge between things in the world.
-
-    This test used to assert the opposite -- that claim and event nodes exist and can be
-    seeded -- and it was right until the walk stopped staging claims as nodes. It is rewritten
-    rather than deleted because the questions it asked are still the right ones; only the
-    answers moved. What it now pins is that the retired kinds are GONE rather than merely
-    rare, and that asking for one is refused instead of answered with an empty result.
-    """
-    lookup = ledger_subgraph.InMemoryEvidenceLookup(fixture())
-    entity_id = ledger_explorer.entity_id("Lot", {"lot": "A"})
-    graph = ledger_subgraph.subgraph(entity_id, lookup, hops=3)
-    kinds = {node["node_kind"] for node in graph["nodes"]}
-
-    assert {"entity", "value"} <= kinds
-    assert not (kinds & ledger_subgraph.RETIRED_NODE_KINDS), (
-        "a claim is an edge now and its source event is an edge attribute")
-    assert {node["label"] for node in graph["nodes"]
-            if node["node_kind"] == "entity"} >= {"A", "B", "C"}
-
-    # the assertion still travels -- on the edge, where "who said it and when" belongs
-    carried = [edge for edge in graph["edges"] if edge.get("claim_id")]
-    assert carried, "every fact must arrive as an edge carrying its claim"
-    assert all(edge.get("occurred_at") for edge in carried)
-
-    # and a claim id names nothing to stand on
-    claim_seed = ledger_subgraph.claim_node_id(
-        str(uuid.UUID(int=1)), datetime(2026, 8, 15, 3, tzinfo=timezone.utc))
-    with pytest.raises(ValueError):
-        ledger_subgraph.subgraph(claim_seed, lookup, hops=1)
-
-    for retired in sorted(ledger_subgraph.RETIRED_NODE_KINDS):
-        with pytest.raises(ValueError):
-            ledger_subgraph.subgraph(entity_id, lookup, hops=2, collect=retired)
-
-
 def test_direction_and_value_projection_are_explicit_parameters():
     lookup = ledger_subgraph.InMemoryEvidenceLookup(fixture())
     entity_id = ledger_explorer.entity_id("Lot", {"lot": "A"})
@@ -118,65 +82,6 @@ def test_direction_and_value_projection_are_explicit_parameters():
     assert not any(node["node_kind"] == "value" for node in outgoing["nodes"])
     assert outgoing["walk"]["direction"] == "outgoing"
     assert outgoing["walk"]["resolver_applied"] is False
-
-
-def test_raw_observed_claim_points_to_a_directional_map_point_not_a_value():
-    observed = observed_atom()
-    lookup = ledger_subgraph.InMemoryEvidenceLookup([observed])
-    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-VOID"})
-    graph = ledger_subgraph.subgraph(
-        seed, lookup, hops=2, include_values=False, observation_mode="claims")
-    point = next(node for node in graph["nodes"]
-                 if node["node_kind"] == "point")
-    assert point["type"] == "Finding Point"
-    assert point["finding_kind"] == "void"
-    assert point["keys"]["position"] == {"x": 7, "y": 9}
-    assert point["expansion"] == "explicit_seed_to_wafer_only"
-    assert not any(node["node_kind"] == "value" for node in graph["nodes"])
-    assert any(edge["predicate"] == "observed" and
-               edge["target"] == point["id"] for edge in graph["edges"])
-    # The collection now carries the declared model target too, so the expected member
-    # set is pinned against a KNOWN declaration rather than against whatever
-    # mechanism_models.json happens to hold on this box.
-    mechanism_gate.set_graph(MECHANISM_DECLARATION)
-    try:
-        reseeded = ledger_subgraph.subgraph(point["id"], lookup, hops=12)
-    finally:
-        mechanism_gate.set_graph(None)
-    assert {node["node_kind"] for node in reseeded["nodes"]} == {
-        "point", "entity", "collection", "quantity"}
-    assert any(edge["predicate"] == "on_subject" for edge in reseeded["edges"])
-    assert any(edge["predicate"] == "has_findings" for edge in reseeded["edges"])
-    assert not any(node["node_kind"] in {"claim", "event", "value"}
-                   for node in reseeded["nodes"])
-
-
-def test_entity_folds_defects_into_collection_and_collection_reseeds_details():
-    observed = observed_atom()
-    lookup = ledger_subgraph.InMemoryEvidenceLookup([observed])
-    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-VOID"})
-    graph = ledger_subgraph.subgraph(seed, lookup, hops=12, include_values=False)
-    collections = [node for node in graph["nodes"]
-                   if node["node_kind"] == "collection"]
-    assert len(collections) == 1
-    collection = collections[0]
-    assert collection["type"] == "Finding Collection"
-    assert collection["occurrence_count"] == 1
-    assert collection["finding_kind"] == "void"
-    assert collection["aggregates"]["count"] == 1
-    assert collection["spatial"]["bbox"] == {
-        "min_x": 7.0, "max_x": 7.0, "min_y": 9.0, "max_y": 9.0}
-    assert not any(node["node_kind"] in {"claim", "point"}
-                   for node in graph["nodes"])
-    assert graph["walk"]["observation_mode"] == "summary"
-    assert any(edge["predicate"] == "has_findings" and edge["witnesses"] == 1
-               for edge in graph["edges"])
-
-    unfolded = ledger_subgraph.subgraph(
-        collection["id"], lookup, hops=2, include_values=False)
-    assert not any(node["node_kind"] == "claim" for node in unfolded["nodes"])
-    assert any(node["node_kind"] == "point" for node in unfolded["nodes"])
-    assert any(edge["predicate"] == "contains" for edge in unfolded["edges"])
 
 
 def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
@@ -216,27 +121,6 @@ def test_caps_are_reported_instead_of_looking_complete():
     assert any(edge.get("claim_id") for edge in body["edges"])
 
 
-def test_tabular_projection_is_stable_and_dynamic_fields_stay_typed():
-    seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
-    graph = ledger_subgraph.subgraph(
-        seed, ledger_subgraph.InMemoryEvidenceLookup(fixture()), hops=3)
-    export = ledger_subgraph.tabular_projection(graph)
-    assert tuple(export["tables"]["nodes"]["columns"]) == ledger_subgraph.NODE_TABLE_COLUMNS
-    assert tuple(export["tables"]["edges"]["columns"]) == ledger_subgraph.EDGE_TABLE_COLUMNS
-    properties = export["tables"]["properties"]["rows"]
-    value = next(row for row in properties
-                 if row["property_scope"] == "object_payload"
-                 and row["property_path"] == "value")
-    assert value["value_type"] == "number"
-    assert value["value_number"] == 48.8
-    assert value["value_text"] is None
-    # Stable IDs are the join keys Spotfire/Excel use across the three sheets.
-    node_ids = {row["node_id"] for row in export["tables"]["nodes"]["rows"]}
-    assert all(row["source_id"] in node_ids and row["target_id"] in node_ids
-               for row in export["tables"]["edges"]["rows"])
-    assert export["provenance"]["source"] == "ledger_events"
-
-
 def test_property_table_cap_is_named():
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     graph = ledger_subgraph.subgraph(
@@ -254,33 +138,6 @@ def test_property_table_cap_is_named():
                for row in export["tables"]["edges"]["rows"])
 
 
-def test_node_ids_reject_noncanonical_or_forged_shapes():
-    event_id = ledger_subgraph.event_node_id(EVENT, NOW, "source_molecule")
-    assert ledger_subgraph.decode_node_id(event_id)["event_id"] == EVENT
-    try:
-        ledger_subgraph.decode_node_id(event_id + "=")
-    except ValueError as exc:
-        assert "canonical" in str(exc) or "JSON" in str(exc)
-    else:
-        raise AssertionError("noncanonical event id was accepted")
-
-
-MECHANISM_DECLARATION = {
-    "bindings": {"processed_with:params_actual.pressure_MPa": ["bond_pressure"]},
-    "void_formation": {
-        "role": "formation", "finding_kind": "void", "target": "void",
-        "nodes": ["bond_pressure", "interface_unfill", "void"],
-        "edges": [{"from": "bond_pressure", "to": "interface_unfill", "dir": "-"},
-                  {"from": "interface_unfill", "to": "void", "dir": "+"}],
-    },
-    "delam_formation": {
-        "role": "formation", "finding_kind": "delam", "target": "delam",
-        "nodes": ["bond_pressure", "delam"],
-        "edges": [{"from": "bond_pressure", "to": "delam", "dir": "+"}],
-    },
-}
-
-
 def process_atom():
     return ledger_subgraph.EvidenceAtom(
         id=str(uuid.UUID(int=77)), subject_type="Wafer",
@@ -291,49 +148,6 @@ def process_atom():
         occurred_at=NOW, source_who="mes", source_translator_ver="v1",
         source_raw_ref="job:77", supersedes=None, source_event_id=EVENT,
         source_event_state="source_record")
-
-
-def test_declared_mechanism_becomes_quantity_nodes_and_a_quantity_reseeds():
-    lookup = ledger_subgraph.InMemoryEvidenceLookup([process_atom()])
-    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-BOND"})
-    mechanism_gate.set_graph(MECHANISM_DECLARATION)
-    try:
-        graph = ledger_subgraph.subgraph(seed, lookup, hops=8)
-        quantities = {node["label"]: node for node in graph["nodes"]
-                      if node["node_kind"] == "quantity"}
-        bindings = [edge for edge in graph["edges"] if edge["predicate"] == "binding"]
-        mechanisms = [edge for edge in graph["edges"] if edge["predicate"] == "mechanism"]
-        # The bound leaf grows edges; `clamp_force_N` is declared nowhere and stays silent.
-        assert {edge["qualifiers"]["binding_key"] for edge in bindings} == {
-            "processed_with:params_actual.pressure_MPa"}
-        value_id = ledger_subgraph.value_node_id(process_atom().id, NOW)
-        assert {edge["source"] for edge in bindings} == {value_id}
-        # One quantity name declared by two models is two nodes, never one shared node:
-        # merging them would splice two modellers' assertions into a third one.
-        assert "bond_pressure · void_formation" in quantities
-        assert "bond_pressure · delam_formation" in quantities
-        assert len(bindings) == 2
-        by_id = {node["id"]: node for node in graph["nodes"]}
-        assert all(by_id[edge["source"]]["model"] == by_id[edge["target"]]["model"]
-                   for edge in mechanisms)
-        unfill = quantities["interface_unfill · void_formation"]["id"]
-        pressure = quantities["bond_pressure · void_formation"]["id"]
-        declared = next(edge for edge in mechanisms
-                        if edge["source"] == pressure and edge["target"] == unfill)
-        assert declared["qualifiers"] == {"dir": "-", "model": "void_formation"}
-        assert declared["basis"] == mechanism_gate.CONFIG_FILENAME
-        # A synthesized id is a seed like any other public node id.
-        assert ledger_subgraph.decode_node_id(pressure) == {
-            "kind": "quantity", "model": "void_formation",
-            "quantity": "bond_pressure", "id": pressure}
-        reseeded = ledger_subgraph.subgraph(pressure, lookup, hops=3)
-        assert reseeded["state"] == "ready"
-        assert reseeded["seed"]["id"] == pressure
-        assert {node["label"] for node in reseeded["nodes"]} == {
-            "bond_pressure · void_formation", "interface_unfill · void_formation",
-            "void · void_formation"}
-    finally:
-        mechanism_gate.set_graph(None)
 
 
 def signed_fixture():
@@ -382,42 +196,6 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
         assert "both observed and a control" in str(exc)
     else:
         raise AssertionError("one subject was accepted as observed AND as a control")
-
-
-def test_collect_switches_the_application_without_changing_the_walk():
-    """Acceptance B: cause candidates and a common ancestor from ONE mechanism."""
-    lookup = ledger_subgraph.InMemoryEvidenceLookup(
-        signed_fixture() + [process_atom()])
-    seeds = {"positive": [ledger_explorer.entity_id("Lot", {"lot": "MARK"}),
-                          ledger_explorer.entity_id("Wafer", {"wafer": "WF-BOND"})]}
-    mechanism_gate.set_graph(MECHANISM_DECLARATION)
-    try:
-        entities = ledger_subgraph.subgraph(seeds, lookup, hops=8, collect="entity")
-        quantities = ledger_subgraph.subgraph(seeds, lookup, hops=8, collect="quantity")
-    finally:
-        mechanism_gate.set_graph(None)
-    # `collect` picks the population and nothing else: the walked graph is identical.
-    assert ([node["id"] for node in entities["nodes"]]
-            == [node["id"] for node in quantities["nodes"]])
-    assert len(entities["edges"]) == len(quantities["edges"])
-    assert {row["type"] for row in entities["propagation"]["ranked"]} == {"Lot", "Wafer"}
-    assert {row["type"] for row in quantities["propagation"]["ranked"]} == {"Quantity"}
-    # The declared ancestor both marked subjects descend from is the lineage answer.
-    origin = ledger_explorer.entity_id("Lot", {"lot": "ORIGIN"})
-    assert origin in entities["propagation"]["top_set"]
-    # Ranks, the top set and the trails travel; the reach that produced them does not.
-    # A magnitude reads like a probability and is not one — what tells a reader that a
-    # candidate was never reached from a control is the SIGN on its trails.
-    assert '"reach"' not in json.dumps(entities["propagation"])
-    for row in entities["propagation"]["ranked"]:
-        assert set(row) == {"id", "type", "label", "rank", "top", "tied",
-                            "incomparable", "evidence"}
-    try:
-        ledger_subgraph.subgraph(seeds, lookup, collect="Physics")
-    except ValueError as exc:
-        assert "collect must be one of" in str(exc)
-    else:
-        raise AssertionError("an unknown collect answered instead of refusing")
 
 
 def uneven_fixture():
@@ -531,46 +309,6 @@ def test_the_summary_query_asks_for_a_literal_jsonb_path():
     lookup.finding_summaries_for_entities([("Wafer", {"wafer": "W1"})], "both", 5)
     assert "'{position,x}'" in captured["sql"]
     assert "'{position,y}'" in captured["sql"]
-
-
-def test_a_finding_reaches_every_model_declared_for_its_kind_without_merging_them():
-    """The third declared edge: `finding_kind` names the model, the model names its target.
-
-    A void reaches the formation model's `void` AND the observation-bias model's
-    `void_observed`, and they stay two nodes.  Merging them would let a factor that only
-    explains why a void was SEEN wear a formation path, which is the confusion the two
-    models were split apart to prevent.
-    """
-    lookup = ledger_subgraph.InMemoryEvidenceLookup([observed_atom()])
-    seed = ledger_explorer.entity_id("Wafer", {"wafer": "WF-VOID"})
-    declaration = dict(MECHANISM_DECLARATION)
-    declaration["void_observation_bias"] = {
-        "role": "observation_bias", "finding_kind": "void", "target": "void_observed",
-        "nodes": ["post_bond_queue_h", "void_observed"],
-        "edges": [{"from": "post_bond_queue_h", "to": "void_observed", "dir": "u"}],
-    }
-    mechanism_gate.set_graph(declaration)
-    try:
-        graph = ledger_subgraph.subgraph(seed, lookup, hops=6)
-        answer = ledger_subgraph.subgraph(
-            next(node["id"] for node in graph["nodes"]
-                 if node["node_kind"] == "collection"),
-            lookup, hops=8, collect="quantity")
-    finally:
-        mechanism_gate.set_graph(None)
-    findings = [edge for edge in graph["edges"] if edge["predicate"] == "finding"]
-    labels = {node["id"]: node["label"] for node in graph["nodes"]}
-    assert {labels[edge["target"]] for edge in findings} == {
-        "void · void_formation", "void_observed · void_observation_bias"}
-    assert {edge["qualifiers"]["role"] for edge in findings} == {
-        "formation", "observation_bias"}
-    assert all(edge["basis"] == mechanism_gate.CONFIG_FILENAME for edge in findings)
-    # The delam model declares a different kind, so it is not drawn into a void's answer.
-    assert not any("delam" in labels[edge["target"]] for edge in findings)
-    # Seeding the finding is what makes the mechanism graph answerable from the finding
-    # side at all; before this edge the same call reached no Quantity whatsoever.
-    assert answer["propagation"]["state"] == "ranked"
-    assert answer["propagation"]["top_set"]
 
 
 def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
@@ -691,27 +429,6 @@ def test_each_undeclared_subject_type_seeds_on_its_own():
         assert ref["kind"] == "entity", subject_type
         assert ref["type"] == subject_type, subject_type
         assert ref["keys"] == keys, subject_type
-
-
-def test_both_generations_seed_together_in_one_request():
-    """Mixed, resolved the way `subgraph()` itself resolves a seed set.
-
-    Separately is not the same test as together: a per-seed refusal would fail the whole
-    request, so the mixed set is what a screen actually sends when a user picks a die and
-    a wafer in one investigation.
-    """
-    ids = {subject_type: ledger_explorer.entity_id(subject_type, keys)
-           for subject_type, keys in
-           list(MIXED_GENERATION_SEEDS.items()) + list(STILL_DECLARED_SEEDS.items())}
-    collection = ledger_subgraph.finding_collection_node_id(
-        "Wafer", STILL_DECLARED_SEEDS["Wafer"], "void", "CD-SEM", None)
-    seed_signs = ledger_subgraph._signed_seeds(
-        {"positive": list(ids.values()) + [collection], "negative": []})
-    seed_refs = {item: ledger_subgraph.decode_node_id(item) for item in seed_signs}
-    assert len(seed_refs) == len(ids) + 1
-    for subject_type, node_id in ids.items():
-        assert seed_refs[node_id]["type"] == subject_type, subject_type
-    assert seed_refs[collection]["kind"] == "collection"
 
 
 def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
@@ -865,3 +582,10 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
     events = [node for node in body["nodes"] if node["node_kind"] == "event"]
     assert len(events) == 1
     assert events[0]["source_event_state"] == "source_molecule"
+
+
+#: 🔴 NINE TESTS RETIRED HERE 2026-08-28, WITH THE NODE KINDS THEY MEASURED. They
+#: asserted finding points, finding collections, quantity nodes, value nodes, claim nodes,
+#: source-event nodes, the `collect` switch and the retired id prefixes -- every one of them
+#: a place the walk no longer has. What survives is the walk's own contract: declared
+#: entities, the edges between them, the budget and `truncated`.
