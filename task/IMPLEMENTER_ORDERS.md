@@ -16200,3 +16200,67 @@ has_dt          클라 «0»
   · client2 composition_panel.js · 좌석 하나 · 로드 요청 «2»
 ⏳ 소유자 판정 대기: «지금» 은퇴시키나, 마킹 walk 이 그 자리를 채운 «뒤»에 하나
 ```
+
+---
+
+# 🔴 소유자 판정 ① — 「웨이퍼에서도 조립이 보여야 한다」 (2026-08-27 20:1x)
+
+> 소유자: 「1 ㅇㅇ」 — ①을 «되게» 한다
+
+## 🔴 그런데 제가 총괄로서 적은 방법이 «틀렸습니다». 선언은 안 고칩니다
+
+제가 소유자께 「A: 선언에 반대 방향 참조를 넣는다」로 올렸는데, 착수 전에 문법을 읽어 보니
+**그 문법으로는 «반대 방향»을 적을 수가 없습니다. 그리고 적을 필요도 없습니다.**
+
+```
+참조는 «키 산수»입니다 — entity_references.targets_for(entity_type, keys)
+die 는 자기 mat_id 로 «담긴 통»의 이름을 만들 수 있습니다   -> 나가는 방향 OK
+wafer 는 die 의 키(x·y)를 «모릅니다»                        -> 반대 참조는 «못 적습니다»
+   (하나의 참조는 엣지 «하나»를 만듭니다. 다이는 «여럿»이라 애초에 참조의 모양이 아닙니다)
+```
+
+## ✅ 그런데 «선언은 이미 그 말을 하고 있습니다» — 코드가 한 방향으로만 읽습니다
+```
+선언   { "edge":"in_container",
+         "from": { "when": { "mat_type": "Wafer" } },
+         "to":   { "entity":"wafer@1", "keys": { "wafer": {"key":"mat_id"} } } }
+
+앞으로 읽기 (지금)   die keys -> {wafer: mat_id}                 = 통의 이름
+🔴 뒤로 읽기 (없음)  wafer keys -> die 의 subject_keys 조건
+                     mat_id = <그 wafer>  AND  mat_type = "Wafer"
+                     x · y 는 «자유» -> 그래서 여러 다이가 나온다. 그게 정확히 원하는 것
+```
+**뒤로 읽는 데 필요한 것이 선언에 «전부» 있습니다.** `from.when` 이 `mat_type`, `to.keys` 가 `mat_id`.
+
+## 지시 — 바뀌는 층 «하나», 선언 «0줄»
+```
+① server/ledger_api/entity_references.py 에 «읽는 방향 하나» 추가
+   sources_for(target_type, target_keys) -> [(edge_name, source_entity_type, subject_keys_filter)]
+   같은 references 선언을 «뒤로» 해석합니다. 새 문법 «없음»
+② server/ledger_api/ledger_subgraph.py 가 노드를 펼 때 그것을 씁니다
+   지금은 targets_for 만 부릅니다 (1442 근처)
+```
+### ⛔ 하지 않는 것
+```
+⛔ ledger_config.json 을 «건드리지 마십시오» — 라이브 선언은 총괄 소관이고, 이번엔 «고칠 게 없습니다»
+⛔ 새 선언 문법(reverse·backref 같은 낱말)을 만들지 마십시오
+⛔ vocabulary 에 in_container 를 넣지 마십시오 — 원자가 없는 이름입니다 (그 파일 머리가 그 이유를 적어 둡니다)
+⛔ follow 검증·카탈로그 — 이미 착지했습니다. 그대로 두십시오
+```
+### 🔴 착수 전에 «한 가지만» 재서 지시서에 적으십시오
+```
+뒤로 읽기는 «키 산수»가 아니라 «질의»입니다 — subject_keys 의 «부분 키» 조회입니다
+   예: subject_type='die' AND subject_keys @> {"mat_id":"SYN-CX-BW-001","mat_type":"Wafer"}
+🔴 그 질의가 인덱스를 타는지 EXPLAIN 으로 «한 번» 보고 지시서에 적으십시오
+   Seq Scan 이면 «멈추고 보고»하십시오 — 645,203 행을 홉마다 훑는 설계는 채택 안 합니다
+```
+### 게이트 «셋»
+```
+① 씨앗 wafer(SYN-CX-BW-001) · follow=in_container 만 -> 다이가 «나오는가» (지금 nodes 1 · edges 0)
+② 씨앗 wafer · follow=transfer+bonded_from+in_container -> 자재 «9종» 전부
+   (기준선: follow 없이 nodes 800 · edges 1,314 · 자재 9종 —
+    BW 001·003·004·005·006 · CW HBM-B-02 · CW LOGIC-A-01 · DT-01|1 · DT-02|2)
+   🔴 «집합»으로 비교하십시오. 개수만 같은 것은 통과가 아닙니다
+③ 그 요청의 노드 수가 follow 없을 때(800)보다 «적어야» 합니다 — 예산을 아끼는 게 목적입니다
+   ⚠️ 「1 노드라 줄었다」는 통과가 아닙니다. ②를 «먼저» 만족한 상태에서 셉니다
+```
