@@ -1,3 +1,52 @@
+# 📋 **LAYER 묶음 계수 — 진짜 소비자는 «두 줄»입니다. 다음 컨텍스트가 한 번에 끝냅니다** (구현자 10:5x)
+
+지시대로 v1 경계에 «안 걸리는» 다섯부터 잡으려고 첫 묶음(LAYER_*)을 셌습니다.
+
+## 계수 — grep 수 그대로
+```
+LAYER_CANONICAL · LAYER_ONTOLOGY · EDITABLE_LAYER  (vocabulary.py 밖)
+   ledger_admin.py:777   "editable_layer":  vocabulary.EDITABLE_LAYER     <- 카탈로그 «표시»
+   ledger_admin.py:778   "canonical_layer": vocabulary.LAYER_CANONICAL    <- 카탈로그 «표시»
+   scripts/migrate_ledger_config_drop_vocabulary_layer.py
+      🔴 «자기 사본»을 들고 있습니다 (:52  EDITABLE_LAYER = "ontology")
+         vocabulary 것은 «주석에서만» 언급 -> 이사 대상 아님
+   tests/test_ontology_config_explorer.py:2224  «독스트링 언급»
+vocabulary.py 안
+   EDITABLE_LAYER = LAYER_ONTOLOGY  <- 별칭 (지시대로 «지우고» 호출자를 본체로)
+   :748  layer 거절 규칙이 이 둘을 씁니다
+```
+**즉 옮길 코드는 «두 줄» + 파일 안의 거절 하나입니다.**
+
+## 🔴 그런데 계수 중에 나온 것 — 이 축은 «이미 은퇴 중»입니다
+```
+scripts/migrate_ledger_config_drop_vocabulary_layer.py 의 자기 설명:
+   「`layer` 키를 선언에서 «드롭»한다 — `ontology` 가 선언이 쓸 수 있는 «유일한 값»이었기 때문」
+```
+그러면 `LAYER_*` 는 「setup_bundle 로 옮길 것」이 아니라 **「그 마이그레이션이 끝나면 같이 죽는 것」**
+일 수 있습니다. 옮겨 놓고 다음 주에 지우면 왕복입니다.
+```
+확인할 것 «한 줄»   라이브 선언에 `layer` 키가 «아직 있나»
+   있으면   마이그레이션이 아직 안 돌았습니다 -> 옮기지 말고 «그 스크립트»를 먼저
+   없으면   이미 드롭됐습니다 -> :748 거절은 «도달 불가» -> 옮길 것이 아니라 «죽습니다»
+```
+제가 라이브 선언을 «열지 않으므로» 그 한 줄은 총괄이 보시는 편이 빠릅니다. 아니면
+「열어서 확인해도 된다」고 한 줄 주시면 읽기 전용으로 확인하고 바로 처리하겠습니다.
+
+## 🔴 컨텍스트 한계 — 여기서 넘깁니다
+이 세션이 아주 길어져서 다섯 심볼을 «한 번에» 끝낼 여유가 없습니다. 반쯤 옮기다 멈추면
+트리가 깨진 채로 남으므로, **시작하지 않고 계수만 남깁니다.** 다음 컨텍스트가 집을 수 있게
+필요한 것을 전부 위에 적었습니다:
+```
+남은 다섯   PROJECTION_ONLY_WORDS · LAYER_*(위 계수) · EDITABLE_LAYER(별칭, 지움)
+           · DECL_REFUSALS · ISSUED_TYPES
+미룬 셋     SIGNATURE_FIELDS · PREDICATES · ENTITY_TYPES  (v1 생사 판정에 걸림)
+게이트     심볼마다 ① 저장소 전체 grep -> 코드 0 (편집한 파일 «안»까지 · 0 아닌 것도
+           낼 수 있는 grep 인지 먼저 확인)  ② 그 다음 «불러» 본다
+커밋       트리 업로드와 «따로»
+```
+
+---
+
 # 🔴 **이사 착수 — `SIGNATURE_FIELDS` 가 «세 번째 갈래»입니다. 멈추고 적습니다** (구현자 10:3x)
 
 판별식(「답이 바뀌나 / 선언이 쓸 수 있는 것이 바뀌나 / 둘 다 아니면 멈춘다」)을 첫 심볼에 대니
