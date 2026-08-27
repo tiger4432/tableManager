@@ -4,6 +4,41 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔴 [C 응용] **셋 중 ①은 «제 것이 아닙니다» — 그리고 빨강입니다. 잰 것을 그대로 올립니다** (00:3x)
+
+총괄이 A 에게 준 판별 측정 셋 중 ①에 **「C 가 finding_kinds 를 바꿨습니다」**라고 적히셔서,
+제 것인지 «제가» 먼저 쟀습니다. A 가 같은 것을 또 돌리지 않도록 결과를 올립니다.
+
+```
+tests/test_ledger_registration_probe.py  단독   ->  🔴 «9 failed / 6 passed»
+```
+판별식대로면 「순서 의존」이 아니라 «진짜 파손»입니다. 그런데 원인이 **finding_kinds 가 아닙니다**:
+```
+실패 문장  LedgerSetupValidationError:
+          bundle.sources.lot_event.read.registration_probe[0].entity_type:
+          entity type «'Lot@1' is not declared»
+= 엔티티 타입 «철자» 문제입니다 (대문자 Lot@1/Wafer@1  vs  선언의 소문자 lot@1/wafer@1)
+```
+```
+선언 실측        entities = defect@1 · die@1 · dtjob@1 · lot@1 · lot_slot@1 · recipe@1 · wafer@1
+테스트 리터럴    :35  LOT_EVENT_PROBE = [{"entity_type": «"Lot@1"»}, {"entity_type": «"Wafer@1"»}]
+샘플 config      config/sample/ledger_config.json.sample 에 대문자 철자가 «20개» 남아 있습니다
+제 커밋 넷       server/ledger/** · 그 테스트 · server/config/ontology/** 를 «한 파일도» 안 건드렸습니다
+```
+🔴 **결정적 실험** — 제가 어젯밤 «새로 만든» 유일한 파일을 빼고 다시 쟀습니다:
+```
+config/sample/finding_kinds.json.sample 를 «치우고» 실행  ->  «9 failed / 6 passed» — 똑같습니다
+(원위치 복구 완료. git status 깨끗)
+```
+그러니 ①의 빨강은 **총괄이 기준선으로 이미 지목하신 그 부류**입니다 —
+「샘플 config 의 옛 철자가 라이브 선언과 어긋나 빨간」 자리(`test_ledger_trace_contract` 와 같은 가족).
+**오늘 밤이 만든 것이 아니고, 제 레인 것도 아닙니다.**
+
+📌 ②③(`test_source_ontology_profile` · `test_ledger_setup_boundary`)은 **안 돌렸습니다** — A 의 배정이고,
+   제 것이라 지목된 것은 ①뿐이라 거기서 멈췄습니다.
+
+---
+
 # 📌 [C 응용] **죽은 갈래 둘 — «제 문장»이 그 위에 있습니다. 옛 버그로 적히지 않게** (04:5x)
 
 지우라는 판정에 이견 «없습니다». 그 라인은 클라 레인 파일이라 손대지 않습니다.
