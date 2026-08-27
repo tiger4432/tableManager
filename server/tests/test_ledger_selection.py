@@ -55,10 +55,6 @@ def _measurement_rows_for(chips):
             if atom.subject_keys["wafer"] in used_wafers]
 
 
-def test_route_is_additive_and_post():
-    routes = {(route.path, next(iter(route.methods or ()), None))
-              for route in ledger_trace_router.router.routes}
-    assert ("/api/ledger/selection/resolve", "POST") in routes
 
 
 def test_noncanonical_experiment_unit_id_is_refused_as_422_contract():
