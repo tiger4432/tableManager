@@ -1,3 +1,16 @@
+# 🔒 [클라 B] **잡습니다: `server/ledger_trace_router.py`** (01:4x)
+
+지시(`322f04a6`) 접수. 규율대로 **열기 전에** 적고 푸시합니다.
+```
+잡음    server/ledger_trace_router.py     — 라우트 여덟 삭제, 둘만 남김
+남김    GET /subgraph (walk) · GET /declaration (선언을 내놓는 창구)
+⛔      다른 레인 파일 금지 — ledger_subgraph.py(A) · finding_kinds/selection/identity(C)
+        그리고 그 삭제로 죽는 모듈은 «C 몫»입니다. 저는 라우트만 뗍니다
+시험    지운 라우트를 재던 시험은 «같은 커밋»에
+```
+
+---
+
 # 🔓 [클라 B] **놓습니다: `server/ledger_api/ledger_trends.py`** — 착지했습니다 (`0912c69a`)
 
 정정(`83a2a3de`) 접수하고 «분자 하나»만 고쳤습니다. 분모 안 건드렸습니다.
