@@ -51,6 +51,24 @@ def decode_mark(mark_key):
     return {"wafer": wafer, "bonding_leg": bonding_leg}
 
 
+def _declared_entity(keys):
+    """The declared entity whose identity keys are exactly these, or `None`.
+
+    Asked of the declaration rather than written down here: `entities.<id>.keys` is the only
+    place that knows a wafer is identified by `wafer`, and a box whose declaration is absent
+    gets `None` and keeps the old spelling rather than a wrong one.
+    """
+    try:
+        from . import entity_references
+    except ImportError:                                            # pragma: no cover
+        from ledger_api import entity_references
+    wanted = set(keys)
+    for name in entity_references.declared_types():
+        if set(entity_references.identity_keys(name)) == wanted:
+            return name
+    return None
+
+
 #: 🔴 THE SUBJECT TYPE IS THE CALLER'S DECLARATION, NOT THIS MODULE'S CONSTANT.
 #: This held `SUBJECT_TYPE = "Wafer"` and every caller inherited it. On 2026-08-24 the
 #: ledger's type names became lowercase and that literal started matching ZERO rows --
@@ -76,7 +94,18 @@ def identity(wafer, bonding_leg, subject_type):
         #    produces this, so the two now collide on purpose.
         # ⚠️ `mark_key` stays until every reader carries the pair (`MARKING_CONTRACT` §10.4):
         #    the reading side moving first is what blanked the maps this morning.
-        "node_id": ledger_explorer.entity_id(subject_type, keys),
+        # 🔴 THE ID CARRIES THE DECLARED ENTITY, NOT THE AGGREGATION'S NAME.
+        # `subject_type` here is `WaferLeg` - the name of the AGGREGATE, which the
+        # screen shows and `identity.type` keeps. But the keys are a wafer's, and a
+        # node id built from a word the declaration does not know cannot meet the map
+        # or the candidate list on the same string. The entity is looked up rather
+        # than spelled, for the reason the note above gives: spelling it survives
+        # until the next rename.
+        # ⚠️ Two legs of one wafer therefore share this id - measured by the Lead
+        # PM across all 36 wafers, they ALREADY did, and `mark_key` is what tells the
+        # legs apart. Folding the seed collapses nothing that was not folded.
+        "node_id": ledger_explorer.entity_id(_declared_entity(keys) or subject_type,
+                                             keys),
         "keys": keys,
         "context": {"role": CONTEXT_ROLE, "bonding_leg": bonding_leg},
         "aggregation": {"kind": "void_by_experiment_unit", "finding_kind": "void"},

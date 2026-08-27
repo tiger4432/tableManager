@@ -30,15 +30,19 @@ def declaration(**overrides):
         "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
         "occurred_at_timezone": "Asia/Seoul",
         "occurred_at_basis": "claim_time",
-        "subject_types": ["Product", "Wafer"],
-        "register_entity_types": ["Product"],
+        # 🔴 WAS ["Product", "Wafer"] until 2026-08-27. Entity types come from the
+        # DECLARATION now, which names die/dtjob/lot/lot_slot/recipe/wafer - an undeclared
+        # type is refused one step earlier and every test below stops measuring its own
+        # subject.
+        "subject_types": ["lot", "wafer"],
+        "register_entity_types": ["lot"],
         "watermark": {"columns": ["updated_at", "row_id"]},
         "columns": {"row_identity": "row_id"},
         "emit": [{
             "rule": "coordinate_leg",
             "predicate": "has_param",
             "class": "observation",
-            "subject": {"type": "Product", "keys": {"product": "$base"}},
+            "subject": {"type": "lot", "keys": {"lot": "$base"}},
             "object": {"kind": "value",
                        "payload": {"param": "$leg", "value": "$x", "unit": "cell"}},
         }],
