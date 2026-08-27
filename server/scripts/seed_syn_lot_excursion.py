@@ -416,83 +416,6 @@ def _median(values):
     return values[n // 2] if n % 2 else (values[n // 2 - 1] + values[n // 2]) / 2.0
 
 
-def prove(db, kind: str = None):
-    """🔴 RULING CONDITION 2 - BOTH DIRECTIONS. Planted lots light up; the rest do not.
-
-    Asserting only the first would not distinguish a working grid from one that colours
-    everything, which is the same discipline the factor answer key follows.
-    """
-    import ledger_lots
-
-    table = lot_table(db, kind)
-    planted = {"%s%03d" % (base.BOND_LOT_PREFIX, lot) for lot in EXCURSIONS}
-    thresholds = sorted(ledger_lots.DEFAULT_THRESHOLDS, key=lambda t: t["at"])
-    first_at = thresholds[0]["at"]
-
-    report = {"lots": len(table), "planted_present": sorted(planted & set(table)),
-              "baselines": {}, "planted": {}, "unplanted_over_threshold": [],
-              "failures": []}
-    if not report["planted_present"]:
-        report["failures"].append(
-            "no excursion lot is in the data yet - this script has not been applied "
-            "(ruling condition 4: execution waits on the owner's approval)")
-
-    for aggregate in SCORED_AGGREGATES:
-        # 🔴 The baseline is the MEDIAN OF ROWS, `ledger_lots.BASELINE_MEDIAN_OF_ROWS`.
-        # Median and not mean is what stops three planted outliers from raising the very
-        # bar they are judged against - with 103 rows the median is still a normal lot.
-        baseline = _median([v[aggregate] for v in table.values()])
-        report["baselines"][aggregate] = baseline
-        if not baseline:
-            continue
-        for lot, values in sorted(table.items()):
-            if values[aggregate] is None:
-                continue
-            ratio = values[aggregate] / baseline
-            if lot in planted:
-                entry = report["planted"].setdefault(lot, {})
-                entry[aggregate] = {"value": values[aggregate], "baseline": baseline,
-                                    "ratio": ratio}
-            elif ratio >= first_at:
-                report["unplanted_over_threshold"].append(
-                    {"lot": lot, "aggregate": aggregate, "ratio": ratio})
-
-    for lot_number, spec in sorted(EXCURSIONS.items()):
-        lot = "%s%03d" % (base.BOND_LOT_PREFIX, lot_number)
-        entry = report["planted"].get(lot)
-        if entry is None:
-            continue
-        ratio = (entry.get("per_chip") or {}).get("ratio")
-        if ratio is None or ratio < spec["expect_min_ratio"]:
-            report["failures"].append(
-                "%s per_chip ratio %s < declared %s" % (lot, ratio, spec["expect_min_ratio"]))
-        level = 0
-        for threshold in thresholds:
-            if ratio and ratio >= threshold["at"]:
-                level = threshold["level"]
-        entry["level"] = level
-        if level < spec["expect_level"]:
-            report["failures"].append(
-                "%s reached level %d, declared %d" % (lot, level, spec["expect_level"]))
-
-    if report["unplanted_over_threshold"]:
-        report["failures"].append(
-            "%d unplanted lot/aggregate pair(s) crossed the first threshold - the grid "
-            "cannot tell an excursion from a normal lot"
-            % len(report["unplanted_over_threshold"]))
-
-    # The trend BREAK (ruling condition 3): the planted lots must also be the LATEST.
-    dated = [(v["last_at"], lot) for lot, v in table.items() if v["last_at"]]
-    if dated:
-        latest = [lot for _at, lot in sorted(dated)[-len(EXCURSIONS):]]
-        report["latest_lots"] = latest
-        if report["planted_present"] and set(latest) != planted & set(table):
-            report["failures"].append(
-                "the planted lots are not the latest by inspection time (%s) - the trend "
-                "break would not appear at the end of the series" % latest)
-    return report
-
-
 def prove_cause_connects(db, kind: str = None):
     """🔴 RULING CONDITION 1 - the grid's colour must lead somewhere.
 
@@ -530,28 +453,6 @@ def main():
         guard_database(db, args.allow_owner, writing=args.apply)
 
         if args.prove and not args.apply:
-            report = prove(db)
-            print("\n=== LOT EXCURSION ANSWER KEY ===")
-            print("lots on the grid: %d | excursion lots present: %s"
-                  % (report["lots"], report["planted_present"] or "NONE"))
-            for aggregate, baseline in sorted(report["baselines"].items()):
-                print("  baseline(%s, median of rows) = %s" % (aggregate, baseline))
-            for lot, entry in sorted(report["planted"].items()):
-                for aggregate in SCORED_AGGREGATES:
-                    cell = entry.get(aggregate)
-                    if cell:
-                        print("  PLANTED %s %-12s value %.4f / baseline %.4f = %.3fx"
-                              % (lot, aggregate, cell["value"], cell["baseline"],
-                                 cell["ratio"]))
-                print("  PLANTED %s -> conditional-format level %s"
-                      % (lot, entry.get("level")))
-            print("  unplanted lots over the first threshold: %d"
-                  % len(report["unplanted_over_threshold"]))
-            for aggregate, why in sorted(UNSCORABLE_AGGREGATES.items()):
-                print("  NOT SCORABLE %-12s %s" % (aggregate, why))
-            print("VERDICT: %s" % ("PASS" if not report["failures"]
-                                   else "PENDING/FAIL -> " + " | ".join(report["failures"])))
-
             cause = prove_cause_connects(db)
             print("\n=== THE CAUSE CONNECTS (grid -> reference view -> contrast) ===")
             if cause["entry"]:
@@ -621,10 +522,6 @@ def main():
         print("WROTE map_meta=%d bonding=%d runs=%d voids=%d atoms=%s"
               % (meta_n, bond_n, run_n, void_n, atom_result))
 
-        if args.prove:
-            report = prove(db)
-            print("answer key: %s" % ("PASS" if not report["failures"]
-                                      else report["failures"]))
     finally:
         db.close()
 

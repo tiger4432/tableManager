@@ -490,23 +490,6 @@ def test_rank_false_is_read_from_the_declaration_and_never_from_the_name():
     assert by_name["bond_lot"].rank is True
 
 
-def test_a_non_rankable_axis_is_still_fully_usable_for_marking():
-    """🔴 THE INVARIANT THE FIX MUST NOT BREAK. `rank: false` says 「요인이 아니다」, not
-    「축이 아니다」 — marking never ranks the axis it marked with, so `scope=wafer:…` and
-    the lot grid's `by=wafer` must go on resolving it."""
-    import ledger_lots
-    from ledger_api import ledger_walk_contrast
-    cfg = ledger_siblings.AxesConfig(_axes_with(rank=False), "<test>")
-    ledger_siblings.set_axes_config(_axes_with(rank=False))
-    try:
-        _source, axis = ledger_walk_contrast.resolve_marking_axis(cfg, "void", "wafer")
-        assert axis.name == "wafer" and axis.rank is False
-        _s2, axis2 = ledger_lots.resolve_row_axis(cfg, "void", "wafer")
-        assert axis2.name == "wafer"
-    finally:
-        ledger_siblings.set_axes_config(None)
-
-
 def test_the_cardinality_cap_is_declared_and_falls_back_to_the_shared_default():
     """The MEASURED half — the one that catches the axis nobody thought to flag."""
     assert ledger_siblings.FACTOR_DEFAULTS["high_cardinality_at"] == 200

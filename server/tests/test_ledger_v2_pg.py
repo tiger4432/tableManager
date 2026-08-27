@@ -34,7 +34,6 @@ from ledger.source_preparation import (
 )
 from ledger.store import CursorVersionConflict, LedgerStore
 from ledger_trace import DEFAULT_RESOLVER_CONFIG, coverage
-from ledger_structure import structure
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
 import virtual_join_config
@@ -324,7 +323,6 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
     try:
         cursor = case["store"].read_cursor(raw, "input_rows")
         cov = coverage(raw, config=DEFAULT_RESOLVER_CONFIG)
-        graph = structure(raw, config=DEFAULT_RESOLVER_CONFIG)
         walked = trace(
             "NO-LOT", lookup=SqlClaimLookup(raw, relation=schema.LEDGER_TABLE),
             config=DEFAULT_RESOLVER_CONFIG)
@@ -333,7 +331,6 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
     assert cursor["translator_ver"] == result.preview.translator_version
     assert cursor["cursor_value"] == dict(result.preview.cursor_value)
     assert cov["state"] == "ready"
-    assert graph["state"] == "ready"
     assert walked["hops"] and walked["terminal_reason"]
     with case["admin"].connect() as connection:
         assert connection.execute(text(

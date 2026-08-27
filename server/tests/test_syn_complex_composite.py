@@ -7,7 +7,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts")))
 
-from ledger_api import ledger_composition  # noqa: E402
 from ledger_api import ledger_selection  # noqa: E402
 import seed_syn_complex_composite as fixture  # noqa: E402
 
@@ -616,35 +615,6 @@ def test_core_wf_defect_layer_matches_physical_map_and_ledger_finding_coordinate
     assert {(a.object_payload["position"]["x"], a.object_payload["position"]["y"])
             for a in findings} == set(fixture.defect_area_cells())
     assert all("answer_key" not in a.object_payload for a in findings)
-
-
-def test_composition_reverse_projection_preserves_every_component_dt_and_core_process():
-    chip = fixture.FINAL_CHIPS[5]  # 15 layers
-    transfers = [a for a in fixture.transfer_atoms()
-                 if a.object_payload["component"]["final_chip_id"] == chip]
-    wafers = {a.subject_keys["wafer"] for a in transfers}
-    processes = [a for a in fixture.process_atoms() if a.subject_keys["wafer"] in wafers]
-    movement_rows = [(f"move-{i}", a.subject_keys, a.object_payload, a.occurred_at,
-                      a.source_raw_ref) for i, a in enumerate(transfers)]
-    process_rows = [(f"proc-{i}", a.subject_keys["wafer"], a.object_payload,
-                     a.occurred_at, a.source_raw_ref) for i, a in enumerate(processes)]
-    calls = iter((movement_rows, process_rows))
-    old_exists, old_fetch = ledger_composition.relation_exists, ledger_composition._fetch
-    try:
-        ledger_composition.relation_exists = lambda *_: True
-        ledger_composition._fetch = lambda *_args, **_kwargs: next(calls)
-        body = ledger_composition.composition(
-            object(), chip, now=datetime(2026, 8, 31, tzinfo=timezone.utc))
-    finally:
-        ledger_composition.relation_exists, ledger_composition._fetch = old_exists, old_fetch
-    assert body["state"] == "ready"
-    assert body["summary"]["component_count"] == 15
-    union = {dt["entity_id"] for component in body["components"]
-             for dt in component["dt_collections"]}
-    assert set(body["summary"]["dt_collection_ids"]) == union
-    assert all(component["upstream_process"]["evidence_ids"]
-               for component in body["components"])
-    assert {component["core"]["type"] for component in body["components"]} == set(fixture.CORE_TYPES)
 
 
 def test_browser_fixture_events_are_not_future_dated_at_acceptance_time():

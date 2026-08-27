@@ -11,7 +11,6 @@ from urllib.parse import quote
 from ledger_api import finding_kinds
 from ledger_api import ledger_siblings
 from ledger_api import ledger_identity
-from ledger_api import ledger_trends
 from ledger_trace import _fetch, relation_exists
 
 
@@ -30,10 +29,15 @@ def _is_declared(predicate):
         return False
     return str(predicate) in {str(key).split("@", 1)[0] for key in declared}
 
-#: The aggregation unit here is the SAME unit the trend grain declares, so its subject
-#: type is read from that declaration rather than restated. A literal in this file was
-#: exactly what went dark when the ledger's type names became lowercase.
-_AGGREGATION_SUBJECT_TYPE = ledger_trends.DEFAULT_GRAIN["subject_type"]
+def _aggregation_subject_type():
+    """The aggregate's subject type, asked of the DECLARATION.
+
+    It used to be read off `ledger_trends.DEFAULT_GRAIN`, which is gone with that module.
+    A literal in this file was exactly what went dark when the ledger's type names became
+    lowercase, so the name is looked up by the identity keys instead of spelled. Read
+    lazily: a box whose declaration is unreadable still imports.
+    """
+    return ledger_identity._declared_entity({"wafer": None}) or "wafer"
 
 
 LEDGER_RELATION = "ledger_events"
@@ -512,7 +516,7 @@ def _build_maps(connection, components, final_units, selected_focuses, finding_k
         if valid_ref.get("map_id"):
             valid_refs.add(valid_ref["map_id"])
         subject_identity = (ledger_identity.identity(
-            subject_wafer, subject_leg, _AGGREGATION_SUBJECT_TYPE)
+            subject_wafer, subject_leg, _aggregation_subject_type())
                             if subject_wafer and subject_leg else None)
         scope_id = (subject_identity["mark_key"] if subject_identity else
                     component_id or selection_id)
@@ -814,7 +818,7 @@ def resolve(connection, payload, now=None, relation=LEDGER_RELATION):
                                      for chip in final_chips],
                         "aggregation_units": [
                             ledger_identity.identity(wafer, leg,
-                                                     _AGGREGATION_SUBJECT_TYPE)
+                                                     _aggregation_subject_type())
                             for wafer, leg in sorted(selected_units)],
                         "final_chip_ids": final_chips,
                         "wafer_mark_keys": sorted(ledger_identity.encode_mark(wafer, leg)
