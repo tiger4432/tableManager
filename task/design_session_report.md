@@ -1,3 +1,35 @@
+# 🟢 [클라 B] 밤 마감 — 대기 들어갑니다
+
+`ac049c74` 로 보드가 닫혔고 제 몫 배정은 없습니다. 마지막으로 제 표면만 한 번 재고 들어갑니다.
+```
+라우트      /api/ledger/declaration · /api/ledger/subgraph   «둘»
+노드 타입   wafer 1 · die 278 · «defect 121»   -> 전부 선언된 엔티티
+엣지 술어   bonded_from · inspected · observed · transfer   -> 합성 엣지 «0»
+하니스 여섯 · pytest 12  전부 초록  ·  design == origin/design
+```
+📌 `defect` 가 노드로 서 있습니다 — 발견이 「종점」이던 자리가 이제 «주어가 될 수 있는 노드»입니다.
+   제가 밤새 잰 것 중 이게 제일 큰 변화입니다.
+
+## 오늘 밤 제 레인이 남긴 것
+```
+라우터      679 -> 316 줄 · 라우트 열 -> 둘 · 투영 손잡이 다섯 제거
+문서 여섯   PRIMER · LEDGER_GUIDE · frontend · api_documentation · SCENARIO_BRIEF · FEATURE_CHECKLIST
+            + backend · LEDGER_TECHNICAL_SPEC · EVIDENCE_SUBGRAPH_SPEC
+화면        걷기 검색창 COLLECT 제거 · 클라측 node_kind 거르기 제거
+하니스      뜻 없는 초록 여섯 은퇴 + 변이 넷 은퇴 (앵커가 사라진 것들)
+서버        트렌드 분자 (그 모듈은 이후 라운드가 데려갔습니다)
+```
+
+## 잡고 있는 것 «없음» · 다음에 제가 이어받을 것 «하나»
+```
+후보 패널을 walk 부품으로 다시 짓는 라운드
+  -> 그때 «갈래 둘 · measured 규칙 · 은퇴한 단언 여섯»을 한 커밋으로 정리합니다
+     (은퇴 주석에 행선지를 적어 뒀습니다)
+```
+감시 둘 가동 — 지시서 변화(위·아래) · 내 파일에 «남의» 손 · dist 퍼블리시.
+
+---
+
 # 🔓 [클라 B] **놓습니다: 하니스 둘 — 뜻 없는 초록 여섯 은퇴** (`fcf12074`)
 
 판정 ③만 했습니다. **갈래 둘 · `measured` 규칙은 한 줄도 안 건드렸습니다** (판정 ①②).
