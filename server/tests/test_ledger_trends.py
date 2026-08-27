@@ -85,12 +85,13 @@ def test_variable_kind_and_subtype_series_share_exact_mark_keys(monkeypatch):
     assert body["composition"]["included"] is False
     assert [row["id"] for row in body["trace_dimensions"]] == [
         "dt_trace", "core_trace"]
-    assert body["table"]["rows"][0]["traceability"] == {
-        "dt": {"state": "partial", "count": 1, "component_denominator": 2,
-               "evidence_ids": ["evidence:dt-1"]},
-        "core": {"state": "ready", "count": 2, "component_denominator": 2,
-                 "evidence_ids": ["evidence:core-1", "evidence:core-2"]},
-    }
+    # 🔴 THE TRACE IS ALWAYS ABSENT SINCE 2026-08-28. The query that produced
+    # `ready`/`partial` began `WHERE predicate = 'transferred'`, and that word is not
+    # in the declaration's vocabulary, so nothing can emit it. The states these lines
+    # asserted were reachable only from synthetic rows fed to a stubbed `_fetch`.
+    absent = {"state": "absent", "count": 0, "component_denominator": 0,
+              "evidence_ids": [], "reason": "final_component_transfer_absent"}
+    assert body["table"]["rows"][0]["traceability"] == {"dt": absent, "core": absent}
     assert body["finding_kinds"][0]["metrics"][2] == {
         "id": "found_rate", "label": "발생 칩비", "state": "ready",
         "numerator": "found_chip_count", "denominator": "scan_denominator"}
@@ -126,10 +127,12 @@ def test_scanned_clean_reference_is_explicit_zero_with_denominator(monkeypatch):
     assert all(p["value"]["scan_denominator"] == 64 for p in clean)
     assert all(p["value"]["found_rate"] == 0 for p in clean)
     assert len(body["table"]["rows"]) == 12
-    assert all(row["traceability"]["core"]["state"] == "ready"
-               for row in body["table"]["rows"])
-    assert all(row["traceability"]["dt"]["state"] == "partial"
-               for row in body["table"]["rows"])
+    # 🔴 THE TRACE IS ALWAYS ABSENT SINCE 2026-08-28. The query that produced
+    # `ready`/`partial` began `WHERE predicate = 'transferred'`, and that word is not
+    # in the declaration's vocabulary, so nothing can emit it. The states these lines
+    # asserted were reachable only from synthetic rows fed to a stubbed `_fetch`.
+    assert all(row["traceability"][side]["state"] == "absent"
+               for row in body["table"]["rows"] for side in ("core", "dt"))
 
 
 def test_table_uses_keyset_cursor_and_limit_is_not_domain_cardinality(monkeypatch):
@@ -222,10 +225,10 @@ def test_sql_is_time_bounded_keyset_paged_and_database_downsampled():
     assert "LIMIT %(page_size)s" in table_sql
     assert "(max(occurred_at), wafer, bonding_leg) <" in table_sql
     assert "OFFSET" not in table_sql.upper()
-    trace_sql = ledger_trends._traceability_sql()
-    assert "occurred_at >= %(from)s" in trace_sql
-    assert "jsonb_to_recordset(%(page_units)s::jsonb)" in trace_sql
-    assert "predicate = 'transferred'" in trace_sql
+    # 🔴 THE TRACE QUERY RETIRED 2026-08-28 - it could only ever return nothing, so
+    # there is no third SQL to time-bound. What this test guards, it still guards for the two
+    # that remain.
+    assert not hasattr(ledger_trends, "_traceability_sql")
 
 
 def test_the_numerator_is_a_declared_expression_not_a_fixed_one():

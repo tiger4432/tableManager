@@ -532,59 +532,6 @@ LEFT JOIN observed o
 GROUP BY {_qualified(grain, "p")}, p.last_at, pop.kind
 ORDER BY p.last_at DESC, {_qualified(grain, "p", " DESC")}, pop.kind
 """
-def _traceability_sql():
-    """Trace only final-component evidence for the already bounded table page."""
-    return """
-WITH final_components AS MATERIALIZED (
-    SELECT object_payload->'to'->'keys'->>'base_wafer_id' AS wafer,
-           object_payload->'to'->'keys'->>'bonding_leg' AS bonding_leg,
-           object_payload->'component'->>'final_chip_id' AS final_chip_id,
-           object_payload->'component'->>'component_id' AS component_id,
-           NULLIF(subject_keys->>'wafer', '') AS core_wafer,
-           id
-    FROM ledger_events e
-    JOIN jsonb_to_recordset(%(page_units)s::jsonb)
-      AS u(wafer text, bonding_leg text)
-      ON u.wafer = e.object_payload->'to'->'keys'->>'base_wafer_id'
-     AND u.bonding_leg = e.object_payload->'to'->'keys'->>'bonding_leg'
-    WHERE predicate = 'transferred'
-      AND occurred_at >= %(from)s AND occurred_at < %(to)s
-      AND object_payload->'to'->>'type' = 'bond_layer'
-      AND NULLIF(object_payload->'component'->>'component_id', '') IS NOT NULL
-), component_events AS MATERIALIZED (
-    SELECT f.wafer, f.bonding_leg, f.component_id, f.core_wafer,
-           e.id,
-           CASE WHEN e.object_payload->'from'->>'type' = 'dt_slot'
-                  OR e.object_payload->'to'->>'type' = 'dt_slot'
-                  OR e.object_payload->'from'->'keys' ? 'dt_lot'
-                  OR e.object_payload->'to'->'keys' ? 'dt_lot'
-                THEN true ELSE false END AS has_dt
-    FROM final_components f
-    JOIN ledger_events e
-      ON e.predicate = 'transferred'
-     AND e.occurred_at >= %(from)s AND e.occurred_at < %(to)s
-     AND e.object_payload->'component'->>'component_id' = f.component_id
-     AND e.object_payload->'component'->>'final_chip_id' = f.final_chip_id
-), dt_components AS MATERIALIZED (
-    SELECT wafer, bonding_leg, component_id, min(id::text) AS evidence_id
-    FROM component_events WHERE has_dt
-    GROUP BY wafer, bonding_leg, component_id
-)
-SELECT f.wafer, f.bonding_leg,
-       count(DISTINCT f.component_id) AS components,
-       count(DISTINCT f.component_id) FILTER (WHERE f.core_wafer IS NOT NULL) AS core_components,
-       count(DISTINCT d.component_id) AS dt_components,
-       array_agg(DISTINCT f.id::text) FILTER (WHERE f.core_wafer IS NOT NULL) AS core_evidence,
-       array_agg(DISTINCT d.evidence_id) FILTER (WHERE d.component_id IS NOT NULL) AS dt_evidence
-FROM final_components f
-LEFT JOIN dt_components d
-  ON d.wafer = f.wafer AND d.bonding_leg = f.bonding_leg
- AND d.component_id = f.component_id
-GROUP BY f.wafer, f.bonding_leg
-ORDER BY f.wafer, f.bonding_leg
-"""
-
-
 def _identity(unit, subject_type):
     # The mark layer still takes the axis values positionally; that positional contract
     # is what fences the axis names, and it is the node-id step that retires it.
@@ -664,33 +611,24 @@ def _make_table(rows, limit, grain):
             "truncated": truncated, "next_cursor": next_cursor}, visible
 
 
-def _trace_state(count, total):
-    if not count:
-        return "absent"
-    return "ready" if count == total else "partial"
+def _attach_traceability(table):
+    """Every row's DT/Core trace, which is `absent` and says why.
 
+    🔴 THE QUERY BEHIND THIS RETIRED 2026-08-28, AND IT WAS DEAD BY DECLARATION, NOT BY
+    TODAY'S DATA. It began `WHERE predicate = 'transferred'`, and `transferred` is not in the
+    declaration's vocabulary - measured: 11 followable words and it is not one of them - so no
+    translator can emit it and no row could ever match. Measured on the live ledger the same
+    day: 0 of 645,203 atoms carry an `object_payload.component`, which the chain also required.
+    So the response is unchanged; what leaves is a query that could only ever return nothing.
 
-def _attach_traceability(table, units, rows, arity):
-    by_unit = {}
-    for raw in rows:
-        unit, rest = _split(raw, arity)
-        total, core_count, dt_count, core_evidence, dt_evidence = rest
-        total, core_count, dt_count = int(total or 0), int(core_count or 0), int(dt_count or 0)
-        by_unit[unit] = {
-            "dt": {"state": _trace_state(dt_count, total), "count": dt_count,
-                   "component_denominator": total,
-                   "evidence_ids": sorted(f"evidence:{value}" for value in (dt_evidence or []))},
-            "core": {"state": _trace_state(core_count, total), "count": core_count,
-                     "component_denominator": total,
-                     "evidence_ids": sorted(f"evidence:{value}" for value in (core_evidence or []))},
-        }
-    for row, unit in zip(table["rows"], units):
-        row["traceability"] = by_unit.get(unit, {
-            "dt": {"state": "absent", "count": 0, "component_denominator": 0,
-                   "evidence_ids": [], "reason": "final_component_transfer_absent"},
-            "core": {"state": "absent", "count": 0, "component_denominator": 0,
-                     "evidence_ids": [], "reason": "final_component_transfer_absent"},
-        })
+    ⚠️ `reason` still names the missing thing rather than the missing query, because a
+    reader needs to know WHAT is absent. The day `transferred` is declared and emitted, this
+    is where the trace comes back - rebuilt on the declaration, not restored from here.
+    """
+    absent = {"state": "absent", "count": 0, "component_denominator": 0,
+              "evidence_ids": [], "reason": "final_component_transfer_absent"}
+    for row in table["rows"]:
+        row["traceability"] = {"dt": dict(absent), "core": dict(absent)}
     return table
 
 
@@ -761,10 +699,6 @@ def trends(connection, kinds=None, window=None, cursor=None, limit=None,
     table_rows = _fetch(connection, _table_sql(bool(decoded), plan), params)
     table, units = _make_table(table_rows, page_limit, plan)
     page_units = [dict(zip(plan.names, unit)) for unit in units]
-    trace_rows = (_fetch(connection, _traceability_sql(), {
-        "from": applied.start, "to": applied.end,
-        "page_units": json.dumps(page_units, separators=(",", ":"))})
-                  if page_units else [])
-    _attach_traceability(table, units, trace_rows, len(plan.names))
+    _attach_traceability(table)
     state = STATE_READY if series_rows or table["rows"] else STATE_EMPTY
     return dict(base, state=state, series=_make_series(series_rows, plan), table=table)

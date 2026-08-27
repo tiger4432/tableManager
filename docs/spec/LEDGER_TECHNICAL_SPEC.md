@@ -1121,9 +1121,10 @@ subtype 수를 고정하지 않고 `finding_kinds[]`·`series[]`로 내며, 모�
 실제 `applied_kinds[]`를 분리한다. 선언 없는 종류, 명시적 빈 선택, 비활성 종류는 SQL 전에
 거절하며 사용자 SQL을 실행하지 않는다.
 Trend Table의 DT/Core 추적 열은 응답 `trace_dimensions[]` 선언과 행별
-`traceability.{dt,core}`로 제공한다. Final Bond Wafer에 명시 귀속된 `transferred` component만
-분모로 삼아 `ready|partial|absent`, count, component denominator, evidence ID를 계산한다.
-page wafer+LEG와 같은 시간창으로 유계화하며 finding 부재를 추적 부재로 해석하지 않는다.
+`traceability.{dt,core}`로 제공한다. 🔴 그 열은 «항상 `absent`»이고 사유는 `final_component_transfer_absent`이다 — 계산하던
+질의가 2026-08-28에 은퇴했다. 뿌리가 `predicate = 'transferred'`인데 그 술어는 선언의
+`vocabulary`에 «없어서» 어떤 번역기도 발화할 수 없다(원장 실측 645,203 중 component
+페이로드 «0»). `transferred`가 선언되는 날 이 열은 «선언 위에서 다시» 만든다.
 
 `mark_key`는 접두 뒤에 canonical UTF-8 JSON 배열의 unpadded base64url을 붙이고,
 decode 뒤 canonical 재인코딩이 일치해야 하므로 구분자 충돌이 없다.
