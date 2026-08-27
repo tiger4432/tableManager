@@ -1,77 +1,26 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-21 — 이 라운드에 대조한 것은 **Source-of-truth 목록과 §3.10의 경계 표시뿐**이다(`setup_version: 5`·section 셋 반영). 직전 2026-08-19 라운드가 대조한 것은 §3.8·§3.9·§3.11의 은퇴 서술이다. 나머지 절은 2026-08-17 Ledger v2 2단계 malformed-safe 전수 교차검증 `IN_REVIEW` / `NOT_APPROVED`; 현행 실행 경로 `FROZEN_FOR_REDESIGN` — 코드 대조 | **Owner:** Server / Ledger
-> **Source-of-truth:** `server/ledger/schema.py`(DDL) · **`server/ledger/setup_bundle.py`**(🔴 **[2026-08-21] 단일 `ledger_config.json` 문법 — `setup_version: 5`, 필수 section **셋**(`LOGICAL_SECTIONS` = `vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`. 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, `source_preparers`·`mappers`·`profiles` 셋은 본문이 소스 안으로 들어가며 은퇴했다. 🔴 **`packs`도 그 셋에 없다**(`9b6c5da`) — Claim이 선언하던 Role·`emit`을 `setup_bundle.predicate_claim`이 술어에서 도출하고, 문장은 `bind.mappings.<문장>.predicate`로 술어를 직접 댄다. **`tables`도 그 셋에 없다** — 물리 스키마의 정본은 `server/config/table_config.json` 하나다. `manifest.json` 다섯 파일 모양은 은퇴했고, 이 셋업은 이제 **백필 실행 경로에 연결돼 있다**) · `server/ledger/setup.py`(로드 경계 `load_setup` — 구 `cutover_v2.py`/`load_cutover_setup`은 삭제) · `server/ledger/vocabulary.py`(어휘·서명·**걷기 선언**·**롤업 선언** — 🔴 **코드 절반**) · **`server/config/ledger_vocabulary.json`**(🔴 **선언 절반 · `.sample` 폴백 없음**) · `server/ledger/config.py`(수동 문법 검증) · **`server/ledger/source_profile.py`**(현행 동결 Profile 계약) · **`server/ledger/source_profile_builtins.py`**(현행 동결 등록 데이터) · **`server/ledger/source_contract.py`**(선언·번역기·live vocabulary 결합 검사) · **`server/ledger/roleframe.py`**(RoleFrame compile · 범용 mapper · `SentenceShape`/`ProfileSentences`) · ⚰️ **`translator_pattern.py`·`declared_translator.py`는 트리에 없다**(`e47d325`로 번역기 다섯과 함께 삭제 — §3.8·§3.9의 그 서술은 은퇴한 경로다) · `server/ledger/store.py`(쓰기) · `server/ledger_trace.py`(해결·보행·롤업 철자) · `server/ledger_structure.py`(유형 수준 읽기) · `server/ledger_kinds.py`(종류 목록)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Server / Ledger
+> **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/setup_bundle.py`(선언 검증) ·
+> `server/config/ontology/ledger_config.json`(선언 자체)
 >
-> 🔴 **[2026-08-23] 위 목록의 일부는 «얼어 있다» — 은퇴 울타리 안이다.** 소유자 순서가
-> ① 셋업 완주 → ② 응용 → ③ 은퇴이고, ③이 데려갈 모듈이 **파일 단위로 측정돼 목록으로**
-> 그어졌다(파일 «이름» 글롭으로는 넷이 빠져나갔다). 얼어 있는 것: `server/ledger_trace.py` ·
-> `server/ledger_trace_router.py` · `server/ledger_admin.py` · `server/ledger/config.py` ·
-> `server/ledger_explorer.py` · `server/ledger_structure.py` · `server/ledger_journey.py` ·
-> `server/ledger_lots.py`(뒤의 넷이 resolver·어휘·계보 술어를 데려간다). **살아 있는 것**:
-> `ledger_subgraph` · `ledger_catalog` · `ledger_composition` · `ledger_selection` ·
-> `ledger_siblings` · `ledger_trends`(원장 결합이 SQL 헬퍼 둘뿐이다). 🔴 **얼어 있는 모듈의
-> 계약은 «기록»이지 갱신 대상이 아니다 — 그 위에 새 일을 얹지 않는다.** 아래 §4.x의 그 라우트
-> 서술은 이 표시와 함께 읽는다. 목록의 정본은 [PROJECT_STATUS](../process/PROJECT_STATUS.md)의
-> 2026-08-23 10:3x 블록.
+> 🔴 **이 헤더에 라운드 기록을 쌓지 마십시오.** 변경 이력은 [`docs/history/`](../history/)가 소유합니다.
 >
-> **이번 라운드 (2026-08-15 3차 · 넷째 문법 `declared` + 뿌리 키 롤업 — R-2026-08-15-N ② · R-2026-08-15-O · 갱신 트리거 ②③⑥⑦)**
-> **코드 대조 기준 리비전은 `8c236bc`다.**
-> **§3.8 신설**: 소스 문법이 **넷**이 됐고 넷째는 🔴 **파이썬 클래스가 «없다»** — 행→원자 사상이 `emit` 선언 그 자체다.
-> 계약으로 옮겨 적을 것 넷: **`occurred_at_basis`가 필수이고 기본값이 없으며**(R-…-N ②) `row_created`면 **value payload에 실려 원자에서 읽힌다** ·
-> **각 `emit` 규칙의 `rule` 이름이 그대로 파생 이름**이라 provenance가 `#slot_preserving`과 **똑같이 질의된다**(§3.5 ③) ·
-> **`when`은 닫힌 집합에서 «정확히 하나»**(0개·2개·오타 전부 거절 — 무시된 연산자는 조건을 «항상 참»으로 만든다) ·
-> **`"$col"`이 없는 컬럼을 부르면 «거절»**(빈 값으로 풀지 않는다).
-> **§3.7-septies 신설**: `ENTITY_TYPES`가 서명 필드 **둘**(`rolls_up_to`·`root_key`)을 얻었고 🔴 **주어 스코프 읽기는 뿌리 키로 롤업한다** —
-> 실측 42개 원자가 웨이퍼 스코프 조회에서 **안 보이던** 간극을 메운다(**응답 «형태»는 한 바이트도 안 바뀌었다**).
-> 🔴 **§3.7-sexies ⑨가 «거짓이 됐다»** — 「등재한 낱말을 발화할 번역기가 없다」는 `declared`가 닫았다.
-> ⚠️ **`derivation`(R-M ⑤)은 그것과 «다른 것»이고 여전히 미구현**이다 — 섞으면 3류 규율이 2류 주장에 붙는다.
+> ## 🏛️ 기둥 둘 — 이 문서 전체가 그 위에 선다
 >
-> **직전 라운드 (2026-08-15 2차 · 어휘가 «층»으로 갈렸다 — R-2026-08-15-M · 갱신 트리거 ⑦·⑧)** —
-> **§3.7-sexies 신설**: 정본이 둘(코드 `PREDICATES` + 선언 `ledger_vocabulary.json`)이고 **묻는 쪽은 전부 병합 뷰 `all_predicates()`를 읽는다**
-> (`emittable()`이 모듈 레벨 `EMITTABLE` frozenset을 **대체**했다 — 상수는 import 시점에 얼어붙어 선언을 영원히 못 본다).
-> 🔴 **`.sample` 폴백이 «없는 것»이 판정이고**(샘플이 로드되면 아무도 선언 안 한 낱말이 닫힌 어휘에 들어간다),
-> 🔴 **`traversable`은 «키의 존재»까지 요구**하며(없으면 「생각 안 했다」와 `None`이 같은 선언이 된다),
-> 🔴 **삭제가 없고 `status: retired`뿐**이다(은퇴는 발화를 막지 읽기를 막지 않는다 · DELETE 라우트 0개가 단언된다).
-> **§4.7 ⑪ 가산**: `/structure`의 술어 행마다 `origin: code|config`. ⚠️ **정준 층과 개체 타입은 여전히 코드다** —
-> 열린 것은 ontology 층 «술어»뿐이고, 넷째 문법 `derivation`은 번역기가 없어 **오늘 등재한 낱말을 발화할 것이 없다**(resolve가 그렇게 보고한다).
+> ```
+> ① 원장은 «선언» 위에 서 있다
+>    정본은 «하나» — server/config/ontology/ledger_config.json (setup_version 5)
+>    그 파일의 entities «여섯» · vocabulary «열» 이 무엇에 대해 무엇을 말할 수 있는지를 «전부» 정한다
+>    실측 2026-08-27: 원자 645,203 전부 그 선언에서 났고 source_event_state 가 모두 source_molecule 이다
+> ② 답은 «walk» 이 한다
+>    읽기측의 질문은 「마킹한 노드에서 걸어 닿는 하위 그래프」 하나이고, 차트는 그것을 보는 창이다
+>    갈래를 늘리는 대신 follow / collect 선언을 바꾼다
+> ```
 >
-> **직전 라운드 (2026-08-15 · R&D selection 계측 비교)** — `processed_with` required가
-> `step/recipe`로 축소되고 categorical occurrence만 비교한다. 닫힌 어휘에 `measured`
-> (`since:4`)가 열렸으며 상태별 value/run 조건과 무값 상태의 value 금지를 gate가 집행한다.
-> `/selection/resolve`는 원값·상태 수·분모·mark/evidence를 보존한다.
->
-> **직전 라운드 (2026-08-14 3차 · 관측 번역 — R-2026-08-14-D + R-2026-08-14-E ⓐ · 갱신 트리거 ⑦·⑧)** —
-> **§3.7 어휘가 «열하나»**(`observed` 하나만 추가 — `since: 3`, subject `Wafer`, `value` 목적어의 `required`에 🔴 **`run_uid`**.
-> 🔴 **짝인 `measured`는 «일부러» 미등재**이고 그 부재가 어휘 성장 규율의 적용이다) ·
-> **§3.7-quinquies 신설**(🔴 **걷기 의미론이 코드 목록에서 «선언»으로 올라갔다** — `traversable` 3상태(`True`/`False`/**`None`**)와 `direction`,
-> 양방향 로드 시점 검사. **`LINEAGE_PREDICATES`는 이제 파생물**이고 **동작 불변이 단언돼 있다**. 🔴 **`degree_cap`은 R-E가 요구했으나 «미선언»** —
-> 집행 지점이 재귀 CTE 안이라 지금 선언하면 R-2026-08-13-D의 미끼 필드가 된다) ·
-> **§4.8 신설**(`GET /api/ledger/kinds`의 **원장 위치 필드 다섯** — 🔴 **불리언 하나로는 「선언 없음」과 「백필 미실행」이 구별되지 않았다**) ·
-> **§5.5-bis 신설**(관측 번역 실측 — **102,177원자 · 거절 0 · 불완전 0**) · **§5.7 정정**(🔴 **「결함 관측은 원장에 아예 없다」가 «거짓»이 됐다**).
->
-> **직전 라운드 (2026-08-14 2차 · 구조 뷰 — 읽기 라우트 하나 · 갱신 트리거 ⑦)** — **§3.7-quater 신설**(🔴 **`label_ko`가 «서명 필드»로
-> `ENTITY_TYPES`·`PREDICATES` 전 항목에 붙었다** — 낱말은 하나도 안 늘고 안 줄었으며 서명 «의미»도 안 바뀌었다. **집행 지점은 단위 테스트 하나**이고,
-> 읽는 쪽이 폴백하므로 그 테스트 말고는 아무것도 빨개지지 않는다) · **§4.7 신설**(`GET /api/ledger/structure` 응답 계약 —
-> 🔴 **손으로 적은 노드·엣지 목록이 없다**(생성 + 병합) · 🔴 **상태 낱말 다섯을 «필드로» 낸다** · 🔴 **`atoms: 0` ≠ `atoms: null`** ·
-> 🔴 **창은 건수만 좁히고 «선언»은 절대 안 좁힌다** · 층 둘(`ledger`·`mechanism`, M4는 그날 `absent` — **이후 착지, §4.7 ⑤의 정정이 현행**)) ·
-> **§5.7 신설**(센서스 비용과 **크기 게이트** — 캐시가 아니다. ⚠️ **버려진 SQL 철자의 비교값과 수가 겹치니 인용 전에 라벨을 볼 것**).
->
-> **직전 라운드 (2026-08-14 · 어휘 확장 · 제품 소유자 판정)** — **§3.7 신설**(닫힌 어휘 계약 — **일곱에서 아홉**: `processed_with`·`has_param`,
-> 새 개체 타입 **`Recipe`**(🔴 `rev`가 **subject 키 재료**), 그리고 **`value` 목적어의 `required` 검사**가 서명에 **집행 지점**을 붙였다) ·
-> **§4.1-bis 신설**(🔴 **「실측이 설정값을 이긴다」에 랭킹 코드가 «한 줄도» 없다** — 계급 경계가 공짜로 사준 것이고, 그 사실이 계약이다).
-> 설계 근거는 [architecture/PHYSICS_ONTOLOGY_SETUP §2·§3](../architecture/PHYSICS_ONTOLOGY_SETUP.md).
->
-> **직전 라운드 (2026-08-14 · `92547c3` · R-2026-08-13-H-bis)** — 🔴 **§3.3에 있던 「의도적으로 남긴 모양 셋」이 거짓이 됐다.**
-> 셋 다 은퇴했고 **§3.3-ter 신설**이 그 자리를 대신한다. 뒤집을 때 틀리기 쉬운 두 곳:
-> ① **`screen_molecule`이 「언제나 raise」가 아니다** — 거절만 예외이고 **정당한 무발화의 `[]`는 반환으로 남았다**(테스트로 못박힘) ·
-> ③ **셋째는 오늘 «배선»되지 않았다** — 번역기 하나, `backfill.run`의 호출자는 자기 CLI `main()`뿐이라 **동작 변화 0**이고
-> 가치는 미래 작성자가 맞을 `RuntimeError` 하나다. §1.5-bis에 **`reasons` 필수** 행 추가, §3.3-bis의 표 두 행 정정.
->
-> **그 앞 라운드 (2026-08-13 5차)** — §1.5 커서가 **열둘 → 열셋**(`refusal_reasons`)이고 **§1.5-bis 신설** ·
-> **§3.3-bis 신설**: 「원자 하나가 나쁘면 분자 전체」가 **어느 파편에서든**으로 승격됐다(`f313279` · R-H) ·
-> **§3.5-bis 신설**: `subject_types` 복수 allow-list가 **문다**(`eb1ae8b` · R-D) ·
-> **§6.4-bis 신설**: `/coverage` 응답 확장과 `refusals_unaccounted`의 **부호 계약**(`0198e7e` · R-F).
+> 🔴 **정본이 «둘»이던 시절은 끝났다.** 코드가 낱말 목록을 들고 있지 않다 —
+> 그 모듈도, 그것을 늘리던 운영자 확장 파일도, 둘을 병합해 보여 주던 뷰도 디스크에 없다.
+> 이 문서에서 「코드와 선언 둘에게 물어본다」로 읽히는 문장을 만나면 그것은 낡은 것이다.
 
 > **문서 셋의 분업**
 > | 문서 | 소유 |
@@ -228,7 +177,7 @@ override 카운트가 과소보고된 QA D-1.)
 | `idx_ledger_subject_lot` | `((subject_keys->>'lot'), predicate)` | `ledger_trace`의 재귀 혈통 보행(`subject_keys->>'lot' = :lot AND predicate = ANY(...)`) | ⚠️ **소스에 기록되지 않았다.** 총 673에서 나머지 셋을 빼면 ≈59 B/원자인데 이는 **산술이지 측정이 아니다** — 인용 전 실측할 것 |
 | `idx_ledger_register` | `(subject_type, subject_keys) WHERE predicate='register'` | `store.existing_registrations` — 페이지당 1질의. 개체마다 조회하면 천만 행 백필이 **2차식**이 된다 | **16.6 B/원자, 그리고 감소 중**(부분 인덱스라 register는 O(개체), 테이블은 O(원자)) |
 | `idx_ledger_register_search` | `GIN ((subject_keys::text) gin_trgm_ops) WHERE predicate='register'` | `GET /api/ledger/entities?q=`의 모든 등록 타입 contains 검색. 인덱스가 없으면 소비자가 전량 JSON 스캔을 **거절**한다 | 개발 DB 자식 인덱스 합계 **656 kB**(2026-08-15 실측). register 개체 수에 비례하며 전체 원자 수로 환산하지 않는다 |
-| `idx_ledger_subject_entity` | `(subject_type, subject_keys)` | `GET /api/ledger/explore_entity`의 구조화된 exact subject identity frontier join | 개발 DB 자식 인덱스 합계 **13 MB**(2026-08-15 실측). 모든 원자를 싣는 대가이며 generic entity 탐색의 JSON 전량 스캔을 막는다 |
+| `idx_ledger_subject_entity` | `(subject_type, subject_keys)` | 구조화된 exact subject identity 조회 (🔴 종전 이 칸이 대던 `/explore_entity` 는 «없다» — 지금 이 인덱스를 쓰는 것은 걷기의 씨앗 해소다) frontier join | 개발 DB 자식 인덱스 합계 **13 MB**(2026-08-15 실측). 모든 원자를 싣는 대가이며 generic entity 탐색의 JSON 전량 스캔을 막는다 |
 | `idx_ledger_source_event` | `(source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL` | `/api/ledger/subgraph`의 Event→Claim exact batch | 가격 재측정 대기. 기존 파티션에는 child별 CONCURRENTLY 후 parent ATTACH |
 | `idx_ledger_object_entity` | `((object_payload->>'type'), (object_payload->'keys')) WHERE object_kind='entity_ref'` | `/api/ledger/subgraph`의 Entity←object Claim exact reverse lookup | 가격 재측정 대기. JSON text 전량 스캔으로 강등 금지 |
 
@@ -447,210 +396,72 @@ PostgreSQL이 jsonb를 jsonb와 **의미적으로** 비교하고 쓰는 쪽은 �
    조용한 UTC 폴백은 방금 고친 결함을 그대로 재현한다. ⚠️ **`Asia/Seoul`은 런타임에 IANA tzdata를 찾는다**
    (`UTC`는 안 찾았다) → `tzdata`가 **배포 의존성**이다.
 
-### 3.7 닫힌 어휘 계약 — **일곱 → 아홉 → 열하나 → 열둘** (2026-08-14 3차 · 제품 소유자 판정 + R-2026-08-14-D · 2026-08-15에 `measured`)
+### 3.7 어휘 계약 — **선언이 정본이고, 정본은 «하나»다**
 
-🔴 **[2026-08-15 · R-2026-08-15-M] 정본이 «둘»이 됐다** — `server/ledger/vocabulary.py`의 `PREDICATES`는 이제 **코드가 싣는 절반**이고,
-운영자가 선언한 ontology 층 술어는 `server/config/ledger_vocabulary.json`에 산다. **아래 표는 코드 절반이다**(§3.7-sexies가 나머지 절반과 병합 규칙을 소유한다).
-이 절은 **조용히 깨지면 안 되는 부분**만 적는다.
-🔴 **표의 열에 `traversable`이 있는 것 자체가 이번 라운드의 변경**이다 — 걷기 의미론이 **선언의 일부**가 됐다(§3.7-quinquies).
+🔴 **이 절은 2026-08-27에 전수로 다시 썼다.** 종전 이 자리는 코드가 들고 있던 술어 표를
+「코드 절반」이라 부르고 운영자 확장 파일을 「나머지 절반」이라 부르며 둘을 병합해 읽는 규칙을
+적고 있었다. **그 셋 — 모듈 · 확장 파일 · 병합 뷰 — 은 디스크에 없다.** 지금 물어볼 곳은 하나다:
+`server/config/ontology/ledger_config.json`.
 
-| 낱말 | 층 | subject | object | `since` | status | `traversable` |
-|---|---|---|---|---|---|---|
-| `register` | canonical | Lot · Wafer · Product · Equipment · **Recipe** | **∅**(`object_kind IS NULL`) | 1 | active | `False` |
-| `pin` | canonical | 위 + Die | `event_ref` | 1 | active | `None` |
-| `same_as` | canonical | 위 + Die | `entity_ref` | 1 | **reserved** | `None` |
-| `derived_from` | ontology | Lot | `entity_ref`→Lot | 1 | active | 🔴 **`True`** (`subject_to_object`) |
-| `slot_map` | ontology | Lot | `entity_ref`→Lot (`from`·`to`·`wafer` 필수) | 1 | active | `False` |
-| `has_wafer` | ontology | Lot | `entity_ref`→Wafer (`slot`) | 1 | active | `False` |
-| `frame_confirmed` | ontology | Wafer | `value`(**`required` 없음**) | 1 | **reserved** | `None` |
-| **`processed_with`** | ontology | Wafer · WaferLeg | `value` · `required` = `step`·`recipe` | **2** | active | `None` |
-| **`has_param`** | ontology | Recipe | `value` · `required` = `param`·`value`·`unit` | **2** | active | `None` |
-| **`transferred`** | ontology | Wafer | `value` · `required` = `from`·`to` (`die` XOR `qty`는 **발화자 소유**) | **2** | active | `None` |
-| **`observed`** | ontology | Wafer · WaferLeg | `value` · `required` = `finding_kind`·`method`·**`run_uid`** | **3** | active | 🔴 **`None`** |
-| **`measured`** | ontology | Wafer · WaferLeg | `value` · 공통 `metric`·`unit`·`method`·`state`; `recorded`만 `value`·`run_uid` | **4** | active | 🔴 **`None`** |
+#### 3.7-a 검증기가 무는 것 — `server/ledger/setup_bundle.py`
 
-🔴 **수가 통제 장치라는 성질은 «완화되지 않았다».** `test_ledger_l1_unit.py::test_v0_vocabulary_is_exactly_seven_words`는
-**이름을 그대로 둔 채** 지금 **열둘**을 못박고, **원래 일곱이 여전히 `since: 1`인 것까지** 단언한다.
-`measured`는 실제 계측 원자가 selection 비교에 필요해진 2026-08-15에 `since: 4`로 열렸다.
-이름을 안 바꾼 것이 의도다: 일곱을 지키던 테스트가 **왜 열둘인지를 적는 자리**여야지,
-조용히 완화된 옛 테스트 옆에 새 테스트가 서면 안 된다.
-그 docstring이 판정 본문을 들고 있고, 이번 라운드분은 [R-2026-08-14-D](../process/LEDGER_RULINGS.md)를 이름으로 적는다.
+이 문서는 낱말 «목록»을 적지 않는다. 목록은 배포마다 다르고, 여기 적으면 그 사본이 낡는다.
+적는 것은 **모양**이다.
 
-- ⚠️ **`transferred`(`530fda6`)는 이 표에 «행이 없었다»** — 2026-08-14 3차 정비에서 등재했다.
-  낱말이 코드에 들어왔는데 계약 문서에 안 실린 것은 갱신 트리거 ⑦이 물어야 했던 자리이고,
-  🔴 **어휘는 DDL을 안 건드리므로 스키마 감시로는 영원히 안 잡힌다**(그 트리거가 존재하는 이유).
-- 🔴 **`observed`의 subject가 `Wafer` «하나»인 것은 판정이다** — `Die`는 **구성형**(웨이퍼 × 격자)이라 등록이 없고,
-  발견을 웨이퍼 아래 접어야 「이 웨이퍼의 보이드」가 질의 하나가 된다. 칩 좌표(`die`·`inchip`)는 payload로 간다.
-- 🔴 **`run_uid`가 `required`인 것이 «분모 규율의 집행 지점»이다.** 「보이드 3개」는 「몇 개를 봤는데 3개」 없이는 아무 뜻이 없고,
-  산문으로만 적혀 있었으면 다음 소스가 그것 없이 쓸 수 있었다. 런을 못 푸는 발견은 **거절**이고 도착 시각으로 도장 찍히지 않는다.
-  ⚠️ **비정량 인간 관측**([MI 통일안 §6-ter](../architecture/MI_LEDGER_SCHEMA_PROPOSAL.md))은 자기 정의상 런이 없다 — 그날 이 필드가
-  **「분모 없는 관측」을 판정으로 만들도록 강제**한다(조용히 빠진 키가 아니라).
-- 🔴 **`class`는 payload이지 컬럼이 아니다**([§6-quater](../architecture/MI_LEDGER_SCHEMA_PROPOSAL.md)) — 도구의 «주장»이고 사람이 뒤집는다.
-  값 집합은 종류별 **닫힌 집합**(`finding_kinds`의 `classes`)이고 밖의 값은 이름을 대며 거절된다.
-  **합불은 여전히 저장 금지**다(임계는 레시피 파라미터). ⚠️ **`Finding` 개체 타입은 «연기»됐다** —
-  관측 둘이 같은 불량 하나를 가리켜야 할 때(재검사 매칭) 필요해지고 그 소비자가 아직 없다([R-2026-08-14-G 3](../process/LEDGER_RULINGS.md)).
-- ⚠️ **짝인 `measured`는 «등재하지 않았다»** — [§6-bis](../architecture/MI_LEDGER_SCHEMA_PROPOSAL.md)가 둘을 짝으로 그렸지만
-  오늘 그것을 발화하는 것이 없다. 🔴 **짝이 예뻐서 미리 만든 낱말은 미끼 선언**이고, `since: 3`이 「하나만 왔다」를 나른다.
+```
+vocabulary.<술어id>     필수  status · subjects · object
+                        status   active | retired   (그 밖은 거절)
+                        subjects «비지 않은» 문자열 목록
+  .object               필수  kind · qualifiers        선택  types
+                        kind    none | entity_ref | value | event_ref  (닫힌 넷)
+                        types   kind == entity_ref 이면 «필수», 그 밖의 kind 에서는 «금지»
+  .object.qualifiers    필수  required · optional      (둘 다 있어야 한다 — 빈 목록이라도)
 
-- **`processed_with`는 «예약된» 낱말이 열린 것이다** — 설계 §4.2가 처음부터 예약해 뒀고
-  [PHYSICS_ONTOLOGY_SETUP §2](../architecture/PHYSICS_ONTOLOGY_SETUP.md)가 필요를 실증했다(물류와 관측은 있는데 **원인이 살 곳이 없었다**).
-- 🔴 **목적어가 `entity_ver`가 아니라 `value`인 것이 판정이다.** 한 공정 런은 **step·설비·레시피 개정·실제 조건을 «동시에»** 지목하므로,
-  `entity_ref` 셋으로 쪼개면 **어느 것도 홀로 참이 아니다**(원자성 검사 ①) — 「웨이퍼 W가 B-3에서 처리됐다」는 홀로는 어느 레시피인지 말하지 않고,
-  짝은 `occurred_at` 충돌에서 복원해야 한다. **런 하나 = 주장 하나 = 원자 하나.**
+entities.<개체id>       필수  keys                     선택  key_types · allow_null · references
+                        keys    «비지 않고» 중복 없는 문자열 목록 = 그 개체의 신원
+```
 
-#### 3.7-bis 🔴 `value` 목적어의 `required` — **서명이 처음으로 «값»을 문다**
+- **id 는 «버전이 붙는다»** (`wafer@1` · `observed@1`). 원장은 «맨 이름»을 쓰므로 읽는 쪽이
+  접미사를 뗀다. 두 자리가 이 뗌을 서로 다르게 하면 같은 것이 둘로 보인다.
+- **`qualifiers.required` 와 `optional` 은 «다른 답»이다.** `observed` 의 일곱은 전부 optional 이다 —
+  발견이 «담을 수 있는» 것이지 «담아야 하는» 것이 아니다. 한 목록으로 접으면 그 구분이 사라진다.
+- **`status: retired` 는 낱말을 지우지 않는다.** 원자가 이미 그 낱말로 누워 있으므로 읽기는 계속
+  답하고, 막히는 것은 «새 발화»다.
 
-그전까지 `object_kind = "value"`인 원자는 **구조적으로 무검사**였다. 술어가 산문으로 모양을 선언해도 게이트는 아무거나 받았고,
-그것이 R-2026-08-13-D가 끝낸 **미끼 선언**의 한 칸 옆이다. 지금은 `check_signature`가 선언된 `required` 필드의 존재를 검사한다.
+#### 3.7-b 개체의 «참조 엣지» — 술어가 아닌데 엣지를 만든다
 
-- ⚠️ **존재(presence) 검사이지 진리값(truthiness) 검사가 «아니다».** `has_param`의 `value`는 정당하게 `0`이고 정당하게 `False`다 —
-  진리값 검사는 **사람이 가장 신경 쓴 설정값 둘을 거절**한다. 🔴 **빈 «문자열»은 여전히 거절**한다(설계 §3의 연결 문자열 사고가 온 모양).
-- **`required`를 선언하지 않은 술어는 무변경**이다(`frame_confirmed`) — 없는 것과 빈 목록이 같은 뜻인 유일한 자리이고,
-  그래서 이 검사는 기존 원자를 하나도 소급 거절하지 않는다.
-- **payload가 dict가 아니면 그 자리에서 끝난다**(필드별 보고 없이 한 줄) — 모양이 틀렸는데 필드를 세면 보고가 거짓말한다.
+`entities.<개체>.references` 는 원자를 만들지 않는다. **투영이 «합성»하는 엣지**다.
 
-#### 3.7-ter 🔴 `Recipe` — **개정이 subject 키 «재료»다**
+```jsonc
+"die@1": {
+  "keys": ["mat_id", "x", "y", "mat_type"],
+  "references": [
+    { "edge": "in_container",
+      "from": { "when": { "mat_type": "Wafer" } },
+      "to":   { "entity": "wafer@1", "keys": { "wafer": { "key": "mat_id" } } } }
+  ]
+}
+```
 
-`ENTITY_TYPES["Recipe"] = {class: issued, keys: ["recipe", "rev"]}`. 발급형이므로 `register`가 필요하고, `register`·`pin`·`same_as`의 subject 목록에 들어갔다.
+- **엣지의 «이름»도 선언에서 온다**(`edge`). 코드에 박으면 온톨로지가 작은 문으로 코드에 돌아온다.
+- **낱말이 `from` · `edge` · `to` 이지 `subject` · `predicate` · `target` 이 «아니다».**
+  매핑은 원자를 «발화»하고 참조는 엣지를 «조립»한다 — 같은 낱말을 쓰면 틀린 약속을 한다.
+- **`to.keys` 는 «복수»다.** 통 하나를 부르는 데 키가 둘 필요할 수 있다(자리는 `(lot, slot)`).
+- 🔴 **참조 엣지는 «어휘가 아니다»** — 그래서 그 이름으로 발화된 원자가 «없다».
+  이름을 어휘에서 찾은 독자가 원자를 찾아 나서면 안 되기 때문에 갈라 둔 것이다.
+- ⚠️ **실측 2026-08-27: `follow` 는 참조 엣지를 «받지 못한다».** `follow=in_container` 는
+  `422 predicate_not_declared` 다 — `follow` 가 대조하는 것이 선언의 술어 열 개뿐이기 때문이다.
 
-🔴 **`rev`가 속성이 아니라 신원인 이유는 append-only 그 자체다.** `rev`가 속성이면 rev5를 적는 유일한 방법이 rev4의 원자를 supersede하는 것이고,
-그 순간 **rev4로 실제로 돌았던 모든 웨이퍼의 근거가 도달 불가능**해진다. 키에 넣으면 두 개정은 **두 subject**이고 둘 다 영구히 주장 가능하며,
-「rev4와 rev5 사이에 무엇이 바뀌었나」가 **이력 재구성이 아니라 두 subject의 `has_param` 집합 차**가 된다.
+#### 3.7-c 게이트 — 원자마다, 그리고 «분자 통째로»
 
-⚠️ **`has_param`은 파라미터당 원자 하나**이지 레시피당 파라미터 사전 하나가 아니다 — 개정 diff가 **집합 차**가 되고,
-레시피 시트가 잘못 옮겨 적힌 것이 밝혀졌을 때 **파라미터 하나만** supersede할 수 있다.
+`server/ledger/gate.py` 가 쓰기 직전에 선언과 대조한다.
 
-#### 3.7-quater 🔴 `label_ko` — **서명 필드이고 장식이 아니다** (2026-08-14 2차)
-
-`ENTITY_TYPES`와 `PREDICATES`의 **모든** 항목에 `label_ko`가 붙었다. 🔴 **낱말은 하나도 안 늘고 안 줄었으며, 서명의 의미론도 안 바뀌었다** —
-`subject`·`object`·`required`·`qualifiers`는 한 글자도 안 움직였고 **DDL도 게이트도 무관**하다. 그래도 이 절에 적는 이유는
-갱신 트리거 ⑦(**어휘 변경 — 서명 추가**)이 정확히 이것이고, **어휘는 컬럼이 아니라서 스키마 감시로는 영원히 안 잡히기** 때문이다.
-
-- **왜 선언에 사는가**: 구조 뷰(§4.7)가 어휘를 그림으로 그리고 라벨을 **여기서** 읽는다. 렌더러 옆에 라벨 지도를 두면
-  그 지도가 **어휘의 두 번째 목록**이 되고, 두 목록은 적히는 날엔 일치하므로 **드리프트가 보이지 않는다.**
-- 🔴 **집행 지점은 `server/tests/test_ledger_l1_unit.py::test_every_declared_word_carries_a_label` 하나뿐이다.**
-  「선언 필드는 집행 지점을 갖거나 존재하지 않는다」(R-2026-08-13-D)의 이번 적용이다.
-- ⚠️ **읽는 쪽은 raise하지 않고 원시 이름으로 폴백한다**(`ledger_structure._label`). **그것이 판정이다** — 라벨 없는 낱말은
-  화면을 **영어로 강등**시켜야지 비워서는 안 된다. 대가로 **그 테스트 말고는 아무것도 빨개지지 않는다.**
-
-#### 3.7-quinquies 🔴 걷기 의미론 — **코드의 목록이 아니라 «술어의 속성»** (2026-08-14 3차 · R-2026-08-14-E ⓐ)
-
-그전까지 「무엇을 걸을 수 있는가」는 `ledger_trace`의 **리터럴 목록**(`LINEAGE_PREDICATES` 넷)이었다.
-지금은 **모든** 술어가 두 필드를 선언하고, 그 목록은 선언에서 **파생**된다.
-
-| `traversable` | 걷기가 하는 일 | 오늘 이 값을 가진 낱말 |
-|---|---|---|
-| `True` | **인출하고 «통과»한다**(재귀) | `derived_from` |
-| `False` | **인출하되 통과 금지** — 주석형. 도달은 하고 거기서 멈춘다 | `register` · `slot_map` · `has_wafer` |
-| **`None`** | 🔴 **걷기가 «아예 인출하지 않는다»** | 나머지 일곱(`observed` 포함) |
-
-- 🔴 **`None`은 「미설정」이 아니라 세 번째 «답»이다.** `observed`가 그것을 일부러 든다 —
-  [R-2026-08-14-D 부칙 ①](../process/LEDGER_RULINGS.md): 걷기는 **도달한 랏의 주장을 전부** 끌어오는데
-  웨이퍼 하나가 관측 수만 건을 이고 있어서, 이 낱말을 인출 집합에 넣으면 **번역기가 처음 성공하는 날 추적 화면이 죽는다.**
-  관측은 **범위 지정 요청**(kind·기간)으로만 읽는다(`/siblings`·콘솔의 자기 질의).
-- **`direction`**은 닫힌 집합 `{subject_to_object, object_to_subject}`이고 **`traversable: True`일 때만** 허용된다.
-  🔴 **검사는 «양방향»이다**: 통과형인데 방향이 없으면 거절, **통과형이 아닌데 방향이 있어도 거절** —
-  아무도 안 걷는 엣지의 방향 선언은 실행되지 않는 계약이다(R-2026-08-13-D의 미끼 필드).
-- **파생 함수 셋**: `walk_predicates()`(인출 집합 = `traversable is not None`) · `traversable_predicates()`(재귀 집합 = `True`) ·
-  `walk_direction(predicate)`. 🔴 **`ledger_trace.LINEAGE_PREDICATES`는 이제 이 파생물이고**,
-  재귀가 따르는 낱말은 `traversal_predicate()`가 대어 **두 CTE 모두 SQL 파라미터로 바인드**한다(`'derived_from'` 리터럴이 사라졌다).
-  어휘는 **호출 안에서 지연 import**하므로 §4.7 ⑩의 부팅 경로 보증은 그대로다.
-- 🔴 **이관의 합격 조건은 «동작 불변»이었고 그것이 단언돼 있다**
-  (`test_ledger_observed_unit.py::test_the_walk_vocabulary_is_derived_and_still_says_what_it_said`) —
-  선언에서 뽑은 집합이 옛 리터럴과 **한 낱말도 다르지 않아야** 한다. 다르면 그것은 이관이 아니라 **말 없는 동작 변경**이다.
-- 🔴 **`degree_cap`(R-E의 셋째 필드)은 «선언되지 않았다» — 추인된 판정이다**([R-2026-08-14-G 2](../process/LEDGER_RULINGS.md)).
-  집행 지점이 **재귀 CTE 안**이라, 선언만 하고 읽는 곳이 없으면 「검사되지만 아무 데도 도달하지 않는 필드」가 된다.
-  **선언은 물거나, 없어야 한다.** 차수 상한이 서는 라운드에 **자기 측정과 함께** 들어온다.
-- **효과**(R-E의 근거): 장비·레시피를 나중에 개체로 세워도 **주석형 선언이 방화벽을 유지**한다.
-  새 술어가 걷기에 편입되는 것은 **코드 수정이 아니라 선언 변경 + 어휘 고정 테스트 갱신**이 된다.
-
-#### 3.7-sexies 🔴 어휘가 **층으로 갈렸다** — 정본 둘·병합 뷰 하나 (2026-08-15 · R-2026-08-15-M · 갱신 트리거 ⑦)
-
-**낱말도 서명 의미론도 안 바뀌었다. 바뀐 것은 «어디서 늘리는가»다.**
-운영자 절차(무엇을 어느 화면에서 어떻게)는 [ONTOLOGY_LEDGER_SETUP §4](../guide/ONTOLOGY_LEDGER_SETUP.md)가 소유하고, 여기는 **계약**만 적는다.
-
-| 층 | 늘리는 곳 | 왜 |
-|---|---|---|
-| **정준**(`register`·`pin`·`same_as`) | 🔴 **코드 + 판정만.** 화면에 문이 «없고» 그 부재가 테스트로 고정된다 | 기록의 «문법»이 조용히 자라면 원장이 원장이 아니게 된다 |
-| **온톨로지** | ✅ `server/config/ledger_vocabulary.json` (`POST /admin/ledger/save`) | 설계가 처음부터 「append-only로 성장」이라 적어 둔 층이다 |
-| **개체 타입**(`ENTITY_TYPES`) | 🔴 **여전히 코드 + 판정만**(2026-08-15 3차에 서명 필드 **둘**이 붙었다 — `rolls_up_to`·`root_key`, §3.7-septies) | 주어의 **신원 키 정의**라 서명 완결 검사로 안전해지지 않는다 |
-
-**① 🔴 「합쳐진 뷰」가 하나이고, 묻는 쪽은 «전부» 그것을 읽는다.**
-`vocabulary.all_predicates()`가 코드 절반(`PREDICATES`)과 선언 절반을 병합하고 **항목마다 `origin: "code" | "config"`를 찍는다.**
-그 뷰를 읽는 것: `is_declared` · `signature` · `check_signature` · `walk_predicates` · `traversable_predicates` · `walk_direction` ·
-`check_walk_declaration` · **`emittable()`**(모듈 레벨 `EMITTABLE` frozenset을 **대체**했다 — 상수는 import 시점에 얼어붙어 선언을 영원히 못 본다).
-🔴 **한 곳이라도 `PREDICATES`를 계속 읽으면 그 자리에서만 새 낱말이 «미선언»이 된다** — 게이트가 거절하는데 화면은 보여 주는 식으로 **갈라진다.**
-🔴 **`PREDICATES`를 직접 읽어도 되는 곳은 「코드가 싣는 집합」을 «묻는» 자리뿐이다**(v0 고정 테스트가 그것이고, 그래서 그 테스트는 **한 글자도 안 바뀌었다**).
-
-**② 🔴 `.sample` 폴백이 «없다» — 이 저장소의 다른 거의 모든 선언과 반대이고, 그것이 판정이다.**
-샘플이 로드되면 **아무도 선언한 적 없는 낱말이 닫힌 어휘에 들어간다.** 저장소의 `.json.sample`은 **모양 설명용이고 로더가 읽지 않는다.**
-라이브가 없으면 어휘는 **코드 집합 그대로**다(에러가 아니다).
-
-**③ 🔴 깨진 확장 파일은 «통째로» 무시되고 절대 raise하지 않는다 — 그러나 조용하지도 않다.**
-절반만 실린 어휘는 **프로세스마다 다른 낱말을 인정**하므로 부분 로드가 최악의 결말이다. 강등은 `vocabulary.extension_status()`가 들고,
-`GET /admin/config/resolve?domain=ledger`(`config_resolve_report.DOMAIN_LEDGER`)가 **사유와 함께** 보고한다.
-
-**④ 🔴 서명 «완결»이 저장 조건이다 — `vocabulary.SIGNATURE_FIELDS` 여덟.**
-`label_ko` · `subject` · `object` · `traversable` · `direction` · `since` · `layer` · `status`. 거절 코드는 **닫힌 집합**(`vocabulary.DECL_REFUSALS`)이고
-라우트가 그 집합을 화면에 실어 보낸다(클라가 사유 문자열을 지어내지 않는다).
-
-- 🔴 **`traversable`은 «값»이 아니라 «키의 존재»를 요구한다.** 없으면 거절, **명시적 `null`은 수용.**
-  그러지 않으면 「걷기를 생각 안 했다」와 「걷기가 절대 인출하지 않는다(`None`)」가 **같은 선언**이 된다(§3.7-quinquies의 삼상태가 그 자리에서 무너진다).
-- 🔴 **`traversable: true`는 오늘 «이름 대어» 거절된다**(`traversable_true_unavailable`) — 다른 통과형 낱말이 이미 있을 때.
-  `ledger_trace.traversal_predicate()`는 **정확히 하나**를 실행하므로, 둘째를 저장하면 **읽는 날이 아니라 저장하는 날** 죽어야 한다.
-  🔴 **거절 시점이 판정이다** — 저장을 받아 두면 추적 화면이 «다음 요청»에 죽고, 그때 원인은 저장한 사람에게서 멀어져 있다.
-
-**⑤ 🔴 삭제 경로가 «없다» — `status: "retired"` + `superseded_by`뿐이고, 그 부재가 단언된다.**
-원자가 이미 그 낱말로 누워 있다. **은퇴는 «발화»를 막지 «읽기»를 막지 않는다** — 은퇴한 낱말은 `emittable()`에서 빠지고
-`all_predicates()`·`signature()`에는 남는다. `/admin/ledger` 아래 **DELETE 라우트가 0개**임을 테스트가 단언한다.
-
-**⑥ 🔴 미리보기는 공유 캐시를 «건드리지 않는다».** `vocabulary.check_signature_against(sig, …)`는 `check_signature`에 **선언을 손으로 건네는** 형태이고,
-`check_predicate_declaration(name, decl, against=)`도 같다. 아직 저장 안 된 서명을 채점하려고 프로세스 캐시에 심으면
-**미리보기가 다른 요청의 답을 바꾼다**(그 오염은 저장 실패 뒤에도 남는다).
-
-**⑦ 캐시 교체는 «둘»이고 재기동이 0회다.** `vocabulary.reset_cache()`가 `main.reload_local_process_cache()`와
-`chain_ingestion_worker.reload_worker_process_cache()`에 배선됐고, **같은 훅이 `ledger_trace.reset_walk_cache()`도 부른다** —
-걷기의 인출 집합이 어휘의 **파생물**이라, 하나만 비우면 **낡은 걷기 집합이 새 낱말 위에서 돈다.**
-
-**⑧ ⚠️ DDL은 여전히 0줄이라 스키마 감시로는 영원히 안 잡힌다.** 집행 지점은 `server/tests/test_ledger_admin_setup.py`이고,
-v0 고정 테스트(`test_ledger_l1_unit.py`)는 **코드 집합에 대해** 그대로 산다 — 「선언으로 늘었다」는 `origin`으로 보이지 그 수를 흐리지 않는다.
-
-**⑨ ✅ [2026-08-15 3차 — 닫혔다] 「등재한 낱말을 발화할 번역기가 없다」는 더 이상 참이 아니다.**
-직전 판의 이 자리는 「선언으로 술어는 등재되는데 그걸 낼 번역기가 없다」였고, **넷째 문법 `declared`(§3.8)가 그 구멍이다** —
-어떤 술어든 `emit` 규칙 하나로 발화되고, `config_resolve_report`의 「발화하는 번역기 없음」은
-**그 술어를 내는 `declared` 소스가 선언되는 순간 자동으로 해소된다**(`_ledger_emitted_predicates`가 `emit`의 `predicate`를 읽는다).
-⚠️ 🔴 **그것은 `derivation`이 «아니다».** `derivation`(R-2026-08-15-M ⑤)은 여전히 `SOURCE_KINDS`에 없고
-`GET /admin/ledger/sources`의 `unsupported_kinds`에 **사유와 함께** 남는다 — 그쪽은 **원장을 «걸어서»** 조건을 평가해
-근거 원자 id를 다는 **3류 추론**이고, `declared`는 **눈앞의 소스 행**을 옮기는 2류 발화다.
-🔴 **두 판정이 하루 차이로 같은 「넷째」 자리를 말했고 나중 것(브리핑 §6-2 = `declared`)이 정본이다.**
-**둘을 섞어 쓰면 3류 규율(근거 원자 필수)이 2류 주장에 붙거나 그 반대가 된다** — 이 문서 어디서도 섞지 않는다.
-
-#### 3.7-septies 🔴 **집계 단위는 «뿌리 키»를 선언한다** — 그리고 읽기가 그 선언으로 모인다 (2026-08-15 3차 · R-2026-08-15-O · 갱신 트리거 ⑦)
-
-`ENTITY_TYPES` 항목이 **선택적 서명 필드 «쌍»**을 얻었다: **`rolls_up_to`**(어느 타입 아래로 접히는가)와 **`root_key`**(그 뿌리의 신원 키 중 무엇을 공유하는가).
-오늘 다는 것은 **`WaferLeg` 하나**(`rolls_up_to: "Wafer"` · `root_key: "wafer"`)다.
-
-**① 🔴 왜 필드가 필요했나 — 주어를 가르는 것이 «강제»였기 때문이다.**
-한 웨이퍼가 두 압력으로 붙으면 「저압으로 붙었다」와 「고압으로 붙었다」가 **둘 다 참**인데, 주어가 하나면 그 둘은
-같은 `(subject, predicate)`에 대한 **경쟁 주장**이 되어 해결기가 **하나를 죽인다.** 주어를 갈라야 둘 다 산다.
-**그 대가로 읽기가 갈라졌고, 조용히 그랬다** — 실측(2026-08-15): `subject_type = 'WaferLeg'` 원자 **42개**
-(`observed` 18 · `register` 12 · `processed_with` 12(전부 FINAL_BOND) · **뿌리 웨이퍼 6장**)가
-**웨이퍼 스코프 조회에서 한 건도 안 보였고**, 화면은 「본딩 조건 차이 없음」으로 읽혔다.
-
-**② 🔴 읽기 계약: 주어 스코프 조회는 `subject_type = %(stype)s`가 아니라 «뿌리 키로 모은다».**
-철자는 **하나**여야 한다 — `ledger_trace.rollup_subject_types(root_type)`이 그것이고, 반환은 **뿌리 자신 + 그 뿌리로 접히는 타입 전부**다.
-**걷기 집합과 같은 캐시**에 앉고 **`reset_walk_cache()`가 같이 비운다**(어휘의 파생물이므로 하나만 비우면 낡은 집합이 새 선언 위에서 돈다).
-오늘 그 철자를 쓰는 읽기 자리는 **셋**이다: `ledger_journey._atoms` · `ledger_walk_contrast._atoms_per_subject` · `ledger_walk_contrast` 걷기의 `atoms` CTE.
-🔴 **이것은 «간극을 메우는» 변경이고 응답 형태를 바꾸지 않는다** — 이름이 바뀐 필드도, 재구조화된 블록도 **0개**다.
-
-**③ 🔴 관계는 «선언»이고 절대 «유추»가 아니다.** 「키가 상위집합이면 접는다」로 유추했으면 `Die`의 키(`wafer`,`x`,`y`)도
-`Wafer`의 상위집합이라 **다이 원자 전부가 웨이퍼 조회로 접혔을 것이다**(구성상 1.6억 개). 철자의 우연과 집계 단위는 다른 것이다.
-
-**④ 자기 정합은 `vocabulary.check_entity_type_declaration()`이 문다** — 둘 중 하나만 선언 · 없는 타입을 가리키는 `rolls_up_to` ·
-**자기 자신으로의 롤업** · **«양쪽» 타입의 키가 아닌 `root_key`** · **뿌리가 또 다른 뿌리를 가리키는 2단 롤업**(미구현)은 전부 위반이다.
-🔴 **그 위반들의 공통점이 이 검사가 있는 이유다** — 전부 **에러가 아니라 「추가 행 0개」**로 나타나고,
-그 모습은 **이 선언이 고치려던 결함과 구별되지 않는다.**
-🔴 **이 검사가 없으면 「선언은 있는데 아무 데도 안 닿는 필드」가 되고, 그것이 R-2026-08-13-D가 끝낸 미끼 필드의 재발이다.**
+- **전부-아니면-전무**: 분자의 한 파편이 서명에 안 맞으면 **그 분자 전체**가 거절된다.
+  반쪽 착지는 「일부는 참인 기록」이 아니라 「어느 절반이 참인지 아무도 모르는 기록」이다.
+- **거절은 이름을 댄다.** 계수만 올리고 마는 거절은 운영자가 고칠 수 없다.
+- **읽기는 이 게이트를 «묻지 않는다»**(판정 2026-08-23). 쓰기는 「이 낱말을 말해도 되나」를 묻고
+  읽기는 「이미 무엇을 말했나」를 묻는다. 선언이 바뀌어도 과거 원자는 그대로 있어야 하므로,
+  읽기가 오늘의 선언으로 문을 잠그면 «어제»를 잃는다.
 
 ### 3.8 → **§8로 옮겼다** (2026-08-19 판정 ④)
 
@@ -668,7 +479,7 @@ v0 고정 테스트(`test_ledger_l1_unit.py`)는 **코드 집합에 대해** 그
 
 ### 3.9 Source Contract — 선언·번역기·어휘의 결합 계약 (2026-08-16)
 
-`ledger_config.json`, 번역기 Python, `vocabulary.py`는 실행 책임이 서로 다르지만
+선언의 `sources` · `vocabulary` 두 섹션과 번역기 Python 은 실행 책임이 서로 다르지만
 운영자가 답해야 할 질문은 하나다: **「이 소스가 어떤 Claim을 만들 수 있고, 지금 합법인가」**.
 `server/ledger/source_contract.py`는 셋을 한 읽기 모델로 컴파일한다.
 
@@ -1132,7 +943,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 제안을 그 자리에 두면 **착지한 선언으로 오독된다.** 🔴 **`ledger_link`도 «유도»된다**: 기전 노드는 `Model` 개체 타입을 통해 원장에 닿는데
 어휘가 그 타입을 선언하지 않으므로 「붙을 자리가 없다」가 답이고, **`Model`이 선언되는 날 이 문장은 스스로 거짓이 된다.**
 ✅ **[2026-08-14 · `f52628f`] 앞의 ⚠️ 문단은 «부분적으로» 낡았다** — `server/config/sample/mechanism_models.json.sample`이 착지했고(**모델 셋 · 방향만 있는 엣지 22개 · 코드 0줄 변경**)
-그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재한다. 🔴 **[2026-08-23 grep 전수 재도출 정정 — 종전 이 자리의 「소비자 둘」과 「`server/mechanism_gate.py`가 3관문 랭킹」은 둘 다 틀렸다] 소비자는 «모듈 넷»**(`ledger_walk_contrast.py:303` · `ledger_journey.py:326`·`:1287` · `ledger_subgraph.py:1071` · 이 라우트의 `ledger_structure.py:727`)이고, **3관문 랭킹(실재·상류·기전)은 `ledger_walk_contrast.py`에 산다** — `server/mechanism_gate.py`는 **로더 + 기전 판정기**다. 전수 목록은 [backend §2 `/structure`](../architecture/backend.md).
+그 층은 더 이상 `absent`가 아니다. **[2026-08-14 밤 확정]** 라이브 config도 실재한다. 🔴 **[2026-08-23 grep 전수 재도출 정정 — 종전 이 자리의 「소비자 둘」과 「`server/ledger_api/mechanism_gate.py`가 3관문 랭킹」은 둘 다 틀렸다] 소비자는 «모듈 넷»**(`ledger_walk_contrast.py:303` · `ledger_journey.py:326`·`:1287` · `ledger_subgraph.py:1071` · 이 라우트의 `ledger_structure.py:727`)이고, **3관문 랭킹(실재·상류·기전)은 `ledger_walk_contrast.py`에 산다** — `server/ledger_api/mechanism_gate.py`는 **로더 + 기전 판정기**다. 전수 목록은 [backend §2 `/structure`](../architecture/backend.md).
 🔴 **[2026-08-15 정정] 파일에 `models`라는 블록은 «없다»** — 최상위 예약 키는 `__doc`와 `bindings`뿐이고 **나머지 키 하나하나가 모델**이며(`mechanism_gate.KEY_DOC`/`KEY_BINDINGS`), `signatures`는 **모델 «안»의 키**이고 로더가 읽지 않는다(사람용). 모델은 방향만 나른다 — 방정식은 일부러 없다. **`bindings`**는 필드→물리량이고 🔴 **항목 목록이 아니다**(바인딩 안 된 후보는 좁혀지지 않고 `unknown`을 단다). 선언 방법은 [guide/ONTOLOGY_LEDGER_SETUP §6.1](../guide/ONTOLOGY_LEDGER_SETUP.md).
 🔴 **바인딩은 데이터가 실재하는 날 켠다**(`87374a5` — `post_bond_queue_h`가 그 실례. 공백에 바인딩을 지어내지 않는다). 부재 갈래(`no_declaration_file`)는 파일 없는 박스에서 여전히 발화한다.
 
@@ -1178,9 +989,10 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 `ledger_trace`가 `ledger.vocabulary`를 **부르게 됐지만 import는 `_vocabulary()` «안»에 있다.** 보증은 유지되고,
 ⚠️ **「`ledger_trace`는 `server/ledger/` 패키지를 import하지 않는다」고 «단정»한 서술은 이제 거짓**이다(모듈 최상단이 아닐 뿐이다).
 
-**⑪ ✅ [2026-08-15 · R-2026-08-15-M · 갱신 트리거 ⑧] 술어 행마다 `origin`이 «가산»됐다 — 기존 필드는 하나도 안 바뀌었다.**
-`origin: "code" | "config"`가 **`declared_edges`와 어휘 패널 «둘 다»**의 행에 붙고, 두 자리 모두
-`PREDICATES`가 아니라 **`vocabulary.all_predicates()`를 순회한다.**
+**⑪ 🔴 [2026-08-27] 술어 행의 `origin` 은 «사라졌다» — 출처가 하나뿐이면 답할 것이 없다.**
+`declared_edges` 와 어휘 패널 둘 다 **선언의 `vocabulary` 섹션을 순회한다.**
+종전 이 자리는 「코드가 실은 낱말인가 운영자가 선언한 낱말인가」를 행마다 답하고 있었는데,
+코드가 낱말을 싣지 않게 되면서 그 물음이 없어졌다.
 🔴 **그 순회 변경이 없으면 선언으로 등재한 낱말이, 「원장이 무엇을 말할 수 있는가」를 보여 주려고 존재하는 «유일한» 화면에서 안 보인다** —
 그리고 **등재됐는데 안 보이는 것은 운영자에게 저장이 실패한 것과 구별되지 않는다.**
 🔴 **`origin`은 장식이 아니라 ①의 짝이다** — 이 응답은 손으로 적은 목록이 없다고 약속하므로 독자가 「이 낱말은 어디서 왔나」를 스스로 셀 수 없다. 그래서 응답이 말한다.
@@ -1189,7 +1001,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 **같은 라운드에 `server/ledger_journey.py`의 술어 조회도 병합 뷰로 옮겼다** — 안 옮겼으면 config 낱말만 자기 `label_ko`를 잃고
 **한국어가 원시 이름으로 조용히 강등**됐을 것이다(§3.7-quater의 폴백이 그때 잘못된 자리에서 발화한다).
 
-### 4.8 `GET /api/ledger/kinds` — **원장 위치 필드 다섯** (2026-08-14 3차 · `server/ledger_kinds.py` · 갱신 트리거 ⑧)
+### 4.8 `GET /api/ledger/kinds` — **원장 위치 필드 다섯** (2026-08-14 3차 · `server/ledger_api/ledger_kinds.py` · 갱신 트리거 ⑧)
 
 라우트 표는 [backend §2](../architecture/backend.md)가 소유하고 여기는 **조용히 깨지면 안 되는 의미론**만 적는다.
 이 라우트는 원래 **소스 테이블**을 답했다(관측 수·런 수·`observed_by`·`classes`). 관측 번역이 착지하면서
@@ -1208,17 +1020,21 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
   **「아무도 선언하지 않았다」와 「선언은 됐는데 백필을 아직 안 돌렸다」를 구별하지 못했다.** 운영자가 할 일이 정반대인 두 상태다.
 - 🔴 **`declared_only`와 `unmeasured`의 구별이 이 프로젝트가 이미 값을 치른 자리다**(`absent-zero-is-not-inert-zero`) —
   「번역기가 한 번도 안 돈 종류」와 「셀 수 없는 종류」를 같은 화면 기호로 그리면 둘 다 「0」으로 읽힌다.
-- ⚠️ **이 라우트는 여전히 «아무것도 선언하지 않는다».** 종류의 정의는 `server/finding_kinds.py`,
+- ⚠️ **이 라우트는 여전히 «아무것도 선언하지 않는다».** 종류의 정의는 `server/ledger_api/finding_kinds.py`,
   어느 소스가 어느 종류를 번역하는지는 `ledger_config.json`이다 — **여기에 세 번째 목록이 생기면 드리프트가 보이지 않게 된다**
   (적히는 날엔 언제나 일치하므로).
 
-### 4.9 `GET /api/ledger/journey` — **주어 «둘» 전용 응답 계약** (2026-08-14 밤 · `server/ledger_journey.py` · 갱신 트리거 ⑧)
+### 4.9 ⚰️ `GET /api/ledger/journey` — **은퇴했다.** 아래는 «기록»이다
+
+> 🔴 **실측 2026-08-27**: 그 라우트는 라우트 표에 «없고» `server/ledger_journey.py` 도 디스크에 없다. **이 계약을 지킬 코드가 없으므로 여기에 새 일을 얹지 않는다.**
+>
+> 🟢 **그런데 아래 ⓐ의 «이유»는 살아 있다** — 「해당 없는 필드는 `null` 이 아니라 «없다»」와 「부재를 이름 대어 말한다」는 지금 모든 읽기 라우트가 지는 규율이다. 그래서 절을 지우지 않고 표시만 했다. 여정이 답하던 질문(「두 장이 걸은 길은 어디서 갈라졌나」)은 지금 씨앗 둘을 각각 `GET /api/ledger/subgraph` 로 걷고 `follow` 로 공정 술어만 남겨서 답한다.
 
 라우트 표는 [backend §2](../architecture/backend.md)가 소유하고, 운영자가 읽는 법은 [guide §4.6-quater](../guide/LEDGER_GUIDE.md)다.
 여기는 **조용히 깨지면 안 되는 의미론**만 적는다. 이 라우트는 새 사실을 계산하지 않는다 — **원장이 이미 든 원자를 순서로 재배치**한다.
 
 🔴 **[2026-08-15 3차] 그 인출은 «뿌리 키로 롤업»한다**(§3.7-septies · R-2026-08-15-O) — `subject_type` 하나가 아니라
-`rollup_subject_types(<주어 타입>)` 전부를 읽는다. 그래서 **웨이퍼 두 장을 물으면 그 웨이퍼의 `WaferLeg` 원자도 같이 온다.**
+`rollup_subject_types(<주어 타입>)` 전부를 읽는다. 🔴 **그런데 v5 에는 파생 주어 타입이 «없다»** — 그 함수(`ledger_trace.py`)는 주어 타입 «자기 자신»만 돌려주고 자기 주석에 그렇게 적어 두었다. 실측 2026-08-27: `WaferLeg` 원자 «0» · 선언의 개체 여섯에도 «없음». 이 자리는 «파생 타입이 선언되는 날»을 위한 이음새이지 오늘 무엇을 데려오는 자리가 아니다.
 ⚠️ **응답 형태는 이 변경으로 한 바이트도 안 바뀌었다** — 채워진 것은 **빈칸**(§ⓑ의 `segment_absent`가 실제로는 「안 보임」이던 자리)이다.
 
 #### ⓐ 🔴 집단 통계는 **없다. `null`도 아니다.**
@@ -1274,7 +1090,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 - **한 구간의 두 원자가 한 잎을 두고 다투면** 승자는 `ledger_trace.claim_rank_key`(혈통 해결기와 **같은 전순서**)가 정하고 **패자는 `superseded_by_here`로 실려 나간다** — 「실측이 설정값을 이긴다」의 철자는 이 시스템에 **하나**다(§4.1-bis).
 - `position_basis`가 **`observation` \| `inference`** — 그 구간의 «자리»가 실측 시각에서 왔는지 레시피 책의 날짜에서 왔는지. 🔴 **순서가 이 화면의 주된 주장이므로 그것이 거짓말할 수 있는 «유일한 방식»에 이름이 붙어 있다**(실측: `SYN-BW-101-06`의 DIFFUSION은 추론 원자로만 존재하고 그 날짜가 BONDING 뒤라 전공정이 후공정 «아래»에 앉는다 — 응답은 조용히 재정렬하지 않고 `notes[]`로 말한다).
 - **step 이름이 payload의 «어디»에 있는지는 선언이다** — `ledger_journey.json`의 `segments` 블록([CONFIG_GUIDE §1](../guide/CONFIG_GUIDE.md)).
-  `vocabulary.py`는 `processed_with`의 목적어가 `['step','step_family','eqp','recipe']`를 요구한다고만 말하고 **그중 무엇이 step인지는 말하지 않는다** — 목록의 자리로 읽는 것은 관례이고, 관례는 스키마가 다른 날 깨진다.
+  선언은 `processed_with`의 목적어가 `['step','step_family','eqp','recipe']`를 요구한다고만 말하고 **그중 무엇이 step인지는 말하지 않는다** — 목록의 자리로 읽는 것은 관례이고, 관례는 스키마가 다른 날 깨진다.
 - **step 값이 없는 여정 원자는 «버리지 않는다»** — 「(step 기록 없음)」이라는 자기 구간을 얻는다. 무슨 일이 있었나를 보여 주는 화면에서 원자가 사라지는 것이 더 나쁜 답이다.
 
 #### ⓔ 선언 층은 **이름만 붙이고 아무것도 좁히지 않는다**
@@ -1289,7 +1105,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 
 ### 4.10 R&D Trend와 Composite CHIP 읽기 계약 (2026-08-14)
 
-`GET /api/ledger/trends`는 정식 원장 주어인 **WaferLeg**를 grain으로 삼는다. identity key는
+`GET /api/ledger/trends`의 grain 은 «선언»이고 기본값은 **`wafer`** 다(`ledger_trends.DEFAULT_GRAIN`). 🔴 **호출자가 `grain.subject_type` 에 아무 문자열이나 실을 수 있고 라우트는 그것이 원장에 있는 주어인지 묻지 않는다** — 그래서 R&D 보드가 오늘 `WaferLeg` 를 실어 보내는데, 원장의 주어 타입은 `die`·`wafer`·`dtjob`·`lot_slot` 넷뿐이고 `WaferLeg` 원자는 «0» 이다. 아래 서술의 `WaferLeg` 는 «그 호출자가 대는 이름»이지 원장이 아는 이름이 아니다. identity key는
 `{wafer,bonding_leg}`이며 동일 Base WF의 서로 다른 LEG를 절대 합치지 않는다. 선언된 종류와
 subtype 수를 고정하지 않고 `finding_kinds[]`·`series[]`로 내며, 모든 차트 점과 표 행은
 같은 구조화 identity와 `mark_key`를 사용한다. `limit`은 keyset page 예산,
@@ -1314,8 +1130,7 @@ page wafer+LEG와 같은 시간창으로 유계화하며 finding 부재를 추�
 재인코딩이 일치해야 하므로 구분자 충돌이 없다. cursor v2도
 `(occurred_at,wafer,bonding_leg)`를 보존한다. 기존 `Wafer` observed atom은 LEG를 추측해
 fan-out하지 않고 복합 Trend에서 제외한다. 이는 JSON identity/vocabulary의 additive 확장이므로
-DDL migration은 없지만, 생산 translator가 `WaferLeg register/observed/processed_with` 원자를
-발화하고 기존 데이터는 declared LEG bridge로 재번역해야 한다.
+DDL migration은 없지만, 그것이 참이 되려면 생산 translator가 `WaferLeg` 원자를 «발화해야 하고» 기존 데이터는 declared LEG bridge로 재번역돼야 한다. 🔴 **실측 2026-08-27: 둘 다 «안 됐다»** — `WaferLeg` 원자 «0», 선언의 개체 여섯에도 없음. **즉 이 문단은 «요구사항»이지 «현재 상태»가 아니다.**
 
 `GET /api/ledger/composition`은 final CHIP을 `components[]`와 DAG로 답한다. component가
 기본 단위이며 각 항목은 안정 id, Core 출처/종류/역할, bonding layer/position,
@@ -1331,7 +1146,7 @@ many-to-many DAG이고 ordered인 것은 component 하나의 이동 경로뿐이
 role/type/layer로 대응시킨 뒤에만 upstream process 차이를 정렬할 수 있으며 구성 차이와
 공정 차이는 서로 다른 컬렉션이다.
 
-현행 일반 `transferred` 원자 72,485건 실측에서는 `position`이 null이고 final-chip
+🔴 **실측 2026-08-27: `transferred` 원자는 «0» 이고 실재하는 술어는 `transfer` 401,206건이다** (주어·목적어도 바뀌었다 — v1 은 `Wafer -> value`, 지금은 `die -> die` 의 `entity_ref`). 종전 이 자리가 세던 72,485건은 그 이름으로는 이제 세어지지 않는다. 그 원자들에서는 `position`이 null이고 final-chip
 component id가 없어 이 계약으로 역추적할 live bridge가 없다. SYN fixture만 새 payload
 필드(`component`, `sequence`, 위치)를 발화하며 술어는 기존 `transferred` 그대로다.
 새 DDL·구 그래프 저장소는 없다. 다만 물리량 계측을 위해 닫힌 어휘에 `measured`가
@@ -1536,7 +1351,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 생 psycopg2 경로거나 SQLAlchemy가 래핑 에러를 포맷하는 방식이 바뀌면 **배포 사실이 조용히 코드 결함처럼 읽히는 500**이 된다.
 **즉 고장나 있던 것이 아니라 «아무것도 보장하지 않는 문자열» 위에 앉아 있었다** — 그것이 옮긴 이유다.
 
-**`GET /api/ledger/coverage`** — 🔴 **부재·공백에도 «에러가 아니라» 200과 `state`를 낸다.**
+⚰️ **`GET /api/ledger/coverage` — 은퇴했다**(실측 2026-08-27, 라우트 표에 없음). 🔴 **그 규율은 살아남아 지금 `/structure` 가 진다** — **부재·공백에도 «에러가 아니라» 200과 `state`를 낸다.**
 이 둘이야말로 이 엔드포인트가 존재하는 이유이고, 여기서 raise하면 운영자를 **색깔만 다른 같은 빈 화면** 앞에 되돌려 놓는다.
 
 | `state` | 뜻 |
