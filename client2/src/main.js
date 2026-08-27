@@ -621,8 +621,18 @@ function setupEventListeners() {
       const formData = new FormData();
       formData.append('file', file);
 
+      // 🔴 폴더 이름을 «같이» 보냅니다. `webkitdirectory` 가 이미 채워 주는 값이고
+      //    (「WF-001/WORK_20260817_031405/voids.json」), 파일 하나를 고른 경우엔 «빈 문자열»이라
+      //    요청이 예전과 «바이트 동일»합니다.
+      //    이게 없으면 서버가 성분을 접어 leaf 만 남기고, `voids_json` 처럼 웨이퍼 식별자를
+      //    «폴더 이름»에서 읽는 파서는 그 파일을 «거절»합니다 -- 같은 트리인데 문에 따라 답이
+      //    달랐던 자리입니다 (실측 2026-08-27).
+      const relativePath = file.webkitRelativePath || '';
+
       try {
-        const res = await fetch(`${API_BASE}/tables/${state.currentTable}/upload?user=${encodeURIComponent(CURRENT_USER)}`, {
+        const res = await fetch(`${API_BASE}/tables/${state.currentTable}/upload`
+          + `?user=${encodeURIComponent(CURRENT_USER)}`
+          + `&relative_path=${encodeURIComponent(relativePath)}`, {
           method: 'POST',
           body: formData
         });
