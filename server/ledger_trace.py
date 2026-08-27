@@ -81,10 +81,6 @@ except ImportError:                     # pragma: no cover - import-path fallbac
 _WALK_CACHE = {}
 
 
-def _vocabulary():
-    """The closed vocabulary. Lazy, and never cached across a reload of it."""
-    from ledger import vocabulary
-    return vocabulary
 
 
 
@@ -99,13 +95,15 @@ def rollup_subject_types(root_type: str) -> tuple:
     per-file copy would have been three lists of one fact - and three lists is how
     a derived subject type can become visible to one query and invisible to the next.
 
-    Cached with the walk sets, so `reset_walk_cache()` (wired into `/admin/reload-configs`)
-    drops it too - the vocabulary can gain a derived type without a restart.
+    Not cached: it derives nothing and reads nothing, so there is no staleness to drop.
     """
-    key = ("rollup", root_type)
-    if key not in _WALK_CACHE:
-        _WALK_CACHE[key] = tuple(_vocabulary().rollup_subject_types(root_type))
-    return _WALK_CACHE[key]
+    # 🔴 v5 HAS NO DERIVED SUBJECT TYPES, so this is the type itself and nothing else.
+    #    v1 kept a code-held table of roll-ups (`Wafer` covering derived spellings). The
+    #    declaration's `entities` carry `keys` and no derivation, so there is no second
+    #    spelling for a read to miss -- and inventing one here would be a code-held list
+    #    of exactly the kind this retirement removes. If a derived type is ever declared,
+    #    read it from `entities` here; do not restate it.
+    return (root_type,)
 
 
 

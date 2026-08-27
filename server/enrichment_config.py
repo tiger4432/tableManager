@@ -130,6 +130,23 @@ _CANDIDATE_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _warned_caps = set()
 
 
+def _declared_predicates():
+    """The predicates the DECLARATION emits. The declaration is the only authority.
+
+    🔴 THIS REPLACED A CODE-HELD WORD LIST (`vocabulary.PREDICATES`). That list refused
+    a predicate the ledger had been emitting for days, because adding one to the
+    declaration never edited the list -- the refusal was about the list, not the ledger.
+    An unreadable declaration returns the empty set, which refuses everything: a rule
+    that cannot be checked is not a rule that passes.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("vocabulary") or {}
+    except Exception:
+        return set()
+    return {str(key).split("@", 1)[0] for key in declared}
+
+
 def _load_ingestion_settings() -> dict:
     """Read `ingestion_settings.json`, or `{}`.
 
@@ -437,10 +454,9 @@ def _normalize_claim_contract(rule_name: str, raw, decision_key: list,
                         ("object_type", object_type)):
         if not isinstance(value, str) or not value.strip():
             return reject(f"anchor.{name} must be a non-empty string")
-    from ledger import vocabulary as ledger_vocabulary
-    known_predicates = set(ledger_vocabulary.PREDICATES)
+    known_predicates = _declared_predicates()
     if predicate.strip() not in known_predicates:
-        return reject("anchor.predicate is not in the canonical ledger vocabulary")
+        return reject("anchor.predicate is not declared by the ledger")
     if not all(_CANDIDATE_COLUMN_RE.match(part)
                for part in payload_path.strip().split(".")):
         return reject("anchor.payload_path must be a dot path of plain identifiers")
@@ -466,7 +482,7 @@ def _normalize_claim_contract(rule_name: str, raw, decision_key: list,
             return reject(f"slots[{index}].predicate must be a non-empty string")
         if slot_predicate.strip() not in known_predicates:
             return reject(
-                f"slots[{index}].predicate is not in the canonical ledger vocabulary")
+                f"slots[{index}].predicate is not declared by the ledger")
         if (not isinstance(slot_path, str) or not slot_path.strip()
                 or not all(_CANDIDATE_COLUMN_RE.match(part)
                            for part in slot_path.strip().split("."))):

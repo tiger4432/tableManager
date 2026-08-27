@@ -169,28 +169,24 @@ def _signed_start(node_id, positive, negative):
 
 
 def _followable_predicates():
-    """Every predicate a caller may name in `follow` -- the CODE set and the LIVE declaration.
+    """Every predicate a caller may name in `follow` -- read from the DECLARATION, only.
 
-    🔴 NEITHER ONE ALONE IS THE AUTHORITY, which is why this is a union and not a lookup.
-    MEASURED 2026-08-25: `vocabulary.all_predicates()` returns the v1 code list of thirteen
-    and `config_predicates()` is empty, so a check against it alone refuses `bonded_from`,
-    `inspected`, `transfer` and `has_netdie` -- four predicates holding 151,321 atoms, one of
-    them the edge this filter exists to follow. The live declaration alone misses the v1 names
-    (`transferred`, `measured`, `has_param`) that are still in the ledger.
+    🔴 THIS USED TO BE A UNION with a code-held word list, and the union is what the v1
+    retirement removes. The code half named three predicates (`transferred`, `measured`,
+    `has_param`) that the declaration does not declare, so naming them in `follow` was
+    accepted and then walked nothing -- the caller got a silent empty instead of a refusal.
+    Now the declaration is the only authority and those three answer 422, which is the
+    point: a word you may follow is a word the ledger says it emits.
 
-    The union covers all thirteen predicates the ledger actually holds, and still refuses a
-    typo, which is the whole point of refusing. Read, never restated: adding a predicate to
-    either source makes it followable without editing this file.
+    Read, never restated -- adding a predicate to the declaration makes it followable
+    without editing this file, and that is the only way to add one.
     """
-    from ledger import vocabulary as _vocabulary
-    names = set(_vocabulary.all_predicates())
     try:
         from ledger import config as _config
         declared = (_config.load() or {}).get("vocabulary") or {}
-        names |= {str(key).split("@", 1)[0] for key in declared}
-    except Exception:      # an unreadable declaration must not widen or narrow the code set
-        pass
-    return names
+    except Exception:      # an unreadable declaration refuses everything rather than guessing
+        return set()
+    return {str(key).split("@", 1)[0] for key in declared}
 
 
 def _evidence_graph(connection, *, node_id, hops, direction, include_values,

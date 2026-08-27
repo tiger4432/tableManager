@@ -933,15 +933,6 @@ def reload_worker_process_cache():
     for k in plugin_keys:
         sys.modules.pop(k, None)
 
-    # [Ledger vocabulary] admin에서 등재한 ontology 술어를 이 프로세스도 «다음 재기동»이
-    # 아니라 지금 인정하도록. 어휘 로더는 원자당 stat을 피하려고 프로세스 수명 캐시를 쓰므로
-    # (1,000만 행 = syscall 1,000만 번), 무효화 지점이 SYSTEM_RELOAD 핸들러다.
-    try:
-        from ledger import vocabulary as ledger_vocabulary
-        ledger_vocabulary.reset_cache()
-    except Exception:
-        pass
-
     logger.info("[Reload] Chain worker modules cache cleared.")
 
 def warmup_worker(rules, db_session_factory=None):

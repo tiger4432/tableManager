@@ -849,7 +849,7 @@ DOMAIN_LEDGER = "ledger"
 
 
 def _resolve_ledger() -> dict:
-    """원장의 선언 둘 — 소스(`ledger_config.json`)와 어휘 확장(`ledger_vocabulary.json`).
+    """원장의 선언 — 소스와 어휘가 «한 파일»(`ledger_config.json`)에 있습니다.
 
     🔴 **두 번째 판정기를 만들지 않는다**(지시서 §1). admin의 저장 3단째가 묻는
     「먹었는가」는 이 도메인 하나로 답한다. 새 조립기를 세우면 같은 사실이 두 화면에서 다른
@@ -860,10 +860,8 @@ def _resolve_ledger() -> dict:
     문제가 아니라 한 여정의 실패다.
     """
     from ledger import config as ledger_config
-    from ledger import vocabulary
 
     sources_path = ledger_config.config_path()
-    vocab_path = vocabulary.extension_path()
     effective, ineffective, rejected = [], [], []
 
     # ---- 소스 선언
@@ -913,67 +911,44 @@ def _resolve_ledger() -> dict:
                 fields={"source": name, "kind": kind, "translator_ver": version,
                         "subject_types": list(declaration.get("subject_types") or [])}))
 
-    # ---- 어휘 확장
-    status = vocabulary.extension_status()
-    if not status["exists"]:
+    # ---- 어휘 — 선언이 «유일한» 출처
+    # 🔴 이 자리는 v1 의 「어휘 확장 파일」(`ledger_vocabulary.json`)을 읽어 「코드가 싣는
+    #    낱말」과 「선언으로 늘린 낱말」을 구분해 보고했습니다. 그 파일도 그 구분도 없어졌습니다 —
+    #    이제 선언 하나가 낱말을 정하므로, 보고도 「선언이 무엇을 싣는가」 하나입니다.
+    declared_vocabulary = (document.get("vocabulary") or {})
+    if not declared_vocabulary:
         ineffective.append(entry(
-            SCOPE_FILE, os.path.basename(vocab_path),
-            "어휘 확장 파일이 아직 없습니다 — 원장은 코드가 싣는 낱말"
-            f"({len(vocabulary.PREDICATES)}개)만 씁니다. 이것은 결함이 아니라 아직 "
-            "선언으로 늘린 낱말이 없다는 뜻입니다.",
+            SCOPE_FILE, os.path.basename(sources_path),
+            "선언에 어휘가 없습니다 — 어떤 낱말도 발화될 수 없고, 원자는 전부 거절됩니다. "
+            "「아직 안 늘렸다」가 아니라 「게이트가 통과시킬 낱말이 하나도 없다」는 뜻입니다.",
             reason=REASON_NOT_DECLARED))
-    elif not status["ok"]:
-        rejected.append(entry(
-            SCOPE_FILE, os.path.basename(vocab_path),
-            f"어휘 확장 파일을 읽지 못해 **통째로** 무시했습니다 ({status['error']}). "
-            f"게이트는 지금 코드가 싣는 낱말만 인정하므로, 선언으로 늘린 술어를 쓰는 "
-            f"원자는 전부 undeclared_vocabulary로 거절됩니다. 반쯤 읽는 대신 전부 "
-            f"무시하는 이유는, 절반만 실린 어휘가 프로세스마다 다른 낱말을 인정하게 "
-            f"만들기 때문입니다.",
-            reason=REASON_MAPPING_UNAVAILABLE))
     else:
-        for name, sig in sorted(vocabulary.config_predicates().items()):
-            fields = {"predicate": name, "origin": "config",
-                      "status": sig.get("status"),
-                      "traversable": sig.get("traversable")}
-            if sig.get("status") != "active":
-                ineffective.append(entry(
-                    SCOPE_RULE, name,
-                    f"`{name}`은 선언됐지만 status가 '{sig.get('status')}'라 아직(또는 "
-                    f"더 이상) 발화될 수 없습니다. 읽기는 막지 않습니다 — 이미 이 낱말로 "
-                    f"누워 있는 원자는 그대로 읽힙니다.",
-                    reason=REASON_NOT_REACHED, fields=fields))
-                continue
-            in_walk = sig.get("traversable") is not None
+        emitters = _ledger_emitted_predicates(document)
+        for key in sorted(declared_vocabulary):
+            name = str(key).split("@", 1)[0]
             effective.append(entry(
                 SCOPE_RULE, name,
-                f"`{name}`이 어휘에 실렸습니다(출처: 선언). 게이트가 이 서명으로 원자를 "
-                f"검사하고, 구조 뷰에 «선언 출처: config»로 뜹니다. 걷기: "
-                f"{'가져옴' if in_walk else '가져오지 않음(범위 지정 질의 전용)'}.",
-                fields=fields))
-        if status["count"]:
-            # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난
-            # 상태. 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를
-            # 어디서도 못 읽는다.
-            emitters = _ledger_emitted_predicates(document)
-            silent = sorted(name for name, sig in vocabulary.config_predicates().items()
-                            if sig.get("status") == "active" and name not in emitters)
-            if silent:
-                ineffective.append(entry(
-                    SCOPE_RULE, ", ".join(silent),
-                    f"선언된 술어 {', '.join(silent)}을(를) 발화하는 번역기가 없습니다 — "
-                    f"어휘에는 실렸고 게이트도 인정하지만, 어떤 소스 선언도 이 낱말로 "
-                    f"원자를 만들지 않으므로 원장에는 아직 한 건도 생기지 않습니다.",
-                    reason=REASON_NOT_DECLARED,
-                    fields={"predicates": silent}))
+                f"`{name}`이 선언에 실렸습니다. 게이트가 이 서명으로 원자를 검사하고, "
+                f"walk 의 `follow` 가 이 낱말을 받습니다.",
+                fields={"predicate": name, "origin": "declaration"}))
+        # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난 상태.
+        # 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를 어디서도 못 읽는다.
+        silent = sorted({str(k).split("@", 1)[0] for k in declared_vocabulary} - emitters)
+        if silent:
+            ineffective.append(entry(
+                SCOPE_RULE, ", ".join(silent),
+                f"선언된 술어 {', '.join(silent)}을(를) 발화하는 번역기가 없습니다 — "
+                f"어휘에는 실렸고 게이트도 인정하지만, 어떤 소스 선언도 이 낱말로 "
+                f"원자를 만들지 않으므로 원장에는 아직 한 건도 생기지 않습니다.",
+                reason=REASON_NOT_DECLARED,
+                fields={"predicates": silent}))
+
 
     settings = [
-        setting("vocabulary.code_words", len(vocabulary.PREDICATES), ORIGIN_DEFAULT,
-                "server/ledger/vocabulary.py",
-                detail="코드가 싣는 낱말 수 — 판정으로만 늘어납니다."),
-        setting("vocabulary.config_words", status.get("count", 0),
-                ORIGIN_FILE if status["exists"] else ORIGIN_DEFAULT, vocab_path,
-                detail="선언으로 늘린 낱말 수."),
+        setting("vocabulary.declared_words", len(document.get("vocabulary") or {}),
+                ORIGIN_FILE if document.get("vocabulary") else ORIGIN_DEFAULT,
+                sources_path,
+                detail="선언이 싣는 낱말 수 — 게이트와 walk 이 «이 수»만 인정합니다."),
         setting("batch.molecules_per_transaction",
                 int((document.get("batch") or {}).get("molecules_per_transaction", 200)),
                 ORIGIN_FILE if (document.get("batch") or {}).get(
@@ -985,11 +960,8 @@ def _resolve_ledger() -> dict:
         source("ledger_config", sources_path,
                "소스 → 원장 번역 선언(컬럼 매핑·시각 컬럼·주어 타입·워터마크).",
                degraded=bool(load_error)),
-        source("ledger_vocabulary", vocab_path,
-               "ontology 층 술어의 선언 확장. canonical 층은 코드가 소유합니다.",
-               exists=status["exists"], degraded=not status["ok"]),
     ]
-    return build_domain(DOMAIN_LEDGER, "원장 — 소스 선언과 어휘",
+    return build_domain(DOMAIN_LEDGER, "원장 — 선언(소스와 어휘)",
                         sources, settings, effective, ineffective, rejected)
 
 

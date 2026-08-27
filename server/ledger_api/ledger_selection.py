@@ -12,8 +12,23 @@ from ledger_api import finding_kinds
 from ledger_api import ledger_siblings
 from ledger_api import ledger_identity
 from ledger_api import ledger_trends
-from ledger import vocabulary as ledger_vocabulary
 from ledger_trace import _fetch, relation_exists
+
+
+def _is_declared(predicate):
+    """Whether the DECLARATION emits this predicate. The declaration is the only authority.
+
+    🔴 THIS KEEPS A DISTINCTION, not a lookup: 「declared and nothing was measured」 and
+    「nobody declared it」 are different answers, and the caller prints them differently.
+    Read from the live declaration rather than a code-held word list -- the list was the
+    v1 layer, and it went stale the day a predicate was declared without editing it.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("vocabulary") or {}
+    except Exception:      # an unreadable declaration is not a statement that nothing is declared
+        return False
+    return str(predicate) in {str(key).split("@", 1)[0] for key in declared}
 
 #: The aggregation unit here is the SAME unit the trend grain declares, so its subject
 #: type is read from that declaration rather than restated. A literal in this file was
@@ -994,7 +1009,7 @@ def _comparison(answers, components, process_by_wafer, finding_kind,
         group_units, measurement_by_subject, _unit_measurements,
         population_kind="bonding_experiment_unit")
     if not measurement:
-        reason = ("measured_evidence_absent" if ledger_vocabulary.is_declared("measured")
+        reason = ("measured_evidence_absent" if _is_declared("measured")
                   else "measured_predicate_not_declared")
         measurement = [{"state": "absent", "reason": reason,
                         "predicate": "measured", "wafer_mark_keys": [],

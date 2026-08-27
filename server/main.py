@@ -3773,16 +3773,6 @@ def reload_local_process_cache():
     except Exception:
         pass
 
-    # [Ledger vocabulary] 🔴 이 줄이 「재기동 0회」의 근거다. admin에서 등재한 ontology
-    # 술어는 `server/config/ledger_vocabulary.json`에 앉고, 어휘 로더는 그 파일을 프로세스
-    # 수명 동안 캐시한다(원자 하나당 stat 한 번은 1,000만 행에서 syscall 1,000만 번이므로).
-    # 캐시를 여기서 버리지 않으면 새 낱말은 «다음 재기동까지» 게이트에 없는 낱말이고, 그
-    # 낱말로 발화한 원자는 undeclared_vocabulary로 조용히 거절된다.
-    try:
-        from ledger import vocabulary as ledger_vocabulary
-        ledger_vocabulary.reset_cache()
-    except Exception:
-        pass
 
     # 걷기가 들고 있는 파생 목록(fetch 집합·통과 술어)도 어휘에서 나온 사본이므로 같이
     # 버린다. 어휘만 갱신하고 이걸 두면 새 술어가 게이트에는 있고 걷기에는 없다.
@@ -4851,18 +4841,6 @@ def _ledger_admin_refusal(violations):
     """거절 응답 하나. 사유 문장은 전부 서버가 만들고 클라는 그대로 렌더한다."""
     return HTTPException(status_code=400, detail={"ok": False,
                                                   "violations": list(violations)})
-
-
-@app.get("/admin/ledger/vocabulary", dependencies=[Depends(require_admin_token)])
-def get_ledger_vocabulary():
-    """어휘 전체 — 코드가 싣는 것과 선언으로 늘린 것을 **출처로 구분해서**(R-M ④).
-
-    화면이 폼을 만들 재료가 전부 여기서 나간다(개체 타입, 목적어 종류, 걷기 방향,
-    `traversable` 삼상태의 한국어, 서명 필수 필드 목록). 클라이언트가 이 목록들을 자기
-    쪽에 복사해 두면, 서버가 상태를 하나 늘리는 날 화면만 모르는 사본이 된다.
-    """
-    import ledger_admin
-    return ledger_admin.vocabulary_view()
 
 
 @app.get("/admin/ledger/sources", dependencies=[Depends(require_admin_token)])
