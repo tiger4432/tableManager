@@ -37,24 +37,33 @@
            🔴 모듈을 지우면 안 됩니다. 반만 죽습니다
 ```
 
-### ② 발견 — `defect@1` 엔티티 + `observed@1` 목적어를 entity_ref 로
+### ② 발견 · 종류 — «전부» 선언으로. 예외 없음
+> 소유자 2026-08-28: 「무조건 전환」 · 「delam observed at die 하면 되잖아」
+> 「delam 속성에 길이 넣고 이고 예시고 모든게 가능함」
+> 🔴 **「뭔가 지울 수 없다는 건 하드코딩이니 무시하고 지울 것」**
+
+제가 앞서 「has_findings 는 «유일한 연결»이라 못 지운다」고 적은 것은 **제약이 아니라
+하드코딩을 제약으로 보고한 것**입니다. 유일한 연결인 «이유»가 투영이 그렇게 박아서입니다.
+
 ```
 지금   observed@1  주어 die@1 · 목적어 «value» · 원자 103,841
-       qualifiers optional: inchip_x · inchip_y · radius_y · unit · gate · finding_kind · run_uid
-       -> 투영이 Finding Point / Finding Collection 을 만들고 has_findings 로 붙인다
+       투영이 Finding Point / Finding Collection 을 만들고 has_findings · finding 으로 붙인다
+       종류(void · delam)는 «파이썬 dict» 에 산다 — finding_kinds.py:105·117·134
 
-개정   entities.defect@1                        (키는 §3 판정)
-       vocabulary.observed@1  목적어 entity_ref -> defect@1
-       -> Finding Point · Finding Collection · has_findings · finding «전부 불필요»
-🟢 문법은 이미 있습니다 — entity_ref 목적어는 inspected@1 · transfer@1 이 쓰고 있습니다
+개정   entities.defect@1                 (키는 §3)
+       entities.defect_kind@1            void · delam · 그리고 앞으로 무엇이든
+       entities.scan@1                   run_uid
+       vocabulary.observed@1   주어 die@1 · 목적어 entity_ref -> defect@1
+       vocabulary.of_kind@1    주어 defect@1 · 목적어 entity_ref -> defect_kind@1
+       vocabulary.seen_by@1    주어 defect@1 · 목적어 entity_ref -> scan@1
 ```
-수식어 일곱의 행선지 (제안):
+🔴 **delam 도 같은 자리에 들어갑니다.** 파서가 아직 없다는 것은 «원자가 0» 이라는 뜻일 뿐,
+   선언에서 뺄 이유가 아닙니다. 선언에 있으면 데이터가 오는 날 코드 0줄로 발화합니다.
+   (총괄이 앞서 「delam 은 픽스처라 제외」라고 적은 것 — 소유자 지시로 «철회»합니다)
+
+속성은 defect@1 이 듭니다 — 소유자 예시 「길이」 포함:
 ```
-inchip_x · inchip_y · radius_y · unit · gate   ->  defect@1 의 «속성»(원자 수식어 그대로)
-finding_kind                                   ->  «종류» 노드   defect_kind@1 (void · delam …)
-run_uid                                        ->  «스캔» 노드   scan@1
-   -> 그때 「같은 스캔의 다른 발견」·「같은 종류의 다른 발견」이 walk 한 번으로 돈다
-   (소유자 2026-08-27: 「디펙의 종류 모델링 등 다른 관계 및 노드가 붙을 수 있음」)
+inchip_x · inchip_y · radius_y · unit · gate   그리고 종류마다 다른 것(길이 등)
 ```
 
 ### ③ `mechanism` — 그대로 둡니다
@@ -85,9 +94,7 @@ derived_from@1  lot -> lot          원자 «0»
 ## 4. 하지 않는 것 — 명시
 
 ```
-⛔ delam 을 원장에 넣지 않습니다 — 파서가 «없고» 선언 sources 열에도 «없습니다».
-   씨앗 스크립트 셋에만 있는 픽스처이고, 원장 원자 0 은 «설계대로»입니다
-   (총괄이 8/27 에 「박리 위험」으로 올린 것은 픽스처를 쫓은 것이라 «철회»합니다)
+✅ delam 도 «선언에 넣습니다» (소유자 지시). 파서가 없다 = 원자 0 일 뿐이고 선언의 문제가 아닙니다
 ⛔ 새 문법을 만들지 않습니다 — entity_ref 목적어·엔티티·키 전부 이미 있습니다
 ⛔ WaferLeg 를 엔티티로 만들지 않습니다 — 집계의 «이름»이지 노드가 아닙니다 (판정 2026-08-27)
 ⛔ 예산(node_limit 1000 · edge_limit 3000)을 손대지 않습니다 — 별개 문제입니다
@@ -106,3 +113,40 @@ derived_from@1  lot -> lot          원자 «0»
 🔴 선언을 조각내면 재적재를 여러 번 하게 되고 그게 제일 비쌉니다. 그래서 작업은 일괄입니다.
 🔴 그런데 오늘 하나 고칠 때마다 «앞 수리가 가리던 결함»이 나왔습니다(씨앗→트렌드0→분모).
    그래서 «검증»은 게이트별로 갑니다.
+
+---
+
+# 6. 🔴 지울 하드코딩 — 실측 목록 (총괄 2026-08-28)
+
+> 소유자: 「하드코딩 아직도 안 없애고 있네」 · 「지울 수 없다는 건 하드코딩이니 무시하고 지울 것」
+
+## 투영이 «지어낸 낱말» — 전부 `ledger_subgraph.py`
+```
+787   "type": "Finding Point"
+816   "type": "Finding Collection",  node_kind "collection"
+1170  씨앗 경로의 "Finding Point"
+1180  씨앗 경로의 "Finding Collection"
+1523  _edge("has_findings", subject_id, collection["id"], …)
+1705  주석의 발명 엣지 목록: has_findings · on_subject · contains · finding · mechanism · needs_enrichment
+12·13·20  모듈 docstring 이 그 구조를 «설계»로 적어 둔 자리
+```
+`ledger_trace_router.py:107`  `observations=summary|claims` 축 설명
+   -> 낱개/묶음은 «타입»이 아니라 세는 방식입니다 (소유자 판정 2026-08-27). 이 축도 같이 갑니다
+
+## 도메인 낱말이 «코드에 값으로» 박힌 자리
+```
+finding_kinds.py:105   DEFAULT_KIND = "void"
+finding_kinds.py:117   "void":  { … }        <- 종류 카탈로그가 «파이썬 dict»
+finding_kinds.py:134   "delam": { … }
+ledger_identity.py:116  "kind": "void_by_experiment_unit", "finding_kind": "void"
+🔴 ledger_selection.py:565  if finding_kind == "void" and final_units:
+                            <- «코드가 도메인 낱말로 갈래를 튼다». 이게 가장 나쁩니다
+```
+
+## 판정
+```
+위 전부 «지웁니다». 「유일한 연결이라 못 지운다」는 근거가 아닙니다 —
+유일한 연결인 이유가 저 박아 놓은 코드이기 때문입니다
+종류 카탈로그는 dict 가 아니라 «선언»(defect_kind@1)이 듭니다
+그래야 「다른 스키마 운영 환경에서 코드 0줄」이 참이 됩니다
+```
