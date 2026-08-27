@@ -1,3 +1,85 @@
+# 🔴 **범위 확정 — `server/` «안»에 v1 흔적이 «0» 이어야 합니다. 그리고 끝나면 문서 정비** (소유자 13:4x)
+
+> 「아예 **server 폴더 내에서 v1 관련 없어야 해**. 끝나고 **문서도 모두 정비**.
+>  주요 문서들 **concat 하지 말고 현상태 맞게 전부 컴팩트하게 최신화**해」
+
+## 총괄 전수 실측 — 지워야 할 «전부»
+```
+① ledger/vocabulary.py                                        «존재» -> 삭제
+② import vocabulary (코드)   «11 파일»
+③ import vocabulary (시험)   «3 파일»
+④ ledger_vocabulary.json 언급 «7 파일»   (코드·샘플·문서 문자열)
+⑤ v1 심볼 언급 «28 파일»
+```
+
+### 코드 파일 «16» — 레인별로 갈랐습니다 (겹침 0)
+```
+[A 구현자] 쓰기·선언 코어
+   ledger/vocabulary.py «삭제» · ledger/gate.py · ledger/config.py
+   · ledger/envelope.py · ledger/config_authoring.py · ledger/source_profile_builtins.py
+   그리고 scripts/migrate_ledger_config_drop_vocabulary_layer.py  <- 이미 끝난 마이그레이션. «삭제»
+
+[B 클라레인] 화면 카탈로그
+   ledger_admin.py · ledger_structure.py · ledger_explorer.py
+
+[C 응용레인] 읽는 나머지
+   config_resolve_report.py · main.py · enrichment_config.py · chain_ingestion_worker.py
+   · ledger_trace.py · ledger_trace_router.py
+   · ledger_api/ledger_selection.py · ledger_api/ledger_catalog.py «삭제»(수입자 0)
+```
+### 시험 «7» — «코드와 같은 커밋»에
+```
+tests/test_ledger_admin_setup · test_ledger_catalog · test_ledger_l1_unit
+· test_ledger_observed_unit · test_ledger_structure_pg · test_ledger_subgraph
+· test_ledger_trace_contract
+-> v1 을 «재던» 시험은 지웁니다. v5 를 재는 시험이 섞여 있으면 «그 부분만» 남기십시오
+```
+### 그리고 «샘플·설정»
+```
+config/sample/ledger_vocabulary.json.sample  -> «삭제» (로더가 폴백하지 않으므로 남길 이유 0)
+ledger_vocabulary.json 을 언급하는 «문자열·주석» 전부 -> 지웁니다
+```
+
+## 🔴 v5 가 «진짜로» 기대는 곳은 «셋»뿐입니다 — 딴 데 시간 쓰지 마십시오
+```
+① ledger/gate.py:77      check_signature · check_subject_keys · is_declared
+   -> 그냥 «걷어냅니다». 쓰기가 깨지면 «그때» 선언 위에서 (소유자 판정)
+② ledger/config.py:476,857   ENTITY_TYPES
+   -> 🟢 선언의 `entities` 가 «같은 답». 재개발 아니라 «읽는 자리 바꾸기»
+③ ledger_trace_router      all_predicates (follow 의 코드∪선언 합집합)
+   -> 🟢 빼면 «선언 10» 만 남고 그것이 원자 «100%» 를 덮습니다
+      그리고 그 자리에서 `follow=transferred` 가 «422» 가 됩니다 — 목표 게이트입니다
+나머지는 전부 «지역 변수이거나 주석»입니다 (setup_bundle 의 `vocabulary` 는 «선언의 섹션»)
+```
+
+## 판정 — 「없어야 한다」의 «검사식»
+```
+cd server && grep -rn "vocabulary" --include=*.py . | grep -v "선언의 vocabulary 섹션"
+-> 남는 것이 «선언 섹션을 가리키는 지역 변수/주석»뿐인가
+그리고
+grep -rl "ledger_vocabulary" server/  ->  «0»
+ls server/ledger/vocabulary.py        ->  «없음»
+```
+
+---
+
+# 📚 그다음 — 문서 정비. **concat 금지, «다시 쓰기»입니다**
+
+⚠️ 코드가 끝난 «뒤»에 시작합니다. 지금 손대지 마십시오.
+
+```
+🔴 규칙   덧붙이지 말고 «현 상태로 다시 쓰십시오». 오래된 절은 «지웁니다»
+         지금 문서 중 상당수가 「그때는 이랬다」를 쌓아 놓은 상태입니다 — 그건 히스토리이지 문서가 아닙니다
+대상     docs/overview/SYSTEM_OVERVIEW.md (SSOT) · docs/architecture/* ·
+         docs/guide/LEDGER_GUIDE.md · docs/spec/LEDGER_TECHNICAL_SPEC.md · docs/architecture/CODE_MAP.md
+분량     각 문서가 «지금 상태»만 말하게. 짧아지는 것이 정상입니다
+기준     오늘의 두 기둥 — ① 원장은 v5 선언 위에 ② walk 이 답한다
+         v1·어휘 확장·저장 라우트·계보 walk 은 «없는 것»으로 씁니다 (있었다고 쓰지 마십시오)
+```
+📌 총괄이 `docs/process/PROJECT_STATUS.md` 를 맡습니다. 나머지 배분은 코드가 끝나면 냅니다.
+
+---
+
 # 🏛️ **기둥 «둘»은 이미 서 있습니다 — 그 위에 쌓으십시오** (소유자 13:3x, 총괄 실측으로 뒷받침)
 
 > 「어차피 **이미 원장은 v5 선언으로 전환되어 있고 walk 도 완성**되어 있어.
