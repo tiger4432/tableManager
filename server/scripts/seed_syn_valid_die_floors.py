@@ -86,15 +86,36 @@ def consuming_relation():
     `ledger_lots._frame` looks its frames up under exactly that name. Taking it from there
     means a deployment that attributes to another relation gets its frames stamped with no
     edit here.
+
+    🔴 READ HERE SINCE 2026-08-28. This used to call
+    `ledger_api.ledger_siblings.load_axes_config()`, and that module was deleted as an orphan
+    - this script was its ONE production caller, so 48 KB survived for one function. The
+    declaration is read directly instead, and only the two fields this script uses.
     """
-    from ledger_api import ledger_siblings
-    from ledger_api import finding_kinds
-    config = ledger_siblings.load_axes_config()
-    geometry, attribution = config.for_kind("void")
+    import json
+    import os as _os
+
+    filename = "siblings_axes.json"
+    try:
+        import paths
+        path = _os.path.join(paths.CONFIG_DIR, filename)
+        sample = paths.config_sample_path(filename)
+    except Exception:                                              # pragma: no cover
+        base = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "config")
+        path = _os.path.join(base, filename)
+        sample = _os.path.join(base, "sample", filename + ".sample")
+    if not _os.path.exists(path):
+        path = sample
+    with open(path, "r", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    # `kinds.void.attribution` overrides the shared list, exactly as `for_kind` did.
+    override = ((raw.get("kinds") or {}).get("void") or {}).get("attribution")
+    attribution = override or raw.get("attribution") or []
     for source in attribution:
-        if getattr(source, "about", None) == "process":
-            return source.relation
-    return attribution[0].relation
+        if isinstance(source, dict) and source.get("about") == "process":
+            return source.get("relation")
+    return attribution[0].get("relation") if attribution else None
 
 
 def floor_key(cols, rows):

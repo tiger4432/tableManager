@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 import pytest  # noqa: E402
 
 from ledger_api import finding_kinds  # noqa: E402
-from ledger_api import ledger_selection  # noqa: E402
 import seed_syn_complex_composite as fixture  # noqa: E402
 
 
@@ -186,83 +185,6 @@ def test_measurement_excursions_are_sparse_and_common_values_dominate():
                   if spec["metric"] == atom.object_payload["metric"])]
     assert len(sparse) == 3 * len(fixture.MEASUREMENT_SPECS)
     assert len(sparse) / len(recorded) < 0.1
-
-
-def test_selection_comparison_retains_twenty_plus_sequence_and_knob_ab_evidence():
-    defect = fixture.UI_PRESETS["hero_defect"]
-    reference = fixture.UI_PRESETS["hero_reference"]
-    paths_by_group = {"A": {}, "B": {}}
-    selected = {defect: "A", reference: "B"}
-    for atom in fixture.transfer_atoms():
-        meta = atom.object_payload["component"]
-        group_id = selected.get(meta["final_chip_id"])
-        if not group_id:
-            continue
-        key = (meta["final_chip_id"], meta["component_id"])
-        paths_by_group[group_id].setdefault(key, {
-            "final_chip_id": meta["final_chip_id"],
-            "component_id": meta["component_id"],
-            "core": {"wafer": atom.subject_keys["wafer"],
-                     "lot": meta["core_lot"], "slot": meta["core_slot"],
-                     "type": meta["core_type"], "branch": meta["core_branch"]},
-            "bond": {"final_wafer": meta["final_wafer_id"],
-                     "bonding_leg": meta["bonding_leg"],
-                     "layer": meta["bond_layer"]},
-            "transfer_steps": 1, "evidence_ids": [atom.source_raw_ref],
-        })
-    used_wafers = {row["core"]["wafer"] for rows in paths_by_group.values()
-                   for row in rows.values()}
-    process_by_wafer = defaultdict(list)
-    for index, atom in enumerate(fixture.process_atoms()):
-        wafer = atom.subject_keys["wafer"]
-        if wafer in used_wafers:
-            process_by_wafer[wafer].append({
-                "evidence_id": f"evidence:{index}",
-                "payload": atom.object_payload,
-                "occurred_at": atom.occurred_at.isoformat(),
-            })
-    measurement_by_subject = defaultdict(list)
-    for index, atom in enumerate(fixture.measurement_atoms()):
-        wafer = atom.subject_keys["wafer"]
-        if wafer in used_wafers:
-            measurement_by_subject[wafer].append({
-                "evidence_id": f"measurement-evidence:{index}",
-                "payload": atom.object_payload,
-                "occurred_at": atom.occurred_at.isoformat(),
-            })
-    answers = [{"group_id": group_id, "paths": list(rows.values())}
-               for group_id, rows in paths_by_group.items()]
-    body = ledger_selection._comparison(
-        answers, {}, process_by_wafer, "void", measurement_by_subject)
-    allowed_process_keys = {
-        "core_type", "core_branch", "subject_grain", "step", "recipe", "occurrence"}
-    assert all(set(row["signature"]) <= allowed_process_keys
-               for row in body["facets"]["process"])
-    assert all(set(token) == {"step", "recipe", "occurrence"}
-               for cluster in body["sequence"]["clusters"] for token in cluster["tokens"])
-    assert body["sequence"]["state"] == "ready"
-    assert min(len(row["tokens"]) for row in body["sequence"]["clusters"]) >= 20
-    steps = {token["step"] for row in body["sequence"]["clusters"]
-             for token in row["tokens"]}
-    assert all(any(step.startswith(prefix + "_") for step in steps)
-               for prefix in ("PHOTO", "ETCH", "CMP", "CLN"))
-    signal = next(row for row in body["facets"]["process"]
-                  if row["signature"].get("core_type") == "HBM"
-                  and row["signature"].get("core_branch") == "B"
-                  and row["signature"].get("step") == "ETCH_PATTERN_02"
-                  and row["signature"].get("recipe") ==
-                      fixture.process_recipe("HBM", "B", "ETCH_PATTERN_02"))
-    frequencies = {row["group_id"]: row["frequency"] for row in signal["groups"]}
-    assert frequencies["A"] > 0 and frequencies["B"] == 0
-    assert signal["evidence_ids"]
-    measurement = next(row for row in body["facets"]["measurement"]
-                       if row.get("signature", {}).get("metric") == "etched_cd"
-                       and row.get("signature", {}).get("recipe") ==
-                           fixture.process_recipe("HBM", "B", "ETCH_PATTERN_02"))
-    measurement_groups = {row["group_id"]: row for row in measurement["groups"]}
-    assert any(item["value"] == 48.8 for item in measurement_groups["A"]["values"])
-    assert all(item["value"] != 48.8 for item in measurement_groups["B"]["values"])
-    assert measurement["evidence_ids"] and measurement["wafer_mark_keys"]
 
 
 def test_all_twelve_experiment_aggregates_trace_real_measurements_for_all_four_metrics():
