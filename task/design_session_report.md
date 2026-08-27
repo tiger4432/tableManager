@@ -1,3 +1,61 @@
+# 📋 [클라 B] 3차 지시는 «제 배분이 아닙니다» — 대신 제 여섯 문서에 새 게이트 ④를 돌렸고, 그러다 «코드»에서 하나 나왔습니다
+
+## ① 3차 배분 확인 — 셋 다 «A 레인» 것입니다
+`48842dcb` 의 셋(`LEDGER_TECHNICAL_SPEC` · `backend.md` · `LEDGER_EVIDENCE_SUBGRAPH_SPEC`)은
+2차 배분표에서 «전부 [A 구현자]» 였고, 3차 블록에 레인 태그가 없으며 본문이
+「**배분은 그대로**」라고 적었습니다. 그래서 **가져가지 않았습니다.**
+📌 한 시간 전 「아무나」를 제가 집었다가 A 레인과 충돌 둘을 냈습니다. 같은 실수를 안 합니다.
+**「B 가 하나 맡아라」 한 줄이면 바로 붙습니다** — 셋 중 아무거나 지목만 해 주십시오.
+
+## ② 🔴 채널 — 새 지시가 «파일 맨 아래»로 옵니다 (제 읽는 법을 바꿨습니다)
+```
+044e66c5 · f64c61b7   @@ -1,3      <- 맨 «위»에 prepend
+dfc39464 · 48842dcb   @@ -7373,3 · @@ -7439,3   <- 맨 «아래»에 append
+```
+제 습관이 「맨 위를 읽는다」였습니다. **바뀐 걸 못 볼 뻔했습니다** — 앞으로 위·아래 둘 다 봅니다.
+(자가 기상 감시 문구도 「맨 위」로 돼 있는데, 그건 제 감시라 제가 고칩니다.)
+
+## ③ 새 게이트 ④를 «제 여섯 문서»에 돌렸습니다 — 진짜 위반 «0»
+술어를 이름 대는 자리를 라이브 «열 개»와 대조했습니다.
+```
+PRIMER · LEDGER_GUIDE · frontend · SCENARIO_CONSOLE_BRIEF   해당 없음
+api_documentation      `pin` 1건   -> 영어 동사 「고정하다」. 술어 아님. «그대로»
+FEATURE_CHECKLIST      `transferred` 3건 -> 전부 «전사 계획 응답 필드»입니다
+                       (`transferred`/`remaining`/`remaining_reliable` 한 묶음, 「가짜 0 금지」 항목)
+                       원장 술어를 대는 자리가 «아닙니다». 지시서 경고대로 «그대로» 뒀습니다
+```
+🔴 **일괄 치환을 했으면 살아 있는 점검 셋을 죽일 뻔했습니다.**
+
+## ④ 그런데 «코드»에 진짜가 있었습니다 — 보드가 그걸 매번 받습니다
+그 대조를 하다 서버에서 나왔습니다. **제 파일 아니라 안 고쳤습니다.**
+```
+GET /api/ledger/composition   ← R&D 보드가 «로드마다 2회» 부르는 라우트입니다
+실측 응답:
+  provenance.predicate                 = "transferred"
+  final_subject_resolution.basis       = "transferred.to.bond_layer.keys.bond_wafer"
+```
+```
+원장 실측    transferred  원자 «0»        transfer  원자 «401,206» (원장의 62%)
+모양도 다름  문서·코드가 대는 v1 모양     주어 Wafer · 목적어 value · to.bond_layer.keys.bond_wafer
+            라이브 v5                    주어 die@1 · 목적어 entity_ref · die -> die
+```
+즉 **보드가 받는 provenance 가 「어느 원자에서 왔나」에 대해 없는 이름을 대고 있습니다.**
+「ledger_backed: true」와 함께 나가서 더 그렇습니다.
+
+### 자리 넷 (제가 셌습니다 — 전부 A·C 레인 파일)
+```
+ledger/config.py:293                TRANSFER_PREDICATE = "transferred"   <- 뿌리
+ledger_api/ledger_composition.py:131  provenance 에 리터럴 "transferred"
+ledger/source_contract.py:167       그 술어를 «주어 Wafer · 목적어 value» 로 선언 (v1 모양)
+ledger/profile_chain_mapper.py:377  "predicate": TRANSFER_PREDICATE 로 발화
+config_resolve_report.py:993        그 이름을 집합에 넣음
+```
+⚠️ **이름만 바꾸면 안 될 수 있습니다** — `source_contract` 의 서명이 v1 모양(`value`)이라
+   이름을 `transfer` 로 바꾸면 선언의 `transfer@1`(entity_ref · die→die)과 «안 맞습니다».
+   그래서 「치환」이 아니라 «판정»이 필요한 자리로 보입니다. 총괄 몫으로 올립니다.
+
+---
+
 # 📚 [클라 B] **문서 정비 2차 «셋 다» 착지 — 세 부류로 세었습니다**
 
 지시 `24ef94e5` 의 B 레인 셋, «문서 하나 · 커밋 하나»로 끝냈습니다.
