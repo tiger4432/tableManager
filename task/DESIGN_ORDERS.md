@@ -7439,3 +7439,70 @@ tests/test_graph_branch_retired.py                         12 passed
 죽은 파일처럼 보입니다. **그런데 그 스킵은 `ASSY_PG_TEST_DATABASE_URL` 이 없어서입니다.**
 「라우트가 없어서」와 「접속이 없어서」를 **이 계측기는 못 가릅니다.**
 그래서 지우라고 «안 합니다». 「47 skipped」는 **「죽었다」와 「못 쟀다」가 같은 값**입니다.
+
+---
+
+# 📚 문서 3차 — 남은 «셋». 재료는 제가 다 쟀습니다 (총괄, 2026-08-27)
+
+배분은 그대로(문서 하나 · 커밋 하나), 검사식도 그대로(**세 부류** — 고칠 현재형 거짓말 ·
+남길 기록 · 예시만 갈아끼울 죽은 사례).
+
+```
+docs/spec/LEDGER_TECHNICAL_SPEC.md        167,784 B   ← 🔴 가장 틀린 것이 여기 있습니다
+docs/architecture/backend.md              221,970 B
+docs/spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md 30,270 B
+```
+
+## 🔴 LEDGER_TECHNICAL_SPEC — 「정본이 «둘»」이 살아 있습니다. 둘 다 «디스크에 없습니다»
+
+문서가 지금도 이렇게 말합니다(§3.7-sexies · L31 · L452 · L579):
+> 정본이 둘 — 코드 `PREDICATES` + 선언 `ledger_vocabulary.json`,
+> 묻는 쪽은 전부 병합 뷰 `all_predicates()` 를 읽는다
+
+제가 쟀습니다:
+```
+server/ledger/vocabulary.py          -> 파일 «없음» (이 세션에 삭제)
+server/config/ledger_vocabulary.json -> 파일 «없음»
+all_predicates                       -> 라이브 0 · 테스트 0
+traversable_predicates               -> 라이브 0 · 테스트 «1»(그마저 docstring 산문)
+POST /admin/ledger/save              -> 라우트 «없음»
+```
+🔴 **지금 정본은 «하나»입니다** — `server/config/ontology/ledger_config.json`(setup_version 5).
+라이브 선언 실측:
+```
+엔티티 «여섯»   die@1 · dtjob@1 · lot@1 · lot_slot@1 · recipe@1 · wafer@1
+술어  «열»      bonded_from@1 · derived_from@1 · has_netdie@1 · has_wafer@1 · inspected@1
+                observed@1 · processed_with@1 · register@1 · slot_map@1 · transfer@1
+```
+
+## 🔴 그리고 `transferred` — 부류로 쓸지 말고 «자리마다» 보십시오
+
+원장 실측(전수):
+```
+transfer  401,206   ← 실재하는 이름. 원장의 62%
+transferred     0   ← 문서가 대는 이름. 원자 «0»
+그리고 모양도 바뀌었습니다:
+  v1 transferred  주어 Wafer · 목적어 value      · to.bond_layer.keys.bond_wafer
+  v5 transfer     주어 die@1 · 목적어 entity_ref · die -> die (소유자 「bond 는 die to die」 착지)
+```
+⚠️ **그런데 `transferred` 가 나오는 문서 20개 중 상당수는 «원장 술어 이야기가 아닙니다»**
+(`transfer_plan_config.md` 7건 등은 이송 계획 도메인의 평범한 낱말입니다).
+🔴 **일괄 치환 금지.** 당신 셋 안에서만, **원장 술어를 이름 대는 자리인지 한 자리씩** 보십시오:
+```
+LEDGER_TECHNICAL_SPEC  5건   backend  3건   EVIDENCE_SUBGRAPH  0건
+```
+
+## 게이트 (지난번과 같음 + 하나)
+```
+① v1 낱말 0        vocabulary.py · ledger_vocabulary · all_predicates
+                   · traversable_predicates · admin/ledger/save
+② 죽은 심볼 전수    표본 말고 «전부». 문서가 이름 대는 파일·함수·라우트가 실재하는지
+③ 줄었나           덧붙이지 말고 다시 쓸 것
+④ 🔴 새 게이트     원장 술어를 이름 대는 자리는 «열 개 목록»과 대조. 없는 이름 0건
+```
+
+## 남길 것 — 헷갈리지 마십시오
+```
+⛔ 날짜 붙은 «이력 블록»(「직전 …」·「[2026-08-14] …」)은 «기록»입니다. 다시 쓰지 마십시오
+⛔ 은퇴를 «기록한» 문장(⚰️ 표시)도 기록입니다. 「지금 그렇다」로 읽히는 문장만 고칩니다
+```
