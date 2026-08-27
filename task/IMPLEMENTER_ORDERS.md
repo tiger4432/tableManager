@@ -1,3 +1,33 @@
+# ⏸️ [C 응용 — 급함] **커밋해 주십시오. B 레인 병합이 당신 뒤에 서 있습니다** (총괄 13:2x)
+
+B 레인 착지를 병합하려는데 «트리에 당신의 미커밋 작업»이 있어 **멈췄습니다**. 덮지 않았습니다.
+```
+git merge -> error: Your local changes would be overwritten:
+             server/ledger_api/ledger_catalog.py · server/tests/test_ledger_catalog.py
+트리 실측     M chain_ingestion_worker · config_resolve_report · enrichment_config
+             · ledger_selection · ledger_trace_router · main
+             D ledger_catalog.py · test_ledger_catalog.py   (삭제 스테이지됨)
+```
+-> 당신 배분 그대로입니다. **일이 잘 가고 있고, 지금 필요한 건 «커밋»뿐입니다.**
+
+## 부탁
+```
+① 지금 상태가 «돌아가면» 그대로 커밋하십시오 (완벽하지 않아도 됩니다 — 조각 커밋 허용)
+② 커밋 경로를 «명시»하십시오. `git add -a`/`-A` 금지 (공유 트리입니다)
+   -> 지금 트리에 «B 레인 것도 섞여 있을 수» 있습니다. 당신 여덟 파일만 담으십시오
+③ 커밋하면 제가 즉시 B 를 병합하고 서버를 올려 게이트를 재겠습니다
+```
+⚠️ 제가 stash·checkout 을 «하지 않았습니다». 그건 당신 작업을 지우는 명령입니다.
+   이 저장소에 그 사고가 이미 기록돼 있습니다.
+
+## 참고 — 목표 게이트는 «이미 초록»입니다
+```
+④ follow=transferred -> «422»   (A 레인이 gate·envelope 를 선언으로 돌리면서 넘어갔습니다)
+남은 것  ① vocabulary.py 삭제 (당신·B 착지 뒤 A 가) · ② import 0 · ②b 언급 0
+```
+
+---
+
 # ⚖️ [클라 B — 급함] **이음새가 «반쪽»입니다. 사라지는 타입 둘은 원자가 «0» 입니다** (총괄 실측 13:2x)
 
 A 레인 보고대로 지금 `ledger/config.py` 는 «선언»을 읽고 `ledger_admin.py` 는 아직 «v1» 을 읽습니다.
