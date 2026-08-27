@@ -231,24 +231,54 @@ def test_sql_is_time_bounded_keyset_paged_and_database_downsampled():
 def test_the_numerator_is_a_declared_expression_not_a_fixed_one():
     """🔴 THE POINT OF THIS ROUND, asserted where it can regress.
 
-    The route counted zero defects because the SQL looked for the context key in the
-    payload of one subject type while the ledger carried it in the subject keys of
-    another.  Both are now bound values that the caller states, so the two grains land as
-    two different reads of the same query -- and no fab word is spelled in the builder.
+    🔴 THE MECHANISM MOVED, THE RULE DID NOT (2026-08-27). This used to assert that the
+    finding side matched on the subject type the CALLER states. It cannot: a finding's
+    subject is a die, and the caller's grain names the aggregation unit it wants points
+    for. Honouring the caller there is exactly what made the numerator zero -- no atom has
+    subject_type `WaferLeg`, so the CTE matched nothing at all.
+
+    So the finding side reads `FINDING_SOURCE`, and what is asserted is the rule that
+    survives: **no fab word is spelled in the builder**. Every name on both sides arrives
+    as a bound parameter, from the caller's grain on the scan side and from the one block
+    that may hold this fab's spellings on the finding side.
     """
     default_sql = ledger_trends._series_sql(ledger_trends._grain(None))
-    assert "subject_type = %(grain_subject_type)s" in default_sql
-    assert "subject_keys ? %(grain_key_0)s" in default_sql
-    assert "'Wafer'" not in default_sql and "'bonding_leg'" not in default_sql
+    assert "e.subject_type = %(finding_subject_type)s" in default_sql
+    assert "e.subject_keys->>%(finding_wafer_key)s" in default_sql
+    # The rule, unchanged: the builder spells no fab word, on either side.
+    for word in ("'Wafer'", "'bonding_leg'", "'mat_id'", "'die'", "'wafer'"):
+        assert word not in default_sql, word
 
     stated = json.loads(json.dumps(ledger_trends.DEFAULT_GRAIN))
     stated["subject_type"] = "WaferLeg"
     stated["axes"][1]["numerator"] = {"from": "subject_keys", "key": "bonding_leg"}
     plan = ledger_trends._grain(stated)
-    assert plan.params == {"grain_key_0": "wafer", "grain_key_1": "bonding_leg",
-                           "grain_subject_type": "WaferLeg"}
-    assert "subject_keys ? %(grain_key_1)s" in ledger_trends._series_sql(plan)
+    # The caller's words still arrive bound, and the finding side's words come from the
+    # block -- two declarations, one query, and neither of them in the SQL text.
+    assert plan.params["grain_key_0"] == "wafer"
+    assert plan.params["grain_subject_type"] == "WaferLeg"
+    assert plan.params["finding_subject_type"] == ledger_trends.FINDING_SOURCE["subject_type"]
+    assert plan.params["finding_wafer_key"] == ledger_trends.FINDING_SOURCE["wafer_key"]
     assert plan.declared["axes"][1]["numerator"]["from"] == "subject_keys"
+
+
+def test_a_finding_is_counted_by_die_and_not_by_atom():
+    """🔴 THE DEFECT THIS ROUND EXISTS FOR, in the shape that can come back.
+
+    One die can carry several void points, so counting atoms answers a different question
+    than the map does. MEASURED on the live ledger for SYN-CX-BW-001: 121 observed atoms
+    over 28 distinct dies, and the map counts 28.
+
+    ⚠️ The die is the SUBJECT, not a payload field. The previous spelling looked for
+    `object_payload->'die'`, which no observed atom carries, so `count(DISTINCT die)` was
+    structurally zero rather than merely wrong.
+    """
+    sql = ledger_trends._series_sql(ledger_trends._grain(None))
+    assert "count(DISTINCT die)" in sql
+    assert "object_payload->'die'" not in sql and "object_payload->'position'" not in sql
+    # The die identity is the subject's own keys, each one bound rather than spelled.
+    for index in range(1 + len(ledger_trends.FINDING_SOURCE["cell_keys"])):
+        assert f"e.subject_keys->>%(finding_die_{index})s" in sql
 
 
 @pytest.mark.parametrize("mutate,detail_key", [
