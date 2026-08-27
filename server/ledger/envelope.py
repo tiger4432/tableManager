@@ -297,10 +297,11 @@ ROW_COLUMNS = (
 
 
 def check_envelope(atom: Atom):
-    """Violations of the envelope's own rules, independent of the vocabulary.
+    """Violations of the envelope's own rules, independent of what the atom SAYS.
 
-    Vocabulary questions ("is this predicate declared, does it accept this subject
-    type") live in `vocabulary.check_signature`. This function asks the questions the
+    Questions about the saying ("is this predicate declared, does it accept this subject
+    type") belong to the DECLARATION - they used to live in `vocabulary.check_signature`,
+    which retired with that file on 2026-08-27. This function asks the questions the
     ENVELOPE asks of every atom regardless of what it says: is there a world time, is
     there a source, is there a route back to the raw utterance.
     """

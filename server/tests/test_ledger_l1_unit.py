@@ -572,19 +572,28 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
 
 # ------------------------------------------------------------------------------- gate
 def test_the_gate_refuses_the_WHOLE_molecule_not_the_bad_atom():
-    """A half-translated event is worse than an untranslated one: it looks complete."""
+    """A half-translated event is worse than an untranslated one: it looks complete.
+
+    🔴 THE DEFECT CHANGED 2026-08-27, NOT THE PROPERTY. The bad atom used to carry
+    `subject_keys={"lot": ""}`, which `vocabulary.check_subject_keys` refused - and that
+    check left the gate with the v1 vocabulary, by owner's ruling. An empty identity key is
+    no longer judged HERE, so asking for it would assert the removal rather than the
+    all-or-nothing rule this test is about. The bad atom now carries an undeclared
+    derivation, which the gate still judges, and the property under test is untouched: one
+    refused atom takes its whole molecule with it.
+    """
     good = envelope.Atom(
         subject_type="Lot", subject_keys={"lot": "A"}, predicate="register",
         occurred_at=WHEN, source_who="s", source_translator_ver="v",
         source_raw_ref="r", molecule_ref="m", derivation="first_sight")
     bad = envelope.Atom(
-        subject_type="Lot", subject_keys={"lot": ""}, predicate="register",
+        subject_type="Lot", subject_keys={"lot": "B"}, predicate="register",
         occurred_at=WHEN, source_who="s", source_translator_ver="v",
-        source_raw_ref="r", molecule_ref="m", derivation="first_sight")
+        source_raw_ref="r", molecule_ref="m", derivation="i_made_this_up")
     kept, report = gate.screen_molecule("lot_event", [good, bad], {"first_sight"},
                                         {"Lot"}, molecule_ref="m")
     assert kept == []
-    assert report["refused"] and report["reason"] == gate.REFUSE_NO_IDENTITY
+    assert report["refused"] and report["reason"] == gate.REFUSE_UNDECLARED_DERIVATION
     assert gate.atoms_lost()["lot_event"] == 2
 
 
