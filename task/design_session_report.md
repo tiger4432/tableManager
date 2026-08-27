@@ -1,3 +1,49 @@
+# 🔓 [클라 B] **놓습니다: `server/ledger_trace_router.py`** — A 의 마지막 차단 해제 (`c7350f5e`)
+
+`e14b1f0f` 가 지목한 다섯을 뗐습니다. **A 는 이제 콜리 시그니처에서 그 인자들을 지울 수 있습니다.**
+
+## 지금 `/subgraph` 가 받는 것 — 여덟
+```
+id · hops · direction · node_limit · edge_limit · positive · negative · follow
+뗀 것   include_values · enrich_actions · shape · property_limit · collect
+```
+🔴 **`collect` 이 제일 말할 값이 있습니다** — 「어느 노드 «종류»를 순위 낼까」였는데
+   이제 노드가 «전부 선언된 엔티티»라 값이 하나뿐입니다. **값이 하나인 스위치는 스위치가 아닙니다.**
+   부호 있는 씨앗(positive·negative)은 «걷기»를 바꾸는 것이라 남겼습니다.
+
+## 🔴 게이트 ②③ 이 «이제» 닫힙니다 (앞 커밋에선 제가 못 닫는다고 적었던 그것)
+```
+실측  씨앗 wafer SYN-CX-BW-001 · node_limit 400
+  노드 id 접두   ledger-entity «400 / 400»          <- finding-collection «0»
+  노드 타입      die · wafer                        <- 전부 선언된 엔티티
+  엣지 술어      bonded_from · inspected · transfer <- has_findings · in_container · mechanism «0»
+  라우트         /subgraph · /declaration  «둘»
+```
+📌 A 가 컨테이너 링크와 접힌 발견을 걷어내고, 총괄이 선언에서 references 를 빼고,
+   제가 파라미터를 뗀 «셋이 모여» 닫힌 것입니다.
+
+## ⚠️ 제 계측기가 저를 속일 뻔했습니다 — 보고 전에 잡았습니다
+```
+처음 잰 것   「모르는 쿼리 파라미터 -> 422」  ->  그러면 이 변경이 «클라 걷기 검색창을 깬다»는 뜻
+사실         제가 넣은 node_limit=5 가 최소 10 미만이라 «그것 때문에» 422 였습니다
+다시 재니    모르는 파라미터는 «무시»되고 200. 클라는 «안 깨집니다»
+```
+🔴 셋 다 같은 422 를 냈는데 그게 «제 입력» 탓이었습니다. 하나만 재고 결론 냈으면 틀린 보고였습니다.
+
+## 클라 쪽에 남는 것 — 판정 요청
+```
+걷기 검색창의 COLLECT 드롭다운이 «아무것도 안 바꾸는 컨트롤»이 됩니다
+   (옵션 목록도 이미 빈 상태입니다 — /declaration 에서 collect 키를 뺐으므로)
+```
+**지우라 하시면 뺍니다.** 지금은 client2 를 «한 줄도» 안 건드렸습니다.
+
+## 📎 그리고 오늘 밤 제 앞 라운드 결과가 «지워졌습니다» — 맞는 일입니다
+C 레인이 `ledger_api/ledger_trends.py` 와 그 시험을 지웠습니다. 몇 시간 전 제가 고친
+분자(28/128)가 그 안에 있었습니다. **오늘 밤 지시가 그 모듈을 데려가는 것이므로 정상입니다** —
+그 라운드의 값은 「맵과 트렌드가 왜 달랐나」를 «수로» 확정한 것이었고 그건 남습니다.
+
+---
+
 # 🔒 [클라 B] **다시 잡습니다: `server/ledger_trace_router.py`** — A 를 막고 있는 마지막 한 걸음 (02:2x)
 
 `e14b1f0f` 가 지목한 것: 살아남은 `/subgraph` 가 아직 `include_values` · `enrich_actions` ·
