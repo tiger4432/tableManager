@@ -710,49 +710,66 @@ def test_both_generations_seed_together_in_one_request():
     assert seed_refs[collection]["kind"] == "collection"
 
 
-def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
+def test_restoring_a_declaration_gate_on_the_read_path_refuses_the_undeclared_seed():
     """🔴 THE MUTATION - without it the two tests above pass by not looking.
 
-    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ called
-    `vocabulary.check_subject_keys` - the same function the write gate runs - and refused
-    the id on any violation.  All three must go back to refusing, or the assertions above
-    are not measuring the removal of that call.
+    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ asked the
+    same question the WRITE asks - "is this subject type declared?" - and refused the id on
+    any violation. The gate it used to call was v1's `check_subject_keys`, which is gone;
+    the question it asked is not, because the declaration answers it. So the mutant is
+    rebuilt on the declaration and it must still bite, or the assertions above are not
+    measuring the removal of that call.
+
+    🔴 WHICH SEED BITES CHANGED WITH THE DECLARATION, AND IT WAS MEASURED (2026-08-27):
+    of the five seeds this file uses, `WaferLeg` is the only one the declaration does not
+    name -- `die`, `DTJob`, `Wafer` and `Lot` all resolve (`dtjob`, `wafer`, `lot`). Under
+    v1 three refused; under the declaration one does. That is not a weaker mutant: WaferLeg
+    was always the SHARP case, declared by neither generation, so no edit to any
+    declaration could reach it, and it carries 42 real atoms over 12 subjects.
+
+    The other four are the SPECIFICITY control. A mutant that broke every read would pass
+    the first half while proving nothing, so they must survive it.
     """
-    from ledger import vocabulary
+    from ledger_api import entity_references
     original = ledger_explorer.decode_entity_id
 
     def gate_guarded(value):
         entity_type, keys = original(value)
-        violations = vocabulary.check_subject_keys(entity_type, keys)
-        if violations:
-            raise ValueError("; ".join(violations))
+        if not entity_references.identity_keys(entity_type):
+            raise ValueError(f"{entity_type} is not a declared entity type")
         return entity_type, keys
+
+    undeclared = "WaferLeg"
+    assert undeclared in MIXED_GENERATION_SEEDS, (
+        "the seed this mutant bites on left the fixture - re-measure which one the "
+        "declaration does not name rather than deleting this line")
+    survivors = {k: v for k, v in MIXED_GENERATION_SEEDS.items() if k != undeclared}
+    survivors.update(STILL_DECLARED_SEEDS)
 
     ledger_explorer.decode_entity_id = gate_guarded
     try:
-        for subject_type, keys in sorted(MIXED_GENERATION_SEEDS.items()):
-            try:
-                ledger_subgraph.decode_node_id(
-                    ledger_explorer.entity_id(subject_type, keys))
-            except ValueError as exc:
-                assert "is not a declared entity type" in str(exc), subject_type
-            else:
-                raise AssertionError(
-                    f"{subject_type} was accepted with the write gate restored - the "
-                    f"assertions above are not measuring the gate's removal")
-        # The mutation is SPECIFIC, not a blanket break: what v1 declares was never the
-        # part that stopped reading, so these two must survive it.
-        for subject_type, keys in STILL_DECLARED_SEEDS.items():
+        try:
+            ledger_subgraph.decode_node_id(
+                ledger_explorer.entity_id(undeclared, MIXED_GENERATION_SEEDS[undeclared]))
+        except ValueError as exc:
+            assert "is not a declared entity type" in str(exc)
+        else:
+            raise AssertionError(
+                f"{undeclared} was accepted with a declaration gate restored on the read "
+                f"path - the assertions above are not measuring the gate's removal")
+        for subject_type, keys in sorted(survivors.items()):
             assert ledger_subgraph.decode_node_id(
-                ledger_explorer.entity_id(subject_type, keys))["type"] == subject_type
+                ledger_explorer.entity_id(subject_type, keys))["type"] == subject_type, (
+                f"{subject_type} is declared, so the mutant must not touch it")
     finally:
         ledger_explorer.decode_entity_id = original
 
-    # 🔴 THE WRITE SIDE IS UNCHANGED, and this is where that is pinned.  The judgement
-    # still exists and still says no; only the READ stopped asking it.  If this ever goes
-    # empty, writing has been loosened and that is the wrong edit.
-    assert vocabulary.check_subject_keys("WaferLeg", {"wafer": "W", "bonding_leg": "L"})
-    assert vocabulary.check_subject_keys("die", MIXED_GENERATION_SEEDS["die"])
+    # 🔴 THE DECLARATION STILL SAYS NO, and this is where that is pinned. The
+    # judgement exists and still excludes `WaferLeg`; only the READ stopped asking it. If
+    # this ever goes true, the declaration gained a type rather than the read loosening -
+    # either way this test's premise moved and the docstring above is the thing to re-read.
+    assert not entity_references.identity_keys(undeclared)
+    assert entity_references.identity_keys("die")
 
 
 def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():
