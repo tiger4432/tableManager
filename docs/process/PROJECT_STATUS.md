@@ -6587,6 +6587,63 @@ lot_slot_move  「행 == distinct 튜플」  -> 변하는 칸을 키에 넣으�
 ⚠️ 재적재 «후» 실제 크기를 재고 판정한다. 「인덱스 18MB」는 절감이 아니라 «없어서» 나온 수였다
 ```
 
+## 🕚 **11:0x — 트리 보존 업로드 «완료». 이사는 «판정 하나»로 모임**
+
+### ✅ 폴더 트리 보존 업로드 — 소유자 질문이 «영영 안 되던 것»을 찾아냈습니다
+```
+발견   voids_json_format:128 「requires the watcher-provided relative source path」
+      :133  WAFERID/WORK_DATETIME/<file> «정확히 세 성분»
+      -> 웨이퍼 식별자와 작업 시각이 «폴더 이름»에 있습니다. 파일 안에 없습니다
+      -> 기계 드롭은 됐고 «클라 업로드는 반드시 거절»됐습니다 (D-1 의 두 번째 층)
+
+고침   서버  relative_path 를 받고 성분마다 소독 · 깊이 상한 10 · 결과 검증을
+            「직접 자식」 -> «commonpath 로 아래» (가드를 «빼지 않고 철자를 넓힘»)
+      잎 이름  트리면 «그대로»(파서가 정확한 이름을 봅니다) · 아니면 오늘 그대로 uuid
+      클라   두 문 다 «query» 로 실음. 랩퍼 기준점은 «떨어뜨린 폴더의 부모»
+
+총괄 실측 (실제 라우트, 서버 재기동 뒤)
+   트리        -> raws/WF-001/WORK_20260817_031405/voids.json  ✅
+   상대경로 없음 -> raws/user(gate4)_plain_dfe2899f.json         ✅ 무회귀
+   탈출 시도    ../../escape/x.json -> raws/escape/x.json       ✅ raws 안
+   두 문        랩퍼·브라우저 «IDENTICAL» (레인 실측)
+   번들        main-6LYvk8Oz.js 에 relative_path 있음
+충돌 판정  ⓐ «덮습니다» — 다른 문이 그렇고 파이프라인이 그 전제입니다
+         (dedup_by_signature 기본 켜짐 · 「업서트라 결과는 동일」)
+         -> 같은 (웨이퍼, 작업시각) 재업로드 = «수정». 소유자께 전달함
+⚠️ 좁은 구멍  raws 에서 «아직 처리 안 된» 파일이 덮이면 한 번도 안 읽힙니다
+            -> 기계 드롭에도 «같은 구멍». 이번에 생긴 것이 아니라 «두 문이 공유»하는 성질
+```
+
+### 🔴 이사 — 심볼 이동이 «아니라» 기능 판정이었습니다
+```
+LAYER 축      «이미 죽었습니다» — 라이브 선언에 layer 키 «0», v5 검증기가 «거절»합니다
+             -> setup_bundle 로 옮기면 «거절당하는 칸의 문법»을 옮기는 일. 안 합니다
+경계 위        PROJECTION_ONLY_WORDS · SIGNATURE_FIELDS · LAYER_* · EDITABLE_LAYER
+             + PREDICATES · ENTITY_TYPES 의 독자들 + ISSUED_TYPES
+             -> 앞의 셋은 «같은 함수»(check_predicate_declaration) 안에 삽니다
+             -> 호출자: 확장 파일 로드 + 어드민의 «술어 저장/드라이런»(main.py:4976·5078)
+경계 밖        DECL_REFUSALS «하나»뿐
+```
+🔴 **소유자 판정 대기 — 「술어를 추가하는 길」이 둘입니다**
+```
+v1  config/ledger_vocabulary.json      admin/ledger/save 가 씀. 이 박스엔 «파일 없음»(확장 술어 0)
+                                      확장하는 대상 PREDICATES 는 원장 술어 8 중 «7»이 어긋남
+v5  config/ontology/ledger_config.json drafts -> review -> activate. 원장 원자 «100%» 를 덮음
+권고  v5 가 정본, v1 은퇴. 대가는 어드민의 «술어 추가» 기능을 v5 authoring 으로 옮기는 «별도 라운드»
+⛔ 그 판정 전에는 vocabulary.py 를 지우지 않습니다 — 운영자 통로가 같이 사라집니다
+```
+
+### 📌 오늘 제 오류가 셋 더 (전부 레인이 먼저 봄)
+```
+① 가드 ④ 가 게이트 ① 과 «모순»      uuid 유지 + 파서가 정확한 이름 요구 -> 같이 참일 수 없음
+② 「v1 경계에 안 걸리는 다섯」        중 «셋»이 같은 경계였습니다 (심볼 «이름»으로 묶고
+                                 «누가 쓰는지»로 안 묶음 — 오늘 두 번째 같은 실수)
+③ formData 로 보내라는 지시         그 라우트는 «query» 바인딩. FormData 는 안 읽힙니다
+                                 -> 레인이 «살아 있는 /openapi.json»에 물어 잡음
+🔴 그리고 제 시험이 «라이브 워크스페이스»에 썼습니다 (지웠고 확인함). 두 번째입니다
+```
+
+---
 ## ☀️ **오전 — 2026-08-27 09:3x. 폴더 업로드 착지, walk 통일이 «목표 문장»이 됨**
 
 ### 📥 폴더째 업로드 (소유자 요청) — 브라우저 ✅ · 랩퍼 코드 ✅ · 실드롭 확인 «대기»
