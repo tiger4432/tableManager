@@ -47,7 +47,38 @@
 
 ---
 
-## 🏛️ 지금 서 있는 자리 (2026-08-27 23:1x)
+## 🏛️ 지금 서 있는 자리 (2026-08-28 03:3x — 「엔티티 · 어휘 · walk」 전환 중)
+
+```
+🔴 소유자 상설 2026-08-28: 「엔티티 어휘 walk 이게 끝」 — 정본은 CLAUDE.md
+   노드는 «선언된 엔티티»뿐 · 엣지는 «선언된 술어»뿐 · 데이터는 «walk»만 답한다
+   「지울 수 없다」가 나오면 그것이 하드코딩이다 — 무시하고 지운다
+```
+
+### 오늘 밤 착지 (전부 총괄 실측)
+```
+라우트       10 -> «2»       /api/ledger/subgraph · /api/ledger/declaration
+모듈 삭제     ledger_trends · ledger_composition · ledger_structure · ledger_lots
+노드 id      접두어 «일곱 -> 하나»  (ledger-entity:v1: 만 남음)
+합성 엣지     in_container 128 -> «0»  ·  has_findings · finding · mechanism «0»
+             🔴 코드가 아니라 «선언»에서 빼서 사라졌다 — 규칙이 도는 증거
+하드코딩      제품 코드에 결함 종류 철자 «0» (void·delam 이 선언으로)
+선언         defect@1 신설(keys [void_uid]) · observed@1 목적어 entity_ref · bind 의 target
+🟢 재적재     «저절로» 됐다 — translator_ver 지문이 바뀌자 원장이 스스로 재번역
+             observed 103,841 전부 entity_ref -> defect · qualifiers 일곱 보존
+             원장 전체 645,203 «그대로». 코드 0줄
+subgraph.py  1,927 -> 1,169줄 (목표 400 · B의 라우트 서명 정리 대기)
+```
+
+### 🔴 지금 살아 있는 결함 «하나»
+```
+발견이 «API 로 도달 불가» — 원장엔 멀쩡히 있는데 walk 이 못 가져온다
+  observation_mode 기본 summary -> SQL 에 "predicate <> 'observed'" 가 AND 로 붙는다
+  follow=observed 를 줘도 교집합이 비어 observed 가 «영원히» 안 온다
+  그리고 /subgraph 에 observations 인자가 «없다»(라우트에서 뺌) -> 끌 수가 없다
+지시    observation_mode · include_observed «완전 삭제». 제어는 follow 하나
+게이트  defect 가 타입에 나오고 한 웨이퍼에서 «121»개 (원자 수와 일치)
+```
 
 ```
 원장     645,203 원자 · die 81% · legacy_atom «0» · 인덱스 uq 159.7 MB
