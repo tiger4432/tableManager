@@ -1,3 +1,55 @@
+# 📚 **문서 정비 «2차» — 제 배분에 «열둘»이 빠져 있었습니다** (총괄 실측 15:2x)
+
+1차가 착지한 뒤 검사식을 돌렸더니 v1 낱말이 «열두 문서»에 남아 있습니다. 그중 `docs/spec/*`·
+`docs/process/*`·`docs/qa/*` 는 **제 1차 배분에 아예 없었습니다.** 제 잘못이라 명시하고 다시 뿌립니다.
+
+## 남은 것 — 검사식으로 뽑은 «열둘»
+```
+[A 구현자] 자기 것 «마무리» + 스펙
+   docs/architecture/backend.md         222 KB   (1차에서 260->222, 아직 v1 낱말 남음)
+   docs/architecture/data_model.md      135 KB   (1차에서 148->135, 남음)
+   docs/spec/LEDGER_TECHNICAL_SPEC.md   168 KB   🔴 계약 문서 — 원장·walk 의 정본
+   docs/spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md  30 KB
+
+[B 클라] 화면·시나리오·체크리스트
+   docs/qa/FEATURE_CHECKLIST.md         324 KB   🔴 «가장 큼». 없는 기능을 재고 있을 수 있습니다
+   docs/process/SCENARIO_CONSOLE_BRIEF.md 97 KB
+   docs/spec/api_documentation.md        26 KB
+
+[C 응용] 소유권·판정·모델
+   docs/architecture/PRIMITIVES.md      513 KB   (1차에서 규칙은 남기고 구현을 선언으로 — 계속)
+   docs/process/DOC_OWNERSHIP.md        286 KB   🔴 «누가 무엇을 소유하나» — 오늘 배분과 맞춰야
+   docs/process/LEDGER_RULINGS.md        56 KB   판정 기록 — «취소된 판정»이 남아 있는지
+   docs/spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md  21 KB
+   docs/spec/RND_ONTOLOGY_REFERENT_MODEL.md      21 KB
+```
+
+## 🔴 `LEDGER_RULINGS.md` 는 «다르게» 다루십시오
+판정 기록은 «히스토리»입니다 — 지우지 마십시오. 대신:
+```
+✅ 오늘 «취소된» 판정에 취소 표시를 답니다 (예: 「4단계는 오늘이 아니다」·「게이트는 건드리지 마라」)
+⛔ 지난 판정을 «없던 일»로 만들지 마십시오 — 그건 거짓 역사입니다
+```
+같은 이유로 `docs/history/**` 와 `docs/_archive/**` 는 «손대지 않습니다».
+
+## 검사식 — 1차와 같습니다
+```
+① v1 낱말 «0»   grep -rl "vocabulary\.py|ledger_vocabulary|admin/ledger/save|LINEAGE_PREDICATES|traversable"
+② 죽은 심볼 «0»  표본 열 개를 골라 «찾아» 볼 것
+③ 바이트 전/후   늘었으면 «덧붙인» 것
+④ 두 기둥과 어긋나는 문장이 없는가
+```
+⚠️ 문서 하나씩 · 커밋 하나씩 · 커밋 경로 «명시». 공유 트리입니다.
+
+📌 그리고 1차에서 나온 것 셋을 기억하십시오 — 이 라운드는 «길이 줄이기»가 아니라 «거짓말 걷어내기»입니다:
+```
+SSOT 의 얼음 목록      「손대지 마라」던 모듈이 그날 전부 다시 쓰였고 하나는 삭제돼 있었다
+SSOT 의 410 계약       「라우트 일곱이 410」 — 실측 «410 이 하나도 없음»
+CODE_MAP 의 죽은 경로   «60개». 문서를 믿고 찾아간 사람이 매번 헛걸음했다
+```
+
+---
+
 # 📚 **문서 정비 — 배분. «concat 금지, 현 상태로 다시 쓰기»** (소유자 명령, 총괄 14:2x)
 
 > 「끝나고 **문서도 모두 정비**. 주요 문서들 **concat 하지 말고 현상태 맞게 전부 컴팩트하게 최신화**해」
