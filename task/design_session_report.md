@@ -1,3 +1,84 @@
+# ✅ [클라 B] v1 삭제 라운드 — 세 파일 + 시험 «착지», 푸시 완료 (`c0497d45`)
+
+지시서의 규칙 셋 그대로입니다 — «옮기지» 않았고, 답이 선언에 있으면 선언에서 읽고,
+대응이 없는 칸은 «지웠습니다». 멈추지 않았습니다.
+
+## 이음새 판정(`58700344`)은 «같은 커밋에» 닫혔습니다
+```
+① 카탈로그 entity 목록  ->  die · dtjob · lot · lot_slot · recipe · wafer  «여섯 · 소문자»
+                          (`GET /admin/ledger/vocabulary` 200, 제 워크트리 프로세스에서 실측)
+② Equipment · Product   ->  «되살리지 않았습니다». 화면 쪽 소비자도 «0» 이라 지울 것이 없었습니다
+③ undeclared_entity_type ->  선언된 여섯이 «전부 통과». 대문자 Wafer 는 이제 거절됩니다
+```
+🔴 **③의 대문자 건은 «재고 나서» 넘어갔습니다.** 거절이 실재를 막을 수 있으므로 라이브 선언의
+`sources` 열 개를 전수로 봤습니다 — `subject_types` 를 «선언하는 소스가 0개»입니다.
+즉 철자가 소문자로 바뀌어 «오늘 거절되는 것은 없습니다».
+
+## 무엇을 지웠고 무엇을 선언에서 읽나
+```
+ledger_admin.py     카탈로그 전체가 선언의 entities · vocabulary 에서 나옵니다
+   «지운 것»        술어만 따로 저장/은퇴하던 한 쌍 + 그 확장 파일 (운영 호출자 «0», 시험만 씀)
+                    그와 함께 signature_fields · editable_layer · canonical_layer
+                    · walk_directions · extension — 전부 «그 경로»를 설명하던 칸입니다
+ledger_structure.py 선언된 절반이 선언에서 생성됩니다. 등록은 «이름이 아니라 모양»으로 봅니다
+   «지운 것»        projection_only_words · 술어 행의 edit 판정 · label/layer/since/unit
+                    /semi_ref/superseded_by/origin — 선언에 대응이 없습니다
+ledger_explorer.py  키 순서를 선언에서 읽습니다 (`entity_references.identity_keys`)
+```
+
+## 🔴 이음새 하나를 «먼저» 찾아서 막았습니다 — 버전 접미사
+선언은 `wafer@1`, 원장은 `wafer` 라고 씁니다. 선언된 절반과 센서스 절반이 «같은 철자»가
+아니면 엣지가 «전부 두 번» 나옵니다(빈 것 하나, 찬 것 하나). 그래서 선언 쪽에서 접미사를
+떼고, 시험 픽스처에도 `@1` 을 넣어 «그 이음새가 시험 대상이 되게» 했습니다.
+
+## 실측 — 라이브 원장 + 라이브 선언, 바꾼 코드로
+```
+GET /api/ledger/structure  200   노드 «6» · 엣지 «12» · «중복 엣지 id 0» · «드리프트 0»
+                                 (v1 목록으로는 술어 8 중 7 이 어긋났던 자리입니다)
+원장 실측(제가 직접)         subject_type: die 523,592 · wafer 120,684 · dtjob 792 · lot_slot 135
+                           술어 8 — 전부 선언 안에 있습니다
+GET /admin/ledger/vocabulary 200  술어 «10» · 개체 «6»
+```
+
+## 게이트
+```
+② import vocabulary  ->  제 세 파일 · 제 시험 «0»
+③ 서버가 뜬다        ->  `import main` ok · 라우트 127 · 세 모듈 import ok
+⑤ 보드              ->  좌석 «16» · 로드 요청 «14» · non-200 «0»   ✅ 기준선 그대로
+시험                ->  24 passed · 8 skipped (PG 시험은 «시험용 DB 미선언»으로 건너뜀)
+```
+
+### ⚠️ ⑤ 에 대해 «정확히» 말씀드립니다 — 제 코드가 도는 프로세스가 아닙니다
+보드는 dev 에서 `127.0.0.1:8080` 을 봅니다. 그건 «총괄 쪽 트리»의 서버라 제 변경이 안 실려
+있습니다. 그래서 ⑤ 는 「무회귀 기준선」이지 «제 변경의 증거가 아닙니다». 증거는 따로 냈습니다:
+```
+클라 소비자        제가 바꾼 라우트를 부르는 클라 «0» (client2 전수 — admin/ledger 호출 0)
+보드가 «실제로» 타는 제 코드는 하나뿐 — 걷기가 부르는 `ledger_explorer._entity`
+   그것을 제 워크트리 프로세스에서 실측: 소유자 체인 씨앗 SYN-BW-101-16,
+   follow=inspected+observed -> «nodes 89» · 라벨이 «선언 순서»(mat_id / x)로 나옵니다
+```
+📌 그리고 `ledger_explorer` 의 옛 조회는 «대문자 키»였습니다 — 이 박스에서는 «한 번도 안 맞아»
+   조용히 삽입 순서로 떨어지고 있었습니다. 지금은 선언이 답합니다.
+
+## 시험을 어떻게 갈랐나 (같은 커밋)
+```
+test_ledger_structure_pg   «주제를 지켰습니다» — 「그림은 선언을 따른다」.
+                           가짜 «어휘»를 가짜 «선언»으로 다시 썼습니다
+                           ⚠️ 이 파일은 시험용 DB 가 없어 «8개 전부 skip» 입니다.
+                              그래서 선언된 절반을 PG 없이 «직접 태워» 확인했습니다 —
+                              노드 3 · 엣지 7 · qualifiers · edge_ids · reserved 전부 기대대로
+test_ledger_admin_setup    술어 층을 재던 절반을 지우고, 남은 것을 남겼습니다
+                           (SQL 식별자 거절 · 소스 표면 · 드라이런 토큰 · 닫힌 거절 집합
+                            · 미리보기 무쓰기). 733줄 -> 약 430줄
+```
+
+## 📌 지나가며 본 것 하나 — 판정은 총괄 몫입니다
+보드의 트렌드 요청이 `grain.subject_type = "WaferLeg"` 를 싣고 나갑니다. 그 이름은
+**선언의 entities 여섯에도, 원장의 subject_type 넷에도 없습니다**(제가 셌습니다).
+응답은 200 입니다. 제 레인 파일이 아니고 무엇을 뜻하는지 모르겠어서 «고치지 않고 적습니다».
+
+---
+
 # Design Session — Report Channel (design session -> lead PM)
 # 📋 [클라] 축 판정 — 측정 ②의 «클라 절반»을 셌습니다. 그리고 ⓒ 처분을 여쭙니다
 
