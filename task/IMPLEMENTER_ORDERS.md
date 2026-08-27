@@ -16727,3 +16727,84 @@ follow 를 줘도 800 에서 «안 줄었습니다» — 다이 128 자체가 �
 ```
 ① /selection/resolve 반경 한 줄   ② 동률이면 None   ③ trends 죽은 CTE 사슬 + 문서 한 문장
 ```
+
+---
+
+# 🔴🔴 소유자 지시 — 「다 지우고 walk 만 남겨」 (2026-08-28 00:5x)
+
+> 「무조건 전환」 · 「delam observed at die 하면 되잖아」 · 「delam 속성에 길이 넣고」
+> 🔴 「**뭔가 지울 수 없다는 건 하드코딩이니 무시하고 지울 것**」
+> 🔴 「**다 지우고 walk 만 남겨**」
+
+정본은 `task/DECLARATION_REVISION_6.md` 입니다. 여기엔 «지울 목록»만 적습니다.
+
+## 규칙 하나
+```
+엣지는 «선언된 술어»뿐이다. 노드는 «선언된 엔티티»뿐이다.
+투영은 아무것도 지어내지 않는다.
+```
+
+## 지울 것 — 실측 좌표 (총괄이 셌습니다)
+```
+server/ledger_api/ledger_subgraph.py
+   787   "type": "Finding Point"
+   816   "type": "Finding Collection" · node_kind "collection"
+   1170  씨앗 경로의 "Finding Point"
+   1180  씨앗 경로의 "Finding Collection"
+   1523  _edge("has_findings", …)
+   12·13·20  그 구조를 «설계»로 적어 둔 docstring
+   1705  발명 엣지 목록 주석 (has_findings · on_subject · contains · finding · mechanism · needs_enrichment)
+
+server/ledger_trace_router.py
+   107   observations=summary|claims 축        <- 낱개/묶음은 «타입»이 아니다
+   206   follow 목록에 참조 이름을 더하는 자리
+   561   /declaration 이 origin:"reference" 로 광고하는 자리
+
+server/ledger_api/entity_references.py
+   targets_for · reference_edges · reference_edge_names        «삭제»
+   🟢 declared_types · identity_keys 는 «남긴다» — 소비자 많음(config.py · ledger_identity.py …)
+
+server/ledger_api/finding_kinds.py
+   105  DEFAULT_KIND = "void"
+   117  "void":  {…}       <- 종류 카탈로그가 파이썬 dict
+   134  "delam": {…}
+   -> 카탈로그는 «선언»(defect_kind@1)이 든다
+
+server/ledger_api/ledger_identity.py
+   116  "kind": "void_by_experiment_unit", "finding_kind": "void"
+
+🔴 server/ledger_api/ledger_selection.py
+   565  if finding_kind == "void" and final_units:      <- 코드가 도메인 낱말로 갈래를 튼다
+
+선언 (총괄이 씁니다 — 당신은 손대지 마십시오)
+   entities.die@1.references  «삭제»
+   setup_bundle 의 entity optional "references" + _validate_references  «삭제»
+```
+
+## 새로 «선언»될 것 — 코드가 아니라 ledger_config.json
+```
+entities.defect@1        키는 소유자 판정 대기 (후보: run_uid · inchip_x · inchip_y)
+entities.defect_kind@1   void · delam · 앞으로 무엇이든
+entities.scan@1          run_uid
+vocabulary.observed@1    목적어 value -> «entity_ref -> defect@1»
+vocabulary.of_kind@1     defect@1 -> defect_kind@1
+vocabulary.seen_by@1     defect@1 -> scan@1
+```
+
+## 🔴 착수 «전»에 올릴 것 — 이게 라운드를 정합니다
+```
+① 위 좌표 말고 «더 있는지» 세십시오 — 제 목록은 라이브 .py 만 훑은 것입니다
+   도메인 낱말이 «값으로» 박힌 자리 · 투영이 타입을 «짓는» 자리 전부
+   수를 지시서에 적으십시오. 제 수와 다르면 «당신 수»가 맞습니다
+② 지우면 «무엇이 화면에서 사라지는지» 세십시오 (보드 14요청 기준)
+   -> 사라지는 것이 있으면 그 자리를 «선언»이 어떻게 메우는지 한 줄
+⛔ 아직 «지우지» 마십시오. 위 둘을 올린 뒤 제가 순서를 정합니다
+   (오늘 밤 내내, 하나 고칠 때마다 앞 수리가 가리던 결함이 나왔습니다)
+```
+
+## 안 건드리는 것
+```
+⛔ walk 자체 — /api/ledger/subgraph 는 «남습니다». 그게 지시의 요지입니다
+⛔ 예산 상한 · follow · positive/negative
+⛔ 라이브 ledger_config.json — 총괄 파일입니다
+```
