@@ -199,3 +199,50 @@ action     enrichment 액션. 원장 노드가 아니라 «작업 대기열»에
           ③ 예산(node_limit · edge_limit)과 truncated 보고
 그 외     전부 삭제 대상
 ```
+
+---
+
+# 8. 🔴 걷기 제어는 «follow» 하나 (소유자 2026-08-28 01:2x)
+
+> 「collection 등과 같은 걷기 제어용 요소는 follow 로 컨트롤 가능」
+
+## 코드가 이미 그렇게 말하고 있습니다
+`ledger_subgraph.py:314` 의 `follow` 도입 주석:
+> `include_observed` was already a predicate condition in this same clause;
+> **this is the general form of it**
+
+「관측을 접을까 펼까」는 처음부터 **그 술어를 따라갈까 말까**였습니다.
+`collection` 도 같은 것입니다 — 접힘/펴짐은 «노드 타입»이 아니라 «걷기 제어»입니다.
+
+## 지금 walk 의 제어 축 «여덟» -> «넷»
+```
+🟢 남는다
+   follow        어느 술어를 따라가나          <- 걷기 제어는 «전부» 여기로
+   hops          몇 홉
+   direction     나가는/들어오는/양쪽
+   node_limit · edge_limit   예산 (그리고 truncated 로 «말한다»)
+
+❌ 사라진다 — 전부 follow 로 표현됨
+   collect            노드 «종류»를 고르던 축. 종류가 하나(엔티티)면 고를 것이 없다
+   observation_mode   summary|claims. 「접을까 펼까」 = 「observed 를 따라갈까」
+   include_values     value 노드가 없어지므로 의미 소멸
+   include_observed   follow 의 «특수 케이스». 코드 주석이 이미 그렇게 적고 있다
+```
+
+## 그리고 follow 가 «더 낫습니다» — 같은 코드가 말합니다
+```
+접기(fold)   요약을 «가져와서» 노드를 만든다  -> 예산을 «쓴다»
+follow       SQL 에서 걸러 «안 가져온다»     -> 예산을 «안 쓴다»
+   주석: 「a predicate filtered here is never fetched and therefore never spends the budget.
+          Filtering after the fetch would leave the walk stopping at the same wall」
+```
+🔴 즉 `observation_mode` 는 **follow 의 열등한 사본**이었습니다.
+
+## 그래서 walk 의 최종 서명
+```
+subgraph(seed, *, follow=None, hops, direction, node_limit, edge_limit)
+   seed    마킹(positive/negative) 또는 노드 id 하나 — 전부 ledger-entity:v1:
+   follow  선언된 술어 이름들. 없으면 전부
+   나머지  형태와 예산
+반환    nodes(엔티티) · edges(선언된 술어) · truncated
+```
