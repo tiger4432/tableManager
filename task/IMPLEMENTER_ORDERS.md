@@ -16469,3 +16469,53 @@ _declared_entity 가 «키 집합 상등»으로 고릅니다. 오늘 선언 여
 👉 그리고 「오늘 여섯의 키 집합이 전부 다르다」를 지시서에 «수»로 적으십시오
 ```
 ⛔ 이 둘 말고는 그대로 진행하십시오. 게이트는 앞서 적은 셋 그대로입니다.
+
+---
+
+# 🔴🔴 최우선 — 화면이 「깨끗하다」고 «단언»하는데 맵은 28건을 셉니다 (총괄 실측, 2026-08-27 21:5x · 서버 PID 58296)
+
+## 실측 — 같은 웨이퍼 · 같은 kind · 한 화면
+```
+맵    GET /api/ledger/lot_map?row=SYN-CX-BW-001&kind=void&by=wafer
+      bond축 found «28» / scanned 128   ·  core축 found «28» / 128
+      provenance  source: "source_tables"  · ledger_backed «false»
+
+트렌드 GET /api/ledger/trends (보드가 보내는 grain 그대로)
+      SYN-CX-BW-001 점 둘: found_chip_count «0» · scan_denominator «64» · state «scanned_clean»
+      provenance  numerator: source "ledger_events" · predicate "observed" · ledger_backed «true»
+      전체 72점 «전부» scanned_clean · found>0 인 점 «0» (delam 12점도 같음)
+```
+🔴 **「비었다」가 아니라 「깨끗하다」입니다.** 부재가 아니라 «긍정 주장»이라 더 나쁩니다.
+🔴 분모도 어긋납니다 — 맵 scanned «128» vs 트렌드 scan_denominator «64».
+
+## 이건 «재발»입니다 — 당신 파일이 그 사건을 적어 두고 있습니다
+```
+ledger_identity.py 주석:
+  「On 2026-08-24 the ledger's type names became lowercase and that literal started
+    matching ZERO rows -- the void trend answered 0% while its own map read 50% …
+    Nothing raised; the series simply came back flat.」
+```
+같은 자리·같은 증상이 다시 났습니다. 그때 고친 것은 대문자 `Wafer` 리터럴이었고 «지금은 다른 원인»입니다.
+
+## 지시 — «진단»입니다. 고치지 마십시오
+```
+① 대조군부터: 이 박스에서 「원장 기반 분자가 «0 이 아닌» 점」을 하나라도 낼 수 있습니까?
+   못 내면 그 계측기로는 «0 이 답인지 고장인지» 못 가릅니다
+② 원장에 이 웨이퍼의 관측이 «있는지» 세십시오
+   observed 원자 «103,841» 이 전체. 그중 SYN-CX-BW-001 것이 몇인지
+③ 그 다음에야 원인을 말하십시오
+```
+### 🔴 제 «가설»입니다 — 진단이 아니니 확인하거나 죽이십시오
+```
+선언   observed@1  주어 = die@1   키 = {mat_id, x, y, mat_type}
+grain  numerator = {from: "subject_keys", key: "wafer"}
+가설   die 주어의 subject_keys 에 "wafer" 키가 «없어서» 분자가 구조적으로 0이다
+       (자재 이름은 mat_id 에 있습니다)
+반증 방법  numerator 를 mat_id 로 두고 한 번 재 보면 «수가 나오는지»가 바로 답합니다
+⛔ 그렇다고 코드를 고치지 마십시오 — 이건 grain «선언»의 문제일 수 있고 그러면 제 판정입니다
+```
+### 보고할 것
+```
+「분자가 0인 이유」를 «한 문장»으로 + 그것을 뒷받침하는 «수 둘» (전체 / 이 웨이퍼)
+그리고 그 자리가 «코드»인지 «선언»인지. 선언이면 멈추고 올리십시오
+```
