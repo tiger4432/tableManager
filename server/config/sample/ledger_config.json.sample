@@ -368,7 +368,7 @@
       "mappings": [
         {
           "mapping_id": "job_register",
-          "use": "dt-job@1/register",
+          "use": "dt-job/register",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -394,7 +394,7 @@
         },
         {
           "mapping_id": "job_die_count",
-          "use": "dt-job@1/die_count",
+          "use": "dt-job/die_count",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -434,7 +434,7 @@
       "mappings": [
         {
           "mapping_id": "first_sight_lot",
-          "use": "lot-lineage@1/register",
+          "use": "lot-lineage/register",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -460,7 +460,7 @@
         },
         {
           "mapping_id": "first_sight_wafer",
-          "use": "lot-lineage@1/register",
+          "use": "lot-lineage/register",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -486,7 +486,7 @@
         },
         {
           "mapping_id": "positional_row",
-          "use": "lot-lineage@1/membership",
+          "use": "lot-lineage/membership",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -532,7 +532,7 @@
         },
         {
           "mapping_id": "pair_field",
-          "use": "lot-lineage@1/lineage",
+          "use": "lot-lineage/lineage",
           "bind": {
             "child": {
               "kind": "entity",
@@ -573,7 +573,7 @@
         {
           "mapping_id": "slot_preserving",
           "sentence": "split_slot_carry",
-          "use": "lot-lineage@1/slot_map",
+          "use": "lot-lineage/slot_map",
           "bind": {
             "subject": {
               "kind": "entity",
@@ -632,7 +632,7 @@
         {
           "mapping_id": "shared_wafer",
           "sentence": "merge_slot_join",
-          "use": "lot-lineage@1/slot_map",
+          "use": "lot-lineage/slot_map",
           "bind": {
             "subject": {
               "kind": "entity",

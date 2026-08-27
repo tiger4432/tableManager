@@ -1,3 +1,54 @@
+# 🔴 판정 요청 — 빨강 ① 은 «죽은 시험»이 아닙니다. **읽는 코드가 살아 있고 데이터가 없습니다** (구현자 2026-08-27 15:1x)
+
+지시서의 「지우기 전에 한 줄 확인하십시오 — slot_map 의 from/to 를 읽는 «다른» 자리가 없는가」
+그대로 했습니다. **있습니다.** 그래서 지시하신 조건대로 «지우지 않고» 올립니다.
+
+## 실측
+```
+ledger_trace.py:1060  def _slot_map_pair(claim)      <- `_slot_move` 의 «새 이름»입니다. 살아 있습니다
+          :1073         a = _slot_text(_object_qualifier(claim, "from"))
+          :1074         b = _slot_text(_object_qualifier(claim, "to"))
+
+원장 실측   slot_map 원자 «135»
+           object_payload keys = [keys, qualifiers, type]
+           qualifiers        = {"event_type": "split"}     «전부»
+           from / to          = 어디에도 «없음» (qualifiers 도 payload 도)
+```
+🔴 **그 함수는 오늘 모든 slot_map 원자에 대해 `(None, None)` 을 답합니다.**
+시험은 「대상이 사라져서」 빨간 게 아니라 **「대상이 살아 있는데 먹을 게 없어서」** 빨갛습니다.
+이건 계약 시험이 제 일을 한 것입니다.
+
+## 언제 없어졌는지도 나왔습니다 — `packs` 은퇴와 «같은 날»입니다
+```
+샘플의 lot-lineage@1 팩   slot_map claim 의 emit:
+    object.qualifiers = {"from": "$from", "to": "$to", "wafer": "$wafer"}
+현재 (packs 은퇴 후)      술어당 claim «도출» -> slot_map 의 qualifiers 는 event_type «하나»
+```
+즉 **2026-08-21 에 packs 가 도출로 바뀌면서 slot_map 의 from/to/wafer 수식어가 같이 죽었고,
+그걸 읽던 walk 은 그대로 남았습니다.** 화면에는 슬롯 자리가 조용히 빕니다.
+👉 **판정 요청: 선언의 `slot_map@1` 이 from/to 를 다시 실어야 합니까.** 선언은 총괄 것이라
+   저는 손대지 않았습니다. 실으면 시험은 그대로 초록이 됩니다.
+
+---
+
+## 빨강 ②③ — 한 걸음 갔고, 샘플은 «철자»가 아니라 «모양»이 낡았습니다 (`9cf25214`)
+```
+고친 것   profiles.*.mappings[*].use  의 팩 이름에서 판을 뗐습니다 (8곳)
+         `packs: ["dt-job@1"]` 은 «id@version» 으로 읽혀 id 는 `dt-job`,
+         `use` 는 `/` 앞을 «그대로» 씁니다 -> 둘이 어긋나 있었습니다
+다음 거절  packs[0]: pack 'dt-job' is not registered
+```
+🔴 이건 오타가 아닙니다 — **팩 레지스트리 자체가 없습니다.**
+```
+샘플 최상위   entities · mappers · packs · profiles · source_preparers · sources · vocabulary
+라이브        entities · sources · vocabulary                      <- 셋뿐입니다
+```
+`packs` · `profiles` 는 2026-08-21 에 은퇴했고 샘플의 `sources` 는 아직 `profile_id` 로
+그 섹션을 가리킵니다. **샘플은 «다시 써야» 합니다 — 그건 선언을 짓는 일이라 총괄 소관입니다.**
+저는 거절을 한 칸 밀어 놓고 멈췄습니다.
+
+---
+
 # ✅ [구현자] **A 레인 «끝». 삭제는 «장전»돼 있고 B·C «다섯»만 남았습니다** (구현자 2026-08-27 13:3x)
 
 ## 소유자 명령대로 «재지 않고» 지운 것
