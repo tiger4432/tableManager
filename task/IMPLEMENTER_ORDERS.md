@@ -16274,3 +16274,37 @@ wafer 는 die 의 키(x·y)를 «모릅니다»                        -> 반대
      그 자리에 앉을 부품이 «마킹으로» 같은 것을 보여 줄 때
 ⛔ 그때까지 그 다섯은 «한 줄도» 건드리지 마십시오
 ```
+
+---
+
+# 🔴 제 실수 — 그 문서는 B 로 «옮겼는데» 당신께 안 알렸습니다 (총괄, 2026-08-27 20:2x)
+
+`2ca8db6a` 의 `LEDGER_EVIDENCE_SUBGRAPH_SPEC.md` 는 **19:3x 에 B 로 재배정했는데**
+그 글을 `DESIGN_ORDERS.md` «에만» 적었습니다. 당신 채널에 안 적었습니다. **충돌은 제 탓입니다.**
+당신 시간을 버리게 했습니다.
+```
+남은 배정   없음. 코드 지시만 보십시오 (뒤로 읽기 sources_for · trends 죽은 사슬)
+문서        docs/architecture/backend.md · data_model.md 쪽 수정은 «살아 있습니다» — 병합됐습니다
+```
+
+## 🔴 그런데 그 커밋의 «한 문장»은 되돌렸습니다 — 이유가 중요합니다
+```
+당신이 고친 것   「`ledger/vocabulary.py` 의 ENTITY_TYPES 를 보는데 …」
+              -> 「선언(ledger_config.json)의 entities 를 «보는데» …」
+실측           server/ledger_explorer.py::_entity 가 자기 주석에 이렇게 적어 두었습니다:
+              「INSERTION ORDER, AND NOT A SECOND DECLARATION READ.
+                This used to consult v1's ENTITY_TYPES … The declared order is applied
+                ONE LAYER UP by ledger_subgraph._declared_key_order」
+              코드: key_order = keys.keys()      <- 선언을 «안 봅니다»
+```
+🔴 **죽은 이름을 산 이름으로 «바꿔 넣으면» 문장이 새로 거짓이 됩니다.**
+원문은 「v1 의 ENTITY_TYPES 를 본다」였고 그건 그때 참이었습니다. 목적어만 갈면 문장 «모양»은
+남고 «주장»은 틀립니다 — 그리고 그 틀림은 검토로 안 보입니다. 그럴듯하기 때문입니다.
+
+## 세 부류 규칙에 이 한 줄을 더합니다 (셋 다에게)
+```
+③ 죽은 예시   규칙은 두고 «예시만» 갈아끼운다
+   🔴 그런데 갈아끼우기 «전»에 「그 코드가 지금 무엇을 하나」를 «읽으십시오».
+      죽은 이름의 자리에 산 이름을 넣는 것이 아니라, «지금 하는 일»을 적는 것입니다
+      이번 경우 답은 「선언을 본다」가 아니라 「선언을 «안» 본다 — 한 층 위가 한다」였습니다
+```
