@@ -3102,10 +3102,6 @@ async def upload_file(table_name: str, user: str = "Unknown",
         s = os.path.basename(s).strip().strip(".")
         return s
 
-    orig_name, ext = os.path.splitext(_safe_component(file.filename))
-    safe_user = _safe_component(user) or "Unknown"
-    unique_name = f"user({safe_user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}"
-
     # 🔴 THE TREE IS KEPT, because a parser downstream reads the WAFER OUT OF THE FOLDERS.
     #    `voids_json_format` refuses outright unless the relative path is
     #    `WAFERID/WORK_DATETIME/<file>` -- the wafer id and the work time are not inside the
@@ -3126,6 +3122,22 @@ async def upload_file(table_name: str, user: str = "Unknown",
     #: A cap, because unbounded nesting stops being an ontology question and becomes a
     #: filesystem one. Ten is far above the three this parser needs.
     parts = parts[:10]
+
+    orig_name, ext = os.path.splitext(_safe_component(file.filename))
+    safe_user = _safe_component(user) or "Unknown"
+    # 🔴 THE LEAF NAME IS KEPT WHEN A TREE IS GIVEN, and that is the same guard reading
+    #    a different situation rather than a relaxed one. The uuid suffix protects a FLAT
+    #    directory, where two uploads of `voids.json` would be one file. With a tree, the
+    #    tree IS the uniqueness -- `WAFERID/WORK_DATETIME/` is exactly what makes two of them
+    #    different, which is why the producer writes folders at all.
+    #
+    #    And there the suffix is not merely unnecessary, it is fatal: `voids_json_format`
+    #    requires the leaf to be `voids.json` EXACTLY (:138), so a renamed leaf arrives with
+    #    three components and is refused on the NAME. Measured 2026-08-27.
+    #
+    #    With no relative path this is byte-for-byte what this route did before.
+    unique_name = (_safe_component(file.filename) if parts
+                   else f"user({safe_user})_{orig_name}_{uuid.uuid4().hex[:8]}{ext}")
     file_path = os.path.join(target_dir, *parts, unique_name)
 
     # 결과 검증: 반드시 target_dir **아래**여야 한다 (직접 자식일 필요는 없다).
