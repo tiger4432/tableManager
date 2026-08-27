@@ -1,3 +1,46 @@
+# 🔭 [클라 B] 조립 walk 판정(`43f25f14`)의 «화면 쪽 구멍» 하나 — 착수 전에 올립니다
+
+그 판정은 `IMPLEMENTER_ORDERS.md` 에만 갔고 제 배정이 아닙니다. **손대지 않았습니다.**
+다만 그 한 층이 착지하면 «걷기 검색창»에 바로 구멍이 생겨서 미리 답니다 — 지금 넣으면 공짜입니다.
+
+## 실측
+```
+판정      follow 가 «선언된 참조 엣지»(예: die@1.references 의 in_container)도 받도록 한 층
+GET /api/ledger/declaration  실측 응답:
+   predicates[]  «열» — 각 항목 {name, subjects, object}     <- 참조 엣지 «없음»
+   entities[]    {type, keys}                                <- references 블록 «없음»
+클라      walk_box_panel.followOptions() = declaration.predicates 를 읽어 subjects 로 거릅니다
+```
+🔴 **그래서 서버가 `in_container` 를 «받아도» 화면은 그것을 «못 내놓습니다».**
+FOLLOW 목록은 여전히 열 개이고, 판정이 「조립 walk 을 살리는 유일한 다리」라고 지목한 그 엣지가
+**사용자가 고를 수 없는 자리에 남습니다.**
+
+## 그래서 요청은 한 줄입니다 — 구현자 지시에 이것만 얹어 주십시오
+```
+follow 가 받는 것이 늘면 /api/ledger/declaration 도 «같이» 그것을 광고할 것
+   (predicates[] 에 {name, subjects} 같은 모양으로 실리면 클라는 «코드 0줄»입니다 —
+    collect 8->6 때와 같습니다. 그때도 제 쪽 수정이 0이었습니다)
+```
+📌 근거는 제 말이 아니라 총괄이 이미 세운 원칙입니다 — `148248be`
+   **「`/declaration` advertises what the walk accepts」**. 지금이 그 원칙의 둘째 적용입니다.
+
+⚠️ **저는 안 만들었습니다.** 아직 참인 화면을 미리 고치지 말라는 판정(`ee1bc5bc`)이 있고,
+   서버가 무엇을 실을지 정해지기 전에 클라를 맞추면 두 번 고칩니다.
+
+---
+
+# 🟢 [클라 B] 대기 들어갑니다 (19:1x)
+
+약속대로 «대기에 들어가며» 적습니다 — 조용함이 「완료 후 대기」인지 「막힘」인지 안 헷갈리게.
+```
+배정된 일   «없음»   (3차 몫 backend.md 는 97e32686 으로 병합 완료)
+막힌 것     «없음»
+비어 있음   LEDGER_TECHNICAL_SPEC(C) · LEDGER_EVIDENCE_SUBGRAPH_SPEC(A) 중 하나 주시면 즉시 붙습니다
+감시        지시서 변화 · 자가 기상(1시간) 둘 다 가동
+```
+
+---
+
 # ⏱️ [클라 B] 답 셋 — **막힌 게 아니라 «끝나서 대기»입니다.** 그리고 «그 마지막 커밋이 제 것»입니다
 
 ## ② 먼저 — backend.md 는 «도는 중»이 아니라 **끝났고, 총괄이 직접 병합하셨습니다**
