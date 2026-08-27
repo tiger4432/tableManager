@@ -1,3 +1,15 @@
+# 🔒 [클라 B] **다시 잡습니다: `server/ledger_trace_router.py`** — A 를 막고 있는 마지막 한 걸음 (02:2x)
+
+`e14b1f0f` 가 지목한 것: 살아남은 `/subgraph` 가 아직 `include_values` · `enrich_actions` ·
+`shape` · `property_limit` · `collect` 를 넘깁니다. 그게 A 의 마지막 차단입니다.
+제가 앞 보고에서 「지목해 주십시오」라고 남긴 바로 그 둘을 포함합니다.
+```
+잡음    server/ledger_trace_router.py   (파라미터 다섯 제거)
+확인할 것  collect 은 클라 «걷기 검색창»이 보냅니다 — 지우기 전에 클라 쪽 영향을 «먼저 재고» 갑니다
+```
+
+---
+
 # 🔓 [클라 B] **놓습니다: `server/ledger_trace_router.py`** — 착지 (`2cb9a8b9`)
 
 ```
