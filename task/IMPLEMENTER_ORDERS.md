@@ -16689,3 +16689,41 @@ server/ledger_api/ledger_trends.py   분자·분모 «둘 다» 구별 계수로
    + LEDGER_TECHNICAL_SPEC.md:1124 의 그 문장을 «같은 커밋»에서
    ⚠️ 그 파일을 B가 방금 고쳤으니 «먼저 잡기 노트»를 쓰고, B가 놓았는지 확인하십시오
 ```
+
+---
+
+# ❌ 취소 — `sources_for`(참조 거꾸로 읽기)를 «만들지 마십시오» (총괄, 2026-08-28 00:1x)
+
+소유자 지적: 「어차피 있는 엣지 거꾸로 타고 가면 wf 에서 다이로 닿잖아」. **맞습니다.**
+제가 `in_container` 에 붙들려 «이미 있는 진짜 엣지»를 빼놓고 「막혔다」고 지시서를 썼습니다.
+
+## 실측 — 둘이 «완전히 같습니다»
+```
+씨앗 wafer SYN-CX-BW-001 · hops 4 · direction both
+  follow 없음                             nodes 800 · edges 1,314 · 자재 «9»
+  follow=inspected+transfer+bonded_from   nodes 800 · edges 1,314 · 자재 «9»
+  자재 집합 동일 True · 빠진 것 0 · 새로 온 것 0
+```
+`inspected@1` 은 주어 `wafer@1` · 목적어 entity_ref -> `die@1` 인 **원자 엣지**입니다.
+웨이퍼에서 «정방향»으로 그냥 타면 다이 128 에 닿고, 거기서 `transfer`·`bonded_from` 으로
+조립 전체가 나옵니다. **거꾸로 읽을 이유가 없습니다.**
+
+## 그래서
+```
+❌ entity_references.sources_for(...)        만들지 마십시오
+❌ ledger_subgraph 의 역방향 참조 확장       만들지 마십시오
+✅ follow + 카탈로그(이미 착지)              그대로 둡니다. 그건 맞았습니다
+```
+🟢 `entity_references.py` 는 아직 «한 줄도» 안 바뀌었으니 버려지는 작업 «없습니다».
+
+## 남은 진짜 문제는 «예산»이고, follow 로는 안 됩니다
+```
+follow 를 줘도 800 에서 «안 줄었습니다» — 다이 128 자체가 예산을 먹습니다
+어느 술어로 가든 다이를 지나야 조립에 닿으므로 follow 로는 못 아낍니다
+-> 별개 문제입니다. 지금 소유자 요구를 막고 있지 «않습니다». 새로 만들지 마십시오
+```
+
+## 당신이 잡은 `ledger_identity.py` 는 «맞습니다» — 그 셋 그대로 가십시오
+```
+① /selection/resolve 반경 한 줄   ② 동률이면 None   ③ trends 죽은 CTE 사슬 + 문서 한 문장
+```
