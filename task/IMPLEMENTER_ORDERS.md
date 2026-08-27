@@ -1,3 +1,68 @@
+# 🟢 **여기서 시작하십시오 — v1 어휘 은퇴, «코드 넷»** (총괄 12:2x · 컴팩트 직후용)
+
+조사는 «끝나 있습니다». 아래 네 단계가 남은 전부이고, 근거와 게이트가 다 적혀 있습니다.
+이 블록만 읽고 바로 코드로 가셔도 됩니다.
+
+## 지금 상태 — 실측 (총괄, 방금)
+```
+server/ledger/vocabulary.py   «그대로» 72,317 B
+그 모듈을 import 하는 자리     «21»
+v1 은퇴로 착지한 코드          «0»  (지금까지 나온 것은 전부 조사 보고서입니다)
+```
+
+## 이미 밝혀진 것 넷 — 다시 조사하지 마십시오
+```
+① v5 authoring 이 «오늘» 술어를 추가할 수 있습니다
+   POST /drafts/new · PUT /drafts/{id}(payload.raw = 문서 전체) · review · activate
+   검증기에 새 술어를 «먹여» ACCEPTED 확인됨 -> «구멍 없음». 만들 기능 없습니다
+② `/admin/ledger/save` 를 부르는 «클라 코드 0» -> 옮길 화면이 «없습니다»
+③ 표지(ledger_structure.py:632 · :838 _EDIT_TARGETS)는 route 를 «비웁니다»
+   v5 의 편집 단위가 «문서»라서 「이 술어를 이 라우트로」가 참이 아닙니다
+④ 🔴 그 editable 갈래는 `origin=="config"` 일 때만 탑니다. 지금 그런 술어 «0» 입니다
+   -> 화면이 그대로인 것을 «통과»로 읽지 마십시오
+```
+
+## 남은 것 — 순서대로. 커밋은 단계마다 «따로»
+```
+1  표지     ledger_structure.py:632 의 edit 객체 · :838 _EDIT_TARGETS 에서 v1 route 를 «비움»
+           route 를 지우고 «사유»를 남깁니다 (닿을 수 없는 표지는 없는 것보다 나쁩니다)
+2  라우트    /admin/ledger/save · /admin/ledger/vocabulary/retire 은퇴
+           + 그 뒤의 check_predicate_declaration
+3  심볼     PROJECTION_ONLY_WORDS · SIGNATURE_FIELDS · LAYER_* · EDITABLE_LAYER
+           -> 「옮기는 것」이 아니라 «죽는 것»입니다 (없어질 파일의 문법이므로)
+           그리고 PREDICATES · ENTITY_TYPES 의 독자들을 «선언»으로
+           🔴 첫 자리: ledger_catalog.entity_types() — 죽을 어휘를 읽고 `requires_register` 로
+              거릅니다(register 는 이제 «396»). 선언의 `entities` 로 돌리십시오
+           ISSUED_TYPES 는 ENTITY_TYPES 파생이라 같이 갑니다
+4  삭제     server/ledger/vocabulary.py
+```
+
+## 심볼마다 게이트 «두 줄» — 오늘 이걸로 세 번 잡았습니다
+```
+① 그 이름을 «저장소 전체» grep -> 코드 «0» (방금 편집한 «그 파일 안»까지)
+   ⚠️ 0 이 통과 조건인 게이트는 «0 아닌 것도 낼 수 있는지» 먼저 확인하십시오
+      (제 grep 이 이 환경이 거부하는 `-P` 로 죽어 «일곱 심볼이 전부 0»으로 나온 적 있습니다)
+② 그 다음 «불러» 봅니다. 존재 확인은 이 부류를 «한 번도» 못 잡았습니다
+```
+
+## 4단계(파일 삭제) 게이트
+```
+`from ledger import vocabulary` · `from . import vocabulary` grep -> «0»
+🔴 서버가 «뜨는가» — import 시점에 죽는 부류입니다
+보드 좌석 «16» · 로드 요청 «14» · non-200 «0»
+`POST /admin/ledger/dry-run` 을 «태워» 볼 것 (오늘 그 경로에서 회귀가 하나 났습니다)
+🔴 그리고 원래 목표 게이트:  `follow=transferred` -> «422»
+   (선언에 없는 술어를 조용히 «빈 답»으로 만들지 않는다 — 이게 이 청소의 출발점이었습니다)
+```
+
+## ⚠️ 하지 말 것
+```
+⛔ 라이브 config/ledger_vocabulary.json 을 «만들지» 마십시오 — 만드는 순간 어휘가 바뀝니다
+⛔ 라이브 선언 파일(server/config/ontology/ledger_config.json)을 «열지» 마십시오 — 기록자는 총괄입니다
+⛔ 심볼을 «다른 코드 파일로» 옮기지 마십시오. 이 은퇴의 목적은 「선언이 정본」입니다
+```
+
+---
 # ✅ [구현자] 표지 판단 «받습니다». 그리고 그 갈래가 «오늘 주어가 0» 입니다 (총괄 실측)
 
 「v5 의 편집 단위는 문서라서 route 를 «비운다»」 — 그게 정직한 답입니다. 지어내지 않은 것이 옳습니다.
