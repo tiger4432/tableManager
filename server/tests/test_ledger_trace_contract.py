@@ -43,22 +43,34 @@ CONFIG_SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample"
 
 
 # ---------------------------------------------------------------------------
-# What this lane reads must be what the declaration declares
+# The vocabulary this lane reads must be the vocabulary that lane declares
 # ---------------------------------------------------------------------------
-# 🔴 `test_the_qualifier_names_the_walk_reads_are_the_ones_declared` LEFT WITH v1
-# (2026-08-27) and is not replaced, because there is nothing left for it to compare
-# against. It asserted `from`/`to`/`slot` were in v1's `PREDICATES` table for `slot_map`
-# and `has_wafer`. MEASURED against both surviving authorities on the live box that day:
-#
-#     declaration   slot_map@1 qualifiers = optional ["event_type"], required []
-#                   has_wafer@1 qualifiers = none
-#     the atoms     slot_map carries exactly one qualifier key, `event_type`
-#                   has_wafer has ZERO atoms
-#
-# So those three names are in neither the declaration nor the data, and the assertion was
-# measuring v1's table and only v1's table. `ledger_trace` does still read them by name
-# (`_object_qualifier(claim, "from" | "to" | "slot")`), which is a real thing for the lead
-# PM to rule on -- but a test cannot hold two spellings equal when only one of them exists.
+
+
+
+def test_the_qualifier_names_the_walk_reads_are_the_ones_declared():
+    """`from`/`to`/`slot` are read by name. If the vocabulary renames one, the
+    walk goes silently blind rather than loudly wrong — a hop would come back
+    `unresolvable` and read as a broken chain in the data."""
+    # 🔴 THIS USED TO ASK `vocabulary.PREDICATES`, the v1 word list, and that is why it
+    # stayed green while the thing it guards broke: the list still carried `from`/`to`
+    # long after the declaration stopped declaring them. A guard that reads a second copy
+    # of the rule cannot see the rule change. It asks the declaration now.
+    from ledger import config as ledger_config
+    declared = {str(k).split("@", 1)[0]: v
+                for k, v in ((ledger_config.load() or {}).get("vocabulary") or {}).items()}
+
+    def qualifiers(predicate):
+        obj = (declared.get(predicate) or {}).get("object") or {}
+        q = obj.get("qualifiers") or {}
+        return set(q.get("required") or ()) | set(q.get("optional") or ())
+
+    assert {"from", "to"} <= qualifiers("slot_map"), (
+        "`ledger_trace._slot_move` reads the `from`/`to` qualifiers of `slot_map` by "
+        "name, and the declaration does not declare them - the walk reads nothing there.")
+    assert "slot" in qualifiers("has_wafer"), (
+        "`ledger_trace._wafer_slot` reads the `slot` qualifier of `has_wafer` by name, "
+        "and the declaration does not declare it - the walk reads nothing there.")
 
 
 def test_the_payload_readers_read_the_translators_own_entity_ref():
@@ -309,13 +321,12 @@ def test_what_the_hop_basis_reports_for_a_class_1_claim():
         "distinction should now be asserted instead")
 
 
-# 🔴 `test_the_hop_states_are_the_designs_projection_words` LEFT WITH v1 (2026-08-27).
-# It held `ledger_trace.HOP_STATES` equal to `vocabulary.PROJECTION_ONLY_WORDS`, a v1 list
-# with no counterpart in the declaration -- the declaration names PREDICATES and ENTITIES,
-# and a projection-only word is by definition neither. There is no second spelling left to
-# hold the enum against, so the guard goes rather than being pointed at a list invented to
-# receive it.
-
+# REMOVED 2026-08-27: `test_the_hop_states_are_the_designs_projection_words` held
+# `lt.HOP_STATES` equal to `ledger/vocabulary.py::PROJECTION_ONLY_WORDS`. That module
+# was the v1 word list and it is gone; the declaration has no projection-word section,
+# because a hop state is a word the PROJECTION owns and never a predicate the ledger
+# emits. There is nothing left to hold it equal to, so the assertion goes rather than
+# being pointed at a section invented to receive it.
 
 #: Derivations this lane has judged to be UTTERANCES — the source said it, the
 #: translator only reshaped it. Held here rather than in `ledger_trace.py` on

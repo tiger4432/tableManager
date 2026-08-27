@@ -4965,7 +4965,7 @@ def post_ledger_dry_run(payload: dict = Body(...), db: Session = Depends(get_db)
 #
 # The declaration is the authority now, and both halves of `save` were already unreachable
 # in their own way:
-#   predicate  wrote `config/ledger_vocabulary.json`, the v1 extension file. v5 authors a
+#   predicate  wrote the v1 extension file that no longer exists. v5 authors a
 #              predicate as part of the DOCUMENT - `POST /admin/ontology-explorer/drafts`
 #              -> review -> activate - which `client2/src/ontology_explorer.js` already
 #              calls. MEASURED: zero client code called this route.

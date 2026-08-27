@@ -912,9 +912,9 @@ def _resolve_ledger() -> dict:
                         "subject_types": list(declaration.get("subject_types") or [])}))
 
     # ---- 어휘 — 선언이 «유일한» 출처
-    # 🔴 이 자리는 v1 의 「어휘 확장 파일」(`ledger_vocabulary.json`)을 읽어 「코드가 싣는
-    #    낱말」과 「선언으로 늘린 낱말」을 구분해 보고했습니다. 그 파일도 그 구분도 없어졌습니다 —
-    #    이제 선언 하나가 낱말을 정하므로, 보고도 「선언이 무엇을 싣는가」 하나입니다.
+    # 🔴 이 자리는 낱말을 «두 출처»로 갈라 보고했습니다 — 코드가 싣는 것과 선언이 늘린 것.
+    #    그 갈래도 그것을 만들던 확장 파일도 없어졌습니다. 선언 하나가 낱말을 정하므로
+    #    보고도 하나입니다: 「선언이 무엇을 싣고, 그중 무엇이 아직 발화되지 않나」.
     declared_vocabulary = (document.get("vocabulary") or {})
     if not declared_vocabulary:
         ineffective.append(entry(

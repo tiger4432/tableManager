@@ -4,6 +4,55 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# ✅ [C 응용레인] «끝». 그리고 🔴 **선언 판정이 하나 필요합니다 — walk 이 읽는 한정자 셋**
+
+커밋 둘: `f9846b58`(코드 일곱) · `76a29111`(마지막 다섯 자리 + 시험 둘).
+`import vocabulary` «0» · `ledger_vocabulary` 언급 «0» (제 파일 전부).
+
+## 🔴 판정 필요 — 「선언에 칸이 필요하면 말씀만」에 해당합니다
+```
+코드가 «이름으로» 읽는 것            선언이 «선언하는» 것
+  ledger_trace:1043 _wafer_slot   has_wafer 의 `slot`      ->  has_wafer@1 qualifiers «{}»
+  ledger_trace:1073 _slot_move    slot_map 의 `from`·`to`  ->  slot_map@1  qualifiers «{event_type}»
+  ledger_trace:1749 SQL           object_payload->'qualifiers'->>'slot'
+```
+**둘 중 하나입니다 — 선언이 그 셋을 declare 하거나, 저 독자들이 죽은 코드이거나.**
+제가 정하지 않고 시험을 «빨강으로 남겼습니다».
+
+📌 그리고 이게 이 청소의 «논거» 자체입니다: 그 시험은 원래 이 정확한 사고를 막으려고
+   있었는데(「선언이 이름을 바꾸면 walk 이 시끄럽게 틀리는 대신 조용히 눈이 먼다」)
+   **v1 목록을 보고 있어서 초록으로 남아 있었습니다.** 규칙의 사본을 읽는 가드는
+   규칙이 바뀐 것을 볼 수 없습니다. 선언으로 돌리자마자 빨개졌습니다.
+
+## 제가 한 것 — 요약
+```
+선언으로 돌린 자리   follow 허용목록(게이트 ⑤ 🟢) · is_declared · enrichment 검증
+                  · config_resolve_report 의 어휘 보고 · rollup(파생 타입 없음 -> 자기 타입)
+지운 자리          v1 캐시 훅 둘 · /admin/ledger/vocabulary(소비자 0)
+                  · hop-state 대 v1 상수 단언(선언에 대응 없음)
+시험              변이 통제를 «선언으로» 다시 세워 살렸습니다 (지우지 않았습니다)
+                  그 과정에 픽스처 두 개가 낡은 것이 드러남 — die 는 «이제 선언됨»,
+                  STILL_DECLARED_SEEDS 는 소문자화 «전» 철자
+```
+
+## ⚠️ 제 실수 둘 — 기록합니다
+```
+① config_resolve_report 를 660줄 중복시켰습니다
+   원인  블록을 줄 번호로 갈아 끼우며 «끝 앵커»가 시작보다 앞인 것을 안 봤습니다
+   발견  `git diff --stat` 이 「660 insertions」 -> 되돌리고 앵커를 시작 이후에서만 찾게 수정
+② test_ledger_trace_contract 에서 함수 하나를 지우며 «뒤의 모듈 상수 5,757자»를 같이 먹었습니다
+   원인  「다음 `def`」까지 잘랐는데 그 사이에 최상위 상수 블록이 있었습니다
+   발견  NameError -> 되돌리고 「다음 «최상위 문장»」까지로 수정. 상수 13개 보존 확인
+🔴 공통  «줄 범위로 자를 때 끝을 무엇으로 잡는가». 두 번 다 diff/실행이 잡았고, 눈으로는 못 잡았습니다
+```
+
+## 안 건드린 빨강 셋 (제 변경 «전에도» 빨강 — stash 로 확인)
+```
+test_every_declared_derivation_is_explicitly_classified
+test_the_confirmed_derivations_are_ranked_by_the_resolver
+test_entity_label_takes_its_key_order_from_the_live_declaration
+```
+
 # 🔴 제 정정 «둘째» — 「맵 좌표가 walk 에 없다」도 틀렸습니다. **같은 응답의 die 에 있습니다**
 
 총괄 실측을 제 손으로 확인했고 **총괄이 맞습니다.** 그리고 이건 오늘 «두 번째»이고,

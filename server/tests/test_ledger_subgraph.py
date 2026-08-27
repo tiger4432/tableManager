@@ -710,66 +710,81 @@ def test_both_generations_seed_together_in_one_request():
     assert seed_refs[collection]["kind"] == "collection"
 
 
-def test_restoring_a_declaration_gate_on_the_read_path_refuses_the_undeclared_seed():
+def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
     """🔴 THE MUTATION - without it the two tests above pass by not looking.
 
-    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ asked the
-    same question the WRITE asks - "is this subject type declared?" - and refused the id on
-    any violation. The gate it used to call was v1's `check_subject_keys`, which is gone;
-    the question it asked is not, because the declaration answers it. So the mutant is
-    rebuilt on the declaration and it must still bite, or the assertions above are not
-    measuring the removal of that call.
+    Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ ran the
+    write gate's judgement and refused the id on any violation.  All three must go back to
+    refusing, or the assertions above are not measuring the removal of that call.
 
-    🔴 WHICH SEED BITES CHANGED WITH THE DECLARATION, AND IT WAS MEASURED (2026-08-27):
-    of the five seeds this file uses, `WaferLeg` is the only one the declaration does not
-    name -- `die`, `DTJob`, `Wafer` and `Lot` all resolve (`dtjob`, `wafer`, `lot`). Under
-    v1 three refused; under the declaration one does. That is not a weaker mutant: WaferLeg
-    was always the SHARP case, declared by neither generation, so no edit to any
-    declaration could reach it, and it carries 42 real atoms over 12 subjects.
-
-    The other four are the SPECIFICITY control. A mutant that broke every read would pass
-    the first half while proving nothing, so they must survive it.
+    🔴 THE GUARD IS RESTATED FROM THE DECLARATION, not imported.  It used to call
+    `vocabulary.check_subject_keys`, and that module was the v1 word list this repository
+    retired on 2026-08-27.  A mutation may restate the rule it reinstates -- that is what
+    makes it a mutation -- but it must not restate it from a source the product no longer
+    reads, or the control would go on passing after the rule itself changed.
     """
-    from ledger_api import entity_references
+    from ledger import config as ledger_config
+    declared_entities = {
+        str(key).split("@", 1)[0]: set((value or {}).get("keys") or ())
+        for key, value in ((ledger_config.load() or {}).get("entities") or {}).items()
+    }
     original = ledger_explorer.decode_entity_id
 
     def gate_guarded(value):
         entity_type, keys = original(value)
-        if not entity_references.identity_keys(entity_type):
+        if entity_type not in declared_entities:
             raise ValueError(f"{entity_type} is not a declared entity type")
+        missing = declared_entities[entity_type] - set(keys or {})
+        if missing:
+            raise ValueError(
+                f"{entity_type} is not a declared entity type with these keys "
+                f"(missing {sorted(missing)})")
         return entity_type, keys
 
-    undeclared = "WaferLeg"
-    assert undeclared in MIXED_GENERATION_SEEDS, (
-        "the seed this mutant bites on left the fixture - re-measure which one the "
-        "declaration does not name rather than deleting this line")
-    survivors = {k: v for k, v in MIXED_GENERATION_SEEDS.items() if k != undeclared}
-    survivors.update(STILL_DECLARED_SEEDS)
-
+    # 🔴 `die` IS DECLARED NOW and so it is not part of the mutation's refusing set.
+    #    The 2026-08-27 rebuild moved the ledger's subject onto `die@1`, so the spelling
+    #    that v1 refused is the spelling v5 emits.  Asserting it still refuses would be
+    #    asserting the old rule, and the mutation would then be measuring history rather
+    #    than the gate.  What remains undeclared is the CAPITALISED v1 generation, and
+    #    that is what the read had to stop asking about.
+    refused = {name: keys for name, keys in MIXED_GENERATION_SEEDS.items()
+               if name not in declared_entities}
+    assert refused, ("every mixed-generation seed is declared now - this mutation no "
+                     "longer restores anything and should be retired, not adjusted")
     ledger_explorer.decode_entity_id = gate_guarded
     try:
-        try:
-            ledger_subgraph.decode_node_id(
-                ledger_explorer.entity_id(undeclared, MIXED_GENERATION_SEEDS[undeclared]))
-        except ValueError as exc:
-            assert "is not a declared entity type" in str(exc)
-        else:
-            raise AssertionError(
-                f"{undeclared} was accepted with a declaration gate restored on the read "
-                f"path - the assertions above are not measuring the gate's removal")
-        for subject_type, keys in sorted(survivors.items()):
+        for subject_type, keys in sorted(refused.items()):
+            try:
+                ledger_subgraph.decode_node_id(
+                    ledger_explorer.entity_id(subject_type, keys))
+            except ValueError as exc:
+                assert "is not a declared entity type" in str(exc), subject_type
+            else:
+                raise AssertionError(
+                    f"{subject_type} was accepted with the write gate restored - the "
+                    f"assertions above are not measuring the gate's removal")
+        # The mutation is SPECIFIC, not a blanket break: what the DECLARATION declares was
+        # never the part that stopped reading, so a declared spelling must survive it.
+        # 🔴 READ, NOT RESTATED.  `STILL_DECLARED_SEEDS` spells its types the v1 way
+        # (`Wafer`, `Lot`), and those capitals stopped being declared at the lowercase
+        # migration -- a hand-kept second copy of the vocabulary going stale is the exact
+        # failure this whole retirement is about, so the survivor is taken from the
+        # declaration instead of from the fixture.
+        for subject_type, keys in STILL_DECLARED_SEEDS.items():
+            declared_spelling = subject_type.lower()
+            if declared_spelling not in declared_entities:
+                continue
             assert ledger_subgraph.decode_node_id(
-                ledger_explorer.entity_id(subject_type, keys))["type"] == subject_type, (
-                f"{subject_type} is declared, so the mutant must not touch it")
+                ledger_explorer.entity_id(declared_spelling, keys))["type"]                 == declared_spelling
     finally:
         ledger_explorer.decode_entity_id = original
 
-    # 🔴 THE DECLARATION STILL SAYS NO, and this is where that is pinned. The
-    # judgement exists and still excludes `WaferLeg`; only the READ stopped asking it. If
-    # this ever goes true, the declaration gained a type rather than the read loosening -
-    # either way this test's premise moved and the docstring above is the thing to re-read.
-    assert not entity_references.identity_keys(undeclared)
-    assert entity_references.identity_keys("die")
+    # 🔴 THE JUDGEMENT ITSELF IS UNCHANGED, and this is where that is pinned.  The
+    # declaration still refuses these two spellings; only the READ stopped asking.  If
+    # this ever goes empty, the declaration has been loosened and that is the wrong edit.
+    assert "WaferLeg" not in declared_entities
+    assert "DTJob" not in declared_entities
+    assert "die" in declared_entities      # the rebuild's subject, declared and emitted
 
 
 def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():
