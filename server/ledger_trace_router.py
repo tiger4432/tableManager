@@ -1,4 +1,8 @@
-"""`GET /api/ledger/trace` + `GET /api/ledger/coverage` — the lineage screen.
+"""The ledger read routes — ten of them, and none is the pair this line used to name.
+
+`/api/ledger/trace` and `/api/ledger/coverage` retired; what this module opens today is
+`subgraph`, `subgraph/table`, `siblings`, `trends`, `composition`, `selection/resolve`,
+`kinds`, `declaration`, `structure` and `lot_map`.
 
 Self-contained `APIRouter` so that registering it in `main.py` costs two lines.
 🔴 It MUST be included ABOVE `main.py`'s SPA catch-all `@app.get("/{file_name:path}")`:

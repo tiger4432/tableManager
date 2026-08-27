@@ -88,7 +88,7 @@ def test_every_retired_get_route_refuses_with_the_retirement_contract(client, pa
     # states differ in whether a retry button should exist at all.
     assert d["reason"] == "old_graph_branch_retired"
     assert d["state"] == "retired"
-    assert d["successor"] == "/api/ledger/trace"
+    assert d["successor"] == "/api/ledger/subgraph"
     assert d["message"]
     # 410 is CACHEABLE by default, so without this the refusal can outlive the
     # refusal - measured this round: the viewer kept rendering a previous

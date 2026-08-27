@@ -3003,7 +3003,12 @@ async def apply_batch_updates_endpoint(
 # 410과 후계 주소를 계속 제공한다. 410은 기본 캐시 가능하므로 no-store가 필수다.
 RETIRED_GRAPH_TABLES = ("graph_nodes", "graph_edges", "graph_sync_state")
 GRAPH_BRANCH_RETIRED_REASON = "old_graph_branch_retired"
-GRAPH_BRANCH_SUCCESSOR = "/api/ledger/trace"
+#: 🔴 THE SUCCESSOR MUST BE A ROUTE THAT EXISTS. This said `/api/ledger/trace`
+#: until 2026-08-27, and that address is not in the app - a 410 body was sending its
+#: reader to a 404. The seven retired routes were all WALKS, and the route that answers
+#: a walk today is this one. (`/api/ledger/structure` answers 200 but is the TYPE layer,
+#: so it is not the successor to instance-level tracing.)
+GRAPH_BRANCH_SUCCESSOR = "/api/ledger/subgraph"
 
 
 def _graph_branch_retired() -> HTTPException:
@@ -3017,7 +3022,7 @@ def _graph_branch_retired() -> HTTPException:
             "ruling": "R-2026-08-14-H",
             "message": (
                 "구 그래프 저장소와 동기화 코드는 제거되었습니다. "
-                "혈통 추적은 원장 구조 뷰를 사용하세요."
+                "인스턴스 추적은 원장 걷기(`GET /api/ledger/subgraph`)를 쓰세요."
             ),
         },
     )
