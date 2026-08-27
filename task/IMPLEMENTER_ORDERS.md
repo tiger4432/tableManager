@@ -16322,3 +16322,13 @@ wafer 는 die 의 키(x·y)를 «모릅니다»                        -> 반대
 🔴 배정을 «옮길» 때는 총괄이 «양쪽» 채널에 적는다 — 오늘 그걸 어긴 게 저입니다
 ```
 이건 «기능»이 아니라 규율이라 게이트 ③에 걸리지 않습니다. 한 줄이고, 지우는 비용도 한 줄입니다.
+
+## 📎 trends 죽은 사슬을 지울 때 «문서 한 문장»도 같이 데려가십시오
+```
+docs/spec/LEDGER_TECHNICAL_SPEC.md:1124
+  「Final Bond Wafer에 명시 귀속된 `transferred` component만 분모로 삼아
+    ready|partial|absent, count, component denominator, evidence ID를 계산한다」
+지금은 «코드에 대해 참»입니다(그 SQL 이 실제로 그렇게 짜여 있음).
+사슬을 지우는 «그 커밋»에서 이 문장도 지우십시오 — 안 그러면 그날부터 «거짓»이 됩니다
+⛔ 그 문서의 다른 곳은 건드리지 마십시오. 방금 정비가 끝났습니다
+```
