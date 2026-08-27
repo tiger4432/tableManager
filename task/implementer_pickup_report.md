@@ -1,3 +1,48 @@
+# ✅ [구현자] **A 레인 코드 «끝». 파일 삭제는 B·C 를 기다립니다** (구현자 2026-08-27 13:2x)
+
+`d77fa131` — 8파일, +100/-181, 마이그레이션 스크립트 1개 삭제.
+```
+gate.py                  어휘 검사 «둘» 제거 (소유자 판정대로)
+config.py                ENTITY_TYPES «여덟 자리» -> 선언의 entities
+source_profile_builtins  엔티티 TypeRegistry 같은 이동
+envelope · config_authoring   죽은 심볼을 가리키던 주석·독스트링
+scripts/migrate_ledger_config_drop_vocabulary_layer.py   «삭제» (끝난 마이그레이션)
+```
+대소문자는 넘어오면서 접힙니다 — `_identity_keys("Lot") -> ['lot']`. 그래서 «재개발이 아니라
+읽는 자리 바꾸기»가 맞았고, 답은 원장이 실제로 원자에 적는 철자입니다.
+
+## 🔴 삭제는 «못 합니다» — 아직 «12»가 수입합니다
+```
+B 레인   ledger_admin · ledger_structure · ledger_explorer
+C 레인   config_resolve_report · main · enrichment_config · chain_ingestion_worker
+        · ledger_trace · ledger_api/ledger_selection
+시험     test_ledger_structure_pg · test_ledger_subgraph · test_ledger_trace_contract
+```
+`ledger/vocabulary.py` 삭제는 **B·C 착지 뒤**에 제가 하겠습니다. 게이트는
+`import vocabulary` 「0」 + 서버 기동 + `follow=transferred -> 422` 입니다.
+
+## ⚠️ 이음새 하나가 «지금 반쪽»입니다 — B 레인에 알립니다
+```
+ledger/config.py   엔티티 타입을 «선언»에서 읽습니다    (die·dtjob·lot·lot_slot·recipe·wafer)
+ledger_admin.py    아직 vocabulary.ENTITY_TYPES        (Die·Equipment·Lot·Product·Recipe·Wafer)
+-> 한쪽이 받는 철자를 다른 쪽이 거절합니다. 선언된 타입이 지나가면서
+   `undeclared_entity_type` 을 «하나 더» 답니다
+```
+시험 하나를 `==` 에서 `in` 으로 늦춰 두고 사유를 적어 뒀습니다(test_ledger_source_contract).
+**B 레인이 착지하면 그 줄을 다시 `==` 로 조여야 합니다.**
+
+## ⚠️ 제 것이 아닌 빨강 «넷» — 이미 커밋된 샘플이 깨져 있습니다
+```
+tests/test_ledger_l1_unit    ×3    tests/test_ledger_transfer_unit   ×1
+사유   profiles["dt-job@1"].mappings[0].use: pack 'dt-job@1' is not declared in packs
+확인   «HEAD 의 샘플»도 «똑같이» 실패합니다 -> 작업 트리 편집이 아니라 커밋된 상태입니다
+      그리고 이 디프는 source_profile.py 도 packs 문법도 건드리지 않았습니다
+```
+👉 `packs` 은퇴 때 샘플이 같이 안 갔습니다. 판정 주시면 제가 고치겠습니다 — A 레인 범위 밖이라
+   손대지 않았습니다.
+
+---
+
 # 🔴 판정 요청 — v1 은퇴 «3단계까지» 착지. 4단계 앞에 «둘»이 서 있습니다 (구현자 2026-08-27 13:0x)
 
 ## 착지한 것 넷 — 단계마다 따로, 전부 push 됨
