@@ -367,29 +367,44 @@ def test_every_declaration_row_says_whether_it_can_be_edited_and_by_what():
     ]
     handles = [ledger_structure._edit_handle(row) for row in rows]
 
-    assert handles[0] == {"editable": True, "target": "source", "name": "void_obs",
-                          "config": "ledger_config.json",
-                          "route": "/admin/ledger/save",
-                          "raw_route": "/admin/ledger/config/raw"}
+    # 🔴 THE ROUTE LEFT 2026-08-27, so this row flipped. v5's edit unit is the whole
+    # DOCUMENT (drafts -> review -> activate), and the route this row used to name runs
+    # `ledger_config.validate` - the v3 validator - which refuses a v5 source at its first
+    # key. Saying「editable, knock here」at a door that cannot open is the failure this
+    # whole test exists to catch, pointed the other way.
+    assert handles[0]["editable"] is False and handles[0]["reason"] == "document"
+    assert "route" not in handles[0], "the row still points at a route"
     # 🔴 A DERIVED row must NOT get a key that goes nowhere. `syn_world` is a source the
     # ledger has atoms from and the config never declared - there is no config key to edit.
     assert handles[1]["editable"] is False and handles[1]["reason"] == "derived"
     assert "name" not in handles[1], "a derived row was handed an edit key"
     assert handles[2]["editable"] is False and handles[2]["reason"] == "no_route"
     assert handles[3]["editable"] is False and handles[3]["reason"] == "unreadable"
-    for handle in handles[1:]:
+    for handle in handles:
         assert handle["detail_ko"], "a non-editable row must say WHY, not just refuse"
 
 
-def test_a_predicate_row_is_editable_only_when_an_operator_declared_it():
-    """The canonical layer has no door by ruling; a code-loaded ontology word is code."""
+def test_no_predicate_row_points_at_a_retiring_v1_route():
+    """🔴 REVERSED 2026-08-27. This used to assert the retire route was PRESENT.
+
+    Both v1 routes are being retired, and v5's edit unit is the declaration DOCUMENT
+    (drafts -> review -> activate), so「this predicate, at this route」was never true of a
+    v5 word. A row naming a door that is going away is worse than a row that says it has
+    no door.
+
+    ⚠️ The two absence assertions are checked against the PAYLOAD spellings, not the
+    prose: the module's comments still name both routes to record why they left. The two
+    presence assertions below are the control - they read the same body, so a broken or
+    empty read fails them instead of passing this test vacuously.
+    """
     import ledger_structure
 
     body = open(ledger_structure.__file__, encoding="utf-8").read()
-    assert '"retire_route": "/admin/ledger/vocabulary/retire"' in body, (
-        "the predicate row lost its retire route - retirement is the ONLY way a word "
-        "leaves circulation, so the screen needs it addressable")
+    assert '"route": "/admin/ledger/save"' not in body, (
+        "a row still hands out the v1 save route")
+    assert '"retire_route"' not in body, "a row still hands out the v1 retire route"
     assert '"reason": ("canonical" if' in body
+    assert '"reason": "document"' in body
 
 
 def test_the_class_1_key_is_rendered_on_the_declaration_map():

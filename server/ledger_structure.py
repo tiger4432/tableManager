@@ -625,12 +625,26 @@ def _vocabulary_panel(vocabulary, edges):
             "layer": sig.get("layer"),
             "origin": sig.get("origin", "code"),   # ADDITIVE - see `declared_edges`
             # ADDITIVE, and the same question the declaration rows now answer: is this row
-            # an edit surface? A predicate is addressable by its NAME, and editable only
-            # when an operator declared it — the canonical layer has no door by ruling, and
-            # a code-loaded ontology word is code.
-            "edit": ({"editable": True, "target": "predicate", "name": predicate,
-                      "route": "/admin/ledger/save",
-                      "retire_route": "/admin/ledger/vocabulary/retire"}
+            # an edit surface? The answer is now NO for every predicate, and the three
+            # reasons differ: the canonical layer has no door by ruling, a code-loaded
+            # ontology word is code, and an operator-declared word (`origin == "config"`)
+            # is edited as part of a DOCUMENT.
+            #
+            # 🔴 THE ROUTE LEFT, THE ROW STAYED. It used to name the v1 pair
+            # (`/admin/ledger/save`, `/admin/ledger/vocabulary/retire`), which is being
+            # retired — and「this predicate, at this route」was never true of v5 anyway:
+            # v5's edit unit is the whole declaration, authored through
+            # drafts -> review -> activate. A signpost pointing at a door that is going
+            # away is worse than a row that says it has no door.
+            #
+            # ⚠️ MEASURED 2026-08-27: `origin == "config"` has ZERO subjects on this box
+            # — origin becomes "config" only for a predicate read from the v1 extension
+            # file, and that file does not exist here. So an unchanged screen proves
+            # nothing about this branch; it was never rendering.
+            "edit": ({"editable": False, "reason": "document",
+                      "detail_ko": ("술어 하나만 고치는 저장 경로는 없습니다 — 편집 "
+                                    "단위가 «선언 문서»입니다. 온톨로지 화면에서 "
+                                    "초안을 만들어 문서를 고치고 활성화하세요.")}
                      if sig.get("origin") == "config" else
                      {"editable": False,
                       "reason": ("canonical" if sig.get("layer") == "canonical"
@@ -835,7 +849,21 @@ def mechanism_layer(vocabulary):
 #: (a source the ledger has atoms from but the config never declared; a cursor row with no
 #: declaration). Those have no config key to edit, and giving them one would be a key that
 #: goes nowhere — the thing the owner explicitly asked not to fabricate.
-_EDIT_TARGETS = {"translator": ("source", "/admin/ledger/save")}
+#:
+#: 🔴 EMPTY BY RULING (2026-08-27). It used to read
+#: `{"translator": ("source", "/admin/ledger/save")}`, and that signpost was false twice
+#: over. First, v5's edit unit is the whole DOCUMENT (drafts -> review -> activate), so
+#: 「this source, at this route」does not describe how a source is authored. Second, the
+#: route it named cannot accept a v5 source at all: `check_source_declaration` validates
+#: through `ledger_config.validate`, the v3 validator, which refuses a v5 source at its
+#: first key. MEASURED 2026-08-27 by feeding both shapes to that validator:
+#:     v5 source {read, prepare, map, bind, relation}
+#:         -> REFUSED "sources.probe.occurred_at_column is not declared"
+#:     v3 source -> walks on through five further v3 keys (occurred_at_timezone,
+#:                  subject_types, columns, columns.lot ...)
+#: A row that says「editable, knock here」at a door that cannot open is worse than a row
+#: that says it has no door.
+_EDIT_TARGETS = {}
 
 
 def _edit_handle(item):
@@ -851,6 +879,14 @@ def _edit_handle(item):
                 "detail_ko": "이 행은 선언이 아니라 «원장에서 관측된 사실»입니다 — 편집할 "
                              "config 키가 없습니다. 이것을 선언으로 만들려면 소스를 새로 "
                              "등록하세요(그 테이블이 table_config.json에 있어야 합니다)."}
+    # The v5 declaration is edited as a document, not a key at a time — see `_EDIT_TARGETS`.
+    # Without this the row would fall through to `no_route`, whose advice is「edit the file
+    # by hand and reload」: true of the other configs, misdirection for this one.
+    if item.get("group") == "translator":
+        return {"editable": False, "reason": "document",
+                "detail_ko": "이 선언의 편집 단위는 «문서 전체»입니다 — 소스 하나만 "
+                             "저장하는 경로는 없습니다. 온톨로지 화면에서 초안을 "
+                             "만들어 고치고 활성화하세요."}
     target = _EDIT_TARGETS.get(item.get("group"))
     if target is None or not item.get("name"):
         return {"editable": False, "reason": "no_route",
