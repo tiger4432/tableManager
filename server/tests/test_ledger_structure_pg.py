@@ -9,7 +9,7 @@ file exists for:
 
 Both are properties nothing else can catch. A hand-written node list PASSES every
 functional test on the box it was written on — it is only wrong on the day somebody adds
-a predicate. So the whole vocabulary is SWAPPED here for one whose words are named
+a predicate. So the whole declaration is SWAPPED here for one whose words are named
 nothing like the real ones (`Widget`, `Crate`, `bolted_to`), and the graph is asserted to
 follow it. A single literal `"Lot"` or `"has_wafer"` anywhere in `ledger_structure.py`
 fails this file.
@@ -24,12 +24,12 @@ times in this project already.
 
 WHAT EACH TEST DEFENDS
 -----------------------
-1. `test_the_graph_follows_a_swapped_vocabulary` — the failure condition, directly.
+1. `test_the_graph_follows_a_swapped_declaration` — the failure condition, directly.
 2. `test_a_declared_edge_with_no_atoms_is_served_as_zero` — the honest empty axis.
 3. `test_an_absent_ledger_gives_null_atoms_and_never_zero` — `null` != `0`, the
    distinction `absent-zero-is-not-inert-zero` cost this project a wrong diagnosis.
 4. `test_an_undeclared_shape_is_shown_as_drift_and_never_dropped` — an atom whose shape
-   the vocabulary does not declare must reach the screen, or an ontology fork is silent.
+   the declaration does not declare must reach the screen, or an ontology fork is silent.
 5. `test_the_class_breakdown_agrees_with_claim_class` — the census classifies through
    `claim_class`, and this drives EVERY arm of it (pin / confirmed-by-flag /
    inference-by-derivation / inference-by-flag / observation) so the payload-flag
@@ -54,58 +54,63 @@ SCRATCH_SCHEMA = "assy_structure_pytest" + (
     "_" + os.environ["PYTEST_XDIST_WORKER"]
     if os.environ.get("PYTEST_XDIST_WORKER") else "")
 
-#: 🔴 NOT the real vocabulary. Nothing here is named like anything in
-#: `server/ledger/vocabulary.py`, so a literal from the real one cannot satisfy any
+#: 🔴 NOT the real declaration. Nothing here is named like anything in
+#: `config/ontology/ledger_config.json`, so a literal from the real one cannot satisfy any
 #: assertion below.
 #:
 #: The shape is chosen to cover every branch of `declared_edges`:
 #:   `bolted_to`  entity_ref with TWO declared targets   -> two edges from one predicate
-#:   `stamped`    a `value` object with required fields  -> object_fields on the wire
-#:   `enrol`      object None (∅)                        -> the register-shaped edge
+#:   `stamped`    a `value` object with required quals   -> qualifiers on the wire
+#:   `enrol`      object kind `none` (∅)                -> the register-shaped edge
 #:   `pinpoint`   event_ref                              -> the fourth object token
 #:   `mothballed` status `reserved`                      -> declared, never emittable
-FAKE_ENTITY_TYPES = {
-    "Widget": {"class": "issued", "keys": ["widget"], "semi_ref": "X1",
-               "label_ko": "위젯"},
-    "Crate":  {"class": "issued", "keys": ["crate"], "semi_ref": None,
-               "label_ko": "상자"},
-    "Sliver": {"class": "composed", "keys": ["widget", "n"], "semi_ref": None,
-               "label_ko": "조각"},
+#:
+#: ⚠️ The names carry `@1` exactly as the real declaration does, and the ATOMS below are
+#: written under the BARE spelling. That pairing is the seam: if `declared_edges` stopped
+#: stripping the version the declared half and the census half would no longer meet and
+#: every edge would appear twice.
+FAKE_DECLARATION = {
+    "entities": {
+        "Widget@1": {"keys": ["widget"]},
+        "Crate@1":  {"keys": ["crate"]},
+        "Sliver@1": {"keys": ["widget", "n"]},
+    },
+    "vocabulary": {
+        "enrol@1": {
+            "status": "active", "subjects": ["Widget@1", "Crate@1"],
+            "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}},
+        },
+        "pinpoint@1": {
+            "status": "active", "subjects": ["Widget@1"],
+            "object": {"kind": "event_ref",
+                       "qualifiers": {"required": [], "optional": []}},
+        },
+        "bolted_to@1": {
+            "status": "active", "subjects": ["Widget@1"],
+            "object": {"kind": "entity_ref", "types": ["Crate@1", "Widget@1"],
+                       "qualifiers": {"required": [], "optional": []}},
+        },
+        "stamped@1": {
+            "status": "active", "subjects": ["Widget@1"],
+            "object": {"kind": "value",
+                       "qualifiers": {"required": ["mark", "depth"], "optional": []}},
+        },
+        "mothballed@1": {
+            "status": "reserved", "subjects": ["Crate@1"],
+            "object": {"kind": "value",
+                       "qualifiers": {"required": ["why"], "optional": []}},
+        },
+    },
 }
 
-FAKE_PREDICATES = {
-    "enrol": {
-        "label_ko": "등재", "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Widget", "Crate"], "object": None, "qualifiers": [],
-        "unit": None, "semi_ref": "X", "superseded_by": None,
-    },
-    "pinpoint": {
-        "label_ko": "지목", "status": "active", "since": 1, "layer": "canonical",
-        "subject": ["Widget"], "object": {"kind": "event_ref"}, "qualifiers": [],
-        "unit": None, "semi_ref": "X", "superseded_by": None,
-    },
-    "bolted_to": {
-        "label_ko": "체결", "status": "active", "since": 1, "layer": "ontology",
-        "subject": ["Widget"],
-        "object": {"kind": "entity_ref", "types": ["Crate", "Widget"]},
-        "qualifiers": [], "unit": None, "semi_ref": "X", "superseded_by": None,
-    },
-    "stamped": {
-        "label_ko": "각인", "status": "active", "since": 2, "layer": "ontology",
-        "subject": ["Widget"],
-        "object": {"kind": "value", "required": ["mark", "depth"]},
-        "qualifiers": [], "unit": None, "semi_ref": "X", "superseded_by": None,
-    },
-    "mothballed": {
-        "label_ko": "봉인", "status": "reserved", "since": 2, "layer": "ontology",
-        "subject": ["Crate"], "object": {"kind": "value", "required": ["why"]},
-        "qualifiers": [], "unit": None, "semi_ref": "X", "superseded_by": None,
-    },
-}
+#: The bare spellings the ledger writes, derived from the declaration rather than repeated
+#: — a second literal list would be one more place for this file to disagree with itself.
+FAKE_ENTITY_NAMES = {n.split("@", 1)[0] for n in FAKE_DECLARATION["entities"]}
+FAKE_PREDICATE_NAMES = {n.split("@", 1)[0] for n in FAKE_DECLARATION["vocabulary"]}
 
 #: The resolver config the fixture is built against. Declared here rather than defaulted
 #: so the class assertions rest on something this file states, and so `pinpoint` (not
-#: `pin`) is what class 0 means — another place a real-vocabulary literal would show.
+#: `pin`) is what class 0 means — another place a real-declaration literal would show.
 FAKE_RESOLVER = dict(ledger_trace.DEFAULT_RESOLVER_CONFIG,
                      pin_predicates=["pinpoint"],
                      confirmed_predicates=[],
@@ -168,7 +173,7 @@ ATOMS = [
      "gauge", "gauge/1/r:bb#read", OLD, "observation"),
 ]
 
-#: 🔴 A shape the FAKE vocabulary does not declare: `Sliver` may not be `bolted_to`
+#: 🔴 A shape the FAKE declaration does not declare: `Sliver` may not be `bolted_to`
 #: anything. Written straight into the table (no gate in this fixture, which is the point
 #: — the gate is what should stop this, and the screen is what has to show it if the gate
 #: ever does not).
@@ -281,16 +286,11 @@ def pg():
 
 
 @pytest.fixture(autouse=True)
-def swapped_vocabulary(monkeypatch):
-    """🔴 THE WHOLE VOCABULARY, REPLACED. Every assertion below is about words this file
+def swapped_declaration(monkeypatch):
+    """🔴 THE WHOLE DECLARATION, REPLACED. Every assertion below is about words this file
     invented, so nothing in `ledger_structure.py` can satisfy them by knowing the real
     ones."""
-    from ledger import vocabulary
-    monkeypatch.setattr(vocabulary, "ENTITY_TYPES", FAKE_ENTITY_TYPES)
-    monkeypatch.setattr(vocabulary, "PREDICATES", FAKE_PREDICATES)
-    monkeypatch.setattr(vocabulary, "ISSUED_TYPES",
-                        frozenset(k for k, v in FAKE_ENTITY_TYPES.items()
-                                  if v["class"] == "issued"))
+    monkeypatch.setattr(ledger_structure, "_declaration", lambda: FAKE_DECLARATION)
     yield
 
 
@@ -314,29 +314,35 @@ def _node(body, node_id):
 
 
 # --------------------------------------------------------------------------- 1
-def test_the_graph_follows_a_swapped_vocabulary(pg):
+def test_the_graph_follows_a_swapped_declaration(pg):
     """THE failure condition: the picture is generated, so a different declaration makes
     a different picture with no code change."""
     body = _body(pg)
 
-    assert {n["id"] for n in body["graph"]["nodes"]} == set(FAKE_ENTITY_TYPES)
-    assert _node(body, "Widget")["label"] == "위젯"
+    assert {n["id"] for n in body["graph"]["nodes"]} == FAKE_ENTITY_NAMES, (
+        "the node ids are the declaration's entity names with the version stripped")
+    assert _node(body, "Widget")["keys"] == ["widget"], (
+        "identity keys come from the declaration, not from anything this module knows")
     assert _node(body, "Sliver")["requires_register"] is False, (
-        "a COMPOSED type must not be reported as needing a register atom")
+        "a type no OBJECTLESS predicate takes as a subject needs no register atom")
+    assert _node(body, "Widget")["requires_register"] is True, (
+        "`enrol` has no object, so its subjects ARE the registered types — by shape, "
+        "never by the predicate's name")
 
     # One predicate with TWO declared targets is TWO edges. A renderer cannot draw the
     # second one if the API collapsed them.
     assert _edge(body, "Widget|bolted_to|entity:Crate")["target"] == "Crate"
     assert _edge(body, "Widget|bolted_to|entity:Widget")["target"] == "Widget"
 
-    # The `value` object's required fields reach the wire — this is how the screen can
+    # The `value` object's declared qualifiers reach the wire — this is how the screen can
     # say that a predicate names things INSIDE a payload rather than as entity refs.
-    assert _edge(body, "Widget|stamped|value")["object_fields"] == ["mark", "depth"]
+    assert _edge(body, "Widget|stamped|value")["qualifiers"] == {
+        "required": ["mark", "depth"], "optional": []}
     assert _edge(body, "Widget|pinpoint|event")["object_kind"] == "event_ref"
     assert _edge(body, "Widget|enrol|none")["object_kind"] is None
 
     predicates = {p["predicate"] for p in body["vocabulary"]["predicates"]}
-    assert predicates == set(FAKE_PREDICATES)
+    assert predicates == FAKE_PREDICATE_NAMES
     reserved = [p for p in body["vocabulary"]["predicates"]
                 if p["predicate"] == "mothballed"][0]
     assert reserved["emittable"] is False and reserved["status"] == "reserved"
@@ -512,7 +518,7 @@ def test_a_landed_mechanism_declaration_renders_as_the_second_layer(pg, monkeypa
 
     🔴 The fixture is deliberately NOT `void_formation_v0`. If this file used the model
     from the design doc, a hardcoded transcription of that doc would pass — which is the
-    same failure condition the swapped vocabulary defends against, one layer over.
+    same failure condition the swapped declaration defends against, one layer over.
     """
     import json
     import paths

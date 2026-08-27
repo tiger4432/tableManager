@@ -46,8 +46,8 @@ TARGET_PREDICATE = "predicate"
 TARGETS = (TARGET_SOURCE, TARGET_PREDICATE)
 
 #: 🔴 닫힌 거절 코드 집합. 게이트의 거절 사유가 닫혀 있는 것과 같은 이유다 — 호출 자리에서
-#: 지어낸 코드는 화면이 렌더할 수 없는 사유다. `vocabulary.DECL_REFUSALS`가 어휘 쪽 절반이고
-#: 아래가 소스 쪽 절반이며, 라우트는 합집합을 응답의 `vocabulary`로 내보낸다.
+#: 지어낸 코드는 화면이 렌더할 수 없는 사유다. 이제 «한 벌»이다: 술어 쪽 절반은 술어만 따로
+#: 저장하던 경로와 함께 은퇴했고, 남은 것이 소스 쪽 전부다.
 REFUSAL_CODES = (
     "signature_incomplete", "invalid_identifier", "unknown_relation", "unknown_column",
     "undeclared_entity_type", "undeclared_object_kind", "duplicate_predicate",
@@ -292,21 +292,25 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
                 f"'{target}'에 '{value}' 컬럼이 없습니다.",
                 f"column {value!r} not found on {target!r}"))
 
-    # ---- 주어 타입: 어휘가 소유한다. `validate`가 이미 물지만, 사유 코드가 화면에
+    # ---- 주어 타입: «선언»이 소유한다. `validate`가 이미 물지만, 사유 코드가 화면에
     #      구분돼 나가야 폼이 어느 칸을 빨갛게 칠할지 안다.
-    from ledger import vocabulary
+    #
+    # 🔴 실측 2026-08-27, 이 자리가 코드 목록을 보던 동안: 그 목록은 원자가 «0»인 둘
+    # (Equipment · Product)을 들고 있었고 원자가 «927»인 둘(dtjob · lot_slot)을 몰랐으며
+    # 철자도 달랐다(Die vs die). 선언이 정본이고 원장이 원자에 적는 철자가 그것이다.
+    declared_types = entity_types()
     for member in declaration.get("subject_types") or []:
-        if member not in vocabulary.ENTITY_TYPES:
+        if _bare(member) not in declared_types:
             out.append(violation(
                 "undeclared_entity_type", "subject_types",
                 f"'{member}'는 선언된 개체 타입이 아닙니다.",
                 f"{member!r} is not a declared entity type"))
 
-    # ---- 번역기 ↔ vocabulary 결합.  문법이 맞는 선언도 번역기가
-    #      `Product --observed--> value`를 만들고 vocabulary가 `Wafer`만 받으면
+    # ---- 번역기 ↔ 선언의 `vocabulary` 섹션 결합.  문법이 맞는 선언도 번역기가
+    #      `lot --observed--> value`를 만들고 선언이 `die`만 받으면
     #      실행 때 분자마다 거절된다. 이 충돌은 샘플 행에 해당 분기가
     #      없어도 이미 선언에 존재하므로, 저장 전에 전체 발화 계약을
-    #      컴파일해 검사한다. 이것이 `ledger_config` · 번역기 · vocabulary를
+    #      컴파일해 검사한다. 이것이 소스 선언 · 번역기 · 술어 선언을
     #      한 작성 워크플로로 묶는 서버 관문이다.
     from ledger.source_contract import compile_source
     contract = compile_source(source, declaration)
@@ -316,8 +320,8 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
             "translator_vocabulary_mismatch",
             issue.get("configured_by") or "vocabulary",
             issue.get("detail_ko") or
-            f"번역기가 발화할 '{predicate}' Claim이 vocabulary 서명과 맞지 않습니다.",
-            f"translator emission {predicate!r} does not match the live vocabulary"))
+            f"번역기가 발화할 '{predicate}' Claim이 선언의 서명과 맞지 않습니다.",
+            f"translator emission {predicate!r} does not match the live declaration"))
 
     return out
 
@@ -520,11 +524,6 @@ def sources_path() -> str:
     return ledger_config.config_path()
 
 
-def vocabulary_path() -> str:
-    from ledger import vocabulary
-    return vocabulary.extension_path()
-
-
 def check_base(path: str, base: str):
     """A `stale_base` violation, or `None`. Skipped when the caller sent no base.
 
@@ -556,52 +555,6 @@ def save_source(source: str, declaration: dict) -> dict:
     document["sources"][source] = declaration
     backup = _atomic_write(path, document)
     return {"path": path, "backup": backup, "replaced": replaced}
-
-
-#: 확장 파일이 없을 때 만들어 주는 최소 문서. `__doc`는 이 저장소의 config 주석 관례다.
-_EMPTY_VOCABULARY = {
-    "__doc": ("Ontology-layer predicates declared by the operator (ruling "
-              "R-2026-08-15-M). The canonical layer lives in server/ledger/vocabulary.py "
-              "and is NOT extensible from here. Entries are append-only: retire with "
-              "status/superseded_by, never delete."),
-    "version": 1,
-    "predicates": {},
-}
-
-
-def save_predicate(name: str, declaration: dict) -> dict:
-    path = vocabulary_path()
-    document = _read_json(path, _EMPTY_VOCABULARY)
-    if not isinstance(document.get("predicates"), dict):
-        document["predicates"] = {}
-    replaced = name in document["predicates"]
-    document["predicates"][name] = declaration
-    backup = _atomic_write(path, document)
-    return {"path": path, "backup": backup, "replaced": replaced}
-
-
-def retire_predicate(name: str, superseded_by=None) -> dict:
-    """R-M ③. 지우지 않고 은퇴시킨다 — 원자가 이미 그 낱말로 누워 있다.
-
-    코드가 싣는 술어는 여기서 은퇴시킬 수 없다: 그것은 판정 사안이고, 이 함수는 화면이
-    부르는 함수다.
-    """
-    from ledger import vocabulary
-
-    if name in vocabulary.PREDICATES:
-        raise ValueError(
-            f"'{name}'은 코드가 싣는 술어라 화면에서 은퇴시킬 수 없습니다 — 판정과 코드 "
-            f"변경이 필요합니다.")
-    path = vocabulary_path()
-    document = _read_json(path, _EMPTY_VOCABULARY)
-    entry = (document.get("predicates") or {}).get(name)
-    if entry is None:
-        raise KeyError(name)
-    entry["status"] = "retired"
-    entry["superseded_by"] = superseded_by
-    document["predicates"][name] = entry
-    backup = _atomic_write(path, document)
-    return {"path": path, "backup": backup, "entry": entry}
 
 
 # ---------------------------------------------------------------------------
@@ -728,57 +681,100 @@ def sources_view() -> dict:
 def _grammar_object_kinds():
     """The object kinds the DECLARATION may write, read from the validator.
 
-    🔴 This page used to build the list from `ledger.vocabulary`, whose copy
-    was missing "none" -- so the catalogue could not offer a value the live
-    declaration actually uses (`register@1`). One spelling, and it is the one that
+    🔴 THE VALIDATOR IS THE ONE SPELLING. A second copy of this list was what made the
+    catalogue unable to offer a value the live declaration actually uses (`register@1`'s
+    `"kind": "none"`), because the copy was missing it. One spelling, and it is the one that
     refuses.
     """
     from ledger.setup_bundle import OBJECT_KINDS
     return OBJECT_KINDS
 
+
+def _bare(name):
+    """`wafer@1` -> `wafer`. The ledger writes the bare name; the declaration versions it."""
+    return str(name or "").split("@", 1)[0].strip()
+
+
+def _declaration() -> dict:
+    """The live declaration, or `{}` when it cannot be read.
+
+    🔴 `{}` IS AN ANSWER HERE, NOT A CRASH. This module is the ADMIN catalogue: the
+    screen an operator opens when something is wrong with the declaration is the last screen
+    that should refuse to render because the declaration is wrong. An unreadable file makes
+    every list empty, which is what the operator needs to see.
+    """
+    try:
+        from ledger import config as ledger_config
+        return ledger_config.load() or {}
+    except Exception as exc:                                   # pragma: no cover
+        logger.warning("declaration unreadable for the admin catalogue: %s", exc)
+        return {}
+
+
+def entity_types() -> dict:
+    """`{bare entity type: declared entry}` — the SIX the declaration names.
+
+    🔴 MEASURED 2026-08-27 against the code list this replaced: the code list held two
+    types with ZERO atoms (`Equipment`, `Product`), missed two that carry 927 between them
+    (`dtjob`, `lot_slot`), and spelled them all with a capital while the ledger and the
+    declaration use lower case. A catalogue that refuses a type the ledger writes is worse
+    than one that offers nothing.
+    """
+    return {_bare(name): (entry or {})
+            for name, entry in (_declaration().get("entities") or {}).items()}
+
+
+def _registering_types(declaration) -> set:
+    """Entity types whose existence is claimed by an OBJECTLESS predicate.
+
+    Identified by SHAPE, not by name: what makes an atom an existence claim is that it has
+    no object, whatever the declaration calls the predicate.
+    """
+    out = set()
+    for rule in (declaration.get("vocabulary") or {}).values():
+        if (((rule or {}).get("object") or {}).get("kind") or "none") != "none":
+            continue
+        for subject in (rule or {}).get("subjects") or []:
+            out.add(_bare(subject))
+    return out
+
+
 def vocabulary_view() -> dict:
-    from ledger import vocabulary
+    """화면이 폼을 만드는 카탈로그 — 전부 «선언»에서 오고, 지어낸 칸은 없다.
+
+    🔴 없어진 칸들은 «사라진 것이 맞다». `signature_fields` · `editable_layer` ·
+    `canonical_layer` · `walk_directions` · `projection_only_words` · `extension` 은 술어만
+    따로 저장하던 경로의 칸이고, 그 경로가 은퇴했다. 선언의 편집 단위는 «문서
+    전체»이므로 칸마다 「여기서 고칠 수 있나」를 말할 자리가 없다.
+    """
+    declaration = _declaration()
+    registering = _registering_types(declaration)
 
     predicates = []
-    for name, sig in sorted(vocabulary.all_predicates().items()):
-        origin = sig.get("origin")
+    for name, rule in sorted((declaration.get("vocabulary") or {}).items()):
+        rule = rule or {}
+        declared_object = rule.get("object") or {}
         predicates.append({
-            "name": name,
-            "origin": origin,
-            # 편집 가능한 것은 **선언 출처의 ontology 항목뿐**이다. canonical은 R-M ①,
-            # 코드가 싣는 ontology 항목은 코드라서.
-            "editable": origin == "config",
-            "layer": sig.get("layer"),
-            "label_ko": sig.get("label_ko"),
-            "status": sig.get("status"),
-            "since": sig.get("since"),
-            "subject": list(sig.get("subject") or []),
-            "object": sig.get("object"),
-            "qualifiers": list(sig.get("qualifiers") or []),
-            "traversable": sig.get("traversable"),
-            "direction": sig.get("direction"),
-            "superseded_by": sig.get("superseded_by"),
-            "unit": sig.get("unit"),
-            "semi_ref": sig.get("semi_ref"),
+            "name": _bare(name),
+            "declared_as": name,
+            "status": rule.get("status"),
+            "subjects": [_bare(t) for t in rule.get("subjects") or []],
+            "object": declared_object or None,
+            "object_kind": declared_object.get("kind") or "none",
+            "object_types": [_bare(t) for t in declared_object.get("types") or []],
         })
-    entity_types = [
-        {"name": name, "label_ko": entry.get("label_ko"), "class": entry.get("class"),
+    entities = [
+        {"name": name,
          "keys": list(entry.get("keys") or []),
-         "requires_register": vocabulary.requires_register(name)}
-        for name, entry in sorted(vocabulary.ENTITY_TYPES.items())]
+         "requires_register": name in registering}
+        for name, entry in sorted(entity_types().items())]
     return {
         "predicates": predicates,
-        "entity_types": entity_types,
+        "entity_types": entities,
         "object_kinds": sorted(_grammar_object_kinds()),
-        "walk_directions": sorted(vocabulary.WALK_DIRECTIONS),
         "traversable_states": [dict(s) for s in TRAVERSABLE_STATES],
-        "statuses": list(vocabulary.PREDICATE_STATUSES),
-        "signature_fields": list(vocabulary.SIGNATURE_FIELDS),
-        "editable_layer": vocabulary.EDITABLE_LAYER,
-        "canonical_layer": vocabulary.LAYER_CANONICAL,
-        "config_path": vocabulary.extension_path(),
-        "extension": vocabulary.extension_status(),
-        "refusal_codes": sorted(set(REFUSAL_CODES) | set(vocabulary.DECL_REFUSALS)),
+        "config_path": _declaration().get("__origin__"),
+        "refusal_codes": sorted(REFUSAL_CODES),
     }
 
 
