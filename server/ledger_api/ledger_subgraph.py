@@ -205,14 +205,14 @@ class SqlEvidenceLookup:
         cut = len(rows) > limit
         return [_atom_from_row(row) for row in rows[:limit]], cut
 
-    def claims_for_entities(self, entities, direction, limit, *, include_observed=True,
+    def claims_for_entities(self, entities, direction, limit, *,
                             follow=None):
         """`follow` narrows which predicates the walk fetches at all.
 
         🔴 IT BELONGS IN THE SQL, NOT IN A PROJECTION, because a predicate filtered here is
         never fetched and therefore never spends the budget. Filtering after the fetch would
         leave the walk stopping at the same wall and merely hiding what it collected.
-        `include_observed` was already a predicate condition in this same clause; this is the
+        Observations are always fetched; `follow` is the only thing that narrows this. The
         general form of it, and the two combine with AND.
 
         `None` means follow everything, which is what every caller did before this existed.
@@ -236,7 +236,7 @@ class SqlEvidenceLookup:
                 SELECT {EVIDENCE_COLUMNS} FROM frontier f
                 JOIN {self.relation} e
                   ON e.subject_type = f.type AND e.subject_keys = f.keys
-                {_where(None if include_observed else "e.predicate <> 'observed'",
+                {_where(
                         follow_clause)}
             """)
         if direction in ("incoming", "both"):
@@ -290,13 +290,11 @@ class InMemoryEvidenceLookup:
         ordered = sorted(rows, key=lambda atom: (atom.occurred_at, atom.id), reverse=True)
         return ordered[:limit], len(ordered) > limit
 
-    def claims_for_entities(self, entities, direction, limit, *, include_observed=True,
+    def claims_for_entities(self, entities, direction, limit, *,
                             follow=None):
         wanted = {(item[0], _canonical(item[1])) for item in entities}
         rows = []
         for atom in self.atoms:
-            if not include_observed and atom.predicate == "observed":
-                continue
             if follow and atom.predicate not in follow:
                 continue
             subject = (atom.subject_type, _canonical(atom.subject_keys))
@@ -737,8 +735,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
         raise ValueError("direction must be outgoing, incoming, or both")
-    if observation_mode not in {"summary", "claims"}:
-        raise ValueError("observation_mode must be summary or claims")
+    # ⚠️ `observation_mode` IS ACCEPTED AND IGNORED, and only until lane B's router
+    # stops passing it (`ledger_trace_router.py:208`). Deleting the keyword now would
+    # TypeError that call, so the BEHAVIOUR left tonight and the parameter follows when its
+    # last caller does. It steers nothing: observations are always fetched.
     if collect in RETIRED_NODE_KINDS:
         raise ValueError(
             f"{collect!r} is no longer a node kind -- a claim is an edge and its source event "
@@ -760,8 +760,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # ⚠️ THE NODE BUDGET IS REAL AND IS ANSWERED WITH `truncated`, NOT WITH SILENCE. A wafer
     # with thousands of observations will hit the cap once unfolded; the response says so.
     # Answering 0 because the fold was cheaper is the behaviour this replaces.
-    if collect in FOLDED_KINDS and observation_mode == "summary":
-        observation_mode = "claims"
+    # 🔴 THE FOLD IS GONE (2026-08-28). `observation_mode="summary"` added
+    # "e.predicate <> 'observed'" to the fetch, and `follow` adds "e.predicate = ANY(...)".
+    # Those AND together, so a caller asking to follow `observed` got an empty intersection -
+    # findings became UNREACHABLE the moment the route stopped exposing `observations` while
+    # this default stayed behind. Observations are now always fetched and `follow` is the one
+    # control, which is the owner's rule: walking is steered by `follow`.
     claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
     # Declared, not queried.  An absent or broken declaration yields no models and no
     # bindings, so the projection simply carries no Quantity nodes — the same «state, not
@@ -912,7 +916,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             batch, cut = lookup.claims_for_entities(
                 [(item["type"], item["keys"]) for item in full_entity_refs],
                 direction, remaining,
-                include_observed=observation_mode == "claims", follow=follow)
+                follow=follow)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in full_entity_refs}
@@ -992,7 +996,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
-            "observation_mode": observation_mode,
+
             "collect": collect,
             "start": {
                 "positive": sum(1 for s in seed_signs.values() if s > 0),
