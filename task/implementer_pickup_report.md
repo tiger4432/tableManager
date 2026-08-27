@@ -1,3 +1,47 @@
+# 🟡 [A 구현자] **1차 착지(−796). 남은 삭제는 «B 착지 뒤»이고, 하나는 «순서 판정»입니다** (2026-08-28 01:5x)
+
+## 착지 `ab0b1ad6` — 1,927 -> «1,437»줄
+```
+id 빌더 5 · 노드 빌더 8 · decode 접두 6->«1» · 원자 프로퍼티 2
+walk 루프의 클러스터 «넷»(발견 요약·발견 점·수량·소스 이벤트) + enrich-action 꼬리
+_expand_atom -> entity_ref 팔 «하나»
+시험 아홉 은퇴 (전부 «없어진 자리»를 재던 것)
+게이트: walk 200 · 노드 1000 «전부» ledger-entity:v1 · node_kind «entity 하나» · 타입 wafer·die
+```
+
+## ⛔ 남은 지시 중 «넷»은 B 레인 파일이 막고 있습니다 — 제가 지우면 B 트리가 깨집니다
+```
+collect · observation_mode · include_values     subgraph() 의 «인자»입니다
+                                                 ledger_trace_router.py:203 이 넘깁니다
+NODE_KINDS · RETIRED_NODE_KINDS · FOLDED_KINDS   :567-572 의 /declaration collect 광고
+tabular_projection (79줄)                        :134 의 /subgraph/table
+```
+👉 **B가 라우트 여덟을 지우는 순간 넷 다 «한 번에» 나갑니다.** 그때 제가 잡고 끝내겠습니다.
+   (그 전에 지우면 B가 자기 작업을 시험할 트리가 없어집니다 — 새벽에 같은 이유로 순서를 잡았습니다)
+
+## 🔴 판정 요청 — `_link_containers` 를 지우면 «따라올 수 있는데 아무것도 못 걷는 낱말»이 생깁니다
+```
+지시      A: `_link_containers` (참조 합성) 삭제
+지금      walk 이 in_container 엣지 «128» 을 그립니다 (오늘 실측)
+그런데    오늘 낮에 follow 가 «참조 엣지도» 받게 넓혔고(e4ab4b0e),
+          /api/ledger/declaration 이 in_container 를 «광고»합니다 (subjects die@1)
+```
+🔴 `_link_containers` 만 지우면 **follow=in_container 는 여전히 «받아들여지고» 아무것도 안 걷습니다.**
+   그게 바로 이번 주 청소가 없앤 그 모양입니다(선언에 없는 낱말이 조용한 빈 답).
+
+**셋이 «같이» 움직여야 합니다:**
+```
+① _link_containers                (A = 저)
+② entity_references 의 참조 절반   (총괄 몫으로 적혀 있습니다)
+③ /declaration 의 predicates 에서 origin="reference" 항목  (제 코드, ledger_trace_router = B 파일)
+```
+👉 **순서만 주시면 제 몫 ①③은 바로 합니다.** ②가 남아 있는 동안 ①만 지우는 것은 «안 하겠습니다».
+
+📌 그리고 자재는 안 잃습니다 — 총괄이 00:1x 에 재신 대로 `inspected`(원자 128)가 같은 다리를
+   «정방향»으로 놓습니다. 잃는 것은 엣지 128개의 «그림»이지 도달 범위가 아닙니다.
+
+---
+
 # 🔒 [A 구현자] **잡습니다: `server/ledger_api/ledger_subgraph.py`** (01:4x)
 
 오늘 밤 라운드 A — id 만드는 함수 여섯 · 노드 빌더 · `_link_containers` · NODE_KINDS 계열
