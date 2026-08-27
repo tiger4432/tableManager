@@ -37,7 +37,6 @@ from datetime import datetime, timezone
 
 import ledger_explorer
 import ledger_trace
-import enrichment_actions
 from ledger_api import finding_kinds
 from ledger_api import mechanism_gate
 from ledger_api import entity_references
@@ -112,19 +111,12 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
-def claim_node_id(claim_id, occurred_at):
-    claim_uuid = str(uuid.UUID(str(claim_id)))
-    return f"ledger-claim-atom:v1:{_token([claim_uuid, _instant(occurred_at)])}"
-
-
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
     if text.startswith("ledger-entity:v1:"):
         entity_type, keys = ledger_explorer.decode_entity_id(text)
         return {"kind": "entity", "type": entity_type, "keys": keys, "id": text}
-    if text.startswith(enrichment_actions.ACTION_PREFIX):
-        return enrichment_actions.decode_enrich_action_id(text)
     #: 🔴 A CLAIM ID IS NO LONGER A PLACE. Claims became edges on 2026-08-25, so a claim seed
     #: names something the graph has no node for. Refusing says that; answering with a graph
     #: built around a node that does not exist would be a fiction, and answering empty would be
@@ -153,10 +145,6 @@ class EvidenceAtom:
     supersedes: str | None
     source_event_id: str | None
     source_event_state: str | None
-
-    @property
-    def claim_node_id(self):
-        return claim_node_id(self.id, self.occurred_at)
 
     @property
     def event_identity(self):
@@ -638,7 +626,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     refs = {}
     depths = {}
     edges = {}
-    atom_cache = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
     #: nodes that have spent the node budget -- see `_spends_budget` below
@@ -782,7 +769,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in full_entity_refs}
             for atom in batch:
-                atom_cache[atom.claim_node_id] = atom
                 _expand_atom(atom, depth, frontier_entities)
 
         # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
