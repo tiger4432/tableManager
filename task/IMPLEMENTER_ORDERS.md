@@ -16148,3 +16148,55 @@ predicates[] 에 «같은 모양»으로 실으십시오: {name, subjects, objec
 ✅ 당신 몫(follow 검증 + 카탈로그)은 «둘 다 통과»입니다
 ```
 다음 지시까지 `transferred` 닿는지 측정만 남았습니다.
+
+---
+
+# 🔴 판정 — 그 넷의 0 은 «확정»입니다. 그리고 넷이 «셋 + 하나»로 갈라집니다 (총괄, 2026-08-27 20:0x)
+
+측정 훌륭합니다. 대조군(645,203 · 술어 8)을 «같은 연결에서» 태운 것이 이 보고를 믿을 수 있게 만듭니다.
+그리고 당신이 「이름만 바꿔선 안 산다」고 적은 것이 맞습니다 — 제가 SQL 을 읽고 «이유»를 붙입니다.
+
+## 왜 조건부가 아니라 «확정»인가
+```
+그 넷은 «조건 하나»가 아니라 CTE 사슬 통째입니다
+  final_components -> component_events -> dt_components   (trends)
+  assignments JOIN ... component.final_chip_id            (selection)
+전부 final_chip_id · component_id 를 중심으로 짜여 있습니다
+🔴 소유자가 2026-08-27 「아니 넣지마」로 final_chip 을 «선언에서 뺐습니다»
+   -> 그 문법은 «앞으로도» 안 생깁니다. 0 이 오늘 데이터 탓이 아닙니다
+```
+
+## 부류를 세었더니 «넷이 같이 안 죽습니다» — 클라 소비자 실측
+```
+final_chip_id   클라 «5» 곳  (api.js:195 · composition_panel · main.js 좌석)
+component_id    클라 «3» 곳  (같은 패널)
+dt_components   클라 «0»
+has_dt          클라 «0»
+```
+
+## 지시 ① — trends 의 죽은 사슬은 «지금» 지웁니다 (소비자 0)
+```
+대상   server/ledger_api/ledger_trends.py 의 final_components · component_events · dt_components
+       (486 · 500 을 포함하는 CTE 사슬 전체 — 조건 두 줄이 아니라 «사슬»입니다)
+⛔ 그 사슬 «밖»은 건드리지 마십시오. trends 의 나머지는 오늘도 답하고 있습니다
+```
+### 착수 전 «한 가지만» 세고 지시서에 적으십시오
+```
+그 사슬이 응답에 «내보내는 필드 이름»을 뽑아, server/tests + client2 전체에서 읽는 곳을 «세십시오»
+제 실측은 client2/src 뿐입니다 — 테스트는 «안 셌습니다»
+🔴 0 이 아니면 지우지 말고 그 수를 보고하십시오
+```
+### 게이트
+```
+① GET /api/ledger/trends 가 «전과 같은 모양»으로 200 (grain 블록 그대로)
+② 보드 로드: 요청 «14» · non-200 «0»  (총괄이 브라우저로 확인합니다)
+③ pytest 로 trends 관련 파일만
+```
+
+## 지시 ② — selection · composition 은 «건드리지 마십시오»
+```
+같이 죽는 한 덩어리입니다:
+  ledger_composition.py 13,884 B · /composition 라우트 · selection 의 final_chip CTE
+  · client2 composition_panel.js · 좌석 하나 · 로드 요청 «2»
+⏳ 소유자 판정 대기: «지금» 은퇴시키나, 마킹 walk 이 그 자리를 채운 «뒤»에 하나
+```
