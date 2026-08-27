@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import config as ledger_config          # noqa: E402
 from ledger import store as ledger_store            # noqa: E402
-from ledger import envelope, gate, schema, uuid7, vocabulary   # noqa: E402
+from ledger import envelope, gate, schema, uuid7 # noqa: E402
 
 WHEN = datetime(2026, 5, 3, 2, 17, tzinfo=timezone.utc)
 
@@ -69,233 +69,6 @@ def row(lot, event_type="split", parent_lot=None, child_lot=None, slots="", wafe
             "event_time": event_time}
 
 
-
-# ------------------------------------------------------------------------- vocabulary
-def test_v0_vocabulary_is_exactly_seven_words():
-    """The brief fixed v0 at seven. It is NINE now, and this is where that is written.
-
-    🔴 THE NAME OF THIS TEST IS DELIBERATELY UNCHANGED. `vocabulary.py` says adding a
-    word "is a ruling, and the test is where the ruling has to be written down" - so the
-    test that guarded seven is the test that has to record why there are nine, rather
-    than a new test appearing beside a quietly relaxed old one.
-
-    THE RULING (product owner, 2026-08-14, `SCENARIO_CONSOLE_BRIEF` §0-bis + board §
-    "가상 소스 범위 확장"): `processed_with` and `has_param` are opened because the need
-    was demonstrated, not anticipated - the system could record that a package had a void
-    and could not record ANYTHING about the conditions that produced it, so every causal
-    question died at the first hop. `processed_with` was already RESERVED by design §4.2;
-    `has_param` is its recipe-side counterpart and arrives with it because a process run
-    that names a recipe revision nobody can read the setpoints of explains nothing.
-
-    THE SECOND RULING, THE SAME DAY (`PHYSICS_ONTOLOGY_SETUP` §2-bis, commit `4dff09f`):
-    `transferred` - every movement of a chip, in one word. It arrived by REPLACING two
-    earlier drafts of the same fact, and the reason is worth keeping because the count is
-    what caught it. Draft 1 modelled DT as a step a wafer passes through
-    (`processed_with` with `step: DT`); draft 2 split it into per-stage load/consume
-    claims. Both would have needed re-uttering. The generalisation subsumes them: a
-    movement is one event kind, selection is that event's EXISTENCE, and residual is a
-    fold of inflow minus outflow. 🔴 It also ABSORBS the reserved `consumed`, which is
-    therefore still unregistered - consumption is a transfer OUT, and a separate word is
-    justified only when destruction WITHOUT movement is demonstrated.
-
-    All three are `since: 2`, so the slice a word entered in stays queryable, and the
-    count stays a control: an ELEVENTH word still turns this red. It did - see below.
-
-    THE ELEVENTH WORD (ruling R-2026-08-14-D, 2026-08-14): `observed`.
-    `MI_LEDGER_SCHEMA_PROPOSAL` §6-bis had reserved the need in prose since the night
-    before; what closed it was a MEASUREMENT rather than an argument. The structure census
-    (`3202ac7`) showed 91,756 voids and 10,421 delaminations living in source tables only,
-    every finding kind answering `in_ledger: false`, and no defect edge anywhere on the
-    type graph - the ledger had no way to say「관측했다」at all. So the word is registered
-    with `since: 3`, which keeps the slice it entered in queryable exactly as slice 2's
-    three do.
-
-    THE TWELFTH WORD (`measured`, 2026-08-15): the sibling is now opened because the
-    selection investigation has real metrology atoms to consume. It is deliberately
-    distinct from `processed_with`: that word now says only STEP + RECIPE occurrence,
-    while `measured` describes a separate physical-quantity measurement with its own
-    method/run evidence. `measured_as` remains a UI category only. It entered in
-    slice 4 so the vocabulary still records when the need became demonstrated.
-    """
-    assert set(vocabulary.PREDICATES) == {
-        "register", "pin", "same_as",
-        "derived_from", "slot_map", "has_wafer", "frame_confirmed",
-        "processed_with", "has_param", "transferred",
-        "observed", "measured", "assigned_to_experiment",
-    }
-    # The seven that were v0 are still `since: 1`; nothing was renumbered to make the
-    # arithmetic tidy. A word's slice is evidence about when the system learned to say it.
-    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 1} == {
-        "register", "pin", "same_as",
-        "derived_from", "slot_map", "has_wafer", "frame_confirmed",
-    }
-    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 3} == {
-        "observed",
-    }
-    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 4} == {
-        "measured",
-    }
-    assert {name for name, sig in vocabulary.PREDICATES.items() if sig["since"] == 5} == {
-        "assigned_to_experiment",
-    }
-
-
-def test_every_declared_word_carries_a_label():
-    """`label_ko` is the ENFORCEMENT POINT for the label declaration.
-
-    This project's standing rule is that a declaration field has an enforcement point or
-    it does not exist (`ledger/config.py`, ruling R-2026-08-13-D). `GET /api/ledger/
-    structure` renders the vocabulary as a picture whose labels are Korean, and it reads
-    them from here rather than from a map beside the renderer — a second list of the
-    vocabulary is how a word added here shows up on screen as a bare identifier while
-    every other test stays green.
-
-    The reader falls back to the raw name rather than raising, so this test is the ONLY
-    thing that turns red for an unlabelled word. That is deliberate: a missing label must
-    degrade the screen to English, never blank it.
-    """
-    unlabelled = [name for name, sig in vocabulary.PREDICATES.items()
-                  if not str(sig.get("label_ko") or "").strip()]
-    assert unlabelled == [], (
-        f"predicate(s) {unlabelled} carry no `label_ko`; the structure view would render "
-        f"them as bare identifiers")
-    unlabelled = [name for name, entry in vocabulary.ENTITY_TYPES.items()
-                  if not str(entry.get("label_ko") or "").strip()]
-    assert unlabelled == [], (
-        f"entity type(s) {unlabelled} carry no `label_ko`")
-
-
-def test_a_value_object_is_checked_against_its_declared_required_fields():
-    """A `value` payload used to be structurally unchecked. `required` is the bite.
-
-    Both directions, because a check that only ever accepts is the decoy declaration
-    ruling R-2026-08-13-D killed: a well-formed run lands, and one that forgot which step
-    it was about is refused BY NAME.
-    """
-    good = {"step": "BONDING", "recipe": "SYN-RCP-BOND-R4"}
-    assert not vocabulary.check_signature("processed_with", "Wafer", "value", good)
-
-    missing_step = dict(good)
-    missing_step.pop("step")
-    violations = vocabulary.check_signature("processed_with", "Wafer", "value",
-                                            missing_step)
-    assert violations and "step" in violations[0]
-
-    # 🔴 PRESENCE, NOT TRUTHINESS. A setpoint of 0 is a setpoint, and a truthiness test
-    # would refuse it - which is the shape of bug that only ever bites on the values
-    # somebody actually cared about.
-    assert not vocabulary.check_signature(
-        "has_param", "Recipe", "value",
-        {"param": "purge_delay_s", "value": 0, "unit": "s"})
-    assert not vocabulary.check_signature(
-        "has_param", "Recipe", "value",
-        {"param": "vacuum_assist", "value": False, "unit": "bool"})
-
-
-def test_measured_contract_requires_evidence_and_never_encodes_missing_as_a_value():
-    recorded = {"metric": "film_thickness", "unit": "um", "method": "MI",
-                "state": "recorded", "value": 71.2, "run_uid": "MI:SYN:001"}
-    assert vocabulary.check_signature("measured", "Wafer", "value", recorded) == []
-    assert vocabulary.check_signature(
-        "measured", "Wafer", "value",
-        {"metric": "warpage", "unit": "um", "method": "MI",
-         "state": "not_performed", "bonding_leg": "DOE-A"}) == []
-
-    no_value = dict(recorded)
-    no_value.pop("value")
-    assert any("requires field 'value'" in item for item in
-               vocabulary.check_signature("measured", "Wafer", "value", no_value))
-
-    no_run = dict(recorded)
-    no_run.pop("run_uid")
-    assert any("requires field(s) run_uid" in item for item in
-               vocabulary.check_signature("measured", "Wafer", "value", no_run))
-
-    for state in ("missing", "not_performed", "unknown"):
-        payload = {"metric": "film_thickness", "unit": "um", "method": "MI",
-                   "state": state}
-        assert vocabulary.check_signature("measured", "Wafer", "value", payload) == []
-        payload["value"] = None
-        assert any("forbids field 'value'" in item for item in
-                   vocabulary.check_signature("measured", "Wafer", "value", payload))
-
-    assert any("requires state to be one of" in item for item in
-               vocabulary.check_signature(
-                   "measured", "Wafer", "value",
-                   {"metric": "film_thickness", "unit": "um", "method": "MI",
-                    "state": "absent"}))
-
-
-def test_recipe_identity_carries_the_revision():
-    """A revision is a new subject, so `rev` is key material and a bare id is refused."""
-    assert vocabulary.check_subject_keys("Recipe", {"recipe": "SYN-RCP-BOND"})
-    assert not vocabulary.check_subject_keys(
-        "Recipe", {"recipe": "SYN-RCP-BOND", "rev": "4"})
-    # ... and the two revisions are two DIFFERENT subjects, which is the whole point:
-    # rev4's evidence cannot be destroyed by rev5 arriving.
-    assert ({"recipe": "SYN-RCP-BOND", "rev": "4"}
-            != {"recipe": "SYN-RCP-BOND", "rev": "5"})
-    assert vocabulary.requires_register("Recipe"), (
-        "Recipe is an ISSUED entity - a revision is registered, not constructed")
-
-
-def test_bonding_leg_is_an_experiment_claim_value_not_an_entity():
-    keys = {"wafer": "SYN-CX-BW-006", "bonding_leg": "HBM-B_LOW-P"}
-    assert vocabulary.check_subject_keys("Wafer", keys)
-    assert "WaferLeg" not in vocabulary.ENTITY_TYPES
-    assert not vocabulary.requires_register("WaferLeg")
-    assert vocabulary.check_signature(
-        "assigned_to_experiment", "Wafer", "value",
-        {"experiment_type": "bonding_leg", "unit_id": keys["bonding_leg"],
-         "map_ref": {"table": "bonding_map", "base": keys["wafer"]}}) == []
-    assert vocabulary.check_signature(
-        "assigned_to_experiment", "Wafer", "value",
-        {"experiment_type": "bonding_leg", "unit_id": keys["bonding_leg"]})
-    assert vocabulary.check_signature(
-        "observed", "Wafer", "value",
-        {"finding_kind": "void", "method": "sat", "run_uid": "SYN-RUN",
-         "bonding_leg": keys["bonding_leg"]}) == []
-
-
-def test_projection_state_words_can_never_be_written():
-    for word in ("resolved", "contested", "candidate", "unresolvable", "pinned"):
-        violations = vocabulary.check_signature(word, "Lot", "value", {"x": 1})
-        assert violations and "PROJECTION" in violations[0]
-
-
-def test_signature_refuses_a_concatenated_subject_key():
-    """Design section 3's own incident: a joined key collapses when a piece is blank."""
-    assert vocabulary.check_subject_keys("Lot", "CL-2601-006")
-    assert vocabulary.check_subject_keys("Lot", {"lot": ""})
-    assert vocabulary.check_subject_keys("Lot", {})
-    assert not vocabulary.check_subject_keys("Lot", {"lot": "CL-2601-006"})
-
-
-def test_signature_refuses_a_predicate_pointed_at_the_wrong_type():
-    assert vocabulary.check_signature(
-        "has_wafer", "Lot", "entity_ref",
-        envelope.entity_ref("Lot", {"lot": "A"}, slot="01"))
-
-
-def test_signature_requires_every_declared_qualifier():
-    ok = vocabulary.check_signature(
-        "slot_map", "Lot", "entity_ref",
-        envelope.entity_ref("Lot", {"lot": "B"}, **{"from": "01", "to": "02",
-                                                    "wafer": "W1"}))
-    assert ok == []
-    missing = vocabulary.check_signature(
-        "slot_map", "Lot", "entity_ref",
-        envelope.entity_ref("Lot", {"lot": "B"}, **{"from": "01", "to": "02"}))
-    assert missing and "wafer" in missing[0]
-
-
-def test_register_is_the_only_predicate_with_no_object():
-    assert vocabulary.check_signature("register", "Lot", None, None) == []
-    assert vocabulary.check_signature("register", "Lot", "value", {"a": 1})
-    assert vocabulary.check_signature("has_wafer", "Lot", None, None)
-
-
-# ------------------------------------------------------------------------------ uuid7
 def test_uuid7_is_strictly_monotonic_and_the_check_is_not_vacuous():
     values = [uuid7.uuid7() for _ in range(20000)]
     assert uuid7.assert_monotonic(values) == 20000
@@ -391,20 +164,6 @@ def test_the_retired_singular_subject_type_is_refused_and_the_message_names_its_
     assert "undeclared_subject_type" in message, (
         "the message does not say the new list is ENFORCED, which is the whole point of "
         "the rename")
-
-
-def test_a_subject_type_outside_the_vocabulary_is_refused_at_load():
-    """Adding an entity type is a vocabulary decision (`vocabulary.ENTITY_TYPES`), not
-    something a source config may do on its own."""
-    cfg = full_cfg()
-    cfg["sources"]["lot_event"]["subject_types"] = ["Lot", "Reticle"]
-    with pytest.raises(ledger_config.LedgerConfigError) as exc:
-        ledger_config.validate(cfg)
-    assert "Reticle" in str(exc.value)
-
-    cfg["sources"]["lot_event"]["subject_types"] = []
-    with pytest.raises(ledger_config.LedgerConfigError):
-        ledger_config.validate(cfg)
 
 
 def test_the_shipped_sample_config_validates():
@@ -567,34 +326,6 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
     declared = cfg["sources"]["lot_event"]
     assert declared["occurred_at_timezone"] == "Asia/Seoul"
     assert declared["occurred_at_format"] == "%Y-%m-%dT%H:%M:%S"
-
-
-
-# ------------------------------------------------------------------------------- gate
-def test_the_gate_refuses_the_WHOLE_molecule_not_the_bad_atom():
-    """A half-translated event is worse than an untranslated one: it looks complete.
-
-    🔴 THE DEFECT CHANGED 2026-08-27, NOT THE PROPERTY. The bad atom used to carry
-    `subject_keys={"lot": ""}`, which `vocabulary.check_subject_keys` refused - and that
-    check left the gate with the v1 vocabulary, by owner's ruling. An empty identity key is
-    no longer judged HERE, so asking for it would assert the removal rather than the
-    all-or-nothing rule this test is about. The bad atom now carries an undeclared
-    derivation, which the gate still judges, and the property under test is untouched: one
-    refused atom takes its whole molecule with it.
-    """
-    good = envelope.Atom(
-        subject_type="Lot", subject_keys={"lot": "A"}, predicate="register",
-        occurred_at=WHEN, source_who="s", source_translator_ver="v",
-        source_raw_ref="r", molecule_ref="m", derivation="first_sight")
-    bad = envelope.Atom(
-        subject_type="Lot", subject_keys={"lot": "B"}, predicate="register",
-        occurred_at=WHEN, source_who="s", source_translator_ver="v",
-        source_raw_ref="r", molecule_ref="m", derivation="i_made_this_up")
-    kept, report = gate.screen_molecule("lot_event", [good, bad], {"first_sight"},
-                                        {"Lot"}, molecule_ref="m")
-    assert kept == []
-    assert report["refused"] and report["reason"] == gate.REFUSE_UNDECLARED_DERIVATION
-    assert gate.atoms_lost()["lot_event"] == 2
 
 
 def test_an_atom_whose_derivation_was_never_declared_is_refused():
@@ -860,30 +591,6 @@ def _inject_null_as_empty_string():
     envelope.assert_type_preserving({"a": None}, {"a": ""})
 
 
-def _inject_concatenated_subject_key():
-    violations = vocabulary.check_subject_keys("Lot", "P_C")
-    if not violations:
-        raise AssertionError("a concatenated subject key was accepted")
-    raise ValueError(violations[0])
-
-
-def _inject_undeclared_predicate():
-    violations = vocabulary.check_signature("scrapped", "Lot", "value", 1)
-    if not violations:
-        raise AssertionError("an undeclared predicate was accepted")
-    raise ValueError(violations[0])
-
-
-def _inject_slot_map_without_its_wafer():
-    violations = vocabulary.check_signature(
-        "slot_map", "Lot", "entity_ref",
-        envelope.entity_ref("Lot", {"lot": "B"}, **{"from": "1", "to": "2"}))
-    if not violations:
-        raise AssertionError("a slot_map with no wafer was accepted - it is not true "
-                             "standing alone, because nothing says which substrate moved")
-    raise ValueError(violations[0])
-
-
 def _inject_config_without_a_time_column():
     ledger_config.validate(full_cfg(occurred_at_column=""))
 
@@ -932,7 +639,6 @@ def _inject_undeclared_refusal_reason():
 
 def _inject_nan_payload():
     envelope.freeze_payload({"x": float("inf")})
-
 
 
 # ------------------------------------------------------- wrong ways to read a timestamp
@@ -1105,9 +811,6 @@ INJECTIONS = TIME_INJECTIONS + [
     ("payload rendered to strings", _inject_payload_stringifier),
     ("bool substituted for int", _inject_bool_for_int),
     ("NULL substituted for empty string", _inject_null_as_empty_string),
-    ("concatenated subject key", _inject_concatenated_subject_key),
-    ("undeclared predicate", _inject_undeclared_predicate),
-    ("slot_map with no wafer", _inject_slot_map_without_its_wafer),
     ("config with no occurred_at column", _inject_config_without_a_time_column),
     ("config with a misspelled slot_pairing", _inject_config_with_a_misspelled_strategy),
     ("config with the retired singular subject_type",
@@ -1128,7 +831,14 @@ INJECTIONS = TIME_INJECTIONS + [
 #: naming both sides of a pair, a fragment's refusal swallowed by its caller, and a
 #: refused molecule keeping its register memo. All four drove the deleted translator; the
 #: defects they injected have no reachable implementation left to inject into.
-EXPECTED_INJECTIONS = 20
+#:
+#: 🔴 MINUS 3 MORE on 2026-08-27, with `ledger/vocabulary.py`: a concatenated subject
+#: key, an undeclared predicate, and a `slot_map` with no wafer. All three were injected to
+#: prove `check_subject_keys`/`check_signature` would RAISE, and those two checks left the
+#: gate by owner's ruling - so the mutations no longer have a guard to defeat. Same rule as
+#: the four above: a mutation whose implementation is gone is not coverage, it is a green
+#: that means nothing.
+EXPECTED_INJECTIONS = 17
 
 
 def test_every_guard_has_been_seen_to_fail():

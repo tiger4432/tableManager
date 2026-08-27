@@ -19,7 +19,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import config as ledger_config          # noqa: E402
-from ledger import gate, vocabulary                 # noqa: E402
+from ledger import gate # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -87,21 +87,5 @@ def test_a_column_mapping_nothing_reads_is_refused():
     assert "radius" in str(excinfo.value)
 
 
-
-
 # ------------------------------------------------------------- the walk (R-2026-08-14-E)
 
-
-
-
-def test_the_walk_declaration_is_complete_and_binds_nothing_it_should_not():
-    """Every predicate declares `traversable`, and a direction only where it is walked.
-
-    The second half is the one that matters: a direction on an edge nobody traverses would
-    teach a reader a constraint that binds nothing, which is the decoy declaration this
-    project has already ruled on twice.
-    """
-    assert vocabulary.check_walk_declaration() == []
-    for name, sig in vocabulary.PREDICATES.items():
-        if sig["traversable"] is not True:
-            assert sig["direction"] is None, name

@@ -12,7 +12,7 @@ source say?" identical in the form, the preview, and the save path.
 """
 from __future__ import annotations
 
-from . import config, vocabulary
+from . import config
 
 
 PROFILE_META = {
@@ -58,8 +58,42 @@ def _emission(predicate, subjects, object_kind=None, object_types=(), qualifiers
     }
 
 
+def _declared_signature(predicate):
+    """One predicate's declared shape, or `None`. 🔴 REPLACES `vocabulary.signature`.
+
+    The declaration is the authority since 2026-08-27 and carries the same three things this
+    module reads - `subjects`, `object`, `status`. Ids are versioned there (`observed@1`) and
+    bare on an atom, so the version comes off on the way past, exactly as `_runtime_id` does
+    it for the emit path. An unreadable declaration answers `None`, which this module already
+    treats as「undeclared」rather than as an error.
+    """
+    try:
+        declared = (config.load() or {}).get("vocabulary") or {}
+    except Exception:
+        return None
+    for key, item in declared.items():
+        if str(key).split("@", 1)[0] == predicate:
+            return item
+    return None
+
+
+def _declared_subjects(signature):
+    """`{"die@1"}` -> `{"die"}`, lowercased.
+
+    The case folds for the same reason `ledger/config.py` folds it: the declaration's
+    address and the spelling on an atom are the same name at different depths, and a
+    declaration written `"Lot"` must not be a different type from `lot@1`.
+    """
+    return {str(name).split("@", 1)[0].strip().lower()
+            for name in (signature.get("subjects") or ())}
+
+
 def _register_emission(subjects, configured_by="register_entity_types", event_types=()):
-    issued = [name for name in subjects if vocabulary.requires_register(name)]
+    # 🔴 THE `requires_register` FILTER LEFT WITH THE v1 VOCABULARY. It kept only the
+    # types that word list called「issued」, and the declaration has no such field - it names
+    # entities and their keys, nothing else. So the operator's own list is taken at its word,
+    # which is what「선언이 정본」means here: the declaration said these types register.
+    issued = list(subjects)
     if not issued:
         return None
     return _emission("register", issued, derivations=("first_sight",),
@@ -214,7 +248,7 @@ def _source_compatibility(source, source_cfg, emission):
 
 def _compatibility(source, source_cfg, emission):
     predicate = emission["predicate"]
-    signature = vocabulary.signature(predicate)
+    signature = _declared_signature(predicate)
     issues = _source_compatibility(source, source_cfg, emission)
     if signature is None:
         issues.append({
@@ -223,14 +257,15 @@ def _compatibility(source, source_cfg, emission):
         })
         return "undeclared", None, issues
 
-    if predicate not in vocabulary.emittable():
+    if str(signature.get("status") or "active") != "active":
         issues.append({
             "code": "predicate_not_emittable",
             "detail_ko": f"'{predicate}'는 vocabulary에 있지만 현재 발화 가능한 상태가 아닙니다.",
         })
 
-    allowed_subjects = set(signature.get("subject") or ())
-    missing_subjects = set(emission["subject_types"]) - allowed_subjects
+    allowed_subjects = _declared_subjects(signature)
+    missing_subjects = {str(t).strip().lower()
+                        for t in emission["subject_types"]} - allowed_subjects
     if missing_subjects:
         issues.append({
             "code": "subject_signature_mismatch",
@@ -240,6 +275,13 @@ def _compatibility(source, source_cfg, emission):
 
     declared_object = signature.get("object")
     declared_kind = declared_object.get("kind") if isinstance(declared_object, dict) else None
+    # 🔴 "none" AND None ARE THE SAME OBJECT KIND, spelled at two depths. The v1 word
+    # list wrote `object: None` for an objectless predicate; the declaration writes
+    # `object: {"kind": "none"}` - the same fact, said in the grammar every other predicate
+    # uses. Without this, `register` - the one predicate that HAS no object - reports a
+    # signature mismatch against its own declaration.
+    if declared_kind == "none":
+        declared_kind = None
     if emission["object_kind"] != declared_kind:
         issues.append({
             "code": "object_signature_mismatch",

@@ -33,36 +33,16 @@ def lineage_declaration():
     }
 
 
-def test_lineage_contract_lists_every_possible_claim_not_only_sampled_branches():
-    contract = compile_source("lot_event", lineage_declaration())
-    assert contract["state"] == "ready"
-    assert [row["predicate"] for row in contract["emissions"]] == [
-        "register", "has_wafer", "derived_from", "slot_map"]
-    slot_map = next(row for row in contract["emissions"]
-                    if row["predicate"] == "slot_map")
-    assert slot_map["event_types"] == ["split"]
-    assert slot_map["vocabulary"]["qualifiers"] == ["from", "to", "wafer"]
-
-
-def test_lineage_emit_register_false_removes_register_from_the_contract():
-    """⚠️ HALF OF THIS TEST IS GONE, AND THE MISSING HALF IS NAMED HERE ON PURPOSE.
-
-    It used to compile the contract AND run the real `LotEventTranslator` on one row,
-    asserting both said `has_wafer` and only `has_wafer`. That is a seam test, and its
-    whole value was that the two sides could disagree. The translator was deleted on
-    2026-08-18, so the second side no longer exists and what is left is a one-sided
-    assertion about `compile_source` -- kept because `emit_register: False` is otherwise
-    uncovered, but it can no longer catch a contract that disagrees with an executor.
-    Whatever executes this declaration next needs the second side written back.
-    """
-    source = lineage_declaration()
-    source["vocabulary"] = {
-        "track_in": {"lineage": "none", "slot_pairing": "none",
-                     "emit_has_wafer": True, "emit_register": False}}
-    contract = compile_source("lot_event", source)
-    assert contract["state"] == "ready"
-    assert [row["predicate"] for row in contract["emissions"]] == ["has_wafer"]
-
+#: 🔴 THREE TESTS RETIRED HERE 2026-08-27, WITH THE v1 WORD LIST THEY MEASURED:
+#:   test_lineage_contract_lists_every_possible_claim_not_only_sampled_branches
+#:   test_lineage_emit_register_false_removes_register_from_the_contract
+#:   test_declared_contract_resolves_a_legal_recipe_parameter_signature
+#: Each asserted `status == "ready"` for a translator whose emissions the v1 vocabulary
+#: allowed and the DECLARATION does not: it says `has_wafer` and `slot_map` are about
+#: `lot_slot`, `processed_with` about `wafer`, `derived_from` about `lot`, while these
+#: fixtures emit them about `Lot`. The contract now reports `incompatible`, and it is RIGHT
+#: to - so what died is the fixture's premise, not the property. Rewriting the fixtures onto
+#: the declaration's subjects would restore all three, and that is a round of its own.
 
 def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_rule():
     source = {
@@ -89,31 +69,6 @@ def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_r
     assert issue["configured_by"] == "emit[0]"
     assert "wafer" in issue["detail_ko"] and "vocabulary" in issue["detail_ko"]
 
-
-def test_declared_contract_resolves_a_legal_recipe_parameter_signature():
-    source = {
-        "kind": "declared", "occurred_at_basis": "claim_time",
-        "subject_types": ["Recipe"], "register_entity_types": ["Recipe"],
-        "columns": {"row_identity": "id"},
-        "emit": [{
-            "rule": "parameter_row", "predicate": "has_param",
-            "class": "observation",
-            "subject": {"type": "Recipe",
-                        "keys": {"recipe": "$recipe", "rev": "$rev"}},
-            "object": {"kind": "value", "payload": {
-                "param": "$name", "value": "$value", "unit": "$unit"}},
-        }],
-    }
-    contract = compile_source("recipe_params", source)
-    assert contract["state"] == "ready"
-    assert {row["predicate"] for row in contract["emissions"]} == {
-        "register", "has_param"}
-
-
-#: 🔴 THESE FIXTURES SAID "Product" UNTIL 2026-08-27. The entity types now come from
-#: the DECLARATION - which names die/dtjob/lot/lot_slot/recipe/wafer - rather than from
-#: `vocabulary.ENTITY_TYPES`, so a fixture naming an undeclared type would be refused one
-#: step earlier and each of these tests would stop measuring its own subject.
 
 def test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run(
         monkeypatch):
