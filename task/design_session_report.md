@@ -1,4 +1,49 @@
 # Design Session — Report Channel (design session -> lead PM)
+# 🟡 [클라] 게이트 ④ — **두 문 다 싣습니다** (`17fc0daa`). 그런데 «지시 한 줄»이 무효이고, 서버가 옛 프로세스입니다
+
+## 실었습니다 — 그리고 함정도 지시하신 그 쪽으로 갔습니다
+```
+브라우저   file.webkitRelativePath || ''   -> 폴더면 값, 파일 고르기면 «빈 문자열». 분기 없음
+랩퍼      _files_under 가 (절대, 상대) 쌍을 냅니다. 기준은 «떨어뜨린 폴더의 부모»
+          relpath(f, dropped)          -> WORK_DATETIME/voids.json          두 성분 ❌
+          relpath(f, dirname(dropped)) -> WF-001/WORK_DATETIME/voids.json   세 성분 ✅
+파일 하나   rel = ''  -> 트리 없음
+```
+두 문 대조 실측:
+```
+랩퍼      WF-001/WORK_20260817_031405/voids.json · WF-001/WORK_20260818_090000/voids.json
+브라우저   WF-001/WORK_20260817_031405/voids.json · WF-001/WORK_20260818_090000/voids.json
+IDENTICAL  true
+```
+
+## 🔴 지시의 브라우저 한 줄은 «서버가 안 읽습니다» — 그래서 안 그렇게 했습니다
+지시: `formData.append('relative_path', file.webkitRelativePath || '')`
+```
+살아 있는 서버 스키마에 물었습니다 (/openapi.json):
+   user          in=query          <- `relative_path` 와 «똑같은» 선언 모양 (str = "")
+   requestBody   body fields: ['file']    <- 폼에는 file «하나»뿐
+```
+FastAPI 는 `str = ""` 기본값 파라미터를 «쿼리»로 묶습니다. FormData 에 넣으면 그 값은
+«읽히지 않습니다» — 화면은 보내고 서버는 못 받아, 「보냈는데 여전히 거절」이 됩니다.
+-> `user` 옆에 «쿼리»로 보냈습니다. 이미 도는 모양과 같은 자리입니다.
+
+## 🔴 그리고 «끝에서 끝까지»는 여기서 못 잽니다 — 서버 «프로세스»가 옛것입니다
+```
+/openapi.json 에 `relative_path` 가 «아예 없습니다» (쿼리에도 폼에도)
+-> 코드에는 있고 «도는 프로세스»에는 없습니다
+```
+확인된 것: 두 문이 «전선에 값을 싣는다» + 두 문이 «같은 문자열»을 만든다.
+남은 것: 서버가 그 값을 받아 트리로 저장하는가 — **재기동이 조건**입니다.
+
+⚠️ 그래서 게이트 ④를 「통과」로 적지 않습니다. 제 절반은 끝났고 마지막 한 홉이 남았습니다.
+   재기동 뒤 «void 폴더 하나»를 올려 보면 그 홉이 끝납니다 (그때 랩퍼 게이트 ①③도 같이 끝납니다).
+
+## 빌드
+```
+npm run build exit 0 · 「every gated harness is green」
+dist 가 `relative_path` 를 «싣고 있습니다» (해시로 확인 -- 종료코드 아님)
+```
+
 # 🔴 [클라] 세라 하신 것 — **읽는 파서가 «0이 아닙니다». 하나 있고, 그것은 «요구»합니다**
 
 지시대로 코드가 아니라 «세는 것»부터 했습니다. `default_table_name` 말고 «디렉터리 이름·상대
