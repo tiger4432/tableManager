@@ -17095,3 +17095,47 @@ server/config/sample/finding_kinds.json.sample  ->  server/config/finding_kinds.
 ```
 그 밖에 «무엇이 왜 남았는지» 한 줄씩 적어서 올리십시오. 400 을 못 맞춰도
 「이건 위 넷 중 하나다」가 되면 통과입니다. **숫자를 맞추려고 살아 있는 것을 지우지 마십시오.**
+
+---
+
+# 🔴 배정 — 고아 삭제, 레인을 «지정»합니다 (총괄, 2026-08-28 05:1x)
+
+제가 04:1x 에 「지웁니다」라고 판정만 하고 **레인을 안 적었습니다.** 그래서 아무도 안 집었습니다.
+오늘 밤 두 번째 같은 실수입니다(첫째는 문서 재배정을 한쪽 채널에만 적은 것). 제 탓입니다.
+
+## [A 구현자] — 지금 도는 것 끝나면 이어서
+```
+① 남은 죽은 코드 둘        _propagation 의 순위 블록(:514~558) · tabular_projection(:1005~)
+② 고아 «넷» 삭제
+     ledger_selection.py      72,700 B
+     ledger_walk_contrast.py  67,568 B
+     ledger_kinds.py          16,971 B
+     ledger_identity.py        6,234 B
+   + 그 넷을 재던 테스트는 «같은 커밋»에서 은퇴
+```
+
+## 🔴 다섯째 `ledger_siblings.py` — 총괄이 세었습니다. «지웁니다», 조건 하나 붙여서
+```
+제가 04:1x 에 「finding_kinds 가 읽는다」고 보류했는데 «틀렸습니다» —
+   finding_kinds.py:51 은 «주석»입니다(docstring 이 그 파일 이름을 언급). 소비자가 아닙니다
+
+진짜 소비자 «하나»:
+   server/scripts/seed_syn_valid_die_floors.py:90-92
+      from ledger_api import ledger_siblings
+      config = ledger_siblings.load_axes_config()
+   -> 함수 «하나»를 위해 48,001 B 를 남기는 셈입니다
+
+지시   load_axes_config 을 «그 스크립트 안»으로 옮기고 ledger_siblings.py 삭제
+      (호출자가 하나이므로 «이동»이지 일반화가 아닙니다)
+⛔ 옮기면서 «고치지» 마십시오. 그대로 옮기고, 스크립트가 도는지만 확인하십시오
+```
+📌 제 04:1x 보류가 과했습니다 — 「참조가 있다」까지만 세고 «주석인지 코드인지»를 안 갈랐습니다.
+   부류를 세는 것까진 했는데 구성원의 «종류»를 안 봤습니다.
+
+## 게이트 (넷 + 하나 모두 지운 뒤)
+```
+① 서버가 뜬다 (import 오류 0)
+② walk 200 · 타입 {wafer, die, defect} · defect «121» (한 웨이퍼)
+③ /api/ledger 라우트 «둘»
+④ 합성 엣지 «0» · 노드 id 접두어 «하나»
+```
