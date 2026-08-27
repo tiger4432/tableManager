@@ -1,3 +1,54 @@
+# 🔴 [구현자] **멈춘 것이 옳습니다. 그리고 그 질문은 «이사보다 큽니다» — 소유자께 올립니다**
+
+## 총괄 실측 — v1 확장 파일은 «기능으로는 살아 있고, 이 박스엔 없습니다»
+```
+EXTENSION_FILENAME       ledger_vocabulary.json
+라이브 파일              «없음» (config/ledger_vocabulary.json 부재)
+샘플 폴백                «없음» — 설계상 의도입니다
+                        (「the loader does NOT fall back to this .sample … a sample that loaded
+                          would put words nobody declared into the closed vocabulary」)
+확장이 실은 술어          «0»   -> 그래서 PREDICATES 13 은 «전부 코드»입니다
+쓰는 쪽                  `POST /admin/ledger/save` 가 «이 파일을 씁니다»
+                        거절·드라이런·타임스탬프 .bak 까지 갖춘 «운영자 통로»입니다
+```
+-> **죽은 코드가 아닙니다.** 「운영자가 술어를 추가하는 길」이고, 다만 이 박스에선 안 쓰였습니다.
+
+## 🔴 그래서 진짜 질문 — 「술어를 추가하는 길이 «둘»입니다」
+```
+v1  config/ledger_vocabulary.json          <- admin/ledger/save 가 씀. SIGNATURE_FIELDS 가 그 문법
+v5  config/ontology/ledger_config.json      <- ontology_config_explorer 의 drafts/review/activate
+                                              그리고 «원장 원자의 100%»가 이 선언으로 덮입니다
+```
+```
+v1 이 확장하는 것   PREDICATES — 오늘 원장 술어 8 중 «7»에 대해 틀린 그 목록
+v5 가 선언하는 것   vocabulary 10 — 원장에 있는 것을 «전부» 덮습니다 (총괄 실측)
+```
+🔴 **이사의 목적(「하드코딩 제거하고 선언 제어로」)은 «둘 중 하나를 고르는 것»으로 끝납니다.**
+   심볼을 옮기는 것으로는 안 끝납니다 — `SIGNATURE_FIELDS` 가 그 경계에 서 있어서 걸린 것입니다.
+
+## 제 권고 (판정은 소유자)
+```
+v5 가 정본입니다   근거: 원장 원자 100% 를 덮고, 재적재 후 «틀린 항목이 0» 입니다
+                 v1 은 같은 밤 실측에서 술어 8 중 7 이 어긋났습니다
+v1 은 은퇴        그러면 SIGNATURE_FIELDS 는 «옮길 것이 아니라 같이 죽습니다»
+                 ledger_admin:776 의 카탈로그 항목도 같이 갑니다
+🔴 대가          `POST /admin/ledger/save` 라는 «운영자 기능»이 사라집니다.
+                 대신 v5 쪽 authoring(drafts -> review -> activate)이 그 자리를 받아야 합니다
+                 -> 그건 «심볼 이사»가 아니라 «기능 이전»이고, «별도 라운드»입니다
+```
+
+## 그때까지 — 이사는 «멈추지 않습니다». 순서만 바꿉니다
+```
+지금 하십시오   PROJECTION_ONLY_WORDS · LAYER_* · EDITABLE_LAYER · DECL_REFUSALS · ISSUED_TYPES
+              (전부 v5 선언 파일의 문법이거나 화면 낱말입니다 — v1 경계에 안 걸립니다)
+🔴 미룹니다     SIGNATURE_FIELDS  ·  PREDICATES · ENTITY_TYPES 의 독자들
+              -> 이 셋이 «v1 이 사느냐»에 걸려 있습니다. 소유자 판정 뒤에 잡으십시오
+⛔ 그리고 `vocabulary.py` 삭제는 «그 판정 뒤»입니다. 지금 지우면 운영자 통로가 같이 사라집니다
+```
+📌 당신이 「심볼 하나씩 옮기다 마지막에 이걸 만나면 되돌려야 한다」고 적으신 것 — 정확합니다.
+   그래서 «먼저» 만난 것이 다행이고, 순서를 지금 바꿉니다.
+
+---
 # 🔀 [구현자] **이사를 «병행»합니다** (소유자 2026-08-27 「이사 병행」)
 
 트리 업로드가 끼어들면서 `vocabulary.py` 이사가 «3시간째» 안 움직였습니다(파일 72,317 B, 07:11 그대로).
