@@ -1,3 +1,57 @@
+# 📚 **문서 정비 — 배분. «concat 금지, 현 상태로 다시 쓰기»** (소유자 명령, 총괄 14:2x)
+
+> 「끝나고 **문서도 모두 정비**. 주요 문서들 **concat 하지 말고 현상태 맞게 전부 컴팩트하게 최신화**해」
+
+## 왜 이 라운드가 필요한가 — 오늘 «사고 하나»가 이미 그것 때문이었습니다
+```
+설계 §4.2  「slot_map 은 Lot -> Lot + {from, to}」   <- v1 모양
+실제       「lot_slot -> lot_slot」                  <- 자리가 «노드»가 되며 이동이 «엣지 자체»로
+결과       시험이 «낡은 문서»를 근거로 코드를 채점했고, 총괄이 그 빨강 앞에서 «두 번» 틀렸습니다
+```
+🔴 **문서가 낡으면 시험이 낡고, 그때부터 「맞는 빨강」과 「낡은 빨강」을 사람이 매번 손으로 가립니다.**
+
+## 규칙 «넷»
+```
+① 덧붙이지 «마십시오». 오래된 절은 «지웁니다». 짧아지는 것이 «정상»입니다
+② 기준은 «두 기둥»뿐:  ① 원장은 v5 선언 위에   ② walk 이 답한다
+③ v1 · 어휘 확장 파일 · /admin/ledger/save · 계보 walk · vocabulary.py 는
+   «없는 것»으로 씁니다. 「있었다」고 쓰지 «마십시오» — 그건 히스토리이지 문서가 아닙니다
+④ 🔴 `docs/history/**` 는 «손대지 마십시오». 날짜가 붙은 기록이고 append-only 입니다
+```
+
+## 배분 — 파일이 안 겹칩니다
+```
+[A 구현자]  docs/architecture/backend.md          «260 KB»
+           docs/architecture/data_model.md        «148 KB»
+           -> 원장·walk·선언의 «현재» 모양. 재적재 뒤 수를 쓰십시오
+              (원자 645,203 · die 81% · 술어 10 · entities 6)
+
+[B 클라]    docs/architecture/frontend.md
+           docs/guide/LEDGER_GUIDE.md             «23 KB»
+           docs/guide/ledger/PRIMER.md
+           -> 화면이 «지금» 무엇을 보여 주는지. 걷기 검색창 · 닿는 곳 · 폴더 업로드가 들어갑니다
+
+[C 응용]    docs/architecture/CODE_MAP.md          🔴 «1,119 KB»
+           docs/architecture/PRIMITIVES.md        🔴 «514 KB»
+           -> 이 둘이 「concat 해 놓은」 대표입니다. 지금 «없는 심볼»이 대량으로 있습니다
+              🔴 v1 삭제로 사라진 것부터 «전수로» 걷어내십시오
+
+[총괄]      docs/overview/SYSTEM_OVERVIEW.md (SSOT) · docs/process/PROJECT_STATUS.md
+           그리고 CLAUDE.md · task/ONTOLOGY_DESIGN.md
+```
+
+## 게이트 — 「고쳤다」가 아니라 «검사식»으로
+```
+① v1 낱말 «0»    grep -rl "vocabulary\.py|ledger_vocabulary|admin/ledger/save|LINEAGE_PREDICATES" <내 문서>
+                -> «0» (history 제외)
+② 죽은 심볼 «0»  문서가 이름을 대는 함수·파일이 «실재하는가» — 표본 열 개를 골라 «찾아» 보십시오
+③ 줄어들었나    전/후 바이트를 적으십시오. 늘었으면 «덧붙인» 것입니다
+④ 두 기둥      각 문서가 「원장은 선언 위에 · walk 이 답한다」와 «어긋나는 문장»을 안 들고 있는가
+```
+⚠️ 한 번에 다 쓰려 하지 마십시오. **문서 하나씩 · 커밋 하나씩**. 공유 트리이고 커밋 경로를 명시합니다.
+
+---
+
 # ⚖️ **확정 — 시험을 지우고 «고아 넷»도 같이. 코드 수정은 «없습니다»** (총괄 14:1x)
 
 제 판정이 «두 번» 틀렸고, 레인이 두 번 다 잡았습니다. 확정판을 적습니다.
