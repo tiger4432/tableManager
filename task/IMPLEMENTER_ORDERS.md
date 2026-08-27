@@ -15854,3 +15854,77 @@ server/tests/test_ledger_trace_pg.py   82,209 B · 47 tests · 이 박스에서 
 🔴 「47 skipped」는 «죽었다»와 «못 쟀다»가 «같은 값»이다 -> 판정 근거가 못 된다
 언젠가 접속을 주고 «몇이 실패하는지»를 센 뒤에 판정한다. 이번 라운드 일이 아니다
 ```
+
+---
+
+# 🔴 발견 — 원장의 «62%»가 이름 때문에 세 라우트에서 안 보입니다 (총괄 실측, 2026-08-27)
+
+## 저장된 술어 히스토그램 (총괄 직접, `ledger_events` 전수)
+```
+transfer            401,206   <- 원장의 62%
+inspected           117,662
+observed            103,841
+bonded_from          18,545
+processed_with        3,022
+register                396
+has_netdie              396
+slot_map                135
+TOTAL               645,203
+🔴 `transferred` 는 «0 행». 그 낱말은 원장에 «없다»
+```
+
+## 그런데 세 모듈이 그 없는 이름으로 «거른다»
+```
+server/ledger_api/ledger_composition.py:49,131,135,283   WHERE predicate = 'transferred'
+server/ledger_api/ledger_selection.py:272,286             ON/WHERE predicate = 'transferred'
+server/ledger_api/ledger_trends.py:486,500                ON/WHERE predicate = 'transferred'
+```
+
+## 🔴 그런데 «한 낱말 고치기»는 «틀린 수리»다 — 모양도 같이 바뀌었다
+```
+v1  transferred   주어 Wafer     · 목적어 «value»       · 경로 to.bond_layer.keys.bond_wafer
+v5  transfer      주어 die@1     · 목적어 «entity_ref»  · die -> die
+실측 원자:
+  subject_keys   {"x":7, "y":12, "mat_id":"WF.010120", "mat_type":"Wafer"}
+  object_payload {"type":"die", "keys":{"x":9,"y":1,"mat_id":"DT-EQP-01_…","mat_type":"DT"}}
+```
+소유자 판정 「bond 는 die to die 관계」가 «이미 착지»해 있다. 그래서 문자열만 바꾸면
+**「빈 답」이 「틀린 답」이 된다.** ⛔ **rename 금지.**
+
+## 부류를 세었다 — 넷이 «같이 죽지 않는다»
+```
+/composition          state:"empty" · components:[] · 항상        <- 유일한 «보이는» 피해
+/trends               답한다 (grain 블록 실측)                     <- 그 SQL 이 기여를 안 하거나 안 닿는다
+/selection/resolve    422 selection_required (정상 거절)
+/kinds · /siblings    답한다
+```
+
+## 지시 «둘» — 둘 다 «작다». 그리고 «수리가 아니다»
+
+### ① 닿는지만 재고 «보고»하라 (코드 수정 «없음»)
+```
+대상   ledger_selection.py:272,286 · ledger_trends.py:486,500
+질문   그 `transferred` SQL 이 «닿는 갈래»인가, «죽은 갈래»인가
+방법   갈래를 타는 «요청 하나»를 실제로 쏴서 재라. 소스 읽기로 판정하지 말 것
+보고   닿으면 -> 「닿는데 0 행을 기여한다」로 «이름 대어» 올린다. 고치지 말 것
+       안 닿으면 -> v1 죽은 갈래다. 그때 지우는 것은 «다음 지시»다
+```
+
+### ② `/composition` 은 «고치지 마라» — 고칠 수 없다
+```
+그 라우트의 주어는 final_chip 이다
+v5 선언 엔티티 «여섯»: die@1 · dtjob@1 · lot@1 · lot_slot@1 · recipe@1 · wafer@1
+🔴 final_chip 이 «없다». 주어가 없으니 walk 으로도 못 세운다
+그리고 그 라우트는 «거짓말을 하고 있지 않다» — state:"empty" ·
+final_subject_resolution.state:"absent" · basis 를 이름 대고 있다. 그건 정직한 답이다
+-> 소유자 판정 대기: 「final_chip 을 선언에 넣는가」. 그때까지 «그대로 둔다»
+```
+
+## 지우지 말 것 — 쓰기 쪽
+```
+server/ledger/config.py:293  TRANSFER_PREDICATE = "transferred"
+읽는 곳 «셋»:  profile_chain_mapper.py:377(쓰기) · source_contract.py:167(계약) ·
+              config_resolve_report.py:993
+원자 0 이라 「지워도 아무 일 없다」로 «보인다». 그게 위험 신호다 —
+🔴 왜 0 인지부터 답이 있어야 지운다. 이번 라운드 아님
+```
