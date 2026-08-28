@@ -41,6 +41,17 @@ import ledger_trace
 
 DEFAULT_HOPS = 12
 MAX_HOPS = 40
+#: 🔴 A STEP THAT STAYS ON THE SAME MATERIAL SPENDS A DIFFERENT BUDGET, and this is how
+#: many of those a walk may take on top of `hops`.  DEFAULT ZERO, deliberately: the day
+#: this landed the declaration already marked six predicates `continues`, so any other
+#: default would have changed every existing screen's answer in the same commit that
+#: introduced the axis.  Turning it on is the caller's sentence, not this file's.
+#:
+#: ⚠️ NOT free.  A material step still costs a level of `depths`, so split/transfer
+#: repeating forever is bounded by `hops + continues_hops` rather than unbounded; what
+#: the second budget buys is that following one wafer's own history does not spend the
+#: allowance meant for LEAVING it.
+DEFAULT_CONTINUES_HOPS = 0
 DEFAULT_NODE_LIMIT = 400
 DEFAULT_EDGE_LIMIT = 6000
 MAX_NODE_LIMIT = 1000
@@ -669,9 +680,15 @@ def _seed_node(seed_id, seed_ref, action_lookup):
             "predicates": [],
         }
     return seed_node
+def _bare_predicate(name):
+    """`bonded_from@1` -> `bonded_from`.  The declaration versions ids; atoms do not."""
+    return str(name or "").split("@", 1)[0]
+
+
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
-             action_lookup=None, follow=None):
+             action_lookup=None, follow=None, continuing=None,
+             continues_hops=DEFAULT_CONTINUES_HOPS):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -684,6 +701,14 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
     hops = max(1, min(int(hops), MAX_HOPS))
+    # 🔴 THE PREDICATES COME FROM THE CALLER, WHICH READ THEM FROM THE DECLARATION.
+    # No word is spelled in this file: a predicate joins the material budget by being
+    # declared `continues: true`, and nothing here has to be edited for that.  Bare
+    # names on both sides because the declaration versions its ids (`bonded_from@1`)
+    # and an atom carries the bare one.
+    continuing = {str(name).split("@", 1)[0] for name in (continuing or ())}
+    continues_hops = max(0, min(int(continues_hops), MAX_HOPS))
+    budget_hops = hops + continues_hops
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -700,6 +725,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     nodes = {}
     refs = {}
     depths = {}
+    #: node -> how many DEPARTURES were spent reaching it.  A second budget,
+    #: not a second depth: `depths` still counts every step.
+    dep_cost = {}
     edges = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
@@ -751,6 +779,17 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edges[row["id"]] = row
         return True
 
+    def _spend(near_id, far_id, charge):
+        """Carry the departure count from the near side to the far one.
+
+        Keeps the MINIMUM, for the same reason `add_node` keeps the minimum depth: a
+        node reached twice is as close as its closest route, and a later expensive
+        route must not retire a node the cheap one already paid for.
+        """
+        cost = dep_cost.get(near_id, 0) + charge
+        if far_id not in dep_cost or cost < dep_cost[far_id]:
+            dep_cost[far_id] = cost
+
     #: 🔴 ONE ATOM BECOMES ONE EDGE, IN THE SAME BFS LEVEL IT WAS FETCHED IN.
     #: Until 2026-08-25 a fetched atom was parked as a claim NODE at depth+1 and only expanded
     #: on the next iteration, so its subject and object landed at depth+2 -- one assertion cost
@@ -799,6 +838,16 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             subject_depth, target_depth = depth, depth + 1
         else:
             subject_depth, target_depth = depth + 1, depth
+        # 🔴 THE FAR SIDE PAYS, AND WHAT IT PAYS DEPENDS ON THE PREDICATE. A step over a
+        # `continues` predicate stays on the same material -- one wafer's own split,
+        # transfer and inspection history -- so it costs a level of `depths` but no
+        # DEPARTURE. `depths` is untouched by this: every reader of it (the truncation
+        # test, `hops_reached`, the evidence trails, the client) keeps the meaning it had.
+        _charge = 0 if _bare_predicate(atom.predicate) in continuing else 1
+        if subject_near and not target_near and target is not None:
+            _spend(subject_id, target["id"], _charge)
+        elif target_near and not subject_near:
+            _spend(target["id"], subject_id, _charge)
         if subject_id not in nodes:
             subject = _entity_node(atom.subject_type, atom.subject_keys)
             if not add_node(subject, decode_node_id(subject["id"]), subject_depth):
@@ -827,12 +876,16 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     for item, ref in seed_refs.items():
         add_node(_seed_node(item, ref, action_lookup), ref, 0)
+        dep_cost[item] = 0
 
-    for depth in range(hops):
-        frontier_ids = [node_id for node_id, seen_depth in depths.items()
-                        if seen_depth == depth]
+    for depth in range(budget_hops):
+        # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
+        # That is the whole of the second budget: the walk keeps going while it stays on
+        # the material, and stops going FURTHER AFIELD at exactly the same `hops` it always
+        # did.  With `continues_hops=0` this reads `dep_cost < hops` on a range of `hops`,
+        # which is what the loop did before this existed.
         frontier_ids = [node_id for node_id, seen in depths.items()
-                        if seen == depth]
+                        if seen == depth and dep_cost.get(node_id, 0) < hops]
         if not frontier_ids:
             break
         remaining = claim_limit - claims_scanned
@@ -876,12 +929,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # by `add_node`/`add_edge` and by the entity fetch above, so `truncated` still tells
         # the truth about a walk that ran out of room.
 
-        if any(depth_value > hops for depth_value in depths.values()):
+        if any(depth_value > budget_hops for depth_value in depths.values()):
             depth_cut = True
         if claim_cut or (node_cut and edge_cut):
             break
 
-    if any(depth == hops for depth in depths.values()):
+    if any(depth == budget_hops for depth in depths.values()):
         depth_cut = True
     # 🔴 ONE EDGE IS ONE CLAIM, so the predicate is read off the edge rather than off a node
     # that no longer exists.  This used to walk edge -> claim NODE -> its predicate; claims

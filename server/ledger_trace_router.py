@@ -96,6 +96,11 @@ def evidence_subgraph(
         None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
     follow: list[str] | None = Query(
         None, description="이 술어만 따라간다. 없으면 «전부» — 오늘 동작 그대로"),
+    continues_hops: int = Query(
+        ledger_subgraph.DEFAULT_CONTINUES_HOPS, ge=0, le=40,
+        description=("같은 자재를 따라가는 걸음에 주는 «별도» 예산. "
+                     "선언이 `continues: true` 라고 말한 술어를 지나는 걸음만 여기서 "
+                     "빠진다. 0 이면 오늘과 같다")),
     db: Session = Depends(get_db),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
@@ -116,7 +121,8 @@ def evidence_subgraph(
         return _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction,
-            node_limit=node_limit, edge_limit=edge_limit, follow=follow)
+            node_limit=node_limit, edge_limit=edge_limit, follow=follow,
+            continues_hops=continues_hops)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -171,8 +177,28 @@ def _followable_predicates():
     return names
 
 
+def _continuing_predicates():
+    """Predicates the declaration marks `continues` -- the ones a step stays on material for.
+
+    🔴 SAME SHAPE AS `_followable_predicates`, AND FOR THE SAME REASON: the declaration is
+    the only authority, so a predicate joins the material budget by being declared and never
+    by an edit here.  An unreadable declaration returns the EMPTY set, which is the
+    conservative direction -- every step then costs a departure, i.e. exactly today's walk.
+    The other conservative-looking choice, treating everything as continuing, would spend a
+    budget nobody asked for on a declaration nobody could read.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("vocabulary") or {}
+    except Exception:
+        return set()
+    return {str(key).split("@", 1)[0] for key, rule in declared.items()
+            if (rule or {}).get("continues") is True}
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
-                    node_limit, edge_limit, follow=None):
+                    node_limit, edge_limit, follow=None,
+                    continues_hops=ledger_subgraph.DEFAULT_CONTINUES_HOPS):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -187,7 +213,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         node_id, ledger_subgraph.SqlEvidenceLookup(
         connection, relation=LEDGER_RELATION),
         hops=hops, direction=direction,
-        node_limit=node_limit, edge_limit=edge_limit, follow=follow)
+        node_limit=node_limit, edge_limit=edge_limit, follow=follow,
+        continuing=_continuing_predicates(), continues_hops=continues_hops)
 
 
 
