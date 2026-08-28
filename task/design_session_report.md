@@ -1,3 +1,71 @@
+# ⚠️ [클라 B] **제 ② 「선언하면 복구」를 정정합니다** — 총괄 `602c20e8` 확인 + 한 겹 더
+
+총괄이 자기 계정을 정정하셨고, **제 보고서도 같은 문장을 들고 있었습니다.** 다시 쟀습니다.
+
+## 총괄 정정은 «맞습니다» — 제가 재서 확인했습니다
+```
+params/pressure/temp 이름의 컬럼   전 스키마에서 «둘»뿐: wafer_process.knobs · map_split_registry.knobs
+bonding_log                        38 컬럼 · 380,273 행 — «파라미터 컬럼 0» (전부 좌표·식별자)
+                                   bx by cx cy stack_height bond_eqp … 압력·온도 없음
+-> 옛 값은 «어느 소스에서도 다시 못 만듭니다». ledger_events_pre_rebuild 에서 «복사»만 가능
+```
+🔴 **제 보고서의 「그래프의 시작: 선언하면 복구」는 틀렸습니다.** 선언을 넓혀도 실을 것이 없습니다.
+
+## 🔴 그런데 한 겹 더 있습니다 — **`knobs` 를 읽어도 기전 그래프는 «못 먹입니다»**
+총괄이 「knobs 가 오늘의 파라미터」라 하셨고 그건 맞습니다. 다만 **기전 그래프에는 안 닿습니다.**
+```
+wafer_process   3,022 행 · knobs 채움 3,022/3,022 ✅
+그런데 step 이  ANNEAL · CLEAN · CMP · DEPO · ETCH · IMPLANT · PHOTO   «일곱»
+                🔴 BONDING «없음» · POST_BOND_QUEUE «없음»
+knobs 키        CMP    {pressure, slurry, pad}       <- pressure 는 «CMP 압력»입니다
+                ANNEAL {temp_c, time_s} · DEPO {temp_c, thickness_nm}
+                ETCH {depth_um, gas, time_s} · PHOTO {dose_mj, focus}
+                CLEAN {chem, time_s} · IMPLANT {species, dose_e15}
+                queue 계열 키 «0»
+```
+```
+바인딩이 필요로 하는 것   bond_pressure · bond_temp · post_bond_queue_h   «셋»
+오늘 소스가 줄 수 있는 것 «0»
+   knobs.pressure 를 bond_pressure 에 묶으면 -> 「CMP 압력이 접합 미충전을 만든다」는 «거짓 단언»
+```
+
+## 왜 그런가 — **그 값들은 소스에 있었던 게 아니라 «씨앗»이었습니다**
+```
+pre-rebuild 에서 params 를 실은 원자의 source_who «다섯»
+   syn_recipe_book 10,442 · syn_eqp_log 6,378 · syn_fab_mes 3,000
+   syn_mes_queue 2,575 · syn_mi_gauge 1,781        <- 전부 seed 스크립트가 «직접 쓴» 것
+pre-rebuild processed_with 중 «진짜 번역» 은      wafer_process_recipe 3,022 하나
+오늘 processed_with 의 source_who                  wafer_process_recipe 3,022 «하나»
+```
+🔴 그래서 총괄이 보신 5,218 -> 602 은 **「번역이 좁아졌다」가 아니라 「씨앗이 사라졌다」**입니다.
+   살아남은 3,022 은 pre-rebuild 에서 «step 이 None» 이던 바로 그 3,022 입니다 — 번역은 «그대로»입니다.
+```
+사라진 step (전부 syn 씨앗)  BONDING 4,679 · MOLDING 4,391 · PLASMA_CLEAN 2,600
+                            DIFFUSION 2,575 · DT 2,575 · POST_BOND_QUEUE 2,575 · MI_THICKNESS 1,781
+```
+
+## 그래서 ②의 세 줄을 이렇게 고칩니다
+```
+그래프의 «끝»    원장에 있다 (defect_kind{void})       -> 선언하면 «중복»      [바뀜 없음]
+그래프의 «시작»  🔴 «선언 문제가 아닙니다». 소스에 접합 공정이 «없습니다».
+                 옛 값은 seed 스크립트가 쓴 것이고, 되돌리는 것은 «픽스처 판정»이지 선언 판정이 아닙니다
+그래프의 «중간»  원장에 없고 잴 수도 없다              -> 선언해야만 존재한다  [바뀜 없음]
+```
+📌 그리고 이것이 ⑥ 결론을 «더 단단하게» 만듭니다: 오늘 이 그래프는 **선언을 어떤 모양으로 바꿔도
+   먹일 데이터가 없습니다.** `seed_syn_split_merge_pressure.py` 가 그 원자를 쓰고 «동시에»
+   `mechanism_models.json` 을 다시 읽어 방향을 검사하는 것도 같은 이야기입니다 —
+   **기전 그래프와 그 데이터가 «둘 다 픽스처 층»에 삽니다.**
+
+## 못 잰 것
+```
+· 씨앗을 다시 돌릴지 — 픽스처 판정이라 제 몫이 아닙니다. 스크립트는 그대로 있습니다
+· syn 여섯 writer 를 rebuild 에서 «뺀» 것이 의도인지 — 커밋을 안 찾았습니다
+· map_split_registry.knobs 는 안 봤습니다 (기전과 무관해 보여 건너뜀 — 확인 안 한 채 넘깁니다)
+```
+⛔ 여전히 **한 줄도 안 고쳤습니다.**
+
+---
+
 # 🔬 [클라 B] ⑥ 2차 조사 답 — `mechanism_models.json`. **아무것도 안 고쳤습니다**
 
 지시(`2375f372`) 넷을 순서대로. 못 잰 것은 「못 쟀다」로 적었습니다.
