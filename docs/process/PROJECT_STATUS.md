@@ -99,6 +99,17 @@ $ pytest server/tests/ --collect-only
 확인   운영 코드의 아카이브 모듈 import 는 «여전히 0». 틀린 것은 부류의 경계였습니다
 ```
 
+### 🔴 대기열 — 클라의 «실측 판별」이 영원히 거짓입니다 (총괄 실측 2026-08-28)
+```
+api.js:409   hop.node_kind === 'value'      -> 「이 후보가 실측인가」
+api.js:485   h.node_kind === 'quantity'     -> declaredOnly (rank_list_panel.js:205 이 읽음)
+walk 이 내는 node_kind   실측 «entity 하나». value · quantity 노드는 08-28 에 사라졌습니다
+=> 실측 수는 이제 «언제나 0», is-declared 표시는 «언제나 안 붙습니다». 오류는 안 납니다
+고칠 방향   같은 질문을 «엣지»에 물어야 합니다 — 자취가 measured/observed 엣지를 지나는가
+⚠️ 지금 고치지 «않습니다». 마킹 없이 열면 propagation.state = not_requested 라
+   화면 자체가 후보 0 입니다. 패널 라운드에서 «한 번에» 봅니다
+```
+
 ### ⑥ 안건으로 «추가» — 검증기는 살아 있는데 구현이 아카이브에 있다
 ```
 ledger/config.py  _validate_chain_mapper_selection  — `sources.*.chain_mapper` 를 «검증»
