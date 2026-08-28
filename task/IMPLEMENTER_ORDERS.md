@@ -18048,3 +18048,79 @@ skip 마크          «7»
 
 📌 그리고 「못 읽는다」를 두 번 다 «그대로 적은» 것이 이 라운드에서 제일 잘한 것입니다.
    PG URL 이 없는 박스에서 「죽었다」와 「안 쟀다」는 같은 값이고, 당신은 초록을 만들지 않았습니다.
+
+---
+
+# 🔴 새 라운드 — 물리량을 «노드»로. 선언은 «제가 다 썼습니다», 행은 당신이 (총괄 2026-08-28 15:3x)
+
+소유자 승인: 「ㅇㅇ」 · 그리고 상설이 됐습니다 — **「테이블에 원천 데이터 넣고 이거로 원장」**
+(CLAUDE.md 에 박았습니다. `store.write_batch` 를 부르는 정당한 자리는 `ledger/runtime_v2.py` «하나»입니다)
+
+## 제가 끝낸 것 — 라이브 설정 둘 (gitignore 라 커밋에 안 보입니다)
+```
+server/config/table_config.json         표 «둘» 선언 · 백업 .bak-0828_1520
+   process_param    param_id · wafer_id · step · param · value(number) · value_text(string)
+                    · role · unit · eqp_id · recipe_id · eventtime      business_key=param_id
+   mechanism_edge   edge_id · model · from_quantity · to_quantity · dir · asserted_at
+
+server/config/ontology/ledger_config.json   백업 .bak-0828_1530
+   엔티티   quantity@1 {keys:[quantity]}                        (8 -> 9)
+   어휘     measures@1   wafer@1 -> quantity@1                  (11 -> 13)
+              수식어 value · value_text · role · unit · step · eqp_id · recipe_id
+            leads_to@1   quantity@1 -> quantity@1 · defect_kind@1
+              수식어 dir · model
+   소스     process_param_measure · mechanism_edge_causes       (10 -> 12)
+
+물리 표 «둘 다 생성됨». 검증: validate_bundle_errors  대조군(백업) «0» · 현재 «0»
+```
+
+## 당신이 할 것 — «행»을 채우고 재적재
+### ① process_param — 원천은 «보존된 옛 원장»입니다. 지어내지 마십시오
+```
+출처   ledger_events_pre_rebuild  WHERE predicate='processed_with'
+       AND (object_payload ? 'params_setpoint' OR object_payload ? 'params_actual')
+한 원자의 params 객체의 «키마다 한 행»
+```
+```
+param_id     «유일해야 합니다». 원자 id + 키 이름으로 만드십시오
+             🔴 (wafer,step,param) 로 만들지 마십시오 — 칸 80,322 중 «유일 조합은 60,528»
+                (setpoint 와 actual 이 같은 이름을 씁니다) -> 그래서 role 컬럼이 있습니다
+role         'setpoint' | 'actual'  (어느 객체에서 나왔나)
+value        값이 «수»일 때만.  value_text  값이 «문자열»일 때만.  🔴 정확히 하나만 채웁니다
+unit         이름에서 읽을 수 있으면 (…_MPa -> MPa · _C -> C · _s -> s · _h -> h · _um -> um)
+             읽을 수 없으면 «NULL». 지어내지 마십시오
+eqp_id · recipe_id   옛 payload 의 eqp · recipe.id (없으면 NULL)
+eventtime    옛 원자의 occurred_at
+```
+🔴 **7,055 칸은 값이 «문자열»입니다** (chem SC1 · gas · pad · slurry). 제가 처음 `value` 를 수로만
+   만들었다가 이 수를 재고 `value_text` 를 더했습니다 — **한 칸도 조용히 버리지 마십시오.**
+
+### ② mechanism_edge — 원천은 `server/config/mechanism_models.json`
+```
+행 «22»   model(void_formation·delam_formation·void_observation_bias) · from · to · dir(+·−·u)
+asserted_at   모델의 validity 가 "owner-reviewed 2026-08-14" 라고 적혀 있습니다 -> 그 날짜
+              (지금 시각을 쓰지 마십시오 — 단언된 시각이지 적재한 시각이 아닙니다)
+🔴 to_quantity 가 "void"·"delam" 이면 «그대로» 두십시오. defect_kind@1 의 키와 «같은 철자»라
+   원장에 이미 있는 그 노드로 붙습니다. 이게 이 라운드의 «목적»입니다
+```
+
+### ③ 재적재
+```
+python -m ledger.backfill --source process_param_measure
+python -m ledger.backfill --source mechanism_edge_causes
+```
+
+## 게이트 — 수로 적습니다
+```
+① process_param 행수 «80,322»    (= 파라미터 칸 총수. 제가 쟀습니다)
+   그중 value 채움 «73,267» · value_text 채움 «7,055» · 둘 다 채운 행 «0» · 둘 다 빈 행 «0»
+② mechanism_edge 행수 «22» · 서로 다른 quantity(from ∪ to) «23»
+③ 원자   measures «80,322» · leads_to «22»        (1:1 이어야 합니다. 적으면 무엇이 거절됐는지)
+④ walk   씨앗 SYN-CX-BW-001 · hops=6 · both · node_limit=1000 · edge_limit=3000
+         🔴 «기준선이 바뀝니다» — 옛 수(die 877 …)와 다른 것이 «정상»입니다.
+            보고에 새 타입/술어 분포를 그대로 적으십시오. 확인할 것은 «quantity 타입이 나오는가»
+⑤ 🔴 판별식   defect_kind{void} 에서 leads_to 를 «거꾸로» 걸어 quantity 에 닿는가
+         닿으면 이 라운드의 목적이 달성된 것입니다. 안 닿으면 «어디서 끊기는지»를 적으십시오
+```
+⛔ `server/config/` 의 두 파일을 열지 마십시오 — 기록자는 총괄 «하나»입니다. 고칠 것이 있으면 올리십시오.
+⛔ `store.write_batch` 를 부르지 마십시오. 행을 쓰고 backfill 을 돌리십시오 — 그게 이번 상설의 요점입니다.
