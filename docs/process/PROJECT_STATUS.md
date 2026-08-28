@@ -49,6 +49,52 @@
 
 ## 🏛️ 지금 서 있는 자리 (2026-08-28 14:5x — 원장 리팩토링 «6 중 5» · ⑥ 판정 완료 · 스위트 복구됨)
 
+### 🌙 밤 (19:3x) — 물리량이 «걷힙니다». 그리고 채널 결함 하나를 고쳤습니다
+
+#### 착지
+```
+✅ 원자        measures «80,322» (num 73,267 + txt 7,055) · leads_to «22»
+✅ 목적어 분포  leads_to -> quantity 13 · defect_kind 9   (내 bind 오류 수리 후)
+✅ 깊이 수리    거꾸로 걷기가 한 홉에서 «조용히» 멈추던 것 — frontier_entities 를 «쓰게» 했다
+               씨앗 void: hops_reached 0 -> «3» · nodes 8 -> «21»
+               무회귀: 타입·술어·truncated 동일, 깊이 히스토그램만 이동(들어오는 arm 493장이 제 거리를)
+✅ 문서        spec §4.5 · §4.6 은퇴 도장 (traversable 축은 선언에도 코드에도 «없다»)
+```
+#### 총괄 실측 — 「보이드가 왜 났나」가 walk «하나»로 답한다
+```
+씨앗 defect_kind{void} · follow=leads_to · hops=6 · both   nodes 21 · edges 21 · truncated 없음
+void ←[+] interface_unfill ←[−] bond_pressure
+     ←[+] wetting_deficit  ←[−] bond_temp · ←[+] surface_oxidation ←[+] pre_bond_queue_h
+     ←[+] interface_contam ←[+] adhesive_residue ←[+] dt_pass_count
+     ←[+] outgassing ←[+] moisture_uptake ←[+] humidity     … 그 외 셋
+🔴 [−] 는 둘뿐 — 압력·온도만 「낮으면 나빠지는」 것
+```
+
+#### 🔴 소유자 판정 — 후보는 «노드 전부»
+> 「**노드 전부지 rcp 같은거 차이도 있잖아 값 밀고, 그리고 이런 차이가 더 빈번함**」
+```
+범주형(더 빈번)  이 집단은 rcp A 를 지났고 대조군은 안 지났다  -> `_reach` 가 «이미» 잡는다
+값 밀림          양쪽 다 닿는데 엣지 수식어 값이 다르다        -> «다음 라운드». 만들지 말 것
+진행 중          _propagation 이 _reach 에서 ranked 를 만든다 (구현자)
+❌ 취소          「hop 에 predicate 얹기」 — 응답에 edges 가 «이미» 있어 필요 없다
+```
+
+#### 🔴 채널 결함 — 한 지시를 «두 레인»이 돌았다 (내 잘못)
+```
+「응용 라운드」를 DESIGN_ORDERS.md 에 올렸는데 그 파일을 읽는 세션이 «둘»이었다
+   보고처 design_session_report.md  ·  보고처 ontology_application_report.md
+부딪히지 «않은» 유일한 이유: 판정이 「api.js 손대지 마라」로 끝나서
+=> 상설: **지시서 첫 줄에 «보고처 파일»을 박는다.** 레인 letter 는 자칭이라 식별자가 못 된다
+```
+
+#### 🔴🔴 오늘의 메타 — 내 오류가 «전부 한 모양»이었다
+```
+「어제 참이던 문장을 오늘 «다시 안 재고» 전제로 썼다」
+  traversable 축      · pin 의 근거(클라가 이것에 대고 지어졌다)
+  collect 기반 ranked · 「0 의 뜻」        · 745(인자 없이 인용)  · hop 에 predicate 필요
+전부 «쓸 때는 참»이었고 «내 개정»이 낡게 만들었다. 그리고 여섯 번 다 «레인이 재서» 잡았다
+```
+
 ### 🔴 저녁 라운드 — 「물리량을 노드로」 · 소유자 상설이 하나 늘었습니다 (15:3x)
 
 > 소유자 2026-08-28: 「**다른것도 이 방식이 표준이야 테이블에 원천 데이터 넣고 이거로 원장**」
