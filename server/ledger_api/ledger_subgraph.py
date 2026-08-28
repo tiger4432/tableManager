@@ -475,26 +475,73 @@ def _evidence(nodes, parents, seed_signs, node_id):
     return trails
 
 
-def _propagation(nodes, edges, seed_signs, collect, complete):
-    """Rank the collected node kind by signed reach.  ONE mechanism, two configurations.
+def _rank_layers(items):
+    """Layer candidates by DOMINANCE, never by one number.
 
-    🔴 `collect` chooses the POPULATION and nothing else.  The walk, the propagation and
-    the domination are identical whether the answer wanted is a cause candidate
-    (`quantity`) or a common ancestor in lineage (`entity`); there is deliberately no
-    branch on which one was asked for, because a fork here would mean the two applications
-    are not the same question after all.  A new application is a new value of this
-    argument, not new code.
+    A dominates B when A was reached at least as much from the marked subjects and at most
+    as much from the controls, strictly better on one of the two.  Two candidates that each
+    beat the other on one axis are not ranked against each other at all — they differ in
+    KIND, not in degree — and both stay in the top set.  The answer is a set, and 「1등」 is
+    a question this function refuses to answer when the evidence does not.
 
-    🔴 NO NUMBERS LEAVE.  Reach decides the rank and the top set and then stays inside:
-    the ranking is the machine's judgement, and reading it is the owner's.  What answers
-    「이 후보는 대조군에서 한 번도 안 닿았다」 is the SIGN on each evidence trail, which
-    every rank now carries — not the magnitude, which reads like a probability and is not
-    one.
+    🔴 RESTORED 2026-08-28, NOT REINVENTED.  It left with `collect` earlier the same day on
+    the premise that a walk emitting one node kind has nothing to rank between; the owner
+    ruled that afternoon that the candidates are every node, so the premise expired and the
+    rule it deleted is the measured one rather than a fresh guess at an ordering.
+
+    [SCALE] Layering is O(n log n) over the two axes rather than the pairwise sweep: a
+    lineage answer can collect the whole node budget, where the pairwise form is n³.
+    """
+    ordered = sorted(items, key=lambda item: (-item["reach"][0], item["reach"][1]))
+    floors, layers, index = [], [], 0
+    while index < len(ordered):
+        stop, coordinate = index, ordered[index]["reach"]
+        while stop < len(ordered) and ordered[stop]["reach"] == coordinate:
+            stop += 1
+        # Everything already placed has at least this observed-reach, so this group is
+        # dominated by exactly those layers already holding a smaller control-reach.
+        layer = bisect.bisect_right(floors, coordinate[1])
+        if layer == len(floors):
+            floors.append(coordinate[1])
+            layers.append([])
+        else:
+            floors[layer] = coordinate[1]
+        for item in ordered[index:stop]:
+            item["rank"] = layer + 1
+            item["tied"] = stop - index > 1
+            layers[layer].append(item)
+        index = stop
+    for layer in layers:
+        distinct = {tuple(item["reach"]) for item in layer}
+        for item in layer:
+            item["incomparable"] = len(distinct) > 1
+    return layers
+
+
+def _propagation(nodes, edges, seed_signs, complete):
+    """Rank every node this walk REACHED, by the contrast between the two signed reaches.
+
+    🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
+    (2026-08-28: 「노드 전부지 rcp 같은거 차이도 있잖아 값 밀고, 그리고 이런 차이가 더
+    빈번함」).  Filtering the candidates to one type would answer a narrower question than
+    the one being asked: which recipe a marked set ran through is a categorical difference
+    like any other, and the owner's measurement is that this KIND of difference is the
+    frequent one.  So there is no type filter here, and `collect` — the argument that used
+    to name one — is gone with the vocabulary it was spelled in.
+
+    🔴 BOTH NUMBERS LEAVE, and that reverses what this docstring said this morning.  The
+    old rule was that reach decides the rank and stays inside, because one magnitude reads
+    like a probability and is not one.  What changed is that there is no agreed way to FOLD
+    the two reaches into one score yet, and inventing one here would make that invention the
+    thing that decides the answer.  Two numbers side by side are a contrast a reader can
+    see; one number is a verdict the machine did not earn.  When the folding rule is ruled,
+    this is where it goes.
+
+    The ordering itself is `_rank_layers` — dominance, ties kept as ties, and candidates
+    that each win on one axis marked `incomparable` rather than separated.
     """
     negatives = sum(1 for sign in seed_signs.values() if sign < 0)
     block = {
-        "collect": collect,
-        "state": "not_requested",
         # 🔴 With no control seed the second axis was never examined.  That is NOT
         # 「controls were walked and the factor was absent from them」, and reporting it as
         # a zero would turn 미검사 into a finding.
@@ -504,13 +551,45 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
         # reachable today rather than a someday case, and a rank read off a truncated graph
         # is provisional.
         "complete": complete,
+        "state": "empty",
         "ranked": [],
         "top_set": [],
         "message": None,
     }
-    # 🔴 THE RANKED BRANCH LEFT WITH `collect` (2026-08-28). It ranked nodes of one
-    # collected KIND against each other; the walk emits one kind now, so there is nothing to
-    # rank between. What remains is the propagation the marking needs.
+    reach, parents = _reach(nodes, edges, seed_signs)
+    collected = [{
+        "id": node["id"],
+        # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
+        # own plumbing word and every node carries the same value of it now; what tells a
+        # recipe from a die is the type the declaration gives them.
+        "type": node.get("type"), "label": node.get("label"),
+        "reach": reach.get(node["id"], [0.0, 0.0]),
+    } for node in nodes.values()
+        if node["id"] not in seed_signs and node["id"] in reach]
+    if not collected:
+        block["message"] = "이 걷기가 씨앗 밖의 노드에 닿지 않았습니다"
+        return block
+    layers = _rank_layers(collected)
+    block["state"] = "ranked"
+    block["ranked"] = [{
+        "id": item["id"], "type": item["type"], "label": item["label"],
+        "reach": item["reach"],
+        "rank": item["rank"], "top": item["rank"] == 1,
+        "tied": item["tied"], "incomparable": item["incomparable"],
+        # 🔴 The trails go on EVERY rank, not only the top set.  「reached from the marked
+        # subjects and never from a control」 is a different answer from 「not first」, and
+        # what carries that distinction is `evidence[].sign` — one `+`/`−` per seed that
+        # reached this candidate.
+        #
+        # Measured 2026-08-23 before deciding whether to cut: at the node cap (929 nodes,
+        # 5 seeds, 90 ranked items, 653 hop entries) the block was 285 KB inside a 2,991 KB
+        # response, and trails stay 5 hops long because a BFS trail is bounded by the
+        # graph's DIAMETER rather than by `hops`.  ⚠️ That measurement was taken when the
+        # population was ONE collected kind; it is now every reached node, so the item
+        # count is the node budget rather than a fraction of it.
+        "evidence": _evidence(nodes, parents, seed_signs, item["id"]),
+    } for layer in layers for item in layer]
+    block["top_set"] = [item["id"] for item in layers[0]]
     return block
 
 
@@ -855,7 +934,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(
-            nodes, ordered_edges, seed_signs, None,
+            nodes, ordered_edges, seed_signs,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)),
         "walk": {
             "mode": "evidence_graph", "direction": direction,

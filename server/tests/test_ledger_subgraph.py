@@ -160,7 +160,16 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
     plain = ledger_subgraph.subgraph(marked, lookup, hops=4)
     assert plain["seed"]["id"] == marked
     assert plain["walk"]["start"] == {"positive": 1, "negative": 0}
-    assert plain["propagation"]["state"] == "not_requested"
+    # 🔴 `not_requested` until 2026-08-28.  It was the answer while `collect` chose the
+    # population and a walk without it had nothing to rank; the owner ruled that the
+    # candidates are every reached node, so a plain single-id walk ranks too and the only
+    # remaining reason to say nothing is an empty one.
+    assert plain["propagation"]["state"] == "ranked"
+    assert plain["propagation"]["ranked"], "every reached node is a candidate"
+    assert all(item["type"] for item in plain["propagation"]["ranked"]), (
+        "each candidate carries its DECLARED type, not the projection's node_kind")
+    assert all(len(item["reach"]) == 2 for item in plain["propagation"]["ranked"]), (
+        "both reaches leave, unfolded - there is no ruled way to combine them yet")
 
     # No control seed is NOT 「controls came back clean」 — the axis was never examined,
     # and an unlisted subject is never promoted into the negative list to fill it.
