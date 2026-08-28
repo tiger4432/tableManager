@@ -78,12 +78,12 @@ def default_profile_registries() -> ProfileRegistries:
     # The declaration carries `keys` and nothing else - it has no `label_ko` field and
     # refuses one - so a type labels itself, which is what the old spelling fell back to
     # for every type that had no label anyway.
-    from ledger_api import entity_references
+    from ledger_api import declared_entities
     entity_types = TypeRegistry(
         "entity",
-        [TypeDefinition(name=name, keys=tuple(entity_references.identity_keys(name)),
+        [TypeDefinition(name=name, keys=tuple(declared_entities.identity_keys(name)),
                         label=name)
-         for name in entity_references.declared_types()],
+         for name in declared_entities.declared_types()],
     ).seal()
 
     container_types = TypeRegistry(
