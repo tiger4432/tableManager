@@ -12,7 +12,6 @@ from ledger_api import ledger_subgraph
 import pytest
 from fastapi import HTTPException
 import ledger_trace_router
-from ledger_api import mechanism_gate
 
 
 NOW = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)
