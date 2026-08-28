@@ -58,5 +58,45 @@
       "metro_eqp"
     ],
     "enabled": true
+  },
+  "dt_log_frame_from_inventory": {
+    "__comment": "dt_log 의 한 다이가 어느 좌표 프레임 아래 있는지. dt_log 에는 그 값이 없고 dt_inventory 가 job 단위로 들고 있다. 오른쪽 유일성은 uq_dt_inventory_dt_job 이 보장한다 (401/401 distinct).",
+    "left_table": "dt_log",
+    "right_table": "dt_inventory",
+    "join_key": [
+      {
+        "left": "dt_job",
+        "right": "dt_job"
+      }
+    ],
+    "expose": [
+      "dt_x_base",
+      "dt_x_sign",
+      "dt_x_offset",
+      "dt_y_base",
+      "dt_y_sign",
+      "dt_y_offset"
+    ],
+    "unresolved_label": "미상",
+    "join_cardinality": "one",
+    "enabled": true
+  },
+  "dt_inventory_confirmed_from_attribution": {
+    "__comment": "dt_inventory 의 dt_lot/dt_slot 옆에 확정값을 세운다. 오른쪽 유일성은 uq_vjoin_dt_job_attribution_dt_job (252/252 distinct). dt_inventory 401 행 중 251 행이 붙는다.",
+    "left_table": "dt_inventory",
+    "right_table": "dt_job_attribution",
+    "join_key": [
+      {
+        "left": "dt_job",
+        "right": "dt_job"
+      }
+    ],
+    "expose": [
+      "dt_lot_confirmed",
+      "dt_slot_confirmed"
+    ],
+    "unresolved_label": "미상",
+    "join_cardinality": "one",
+    "enabled": true
   }
 }

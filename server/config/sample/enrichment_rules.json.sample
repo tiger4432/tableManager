@@ -3,27 +3,21 @@
     "__comment": "Every bind param in a reference view MUST be a decision_key column -- the loader rejects anything else (enrichment_config.py:126-129) and drops just that view. A view that binds only PART of the decision key is legal but gets flagged scope_unresolved, because one confirmed value would then be stamped onto every member of the wider scope; both rules in this file bind the FULL key. | candidate_for is {target_field: view_result_column}. Without it declaring_views is empty, resolve_target_candidate refuses before running any SQL (enrichment_candidates.py:306-308), and the probe emits ZERO log lines -- which is indistinguishable from 'the feature is off'. That silent state is what this config exists to avoid. | INFERENCE #1 -- confirm which DT lot and slot a DT job's wafer ended up as. This cannot be done with a SQL join: bonding_log's (dt_lot, dt_slot) is the value AS OF BONDING and dt_log's is the value AS OF DT, and split/merge moved the wafer in between, so a naive join does not error -- it matches the wrong wafer plausibly. | auto_confirm is ON here: the candidate is a RECORDED FACT (an equipment track-in event) plus an assignment fixed by the monotonic constraint, not a guess, and a single distinct answer is the only thing that confirms. Anything else -- zero candidates, two candidates, a failed view -- stays in the queue for a human.",
     "source_table": "dt_log",
     "derived_table": "dt_job_attribution",
-    "decision_key": ["dt_job"],
-    "target_fields": ["dt_lot_confirmed", "dt_slot_confirmed"],
-    "list_columns": ["cell_count"],
+    "decision_key": [
+      "dt_job"
+    ],
+    "target_fields": [
+      "dt_lot_confirmed",
+      "dt_slot_confirmed"
+    ],
+    "list_columns": [
+      "cell_count"
+    ],
     "aggregations": {
       "cell_count": "count"
     },
     "enabled": true,
     "auto_confirm": true,
-    "claim_contract": {
-      "version": 1,
-      "label_ko": "DT 결과물 신원",
-      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
-      "slots": [
-        {"target_field": "dt_lot_confirmed", "predicate": "transferred", "payload_path": "to.keys.dt_lot"},
-        {"target_field": "dt_slot_confirmed", "predicate": "transferred", "payload_path": "to.keys.dt_slot"}
-      ],
-      "sources": [
-        {"kind": "reference_view", "view_index": 3, "authority": "candidate", "targets": ["dt_lot_confirmed"]},
-        {"kind": "reference_view", "view_index": 4, "authority": "candidate", "targets": ["dt_slot_confirmed"]}
-      ]
-    },
     "reference_views": [
       {
         "label": "이 job의 원본 셀",
@@ -61,40 +55,99 @@
   "dt_frame_confrimation": {
     "source_table": "dt_log",
     "derived_table": "dt_inventory",
-    "decision_key": ["dt_job"],
-    "target_fields": ["dt_frame"],
+    "decision_key": [
+      "dt_job"
+    ],
+    "target_fields": [
+      "dt_frame"
+    ],
     "list_columns": [],
     "aggregations": {},
     "enabled": true,
     "auto_confirm": false,
-    "claim_contract": {
-      "version": 1,
-      "label_ko": "DT 좌표 프레임",
-      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
-      "slots": [{"target_field": "dt_frame", "predicate": "frame_confirmed", "payload_path": "map_ref"}],
-      "sources": []
-    },
-    "reference_views": [],
+    "reference_views": [
+      {
+        "label": "이 job 의 원본 행 (dt_log)",
+        "query": "SELECT dt_eqp, product, dt_lot, dt_slot, dt_x, dt_y, c_bn, dt_index, event_time FROM dt_log WHERE dt_job = :dt_job ORDER BY dt_y, dt_x",
+        "limit": 400
+      },
+      {
+        "label": "관측된 좌표 범위 — 프레임이 덮어야 하는 것",
+        "query": "SELECT MIN(dt_x) AS x_min, MAX(dt_x) AS x_max, MIN(dt_y) AS y_min, MAX(dt_y) AS y_max, COUNT(*) AS cells, COUNT(DISTINCT c_bn) AS bins FROM dt_log WHERE dt_job = :dt_job",
+        "limit": 1
+      },
+      {
+        "label": "같은 장비의 다른 job 들 — 프레임이 대개 같다",
+        "query": "SELECT dt_job, MIN(dt_eqp) AS dt_eqp, COUNT(*) AS cells, MIN(event_time) AS first_seen FROM dt_log WHERE dt_eqp = (SELECT MIN(dt_eqp) FROM dt_log WHERE dt_job = :dt_job) GROUP BY dt_job ORDER BY first_seen DESC",
+        "limit": 50
+      }
+    ],
     "alignment": true
   },
   "core_frame_review": {
     "__comment": "Manual visual review only. dt_core_view is a separate raw core-coordinate map namespace for each DT job; its source is deliberately not dt_log because dt_log/dt_job already owns the DT-frame wafer_map_metadata record. This rule proposes no automatic conclusion and must remain auto_confirm=false until core bin-fingerprint/topology evidence has an agreed acceptance policy.",
     "source_table": "dt_core_view",
     "derived_table": "dt_inventory",
-    "decision_key": ["dt_job"],
-    "target_fields": ["core_frame"],
+    "decision_key": [
+      "dt_job"
+    ],
+    "target_fields": [
+      "core_frame"
+    ],
     "list_columns": [],
     "aggregations": {},
     "enabled": true,
     "auto_confirm": false,
-    "claim_contract": {
-      "version": 1,
-      "label_ko": "Core 좌표 프레임",
-      "anchor": {"predicate": "transferred", "payload_path": "to", "object_type": "dt_job", "decision_key_map": {"dt_job": "dt_job"}},
-      "slots": [{"target_field": "core_frame", "predicate": "frame_confirmed", "payload_path": "map_ref"}],
-      "sources": []
-    },
-    "reference_views": [],
+    "reference_views": [
+      {
+        "label": "이 job 의 core 원본 행 (dt_core_view)",
+        "query": "SELECT core_lot, core_slot, core_wafer, core_x, core_y, c_bn, core_index FROM dt_core_view WHERE dt_job = :dt_job ORDER BY core_y, core_x",
+        "limit": 400
+      },
+      {
+        "label": "관측된 core 좌표 범위 — 프레임이 덮어야 하는 것",
+        "query": "SELECT MIN(core_x) AS x_min, MAX(core_x) AS x_max, MIN(core_y) AS y_min, MAX(core_y) AS y_max, COUNT(*) AS cells, COUNT(DISTINCT core_wafer) AS wafers FROM dt_core_view WHERE dt_job = :dt_job",
+        "limit": 1
+      },
+      {
+        "label": "이 job 이 쓴 core 웨이퍼들",
+        "query": "SELECT core_wafer, core_lot, core_slot, COUNT(*) AS dies FROM dt_core_view WHERE dt_job = :dt_job AND COALESCE(core_wafer,'') <> '' GROUP BY 1,2,3 ORDER BY dies DESC",
+        "limit": 100
+      }
+    ],
     "alignment": true
+  },
+  "dt_lot_slot_from_log": {
+    "__comment": "dt_inventory 의 dt_lot/dt_slot 은 401 중 400 이 비어 있다. dt_log 가 같은 job 에 대해 그 쌍을 이미 들고 있으므로, 사람은 «고르는» 것이 아니라 «확인»한다. 두 대상을 한 뷰에 선언 순서로 담아 candidate_for 가 열 순서를 말할 수 있게 한다.",
+    "source_table": "dt_log",
+    "derived_table": "dt_inventory",
+    "decision_key": [
+      "dt_job"
+    ],
+    "target_fields": [
+      "dt_lot",
+      "dt_slot"
+    ],
+    "list_columns": [],
+    "aggregations": {},
+    "enabled": true,
+    "auto_confirm": false,
+    "alignment": true,
+    "reference_views": [
+      {
+        "label": "관측된 dt_lot / dt_slot — 이 job 이 말하는 것",
+        "query": "SELECT COALESCE(dt_lot,'') AS dt_lot, COALESCE(dt_slot,'') AS dt_slot, COUNT(*) AS cells FROM dt_log WHERE dt_job = :dt_job GROUP BY 1, 2 ORDER BY cells DESC",
+        "limit": 50,
+        "candidate_for": {
+          "dt_lot": "dt_lot",
+          "dt_slot": "dt_slot"
+        }
+      },
+      {
+        "label": "이 job 의 원본 행 (근거)",
+        "query": "SELECT dt_eqp, product, dt_lot, dt_slot, dt_x, dt_y, c_bn, event_time FROM dt_log WHERE dt_job = :dt_job ORDER BY dt_y, dt_x",
+        "limit": 400
+      }
+    ]
   }
 }
