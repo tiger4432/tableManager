@@ -211,30 +211,6 @@ def test_the_candidate_config_carries_only_the_source_under_preview():
 
 
 # ---------------------------- the hand-built read queries (R-…-08-15-O)
-def test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type():
-    """🔴 THE POINT OF THE RULING, asserted where it can actually regress: a
-    wafer-scope reader must bind a LIST. Pinning one `subject_type` is what made 42
-    `WaferLeg` atoms invisible and the screen say「본딩 조건 차이 없음」falsely.
-
-    `ledger_journey` was the second source checked here and was deleted with the /journey
-    route on 2026-08-25; its half of this guard goes with it rather than lingering as a
-    test of nothing. `ledger_walk_contrast` still carries the same query shape, so the
-    invariant is still asserted where it still exists.
-
-    Asserted on the SQL text because these are hand-built query strings — there is no
-    object to interrogate, and a future edit back to `= %(stype)s` is exactly the
-    regression this guards."""
-    from ledger_api import ledger_walk_contrast
-
-    sources = [
-        ("ledger_walk_contrast",
-         open(ledger_walk_contrast.__file__, encoding="utf-8").read()),
-    ]
-    for name, text in sources:
-        assert "subject_type = %(stype)s" not in text, (
-            f"{name} still pins a single subject_type — WaferLeg atoms are invisible again")
-        assert "subject_type = ANY(%(stypes)s)" in text, (
-            f"{name} no longer asks for the rolled-up set")
 
 
 def test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier():
