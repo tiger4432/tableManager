@@ -1,3 +1,139 @@
+# 🔬 [클라 B] 조사 결과 — 읽는 층 «일곱». 수와 이름만 적습니다
+
+지시(`fed08ced`) 대로 **아무것도 안 지웠습니다.** 못 잰 것은 「못 쟀다」로 적었습니다.
+
+## 방법 — 「이름 grep」을 «안 썼습니다». 두 번 재고 두 번째를 씁니다
+```
+1차 (버림)   심볼 이름을 파일 전체에 grep   -> `resolve` 가 «33 파일»에 걸립니다.
+                                             `Claim` · `coverage` 도 흔한 낱말이라 전부 거짓 양성
+2차 (채택)   AST 로 «수입 경로»를 따라갑니다 —
+             `from ledger_trace import X` 이거나, 모듈을 import 한 «별칭».X 인 자리만 소비자
+확인         ledger_trace 를 import 하는 «라이브» 파일은 «넷»뿐입니다
+             (ledger_subgraph · ledger_explorer · ledger_trace_router · main)
+```
+🔴 1차대로 보고했으면 「소비자 33」이라고 적었을 겁니다. 실제는 «넷»입니다.
+
+---
+
+## 파일별 여섯 칸
+
+### 1. `ledger_api/ledger_subgraph.py` — 883줄
+```
+① walk 본체. 씨앗에서 BFS 로 서브그래프를 만들고 예산·잘림을 답한다
+② 라이브 소비자 «1»  ledger_trace_router.py        (시험 2 · 스크립트 0)
+③ 비-엔티티 낱말 «있음»  claim×62 · finding×15 · node_kind×15 · schema_kind×7
+                        collection×5 · point×4 · quantity×4
+④ 두 번째 선언 «둘»  ledger_config.json · mechanism_models.json
+⑤ 도메인 갈래 «0»
+⑥ 판정: «남긴다» — 목표의 walk 그 자체. 다만 ③의 낱말들이 어디서 나오는지는 A 레인 회계와 대조 필요
+```
+
+### 2. `ledger_trace_router.py` — 298줄
+```
+① 라우트 «둘»만 연다 — /subgraph(walk) · /declaration(선언을 그대로 내놓음)
+② 라이브 소비자 «1»  main.py                        (시험 2 · 스크립트 0)
+③ 비-엔티티 낱말 «0»
+④ 두 번째 선언 «0»
+⑤ 도메인 갈래 «0»
+⑥ 판정: «남긴다» — 어젯밤 679->298 로 줄인 그 파일. 더 뺄 것은 안 보입니다
+```
+
+### 3. `ledger_api/entity_references.py` — 195줄
+```
+① 선언의 entities[].references 를 읽어 «합성 엣지»를 만든다
+② 라이브 소비자 «3»  ledger/config.py · ledger/source_profile_builtins.py · ledger_api/ledger_subgraph.py
+③ 비-엔티티 낱말 «0»
+④ 두 번째 선언 «0» (ledger_config.json «만» 읽습니다)
+⑤ 도메인 갈래 «0»
+⑥ 판정: «못 쟀다» — 총괄이 「참조 절반은 제 것」이라 하셨습니다. 지금 선언에서 references 가
+   빠져 있어 «엣지 0»인데(어젯밤 실측), 그럼 이 파일이 오늘 무엇을 하는지는 총괄 판정입니다
+```
+
+### 4. `ledger_api/finding_kinds.py` — 314줄
+```
+① 발견 «종류»의 카탈로그를 연다 (kind -> method·표 이름)
+② 라이브 소비자 «1»  ledger_api/ledger_subgraph.py   (시험 2 · 스크립트 «4»)
+③ 비-엔티티 낱말 «있음»  kind×18 · finding×14  -> 이 파일이 «kind» 라는 축의 생산자입니다
+④ 두 번째 선언 «둘»  finding_kinds.json · table_config.json   ← ③④ 가 둘 다 걸립니다
+⑤ 도메인 갈래 «0»  (하드코딩 void/delam 은 어젯밤 C 레인이 걷어냈습니다)
+⑥ 판정: «못 쟀다» — defect 가 이제 «노드»입니다(실측 121). 종류가 노드의 속성이면 이 카탈로그의
+   자리가 바뀝니다. 「kind 축을 남길지」가 선언 판정이라 제가 정할 수 없습니다
+```
+
+### 5. `ledger_api/mechanism_gate.py` — 374줄
+```
+① 기전 모델 선언을 읽어 «물리량 그래프»로 후보를 판정한다
+② 라이브 소비자 «1»  ledger_api/ledger_subgraph.py   (시험 2 · 스크립트 0)
+③ 비-엔티티 낱말 «있음»  finding×12 · quantity×7 · verdict×4
+④ 두 번째 선언 «1»  mechanism_models.json           ← ledger_config.json «밖»입니다
+⑤ 도메인 갈래 «0»
+⑥ 판정: «_archive 후보» — 근거: 소유자가 「두 번째 그래프 탐색기」라고 지목하셨고,
+   ③④ 가 둘 다 걸립니다(자기 낱말 + 자기 선언 파일). 다만 «판정은 총괄» 몫이라 후보로만 적습니다
+```
+
+### 6. `ledger_explorer.py` — 176줄
+```
+① 개체 id 를 만들고(`ledger-entity:v1:`) 되읽는다. 노드 하나를 그 모양으로 편다
+② 라이브 소비자 «1»  ledger_api/ledger_subgraph.py   (시험 3 · 스크립트 0)
+③ 비-엔티티 낱말  claim×3 (주석·docstring 안)
+④ 두 번째 선언 «0»
+⑤ 도메인 갈래 «0»
+⑥ 판정: «흡수된다 -> ledger_subgraph» 후보. 소비자가 «하나»이고 하는 일이 id 왕복 하나입니다
+   ⚠️ 다만 «읽기가 쓰기 게이트를 안 묻는다」는 판정이 이 파일 docstring 에 삽니다 — 옮길 때 같이 갑니다
+```
+
+### 7. `ledger_trace.py` — 1,689줄 🔴
+```
+① 원장 원자를 «가져오고»(SQL) 경쟁 주장을 «해소»한다(4계급 전순서). 지금은 그 둘만 쓰입니다
+② 라이브 소비자 «4»  ledger_subgraph · ledger_explorer · ledger_trace_router · main
+③ 비-엔티티 낱말  claim×16 · kind×1
+④ 두 번째 선언 «1»  ledger_resolver.json  (운영자 «선택» 덮어쓰기 — 이 박스엔 «없습니다»)
+⑤ 도메인 갈래 «0»
+⑥ 판정: «쪼갠다» 후보 — 아래 수가 근거입니다
+```
+
+#### 7-bis. 심볼 «78» 의 분류 (총괄이 물으신 자리)
+```
+전체 78  =  라이브 소비 «8»  +  나머지 «70»
+```
+```
+[라이브 소비 8]  — 호출 자리도 «한두 곳»뿐입니다
+  _fetch                 L1188  <- ledger_subgraph · ledger_trace_router   (2)
+  load_resolver_config   L279   <- main                                     (2)
+  relation_exists        L1210  <- ledger_trace_router                      (1)
+  REASON_RELATION_ABSENT L1176  <- ledger_trace_router                      (1)
+  reset_walk_cache       L111   <- main                                     (1)
+  claim_class            L386   <- ledger_explorer                          (1)
+  hop_basis              L598   <- ledger_explorer                          (1)
+  DEFAULT_MAX_DEPTH      L119   <- ledger_explorer                          (1)
+
+[나머지 70]
+  NO CALLER ANYWHERE «8»   COVERAGE_STATES · Neighbourhood · _REACH_ONLY_CTE · _claim_from_row
+                           _hop · _lot_node · _wafer_node · rollup_subject_types
+                           -> 파일 «안»에서도 안 쓰입니다. 자기 참조 «0»
+  ONLY tests/scripts «4»   _TRACE_CTE · _object_qualifier · _payload_lot · set_resolver_config
+                           -> 라이브 경로 «0». 시험만 이것을 붙잡고 있습니다
+  internal only      «31»  파일 안에서만 쓰임
+  internal + measured «27» 파일 안 + 시험/스크립트
+```
+🔴 **`rollup_subject_types` 가 「어디서도 안 쓰임」에 있습니다** — 어젯밤 제가 「살아 있다」고
+   보고한 심볼입니다. 그때는 `ledger_walk_contrast` 가 썼는데 그 파일이 C 레인 삭제로 사라졌습니다.
+   **제 어제 보고가 오늘 거짓이 됐습니다** — 공유 트리에서 「잰 시각」이 값의 일부라는 그 건입니다.
+   재확인: 저장소 전체에서 그 이름이 나오는 자리는 «정의 한 줄»뿐입니다(시험도 0).
+
+---
+
+## 🔴 못 잰 것 — 추측으로 안 채웁니다
+```
+· entity_references 가 «오늘» 무엇을 하는지 (선언에 references 가 없어 엣지 0)
+· finding_kinds 의 kind 축이 defect 노드와 겹치는지 — 선언 판정 사안
+· mechanism_gate 의 «두 번째 탐색기» 판정 — 소유자 지목만 있고 제 측정으로는 «후보»까지
+· ledger_trace 를 어디서 쪼개나 — 「가져오기」와 「해소」가 한 파일에 있는 것은 셌지만
+  경계선은 A 레인의 882줄 회계와 «맞춰야» 합니다
+```
+
+---
+
 # 🔒 [클라 B] **잡습니다: 조사 대상 «일곱»** (`fed08ced`)
 
 읽는 층 7 파일. 열기 전에 적고 푸시합니다. **아무것도 안 지웁니다 — 조사만.**
