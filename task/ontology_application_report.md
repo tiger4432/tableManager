@@ -4,6 +4,121 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔬 [C 응용] **조사 결과 — 선언 층 «11»** (10:2x). 지운 것 «0»
+
+여섯 칸을 수와 이름으로. ②의 「라이브」는 `SERVER_FILE_MAP` 의 뿌리 기준이고, 🔴 표시된 소비자는
+그 지도가 «안 닿음»으로 찍은 파일입니다. ③은 «주석 말고 코드 모양»만 셌습니다(따옴표·식별자·대입).
+
+## 🔴 층 전체에 대한 답 먼저 — 세 줄
+```
+⑤ 도메인 낱말 갈래   «0» — 열한 파일 어디에도 == "void" 류가 없습니다. 목표 ④는 이 층에서 참입니다
+②  고아             «0» — 열한 개 전부 라이브 소비자가 있습니다 (config_drafts 만 «하나»)
+③④ 걸리는 자리       ③은 «네 파일 여덟 줄» · ④는 «여섯 파일». 아래 각 행에 줄 번호
+```
+
+## ③ «엔티티도 술어도 아닌 낱말» — 코드 모양으로 남은 것 전부
+```
+finding_kind   config.py:623              source.get("finding_kind") — 관측 소스에 «요구»한다
+               source_contract.py:150     payload_fields=("finding_kind","method","run_uid",…)
+               source_contract.py:152     configured_by="finding_kinds…"
+               ledger_admin.py:600        "required_blocks": ["finding_kind","run","watermark"]
+quantity       setup_bundle.py:119·122    역할 종류 목록에 "quantity"
+               setup_bundle.py:438        _OBJECT_VALUE_ROLE_KINDS = {"value":"quantity", …}
+claim          setup_bundle.py:441        def predicate_claim(...)
+               setup_registry.py:192·386·444·454   ClaimDescriptor · ClaimRegistry · 스냅샷 키 "claims"
+               (사용자 문구에도: ledger_admin:323 · source_contract:256·358 「… Claim …」)
+```
+🔴 **`claim` 은 이 층에서 «구조»입니다** — 스냅샷의 레지스트리 하나이고 키 하나입니다.
+   목표 ①이 그 낱말을 없애라고 하면 «이름 바꾸기»가 아니라 스냅샷 모양이 바뀝니다. 판정 필요.
+
+## 🔴 덤으로 나온 것 — 살아 있는 거절문이 «없는 주소»를 가리킵니다
+```
+ledger/config.py:627   「(`server/finding_kinds.py` 는 무엇이 kind 인지의 레지스트리)」
+실측                   server/finding_kinds.py  «없음»   ·  server/ledger_api/finding_kinds.py «있음»
+```
+관측 소스에 `finding_kind` 를 안 적으면 사용자가 이 문장을 봅니다. 이 라운드는 조사라 «안 고쳤습니다».
+
+## 파일별
+```
+① ledger/config.py 1,152줄
+   ① ledger_config.json 을 찾고·읽고·검증한다 (load/validate + 소스 종류별 검증기 넷)
+   ② live 8: config_resolve_report · enrichment_config · observability · source_contract ·
+             source_profile_builtins · ledger_admin · ledger_trace · ledger_trace_router
+             (+ 🔴profile_chain_mapper) · tests 8
+   ③ finding_kind:623   ④ YES :432 live_physical_catalog()   ⑤ none   ⑥ 남긴다 — 선언 로드의 정본
+
+② ledger/setup_bundle.py 1,972줄  🔴 이 층에서 제일 큼
+   ① 선언의 «문법» 정본 — 번들 스키마·검증·오타 제안·문제 수집
+   ② live 8: config · config_authoring · config_drafts · config_explorer ·
+             config_explorer_service · setup · setup_registry · ledger_admin · tests 12 · scripts 1
+   ③ quantity:119·122·438 · claim:441   ④ YES :88 파일명 · :151 파서 (⚠️ «경로는 모른다» — 런타임
+      import 0 계약을 테스트가 지킨다)   ⑤ none   ⑥ 남긴다 — ③의 «발원지»라 목표 ①의 중심
+
+③ ledger/setup.py 366줄
+   ① 로드 «경계» — 데이터 루트를 아는 유일한 자리 + 커서 배치 preview/execute + CLI
+   ② live 4: backfill · config · config_explorer_service · ontology_config_explorer_router
+   ③ 코드 모양 «0»   ④ YES — 🔴 «여기가 그 자리다» :80 paths.config_path("table_config.json")
+      :143·:176·:353 기본 catalog   ⑤ none   ⑥ 남긴다 — ④를 흡수한다면 «여기부터»
+
+④ ledger/setup_registry.py 1,085줄
+   ① 선언 -> «불변 스냅샷» 컴파일러 (Predicate·EntityType·Role·Emission·Claim·Preparer·Mapper)
+   ② live 8: backfill · config_authoring · config_drafts · implementations · roleframe ·
+             runtime_v2 · setup · source_preparation (+ 🔴mappers 셋) · tests 9
+   ③ claim: 구조 — :192 ClaimDescriptor · :386 ClaimRegistry · :444·:454 스냅샷 키
+   ④ NO (:498 은 산문)   ⑤ none   ⑥ 남긴다 — 단 ③이 «이름이 아니라 모양»이다
+
+⑤ ledger/source_contract.py 362줄
+   ① 소스 하나 -> 운영자 계약 (선언된 발화 넷을 세고 호환성을 판정)
+   ② live 2: ledger_admin · main · tests 1
+   ③ finding_kind:150·152   ④ NO   ⑤ none   ⑥ 남긴다
+
+⑥ ledger/config_authoring.py 1,938줄  🔴 두 번째로 큼
+   ① 「선언이 강제하는 것 vs 사람이 답할 것」 — Ground/Field 로 저작 폼을 «선언에서» 만든다
+   ② live 4: config_drafts · config_explorer · config_explorer_service · main · tests 2 · scripts 1
+   ③ 코드 모양 «0»   ④ YES :81 import · :929·:958·:1027·:1368 후보 출처   ⑤ none   ⑥ 남긴다
+
+⑦ ledger/config_explorer.py 1,381줄
+   ① 선언의 «읽기 전용 모델» — node_key · owning_section · undeletable_reason · referrers · 도달성
+   ② live 4: config_authoring · config_drafts · config_explorer_service ·
+             ontology_config_explorer_router · tests 2 · scripts 1
+   ③ 코드 모양 «0» (point 33은 전부 「points to」류 산문)
+   ④ YES :78·:385·:853·:858 — 「테이블 노드는 이제 table_config.json 에서 온다」   ⑤ none   ⑥ 남긴다
+
+⑧ ledger/config_explorer_service.py 947줄
+   ① 탐색기의 캐시된 응용 서비스 (catalog_loader 를 «주입»받는다)
+   ② live 1: ontology_config_explorer_router · tests 3
+   ③ 코드 모양 «0»   ④ YES :32 live_physical_catalog import · :76 기본 loader   ⑤ none   ⑥ 남긴다
+
+⑨ ledger/config_drafts.py 829줄
+   ① 파일시스템 «초안» 저장소 + 초안 미리보기 컴파일
+   ② live 1: config_explorer_service · tests 2      <- 이 층에서 «가장 얇은» 연결
+   ③ 코드 모양 «0»   ④ 간접 (catalog 를 «받아서» 넘긴다, :173·:180·:183·:190·:195)
+   ⑤ none   ⑥ 남긴다 — 소비자 1이지만 «0이 아니다»
+
+⑩ ledger/column_stats.py 288줄
+   ① 물리 표가 «실제로» 무엇을 들었나 — 저작 화면의 컬럼 선택기용 (declared_unique_keys ·
+      physical_columns · population · combination_uniqueness · ordering_candidates)
+   ② live 3: config_authoring · config_explorer_service · ontology_config_explorer_router
+   ③ 코드 모양 «0»   ④ 산문만 (:16·:92 — 🔴 :92 는 「table_config 의 column_types 가 «아니다»」)
+   ⑤ none   ⑥ 남긴다
+
+⑪ ledger_admin.py 856줄
+   ① admin 으로 소스를 원장에 잇고 어휘를 늘린다 — 식별자 검사 · 소스 선언 검증 · 저장
+   ② live 1: main · tests 2
+   ③ finding_kind:600 · kinds:673(«저작 문법의 종류»라 다른 뜻)
+   ④ YES :218·:227·:231·:782·:792 — 「table_config.json 에 선언 안 된 테이블입니다」로 «거절»한다
+   ⑤ none   ⑥ 남긴다
+```
+
+## 못 쟀다
+```
+없음. 열한 파일 모두 여섯 칸을 채웠습니다.
+다만 ④의 «판정»(table_config 를 선언으로 흡수하나)은 제 판단 밖입니다 — 그건 물리 스키마이고
+인제션·그리드·사슬이 같은 파일을 읽습니다(ledger_admin 의 거절문이 그렇게 말합니다).
+```
+
+---
+
 # 🔒 [C 응용] **잡습니다 — 조사 라운드의 «선언 층 11»** (09:3x)
 
 ```
