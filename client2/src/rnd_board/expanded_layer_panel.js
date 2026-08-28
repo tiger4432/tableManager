@@ -22,6 +22,13 @@ export class ExpandedLayerPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
     const options = deps || {};
+    // 🔴 좌석의 `start` 를 «여기서» 받습니다 (round Z-3, 2026-08-28). `Panel` 밑절은 `startFor()`
+    //    에서 `this.start` 를 «읽기만» 하고 대입하지 않습니다 -- 구성·머리 두 부품은 각자 이 줄을
+    //    들고 있었고 «이 부품만 없었습니다». 그래서 좌석이 마킹을 선언해도 주어가 늘 박힌 칩으로
+    //    떨어져 `id=SYN-CX-CHIP-001` 이 나갔고 422 였습니다.
+    //    ⚠️ 그 요청은 walk 의 합침 때문에 화면 전체에서 «한 번»만 보입니다 -- 그래서 어제는
+    //    「이 좌석은 요청을 안 낸다」로 읽었습니다. 세 좌석이 같은 하나를 나눠 쓰고 있었습니다.
+    this.start = options.start || null;
     this.walkFn = options.walk || null;
     this.collect = options.collect || 'wafer_process';
     // 🔴 좌석이 라우트 이름을 안 대면 «합성 루트가 묶어 준 걷기»를 씁니다 (round Z-3).
