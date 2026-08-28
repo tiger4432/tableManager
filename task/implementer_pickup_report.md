@@ -1,3 +1,69 @@
+# ✅ [A 구현자] **거꾸로 걷기 수리 — `frontier_entities` 를 «쓰는» 것이 전부였습니다** (2026-08-28 17:3x)
+
+지시대로 인자 하나를 쓰는 것 말고는 아무것도 안 건드렸습니다. 게이트 넷 전부 «재서» 적습니다.
+
+## 고친 자리 — `ledger_api/ledger_subgraph.py::_expand_atom` «한 곳» (+27 / -5)
+```python
+subject_near = subject_id in frontier_entities
+target_near  = target is not None and target["id"] in frontier_entities
+if subject_near and target_near:  subject_depth = target_depth = depth
+elif subject_near:                subject_depth, target_depth = depth, depth + 1
+else:                             subject_depth, target_depth = depth + 1, depth
+```
+목적어 노드를 «먼저» 만들어야 어느 쪽이 frontier 인지 판정할 수 있어서, `target = _entity_node(...)`
+계산만 위로 올렸습니다. 그 외 순서·분기는 그대로입니다.
+```
+⛔ 그대로 둔 것   SQL 두 arm · add_node/add_edge · 예산 플래그(claim_cut/node_cut/edge_cut) ·
+                follow · 값-목적어 분기 · 새 인자 «0» · 새 옵션 «0»
+```
+
+## 게이트 ① — 씨앗 `defect_kind{void}` · `follow=leads_to` · `hops=6` · `both`
+```
+                수리 전                       수리 후
+nodes           8                             «21»
+edges           7                             «21»
+hops_reached    0                             «3»          ✅ 2 이상
+depth 분포      {0: 8}                        {0:1, 1:7, 2:9, 3:4}
+type 분포       quantity 7 · defect_kind 1    quantity 19 · defect_kind 2
+bond_pressure   «없음»                        «있음 — depth 2»   ✅
+truncated       전부 false                    전부 false
+```
+사슬이 실제로 서 있습니다 — `void(0)` <- `wetting_deficit(1)` <- `bond_temp(2)`,
+그리고 `interface_unfill(1)` <- `bond_pressure(2)`. 3홉 자리에 `die_stress` ·
+`dt_pass_count` · `humidity` · `pre_bond_queue_h` 가 붙었습니다.
+
+## 게이트 ② — 무회귀. «같아야 한다»로 안 적고 두 수를 나란히 적습니다
+씨앗 `SYN-CX-BW-001` · hops=6 · both · node_limit=1000 · edge_limit=3000
+```
+                수리 전                            수리 후
+nodes           1000                               1000        (같음)
+edges           1612                               1612        (같음)
+hops_reached    3                                  3           (같음)
+claims_scanned  6000                               6000        (같음)
+truncated       nodes·claims true, 나머지 false     «동일»
+type 분포       die 877 · defect 121 ·             «동일»
+                wafer 1 · defect_kind 1
+predicates      bonded_from 621 · transfer 621 ·   «동일»
+                inspected 128 · observed 121 ·
+                of_kind 121
+🔴 바뀐 것은 «깊이 분포 하나»입니다
+depth 분포      {0:1, 1:128, 2:870, 3:1}           {0:1, 1:128, 2:377, 3:494}
+```
+1000 «안에 든 구성»은 그대로이고 493 개가 depth 2 -> 3 으로 내려갔습니다. 들어오는 arm 으로
+찾힌 die 들이 이제 자기 «실제» 거리를 받습니다. 판정은 총괄 몫입니다.
+
+## 게이트 ③ — 서버가 뜬다
+```
+TestClient(app) 부팅 «2회» 정상 (게이트 ①②를 이걸로 돌렸습니다) · import 오류 0
+tests/test_ledger_subgraph.py   11 passed · 1 skipped
+```
+
+## 게이트 ④ — 벽 «없음»
+
+## 곁들여: 지난 라운드 게이트 ③ 도 제가 확인했습니다
+`leads_to` 22행을 그대로 읽었습니다 — 목적어 type «quantity 13 · defect_kind 9». 총괄 실측과 같습니다.
+
+---
 # 🛑 [A 구현자] **`leads_to` 22 착지. 나머지 둘은 «두 번째 NULL 벽» — 메시지 그대로 올립니다** (2026-08-28 16:0x)
 
 지시 ①②를 했고, 게이트 ④(「또 다른 NULL 벽이 나오면 멈추고 그 메시지 그대로」)가 걸렸습니다.

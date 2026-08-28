@@ -696,14 +696,36 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     def _expand_atom(atom, depth, frontier_entities):
         """Materialise one atom's far side and the single edge that carries it."""
         subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
-        if subject_id not in nodes:
-            subject = _entity_node(atom.subject_type, atom.subject_keys)
-            if not add_node(subject, decode_node_id(subject["id"]), depth):
-                return
         payload = atom.object_payload or {}
+        target = None
         if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
             target = _entity_node(payload["type"], payload["keys"])
-            if add_node(target, decode_node_id(target["id"]), depth + 1):
+        # 🔴 THE FAR SIDE ADVANCES, AND WHICH SIDE IS FAR DEPENDS ON THE ARM THAT FETCHED
+        # THE ATOM. `claims_for_entities` has two of them, and on the incoming arm the
+        # frontier entity is the OBJECT, so the far side is the SUBJECT. Handing the
+        # subject `depth` unconditionally -- written as if the walk only ever moved
+        # forward -- landed it on a level already walked, where it never joined the next
+        # frontier. The walk then stopped after one hop with every budget flag false, and
+        # a silent stop is indistinguishable from "there is nothing there".
+        # MEASURED 2026-08-28: seeded at defect_kind{void} with follow=leads_to and hops=6
+        # the cause chain returned 8 nodes ALL at depth 0 and hops_reached 0, while the
+        # same graph seeded one node further in showed bond_pressure -> interface_unfill
+        # -> void. `frontier_entities` is what tells the two arms apart; it was already
+        # passed in here and read nowhere in the body until now.
+        subject_near = subject_id in frontier_entities
+        target_near = target is not None and target["id"] in frontier_entities
+        if subject_near and target_near:
+            subject_depth = target_depth = depth
+        elif subject_near:
+            subject_depth, target_depth = depth, depth + 1
+        else:
+            subject_depth, target_depth = depth + 1, depth
+        if subject_id not in nodes:
+            subject = _entity_node(atom.subject_type, atom.subject_keys)
+            if not add_node(subject, decode_node_id(subject["id"]), subject_depth):
+                return
+        if target is not None:
+            if add_node(target, decode_node_id(target["id"]), target_depth):
                 add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate))
             return
         # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
