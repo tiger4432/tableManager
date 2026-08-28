@@ -15,6 +15,10 @@
 ③ 원장이 선언을 따라온다         선언을 고치면 원자가 그 모양이 된다 (코드 0줄)
 ④ 코드가 도메인 낱말로 갈래를 안 튼다   `== "void"` 류 «0»
 ⑤ 안 닿는 원장 모듈이 «0»       진입점 어디에서도 안 닿는 ledger 파일이 없다
+⑥ «두 번째 선언»이 없다          ledger_config.json 하나가 선언의 전부다
+     지금 셋: mechanism_models.json · finding_kinds.json · (그리고 table_config.json)
+     그 둘이 든 것은 «노드와 엣지»다 — bond_pressure -> interface_unfill -> void
+     흡수되면 mechanism_gate 17KB(두 번째 그래프 탐색기) · finding_kinds 15KB 가 walk 하나로
 ```
 
 ## 지금 (2026-08-28 09:0x 실측)
