@@ -49,6 +49,46 @@
 
 ## 🏛️ 지금 서 있는 자리 (2026-08-28 14:5x — 원장 리팩토링 «6 중 5» · ⑥ 판정 완료 · 스위트 복구됨)
 
+### 📐 기획 — 검색창을 «서브그래프 탐색기»로 (소유자 2026-08-28: 「walk 좀 제대로 써보게」)
+
+#### 지금 (총괄 실측 · `walk_box_panel.js` 314줄)
+```
+고르는 것   nodeType(select) · 선언된 keys(input) · follow(술어 집합, 주어 타입으로 걸러짐)
+보내는 것   그 셋뿐 — hops · direction · 예산 · positive/negative «없음»
+보여주는 것 { ok, nodes:[{id,type,label}], message }  — 평면 목록. edges · ranked · truncated «안 씀»
+```
+#### 🔴 승격에 필요한 것 중 «서버 0 · 저장소 0» — 상자만 배선하면 됩니다
+```
+서버      walk 이 이미 받습니다: positive · negative · follow · hops · direction · node/edge_limit
+          이미 돌려줍니다:      nodes · edges · ranked(후보+reach) · truncated · complete
+저장소    marking_store 가 이미 듭니다: 이름 붙은 마킹 여럿 · 부호 {CASE:1, CONTROL:-1}
+          set · toggle · names · entries · subscribe  -> CLAUDE.md 상설 그대로
+🔴 없는 것은 «상자가 그 둘을 안 잇는 것» 하나뿐입니다
+```
+#### 승격의 «핵심 한 줄»
+```
+지금    타입+키로 «한 번» 걷는 상자
+뒤      «마킹에서 걸어 마킹을 만드는» 상자
+        마킹1 ─walk→ 서브그래프 ─찍기→ 마킹2 ─walk→ …     ← 소유자 정본 그대로
+```
+#### 부품 넷 (전부 작습니다)
+```
+① 시작 줄   읽을 마킹 이름(store.names() 드롭다운) · 또는 「씨앗 직접」(지금 UI 를 «그 경로»로 남김)
+            부호는 마킹에서 «자동»으로 옵니다 — store 가 이미 sign 을 듭니다
+② 걷기 줄   follow(있음) + hops · direction · node_limit · edge_limit   ← 정본 인자 목록 그대로
+③ 결과      노드/엣지 수 · 타입 분포 · 후보(ranked) · 🔴 truncated·complete 를 «문장으로»
+            (walk 은 끊김을 이미 말합니다 — 화면이 안 읽어서 「없음」처럼 보였습니다)
+④ 찍기      결과 노드 옆 +/− -> store.toggle(«쓸 마킹 이름», id, sign)     ← 이게 «승격»입니다
+```
+#### 상설과의 관계
+```
+조립식     상자는 «읽을 이름»과 «쓸 이름»을 각각 선언합니다 (CLAUDE.md 그대로)
+           같은 화면에 «둘»을 다른 선언으로 앉혀 간섭 없어야 합니다 — 그게 시험입니다
+라우트     늘어나는 것 «0». walk 하나입니다
+```
+⚠️ 착수 전 판정 하나: ④의 «쓸 마킹»이 새 이름을 만들 수 있게 할지(마킹3·4…), 아니면
+   기존 이름 중에서만 고르게 할지. 전자가 소유자 정본(「체인 길이는 선언이다」)에 가깝습니다
+
 ### 📐 설계 메모 — 물리량 카탈로그 (착수 «전». 소유자 비판이 모양을 정했습니다)
 
 지금 끊긴 자리:
