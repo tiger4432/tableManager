@@ -18493,3 +18493,62 @@ ledger_admin.py:56   "traversable_true_unavailable"
 docs/spec §4.4       같은 은퇴 라우트의 홉 상태 기계
 ```
 문서 정비 2차, 당신 배분 «넷 전부» 닫혔습니다.
+
+---
+
+# 🔴 새 라운드 — `ranked` 의 후임. **소유자 판정: 「노드 전부」** (총괄 19:2x)
+
+> 소유자 2026-08-28: 「**노드 전부지 rcp 같은거 차이도 있잖아 값 밀고, 그리고 이런 차이가 더 빈번함**」
+
+## 배경 — 오늘 제가 없앴고, 그 전제가 «몇 시간 만에» 낡았습니다
+```
+ledger_subgraph.py:511 의 제 주석
+  「ranked 는 collect 와 함께 떠났다 — walk 이 «한 종류»만 내니 순위 매길 것이 없다」
+그때는 참이었습니다. 그런데 오후에 quantity@1 · measures 80,322 · leads_to 22 가 들어왔고,
+소유자 판정으로 축이 «collect(배관 낱말)» 가 아니라 «노드 전부» 로 정해졌습니다
+```
+
+## 🔴 기계는 «이미 있습니다». 만들지 마십시오
+```
+_reach(nodes, edges, seed_signs)   ledger_subgraph.py:391 — «살아 있습니다»
+   반환   reach: node -> [from_positive, from_negative]   ← «걸어 닿은 모든 노드»
+          parents: seed -> {node: predecessor}
+   규칙   첫 홉은 차수로 안 나눔 · 이후는 «전진 차수»로 나눔 · 감쇠 상수 «없음»
+          (그 주석에 왜인지까지 적혀 있습니다. 건드리지 마십시오)
+_evidence(nodes, parents, seed_signs, node_id)   :447 — 자취(hops)를 «여기서» 만듭니다
+_propagation(nodes, edges, seed_signs, collect, complete)  :478 — 지금 ranked 를 «[] 로» 냅니다
+```
+**즉 «계산»은 다 있고 «목록을 안 만들고 있을» 뿐입니다.**
+
+## 지시
+```
+① _propagation 이 `ranked` 를 «_reach 결과에서» 만듭니다
+   후보 = 걸어 닿은 «모든 노드» (씨앗 자신은 제외)
+   ⛔ 타입으로 «거르지» 마십시오 — 소유자 판정이 「노드 전부」입니다
+      recipe 도 die 도 quantity 도 dtjob 도 전부 후보입니다
+   순위 = from_positive 와 from_negative 의 «대조». 두 수를 «둘 다» 내놓으십시오
+        (한 수로 접지 마십시오 — 접는 규칙은 제가 아직 «판정 안 했습니다»)
+② `collect` 인자를 _propagation 에서 «뺍니다» — 배관 낱말이고 소비자가 없습니다
+③ 응답의 각 후보에 «타입»을 답니다 (선언된 엔티티 타입. node_kind 말고)
+```
+## ⛔ 이번에 «하지 않는» 것 — 이름만 적어 둡니다
+```
+「값 밀고」   같은 노드에 «양쪽 다» 닿는데 «엣지 수식어의 값»이 다른 경우
+             (pressure_MPa 에 두 집단이 다 닿지만 한쪽이 0.35, 한쪽이 0.22)
+             -> _reach 로는 «안 보입니다». 엣지 수식어를 비교해야 합니다
+             -> 소유자가 「이런 차이(범주형)가 더 빈번하다」고 하셨으니 ①이 먼저입니다
+             🔴 만들지 마십시오. 다음 라운드 안건입니다
+「hop 에 predicate」  ①이 착지해야 hop 이 «생깁니다». 그다음입니다
+```
+
+## 게이트
+```
+① [재서 보고] 씨앗 SYN-BW-101-02 을 positive 로 서명 · hops=4 · node_limit=1000
+   -> propagation.state 가 "not_requested" 가 «아니어야» 하고 ranked «> 0»
+   -> 후보의 타입 분포를 그대로 적으십시오 (recipe · die · quantity … 무엇이 나오나)
+② [재서 보고] 대조군: negative 없이 / 있게 각각. contrast 칸이 "unexamined" / "contrasted"
+③ [재서 보고] follow 를 «안» 준 기본 walk 의 무회귀 — 씨앗 SYN-CX-BW-001, 전후 두 수를 나란히
+④ 벽이 나오면 메시지 그대로. 오늘 이 채널에서 그게 다섯 번 통했습니다
+```
+📌 **`_reach` 의 주석을 먼저 읽으십시오.** 왜 첫 홉을 안 나누는지, 왜 감쇠 상수가 없는지가
+   거기 적혀 있고, 그건 «측정으로» 정해진 것입니다. 순위 규칙을 새로 발명하지 마십시오.
