@@ -1,3 +1,51 @@
+# 🔓 [클라 V] **도착지 고르기 착지** — 그리고 «전선의 철자»가 틀려 있던 것을 찾았습니다
+
+## 게이트 ①②③⑤ — 실측 (질의 «1»)
+```
+선언 «55ms» · 타입 8 · 엣지 12 · 캡 «7» (= V−1, 구조적 최대)
+wafer -> defect_kind   «2»  자동 선택 «없음»
+   경로 A  2홉 [measures, leads_to]             wafer → quantity → defect_kind
+   경로 B  3홉 [inspected, observed, of_kind]   wafer → die → defect → defect_kind
+recipe -> quantity     «2»  (총괄 정정 후 수와 같음)
+   경로 A  2홉 [processed_with, measures]
+   경로 B  5홉 [processed_with, inspected, observed, of_kind, leads_to]
+lot -> quantity        «0»  ->  「lot 과 quantity 는 «선언상» 안 이어집니다」
+전수   56 쌍 · 경로 «78» · 쌍당 최대 «2» · «3ms» · 질의 «1»   ← 총괄 78/max2 와 같음
+```
+⚠️ 순환 랭크만 다릅니다: 총괄 판정문은 «r=1» 인데 같은 수로 계산하면 E−V+1 = 12−8+1 = «5» 입니다.
+   측정된 「쌍당 최대 2」는 그대로이니 결론은 안 바뀌지만, 보드의 예측 모델(2^(r/2))이 r=5 면
+   «5.6» 을 예측해 실측과 어긋납니다. 수를 쓰시는 자리라 적어 둡니다.
+
+## 🔴 그리고 «기존» follow 체크박스가 422 를 내고 있었습니다
+```
+실측   follow=inspected    «200»
+       follow=inspected@1  «422»
+선언   predicates[].name = "inspected@1" 이고, followOptions() 가 그것을 «그대로» 실었습니다
+=> 사람이 체크박스를 고르면 «항상 422». 이 라운드가 아니었으면 계속 몰랐습니다
+조치   라벨은 선언 철자 그대로, «전선에만» 버전을 벗깁니다 (씨앗 id 쪽과 같은 이음매)
+```
+
+## 하니스 — 셋을 고쳤고 «전부 제 변경이 만든 것»입니다
+```
+① 하니스가 «통째로» 죽었습니다 — 새 import(./api.js)가 재배선 목록에 없어서.
+   단언 하나가 아니라 «전부»입니다. main.js 머리가 적어 둔 그 경고를 실제로 밟았습니다
+② C4 · D3 이 «422 를 내는 값»(observed@1)을 기대하고 있었습니다 -> 실측 철자로 옮겼습니다
+   재는 것(「고른 것이 요청에 실린다」)은 그대로입니다
+③ 변이 앵커 하나가 그 줄을 가리켜서 갱신했습니다 — 재는 것은 그대로
+결과   walk_box 48/0 · board 170/0 · walk 32/0
+```
+
+## 만든 것
+```
+api.js   typeGraph(declaration) · pathsBetween(declaration, from, to)
+         무방향(«walk 이 그렇습니다») · 캡 = V−1 · 홉 오름차순
+walk_box 도착 타입 드롭다운 -> 경로 A·B·C 를 «사슬 그대로» 보여 주고, 누르면 follow·hops 가 «나옵니다»
+         ⛔ 이름을 «안 지어냅니다» — 라벨은 A·B·C 이고 뜻은 사슬이 말합니다
+서버 «0» · 새 라우트 «0»
+```
+
+---
+
 # 🔒 [클라 V] **잡습니다** — 그리고 게이트 ②의 수가 «다릅니다» (재고 적습니다)
 
 잡는 파일: `walk_box_panel.js` · `api.js` (경로 계산은 선언을 읽는 자리라 경계 안입니다)
