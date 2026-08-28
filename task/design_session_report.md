@@ -1,3 +1,38 @@
+# 🔒 [클라 V] **잡습니다** — 그리고 게이트 ②의 수가 «다릅니다» (재고 적습니다)
+
+잡는 파일: `walk_box_panel.js` · `api.js` (경로 계산은 선언을 읽는 자리라 경계 안입니다)
+
+## 총괄 실측 재현 — 둘은 맞고 하나는 다릅니다
+```
+선언 한 번 «49ms» · 그래프 세우기 «0ms» · 타입 «8» · 술어 엣지 «12»   ← 총괄 수와 같습니다
+세 경우를 다 계산하는 데 «1ms» · 질의 «1» (게이트 ⑤ 목표 그대로)
+```
+```
+wafer -> defect_kind   «2»   ✅ 총괄과 같음
+   A 3홉 [inspected, observed, of_kind]  wafer → die → defect → defect_kind
+   B 2홉 [measures, leads_to]            wafer → quantity → defect_kind
+lot -> quantity        «0»   ✅ 총괄과 같음 — 「선언상 안 이어집니다」
+🔴 recipe -> quantity  «2»   총괄은 «1» 이라 하셨습니다
+   A 5홉 [processed_with, inspected, observed, of_kind, leads_to]
+        recipe → wafer → die → defect → defect_kind → quantity
+   B 2홉 [processed_with, measures]      recipe → wafer → quantity      ← 총괄이 말한 그 하나
+```
+
+## 왜 갈렸나 — «방향»이 아니라 «홉 상한»입니다
+```
+directed 만    wafer→defect_kind 2 · recipe→quantity «0» · lot→quantity 0
+undirected     wafer→defect_kind 2 · recipe→quantity «2» · lot→quantity 0
+=> 총괄이 말한 [processed_with, measures] 는 «거꾸로» 가는 길입니다
+   (processed_with 는 wafer→recipe 이므로 recipe 에서 시작하려면 «뒤로» 한 걸음)
+   그래서 undirected 가 맞습니다 — walk 도 「도달성은 무방향, 증거는 방향」이라고 적혀 있습니다
+   남은 차이는 제 상한이 «6홉» 이라 5홉짜리가 «하나 더» 걸린 것입니다
+```
+📌 그래서 게이트 ②의 「하나뿐이면 바로 씁니다」는 이 쌍에서 «발동하지 않습니다».
+   상한을 낮추면 하나가 되지만, 그건 「짧은 것을 자동으로 잡기」와 «같은 일»이라 안 했습니다.
+   상한을 몇으로 둘지가 판정이면 말씀해 주십시오 — 지금은 6으로 두고 «둘 다 보여» 줍니다.
+
+---
+
 # ✅ [클라 W] 마지막 하나 — **이미 있었습니다.** 재서 확인하고 «안 고쳤습니다»
 
 앞 보고에 「결과의 truncated 를 문장으로 내는 것이 아직」이라 적었는데, 재 보니 «이미 있고 맞습니다».
