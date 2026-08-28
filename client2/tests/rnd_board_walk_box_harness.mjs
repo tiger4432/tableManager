@@ -78,11 +78,16 @@ async function loadModules(mutate = {}) {
   const tableUrl = dataUrl(read('table_part.js')
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`));
+  // 🔴 `api.js` 를 «먼저» 만들고 상자에도 배선합니다 (round V, 2026-08-29). 걷기 상자가
+  //    타입 그래프를 쓰려고 `./api.js` 를 import 하는데, 그 줄이 재배선 목록에 없으면
+  //    「Failed to resolve module specifier」로 «하니스가 통째로» 죽습니다 -- 단언 하나가
+  //    아니라 전부입니다. main.js 머리가 그 경고를 적어 둔 자리이고, 실제로 밟았습니다.
+  const apiUrl = dataUrl(read('api.js'));
   const boxUrl = dataUrl(read('walk_box_panel.js')
     .split("'./panel.js'").join(`'${panelUrl}'`)
     .split("'./marking_store.js'").join(`'${storeUrl}'`)
-    .split("'./table_part.js'").join(`'${tableUrl}'`));
-  const apiUrl = dataUrl(read('api.js'));
+    .split("'./table_part.js'").join(`'${tableUrl}'`)
+    .split("'./api.js'").join(`'${apiUrl}'`));
   return { store: await import(storeUrl), box: await import(boxUrl), api: await import(apiUrl) };
 }
 
@@ -180,7 +185,11 @@ async function suite(mods) {
   panel.toggleFollow('observed@1');
   await panel.run();
   await settle();
-  eq('C4 picking one puts it on the request', JSON.stringify(asked[1].follow), '["observed@1"]');
+  // 🔴 2026-08-29 (round V): 전선의 철자가 «벗겨진 이름»입니다. 선언은 `observed@1` 로
+  //    부르고 라우트는 그것을 «422» 로 거절합니다 -- 실측: follow=inspected 200 ·
+  //    follow=inspected@1 «422». 이 단언은 여태 «라우트가 거절하는 값»을 기대하고
+  //    있었습니다. 재는 것(「고른 것이 요청에 실린다」)은 그대로이고 철자만 참으로 옮깁니다.
+  eq('C4 picking one puts it on the request', JSON.stringify(asked[1].follow), '["observed"]');
   panel.toggleFollow('observed@1');
   await panel.run();
   await settle();
@@ -257,7 +266,8 @@ async function suite(mods) {
   await settle();
   eq('D1 A asked with its own type', askedA[0].type, 'die@1');
   eq('D2 B asked with its own', askedB[0].type, 'lot_slot@1');
-  eq('D3 A carried its follow', JSON.stringify(askedA[0].follow), '["observed@1"]');
+  // 같은 이음매 (round V) -- 전선은 벗겨진 이름을 받습니다. C4 위의 실측 참조.
+  eq('D3 A carried its follow', JSON.stringify(askedA[0].follow), '["observed"]');
   ok('D4 B carried none', !('follow' in askedB[0]));
   ok('D5 their key fields differ',
     byAttr(hostA, 'data-key').map((e) => e.getAttribute('data-key')).join(',') === 'mat_id,x,y,mat_type'
@@ -388,8 +398,10 @@ const MUTANTS = [
     to: "    return all.map((p) => p.name);" },
   // ③ an empty array is the OPPOSITE of the server default.
   { name: 'unpicked-follow-is-sent-as-an-empty-array', wakes: 'C2/C5',
-    from: "    if (this.follow.size) spec.follow = [...this.follow];",
-    to: "    spec.follow = [...this.follow];" },
+    // 앵커 갱신 2026-08-29 (round V): 그 줄이 전선에서 버전을 «벗기게» 바뀌었습니다.
+    // 재는 것은 그대로입니다 -- 「안 고른 follow 를 빈 배열로 보내지 않는다」.
+    from: "    if (this.follow.size) spec.follow = [...this.follow].map(bareTypeName);",
+    to: "    spec.follow = [...this.follow].map(bareTypeName);" },
   { name: 'blank-key-boxes-are-sent-as-filters', wakes: 'C6',
     from: "    for (const [k, v] of Object.entries(this.keyValues)) if (v !== '' && v !== undefined) keys[k] = v;",
     to: "    for (const [k, v] of Object.entries(this.keyValues)) keys[k] = v;" },

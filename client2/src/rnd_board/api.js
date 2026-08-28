@@ -1386,6 +1386,88 @@ export function createWalk(deps) {
 //    물을 수 없게 됩니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// THE TYPE GRAPH — 「무엇을 볼지 고르면 follow 가 나온다」 (라운드 V, 소유자 2026-08-29)
+//
+// 🔴 THE LEDGER IS NOT READ. This graph is the DECLARATION's size, not the data's: 8 types and
+//    12 predicate edges against 749,044 atoms. Measured: `/declaration` 49ms, building the
+//    graph 0ms, every path for every pair about 1ms. So it costs the same whether the ledger
+//    holds three quarters of a million rows or ten times that.
+//
+// 🔴 UNDIRECTED, BECAUSE THE WALK IS. `subgraph` is undirected for reachability and directed
+//    only in the evidence it returns, and the paths people actually want run backwards along an
+//    edge: `processed_with` is wafer -> recipe, so starting FROM a recipe needs that step
+//    reversed. Searching only forwards answers zero for recipe -> quantity, which is wrong.
+//
+// 🔴 NO AUTOMATIC SHORTEST. Measured, wafer -> defect_kind has two: two hops through
+//    `measures`/`leads_to` (a quantity that COULD cause that kind) and three through
+//    `inspected`/`observed`/`of_kind` (a kind actually SEEN). Taking the short one silently
+//    serves an inference as a fact. The reader picks, and picks by reading the chain.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** `wafer@1` -> `wafer`. The declaration versions its names and the ledger does not. */
+function bareType(value) {
+  return String(value || '').split('@')[0];
+}
+
+/** `{types, edges}` from a declaration body. Edges carry the predicate that makes them. */
+export function typeGraph(declaration) {
+  const edges = [];
+  for (const predicate of (declaration && declaration.predicates) || []) {
+    const froms = (predicate.subjects || []).map(bareType);
+    const tos = ((predicate.object || {}).types || []).map(bareType);
+    for (const from of froms) {
+      for (const to of tos) edges.push({ from, to, predicate: bareType(predicate.name) });
+    }
+  }
+  const types = [...new Set(edges.flatMap((e) => [e.from, e.to]))].sort();
+  return { types, edges };
+}
+
+/**
+ * Every simple path from one declared type to another, as `{hops, follow, chain}`.
+ *
+ * 🔴 THE CAP IS STRUCTURAL, NOT A POLICY. A simple path cannot revisit a type, so it cannot be
+ * longer than `types - 1`; that is the maximum that CAN exist, not a number chosen to keep the
+ * list short. Lowering it is the same act as auto-picking the shortest -- measured, a cap of 4
+ * makes `recipe -> quantity` look like one path when it is two.
+ *
+ * 🔴 WHAT KEEPS THIS SMALL IS THE CYCLE RANK, not the cap: `E - V + 1` is 1 today, which bounds
+ * a pair at two paths. If the vocabulary grows cycles, the list grows with them and THAT is the
+ * moment to look at the vocabulary -- not a moment to trim the answer.
+ */
+export function pathsBetween(declaration, from, to) {
+  const { types, edges } = typeGraph(declaration);
+  const limit = Math.max(1, types.length - 1);
+  const out = [];
+  const walkOn = (at, seen, chain) => {
+    if (chain.length && at === to) { out.push(chain.slice()); return; }
+    if (chain.length >= limit) return;
+    for (const edge of edges) {
+      let next = null;
+      if (edge.from === at) next = edge.to;
+      else if (edge.to === at) next = edge.from;
+      else continue;
+      if (seen.has(next)) continue;
+      seen.add(next);
+      chain.push({ predicate: edge.predicate, next });
+      walkOn(next, seen, chain);
+      chain.pop();
+      seen.delete(next);
+    }
+  };
+  if (from && to && types.includes(from) && types.includes(to)) {
+    walkOn(from, new Set([from]), []);
+  }
+  return out
+    .map((steps) => ({
+      hops: steps.length,
+      follow: [...new Set(steps.map((s) => s.predicate))],
+      chain: [from, ...steps.map((s) => s.next)],
+    }))
+    .sort((a, b) => a.hops - b.hops);
+}
+
 /** `["wafer", {wafer: "SYN-…"}]` -> `ledger-entity:v1:<base64url>`. 서버 `decode_entity_id` 의 짝. */
 export function entitySeedId(type, keys) {
   // 🔴 «타입은 벗겨서» 보냅니다. 선언은 `wafer@1` 로 버전을 달고 원장은 `wafer` 로 삽니다.

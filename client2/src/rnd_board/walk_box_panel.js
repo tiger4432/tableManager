@@ -35,6 +35,12 @@
 import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
+import { typeGraph, pathsBetween } from './api.js';
+
+/** `wafer@1` -> `wafer`. 선언은 버전을 달고 타입 그래프는 안 답니다. */
+function bareTypeName(value) {
+  return String(value || '').split('@')[0];
+}
 
 export class WalkBoxPanel extends Panel {
   constructor(host, deps) {
@@ -211,7 +217,11 @@ export class WalkBoxPanel extends Panel {
     const spec = { type: this.nodeType, keys };
     // 🔴 «안 고르면 안 싣습니다». 빈 배열을 실으면 「아무 술어도 따르지 마라」로 읽히고,
     //    서버 기본값(전부)과 «정반대»입니다. 없는 것은 없는 채로 보냅니다.
-    if (this.follow.size) spec.follow = [...this.follow];
+    // 🔴 «버전을 벗겨서» 보냅니다 (round V, 2026-08-29). 선언은 `inspected@1` 로 부르고 라우트는
+    //    `inspected` 만 받습니다 -- 실측: follow=inspected 200 · follow=inspected@1 «422».
+    //    체크박스 라벨은 선언의 철자를 그대로 쓰고, 전선에만 벗깁니다. 같은 이음매를 씨앗 id
+    //    쪽에서도 이미 그렇게 넘습니다(`entitySeedId` 의 그 줄).
+    if (this.follow.size) spec.follow = [...this.follow].map(bareTypeName);
     const got = await this.walkFn(spec);
     this.result = got || null;
     this.walkState = got && got.ok ? 'ready' : 'refused';
@@ -246,6 +256,7 @@ export class WalkBoxPanel extends Panel {
 
     root.appendChild(this._typeRow());
     root.appendChild(this._keyRow());
+    root.appendChild(this._destinationRow());
     root.appendChild(this._followRow());
     root.appendChild(this._runRow());
     root.appendChild(this._resultBox());
@@ -289,6 +300,86 @@ export class WalkBoxPanel extends Panel {
       box.appendChild(row);
     }
     return box;
+  }
+
+  /**
+   * 「무엇을 볼지」 고르는 줄. 술어가 아니라 «도착 노드 타입»을 고르고, 경로가 나옵니다.
+   *
+   * 🔴 자동으로 «안 고릅니다». 길이 여럿이면 경로 A · B · C 로 내놓고 사람이 사슬을 읽습니다 --
+   *    실측: wafer -> defect_kind 의 2홉은 「일으킬 수 있는」(추정)이고 3홉은 「관측된」(사실)이라,
+   *    짧다고 잡으면 추정을 사실로 내놓습니다.
+   * 🔴 이름을 «지어내지 않습니다». 「관측 경로」 같은 라벨은 두 번째 어휘입니다 -- 사슬을 그대로
+   *    보여 주고 라벨은 A · B · C 입니다. 이름이 필요하면 «선언»에서 와야 합니다.
+   */
+  _destinationRow() {
+    const doc = this.doc;
+    const box = this._field('무엇을 볼까 (도착 타입)');
+    const from = bareTypeName(this.nodeType);
+    if (!from) {
+      box.appendChild(this._note('먼저 시작 타입을 고르십시오'));
+      return box;
+    }
+    const select = doc.createElement('select');
+    select.className = 'rb-walkbox-select';
+    const none = doc.createElement('option');
+    none.setAttribute('value', '');
+    none.textContent = '— 술어를 직접 고릅니다 —';
+    select.appendChild(none);
+    for (const type of this.declaredTypes()) {
+      if (type === from) continue;
+      const opt = doc.createElement('option');
+      opt.setAttribute('value', type);
+      opt.textContent = type;
+      if (type === this.destination) opt.setAttribute('selected', 'selected');
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', (ev) => {
+      this.destination = (ev && ev.target && ev.target.value) || '';
+      this.chosenPath = null;
+      this.render();
+    });
+    box.appendChild(select);
+    if (!this.destination) return box;
+    const routes = this.routes();
+    if (!routes.length) {
+      // 🔴 「없다」와 「못 봤다」를 가릅니다 -- 이건 데이터가 아니라 «선언»의 사실입니다.
+      box.appendChild(this._note(
+        `${from} 과 ${this.destination} 은 «선언상» 안 이어집니다`, 'is-absent'));
+      return box;
+    }
+    routes.forEach((route, index) => {
+      const row = doc.createElement('button');
+      row.setAttribute('type', 'button');
+      row.setAttribute('data-route', String(index));
+      row.className = 'rb-walkbox-route'
+        + (this.chosenPath === index ? ' is-on' : '');
+      row.textContent = `경로 ${String.fromCharCode(65 + index)} · ${route.hops}홉 · `
+        + `${route.chain.join(' → ')}`;
+      row.addEventListener('click', () => this.useRoute(index));
+      box.appendChild(row);
+    });
+    return box;
+  }
+
+  /** 선언이 준 «타입 이름»들. 지어낸 목록이 아니라 선언의 것입니다. */
+  declaredTypes() {
+    return this.declaration ? typeGraph(this.declaration).types : [];
+  }
+
+  /** 지금 시작 타입에서 고른 도착지까지의 경로들. 선언 한 번으로 계산됩니다. */
+  routes() {
+    if (!this.declaration || !this.destination) return [];
+    return pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination);
+  }
+
+  /** 경로 하나를 «쓴다» -- follow 와 hops 가 그 경로에서 나옵니다. */
+  useRoute(index) {
+    const route = this.routes()[index];
+    if (!route) return;
+    this.chosenPath = index;
+    this.follow = new Set(route.follow);
+    this.hops = route.hops;
+    this.render();
   }
 
   _note(text, cls) {
