@@ -56,8 +56,16 @@ def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_r
             "predicate": "observed",
             "class": "observation",
             "subject": {"type": "wafer", "keys": {"wafer": "$product"}},
-            "object": {"kind": "value", "payload": {
-                "finding_kind": "void", "method": "map", "run_uid": "$run"}},
+            # 🔴 THE OBJECT MATCHES THE DECLARATION SO THAT ONLY THE SUBJECT CONFLICTS.
+            # This fixture was written while `observed`'s object was a VALUE carrying
+            # `finding_kind`; the declaration revision of 2026-08-28 made that object an
+            # `entity_ref` to `defect@1`, and the contract then reported TWO issues - the
+            # subject conflict this test is about, and a real object-kind conflict the
+            # fixture had stopped matching. The checker was right both times; what aged is
+            # the fixture. The type carries its version because `object_types` is compared
+            # to the declared list verbatim, while subjects are compared bare.
+            "object": {"kind": "entity_ref", "type": "defect@1",
+                       "keys": {"defect": "$defect"}},
         }],
     }
     contract = compile_source("product_registry", source)
