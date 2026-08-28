@@ -320,7 +320,7 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
             "translator_vocabulary_mismatch",
             issue.get("configured_by") or "vocabulary",
             issue.get("detail_ko") or
-            f"번역기가 발화할 '{predicate}' Claim이 선언의 서명과 맞지 않습니다.",
+            f"번역기가 발화할 '{predicate}' 원자가 선언의 서명과 맞지 않습니다.",
             f"translator emission {predicate!r} does not match the live declaration"))
 
     return out

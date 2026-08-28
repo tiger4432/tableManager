@@ -624,8 +624,9 @@ def _validate_observation_source(source: dict, where: str):
     if not finding_kind:
         raise LedgerConfigError(
             f"{where}.finding_kind is not declared. An observation source translates ONE "
-            f"kind of finding (`server/finding_kinds.py` is the registry of what a kind "
-            f"is), and the value lands in every atom's payload - guessing it from the "
+            f"kind of finding (`server/ledger_api/finding_kinds.py` is the registry "
+            f"of what a kind is), and the value lands in every atom's payload - "
+            f"guessing it from the "
             f"table name would put an unreviewed word in the ledger.")
 
     run = source.get("run")

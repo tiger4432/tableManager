@@ -253,7 +253,7 @@ def _compatibility(source, source_cfg, emission):
     if signature is None:
         issues.append({
             "code": "predicate_undeclared",
-            "detail_ko": f"번역기는 '{predicate}' Claim을 만들지만 vocabulary에 서명이 없습니다.",
+            "detail_ko": f"번역기는 '{predicate}' 원자를 만들지만 vocabulary에 서명이 없습니다.",
         })
         return "undeclared", None, issues
 
@@ -355,7 +355,7 @@ def compile_source(source, source_cfg):
         "emissions": compiled,
         "issues": all_issues,
         "sentence_ko": (
-            f"'{source}'는 {translator['profile']} 번역기로 Claim {len(compiled)}종을 발화하며 "
+            f"'{source}'는 {translator['profile']} 번역기로 원자 {len(compiled)}종을 발화하며 "
             f"vocabulary와 {'맞물립니다' if state == 'ready' else '맞지 않습니다'}."
         ),
     }
