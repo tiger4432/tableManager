@@ -1,3 +1,54 @@
+# ✅ [A 구현자] **⑥ 착지 — 두 번째 탐색기 내렸습니다. 커밋 `31d34ea0` «하나»** (2026-08-28 20:2x)
+
+지시 순서 그대로 ③ 먼저 → ①② 이동. ④⑤ 는 «손대지 않았습니다».
+
+## 한 커밋 안의 셋
+```
+③ tests/test_ledger_subgraph.py:15  `from ledger_api import mechanism_gate`  «삭제»
+   이 파일에서 그 이름을 쓰는 자리 «0» 을 확인하고 지웠습니다 (지운 뒤 파일 전체에 이름 «0»)
+① ledger_api/mechanism_gate.py      -> _archive/ledger_api/mechanism_gate.py   «git mv»
+② tests/test_mechanism_gate.py      -> _archive/tests/test_mechanism_gate.py   «git mv»
+```
+
+## 게이트 넷
+```
+① 수집   4,268 -> «4,257»   정확히 −11 · Interrupted «없음» · 오류 «0»
+   🔴 물어보신 차이를 적습니다 — 이번엔 «뺄 수 있고» 아침엔 «없었습니다»
+      오늘 −11   test_mechanism_gate.py 가 «수집되고 있던» 11 -> 빼면 그만큼 줄어듭니다
+      아침 47    수집 «중에 오류가 난» 파일들이라 기여분이 «0» 이었습니다.
+                 4,268 은 그 47 을 «한 번도 포함한 적이 없어서» 뺄 대상이 아니었습니다
+      한 줄로:  «수집된 것»만 뺄 수 있습니다. 못 세던 것은 뺄 수 없습니다
+② walk   씨앗 SYN-CX-BW-001 · hops=6 · both · nl=1000 · el=3000
+         nodes «1000» · edges «1612» · wafer 1 · die 877 · defect 121 · defect_kind 1
+         predicates  bonded_from 621 · transfer 621 · inspected 128 · observed 121 · of_kind 121
+         hops_reached 3 · truncated nodes·claims
+         -> 총괄 기준선과 «한 글자도» 다르지 않습니다 ✅
+③ 서버   TestClient(app) 부팅 정상 · import 오류 «0» ✅
+④ 호출   server/ 운영 코드에서 mechanism_gate 를 «부르는» 자리 «0» ✅
+         import 위치로 훑었습니다(리터럴 아님) — `_archive/` 밖에 «0»
+tests/test_ledger_subgraph.py  11 passed · 1 skipped
+```
+
+## 🔴 이동이 «거짓으로 만든» 문장 하나를 같은 커밋에서 고쳤습니다
+```
+ledger_subgraph.py:697   「The file `mechanism_gate.py` is untouched」
+   -> 이 커밋이 그 문장을 거짓으로 만듭니다. «어디로 갔는지»로 바꿨습니다
+   이것이 `ledger_subgraph.py` 에서 바뀐 «유일한 줄»입니다
+```
+
+## ⚠️ 보고만 — 같은 파일에서 «봤지만 안 고친» 것 둘 (다른 절이라 멈췄습니다)
+```
+① 모듈 docstring (ledger_api/ledger_subgraph.py L10~20)
+   아직 「Finding Collection · Finding Point · Quantity · binding · mechanism graph」로
+   이 모듈을 «설명»하고 있습니다 — 오늘 전부 은퇴한 낱말입니다
+   («코드»가 아니라 파일 머리의 산문입니다. 오늘 스펙에서 걷어낸 그 부류입니다)
+② L692~693 에 «잘린 문장»이 있습니다
+   「… carries no Quantity nodes — the same «state, not」  <- 여기서 끊깁니다
+   앞선 삭제가 남긴 조각으로 보입니다. 제 이번 변경이 만든 것은 «아닙니다»
+```
+👉 「고쳐라」 하시면 그 둘만 한 커밋으로 갑니다. 지금은 지시 범위(①②③)를 안 넘겼습니다.
+
+---
 # ✅ [A 구현자] **`ranked` 돌아왔습니다 — 후보는 «닿은 노드 전부». 커밋 `d0691587`** (2026-08-28 19:4x)
 
 `_reach` 는 «한 글자도» 안 건드렸습니다. `_rank_layers` 는 **만들지 않고 `9f0d964d^` 에서
