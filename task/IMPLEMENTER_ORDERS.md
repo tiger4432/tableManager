@@ -1,3 +1,46 @@
+# ✅ [서버] **가십시오 — 멈춘 판단이 «옳았고», ①은 이제 커밋돼 있습니다** (총괄 04:5x)
+
+`task/continues_budget_report.md` 잘 받았습니다. **트리에서 남의 미커밋 변경을 보고 멈춘 것이
+정확한 조치입니다** — 그걸 자기 것으로 알고 위에 쌓았으면 오늘 밤 제가 두 번 맞은 사고
+(「내 에이전트와 사용자는 한 표면에 쓴다」)가 세 번째가 됐습니다.
+
+## 그 변경은 제 것이었고 지금 «커밋돼» 있습니다 — `4cbcb086`
+```
+server/ledger/setup_bundle.py       ✅ 검증기 optional=("continues",) + bool 검사
+server/ledger/ledger_skeleton.json  ✅ 술어 레코드에 flag 리프
+server/config/ontology/…json        ✅ 여섯에 continues: true (라이브 · 총괄 전담)
+```
+소유자가 「선언 수정하고 ontology explore에도 반영」이라 지시했고, 검증기가 «막고 있어서»
+셋이 같이 갈 수밖에 없었습니다. 지시서 맨 위 정정에 사정을 적어 뒀습니다.
+
+## 지금부터 레인의 것 — ②③ «만»
+```
+② server/ledger_trace_router.py     _continuing_predicates() + continues_hops
+③ server/ledger_api/ledger_subgraph.py   dep_cost 사전 + 가드 + 절단 상한 이동(:879 :884)
+```
+`git pull` 하고 시작하십시오. 트리에 남는 미커밋 변경은 이제 «없어야» 합니다 —
+있으면 그것도 남의 것이니 같은 판단으로 다시 멈추십시오.
+
+## 🔴 게이트가 바뀌었습니다 — 「무회귀」가 아니라 「전/후」입니다
+선언에 continues 가 이제 여섯 있습니다. **②③ 전에는 읽는 코드가 없어 효과가 0이어야 하고,
+후에는 같은 씨앗에서 더 멀리 닿아야 합니다.**
+```
+씨앗   GET /api/ledger/subgraph · id=<wafer SYN-BW-101-16> · hops=6 · node_limit=1000 · direction=both
+전     continues_hops 안 보냄 -> nodes · hops_reached · truncated
+후     continues_hops=12      -> 같은 셋
+⚠️ 기준선을 제 문서에서 베끼지 마십시오. 직접 재서 두 줄로
+⚠️ 서버는 총괄이 04:4x 에 재기동했습니다 (그 전 프로세스는 08-28 18:14 것이라 새 코드가 없었습니다).
+   ②③ 착지 후에도 «재기동해야» 잽니다 — 「빌드했다고 로드된 건 아니다」
+```
+
+## ⛔ 그대로입니다
+```
+⛔ 라이브 선언 열기 · ⛔ 술어 이름 코드에 박기 · ⛔ 자재 걸음을 0홉으로 세기 · ⛔ 클라 변경
+⛔ test_ledger_skeleton 의 빨강 고치기 — 제 변경 «전»에도 red 였고 별건입니다 (보드에 있음)
+```
+
+---
+
 # 🔴 [서버] **정정 — ①은 «총괄이 이미 했습니다». 레인은 ②③만** (총괄 2026-08-29 04:4x)
 
 바로 아래 `continues` 지시서의 **①(검증기)만 빼십시오.** 소유자가 「선언 수정하고 ontology
