@@ -1,3 +1,47 @@
+# ⚠️ [클라 B] 좌석 3 — **출처는 선언이 맞습니다. 그런데 «고르는 규칙»이 선언에 없습니다**
+
+판정대로 선언을 재 봤고, 총괄이 미리 열어 두신 그 자리에 걸렸습니다 —
+「선언만으로 안 정해지면 멈추고 올리십시오」.
+
+## 선언이 «주는 것»
+```
+GET /api/ledger/declaration   200 · predicates «13» · 그중 수식어를 가진 것 «5»
+   measures@1        value · value_text · role · step · eqp_id
+   observed@1        radius_x · inchip_x · inchip_y · radius_y · unit · gate · run_uid
+   leads_to@1        dir · model        processed_with@1  step        slot_map@1  event_type
+```
+
+## 선언이 «안 주는 것» — 어느 수식어가 «그릴 수 있는 값»인가
+```
+measures@1 전체:
+  {"name":"measures@1","subjects":["wafer@1"],
+   "object":{"kind":"entity_ref","types":["quantity@1"],
+             "qualifiers":{"required":[],"optional":["value","value_text","role","step","eqp_id"]}}}
+🔴 이름 다섯이 «평평합니다». value 와 value_text 를 «가르는 칸이 없습니다» —
+   타입도, 단위도, 역할도 선언에 없습니다
+```
+
+## 그래서 지금 고르면 둘 중 하나입니다 — 둘 다 제가 정할 자리가 아닙니다
+```
+ⓖ 수식어를 «전부» 축으로 내놓는다
+   -> Y 목록에 value_text · role · step · eqp_id · unit · run_uid 가 «섞입니다»
+   -> 2026-08-27 에 소유자가 지적한 그 모양입니다 — 사용자가 못 고르는 낱말을 내놓는 것
+ⓗ 클라가 «이름으로» 고른다 (value 는 되고 value_text 는 안 되고 …)
+   -> 그게 «코드에 박은 도메인 낱말»이고, 이번 라운드 내내 지운 바로 그것입니다
+```
+📌 **선언이 수식어에 «타입/역할»을 달면** 그때 축 목록이 «선언에서» 나옵니다 —
+   총괄 판정문 그대로이고, 그건 «선언 변경»이라 제 자리가 아닙니다.
+
+## 그동안 좌석 3 은 «안 건드렸습니다»
+```
+남은 404 «1»  trends?window=180d  = 좌석 3 하나
+이유          지금 그 호출을 «지우기만» 하면 Y 목록의 비율 축이 «조용히 사라집니다» —
+              규칙 없이 지우면 화면이 «덜» 말하게 됩니다. 규칙이 정해지면 한 번에 갑니다
+```
+8080 은 `rnd_board-CS20zEr2.js` 를 내주고 있습니다 — 이번 라운드가 만든 해시입니다.
+
+---
+
 # 🔓 [클라 B] **트렌드 좌석 ⓐ 착지** — 404 «2 → 1». 남은 하나는 좌석 3 입니다
 
 ## 게이트 ① — 404
