@@ -17592,3 +17592,41 @@ walk: 타입 {wafer 1 · die 877 · defect 121 · defect_kind 1}
 ⛔ 그동안 그 여섯 파일을 «건드리지 마십시오». 끝나면 수를 올립니다
 📌 이 줄이 방금 배운 규율입니다 — 공유 자원에 긴 쓰기를 시작할 땐 «먼저 알린다»
 ```
+
+---
+
+# 🔴 ⑥ 착수 — 1차: `finding_kinds` 흡수 (총괄, 2026-08-28 12:2x · 소유자 「ㅇㅇ 해」)
+
+목표 ⑥ 문장을 «정정»했습니다 — 「선언 파일이 하나」가 아니라 **「온톨로지 선언이 하나」**.
+`table_config.json` 은 물리 스키마의 정본이고 그건 «다른 층»입니다(CLAUDE.md 기존 판정).
+
+## 🔴 방법이 정해지는 사실 하나 — 오늘 실측
+```
+walk 은 «원자»를 걷습니다. 선언에 있어도 원자가 없으면 «안 보입니다»
+   증거: has_wafer@1 · derived_from@1 — 선언 술어인데 원자 0이라 walk 에 한 번도 안 나옵니다
+=> 흡수 = «선언을 소스로 삼아 원자를 쓰는 것». walk 이 선언에서 엣지를 만들게 하는 것이 «아닙니다»
+   (그건 오늘 아침 지운 references 기전을 다시 만드는 것입니다)
+```
+
+## 1차 대상 — `finding_kinds.json` 은 «둘로 갈립니다»
+```
+🟢 온톨로지  kind 자체            -> defect_kind@1  «이미 있음» (오늘 총괄이 넣음)
+            observed_by (sat·scat) -> method@1 엔티티 + observed_by@1 술어
+            label                 -> 표시용. 키에서 나오면 «따로 안 적습니다»
+🔵 물리      observation_table · extent_columns · unit_column
+            -> «온톨로지가 아닙니다». table_config 또는 소스 선언 쪽입니다. 이번에 «안 옮깁니다»
+```
+
+## [A 구현자] 착수 전 «재서» 올리십시오 — 판정은 그 뒤입니다
+```
+① finding_kinds.json 의 각 칸을 «누가 읽나»  — 칸마다 소비자 파일·줄
+   (label · observed_by · observation_table · extent_columns · unit_column · classes)
+   -> 「온톨로지 칸」과 「물리 칸」의 실제 소비자가 갈리는지 봅니다
+② observed_by 의 값(sat·scat)이 «원장 어딘가»에 이미 있나
+   힌트: observed 원자의 run_uid 가 "sat|…" 로 시작합니다 — 그게 method 인지 재십시오
+③ method 를 엔티티로 만들면 원자를 «무엇이» 쓰나
+   소스가 void_obs_observed 하나뿐이면 그 bind 에 매핑 한 줄이면 됩니다 — 맞는지 확인
+⛔ 아무것도 «고치지» 마십시오. 위 셋만 올리십시오
+```
+📌 ②가 특히 중요합니다 — 이미 원자에 있는 값을 «새로 선언»하면 같은 사실이 두 군데가 됩니다.
+   오늘 밤 우리가 계속 지운 그 모양입니다.

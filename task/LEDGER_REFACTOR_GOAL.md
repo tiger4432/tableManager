@@ -15,7 +15,15 @@
 ③ 원장이 선언을 따라온다         선언을 고치면 원자가 그 모양이 된다 (코드 0줄)
 ④ 코드가 도메인 낱말로 갈래를 안 튼다   `== "void"` 류 «0»
 ⑤ 안 닿는 원장 모듈이 «0»       진입점 어디에서도 안 닿는 ledger 파일이 없다
-⑥ «두 번째 선언»이 없다          ledger_config.json 하나가 선언의 전부다
+⑥ «두 번째 온톨로지 선언»이 없다   ledger_config.json 하나가 «온톨로지»의 전부다
+     🔴 2026-08-28 정정: 처음에 「선언 파일이 하나」로 적었는데 «닿을 수 없는 도착지»였다.
+        table_config.json 은 «물리 스키마»의 정본이고(CLAUDE.md 기존 판정),
+        인제션·체인·맵이 읽는다. 온톨로지에 물리 컬럼을 넣으면 두 관심사가 섞인다
+     흡수 대상은 «둘»: mechanism_models.json · finding_kinds.json
+     🔴 그리고 «선언만으로는 안 보인다» — walk 은 원자를 걷는다
+        (증거: has_wafer@1 · derived_from@1 은 선언 술어인데 원자 0이라 walk 에 안 나온다)
+        -> 흡수는 «선언을 소스로 삼는 인제션»이다. walk 이 선언에서 엣지를 만들게 하는 것이
+           아니다 — 그건 오늘 아침 지운 references 기전을 다시 만드는 것이다
      지금 셋: mechanism_models.json · finding_kinds.json · (그리고 table_config.json)
      그 둘이 든 것은 «노드와 엣지»다 — bond_pressure -> interface_unfill -> void
      흡수되면 mechanism_gate 17KB(두 번째 그래프 탐색기) · finding_kinds 15KB 가 walk 하나로
