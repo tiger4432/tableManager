@@ -18246,3 +18246,65 @@ python -m ledger.backfill --source process_param_txt_measure
 📌 **오늘 이 라운드에서 제 예측이 두 번 틀렸고 두 번 다 당신의 «그대로 올리기»가 잡았습니다.**
    (「나머지는 문자열」 -> 불리언 4,655 · 「문자열 NULL 은 통과」 -> 벽)
    추측을 게이트에 적은 제 쪽이 문제였습니다. 앞으로는 «재고 나서» 적겠습니다.
+
+---
+
+# 🔴 판별식을 «제가 미리 태워 봤고 실패했습니다» — 원인은 제 선언입니다 (총괄 16:1x)
+
+당신의 `leads_to` 22 가 들어간 뒤, 게이트 ③을 기다리지 않고 제가 먼저 걸어 봤습니다. **안 닿습니다.**
+```
+씨앗 defect_kind{void} · hops=3 · follow 없음   -> nodes 1000 · 전부 defect · quantity «0»
+                          follow=leads_to        -> nodes «1» · edges «0»    ← 예산 문제가 아닙니다
+원자를 열어 보니
+   {"keys":{"quantity":"void"}, "type":"quantity"}      목적어 type 분포: quantity «22» · defect_kind «0»
+```
+🔴 **제가 쓴 bind 가 목적어를 «언제나» `quantity@1` 로 만듭니다.** 그래서 `void` 가
+`quantity@1{quantity:"void"}` 라는 «다른 노드»가 됐습니다 — 원장의 `defect_kind@1{defect_kind:"void"}`
+와 이름만 같고 연결이 없습니다. **바인딩은 값에 따라 엔티티 타입을 바꾸지 못합니다.**
+제 지시서의 「void·delam 은 그대로 두면 붙습니다」가 **틀렸습니다.** 붙지 않습니다.
+
+## 고쳤습니다 — value/value_text 때와 «같은 판정»입니다
+「한 바인딩이 두 모양을 낼 수 없으면 소스를 가른다」.
+```
+🔴 가르는 기준에 «도메인 낱말을 안 씁니다» — 모델이 자기 finding_kind 를 선언합니다
+   to_quantity == 그 모델의 finding_kind   -> 발견 쪽   «9»
+   그 외                                   -> 물리량 쪽 «13»       (합 22, 제가 모델 파일에서 셌습니다)
+   ⚠️ void_observation_bias 는 target 이 'void_observed' 이고 finding_kind 는 'void' 라
+      그 한 줄은 «물리량 쪽»입니다. 모델 스스로 「발생이 아니라 겉보기」라고 적은 그대로입니다
+
+총괄이 만든 것
+  ALTER  mechanism_edge  + to_role varchar        (22행 유지, 지금 비어 있음)
+  VIEW   mechanism_edge_to_quantity  WHERE to_role='quantity'
+  VIEW   mechanism_edge_to_finding   WHERE to_role='finding'
+  table_config 표/뷰 41 -> 43
+총괄이 고친 것
+  ❌ mechanism_edge_causes  «삭제»
+  ✅ mechanism_edge_to_quantity_causes  -> target entity_type quantity@1   {quantity: to_quantity}
+  ✅ mechanism_edge_to_finding_causes   -> target entity_type defect_kind@1 {defect_kind: to_quantity}
+  검증  대조군 «0» · 현재 «0»
+총괄이 지운 것
+  잘못 번역된 leads_to 원자 «22» + 그 커서.  🔴 소스 행 22 는 «살아 있습니다» — 지운 건 투영입니다
+```
+
+## 당신이 할 것
+```
+① mechanism_edge.to_role 22행을 채웁니다
+   규칙: 그 행의 model 이 선언한 finding_kind 와 to_quantity 가 «같으면» 'finding', 아니면 'quantity'
+   ⛔ 'void'·'delam' 을 코드에 쓰지 마십시오 — 모델 파일에서 읽으십시오
+② backfill 넷:
+     process_param_num_measure · process_param_txt_measure
+     mechanism_edge_to_quantity_causes · mechanism_edge_to_finding_causes
+```
+## 게이트 — 「제가 쟀다」와 「재서 보고하라」를 «구분해» 적습니다
+```
+① [제가 쟀음] 뷰 행수  to_quantity «13» · to_finding «9»
+② [제가 쟀음] 원자 measures «80,322» (73,267+7,055) · leads_to «22»
+③ [제가 쟀음] leads_to 목적어 type 분포가 «quantity 13 · defect_kind 9» 여야 합니다
+              (지금은 quantity 22 · defect_kind 0 이었습니다 — 이게 이 수리의 «전후» 지표입니다)
+④ [재서 보고] 🔴 판별식: 씨앗 defect_kind{void} · follow=leads_to · direction=both
+              -> quantity 노드가 «나오는가». 수와 이름을 그대로 적으십시오
+⑤ [재서 보고] walk 씨앗 SYN-CX-BW-001 의 새 분포
+```
+📌 **게이트 ③ 을 당신이 돌기 전에 제가 태워 본 것이 이 라운드에서 제일 잘한 일입니다.**
+   안 태웠으면 「원자 80,322 착지」로 «초록»을 받고 목적은 실패한 채로 닫혔을 것입니다.
+   제 지시서의 문장 하나가 틀렸는데 그 문장은 «게이트가 아니라 본문»에 있었습니다.
