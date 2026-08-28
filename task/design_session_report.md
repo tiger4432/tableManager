@@ -1,3 +1,227 @@
+# 🔬 [클라 B] ⑥ 2차 조사 답 — `mechanism_models.json`. **아무것도 안 고쳤습니다**
+
+지시(`2375f372`) 넷을 순서대로. 못 잰 것은 「못 쟀다」로 적었습니다.
+
+## 🔴 먼저: 총괄이 받으신 «유령 커밋»의 제목은 제 답이 아닙니다
+「the graph does not touch the ledger at all」 — **제 측정은 그 문장이 «절반만» 참이라고 말합니다.**
+그 절반이 이번 판정의 전부입니다.
+
+---
+
+## ① 각 칸이 무엇인가 — **`nodes` 한 낱말 아래 «세 계층»이 있습니다**
+
+```
+모델 3   void_formation(노드19·엣지18) · delam_formation(5·3) · void_observation_bias(2·1)
+노드     distinct «23». 위상으로 갈리면 세 계층입니다
+```
+```
+ROOT   원인, 결과가 된 적 없음        «9»  bond_pressure · bond_temp · pre/post_bond_queue_h
+                                          humidity · stage_particle · tape_adhesion_anomaly
+                                          core_cmp_nonuniform · dt_pass_count
+MIDDLE 원인이자 결과 «아무도 안 잼»   «11» interface_unfill · wetting_deficit · surface_oxidation
+                                          local_gap · die_stress · adhesive_residue · edge_gap
+                                          interface_contam · backside_damage · moisture_uptake · outgassing
+LEAF   결과, 원인이 된 적 없음         «3»  void · delam · void_observed
+```
+🔴 **이 셋은 성질이 다릅니다.** ROOT 는 «재는 것»(물리량), MIDDLE 은 «아무도 안 재는 상태»,
+LEAF 는 «원장에 이미 있는 발견»입니다. 하나의 `nodes` 배열이 셋을 같은 것처럼 적고 있습니다.
+
+```
+칸                      무엇인가                                   분류
+bindings 왼쪽           술어 이름 + 페이로드 점경로                 «원장 문법을 가리키는 주소» — 온톨로지 아님
+bindings 오른쪽         ["bond_pressure"]                          물리량 이름 -> 노드
+models[].nodes          위 세 계층                                  노드 (단, 세 종류)
+models[].edges{from,to} 인과 한 줄                                  엣지
+models[].edges{dir}     + / - / u                                   물리 + «사람의 단언»
+                        (파일 __doc: u 는 unknown 이 아니라 non-monotone «주장»)
+models[].role           formation | observation_bias               «사람의 판단» — 보고 방식이지 물리 아님
+models[].finding_kind   "void"                                     원장에 «이미» 있음 (defect_kind)
+models[].target         formation 은 finding_kind 와 «같은 값»      -> 중복. 다른 것은 bias 의 void_observed «하나»
+version · validity      "v0" · "owner-reviewed 2026-08-14"         사람의 기록(출처)
+signatures              공간 패턴 산문                              사람 문서 — 파일 __doc 이 「로더가 무시한다」고 적음
+__doc                   산문                                        사람 문서
+```
+
+---
+
+## ② 원장에 이미 있나 — **답이 «셋으로 갈립니다». 이게 이번 판정입니다**
+
+측정: `ledger_events` 749,044 행(rebuild 후) + `ledger_events_pre_rebuild` 377,727 행(전).
+`object_payload` 와 `subject_keys` 를 문자열로 훑었습니다.
+
+### (가) bindings 왼쪽 — **술어는 있고, 경로는 «0». 그런데 예전엔 있었습니다**
+```
+술어 processed_with        원장 «3,022» 행. 있습니다
+경로 params_actual         rebuild 후 «0»
+     params_setpoint       rebuild 후 «0»
+     pressure_MPa          rebuild 후 «0»
+     temp_C                rebuild 후 «0»
+     post_bond_queue_h     rebuild 후 «0»
+```
+```
+🔴 rebuild «전»에는 있었습니다 — 전부 processed_with 가 실었습니다
+   params_actual 13,734 · params_setpoint 10,442 · pressure_MPa 4,682 · post_bond_queue_h 2,575
+   예전 payload  {"eqp":"SYN-BD-02","step":"BONDING","recipe":{"id":"SYN-RCP-BOND","rev":"4"},
+                  "params_setpoint":{"temp_C":145.0,"pressure_MPa":0.35, …}}
+   지금 payload  {"keys":{"recipe":"R-CLEAN-01"},"type":"recipe","qualifiers":{"step":"CLEAN"}}
+```
+**끊긴 이유는 데이터가 아니라 «선언»입니다.** 지금 `processed_with@1` 의 목적어는
+`entity_ref -> recipe@1` 이고 qualifiers.optional 은 **`["step"]` 하나뿐**입니다.
+번역기가 params 를 실을 «자리»가 선언에 없습니다.
+📌 그래서 이 칸은 「없다」가 아니라 **「선언이 안 받아서 떨어졌다」** 입니다 (끊김 ≠ 부재).
+
+### (나) bindings 오른쪽 · MIDDLE 노드 — **«0». 지금도, rebuild 전에도**
+```
+bond_pressure 0 · bond_temp 0 · interface_unfill 0 · wetting_deficit 0 · die_stress 0
+surface_oxidation 0 · local_gap 0 · adhesive_residue 0 · interface_contam 0 · backside_damage 0
+edge_gap 0 · moisture_uptake 0 · outgassing 0 · stage_particle 0 · humidity 0
+dt_pass_count 0 · tape_adhesion_anomaly 0 · core_cmp_nonuniform 0 · void_observed 0
+   (pre_rebuild 에서도 bond_pressure «0»)
+```
+**이 20 개는 원장에 «있었던 적이 없습니다».** 모델러의 낱말이고, 원장은 그 낱말을 모릅니다.
+바인딩이 존재하는 이유가 이것입니다 — 원장의 `pressure_MPa` 와 모델의 `bond_pressure` 를
+이어 주는 «번역표»입니다.
+
+### (다) LEAF — **`void` 는 «이미 원장의 노드»입니다**
+```
+void    of_kind «103,841» 행:  {"keys":{"defect_kind":"void"},"type":"defect_kind"}
+        -> defect@1 --of_kind--> defect_kind@1{void}.  C 레인 선언으로 «엔티티»가 됐습니다
+delam   지금 «0» · rebuild 전 «11,567» (observed 가 실었음)
+        -> 선언은 delam_formation 을 들고 있는데 그 발견이 «지금 데이터에 없습니다»
+```
+🔴 그러므로 ②의 답은 **「이미 있다」도 「없다」도 아닙니다**:
+```
+그래프의 «끝»    원장에 있다 (defect_kind{void})        -> 선언하면 «중복»
+그래프의 «시작»  원장에 있었고 지금 «선언이 끊었다»      -> 선언하면 «복구»
+그래프의 «중간»  원장에 없고 «잴 수도 없다»             -> 선언해야만 존재한다
+```
+
+---
+
+## ③ 소비자 — **읽는 곳은 셋, «화면에 닿는 것은 0»**
+
+```
+mechanism_models.json 을 «여는» 곳
+  server/ledger_api/mechanism_gate.py:57               로더 (CONFIG_FILENAME)
+  server/scripts/seed_syn_split_merge_pressure.py:201  스크립트가 «직접» 열어 방향을 재확인
+  (seed_syn_journey_atoms.py:26 은 «주석»뿐 — 열지 않습니다)
+
+mechanism_gate 를 import 하는 곳
+  라이브 «1»   server/ledger_api/ledger_subgraph.py:41
+  시험  «2»   tests/test_mechanism_gate.py · tests/test_ledger_subgraph.py
+
+ledger_subgraph 의 소비자
+  ledger_trace_router.py -> main.py
+```
+
+### 🔴 그런데 그 «라이브 1» 이 결과를 안 씁니다
+```
+L621  mechanism = mechanism_gate.load()
+L622  models_by_name = {m.name: m for m in mechanism.models if m.usable}
+      -> models_by_name 을 «읽는» 자리 AST 로 «둘»: L731(_seed_node 에 넘김) · L570
+      -> L570 은 _seed_node 안의  elif seed_ref["kind"] == "quantity":  갈래입니다
+```
+```
+🔴 그 갈래는 «도달 불가»입니다 — decode_node_id(L113-129) 는
+   "ledger-entity:v1:" 이면 {"kind":"entity"} 를 돌려주고, 아니면 «raise» 합니다.
+   kind 가 "quantity" 인 seed_ref 는 «만들어질 수 없습니다»
+🔴 그리고 그 갈래가 부르는 _quantity_node 는 «저장소 어디에도 정의가 없습니다»
+   (server 전체 grep: 호출 한 줄 L569 뿐, def «0»)
+```
+
+### 끝에서 쟀습니다 — 실제 walk 응답
+```
+seed  wafer SYN-AUG-BW-001-01 · hops 3 · both · node_limit 400
+load  모델 3 «전부 usable» · bindings 5      <- 선언은 정상적으로 읽힙니다
+응답  노드 181 (wafer 1 · die 168 · defect 11 · defect_kind 1) · 엣지 190
+      (inspected 84 · transfer 84 · observed 11 · of_kind 11)
+응답 문자열   "quantity" 0 · "Quantity" 0 · "mechanism" 0 · "binding" 0 · "bond_pressure" 0
+```
+**선언은 읽히고, 판정 함수는 살아 있고, 화면에는 «한 글자도» 안 나옵니다.**
+2026-08-28 에 A 레인이 지운 네 갈래(발견 요약·발견 점·quantity·소스 이벤트) 중 하나가 이 자리였고,
+`quantity_refs`(L754)·`point_refs`·`event_refs`·`collection_refs`·`finding_refs` 는
+지금 **읽는 곳이 «0»인 지역 변수**로 남아 있습니다.
+⚠️ `test_mechanism_gate.py` 는 «자기 픽스처 그래프»로 판정 함수를 재기 때문에 이 상태에서도 초록입니다.
+
+---
+
+## ④ 「선언을 소스로」가 가능한 모양인가 — **원장이 «이미 그 모양을 써 봤습니다»**
+
+### 🔴 rebuild 전 원장에 이 둘이 있었습니다 (지금은 은퇴)
+```
+recipe --has_param--> {"param":"pressure_MPa","value":0.35,"unit":"MPa"}      «35» 행
+wafer  --measured --> {"metric":"photo_overlay_error","value":0.18,"unit":"um",
+                       "method":"overlay_metrology","stat":"wafer_mean", …}   «144» 행
+```
+**`has_param` 은 「이 레시피의 pressure_MPa 는 0.35 MPa」를 «목적어 안에서 이름으로» 말합니다.**
+바인딩이 필요한 이유가 「payload 점경로에 이름이 숨어 있어서」인데, 이 모양에는 «경로가 없습니다».
+
+### 그래서 제안하는 모양 — 총괄 예시에서 «둘»을 고쳤습니다
+```
+엔티티   quantity@1        keys {quantity}          bond_pressure · interface_unfill · …
+술어     leads_to@1        subjects [quantity@1]
+                           object entity_ref types [quantity@1, «defect_kind@1»]
+                           qualifiers.required [dir]   optional [model, role]
+```
+```
+quantity{bond_pressure}     --leads_to(dir:-)-->  quantity{interface_unfill}
+quantity{interface_unfill}  --leads_to(dir:+)-->  defect_kind{void}      ← «이미 있는» 노드
+quantity{post_bond_queue_h} --leads_to(dir:u, role:observation_bias)--> defect_kind{void}
+```
+**고친 것 ①: LEAF 를 `quantity@1` 로 만들지 «않습니다».** 그러면 `void` 가 두 신분을 갖습니다 —
+`defect_kind@1{void}`(103,841 행이 이미 가리킴)와 새 `quantity@1{void}`. 1차 조사가 잡은 «중복»입니다.
+
+**고친 것 ②: `role` 을 «엣지 수식어»로 내리면 `void_observed` 노드와 모델 하나가 사라집니다.**
+지금 `void_observed` 는 「관측 편향이라는 판정을 구조로 박기 위해」 만든 «쌍둥이 노드»이고,
+bias 모델의 엣지는 «한 개»입니다. 엣지가 role 을 들면 같은 것을 노드 없이 말합니다.
+⚠️ 단 이건 «오늘 내용에 대해» 무손실입니다 — 한 모델의 엣지들이 서로 다른 role 을 가질 일이
+   생기면 다시 봐야 합니다. 지금은 그런 모델이 없습니다.
+
+### `bindings` 는 이 그래프의 엣지가 «아닙니다» — 그래서 흡수 대상도 아닙니다
+```
+주어가 웨이퍼가 아니라 «술어 + 페이로드 경로»입니다. 지금 선언에 그런 주어 타입이 없습니다.
+길 (가)  params_actual.* 를 processed_with@1 의 qualifiers 로 «되살린다»
+         -> 바인딩은 「qualifier 이름 -> 물리량」 표로 «남습니다». 두 번째 선언이 그대로 남습니다
+길 (나)  은퇴한 has_param 모양으로 되살린다:
+         recipe --has_param--> quantity@1{bond_pressure}  value 0.35  unit MPa
+         -> 원자가 «물리량 이름을 직접 말하므로» bindings 가 «사라집니다»
+```
+🔴 **(나)를 고르면 이 파일에서 남는 것은 «인과 엣지 22개»뿐입니다** — 그리고 그 22개는
+   원장에 있었던 적이 «없고», 잴 수도 없고, 오직 사람이 선언해야만 존재하는 «진짜 새 지식»입니다.
+
+### 남는 구멍 — 메우지 않고 적습니다
+```
+바인딩 있는 ROOT «3»    bond_pressure · bond_temp · post_bond_queue_h
+바인딩 없는 ROOT «6»    stage_particle · humidity · tape_adhesion_anomaly
+                        core_cmp_nonuniform · pre_bond_queue_h · dt_pass_count
+   -> 파일 __doc 이 「THE GAPS ARE HONEST, NOT UNFINISHED」라고 «먼저» 적어 뒀습니다
+   -> dt_pass_count 는 payload 잎이 아니라 «경로 특징»(transferred 홉 수)이라
+      (나)로 가도 원자가 안 생깁니다. walk 이 세는 값입니다
+delam                   모델은 있는데 «오늘 데이터에 0» (rebuild 전 11,567)
+```
+
+---
+
+## 🔴 못 잰 것 — 추측으로 안 채웁니다
+```
+· rebuild 가 params 를 «왜» 떨어뜨렸나 — 선언에 자리가 없는 것은 쟀지만,
+  그게 «의도»인지 «누락»인지는 선언 판정이라 제가 정할 수 없습니다
+· has_param · measured 를 은퇴시킨 판정의 근거 — 커밋을 안 찾았습니다. 총괄 기록에 있을 것입니다
+· leads_to 를 원자로 쓰면 «누가 source_who»인가 — 선언이 소스가 된다는 것은
+  「사람이 쓴 문장이 원자가 된다」이고, 그 기록자 이름은 제 판정이 아닙니다
+· 지금 죽어 있는 다섯 지역 변수(quantity_refs 등)를 지울지 — A 레인 파일입니다
+```
+
+## 참고 — 이 트리에는 운영 파일이 없어 `.sample` 이 로드됩니다
+```
+design 트리   server/config/mechanism_models.json 없음 -> config/sample/*.json.sample 로 폴백
+대조          메인 트리의 «운영 파일»과 sample 을 json 비교 -> «완전 동일»
+              그래서 위 수치는 운영 파일 그대로입니다
+```
+⛔ **지시대로 한 줄도 안 고쳤습니다.** 판정 기다립니다.
+
+---
+
 # 📡 [클라 B] **`f1d63b98` 은 «제 것이 아닙니다»** — 조사는 착수 전이었습니다 (`3b003d6b` 회신)
 
 「커밋은 됐는데 푸시가 안 됐다」가 아닙니다. **그 커밋을 제가 만든 적이 없습니다.**
