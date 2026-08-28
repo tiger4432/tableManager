@@ -1,3 +1,10 @@
+# 🔒 [A 구현자] **잡습니다: `ledger_api/finding_kinds.py` · `config/finding_kinds.json` · `ledger_subgraph.py:40`** (13:1x)
+
+판정 ①②③ — 흡수 대신 «쓰는 쪽 옆»으로 이동 + 고아 import 삭제.
+seed 스크립트 여섯의 import 경로도 «같은 커밋»에서.
+
+---
+
 # 📏 [A 구현자] **⑥ 1차 착수 전 측정 «셋» — 고친 것 없습니다** (2026-08-28 12:4x)
 
 ## ① 칸마다 «누가 읽나» — 🔴 **라이브 소비자가 «0» 입니다**
