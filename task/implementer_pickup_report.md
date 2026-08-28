@@ -1,3 +1,82 @@
+# ✅ [A 구현자] **문서 3차 2단계 — 세 파일 착지. 본문 삭제 «0줄»** (2026-08-29 01:2x)
+
+커밋 셋 (파일 하나씩): `docs/overview/SYSTEM_OVERVIEW.md` · `docs/README.md` ·
+`docs/architecture/CODE_MAP.md`.
+
+## 🔴 게이트 ①을 «그대로» 잴 수 없습니다 — 이유를 먼저 적습니다
+```
+게이트 문구   「세 파일의 ③ «0» · ① «0»」
+문제         ③ 을 고치려면 «그 죽은 이름을 불러야» 합니다.
+             「후계는 /api/ledger/trace 다」를 「그 라우트도 은퇴했다」로 바꿔도
+             그 줄에는 여전히 `/api/ledger/trace` 가 «있습니다» -> 같은 grep 에 걸립니다
+=> 그래서 «줄 수»가 아니라 «부류»로 잽니다. 남은 히트를 «전부 읽어» 갈랐습니다
+```
+
+## 게이트 ① — 부류로 잰 전/후 (세 파일)
+```
+                        전            후
+③ 죽은 후계             3      ->     0 «실질»   (분류기 표기로는 3 — 아래 설명)
+① 현재형 거짓           21     ->     0 «실질»   (분류기 표기 3 — 전부 «아님»)
+② 기록 (건드리면 안 됨)  2      ->     2 그대로 + 새로 20  (제 정정이 기록이 됐습니다)
+본문 삭제                              «0줄»  — 전부 제자리 수정이거나 ~~취소선~~
+```
+**분류기가 아직 세는 것 여섯, 하나씩 읽고 갈랐습니다:**
+```
+③ 3건   전부 «제가 고친 그 줄»입니다. 「후계 라우트는 없다 + 오늘 사는 것은 subgraph·declaration」
+        을 적으려면 옛 이름을 부를 수밖에 없어 분류기가 여전히 「마커+후계어」로 읽습니다
+① 2건   CODE_MAP:1068 · 1835 — 🔴 «walk 과 무관한 오탐»입니다.
+        `MapMetaCollector` · `AutoConfirmCollector` 의 «메서드» `collect` 입니다. 안 건드렸습니다
+① 1건   SYSTEM_OVERVIEW:148 — 내용은 고쳤고(「`Enrich Action` 은 walk 의 노드가 아니게 됐다」),
+        제 정규식이 그 표현을 «은퇴 표지»로 안 읽을 뿐입니다
+```
+
+## 게이트 ② — 1단계 표를 다시 돌렸습니다. **나머지 20 파일 «전부 그대로»**
+```
+세 파일                     ①  21 -> 3(전부 위의 오탐/표기)   ②  2 -> 22
+나머지 20 파일               한 줄도 «안 변했습니다»
+   RND_ONTOLOGY_REFERENT_MODEL 20 · DOC_OWNERSHIP 14 · PRIMER 9 · LEDGER_GUIDE 6 ·
+   TREND_DECLARATION_GUIDE 6 · FEATURE_CHECKLIST 5 · CLAIM_REQUIREMENT_WORKLIST 5 ·
+   SCENARIO_CONSOLE_BRIEF 4 · PRIMITIVES 3 · enrichment_rules 3 · … (전부 1단계 수치와 동일)
+합계                        현재형 114 -> «92»
+```
+
+## 게이트 ③ — 죽은 링크 «0»
+```
+새로 만든 링크 «0» — 문서 링크를 새로 달지 않았습니다
+제가 건드린 줄이 이미 들고 있던 링크 «여덟» -> 여덟 다 실재 확인
+   backend · data_model · event_driven_backend · PHYSICS_ONTOLOGY_SETUP ·
+   CANONICAL_LEDGER_DESIGN · LEDGER_GUIDE · LEDGER_TECHNICAL_SPEC · ONTOLOGY_GRAPH_SPEC
+🔴 앵커 위험 하나를 확인했습니다 — CODE_MAP 의 `### 🆕⑦ mechanism_gate.py` «제목»을 고쳤으므로
+   슬러그가 바뀝니다. 그 제목을 가리키는 문서 내 링크가 있나 훑었습니다 -> «0». 안전합니다
+새 후임을 «지어내지» 않았습니다 — 없으면 「없다」로 적고, 오늘 사는 둘(subgraph·declaration)만 댔습니다
+```
+
+## 무엇을 어떻게 고쳤나 — 요약
+```
+SYSTEM_OVERVIEW  ③ trace.html 묘비의 후계 · ① ledger-graph.html 서술(그 페이지는 client2 에 «없습니다»)
+                 · ① enrichment_rules 행의 Enrich Action
+                 🔴 + «표에 없던 한 줄»: 기둥 표의 원장 행이 `collect` 로 좁힌다고 하고
+                    원자 총계를 645,203 으로 못 박고 있었습니다 -> 아래 별도 항목
+README           ③ 「후계: /trace · /structure」 · ① 기전 그래프 「소비자 넷」(오늘 «0»)
+CODE_MAP         ③ 계보/구조 후계 한 줄 · ① 16 + 1(=17). 인벤토리 행은 «날짜 표지»만 답니다.
+                 walk 의 «모양»을 말하는 넷은 현재 사실로 고쳤습니다
+                 (시그니처 · `ledger-quantity:v1:` 접두어 · `enrich_actions` · `/subgraph/table`)
+```
+
+## ⚠️ 지시 밖이지만 «만졌습니다» — 먼저 보고합니다
+```
+SYSTEM_OVERVIEW:187  제 1단계 분류가 이 줄을 «② 기록»으로 넣었습니다(은퇴 표지가 있어서).
+                     그런데 읽어 보니 «현재형으로 둘이 거짓»이었습니다:
+                       「`follow`(술어) 와 `collect`(모을 것) 로 좁힌 하위 그래프」  <- collect 은퇴
+                       「원자 «645,203» 이 전부 그 선언에서 났고」                  <- 승인 replay 후 749,044
+                     -> 그 두 절만 고치고 기록 부분은 그대로 뒀습니다
+🔴 「② 는 한 줄도 건드리지 마십시오」에 대한 «예외»라 이렇게 이름 대어 올립니다.
+   한 줄이 «기록이면서 동시에 거짓»일 수 있고, 제 부류 표가 그걸 못 갈랐습니다 — 표의 한계입니다.
+   되돌리라 하시면 되돌립니다
+```
+📌 그리고 상설 셋은 문서에 «안 넣었습니다» — CLAUDE.md 가 정본이라는 지시 그대로입니다.
+
+---
 # 🔴 [A 구현자] **정정 — `31d34ea0` 이 «반만» 착지했습니다. 지금 고쳤습니다 (`8a79f27f`)** (2026-08-29 00:3x)
 
 문서 3차 1단계 보고를 커밋하려고 `git status` 를 찍었는데 **제가 안 건드린 서버 파일 둘이 «수정됨»**
