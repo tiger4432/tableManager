@@ -1,3 +1,96 @@
+# ✅ [A 구현자] **`ranked` 돌아왔습니다 — 후보는 «닿은 노드 전부». 커밋 `d0691587`** (2026-08-28 19:4x)
+
+`_reach` 는 «한 글자도» 안 건드렸습니다. `_rank_layers` 는 **만들지 않고 `9f0d964d^` 에서
+되살렸습니다** — 아침에 「한 종류만 내니 순위 매길 것이 없다」는 전제로 제가 지웠던 그것이고,
+오후 소유자 판정으로 그 전제가 만료됐습니다. 새 순위 규칙을 발명하지 않았습니다.
+
+## 게이트 ① — 씨앗 `SYN-BW-101-02` · hops=4 · node_limit=1000
+```
+                    수리 전            수리 후
+propagation.state   not_requested      «ranked»          ✅
+ranked              0                  «464»             ✅ > 0
+top_set             0                  57
+응답 바이트          1,575,502          1,956,654   (+24%)
+후보 타입 분포       —                  wafer 246 · die 117 · defect 83 · quantity 18
+후보 항목 키         —                  id · type · label · reach · rank · top · tied · incomparable · evidence
+층                  —                  «9» 층. 크기 [57, 26, 9, 16, 40, 48, 14, 8, …]
+tied / incomparable —                  464 / 0
+```
+타입별 최상위 (reach 는 `[from_positive, from_negative]` — 접지 않았습니다):
+```
+die       rank 1  [1.0, 0.0]      SYN-BW-101-02 / 7.0
+quantity  rank 1  [1.0, 0.0]      transfer_mm_s
+defect    rank 3  [0.333…, 0.0]   sat|SYN-BW-101-02|7|0|6|2026-11-22
+wafer     rank 9  [0.00406…, 0.0] SYN-BW-101-20
+quantity 18개 전부: transfer_mm_s · mold_temp_C · cure_s · clamp_kN · vacuum_assist · vacuum_Pa ·
+   time_s · temp_C · purge_delay_s · pressure_MPa · ramp_C_min · o2_slm · furnace_C · dwell_min ·
+   thickness_um · post_bond_queue_h · clean_time_s · void_observed
+```
+
+### 🔴 그런데 소유자가 «예로 드신» `recipe` 가 이 씨앗에는 «없습니다» — 이유를 쟀습니다
+```
+원인은 순위도 필터도 아닙니다 — 이 웨이퍼에 그 원자가 «없습니다»
+   processed_with 원자 중 subject 가 SYN-BW-101-02 인 것   «0»
+   processed_with 전체                                     3,022  (전부 object_kind=entity_ref)
+   예: subject wafer{WF-LOT-A-05} -> object {type:"recipe", keys:{recipe:"R-CLEAN-01"}}
+확인 사살 — recipe 를 «가진» 씨앗으로 갈아 봤습니다
+   씨앗 wafer{WF-LOT-A-05} · hops=4 -> ranked 8 · 후보 타입 «recipe 7 · wafer 1»
+      recipe R-CMP-01 · R-ETCH-01 · R-IMPLANT-01 · R-PHOTO-01 · R-ANNEAL-01 · R-CLEAN-01  rank 1 [1.0, 0.0]
+      recipe R-DEPO-01                                                                     rank 2 [0.333…, 0.0]
+```
+✅ **소유자 판정대로 작동합니다** — recipe 는 다른 타입과 «같은 자격»으로 후보에 오릅니다.
+합성 데이터에서 SYN-BW-101-* 계열과 WF-LOT-* 계열이 다른 소스로 들어와 갈린 것뿐입니다.
+
+## 게이트 ② — 대조군
+```
+negative 없이   contrast «unexamined»   ranked 464  top_set 57   타입 wafer 246·die 117·defect 83·quantity 18
+negative 있게   contrast «contrasted»   ranked 560  top_set 57   타입 die 245·wafer 214·defect 83·quantity 18
+   (negative = wafer{SYN-CX-BW-001}. 대조군 씨앗이 자기 이웃을 그래프에 들이므로 노드 748 -> 813)
+```
+
+## 게이트 ③ — follow 안 준 기본 walk 무회귀. 씨앗 `SYN-CX-BW-001` · hops=6 · both · 1000/3000
+```
+                   수리 전                         수리 후
+nodes / edges      1000 / 1612                     1000 / 1612      «동일»
+hops_reached       3                               3                «동일»
+truncated          nodes·claims true               «동일»
+propagation.state  not_requested                   ranked
+ranked             0                               999   (= 노드 1000 − 씨앗 1)
+top_set            0                               128
+후보 타입           —                               die 877 · defect 121 · defect_kind 1
+🔴 응답 바이트      2,506,923                       3,499,096   «+39.6%»
+```
+**그래프는 한 노드도 안 바뀌었고, 늘어난 것은 `propagation` 블록입니다.**
+
+### ⚠️ 보고만 하고 «안 고친» 것 둘 — 판정이 필요하면 주십시오
+```
+① 응답 크기. 종전 285 KB 측정치는 후보가 «한 종류»일 때 90개였고, 지금은 후보가 «노드 예산»
+   자체입니다(999). 3.5 MB 응답에서 순위 블록이 «1.0 MB»입니다.
+   ⛔ 상한을 «만들지 않았습니다» — 종전 주석의 규칙이 「필요해지면 응답에 이름이 있는 필드로
+      적는다, 조용히 자르지 않는다」이고 그건 제 판정이 아닙니다
+② 닿은 노드 < 걸은 노드. 게이트 ①에서 노드 747 중 «464»만 후보입니다.
+   나머지 283 은 `edge_limit` 1200 이 잘려서 «엣지가 하나도 없는 노드»입니다 —
+   `_reach` 는 엣지로 걷기 때문에 안 닿습니다. 「없다」가 아니라 «예산»입니다
+   (`truncated.edges=true` 와 `complete=false` 가 그 사실을 이미 말하고 있습니다)
+```
+
+## 시험 — 은퇴한 동작을 재던 단언 «하나»를 같은 커밋에서 옮겼습니다
+```
+tests/test_ledger_subgraph.py:163  assert propagation["state"] == "not_requested"
+   -> 이 라운드가 없애는 «바로 그 동작»을 재고 있었습니다. `ranked` 로 바꾸고,
+      판정이 요구하는 성질 셋을 못 박았습니다:
+        · 닿은 노드가 «후보가 된다»
+        · 후보가 «선언된 타입»을 들고 있다 (node_kind 아님)
+        · 두 수가 «접히지 않고» 나온다
+결과   11 passed · 1 skipped
+```
+
+## ⛔ 안 만든 것 (지시대로)
+```
+「값 밀고」(엣지 수식어 값 비교) · hop 에 predicate 달기 · 접는 규칙 · 후보 상한
+```
+
+---
 # ⚠️ [A 구현자] **§4.5·§4.6 도장 찍었습니다. 다만 «형태가 어디 사는지»는 지시문과 다릅니다** (2026-08-28 18:2x)
 
 커밋 `e8cef170`. 게이트 넷 그대로 적습니다.
