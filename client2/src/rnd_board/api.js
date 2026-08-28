@@ -1050,6 +1050,72 @@ function declaredSeats(grid) {
 }
 
 /**
+ * 「이 다이는 무엇으로 만들어졌나」, from the walk. The composition route's model, from edges.
+ *
+ * 🔴 NO NEW PREDICATE AND NO NEW ENTITY. The owner's question -- 「bondfrom collect 조합으로 구성
+ * 파악되지 않아? 굳이 새 엣지가 왜 필요해?」 -- is answered by `bonded_from`, which already runs
+ * base die -> core die. A package IS the base die, `(base, x, y)`, so there is nothing to declare.
+ *
+ * 🔴 WHAT THE WALK DOES NOT CARRY IS SAID, NOT ZEROED. `lot`, `slot` and `branch` were columns of
+ * the composition route's own join; the ledger holds no atom for them at die granularity, so they
+ * come back `null` and the panel prints 「—」. A zero there would be a number nobody measured.
+ */
+export function compositionFromWalk(answer) {
+  const absent = (state, message) => ({
+    ok: false, state, status: (answer && answer.status) || null, message,
+    subject: null, wafer: null, resolution: null, window: null,
+    cardinality: null, provenance: null,
+    counts: { components: null, dtCollections: null },
+    coreTypes: [], components: [],
+  });
+  if (!answer) return absent('absent', '아직 걷지 않았습니다');
+  if (answer.ok === false) {
+    return absent('refused', answer.message || '서버가 거절했습니다');
+  }
+  const nodes = answer.nodes || [];
+  const edges = answer.edges || [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const seeds = new Set((answer.seeds || []).map((seed) => seed.id || seed));
+  const components = [];
+  for (const edge of edges) {
+    if (!edge || edge.predicate !== 'bonded_from') continue;
+    // 🔴 방향은 «엣지가 말합니다». source 가 base 이고 target 이 core 입니다 -- 여기서 방향을
+    //    다시 정하면 그게 두 번째 진실이 됩니다.
+    const core = byId.get(edge.target);
+    if (!core) continue;
+    const keys = core.keys || {};
+    components.push({
+      id: `${keys.mat_id}:${keys.x},${keys.y}`,
+      entityId: core.id,
+      core: { wafer: keys.mat_id || null, lot: null, slot: null, branch: null },
+      lineage: null,
+      resolutionState: seeds.has(edge.source) ? 'resolved' : 'reached',
+      steps: [],
+    });
+  }
+  const cut = answer.complete === false || (answer.truncated || []).length > 0;
+  return {
+    ok: true,
+    state: components.length ? 'ready' : 'empty',
+    status: answer.status || null,
+    // 🔴 「구성 없음」 은 «문장»이지 빈 화면이 아닙니다. 측정: base die 18,545 / 원장의 서로 다른
+    //    die 주어 400,690 = 4.63% 이므로 「없다」가 대다수이고 그게 오늘의 참입니다. 그리고 walk 이
+    //    잘렸으면 「없다」가 아니라 「여기까지 봤다」입니다.
+    message: components.length ? ''
+      : (cut ? '이 걷기는 예산에서 끊겼습니다 — 구성이 없다는 뜻이 아닙니다'
+             : '이 다이에는 기록된 구성이 없습니다'),
+    subject: null, wafer: null, resolution: null, window: null,
+    cardinality: { components: components.length },
+    provenance: null,
+    counts: { components: components.length, dtCollections: null },
+    coreTypes: [...new Set(components.map((c) => c.core.wafer).filter(Boolean))],
+    components,
+    truncated: answer.truncated || null,
+    complete: answer.complete === undefined ? null : answer.complete,
+  };
+}
+
+/**
  * The walk a seat gets when it names no route: its `start` marking, carried whole, and whatever
  * else it declared (`follow`, `hops`, `direction`, the budgets) riding through untouched.
  *

@@ -1,3 +1,101 @@
+# 🔓 [클라 B] 라운드 Z-3 **A 착지** — 구성 세 좌석이 걷기로. B(트렌드)는 «아직»입니다
+
+## 한 것 — 라우트도 술어도 «안» 만들었습니다
+```
+좌석 1·7·11   start { groupby:'chip', value:'SYN-CX-CHIP-001' } · collect 'wafer_process'
+        ->    start { groupby:'die',  marking:'marking:1' }     · follow ['bonded_from']
+모델          compositionFromWalk — bonded_from 엣지에서 core die 를 «컴포넌트»로 읽습니다
+부품 셋       subjectStart() 하나. 좌석이 «마킹»을 선언했으면 마킹, 아니면 종전대로 박힌 주어
+```
+
+## 게이트 ① — 요청 «13» · 200 «4» · 404 «9». 🔴 8 에서 «늘었습니다», 이유를 답니다
+```
+200 «4»   subgraph ×2 (후보/순위 · 맵)   ·  wafer_map_metadata ×2 (맵 격자)
+404 «9»   trends 2 · siblings 4 · composition «1» · lot_map «2»
+```
+```
+composition   «2 -> 1»   좌석 7·11 이 빠졌습니다. 남은 1 은 맵 좌석의 `basisChipId` 가 부르는
+                         `basis` collect 입니다 (좌석 8·12 의 «기반» 선택자 숫자)
+lot_map       «0 -> 2»   🔴 늘었습니다. 좌석 1(head-summary)의 `waferQuestion` 이 부르는
+                         `loadWaferFacts` 이고, kind 두 개(void·delam)라 둘입니다.
+                         라운드 Z 에서 제가 「lot_map 0」이라 적었는데, 그때는 좌석 1 이 구성
+                         404 로 «먼저 죽어» 이 곁가지까지 안 갔던 것으로 보입니다.
+                         구성이 사는 순간 곁가지가 «되살아났습니다» — 제 그때 수가 「없어서 0」이
+                         아니라 「앞이 막혀서 0」이었습니다
+```
+
+## 🔴 그래서 판정 하나 올립니다 — «곁가지 셋»의 거취
+```
+남은 404 «9» 는 전부 «좌석의 본 질문»이 아니라 곁가지·집계입니다
+   siblings 4    좌석 1 의 `peers` (또래 수)          -> 라우트 «없음»
+   lot_map  2    좌석 1 의 `waferQuestion` (kind별 수) -> 라우트 «없음»
+   composition 1 좌석 8·12 의 `basisChipId` (기반 수)  -> 라우트 «없음»
+   trends   2    좌석 3·4·6                          -> B 항목입니다
+```
+이 셋은 **화면의 «숫자 자리»**입니다(또래 수 · kind별 수 · 기반별 수). 지금은 전부 `—` 로 그려집니다.
+```
+길 (가)  선언에서 «빼면» 404 가 사라지고 그 자리가 «영구히 —» 가 됩니다
+길 (나)  walk 으로 다시 세면 됩니다 — 셋 다 「마킹에서 걸어 닿는 것을 «센다»」입니다
+         (트렌드 판정과 «같은 부류»입니다: 창이 셉니다)
+```
+📌 **(나) 가 맞아 보이는데, 그건 B 와 같은 일이라 B 에서 한꺼번에 하는 게 맞습니다.**
+   지금 (가)로 지우면 B 에서 되살려야 합니다. **판정 주시면 그대로 갑니다.**
+
+## 게이트 ② — COLLECTS 라우트 이름 «6 -> 4»
+```
+사라진 것   wafer_process (좌석 1·7·11 이 이름을 안 부릅니다) · map (라운드 Z)
+남은 것     trend_y · candidate · basis · peer · reach
+  candidate · reach   라우트 이름이 «아닙니다» (둘 다 subgraph)
+  trend_y             B 항목        basis · peer   위 판정 대기
+```
+
+## 게이트 ③ — «나오는» 씨앗과 «안 나오는» 씨앗
+```
+나오는 것    die SYN-CX-BW-001 (1,4)  -> core SYN-CX-CW-LOGIC-A-01 (1,4)
+안 나오는 것 die SYN-WAFER-0850 (-6,1) -> bonded_from «0» -> 「이 다이에는 기록된 구성이 없습니다」
+덮임         base die 18,545 / 원장의 서로 다른 die 주어 400,690 = «4.63%»
+🔴 그리고 «절단»도 갈랐습니다: walk 이 complete:false 면 「없다」가 아니라
+   「이 걷기는 예산에서 끊겼습니다 — 구성이 없다는 뜻이 아닙니다」 입니다
+```
+
+## 화면 — 404 «셋»이 문장으로 바뀌었습니다
+```
+구성          「대상 없음」            <- 종전 HTTP 404
+머리 요약     「대상 없음 · 칩을 고르면 여기에 나옵니다」   <- 종전 HTTP 404
+펼친 층       「층을 찍으면 여기에 펼칩니다」               <- 종전 HTTP 404
+```
+🔴 펼친 층은 «두 군데» 고쳤습니다: mount 가 마킹 없이도 무조건 물어서 404 를 그렸고, idle 문장이
+   「구성을 못 읽었습니다」였습니다 — 이 파일 머리가 「아직 안 골랐다 ≠ 없다」라 적어 두고
+   정작 그 자리에서 «고장»으로 그리고 있었습니다.
+
+## 게이트 ④ — 죽은 import
+```
+지금   fetchLotMap · fetchComposition · fetchSiblings 는 여전히 «쓰입니다» (basis · peer · map collect)
+       fetchTrends 도 «쓰입니다» (trend_y)
+=> 「지우거나 쓰이게 하거나」의 답은 «위 곁가지 판정»에 달려 있습니다. 지금 지우면 화면이 깨집니다
+```
+
+## 하니스 — 크래시 하나를 고쳤습니다
+```
+rnd_board_composition_harness 가 «크래시»했습니다 (행 0 -> click 이 undefined)
+원인   픽스처가 칩 id 만 주고 마킹을 안 찍는데, 주어가 마킹으로 바뀌었습니다
+조치   ① 부품에 subjectStart() — 마킹을 «선언한» 좌석만 마킹 규칙, 나머지는 종전대로
+       ② 픽스처가 씨앗을 찍습니다. 단 «읽고 쓰는 이름과 다른 이름»(seed:1/2)으로 —
+         같은 이름에 미리 찍으면 A3(「내가 선언한 이름에만 쓴다」)의 출발 수가 0 이 아니게 되어
+         통과해도 뜻이 없습니다. 실제로 한 번 [1,1] 로 빨개져서 알았습니다
+결과   composition 40/0 · board 170/0 · walk 32/0 · reach 63/0 · walk_box 48/0
+```
+
+## 건드린 파일
+```
+✅ api.js · main.js · composition_panel.js · head_summary_panel.js · expanded_layer_panel.js  (지명 안)
+⚠️ tests/rnd_board_composition_harness.mjs — 제 변경이 «크래시»시킨 것을 제가 고쳤습니다
+   dist  새 js · 옛 js 삭제 · rnd-board.html 참조 1줄   (css 는 이번 빌드에서 안 바뀜)
+```
+⏭ **B(트렌드)는 아직입니다.** 곁가지 판정과 같이 하는 것이 맞아 보여 그 답을 기다립니다.
+
+---
+
 # ⚠️ [클라 B] 라운드 Z-3 «걷고 나서» 올립니다 — 방향 답 + **손으로 만든 die 씨앗은 못 씁니다**
 
 새 상설대로 제안 전에 걸었습니다. 방향 질문에 답이 나왔고, **그보다 큰 것 하나**가 같이 나왔습니다.

@@ -34,19 +34,35 @@ export class CompositionPanel extends Panel {
     this.finalChipId = options.finalChipId || null;
     this.fetchImpl = options.fetchImpl || null;
     this.model = null;
-    this.loadState = this.finalChipId ? 'idle' : 'no-subject';
+    this.loadState = this.subjectStart() ? 'idle' : 'no-subject';
+  }
+
+  /**
+   * 이 부품의 «주어». 좌석이 마킹을 선언했으면 마킹이고, 아니면 좌석이 박아 준 것입니다.
+   *
+   * 🔴 두 길이 다 삽니다 (round Z-3, 2026-08-28). 화면의 좌석 셋은 «마킹»을 선언하고, 그때
+   *    빈 마킹은 `null` -- 「아직 안 골랐다」이지 부재가 아닙니다. 마킹을 «선언하지 않은»
+   *    호출자(픽스처가 그렇습니다)는 종전처럼 박힌 주어로 섭니다. 갈래를 «선언»이 정하지
+   *    부품이 값을 보고 추측하지 않습니다.
+   */
+  subjectStart() {
+    if (this.start && this.start.marking) return this.startFor();
+    return this.start || (this.finalChipId ? { groupby: 'chip', value: this.finalChipId } : null);
   }
 
   mount() {
     super.mount();
-    if (this.finalChipId) this.load();
+    if (this.subjectStart()) this.load();
   }
 
   async load() {
     this.loadState = 'loading';
     this.render();
     this.model = await this.walk({
-      start: this.start || { groupby: 'chip', value: this.finalChipId },
+      // 🔴 마킹이 «주어»입니다 (round Z-3). 칩 id 로 물으면 원장에 0건이라 좌석이 404 였고,
+      //    `startFor()` 는 마킹이 비면 «null» 을 줍니다 -- 그게 「아직 안 골랐다」이고 부재가
+      //    아닙니다. 박힌 씨앗으로 되돌아가지 «않습니다»: 그 값은 원장이 모르는 이름입니다.
+      start: this.subjectStart(),
       collect: this.collect,
     });
     this.loadState = this.model.ok ? 'ready' : 'refused';

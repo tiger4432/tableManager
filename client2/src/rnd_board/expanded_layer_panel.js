@@ -29,9 +29,25 @@ export class ExpandedLayerPanel extends Panel {
     this.loadState = 'idle';
   }
 
+  /**
+   * 이 부품의 «주어». 좌석이 마킹을 선언했으면 마킹이고, 아니면 좌석이 박아 준 것입니다.
+   *
+   * 🔴 두 길이 다 삽니다 (round Z-3, 2026-08-28). 화면의 좌석 셋은 «마킹»을 선언하고, 그때
+   *    빈 마킹은 `null` -- 「아직 안 골랐다」이지 부재가 아닙니다. 마킹을 «선언하지 않은»
+   *    호출자(픽스처가 그렇습니다)는 종전처럼 박힌 주어로 섭니다. 갈래를 «선언»이 정하지
+   *    부품이 값을 보고 추측하지 않습니다.
+   */
+  subjectStart() {
+    if (this.start && this.start.marking) return this.startFor();
+    return this.start || (this.finalChipId ? { groupby: 'chip', value: this.finalChipId } : null);
+  }
+
   mount() {
     super.mount();
-    this.load();
+    // 🔴 마킹이 비면 «묻지 않습니다» (round Z-3). 빈 주어로 물으면 답이 거절이고, 화면엔
+    //    「서버가 거절했습니다」가 뜹니다 -- 그건 「아직 안 골랐다」를 «고장»으로 그리는 것이고
+    //    다른 두 좌석은 이미 그렇게 하고 있었습니다. 이 좌석만 무조건 물어서 404 를 그렸습니다.
+    if (this.subjectStart()) this.load();
   }
 
   async load() {
@@ -39,7 +55,10 @@ export class ExpandedLayerPanel extends Panel {
     this.loadState = 'loading';
     this.render();
     this.model = await this.walkFn({
-      start: this.start || { groupby: 'chip', value: this.finalChipId },
+      // 🔴 마킹이 «주어»입니다 (round Z-3). 칩 id 로 물으면 원장에 0건이라 좌석이 404 였고,
+      //    `startFor()` 는 마킹이 비면 «null» 을 줍니다 -- 그게 「아직 안 골랐다」이고 부재가
+      //    아닙니다. 박힌 씨앗으로 되돌아가지 «않습니다»: 그 값은 원장이 모르는 이름입니다.
+      start: this.subjectStart(),
       collect: this.collect,
     });
     this.loadState = this.model && this.model.ok ? 'ready' : 'refused';
@@ -71,7 +90,11 @@ export class ExpandedLayerPanel extends Panel {
       const note = doc.createElement('div');
       note.className = 'rb-layer-note';
       // 넷 중 첫째 부재입니다 -- 「없다」가 아니라 「아직 안 골랐다」.
-      note.textContent = this.loadState === 'loading' ? '읽는 중…'
+      // 🔴 idle 은 «아직 안 물었다» 입니다 (round Z-3). 마킹이 비면 mount 가 묻지 않으므로
+      //    여기에 머무는데, 종전 문장은 「구성을 못 읽었습니다」였습니다 -- 이 파일 머리가
+      //    「아직 안 골랐다 ≠ 없다」라고 적어 두고 정작 그 자리에서 «고장»으로 그렸습니다.
+      note.textContent = this.loadState === 'idle' ? '층을 찍으면 여기에 펼칩니다'
+        : this.loadState === 'loading' ? '읽는 중…'
         : (this.loadState === 'ready'
           ? (((this.model && this.model.components) || []).length
             ? '층을 찍으면 여기에 펼칩니다'

@@ -48,7 +48,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap,
-  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId } from './api.js';
+  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId, compositionFromWalk } from './api.js';
 
 /**
  * part name -> class. The shell resolves a declaration through this and nothing else.
@@ -155,8 +155,13 @@ export const BOARD = Object.freeze({
       reads: 'marking:1',
       writes: null,
       // walk ④ — 「이 주어가 무엇으로 만들어졌나」. groupby 는 값이지 축이 아닙니다.
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
-      collect: 'wafer_process',
+      // 🔴 씨앗이 «칩»에서 «마킹»으로 (round Z-3, 2026-08-28). 그 칩 id 는 원장에 «0건»이라
+      //    좌석이 통째로 404 였습니다. 구성은 `bonded_from` 이 이미 답합니다 -- base die 에서
+      //    core die 로 가는 그 엣지이고, 소유자 말대로 pkg 는 (base, x, y) 그 자체입니다.
+      //    ⚠️ 다이를 여기 «박지 않습니다»: 손으로 만든 die 씨앗은 JSON 이 1.0 을 못 써서
+      //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
+      start: { groupby: 'die', marking: 'marking:1' },
+      follow: ['bonded_from'],
       options: {
         finalChipId: 'SYN-CX-CHIP-001',
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
@@ -323,8 +328,13 @@ export const BOARD = Object.freeze({
     {
       id: 'composition',
       part: 'composition',
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
-      collect: 'wafer_process',
+      // 🔴 씨앗이 «칩»에서 «마킹»으로 (round Z-3, 2026-08-28). 그 칩 id 는 원장에 «0건»이라
+      //    좌석이 통째로 404 였습니다. 구성은 `bonded_from` 이 이미 답합니다 -- base die 에서
+      //    core die 로 가는 그 엣지이고, 소유자 말대로 pkg 는 (base, x, y) 그 자체입니다.
+      //    ⚠️ 다이를 여기 «박지 않습니다»: 손으로 만든 die 씨앗은 JSON 이 1.0 을 못 써서
+      //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
+      start: { groupby: 'die', marking: 'marking:1' },
+      follow: ['bonded_from'],
       title: '구성 · SYN-CX-CHIP-001',
       at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
@@ -437,8 +447,13 @@ export const BOARD = Object.freeze({
       at: { column: 3, row: 5 },
       reads: 'marking:1',
       writes: null,
-      start: { groupby: 'chip', value: 'SYN-CX-CHIP-001' },
-      collect: 'wafer_process',
+      // 🔴 씨앗이 «칩»에서 «마킹»으로 (round Z-3, 2026-08-28). 그 칩 id 는 원장에 «0건»이라
+      //    좌석이 통째로 404 였습니다. 구성은 `bonded_from` 이 이미 답합니다 -- base die 에서
+      //    core die 로 가는 그 엣지이고, 소유자 말대로 pkg 는 (base, x, y) 그 자체입니다.
+      //    ⚠️ 다이를 여기 «박지 않습니다»: 손으로 만든 die 씨앗은 JSON 이 1.0 을 못 써서
+      //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
+      start: { groupby: 'die', marking: 'marking:1' },
+      follow: ['bonded_from'],
       options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
@@ -677,6 +692,14 @@ export function bindLoaders(layout, deps) {
           bound.loadByWafer = (wafer) => walkHere({
             start: { value: entitySeedId('wafer', { wafer }) }, follow: decl.follow,
           });
+        }
+        // 🔴 구성 세 좌석 (round Z-3). 맵과 «같은 걸음»이고 읽는 모델만 다릅니다 -- 라우트를
+        //    되살리지 않고, 새 술어도 안 만들고, `bonded_from` 이 이미 답하는 것을 읽습니다.
+        //    부품은 «자기가 무엇을 읽는지»만 알고 어디서 오는지는 모릅니다.
+        if (decl.part !== 'map' && !decl.collect && decl.follow) {
+          bound.load = (override) => walkHere({
+            start: decl.start, follow: decl.follow, ...(override || {}),
+          }).then(compositionFromWalk);
         }
         return { ...decl, options: bound };
       }
