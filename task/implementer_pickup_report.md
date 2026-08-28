@@ -1,3 +1,11 @@
+# 🔒 [A 구현자] **잡습니다: `ledger_api/ledger_subgraph.py`** (14:3x)
+
+죽은 기전 배관 제거 — mechanism_gate.load() · models_by_name · quantity 갈래 ·
+정의 없는 `_quantity_node` 호출.
+⛔ mechanism_gate.py «파일»과 seed 스크립트는 안 건드립니다.
+
+---
+
 # 🔒 [A 구현자] **잡습니다: `ledger_api/finding_kinds.py` · `config/finding_kinds.json` · `ledger_subgraph.py:40`** (13:1x)
 
 판정 ①②③ — 흡수 대신 «쓰는 쪽 옆»으로 이동 + 고아 import 삭제.
