@@ -18308,3 +18308,59 @@ python -m ledger.backfill --source process_param_txt_measure
 📌 **게이트 ③ 을 당신이 돌기 전에 제가 태워 본 것이 이 라운드에서 제일 잘한 일입니다.**
    안 태웠으면 「원자 80,322 착지」로 «초록»을 받고 목적은 실패한 채로 닫혔을 것입니다.
    제 지시서의 문장 하나가 틀렸는데 그 문장은 «게이트가 아니라 본문»에 있었습니다.
+
+---
+
+# 🔴 새 라운드 — 「거꾸로 걷기가 «한 홉»에서 조용히 멈춘다」 (총괄 실측 2026-08-28 17:4x)
+
+먼저: 당신 적재가 통과했습니다 — `measures` «80,322» · `leads_to` «22»
+(목적어 type 이 quantity 13 · defect_kind 9 로 갈렸습니다. 제 수리가 먹었습니다) ✅
+
+## 증상 — 제가 실측했습니다
+```
+씨앗 defect_kind{void} · follow=leads_to · hops=6
+  -> nodes 8 · edges 7 · «깊이 전부 0» · hops_reached «0» · truncated 전부 false
+씨앗 quantity{interface_unfill} · 같은 인자
+  -> bond_pressure --[-]--> interface_unfill --[+]--> void   «2홉이 보입니다»
+씨앗 quantity{wetting_deficit}
+  -> 깊이 {0:3, 1:7} · hops_reached «1»
+```
+**같은 그래프인데 씨앗을 어디 두느냐로 보이는 깊이가 달라집니다.** 그리고 «조용히» 멈춥니다 —
+`truncated` 가 전부 false 라 「없다」와 구별이 안 됩니다.
+
+## 원인 — `ledger_subgraph.py:696 _expand_atom`
+```python
+add_node(subject, decode_node_id(subject["id"]), depth)        # L701  주어는 «같은» 깊이
+add_node(target,  decode_node_id(target["id"]),  depth + 1)    # L706  목적어만 «한 칸»
+```
+이 함수는 «앞으로 걷는» 것만 상정하고 쓰였습니다. 그런데 SQL 은 arm 이 «둘»이고,
+**들어오는 arm 으로 찾은 원자에서는 far side 가 «주어»** 입니다. 그 주어가 `depth` 를 받으면
+이미 지나간 깊이라 **다음 프론티어에 안 들어가고, 거기서 끝납니다.**
+
+🔴 **고칠 재료가 이미 그 자리에 있습니다** — `frontier_entities` 가 L696 에 «넘어오는데
+L764 에서 만들어 놓고 몸통에서 «한 번도 안 쓰입니다»** (grep 결과 3줄: 정의·생성·호출뿐).
+
+## 지시 — «그 인자를 쓰십시오». 그것 말고는 건드리지 마십시오
+```
+near 가 어느 쪽인지 frontier_entities 로 판정하고, «먼 쪽»에 depth+1 을 줍니다
+  subject_id in frontier_entities  -> 주어 depth   · 목적어 depth+1   (지금 동작)
+  아니면                            -> 주어 depth+1 · 목적어 depth
+  둘 다 frontier 면                 -> 둘 다 depth  (전진할 것이 없습니다)
+⛔ SQL 두 arm · add_node/add_edge · 예산 플래그 · follow  전부 «그대로»
+⛔ 새 인자·새 옵션 만들지 마십시오. 이미 있는 인자를 «쓰는» 것이 이 라운드 전부입니다
+```
+
+## 게이트
+```
+① [재서 보고] 씨앗 defect_kind{void} · follow=leads_to · hops=6
+   -> hops_reached «2 이상» · 노드에 bond_pressure 가 «있어야» 합니다
+      (지금은 hops_reached 0 이고 bond_pressure 가 없습니다 — 제가 쟀습니다)
+② [재서 보고] 🔴 무회귀를 «같아야 한다»로 적지 «않습니다».
+   씨앗 SYN-CX-BW-001 · hops=6 · both · node_limit=1000 · edge_limit=3000 을
+   «수리 전과 후 둘 다» 재서 «두 수를 나란히» 적으십시오.
+   깊이가 바뀌면 1000 안에 드는 구성이 바뀌는 것이 «정상»입니다 — 판정은 제가 합니다
+③ 서버가 뜬다 (import 오류 0)
+④ 벽이 나오면 메시지 그대로 올리십시오
+```
+📌 이 결함은 소유자 질문의 «정확히 그 자리»입니다 — 「보이드가 왜 났나」는 보이드에서
+   거꾸로 걷는 질문이고, 지금은 원인의 «원인»이 안 보입니다.
