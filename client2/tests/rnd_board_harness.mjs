@@ -917,8 +917,23 @@ async function suite(mods) {
     // ask their own route. Asserting `every` here would have been asserting that every part is
     // a map.
     const asked = bound.panels.filter((p, i) => (BOARD.panels[i].options || {}).question);
-    ok('H7 binding turns a question into a loader',
-      asked.length > 0 && asked.every((p) => typeof p.options.load === 'function'));
+    // 🔴 은퇴 2026-08-28 (라운드 Z) — 「없어진 세상」을 재고 있었습니다. 지우지 않고 «행선지»를 답니다.
+    //    무엇이 사라졌나: `options.question` 을 «선언하는 좌석이 0» 이 됐습니다. 그건 lot_map 의
+    //                    질문(row·kind·by)이었고, 맵 좌석 둘이 마지막 소유자였습니다. 라우트가
+    //                    사라진 자리를 { start, follow } 로 옮기면서 같이 갔습니다.
+    //    왜 빨강인가:     `asked.length > 0` 은 «공허한 초록»을 막으려고 있던 가드입니다. 그 가드가
+    //                    제 일을 했습니다 — 세던 것이 없어졌다고 말한 것이지 배선이 깨진 게 아닙니다.
+    //                    남은 절반(「질문을 선언한 좌석은 로더를 받는다」)은 여전히 참이고,
+    //                    선언하는 좌석이 «없어서» 재는 대상이 없습니다.
+    //    어디로 가나:     맵 좌석이 걷기로 오는 지금, 같은 뜻의 단언은 H7c 입니다 — 「follow 를
+    //                    선언한 좌석은 로더를 받는다」. 그게 오늘의 「질문 -> 로더」입니다.
+    // RETIRED: ok('H7 binding turns a question into a loader',
+    //   asked.length > 0 && asked.every((p) => typeof p.options.load === 'function'));
+    ok('H7 a seat that declared a question still gets a loader (none declare one today)',
+      asked.every((p) => typeof p.options.load === 'function'));
+    const walkers = bound.panels.filter((p, i) => Array.isArray(BOARD.panels[i].follow));
+    ok('H7c binding turns a declared walk into a loader',
+      walkers.length > 0 && walkers.every((p) => typeof p.options.load === 'function'));
     ok('H7b a panel with no question is still handed the address',
       bound.panels.every((p) => p.options.apiBase === 'http://example'));
     ok('H8 binding does not mutate the declaration',

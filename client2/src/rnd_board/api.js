@@ -46,6 +46,10 @@ export const ROUTES = Object.freeze({
   subgraph: '/api/ledger/subgraph',
   trends: '/api/ledger/trends',
   siblings: '/api/ledger/siblings',
+  // 🔴 NOT UNDER `/api` -- measured 2026-08-28: `/api/tables/...` answers 404 and this answers
+  //    200. It is the generic declared-relation reader, not a ledger route, which is the whole
+  //    point: the grid is physics the operator declared, so it comes from the relation itself.
+  mapGrid: '/tables/wafer_map_metadata/data',
 });
 
 /**
@@ -534,6 +538,14 @@ export function subgraphModel(result) {
       nodes: Array.isArray(body.nodes) ? body.nodes.length : 0,
       edges: Array.isArray(body.edges) ? body.edges.length : 0,
     },
+    // 🔴 THE SUBGRAPH ITSELF, CARRIED (round Z, 2026-08-28). The counts above stay exactly as
+    //    they were and for the same reason. What is new is that a part which draws the
+    //    subgraph -- the map, whose dice ARE these nodes -- has to see them, and until now the
+    //    only way to get them was a second route. Counts answer 「연결이 있었나」; these answer
+    //    「그 연결이 무엇이었나」, and collapsing the second into the first is what made the map
+    //    need `lot_map` at all.
+    nodes: Array.isArray(body.nodes) ? body.nodes : [],
+    edges: Array.isArray(body.edges) ? body.edges : [],
     contrast: prop.contrast || null,
     // 🔴 «안 온 것»과 «끊겼다»는 다릅니다. `=== true` 로 접으면 필드가 아직 없는 응답이
     //    「예산에서 끊김」으로 읽히고, 데이터가 오기 «전에» 배너가 뜹니다 -- 오늘 하루의
@@ -918,6 +930,123 @@ export function reachModel(result) {
     // depth 는 «질문»이라 여기 없습니다. 이 셋이 참이면 답이 «실제로» 모자란 것입니다.
     cut: [t.nodes ? 'nodes' : null, t.edges ? 'edges' : null, t.claims ? 'claims' : null].filter(Boolean),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// THE MAP, AS TWO MATERIALS (round Z, 2026-08-28). The Lead PM's ruling: 「점은 walk · 격자는 물리」.
+//
+// 🔴 WHY THE GRID IS A SECOND FETCH AND NOT A SECOND WALK. `unscanned` is an assertion of
+//    ABSENCE, and absence needs a denominator. The subgraph can say which dice were inspected
+//    and which carry findings; it cannot say which dice EXIST, because a die with no edge is
+//    missing from it for three different reasons -- never inspected, cut by the budget, or
+//    excluded by `follow`. The grid is where 「이 웨이퍼에 칸이 몇이나 있나」 lives, and it is
+//    physics rather than ledger, so it comes from the declared relation.
+//
+// 🔴 AND WHEN THE WALK WAS TRUNCATED, THERE IS NO DENOMINATOR EITHER. A cut walk under-counts
+//    `scanned`, so `grid - scanned` would report dice as unscanned that were merely unseen.
+//    `mapModel` returns `unscanned: null` in that case and the part says how far the walk got.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `GET /tables/wafer_map_metadata/data`, filtered to ONE map. The denominator, and nothing else.
+ *
+ * 🔴 FILTERED AT THE SERVER. The relation holds 4,925 rows; pulling all of them to find one is
+ * how a screen becomes slow for a value it uses once. Measured: the filter answers `total: 1`.
+ */
+export async function fetchMapGrid(params) {
+  const { apiBase, mapId, fetchImpl } = params || {};
+  if (!mapId) return { ok: false, grid: null, reason: 'no_map_id' };
+  const filters = JSON.stringify({ map_id: { filterType: 'text', type: 'equals', filter: mapId } });
+  const query = new URLSearchParams({ limit: '1', filters });
+  const doFetch = fetchImpl || globalThis.fetch;
+  const res = await doFetch(`${apiBase}${ROUTES.mapGrid}?${query.toString()}`);
+  if (!res.ok) return { ok: false, grid: null, reason: `HTTP ${res.status}` };
+  const body = await res.json();
+  const row = (body && body.data && body.data[0]) || null;
+  // 🔴 A MAP WITH NO ROW IS NOT AN ERROR. Measured 2026-08-28: `SYN-CX-BW-001` has exactly one
+  //    row and `SYN-BW-101-02` has none. The screen must be able to draw the points it does
+  //    have and say the grid is unknown, rather than refuse the whole seat.
+  if (!row) return { ok: true, grid: null, reason: 'no_row_for_map' };
+  const cell = row.data && row.data.grid_metadata;
+  return { ok: true, grid: (cell && cell.value) || null, reason: null };
+}
+
+/**
+ * A walk answer plus a grid, as the model the `die` coordinate space already reads.
+ *
+ * 🔴 EVERY NUMBER HERE IS COUNTED FROM AN EDGE, NEVER FROM A NAME. `scanned` is 「inspected 엣지가
+ * 있다」 and `found` is 「observed 엣지가 몇 개인가」. No `if kind === 'void'` and no route.
+ *
+ * @param {object} answer  what `walk()` returned -- `subgraphModel`'s model, carrying nodes/edges
+ * @param {?string} grid   `grid_metadata` as the relation serves it (a JSON string), or null
+ */
+export function mapModel(answer, grid, axis) {
+  if (!answer || answer.ok === false) {
+    return {
+      axis, label: axis, sublabel: '', drawable: false,
+      state: answer && answer.state === 'refused' ? 'refused' : 'absent',
+      reason: (answer && answer.reason) || 'walk_absent',
+      message: (answer && answer.message) || '걷지 못했습니다',
+      cells: [], found: 0, scanned: 0, unscanned: null,
+      frame: null, coordinateUnit: null,
+    };
+  }
+  const nodes = answer.nodes || [];
+  const edges = answer.edges || [];
+  const dice = new Map();
+  for (const node of nodes) {
+    if (!node || node.type !== 'die') continue;
+    const keys = node.keys || {};
+    if (keys.x === undefined || keys.y === undefined) continue;
+    dice.set(node.id, { x: keys.x, y: keys.y, n: 0, scanned: false, id: node.id });
+  }
+  for (const edge of edges) {
+    if (!edge) continue;
+    const die = dice.get(edge.target) || dice.get(edge.source);
+    if (!die) continue;
+    if (edge.predicate === 'inspected') die.scanned = true;
+    if (edge.predicate === 'observed') { die.n += 1; die.scanned = true; }
+  }
+  const cells = [...dice.values()].map((die) => ({
+    x: die.x, y: die.y, n: die.n,
+    colorRole: die.n > 0 ? 'found' : (die.scanned ? 'scanned' : 'unscanned'),
+    nodeId: die.id, nodeIdResolved: true,
+  }));
+  const scanned = cells.filter((cell) => cell.colorRole !== 'unscanned').length;
+  const found = cells.reduce((sum, cell) => sum + cell.n, 0);
+  // 🔴 THE THREE STATES OF `unscanned`, AND THEY ARE NOT INTERCHANGEABLE:
+  //      a number  the grid declared its size and the walk ran whole
+  //      null      the grid is unknown, OR the walk was cut -- the part says which
+  const seats = declaredSeats(grid);
+  const cut = answer.complete === false || (answer.truncated || []).length > 0;
+  return {
+    axis, label: axis, sublabel: '',
+    // 🔴 NO SERVER VERDICT HERE. `lot_map` refused when its frames disagreed; a walk has no
+    //    frame to disagree with, so what decides drawability is whether a grid was declared.
+    drawable: Boolean(grid) && cells.length > 0,
+    state: cells.length ? (grid ? 'ready' : 'no_grid') : 'empty',
+    reason: grid ? null : 'grid_not_declared',
+    message: grid ? null : '이 맵의 격자가 선언돼 있지 않습니다 — 점은 그대로입니다',
+    cells, found, scanned,
+    unscanned: seats === null || cut ? null : Math.max(0, seats - scanned),
+    truncated: answer.truncated || null,
+    complete: answer.complete === undefined ? null : answer.complete,
+    frame: grid ? { grid } : null,
+    coordinateUnit: 'cells_from_origin',
+  };
+}
+
+/** `grid_cols x grid_rows` from the relation's own declaration, or null when it declares none. */
+function declaredSeats(grid) {
+  if (!grid) return null;
+  let parsed = grid;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { return null; }
+  }
+  const cols = Number(parsed && parsed.grid_cols);
+  const rows = Number(parsed && parsed.grid_rows);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return null;
+  return cols * rows;
 }
 
 /**

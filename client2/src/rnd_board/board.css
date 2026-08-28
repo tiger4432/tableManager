@@ -477,6 +477,14 @@ body {
 
 /* 「맵 밖」 — 이 맵이 «못 그린» 것. 없는 것이 아닙니다. */
 .rb-map { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+/* 🔴 자리를 «이름»으로 못박습니다 (round Z, 2026-08-28). 바로 아래 `:empty { display: none }`
+   이 걸리면 자동 배치가 한 칸씩 «당겨져» stage 가 auto 행을, note 가 1fr 행을 가져갑니다 --
+   실측: 맵이 그려지는데 캔버스가 324x2 이고 «빈» note 가 199px 였습니다. 라우트가 살아 있던
+   동안은 맵이 거절문만 그려서 이 자리가 한 번도 안 밟혔습니다. */
+.rb-map__head { grid-row: 1; }
+.rb-map__outside { grid-row: 2; }
+.rb-map__stage { grid-row: 3; }
+.rb-map__note { grid-row: 4; }
 .rb-map__outside:empty { display: none; }
 .rb-map__outside {
   padding: 3px 10px; font-size: 11px; color: var(--text-muted);
