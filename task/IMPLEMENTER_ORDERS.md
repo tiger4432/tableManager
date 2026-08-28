@@ -1,3 +1,100 @@
+# 🔴 [서버] **`continues` — 자재 걸음은 «다른 통»에서 뺀다** (총괄, 소유자 승인 2026-08-29)
+
+## 도착지 — 먼저 적습니다
+> 소유자: 「홉수는 원장 따라 다르지 … 그 이력 slot map 따라는데 홉을 소모하지만
+> 실제로는 정말 중요한 «같은 웨이퍼의 공정 이력»이지」 · 「그럼 split transfer 반복이면」
+
+**같은 자재를 따라가는 걸음이, 다른 것으로 떠나는 걸음과 «같은 예산»을 쓰고 있습니다.**
+도착지는 「예산이 둘」입니다 — 떠나는 걸음은 지금처럼 `hops`, 자재 걸음은 자기 통.
+
+이 지시가 끝나도 **화면은 안 바뀝니다** (선언에 `continues` 가 아직 없으므로 전부 false).
+효과 측정은 그 «다음»이고, 라이브 선언은 총괄이 씁니다 — 레인은 열지 마십시오.
+
+## 왜 술어 칸인가 — 도출은 «오늘만» 맞습니다
+```
+규칙 A  주어·목적어 타입 동일       8/11   leads_to(quantity→quantity) 를 자재로 오인
+규칙 B  양끝이 자재 엔티티          11/11  ← 오늘은 완벽
+🔴 B 는 선언이 «보장한 게 아닙니다». die --같은슬롯--> die 같은 술어가 생기는 날
+   자재-대-자재인데 계보가 아닌 것을 막을 게 없습니다 → 조용히 틀립니다
+```
+소유자 확정: **「술어지」.** 선언이 «말해야» 합니다.
+
+## ① 검증기 — 칸 하나를 «선택»으로 연다
+`server/ledger/setup_bundle.py` `_validate_vocabulary`
+```
+지금   problems.exact(item, path, required=("status","subjects","object"))   ← optional 없음
+뒤     ... , optional=("continues",))
+       + item 에 "continues" 가 있으면 bool 이어야 한다. 아니면 invalid_predicate
+```
+⚠️ **기본값을 선언에 «쓰지» 마십시오.** 없으면 false 로 «읽는» 것이지, 없는 칸을 채우는 게 아닙니다
+   (「선택 역할의 선언은 지우면 꺼진다」와 같은 자리 — 부재가 뜻을 가집니다).
+
+## ② 라우터 — 이어지는 술어를 «선언에서» 읽고, 깊이를 «받는다»
+`server/ledger_trace_router.py`
+```
+새 함수   _continuing_predicates()   ← _followable_predicates() 와 «같은 모양»으로
+          (_config.load() or {}).get("vocabulary") 에서 continues 가 true 인 것만.
+          읽기 실패는 «빈 집합» (지금 followable 이 「전부 거절」인 것과 같은 보수 방향)
+새 인자   continues_hops: int = Query(DEFAULT_CONTINUES_HOPS)
+          이름 근거: 선언 칸이 `continues` 이므로 «같은 낱말»로 묶습니다.
+          「material」로 부르면 continues 가 자재 아닌 술어에 붙는 날 이름이 거짓이 됩니다
+```
+
+## ③ walk — 통을 둘로. **루프 «모양»은 그대로입니다**
+`server/ledger_api/ledger_subgraph.py`
+```
+지금   depths[node] = 걸음 수.  for depth in range(hops):  frontier = depths==depth
+뒤     depths[node] = 걸음 수   ← «뜻 그대로 유지». hops_reached·자취·절단 판정 전부 안 건드림
+       + dep_cost[node] = «떠난» 걸음 수 (continues=false 를 지난 횟수)
+       for depth in range(hops + continues_hops):
+           frontier 에서 dep_cost >= hops 인 노드는 «펴지 않는다»
+       엣지를 타서 자식을 넣을 때:
+           dep_cost[child] = dep_cost[parent] + (0 if predicate in continuing else 1)
+```
+🔴 **이 모양을 고른 이유**: `depths` 의 뜻이 안 바뀌므로 이 값을 읽는 «전부»(트렁케이션 판정
+   `depth_value > hops` · `hops_reached` · 클라 자취)가 그대로 삽니다. 사전 하나와 가드 한 줄입니다.
+⚠️ 트렁케이션 판정 두 곳(`:879` `:884`)이 `hops` 를 상수로 비교합니다 — **새 상한으로 바꾸십시오.**
+   안 바꾸면 「잘렸다」가 «항상» 켜집니다 (자재 걸음이 depth 를 올리므로).
+
+## ⛔ 하지 않는 것
+```
+⛔ 라이브 선언(server/config/ontology/ledger_config.json) 열기 — 기록자는 총괄 하나입니다
+⛔ 자재 걸음을 «0홉»으로 세기 — split·transfer 반복이 무한이 됩니다. 통을 «나누는» 것이지
+   «공짜로» 만드는 게 아닙니다
+⛔ 술어 이름을 코드에 박기 — continuing 집합은 «선언에서만» 옵니다
+⛔ 클라 변경 — 이번 라운드는 서버뿐입니다
+```
+
+## 게이트 — 씨앗을 적습니다. 예측값은 «안» 적습니다
+```
+① 무회귀 (이게 이번 라운드의 «본 게이트»입니다)
+   선언에 continues 가 «하나도 없으므로» continuing 집합이 비고, dep_cost == depths 가 됩니다
+   씨앗  GET /api/ledger/subgraph
+         id=<wafer SYN-BW-101-16 의 entity id> · hops=6 · node_limit=1000 · direction=both
+   기준  이 지시 «전»에 같은 인자로 한 번 재고, «후»에 다시 재서 nodes·edges·hops_reached·
+         truncated 가 «전부 같아야» 합니다. 두 수를 나란히 보고하십시오
+   ⚠️ 기준선을 제 문서에서 «베끼지» 마십시오 — 직접 재서 전/후 두 줄로 적습니다
+
+② 검증기가 칸을 받는다 / 틀린 값을 거절한다
+   현재 라이브 선언 → 0 errors 유지
+   continues: true  를 임시 사본에 넣어 → 0 errors
+   continues: "yes" 를 임시 사본에 넣어 → invalid_predicate «1»
+   (임시 «사본»입니다. 라이브 파일에 쓰지 마십시오)
+
+③ 새 인자가 산다
+   continues_hops 를 안 보내면 ① 과 같은 답
+   continues_hops=0 을 보내면 hops 만으로 걷습니다 (= 오늘과 같음)
+
+④ 기존 하니스
+   서버 스위트 중 «이 파일들을 지나는 것»만. 전체 스위트 게이트 금지
+```
+
+## 보고
+`task/continues_budget_report.md` 에 씁니다. ①의 전/후 두 줄, ②의 세 수, ③의 두 답,
+④의 통과/실패 수. **예측과 다르면 그대로 적고 멈추십시오** — 맞춰 놓지 마십시오.
+
+---
+
 # ⚠️ **부류가 «셋»입니다 — 「죽은 예시」를 빠뜨렸습니다** (총괄 15:4x)
 
 응용 레인 보고(「제 여섯 문서에 v1 낱말 «넷», 현재형 거짓말 «0»」)를 표본으로 확인하다 나왔습니다.
