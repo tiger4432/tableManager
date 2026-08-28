@@ -17340,3 +17340,26 @@ ledger/runtime_v2 16K · ledger/ledger_frame 12K · ledger/dry_run 11K
 ledger/observability 19K
 ```
 📌 ①(재번역 문)이 «먼저»입니다. 그게 끝나면 이 조사로.
+
+## [C 응용] 배분 — «선언 층» 11 (조사 규칙은 위 여섯 칸 그대로)
+```
+ledger/config 66K            선언을 로드·검증
+ledger/setup_bundle 107K     🔴 가장 큼. 선언 «문법»의 정본
+ledger/setup 15K             로드 경계
+ledger/setup_registry 46K    스냅샷 컴파일러
+ledger/source_contract 16K   소스 하나 -> 운영자 계약
+ledger/config_authoring 107K 🔴 어드민 저작 — 「선언이 강제하는 것 vs 사람이 답할 것」
+ledger/config_explorer 63K · ledger/config_explorer_service 48K · ledger/config_drafts 38K
+ledger/column_stats 13K · ledger_admin 46K
+```
+🔴 **이 층에 ④(두 번째 선언)가 가장 많이 걸릴 것으로 봅니다** — `table_config.json` 을 읽는 자리를
+   특히 세십시오. 그게 «물리 스키마의 정본»인데 `ledger_config.json` 밖에 있습니다.
+📌 setup_bundle 107K · config_authoring 107K 둘이 이 층의 절반입니다. 그 둘만 잘 나눠도 그림이 섭니다.
+
+## 겹침 방지 — 지금 배분 전체
+```
+[A 구현자] 원자를 «만드는» 층 14   (단 재번역 문이 «먼저»)
+[B 클라]   원자를 «읽는» 층 7      (잡았습니다: cdec6edd)
+[C 응용]   «선언» 층 11
+남은 것    고아 12 · mappers 3 — 조사 «뒤»에 제가 판정해서 배분합니다
+```
