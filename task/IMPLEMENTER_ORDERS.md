@@ -17363,3 +17363,52 @@ ledger/column_stats 13K · ledger_admin 46K
 [C 응용]   «선언» 층 11
 남은 것    고아 12 · mappers 3 — 조사 «뒤»에 제가 판정해서 배분합니다
 ```
+
+---
+
+# 🟡 재번역 문 — 한 자리만 열렸습니다. 같은 거절이 «둘»입니다 (총괄 실측, 2026-08-28 10:2x)
+
+승인의 «모양»은 좋습니다 — `retranslate=<source_id>` 로 **소스를 이름 대야** 하고, 안 맞으면 거절.
+제 조건 ①(기본은 거절) ②(소스별)를 만족합니다.
+
+## 🔴 그런데 실행이 «더 안쪽»에서 막힙니다
+```
+backfill.run(engine, source="void_observation", retranslate="void_observation")
+  -> backfill.py 게이트 «통과»
+  -> setup.execute_selected_cursor_batch
+  -> runtime_v2.execute_cursor_batch:151
+  -> store.write_batch:322
+  -> store._advance_cursor:277
+     🔴 CursorVersionConflict: "cursor belongs to a different translator/setup snapshot;
+                                explicit replay/reset is required"
+```
+같은 거절이 «두 자리»입니다:
+```
+ledger/backfill.py:370   <- 당신이 문을 단 곳
+ledger/store.py:277      <- «문이 없는 곳». 여기가 실제로 막습니다
+```
+📌 이게 오늘 아침 제가 판정했던 그 부류입니다 — **부류를 적었으면 구성원을 «센다».**
+   거절문의 낱말이 비슷하다고 자리가 하나인 것은 아닙니다.
+
+## 지시 — 승인을 «store 까지» 전달하십시오
+```
+바뀌는 것   승인이 write_batch/_advance_cursor 까지 «인자로» 내려간다
+⛔ store.py 의 가드를 «삭제»하지 마십시오 — 승인 없이는 여전히 거절이어야 합니다
+⛔ 전역 상태·환경변수로 넘기지 마십시오 — 인자로만
+```
+
+## ⚠️ 그리고 제가 «못 잰» 것 — 정직하게 적습니다
+```
+시험 ①(승인 없이 거절) · ②(엉뚱한 소스 이름 거절) 의 출력이 «안 남았습니다»
+   traceback 이 나면서 앞 print 가 파일에 안 실렸습니다
+-> 그 둘이 통과했는지 «확인 못 했습니다». 당신이 착지시킬 때 그 둘도 같이 재 주십시오
+```
+
+## 게이트 (셋 다)
+```
+① 승인 «없이»                -> 거절 (지금과 같음)
+② retranslate="dt_job" 로 다른 소스 이름 -> 거절
+③ retranslate="void_observation"        -> «실행되고» 반환값에 지운 수·쓴 수·커서 전/후
+   그 뒤: of_kind 원자 103,841 · observed 가 finding_kind 를 «안 듦»
+   walk: 타입에 defect_kind · 술어에 of_kind · 응답의 finding_kind 낱말 «0»
+```
