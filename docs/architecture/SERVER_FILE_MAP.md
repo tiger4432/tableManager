@@ -5,6 +5,9 @@
 >       parsers/directory_watcher · ledger/backfill · ledger/setup · setup/*
 > ⚠️ tests · scripts · migrations 는 «뿌리가 아니라» 별도 실행 도구입니다
 > 🔴 상대 임포트(`from .store import …`)를 패키지 경로로 «풀어서» 셌습니다 — 안 풀면 쓰기 경로가 고아로 찍힙니다
+> 📦 = 2026-08-28 에 `server/_archive/` 로 «이동»(삭제 아님, 소유자 「눈에 안 띄게 해」). 안 닿음 52 중 «여섯».
+>    그것을 재던 시험 셋도 `server/_archive/tests/` 로 따라갔습니다 — 안 옮겼더니 스위트 수집이 «통째로» 막혔습니다.
+>    ⚠️ `ledger/config.py` 의 `_validate_chain_mapper_selection` 은 «남아서» `sources.*.chain_mapper` 를 아직 검증합니다.
 
 
 ## (최상위)
@@ -14,7 +17,7 @@
 | ✅ | `admin_auth` | 22,249 | 2026-07-31 | Shared-token gate for the ``/admin/*`` surface. |
 | ✅ | `alignment_view_service` | 4,146 | 2026-08-19 | Shared, read-only alignment-view service for HTTP routes and chain mappers. |
 | ✅ | `audit_cache` | 33,076 | 2026-08-11 | The in-memory projection behind `GET /audit_logs/recent`. |
-| 🔴 | `audit_changeset` | 20,442 | 2026-08-18 | The CHANGESET shape of an audit row: one row per WRITE, not one per COLUMN. |
+| 📦 | `_archive/audit_changeset` | 20,442 | 2026-08-18 | The CHANGESET shape of an audit row: one row per WRITE, not one per COLUMN. |
 | ✅ | `audit_history` | 12,149 | 2026-08-11 | Row/cell audit history paging - the ceiling on `/history` fetches. |
 | ✅ | `bonding_plan` | 55,845 | 2026-08-05 | 본딩 실험계획(M1) — 역할 바인딩 config 로더 + 코어 집계 코어. |
 | 🔴 | `chain_bindings` | 11,455 | 2026-08-11 | Which column of a table carries the DT job identity — READ, never assumed. |
@@ -28,7 +31,7 @@
 | 🔴 | `dt_frame_transform` | 4,040 | 2026-08-10 | Derive portable X/Y/sign/offset equations from confirmed DT frame metadata. |
 | ✅ | `dt_map_derivation` | 43,842 | 2026-08-25 | The dt_log -> dt_map derivation: the gate, the identity, the frame, the retraction. |
 | ✅ | `effort_metric` | 7,752 | 2026-07-29 | Interaction-effort instrument — config side. |
-| 🔴 | `enrichment_actions` | 17,472 | 2026-08-15 | Project open Enrichment work into bounded, walkable ontology action nodes. |
+| 📦 | `_archive/enrichment_actions` | 17,472 | 2026-08-15 | Project open Enrichment work into bounded, walkable ontology action nodes. |
 | ✅ | `enrichment_analysis` | 36,619 | 2026-08-05 | Read-only enrichment analytics: [④] why a gap exists, [②] which judgement |
 | ✅ | `enrichment_backfill` | 22,966 | 2026-08-16 | Retroactive enrichment backfill - apply an enrichment rule to source rows |
 | ✅ | `enrichment_candidates` | 50,823 | 2026-08-05 | [Enrichment ①] A single candidate is a confirmation, not a judgement. |
@@ -89,7 +92,7 @@
 | | 파일 | 크기 | 수정 | 하는 일 |
 |---|---|---:|---|---|
 | ✅ | `ledger/backfill` | 39,052 | 2026-08-21 | The backfill drivers - cursor loops that never cut a molecule in half. |
-| 🔴 | `ledger/chain_mapper` | 16,279 | 2026-08-18 | Trusted Chain-mapper calls for the existing Ledger-owned execution loop. |
+| 📦 | `_archive/ledger/chain_mapper` | 16,279 | 2026-08-18 | Trusted Chain-mapper calls for the existing Ledger-owned execution loop. |
 | ✅ | `ledger/column_stats` | 13,124 | 2026-08-19 | What the physical table ACTUALLY holds, for the authoring screen's column pickers. |
 | ✅ | `ledger/config` | 66,080 | 2026-08-27 | `ledger_config.json` - the translator declarations, loaded and VALIDATED. |
 | ✅ | `ledger/config_authoring` | 107,196 | 2026-08-27 | What one declaration FORCES, and what a person still genuinely has to answer. |
@@ -98,13 +101,13 @@
 | ✅ | `ledger/config_explorer_service` | 48,100 | 2026-08-21 | Cached application service for the ontology config explorer. |
 | ✅ | `ledger/dry_run` | 10,795 | 2026-08-18 | 「이 선언이 낳을 원자」 - the REAL translators, over a connection that cannot write. |
 | ✅ | `ledger/envelope` | 15,851 | 2026-08-27 | The 7-field envelope of `CANONICAL_LEDGER_DESIGN.md` §3, as one Python object. |
-| 🔴 | `ledger/examples` | 82 | 2026-08-16 | Copyable ledger translator examples; no module here is runtime-registered. |
+| 📦 | `_archive/ledger/examples` | 82 | 2026-08-16 | Copyable ledger translator examples; no module here is runtime-registered. |
 | ✅ | `ledger/gate` | 30,156 | 2026-08-27 | The translation gate: it refuses at the door, and it COUNTS. |
 | ✅ | `ledger/implementations` | 8,284 | 2026-08-19 | Discover the executable implementations the repository actually ships. |
 | ✅ | `ledger/ledger_frame` | 11,935 | 2026-08-17 | The one pandas boundary between a Chain mapper and the existing Ledger gate. |
 | ✅ | `ledger/observability` | 19,334 | 2026-08-16 | Heartbeat note and lag report - birth conditions, not follow-ups. |
-| 🔴 | `ledger/profile_chain_mapper` | 19,620 | 2026-08-17 | Canonical Profile evaluation inside the registered Chain-mapper boundary. |
-| 🔴 | `ledger/profile_lookup_adapters` | 4,650 | 2026-08-17 | Registered read-only lookup capabilities for canonical Profile execution. |
+| 📦 | `_archive/ledger/profile_chain_mapper` | 19,620 | 2026-08-17 | Canonical Profile evaluation inside the registered Chain-mapper boundary. |
+| 📦 | `_archive/ledger/profile_lookup_adapters` | 4,650 | 2026-08-17 | Registered read-only lookup capabilities for canonical Profile execution. |
 | ✅ | `ledger/roleframe` | 59,484 | 2026-08-23 | Ledger v2 Stage 4 EventFrame -> RoleFrame -> LedgerFrame compiler. |
 | ✅ | `ledger/runtime_v2` | 15,762 | 2026-08-21 | Ledger v2 Stage 6 execution adapter over the existing gate/store transaction. |
 | ✅ | `ledger/schema` | 23,407 | 2026-08-18 | Physical DDL for `ledger_events` and the translator cursor. ONE spelling, here. |
