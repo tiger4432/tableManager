@@ -102,6 +102,46 @@ Y축 선택기가 묻는 것   「무엇을 그릴 수 «있나»」  -> 선언�
    모양이 바뀜니다 -> 검증기와 예산 계산이 걸립니다. 소유자 판정 대기
 ```
 
+#### ✅ 구멍 ② «메워졌습니다» — `continues` 착지 (04:4x, 커밋 `4cbcb086`)
+```
+소유자   「축 하나 더 만들까?」 → 「술어지」 · 「1 승인, 2 설정 가능하게」
+         「선언 수정하고 ontology explore 에도 반영」
+세 파일이 «같이» 갔습니다 — 검증기가 모르는 칸을 거절하므로 순서가 강제됩니다
+   setup_bundle.py       _validate_vocabulary 에 optional=("continues",) + bool 검사
+   ledger_skeleton.json  술어 레코드에 flag 리프 하나 (label 「자재 연속」)
+   라이브 선언         여섯에 continues: true — 총괄이 직접. 백업 .bak-0829_0440
+
+🔴 탐색기 클라 변경 «0줄»
+   폼이 /authoring/schema 의 스켈레톤에서 필드를 받습니다.
+   소유자 DoD(「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」)가 그대로 돌았습니다
+   확인: 라우트가 돌려주는 «그 함수»를 불러 vocabulary member fields 가
+        ['status','subjects','object','continues'] 임을 재음 (401 이라 HTTP 대신)
+
+증거 — «붙였는데 수가 그대로»여야 하는 자리
+   검증      라이브 0 errors · 대조군(백업) 0 errors
+   시험      before 20 failed / 479 passed · after 20 / 479
+             🔴 FAILED 목록을 정렬해 diff -> «완전히 같은 20». 개수만 같은 게 아닙니다
+   재기동    서버가 08-28 18:14 프로세스였습니다 — 재기동 전에는 새 스켈레톤을 안 들었습니다
+```
+#### 🔴 겹지어 나온 것 — «드리프트 게이트가 이미 red 라 게이트 노릇을 안 하고 있었습니다»
+```
+시험   test_ledger_skeleton.py::test_skeleton_and_validator_name_the_same_fields
+일    스켈레톤↔검증기의 필드 이름을 «양방향»으로 대조해 둘 다 0 을 요구합니다
+상태   제 변경 «전»에도 red. _validate_references 의 세 자리(here · f'{here}.from'
+      · f'{here}.to')가 ANCHORS 에 없습니다
+뜻   이 라운드가 «기대던 안전망»이 실은 안 컴. continues 는 드리프트를
+      «안 늘렸지만», 늘렸어도 이 시험은 못 잡았을 겁니다
+⏭ 별건. 이번 라운드에서 고치지 않음 — 지시서에도 「고치지 말 것」으로 적음
+```
+#### ⏭ 남은 것 — 예산을 둘로 가르는 서버 일 (레인, 지시서 `557ff31b` + 정정)
+```
+② ledger_trace_router     _continuing_predicates() + continues_hops 인자
+③ ledger_subgraph         dep_cost 사전 + 가드 + 절단 상한 이동(:879 :884)
+⚠ 지금은 여섯에 표지만 붙었고 «읽는 코드가 없습니다» — 화면은 아직 그대로입니다
+🔴 /api/ledger/declaration 은 continues 를 안 실어 보냅니다 (칸을 손으로 골라 담는 자리).
+   예산은 서버 일이라 동작에는 지장 없고, «경로 목록이 몶홉인지»를 말하려면 필요해집니다
+```
+
 ### ✅ 마감 (02:2x) — **404 «11 -> 2» · 문서 «114 -> 92» · 원장 변경 «0»**
 ```
 남은 404 «둘»   트렌드 좌석 4·6 — «소유자 판정 대기»뿐입니다
