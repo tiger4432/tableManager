@@ -1116,6 +1116,77 @@ export function compositionFromWalk(answer) {
 }
 
 /**
+ * 「이 웨이퍼에 이 종류가 몇이나 있나」, counted in the window rather than joined on the server.
+ *
+ * 🔴 THE COUNT IS OF EDGES, NOT OF A NAME. A die is `found` when an `observed` edge lands on it
+ * and the finding it reaches is `of_kind` the kind asked for; `scanned` is an `inspected` edge.
+ * There is no `if kind === 'void'` here -- the kind arrives as an argument and is compared to
+ * the kind NODE's own key, which is a word the declaration owns.
+ *
+ * ⚠️ A CUT WALK RETURNS `null` COUNTS, NOT ZEROS. Same rule the map's `unscanned` follows: a
+ * truncated walk under-counts, and reporting that as a number says 「없다」 where 「못 봤다」 is true.
+ */
+export function waferFactsFromWalk(answer, kind) {
+  if (!answer || answer.ok === false) return null;
+  const nodes = answer.nodes || [];
+  const edges = answer.edges || [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const wafer = nodes.find((node) => node.type === 'wafer');
+  const cut = answer.complete === false || (answer.truncated || []).length > 0;
+  // finding -> its kind, off the `of_kind` edges the walk already returned
+  const kindOf = new Map();
+  for (const edge of edges) {
+    if (!edge || edge.predicate !== 'of_kind') continue;
+    const target = byId.get(edge.target);
+    kindOf.set(edge.source, (target && (target.keys || {}).defect_kind) || null);
+  }
+  const scanned = new Set();
+  const found = new Set();
+  for (const edge of edges) {
+    if (!edge) continue;
+    if (edge.predicate === 'inspected') scanned.add(edge.target);
+    if (edge.predicate === 'observed' && (!kind || kindOf.get(edge.target) === kind)) {
+      found.add(edge.source);
+    }
+  }
+  return {
+    wafer: wafer ? (wafer.keys || {}).wafer : null,
+    lot: null,
+    cells: cut ? null : scanned.size,
+    found: cut ? null : found.size,
+    scanned: cut ? null : scanned.size,
+  };
+}
+
+/**
+ * 「같은 설비를 지난 주어가 몇이나 되나」 — the one peer axis the ledger has a word for.
+ *
+ * 🔴 MEASURED BEFORE BUILDING (2026-08-28): `leg`, `bond_lot` and `scan_recipe` appear in ZERO
+ * atoms, so those three axes are answered with a sentence rather than a count. `eqp_id` is real
+ * -- 6,750 `measures` atoms carry it in their qualifiers -- and this counts THAT one.
+ */
+export function peerCountFromWalk(answer, eqpId) {
+  if (!answer || answer.ok === false) return null;
+  const subjects = new Set();
+  let units = 0;
+  for (const edge of (answer.edges || [])) {
+    if (!edge || edge.predicate !== 'measures') continue;
+    if (eqpId && (edge.qualifiers || {}).eqp_id !== eqpId) continue;
+    units += 1;
+    subjects.add(edge.source);
+  }
+  const cut = answer.complete === false || (answer.truncated || []).length > 0;
+  return {
+    subjects: cut ? null : subjects.size,
+    units: cut ? null : units,
+    // 🔴 어디서 왔는지 «지어내지 않습니다». lot_map 은 서버가 relation·column 을 실어 줬고,
+    //    여기서는 그 자리에 «술어»가 옵니다 -- 그게 이 수의 출처이고 사실입니다.
+    relation: 'measures', column: 'qualifiers.eqp_id',
+    analysis: null, straddling: null, message: null,
+  };
+}
+
+/**
  * The walk a seat gets when it names no route: its `start` marking, carried whole, and whatever
  * else it declared (`follow`, `hops`, `direction`, the budgets) riding through untouched.
  *
