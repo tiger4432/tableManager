@@ -389,24 +389,49 @@ export async function fetchSubgraph(params) {
 //    different question. `post_bond_queue_h · void_observation_bias` is the extra: it reaches
 //    a claim atom (`mes_queue:SYN-BW-103-11`) and a value hop.
 // ═══════════════════════════════════════════════════════════════════════════════
-export function measuredFromHops__untilServerServesIt(row) {
-
-
+export function measuredFromHops__untilServerServesIt(row, edges) {
+  // 🔴 THE QUESTION HAS NEVER CHANGED: 「이 후보는 «가서 볼 수 있는 것»에 닿았나」. What keeps
+  // changing is the name the walk gives that thing, and this is its third. The two earlier
+  // names stay written down because deleting them would make this read like a rule that was
+  // always wrong, and it was not -- each was true when it was written:
+  //
+  //    ~2026-08-25  `claim || value`, both node kinds. TRUE then.
+  //     2026-08-25  a claim became an EDGE, so the `claim` arm could never fire again and only
+  //                 `value` survived. Still a real rule, and dropping `claim` was the fix
+  //                 rather than a loss: MEASURED on the old code, seed `SYN-CX-BW-001`, 21 of
+  //                 21 candidates had a claim hop and 0 of 21 a value hop, so the arm that
+  //                 died was the one that had been answering "yes" to everything.
+  //     2026-08-28  revision 6 landed and every node the walk returns became a declared
+  //                 ENTITY -- measured `{ entity: 507 }` on that same seed. `node_kind ===
+  //                 'value'` stopped being a rule that can answer 「없다」 and became one that
+  //                 cannot answer at all: permanently false, with no error and no log.
+  //
+  // 🔴 SO THE ANSWER MOVED FROM THE NODE TO THE EDGE, because that is where the ledger put it.
+  // `measures@1` (wafer@1 -> quantity@1, 80,322 atoms) landed the same day and carries the
+  // reading in its qualifiers. A trail that crosses one has touched something an engineer can
+  // go and look at; a trail that only crosses `leads_to` is a name the declaration asserts.
+  //
+  // 🔴 NO NEW FIELD AND NO DECODER. The predicate is not on a hop and does not need to be: the
+  // response already carries `edges[].{source,target,predicate}` (`ledger_subgraph.py:854`),
+  // so a pair of consecutive hop ids IS the lookup key. The Lead PM cancelled the server-side
+  // "put predicate on the hop" order once this was measured.
+  //
+  // ⚠️ UNDIRECTED ON PURPOSE. A hop pair is one step along the parent chain, and the chain
+  // crosses the edge in whichever direction reached the node. Testing a single orientation
+  // would answer 「없다」 for every trail that arrived from the quantity side.
+  const crossings = new Set();
+  for (const edge of edges || []) {
+    if (!edge || edge.predicate !== 'measures') continue;
+    crossings.add(`${edge.source} -> ${edge.target}`);
+    crossings.add(`${edge.target} -> ${edge.source}`);
+  }
+  if (crossings.size === 0) return false;
   for (const ev of row.evidence || []) {
-    for (const hop of ev.hops || []) {
-      // 🔴 THE QUESTION IS UNCHANGED; ONE OF ITS TWO NAMES STOPPED EXISTING. This read
-      // `claim || value`. On 2026-08-25 a claim became an EDGE, so the `claim` arm can never
-      // be true again and only `value` survives -- the rule is the old rule with a dead name
-      // removed, not a new rule.
-      //
-      // 🔴 AND THE ARM THAT DIED WAS THE ONE CARRYING THE COUNT. Under the old projection
-      // EVERY atom was a claim node, so any trail that walked at all passed one. MEASURED on
-      // the old code, seed `SYN-CX-BW-001`: 21 of 21 candidates had a claim hop and 0 of 21
-      // had a value hop, and the claim hop was always the SECOND -- the first step out of the
-      // seed. So "measured 21/21" said only "the walk ran". It counted nothing. The screen
-      // now reads 0 measured on that seed and 4 of 25 on `SYN-BW-101-16`, where trails really
-      // are entity -> value -> quantity. A zero here is an answer, not a fault.
-      if (hop && hop.node_kind === 'value') return true;
+    const hops = ev.hops || [];
+    for (let i = 1; i < hops.length; i += 1) {
+      const from = hops[i - 1] && hops[i - 1].id;
+      const to = hops[i] && hops[i].id;
+      if (from && to && crossings.has(`${from} -> ${to}`)) return true;
     }
   }
   return false;
@@ -472,7 +497,7 @@ export function subgraphModel(result) {
       top: row.top === true,
       tied: row.tied === true,
       incomparable: row.incomparable === true,
-      measured: measuredFromHops__untilServerServesIt(row),
+      measured: measuredFromHops__untilServerServesIt(row, body.edges),
       hopCount: (row.evidence || []).reduce((n, ev) => Math.max(n, (ev.hops || []).length), 0),
       evidence: (row.evidence || []).map((ev) => ({
         seed: ev.seed || null,
