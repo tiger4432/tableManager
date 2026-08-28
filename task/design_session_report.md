@@ -1,3 +1,31 @@
+# 🔒 [클라 B] **잡습니다 (라운드 Z): 가운데 표 지우기** — 그리고 좌석 «둘»이 통째로 제외됩니다
+
+## 먼저 잰 것 — 좌석 7·11 은 «줄이 갈리지 않습니다». 좌석 «전체»가 칩 씨앗입니다
+```
+main.js:327  composition      start { groupby: «chip», value: SYN-CX-CHIP-001 }  collect wafer_process
+main.js:424  expanded-layer   start { groupby: «chip», value: SYN-CX-CHIP-001 }  collect wafer_process
+```
+지시가 「칩이 씨앗인 «줄»은 빼고 나머지만」이라 하셨는데, 이 둘은 **좌석 안에 다른 줄이 없습니다** —
+`wafer_process` 는 `finalChipId` «하나»로 부르는 질문입니다. 그래서 갈리는 게 아니라 «통째로» 제외됩니다.
+📌 갈리는 좌석이 없으므로 판정 요청은 «안 합니다». 다르게 보시면 말씀해 주십시오.
+
+## 그래서 이번 라운드 대상은 «셋»입니다
+```
+좌석 9   chip-zoom    collect point   -> 이미 walk(200). collect 이름을 빼고 follow 를 선언
+좌석 8   map-bond-a   collect map     -> lot_map(404). 점은 walk · 격자는 선언된 릴레이션
+좌석 12  map-core     collect map     -> 8 과 같음, 읽는 마킹만 marking:2
+규율 ②   api.js:345 의 죽은 collect 파라미터도 «같이» 뺍니다
+```
+
+## 잡는 파일
+```
+client2/src/rnd_board/api.js        COLLECTS 표 · 죽은 collect 파라미터
+client2/src/rnd_board/main.js       좌석 8·9·12 의 선언
+⚠️ 맵 «격자» 배선이 map_panel.js 안까지 들어가야 하면 «멈추고 올립니다» — 부품 파일은 안 잡았습니다
+```
+
+---
+
 # 📎 [클라 B] **라운드 X 보고에 «인자 하나»를 채웁니다** — `edge_limit` (총괄 `de0bf2c7`)
 
 제가 「씨앗과 인자를 같이 적는다」고 써 놓고 `edge_limit` 을 빠뜨렸습니다. 총괄이 그걸로 갈렸고
