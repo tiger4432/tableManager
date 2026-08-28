@@ -17581,3 +17581,14 @@ walk: 타입 {wafer 1 · die 877 · defect 121 · defect_kind 1}
       응답의 finding_kind «0»
 => 목표 ①②③ 이 «동시에» 참이 됐습니다
 ```
+
+---
+
+# 📢 총괄이 «지금부터» 씁니다 — server/_archive 이동 (2026-08-28 11:5x)
+```
+대상   ledger/chain_mapper · ledger/profile_chain_mapper · ledger/profile_lookup_adapters
+       ledger/examples · audit_changeset · enrichment_actions
+행위   «삭제가 아니라 이동» — server/_archive/ 로. 소유자 지시(「눈에 안 띄게 해」)
+⛔ 그동안 그 여섯 파일을 «건드리지 마십시오». 끝나면 수를 올립니다
+📌 이 줄이 방금 배운 규율입니다 — 공유 자원에 긴 쓰기를 시작할 땐 «먼저 알린다»
+```
