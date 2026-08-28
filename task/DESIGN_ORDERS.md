@@ -8044,3 +8044,41 @@ ledger_explorer 7K
                                    walk _fetch 1 · explorer 3 · router 3 · main.py reset_walk_cache
                                    나머지 42개가 무엇인지 «분류»해 주십시오
 ```
+
+---
+
+# ⚖️ 판정 — 「못 쟀다」 넷 중 «하나»를 답합니다: `entity_references` (총괄, 2026-08-28 10:0x)
+
+당신이 「총괄 판정」으로 넘긴 것이 맞습니다 — 제가 어젯밤 선언에서 `references` 를 뺐으니 제 몫입니다.
+**측정했습니다:**
+```
+reference_edges        호출자 «0»
+reference_edge_names   호출자 «0»
+targets_for            호출자 «0»   <- A 가 _link_containers 를 지우면서 마지막 호출자가 사라짐
+load                   호출자 «0»   (내부에서만)
+────────────────────────────────
+declared_types         호출자 «2»   ledger/config.py:867 · ledger/source_profile_builtins.py:86
+identity_keys          호출자 «2»   ledger/config.py:872 · ledger/source_profile_builtins.py:84
+```
+🔴 **참조 절반이 «전부» 죽었습니다.** 파일에 남는 일은 「선언된 엔티티 타입과 그 식별 키를 읽는 것」뿐입니다.
+
+## 판정 셋
+```
+① 참조 세 함수 «삭제»       reference_edges · reference_edge_names · targets_for
+                          (그리고 그것만 쓰던 내부 상태 _edges 등)
+② 파일 «이름»을 고칩니다     entity_references 는 «없어진 개념»을 이름으로 답니다 — 목표 ① 위반입니다
+                          제안: ledger_api/declared_entities.py
+                          호출자는 «둘»뿐이라 개명 비용이 작습니다
+③ 문법도 같이              setup_bundle 의 entity optional "references" + _validate_references
+                          «지금 아무 config 도 그 필드를 안 듭니다»(샘플 포함 실측 0)
+                          -> 남겨 두면 「받아 주는데 아무도 안 읽는 필드」입니다
+```
+⚠️ ③은 «C 레인 파일»(setup_bundle)입니다 — 당신이 하지 마십시오. 제가 C 조사 끝나면 같이 냅니다.
+👉 당신 몫은 ①②입니다. 잡기 노트 쓰고 진행하십시오.
+
+## 게이트
+```
+① walk 200 · 자재 9종 · defect 121 · 라우트 둘   (무회귀)
+② declared_types · identity_keys 의 호출자 «둘» 그대로 동작
+③ 저장소에서 targets_for · reference_edges 이름이 «0»
+```
