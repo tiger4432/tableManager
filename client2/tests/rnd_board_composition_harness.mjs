@@ -134,8 +134,19 @@ async function suite(mods) {
   const markings = new store.MarkingStore();
   const hostA = doc.createElement('div');
   const hostB = doc.createElement('div');
-  const a = new comp.CompositionPanel(hostA, { doc, markings, reads: 'marking:1', writes: 'marking:1', apiBase: '', finalChipId: 'CHIP-A', fetchImpl: okFetch() });
-  const b = new comp.CompositionPanel(hostB, { doc, markings, reads: 'marking:2', writes: 'marking:2', apiBase: '', finalChipId: 'CHIP-B', fetchImpl: okFetch() });
+  // 🔴 2026-08-28 (round Z-3): 주어가 «칩 id»에서 «마킹»으로 바뀌었습니다. 그래서 픽스처가
+  //    먼저 «찍어» 줍니다 -- 안 찍으면 부품이 「아직 안 골랐다」로 서고 행이 «0» 이라 이 절이
+  //    통째로 죽습니다(실측: click 이 undefined 에 걸려 하니스가 «크래시»했습니다).
+  //    이 파일이 재는 것(두 인스턴스가 서로의 마킹을 안 건드린다)은 그대로입니다 -- 주어를
+  //    어디서 얻느냐만 바뀌었고, 그 바뀜이 «화면과 같은» 길입니다.
+  //    ⚠️ 씨앗 마킹은 «읽고 쓰는 이름과 다른 이름»입니다. 같은 이름에 미리 찍으면 A3 이 재는
+  //       「내가 선언한 이름에만 쓴다」의 «출발 수»가 0 이 아니게 되어, 통과해도 뜻이 없습니다.
+  //       부품이 «읽을 이름»과 «쓸 이름»을 따로 선언한다는 조립식 규칙이 여기서 쓸모가 됩니다.
+  markings.set('seed:1', 'ledger-entity:v1:SEED-A', store.SIGN.CASE);
+  markings.set('seed:2', 'ledger-entity:v1:SEED-B', store.SIGN.CASE);
+  const seat = (n) => ({ groupby: 'die', marking: `seed:${n}` });
+  const a = new comp.CompositionPanel(hostA, { doc, markings, reads: 'marking:1', writes: 'marking:1', apiBase: '', finalChipId: 'CHIP-A', start: seat(1), fetchImpl: okFetch() });
+  const b = new comp.CompositionPanel(hostB, { doc, markings, reads: 'marking:2', writes: 'marking:2', apiBase: '', finalChipId: 'CHIP-B', start: seat(2), fetchImpl: okFetch() });
   a.mount(); b.mount();
   await flush(); await flush();
 
