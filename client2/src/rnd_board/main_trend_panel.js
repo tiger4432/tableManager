@@ -44,6 +44,10 @@ export class MainTrendPanel extends Panel {
     this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
     // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
     this.start = options.start || null;
+    // 🔴 좌석이 라우트 이름을 안 대면 «합성 루트가 묶어 준 걷기»를 씁니다 (round Z-3).
+    //    this.collect 의 기본값이 살아나면 좌석이 이름을 뗐는데도 죽은 trends 라우트를
+    //    계속 부릅니다 -- 오늘 같은 모양을 세 부품에서 이미 만났습니다.
+    this.boundWalk = options.load || null;
     this.collect = options.collect || 'trend_y';
     this.kinds = options.kinds || null;
     this.window = options.window || '180d';
@@ -134,10 +138,12 @@ export class MainTrendPanel extends Panel {
     }
     this.loadState = 'loading';
     this.render();
-    this.model = await this.walk({
-      start, collect: this.collect,
-      kinds: this.kinds, window: this.window, grain: this.grain,
-    });
+    this.model = await (this.boundWalk
+      ? this.boundWalk({ start })
+      : this.walk({
+        start, collect: this.collect,
+        kinds: this.kinds, window: this.window, grain: this.grain,
+      }));
     this.loadState = this.model.ok ? 'ready' : 'refused';
     this.render();
   }
@@ -203,9 +209,13 @@ export class MainTrendPanel extends Panel {
       // Two facts, separately: what came back, and what could not be plotted.
       const note = doc.createElement('div');
       note.className = 'rb-trend-note rb-trend-note--absent';
+      // 🔴 잘린 걷기는 「점이 없다」가 «아닙니다» (round Z-3, 2026-08-28). 실측: 마킹한 다이에서
+      //    걸으면 complete:false · truncated ["nodes","claims"] 로 오고, 그때 「이 창에 점이
+      //    없습니다」는 «예산에서 못 본 것»을 «없는 것»으로 바꿔 말합니다. 모델이 이미 그 문장을
+      //    싣고 있었고 화면이 안 쓰고 있었습니다 -- 오늘 unscanned 에서 세운 규칙 그대로입니다.
       note.textContent = m.points.length
         ? `점 ${m.points.length}개 · 비율이 붙은 것은 없습니다 — 아직 안 쟀습니다`
-        : '이 창에 점이 없습니다';
+        : (m.state === 'truncated' && m.message ? m.message : '이 창에 점이 없습니다');
       root.appendChild(note);
       this.host.appendChild(root);
       return;

@@ -1187,6 +1187,73 @@ export function peerCountFromWalk(answer, eqpId) {
 }
 
 /**
+ * 「마킹한 것들의 추세」, counted in the window. The owner ruled the population on 2026-08-28:
+ * 「a지」 -- **the marking IS the population**. One marked wafer is one point, several are several.
+ *
+ * 🔴 THE TIME AXIS WAS ALREADY IN THE RESPONSE. Measured: all 626 edges of a board walk carry
+ * `occurred_at`. So no server aggregation, no date-range route, and no new declaration -- the
+ * window reads what the walk brought, which is the same rule the map's counts follow.
+ *
+ * 🔴 A CUT WALK PUBLISHES NO NUMBER. `state: 'truncated'` and the part says how far it got.
+ * Dividing an under-counted numerator by an under-counted denominator produces a rate that
+ * looks like a measurement and is not one.
+ */
+export function trendFromWalk(answer) {
+  const empty = (state, message) => ({
+    ok: state !== 'refused', state, points: [], kinds: [], provenance: null, message,
+  });
+  if (!answer) return empty('awaiting', '아직 안 골랐습니다');
+  if (answer.ok === false) return empty('refused', answer.message || '서버가 거절했습니다');
+  const nodes = answer.nodes || [];
+  const edges = answer.edges || [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const kinds = [...new Set(nodes.filter((n) => n.type === 'defect_kind')
+    .map((n) => (n.keys || {}).defect_kind).filter(Boolean))]
+    .map((id) => ({ id, label: id, active: true }));
+  if (answer.complete === false || (answer.truncated || []).length) {
+    return { ...empty('truncated', '이 걷기는 예산에서 끊겼습니다 — 여기까지 봤습니다'), kinds };
+  }
+  // die -> the wafer it sits on, so a per-wafer point can be counted off die-level edges
+  const waferOf = (id) => {
+    const node = byId.get(id);
+    const keys = (node && node.keys) || {};
+    return keys.mat_id || keys.wafer || null;
+  };
+  const stat = new Map();
+  const at = (wafer) => {
+    if (!stat.has(wafer)) stat.set(wafer, { scanned: new Set(), found: new Set(), at: null });
+    return stat.get(wafer);
+  };
+  for (const edge of edges) {
+    if (!edge) continue;
+    const wafer = waferOf(edge.target) || waferOf(edge.source);
+    if (!wafer) continue;
+    const row = at(wafer);
+    if (edge.predicate === 'inspected') row.scanned.add(edge.target);
+    if (edge.predicate === 'observed') row.found.add(edge.source);
+    if (edge.occurred_at && (!row.at || edge.occurred_at > row.at)) row.at = edge.occurred_at;
+  }
+  const points = [...stat.entries()].map(([wafer, row]) => ({
+    seriesId: 'marking', wafer, leg: null, at: row.at,
+    denominator: row.scanned.size || null,
+    found: row.found.size,
+    rate: row.scanned.size ? row.found.size / row.scanned.size : null,
+    state: 'measured', markKey: null,
+    nodeId: (nodes.find((n) => n.type === 'wafer' && (n.keys || {}).wafer === wafer) || {}).id || null,
+    nodeType: 'wafer',
+  })).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+  return {
+    ok: true,
+    state: points.length ? 'ready' : 'empty',
+    points, kinds,
+    // 🔴 출처를 «지어내지 않습니다». lot_map 은 서버가 relation·column 을 실어 줬고, 여기서는
+    //    그 자리에 «술어»가 옵니다 -- 이 수가 어느 엣지에서 나왔는지가 사실입니다.
+    provenance: { source: 'walk', predicates: ['inspected', 'observed'] },
+    message: points.length ? '' : '이 마킹에는 셀 것이 없습니다',
+  };
+}
+
+/**
  * The walk a seat gets when it names no route: its `start` marking, carried whole, and whatever
  * else it declared (`follow`, `hops`, `direction`, the budgets) riding through untouched.
  *

@@ -48,7 +48,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap,
-  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId, compositionFromWalk, waferFactsFromWalk, peerCountFromWalk } from './api.js';
+  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId, compositionFromWalk, waferFactsFromWalk, peerCountFromWalk, trendFromWalk } from './api.js';
 
 /**
  * part name -> class. The shell resolves a declaration through this and nothing else.
@@ -230,8 +230,13 @@ export const BOARD = Object.freeze({
       // 🔴 트렌드에서 찍은 점이 «마킹 1» 입니다. 이 한 줄이 없어서 맵이 트렌드를 «안 따라왔습니다».
       reads: 'marking:1',
       writes: 'marking:1',
-      // walk ① — start 없음: 「each groupby」, 즉 창 안의 모든 웨이퍼입니다.
-      collect: 'trend_y',
+      // walk ① — 씨앗은 «마킹»입니다. 「창 안의 모든 웨이퍼」였던 자리이고, 소유자가
+      //    ⓐ 로 판정하면서 «마킹이 모집단»이 됐습니다. 하나 찍으면 하나, 여럿이면 여럿.
+      start: { groupby: 'wafer', marking: 'marking:1' },
+      // 🔴 모집단은 «마킹»입니다 (소유자 판정 2026-08-28 「a지」). 좌석이 씨앗 없는 날짜
+      //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
+      //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
+      follow: ['inspected', 'observed', 'of_kind'],
       options: {
         kinds: 'void',
         window: '180d',
@@ -301,7 +306,10 @@ export const BOARD = Object.freeze({
       writes: 'marking:2',
       // walk ⑦ — 후보에서 찍은 것이 이 차트의 «주어»입니다. 비어 있으면 묻지 않습니다.
       start: { groupby: 'wafer', marking: 'marking:2' },
-      collect: 'trend_y',
+      // 🔴 모집단은 «마킹»입니다 (소유자 판정 2026-08-28 「a지」). 좌석이 씨앗 없는 날짜
+      //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
+      //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
+      follow: ['inspected', 'observed', 'of_kind'],
       options: {
         kinds: 'void',
         window: '180d',
@@ -609,7 +617,14 @@ export function bindLoaders(layout, deps) {
         bound.optionsFor = (key) => {
           if (key === 'y') {
             return Promise.all([
-              walkHere({ collect: 'trend_y', window: '180d' }),
+              // 🔴 종류 목록도 «같은 걷기»에서 나옵니다 (round Z-3, 2026-08-28). 죽은
+              //    trend_y 라우트를 부르던 자리인데, 종류는 응답의 defect_kind 노드가 이미
+              //    말합니다 -- 목록을 위해 «두 번째 질문»을 만들 이유가 없습니다.
+              walkHere({
+                start: { groupby: 'wafer',
+                  value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
+                follow: ['inspected', 'observed', 'of_kind'],
+              }).then(trendFromWalk),
               walkHere({
                 start: { groupby: 'wafer',
                   value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
@@ -729,9 +744,12 @@ export function bindLoaders(layout, deps) {
         //    되살리지 않고, 새 술어도 안 만들고, `bonded_from` 이 이미 답하는 것을 읽습니다.
         //    부품은 «자기가 무엇을 읽는지»만 알고 어디서 오는지는 모릅니다.
         if (decl.part !== 'map' && !decl.collect && decl.follow) {
+          // 🔴 같은 걷기, «읽는 모델»만 다릅니다. 갈래는 부품 이름 하나이고, 그 이름은 이미
+          //    선언에 있습니다 -- 여기에 라우트 표를 다시 만들지 않으려면 이 한 줄이어야 합니다.
+          const read = decl.part === 'mainTrend' ? trendFromWalk : compositionFromWalk;
           bound.load = (override) => walkHere({
             start: decl.start, follow: decl.follow, ...(override || {}),
-          }).then(compositionFromWalk);
+          }).then(read);
         }
         return { ...decl, options: bound };
       }
