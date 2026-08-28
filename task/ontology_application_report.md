@@ -4,6 +4,80 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔬 [C 응용] **라운드 Y — 좌석 «16» 전수 조사.** 코드 «0 줄» (20:4x)
+
+보고처가 이 파일이므로 제 것으로 읽고 착수했습니다. **한 줄도 안 고쳤습니다.**
+「지금」은 `main.js` 의 좌석 선언과 `api.js` 의 `COLLECTS` 표를 «읽어» 적었고, 라우트 생사는
+브라우저 실측(요청 13 · 404 «11»)입니다.
+
+## 먼저 — 화면의 «질문 이름»과 서버 라우트의 대응표 (`COLLECTS`, api.js:892)
+```
+trend_y      -> /trends       404        candidate  -> /subgraph  200
+wafer_process-> /composition  404        point      -> /subgraph  200
+map          -> /lot_map      404        reach      -> /subgraph  200
+basis        -> /composition  404        (declaration -> /declaration 200)
+peer         -> /siblings     404
+```
+🔴 **좌석은 «술어»를 선언하지 않습니다 — «질문 이름»을 선언하고 그 이름이 라우트로 갑니다.**
+   그래서 라우트가 사라지면 좌석이 통째로 404 입니다. `{start, follow}` 로 옮긴다는 것은
+   저 가운데 표를 «술어 집합»으로 바꾼다는 뜻입니다.
+
+## 좌석 16 — 전부
+```
+좌석                    지금(질문이름 -> 라우트)     start(마킹)     walk 로 쓰면 {start, follow}
+─────────────────────────────────────────────────────────────────────────────────────────
+1  head-summary        wafer_process -> 404        marking:1      ❌ 씨앗이 «칩»입니다
+                       + map/peer                                    선언에 chip 엔티티가 «없습니다»
+2  marking-status      (데이터 없음)                —              ✅ 해당 없음 — 살아 있음
+3  control-bar         trend_y -> 404              axis:y         ✅ walk 아님 — /declaration 이 답입니다
+                                                                     (고를 수 있는 축 = 선언의 술어·엔티티)
+4  main-trend          trend_y -> 404              marking:1      ❌ «집계»입니다. {start,follow} 로 안 됩니다
+                                                                     시간 축 + 분모가 walk 에 없습니다
+5  trend-declaration   declaration -> 200          —              ✅ 살아 있음
+6  candidate-trend     trend_y -> 404              marking:2      ❌ 4 와 같음
+7  composition         wafer_process -> 404        marking:1      🟡 {marking:1, [bonded_from, has_wafer,
+                                                                     slot_map, transfer]} — 단 씨앗이 칩이라 1 과 같은 구멍
+8  map-bond-a          map -> 404                  marking:1      🟡 {marking:1, [inspected, has_netdie]}
+                                                                     die@1 이 keys 에 x·y 를 «가집니다»
+                                                                     모자란 것: «격자 크기»와 층 값
+9  chip-zoom           point -> 200(subgraph)      marking:1      🟡 {marking:1, [inspected, observed, of_kind]}
+                                                                     발견 좌표는 observed 수식어에 있습니다
+                                                                     (inchip_x·inchip_y·radius_x/y·unit)
+10 composition-decl.   declaration -> 200          —              ✅ 살아 있음
+11 expanded-layer      wafer_process -> 404        marking:1      🟡 7 과 같은 걸음, 깊이만 더 (hops)
+12 map-core            map -> 404                  marking:2      🟡 8 과 같음, 시작 마킹만 다름
+13 candidate-list      candidate -> 200            marking:2      ✅ «이미 walk». 오늘 ranked 가 돌아왔습니다
+14 rank-list           candidate -> 200            marking:2      ✅ 같음
+15 reach               reach -> 200                marking:1      ✅ «이미 walk»
+16 walkBox             declaration + walk -> 200   —              ✅ «이미 walk»
+```
+```
+✅ 이미 되거나 walk 이 아님  «7»   (2·3·5·10·13·14·15·16 중 3 은 선언 읽기)
+🟡 {start, follow} 로 적힘   «5»   (7·8·9·11·12)  — 모자란 것을 각 줄에 적었습니다
+❌ 안 적힘                   «3»   (1·4·6)
+```
+
+## ❌ 셋이 «왜» 안 적히나 — 다음 판정의 재료
+```
+① 씨앗이 «칩»인데 선언에 chip 이 없습니다 (좌석 1·7·11)
+   선언 엔티티 아홉: defect · defect_kind · die · dtjob · lot · lot_slot · quantity · recipe · wafer
+   화면의 머리·구성·펼친층은 전부 「SYN-CX-CHIP-001」에서 시작합니다
+   -> 지금은 die 를 통해 «간접»으로만 닿습니다. 주어가 없으니 start 가 «못 적힙니다»
+② 트렌드는 «집계»입니다 (좌석 4·6)
+   walk 은 노드와 엣지를 냅니다. 트렌드가 필요로 하는 것은 «시간 축»과 «분모»입니다
+   observed 수식어에 run_uid 는 있지만 «시간»은 원자의 occurred_at 이고 walk 응답에
+   edges[].occurred_at 로 «옵니다» -> 창을 자르고 세는 것은 «읽는 쪽»의 집계입니다
+   -> {start, follow} 로는 «절반»만 적힙니다. 나머지 절반은 「누가 집계하나」의 판정입니다
+③ 맵은 «격자»가 필요합니다 (좌석 8·12)
+   die@1 이 x·y 를 keys 로 가지므로 «점»은 walk 으로 옵니다
+   없는 것: 격자의 «크기»(행·열 수)와 셀의 «층 값». 둘 다 오늘 원장에 술어가 없습니다
+```
+⛔ 라우트를 되살리자는 제안은 «하지 않았습니다» (상설 금지).
+📌 그리고 위 셋 중 ①이 «가장 값싼» 것으로 보입니다 — 엔티티 하나와 술어 하나면 좌석 셋이 살아납니다.
+   다만 그건 선언이고 기록자는 총괄이라 «제안만» 올립니다.
+
+---
+
 # ✋ [C 응용] **제 셋째 근거는 «틀렸습니다». 제 기록을 제가 고칩니다** (19:4x)
 
 총괄이 다른 레인 실측으로 정정한 것을 **제가 다시 쟀고, 정정이 맞습니다.**
