@@ -37,7 +37,6 @@ from datetime import datetime, timezone
 
 import ledger_explorer
 import ledger_trace
-from ledger_api import mechanism_gate
 
 
 DEFAULT_HOPS = 12
@@ -515,7 +514,7 @@ def _propagation(nodes, edges, seed_signs, collect, complete):
     return block
 
 
-def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
+def _seed_node(seed_id, seed_ref, action_lookup):
     """Build the depth-0 node for ONE seed.
 
     Extracted verbatim so a signed seed SET runs the same construction per member;
@@ -564,9 +563,6 @@ def _seed_node(seed_id, seed_ref, models_by_name, action_lookup):
             "method": seed_ref.get("method"), "map_id": seed_ref.get("map_id"),
             "claim_count": 0, "predicates": [],
         }
-    elif seed_ref["kind"] == "quantity":
-        seed_node = _quantity_node(seed_ref["model"], seed_ref["quantity"],
-                                   models_by_name.get(seed_ref["model"]))
     elif seed_ref["kind"] == "action":
         action = action_lookup.action_for_ref(seed_ref) if action_lookup else None
         if action is not None:
@@ -616,9 +612,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
     # Declared, not queried.  An absent or broken declaration yields no models and no
     # bindings, so the projection simply carries no Quantity nodes — the same «state, not
-    # exception» rule `mechanism_gate.load` follows for every other consumer.
-    mechanism = mechanism_gate.load()
-    models_by_name = {model.name: model for model in mechanism.models if model.usable}
+    # 🔴 THE MECHANISM LOAD LEFT 2026-08-28. It ran on EVERY request to
+    # build `models_by_name`, and the only thing that read it was a quantity seed
+    # branch that `decode_node_id` cannot produce - it returns `{"kind": "entity"}`
+    # or raises. The file `mechanism_gate.py` is untouched; what left is the walk
+    # loading it for nobody.
 
     nodes = {}
     refs = {}
@@ -727,7 +725,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # die forwards, so the material set is unchanged. What left is a drawing.
 
     for item, ref in seed_refs.items():
-        add_node(_seed_node(item, ref, models_by_name, action_lookup), ref, 0)
+        add_node(_seed_node(item, ref, action_lookup), ref, 0)
 
     for depth in range(hops):
         frontier_ids = [node_id for node_id, seen_depth in depths.items()
@@ -750,8 +748,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         collection_refs = [refs[item] for item in frontier_ids
                            if refs[item]["kind"] == "collection"
                            and refs[item].get("expandable", False)]
-        quantity_refs = [refs[item] for item in frontier_ids
-                         if refs[item]["kind"] == "quantity"]
         finding_refs = [refs[item] for item in frontier_ids
                         if refs[item]["kind"] == "collection"]
         fetched = []
