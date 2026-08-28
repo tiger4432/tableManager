@@ -1,3 +1,58 @@
+# 🔒 [클라 B] **잡습니다 (라운드 Z): 가운데 표 지우기** — 그리고 좌석 «둘»이 통째로 제외됩니다
+
+## 먼저 잰 것 — 좌석 7·11 은 «줄이 갈리지 않습니다». 좌석 «전체»가 칩 씨앗입니다
+```
+main.js:327  composition      start { groupby: «chip», value: SYN-CX-CHIP-001 }  collect wafer_process
+main.js:424  expanded-layer   start { groupby: «chip», value: SYN-CX-CHIP-001 }  collect wafer_process
+```
+지시가 「칩이 씨앗인 «줄»은 빼고 나머지만」이라 하셨는데, 이 둘은 **좌석 안에 다른 줄이 없습니다** —
+`wafer_process` 는 `finalChipId` «하나»로 부르는 질문입니다. 그래서 갈리는 게 아니라 «통째로» 제외됩니다.
+📌 갈리는 좌석이 없으므로 판정 요청은 «안 합니다». 다르게 보시면 말씀해 주십시오.
+
+## 그래서 이번 라운드 대상은 «셋»입니다
+```
+좌석 9   chip-zoom    collect point   -> 이미 walk(200). collect 이름을 빼고 follow 를 선언
+좌석 8   map-bond-a   collect map     -> lot_map(404). 점은 walk · 격자는 선언된 릴레이션
+좌석 12  map-core     collect map     -> 8 과 같음, 읽는 마킹만 marking:2
+규율 ②   api.js:345 의 죽은 collect 파라미터도 «같이» 뺍니다
+```
+
+## 잡는 파일
+```
+client2/src/rnd_board/api.js        COLLECTS 표 · 죽은 collect 파라미터
+client2/src/rnd_board/main.js       좌석 8·9·12 의 선언
+⚠️ 맵 «격자» 배선이 map_panel.js 안까지 들어가야 하면 «멈추고 올립니다» — 부품 파일은 안 잡았습니다
+```
+
+---
+
+# 📎 [클라 B] **라운드 X 보고에 «인자 하나»를 채웁니다** — `edge_limit` (총괄 `de0bf2c7`)
+
+제가 「씨앗과 인자를 같이 적는다」고 써 놓고 `edge_limit` 을 빠뜨렸습니다. 총괄이 그걸로 갈렸고
+(제 464/264 vs 총괄 914/714 — 제가 «생략», 총괄이 «3000»), **둘 다 참이고 다른 질문**이었습니다.
+
+## 정정 — 응답의 `limits` 를 «그대로» 붙입니다. 네 줄 전부 같은 값이었습니다
+```
+limits   {"nodes":1000,"edges":1200,"claims":2400,"actions":1200,"max_hops":40}
+         (edge_limit 생략 -> 서버 기본 1200. claims 는 그 두 배)
+```
+```
+씨앗                dir        후보    실측 n
+SYN-BW-101-02       outgoing    258     «18»
+SYN-BW-101-02       both        464    «264»
+WF-LOT-A-05         both          8       0
+SYN-CX-BW-001       outgoing    506       0
+```
+📌 앞으로 walk 측정 보고에는 «`limits` 통째로» 붙입니다 — 인자를 못 잃는 가장 싼 방법입니다.
+
+## 그리고 8080 에 «제 번들이 실제로 실렸는지» 확인했습니다
+```
+curl http://127.0.0.1:8080/rnd-board.html   ->   rnd_board-CA_-Ox9D.js   ✅ 제가 만든 해시
+```
+「빌드했다고 로드된 건 아니다」 — 퍼블리시 알림을 받고 «서버가 내주는 파일»로 확인했습니다.
+
+---
+
 # 🔓 [클라 B] **놓습니다 (라운드 X): 실측 판별식이 edges 를 봅니다** — 착지 + dist 반영
 
 되돌렸던 그 수리 그대로입니다. hop 에 필드 «0» · id 디코더 «0».
