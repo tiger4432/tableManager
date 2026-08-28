@@ -53,7 +53,7 @@ REFUSAL_CODES = (
     "undeclared_entity_type", "undeclared_object_kind", "duplicate_predicate",
     "canonical_layer_forbidden", "not_editable", "unsupported_kind",
     "declaration_rejected", "dry_run_stale", "retire_target_unknown", "invalid_value",
-    "traversable_true_unavailable", "duplicate_source", "undeclared_table",
+    "duplicate_source", "undeclared_table",
     "stale_base", "translator_vocabulary_mismatch",
 )
 
@@ -561,14 +561,6 @@ def save_source(source: str, declaration: dict) -> dict:
 # 읽기 — 화면이 폼을 «서버 선언에서» 만들도록
 # ---------------------------------------------------------------------------
 
-#: 삼상태의 한국어. 여기서 나가는 이유는 `label_ko`가 어휘에서 나가는 이유와 같다 —
-#: 클라이언트가 들고 있으면 서버가 상태를 하나 늘리는 날 화면만 모른다.
-TRAVERSABLE_STATES = (
-    {"value": True, "label_ko": "재귀 — 걷기가 이 엣지를 통과한다"},
-    {"value": False, "label_ko": "도달만 — 주석으로 가져오되 통과하지 않는다"},
-    {"value": None, "label_ko": "미수집 — 걷기가 아예 가져오지 않는다(범위 지정 질의 전용)"},
-)
-
 KIND_LABELS = {
     "lineage": "랏 이벤트 — 행 쌍 하나가 한 사건(분할·병합·트랙인)",
     "observation": "관측 — 한 행이 한 발화(보이드·박리 등 불량 관측)",
@@ -772,7 +764,6 @@ def vocabulary_view() -> dict:
         "predicates": predicates,
         "entity_types": entities,
         "object_kinds": sorted(_grammar_object_kinds()),
-        "traversable_states": [dict(s) for s in TRAVERSABLE_STATES],
         "config_path": _declaration().get("__origin__"),
         "refusal_codes": sorted(REFUSAL_CODES),
     }
