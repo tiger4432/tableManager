@@ -311,6 +311,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         execute_selected_cursor_batch,
     )
     from .setup_registry import cursor_translator_version
+    from . import schema
     from .store import LedgerStore
 
     # 🔴 THE APPROVAL IS THE SOURCE'S OWN NAME, and that is the whole design.
@@ -383,6 +384,31 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             rows_read=0, cursor=dict(cursor_value) if cursor_value else None,
             seconds=0.0,
         )
+        # 🔴 AN APPROVED REPLAY REPLACES; IT DOES NOT ADD. Measured 2026-08-28 with
+        # one batch: re-translating under a changed declaration wrote 1,999 NEW `observed`
+        # atoms beside the 1,999 old ones - `deduped 0`, because the new shape has a
+        # different `uq_ledger_atom` key and collides with nothing. A full run that way
+        # leaves two generations of the same finding and the walk counts both.
+        #
+        # So the approval that unlocks the cursor also clears what this source wrote before.
+        # The atoms are a PROJECTION of the source rows, which are still there, so this
+        # removes a derived generation rather than a record - the standing distinction.
+        #
+        # ⚠️ NAMED, NOT HIDDEN: the clear and the rewrite are not one transaction. A
+        # run that dies midway leaves the old generation gone and the new one partial. The
+        # honest fix is a snapshot column the reader filters on, which is a declaration
+        # change; until then a failed replay is re-run, and `atoms_deleted` in the return is
+        # how a caller sees that it happened at all.
+        if approved:
+            write = store.connection()
+            try:
+                cur = write.cursor()
+                cur.execute(
+                    f"DELETE FROM {schema.LEDGER_TABLE} WHERE source_who = %s", (source,))
+                result["atoms_deleted"] = int(cur.rowcount or 0)
+                write.commit()
+            finally:
+                write.close()
         started = time.monotonic()
         # 🔴 THE SPLIT GUARD. One source event must land in ONE batch; if a group this run
         # already processed IN FULL comes back in a later page, it did not, and every
@@ -478,12 +504,6 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         result["retranslated"] = bool(approved)
         result["cursor_before"] = cursor_before
         result["cursor_after"] = result.get("cursor")
-        # ⚠️ ALWAYS 0, AND THAT IS A FACT ABOUT THIS DOOR, NOT AN OVERSIGHT. Nothing
-        # here deletes an atom: the owner's standing rule is that removing an atom is a
-        # RULING, not an operation, so re-translation writes and `uq_ledger_atom` dedupes.
-        # The field exists because a re-translation that ever does delete must say so in the
-        # same place a reader is already looking - and today the honest number is zero.
-        result["atoms_deleted"] = 0
         return result
     finally:
         read.close()
