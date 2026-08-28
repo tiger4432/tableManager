@@ -359,8 +359,13 @@ export class WalkBoxPanel extends Panel {
       row.setAttribute('data-route', String(index));
       row.className = 'rb-walkbox-route'
         + (this.chosenPath === index ? ' is-on' : '');
+      // 🔴 자기 고리가 있는 경로는 «몇 번 반복하나»가 사용자 축입니다 (소유자 2026-08-29).
+      //    지금은 «한 번»으로 걷고, 그것이 «기본값임을 말합니다» -- 말 안 하면 화면이
+      //    「한 대 위까지만 봤다」를 「그게 전부다」로 내놓습니다. 오늘의 부재 규율 그대로입니다.
+      const loops = route.chain.filter((t, i) => i && t === route.chain[i - 1]).length;
       row.textContent = `경로 ${String.fromCharCode(65 + index)} · ${route.hops}홉 · `
-        + `${route.chain.join(' → ')}`;
+        + `${route.chain.join(' → ')}`
+        + (loops ? ` · 같은 타입 되짚기 «1회»가 기본값입니다` : '');
       row.addEventListener('click', () => this.useRoute(index));
       box.appendChild(row);
     });
