@@ -17735,3 +17735,107 @@ L569  _quantity_node(...)                        <- 🔴 «정의가 저장소�
 ```
 📌 **정의 없는 함수를 부르는 줄이 살아 있었습니다.** 도달 불가라서 조용했을 뿐입니다 —
    「아직 그럴 일이 없어서 안전」은 안전이 아니라는 제 기록의 그 자리입니다.
+
+---
+
+# ✅ 검증 완료 — `79ff99f6` 네 게이트 «전부» 통과 (총괄 실측, 2026-08-28 13:5x)
+
+## 서버를 다시 올렸습니다 — 그 전 측정은 옛 프로세스입니다
+```
+죽임   PID 61224 (10:23:14 기동)     당신 커밋은 13:13 착지 -> «한 번도 안 돌았습니다»
+올림   PID 58676  13:51:19 · Application startup complete · import 오류 «0»   -> 게이트 ③ ✅
+```
+
+## 게이트 ① — 씨앗 «둘»로 잽니다. 전후가 «완전히 같습니다»
+```
+씨앗 SYN-CX-BW-001 (보드 씨앗) · hops=6 · direction=both · node_limit=1000 · edge_limit=3000
+  BEFORE  200 · nodes 1000 · edges 1612 · wafer 1 · die 877 · defect 121 · defect_kind 1
+          inspected 128 · bonded_from 621 · observed 121 · transfer 621 · of_kind 121
+  AFTER   «한 글자도 다르지 않습니다»
+
+씨앗 SYN-BW-101-16 (소유자 체인 씨앗) · 같은 인자
+  BEFORE  200 · nodes 1000 · edges 1087 · wafer 1 · die 156 · defect 842 · defect_kind 1
+          inspected 39 · bonded_from 39 · observed 89 · transfer 78 · of_kind 842
+  AFTER   «같습니다»
+```
+게이트 ② ✅ `quantity` 0 · `mechanism` 0 · `bond_pressure` 0 (전후 동일)
+게이트 ④ ✅ `_quantity_node` 소스 «0». 남은 한 건은 «낡은 .pyc» 였습니다
+
+## 🔴 그리고 제 게이트 ①이 «씨앗을 안 적어서» 두 번 헛돌았습니다 — 제 잘못입니다
+```
+보드에 적힌 「die 877」  = 씨앗 «SYN-CX-BW-001»
+제가 처음 잰 「die 156」 = 씨앗 «SYN-BW-101-16»
+둘 다 참이고 둘 다 재현됩니다. 「불일치」는 데이터가 아니라 «제 게이트 문장»에 있었습니다
+```
+📌 규율로 올립니다: **절단이 걸리는 측정(node_limit 에 닿는 walk)은 «씨앗까지» 적어야 수가 된다.**
+   1000 에서 잘리면 구성은 «어디서 출발했나»가 정합니다. 인자만 적은 게이트는 게이트가 아닙니다.
+
+---
+
+# 🔴 다음 — 그런데 «당신이 명명한 그 부류»가 아닙니다. 제 커밋이 스위트를 통째로 세웠습니다
+
+## 먼저 당신의 「NAMED, NOT TAKEN」에 대한 판정
+당신이 센 10 자리를 제가 다시 셌고, **부류가 «둘»로 갈립니다.** 근거가 다릅니다:
+```
+A. 계산해 놓고 «아무도 안 읽는» 것   L743 point_refs · L746 event_refs
+   -> 대입 1회 · 읽기 «0»            L748 collection_refs · L751 finding_refs
+   근거: 도달 가능성과 «무관하게» 죽어 있습니다. 가장 강한 자리입니다
+
+B. 도달 불가 갈래                    _seed_node 의 event · claim · point · collection · action
+   근거: decode_node_id 의 return 이 {"kind":"entity"} «하나»뿐 (그 외는 raise)
+
+C. 🔴 «같이 죽지 않는» 것 — action_lookup
+   `_seed_node` 의 action 갈래가 읽는 자리 «하나»지만, 그것 말고도
+     L595  subgraph(..., action_lookup=None)   ← «공개 매개변수»
+     L848  "enrich_actions": action_lookup is not None   ← «응답 필드»
+   B 를 지워도 이 둘은 삽니다. 한 커밋에 묶으면 부류가 근거보다 «넓어집니다»
+   (운영 호출자 «0» · 넘기는 곳은 tests/test_enrichment_actions.py «하나» — 아래를 보십시오)
+```
+**이번 라운드는 A 만 가져가십시오.** B 는 근거가 참이지만 `node_kind` 응답 필드와 클라 셋에
+얽혀 있어 따로 잽니다. C 는 손대지 마십시오.
+
+## 🔴 그런데 «이것보다 급한 것»이 있습니다 — 제 `8fc0a996` 이 수집을 막습니다
+```
+$ pytest tests/ --collect-only
+  ModuleNotFoundError: audit_changeset · enrichment_actions · ledger.chain_mapper
+  ERROR tests/test_audit_changeset.py · test_enrichment_actions.py · test_ledger_frame_chain_mapper.py
+  🔴 Interrupted: 3 errors during collection   ->  «4,268개가 한 개도 안 돕니다»
+```
+제가 여섯 모듈을 `server/_archive/` 로 옮기면서 **그것을 재던 시험을 같이 안 옮겼습니다.**
+제 기록에 그대로 있는 자리입니다 — 「테스트는 자기가 재던 코드와 «같은 커밋»에서 죽는다」.
+
+### 구성원을 «셌습니다». 셋이 아니라 «넷»이고, 다섯째는 «구성원이 아닙니다»
+```
+① tests/test_audit_changeset.py          모듈 최상단 import · 23 tests   -> 수집 차단
+② tests/test_enrichment_actions.py       모듈 최상단 import ·  3 tests   -> 수집 차단
+③ tests/test_ledger_frame_chain_mapper.py 모듈 최상단 import · 21 tests  -> 수집 차단
+④ 🔴 tests/test_ledger_l1_pg.py          «함수 안» import 7자리 — 수집은 되고 «돌 때» 죽습니다
+   32 시험 중 «6»이 ledger.chain_mapper 를 부릅니다 (+ 헬퍼 셋: _mapper_cfg ·
+   _profile_mapper_cfg · _rebuilt_mapper_registry). 파일을 통째로 옮기면 «26을 같이 죽입니다»
+⑤ ❌ tests/test_ledger_setup_bundle.py:1390   구성원이 «아닙니다»
+   `"chain_mapper"` 가 «문자열 리터럴»이고, ledger/config.py 가 그 키를 여전히 검증합니다
+   -> 이 시험은 지금도 «참»입니다. 건드리지 마십시오
+```
+
+## 지시 — 「시험은 자기 대상을 따라간다」
+```
+①②③  server/_archive/tests/ 로 «이동». 삭제가 아닙니다 (모듈이 삭제가 아니라 이동이므로)
+④    파일은 «그 자리에 둡니다». chain_mapper 를 부르는 «시험 여섯»에만
+      pytest.mark.skip(reason=...) — 사유에 «server/_archive/ledger/chain_mapper.py» 를 적어
+      다시 살릴 때 찾을 수 있게. 나머지 26 은 그대로 돕니다
+⑤    손대지 않습니다
+```
+## 게이트
+```
+① pytest tests/ --collect-only  ->  «Interrupted 없음» · 수집 오류 «0»
+② 수집 수가 4,268 - 47 = «4,221» (①②③ 이 빠진 만큼. 다른 수면 멈추고 올리십시오)
+③ tests/test_ledger_l1_pg.py 를 돌려 skip «6» · 나머지가 옛 결과와 «같은 수»
+   ⚠️ 이 파일은 PG 를 씁니다. «한 번만» 돌리십시오 — 소유자 지시(반복 질의 금지)
+④ server/_archive/ 는 «수집 경로 밖»이어야 합니다. ①이 통과하면 자동으로 참입니다
+```
+⛔ `ledger/config.py` 의 `_validate_chain_mapper_selection` 은 **건드리지 마십시오.**
+   「검증기는 살아 있는데 구현이 아카이브에 있다」는 ⑥ 안건이고, 제가 보드에 올립니다.
+
+📌 **이건 제 잘못이고 제가 먼저 적습니다.** 여섯을 「운영 호출자 0」으로 옮긴 것은 맞았습니다 —
+   방금 다시 셌고 운영 import 는 여전히 «0» 입니다. 틀린 것은 «부류의 경계»였습니다:
+   모듈의 소비자만 세고 **시험의 소비자를 안 셌습니다.**
