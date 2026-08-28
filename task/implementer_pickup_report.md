@@ -1,3 +1,56 @@
+# ✅ [A 구현자] **죽은 뷰와 시험 하나 내렸습니다 — 다만 「셋」이 아니라 «하나»입니다. `4d902b1b`** (2026-08-28 21:1x)
+
+## 게이트 ① — «지우기 전»에 센 수
+### ⓐ `vocabulary_view` 전용 헬퍼 «둘»
+```
+전용 (같이 죽음)
+   _registering_types      호출자 «1» — 743줄, vocabulary_view 안뿐
+   _grammar_object_kinds   호출자 «1» — 766줄, vocabulary_view 안뿐
+전용 아님 (그대로 둠)
+   _bare              호출자 «여럿» — 303 · 715 · 730 …
+   _declaration       호출자 716 (entity_types 안) 도 있음
+   entity_types       호출자 301 (check 경로) 도 있음
+   REFUSAL_CODES      violation():70 이 닫힌 집합 가드로 읽음
+=> 59줄 삭제 · «추가 0줄». 경계를 «양쪽으로» 확인했습니다
+```
+### ⓑ `tests/test_ledger_admin_setup.py`
+```
+전체 시험            «15»  ->  «14»
+ledger_walk_contrast 를 «부르는» 시험   «1»       <- 🔴 지시서는 «셋»이라 했습니다
+```
+
+## 🔴 구성원 정정 — 빨강 셋은 «서로 다른 셋»입니다
+```
+① test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type   (이 파일)
+   ImportError: ledger_walk_contrast          -> 지시 대상. «지웠습니다» ✅
+② test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier       (이 파일)
+   ImportError: «ledger_selection»            -> 다른 모듈입니다. 같은 부류·다른 구성원
+                                                 지시서가 이름 대지 않아 «안 건드렸습니다»
+③ test_ledger_source_contract.py::test_declared_contract_catches_a_signature_conflict…
+   🔴 import 실패가 «아닙니다» — assert 2 == 1
+      「'observed' 번역기의 목적어는 'value'인데 vocabulary 서명은 'entity_ref'입니다」
+      즉 «선언 변경의 결과»이지 모듈 삭제와 무관합니다. 다른 파일이고 «안 건드렸습니다»
+```
+👉 ②는 「지워라」 하시면 한 줄짜리 커밋입니다. ③은 부류가 달라 «판정»이 필요해 보입니다.
+
+## 게이트 ②③④
+```
+② 수집  4,257 -> «4,256»   차 «−1» = 지운 시험 수 «1»  ✅
+        (차를 «내 보고» 적었습니다 — 예측을 게이트에 넣지 않았습니다)
+③ 서버  TestClient(app) 부팅 OK
+        /admin/ledger/sources 200 · /config/raw 200 · /relations 200   ✅
+④ 파일  tests/test_ledger_admin_setup.py -> 18 passed · 1 failed
+        ledger_walk_contrast 빨강 «0» ✅
+        남은 빨강 «1» = 위 ②. 전과 «같은 상태»입니다 — 초록으로 만들지 않았습니다 ✅
+```
+
+## 아카이브가 아니라 «삭제»인 이유 — 확인했습니다
+```
+ledger_api/ledger_walk_contrast.py   트리에 «없음» · _archive/ 에도 «없음»
+=> 대상이 어디에도 없으므로 옮길 곳이 없습니다. 지시대로 «삭제»했습니다
+```
+
+---
 # ✅ [A 구현자] **죽은 `traversable` 축 내렸습니다 — 다만 전제 하나를 정정합니다. `03df830b`** (2026-08-28 20:4x)
 
 ## 게이트 ① — «지우기 전»에 센 수 (지시 ①: 세고 나서 지운다)
