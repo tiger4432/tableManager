@@ -1,3 +1,106 @@
+# 📏 [A 구현자] **문서 3차 1단계 — 세기만 했습니다. 코드 «0» · 문서 «0»** (2026-08-29 00:1x)
+
+## 방법과 «그 한계»부터
+```
+grep 은 후보를 뽑았고, 판정은 «줄을 읽어서» 했습니다 — 총괄이 2차에서 세운 그 규칙 그대로입니다.
+후보를 세 부류로 갈랐습니다 (2차의 부류 이름을 그대로 씁니다):
+   ① 현재형 거짓    죽은 것을 «지금 이렇다»로 말함                     -> 고칠 것
+   ② 기록          「그때 이랬고 지금은 없다」                          -> 그대로
+   ③ 죽은 «후계»    은퇴 표시는 달렸는데 «후계로 죽은 것을 가리킴»       -> 🔴 가장 위험
+🔴 ③ 이 ①보다 위험합니다 — 읽는 사람이 「그럼 저쪽으로」 하고 «빈 곳»으로 갑니다.
+   총괄 기준(「엉뚱한 곳으로 보내는 것 > 낡은 수 > 낡은 이름」)을 그대로 적용한 결과입니다
+```
+⚠️ **덮은 범위를 정직하게 적습니다** — 여덟 줄 중 «여섯»만 값싼 문자열이 있습니다.
+```
+덮음   라우트 6->2 · 모듈 셋 은퇴 · 은퇴한 노드 종류 · 은퇴한 walk 인자 · 선언 수 · table_config 37
+못 덮음(문자열 없음)  「거꾸로 걷기가 깊이를 전진」 · 「ranked 가 모든 노드로」
+       -> `not_requested` · `hops_reached` 로 훑었습니다: 문서에 «0». 즉 부정하는 문장도 «0» 입니다
+추가로 잡음   원자 총계가 낡은 줄 «2» (`645,203` — 오늘 replay 로 749,044)
+              PRIMER.md:13 · LEDGER_GUIDE.md:16
+```
+
+## 파일별 표 — 제외는 지시대로 (history · _archive · PROJECT_STATUS · 2차에서 닫은 넷)
+```
+파일                                              죽은후계  현재형  기록
+docs/architecture/CODE_MAP.md                         1     18      1
+docs/overview/SYSTEM_OVERVIEW.md                      1      2      1
+docs/README.md                                        1      1      0
+docs/spec/RND_ONTOLOGY_REFERENT_MODEL.md              0     20      0
+docs/process/DOC_OWNERSHIP.md                         0     14      0
+docs/guide/ledger/PRIMER.md                           0      9      0
+docs/guide/LEDGER_GUIDE.md                            0      6      0
+docs/spec/TREND_DECLARATION_GUIDE.md                  0      6      0
+docs/qa/FEATURE_CHECKLIST.md                          0      5      0
+docs/spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md          0      5      0
+docs/process/SCENARIO_CONSOLE_BRIEF.md                0      4      0
+docs/architecture/PRIMITIVES.md                       0      3      1
+docs/guide/config/enrichment_rules.md                 0      3      0
+docs/architecture/PHYSICS_ONTOLOGY_SETUP.md           0      2      0
+docs/process/LEDGER_RULINGS.md                        0      2      0
+docs/spec/ENRICHMENT_QUEUE_SPEC.md                    0      2      0
+docs/spec/RND_ONTOLOGY_USE_CASES.md                   0      2      0
+docs/architecture/event_driven_backend.md             0      1      1
+docs/architecture/frontend.md                         0      1      0
+docs/architecture/SERVER_FILE_MAP.md                  0      1      0
+docs/guide/DEPLOY_SETUP.md                            0      1      0
+docs/process/OPERATOR_RUNBOOK.md                      0      1      0
+docs/spec/ONTOLOGY_GRAPH_SPEC.md                      0      1      0
+```
+
+## 게이트 ② — 합계
+```
+파일        «23»
+거짓 문장    «112»  =  죽은 후계 3  +  현재형 109  (+ 원자 총계 낡은 줄 2 = «114»)
+기록(그대로)  «4»    -> 이건 «고칠 것이 아닙니다»
+🔴 줄 수와 «히트 수»가 다릅니다: 히트 123 · 서로 다른 «줄» 117.
+   한 줄이 둘을 동시에 부정하는 경우가 있어 그렇습니다. 위 표는 «줄» 기준입니다
+```
+
+## 🔴 가장 위험한 셋 — 「죽은 후계」. 이것부터 보셔야 합니다
+```
+docs/architecture/CODE_MAP.md:729
+  「후계는 … 계보 추적은 `/api/ledger/trace`, 구조는 `/api/ledger/structure`」
+   -> 둘 다 «없습니다». 은퇴 안내가 «또 다른 은퇴한 곳»으로 보냅니다
+docs/overview/SYSTEM_OVERVIEW.md:100
+  「⚰️ trace.html … 후계는 ledger.html 의 원장 혈통 추적(`GET /api/ledger/trace`)」
+docs/README.md:68
+  「부분 대체 … ONTOLOGY_GRAPH_SPEC.md」 -> 그 문서 자신의 후계도 `/trace`·`/structure` 입니다
+```
+
+## 현재형 거짓 중 «표본» — 파일마다 하나씩
+```
+RND_ONTOLOGY_REFERENT_MODEL.md:13   「1. **Finding Collection:** 같은 Wafer·종류·검사법·맵의 defect 집합」
+guide/ledger/PRIMER.md:121          「| `collect` | 무엇을 모아 오나 | 개체 · 값 · 수량 … |」
+guide/LEDGER_GUIDE.md:63            「`GET /api/ledger/subgraph` · `GET /api/ledger/subgraph/table`」
+spec/TREND_DECLARATION_GUIDE.md:17  「→ GET /api/ledger/kinds 선택 목록」
+qa/FEATURE_CHECKLIST.md:188         「**L5 구조 뷰** | `GET /api/ledger/structure` — … 점검: ①②」
+                                     -> 🔴 «점검 항목»입니다. 없는 라우트를 QA 가 재게 됩니다
+process/SCENARIO_CONSOLE_BRIEF.md:36 「✅ `GET /api/ledger/siblings` — 교집합 + 기저율」
+CLAIM_REQUIREMENT_WORKLIST_SPEC.md:220 「### 5.1 현재 구현된 Enrich Action 노드」
+architecture/frontend.md:186        「거르는 것은 walk 이 할 일이고, 고칠 것은 `collect` 입니다」
+architecture/SERVER_FILE_MAP.md:131 「| ✅ | `ledger_api/mechanism_gate` | 16,518 | …」
+process/OPERATOR_RUNBOOK.md:122     「`GET /api/ledger/coverage` 가 `state` 를 돌려준다」
+                                     -> 🔴 «운영 런북»입니다. 사고 때 이 줄을 따라갑니다
+guide/DEPLOY_SETUP.md:596           「`GET /api/ledger/trace` 는 503 + 관계 이름으로 …」
+```
+
+## 📌 오늘 확정된 문장 셋 — docs/ 에 «없습니다»
+```
+「표에 원천 데이터 넣고 이거로 원장」        docs/ 안에는 PROJECT_STATUS.md «하나»뿐 (총괄 전담 · 제외 대상)
+「모든 제안 전 walk 으로 되는지」            같음
+「지시서는 보고처로 대상을 지목한다」        같음
+=> 즉 «제가 세는 범위의 문서 전부»에 셋 다 «없습니다». CLAUDE.md 에는 있습니다
+```
+
+## 게이트 ①③
+```
+① 코드 변경 «0» · 문서 변경 «0»  — 스크래치패드 밖으로 한 바이트도 안 썼습니다 (report 제외)
+③ 「고쳐야 할 것 같다」가 여럿 보였지만 «하나도 안 고쳤습니다». 범위는 총괄이 자릅니다
+```
+👉 제 «권고»만 한 줄 (판정은 총괄): ③ 죽은 후계 셋과, QA 체크리스트·운영 런북의 라우트 줄이
+   「엉뚱한 곳으로 보내는」 기준에서 가장 앞섭니다.
+
+---
 # ✅ [A 구현자] **픽스처를 «지금 선언»에 맞췄습니다. `d7a33ed2`** (2026-08-28 22:0x)
 
 판정하신 그대로입니다 — 검사기가 옳고 낡은 것은 픽스처였습니다. `assert` 는 «1» 그대로 뒀습니다.
