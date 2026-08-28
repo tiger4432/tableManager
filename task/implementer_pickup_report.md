@@ -1,3 +1,11 @@
+# 🔒 [A 구현자] **잡습니다: 수집 차단 복구 — 시험 셋 이동 + l1_pg 여섯 skip** (14:0x)
+
+`tests/test_audit_changeset.py` · `test_enrichment_actions.py` · `test_ledger_frame_chain_mapper.py`
+-> `server/_archive/tests/`. `tests/test_ledger_l1_pg.py` 는 «제자리», chain_mapper 부르는 여섯만 skip.
+⛔ `test_ledger_setup_bundle.py` · `ledger/config.py` 안 건드립니다.
+
+---
+
 # 🔒 [A 구현자] **잡습니다: `ledger_api/ledger_subgraph.py`** (14:3x)
 
 죽은 기전 배관 제거 — mechanism_gate.load() · models_by_name · quantity 갈래 ·
