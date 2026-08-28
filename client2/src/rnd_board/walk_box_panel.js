@@ -249,8 +249,46 @@ export class WalkBoxPanel extends Panel {
     root.appendChild(this._followRow());
     root.appendChild(this._runRow());
     root.appendChild(this._resultBox());
+    root.appendChild(this._historyBox());
 
     this.host.appendChild(root);
+  }
+
+  /**
+   * 이력 나무. 아무 칸이나 누르면 «그리로 갑니다» -- 파일 탐색기처럼.
+   *
+   * 🔴 갈래는 «지워지지 않습니다». 뒤로 갔다 다른 데로 가면 «형제»가 되고 둘 다 남습니다.
+   *    깊이만큼 들여쓰고, 지금 서 있는 칸을 표시합니다.
+   * 🔴 안 그린 인스턴스도 있습니다: 쓸 이름을 선언하지 «않은» 상자는 이력이 «없습니다».
+   *    빈 상자를 그리면 「탐색을 했는데 비었다」로 읽히므로 아예 안 그립니다.
+   */
+  _historyBox() {
+    const doc = this.doc;
+    const box = doc.createElement('div');
+    box.className = 'rb-walkbox-history';
+    if (!this.historyName() || !this.nodes.size) return box;
+    const head = doc.createElement('div');
+    head.className = 'rb-walkbox-history-head';
+    head.textContent = `탐색 이력 ${this.nodes.size} · ${this.historyName()}`;
+    box.appendChild(head);
+    const depthOf = (id) => {
+      let n = 0;
+      let at = this.nodes.get(id);
+      while (at && at.parent) { n += 1; at = this.nodes.get(at.parent); }
+      return n;
+    };
+    for (const [id, node] of this.nodes) {
+      const row = doc.createElement('button');
+      row.className = 'rb-walkbox-step' + (id === this.current ? ' is-here' : '');
+      row.setAttribute('data-step', id);
+      row.setAttribute('type', 'button');
+      // 값을 «세어서» 보여 줍니다 -- 노드 id 는 길고, 읽는 사람이 아는 것은 「몇 개를 들고 있나」입니다.
+      const marks = node.value.length;
+      row.textContent = `${'· '.repeat(depthOf(id))}${marks}개${id === this.current ? ' ←' : ''}`;
+      row.addEventListener('click', () => this.goto(id));
+      box.appendChild(row);
+    }
+    return box;
   }
 
   _note(text, cls) {
