@@ -1,3 +1,49 @@
+# 🛑 [A 구현자] **`leads_to` 22 착지. 나머지 둘은 «두 번째 NULL 벽» — 메시지 그대로 올립니다** (2026-08-28 16:0x)
+
+지시 ①②를 했고, 게이트 ④(「또 다른 NULL 벽이 나오면 멈추고 그 메시지 그대로」)가 걸렸습니다.
+
+## ① asserted_at — 끝났습니다
+```
+전   2026-08-14  «21» · NULL «1»
+후   2026-08-14  «22»          (__doc 의 「Edges are DECLARED knowledge, owner-reviewed
+                                2026-08-14」 확인하고 채웠습니다)
+```
+
+## ② backfill 셋 — 하나만 통과
+```
+✅ mechanism_edge_causes        molecules 22 · inserted «22» · refused 0 · deduped 0
+❌ process_param_num_measure    RoleFrameError: event_frame.row: value is not deterministic
+                                JSON: Out of range float values are not JSON compliant: nan
+❌ process_param_txt_measure    RoleFrameError: bundle.sources.process_param_txt_measure.
+                                bind.mappings.wafer-measures-quantity.bind.unit.column:
+                                column 'unit' contains a missing value
+```
+🔴 **txt 쪽 메시지가 «칸 이름»을 댑니다 — `unit` 입니다.** 그리고 num 쪽 NaN 도 같은 뿌리로 보입니다.
+
+## 두 뷰의 «남은 NULL» 실측 — 뷰가 가른 것은 value/value_text «뿐»입니다
+```
+process_param_num   73,267행   NULL: value_text 73,267 · unit 24,321 · recipe_id 4,800
+process_param_txt    7,055행   NULL: value      7,055 · unit  7,055 · recipe_id 2,400
+```
+🔴 **`unit` 은 «두 뷰 모두»에 NULL 이 있습니다.** 제가 적재할 때 「이름에서 못 읽으면 NULL,
+지어내지 마십시오」를 그대로 따랐고(해결 48,946 / NULL 31,376), 그 NULL 이 지금 벽입니다.
+`recipe_id` 도 같은 부류로 7,200행이 NULL 입니다 — 옛 payload 에 recipe 가 없던 원자들입니다.
+
+## 그래서 판정 요청 — 「NULL 을 채운다」가 아니라 «선언이 무엇을 필수로 보나»
+```
+지금   bind 가 unit · recipe_id 를 «필수»로 읽습니다 (missing value 면 거절)
+사실   그 둘은 원천에 «없을 수 있는» 값입니다 — 이름에 단위가 없는 파라미터가 실재하고,
+       recipe 가 없던 옛 원자가 실재합니다
+```
+⛔ 제가 채우지 않았습니다. 채우면 「단위를 지어내지 말라」는 지시를 정확히 뒤집는 것이고,
+   value/value_text 를 뷰로 가른 것과 «같은 이유»로 unit·recipe_id 도 선언 문제로 보입니다.
+👉 세 갈래 중 어느 것인지 주시면 바로 갑니다:
+   ⓐ 그 수식어들을 «선택»으로 선언 · ⓑ 뷰를 더 가른다 · ⓒ 그 컬럼을 bind 에서 뺀다
+
+📌 그리고 `mechanism_edge_causes` 가 통과한 것이 이 벽의 «성질»을 말해 줍니다 —
+   그 표는 NULL 이 «하나도» 없습니다(22행 전부 채움). 즉 벽은 데이터 양이 아니라 «NULL 그 자체»입니다.
+---
+
 # 🔒 [A 구현자] **잡습니다: `process_param` · `mechanism_edge` 행 적재 + 재적재** (15:4x)
 
 원천은 «보존된 옛 원장»(ledger_events_pre_rebuild)과 mechanism_models.json.
