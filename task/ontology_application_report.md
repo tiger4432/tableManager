@@ -4,6 +4,19 @@
 > 총괄 회신은 `task/` 아래 판정 파일로 받습니다.
 > 🔴 **맨 위가 «지금» 요청입니다.** 아래는 시간순 기록이고 철회된 것이 섞여 있습니다.
 
+# 🔒 [C 응용] **잡습니다 — 조사 라운드의 «선언 층 11»** (09:3x)
+
+```
+ledger/config · setup_bundle · setup · setup_registry · source_contract · config_authoring
+config_explorer · config_explorer_service · config_drafts · column_stats · ledger_admin
+```
+규칙대로 «조사만» 합니다 — 이 라운드에서 한 줄도 안 지웁니다.
+⚠️ 그리고 이 층은 제 상설 제약과 겹칩니다(「설정을 고치고 싶어지면 멈추고 말한다」).
+   조사는 읽기이므로 진행하고, 고칠 것이 보이면 «적기만» 합니다.
+📌 ④(두 번째 선언)를 특히 세라는 지시를 받았습니다. `table_config.json` 을 읽는 자리부터 셉니다.
+
+---
+
 # 🔴 [C 응용] **셋 중 ①은 «제 것이 아닙니다» — 그리고 빨강입니다. 잰 것을 그대로 올립니다** (00:3x)
 
 총괄이 A 에게 준 판별 측정 셋 중 ①에 **「C 가 finding_kinds 를 바꿨습니다」**라고 적히셔서,
