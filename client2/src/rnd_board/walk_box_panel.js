@@ -53,11 +53,101 @@ export class WalkBoxPanel extends Panel {
 
     this.result = null;
     this.walkState = 'idle';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 탐색 이력 — 「마킹은 «값»이고 탐색은 그 값의 «나무»다」 (라운드 W, 소유자 설계)
+    //
+    // 🔴 나무이고 «자르지 않습니다». 뒤로 갔다 다른 데로 가도 먼저 갈래가 «남습니다» --
+    //    소유자 손그림이 그렇고 파일 탐색기가 그렇습니다. 브라우저식으로 자르면 「돌아가서
+    //    다른 길」이 «먼저 길을 지웁니다».
+    //
+    // 🔴 쓰는 곳은 `goto` «하나»입니다. 다른 어떤 경로도 저장소에 안 씁니다 -- 그래서
+    //    「무엇이 마킹을 바꿨나」의 답이 언제나 한 줄입니다.
+    //
+    // 🔴 «무한 루프가 플래그로 막히지 않습니다». goto 직후에는 저장소 값 == nodes[current].value
+    //    이므로 아래 구독의 「밖에서 바뀌었나」가 «값 비교»로 자동으로 거짓이 됩니다.
+    //    `replace` 가 같은 값에 emit 을 «안 하는» 것이 이 성질의 전제입니다 (실측 2026-08-28).
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.nodes = new Map();
+    this.current = null;
+    this._seq = 0;
+    this._historyOff = null;
+  }
+
+  /** 이 인스턴스가 «쓰는» 이름. 선언에 없으면 이력은 서지 않습니다 (읽기 전용 인스턴스). */
+  historyName() {
+    return this.writes || null;
+  }
+
+  /** `[[nodeId, sign], ...]` 두 개가 같은 마킹인가. 순서는 뜻이 아니므로 정렬해서 봅니다. */
+  static sameValue(a, b) {
+    const norm = (v) => (v || []).map(([id, sign]) => `${id}${sign}`).sort().join('');
+    return norm(a) === norm(b);
+  }
+
+  /** 이력의 한 칸으로 «이동». 저장소에 쓰는 곳은 여기뿐입니다. */
+  goto(id) {
+    const node = this.nodes.get(id);
+    if (!node || !this.markings) return;
+    this.current = id;
+    this.markings.replace(this.historyName(), node.value);
+    this.render();
+  }
+
+  /** 자식 한 칸을 «추가»하고 그리로 이동. 먼저 있던 형제는 그대로 남습니다. */
+  push(value) {
+    const name = this.historyName();
+    if (!name) return null;
+    this._seq += 1;
+    const id = `h${this._seq}`;
+    this.nodes.set(id, { value: (value || []).map(([n, s]) => [n, s]), parent: this.current });
+    this.goto(id);
+    return id;
+  }
+
+  /** 클릭 = «이동». 마킹이 그 노드 «하나»가 됩니다. */
+  moveTo(nodeId) {
+    this.push([[nodeId, SIGN.CASE]]);
+  }
+
+  /** 찍기 = «수집». 지금 값에 한 노드를 더하거나 뺍니다. */
+  collect(nodeId, sign) {
+    const now = (this.nodes.get(this.current) || {}).value || [];
+    const next = now.filter(([id]) => id !== nodeId);
+    if (sign !== SIGN.ABSENT) next.push([nodeId, sign]);
+    this.push(next);
+  }
+
+  /** 이 칸의 형제들 -- 「다른 갈래」가 화면에 서려면 필요합니다. */
+  siblingsOf(id) {
+    const node = this.nodes.get(id);
+    if (!node) return [];
+    return [...this.nodes.entries()]
+      .filter(([other, n]) => other !== id && n.parent === node.parent)
+      .map(([other]) => other);
   }
 
   mount() {
     super.mount();
     this.loadDecl();
+    const name = this.historyName();
+    if (name && this.markings) {
+      // 🔴 밖에서 바뀌면 «자식으로 붙습니다». 다른 부품이 찍은 것도 탐색의 한 걸음이고,
+      //    그래야 「어디서 왔는지」가 이력에 남습니다. goto 가 부른 emit 은 값이 같아서
+      //    여기에 «안 걸립니다» -- 그게 재진입 방지의 전부입니다.
+      this._historyOff = this.markings.subscribe(name, () => {
+        const outside = this.markings.entries(name);
+        const here = (this.nodes.get(this.current) || {}).value || null;
+        if (here && WalkBoxPanel.sameValue(here, outside)) return;
+        if (!here && !outside.length) return;
+        this.push(outside);
+      });
+    }
+  }
+
+  unmount() {
+    if (this._historyOff) { this._historyOff(); this._historyOff = null; }
+    if (super.unmount) super.unmount();
   }
 
   async loadDecl() {
