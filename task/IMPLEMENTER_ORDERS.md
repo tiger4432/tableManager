@@ -17253,3 +17253,56 @@ ledger_subgraph.py:126-127 decode_node_id 의 «enrich-action:» 접두어 갈�
 ```
 📌 당신이 「지금 지우면 그쪽이 깨진다」고 멈춘 것이 옳았습니다 — 근거를 대고 멈췄고,
    그 근거를 제가 재서 «갈 수 있는 길»을 찾았습니다. 그게 이 채널이 도는 방식입니다.
+
+---
+
+# 🔴 원장 리팩토링 «첫 지시» — 재번역에 «문»을 답니다 (총괄, 2026-08-28 09:1x)
+
+정본 목표: `task/LEDGER_REFACTOR_GOAL.md` (다섯 문장). 이 지시는 그중 ③을 세웁니다 —
+**「선언을 고치면 원장이 따라온다」.** 지금 그게 «막혀» 있고, 막히면 나머지 넷이 무의미합니다.
+
+## 실측 — 코드가 «받을 수 없는 승인»을 요구합니다
+```
+총괄이 선언을 고침   defect_kind@1 엔티티 · of_kind@1 술어 · observed 수식어에서 finding_kind 제거
+백필 실행            backfill.run(engine, source="void_observation")
+거절                 ledger_cursor.void_observation.translator_ver:
+                     "existing cursor belongs to a different setup snapshot;
+                      inspect, back up, and obtain separate reset or replay approval"
+🔴 그 «승인»의 문     코드에 «없습니다» — _run_v2_lineage 가 reset_cursor·start_from 을 «무조건» 거절
+                     (backfill.py:315-320). 인자도 플래그도 없습니다
+🔴 그런데 run() 의 docstring 은 reset_cursor 를 「규칙이 바뀐 뒤 재번역하는 방법」이라고 «광고»합니다
+```
+어젯밤 묘비가 «없는 주소»를 가리키던 것과 같은 부류입니다 — 문서가 약속한 문이 안 열립니다.
+
+## 지시 — «가드를 뜯지 말고, 승인을 받을 수 있게» 하십시오
+```
+바뀌는 층   ledger/backfill.py 의 그 거절 «하나»
+지금        reset_cursor / start_from  ->  무조건 LedgerSetupError
+뒤          «명시적 승인»을 받으면 진행한다
+            형태는 당신이 정하되 세 조건을 지키십시오:
+              ① 기본은 «여전히 거절»이다 — 아무 인자 없이 부르면 지금과 같다
+              ② 승인은 «호출자가 한 번에 하나의 소스에 대해» 준다 (전역 플래그 금지)
+              ③ 승인이 왔을 때 «무엇을 지우고 무엇을 다시 쓰는지»를 반환값에 «수»로 적는다
+                 (지운 원자 수 · 쓴 원자 수 · 커서 전/후)
+⛔ 가드 자체를 «삭제»하지 마십시오 — 파괴적 작업에 문턱이 있는 것은 «맞습니다»
+⛔ 새 라우트를 만들지 마십시오. 운영 도구는 함수 호출이면 됩니다
+```
+
+## 🔴 착수 «전»에 한 가지만 재서 올리십시오 — 제가 답을 못 찾은 자리입니다
+```
+어젯밤 «첫» 선언 변경(defect@1) 때는 재번역이 «일어났습니다»
+   증거: 원자의 object 가 {"type":"defect","keys":{"void_uid":…}} — 제 선언에서만 나올 모양
+   그런데 그때 워커는 «안 돌고» 있었고, 저는 백필을 «성공시킨 적이 없습니다»
+👉 무엇이 그 원자를 썼습니까?  (config watcher · 서버 기동 훅 · 다른 레인 · 그 밖)
+   이 답이 ③의 «진짜 기전»이고, 모르면 우리는 우연에 기대고 있는 것입니다
+⚠️ 못 찾으면 「못 찾았다」로 올리십시오. 지어내지 마십시오
+```
+
+## 게이트
+```
+① 승인 없이 backfill.run  ->  지금과 «같은» 거절
+② 승인을 주고 실행        ->  of_kind 원자 «103,841» 생성 · observed 원자가 finding_kind 를 «안 듦»
+③ walk 실측              타입에 «defect_kind» 등장 · 술어에 «of_kind» 등장
+                         응답의 finding_kind 낱말 «0»
+④ 무회귀                 자재 9종 · defect 121 · 라우트 둘 · 노드 전부 ledger-entity
+```
