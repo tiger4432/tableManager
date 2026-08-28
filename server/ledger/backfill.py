@@ -246,7 +246,7 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
-        ontology_root=None):
+        ontology_root=None, retranslate=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
@@ -294,11 +294,12 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     return _run_v2_lineage(
         engine, cutover, source=source, fetch_rows=fetch_rows,
         reset_cursor=reset_cursor, start_from=start_from,
-        max_batches=max_batches)
+        max_batches=max_batches, retranslate=retranslate)
 
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
-                    reset_cursor=False, start_from=None, max_batches=None):
+                    reset_cursor=False, start_from=None, max_batches=None,
+                    retranslate=None):
     """Run one selected source on the existing Store/cursor.
 
     ``run()`` is the only caller and there is no longer an alternative driver to fall back
@@ -312,11 +313,24 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
     from .setup_registry import cursor_translator_version
     from .store import LedgerStore
 
-    if reset_cursor or start_from is not None:
+    # 🔴 THE APPROVAL IS THE SOURCE'S OWN NAME, and that is the whole design.
+    # `retranslate=True` would be a global switch a caller could leave on; `retranslate=
+    # "void_observation"` can only ever unlock the one source it names, and unlocking a
+    # second one means writing its name too. The default is None, so a call with no new
+    # argument refuses exactly as it did before this existed.
+    approved = retranslate is not None and retranslate == source
+    if retranslate is not None and not approved:
+        raise LedgerSetupError(
+            "approval_names_another_source", "retranslate",
+            "the approval must name the source being re-translated: "
+            f"got {retranslate!r} while running {source!r}",
+        )
+    if (reset_cursor or start_from is not None) and not approved:
         path = "reset_cursor" if reset_cursor else "start_from"
         raise LedgerSetupError(
             "destructive_approval_required", path,
-            "v2 cursor reset or replay requires a separate destructive approval",
+            "v2 cursor reset or replay requires a separate destructive approval - "
+            f"pass retranslate={source!r} to give it",
         )
     if not isinstance(fetch_rows, int) or isinstance(fetch_rows, bool) or fetch_rows < 1:
         raise LedgerSetupError(
@@ -335,19 +349,30 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         existing = store.read_cursor(read, source)
         cursor_value = (existing or {}).get("cursor_value") or {}
         expected_version = cursor_translator_version(setup.snapshot, source)
+        # ⚠️ BOTH GUARDS STAY. An approval does not delete them - it is the thing
+        # they were asking for. Without `retranslate` naming this source they refuse exactly
+        # as before, which is what makes「the declaration changed, re-read it」an explicit
+        # act rather than a side effect of editing a file.
+        cursor_before = dict(cursor_value) if cursor_value else None
         if existing and set(cursor_value) != set(plan.driver.cursor_columns):
-            raise LedgerSetupError(
-                "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",
-                "existing cursor shape does not match the v2 physical cursor; "
-                "inspect, back up, and obtain separate reset approval",
-            )
+            if not approved:
+                raise LedgerSetupError(
+                    "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",
+                    "existing cursor shape does not match the v2 physical cursor; "
+                    "inspect, back up, and obtain separate reset approval",
+                )
+            cursor_value = {}
         if existing and existing.get("translator_ver") != expected_version:
-            raise LedgerSetupError(
-                "cursor_snapshot_reset_required",
-                f"ledger_cursor.{source}.translator_ver",
-                "existing cursor belongs to a different setup snapshot; inspect, "
-                "back up, and obtain separate reset or replay approval",
-            )
+            if not approved:
+                raise LedgerSetupError(
+                    "cursor_snapshot_reset_required",
+                    f"ledger_cursor.{source}.translator_ver",
+                    "existing cursor belongs to a different setup snapshot; inspect, "
+                    "back up, and obtain separate reset or replay approval",
+                )
+            cursor_value = {}
+        if approved and reset_cursor:
+            cursor_value = {}
         after_key = cursor_value.get(_page_key(plan))
         result = BackfillResult(
             source=source,
@@ -448,6 +473,17 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             completed_groups |= batch_groups
             after_key = next_after
         result["seconds"] = round(time.monotonic() - started, 3)
+        # 🔴 WHAT AN APPROVAL ACTUALLY DID, IN NUMBERS. A caller who unlocked the
+        # cursor must be able to read back what changed without querying anything.
+        result["retranslated"] = bool(approved)
+        result["cursor_before"] = cursor_before
+        result["cursor_after"] = result.get("cursor")
+        # ⚠️ ALWAYS 0, AND THAT IS A FACT ABOUT THIS DOOR, NOT AN OVERSIGHT. Nothing
+        # here deletes an atom: the owner's standing rule is that removing an atom is a
+        # RULING, not an operation, so re-translation writes and `uq_ledger_atom` dedupes.
+        # The field exists because a re-translation that ever does delete must say so in the
+        # same place a reader is already looking - and today the honest number is zero.
+        result["atoms_deleted"] = 0
         return result
     finally:
         read.close()

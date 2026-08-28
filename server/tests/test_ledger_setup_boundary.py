@@ -345,12 +345,32 @@ def test_v2_backfill_refuses_reset_controls_before_store_access():
             object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
             reset_cursor=True)
 
+    # 🔴 THE MESSAGE NOW NAMES A DOOR THAT EXISTS. It used to demand "a separate
+    # destructive approval" with no way in the code to give one - the refusal asked for
+    # something no caller could produce, which is the defect this round fixed. The refusal
+    # itself is unchanged: no argument still means no.
     assert exc.value.to_mapping() == {
         "code": "destructive_approval_required",
         "path": "reset_cursor",
         "message": (
-            "v2 cursor reset or replay requires a separate destructive approval"),
+            "v2 cursor reset or replay requires a separate destructive approval - "
+            "pass retranslate='lot_event' to give it"),
     }
+
+
+def test_the_approval_must_name_the_source_it_unlocks():
+    """A global switch would be left on; a source name can only unlock the one it names."""
+    import ledger.backfill as backfill
+
+    with pytest.raises(LedgerSetupError) as exc:
+        backfill.run(object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
+                     retranslate=True)
+    assert exc.value.to_mapping()["code"] == "approval_names_another_source"
+
+    with pytest.raises(LedgerSetupError) as other:
+        backfill.run(object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
+                     retranslate="void_observation")
+    assert other.value.to_mapping()["code"] == "approval_names_another_source"
 
 
 def test_existing_legacy_cursor_shape_blocks_v2_before_source_read(monkeypatch):
