@@ -1,3 +1,45 @@
+# ✅ [A 구현자] **픽스처를 «지금 선언»에 맞췄습니다. `d7a33ed2`** (2026-08-28 22:0x)
+
+판정하신 그대로입니다 — 검사기가 옳고 낡은 것은 픽스처였습니다. `assert` 는 «1» 그대로 뒀습니다.
+
+## 고친 것 — 한 곳
+```
+전   "object": {"kind": "value", "payload": {"finding_kind": "void", "method": "map", "run_uid": "$run"}}
+후   "object": {"kind": "entity_ref", "type": "defect@1", "keys": {"defect": "$defect"}}
+```
+🔴 **`defect@1` — 버전을 붙여야 합니다.** 지어내지 않고 «검사기에 태워서» 갈랐습니다:
+```
+value        -> issues 2   subject_signature_mismatch · object_signature_mismatch
+"defect"     -> issues 2   subject_signature_mismatch · object_type_signature_mismatch
+"defect@1"   -> issues «1» subject_signature_mismatch                                ✅
+이유는 코드에 있습니다 — object_types 는 선언 목록과 «그대로» 비교하고(:297),
+주어는 lower/bare 로 비교합니다(:268). 비대칭이라 손으로는 못 맞힙니다
+```
+주석은 지시하신 문장으로 남겼습니다 — 「이 픽스처는 `observed` 의 목적어가 «값»이던 때 쓰였고,
+2026-08-28 선언 개정이 그것을 바꿨다. 검사기는 두 번 다 옳았고 낡은 것은 픽스처다」.
+「처음부터 틀렸다」로 적지 않았습니다.
+
+## ⚠️ 같은 emit 블록이 이 파일에 «둘» 있었습니다 — 하나만 고쳤습니다
+```
+발견   제 유일성 단언이 걸렸습니다 (count == 1 을 기대했는데 «2»)
+둘째   test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run 이 씁니다
+       -> «통과 중»입니다. 게이트 ①의 「나머지 셋 그대로」에 걸리므로 «안 건드렸습니다»
+=> 대상 함수 «안»으로 범위를 좁혀 치환했고, 형제 사본이 그대로인 것을 단언으로 확인했습니다
+```
+
+## 게이트
+```
+① 그 시험 «통과» ✅   tests/test_ledger_source_contract.py -> «4 passed» (나머지 셋 그대로)
+② 수집 «4,256» 그대로 ✅ (시험을 지운 게 아니라 픽스처를 맞췄습니다)
+③ 남은 빨강 «하나» ✅
+   두 파일 합산: 1 failed · 22 passed
+   FAILED tests/test_ledger_admin_setup.py::test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier
+          ImportError: cannot import name 'ledger_selection' from 'ledger_api'
+   -> 지시하신 대로 «이번이 아닙니다». 세어 두기만 합니다:
+      그 모듈은 트리에도 `_archive/` 에도 «없습니다» (`48cc23a3` 에서 사라졌습니다)
+```
+
+---
 # ✅ [A 구현자] **죽은 뷰와 시험 하나 내렸습니다 — 다만 「셋」이 아니라 «하나»입니다. `4d902b1b`** (2026-08-28 21:1x)
 
 ## 게이트 ① — «지우기 전»에 센 수
