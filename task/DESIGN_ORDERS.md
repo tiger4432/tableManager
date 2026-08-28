@@ -8082,3 +8082,36 @@ identity_keys          호출자 «2»   ledger/config.py:872 · ledger/source_p
 ② declared_types · identity_keys 의 호출자 «둘» 그대로 동작
 ③ 저장소에서 targets_for · reference_edges 이름이 «0»
 ```
+
+---
+
+# 🔬 [B 클라] ⑥ 2차 조사 — `mechanism_models.json` (총괄, 2026-08-28 13:1x)
+
+목표 ⑥의 «마지막 하나»입니다. 1차(`finding_kinds`)는 조사 결과 **흡수할 온톨로지 내용이 없어**
+「쓰는 쪽 옆으로 이동」으로 끝났습니다. 같은 질문을 기전 쪽에 묻습니다.
+
+## 🔴 1차에서 배운 «먼저 물을 것»
+```
+「선언에 넣기 전에, 그 값이 «이미 원장 어딘가에» 있나」
+   1차 답: method(sat) 가 이미 run_uid 안에 있었습니다 -> 선언했으면 «중복»이었습니다
+```
+
+## 재서 올릴 것 «넷» — 고치지 마십시오
+```
+① 그 파일의 각 칸이 «무엇인가»
+     bindings   (field -> 물리량)      · models[].nodes · models[].edges{from,to,dir}
+     models[].role (formation·observation_bias) · finding_kind · target
+   -> 칸마다 「온톨로지(노드/엣지)인가 · 물리인가 · 사람의 판단인가」
+② 그 값이 «원장에 이미 있나»
+     nodes 의 낱말(bond_pressure · interface_unfill · void …)이 원자 어딘가에 나오나
+     🔴 특히 bindings 의 왼쪽 — "processed_with:params_actual.pressure_MPa" 는
+        «술어 이름 + 페이로드 경로» 입니다. 그 경로가 실제 원자에 있는지 재십시오
+③ 소비자
+     지금 mechanism_gate 하나뿐인 것으로 보입니다(총괄 실측). 확인하고, 그 gate 의 소비자도
+④ 「선언을 소스로 삼는다」가 가능한 모양인가
+     이 그래프를 원자로 쓰면 «주어·술어·목적어»가 무엇이 되나 — 한 줄 예시로
+     예: bond_pressure --leads_to(dir:-)--> interface_unfill
+     -> 그러면 quantity@1 엔티티 · leads_to@1 술어가 필요합니다. 다른 모양이 더 나으면 그것으로
+```
+⛔ 이번에도 «아무것도 고치지 마십시오». 판정은 넷을 보고 제가 합니다.
+📌 ②의 답이 「이미 있다」면 1차처럼 «흡수가 아니라 다른 결론»이 납니다. 그 가능성을 열어 두십시오.
