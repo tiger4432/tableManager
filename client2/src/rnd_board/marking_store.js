@@ -96,6 +96,41 @@ export class MarkingStore {
     return this.set(name, nodeId, current === wanted ? SIGN.ABSENT : wanted);
   }
 
+  /**
+   * Write a whole marking at once, and emit ONCE. The explorer's only write.
+   *
+   * 🔴 WHY THIS EXISTS, MEASURED (2026-08-28). Restoring an N-node marking as `clear()` then
+   * `set()` N times emits N+1 times when the name was not empty, and every subscriber sees the
+   * INTERMEDIATE states -- measured sizes `[0, 1, 2, 3]` for a three-node restore. The zero is
+   * the damaging one: a part reads it as 「아직 안 골랐습니다」 and re-walks, so stepping back
+   * through history would redraw and refetch the screen once per node.
+   *
+   * 🔴 SAME GUARD AS `set()`, EXTENDED. `set()` already returns without emitting when the value
+   * is unchanged; an atomic write keeps that promise for the whole set, which is what makes the
+   * explorer's 「밖에서 바뀌었나」 check a VALUE comparison rather than a re-entrancy flag.
+   *
+   * @param {string} name
+   * @param {Array<[string, number]>} entries  `[[nodeId, sign], ...]`, as `entries()` returns
+   */
+  replace(name, entries) {
+    const next = new Map();
+    for (const [nodeId, sign] of entries || []) {
+      const wanted = normaliseSign(sign);
+      if (wanted !== SIGN.ABSENT) next.set(nodeId, wanted);
+    }
+    const before = this._marks.get(name);
+    if (before && before.size === next.size) {
+      let same = true;
+      for (const [nodeId, sign] of next) {
+        if (before.get(nodeId) !== sign) { same = false; break; }
+      }
+      if (same) return;
+    }
+    if (!before && !next.size) return;
+    this._marks.set(name, next);
+    this._emit(name);
+  }
+
   /** Drop every mark under one name. Other names are untouched -- see the harness §A. */
   clear(name) {
     const set = this._marks.get(name);
