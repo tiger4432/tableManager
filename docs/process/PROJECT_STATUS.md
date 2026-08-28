@@ -49,6 +49,49 @@
 
 ## 🏛️ 지금 서 있는 자리 (2026-08-28 14:5x — 원장 리팩토링 «6 중 5» · ⑥ 판정 완료 · 스위트 복구됨)
 
+### 🔴 저녁 라운드 — 「물리량을 노드로」 · 소유자 상설이 하나 늘었습니다 (15:3x)
+
+> 소유자 2026-08-28: 「**다른것도 이 방식이 표준이야 테이블에 원천 데이터 넣고 이거로 원장**」
+> -> CLAUDE.md 에 상설로 박음. `store.write_batch` 의 정당한 호출자는 `ledger/runtime_v2.py` «하나»
+
+#### 총괄이 쓴 라이브 선언 — 🔴 gitignore 라 «커밋에 없습니다». 이 보드가 유일한 기록입니다
+```
+server/config/table_config.json          백업 .bak-0828_1520   (37 -> 39 표)
+  process_param    param_id · wafer_id · step · param · value(num) · value_text(str) · role
+                   · unit · eqp_id · recipe_id · eventtime        business_key = param_id
+  mechanism_edge   edge_id · model · from_quantity · to_quantity · dir · asserted_at
+
+server/config/ontology/ledger_config.json  백업 .bak-0828_1530
+  엔티티  quantity@1 {keys:[quantity]}                                    8 -> 9
+  어휘   measures@1  wafer@1 -> quantity@1                               11 -> 13
+           수식어 value · value_text · role · unit · step · eqp_id · recipe_id
+         leads_to@1  quantity@1 -> quantity@1 · defect_kind@1
+           수식어 dir · model
+  소스   process_param_measure (process_param) · mechanism_edge_causes (mechanism_edge)  10 -> 12
+
+물리 표 둘 다 생성됨 (create_missing_dynamic_tables)
+검증   validate_bundle_errors   대조군(손 안 댄 백업) «0» · 현재 «0»
+```
+
+#### 쓰는 도중 측정이 설계를 «두 번» 고쳤습니다
+```
+① 값의 7,055 / 80,322 가 «문자열» (chem SC1 · gas · pad · slurry)
+   -> value 를 수로만 뒀으면 그만큼이 «조용히» 사라짐. value_text 추가 · 「정확히 하나만」 게이트
+② (wafer, step, param) 이 «유일하지 않음» — 80,322 칸 -> 유일 조합 60,528
+   (setpoint 와 actual 이 같은 이름) -> 처음 건 복합키는 충돌했을 것. key=param_id · role 컬럼
+```
+📌 그리고 검증기가 제 소스를 거절했을 때 **손 안 댄 백업을 같이 태워** 그게 «틀린 검증기»를 부른
+   것임을 먼저 갈랐습니다(`ledger.config.validate` 는 옛 평면 모양용). 맞는 문법은 «도는 예제»
+   `dt_job` 에서 뽑았습니다 — read 와 bind 의 시각은 «따로»라는 것도 거기서 나왔습니다.
+
+#### 이 라운드의 «판별식» (레인 진행 중, claim `b0618684`)
+```
+defect_kind{void} 에서 leads_to 를 «거꾸로» 걸어 quantity 에 닿는가
+닿으면   발견 -> 원인까지 «한 walk». 두 번째 탐색기가 필요 없어집니다
+지금     walk 한 번 + mechanism_gate 한 번, 그리고 코드가 둘을 이어 줌
+⚠️ walk 기준선(die 877 …)은 «바뀝니다» — 타입이 하나 늘어서. 회귀가 아니라 결과입니다
+```
+
 ### 오후에 닫힌 것
 ```
 ✅ walk 죽은 배관 제거     `79ff99f6` — 네 게이트, 씨앗 «둘»로 전후 동일
