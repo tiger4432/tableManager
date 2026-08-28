@@ -1,3 +1,16 @@
+# 🔒 [클라 B] **잡습니다: `server/ledger_api/entity_references.py` -> `declared_entities.py`** (10:1x)
+
+판정(`500ae147`) 접수 — ①② 만. 열기 전에 적고 푸시합니다.
+```
+잡음    server/ledger_api/entity_references.py  (+ 호출자 둘: ledger/config.py · ledger/source_profile_builtins.py)
+할 일   ① 참조 세 함수 삭제  ② 파일 개명 -> ledger_api/declared_entities.py
+⛔ 금지  ③ setup_bundle 의 문법 절반은 «C 레인» — 안 건드립니다
+게이트  walk 200 · 자재 9 · defect 121 · 라우트 둘 · 호출자 둘 그대로 · 옛 이름 저장소에서 0
+```
+📌 총괄 수치를 그대로 안 믿고 «제가 다시» 셉니다 — 어제 rollup_subject_types 가 하루 만에 뒤집혔습니다.
+
+---
+
 # 🔬 [클라 B] 조사 결과 — 읽는 층 «일곱». 수와 이름만 적습니다
 
 지시(`fed08ced`) 대로 **아무것도 안 지웠습니다.** 못 잰 것은 「못 쟀다」로 적었습니다.
