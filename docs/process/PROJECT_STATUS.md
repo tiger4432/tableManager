@@ -178,6 +178,51 @@ panel.js:109   밑동이 `this.start` 를 «읽습니다»
 ⑥ 문서 정비 사이클  CODE_MAP · 히스토리 · 체크리스트 (오늘 스펙·파일지도·샘플만 손댔습니다)
 ```
 
+### 📐 walk 으로 «SQL 같은» 질의 — 소유자 설계 (2026-08-29 새벽, 실측 확인)
+
+> 「걷기를 이용해서 sql 문법 유사하게 구현할 방법. collect (value of specific node type) groupby (node type)」
+> 「median, count 등에 collect 함수, groupby에 «점 찍을 단위 노드»」
+> 「rcp에서 걸어서 닿는 quantity 다 collect하면 되는거 아니야?」
+
+#### 대응
+```
+SQL                   walk
+FROM · WHERE 주어      start   = 마킹           ( = groupby 단위 )
+JOIN                  follow  = 술어들          🔴 SQL 의 «조인»이 선언된 술어입니다
+SELECT <값>            값은 «엣지 수식어»에 있습니다 (노드가 아니라)
+GROUP BY <축>          «노드». 씨앗이 곧 group 입니다
+집계 함수               collect = median · count · avg · max — 창이 셉니다
+```
+#### 🔴 「점 찍을 단위 노드」에 구조적 이유가 있습니다
+```
+노드로 묶으면   점이 «id 를 갖습니다» -> 클릭 = push([[nodeId, CASE]]) = 탐색기가 «이미 하는» 연산
+수식어로 묶으면  점에 id 가 «없습니다» -> 찍을 수 없고 «체인이 끊깁니다»
+=> 차트의 점 클릭과 탐색기의 노드 클릭이 «같은 연산»입니다 (라운드 W 가 이미 구현)
+```
+#### 🔴 방향이 답이었습니다 — 제가 두 번째로 놓친 자리
+```
+내 생각(SQL 방향)   「행마다 group key 를 찾아라」 -> 「가장 가까운 recipe 가 어느 것이냐」가 «모호»
+소유자(walk 방향)   「group 단위를 «씨앗»으로 두고 걸어서 닿는 것을 모아라」 -> «모호함 없음»
+같은 실수 두 번      pkg 때도 「다른 질문이니 새 술어」라 했고 「bondfrom 으로 되잖아」로 뒤집혔습니다
+                   둘 다 «방향을 뒤집으면 없어지는» 문제였습니다
+```
+#### 실측 (총괄, 서버 변경 «0»)
+```
+씨앗 recipe{SYN-R-CMP-01} · follow=processed_with+measures · hops=3 · nl=1000 · el=3000
+  nodes 609 · 타입 {recipe 5 · wafer 600 · quantity 4}
+  collect: place_accuracy_um n=600 median 5.000 · pick_force_N 0.800
+           stage_temp_C 60.000 · uv_dose_mJ 120.000
+⚠️ 씨앗 주의: R-CMP-01(웨이퍼 2 · measures 0) 과 SYN-R-CMP-01(웨이퍼 600) 은 «다른 것»입니다
+   제가 알파벳 순으로 골라 「안 닿는다」로 갈 뻔했습니다 — 오늘 씨앗 오류 다섯 번째
+```
+#### 🔴 집계에서 «절단»은 부분값이 아니라 «틀린 값»입니다
+```
+위 실측이 edge_limit 3000 에서 잘렸습니다 (truncated: edges · claims)
+median 이 「600장 전부」인지 「3000 엣지까지」인지 «구별해야» 합니다
+=> 수 옆에 「여기까지 봤습니다」를 «같이» 냅니다 — 오늘 unscanned·트렌드 정본 그대로
+   다만 집계는 더 민감합니다: 점 하나가 없는 것과 median 이 틀린 것은 다릅니다
+```
+
 ### 📐 기획 v2 — 「**파일 탐색기처럼**」 (소유자 2026-08-28 밤, 기획 v1 을 «대체»합니다)
 
 > 「저 검색기에서 계속 클릭하면 마킹 갱신되면서 타고타고 가면 좋겠는디
