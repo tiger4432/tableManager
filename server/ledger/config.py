@@ -623,11 +623,13 @@ def _validate_observation_source(source: dict, where: str):
     finding_kind = str(source.get("finding_kind") or "").strip()
     if not finding_kind:
         raise LedgerConfigError(
+            # 🔴 NO FILE PATH HERE, DELIBERATELY. This sentence has named the wrong
+            # location twice: once a file that was never there, once one that moved the same
+            # day. A refusal has to say WHAT is missing and WHY it cannot be guessed; where
+            # the answer happens to live today is the one part that expires.
             f"{where}.finding_kind is not declared. An observation source translates ONE "
-            f"kind of finding (`server/ledger_api/finding_kinds.py` is the registry "
-            f"of what a kind is), and the value lands in every atom's payload - "
-            f"guessing it from the "
-            f"table name would put an unreviewed word in the ledger.")
+            f"kind of finding, and that value lands in every atom this source writes - "
+            f"guessing it from the table name would put an unreviewed word in the ledger.")
 
     run = source.get("run")
     if not isinstance(run, dict):
