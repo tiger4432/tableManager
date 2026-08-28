@@ -860,16 +860,16 @@ def _declared_entity_types():
     spelling the ledger stores on an atom - so a declaration written `"Lot"` still matches
     `lot@1`; `identity_keys` folds the case for the same reason.
 
-    The reader is the one `ledger_api.entity_references` already owns (cached, and an absent
+    The reader is the one `ledger_api.declared_entities` already owns (cached, and an absent
     file is an answer rather than an exception) rather than a second parse of one file.
     """
-    from ledger_api import entity_references
-    return entity_references.declared_types()
+    from ledger_api import declared_entities
+    return declared_entities.declared_types()
 
 
 def _identity_keys(entity_type):
-    from ledger_api import entity_references
-    return entity_references.identity_keys(entity_type)
+    from ledger_api import declared_entities
+    return declared_entities.identity_keys(entity_type)
 
 
 def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
