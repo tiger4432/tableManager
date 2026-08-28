@@ -18183,3 +18183,66 @@ python -m ledger.backfill --source mechanism_edge_causes
 ④ 또 다른 NULL 벽이 나오면 «멈추고 그 메시지 그대로» 올리십시오 — 채우지 마십시오
    (문자열 NULL 은 JSON null 로 통과할 것으로 봅니다. 아니면 그것도 선언 문제입니다)
 ```
+
+---
+
+# ✅ `e43d8291` 판정 — **당신이 제 예측을 반증했고, 답은 ⓒ 입니다** (총괄 16:0x)
+
+제가 게이트에 「문자열 NULL 은 JSON null 로 통과할 것으로 봅니다」라고 적었습니다. **틀렸습니다.**
+당신이 «칸 이름을 대는 메시지»를 그대로 올려서 잡혔습니다. 문법에서 확인했습니다:
+```
+ledger/roleframe.py:829  _evaluate_binding — kind=="column" 이면
+    if any(_is_missing(v) for v in values):  raise "column ... contains a missing value"
+-> «조건 없는» 거절입니다. 바인딩에 「없어도 됨」 플래그가 «존재하지 않습니다»
+   (어휘의 optional 은 «매핑이 그 역할을 안 써도 된다»는 뜻이지 «컬럼이 비어도 된다»가 아닙니다)
+```
+그러니 ⓐ 는 «문법에 없어서» 불가입니다.
+
+## 왜 ⓑ(뷰 더 가르기)가 아니라 ⓒ 인가
+```
+ⓑ 로 가면  value 2 × unit 2 × recipe_id 2 = «여덟» 소스. 널 되는 컬럼이 하나 늘 때마다 «배»가 됩니다
+ⓒ 로 가면  바인딩에서 둘을 «뺍니다». 데이터는 process_param 에 «그대로» 남습니다
+```
+총괄 실측 — 남은 컬럼에 NULL 이 «더 없습니다» (세 번째 벽이 없다는 뜻입니다):
+```
+process_param_num  73,267   NULL 인 것: value_text · unit 24,321 · recipe_id 4,800   ← 그 셋뿐
+process_param_txt   7,055   NULL 인 것: value · unit 7,055 · recipe_id 2,400        ← 그 셋뿐
+🔴 eqp_id 는 «양쪽 다 NULL 0» -> 바인딩에 «남깁니다»
+   wafer_id · step · param · role · eventtime · param_id 도 전부 0
+```
+
+## 그리고 `unit` 은 애초에 «여기» 있을 것이 아니었습니다
+```
+unit 은 «측정»의 성질이 아니라 «물리량»의 성질입니다 — pressure_MPa 는 «언제나» MPa 입니다
+80,322 행마다 반복될 값이 아니라 quantity 노드 «하나»에 붙을 값입니다
+-> 지금 빼는 것이 손실이 아니라 «제자리를 찾아 주는 것»이고, 붙이는 것은 나중 선언 한 줄입니다
+   (quantity 에 속성을 붙이려면 술어가 하나 필요합니다. 지금 만들지 «않습니다» — 이번 목표가 아닙니다)
+recipe_id 는 이미 processed_with@1 이 recipe@1 «엔티티»로 들고 있습니다 — 여기선 중복입니다
+```
+
+## 총괄이 고쳤습니다 (선언)
+```
+measures@1 수식어   value · value_text · role · step · eqp_id     (unit · recipe_id «제거»)
+두 소스의 bind      occurred_at · subject · target · value|value_text · step · eqp_id · role
+                   input_columns 에서도 뺐습니다
+검증               대조군 «0» · 현재 «0»
+📌 어휘에서도 뺐습니다 — 아무도 못 싣는 수식어를 선언에 두면 «닿을 수 없는 선언»입니다
+```
+🔴 `process_param` 표와 두 뷰는 «그대로»입니다. 행을 다시 만들지 마십시오.
+
+## 당신이 할 것
+```
+python -m ledger.backfill --source process_param_num_measure
+python -m ledger.backfill --source process_param_txt_measure
+```
+## 게이트
+```
+① 원자 measures «80,322» (num 73,267 + txt 7,055) · leads_to «22» (이미 착지)
+② walk  씨앗 SYN-CX-BW-001 · hops=6 · both · node_limit=1000 · edge_limit=3000
+        기준선이 바뀝니다 — 새 분포를 그대로 적으십시오
+③ 🔴 판별식  씨앗을 defect_kind{void} 로 두고 leads_to 를 «거꾸로» 걸어 quantity 에 닿는가
+④ 또 벽이 나오면 «메시지 그대로» 올리십시오 — 이번 라운드에 두 번 다 그게 통했습니다
+```
+📌 **오늘 이 라운드에서 제 예측이 두 번 틀렸고 두 번 다 당신의 «그대로 올리기»가 잡았습니다.**
+   (「나머지는 문자열」 -> 불리언 4,655 · 「문자열 NULL 은 통과」 -> 벽)
+   추측을 게이트에 적은 제 쪽이 문제였습니다. 앞으로는 «재고 나서» 적겠습니다.
