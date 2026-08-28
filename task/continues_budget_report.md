@@ -1,77 +1,79 @@
-# 🛑 [A 구현자] **멈춥니다 — 지시 ①이 «이미 트리에 있습니다». 커밋은 안 됐고, 제 것이 아닙니다** (2026-08-29 04:5x)
+# ✅ [A 구현자] **②③ 착지 — `02c4cc6c`. 다만 게이트의 «후» 기대가 안 맞습니다** (2026-08-29 05:2x)
 
-`continues` 라운드를 받아 착수 전 측정부터 했고, 첫 파일을 열자마자 벽이 나왔습니다.
-**지시 ①(검증기)이 «작업 트리에 이미 구현돼» 있습니다.** 제가 쓴 것이 아닙니다.
+`git pull` 후 트리 «깨끗» 확인하고 시작했습니다(미커밋 «0»). ①은 `4cbcb086` 으로 커밋돼
+있는 것을 확인했고 **열지 않았습니다.**
 
-## 실측
+## 🔴 먼저 — 게이트의 「후에는 더 멀리 닿아야」가 «안 닿습니다». 이유도 쟀습니다
+지시하신 씨앗·인자 그대로:
 ```
-git status --porcelain -- server
-   M server/ledger/setup_bundle.py         ← 커밋 안 됨
-   M server/ledger/ledger_skeleton.json    ← 커밋 안 됨
+GET /api/ledger/subgraph · id=wafer{SYN-BW-101-16} · hops=6 · node_limit=1000 · direction=both
 
-git show HEAD:server/ledger/setup_bundle.py | grep -c 'optional=("continues",)'   ->  «0»
-grep -c 'optional=("continues",)' server/ledger/setup_bundle.py                   ->  «1»
-git log -S'optional=("continues",)' -- server/ledger/setup_bundle.py              ->  커밋 «없음»
-
-mtime   setup_bundle.py       08-29 «04:38»
-        ledger_skeleton.json  08-29 «04:38»
-        ledger_trace_router.py        08-27 23:26   ← 안 건드려짐
-        ledger_api/ledger_subgraph.py 08-28 18:12   ← 안 건드려짐
+전 (②③ 전)          nodes «754» · edges «1200» · hops_reached «2» · truncated [claims, edges]
+후, 인자 안 보냄      nodes «754» · edges «1200» · hops_reached «2» · truncated [claims, edges]
+후, continues_hops=12 nodes «754» · edges «1200» · hops_reached «2» · truncated [claims, edges]
 ```
+**셋이 «완전히 같습니다».** 맞춰 놓지 않고 그대로 적습니다.
 
-## 트리에 있는 것이 «지시 ① 그대로»입니다
-`server/ledger/setup_bundle.py::_validate_vocabulary` (+16 / −1):
-```python
-if not problems.exact(
-        item, path, required=("status", "subjects", "object"),
-        optional=("continues",)):
-    continue
-if "continues" in item and not isinstance(item["continues"], bool):
-    problems.add("invalid_predicate", f"{path}.continues", "must be true or false")
+### 원인 — 그 씨앗에서 walk 을 막는 것은 «홉»이 아닙니다
 ```
-그 위에 13줄짜리 주석이 붙어 있고, **지시서의 「왜 술어 칸인가」 논거(8/11 · 11/11 · 부재가
-뜻을 가진다)를 그대로 담고 있습니다.** 즉 이 지시를 읽은 «누군가»가 쓴 것입니다.
-
-## 🔴 그리고 지시서에 «없는» 파일이 하나 더 바뀌어 있습니다
-```json
-server/ledger/ledger_skeleton.json  (+9)
-  { "key": "continues", "required": false, "label": "자재 연속",
-    "node": { "kind": "leaf", "hint": "flag" } }
-```
-어드민 작성 폼의 칸입니다. 제 지시서 ①②③ 어디에도 «없습니다».
-
-## 그래서 안 했습니다 — 무엇을·왜
-```
-⛔ setup_bundle.py · ledger_skeleton.json  «열지도 안 건드리지도» 않았습니다
-   남의 미커밋 작업입니다. 커밋하면 남의 것을 제 이름으로 착지시키는 것이고,
-   되돌리면 지우는 것입니다 — 오늘 이 채널에서 그 부류를 두 번 봤습니다
-⛔ ②(라우터) ③(walk) 도 «아직» 안 했습니다
-   04:38에 ①을 쓴 손이 ②③으로 «가는 중»일 수 있습니다. 그러면 같은 지시를 두 레인이
-   도는 것이고, 총괄이 보고처를 갈라 «막으려던» 바로 그 모양입니다
+truncated 가 [claims, edges] 입니다. hops «6» 을 줬는데 hops_reached 가 «2» 입니다
+=> 걷기가 홉 예산을 «한 번도 다 못 쓰고» 엣지·클레임 예산에서 끝납니다
+   (그 요청은 edge_limit 을 안 줘서 라우트 기본 1200 이고, claim 상한은 그 두 배인 2400 입니다)
+=> 그래서 «자재 예산을 아무리 줘도» 바뀔 것이 없습니다. 축이 죽은 게 아니라 «다른 벽»입니다
 ```
 
-## 👉 판정 요청 — 셋 중 하나만 주시면 바로 갑니다
+### 그래서 «홉이 벽이 되게» 만들어 축을 확인했습니다 — 작동합니다
+같은 씨앗 · node_limit=1000 · edge_limit=3000 · both:
 ```
-ⓐ 그 미커밋 변경이 «총괄 것»이다      -> 커밋은 총괄이 하시고, 저는 ②③만 갑니다
-ⓑ 다른 레인이 이 라운드를 «돌고 있다»  -> 저는 빠집니다. 이 보고서만 남기겠습니다
-ⓒ 그건 잔재이고 이 라운드는 «제 것»이다 -> ①의 커밋 권한을 주시면 세 개 다 한 커밋으로 갑니다
-                                        (그 경우에도 skeleton 변경은 «지시 밖»이라 따로 여쭙니다)
+hops=1 continues_hops=0   nodes «40»  · hops_reached «1» · truncated [depth]
+hops=1 continues_hops=4   nodes «157» · hops_reached «3» · truncated «없음»
+hops=2 continues_hops=0   nodes «118» · hops_reached «2» · truncated [depth]
+hops=2 continues_hops=4   nodes «157» · hops_reached «3» · truncated «없음»
+```
+`hops=1` 한 홉만 주고도 깊이 «3» 까지 닿고 depth 절단이 «꺼집니다» — 자재 걸음이 떠남 예산을
+안 쓰기 때문입니다. **축은 삽니다. 지시하신 인자에서만 다른 벽에 가려집니다.**
+
+👉 판정 필요: 게이트 씨앗을 「홉이 벽이 되는 인자」로 바꾸시겠습니까, 아니면 이 결과를
+   그대로 받으시겠습니까. 제가 게이트를 고쳐 쓰지 않았습니다.
+
+## 게이트 ③ — 새 인자가 산다
+```
+안 보냄            위 「후, 인자 안 보냄」과 동일 = 전과 동일  ✅
+continues_hops=0   동일 (오늘의 걷기)                          ✅
+continues_hops=-1  «422»  (ge=0 으로 이름 대어 거절)           ✅
+선언에서 읽은 집합  bonded_from · derived_from · has_wafer · inspected · slot_map · transfer  «여섯»
+                   -> `_continuing_predicates()` 를 직접 불러 확인했습니다. 코드에 박힌 이름 «0»
 ```
 
-## 그동안 «값이 남는 것»은 재 뒀습니다 — 게이트 ①의 «전» 줄
-지시대로 총괄 문서에서 베끼지 않고 직접 쟀습니다.
+## 게이트 ④ — 이 파일들을 지나는 하니스
 ```
-GET /api/ledger/subgraph
-   id = wafer{SYN-BW-101-16} · hops=6 · node_limit=1000 · direction=both
-
-전(HEAD + 위 미커밋 변경 상태)
-   nodes «754» · edges «1200» · hops_reached «2» · truncated [claims, edges]
-   타입 분포  wafer 530 · die 117 · defect 89 · quantity 18
-
-그리고 새 인자가 «아직 없다»는 것도 같이 쟀습니다
-   continues_hops=0 -> 위와 «동일»    continues_hops=4 -> 위와 «동일»
-   (FastAPI가 선언 안 된 쿼리 인자를 조용히 무시합니다 — ③의 「인자가 산다」는 지금 «거짓»입니다)
+tests/test_ledger_subgraph.py + tests/test_ledger_explorer.py   -> «12 passed · 1 skipped»
+전체 스위트는 «안 돌렸습니다» (지시대로)
 ```
-⚠️ 이 「전」 값은 «미커밋 변경이 트리에 있는 상태»에서 잰 것입니다. ①은 검증기라 walk 응답에
-   영향이 없어 같은 수여야 하지만, **어제 제가 「트리에서 재고 커밋에 도장 찍었다」로 사고를
-   낸 바로 그 자리**라 상태를 명시해 둡니다. 판정 후 다시 재서 전/후를 나란히 적겠습니다.
+
+## 무엇을 어떻게 고쳤나
+```
+② ledger_trace_router.py
+   _continuing_predicates()   `_followable_predicates` 와 «같은 모양». 선언에서만 읽고,
+                              읽기 실패는 «빈 집합»(= 모든 걸음이 떠남 = 오늘의 걷기)
+   continues_hops             Query(DEFAULT_CONTINUES_HOPS, ge=0, le=40)
+③ ledger_api/ledger_subgraph.py
+   DEFAULT_CONTINUES_HOPS = 0  🔴 0 인 이유: 선언에 이미 여섯이 붙어 있어서, 다른 기본값이면
+                               «축을 넣는 그 커밋»이 모든 화면의 답을 바꿉니다
+   dep_cost{}                  «떠난» 횟수. depths 는 «뜻 그대로» — 그래서 truncation·
+                               hops_reached·자취·클라가 전부 그대로 삽니다
+   _spend(near, far, charge)   먼 쪽에 charge 를 싣고 «최솟값»을 유지 (add_node 가 깊이를
+                               최솟값으로 두는 것과 같은 이유)
+   frontier                    depths==depth «그리고» dep_cost < hops 인 것만 편다
+   루프 상한                    range(hops + continues_hops), 절단 판정 둘(:879·:884)도 같은 상한
+```
+⛔ 술어 이름 코드에 박기 «0» · 라이브 선언 열기 «0» · 클라 변경 «0» · 자재 걸음을 0홉으로 «안 셈»
+   (자재 걸음도 depths 는 올립니다 — split·transfer 반복이 무한이 되지 않습니다)
+
+## ⚠️ 측정 조건 — 어제 사고 난 자리라 명시합니다
+```
+제 수치는 «TestClient(app)» 로 잰 것이라 «지금 트리 = 지금 커밋»의 코드입니다
+   (커밋 직전 git status 로 두 파일이 «스테이지됨(M )»인 것을 눈으로 확인하고 커밋했습니다)
+총괄이 «돌고 있는 서버»에 대고 재시려면 04:4x 재기동 이후 ②③이 들어갔으므로 «다시 재기동»이
+필요합니다 — 안 하면 제 전/후가 아니라 «전/전»을 보시게 됩니다
+```
