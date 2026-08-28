@@ -120,14 +120,25 @@ $ pytest server/tests/ --collect-only
 확장(오늘 값) wafer_process.knobs 를 읽고 processed_with@1 에 수식어 자리를 «연다»
              -> 선언만 고치면 되고 재적재로 실립니다. 이건 «할 수 있고 값이 있습니다»
 ```
-🔴 그리고 파라미터보다 큰 것이 같이 보입니다 — **재건이 웨이퍼 범위를 좁혔습니다**
+🔴 **위의 ③도 제가 틀렸습니다 — 클라 B 가 `source_who` 로 잡았고 제가 재서 확인했습니다**
 ```
-옛 processed_with 주어 웨이퍼  «5,218»
-오늘                          «602»      겹침 «602 / 602» (오늘 것이 옛 것의 «부분집합»)
+pre_rebuild processed_with 28,154 를 «누가 썼나»로 가르면
+   씨앗 스크립트 여섯   25,132   syn_recipe_book 10,442 · syn_eqp_log 6,378 · syn_fab_mes 3,000
+                                syn_mes_queue 2,575 · syn_mi_gauge 1,781 · syn_complex_composite 956
+   진짜 번역 «하나»      3,022   wafer_process_recipe
+오늘의 processed_with              3,022   wafer_process_recipe — «그것 하나»
+=> 번역은 «한 원자도» 안 좁아졌습니다. 5,218 -> 602 은 «씨앗이 사라진 것»입니다
 ```
-오늘의 3,022 원자는 `wafer_process` 3,022 행 «전부»입니다 — 번역은 안 샜습니다.
-줄어든 것은 «소스»입니다. 옛 5,218 을 먹이던 릴레이션이 지금 선언에 «없습니다».
-📌 판정 대기: 이게 「의도된 축소」인지 「빠진 소스」인지는 대표님만 압니다. 저는 수만 올립니다.
+```
+❌ 「소스가 좁아졌다 · 옛 5,218 을 먹이던 릴레이션을 찾자」   -> 그런 릴레이션은 «없었습니다»
+❌ 「knobs 를 읽으면 오늘의 파라미터가 온다」                 -> 기전 그래프엔 «안 닿습니다»
+   wafer_process 의 step 은 ANNEAL·CLEAN·CMP·DEPO·ETCH·IMPLANT·PHOTO — BONDING·queue «없음»
+   knobs.pressure 는 «CMP 압력». bond_pressure 에 묶으면 «거짓 단언»입니다
+```
+🔴 **제가 놓친 판별식은 `source_who` 였습니다.** 저는 「값이 어느 릴레이션에 있나」를 물었고,
+그 질문으로는 «씨앗이 직접 쓴 것»을 영원히 못 찾습니다 — 없는 소스를 찾고 있었습니다.
+📌 그래서 ⑥ 의 `mechanism_models` 는 **흡수할 선언이 아닙니다** — 모델 파일과 그 데이터가
+   둘 다 «픽스처 층»에 삽니다. 되살릴지는 소유자 판정이고, 저는 수만 올립니다.
 
 ### 🔴 대기열 — 클라의 «실측 판별」이 영원히 거짓입니다 (총괄 실측 2026-08-28)
 ```
