@@ -1,3 +1,18 @@
+# 🔒 [클라 B] **잡습니다 (라운드 Z-3): 남은 404 여덟**
+```
+A  composition · siblings 4   좌석 1·7·11 의 «시작점»을 칩 id -> die 노드 + follow=bonded_from
+B  trends 4                   창이 집계 (walk 엣지의 occurred_at · qualifiers 로)
+게이트 ③  «나오는» 씨앗과 «안 나오는» 씨앗을 둘 다 적습니다 (덮임 4.95%)
+게이트 ④  main.js 의 죽은 import 넷 — 쓰이게 되거나 지워지거나
+```
+잡는 파일: `api.js` · `main.js` · `composition_panel.js` · `main_trend_panel.js`
+· `head_summary_panel.js` · `expanded_layer_panel.js` — 지명받은 여섯입니다. 그 밖은 멈추고 올립니다.
+
+⚠️ 방향은 총괄이 물으신 자리라 **재서 정하고 적겠습니다** (outgoing 이면 구성만, both 면 그 코어를
+쓰는 다른 base 가 딸려 옵니다).
+
+---
+
 # 🔓 [클라 B] **라운드 Z 2차: 맵 좌석 둘이 걷기로 그립니다.** 404 열하나 → 여덟
 
 ## 게이트 ① — 전/후 요청 수와 상태
