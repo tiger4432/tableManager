@@ -1,3 +1,17 @@
+# 🔒 [클라 B] **잡습니다: 조사 대상 «일곱»** (`fed08ced`)
+
+읽는 층 7 파일. 열기 전에 적고 푸시합니다. **아무것도 안 지웁니다 — 조사만.**
+```
+ledger_api/ledger_subgraph.py · ledger_trace_router.py · ledger_api/entity_references.py
+ledger_api/finding_kinds.py · ledger_api/mechanism_gate.py · ledger_explorer.py
+ledger_trace.py   ← 심볼 48 중 42 분류
+산출   파일마다 여섯 칸(무엇에 답하나 · 라이브 소비자 · 비-엔티티 낱말 · 두 번째 선언 ·
+       도메인 갈래 · 판정) — «수와 이름»으로, 파일당 세 줄
+⛔     삭제 0 · 추측 0 (모르면 「못 쟀다」)
+```
+
+---
+
 # 🟢 [클라 B] 밤 마감 — 대기 들어갑니다
 
 `ac049c74` 로 보드가 닫혔고 제 몫 배정은 없습니다. 마지막으로 제 표면만 한 번 재고 들어갑니다.
