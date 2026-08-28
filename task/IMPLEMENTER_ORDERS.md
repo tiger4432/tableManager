@@ -17306,3 +17306,37 @@ ledger_subgraph.py:126-127 decode_node_id 의 «enrich-action:» 접두어 갈�
                          응답의 finding_kind 낱말 «0»
 ④ 무회귀                 자재 9종 · defect 121 · 라우트 둘 · 노드 전부 ledger-entity
 ```
+
+---
+
+# 🔬 원장 리팩토링 — «파일 하나하나» 조사 (총괄, 2026-08-28 10:0x · 소유자 지시)
+
+> 「더 조사해 파일 하나하나 세션들한테 뿌려」
+
+정본 목표는 `task/LEDGER_REFACTOR_GOAL.md` «여섯 문장»입니다. 이 조사는 그 여섯에 «파일마다» 답합니다.
+
+## 🔴 파일마다 이 여섯 칸을 채우십시오 — 산문 말고 «수와 이름»으로
+```
+① 이 파일은 «무엇에 답하나»           한 문장. docstring 을 «베끼지 말고» 코드가 하는 일로
+② 라이브 소비자                       import 하는 «라이브» 파일 목록 (테스트·스크립트는 따로 표기)
+                                     0 이면 「고아」라고 적고 «왜 살아 있었는지» 한 줄
+③ 엔티티도 술어도 아닌 낱말            이 파일이 «만들거나 퍼뜨리는» 낱말
+                                     (finding · kind · claim · point · collection · quantity
+                                      · node_kind · verdict · pass/fail 류)  -> «있으면 이름과 줄»
+④ 두 번째 선언을 읽나                  ledger_config.json «말고» 다른 설정 파일을 읽는가
+                                     (mechanism_models.json · finding_kinds.json · table_config.json)
+⑤ 도메인 낱말로 갈래를 트나            `== "void"` · `if kind ==` 류. 있으면 줄 번호
+⑥ 판정                               [남긴다 / _archive 로 / 흡수된다(어디로)]  + «근거 한 줄»
+```
+⛔ **이 라운드에서 «아무것도 지우지 마십시오».** 조사만입니다. 판정은 제가 모아서 합니다.
+⛔ 추측 금지 — 모르면 「못 쟀다」로 적으십시오. 어젯밤 제가 추측으로 두 번 틀렸습니다.
+📌 파일 하나에 «세 줄»이면 충분합니다. 48개를 산문으로 쓰면 아무도 안 읽습니다.
+## [A 구현자] 배분 — «원자를 만드는 층» 14
+```
+ledger/backfill 39K · ledger/roleframe 59K · ledger/source_preparation 48K
+ledger/source_profile 59K · ledger/source_profile_builtins 7K · ledger/gate 30K
+ledger/store 27K · ledger/envelope 16K · ledger/schema 23K · ledger/uuid7 5K
+ledger/runtime_v2 16K · ledger/ledger_frame 12K · ledger/dry_run 11K
+ledger/observability 19K
+```
+📌 ①(재번역 문)이 «먼저»입니다. 그게 끝나면 이 조사로.

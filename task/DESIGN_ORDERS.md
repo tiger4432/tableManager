@@ -8008,3 +8008,39 @@ api.js:485   hop.node_kind === 'quantity'  -> 같음
 「엣지 술어는 셋뿐」이라 적었다가 다시 재서 `observed` 가 있다고 고친 것 — 맞습니다.
 그 사이 다른 레인이 착지했고 당신은 옛 값을 들고 있었습니다.
 **공유 트리에서 «내가 잰 시각»이 값의 일부**라는 것, 오늘 밤 제가 서버 재기동으로 두 번 겪은 것과 같습니다.
+
+---
+
+# 🔬 원장 리팩토링 — «파일 하나하나» 조사 (총괄, 2026-08-28 10:0x · 소유자 지시)
+
+> 「더 조사해 파일 하나하나 세션들한테 뿌려」
+
+정본 목표는 `task/LEDGER_REFACTOR_GOAL.md` «여섯 문장»입니다. 이 조사는 그 여섯에 «파일마다» 답합니다.
+
+## 🔴 파일마다 이 여섯 칸을 채우십시오 — 산문 말고 «수와 이름»으로
+```
+① 이 파일은 «무엇에 답하나»           한 문장. docstring 을 «베끼지 말고» 코드가 하는 일로
+② 라이브 소비자                       import 하는 «라이브» 파일 목록 (테스트·스크립트는 따로 표기)
+                                     0 이면 「고아」라고 적고 «왜 살아 있었는지» 한 줄
+③ 엔티티도 술어도 아닌 낱말            이 파일이 «만들거나 퍼뜨리는» 낱말
+                                     (finding · kind · claim · point · collection · quantity
+                                      · node_kind · verdict · pass/fail 류)  -> «있으면 이름과 줄»
+④ 두 번째 선언을 읽나                  ledger_config.json «말고» 다른 설정 파일을 읽는가
+                                     (mechanism_models.json · finding_kinds.json · table_config.json)
+⑤ 도메인 낱말로 갈래를 트나            `== "void"` · `if kind ==` 류. 있으면 줄 번호
+⑥ 판정                               [남긴다 / _archive 로 / 흡수된다(어디로)]  + «근거 한 줄»
+```
+⛔ **이 라운드에서 «아무것도 지우지 마십시오».** 조사만입니다. 판정은 제가 모아서 합니다.
+⛔ 추측 금지 — 모르면 「못 쟀다」로 적으십시오. 어젯밤 제가 추측으로 두 번 틀렸습니다.
+📌 파일 하나에 «세 줄»이면 충분합니다. 48개를 산문으로 쓰면 아무도 안 읽습니다.
+## [B 클라] 배분 — «원자를 읽는 층» 7 (walk 본체 포함)
+```
+ledger_api/ledger_subgraph 42K   ← walk 본체. 882줄이 «넷»으로 회계된 그 파일
+ledger_trace_router 14K · ledger_api/entity_references 9K
+ledger_api/finding_kinds 15K     ← ③④ 가 «둘 다» 걸릴 것으로 봅니다
+ledger_api/mechanism_gate 17K    ← 소유자 지목. 두 번째 그래프 탐색기
+ledger_explorer 7K
+🔴 ledger_trace 84K              ← 심볼 «48개» 중 «여섯»만 쓰입니다 (총괄 실측)
+                                   walk _fetch 1 · explorer 3 · router 3 · main.py reset_walk_cache
+                                   나머지 42개가 무엇인지 «분류»해 주십시오
+```
