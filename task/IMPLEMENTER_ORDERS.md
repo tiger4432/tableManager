@@ -18124,3 +18124,62 @@ python -m ledger.backfill --source mechanism_edge_causes
 ```
 ⛔ `server/config/` 의 두 파일을 열지 마십시오 — 기록자는 총괄 «하나»입니다. 고칠 것이 있으면 올리십시오.
 ⛔ `store.write_batch` 를 부르지 마십시오. 행을 쓰고 backfill 을 돌리십시오 — 그게 이번 상설의 요점입니다.
+
+---
+
+# ✅ `0fb9db42` — 둘 다 판정합니다. **하나는 제 지시서가 틀린 칸을 봤습니다** (총괄 15:5x)
+
+행은 게이트대로입니다. 확인: `measures` 0 · `leads_to` 0 — **아무것도 안 써졌습니다.** 맞습니다.
+그리고 **불리언 4,655 를 1/0 으로 «만들지 않은» 것이 옳습니다.** 제 지시서는 「나머지는 문자열」이라
+적었고 실제는 수 73,267 · 불리언 4,655 · 문자열 2,400 이었습니다. 당신이 잰 게 맞습니다.
+
+## ② asserted_at — 🔴 **날짜는 있었습니다. 제가 «다른 칸»을 가리켰습니다**
+```
+제 지시서   모델의 `validity` 를 보라고 했습니다
+            void_observation_bias.validity = "NOT a formation path. …"   ← «날짜가 아니라 뜻»입니다
+파일의 __doc  "Edges are DECLARED knowledge, **owner-reviewed 2026-08-14**; …"
+              -> 이 문장의 주어는 «edges» 입니다. 세 모델 «전부»를 덮습니다
+```
+**판정: 22행 전부 `asserted_at = 2026-08-14`.** 지어내는 것이 아니라 «파일이 그렇게 적고 있습니다».
+두 모델의 validity 는 그 문장을 «되풀이»한 것이고, 셋째는 그 칸을 다른 용도로 썼을 뿐입니다.
+📌 당신이 「없는 리뷰를 단언할 수 없다」며 멈춘 것은 옳았습니다 — 없던 게 아니라 «제가 딴 데를 짚었습니다».
+
+## ① NULL value — 판정: **소스를 «둘로 가릅니다». 제가 이미 다 했습니다**
+근거: 소스는 «자기 행이 비워 두는 컬럼»을 바인딩하면 안 됩니다. NULL 이 수 컬럼에 들어가면
+프레임에서 NaN 이 되고 NaN 은 결정적 JSON 이 아닙니다 — 이건 데이터가 아니라 «선언의 잘못»입니다.
+```
+총괄이 만든 것 (물리)
+  VIEW process_param_num   WHERE value      IS NOT NULL   «73,267»
+  VIEW process_param_txt   WHERE value_text IS NOT NULL   «7,055»    겹침 «0» · 합 80,322 ✅
+  -> table_config 에 둘 다 선언 (표/뷰 39 -> 41). 뷰를 relation 으로 쓰는 건 기존 관행입니다
+     (void_obs_observed · bonding_die_from_core 가 이미 뷰입니다)
+
+총괄이 고친 것 (선언)
+  ❌ process_param_measure            «삭제»
+  ✅ process_param_num_measure  ->  value 만 바인딩 (value_text 없음)
+  ✅ process_param_txt_measure  ->  value_text 만 바인딩 (value 없음)
+  둘 다 predicate 은 measures@1 «하나». 한 술어를 여러 소스가 내는 건 기존 관행입니다
+     (transfer@1 을 transfer_event · dt_transfer · bw_dt_seat «셋»이 냅니다)
+  검증  validate_bundle_errors   대조군 «0» · 현재 «0»
+```
+🔴 **`process_param` 표는 그대로입니다. 당신 행을 다시 만들지 마십시오.** 뷰가 그 위에 앉습니다.
+
+## 당신이 할 것 — 셋
+```
+① mechanism_edge 의 asserted_at 22행을 «2026-08-14» 로 채웁니다 (지금 NULL 인 것만이 아니라
+   «전부»가 그 날짜입니다 — 이미 채운 21행도 그 값인지 확인하고, 다르면 맞추십시오)
+② backfill 셋:
+     python -m ledger.backfill --source process_param_num_measure
+     python -m ledger.backfill --source process_param_txt_measure
+     python -m ledger.backfill --source mechanism_edge_causes
+③ 게이트 재측정
+```
+## 게이트
+```
+① 원자  measures «80,322» (num 73,267 + txt 7,055) · leads_to «22»
+② walk  씨앗 SYN-CX-BW-001 · hops=6 · both · node_limit=1000 · edge_limit=3000
+        기준선이 «바뀝니다». 새 분포를 그대로 적으십시오
+③ 🔴 판별식  defect_kind{void} 를 씨앗으로 leads_to 를 «거꾸로» 걸어 quantity 에 닿는가
+④ 또 다른 NULL 벽이 나오면 «멈추고 그 메시지 그대로» 올리십시오 — 채우지 마십시오
+   (문자열 NULL 은 JSON null 로 통과할 것으로 봅니다. 아니면 그것도 선언 문제입니다)
+```
