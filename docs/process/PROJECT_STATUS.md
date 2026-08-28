@@ -181,7 +181,13 @@ defect_kind{void} 에서 leads_to 를 «거꾸로» 걸어 quantity 에 닿는�
 ③ 원장이 선언을 따른다   승인 replay -> 749,044 · 중복 0 · finding_kind 0     ✅
 ④ 도메인 갈래 «0»       선언 층 11파일 조사에서 확인                          ✅
 ⑤ 안 닿는 원장 모듈 «0»  여섯을 server/_archive 로 «이동»(삭제 아님)          ✅
-⑥ 두 번째 선언이 없다    셋 남음: mechanism_models · finding_kinds · table_config  ⏳
+⑥ 두 번째 선언이 없다    ✅ 착지 (2026-08-28 20:1x · `31d34ea0`)
+   table_config     대상 아님 — 물리 스키마 정본
+   finding_kinds    흡수 아님 — 쓰는 쪽 옆으로 «이동»
+   mechanism_models 흡수 아님 — 데이터가 «픽스처»였다 (원자 25,132 의 source_who 가 전부 씨앗)
+   => 흡수 대상 «0». 대신 두 번째 «탐색기» mechanism_gate 가 _archive 로 내려갔다
+      (그 그래프는 이제 quantity@1 · leads_to@1 로 «원장 안»에 있고 walk 하나로 걸린다)
+   게이트: 수집 4,257 · walk 기준선 무변 · 서버 기동 · 운영 호출 0
 ```
 
 ### 오늘 walk 실측 (서버 PID 58676 · 13:51 기동 — `79ff99f6` 이 처음 도는 프로세스)
