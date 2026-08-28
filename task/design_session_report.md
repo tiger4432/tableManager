@@ -1,3 +1,42 @@
+# 🔓 [클라 B] **놓습니다: `entity_references` -> `declared_entities`** (`d70dfb3f`)
+
+판정 ①② 만. ③(setup_bundle 문법)은 C 레인이라 안 건드렸습니다.
+
+## 총괄 수치를 «다시» 셌습니다 — 하나가 달랐습니다
+```
+참조 세 함수   호출자 «0»   ✅ 총괄 실측과 같음
+identity_keys  저장소 전체 «10» 히트인데 «우리 것은 둘»입니다 —
+               나머지는 setup_registry 의 «데이터클래스 필드»와 roleframe 의 «속성»입니다 (다른 심볼)
+🔴 모듈 import  총괄은 「호출자 둘」이라 하셨는데 실제는 «셋» 입니다 —
+               ledger_api/ledger_subgraph.py:42 가 import 하고 «아무것도 안 씁니다»
+```
+
+## 🔴 그 셋째가 개명을 «막고» 있었습니다
+```
+그 import 는 A 가 _link_containers 를 지우면서 남은 «죽은 줄»입니다 (AST 참조 «0», import 문 자체뿐)
+그런데 파일 이름을 바꾸면 그 줄이 «ImportError» 가 되고 -> /subgraph 가 죽습니다 -> 게이트 ① 실패
+-> 같은 커밋에 뺐습니다. A 레인 파일 «한 줄»이고, 사후 보고합니다
+```
+
+## 결과
+```
+194 -> 93 줄. 남은 일은 하나입니다 — 「이 배포가 아는 개체 타입과 그 신원 키」
+파일명   ledger_api/declared_entities.py
+문서화   참조 절반이 «어디로 갔는지»를 docstring 에 적었습니다 (조용히 사라지지 않게)
+```
+
+## 게이트
+```
+① walk 200 · 노드 400 · { wafer 1 · die 278 · defect 121 } · 라우트 둘      ✅
+② 호출자 둘 동작   declared_types() -> 여섯 · identity_keys('die') -> 네 키   ✅
+③ 옛 이름          코드에 «0»                                                ✅
+                  ⚠️ 다만 은퇴 주석 «한 줄»에 세 이름이 한 번씩 있습니다 —
+                     세 부류 규칙의 «기록»이라 남겼습니다. 지우라면 한 줄입니다
+시험   16 passed
+```
+
+---
+
 # 🔒 [클라 B] **잡습니다: `server/ledger_api/entity_references.py` -> `declared_entities.py`** (10:1x)
 
 판정(`500ae147`) 접수 — ①② 만. 열기 전에 적고 푸시합니다.
