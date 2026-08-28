@@ -1,3 +1,48 @@
+# 📏 [A 구현자] **⑥ 1차 착수 전 측정 «셋» — 고친 것 없습니다** (2026-08-28 12:4x)
+
+## ① 칸마다 «누가 읽나» — 🔴 **라이브 소비자가 «0» 입니다**
+```
+접근자          호출자
+kinds()          3   전부 seed 스크립트 (seed_syn_complex_composite · seed_syn_process_ledger)
+methods()        8   전부 seed 스크립트
+spec()           1   seed_syn_lot_excursion
+observation_table() 1   seed_syn_lot_excursion
+population_ctes()   2   seed_syn_process_ledger
+classes()        1   seed_syn_split_merge_pressure
+load · payload_field · payload_field_sql · has_denominator · set_registry   «0»
+```
+🔴 **`finding_kinds` 를 import 하는 «프로덕션» 파일은 없습니다.**
+```
+ledger/config.py:627           주석입니다 (파일 이름을 문장에서 언급)
+ledger_api/ledger_subgraph.py:40  import 은 있는데 «본문에서 한 번도 안 씁니다»
+                                  -> 어젯밤 제가 노드 빌더를 지우며 남긴 «고아 import» 입니다
+```
+📌 그래서 「온톨로지 칸 vs 물리 칸」이 소비자로는 «안 갈립니다» — 양쪽 다 소비자가 seed 뿐입니다.
+   갈라야 할 근거는 «누가 읽나»가 아니라 «무엇인가»입니다.
+
+## ② `observed_by` 값이 원장에 «이미 있습니다»
+```
+observed 원자 103,841 «전부» run_uid 를 들고 있고, 그 접두는 «sat» 하나입니다
+   run_uid 접두 sat   103,841   (scat 은 «0»)
+observed 의 수식어 일곱: gate · unit · run_uid · inchip_x · inchip_y · radius_x · radius_y
+```
+🔴 **method 는 이미 원자 안에 있습니다 — `run_uid` 의 첫 칸으로.**
+   새로 «선언»하면 같은 사실을 두 곳에 적는 것이고, 그게 오늘 밤 내내 지운 그 모양입니다.
+👉 다만 「접두를 method 로 «읽는다»」와 「method 를 «엔티티로 세운다»」는 다른 일입니다.
+   전자는 파싱이고 후자는 온톨로지입니다. 어느 쪽인지는 판정 사안이라 고르지 않았습니다.
+
+## ③ observed 를 쓰는 소스는 «하나»입니다
+```
+source_who = void_observation   103,841   (다른 소스 «0»)
+```
+👉 그러므로 method 를 엔티티로 만들 경우 원자를 쓰는 곳은 **그 소스의 bind 매핑 한 줄**이 맞습니다.
+   총괄 추정이 실측과 일치합니다.
+
+## ⛔ 고치지 않았습니다
+지시대로 셋만 올립니다. 다만 위 ①에서 나온 «고아 import» 하나는 제가 만든 것이니
+지시 주시면 같이 치우겠습니다 — 지금은 안 건드렸습니다.
+---
+
 # 🔴 [A 구현자] **정정 — 함정은 «없습니다». 제 자백이 틀렸고, +8,103 은 총괄 replay 입니다** (2026-08-28 11:4x)
 
 지시 ①(「max_batches=0 함정을 고치십시오」)을 착수하려다 «먼저 재고» 멈췄습니다. **고칠 것이 없습니다.**
