@@ -17947,3 +17947,66 @@ _mapper_cfg · _profile_mapper_cfg      chain_mapper 는 «config 키 문자열�
 ③ ledger.chain_mapper 에 «직접 또는 헬퍼를 거쳐» 닿는 test 중 마크 안 된 것 «0»
    -> 이 수를 어떻게 셌는지 «방법»을 보고에 적으십시오. 제 계측기는 오늘 6 과 7 을 «각각» 냈습니다
 ```
+
+---
+
+# 🔴 목표 ⑥ 판정 — 흡수 대상은 «0» 입니다. 남은 것은 «두 번째 탐색기» 하나 (총괄, 2026-08-28 14:4x)
+
+## ⑥ 이 묻는 것과 오늘의 답
+```
+⑥  «두 번째 온톨로지 선언»이 없다 — ledger_config.json 하나가 온톨로지의 전부다
+```
+```
+table_config.json     ❌ 대상 아님 — «물리 스키마»의 정본 (목표 문서가 이미 정정)
+finding_kinds.json    ✅ 처리됨 — 흡수가 아니라 «쓰는 쪽 옆으로 이동» (제품 소비자 0)
+mechanism_models.json 🔴 오늘 판정: **흡수 대상이 아닙니다.** 그 데이터는 «선언»이 아니라 «픽스처»입니다
+                         (클라 B 실측 + 총괄 확인: params 를 실은 원자 25,132 의 source_who 가
+                          전부 syn_* 씨앗 스크립트. 진짜 번역은 wafer_process_recipe 3,022 하나)
+=> **흡수해서 walk 으로 만들 수 있는 것이 «없습니다».** 소스에 접합 공정이 없습니다
+```
+
+## 그래서 ⑥ 을 참으로 만드는 것은 «두 번째 탐색기»를 내리는 것입니다
+`mechanism_gate.py` 는 **원장을 안 보는 두 번째 그래프 탐색기**(16,518 B)입니다.
+walk 이 그것을 부르던 마지막 자리는 `79ff99f6` 에서 사라졌습니다.
+
+## 구성원을 «셌습니다». 그리고 둘은 «같은 근거로 안 죽습니다»
+```
+① server/ledger_api/mechanism_gate.py      소비자 «0»
+   운영 import 0 · 라우트 0 · 클라 0 · 씨앗 스크립트도 «안 씁니다»(json 을 직접 엽니다)
+   남은 언급 둘은 ledger_subgraph.py 의 «주석»(L16 · L618)
+   -> 여섯을 옮긴 그 부류입니다.  server/_archive/ledger_api/ 로 «이동»
+
+② server/tests/test_mechanism_gate.py      11 시험 · 176줄
+   -> ①과 «같은 커밋»에 server/_archive/tests/ 로. 오늘 아침 이걸 안 해서 스위트가 섰습니다
+
+③ 🔴 server/tests/test_ledger_subgraph.py:15   `from ledger_api import mechanism_gate`
+   그 파일에서 mechanism_gate 를 쓰는 자리 «0» — «죽은 import» 입니다
+   -> 이동과 «무관하게» 오늘 이미 죽어 있습니다. 이 줄은 «지금» 지웁니다
+   (안 지우면 ①이 착지하는 순간 수집이 또 막힙니다 — 아침과 «똑같은» 사고)
+
+④ ❌ server/config/mechanism_models.json    구성원이 «아닙니다». 옮기지 «마십시오»
+   읽는 것이 «하나» 있습니다: scripts/seed_syn_split_merge_pressure.py:201 이 직접 엽니다
+   (seed_syn_journey_atoms.py 는 «docstring 언급»일 뿐 읽지 않습니다)
+   -> 이 파일의 운명은 «픽스처 판정»이고 소유자 대기입니다. 지금 건드리지 않습니다
+
+⑤ ❌ client2 의 mechanism 언급 넷           구성원 «아님» — 주석이거나 영어 낱말입니다
+```
+🔴 ①과 ④는 **같은 근거로 안 죽습니다.** ①은 «아무도 안 쓴다», ④는 «한 스크립트가 쓴다».
+   한 커밋에 묶으면 오늘 제가 세 번 맞은 그 실수가 네 번째가 됩니다.
+
+## 지시
+```
+①②③ 을 «한 커밋»에. ④⑤ 는 건드리지 않습니다
+   ③ 을 «먼저» 지우고 ①②를 옮기십시오 — 순서가 바뀌면 중간 상태에서 수집이 막힙니다
+```
+## 게이트
+```
+① pytest tests/ --collect-only  ->  Interrupted 없음 · 오류 0 · 수집 «4,268 − 11 = 4,257»
+   ⚠️ 이번엔 «빼는» 것이 맞습니다. test_mechanism_gate.py 는 «지금 수집되고 있는» 11 이니까요
+   (아침의 47 은 «수집 못 하던» 것이라 뺄 수 없었습니다 — 그 차이를 확인하고 적으십시오)
+② walk 200 · 씨앗 SYN-CX-BW-001 · hops=6 · both · node_limit=1000 · edge_limit=3000
+   nodes 1000 · edges 1612 · wafer 1 die 877 defect 121 defect_kind 1 «그대로»
+③ 서버가 뜬다 (import 오류 0)
+④ server/ 운영 코드에 mechanism_gate 를 «부르는» 자리 0 — 주석은 세지 않습니다
+```
+📌 ②의 수는 «제가 오늘 두 번 잰» 기준선입니다. 씨앗을 적었으니 그대로 재현될 것입니다.
