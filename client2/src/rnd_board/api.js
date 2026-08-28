@@ -331,7 +331,7 @@ export function compositionModel(result) {
 
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
-  const { apiBase, nodeId, collect, fetchImpl, positive, negative,
+  const { apiBase, nodeId, fetchImpl, positive, negative,
           node_limit: nodeLimit, hops, follow, direction } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
@@ -342,7 +342,13 @@ export async function fetchSubgraph(params) {
   }
   const query = new URLSearchParams();
   query.set('id', nodeId);
-  query.set('collect', collect || 'quantity');
+  // 🔴 `collect` LEFT 2026-08-28 (round Z). It was TRUE and load-bearing when it was written:
+  //    the walk collected one node KIND and this argument chose which, and naming it here was
+  //    the fix for a screen that had been landing on the server default by accident. Revision 6
+  //    ended the kinds -- every node is a declared entity now -- and the route dropped the
+  //    parameter the same day, so the server had been IGNORING this line rather than refusing
+  //    it: no error, no warning, and a screen that looked like it was still asking. What
+  //    narrows a walk is `follow`, which is a predicate the declaration owns.
   // The signed sets the route already declares. Absent lists change nothing: a request that
   // names neither reaches the server exactly as it did before.
   for (const id of positive || []) query.append('positive', id);
@@ -914,6 +920,20 @@ export function reachModel(result) {
   };
 }
 
+/**
+ * The walk a seat gets when it names no route: its `start` marking, carried whole, and whatever
+ * else it declared (`follow`, `hops`, `direction`, the budgets) riding through untouched.
+ *
+ * 🔴 THE SIGNED SETS ARE THE MARKING. `positive`/`negative` pass straight through, so a seat
+ * that marks a control group asks about it without this function learning a new word.
+ */
+const WALK = Object.freeze({
+  params: (start) => (start.value
+    ? { nodeId: start.value, positive: start.positive, negative: start.negative }
+    : {}),
+  run: (params) => fetchSubgraph(params).then(subgraphModel),
+});
+
 export const COLLECTS = Object.freeze({
   // 기본 트렌드 ① · 맵 ⑤ — 같은 collect. 트렌드는 창 전체를, 맵은 한 그룹을 그립니다.
   trend_y: {
@@ -925,12 +945,13 @@ export const COLLECTS = Object.freeze({
     // 🔴 `positive`/`negative` are the marking itself, carried through unchanged. A start with
     //    neither is the single-seed call this screen already makes; the contract's control
     //    side arrives the day a part passes them (`task/MARKING_CONTRACT.md` §1).
-    // 🔴 `collect` IS NAMED HERE. `candidate` is the CLIENT's name for this walk; the server
-    //    argument is `quantity`. It was being left off and landing on the server default -- the
-    //    same value, but by accident, so the day that default moves this screen moves with it.
+    // 🔴 `collect` USED TO BE NAMED HERE, and naming it was right while it existed: the walk
+    //    collected one node kind, this row wanted `quantity`, and leaving it off meant landing
+    //    on a server default by accident. Revision 6 ended the kinds and the route dropped the
+    //    argument on 2026-08-28, so the line stopped being a choice and became a string the
+    //    server discards. Removed in round Z with the parameter itself.
     params: (start) => (start.value
-      ? { nodeId: start.value, collect: 'quantity',
-          positive: start.positive, negative: start.negative }
+      ? { nodeId: start.value, positive: start.positive, negative: start.negative }
       : {}),
     run: (params) => fetchSubgraph(params).then(subgraphModel),
   },
@@ -942,13 +963,12 @@ export const COLLECTS = Object.freeze({
   //    { delam 9, defect 199 } 이고 `position` 은 «빈 객체»입니다. 배선은 맞고 값이 아직입니다 --
   //    서버가 `finding_kind`·`position` 을 제대로 실으면 «이 선언도 부품도 안 바뀌고» 값만
   //    나타나야 합니다. 그날 그게 이 항목이 맞았다는 증거입니다.
-  point: {
-    params: (start) => (start.value
-      ? { nodeId: start.value, collect: 'point',
-          positive: start.positive, negative: start.negative }
-      : {}),
-    run: (params) => fetchSubgraph(params).then(subgraphModel),
-  },
+  // 🔴 `point` LEFT 2026-08-28 (round Z). It was already the walk -- the same fetch and the
+  //    same model as `candidate`, differing only by a `collect` argument the server stopped
+  //    accepting. The seat that used it (chip-zoom) already declared `follow` and `hops`, so
+  //    what this row contributed was the NAME, and the name is the thing this round removes.
+  //    The measured note above stays true and moves with the question: it now belongs to the
+  //    seat's own declaration in `main.js`, which is where the question lives.
   // ④ 자재 정보 — 그 칩이 무엇으로 만들어졌나.
   wafer_process: {
     params: (start) => (start.value ? { finalChipId: start.value } : {}),
@@ -975,7 +995,7 @@ export const COLLECTS = Object.freeze({
   //    손잡이가 아니라 이 선언의 «뜻»입니다.
   reach: {
     params: (start) => (start.value
-      ? { nodeId: start.value, collect: 'quantity', hops: 1,
+      ? { nodeId: start.value, hops: 1,
           positive: start.positive, negative: start.negative }
       : {}),
     run: (params) => fetchSubgraph(params).then(reachModel),
@@ -993,7 +1013,16 @@ export function createWalk(deps) {
   const inflight = new Map();
   return function walk(spec) {
     const { start, collect, ...rest } = spec || {};
-    const declared = COLLECTS[collect];
+    // 🔴 NO NAME IS THE WALK ITSELF (round Z, 2026-08-28). A seat that declares `follow` has
+    // stated its question in the LEDGER's words -- which predicates to walk from which marking
+    // -- and needs no row in `COLLECTS`. What is left in that table is exactly the seats that
+    // still name a ROUTE, so the table shrinking to nothing is the round's own measure.
+    //
+    // WHY THE TABLE WAS THE DEFECT AND THE DELETED ROUTES WERE NOT: a seat naming `map` or
+    // `wafer_process` is naming a place on the server, so when that place went the seat went
+    // 404 whole. A seat naming `[observed, inspected, bonded_from]` names things the
+    // declaration owns, and a walk answers it.
+    const declared = collect ? COLLECTS[collect] : WALK;
     // A collect nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
     // here would let a part draw 「없음」 for a question that was never asked.
     if (!declared) return Promise.reject(new Error(`walk: 선언되지 않은 collect — ${collect}`));

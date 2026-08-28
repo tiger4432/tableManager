@@ -1,3 +1,97 @@
+# 🔓 [클라 B] **라운드 Z 1차: 좌석 9 + 죽은 인자 착지.** 좌석 8·12 는 «멈추고 올립니다»
+
+## 한 것
+```
+좌석 9  chip-zoom     collect: 'point' «삭제». 이미 있던 follow·hops 로 그대로 걷습니다
+표      COLLECTS 에서 point 항목 «삭제»  (8 -> 7)
+규율②   fetchSubgraph 의 collect 쿼리 파라미터 «삭제» + candidate·reach 의 죽은 collect 인자
+배선    collect 이 «없으면» walk 자체를 돕니다 (createWalk 의 WALK 기본값)
+```
+
+### 확인 — 좌석 9 의 요청이 «선언 그대로» 나갑니다
+```
+walk({ start:{value, positive, negative}, follow:[observed,inspected,bonded_from], hops:8 })
+  -> /api/ledger/subgraph?id=…&positive=A&negative=B&hops=8
+     &follow=observed&follow=inspected&follow=bonded_from       🔴 collect «없음»
+좌석 13/14 (candidate)  -> …&node_limit=1000&direction=outgoing  🔴 collect «없음»
+안 선언된 이름          -> 여전히 «거절»합니다 (조용히 걷지 않습니다)
+브라우저 실측            subgraph 요청 URL 에 collect «사라짐» 확인
+```
+
+## 게이트 ① — 전/후 요청 수와 상태. **404 는 «안 줄었습니다»**
+```
+전   요청 13 · 200 «2» · 404 «11»
+후   요청 13 · 200 «2» · 404 «11»      <- 변동 «0». 줄어들려면 좌석 8·12 가 필요합니다
+```
+좌석 9 는 «원래 200» 이었고(이미 walk), 마킹이 0 이라 요청 자체를 안 냅니다. 그래서 수가 안 움직입니다.
+
+### 남은 404 «11» 을 좌석에 붙입니다 (요청 수 < 좌석 수 — walk 이 같은 키를 합칩니다)
+```
+composition  2   좌석 1 head-summary · 7 composition · 11 expanded-layer   <- 칩 씨앗. «소유자 판정 대기»
+trends       2   좌석 3 control-bar · 4 main-trend · 6 candidate-trend     <- 「창이 집계」 판정, 이번 라운드 아님
+lot_map      3   좌석 8 map-bond-a · 12 map-core                           <- 🔴 «이번 라운드가 남긴 것»
+siblings     4   좌석 1 head-summary (peer · basis)                        <- 칩 씨앗 좌석의 곁가지
+```
+
+## 게이트 ② — COLLECTS 에 남은 라우트 이름 «7». 목표 0 과의 거리와 이유
+```
+남은 것   trend_y · candidate · wafer_process · map · basis · peer · reach
+  candidate · reach   라우트 이름이 «아닙니다» — 둘 다 subgraph 를 부릅니다.
+                      남은 이유는 «읽는 모델»이 다르기 때문(subgraphModel vs reachModel)입니다.
+                      좌석이 모델을 선언하면 지울 수 있는데, 그건 이번 지시에 «없습니다»
+  trend_y             좌석 3·4·6 — 「창이 집계」 판정이 먼저입니다
+  wafer_process       좌석 1·7·11 — 칩 엔티티 판정이 먼저입니다
+  map                 좌석 8·12 — 아래 ⛔
+  basis · peer        좌석 1 의 곁가지 — 칩과 같이 갑니다
+```
+
+## ⛔ 좌석 8·12 를 «안 했습니다» — 재고 나서 멈춥니다
+### 재료 둘은 «있습니다»
+```
+점    walk(follow=inspected, hops=2, dir=outgoing, node_limit=1000, 씨앗 SYN-CX-BW-001)
+      -> die 노드 «128» · keys {x, y, mat_id, mat_type}    limits {"nodes":1000,"edges":1200,
+                                                            "claims":2400,"actions":1200,"max_hops":40}
+격자  GET /tables/wafer_map_metadata/data           -> «200»
+      ⚠️ `/api/tables/...` 는 «404» 입니다. 접두사 없는 쪽입니다
+      행 모양 {row_id, table_name, «data», created_at, updated_at} — 격자는 `data` 안(JSON)입니다
+```
+
+### 🔴 그런데 막힌 것이 «둘» 이고, 둘 다 제 판단이 아닙니다
+```
+① 경계   좌석 8·12 의 좌표계는 map_panel.js 의 SPACES.die 이고, 그 안에
+         model: (body, panel) => projectionModel(body, panel.axis)   <- lot_map 모양으로 «박혀» 있습니다
+         serverVerdict: true                                          <- lot_map 의 거절 판정을 존중
+         -> 바꾸려면 «부품 파일»을 열어야 합니다. 라운드 X 의 경계 판정은 api.js «까지»였고
+            제 claim 도 「부품에 닿으면 멈춘다」였습니다
+② 설계   lot_map 의 칸은 «상태»를 답니다 — found · scanned · unscanned. 그건 서버가 검사 조인으로
+         만든 값입니다. walk 은 그 대신 «엣지»를 줍니다 (inspected = 봤다 · observed = 났다).
+         엣지에서 칸 색을 만드는 것은 «클라가 세는 것»이고, 상설이 「부품이 거르면 어긴 것」이라
+         적혀 있습니다. 이게 «그리기»인지 «집계»인지가 판정입니다
+```
+📌 ②를 제가 정하면 화면이 「없어서 회색」과 「안 봐서 회색」을 «구별 못 하게» 될 수 있습니다 —
+   오늘 하루 종일 잡은 그 모양이라 지어내지 않고 올립니다.
+
+## 게이트 ③ — 빌드 · dist. **또 남의 것이 섞였고 또 걸러냈습니다**
+```
+vite 가 다시 쓴 것   map_editor.html · map_editor2.html · rnd-board.html
+CR 무시하고 재보니   map_editor.html   실제 «0»      -> 순수 줄바꿈 소음
+                    map_editor2.html  실제 «2줄»    -> 제 것이 «아닙니다» (남의 미착지 소스)
+                    rnd-board.html    실제 «3줄»    -> 그중 제 것은 script src «한 줄»
+조치                 셋 다 되돌리고 참조 한 줄만 바이트 치환 (참조가 정확히 1개인지 assert)
+```
+🔴 **라운드 X 에 이어 «두 번째»입니다.** dist 가 남의 소스에 뒤처져 있어서 제가 빌드할 때마다
+   같은 2줄이 딸려옵니다 — 제 쪽에서 계속 거르겠지만, 그 2줄의 주인이 착지시키는 편이 낫습니다.
+
+## 건드린 파일
+```
+소스   client2/src/rnd_board/api.js   ·   client2/src/rnd_board/main.js
+dist   assets/rnd_board-Cavg6kDu.js «새» · assets/rnd_board-CA_-Ox9D.js «삭제» · rnd-board.html «1줄»
+```
+하니스 `rnd_board_walk_harness` 23 passed · 9/9 defects caught · ASSERTIONS 32 0.
+prebuild 는 라운드 X 와 같은 CRLF 빨강이라 `npx vite build` 로 빌드만 돌렸습니다(KNOWN_RED 무변경).
+
+---
+
 # 🔒 [클라 B] **잡습니다 (라운드 Z): 가운데 표 지우기** — 그리고 좌석 «둘»이 통째로 제외됩니다
 
 ## 먼저 잰 것 — 좌석 7·11 은 «줄이 갈리지 않습니다». 좌석 «전체»가 칩 씨앗입니다
