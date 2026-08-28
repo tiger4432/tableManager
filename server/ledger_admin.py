@@ -670,16 +670,6 @@ def sources_view() -> dict:
     }
 
 
-def _grammar_object_kinds():
-    """The object kinds the DECLARATION may write, read from the validator.
-
-    🔴 THE VALIDATOR IS THE ONE SPELLING. A second copy of this list was what made the
-    catalogue unable to offer a value the live declaration actually uses (`register@1`'s
-    `"kind": "none"`), because the copy was missing it. One spelling, and it is the one that
-    refuses.
-    """
-    from ledger.setup_bundle import OBJECT_KINDS
-    return OBJECT_KINDS
 
 
 def _bare(name):
@@ -716,57 +706,8 @@ def entity_types() -> dict:
             for name, entry in (_declaration().get("entities") or {}).items()}
 
 
-def _registering_types(declaration) -> set:
-    """Entity types whose existence is claimed by an OBJECTLESS predicate.
-
-    Identified by SHAPE, not by name: what makes an atom an existence claim is that it has
-    no object, whatever the declaration calls the predicate.
-    """
-    out = set()
-    for rule in (declaration.get("vocabulary") or {}).values():
-        if (((rule or {}).get("object") or {}).get("kind") or "none") != "none":
-            continue
-        for subject in (rule or {}).get("subjects") or []:
-            out.add(_bare(subject))
-    return out
 
 
-def vocabulary_view() -> dict:
-    """화면이 폼을 만드는 카탈로그 — 전부 «선언»에서 오고, 지어낸 칸은 없다.
-
-    🔴 없어진 칸들은 «사라진 것이 맞다». `signature_fields` · `editable_layer` ·
-    `canonical_layer` · `walk_directions` · `projection_only_words` · `extension` 은 술어만
-    따로 저장하던 경로의 칸이고, 그 경로가 은퇴했다. 선언의 편집 단위는 «문서
-    전체»이므로 칸마다 「여기서 고칠 수 있나」를 말할 자리가 없다.
-    """
-    declaration = _declaration()
-    registering = _registering_types(declaration)
-
-    predicates = []
-    for name, rule in sorted((declaration.get("vocabulary") or {}).items()):
-        rule = rule or {}
-        declared_object = rule.get("object") or {}
-        predicates.append({
-            "name": _bare(name),
-            "declared_as": name,
-            "status": rule.get("status"),
-            "subjects": [_bare(t) for t in rule.get("subjects") or []],
-            "object": declared_object or None,
-            "object_kind": declared_object.get("kind") or "none",
-            "object_types": [_bare(t) for t in declared_object.get("types") or []],
-        })
-    entities = [
-        {"name": name,
-         "keys": list(entry.get("keys") or []),
-         "requires_register": name in registering}
-        for name, entry in sorted(entity_types().items())]
-    return {
-        "predicates": predicates,
-        "entity_types": entities,
-        "object_kinds": sorted(_grammar_object_kinds()),
-        "config_path": _declaration().get("__origin__"),
-        "refusal_codes": sorted(REFUSAL_CODES),
-    }
 
 
 def declared_tables() -> list:
