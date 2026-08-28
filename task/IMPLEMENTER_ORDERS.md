@@ -17699,3 +17699,39 @@ run_uid = "sat|SYN-CX-BW-001|10|7|1|2026-07-11T08:00:00+09:00|10362|10249.7"
 ⛔ 새 경로를 적지 마십시오. `scripts/support/...` 도 언젠가 또 움직입니다.
 📌 규율로 올립니다: **거절문·주석에 «파일 경로»를 적지 않는다.** 무엇인지를 적는다.
    (어젯밤 «줄 수»를 문서에서 뺀 것과 같은 이유입니다 — 그 수도 라운드마다 낡았습니다)
+
+---
+
+# 🔴 즉시 — walk 에서 «죽은 기전 배관» 제거 (총괄, 2026-08-28 14:2x)
+
+⑥ 판정은 소유자 대기지만, **이 자리는 판정과 무관하게 확실합니다.** B 조사(`ed43d3c0`) 실측:
+```
+L621  mechanism = mechanism_gate.load()          <- walk 이 «매 요청» 로드
+L622  models_by_name = {...}
+      읽는 자리 «둘»: L731(_seed_node 로 넘김) · L570
+L570  elif seed_ref["kind"] == "quantity":       <- 🔴 «도달 불가»
+      decode_node_id 는 "ledger-entity:v1:" 이면 {"kind":"entity"}, 아니면 «raise»
+      -> kind 가 "quantity" 인 seed_ref 는 «만들어질 수 없습니다»
+L569  _quantity_node(...)                        <- 🔴 «정의가 저장소에 없습니다» (def 0)
+                                                    닿았으면 NameError. 안 닿아서 조용합니다
+실측  walk 응답에 "quantity" 0 · "mechanism" 0 · "bond_pressure" 0
+```
+
+## 지시
+```
+지웁니다   L621-622 의 mechanism_gate.load() · models_by_name
+          L570 의 quantity 갈래와 L569 의 _quantity_node 호출
+          그리고 그 갈래만 쓰던 매개변수(models_by_name 전달 등)
+⛔ server/ledger_api/mechanism_gate.py «파일 자체»는 건드리지 마십시오
+   -> 그 파일의 운명은 ⑥ 판정(소유자 대기)에 달렸습니다. 지금은 walk 이 «안 부르게»만 합니다
+⛔ seed_syn_split_merge_pressure.py 가 그 json 을 직접 엽니다 — 그것도 건드리지 마십시오
+```
+## 게이트
+```
+① walk 200 · 타입 {wafer · die · defect · defect_kind} · 술어 다섯 · 자재 9종
+② 응답에 quantity · mechanism · bond_pressure «0» (지금도 0 — 무변이어야 합니다)
+③ import 오류 0 (서버가 뜬다)
+④ _quantity_node 호출이 저장소에서 «0»
+```
+📌 **정의 없는 함수를 부르는 줄이 살아 있었습니다.** 도달 불가라서 조용했을 뿐입니다 —
+   「아직 그럴 일이 없어서 안전」은 안전이 아니라는 제 기록의 그 자리입니다.
