@@ -978,9 +978,24 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         path = f"bundle.vocabulary.{predicate_id}"
         _versioned_id(predicate_id, path, problems)
         item = section[predicate_id]
+        #: `continues` says the walk STAYS ON THE SAME MATERIAL across this predicate, so a
+        #: step over it spends the material budget rather than the hop budget.  Owner ruling
+        #: 2026-08-29 (「술어지」), after the shape was measured against two derivations that
+        #: would have avoided the field: subject/object type identity scores 8/11 (it calls
+        #: `leads_to`, quantity to quantity, material) and "both ends are material entities"
+        #: scores 11/11 -- but only for TODAY's vocabulary, because nothing stops a future
+        #: die-to-die predicate that is not lineage.  A derivation that holds by coincidence
+        #: goes wrong on the day it becomes reachable, so the declaration says it.
+        #:
+        #: OPTIONAL, AND ABSENCE MEANS false.  Not written into configs that do not use it:
+        #: a field the walk reads as off when missing must stay missing, or the difference
+        #: between "declared off" and "never considered" is spent for nothing.
         if not problems.exact(
-                item, path, required=("status", "subjects", "object")):
+                item, path, required=("status", "subjects", "object"),
+                optional=("continues",)):
             continue
+        if "continues" in item and not isinstance(item["continues"], bool):
+            problems.add("invalid_predicate", f"{path}.continues", "must be true or false")
         if item.get("status") not in ("active", "retired"):
             problems.add("invalid_predicate", f"{path}.status", "must be active or retired")
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)

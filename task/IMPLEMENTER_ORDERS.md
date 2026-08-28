@@ -1,3 +1,62 @@
+# 🔴 [서버] **정정 — ①은 «총괄이 이미 했습니다». 레인은 ②③만** (총괄 2026-08-29 04:4x)
+
+바로 아래 `continues` 지시서의 **①(검증기)만 빼십시오.** 소유자가 「선언 수정하고 ontology
+explore에도 반영」이라 지시해 총괄이 선언을 써야 했고, 검증기가 «막고 있어서» 순서상
+검증기·스켈레톤·선언 셋이 같이 갈 수밖에 없었습니다.
+
+## 총괄이 착지시킨 것 (세 파일)
+```
+server/ledger/setup_bundle.py       _validate_vocabulary 에 optional=("continues",) + bool 검사
+server/ledger/ledger_skeleton.json  술어 레코드에 {key:"continues", required:false,
+                                    label:"자재 연속", node:{kind:"leaf", hint:"flag"}}
+server/config/ontology/…json        여섯에 continues: true  ← 라이브. 총괄 전담. 열지 마십시오
+```
+🔴 **탐색기 클라 변경은 «0줄»입니다** — 폼이 `/authoring/schema` 의 스켈레톤에서 필드를 받습니다.
+   소유자 DoD(「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」)가 여기서 그대로 돌았습니다.
+
+## 실측 — 붙였는데 «수가 그대로여야» 하는 자리
+```
+검증        라이브 선언 0 errors · 대조군(백업) 0 errors
+시험 선택   -k "vocabulary or bundle or setup or declaration or authoring or explorer"
+   before   20 failed · 479 passed          ← continues 없이 (HEAD)
+   after    20 failed · 479 passed          ← continues 붙인 뒤
+   구성원    FAILED 목록을 정렬해 diff -> «완전히 같은 20». 개수만 같은 게 아닙니다
+```
+⚠️ **그 20은 제 변경 전에도 빨갰습니다.** 그중 `test_ledger_skeleton.py::
+   test_skeleton_and_validator_name_the_same_fields` 가 «스켈레톤↔검증기 드리프트 게이트»인데
+   `_validate_references` 의 세 자리(`here` · `f'{here}.from'` · `f'{here}.to'`)가 ANCHORS 에 없어
+   **이미 red 였습니다** — 즉 그 게이트는 «게이트 노릇을 안 하고 있었습니다».
+   ⏭ 이건 별건입니다. 이번 라운드에서 «고치지 마십시오». 총괄이 보드에 올렸습니다.
+
+## 레인이 할 것 — ②③ 그대로
+```
+② server/ledger_trace_router.py   _continuing_predicates() + continues_hops 인자
+③ server/ledger_api/ledger_subgraph.py   dep_cost 사전 + 가드 + 상한 이동
+```
+🔴 **게이트 ①(무회귀)의 뜻이 바뀝니다.** 선언에 이제 continues 가 «여섯» 있으므로,
+   ②③ 착지 전에는 그 여섯이 아무 효과도 없어야 하고(읽는 코드가 아직 없음),
+   착지 «후»에는 같은 씨앗에서 **더 멀리 닿아야** 합니다. 두 수를 나란히 보고하십시오:
+```
+씨앗   GET /api/ledger/subgraph · id=<wafer SYN-BW-101-16> · hops=6 · node_limit=1000 · direction=both
+전     continues_hops 를 안 보냄 -> nodes · hops_reached · truncated
+후     continues_hops=12        -> 같은 셋
+⚠️ 기준선을 제 문서에서 베끼지 마십시오. 직접 재서 두 줄로 적습니다
+
+## 🔴 추가 실측 — `/api/ledger/declaration` 은 continues 를 «안 실어 보냅니다»
+```
+실측   재기동 후 GET /api/ledger/declaration -> predicates 13 · 칸은
+       ['name','object','origin','subjects']  ·  continues 를 든 것 «0»
+이유   그 라우트가 칸을 «손으로 골라» 담습니다 (ledger_trace_router 의 predicates 조립 자리)
+영향   예산은 서버가 재므로 «동작에는 지장 없습니다».
+       다만 경로 목록이 「4홉」이라 적을 때 그중 셋이 자재 걸음이면
+       화면이 «어느 통에서 빠지는지»를 못 말합니다
+⏭ «이번 라운드에 고치지 마십시오.» ②③ 가 서버에서 도는 것을 먼저 보고,
+   화면에 뭐라고 적을지는 그다음입니다. 미리 실으면 읽는 쪽이 없는 칸이 됩니다
+```
+```
+
+---
+
 # 🔴 [서버] **`continues` — 자재 걸음은 «다른 통»에서 뺀다** (총괄, 소유자 승인 2026-08-29)
 
 ## 도착지 — 먼저 적습니다
