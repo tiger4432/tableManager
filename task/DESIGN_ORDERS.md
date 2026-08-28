@@ -8205,3 +8205,61 @@ wafer_process 의 step                  ANNEAL·CLEAN·CMP·DEPO·ETCH·IMPLANT�
 📌 그리고 이 라운드의 처리 자체가 규율입니다 — 당신은 **총괄이 자기를 고친 커밋을 보고
    「그럼 내 보고서도 같은 문장을 들고 있다」**로 갔습니다. 남의 정정을 «내 문서에 대한 질문»으로
    읽는 것, 그게 채널이 작동하는 모양입니다.
+
+---
+
+# 🔴 응용 라운드 — 「화면이 새 그래프를 만났다」 (총괄 2026-08-28 18:1x)
+
+오늘 서버 쪽에서 «셋»이 바뀌었습니다. 화면은 아직 그걸 모릅니다.
+```
+① 새 엔티티   quantity@1 {keys:[quantity]}          물리량이 «노드»가 됐습니다
+② 새 술어     measures@1   wafer@1 -> quantity@1     수식어 value · value_text · role · step · eqp_id
+              leads_to@1   quantity@1 -> quantity@1 · defect_kind@1   수식어 dir · model
+   원자        measures «80,322» · leads_to «22»
+③ 깊이 수리   거꾸로 걷기가 한 홉에서 멈추던 것이 고쳐졌습니다 (hops_reached 0 -> 3)
+```
+총괄 실측 — 씨앗 `defect_kind{void}` · `follow=leads_to` · hops=6:
+```
+void ←[+] interface_unfill ←[−] bond_pressure
+     ←[+] wetting_deficit  ←[−] bond_temp · ←[+] surface_oxidation ←[+] pre_bond_queue_h
+     ←[+] interface_contam ←[+] adhesive_residue ←[+] dt_pass_count      … 21노드 · 21엣지
+```
+
+## 🔴 그리고 «죽은 것 셋»을 제가 셌습니다 — 고치지 말고 «확인»부터
+```
+① client2/src/rnd_board/api.js:345   query.set('collect', collect || 'quantity')
+   -> 서버의 walk 인자에서 `collect` 는 «사라졌습니다» (지금: id·hops·direction·node_limit
+      ·edge_limit·positive·negative·follow). 거절도 안 되고 «그냥 무시»됩니다
+② api.js:409   hop.node_kind === 'value'      -> 「이 후보가 실측인가」
+③ api.js:485   h.node_kind === 'quantity'     -> declaredOnly (rank_list_panel.js:205 이 읽음)
+   -> walk 이 내는 node_kind 는 실측 «entity 하나»뿐입니다.
+      ②는 «언제나 거짓» = 실측이 언제나 0, ③은 «언제나 거짓» = is-declared 가 안 붙습니다
+      오류도 로그도 없습니다
+```
+
+## 지시 — «재고» 나서 «하나만» 고칩니다
+```
+1단계 [측정]  보드를 브라우저로 열어 무회귀를 잽니다
+   패널 수 · 요청 수 · 각 요청의 상태 · 콘솔 오류 · 화면에 뜬 «부재 문장»
+   ⚠️ 오늘 아침 기준선: 패널 12 · 요청 13. 다르면 «다르다고» 적으십시오 — 같아야 한다고
+      안 적습니다. 선언이 바뀌었으니 달라질 수 있고, 판정은 제가 합니다
+   그리고 ①②③ 셋이 «실제로» 그렇게 도는지 화면에서 확인하십시오
+      (②는 「실측 n」이 0 인지, ③은 is-declared 가 한 번도 안 붙는지)
+
+2단계 [수리 «하나»]  ②를 «엣지»로 다시 묻습니다
+   지금   자취의 hop 이 node_kind 'value' 인가        <- 그런 노드가 없습니다
+   뒤     자취가 «measures 술어의 엣지»를 지나는가     <- 이 술어가 오늘 생겼습니다
+   -> 같은 질문이 그대로 성립합니다. 「이 후보는 실측에 닿았나」
+   ⛔ ①③ 은 이번에 «고치지 마십시오». ①은 서버 계약과 같이 봐야 하고,
+      ③은 declaredOnly 를 무엇으로 대체할지가 아직 «판정 안 된» 것입니다 (물리량 카탈로그 대기)
+```
+
+## 게이트
+```
+① [재서 보고] 보드 패널 수 · 요청 수 · 상태 · 콘솔 오류 — 아침(12/13)과 나란히
+② [재서 보고] 수리 «전» 실측 n · 수리 «후» 실측 n. 0 에서 바뀌지 않으면 «왜인지»까지
+③ [재서 보고] 빌드했고 dist 에 들어갔는가 (소스에 있고 dist 에 없으면 사용자에겐 없습니다)
+④ 판정이 필요해지면 «멈추고 올리십시오» — 오늘 제 지시서가 세 번 틀렸고 세 번 다 그렇게 잡혔습니다
+```
+📌 ①②③ 은 전부 **오류를 안 냅니다.** 그래서 아무도 안 봤습니다 — 「없어서 0」과 「고장나서 0」이
+   화면에서 같아 보이는 자리입니다. 재는 것 자체가 이 라운드의 절반입니다.
