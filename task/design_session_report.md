@@ -1,3 +1,100 @@
+# 🔓 [클라 B] **라운드 Z 2차: 맵 좌석 둘이 걷기로 그립니다.** 404 열하나 → 여덟
+
+## 게이트 ① — 전/후 요청 수와 상태
+```
+1차 뒤   요청 13 · 200 «2» · 404 «11»
+2차 뒤   요청 13 · 200 «5» · 404 «8»      <- lot_map 3 이 사라지고, walk 1 + 격자 2 가 200 으로
+```
+```
+새로 200 인 것   /api/ledger/subgraph?id=<wafer 엔티티 id>&follow=inspected&follow=observed&follow=of_kind
+                 /tables/wafer_map_metadata/data?limit=1&filters={"map_id":…}   «×2» (좌석 8·12)
+남은 404 «8»     composition 2 (좌석 1·7·11 — 칩 판정 대기)
+                 trends     2 (좌석 3·4·6 — 「창이 집계」 판정)
+                 siblings   4 (좌석 1 의 peer·basis)
+🔴 lot_map «0». 이 라운드가 목표한 자리는 전부 비었습니다
+```
+
+## 화면 — 두 맵이 «실제로 그립니다»
+```
+map-bond-a   캔버스 324×203 · 머리 「마킹 0 · 128칸 · 발견 121 · 검사 128」
+map-core     캔버스 324×178 · 같은 수 (읽는 마킹만 marking:2)
+캔버스 픽셀   distinct 123 색 · 최다 #b9c2cf «26,518px» (scanned) · #c22f2f «6,960px» (found)
+              -> 모델이 낸 두 역할이 «그대로» 칠해졌습니다. 거절문 아님, 빈 캔버스 아님
+```
+
+## 게이트 ② — COLLECTS 에 남은 라우트 이름 «6» (7 → 6)
+```
+사라진 것   map        (좌석 8·12 가 이제 이름을 안 부릅니다)
+남은 것     trend_y · candidate · wafer_process · basis · peer · reach
+  candidate · reach   라우트 이름이 «아닙니다» — 둘 다 subgraph 를 부르고, 남은 이유는 «읽는 모델»
+  trend_y             「창이 집계」 판정 먼저          wafer_process · basis · peer   칩 판정 먼저
+```
+
+## 어떻게 했나 — 재료 «둘», 그리고 셋의 갈래
+```
+점    walk 이 준 die 노드. keys {x, y} 를 칸으로. 색은 «엣지»에서:
+        observed 엣지가 있으면 found · inspected 엣지가 있으면 scanned
+        🔴 도메인 낱말 «0». kind 로 갈래를 안 텄습니다
+격자  선언된 릴레이션 한 행 (filters 로 «1행»만 — 4,925 를 끌지 않습니다)
+```
+### 🔴 `unscanned` 는 오늘 «수를 안 냅니다». 그게 맞습니다
+```
+실측   이 walk 은 complete:false · truncated ["nodes","claims"] 로 돌아옵니다
+       -> 잘린 walk 은 scanned 를 «과소»로 셉니다. 격자−scanned 를 내면 「안 봤다」가 아니라
+          「예산에서 못 봤다」를 unscanned 로 «지어내는» 것입니다
+       -> unscanned = null 이고, 화면은 수 대신 walk 이 어디까지 봤는지를 말합니다
+대조   격자가 없는 맵     -> state "no_grid" · 「격자가 선언돼 있지 않습니다 — 점은 그대로입니다」
+       잘리지 않은 walk  -> 격자 칸수 − scanned 로 «수»가 나옵니다 (코드 경로 확인)
+```
+
+## 🔴 `kind: 'void'` 를 뺐습니다 — 빼기 «전에» 쟀습니다
+```
+좌석 8·12 는 lot_map 에 kind=void 를 보내고 있었습니다. walk 에는 kind 축이 «없고»,
+클라가 kind 로 거르는 것은 상설이 금지합니다(「부품이 거르면 어긴 것」).
+실측   of_kind 원자 «103,841 중 103,841» 이 void — 원장의 «유일한» 종류입니다
+       -> 오늘 데이터에서 화면 변화 «0». 둘째 종류가 생기는 날의 답은 «따라갈 술어»이지
+          여기 인자를 되살리는 것이 아닙니다
+```
+
+## 🔴 두 번 막혔고 둘 다 «실측으로» 풀었습니다
+```
+① 422   id=SYN-CX-BW-001 «이름»이 그대로 갔습니다. lot_map 은 이름을 받았고 walk 은 안 받습니다
+        1차 수정이 «안 먹혔습니다» — 부품이 reload 마다 {start: startFor()} 를 덮어쓰기로 넘기고
+        그 값이 다시 이름이었습니다. 그래서 «맨 마지막»에 정규화합니다.
+        이미 노드 id 인 것(마킹에서 온 것)은 안 건드립니다
+② 캔버스 324×«2»  맵이 그려지는데 높이가 «2px»이고 «빈» note 가 199px 였습니다
+        원인: `.rb-map` 는 4행 격자인데 `.rb-map__outside:empty{display:none}` 이 걸리면
+              자동 배치가 한 칸 «당겨져» stage 가 auto 행을, note 가 1fr 행을 가져갑니다
+        🔴 «잠복»이었습니다 — 라우트가 살아 있던 동안 맵은 거절문만 그려서 이 자리를 한 번도
+           안 밟았습니다. 오늘 처음 그리면서 드러났습니다
+        조치: 네 자식에 grid-row 를 «이름으로» 못박았습니다 (board.css 4줄)
+```
+
+## 하니스 — 하나가 «제 변경 때문에» 빨갛고, 은퇴시켰습니다
+```
+H7 「질문을 로더로 바꾼다」가 빨강. 이유: options.question 을 선언하는 좌석이 «0» 이 됐습니다
+   (마지막 소유자가 맵 좌석 둘이었고, 이번에 {start, follow} 로 갔습니다)
+   그 단언의 `asked.length > 0` 은 «공허한 초록»을 막는 가드였고, 제 일을 한 것입니다
+조치  집 양식대로 «지우지 않고» 은퇴 + 행선지. 그리고 같은 뜻의 «오늘 판»을 새로 답니다:
+      H7c 「follow 를 선언한 좌석은 로더를 받는다」   <- 이제 이게 「질문 -> 로더」입니다
+결과  rnd_board_harness 170/0 · walk 32/0 · composition 40/0 · reach 63/0 · walk_box 48/0
+      map2_placement_seat 60/0
+```
+
+## 건드린 파일 — **여섯**. 둘은 claim 밖이라 사유를 답니다
+```
+✅ api.js        mapModel · fetchMapGrid · ROUTES.mapGrid · subgraphModel 이 nodes/edges 를 실음
+✅ main.js       좌석 8·12 선언 · 합성 루트의 loadGrid/loadByWafer/씨앗 정규화
+✅ map_panel.js  총괄이 이번 라운드 «지명»하셨습니다 (SPACES.die.model · 비동기 모델 한 단계)
+⚠️ board.css    위 ②. 맵이 그려지는 순간 드러난 잠복 결함이고, 안 고치면 이번 라운드 결과가
+                «2px 캔버스»입니다. 4줄, 맵 격자 자리 지정만
+⚠️ tests/rnd_board_harness.mjs   제 변경이 만든 빨강을 제가 은퇴시켰습니다. 남기고 행선지 표기
+   dist         새 js·css 둘 · 옛 js·css 둘 삭제 · rnd-board.html 참조 «2줄»
+```
+📌 dist 소음은 이번에도 걸렀습니다 — map_editor2.html 의 «남의 미착지 2줄» 포함. **세 번째**입니다.
+
+---
+
 # 🔓 [클라 B] **라운드 Z 1차: 좌석 9 + 죽은 인자 착지.** 좌석 8·12 는 «멈추고 올립니다»
 
 ## 한 것

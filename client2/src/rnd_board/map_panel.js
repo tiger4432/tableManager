@@ -38,7 +38,7 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { projectionModel } from './api.js';
+import { projectionModel, mapModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
 import { computeSeating, visualExtent } from '../map2/seating.js';
 
@@ -223,7 +223,13 @@ const SPACES = {
     unit: 'cells_from_origin',
     // 🔴 «답을 읽는 법»도 선언입니다. lot_map 은 축을 골라 모델로 바꿔야 하고, walk 은 이미
     //    모델입니다 -- 이걸 부품 안의 `if` 로 두면 좌표계가 셋째로 늘 때 또 갈라집니다.
-    model: (body, panel) => projectionModel(body, panel.axis),
+    //
+    // 🔴 2026-08-28 (round Z): 재료가 «둘»이 됐습니다. 걷기가 점을, 선언된 릴레이션이 격자를
+    //    답니다. 갈래는 «누가 격자를 줄 수 있나»이지 라우트 이름이 아닙니다 -- `loadGrid` 를
+    //    받은 좌석은 걷기로 오고, 안 받은 좌석은 lot_map 답을 그대로 읽습니다(종전 그대로).
+    model: (body, panel) => (panel.loadGrid
+      ? panel.loadGrid(panel.mapId).then((got) => mapModel(body, got && got.grid, panel.axis))
+      : projectionModel(body, panel.axis)),
     // 🔴 이 좌표계에서는 «서버가 그릴 수 있나»를 판정합니다 (프레임이 어긋나면 거절). 그
     //    판정을 존중하는 것이 이 축의 계약입니다.
     serverVerdict: true,
@@ -402,6 +408,10 @@ export class MapPanel extends Panel {
     this.wafer = null;
     this._followOff = null;
     this.loadBasisCounts = options.loadBasisCounts || null;
+    // 🔴 격자는 «두 번째 재료»입니다 (round Z). 받은 좌석만 걷기로 그립니다 -- 부품은 어디서
+    //    오는지 모릅니다. 이름은 합성 루트가 묶습니다.
+    this.loadGrid = options.loadGrid || null;
+    this.mapId = options.mapId || null;
     this.basisCounts = null;
     this.body = null;
     this.load = options.load;
@@ -534,7 +544,15 @@ export class MapPanel extends Panel {
         // 🔴 ONE RESPONSE ALREADY CARRIES ALL THREE PROJECTIONS (measured: bond 141 · dt 11 ·
         //    core 110), so switching the basis is a re-read of what is in hand, not a refetch.
         this.body = body;
-        this.model = this._space().model(body, this);
+        // 🔴 A SPACE MAY NEED A SECOND MATERIAL (round Z, 2026-08-28). `lot_map` carried its own
+        //    grid inside the answer; a walk does not, because the grid is physics rather than
+        //    ledger. So `model` may return a promise and this step waits for it. The other
+        //    spaces return synchronously and `Promise.resolve` leaves them untouched.
+        return Promise.resolve(this._space().model(body, this));
+      })
+      .then((model) => {
+        if (mine !== this._session || model === undefined) return;
+        this.model = model;
         this.status = 'ready';
         this.render();
       })

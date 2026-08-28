@@ -48,7 +48,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap,
-  fetchDeclaration, createWalkBoxWalk } from './api.js';
+  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId } from './api.js';
 
 /**
  * part name -> class. The shell resolves a declaration through this and nothing else.
@@ -334,7 +334,17 @@ export const BOARD = Object.freeze({
     {
       id: 'map-bond-a',
       part: 'map',
-      collect: 'map',
+      // 🔴 `collect: 'map'` LEFT 2026-08-28 (round Z). It named `lot_map`, and when that route
+      //    went the seat went 404 whole. The points are the walk's own dice and the grid is
+      //    physics, so what this seat declares now is the two things the ledger and the
+      //    relation already own.
+      // 🔴 AND `kind: 'void'` LEFT WITH IT. The walk has no kind axis, and filtering by kind in
+      //    the client is the part doing the walk's job. Measured before dropping it: `of_kind`
+      //    carries `void` on 103,841 of 103,841 atoms -- it is the ONLY kind in the ledger --
+      //    so on today's data this changes nothing on screen. The day a second kind lands, the
+      //    answer is a declared predicate to follow, not an argument re-added here.
+      start: { groupby: 'wafer', value: 'SYN-CX-BW-001' },
+      follow: ['inspected', 'observed', 'of_kind'],
       title: '본딩 맵',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
@@ -355,7 +365,10 @@ export const BOARD = Object.freeze({
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
         //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
-        question: { row: 'SYN-CX-BW-001', kind: 'void', by: 'wafer' },
+        // 🔴 격자의 «분모». 걷기는 「검사됐다」와 「났다」를 말하고, 「칸이 몇이나 있나」는
+        //    말하지 못합니다 -- 엣지가 없는 이유가 셋이라서(안 함 · 예산 · follow). 그래서
+        //    unscanned 는 여기서 오고, 이 행이 없으면 화면이 «수 대신 「격자 미선언」»을 말합니다.
+        mapId: 'SYN-CX-BW-001',
       },
     },
     {
@@ -434,7 +447,11 @@ export const BOARD = Object.freeze({
       //    규칙이 성립한다는 증거이기도 합니다.
       id: 'map-core',
       part: 'map',
-      collect: 'map',
+      // 🔴 좌석 8 과 «같은 이유, 같은 변경». 부품도 좌표계도 그대로이고 읽는 마킹만 다릅니다 --
+      //    조립식 규칙이 두 번째 인스턴스에서도 성립한다는 것이 이 자리의 증거였고, 라우트가
+      //    빠진 뒤에도 그대로입니다.
+      start: { groupby: 'wafer', value: 'SYN-CX-BW-001' },
+      follow: ['inspected', 'observed', 'of_kind'],
       title: '코어 맵 · 마킹 2',
       at: { column: 2, row: 6 },
       reads: 'marking:2',
@@ -454,7 +471,7 @@ export const BOARD = Object.freeze({
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
         //    목업 머리의 숫자와 «정확히» 같습니다. 기본값이 void 13 짜리 웨이퍼였던 동안은
         //    목업과 «그림의 밀도»가 달라서 나란히 놓아도 대조가 안 됐습니다.
-        question: { row: 'SYN-CX-BW-001', kind: 'void', by: 'wafer' },
+        mapId: 'SYN-CX-BW-001',
       },
     },
     {
@@ -628,6 +645,38 @@ export function bindLoaders(layout, deps) {
       if (!options.question) {
         if (decl.part === 'map' && decl.collect) {
           bound.load = (override) => walkHere({ collect: decl.collect, ...(override || {}) });
+        }
+        // 🔴 라우트 이름을 «안 가진» 맵 좌석 (round Z). 걷기는 좌석의 선언 그대로 나가고,
+        //    격자는 «두 번째 재료»로 여기서 묶입니다 -- 부품은 apiBase 도 fetchImpl 도 모르는
+        //    채로 남습니다. 이미 있는 loadPages · loadByWafer · loadBasisCounts 와 같은 모양입니다.
+        if (decl.part === 'map' && !decl.collect && decl.follow) {
+          // 🔴 씨앗은 «원장 노드 id» 입니다. lot_map 은 웨이퍼를 «이름»으로 받았고 walk 은 안
+          //    받습니다 -- 이름을 그대로 보내면 422 이고, 화면엔 「서버가 거절」이 뜹니다
+          //    (실측 2026-08-28: `id=SYN-CX-BW-001` -> 422). 마킹에서 오는 좌석은 이미 id 를
+          //    들고 있고, 씨앗이 «박힌» 이 좌석만 여기서 만들어 줍니다. 같은 함수, 같은 철자.
+          // 🔴 «마지막»에 정규화합니다. 부품이 reload 마다 `{start: this.startFor()}` 를 덮어쓰기로
+          //    넘기는데, 그 값은 선언에 적힌 이름 그대로입니다 -- 먼저 바꿔 두면 그 덮어쓰기가
+          //    다시 이름으로 되돌려 놓습니다 (실측: 그래서 422 가 두 번째까지 살아남았습니다).
+          //    이미 노드 id 인 것(마킹에서 온 것)은 «건드리지 않습니다».
+          const seedOf = (start) => {
+            if (!start || !start.value) return start;
+            const text = String(start.value);
+            if (text.startsWith('ledger-entity:v1:')) return start;
+            const type = start.groupby || 'wafer';
+            return { ...start, value: entitySeedId(type, { [type]: text }) };
+          };
+          bound.load = (override) => {
+            const spec = { start: decl.start, follow: decl.follow, ...(override || {}) };
+            spec.start = seedOf(spec.start);
+            return walkHere(spec);
+          };
+          bound.loadGrid = (mapId) => fetchMapGrid({
+            apiBase, fetchImpl, mapId: mapId || options.mapId,
+          });
+          // 트렌드에서 찍은 웨이퍼로 «옮겨 갈» 때: 같은 걸음, 시작점만 그 웨이퍼.
+          bound.loadByWafer = (wafer) => walkHere({
+            start: { value: entitySeedId('wafer', { wafer }) }, follow: decl.follow,
+          });
         }
         return { ...decl, options: bound };
       }
