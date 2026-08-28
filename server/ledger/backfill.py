@@ -460,7 +460,7 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
                 )
             executed = execute_selected_cursor_batch(
                 setup, source, frame, next_cursor, _no_join_reader(), store,
-                known_registrations=known,
+                known_registrations=known, retranslate_approved=approved,
             )
             written = executed.store_result
             result["molecules"] += executed.preview.molecule_count

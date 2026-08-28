@@ -123,8 +123,15 @@ def execute_cursor_batch(
     store: Any,
     *,
     known_registrations: Any = None,
+    retranslate_approved: bool = False,
 ) -> CursorBatchExecutionResult:
-    """Gate every complete event, then append atoms + cursor in LedgerStore once."""
+    """Gate every complete event, then append atoms + cursor in LedgerStore once.
+
+    🔴 `retranslate_approved` ARRIVES AS AN ARGUMENT AND NOTHING ELSE. The store's
+    version guard is the SECOND place this refusal lives - the first is `backfill.run` - and
+    a refusal in two places needs the approval in both. Passing it through global state or an
+    environment variable would make「who approved this write」unanswerable at the call site.
+    """
     preview = preview_cursor_batch(
         snapshot, source_id, base_rows, cursor_value, join_reader, preparers, mappers,
         known_registrations=known_registrations)
@@ -157,7 +164,8 @@ def execute_cursor_batch(
             refused=0,
             incomplete=preview.incomplete_count,
             reasons={},
-            enforce_translator_version=True,
+            # Still True by default: without an approval the store refuses exactly as before.
+            enforce_translator_version=not retranslate_approved,
         )
     except TypeError as exc:
         # A store implementation without the version-guarded existing transaction is

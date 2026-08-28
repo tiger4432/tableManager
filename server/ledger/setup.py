@@ -213,6 +213,7 @@ def execute_selected_cursor_batch(
     store: Any,
     *,
     known_registrations: Any = None,
+    retranslate_approved: bool = False,
 ) -> CursorBatchExecutionResult:
     """Use the existing Stage 6 gate/store transaction for an approved v2 source."""
     _require_declared_source(setup, source_id)
@@ -220,6 +221,7 @@ def execute_selected_cursor_batch(
         setup.snapshot, source_id, base_rows, cursor_value, join_reader,
         setup.preparers, setup.mappers, store,
         known_registrations=known_registrations,
+        retranslate_approved=retranslate_approved,
     )
 
 
