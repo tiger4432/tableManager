@@ -364,12 +364,14 @@ export const BOARD = Object.freeze({
         // 🔴 계약의 이름 그대로. 본딩 맵은 «본딩 웨이퍼의 격자»입니다.
         space: 'die:base',
         // 목업 맵 하단의 기반 선택자. `type` is the node type the count comes from.
-        bases: [
-          { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
-          { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
-          { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
-        ],
-        basisChipId: 'SYN-CX-CHIP-001',
+        // 🔴 기준 알약 «삭제» (round Z-3, 2026-08-28, 총괄 판정). 셋이 대던 이름
+        //    bond_layer · dt_slot · wafer_grid 는 «선언에 없습니다» — 선언된 엔티티 타입은
+        //    defect · defect_kind · die · dtjob · lot · lot_slot · quantity · recipe · wafer
+        //    아홉입니다. 선언에 없는 낱말을 사용자에게 축으로 내놓는 것이 2026-08-27 에
+        //    소유자가 「사용자가 claim, point, collection 이런 걸 어케 암」으로 지적한 그
+        //    모양이고, 옛 이름을 새 타입에 «매핑»하면 방금 지운 가운데 표를 다시 만드는 것입니다.
+        //    ⚠️ 이 축이 제품에 필요하면 «엔티티 선언»으로 올라옵니다 — 알약이 우기는 게 아닙니다.
+        //    같이 빠지는 것: basisChipId — 그 수를 부르던 composition 호출입니다.
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
@@ -475,12 +477,14 @@ export const BOARD = Object.freeze({
         axis: 'core',
         // 🔴 코어 맵은 «코어 웨이퍼의 격자»입니다 -- dt 는 별도 단계이지 이 맵이 아닙니다.
         space: 'die:core',
-        bases: [
-          { axis: 'bond', label: 'bond_layer', type: 'bond_layer' },
-          { axis: 'dt', label: 'dt_slot', type: 'dt_slot' },
-          { axis: 'core', label: 'wafer_grid', type: 'wafer_grid' },
-        ],
-        basisChipId: 'SYN-CX-CHIP-001',
+        // 🔴 기준 알약 «삭제» (round Z-3, 2026-08-28, 총괄 판정). 셋이 대던 이름
+        //    bond_layer · dt_slot · wafer_grid 는 «선언에 없습니다» — 선언된 엔티티 타입은
+        //    defect · defect_kind · die · dtjob · lot · lot_slot · quantity · recipe · wafer
+        //    아홉입니다. 선언에 없는 낱말을 사용자에게 축으로 내놓는 것이 2026-08-27 에
+        //    소유자가 「사용자가 claim, point, collection 이런 걸 어케 암」으로 지적한 그
+        //    모양이고, 옛 이름을 새 타입에 «매핑»하면 방금 지운 가운데 표를 다시 만드는 것입니다.
+        //    ⚠️ 이 축이 제품에 필요하면 «엔티티 선언»으로 올라옵니다 — 알약이 우기는 게 아닙니다.
+        //    같이 빠지는 것: basisChipId — 그 수를 부르던 composition 호출입니다.
         // 트렌드에서 찍은 웨이퍼로 이 맵이 «옮겨 갑니다».
         pageFollows: 'subject:wafer',
         // 🔴 목업이 그린 그 웨이퍼입니다 -- 총괄 실측으로 원장의 «났다» 원자가 199 로
@@ -665,7 +669,17 @@ export function bindLoaders(layout, deps) {
           return walkHere({
             start: { value: entitySeedId('wafer', { wafer: options.waferQuestion.row }) },
             follow: ['measures'],
-          }).then((answer) => peerCountFromWalk(answer, eqp));
+          }).then((answer) => {
+            const got = peerCountFromWalk(answer, eqp);
+            // 🔴 네 번째 부재입니다 (총괄 판정 2026-08-28). 앞의 셋은 「축이 원장에 없다」·
+            //    「walk 이 잘렸다」·「아직 안 불렀다」이고, 이건 «축은 있는데 이 씨앗에 값이
+            //    없다» 입니다. 실측: 보드 씨앗으로 follow=measures 가 200 에 엣지 «0» —
+            //    참인데 화면에서는 앞의 셋과 «같은 대시»였습니다.
+            if (got && got.units === 0) {
+              return { ...got, message: '이 씨앗에는 측정이 없습니다' };
+            }
+            return got;
+          });
         };
       }
       if (options.basisChipId) {

@@ -24,6 +24,9 @@ export class ExpandedLayerPanel extends Panel {
     const options = deps || {};
     this.walkFn = options.walk || null;
     this.collect = options.collect || 'wafer_process';
+    // 🔴 좌석이 라우트 이름을 안 대면 «합성 루트가 묶어 준 걷기»를 씁니다 (round Z-3).
+    //    이 기본값이 살아 있으면 좌석이 이름을 지웠는데도 죽은 라우트를 계속 부릅니다.
+    this.boundWalk = options.load || null;
     this.finalChipId = options.finalChipId || null;
     this.model = null;
     this.loadState = 'idle';
@@ -51,16 +54,22 @@ export class ExpandedLayerPanel extends Panel {
   }
 
   async load() {
-    if (!this.walkFn) { this.loadState = 'idle'; this.render(); return; }
+    if (!this.walkFn && !this.boundWalk) { this.loadState = 'idle'; this.render(); return; }
+    // 🔴 주어가 없으면 «묻지 않습니다» — mount 뿐 아니라 «여기»에서도. 마킹 구독이 다시
+    //    부르는 길이 있어서 mount 의 관문만으로는 새어 나갔고, 빈 주어로 물으면 422 입니다
+    //    (실측 2026-08-28: 「서버가 거절했습니다 (HTTP 422)」가 화면에 떴습니다).
+    if (!this.subjectStart()) { this.loadState = 'idle'; this.render(); return; }
     this.loadState = 'loading';
     this.render();
-    this.model = await this.walkFn({
+    this.model = await (this.boundWalk
+      ? this.boundWalk({ start: this.subjectStart() })
+      : this.walkFn({
       // 🔴 마킹이 «주어»입니다 (round Z-3). 칩 id 로 물으면 원장에 0건이라 좌석이 404 였고,
       //    `startFor()` 는 마킹이 비면 «null» 을 줍니다 -- 그게 「아직 안 골랐다」이고 부재가
       //    아닙니다. 박힌 씨앗으로 되돌아가지 «않습니다»: 그 값은 원장이 모르는 이름입니다.
       start: this.subjectStart(),
       collect: this.collect,
-    });
+      }));
     this.loadState = this.model && this.model.ok ? 'ready' : 'refused';
     this.render();
   }
