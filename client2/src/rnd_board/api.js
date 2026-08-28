@@ -1440,32 +1440,58 @@ export function pathsBetween(declaration, from, to) {
   const { types, edges } = typeGraph(declaration);
   const limit = Math.max(1, types.length - 1);
   const out = [];
+  // 🔴 자기 고리는 «경로의 한 칸»입니다 (소유자 정정 2026-08-29). X --술어--> X 를 빼면
+  //    계보와 전달이 통째로 사라집니다 -- 실측: transfer 는 die -> die 이고 원자 «401,206» 로
+  //    원장에서 제일 큰 술어이며, bonded_from 18,545 · slot_map 135 · leads_to 22 도 자기
+  //    고리입니다. 「N대 위까지」가 뜻의 전부인 것들이라, 못 지나가면 그 질문 자체가 없습니다.
+  //    한 술어는 «한 번»만 밟습니다: 반복 횟수는 follow 가 아니라 «사용자 축»이고, 선언이
+  //    정할 수 있는 값이 아닙니다.
+  const usedLoop = new Set();
   const walkOn = (at, seen, chain) => {
     if (chain.length && at === to) { out.push(chain.slice()); return; }
     if (chain.length >= limit) return;
     for (const edge of edges) {
+      const loop = edge.from === edge.to && edge.from === at;
       let next = null;
-      if (edge.from === at) next = edge.to;
+      if (loop) next = at;
+      else if (edge.from === at) next = edge.to;
       else if (edge.to === at) next = edge.from;
       else continue;
-      if (seen.has(next)) continue;
-      seen.add(next);
-      chain.push({ predicate: edge.predicate, next });
+      if (loop) {
+        if (usedLoop.has(edge.predicate)) continue;
+        usedLoop.add(edge.predicate);
+      } else if (seen.has(next)) continue;
+      else seen.add(next);
+      chain.push({ predicate: edge.predicate, next, loop });
       walkOn(next, seen, chain);
       chain.pop();
-      seen.delete(next);
+      if (loop) usedLoop.delete(edge.predicate);
+      else seen.delete(next);
     }
   };
   if (from && to && types.includes(from) && types.includes(to)) {
     walkOn(from, new Set([from]), []);
   }
-  return out
-    .map((steps) => ({
+  // 🔴 «follow 집합»이 경로의 신원입니다. walk 이 받는 것은 {follow, hops} 이고, 같은 follow 에
+  //    홉만 다른 둘은 «다른 길이 아니라» 「몇 번 반복하나」입니다 -- 소유자가 「반복 횟수는
+  //    사용자 축」이라고 정한 바로 그 축이라, 경로 목록에 넣으면 사용자 축을 경로로 «위장»합니다.
+  //    실측: 자기 고리를 넣자 die -> defect_kind 가 15 로 늘었는데, 그중 여럿이
+  //    [measures, leads_to] 처럼 «같은 follow» 였습니다. 접고 나면 서로 다른 질문만 남습니다.
+  //    ⚠️ 접을 때 «가장 짧은» 홉을 답니다 -- 그 경로가 최소 몇 홉을 요구하는지가 hops 의 뜻입니다.
+  const byFollow = new Map();
+  for (const steps of out) {
+    const follow = [...new Set(steps.map((s) => s.predicate))];
+    const key = follow.slice().sort().join('|');
+    const route = {
       hops: steps.length,
-      follow: [...new Set(steps.map((s) => s.predicate))],
+      follow,
       chain: [from, ...steps.map((s) => s.next)],
-    }))
-    .sort((a, b) => a.hops - b.hops);
+    };
+    const seen = byFollow.get(key);
+    if (!seen || route.hops < seen.hops) byFollow.set(key, route);
+  }
+  return [...byFollow.values()].sort((a, b) => a.hops - b.hops
+    || a.follow.length - b.follow.length);
 }
 
 /** `["wafer", {wafer: "SYN-…"}]` -> `ledger-entity:v1:<base64url>`. 서버 `decode_entity_id` 의 짝. */

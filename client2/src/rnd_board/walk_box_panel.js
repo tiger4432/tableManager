@@ -222,6 +222,12 @@ export class WalkBoxPanel extends Panel {
     //    체크박스 라벨은 선언의 철자를 그대로 쓰고, 전선에만 벗깁니다. 같은 이음매를 씨앗 id
     //    쪽에서도 이미 그렇게 넘습니다(`entitySeedId` 의 그 줄).
     if (this.follow.size) spec.follow = [...this.follow].map(bareTypeName);
+    // 🔴 hops 는 «고르는 값»이 아니라 «고른 경로가 요구하는 값»입니다 (소유자 정정
+    //    2026-08-29). 실측: 씨앗 wafer · follow=inspected,observed,of_kind 에서
+    //    hops=1 -> defect_kind 0 · hops=2 -> 0 · hops=3 -> «1». 2홉짜리 경로의 hops 로
+    //    3홉 경로를 물으면 답이 «0» 인데, 그 0 은 「없다」가 아니라 「못 갔다」입니다 --
+    //    화면에서는 «같은 0» 이라 구별이 안 됩니다. 그래서 경로가 hops 를 «데리고» 옵니다.
+    if (this.hops) spec.hops = this.hops;
     const got = await this.walkFn(spec);
     this.result = got || null;
     this.walkState = got && got.ok ? 'ready' : 'refused';

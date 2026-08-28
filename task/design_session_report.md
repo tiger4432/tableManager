@@ -1,3 +1,48 @@
+# 🔓 [클라 V] **정정 둘 착지** — 자기 고리가 «칸»이 되고, hops 가 «경로를 따라» 갑니다
+
+## ① 자기 고리 — 만들어는 뒀는데 «한 번도 안 지나갔습니다»
+```
+제 코드   그래프에는 X→X 엣지가 «있었는데», 걷기가 `seen.has(next)` 로 «자기 자신»을 걸러
+          자기 고리를 «영영 안 밟았습니다». 총괄 지시서의 「a != b 로 제외」와 «결과가 같았습니다»
+선언 실측 자기 고리 «5»:  transfer(die) · bonded_from(die) · slot_map(lot_slot)
+                        · leads_to(quantity) · derived_from(lot)
+조치      자기 고리를 «한 칸»으로 밟습니다. 한 술어는 «한 번»만 — 반복 횟수는 follow 가 아니라
+          «사용자 축»이라는 지시 그대로입니다
+```
+
+## 🔴 그리고 접었습니다 — 안 접으면 «사용자 축이 경로로 위장»합니다
+```
+자기 고리를 넣자   die → defect_kind «15» · 전수 326 · 쌍당 최대 «15»
+그중 여럿이       [measures, leads_to] 처럼 «follow 가 같고 홉만 다른» 것 —
+                  그게 바로 「몇 번 반복하나」이고, 소유자가 «사용자 축»이라 정한 그 축입니다
+조치              follow 집합으로 접고 «최소 홉»을 답니다 (그 경로가 요구하는 최소값)
+접은 뒤           die → defect_kind «8» · 전수 «221» · 쌍당 최대 «10»
+```
+
+## 게이트 — 자기 고리가 들어와 수가 «바뀝니다» (정정 전/후 나란히)
+```
+                     고리 없음   고리 포함(접은 뒤)
+wafer → defect_kind      2            «5»
+   A 2홉 [measures, leads_to]              wafer → quantity → defect_kind
+   B 3홉 [inspected, observed, of_kind]    wafer → die → defect → defect_kind
+   C 4홉 [inspected, bonded_from, …]       wafer → die → die → defect → defect_kind
+   D 4홉 [inspected, transfer, …]          wafer → die → die → defect → defect_kind
+recipe → quantity        2            «5»
+lot → quantity           0             «0»   ← 그대로. 「선언상 안 이어집니다」
+```
+📌 C·D 가 «자기 고리가 벌어 준» 답입니다 — 「한 대 위의 다이에서 난 결함」. 빼면 그 질문이 없습니다.
+
+## ② hops — «고르는 값»이 아니라 «경로가 데려오는 값»
+```
+전   spec 에 hops 가 «아예 안 실렸습니다» (type · keys · follow 뿐)
+후   경로를 고르면 그 경로의 hops 가 같이 실립니다
+근거 총괄 실측 그대로: hops=1 → defect_kind 0 · hops=2 → 0 · hops=3 → «1»
+     2홉짜리 hops 로 3홉 경로를 물으면 «못 간 0» 이 「없는 0」처럼 보입니다
+```
+하니스: walk_box 48/0 · board 170/0 · walk 32/0
+
+---
+
 # 🔓 [클라 V] **도착지 고르기 착지** — 그리고 «전선의 철자»가 틀려 있던 것을 찾았습니다
 
 ## 게이트 ①②③⑤ — 실측 (질의 «1»)
