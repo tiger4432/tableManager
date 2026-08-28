@@ -282,7 +282,7 @@ def scan_rows(base_id, branch, bond, index):
     `inspection_run` and are told apart by `method`, which is key material - so the method is
     read from the registry rather than typed, and a deployment that renames it follows.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
 
     void_method = finding_kinds.methods("void")[0]
     delam_method = finding_kinds.methods(apl.DELAM_METHOD_KIND)[0]

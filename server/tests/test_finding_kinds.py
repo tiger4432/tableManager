@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger_api import finding_kinds  # noqa: E402
+from scripts.support import finding_kinds  # noqa: E402
 
 
 #: 🔴 THE KINDS ARE DECLARED HERE NOW, BY THE TEST. `finding_kinds` used to ship a

@@ -352,7 +352,7 @@ def lot_table(db, kind: str = None):
     is imported for its DECLARATIONS (aggregate names, thresholds, baseline rule) rather
     than reimplemented.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
     from sqlalchemy import text
 
     kind = kind or FIXTURE_KIND
@@ -427,7 +427,7 @@ def prove_cause_connects(db, kind: str = None):
     enriched. If it is not, the grid colours a lot and the reference view has nothing to
     say, which is the failure the condition exists to prevent.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
     import seed_syn_process_ledger as proc
 
     result = proc.contrast(db, kind or FIXTURE_KIND)

@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 import pytest  # noqa: E402
 
-from ledger_api import finding_kinds  # noqa: E402
+from scripts.support import finding_kinds  # noqa: E402
 import seed_syn_complex_composite as fixture  # noqa: E402
 
 

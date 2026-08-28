@@ -283,7 +283,7 @@ def _void_methods():
     Not the literal `['sat']`: the registry is where a kind's methods live, and a second
     copy here is the hardcoding the brief forbids wearing a constant's costume.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
 
     return finding_kinds.methods("void")
 
@@ -721,7 +721,7 @@ def delam_rows(wafer: str, positions, factors: dict, index: int):
     factor -> outcome. `void`'s runs the other way (outcome -> factor, because the voids
     were already on disk and this script is add-only). One of each is deliberate.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
 
     method = finding_kinds.methods(DELAM_METHOD_KIND)[0]
     p_dirty = (DELAM_P_CAUSAL if factors["mold_eqp"] == MOLD_EQP_CAUSAL
@@ -967,7 +967,7 @@ def population_by_wafer(db, kind: str):
     Uses `finding_kinds.population_ctes` so the three-way split has ONE spelling. The
     clean set is `scanned MINUS found`; a never-scanned package cannot reach it.
     """
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
     from sqlalchemy import text
 
     ctes = finding_kinds.population_ctes(kind)
@@ -1152,7 +1152,7 @@ def main():
         guard_database(db, args.allow_owner, writing=args.apply)
 
         if args.prove and not args.apply:
-            from ledger_api import finding_kinds
+            from scripts.support import finding_kinds
 
             for kind in ([args.finding] if args.finding else finding_kinds.kinds()):
                 report = prove(db, kind)
@@ -1278,7 +1278,7 @@ def main():
                  atom_totals["deduped"], run_n, find_n, time.time() - t0))
 
         if args.prove:
-            from ledger_api import finding_kinds
+            from scripts.support import finding_kinds
 
             for kind in ([args.finding] if args.finding else finding_kinds.kinds()):
                 report = prove(db, kind)

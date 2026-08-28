@@ -293,7 +293,7 @@ def map_metadata_rows():
 
 def spatial_source_rows():
     """Return product-table rows for Bond/DT/Core projection and scan/finding overlays."""
-    from ledger_api import finding_kinds
+    from scripts.support import finding_kinds
     from parsers import void_sat_format
 
     void_method = finding_kinds.methods("void")[0]

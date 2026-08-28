@@ -133,9 +133,12 @@ def _config_path():
         import paths
         return os.path.join(paths.CONFIG_DIR, CONFIG_FILENAME)
     except Exception:
-        # Two levels up: this module lives in `server/ledger_api/`, the config tree
-        # is `server/config/`. One `dirname` would name a directory that never exists.
-        server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 🔴 THREE levels up since this module moved to `server/scripts/support/` on
+        # 2026-08-28. The config itself did NOT move: `config/finding_kinds.json` is the
+        # operator's live file and the Lead PM is its writer, so it stays where they put it
+        # and this only follows it.
+        server_dir = os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))
         return os.path.join(server_dir, "config", CONFIG_FILENAME)
 
 
