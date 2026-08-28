@@ -612,6 +612,7 @@ def test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor(
     assert read_cursor_row(ledger) is None
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_chain_mapper_schema_failure_writes_no_atom_and_does_not_move_cursor(
         ledger, monkeypatch):
     """A bad mapper result cannot reach gate/store or consume the source event."""
