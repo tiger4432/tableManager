@@ -378,6 +378,7 @@ def _rebuilt_mapper_registry():
         default_ledger_mapper_registry.cache_clear()
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_end(
         ledger, monkeypatch):
     """The required migrated source path, against isolated PostgreSQL."""
@@ -483,6 +484,7 @@ def test_lot_event_chain_mapper_runs_the_existing_cursor_gate_and_store_end_to_e
     assert count(ledger) == before
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end(
         ledger, monkeypatch):
     """One validated Profile drives the real PostgreSQL path without a second cursor."""
@@ -562,6 +564,7 @@ def test_canonical_profile_dry_run_execute_gate_store_and_cursor_end_to_end(
 # can still produce.
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 @pytest.mark.parametrize(("matches", "code"), [
     (0, "lookup_not_found"),
     (2, "lookup_not_unique"),
@@ -586,6 +589,7 @@ def test_canonical_profile_lookup_cardinality_failure_writes_no_atom_and_no_curs
     assert _destination_count(ledger) == matches
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_chain_mapper_crash_writes_no_atom_and_does_not_move_cursor(
         ledger, monkeypatch):
     """An unexpected Python mapper failure is typed and consumes no source event."""
@@ -631,6 +635,7 @@ def test_chain_mapper_schema_failure_writes_no_atom_and_does_not_move_cursor(
     assert read_cursor_row(ledger) is None
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_chain_mapper_semantic_refusal_writes_no_atom_and_does_not_move_cursor(ledger):
     """The converted source stops on a mapper refusal instead of consuming it."""
     connection = ledger.raw_connection()
@@ -649,6 +654,7 @@ def test_chain_mapper_semantic_refusal_writes_no_atom_and_does_not_move_cursor(l
     assert read_cursor_row(ledger) is None
 
 
+@pytest.mark.skip(reason="`ledger.chain_mapper` moved to server/_archive/ledger/chain_mapper.py on 2026-08-28. The test is kept, not deleted: it measures a module that was archived rather than retired, and this reason is the address to un-skip from.")
 def test_chain_mapper_later_event_failure_discards_prior_unflushed_event(ledger):
     """A later mapper refusal cannot make an earlier event in the batch land alone."""
     good = src(
