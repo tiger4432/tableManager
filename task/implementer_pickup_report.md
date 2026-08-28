@@ -1,3 +1,11 @@
+# 🔒 [A 구현자] **잡습니다: `process_param` · `mechanism_edge` 행 적재 + 재적재** (15:4x)
+
+원천은 «보존된 옛 원장»(ledger_events_pre_rebuild)과 mechanism_models.json.
+⛔ config 의 두 선언 파일은 «열지 않습니다» · store.write_batch 안 부릅니다.
+스크립트는 dry-run 기본 + --apply 로 만듭니다.
+
+---
+
 # 🔒 [A 구현자] **잡습니다: 수집 차단 복구 — 시험 셋 이동 + l1_pg 여섯 skip** (14:0x)
 
 `tests/test_audit_changeset.py` · `test_enrichment_actions.py` · `test_ledger_frame_chain_mapper.py`
