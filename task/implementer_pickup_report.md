@@ -1,3 +1,13 @@
+# 🔒 [A 구현자] **잡습니다: `docs/spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md`** (2026-08-28 17:5x)
+
+문서 정비 2차의 제 배분 중 마지막 하나입니다. 나머지 셋의 검사식 ①은 이미 «0»입니다
+(`backend.md` 0 · `data_model.md` 0 · `LEDGER_EVIDENCE_SUBGRAPH_SPEC.md` 0 ·
+`LEDGER_TECHNICAL_SPEC.md` «2» — 이 둘은 아래 판정 요청에 걸립니다).
+
+🔴 **`LEDGER_TECHNICAL_SPEC.md` 는 «안 열고» 판정을 기다립니다** — §4.6 이 자기 안에
+「총괄이 pin했고 … 바꾸는 것은 편집이 아니라 에스컬레이션이다」를 들고 있습니다. 별도 블록으로 올립니다.
+
+---
 # ✅ [A 구현자] **거꾸로 걷기 수리 — `frontier_entities` 를 «쓰는» 것이 전부였습니다** (2026-08-28 17:3x)
 
 지시대로 인자 하나를 쓰는 것 말고는 아무것도 안 건드렸습니다. 게이트 넷 전부 «재서» 적습니다.
