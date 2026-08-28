@@ -1,3 +1,64 @@
+# ✅ [A 구현자] **죽은 `traversable` 축 내렸습니다 — 다만 전제 하나를 정정합니다. `03df830b`** (2026-08-28 20:4x)
+
+## 게이트 ① — «지우기 전»에 센 수 (지시 ①: 세고 나서 지운다)
+```
+TRAVERSABLE_STATES
+   정의            ledger_admin.py:566                      «1»
+   읽는 자리        ledger_admin.py:775 (vocabulary_view 안)  «1»
+   import 하는 자리                                          «0»  (import 위치로 훑었습니다)
+   응답 키 traversable_states 를 읽는 클라                    «0»  (client2/src «0» · client2/dist «0»)
+
+traversable_true_unavailable
+   정의            REFUSAL_CODES 안, ledger_admin.py:56      «1»
+   «내보내는» 자리   violation(...) 로 이 코드를 쓰는 곳        «0»
+                   -> 이 코드를 내던 ledger/vocabulary.py 가 오늘 삭제됐습니다
+   🔴 REFUSAL_CODES 자체는 «삽니다» — violation() 이 닫힌 집합 가드로 읽습니다(:70).
+      그래서 «항목만» 빼고 가드는 그대로 뒀습니다
+
+시험 소비자        «0»
+   server/tests 의 두 파일이 「traversable」을 말하지만 «docstring 산문»입니다
+   (test_ledger_declared_kind.py:116 · test_ledger_observed_unit.py:8) — 심볼 소비가 아닙니다
+   -> 그래서 «같은 커밋에 옮길 시험이 없습니다» (지시 ③은 대상 0)
+```
+지운 것: 상수 · 응답 키 한 줄 · 거절 코드 한 항목. **−10 / +1 줄.**
+
+## 🔴 전제 정정 — 「어드민 «화면»이 아직 내줍니다」의 «화면»이 없습니다
+```
+실측   vocabulary_view() 의 호출자 «0»
+       main.py 가 ledger_admin 에서 부르는 것: sources_view · source_raw_view · relations_view ·
+       TARGETS · violation · parse_raw_declaration · check_source_declaration ·
+       candidate_config · declaration_token   -> vocabulary_view 는 «그 목록에 없습니다»
+대조   그래서 형제 키들도 클라에서 «전부 0» 입니다 — refusal_codes 0 · object_kinds 0 · entity_types 0
+       (클라 grep 이 눈먼 게 아니라, 이 뷰가 «서빙이 안 됩니다»)
+```
+즉 **죽은 축이 화면으로 나가고 있던 게 아니라, 죽은 축이 «죽은 뷰» 안에 있었습니다.**
+결과는 같지만 다음 판정이 달라집니다 — 이 뷰 «전체»(≈40줄, 키 다섯)가 소비자 0 입니다.
+⛔ 그건 이번 지시 범위 밖이라 **안 지웠습니다.** 판정 주시면 한 커밋으로 갑니다.
+
+## 게이트 ②③④
+```
+② 수집   «4,257» 그대로 ✅ (옮길 시험이 없어 줄 이유가 없었습니다)
+③ 서버   TestClient(app) 부팅 OK · import 오류 0
+         /admin/ledger/sources      200 ✅
+         /admin/ledger/config/raw   200 ✅
+         /admin/ledger/relations    200 ✅
+         vocabulary_view() 키: config_path · entity_types · object_kinds · predicates · refusal_codes
+            traversable_states 없음 ✅ · refusal_codes 18개, 은퇴 코드 «없음» ✅
+④ 벽    없음
+```
+
+## ⚠️ 빨강 셋 — «제 것이 아닙니다». 대조군으로 갈랐습니다
+```
+tests/test_ledger_admin_setup.py::test_the_read_paths_ask_for_the_rolled_up_set_not_a_single_type
+tests/test_ledger_admin_setup.py::test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier
+tests/test_ledger_source_contract.py::test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_rule
+원인    ImportError: cannot import name 'ledger_walk_contrast' from 'ledger_api'
+대조    제 변경을 «HEAD 로 되돌리고» 같은 두 파일을 돌렸습니다 -> «똑같이 3 failed / 21 passed»
+=> 다른 레인의 삭제입니다. 수집은 막지 않으므로 4,257 은 그대로입니다
+```
+📌 이 셋은 «제가 안 고쳤습니다» — 남의 레인 파일이고 지시 범위 밖입니다. 보고만 합니다.
+
+---
 # ✅ [A 구현자] **⑥ 착지 — 두 번째 탐색기 내렸습니다. 커밋 `31d34ea0` «하나»** (2026-08-28 20:2x)
 
 지시 순서 그대로 ③ 먼저 → ①② 이동. ④⑤ 는 «손대지 않았습니다».
