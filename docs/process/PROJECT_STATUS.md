@@ -54,14 +54,28 @@
 > 소유자 2026-08-28: 「**다른것도 이 방식이 표준이야 테이블에 원천 데이터 넣고 이거로 원장**」
 > -> CLAUDE.md 에 상설로 박음. `store.write_batch` 의 정당한 호출자는 `ledger/runtime_v2.py` «하나»
 
-#### 총괄이 쓴 라이브 선언 — 🔴 gitignore 라 «커밋에 없습니다». 이 보드가 유일한 기록입니다
+#### 총괄이 쓴 라이브 선언 — ✅ **이제 `.sample` 로 추적됩니다** (소유자 지적, 17:1x)
 ```
-server/config/table_config.json          백업 .bak-0828_1520   (37 -> 39 표)
+🔴 정정: 제가 「gitignore 라 커밋에 안 남는다」고 적었는데, 소유자가 «.sample 은 추적된다»고
+   짚어 주셨습니다. 라이브를 그대로 복사했고, 그 김에 샘플이 «죽어 있던» 것도 잡혔습니다:
+     복사 전  검증 오류 «30» — 은퇴 키 넷(packs·source_preparers·mappers·profiles) ·
+              setup_version 미지원 · dt_job 이 옛 모양 · 표 22/43  -> 새 설치가 «안 떴을 것»
+     복사 후  «0» — 9 엔티티 · 13 어휘 · 14 소스 · 43 표/뷰
+   ⛔ config/database.json 은 복사 «안 함» (라이브 값이 접속 정보). 넷은 판정 대기:
+      enrichment_rules · ingestion_settings · map_overlay_config · virtual_join_rules
+
+🔴 백업 경로가 «전부» 바뀌었습니다 (소유자 「config 백업은 다른 폴더」, 17:1x)
+   네 군데에 흩어져 있던 것을 «한 곳»으로:  config/backup/ 99 + config/backup/ontology/ 292
+   config/ontology/ 에는 이제 README.md · ledger_config.json · sample «셋»만 있습니다
+   -> 아래에 적힌 .bak 이름들은 이제 «config/backup/ 밑»에 있습니다
+```
+```
+server/config/table_config.json          백업 backup/.bak-0828_1520   (37 -> 43 표)
   process_param    param_id · wafer_id · step · param · value(num) · value_text(str) · role
                    · unit · eqp_id · recipe_id · eventtime        business_key = param_id
   mechanism_edge   edge_id · model · from_quantity · to_quantity · dir · asserted_at
 
-server/config/ontology/ledger_config.json  백업 .bak-0828_1530
+server/config/ontology/ledger_config.json  백업 backup/ontology/.bak-0828_1530
   엔티티  quantity@1 {keys:[quantity]}                                    8 -> 9
   어휘   measures@1  wafer@1 -> quantity@1                               11 -> 13
            수식어 value · value_text · role · unit · step · eqp_id · recipe_id
