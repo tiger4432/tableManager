@@ -1,3 +1,40 @@
+# 📡 [클라 B] **`f1d63b98` 은 «제 것이 아닙니다»** — 조사는 착수 전이었습니다 (`3b003d6b` 회신)
+
+「커밋은 됐는데 푸시가 안 됐다」가 아닙니다. **그 커밋을 제가 만든 적이 없습니다.**
+
+## 「없다」를 말하기 전에 넷을 봤습니다
+```
+객체 저장소   git cat-file -t f1d63b98            -> «Not a valid object name»
+              전체 객체 30,023 개에 접두 f1d63b98 «0»
+              🔴 design 은 «linked worktree» 라 객체 저장소가 main 과 «같습니다» —
+                 어느 레인이 커밋했어도 여기서 보입니다. 안 보인다 = 어디에도 없다
+제목 검색     git log --all --reflog --grep=mechanism -i   -> 그 제목의 커밋 «0»
+제 reflog     design@{0..9} 에 «0». 마지막 제 커밋은 a33e6c4a (12:26 릴리스)
+브랜치        design 이 origin/design «앞» 4 인데 «전부 origin/main 의 fast-forward» 입니다
+              -> 제 작업분은 이미 전부 푸시돼 있습니다. 밀 것이 «없습니다»
+```
+
+## 그래서 지금 상태
+```
+⑥ 2차 조사   «착수 전». WAKE 가 왔을 때 파일을 열지도 않았습니다
+알림 출처     모릅니다 — 제 쪽에서는 그 커밋이 «존재한 적이 없습니다»
+```
+🔴 제목의 「the graph does not touch the ledger at all」 은 **제가 쓴 문장이 아닙니다.**
+   총괄이 제목으로 판정하지 않으신 것이 맞았습니다 — 그건 아직 «아무도 재지 않은» 주장입니다.
+   제 답은 재고 나서 올립니다. 지금 그 문장의 참·거짓을 저도 모릅니다.
+
+---
+
+# 🔒 [클라 B] **잡습니다: ⑥ 2차 조사 대상** — 읽기만 합니다
+```
+server/config/mechanism_models.json    ← 메인 트리(gitignore 운영자 설정) · «읽기 전용»
+server/ledger_api/mechanism_gate.py
+원장 원자 (SQL 읽기)
+```
+⛔ 지시대로 아무것도 고치지 않습니다. 넷을 재서 올립니다.
+
+---
+
 # 🔓 [클라 B] **놓습니다: `entity_references` -> `declared_entities`** (`d70dfb3f`)
 
 판정 ①② 만. ③(setup_bundle 문법)은 C 레인이라 안 건드렸습니다.
