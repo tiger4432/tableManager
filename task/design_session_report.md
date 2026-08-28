@@ -1,3 +1,67 @@
+# 🔓 [클라 B] 라운드 Z-3 **B 넷 착지** — 404 «9 → 4». lot_map · siblings 호출자 «0»
+
+## 게이트 ① — 요청과 상태
+```
+전   요청 13 · 200 «4» · 404 «9»   (trends 2 · siblings 4 · composition 1 · lot_map 2)
+후   요청 13 · 200 «6» · 404 «4»   (trends 2 · composition 2)
+```
+```
+사라진 404   lot_map «2 -> 0»   종류별 수를 walk 이 셉니다
+             siblings «4 -> 0»  셋은 «요청 자체를 안 합니다»(축이 원장에 없음) · 넷째는 walk
+새 200       subgraph ×2 (follow=inspected,observed,of_kind) — 종류별 수의 재료
+남은 404 «4» trends 2  -> 소유자 판정 대기 (좌석 4·6 «안 건드렸습니다»)
+             composition 2 -> 기반 수. 아래 ⚠️
+```
+
+## 판정 ⓑ — **셋이 이제 «말합니다»**
+```
+화면 실측   「같은 레그 · 이 축은 원장에 없습니다」  «—»
+            「같은 랏 · 이 축은 원장에 없습니다」    «—»
+            「레시피 · 이 축은 원장에 없습니다」     «—»
+```
+「0」도 「데이터 없음」도 안 씁니다 — 판정문 그대로입니다. 문장을 «알약 글자»에 넣었습니다(툴팁 아님):
+실측으로 그 알약은 title 이 «비어 있었고»(`_peerTitle` 이 units·relation·column 만 읽습니다)
+그래서 툴팁에 실으면 화면에서는 여전히 「—」 하나였습니다.
+
+## ⚠️ 넷째(설비)는 «0 이 아니라 —» 로 남았습니다 — 재고 적습니다
+```
+실측   보드 씨앗 SYN-CX-BW-001 로 follow=measures  ->  200 · edges «0» · measures «0»
+       (measures 원자를 가진 웨이퍼는 SYN-BW-101-* 계열입니다. 이 씨앗엔 «없습니다»)
+=> 이 씨앗에서 「설비 또래」는 «셀 것이 없습니다». 그건 참인데, 화면에서 「—」 하나로는
+   「이 웨이퍼엔 측정이 없다」와 「아직 안 왔다」가 «구별이 안 됩니다»
+📌 셋과 같은 부류의 문장이 필요해 보이는데, 그건 「측정이 없다」이지 「축이 없다」가 아닙니다.
+   문구를 제가 정하지 않고 올립니다.
+```
+
+## ⚠️ 기반 수(composition 2) — «타입 이름이 안 맞습니다»
+```
+좌석 8·12 의 bases   type: bond_layer · dt_slot · wafer_grid   (옛 구성 라우트의 노드 타입)
+walk 의 노드 타입     wafer · die · defect · defect_kind
+=> 세는 코드는 한 줄이면 되는데(타입 인구조사), «무엇을 세는 축인지»가 안 맞습니다.
+   기반 알약은 «맵의 좌표 기반»(bond/dt/core)이고 노드 타입과 다른 축입니다
+📌 이건 「세는 법」이 아니라 「기반이 무엇인가」의 문제라 판정으로 올립니다.
+```
+
+## 어떻게 했나 — 서버 «0» · 새 라우트 «0» · 도메인 낱말 «0»
+```
+waferFactsFromWalk(answer, kind)   of_kind 엣지로 발견→종류를 만들고, observed/inspected 를 셉니다
+                                   kind 는 «인자»이고 종류 노드의 키와 비교합니다 — 코드에 void 없음
+peerCountFromWalk(answer, eqpId)   measures 엣지의 qualifiers.eqp_id 로 주어를 셉니다
+                                   출처는 지어내지 않고 «술어»를 적습니다 (relation: measures)
+⚠️ 절단   둘 다 complete:false 면 «null» 을 냅니다 — 라운드 Z 의 unscanned 정본 그대로
+```
+
+## 건드린 파일
+```
+✅ api.js · main.js                    (지명 안)
+✅ control_bar_panel.js                총괄이 이번 라운드 «지명»하셨습니다 (`7f9c78e6`)
+   dist  새 js · 옛 js 삭제 · rnd-board.html 참조 1줄
+하니스   board 170/0 · composition 40/0 · control_trend 36/0
+```
+⏭ 남은 넷: trends 2(소유자 판정) · composition 2(기반 축 판정). 둘 다 «안 건드렸습니다».
+
+---
+
 # ⚠️ [클라 B] ⓑ 를 구현하려는데 «파일 하나»가 모자랍니다 — `control_bar_panel.js`
 
 판정 ⓑ(「컨트롤을 남기고 축이 없다고 말하게」)를 그대로 하려고 소비 지점을 쟀습니다.

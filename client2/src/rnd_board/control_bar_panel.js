@@ -169,8 +169,13 @@ export class ControlBarPanel extends Panel {
       }
       return this._pill({
         id: this._axisId('peer', peer.label),
-        text: peer.label,
         // 🔴 「—」 is the honest count. Not 0, which would say 「또래가 없다」.
+        // 🔴 AND WHEN THE AXIS ITSELF IS ABSENT, 「—」 IS NOT ENOUGH (round Z-3, 2026-08-28).
+        //    Measured: `leg`, `bond_lot` and `scan_recipe` appear in ZERO atoms, so the window
+        //    has nothing to count -- but a dash here reads exactly like 「세어 봤더니 0」 and
+        //    like 「아직 안 왔다」. The sentence rides in the pill's own text so the reader sees
+        //    WHY, and so the missing axis stays visible as something the declaration could gain.
+        text: got && got.message ? `${peer.label} · ${got.message}` : peer.label,
         count: has ? got.subjects : null,
         unsourced: !has,
         // 🔴 수를 쓰면 «어디서 왔는지»도 씁니다 -- 맵은 「bonding_log ∩ inspection_run 기준」이라

@@ -48,7 +48,7 @@ import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
   slotPagesFromLotMap, fetchSiblings, peerCountFromSiblings,
   waferFactsFromLotMap,
-  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId, compositionFromWalk } from './api.js';
+  fetchDeclaration, createWalkBoxWalk, fetchMapGrid, entitySeedId, compositionFromWalk, waferFactsFromWalk, peerCountFromWalk } from './api.js';
 
 /**
  * part name -> class. The shell resolves a declaration through this and nothing else.
@@ -640,15 +640,33 @@ export function bindLoaders(layout, deps) {
         // answered yet stays BLANK on screen -- never 0.
         // A wafer given means the screen moved: same route, wafer axis (the one that answers
         // for a wafer picked out of a trend rather than a slot of a lot).
-        bound.loadWaferFacts = (kind, wafer) => walkHere(wafer
-          ? { start: { groupby: 'wafer', value: wafer }, collect: 'map', kind }
-          : { collect: 'map', ...options.waferQuestion, kind })
-          .then((body) => waferFactsFromLotMap(body, 'bond'));
+        // 🔴 라우트가 아니라 «걷기 + 세기» (round Z-3 B, 2026-08-28). lot_map 이 서버에서
+        //    조인해 주던 수를 창이 셉니다 -- 총괄 판정 그대로이고, 재료는 이미 응답 안에
+        //    있습니다(of_kind 엣지가 종류 노드로, inspected/observed 가 다이로).
+        bound.loadWaferFacts = (kind, wafer) => walkHere({
+          start: { value: entitySeedId('wafer', { wafer: wafer || options.waferQuestion.row }) },
+          follow: ['inspected', 'observed', 'of_kind'],
+        }).then((answer) => waferFactsFromWalk(answer, kind));
       }
       if (options.peers) {
-        bound.loadPeerCount = (scope) => walkHere({
-          start: { groupby: 'scope', value: scope }, collect: 'peer', window: options.window,
-        });
+        // 🔴 넷 중 «하나»만 셀 수 있습니다. 실측 2026-08-28: leg · bond_lot · scan_recipe 는
+        //    원장에 원자 «0» 이고 값도 «0» 입니다 -- 창은 원장에 낱말이 없는 것을 못 셉니다.
+        //    총괄 판정: 컨트롤을 «남기고» 그 사실을 말한다. 「0」 이나 「데이터 없음」은
+        //    «세어 봤더니 0» 과 구별이 안 되므로 쓰지 않습니다.
+        bound.loadPeerCount = (scope) => {
+          const eqp = String(scope || '').startsWith('bond_eqp:')
+            ? String(scope).slice('bond_eqp:'.length) : null;
+          if (!eqp) {
+            return Promise.resolve({
+              subjects: null, units: null, relation: null, column: null,
+              analysis: null, straddling: null, message: '이 축은 원장에 없습니다',
+            });
+          }
+          return walkHere({
+            start: { value: entitySeedId('wafer', { wafer: options.waferQuestion.row }) },
+            follow: ['measures'],
+          }).then((answer) => peerCountFromWalk(answer, eqp));
+        };
       }
       if (options.basisChipId) {
         bound.loadBasisCounts = () => walkHere({
