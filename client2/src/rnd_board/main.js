@@ -370,7 +370,11 @@ export const BOARD = Object.freeze({
       reads: 'marking:1',
       writes: 'marking:1',
       start: { groupby: 'wafer', marking: 'marking:1' },
-      collect: 'point',
+      // 🔴 `collect: 'point'` LEFT 2026-08-28 (round Z). This seat named a QUESTION NAME that
+      //    `api.js` translated into a route, and that middle table is what the round removes:
+      //    a seat that names a route dies when the route does, while `follow` below names
+      //    predicates the DECLARATION owns. Nothing else here changed -- the walk, the hops and
+      //    the model are the ones this seat already used; only the name is gone.
       // 🔴 이 부품의 «질문»입니다. 좁혀도 되는 것은 «점 부품뿐»입니다 -- 후보·순위는 좁히면
       //    delam 계열 넷을 잃습니다 (총괄 실측 2026-08-24).
       //
