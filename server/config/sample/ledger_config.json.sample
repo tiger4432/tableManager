@@ -232,18 +232,36 @@
           "optional": []
         }
       }
+    },
+    "in_container@1": {
+      "status": "active",
+      "subjects": [
+        "die@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "wafer@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
     }
   },
   "entities": {
     "quantity@1": {
       "keys": [
         "quantity"
-      ]
+      ],
+      "class": "static"
     },
     "defect_kind@1": {
       "keys": [
         "defect_kind"
-      ]
+      ],
+      "class": "static"
     },
     "defect@1": {
       "keys": [
@@ -276,7 +294,8 @@
     "recipe@1": {
       "keys": [
         "recipe"
-      ]
+      ],
+      "class": "static"
     },
     "lot_slot@1": {
       "keys": [
@@ -1650,6 +1669,104 @@
                     "approval_status": "approved",
                     "kind": "constant",
                     "value": "Wafer"
+                  }
+                }
+              }
+            }
+          },
+          "core-die-in-core-wafer": {
+            "predicate": "in_container@1",
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "die@1",
+                "keys": {
+                  "mat_id": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "core_wafer"
+                  },
+                  "x": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "cx"
+                  },
+                  "y": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "cy"
+                  },
+                  "mat_type": {
+                    "approval_status": "approved",
+                    "kind": "constant",
+                    "value": "Wafer"
+                  }
+                }
+              },
+              "target": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "core_wafer"
+                  }
+                }
+              }
+            }
+          },
+          "base-die-in-base-wafer": {
+            "predicate": "in_container@1",
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "die@1",
+                "keys": {
+                  "mat_id": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "base_id"
+                  },
+                  "x": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "bx"
+                  },
+                  "y": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "by"
+                  },
+                  "mat_type": {
+                    "approval_status": "approved",
+                    "kind": "constant",
+                    "value": "Wafer"
+                  }
+                }
+              },
+              "target": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "base_id"
                   }
                 }
               }
