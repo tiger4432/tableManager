@@ -865,7 +865,18 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
         if near_kind in static_types and far_kind and far_kind not in static_types:
             return
-        _charge = 0 if _bare_predicate(atom.predicate) in continuing else 1
+        # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
+        # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
+        # ENTITY CLASS instead of on a per-predicate flag. Following one wafer through its
+        # own split, transfer and inspection history stays inside the world, so it spends
+        # the material budget rather than the allowance meant for LEAVING.
+        #
+        # ⚠️ `continuing` no longer decides this and is kept only until the substitution
+        # is measured; the D->D set is a superset of it by construction, and the extra
+        # member is `observed`, whose objects average one per subject.
+        _charge = 0 if (near_kind and far_kind
+                        and near_kind not in static_types
+                        and far_kind not in static_types) else 1
         if subject_near and not target_near and target is not None:
             _spend(subject_id, target["id"], _charge)
         elif target_near and not subject_near:
