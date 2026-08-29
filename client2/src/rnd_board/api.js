@@ -337,7 +337,7 @@ export function compositionModel(result) {
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, fetchImpl, positive, negative,
           node_limit: nodeLimit, hops, follow, direction,
-          continues_hops: continuesHops } = params || {};
+          backbone_hops: backboneHops } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -373,13 +373,19 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
-  // 🔴 «자재 예산»은 선언한 부품만 싣습니다 (라운드 ③, 2026-08-29). follow 와 «같은 모양»:
-  //    없으면 안 싣고, 안 실으면 서버 기본 0 이라 오늘과 «완전히 같은» 답입니다.
-  //    실측 2026-08-29: 돌고 있는 서버가 이 인자를 «진짜로 파싱»합니다 -- -1 · 99 · abc 가
-  //    전부 422 이고 선언이 ge=0 le=40 입니다. 다만 라이브 선언에 `continues: true` 술어가
-  //    «0» 이라 오늘은 어떤 값을 줘도 답이 같습니다. 그 플래그가 오는 날 이 줄이 값을 냅니다.
-  if (continuesHops !== undefined && continuesHops !== null) {
-    query.set('continues_hops', String(continuesHops));
+  // 🔴 «백본 예산»은 선언한 부품만 싣습니다 (라운드 ③, 2026-08-29). follow 와 «같은 모양»:
+  //    없으면 안 싣고, 안 실으면 서버 기본이라 오늘과 «완전히 같은» 답입니다.
+  //
+  // 🔴 이름이 `continues_hops` 에서 옮겨 왔습니다 (2026-08-29 저녁). 예산의 «키»가 술어 플래그
+  //    (`continues: true`)에서 «엔티티 분류»(static/dynamic)로 바뀌었고, 이름은 그 정책을
+  //    따라갑니다 -- 스펙 §7.5c 의 「백본 추적」. 값은 그대로입니다: D->D 걸음은 continues 를
+  //    «포함»하므로 좌석이 보던 것이 줄지 않습니다.
+  // ⚠️ 옛 이름은 «별칭이 아닙니다» -- 라우트에서 사라졌습니다. 그래서 이 줄과 서버 재기동은
+  //    같은 순간에 맞아야 합니다. 실측 근거: 이 보드의 씨앗 «48»(SYN-CX-BW-001 의 die 40 ·
+  //    SYN-BW-101-02 의 die 8)에서 이 예산은 «보내든 안 보내든 답이 같습니다». 그래서 어긋난
+  //    창에서도 이 화면의 수는 안 움직입니다. 그 사실이 없으면 이 줄은 재기동을 기다려야 합니다.
+  if (backboneHops !== undefined && backboneHops !== null) {
+    query.set('backbone_hops', String(backboneHops));
   }
   // 🔴 THE DECLARED QUESTION, CARRIED. `follow` is NOT a speed knob -- it decides WHICH
   //    ANSWERS CAN EXIST. Measured by the Lead PM 2026-08-24: narrowing it to the observation

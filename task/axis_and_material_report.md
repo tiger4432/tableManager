@@ -1,3 +1,84 @@
+# 🟡 [클라] `backbone_hops` 개명 — **착지했습니다. 게이트 A 는 «재기동 대기»입니다**
+
+## 서버는 «코드로» 받았고, «도는 프로세스»는 아직입니다
+```
+코드      origin/main 에 backbone_hops «있습니다»  (35f1963c)
+          ledger_trace_router.py:101   backbone_hops: int = Query(DEFAULT_BACKBONE_HOPS, ge=0, le=40)
+          ledger_subgraph.py:696·714·715 · DEFAULT_BACKBONE_HOPS = 0
+🔴 옛 이름은 «별칭이 아닙니다»  라우터에서 사라졌고, 남은 `continues_hops` 는 주석 «한 줄»뿐입니다
+프로세스   최신 python 시작 «13:18:07» · 35f1963c 는 그 뒤 -> 아직 옛 코드가 돕니다
+```
+
+## 게이트 A — «빨강». 그리고 두 가지로 잽니다 (422 하나로는 반쪽입니다)
+```
+① 상태 코드      backbone_hops=abc  «200»   <- 조용히 버려짐 = 이름이 «없다»
+                 continues_hops=abc «422»   <- 파싱됨 = 옛 이름이 «아직 산다»
+                 nonsense_hops=abc  «200»   (대조군)
+② 🔴 «효과»로도 잽니다 — 이게 더 셉니다. 총괄의 게이트 B 씨앗 그대로:
+   씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing
+   follow = slot_map · transfer · has_wafer · bonded_from · derived_from · inspected · processed_with
+      예산 없음            nodes «40»  · edges 39  · trunc [depth]
+      continues_hops=4     nodes «157» · edges 156 · trunc 없음     <- 총괄 실측 157 «재현»
+      backbone_hops=4      nodes «40»  · edges 39  · trunc [depth]  <- «예산 없음과 글자 그대로 같음»
+   => 새 이름은 «효과가 0» 입니다. 상태 코드가 아니라 «수»가 그걸 말합니다
+```
+📌 그래서 게이트 A 는 **재기동 한 번**이면 초록입니다. 재기동 뒤 같은 세 줄을 다시 재서 붙이겠습니다 —
+   기대값은 `backbone_hops=4 -> 157` 이고, `continues_hops=abc` 는 200(무시) 이 됩니다.
+
+## 게이트 C — 초록. 다만 총괄 말씀대로 **C 만으로는 아무것도 증명 못 합니다**
+좌석이 «실제로 보내는» 질의 그대로 재습니다 (칩 확대 좌석, `hops=8 · backbone_hops=1 ·
+follow=observed,inspected,bonded_from · outgoing`):
+```
+backbone_hops=1    nodes 3 · edges 2
+continues_hops=1   nodes 3 · edges 2
+예산 없음           nodes 3 · edges 2
+```
+셋이 같습니다 — 이 좌석의 씨앗은 «원래 예산을 안 씁니다». 화면 수치도 무변:
+```
+본딩 맵   「마킹 0 · 128칸 · 발견 121 · 검사 128」   (개명 전과 «같음»)
+```
+
+## 그래서 «지금 착지시킨» 이유 — 어긋난 창에서도 이 화면은 안 움직입니다
+```
+옛 이름은 재기동과 «동시에» 죽습니다 (별칭 없음). 그래서 「재기동 전 = 옛 이름 · 후 = 새 이름」을
+한 정적 파일로 둘 다 맞출 수는 «없습니다». 어느 쪽이든 한 창에서 예산이 떨어집니다.
+그 창의 «비용»을 재 봤습니다 — 이 보드에서는 «0» 입니다:
+   SYN-CX-BW-001 의 die «40» · follow=bonded_from        ch 0 == ch 2
+   SYN-BW-101-02 의 die «8»  · +processed_with           ch 0 == ch 4
+   칩 확대 좌석의 «실제» 질의                              세 변형 전부 nodes 3 · edges 2
+   본딩 맵                                              128칸 · 발견 121 · 검사 128 무변
+=> 총괄 지적대로 «B 의 씨앗은 좌석의 씨앗이 아닙니다». 좌석은 예산이 물릴 만큼 깊이 안 걷습니다.
+   그래서 새 이름으로 «먼저» 가 두는 쪽이 재기동 순간에 맞고, 반대는 재기동 순간에 어긋납니다
+```
+⚠️ 이 판단의 근거는 «위 네 줄의 수»입니다. 좌석이 더 깊이 걷게 되는 날엔 이 논거가 죽습니다 —
+   그때는 재기동과 «같은 커밋»이어야 합니다. 그 조건을 코드 주석에 적어 뒀습니다.
+
+## 바뀐 곳 — 지시대로 셋
+```
+api.js:340   구조분해   continues_hops: continuesHops  ->  backbone_hops: backboneHops
+api.js:388   query      query.set('backbone_hops', …)
+main.js      좌석 선언 «넷» (머리요약 2 · 구성 2 · 2 · 칩확대 1) + 배선 한 곳 + 곁가지 opt-out 하나
+             값은 «그대로» 뒀습니다
+번들 실측    rnd_board-C_8sa2YR.js   backbone_hops «11» · continues_hops «0»
+화면 실측    요청 «12» 개가 새 이름을 싣고 옛 이름은 «0»
+```
+
+## 하니스 일곱 — 전부 초록 (수 무변)
+```
+rnd_board 170/0 · control_trend 59/0 · walk_box 48/0 · walk 32/0
+composition 40/0 · intersection 24/0 · reach 63/0
+```
+📌 하니스는 이 이름을 «한 번도 안 씁니다» — 그래서 개명이 통째로 조용합니다. 그게 바로
+   「200 은 인자가 읽혔다는 증거가 아니다」의 클라 쪽 판이라, 게이트 A 를 «서버에» 걸어 두는
+   총괄 판단이 맞습니다. 여기에 하니스를 하나 더 만들어도 «전선»을 못 봅니다.
+
+## ⚠️ 빌드 게이트 둘은 «여전히 빨갛고 여전히 남의 것»입니다
+`check:contracts` INV-F9-7 (`api.js:1046`, `de12b9f7`) · `check:harnesses`
+`load_shows_loaded_map_harness` 앵커 (`map_editor.js`, `a5f6878e`). 통제 그대로 —
+제 작업 트리는 이번에도 «제 파일뿐»이었습니다. vite build 를 직접 돌렸고, 둘 다 안 건드렸습니다.
+
+---
+
 # ✅ [클라] `/trends` 404 닫았습니다 — **ⓐ 를 골랐고, 그런데 «제 실패는 다른 곳»이었습니다**
 
 ## 🔴 먼저 정정합니다 — 총괄이 보신 404 는 **①-a 가 안 들어간 번들**입니다
