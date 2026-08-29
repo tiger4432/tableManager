@@ -1014,17 +1014,4 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     }
 
 
-NODE_TABLE_COLUMNS = (
-    "node_id", "node_kind", "node_type", "label", "depth", "claim_count",
-    "predicate", "object_kind", "occurred_at", "source_who",
-    "source_event_state", "keys_json", "object_payload_json",
-)
-EDGE_TABLE_COLUMNS = (
-    "edge_id", "source_id", "target_id", "predicate", "original_predicate",
-    "witnesses", "qualifiers_json",
-)
-PROPERTY_TABLE_COLUMNS = (
-    "node_id", "node_kind", "property_scope", "property_path", "ordinal",
-    "value_type", "value_text", "value_number", "value_boolean", "is_null",
-)
 

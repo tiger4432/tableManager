@@ -55,9 +55,23 @@ CURSOR_TABLE = "ledger_translator_cursor"
 #: The seven columns the unique index compares. Named once, used by the DDL and by the
 #: writer's `ON CONFLICT` reasoning, so "what makes two atoms the same claim" has one
 #: definition.
+#:
+#: 🔴 THREE OF THEM ARE DIGESTS, AND THIS FILE SAID OTHERWISE UNTIL 2026-08-29. Live has
+#: carried `md5(...)` on the two jsonb columns and on `source_raw_ref` since `4bdbff36`,
+#: which is what took this index from 1,123.6MB to 159.7MB. The spelling here never
+#: followed, and `CREATE UNIQUE INDEX IF NOT EXISTS` asks whether the NAME is taken, never
+#: whether the definition matches -- so live silently skipped it and a fresh deployment
+#: silently built the fat one. Two boxes, two different indexes, no error on either.
+#:
+#: ⚠️ UNIQUENESS IS THEREFORE ON THE DIGEST, not on the value. Two atoms whose
+#: `subject_keys` differ but whose md5 collides count as the same claim, and
+#: `insert_atoms`'s `ON CONFLICT DO NOTHING` is untargeted -- so the loser is dropped
+#: without a word. At this ledger's size that is not worth guarding against; it is worth
+#: knowing, because the failure would look like an atom that never arrived.
 DEDUPE_COLUMNS = (
-    "occurred_at", "predicate", "subject_type", "subject_keys",
-    "coalesce(object_payload, '{}'::jsonb)", "source_translator_ver", "source_raw_ref",
+    "occurred_at", "predicate", "subject_type", "md5(subject_keys::text)",
+    "md5(coalesce(object_payload, '{}'::jsonb)::text)", "source_translator_ver",
+    "md5(source_raw_ref)",
 )
 
 
