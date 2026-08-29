@@ -215,9 +215,15 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 2, columnSpan: 4 },
       reads: 'axis:y',
       writes: 'axis:y',
-      collect: 'trend_y',
+      // 🔴 `collect: 'trend_y'` 가 «떠났습니다» (라운드 ①-a, 2026-08-29). 이 한 줄이 화면에
+      //    남은 마지막 `/trends` 호출이었고, 그것이 Y축 «종류» 목록의 출처였습니다. 축이
+      //    「집계 × 수식어」가 되면서 목록은 «선언»에서 오고, 그래서 이 좌석은 이제 라우트를
+      //    한 개도 이름 대지 않습니다.
       options: {
         seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
+        // 🔴 「수치인가」의 «주어». 목록(선언)과 달리 이것은 데이터라 마킹이 필요하고,
+        //    비면 재지 않고 그 사실을 문장으로 말합니다 -- 「값 없음」이 아닙니다.
+        numericReads: 'marking:1',
         window: '180d',
         // 🔴 이 부품은 후보를 «자기가» 걷습니다. 그러니 질문도 자기가 받아야 합니다 --
         //    안 주면 맨몸으로 걸어 나가 같은 답을 «네 번째»로 긷습니다 (총괄 실측).
@@ -682,6 +688,11 @@ export function bindLoaders(layout, deps) {
         bound.loadDeclaration = () => fetchDeclaration({ apiBase, fetchImpl });
         bound.walk = createWalkBoxWalk({ apiBase, fetchImpl });
       }
+      // 🔴 Y축의 «수식어 목록»도 선언에서 옵니다 (라운드 ①-a). 걷기 검색창과 «같은 함수»이고
+      //    같은 이름으로 주입합니다 -- 부품 둘이 각자 라우트를 알게 되는 것을 막는 자리입니다.
+      if (decl.part === 'controlBar') {
+        bound.loadDeclaration = () => fetchDeclaration({ apiBase, fetchImpl });
+      }
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.
       if (options.fields) {
@@ -825,9 +836,15 @@ export function bindLoaders(layout, deps) {
           // 🔴 같은 걷기, «읽는 모델»만 다릅니다. 갈래는 부품 이름 하나이고, 그 이름은 이미
           //    선언에 있습니다 -- 여기에 라우트 표를 다시 만들지 않으려면 이 한 줄이어야 합니다.
           const read = decl.part === 'mainTrend' ? trendFromWalk : compositionFromWalk;
-          bound.load = (override) => walkHere({
-            start: decl.start, follow: decl.follow, ...(override || {}),
-          }).then(read);
+          // 🔴 `axis` 는 «읽는 쪽»의 인자이지 걷기의 인자가 아닙니다 (라운드 ①-a). 전선에
+          //    실리면 같은 질문이 축마다 «다른 열쇠»가 되어 합침이 깨지고, 서버는 모르는
+          //    칸을 조용히 버립니다 -- 200 이 증거가 아니라는 그 자리입니다. 그래서 여기서
+          //    떼어 내고, 나가는 요청은 축과 무관하게 «글자 그대로» 같습니다.
+          bound.load = (override) => {
+            const { axis, ...rest } = override || {};
+            return walkHere({ start: decl.start, follow: decl.follow, ...rest })
+              .then((answer) => read(answer, axis));
+          };
         }
         return { ...decl, options: bound };
       }

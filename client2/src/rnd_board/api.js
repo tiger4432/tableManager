@@ -1216,9 +1216,96 @@ export function peerCountFromWalk(answer, eqpId) {
  * Dividing an under-counted numerator by an under-counted denominator produces a rate that
  * looks like a measurement and is not one.
  */
-export function trendFromWalk(answer) {
+// ═════════════════════════════════════════════════════════════════════════════
+// Y축 = «집계 × 수식어» (라운드 ①-a, 2026-08-29)
+//
+// 🔴 셋은 «서로 다른 곳»에서 옵니다. 접으면 화면이 「없어서」와 「아직 안 골라서」를
+//    같은 말로 하게 됩니다 -- 이 보드가 존재하는 이유가 그 구분입니다.
+//      집계 목록   «여기». 고정이고 데이터가 «필요 없습니다» -- 마킹이 비어도 고를 수 있습니다
+//      수식어 목록 «선언»(`/declaration` 의 술어별 qualifiers). 마킹과 무관합니다
+//      수치인가    «데이터». 마킹이 있을 때만 알 수 있습니다
+//
+// 🔴 「하나라도 수치면 수치」 (총괄 판정 2026-08-29). 전수를 요구하면 «도는 축»이
+//    사라집니다 -- 실측 800 중 1 이 문자였고 레인 실측도 17 중 1 이었습니다.
+//    대신 «건너뛴 수»를 반드시 말합니다 -- 말 안 하면 「없어서」와 「건너뛰어서」가
+//    같은 수가 됩니다.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 고정 목록. 화면의 알약도 이것을 그리고 집계도 이것으로 합니다 -- 목록이 «하나»여야
+ * 화면이 고른 것과 계산이 재는 것이 어긋날 수 없습니다.
+ */
+export const AGGREGATIONS = Object.freeze([
+  { id: 'median', label: 'median', numericOnly: true },
+  { id: 'mean', label: 'mean', numericOnly: true },
+  { id: 'sum', label: 'sum', numericOnly: true },
+  { id: 'min', label: 'min', numericOnly: true },
+  { id: 'max', label: 'max', numericOnly: true },
+  { id: 'count', label: 'count', numericOnly: false },
+  { id: 'distinct', label: 'distinct', numericOnly: false },
+]);
+
+const AGGREGATE = Object.freeze({
+  count: (values) => values.length,
+  distinct: (values) => new Set(values.map((v) => JSON.stringify(v))).size,
+  sum: (nums) => nums.reduce((a, b) => a + b, 0),
+  mean: (nums) => nums.reduce((a, b) => a + b, 0) / nums.length,
+  min: (nums) => Math.min(...nums),
+  max: (nums) => Math.max(...nums),
+  median: (nums) => {
+    const sorted = [...nums].sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  },
+});
+
+/** `median` -> true. 화면이 어느 알약을 죽일지를 이 함수 하나로 묻습니다. */
+export function aggregationIsNumericOnly(id) {
+  const row = AGGREGATIONS.find((agg) => agg.id === id);
+  return Boolean(row && row.numericOnly);
+}
+
+/**
+ * 선언이 이름 대는 수식어 «전부», 그것을 싣는 술어와 함께. 원장을 한 줄도 안 읽습니다 --
+ * 그래서 마킹이 비어도 목록이 서 있고, 선언이 수식어를 하나 더 가지면 알약도 하나 늘어납니다.
+ */
+export function qualifiersFromDeclaration(declaration) {
+  const byName = new Map();
+  for (const predicate of (declaration && declaration.predicates) || []) {
+    const q = (predicate.object || {}).qualifiers || {};
+    for (const name of [...(q.required || []), ...(q.optional || [])]) {
+      const row = byName.get(name) || { name, predicates: [] };
+      const on = bareType(predicate.name);
+      if (!row.predicates.includes(on)) row.predicates.push(on);
+      byName.set(name, row);
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * 「이 걷기가 실제로 실은 값이 수치인가」 -- 이름마다 «본 개수»와 «수치 개수».
+ * 판정을 여기서 내리지 않는 이유: 「하나라도 수치면 수치」는 «판정»이고, 두 수를 다 들고
+ * 있어야 화면이 「수치 121/121」처럼 «세서» 말할 수 있습니다.
+ */
+export function qualifierTypesFromWalk(answer) {
+  const out = Object.create(null);
+  for (const edge of (answer && answer.edges) || []) {
+    for (const [name, value] of Object.entries((edge && edge.qualifiers) || {})) {
+      const row = out[name] || (out[name] = { seen: 0, numeric: 0 });
+      row.seen += 1;
+      if (typeof value === 'number' && Number.isFinite(value)) row.numeric += 1;
+    }
+  }
+  return out;
+}
+
+export function trendFromWalk(answer, axis) {
+  // 축이 «수식어까지» 정해졌을 때만 집계 축입니다 -- 집계만 고른 상태는 아직 축이 아닙니다.
+  const wanted = axis && axis.aggregation && axis.qualifier ? axis : null;
   const empty = (state, message) => ({
     ok: state !== 'refused', state, points: [], kinds: [], provenance: null, message,
+    axis: wanted, valueKind: wanted ? 'aggregate' : 'ratio', skipped: 0,
   });
   if (!answer) return empty('awaiting', '아직 안 골랐습니다');
   if (answer.ok === false) return empty('refused', answer.message || '서버가 거절했습니다');
@@ -1239,7 +1326,9 @@ export function trendFromWalk(answer) {
   };
   const stat = new Map();
   const at = (wafer) => {
-    if (!stat.has(wafer)) stat.set(wafer, { scanned: new Set(), found: new Set(), at: null });
+    if (!stat.has(wafer)) {
+      stat.set(wafer, { scanned: new Set(), found: new Set(), at: null, values: [] });
+    }
     return stat.get(wafer);
   };
   for (const edge of edges) {
@@ -1250,14 +1339,58 @@ export function trendFromWalk(answer) {
     if (edge.predicate === 'inspected') row.scanned.add(edge.target);
     if (edge.predicate === 'observed') row.found.add(edge.source);
     if (edge.occurred_at && (!row.at || edge.occurred_at > row.at)) row.at = edge.occurred_at;
+    // 🔴 값을 «거르지 않고» 모읍니다. 수치 판정은 집계가 하고, 건너뛴 수는 세어서 말합니다.
+    if (wanted) {
+      const q = edge.qualifiers || {};
+      if (Object.prototype.hasOwnProperty.call(q, wanted.qualifier)) row.values.push(q[wanted.qualifier]);
+    }
+  }
+  const waferNodeId = (wafer) => (nodes.find(
+    (n) => n.type === 'wafer' && (n.keys || {}).wafer === wafer,
+  ) || {}).id || null;
+
+  // ── 집계 축: 「이 자재의 이 수식어를 이렇게 재면」 ────────────────────────────
+  if (wanted) {
+    const fn = AGGREGATE[wanted.aggregation] || null;
+    // 모르는 집계는 «거절»입니다. 값 없음으로 그리면 「아무도 안 쟀다」가 되는데 그건 거짓입니다.
+    if (!fn) return { ...empty('refused', `모르는 집계입니다 — ${wanted.aggregation}`), kinds };
+    const numericOnly = aggregationIsNumericOnly(wanted.aggregation);
+    let skipped = 0;
+    const aggregated = [...stat.entries()].map(([wafer, row]) => {
+      const nums = row.values.filter((v) => typeof v === 'number' && Number.isFinite(v));
+      const used = numericOnly ? nums : row.values;
+      if (numericOnly) skipped += row.values.length - nums.length;
+      return {
+        seriesId: 'marking', wafer, leg: null, at: row.at,
+        // 「몇 개로 만든 수인가」 -- 비율의 분모와 같은 자리이고, 같은 이유로 말합니다.
+        denominator: row.values.length || null,
+        found: used.length,
+        value: used.length ? fn(used) : null,
+        rate: null,
+        state: 'measured', markKey: null,
+        nodeId: waferNodeId(wafer), nodeType: 'wafer',
+      };
+    }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    return {
+      ok: true,
+      state: aggregated.length ? 'ready' : 'empty',
+      points: aggregated, kinds,
+      // 출처는 «이 걷기가 실제로 지난 술어»입니다. 지어내지 않습니다.
+      provenance: { source: 'walk',
+        predicates: [...new Set(edges.map((e) => e && e.predicate).filter(Boolean))] },
+      axis: wanted, valueKind: 'aggregate', skipped,
+      message: aggregated.length ? '' : '이 마킹에는 셀 것이 없습니다',
+    };
   }
   const points = [...stat.entries()].map(([wafer, row]) => ({
     seriesId: 'marking', wafer, leg: null, at: row.at,
     denominator: row.scanned.size || null,
     found: row.found.size,
     rate: row.scanned.size ? row.found.size / row.scanned.size : null,
+    // 그리는 쪽이 «한 이름»만 보게 합니다 -- 비율이면 비율이 그 값입니다.
+    value: row.scanned.size ? row.found.size / row.scanned.size : null,
     state: 'measured', markKey: null,
-    nodeId: (nodes.find((n) => n.type === 'wafer' && (n.keys || {}).wafer === wafer) || {}).id || null,
+    nodeId: waferNodeId(wafer),
     nodeType: 'wafer',
   })).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
   return {
@@ -1267,6 +1400,7 @@ export function trendFromWalk(answer) {
     // 🔴 출처를 «지어내지 않습니다». lot_map 은 서버가 relation·column 을 실어 줬고, 여기서는
     //    그 자리에 «술어»가 옵니다 -- 이 수가 어느 엣지에서 나왔는지가 사실입니다.
     provenance: { source: 'walk', predicates: ['inspected', 'observed'] },
+    axis: null, valueKind: 'ratio', skipped: 0,
     message: points.length ? '' : '이 마킹에는 셀 것이 없습니다',
   };
 }

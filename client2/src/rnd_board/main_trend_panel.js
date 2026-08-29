@@ -34,6 +34,25 @@ function markIdOf(point) {
   return (point && (point.nodeId || point.markKey)) || null;
 }
 
+/**
+ * 🔴 이 점이 그리는 «값». 비율 축이면 비율이고 집계 축이면 집계값입니다 (라운드 ①-a).
+ *    이름을 하나로 모으지 않고 `rate` 에 집계값을 넣으면 필드 이름이 거짓이 됩니다 --
+ *    비율이 아닌 수를 「비율」이라 부르는 자리가 이 화면에 하나 더 생깁니다.
+ *    아직 `value` 를 안 싣는 모델(`trendsModel`)이 있으므로 «없으면» 비율로 물러섭니다.
+ */
+function valueOf(point) {
+  if (!point) return null;
+  return point.value === undefined ? point.rate : point.value;
+}
+
+/** 비율은 %, 집계는 «그 수 그대로». 단위를 지어내지 않습니다. */
+function formatValue(model, value) {
+  if (model && model.valueKind === 'aggregate') {
+    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
+  }
+  return `${(value * 100).toFixed(2)}%`;
+}
+
 export class MainTrendPanel extends Panel {
   constructor(host, deps) {
     super(host, deps);
@@ -59,6 +78,9 @@ export class MainTrendPanel extends Panel {
     //    CONTRACT WITH `control_bar_panel.js`: the id is `axis:<kind>:<id>` -- `ratio` for a
     //    finding kind this route can plot, `quantity` for a walk candidate it cannot.
     this.axisReads = options.axisReads || null;
+    // 🔴 «집계 × 수식어» 축 (라운드 ①-a). `null` 이면 이 차트는 자기 기본(비율)을 그립니다 --
+    //    아무도 안 고른 축을 대신 골라 그리지 않습니다.
+    this.axis = null;
     // 🔴 THE SUBJECT, BY NAME, SO OTHER PARTS CAN FOLLOW IT. The mark id is the ledger's
     //    `identity.mark_key`, which no other part can decode into a wafer without parsing a
     //    server id. The wafer NAME is in the same point, so it is written under its own
@@ -108,11 +130,24 @@ export class MainTrendPanel extends Panel {
     const parts = String(chosen || '').split(':');
     const kind = parts[1] || null;
     const id = parts.slice(2).join(':') || null;
+    // 축을 «떠나는» 것도 한 걸음입니다 -- 안 되돌리면 비율을 골라도 집계가 그려집니다.
+    const wasAggregate = Boolean(this.axis);
+    this.axis = null;
+    // 🔴 `axis:agg:<집계>:<수식어>`. 쌍이 완성됐을 때만 축입니다 (control_bar_panel.js 와 같은 철자).
+    if (kind === 'agg' && id) {
+      const cut = id.indexOf(':');
+      if (cut > 0) {
+        this.axis = { aggregation: id.slice(0, cut), qualifier: id.slice(cut + 1) };
+        this.load();
+        return;
+      }
+    }
     if (kind === 'ratio' && id && id !== this.kinds) {
       this.kinds = id;
       this.load();
       return;
     }
+    if (wasAggregate) { this.load(); return; }
     // 🔴 A QUANTITY AXIS IS NOT A RATIO. This route serves finding kinds; a walk candidate like
     //    `bond_temp` has no series here. The panel draws nothing and SAYS which axis it is and
     //    why -- an empty chart with no sentence would read as 「그 축은 값이 0」.
@@ -139,7 +174,7 @@ export class MainTrendPanel extends Panel {
     this.loadState = 'loading';
     this.render();
     this.model = await (this.boundWalk
-      ? this.boundWalk({ start })
+      ? this.boundWalk({ start, axis: this.axis })
       : this.walk({
         start, collect: this.collect,
         kinds: this.kinds, window: this.window, grain: this.grain,
@@ -190,7 +225,7 @@ export class MainTrendPanel extends Panel {
     }
 
     const chosenKind = String(this.axisChosen || '').split(':')[1] || null;
-    if (chosenKind && chosenKind !== 'ratio') {
+    if (chosenKind && chosenKind !== 'ratio' && chosenKind !== 'agg') {
       const note = doc.createElement('div');
       note.className = 'rb-trend-note rb-trend-note--absent';
       // The id stays checkable in the title; the sentence says the KIND, because a raw node id
@@ -204,7 +239,7 @@ export class MainTrendPanel extends Panel {
     }
 
     const m = this.model;
-    const drawn = m.points.filter((p) => p.rate !== null && p.at);
+    const drawn = m.points.filter((p) => valueOf(p) !== null && valueOf(p) !== undefined && p.at);
     if (!drawn.length) {
       // Two facts, separately: what came back, and what could not be plotted.
       const note = doc.createElement('div');
@@ -213,8 +248,19 @@ export class MainTrendPanel extends Panel {
       //    걸으면 complete:false · truncated ["nodes","claims"] 로 오고, 그때 「이 창에 점이
       //    없습니다」는 «예산에서 못 본 것»을 «없는 것»으로 바꿔 말합니다. 모델이 이미 그 문장을
       //    싣고 있었고 화면이 안 쓰고 있었습니다 -- 오늘 unscanned 에서 세운 규칙 그대로입니다.
+      // 🔴 여기에 «두 가지 0» 이 있습니다 (실측 2026-08-29, 라이브에서 제 라운드가 만든 결함).
+      //    `unit` 은 걷기가 «4개나 실었는데» max 가 전부 건너뛴 것이고, 그때 화면이
+      //    「안 실었습니다」라고 말했습니다 -- 총괄 못박음 ②(「건너뛴 개수를 말할 것」)가
+      //    막으려던 바로 그 오독입니다. 재료는 이미 모델에 있었고 이 자리가 안 읽고 있었습니다.
+      const carried = m.points.reduce((n, p) => n + (p.denominator || 0), 0);
+      const axisWord = m.valueKind === 'aggregate' && m.axis
+        ? (m.skipped > 0
+          ? `${m.axis.aggregation}(${m.axis.qualifier}) 는 값 ${carried}개를 «전부 건너뛰었습니다»`
+            + ' — 수치가 아니었습니다 (count · distinct 는 잽니다)'
+          : `${m.axis.aggregation}(${m.axis.qualifier}) 로 잰 것은 없습니다 — 이 걷기가 그 수식어를 안 실었습니다`)
+        : '비율이 붙은 것은 없습니다 — 아직 안 쟀습니다';
       note.textContent = m.points.length
-        ? `점 ${m.points.length}개 · 비율이 붙은 것은 없습니다 — 아직 안 쟀습니다`
+        ? `점 ${m.points.length}개 · ${axisWord}`
         : (m.state === 'truncated' && m.message ? m.message : '이 창에 점이 없습니다');
       root.appendChild(note);
       this.host.appendChild(root);
@@ -231,7 +277,7 @@ export class MainTrendPanel extends Panel {
     const plot = doc.createElement('div');
     plot.className = 'rb-trend-plot';
 
-    const rates = points.map((p) => p.rate);
+    const rates = points.map((p) => valueOf(p));
     const times = points.map((p) => Date.parse(p.at)).filter((t) => !Number.isNaN(t));
     const maxRate = Math.max(...rates, 0);
     const minRate = Math.min(...rates);
@@ -254,7 +300,7 @@ export class MainTrendPanel extends Panel {
       //    comparison is the reason this chart is on the screen.
       const line = doc.createElement('div');
       line.className = 'rb-trend-seedline';
-      line.style.bottom = `${(seed.rate / top) * 100}%`;
+      line.style.bottom = `${(valueOf(seed) / top) * 100}%`;
       plot.appendChild(line);
     }
 
@@ -274,7 +320,7 @@ export class MainTrendPanel extends Panel {
         ? `${points.length > 1 ? (i / (points.length - 1)) * 100 : 50}%`
         : `${(((Number.isNaN(t) ? minTime : t) - minTime) / spanTime) * 100}%`;
       // A flat rate axis is drawn as a flat line, at the floor, not spread to fill the box.
-      dot.style.bottom = this.flatRate && maxRate === 0 ? '0%' : `${(p.rate / top) * 100}%`;
+      dot.style.bottom = this.flatRate && maxRate === 0 ? '0%' : `${(valueOf(p) / top) * 100}%`;
       dot.setAttribute('data-wafer', p.wafer || '');
       if (markIdOf(p)) dot.setAttribute('data-node-id', markIdOf(p));
       // The title is the whole point, in the vocabulary the ledger used.
@@ -294,10 +340,16 @@ export class MainTrendPanel extends Panel {
         : null;
       const seen = p.denominator === null ? '—' : p.denominator;
       const hit = typeof p.found === 'number' ? p.found : '— (경계가 아직 안 싣습니다)';
+      // 🔴 집계 축은 «칩»을 세지 않습니다 -- 「검사한 칩」이라 적으면 값의 개수를 칩 수로
+      //    읽게 됩니다. 무엇으로 만든 수인지는 축마다 다른 문장이어야 합니다.
+      const body = m.valueKind === 'aggregate' && m.axis
+        ? ` · ${m.axis.aggregation}(${m.axis.qualifier}) ${formatValue(m, valueOf(p))}`
+          + ` · 값 ${seen}개 · 쓴 값 ${hit}개`
+        : ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`
+          + ` · 비율 ${formatValue(m, valueOf(p))}`;
       dot.setAttribute('title',
         `${p.wafer || '(웨이퍼 없음)'}`
-        + ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`
-        + ` · 비율 ${(p.rate * 100).toFixed(2)}%`
+        + body
         + (grainWord ? ` · ${grainWord} 기준` : '')
         + (p.state ? ` · ${p.state}` : ''));
       if (markIdOf(p)) {
@@ -323,10 +375,10 @@ export class MainTrendPanel extends Panel {
     // 🔴 AN AXIS TOP NOBODY MEASURED IS NOT A NUMBER. With every rate at zero there is no upper
     //    bound in the data, and printing 「100.0%」 would be this panel inventing the scale it
     //    is drawing on.
-    yTop.textContent = maxRate > 0 ? `${(top * 100).toFixed(1)}%` : '—';
+    yTop.textContent = maxRate > 0 ? formatValue(m, top) : '—';
     const yBottom = doc.createElement('div');
     yBottom.className = 'rb-trend-ymin';
-    yBottom.textContent = '0.0%';
+    yBottom.textContent = m.valueKind === 'aggregate' ? '0' : '0.0%';
     // 🔴 THE X AXIS NAMES ITS TIME. It was saying 「차례」 and nothing else, so the reader could
     //    not see WHEN any of this happened. Measured: every point in this window shares one
     //    timestamp, so the axis says that timestamp -- an order with no clock on it is not an
@@ -395,7 +447,27 @@ export class MainTrendPanel extends Panel {
         + ' · 단위별 행수는 이 응답에 없습니다';
       el.appendChild(fold);
     }
-    if (m.provenance) {
+    // 🔴 집계 축은 «자기 문장»을 씁니다 (라운드 ①-a). 비율의 분자·분모 문장을 그대로 쓰면
+    //    median(radius_x) 를 「비율」이라 부르게 됩니다.
+    if (m.valueKind === 'aggregate' && m.axis) {
+      const ax = doc.createElement('span');
+      ax.className = 'rb-trend-prov';
+      const carried = points.reduce((n, p) => n + (p.denominator || 0), 0);
+      ax.textContent = `y = ${m.axis.aggregation}(${m.axis.qualifier})`
+        + ` · 값 ${carried}개`
+        + (m.provenance && m.provenance.predicates
+          ? ` · ${m.provenance.predicates.join(' · ')} 에서` : '');
+      el.appendChild(ax);
+      // 🔴 건너뛴 수를 «말합니다» (총괄 못박음 ②). 말 안 하면 「없어서」와 「건너뛰어서」가
+      //    같은 수가 됩니다 -- 「하나라도 수치면 수치」의 값은 이 문장이 치릅니다.
+      if (m.skipped > 0) {
+        const skipped = doc.createElement('span');
+        skipped.className = 'rb-trend-absent';
+        skipped.textContent = `건너뜀 ${m.skipped} — 수치가 아니었습니다`;
+        el.appendChild(skipped);
+      }
+    }
+    if (m.provenance && m.valueKind !== 'aggregate') {
       const prov = doc.createElement('span');
       prov.className = 'rb-trend-prov';
       // 🔴 THE DENOMINATOR, ON SCREEN. Printed from `provenance`, never from a memory of it.
@@ -421,8 +493,10 @@ export class MainTrendPanel extends Panel {
     if (unplotted > 0) {
       const gap = doc.createElement('span');
       gap.className = 'rb-trend-absent';
-      // Not dropped silently: a point without a rate is a wafer nobody measured.
-      gap.textContent = `비율 없음 ${unplotted} — 안 쟀습니다`;
+      // Not dropped silently: a point without a value is a wafer nobody measured.
+      gap.textContent = m.valueKind === 'aggregate' && m.axis
+        ? `값 없음 ${unplotted} — 이 자재에는 ${m.axis.qualifier} 가 안 실렸습니다`
+        : `비율 없음 ${unplotted} — 안 쟀습니다`;
       el.appendChild(gap);
     }
     return el;

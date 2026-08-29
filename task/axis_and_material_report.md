@@ -1,3 +1,169 @@
+# ✅ [클라] 라운드 ①-a — **Y축이 «집계 × 수식어»가 됐고, `/trends` 404 가 «0» 이 됐습니다**
+
+## 게이트 넷 — 전부 통과. 그리고 «라이브에서 제 결함 하나»를 찾아 고쳤습니다
+
+```
+① 알약이 집계를 고르고 «차트가 바뀐다»   ✅ 라이브 실측 (아래 표)
+② 마킹이 비어도 알약이 있고 이유를 말한다 ✅ 「재려면 마킹이 필요합니다 — marking:1 이 비어 있습니다」
+③ 404 가 어떻게 되나                    ✅ «0». 요청 총수는 8 로 «그대로» — trends 하나가 declaration 하나로 바뀜
+④ 무회귀                               ✅ 다른 요청 URL·개수 전부 동일 · 하니스 «일곱» 초록
+```
+
+## 먼저 걸었습니다 (상설 「모든 제안 전 walk 으로 해결 가능한지」)
+```
+/api/ledger/declaration        술어 13 중 «다섯»이 수식어를 답니다 — 서로 다른 이름 «15»
+   observed@1        radius_x · inchip_x · inchip_y · radius_y · unit · gate · run_uid   (7)
+   measures@1        value · value_text · role · step · eqp_id                            (5)
+   leads_to@1        dir · model      processed_with@1  step      slot_map@1  event_type
+=> 원장을 «한 줄도» 안 읽습니다. 그래서 이 목록은 마킹이 비어도 «전부» 서 있습니다
+walk (씨앗 SYN-CX-BW-001 · outgoing · hops 3)
+   엣지 626 · 그중 수식어를 «싣는» 것은 observed 121
+   실제 타입   gate·inchip_x·inchip_y·radius_x·radius_y {float 121}  ·  run_uid·unit {str 121}
+=> 「수치인가」는 여기서만 알 수 있고, 그래서 «마킹이 있어야» 답이 나옵니다
+서버 변경 «0» · 새 라우트 «0» · 새 술어 «0» — 선언과 걷기가 이미 답합니다
+```
+
+## 도착지대로 나눴습니다 — 셋이 서로 «다른 곳»에서 옵니다
+```
+집계 목록    `AGGREGATIONS` (api.js). 고정 · 데이터 «불필요» -> 마킹이 비어도 일곱이 다 눌립니다
+             median · mean · sum · min · max  (수치 전용)   |   count · distinct  (전부)
+수식어 목록  `/declaration` -> `qualifiersFromDeclaration()`. 마킹과 «무관»
+수치인가     walk -> `qualifierTypesFromWalk()` = 이름마다 {seen, numeric}
+             -> 판정이 아니라 «두 수»를 들고 옵니다. 그래야 화면이 「수치 4/4」처럼 셀 수 있습니다
+축 = 쌍      마킹 `axis:y` 에 «한 id» -> `axis:agg:<집계>:<수식어>`
+             집계만 고른 상태는 «아직 축이 아닙니다» (무엇을 잴지가 없으면 잴 수 없습니다)
+```
+
+## 게이트 ① — 라이브 실측 (격리 오리진 · 마킹 1 = 결함 있는 다이 하나)
+```
+알약                     차트가 그린 것                              y축 꼭대기
+count   × radius_x       count(radius_x) 4 · 값 4개 · 쓴 값 4개        4
+median  × radius_x       median(radius_x) 9.95                        9.95
+max     × radius_x       max(radius_x) 11.38                          11.38
+distinct× unit           distinct(unit) 1                             1
+=> 알약을 누르면 «그린 수»가 바뀝니다. 범례도 같이 바뀝니다: `y = max(radius_x) · 값 4개 · observed · of_kind 에서`
+```
+
+## 게이트 ② — 마킹이 비었을 때 (첫 로드)
+```
+수식어 알약  15 개 «전부» 있음 (dir · eqp_id · event_type · gate · inchip_x · inchip_y · model
+             · radius_x · radius_y · role · run_uid · step · unit · value · value_text)
+집계 알약    7 개 «전부» 있음
+문장         「재려면 마킹이 필요합니다 — marking:1 이 비어 있습니다 (수식어는 선언에서 오므로 그대로 있습니다)」
+=> 「값 없음」도 빈 목록도 «아닙니다». 마킹을 찍으면 같은 줄이 「marking:1 에서 쟀습니다 ·
+   값이 실려 온 수식어 7/15」로 바뀝니다 — 그 7 이 observed 가 싣는 일곱과 «정확히» 같습니다
+```
+
+## 게이트 ③ — 404 는 «0» 이고, 요청 총수는 «안 늘었습니다»
+```
+                                    전(라이브 :8080)   후(격리 :8778)
+/api/ledger/trends?window=180d              1 «404»          «0»     <- 뿌리는 알약이었습니다
+/api/ledger/declaration                     1                 2      <- 걷기 검색창 + 제어 막대
+/api/ledger/subgraph (follow 셋 · outgoing)  3                 3
+/api/ledger/subgraph (후보 · node_limit)     1                 1
+/tables/wafer_map_metadata/data             2                 2
+                                    ─────────────────────────────
+합계                                        8                 8
+=> 404 하나가 200 하나로 «자리를 바꿨습니다». 좌석 `control-bar` 는 이제 라우트를 «한 개도» 이름 대지 않습니다
+```
+🔴 **그리고 전에는 Y축에 «쓸 수 있는 알약이 하나도 없었습니다».** 라이브 :8080 실측 —
+제어 막대의 알약은 또래 다섯과 「값 없음 506」뿐입니다. `/trends` 가 404 라 `kinds` 가 빈 배열이었고,
+그래서 「비율」 알약이 «0» 이었습니다. 지금은 15 + 7 이 섭니다.
+
+## 🔴 라이브에서 «제 라운드가 만든» 결함 하나 — 찾아서 고쳤습니다
+```
+증상   `unit` × `max` 를 고르면 화면이 「이 걷기가 그 수식어를 안 실었습니다」
+사실   걷기는 unit 을 «실었습니다». max 가 수치가 아니라서 «전부 건너뛴» 것입니다
+왜     모델은 `skipped` 를 이미 세고 있었는데 «그리는 쪽»이 그 수를 안 읽었습니다
+       -> 못박음 ②(「건너뛴 개수를 말할 것」)를 «세기만 하고» 공허하게 만든 자리입니다
+고침   그 자리에서 두 0 을 가릅니다
+       skipped > 0  ->  「max(unit) 는 값 1개를 «전부 건너뛰었습니다» — 수치가 아니었습니다
+                         (count · distinct 는 잽니다)」
+       skipped = 0  ->  「이 걷기가 그 수식어를 안 실었습니다」   (그대로)
+확인   라이브에서 셋이 «서로 다른 문장»입니다:
+       max(unit)       -> 전부 건너뛰었습니다
+       distinct(unit)  -> 1 을 그립니다
+       distinct(value) -> 이 걷기가 그 수식어를 안 실었습니다
+```
+
+## 게이트 ④ — 하니스 «일곱», 전부 초록
+```
+                              전        후
+rnd_board                   170/0     170/0
+rnd_board_control_trend      36/0      56/0     <- 이 라운드가 재는 것이 늘었습니다
+rnd_board_walk_box           48/0      48/0
+rnd_board_walk               32/0      32/0
+rnd_board_composition        40/0      40/0
+rnd_board_intersection       24/0      24/0
+rnd_board_reach              63/0      63/0
+변이  13 -> «19», 19/19 잡힘 · 새어 나감 0 · INERT 0
+```
+### 죽은 시험 넷은 «이 변경이 원인»이라고 이름 대고 고쳤습니다
+```
+A1  「비율 축이 죽은 라우트의 selectable_finding_kinds 에서 온다」
+    -> 그 라우트를 좌석이 더는 안 부릅니다. 같은 질문(「목록을 부품이 지어내나 받나」)을
+       «선언»에 대고 다시 적었습니다. 이름을 갈아끼운 것이 아니라 «재는 대상»을 옮겼습니다
+B1  「첫 비율 축이 자동으로 골라진다」
+    -> 자동 선택을 «없앴습니다». 집계 축에는 대신 골라 줄 「첫째」가 없고, `count × ?` 를
+       대신 고르면 «아무도 안 고른 축»을 차트가 그립니다. 이제 안 고르면 차트는 자기 기본(비율)
+M1 · M6 · M7 · M12  앵커 넷이 «옮겨진 자리»를 가리킴 -> 옮겨 붙였습니다 (재는 결함은 그대로)
+```
+### 새로 «재는» 것 (변이 여섯이 각각 깨웁니다)
+```
+A8/M14  마킹이 비었을 때의 «자기 문장»  (「값 없음」으로 접으면 빨강)
+A9/M15  집계는 데이터 «없이» 서 있다     (데이터를 기다리게 하면 축이 통째로 사라짐 -> 빨강)
+F1/M16  「하나라도 수치면 수치」          (전수를 요구하면 문자 하나가 축을 죽임 -> 빨강)
+F2/M17  건너뛴 수를 «센다»               (조용히 버리면 빨강)
+F8/M18  고른 집계가 «걷기까지 간다»       (안 실으면 알약이 차트를 안 바꿈 -> 빨강)
+F9/M19  전부 건너뛴 것을 «안 실었다»로 읽지 않는다   <- 오늘 라이브에서 실제로 난 결함
+```
+🔴 판별 입력이 «두 규칙이 다른 답을 내는» 것입니다 — `radius_x` 셋 중 «하나가 문자». 전수 규칙이면
+축이 죽고(null), 하나면 3 이 나옵니다. 셋 다 수치인 표본으로는 어느 쪽이 도는지 알 수 없습니다.
+
+## 바뀐 것 — 다섯 파일
+```
+api.js                  AGGREGATIONS · aggregationIsNumericOnly · qualifiersFromDeclaration
+                        · qualifierTypesFromWalk · trendFromWalk(answer, «axis»)
+control_bar_panel.js    `/trends` 걷기 «삭제» · 수식어/집계 알약 · `_chosenPair` · `_numericNote`
+                        · `_sampleNumeric` (마킹이 비면 «안 걷습니다»)
+main_trend_panel.js     `axis:agg:*` 축 · `valueOf`/`formatValue` · 범례·제목·축의 «자기 문장»
+main.js                 좌석 `control-bar` 에서 `collect: 'trend_y'` «제거» · `numericReads` 선언
+                        · `loadDeclaration` 주입 · mainTrend 의 `axis` 를 «전선 밖»에서 뗌
+board.css               `.rb-control-note` 한 줄
+```
+🔴 `axis` 는 «전선에 안 실립니다». 실으면 같은 질문이 축마다 다른 열쇠가 되어 walk 의 합침이
+깨지고, 서버는 모르는 칸을 «조용히» 버립니다 — 200 이 증거가 아니라는 그 자리입니다.
+실측으로도 요청 URL 이 축과 «무관하게 글자 그대로» 같습니다.
+
+## ⚠️ 두 가지를 «올립니다» (제가 안 고쳤습니다)
+```
+① 좌석 3 의 씨앗이 «다이»입니다 — 맵을 찍으면 die 가 marking:1 에 들어가고, 그러면
+   `inspected`(wafer -> die)를 outgoing 으로 못 지나 «비율»이 항상 null 입니다
+   (라이브: 「점 1개 · 비율이 붙은 것은 없습니다」). 집계 축은 observed 를 지나므로 «돕니다».
+   -> 비율 축을 되살리려면 좌석 3 의 시작점이나 방향 이야기이고, ①-b 의 안건으로 보입니다
+② 걷기 응답의 `provenance` 가 비율 축에서 「분자 ? · 분모 ?」로 나옵니다 (walk 은 술어만 싣고
+   numerator/denominator 를 안 싣습니다). 이 라운드가 만든 것이 «아니고» 그대로 뒀습니다
+```
+
+## 📌 실측 환경 — «격리 오리진»을 썼습니다
+```
+라이브 :8080 은 «main 워크트리»를 서빙합니다 -> 이 레인의 변경이 «안 보입니다» (「빌드했다고
+로드된 건 아니다」의 그 자리). :5173 은 이미 다른 vite 가 잡고 있어 건드리지 않았습니다.
+그래서 design 워크트리를 «내 포트»(:8778)로 띄우고 /api·/tables 를 :8080 으로 넘겼습니다.
+그 서버가 하는 «유일한 변형»은 vite 의 `define` 과 같은 한 줄(`import.meta.env.VITE_USER`)입니다.
+남의 프로세스·파일은 «하나도» 안 건드렸습니다.
+⚠️ 브라우저 패널이 프레임을 못 그려 «스샷은 못 찍었습니다». 대신 DOM·네트워크·타이틀 문자열을
+   그대로 떠서 위 표를 만들었습니다 — 목업 대조가 필요하면 :8778 을 그대로 두겠습니다.
+```
+
+## ⏭ 다음
+```
+14:1x 지시(`continues_hops` -> `backbone_hops`)는 「①-a 를 먼저 닫고」라고 적혀 있어
+«이 커밋 뒤에» 착수합니다. ①-b(좌석 3 이동)도 총괄 판정 대기입니다.
+```
+
+---
+
 # ⚠️ [클라] 라운드 ① — **멈춤 조건에 걸립니다.** 옮겼다가 «되돌리고» 수를 올립니다
 
 ## 먼저 걸었습니다 (상설 · 지시의 멈춤 조건)
