@@ -171,6 +171,40 @@ Y축 선택기가 묻는 것   「무엇을 그릴 수 «있나»」  -> 선언�
    총괄 잠정: 부품 선언 (상설 「부품은 읽을·쓸 마킹을 선언한다」 + `follow` 옆에 한 줄)
 ```
 
+#### 🔴 «위 항목의 진단은 틀렸고, 답은 「방향」이었습니다» (총괄 정정 09:5x)
+```
+제가 적은 것   「measures 는 시계열이고 예산이 «접힐 행»에 쓰인다」
+틀린 자리    「목적지당 176」 을 «같은 쌍의 원자 176» 으로 읽었습니다
+실제        서로 다른 source «747» · target «17»  ->  176 은 «웨이퍼 176장»
+            (source, predicate, target) 로 묶은 접힘비 = «1배». 접을 게 없었습니다
+진짜 원인   quantity 는 «허브»입니다. clamp_kN 하나를 씨앗으로 1홉 -> 엣지 «999»(상한)
+            공장의 모든 웨이퍼가 같은 물리량을 재서, wafer -> quantity -> «남의 웨이퍼» 로 샑니다
+🔴 배운 것     「오늘 맞는 수」와 「그 수가 무엇을 세는가」는 다릅니다.
+            비율을 보기 전에 «분모가 무엇인지»를 먼저 세어야 했습니다
+```
+## ✅ 답 — walk 이 «이미 들고 있던» 인자였습니다 (서버 변경 0)
+```
+씨앗 wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · edge_limit=3000
+direction     nodes  edges  reached  truncated
+both           1000   3000      2    nodes, edges, claims
+outgoing        265    352      3    «없음»
+incoming          1      0      0    «없음»
+
+both     wafer «776» · die 117 · quantity 18 · defect 89
+outgoing wafer 1 · die «156» · quantity 18 · defect 89 · defect_kind «1»
+```
+🔴 `both` 는 예산을 «남의 웨이퍼 776장»에 쓰고, 그 대가로 `defect_kind` 에 «영영 못 닿습니다».
+   기본값이 답을 «줄이고» 있었습니다.
+✅ 소유자 승인 — 부품이 `direction` 을 선언한다. 배선은 이미 있고(api.js:373 · main.js:588),
+   선언한 부품은 `CANDIDATE_QUESTION` «하나»뿐입니다
+⛔ 일괄 outgoing 금지 — has_wafer 는 lot_slot->wafer 라 웨이퍼에서 «들어오는» 걸음입니다
+⛔ 상한 올리기 금지 · ⛔ walk 에 집계 넣기 금지 (제 오진이었습니다)
+## ⏭ 그래서 라운드 순서가 바뀜습니다  ⓪ direction -> ③ continues_hops -> ① 좌석3+집계
+```
+① 을 뒤로 뮸 이유: 잘린 표본 위의 중앙값은 «질의가 고른 대표»가 됩니다.
+⓪ 가 절단을 없앤 뒤에 재야 그 수가 무엇인지 말할 수 있습니다
+```
+
 #### 🔴 엣지·클레임 상한 — 상세 (총괄 실측 2026-08-29 09:2x, 소유자 요청)
 ```
 씨앗  wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · direction=both
