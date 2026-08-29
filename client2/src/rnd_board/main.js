@@ -203,6 +203,13 @@ export const BOARD = Object.freeze({
       //    which is a marking like any other -- see the part's header for why, and for what the
       //    Lead PM still has to rule on.
       id: 'control-bar',
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪ 보완, 2026-08-29). 이 좌석의 걷기는 선언 목록이
+      //    아니라 «부품 배선» 안(`optionsFor('y')`)에 있어서 1차에서 안 잡혔습니다 --
+      //    실측 표를 좌석 «선언»으로만 만들었고, 화면 요청으로 대조하지 않은 제 잘못입니다.
+      //    실측: both 400노드·절단 nodes,claims  ->  outgoing 251노드·절단 «없음».
+      //    Y축 «종류 목록»을 만드는 자리라, 잘린 표본에서 고르면 「그런 종류가 없다」로
+      //    보입니다. 오늘은 종류가 하나뿐이라 목록이 같지만, 둘째가 오는 날 갈립니다.
+      direction: 'outgoing',
       part: 'controlBar',
       title: '제어 · 축 선택',
       at: { column: 1, row: 2, columnSpan: 4 },
@@ -286,6 +293,14 @@ export const BOARD = Object.freeze({
       // 스팟파이어가 차트마다 오른쪽에 다는 선언 블록. 필드는 «선언»이고, 고르는 것은 마킹에
       // 씁니다 -- 트렌드는 이 패널이 있는지도 모릅니다.
       id: 'trend-declaration',
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪ 보완, 2026-08-29). 이 좌석은 그리는 것이 «선언»이라
+      //    walk 을 안 하는 줄 알았는데, `fields` 가 있어서 `optionsFor('y')` 가 «여기» 묶입니다 --
+      //    Y축 종류 목록을 만드는 걷기입니다. 좌석에 선언이 하나도 없어 `walkHere` 가 맨 `walk`
+      //    이었고, 그래서 서버 기본 both 로 나갔습니다.
+      //    실측: both 400노드·절단 nodes,claims  ->  outgoing 251노드·절단 «없음».
+      //    ⚠️ 1차에서 못 잡은 이유: 표를 «좌석 선언»으로만 만들고 화면 요청과 대조하지
+      //    않았습니다. 이 자리는 선언에 follow 도 direction 도 없어서 목록에 안 떴습니다.
+      direction: 'outgoing',
       part: 'declaration',
       title: '축',
       at: { column: 4, row: 3 },
@@ -469,6 +484,14 @@ export const BOARD = Object.freeze({
       // 🔴 목업은 구성에도 «축 열»을 답니다 -- 같은 선언 부품, 다른 필드. 부품을 새로 만들지
       //    않는다는 것이 이 화면의 전제이고, 여기가 그 두 번째 증거입니다.
       id: 'composition-declaration',
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪ 보완, 2026-08-29). 이 좌석은 그리는 것이 «선언»이라
+      //    walk 을 안 하는 줄 알았는데, `fields` 가 있어서 `optionsFor('y')` 가 «여기» 묶입니다 --
+      //    Y축 종류 목록을 만드는 걷기입니다. 좌석에 선언이 하나도 없어 `walkHere` 가 맨 `walk`
+      //    이었고, 그래서 서버 기본 both 로 나갔습니다.
+      //    실측: both 400노드·절단 nodes,claims  ->  outgoing 251노드·절단 «없음».
+      //    ⚠️ 1차에서 못 잡은 이유: 표를 «좌석 선언»으로만 만들고 화면 요청과 대조하지
+      //    않았습니다. 이 자리는 선언에 follow 도 direction 도 없어서 목록에 안 떴습니다.
+      direction: 'outgoing',
       part: 'declaration',
       title: '축 · 구성',
       at: { column: 4, row: 5 },
