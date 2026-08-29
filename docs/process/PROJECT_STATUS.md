@@ -1090,6 +1090,44 @@ F9  R-T 「여섯 조건」인데 일곱 · 정본이 «저장소 밖» -> ✅ �
 각 자리에 「여기 규칙을 다시 적지 마라」를 남겨 축소가 «의도»였음을 표시
 ```
 
+## 🔴 「빨강 9개」가 틀렸습니다 — 전수는 «49» 였습니다 (2026-08-30 새벽)
+```
+제 선택자   pytest -k ledger   ->   9 failed
+전수        pytest tests/       ->  «49 failed» · 4,046 passed · 167 skipped · 18분
+```
+`-k ledger` 는 «이름에 ledger 가 든» 시험만 고릅니다. `test_syn_complex_composite.py` 는
+11개가 죽어 있었는데 그중 이름에 ledger 가 든 것이 «1개»뿐이라 제 눈엔 1로 보였습니다.
+소유자에게 9라고 보고하고 그 9를 고치기로 «계획까지 세운 뒤»에 전수를 돌렸습니다.
+=> 같은 밤 문서 감사가 잡은 「grep 히트 수로 부재를 재지 마라」와 «같은 실수»입니다.
+   기억 갱신: an-absence-is-refuted-by-a-test-name-not-a-grep-count (④ 렌즈를 같이 적는다)
+
+## ✅ 고친 것 — 원인 «일곱»
+```
+커서 픽스처      lot_event 키셋이 (event_time,row_id) 로 바뀐 걸 안 따라감        2  c1229106
+              cursor_for 가 컬럼을 «스스로 적던» 것을 «계획에서 읽도록» 바꿈
+cwd 의존 경로   "server/ledger/..." 가 server/ 에서 안 열림 (두 자리)             1  1d17c34a
+사라진 모듈     ledger_selection — 묘비와 함께 은퇴 (지키던 불변식을 묘비에)        1
+죽은 선언 주장   dt_log 를 transfer 소스로 단언 — R-T 의 «반대편». 묘비와 함께      1
+해골 구멍       entities.references 노드 «신설» + 앵커 셋                        1
+continues 관용  선언 청소가 끝났으므로 검증기도 «거절»로 (그 주석이 시킨 대로)
+🔴 시험 오염    db_session 이 TABLE_CONFIG 를 «복원 안 함»                       11  db9bb6bb
+              syn 파일은 «단독 26/26 통과». 앞선 시험이 db_session 을 쓰는 순간
+              세션 내내 시험용 설정이 남아 inspection_run 이 사라진다
+              실패는 «세 파일 건너»에서 「inspection_run key unavailable」로 나온다
+```
+## 🔴 못 고친 것 — 명명해서 남깁니다 (2개)
+```
+in_slot 이 «문장을 못 낸다»
+   lot_event 만 lot-event-role 매퍼(unit=event) — 역할당 스칼라 «하나»를 준다
+   그런데 in_slot 의 주어 lot_slot@1 은 식별키가 «둘»
+   RoleFrameError: a mapper-supplied Entity reference carries one identity key
+   결과   has_wafer 원자 «0»   (slot_map 135 · register 396 은 정상)
+🔴 보드가 이 0을 「Ⅱ-a 소스 없음 — 표를 읽는 소스를 선언하라」로 분류했는데 «틀렸습니다».
+   소스는 선언돼 있고 넷 중 «셋»이 돕니다. 엔진 계약이 넷째를 거절합니다.
+   => 액션 분류의 «예시»가 틀렸다는 뜻이라 분류 자체를 다시 봐야 합니다
+고치는 길   lot_slot_move 처럼 «row 단위 declarative-role» 소스로 옮긴다 — 선언 판정
+```
+
 ## ⏭ 다음 판정 셋
 ```
 ① 0/0 을 순위에서 «뺄» 것인가            (칸은 있고, 쓰는 방식이 판정)
