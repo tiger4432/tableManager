@@ -1042,9 +1042,23 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         path = f"bundle.entities.{entity_id}"
         _versioned_id(entity_id, path, problems)
         item = section[entity_id]
+        #: `class` says whether this entity is a THING THAT HAPPENS or a NAME THINGS POINT
+        #: AT. Owner ruling 2026-08-29 reviving `ONTOLOGY_GRAPH_SPEC` §7.5c: a walk may
+        #: reach a static node but must not leave one, because a name every instance points
+        #: at is a hub - measured, `defect_kind` has 103,841 atoms and exactly ONE distinct
+        #: object, so stepping out of it reaches the whole ledger and the answer drowns.
+        #:
+        #: OPTIONAL, AND ABSENCE MEANS `dynamic`. Not written into declarations that do not
+        #: use it, for the reason `continues` is not: a field read as a default when missing
+        #: must stay missing, or "declared dynamic" and "never classified" stop being
+        #: distinguishable.
         if not problems.exact(
-                item, path, required=("keys",), optional=("key_types", "allow_null", "references")):
+                item, path, required=("keys",),
+                optional=("key_types", "allow_null", "references", "class")):
             continue
+        if "class" in item and item["class"] not in ("static", "dynamic"):
+            problems.add("invalid_entity_ref", f"{path}.class",
+                         "must be static or dynamic")
         keys = item.get("keys")
         _nonblank_list(keys, f"{path}.keys", problems)
         if _has_duplicate_strings(keys):

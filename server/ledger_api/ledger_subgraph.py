@@ -685,10 +685,15 @@ def _bare_predicate(name):
     return str(name or "").split("@", 1)[0]
 
 
+def _bare(name):
+    """The same trim for an ENTITY type: `defect_kind@1` -> `defect_kind`."""
+    return str(name or "").split("@", 1)[0]
+
+
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None, continuing=None,
-             continues_hops=DEFAULT_CONTINUES_HOPS):
+             continues_hops=DEFAULT_CONTINUES_HOPS, static_types=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -709,6 +714,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     continuing = {str(name).split("@", 1)[0] for name in (continuing or ())}
     continues_hops = max(0, min(int(continues_hops), MAX_HOPS))
     budget_hops = hops + continues_hops
+    static_types = {str(name).split("@", 1)[0] for name in (static_types or ())}
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -843,6 +849,22 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # transfer and inspection history -- so it costs a level of `depths` but no
         # DEPARTURE. `depths` is untouched by this: every reader of it (the truncation
         # test, `hops_reached`, the evidence trails, the client) keeps the meaning it had.
+        # 🔴 A NAME MAY BE REACHED, AND MAY LEAD TO ANOTHER NAME, BUT NOT BACK INTO THE
+        # WORLD. The owner's rule is about the STEP and not about the node: `s -> s` is
+        # allowed, `s -> d` is not. Written as "do not expand a static node" instead, it
+        # also cuts `s -> s`, and MEASURED that costs the whole causal chain - seeded at
+        # quantity{bond_pressure} with follow=leads_to the graph fell from 18 nodes and 4
+        # hops to 1 node and 0 edges, because every link in that chain is quantity to
+        # quantity. What the rule is for is the other direction: `defect_kind` carries
+        # 103,841 atoms against ONE distinct object, so one step from that name back out
+        # to wafers drags in 747 of them and the answer drowns.
+        near_kind = far_kind = None
+        if subject_near and not target_near:
+            near_kind, far_kind = _bare(atom.subject_type), _bare(payload.get("type"))
+        elif target_near and not subject_near:
+            near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
+        if near_kind in static_types and far_kind and far_kind not in static_types:
+            return
         _charge = 0 if _bare_predicate(atom.predicate) in continuing else 1
         if subject_near and not target_near and target is not None:
             _spend(subject_id, target["id"], _charge)

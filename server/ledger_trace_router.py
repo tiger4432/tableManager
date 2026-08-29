@@ -198,6 +198,27 @@ def _continuing_predicates():
             if (rule or {}).get("continues") is True}
 
 
+def _static_types():
+    """Entity types the declaration marks `class: "static"` -- names, not happenings.
+
+    🔴 SAME SHAPE AS `_continuing_predicates` AND `_followable_predicates`, and for the
+    same reason: the declaration is the only authority, so an entity becomes static by
+    being declared static and never by an edit here. An unreadable declaration returns the
+    EMPTY set, which is exactly today's walk rather than a guess about which types are
+    hubs.
+
+    Bare names, because the declaration versions its ids (`defect_kind@1`) and a projected
+    node carries the bare one.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("entities") or {}
+    except Exception:
+        return set()
+    return {str(key).split("@", 1)[0] for key, rule in declared.items()
+            if (rule or {}).get("class") == "static"}
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None,
                     continues_hops=ledger_subgraph.DEFAULT_CONTINUES_HOPS):
@@ -216,7 +237,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         connection, relation=LEDGER_RELATION),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-        continuing=_continuing_predicates(), continues_hops=continues_hops)
+        continuing=_continuing_predicates(), continues_hops=continues_hops,
+        static_types=_static_types())
 
 
 

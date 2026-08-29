@@ -126,6 +126,15 @@
                   "kind": "leaf",
                   "hint": "flag"
                 }
+              },
+              {
+                "key": "class",
+                "required": false,
+                "label": "노드 분류",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
               }
             ]
           }
