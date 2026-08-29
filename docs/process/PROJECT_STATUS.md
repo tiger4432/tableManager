@@ -883,8 +883,19 @@ reach 값       5가지                 같은 5가지
 
 ## 🗂 별건으로 적어 둠
 ```
-test_ledger_trace_contract  빨강 1 — `job_run_to_confirmed_container` 가 어느 config 에도 «선언 없음»
-                           제 변경과 무관 (그 시험은 ledger_subgraph 를 import 하지 않음)
+test_ledger_trace_contract  빨강 1 — 진단 완료 (2026-08-29 21:1x). 제 변경과 «무관»
+   증상   test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
+   실측   두 config(샘플·라이브)의 소스 «14개»가 선언하는 도출 = «positional_row» 하나뿐
+         `job_run_to_confirmed_container` 를 찍을 수 있는 소스가 «없다»
+   코드   ledger/config.py:288  DERIVATION_TRANSFER_CONFIRMED = 그 이름
+         ledger_trace.py:191   confirmed_derivations 에 그 이름
+         시험 3파일이 그 이름을 기대 (contract · transfer_unit)
+   언제   ac0d8c84 「the ledger sample described a format that no longer exists」에서
+         «선언 쪽»이 사라졌고 «코드 쪽»이 남았다 -> 고아 이름
+   => 가드가 «제 일을 하고 있는» 빨강입니다. 판정 필요:
+      (a) 이름을 은퇴  — 레거시 DT 확인 경로를 안 살린다는 상설과 맞음. 코드 2 + 시험 3 파일
+      (b) 선언을 되살림 — DT transfer 확인이 아직 필요할 때만
+   ⚠️ server/ledger/* 는 구현자 소관이라 «제가 안 건드렸습니다»
 문서 정비                    doc-keeper 트리거 — 마지막 정비 이후 커밋 «24»
 ```
 
