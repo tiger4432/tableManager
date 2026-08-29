@@ -303,6 +303,40 @@ follow = transfer · bonded_from · slot_map · has_wafer  (계보만)
 고아 상수      NODE_TABLE_COLUMNS · EDGE_TABLE_COLUMNS · PROPERTY_TABLE_COLUMNS 참조 0
 ```
 
+#### ✅ 문서 판정 넷 (총괄 11:2x) — 하나는 «안 함», 하나는 총괄이 직접, 둘은 서버 레인
+```
+① 아카이브 이동      ⛔ 안 합니다
+   근거   docs/README.md:57 이 이미 「🗄️ 믿지 말 것 둘」 배너로 두 문서를 이름 대어 세우고,
+          «검색으로 도착하는 자리라 여기 적는다»고 이유까지 적혀 있습니다
+   비용   옮기면 링크가 셋 이상 깨집니다 (README · CLAIM_REQUIREMENT_WORKLIST · LEDGER_TECHNICAL_SPEC:1158)
+   판정   아카이브의 목적은 「읽지 못하게」인데 배너가 이미 «문 앞에서» 돌려세웁니다.
+          문 앞의 경고를 지우고 방을 옮기는 것은 최소 수정이 아닙니다
+② 프로세스 문서      ✅ 총괄이 직접 고침 (아래)
+③ 스키마 불일치      ⏭ 서버 레인 (실측 확인함 — 아래)
+④ 고아 상수 셋       ⏭ 서버 레인 (심볼 훑기 각 1건 = 자기 선언뿐)
+```
+## ② 「기록」과 「지금 주장」을 «갈라서» 고쳤습니다
+```
+DOC_OWNERSHIP   '> - ' 로그줄 «200» · 표 행 «80»
+   로그줄   그때는 참이었던 «기록». 손대지 않았습니다 (「투영은 지워도 되고 기록은 안 된다」)
+   표 행    독자를 «주소로 보내는» 칸. 셋이 없는 파일을 가리켜 고쳤습니다
+            354 ledger_composition.py · 355 ledger_identity/trends/selection/composition · 411 enrichment_actions.py
+SCENARIO_CONSOLE_BRIEF §2   「지시서가 요구한 것 | 지금」 표의 ✅ 세 칸이 «전부 거짓»
+   실측    /siblings «404» · /kinds «404» · ledger_walk_contrast.py «파일 없음»
+   고침    질문은 남기고 주소를 정정. §3 「착지하지 않은 것」과 달리 이 절은 사람을 «보냅니다»
+```
+## ③ 실측 — 라이브 인덱스 vs schema.py 가 «내는» 문장
+```
+라이브   uq_ledger_atom … md5(subject_keys::text) · md5(COALESCE(object_payload…)) · md5(source_raw_ref)
+코드     DEDUPE_COLUMNS = (… subject_keys, coalesce(object_payload…), source_raw_ref)   ← md5 «없음»
+         그리고 CREATE UNIQUE INDEX «IF NOT EXISTS»
+갈래 둘  라이브 -> 이름이 있으니 조용히 건너뜀 (코드가 라이브를 묘사 못 함)
+         새 환경 -> 뚱뚱한 옛 정의 생성. 1,123.6MB -> 159.7MB 로 줄인 이득이 «신규에서 안 남»
+근거     IF NOT EXISTS 는 «이름»이 비었냐고 묻습니다. b27ae61d 가 인덱스 일곱에서 기록한 그 함정의 여덟째
+⛔ 충돌 가드는 만들지 않게 했습니다 — 확률이 무시할 수준이고 관문 ③에 걸립니다.
+   대신 «사실»(유일성이 다이제스트 기준 · ON CONFLICT 무표적)을 주석에 남기게 했습니다
+```
+
 ### ✅ 마감 (02:2x) — **404 «11 -> 2» · 문서 «114 -> 92» · 원장 변경 «0»**
 ```
 남은 404 «둘»   트렌드 좌석 4·6 — «소유자 판정 대기»뿐입니다
