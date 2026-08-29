@@ -487,6 +487,98 @@ def test_reach_obeys_the_two_walk_rules_the_fetch_obeys():
     assert "sib" not in leaky, "the predicate rule does not depend on the classes"
 
 
+class RecordingLookup:
+    """Wraps the contract double and keeps every `(entities, follow)` it was asked for.
+
+    The narrowing this test exists for happens BEFORE the fetch, so asserting on the
+    returned graph alone cannot tell it apart from filtering afterwards -- both produce
+    the same nodes. What separates them is the argument the lookup was called with.
+    """
+
+    def __init__(self, atoms):
+        self.inner = ledger_subgraph.InMemoryEvidenceLookup(atoms)
+        self.calls = []
+
+    def claims_for_entities(self, entities, direction, limit, *, follow=None):
+        self.calls.append(({item[0] for item in entities},
+                           None if follow is None else tuple(follow)))
+        return self.inner.claims_for_entities(entities, direction, limit, follow=follow)
+
+
+def _kind_atom(number, subject_type, subject, predicate, target_type, target):
+    return ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=number)), subject_type=subject_type,
+        subject_keys={subject_type: subject}, predicate=predicate,
+        object_kind="entity_ref",
+        object_payload={"type": target_type, "keys": {target_type: target},
+                        "qualifiers": {}},
+        occurred_at=NOW, source_who="fixture", source_translator_ver="v1",
+        source_raw_ref=f"row:{number}", supersedes=None, source_event_id=EVENT,
+        source_event_state="source_record")
+
+
+NAME_FIXTURE = [
+    _kind_atom(201, "wafer", "W1", "measures", "quantity", "Q"),
+    _kind_atom(202, "wafer", "W2", "measures", "quantity", "Q"),
+    _kind_atom(203, "quantity", "Q", "leads_to", "quantity", "Q2"),
+]
+
+
+def test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after():
+    """🔴 THE REFUSAL HAS TO HAPPEN BEFORE THE QUERY, or the budget is already spent.
+
+    `_expand_atom` refuses a static-to-dynamic step, and for a while that was the only
+    place it happened -- so the atoms were read out of the ledger, charged to
+    `claims_scanned`, and then dropped. MEASURED 2026-08-29 on the live ledger: one defect
+    seeded with `of_kind` followed scanned 6,000 claims (the ceiling) to return 13 nodes
+    and stopped at hop 2; without it, 371 claims and 315 nodes at hop 4. `defect_kind`
+    carries 103,841 atoms against ONE distinct object.
+
+    A test on the returned graph cannot see this -- filtering after the fetch returns the
+    same nodes. So this asserts the ARGUMENT: the frontier splits by entity class and the
+    static half is asked for the static-to-static predicates only.
+
+    🔴 WAKE IT: drop the class split in `subgraph()` and the static frontier is fetched
+    with the full follow, so the recorded call carries `measures` and W2 arrives.
+    """
+    lookup = RecordingLookup(NAME_FIXTURE)
+    body = ledger_subgraph.subgraph(
+        ledger_explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
+        hops=4, direction="both", follow=["measures", "leads_to"],
+        static_types={"quantity"}, static_follow={"leads_to"})
+
+    labels = {node["label"] for node in body["nodes"]}
+    assert "Q" in labels, "the name itself is collected"
+    assert "Q2" in labels, "static -> static still walks, or the causal chain dies"
+    assert "W2" not in labels, "the walk left a name and came back into the world"
+
+    narrowed = [follow for _, follow in lookup.calls if follow == ("leads_to",)]
+    assert narrowed, (
+        "the static frontier was never fetched with the narrowed follow - the refusal is "
+        "happening after the query, where the budget has already been spent")
+    assert not any(follow is None for _, follow in lookup.calls), (
+        "a falsy follow reads as EVERY predicate in the lookup contract")
+
+
+def test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empty_list():
+    """🔴 AN EMPTY LIST IS NOT `None`. `claims_for_entities` reads a falsy `follow` as
+    「every predicate」, so narrowing to an empty intersection and passing it would fetch
+    MORE than narrowing to one name. The group has to be skipped instead.
+
+    Here the caller follows `measures` only, so a static node's allowance is empty.
+    """
+    lookup = RecordingLookup(NAME_FIXTURE)
+    body = ledger_subgraph.subgraph(
+        ledger_explorer.entity_id("wafer", {"wafer": "W1"}), lookup,
+        hops=4, direction="both", follow=["measures"],
+        static_types={"quantity"}, static_follow={"leads_to"})
+
+    labels = {node["label"] for node in body["nodes"]}
+    assert "Q" in labels and "W2" not in labels and "Q2" not in labels
+    assert all(follow == ("measures",) for _, follow in lookup.calls), (
+        "the static group was fetched anyway, with an empty or absent follow")
+
+
 def test_a_reach_of_zero_reports_whether_the_side_could_have_reached_that_kind():
     """🔴 ZERO SAYS NOTHING ABOUT ITSELF, so each side is a pair: reached over reachable.
 

@@ -163,11 +163,16 @@ def _followable_predicates():
     Read, never restated -- adding a predicate to the declaration makes it followable
     without editing this file, and that is the only way to add one.
 
-    🔴 AND A REFERENCE EDGE IS DECLARED TOO. `entities.<type>.references[].edge`
-    (today: `in_container`, die -> wafer / die -> dtjob) has no atoms, so it is not in
-    `vocabulary` -- but it is the bridge a die crosses to reach its wafer, and refusing to
-    let a caller NAME it meant they could not narrow a walk without cutting that bridge.
-    `follow` stays one parameter; what widened is the list it is checked against.
+    🔴 THE BRIDGE CAME BACK AS A PREDICATE, so this list is the vocabulary and nothing
+    else. It used to widen over `entities.<type>.references[].edge`, because `in_container`
+    lived there with no atoms of its own and a caller who could not NAME it could not
+    narrow a walk without cutting a die off from its wafer.
+
+    MEASURED 2026-08-29: `in_container@1` is DECLARED in `vocabulary` now and emitted by two
+    mappings on the `bonded_from` source, and NO entity carries `references` at all. The
+    grammar for `references` still validates in `setup_bundle` and nothing reads it, so the
+    widening this docstring described has no subject left -- it would matter again only on
+    the day a reference edge is declared.
     """
     names = set()
     try:
