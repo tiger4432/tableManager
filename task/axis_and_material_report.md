@@ -1,3 +1,67 @@
+# ✅ [클라] `backbone_hops` — **재기동됐고 게이트 셋 다 초록입니다** (재측정)
+
+앞 보고의 「재기동 대기」가 풀렸습니다. 같은 세 줄을 다시 쟀고, **예고한 값 그대로** 뒤집혔습니다.
+
+## 게이트 A — 이름이 «살았습니다». 그리고 옛 이름이 «죽었습니다»
+```
+                        재기동 «전»        재기동 «후»
+backbone_hops=abc          200 (무시)   ->   «422»  (파싱됨)
+continues_hops=abc         422 (파싱)   ->   «200»  (무시)
+=> 두 줄이 «서로 자리를 바꿨습니다». 별칭이 없다는 것도 이걸로 확인됩니다
+```
+
+## 게이트 B — **157**. 총괄 실측과 «같은 수»입니다
+```
+씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing
+follow = slot_map · transfer · has_wafer · bonded_from · derived_from · inspected · processed_with
+   예산 없음            nodes 40   · edges 39  · trunc [depth]
+   backbone_hops=4      nodes «157» · edges 156 · trunc «없음»      ✅ 지시서의 157
+   continues_hops=4     nodes 40   · edges 39  · trunc [depth]      <- 이제 «옛 이름»이 버려집니다
+🔴 재기동 전에는 이 표의 아래 두 줄이 «정확히 반대»였습니다 (continues 가 157, backbone 이 40).
+   상태 코드만이 아니라 «수»가 뒤집힌 것이 「배선이 산다」의 증거입니다
+```
+
+## 게이트 C — 무회귀. 좌석의 «자기 질의»와 «화면» 둘 다
+```
+칩 확대 좌석 질의 (die · hops=8 · follow=observed,inspected,bonded_from · outgoing)
+   backbone_hops=1   nodes 2 · edges 1 · trunc 없음
+   예산 없음          nodes 2 · edges 1 · trunc 없음      -> 같음 (이 씨앗은 예산을 안 씁니다)
+화면 (번들 rnd_board-C_8sa2YR.js · 캐시버스터 새 로드)
+   요청 «8» · `/trends` «0» · 4xx·5xx «0»
+   본딩 맵      「마킹 0 · 128칸 · 발견 121 · 검사 128」       개명 전과 «같음»
+   제어 막대    「재려면 마킹이 필요합니다 — marking:1 이 비어 있습니다 …」
+   메인 트렌드  「marking:1 이 비었습니다 — 후보를 고르면 그립니다」
+```
+
+## 🔴 그리고 이번엔 «라이브 :8080» 에서 쟀습니다 — 격리 오리진이 아니라
+`4001fe62` 가 8080 에 퍼블리시됐습니다. 그래서 「소스에 참, 페이지에 거짓」이 다시 날 자리가 없습니다.
+```
+페이지가 부른 번들   /assets/rnd_board-C_8sa2YR.js      <- 제 커밋의 것
+요청 «8» · `/trends` «0» · 4xx·5xx «0»
+Y 수식어 알약 «15» · 집계 알약 «7» (median · mean · sum · min · max · count · distinct)
+문장         「재려면 마킹이 필요합니다 — marking:1 이 비어 있습니다 …」
+본딩 맵      「마킹 0 · 128칸 · 발견 121 · 검사 128」
+```
+
+## 📌 앞 라운드의 판단이 «맞았는지»
+```
+저는 「재기동 전에 새 이름으로 가 두는 쪽이 재기동 순간에 맞다」고 적고 착지시켰습니다.
+결과: 재기동 뒤 화면이 «한 번도 안 깨졌고» 수가 하나도 안 움직였습니다.
+근거였던 「좌석 씨앗은 예산이 안 물린다」도 재기동 «후»에 다시 참입니다 (게이트 C 두 줄).
+⚠️ 그래도 이건 «이 데이터에서» 참인 논거입니다. 좌석이 더 깊이 걷게 되는 날엔
+   개명과 재기동이 같은 순간이어야 하고, 그 조건은 `api.js` 주석에 그대로 있습니다.
+```
+
+## 남은 것
+```
+빌드 게이트 둘 — 여전히 남의 레인이고 그대로입니다 (판정 대기)
+   check:contracts INV-F9-7  api.js:1046 'grid_not_declared'  (de12b9f7)
+   check:harnesses           load_shows_loaded_map_harness 앵커 · map_editor.js (a5f6878e)
+①-b (좌석 3 을 걷기로) — 총괄 판정 대기
+```
+
+---
+
 # 🟡 [클라] `backbone_hops` 개명 — **착지했습니다. 게이트 A 는 «재기동 대기»입니다**
 
 ## 서버는 «코드로» 받았고, «도는 프로세스»는 아직입니다
