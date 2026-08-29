@@ -1,3 +1,95 @@
+# ✅ [클라] `/trends` 404 닫았습니다 — **ⓐ 를 골랐고, 그런데 «제 실패는 다른 곳»이었습니다**
+
+## 🔴 먼저 정정합니다 — 총괄이 보신 404 는 **①-a 가 안 들어간 번들**입니다
+```
+총괄이 잰 번들   rnd_board-B9fCllS0.js   (커밋된 dist 와 같음 — 맞습니다)
+그 번들 안       「재려면 마킹이 필요합니다」 «0» · 「axis:agg:」 «0» · 집계 알약 «0»
+=> ①-a 의 코드가 «한 줄도 없습니다». `B9fCllS0` 는 `397bc3e5`(라운드 ①)에서 만든 것이고,
+   제 커밋 `0308e6b9` 은 «src 만» 바꿨습니다
+확인   git log --name-only 로 제 클라 커밋 «전부»를 보면 라운드마다 dist 번들이 «같이» 갔는데
+       0308e6b9 «하나만» 안 갔습니다. 제가 빠뜨린 것이 맞습니다
+```
+🔴 **그래서 제 「404 0」은 «소스»에 대해 참이고 «페이지»에 대해 거짓이었습니다.** 격리 오리진을
+`client2/`(소스)로 띄워 놓고 「화면이 무엇을 부르나」를 쟀는데, **라이브 페이지가 실제로 부르는 것은
+`dist/assets/*.js`** 입니다. 「빌드했다고 로드된 건 아니다」의 그 자리이고, 제 메모에 있는데 걸었습니다.
+이번엔 오리진을 **`client2/dist/` 로 옮겨서** 다시 쟀습니다 — 아래 목록은 «번들이 부른 것»입니다.
+
+## ⓐ 를 골랐습니다 — 이유
+```
+ⓑ 는 좌석에 `collect` 한 줄인데, 그 값이 walk 이어야 하고 그건 ①-b 입니다 -> 이 라운드가 ①-b 를 삼킵니다
+ⓐ 는 「선언 안 한 것을 부품이 지어내지 않는다」 그 자체이고, 두 줄입니다
+그리고 총괄 지적대로 «기본값은 아무도 안 쓴 선언»입니다 -- 좌석에서 지워도 부품이 들고 있으면
+그대로 돌고, 「선언에서 사라졌나」로 재는 게이트는 그때 초록입니다
+```
+```
+main_trend_panel.js:70   options.collect || 'trend_y'   ->   options.collect || null
+load()                   collect 도 load 도 없으면 «안 걷고» loadState='undeclared'
+render()                 「이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다」
+                         🔴 «거절 아님»으로 그립니다. 서버는 아무 말도 안 했습니다
+```
+
+## 게이트 ① — 캐시버스터 붙인 새 로드의 «요청 URL 전부» (번들 `rnd_board-CmszXbSH.js`)
+```
+1  /api/ledger/declaration
+2  /api/ledger/declaration
+3  /api/ledger/subgraph?id=…WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&node_limit=1000&direction=outgoing
+4  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+5  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+6  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+7  /tables/wafer_map_metadata/data?limit=1&filters={"map_id":{…"filter":"SYN-CX-BW-001"}}
+8  /tables/wafer_map_metadata/data?limit=1&filters={"map_id":{…"filter":"SYN-CX-BW-001"}}
+`/trends` «0»  ·  합계 8  ·  페이지가 부른 스크립트 = /assets/rnd_board-CmszXbSH.js «하나»
+```
+
+## 게이트 ② — 메인 트렌드가 «문장»을 말합니다
+```
+빈 차트가 아니라   「marking:1 이 비었습니다 — 후보를 고르면 그립니다」
+                  (좌석 3 은 follow 를 선언해서 `bound.load` 를 받습니다 — 그래서 'undeclared' 가
+                   아니라 'awaiting' 이 맞는 문장입니다. 둘은 다른 부재입니다)
+'undeclared' 문장은 «선언도 load 도 없는» 인스턴스에서 납니다 — 하니스 E2·E3 가 그걸 재고,
+변이 M20 이 기본값을 되살리면 «두 단언이 같이» 빨개집니다
+```
+
+## 게이트 ③ — 하니스 일곱
+```
+rnd_board 170/0 · control_trend «59/0» · walk_box 48/0 · walk 32/0
+composition 40/0 · intersection 24/0 · reach 63/0     변이 20/20 잡힘 · 새어 나감 0
+새로 재는 것   E2 「선언 안 한 좌석은 걷지 «않는다»」 (fetch 호출 «0» 을 셉니다)
+              E3 「그리고 그 사실을 말한다 — «거절»로 그리지 않는다」
+              M20 기본값을 되살리는 변이
+🔴 픽스처 셋에 `collect: 'trend_y'` 를 «적었습니다». 전에는 부품 기본값이 대신 골라 줘서
+   픽스처가 «무엇을 묻는지 안 말하고도» 돌았습니다 — 그게 이 결함의 축소판입니다
+```
+
+## ⚠️ 빌드 게이트 둘이 «빨간 채로» 있습니다 — 둘 다 이 라운드 것이 아닙니다
+`npm run build` 의 prebuild 가 여기서 섭니다. 통제를 걸었습니다 — 두 파일 다 «작업 트리에서 깨끗»하고
+(제 수정은 `main_trend_panel.js`·`rnd_board_control_trend_harness.mjs` «둘뿐»), 둘 다 HEAD 의 상태입니다.
+```
+① check:contracts  config_resolve_report INV-F9-7
+   client2/src/rnd_board/api.js:1046   reason: grid ? null : 'grid_not_declared'
+   -> 클라가 «서버의 사유 낱말»을 적고 있습니다. 들어온 커밋 `de12b9f7`(라운드 Z 2부)
+② check:harnesses  load_shows_loaded_map_harness.mjs
+   「mutation anchor is GONE: restore-runs-unconditionally-again」
+   -> `map_editor.js` 자리이고 마지막으로 만진 커밋은 `a5f6878e` (맵 레인)
+```
+그래서 **vite build 를 직접 돌려 번들만 만들었습니다.** 게이트를 «끈 게 아니라» 지나갔고,
+두 빨강은 손대지 않았습니다 — 검사기 자신의 문구가 「고치거나 총괄에게 가져가라」이고,
+둘 다 남의 레인 계약입니다. 판정 주시면 그 레인에 넘기겠습니다.
+
+## 커밋에 담은 것 — 그리고 «안 담은 것»
+```
+담음    src/rnd_board/main_trend_panel.js · tests/rnd_board_control_trend_harness.mjs
+        dist/rnd-board.html · dist/assets/rnd_board-CmszXbSH.js · dist/assets/rnd_board-1pAHd0Gw.css
+        (옛 번들 둘 삭제)
+안 담음  dist/map_editor.html · dist/map_editor2.html
+        -> 빌드가 건드렸지만 `--ignore-all-space` 로 재면 «실질 변경 0 줄»입니다. 줄바꿈뿐이라
+           되돌렸습니다. 남의 페이지를 제 커밋으로 옮기지 않습니다
+확인    dist/assets 에서 바뀐 것은 `rnd_board-*` «둘»뿐 — 다른 레인의 번들은 하나도 안 움직였습니다
+        (즉 이 트리에서 «안 빌드된 소스»는 제 ①-a 하나였습니다)
+```
+
+---
+
 # 🛑 [클라] `continues_hops` → `backbone_hops` — **멈추고 올립니다. 서버에 그 이름이 «없습니다»**
 
 지시대로 ①-a 를 먼저 닫고(`0308e6b9`) 착수했는데, 걸어 보니 **이름이 아직 안 따라왔습니다.**

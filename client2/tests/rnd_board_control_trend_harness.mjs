@@ -317,6 +317,10 @@ async function suite(mods) {
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings, reads: 'marking:0', writes: 'marking:0',
+      // 🔴 `collect` 을 «적습니다» (총괄 검수 14:3x). 전에는 부품의 기본값이 이걸 대신
+      //    골라 줘서 픽스처가 «무엇을 묻는지 안 말하고도» 돌았습니다 -- 그게 바로 그 기본값이
+      //    화면에서 한 일입니다. 시험도 선언을 해야 «선언대로 도는지»를 잰다고 말할 수 있습니다.
+      collect: 'trend_y',
       apiBase: '', fetchImpl: routedFetch(TRENDS),
       // 화면이 실제로 선언하는 것과 같은 모양 -- 「접는 단위」 줄이 이 선언에서 나옵니다.
       grain: { subject_type: 'WaferLeg', identity_fields: ['wafer'] },
@@ -363,6 +367,7 @@ async function suite(mods) {
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings, reads: 'marking:0', writes: 'marking:0',
+      collect: 'trend_y',
       apiBase: '', fetchImpl: routedFetch(FLAT_TRENDS),
     });
     t.mount();
@@ -388,6 +393,7 @@ async function suite(mods) {
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings: new MarkingStore(), reads: null, writes: null,
+      collect: 'trend_y',
       apiBase: '', fetchImpl: refusingFetch(),
     });
     t.mount();
@@ -395,6 +401,24 @@ async function suite(mods) {
     ok('E1 a refused trend renders the servers own sentence',
       byClass(host, 'rb-trend-note--refused').length === 1
       && host.textContent.includes('거절'), host.textContent.slice(0, 120));
+
+    // 🔴 「선언이 없다」는 «거절이 아닙니다» -- 서버는 아무 말도 안 했습니다.
+    //    기본값이 살아 있을 때는 이 부품이 «물어보지도 않고» 죽은 라우트를 불렀고,
+    //    그 404 를 「서버가 거절했다」고 그렸습니다 (총괄 라이브 실측 14:3x).
+    const bare = makeDoc();
+    const bareHost = bare.createElement('div');
+    let asked = 0;
+    const t2 = new trend.MainTrendPanel(bareHost, {
+      doc: bare, markings: new MarkingStore(), reads: null, writes: null,
+      apiBase: '', fetchImpl: async () => { asked += 1; return { ok: true, status: 200, json: async () => TRENDS }; },
+    });
+    t2.mount();
+    await flush(); await flush();
+    eq('E2 a seat that declared no collect is not walked for one', asked, 0);
+    ok('E3 ... and the panel SAYS that, rather than drawing a refusal',
+      bareHost.textContent.includes('선언하지 않았습니다')
+      && byClass(bareHost, 'rb-trend-note--refused').length === 0,
+      bareHost.textContent.slice(0, 140));
   }
 
   // ── F. THE AXIS IS A PAIR, AND CHOOSING ONE CHANGES THE CHART ────────────
@@ -574,6 +598,13 @@ const MUTANTS = [
     mutate: { 'main_trend_panel.js': (s) => s.replace(
       "    yTop.textContent = maxRate > 0 ? formatValue(m, top) : '—';",
       '    yTop.textContent = formatValue(m, top);') } },
+  // 🔴 총괄이 라이브에서 잡은 결함입니다 (14:3x): 좌석이 이름을 똄 뒤에도 «부품의 기본값»이
+  //    죽은 라우트를 되살립니다. 선언에서 사라졌는지를 재는 게이트는 그때 «초록»입니다.
+  { id: 'M20', what: 'the trend invents a collect nobody declared, reviving the dead route',
+    catches: 'E2',
+    mutate: { 'main_trend_panel.js': (s) => s.replace(
+      '    this.collect = options.collect || null;',
+      "    this.collect = options.collect || 'trend_y';") } },
   { id: 'M8', what: 'the legend drops the denominator, leaving a rate nobody can check',
     catches: 'C5',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
