@@ -34,8 +34,8 @@ from ledger.implementations import trusted_implementations               # noqa:
 
 
 LOT_EVENT_PROBE = [
-    {"entity_type": "Lot@1", "columns": ["lot_id", "parent_lot", "child_lot"]},
-    {"entity_type": "Wafer@1", "columns": ["waferids"], "list_separator": ":"},
+    {"entity_type": "lot@1", "columns": ["lot_id", "parent_lot", "child_lot"]},
+    {"entity_type": "wafer@1", "columns": ["waferids"], "list_separator": ":"},
 ]
 
 FRAMES = {
@@ -87,12 +87,12 @@ def _retired_hardcoded_subjects(frame):
     for lot in lots:
         text = str(lot or "").strip()
         if text:
-            subjects.add(("Lot", canonical_keys({"lot": text})))
+            subjects.add(("lot", canonical_keys({"lot": text})))
     for value in frame["waferids"].tolist():
         for wafer in str(value or "").split(":"):
             text = wafer.strip()
             if text:
-                subjects.add(("Wafer", canonical_keys({"wafer": text})))
+                subjects.add(("wafer", canonical_keys({"wafer": text})))
     return subjects
 
 
@@ -128,9 +128,9 @@ def test_the_probe_is_a_superset_so_an_extra_column_cannot_move_atoms():
     baseline = _v2_registration_subjects(_plan_with_probe(LOT_EVENT_PROBE), frame)
 
     wider = _v2_registration_subjects(_plan_with_probe([
-        {"entity_type": "Lot@1",
+        {"entity_type": "lot@1",
          "columns": ["lot_id", "parent_lot", "child_lot", "txn_seq"]},
-        {"entity_type": "Wafer@1", "columns": ["waferids"], "list_separator": ":"},
+        {"entity_type": "wafer@1", "columns": ["waferids"], "list_separator": ":"},
     ]), frame)
     assert baseline < wider
 
@@ -140,21 +140,21 @@ def test_the_probe_is_a_superset_so_an_extra_column_cannot_move_atoms():
     incomplete = FRAMES["split_child_row_missing"]
     full = _v2_registration_subjects(_plan_with_probe(LOT_EVENT_PROBE), incomplete)
     narrower = _v2_registration_subjects(_plan_with_probe([
-        {"entity_type": "Lot@1", "columns": ["lot_id"]},
-        {"entity_type": "Wafer@1", "columns": ["waferids"], "list_separator": ":"},
+        {"entity_type": "lot@1", "columns": ["lot_id"]},
+        {"entity_type": "wafer@1", "columns": ["waferids"], "list_separator": ":"},
     ]), incomplete)
     assert narrower < full
-    assert ("Lot", canonical_keys({"lot": "CL-2601-007-A1"})) in full - narrower
+    assert ("lot", canonical_keys({"lot": "CL-2601-007-A1"})) in full - narrower
 
 
 def test_a_missing_separator_would_probe_the_unsplit_string():
     """Names the failure the `list_separator` declaration exists to prevent."""
     frame = FRAMES["track_in"]
     without = _v2_registration_subjects(_plan_with_probe([
-        {"entity_type": "Wafer@1", "columns": ["waferids"]},
+        {"entity_type": "wafer@1", "columns": ["waferids"]},
     ]), frame)
-    assert without == {("Wafer", canonical_keys({"wafer": "W31:W32:W33"}))}
-    assert ("Wafer", canonical_keys({"wafer": "W31"})) not in without
+    assert without == {("wafer", canonical_keys({"wafer": "W31:W32:W33"}))}
+    assert ("wafer", canonical_keys({"wafer": "W31"})) not in without
 
 
 def test_no_probe_answers_None_rather_than_an_empty_set():
@@ -165,14 +165,14 @@ def test_no_probe_answers_None_rather_than_an_empty_set():
 
 @pytest.mark.parametrize("probe,code", [
     ([{"entity_type": "Nope@1", "columns": ["lot_id"]}], "unknown_entity_type"),
-    ([{"entity_type": "Lot@1", "columns": ["no_such_column"]}], "unknown_column"),
-    ([{"entity_type": "Lot@1", "columns": []}], "invalid_type"),
-    ([{"entity_type": "Lot@1", "columns": ["lot_id"], "list_separator": ""}],
+    ([{"entity_type": "lot@1", "columns": ["no_such_column"]}], "unknown_column"),
+    ([{"entity_type": "lot@1", "columns": []}], "invalid_type"),
+    ([{"entity_type": "lot@1", "columns": ["lot_id"], "list_separator": ""}],
      "invalid_registration_probe"),
-    ([{"entity_type": "Lot@1", "columns": ["lot_id"]},
-      {"entity_type": "Lot@1", "columns": ["child_lot"]}],
+    ([{"entity_type": "lot@1", "columns": ["lot_id"]},
+      {"entity_type": "lot@1", "columns": ["child_lot"]}],
      "duplicate_registration_probe"),
-    ([{"entity_type": "Lot@1", "columns": ["lot_id"], "module": "os"}],
+    ([{"entity_type": "lot@1", "columns": ["lot_id"], "module": "os"}],
      "unsafe_declaration"),
 ])
 def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
@@ -185,7 +185,22 @@ def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
         validate_bundle(logical, catalog=setup.catalog)
 
 
-def test_the_shipped_config_still_loads_without_a_probe():
-    """The field is optional, so adding it did not invalidate the operator's root."""
+def test_the_config_still_loads_without_a_probe():
+    """The field is optional, so a root that OMITS it must still load.
+
+    🔴 THE CASE IS NOW BUILT BY REMOVAL. This asserted that the shipped root carried no
+    probe, which stopped being a statement about optionality the day the declaration
+    adopted one -- both the sample and the live file now declare a `lot@1` and a `wafer@1`
+    probe on `lot_event`. Pinning their absence measured the declaration's current
+    contents, not the field's optionality, so the claim is made the only way that stays
+    true: take the probe OUT and the root must still validate and compile.
+    """
     setup = load_setup()
-    assert setup.snapshot.source_plans["lot_event"].driver.registration_probe == ()
+    logical = setup.bundle.to_mapping()
+    logical["sources"]["lot_event"]["read"].pop("registration_probe", None)
+    assert validate_bundle_errors(logical, catalog=setup.catalog) == ()
+    bundle = require_ready_bundle(validate_bundle(logical, catalog=setup.catalog))
+    snapshot = compile_setup_snapshot(
+        bundle, trusted_implementations(),
+        tuple(setup.snapshot.verified_joins.values()), catalog=setup.catalog)
+    assert snapshot.source_plans["lot_event"].driver.registration_probe == ()
