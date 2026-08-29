@@ -883,7 +883,15 @@ reach 값       5가지                 같은 5가지
 
 ## 🗂 별건으로 적어 둠
 ```
-test_ledger_trace_contract  빨강 1 — 진단 완료 (2026-08-29 21:1x). 제 변경과 «무관»
+✅ test_ledger_trace_contract  빨강 1 — «은퇴로 닫힘» 70c45eb0 (소유자 판정 (a), 21:2x)
+   판정   이름을 은퇴. `confirmed_derivations` 를 «비운다». 문법(config·source_contract)은 «그대로»
+   근거   두 config 의 소스 14개가 전부 `kind: null` -> transfer 소스가 «하나도 없다»
+         선언하는 도출은 둘이 합쳐 `positional_row` 하나뿐
+   되돌아오는 길  test_every_declared_derivation_is_explicitly_classified 가 반대 방향 가드다 —
+                transfer 소스를 선언하는 날 그 시험이 빨개져 «판정을 강제»한다
+   기계 보존   클래스 1 순위 시험 셋은 «픽스처 도출»로 바꿔 커버리지를 남겼다
+   (아래는 진단 기록)
+   증상   test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
    증상   test_the_confirmed_derivations_are_ranked_by_the_resolver_not_just_listed
    실측   두 config(샘플·라이브)의 소스 «14개»가 선언하는 도출 = «positional_row» 하나뿐
          `job_run_to_confirmed_container` 를 찍을 수 있는 소스가 «없다»
@@ -896,7 +904,16 @@ test_ledger_trace_contract  빨강 1 — 진단 완료 (2026-08-29 21:1x). 제 �
       (a) 이름을 은퇴  — 레거시 DT 확인 경로를 안 살린다는 상설과 맞음. 코드 2 + 시험 3 파일
       (b) 선언을 되살림 — DT transfer 확인이 아직 필요할 때만
    ⚠️ server/ledger/* 는 구현자 소관이라 «제가 안 건드렸습니다»
-문서 정비                    doc-keeper 트리거 — 마지막 정비 이후 커밋 «24»
+🔴 ledger 시험군 빨강 «18» — 부류 하나 (2026-08-29 21:3x 실측, 제 변경과 «무관»)
+   실측   pytest -k ledger  ->  432 passed · «18 failed» · 95 skipped
+   부류   전부 «엔티티 id 대소문자». 픽스처가 `Lot@1`·`Wafer@1`, 선언은 `lot@1`·`wafer@1`
+         LedgerSetupValidationError: entity type 'Lot@1' is not declared
+   분포   registration_probe 9 · setup_boundary 4 · syn_complex_composite 1
+         transfer_unit 1 (dt_log 소스 없음) · source_preparation 1 · skeleton 1 · admin_setup 1
+   원인   08-28 선언 재작성에서 엔티티 id 가 소문자로 바뀐 뒤 «픽스처가 안 따라왔다»
+   ⚠️ 보드의 「스위트 복구됨」(08-28 14:5x)은 «이 시험군에 대해서는 더 이상 참이 아닙니다»
+   => 판정 필요: 픽스처 일괄 교체(기계적)인가, 아니면 그 시험들이 «죽을» 것인가
+문서 정비                    doc-keeper 트리거 — 마지막 정비 이후 커밋 «29»
 ```
 
 ## 곁가지 — 나눠먹기는 «종류 개수»로 불공평해집니다 (나누기를 뺐으므로 해소)
