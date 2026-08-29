@@ -188,7 +188,19 @@ DEFAULT_RESOLVER_CONFIG = {
     # class the tiebreak would be `occurred_at` desc then id — a wafer carrying both would
     # resolve by ordering, arbitrarily, and wrong about half the time. Class 1 makes the
     # confirmed container win BY RANK, deterministically.
-    "confirmed_derivations": ["job_run_to_confirmed_container"],
+    # 🔴 EMPTIED 2026-08-29, ontology owner's ruling. `job_run_to_confirmed_container` is
+    # still GRAMMAR -- a transfer source that declares a container relation may stamp it --
+    # but no config on this box declares one: all fourteen sources in both the sample and
+    # the live file carry `kind: null`, so nothing can produce the name and the resolver
+    # was ranking by a rung nothing could stand on. Claiming a class for an unproducible
+    # derivation is the same lie in the other direction.
+    #
+    # WHAT BRINGS IT BACK: `test_every_declared_derivation_is_explicitly_classified`
+    # refuses any derivation a config CAN stamp that no list here classifies. Declare a
+    # transfer source with a confirming relation and that test goes red until this name is
+    # put back -- the ruling is forced, not forgotten. The ranking machinery it used stays
+    # covered by the class-1 tests, which now build their own fixture derivation.
+    "confirmed_derivations": [],
     # class 3 — inference. §3 puts confidence INSIDE the object payload, so the
     # flag is read from there and never from the envelope.
     "inference_sources": [],

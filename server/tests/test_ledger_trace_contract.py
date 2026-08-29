@@ -232,9 +232,16 @@ def _dt_log_claim(derivation, occurred_at, atom_id, to_keys, to_type):
 
 
 def test_a_confirmed_container_is_class_1_and_an_unconfirmed_job_is_class_2():
-    """🔴 CLASS 1'S FIRST USE, ranked rather than merely declared (ruling 2026-08-15)."""
-    cfg = lt.DEFAULT_RESOLVER_CONFIG
-    confirmed = _dt_log_claim("job_run_to_confirmed_container",
+    """🔴 CLASS 1'S RANKING MACHINERY, on a fixture derivation.
+
+    Ranked rather than merely declared (ruling 2026-08-15). The subject was
+    `job_run_to_confirmed_container` until it retired on 2026-08-29 -- nothing on this box
+    declares a transfer source, so the resolver stopped ranking a name nothing can stamp.
+    What must not retire with it is the machinery, so these tests now carry their own
+    class-1 derivation and stay honest about what they measure.
+    """
+    cfg = FIXTURE_RESOLVER
+    confirmed = _dt_log_claim(FIXTURE_CONFIRMED,
                               datetime(2026, 5, 11, tzinfo=timezone.utc),
                               "00000000-0000-7000-8000-00000000000a",
                               {"dt_lot": "DT_LOT", "dt_slot": "1"}, "dt_slot")
@@ -257,8 +264,8 @@ def test_the_confirmed_container_WINS_by_rank_and_not_by_timestamp():
     unconfirmed job claim is NEWER and its id sorts FIRST. It must still lose, because
     §6 says 「2·3층은 계급을 넘지 못한다」 and class 1 is above both.
     """
-    cfg = lt.DEFAULT_RESOLVER_CONFIG
-    confirmed = _dt_log_claim("job_run_to_confirmed_container",
+    cfg = FIXTURE_RESOLVER
+    confirmed = _dt_log_claim(FIXTURE_CONFIRMED,
                               datetime(2026, 5, 11, tzinfo=timezone.utc),
                               "00000000-0000-7000-8000-0000000000ff",
                               {"dt_lot": "DT_LOT", "dt_slot": "1"}, "dt_slot")
@@ -284,14 +291,13 @@ def test_what_the_hop_basis_reports_for_a_class_1_claim():
     decision, not a side effect of a classification ruling. Pinned here so that if anyone
     later widens it, they do it deliberately and this test is the conversation.
     """
-    cfg = lt.DEFAULT_RESOLVER_CONFIG
-    confirmed = _dt_log_claim("job_run_to_confirmed_container",
+    cfg = FIXTURE_RESOLVER
+    confirmed = _dt_log_claim(FIXTURE_CONFIRMED,
                               datetime(2026, 5, 11, tzinfo=timezone.utc),
                               "00000000-0000-7000-8000-00000000000a",
                               {"dt_lot": "DT_LOT", "dt_slot": "1"}, "dt_slot")
     basis = lt.hop_basis(confirmed, cfg)
-    assert basis == {"kind": lt.BASIS_MEASURED,
-                     "name": "job_run_to_confirmed_container"}
+    assert basis == {"kind": lt.BASIS_MEASURED, "name": FIXTURE_CONFIRMED}
     assert lt.BASIS_KINDS == (lt.BASIS_CONVENTION, lt.BASIS_MEASURED), (
         "the basis enum widened - if that was deliberate, this test is where the class-1 "
         "distinction should now be asserted instead")
@@ -338,7 +344,20 @@ UTTERED_DERIVATIONS = {
 #: compete with observations as an equal. Held here beside the other two so the complete
 #: enumeration stays in one place - the resolver owns the LIST it ranks by
 #: (`confirmed_derivations`), this file owns the CENSUS.
-CONFIRMED_DERIVATIONS = {"job_run_to_confirmed_container"}
+#: 🔴 EMPTY SINCE 2026-08-29 (owner's ruling). Nothing on this box declares a transfer
+#: source, so no config can stamp `job_run_to_confirmed_container` and the resolver no
+#: longer ranks it. The census is the resolver's mirror, so it empties with it; the
+#: grammar that could declare the name again is untouched, and the classification test
+#: below is what will demand a ruling on the day something declares it.
+CONFIRMED_DERIVATIONS = set()
+
+#: A derivation name owned by this file alone. The class-1 tests below assert the RANKING
+#: MACHINERY -- that class 1 beats class 2 by rung and not by timestamp -- and that must
+#: stay covered whether or not any config currently declares a class-1 derivation. Using a
+#: real name here is what tied those tests to a name that has now retired.
+FIXTURE_CONFIRMED = "fixture_confirmed_container"
+FIXTURE_RESOLVER = dict(lt.DEFAULT_RESOLVER_CONFIG,
+                        confirmed_derivations=[FIXTURE_CONFIRMED])
 
 #: 🔴 DERIVATIONS THAT ARRIVED WITHOUT A CLASSIFICATION, AND ARE AWAITING A RULING.
 #:
