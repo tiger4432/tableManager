@@ -978,27 +978,18 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         path = f"bundle.vocabulary.{predicate_id}"
         _versioned_id(predicate_id, path, problems)
         item = section[predicate_id]
-        #: `continues` says the walk STAYS ON THE SAME MATERIAL across this predicate, so a
-        #: step over it spends the material budget rather than the hop budget.  Owner ruling
-        #: 2026-08-29 (「술어지」), after the shape was measured against two derivations that
-        #: would have avoided the field: subject/object type identity scores 8/11 (it calls
-        #: `leads_to`, quantity to quantity, material) and "both ends are material entities"
-        #: scores 11/11 -- but only for TODAY's vocabulary, because nothing stops a future
-        #: die-to-die predicate that is not lineage.  A derivation that holds by coincidence
-        #: goes wrong on the day it becomes reachable, so the declaration says it.
-        #:
-        #: OPTIONAL, AND ABSENCE MEANS false.  Not written into configs that do not use it:
-        #: a field the walk reads as off when missing must stay missing, or the difference
-        #: between "declared off" and "never considered" is spent for nothing.
-        #: ⏳ `continues` IS RETIRED AND STILL TOLERATED HERE, on purpose and briefly. The
-        #: entity class replaced it on 2026-08-29 - measured, the class rule reaches
-        #: everything the flag reached and more - but the live declaration still carries the
-        #: six, and a validator that refuses them would stop the server reading the
-        #: declaration before anyone could remove them. So the gate opens first and the
-        #: declaration is cleaned second; this line goes with that cleanup.
+        #: 🗄️ `continues` LEFT THIS TUPLE ON 2026-08-30, WITH THE CLEANUP IT WAS WAITING FOR.
+        #: It said the walk stays on the same material across a predicate, so a step over it
+        #: spent the material budget rather than the hop budget. The entity `class` replaced
+        #: it on 2026-08-29 -- measured, the class rule reaches everything the flag reached
+        #: and more -- and the tolerance stayed only because the live declaration still
+        #: carried six of them and refusing those would have stopped the server reading the
+        #: declaration at all. `36802e42` removed the six from the live file and the shipped
+        #: sample; measured after, both carry ZERO and only `config/backup/**` snapshots
+        #: still have them. So the field is refused again, which is what keeps a retired
+        #: word from quietly reading as a live rule.
         if not problems.exact(
-                item, path, required=("status", "subjects", "object"),
-                optional=("continues",)):
+                item, path, required=("status", "subjects", "object")):
             continue
         if item.get("status") not in ("active", "retired"):
             problems.add("invalid_predicate", f"{path}.status", "must be active or retired")

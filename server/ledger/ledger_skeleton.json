@@ -135,6 +135,85 @@
                   "kind": "leaf",
                   "hint": "free"
                 }
+              },
+              {
+                "key": "references",
+                "required": false,
+                "label": "참조 엣지",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "참조",
+                  "of": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "edge",
+                        "required": true,
+                        "label": "엣지 이름",
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "from",
+                        "required": false,
+                        "label": "조건",
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "when",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "식별키",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "to",
+                        "required": true,
+                        "label": "가리키는 곳",
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "entity",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "entities"
+                              }
+                            },
+                            {
+                              "key": "keys",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "키",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
               }
             ]
           }

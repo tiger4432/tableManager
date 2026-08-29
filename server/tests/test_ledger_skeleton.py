@@ -44,6 +44,13 @@ ANCHORS = {
     ("_validate_vocabulary", "f'{path}.object'"): "vocabulary.*.object",
     ("_validate_vocabulary", "qpath"): "vocabulary.*.object.qualifiers",
     ("_validate_entities", "path"): "entities.*",
+    # A reference composes an edge no atom backs, so it is spelled `from`/`edge`/`to`
+    # rather than the mapping's `subject`/`predicate`/`target`. The validator has held
+    # these three sites since the grammar landed; the skeleton had no node for them, so
+    # the admin form could not offer a field the operator is allowed to write.
+    ("_validate_references", "here"): "entities.*.references.*",
+    ("_validate_references", "f'{here}.from'"): "entities.*.references.*.from",
+    ("_validate_references", "f'{here}.to'"): "entities.*.references.*.to",
     # The preparer and the mapper moved inside the driver on 2026-08-20 and the profile
     # moved beside them the same evening; each validator function kept its rules and lost
     # its section, so only the anchor moved.  On 2026-08-21 `driver` itself split into

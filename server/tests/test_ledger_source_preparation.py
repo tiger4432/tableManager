@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import ast
+import os
 import copy
 from types import MappingProxyType
 
@@ -711,15 +712,22 @@ def test_registry_is_sealed_and_common_preparation_pipeline_cannot_be_overridden
 
 
 def test_runtime_module_has_no_cursor_store_gate_atom_or_transaction_capability():
-    tree = ast.parse(open(
-        "server/ledger/source_preparation.py", encoding="utf-8").read())
+    # 🔴 ANCHORED TO THIS FILE, NOT TO THE WORKING DIRECTORY. The path used to be
+    # "server/ledger/source_preparation.py", which resolves only when pytest is invoked
+    # from the repository root; run from `server/` -- which is how the suite is run -- the
+    # module is not there and the test fails on a FileNotFoundError that says nothing
+    # about the capability it guards.
+    module_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "ledger", "source_preparation.py")
+    tree = ast.parse(open(module_path, encoding="utf-8").read())
     imports = {
         alias.name
         for node in ast.walk(tree)
         if isinstance(node, (ast.Import, ast.ImportFrom))
         for alias in node.names
     }
-    text = open("server/ledger/source_preparation.py", encoding="utf-8").read()
+    text = open(module_path, encoding="utf-8").read()
 
     assert not any(name.endswith((".store", ".gate")) for name in imports)
     assert "write_batch(" not in text

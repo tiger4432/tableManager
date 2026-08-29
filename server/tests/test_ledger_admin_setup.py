@@ -213,47 +213,20 @@ def test_the_candidate_config_carries_only_the_source_under_preview():
 # ---------------------------- the hand-built read queries (R-…-08-15-O)
 
 
-def test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier():
-    """🔴 NOT a rollup site — the opposite, and the distinction is the whole defect.
-
-    `_process_sql` and `_analysis_process_sql` fill ONE dict at TWO grains (component,
-    keyed by wafer; analysis_unit, keyed by (wafer, bonding_leg)). If both arms accepted
-    the same atom it would land in both buckets and be counted twice - no error, every
-    downstream number confidently wrong.
-
-    ⚠️ THE SEPARATOR MOVED, THE REQUIREMENT DID NOT. The two grains used to be two
-    subject TYPES; the bonding leg is now a value carried in the claim payload, so all
-    four arms legitimately pin the same `subject_type = 'Wafer'` and the split is made by
-    the payload qualifier instead: the component arm must EXCLUDE legged evidence, the
-    analysis arm must REQUIRE it. Asserting the retired type name here is what made this
-    test die on a rename; asserting the exclusion/requirement pair is what actually
-    guards against the double count.
-
-    Guarded on the SQL text because these are hand-built strings: a future edit that
-    "helpfully" widens either arm is exactly the regression to catch.
-    """
-    from ledger_api import ledger_selection
-
-    pairs = [("process", ledger_selection._process_sql(),
-              ledger_selection._analysis_process_sql()),
-             ("measurement", ledger_selection._measurement_sql(),
-              ledger_selection._analysis_measurement_sql())]
-
-    for grain, component_arm, unit_arm in pairs:
-        assert "NOT (object_payload ? 'bonding_leg')" in component_arm, (
-            f"the {grain} component arm no longer excludes legged evidence - the same "
-            f"atom now lands in both buckets and is counted twice")
-        assert "object_payload->>'bonding_leg' = u.bonding_leg" in unit_arm, (
-            f"the {grain} analysis arm no longer requires a bonding leg - it has stopped "
-            f"being the other half of the split and reads component evidence too")
-        for arm in (component_arm, unit_arm):
-            assert "subject_type = 'Wafer'" in arm
-            assert "ANY(%(stypes)s)" not in arm, (
-                f"a {grain} two-grain arm was widened to the rollup set, merging what "
-                f"these two queries exist to hold apart")
-
-
-# ------------------------------------------------ the gate's counters survive a preview
+# 🗄️ RETIRED 2026-08-30 — `test_the_two_grain_arms_are_held_apart_by_the_leg_qualifier`
+# died with its subject. It compared four hand-built SQL strings in
+# `ledger_api/ledger_selection.py`; that module retired with the selection routes, and
+# `_process_sql`/`_analysis_process_sql`/`_measurement_sql`/`_analysis_measurement_sql`
+# exist nowhere in the tree.
+#
+# 🔴 WHAT IT GUARDED, so that re-adding the split does not re-add the bug: one dict was
+# filled at TWO grains -- component keyed by wafer, analysis_unit keyed by
+# (wafer, bonding_leg) -- and both arms pinned the same `subject_type`, so the split was
+# made by a payload qualifier instead: the component arm had to EXCLUDE legged evidence
+# and the analysis arm had to REQUIRE it. If both accepted the same atom it landed in
+# both buckets and was counted twice, with no error and every downstream number
+# confidently wrong. Whoever brings two grains back into one dict needs this assertion
+# back with them.
 def test_a_preview_does_not_move_the_processs_refusal_counters():
     """🔴 Otherwise「거절이 쌓이나」answers yes because somebody LOOKED at a declaration.
 

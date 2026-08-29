@@ -69,13 +69,23 @@ def row(wafer="WF.010120", job="DT-EQP-01_20260511T0000_T01", **overrides):
 
 
 # ----------------------------------------------------------------- the declaration itself
-def test_the_live_declaration_validates_and_declares_this_source():
-    cfg = ledger_config.load()
-    assert "dt_log" in cfg["sources"]
-    assert ledger_config.source_kind(cfg, "dt_log") == ledger_config.SOURCE_KIND_TRANSFER
-    assert ledger_config.declared_derivations(cfg, "dt_log") == frozenset({
-        "first_sight", "job_run_to_job", "job_run_to_confirmed_container"})
-    assert ledger_config.declared_subject_types(cfg, "dt_log") == frozenset({"Wafer"})
+# 🗄️ RETIRED 2026-08-30 — `test_the_live_declaration_validates_and_declares_this_source`
+# asserted that the operator's declaration carries `dt_log` as a TRANSFER-kind source with
+# both transfer derivations. No declaration on this box does. MEASURED: the live file and
+# the shipped sample carry fourteen sources between them and every one has `kind: null`;
+# `config/sample/ontology/transfer_explorer/ledger_config.json` does declare a `dt_log`,
+# but with no kind, no container relation and no register types, so it is not a transfer
+# source either.
+#
+# 🔴 THIS IS THE MIRROR OF R-2026-08-29-T IN `docs/process/LEDGER_RULINGS.md`. The
+# resolver's class-1 list was emptied that night for exactly this measurement -- nothing
+# can stamp `job_run_to_confirmed_container` -- and this test asserted the opposite half
+# of the same fact.
+#
+# WHAT BRINGS IT BACK: declaring a transfer source turns
+# `test_every_declared_derivation_is_explicitly_classified` red until the derivation is
+# classified, and that is the moment to restore this assertion with it. The GRAMMAR is
+# still covered by the fixture-config tests below, which do not read the live file.
 
 
 def test_a_transfer_source_that_declares_no_container_cannot_emit_the_confirmed_rule():
