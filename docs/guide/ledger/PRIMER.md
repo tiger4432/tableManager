@@ -1,20 +1,28 @@
 # 입문 — 한 행의 여행: 모든 구성요소의 역할과 실물 예시
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 (개정 6 — 읽기측 §4·§5 와 `observed` 예시가 거짓이 되어 정정) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) ·
 > `server/ledger/setup_bundle.py`(검증기) · `server/ledger/gate.py`(게이트)
 
 > 실제 표의 행 하나가 원장 원자가 되기까지. 각 요소가 «언제 등장해 무엇을 하는지»를 실물로.
-> 이 문서의 모든 행·원자·이름은 2026-08-27 라이브 환경에서 «인용»한 것이다.
+> 쓰기측(§0~§3)의 행·원자는 2026-08-27 라이브 환경 인용이고, 읽기측(§4·§5)과 선언 수는
+> 2026-08-29 실측이다. ⚠️ **인용을 그대로 두면 인용도 낡는다** — 이 문서의 `observed` 예시는
+> 2026-08-27 에 정확했고 2026-08-28 에 게이트가 거절하는 원자가 됐다(§3 참조).
 
 ## 🏛️ 기둥 둘 — 이 문서 전체가 이 위에 선다
 
 ```
-① 원장은 «선언» 위에 서 있다   원자 645,203 «전부» 선언에서 났다
-                            선언 하나(ledger_config.json)가 entities 6 · vocabulary 10 을 정한다
+① 원장은 «선언» 위에 서 있다   선언 하나(ledger_config.json)가 entities 9 · vocabulary 13 을 정한다
+                            개정 6: 노드는 «선언된 엔터티»뿐, 엣지는 «선언된 술어»뿐이다
 ② 답은 «walk» 이 한다         읽기측은 마킹에서 걸어서 닿는 서브그래프를 가져온다
                             차트는 그 서브그래프를 «보는 창»이지 각자 질의하지 않는다
 ```
+
+🔴 **「원자가 «전부» 선언에서 났다」고 적지 마라 — 선언이 그것을 약속하지 않는다.** 선언은
+「번역기가 무엇을 만드는가」를 정할 뿐 「무엇이 써지는가」를 막지 않는다. 실측 2026-08-29:
+`store.write_batch` 를 직접 부르는 파일이 `server/scripts/` 에 «일곱» 있고, 그 문으로 들어온
+원자는 원장에 있으면서 **선언이 이름을 몰라 walk 의 주어가 되지 못한다.** 정당한 호출자는
+`server/ledger/runtime_v2.py` «하나»다.
 
 ## 0. 출발 — 실물 행 (`lot_slot_move` 뷰, 라이브)
 
@@ -88,13 +96,24 @@ wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
 
 {"predicate": "observed", "subject_type": "die",
  "subject_keys": {"x": 10.0, "y": 10.0, "mat_id": "SYN-AUG-BW-001-01", "mat_type": "Wafer"},
- "object_kind": "value",
- "object_payload": {"value": 7.691,
-                    "qualifiers": {"finding_kind": "void", "unit": "um", "gate": 7.0,
+ "object_kind": "entity_ref",
+ "object_payload": {"type": "defect", "keys": {"void_uid": "sat|SYN-AUG-BW-001-01|10|10|7|…"},
+                    "qualifiers": {"unit": "um", "gate": 7.0,
                                    "inchip_x": 7475.16, "inchip_y": 4857.94, "radius_y": 7.591,
                                    "run_uid": "sat|SYN-AUG-BW-001-01|10|10|7|…"}},
  "source_who": "void_observation"}
 ```
+
+🔴 **[2026-08-28] 종전 이 자리의 `observed` 예시는 `object_kind: "value"` 에 수식어
+`finding_kind: "void"` 를 달고 있었고, 그 원자는 «오늘 게이트가 거절한다».**
+`observed@1` 의 목적어는 이제 `entity_ref` → `defect@1` 이고, `finding_kind` 는 수식어 목록에
+없다(`unknown_payload_field`). 발견의 «종류»는 수식어가 아니라 **노드**다 — `of_kind@1` 이
+`defect@1` 에서 `defect_kind@1` 로 간다. 그 판의 요점은 이름 바꾸기가 아니라 **종점을 없애는
+것**이다: 발견이 노드면 거기서 종류·스캔·같은 스캔의 다른 발견으로 «걸어 나갈 수» 있고,
+값이면 거기서 끝이라 붙일 자리가 없다.
+
+📌 **선언된 술어 열셋의 목적어가 «전부» `entity_ref` 다** — `value` 목적어를 내는 술어는
+오늘 하나도 없다.
 
 문자열이던 행이 「CL-2601-007-A2 의 01번 자리가 …-A3 의 01번 자리로 갔다(split)」라는
 **검사받은 문장 하나**가 됐다.
@@ -106,51 +125,60 @@ wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
 ```
 마킹      부호 붙은 «노드 집합». 화면 상태가 아니라 walk 의 «시작점»이다
 walk     그 시작점에서 «걸어서 닿는 하위 그래프»를 가져온다
-부품      선언하는 것은 둘뿐 — { start = 읽을 마킹,  collect = 무엇을 걷나 }
+부품      선언하는 것은 둘뿐 — { start = 읽을 마킹,  follow = 어느 술어를 건너나 }
 체인      마킹1 --walk--> 서브그래프 --찍기--> 마킹2 --walk--> …  «계속»
 ```
 
-🔴 **차트는 서브그래프를 «보는 창»이다.** 맵과 트렌드는 «같은 collect»이고 시작점만 다르다 —
+🔴 **차트는 서브그래프를 «보는 창»이다.** 맵과 트렌드는 «같은 걷기»이고 시작점만 다르다 —
 맵은 다른 데이터가 아니라 «한 그룹으로 좁힌 같은 데이터»다.
 
 ### 무엇이 walk 을 좁히나
 
-| 손잡이 | 무엇을 정하나 | 실측 (씨앗 `SYN-BW-101-16`) |
+| 손잡이 | 무엇을 정하나 | 비고 |
 |---|---|---|
-| `follow` | 어느 술어를 건너나 | 없이 nodes 839(3,000 에서 잘림) → `inspected`+`observed` 로 **89** |
-| `collect` | 무엇을 모아 오나 | 개체 · 값 · 수량 … |
-| `node_limit` | 예산 | 넘으면 «잘림»으로 표시된다 — 잘림은 «부재»가 아니다 |
-| 선언 | 엣지가 아예 있느냐 | `die@1.references` 를 지우면 엣지가 «사라지고» 넣으면 «생긴다». 같은 코드로 |
+| `positive` / `negative` | 씨앗이 «부호 붙은 집합»이 된다 | 목록에 없는 주어는 **미검사이지 대조군이 아니다** |
+| `follow` | 어느 술어를 건너나 | 반복 파라미터. 선언에 없는 이름은 **422 `predicate_not_declared`** — 조용한 빈 답이 아니다 |
+| `node_limit` · `edge_limit` | 예산 | 넘으면 «잘림»으로 표시된다 — 잘림은 «부재»가 아니다 |
+| `continues_hops` | 같은 자재에 머무는 걸음의 «둘째 예산» | 선언이 `continues: true` 라 한 술어에만 쓴다. **기본 0 이라 오늘은 꺼져 있다** |
 
-### 라이브 읽기 라우트
+🔴 **[2026-08-28] `collect` 는 «없다».** 노드 «종류»를 고르던 축인데, 종류가 「선언된 엔터티」
+하나가 된 날 함께 은퇴했다. 같은 날 `observations` 와 `include_values` 도 떠났다.
+좁히는 것은 `follow` 다.
+
+🔴 **[2026-08-28] 선언의 `entities.<타입>.references` 로 엣지를 «만들 수» 없다.**
+그것을 읽던 `_link_containers` 가 삭제됐고 `die@1.references` 도 같은 밤에 지워졌다
+— 합성 엣지 `in_container` 가 잇던 쌍 128 중 «유일한 연결»이 «0» 이었기 때문이다
+(원자 엣지 `inspected` 가 이미 양방향으로 잇는다). **다시 선언해도 엣지는 안 생긴다.**
+
+### 라이브 읽기 라우트 — **둘이다**
 
 ```
 GET /api/ledger/subgraph         walk 본체. 마킹에서 걸어 서브그래프를 낸다
-GET /api/ledger/subgraph/table   같은 것을 표 모양으로
 GET /api/ledger/declaration      선언 자체 (원장을 한 줄도 안 읽는다)
-GET /api/ledger/structure        유형 수준의 그림 — 선언된 절반 + 센서스 절반을 «병합»
-GET /api/ledger/trends           시계열
-GET /api/ledger/lot_map          맵
-GET /api/ledger/composition      구성
-GET /api/ledger/siblings         또래 대조
-GET /api/ledger/kinds            발견 종류 카탈로그
-GET /api/ledger/selection/resolve  선택 해소
 ```
 
-## 5. `/structure` — 「이 원장은 무엇을 말할 줄 아나」
+⚰️ **2026-08-28 에 은퇴한 것**: `subgraph/table` · `structure` · `trends` · `lot_map` ·
+`composition` · `siblings` · `kinds` · `selection/resolve`, 그리고 그 앞의 `trace` · `explore` ·
+`explore_entity` · `coverage` · `journey` · `lots`. **전부 «키를 받는» 라우트였다** — 키를 받으면
+키마다 한 번씩 불리고, 마킹을 받으면 마킹 «전체»에 한 번 답한다. 실측: 한 페이지 로드에
+요청 13 · 라우트 5 · 그중 walk 1 · 정확히 중복 2.
+
+## 5. `/declaration` — 「이 원장은 무엇을 말할 줄 아나」
 
 유형 수준이다. 랏·웨이퍼·보이드 같은 인스턴스는 한 건도 나오지 않는다.
-**두 절반을 만들어 병합한다**:
+응답은 `{state, entities[{type, keys[]}], predicates[{name, subjects[], object, origin}]}` 이고
+**원장을 한 줄도 안 읽는다** — 답이 «선언»이라, 선언이 바뀌면 이 답이 바뀌고 코드는 안 바뀐다.
 
-```
-선언된 절반   선언의 entities × vocabulary 에서 «생성». 손으로 그린 목록이 «없다»
-센서스 절반   ledger_events 를 GROUP BY 한 방
-병합         선언에 있고 데이터에 없으면 declared_only (atoms: 0)
-             데이터에 있고 선언에 없으면 undeclared  (= 드리프트)
-```
+🔴 **[2026-08-28] 종전 이 절은 `/structure` 를 서술했고, 그 라우트도 `ledger_structure.py` 도
+없다.** 그것은 **두 절반의 병합**이었다 — 선언된 절반(선언에서 생성) + 센서스 절반
+(`ledger_events` 를 `GROUP BY` 한 방) — 그래서 `declared_only`(선언은 있는데 데이터 0)와
+`undeclared`(데이터는 있는데 어휘에 없다 = 드리프트)를 답할 수 있었다.
+**오늘 남은 것은 선언된 절반뿐이고, 그래서 드리프트를 답하는 화면이 없다.**
+다시 만든다면 그것은 walk 의 «인자»여야지 새 라우트가 아니다.
 
-실측 2026-08-27: 노드 **6** · 엣지 **12** · 드리프트 **0**.
-(`atoms: 0` 은 「세었고 없다」이고 `atoms: null` 은 「아무도 안 셌다」이다. 둘은 다른 답이다.)
+📌 오늘의 선언: 엔터티 **9**(`defect` · `defect_kind` · `die` · `dtjob` · `lot` · `lot_slot` ·
+`quantity` · `recipe` · `wafer`) · 술어 **13**. 이 수를 다른 문서에 옮겨 적지 말 것 —
+`GET /api/ledger/declaration` 이 답한다.
 
 ## 6. 쓰기측과 읽기측의 결정적 비대칭 (함정의 뿌리)
 

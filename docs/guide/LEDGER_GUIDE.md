@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 (개정 6 — 읽기 라우트 표와 「드라이버 하나」 정정) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -13,9 +13,12 @@
 
 ```
 ① 원장은 «선언» 위에 서 있다   선언 파일 «하나»가 entities · vocabulary · sources 를 전부 정한다
-                            원자 645,203 전부 그 선언에서 났다 (실측 2026-08-27)
+                            개정 6: 노드는 «선언된 엔터티»뿐, 엣지는 «선언된 술어»뿐이다
 ② 답은 «walk» 이 한다         읽기측은 마킹에서 걸어 서브그래프를 만든다. 차트는 그것을 보는 창이다
 ```
+
+🔴 **「원자가 «전부» 선언에서 났다」고 적지 마라 — 선언이 그것을 약속하지 않는다.**
+자세한 것은 아래 §4.1 의 두 번째 문. 종전 이 자리에 그 문장이 실측 수와 함께 있었다.
 
 🔴 **선언이 곧 활성화다.** `sources` 에 있는 소스가 돌고, 없으면 `undeclared_source` 로 거절된다
 (원자 0 · 커서 미이동 — 조용한 0건 성공이 아니다). 「선언은 해 두고 꺼 놓기」는 없다.
@@ -53,20 +56,24 @@
 | `implementations.py` | 어떤 `implementation_id` 가 실행 가능한지 코드에서 발견해 답한다 |
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
 | `store.py` | 원자 append 와 커서 전진을 «한 트랜잭션»으로 |
-| `backfill.py` | 페이지·분자 경계와 **유일한** 실행 드라이버 |
+| `backfill.py` | 페이지·분자 경계와 **선언을 거치는 유일한** 실행 드라이버 |
 | `dry_run.py` | `POST /admin/ledger/dry-run` 전용. 백필 경로가 «아니다» |
 
 ### 1.2 읽기 쪽
 
+**라우트는 «둘»이다** (실측 2026-08-29 — `server/ledger_trace_router.py` 의 `@router.get` 전수).
+
 | 질문 | API |
 |---|---|
-| 마킹에서 걸어 서브그래프 | `GET /api/ledger/subgraph` · `GET /api/ledger/subgraph/table` |
+| 마킹에서 걸어 서브그래프 | `GET /api/ledger/subgraph` |
 | 선언 자체 (원장을 안 읽는다) | `GET /api/ledger/declaration` |
-| 유형 수준의 구조와 드리프트 | `GET /api/ledger/structure` |
-| 시계열 · 맵 · 구성 | `GET /api/ledger/trends` · `/lot_map` · `/composition` |
-| 또래 대조 | `GET /api/ledger/siblings` |
-| 발견 종류와 원장 상태 | `GET /api/ledger/kinds` |
-| 선택 해소 | `GET /api/ledger/selection/resolve` |
+
+⚰️ **[2026-08-28] 종전 이 표에 있던 나머지 여덟은 «없다»** — `subgraph/table` · `structure` ·
+`trends` · `lot_map` · `composition` · `siblings` · `kinds` · `selection/resolve`, 그리고 그 앞의
+`trace` · `explore` · `explore_entity` · `coverage` · `journey` · `lots`.
+**전부 «키를 받는» 라우트였다**: 키를 받으면 키마다 한 번씩 불릴 수밖에 없고, 마킹을 받으면
+마킹 «전체»에 한 번 답한다. 답을 늘리는 것은 «선언»이지 갈래가 아니다.
+⚠️ 이 주소들은 410 을 «안» 답한다 — SPA 폴백이 index.html 을 200 으로 준다.
 
 파라미터와 응답 계약은 [backend §2](../architecture/backend.md) 가 정본이다.
 
@@ -168,8 +175,17 @@ cd server
 conda run -n assy_manager python -m ledger.backfill --source <source>
 ```
 
-`--source` 는 **이름만** 고른다. 드라이버는 하나뿐이다.
+`--source` 는 **이름만** 고른다.
 마이그레이션 명령은 [OPERATOR_RUNBOOK §6](../process/OPERATOR_RUNBOOK.md) 이 소유한다.
+
+🔴 **「드라이버는 하나뿐이다」는 «선언을 거치는 길»에만 참이다** (실측 2026-08-29).
+`store.write_batch` 를 직접 부르는 파일이 `server/scripts/` 에 «일곱» 있다 —
+`seed_syn_complex_composite` · `seed_syn_composite_chip` · `seed_syn_journey_atoms` ·
+`seed_syn_lot_excursion` · `seed_syn_process_ledger` · `seed_syn_split_merge_pressure` ·
+`seed_syn_world`. 그 문으로 들어온 원자는 **선언에 이름이 없어서 walk 의 주어가 되지 못한다.**
+정당한 호출자는 `server/ledger/runtime_v2.py` «하나»이고, 상설 규율은
+**「표에 원천 데이터를 넣고 그걸로 원장」** 이다. 새로 `write_batch` 를 부르고 싶어지면
+멈추고 올린다 — 답은 대개 「표를 만들어라」다.
 
 무엇이 선언돼 있는지는 «쓰기 없는» dry-run 이 답한다:
 

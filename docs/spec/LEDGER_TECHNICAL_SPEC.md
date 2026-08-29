@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Server / Ledger
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-29 (개정 6 — §1~§3 쓰기측은 유효, **읽기측 §4.7·§4.8·§4.10·§5.7·§6.4-bis 는 은퇴한 라우트를 서술하며 묘비를 달았습니다**) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/setup_bundle.py`(선언 검증) ·
 > `server/config/ontology/ledger_config.json`(선언 자체)
 >
@@ -11,12 +11,21 @@
 > ```
 > ① 원장은 «선언» 위에 서 있다
 >    정본은 «하나» — server/config/ontology/ledger_config.json (setup_version 5)
->    그 파일의 entities «여섯» · vocabulary «열» 이 무엇에 대해 무엇을 말할 수 있는지를 «전부» 정한다
->    실측 2026-08-27: 원자 645,203 전부 그 선언에서 났고 source_event_state 가 모두 source_molecule 이다
+>    그 파일의 entities «아홉» · vocabulary «열셋» 이 무엇에 대해 무엇을 말할 수 있는지를 «전부» 정한다
+>    개정 6(2026-08-28): 노드는 «선언된 엔터티»뿐, 엣지는 «선언된 술어»뿐이다
 > ② 답은 «walk» 이 한다
 >    읽기측의 질문은 「마킹한 노드에서 걸어 닿는 하위 그래프」 하나이고, 차트는 그것을 보는 창이다
->    갈래를 늘리는 대신 follow / collect 선언을 바꾼다
+>    갈래를 늘리는 대신 follow(술어) 를 바꾼다 — collect 는 2026-08-28 에 은퇴했다
 > ```
+>
+> 🔴 **[2026-08-28~29 정정 둘]** ① 종전 이 자리는 「원자 645,203 «전부» 그 선언에서 났다」였고,
+> 선언은 그것을 약속하지 않는다 — `store.write_batch` 를 직접 부르는 파일이 `server/scripts/` 에
+> «일곱» 있고 그 문으로 들어온 원자는 선언이 이름을 모른다(정당한 호출자는 `ledger/runtime_v2.py`
+> 하나). ② 좁히는 축은 `follow` «하나»다.
+>
+> ⚠️ **이 문서의 §3.7-b · §4.7 · §4.8 · §4.10 · §5.7 · §6.4-bis 는 «없는 라우트와 없는 선언»을
+> 서술합니다.** 각 절 머리에 묘비를 달았습니다 — 절 안의 문장은 «역사 기록»으로만 읽으십시오.
+> 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` **둘**입니다.
 >
 > 🔴 **정본이 «둘»이던 시절은 끝났다.** 코드가 낱말 목록을 들고 있지 않다 —
 > 그 모듈도, 그것을 늘리던 운영자 확장 파일도, 둘을 병합해 보여 주던 뷰도 디스크에 없다.
@@ -147,7 +156,9 @@ override 카운트가 과소보고된 QA D-1.)
 **저장은 UTC 문자열**(`store.LedgerStore._NOW_ISO`)이고 **표시 존 변환은 읽는 쪽에서 한 번**만 일어난다
 (`ledger_trace._rendered_reasons`) — `occurred_at`과 정확히 같은 규율이다.
 
-🔴 **부호가 클라이언트 계약이다** — `/coverage`의 `refusals_unaccounted`. §6.4-bis.
+⚰️ **종전 이 자리: 「부호가 클라이언트 계약이다 — `/coverage`의 `refusals_unaccounted`」.**
+그 라우트가 없으므로 **오늘 그 필드에는 클라이언트도 계약도 없다**(§6.4-bis 묘비). 원리는
+[PRIMITIVES §7](../architecture/PRIMITIVES.md)이 소유한다.
 
 **배포는 «양방향»으로 방어된다 — 순서를 바라지 않는다.** 이 프로젝트는 `add_frame_confirmation.py`가 적어 둔
 「기존 테이블에 붙인 컬럼은 마이그레이션보다 먼저 읽는 프로세스에서 500이다」의 값을 이미 치렀다.
@@ -178,7 +189,7 @@ override 카운트가 과소보고된 QA D-1.)
 | `idx_ledger_register` | `(subject_type, subject_keys) WHERE predicate='register'` | `store.existing_registrations` — 페이지당 1질의. 개체마다 조회하면 천만 행 백필이 **2차식**이 된다 | **16.6 B/원자, 그리고 감소 중**(부분 인덱스라 register는 O(개체), 테이블은 O(원자)) |
 | `idx_ledger_register_search` | `GIN ((subject_keys::text) gin_trgm_ops) WHERE predicate='register'` | `GET /api/ledger/entities?q=`의 모든 등록 타입 contains 검색. 인덱스가 없으면 소비자가 전량 JSON 스캔을 **거절**한다 | 개발 DB 자식 인덱스 합계 **656 kB**(2026-08-15 실측). register 개체 수에 비례하며 전체 원자 수로 환산하지 않는다 |
 | `idx_ledger_subject_entity` | `(subject_type, subject_keys)` | 구조화된 exact subject identity 조회 (🔴 종전 이 칸이 대던 `/explore_entity` 는 «없다» — 지금 이 인덱스를 쓰는 것은 걷기의 씨앗 해소다) frontier join | 개발 DB 자식 인덱스 합계 **13 MB**(2026-08-15 실측). 모든 원자를 싣는 대가이며 generic entity 탐색의 JSON 전량 스캔을 막는다 |
-| `idx_ledger_source_event` | `(source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL` | `/api/ledger/subgraph`의 Event→Claim exact batch | 가격 재측정 대기. 기존 파티션에는 child별 CONCURRENTLY 후 parent ATTACH |
+| `idx_ledger_source_event` | `(source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL` | 원자를 자기 원천 사건으로 묶는 조회 (🔴 종전 이 칸은 「Event→Claim exact batch」라 적었고, **Event 는 노드가 아니고 Claim 은 엣지다** — 2026-08-25·28). walk 은 이 컬럼 둘의 «존재»를 배포 사실로 확인한다(`_subgraph_contract_state` — 없으면 503) | 가격 재측정 대기. 기존 파티션에는 child별 CONCURRENTLY 후 parent ATTACH |
 | `idx_ledger_object_entity` | `((object_payload->>'type'), (object_payload->'keys')) WHERE object_kind='entity_ref'` | `/api/ledger/subgraph`의 Entity←object Claim exact reverse lookup | 가격 재측정 대기. JSON text 전량 스캔으로 강등 금지 |
 
 🔴 **`idx_ledger_subject_lot`의 모양은 취향이 아니라 질의의 성질이 강제한다.** 혈통 보행은
@@ -428,9 +439,18 @@ entities.<개체id>       필수  keys                     선택  key_types · 
 - **`status: retired` 는 낱말을 지우지 않는다.** 원자가 이미 그 낱말로 누워 있으므로 읽기는 계속
   답하고, 막히는 것은 «새 발화»다.
 
-#### 3.7-b 개체의 «참조 엣지» — 술어가 아닌데 엣지를 만든다
+#### 3.7-b ⚰️ 개체의 «참조 엣지» — **[2026-08-28 삭제. 아래는 역사 기록이다]**
 
-`entities.<개체>.references` 는 원자를 만들지 않는다. **투영이 «합성»하는 엣지**다.
+🔴 **선언에 `references` 를 적어도 엣지가 «생기지 않는다».** 그것을 읽던 `_link_containers` 가
+walk 에서 삭제됐고, 같은 밤 `entities.die@1.references` 도 지워졌다(실측 2026-08-29: 선언된
+엔터티 아홉 중 `references` 를 든 것이 «0»). 근거는 실측이었다 — 합성 엣지 `in_container` 가
+잇던 쌍 128 중 **«유일한 연결»이 «0»**이었다. 원자 엣지 `inspected@1`(wafer → die)이 이미
+양방향으로 잇고 있었으므로 합성 엣지는 «이미 있는 다리 옆의 두 번째 다리»였다.
+판정: **술어가 아닌 것은 노드이고, 엣지는 선언된 술어뿐이다.** 다리가 필요하면 **술어를
+선언**하지 참조를 합성하지 않는다.
+
+> **[아래는 2026-08-27 시점의 서술이며 현재 동작이 아니다.]**
+> `entities.<개체>.references` 는 원자를 만들지 않는다. **투영이 «합성»하는 엣지**였다.
 
 ```jsonc
 "die@1": {
@@ -450,7 +470,8 @@ entities.<개체id>       필수  keys                     선택  key_types · 
 - 🔴 **참조 엣지는 «어휘가 아니다»** — 그래서 그 이름으로 발화된 원자가 «없다».
   이름을 어휘에서 찾은 독자가 원자를 찾아 나서면 안 되기 때문에 갈라 둔 것이다.
 - ⚠️ **실측 2026-08-27: `follow` 는 참조 엣지를 «받지 못한다».** `follow=in_container` 는
-  `422 predicate_not_declared` 다 — `follow` 가 대조하는 것이 선언의 술어 열 개뿐이기 때문이다.
+  `422 predicate_not_declared` 다 — `follow` 가 대조하는 것이 선언의 술어뿐이기 때문이다
+  (오늘 «열셋»). **그 거절이 삭제의 첫 신호였다**: 아무도 이름 댈 수 없는 엣지는 계약이 아니다.
 
 #### 3.7-c 게이트 — 원자마다, 그리고 «분자 통째로»
 
@@ -909,7 +930,9 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 「UTC로 내보내고 클라가 현지화」는 **fab 기록의 정확성을 보는 사람의 기계로 옮기는 것**이라 기각됐다.
 ⚠️ **`utils.time_format.LOCAL_TIMEZONE`이 아니다** — 그것은 import 시점에 해석된 **기계의 주변 존**이라 같은 계급의 결함이다.
 
-### 4.7 `GET /api/ledger/structure` — **유형 수준 응답 계약** (2026-08-14 2차 · `server/ledger_structure.py`)
+### 4.7 ⚰️ `GET /api/ledger/structure` — **[은퇴. 아래는 역사 기록]**
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트도 그 모듈(`server/ledger_structure.py`)도가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` 둘뿐입니다. 🔴 **선언된 절반은 살아남았습니다** — `GET /api/ledger/declaration` 이 엔터티 × 술어를 선언에서 «읽어» 냅니다. **사라진 것은 «센서스 절반»**이고, 그래서 `declared_only` / `undeclared`(드리프트)를 답하는 화면이 오늘 없습니다. 다시 만든다면 walk 의 «인자»여야지 새 라우트가 아닙니다.
+
 
 `/trace`가 **인스턴스**(이 랏의 혈통)라면 이쪽은 **유형**이다 — 랏·웨이퍼·보이드는 응답에 **한 건도 없다.**
 라우트 표는 [backend §2](../architecture/backend.md)가 소유하고 **여기는 조용히 깨지면 안 되는 의미론만** 적는다.
@@ -1013,7 +1036,9 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 **같은 라운드에 `server/ledger_journey.py`의 술어 조회도 병합 뷰로 옮겼다** — 안 옮겼으면 config 낱말만 자기 `label_ko`를 잃고
 **한국어가 원시 이름으로 조용히 강등**됐을 것이다(§3.7-quater의 폴백이 그때 잘못된 자리에서 발화한다).
 
-### 4.8 `GET /api/ledger/kinds` — **원장 위치 필드 다섯** (2026-08-14 3차 · `server/ledger_api/ledger_kinds.py` · 갱신 트리거 ⑧)
+### 4.8 ⚰️ `GET /api/ledger/kinds` — **[은퇴. 아래는 역사 기록]**
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트도 그 모듈(`ledger_kinds.py`)도 종류 카탈로그(`finding_kinds.py`)도가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` 둘뿐입니다. 🔴 **종류는 이제 «노드»입니다** — `defect_kind@1` 엔터티에 `of_kind@1` 술어로 닿습니다. 파이썬 dict 카탈로그는 하드코딩으로 판정돼 삭제됐습니다.
+
 
 라우트 표는 [backend §2](../architecture/backend.md)가 소유하고 여기는 **조용히 깨지면 안 되는 의미론**만 적는다.
 이 라우트는 원래 **소스 테이블**을 답했다(관측 수·런 수·`observed_by`·`classes`). 관측 번역이 착지하면서
@@ -1060,7 +1085,7 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 
 - 🔴 **`null`로 내지 않는 이유가 이 절의 전부다**: 존재하는 필드는 언젠가 렌더되고, **웨이퍼 두 장 위에서 계산된 신뢰구간은 이 프로젝트가 에러보다 나쁘게 치는 「확신에 찬 거짓」**이다.
 - 🔴 **`arity: 2`가 «필드»다.** 「`candidates`가 없으니 2장 모양이겠지」로 추론하는 클라는 언젠가 틀린다.
-- **3장 이상의 답은 `/siblings?scope=`이고 그 응답은 이 라우트가 생겨도 한 바이트도 안 바뀌었다** — n=2 모양을 집단 통계가 계약에 든 엔드포인트에 «모드»로 접는 것이 위 필드가 `null`로 새는 경로다.
+- **3장 이상의 답은 ⚰️ `/siblings?scope=`이었고(그 라우트는 «없다» — 2026-08-28) 그 응답은 이 라우트가 생겨도 한 바이트도 안 바뀌었다** — n=2 모양을 집단 통계가 계약에 든 엔드포인트에 «모드»로 접는 것이 위 필드가 `null`로 새는 경로다.
 
 #### ⓑ 🔴 한쪽 값의 상태가 **넷**이고, 그중 **셋이 「없음」처럼 생겼다**
 
@@ -1115,7 +1140,9 @@ slot_map(lot -> parent, slot)  부모 랏에서 이 자리는?
 
 ---
 
-### 4.10 R&D Trend와 Composite CHIP 읽기 계약 (2026-08-14)
+### 4.10 ⚰️ R&D Trend와 Composite CHIP 읽기 계약 — **[은퇴. 아래는 역사 기록]**
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트 넷(`/trends` · `/composition` · `/selection/resolve` · `/kinds`)가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` 둘뿐입니다. 🔴 **이 절이 대는 주어와 술어도 선언에 없습니다** — `WaferLeg` · `FinalChip` 은 엔터티가 아니고, `transferred` · `measured` 는 술어가 아닙니다(살아 있는 철자는 `transfer@1` · `measures@1`). 마킹 단위는 «웨이퍼»이고 실험 구간은 수식어입니다.
+
 
 `GET /api/ledger/trends`의 grain 은 «선언»이고 기본값은 **`wafer`** 다(`ledger_trends.DEFAULT_GRAIN`). 🔴 **호출자가 `grain.subject_type` 에 아무 문자열이나 실을 수 있고 라우트는 그것이 원장에 있는 주어인지 묻지 않는다** — 그래서 R&D 보드가 오늘 `WaferLeg` 를 실어 보내는데, 원장의 주어 타입은 `die`·`wafer`·`dtjob`·`lot_slot` 넷뿐이고 `WaferLeg` 원자는 «0» 이다. 아래 서술의 `WaferLeg` 는 «그 호출자가 대는 이름»이지 원장이 아는 이름이 아니다. identity key는
 `{wafer,bonding_leg}`이며 동일 Base WF의 서로 다른 LEG를 절대 합치지 않는다. 선언된 종류와
@@ -1266,7 +1293,9 @@ difference도 같은 final-wafer mark를 보존한다. 따라서 비교 행→Tr
 `occurred_at`과 `source_translator_ver`가 **둘 다** dedupe 열쇠에 있고 **둘 다 바뀌었기** 때문이다.
 🔴 **두 결과의 차이가 이 인덱스의 의미론 전부다**: 같은 규칙의 재실행은 **전부 걸리고**, 다른 규칙의 재번역은 **전부 통과한다.**
 
-### 5.7 구조 뷰 센서스는 **O(원자)이고, 방어는 캐시가 아니라 크기 게이트다**
+### 5.7 ⚰️ 구조 뷰 센서스 비용 — **[은퇴. 아래는 역사 기록]**
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트(§4.7 `/structure`)가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` 둘뿐입니다. 🔴 **「O(원자)인 읽기는 캐시가 아니라 «선언된 크기 게이트»로 막는다」는 원리는 살아 있습니다** — 사라진 것은 그것을 적용하던 라우트입니다. 여기 적힌 수(노드 6 · 엣지 54)는 엔터티 여섯 시절의 것이고 오늘 선언은 아홉입니다.
+
 
 **84,747원자 · 두 파티션에서 census 182 ms · 호출 전체 285 ms · 페이로드 59 KB**
 (2026-08-14 2차 `3202ac7`, `assy_manager`, 이 박스 — §4.7의 라우트). **원자당 약 2 µs이므로 1,000만 원자에서 ≈ 20 s** —
@@ -1389,7 +1418,9 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 `DISTINCT source_who`가 **아닌** 이유가 둘이고 뒤엣것이 더 중요하다: `source_who`에 인덱스가 없어 전량 스캔이고,
 **커서 표는 원장이 비어도 답한다** — 「돌았고 전부 거절했다」와 「돈 적이 없다」를 `DISTINCT`는 둘 다 `[]`로 답한다.
 
-### 6.4-bis `/coverage` 응답 형태 — **확장됨** (2026-08-13 `0198e7e`)
+### 6.4-bis ⚰️ `/coverage` 응답 형태 — **[은퇴. 아래는 역사 기록]**
+> ⚰️ **[2026-08-28 은퇴] 이 절이 서술하는 라우트가 «없습니다» (실측 2026-08-29). 아래는 «무엇이 있었나»의 기록이며 현재 계약이 아닙니다.** 오늘 살아 있는 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` 둘뿐입니다. 🔴 **「부호가 클라이언트 계약이다」(`refusals_unaccounted`)를 지금 지키는 소비자는 «없습니다»** — 라우트가 없으므로 그 필드를 내보내는 곳도, 부호로 분기하는 화면도 없습니다. **원리(집계 옆 내역을 같은 트랜잭션에 쓰고 차이를 부호로 말하게 한다)는 [PRIMITIVES §7](../architecture/PRIMITIVES.md)이 소유합니다.**
+
 
 ```
 { state, lots, sources[], occurred_at:{from,to}, sample[],

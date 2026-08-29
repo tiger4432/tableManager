@@ -1,9 +1,35 @@
 # R&D Ontology Referent Model
 
-> **Status:** Living · **Last verified:** 2026-08-15
-> **정본 코드:** 선언(`server/config/ontology/ledger_config.json`), `server/ledger_api/ledger_subgraph.py`,
+> 🗄️ **SUPERSEDED — 이 문서의 노드 모델이 «통째로» 없습니다** (2026-08-29 실측).
+> **Status:** 🗄️ Archived | **Last-verified:** 2026-08-29 | **Owner:** Server / Ledger
+>
+> 이 문서는 **Finding Collection · Finding Point · Source Event · Claim · Value** 를 노드로 놓고
+> 그 사이 문법을 정합니다. **다섯 다 노드가 아닙니다.** 개정 6(2026-08-28) 판정:
+> **노드는 «선언된 엔터티»뿐, 엣지는 «선언된 술어»뿐.** 함께 사라진 것 — 합성 엣지
+> `has_findings` · `asserts` · `subject` · `in_container`, 파라미터 `observations` · `shape`,
+> 라우트 `/subgraph/table` · `/trends` · `/composition` · `/selection/resolve`, 그리고 id 접두어
+> `ledger-finding-collection:v1:` 같은 철자 전부(접두어는 `ledger-entity:v1:` **하나**이고
+> 나머지 철자의 씨앗은 **422 로 거절**됩니다).
+>
+> 🔴 **§7 의 요청 예시를 그대로 쏘면 전부 거절되거나 다른 답이 옵니다.**
+>
+> **여기서 던진 질문은 살아 있고, 답이 바뀌었습니다.** 「웨이퍼에서 발견으로 내려갈 때
+> 수만 건을 자동 확장하지 않으려면?」의 오늘 답은 **두 수준 투영**이 아니라
+> **발견을 노드로 선언하고 `follow` 로 좁히는 것**입니다 — `observed@1` 이 `die@1` → `defect@1`,
+> `of_kind@1` 이 `defect@1` → `defect_kind@1`. 그래서 발견에서 **걸어 나갈 수** 있습니다
+> (종점이던 것이 이 판의 요점입니다). 정본은
+> [LEDGER_EVIDENCE_SUBGRAPH_SPEC](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) ·
+> [PRIMER](../guide/ledger/PRIMER.md).
+>
+> ⚠️ **`docs/_archive/` 이관은 총괄 판정 대상입니다** — 이 레인은 배지만 바꿉니다.
+
+---
+
+> **[아래는 2026-08-15 시점의 서술이며 현재 상태가 아닙니다.]**
+> **정본 코드(당시):** 선언(`server/config/ontology/ledger_config.json`), `server/ledger_api/ledger_subgraph.py`,
 > `server/ledger_identity.py`, `server/ledger_trends.py`, `server/ledger_selection.py`
-> **목적:** 비정형 원천을 스키마 변경 없이 연결하되, 질문과 무관한 고카디널리티 노드를
+> — 🔴 뒤의 셋은 트리에 «없습니다».
+> **목적(당시):** 비정형 원천을 스키마 변경 없이 연결하되, 질문과 무관한 고카디널리티 노드를
 > 자동 확장하지 않는 R&D 온톨로지 문법을 정한다.
 
 ## 0. 결론
