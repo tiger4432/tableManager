@@ -1,3 +1,57 @@
+# 🔴 [서버] **작은 것 둘 — 스키마가 라이브와 다른 인덱스를 냅니다 · 고아 상수 셋** (총괄 판정 11:2x)
+
+문서 정비가 물고 나온 것이고, 총괄이 라이브에 대고 «직접» 확인했습니다.
+
+## ① `schema.py` 가 내는 인덱스가 라이브와 «다릅니다» — 새 환경이 다른 것을 얻습니다
+```
+라이브   CREATE UNIQUE INDEX uq_ledger_atom ON public.ledger_events USING btree
+         (occurred_at, predicate, subject_type, md5(subject_keys::text),
+          md5(COALESCE(object_payload,'{}'::jsonb)::text), source_translator_ver, md5(source_raw_ref))
+
+schema.py:58 DEDUPE_COLUMNS = (occurred_at, predicate, subject_type, subject_keys,
+                               coalesce(object_payload,'{}'::jsonb), source_translator_ver, source_raw_ref)
+         -> md5 «없이» 그대로. 그리고 CREATE UNIQUE INDEX «IF NOT EXISTS uq_ledger_atom»
+```
+🔴 **두 갈래로 갈리고 둘 다 나쁩니다**
+```
+라이브에서   이름이 이미 있으니 «조용히 건너뜁니다» -> schema.py 는 라이브를 «묘사하지 못합니다»
+새 환경에서  뚱뚱한 옛 정의가 «만들어집니다» -> 4bdbff36 이 1,123.6MB -> 159.7MB 로 줄인 그 이득이
+             새 배포에서 «안 납니다». 즉 운영과 신규가 다른 인덱스로 돕니다
+근거        `IF NOT EXISTS` 는 «이름»이 비었냐고 묻지 «정의가 같냐»고 안 묻습니다 —
+            b27ae61d 가 인덱스 «일곱»에서 같은 함정을 이미 기록했고, 이건 그때 안 잡힌 여덟째입니다
+```
+**할 것**: `DEDUPE_COLUMNS` 를 라이브 «그대로»(md5 셋) 로 맞춥니다. 이름·나머지 컬럼 순서 그대로.
+```
+⛔ 인덱스를 DROP/재생성 하지 마십시오 — 라이브는 «이미 맞습니다». 고치는 것은 «코드가 내는 문장»입니다
+⛔ md5 충돌 가드를 만들지 «마십시오». 원자 75만 수준에서 세 다이제스트가 동시에 충돌할 확률은
+   무시할 수 있고, 「나중을 위한 가드」는 착수 전 관문 ③에 정면으로 걸립니다.
+   ⚠️ 다만 «사실»은 주석에 남기십시오: 유일성이 이제 «다이제스트 기준»이고
+      `insert_atoms` 의 `ON CONFLICT DO NOTHING` 이 무표적이라, 충돌하면 «조용히 버려집니다»
+```
+**게이트**
+```
+① 빈 DB 에 ensure_schema -> 만들어진 인덱스 정의가 라이브의 것과 «문자열로» 같을 것
+   (pg_indexes.indexdef 를 둘 다 뽑아 나란히. 눈으로 「같아 보인다」 금지)
+② 라이브에 ensure_schema -> «변화 0» (이미 맞으므로)
+③ 이 파일을 지나는 시험만
+```
+
+## ② 고아 상수 셋 — 지웁니다
+```
+server/ledger_api/ledger_subgraph.py:1017  NODE_TABLE_COLUMNS
+                                    :1022  EDGE_TABLE_COLUMNS
+                                    :1026  PROPERTY_TABLE_COLUMNS
+실측   server · client2 · contracts 를 심볼로 훑어 «각각 1건» — 자기 선언뿐입니다
+유래   `GET /subgraph/table` 과 `tabular_projection` 이 개정 6 에서 사라질 때 남았습니다
+```
+⚠️ **지우기 전에 «한 번 더» 세십시오.** 제 훑기는 `.tmp` 를 뺀 세 디렉터리이고,
+   `getattr` 이나 문자열 조립으로 부르는 자리는 심볼 훑기로 «안 잡힙니다».
+   0 이 맞으면 지우고, 아니면 «지우지 말고 수를 올리십시오».
+
+보고: `task/schema_and_orphans_report.md`
+
+---
+
 # 🔴 [서버] **작은 것 하나 — 라우트 상한이 모듈이 «잰» 정착점보다 낮습니다** (총괄 10:4x)
 
 코드맵 정비가 물고 나온 것이고, 제가 어젯밤 이 벽에 «직접» 부딪혔습니다.
