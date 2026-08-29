@@ -560,6 +560,83 @@ def test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after()
         "a falsy follow reads as EVERY predicate in the lookup contract")
 
 
+def test_the_static_step_predicates_are_DERIVED_from_the_declaration(monkeypatch):
+    """🔴 THE ONE ALLOWANCE A NAME HAS IS COMPUTED, NOT LISTED.
+
+    A static node is collected and not expanded, except along predicates whose BOTH ends
+    are static -- today that is `{leads_to}` and it is the mechanism chain. Spelling the
+    set in code would make it a domain word in a branch; it is read off the declaration
+    instead, so declaring a new static-to-static predicate widens it with no edit.
+
+    The fixture holds one of each shape so the derivation cannot pass by returning
+    everything or the first thing it sees.
+
+    🔴 AND AN UNREADABLE DECLARATION RETURNS THE EMPTY SET, which expands no static node
+    at all. That is the safe direction: refusing the step costs the causal chain, while
+    guessing costs the whole walk -- one name with 103,841 atoms against a single object
+    is enough to spend the budget.
+    """
+    declared = {
+        "entities": {"kind@1": {"class": "static"}, "name@1": {"class": "static"},
+                     "thing@1": {"class": "dynamic"}, "other@1": {}},
+        "vocabulary": {
+            "s_to_s@1": {"subjects": ["kind@1"],
+                         "object": {"kind": "entity_ref", "types": ["name@1"]}},
+            "s_to_d@1": {"subjects": ["kind@1"],
+                         "object": {"kind": "entity_ref", "types": ["thing@1"]}},
+            "d_to_s@1": {"subjects": ["thing@1"],
+                         "object": {"kind": "entity_ref", "types": ["kind@1"]}},
+            "d_to_undeclared@1": {"subjects": ["kind@1"],
+                                  "object": {"kind": "entity_ref", "types": ["other@1"]}},
+            "no_object@1": {"subjects": ["kind@1"], "object": {"kind": "value"}},
+        },
+    }
+    from ledger import config as ledger_config
+    monkeypatch.setattr(ledger_config, "load", lambda *a, **k: declared)
+    assert ledger_trace_router._static_step_predicates() == {"s_to_s"}
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("declaration unreadable")
+
+    monkeypatch.setattr(ledger_config, "load", unreadable)
+    assert ledger_trace_router._static_step_predicates() == set(), (
+        "an unreadable declaration must expand no name, not every name")
+
+
+BACKBONE_CHAIN = [
+    _kind_atom(220 + index, "die", f"D{index}", "transfer", "die", f"D{index + 1}")
+    for index in range(5)
+]
+
+
+def test_backbone_hops_buys_depth_for_steps_that_stay_inside_the_world():
+    """🔴 THE SECOND BUDGET IS NOT A SECOND DEPTH. Following one material through its own
+    transfer history never LEAVES, so those steps spend `backbone_hops` while `hops`
+    stays the allowance for departures. Both are still counted by `depths`, so every
+    reader of it keeps the meaning it had.
+
+    The chain here is five `transfer` steps between dies -- dynamic to dynamic the whole
+    way, so every step is free of the departure budget and the only thing that can carry
+    the walk past the first hop is the backbone allowance.
+
+    🔴 WAKE IT: fix `budget_hops` at `hops` and the second half returns two nodes.
+    """
+    seed = ledger_explorer.entity_id("die", {"die": "D0"})
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(BACKBONE_CHAIN)
+
+    near = ledger_subgraph.subgraph(seed, lookup, hops=1, backbone_hops=0,
+                                    direction="outgoing", follow=["transfer"])
+    assert len(near["nodes"]) == 2, "one departure buys one hop"
+
+    far = ledger_subgraph.subgraph(seed, lookup, hops=1, backbone_hops=4,
+                                   direction="outgoing", follow=["transfer"])
+    assert len(far["nodes"]) == 6, (
+        "the backbone allowance did not carry the walk down a chain that never departs: "
+        f"{len(far['nodes'])} nodes")
+    assert max(node["depth"] for node in far["nodes"]) == 5, (
+        "`depths` must still count every step, or hops_reached and the trails change meaning")
+
+
 SIBLING_FIXTURE = [
     _kind_atom(211, "wafer", "W", "inspected", "die", "D1"),
     _kind_atom(212, "wafer", "W", "inspected", "die", "D2"),
