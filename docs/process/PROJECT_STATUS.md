@@ -1128,6 +1128,36 @@ in_slot 이 «문장을 못 낸다»
 고치는 길   lot_slot_move 처럼 «row 단위 declarative-role» 소스로 옮긴다 — 선언 판정
 ```
 
+## 📋 남은 빨강 «31» — 부류로 묶어 둡니다 (2026-08-30 01:2x, 전수 실측)
+```
+전수   49 -> «31» failed · 4,062 passed · 167 skipped · 16분
+       통과가 18이 아니라 16 는 것은 은퇴시킨 시험 «둘»이 사라졌기 때문 (고친 게 아니라 죽인 것)
+```
+### 부류 ① 엔티티 id 대소문자 + 선언 내용 드리프트 — «13개 · 2파일»
+```
+test_source_ontology_profile      7   entity type 'Lot'/'Wafer' is not registered
+                                      (선언은 lot·wafer — 08-28 소문자화를 픽스처가 안 따라옴)
+test_ontology_config_explorer     6   KeyError 'entity|Lot@1' · 그리고
+                                      mapping:split_slot_carry 가 lot_event 에 «없다»
+                                      (lot_event 매핑은 descent·first_sight_holder
+                                       ·first_sight_item·in_slot 넷)
+🔴 4b6f3f90 에서 이 부류를 「9개」로 적었는데 «더 멀리 갑니다». 부류를 세고 나서
+   그 부류의 «구성원을 다시 세지» 않았습니다 — group-by-class-but-count-the-members
+```
+### 부류 ② in_slot 이 문장을 못 냄 — «2개» (이름 붙여 남김, 위 절 참조)
+```
+test_ledger_setup_boundary        2   RoleFrameError · has_wafer 원자 0의 진짜 원인
+```
+### 부류 ③ 미분류 — «16개 · 14파일»
+```
+test_void_base_join_fixture 2 · dt_inventory_metadata_mapper 2 · 나머지 12파일 각 1
+   (trace_fixture · prod_import_env · map2_seam_contract · job_column_from_config
+    · frame_confirmation_meta · entrypoint_import_isolation · dual_stack_bind
+    · dt_standard_map_mapper · dt_map_derivation · dt_alignment_metadata_mapper
+    · config_resolve_report_contract · composite_key_prefetch_budget)
+⚠️ 원인 «안 열어 봤습니다». 열기 전에는 부류라고 부르지 않습니다
+```
+
 ## ⏭ 다음 판정 셋
 ```
 ① 0/0 을 순위에서 «뺄» 것인가            (칸은 있고, 쓰는 방식이 판정)
