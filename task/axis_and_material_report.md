@@ -1,3 +1,60 @@
+# 🛑 [클라] `continues_hops` → `backbone_hops` — **멈추고 올립니다. 서버에 그 이름이 «없습니다»**
+
+지시대로 ①-a 를 먼저 닫고(`0308e6b9`) 착수했는데, 걸어 보니 **이름이 아직 안 따라왔습니다.**
+바꾸면 화면이 «아무도 안 읽는 칸»을 보내게 되고, 그런데도 **게이트 ②가 초록으로 통과합니다.**
+그 둘 다 적습니다.
+
+## ① 원장 코드에 `backbone` 이 «한 글자도» 없습니다
+```
+git grep -n "backbone" origin/main -- server        ->  «0 줄»   (main 끝 `20479e75` 기준)
+origin/main:server/ledger_trace_router.py:101       ->  continues_hops: int = Query(...)
+origin/main:server/ledger_trace_router.py:127·224·240 ->  continues_hops=...
+9f8db5ab 가 실제로 바꾼 것 (12 줄)
+   + and near_kind not in static_types
+   + and far_kind  not in static_types) else 1
+   -> 「면제를 «무엇으로 판정하나」」가 술어 플래그에서 «엔티티 분류»로 바뀐 것이 맞습니다
+   -> 그런데 «인자 이름»은 안 바뀌었습니다. 정책만 갔고 낱말은 남았습니다
+```
+
+## ② 도는 프로세스도 «옛 이름만» 읽습니다 — 200 은 증거가 아닙니다
+```
+continues_hops=-1    «422»      backbone_hops=-1   «200»
+continues_hops=abc   «422»      backbone_hops=99   «200»
+continues_hops=99    «422»      nonsense_hops=2    «200»
+=> 이 라우트는 «모르는 칸을 조용히 버립니다». 그래서 `backbone_hops=abc` 조차 200 입니다.
+   422 가 나는 쪽이 «실제로 파싱되는» 이름이고, 그건 여전히 `continues_hops` 입니다
+프로세스 시작 시각  오늘 12:52 ~ 13:04 (python 넷)
+                  -> 9f8db5ab 도 20479e75 도 그 «뒤»입니다. 재기동해도 이름은 안 생깁니다 (①)
+```
+
+## ③ 🔴 그런데 게이트 ②가 «공허합니다» — 이게 더 위험합니다
+지시의 게이트 ②는 「그 두 좌석의 노드 수 전/후 — 같아야 합니다」입니다.
+**오늘 이 보드의 씨앗에서는 예산을 «보내든 안 보내든» 수가 같습니다.**
+```
+씨앗 SYN-CX-BW-001 의 die «40개» · follow=bonded_from · outgoing
+   continues_hops=0  ==  continues_hops=2   -> 전부 같음 (예: nodes 2 · edges 1)
+씨앗 SYN-BW-101-02 의 die «8개» · follow=bonded_from,processed_with · node_limit 1000
+   continues_hops=0  ==  continues_hops=4   -> 전부 같음
+확인 사살   같은 씨앗에서 continues_hops=2 · backbone_hops=2 · «아무것도 안 보냄» 셋이
+           nodes 2 · edges 1 로 «글자 그대로 같습니다»
+```
+=> 지금 이름만 바꿔 커밋하면 **게이트 ②가 초록입니다.** 예산이 «도착했는지»와 «버려졌는지»가
+   이 표본에서 같은 답을 내기 때문입니다 — 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」
+   그대로입니다. 초록이 「안 바뀌었다」가 아니라 「이 씨앗은 원래 예산을 안 쓴다」를 뜻합니다.
+
+## 그래서 필요한 것 «둘» — 총괄 판정 요청
+```
+① 서버가 인자를 «실제로» 개명해야 합니다 (라우트 + ledger_subgraph 의 인자·기본값).
+   그 전에는 클라가 먼저 가면 「재료 없이 채택된 계약」이고, 조용히 예산이 0 이 됩니다
+② 게이트 ②에 «판별하는 씨앗»을 주십시오 — 총괄 실측의 「자재6 + processed_with ch=4 -> 157」
+   그 씨앗입니다. 제가 가진 씨앗들로는 ch=0 과 ch=4 가 «같은 수»라 아무것도 못 가릅니다
+   (그 씨앗을 주시면 「보냈을 때 157 · 안 보냈을 때 N」을 재서 붙이겠습니다)
+```
+⚠️ 클라 쪽 준비는 «세 자리»로 끝납니다 (api.js 구조분해·query, main.js 좌석 넷의 선언).
+   값은 그대로 둡니다. 서버가 이름을 받는 날 «한 커밋»으로 갑니다 — 지금은 안 갑니다.
+
+---
+
 # ✅ [클라] 라운드 ①-a — **Y축이 «집계 × 수식어»가 됐고, `/trends` 404 가 «0» 이 됐습니다**
 
 ## 게이트 넷 — 전부 통과. 그리고 «라이브에서 제 결함 하나»를 찾아 고쳤습니다
