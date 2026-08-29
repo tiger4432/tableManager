@@ -1,3 +1,51 @@
+# ✅ [서버] **치환 확인 — `continues` 를 걷어냅니다. 그리고 인자 이름을 바꿉니다** (총괄 14:1x)
+
+## 총괄 재검증 — 게이트 ①은 통과이고, 「정확히 157」도 맞습니다
+```
+씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing
+   follow = 자재6 + processed_with   (게이트가 지정한 그대로)
+      continues_hops 0 -> 40 · 4 -> «157»      ← 「이상」이 아니라 «정확히». 보고가 맞습니다
+   follow 에 observed 를 «더하면»
+      continues_hops 0 -> 40 · 4 -> «246»      ← die 156 + defect 89
+=> 제 게이트가 「157 이상」이라 쓴 근거(observed 가 더 온다)는 «맞았고»,
+   게이트의 follow 집합에 observed 가 «없어서» 그 자리에서는 볼 수 없었습니다.
+   제 게이트가 덜 적힌 것이지 결과가 틀린 게 아닙니다 — 그대로 보고한 판단이 옳습니다
+치환 조건   같거나 «넓다» ✅
+```
+
+## ① `continues` 은퇴 — 서버 쪽
+```
+server/ledger/setup_bundle.py       _validate_vocabulary 의 optional=("continues",) 와 bool 검사 제거
+server/ledger/ledger_skeleton.json  술어 레코드의 continues 리프 제거
+server/ledger_trace_router.py       _continuing_predicates() 제거 · subgraph 호출의 continuing 인자 제거
+server/ledger_api/ledger_subgraph.py  continuing 매개변수와 _bare_predicate 사용처 제거
+                                     (예산 계산은 «그대로» — 이미 D→D 로 키가 바뀌었습니다)
+⛔ 라이브·샘플 선언의 continues 여섯은 «총괄이» 지웁니다. 열지 마십시오
+   순서: 레인이 검증기를 «먼저» 열어 두면(선언에 남아 있어도 거절 안 되게) 총괄이 지웁니다.
+        반대로 하면 서버가 선언을 못 읽습니다 — `continues` 넣을 때와 «같은 순서 문제»입니다
+```
+
+## ② 인자 이름 — `continues_hops` -> `backbone_hops`
+```
+왜   `continues` 가 사라지면 그 이름이 «없는 개념»을 가리킵니다
+어디  스펙 §7.5c 가 정책 ①을 「메인 스트림(«백본») 추적」이라 부릅니다 — 그 낱말을 씁니다
+범위  라우터 Query 이름 · 상수 DEFAULT_CONTINUES_HOPS -> DEFAULT_BACKBONE_HOPS
+     클라 두 좌석(구성·칩확대)의 선언 -> «클라 레인» 몫입니다 (별도 지시)
+⚠️ 서버가 «새 이름만» 받게 하십시오. 옛 이름을 같이 받는 호환 층을 만들지 «마십시오» —
+   지금 소비자가 «둘»이고 둘 다 우리 것입니다. 호환 층은 지울 사람이 없어서 남습니다
+```
+
+## 게이트
+```
+① 선언에 continues 가 «남아 있어도» 검증이 통과할 것 (총괄이 지우기 «전» 상태)
+② backbone_hops=4 로 위 실측이 재현될 것 — 157 · observed 포함 시 246
+③ continues_hops 를 보내면 «무시»되거나 «422». 조용히 옛 동작을 하지 «말 것»
+④ 이 파일들을 지나는 시험만
+```
+보고: `task/node_class_report.md` 에 이어서
+
+---
+
 # 🔴 [서버] **정정 — 제가 「구현하지 말라」고 한 정책 ①이 «필요합니다»** (총괄 13:4x)
 
 ## 먼저 — 착지 검수는 통과입니다
