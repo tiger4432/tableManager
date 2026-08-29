@@ -250,15 +250,6 @@
                     }
                   ]
                 }
-              },
-              {
-                "key": "continues",
-                "required": false,
-                "label": "자재 연속",
-                "node": {
-                  "kind": "leaf",
-                  "hint": "flag"
-                }
               }
             ]
           }
