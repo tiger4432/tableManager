@@ -782,6 +782,12 @@ unreachable 잔여), base 신원 없는 웨이퍼 120장, 관측 편향 모델�
 타입 재방문을 허용하면 95, 규칙 ②까지 걸면 23이 남는다. 이 규칙은 살아 있는 문서 어디에도
 없었고 보드에만 있었다.
 
+**⚠️ 규칙 ②는 «세» 곳에 적혀 있다** — `subgraph()` 의 프론티어 분할, `_expand_atom`, `_reach`.
+그중 `_expand_atom` 의 사본은 **오늘 발화하지 않는다**(실측: 구조상 어느 프론티어에서도
+`near 정적 ∧ far 비정적` 이 안 서고, `leads_to` 원자 22개가 전부 양 끝 정적이며, no-op 으로
+바꿔도 시험군 무변). **그래도 죽은 코드가 아니다** — 목적어 타입은 선언이 아니라 «원자»가
+들고 오므로, 선언과 어긋나는 원자가 들어오는 날 그것이 유일한 방어다. 규칙 ③은 두 곳이다.
+
 **강제되는 자리**: `test_reach_obeys_the_two_walk_rules_the_fetch_obeys`(대조 쪽) ·
 `test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after` 및
 `test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empty_list`
