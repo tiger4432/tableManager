@@ -162,6 +162,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 자재를 «두 대 위»까지 따라갑니다 -- 이 좌석의 질문이 「이 다이가 무엇으로
+      //    만들어졌나」이고, 코어가 또 다른 코어 위에 앉는 적층을 한 겹 보기 위해서입니다.
+      //    관측 예산과 «따로» 쓰이므로 결함 쪽을 굶기지 않습니다.
+      continues_hops: 2,
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -355,6 +359,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 자재를 «두 대 위»까지 따라갑니다 -- 이 좌석의 질문이 「이 다이가 무엇으로
+      //    만들어졌나」이고, 코어가 또 다른 코어 위에 앉는 적층을 한 겹 보기 위해서입니다.
+      //    관측 예산과 «따로» 쓰이므로 결함 쪽을 굶기지 않습니다.
+      continues_hops: 2,
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -441,6 +449,9 @@ export const BOARD = Object.freeze({
       //    void 가 통째로 안 보이는 것이고, 화면에서는 「없다」와 구별이 안 됩니다.
       //    ⚠️ 그래서 관측 술어만으로는 «닿을 수 없습니다». 구조 술어 하나가 같이 있어야 합니다.
       follow: ['observed', 'inspected', 'bonded_from'],
+      // 자재를 «한 대 위»까지. 이 좌석은 관측을 보는 자리이고 bonded_from 은 「그 관측의
+      //    주어로 가는 길」로만 씁니다 -- 실측 근거가 이 선언 위 주석에 이미 있습니다.
+      continues_hops: 1,
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -488,6 +499,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 자재를 «두 대 위»까지 따라갑니다 -- 이 좌석의 질문이 「이 다이가 무엇으로
+      //    만들어졌나」이고, 코어가 또 다른 코어 위에 앉는 적층을 한 겹 보기 위해서입니다.
+      //    관측 예산과 «따로» 쓰이므로 결함 쪽을 굶기지 않습니다.
+      continues_hops: 2,
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
@@ -623,6 +638,10 @@ export function bindLoaders(layout, deps) {
       // 새고, 그 순간 세 자리가 다시 «다른 열쇠»가 됩니다 (그게 2aaf194b 가 15 로 늘어난
       // 이유입니다 -- direction 만 맞추고 node_limit 은 다른 길로 들어왔습니다).
       if (decl.node_limit !== undefined && decl.node_limit !== null) question.node_limit = decl.node_limit;
+      // 자재 예산도 «선언»입니다 (라운드 ③). 안 적은 부품은 안 싣고, 그러면 서버 기본 0 입니다.
+      if (decl.continues_hops !== undefined && decl.continues_hops !== null) {
+        question.continues_hops = decl.continues_hops;
+      }
       const walkHere = Object.keys(question).length
         ? (spec) => walk({ ...question, ...(spec || {}) })
         : walk;
@@ -697,6 +716,10 @@ export function bindLoaders(layout, deps) {
         bound.loadWaferFacts = (kind, wafer) => walkHere({
           start: { value: entitySeedId('wafer', { wafer: wafer || options.waferQuestion.row }) },
           follow: ['inspected', 'observed', 'of_kind'],
+          // 🔴 이 곁가지는 «관측만» 봅니다 -- 좌석이 선언한 «자재» 예산을 물려받으면 안 됩니다
+          //    (지시: 관측만 보는 자리엔 안 붙인다). 실측으로 좌석 질문이 그대로 새고 있어서
+          //    여기서 «명시적으로» 끕니다. null 이면 경계가 안 싣습니다.
+          continues_hops: null,
         }).then((answer) => waferFactsFromWalk(answer, kind));
       }
       if (options.peers) {
