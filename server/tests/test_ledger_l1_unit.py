@@ -324,8 +324,18 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
                         "ledger_config.json.sample")
     cfg = ledger_config.load(os.path.abspath(path))
     declared = cfg["sources"]["lot_event"]
-    assert declared["occurred_at_timezone"] == "Asia/Seoul"
-    assert declared["occurred_at_format"] == "%Y-%m-%dT%H:%M:%S"
+    # 🔴 THE ADDRESS MOVED, THE RULING DID NOT. Until 2026-08-29 this read
+    # `declared["occurred_at_timezone"]`; the declaration now carries the same value at
+    # `read.occurred_at.timezone`, and all fourteen sources spell it `Asia/Seoul`.
+    assert declared["read"]["occurred_at"]["timezone"] == "Asia/Seoul"
+    # 🔴 AND THE FORMAT LEFT THE DECLARATION ENTIRELY - it did not move. Measured the same
+    # day: `format` appears zero times anywhere in the sample, so every source falls back
+    # to `config.DEFAULT_OCCURRED_AT_FORMAT`, which is where the 2026-08-13 ruling now
+    # lives alone. Pinned there rather than deleted, because a silent revert of that
+    # constant shifts every timestamp exactly as a reverted timezone would.
+    assert "occurred_at_format" not in declared, (
+        "a source declares a format again - pin the declared value, not the default")
+    assert ledger_config.DEFAULT_OCCURRED_AT_FORMAT == "%Y-%m-%dT%H:%M:%S"
 
 
 def test_an_atom_whose_derivation_was_never_declared_is_refused():

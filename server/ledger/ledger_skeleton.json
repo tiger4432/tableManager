@@ -126,6 +126,15 @@
                   "kind": "leaf",
                   "hint": "flag"
                 }
+              },
+              {
+                "key": "class",
+                "required": false,
+                "label": "노드 분류",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
               }
             ]
           }
@@ -240,15 +249,6 @@
                       }
                     }
                   ]
-                }
-              },
-              {
-                "key": "continues",
-                "required": false,
-                "label": "자재 연속",
-                "node": {
-                  "kind": "leaf",
-                  "hint": "flag"
                 }
               }
             ]

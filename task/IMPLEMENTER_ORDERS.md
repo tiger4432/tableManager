@@ -1,3 +1,259 @@
+# ✅ [서버] **치환 확인 — `continues` 를 걷어냅니다. 그리고 인자 이름을 바꿉니다** (총괄 14:1x)
+
+## 총괄 재검증 — 게이트 ①은 통과이고, 「정확히 157」도 맞습니다
+```
+씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing
+   follow = 자재6 + processed_with   (게이트가 지정한 그대로)
+      continues_hops 0 -> 40 · 4 -> «157»      ← 「이상」이 아니라 «정확히». 보고가 맞습니다
+   follow 에 observed 를 «더하면»
+      continues_hops 0 -> 40 · 4 -> «246»      ← die 156 + defect 89
+=> 제 게이트가 「157 이상」이라 쓴 근거(observed 가 더 온다)는 «맞았고»,
+   게이트의 follow 집합에 observed 가 «없어서» 그 자리에서는 볼 수 없었습니다.
+   제 게이트가 덜 적힌 것이지 결과가 틀린 게 아닙니다 — 그대로 보고한 판단이 옳습니다
+치환 조건   같거나 «넓다» ✅
+```
+
+## ① `continues` 은퇴 — 서버 쪽
+```
+server/ledger/setup_bundle.py       _validate_vocabulary 의 optional=("continues",) 와 bool 검사 제거
+server/ledger/ledger_skeleton.json  술어 레코드의 continues 리프 제거
+server/ledger_trace_router.py       _continuing_predicates() 제거 · subgraph 호출의 continuing 인자 제거
+server/ledger_api/ledger_subgraph.py  continuing 매개변수와 _bare_predicate 사용처 제거
+                                     (예산 계산은 «그대로» — 이미 D→D 로 키가 바뀌었습니다)
+⛔ 라이브·샘플 선언의 continues 여섯은 «총괄이» 지웁니다. 열지 마십시오
+   순서: 레인이 검증기를 «먼저» 열어 두면(선언에 남아 있어도 거절 안 되게) 총괄이 지웁니다.
+        반대로 하면 서버가 선언을 못 읽습니다 — `continues` 넣을 때와 «같은 순서 문제»입니다
+```
+
+## ② 인자 이름 — `continues_hops` -> `backbone_hops`
+```
+왜   `continues` 가 사라지면 그 이름이 «없는 개념»을 가리킵니다
+어디  스펙 §7.5c 가 정책 ①을 「메인 스트림(«백본») 추적」이라 부릅니다 — 그 낱말을 씁니다
+범위  라우터 Query 이름 · 상수 DEFAULT_CONTINUES_HOPS -> DEFAULT_BACKBONE_HOPS
+     클라 두 좌석(구성·칩확대)의 선언 -> «클라 레인» 몫입니다 (별도 지시)
+⚠️ 서버가 «새 이름만» 받게 하십시오. 옛 이름을 같이 받는 호환 층을 만들지 «마십시오» —
+   지금 소비자가 «둘»이고 둘 다 우리 것입니다. 호환 층은 지울 사람이 없어서 남습니다
+```
+
+## 게이트
+```
+① 선언에 continues 가 «남아 있어도» 검증이 통과할 것 (총괄이 지우기 «전» 상태)
+② backbone_hops=4 로 위 실측이 재현될 것 — 157 · observed 포함 시 246
+③ continues_hops 를 보내면 «무시»되거나 «422». 조용히 옛 동작을 하지 «말 것»
+④ 이 파일들을 지나는 시험만
+```
+보고: `task/node_class_report.md` 에 이어서
+
+---
+
+# 🔴 [서버] **정정 — 제가 「구현하지 말라」고 한 정책 ①이 «필요합니다»** (총괄 13:4x)
+
+## 먼저 — 착지 검수는 통과입니다
+```
+게이트 ② (direction=both · 씨앗 wafer SYN-BW-101-16 · hops 6 · node 1000 · edge 3000)
+   전  nodes 1000 · edges 3000 · reached 2 · trunc[nodes,edges,claims]   wafer «776»
+   후  nodes  225 · edges  224 · reached 2 · trunc[claims]               wafer «1»
+게이트 ③ (씨앗 quantity{bond_pressure} · follow=leads_to · hops 4)
+   nodes 18 · edges 18 · reached «4»   -> 인과 사슬 «안 끊김»
+```
+🔴 **그리고 게이트 ③이 제 지시서 본문을 잡았습니다.** 제가 「프론티어에서 노드를 펼 때 그
+타입이 static 이면 «펴지 않는다»」라고 썼는데, 그 문자 그대로면 S→S(정책 ③, «허용»)까지 막혀
+인과 사슬이 죽습니다. 규칙을 «노드»가 아니라 «걸음»에 앉힌 판단이 옳습니다. 게이트가 지시서보다
+옳았고, 그렇게 되도록 게이트를 쓴 것이 이번에 값을 했습니다.
+
+## 🔴 그런데 제 «다음» 문장이 틀렸습니다
+```
+제가 쓴 것   「⛔ 정책 ①②③ 은 구현하지 마십시오. 셋 다 «허용» 쪽이라 막을 게 없습니다」
+왜 틀렸나    ①은 «허가»가 아니라 «홉 예산 면제»입니다 — `continues_hops` 와 «같은 기계»입니다
+실측 (static 선언이 있는 지금)
+   씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing · follow=자재6+processed_with
+      continues_hops=0   nodes  40 · reached 1 · trunc depth
+      continues_hops≥4   nodes 157 · reached 3 · trunc «없음»
+=> continues 는 «아직 덮이지 않았습니다». 지금 지우면 계보 도달이 157 -> 40 으로 «줄어듭니다»
+```
+제가 「D→D ⊇ continues 이니 덮인다」고 논증해 놓고, 덮어 줄 ①을 «막았습니다».
+
+## 할 것 — ①을 `continues_hops` 와 «같은 모양»으로, 키만 바꿔서
+```
+지금   dep_cost[child] = dep_cost[parent] + (0 if predicate in continuing else 1)
+뒤     dep_cost[child] = dep_cost[parent] + (0 if «걸음이 D→D» else 1)
+       (양 끝 노드의 타입이 둘 다 dynamic 이면 «떠남이 아니다»)
+인자   `continues_hops` 를 그대로 씁니다 — 이름은 ② 에서 바꿉니다. 지금 두 번 고치지 마십시오
+```
+⛔ 「깊이 cap 내 무제한」의 «무제한»을 구현하지 마십시오. 스펙 문구는 그렇지만 예산 없는 걷기는
+   split·transfer 반복에서 끝나지 않습니다. **두 번째 통**이 오늘의 모양이고 그게 맞습니다.
+
+## 게이트
+```
+① 치환   위 실측과 «같은 인자»로: continues 플래그를 «무시»하고 D→D 로만 계산했을 때
+         continues_hops≥4 에서 nodes 가 «157 이상»일 것 (observed 가 더해지므로 더 클 수 있음)
+         🔴 «157 미만이면 멈추고 올리십시오» — 덮인다는 제 논증이 또 틀린 것입니다
+② 무회귀  D→D 집합이 비면(=class 선언이 없으면) 오늘과 같아야 합니다
+③ 인과 사슬  게이트 ③ 다시 — quantity{bond_pressure} · follow=leads_to · hops=4 -> reached 4
+④ 시험   이 파일들을 지나는 것만
+```
+
+## ⏭ 그다음이 `continues` 은퇴입니다 — 이번 라운드 «아님»
+①이 157 이상을 내는 것이 확인되면, 그때 걷어냅니다:
+```
+선언(라이브·샘플)의 continues 여섯 · 검증기 optional · 스켈레톤 리프
+_continuing_predicates() · walk 의 continuing 인자
+클라 두 좌석(구성·칩확대)의 continues_hops 선언  ← 이건 «클라 레인» 몫입니다
+```
+보고: `task/node_class_report.md` (같은 파일에 이어서)
+
+---
+
+# 🔴 [서버] **정적/동적 노드 + 정책 ④ — 한 달 전 판정을 오늘 어휘로 되살립니다** (총괄, 소유자 승인 2026-08-29 12:5x)
+
+> 정본: `docs/spec/ONTOLOGY_GRAPH_SPEC.md` §7.5c (소유자 확정 2026-07-25)
+> 소유자 2026-08-29: 「이거 살려」 · 「술어 continue 는 필요없을거 같은데 이거면」
+>                   「s→s 는 허용이고 s→d 가 금지잖아」
+
+## 도착지 — 먼저 적습니다
+```
+엔티티가 «자기 분류»를 선언한다 (static | dynamic)
+walk 이 «정적 노드에서 나가지» 않는다 — 닿기는 한다
+그러면 부품이 direction 을 손으로 선언할 이유가 «줄어듭니다»
+```
+
+## 왜 지금인가 — 오늘 밤 실측이 그 표에 그대로 떨어졌습니다
+```
+술어              원자        서로 다른 목적어   목적어당      분류
+of_kind        103,841              «1»       103,841     D→S   ← defect_kind 는 노드 «하나»
+measures        80,322               31         2,591     D→S
+processed_with   3,022               12           252     D→S
+transfer       401,206          133,230             3     D→D
+inspected      117,662          108,735             1     D→D
+observed       103,841          103,841             1     D→D
+bonded_from     18,545           17,905             1     D→D
+slot_map           135              122             1     D→D
+leads_to            22               14             2     S→S
+```
+🔴 **오늘 `both` 이 터진 경로를 그대로 대면 정책 ④입니다**
+```
+wafer --measures--> quantity            D→S · ② 🟢
+quantity --measures 거꾸로--> 남의 웨이퍼 «747장»   S→D · ④ 🚫  ← 여기
+결과   nodes 1000 · edges 3000 · truncated[nodes,edges,claims] · defect_kind 에 «못 닿음»
+대조   outgoing 은 265/352 · 절단 «없음» · defect_kind «닿음»
+```
+
+## ① 선언 — 엔티티에 칸 하나 (라이브는 총괄이 씁니다. 레인은 열지 마십시오)
+```
+"defect_kind@1": { "keys": [...], "class": "static" }
+static  : defect_kind · quantity · recipe
+dynamic : lot · lot_slot · wafer · die · defect · dtjob
+⚠️ 없으면 «dynamic» 으로 읽습니다. 기본값을 선언에 «쓰지» 마십시오 (continues 때와 같은 규율)
+```
+### 검증기
+`server/ledger/setup_bundle.py` — 엔티티 검증에 `optional=("class",)` + 값은 `static|dynamic` 둘뿐.
+스켈레톤(`ledger_skeleton.json`)에도 같은 칸. **셋이 같이 가야 합니다** — 검증기가 모르는 칸은 거절합니다.
+📌 `continues` 때와 «같은 모양»입니다. 그 커밋(`4cbcb086`)을 템플릿으로 보십시오.
+
+## ② walk — 정책 ④ «하나»만 강제합니다
+```
+server/ledger_trace_router.py   _static_types()   ← _continuing_predicates 와 같은 모양.
+                                                    선언에서만 읽고, 못 읽으면 «빈 집합»(=오늘의 걷기)
+server/ledger_api/ledger_subgraph.py
+   프론티어에서 노드를 펼 때: 그 노드의 타입이 static 이면 «펴지 않는다»
+   (닿는 것은 그대로 — 노드로도 엣지로도 응답에 들어갑니다. «나가지» 않을 뿐입니다)
+```
+⛔ **정책 ①②③ 은 구현하지 «마십시오».** 셋 다 «허용» 쪽이라 막을 게 없습니다.
+   특히 ③의 「1홉」을 강제하지 마십시오 — 그건 마스터 계층(Eqp→Line) 판독용 문구이고,
+   여기서 강제하면 `leads_to` 인과 사슬(최장 «3홉» · bond_pressure→die_stress→…)이 끊깁니다.
+   그 사슬이 물리 모델링의 핵심이고, 원자가 «22개 전부»라 예산 위험이 «0» 입니다.
+
+## ③ `continues` 은퇴 — **치환이 확인된 «뒤에»**
+```
+실측   D→D 인 술어      bonded_from · derived_from · has_wafer · inspected · slot_map · transfer · observed
+       continues 인 술어 bonded_from · derived_from · has_wafer · inspected · slot_map · transfer
+       continues 인데 D→D 아님  «0»   -> 잃는 것 없음
+       D→D 인데 continues 아님  observed (목적어당 차수 «1») -> 하나 더 얻고, 안 터집니다
+```
+⚠️ **이번 라운드에서 지우지 마십시오.** 지우면 클라 두 좌석(구성·칩확대)의 `continues_hops` 선언이
+   «죽은 채로» 남습니다. ②가 착지해 도달 범위가 «같거나 넓다»는 것을 잰 뒤 별도로 걷어냅니다.
+   (「도출로 바꾸면 먹이던 축이 조용히 죽는다」 — 오늘 밤에도 나온 부류입니다)
+
+## 게이트 — 씨앗 적음 · 예측값 «안» 적음
+```
+① 무회귀   선언에 class 가 «하나도 없으면» 정적 집합이 비고 오늘과 «똑같아야» 합니다
+           (총괄이 선언을 쓰기 «전»에 이 상태로 한 번 재십시오)
+② 효과     씨앗 wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · edge_limit=3000 · direction=«both»
+           전/후로 nodes · edges · walk.hops_reached · truncated 를 네 수로
+           ⚠️ hops_reached 는 `limits` 가 아니라 «`walk` 블록»에 있습니다 (총괄이 두 번 눈이 멀었습니다)
+           🔴 both 로 재십시오 — outgoing 은 이미 ④를 손으로 하고 있어서 «차이가 안 납니다»
+③ 인과 사슬 안 끊김   씨앗 quantity{bond_pressure} · follow=leads_to · hops=4
+                     사슬이 «1홉에서 안 끊기는지». 끊기면 ③을 강제한 것이니 되돌리십시오
+④ 시험     이 파일들을 지나는 것만. 전체 스위트 금지
+```
+보고: `task/node_class_report.md`
+
+---
+
+# ✅ [서버] **둘 다 통과 — 그리고 그 «빨강 하나»는 제 것이었습니다** (총괄 검수 12:2x)
+
+`task/schema_and_orphans_report.md` 받았습니다. 게이트 셋 다 성실했고, 특히 **라이브에 안 쓰고
+임시 DB 를 만들어 재고 지운 것**이 정확합니다.
+
+## 총괄이 «직접» 다시 쟀습니다 — 게이트 ①
+지시가 「눈으로 같아 보인다 금지」였으므로 저도 문자열로 쟀습니다. 방식은 다르게 갔습니다:
+스크래치 «임시 표»에 코드의 문장을 실제로 만들고 `pg_indexes.indexdef` 를 뽑아 라이브와 비교한 뒤
+«롤백»했습니다 (임시 DB 도 안 만들었습니다).
+```
+라이브  occurred_at, predicate, subject_type, md5((subject_keys)::text),
+        md5((COALESCE(object_payload, '{}'::jsonb))::text), source_translator_ver, md5(source_raw_ref)
+코드    «완전히 같은 문자열»            EQUAL True
+시험    -k "schema or subgraph"  ->  155 passed · 4 skipped · 0 failed
+고아상수 0
+```
+
+## 🔴 그 빨강은 «제 것»이었습니다 — 다만 «깬» 게 아니라 «깨운» 것입니다
+레인이 「제 것 아님」으로 가른 것은 방법이 옳았고 결론도 옳습니다(schema.py·subgraph 와 무관).
+그런데 **그 시험이 보는 파일은 제가 오늘 밤 복사한 `ledger_config.json.sample` 입니다.**
+그래서 제가 «복사 전»으로 되돌려 같은 시험을 돌렸습니다:
+```
+복사 «전»   ProfileValidationError: pack 'dt-job' is not registered   <- 샘플이 «아예 안 열림»
+복사 «후»   KeyError: 'occurred_at_timezone'                          <- 열리는데 «키 자리가 다름»
+=> 제 복사가 시험을 깬 것이 아니라, «죽어 있던 시험을 깨웠습니다».
+   출하 샘플은 검증 오류 30개로 로드조차 안 됐고, 그동안 이 시험은 «측정을 못 하고 있었습니다»
+```
+
+## 진짜 문제 — 시험이 «옳은 것»을 «옛 주소»에서 잽니다
+```
+시험      cfg["sources"]["lot_event"]["occurred_at_timezone"] == "Asia/Seoul"
+샘플 실제  sources.lot_event.read.occurred_at = {"column":"event_time","timezone":"Asia/Seoul"}
+          그리고 14 소스의 timezone 값 집합이 «{Asia/Seoul}» — 값은 «전부 살아 있습니다»
+=> 시험의 «의도»(「조용히 UTC 로 되돌면 원자가 아홉 시간 밀린다」)는 지금도 유효합니다.
+   틀린 것은 «주소»뿐입니다
+```
+
+## 할 것 — 한 줄짜리 둘
+```
+server/tests/test_ledger_l1_unit.py:327-328
+   전   declared["occurred_at_timezone"] · declared["occurred_at_format"]
+   후   declared["read"]["occurred_at"]["timezone"]  (그리고 format 은 «지금 선언에 있는 자리»로)
+   ⚠️ format 이 새 모양에 «없으면» 그 단언은 지우지 말고 «무엇이 없어졌는지» 보고하십시오.
+      값이 사라진 것과 이름이 옮긴 것은 다릅니다
+```
+⛔ 샘플을 시험에 맞추지 «마십시오». 샘플은 라이브의 사본이고 라이브가 정답입니다.
+⛔ 시험을 «지우지» 마십시오 — 아홉 시간 밀림을 잡는 유일한 자리입니다
+
+## ⏭ 그리고 레인이 물고 나온 셋째 — 총괄 판정
+```
+빈 DB 에서 ensure_schema 가 «죽습니다»: gin_trgm_ops 가 pg_trgm 확장을 요구하는데
+ensure_schema 안에 CREATE EXTENSION 이 «없습니다». 라이브는 이미 깔려 있어 «안 보입니다»
+판정   🔴 `ensure_schema` 가 «스스로 깝니다» — `CREATE EXTENSION IF NOT EXISTS pg_trgm` 을
+       trigram 인덱스 «앞»에 놓으십시오
+근거   소유자 DoD 는 「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」입니다.
+       새 환경이 스키마조차 못 세우면 그 DoD 는 시작도 못 합니다.
+       그리고 이번 라운드가 고친 것과 «정확히 같은 부류»입니다 — 라이브에 있어서 안 보이는 전제
+⚠️ 확장 생성은 권한이 필요할 수 있습니다. 권한이 없으면 «조용히 넘기지 말고» 이름 대어
+   거절하십시오(「pg_trgm 이 필요한데 만들 권한이 없습니다」). 조용한 실패가 오늘의 부류입니다
+```
+보고: 같은 파일
+
+---
+
 # 🔴 [서버] **작은 것 둘 — 스키마가 라이브와 다른 인덱스를 냅니다 · 고아 상수 셋** (총괄 판정 11:2x)
 
 문서 정비가 물고 나온 것이고, 총괄이 라이브에 대고 «직접» 확인했습니다.

@@ -48,10 +48,15 @@ MAX_HOPS = 40
 #: introduced the axis.  Turning it on is the caller's sentence, not this file's.
 #:
 #: ⚠️ NOT free.  A material step still costs a level of `depths`, so split/transfer
-#: repeating forever is bounded by `hops + continues_hops` rather than unbounded; what
+#: repeating forever is bounded by `hops + backbone_hops` rather than unbounded; what
 #: the second budget buys is that following one wafer's own history does not spend the
 #: allowance meant for LEAVING it.
-DEFAULT_CONTINUES_HOPS = 0
+#: 🔴 NAMED AFTER THE POLICY, NOT AFTER THE RETIRED FLAG. It was `continues_hops` while a
+#: per-predicate `continues` decided which steps were free; that flag retired 2026-08-29
+#: once the entity class covered it, and `ONTOLOGY_GRAPH_SPEC` §7.5c calls this walk
+#: 「메인 스트림(backbone) 추적」. No alias is accepted for the old spelling: both
+#: consumers are ours, and a compatibility layer with no one left to remove it stays.
+DEFAULT_BACKBONE_HOPS = 0
 DEFAULT_NODE_LIMIT = 400
 DEFAULT_EDGE_LIMIT = 6000
 MAX_NODE_LIMIT = 1000
@@ -680,15 +685,15 @@ def _seed_node(seed_id, seed_ref, action_lookup):
             "predicates": [],
         }
     return seed_node
-def _bare_predicate(name):
-    """`bonded_from@1` -> `bonded_from`.  The declaration versions ids; atoms do not."""
+def _bare(name):
+    """The same trim for an ENTITY type: `defect_kind@1` -> `defect_kind`."""
     return str(name or "").split("@", 1)[0]
 
 
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
-             action_lookup=None, follow=None, continuing=None,
-             continues_hops=DEFAULT_CONTINUES_HOPS):
+             action_lookup=None, follow=None,
+             backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -701,14 +706,14 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
     hops = max(1, min(int(hops), MAX_HOPS))
-    # 🔴 THE PREDICATES COME FROM THE CALLER, WHICH READ THEM FROM THE DECLARATION.
-    # No word is spelled in this file: a predicate joins the material budget by being
-    # declared `continues: true`, and nothing here has to be edited for that.  Bare
-    # names on both sides because the declaration versions its ids (`bonded_from@1`)
-    # and an atom carries the bare one.
-    continuing = {str(name).split("@", 1)[0] for name in (continuing or ())}
-    continues_hops = max(0, min(int(continues_hops), MAX_HOPS))
-    budget_hops = hops + continues_hops
+    # 🔴 THE CLASSES COME FROM THE CALLER, WHICH READ THEM FROM THE DECLARATION.
+    # No type is spelled in this file: an entity becomes a name rather than a happening by
+    # being declared `class: "static"`, and nothing here has to be edited for that.  Bare
+    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
+    # carries the bare one.
+    backbone_hops = max(0, min(int(backbone_hops), MAX_HOPS))
+    budget_hops = hops + backbone_hops
+    static_types = {str(name).split("@", 1)[0] for name in (static_types or ())}
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -838,12 +843,40 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             subject_depth, target_depth = depth, depth + 1
         else:
             subject_depth, target_depth = depth + 1, depth
-        # 🔴 THE FAR SIDE PAYS, AND WHAT IT PAYS DEPENDS ON THE PREDICATE. A step over a
-        # `continues` predicate stays on the same material -- one wafer's own split,
+        # 🔴 THE FAR SIDE PAYS, AND WHAT IT PAYS DEPENDS ON THE TWO ENDS. A step between two
+        # happenings stays inside the world -- one wafer's own split,
         # transfer and inspection history -- so it costs a level of `depths` but no
         # DEPARTURE. `depths` is untouched by this: every reader of it (the truncation
         # test, `hops_reached`, the evidence trails, the client) keeps the meaning it had.
-        _charge = 0 if _bare_predicate(atom.predicate) in continuing else 1
+        # 🔴 A NAME MAY BE REACHED, AND MAY LEAD TO ANOTHER NAME, BUT NOT BACK INTO THE
+        # WORLD. The owner's rule is about the STEP and not about the node: `s -> s` is
+        # allowed, `s -> d` is not. Written as "do not expand a static node" instead, it
+        # also cuts `s -> s`, and MEASURED that costs the whole causal chain - seeded at
+        # quantity{bond_pressure} with follow=leads_to the graph fell from 18 nodes and 4
+        # hops to 1 node and 0 edges, because every link in that chain is quantity to
+        # quantity. What the rule is for is the other direction: `defect_kind` carries
+        # 103,841 atoms against ONE distinct object, so one step from that name back out
+        # to wafers drags in 747 of them and the answer drowns.
+        near_kind = far_kind = None
+        if subject_near and not target_near:
+            near_kind, far_kind = _bare(atom.subject_type), _bare(payload.get("type"))
+        elif target_near and not subject_near:
+            near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
+        if near_kind in static_types and far_kind and far_kind not in static_types:
+            return
+        # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
+        # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
+        # ENTITY CLASS instead of on a per-predicate flag. Following one wafer through its
+        # own split, transfer and inspection history stays inside the world, so it spends
+        # the material budget rather than the allowance meant for LEAVING.
+        #
+        # ⚠️ MEASURED BEFORE THE FLAG WAS REMOVED: on the same seed the class rule reaches
+        # everything the flag reached (157 nodes either way), and reaches MORE once
+        # `observed` is followed (246), which is the one predicate D->D holds that
+        # `continues` did not.
+        _charge = 0 if (near_kind and far_kind
+                        and near_kind not in static_types
+                        and far_kind not in static_types) else 1
         if subject_near and not target_near and target is not None:
             _spend(subject_id, target["id"], _charge)
         elif target_near and not subject_near:
@@ -882,7 +915,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
         # That is the whole of the second budget: the walk keeps going while it stays on
         # the material, and stops going FURTHER AFIELD at exactly the same `hops` it always
-        # did.  With `continues_hops=0` this reads `dep_cost < hops` on a range of `hops`,
+        # did.  With `backbone_hops=0` this reads `dep_cost < hops` on a range of `hops`,
         # which is what the loop did before this existed.
         frontier_ids = [node_id for node_id, seen in depths.items()
                         if seen == depth and dep_cost.get(node_id, 0) < hops]
@@ -1014,17 +1047,4 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     }
 
 
-NODE_TABLE_COLUMNS = (
-    "node_id", "node_kind", "node_type", "label", "depth", "claim_count",
-    "predicate", "object_kind", "occurred_at", "source_who",
-    "source_event_state", "keys_json", "object_payload_json",
-)
-EDGE_TABLE_COLUMNS = (
-    "edge_id", "source_id", "target_id", "predicate", "original_predicate",
-    "witnesses", "qualifiers_json",
-)
-PROPERTY_TABLE_COLUMNS = (
-    "node_id", "node_kind", "property_scope", "property_path", "ordinal",
-    "value_type", "value_text", "value_number", "value_boolean", "is_null",
-)
 

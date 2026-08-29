@@ -990,12 +990,16 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: OPTIONAL, AND ABSENCE MEANS false.  Not written into configs that do not use it:
         #: a field the walk reads as off when missing must stay missing, or the difference
         #: between "declared off" and "never considered" is spent for nothing.
+        #: ⏳ `continues` IS RETIRED AND STILL TOLERATED HERE, on purpose and briefly. The
+        #: entity class replaced it on 2026-08-29 - measured, the class rule reaches
+        #: everything the flag reached and more - but the live declaration still carries the
+        #: six, and a validator that refuses them would stop the server reading the
+        #: declaration before anyone could remove them. So the gate opens first and the
+        #: declaration is cleaned second; this line goes with that cleanup.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
                 optional=("continues",)):
             continue
-        if "continues" in item and not isinstance(item["continues"], bool):
-            problems.add("invalid_predicate", f"{path}.continues", "must be true or false")
         if item.get("status") not in ("active", "retired"):
             problems.add("invalid_predicate", f"{path}.status", "must be active or retired")
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
@@ -1042,9 +1046,23 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         path = f"bundle.entities.{entity_id}"
         _versioned_id(entity_id, path, problems)
         item = section[entity_id]
+        #: `class` says whether this entity is a THING THAT HAPPENS or a NAME THINGS POINT
+        #: AT. Owner ruling 2026-08-29 reviving `ONTOLOGY_GRAPH_SPEC` §7.5c: a walk may
+        #: reach a static node but must not leave one, because a name every instance points
+        #: at is a hub - measured, `defect_kind` has 103,841 atoms and exactly ONE distinct
+        #: object, so stepping out of it reaches the whole ledger and the answer drowns.
+        #:
+        #: OPTIONAL, AND ABSENCE MEANS `dynamic`. Not written into declarations that do not
+        #: use it, for the reason `continues` is not: a field read as a default when missing
+        #: must stay missing, or "declared dynamic" and "never classified" stop being
+        #: distinguishable.
         if not problems.exact(
-                item, path, required=("keys",), optional=("key_types", "allow_null", "references")):
+                item, path, required=("keys",),
+                optional=("key_types", "allow_null", "references", "class")):
             continue
+        if "class" in item and item["class"] not in ("static", "dynamic"):
+            problems.add("invalid_entity_ref", f"{path}.class",
+                         "must be static or dynamic")
         keys = item.get("keys")
         _nonblank_list(keys, f"{path}.keys", problems)
         if _has_duplicate_strings(keys):
