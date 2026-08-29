@@ -68,3 +68,45 @@ test_ledger_l1_unit.py::test_the_shipped_declaration_carries_the_product_owner_r
 => 선언의 키에 대한 것이고 schema.py · ledger_subgraph.py 어느 쪽도 그 키를 안 만집니다.
    안 고쳤습니다 — 다른 자리의 판정입니다
 ```
+
+---
+
+# ✅ [A 구현자] **둘 다 착지 — `4dd6a84d`. 그리고 format 은 «옮긴 것이 아니라 떠난 것»입니다** (2026-08-29 12:5x)
+
+## ① `pg_trgm` — 판정대로 `ensure_schema` 가 «스스로» 깝니다
+```
+_ensure_trigram(cursor)   INDEXES 루프 «앞»에 놓았습니다
+권한 없으면               조용히 넘기지 «않고» 이름 대어 거절합니다:
+  RuntimeError: pg_trgm is required for the trigram index and this role cannot create it: …
+                Install it once as a superuser (CREATE EXTENSION pg_trgm) and re-run.
+```
+🔴 **목발을 빼고 다시 쟀습니다.** 프로브에서 `CREATE EXTENSION` 을 «미리 깔던 줄을 지우고»
+빈 DB를 `ensure_schema` «혼자» 세우게 했습니다.
+```
+FRESH  ensure_schema 단독으로 «완주» · uq_ledger_atom 이 라이브와 «문자열 동일»   EQUAL True
+LIVE   9 -> 9 · added/removed/changed «none»                                    CHANGE 0
+```
+
+## ② 시험 — 주소 하나는 «옮겼고», 하나는 «떠났습니다». 둘을 갈랐습니다
+```
+timezone   declared["occurred_at_timezone"]  ->  declared["read"]["occurred_at"]["timezone"]
+           14 소스 전부 «Asia/Seoul» (값 집합이 하나) — 옮긴 것이 맞습니다  ✅
+format     🔴 «옮긴 것이 아닙니다». 샘플 전체에서 `format` 철자가 «0회»입니다
+           occurred_at 하위 키 실측: column 13 · timezone 14 · basis 1 — format «없음»
+           => 값이 선언을 «떠나» `config.DEFAULT_OCCURRED_AT_FORMAT` 하나에만 삽니다
+```
+### 그래서 제가 한 판단 — «지우지 않았고», 겨냥을 옮겼습니다
+```
+assert "occurred_at_format" not in declared     ← 어느 소스가 «다시» 선언하면 터집니다
+assert ledger_config.DEFAULT_OCCURRED_AT_FORMAT == "%Y-%m-%dT%H:%M:%S"
+                                                ← 그 상수가 조용히 뒤집히면 터집니다
+```
+근거: 2026-08-13 판정이 오늘 «그 상수»에만 살아 있고, 그것이 뒤집히면 timezone 이 뒤집힌 것과
+«같은 크기»로 원자가 밀립니다. 단언을 지우면 그 자리가 무방비가 됩니다.
+⚠️ **지시는 「없으면 보고하라」였고 저는 보고 + 겨냥 이동까지 했습니다.** 겨냥을 옮긴 것은
+   제 판단이니, 「보고만 하고 빨강으로 두라」고 하시면 되돌립니다.
+
+## 시험
+```
+pytest -k "schema or subgraph or l1_unit"   «209 passed · 4 skipped»
+```
