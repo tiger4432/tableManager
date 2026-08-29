@@ -1,3 +1,67 @@
+# ✅ [서버] **둘 다 통과 — 그리고 그 «빨강 하나»는 제 것이었습니다** (총괄 검수 12:2x)
+
+`task/schema_and_orphans_report.md` 받았습니다. 게이트 셋 다 성실했고, 특히 **라이브에 안 쓰고
+임시 DB 를 만들어 재고 지운 것**이 정확합니다.
+
+## 총괄이 «직접» 다시 쟀습니다 — 게이트 ①
+지시가 「눈으로 같아 보인다 금지」였으므로 저도 문자열로 쟀습니다. 방식은 다르게 갔습니다:
+스크래치 «임시 표»에 코드의 문장을 실제로 만들고 `pg_indexes.indexdef` 를 뽑아 라이브와 비교한 뒤
+«롤백»했습니다 (임시 DB 도 안 만들었습니다).
+```
+라이브  occurred_at, predicate, subject_type, md5((subject_keys)::text),
+        md5((COALESCE(object_payload, '{}'::jsonb))::text), source_translator_ver, md5(source_raw_ref)
+코드    «완전히 같은 문자열»            EQUAL True
+시험    -k "schema or subgraph"  ->  155 passed · 4 skipped · 0 failed
+고아상수 0
+```
+
+## 🔴 그 빨강은 «제 것»이었습니다 — 다만 «깬» 게 아니라 «깨운» 것입니다
+레인이 「제 것 아님」으로 가른 것은 방법이 옳았고 결론도 옳습니다(schema.py·subgraph 와 무관).
+그런데 **그 시험이 보는 파일은 제가 오늘 밤 복사한 `ledger_config.json.sample` 입니다.**
+그래서 제가 «복사 전»으로 되돌려 같은 시험을 돌렸습니다:
+```
+복사 «전»   ProfileValidationError: pack 'dt-job' is not registered   <- 샘플이 «아예 안 열림»
+복사 «후»   KeyError: 'occurred_at_timezone'                          <- 열리는데 «키 자리가 다름»
+=> 제 복사가 시험을 깬 것이 아니라, «죽어 있던 시험을 깨웠습니다».
+   출하 샘플은 검증 오류 30개로 로드조차 안 됐고, 그동안 이 시험은 «측정을 못 하고 있었습니다»
+```
+
+## 진짜 문제 — 시험이 «옳은 것»을 «옛 주소»에서 잽니다
+```
+시험      cfg["sources"]["lot_event"]["occurred_at_timezone"] == "Asia/Seoul"
+샘플 실제  sources.lot_event.read.occurred_at = {"column":"event_time","timezone":"Asia/Seoul"}
+          그리고 14 소스의 timezone 값 집합이 «{Asia/Seoul}» — 값은 «전부 살아 있습니다»
+=> 시험의 «의도»(「조용히 UTC 로 되돌면 원자가 아홉 시간 밀린다」)는 지금도 유효합니다.
+   틀린 것은 «주소»뿐입니다
+```
+
+## 할 것 — 한 줄짜리 둘
+```
+server/tests/test_ledger_l1_unit.py:327-328
+   전   declared["occurred_at_timezone"] · declared["occurred_at_format"]
+   후   declared["read"]["occurred_at"]["timezone"]  (그리고 format 은 «지금 선언에 있는 자리»로)
+   ⚠️ format 이 새 모양에 «없으면» 그 단언은 지우지 말고 «무엇이 없어졌는지» 보고하십시오.
+      값이 사라진 것과 이름이 옮긴 것은 다릅니다
+```
+⛔ 샘플을 시험에 맞추지 «마십시오». 샘플은 라이브의 사본이고 라이브가 정답입니다.
+⛔ 시험을 «지우지» 마십시오 — 아홉 시간 밀림을 잡는 유일한 자리입니다
+
+## ⏭ 그리고 레인이 물고 나온 셋째 — 총괄 판정
+```
+빈 DB 에서 ensure_schema 가 «죽습니다»: gin_trgm_ops 가 pg_trgm 확장을 요구하는데
+ensure_schema 안에 CREATE EXTENSION 이 «없습니다». 라이브는 이미 깔려 있어 «안 보입니다»
+판정   🔴 `ensure_schema` 가 «스스로 깝니다» — `CREATE EXTENSION IF NOT EXISTS pg_trgm` 을
+       trigram 인덱스 «앞»에 놓으십시오
+근거   소유자 DoD 는 「다른 스키마 운영 환경에서 코드 0줄, 선언 교체만으로 발화」입니다.
+       새 환경이 스키마조차 못 세우면 그 DoD 는 시작도 못 합니다.
+       그리고 이번 라운드가 고친 것과 «정확히 같은 부류»입니다 — 라이브에 있어서 안 보이는 전제
+⚠️ 확장 생성은 권한이 필요할 수 있습니다. 권한이 없으면 «조용히 넘기지 말고» 이름 대어
+   거절하십시오(「pg_trgm 이 필요한데 만들 권한이 없습니다」). 조용한 실패가 오늘의 부류입니다
+```
+보고: 같은 파일
+
+---
+
 # 🔴 [서버] **작은 것 둘 — 스키마가 라이브와 다른 인덱스를 냅니다 · 고아 상수 셋** (총괄 판정 11:2x)
 
 문서 정비가 물고 나온 것이고, 총괄이 라이브에 대고 «직접» 확인했습니다.
