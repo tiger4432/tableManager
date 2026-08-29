@@ -67,7 +67,12 @@ export class MainTrendPanel extends Panel {
     //    this.collect 의 기본값이 살아나면 좌석이 이름을 뗐는데도 죽은 trends 라우트를
     //    계속 부릅니다 -- 오늘 같은 모양을 세 부품에서 이미 만났습니다.
     this.boundWalk = options.load || null;
-    this.collect = options.collect || 'trend_y';
+    // 🔴 기본값이 «떠났습니다» (총괄 검수 14:3x, 2026-08-29). 세 줄 위의 경고가 맞았고 줄이 남아
+    //    있었습니다 -- 좌석이 `collect` 를 뗀 뒤에도 이 `|| 'trend_y'` 가 죽은 라우트를 되살립니다.
+    //    🔴 배울 것: «기본값은 아무도 안 쓴 선언»입니다. 선언에서 지워도 부품이 들고 있으면
+    //       그대로 돌고, 「좌석 선언에서 사라졌나」로 재는 게이트는 그때 초록입니다.
+    //       그래서 이제 «없으면 안 걷고 말합니다» -- 지어내는 것보다 조용한 답이 낫습니다.
+    this.collect = options.collect || null;
     this.kinds = options.kinds || null;
     this.window = options.window || '180d';
     // Declared by the screen, never assembled here: this part does not know what a grain means.
@@ -164,6 +169,14 @@ export class MainTrendPanel extends Panel {
     // 🔴 A QUESTION WITH NO SUBJECT IS NOT ASKED. When this instance's start names a marking
     //    and nobody has marked anything yet, walking would answer for EVERYBODY and the chart
     //    would look like an answer about the candidate nobody picked. It waits, and says so.
+    // 🔴 무엇을 모을지 «아무도 안 말했으면» 묻지 않습니다. 기본값을 지어내면 그 순간 화면이
+    //    선언에 없는 질문을 하게 되고, 그 답이 404 여도 화면은 「서버가 거절」이라 말합니다.
+    if (!this.boundWalk && !this.collect) {
+      this.model = null;
+      this.loadState = 'undeclared';
+      this.render();
+      return;
+    }
     const start = this.startFor();
     if (!start && this.start && this.start.marking) {
       this.model = null;
@@ -210,6 +223,7 @@ export class MainTrendPanel extends Panel {
 
     if (this.loadState !== 'ready' || !this.model || !this.model.ok) {
       const note = doc.createElement('div');
+      // 「선언이 없다」는 «거절이 아닙니다» -- 서버는 아무 말도 안 했습니다.
       note.className = this.loadState === 'refused'
         ? 'rb-trend-note rb-trend-note--refused' : 'rb-trend-note rb-trend-note--absent';
       // 🔴 「아직 안 골랐다」 IS ITS OWN SENTENCE. Folding it into 「없다」 or a refusal would
@@ -217,8 +231,10 @@ export class MainTrendPanel extends Panel {
       //    is built to keep apart.
       note.textContent = this.loadState === 'awaiting'
         ? `${(this.start && this.start.marking) || '마킹'} 이 비었습니다 — 후보를 고르면 그립니다`
-        : (this.loadState === 'loading' ? '읽는 중…'
-          : (this.model && this.model.message) || '서버가 거절했습니다');
+        : (this.loadState === 'undeclared'
+          ? '이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다'
+          : (this.loadState === 'loading' ? '읽는 중…'
+            : (this.model && this.model.message) || '서버가 거절했습니다'));
       root.appendChild(note);
       this.host.appendChild(root);
       return;

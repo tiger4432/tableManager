@@ -1,3 +1,233 @@
+# 🟡 [클라] `backbone_hops` 개명 — **착지했습니다. 게이트 A 는 «재기동 대기»입니다**
+
+## 서버는 «코드로» 받았고, «도는 프로세스»는 아직입니다
+```
+코드      origin/main 에 backbone_hops «있습니다»  (35f1963c)
+          ledger_trace_router.py:101   backbone_hops: int = Query(DEFAULT_BACKBONE_HOPS, ge=0, le=40)
+          ledger_subgraph.py:696·714·715 · DEFAULT_BACKBONE_HOPS = 0
+🔴 옛 이름은 «별칭이 아닙니다»  라우터에서 사라졌고, 남은 `continues_hops` 는 주석 «한 줄»뿐입니다
+프로세스   최신 python 시작 «13:18:07» · 35f1963c 는 그 뒤 -> 아직 옛 코드가 돕니다
+```
+
+## 게이트 A — «빨강». 그리고 두 가지로 잽니다 (422 하나로는 반쪽입니다)
+```
+① 상태 코드      backbone_hops=abc  «200»   <- 조용히 버려짐 = 이름이 «없다»
+                 continues_hops=abc «422»   <- 파싱됨 = 옛 이름이 «아직 산다»
+                 nonsense_hops=abc  «200»   (대조군)
+② 🔴 «효과»로도 잽니다 — 이게 더 셉니다. 총괄의 게이트 B 씨앗 그대로:
+   씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing
+   follow = slot_map · transfer · has_wafer · bonded_from · derived_from · inspected · processed_with
+      예산 없음            nodes «40»  · edges 39  · trunc [depth]
+      continues_hops=4     nodes «157» · edges 156 · trunc 없음     <- 총괄 실측 157 «재현»
+      backbone_hops=4      nodes «40»  · edges 39  · trunc [depth]  <- «예산 없음과 글자 그대로 같음»
+   => 새 이름은 «효과가 0» 입니다. 상태 코드가 아니라 «수»가 그걸 말합니다
+```
+📌 그래서 게이트 A 는 **재기동 한 번**이면 초록입니다. 재기동 뒤 같은 세 줄을 다시 재서 붙이겠습니다 —
+   기대값은 `backbone_hops=4 -> 157` 이고, `continues_hops=abc` 는 200(무시) 이 됩니다.
+
+## 게이트 C — 초록. 다만 총괄 말씀대로 **C 만으로는 아무것도 증명 못 합니다**
+좌석이 «실제로 보내는» 질의 그대로 재습니다 (칩 확대 좌석, `hops=8 · backbone_hops=1 ·
+follow=observed,inspected,bonded_from · outgoing`):
+```
+backbone_hops=1    nodes 3 · edges 2
+continues_hops=1   nodes 3 · edges 2
+예산 없음           nodes 3 · edges 2
+```
+셋이 같습니다 — 이 좌석의 씨앗은 «원래 예산을 안 씁니다». 화면 수치도 무변:
+```
+본딩 맵   「마킹 0 · 128칸 · 발견 121 · 검사 128」   (개명 전과 «같음»)
+```
+
+## 그래서 «지금 착지시킨» 이유 — 어긋난 창에서도 이 화면은 안 움직입니다
+```
+옛 이름은 재기동과 «동시에» 죽습니다 (별칭 없음). 그래서 「재기동 전 = 옛 이름 · 후 = 새 이름」을
+한 정적 파일로 둘 다 맞출 수는 «없습니다». 어느 쪽이든 한 창에서 예산이 떨어집니다.
+그 창의 «비용»을 재 봤습니다 — 이 보드에서는 «0» 입니다:
+   SYN-CX-BW-001 의 die «40» · follow=bonded_from        ch 0 == ch 2
+   SYN-BW-101-02 의 die «8»  · +processed_with           ch 0 == ch 4
+   칩 확대 좌석의 «실제» 질의                              세 변형 전부 nodes 3 · edges 2
+   본딩 맵                                              128칸 · 발견 121 · 검사 128 무변
+=> 총괄 지적대로 «B 의 씨앗은 좌석의 씨앗이 아닙니다». 좌석은 예산이 물릴 만큼 깊이 안 걷습니다.
+   그래서 새 이름으로 «먼저» 가 두는 쪽이 재기동 순간에 맞고, 반대는 재기동 순간에 어긋납니다
+```
+⚠️ 이 판단의 근거는 «위 네 줄의 수»입니다. 좌석이 더 깊이 걷게 되는 날엔 이 논거가 죽습니다 —
+   그때는 재기동과 «같은 커밋»이어야 합니다. 그 조건을 코드 주석에 적어 뒀습니다.
+
+## 바뀐 곳 — 지시대로 셋
+```
+api.js:340   구조분해   continues_hops: continuesHops  ->  backbone_hops: backboneHops
+api.js:388   query      query.set('backbone_hops', …)
+main.js      좌석 선언 «넷» (머리요약 2 · 구성 2 · 2 · 칩확대 1) + 배선 한 곳 + 곁가지 opt-out 하나
+             값은 «그대로» 뒀습니다
+번들 실측    rnd_board-C_8sa2YR.js   backbone_hops «11» · continues_hops «0»
+화면 실측    요청 «12» 개가 새 이름을 싣고 옛 이름은 «0»
+```
+
+## 하니스 일곱 — 전부 초록 (수 무변)
+```
+rnd_board 170/0 · control_trend 59/0 · walk_box 48/0 · walk 32/0
+composition 40/0 · intersection 24/0 · reach 63/0
+```
+📌 하니스는 이 이름을 «한 번도 안 씁니다» — 그래서 개명이 통째로 조용합니다. 그게 바로
+   「200 은 인자가 읽혔다는 증거가 아니다」의 클라 쪽 판이라, 게이트 A 를 «서버에» 걸어 두는
+   총괄 판단이 맞습니다. 여기에 하니스를 하나 더 만들어도 «전선»을 못 봅니다.
+
+## ⚠️ 빌드 게이트 둘은 «여전히 빨갛고 여전히 남의 것»입니다
+`check:contracts` INV-F9-7 (`api.js:1046`, `de12b9f7`) · `check:harnesses`
+`load_shows_loaded_map_harness` 앵커 (`map_editor.js`, `a5f6878e`). 통제 그대로 —
+제 작업 트리는 이번에도 «제 파일뿐»이었습니다. vite build 를 직접 돌렸고, 둘 다 안 건드렸습니다.
+
+---
+
+# ✅ [클라] `/trends` 404 닫았습니다 — **ⓐ 를 골랐고, 그런데 «제 실패는 다른 곳»이었습니다**
+
+## 🔴 먼저 정정합니다 — 총괄이 보신 404 는 **①-a 가 안 들어간 번들**입니다
+```
+총괄이 잰 번들   rnd_board-B9fCllS0.js   (커밋된 dist 와 같음 — 맞습니다)
+그 번들 안       「재려면 마킹이 필요합니다」 «0» · 「axis:agg:」 «0» · 집계 알약 «0»
+=> ①-a 의 코드가 «한 줄도 없습니다». `B9fCllS0` 는 `397bc3e5`(라운드 ①)에서 만든 것이고,
+   제 커밋 `0308e6b9` 은 «src 만» 바꿨습니다
+확인   git log --name-only 로 제 클라 커밋 «전부»를 보면 라운드마다 dist 번들이 «같이» 갔는데
+       0308e6b9 «하나만» 안 갔습니다. 제가 빠뜨린 것이 맞습니다
+```
+🔴 **그래서 제 「404 0」은 «소스»에 대해 참이고 «페이지»에 대해 거짓이었습니다.** 격리 오리진을
+`client2/`(소스)로 띄워 놓고 「화면이 무엇을 부르나」를 쟀는데, **라이브 페이지가 실제로 부르는 것은
+`dist/assets/*.js`** 입니다. 「빌드했다고 로드된 건 아니다」의 그 자리이고, 제 메모에 있는데 걸었습니다.
+이번엔 오리진을 **`client2/dist/` 로 옮겨서** 다시 쟀습니다 — 아래 목록은 «번들이 부른 것»입니다.
+
+## ⓐ 를 골랐습니다 — 이유
+```
+ⓑ 는 좌석에 `collect` 한 줄인데, 그 값이 walk 이어야 하고 그건 ①-b 입니다 -> 이 라운드가 ①-b 를 삼킵니다
+ⓐ 는 「선언 안 한 것을 부품이 지어내지 않는다」 그 자체이고, 두 줄입니다
+그리고 총괄 지적대로 «기본값은 아무도 안 쓴 선언»입니다 -- 좌석에서 지워도 부품이 들고 있으면
+그대로 돌고, 「선언에서 사라졌나」로 재는 게이트는 그때 초록입니다
+```
+```
+main_trend_panel.js:70   options.collect || 'trend_y'   ->   options.collect || null
+load()                   collect 도 load 도 없으면 «안 걷고» loadState='undeclared'
+render()                 「이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다」
+                         🔴 «거절 아님»으로 그립니다. 서버는 아무 말도 안 했습니다
+```
+
+## 게이트 ① — 캐시버스터 붙인 새 로드의 «요청 URL 전부» (번들 `rnd_board-CmszXbSH.js`)
+```
+1  /api/ledger/declaration
+2  /api/ledger/declaration
+3  /api/ledger/subgraph?id=…WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&node_limit=1000&direction=outgoing
+4  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+5  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+6  /api/ledger/subgraph?id=…&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+7  /tables/wafer_map_metadata/data?limit=1&filters={"map_id":{…"filter":"SYN-CX-BW-001"}}
+8  /tables/wafer_map_metadata/data?limit=1&filters={"map_id":{…"filter":"SYN-CX-BW-001"}}
+`/trends` «0»  ·  합계 8  ·  페이지가 부른 스크립트 = /assets/rnd_board-CmszXbSH.js «하나»
+```
+
+## 게이트 ② — 메인 트렌드가 «문장»을 말합니다
+```
+빈 차트가 아니라   「marking:1 이 비었습니다 — 후보를 고르면 그립니다」
+                  (좌석 3 은 follow 를 선언해서 `bound.load` 를 받습니다 — 그래서 'undeclared' 가
+                   아니라 'awaiting' 이 맞는 문장입니다. 둘은 다른 부재입니다)
+'undeclared' 문장은 «선언도 load 도 없는» 인스턴스에서 납니다 — 하니스 E2·E3 가 그걸 재고,
+변이 M20 이 기본값을 되살리면 «두 단언이 같이» 빨개집니다
+```
+
+## 게이트 ③ — 하니스 일곱
+```
+rnd_board 170/0 · control_trend «59/0» · walk_box 48/0 · walk 32/0
+composition 40/0 · intersection 24/0 · reach 63/0     변이 20/20 잡힘 · 새어 나감 0
+새로 재는 것   E2 「선언 안 한 좌석은 걷지 «않는다»」 (fetch 호출 «0» 을 셉니다)
+              E3 「그리고 그 사실을 말한다 — «거절»로 그리지 않는다」
+              M20 기본값을 되살리는 변이
+🔴 픽스처 셋에 `collect: 'trend_y'` 를 «적었습니다». 전에는 부품 기본값이 대신 골라 줘서
+   픽스처가 «무엇을 묻는지 안 말하고도» 돌았습니다 — 그게 이 결함의 축소판입니다
+```
+
+## ⚠️ 빌드 게이트 둘이 «빨간 채로» 있습니다 — 둘 다 이 라운드 것이 아닙니다
+`npm run build` 의 prebuild 가 여기서 섭니다. 통제를 걸었습니다 — 두 파일 다 «작업 트리에서 깨끗»하고
+(제 수정은 `main_trend_panel.js`·`rnd_board_control_trend_harness.mjs` «둘뿐»), 둘 다 HEAD 의 상태입니다.
+```
+① check:contracts  config_resolve_report INV-F9-7
+   client2/src/rnd_board/api.js:1046   reason: grid ? null : 'grid_not_declared'
+   -> 클라가 «서버의 사유 낱말»을 적고 있습니다. 들어온 커밋 `de12b9f7`(라운드 Z 2부)
+② check:harnesses  load_shows_loaded_map_harness.mjs
+   「mutation anchor is GONE: restore-runs-unconditionally-again」
+   -> `map_editor.js` 자리이고 마지막으로 만진 커밋은 `a5f6878e` (맵 레인)
+```
+그래서 **vite build 를 직접 돌려 번들만 만들었습니다.** 게이트를 «끈 게 아니라» 지나갔고,
+두 빨강은 손대지 않았습니다 — 검사기 자신의 문구가 「고치거나 총괄에게 가져가라」이고,
+둘 다 남의 레인 계약입니다. 판정 주시면 그 레인에 넘기겠습니다.
+
+## 커밋에 담은 것 — 그리고 «안 담은 것»
+```
+담음    src/rnd_board/main_trend_panel.js · tests/rnd_board_control_trend_harness.mjs
+        dist/rnd-board.html · dist/assets/rnd_board-CmszXbSH.js · dist/assets/rnd_board-1pAHd0Gw.css
+        (옛 번들 둘 삭제)
+안 담음  dist/map_editor.html · dist/map_editor2.html
+        -> 빌드가 건드렸지만 `--ignore-all-space` 로 재면 «실질 변경 0 줄»입니다. 줄바꿈뿐이라
+           되돌렸습니다. 남의 페이지를 제 커밋으로 옮기지 않습니다
+확인    dist/assets 에서 바뀐 것은 `rnd_board-*` «둘»뿐 — 다른 레인의 번들은 하나도 안 움직였습니다
+        (즉 이 트리에서 «안 빌드된 소스»는 제 ①-a 하나였습니다)
+```
+
+---
+
+# 🛑 [클라] `continues_hops` → `backbone_hops` — **멈추고 올립니다. 서버에 그 이름이 «없습니다»**
+
+지시대로 ①-a 를 먼저 닫고(`0308e6b9`) 착수했는데, 걸어 보니 **이름이 아직 안 따라왔습니다.**
+바꾸면 화면이 «아무도 안 읽는 칸»을 보내게 되고, 그런데도 **게이트 ②가 초록으로 통과합니다.**
+그 둘 다 적습니다.
+
+## ① 원장 코드에 `backbone` 이 «한 글자도» 없습니다
+```
+git grep -n "backbone" origin/main -- server        ->  «0 줄»   (main 끝 `20479e75` 기준)
+origin/main:server/ledger_trace_router.py:101       ->  continues_hops: int = Query(...)
+origin/main:server/ledger_trace_router.py:127·224·240 ->  continues_hops=...
+9f8db5ab 가 실제로 바꾼 것 (12 줄)
+   + and near_kind not in static_types
+   + and far_kind  not in static_types) else 1
+   -> 「면제를 «무엇으로 판정하나」」가 술어 플래그에서 «엔티티 분류»로 바뀐 것이 맞습니다
+   -> 그런데 «인자 이름»은 안 바뀌었습니다. 정책만 갔고 낱말은 남았습니다
+```
+
+## ② 도는 프로세스도 «옛 이름만» 읽습니다 — 200 은 증거가 아닙니다
+```
+continues_hops=-1    «422»      backbone_hops=-1   «200»
+continues_hops=abc   «422»      backbone_hops=99   «200»
+continues_hops=99    «422»      nonsense_hops=2    «200»
+=> 이 라우트는 «모르는 칸을 조용히 버립니다». 그래서 `backbone_hops=abc` 조차 200 입니다.
+   422 가 나는 쪽이 «실제로 파싱되는» 이름이고, 그건 여전히 `continues_hops` 입니다
+프로세스 시작 시각  오늘 12:52 ~ 13:04 (python 넷)
+                  -> 9f8db5ab 도 20479e75 도 그 «뒤»입니다. 재기동해도 이름은 안 생깁니다 (①)
+```
+
+## ③ 🔴 그런데 게이트 ②가 «공허합니다» — 이게 더 위험합니다
+지시의 게이트 ②는 「그 두 좌석의 노드 수 전/후 — 같아야 합니다」입니다.
+**오늘 이 보드의 씨앗에서는 예산을 «보내든 안 보내든» 수가 같습니다.**
+```
+씨앗 SYN-CX-BW-001 의 die «40개» · follow=bonded_from · outgoing
+   continues_hops=0  ==  continues_hops=2   -> 전부 같음 (예: nodes 2 · edges 1)
+씨앗 SYN-BW-101-02 의 die «8개» · follow=bonded_from,processed_with · node_limit 1000
+   continues_hops=0  ==  continues_hops=4   -> 전부 같음
+확인 사살   같은 씨앗에서 continues_hops=2 · backbone_hops=2 · «아무것도 안 보냄» 셋이
+           nodes 2 · edges 1 로 «글자 그대로 같습니다»
+```
+=> 지금 이름만 바꿔 커밋하면 **게이트 ②가 초록입니다.** 예산이 «도착했는지»와 «버려졌는지»가
+   이 표본에서 같은 답을 내기 때문입니다 — 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」
+   그대로입니다. 초록이 「안 바뀌었다」가 아니라 「이 씨앗은 원래 예산을 안 쓴다」를 뜻합니다.
+
+## 그래서 필요한 것 «둘» — 총괄 판정 요청
+```
+① 서버가 인자를 «실제로» 개명해야 합니다 (라우트 + ledger_subgraph 의 인자·기본값).
+   그 전에는 클라가 먼저 가면 「재료 없이 채택된 계약」이고, 조용히 예산이 0 이 됩니다
+② 게이트 ②에 «판별하는 씨앗»을 주십시오 — 총괄 실측의 「자재6 + processed_with ch=4 -> 157」
+   그 씨앗입니다. 제가 가진 씨앗들로는 ch=0 과 ch=4 가 «같은 수»라 아무것도 못 가릅니다
+   (그 씨앗을 주시면 「보냈을 때 157 · 안 보냈을 때 N」을 재서 붙이겠습니다)
+```
+⚠️ 클라 쪽 준비는 «세 자리»로 끝납니다 (api.js 구조분해·query, main.js 좌석 넷의 선언).
+   값은 그대로 둡니다. 서버가 이름을 받는 날 «한 커밋»으로 갑니다 — 지금은 안 갑니다.
+
+---
+
 # ✅ [클라] 라운드 ①-a — **Y축이 «집계 × 수식어»가 됐고, `/trends` 404 가 «0» 이 됐습니다**
 
 ## 게이트 넷 — 전부 통과. 그리고 «라이브에서 제 결함 하나»를 찾아 고쳤습니다
