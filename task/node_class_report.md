@@ -84,3 +84,53 @@ class="sideways" -> invalid_entity_ref  "must be static or dynamic"   (이름 �
 ## ③ `continues` — 지시대로 «안 지웠습니다**
 클라 두 좌석의 `continues_hops` 선언이 죽은 채 남는 것을 피하기 위해, ②의 도달 범위가
 같거나 넓다는 것이 측정된 «뒤에» 별도로 걷어내는 것으로 두었습니다.
+
+---
+
+# ✅ [A 구현자] **정책 ① 착지 — `9f8db5ab`. 치환이 «157 에 정확히» 닿습니다** (2026-08-29 14:4x)
+
+과금 키를 술어 플래그에서 «엔티티 분류»로 옮겼습니다. 인자 이름(`continues_hops`)은 지시대로
+«그대로» 두었습니다 — 두 번 안 고칩니다.
+```
+전   _charge = 0 if 술어 in continuing else 1
+후   _charge = 0 if (양 끝이 «둘 다 dynamic») else 1
+```
+
+## 게이트 ① — 치환. 지시하신 인자 그대로
+씨앗 `wafer SYN-BW-101-16` · hops=1 · outgoing · follow=자재6+`processed_with` · 1000/3000
+```
+continues_hops=0    nodes  40  · edges  39 · reached 1 · truncated depth
+continues_hops=4    nodes «157» · edges 156 · reached 3 · truncated «없음»    ← 기준 충족
+continues_hops=6    nodes  157 · edges 156 · reached 3 · truncated 없음
+continues_hops=12   nodes  157 · edges 156 · reached 3 · truncated 없음
+```
+🔴 **157 «이상»이 아니라 «정확히 157»입니다.** 더 크지 않은 이유를 적습니다 —
+D→D 가 `continues` 보다 하나 더 갖는 술어가 `observed` 인데, **이 측정의 follow 목록에 `observed`
+가 없습니다.** 그래서 더할 것이 없습니다. 조건(≥157)은 충족이고, 「왜 딱 같은가」가 이것입니다.
+⚠️ 그러니 「D→D 가 더 넓다」는 것은 이 측정이 «보여 주지 않습니다». follow 에 `observed` 를
+   넣은 비교가 필요하시면 재 드립니다 — 다만 그건 지시하신 인자가 아니라 안 했습니다.
+
+## 게이트 ② — 무회귀
+`continues_hops` 를 «안 보내면» 과금 규칙이 결과에 닿을 수 없습니다(추가 예산 0이라 루프가
+여전히 `hops` 만큼만 돕니다). 그래도 «재서» 확인했습니다 — 이 파일만 HEAD 로 되돌린 대조군:
+```
+                                    이 커밋            HEAD(술어 플래그 과금)
+wafer both · hops6 · 1000/3000      225 / 224 · reached 2 · trunc claims     «동일»
+```
+
+## 게이트 ③ — 인과 사슬
+```
+quantity{bond_pressure} · follow=leads_to · hops=4   ->  nodes 18 · edges 18 · reached «4»
+```
+
+## 게이트 ④ — 시험
+```
+tests/test_ledger_subgraph.py + tests/test_ledger_explorer.py   12 passed · 1 skipped
+```
+
+## `continues` — 지시대로 «안 지웠습니다», 다만 이제 «안 쓰입니다**
+```
+walk 의 `continuing` 인자    받되 과금에 «안 씁니다». 주석에 「치환이 수락되면 제거」라고 적었습니다
+지금 지우면                 클라 두 좌석의 `continues_hops` 선언이 «가리킬 것이 없어집니다»
+```
+⛔ 「깊이 cap 내 무제한」은 구현 «안 했습니다». 두 번째 통은 여전히 «통»입니다.
