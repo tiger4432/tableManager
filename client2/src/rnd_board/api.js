@@ -336,7 +336,8 @@ export function compositionModel(result) {
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, fetchImpl, positive, negative,
-          node_limit: nodeLimit, hops, follow, direction } = params || {};
+          node_limit: nodeLimit, hops, follow, direction,
+          continues_hops: continuesHops } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -363,6 +364,14 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
+  // 🔴 «자재 예산»은 선언한 부품만 싣습니다 (라운드 ③, 2026-08-29). follow 와 «같은 모양»:
+  //    없으면 안 싣고, 안 실으면 서버 기본 0 이라 오늘과 «완전히 같은» 답입니다.
+  //    실측 2026-08-29: 돌고 있는 서버가 이 인자를 «진짜로 파싱»합니다 -- -1 · 99 · abc 가
+  //    전부 422 이고 선언이 ge=0 le=40 입니다. 다만 라이브 선언에 `continues: true` 술어가
+  //    «0» 이라 오늘은 어떤 값을 줘도 답이 같습니다. 그 플래그가 오는 날 이 줄이 값을 냅니다.
+  if (continuesHops !== undefined && continuesHops !== null) {
+    query.set('continues_hops', String(continuesHops));
+  }
   // 🔴 THE DECLARED QUESTION, CARRIED. `follow` is NOT a speed knob -- it decides WHICH
   //    ANSWERS CAN EXIST. Measured by the Lead PM 2026-08-24: narrowing it to the observation
   //    predicates loses four `delam_formation` candidates outright, because those reach through
