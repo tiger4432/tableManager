@@ -60,23 +60,35 @@ class RecordingStore:
 
 
 def physical_split_rows():
+    # 🔴 `row_id` IS HERE BECAUSE THE DECLARED CURSOR ASKS FOR IT. `lot_event`'s keyset is
+    # `(event_time, row_id)`, and a frame without `row_id` cannot carry the cursor its own
+    # source declares -- `_cursor_value` refuses with 「cursor must contain exactly physical
+    # columns」 rather than guessing. `txn_seq` stays because the mapping still reads it;
+    # it simply stopped being the tiebreak.
     return pd.DataFrame([
         {
             "lot_id": "P", "event_type": "split", "slotnumbers": "1:2",
             "waferids": "W1:W2", "parent_lot": "", "child_lot": "C",
-            "txn_seq": "R1", "event_time": NOW,
+            "txn_seq": "R1", "event_time": NOW, "row_id": "ROW-1",
         },
         {
             "lot_id": "C", "event_type": "split", "slotnumbers": "3",
             "waferids": "W3", "parent_lot": "P", "child_lot": "",
-            "txn_seq": "R2", "event_time": NOW,
+            "txn_seq": "R2", "event_time": NOW, "row_id": "ROW-2",
         },
     ], dtype=object)
 
 
 def cursor_for(frame):
+    """The cursor the DECLARATION asks for, read off the plan rather than spelled here.
+
+    Spelling the columns in the test is what let this fixture drift: it said
+    `(event_time, txn_seq)` for as long as the declaration did, and kept saying it after
+    the declaration moved to `row_id`.
+    """
     row = frame.iloc[-1]
-    return {"event_time": row["event_time"], "txn_seq": row["txn_seq"]}
+    columns = load_setup().snapshot.source_plans["lot_event"].driver.cursor_columns
+    return {column: row[column] for column in columns}
 
 
 def copied_root(tmp_path: Path) -> Path:
@@ -214,9 +226,12 @@ def test_operator_report_is_ready_and_explicitly_non_destructive():
 def test_existing_cursor_selects_only_physical_lot_event_columns():
     setup = load_setup()
 
+    # `row_id` is selected because the declared cursor is `(event_time, row_id)` -- the
+    # keyset's own columns have to come back with the rows or the next page cannot be
+    # asked for. It is not a projection column; the two exclusions below still hold.
     assert v2_base_select_columns(setup.snapshot, "lot_event") == tuple(sorted({
         "lot_id", "event_type", "slotnumbers", "waferids", "parent_lot",
-        "child_lot", "txn_seq", "event_time",
+        "child_lot", "txn_seq", "event_time", "row_id",
     }))
     assert "event_group_key" not in v2_base_select_columns(
         setup.snapshot, "lot_event")
@@ -480,8 +495,12 @@ def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
         def read_cursor(self, connection, source):
             return {
                 "translator_ver": "ledger-v2:older-snapshot",
+                # 🔴 THE SHAPE MUST BE RIGHT HERE, or the earlier guard answers instead.
+                # `legacy_cursor_reset_required` fires on a cursor whose COLUMNS do not
+                # match the plan, and this test is about the version guard that comes
+                # after it -- so the columns are the declared `(event_time, row_id)`.
                 "cursor_value": {
-                    "event_time": NOW.isoformat(), "txn_seq": "R2"},
+                    "event_time": NOW.isoformat(), "row_id": "ROW-2"},
             }
 
     monkeypatch.setattr(store_module, "LedgerStore", FakeStore)
