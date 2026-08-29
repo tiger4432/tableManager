@@ -1,13 +1,49 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **704개** 이력. (거버넌스 규칙 #4)
+> 총 **740개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-29 10:10** — [Direction Is Declared Per Part And The Extra Defects Were The Budget Leak](./20260829_101000_direction_is_declared_per_part_and_the_extra_defects_were_the_budget_leak.md)
+- **2026-08-29 04:59** — [Walking Your Own Lineage Should Not Spend The Budget Meant For Leaving It](./20260829_045900_walking_your_own_lineage_should_not_spend_the_budget_meant_for_leaving_it.md)
+- **2026-08-28 21:52** — [The Marking Is A Value And The Search Is A Tree Of It That Does Not Cut](./20260828_215200_the_marking_is_a_value_and_the_search_is_a_tree_of_it_that_does_not_cut.md)
+- **2026-08-28 21:03** — [The Seats Draw From The Walk And 404 Goes From Thirteen To Two](./20260828_210300_the_seats_draw_from_the_walk_and_404_goes_from_thirteen_to_two.md)
+- **2026-08-28 20:46** — [Two Silent Git Add Failures In One Day And Both Made A Commit Message A Lie](./20260828_204600_two_silent_git_add_failures_in_one_day_and_both_made_a_commit_message_a_lie.md)
+- **2026-08-28 18:46** — [The Far Side Advances And Ranked Comes Back Over Every Reached Node](./20260828_184600_the_far_side_advances_and_ranked_comes_back_over_every_reached_node.md)
+- **2026-08-28 17:09** — [Source Data Goes In A Table And The Ledger Comes From That](./20260828_170900_source_data_goes_in_a_table_and_the_ledger_comes_from_that.md)
+- **2026-08-28 14:41** — [A Fixpoint Cannot Be One Hop Short And Direct Matching Was](./20260828_144100_a_fixpoint_cannot_be_one_hop_short_and_direct_matching_was.md)
+- **2026-08-28 13:13** — [A Call To A Function That Does Not Exist And Silence Was Distance Not Safety](./20260828_131300_a_call_to_a_function_that_does_not_exist_and_silence_was_distance_not_safety.md)
+- **2026-08-28 09:58** — [The Approval Is The Sources Own Name And My No Op Wrote Atoms](./20260828_095800_the_approval_is_the_sources_own_name_and_my_no_op_wrote_atoms.md)
+- **2026-08-28 04:42** — [An Assertion Found A Fourth Use And The Dead Cache Was What Actually Orphaned It](./20260828_044200_an_assertion_found_a_fourth_use_and_the_dead_cache_was_what_actually_orphaned_it.md)
+- **2026-08-27 23:44** — [Revision Six Everything That Is Not A Declared Entity Stops Being A Place](./20260827_234400_revision_six_everything_that_is_not_a_declared_entity_stops_being_a_place.md)
+- **2026-08-27 21:58** — [The Trend Zero Had Three Causes And A Tie Now Answers I Dont Know](./20260827_215800_the_trend_zero_had_three_causes_and_a_tie_now_answers_i_dont_know.md)
+- **2026-08-27 14:02** — [A Guard Was Green Against A Second Copy Of The Rule While Its Readers Broke](./20260827_140200_a_guard_was_green_against_a_second_copy_of_the_rule_while_its_readers_broke.md)
+- **2026-08-27 10:48** — [The Folder Upload Lost The Path Not The File And Both Doors Send The Same Tree](./20260827_104800_the_folder_upload_lost_the_path_not_the_file_and_both_doors_send_the_same_tree.md)
+- **2026-08-27 07:27** — [The Lineage Walk Came Out Whole And It Called Only Itself](./20260827_072700_the_lineage_walk_came_out_whole_and_it_called_only_itself.md)
+- **2026-08-27 01:35** — [One Route Answers What Can Be Asked And Base64url Was Pinned Before It Could Matter](./20260827_013500_one_route_answers_what_can_be_asked_and_base64url_was_pinned_before_it_could_matter.md)
+- **2026-08-26 23:42** — [If Not Exists Asks Whether The Name Is Free So Seven Indexes Were Skipped In Silence](./20260826_234200_if_not_exists_asks_whether_the_name_is_free_so_seven_indexes_were_skipped_in_silence.md)
+- **2026-08-26 23:04** — [Entities May Declare References And A Walk Box You Fill In By Hand](./20260826_230400_entities_may_declare_references_and_a_walk_box_you_fill_in_by_hand.md)
+- **2026-08-26 16:12** — [I Had Cleared Two Mappings By Reading Column Presence Not Content](./20260826_161200_i_had_cleared_two_mappings_by_reading_column_presence_not_content.md)
+- **2026-08-25 22:58** — [Two Dead Screens Six Legacy Routes And The Orphan Cluster Behind Them](./20260825_225800_two_dead_screens_six_legacy_routes_and_the_orphan_cluster_behind_them.md)
+- **2026-08-25 22:13** — [One Fact Is One Edge And The Predicates Were Gone For Eleven Hours](./20260825_221300_one_fact_is_one_edge_and_the_predicates_were_gone_for_eleven_hours.md)
+- **2026-08-25 16:29** — [A Part Declares Its Own Question So Three Callers Become One Request](./20260825_162900_a_part_declares_its_own_question_so_three_callers_become_one_request.md)
+- **2026-08-25 02:00** — [The 1267 Was Not Wrong Arithmetic It Was The Wrong Grain](./20260825_020000_the_1267_was_not_wrong_arithmetic_it_was_the_wrong_grain.md)
+- **2026-08-24 19:00** — [The Coordinate Space Is A Declared Value So Zooming Is Not A Mode](./20260824_190000_the_coordinate_space_is_a_declared_value_so_zooming_is_not_a_mode.md)
+- **2026-08-24 16:43** — [The Wall Was My Own Probe And The Budget Became A Declaration](./20260824_164300_the_wall_was_my_own_probe_and_the_budget_became_a_declaration.md)
+- **2026-08-24 15:29** — [The Finding Kind Lived Under Qualifiers And Eight Copies Said Top Level](./20260824_152900_the_finding_kind_lived_under_qualifiers_and_eight_copies_said_top_level.md)
+- **2026-08-24 12:48** — [The Entity Type Was Inside The Node Id So A Lowercase Migration Emptied The Screen](./20260824_124800_the_entity_type_was_inside_the_node_id_so_a_lowercase_migration_emptied_the_screen.md)
+- **2026-08-24 11:50** — [The Trend And The Maps Were Writing And Reading Different Marking Names](./20260824_115000_the_trend_and_the_maps_were_writing_and_reading_different_marking_names.md)
+- **2026-08-24 08:53** — [Five Fetch Branches Became One Walk And Two Tables Became Two Declarations](./20260824_085300_five_fetch_branches_became_one_walk_and_two_tables_became_two_declarations.md)
+- **2026-08-24 02:17** — [The Grain Default Drew Twelve Findings As None](./20260824_021700_the_grain_default_drew_twelve_findings_as_none.md)
+- **2026-08-24 01:52** — [One Slot Had Three Spellings So Twelve Hundred Registered Frames Read As None](./20260824_015200_one_slot_had_three_spellings_so_twelve_hundred_registered_frames_read_as_none.md)
+- **2026-08-23 23:21** — [A Read Asked The Write Gate For Permission And The Divisor Broke Its Own Rule](./20260823_232100_a_read_asked_the_write_gate_for_permission_and_the_divisor_broke_its_own_rule.md)
+- **2026-08-23 23:07** — [A Skeleton That Holds Two Of A Kind And A Marking Store That Lives Outside](./20260823_230700_a_skeleton_that_holds_two_of_a_kind_and_a_marking_store_that_lives_outside.md)
+- **2026-08-23 20:07** — [A Stale Copy That Split Every Symbol Search And A Console Still Being Built](./20260823_200700_a_stale_copy_that_split_every_symbol_search_and_a_console_still_being_built.md)
+- **2026-08-23 12:59** — [Every Rank Got A Trail And Seventy Six Minutes Later The Numbers Were Taken Back Out](./20260823_125900_every_rank_got_a_trail_and_seventy_six_minutes_later_the_numbers_were_taken_back_out.md)
 - **2026-08-23 10:23** — [A Json Path In An F String Had Been 500ing Since It Was Written](./20260823_102300_a_json_path_in_an_f_string_had_been_500ing_since_it_was_written.md)
 - **2026-08-23 09:50** — [The Transfer Atoms Are In And Nothing Walks Into Them](./20260823_095000_the_transfer_atoms_are_in_and_nothing_walks_into_them.md)
 - **2026-08-23 09:11** — [A Fence Drawn On Filenames Let Four Modules Through](./20260823_091100_a_fence_drawn_on_filenames_let_four_modules_through.md)
@@ -725,4 +761,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-23 by gen_index.py*
+*Last generated: 2026-08-29 by gen_index.py*
