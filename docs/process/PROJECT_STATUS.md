@@ -675,6 +675,23 @@ panel.js:109   밑동이 `this.start` 를 «읽습니다»
 지금 열린 것: 클라 ①-a · 서버 정책 ① — 둘이 닫힌 뒤가 자연스럽습니다
 ```
 
+#### ✅ 라운드 넷 착지 — **보드 404 «0»** · `continues` 은퇴 · `backbone_hops` 개명 (총괄 검수 14:2x)
+```
+게이트 A (배선)   backbone_hops=abc -> «422»   continues_hops=abc -> «200»   nonsense_hops -> «200»
+                 => 새 이름이 «파싱되고» 옛 이름은 «은퇴»했습니다.
+                    수가 아니라 «422» 로 잰 첫 게이트이고, 씨앗 없이 갈렸습니다
+게이트 B (효과)   판별 씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing · follow=자재6+processed_with
+                 backbone_hops 없음 -> nodes «40» · reached 1 · trunc depth
+                 backbone_hops=4    -> nodes «157» · reached 3 · trunc 없음
+                 => 예산이 이름만 바뀌고 «그대로» 삽니다
+화면             보드 첫 로드: declaration «2» · subgraph «4» · «/trends 없음» · 404 «0»
+하니스           board 170/0 · walk_box 48/0 · walk 32/0 · control_trend 59/0
+```
+🔴 **오늘 밤 404 궤적: 11 → 2 → 1 → «0».** 마지막 하나는 부품의 «기본값»이 죽은 라우트를
+   되살리던 것이었고, 좌석 선언을 지운 것만으로는 안 사라졌습니다.
+⏭ 곁가지: `/declaration` 이 로드당 «2회» 나갑니다 — 두 부품이 각자 같은 것을 풉니다.
+   「요청 수는 화면 탓이 아니라 인자 모양의 결과다」의 작은 사례. 급하지 않아 «올려만» 둡니다.
+
 ### 📐 액션 «큰 그림» — 발급자는 온톨로지다 (소유자 정정 2026-08-29 15:1x)
 > 「**액션이 클라에 종속되면 안됨. 온톨로지 자체가 발급해야함**」
 
