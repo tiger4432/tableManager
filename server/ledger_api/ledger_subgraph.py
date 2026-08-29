@@ -693,7 +693,8 @@ def _bare(name):
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
-             backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None):
+             backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
+             static_follow=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -714,6 +715,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     backbone_hops = max(0, min(int(backbone_hops), MAX_HOPS))
     budget_hops = hops + backbone_hops
     static_types = {str(name).split("@", 1)[0] for name in (static_types or ())}
+    # 🔴 AND THE STEPS A NAME MAY TAKE, from the same caller and the same declaration.
+    # Empty means a static node is not expanded at all, which is what an unreadable
+    # declaration should do: refuse the step rather than guess which hub is safe.
+    static_follow = {str(name).split("@", 1)[0] for name in (static_follow or ())}
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -941,14 +946,38 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
         full_entity_refs = [item for item in entity_refs
                             if not item.get("observation_only", False)]
-        if full_entity_refs and remaining > 0:
+        # 🔴 A NAME IS FETCHED WITH A NARROWER `follow`, NOT FILTERED AFTER THE FETCH.
+        # `_expand_atom` already refuses the `s -> d` step, and refusing it there is too
+        # late: the atom has been read out of the ledger and charged to `claims_scanned`
+        # before anything looks at its two ends. MEASURED 2026-08-29 from one defect at
+        # hops=4 -- following `of_kind` scanned 6,000 claims (the ceiling) to return 13
+        # nodes and stopped at hop 2, while dropping it scanned 371 and returned 315 at
+        # hop 4. One name was buying 6,000 atoms so that the projection could throw them
+        # away, and the walk ran out of budget two hops from its seed.
+        #
+        # The two groups differ ONLY in the `follow` they are fetched with, so `s -> s`
+        # survives: `leads_to` is in `static_follow` and the mechanism chain still walks.
+        dynamic_refs = [item for item in full_entity_refs
+                        if _bare(item["type"]) not in static_types]
+        static_refs = [item for item in full_entity_refs
+                       if _bare(item["type"]) in static_types]
+        # 🔴 AN EMPTY LIST IS NOT `None` HERE. `claims_for_entities` reads a falsy `follow`
+        # as "every predicate", so narrowing to an empty intersection and passing it would
+        # fetch MORE than narrowing to one name. The group is skipped instead.
+        static_step_follow = sorted(static_follow & set(follow)) if follow else sorted(static_follow)
+        for group, group_follow, group_is_static in (
+                (dynamic_refs, follow, False), (static_refs, static_step_follow, True)):
+            if not group or remaining <= 0:
+                continue
+            if group_is_static and not group_follow:
+                continue
             batch, cut = lookup.claims_for_entities(
-                [(item["type"], item["keys"]) for item in full_entity_refs],
+                [(item["type"], item["keys"]) for item in group],
                 direction, remaining,
-                follow=follow)
+                follow=group_follow)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
             fetched.extend(batch)
-            frontier_entities = {item["id"] for item in full_entity_refs}
+            frontier_entities = {item["id"] for item in group}
             for atom in batch:
                 _expand_atom(atom, depth, frontier_entities)
 

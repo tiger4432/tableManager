@@ -200,6 +200,46 @@ def _static_types():
             if (rule or {}).get("class") == "static"}
 
 
+def _static_step_predicates():
+    """Predicates whose BOTH ends are declared static -- the only ones a static node may be
+    expanded along.
+
+    🔴 SAME SHAPE AS `_static_types`, and it exists because the policy it serves was
+    enforced one layer too late. `s -> s` is allowed and `s -> d` is not; the walk knew
+    that and dropped every `s -> d` atom in the projection -- AFTER the query had fetched
+    it and charged it to the claim budget.
+
+    MEASURED 2026-08-29, seeded at one defect with `hops=4`:
+        with    `of_kind`  ->  claims 6,000 (the ceiling) ·  13 nodes · stopped at hop 2
+        without `of_kind`  ->  claims   371               · 315 nodes · reached hop 4
+    `defect_kind` carries 103,841 atoms against ONE distinct object, so the walk was
+    buying all of them to throw them away, and the walk died two hops from its seed.
+
+    Today this set is `{"leads_to"}` -- the mechanism chain, quantity to quantity, which is
+    exactly the step the `s -> s` allowance was written for. Read, never restated: a new
+    static-to-static predicate widens it with no edit here, and an unreadable declaration
+    returns the EMPTY set, which expands no static node at all.
+    """
+    try:
+        from ledger import config as _config
+        declared = _config.load() or {}
+    except Exception:
+        return set()
+    entities = declared.get("entities") or {}
+    static = {str(key).split("@", 1)[0] for key, rule in entities.items()
+              if (rule or {}).get("class") == "static"}
+    names = set()
+    for key, rule in (declared.get("vocabulary") or {}).items():
+        subjects = [str(item).split("@", 1)[0] for item in ((rule or {}).get("subjects") or [])]
+        targets = [str(item).split("@", 1)[0]
+                   for item in (((rule or {}).get("object") or {}).get("types") or [])]
+        if not subjects or not targets:
+            continue
+        if all(item in static for item in subjects) and all(item in static for item in targets):
+            names.add(str(key).split("@", 1)[0])
+    return names
+
+
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS):
@@ -218,7 +258,8 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         connection, relation=LEDGER_RELATION),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-        backbone_hops=backbone_hops, static_types=_static_types())
+        backbone_hops=backbone_hops, static_types=_static_types(),
+        static_follow=_static_step_predicates())
 
 
 
