@@ -345,6 +345,15 @@ export async function fetchSubgraph(params) {
     return { ok: false, status: null, body: null,
              detail: { detail: { reason: 'seed_is_not_a_server_node' } } };
   }
+  // 🔴 씨앗이 «없으면» 묻지 않습니다 (라운드 ①, 2026-08-29). 없는 씨앗을 그대로 보내면
+  //    `id=undefined` 가 나가 «422» 이고, 화면에는 「서버가 거절했습니다」가 뜹니다 --
+  //    그건 「아직 안 골랐다」를 «고장»으로 그리는 것이고, 오늘 밤 같은 자리를 세 번 고쳤습니다.
+  //    같은 층에서 «한 번» 막는 것이 부품마다 관문을 다는 것보다 짧습니다.
+  //    실측 2026-08-29: 좌석 3 을 걷기로 옮기자마자 이 요청이 나갔습니다.
+  if (!nodeId) {
+    return { ok: false, status: null, body: null,
+             detail: { detail: { reason: 'no_seed_chosen' } } };
+  }
   const query = new URLSearchParams();
   query.set('id', nodeId);
   // 🔴 `collect` LEFT 2026-08-28 (round Z). It was TRUE and load-bearing when it was written:
@@ -1278,6 +1287,14 @@ const WALK = Object.freeze({
 
 export const COLLECTS = Object.freeze({
   // 기본 트렌드 ① · 맵 ⑤ — 같은 collect. 트렌드는 창 전체를, 맵은 한 그룹을 그립니다.
+  // 🔴 좌석 3 을 걷기로 옮겼다가 «되돌렸습니다» (라운드 ①, 2026-08-29). 옮기면 404 는
+  //    사라지는데 «컨트롤 바의 종류 축»이 같이 사라집니다 -- 이 좌석은 마킹을 안 읽어
+  //    씨앗이 없고, 씨앗 없는 걷기는 거절이라 kinds 가 빈 배열이 됩니다 (실측: 하니스
+  //    A1·B1 이 그걸 잡았고, 화면의 비율 알약도 사라졌습니다).
+  //    404 하나를 지우려고 화면이 «말을 덜 하게» 만드는 것은 오늘 판정에 어긋납니다.
+  //    ⏭ 먼저 할 일: Y축이 «종류»가 아니라 «집계»(median·mean·count …)를 고르게 되는 것.
+  //    그 뒤에야 이 줄이 걷기로 갈 수 있습니다. 그때까지 404 하나가 남고, 그 404 는
+  //    «무엇을 기다리는지 이름이 붙은» 것입니다.
   trend_y: {
     params: () => ({}),
     run: (params) => fetchTrends(params).then(trendsModel),
