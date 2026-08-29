@@ -341,6 +341,9 @@ body {
 .rb-control-label { font-size: 12.5px; color: var(--text-muted); }
 .rb-control-hint { font-size: 12.5px; color: var(--text-dim); margin-right: 2px; }
 .rb-control-grammar { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+/* 「왜 못 쟀나」를 알약 옆이 아니라 «줄 전체»로 말합니다 -- 알약 하나에 붙이면 그 알약만의
+   사정으로 읽히는데, 이건 그 줄 전부에 걸린 사실입니다 (라운드 ①-a). */
+.rb-control-note { flex-basis: 100%; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
 .rb-pill {
   display: inline-flex; align-items: baseline; gap: 6px;
