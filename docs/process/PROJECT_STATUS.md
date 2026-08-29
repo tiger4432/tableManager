@@ -904,8 +904,41 @@ reach 값       5가지                 같은 5가지
       (a) 이름을 은퇴  — 레거시 DT 확인 경로를 안 살린다는 상설과 맞음. 코드 2 + 시험 3 파일
       (b) 선언을 되살림 — DT transfer 확인이 아직 필요할 때만
    ⚠️ server/ledger/* 는 구현자 소관이라 «제가 안 건드렸습니다»
+🔴🔴 시나리오 실측 (2026-08-29 21:5x) — 「걷기·대조는 끝났나」에 대한 답: **알고리즘은 끝, 선언이 막는다**
+   소유자 대표 질문 「보이드 있던 wf 의 cmp rcp 로 진행한 wf 의 보이드」를 다시 태웠습니다.
+```
+BW 웨이퍼 ─inspected→ 다이 «38»                                      ✅
+다이 ─bonded_from→ 코어 다이 «38»                                     ✅
+코어 다이가 «키»로 든 mat_id = 코어 웨이퍼 «16» (SYN-CW-103-*)         ✅ 재료 있음
+그 코어 웨이퍼 ─processed_with→ recipe «5» (SYN-R-CMP-01 포함)         ✅ 답이 저기 있음
+🔴 코어 다이 ─?→ 코어 웨이퍼                                          ❌ «술어가 없다»
+```
+   실측   die@1.references = «null» · die@1.keys = [mat_id, x, y, mat_type]
+         따라갈 수 있는 이름 13개에 die->wafer 가 «없음». `in_container` 는 422
+         코어 다이에는 `inspected` 가 «없다» (검사는 BW 웨이퍼에만 기록된다)
+   원인   08-28 합성 엣지 삭제. 그때 근거가 「in_container 의 «유일한 연결» 0 —
+         inspected 가 이미 양방향으로 잇는다」였는데, 그 측정이 «BW 쪽에서만» 참이었습니다.
+         코어 웨이퍼는 한 번도 inspected 되지 않으므로 «거기서는 in_container 가 유일»했습니다
+   🔴 제 판정의 전제가 반쪽이었습니다 — 지운 근거를 지워진 쪽에서 재지 않았습니다
+   => 판정 필요: 다이↔웨이퍼 «담김»을 술어로 선언할 것인가
+      ⚠️ 합성 엣지를 되살리는 것이 «아닙니다». mat_id 는 실제 데이터이므로
+         「표 -> 소스 -> 번역기」로 원자를 만드는 것이 상설과 맞습니다
+   ⛔ 걷기 알고리즘 문제 «아님» — 오늘 셋은 이 시나리오에서 아무것도 자르지 않습니다
+
+## 나머지 시나리오
+```
+A 「보이드 웨이퍼의 공정 조건」   recipe «0» — 같은 원인 (BW 에는 processed_with 가 없다)
+C 「측정 압력 -> 메커니즘」      pressure_MPa 씨앗 -> 노드 «1» (종점)
+                            bond_pressure 씨앗 -> 노드 21 · 5홉 (메커니즘은 «돈다»)
+                            => 이음매 하나가 비어 있다. 08-25 부터 알려진 벽 ①, 그대로
+```
+
 🔴 ledger 시험군 빨강 «18» — 부류 하나 (2026-08-29 21:3x 실측, 제 변경과 «무관»)
-   실측   pytest -k ledger  ->  432 passed · «18 failed» · 95 skipped
+   실측   pytest -k ledger  ->  441 passed · «9 failed» (4b6f3f90 으로 18 -> 9) · 95 skipped
+         ✅ 닫힘: registration_probe 9 — 엔티티 id 소문자 + 「출하본엔 프로브 없다」 스테일 핀
+         🔴 남은 9는 «부류가 아닙니다» — 6갈래: setup_boundary 4(커서 물리 컬럼) ·
+            transfer_unit 1(dt_log 소스 없음) · source_preparation 1(모듈 경로 사라짐) ·
+            admin_setup 1 · skeleton 1(앵커 미배치, 기존) · syn_complex_composite 1
    부류   전부 «엔티티 id 대소문자». 픽스처가 `Lot@1`·`Wafer@1`, 선언은 `lot@1`·`wafer@1`
          LedgerSetupValidationError: entity type 'Lot@1' is not declared
    분포   registration_probe 9 · setup_boundary 4 · syn_complex_composite 1
