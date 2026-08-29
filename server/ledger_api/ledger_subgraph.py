@@ -404,37 +404,68 @@ def _signed_seeds(start):
     return signs
 
 
-def _reach(nodes, edges, seed_signs):
+def _reach(nodes, edges, seed_signs, static_types=()):
     """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
-    TWO RULES AND NO THIRD.
-      * The FIRST hop does not divide by degree.  Dividing there makes a factor that is
-        equally common on both sides come out non-zero purely because a marked subject
-        happens to carry a different number of claims than a control does.
-      * Every hop after that divides by the number of nodes it FORWARDS TO, so a hub splits
-        its reach instead of flooding the ranking.
-      * There is NO damping constant, as a default or otherwise.  A decay factor is an
-        artefact and it would end up being the thing that decides the answer.
+    ONE RULE: A SEED THAT REACHES A NODE COUNTS 1.  Reach is therefore how many marked
+    subjects reach it and how many controls do, and nothing else — an integer pair.
 
-    🔴 IT USED TO DIVIDE BY THE FULL DEGREE, WHICH IS A LENGTH DECAY WEARING ANOTHER NAME.
-    A node's undirected degree counts the neighbour it was REACHED FROM, so a node in a pure
-    chain has degree 2 and halved its carry at a place where nothing forks.  MEASURED on the
-    chain S-B-C-D: 1.0, 0.5, 0.25 - the exact geometric decay the third rule above forbids,
-    arrived at without a constant.  A 3-hop process-history factor was therefore ranked below
-    a 1-hop one for its distance alone, which is the opposite of what an R&D screen is for.
+    🔴 IT DOES NOT DIVIDE, AND THAT IS THE OWNER'S RULING (2026-08-29): 「그냥 많이 재면
+    신호 약해지겠구나」.  Splitting a node's carry among the nodes it forwards to punishes
+    the subject that was MEASURED MORE.  MEASURED: a die carrying 3 findings gave each of
+    them 0.333 and a die carrying 12 gave each 0.083 — four times weaker for the die that
+    was looked at harder, which is backwards for defect analysis.
 
-    Forward degree is `degree - 1` and not the count of not-yet-seen neighbours, deliberately:
-    the unseen count depends on the order the BFS happens to mark siblings, so the same graph
-    would score differently between runs.  Degree is a property of the graph.
+    The argument was already accepted for the first hop, where dividing would have let a
+    factor common to both sides score non-zero purely because a marked subject happens to
+    carry a different number of claims than a control does.  That argument is just as true
+    at the second hop and every hop after it; it was only ever applied at the first.
+
+    🔴 AND THE FRACTIONS WERE DECIDING THE ANSWER.  MEASURED on the live ledger with four
+    seeds: dividing produced 41 distinct reach values across 996 candidates, 981 of them
+    fractional, and the top layer held `thickness_um` at [2.0, 0.0123] TOGETHER WITH core
+    dies at [0.503, 0.0063] — neither dominates the other, because 2.0 beats 0.503 on the
+    marked side while 0.0123 loses to 0.0063 on the control side.  Undivided, the same
+    seeds produce five distinct values, all integers, and the top layer is one node.
+    Integers also make a tie EXACT, so dominance never breaks on rounding and no tolerance
+    has to be invented.
+
+    Distance is not counted either, for the reason a damping constant is refused: decay
+    would rank a 3-hop process history below a 1-hop one for its distance alone, which is
+    the opposite of what an R&D screen is for.  One hop or five, reaching is reaching.
+
+    What used to justify dividing was hub flooding.  The walk now refuses the two steps
+    that made hubs flood — it does not expand a static node into the world, and it does not
+    walk back down the predicate it just climbed — so the forks that remain are honest ones
+    and there is nothing to split.
 
     Returns `(reach, parents)` where reach is `node -> [from_positive, from_negative]` and
     parents is `seed -> {node: predecessor}`, so an evidence path is rebuilt on demand
     instead of keeping one path per node per seed alive for the whole walk.
     """
+    # 🔴 THIS WALKS UNDER THE SAME TWO RULES THE FETCH DOES, and it has to.  It used to
+    # build a plain undirected adjacency and let every seed flood it, which was invisible
+    # only because dividing turned the flood into different-looking fractions.  MEASURED the
+    # moment dividing stopped: every one of 996 candidates came back [2, 2] -- all four
+    # seeds reaching everything -- because a seed could climb out of a name, or climb a
+    # container and come back down into another seed's dies, exactly the two steps the
+    # fetch refuses.
+    #
+    # ⚠️ THE RULES ARE STATED TWICE, HERE AND IN `_expand_atom`, AND THAT IS A COST.  The
+    # alternative is one fetch PER SEED so that reaching is simply membership; that is the
+    # honest shape and it is four times the queries.  Kept as one merged graph plus these
+    # two guards until the query cost is measured. If a third rule ever appears, this is the
+    # duplication to remove first.
     adjacency = {}
     for edge in edges:
-        adjacency.setdefault(edge["source"], set()).add(edge["target"])
-        adjacency.setdefault(edge["target"], set()).add(edge["source"])
+        predicate = edge.get("predicate")
+        adjacency.setdefault(edge["source"], []).append((edge["target"], predicate, "outgoing"))
+        adjacency.setdefault(edge["target"], []).append((edge["source"], predicate, "incoming"))
+    static = {str(name).split("@", 1)[0] for name in (static_types or ())}
+
+    def _kind(node_id):
+        return str((nodes.get(node_id) or {}).get("type") or "").split("@", 1)[0]
+
     reach, parents = {}, {}
     for seed, sign in seed_signs.items():
         if seed not in nodes:
@@ -442,21 +473,27 @@ def _reach(nodes, edges, seed_signs):
         slot = 0 if sign > 0 else 1
         trail = parents.setdefault(seed, {})
         seen = {seed}
-        queue = deque([(seed, 1.0)])
+        queue = deque([(seed, None, None)])
         while queue:
-            node, carried = queue.popleft()
-            neighbours = adjacency.get(node)
-            if not neighbours:
-                continue
-            forward = max(1, len(neighbours) - 1)     # exclude the way it came in
-            share = carried if node == seed else carried / forward
-            for nxt in neighbours:
+            node, came_by, came_how = queue.popleft()
+            here_is_name = _kind(node) in static
+            for nxt, predicate, direction in adjacency.get(node) or ():
                 if nxt in seen:
+                    continue
+                there_is_name = _kind(nxt) in static
+                # a name may lead to another name and never back out into the world
+                if here_is_name and not there_is_name:
+                    continue
+                # and no step goes back down the predicate it just climbed -- between two
+                # names there is no container and so no siblings, so that pair is exempt
+                if (direction == "outgoing" and came_how == "incoming"
+                        and predicate == came_by
+                        and not (here_is_name and there_is_name)):
                     continue
                 seen.add(nxt)
                 trail[nxt] = node
-                reach.setdefault(nxt, [0.0, 0.0])[slot] += share
-                queue.append((nxt, share))
+                reach.setdefault(nxt, [0, 0])[slot] += 1
+                queue.append((nxt, predicate, direction))
     return reach, parents
 
 
@@ -534,7 +571,7 @@ def _rank_layers(items):
     return layers
 
 
-def _propagation(nodes, edges, seed_signs, complete):
+def _propagation(nodes, edges, seed_signs, complete, static_types=()):
     """Rank every node this walk REACHED, by the contrast between the two signed reaches.
 
     🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
@@ -572,14 +609,14 @@ def _propagation(nodes, edges, seed_signs, complete):
         "top_set": [],
         "message": None,
     }
-    reach, parents = _reach(nodes, edges, seed_signs)
+    reach, parents = _reach(nodes, edges, seed_signs, static_types)
     collected = [{
         "id": node["id"],
         # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
         # own plumbing word and every node carries the same value of it now; what tells a
         # recipe from a die is the type the declaration gives them.
         "type": node.get("type"), "label": node.get("label"),
-        "reach": reach.get(node["id"], [0.0, 0.0]),
+        "reach": reach.get(node["id"], [0, 0]),
     } for node in nodes.values()
         if node["id"] not in seed_signs and node["id"] in reach]
     if not collected:
@@ -1091,7 +1128,8 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(
             nodes, ordered_edges, seed_signs,
-            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut)),
+            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut),
+            static_types),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "start": {

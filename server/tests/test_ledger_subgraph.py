@@ -413,42 +413,78 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
     assert "die" in declared_entities      # the rebuild's subject, declared and emitted
 
 
-def test_the_carry_is_divided_where_the_walk_forks_and_nowhere_else():
-    """The one pair of graphs the two candidate rules DISAGREE on, so this can only pass
-    for the right reason.
+def test_reaching_counts_one_however_wide_the_fork():
+    """🔴 THE RULE REPLACED ITS PREDECESSOR ON 2026-08-29 (owner: 「그냥 많이 재면 신호
+    약해지겠구나」).  This used to assert that a fork SPLITS the carry three ways.  It does
+    not any more: splitting punishes the subject that was measured more, so a die carrying
+    12 findings gave each of them 0.083 while a die carrying 3 gave each 0.333.
 
-    Nothing pinned this rule before 2026-08-23 and it had drifted into a length decay: the
-    divisor was the undirected degree, which counts the neighbour a node was REACHED FROM,
-    so a node in a pure chain divided by 2 at a place where nothing forks. That is the
-    damping constant `_reach`'s own docstring forbids, arrived at without a constant, and it
-    ranked a 3-hop process-history factor below a 1-hop one for its distance alone.
+    Both halves are still needed, and each still separates the rule from one wrong answer:
+      * the CHAIN separates it from 「divide by degree」, which decays 1, 0.5, 0.25 down a
+        graph where nothing forks and would rank a 3-hop history below a 1-hop one for its
+        distance alone.
+      * the FORK separates it from 「divide among the ways out」, which is the rule that was
+        here until today: three siblings must each read 1, not a third.
 
-    Both halves are needed because each rule is right on one of them:
-      * the CHAIN separates 「divide by degree」 from the correct rule — degree gives
-        1.0, 0.5, 0.25 and the correct rule holds 1.0 all the way.
-      * the FORK separates 「never divide」 from the correct rule — not dividing gives 1.0
-        to each of three siblings, and it also catches dividing by the full degree, which
-        splits a three-way fork into QUARTERS because it counts the way in.
-
-    🔴 WAKE IT WITH THE MUTATIONS IT EXISTS FOR. Both go red, and they go red on different
-    halves: restoring `carried / len(neighbours)` fails the chain, and dropping the division
-    (`share = carried`) fails the fork.
+    🔴 WAKE IT WITH THE MUTATION IT EXISTS FOR: restore any division in `_reach` and the
+    fork half goes red, because a divided fork cannot produce 1.
     """
-    chain = [{"source": "S", "target": "B"}, {"source": "B", "target": "C"},
-             {"source": "C", "target": "D"}]
-    reach, _ = ledger_subgraph._reach(["S", "B", "C", "D"], chain, {"S": 1})
-    assert [round(reach[n][0], 6) for n in ("B", "C", "D")] == [1.0, 1.0, 1.0], (
-        "a pure chain must not decay - nothing forks anywhere on it")
+    def graph(edges, ids):
+        return {node_id: {"id": node_id, "type": "die"} for node_id in ids}, edges
 
-    fork = [{"source": "S", "target": "H"}, {"source": "H", "target": "X"},
-            {"source": "H", "target": "Y"}, {"source": "H", "target": "Z"}]
-    reach, _ = ledger_subgraph._reach(["S", "H", "X", "Y", "Z"], fork, {"S": 1})
-    assert round(reach["H"][0], 6) == 1.0                      # first hop never divides
-    third = round(1 / 3, 6)
-    assert [round(reach[n][0], 6) for n in ("X", "Y", "Z")] == [third] * 3, (
-        "a three-way fork splits three ways, not four - the way in is not an outgoing edge")
+    chain = [{"source": "S", "target": "B", "predicate": "transfer"},
+             {"source": "B", "target": "C", "predicate": "transfer"},
+             {"source": "C", "target": "D", "predicate": "transfer"}]
+    nodes, edges = graph(chain, ("S", "B", "C", "D"))
+    reach, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
+    assert [reach[n][0] for n in ("B", "C", "D")] == [1, 1, 1], (
+        "a chain must not decay - nothing forks anywhere on it")
+
+    fork = [{"source": "S", "target": "H", "predicate": "transfer"},
+            {"source": "H", "target": "X", "predicate": "observed"},
+            {"source": "H", "target": "Y", "predicate": "observed"},
+            {"source": "H", "target": "Z", "predicate": "observed"}]
+    nodes, edges = graph(fork, ("S", "H", "X", "Y", "Z"))
+    reach, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
+    assert [reach[n][0] for n in ("H", "X", "Y", "Z")] == [1, 1, 1, 1], (
+        "a wide fork must not weaken the things it forks to - reaching is reaching")
+    assert all(isinstance(value, int) for item in reach.values() for value in item), (
+        "reach must be integers, or a tie stops being exact and dominance breaks on rounding")
 
 
+def test_reach_obeys_the_two_walk_rules_the_fetch_obeys():
+    """🔴 THE CONTRAST MUST NOT OUT-WALK THE FETCH.  `_reach` re-walks the merged graph, so
+    a rule the fetch enforces and this does not lets a seed reach what its own walk never
+    would.  MEASURED 2026-08-29, the day division stopped hiding it: every one of 996
+    candidates came back [2, 2].
+
+    Each half is one of the two rules, on a graph where breaking it is visible:
+      * A NAME IS NOT A THOROUGHFARE - `void` is static, so a seed may reach it and may not
+        continue out of it into the other seed's die.
+      * A STEP DOES NOT GO BACK DOWN THE PREDICATE IT JUST CLIMBED - climbing `inspected`
+        to a wafer must not descend `inspected` into that wafer's other dies.
+    """
+    nodes = {"d1": {"id": "d1", "type": "die"}, "d2": {"id": "d2", "type": "die"},
+             "void": {"id": "void", "type": "defect_kind"},
+             "w": {"id": "w", "type": "wafer"},
+             "sib": {"id": "sib", "type": "die"}}
+    edges = [{"source": "d1", "target": "void", "predicate": "of_kind"},
+             {"source": "d2", "target": "void", "predicate": "of_kind"},
+             {"source": "w", "target": "d1", "predicate": "inspected"},
+             {"source": "w", "target": "sib", "predicate": "inspected"}]
+
+    reach, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1}, static_types={"defect_kind"})
+    assert reach["void"][0] == 1, "the name itself is reached"
+    assert "d2" not in reach, "the walk left a name and landed in the other seed's die"
+    assert "sib" not in reach, "the walk climbed a wafer and came back down to its siblings"
+
+    # 🔴 THE TWO GUARDS ARE INDEPENDENT, so each is woken separately. Without the classes
+    # declared the name becomes a thoroughfare and the other seed's die IS reached; the
+    # sibling stays out either way, because the step that would reach it is refused by the
+    # predicate rule and not by the class rule.
+    leaky, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1})
+    assert "d2" in leaky, "the class rule is what keeps a name from being walked through"
+    assert "sib" not in leaky, "the predicate rule does not depend on the classes"
 
 
 def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
