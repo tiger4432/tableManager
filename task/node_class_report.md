@@ -134,3 +134,58 @@ walk 의 `continuing` 인자    받되 과금에 «안 씁니다». 주석에 �
 지금 지우면                 클라 두 좌석의 `continues_hops` 선언이 «가리킬 것이 없어집니다»
 ```
 ⛔ 「깊이 cap 내 무제한」은 구현 «안 했습니다». 두 번째 통은 여전히 «통»입니다.
+
+---
+
+# ✅ [A 구현자] **`continues` 서버 은퇴 + `backbone_hops` 개명 — `35f1963c`** (2026-08-29 15:1x)
+
+## 지운 것 / 남긴 것
+```
+walk        continuing 매개변수 · _bare_predicate(마지막 호출자와 함께)   «삭제»
+router      _continuing_predicates() · subgraph 호출의 continuing 인자    «삭제»
+skeleton    술어 레코드의 continues 리프                                  «삭제»
+validator   optional=("continues",)  «남김» + bool 검사 «삭제»
+예산 계산    «안 건드림» — 이미 D→D 로 키가 바뀌어 있었습니다
+```
+🔴 **검증기만 남긴 이유는 지시하신 «순서» 그대로입니다.** 라이브 선언에 여섯이 아직 있어서,
+지금 거절하게 만들면 총괄이 지우기 «전»에 서버가 선언을 못 읽습니다. 주석에 「선언 정리와 같이
+없어진다」라고 적어 뒀습니다. 그 여섯을 지우신 뒤 이 한 줄을 걷어내면 끝입니다.
+
+## 개명 — 별칭 «없음»
+```
+DEFAULT_CONTINUES_HOPS -> DEFAULT_BACKBONE_HOPS
+Query continues_hops   -> backbone_hops
+옛 이름 호환층          «안 만들었습니다» (지시대로)
+```
+
+## 게이트
+```
+① 선언에 continues 여섯이 «남아 있는 채로» 걷기 라우트가 200            ✅
+   (검증기가 거절하지 않는다는 뜻입니다 — 거절하면 선언 로드 자체가 실패합니다)
+② 씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing · 1000/3000
+   follow = 자재6 + processed_with
+      backbone_hops=0   nodes  40 · reached 1 · truncated depth
+      backbone_hops=4   nodes «157» · reached 3 · truncated none
+   follow 에 observed 추가
+      backbone_hops=4   nodes «246» · reached 3 · truncated none      ← 총괄 수와 일치
+③ 옛 이름   continues_hops=4  ->  nodes «40» · reached 1 · truncated depth
+   = 예산을 «안 준 것»과 완전히 같습니다. 조용히 옛 동작을 하지 «않습니다» ✅
+   (FastAPI 가 선언 안 된 쿼리 인자를 무시합니다 — 지시의 「무시되거나 422」 중 앞쪽)
+④ -k "subgraph or setup_bundle or skeleton or explorer or l1_unit"
+   218 passed · 2 skipped · 7 failed
+   그 일곱은 오늘 아침 HEAD 대조군과 «정렬된 목록이 동일»합니다 (수가 아니라 목록으로 비교)
+```
+
+## 곁들여 고친 것 — 낡은 주석 «셋»
+```
+walk    「예산은 술어에 달렸다」  -> 「양 끝의 분류에 달렸다」  (두 곳)
+router  backbone_hops 의 «사용자에게 보이는» description 이
+        「`continues: true` 라고 말한 술어를 지나는 걸음」이라고 하고 있었습니다
+        -> 「양 끝이 둘 다 dynamic 인 걸음. 정적/동적은 선언의 `class` 가 정한다」
+```
+
+## 총괄에게 남은 것
+```
+라이브·샘플 선언의 continues 여섯 삭제  ->  그 뒤 검증기의 optional 한 줄 제거(제가 합니다)
+클라 두 좌석의 continues_hops -> backbone_hops  ->  «클라 레인» 몫
+```
