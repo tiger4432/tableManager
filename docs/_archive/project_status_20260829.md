@@ -171,6 +171,17 @@ Y축 선택기가 묻는 것   「무엇을 그릴 수 «있나»」  -> 선언�
    총괄 잠정: 부품 선언 (상설 「부품은 읽을·쓸 마킹을 선언한다」 + `follow` 옆에 한 줄)
 ```
 
+#### 🔴 «위 항목의 진단은 틀렸고, 답은 「방향」이었습니다» (총괄 정정 09:5x)
+```
+제가 적은 것   「measures 는 시계열이고 예산이 «접힐 행»에 쓰인다」
+틀린 자리    「목적지당 176」 을 «같은 쌍의 원자 176» 으로 읽었습니다
+실제        서로 다른 source «747» · target «17»  ->  176 은 «웨이퍼 176장»
+            (source, predicate, target) 로 묶은 접힘비 = «1배». 접을 게 없었습니다
+진짜 원인   quantity 는 «허브»입니다. clamp_kN 하나를 씨앗으로 1홉 -> 엣지 «999»(상한)
+            공장의 모든 웨이퍼가 같은 물리량을 재서, wafer -> quantity -> «남의 웨이퍼» 로 샑니다
+🔴 배운 것     「오늘 맞는 수」와 「그 수가 무엇을 세는가」는 다릅니다.
+            비율을 보기 전에 «분모가 무엇인지»를 먼저 세어야 했습니다
+```
 ## ✅ 답 — walk 이 «이미 들고 있던» 인자였습니다 (서버 변경 0)
 ```
 씨앗 wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · edge_limit=3000
@@ -194,6 +205,13 @@ outgoing wafer 1 · die «156» · quantity 18 · defect 89 · defect_kind «1»
 ⓪ 가 절단을 없앤 뒤에 재야 그 수가 무엇인지 말할 수 있습니다
 ```
 
+#### 🔴 엣지·클레임 상한 — 상세 (총괄 실측 2026-08-29 09:2x, 소유자 요청)
+```
+씨앗  wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · direction=both
+응답  walk.hops_requested 6  ->  walk.hops_reached «2»  ·  claims_scanned 6000 (= 클레임 상한 전부)
+⚠ hops_reached 는 `limits` 가 아니라 `walk` 블록에 있습니다 — limits 에서 찾으면 None 이고
+  그걸 「없다」로 읽습니다. 총괄이 이 자리에서 한 번 눈이 멀었고 레인 보고가 맞았습니다
+```
 ## ① 예산을 «무엇이» 먹나 — 한 술어가 93%
 ```
 edge_limit 3000 에서 술어별 엣지
@@ -668,6 +686,46 @@ median 이 「600장 전부」인지 「3000 엣지까지」인지 «구별해�
 ```
 ⚠️ 순서: 응용 레인이 라운드 Z-3 에서 `api.js`·`main.js` 를 들고 있습니다. 탐색기는 그 «다음»입니다
 
+### 📐 (대체됨) 기획 v1 — 검색창을 «서브그래프 탐색기»로 (소유자 2026-08-28: 「walk 좀 제대로 써보게」)
+
+#### 지금 (총괄 실측 · `walk_box_panel.js` 314줄)
+```
+고르는 것   nodeType(select) · 선언된 keys(input) · follow(술어 집합, 주어 타입으로 걸러짐)
+보내는 것   그 셋뿐 — hops · direction · 예산 · positive/negative «없음»
+보여주는 것 { ok, nodes:[{id,type,label}], message }  — 평면 목록. edges · ranked · truncated «안 씀»
+```
+#### 🔴 승격에 필요한 것 중 «서버 0 · 저장소 0» — 상자만 배선하면 됩니다
+```
+서버      walk 이 이미 받습니다: positive · negative · follow · hops · direction · node/edge_limit
+          이미 돌려줍니다:      nodes · edges · ranked(후보+reach) · truncated · complete
+저장소    marking_store 가 이미 듭니다: 이름 붙은 마킹 여럿 · 부호 {CASE:1, CONTROL:-1}
+          set · toggle · names · entries · subscribe  -> CLAUDE.md 상설 그대로
+🔴 없는 것은 «상자가 그 둘을 안 잇는 것» 하나뿐입니다
+```
+#### 승격의 «핵심 한 줄»
+```
+지금    타입+키로 «한 번» 걷는 상자
+뒤      «마킹에서 걸어 마킹을 만드는» 상자
+        마킹1 ─walk→ 서브그래프 ─찍기→ 마킹2 ─walk→ …     ← 소유자 정본 그대로
+```
+#### 부품 넷 (전부 작습니다)
+```
+① 시작 줄   읽을 마킹 이름(store.names() 드롭다운) · 또는 「씨앗 직접」(지금 UI 를 «그 경로»로 남김)
+            부호는 마킹에서 «자동»으로 옵니다 — store 가 이미 sign 을 듭니다
+② 걷기 줄   follow(있음) + hops · direction · node_limit · edge_limit   ← 정본 인자 목록 그대로
+③ 결과      노드/엣지 수 · 타입 분포 · 후보(ranked) · 🔴 truncated·complete 를 «문장으로»
+            (walk 은 끊김을 이미 말합니다 — 화면이 안 읽어서 「없음」처럼 보였습니다)
+④ 찍기      결과 노드 옆 +/− -> store.toggle(«쓸 마킹 이름», id, sign)     ← 이게 «승격»입니다
+```
+#### 상설과의 관계
+```
+조립식     상자는 «읽을 이름»과 «쓸 이름»을 각각 선언합니다 (CLAUDE.md 그대로)
+           같은 화면에 «둘»을 다른 선언으로 앉혀 간섭 없어야 합니다 — 그게 시험입니다
+라우트     늘어나는 것 «0». walk 하나입니다
+```
+⚠️ 착수 전 판정 하나: ④의 «쓸 마킹»이 새 이름을 만들 수 있게 할지(마킹3·4…), 아니면
+   기존 이름 중에서만 고르게 할지. 전자가 소유자 정본(「체인 길이는 선언이다」)에 가깝습니다
+
 ### 📐 설계 메모 — 물리량 카탈로그 (착수 «전». 소유자 비판이 모양을 정했습니다)
 
 지금 끊긴 자리:
@@ -705,7 +763,417 @@ void ←[+] interface_unfill ←[−] bond_pressure        ← 모델 (원자 2)
    손잡이와 측정을 섞은 것이고, role 수식어가 남아 있어 «가를 수는» 있습니다. 판정 대기
 ```
 
-> 🗄️ **2026-08-29 보드 정리** — 08-28 이전 연대기와 대체된 기획 v1 을 `docs/_archive/project_status_20260829.md` 로 내렸습니다(전문 스냅샷). 지운 것은 없고 «자리를 옴겼습니다».
+### 🌙 밤 (19:3x) — 물리량이 «걷힙니다». 그리고 채널 결함 하나를 고쳤습니다
+
+#### 착지
+```
+✅ 원자        measures «80,322» (num 73,267 + txt 7,055) · leads_to «22»
+✅ 목적어 분포  leads_to -> quantity 13 · defect_kind 9   (내 bind 오류 수리 후)
+✅ 깊이 수리    거꾸로 걷기가 한 홉에서 «조용히» 멈추던 것 — frontier_entities 를 «쓰게» 했다
+               씨앗 void: hops_reached 0 -> «3» · nodes 8 -> «21»
+               무회귀: 타입·술어·truncated 동일, 깊이 히스토그램만 이동(들어오는 arm 493장이 제 거리를)
+✅ 문서        spec §4.5 · §4.6 은퇴 도장 (traversable 축은 선언에도 코드에도 «없다»)
+```
+#### 총괄 실측 — 「보이드가 왜 났나」가 walk «하나»로 답한다
+```
+씨앗 defect_kind{void} · follow=leads_to · hops=6 · both   nodes 21 · edges 21 · truncated 없음
+void ←[+] interface_unfill ←[−] bond_pressure
+     ←[+] wetting_deficit  ←[−] bond_temp · ←[+] surface_oxidation ←[+] pre_bond_queue_h
+     ←[+] interface_contam ←[+] adhesive_residue ←[+] dt_pass_count
+     ←[+] outgassing ←[+] moisture_uptake ←[+] humidity     … 그 외 셋
+🔴 [−] 는 둘뿐 — 압력·온도만 「낮으면 나빠지는」 것
+```
+
+#### 🔴 소유자 판정 — 후보는 «노드 전부»
+> 「**노드 전부지 rcp 같은거 차이도 있잖아 값 밀고, 그리고 이런 차이가 더 빈번함**」
+```
+범주형(더 빈번)  이 집단은 rcp A 를 지났고 대조군은 안 지났다  -> `_reach` 가 «이미» 잡는다
+값 밀림          양쪽 다 닿는데 엣지 수식어 값이 다르다        -> «다음 라운드». 만들지 말 것
+진행 중          _propagation 이 _reach 에서 ranked 를 만든다 (구현자)
+❌ 취소          「hop 에 predicate 얹기」 — 응답에 edges 가 «이미» 있어 필요 없다
+```
+
+#### 🔴 채널 결함 — 한 지시를 «두 레인»이 돌았다 (내 잘못)
+```
+「응용 라운드」를 DESIGN_ORDERS.md 에 올렸는데 그 파일을 읽는 세션이 «둘»이었다
+   보고처 design_session_report.md  ·  보고처 ontology_application_report.md
+부딪히지 «않은» 유일한 이유: 판정이 「api.js 손대지 마라」로 끝나서
+=> 상설: **지시서 첫 줄에 «보고처 파일»을 박는다.** 레인 letter 는 자칭이라 식별자가 못 된다
+```
+
+#### 🔴🔴 오늘의 메타 — 내 오류가 «전부 한 모양»이었다
+```
+「어제 참이던 문장을 오늘 «다시 안 재고» 전제로 썼다」
+  traversable 축      · pin 의 근거(클라가 이것에 대고 지어졌다)
+  collect 기반 ranked · 「0 의 뜻」        · 745(인자 없이 인용)  · hop 에 predicate 필요
+전부 «쓸 때는 참»이었고 «내 개정»이 낡게 만들었다. 그리고 여섯 번 다 «레인이 재서» 잡았다
+```
+
+### 🔴 저녁 라운드 — 「물리량을 노드로」 · 소유자 상설이 하나 늘었습니다 (15:3x)
+
+> 소유자 2026-08-28: 「**다른것도 이 방식이 표준이야 테이블에 원천 데이터 넣고 이거로 원장**」
+> -> CLAUDE.md 에 상설로 박음. `store.write_batch` 의 정당한 호출자는 `ledger/runtime_v2.py` «하나»
+
+#### 총괄이 쓴 라이브 선언 — ✅ **이제 `.sample` 로 추적됩니다** (소유자 지적, 17:1x)
+```
+🔴 정정: 제가 「gitignore 라 커밋에 안 남는다」고 적었는데, 소유자가 «.sample 은 추적된다»고
+   짚어 주셨습니다. 라이브를 그대로 복사했고, 그 김에 샘플이 «죽어 있던» 것도 잡혔습니다:
+     복사 전  검증 오류 «30» — 은퇴 키 넷(packs·source_preparers·mappers·profiles) ·
+              setup_version 미지원 · dt_job 이 옛 모양 · 표 22/43  -> 새 설치가 «안 떴을 것»
+     복사 후  «0» — 9 엔티티 · 13 어휘 · 14 소스 · 43 표/뷰
+   ⛔ config/database.json 은 복사 «안 함» (라이브 값이 접속 정보). 넷은 판정 대기:
+      enrichment_rules · ingestion_settings · map_overlay_config · virtual_join_rules
+
+🔴 백업 경로가 «전부» 바뀌었습니다 (소유자 「config 백업은 다른 폴더」, 17:1x)
+   네 군데에 흩어져 있던 것을 «한 곳»으로:  config/backup/ 99 + config/backup/ontology/ 292
+   config/ontology/ 에는 이제 README.md · ledger_config.json · sample «셋»만 있습니다
+   -> 아래에 적힌 .bak 이름들은 이제 «config/backup/ 밑»에 있습니다
+```
+```
+server/config/table_config.json          백업 backup/.bak-0828_1520   (37 -> 43 표)
+  process_param    param_id · wafer_id · step · param · value(num) · value_text(str) · role
+                   · unit · eqp_id · recipe_id · eventtime        business_key = param_id
+  mechanism_edge   edge_id · model · from_quantity · to_quantity · dir · asserted_at
+
+server/config/ontology/ledger_config.json  백업 backup/ontology/.bak-0828_1530
+  엔티티  quantity@1 {keys:[quantity]}                                    8 -> 9
+  어휘   measures@1  wafer@1 -> quantity@1                               11 -> 13
+           수식어 value · value_text · role · unit · step · eqp_id · recipe_id
+         leads_to@1  quantity@1 -> quantity@1 · defect_kind@1
+           수식어 dir · model
+  소스   process_param_measure (process_param) · mechanism_edge_causes (mechanism_edge)  10 -> 12
+
+물리 표 둘 다 생성됨 (create_missing_dynamic_tables)
+검증   validate_bundle_errors   대조군(손 안 댄 백업) «0» · 현재 «0»
+```
+
+#### 쓰는 도중 측정이 설계를 «두 번» 고쳤습니다
+```
+① 값의 7,055 / 80,322 가 «문자열» (chem SC1 · gas · pad · slurry)
+   -> value 를 수로만 뒀으면 그만큼이 «조용히» 사라짐. value_text 추가 · 「정확히 하나만」 게이트
+② (wafer, step, param) 이 «유일하지 않음» — 80,322 칸 -> 유일 조합 60,528
+   (setpoint 와 actual 이 같은 이름) -> 처음 건 복합키는 충돌했을 것. key=param_id · role 컬럼
+```
+📌 그리고 검증기가 제 소스를 거절했을 때 **손 안 댄 백업을 같이 태워** 그게 «틀린 검증기»를 부른
+   것임을 먼저 갈랐습니다(`ledger.config.validate` 는 옛 평면 모양용). 맞는 문법은 «도는 예제»
+   `dt_job` 에서 뽑았습니다 — read 와 bind 의 시각은 «따로»라는 것도 거기서 나왔습니다.
+
+#### 이 라운드의 «판별식» (레인 진행 중, claim `b0618684`)
+```
+defect_kind{void} 에서 leads_to 를 «거꾸로» 걸어 quantity 에 닿는가
+닿으면   발견 -> 원인까지 «한 walk». 두 번째 탐색기가 필요 없어집니다
+지금     walk 한 번 + mechanism_gate 한 번, 그리고 코드가 둘을 이어 줌
+⚠️ walk 기준선(die 877 …)은 «바뀝니다» — 타입이 하나 늘어서. 회귀가 아니라 결과입니다
+```
+
+### 오후에 닫힌 것
+```
+✅ walk 죽은 배관 제거     `79ff99f6` — 네 게이트, 씨앗 «둘»로 전후 동일
+✅ 스위트 수집 복구        `05a0f10a` — Interrupted 사라짐 · 4,268 수집
+✅ PG 시험 전이 의존       `4609b886` + `34b0f5d6` — 닿는 시험 «7» 전부 skip, 고정점으로 확인
+✅ ⑥ 판정                 흡수 대상 «0». 남은 것은 «두 번째 탐색기» mechanism_gate 를 내리는 것
+⏳ ⑥ 착지                 지시 나감 (mechanism_gate + 자기 시험 -> _archive · 죽은 import 선삭제)
+⏸️ 소유자 대기             기전 그래프의 «씨앗 데이터»를 되살릴지 — ⑥ 착지와 «무관»합니다
+```
+
+### 🔴 오늘의 규율 — 한 경계에서 «네 번» 틀렸습니다
+```
+전부 «부류는 옳게 선언하고 구성원을 한 겹 얕게 센» 것입니다
+  ① 아카이브한 모듈의 «시험»을 안 셈        -> 4,268 이 통째로 수집 불가
+  ② 사라진 값을 «어디 있나»로 물음           -> 답은 «누가 썼나»(source_who)
+  ③ 레인이 «부르는가»로 셈                   -> 답은 «닿는가» (헬퍼 경유 전이)
+  ④ ③을 잡은 «내 계측기»가 6 과 7 을 각각 냄 -> 결론은 파일을 «열어서» 남
+=> 규율은 「부류로 판정하라」가 아니라 «부류를 «닫힐 때까지» 세라» 입니다
+   레인 문장(정본): 「직접 매칭은 한 홉 짧은 질문에 정확히 답한다.
+                    고정점은 몇 홉이든 짧을 수 없다」
+```
+
+### 원장 리팩토링 — 도착지는 task/LEDGER_REFACTOR_GOAL.md 의 «여섯 문장»
+```
+① 배관 낱말 없다        walk 응답의 finding_kind «0»                         ✅
+② 종류가 «노드»         defect_kind@1 엔티티 · of_kind@1 술어 121            ✅
+③ 원장이 선언을 따른다   승인 replay -> 749,044 · 중복 0 · finding_kind 0     ✅
+④ 도메인 갈래 «0»       선언 층 11파일 조사에서 확인                          ✅
+⑤ 안 닿는 원장 모듈 «0»  여섯을 server/_archive 로 «이동»(삭제 아님)          ✅
+⑥ 두 번째 선언이 없다    ✅ 착지 (2026-08-28 20:1x · `31d34ea0`)
+   table_config     대상 아님 — 물리 스키마 정본
+   finding_kinds    흡수 아님 — 쓰는 쪽 옆으로 «이동»
+   mechanism_models 흡수 아님 — 데이터가 «픽스처»였다 (원자 25,132 의 source_who 가 전부 씨앗)
+   => 흡수 대상 «0». 대신 두 번째 «탐색기» mechanism_gate 가 _archive 로 내려갔다
+      (그 그래프는 이제 quantity@1 · leads_to@1 로 «원장 안»에 있고 walk 하나로 걸린다)
+   게이트: 수집 4,257 · walk 기준선 무변 · 서버 기동 · 운영 호출 0
+```
+
+### 오늘 walk 실측 (서버 PID 58676 · 13:51 기동 — `79ff99f6` 이 처음 도는 프로세스)
+🔴 **씨앗을 적습니다.** node_limit 에 잘리는 walk 은 구성이 «출발점»으로 정해집니다 —
+   인자만 적은 수는 재현이 안 되고, 실제로 오늘 그것 때문에 없는 회귀를 한 번 읽었습니다.
+```
+씨앗 SYN-CX-BW-001  (보드 씨앗)      hops=6 · both · node_limit=1000 · edge_limit=3000
+  타입   wafer 1 · die 877 · defect 121 · «defect_kind 1»
+  술어   inspected 128 · bonded_from 621 · observed 121 · transfer 621 · «of_kind 121»
+  수     노드 1000 · 엣지 1612 · 자재 9종 · 라우트 둘 · 노드 id 접두어 하나
+
+씨앗 SYN-BW-101-16  (소유자 체인 씨앗)   같은 인자
+  타입   wafer 1 · die 156 · defect 842 · defect_kind 1
+  술어   inspected 39 · bonded_from 39 · observed 89 · transfer 78 · of_kind 842
+둘 다 «재기동 전후가 동일». quantity · mechanism · bond_pressure 는 셋 다 «0»
+원장   749,044  (645,203 − 옛 observed 103,841 + 새 observed 103,841 + of_kind 103,841)
+```
+
+### 🔴 오늘 배운 규율 다섯 — 전부 «내 판정이 틀렸던» 자리에서
+```
+· 호출 자리와 «import 자리»는 다른 수다 — 개명을 깨는 것은 후자다
+· 자백은 검증을 «닫는다». 반박보다 «더» 재야 한다 (「이게 내 것인가」도 측정이다)
+· 공유 자원에 긴 쓰기를 시작할 땐 채널에 «먼저 알린다» — 내 진행이 남의 피해로 읽힌다
+· 🔴 절단이 걸리는 측정은 «씨앗까지» 적어야 수가 된다 — 인자만 적은 게이트는 게이트가 아니다
+· 🔴 부류의 경계는 «모듈 소비자»에서 끝나지 않는다 — 옮긴 모듈의 «시험»도 구성원이다
+```
+
+### 🔴🔴 지금 막힌 것 — 스위트가 «통째로» 안 돈다 (제 `8fc0a996` 탓)
+```
+$ pytest server/tests/ --collect-only
+  ModuleNotFoundError  audit_changeset · enrichment_actions · ledger.chain_mapper
+  Interrupted: 3 errors during collection      ->  «4,268개가 한 개도 안 돕니다»
+원인   여섯 모듈을 server/_archive/ 로 옮기며 «그것을 재던 시험»을 같이 안 옮겼습니다
+구성원  넷입니다 (셋이 아닙니다)
+  ① test_audit_changeset.py (23) · ② test_enrichment_actions.py (3)
+  ③ test_ledger_frame_chain_mapper.py (21)     ← 셋 다 «최상단 import» = 수집 차단
+  ④ test_ledger_l1_pg.py — «함수 안» import. 32 중 «6»만 해당. 파일 이동 «금지»
+  ❌ test_ledger_setup_bundle.py:1390 은 구성원이 «아님» — 문자열 리터럴이고 지금도 참
+지시   `task/IMPLEMENTER_ORDERS.md` 말미 (커밋 65017f13)
+확인   운영 코드의 아카이브 모듈 import 는 «여전히 0». 틀린 것은 부류의 경계였습니다
+```
+
+### 🔴🔴 레시피 파라미터 — **제가 대표님께 드린 설명이 틀렸습니다** (총괄 실측 2026-08-28 14:2x)
+
+제가 「선언이 끊었으니 선언을 넓히면 복구된다」고 올렸습니다. **선언을 넓혀도 실을 값이 없습니다.**
+```
+① 옛 값은 «있습니다»       ledger_events_pre_rebuild (파티션 표, 살아 있음)
+                          옛 목적어 {"step":"PHOTO_COAT_01","recipe":{"id":"SYN-CX-RCP-…","rev":"1"}}
+② 다시 «만들» 길이 없습니다  params/pressure/temp 이름의 «컬럼»이 이 DB 전체에 «0»
+                          process_event(12,500) 파라미터 컬럼 없음 · bonding_log(38컬럼) 없음
+                          -> 소스에서 재도출 «불가». 옮겨 적는 것만 가능합니다
+③ 그런데 «오늘의» 파라미터는 있고 «안 읽습니다»
+   wafer_process.knobs   3,022 / 3,022 «100% 채움»   {"chem":"SC1","time_s":300}
+   선언이 읽는 컬럼       row_id · wafer_id · recipe_id · step · eventtime  «다섯»
+   안 읽는 것            knobs · eqp_id · result · start_time · end_time
+```
+**그래서 「복구」와 「선언 확장」은 다른 일입니다.**
+```
+복구(옛 값)   pre_rebuild 에서 «옮겨 적기» = 지금 선언이 «만들 수 없는» 원자를 원장에 넣는 것
+             -> 목표 ③(「원장이 선언을 따른다」)과 정면 충돌합니다. 제 판단으로는 «하면 안 됩니다»
+확장(오늘 값) wafer_process.knobs 를 읽고 processed_with@1 에 수식어 자리를 «연다»
+             -> 선언만 고치면 되고 재적재로 실립니다. 이건 «할 수 있고 값이 있습니다»
+```
+🔴 **위의 ③도 제가 틀렸습니다 — 클라 B 가 `source_who` 로 잡았고 제가 재서 확인했습니다**
+```
+pre_rebuild processed_with 28,154 를 «누가 썼나»로 가르면
+   씨앗 스크립트 여섯   25,132   syn_recipe_book 10,442 · syn_eqp_log 6,378 · syn_fab_mes 3,000
+                                syn_mes_queue 2,575 · syn_mi_gauge 1,781 · syn_complex_composite 956
+   진짜 번역 «하나»      3,022   wafer_process_recipe
+오늘의 processed_with              3,022   wafer_process_recipe — «그것 하나»
+=> 번역은 «한 원자도» 안 좁아졌습니다. 5,218 -> 602 은 «씨앗이 사라진 것»입니다
+```
+```
+❌ 「소스가 좁아졌다 · 옛 5,218 을 먹이던 릴레이션을 찾자」   -> 그런 릴레이션은 «없었습니다»
+❌ 「knobs 를 읽으면 오늘의 파라미터가 온다」                 -> 기전 그래프엔 «안 닿습니다»
+   wafer_process 의 step 은 ANNEAL·CLEAN·CMP·DEPO·ETCH·IMPLANT·PHOTO — BONDING·queue «없음»
+   knobs.pressure 는 «CMP 압력». bond_pressure 에 묶으면 «거짓 단언»입니다
+```
+🔴 **제가 놓친 판별식은 `source_who` 였습니다.** 저는 「값이 어느 릴레이션에 있나」를 물었고,
+그 질문으로는 «씨앗이 직접 쓴 것»을 영원히 못 찾습니다 — 없는 소스를 찾고 있었습니다.
+📌 그래서 ⑥ 의 `mechanism_models` 는 **흡수할 선언이 아닙니다** — 모델 파일과 그 데이터가
+   둘 다 «픽스처 층»에 삽니다. 되살릴지는 소유자 판정이고, 저는 수만 올립니다.
+
+### 🔴 대기열 — 클라의 «실측 판별」이 영원히 거짓입니다 (총괄 실측 2026-08-28)
+```
+api.js:409   hop.node_kind === 'value'      -> 「이 후보가 실측인가」
+api.js:485   h.node_kind === 'quantity'     -> declaredOnly (rank_list_panel.js:205 이 읽음)
+walk 이 내는 node_kind   실측 «entity 하나». value · quantity 노드는 08-28 에 사라졌습니다
+=> 실측 수는 이제 «언제나 0», is-declared 표시는 «언제나 안 붙습니다». 오류는 안 납니다
+고칠 방향   같은 질문을 «엣지»에 물어야 합니다 — 자취가 measured/observed 엣지를 지나는가
+⚠️ 지금 고치지 «않습니다». 마킹 없이 열면 propagation.state = not_requested 라
+   화면 자체가 후보 0 입니다. 패널 라운드에서 «한 번에» 봅니다
+```
+
+### ⑥ 안건으로 «추가» — 검증기는 살아 있는데 구현이 아카이브에 있다
+```
+ledger/config.py  _validate_chain_mapper_selection  — `sources.*.chain_mapper` 를 «검증»
+라이브 config 의 그 키   «0»    -> 오늘은 아무도 안 씁니다
+구현                    server/_archive/ledger/chain_mapper.py
+=> 내일 누가 선언하면 «검증은 통과하고 실행할 것이 없습니다» (「도달 가능해지는 날 틀린다」)
+판정 대기: 검증기를 같이 내리거나, 모듈을 되돌리거나 — 둘 중 하나. 지금은 «측정만» 올립니다
+```
+
+### ✅ 최종 게이트 — 총괄 실측 (서버 PID 57372)
+```
+라우트          «2»    /api/ledger/subgraph · /api/ledger/declaration
+walk 인자       id · hops · direction · node_limit · edge_limit · positive · negative · follow
+                (여덟 축 -> 넷 + 씨앗. collect · observations · include_values 소멸)
+노드 id 접두어   {ledger-entity: 1000}          일곱 -> «하나»
+                옛 접두어를 주면 «이름 대어 거절»:
+                  reason subgraph_request_invalid · "node id must be ledger-entity:v1:"
+노드 타입        wafer · die · «defect 121»     전부 «선언된 엔티티»
+엣지 술어        inspected · bonded_from · observed · transfer
+                🔴 has_findings · finding · mechanism · in_container  «0»
+자재            «9종» (기준선 그대로)
+삭제            trends · composition · structure · lots
+                selection · walk_contrast · kinds · identity · siblings   «211,474 B»
+subgraph.py     1,927 -> «882줄»  — 남은 줄이 «전부» 아래 넷으로 회계됨
+하드코딩         제품 코드에 결함 종류 철자 «0»
+
+남은 882줄의 회계 — 넷 «밖»이 없다
+  ① SQL 두 arm      SqlEvidenceLookup 91 · _atom_from_row 12 · EvidenceAtom 36
+  ② BFS 루프        subgraph 287 · _seed_node 79 · _entity_node 13
+                   _declared_key_order 32 · decode_node_id 22 · _edge 10
+  ③ 예산·truncated   subgraph 안 (node_cut · edge_cut · claim_cut · depth_cut)
+  ④ 씨앗 부호·전파   _signed_seeds 30 · _reach 56 · _propagation 39 · _evidence 31
+  부품              id 인코딩·시각 34 · InMemory lookup 40 · 헤더·상수·은퇴주석 79
+🔴 400 을 못 맞춘 이유 = BFS 루프가 «287줄». 더 줄이면 기능이 준다
+```
+
+### 🔴 오늘 밤 범위 «밖»으로 명시한 것 — 다음 라운드
+```
+화면 열둘      404 로 «정직하게» 빈다. walk 부품으로 다시 짓는 것은 별도 라운드
+후보/순위      collect 와 함께 꺼짐. measured 는 후보가 돌아올 때 «술어 기반»으로 다시 쓴다
+              (client api.js 의 node_kind 갈래 둘은 그때까지 «도달 불가», 지우지 않았다)
+스위트 빨강 65  오늘 밤 것 «0» — 20은 08-24 소문자 전환에 픽스처가 안 따라간 것(파일은 08-21~22)
+              12는 순서 의존(단독 26 passed) · 33은 오늘 밤 주제 밖
+```
+
+```
+🔴 소유자 상설 2026-08-28: 「엔티티 어휘 walk 이게 끝」 — 정본은 CLAUDE.md
+   노드는 «선언된 엔티티»뿐 · 엣지는 «선언된 술어»뿐 · 데이터는 «walk»만 답한다
+   「지울 수 없다」가 나오면 그것이 하드코딩이다 — 무시하고 지운다
+```
+
+### 오늘 밤 착지 (전부 총괄 실측)
+```
+라우트       10 -> «2»       /api/ledger/subgraph · /api/ledger/declaration
+모듈 삭제     ledger_trends · ledger_composition · ledger_structure · ledger_lots
+노드 id      접두어 «일곱 -> 하나»  (ledger-entity:v1: 만 남음)
+합성 엣지     in_container 128 -> «0»  ·  has_findings · finding · mechanism «0»
+             🔴 코드가 아니라 «선언»에서 빼서 사라졌다 — 규칙이 도는 증거
+하드코딩      제품 코드에 결함 종류 철자 «0» (void·delam 이 선언으로)
+선언         defect@1 신설(keys [void_uid]) · observed@1 목적어 entity_ref · bind 의 target
+🔴 재적재     «저절로가 아니었다» — 총괄이 08-28 09:4x 에 정정
+             커서 표 실측: void_observation 08-27 22:52:05~23:07:57 · 103,841건 · 중복 0
+             원자 uuid7 의 시각도 같은 창 (서로 다른 두 출처가 일치)
+             = 총괄이 22:51:40 에 띄운 reload.py 가 «성공»했다
+             ⚠️ 총괄은 그때 「CPU 0.7초·DB연결 없음·출력 0」을 «막힘»으로 읽고 프로세스를 죽였다
+                실제로는 «이미 끝나서» 조용했던 것 (conda 가 출력을 안 흘림)
+             👉 그러므로 「선언을 고치면 원장이 따라온다」는 «아직 참이 아니다» — 사람이 돌려야 한다
+                그리고 지금 그 경로는 커서 가드에 막혀 있다 (리팩토링 첫 지시)
+subgraph.py  1,927 -> 1,169줄 (목표 400 · B의 라우트 서명 정리 대기)
+```
+
+### ✅ 그 결함은 닫혔습니다 (2026-08-28 04:0x)
+```
+발견이 «defect» 엔티티로 돌아왔다 — walk 실측:
+   타입 {wafer 1 · die 878 · defect «121»}   술어 {inspected 128 · observed «121» · …}
+   121 = 그 웨이퍼의 observed 원자 수와 «일치»
+   합성 엣지 has_findings · finding · mechanism · in_container  «전부 0»
+   노드 id 1,000 전부 ledger-entity:v1:
+원인이었던 것: 접을 것 없는데 남은 observation_mode 가 SQL 에서 follow 와 AND 로 충돌
+고친 방법: observation_mode · include_observed «삭제». 제어는 follow 하나
+```
+
+### 📌 화면 — 열둘이 «정직하게» 빈다
+```
+보드 좌석 16 중 12 가 「서버가 거절했습니다 (HTTP 404)」로 «이름 대며» 빈다
+  조용히 비는 것이 아니다 — 오늘 밤 내내 지운 그 모양의 «반대편»이다
+살아 있는 것: 걷기 검색창(NODE TYPE 에 defect@1 이 나온다) · 마킹 저장소 · 닿는 곳
+⚠️ 그 열둘을 walk 부품으로 다시 짓는 것은 «별도 라운드»다 — 오늘 밤 범위 밖
+```
+
+```
+원장     645,203 원자 · die 81% · legacy_atom «0» · 인덱스 uq 159.7 MB
+선언     entities «6» · 술어 «10» — 원장 술어 «8» 을 «전부» 덮는다
+walk    GET /api/ledger/subgraph «하나». follow(술어) · collect(모을 것) · positive/negative(마킹)
+        collect 받는 것 «여섯» (claim·event 는 은퇴 — 「claim 은 엣지다」)
+        follow 는 «반복 파라미터» (follow=a&follow=b). 쉼표 목록은 422
+        상한 node_limit ≤ 1000 · edge_limit ≤ 3000 — 둘 다 «필드 이름을 대며» 422
+술어    transfer 401,206(62%) · inspected 117,662 · observed 103,841 · bonded_from 18,545
+        processed_with 3,022 · register/has_netdie 396 · slot_map 135
+        🔴 선언 10 중 «둘»이 원자 0 — derived_from · has_wafer
+        소유자 체인 라이브: 839노드 · in_container 117 · recipe 5 · 코어 29/29 · 매달린 0
+보드     좌석 «16» · 로드 요청 «14» · non-200 «0» · 정확히 중복 «2»
+서버     conda assy_manager · uvicorn 8080
+```
+
+### ✅ 오늘 닫힌 것
+```
+v1 어휘 «완전 삭제»    server/ 에 흔적 «0» · 게이트 일곱 초록 · 화면 «무변»
+계보 walk 은퇴        고아 넷까지 (사슬이 세 번 «한 고리 짧았다»)
+폴더/트리 보존 업로드   두 문(브라우저·랩퍼)이 «같은 트리». 탈출 시도 전부 raws 안
+걷기 검색창           선언에서 드롭다운 · 결과 표 · 잘림을 «문장»으로
+원장 인덱스           1,123.6 -> 159.7 MB (같은 원자 수 · 옛 축 중복 0)
+묘비 후계             410 일곱이 «없는 주소»(/api/ledger/trace)로 보내고 있었다
+                     -> /api/ledger/subgraph. 게이트는 «이름 대조가 아니라 호출»
+카탈로그 8 -> 6       /declaration 이 walk 이 «거절하는» claim·event 를 광고했다
+                     화면 드롭다운까지 확인 (요청 14 · 전부 200 · 콘솔 0)
+문서 3차              backend.md(동결 울타리·낡은 줄 수) · 체크리스트 · 브리프 · api 문서
+씨앗이 선언을 부른다   트렌드 point 의 node_id 가 ["WaferLeg",…] -> ["wafer",…]
+                     그 점을 마킹하면 walk «1노드 0엣지» -> «178노드 261엣지»
+                     identity.type · context · mark_key 는 그대로. 클라 수정 0
+follow 가 참조 엣지도  in_container 를 이름 댈 수 있고 카탈로그가 광고한다(origin:reference)
+문서 3차 «셋 다»       backend · EVIDENCE_SUBGRAPH · LEDGER_TECHNICAL_SPEC(정본이 «둘»이라던 절)
+```
+
+### ⚖️ 2026-08-27 판정 (소유자 + 총괄)
+```
+소유자  final_chip 을 선언에 «안 넣는다»  ->  /composition 은 «고칠 수 없다»
+소유자  「어느 중간과정에서 마킹 찍어도 조립 자재 다 보이게」
+총괄    /composition 묶음은 «마킹 walk 이 그 자리를 채운 뒤» 은퇴 (지금 안 지운다)
+총괄    레그 마킹이 웨이퍼로 접히는 것은 «결함이 아니다» — 레그는 노드가 아니다
+        (소유자 2026-08-24 「키는 노드 아이디와 노드 타입」 그대로다)
+총괄    transferred 네 갈래의 0 은 «확정»이다 — final_chip 이 선언에 없으므로
+규율    파일 열기 «전»에 「잡습니다: <경로>」 한 줄 + 푸시. 배정 이동은 «양쪽» 채널에
+규율    죽은 이름을 «산 이름으로 갈아끼우지» 말 것 — 코드가 «지금» 무엇을 하는지 읽고 적는다
+```
+
+### 🔴 지금 열린 것
+```
+0 🔴🔴 트렌드가 「깨끗하다」고 «단언»한다 — 같은 화면 맵은 «28»을 센다
+                 분자 observed 의 «구별되는 (mat_id,x,y)»   121원자 -> «28»
+                 분모 inspected 목적어의 «구별되는 die»      256원자 -> «128»
+                 지금 0/64 「scanned_clean」  ->  목표 28/128 = 21.9% = «맵과 같은 수»
+                 🔴 게이트는 「0이 아니다」가 «아니다» — 맵과 «같은 수»여야 한다
+                 서버 ledger_trends.py 하나. 보드 grain 선언은 «맞다»(클라 0줄)
+1 문서 정비        «concat 금지 · 현 상태로 다시 쓰기» — 네 갈래 진행 중
+2 「전부 노드로」   투영의 type 을 도메인 낱말로 · collect 축을 화면에서 제거
+                 🛑 전제: 발견 «종류»가 선언에 없다 -> 넣을지가 «별도 판정»
+3 composition      🔴 소유자 판정 2026-08-27 — final_chip 은 선언에 «안 넣는다»(「아니 넣지마」)
+                 -> 그 라우트는 «고칠 수 없다». 주어가 선언에 없다
+                 -> 대신 「어느 중간과정에서 마킹 찍어도 조립 자재 다 보이게」
+                 실측: wafer/die 씨앗 -> 자재 «10종» 이미 보인다
+                 🛑 막는 것 «하나»: 조립의 척추 in_container 를 follow 가 «이름 못 댄다»
+                    (die@1.references 의 참조 엣지 — 선언 술어 10에 없어서 422)
+                    지시: follow 검증 = 술어 10 + «선언된 참조 엣지», 카탈로그도 같이 광고
+                 ⏳ 소유자 대기: /composition 을 «지금» 은퇴시키나, walk 이 채운 «뒤»에 하나
+4 collect 이 «센다» 분모=inspected · 분자=observed (둘 다 원장 안)
+                 🔴 판별식: 씨앗 16개와 40개가 «다른 수»를 낼 것
+5 부품 이전        컨트롤 바(12중 4)부터. 완료 판정은 아래 «수 셋»
+6 샘플 config 빨강  test_ledger_trace_contract 둘 — v1 «이전»부터 있던 것
+```
+
+### 📐 끝났는지 재는 «수 셋» — 산문 금지
+```
+요청 수   보드 한 번 로드 «14»  ->  ?      (정확히 중복 «2» -> «0»)
+분기 수   bindLoaders 부품 이름 분기 «2»  ->  «0»
+라우트 수  /api/ledger 의 «데이터» 라우트 «5»  ->  «1»
+```
+
+### ⚠️ 오늘 반복된 실수 넷 — 다음 세션이 흉터를 물려받게
+```
+① 부류로 묶고 «구성원을 안 셈»    3회. 「대상이 사라졌나」는 «이름»이 아니라 «호출 사슬»로 판정
+② 계측기가 죽은 걸 못 봄          4회. «0이 통과 조건»인 게이트는 «0 아닌 것도 낼 수 있는지» 먼저
+③ 표본이 판별식이 아님            3개로 「파일마다 vs 끝에 한 번」을 구별하려 함
+④ 라이브 파일에 시험이 씀         워크스페이스에 시험 파일 셋 (즉시 삭제)
+🔴 그리고 «대조군을 같이 태운다» — 「대상이 없다」와 「계측기가 없다」를 가르는 유일한 방법
+```
+
+---
 
 ## 📚 옛 보드
 2026-08-27 15:0x 이전의 라운드별 기록은 `docs/_archive/project_status_20260827.md` 에 있습니다.
