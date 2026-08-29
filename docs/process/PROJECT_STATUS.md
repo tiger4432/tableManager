@@ -171,6 +171,65 @@ Y축 선택기가 묻는 것   「무엇을 그릴 수 «있나»」  -> 선언�
    총괄 잠정: 부품 선언 (상설 「부품은 읽을·쓸 마킹을 선언한다」 + `follow` 옆에 한 줄)
 ```
 
+#### 🔴 엣지·클레임 상한 — 상세 (총괄 실측 2026-08-29 09:2x, 소유자 요청)
+```
+씨앗  wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · direction=both
+응답  walk.hops_requested 6  ->  walk.hops_reached «2»  ·  claims_scanned 6000 (= 클레임 상한 전부)
+⚠ hops_reached 는 `limits` 가 아니라 `walk` 블록에 있습니다 — limits 에서 찾으면 None 이고
+  그걸 「없다」로 읽습니다. 총괄이 이 자리에서 한 번 눈이 멀었고 레인 보고가 맞았습니다
+```
+## ① 예산을 «무엇이» 먹나 — 한 술어가 93%
+```
+edge_limit 3000 에서 술어별 엣지
+   measures     2793   93.1%     <- 혼자 거의 전부
+   observed       89    3.0%
+   inspected      39    1.3%
+   bonded_from    39    1.3%
+   transfer       39    1.3%
+   leads_to        1    0.0%
+```
+## ② 왜 그렇게 많은가 — **measures 는 시계열입니다**
+```
+follow=measures 만 걸으면   엣지 3000  ->  서로 다른 목적지 «17»
+                          즉 목적지당 «176» 개
+원자 하나   {"role":"setpoint","step":"DIFFUSION","value":2.0,"eqp_id":"SYN-DIF-01"}
+뜻        같은 (웨이퍼, 물리량) 쌍에 측정 원자가 수백 개.
+           그걸 전부 «엣지»로 끌고 오고, 화면은 그걸 «수 하나로 접을» 예정이었습니다
+```
+## ③ 상한을 올리면 벽이 «옆으로 옴길 뿐»입니다
+```
+edge_limit  nodes  edges  truncated
+      1200    754   1200  edges, claims
+      2000   1000   2000  nodes, edges, claims      <- 노드 상한이 대신 걸림
+      3000   1000   3000  nodes, edges, claims
+=> 상한을 올리는 것은 답이 아닙니다
+```
+## ④ follow 로 줄이면 «절반»만 풀립니다
+```
+follow                                       nodes  edges  truncated
+전부                                          1000   3000  nodes, edges, claims
+measures 만 뻐기                              1000   1087  nodes, claims     <- 엣지는 풀림
+   그 1000 의 구성:  defect 959 · die 39 · wafer 1 · defect_kind 1
+   => 둘째 포식자는 «defect» 입니다. 이것도 «세려고» 끌고 오는 것입니다
+```
+## 🔴 그래서 이 상한 문제는 «집계 문제»입니다
+```
+walk 이 끌고 오는 것의 대부분이  «화면이 어차피 접을 행» 입니다
+   measures 176개  ->  화면이 원하는 것은 중앙값 «하나»
+   defect 959개    ->  화면이 원하는 것은 세어서 «수 하나»
+즉 예산이 «접힐 예정이던 행»에 쓰이고 있습니다
+이건 소유자의 ① 판정(「집계에 따라 다르지」)과 «같은 자리»입니다
+⚠ walk 에 집계가 없습니다 — 확인했습니다. 제안이 필요한 자리이고, 소유자 판정 전까지 안 만듭니다
+```
+## ⑤ 곁지어 — 지난밤 «자재 컨텍스트»가 수로 다시 나왔습니다
+```
+follow = transfer · bonded_from · slot_map · has_wafer  (계보만)
+   ->  nodes «1» · edges «0»
+뜻   이 웨이퍼는 `inspected` 없이는 «자기 자리에서 한 걸음도 못 나갑니다»
+     transfer·bonded_from 은 die→die 이고, 거기 가려면 wafer --inspected--> die 를 써야 합니다
+     소유자가 「자재 컨텍스트가 없다는거지?」라 한 그것의 «수»입니다
+```
+
 ### ✅ 마감 (02:2x) — **404 «11 -> 2» · 문서 «114 -> 92» · 원장 변경 «0»**
 ```
 남은 404 «둘»   트렌드 좌석 4·6 — «소유자 판정 대기»뿐입니다
