@@ -328,6 +328,31 @@ def column_exists(connection, table: str, column: str) -> bool:
         return bool(cursor.fetchone()[0])
 
 
+def _ensure_trigram(cursor):
+    """Install `pg_trgm`, because one of `INDEXES` cannot be built without it.
+
+    🔴 MEASURED 2026-08-29 ON AN EMPTY DATABASE: `ensure_schema` did not survive one.
+    It died on `gin_trgm_ops` - the trigram operator class - long before the atom table
+    was usable, and the live box never showed it because the extension was installed
+    there by hand at some point nobody recorded. Exactly the shape of the index defect
+    fixed in the same round: a premise that is invisible wherever it already holds.
+    The owner's definition of done is a new environment starting from a declaration and
+    no code edits; a schema that cannot be built is short of the starting line.
+
+    ⚠️ A MISSING PRIVILEGE IS NAMED, NOT SWALLOWED. `CREATE EXTENSION` needs rights an
+    application role may not have, and the honest failure there is a sentence saying so -
+    a silent pass would hand the operator the same invisible half-built schema this
+    function was just fixed for, one layer down.
+    """
+    try:
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+    except Exception as exc:
+        raise RuntimeError(
+            "pg_trgm is required for the trigram index and this role cannot create it: "
+            "%s. Install it once as a superuser (CREATE EXTENSION pg_trgm) and re-run."
+            % exc) from exc
+
+
 def ensure_schema(connection):
     """Create the ledger, the cursor table and the indexes. Idempotent, additive only.
 
@@ -357,6 +382,7 @@ def ensure_schema(connection):
             if not column_exists(cursor, CURSOR_TABLE, column):
                 logger.info("[Ledger] adding %s.%s", CURSOR_TABLE, column)
                 cursor.execute(statement)
+        _ensure_trigram(cursor)
         for statement in INDEXES:
             cursor.execute(statement)
         if not ledger_existed:
