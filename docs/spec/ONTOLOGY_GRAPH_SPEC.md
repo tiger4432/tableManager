@@ -19,7 +19,7 @@
 >
 > ⚠️ **§7.5c에 붙는 단서** — 그 분류의 «개념»은 살아 있지만 «선언 채널»은 `ontology_mapping.json` 하나뿐이고, 그 파일은 판정 R-2026-08-14-H의 후속 항목으로 은퇴 예정입니다. 이 절을 살리려면 선언의 거처를 원장 어휘 소유자 쪽으로 다시 앉히는 결정이 필요합니다(**총괄 판정 대상 — 문서 레인이 정하지 않았습니다**).
 >
-> **후계** — 인스턴스 수준 혈통 `GET /api/ledger/trace` · 유형 수준 구조 `GET /api/ledger/structure` · 개체 층 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
+> **후계** — `GET /api/ledger/subgraph` **하나**입니다(walk). 유형 층은 `GET /api/ledger/declaration`, 개체 층은 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md). 🔴 **[2026-08-28] 종전 이 줄은 `GET /api/ledger/trace` 와 `GET /api/ledger/structure` 를 후계로 대고 있었고 둘 다 «없습니다»** — 은퇴한 페이지에서 또 다른 없는 주소 둘로 보내고 있었습니다.
 >
 > ---
 >

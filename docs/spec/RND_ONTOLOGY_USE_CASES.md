@@ -1,10 +1,22 @@
 # R&D Ontology Use Cases — 원장 증거를 연구 판단으로 바꾸는 법
 
-> **Status:** Design Contract · **Date:** 2026-08-15
+> **Status:** 🟠 Design Contract (부분 최신) · **Last-verified:** 2026-08-29
 > **대상 독자:** 반도체 조립/본딩/DT/Core 불량 원인을 찾는 R&D 연구원, 온톨로지·분석 API 개발자
-> **관련 구현:** `ledger_events`, `/api/ledger/subgraph`, `/api/ledger/trends`,
-> `/api/ledger/selection/resolve`, `/api/ledger/composition`
+> **관련 구현:** `ledger_events`, **`GET /api/ledger/subgraph`**, `GET /api/ledger/declaration`
 > **증거 그래프 상세:** [Ledger Evidence Subgraph](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md)
+>
+> 🔴 **[2026-08-29] 이 문서의 «질문»은 유효하고 «이름» 일부가 죽었습니다.** UC 별 추론·§2 선언
+> 표·§5 후보 계약·§7 판정은 그대로 읽으십시오. 아래 낱말이 나오면 **그 문장만** 낡은 것입니다:
+>
+> | 문서의 낱말 | 실제 |
+> |---|---|
+> | `/api/ledger/trends` · `/composition` · `/selection/resolve` · `/subgraph/table` | **라우트 없음.** 데이터에 답하는 것은 `GET /api/ledger/subgraph` 하나 |
+> | `Entity–Event–Claim 그래프` · 「Claim/Event 를 seed 로 연다」 · `event_id` | **Event 는 노드가 아니고 Claim 은 엣지다**(2026-08-25). 씨앗 접두어는 `ledger-entity:v1:` 하나이고 나머지 철자는 **422** |
+> | `WaferLeg` | **선언된 엔터티가 아니다.** 마킹 단위는 «웨이퍼»이고 실험 구간은 `bonding_leg` «수식어» |
+> | 술어 `transferred` | **선언에 없다.** 살아 있는 철자는 `transfer@1`(die → die) |
+> | typed `properties` long table | **없다**(`shape=tables` · `/subgraph/table` 함께 은퇴) |
+>
+> 「P 의 Trend/Composition/Selection 이 착지했다」는 문장은 **착지했다가 은퇴했다**로 읽으십시오.
 
 ## 0. 결론
 

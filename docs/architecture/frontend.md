@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
 > **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 라우트 계약: [backend §2](./backend.md)
 
@@ -160,14 +160,14 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 | 파일 | 줄 | 역할 |
 |---|---|---|
 | `main.js` | 686 | 구성 루트 — 부품을 격자에 앉히고 deps 를 주입 |
-| `api.js` | 1,073 | `walk({start, collect})` 와 `COLLECTS` 선언표. 요청 중복 제거 포함 |
+| `api.js` | 1,073 | `walk({start, collect})` 와 `COLLECTS` 선언표. 요청 중복 제거 포함. 🔴 **[2026-08-29] `COLLECTS` 는 «남은 부채»다** — 이름 없이 부르면 walk 본체이고(`collect` 를 «안 대는» 것이 옳은 길), 표에 남은 행은 «아직 라우트 이름을 대는 좌석»이다. 일곱 중 다섯(`trend_y`·`wafer_process`·`map`·`basis`·`peer`)이 **은퇴한 라우트를 부르는 fetch 함수**로 간다. **표가 0 행이 되는 것이 이 부채의 완료 조건**이고, api.js 자신이 그렇게 적고 있다 |
 | `panel.js` | 158 | 부품의 바닥 클래스 — `startFor()` 로 읽을 마킹을 푼다 |
 | `grid_shell.js` | 128 | 격자 |
 | `marking_store.js` · `marking_intersection.js` | 124 · 87 | 이름 붙은 마킹 여럿과 그 교집합 |
 | `table_part.js` | 158 | **표 «한 벌»** — 컬럼 선언 `{key,label,align,width,kind}` 으로 구동 |
 | `map_panel.js` | 1,053 | 맵 |
 | `main_trend_panel.js` | 420 | 트렌드 |
-| `walk_box_panel.js` | 352 | 걷기 검색창 — NODE TYPE · KEY · FOLLOW · COLLECT |
+| `walk_box_panel.js` | 352 | 걷기 검색창 — NODE TYPE · KEY · FOLLOW. 🔴 **`COLLECT` 는 2026-08-28 에 라우트에서 빠졌다** — 화면에 그 칸이 남아 있으면 결함이다. `goto(id)` 가 마킹 저장소에 쓰는 «유일한» 자리이고, 이력은 «잘리지 않는 트리»다 |
 | `head_summary_panel.js` · `control_bar_panel.js` | 324 · 255 | 머리 요약 · 컨트롤 바 |
 | `candidate_list_panel.js` · `rank_list_panel.js` | 272 · 225 | 후보 · 순위표 |
 | `composition_panel.js` · `expanded_layer_panel.js` | 270 · 169 | 구성 · 펼친 층 |
@@ -179,13 +179,19 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 ```
 마킹      부호 붙은 «노드 집합». 화면 상태가 아니라 walk 의 «시작점»
 데이터    그 노드에서 «걸어서 닿는 하위 그래프» 그 자체
-부품      선언하는 것은 둘뿐 — { start = 읽을 마킹,  collect = 무엇을 걷나 }
+부품      선언하는 것은 둘뿐 — { start = 읽을 마킹,  follow = 어느 술어를 건너나 }
 체인      마킹1 --walk--> 서브그래프 --찍기--> 마킹2 --walk--> …  «계속»
 ```
 
-🔴 **부품이 «거르면» 어긴 것입니다.** 거르는 것은 walk 이 할 일이고, 고칠 것은 `collect` 입니다.
+🔴 **[2026-08-28] 좌석이 선언하는 것은 `collect` 가 «아니라» `follow` 입니다.** `collect` 는 노드
+«종류»를 골랐고, 개정 6 이 종류를 끝내면서(노드는 선언된 엔터티뿐) 라우트가 그 파라미터를
+버렸습니다. **차이가 중요합니다** — `map` 이나 `wafer_process` 를 대는 좌석은 «서버의 자리»를
+대는 것이라 그 자리가 사라지면 좌석이 통째로 404 가 됩니다. `[observed, inspected, bonded_from]`
+을 대는 좌석은 **선언이 소유한 낱말**을 대는 것이라 walk 이 답합니다.
+
+🔴 **부품이 «거르면» 어긴 것입니다.** 거르는 것은 walk 이 할 일이고, 고칠 것은 `follow` 입니다.
 🔴 **화면이 하나 늘 때 fetch 함수가 하나 늘면 어긴 것입니다.** 늘어야 하는 것은 «선언»이지 갈래가 아닙니다.
-🔴 **맵과 트렌드는 «같은 collect»입니다.** 시작점만 다릅니다 — 맵은 다른 데이터가 아니라
+🔴 **맵과 트렌드는 «같은 걷기»입니다.** 시작점만 다릅니다 — 맵은 다른 데이터가 아니라
 «한 그룹으로 좁힌 같은 데이터»입니다.
 
 ### 4.3 부품을 더할 때 실제로 무는 것 둘

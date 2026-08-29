@@ -593,7 +593,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - **이 단계의 명령·순서를 여기 다시 적지 않는다.** 저 문서 하나가 시간대 판정과 `tzdata` → 선행 테이블 → **마이그레이션 둘** → 소스 선언 → 백필 → 화면 층 선언 → 검증을 순서로 답한다.
      🔴 **사본을 두지 않는 이유**: 같은 절차가 네 곳에 있었고(이 파일 · `LEDGER_GUIDE §4.1·§4.2` · `OPERATOR_RUNBOOK §6` · `CONFIG_GUIDE §1`) **서로 다른 사실을 하나씩만** 들고 있었다.
    - **이 파일이 계속 소유하는 것은 «배포 순서에서의 자리»뿐이다**: 🔴 **`environment.yml`에 `tzdata`가 들어 있어야 하고**(`conda env update -f environment.yml`) — `Asia/Seoul`은 런타임에 IANA DB에서 해석되며 **없으면 조용히 UTC로 폴백하지 않고 예외를 낸다** — 🔴 **시간대 판정 «다음»에 원장을 돌린다**(어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다. 정정은 재백필이지 제자리 `UPDATE`가 아니다).
-   - **급하지 않다**: 추가 전용·멱등이고 **안 돌려도 아무것도 안 깨진다**. 다만 그 상태에서 `GET /api/ledger/trace`는 **503 + 관계 이름**으로, `GET /api/ledger/coverage`는 `state: "absent"`로 답한다.
+   - **급하지 않다**: 추가 전용·멱등이고 **안 돌려도 아무것도 안 깨진다**. 다만 그 상태에서 **`GET /api/ledger/subgraph`** 는 **503 + 관계 이름**(`reason: "ledger_relation_absent"`)으로 답한다. 🔴 **[2026-08-28] 종전 이 줄이 대던 `/api/ledger/trace` 와 `/api/ledger/coverage` 는 둘 다 «없다».** 🔴 **그리고 부재 신호가 «둘»이다** — 관계 자체가 없으면 위의 503 이고, 관계는 있는데 `source_event_id`·`source_event_state` 컬럼이나 인덱스 둘이 없으면 **503 `source_event_projection_not_deployed`** 에 빠진 이름이 실려 온다.
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 

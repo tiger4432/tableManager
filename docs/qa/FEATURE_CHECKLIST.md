@@ -185,10 +185,7 @@
 | **L2 선언이 곧 활성화** | `sources` 에 있으면 돌고, 없으면 `undeclared_source` 로 거절된다. 점검: 그 거절이 «원자 0 · 커서 미이동»인가 — 조용한 0건 성공이 아닌가 | 위 CLI |
 | **L3 walk** | `GET /api/ledger/subgraph` — 마킹에서 걸어 서브그래프를 낸다. 점검: ① `follow` 가 실제로 좁히는가 ② `node_limit` 에 걸린 «잘림»이 «부재»와 다르게 보이는가 | R&D 보드 · `/api/ledger/subgraph` |
 | **L4 선언 조회** | `GET /api/ledger/declaration` — 원장을 한 줄도 안 읽는다. 점검: 원장이 비어 있어도 답하는가 | `/api/ledger/declaration` |
-| **L5 구조 뷰** | `GET /api/ledger/structure` — 선언된 절반과 센서스 절반을 «병합»한다. 점검: ① `declared_only`(원자 0)와 `undeclared`(드리프트)가 갈라 보이는가 ② `atoms: 0`과 `atoms: null`이 다르게 렌더되는가 | `/api/ledger/structure` |
-| **L6 발견 종류 카탈로그** | `GET /api/ledger/kinds` — `in_ledger` 는 선언 여부, `ledger_state`/`ledger_atoms` 는 관측 상태. 점검: 그 둘을 섞지 않는가 | `/api/ledger/kinds` |
-| **L7 또래 대조** | `GET /api/ledger/siblings` — 교집합 + 기저율. 점검: 🔴 **모든 비율이 분모와 함께** 나오는가. 분모 없는 종류는 「대조 불가」를 «내용»으로 | `/api/ledger/siblings` |
-| **L8 시계열·맵·구성** | `GET /api/ledger/trends` · `/lot_map` · `/composition`. 점검: 관측 부재를 «0% 불량»으로 표시하지 않는가 | R&D 보드 |
+| ⚰️ ~~**L5 구조 뷰**~~ · ~~**L6 발견 종류**~~ · ~~**L7 또래 대조**~~ · ~~**L8 시계열·맵·구성**~~ | 🔴 **[2026-08-28] 네 항목이 대던 라우트가 «전부» 없다** — `structure` · `kinds` · `siblings` · `trends` · `lot_map` · `composition`. **이 행들을 점검하면 없는 것을 「고장」으로 신고하게 된다** (이 표 §1.13 배너가 경고하는 바로 그 모양이다). 이 주소들은 410 이 아니라 SPA 폴백의 HTML 200 을 답하므로 «성공처럼» 보인다. 오늘의 원장 읽기 점검은 **L3 · L4 둘**이다 | — |
 | **L9 설정 드라이런** | `config_root`·`setup_version`·`readiness`·`sources` 를 JSON 한 줄로. 점검: 쓰기가 «0»인가 | `python -m ledger.setup` |
 | **L10 커서 지문** | 선언이 바뀌면 커서가 `cursor_snapshot_reset_required` 로 «선다». 점검: 재스탬프 전후로 커서 «위치»와 원자 수가 그대로인가 | `scripts/ledger_restamp_cursor.py` |
 
@@ -213,7 +210,7 @@
 |---|---|---|
 | **부품 격자** | 좌석 열여섯 개의 부품이 격자에 앉는다. 점검: 로드 후 좌석 «16» · 원장 요청 «14» · non-200 «0» | `/rnd-board.html` |
 | **마킹이 질의의 주어** | 부품은 «읽을 마킹»과 «쓸 마킹»을 선언하고, walk 의 시작점이 그 마킹이다. 점검: 한 부품에서 찍은 것이 다른 부품을 움직이는가 | 같은 화면 |
-| **걷기 검색창** | NODE TYPE · KEY · FOLLOW · COLLECT 를 손으로 골라 walk 을 쏜다. 점검: FOLLOW 를 «안 고르면» 요청에서 그 칸이 «빠지는가»(빈 배열은 반대 뜻이다) | 같은 화면 |
+| **걷기 검색창** | NODE TYPE · KEY · FOLLOW 를 손으로 골라 walk 을 쏜다. 점검: FOLLOW 를 «안 고르면» 요청에서 그 칸이 «빠지는가»(빈 배열은 반대 뜻이다). 🔴 **[2026-08-28] `COLLECT` 는 이 목록에서 빠졌다** — 노드 «종류»를 고르던 축인데 종류가 하나가 된 날 라우트가 그 파라미터를 버렸다. 화면에 그 칸이 남아 있으면 그것이 결함이다 | 같은 화면 |
 | **닿는 곳** | 마킹에서 한 홉, 술어당 한 행. 점검: 행을 누르면 그 술어가 «닿는 노드 집합 전체»가 쓸 마킹에 들어가는가 | 같은 화면 |
 
 ### 1.14 Ontology Config Explorer — 2026-08-18 신설

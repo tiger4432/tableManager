@@ -72,6 +72,7 @@
       }
     },
     "has_wafer@1": {
+      "continues": true,
       "status": "active",
       "subjects": [
         "lot_slot@1"
@@ -88,6 +89,7 @@
       }
     },
     "derived_from@1": {
+      "continues": true,
       "status": "active",
       "subjects": [
         "lot@1"
@@ -104,6 +106,7 @@
       }
     },
     "slot_map@1": {
+      "continues": true,
       "status": "active",
       "subjects": [
         "lot_slot@1"
@@ -122,6 +125,7 @@
       }
     },
     "transfer@1": {
+      "continues": true,
       "object": {
         "kind": "entity_ref",
         "qualifiers": {
@@ -138,6 +142,7 @@
       ]
     },
     "inspected@1": {
+      "continues": true,
       "status": "active",
       "subjects": [
         "wafer@1"
@@ -212,6 +217,7 @@
       }
     },
     "bonded_from@1": {
+      "continues": true,
       "status": "active",
       "subjects": [
         "die@1"

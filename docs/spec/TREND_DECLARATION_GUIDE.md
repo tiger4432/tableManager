@@ -1,6 +1,30 @@
 # Trend Declaration Guide
 
-> **Status:** Living | **Owner:** Server / Ledger | **Contract:** declaration → validation → parameterized template
+> 🗄️ **SUPERSEDED — 이 문서가 가르치는 라우트·주어 타입·술어가 «전부» 없습니다** (2026-08-29 실측).
+> **Status:** 🗄️ Archived | **Last-verified:** 2026-08-29 | **Owner:** Server / Ledger
+>
+> 무엇이 사라졌나 — `GET /api/ledger/kinds` · `GET /api/ledger/trends` (라우트 둘 다 없음) ·
+> `server/finding_kinds.py` / `server/ledger_api/finding_kinds.py` (모듈 없음) ·
+> `server/config/finding_kinds.json` (선언 없음) · 주어 타입 `WaferLeg`(선언 안 됨 — `observed@1` 의
+> 주어는 `die@1` 하나다) · 술어 `transferred`(선언 안 됨 — 살아 있는 철자는 `transfer@1`).
+> §5 의 인덱스 처방 둘은 **어느 원자도 갖지 않는 술어** 위의 부분 인덱스입니다.
+>
+> 🔴 **여기 적힌 절차를 그대로 따르면 전부 실패합니다.** 오늘 「선언으로 무엇을 늘리나」의
+> 정본은 [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)(작성) ·
+> [LEDGER_GUIDE](../guide/LEDGER_GUIDE.md)(운영) · [PRIMER](../guide/ledger/PRIMER.md)(입문)이고,
+> 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` **둘뿐**입니다.
+>
+> **살아남는 원리 둘**(다시 쓸 때 여기서 가져갈 것) — ① **§7 「거절은 이름을 댄다」**:
+> 미선언·비활성 선택은 조용한 빈 답이 아니라 이름을 댄 422 여야 한다(오늘의 `follow` 가
+> 그 규율의 상속자다). ② **§5 「사용자 SQL 은 없다」**: 선언은 값만 bind 하고 SQL 조각을
+> 싣지 않는다. 나머지는 **역사 기록**으로만 읽으십시오.
+>
+> ⚠️ **`docs/_archive/` 이관은 총괄 판정 대상입니다** — 이 레인은 배지만 바꿉니다.
+
+---
+
+> **[아래는 2026-08-15 시점의 서술이며 현재 상태가 아닙니다.]**
+> **Status(당시):** Living | **Owner:** Server / Ledger | **Contract:** declaration → validation → parameterized template
 
 ## 1. 목적
 

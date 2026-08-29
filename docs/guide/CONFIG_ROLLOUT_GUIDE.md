@@ -42,9 +42,11 @@ AUTH="X-Admin-Token: $ASSY_ADMIN_TOKEN"
 ```
 
 
-> 🔴 **[2026-08-15] 원장·온톨로지의 선언 다섯(`ledger_config`·`finding_kinds`·`siblings_axes`·`mechanism_models`·`ledger_journey`)은 이 순서도에 «없고, 없는 것이 맞습니다»** —
-> 그 다섯은 ①(`table_config.json`)을 전제하지만 **자기들끼리의 순서가 따로 있고**, 그 순서는 [guide/ONTOLOGY_LEDGER_SETUP §2](./ONTOLOGY_LEDGER_SETUP.md)가 소유합니다.
+> 🔴 **[2026-08-29 정정] 원장 선언은 이제 «하나»(`server/config/ontology/ledger_config.json`)이고, 이 순서도에 «없는 것이 맞습니다»** —
+> ①(`table_config.json`)을 전제하지만 **자기 순서가 따로 있고**, 그 순서는 [guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)이 소유합니다.
 > 여기에 항목을 더하면 **순서가 두 곳에 적히게 됩니다.**
+>
+> ⚰️ **종전 이 자리는 「선언 다섯」이라 적고 `finding_kinds`·`siblings_axes`·`mechanism_models`·`ledger_journey` 를 함께 댔습니다. 넷 다 «롤아웃 대상이 아닙니다»** — 앞의 셋은 읽는 라우트·모듈과 함께 은퇴했고(`/kinds`·`/siblings`, 그리고 기전 투영), `ledger_journey` 도 `/journey` 와 함께 갔습니다. `mechanism_models.json` 은 디스크에 남아 있으나 **읽는 런타임이 없습니다.** 그리고 그 넷의 순서를 «소유한다»고 지목한 §2 는 애초에 그 넷을 다루지 않습니다 — 지목 자체도 틀려 있었습니다.
 
 **②~⑤는 서로 독립이지만 전부 ①을 전제합니다.** ①에 없는 테이블·컬럼을 가리키면 그 선언은 **로드 시점에 거부**되고, 거부는 대개 **그 파일이 통째로 죽는 것이 아니라 그 항목 하나만 빠지는** 형태라 표면에서는 「아직 아무 일도 안 일어난 것」과 구별되지 않습니다.
 
