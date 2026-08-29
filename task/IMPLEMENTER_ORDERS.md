@@ -1,3 +1,89 @@
+# 🔴 [서버] **정적/동적 노드 + 정책 ④ — 한 달 전 판정을 오늘 어휘로 되살립니다** (총괄, 소유자 승인 2026-08-29 12:5x)
+
+> 정본: `docs/spec/ONTOLOGY_GRAPH_SPEC.md` §7.5c (소유자 확정 2026-07-25)
+> 소유자 2026-08-29: 「이거 살려」 · 「술어 continue 는 필요없을거 같은데 이거면」
+>                   「s→s 는 허용이고 s→d 가 금지잖아」
+
+## 도착지 — 먼저 적습니다
+```
+엔티티가 «자기 분류»를 선언한다 (static | dynamic)
+walk 이 «정적 노드에서 나가지» 않는다 — 닿기는 한다
+그러면 부품이 direction 을 손으로 선언할 이유가 «줄어듭니다»
+```
+
+## 왜 지금인가 — 오늘 밤 실측이 그 표에 그대로 떨어졌습니다
+```
+술어              원자        서로 다른 목적어   목적어당      분류
+of_kind        103,841              «1»       103,841     D→S   ← defect_kind 는 노드 «하나»
+measures        80,322               31         2,591     D→S
+processed_with   3,022               12           252     D→S
+transfer       401,206          133,230             3     D→D
+inspected      117,662          108,735             1     D→D
+observed       103,841          103,841             1     D→D
+bonded_from     18,545           17,905             1     D→D
+slot_map           135              122             1     D→D
+leads_to            22               14             2     S→S
+```
+🔴 **오늘 `both` 이 터진 경로를 그대로 대면 정책 ④입니다**
+```
+wafer --measures--> quantity            D→S · ② 🟢
+quantity --measures 거꾸로--> 남의 웨이퍼 «747장»   S→D · ④ 🚫  ← 여기
+결과   nodes 1000 · edges 3000 · truncated[nodes,edges,claims] · defect_kind 에 «못 닿음»
+대조   outgoing 은 265/352 · 절단 «없음» · defect_kind «닿음»
+```
+
+## ① 선언 — 엔티티에 칸 하나 (라이브는 총괄이 씁니다. 레인은 열지 마십시오)
+```
+"defect_kind@1": { "keys": [...], "class": "static" }
+static  : defect_kind · quantity · recipe
+dynamic : lot · lot_slot · wafer · die · defect · dtjob
+⚠️ 없으면 «dynamic» 으로 읽습니다. 기본값을 선언에 «쓰지» 마십시오 (continues 때와 같은 규율)
+```
+### 검증기
+`server/ledger/setup_bundle.py` — 엔티티 검증에 `optional=("class",)` + 값은 `static|dynamic` 둘뿐.
+스켈레톤(`ledger_skeleton.json`)에도 같은 칸. **셋이 같이 가야 합니다** — 검증기가 모르는 칸은 거절합니다.
+📌 `continues` 때와 «같은 모양»입니다. 그 커밋(`4cbcb086`)을 템플릿으로 보십시오.
+
+## ② walk — 정책 ④ «하나»만 강제합니다
+```
+server/ledger_trace_router.py   _static_types()   ← _continuing_predicates 와 같은 모양.
+                                                    선언에서만 읽고, 못 읽으면 «빈 집합»(=오늘의 걷기)
+server/ledger_api/ledger_subgraph.py
+   프론티어에서 노드를 펼 때: 그 노드의 타입이 static 이면 «펴지 않는다»
+   (닿는 것은 그대로 — 노드로도 엣지로도 응답에 들어갑니다. «나가지» 않을 뿐입니다)
+```
+⛔ **정책 ①②③ 은 구현하지 «마십시오».** 셋 다 «허용» 쪽이라 막을 게 없습니다.
+   특히 ③의 「1홉」을 강제하지 마십시오 — 그건 마스터 계층(Eqp→Line) 판독용 문구이고,
+   여기서 강제하면 `leads_to` 인과 사슬(최장 «3홉» · bond_pressure→die_stress→…)이 끊깁니다.
+   그 사슬이 물리 모델링의 핵심이고, 원자가 «22개 전부»라 예산 위험이 «0» 입니다.
+
+## ③ `continues` 은퇴 — **치환이 확인된 «뒤에»**
+```
+실측   D→D 인 술어      bonded_from · derived_from · has_wafer · inspected · slot_map · transfer · observed
+       continues 인 술어 bonded_from · derived_from · has_wafer · inspected · slot_map · transfer
+       continues 인데 D→D 아님  «0»   -> 잃는 것 없음
+       D→D 인데 continues 아님  observed (목적어당 차수 «1») -> 하나 더 얻고, 안 터집니다
+```
+⚠️ **이번 라운드에서 지우지 마십시오.** 지우면 클라 두 좌석(구성·칩확대)의 `continues_hops` 선언이
+   «죽은 채로» 남습니다. ②가 착지해 도달 범위가 «같거나 넓다»는 것을 잰 뒤 별도로 걷어냅니다.
+   (「도출로 바꾸면 먹이던 축이 조용히 죽는다」 — 오늘 밤에도 나온 부류입니다)
+
+## 게이트 — 씨앗 적음 · 예측값 «안» 적음
+```
+① 무회귀   선언에 class 가 «하나도 없으면» 정적 집합이 비고 오늘과 «똑같아야» 합니다
+           (총괄이 선언을 쓰기 «전»에 이 상태로 한 번 재십시오)
+② 효과     씨앗 wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · edge_limit=3000 · direction=«both»
+           전/후로 nodes · edges · walk.hops_reached · truncated 를 네 수로
+           ⚠️ hops_reached 는 `limits` 가 아니라 «`walk` 블록»에 있습니다 (총괄이 두 번 눈이 멀었습니다)
+           🔴 both 로 재십시오 — outgoing 은 이미 ④를 손으로 하고 있어서 «차이가 안 납니다»
+③ 인과 사슬 안 끊김   씨앗 quantity{bond_pressure} · follow=leads_to · hops=4
+                     사슬이 «1홉에서 안 끊기는지». 끊기면 ③을 강제한 것이니 되돌리십시오
+④ 시험     이 파일들을 지나는 것만. 전체 스위트 금지
+```
+보고: `task/node_class_report.md`
+
+---
+
 # ✅ [서버] **둘 다 통과 — 그리고 그 «빨강 하나»는 제 것이었습니다** (총괄 검수 12:2x)
 
 `task/schema_and_orphans_report.md` 받았습니다. 게이트 셋 다 성실했고, 특히 **라이브에 안 쓰고
