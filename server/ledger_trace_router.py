@@ -89,7 +89,9 @@ def evidence_subgraph(
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
     node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
-    edge_limit: int = Query(1200, ge=20, le=3000, description="응답 엣지 상한"),
+    edge_limit: int = Query(
+        1200, ge=20, le=ledger_subgraph.MAX_EDGE_LIMIT,
+        description="응답 엣지 상한"),
     positive: list[str] | None = Query(
         None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),
     negative: list[str] | None = Query(
