@@ -560,6 +560,47 @@ def test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after()
         "a falsy follow reads as EVERY predicate in the lookup contract")
 
 
+SIBLING_FIXTURE = [
+    _kind_atom(211, "wafer", "W", "inspected", "die", "D1"),
+    _kind_atom(212, "wafer", "W", "inspected", "die", "D2"),
+    _kind_atom(213, "wafer", "W", "inspected", "die", "D3"),
+]
+
+
+def test_the_fetch_does_not_climb_a_container_and_come_back_down_to_its_siblings():
+    """🔴 THE SAME REFUSAL AS `_reach`, ON THE FETCH SIDE, AND IT WAS UNGUARDED.
+
+    Seeded at one die and walked both ways, the only route to the wafer's other dies is
+    to climb `inspected` backwards and walk it forwards again. Those siblings are
+    one-sided by construction and say nothing.
+
+    MEASURED 2026-08-29 on the live ledger: one defect at hops=4 returned 199 defects and
+    115 dies, of which 189 and 111 arrived exactly this way. The control settles it --
+    `direction=outgoing` cannot reverse, and that seed's true lineage is four dies.
+
+    🔴 THIS TEST EXISTS BECAUSE THE GUARD WAS UNTESTED. Turning the `arrivals` check in
+    `_expand_atom` into a no-op left the whole ledger suite green (445 passed, the same 9
+    pre-existing failures), while the walk it guards was the largest behavioural change of
+    that night. All three types here are dynamic, so the class rule cannot be what passes
+    this -- only the predicate rule can.
+    """
+    body = ledger_subgraph.subgraph(
+        ledger_explorer.entity_id("die", {"die": "D1"}),
+        ledger_subgraph.InMemoryEvidenceLookup(SIBLING_FIXTURE),
+        hops=4, direction="both", follow=["inspected"])
+
+    # 🔴 COUNT THE DIES, DO NOT LOOK FOR THEIR LABELS. A die's label is built from
+    # `mat_id`/`x`/`y`, so this fixture's dies all render as the bare word "die" and
+    # `"D2" not in labels` is true whether or not D2 is in the graph -- the first version
+    # of this test asserted exactly that and passed with the guard turned off.
+    dies = [node for node in body["nodes"] if node["type"] == "die"]
+    assert {node["label"] for node in body["nodes"]} >= {"W"}, (
+        "climbing to the container is the step that stays")
+    assert len(dies) == 1, (
+        "the walk climbed `inspected` and walked it back down into the seed's siblings: "
+        f"{len(dies)} dies came back where only the seed should have")
+
+
 def test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empty_list():
     """🔴 AN EMPTY LIST IS NOT `None`. `claims_for_entities` reads a falsy `follow` as
     「every predicate」, so narrowing to an empty intersection and passing it would fetch
