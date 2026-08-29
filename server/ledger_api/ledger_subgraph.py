@@ -439,9 +439,11 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     walk back down the predicate it just climbed — so the forks that remain are honest ones
     and there is nothing to split.
 
-    Returns `(reach, parents)` where reach is `node -> [from_positive, from_negative]` and
-    parents is `seed -> {node: predecessor}`, so an evidence path is rebuilt on demand
-    instead of keeping one path per node per seed alive for the whole walk.
+    Returns `(reach, parents, kinds)`.  `reach` is `node -> [from_positive, from_negative]`,
+    `parents` is `seed -> {node: predecessor}` so an evidence path is rebuilt on demand
+    instead of keeping one path per node per seed alive for the whole walk, and `kinds` is
+    `seed -> {declared type it reached}` — the DENOMINATOR the ranking needs and the one
+    thing a reach of zero cannot supply about itself.
     """
     # 🔴 THIS WALKS UNDER THE SAME TWO RULES THE FETCH DOES, and it has to.  It used to
     # build a plain undirected adjacency and let every seed flood it, which was invisible
@@ -466,12 +468,13 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     def _kind(node_id):
         return str((nodes.get(node_id) or {}).get("type") or "").split("@", 1)[0]
 
-    reach, parents = {}, {}
+    reach, parents, kinds = {}, {}, {}
     for seed, sign in seed_signs.items():
         if seed not in nodes:
             continue
         slot = 0 if sign > 0 else 1
         trail = parents.setdefault(seed, {})
+        reached_kinds = kinds.setdefault(seed, set())
         seen = {seed}
         queue = deque([(seed, None, None)])
         while queue:
@@ -492,9 +495,10 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                     continue
                 seen.add(nxt)
                 trail[nxt] = node
+                reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
                 queue.append((nxt, predicate, direction))
-    return reach, parents
+    return reach, parents, kinds
 
 
 def _evidence(nodes, parents, seed_signs, node_id):
@@ -609,7 +613,32 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
         "top_set": [],
         "message": None,
     }
-    reach, parents = _reach(nodes, edges, seed_signs, static_types)
+    reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types)
+    # 🔴 THE DENOMINATOR. A reach of zero says nothing about itself: the control may have
+    # HAD the path and not carried this factor, or it may have had no path to that kind at
+    # all, and those two read identically as 0. So each side is reported as a pair --
+    # `reach[i]` over `reachable[i]`, where the second counts the seeds that reached the
+    # candidate's TYPE at least once.
+    #
+    # MEASURED 2026-08-29 on three seeded fixtures. With a sound control, `SYN-R-CMP-01`
+    # reads 2/2 against 0/2 -- the control could reach recipes and ran a different one, so
+    # the difference is real. With a control whose bridge to its core wafers is missing,
+    # the same recipe reads 0/0 and every candidate in the top layer does too, so the false
+    # answer is visible instead of confident. And `void` reads 0/0 against ANY of these
+    # controls, because a group defined as void-free cannot reach `defect_kind` -- the
+    # tautological axis excludes itself here rather than needing a rule of its own.
+    #
+    # ⚠️ WHAT THIS DOES NOT CATCH, said plainly: the denominator is the TYPE. A control
+    # that measured sixteen quantities reaches `quantity`, so an item it never measured
+    # still reads 0/2 and looks like a real difference. That is a different denominator --
+    # the item, not the kind -- and it stays a separate question.
+    def _reachable(node_type):
+        bare = str(node_type or "").split("@", 1)[0]
+        pair = [0, 0]
+        for seed, sign in seed_signs.items():
+            if bare and bare in kinds.get(seed, ()):
+                pair[0 if sign > 0 else 1] += 1
+        return pair
     collected = [{
         "id": node["id"],
         # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
@@ -627,6 +656,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
     block["ranked"] = [{
         "id": item["id"], "type": item["type"], "label": item["label"],
         "reach": item["reach"],
+        "reachable": _reachable(item["type"]),
         "rank": item["rank"], "top": item["rank"] == 1,
         "tied": item["tied"], "incomparable": item["incomparable"],
         # 🔴 The trails go on EVERY rank, not only the top set.  「reached from the marked

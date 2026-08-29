@@ -436,7 +436,7 @@ def test_reaching_counts_one_however_wide_the_fork():
              {"source": "B", "target": "C", "predicate": "transfer"},
              {"source": "C", "target": "D", "predicate": "transfer"}]
     nodes, edges = graph(chain, ("S", "B", "C", "D"))
-    reach, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
+    reach, _, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
     assert [reach[n][0] for n in ("B", "C", "D")] == [1, 1, 1], (
         "a chain must not decay - nothing forks anywhere on it")
 
@@ -445,7 +445,7 @@ def test_reaching_counts_one_however_wide_the_fork():
             {"source": "H", "target": "Y", "predicate": "observed"},
             {"source": "H", "target": "Z", "predicate": "observed"}]
     nodes, edges = graph(fork, ("S", "H", "X", "Y", "Z"))
-    reach, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
+    reach, _, _ = ledger_subgraph._reach(nodes, edges, {"S": 1})
     assert [reach[n][0] for n in ("H", "X", "Y", "Z")] == [1, 1, 1, 1], (
         "a wide fork must not weaken the things it forks to - reaching is reaching")
     assert all(isinstance(value, int) for item in reach.values() for value in item), (
@@ -473,7 +473,7 @@ def test_reach_obeys_the_two_walk_rules_the_fetch_obeys():
              {"source": "w", "target": "d1", "predicate": "inspected"},
              {"source": "w", "target": "sib", "predicate": "inspected"}]
 
-    reach, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1}, static_types={"defect_kind"})
+    reach, _, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1}, static_types={"defect_kind"})
     assert reach["void"][0] == 1, "the name itself is reached"
     assert "d2" not in reach, "the walk left a name and landed in the other seed's die"
     assert "sib" not in reach, "the walk climbed a wafer and came back down to its siblings"
@@ -482,9 +482,49 @@ def test_reach_obeys_the_two_walk_rules_the_fetch_obeys():
     # declared the name becomes a thoroughfare and the other seed's die IS reached; the
     # sibling stays out either way, because the step that would reach it is refused by the
     # predicate rule and not by the class rule.
-    leaky, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1})
+    leaky, _, _ = ledger_subgraph._reach(nodes, edges, {"d1": 1})
     assert "d2" in leaky, "the class rule is what keeps a name from being walked through"
     assert "sib" not in leaky, "the predicate rule does not depend on the classes"
+
+
+def test_a_reach_of_zero_reports_whether_the_side_could_have_reached_that_kind():
+    """🔴 ZERO SAYS NOTHING ABOUT ITSELF, so each side is a pair: reached over reachable.
+
+    A control that reached the candidate's KIND and carried a different one is a real
+    difference. A control that could not reach that kind at all produces the same 0 and
+    means nothing by it -- MEASURED 2026-08-29, a seeded control whose bridge to its core
+    wafers was missing put `SYN-R-CMP-01` in rank 1 at [2, 0] while the ledger plainly
+    recorded that same recipe on its own cores.
+
+    The fixture holds both cases at once so neither can pass by accident:
+      * `recipe` — BOTH seeds reach one, so the denominator is 1/1 and the marked side's
+        recipe is a real difference.
+      * `defect_kind` — only the marked seed reaches one, so the control's zero has a zero
+        denominator behind it. This is also why a tautological axis excludes itself: a
+        group defined as void-free cannot reach `defect_kind`.
+    """
+    def entity(node_id, node_type):
+        return {"id": node_id, "type": node_type, "label": node_id}
+    nodes = {n["id"]: n for n in (
+        entity("p1", "wafer"), entity("n1", "wafer"),
+        entity("rA", "recipe"), entity("rB", "recipe"),
+        entity("void", "defect_kind"))}
+    edges = [{"source": "p1", "target": "rA", "predicate": "processed_with"},
+             {"source": "n1", "target": "rB", "predicate": "processed_with"},
+             {"source": "p1", "target": "void", "predicate": "of_kind"}]
+
+    block = ledger_subgraph._propagation(
+        nodes, edges, {"p1": 1, "n1": -1}, True,
+        static_types={"recipe", "defect_kind"})
+    ranked = {item["label"]: item for item in block["ranked"]}
+
+    assert ranked["rA"]["reach"] == [1, 0]
+    assert ranked["rA"]["reachable"] == [1, 1], (
+        "both sides reached a recipe, so the control's zero is a real absence")
+    assert ranked["void"]["reach"] == [1, 0]
+    assert ranked["void"]["reachable"] == [1, 0], (
+        "the control never reached a defect_kind, so its zero carries no evidence")
+    assert ranked["rB"]["reach"] == [0, 1] and ranked["rB"]["reachable"] == [1, 1]
 
 
 def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
