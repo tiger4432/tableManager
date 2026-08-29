@@ -1,3 +1,44 @@
+# 🔴 [서버] **작은 것 하나 — 라우트 상한이 모듈이 «잰» 정착점보다 낮습니다** (총괄 10:4x)
+
+코드맵 정비가 물고 나온 것이고, 제가 어젯밤 이 벽에 «직접» 부딪혔습니다.
+
+## 실측
+```
+server/ledger_api/ledger_subgraph.py:75   MAX_EDGE_LIMIT = 6000
+                                     :76   MAX_CLAIM_SCAN = 6000
+   -> 파일의 주석이 「3000 에서도 여전히 엣지에서 잘리고, 6000 이 엣지가 안 걸리는 지점」이라 «재 놓았습니다»
+server/ledger_trace_router.py:92          edge_limit: int = Query(1200, ge=20, le=3000, …)
+   -> HTTP 로는 3000 이 최대. 즉 «모듈이 잰 정착값에 도달할 방법이 없습니다»
+증거   총괄이 edge_limit=20000 을 보냈다가 422: "Input should be less than or equal to 3000"
+```
+
+## 왜 고쳐야 하나 — 「없어서」와 「못 올려서」가 구별이 안 됩니다
+제가 어젯밤 「상한을 올려도 벽이 노드로 옮길 뿐」이라고 보드에 적었는데, 그 측정은 **3000 에서**
+한 것입니다. 모듈은 6000 이 정착점이라고 «자기 주석에» 적어 놓았고, 저는 거기까지 못 가 봤습니다.
+문장이 틀렸다는 게 아니라 **닿을 수 있는 끝에서 안 쟀다**는 것입니다.
+
+## 할 것 — 한 줄
+```
+ledger_trace_router.py:92   le=3000  ->  le=MAX_EDGE_LIMIT   (모듈에서 «읽습니다». 숫자를 다시 적지 마십시오)
+⛔ 기본값 1200 은 «그대로». 바꾸는 것은 «천장»이지 기본이 아닙니다
+```
+
+## 게이트
+```
+① edge_limit=6000 이 «422 가 아니어야» 합니다
+② 씨앗 wafer SYN-BW-101-16 · hops=6 · node_limit=1000 · direction=both 에서
+   edge_limit 3000 / 6000 두 줄로 nodes · edges · walk.hops_reached · truncated
+   ⚠️ hops_reached 는 `limits` 가 아니라 «`walk` 블록»에 있습니다 — limits 에서 읽으면 None 이
+      나오고 그게 「없다」로 읽힙니다. 총괄이 이 자리에서 두 번 눈이 멀었습니다
+③ 안 보내면 오늘과 같은 답 (기본 1200)
+```
+보고: `task/edge_ceiling_report.md`
+
+⏭ 참고: 클라가 `direction=outgoing` 을 선언한 뒤로는 그 씨앗에서 «절단이 아예 안 납니다».
+   그래서 이건 급한 것이 아니라 «닿을 수 없는 천장»을 없애는 정리입니다. 급히 하지 마십시오.
+
+---
+
 # ⏭ [클라] 이 두 지시는 «디자인 레인» 것입니다 — `task/DESIGN_ORDERS.md` 로 옮겼습니다 (총괄 10:0x)
 
 총괄이 채널을 틀렸습니다. ⓪ direction · ③ continues_hops · ① 좌석3+집계 는 전부 클라이고,

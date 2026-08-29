@@ -1,3 +1,55 @@
+# 🔴 [클라] **라운드 ⓪ 결함 — 선언 목록 여덟은 맞고, 부품 «안»의 walk 둘이 남았습니다** (총괄 브라우저 실측 10:4x)
+
+보고서 표는 성실했고 «일괄이 아니라는» 것도 확인했습니다. 그런데 **화면을 직접 열어 보니
+요청이 «넷»이고 그중 하나가 `direction` 을 안 싣습니다.** 보고서는 「walk 요청 셋 전부 싣는다」였습니다.
+
+## 실측 — 보드 첫 로드의 walk 요청
+```
+✅ …&node_limit=1000&direction=outgoing                                  후보/순위
+✅ …&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+🔴 …&follow=inspected&follow=observed&follow=of_kind                      ← direction «없음»
+✅ …&follow=inspected&follow=observed&follow=of_kind&direction=outgoing
+   (그리고 …/api/ledger/trends?window=180d -> 404 : 이건 ① 이 고칠 것, 예상대로 남아 있음)
+```
+
+## 자리 — 선언 «목록»이 아니라 부품 «배선» 안입니다
+```
+main.js:655   bound.optionsFor('y')      walkHere({ …, follow:[inspected,observed,of_kind] })
+main.js:697   bound.loadWaferFacts(...)  walkHere({ …, follow:[inspected,observed,of_kind] })
+둘 다 direction 이 «없습니다» -> 서버 기본 both -> 남의 웨이퍼로 샙니다
+```
+`follow: ['inspected','observed','of_kind']` 를 쓰는 자리가 «여섯»인데 넷만 고쳐졌습니다.
+(243 main-trend ✅ · 320 candidate-trend ✅ · 381 map-bond-a ✅ · 507 map-core ✅ · **655 🔴** · **697 🔴**)
+
+## 🔴 왜 이 둘이 «특히» 나쁜가 — 둘 다 «세거나 목록을 만듭니다»
+```
+:697 loadWaferFacts   waferFactsFromWalk 이 «셉니다». 잘린 걷기 위에서 센 수는 «조용히 적습니다»
+                      -> 「없어서 적음」과 「잘려서 적음」이 화면에서 같은 수입니다
+:655 optionsFor('y')  Y축 «종류 목록»을 만듭니다. 잘리면 «고를 수 있는 종류가 사라집니다»
+                      -> 사용자에게는 「그런 종류가 없다」로 보입니다
+```
+그리고 :655 는 **① 이 앉을 바로 그 자리**입니다. 여기가 잘린 채로 ① 을 얹으면
+집계가 잘린 표본 위에서 돕니다 — ⓪ 를 ① 앞으로 당긴 이유가 이것이었습니다.
+
+## 할 것
+```
+① 두 자리에 direction 을 «선언»합니다. 값은 재고 정하십시오 — 자동으로 outgoing 아닙니다
+② 그리고 «세는» 자리라, 고른 뒤 그 수가 전/후로 어떻게 달라지는지 적으십시오
+   (:697 은 「검사 N · 발견 M」, :655 는 「종류 몇 개」)
+③ 🔴 이 부류를 «다 찾으십시오» — 선언 목록 밖에서 walkHere/walk 을 직접 부르는 자리 전부.
+   제가 브라우저로 찾은 건 «로드 때 뜬 것»뿐이고, 상호작용해야 뜨는 것은 못 봤습니다
+```
+## 게이트
+```
+① 보드 첫 로드의 walk 요청 «전부»가 direction 을 싣거나, 안 싣는 것마다 «이유»가 있을 것
+② :697 :655 의 수 전/후
+③ 하니스 셋 (지금 board 170/0 · walk_box 48/0 · walk 32/0)
+```
+⚠️ 제 게이트가 「요청 «수» 8→8」이었던 게 이걸 놓친 이유입니다. 수는 맞았고 «구성»이 틀렸습니다.
+   제 잘못이고, 게이트를 「요청마다 direction 이 있나」로 바꿉니다.
+
+---
+
 # 🔴 [클라] «이 셀 세은 디자인 레인 것입니다» — 총괄이 채널을 틀려 옮겼습니다 (10:0x)
 
 아래 둘은 처음에 `task/IMPLEMENTER_ORDERS.md` 에 썼습니다. 제 잘못입니다 —
