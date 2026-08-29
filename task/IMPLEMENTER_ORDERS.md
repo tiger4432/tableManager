@@ -1,3 +1,61 @@
+# 🔴 [서버] **정정 — 제가 「구현하지 말라」고 한 정책 ①이 «필요합니다»** (총괄 13:4x)
+
+## 먼저 — 착지 검수는 통과입니다
+```
+게이트 ② (direction=both · 씨앗 wafer SYN-BW-101-16 · hops 6 · node 1000 · edge 3000)
+   전  nodes 1000 · edges 3000 · reached 2 · trunc[nodes,edges,claims]   wafer «776»
+   후  nodes  225 · edges  224 · reached 2 · trunc[claims]               wafer «1»
+게이트 ③ (씨앗 quantity{bond_pressure} · follow=leads_to · hops 4)
+   nodes 18 · edges 18 · reached «4»   -> 인과 사슬 «안 끊김»
+```
+🔴 **그리고 게이트 ③이 제 지시서 본문을 잡았습니다.** 제가 「프론티어에서 노드를 펼 때 그
+타입이 static 이면 «펴지 않는다»」라고 썼는데, 그 문자 그대로면 S→S(정책 ③, «허용»)까지 막혀
+인과 사슬이 죽습니다. 규칙을 «노드»가 아니라 «걸음»에 앉힌 판단이 옳습니다. 게이트가 지시서보다
+옳았고, 그렇게 되도록 게이트를 쓴 것이 이번에 값을 했습니다.
+
+## 🔴 그런데 제 «다음» 문장이 틀렸습니다
+```
+제가 쓴 것   「⛔ 정책 ①②③ 은 구현하지 마십시오. 셋 다 «허용» 쪽이라 막을 게 없습니다」
+왜 틀렸나    ①은 «허가»가 아니라 «홉 예산 면제»입니다 — `continues_hops` 와 «같은 기계»입니다
+실측 (static 선언이 있는 지금)
+   씨앗 wafer SYN-BW-101-16 · hops=1 · outgoing · follow=자재6+processed_with
+      continues_hops=0   nodes  40 · reached 1 · trunc depth
+      continues_hops≥4   nodes 157 · reached 3 · trunc «없음»
+=> continues 는 «아직 덮이지 않았습니다». 지금 지우면 계보 도달이 157 -> 40 으로 «줄어듭니다»
+```
+제가 「D→D ⊇ continues 이니 덮인다」고 논증해 놓고, 덮어 줄 ①을 «막았습니다».
+
+## 할 것 — ①을 `continues_hops` 와 «같은 모양»으로, 키만 바꿔서
+```
+지금   dep_cost[child] = dep_cost[parent] + (0 if predicate in continuing else 1)
+뒤     dep_cost[child] = dep_cost[parent] + (0 if «걸음이 D→D» else 1)
+       (양 끝 노드의 타입이 둘 다 dynamic 이면 «떠남이 아니다»)
+인자   `continues_hops` 를 그대로 씁니다 — 이름은 ② 에서 바꿉니다. 지금 두 번 고치지 마십시오
+```
+⛔ 「깊이 cap 내 무제한」의 «무제한»을 구현하지 마십시오. 스펙 문구는 그렇지만 예산 없는 걷기는
+   split·transfer 반복에서 끝나지 않습니다. **두 번째 통**이 오늘의 모양이고 그게 맞습니다.
+
+## 게이트
+```
+① 치환   위 실측과 «같은 인자»로: continues 플래그를 «무시»하고 D→D 로만 계산했을 때
+         continues_hops≥4 에서 nodes 가 «157 이상»일 것 (observed 가 더해지므로 더 클 수 있음)
+         🔴 «157 미만이면 멈추고 올리십시오» — 덮인다는 제 논증이 또 틀린 것입니다
+② 무회귀  D→D 집합이 비면(=class 선언이 없으면) 오늘과 같아야 합니다
+③ 인과 사슬  게이트 ③ 다시 — quantity{bond_pressure} · follow=leads_to · hops=4 -> reached 4
+④ 시험   이 파일들을 지나는 것만
+```
+
+## ⏭ 그다음이 `continues` 은퇴입니다 — 이번 라운드 «아님»
+①이 157 이상을 내는 것이 확인되면, 그때 걷어냅니다:
+```
+선언(라이브·샘플)의 continues 여섯 · 검증기 optional · 스켈레톤 리프
+_continuing_predicates() · walk 의 continuing 인자
+클라 두 좌석(구성·칩확대)의 continues_hops 선언  ← 이건 «클라 레인» 몫입니다
+```
+보고: `task/node_class_report.md` (같은 파일에 이어서)
+
+---
+
 # 🔴 [서버] **정적/동적 노드 + 정책 ④ — 한 달 전 판정을 오늘 어휘로 되살립니다** (총괄, 소유자 승인 2026-08-29 12:5x)
 
 > 정본: `docs/spec/ONTOLOGY_GRAPH_SPEC.md` §7.5c (소유자 확정 2026-07-25)
