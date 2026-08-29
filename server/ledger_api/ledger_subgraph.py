@@ -31,7 +31,7 @@ import bisect
 import json
 import re
 import uuid
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -738,6 +738,9 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: node -> how many DEPARTURES were spent reaching it.  A second budget,
     #: not a second depth: `depths` still counts every step.
     dep_cost = {}
+    #: node -> the set of (predicate, "incoming"|"outgoing") steps that REACHED it.
+    #: Seeds keep an empty set, which is why they need no exemption below.
+    arrivals = defaultdict(set)
     edges = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
@@ -869,6 +872,44 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
         if near_kind in static_types and far_kind and far_kind not in static_types:
             return
+        # 🔴 A STEP DOES NOT GO BACK DOWN THE PREDICATE IT JUST CLIMBED. Reaching a
+        # container by walking one predicate BACKWARDS and then walking the same predicate
+        # FORWARDS lands on the container's other children -- the seed's own siblings,
+        # which are one-sided by construction and say nothing.
+        #
+        # MEASURED 2026-08-29, one defect seeded with `direction=both` and hops=4: the walk
+        # returned 199 defects, of which 189 arrived as
+        # `die -[inspected backwards]-> wafer -[inspected forwards]-> die'`. The ten that
+        # remain are the ones the transfer and bond chain carries, and those are the answer.
+        #
+        # 🔴 THE TEST IS ON THE ADJACENT PAIR, AND ON THAT DIRECTION ONLY.
+        # `outgoing(P) -> incoming(P)` is the OPPOSITE shape -- "everything that points at
+        # what I point at", which is how one asks for the wafers that ran the same recipe --
+        # and it stays. So does `P -> Q -> P`: the owner's own path climbs `inspected` and
+        # `has_wafer`, travels a `slot_map` chain, and descends into a DIFFERENT wafer.
+        # MEASURED on the declaration: that path is one of 23 lot_slot routes this rule
+        # keeps, out of 95 it is offered.
+        #
+        # 🔴 `==` AND NOT `in`: a node reached some other way as well was not used purely as
+        # a container, so expanding it is not the sibling step this refuses.
+        near_id = far_id = step_dir = None
+        if subject_near and not target_near:
+            near_id, step_dir = subject_id, "outgoing"
+            far_id = target["id"] if target is not None else None
+        elif target_near and not subject_near:
+            near_id, far_id, step_dir = target["id"], subject_id, "incoming"
+        # 🔴 AND IT IS A RULE ABOUT THE WORLD, NOT ABOUT THE NAMES. Between two static
+        # types there is no container and so no siblings: `leads_to` walked back to a cause
+        # and then forward again reaches THE OTHER EFFECTS OF THAT CAUSE, which is the
+        # differential a person is asking for. MEASURED: seeded at `defect_kind{void}` with
+        # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
+        # defect kind the same cause produces.
+        if (step_dir == "outgoing"
+                and not (near_kind in static_types and far_kind in static_types)
+                and arrivals.get(near_id) == {(atom.predicate, "incoming")}):
+            return
+        if far_id is not None and step_dir is not None:
+            arrivals[far_id].add((atom.predicate, step_dir))
         # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
         # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
         # ENTITY CLASS instead of on a per-predicate flag. Following one wafer through its
