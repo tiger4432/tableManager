@@ -162,6 +162,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       options: {
         finalChipId: 'SYN-CX-CHIP-001',
         // 🔴 판정 (총괄 06:3x): 주어는 «칩»이고 웨이퍼는 «옆에» 붙습니다. 목업 ① 이 주는 정보를
@@ -237,6 +241,10 @@ export const BOARD = Object.freeze({
       //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
       //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       options: {
         kinds: 'void',
         window: '180d',
@@ -310,6 +318,10 @@ export const BOARD = Object.freeze({
       //    창을 묻지 않습니다 -- 그건 walk 의 모양이 아니라 라우트를 다시 파는 것입니다.
       //    시간축은 이미 응답 안에 있습니다: 실측으로 626 엣지 «전부» occurred_at 을 답니다.
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       options: {
         kinds: 'void',
         window: '180d',
@@ -343,6 +355,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       title: '구성 · SYN-CX-CHIP-001',
       at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
@@ -363,6 +379,10 @@ export const BOARD = Object.freeze({
       //    answer is a declared predicate to follow, not an argument re-added here.
       start: { groupby: 'wafer', value: 'SYN-CX-BW-001' },
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       title: '본딩 맵',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
@@ -421,6 +441,10 @@ export const BOARD = Object.freeze({
       //    void 가 통째로 안 보이는 것이고, 화면에서는 「없다」와 구별이 안 됩니다.
       //    ⚠️ 그래서 관측 술어만으로는 «닿을 수 없습니다». 구조 술어 하나가 같이 있어야 합니다.
       follow: ['observed', 'inspected', 'bonded_from'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       // hops 8 은 «공짜»입니다 -- 12 와 point 130 으로 «동일»하고 trunc 도 []. (같은 실측)
       hops: 8,
       options: {
@@ -464,6 +488,10 @@ export const BOARD = Object.freeze({
       //    조용히 «덜» 답합니다 (실측 4a540a50). 마킹의 id 는 walk 이 «만든» 것이라 그 문제가 없습니다.
       start: { groupby: 'die', marking: 'marking:1' },
       follow: ['bonded_from'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       options: { finalChipId: 'SYN-CX-CHIP-001' },
     },
     {
@@ -477,6 +505,10 @@ export const BOARD = Object.freeze({
       //    빠진 뒤에도 그대로입니다.
       start: { groupby: 'wafer', value: 'SYN-CX-BW-001' },
       follow: ['inspected', 'observed', 'of_kind'],
+      // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
+      //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
+      //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
+      direction: 'outgoing',
       title: '코어 맵 · 마킹 2',
       at: { column: 2, row: 6 },
       reads: 'marking:2',
