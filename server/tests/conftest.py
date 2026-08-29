@@ -185,6 +185,21 @@ def db_session():
         }
     }
     from database import models, crud
+    # 🔴 SNAPSHOT BEFORE REPLACING, RESTORE AFTER. This fixture is function-scoped but the
+    # thing it writes is a MODULE GLOBAL, so before this the first test to ask for
+    # `db_session` replaced `TABLE_CONFIG` for the rest of the session and every later test
+    # ran against the trimmed test config whether it wanted it or not.
+    #
+    # MEASURED 2026-08-30: `test_syn_complex_composite.py` passes 26/26 alone and fails 11
+    # inside the suite, because its seed composes `inspection_run` business keys through
+    # `crud.assemble_composite_business_key`, and `inspection_run` is not one of the tables
+    # declared below. The failure surfaced three files away as 「inspection_run key
+    # unavailable」, which names neither this fixture nor the leak.
+    #
+    # ⚠️ Two other fixtures already save-and-restore around their own edits
+    # (`test_config_resolve_routes`, `test_retroactive_admin`) -- and they were snapshotting
+    # a config this fixture had ALREADY replaced, so restoring left the leak in place.
+    saved_table_config = dict(crud.TABLE_CONFIG)
     models.init_dynamic_models(test_table_config)
     crud.TABLE_CONFIG.clear()
     crud.TABLE_CONFIG.update(test_table_config)
@@ -222,6 +237,8 @@ def db_session():
     
     db.close()
     Base.metadata.drop_all(bind=engine)
+    crud.TABLE_CONFIG.clear()
+    crud.TABLE_CONFIG.update(saved_table_config)
 
 # ===========================================================================
 # PostgreSQL-backed fixture  [2026-08-12]
