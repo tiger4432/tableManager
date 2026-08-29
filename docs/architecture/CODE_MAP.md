@@ -18,7 +18,8 @@
 
 | 절 / 파일 | 상태 | 기준 리비전 | 비고 |
 |---|---|---|---|
-| 🆕⑫ §5-H `ledger_trace_router.py` — **파일 통째 동결 → 라우트별 울타리** | 🟢 **라우트 16개 전건 + 각 라우트가 부르는 심볼 실측(2026-08-23)** | **`bd0c192e`**(HEAD, blob `ca088aff`) | 779 → **806**(`5aa666d5`). **8 동결 / 8 열림.** 🔴 **동결 표지가 `/subgraph`의 유일한 문 위에 얹혀 있었다** — 같은 문단이 `ledger_subgraph`를 「동결 아님」이라 적으면서. 가르는 규칙은 **호출 심볼**이고 **모듈이 아니다**(`_fetch`·`relation_exists`는 열린 여덟 모듈 **8/8**이 쓰는 배관이라 얼리면 16라우트 전부가 동결이 된다). ⚠️ **이 패스는 라우트 표만 열었다 — 이 절의 나머지 산문·`ledger_trace.py` 심볼 표는 재검증하지 않았다** |
+| 🆕⑬ §5-H · §5-I 원장 **읽기 측** — 개정 6 이후 전면 대조 | 🟢 **라우트 전건 + 파일 존재 전건 + 지목 심볼 실측(2026-08-29)** | **`3b77fbc3`**(HEAD) | 라우트 **16 → «2»** (`GET /subgraph` · `GET /declaration`). 키를 받는 데이터 라우트 여덟이 사라졌고 그 몸이던 모듈도 파일이 없다. 🔴 **이 지도가 살아 있는 앵커로 싣던 서버 파일 «15»가 지금 그 경로에 없다 — 삭제 11 · 이동 4** (`ledger_kinds`·`ledger_siblings`·`ledger_structure`·`ledger_lots`·`ledger_trends`·`ledger_composition`·`ledger_selection`·`ledger_identity`·`ledger_catalog`·`ledger_journey`·`ledger_walk_contrast` 삭제 · `ledger_api/finding_kinds.py` → `scripts/support/` · `ledger_api/mechanism_gate.py`·`enrichment_actions.py`·`audit_changeset.py` → `server/_archive/`). `decode_node_id` 는 접두어 «하나»(`ledger-entity:v1:`)만 푸고 claim seed 를 거절한다. ⚠️ **이 패스가 열어 본 소스**: `ledger_trace_router.py` · `ledger_api/ledger_subgraph.py` · `ledger_api/declared_entities.py` · `ledger_api/__init__.py` · `ledger_explorer.py` · **`ledger_trace.py`(이 지도가 주장하는 심볼 148개 전건 대조)** · `ledger/setup_bundle.py`(`_validate_vocabulary` 만) · `ledger/ledger_skeleton.json` · `client2/vite.config.js` · `client2/src/rnd_board/**`(일곱 본체, 나머지 줄 수만) · 그리고 `git ls-tree -r HEAD` 전건으로 이 문서가 이름 대는 경로 전부의 존재 대조 + `server/tests/` 원장 계열 줄 수·`def test_` 전건 계수. 🔴 **그 밖의 절은 열지 않았다** — 쓰기 측 심볼 표(§5-H)·§5-H-bis·§1–§7은 앞 패스 기준 그대로다 — 쓰기 측(§5-H `server/ledger/`)과 §1–§7 의 나머지는 여전히 앞 패스 기준이다 |
+| 🆕⑫ §5-H `ledger_trace_router.py` — **파일 통째 동결 → 라우트별 울타리** | ⚰️ **[2026-08-29] 폐기 — 라우트는 16이 아니라 «2»다.** 구: 라우트 16개 전건 실측(2026-08-23) | **`bd0c192e`**(HEAD, blob `ca088aff`) | 779 → **806**(`5aa666d5`). **8 동결 / 8 열림.** 🔴 **동결 표지가 `/subgraph`의 유일한 문 위에 얹혀 있었다** — 같은 문단이 `ledger_subgraph`를 「동결 아님」이라 적으면서. 가르는 규칙은 **호출 심볼**이고 **모듈이 아니다**(`_fetch`·`relation_exists`는 열린 여덟 모듈 **8/8**이 쓰는 배관이라 얼리면 16라우트 전부가 동결이 된다). ⚠️ **이 패스는 라우트 표만 열었다 — 이 절의 나머지 산문·`ledger_trace.py` 심볼 표는 재검증하지 않았다** |
 | 🆕⑪ §5-H `server/ledger/` 쓰기 측 — 줄 수 전건 재측정 + 선언 필드 넷 은퇴 | 🟢 **줄 수 전건 + 지목된 심볼 실측(2026-08-23)** | **`b3e1ec83`**(HEAD) | 33파일 전건 `wc -l`, **8건 불일치**(`backfill` 983→**748** · `config_authoring` 1,548→**1,937** · `setup_bundle` 1,854→**1,883** · `setup_registry` 1,048→**1,084** · `roleframe` 1,245→**1,283** · `source_preparation` 1,022→**1,060** · `config_drafts` 806→**828** · `source_profile` 1,512→**1,429** · `ledger_skeleton.json` 763→**710**). 🔴 **선언에서 `approval_status`·`binding_origin`·`suggestion_reason`·`vocabulary.*.layer`가 은퇴했다** — 앞 셋은 «삼켜지고» 거절되지 않는다 |
 | 🆕⑪ §5-H `backfill.py` 고아 `fetch_*` 아홉 + `_transfer_select` — **묘비로 대체** | 🟢 **삭제 실측(2026-08-23)** | **`b3e1ec83`**(HEAD) | 🆕⑩이 「호출자 0」이라 적고 살려 둔 아홉이 `d239bdf8`에서, `_transfer_select`가 `7e2a7ca7`에서 삭제됐다. 🔴 **`_forget_registers`는 심볼 표에 «자기 행»을 갖고 있었다** — 그 행도 묘비로 대체했다 |
 | 🆕⑪ §5-H-bis `config_authoring` · `source_preparation` · 클라 뷰 | 🟢 **최상위 심볼 + 지목된 본체 실측(2026-08-23)** | **`b3e1ec83`**(HEAD) | 신설 `filled_declaration`/`_fill_leaf`/`_says_nothing`/`_locked_read_columns`/`_dispositions`/`_declared_timezones`/`_registering_sentences`/`_entity_binding_fields`/`_implementation_clause_fields`. `source_preparation.locked_select_columns` 신설(작성 화면과 커서 SELECT가 **한 문장**). 라우터 라우트 수는 **여전히 15**(재계수 확인) |
@@ -105,7 +106,7 @@
 | `server/map_meta_registrar.py` | 367 | **379** | +12 |
 | `server/virtual_join_config.py` | 687 | **697** | +10 |
 | `server/database/database.py`(§6) | 333 | **341** | +8 |
-| `server/ledger_api/ledger_walk_contrast.py` | 1,327 | **1,337** | +10 |
+| ⚰️ `server/ledger_api/ledger_walk_contrast.py` — 🆕⑬ **[2026-08-29] 삭제됨**(아카이브 사본도 없다) | 1,327 | ~~1,337~~ | — |
 | `server/ledger_api/mechanism_gate.py` ⚰️ **[2026-08-28] `server/_archive/ledger_api/` 로 이동** — 운영 소비자 «0» | 368 | **370** | +2 |
 | 🔻 `server/product_tables.py` | 232 | **158** | **−74** |
 | 🔻 `server/transfer_plan.py` | 3,826 | **3,731** | −95 |
@@ -409,6 +410,31 @@
 > #       이제 «export»다. 종전 지도는 이 심볼을 `grid.js`의 "~47"에 등재하면서
 > #       바로 옆에 「export가 아니다」라고 적고 있었다. 지금은 «둘 다» 거짓이다.
 > git grep -nE "^(export )?function visibleRangeColIds" -- client2/src/grid.js
+> # ㉓ [🆕⑬ 2026-08-29 신설] **개정 6 — 은퇴한 노드 id 바더 여섯, 선언 0건**이어야 한다.
+> #    노드 id 를 만드는 함수가 일곱이라 `decode_node_id` 가 접두어로 갈래를 틀었고, 그 갈래 수가
+> #    그대로 walk 루프의 갈래 수였다. 오늘 남은 바더는 `ledger_explorer.entity_id` **하나**다.
+> #    🔴 실측 `3b77fbc3`: 히트 **0**. 고장 주입 — `b3e1ec83:server/ledger_subgraph.py` 에는 여섯 전부 있다.
+> git grep -nE "^def (event_node_id|claim_node_id|value_node_id|finding_point_node_id|finding_collection_node_id|quantity_node_id)" -- server
+> # ㉓-b 그리고 그 바더들이 찍던 **노드 id 접두어 여섯** — 히트 0건이어야 한다.
+> #    🛑 **`evidence-edge` 를 이 정규식에 넣지 마라** — `ledger-evidence-edge:v1:` 는 «살아 있다»
+> #    (`ledger_subgraph._edge()` 안, 정확히 1건). 「접두어 하나」는 **노드** id 의 이야기이고,
+> #    엣지까지 세면 이 검사가 정상 코드에서 빨개진다. 🔴 실측 `3b77fbc3`: 히트 **0**.
+> git grep -nE "ledger-(event|claim-atom|value|finding-point|finding-collection|quantity):v1:" -- server client2/src
+> # ㉓-c 은퇴한 읽기 측 모듈 열둘 — `server/_archive/` 밖에서 히트 0건이어야 한다.
+> #    ⚠️ 범위에서 `_archive` 를 빼는 것이 요점이다(⑦·⑩와 같은 이유) — 아카이브는
+> #    그 이름들을 사본으로 들고 있고 그게 옳다. 🔴 실측 `3b77fbc3`: **0**.
+> git ls-tree -r --name-only HEAD -- server | grep -v "^server/_archive/" | grep -cE "/(ledger_kinds|ledger_siblings|ledger_structure|ledger_lots|ledger_trends|ledger_composition|ledger_selection|ledger_identity|ledger_catalog|ledger_journey|ledger_walk_contrast|mechanism_gate)\.py$"
+> # ㉓-d 원장 라우트는 **정확히 2**여야 한다(`/subgraph` · `/declaration`).
+> #    🔴 이 수가 늘면 «키를 받는 데이터 라우트가 다시 생겼다»는 뜻일 수 있고, 그것이
+> #    개정 6 이 없앱 모양이다. 실측 `3b77fbc3`: **2** (`bd0c192e` 에서는 16).
+> git show HEAD:server/ledger_trace_router.py | grep -c "^@router\."
+> # ㉓-e ⚠️ **이 검사는 지금 «빨간상태»이고 그게 기록이다.** 클라가 서버가 지운 원장
+> #    라우트를 여전히 이름으로 들고 있다. 🔴 실측 `3b77fbc3`: **11건 / 3파일**
+> #    (`rnd_board/api.js` **9** · `rnd_board/composition_panel.js` **1** · `rnd_board/main.js` **1**).
+> #    `ROUTES` 의 `lot_map`·`composition`·`trends`·`siblings` 네과 `COLLECTS` 의 다섯 줄이 그것이다
+> #    ([§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재)). **클라 도메인 소관이라 여기서 고치지 않았다** —
+> #    수가 줄면 그 라운드가 착지한 것이고, 늘어나면 새로 생긴 것이다.
+> git grep -c -E "api/ledger/(lot_map|trends|siblings|composition|kinds|structure|trace|coverage|explore|entities|journey)" -- client2/src
 > ```
 >
 > 🆕⑪ **⑳/㉑/㉒도 고장 주입으로 확인했다 — 그리고 그 주입이 내가 쓰려던 숫자를 «둘» 고쳤다.** 실측(2026-08-23): ⑳ HEAD **0** ↔ `7eb11dde` **9**(10이 아니다 — `_plain`을 뺀 아홉이 검사 대상이다) · ㉑ HEAD **2** ↔ `7eb11dde` **5**(0이 아니다 — 남은 둘이 docstring 묘비라 **기대값이 0이 아니라 「정확히 2, 둘 다 묘비」**다. 0이라고 적었으면 이 검사는 착지하는 순간 빨개졌을 것이다) · ㉑-b HEAD **0** ↔ base **1** · ㉒ HEAD **0** ↔ base **1**.
@@ -521,6 +547,7 @@
 | 🆕 **Map Editor 2** — `client2/src/map_editor2.js` + `client2/src/map2/` **18**모듈 (구 에디터를 **대체하지 않고 옆에 선다**) | **408** + **8,378** (신설) | [§7-A](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506-신설) |
 | 🆕 `client2/src/push_columns.js`(푸시 컬럼 계약 — `map_editor.js`에서 이사) + `client2/src/enrichment_queue.js`(큐 술어) | **77** + **94** (신설) | [§7](#7-client2src--웹-클라이언트) |
 | `client2/src/*` | **44,400** (js **39,363** + css 4,983 — `d3ed167` 31,301에서 🔴 **+13,099**. 대부분은 🆕 **Map Editor 2**(`map2/` **8,378** + `map_editor2.js` 408 + `map_editor2.css`)와 `map_editor.js` **+165**) | [§7](#7-client2src--웹-클라이언트) |
+| 🆕⑬ **R&D 보드** — `client2/rnd-board.html` + `client2/src/rnd_board/` **20**파일 (삭제된 원장 콘솔의 후계) | js **7,148** + css **623** (@`3b77fbc3`) | [§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
 
 > **경로의 단일 원천 (2026-07-27):** `server/config/**`·`server/ingestion_workspace/**`·프로세스 로그는 이제 전부 **`server/paths.py`**([§5](#5-소형-서버-모듈))를 경유한다. 소스에서 `os.path.dirname(__file__)`로 config/워크스페이스 경로를 조립하는 코드를 보면 **누락**이다. 이 맵의 경로 표기는 모두 `paths.*` 기준.
@@ -2233,7 +2260,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 >
 > 🔴 **라인 번호는 이 절에 하나도 없다.** 남긴 숫자는 **파일 줄 수**뿐이다. 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라.
 
-**무엇인가.** `lot_event` 같은 기존 소스 테이블을 **읽어** 봉투 7필드짜리 원자(atom)로 번역해 `ledger_events`에 **추가만** 하는 계보 원장. 쓰기 경로(`crud.apply_batch_updates`·`cell_sources`·체인·그래프)는 **한 줄도 바뀌지 않았다** — 원장은 기존 시스템의 **소비자**로 태어난다. 🆕⑦ 읽기 측은 이제 라우트 하나가 아니라 **원장 콘솔**이다 — 계보 추적(`/trace`) 옆에 관측 종류 카탈로그(`/kinds`) · 형제 대조(`/siblings`) · 온톨로지 구조(`/structure`) · 랏 격자(`/lots`) · 축별 맵 투영(`/lot_map`) · 커버리지(`/coverage`)가 섰다.
+**무엇인가.** `lot_event` 같은 기존 소스 테이블을 **읽어** 봉투 7필드짜리 원자(atom)로 번역해 `ledger_events`에 **추가만** 하는 계보 원장. 쓰기 경로(`crud.apply_batch_updates`·`cell_sources`·체인·그래프)는 **한 줄도 바뀌지 않았다** — 원장은 기존 시스템의 **소비자**로 태어난다. ⚰️ 🆕⑬ **[2026-08-29] 그 콘솔은 없다.** 읽기에 답하는 것은 **`GET /api/ledger/subgraph` 하나**이고 그 옆에 선언 카탈로그 `GET /api/ledger/declaration` 이 서 있다(라우트 전건 계수 = **2**, `3b77fbc3` 실측). ~~🆕⑦ 읽기 측은 이제 라우트 하나가 아니라 **원장 콘솔**이다~~ — 계보 추적(`/trace`) 옆에 관측 종류 카탈로그(`/kinds`) · 형제 대조(`/siblings`) · 온톨로지 구조(`/structure`) · 랏 격자(`/lots`) · 축별 맵 투영(`/lot_map`) · 커버리지(`/coverage`)가 섰다.
 
 **결합(실측 · 🆕⑦ `a729a7f` 재측정).** `server/main.py`의 등록은 여전히 두 줄이다(`import ledger_trace_router` + `app.include_router(...)`, SPA catch-all보다 위 — 등록 순서가 계약이다. 아래로 가면 index.html이 200으로 서빙된다). 🆕⑫ **정정 — `ledger_trace_router`가 import하는 것은 7모듈이 아니라 «15»다**(`bd0c192e` 실측: 위 일곱 + `enrichment_actions`·`ledger_catalog`·`ledger_composition`·`ledger_explorer`·`ledger_journey`·`ledger_selection`·`ledger_subgraph`·`ledger_trends`), 그리고 `ledger_walk_contrast`가 `mechanism_gate`를 쓴다. 🔴 **그 15가 이 라우터를 파일 통째로 얼릴 수 없는 이유다** — 은퇴 울타리는 라우트가 «부르는 심볼»로 갈린다(아래 `ledger_trace_router.py` 절의 🆕⑫ 표, 8 동결 / 8 열림). 🔴 🆕⑦ **정정 — 「`ledger_trace.py`는 `server/ledger/` 패키지를 import하지 않는다」는 이제 글자 그대로는 거짓이다.** `ledger_trace._vocabulary()`와 `ledger_structure._vocabulary()`가 **`from ledger import vocabulary`를 지연 import** 한다(walk가 따라갈 술어를 선언에서 읽기 위해 — 두 번째 어휘 사본을 만들지 않으려는 선택). **부팅 경로 무접촉이라는 의도된 뜻은 여전히 참이다** — import가 함수 안에 있어 웹 서버 기동은 `server/ledger/`를 열지 않는다. 쓰기 측 자체를 상시 프로세스가 import하지 않는다는 사실도 그대로다(번역기는 CLI 백필로만 돈다).
 
@@ -2245,6 +2272,10 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 🆕⑪ **[2026-08-23 줄 수 전건 재측정 — `b3e1ec83` 커밋 blob] 파일 목록은 33 + `examples/__init__.py`로 «무변동»이고**(이 구간의 소스 삭제 0건 · 신설 0건), **줄 수는 33행 중 «아홉»이 어긋나 있었다.** 아래 표의 숫자는 전건 `git show b3e1ec83:<path> | wc -l`이다. ⚠️ **심볼 표를 이 패스가 다시 연 것은 `roleframe`·`setup_registry`·`setup_bundle`·`source_preparation`·`backfill`·`config_authoring` 여섯뿐이고, 나머지 파일의 심볼 표는 여전히 `aeddac8`/`8d1e6c4c` 기준이다.**
 
+
+🆕⑬ **[2026-08-29 파일 목록만 재측정 — `3b77fbc3` 커밋 blob] 34 → «27»이다.** `git ls-tree -r --name-only <rev> -- server/ledger` 전건 대조 — **빠진 것 일곱 · 신설 0**. 🔴 **그중 넷은 `server/_archive/` 로 갔고 셋은 삭제됐다** — `chain_mapper.py` · `profile_chain_mapper.py` · `profile_lookup_adapters.py` · `examples/__init__.py` 는 **`server/_archive/` 아래**에 있고, `vocabulary.py` · `legacy_import.py` · `shadow_parity.py` 는 **없다**. 🔴 **`vocabulary.py` 의 자리를 물려받은 것은 `ledger.config.load()["vocabulary"]` 다** — 라우터의 `_followable_predicates()`·`_continuing_predicates()` 가 그렇게 읽는다(§5-H 「`server/ledger_trace_router.py`」 절). ⚠️ **이 패스는 파일 목록만 재섴고 줄 수도 심볼 표도 열지 않았다** — 아래 표의 줄 수는 여전히 `b3e1ec83` 기준이고, 사라진 일곱이 있던 구간을 지난 만큼 **밀렸다고 가정하라.**
+
+🪦 🆕⑬ **[2026-08-29] 그래서 이 절이 «33파일 + `examples/__init__.py`»라 적는 것은 거짓이다** — `server/ledger/examples/` 는 디렉터리 자체가 없다(사본은 `server/_archive/examples/__init__.py`). 아래 두 문단은 그것이 참이었을 때의 서술이다.
 
 🪦 **[2026-08-21] 이 구간의 삭제 일곱 — 파일이 없다.** `declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` · `transfer_translator.py` · `translator_pattern.py` · `cutover_v2.py` · `examples/grouped_translator_template.py`(패키지 `examples/__init__.py` **2줄만 남았다**). 🔴 **이 지도는 그중 `lot_event_translator.py`를 심볼 10행짜리 표와 함께 살아 있는 것으로 싣고 있었다** — 아래에서 그 표를 묘비로 대체했다. 검사: `git ls-tree -r --name-only HEAD -- server/ledger/`에 이 일곱이 **0건**이어야 한다.
 
@@ -2440,10 +2471,11 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 운영자 진입점. `main(argv=None)` · `report(connection)` · 플래그 `--report`(아무것도 안 바꾸고 존재만 출력) · `--months N`(파티션 미리 생성). 🔴 **DDL은 여기 없다** — `ledger.schema`의 함수를 부른다(테스트가 스크래치 스키마에 **같은** 테이블을 지을 수 있어야 하고, 마이그레이션에 DDL 사본이 있으면 테스트가 **닮은 것**을 검증하게 된다). `report`의 인덱스 질의가 `pg_indexes.tablename`이 아니라 **`to_regclass`가 실제로 해석한 스키마로 한정**한다 — 안 하면 같은 이름의 테이블을 가진 모든 스키마의 인덱스가 나와 독자가 중복이라 결론짓는다(이 박스에 스크래치 스키마가 실제로 있다).
 
-### 🔒 `server/ledger_trace.py` (🆕⑦ **2,039줄**(🆕⑨ `5359fdd` 실측 — 구 표기 1,937) @`a729a7f`) — 읽기 측 **[동결]**
+### 🔒 `server/ledger_trace.py` (🆕⑬ **1,688줄** @`3b77fbc3` — 구 표기 2,039줄(🆕⑦/🆕⑩ `5359fdd` 실측)이고 그 사이에 **장사 다섯이 떠났다**. 구: 2,039줄(🆕⑨ `5359fdd` 실측 — 구 표기 1,937) @`a729a7f`) — 읽기 측 **[동결]**
 
 > 🔒 🆕⑪ **[2026-08-23 은퇴 울타리 A군] 이 절(`ledger_trace.py`)은 «동결»이다** — 지도에서 지우지 않되 **살아 있는 표면으로 갱신하지 않았고, 새 작업의 출발점으로 읽지 마라.** 줄 수는 🆕⑫가 `bd0c192e`에서 재확인했다: **2,039**(무변동).
 >
+> ⚰️ 🆕⑬ 🔴 **[2026-08-29] 아래 «살아 있는 읽기 측 여섯» 은 이제 «하나»다** — `ledger_subgraph` 만 남았고 `ledger_catalog`·`ledger_composition`·`ledger_selection`·`ledger_siblings`·`ledger_trends` 다섯은 **삭제됐다**(`3b77fbc3` 실측). 아래는 그 다섯이 살아 있던 때의 서술이다.
 > 🆕⑫ 🔴 **[2026-08-23 후속 정정] 「이 절과 아래 `ledger_trace_router.py` 절은 동결」이라 적혀 있었다 — 라우터는 «더 이상 파일 통째로 동결이 아니다».** 그 파일은 살아 있는 읽기 측 여섯(`ledger_subgraph`·`ledger_catalog`·`ledger_composition`·`ledger_selection`·`ledger_siblings`·`ledger_trends`)의 **유일한 HTTP 표면**이라 통째 동결이 그들의 문을 잠갔다. 라우트 16개가 **8 동결 / 8 열림**으로 갈렸다 — 아래 절의 🆕⑫ 표.
 >
 > 🆕⑫ 🔴 **이 «동결» 모듈이 얹고 있는 공용 배관은 아무것도 얼리지 않는다.** `relation_exists`(카탈로그 탐침) · `_fetch`(DBAPI/SQLAlchemy 두 모양을 받는 실행 어댑터) · `ResolverConfigError` · `REASON_RELATION_ABSENT` · `rollup_subject_types` · `SqlClaimLookup`. 🔬 **`_fetch`가 그 부류라는 것은 실측이 강제한다** — 열린 여덟 모듈이 **8/8 전부** `from ledger_trace import _fetch, relation_exists`로 시작하므로, `_fetch`를 동결 계산으로 세면 라우터의 16라우트가 **전부** 동결이 된다. 이 절에서 **얼리는 것은 계산 심볼 `trace`와 `coverage`뿐이다.**
@@ -2451,7 +2483,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 > 🆕⑦ **[2026-08-14 재측정 — 기존 top-level 심볼 소실 0(이름 수준 전건 대조), 신설·정정은 아래. 기존 행의 산문 서술은 재검증하지 않았다.]**
 > - 🔴 **홉 상태가 넷이 됐다** — `STATE_RESOLVED`/`STATE_CONTESTED`(신설)/`STATE_CANDIDATE`/`STATE_UNRESOLVABLE` + **`HOP_STATES`** 튜플. `vocabulary.PROJECTION_ONLY_WORDS`와의 동일 철자는 import가 아니라 **테스트로** 고정된다(`test_ledger_trace_contract.py`).
 > - 🔴 **basis가 구조화 필드가 됐다** — `BASIS_CONVENTION`/`BASIS_MEASURED`/`BASIS_KINDS` + **`hop_basis(claim, config=None) -> {kind, name} | None`**. 종전엔 한국어 reason 문장을 정규식으로 읽어야 했고 **한 번 뒤집혀 읽혔다**(`candidate` reason은 진 쪽의 `convention:` 라벨도 인라인으로 담는다) — 안전 규칙(관습 홉은 confirmed 선마킹 금지)이 문장이 아니라 `kind == "convention"` 분기를 탄다. `_hop` 시그니처도 `_hop(frm, to, resolution, predicate, zone, config=None)`로 한 인자 늘었다.
-> - **커버리지 절 신설**(`GET /coverage`의 몸) — `REASON_RELATION_ABSENT = "ledger_relation_absent"` · `COVERAGE_STATES = ("absent", "empty", "ready")` · **`relation_exists(connection, relation)`**(`to_regclass` — 예외가 아니라 카탈로그에 묻는다) · **`coverage(connection, relation="ledger_events", cursor_relation=…)`** · `_atom_estimate`(`pg_class.reltuples` 추정, `ATOMS_UNKNOWN`) · `_partition_report` · `_cursor_rows`(`CURSOR_FIELDS`/`CURSOR_TIME_FIELDS`) · `_rendered_reasons` · `_unaccounted` · `_existing_columns` · `_last_atom` · `_coverage_sample`(`DEFAULT_SAMPLE_SIZE = 3` · `SAMPLE_CANDIDATE_WINDOW = 300`) · `_fetch`.
+> - **커버리지 절 신설**(~~`GET /coverage`의 몸~~ — ⚰️ 🆕⑬ **[2026-08-29] 그 라우트는 없다. 함수 `coverage()` 는 있고 HTTP 소비자가 «0»이다**) — `REASON_RELATION_ABSENT = "ledger_relation_absent"` · `COVERAGE_STATES = ("absent", "empty", "ready")` · **`relation_exists(connection, relation)`**(`to_regclass` — 예외가 아니라 카탈로그에 묻는다) · **`coverage(connection, relation="ledger_events", cursor_relation=…)`** · `_atom_estimate`(`pg_class.reltuples` 추정, `ATOMS_UNKNOWN`) · `_partition_report` · `_cursor_rows`(`CURSOR_FIELDS`/`CURSOR_TIME_FIELDS`) · `_rendered_reasons` · `_unaccounted` · `_existing_columns` · `_last_atom` · `_coverage_sample`(`DEFAULT_SAMPLE_SIZE = 3` · `SAMPLE_CANDIDATE_WINDOW = 300`) · `_fetch`.
 
 🔴 **셋이 살고 그중 둘은 서로를 몰라야 한다.** ① **RESOLUTION** — `claim_class`/`claim_rank_key`/`resolve`. `Claim` 객체 위의 순수 파이썬, **SQL도 테이블 이름도 연결도 없다.** ② **LOOKUP** — `ClaimLookup`과 하위 클래스. 가져오기만 하고 **순위도 판정도 계급도 모른다.** ③ **WALK** — `trace`. 룩업에 한 번 묻고 홉마다 해결기에 한 번씩 묻는다.
 
@@ -2481,197 +2513,97 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `class SqlClaimLookup(ClaimLookup)` | `__init__(connection, relation="ledger_events")`. 🔴 **`relation`이 이음매다** — 머티리얼라이즈 프로젝션으로 화면을 돌리려면 이 문자열 하나. SQL에 보간되므로 **맨 식별자 정규식으로 검증**한다(바운드 파라미터는 관계 이름을 못 준다). `_execute(sql, params)`가 DBAPI 연결과 SQLAlchemy Connection 양쪽을 받는다 |
 | `class OneShotSqlClaimLookup(SqlClaimLookup)` | 🔴 **측정으로 기각된 대안이고, 발견이 재현 가능하도록 남겨 둔 것이지 기본값이 아니다.** 원장 18,000에서 8.63 ms 대 2.22 ms(4배 나쁨), 360,000에서 2.07 대 2.15(동일). 이유 — **PostgreSQL은 재귀 CTE의 출력을 추정하지 못하고 고정 추측을 쓴다**(149–200행 추정, 실제 5). 그 허구가 **파티션 전체 seq scan**을 인덱스 탐침 다섯보다 싸 보이게 만들어 한 trace의 비용이 O(원장)이 된다. 2단계는 두 번째 질의가 `= ANY(<5개 배열>)`이라 플래너가 배열을 세므로 면역. 🔴 **위험은 「작은 원장이 느리다」가 아니라 조인 방식이 데이터에서 오지 않은 수로 정해진다는 것** — 원장이 교차점을 넘으면 코드 변경 없이 trace당 O(원장)으로 뒤집힌다 |
 | `_claim_from_row(row)` | 행 → `Claim`. 문자열로 온 jsonb도 받는다 |
-| 페이로드 리더 | `_object_key(claim, name)`(정체성) · `_object_qualifier(claim, name)`(서술) · `_payload_lot` · `_payload_wafer` · `_payload_slot` · `_slot_text(value)` · `_slot_map_pair(claim)` · `_as_text`. 🔴 **`keys`/`qualifiers` 분리가 읽기 측에서도 살아남아야 한다** — 평평한 페이로드는 `slot`을 웨이퍼 정체성으로 읽는다. 평평한 철자도 **받아 주는** 것은 관용이 아니라 **룩업 교체 가능성의 조건**이다(머티리얼라이즈 프로젝션·손픽스처가 자연히 그 모양을 낸다). `_slot_text`는 `3`/`"3"`/`"03"` 세 출처를 선행 0을 떼고 텍스트로 비교한다 |
+| 페이로드 리더 | 🆕⑬ **[2026-08-29] 여덟 중 «셋이 없다»** — 살아 있는 것: `_object_key(claim, name)`(정체성) · `_object_qualifier(claim, name)`(서술) · `_payload_lot` · `_slot_text(value)` · `_as_text`. 🪦 없는 이름: ~~`_payload_wafer`~~ · ~~`_payload_slot`~~ · ~~`_slot_map_pair(claim)`~~. 🔴 **`keys`/`qualifiers` 분리가 읽기 측에서도 살아남아야 한다** — 평평한 페이로드는 `slot`을 웨이퍼 정체성으로 읽는다. 평평한 철자도 **받아 주는** 것은 관용이 아니라 **룩업 교체 가능성의 조건**이다(머티리얼라이즈 프로젝션·손픽스처가 자연히 그 모양을 낸다). `_slot_text`는 `3`/`"3"`/`"03"` 세 출처를 선행 0을 떼고 텍스트로 비교한다 |
 | `_iso(dt, zone)` | 🔴 **응답의 모든 순간이 여기와 `zone`을 통과한다** — 출력이 PostgreSQL 세션의 TimeZone에도, 서버 프로세스의 주변 zone에도, 보는 사람의 기계에도 의존하지 않는다. naive 값은 **선언된 zone으로 해석**한다(기계 zone이 아니라) |
 | `resolve_display_zone(config=None)` | 선언된 렌더 zone을 tzinfo로. **UTC 폴백도 기계 zone 폴백도 없고 크게 거절한다** — 틀린 zone으로 렌더된 fab 기록은 완전히 정상으로 보인다. Windows에서 `tzdata` 부재를 지목한다 |
-| `_hop(frm, to, resolution, predicate, zone)` | 핀된 홉 모양 — `from`·`to`·**`predicate`**·`state`·`rank`·`n`·`reason`·`occurred_at`·`event_id`. `predicate`는 핀된 dict에 **더해진** 한 필드다(개명도 삭제도 아니다) |
-| `trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)` | 🔴 **`hops`가 빈 리스트인 것은 구성상 불가능하고 그것이 기능 전부다.** 빈 원장에도 원자 0인 lot을 지목하는 `unresolvable` 홉 하나 + `terminal_reason`을 낸다(끝에서 `assert hops`). `lookup=None`은 `ValueError` — 해결과 룩업은 일부러 분리돼 있다. 홉은 **질문**의 열이다: `has_wafer(lot, slot)` → `derived_from(lot)` → `slot_map(lot→parent, slot)`. 반환 `{hops, terminal_reason, generated_at}`이고 **`generated_at`도 같은 선언 zone**이다(다른 시계면 눈으로 9시간을 빼게 된다). terminal 태그 — `[unknown_subject]` · `[root]` · `[dead_end]` · `[broken]` · `[cycle]` · `[depth_cap]` |
-| `_map_slot(index, cur_lot, parent, cur_slot, cfg)` | 한 계보 홉을 건너 슬롯을 나른다. **양방향을 다 찾는다** — §4.2가 `from`이 어느 쪽인지 핀하지 않으므로 **어느 랏이 주어인가**라는 원자의 사실로 방향을 정한다. 둘 다 안 맞는 원자는 **읽지 않는다** — 틀린 슬롯이 화면에 가느니 정직한 `unresolvable`(`[no_slot_map]`) |
+| 🆕⑬ `_hop(frm, to, resolution, predicate, zone, config=None)`(구 표기에 `config` 인자가 빠져 있었다) | 핀된 홉 모양 — `from`·`to`·**`predicate`**·`state`·`rank`·`n`·`reason`·`occurred_at`·`event_id`. `predicate`는 핀된 dict에 **더해진** 한 필드다(개명도 삭제도 아니다) |
+| 🪦 🆕⑬ ~~`trace(lot, slot=None, lookup=None, config=None, max_depth=DEFAULT_MAX_DEPTH)`~~ — **[2026-08-29] 이 함수는 없다**(`^def trace` 히트 0). 계보 물음은 `GET /api/ledger/subgraph` 에 `follow` 를 주어 답한다. 다음은 살아 있던 때의 서술이다 | 🔴 **`hops`가 빈 리스트인 것은 구성상 불가능하고 그것이 기능 전부다.** 빈 원장에도 원자 0인 lot을 지목하는 `unresolvable` 홉 하나 + `terminal_reason`을 낸다(끝에서 `assert hops`). `lookup=None`은 `ValueError` — 해결과 룩업은 일부러 분리돼 있다. 홉은 **질문**의 열이다: `has_wafer(lot, slot)` → `derived_from(lot)` → `slot_map(lot→parent, slot)`. 반환 `{hops, terminal_reason, generated_at}`이고 **`generated_at`도 같은 선언 zone**이다(다른 시계면 눈으로 9시간을 빼게 된다). terminal 태그 — `[unknown_subject]` · `[root]` · `[dead_end]` · `[broken]` · `[cycle]` · `[depth_cap]` |
+| 🪦 🆕⑬ ~~`_map_slot(index, cur_lot, parent, cur_slot, cfg)`~~ — **[2026-08-29] 없다** (`trace` 와 같은 구간에 갔다). 아래는 그때의 서술 | 한 계보 홉을 건너 슬롯을 나른다. **양방향을 다 찾는다** — §4.2가 `from`이 어느 쪽인지 핀하지 않으므로 **어느 랏이 주어인가**라는 원자의 사실로 방향을 정한다. 둘 다 안 맞는 원자는 **읽지 않는다** — 틀린 슬롯이 화면에 가느니 정직한 `unresolvable`(`[no_slot_map]`) |
 
-### `server/ledger_trace_router.py` — 🔒 **울타리는 «라우트별»이다 (8 동결 / 8 열림)**
+### `server/ledger_trace_router.py` — 🆕⑬ **라우트는 «둘»이다. 은퇴 울타리는 대상이 사라져 끝났다**
 
-> 🆕⑫ **크기: 806줄 @`bd0c192e`**(blob `ca088aff` — 구 표기 779@`5359fdd` / 419@`a729a7f`. 자란 것은 `5aa666d5`). **제목에 줄 수를 얹지 않는다** — 제목은 이름이지 측정값이 아니고, 파일이 자랄 때마다 앵커가 깨진다.
+> 🆕⑬ **크기: 324줄 @`3b77fbc3`**(구 표기 806@`bd0c192e` — **−482**). **제목에 줄 수를 얹지 않는다** — 제목은 이름이지 측정값이 아니다.
 >
-> 🔒 🆕⑫ 🔴 **[2026-08-23] 이 절에 있던 「[동결 — 위 A군]」은 «파일 통째»였고 그것이 틀렸다.** 이 파일은 살아 있는 읽기 측 여섯의 **유일한 HTTP 표면**이라, 파일을 얼리면 그 여섯의 문이 전부 잠긴다. 🔴 **지도는 그 판정을 내린 리비전에서 이미 자기모순이었다** — 같은 문단이 `ledger_subgraph`를 「동결이 아니고 이 구간에 가장 크게 자란 읽기 측 모듈」이라 적었는데, `@router.get("/subgraph")`가 동결 표지 밑에 있었다.
+> 🆕⑬ 🔴 **[2026-08-29] 위 🆕⑫의 「16라우트 · 8 동결 / 8 열림」 판정은 폐기됐다 — 얼릴 것도 열 것도 «파일이 없다».** 개정 6이 키를 받는 데이터 라우트를 통째로 지웠고(`/trace`·`/coverage`·`/explore`·`/explore_entity`·`/entities`·`/journey`·`/structure`·`/lots`·`/lot_map`·`/siblings`·`/trends`·`/composition`·`POST /selection/resolve`·`/subgraph/table`), 그 몸이던 모듈도 같이 갔다(아래 묘비 표). **남은 라우트는 둘이고 울타리를 그을 짝이 없다.**
 >
-> 🆕⑫ 🔴 **가르는 규칙 — 라우트가 «부르는 심볼»이지 «임포트하는 모듈»이 아니다.** 라우터는 15모듈을 import하지만 import는 아무것도 판정하지 않는다.
-> - **얼리지 않는 공용 배관**: `ledger_trace.relation_exists` · **`ledger_trace._fetch`** · `ledger_trace.ResolverConfigError` · `ledger_trace.REASON_RELATION_ABSENT` · `ledger_trace.rollup_subject_types` · `ledger_trace.SqlClaimLookup` · `ledger_explorer`의 엔티티 id 코덱(`entity_id`/`decode_entity_id`/`_entity`).
-> - **얼리는 계산 심볼**: `ledger_trace.trace` · `ledger_trace.coverage` · `ledger_explorer.explore`/`explore_entity` · `ledger_journey.journey` · `ledger_structure.structure` · `ledger_lots.lots`/`lot_map`.
-> - 🔬 **`_fetch`가 배관인 것은 실측이 강제한다**: 열린 여덟 모듈이 **8/8 전부** `from ledger_trace import _fetch, relation_exists`로 시작한다. 동결 계산으로 세면 **16라우트 전부가 동결**이 되어 절단이 공허해진다. 라우터 자신의 `_subgraph_contract_state`도 `ledger_trace._fetch`를 직접 부르며, 그것이 `/subgraph`를 얼리지 «않는» 이유가 이것이다.
-> - 🔬 같은 이유로 `ledger_subgraph`·`ledger_catalog`가 `ledger_explorer.entity_id`/`decode_entity_id`/`_entity`를 쓰는 것도 얼리지 않는다 — **id 코덱은 공용 철자이지 걷기 계산이 아니다.** `ledger_walk_contrast`의 `ledger_lots` 언급 2건은 **주석·docstring뿐이고 호출이 아니다**(`bd0c192e` 실측).
-
-**🆕⑫ 라우트 16개 전건 — 동결/열림 (`bd0c192e` 실측, `grep -c '^@router\.'` = 16)**
-
-| 라우트 | 핸들러 | 부르는 계산 | 판정 |
-|---|---|---|---|
-| `GET /trace` | `trace_lineage` | `ledger_trace.trace` (+`_lookup_for`→`SqlClaimLookup`) | 🔒 **동결** |
-| `GET /explore` | `explore_lineage` | `ledger_explorer.explore` | 🔒 **동결** |
-| `GET /explore_entity` | `explore_registered_entity` | `ledger_explorer.decode_entity_id` → `explore` \| `explore_entity` | 🔒 **동결** |
-| `GET /coverage` | `ledger_coverage` | `ledger_trace.coverage` | 🔒 **동결** |
-| `GET /journey` | `ledger_journey_route` | `ledger_journey.journey` | 🔒 **동결** |
-| `GET /structure` | `ledger_structure_view` | `ledger_structure.structure` | 🔒 **동결** |
-| `GET /lots` | `ledger_lot_grid` | `ledger_lots.lots` | 🔒 **동결** |
-| `GET /lot_map` | `ledger_lot_map` | `ledger_lots.lot_map` | 🔒 **동결** |
-| `GET /subgraph` | `evidence_subgraph` | `_signed_start` → `_evidence_graph` → `ledger_subgraph.subgraph`/`SqlEvidenceLookup` (+`tabular_projection`, `enrichment_actions.SqlEnrichmentActionLookup`) | 🟢 **열림** — `ledger_trace` 접촉은 `relation_exists`·`_fetch`(배관)뿐 |
-| `GET /subgraph/table` | `evidence_subgraph_table` | 위와 같은 `_evidence_graph` + `ledger_subgraph.tabular_projection` + CSV 직렬화 | 🟢 **열림** — 동상 |
-| `GET /entities` | `registered_entity_catalog` | `ledger_catalog.entity_catalog` | 🟢 **열림** — 배관 + `ledger_explorer` id 코덱뿐 |
-| `GET /siblings` | `ledger_siblings_route` | `ledger_siblings.siblings` \| `scope` 있으면 `ledger_walk_contrast.contrast` | 🟢 **열림** — 엔진 둘 다 |
-| `GET /trends` | `ledger_trends_route` | `ledger_trends.trends` | 🟢 **열림** |
-| `GET /composition` | `ledger_composition_route` | `ledger_composition.composition` | 🟢 **열림** |
-| `POST /selection/resolve` | `ledger_selection_resolve_route` | `ledger_selection.resolve` | 🟢 **열림** |
-| `GET /kinds` | `ledger_kind_catalog` | `ledger_kinds.catalog` | 🟢 **열림** — 동결 의존 **0** |
-
-> 🆕⑫ ⚠️ **이 패스가 «잰» 것은 위 표뿐이다** — 라우트 이름·핸들러 이름·부르는 계산 심볼. 🔴 **아래 심볼 표의 산문 서술(거절 어휘·응답 모양·상태 어휘)은 열지 않았고 여전히 `a729a7f` 기준이다.** 그리고 위 표의 16개 중 **아홉**(`/explore`·`/entities`·`/explore_entity`·`/subgraph`·`/subgraph/table`·`/journey`·`/trends`·`/composition`·`POST /selection/resolve`)은 **아래 심볼 표에 자기 행이 없다** — 소비 모듈은 [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측)에 있고, 이 패스는 그것을 메우지 않았다. 🔴 **동결 여부와 등재 여부는 다른 축이다**: 그 아홉 중 셋(`/explore`·`/explore_entity`·`/journey`)은 **동결이면서 미등재**다.
+> 🆕⑬ **import는 15가 아니라 «둘»이다**(`3b77fbc3` 실측, 표준·프레임워크 제외): `from ledger_api import ledger_subgraph` · `import ledger_trace`. `main.py`의 등록은 여전히 두 줄이고(`import ledger_trace_router` + `app.include_router(...)`, SPA catch-all보다 **위** — 등록 순서가 계약이다) 그 사실만 무변동이다.
 >
-> 🆕⑨ 🔴 **[2026-08-18 실측] 라우트는 7개가 아니라 «16개»다.** `@router.get`/`@router.post` 전건 계수(`5359fdd`, 🆕⑫가 `bd0c192e`에서 **16 재확인**): 아래 표가 서술하는 일곱(`/trace`·`/siblings`·`/kinds`·`/structure`·`/lots`·`/lot_map`·`/coverage`) **외에 아홉이 더 있고 이 지도에 등재된 적이 없다** — `/explore` · `/entities` · `/explore_entity` · `/subgraph` · `/subgraph/table` · `/journey` · `/trends` · `/composition` · **POST `/selection/resolve`**. 🔴 **그 아홉의 소비 모듈이 [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측)에 올린 `ledger_explorer`·`ledger_catalog`·`ledger_subgraph`·`ledger_journey`·`ledger_trends`·`ledger_composition`·`ledger_selection`이다.** ⚠️ **이 패스는 그 아홉의 시그니처·거절 어휘를 열지 않았다** — 존재와 경로만 실측했다. 아래 일곱 행은 `a729a7f` 기준 서술이고 **재검증하지 않았다.**
+> 🔴 🆕⑬ **모듈 docstring이 자기 파일을 반박한다.** 첫 줄이 「the ledger read routes — ten of them」이라 적고 `subgraph`·`subgraph/table`·`siblings`·`trends`·`composition`·`selection/resolve`·`kinds`·`declaration`·`structure`·`lot_map` 열을 나열하는데, **파일에 있는 `@router.` 는 둘뿐이다.** 코드 소관이라 여기서 고치지 않았다 — **docstring을 라우트 목록의 출처로 쓰지 마라.**
 
-| 심볼 | 무엇인가 |
-|---|---|
-| `router = APIRouter(prefix="/api/ledger", tags=["ledger"])` | 자족적 라우터 — `main.py` 등록이 두 줄. 🆕⑫ **정정 — import하는 모듈은 7종이 아니라 «15종»이다**(`bd0c192e` 실측, `^import ` 전건 계수 18 − 표준 3): `finding_kinds`·`enrichment_actions`·`ledger_catalog`·`ledger_composition`·`ledger_explorer`·`ledger_journey`·`ledger_kinds`·`ledger_lots`·`ledger_selection`·`ledger_siblings`·`ledger_structure`·`ledger_subgraph`·`ledger_trace`·`ledger_trends`·`ledger_walk_contrast`. 🔴 **그 목록은 울타리를 판정하지 않는다** — 판정은 라우트가 «부르는 심볼»이 한다(위 🆕⑫ 표) |
-| `LEDGER_RELATION = "ledger_events"` · 🆕⑦ `LEDGER_CURSOR_RELATION = "ledger_translator_cursor"` | 인라인이 아니라 이름 붙인 이유가 **이음매**라서 — 머티리얼라이즈 프로젝션 전환은 이 문자열들 + 룩업 클래스 하나. `schema.py`에서 import하지 않는 것도 의도다(라우터가 번역기 패키지를 부팅에 끌지 않도록 읽기 측 자기 철자를 둔다) |
-| `_lookup_for(db)` | `ledger_trace.SqlClaimLookup(db.connection(), relation=LEDGER_RELATION)`. 🔴 **여기서 클래스를 갈아 끼우는 것이 머티리얼라이즈 룩업으로의 이주 전부** |
-| 🆕⑦ `SQLSTATE_UNDEFINED_TABLE = "42P01"` · `_is_undefined_table(exc)` | 🔴 **관계 부재 판정이 문자열 매칭에서 SQLSTATE로 옮겨 왔다.** 이 PostgreSQL은 한국어를 말해서 `"does not exist"` 매칭은 이미 죽은 팔이었고, 실제로는 SQLAlchemy `__str__`이 붙이는 `"UndefinedTable"` 클래스명에 걸리고 있었다(뮤턴트 실측 2026-08-13) — 아무도 보장하지 않는 표면. `exc.orig`와 `exc` 양쪽의 `pgcode`를 본다. **모든 로캘·모든 드라이버에서 같은 다섯 글자** |
-| 🆕⑦ `_relation_absent() -> HTTPException` | 부재-관계 거절의 **유일한 철자**(두 발화 지점이 공유). 🔴 **본문이 산문이 아니라 구조다**(판정 R-2026-08-13-C) — `{reason: ledger_trace.REASON_RELATION_ABSENT, state: "absent", relation, message}`. 클라는 `detail.reason`으로 분기하고 운영자는 `detail.message`를 읽는다 |
-| 🔒 `@router.get("/trace") trace_lineage(lot, slot=None, db)` | 🔴 **빈 `hops`의 200은 가능한 답이 아니다.** 비-200은 잘못된 요청(**422**, 빈 `lot`은 손으로)과 **503** 둘(`ResolverConfigError` / 관계 부재). 🆕⑦ **관계 부재를 예외에서 배우지 않는다** — `ledger_trace.relation_exists`(카탈로그 `to_regclass`)에 **먼저** 묻고, 그물 두 번째로 걷기 중 드롭 경합만 `_is_undefined_table` 백스톱이 잡는다(카탈로그를 먼저 묻는 이유 하나 더: `UndefinedTable` 예외 한 번이 트랜잭션을 오염시켜 뒤 질의가 엉뚱한 이유로 실패한다) |
-| 🟢 🆕⑦ `@router.get("/siblings") ledger_siblings_route(finding=None, mode="intersection", window=None, limit=None, min_support=None, axes=None, scope=None, db)` | 「이 결함들이 공유하는 요인은?」과 「난 쪽과 안 난 쪽은 뭐가 다른가?」. 🔴 **엔드포인트 하나에 프레이밍 둘** — `mode`는 파라미터지 두 번째 라우트가 아니다(행 모양이 동일해야 미끼 요인이 `intersection` 상단에 떴다가 `contrast`에서 떨어지는 것이 나란히 읽힌다). 🔴 **`scope`가 엔진을 바꾼다** — `scope`가 비면 `ledger_siblings.siblings(...)`(+`engine: "axes"`), 마킹이 있으면 **`ledger_walk_contrast.contrast(...)`**로 전환하고 응답의 `engine` 필드가 누가 답했는지 말한다. `finding`은 첫 줄부터 파라미터다(`void`는 등록부의 기본값이지 분기가 아니다). 422: `WalkRequestError`/`SiblingsRequestError`(구조화 본문) · 503: `SiblingsConfigError`(`axes_config_refused`)/`FindingKindError`(`finding_kind_registry_refused`) · 부재 관계는 **에러가 아니라 `state: "absent"`의 200** |
-| 🟢 🆕⑦ `@router.get("/kinds") ledger_kind_catalog(db)` | 어떤 불량 종류를 물을 수 있는지 — 화면 로드 시 한 번. 🔴 **관측 0건인 선언 종류도 전부 나열한다**(행이 없어 숨긴 종류는 존재하지 않는 종류와 구별 불가). 부재·빈 관계는 `state`의 200, 유일한 비-200은 등록부 읽기 실패 503 |
-| 🔒 🆕⑦ `@router.get("/structure") ledger_structure_view(window=None, db)` | 온톨로지 «구조» — **유형 수준**(인스턴스는 `/trace` 소관). 🔴 **응답에 손그림이 없다** — 노드·엣지는 선언(`ledger_config.json` 의 `vocabulary`·`entities`)와 원장 위 `GROUP BY` 하나(관측)의 병합 생성이고, 선언 없는 관측 모양은 드롭되는 대신 `undeclared`로 뜬다. `window`는 **건수만** 좁힌다(선언 엣지는 `atoms: 0`으로 남는다). window 파싱은 `ledger_siblings.parse_window` **한 철자** — 422의 `reason` 토큰도 siblings와 같다 |
-| 🆕⑦ `_lot_grid_refusals(exc)` | `/lots`·`/lot_map`이 공유하는 거절 매핑의 **유일한 철자** — `LotGridRequestError`/`SiblingsRequestError` → 422, `SiblingsConfigError`/`FindingKindError` → 503, 아니면 `None`(호출자가 `_is_undefined_table` 백스톱으로) |
-| 🔒 🆕⑦ `@router.get("/lots") ledger_lot_grid(columns=None, by=None, window=None, kind=None, limit=None, offset=None, db)` | 놀라움 장치 — 행 = 선언된 축, 열 = {항목 × 집계}. 🔴 **「미검사」와 「0」은 다른 답이고 `cells[].state`가 가른다**(실측: 랏의 20.6%만 검사 — 랏 크기를 분모로 쓰면 5배 틀린다). 🔴 지표 목록이 라우트에 없다 — 항목은 `finding_kinds` 등록부, 집계는 `ledger_lots.AGGREGATES`, 행 축은 `siblings_axes.json`. 스캔 상한 초과 시 window가 «강제»되고 응답이 그렇게 말한다(`window.forced` + `forced_reason`) |
-| 🔒 🆕⑦ `@router.get("/lot_map") ledger_lot_map(row, kind=None, by=None, slot=None, window=None, db)` | 마킹된 행의 불량 칩을 **선언된 축마다** 투영. 🔴 좌표는 오리진 기준 **칸수**(mm 아님 — 피치 안 곱한다). 🔴 닿지 않는 축은 숨기지 않고 `state: "unreachable"` + `reason`. ⚠️ **한 랏 = 한 프레임이 아니다** — 슬롯마다 격자 치수가 달라 `slot` 없이는 그리지 않고 슬롯 목록을 답한다 |
-| 🔒 `@router.get("/coverage") ledger_coverage(db)` | 🆕⑦ 이제 `ledger_trace.coverage(connection, relation=…, cursor_relation=…)`를 부른다. 🔴 **부재·빈 원장에 에러가 아니라 200 + `state`** — `absent`(마이그레이션 미실행)/`empty`(백필 미실행)/`ready`. 랏 하나의 「없음」 둘(미지의 랏·계보 주장 없는 랏)은 `/trace`가 이미 가르므로 **일부러 중복하지 않는다** — 이 라우트는 화면이 «어느 세계에 있는지»만 말한다 |
+**🆕⑬ 라우트 전건 (`3b77fbc3` 실측 — `grep -c '^@router\.'` = **2**)**
 
-### `server/enrichment_actions.py` + Evidence Action 결합 (2026-08-15 가산)
-
-> 이 행은 현재 워킹트리의 심볼 계약만 등재한다. 줄 수·옛 라우트 개수는 다시 세지 않았으므로
-> 위 `a729a7f` 측정값을 현행 수치로 인용하지 않는다.
-
-| 심볼/호출 | 무엇인가 |
-|---|---|
-| `EnrichAction` · `enrich_action_node_id` · `decode_enrich_action_id` · `action_node` | 원장 Entity/Claim이 아닌 재계산 Action projection과 canonical opaque ID. grain은 decision-key `claim_resolution`과 rule-level `source_contract` 둘 |
-| `EnrichmentActionLookup` · `InMemoryEnrichmentActionLookup` | Claim anchor 정확 매칭, target 결손, 공급 source 부재를 순수 평가. 같은 rule-level Meta Action은 decision key마다 복제하지 않음 |
-| `SqlEnrichmentActionLookup` | 요청 범위 decision key의 materialized derived row만 `business_key_val IN (…)`로 읽는다. reference-view candidate SQL은 실행하지 않는다. table 검증 실패 rule은 row read 없이 `repair_enrichment_contract`로 강등 |
-| `ledger_subgraph.subgraph(..., action_lookup=…)` | 새로 읽은 Claim에서 `needs_enrichment` 엣지로 Action에 도달한다. Action은 자동 BFS 말단이고 opaque ID 직접 seed는 유효 |
-| `ledger_trace_router`의 `/subgraph` | ⚰️ **[2026-08-28] `enrich_actions` 인자도 `/subgraph/table` 라우트도 없다** — 라우터가 여는 것은 `/subgraph` 와 `/declaration` 둘이다. ~~`enrich_actions=true` 기본으로 request-scoped SQL lookup을 연결했고, false면 순수 원장 증거만 반환했다~~ |
-| `enrichment_config._normalize_claim_contract` | 기존 rule에 optional Claim 계약을 가산 검증. 잘못된 계약은 rejection을 남기되 legacy rule 자체는 유지 |
-
-계약 정본은 [CLAIM_REQUIREMENT_WORKLIST_SPEC](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md)와
-[LEDGER_EVIDENCE_SUBGRAPH_SPEC](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md), 테스트는
-`server/tests/test_enrichment_actions.py`다.
-
-### 🆕⑦ 읽기 측 모듈군 — 콘솔의 서버 (2026-08-14 신설 등재, 전부 `a729a7f` 실측)
-
-**공통 규약 셋.** ① 부재·빈 관계는 **답이지 에러가 아니다** — `STATE_ABSENT`/`STATE_EMPTY`/`STATE_READY` 세 낱말이 모듈마다 같은 철자로 반복된다. ② 잘못된 요청은 구조화 본문의 전용 예외(`…RequestError`)로, 선언 결함은 `…ConfigError`/`…Error`로 — 라우터가 각각 422/503으로 번역한다. ③ **읽기 전용** — 어느 모듈도 쓰지 않고 DDL하지 않는다.
-
-> 🆕⑪ **[2026-08-23] 이 표의 줄 수만 `b3e1ec83`에서 다시 쟀고 «심볼 표는 한 행도 열지 않았다».** 5건이 어긋나 있었고 **이 드리프트는 이번 구간이 만든 것이 아니다**(이 일곱 파일은 `7eb11dde..b3e1ec83`에 한 번도 안 바뀌었다 — 낡음이 내 측정보다 앞선다). 🔒 **`ledger_structure`·`ledger_lots`는 동결**(C군)이고, 나머지 다섯의 심볼 표는 **밀렸다고 가정하라.**
-
-| 파일 | 줄 | 무엇인가 |
+| 라우트 | 핸들러 | 부르는 계산 |
 |---|---|---|
-| `server/ledger_api/finding_kinds.py` | 🆕⑪ **313**(구 표기 310) | **관측 종류 등록부** — 「무엇을 셀 수 있나」의 유일한 선언 지점. `DEFAULT_KIND = "void"` · `DEFAULT_FINDING_KINDS`(코드 기본 선언) · `CONFIG_FILENAME = "finding_kinds.json"`(라이브 config가 이기고, gitignored — 실값은 이 문서에 옮기지 않는다) · `load(force_reload=False)` / `set_registry`(테스트) · 조회 계열 `kinds()` · `spec(kind)` · `methods(kind)` · `has_denominator(kind)` · `classes(kind)` · `observation_table(kind)` · `population_ctes(kind)` · `class FindingKindError(ValueError)`. `PACKAGE_TABLE = "bonding_log"` · `RUN_TABLE = "inspection_run"`. 🔴 **종류를 하나 선언하면 `/kinds` 카탈로그·`/lots` 열 계열·siblings/walk의 후보가 통째로 늘고 라우트는 한 줄도 안 바뀐다** — 이것이 이 모듈의 존재 이유다 |
-| `server/ledger_api/ledger_kinds.py` | **349** | `GET /kinds`의 몸 — `catalog(connection)`. 종류마다 관측 관계의 사실(`_relation_facts` — `to_regclass` + `pg_class`)과 건수(`EXACT_COUNT_MAX_BYTES = 256MB` 이하만 정확 카운트, 그 위는 `reltuples` 추정), 검사 런 수(`_run_counts`), **원장 위치 4상태**(`LEDGER_STATE_ABSENT`/`_DECLARED_ONLY`/`_FLOWING`/`_UNMEASURED` — `_declared_translations()`가 `ledger_config`의 선언을, `_ledger_atoms_by_source`가 실제 원자를 대조) · `_default_kind(names)` |
-| `server/ledger_api/ledger_siblings.py` | 🆕⑪ **946**(구 표기 845) | `GET /siblings`의 **축 엔진**(교집합/대조) + **공유 문법의 소유자**. `MODE_INTERSECTION`/`MODE_CONTRAST`/`MODES` · 거절 어휘 11종(`REASON_*`) · **`AXES_CONFIG_FILENAME = "siblings_axes.json"`**(요인 축의 선언 — gitignored, 구조만: 종류별 `geometry` + `attribution` 소스들의 `axes`) · 선언 계열 `class Axis`/`AttributionSource`/`Geometry`/`AxesConfig` · `load_axes_config(force_reload=False)`/`set_axes_config` · **`class Window` + `parse_window(spec, now=None)`**(`7d` 또는 `YYYY-MM-DD..YYYY-MM-DD` — `/structure`·`/lots`·걷기 대조까지 **전부 이 한 철자**) · `class _Plan` · `siblings(connection, kind, mode, window, limit, min_support, axes)` · `_identifier`(SQL 보간 앞의 맨 식별자 검증) |
-| 🔒 `server/ledger_structure.py` | 🆕⑪ **1,400**(구 표기 1,300) | **[동결 — C군]** `GET /structure`의 몸 — `structure(connection, window=None)`. **선언 절반**(`declared_edges(vocabulary)`/`declared_nodes(vocabulary)` — `_vocabulary()`가 `ledger.vocabulary`를 지연 import)과 **관측 절반**(`census(connection, …)` — `CENSUS_SQL` `GROUP BY` 하나, `FULL_CENSUS_MAX_BYTES = 256MB` 초과 시 `LARGE_LEDGER_WINDOW = "30d"`로 강제 + `REASON_LEDGER_TOO_LARGE`)을 `_merge`/`_settle`이 병합. 엣지 5상태 — `EDGE_FLOWING`/`_DECLARED_ONLY`/`_UNDECLARED`/`_UNMEASURED`/`_DECLARED_UNCONSUMED`. `edge_id(subject_type, predicate, object_kind, object_type)` · `_vocabulary_panel` · `class StructureError(RuntimeError)`(라우터가 503 `vocabulary_unreadable`) |
-| 🔒 `server/ledger_lots.py` | 🆕⑪ **1,573**(구 표기 1,392) | **[동결 — C군]** `GET /lots` + `GET /lot_map`의 몸. **격자** — `AGGREGATES`(집계 선언 — 열 공간의 한 축) · `class Column` + `parse_columns(text, default=None)`(`<종류>:<집계>` CSV) · `default_columns()` · `resolve_row_axis(config, kind, name=None)`/`axes_available` · **`apply_size_gate(connection, relations, window, now=None)`**(`FULL_GRID_MAX_BYTES = 512MB` 초과 시 `LARGE_GRID_WINDOW = "30d"` 강제 — 응답의 `window.forced`) · `class _GridPlan` · `lots(connection, columns=None, by=None, window=None, kind=None, limit=None, offset=None)` · 셀 4상태 `CELL_MEASURED`/`_UNSCANNED`/`_NO_DENOMINATOR`/`_UNMEASURABLE` · `_baseline(cells, thresholds)`(`DEFAULT_THRESHOLDS` · `BASELINE_MEDIAN_OF_ROWS`) · `_level`. **맵 투영** — `MAP_AXES`(bond/dt/core 3축 선언) · `lot_map(connection, row, kind=None, by=None, slot=None, window=None, now=None)` · 상태 `MAP_STATE_READY`/`_NO_FRAME`/`_UNREACHABLE`(+`MAP_REASON_*`, `MAP_REASON_FRAME_AMBIGUOUS` — 슬롯마다 프레임이 달라 `slot` 없이 안 그린다) · `FRAME_RELATION = "wafer_map_metadata"` · `VALID_DIE_RELATION = map_overlay.VALID_DIE_TABLE` · `IDENTITY_FIELD = "wafer"`/`IDENTITY_ALIAS = "frame_identity"` · `_frame`/`_with_identity`/`_valid_die_pointer`/`_identity_column`/`_frame_key_columns`/`_slot_column_for` · `_provenance`(`PROVENANCE_SOURCE_TABLES`/`PROVENANCE_LEDGER` — 답이 어느 세계에서 왔는지) |
-| `server/ledger_api/ledger_walk_contrast.py` | 🆕⑪ **1,337**(표의 구 표기 1,327 — 전용 절 제목과 어긋나 있었다) | 아래 전용 절 |
-| `server/ledger_api/mechanism_gate.py` ⚰️ **[2026-08-28] `server/_archive/ledger_api/` 로 이동** — 운영 소비자 «0» | 🆕⑪ **370**(표의 구 표기 368) | 아래 전용 절 |
+| `GET /subgraph` | `evidence_subgraph` | `_signed_start` → `_evidence_graph` → `ledger_subgraph.subgraph` + `ledger_subgraph.SqlEvidenceLookup`. `ledger_trace` 접촉은 `relation_exists`·`_fetch`(배관)뿐 |
+| `GET /declaration` | `ledger_declaration_catalog` | **원장을 한 줄도 읽지 않는다** — `ledger.config.load()`의 `entities`/`vocabulary`를 읽어 그대로 낸다. **DB 세션 인자 자체가 없다** |
 
-### 🆕⑦ `server/ledger_api/ledger_walk_contrast.py` (**1,337줄**(🆕⑨ `5359fdd` 실측 — 구 표기 1,327)) — 걷기 대조 엔진
-
-**무엇인가.** `/siblings?scope=…`가 켜는 두 번째 엔진 — 마킹된 랏들(case)과 정상 양산(control)의 원장 걷기를 대조해 **후보를 항목 목록이 아니라 걷기가 닿은 전부**에서 뽑는다(소유자 판정 2026-08-14: 「항목에 가정이 들어가잖아」). 행 모양은 축 엔진과 같은 철자다(한 렌더러가 둘을 그린다).
-
-| 심볼 | 무엇인가 |
+| 심볼 | 무엇인가 (🆕⑬ `3b77fbc3` 실측) |
 |---|---|
-| 상태·사유 어휘 | `STATE_READY`/`_EMPTY`/`_ABSENT` · `SIDE_CASE`/`_CONTROL`/`_MIXED` · `REASON_*` **17종**(`no_ledger_subject_declared`·`ledger_relation_absent`·`marking_relation_absent`·`no_scope_declared`·`empty_case_side`·`empty_control_side`·`no_atoms_for_subjects`·`unknown_marking_axis`·`bad_scope`·`absent_from_control_population`·`value_not_in_axis`·`value_outside_population`·`no_scope_value_matched`·`no_attributed_denominator`·`not_comparable_scale`·`no_dispersion_measured`·`zero_dispersion`) |
-| `COMPARE_CATEGORICAL`/`COMPARE_DISTRIBUTION`/`COMPARE_NULL` · `CATEGORICAL_TYPES` | 후보 필드의 비교 종류 — 🆕 수치 필드는 별도 경로(`_score_numeric`)로 **같은 행 모양**에 들어간다 |
-| `GATE_PASS`/`GATE_FAIL`/`GATE_UNKNOWN` · `_GATE_ORDER` · `_GATE_CODE` | 3관문 판정 어휘. `_GATE_CODE`는 뱃지 토큰(`P`/`-`/`X`/`B` — `B`는 `mechanism_gate.VERDICT_BIAS` — ⚰️ **[2026-08-28] 이 절의 주인 `ledger_walk_contrast` 가 삭제되고 `mechanism_gate` 가 `_archive/` 로 갔다. 아래는 그때의 서술이다**) |
-| `WALK_DEFAULTS` | `max_atoms=60000` · `max_depth=6` · `control_min_subjects=30` · `evidence_ref_sample=5` · `high_cardinality_at=200` · **`std_diff_note_at=1.0`**(🔴 **노트 문턱이지 랭킹 문턱이 아니다** — 농축 밴드는 「몇 배」라 물리량 단위에 의존하므로(°C 대 K), 밴드가 강등시킨 필드의 **산포 기준 거리**가 크면 화면에 이름을 올린다). `defaults.walk`(`siblings_axes.json`) → `walk_overrides` 순으로 덮인다 |
-| `class WalkRequestError(ValueError)` | `.detail` 구조화 본문 — 라우터가 422로 |
-| `parse_scope(spec)` | `bond_lot:SYN-VOID-101,SYN-VOID-102` → `(axis, [values])`. 축 이름은 선언 대조, **값은 파라미터 바인딩**(보간 안 함). 빈 spec은 에러가 아니라 「전체」(호출자가 축 엔진으로 폴백) |
-| `resolve_marking_axis(config, kind, name)` | 마킹 축은 `siblings_axes.json` 선언에서만 — 미선언이면 선언된 축 이름들을 실어 거절 |
-| `class LedgerSubject` (`__slots__ = type/key/column`) · `_subject_of(geometry)` | 모집단 단위가 원장 주어가 되는 법 — `geometry.ledger_subject` **선언**(`unit_columns[0]이 웨이퍼」 같은 관습을 쓰지 않는다). 미선언 geometry는 추측 대신 정직한 「걷기 불가」 |
-| **`contrast(connection, kind=None, scope=None, window=None, limit=None, min_support=None, now=None, walk_overrides=None)`** | 진입점 — 핀된 봉투로 답한다. 읽기 전용 |
-| `_degraded(envelope, reason, message, state=STATE_ABSENT)` | 못 걷는 경우의 성실한 봉투 |
-| `_sides` · `_account_values` · `_values_in_axis` · `_dropped_sentence` · `_scope_block` | scope 값의 **회계** — 🔴 요청된 값마다 어느 쪽(case/control/미발견)에 앉았는지 세고, **찾지 못한 값을 조용히 흡수하지 않는다**(`value_not_in_axis`/`value_outside_population`/`no_scope_value_matched`가 그 자리) |
-| `_apply_walk_gate` · `_atoms_per_subject` | `max_atoms` 상한의 사전 견적 |
-| `_walk(connection, plan, subject, case_ids, control_ids, walk_cfg)` | 원장 걷기 본체 — 후보 = 걷기가 닿은 `predicate × field × value` 전부 |
-| `_shape(rows, case_of, control_of, walk_cfg)` · `_COLS` | SQL 행 → 후보 항목 |
-| `_score(item, contrast_cfg, min_support)` | **범주 후보 → 핀된 행.** 🔴 분모가 둘 다 있다(side와 attributed) — **「귀속 0/75」는 답이고 0이 아니다**(실측: excursion 랏들엔 `observed` 원자가 아예 없어 side 분모로는 「이 랏들엔 보이드가 없다」로 뒤집혀 읽힌다 — attributed 분모에서는 비율 자체가 없고 `undeterminable`로 남는다, `REASON_NO_ATTRIBUTED`). control에 전무하면 `enrichment`는 null이고 Katz 구간의 유한한 하한이 랭킹한다(`REASON_ABSENT_FROM_CONTROL` — 「무한대 농축」으로 최상단을 점거하지 않게) |
-| 🆕 **`_score_numeric(item, contrast_cfg, min_support)`** | **수치 필드 → 같은 핀된 행.** 🔴 효과는 **평균 비율**이라 범주 측과 같은 「몇 배」 척도 — `defaults.contrast`의 밴드(`enriched_at`/`depleted_at`)가 양쪽을 같이 두르고 `_gate_real`이 같은 95% 하한을 읽고 `_rank_key`가 같은 것끼리 비교한다(**다중성의 답도 이것** — 수치 33필드가 범주 51후보와 같은 규칙에 선다). 🔴 **구간은 subject 간(between-subject)** — SQL이 주어 먼저 접으므로 `sd`는 웨이퍼들 자신의 평균의 산포다(로그비 델타법, `_log_ratio_se`). 비교 불가는 제거가 아니라 **판정**(`REASON_NOT_COMPARABLE_SCALE`/`_NO_DISPERSION`/`_ZERO_DISPERSION`) |
-| `_field_numeric` · `_compare_kind` · `_std_diff` · `_numeric_label` · `_fmt_num` · `_num` | 수치 경로의 보조 |
-| `_side(n, of, attributed_of)` · `_ratio_interval(a, n1, b, n2)` | 한쪽의 수 셋 · Katz 로그비 95% 구간(`_Z95`) |
-| 🆕 **`_attach_gates(row, kind, graph, contrast_cfg)`** ⚰️ **[2026-08-28] 이 함수가 살던 `ledger_walk_contrast` 는 삭제됐고 `mechanism_gate` 는 `_archive/` 로 갔다** | **3관문을 행에 단다** — `gates = {real: _gate_real, upstream: _gate_upstream, mechanism: mechanism_gate.verdict(kind, candidate_key, graph)}` + `gate_summary`(`code` 3글자 · passed/unknown/failed 카운트 · `bias_candidate` 불리언). `_timing`을 여기서 소비하고 버린다 |
-| `_gate_real(row, contrast_cfg)` | **실재** — 차이가 자기 잡음보다 큰가. Katz **하한**이 판정한다(점추정 랭킹은 최소 표본을 최상단에 올린다 — `finding=delam`에서 실측). 구간이 없으면 `unknown`이고 `_NO_INTERVAL_MESSAGE`가 **실제 장애물을 이름으로** 말한다(수치의 척도 거절 ≠ 분모 부재) |
-| `_gate_upstream(row)` | **상류** — 원자가 자기 주어의 **첫 검사 런보다 앞**인가. `all_before` pass · `all_after`/`mixed_order` fail · 비교할 시각이 없으면 **`unknown`이지 fail이 아니다**(타임스탬프 부재가 인과 반증처럼 읽히지 않게) |
-| `_rank_key(row)` | 관문 통과 사전식 → 동률은 효과 크기(`-ci_low`, `-case n`) — 브리프의 랭킹 그대로 |
-| `_gate_legend()` | 세 열의 뜻을 서빙 — 클라가 어휘를 하드코딩하지 않게 |
-| `_note_high_cardinality` · `_note_flat_but_separated` | 봉투 노트 — 고카디널리티 축·「밴드는 평평한데 산포는 멀다」(`std_diff_note_at`) |
+| `router = APIRouter(prefix="/api/ledger", tags=["ledger"])` | 자족적 라우터 — `main.py` 등록이 두 줄 |
+| `LEDGER_RELATION = "ledger_events"` · `LEDGER_CURSOR_RELATION = "ledger_translator_cursor"` | 인라인이 아니라 이름 붙인 이유가 **이음매**라서. ⚠️ **`LEDGER_CURSOR_RELATION`의 docstring은 「`GET /coverage`가 `sources`로 보고하는 것」이라 적는데 그 라우트는 없다** — 상수는 살아 있고 설명만 낡았다 |
+| `@router.get("/subgraph") evidence_subgraph(node_id=Query(..., alias="id"), hops=12, direction="both", node_limit=400, edge_limit=1200, positive=None, negative=None, follow=None, continues_hops=ledger_subgraph.DEFAULT_CONTINUES_HOPS, db)` | 🆕⑬ **인자 아홉.** `hops` `ge=1 le=40` · `direction` `^(outgoing\|incoming\|both)$` · `node_limit` `ge=10 le=1000` · `edge_limit` `ge=20 le=**3000**` · `continues_hops` `ge=0 le=40`. `positive`/`negative`/`follow`는 **반복 쿼리 파라미터**다. 🔴 **`enrich_actions`·`collect`·`observations`·`include_values`·`shape`·`property_limit`은 없다** |
+| 🆕⑬ `_followable_predicates()` | `follow`에 쓸 수 있는 이름 — **선언에서만 읽는다**(`ledger.config.load()["vocabulary"]`의 키를 `@` 앞에서 자른다). 🔴 **선언에 없는 술어는 «빈 그래프»가 아니라 422다**(`reason: "predicate_not_declared"` + `unknown` + `declared`) — 영원히 참일 수 없는 필터는 진짜 부재와 구분되지 않는다. 읽지 못하는 선언은 **빈 집합**을 답해 전부 거절한다 |
+| 🆕⑬ `_continuing_predicates()` | 선언이 `continues: true`라 적은 술어들 — 같은 모양, 같은 이유. **읽을 수 없으면 빈 집합**(= 오늘의 걷기 그대로)이고, 「전부 연속」이라는 반대쪽 보수는 아무도 요청하지 않은 예산을 쓴다 |
+| 🆕⑬ `_signed_start(node_id, positive, negative)` | 부호 있는 seed의 **유일한 조립 지점**. 🔴 **둘 다 비면 `node_id`를 «그대로» 돌려준다** — 아무것도 안 찍은 요청은 예전과 **같은 인자**로 `subgraph()`에 닿는다. `id`는 항상 positive다 |
+| 🆕⑬ `_evidence_graph(connection, *, node_id, hops, direction, node_limit, edge_limit, follow=None, continues_hops=ledger_subgraph.DEFAULT_CONTINUES_HOPS)` | 관계 존재 확인(`ledger_trace.relation_exists`) → `_subgraph_contract_state` → `ledger_subgraph.subgraph(...)`. `continuing=_continuing_predicates()`를 **여기서** 넘긴다 |
+| `_subgraph_contract_state(connection)` | 느린 스캔 «전»에 배포 결손을 이름으로 답한다 — `source_event_id`·`source_event_state` 컬럼과 `idx_ledger_source_event`·`idx_ledger_object_entity` 인덱스 넷. 빠지면 503 `source_event_projection_not_deployed` |
+| `SQLSTATE_UNDEFINED_TABLE = "42P01"` · `_is_undefined_table(exc)` | 관계 부재 판정이 문자열 매칭이 아니라 SQLSTATE — `exc.orig`와 `exc` 양쪽의 `pgcode`. 모든 로캘·모든 드라이버에서 같은 다섯 글자 |
+| `_relation_absent() -> HTTPException` | 부재-관계 거절의 **유일한 철자** — `{reason: ledger_trace.REASON_RELATION_ABSENT, state: "absent", relation, message}`. 클라는 `detail.reason`으로 분기하고 운영자는 `detail.message`를 읽는다 |
+| 🆕⑬ `@router.get("/declaration") ledger_declaration_catalog()` | 「무엇을 물을 수 있나」 — `{state, entities[{type, keys}], predicates[{name, subjects, object, origin}]}`. 🔴 **목록을 코드에 다시 적지 않는다**: 선언에서 술어를 하나 지우면 이 답도 하나 준다. 🔴 **`subjects`는 버전째로**(`die@1`) 나간다 — 화면이 주어로 옵션을 거르는데 맨 철자면 아무것도 안 맞는다. 🔴 **빈 목록은 답이지 오류가 아니다**(목적어로만 나오는 타입은 나가는 술어가 없다). 유일한 비-200은 선언을 못 읽을 때의 503 `declaration_unreadable` |
 
-### 🆕⑦ ⚰️ **[2026-08-28] `server/_archive/ledger_api/` 로 이동** — 운영 소비자 «0» — `server/ledger_api/mechanism_gate.py` (**370줄**(🆕⑨ `5359fdd` 실측 — 구 표기 368)) + `server/config/sample/mechanism_models.json.sample`
+> 🔴 🆕⑬ **소스가 소스를 반박한다 — `follow`의 참조 엣지 절반은 코드에 없다.** `_followable_predicates`의 docstring이 「`entities.<type>.references[].edge`(오늘: `in_container`)도 이름댈 수 있게 넓혔다」고 적지만, **본체는 `vocabulary`만 읽는다**(`references`라는 낱말이 함수 본체에 없다). `/declaration`의 `predicates[]`도 `"origin": "vocabulary"`를 상수로 박아 낸다. 같은 밤에 `ledger_api/declared_entities.py`가 「선언에서 `references`가 빠져 합성 엣지가 0이 됐고 `reference_edges`·`reference_edge_names`·`targets_for`는 호출자가 0이라 지웠다」고 적고 있으므로 **docstring 쪽이 낡은 것으로 보이지만, 어느 쪽이 의도인지는 소스로 판정할 수 없어 사실로 등재하지 않는다.**
 
-**무엇인가.** 3관문의 셋째 — 「이 후보가 이 불량에 닿는 **선언된 물리 경로**가 있나」. M4 기전 그래프(방향만 있는 인과 엣지, `PHYSICS_ONTOLOGY_SETUP.md` §4)를 읽는 **순수 조회**다(연결도 질의도 없다).
+### ⚰️ 🆕⑬ `server/enrichment_actions.py` — **`server/_archive/`로 이동했다 (2026-08-28)**
 
-| 심볼 | 무엇인가 |
-|---|---|
-| `CONFIG_FILENAME = "mechanism_models.json"` · `KEY_BINDINGS = "bindings"` · `_config_path()` | 라이브 config > `.sample` > 부재. **gitignored 운영자 자산 — 실값은 이 문서에 옮기지 않는다.** `.sample`의 구조(실측): 최상위 `bindings` 블록 + 모델 블록들(`void_formation`·`delam_formation`·`void_observation_bias`). 모델 = `{role, finding_kind, target, version, validity, nodes[], edges[{from,to,dir}], signatures{}}` — `dir`은 `+`/`-`/`u`(비단조 **단언**이지 unknown이 아니다), `signatures`는 사람용 문서라 **로더가 무시한다** |
-| `ROLE_FORMATION` / `ROLE_OBSERVATION_BIAS` · `ROLES` | 🔴 **형성 모델과 관측 편향 모델은 구조적으로 분리다** — bias 모델에만 닿는 요인은 «나타남»을 설명하지 «발생»을 설명하지 않고, 게이트는 그것을 절대 원인으로 보고하면 안 된다 |
-| `VERDICT_PASS`/`_FAIL`/`_UNKNOWN`/`VERDICT_BIAS = "bias_candidate"` · `REASON_*` 8종 · `VERDICT_MESSAGES` | 판정 어휘. `REASON_NO_CONFIG`·`_UNREADABLE`·`_NO_MODEL_FOR_KIND`·`_NO_BINDING`·`_NODE_ABSENT`·`_NO_PATH`·`_BIAS_ONLY`·`_REACHES` |
-| `class MechanismConfigError(RuntimeError)` | 선언 자체가 못 쓸 때 — **상태로 보고하지 500으로 던지지 않는다** |
-| `class Model` | 선언 모델 하나 — 인접 리스트 + `role`/`finding_kind`/`target`. 🔴 **셋 중 하나라도 빠지면 관습으로 수리하지 않는다**(`_observation_bias`로 끝나는 이름 등에서 추측하면 파일명이 원인/아티팩트를 판정하게 된다) — `usable=False` + `reason`이 응답까지 간다. **`reach(start)`** — target까지의 최단 선언 경로(BFS), 🔴 **탐색이 모델 밖으로 나가지 않는다**(`bond_pressure`가 두 모델에 있는 것은 정상이고, 모델을 건너뛰면 아무도 안 한 제3의 주장을 접붙인다 — bias-only 요인이 형성 경로를 «획득»하는 바로 그 방식) |
-| `class MechanismGraph` | 모델 전부 + **bindings**(필드 → 물리량). `models_for(kind)` · **`nodes_for(candidate_key)`** — `<predicate>:<field path>` 정확 일치 먼저, 그다음 맨 field path(한 바인딩이 `params_actual`/`params_setpoint` 쌍둥이를 다 받게). 🔴 **bindings는 항목 목록이 아니다** — 걷기가 닿은 후보는 바인딩 유무와 무관하게 전부 후보이고, 미바인딩은 판정 대신 `unknown`을 실을 뿐이다(새 술어가 선언 0개로 화면에 닿는 이유) |
-| `class _AbsentGraph(MechanismGraph)` | 열 선언이 없는 박스 — 모든 판정이 `unknown` + 사유(「실재✓ · 상류✓ · 기전 —」이 가능해야 한다) |
-| `load(force_reload=False)` / `set_graph(config)`(테스트) | 한 번 읽고 캐시(`_lock`) |
-| **`verdict(kind, candidate_key, graph=None)`** | 후보 하나의 기전 판정 — `{verdict, reason, message, basis, quantity, binding_key, model, role, path, hops, bias_models}`. 형성 모델 도달 = `pass`(경로·홉 수 포함) · bias 모델**만** 도달 = `bias_candidate` · 🔴 **유일한 `fail`** = 양이 모델 안에 있는데 target으로 가는 경로가 없다(**모델러가 «아니오»라고 답한 것** — 아무도 안 물어본 것과 다른 사실) · 어느 모델에도 없으면 `unknown`(`node_absent_from_model`) |
+🪦 **`server/enrichment_actions.py`도 `server/tests/test_enrichment_actions.py`도 없다** — 둘 다 `server/_archive/` 아래에 있다(`server/_archive/enrichment_actions.py` · `server/_archive/tests/test_enrichment_actions.py`). 여기 있던 심볼 표 6행(`EnrichAction` · `enrich_action_node_id` · `decode_enrich_action_id` · `action_node` · `EnrichmentActionLookup` · `SqlEnrichmentActionLookup`)을 **묘비로 대체했다** — 운영 소스에 없는 이름이고, `/subgraph`는 `enrich_actions` 인자도 `action_lookup` 배선도 더 이상 넘기지 않는다(`ledger_trace_router._evidence_graph` 실측). `ledger_subgraph.subgraph`의 `action_lookup=None` 키워드 «자체»는 살아 있으나 **넘기는 호출자가 레포에 없다.**
 
-### 클라 — 원장 콘솔 (🆕⑦ 2026-08-14 `a729a7f` 재측정)
+⚠️ 계약 문서 [CLAIM_REQUIREMENT_WORKLIST_SPEC](../spec/CLAIM_REQUIREMENT_WORKLIST_SPEC.md)·[LEDGER_EVIDENCE_SUBGRAPH_SPEC](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md)는 **이 패스가 열지 않았다** — 문서 소관(doc-keeper)이다.
 
-🆕⑦ **한 페이지가 콘솔이 됐다.** `ledger.html`의 엔트리 `ledger_trace.js`가 뷰 다섯(trace/structure/surprise/lot/console)을 한 URL 공간(`?view=…`)에서 갈아 끼우고, 뷰마다 core(순수)/view(DOM만) 모듈 쌍을 import한다 — 엔트리의 import 대상은 **모듈 10 + `surprise_axis`/`surprise_map_core` + css**다(종전 「import 2종」은 죽었다).
+### ⚰️ 🆕⑬ 읽기 측 모듈군 — **열둘이 사라졌다 (2026-08-29 실측)**
 
-| 파일 | 줄 | 무엇인가 |
+🔴 **여기 있던 심볼 표는 «없는 파일»의 표였다.** `git ls-tree -r --name-only HEAD -- server` 전건 대조로, 이 절과 아래 전용 절들이 앵커를 달고 싣던 파일이 HEAD에 하나도 없다. 이것이 §5-H가 `lot_event_translator.py`에서 이미 한 번 겪은 실패 모양이라 **표를 지우고 묘비로 대체한다.**
+
+| 🪦 없는 이름 | 있던 곳 | 지금 |
 |---|---|---|
-| 🆕⑦ 놀라움 축 4모듈(아래 전용 절) | `surprise_core.js` **895** · `surprise_axis.js` **218** · `surprise_map_core.js` **790** · `surprise_map_view.js` **505** | `/lots`·`/lot_map`의 소비자 |
-| 🆕⑦ 나머지 콘솔 모듈 — **줄 수만 실측, 심볼 미등재** | `surprise_view.js` **795**(export는 `renderSurprise` 하나) · `case_control_core.js` **1,119** / `case_control_view.js` **779** · `lot_reference_core.js` **530** / `lot_reference_view.js` **561** · `ontology_structure_core.js` **1,325** / `ontology_structure_view.js` **785** · `contrast_core.js` **615** / `contrast_view.js` **513** · `ledger_console.css` **354** | 콘솔의 다른 뷰들(사례-대조/랏 참조/구조/짝 대조) — **이 패스의 지시 범위 밖이라 심볼 표는 미등재다** |
-| 🆕⑦ 신설 하니스 — **미등재** | `surprise_harness.mjs` **971** · `case_control_harness.mjs` · `lot_reference_harness.mjs` · `ontology_structure_harness.mjs` | 존재만 실측 — 구조는 이 패스의 범위 밖 |
+| `ledger_kinds.py` · `ledger_siblings.py` · `ledger_structure.py` · `ledger_lots.py` · `ledger_trends.py` · `ledger_composition.py` · `ledger_selection.py` · `ledger_identity.py` · `ledger_catalog.py` · `ledger_journey.py` · `ledger_walk_contrast.py` | `server/` · `server/ledger_api/` | **삭제.** 그들이 떠받치던 라우트가 함께 은퇴했다 — 같은 질문은 `GET /api/ledger/subgraph`를 `follow`로 좁혀 답한다 |
+| `finding_kinds.py` | `server/ledger_api/` | **`server/scripts/support/finding_kinds.py`로 이사.** 운영 읽기 표면이 아니라 스크립트 지원물이 됐다 — `DEFAULT_KIND = "void"` 같은 도메인 낱말이 라우트 갈래를 트는 자리였다 |
+| `mechanism_gate.py` · `enrichment_actions.py` · `audit_changeset.py` | `server/ledger_api/` · `server/` | **`server/_archive/` 아래로.** 운영 소비자 «0» |
+| `server/ledger/vocabulary.py` | `server/ledger/` | **삭제.** 어휘는 `ledger.config.load()["vocabulary"]`로 읽는다(`ledger_trace_router._followable_predicates`·`_continuing_predicates` 실측) |
+| `server/config/sample/ledger_vocabulary.json.sample` | `server/config/sample/` | **삭제** |
 
-**`ledger_trace_core.js` export — 🆕⑦ 18 → 25종**(실측) — 상수 `PREDICATE_QUESTION`(술어 → 그 술어가 **묻는 질문**. 술어 이름을 렌더하면 운영자가 번역해야 한다) · `GAP_LABEL` · `TERMINAL_VERDICT`; 질문 파싱 `parseQuery(text)`(`"LOT"`/`"LOT/02"`/`"LOT 02"` → `{lot, slot}`) · `traceQuery({lot,slot})` · `queryText({lot,slot})`; 홉 읽기 `reasonTag(reason)` · 🆕⑦ **`hopBasis(hop)`**(시그니처 변경 — reason이 아니라 **홉**을 받고, 서버의 구조화 `hop.basis` 필드를 먼저 읽는다. 필드가 없을 때만 `basisFromReason`이 구 `BASIS_SUFFIX` 정규식으로 문장을 읽는다) · 🆕⑦ `isConvention(basis)`(「선언된 가정에 기대는가」의 **유일한 철자**) · `basisLabel(basis)`(🆕⑦ 미지의 kind는 `가정`도 `근거`도 아닌 `?`로 강등 — `hopVerdict`의 default 규칙과 같은 이유) · `hopVerdict(hop)` · `terminalVerdict(terminalReason)`; 노드/답 `nodeId(node)` · `nodeText(node)` · `hopQuestion(hop)` · `hopAnswer(hop)` · `hopAnswerContext(hop)` · `instantText(iso)`; 요약 `summarize(trace)`; 🆕⑦ 커버리지·「없음」 읽기 6종 — `coverageState(coverage)` · `coverageVerdict(coverage)` · `refusalReading(detail, status)`(라우터의 구조화 503 본문을 분기) · `coverageFacts(coverage)` · `coverageSamples(coverage)` · `nothingVerdict(trace, ledgerState, coverage)`(「없음」이 어느 세계의 없음인지 — `/trace` 답과 `/coverage`의 `state`를 합성).
-🔴 **이 모듈은 원장에 대해 아무것도 결정하지 않는다** — 서버가 모든 홉을 해결했고 `state`/`reason`/`predicate`를 실어 보냈다. 어느 주장이 이기는가에 대한 규칙이 이 파일에 나타나면 그것은 **두 번째 해결기**이고 틀린 것이다.
-🆕⑦ 🔴 **`hopVerdict`가 넷째 상태 `contested`를 얻었다** — 최상 계급은 만장일치인데 **하위 계급이 반대**하는 홉(`확정 · 반대 N-1종`, tone은 이견 쪽 — 운영자가 놓치면 안 되는 사실은 반대다). `candidate`(최상 계급 자체가 k갈래)와 **낱말을 공유하지 않는다.** default 갈래는 여전히 `'gap'`이지 `'ok'`가 아니다 — 와이어가 다섯 번째 상태를 얻어도 **자신을 자신 있게 칠할 수 없다**.
-🔴 **module-private `BASIS_SUFFIX` 정규식은 `$`에 앵커돼 있고 그것이 세부가 아니다**(🆕⑦ 이제 구조화 필드 부재 시의 **폴백**이다). `_with_basis`가 **이긴** 주장의 라벨을 접미로 붙이는데, `candidate` reason은 **진 쪽의** 라벨도 인라인으로 담는다 — anywhere-match는 그 홉을 「가정에 기댄다」로 읽고, 그것은 화면의 존재 이유를 **정확히 뒤집는다**(가정은 **뒤집힌 쪽**이다). 이 반전이 실제로 한 번 일어났고, 그것이 서버가 `hop.basis`를 구조화 필드로 실은 이유다(`ledger_trace.hop_basis` 참조).
-🔴 `instantText(iso)`는 `T`를 공백으로 바꾸고 소수점 이하만 버린다. **`new Date(iso).toLocaleString()`을 절대 쓰지 않는다** — 서버가 선언 zone으로 렌더한 것을 보는 사람의 기계 zone으로 다시 렌더하면 정확성이 남의 노트북으로 옮겨 가고 **오프셋은 화면에서 사라져 아무도 알 수 없다**.
+⚠️ **여기 있던 `ledger_walk_contrast`(1,337줄, 심볼 20여 행)와 `mechanism_gate`(370줄, 심볼 10행) 전용 절도 같이 지웠다** — 3관문·`WALK_DEFAULTS`·`REASON_*` 17종·`verdict(kind, candidate_key, graph=None)`은 **전부 없는 파일의 이름**이다. 기전 그래프는 이제 원장의 선언된 엔티티(`quantity@1`)와 술어(`leads_to@1`)라 **walk이 걸어서 닿는다**. 아카이브된 사본을 읽어야 하면 `server/_archive/ledger_api/mechanism_gate.py`이고, **거기 있는 것은 기록이지 배선이 아니다.**
 
-**`ledger_trace_view.js` export — 🆕⑦ 2 → 3종** — `renderTrace(doc, mount, trace, subjectText, nothing)`(🆕⑦ 다섯째 인자 — `nothingVerdict`의 산출) · 🆕⑦ `renderCoverage(doc, mount, coverage)` · `renderNotice(doc, mount, {tone, title, detail})`. private `el`/`clear`/`renderSummary`/`renderHop`/🆕⑦ `renderSamples`/`renderTerminal`. 🔴 **`document`가 전역이 아니라 인자다** — 그래서 하니스가 bare node에서 **진짜 렌더러**를 몰아 화면에 실제로 닿는 것을 단언한다(함수가 존재한다는 단언이 아니라). `innerHTML` 계열을 쓰지 않으므로 원장에서 나온 lot id가 마크업이 될 수 없다. 🔴 **요약 칩 `가정 N`은 `확정`에 절대 접히지 않는다** — 선언된 가정 아래서만 믿는 홉은 소스가 발화한 사실과 같은 것이 아니다.
+⚠️ **`server/ledger_explorer.py`는 살아 있고 «줄었다»** — 445 → **175줄** (`3b77fbc3` 실측). 남은 것은 **id 코덱과 그 이웃뿐**이다: `MAX_HOPS` · `DEFAULT_NODE_LIMIT = 400` · `DEFAULT_EDGE_LIMIT = 1200` · `_canonical` · **`entity_id(entity_type, keys)`** · **`decode_entity_id(value)`** · `_entity` · `_target_of` · `_instant` · `_edge_rows` · `_depths`. 🔴 **`explore`도 `explore_entity`도 없다** — 그 둘이 이 파일의 「동결 대상」이었고, 동결 대신 삭제됐다. `ledger_subgraph`가 import하는 것은 **id 코덱**이다.
 
-**`ledger_trace.js`(엔트리, 🆕⑦ 149 → 1,205줄 — 콘솔의 지휘자)** — 🆕⑦ **뷰 다섯을 한 URL 공간에서 전환한다**: trace(기본) · `STRUCTURE_VIEW` · `SURPRISE_VIEW` · `LOT_VIEW` · console(사례-대조). `render(currentParams())`가 URL을 읽어 뷰를 고르고, `switchViews`가 마운트 여섯(`#lt-result`/`#lt-console`/`#lt-lot`/`#lt-structure`/`#lt-surprise`)을 갈아 끼운다. 뷰마다 **자기 세션 카운터**가 있다(`session`/`structureSession`/`surpriseSession`/`lotSession`/`contrastSession`/`consoleSession`) — 🔴 세션 가드는 여전히 **중단점 전부 뒤에서** 검사한다. `boot()`이 하는 일(실측): `initTheme` · `history.scrollRestoration = 'manual'`(브라우저 자체 복원은 답이 오기 전에 발화해 짧은 페이지에 앉는다 — `popstate`가 위치를 나르고 매 paint 뒤 적용) · `onDocumentClick` 위임(페이지 내 앵커 내비게이션) · `bindAskBox()` · 🆕⑦ `bindMarking()` · 첫 `render`. **질문 입력은 여전히 `keydown`(Enter) 전용**이다(`bindAskBox` — `change`는 blur에서도 발화한다). 🆕⑦ **`bindMarking()` — 마킹은 `change` 위임 리스너 «하나»를 `#lt-surprise` 마운트에 `boot`에서 한 번만 단다**: `data-mark-lot`을 단 체크박스의 change → `toggleMark` → `repaintSurprise`(로컬 재렌더 + `replaceState` — 내비게이션 아님). 마운트는 재렌더에서 살아남으므로(뷰는 자식만 비운다) **행×repaint마다 리스너가 새지 않는다** — 종전엔 surprise 갈래 진입마다 묶어서 진입/이탈이 잦은 화면에서 누수였다. 놀라움 뷰의 맵 로딩 — `loadAxisMap(rowId, slot, catalog)`이 `/api/ledger/lot_map`을 부르고 (⚰️ **[2026-08-28] 그 라우트는 없다** — 서버가 여는 것은 `/api/ledger/subgraph`·`/declaration` 둘이다)(🔴 슬롯은 **파라미터**지 `surpriseAsked` 읽기가 아니다 — 한 랏 = 여러 프레임. 캐시 키도 `row|slot`) `pumpAxisMaps`가 **렌더러에게 물어**(`mapWants`) 다음 배치를 가져온다(마킹된 랏 순회가 아니라 — 그 방식이 결함이었다). `subjectOf`/`refusalText`/`run(asked, {pushUrl})`은 그대로.
+⚠️ **`server/ledger_trace.py`도 살아 있고 줄었다** — 2,039 → **1,688줄**(`^def `/`^class ` 전건 **48**). 살아 있는 것: `Resolution`/`resolve`/`claim_class`/`claim_rank_key`/`hop_basis`/`SqlClaimLookup`/`coverage`/`relation_exists`/`_fetch`/`resolve_display_zone`. 🔴 **그러나 이 지도가 이 파일에 대해 주장하는 심볼 148개를 전건 대조하니 «다섯이 없는 이름»이었다** — **`trace`** · **`_map_slot`** · `_payload_wafer` · `_payload_slot` · `_slot_map_pair`. 앞의 둘은 그 절의 «주인»이었고(계보 walk 자체), 지금 그 질문은 `GET /api/ledger/subgraph` 가 `follow` 로 답한다. 위 §5-H 의 해당 행들은 묘비로 대체했다. 🔴 `coverage()`는 있으나 **HTTP 소비자가 «0»**이다(`/coverage` 라우트가 없다) — 라우터가 이 모듈에서 실제로 부르는 것은 `relation_exists`·`_fetch`·`REASON_RELATION_ABSENT` 셋뿐이다. ⚠️ **이 패스는 그 절의 산문 서술(거절 어휘·응답 모양)은 열지 않았고 «이름의 존재»만 재섬다** — 나머지는 `a729a7f` 기준이다.
 
-**`ledger_trace_harness.mjs`(🆕⑦ 674 → 1,556줄)** — 방어하는 주장 셋: **P1** 관습에 기댄 홉이 측정에 기댄 홉처럼 보이면 안 된다 · **P2** `unresolvable`은 에러가 아니라 **내용**이다 · **P3** `candidate`는 무언가 이견을 냈다는 뜻이고 개수가 진술의 일부다. 구성 — `suite(coreSource, viewSource)` + `census()` + `DEFECTS`(🆕⑦ 첫 항목이 **이번 라운드의 실제 출하 결함**이다 — 「basis를 또 문장에서 읽기」: `if ('basis' in hop)`을 죽이는 변이가 잡혀야 한다) + `CONTROLS` 2종(전부 **빠져나가야** 한다 — 잡히면 어떤 검사가 동작이 아니라 소스 텍스트를 읽고 있다는 뜻) + `runMutant`. 🔴 **모든 변이가 소스를 실제로 바꿨는지 단언한다** — 상류 개명이 코퍼스를 조용히 은퇴시키는 대신 **빨갛게** 만든다. 마지막 줄 `ASSERTIONS <ran> <failed>`가 H1 프로토콜. ⚠️ **🆕⑦은 구조(함수·DEFECTS·CONTROLS·프로토콜 줄)만 재실측했다** — census 항목별 목록(구 H1–H14)은 재검증하지 않았다. 「input 정확히 1 · button 0」 자체는 페이지에서 별도 실측으로 여전히 참이다.
+### ⚰️ 🆕⑬ 클라 — 원장 콘솔은 **삭제됐다 (2026-08-24, 소유자 판정 「ㅇㅇ 버려」)**
 
-### 🆕⑦ 놀라움 축 클라 4모듈 (2026-08-14 신설 등재)
+🪦 **페이지 셋과 그 모듈 전부가 없다.** `ledger.html` · `ledger-graph.html` · `rnd-console.html`(+ `dist/` 사본) · `ledger_trace.js`/`_core`/`_view` · `ledger_setup*.js` · `ontology_structure*.js` · `case_control_*.js` · `contrast_*.js` · `journey_*.js` · `lot_reference_*.js` · `surprise_*.js`(4모듈) · `ledger_map_panel.js` · `ledger_graph/*` · `rnd_console/*` · 그 하니스 아홉. 🔴 **여기 있던 `ledger_trace_core.js` export 25종 · `ledger_trace_view.js` 3종 · `ledger_trace.js` 뷰 다섯 · `ledger_trace_harness.mjs`의 P1–P3 서술을 전부 지웠다** — 파일이 없으므로 심볼도 없다.
 
-| 파일 | 줄 | 무엇인가 |
-|---|---|---|
+➡️ **후계는 `client2/rnd-board.html` + `client2/src/rnd_board/`이고 [§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재)에 등재했다.** 콘솔이 뷰 다섯을 한 URL 공간에서 갈아 끼우던 자리를, 보드는 **격자에 앉은 부품 여럿 + 바깥의 마킹 저장소**로 바꿨다.
 
 ### 채점자 (`server/tests/`)
 
-🆕⑦ 줄 수·개수는 `a729a7f` 재측정(`def test_` grep 카운트).
+> 🆕⑬ **[2026-08-29 전건 재측정 — `3b77fbc3`]** 줄 수는 `git show HEAD:<path> | wc -l`, 개수는 `grep -c "def test_"`. 🔴 **구 표의 15행 중 «여섯이 없는 파일»이었고, 남은 아홉 중 «여덟»의 수가 어긋나 있었다.**
 
-| 파일 | 줄 | `def test_` |
-|---|---|---|
-| `test_ledger_l1_unit.py` | 🆕⑦ **1,530** | **61** |
-| `test_ledger_l1_pg.py` | 🆕⑦ **1,126** | **22** |
-| `test_ledger_trace.py` | 🆕⑦ **898** | **38** |
-| `test_ledger_trace_contract.py` | 🆕⑦ **476** | **14** |
-| `test_ledger_trace_pg.py` | 🆕⑦ **1,658** | **48** |
-| 🆕⑦ `test_finding_kinds.py` | **165** | **7** |
-| 🆕⑦ `test_ledger_kinds_pg.py` | **246** | **7** |
-| 🆕⑦ `test_ledger_siblings_pg.py` | **451** | **11** |
-| 🆕⑦ `test_ledger_structure_pg.py` | **560** | **8** |
-| 🆕⑦ `test_ledger_lots.py` | **386** | **18** |
-| 🆕⑦ `test_ledger_lot_map_pg.py` | **536** | **10** |
-| 🆕⑦ `test_ledger_walk_contrast.py` | **385** | **18** |
-| 🆕⑦ `test_mechanism_gate.py` ⚰️ **[2026-08-28] `server/_archive/tests/` 로 «같은 커밋»에 이동** | **176** | **11** |
-| 🆕⑦ `test_ledger_observed_unit.py` | **330** | **14** |
-| 🆕⑦ `test_ledger_transfer_unit.py` | **500** | **26** |
+| 파일 | 줄 | `def test_` | 구 표기 |
+|---|---|---|---|
+| `test_ledger_l1_unit.py` | **869** | **34** | ~~1,530 / 61~~ |
+| `test_ledger_l1_pg.py` | **1,606** | **32** | ~~1,126 / 22~~ |
+| `test_ledger_trace.py` | **431** | **11** | ~~898 / 38~~ |
+| `test_ledger_trace_contract.py` | **403** | **8** | ~~476 / 14~~ |
+| `test_ledger_trace_pg.py` | **1,630** | **47** | ~~1,658 / 48~~ |
+| `test_finding_kinds.py` | **166** | **7** | 165 / 7 |
+| `test_ledger_observed_unit.py` | **91** | **2** | ~~330 / 14~~ |
+| `test_ledger_transfer_unit.py` | **209** | **10** | ~~500 / 26~~ |
+| 🆕⑬ `test_ledger_subgraph.py` | **500** | **12** | (미등재였다) |
+| 🪦 `test_ledger_kinds_pg.py` · `test_ledger_siblings_pg.py` · `test_ledger_structure_pg.py` · `test_ledger_lots.py` · `test_ledger_lot_map_pg.py` · `test_ledger_walk_contrast.py` | — | — | **삭제** — 재던 모듈과 같은 구간에 죽었다 |
+| 🪦 `test_mechanism_gate.py` · `test_enrichment_actions.py` | — | — | **`server/_archive/tests/`로 이동** |
 
-`test_ledger_trace_contract.py::test_every_declared_derivation_is_explicitly_classified`가 **번역기 config가 낼 수 있는 모든 derivation을 열거해 해결기가 명시적으로 분류하지 않은 것에서 실패한다** — 새 관습이 조용히 class 2로 해결되는 대신 스위트를 빨갛게 만드는 장치다.
+`test_ledger_trace_contract.py::test_every_declared_derivation_is_explicitly_classified`는 **여전히 있다**(🆕⑬ 실측) — 번역기 config가 낼 수 있는 모든 derivation을 열거해 해결기가 명시적으로 분류하지 않은 것에서 실패한다.
+
+⚠️ **이 표의 `server/tests/` 에는 원장 계열이 이 아홉 말고도 «스물한 개» 더 있다**(`test_ledger_setup_bundle` 1,643/71 · `test_ledger_setup_registry` 985/39 · `test_ledger_roleframe` 498/20 …). 이 절은 **읽기 측 채점자만** 싣던 표라 그대로 두었고, 쓰기·설정 계열은 [§5-H 쓰기 측](#5-h-정본-원장-canonical-ledger)·[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) 소관이다.
 
 ### ⚠️ 소스가 이 절을 반박하는 자리 — 코드 소관이라 여기서 못 고친다
 
@@ -2681,6 +2613,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 - `server/config/sample/ledger_config.json.sample`이 **`partitioning` 블록을 선언하는데 저장소 어디에도 읽는 코드가 없다**(전건 grep 0건 — `server/ledger/`도 마이그레이션도). `sources.<name>.columns.equipment`도 마찬가지로 **선언만 되고 읽히지 않는다**(`config.validate`의 필수 7종에 없고 `backfill.fetch_page`의 SELECT에도 없다). 🆕⑦ **`a729a7f`에서 재확인 — 둘 다 여전히 참이다**(`partitioning`의 grep 히트는 sample 자신·마이그레이션 docstring 산문·테스트 1곳뿐이고, `equipment`를 컬럼으로 읽는 코드는 신설 번역기 2종에도 없다). ⚠️ 🆕⑩ **이 항은 `5359fdd` 기준이고 재측정하지 않았다** — 그 사이 `.sample`이 워킹트리에서 수정 중이었다(다른 레인).
 - 🆕⑩ 🔴 **`backfill.py`의 docstring이 「`dry_run.py`가 `fetch_*` 아홉을 import한다」고 적지만 `dry_run.py`는 하나도 import하지 않는다.** 그 아홉의 호출자는 레포 전체에서 0건이다 — 위 `backfill.py` 표의 마지막 행에 실측을 적었다. 살려 두는 근거가 명시돼 있고 그 근거가 거짓인 형태라, **다음 독자가 근거만 읽고 통과시킬 것**이므로 여기 겹쳐 적는다.
 - 🆕⑩ 🔴 **`server/ledger/__init__.py`의 「읽는 순서」가 없는 파일을 여섯째로 지목한다** — `lot_event_translator.py`. 위 항목이 「신설 번역기 2종을 아직 모른다」고 적었는데, 이제는 **그 목록이 가리키는 파일 자체가 삭제됐다.** 소스 소관이라 여기서 못 고친다.
+- 🆕⑬ 🔴 **`/subgraph`의 유일한 문이 그 파일 자신이 쟰 정착점에 닿지 못하게 막는다.** `ledger_api/ledger_subgraph.py`가 `MAX_EDGE_LIMIT = 6000` · `MAX_CLAIM_SCAN = 6000` 으로 올리면서 «수로» 근거를 적어 둔다(같은 씨앗에서 `edge_limit 3000` 은 여전히 엣지에서 끊기고 6000 에서야 5,079 엣지로 정착한다). 그런데 **라우터가 `edge_limit: int = Query(1200, ge=20, le=3000)` 으로 상한을 여전히 3000 에 묶어 둔다** — HTTP 로는 그 정착값을 요구할 수 없고, 응답은 `truncated.edges` 로 «정직하게» 끊겼다고 말한다. 상수가 틀렸다는 뜻이 아니라 **두 자리가 같은 수를 말하지 않는다**는 사실만 적는다(어느 쪽이 의도인지는 소스로 판정할 수 없다). 또 `DEFAULT_EDGE_LIMIT = 6000` 과 라우트 기본값 **1200** 도 갈라 있다 — 모듈을 직접 부르는 테스트와 화면이 «다른 기본값»으로 돌고 있다.
+- 🆕⑬ 🔴 **`ledger_subgraph.py` 마지막 세 상수는 호출자가 «0»이다** — `NODE_TABLE_COLUMNS` · `EDGE_TABLE_COLUMNS` · `PROPERTY_TABLE_COLUMNS`. 이 셋을 읽던 `tabular_projection` 과 `GET /subgraph/table` 이 같이 떠났는데 상수만 남았다. 전건 grep(`server` · `client2` · `contracts`) 에서 선언 자신 말고는 **히트 0건**이다 — 그러니 이 세 이름을 «표 응답의 계약»으로 읽지 마라. 삭제 판정은 서버 도메인 소관이라 여기서 하지 않는다.
 
 ---
 
@@ -2860,34 +2794,34 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ### 서버 — 원장 읽기 측 (라우터 `ledger_trace_router`의 소비 모듈)
 
-🔴 **[§5-H](#5-h-정본-원장-canonical-ledger)가 라우트 7개를 서술하는데 실측은 16개다.** 아래 일곱이 나머지 아홉 라우트를 떠받친다.
+🆕⑬ **[2026-08-29 전면 재작성 — `3b77fbc3`] 이 표는 «여섯 행 중 넷이 없는 파일»이었다.** 개정 6이 키를 받는 데이터 라우트를 지우면서 그 몸도 같이 갔다. 남은 읽기 측은 **셋**이고, 그중 라우터가 부르는 것은 `ledger_subgraph` 하나 + `ledger_trace`의 배관 셋(`relation_exists`·`_fetch`·`REASON_RELATION_ABSENT`)뿐이다.
 
-🆕⑪ **[2026-08-23 줄 수 전건 재측정 — `b3e1ec83`] 8행 중 4건이 어긋나 있었다**(`subgraph` 1,254→**1,625** · `journey` 1,551→**1,554** · `trends`·`composition`·`selection`·`catalog`·`identity`·`explorer`는 무변동). 🔒 **이 표의 `ledger_explorer`·`ledger_journey`는 «동결»이다**(은퇴 울타리 C군 — 문서 상단 🆕⑪ 블록). 🔴 **`ledger_subgraph`는 동결이 아니고 이 구간에 가장 크게 자란 읽기 측 모듈이라, §5-I 규칙(「절이 필요할 만큼 중요해지면 승격한다」)대로 아래에 전용 항목을 뒀다.**
-
-| 파일 | 줄 | docstring 첫 줄 (실측) |
+| 파일 | 줄 | 무엇인가 (🆕⑬ 실측) |
 |---|---|---|
-| 🔒 `server/ledger_explorer.py` | **445** | **[동결]** 원장 계보의 **경계 지어진 읽기 전용 그래프 투영**. 🔴 **두 번째 walk를 발명하지 않는다** — `/trace`와 **같은 `ClaimLookup`**을 소비한다고 docstring이 명시 |
-| `server/ledger_api/ledger_subgraph.py` | 🆕⑪ **1,625**(구 표기 1,254) | 증거와 물리 지시체 위의 **통합 경계 증거 서브그래프**. 🔴 **`ledger_events`의 투영이지 두 번째 그래프 저장소가 아니다**(은퇴한 `graph_nodes/edges`의 후계 자리). **↓ 아래 전용 항목** |
-| `server/ledger_api/ledger_trends.py` | **511** | R&D 조사 워크벤치의 **동적 결함 추이**. 읽기 모델이 **웨이퍼 입도**임이 의도 |
-| `server/ledger_api/ledger_composition.py` | **301** | 최종 복합 CHIP의 **역방향 조성 추적**. 랏 계보 walk와 달리 **순서 있는 이동 경로를 주체마다 보존** |
-| `server/ledger_api/ledger_selection.py` ⚰️ **[2026-08-28] 삭제됨** | **1,423** | UI의 타입 있는 마킹을 **원장 근거의 최종 CHIP 증거·비교로 해석** (POST `/api/ledger/selection/resolve`) |
-| `server/ledger_api/ledger_identity.py` | **62** | Trend와 타입 있는 선택이 공유하는 **실험 단위 표식(mark)**. ⚠️ **온톨로지 엔티티 정체성이 «아니라고» docstring이 명시**한다 — 둘을 섞지 마라 |
+| `server/ledger_api/ledger_subgraph.py` | 🆕⑬ **1,030**(구 표기 1,625 @`b3e1ec83` — **−595**) | `GET /subgraph`의 몸. **↓ 아래 전용 항목** |
+| `server/ledger_explorer.py` | 🆕⑬ **175**(구 표기 445 — **−270**) | 🔴 **이제 «id 코덱»이다.** `entity_id(entity_type, keys)` · `decode_entity_id(value)` · `_entity` · `_edge_rows` · `_depths` · `_target_of`. **`explore`·`explore_entity`는 없다** — 「동결」 딱지가 붙어 있던 그 둘이 동결이 아니라 삭제로 끝났다 |
+| `server/ledger_trace.py` | 🆕⑬ **1,688**(구 표기 2,039 — **−351**) | 해결기·계보 walk. 🔴 **`trace()` 자체가 없다** — `^def trace` 전건 히트 0 (`_map_slot` 도 같이 갔다). `coverage()` 는 살아 있으나 **HTTP 소비자가 «0»이다**(`/trace`·`/coverage` 둘 다 라우트가 없다). 라우터가 실제로 쓰는 것은 배관 셋뿐이고, **심볼 표는 §5-H에 있으며 `a729a7f` 기준이라 재검증되지 않았다** |
+| 🆕⑬ `server/ledger_api/declared_entities.py` | **93**(신설) | 선언된 «개체 타입»과 «신원 키»의 유일한 캐시 리더 — `load(force_reload=False)` · `declared_types()` · `identity_keys(entity_type)` · `_bare("wafer@1") -> "wafer"`. 🔴 **절대 예외를 올리지 않는다** — 선언이 없거나 깨지면 목록이 비는 것이고, 그것이 답이다. docstring이 「`reference_edges`·`reference_edge_names`·`targets_for`는 호출자가 «0»이라 2026-08-28에 나갔다」고 적는다 |
+| 🪦 `ledger_trends.py` · `ledger_composition.py` · `ledger_selection.py` · `ledger_identity.py` · `ledger_catalog.py` · `ledger_journey.py` | — | **삭제.** 구 표기 511 / 301 / 1,423 / 62 / (catalog·journey는 §5-H 표) — **앵커로 쓰지 마라** |
 
-#### 🆕⑪ `server/ledger_api/ledger_subgraph.py` (**1,625줄** @`b3e1ec83`, 구 표기 1,254) — 증거 투영이 **선언된 물리량까지 잇는다**
+> 🔴 🆕⑬ **`ledger_api/__init__.py`의 「Nothing here is imported by a write path」는 이제 거짓이다.** 실측 — `server/ledger/config.py`가 `from ledger_api import declared_entities`를(두 함수 안에서), `server/ledger/source_profile_builtins.py`가 같은 모듈을 지연 import한다. **쓰기 측이 읽기 측 패키지를 부른다.** 의도된 뜻(부팅 경로 무접촉)은 여전히 참이지만 — 둘 다 함수 안 import다 — **문장은 글자 그대로 반증됐다.** 코드 소관이라 여기서 고치지 않는다.
 
-🔴 **이 구간에 노드 종류가 하나 늘고 seed가 부호를 얻었다**(`a7b107cb` · `c5b13cf7`). ⚠️ **최상위 심볼 이름과 지목한 본체만 실측했고, 이 파일의 전체 심볼 표는 여전히 없다.**
+#### 🆕⑬ `server/ledger_api/ledger_subgraph.py` (**1,030줄** @`3b77fbc3`) — **노드 종류가 «하나»가 됐다**
 
-| 심볼 | 실측 |
+🔴 **[2026-08-29] 이 자리에 있던 심볼 표 아홉 행 중 넷이 없는 이름이었다.** `NODE_KINDS` · `quantity_node_id` · `_quantity_node` · `_bound_quantities`가 `collect`·`observation_mode`·`include_values`와 함께 2026-08-28에 은퇴했다. **그리고 파일이 «옮겨 왔다»** — `server/ledger_subgraph.py` → `server/ledger_api/ledger_subgraph.py`(그래서 `git show b3e1ec83:server/ledger_api/ledger_subgraph.py`는 실패한다. 구 리비전을 열려면 **구 경로**로 열어라).
+
+| 심볼 | 실측 (`3b77fbc3`) |
 |---|---|
-| `NODE_KINDS` | 🆕⑪ **8종** — `entity`·`event`·`claim`·`collection`·`point`·`value`·**`quantity`**·`action`. 🔴 **모르는 이름은 «빈 목록»이 아니라 거절이다** — 영원히 참일 수 없는 필터는 진짜 부재와 구분되지 않고, 이 걷기의 일이 정확히 그 둘을 가르는 것이다 |
-| 🆕⑪ `quantity_node_id(model, quantity)` / `_quantity_node(model_name, quantity, model=None)` | **`mechanism_models.json`에서 «합성»한다 — 원장에서 읽지 않는다.** 🔴 **모델 이름이 노드 정체성의 일부인 것이 의도다** — 같은 물리량 이름이 두 모델에 나오고, 노드를 하나로 합치면 두 모델러의 주장이 **아무도 하지 않은 셋째 주장**으로 접합된다. id 접두어 `ledger-quantity:v1:` (⚰️ **[2026-08-28] 접두어는 `ledger-entity:v1:` «하나»가 됐다** — 물리량은 합성 노드가 아니라 선언된 엔티티 `quantity@1` 이고, 원장에서 «읽힌다»), `decode_node_id`가 왕복을 검증한다(웨이퍼 걷기에서 꺼낸 id를 그대로 seed로 되먹이면 풀리고 걷힌다) |
-| 🆕⑪ `_bound_quantities(mechanism, atom)` | Claim 페이로드의 잎이 바인딩된 `(model, quantity, binding key)` 삼중. 조회는 **`mechanism_gate`의 `nodes_for`** (⚰️ **[2026-08-28] 그 로드는 walk 에서 빠졌다** — 기전 그래프는 이제 원장의 `quantity@1`·`leads_to@1` 이라 walk 이 «걸어서» 닿는다)이고 그 두 바인딩 형식을 그대로 쓴다 — 여기서 다시 유도하지 않는다. `usable` 모델마다 한 번씩 낸다 |
-| 새 엣지 | `Value --binding--> Quantity --mechanism--> Quantity`(`dir`은 선언대로). 🔴 **어휘는 «안» 자란다** — Quantity는 누가 주장한 엔티티가 아니라 **누군가 선언한 것에서 합성된** 노드다 |
-| 🆕⑪ `_signed_seeds(start)` | `subgraph`의 첫 인자가 id 하나 **또는** `{"positive": [...], "negative": [...]}`. 🔴 **상태가 셋이고 셋인 채로 둔다** — `+` 관측 / `−` 찾아봤는데 없음(대조군) / **미등재 = 한 번도 안 봄**. 목록에 없는 주체를 대조군으로 «승격하지 않는다»(빈 `negative`는 「모든 대조군이 깨끗했다」가 아니라 「대조를 안 돌렸다」다). 같은 id가 양쪽에 있으면 이름을 대고 거절 |
-| 🆕⑪ `subgraph(seed_id, lookup, *, hops, direction, node_limit, edge_limit, action_lookup=None, follow=None)` ⚰️ **[2026-08-28] `include_values`·`observation_mode`·`collect` 셋이 마지막 호출자와 함께 떠났다.** 아래는 그 셋이 살아 있던 때의 서술이다: ~~`subgraph(..., include_values, observation_mode, collect=None)`~~ | `collect`가 답을 **한 노드 종류로 좁힌다**. 🔴 **네 자리에 나오는데 «어느 자리도 값으로 분기하지 않는다»** — 분기가 생겼다면 모양이 틀렸다는 뜻이라는 것이 수용 기준이었다. `collect="entity"`는 웨이퍼들 위의 선언된 공통 조상을, `collect="quantity"`는 순위 매긴 원인을 내며 **두 호출의 노드 목록이 동일**하다 |
-| 🆕⑪ `_reach(nodes, edges, seed_signs)` | **규칙 둘, 셋째는 없다** — 첫 홉은 차수로 «나누지 않고»(나누면 양쪽에 똑같이 흔한 요인이 단지 마킹된 주체의 claim 수가 대조군과 달라서 0이 아니게 나온다), 그 뒤 모든 홉은 발신 노드의 차수로 나눈다(허브가 순위를 범람시키지 않게). ⚠️ **이 첫 홉 규칙은 «검사하지 않는 테스트»를 갖고 있었다** — 규칙을 변이시켜도 16건 전부 초록이었고(우세는 부호를 가로질러 비교하지 않으며 seed별 재척도는 두 양성 seed의 차수가 다르지 않는 한 순위를 못 움직인다), 픽스처가 그 조건을 갖추자 변이 하나가 정확히 한 테스트를 빨갛게 만들었다 |
-| 🆕⑪ `_rank_layers` · `_evidence` · `_propagation` · `_seed_node(seed_id, seed_ref, models_by_name, action_lookup)` | 순위·근거·전파. **예산이 끊은 후보는 「없음」이 아니라 「미검사」로 답한다** — 응답이 전파가 끝났는지도 함께 말한다(라이브 걷기는 노드 상한에 닿는다) |
-| 🔴 🆕⑪ **`/subgraph`는 엔티티 seed에서 «쓰인 이래 계속» 500이었다** | summary 조회 SQL을 **f-string 안에서** 지었는데 그 안에 중괄호를 쓴 JSON 경로가 있어 파이썬이 치환 필드로 읽었다 → 매 호출 `NameError`. 🔴 **살아남은 이유가 채점 구조다** — 인메모리 테스트는 전부 순수 파이썬 쌍둥이를 쓰고 유일한 PostgreSQL 테스트는 서버가 없으면 skip한다. `c5b13cf7`이 이스케이프하고 **렌더된 SQL이 그 리터럴 경로를 담는지** 단언하는 테스트를 붙였다 |
+| 🆕⑬ `decode_node_id(value)` | 🔴 **접두어가 «하나»다** — `ledger-entity:v1:` 만 풀고, 그 밖은 전부 `ValueError("node id must be ledger-entity:v1:")`. 🪦 은퇴한 갈래: event · claim-atom · finding-point · finding-collection · value · quantity. **claim seed는 «거절»이다** — claim이 2026-08-25에 엣지가 됐으므로 claim id는 그래프에 노드가 없는 것을 가리킨다(빈 그래프로 답하면 「이 claim에 붙은 게 없다」와 구별 불가). 소스 주석이 「marking을 먼저 확인했다: 아무것도 claim을 마킹하지 않는다」고 적는다 |
+| 🆕⑬ **은퇴한 id 빌더 여섯** | `event_node_id` · `claim_node_id` · `value_node_id` · `finding_point_node_id` · `finding_collection_node_id` · `quantity_node_id` — 전부 없다. 살아 있는 것은 `ledger_explorer.entity_id` **하나**다. ⚠️ **엣지 id 접두어 `ledger-evidence-edge:v1:`는 «살아 있다»**(`_edge()` 안) — 「접두어 하나」는 **노드** id의 이야기이고, 엣지까지 세면 검사가 잘못 빨개진다 |
+| 🆕⑬ `DEFAULT_CONTINUES_HOPS = 0` | 🔴 **자재를 따라가는 걸음에 주는 «별도» 예산이고 기본이 «0»이다** — 착지한 날 선언이 이미 여섯 술어를 `continues`라 적고 있어서, 0 아닌 기본값이면 축을 들여온 그 커밋이 기존 화면의 답을 전부 바꿨을 것이다. 🔴 **공짜가 아니다** — 자재 걸음도 `depths` 한 층을 쓰므로 상한은 `hops + continues_hops`이고, 두 번째 예산이 사는 것은 「한 웨이퍼의 자기 이력을 따라가는 것이 «떠나는» 몫을 안 먹는다」뿐이다 |
+| 🆕⑬ `subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both", node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT, action_lookup=None, follow=None, continuing=None, continues_hops=DEFAULT_CONTINUES_HOPS)` | 🔴 **`continuing`은 «호출자»가 준다** — 선언에서 읽은 술어 집합이고, 이 파일에는 술어 낱말이 하나도 안 적혀 있다. 양쪽 다 `@` 앞에서 자른 맨 이름으로 비교한다(선언은 `bonded_from@1`, 원자는 `bonded_from`). `budget_hops = hops + continues_hops`. ⚠️ **`action_lookup=None` 키워드는 남아 있으나 넘기는 호출자가 레포에 «0»이다**(`enrichment_actions`가 `_archive/`로 갔다) |
+| 🆕⑬ `_signed_seeds(start)` | 첫 인자가 id 하나 **또는** `{"positive": [...], "negative": [...]}`. 🔴 **상태가 셋이고 셋인 채로 둔다** — `+` 관측 / `−` 찾아봤는데 없음(대조군) / **미등재 = 한 번도 안 봄**. 목록에 없는 주체를 대조군으로 승격하지 않는다. 같은 id가 양쪽에 있으면 이름을 대고 거절 |
+| 🆕⑬ `_declared_key_order(entity_type)` / `_entity_node(entity_type, keys)` | **라벨의 키 순서를 «선언»에서 읽는다** — `ledger_config.json`의 `entities.<type>.keys` 순서(캐시, 예외 없음). 🔴 **`ledger_explorer._entity`의 순서는 v1 `ENTITY_TYPES` 기반이라 나중에 선언된 타입이 «부재»이고**, 그때 라벨이 페이로드 JSON의 우연한 순서를 쓰게 된다 — `die`에서 `x`/`y`가 앞에 서고 자재를 이름 짓는 유일한 키 `mat_id`가 두 값짜리 라벨 밖으로 밀린다. 못 읽는 선언은 **오늘의 라벨 그대로** |
+| `_reach(nodes, edges, seed_signs)` | **규칙 둘, 셋째는 없다** — 첫 홉은 차수로 나누지 않고, 그 뒤 모든 홉은 발신 노드의 차수로 나눈다(허브가 순위를 범람시키지 않게) |
+| `_rank_layers(items)` · `_evidence(nodes, parents, seed_signs, node_id)` · `_propagation(nodes, edges, seed_signs, complete)` · 🆕⑬ `_seed_node(seed_id, seed_ref, action_lookup)` | 순위·근거·전파. 🆕⑬ **`_seed_node`의 `models_by_name` 인자가 빠졌다**(기전 모델 로드가 walk에서 나갔다). **예산이 끊은 후보는 「없음」이 아니라 「미검사」로 답한다** — 응답의 `truncated`가 무엇이 끊었는지 말한다(`depth`/`nodes`/`edges`/`claims`/`actions`) |
+| `SqlEvidenceLookup(connection, relation="ledger_events")` · `InMemoryEvidenceLookup` · `EvidenceAtom` · `ATOM_COLUMNS`/`EVIDENCE_COLUMNS` | 🔴 **`follow`는 SQL 안에 있다**(`claims_for_entities(..., follow=None)`) — 여기서 걸러진 술어는 **애초에 안 가져오므로 예산을 안 쓴다**. 투영에서 거르면 걷기는 같은 벽에서 멈추고 무엇을 모았는지만 감춘다. `relation`은 맨 식별자만 받는다(`_IDENTIFIER`) |
+| 🪦 `tabular_projection` · `NODE_KINDS` · `RETIRED_NODE_KINDS` · `FOLDED_KINDS` · `collect` · `observation_mode` · `include_values` · `quantity_node_id` · `_quantity_node` · `_bound_quantities` | **전부 없다.** `NODE_TABLE_COLUMNS`/`EDGE_TABLE_COLUMNS`/`PROPERTY_TABLE_COLUMNS` 세 상수만 남았고 **호출자가 0**이다(위 「소스가 반박하는 자리」) |
 
 ### ⚰️ 서버 — 원장 v2 작성/설정 계열 → **[§5-H](#5-h-정본-원장-canonical-ledger) / [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다 (2026-08-21)**
 
@@ -2903,7 +2837,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 |---|---|---|
 | ⚰️ `server/ledger_api/ontology_config_explorer_router.py` | ~~129~~ → 🆕⑩ **264** | **[§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재)로 승격했다.** 🔴 여기 적혀 있던 **「라우트 7종」은 2026-08-21 실측 «16»이다** — 그 사이 `/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run`·`/bootstrap`·`/drafts/new`·`DELETE /declarations/{key:path}`가 섰다. 게이트 서술도 정정됐다(읽기 `/view`만 보통 토큰 → **여섯이 보통 토큰**) |
 | 🔒 `server/ledger_admin.py` | 🆕⑪ **848**(구 표기 844) | **[동결 — A군]** admin으로 소스를 원장에 잇고 어휘를 늘린다 — **문법 검증과 저장(1단·3단)**. 판정 정본은 `docs/process/LEDGER_RULINGS.md` **R-2026-08-15-M** |
-| `server/audit_changeset.py` | **416** | 🅿️ **파킹 — 배선 안 됨, 운영 호출자 0개.** 자기 테스트 파일 말고는 import하는 곳이 **레포 전체에 없다**(`crud.py` 쓰기·`main.py` 읽기 둘 다 **리팩터 이전 인코딩 그대로**). 레인은 **2026-08-12에 의도적으로 중단**됐고 `crud.py`/`main.py`/`schemas.py` hunk는 되돌려졌다 — 이 파일이 추적 대상이 된 건 6일 뒤 `1aeda91`의 **경로 없는 `git add`** 때문이다. `server/tests/test_audit_changeset.py`는 **23건 전부 skip**. docstring이 「감사 행의 CHANGESET 모양 — WRITE 1건당 1행」이라 **착지한 것처럼** 적혀 있으나 **제안일 뿐**이니 라이브 감사 모양으로 읽지 말 것. 서술된 결함 5종은 **여전히 열려 있다**(감사 «이력»만 손실, 셀 값은 정상). 판정: `docs/process/PROJECT_STATUS.md:1560-1568` |
+| ⚰️ 🆕⑬ `server/audit_changeset.py` — **[2026-08-28] `server/_archive/audit_changeset.py` 로 이동** (자기 테스트도 `server/_archive/tests/test_audit_changeset.py` 로 같이 갔다) | ~~416~~ | 🅿️ **파킹 — 배선 안 됨, 운영 호출자 0개.** 자기 테스트 파일 말고는 import하는 곳이 **레포 전체에 없다**(`crud.py` 쓰기·`main.py` 읽기 둘 다 **리팩터 이전 인코딩 그대로**). 레인은 **2026-08-12에 의도적으로 중단**됐고 `crud.py`/`main.py`/`schemas.py` hunk는 되돌려졌다 — 이 파일이 추적 대상이 된 건 6일 뒤 `1aeda91`의 **경로 없는 `git add`** 때문이다. `server/tests/test_audit_changeset.py`는 **23건 전부 skip**. docstring이 「감사 행의 CHANGESET 모양 — WRITE 1건당 1행」이라 **착지한 것처럼** 적혀 있으나 **제안일 뿐**이니 라이브 감사 모양으로 읽지 말 것. 서술된 결함 5종은 **여전히 열려 있다**(감사 «이력»만 손실, 셀 값은 정상). 판정: `docs/process/PROJECT_STATUS.md:1560-1568` |
 | `server/chain_key_gate.py` | **232** | 체인은 키 컬럼이 안 채워진 행을 낼 수 없다 — **관문 «하나», 일곱 개가 아니라** |
 | `server/verified_join_contract.py` | **201** | 가상 조인 **물리 검증 뒤에만** 만들어지는 불변 인계물. 모양 선언은 여전히 [`virtual_join_config`](#5-c-2026-07-31-신설-서버-모듈-2종) 소유 |
 | `server/launcher_args.py` | **212** | `run_decoupled_app.py`의 **거절 절반**(명령행 파싱) |
@@ -2921,7 +2855,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ### 클라 — 미등재 모듈 13종 + 페이지 2종
 
-🔴 **vite 엔트리 둘(`rnd_console` → `rnd-console.html` · `ledger_graph` → `ledger-graph.html`)이 이 지도에 «화면도 모듈도» 없었다.** [§7](#7-client2src--웹-클라이언트) 도입부의 엔트리 개수도 함께 정정했다(7 → **9**).
+⚰️ 🆕⑬ **[2026-08-29] 그 둘은 사라졌다.** `rnd-console.html`·`ledger-graph.html`·`ledger.html` 세 페이지와 `src/rnd_console/**`·`src/ledger_graph/**` 모듈 전부가 HEAD 에 없고(`3b77fbc3` 실측), vite 엔트리는 **7**이며 그중 신설은 `rnd_board`다 — [§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재) 에 등재했다. 아래 문단은 그 둘이 살아 있던 때의 서술이다: ~~🔴 **vite 엔트리 둘(`rnd_console` · `ledger_graph`)이 이 지도에 «화면도 모듈도» 없었다~~.** [§7](#7-client2src--웹-클라이언트) 도입부의 엔트리 개수도 함께 정정했다(7 → **9**).
 
 | 파일 | 줄 | `^export` | 무엇 |
 |---|---|---|---|
@@ -3043,7 +2977,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 
 > 🆕⑥ 🔴 **[2026-08-13 `vite.config.js` 실측 정정] 멀티페이지 엔트리는 6이 아니라 7이고, 종전 목록은 없는 것 하나를 담고 있고 있는 것 둘을 빠뜨렸다.** 실측(`aeddac8`의 `build.rollupOptions.input`) — `main`(index.html) · `admin` · `map_editor` · **`map_editor2`** · `graph` · `trace` · **`ledger`**. ~~`enrichment`~~는 `ab36fab`이 페이지와 함께 걷어 갔다(위 표의 해당 행). 🔴 **`trace`와 `ledger`는 서로 다른 화면이다** — 앞은 `/graph/trace`(G2 지식그래프 보고서, [§7 `trace.js`](#7-client2src--웹-클라이언트)), 뒤는 `/api/ledger/trace`(⚰️ **[2026-08-28] 이쪽도 은퇴했다.** 정본 원장 계보 walk 이었고, [§5-H](#5-h-정본-원장-canonical-ledger)). 소스 주석이 합치지 않은 이유를 적고 있다: 「어느 주장이 왜 이겼는가」를 보여 주는 화면을 「무엇이 연결돼 있는가」를 보여 주는 화면 뒤에 두게 된다.
 
-> 🆕⑨ 🔴 **[2026-08-18 재측정] 엔트리는 7이 아니라 «9»다.** 실측(`5359fdd`의 `build.rollupOptions.input`) — `main`(index.html) · `admin` · `map_editor` · `map_editor2` · `graph` · `trace` · `ledger` · 🆕 **`rnd_console`**(rnd-console.html) · 🆕 **`ledger_graph`**(ledger-graph.html). 🔴 **뒤의 둘은 이 지도에 «화면도 모듈도» 등재된 적이 없다** — 소비 모듈은 [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측)에 존재·크기만 올렸다. ⚠️ **`graph`와 `trace` 엔트리는 살아 있으나 그 서버 라우트는 410으로 은퇴했다**([§1.5](#15-그래프-조회-구간은-410으로-은퇴했다)) — **이 패스는 두 화면이 의도적 잔존인지 잔재인지 판정하지 않았다**(클라 도메인 소관).
+> ⚰️ 🆕⑬ 🔴 **[2026-08-29 재측정] 엔트리는 «7»이고 구성이 바뀜다.** 실측(`3b77fbc3` 의 `build.rollupOptions.input`) — `main`(index.html) · `admin` · `map_editor` · `map_editor2` · `graph` · `trace` · 🆕 **`rnd_board`**(rnd-board.html — [§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재)). 🔴 **`ledger`·`rnd_console`·`ledger_graph` 셋은 삭제됐다**(은퇴가 아니라 삭제 — `vite.config.js` 주석이 소유자 판정 「ㅇㅇ 버려」를 적고 있다). 아래는 그것들이 살아 있던 때의 서술이다: ~~🆕⑨ **[2026-08-18 재측정] 엔트리는 7이 아니라 «9»다**~~. 실측(`5359fdd`의 `build.rollupOptions.input`) — `main`(index.html) · `admin` · `map_editor` · `map_editor2` · `graph` · `trace` · `ledger` · 🆕 **`rnd_console`**(rnd-console.html) · 🆕 **`ledger_graph`**(ledger-graph.html). 🔴 **뒤의 둘은 이 지도에 «화면도 모듈도» 등재된 적이 없다** — 소비 모듈은 [§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측)에 존재·크기만 올렸다. ⚠️ **`graph`와 `trace` 엔트리는 살아 있으나 그 서버 라우트는 410으로 은퇴했다**([§1.5](#15-그래프-조회-구간은-410으로-은퇴했다)) — **이 패스는 두 화면이 의도적 잔존인지 잔재인지 판정하지 않았다**(클라 도메인 소관).
 
 > 🔴 **[2026-08-04] `map_editor.js`가 이음매를 따라 쪼개지는 중이다 — 이 절을 읽는 방식이 그래서 바뀌었다.**
 > - 이번 라운드에 **두 모듈이 그 파일에서 잘려 나왔다**: 🆕 `map_key.js`(158줄) · 🆕 `split_registry_row.js`(366줄). **여섯 건이 더 예정돼 있다.**
@@ -3728,6 +3662,68 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | `dom.js` (~57) | DOM 참조 일원화 — `elements` 게터 객체(+`traceBtn`/`menuTrace`) |
 | `config.js` (~5) | `API_BASE`/`CURRENT_USER`/`pageLimit` |
 | `clipboard.js`·`counter.js` | counter.js는 Vite 템플릿 잔재(미사용) |
+
+---
+
+## 7-B. R&D 보드 rnd_board (2026-08-29 신설 등재)
+
+> 🔬 **측정 기준: `3b77fbc3`(HEAD)의 커밋된 blob**(`git show 3b77fbc3:<path>`). 🔴 **라인 번호는 이 절에 하나도 없다** — 위치는 `git grep -n "<심볼>" -- client2/src/rnd_board`로 확정하라.
+>
+> **무엇인가.** 삭제된 원장 콘솔([§5-H 클라 묘비](#5-h-정본-원장-canonical-ledger))의 후계. 콘솔이 **뷰 다섯을 한 URL 공간에서 갈아 끼우던** 화면이었다면, 보드는 **격자에 앉은 부품 여럿 + 바깥의 «이름 붙은 마킹» 저장소**다. vite 엔트리 `rnd_board`(`rnd-board.html`)이고 **`ledger` 엔트리의 자리를 물려받은 것이 아니라 따로 선다**(`vite.config.js` 주석 실측).
+>
+> ⚠️ **이 패스가 «본체를 읽은» 것은 `api.js`·`main.js`·`marking_store.js`·`walk_box_panel.js`·`panel.js`·`grid_shell.js`·`table_part.js` 일곱이다.** 나머지 부품은 **존재·줄 수·클래스 이름만** 실측했고 심볼 표가 없다 — 있다고 주장하지 않으려고 그렇게 뒀다.
+
+**파일 20개 (js 19 = 7,148줄 · css 1 = 623줄)**
+
+| 파일 | 줄 | 무엇인가 |
+|---|---|---|
+| `api.js` | **1,567** | 경계 전부 — `ROUTES` · `COLLECTS` · `createWalk` · `createWalkBoxWalk` · 모델 변환기. **↓ 아래 전용 항목** |
+| `main.js` | **812** | 합성 루트 — 좌석(seat) 선언 배열 + `apiBase`/`fetchImpl` 을 **한 번** 묶는다. 🔴 부품에 `apiBase`가 다시 나타나면 그것이 결함이다 |
+| `board.css` | **623** | 보드 스타일 |
+| `panel.js` | **158** | 🔴 **근원 템플릿 — 모든 부품의 부모.** `export class Panel`(`constructor(host, deps)` · `mount` · `resize(width, height)` · `destroy` · `startFor(given)` · `markCount()` · `signOf(nodeId)` · `mark(nodeId, sign, mode = 'replace')` · `render()` · `onMarkingChanged()` · `onResize()`) + `export function markingIntent(event)`. **모듈 수준 상태가 없다** — 자기 mount와 deps를 생성자가 받는다 |
+| `grid_shell.js` | **128** | `export class GridShell` — `render(layout)`가 좌석 선언을 격자에 앉히고 `partOf(id)`로 되찾는다. **배치는 부품 «밖»에 있다** |
+| `table_part.js` | **158** | 🔴 **표의 근원 템플릿** — `export class TablePart extends Panel`, `setRows(rows)` + private `_template`/`_head`/`_row`/`_cell`/`_cellEl`. 구성 표와 순위 표가 **같은 코드, 다른 선언** |
+| `marking_store.js` | **159** | **↓ 아래 전용 항목** |
+| `marking_intersection.js` | **87** | `export function intersectMarkings(store, spec)` — 이름 붙은 마킹 여럿의 교집합 |
+| `marking_status_panel.js` | **98** | 마킹 상태 표시 |
+| `walk_box_panel.js` | **544** | **↓ 아래 전용 항목** |
+| `map_panel.js` | **1,071** | 웨이퍼 맵 좌석 |
+| `main_trend_panel.js` | **430** | 기본 트렌드 좌석 |
+| `head_summary_panel.js` | **347** | 머리 요약 |
+| `composition_panel.js` | **293** | 자재 구성 |
+| `candidate_list_panel.js` | **272** | 후보 목록 |
+| `control_bar_panel.js` | **260** | 제어 막대 — 축 선택을 `axis:y` 마킹에 «쓴다» |
+| `rank_list_panel.js` | **225** | 순위표 |
+| `reach_panel.js` | **181** | 「닿는 곳」 — 마킹에서 어느 술어로 무엇에 닿는가 |
+| `expanded_layer_panel.js` | **208** | 펼친 층 |
+| `declaration_panel.js` | **150** | 선언 패널 |
+
+**하니스 7 (3,535줄) + 픽스처 3** — `rnd_board_harness.mjs` **1,268** · `rnd_board_walk_box_harness.mjs` **464** · `rnd_board_reach_harness.mjs` **423** · `rnd_board_control_trend_harness.mjs` **422** · `rnd_board_composition_harness.mjs` **414** · `rnd_board_walk_harness.mjs` **329** · `rnd_board_intersection_harness.mjs` **215**. 픽스처 — `rnd_board_reach.json` · `rnd_board_lot_map_slot03.json`(13,281 B) · `rnd_board_lot_map_slot07.json`(13,123 B). ⚠️ **이 패스는 하니스를 열지 않았다** — 존재·크기만.
+
+#### 🆕⑬ `marking_store.js` (**159줄**) — 마킹은 «바깥»에 살고 «여럿»이다
+
+| 심볼 | 실측 |
+|---|---|
+| `export const SIGN = Object.freeze({ ABSENT: 0, CASE: 1, CONTROL: -1 })` | 🔴 **상태가 셋이고 셋인 채로 있다** — 없음 / 관측 / 대조군. 서버 `ledger_subgraph._signed_seeds`의 `positive`/`negative`와 같은 삼분이다 |
+| `export class MarkingStore` | `signOf(name, nodeId)` · `count(name)` · `entries(name)` · `names()` · `set(name, nodeId, sign)` · `toggle(name, nodeId, sign)` · 🆕⑬ **`replace(name, entries)`** · `clear(name)` · `subscribe(name, listener)` · private `_emit(name)`. 🔴 **첫 인자가 «이름»인 것이 이 클래스의 전부다** — 마킹1(맵이 읽는 것)과 마킹2(후보 선택)가 한 저장소 안에 «따로» 산다. 부품은 읽을 이름과 쓸 이름을 각각 선언한다 |
+
+#### 🆕⑬ `walk_box_panel.js` (**544줄**) — 걷기 검색창
+
+`export class WalkBoxPanel extends Panel`. 🔴 **`GET /api/ledger/declaration`의 유일한 소비자**이고, 드롭다운의 목록을 **코드에 적지 않는다** — 타입·키·따라갈 술어가 전부 선언에서 온다. 메서드(실측): `historyName()` · `goto(id)` · `push(value)` · `moveTo(nodeId)` · `collect(nodeId, sign)` · `siblingsOf(id)` · `mount()`/`unmount()` · `types()` · `keysOf(type)` · `followOptions()` · `setType(type)` · `toggleFollow(name)` · `declaredTypes()` · `routes()` · `useRoute(index)` · `render()` + private `_historyBox`/`_destinationRow`/`_note`/`_field`/`_typeRow`/`_keyRow`/`_followRow`/`_runRow`/`_resultBox`/`_emptyText` · 모듈 private `bareTypeName(value)`.
+
+🔴 **이 부품은 «다른 모양의 walk»을 받는다**(`main.js` 실측): `decl.part === 'walkBox'`일 때만 `bound.walk = createWalkBoxWalk(...)` · `bound.loadDeclaration = () => fetchDeclaration(...)`가 주입된다. 소스 주석이 그 이유를 적는다 — 이 부품의 씨앗은 마킹이 아니라 **사람이 넣은 키**에서 만들어지므로(`entitySeedId(type, keys)`), 같은 이름을 섞으면 **오류 없이 «빈 답»**이 나온다. 그리고 주입 조건은 `decl.part`이지 `options.part`가 **아니다** — 틀리면 조건이 영원히 거짓이라 라우트가 200을 주는 동안에도 화면이 「선언을 받지 못했습니다」를 그린다.
+
+#### 🆕⑬ `api.js` (**1,567줄**) — 🔴 **`ROUTES`의 다섯 중 넷이 «없는 라우트»다**
+
+| 심볼 | 실측 |
+|---|---|
+| `export const ROUTES` | `lotMap: '/api/ledger/lot_map'` · `composition: '/api/ledger/composition'` · `subgraph: '/api/ledger/subgraph'` · `trends: '/api/ledger/trends'` · `siblings: '/api/ledger/siblings'` · `mapGrid: '/tables/wafer_map_metadata/data'`. 🔴 **서버가 여는 원장 라우트는 `subgraph`와 `declaration` 둘뿐이므로 `lot_map`·`composition`·`trends`·`siblings` 넷은 404다**(서버 실측 `3b77fbc3`). `mapGrid`는 원장 라우트가 아니라 **선언된 관계의 범용 리더**이고 소스 주석이 「`/api/tables/...`는 404, 이쪽이 200」이라 실측을 적어 둔다 |
+| `export const COLLECTS` | 일곱 — `trend_y` · `candidate` · `wafer_process` · `map` · `basis` · `peer` · `reach`. 🔴 **그중 `/subgraph`로 가는 것은 «둘»(`candidate`·`reach`)이고 나머지 다섯은 죽은 라우트로 간다**: `trend_y`→`fetchTrends` · `wafer_process`→`fetchComposition` · `map`→`fetchLotMap` · `basis`→`fetchComposition` · `peer`→`fetchSiblings`. 🔴 **`control-bar` 좌석이 `collect: 'trend_y'`를 선언하고 있고**(`main.js`), `control_bar_panel.js`·`main_trend_panel.js` 둘 다 `options.collect \|\| 'trend_y'`로 폴백한다 — `main_trend_panel.js`의 주석이 그 폴백을 **위험으로 스스로 적는다**(「기본값이 살아나면 좌석이 이름을 뗐는데도 죽은 trends 라우트를 부른다」) |
+| `export function createWalk(deps)` | 부품이 부르는 **한 함수**. `apiBase`/`fetchImpl`을 합성 루트에서 한 번 묶고, `spec.collect`가 없으면 `WALK`(= `fetchSubgraph`)로 간다. **같은 key의 요청은 `inflight` Map으로 합류**한다. 선언 안 된 `collect`는 «빈 답»이 아니라 **reject** — 물어본 적 없는 질문에 「없음」을 그리지 않기 위해 |
+| `export function createWalkBoxWalk(deps)` · `export async function fetchDeclaration(params)` | 걷기 검색창 전용. 성공도 실패도 `{ok}`를 다는 **한 모양**이다 |
+| `export function entitySeedId(type, keys)` · `typeGraph(declaration)` · `pathsBetween(declaration, from, to)` | 선언에서 씨앗 id와 타입 그래프를 만든다 |
+| 모델 변환기 | `projectionModel` · `compositionModel` · `subgraphModel` · `trendsModel` · `reachModel` · `mapModel` · `basisCountsFromComposition` · `slotPagesFromLotMap` · `peerCountFromSiblings` · `waferFactsFromLotMap` · 🆕 walk 판(`compositionFromWalk` · `waferFactsFromWalk` · `peerCountFromWalk` · `trendFromWalk`) · `isStampedNodeId` · `measuredFromHops__untilServerServesIt`. 🔴 **이름에 `__untilServerServesIt`가 박힌 것은 «임시라는 선언»이다** — 소스 주석이 「`/subgraph`가 그 구분을 직접 실으면 이 함수는 사라지고 어느 부품도 안 바뀐다」고 적는다 |
+| ⚠️ `main.js`의 죽은 import | `fetchLotMap`·`fetchComposition`·`fetchTrends`·`fetchSiblings`·`fetchSubgraph` 다섯은 **`main.js`가 import만 하고 한 번도 부르지 않는다**(전건 grep: 각각 `main.js`에 히트 1줄 = import 문). 함수 자체는 `api.js` 안 `COLLECTS`에서 살아 있으므로 **고아가 아니라 «죽은 import»**다 |
 
 ---
 
