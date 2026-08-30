@@ -278,10 +278,6 @@
       ]
     },
     "die@1": {
-      "frame_keys": [
-        "x",
-        "y"
-      ],
       "keys": [
         "mat_id",
         "x",
