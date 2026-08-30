@@ -19876,3 +19876,36 @@ C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest <파일>     (co
 server/tests/test_ledger_setup_bundle.py · server/tests/test_ledger_subgraph.py «둘만». 스위트 금지
 ```
 공유 트리입니다 — `git add` 에 경로를 «명시»하고 `commit` 에도 붙이십시오. `-a`/`-A` 금지.
+
+---
+
+# 🛑 중지 — **프레임 라운드를 «취소»합니다. 제가 잘못 낸 지시입니다** (총괄 20:2x)
+
+`eb1c86c1` 의 지시(`task/FRAME_DERIVED_KEY_BRIEF.md`)를 **중단하십시오.**
+코드를 이미 건드렸으면 되돌리십시오. 아직이면 그대로 두면 됩니다. **당신 잘못이 아닙니다.**
+
+## 왜 취소하나 — 답이 «이미 선언에 있었습니다»
+```
+제가 풀려던 것   본딩 ↔ 코어 계보가 끊긴다 -> 자리 이름과 좌표를 맞춰야 한다
+실제            자재 단위 계보는 «이미 걷힙니다». 새 술어·표·코드 «0»
+                lot_slot_move#seat-to-seat   slot_map@1     lot_slot -> lot_slot
+                lot_event#in_slot            has_wafer@1    lot_slot -> wafer
+                => wafer ←has_wafer─ lot_slot ─slot_map→ lot_slot ─has_wafer→ wafer′
+                   slot_map 이 다대다라 «스플릿과 머지»가 그 한 술어로 표현됩니다
+소유자 확정      「자재 단위로 계보는 충분함 걷기로 되잖아」
+```
+
+## 제 잘못이 어디였나 — 기록으로 남깁니다
+```
+상설    「모든 제안 «전» walk 으로 해결 가능한지 파악할 것」
+실제    저는 이 세션에서 어휘 열넷을 «제 손으로 출력»했고 그 안에 slot_map 이 있었습니다
+        그리고 소유자가 계획서에 이 경로를 «이미 그려 주셨습니다»
+        그런데 질문이 「스플릿/머지는 어떻게 잇나」로 바뀌자, 읽은 것을 다시 안 보고
+        «새 기계»를 찾으러 갔습니다
+=> 선언을 읽는 것과 «읽은 것을 기억해 두는 것»은 다릅니다. 후자를 안 했습니다
+```
+
+## 지시서는 «지우지 않습니다» — 조건부로 보관합니다
+`FRAME_DERIVED_KEY_BRIEF.md` 의 분석은 그대로 유효합니다. 다만 그것이 푸는 문제는
+«다이 단위» 교차이고, 지금은 **아무도 그걸 필요로 하지 않습니다.**
+필요해지는 날 그 파일이 그대로 쓰입니다. 그전에는 착수하지 마십시오.
