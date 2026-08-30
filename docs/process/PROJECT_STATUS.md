@@ -1197,7 +1197,24 @@ D-2  부류 ② in_slot                          2   = A-1
 D-3  부류 ③ 미분류                           16   14파일. 아직 «안 열어 봤습니다»
 ```
 
-### D-bis. 🔴 클라 «빌드 게이트» 둘이 빨강 — 정본 목록이 못 담고 있었습니다
+### ✅ D-bis «닫힘» — 빌드 게이트 (판정 36d027fb · 레인 착지 e4ed1f71 · 총괄 검수 09:4x)
+```
+정정   빨강은 «둘이 아니라 하나»였습니다 — harness 는 HEAD 에서 ✓ ran 57, failed 0
+판정   클라 쪽이 움직인다. api.js:1052  reason: 'grid_not_declared' -> null
+      근거 ① 그 라우트는 사유를 «안 짓는다»(바로 위 주석이 그렇게 적혀 있음)
+           ② 같은 사실이 state:'no_grid' + message 로 «이미 두 번»
+           ③ map_panel 이 message||reason||state 순인데 message 가 «항상» 채워져
+             reason 이 그려진 적이 «없다»
+검수   contracts «7 of 7» exit 0 · harnesses exit 0 · clipboard exit 0
+      번들 dist/assets/rnd_board-FHMaxg81.js 생성·참조 확인
+      화면 16패널 · 빈 패널 0 · 맵 128칸·발견 121·검사 128 그대로
+✅ E-1 도 같이  /declaration 이 로드당 «1회» (브라우저 실측)
+🔴 레인이 «시키지 않은 것 하나»를 옳게 했습니다 — 거절된 선언 약속을 «캐시하지 않습니다».
+   실패를 가두면 그 화면이 영원히 「선언을 못 읽었습니다」가 됩니다.
+   오늘 밤 내내 가른 「없어서」와 「아직」의 구분을 클라에서 스스로 적용한 것입니다
+```
+
+### 🗄️ (닫힌 기록) 클라 빌드 게이트 둘이 빨강 — 정본 목록이 못 담고 있었습니다
 디자인 레인 보고 (`2584420f`, 채널 파일 `task/axis_and_material_report.md`).
 🔴 **D-3 이 아닙니다** — D 는 `pytest` 를 세고 이 둘은 `client2` 의 `npm run build` 프리빌드입니다.
    그리고 **둘이 닫힐 때까지 정상 경로로 빌드하면 번들이 «안 나옵니다».**
