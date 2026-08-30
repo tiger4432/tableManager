@@ -400,7 +400,10 @@ def test_the_registrar_does_not_overwrite_a_confirmed_row(env, monkeypatch):
     existence check ever stopped seeing it, ingestion would put a synthetic `rot0_front`
     over an operator's confirmed frame and nothing on screen would say so."""
     import map_meta_registrar as reg
-    monkeypatch.setattr(reg, "INGESTION_SETTINGS_PATH", "/nonexistent/settings.json")
+    # The knob default became OFF on 2026-08-30 (owner ruling), so an absent settings
+    # file no longer means "registrar active". These tests measure what the registrar
+    # DOES, not whether it is switched on -- so they switch it on and say so.
+    monkeypatch.setattr(reg, "auto_register_enabled", lambda: True)
     reg.reset_known_cache()
 
     _confirm(env, "J1", "J1", "rot90_front")
@@ -417,7 +420,10 @@ def test_the_registrar_does_not_overwrite_a_confirmed_row(env, monkeypatch):
 
 def _registrar_row(env, monkeypatch, job, coords):
     import map_meta_registrar as reg
-    monkeypatch.setattr(reg, "INGESTION_SETTINGS_PATH", "/nonexistent/settings.json")
+    # The knob default became OFF on 2026-08-30 (owner ruling), so an absent settings
+    # file no longer means "registrar active". These tests measure what the registrar
+    # DOES, not whether it is switched on -- so they switch it on and say so.
+    monkeypatch.setattr(reg, "auto_register_enabled", lambda: True)
     reg.reset_known_cache()
     collector = reg.MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE])
     assert collector.active, "fixture lost its axis: an inert collector proves nothing"

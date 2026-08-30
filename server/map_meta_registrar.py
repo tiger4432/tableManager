@@ -30,7 +30,8 @@ ingestion write path.
   is the batch's min x/y (not 0), because the editor shifts loaded coordinates
   only under the interactive 'standard' choice; ingested rows keep their raw
   coordinates, so the frame must start where the data starts.
-- Knob: `auto_register_map_meta` in ingestion_settings.json (default ON).
+- Knob: `auto_register_map_meta` in ingestion_settings.json (default OFF since
+  2026-08-30; see DEFAULT_ENABLED for why).
   Read once per work unit (file / chain tx group) — hot from the next unit,
   consistent within one unit (the D1 snapshot discipline).
 - Scale (10M-row rule): one existence check per DISTINCT map key per batch on
@@ -68,7 +69,13 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
 META_TABLE = "wafer_map_metadata"
 SOURCE_NAME = "auto_map_meta"
 SETTINGS_KEY = "auto_register_map_meta"
-DEFAULT_ENABLED = True
+#: 🔴 OFF since 2026-08-30, by owner ruling.  The synthetic row pins `grid_start_x/y`
+#: to the batch's min x/y (see the [Contract] note above), and in the editor start x/y
+#: is the COORDINATE BASIS rather than a shift between the valid-die reference and the
+#: stored coordinates.  So an auto-registered row does not merely fill a hole: it fixes
+#: the origin every later edit is read against, and the editor cannot move it back.
+#: Absent-only was the wrong safety here -- the hole was the safer state.
+DEFAULT_ENABLED = False
 INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 # Chunk size for both the existence-check IN list and the creation batches
@@ -112,7 +119,7 @@ def _load_ingestion_settings() -> dict:
 
 
 def auto_register_enabled() -> bool:
-    """`auto_register_map_meta` knob (default ON). Non-boolean values warn once
+    """`auto_register_map_meta` knob (default OFF). Non-boolean values warn once
     and fall back to the default — same validation posture as the watcher's
     `_bool_setting`."""
     val = _load_ingestion_settings().get(SETTINGS_KEY, DEFAULT_ENABLED)

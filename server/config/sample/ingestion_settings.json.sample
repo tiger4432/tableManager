@@ -10,8 +10,8 @@
   "archive_processed_files": true,
   "_resume_from_checkpoint_doc": "[P2] 중단된 파일 적재를 마지막으로 커밋된 오프셋부터 재개합니다(기본 true). 재개 불가(시그니처/총행수/파서 불일치, 오프셋 손상) 시에는 처음부터 재처리하고 그 사유를 로그와 FileIngestionLog에 명시합니다. false로 두면 항상 처음부터 적재합니다.",
   "resume_from_checkpoint": true,
-  "_auto_register_map_meta_doc": "[M3] 인제션(파일 워처·체인 워커)이 map_key_columns 선언 테이블에 맵을 적재할 때, 해당 맵 키의 wafer_map_metadata 행이 없으면 자동 등록합니다(기본 true). 등록 내용은 에디터 '표준' 선택과 같은 마스크 중립 합성 규격(배치 x/y bbox 격자, 회전 0) — 실제 웨이퍼 물리 규격은 추측하지 않습니다. 이미 존재하는 메타 행은 절대 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 핫리로드: 다음 파일/트랜잭션 그룹부터 반영.",
-  "auto_register_map_meta": true,
+  "_auto_register_map_meta_doc": "[M3] 인제션(파일 워처·체인 워커)이 map_key_columns 선언 테이블에 맵을 적재할 때, 해당 맵 키의 wafer_map_metadata 행이 없으면 자동 등록합니다. 🔴 2026-08-30 소유자 판정으로 «기본 false»입니다 — 합성 행이 grid_start_x/y를 배치의 min x/y로 박는데, 에디터에서 start x/y는 valid die ref와 DB 좌표의 «shift»가 아니라 «좌표 기준» 자체를 정하는 값입니다. 그래서 자동 등록 행은 구멍을 메우는 것이 아니라 이후 모든 편집이 대조될 «원점을 고정»하고, 에디터가 그것을 되돌리지 못합니다. 여기서는 「행이 없음」이 더 안전한 상태였습니다. 등록 내용은 에디터 '표준' 선택과 같은 마스크 중립 합성 규격(배치 x/y bbox 격자, 회전 0) — 실제 웨이퍼 물리 규격은 추측하지 않습니다. 이미 존재하는 메타 행은 절대 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 핫리로드: 다음 파일/트랜잭션 그룹부터 반영.",
+  "auto_register_map_meta": false,
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
   "flatten_nested_dirs": true,
 

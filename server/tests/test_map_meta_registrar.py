@@ -109,6 +109,20 @@ def iso_db(tmp_path, monkeypatch):
         engine.dispose()
 
 
+def _knob_on(settings_path):
+    """Declare the knob instead of leaning on the default.
+
+    The default became OFF on 2026-08-30 (owner ruling: an auto-registered row pins
+    `grid_start_x/y`, which the editor reads as the coordinate BASIS, so the hole was
+    the safer state).  Every test that follows measures the MECHANISM rather than the
+    default, and each one now says so out loud.  Without this the four tests that
+    assert NOTHING was written would pass because the feature is switched off -- a
+    green that measures nothing, which is worse than the red it replaces.
+    """
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump({"auto_register_map_meta": True}, f)
+
+
 def _rows(lot, slot, coords, val="v"):
     return [{"lot": lot, "slot": slot, "x": x, "y": y, "val": val} for x, y in coords]
 
@@ -126,7 +140,8 @@ def _meta_rows(db, target_table=None):
 # ---------------------------------------------------------------------------
 
 def test_absent_key_creates_meta_with_bbox(iso_db):
-    db, _, _ = iso_db
+    db, _, settings_path = iso_db
+    _knob_on(settings_path)
     # Non-trivial bbox: min corner (2,1), max (7,4). A start-at-(0,0) default or
     # an ignored extent cannot pass these asserts (defect-axis activation rule).
     coords = [(2, 1), (7, 4), (5, 3), (3, 2)]
@@ -168,7 +183,8 @@ def test_synthetic_dia_circumscribes_large_grids():
 # ---------------------------------------------------------------------------
 
 def test_existing_meta_is_never_overwritten(iso_db):
-    db, _, _ = iso_db
+    db, _, settings_path = iso_db
+    _knob_on(settings_path)
     user_meta = json.dumps({"grid_cols": 9, "grid_rows": 9, "grid_start_x": 0,
                             "grid_start_y": 0, "grid_y_invert": True, "rotation": 90,
                             "side": "back"})
@@ -210,7 +226,8 @@ def _count_existence_checks(engine, statements):
 
 
 def test_batch_dedup_one_existence_check_per_work_unit(iso_db):
-    db, engine, _ = iso_db
+    db, engine, settings_path = iso_db
+    _knob_on(settings_path)
     statements = []
     hook = _count_existence_checks(engine, statements)
     try:
@@ -235,7 +252,7 @@ def test_batch_dedup_one_existence_check_per_work_unit(iso_db):
 
 
 # ---------------------------------------------------------------------------
-# knob: default ON, off disables, non-boolean falls back, hot at unit boundary
+# knob: default OFF, on enables, non-boolean falls back, hot at unit boundary
 # ---------------------------------------------------------------------------
 
 def test_knob_off_disables_and_rewrites_hot(iso_db):
@@ -255,11 +272,14 @@ def test_knob_off_disables_and_rewrites_hot(iso_db):
     assert collector2.active is True
 
 
-def test_knob_non_boolean_falls_back_to_default_on(iso_db):
+def test_knob_non_boolean_falls_back_to_default_off(iso_db):
+    # WAS `..._default_on`, asserting True.  The default itself changed on 2026-08-30
+    # by owner ruling, so this assertion moves with its subject rather than being
+    # kept alive against a default that no longer exists.
     _, _, settings_path = iso_db
     with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump({"auto_register_map_meta": "false"}, f)  # string, not JSON boolean
-    assert MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE]).active is True
+        json.dump({"auto_register_map_meta": "true"}, f)  # string, not JSON boolean
+    assert MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE]).active is False
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +287,8 @@ def test_knob_non_boolean_falls_back_to_default_on(iso_db):
 # ---------------------------------------------------------------------------
 
 def test_recursion_guard_meta_table_never_self_registers(iso_db):
+    _, _, settings_path = iso_db
+    _knob_on(settings_path)   # else `active is False` holds for every table
     # Belt: explicit refusal even if someone (mis)declares map_key_columns on
     # the meta table itself. Suspenders: the real config declares none.
     poisoned = dict(PRODUCT_TABLES[META_TABLE])
@@ -276,6 +298,8 @@ def test_recursion_guard_meta_table_never_self_registers(iso_db):
 
 
 def test_registry_shaped_table_without_coordinates_is_skipped(iso_db):
+    _, _, settings_path = iso_db
+    _knob_on(settings_path)   # else `active is False` holds for every table
     # map_key_columns declared but no x/y -> resolve_binding None -> inert.
     assert MapMetaCollector(REGISTRY_TABLE, TEST_TABLE_CONFIG[REGISTRY_TABLE]).active is False
 
@@ -304,7 +328,8 @@ def test_map_id_composition_pinned_for_7b():
 # ---------------------------------------------------------------------------
 
 def test_watcher_send_to_upsert_registers_meta(iso_db, monkeypatch):
-    db, _, _ = iso_db
+    db, _, settings_path = iso_db
+    _knob_on(settings_path)
     import directory_watcher
 
     monkeypatch.setattr(directory_watcher, "SessionLocal", lambda: db)
@@ -345,7 +370,8 @@ def test_watcher_send_to_upsert_registers_meta(iso_db, monkeypatch):
 
 def test_watcher_meta_failure_does_not_fail_ingestion(iso_db, monkeypatch):
     """A registrar crash is logged and swallowed — the file completes normally."""
-    db, _, _ = iso_db
+    db, _, settings_path = iso_db
+    _knob_on(settings_path)   # else flush() never runs and the boom never fires
     import directory_watcher
 
     monkeypatch.setattr(directory_watcher, "SessionLocal", lambda: db)
@@ -387,7 +413,8 @@ def mmrauto_chain_mapper(db, payload):
 
 
 def test_chain_worker_registers_meta(iso_db):
-    db, _, _ = iso_db
+    db, _, settings_path = iso_db
+    _knob_on(settings_path)
     from database.models import DatabaseOutbox
     from chain_ingestion_worker import process_chain_transaction_group
 
