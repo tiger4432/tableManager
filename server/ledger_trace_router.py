@@ -357,11 +357,50 @@ def ledger_declaration_catalog():
     # client that had to read two arrays would grow a branch. `origin` tells them apart for
     # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
     # the client filters options by subject and a bare spelling would match nothing.
-    return {
+    catalogue = {
         "state": "ready" if entities else "empty",
         "entities": entities,
         "predicates": predicates,
     }
+
+    # 🔴 `scope_columns` IS `base_select_columns`, NOT A SECOND LIST THAT LOOKS LIKE IT.
+    # The scope reader already refuses a column outside that list by name, so a screen that
+    # offered its options from anywhere else would show a column the server then rejects -
+    # and the operator would read a correct refusal as a broken button. That is why these
+    # come off the COMPILED plans rather than off the raw declaration: the compiled list is
+    # the one the refusal is measured against. `emits` has no compiled form, so it is read
+    # from the declaration's own mappings, which is this route's ordinary posture.
+    #
+    # 🔴 THE KEY IS OMITTED, NOT EMPTIED, WHEN THE SETUP WILL NOT COMPILE. The label
+    # this feeds has to say three different things - "a ledger source", "not a source", and
+    # "could not find out" - and if an uncompilable setup answered with `[]`, the last two
+    # would render identically and the screen would tell an operator their table is not a
+    # source when the truth is that nobody asked. Presence of the key means the list is
+    # authoritative; absence means unknown. The rest of the catalogue still answers, because
+    # a setup that will not compile does not stop `entities` and `predicates` being true.
+    try:
+        from ledger.setup import load_setup
+        from ledger.source_preparation import base_select_columns
+
+        plans = load_setup().snapshot.source_plans
+        declared_sources = declared.get("sources") or {}
+        catalogue["sources"] = [
+            {
+                "source": source_id,
+                "relation": plan.relation,
+                "emits": sorted({
+                    (mapping or {}).get("predicate")
+                    for mapping in (((declared_sources.get(source_id) or {})
+                                     .get("bind") or {}).get("mappings") or {}).values()
+                    if (mapping or {}).get("predicate")
+                }),
+                "scope_columns": list(base_select_columns(plan)),
+            }
+            for source_id, plan in sorted(plans.items())
+        ]
+    except Exception as exc:                       # noqa: BLE001 - see the note above
+        logger.error("declaration sources unavailable: %s", exc)
+    return catalogue
 
 
 

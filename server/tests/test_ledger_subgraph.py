@@ -784,3 +784,62 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
 #: 🔴 TWO MORE RETIRED 2026-08-28: the ranked-answer tests. `collect` turned the walk
 #: into a ranking over one node KIND, and there is one kind now, so the ranking has nothing to
 #: choose between. `_rank_layers` went with them.
+
+
+
+# ------------------------------------------------ the declaration's sources section
+def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts():
+    """🔴 THE SEAM, ASSERTED FROM BOTH ENDS RATHER THAN FROM A COPY OF ONE.
+
+    The screen builds its column choices from `scope_columns` and the server refuses a
+    scope by `base_select_columns`. If those two lists ever differ, the operator picks a
+    column, gets a correct refusal, and reads it as a broken button - the failure is
+    invisible on either side alone, which is why this walks the refusal instead of
+    comparing the response to a literal.
+
+    Asserting a spelling would be the copy this exists to prevent: the declaration moves
+    and a literal list here would keep saying what it used to say.
+    """
+    from ledger import backfill
+    from ledger.setup import LedgerSetupError, load_setup
+    from ledger.source_preparation import base_select_columns
+
+    catalogue = ledger_trace_router.ledger_declaration_catalog()
+    assert "sources" in catalogue, "an absent key means 'could not find out', not 'none'"
+    plans = load_setup().snapshot.source_plans
+    assert {entry["source"] for entry in catalogue["sources"]} == set(plans)
+
+    for entry in catalogue["sources"]:
+        plan = plans[entry["source"]]
+        assert entry["relation"] == plan.relation
+        assert entry["scope_columns"] == list(base_select_columns(plan))
+        # Both directions, on the live declaration: every offered column is accepted...
+        for column in entry["scope_columns"]:
+            assert backfill._scope_predicate(plan, (column, ["x"])) == (column, ["x"])
+        # ...and something the list does not offer is refused BY NAME.
+        with pytest.raises(LedgerSetupError) as caught:
+            backfill._scope_predicate(plan, ("not_a_declared_column", ["x"]))
+        assert caught.value.code == "scope_column_not_declared"
+
+
+def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(monkeypatch):
+    """🔴 "NOT A SOURCE" AND "COULD NOT FIND OUT" MUST NOT RENDER THE SAME.
+
+    The label this feeds says one of three things, and the third is "the declaration could
+    not be read". An empty list would collapse it into the second and tell an operator
+    their table is not a ledger source when the truth is that nobody managed to ask.
+
+    The rest of the catalogue still answers: a setup that will not compile does not make
+    `entities` or `predicates` untrue, and blanking them would take the walk search box
+    down with it.
+    """
+    from ledger import setup as ledger_setup
+
+    def _refuse(*args, **kwargs):
+        raise RuntimeError("compilation failed")
+
+    monkeypatch.setattr(ledger_setup, "load_setup", _refuse)
+    catalogue = ledger_trace_router.ledger_declaration_catalog()
+
+    assert "sources" not in catalogue
+    assert catalogue["entities"] and catalogue["predicates"]
