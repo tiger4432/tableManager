@@ -1787,6 +1787,48 @@ MI → core   표가 «없습니다» (이름에 mi 가 든 표 0). 별건이고
 ```
 
 
+## 🔴🔴 운영 사고 — **`mappers/` 는 gitignore 라 «배포로 안 갱신됩니다»** (2026-08-30 저녁)
+
+소유자 운영 셋업 중 실제 사고. 증상은 「체인이 다 도는데 «마지막 replace»에서 에러」였습니다.
+```
+에러  replace_map scope column 'dt_job' is outside the map-key contract of 'dt_map'
+      (allowed: ['dt_lot','dt_slot'])
+원인  운영의 dt_standard_map_mapper.py 가 «옛 판» — replace_map + scope={dt_job} 을 낸다
+      출하본(.py.sample)은 «retract» 를 낸다. 둘이 다른데 배포가 .py 를 안 덮는다
+```
+
+### 왜 옛 판이 «구조적으로» 못 도나 — 코드에 이미 판정돼 있었습니다
+`dt_map_derivation.py:714` (2026-08-04):
+> 체인은 맵 셀을 upsert 할 수는 있어도 purge 할 수 없다. `replace_map` 도 빠진 조각이 아니다 —
+> `derive_replace_map_scope` 가 스코프 키를 맵 키 «안»으로 검증하므로 퍼지는 «맵 통째»로만 가능한데,
+> 정착된 정체에서는 **한 lot/slot 맵을 여러 job 이 먹이므로** 맵 퍼지는 둘째 job 의 셀을 지운다.
+> **Verified at source 2026-08-04.**
+```
+=> dt_job 이 맵 키에서 빠진 «그 결정»이 {dt_job} 스코프를 불가능하게 만들었고,
+   그래서 retract(출처 양성 선택)가 만들어졌습니다. 옛 판은 그 이전 코드입니다
+```
+
+### 고치는 것
+```
+cp server/mappers/dt_standard_map_mapper.py.sample server/mappers/dt_standard_map_mapper.py
++ 규칙에 allow_retraction: true (· allow_map_metadata_upsert: true)   없으면 워커가 거절
++ dt_map 에 dt_job 컬럼 (키 아님)                                      소유자가 이미 넣음 ✅
+```
+
+### 🔴 이 부류를 «재는 시험이 있고, 오늘 아침 우리가 무시했습니다»
+```
+test_dt_alignment_metadata_mapper::test_live_mapper_and_tracked_sample_are_byte_identical
+   아침 판정: 「live 는 소유자의 gitignore 파일이고 디프는 디버그 print 한 줄. NOT-MINE, 손대지 마라」
+   저녁 사실: «같은 부류»가 운영에서 사고를 냈습니다 — 다른 맵퍼로
+🔴 그 시험은 「배포가 안 덮는 실행 코드가 낡았다」를 재는 «유일한» 게이트였고,
+   우리는 그 빨강을 「소유자 파일이라 우리 것이 아니다」로 분류해 껐습니다.
+   빨강의 «주어»는 그 파일이 아니라 «부류»였습니다
+```
+⏭ 판정: 그 시험을 맵퍼 «전수»로 넓힐 것인가 (지금은 dt_alignment 하나만 잽니다)
+```
+for f in server/mappers/*.py.sample; do diff -q "${f%.sample}" "$f" >/dev/null || echo "다름: $f"; done
+```
+
 ## ⏭⏭ 열린 안건 — «정본 목록» (2026-08-30 08:1x 갱신)
 🔴 이 목록이 정본입니다. 아래로 흩어진 `⏭ 판정 대기` 표지들은 «그 라운드의 기록»이고,
    확인 결과 대부분 이미 닫혔습니다 — `class` 칸(landed) · 보드 404(0) ·
