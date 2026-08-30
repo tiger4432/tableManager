@@ -437,6 +437,22 @@ async function suite(source) {
      !== view.paramsKey([{ key: 'rule', value: 'lot_alias' }]),
     'F1: different parameters have different identities');
 
+  // 🔴 THE SEPARATOR IS PINNED BY ITS VALUE, not by the three lines above -- those pass
+  //    with ANY separator, so they cannot see it change. The spelling moved from a raw byte to
+  //    an escape on 2026-08-31 (the raw byte made grep call this file binary and blinded two
+  //    searches in one night); these two lines are what make that a spelling change and not a
+  //    behaviour change.
+  ok(view.paramsKey([{ key: 'a', value: '1' }, { key: 'b', value: '2' }])
+     === ['a=1', 'b=2'].join(String.fromCharCode(0)),
+    'F1: the identity joins on U+0000, and that is the separator it still joins on');
+  // 🔴 THE DISCRIMINATING PAIR. A printable separator lets a VALUE forge a second entry:
+  //    with ',' both of these read `a=1,b=2` and two different parameter sets share one identity,
+  //    which is how a count measured for one set gets shown for another. U+0000 cannot be typed
+  //    into a value, so they stay apart. A fixture both spellings agree on would decide nothing.
+  ok(view.paramsKey([{ key: 'a', value: '1' }, { key: 'b', value: '2' }])
+     !== view.paramsKey([{ key: 'a', value: '1,b=2' }]),
+    'F1: a value carrying a printable separator cannot forge another parameter');
+
   const stale = recordFor('lot_alias', 'inv');
   ok(view.resolveCount(stale, byOp.chain_replay).stale === true,
     'F1: a count measured for another parameter is reported stale');
