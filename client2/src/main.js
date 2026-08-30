@@ -17,6 +17,8 @@ import {
 } from './api.js';
 import { initWebSocket } from './websocket.js';
 import { GridSourceLabel } from './grid_source_label.js';
+import { GridRescopeMenu } from './grid_rescope_menu.js';
+import { putRescopeHandoff } from './rescope_handoff.js';
 import {
   loadHistory,
   triggerHistoryReloadDebounced,
@@ -136,6 +138,7 @@ async function init() {
   // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
   // `setRelation` 한 번으로 문장이 확정됩니다.
   sourceLabel = initGridSourceLabel();
+  rescopeMenu = initGridRescopeMenu();
   installReferenceKeyboardIsolation();
   installAuditFilters();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
@@ -154,6 +157,7 @@ async function init() {
   // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
   //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
   if (sourceLabel) sourceLabel.setRelation(state.currentTable);
+  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);
 }
 
 // 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고
@@ -176,6 +180,7 @@ async function loadLedgerDeclaration() {
 
 // 그리드 머리의 원장 소스 라벨. 자기 div 하나를 받고, 표 이름은 «화면이» 알려 줍니다.
 let sourceLabel = null;
+let rescopeMenu = null;
 function initGridSourceLabel() {
   const host = document.getElementById('grid-source-label-host');
   if (!host) return null;
@@ -184,6 +189,43 @@ function initGridSourceLabel() {
     loadDeclaration: loadLedgerDeclaration,
   });
   part.mount();
+  return part;
+}
+
+/**
+ * 컨텍스트 메뉴의 「다시 번역」 줄들. 🔴 이 부품은 실행하지 «않습니다» -- 범위를 조립해
+ * 어드민 블록으로 넘길 뿐입니다 (총괄 판정: 고르는 곳은 그리드, 실행하는 곳은 어드민).
+ * 그래서 그리드 페이지는 토큰을 «여전히 모릅니다».
+ */
+function initGridRescopeMenu() {
+  const host = document.getElementById('rescope-menu-host');
+  if (!host) return null;
+  const part = new GridRescopeMenu(host, {
+    doc: document,
+    getSelection: () => (state.gridApi ? state.gridApi.getSelectedRows() : []),
+    // 🔴 이 그리드의 행은 «봉투»입니다 (`{ data: { col: { value } } }`) -- `grid.js` 의
+    //    `rawCellValue` 가 같은 것을 같은 방식으로 읽습니다. 부품에 봉투를 가르치지 않고
+    //    «읽는 법»만 넘깁니다. 봉투가 아닌 행도 그대로 읽히게 둘 다 봅니다.
+    readValue: (row, column) => {
+      const cell = row && row.data ? row.data[column] : undefined;
+      if (cell && typeof cell === 'object' && 'value' in cell) return cell.value;
+      return row ? row[column] : undefined;
+    },
+    handOff: (payload) => {
+      if (!putRescopeHandoff(payload)) {
+        // 저장소가 막히면 «조용히 넘어간 척» 하지 않습니다. 그 침묵이 어드민에서
+        // 「범위가 안 왔다」로 보이고, 운영자는 어디서 사라졌는지 못 찾습니다.
+        showToast('범위를 넘기지 못했습니다 — 브라우저 저장소가 막혀 있습니다', 'error');
+        return;
+      }
+      elements.contextMenu.style.display = 'none';
+      window.location.href = '/admin.html';
+    },
+  });
+  // 선언은 라벨이 이미 읽습니다. 같은 답을 «두 번» 긷지 않도록 그 결과를 나눠 씁니다.
+  loadLedgerDeclaration().then((got) => {
+    part.setSources(got && got.ok ? got.sources : null);
+  });
   return part;
 }
 
@@ -365,6 +407,7 @@ function setupEventListeners() {
       countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
       if (sourceLabel) sourceLabel.setRelation(table);
+      if (rescopeMenu) rescopeMenu.setRelation(table);
     }
   });
 
@@ -766,6 +809,9 @@ function setupEventListeners() {
   if (gridContainer) {
     gridContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      // 🔴 «열 때» 다시 그립니다. 안 그러면 지난번에 그린 선택 수가 남아, 메뉴가 지금 고른
+      //    것이 아닌 것에 대해 말하게 됩니다 -- 「같은 모양을 두 번 그리면 자리 이동을 못 본다」.
+      if (rescopeMenu) rescopeMenu.render();
     });
     gridContainer.addEventListener('mouseleave', () => {
       if (state.isDraggingRange) {
