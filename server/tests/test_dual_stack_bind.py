@@ -150,10 +150,17 @@ def test_an_explicit_wildcard_still_means_exactly_what_it_meant_yesterday():
 def test_the_launcher_default_is_the_dual_stack_host():
     """The launcher must read its default from the one place that documents it,
     so the guard and the bind cannot drift apart."""
-    import run_decoupled_app  # noqa: F401  (imported for its module source)
-    src = open(os.path.join(
-        os.path.dirname(os.path.abspath(run_decoupled_app.__file__)),
-        "run_decoupled_app.py"), encoding="utf-8").read()
+    # BY PATH, NOT BY IMPORT. The launcher lives at the REPOSITORY ROOT, which is on
+    # no runtime process's `sys.path` and reached this suite only when some other test
+    # module had inserted it for its own use - so `import run_decoupled_app` passed or
+    # raised `ModuleNotFoundError` by collection order, not by anything about the
+    # launcher. `test_prod_import_env` documents that hazard; this is the same one.
+    # The import only ever existed to locate the file, so ask the filesystem instead.
+    launcher = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "run_decoupled_app.py")
+    with open(launcher, encoding="utf-8") as fh:
+        src = fh.read()
     assert 'os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)' in src, \
         "the launcher stopped defaulting to the shared dual-stack constant"
 
