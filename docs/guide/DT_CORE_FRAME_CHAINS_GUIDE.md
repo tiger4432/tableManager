@@ -1,6 +1,6 @@
 # DT/Core frame 체인 운영 가이드
 
-> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-13 (`4d5198c` — **`dt_map`의 맵 키가 `dt_job`에서 `(dt_lot, dt_slot)`으로 옮겨갔다.** 여러 잡이 한 맵에 수렴하므로 제거 전략도 `replace_map`에서 **`retract`**으로 바뀌었고, 잡 컬럼은 이제 **유도되지 않고 선언돼야** 한다 — §1-bis·§3·§4·§5 갱신)
+> **대상:** 공정·설정 운영자 | **최종 검증:** 2026-08-30 (**§4 머리말만** — `dt_metadata_to_dt_inventory` 가 오늘 모든 배치에서 거절한다) · 직전 2026-08-13 (`4d5198c` — **`dt_map`의 맵 키가 `dt_job`에서 `(dt_lot, dt_slot)`으로 옮겨갔다.** 여러 잡이 한 맵에 수렴하므로 제거 전략도 `replace_map`에서 **`retract`**으로 바뀌었고, 잡 컬럼은 이제 **유도되지 않고 선언돼야** 한다 — §1-bis·§3·§4·§5 갱신)
 
 이 문서는 DT와 Core frame 파생 체인을 설정·운영하는 방법을 설명한다. 데이터
 소유권과 전체 구조는 [DT/Core frame 체인 구조](../architecture/DT_CORE_FRAME_CHAINS.md)를
@@ -112,6 +112,12 @@ DT job이 들어온 뒤 아래 순서로 확인한다.
 alignment → inventory → core usage map 순서로 재생한다.
 
 ## 4. 문제 대응
+
+🔴 **[2026-08-30 실측] 아래 표를 쓰기 전에**: `dt_metadata_to_dt_inventory`(metadata → `dt_inventory.dt_frame`)가
+**모든 배치에서 거절한다** — 라이브 config 와 `.sample` 이 같다. 즉 `dt_frame` 이 비어 있는 것은
+「확정이 안 됐다」가 아니라 **체인이 아예 안 돈 것**일 수 있고, 그 상태에서 lot/slot·정렬·문턱을
+파고들면 엉뚱한 곳을 판다. 기전과 판정 대기 상태는
+[architecture/DT_CORE_FRAME_CHAINS 「Active chains」 2](../architecture/DT_CORE_FRAME_CHAINS.md).
 
 | 증상 | 확인 및 조치 |
 |---|---|

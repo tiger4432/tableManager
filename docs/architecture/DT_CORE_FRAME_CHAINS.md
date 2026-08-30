@@ -1,6 +1,8 @@
 # DT/Core frame derivation chains
 
-> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-13
+> **Status:** active implementation | **Owner:** Lead / Backend | **Last verified:** 2026-08-30
+> ("Active chains" 1 and 2 only — two rule names corrected against `chain_rules.json`,
+> and chain 2's shipped refusal recorded. Everything else is at the 2026-08-13 date below.)
 >
 > **2026-08-13 (`4d5198c`)** — `dt_map` moved off the acquisition unit onto the physical
 > one, and its removal strategy moved with it.  Four statements in this file were made
@@ -66,11 +68,24 @@ equations if the selected alignment cannot be represented by this equation.
 
 ## Active chains
 
-1. `dt_log_to_alignment_metadata` aligns the DT grid and writes the DT job's
+1. `dt_log_to_dt_alignment_metadata` aligns the DT grid and writes the DT job's
    `wafer_map_metadata` record.
-2. `wafer_map_metadata_to_dt_inventory` copies that DT metadata into
+2. `dt_metadata_to_dt_inventory` copies that DT metadata into
    `dt_inventory.dt_frame`, derives DT equations, and records the job's core
    wafer list.
+   > 🔴 **[2026-08-30 measured] This rule REFUSES on every batch as shipped, so
+   > nothing reaches `dt_inventory.dt_frame` through it today.** The mapper resolves
+   > its target job column through `chain_bindings.resolve_column`; the rule declares
+   > no `target_job_column`, and the derivation cannot supply one because
+   > `dt_inventory` declares no `map_key_columns` and its `business_key`
+   > (`dt_job_id`) is gated off by the presence of `composite_key_source`
+   > (`["dt_job"]`) — that gate exists to stop a composite CELL key being mistaken
+   > for an identity column. Identical in `server/config/chain_rules.json` and the
+   > `.sample`. ⚠️ Which side gets corrected — the rule, the table declaration, or
+   > the derivation — is a lead ruling, not recorded here; the board carries it.
+   > 🔴 **The two rule names above were also wrong until this date**
+   > (`dt_log_to_alignment_metadata` / `wafer_map_metadata_to_dt_inventory` are in no
+   > config); the source of truth for these names is `chain_rules.json`.
 3. `dt_inventory_to_standard_dt_map` writes this job's cells into the `(dt_lot,
    dt_slot)` map from raw `dt_log` cells and the DT equations, then **retracts**
    what this job still owns there and no longer derives.  (Until 2026-08-13 this

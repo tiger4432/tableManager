@@ -1,6 +1,6 @@
 # 입문 — 한 행의 여행: 모든 구성요소의 역할과 실물 예시
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 심야 `290bb1af` 재측정 · 직전 2026-08-29 밤 (걷기 규칙 셋 · `backbone_hops` · `in_container@1` 반영. 직전: 개정 6 — 읽기측 §4·§5 와 `observed` 예시 정정) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-30 (`references` 칸을 작성 폼이 그리기 시작한 것만) · 직전 2026-08-29 심야 `290bb1af` 재측정 · 그 직전 2026-08-29 밤 (걷기 규칙 셋 · `backbone_hops` · `in_container@1` 반영. 직전: 개정 6 — 읽기측 §4·§5 와 `observed` 예시 정정) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) ·
 > `server/ledger/setup_bundle.py`(검증기) · `server/ledger/gate.py`(게이트)
 
@@ -160,6 +160,10 @@ walk     그 시작점에서 «걸어서 닿는 하위 그래프»를 가져온�
 그것을 읽던 `_link_containers` 가 삭제됐고 `die@1.references` 도 같은 밤에 지워졌다
 — 합성 엣지 `in_container` 가 잇던 쌍 128 중 «유일한 연결»이 «0» 이었기 때문이다
 (원자 엣지 `inspected` 가 이미 양방향으로 잇는다). **다시 선언해도 엣지는 안 생긴다.**
+🔴 **[2026-08-30] 그런데 작성 폼이 이 칸을 «그리기 시작했다**(`1d17c34a` — `ledger_skeleton.json` 에
+`references` 노드가 생겼고 라벨이 「참조 엣지」다). **폼에 있다고 도는 것이 아니다** — 오늘 이 필드를
+읽는 것은 검증기(`setup_bundle._validate_references`) «하나»이고, 그 검증은 문법만 본다.
+운영자가 여기를 채우면 **거절 없이 저장되고 엣지는 0개**다.
 
 ✅ **[2026-08-29] 그리고 그 다리는 «술어로» 돌아왔다.** `in_container@1`(`die@1` → `wafer@1`)은
 오늘 `vocabulary` 의 선언된 술어이고 **원자를 갖는다** — `bonded_from` 소스의 매핑 둘

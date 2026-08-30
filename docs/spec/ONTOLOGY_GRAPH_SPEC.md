@@ -11,7 +11,7 @@
 > | §0 핵심 가치 · §1 방향(**단, 「저장소 = PG 엣지 스토어」 행은 죽음**) | ⚪ **설계 — 살아 있음** |
 > | §2 저장소 스키마 · §4 PG 엣지 스토어/Neo4j 이관 · §5·§5.1 처리량 계약 | 🗄️ **죽음** — 표가 DROP됐습니다 |
 > | §3 매핑 config 예제 · 로더 리로드 | 🗄️ **죽음** — 읽는 워커가 없습니다(`ontology_mapping.json`은 파일로 살아 있으나 **소비자 0**) |
-> | §7 불량 추론망 · §7.5·§7.5b 시공간 위상 · §7.6 추론 보조 보강 · §7.7 키 참조 무결성 | ⚪ **설계 — 살아 있음(애초에 미구현)** |
+> | §7 불량 추론망 · §7.5·§7.5b 시공간 위상 · §7.6 추론 보조 보강 · §7.7 키 참조 무결성 | ⚪ **설계 — 살아 있음(애초에 미구현)**. 🔴 **[2026-08-30] §7.5b 의 계측 절반은 「아직 안 했다」가 아니라 「해 보고 «벽»을 만났다」입니다** — 정체 키가 시각을 담을 수 없다(`roleframe._scalar`). 실측은 §7.5b 안의 인용 블록 |
 > | **§7.5c 정적/동적 + 4대 탐색 정책** | 🟢 **정책 4 는 강제됩니다 · 정책 1 은 «`backbone_hops > 0` 일 때만»**(2026-08-29). 자리는 원장 walk 이고, 규칙 전문은 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) 이 소유합니다. 등급의 근거는 아래 단서 |
 > | §7.5d `GET /graph/chip-trace` · §7.5e 재동기화/고아 스윕/mapping-summary | 🗄️ **죽음** — 전부 410이거나 스케줄러에서 탈락 |
 > | §8 단계표 G1·G2 행 | 🗄️ **죽음**(그 스택 위에서 배달됨) |
@@ -48,7 +48,7 @@
 >
 > ---
 >
-> ~~**Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계)~~ | **Last-verified:** 2026-08-29 밤 (**§7.5c 만** — 정적/동적 분류가 원장 walk 에서 강제되기 시작했고 선언의 거처가 옮겨 앉았다. 다른 절은 아래 날짜 기준 그대로) · 직전 2026-08-14 (은퇴 반영) · 그 직전 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
+> ~~**Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계)~~ | **Last-verified:** 2026-08-30 (**§7.5b 계측 절반만** — 물화 시도가 정체 키의 시각 제약에서 멈춘 실측을 등재) · 직전 2026-08-29 밤 (**§7.5c 만** — 정적/동적 분류가 원장 walk 에서 강제되기 시작했고 선언의 거처가 옮겨 앉았다. 다른 절은 아래 날짜 기준 그대로) · 그 직전 2026-08-14 (은퇴 반영) · 그 직전 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 대체 완료: [graph_db_integration_plan.md](../_archive/graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체, 2026-07-25 아카이브)
 
 ## 0. 핵심 가치 (사용자 확정 2026-07-25)
@@ -190,6 +190,13 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 - **계층 귀속 주의**: 계측 노드·원시 속성은 L1(로그 사실)이지만, INPUT_TO/PRODUCED로 잇는 상태 연결 엣지와 WaferState 노드 자체는 시간 정렬로 계산되는 **L2 파생**이다(상태 체인이 재파생되면 함께 재해석) — 직접 쓰지 않고 항상 재파생 원칙 동일 적용.
 
 이 인과 체인이 불량 추론(가치 ③)의 전이 경로이자 LLM이 읽는 인과 서사(가치 ①)가 된다.
+
+> 🔴 **[2026-08-30 실측] 계측 절반을 오늘의 어휘로 세우려던 라운드가 «아무것도 선언하지 않고» 멈췄다 — 그 이유가 이 모양이 아직 미물화인 «오늘의» 이유다.**
+> 지시서(`task/METROLOGY_NODE_BRIEF.md`)는 위 서명의 **모양만** 가져오고 이름은 오늘의 것(엔티티·어휘·walk)으로 쓰게 했다 — `INPUT_TO`/`PRODUCED` 는 은퇴한 그래프의 철자다. 멈춘 자리는 **엔터티의 정체 키**였다.
+> - 🔴 **정체 키는 «시각»을 담을 수 없다.** 검사기는 `server/ledger/roleframe.py` 의 `_scalar` 이고, 엔터티 참조의 `keys.*` 가 전부 여기를 지난다. 받는 것은 **bool · 정수 · 유한 실수 · 문자열** 넷뿐이라 tz-aware `datetime` 은 `invalid_scalar_role` 로 거절된다. ⚠️ **같은 파일에서 시각이 «금지»인 것은 아니다** — `kind: "time"` 인 Role 은 tz-aware `datetime` 을 «요구»한다. 즉 시각은 술어가 나를 수는 있고 **정체가 될 수는 없다**. 🔴 **판정을 강제하는 자리는 이 함수 하나**이고, 선언·문서 어디에도 이 제약이 적혀 있지 않았다.
+> - 레인이 필드 «이름»이 아니라 «타입»이 원인임을 2×2 로 갈라 확인했고, 그 자리에서 멈추고 보고했다(지시서의 멈춤 조건 그대로 — 대체 키를 지어내지 않았다). 실측 확인: 라이브 `server/config/ontology/ledger_config.json` 과 `config/sample/ledger_config.json.sample` 둘 다 `metrology` 낱말 **0**.
+> - ✅ **그래도 «모양»은 이 데이터에서 참으로 확인됐다** — `process_param_num` 73,275행 기준 「계측 하나 → 결과 여럿」이 성립한다(한 `(웨이퍼, step, eqp, 시각)` 묶음의 3분의 2가 파라미터를 여럿 싣는다). 그리고 **공유되는 것과 사건이 갈라진다**: `(step, eqp)` **63**(웨이퍼를 넘어 공유 — 분모가 되는 쪽) 대 `(웨이퍼, step, eqp, 시각)` **24,070**(웨이퍼마다 하나 — 사건인 쪽). 앞의 것은 시각이 키에 없어 이 벽에 걸리지 않는다.
+> - ⚠️ **이 문단은 「무엇을 하라」가 아니다.** `_scalar` 를 넓힐지, 사건 쪽을 다르게 키잡을지, 분모 쪽만 먼저 세울지는 **총괄 판정**이고 여기 적지 않는다. 여기 적는 것은 「왜 아직 없나」뿐이다.
 
 **DT(Die Transfer)/Tape 계층 (사용자 도메인 공개 2026-07-26)** — 실제 물류 체인에는 코어와 본딩 사이에 **테이프 계층**이 있다: 여러 코어의 칩을 TAPE 위에 한데 모아두고(DT 공정) 본딩은 테이프에서 집는다. 따라서:
 - **bonding_log의 core_lot/slot은 실제로는 DT(테이프) lot/slot**이다. 칩의 진짜 출신 코어는 `테이프 좌표 × DT 맵(영역→코어)` 또는 칩 단위 DT 로그로 해석한다.

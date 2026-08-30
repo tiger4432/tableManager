@@ -1,6 +1,6 @@
 # DT alignment metadata chain
 
-> **Status:** Living · **Last-verified:** 2026-08-09 · **Owner:** Lead PM
+> **Status:** Living · **Last-verified:** 2026-08-30 (**§S2 머리 한 줄만** — 이 규칙이 오늘 모든 배치에서 거절한다) · 직전 2026-08-09 · **Owner:** Lead PM
 
 ## 목적
 
@@ -19,6 +19,11 @@ dt_log transaction (one dt_job)
 ```
 
 ## S2: metadata -> inventory identity projection
+
+> 🔴 **[2026-08-30 measured] `enabled` is not `running`.** This rule refuses on every
+> batch as shipped — its job column can be neither declared nor derived — so the
+> paragraph below describes the contract, not what happens today. Mechanism and the
+> pending ruling: [architecture/DT_CORE_FRAME_CHAINS "Active chains" 2](../architecture/DT_CORE_FRAME_CHAINS.md).
 
 `dt_metadata_to_dt_inventory` is an enabled batch rule from `wafer_map_metadata`
 to `dt_inventory`. It accepts only metadata rows whose `target_table` is `dt_log`,
