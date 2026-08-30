@@ -533,7 +533,8 @@ OPERATIONS = {
                            "how many are scanned")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
-        "cli": "server/scripts/chain_replay_cli.py replay <rule> --apply",
+        "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
+                "[--business-keys a,b,c] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,

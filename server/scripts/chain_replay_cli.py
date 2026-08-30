@@ -130,6 +130,13 @@ def main(argv=None):
     p.add_argument("--apply", action="store_true")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--chunk-size", type=int, default=1000)
+    # WHICH rows, beside --limit's HOW MANY. `retroactive.OPERATIONS` promises that its
+    # `cli` line does the same job as the button, and without this the promise was false
+    # for the half that selects.
+    p.add_argument("--business-keys", default=None,
+                   help="comma-separated business_key_val list: replay only these rows. "
+                        "Omit to replay the whole rule. This chooses WHICH rows; --limit "
+                        "still bounds how many are scanned")
 
     p = sub.add_parser("replay-all")
     p.add_argument("--apply", action="store_true")
@@ -178,9 +185,12 @@ def main(argv=None):
 
         if args.cmd == "replay":
             rule = chain_replay.find_rule(args.rule_name)
+            selected = ([k.strip() for k in args.business_keys.split(",") if k.strip()]
+                        if args.business_keys is not None else None)
             print(_report_replay(chain_replay.replay_rule(
                 db, rule, apply=args.apply, limit=args.limit,
-                chunk_size=args.chunk_size, log=lambda m: print(f"  {m}"))))
+                chunk_size=args.chunk_size, business_keys=selected,
+                log=lambda m: print(f"  {m}"))))
         elif args.cmd == "replay-all":
             out = chain_replay.replay_all(db, apply=args.apply, limit=args.limit,
                                           chunk_size=args.chunk_size,

@@ -1278,3 +1278,34 @@ def test_every_operation_answers_the_absence_question_even_when_the_answer_is_no
     assert set(units.values()) <= {"number", "pair"}
     # Non-vacuous: the pair case has to actually be present among them.
     assert "pair" in units.values() and "number" in units.values()
+
+
+def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises():
+    """🔴 `cli` IS A PROMISE - "the same job, from a command line" - and it goes stale silently.
+
+    A parameter added to an operation does not touch its `cli` string, so the string keeps
+    describing an older, smaller version of the operation. Somebody types it, the selection
+    they asked for is simply not applied, and the run does MORE than they wanted - which is
+    the direction that does damage. Nothing errors, because the flag they never typed cannot
+    be rejected.
+
+    That happened on 2026-08-31: `business_keys` was added to chain_replay and its `cli` line
+    still said `replay <rule> --apply`. This checks the class, not that instance - every
+    parameter of every operation has to appear either in the `cli` line or in `cli_only`,
+    the field that exists to say "this one is not on the button".
+    """
+    def spellings(name):
+        return {name, name.replace("_", "-"), f"--{name}", f"--{name.replace('_', '-')}",
+                f"<{name}>"}
+
+    missing = []
+    for row in retroactive.inventory():
+        haystack = " ".join([row["cli"]] + list(row["cli_only"]))
+        for param in row["params"]:
+            if not any(word in haystack for word in spellings(param["name"])):
+                missing.append(f"{row['op']}.{param['name']}")
+    assert not missing, (
+        "these parameters exist on the operation but appear nowhere in its cli line or "
+        f"cli_only, so the promise is false for them: {missing}")
+    # Non-vacuous: there have to be parameters to check.
+    assert sum(len(row["params"]) for row in retroactive.inventory()) >= 6
