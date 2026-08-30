@@ -1829,10 +1829,101 @@ test_dt_alignment_metadata_mapper::test_live_mapper_and_tracked_sample_are_byte_
 for f in server/mappers/*.py.sample; do diff -q "${f%.sample}" "$f" >/dev/null || echo "다름: $f"; done
 ```
 
+## 🌆 저녁 — 운영 DT 체인이 «섰습니다». 원인 셋, 전부 다른 층 (2026-08-30)
+
+소유자 운영 셋업. 증상은 계속 「도는데 아무것도 안 올라옴」이었고 원인이 «세 겹»이었습니다.
+
+```
+① dt_map 에 dt_job 컬럼 없음        -> resolve_column 이 «이름을 대며» 거절
+   에러  "resolves target_job_column='dt_job' … but 'dt_map' declares no such column
+          (declared: dt_lot, dt_slot, dt_x, dt_y, value)"
+   ✅ 소유자가 컬럼 추가로 해소 (키 아님 — retract 의 주어)
+
+② 운영 맵퍼가 «옛 판»               -> replace_map + scope={dt_job} 을 냄
+   에러  "replace_map scope column 'dt_job' is outside the map-key contract of 'dt_map'"
+   원인  mappers/*.py 가 gitignore 라 «배포로 안 갱신»됨. .py.sample 만 저장소로 간다
+   ✅ 출하본으로 교체해 해소
+
+③ 🔴 맵퍼가 방정식 «컬럼명을 하드코딩»               ← 아직 안 고쳐짐
+   mappers/dt_standard_map_mapper.py:59
+       _EQUATION_FIELDS = ("dt_x_base","dt_x_sign","dt_x_offset","dt_y_…")
+   운영 컬럼은  dtx_transform_base …
+   :125  if not (… all(v is not None …)): continue      -> 여섯 다 None → job «통째 탈락»
+   :139  if not jobs: return {"batches": []}             -> 빈 봉투. «에러도 로그도 없음»
+   소유자 지적: 「어차피 맵퍼에서 컬럼 다 받으면서 왜 하드코딩」 — 맞습니다.
+   같은 파일의 `_identity_source_columns` 는 맵 키를 «선언에서» 읽습니다. 규율이 갈려 있습니다
+   ⏭ 소유자가 «직접 짜기로» 했습니다 (「그냥 내가 짤게」)
+```
+
+### 리플레이는 «정상»이었습니다
+```
+chain_replay 는 «REAL mapper + REAL write path» 를 태웁니다 (모듈 머리글에 명시)
+=> 맵퍼가 조용히 탈락시키면 리플레이도 «똑같이» 0 을 냅니다. 리플레이 결함이 아닙니다
+확인 지표  rows_scanned > 0 인데 mapper_items = 0  ->  맵퍼 문제로 확정
+기본값     dry-run. `--apply` 를 줘야 씁니다. 페이지마다 커밋이라 «재시작 안전»
+소유자 확인: 「아 된다, 양이 많으니까 알림이 늦게 뜨네」
+```
+
+### 🔴 남는 구조 결함 하나 — 「없음」과 「건너뜀」이 화면에서 같습니다
+```
+지금   방정식 여섯 중 하나가 비면 그 job 이 «소리 없이» 사라집니다
+있어야  「job J: 방정식 컬럼 'dt_x_base' 를 트리거 표에서 못 찾음 (선언된 것: …)」
+```
+오전에 인제션 쪽에서 고친 것(원인 «아홉»이 문장 하나로 접히던 것)과 **같은 부류**입니다.
+
+---
+
+## 🔗 프레임/원장 — 테이프 자리를 «세 가지 이름»으로 부르고 있습니다 (착수 전)
+
+원장 선언 실측:
+```
+                              주어                                 목적(테이프 자리)
+transfer_event#die-transfer   {core_wafer_id, c_wx, c_wy}   →   ① {dt_job_id, b_wx,b_wy, «DT»}       원시·작업
+dt_transfer#core-die-to-dt    {core_wafer,    core_x,core_y} →   ② {dt_job,    dt_x, dt_y, «DT»}       표준·작업
+bw_dt_seat#bw-die-to-dt-seat  {base_id,       bx, by}        →   ③ {dt_seat,   dt_x, dt_y, «DTLotSlot»} 표준·물리
+                                                                     └ dt_lot|dt_slot
+```
+```
+①②   mat_id 도 좌표계도 다름          -> 안 만남
+②③   좌표는 «같은데» mat_id·mat_type 이 다름  -> 안 만남
+=> 본딩 → 코어 계보가 «이름 때문에» 끊깁니다. 프레임 문제가 «아닙니다»
+```
+
+### 목표 모양 — 셋을 ③에 맞춘다
+```
+자리의 정체 = ( dt_lot|dt_slot , 표준 dt_x , 표준 dt_y , DTLotSlot )
+                 └ 물리 테이프 ┘  └ 양쪽 inventory 방정식이 이미 만드는 값 ┘
+② dt_transfer     mat_id: dt_job → dt_lot|dt_slot · mat_type: DT → DTLotSlot
+                  dt_log 에 dt_lot/dt_slot 이 «있습니다». 새 컬럼 0
+① transfer_event  원시(b_wx/b_wy) → 표준(dt_x/dt_y) · mat_id 도 같이
+                  ⚠️ dt_transfer_log 에 dt_x/dt_y·dt_lot/dt_slot 이 있는지 «미확인»
+```
+
+### ⏭ 판정 하나 — `dt_seat` 를 누가 조립하나
+```
+현재      bonding_core_die «뷰»가 만듭니다:  dt_seat = dt_lot || '|' || dt_slot
+문제      선언에는 컬럼을 «묶는» 문법이 없습니다
+ⓐ 뷰에서  dt_log_transferable 에도 뷰가 dt_seat 를 만든다  -> 본딩과 «같은 방식». 새 문법 0  ← 권고
+ⓑ 키 둘로  die@1 의 식별키를 lot·slot 로 분리            -> «전 원자»에 영향. 큽니다
+```
+🔴 그리고 상설과 맞습니다 — 「단위는 웨이퍼, 랏은 값」. 자리는 «물리 테이프»이지 작업 번호가 아닙니다.
+
+
 ## ⏭⏭ 열린 안건 — «정본 목록» (2026-08-30 08:1x 갱신)
 🔴 이 목록이 정본입니다. 아래로 흩어진 `⏭ 판정 대기` 표지들은 «그 라운드의 기록»이고,
    확인 결과 대부분 이미 닫혔습니다 — `class` 칸(landed) · 보드 404(0) ·
    `job_run_to_confirmed_container`(은퇴, 70c45eb0) · 트렌드 좌석 404 둘(0).
+
+### A-0. 🔴 «오늘 열린» 것 — 순서대로
+```
+1  맵퍼의 _EQUATION_FIELDS 를 «선언»으로     소유자가 직접 짜기로 함 (저녁 절 참조)
+   + 방정식이 비어 job 이 탈락할 때 «이름을 대고» 로그  (지금은 소리 없이 사라짐)
+2  원장 선언 — 테이프 자리를 ③ 모양으로 통일   ⓐ(뷰 조립) 권고. 저녁 절 참조
+   ⚠️ 먼저 잴 것: dt_transfer_log 에 dt_x/dt_y·dt_lot/dt_slot 이 있나
+3  게이트 — 이음매 수 «와» 고아 수를 «둘 다»   개수만 세면 「한 칸 밀린」을 못 봄
+4  맵퍼 live↔sample 전수 비교를 시험으로 넓힐 것인가   (지금은 dt_alignment 하나만)
+   ⚠️ 넓히면 소유자가 라이브 맵퍼를 디버깅하는 동안에도 빨개집니다 — 그 거래를 정해야
+```
 
 ### A. 선언 — 하나, 그리고 그것이 «분류를 흔듭니다»
 ```
