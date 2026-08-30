@@ -56,7 +56,7 @@ export class GridSourceLabel {
     if (!this.loadDeclaration) {
       // 주입을 안 받았으면 «읽은 적이 없습니다». 「아님」으로 그리면 거짓말입니다.
       this.loadState = 'refused';
-      this.message = '선언을 받지 못했습니다';
+      this.message = 'no declaration was injected';
       this.render();
       return;
     }
@@ -77,7 +77,7 @@ export class GridSourceLabel {
       //    그 순간 라우트 실패가 «사실»로 둔갑합니다.
       this.sources = null;
       this.loadState = 'refused';
-      this.message = (got && got.message) || '선언을 못 읽었습니다';
+      this.message = (got && got.message) || 'declaration unreadable';
     }
     this.render();
   }
@@ -106,7 +106,7 @@ export class GridSourceLabel {
 
     if (this.loadState === 'loading' || this.loadState === 'idle') {
       root.className = 'grid-source-label is-pending';
-      root.textContent = '선언을 읽는 중…';
+      root.textContent = '…';
       this.host.appendChild(root);
       return;
     }
@@ -114,7 +114,7 @@ export class GridSourceLabel {
     if (this.loadState === 'refused') {
       // 🔴 셋 중 «셋째». 「아님」과 같은 문장을 쓰면 안 됩니다.
       root.className = 'grid-source-label is-unknown';
-      root.textContent = `선언을 못 읽었습니다 — ${this.message || ''}`.trim();
+      root.textContent = `declaration unreadable — ${this.message || ''}`.trim();
       root.setAttribute('data-source-state', 'unknown');
       this.host.appendChild(root);
       return;
@@ -124,7 +124,7 @@ export class GridSourceLabel {
     if (!row) {
       // 🔴 셋 중 «둘째». 읽었고, 목록에 없습니다 — 그건 «사실»이라 말합니다.
       root.className = 'grid-source-label is-not-source';
-      root.textContent = '원장에 안 들어갑니다';
+      root.textContent = 'not a ledger source';
       root.setAttribute('data-source-state', 'not_source');
       this.host.appendChild(root);
       return;
@@ -135,14 +135,14 @@ export class GridSourceLabel {
     const emits = Array.isArray(row.emits) ? row.emits : [];
     const name = doc.createElement('span');
     name.className = 'grid-source-label__name';
-    name.textContent = `원장 소스 — ${row.source}`;
+    name.textContent = `ledger source — ${row.source}`;
     root.appendChild(name);
     const makes = doc.createElement('span');
     makes.className = 'grid-source-label__emits';
     // 술어가 «없는» 소스는 오늘 없지만, 있으면 그 사실을 말합니다 — 빈 괄호로 두지 않습니다.
     makes.textContent = emits.length
-      ? ` · 만드는 것: ${emits.join(' · ')}`
-      : ' · 만드는 술어가 선언에 없습니다';
+      ? ` · emits ${emits.join(' · ')}`
+      : ' · no predicate declared';
     root.appendChild(makes);
     this.host.appendChild(root);
   }
