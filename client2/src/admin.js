@@ -26,7 +26,7 @@ import {
 // 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
-  resolveCount, paramEntries, paramsKey, RETRO_CHROME,
+  resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView,
 } from './retroactive_view.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
@@ -321,6 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMonacoEditor();
   initConfigResolveLine();
   initRetroactiveLine();
+  refreshRunning();
   initOntologyExplorer({
     root: ontologyExplorerRoot,
     apiBase: API_BASE,
@@ -1988,6 +1989,167 @@ function retroState(op) {
   return state;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 도는 것들 — 목록 하나, 줄마다 [무엇] [진행] [ × ]. 소유자 1순위 화면.
+//
+// 🔴 이 화면의 존재 이유는 «하나만 끊기»입니다. 백필이 서버를 무겁게 만드는데 백필만 못 꺼서
+//    서버를 통째로 내리는 일이 운영에서 잦았습니다. × 는 프로세스를 죽이지 «않고» 값만
+//    세우며, 작업이 다음 배치 «전»에 그것을 보고 스스로 멈춥니다.
+//
+// 🔴 판정은 전부 `retroactive_view.buildRunsView` 에 있습니다. 여기서는 «그린 것»만 합니다 --
+//    무엇이 막대를 받는지, 어디에 × 가 붙는지를 이 파일이 다시 정하면 두 곳이 어긋납니다.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let runsView = null;
+let runsInFlight = false;
+
+/** 두 출처를 «같이» 읽습니다. 한쪽이 실패해도 다른 쪽은 그립니다 -- 부분이 전부보다 낫습니다. */
+async function refreshRunning() {
+  if (runsInFlight) return;
+  runsInFlight = true;
+  try {
+    const [runsRes, ingestRes] = await Promise.all([
+      adminFetch(`${API_BASE}/admin/retroactive/runs?limit=50`).catch(() => null),
+      adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null),
+    ]);
+    const runs = runsRes && runsRes.ok ? (await runsRes.json().catch(() => null)) : null;
+    const ingest = ingestRes && ingestRes.ok ? (await ingestRes.json().catch(() => null)) : null;
+    // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
+    //    「도는 작업 없음」이라고 «거짓»을 말합니다.
+    const failed = [];
+    if (!runs) failed.push('실행 목록');
+    if (!ingest) failed.push('파일 인제션');
+    const cancellable = {};
+    for (const op of (retroactiveView && retroactiveView.operations) || []) {
+      if (op && op.op) cancellable[op.op] = op.cancellable === true;
+    }
+    runsView = buildRunsView(
+      { runs: (runs && runs.runs) || [], ingestions: (ingest && ingest.data) || [] },
+      Date.now(), cancellable);
+    runsView.failedSources = failed;
+    renderRunning();
+  } finally {
+    runsInFlight = false;
+  }
+}
+
+/** × — 값만 세웁니다. 목록에서 «안 지웁니다». */
+async function requestRunCancel(runId) {
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/retroactive/runs/${encodeURIComponent(runId)}/cancel`,
+      { method: 'POST' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      showToast((body && body.detail) || `cancel refused (${res.status})`, 'error');
+      return;
+    }
+  } catch (e) {
+    showToast('could not send the cancel request', 'error');
+    return;
+  }
+  // 서버가 값을 세웠고, 실제로 멈추는 것은 그다음입니다. 목록을 다시 읽어 «멈추는 중»을 보입니다.
+  refreshRunning();
+}
+
+function renderRunning() {
+  const valueEl = byId('running-value');
+  const subEl = byId('running-sub');
+  const body = byId('running-body');
+  if (!valueEl || !subEl || !body) return;
+  const view = runsView;
+  body.textContent = '';
+  if (!view) {
+    valueEl.textContent = '—';
+    subEl.textContent = '…';
+    return;
+  }
+  valueEl.textContent = String(view.rows.length);
+  // 접힌 줄이 「열지 말지」를 정합니다: 몇 개가 도는지와 가장 오래된 것.
+  // 🔴 「가장 오래」는 «최댓값»입니다. 마지막 줄을 집으면 목록 순서가 바뀌는 날 조용히
+  //    다른 수를 말합니다 — 접힌 줄만 보고 끊을지 정하는 화면이라 그 한 수가 판단입니다.
+  const oldestMinutes = view.rows.reduce((max, r) => {
+    const m = r.progress && typeof r.progress.elapsedMinutes === 'number'
+      ? r.progress.elapsedMinutes : null;
+    return m === null ? max : (max === null ? m : Math.max(max, m));
+  }, null);
+  const oldest = oldestMinutes === null ? null : `${oldestMinutes}m`;
+  subEl.textContent = view.empty ? 'idle' : (oldest ? `oldest ${oldest}` : '');
+  if (view.failedSources && view.failedSources.length) {
+    // 🔴 못 읽은 출처를 «이름 대어» 말합니다. 안 말하면 그만큼이 「없는 것」이 됩니다.
+    subEl.textContent += ` · ${view.failedSources.join(', ')} unreachable`;
+  }
+  if (view.empty) return;
+
+  const list = document.createElement('div');
+  list.className = 'running-list';
+  for (const row of view.rows) {
+    const line = document.createElement('div');
+    line.className = 'running-row';
+    line.setAttribute('data-run-id', row.id);
+
+    const what = document.createElement('span');
+    what.className = 'running-what';
+    what.textContent = cfgText(row.what) + (cfgText(row.detail) ? ` · ${cfgText(row.detail)}` : '');
+    line.appendChild(what);
+
+    const prog = document.createElement('span');
+    prog.className = 'running-progress';
+    if (row.progress.mode === 'bar') {
+      const bar = document.createElement('span');
+      bar.className = 'running-bar';
+      const fill = document.createElement('span');
+      fill.className = 'running-bar__fill';
+      fill.style.width = `${row.progress.percent}%`;
+      bar.appendChild(fill);
+      prog.appendChild(bar);
+      const pct = document.createElement('span');
+      pct.className = 'running-pct';
+      pct.textContent = `${row.progress.percent}%`;
+      prog.appendChild(pct);
+    } else {
+      // 🔴 폭을 «주장하지 않는» 막대. 전체를 모르는데 찬 막대를 그리면 그 폭이 곧 거짓말이고,
+      //    글자로 「처리 N」이라 적으면 소유자 지적대로 막대가 있는데 말을 또 하는 것입니다.
+      //    움직임이 「도는 중」을, 수가 「어디까지」를 말합니다.
+      const bar = document.createElement('span');
+      bar.className = 'running-bar is-unknown';
+      const fill = document.createElement('span');
+      fill.className = 'running-bar__fill';
+      bar.appendChild(fill);
+      prog.appendChild(bar);
+      const t = document.createElement('span');
+      t.className = 'running-pct';
+      t.textContent = row.progress.text;
+      prog.appendChild(t);
+    }
+    if (row.progress.elapsed) {
+      const el = document.createElement('span');
+      el.className = 'running-elapsed';
+      el.textContent = ` · ${row.progress.elapsed}`;
+      prog.appendChild(el);
+    }
+    line.appendChild(prog);
+
+    const act = document.createElement('span');
+    act.className = 'running-act';
+    if (row.stopping) {
+      // 🔴 말 대신 «색»입니다 (소유자 지시). 줄이 흐려지고 막대가 멈춥니다 — 그리고 «남습니다».
+      line.className += ' is-stopping';
+      line.title = 'stopping after the current batch';
+    } else if (row.cancel) {
+      const btn = document.createElement('button');
+      btn.className = 'glass-btn running-x';
+      btn.textContent = '×';
+      btn.title = 'stop this one — the server keeps running';
+      btn.addEventListener('click', () => requestRunCancel(row.id));
+      act.appendChild(btn);
+    }
+    // 🔴 못 멈추는 것에는 «아무것도» 안 그립니다. 죽은 × 는 화면이 하는 거짓말입니다.
+    line.appendChild(act);
+    list.appendChild(line);
+  }
+  body.appendChild(list);
+}
+
 function initRetroactiveLine() {
   const hint = byId('retroactive-hint');
   if (hint) hint.textContent = RETRO_CHROME.HINT;
@@ -2046,6 +2208,9 @@ async function refreshRetroactiveOperations(force = false) {
     if (raw === retroactiveRaw && retroactiveView) return;
     retroactiveRaw = raw;
     retroactiveView = buildOperationsView(JSON.parse(raw));
+    // 🔴 진행 목록의 × 는 이 목록의 `cancellable` 로만 그려집니다. 이것이 «늦게» 오므로
+    //    도착하면 다시 그립니다 — 안 그러면 첫 로드에서 × 가 영원히 안 보입니다.
+    if (runsView) renderRunning();
     // 목록이 실제로 달라졌다 = 설정이 바뀌었다 = 들고 있던 측정은 낡은 선언에 대한 것이다.
     // 큐 응답(run_id)은 남긴다: 그것은 선언이 아니라 **일어난 일**이고, 설정이 바뀌었다고
     // 방금 큐에 들어간 실행이 없던 일이 되지 않는다.

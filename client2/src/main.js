@@ -170,11 +170,11 @@ async function loadLedgerDeclaration() {
     if (!res.ok || !body) {
       // 🔴 «사유»만 돌려줍니다. 부품이 「선언을 못 읽었습니다」를 이미 말하므로, 여기서 같은
       //    문장을 또 쓰면 화면에 두 번 나옵니다 (실측 2026-08-31에 실제로 그렇게 나왔습니다).
-      return { ok: false, message: `서버가 ${res.status} 로 거절했습니다` };
+      return { ok: false, message: `server refused (${res.status})` };
     }
     return { ok: true, sources: Array.isArray(body.sources) ? body.sources : null };
   } catch (err) {
-    return { ok: false, message: `라우트에 닿지 못했습니다 — ${err && err.message}` };
+    return { ok: false, message: `route unreachable — ${err && err.message}` };
   }
 }
 
@@ -215,7 +215,7 @@ function initGridRescopeMenu() {
       if (!putRescopeHandoff(payload)) {
         // 저장소가 막히면 «조용히 넘어간 척» 하지 않습니다. 그 침묵이 어드민에서
         // 「범위가 안 왔다」로 보이고, 운영자는 어디서 사라졌는지 못 찾습니다.
-        showToast('범위를 넘기지 못했습니다 — 브라우저 저장소가 막혀 있습니다', 'error');
+        showToast('could not hand the scope over — browser storage is blocked', 'error');
         return;
       }
       elements.contextMenu.style.display = 'none';

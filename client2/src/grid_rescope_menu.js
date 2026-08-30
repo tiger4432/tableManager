@@ -87,7 +87,7 @@ export class GridRescopeMenu {
     if (!rows.length) {
       const note = doc.createElement('li');
       note.className = 'rescope-menu__note';
-      note.textContent = '행을 고르면 «다시 번역»이 여기에 나옵니다';
+      note.textContent = 'select rows to re-translate';
       list.appendChild(note);
       this.host.appendChild(list);
       return;
@@ -98,7 +98,7 @@ export class GridRescopeMenu {
       // 소스인데 범위 컬럼이 «선언에 없습니다». 그 사실을 말하지, 아무 컬럼이나 제안하지 않습니다.
       const note = doc.createElement('li');
       note.className = 'rescope-menu__note';
-      note.textContent = '이 소스는 범위 컬럼을 선언하지 않았습니다';
+      note.textContent = 'this source declares no scope column';
       list.appendChild(note);
       this.host.appendChild(list);
       return;
@@ -111,13 +111,13 @@ export class GridRescopeMenu {
       if (!values.length) {
         // 그 컬럼 줄만 죽습니다. 지우면 「서버가 안 받는 컬럼」과 구별이 사라집니다.
         item.className = 'rescope-menu__item is-empty';
-        item.textContent = `${column} — 고른 행에 이 값이 없습니다`;
+        item.textContent = `${column} — no value in the selected rows`;
         list.appendChild(item);
         continue;
       }
       item.className = 'rescope-menu__item';
-      const skipped = missing ? ` · 값 없는 행 ${missing}` : '';
-      item.textContent = `선택한 ${rows.length}행 → ${column} ${values.length}개로 다시 번역${skipped}`;
+      const skipped = missing ? ` · ${missing} without a value` : '';
+      item.textContent = `re-translate ${rows.length} rows by ${column} (${values.length})${skipped}`;
       item.addEventListener('click', () => {
         if (!this.handOff) return;
         // 🔴 넘기는 것은 «연산이 선언한 이름 그대로»입니다. 화면이 이름을 지어내면

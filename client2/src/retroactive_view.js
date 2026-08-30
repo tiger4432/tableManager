@@ -210,6 +210,10 @@ function buildOperation(spec) {
   return {
     // Routing key, not text: it is the `{op}` path segment.
     op: spec && spec.op != null ? String(spec.op) : '',
+    // 🔴 선언의 낱말을 그대로 나릅니다 — 진행 목록의 × 가 이 값으로만 그려집니다.
+    //    안 나르면 그 목록이 «어느 줄에도» × 를 안 그리고, 화면은 조용히 「못 멈춥」니다
+    //    (실측 2026-08-31: 제가 그 상태로 한 번 그렸습니다).
+    cancellable: (spec && spec.cancellable) === true,
     label: text(spec && spec.label),
     // WHY the operation exists, in the server's words. This is the sentence that makes the button
     // legible; without it a row is five verbs with no referent.
@@ -312,6 +316,111 @@ export function buildCountView(payload) {
     blockedLabel: chrome(RETRO_CHROME.BLOCKED),
     blocked: text(data.blocked_reason),
     ...buildFacts(data),
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 진행 목록 — 「도는 것들」 한 목록. 줄마다 [무엇] [진행] [ × ] 셋، 다섯째 없음.
+//
+// 🔴 막대는 «전체를 아는 것»에만. 모르면 «처리한 수 + 경과»를 글자로 말합니다.
+//    `total_rows` 가 null 로 오는 것은 「0」이 아니라 「모름」입니다 — 서버가 그렇게 적어
+//    보냅니다. 0 으로 채우면 화면이 「할 일 없음」과 0% 를 그리고, 그게 거짓입니다.
+//
+// 🔴 × 는 «모두에게» 나오지 않습니다. 배치 경계가 없는 연산은 요청을 세워도 볼 자리가
+//    없어서, 그려 두면 «누릅도 안 멈췐» 또는 «죽은 버튼»이 됩니다. 연산 선언의
+//    `cancellable` 이 그걸 말하고, 이 파일은 그 낱말을 «읽기만» 합니다.
+//
+// 🔴 취소를 누르면 줄이 «안 사라집니다». 즉시 지우면 「언제 실제로 멈컴는가」를
+//    운영자가 못 보고, «요청했다»와 «멈컴다»를 같은 것으로 읽게 됩니다.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** 몇 분째인가. 시각이 없으면 «null» — 0 분으로 적으면 「방금 시작」으로 읽힙니다. */
+export function elapsedMinutes(startedAt, now) {
+  if (!startedAt) return null;
+  const start = Date.parse(startedAt);
+  if (Number.isNaN(start)) return null;
+  const ms = (typeof now === 'number' ? now : Date.now()) - start;
+  return ms < 0 ? 0 : Math.floor(ms / 60000);
+}
+
+/** 진행 칸 하나. 막대는 «전체를 아는 때만»이고, 모르면 수와 경과를 글자로. */
+export function buildProgressCell(processed, total, minutes) {
+  const done = Number.isFinite(processed) ? Number(processed) : null;
+  const all = Number.isFinite(total) && Number(total) > 0 ? Number(total) : null;
+  const elapsed = Number.isFinite(minutes) ? `${minutes}m` : null;
+  if (all !== null && done !== null) {
+    const percent = Math.max(0, Math.min(100, Math.round((done / all) * 100)));
+    return { mode: 'bar', percent, processed: done, total: all, elapsedMinutes: minutes,
+             text: `${done.toLocaleString()} / ${all.toLocaleString()}`,
+             elapsed };
+  }
+  // 🔴 가짜 % 를 안 그립니다. 이 연산들은 행이 떨어질 때까지 걷기 때문에
+  //    시작 시점에 전체를 «알 수 없습니다». 모르는 것을 그리지 않고 «아는 것»만 적습니다.
+  return { mode: 'text', percent: null, processed: done, total: null, elapsedMinutes: minutes,
+           // 🔴 말을 적지 않습니다 (소유자 2026-08-31: 「하나하나 쓰지 말고 색으로」).
+           // 수만 내고, «전체를 모른다»는 사실은 막대의 «색과 모양»이 말합니다.
+           text: done === null ? '—' : done.toLocaleString(),
+           elapsed };
+}
+
+/**
+ * 「도는 것들」 한 목록 — 요청형(소급 실행)과 상시형(파일 인제션)을 «같이».
+ *
+ * 🔴 사용자에겐 그냥 「도는 것들」입니다. 두 출처를 두 목록으로 나누면 «어느 목록을
+ *    봐야 하나»가 생기고, 그건 「하나만 끊기」라는 이 화면의 목적과 반대입니다.
+ *
+ * @param payload  `{ runs, ingestions }` — 둘 다 없을 수 있고, 그때는 «빈 목록»입니다
+ * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다
+ */
+export function buildRunsView(payload, now, cancellable) {
+  const data = payload || {};
+  const canCancel = cancellable || {};
+  const rows = [];
+
+  for (const run of Array.isArray(data.runs) ? data.runs : []) {
+    if (!run) continue;
+    const state = String(run.state || '');
+    // 끝난 것은 「도는 것」이 아닙니다. 목록이 길어지면 «하나를 끊는» 목적이 흐려집니다.
+    if (state === 'succeeded' || state === 'failed' || state === 'cancelled') continue;
+    const minutes = elapsedMinutes(run.started_at || run.queued_at, now);
+    rows.push({
+      // 🔴 id 는 «열쇠»이지 화면에 나가는 문장이 아닙니다. 태그를 붙이면 취소가 어느 행을
+      //    가리키는지 잃습니다 -- 이 파일의 `text()` 는 출처를 «달아» 객체로 만듭니다.
+      id: String(run.run_id || ''),
+      kind: 'run',
+      what: text(run.label) || text(run.op),
+      detail: text(Object.values(run.params || {}).join(' · ')),
+      progress: buildProgressCell(run.processed_rows, run.total_rows, minutes),
+      // 🔴 멈출 수 없는 연산에는 × 를 안 그립니다 — 누르면 아무 일도 안 일어나는
+      //    버튼은 화면이 하는 거짓말입니다. 선언이 모르는 연산도 그리지 않습니다.
+      cancel: canCancel[run.op] === true,
+      // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
+      stopping: state === 'cancelling' || state === 'cancel_requested',
+      state,
+    });
+  }
+
+  for (const job of Array.isArray(data.ingestions) ? data.ingestions : []) {
+    if (!job) continue;
+    const minutes = Number.isFinite(job.elapsed_seconds)
+      ? Math.floor(Number(job.elapsed_seconds) / 60) : null;
+    rows.push({
+      id: `ingest:${String(job.table_name || '')}:${String(job.filename || '')}`,
+      kind: 'ingestion',
+      what: text(job.filename),
+      detail: text(job.table_name),
+      progress: buildProgressCell(job.processed_rows, job.total_rows, minutes),
+      // 파일 인제션은 이 라우트가 취소를 안 받습니다. 그러니 × 를 안 그립니다.
+      cancel: false,
+      stopping: false,
+      state: text(job.status),
+    });
+  }
+
+  return {
+    rows,
+    // «비었다»는 사실이고, 한 줄로 말합니다. 빈 표를 그리면 「못 읽었다」처럼 보입니다.
+    empty: rows.length === 0,
   };
 }
 

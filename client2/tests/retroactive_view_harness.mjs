@@ -453,6 +453,63 @@ async function suite(source) {
      !== view.paramsKey([{ key: 'a', value: '1,b=2' }]),
     'F1: a value carrying a printable separator cannot forge another parameter');
 
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  // ── G. 진행 목록 — 「도는 것들」 한 목록, [무엇] [진행] [ × ] ──────────
+  {
+    const NOW = Date.parse('2026-08-31T09:00:00+09:00');
+    const payload = {
+      runs: [
+        { run_id: 'r1', op: 'ledger_backfill', label: '원장 백필', params: { source: 'lot_event' },
+          state: 'running', processed_rows: 1240, total_rows: null,
+          started_at: '2026-08-31T08:43:00+09:00' },
+        { run_id: 'r2', op: 'chain_replay', label: '체인 리플레이', params: { rule: 'inv' },
+          state: 'cancelling', processed_rows: 5, total_rows: null,
+          started_at: '2026-08-31T08:58:00+09:00' },
+        { run_id: 'r3', op: 'ledger_rescope', label: '끝남', state: 'succeeded' },
+      ],
+      ingestions: [{ table_name: 'dt_log', filename: 'a.csv', status: 'PROCESSING',
+                     processed_rows: 430, total_rows: 1000, elapsed_seconds: 190 }],
+    };
+    const rv = view.buildRunsView(payload, NOW, { ledger_backfill: true, chain_replay: true });
+
+    ok(rv.rows.length === 3, 'G1: a finished run is not on the list of what is running');
+    ok(same(rv.rows.map((r) => r.kind), ['run', 'run', 'ingestion']),
+      'G1: both sources are ONE list, not two');
+
+    ok(rv.rows[0].progress.mode === 'text',
+      'G2: an operation that cannot know its total gets no bar');
+    ok(rv.rows[0].progress.percent === null,
+      'G2: ... and no percent at all, rather than a made-up one');
+    ok(rv.rows[0].progress.text.includes('1,240'),
+      'G2: ... it says the processed count it does know');
+    // UI 가 영어로 가면서 이 단언도 같이 옴깁니다 — 재는 것은 같습니다.
+    ok(rv.rows[0].progress.elapsed === '17m',
+      'G2: ... and how long it has run, which is what decides whether to stop it');
+    ok(rv.rows[2].progress.mode === 'bar',
+      'G3: an operation whose total is known gets the bar');
+    ok(rv.rows[2].progress.percent === 43,
+      'G3: ... at the percentage its own numbers give');
+
+    ok(same(rv.rows.map((r) => r.cancel), [true, true, false]),
+      'G4: the X is drawn only where the declaration says the run can be cancelled');
+    ok(same(view.buildRunsView(payload, NOW, {}).rows.map((r) => r.cancel), [false, false, false]),
+      'G4: an operation the declaration does not mark cancellable gets no X');
+
+    ok(rv.rows[1].stopping === true,
+      'G5: a run whose cancel was requested says it is stopping');
+    ok(rv.rows.some((r) => r.id === 'r2'),
+      'G5: ... and stays on the list until it actually stops');
+
+    ok(view.buildRunsView({ runs: [], ingestions: [] }, NOW, {}).empty === true,
+      'G6: an empty list is a fact and says so');
+    ok(view.buildRunsView(null, NOW, {}).rows.length === 0,
+      'G6: no payload is the same empty, not a crash');
+
+    ok(view.elapsedMinutes(null, NOW) === null,
+      'G7: a run with no start time has no elapsed, not zero');
+  }
+
   const stale = recordFor('lot_alias', 'inv');
   ok(view.resolveCount(stale, byOp.chain_replay).stale === true,
     'F1: a count measured for another parameter is reported stale');
