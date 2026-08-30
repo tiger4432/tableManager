@@ -229,7 +229,7 @@ def _to_payloads(page, columns: list) -> list:
 
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                checkpoint=None) -> dict:
+                checkpoint=None, business_keys=None) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
     Dry-run (default) reads only and reports what WOULD change, including which
@@ -287,9 +287,38 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
     run_id = uuid.uuid4().hex[:8]
     is_batch = bool(rule.get("is_batch"))
+
+    # 🔴 THE SELECTION GOES BESIDE `limit`, NOT INSTEAD OF IT, and it goes into the QUERY
+    # rather than into a filter after the fetch. `limit` bounds how much is SCANNED;
+    # this says WHICH ROWS. They are different questions and this table has both - the
+    # brief is explicit that adding a fourth meaning to `limit` is how the next person
+    # gets it wrong.
+    #
+    # `business_key_val` is the axis because `replay_rule` already carries it through its
+    # stats and its samples: the operator sees those keys on the screen, so selecting by
+    # anything else would mean picking rows by one name and replaying them by another.
+    #
+    # The column is read off the TRIGGER model, because the trigger table is what this loop
+    # pages - the target is where the writes land. Measured 2026-08-31 on the trigger side
+    # of all eleven declared rules: every one of them has `business_key_val`. (Measuring the
+    # target side first gave the same verdict for the wrong reason, which is why the table
+    # is named here rather than left to be inferred from the variable.)
+    selection = None
+    if business_keys is not None:
+        keys = [str(k).strip() for k in business_keys if str(k).strip()]
+        if not keys:
+            # An empty selection would scan the whole table and replay ALL of it, which is
+            # the opposite of what the caller asked for. Refused by name rather than
+            # treated as "no filter".
+            raise ReplayRefused(
+                "business_keys was given but empty; an empty selection would replay the "
+                "whole rule instead of nothing. Omit it to replay everything, on purpose.")
+        selection = trg_model.business_key_val.in_(keys)
+        log(f"[replay] selection: {len(keys)} business key(s)")
     module_name, func_name = rule.get("mapper_module"), rule.get("mapper_function")
 
     for page in keyset_scan.iter_pages(db, trg_model, columns=[getattr(trg_model, c) for c in columns],
+                                       condition=selection,
                                        chunk_size=chunk_size, limit=limit, max_row_id=max_row_id):
         # The batch boundary, and the only place a stop is safe: the previous page is
         # committed and this one has not begun. `checkpoint(processed)` is called at each batch boundary and returns True to stop. It is one call rather than two because both facts belong to the same instant - where the run has got to, and whether it should go on - and a stop is only safe AT that instant, where the previous batch is committed and the next has not started. Returning True breaks the loop; the operation returns its stats as usual with `stopped` set, because a cancelled run has done real work and must report it.

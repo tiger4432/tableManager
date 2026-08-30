@@ -663,3 +663,20 @@ def test_withdraw_deletes_the_same_layers_whatever_the_outbox_label(rep_env,
     assert fixed_stats["pinned_skipped"] == 1, \
         "the human pin must be honoured (and the fixture must actually exercise it)"
     assert fixed_stats["cells_withdrawn"] == 1 and fixed_stats["revealed"] == 1
+
+
+def test_an_empty_row_selection_is_refused_rather_than_read_as_no_filter(rep_env):
+    """🔴 EMPTY MEANS "REPLAY EVERYTHING" IF NOBODY STOPS IT, which is the opposite of the ask.
+
+    A caller who passes a selection has decided to narrow; an empty one is a mistake
+    upstream - a filter that matched nothing, a blank field - and treating it as "no filter"
+    replays the whole rule. The refusal names the two ways out so the caller can pick the
+    one they meant.
+    """
+    rule = {"name": "x", "trigger_table": "crep_test_trigger",
+            "target_table": "crep_test_target"}
+    with pytest.raises(chain_replay.ReplayRefused) as caught:
+        chain_replay.replay_rule(rep_env, rule, apply=False, business_keys=[])
+    assert "empty" in str(caught.value)
+    # ...and it says what to do instead, or the operator only learns they were refused.
+    assert "Omit it" in str(caught.value)

@@ -92,7 +92,8 @@ def _count_chain_replay(db, params, scan_limit):
 
     rule = chain_replay.find_rule(params["rule"])
     s = chain_replay.replay_rule(db, rule, apply=False, limit=scan_limit,
-                                 log=lambda m: logger.debug(m))
+                                 log=lambda m: logger.debug(m),
+                                 business_keys=params.get("business_keys"))
     truncated = s["rows_scanned"] >= scan_limit
     return {
         "affected": s["cells_proposed"],
@@ -451,7 +452,8 @@ def _run_chain_replay(db, params, log, control=None):
 
     rule = chain_replay.find_rule(params["rule"])
     s = chain_replay.replay_rule(db, rule, apply=True, log=log,
-                                 checkpoint=_checkpoint(control))
+                                 checkpoint=_checkpoint(control),
+                                 business_keys=params.get("business_keys"))
     return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
             "rows_updated": s["rows_updated"], "rows_scanned": s["rows_scanned"],
             "withdrawal_candidates": s["skipped_blank_cells"]}
@@ -524,7 +526,11 @@ OPERATIONS = {
     "chain_replay": {
         "label": "체인 규칙 소급 적용 (R1)",
         "what_is_missing": "규칙보다 오래된 데이터를 그 규칙이 한 번도 보지 못했다",
-        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)")],
+        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
+                   _p("business_keys", required=False, kind="csv",
+                      help="replay only these rows, by business_key_val; omit for the "
+                           "whole rule. This selects WHICH rows - `limit` still bounds "
+                           "how many are scanned")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "cli": "server/scripts/chain_replay_cli.py replay <rule> --apply",
