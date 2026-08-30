@@ -1648,6 +1648,57 @@ a43addaf  맵 에디터 «분기 모드» — 위 판정이 만든 «구멍»을
         빨개진 넷만 고쳤으면 못 봤다. 여덟 다 노브를 «명시»하게 고침
 ```
 
+## 🧭 판정 — 「확정맵을 좌표계별로 따로 운영해야 하나」 → **원장 관점에서는 «아니오»** (2026-08-30)
+
+소유자 질문: 「dt나 본딩에서 원장을 어떻게 해야하지, core·base 좌표계 «모두» 확정맵을 따로 운영해야하나」
+소유자 정정: 「아니 die2die 로 엣지 생기잖아 지금」  ← 이 한 마디가 답을 뒤집었습니다
+
+### ① 다이의 좌표는 «원천 컬럼 그대로»다 — 확정맵이 원장에 «안 들어간다»
+```
+die@1 의 x/y 가 묶이는 컬럼 (선언 전수)
+   c_wx/c_wy · b_wx/b_wy · core_x/core_y · dt_x/dt_y · base_x/base_y · bx/by · cx/cy
+wafer_map_metadata 는 «한 번도» 나오지 않는다
+```
+🔴 **그래서 프레임을 틀리게 확정해도 원장은 «안 틀린다».** 원자는 원천 값 그대로이고
+die2die 엣지도 원천 컬럼 «쌍»으로 만들어진다. 틀리는 것은 «화면에 어떻게 보이나» 뿐이다.
+
+### ② 원장은 프레임을 «이미» 가르고 있다 — mat_id · mat_type
+```
+Wafer      401,704   core · base 다이       core↔base 는 mat_id 로 갈린다
+DT          29,613   테이프 자리            → DT 는 mat_type 으로 갈린다
+DTLotSlot  103,617   DT 랏/슬롯 좌석
+같은 (mat_id, x, y) 라도 mat_type 이 다르면 «다른 노드»다
+```
+
+### ③ 계보는 이미 서 있다 — 변환식이 낄 자리가 없다
+```
+base die ─bonded_from→ core die    18,609
+base die ─transfer───→ DT seat    371,593
+core die ─transfer───→ DT die      29,613
+die      ─in_container→ wafer      37,218
+```
+스펙 §7.5b 의 「프레임 간 다리는 «변환»이 아니라 «조인»」이 데이터로 그대로 서 있습니다.
+
+### ④ 그래서 층이 갈리고, 복구도 갈린다
+```
+원장     프레임을 mat_id·mat_type 으로 가른다. 확정맵을 «안 읽는다»
+확정맵    «사람이 보는 층». 프레임별 맵 테이블이 이미 각자 행을 갖는다
+         (bonding_map · dt_map · core_wafer_map — (target_table,map_id) 중복 0)
+
+확정이 틀렸다   -> 다시 확정하면 옛 것이 superseded (frame_confirmation 이 «세대»로 쌓는다:
+                supersedes_uid · superseded_by · version). 원장 «무관»
+원천이 틀렸다   -> 표를 고치고 재번역. 확정과 «무관한» 다른 사고
+```
+🔴 확정 기록은 «규칙 이름·결정키·winner·input_fingerprint» 를 다 싣는다 —
+   틀린 프레임 확정은 «규칙 이름으로 골라낼 수» 있다.
+
+### 🗂 곁가지 — bonding_log 의 메타 4,100 은 «확정이 아니다»
+```
+frame_confirmed_from = None  «4,100 전부»   (valid_die_ref 는 3,791 에 있는데 확정 표지는 0)
+frame_confirmation 표 전체    «99행»
+=> 씨앗이 메타만 만들어 놓고 확정은 한 번도 안 돌았습니다. 소유자 확인: 「가짜로 넣은 데이터」
+```
+
 ## ⏭⏭ 열린 안건 — «정본 목록» (2026-08-30 08:1x 갱신)
 🔴 이 목록이 정본입니다. 아래로 흩어진 `⏭ 판정 대기` 표지들은 «그 라운드의 기록»이고,
    확인 결과 대부분 이미 닫혔습니다 — `class` 칸(landed) · 보드 404(0) ·
