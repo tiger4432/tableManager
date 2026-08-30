@@ -247,7 +247,7 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
-        ontology_root=None, retranslate=None):
+        ontology_root=None, retranslate=None, checkpoint=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
@@ -295,12 +295,12 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     return _run_v2_lineage(
         engine, cutover, source=source, fetch_rows=fetch_rows,
         reset_cursor=reset_cursor, start_from=start_from,
-        max_batches=max_batches, retranslate=retranslate)
+        max_batches=max_batches, retranslate=retranslate, checkpoint=checkpoint)
 
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     reset_cursor=False, start_from=None, max_batches=None,
-                    retranslate=None):
+                    retranslate=None, checkpoint=None):
     """Run one selected source on the existing Store/cursor.
 
     ``run()`` is the only caller and there is no longer an alternative driver to fall back
@@ -454,6 +454,16 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         )
         for complete, next_after, _last_page in pages:
             if max_batches is not None and result["batches"] >= max_batches:
+                break
+            # 🔴 BETWEEN PAGES, WHICH IS THE ONLY PLACE A STOP IS SAFE HERE. The last page's
+            # atoms and its cursor were committed together, and this page has not been read,
+            # so stopping leaves the watermark and the ledger agreeing exactly as a finished
+            # run would. Stopping anywhere inside would split a molecule across batches -
+            # the same fault this loop's own split guard exists to catch.
+            if checkpoint is not None and checkpoint(result["rows_read"]):
+                result["stopped"] = True
+                logger.info("[Ledger] stopped by request after %d rows at cursor %s",
+                            result["rows_read"], result.get("cursor"))
                 break
             frame = _v2_frame(complete)
             result["rows_read"] += len(frame)
@@ -797,6 +807,44 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     result["deduped"] = int(written.get("deduped", 0))
     result["applied"] = True
     return result
+
+
+def rows_past_cursor(engine, setup, source, limit=DEFAULT_FETCH_ROWS):
+    """How many rows this source has NOT translated yet. READ ONLY, MOVES NOTHING.
+
+    🔴 IT PAGES FROM THE CURSOR, WHICH `preview_first_batch` DOES NOT. That one compiles the
+    relation's FIRST page - it exists to show what a source's output looks like - and using
+    it to answer "how much is left" reports rows that were translated long ago. Measured
+    2026-08-31 on `dt_transfer`: the first page offered 199 rows while the run past the
+    cursor read ZERO. A count built on it would have told an operator there was work waiting
+    and then done nothing, which reads as a broken button rather than as an empty queue.
+
+    Returns `(rows, complete)`. `complete` is True when the page came back SHORT, because
+    then the page IS the remainder and the number is exact; a full page means there is more
+    behind it and the caller must say `sample`. The two cases are returned separately rather
+    than as one number, since "12 left" and "at least 200 left" are different sentences.
+    """
+    from .store import LedgerStore
+
+    plan = setup.snapshot.source_plans[source]
+    store = LedgerStore(engine)
+    read = store.connection()
+    try:
+        existing = store.read_cursor(read, source)
+    finally:
+        read.rollback()
+        read.close()
+    cursor_value = (existing or {}).get("cursor_value") or {}
+    # The same key the run pages on, read the same way. A second spelling of this is how
+    # the count and the run would come to disagree about where the source stands.
+    after_key = cursor_value.get(_page_key(plan))
+    connection = engine.raw_connection()
+    try:
+        page = _fetch_v2_lineage_page(connection, plan, after_key, limit)
+    finally:
+        connection.rollback()
+        connection.close()
+    return len(page), len(page) < limit
 
 
 def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):

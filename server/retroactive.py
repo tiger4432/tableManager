@@ -227,6 +227,58 @@ def _count_enrichment_confirm(db, params, scan_limit):
     }
 
 
+def _count_ledger_backfill(db, params, scan_limit):
+    """One page PAST THE CURSOR, fetched the way the run fetches it.
+
+    🔴 THE FIRST DRAFT OF THIS ASKED THE WRONG QUESTION AND WAS CAUGHT BY MEASURING IT.
+    It called `preview_first_batch`, which compiles the relation's FIRST page rather than
+    the page after the cursor, and reported 199 rows waiting on `dt_transfer` at the same
+    moment the run itself read ZERO. That count would have sent an operator to press a
+    button that did nothing - the failure this whole round is about.
+
+    A full page means "at least this many"; a short page means "exactly this many", and
+    `count_kind` carries which. Reporting a full page as a total would be the fake total
+    the brief forbids, and an operator would start a long run believing it was short.
+    """
+    from ledger import backfill
+    from ledger.setup import load_setup
+
+    source = params["source"]
+    rows, complete = backfill.rows_past_cursor(db.get_bind(), load_setup(), source)
+    if not rows:
+        detail = (f"'{source}' 의 커서 뒤에 읽을 행이 «없습니다». 지금 돌리면 아무것도 "
+                  f"하지 않고 끝납니다.")
+    elif complete:
+        detail = (f"'{source}' 의 커서 뒤에 «{rows}건»이 남았습니다. 한 배치에 다 들어가는 "
+                  f"양이라 이 수가 «전부»입니다.")
+    else:
+        detail = (f"'{source}' 의 커서 뒤에 «최소 {rows}건»이 남았습니다 — 한 페이지가 "
+                  f"가득 찼으니 뒤에 더 있고, 전체가 몇 건인지는 «모릅니다». 세는 것이 곧 "
+                  f"실행이라서입니다. 도는 중에 멈출 수 있습니다.")
+    return {
+        "affected": rows,
+        "affected_label": "커서 뒤에 남은 행",
+        # EXACT only when the page came back short, because then the page IS the remainder.
+        "count_kind": COUNT_EXACT if complete else COUNT_SAMPLE,
+        "scanned": rows,
+        "scan_limit": None,
+        "truncated": not complete,
+        "detail": detail,
+        "extra": {"source": source, "rows_past_cursor": rows, "is_all": complete},
+    }
+
+
+def _run_ledger_backfill(db, params, log, control=None):
+    from ledger import backfill
+
+    s = backfill.run(db.get_bind(), source=params["source"],
+                     checkpoint=_checkpoint(control))
+    return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
+            "inserted": s.get("inserted"), "deduped": s.get("deduped"),
+            "molecules": s.get("molecules"), "stopped": bool(s.get("stopped")),
+            "cursor_after": s.get("cursor_after")}
+
+
 def _count_ledger_rescope(db, params, scan_limit):
     """The operation's OWN dry-run, not a re-derivation of it.
 
@@ -425,6 +477,24 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
+    },
+    "ledger_backfill": {
+        "label": "원장 전진 번역 (커서 뒤 전부)",
+        "what_is_missing": "선언은 이 소스를 읽는데 커서 뒤의 행이 아직 원장에 없다",
+        "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)")],
+        "count": _count_ledger_backfill,
+        "run": _run_ledger_backfill,
+        "cli": "server/ledger/backfill.py --source <source>",
+        "deletes": None,
+        # 🔴 THIS IS THE ONE THE OWNER NAMED: "백필 돌리다 서버 렉먹는데 백필만 못꺼서
+        # 서버 재기동". It commits per page and resumes from the cursor, so asking it to
+        # stop between pages costs nothing and gives that back - the server stays up and
+        # every other job with it.
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": "atoms and cursor in one commit per page",
+        "cli_only": ["--fetch-rows", "--max-batches", "--ontology-root",
+                     "--scope-column/--scope-values (that is `ledger_rescope` here)"],
     },
     "ledger_rescope": {
         "label": "원장 범위 재번역",

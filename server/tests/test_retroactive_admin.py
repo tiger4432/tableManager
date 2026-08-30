@@ -202,10 +202,11 @@ class TestInventory:
         # the new entry rather than as this line needing a name added to it.
         # `graph_orphans` was here until R-2026-08-14-H deregistered it, see
         # test_the_retired_graph_sweep_is_not_offered_as_a_button below;
-        # `ledger_rescope` joined on 2026-08-31.
+        # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
+        # the forward scan was the one the owner could only stop by restarting the server.
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
-            "ledger_rescope"}
+            "ledger_rescope", "ledger_backfill"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.
@@ -1103,6 +1104,13 @@ class _FakeQuery:
         return 1
 
 
+class _BindOnly:
+    """The ledger adapters take a Session only to reach its engine, so that is all this is."""
+
+    def get_bind(self):
+        return object()
+
+
 class _FakeSession:
     def __init__(self, store, fail=False):
         self.store = store
@@ -1215,6 +1223,7 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
                    recorder("enrichment_confirm"))
         mp.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
         mp.setattr(ledger_backfill, "rescope", recorder("ledger_rescope"))
+        mp.setattr(ledger_backfill, "run", recorder("ledger_backfill"))
         mp.setattr(retroactive, "_run_ledger_rescope",
                    retroactive._run_ledger_rescope)
 
@@ -1222,6 +1231,7 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
         retroactive._run_withdraw(None, {"table": "t", "source": "s"}, log, control)
         retroactive._run_enrichment_backfill(None, {"rule": "r"}, log, control)
         retroactive._run_enrichment_confirm(None, {"rule": "r"}, log, control)
+        retroactive._run_ledger_backfill(_BindOnly(), {"source": "s"}, log, control)
 
     for op, hook in seen.items():
         declared = retroactive.OPERATIONS[op]["cancellable"]
@@ -1230,4 +1240,4 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
             f"{'passes' if hook is not None else 'does not pass'} a checkpoint")
     # Non-vacuous: the walk has to have reached every operation it claims to judge.
     assert set(seen) == {"chain_replay", "withdraw", "enrichment_backfill",
-                         "enrichment_confirm"}
+                         "enrichment_confirm", "ledger_backfill"}
