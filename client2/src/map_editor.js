@@ -489,6 +489,7 @@ function initDOMElements() {
   el.gridWrapper = document.getElementById('grid-wrapper');
   el.gridNotch = document.getElementById('grid-notch');
   el.mapWorkspace = document.getElementById('map-workspace');
+  el.separateFromBackground = document.getElementById('separate-from-background');
   el.sideIndicator = document.getElementById('side-indicator');
   el.cellAspectNote = document.getElementById('cell-aspect-note');
 
@@ -633,6 +634,11 @@ function initDOMElements() {
       } else if (input === el.gridStartX || input === el.gridStartY) {
         let v = parseInt(input.value, 10);
         if (isNaN(v)) input.value = 0;
+      }
+      // 규칙 ⑤의 세 축(START x/y · Invert Y). 분리 모드가 꺼져 있으면 이 호출은
+      // 아무것도 하지 않으므로 종전 동작이 그대로다.
+      if (input === el.gridStartX || input === el.gridStartY || input === el.gridYInvert) {
+        reseatForSeparationMode();
       }
       scheduleRenderGridCanvas();
     });
@@ -826,6 +832,7 @@ function initDOMElements() {
       document.querySelectorAll('.btn-rot').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentRotation = parseInt(btn.dataset.rot, 10);
+      reseatForSeparationMode();
       scheduleRenderGridCanvas();
     });
   });
@@ -835,6 +842,7 @@ function initDOMElements() {
     radio.addEventListener('change', (e) => {
       currentSide = e.target.value;
       updateSideIndicator();
+      reseatForSeparationMode();
       scheduleRenderGridCanvas();
     });
   });
@@ -2107,12 +2115,36 @@ function seatingSnapshot(frame) {
 //
 // 반환: null(반응 없음) | { moved, offGrid, visC, visR, held }
 // ═══════════════════════════════════════════════════════════════════════════════
-function reseatCellsToStoredCoords(was) {
+// [분리 모드] 방향·START 축의 단일 진입점.  다섯 축이 각자 이 판단을 다시 쓰면 하나가
+// 빠졌을 때 그 축에서만 좌표가 조용히 다시 매겨진다 — 화면상으로는 구별이 안 되는 실패다.
+//
+// ⚠️ 반드시 컨트롤 값이 바뀐 «뒤», 다시 그리기 «전»에 부른다. `cellsSeatedUnder` 는 직전
+//    렌더가 남긴 옛 좌표계이고, 렌더가 돌면 그 기록이 새 좌표계로 갱신돼 되찾을 것이 없어진다.
+function reseatForSeparationMode() {
+  if (!(el.separateFromBackground && el.separateFromBackground.checked)) return null;
+  const placed = reseatCellsToStoredCoords(cellsSeatedUnder, { acrossOrientation: true });
+  if (!placed) return null;
+  if (placed.moved > 0 || placed.offGrid > 0) {
+    showToast(`분리 모드 — 저장 좌표 고정, ${placed.moved}칸 재배치`
+      + (placed.offGrid > 0 ? ` · ${placed.offGrid}칸이 격자 밖입니다` : ''), 'info');
+  }
+  return placed;
+}
+
+function reseatCellsToStoredCoords(was, opts) {
   const now = seatingSnapshot(null);
   if (now) cellsSeatedUnder = now;
   if (!was || !now) return null;
-  if (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY
-    || was.startX !== now.startX || was.startY !== now.startY) return null;
+  // [분리 모드] 규칙 ⑤을 이 다섯 축에서 뒤집는 opt-in. 기본값은 종전 그대로 — 방향과
+  // START 는 다이를 붙들고 번호를 옮긴다. 켜면 반대로 번호(저장 좌표)를 붙들고 다이를
+  // 옮기므로, 조작자가 메타만 바꿔 가며 배경에 맞출 수 있다.
+  //
+  // 🔴 새 변환식은 여기에도 한 줄도 없다. 이 함수의 본문은 이미 「옛 좌표계에서 저장
+  //    좌표를 되찾아 새 좌표계에 되앉힌다」이고, 그것이 정확히 분리 모드가 원하는 연산이다.
+  //    막고 있던 것은 아래 한 줄뿐이었다.
+  if (!(opts && opts.acrossOrientation)
+    && (was.rotation !== now.rotation || was.side !== now.side || was.invertY !== now.invertY
+      || was.startX !== now.startX || was.startY !== now.startY)) return null;
 
   const touched = new Set([...Object.keys(gridData), ...loadedFCells,
   ...(serverCellKeys && serverCellKeys.keys ? serverCellKeys.keys : [])]);

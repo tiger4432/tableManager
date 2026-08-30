@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <script type="module" crossorigin src="/assets/map_editor-CZhKMiv-.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-BzHK3UPP.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CEPsXi2l.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CYDDxuNb.js">
@@ -174,6 +174,12 @@
             </div>
             <!-- 옵션 체크박스 -->
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="separate-from-background" class="glass-checkbox" />
+                <label for="separate-from-background" class="checkbox-label"
+                  title="켜면 회전·앞뒤·Invert Y·START 를 바꿔도 저장 좌표가 고정됩니다. 셀이 그 좌표가 가리키는 새 칸으로 다시 앉으므로, 배경만 움직여 맞출 수 있습니다. 끄면 종전대로 다이를 붙들고 번호를 다시 매깁니다.">분리
+                  모드 (저장 좌표 고정)</label>
+              </div>
               <div style="display: flex; align-items: center; gap: 6px;">
                 <input type="checkbox" id="grid-y-invert" class="glass-checkbox" />
                 <label for="grid-y-invert" class="checkbox-label">Invert Y (Bottom-Up)</label>
@@ -455,7 +461,7 @@
     </div>
   </div>
 
-
+
 </body>
 
 </html>

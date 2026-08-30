@@ -92,7 +92,11 @@ const SYMBOLS = [
   'getWaferBoundingBox',
   'validDieBasis', 'isValidDieAt',
   // THE ONE REACTION and the record it compares against.
-  'seatingSnapshot', 'reseatCellsToStoredCoords',
+  // `reseatForSeparationMode` is the SECOND entry point into that same reaction (the
+  // 분리 모드 opt-in on the orientation/START axes), and the listeners call it by name.
+  // Sliced rather than stubbed for the same reason `summariseReseat` is: stubbing the
+  // way in would make this harness score itself instead of the product.
+  'seatingSnapshot', 'reseatCellsToStoredCoords', 'reseatForSeparationMode',
   'frameFromMeta', 'currentFrame', 'resolveFrame', 'frameAxesKey',
   'frameDimBounds', 'frameDimError',
   'applyPresetObject', 'applyPhysicalGeometry',
@@ -1003,8 +1007,11 @@ const MUTANTS = {
   // Anchored on the guard's SHAPE (its first term through its `return null;`) rather than
   // its exact text: the replacement still deletes the entire orientation guard, which is
   // the whole of what this mutant does.
+  // The guard gained a 분리 모드 opt-in, so the shape now starts at that term. What the
+  // mutant scores is unchanged and still the thing that matters: with the mode OFF -- the
+  // default, and what every fixture here runs under -- rule 5 must still refuse.
   'orientation-guard-removed': (s) => onceRe(s,
-    /if \(was\.rotation[\s\S]*?return null;/,
+    /if \(!\(opts && opts\.acrossOrientation\)[\s\S]*?return null;/,
     'if (false) return null;'),
   // Deriving the grid from the new spec WITHOUT re-seating is the behaviour 94b9baa was
   // rejected for. Only the preset path (1b) sees it; the typed-pitch path calls the reaction
