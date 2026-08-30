@@ -133,14 +133,14 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup)
         for mapping in profile["mappings"].values())
     expected = {
         "predicate|slot_map@1",
-        "entity|Lot@1",
-        "profile|lot_event#profile",
-        "mapping|lot_event#profile#mapping:split_slot_carry",
-        "preparer|lot_event#preparation",
-        "mapper|lot_event#mapper",
-        "source_plan|lot_event",
-        "binding|lot_event#profile#mapping:split_slot_carry#binding:subject",
-        "table|lot_event",
+        "entity|lot@1",
+        "profile|lot_slot_move#profile",
+        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
+        "preparer|lot_slot_move#preparation",
+        "mapper|lot_slot_move#mapper",
+        "source_plan|lot_slot_move",
+        "binding|lot_slot_move#profile#mapping:seat-to-seat#binding:subject",
+        "table|lot_slot_move",
     }
     assert expected.issubset(index.nodes)
     # 🔴 DERIVED, not a magic total. This was `== 47`, a literal that went stale the moment
@@ -181,28 +181,28 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
     # is no claim node; the mapping draws the same arrow one hop shorter, at the pointer
     # the author actually typed.
     split = next(edge for edge in index.edges if
-                 edge.from_key == "mapping|lot_event#profile#mapping:split_slot_carry"
+                 edge.from_key == "mapping|lot_slot_move#profile#mapping:seat-to-seat"
                  and edge.reference_kind == "mapping_predicate")
     assert split.to_key == "predicate|slot_map@1"
     assert split.json_pointer == (
-        "/sources/lot_event/bind/mappings/split_slot_carry/predicate")
+        "/sources/lot_slot_move/bind/mappings/seat-to-seat/predicate")
 
 
 def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
-    assert ("source_plan|lot_event", "profile|lot_event#profile", "source_profile") in edges
+    assert ("source_plan|lot_slot_move", "profile|lot_slot_move#profile", "source_profile") in edges
     # The pair `mapping -> claim -> predicate` collapsed into one hop on 2026-08-21: the
     # claim node it went through was a position inside a section that no longer exists,
     # and it carried nothing the mapping does not already name.
     assert (
-        "mapping|lot_event#profile#mapping:split_slot_carry",
+        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
         "predicate|slot_map@1",
         "mapping_predicate",
     ) in edges
     assert (
-        "mapping|lot_event#profile#mapping:split_slot_carry",
-        "binding|lot_event#profile#mapping:split_slot_carry#binding:subject",
+        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
+        "binding|lot_slot_move#profile#mapping:seat-to-seat#binding:subject",
         "mapping_binding",
     ) in edges
 
@@ -322,7 +322,7 @@ def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
     index = build_explorer_index(active_setup)
     token = f"active:{index.snapshot_hash}"
     payload = explorer_view(
-        index, context_token=token, selection="entity|Lot@1", limit=50)
+        index, context_token=token, selection="entity|lot@1", limit=50)
     assert payload["context_token"] == token
     assert payload["selection"]["context_token"] == token
     assert all(item["context_token"] == token for item in payload["items"])

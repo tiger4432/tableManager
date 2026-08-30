@@ -46,7 +46,7 @@ def lineage_profile(source="lineage_rows", prefix=""):
     return {
         "schema_version": PROFILE_SCHEMA_VERSION,
         "source": {"relation": source},
-        "entity": {"type": "Lot", "keys": {"lot": "lot"}},
+        "entity": {"type": "lot", "keys": {"lot": "lot"}},
         "event": {"template": "lot_lineage", "timezone": "Asia/Seoul"},
         "roles": {
             "row_identity": approved(prefix + "record_id"),
@@ -66,7 +66,7 @@ def transfer_profile(source="movement_rows", inventory="inventory_rows", prefix=
     return {
         "schema_version": PROFILE_SCHEMA_VERSION,
         "source": {"relation": source, "related": {"destination": inventory}},
-        "entity": {"type": "Wafer", "keys": {"wafer": "wafer"}},
+        "entity": {"type": "wafer", "keys": {"wafer": "wafer"}},
         "event": {"template": "transfer", "timezone": "UTC"},
         "roles": {
             "row_identity": approved(prefix + "record_id"),
@@ -101,8 +101,8 @@ def legacy_lineage_config():
                 "kind": "lineage",
                 "occurred_at_column": "event_at",
                 "occurred_at_timezone": "Asia/Seoul",
-                "subject_types": ["Lot", "Wafer"],
-                "register_entity_types": ["Lot", "Wafer"],
+                "subject_types": ["lot", "wafer"],
+                "register_entity_types": ["lot", "wafer"],
                 "columns": {
                     "row_identity": "record_id",
                     "lot": "lot_id",

@@ -99,7 +99,7 @@ def default_profile_registries() -> ProfileRegistries:
         TemplateDefinition(
             name="lot_lineage",
             label="Lot 분할·병합",
-            entity_types=("Lot",),
+            entity_types=("lot",),
             roles=(
                 RoleDefinition("row_identity", "원천 행 식별자"),
                 RoleDefinition("occurred_at", "사건 시각"),
@@ -114,7 +114,7 @@ def default_profile_registries() -> ProfileRegistries:
         TemplateDefinition(
             name="transfer",
             label="개체 이동",
-            entity_types=("Wafer",),
+            entity_types=("wafer",),
             roles=(
                 RoleDefinition("row_identity", "원천 행 식별자"),
                 RoleDefinition("occurred_at", "사건 시각"),
