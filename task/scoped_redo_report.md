@@ -493,3 +493,76 @@ ref 의 json 에 콜론이 «흔합니다»(`run_uid` 의 ISO 시각, `void_uid`
 시험     손댄 파일 141 passed
 ```
 👉 다음은 `task/RUN_REGISTRY_BRIEF.md` 로 알고 있습니다. 지시 주시면 그대로 갑니다.
+
+---
+
+# ✅🛑 [A 구현자] **선언 라우트 `sources` 착지 — 그런데 «도는 서버»가 옛 코드입니다** (2026-08-31 03:0x)
+
+커밋 `1570c5fe`. 큐 재정렬 확인했고 이것부터 냈습니다. **그런데 클라의 관문이 아직 `False` 입니다.
+이유가 코드가 아니라 «프로세스»라 먼저 올립니다.**
+
+## 🔴 1. 지금 상태 — 코드는 맞고, 도는 프로세스가 옛것입니다
+
+```
+프로세스 실측   python -m uvicorn main:app --host 0.0.0.0 --port 8080
+              🔴 «--reload 없음». 그래서 이 커밋을 «영원히» 안 집습니다
+관문           curl … | 'sources' in json   ->  «False»  (방금 실측)
+같은 함수를 «이 프로세스에서» 부르면      ->  sources 15개 정상
+```
+=> **재기동해야 클라가 붙습니다.** `system_reload` 는 설정·캐시용이라 코드를 안 바꿉니다
+(확인함 — 모듈 재적재가 아닙니다).
+
+⛔ 제가 임의로 안 내렸습니다. 소유자와 다른 레인이 같이 쓰는 프로세스입니다.
+👉 **재기동 판단만 주시면 제가 하겠습니다.** 아니면 소유자께서 내리셨다 올리시면 됩니다.
+
+## 2. 낸 것 — 있는 라우트에 «절 하나». 새 라우트 없음
+
+```
+GET /api/ledger/declaration
+   sources: [ { source, relation, emits[술어], scope_columns[선언된 입력 컬럼] } ]  × 15
+예)
+   {"source":"dt_transfer","relation":"dt_log_transferable","emits":["transfer@1"],
+    "scope_columns":["core_wafer","core_x","core_y","dt_job","dt_x","dt_y","event_time","row_id"]}
+   {"source":"bonded_from","relation":"bonding_die_from_core",
+    "emits":["bonded_from@1","in_container@1"], "scope_columns":["base_id","bx","by","core_wafer","cx","cy","event_time"]}
+```
+```
+scope_columns   base_select_columns «그대로», «컴파일된 plan» 에서 뽑습니다
+                -> 범위 읽기가 거절할 때 보는 «바로 그 목록»입니다
+                생 선언의 map.input_columns 로 뽑으면 «닮았지만 다른 목록»이 되고,
+                그러면 화면이 고른 컬럼을 서버가 거절하는데 운영자는 «버튼이 고장»으로 읽습니다
+emits           선언의 bind.mappings 에서 읽습니다 (컴파일 사본이 없어서 — 이 라우트의 평소 자세)
+```
+
+## 3. 🔴 컴파일이 안 되면 «키를 뺍니다» — 빈 배열이 아닙니다
+
+지시서가 라벨을 «셋»으로 말하라고 했고, 빈 배열이면 그중 둘이 «같아집니다»:
+```
+sources 에 있음   -> 「원장 소스」
+sources 에 없음   -> 「원장에 안 들어갑니다」
+sources «키 자체가 없음» -> 「선언을 못 읽었습니다」      <- 빈 배열이면 이게 위와 «같아집니다»
+```
+그래서 setup 컴파일이 실패하면 «키를 안 싣습니다». 나머지(entities·predicates)는 그대로 답합니다 —
+컴파일 실패가 그 둘을 거짓으로 만들지는 않고, 같이 죽이면 걷기 검색창까지 내려갑니다.
+🔴 총괄이 주신 관문 `'sources' in json` 이 «정확히 그 셋을 가르는 검사»입니다.
+
+## 4. 이음매에 시험 — «양쪽 끝»에서 걸었습니다
+
+```
+시험 ①  라이브 선언으로: scope_columns 의 «모든» 컬럼이 _scope_predicate 에 «통과»하고,
+        목록 밖 컬럼은 scope_column_not_declared 로 «거절»된다
+        -> 리터럴 목록과 비교하지 «않습니다». 그게 바로 이 단언이 막으려는 «사본»입니다
+시험 ②  컴파일 실패 시 «키가 없다» + entities·predicates 는 살아 있다
+변이    ① 목록에서 컬럼 하나 빼기      -> 빨강
+        ② 실패 시 [] 로 답하기         -> 빨강
+        복원 -> 20 passed. 손댄 파일 119 passed
+```
+
+## 5. 다음
+
+큐대로 ② G5′(이미 착지) → ④ 등록부입니다. ③ M 은 빼셨고요.
+등록부 때는 `task/APPLICATION_RUN_WORDS.md` 의 «값 여섯»을 고르겠습니다 — 문구는 안 짓습니다.
+제가 등록부 항목에 직접 쓴 그 문장 둘(「행이 사라진 원자」·「회수 0인데 다시 만들 N」)이
+「가리킬 수 없음」과 「이미 빠져 있음」에 그대로 앉습니다.
+
+👉 **막힌 것은 재기동 판단 하나뿐입니다.**
