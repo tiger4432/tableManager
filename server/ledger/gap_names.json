@@ -1,0 +1,60 @@
+{
+  "_source": "task/APPLICATION_GAP_SPEC.md §2 tables ①, ②, ②-bis. THE SPEC IS THE AUTHORITY; this file is its machine-readable form. Adding a gap means adding a row HERE and in the spec - never inventing one in code. `ledger/gaps.py` refuses to run when this file and the declaration disagree, in either direction.",
+  "_why_names_live_outside_the_code": "A label in code is a second authority that goes stale without anybody noticing. The detector emits declaration names and looks the label up here, so a spec revision is a data change.",
+  "pairs": [
+    {
+      "type": "defect_kind@1",
+      "side_a": ["of_kind"],
+      "side_b": ["leads_to"],
+      "a_only": "기전 없는 결함 종류",
+      "a_only_meaning": "봤는데 왜 그런지 못 댑니다",
+      "b_only": "아직 안 나타난 예측 종류",
+      "b_only_meaning": "그렇다고 했는데 아직 못 봤습니다"
+    },
+    {
+      "type": "quantity@1",
+      "side_a": ["measures"],
+      "side_b": ["leads_to"],
+      "a_only": "어디에도 안 쓰이는 계측 항목",
+      "a_only_meaning": "재고 있는데 아무 기전에도 안 들어갑니다",
+      "b_only": "모델이 부르는데 안 재는 항목",
+      "b_only_meaning": "기전이 이름을 대는데 계측이 없습니다"
+    },
+    {
+      "type": "wafer@1",
+      "side_a": ["has_wafer"],
+      "side_b": ["in_container"],
+      "a_only": "속을 모르는 웨이퍼",
+      "a_only_meaning": "어느 자리인지는 아는데 무엇이 담겼는지 모릅니다",
+      "b_only": "어디 있는지 모르는 웨이퍼",
+      "b_only_meaning": "무엇이 담겼는지는 아는데 어느 자리인지 모릅니다"
+    },
+    {
+      "type": "die@1",
+      "side_a": ["transfer", "bonded_from"],
+      "side_b": ["inspected"],
+      "a_only": "검사 기록이 없는 자리",
+      "a_only_meaning": "어디서 왔는지는 아는데 본 적이 없습니다",
+      "b_only": "출신이 끊긴 자리",
+      "b_only_meaning": "봤는데 어디서 왔는지 모릅니다"
+    }
+  ],
+  "subject_sides": [
+    {"predicate": "of_kind", "type": "defect@1", "name": "종류가 안 붙은 결함",
+     "action": "Ⅱ 원천 — 분류 결과를 가져옵니다"},
+    {"predicate": "processed_with", "type": "wafer@1", "name": "공정 이력이 없는 웨이퍼",
+     "action": "Ⅱ 원천 — 공정 기록을 가져옵니다"},
+    {"predicate": "in_container", "type": "die@1", "name": "담긴 데 없는 자리",
+     "action": "Ⅱ 원천 — 컨테이너 기록을 가져옵니다"},
+    {"predicate": "has_wafer", "type": "lot_slot@1", "name": "웨이퍼가 안 걸린 자리",
+     "action": "Ⅱ 원천 — 그 자리의 적재 기록을 가져옵니다"},
+    {"predicate": "inspected", "type": "wafer@1", "name": "검사 안 된 웨이퍼",
+     "action": "Ⅲ 세상 — 검사를 겁니다"},
+    {"predicate": "measures", "type": "wafer@1", "name": "계측 없는 웨이퍼",
+     "action": "Ⅲ 세상 — 계측을 겁니다"}
+  ],
+  "object_sides": [
+    {"predicate": "observed", "type": "defect@1", "name": "어디서 봤는지 모르는 결함",
+     "action": "Ⅱ 원천 — 어느 자리에서 봤는지를 원천에서 가져옵니다"}
+  ]
+}
