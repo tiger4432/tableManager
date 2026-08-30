@@ -16,6 +16,7 @@ import {
   deleteSelectedRows
 } from './api.js';
 import { initWebSocket } from './websocket.js';
+import { GridSourceLabel } from './grid_source_label.js';
 import {
   loadHistory,
   triggerHistoryReloadDebounced,
@@ -132,6 +133,9 @@ async function init() {
   installGlobalListeners();
   installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
   setupEventListeners();
+  // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
+  // `setRelation` 한 번으로 문장이 확정됩니다.
+  sourceLabel = initGridSourceLabel();
   installReferenceKeyboardIsolation();
   installAuditFilters();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
@@ -147,6 +151,40 @@ async function init() {
   //    운영 사고 수리에 얹지 않는다. 별건으로 남긴다.
   await checkServerHealth();
   await loadTables();
+  // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
+  //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
+  if (sourceLabel) sourceLabel.setRelation(state.currentTable);
+}
+
+// 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고
+//    이 함수 하나를 받습니다. 성공도 실패도 «같은 모양»(`{ok}`)으로 답해서, 읽는 쪽이
+//    「못 읽음」과 「소스가 아님」을 구별할 수 있게 합니다.
+async function loadLedgerDeclaration() {
+  try {
+    const res = await fetch(`${API_BASE}/api/ledger/declaration`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) {
+      // 🔴 «사유»만 돌려줍니다. 부품이 「선언을 못 읽었습니다」를 이미 말하므로, 여기서 같은
+      //    문장을 또 쓰면 화면에 두 번 나옵니다 (실측 2026-08-31에 실제로 그렇게 나왔습니다).
+      return { ok: false, message: `서버가 ${res.status} 로 거절했습니다` };
+    }
+    return { ok: true, sources: Array.isArray(body.sources) ? body.sources : null };
+  } catch (err) {
+    return { ok: false, message: `라우트에 닿지 못했습니다 — ${err && err.message}` };
+  }
+}
+
+// 그리드 머리의 원장 소스 라벨. 자기 div 하나를 받고, 표 이름은 «화면이» 알려 줍니다.
+let sourceLabel = null;
+function initGridSourceLabel() {
+  const host = document.getElementById('grid-source-label-host');
+  if (!host) return null;
+  const part = new GridSourceLabel(host, {
+    doc: document,
+    loadDeclaration: loadLedgerDeclaration,
+  });
+  part.mount();
+  return part;
 }
 
 // Event Listeners Setup
@@ -326,6 +364,7 @@ function setupEventListeners() {
       // also called on boot auto-select and by navigateToLog — neither is a user move.
       countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
+      if (sourceLabel) sourceLabel.setRelation(table);
     }
   });
 

@@ -2871,3 +2871,14 @@ body.resizing-active .history-sidebar {
 .app-header .controls-area > .control-group:not(:has(> :not([style*="display: none"]))) {
   display: none;
 }
+
+/* ── 그리드 머리의 원장 소스 라벨 (2026-08-31) ─────────────────────────────
+   부재를 «셋»으로 말하므로 색도 셋입니다 -- 「아님」과 「못 읽음」이 같은 회색이면
+   화면은 문장으로 구별해 놓고 눈으로는 다시 합쳐 버립니다. */
+.grid-source-label { font-size: 12px; padding: 4px 8px; min-height: 20px; }
+.grid-source-label.is-idle { padding: 0; min-height: 0; }
+.grid-source-label.is-pending { color: var(--text-dim, #888); }
+.grid-source-label.is-source { color: var(--text-muted, #9aa); }
+.grid-source-label.is-source .grid-source-label__name { font-weight: 600; }
+.grid-source-label.is-not-source { color: var(--text-dim, #888); }
+.grid-source-label.is-unknown { color: var(--warn, #c98a2b); }
