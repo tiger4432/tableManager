@@ -1591,6 +1591,26 @@ E-5  🔴 «판정 완료 (총괄)» — _seed_node 의 죽은 갈래 «다섯»
      근거: CLAUDE.md 「투영이 지어낸 노드 타입은 없다」 +
           「«지울 수 없다»가 나오면 그것이 하드코딩이다 — 무시하고 지운다」
      ⏭ 착수 대기 (E-2 와 «같은 파일»이므로 한 라운드로 묶습니다)
+E-6  🔴 «제가 만든» 소비자 0 인 폼 칸 — 판정 필요
+     1d17c34a 로 ledger_skeleton.json 에 references 노드를 넣었고, 그래서 작성 폼이
+     entities.<type>.references (「참조 엣지」)를 «그립니다».
+     읽는 곳은 setup_bundle._validate_references «하나»뿐이고,
+     🔴 채워 넣으면 «거절 없이 통과하고 엣지는 0개» 생깁니다.
+     PRIMER.md 는 이미 「다시 선언해도 엣지가 안 생긴다」라고 적고 있었습니다.
+     => 「폼이 소비자 없는 칸을 그려도 되나」가 판정입니다.
+        상설과 붙습니다 — 「닿을 수 없으면 선언도 닿지 않는다」·「착지는 배선이 아니다」
+```
+
+### 🗂 오늘 문서 정비에서 «고친 주소» (판정 아님, 기록)
+```
+DT_CORE_FRAME_CHAINS.md   dt_metadata_to_dt_inventory 가 «출하 상태로 거절»한다는 기전을 등재
+                          -> 가이드 트러블슈팅이 운영자를 dt_frame·lot/slot 으로 «잘못 보내고» 있었습니다
+                             (체인이 아예 안 돌았는데 「돌긴 하는데 값이 이상하다」로 읽히던 자리)
+chain_rules 대조          문서가 이름 대던 규칙 «둘»이 어느 config 에도 «없었습니다»
+                          (dt_log_to_alignment_metadata · wafer_map_metadata_to_dt_inventory)
+SCENARIO_CONSOLE_BRIEF    소유자 「놀라움 감쇠기」 정의를 §1.0 으로 «본문 복귀» (52451cb4, 날짜와 함께)
+                          🔴 그리고 「이 따름정리에는 오늘 «강제 지점이 없다»」를 같이 적었습니다
+ONTOLOGY_GRAPH_SPEC §7.5b 「시각은 식별키가 못 된다」를 실측으로 등재 (roleframe._scalar 가 유일 강제점)
 ```
 
 ## ✅ 교란까지 만들어 «DOE 방아쇠»가 실제로 걸렸습니다 (2026-08-29 23:1x)
