@@ -231,3 +231,33 @@ def test_a_question_that_cannot_have_members_gets_no_count_rather_than_a_zero():
     assert lonely[0]["count"] is None and lonely[0]["count_kind"] is None
     # ...and it cost no query at all: a set that cannot have members is not measured.
     assert not any("lonely" in str(params) for _sql, params in cursor.seen)
+
+
+def test_the_route_gives_the_names_for_free_and_charges_only_when_asked_for_one():
+    """🔴 THE SCREEN HAS THREE SECONDS AND ALL TWENTY TAKE THIRTY.
+
+    So the two are one route with one argument, not two routes: the list comes from the
+    declaration alone and touches no database, and a count is paid for only when somebody
+    expands a gap. A name that is not in the table is a 404 rather than an empty list,
+    because an empty list reads as "this gap has no members" - the good news an operator
+    would act on by moving along.
+    """
+    import os
+
+    os.environ.setdefault("TESTING", "1")
+    from fastapi.testclient import TestClient
+
+    import main
+
+    client = TestClient(main.app)
+    listing = client.get("/api/ledger/gaps")
+    if listing.status_code == 503:
+        pytest.skip(f"declaration or table unavailable: {listing.json()}")
+    body = listing.json()
+    assert body["mode"] == "names" and body["count"] == len(body["gaps"])
+    # Non-vacuous: the listing has to have actually named something.
+    assert body["gaps"] and all(item["name"] for item in body["gaps"])
+    # ...and it carries no counts, because it never asked the database for any.
+    assert all("count" not in item for item in body["gaps"])
+
+    assert client.get("/api/ledger/gaps", params={"name": "no such gap"}).status_code == 404

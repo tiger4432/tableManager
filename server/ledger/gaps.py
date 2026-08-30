@@ -247,8 +247,22 @@ def _has_predicate_sql():
     """
 
 
-def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, sample=20):
+class GapQuestionUnknown(ValueError):
+    """`only` named a question that is not in the table. Refused rather than answered empty.
+
+    An empty result for a typo reads exactly like "this gap has no members", which is the
+    good news an operator would act on by moving along.
+    """
+
+
+def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=None):
     """Count each named gap over a bounded sample of nodes, with each one's age. READ ONLY.
+
+    🔴 `only` EXISTS BECAUSE THE SCREEN HAS THREE SECONDS AND ALL TWENTY TAKE THIRTY.
+    `questions()` is pure and costs nothing, so a screen can open with the twenty NAMES
+    immediately and pay for a count only when somebody expands one - measured at about a
+    twentieth of the batch. The all-at-once path stays for batch and CLI callers; this is a
+    second entry to the same work, not a second implementation of it.
 
     🔴 EVERY NUMBER SAYS WHAT KIND OF NUMBER IT IS. `count_kind` is `exact` only when the
     scan saw every node of the type - the budget came back short - and `sample` otherwise.
@@ -260,6 +274,12 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, sample=
 
     names = names or load_names()
     asked = questions(declaration, names=names)
+    if only is not None:
+        asked = [item for item in asked if item["name"] == only]
+        if not asked:
+            raise GapQuestionUnknown(
+                f"no gap is named {only!r}. The names come from "
+                f"task/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
     node_sql = _nodes_of_type_sql().replace("{table}", schema.LEDGER_TABLE)
     has_sql = _has_predicate_sql().replace("{table}", schema.LEDGER_TABLE)
 

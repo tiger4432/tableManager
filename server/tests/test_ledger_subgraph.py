@@ -238,7 +238,12 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
                     "/api/ledger/selection/resolve", "/api/ledger/kinds",
                     "/api/ledger/structure", "/api/ledger/lot_map"):
         assert retired not in routes, f"{retired} is still mounted"
-    assert set(routes) == {"/api/ledger/subgraph", "/api/ledger/declaration"}
+    # Members, not a count. `/gaps` joined on 2026-08-31: it is READ-ONLY and answers from
+    # the declaration alone unless asked for one gap by name, so it does not reopen any of
+    # the retired data routes above - those took a KEY and answered per key, which is what
+    # made them multiply.
+    assert set(routes) == {"/api/ledger/subgraph", "/api/ledger/declaration",
+                           "/api/ledger/gaps"}
     # `id` alone must reach subgraph() as the very same argument it always was.
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     assert ledger_trace_router._signed_start(seed, None, None) == seed

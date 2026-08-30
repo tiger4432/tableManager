@@ -314,6 +314,53 @@ def _relation_absent() -> HTTPException:
 
 
 
+@router.get("/gaps")
+def ledger_gap_catalogue(name: str = Query(None)):
+    """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
+
+    🔴 라우트는 «하나»이고 인자가 둘로 가릅니다 — 새 라우트가 아니라 «같은 질문의 두 배율»입니다.
+    ```
+    인자 없음   질문 «이름»만. 선언만 읽으므로 «즉시» (DB 를 안 탑니다)
+    name=…     그 질문 «하나»를 셉니다 (~1초)
+    ```
+    이 화면의 판별식이 「열고 3초 안에 끊을지 정한다」인데, 스물을 한꺼번에 세면 «30초»입니다.
+    그래서 목록은 공짜로 주고 «펼 때» 값을 냅니다.
+
+    🔴 이름은 여기서 짓지 «않습니다». `task/APPLICATION_GAP_SPEC.md` 가 정본이고
+    `ledger/gap_names.json` 이 그 기계 판형입니다. 선언과 표가 어긋나면 이 라우트는
+    «거절»합니다 — 이름 없는 결측을 «이웃 이름»으로 답하면 화면이 멀쩡해 보이면서
+    한 종류가 통째로 빠지고, 그건 출력을 봐서는 못 알아챕니다.
+
+    🔴 수마다 «어떤 수인지»가 붙습니다. 표본은 「가장 오래된 것들」이 «아니라고» 말하고,
+    성립하지 않는 질문은 «0이 아니라» 수를 안 냅니다.
+    """
+    from ledger import config as _config
+    from ledger import gaps as _gaps
+
+    try:
+        declared = _config.load() or {}
+    except Exception as exc:                       # noqa: BLE001
+        logger.error("declaration unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"선언을 읽지 못했습니다: {exc}"})
+
+    try:
+        if name is None:
+            asked = _gaps.questions(declared)
+            return {"mode": "names", "count": len(asked), "gaps": asked}
+        from database.database import engine
+        return {"mode": "measured", "count": 1,
+                "gaps": _gaps.measure(engine, declared, only=name)}
+    except _gaps.GapQuestionUnknown as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except _gaps.GapTableMismatch as exc:
+        # 503, not 500: the declaration and the spec disagree, which is a DEPLOYMENT fact
+        # somebody has to fix in one of the two - not a failure of this request.
+        raise HTTPException(status_code=503, detail={
+            "reason": "gap_table_mismatch", "message": str(exc)})
+
+
 @router.get("/declaration")
 def ledger_declaration_catalog():
     """무엇을 물을 수 있나 — 노드 타입 · 그 타입의 키 · 따라갈 술어 · 모을 노드 종류.
