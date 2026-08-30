@@ -3165,4 +3165,62 @@ die 가 컨테이너를 가리키는 키를 어떻게 두나  (하드코딩 방�
 
 ---
 
+## 🔴 `has_wafer` 원자가 «0» — 캐리어 층이 웨이퍼와 통째로 끊겨 있습니다 (2026-08-30 21:2x)
+
+「웨이퍼 id 없는 종점 캐리어를 세라」는 소유자 지시를 실행하려다 **분모가 없다**는 것을 먼저 발견했습니다.
+
+```
+원장의 술어 (이 박스)   transfer 401,206 · inspected 117,742 · observed 103,857 · of_kind 103,857
+                      measures 80,330 · in_container 37,218 · bonded_from 18,609 …
+                      slot_map 135 · leads_to 22
+                      🔴 has_wafer  «목록에 없음» = 0   ·   derived_from 도 0
+                      register 396 은 «전부 dtjob» -> lot_event 소스는 원자를 «하나도» 안 냈다
+```
+
+### 원인 — 매퍼 버그가 아니라 «계약»입니다
+```
+roleframe._entity_value
+    if len(keys) != 1: raise RoleFrameError("invalid_sentence_contract", …,
+        "a mapper-supplied Entity reference carries one identity key")
+=> 커스텀 매퍼가 넘기는 엔티티 참조는 «키 하나»만 가능
+   그런데 in_slot 의 주어는 lot_slot@1 = 키 «둘»(lot, slot)
+   -> 매퍼가 무엇을 하든 이 매핑은 만들어질 수 «없습니다»
+```
+같은 `lot_slot@1` 인데 `lot_slot_move` 는 135건이 잘 나옵니다 — 그쪽은 `declarative-role` 이라
+**프레임워크가 컬럼에서 직접 키를 만듭니다.** 갈린 것은 엔티티가 아니라 «만드는 길»입니다.
+
+### 그래서 대기열의 A-1 이 «정확히» 진단됐습니다
+```
+전에 적어 둔 것   「in_slot 을 행 단위 선언 소스로 — numpy bool_/NaN 때문에 막힘」
+실제 막는 것      그게 아니라 «위 계약». 커스텀 매퍼로는 두 키 주어를 못 냅니다
+```
+
+### 🔴 총괄이 이 건에서 «둘» 틀렸습니다 — 둘 다 실측으로 뒤집혔습니다
+```
+「선언이 없는 컬럼을 부른다」   틀림. map 의 slots/wafers 는 prepare 가 «선언한 출력»이다
+「매퍼가 잘못 냈다」           틀림. 매퍼가 낼 «방법»이 없다
+=> 둘 다 «중간 단계를 안 읽고» 단정한 것입니다. prepare.output_columns 를 봤으면 첫째는 없었습니다
+```
+
+### ⏭ 판정 대기 — 갈래 셋
+```
+ⓐ in_slot 을 «선언 소스»로       lot_slot_move 가 이미 도는 템플릿. 목록 쪼개기도
+                                registration_probe 의 list_separator 로 «이미 선언 개념»   ← 권고
+ⓑ 계약을 넓힌다                  커스텀 매퍼가 세짐. 「매퍼를 줄이고 선언으로」와 반대 방향
+ⓒ in_slot 주어를 한 키로          slot_map 과 어긋나 캐리어 층이 두 모양이 됨
+```
+🔴 ⓐ가 되면 `has_wafer` 가 살아나고, 그때 «종점 캐리어 세기»의 분모가 생깁니다.
+
+### 곁가지로 나온 실측 둘
+```
+타입 드리프트   같은 slot 개념이 표마다 «다른 SQL 타입»입니다
+              lot_slot_move.to_slot=text · dt_log.dt_slot=varchar · bonding_log.dt_slot=double precision
+              -> 소유자가 경고한 「01 vs 1」이 «이미 데이터에» 있습니다. 조인이 타입에서 먼저 깨집니다
+              => 엔티티 키에 «타입 선언 + 로드 시점 검증»이 필요하다는 근거
+중복 컬럼 짝   lot_event 에 slot_numbers/wafer_ids(61행) 와 slotnumbers/waferids(80행) 가 «둘 다»
+              소유자 판정: «slotnumbers/waferids 가 정본»
+```
+
+---
+
 *갱신 규율: 이 보드는 상태의 단일 원천이다. 새 작업/문제/해결이 생기면 즉시 이 파일을 고친다. 이력 상세는 history, 이 파일은 "지금 어디까지 왔고 무엇이 문제인가"의 요약.*
