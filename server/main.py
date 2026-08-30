@@ -5144,6 +5144,58 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
         raise HTTPException(status_code=500, detail=f"실행 요청을 큐에 넣지 못했습니다: {e}")
 
 
+@app.get("/admin/retroactive/runs", dependencies=[Depends(require_admin_token)])
+def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
+    """요청형 연산의 실행 행 — 최근 것부터. 읽기 전용.
+
+    🔴 파일 인제션은 여기 «없다». 파일마다 `file_ingestion_checkpoints` 에 total_rows ·
+    processed_rows · chunk_index 를 이미 들고 있고, 이미 있는 것을 옮기는 것은 이득 없이
+    위험만 있다. 그 화면은 그 표를 «그대로» 읽는다. 이 목록은 「사람이 걸어야 돌고 끝이
+    있는 것」 전용이다.
+
+    `total_rows` 가 `null` 로 나올 수 있고 그것은 «0 이 아니라 모름»이다 — 행이 떨어질
+    때까지 걷는 연산은 시작 시점에 전체를 모른다. 0 으로 채우면 화면이 「할 일 없음」과
+    0% 를 그린다.
+    """
+    import retroactive
+
+    try:
+        return {"runs": retroactive.runs(db, limit=limit)}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Retroactive] failed to list runs: {e}")
+        raise HTTPException(status_code=500, detail=f"실행 목록을 읽지 못했습니다: {e}")
+
+
+@app.post("/admin/retroactive/runs/{run_id}/cancel",
+          dependencies=[Depends(require_admin_token)])
+def cancel_retroactive_run(run_id: str, db: Session = Depends(get_db)):
+    """실행에 «멈춰 달라»고 적는다. 프로세스를 죽이지 «않는다».
+
+    🔴 이 라우트가 하는 일은 값 하나를 세우는 것뿐이고, 멈추는 것은 «연산 자신»이다 —
+    배치 사이에서 그 값을 보고 스스로 멈춘다. 그래서 안전하다: 이 등록부의 연산은 전부
+    페이지마다 커밋하고 restartable 이라, 배치 «사이»에서 멈추면 반쯤 쓰인 배치가 남지
+    않고 이어서 하면 된다. 프로세스 kill 이 이것이 대체하려는 바로 그 방법이다.
+
+    ⚠️ `cancellable: false` 인 연산에는 이 버튼을 «내지 마십시오» — 그 연산은 배치 경계가
+    없어서 요청을 세워도 볼 자리가 없습니다. 목록(`/operations`)이 그 값을 들고 있다.
+
+    이미 끝난 실행은 «이름으로 거절»한다. 끝난 것에 「취소됨」을 돌려주면 운영자는 자기
+    데이터가 반만 처리됐다고 읽는데, 사실은 전부 처리됐다.
+    """
+    import retroactive
+
+    try:
+        return retroactive.request_cancel(db, run_id)
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Retroactive] failed to request cancel run_id={run_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"취소 요청을 적지 못했습니다: {e}")
+
+
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""

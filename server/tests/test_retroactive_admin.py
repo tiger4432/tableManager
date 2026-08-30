@@ -207,6 +207,22 @@ class TestInventory:
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope"}
 
+    def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
+        """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.
+
+        `request_cancel` and `runs` existed for one commit with zero HTTP callers, which is
+        the same shape as a landed-but-unwired axis: every test green, and an operator with
+        no way to stop anything. This asserts the two ends are joined, and that an unknown
+        run is refused BY NAME rather than answered with an empty success.
+        """
+        listed = client.get("/admin/retroactive/runs")
+        assert listed.status_code == 200
+        assert isinstance(listed.json()["runs"], list)
+
+        refused = client.post("/admin/retroactive/runs/no-such-run/cancel")
+        assert refused.status_code == 400
+        assert "no-such-run" in refused.json()["detail"]
+
     def test_the_retired_graph_sweep_is_not_offered_as_a_button(self, client):
         """R-2026-08-14-H: the old graph branch was retired and its three tables
         dropped, so the sweep that cleaned them must not remain clickable.
