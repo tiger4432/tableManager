@@ -1,3 +1,15 @@
+> # 🛑 보류 — 착수하지 마십시오 (2026-08-30 20:2x, 총괄)
+>
+> **이 지시서가 푸는 것은 «다이 단위» 교차이고, 지금 아무도 그것을 필요로 하지 않습니다.**
+> 원래 목적이던 계보(본딩 ↔ 코어)는 **자재 단위로 이미 걷힙니다** — 선언에 이미 있습니다:
+> `lot_slot_move#seat-to-seat` 의 `slot_map@1`(lot_slot→lot_slot, 다대다 = 스플릿·머지) 과
+> `lot_event#in_slot` 의 `has_wafer@1`(lot_slot→wafer).
+> 소유자 확정: 「자재 단위로 계보는 충분함 걷기로 되잖아」.
+>
+> 아래 분석은 «틀리지 않았습니다» — 두 로그가 서로 다른 회전으로 읽는 것은 실재하고,
+> 파생 키 설계도 유효합니다. 다만 **필요해지는 날 꺼내는 문서**입니다.
+> 되살리는 조건: 「다이 단위 교차가 필요하다」는 소유자 판정.
+
 # Frame-aware seats, via a key the walk DERIVES and never writes
 
 Owner ruling 2026-08-30, in their words:
