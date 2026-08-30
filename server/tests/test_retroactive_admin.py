@@ -19,6 +19,7 @@ writing operation by the size of the thing it refuses to do.
 [Isolation] `retro_test_*` table names cannot exist in the user's gitignored
 table_config (server-pm memory: the `bonding_log` trap).
 """
+import collections
 import json
 import sys
 import types
@@ -1067,3 +1068,150 @@ class TestTheSchedulerRunsItOffTheTickThread:
 #
 # Generalisation for anything that tests a writer in this codebase: the displayed
 # value is not a witness for "did a write happen". Only the layer is.
+
+
+
+# ------------------------------------------------- the run row and the cancel convention
+class _FakeQuery:
+    def __init__(self, store):
+        self.store = store
+
+    def filter(self, *a, **k):
+        return self
+
+    def scalar(self):
+        return self.store.get("state")
+
+    def update(self, values):
+        self.store.update(values)
+        return 1
+
+
+class _FakeSession:
+    def __init__(self, store, fail=False):
+        self.store = store
+        self.fail = fail
+        self.closed = False
+
+    def query(self, *a, **k):
+        if self.fail:
+            raise RuntimeError("database is away")
+        return _FakeQuery(self.store)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+def test_a_cancel_answer_is_sticky_and_a_broken_query_does_not_invent_one():
+    """🔴 THE TWO DIRECTIONS ARE NOT SYMMETRIC, so they are pinned separately.
+
+    Sticky: an operation may ask in more than one place, and a False after a True would let
+    it carry on past a stop the operator already saw acknowledged.
+
+    Failing closed the OTHER way: if the flag cannot be READ, that is not an answer of
+    "stop". The work is restartable either way, but a stop invented by a broken query would
+    look to the operator like a cancel they never asked for - and they would go looking for
+    the half-finished data it implies.
+    """
+    store = {"state": retroactive.RUN_CANCEL_REQUESTED}
+    control = retroactive.RunControl("r1", session_factory=lambda: _FakeSession(store))
+    assert control.stop_requested() is True
+    store["state"] = retroactive.RUN_RUNNING          # somebody clears it
+    assert control.stop_requested() is True           # still True: sticky
+
+    broken = retroactive.RunControl(
+        "r2", session_factory=lambda: _FakeSession({}, fail=True))
+    assert broken.stop_requested() is False
+
+
+def test_progress_leaves_an_unknown_total_NULL_instead_of_writing_zero():
+    """🔴 "MODZERO" AND "NONE" ARE DIFFERENT ANSWERS. An operation that pages until the rows
+    run out does not know the total when it starts, and a 0 there renders as "nothing to
+    do" and as 0% - both of which are statements the run never made."""
+    store = {"state": retroactive.RUN_RUNNING}
+    control = retroactive.RunControl("r3", session_factory=lambda: _FakeSession(store))
+
+    control.progress(120)
+    assert store["processed_rows"] == 120
+    assert "total_rows" not in store
+
+    control.progress(240, total=1000)
+    assert (store["processed_rows"], store["total_rows"]) == (240, 1000)
+
+
+def test_the_one_hook_reports_where_it_is_and_answers_whether_to_stop():
+    """One call at one instant: a batch boundary is both the only safe place to stop and
+    the only place the progress number is a whole one."""
+    store = {"state": retroactive.RUN_RUNNING}
+    control = retroactive.RunControl("r4", session_factory=lambda: _FakeSession(store))
+    hook = retroactive._checkpoint(control)
+
+    assert hook(50) is False
+    assert store["processed_rows"] == 50
+
+    store["state"] = retroactive.RUN_CANCEL_REQUESTED
+    assert hook(100) is True
+    assert store["processed_rows"] == 100        # it still recorded before stopping
+
+    assert retroactive._checkpoint(None) is None
+
+
+def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hook():
+    """🔴 A `cancellable: True` whose adapter forgets the hook is a button that does nothing.
+
+    The declaration and the wiring are two different places, and the screen reads the first
+    while the operator experiences the second. This walks each adapter with a real control
+    and asserts the operation was handed a checkpoint exactly when the entry says so - both
+    directions, so a False that quietly starts forwarding one is caught too.
+    """
+    seen = {}
+
+    def recorder(name):
+        def fake(*args, **kwargs):
+            seen[name] = kwargs.get("checkpoint")
+            # The adapters read their own stat keys out of this; a defaultdict answers
+            # every one of them so the test says nothing about which keys they pick.
+            return collections.defaultdict(int)
+        return fake
+
+    import chain_replay
+    import enrichment_analysis
+    import enrichment_backfill
+    from ledger import backfill as ledger_backfill
+
+    control = retroactive.RunControl(
+        "r5", session_factory=lambda: _FakeSession({"state": retroactive.RUN_RUNNING}))
+    log = lambda *a, **k: None
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(chain_replay, "find_rule", lambda name: {"name": name})
+        mp.setattr(chain_replay, "replay_rule", recorder("chain_replay"))
+        mp.setattr(chain_replay, "withdraw_source", recorder("withdraw"))
+        mp.setattr(enrichment_backfill, "load_rule", lambda *a, **k: {"name": "r"})
+        mp.setattr(enrichment_backfill, "run_backfill", recorder("enrichment_backfill"))
+        mp.setattr(enrichment_analysis, "run_auto_confirm_sweep",
+                   recorder("enrichment_confirm"))
+        mp.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
+        mp.setattr(ledger_backfill, "rescope", recorder("ledger_rescope"))
+        mp.setattr(retroactive, "_run_ledger_rescope",
+                   retroactive._run_ledger_rescope)
+
+        retroactive._run_chain_replay(None, {"rule": "r"}, log, control)
+        retroactive._run_withdraw(None, {"table": "t", "source": "s"}, log, control)
+        retroactive._run_enrichment_backfill(None, {"rule": "r"}, log, control)
+        retroactive._run_enrichment_confirm(None, {"rule": "r"}, log, control)
+
+    for op, hook in seen.items():
+        declared = retroactive.OPERATIONS[op]["cancellable"]
+        assert (hook is not None) is declared, (
+            f"{op} declares cancellable={declared} but "
+            f"{'passes' if hook is not None else 'does not pass'} a checkpoint")
+    # Non-vacuous: the walk has to have reached every operation it claims to judge.
+    assert set(seen) == {"chain_replay", "withdraw", "enrichment_backfill",
+                         "enrichment_confirm"}

@@ -228,7 +228,8 @@ def _to_payloads(page, columns: list) -> list:
 
 
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
-                chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info) -> dict:
+                chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
+                checkpoint=None) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
     Dry-run (default) reads only and reports what WOULD change, including which
@@ -290,6 +291,12 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
     for page in keyset_scan.iter_pages(db, trg_model, columns=[getattr(trg_model, c) for c in columns],
                                        chunk_size=chunk_size, limit=limit, max_row_id=max_row_id):
+        # The batch boundary, and the only place a stop is safe: the previous page is
+        # committed and this one has not begun. `checkpoint(processed)` is called at each batch boundary and returns True to stop. It is one call rather than two because both facts belong to the same instant - where the run has got to, and whether it should go on - and a stop is only safe AT that instant, where the previous batch is committed and the next has not started. Returning True breaks the loop; the operation returns its stats as usual with `stopped` set, because a cancelled run has done real work and must report it.
+        if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+            stats["stopped"] = True
+            log(f"[replay] stopped by request after {stats['rows_scanned']} rows")
+            break
         stats["pages"] += 1
         stats["rows_scanned"] += len(page)
         payloads = _to_payloads(page, columns)
@@ -713,7 +720,8 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
-                    chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info) -> dict:
+                    chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
+                    checkpoint=None) -> dict:
     """[R2] Retract `source_name`'s claim on cells, revealing the layer beneath.
 
     For each affected cell: delete that one `cell_sources` row, recompute
@@ -817,6 +825,10 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     # CHANNEL, not the provenance record.
     with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
         for i in range(0, len(all_row_ids), chunk_size):
+            if checkpoint is not None and checkpoint(i):
+                stats["stopped"] = True
+                log(f"[withdraw] stopped by request after {i} rows")
+                break
             chunk = all_row_ids[i:i + chunk_size]
             rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 

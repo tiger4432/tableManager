@@ -289,6 +289,52 @@ class FileIngestionLog(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class RetroactiveRun(Base):
+    """요청형 연산 «하나»의 실행 행 — 등록부 전체가 이 표 하나를 씁니다.
+
+    🔴 연산마다 표를 만들지 않는다. `retroactive.OPERATIONS` 는 연산을 «값»으로 다루므로
+    (`params`·`count`·`deletes` 가 전부 선언이다) 실행 기록도 값이어야 한다. 연산별 표를
+    만들면 새 연산이 등록부에 «항목 하나»가 아니라 «마이그레이션»이 되고, 그 순간 등록부가
+    범용이라는 성질이 끝난다.
+
+    🔴 상시형(파일 인제션)은 여기 «들어오지 않는다». `FileIngestionCheckpoint` 가 파일마다
+    `total_rows`·`processed_rows`·`chunk_index` 를 이미 들고 있고, 이미 있는 것을 옮기는
+    것은 이득 없이 위험만 있다. 화면은 그 표를 «그대로» 읽는다. 이 표는 「사람이 걸어야 돌고
+    끝이 있는 것」 전용이다.
+
+    🔴 `total_rows` 는 NULL 이 될 수 있고, 그 NULL 은 «0 이 아니라 모름»이다. 페이지를
+    소진할 때까지 걷는 연산은 시작 시점에 전체를 모르며, 거기에 0 을 쓰면 화면이 「할 일이
+    없다」로 읽고 퍼센트는 0% 로 그린다. 모르는 것은 모른다고 적는다.
+
+    새 표라 `create_all` 로 만들어진다 — 옆의 `FileIngestionCheckpoint` 가 적어 둔 그 이유
+    그대로, 기존 표에 컬럼을 붙이는 것과 달리 순서 의존이 없다.
+    """
+
+    __tablename__ = "retroactive_runs"
+
+    # `retroactive.publish` 가 만드는 12자리 hex. 큐 이벤트의 payload 와 «같은 값»이라
+    # 아웃박스 행과 이 행이 서로를 가리킨다.
+    run_id = Column(String(32), primary_key=True)
+    op = Column(String(64), nullable=False, index=True)
+    params = Column(String, nullable=True)          # JSON — 범위를 포함한다
+    requested_by = Column(String(120), nullable=True)
+    # queued | running | done | cancel_requested | cancelled | failed
+    state = Column(String(20), nullable=False, default="queued", index=True)
+    processed_rows = Column(Integer, nullable=True)
+    total_rows = Column(Integer, nullable=True)      # NULL = 모름 (0 아님)
+    result = Column(String, nullable=True)           # JSON — 연산이 돌려준 수들
+    error = Column(String, nullable=True)
+    queued_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.
+    last_progress_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_retroactive_runs_recent", "state", "queued_at"),
+    )
+
+
 class FileIngestionCheckpoint(Base):
     """[P2] 파일 인제션 오프셋 체크포인트 + 해시 dedup 원장.
 

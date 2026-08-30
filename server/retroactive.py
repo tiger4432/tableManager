@@ -287,7 +287,26 @@ def _count_ledger_rescope(db, params, scan_limit):
     }
 
 
-def _run_ledger_rescope(db, params, log):
+def _checkpoint(control):
+    """One hook from a run's control: report where we are, and ask whether to go on.
+
+    ONE call rather than two because both belong to the same instant. A batch boundary is
+    the only place a stop is safe - the previous batch is committed, the next has not
+    begun - and it is also the only place "how far" is a true number rather than a
+    half-written one. Splitting them into two callbacks would let an operation report
+    progress somewhere a stop would not be safe.
+    """
+    if control is None:
+        return None
+
+    def hook(processed=None, total=None):
+        control.progress(processed, total)
+        return control.stop_requested()
+
+    return hook
+
+
+def _run_ledger_rescope(db, params, log, control=None):
     from ledger import backfill
     from ledger.setup import load_setup
 
@@ -301,36 +320,46 @@ def _run_ledger_rescope(db, params, log):
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
 
 
-def _run_chain_replay(db, params, log):
+def _run_chain_replay(db, params, log, control=None):
     import chain_replay
 
     rule = chain_replay.find_rule(params["rule"])
-    s = chain_replay.replay_rule(db, rule, apply=True, log=log)
+    s = chain_replay.replay_rule(db, rule, apply=True, log=log,
+                                 checkpoint=_checkpoint(control))
     return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
             "rows_updated": s["rows_updated"], "rows_scanned": s["rows_scanned"],
             "withdrawal_candidates": s["skipped_blank_cells"]}
 
 
-def _run_withdraw(db, params, log):
+def _run_withdraw(db, params, log, control=None):
     import chain_replay
 
     s = chain_replay.withdraw_source(db, params["table"], params["source"],
-                                     columns=params.get("columns"), apply=True, log=log)
+                                     columns=params.get("columns"), apply=True, log=log,
+                                     checkpoint=_checkpoint(control))
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
 
 
-def _run_enrichment_backfill(db, params, log):
+def _run_enrichment_backfill(db, params, log, control=None):
     import enrichment_backfill
     from database import crud
 
     rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
-    s = enrichment_backfill.run_backfill(db, rule, apply=True, log=log)
+    s = enrichment_backfill.run_backfill(db, rule, apply=True, log=log,
+                                         checkpoint=_checkpoint(control))
     return {"created_rows": s["created_rows"], "updated_rows": s["updated_rows"],
             "rows_scanned": s["rows_scanned"]}
 
 
-def _run_enrichment_confirm(db, params, log):
+def _run_enrichment_confirm(db, params, log, control=None):
+    # 🔴 NO CHECKPOINT, AND THAT IS REPORTED RATHER THAN FAKED. `run_auto_confirm_sweep`
+    # collects the whole queue and then hands it to `confirm_keys` in ONE call; the commits
+    # are chunked a level below that, inside `apply_batch_updates`. A hook at this level
+    # could therefore only stop the run BEFORE any writing began, and a cancel that works
+    # only in the first instant is worse than none - an operator would press it mid-run and
+    # watch it do nothing. The registry entry declares `cancellable: False` so the screen
+    # does not offer the button at all.
     import enrichment_analysis
 
     # ignore_knob stays FALSE here: the knob is where a human consents to
@@ -362,6 +391,9 @@ def _enrichment_rule(name):
 #:
 #: `deletes` and `restartable` are explicit so a client never infers mutation
 #: semantics from an operation id.
+#: 🔴 Whether this operation can be asked to stop BETWEEN BATCHES. False is not a defect
+#: and not a TODO: it is a fact about where the operation's commits are chunked, and a
+#: screen that offered cancel anyway would show a button that does nothing.
 OPERATIONS = {
     "chain_replay": {
         "label": "체인 규칙 소급 적용 (R1)",
@@ -371,6 +403,7 @@ OPERATIONS = {
         "run": _run_chain_replay,
         "cli": "server/scripts/chain_replay_cli.py replay <rule> --apply",
         "deletes": None,
+        "cancellable": True,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per 1000-item write chunk",
         "cli_only": ["replay-all (every rule in dependency order)", "--limit", "--chunk-size"],
@@ -388,6 +421,7 @@ OPERATIONS = {
         # value is recomputed and written, and every changed cell gets an AuditLog
         # entry naming the withdrawn source.
         "deletes": "cell_sources rows (one source's claim on a cell)",
+        "cancellable": True,
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
@@ -412,6 +446,7 @@ OPERATIONS = {
         # The withdrawal and the remake are two commits, so a run that dies between them
         # leaves the atoms withdrawn and not yet rewritten. Re-running the same scope
         # finishes it - measured on 2026-08-31, when exactly that happened.
+        "cancellable": False,
         "restartable": True,
         "commit_granularity": "one commit for the withdrawal, one for the remake",
         "cli_only": ["--ontology-root (read a different config root)"],
@@ -424,6 +459,7 @@ OPERATIONS = {
         "run": _run_enrichment_backfill,
         "cli": "server/scripts/backfill_enrichment.py <rule> --apply",
         "deletes": None,
+        "cancellable": True,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per source chunk",
         "cli_only": ["--limit (caps NEW identities, not the scan)", "--force-disabled",
@@ -437,12 +473,164 @@ OPERATIONS = {
         "run": _run_enrichment_confirm,
         "cli": "server/scripts/enrichment_insights.py confirm <rule> --apply",
         "deletes": None,
+        "cancellable": False,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per write chunk",
         "cli_only": ["--limit", "--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
     },
 }
+
+
+#: The states a run row can be in. `cancel_requested` is a REQUEST, not an outcome:
+#: the operation is still running when it is set, and becomes `cancelled` only when the
+#: operation itself has stopped between batches. Collapsing the two would make a run look
+#: finished while it was still writing.
+RUN_QUEUED = "queued"
+RUN_RUNNING = "running"
+RUN_DONE = "done"
+RUN_CANCEL_REQUESTED = "cancel_requested"
+RUN_CANCELLED = "cancelled"
+RUN_FAILED = "failed"
+
+
+class RunControl:
+    """What an operation asks between batches: "should I stop" and "here is where I am".
+
+    🔴 IT USES ITS OWN SESSION, DELIBERATELY, and that is the whole mechanism rather than a
+    tidiness choice. The cancel flag is set by a WEB REQUEST in another process, and the
+    operation is inside a long transaction of its own; reading the flag on the operation's
+    session would read that transaction's snapshot and never see the flag at all. Writing
+    progress on the operation's session is the mirror failure - a rollback of the batch
+    would erase the record of how far the run had got, exactly when a reader needs it most.
+
+    🔴 STOPPING IS COOPERATIVE AND THAT IS WHY IT IS SAFE. Every operation this wraps
+    commits per page and declares itself restartable, so a stop BETWEEN batches leaves
+    committed work and a resumable position - never a half-written batch. Killing the
+    process is what this exists to replace: the owner's report is that a heavy backfill
+    could only be stopped by restarting the server, which takes every other job with it.
+    """
+
+    def __init__(self, run_id, session_factory=None):
+        self.run_id = run_id
+        self.stopped = False
+        self._session_factory = session_factory
+
+    def _session(self):
+        if self._session_factory is not None:
+            return self._session_factory()
+        from database.database import SessionLocal
+        return SessionLocal()
+
+    def stop_requested(self) -> bool:
+        """True once somebody has asked this run to stop. Cheap: one indexed read.
+
+        Sticky on purpose - once it has answered True it keeps answering True without
+        asking again, so an operation that checks in several places cannot get a False
+        after a True and carry on.
+        """
+        if self.stopped:
+            return True
+        if not self.run_id:
+            return False
+        from database import models
+
+        session = self._session()
+        try:
+            state = (session.query(models.RetroactiveRun.state)
+                     .filter(models.RetroactiveRun.run_id == self.run_id).scalar())
+        except Exception as exc:                   # noqa: BLE001
+            # A failure to ASK is not an answer of "stop". Refusing to stop here is the
+            # safe direction: the work continues and is restartable either way, whereas a
+            # stop invented by a broken query would look to the operator like a cancel
+            # they never requested.
+            logger.debug("cancel check failed for run_id=%s: %s", self.run_id, exc)
+            return False
+        finally:
+            session.close()
+        self.stopped = state == RUN_CANCEL_REQUESTED
+        return self.stopped
+
+    def progress(self, processed=None, total=None) -> None:
+        """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
+        if not self.run_id:
+            return
+        from datetime import datetime, timezone
+
+        from database import models
+
+        session = self._session()
+        try:
+            values = {"last_progress_at": datetime.now(timezone.utc)}
+            if processed is not None:
+                values["processed_rows"] = int(processed)
+            if total is not None:
+                values["total_rows"] = int(total)
+            (session.query(models.RetroactiveRun)
+             .filter(models.RetroactiveRun.run_id == self.run_id).update(values))
+            session.commit()
+        except Exception as exc:                   # noqa: BLE001
+            # Progress is a report, never the work. A run must not fail because its
+            # bookkeeping did.
+            session.rollback()
+            logger.debug("progress write failed for run_id=%s: %s", self.run_id, exc)
+        finally:
+            session.close()
+
+
+def request_cancel(db, run_id: str) -> dict:
+    """Ask a run to stop. Sets a value; kills nothing.
+
+    Refuses by name on a run that has already finished, rather than reporting success for
+    a request that can have no effect - "cancelled" on a finished run would tell an
+    operator their data was left half-done when it was not.
+    """
+    from database import models
+
+    row = (db.query(models.RetroactiveRun)
+           .filter(models.RetroactiveRun.run_id == run_id).first())
+    if row is None:
+        raise RetroactiveRefused(f"unknown run_id '{run_id}'")
+    if row.state in (RUN_DONE, RUN_CANCELLED, RUN_FAILED):
+        raise RetroactiveRefused(
+            f"run '{run_id}' already finished ({row.state}); there is nothing running to "
+            f"stop. Its work is committed and this cannot undo it.")
+    row.state = RUN_CANCEL_REQUESTED
+    db.commit()
+    logger.info("[Retroactive] cancel requested run_id=%s op=%s", run_id, row.op)
+    return {"run_id": run_id, "op": row.op, "state": row.state}
+
+
+def runs(db, limit: int = 50) -> list:
+    """The recent runs, newest first. One list for every request-type operation.
+
+    ⚠️ File ingestion is NOT here and must not be moved here: it keeps its own row per file
+    in `file_ingestion_checkpoints` with total/processed/chunk already on it. A screen reads
+    that table directly.
+    """
+    from database import models
+
+    rows = (db.query(models.RetroactiveRun)
+            .order_by(models.RetroactiveRun.queued_at.desc())
+            .limit(max(1, min(int(limit or 50), 500))).all())
+    return [{
+        "run_id": row.run_id,
+        "op": row.op,
+        "label": (OPERATIONS.get(row.op) or {}).get("label"),
+        "params": json.loads(row.params) if row.params else {},
+        "requested_by": row.requested_by,
+        "state": row.state,
+        "processed_rows": row.processed_rows,
+        # NULL travels as null, never as 0: "unknown" and "none" are different answers.
+        "total_rows": row.total_rows,
+        "result": json.loads(row.result) if row.result else None,
+        "error": row.error,
+        "queued_at": row.queued_at.isoformat() if row.queued_at else None,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "last_progress_at": (row.last_progress_at.isoformat()
+                             if row.last_progress_at else None),
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+    } for row in rows]
 
 
 def operation(op: str) -> dict:
@@ -466,6 +654,7 @@ def inventory() -> list:
         {"op": op, "label": s["label"], "what_is_missing": s["what_is_missing"],
          "params": s["params"], "cli": s["cli"], "cli_only": s["cli_only"],
          "deletes": s["deletes"], "restartable": s["restartable"],
+         "cancellable": s["cancellable"],
          "commit_granularity": s["commit_granularity"]}
         for op, s in sorted(OPERATIONS.items())
     ]
@@ -550,6 +739,7 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
     out.update({"op": op, "mode": "dry-run", "params": params,
                 "label": spec["label"], "cli": spec["cli"],
                 "deletes": spec["deletes"], "restartable": spec["restartable"],
+                "cancellable": spec["cancellable"],
                 "commit_granularity": spec["commit_granularity"]})
     return out
 
@@ -578,6 +768,15 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
         event_type=RUN_EVENT_TYPE,
         payload=json.dumps(payload, ensure_ascii=False),
         processed_chain=False,
+    ))
+    # 🔴 THE SAME COMMIT AS THE OUTBOX ROW. A queued event with no run row is a job nobody
+    # can see or cancel; a run row with no event is a job that never starts and sits at
+    # `queued` forever. Either half alone is worse than neither.
+    db.add(models.RetroactiveRun(
+        run_id=run_id, op=op,
+        params=json.dumps(params, ensure_ascii=False),
+        requested_by=requested_by or "admin",
+        state=RUN_QUEUED,
     ))
     db.commit()
     try:
@@ -626,18 +825,66 @@ def execute(payload: dict, log=logger.info) -> dict:
         return out
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
+    control = RunControl(run_id if run_id != "?" else None)
+    _mark_run(run_id, state=RUN_RUNNING, started=True)
     db = SessionLocal()
     try:
         log(f"[Retroactive] run_id={run_id} op={op} params={params} START")
-        out["result"] = spec["run"](db, params, log)
-        log(f"[Retroactive] run_id={run_id} op={op} DONE: {out['result']}")
+        out["result"] = spec["run"](db, params, log, control)
+        # 🔴 STOPPED AND FINISHED ARE DIFFERENT OUTCOMES. A cancelled run has committed
+        # everything it wrote and has more left to do; reporting it as `done` would tell
+        # an operator the operation had covered the whole table.
+        if control.stopped:
+            out.update(status="cancelled")
+            _mark_run(run_id, state=RUN_CANCELLED, finished=True, result=out["result"])
+            log(f"[Retroactive] run_id={run_id} op={op} CANCELLED: {out['result']}")
+        else:
+            _mark_run(run_id, state=RUN_DONE, finished=True, result=out["result"])
+            log(f"[Retroactive] run_id={run_id} op={op} DONE: {out['result']}")
     except Exception as e:
         try:
             db.rollback()
         except Exception:
             pass
         out.update(status="error", error=str(e))
+        _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         log(f"[Retroactive] run_id={run_id} op={op} FAILED: {e}")
     finally:
         db.close()
     return out
+
+
+def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None):
+    """Move the run row. On its OWN session, and never fatal.
+
+    Same reason `RunControl` holds its own: this has to survive the operation's rollback,
+    because "the run failed" is exactly the moment the row must not roll back with it.
+    """
+    if not run_id or run_id == "?":
+        return
+    from datetime import datetime, timezone
+
+    from database import models
+    from database.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        values = {"state": state}
+        if started:
+            values["started_at"] = now
+            values["last_progress_at"] = now
+        if finished:
+            values["finished_at"] = now
+        if result is not None:
+            values["result"] = json.dumps(result, ensure_ascii=False, default=str)
+        if error is not None:
+            values["error"] = str(error)[:2000]
+        (session.query(models.RetroactiveRun)
+         .filter(models.RetroactiveRun.run_id == run_id).update(values))
+        session.commit()
+    except Exception as exc:                       # noqa: BLE001
+        session.rollback()
+        logger.debug("run row update failed for run_id=%s: %s", run_id, exc)
+    finally:
+        session.close()

@@ -219,7 +219,7 @@ class _ProbedKeys:
 
 def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                  chunk_size: int = DEFAULT_CHUNK_SIZE, log=print,
-                 scan_limit: int = None) -> dict:
+                 scan_limit: int = None, checkpoint=None) -> dict:
     """Scan + diff (+ optionally write). Returns a stats dict.
 
     Dry-run performs reads only. Apply mode commits per chunk (via
@@ -365,6 +365,10 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     for rows in keyset_scan.iter_pages(
             db, src_model, columns=[getattr(src_model, c) for c in payload_cols],
             chunk_size=chunk_size, limit=scan_limit):
+        if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+            stats["stopped"] = True
+            log(f"[backfill] stopped by request after {stats['rows_scanned']} rows")
+            break
         stats["chunks"] += 1
         stats["rows_scanned"] += len(rows)
 
