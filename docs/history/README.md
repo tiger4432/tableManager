@@ -1,13 +1,22 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **744개** 이력. (거버넌스 규칙 #4)
+> 총 **753개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-30 11:01** — [Three Tests Were Answering About The Directory They Ran From And A Shipped Chain Refuses Every Batch](./20260830_110100_three_tests_were_answering_about_the_directory_they_ran_from_and_a_shipped_chain_refuses_every_batch.md)
+- **2026-08-30 10:33** — [The Owners Canon Reversed My Ranking Rule And Twenty Of Twentythree Leaders Were Counterfeit](./20260830_103300_the_owners_canon_reversed_my_ranking_rule_and_twenty_of_twentythree_leaders_were_counterfeit.md)
+- **2026-08-30 10:17** — [The Templates Kept A Spelling The Declaration Had Stopped Using And Nothing Compared Them](./20260830_101700_the_templates_kept_a_spelling_the_declaration_had_stopped_using_and_nothing_compared_them.md)
+- **2026-08-30 09:39** — [Only One Of The Two Red Gates Was Real And The Other Was My Own Line Endings](./20260830_093900_only_one_of_the_two_red_gates_was_real_and_the_other_was_my_own_line_endings.md)
+- **2026-08-30 09:08** — [The Owner Refused A New Case So The Action Design Became One Pair Already Written](./20260830_090800_the_owner_refused_a_new_case_so_the_action_design_became_one_pair_already_written.md)
+- **2026-08-30 00:50** — [The Red Count Was A Lens And One Fixture Had Been Trimming Everyone Elses Table Config](./20260830_005000_the_red_count_was_a_lens_and_one_fixture_had_been_trimming_everyone_elses_table_config.md)
+- **2026-08-29 23:50** — [Four Of The Audits Nine Findings Were Falsified By My Own Commits Minutes Later](./20260829_235000_four_of_the_audits_nine_findings_were_falsified_by_my_own_commits_minutes_later.md)
+- **2026-08-29 23:32** — [The Rule With The Largest Effect Had No Test And My First Test For It Was Vacuous](./20260829_233200_the_rule_with_the_largest_effect_had_no_test_and_my_first_test_for_it_was_vacuous.md)
+- **2026-08-29 23:13** — [The Shipped Declaration Could Not Switch On The Rules And A Retired Word Left It](./20260829_231300_the_shipped_declaration_could_not_switch_on_the_rules_and_a_retired_word_left_it.md)
 - **2026-08-29 22:51** — [A Broken Bridge Does Not Hide The Answer It Manufactures A Wrong One](./20260829_225100_a_broken_bridge_does_not_hide_the_answer_it_manufactures_a_wrong_one.md)
 - **2026-08-29 22:24** — [Reaching Counts One And Removing The Division Exposed What It Had Been Hiding](./20260829_222400_reaching_counts_one_and_removing_the_division_exposed_what_it_had_been_hiding.md)
 - **2026-08-29 21:58** — [A Rung Nothing Can Stand On And A Premise Measured Only On The Half That Survived](./20260829_215800_a_rung_nothing_can_stand_on_and_a_premise_measured_only_on_the_half_that_survived.md)
@@ -765,4 +774,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-29 by gen_index.py*
+*Last generated: 2026-08-30 by gen_index.py*
