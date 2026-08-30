@@ -652,6 +652,20 @@ export function bindLoaders(layout, deps) {
   //    맵은 «같은 walk»(⑦)을 먹습니다. 인스턴스가 하나여야 둘째 부품이 첫째의 진행 중인 요청에
   //    «합류»합니다 -- 인스턴스를 부품마다 만들면 같은 질문을 두 번 보내게 됩니다.
   const walk = createWalk({ apiBase, fetchImpl });
+  // 🔴 선언은 «한 번만» 풉니다 (E-1, 2026-08-30). 걷기 검색창과 제어 막대가 각자 주입받아
+  //    각자 부르는 바람에 화면 로드마다 `/declaration` 이 «둘»이었습니다. 부품이 서로를
+  //    모르는 것은 맞고, 합칠 자리는 «주입하는 여기»입니다 -- 부품 안은 한 글자도 안 바뀝니다.
+  let declarationOnce = null;
+  const loadDeclarationOnce = () => {
+    if (!declarationOnce) {
+      declarationOnce = fetchDeclaration({ apiBase, fetchImpl })
+        // 🔴 «거절은 가두지 않습니다». 선언 자체는 안 바뀌지만 「못 읽었다」는 다음 번에
+        //    읽힐 수 있고, 실패한 약속을 캐시하면 그 화면은 영원히 「선언을 못 읽었습니다」가
+        //    됩니다 -- 오늘 밤 내내 가른 「없어서」와 「아직」의 그 구분입니다.
+        .then((got) => { if (!got || !got.ok) declarationOnce = null; return got; });
+    }
+    return declarationOnce;
+  };
   return {
     ...layout,
     panels: (layout.panels || []).map((decl) => {
@@ -685,13 +699,13 @@ export function bindLoaders(layout, deps) {
       //    좌석이 아닙니다. 틀리면 조건이 «영원히 거짓»이라 주입이 조용히 안 되고, 화면은
       //    「선언을 받지 못했습니다」를 그립니다 -- 라우트가 200 을 주는 동안에도.
       if (decl.part === 'walkBox') {
-        bound.loadDeclaration = () => fetchDeclaration({ apiBase, fetchImpl });
+        bound.loadDeclaration = loadDeclarationOnce;
         bound.walk = createWalkBoxWalk({ apiBase, fetchImpl });
       }
       // 🔴 Y축의 «수식어 목록»도 선언에서 옵니다 (라운드 ①-a). 걷기 검색창과 «같은 함수»이고
       //    같은 이름으로 주입합니다 -- 부품 둘이 각자 라우트를 알게 되는 것을 막는 자리입니다.
       if (decl.part === 'controlBar') {
-        bound.loadDeclaration = () => fetchDeclaration({ apiBase, fetchImpl });
+        bound.loadDeclaration = loadDeclarationOnce;
       }
       // The basis counts come from ANOTHER route, so the seam is here and the part stays
       // route-free: it is handed a function that answers 「타입별 몇 개인가」 and nothing else.

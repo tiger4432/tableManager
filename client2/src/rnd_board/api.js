@@ -1049,7 +1049,13 @@ export function mapModel(answer, grid, axis) {
     //    frame to disagree with, so what decides drawability is whether a grid was declared.
     drawable: Boolean(grid) && cells.length > 0,
     state: cells.length ? (grid ? 'ready' : 'no_grid') : 'empty',
-    reason: grid ? null : 'grid_not_declared',
+    // 🔴 클라는 «서버의 낱말»을 짓지 않습니다 (총괄 판정 2026-08-30, INV-F9-7).
+    //    계약은 「서버가 사유를 이름 짓고 클라는 detail 을 그린다」인데, 이 걷기는 격자를
+    //    «모릅니다» -- 격자는 선언에서 이 파일이 읽습니다. 그러니 여기서 사유를 지으면
+    //    읽는 사람은 «서버가 그렇게 말했다»고 읽게 됩니다. 그리고 지워도 화면은 안 바뀝니다:
+    //    같은 사실이 `state: 'no_grid'` 와 `message` 로 이미 두 번 있고, `map_panel.js` 는
+    //    `message || reason || state` 순으로 그리는데 message 가 «항상» 채워져 있습니다.
+    reason: null,
     message: grid ? null : '이 맵의 격자가 선언돼 있지 않습니다 — 점은 그대로입니다',
     cells, found, scanned,
     unscanned: seats === null || cut ? null : Math.max(0, seats - scanned),
