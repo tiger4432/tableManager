@@ -605,6 +605,87 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
     return result
 
 
+def rescope(engine, setup, source, scope_column, scope_values, apply=False):
+    """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
+
+    `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
+    numbers this then produces, because both run the SAME preview over the SAME scope.
+
+    🔴 THE WATERMARK DOES NOT MOVE, AND THAT IS THE WHOLE DESIGN. The write goes through
+    `execute_scoped_batch`, which issues the atom statement and not the cursor statement, so
+    the source's position is neither advanced to wherever the scoped rows happen to end nor
+    dragged backwards to wherever they begin. A scope is almost always BEHIND the position -
+    a correction arrives after the row was first read - and a watermark that moved back
+    would re-read everything after it, or, on the next correction, skip it.
+
+    🔴 THE WITHDRAWAL AND THE REMAKE ARE TWO TRANSACTIONS, NAMED RATHER THAN HIDDEN. A run
+    that dies between them leaves the old generation gone and the new one absent; the fix is
+    to run the same scope again, which is why the registry entry says `restartable`. Doing
+    it the other way round - remake first - is worse, not better: it would leave two
+    generations of the same rows in the ledger, and the walk counts both.
+
+    ⚠️ WHAT A SCOPE CANNOT AIM AT. The refs come from the CURRENT translation of the rows in
+    scope, so if the correction makes those rows produce no atoms at all, there is nothing to
+    aim the withdrawal with and the old atoms stay. `remake == 0` with `rows_in_scope > 0` is
+    that case, visible in the return, and it is a declaration question rather than something
+    this can widen its way out of - widening it means deleting by something other than the
+    scope, which is the unscoped act the tool exists to avoid.
+
+    Registrations are offered on the same basis the dry-run counted them on (`()` - nothing
+    assumed already registered), so `remake` and `attempted` are the same question asked
+    twice. Any register atom that is in fact still there collides with `uq_ledger_atom` and
+    comes back as `deduped`, which is the mechanism that already exists for exactly this.
+    """
+    from . import schema
+    from .store import LedgerStore
+    from .setup import execute_selected_scoped_batch
+
+    result = preview_rescope(engine, setup, source, scope_column, scope_values)
+    refs = result.pop("refs", [])
+    result.update({"applied": False, "withdrawn": 0,
+                   "attempted": 0, "inserted": 0, "deduped": 0})
+    if not apply or not refs:
+        return result
+
+    plan = setup.snapshot.source_plans[source]
+    scoped = _scope_predicate(plan, (scope_column, scope_values))
+    store = LedgerStore(engine)
+    write = store.connection()
+    try:
+        with write.cursor() as cursor:
+            # `source_who` is in the predicate, so an atom another source wrote about the
+            # same die cannot be reached from here however the scope is spelled.
+            cursor.execute(
+                f"DELETE FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
+                (source, refs))
+            result["withdrawn"] = int(cursor.rowcount or 0)
+        write.commit()
+    except Exception:
+        write.rollback()
+        raise
+    finally:
+        write.close()
+
+    read = engine.raw_connection()
+    try:
+        rows = _fetch_v2_lineage_rows(read, plan, scope=scoped)
+    finally:
+        read.rollback()
+        read.close()
+    frame = _v2_frame(rows)
+    subjects = _v2_registration_subjects(plan, frame)
+    executed = execute_selected_scoped_batch(
+        setup, source, frame, scoped, _no_join_reader(), store,
+        known_registrations=None if subjects is None else ())
+    written = executed.store_result
+    result["attempted"] = int(written.get("attempted", 0))
+    result["inserted"] = int(written.get("inserted", 0))
+    result["deduped"] = int(written.get("deduped", 0))
+    result["applied"] = True
+    return result
+
+
 def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     """Compile ONE batch of this source's FIRST page. WRITES NOTHING, MOVES NO CURSOR.
 
@@ -890,6 +971,14 @@ def main(argv=None):
     parser.add_argument(
         "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
         help="the Ledger config root (the only operator path)")
+    parser.add_argument("--scope-column", default=None,
+                        help="redo only the rows whose <column> is one of --scope-values; "
+                             "the column must be one this source's read declares")
+    parser.add_argument("--scope-values", default=None,
+                        help="comma-separated values of --scope-column")
+    parser.add_argument("--apply", action="store_true",
+                        help="with --scope-column: withdraw and remake for real. Without "
+                             "it the scope is a dry-run and writes nothing")
     args = parser.parse_args(argv)
 
     # This is the public operator boundary.  Until a separate destructive approval
@@ -906,6 +995,28 @@ def main(argv=None):
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
 
     from database.database import engine
+
+    if args.scope_column or args.scope_values:
+        # A SCOPE IS NOT THE FORWARD SCAN AND DOES NOT SHARE ITS ARGUMENTS. Paging,
+        # batching and the cursor all belong to the scan; a scope names rows. Falling
+        # through to `run` with a scope it ignores would read as "redid that carrier"
+        # while re-reading the whole source from the watermark.
+        from .setup import load_setup
+
+        if not (args.scope_column and args.scope_values):
+            raise LedgerSetupError(
+                "scope_incomplete", "scope",
+                "--scope-column and --scope-values are one argument in two halves; "
+                "a column with no values selects nothing and values with no column "
+                "cannot be matched")
+        values = [item.strip() for item in args.scope_values.split(",") if item.strip()]
+        setup = load_setup(args.ontology_root)
+        scoped = rescope(engine, setup, args.source, args.scope_column, values,
+                         apply=args.apply)
+        logger.info("[Ledger] %s", scoped)
+        if not args.apply:
+            logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
+        return 0
 
     result = run(engine, source=args.source, fetch_rows=args.fetch_rows,
                  reset_cursor=args.reset_cursor, start_from=args.start_from,

@@ -127,6 +127,14 @@ def execute_cursor_batch(
 ) -> CursorBatchExecutionResult:
     """Gate every complete event, then append atoms + cursor in LedgerStore once.
 
+    🔴 THIS IS THE FORWARD SCAN, and "atoms + cursor in one transaction" is a promise
+    about it specifically. There is a second caller of the same store door now -
+    `execute_scoped_batch` below - which redoes a NAMED PART of a source and therefore must
+    not move the position at all. The two are not two doors and not two write paths: they
+    share this module's preview, this module's screening, and `store.write_batch`. They
+    differ in one statement, and which one they get is decided HERE rather than by the
+    store, so a reader of either function can see the whole answer without leaving it.
+
     🔴 `retranslate_approved` ARRIVES AS AN ARGUMENT AND NOTHING ELSE. The store's
     version guard is the SECOND place this refusal lives - the first is `backfill.run` - and
     a refusal in two places needs the approval in both. Passing it through global state or an
@@ -135,25 +143,7 @@ def execute_cursor_batch(
     preview = preview_cursor_batch(
         snapshot, source_id, base_rows, cursor_value, join_reader, preparers, mappers,
         known_registrations=known_registrations)
-    kept_all = []
-    event_atoms = _filtered_event_atoms(
-        preview.event_results, preview.known_registrations)
-    _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
-    for result, atoms in zip(preview.event_results, event_atoms):
-        molecule_ref = result.role_frame.attrs["molecule_ref"]
-        with gate.building_molecule(source_id):
-            kept, _report = gate.screen_compiled_molecule(
-                source_id,
-                atoms,
-                result.gate_preview["declared_derivations"],
-                result.gate_preview["declared_subject_types"],
-                molecule_ref=molecule_ref,
-                source_rows=len({
-                    ref for refs in result.role_frame["source_row_refs"].tolist()
-                    for ref in refs
-                }),
-            )
-            kept_all.extend(kept)
+    kept_all = _screened_atoms(snapshot, source_id, preview)
     try:
         written = store.write_batch(
             source_id,
@@ -182,6 +172,151 @@ def execute_cursor_batch(
         preview=preview,
         store_result=MappingProxyType(dict(written)),
     )
+
+
+def execute_scoped_batch(
+    snapshot: LedgerSetupSnapshot,
+    source_id: str,
+    base_rows: pd.DataFrame,
+    scope: Any,
+    join_reader: VerifiedJoinBatchReader,
+    preparers: SourcePreparerImplementationRegistry,
+    mappers: RoleMapperImplementationRegistry,
+    store: Any,
+    *,
+    known_registrations: Any = None,
+) -> CursorBatchExecutionResult:
+    """Redo ONE NAMED PART of a source. Same gate, same translation, CURSOR UNTOUCHED.
+
+    🔴 WHY THE POSITION MUST NOT MOVE, EITHER WAY. Writing the batch's last row as the
+    cursor makes the watermark say "read this far" about a source that was read further; and
+    when the scope lies BEHIND the current position - the ordinary case, since a correction
+    arrives after the row was first read - it drags the watermark backwards, and then every
+    row between is read again or, on the next correction, skipped. Writing it and restoring
+    it afterwards is the same hazard plus a window in which a crash leaves the wrong value
+    committed. So the cursor statement is not repaired here; it is not issued.
+
+    🔴 AND THAT IS WHY THE SCOPE IS CHECKED RATHER THAN TRUSTED. Without the cursor
+    statement this is "write atoms for these rows and leave no trace", which must never be
+    available for a WHOLE source - that would be the second write door the standing rule
+    forbids, wearing this function's name. A guard that only asked "was a scope passed"
+    would be decorative, so `_require_scope` proves the BATCH is the scope: every row it
+    carries names a value the caller declared. A full-source batch cannot get through,
+    whatever it says about itself.
+
+    What this does NOT do is withdraw the old atoms. `backfill.rescope` does that first, by
+    `source_raw_ref`, and in that order; called on its own this ADDS a generation rather
+    than replacing one.
+    """
+    _require_scope(base_rows, scope)
+    plan = _source_plan(snapshot, source_id)
+    # Computed to satisfy the preview's contract - it requires a cursor tuple that is one
+    # physical row of the batch - and then never written, because `advance_cursor=False`
+    # skips the only statement that would write it. Taken from the batch rather than read
+    # from the stored cursor deliberately: a value read here and handed to the writer would
+    # be a read-then-write race with any concurrent forward scan, which is the same silent
+    # rewind by a longer route.
+    ordered = base_rows.sort_values(list(plan.driver.cursor_columns))
+    last = ordered.iloc[-1]
+    unwritten_cursor = {
+        column: last[column] for column in plan.driver.cursor_columns}
+    preview = preview_cursor_batch(
+        snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
+        known_registrations=known_registrations)
+    kept_all = _screened_atoms(snapshot, source_id, preview)
+    try:
+        written = store.write_batch(
+            source_id,
+            preview.translator_version,
+            kept_all,
+            dict(preview.cursor_value),
+            preview.molecule_count,
+            refused=0,
+            incomplete=preview.incomplete_count,
+            reasons={},
+            advance_cursor=False,
+        )
+    except TypeError as exc:
+        # A store that cannot separate the two statements would advance the cursor instead.
+        # Refused by name, in the same shape as the version-guard refusal beside it, rather
+        # than left to land as an ordinary TypeError.
+        if "advance_cursor" in str(exc):
+            raise LedgerV2RuntimeError(
+                "unsupported_store_contract", "store.write_batch",
+                "LedgerStore must be able to append atoms without moving the cursor",
+            ) from exc
+        raise
+    if preview.incomplete_count:
+        gate.record_incomplete(source_id, preview.incomplete_count)
+    return CursorBatchExecutionResult(
+        preview=preview,
+        store_result=MappingProxyType(dict(written)),
+    )
+
+
+def _require_scope(base_rows: Any, scope: Any) -> None:
+    """Prove this batch IS the scope, and name what is outside it when it is not.
+
+    Three refusals rather than one because they are three different operator mistakes with
+    three different fixes: nothing was named, the named column is not in this batch, or the
+    batch reaches outside what was named. Collapsing them into "bad scope" would leave the
+    third - the only dangerous one - looking like a typo.
+
+    Values are compared as rendered text. The scope reached SQL as `= ANY(%s)` and the rows
+    came back matched, so on this path a mismatch here is a real reach outside the scope;
+    the offending values are named so that a rendering difference, if one ever arises, reads
+    as itself rather than as a mystery.
+    """
+    if not isinstance(scope, (tuple, list)) or len(scope) != 2:
+        raise LedgerV2RuntimeError(
+            "scope_required", "scope",
+            "a scoped write needs (column, values); this door cannot write a whole source")
+    column, values = scope
+    values = tuple(values or ())
+    if not column or not values:
+        raise LedgerV2RuntimeError(
+            "scope_required", "scope",
+            "a scoped write needs a column and at least one value")
+    if not isinstance(base_rows, pd.DataFrame) or column not in base_rows.columns:
+        raise LedgerV2RuntimeError(
+            "scope_column_absent", f"scope.{column}",
+            f"the batch does not carry {column!r}, so it cannot be shown to be in scope")
+    allowed = {str(item) for item in values}
+    outside = sorted({str(item) for item in base_rows[column].tolist()} - allowed)
+    if outside:
+        raise LedgerV2RuntimeError(
+            "scope_not_honoured", f"scope.{column}",
+            f"{len(outside)} value(s) in this batch are outside the declared scope: "
+            f"{outside[:5]}")
+
+
+def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> list:
+    """Gate every complete event and return what survives. One copy, both doors.
+
+    Extracted the moment there were two callers rather than copied into the second: a
+    scoped redo that screened even slightly differently would be a way to land atoms the
+    forward scan's gate refuses, which is the one thing it must not be.
+    """
+    kept_all = []
+    event_atoms = _filtered_event_atoms(
+        preview.event_results, preview.known_registrations)
+    _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
+    for result, atoms in zip(preview.event_results, event_atoms):
+        molecule_ref = result.role_frame.attrs["molecule_ref"]
+        with gate.building_molecule(source_id):
+            kept, _report = gate.screen_compiled_molecule(
+                source_id,
+                atoms,
+                result.gate_preview["declared_derivations"],
+                result.gate_preview["declared_subject_types"],
+                molecule_ref=molecule_ref,
+                source_rows=len({
+                    ref for refs in result.role_frame["source_row_refs"].tolist()
+                    for ref in refs
+                }),
+            )
+            kept_all.extend(kept)
+    return kept_all
 
 
 def _known_registrations(value: Any) -> tuple[tuple[str, str], ...] | None:

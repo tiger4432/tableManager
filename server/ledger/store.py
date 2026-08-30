@@ -56,6 +56,16 @@ _REASONS_REQUIRED = (
     "that `ledger_trace` reports as DEPLOYMENT HISTORY - so a live bookkeeping hole "
     "would be shown to the operator as an old one.")
 
+#: `enforce_translator_version` IS a WHERE clause on the cursor statement, so a caller who
+#: asks for the guard AND asks to skip that statement would be told the write was guarded
+#: when nothing guarded it. Refused by name rather than resolved either way, because both
+#: resolutions lie: honouring the flag would move a cursor the caller said not to move, and
+#: dropping it would drop a guard the caller asked for.
+_VERSION_GUARD_NEEDS_CURSOR = (
+    "enforce_translator_version requires advance_cursor=True: the version guard is a "
+    "condition on the cursor statement, so a write that skips that statement cannot "
+    "honour it. A scoped redo re-translates on purpose and asks for neither.")
+
 
 class CursorVersionConflict(RuntimeError):
     """The stored cursor belongs to a different compiled execution contract."""
@@ -280,8 +290,24 @@ class LedgerStore:
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False):
+                    enforce_translator_version=False, advance_cursor=True):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
+
+        🔴 `advance_cursor=False` IS THE SCOPED REDO, AND IT IS THIS SAME DOOR. Everything
+        above the cursor statement runs unchanged - the same gate, the same translation, the
+        same atoms table, the same one commit - and the cursor statement alone is skipped.
+        So the position does not move forward, does not move BACK, and there is no window
+        between two transactions in which it could be wrong. `ledger/runtime_v2.py`'s
+        `execute_scoped_batch` is what passes it, and only for a batch it has PROVED lies
+        inside a named scope; without that proof this flag would mean "write a whole source
+        and leave no trace in the cursor", which is the second door the standing rule
+        forbids.
+
+        The counters do not move either, and that is the same fact rather than a second
+        decision: they are columns of the cursor row and they describe how far the FORWARD
+        SCAN has got. Redoing a part the scan already passed is not progress along it, so
+        accumulating there would make `molecules_done` claim the source is further through
+        than it is. What the scoped write did is returned to its caller, which reports it.
 
         🔴 `reasons` HAS NO DEFAULT, and that is ruling R-2026-08-13-H-bis 2. It used to
         default to `None`, which meant a caller who said nothing about refusals got the
@@ -315,14 +341,17 @@ class LedgerStore:
             # Checked BEFORE the connection is opened: refusing early costs nothing and
             # keeps the refusal about the CALL rather than about a half-built transaction.
             raise TypeError(_REASONS_REQUIRED)
+        if enforce_translator_version and not advance_cursor:
+            raise TypeError(_VERSION_GUARD_NEEDS_CURSOR)
         connection = self.connection()
         try:
             self.ensure_partitions(connection, {a.occurred_at for a in atoms})
             attempted, inserted = self.insert_atoms(connection, atoms)
-            self._advance_cursor(connection, source, translator_ver, cursor_value,
-                                 molecules, inserted, attempted - inserted,
-                                 refused, incomplete, reasons=reasons,
-                                 enforce_translator_version=enforce_translator_version)
+            if advance_cursor:
+                self._advance_cursor(connection, source, translator_ver, cursor_value,
+                                     molecules, inserted, attempted - inserted,
+                                     refused, incomplete, reasons=reasons,
+                                     enforce_translator_version=enforce_translator_version)
             connection.commit()
             return {"attempted": attempted, "inserted": inserted,
                     "deduped": attempted - inserted, "molecules": molecules}

@@ -37,6 +37,7 @@ from .runtime_v2 import (
     CursorBatchExecutionResult,
     CursorBatchPreview,
     execute_cursor_batch,
+    execute_scoped_batch,
     preview_cursor_batch,
 )
 from .implementations import (
@@ -222,6 +223,30 @@ def execute_selected_cursor_batch(
         setup.preparers, setup.mappers, store,
         known_registrations=known_registrations,
         retranslate_approved=retranslate_approved,
+    )
+
+
+def execute_selected_scoped_batch(
+    setup: LedgerSetup,
+    source_id: str,
+    base_rows: pd.DataFrame,
+    scope: Any,
+    join_reader: VerifiedJoinBatchReader,
+    store: Any,
+    *,
+    known_registrations: Any = None,
+) -> CursorBatchExecutionResult:
+    """The same gate and store transaction for a NAMED PART of an approved v2 source.
+
+    Takes a scope where its neighbour takes a cursor, which is the whole difference between
+    the two: one says where the forward scan reached, the other says which rows are being
+    redone, and only the first is written down.
+    """
+    _require_declared_source(setup, source_id)
+    return execute_scoped_batch(
+        setup.snapshot, source_id, base_rows, scope, join_reader,
+        setup.preparers, setup.mappers, store,
+        known_registrations=known_registrations,
     )
 
 

@@ -11,6 +11,7 @@ from ledger import gate
 from ledger.runtime_v2 import (
     LedgerV2RuntimeError,
     execute_cursor_batch,
+    execute_scoped_batch,
     preview_cursor_batch,
 )
 from ledger.setup_registry import cursor_translator_version
@@ -38,8 +39,9 @@ class RecordingStore:
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False):
+                    enforce_translator_version=False, advance_cursor=True):
         self.calls.append({
+            "advance_cursor": advance_cursor,
             "source": source,
             "translator_ver": translator_ver,
             "atoms": tuple(atoms),
@@ -329,3 +331,115 @@ def test_same_cursor_version_commits_and_legacy_call_shape_remains_available():
         "legacy-source", "legacy-v1", [], {"offset": 1}, 1, reasons={})
     assert legacy.commits == 1
     assert "translator_ver = EXCLUDED.translator_ver" not in legacy.cursor_value.sql
+
+
+
+# ------------------------------------------------------ the scoped door (one named part)
+def test_the_scoped_door_lands_the_same_atoms_and_asks_for_no_cursor_advance():
+    """Same gate, same translation, same atoms - and the position is not written.
+
+    Compared against the forward scan over the identical batch rather than against a
+    hand-written expectation: the danger of a second write path is that it drifts into
+    screening differently, and only the forward scan's own output can detect that.
+    """
+    compiled = snapshot()
+    base = base_rows()
+
+    forward = RecordingStore()
+    execute_cursor_batch(
+        compiled, "input_rows", base, cursor_for(base), reader_for(base),
+        preparers(), mappers(), forward)
+
+    scoped = RecordingStore()
+    execute_scoped_batch(
+        compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
+        preparers(), mappers(), scoped)
+
+    assert [semantic_atom(atom) for atom in scoped.calls[0]["atoms"]] == \
+           [semantic_atom(atom) for atom in forward.calls[0]["atoms"]]
+    assert forward.calls[0]["advance_cursor"] is True
+    assert scoped.calls[0]["advance_cursor"] is False
+
+
+def test_every_way_the_scoped_door_could_become_a_whole_source_write_is_refused_by_name():
+    """🔴 WITHOUT THE CURSOR STATEMENT, AN UNSCOPED CALL HERE IS THE SECOND WRITE DOOR.
+
+    Each of these otherwise lands atoms and leaves nothing in the cursor row to show it
+    happened, which is the shape the standing rule forbids. The third is the one a decorative
+    guard would miss: a scope IS named, and the batch reaches outside it anyway.
+    """
+    compiled = snapshot()
+    base = base_rows(2)
+    store = RecordingStore()
+
+    def refusal(scope, rows=base):
+        with pytest.raises(LedgerV2RuntimeError) as caught:
+            execute_scoped_batch(
+                compiled, "input_rows", rows, scope, reader_for(rows),
+                preparers(), mappers(), store)
+        return caught.value.to_mapping()
+
+    assert refusal(None)["code"] == "scope_required"
+    assert refusal(("join_id", []))["code"] == "scope_required"
+    assert refusal(("no_such_column", ["J-0000"]))["code"] == "scope_column_absent"
+    outside = refusal(("join_id", ["J-0000"]))
+    assert outside["code"] == "scope_not_honoured"
+    # The value that reached outside is NAMED. A refusal that only said "out of scope"
+    # would leave the operator unable to tell a wrong scope from a wrong fetch.
+    assert "J-0001" in outside["message"]
+    assert store.calls == []
+
+
+def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupported():
+    """It would advance the cursor instead, which is the one outcome that must not be quiet."""
+    compiled = snapshot()
+    base = base_rows()
+
+    class CursorAlwaysStore:
+        def write_batch(self, source, translator_ver, atoms, cursor_value,
+                        molecules, refused=0, incomplete=0, *, reasons,
+                        enforce_translator_version=False):
+            raise AssertionError("body must not run")
+
+    with pytest.raises(LedgerV2RuntimeError) as caught:
+        execute_scoped_batch(
+            compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
+            preparers(), mappers(), CursorAlwaysStore())
+    assert caught.value.to_mapping() == {
+        "code": "unsupported_store_contract",
+        "path": "store.write_batch",
+        "message": "LedgerStore must be able to append atoms without moving the cursor",
+    }
+
+
+def test_skipping_the_cursor_step_still_commits_the_atoms_and_issues_no_cursor_statement():
+    """The atoms commit; the statement that would write a position is never sent at all.
+
+    Asserted on the SQL rather than on the stored value because "not sent" and "sent with
+    the value it already had" are indistinguishable from the row afterwards, and only the
+    first of the two is free of a read-then-write race.
+    """
+    connection = FakeConnection(None)
+    result = CursorOnlyStore(connection).write_batch(
+        "input_rows", "ledger-v2:same", [], {"record_id": "R-1"}, 1,
+        reasons={}, advance_cursor=False)
+
+    assert result["molecules"] == 1
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    assert connection.cursor_value.sql == ""
+
+
+def test_a_version_guard_that_could_not_be_honoured_is_refused_instead_of_dropped():
+    """🔴 The guard IS a condition on the skipped statement, so honouring the pair is a lie.
+
+    Refused before the connection opens, so the caller learns nothing was written from the
+    fact that nothing was opened.
+    """
+    connection = FakeConnection(None)
+    with pytest.raises(TypeError, match="advance_cursor"):
+        CursorOnlyStore(connection).write_batch(
+            "input_rows", "ledger-v2:same", [], {"record_id": "R-1"}, 1,
+            reasons={}, enforce_translator_version=True, advance_cursor=False)
+    assert connection.commits == 0
+    assert connection.closes == 0

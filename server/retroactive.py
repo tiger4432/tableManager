@@ -227,6 +227,65 @@ def _count_enrichment_confirm(db, params, scan_limit):
     }
 
 
+def _count_ledger_rescope(db, params, scan_limit):
+    """The operation's OWN dry-run, not a re-derivation of it.
+
+    `count_kind` is EXACT and `scan_limit` is null because the SCOPE is the budget: this
+    compiles exactly the rows the operator named and nothing besides. Echoing a scan
+    budget would describe a walk this never takes.
+    """
+    from ledger import backfill
+    from ledger.setup import load_setup
+
+    source = params["source"]
+    column = params["scope_column"]
+    values = params.get("scope_values") or []
+    preview = backfill.preview_rescope(
+        db.get_bind(), load_setup(), source, column, values)
+    preview.pop("refs", None)
+    rows = preview["rows_in_scope"]
+    withdraw, remake = preview["withdraw"], preview["remake"]
+    detail = (
+        f"'{source}'가 {column} 범위({len(values)}개 값)의 행 {rows}건에서 쓴 원자 "
+        f"{withdraw}개를 회수하고, 지금 선언으로 {remake}개를 다시 만듭니다. "
+        f"두 수가 다르면 그 차이가 이번 교정의 결과입니다. "
+        f"이 소스의 읽기 위치(커서)는 움직이지 않습니다.")
+    if remake and not withdraw:
+        # Seen for real on 2026-08-31: a run that died between the two commits left the
+        # withdrawal done and the remake absent. The operator needs to be told that this
+        # is a REPAIR rather than a no-op, because the headline number is 0.
+        detail += (" ⚠️ 회수할 것이 0인데 다시 만들 것이 있습니다 — 이 범위의 원자가 지금 "
+                   "원장에 «없다»는 뜻이고, 실행하면 채워 넣습니다.")
+    if rows and not remake:
+        # The refs come from the CURRENT translation, so there is nothing to aim with.
+        detail += (" ⚠️ 범위에 행은 있는데 만들어지는 원자가 «0» 입니다 — 낡은 원자를 "
+                   "가리킬 방법이 없어 회수도 못 합니다. 선언을 먼저 보셔야 합니다.")
+    return {
+        "affected": withdraw,
+        "affected_label": "회수할 원자",
+        "count_kind": COUNT_EXACT,
+        "scanned": rows,
+        "scan_limit": None,
+        "truncated": False,
+        "detail": detail,
+        "extra": preview,
+    }
+
+
+def _run_ledger_rescope(db, params, log):
+    from ledger import backfill
+    from ledger.setup import load_setup
+
+    s = backfill.rescope(
+        db.get_bind(), load_setup(), params["source"], params["scope_column"],
+        params.get("scope_values") or [], apply=True)
+    log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
+        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
+    return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
+            "inserted": s["inserted"], "deduped": s["deduped"],
+            "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
+
+
 def _run_chain_replay(db, params, log):
     import chain_replay
 
@@ -317,6 +376,30 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
+    },
+    "ledger_rescope": {
+        "label": "원장 범위 재번역",
+        "what_is_missing": "고친 입력이 원장에 닿지 못해 그 범위만 낡은 값으로 남아 있다",
+        "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
+                   _p("scope_column",
+                      help="a column this source's read declares; anything else is "
+                           "refused by name with the declared list"),
+                   _p("scope_values", kind="csv",
+                      help="comma-separated values of that column")],
+        "count": _count_ledger_rescope,
+        "run": _run_ledger_rescope,
+        "cli": ("server/ledger/backfill.py --source <source> --scope-column <column> "
+                "--scope-values <a,b,c> --apply"),
+        # It deletes this source's atoms from the NAMED rows and nothing else:
+        # `source_who` is in the delete predicate, so an atom another source wrote about
+        # the same die is unreachable from here however the scope is spelled.
+        "deletes": "ledger_events rows (this source's atoms from the named rows only)",
+        # The withdrawal and the remake are two commits, so a run that dies between them
+        # leaves the atoms withdrawn and not yet rewritten. Re-running the same scope
+        # finishes it - measured on 2026-08-31, when exactly that happened.
+        "restartable": True,
+        "commit_granularity": "one commit for the withdrawal, one for the remake",
+        "cli_only": ["--ontology-root (read a different config root)"],
     },
     "enrichment_backfill": {
         "label": "Enrichment 파생 행 생성",

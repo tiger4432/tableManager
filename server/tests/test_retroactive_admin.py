@@ -195,10 +195,16 @@ class TestInventory:
     def test_it_lists_every_registered_operation(self, client):
         body = client.get("/admin/retroactive/operations").json()
         assert {o["op"] for o in body["operations"]} == set(retroactive.OPERATIONS)
-        # Non-vacuous: an empty registry would satisfy the equality above.
-        # Was 5 until R-2026-08-14-H deregistered `graph_orphans` - see
-        # test_the_retired_graph_sweep_is_not_offered_as_a_button below.
-        assert len(body["operations"]) == 4
+        # Non-vacuous by NAMING the members: an empty registry would satisfy the equality
+        # above, and a bare count would go red on any legitimate addition while saying
+        # nothing about WHICH operation appeared - the failure would read as a defect in
+        # the new entry rather than as this line needing a name added to it.
+        # `graph_orphans` was here until R-2026-08-14-H deregistered it, see
+        # test_the_retired_graph_sweep_is_not_offered_as_a_button below;
+        # `ledger_rescope` joined on 2026-08-31.
+        assert {o["op"] for o in body["operations"]} == {
+            "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
+            "ledger_rescope"}
 
     def test_the_retired_graph_sweep_is_not_offered_as_a_button(self, client):
         """R-2026-08-14-H: the old graph branch was retired and its three tables
