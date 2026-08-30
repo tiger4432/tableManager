@@ -680,3 +680,52 @@ def test_an_empty_row_selection_is_refused_rather_than_read_as_no_filter(rep_env
     assert "empty" in str(caught.value)
     # ...and it says what to do instead, or the operator only learns they were refused.
     assert "Omit it" in str(caught.value)
+
+
+def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(rep_env):
+    """🔴 THIS IS THE WHOLE REASON THE CANCEL EXISTS: 「백필만 못꺼서 서버 재기동」.
+
+    So all four halves are asserted together, because any three of them without the fourth
+    is a different, worse feature:
+
+        stops       the loop ends at a BATCH BOUNDARY, not wherever it happened to be
+        keeps       what was committed before the stop is still there - a cancel is not a
+                    rollback, and treating it as one would make operators afraid to press it
+        resumes     running it again finishes the rest, which is what makes stopping cheap
+        survives    the call RETURNS. The process stays up and goes on to do other work -
+                    the one thing killing it could never give you
+
+    Batches are forced with `chunk_size=1` because the longest real ledger job on this box
+    finishes in one batch, and a cancel has nowhere to land when there is no boundary.
+    """
+    _seed(rep_env, "crep_test_trigger",
+          [{"src_key": "s1", "part_no": "P1", "qty": 5},
+           {"src_key": "s2", "part_no": "P2", "qty": 3},
+           {"src_key": "s3", "part_no": "P3", "qty": 7}])
+
+    seen = []
+
+    def stop_after_the_first_page(processed=None, total=None):
+        seen.append(processed)
+        return len(seen) > 1          # let one page through, then ask it to stop
+
+    stopped = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+                                       log=lambda *_: None,
+                                       checkpoint=stop_after_the_first_page)
+
+    assert stopped["stopped"] is True
+    assert stopped["pages"] == 1, "it stopped at a boundary, not mid-page"
+    # KEEPS: the first page's work is committed and visible.
+    assert _target(rep_env, "P1") is not None
+    # ...and the pages it never reached did not happen.
+    assert _target(rep_env, "P2") is None and _target(rep_env, "P3") is None
+
+    # RESUMES: the same job again finishes the rest, without redoing the first.
+    finished = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True,
+                                        log=lambda *_: None)
+    assert finished.get("stopped") is not True
+    assert _target(rep_env, "P2") is not None and _target(rep_env, "P3") is not None
+    assert float(_target(rep_env, "P1").reserved) == 10.0, "the resume did not disturb it"
+
+    # SURVIVES: both calls returned - nothing was killed to make the stop happen. The
+    # assertions above only ran because the process was still here to run them.

@@ -320,6 +320,7 @@ def _run_ledger_backfill(db, params, log, control=None):
 
     s = backfill.run(db.get_bind(), source=params["source"],
                      checkpoint=_checkpoint(control))
+    _final_progress(control, s.get("rows_read"))
     return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
             "molecules": s.get("molecules"), "stopped": bool(s.get("stopped")),
@@ -414,6 +415,23 @@ def _count_ledger_rescope(db, params, scan_limit):
     }
 
 
+def _final_progress(control, rows):
+    """Write the finished run's own count, once, when the work is over.
+
+    🔴 A RUN THAT FINISHED IN ONE BATCH HAD NO BATCH BOUNDARY TO REPORT AT, so its progress
+    column stayed 0 while its result said 80 rows - and "never started" and "completely
+    done" became the same number on the screen. Measured 2026-08-31 on a real
+    `ledger_backfill` run.
+
+    The value comes from the SERVER, and from the adapter that already knows which of its
+    operation's stats is the row count. Letting a screen parse `result` instead would put
+    that per-operation knowledge in the client, where every new operation would need it
+    again.
+    """
+    if control is not None and rows is not None:
+        control.progress(rows)
+
+
 def _checkpoint(control):
     """One hook from a run's control: report where we are, and ask whether to go on.
 
@@ -442,6 +460,7 @@ def _run_ledger_rescope(db, params, log, control=None):
         params.get("scope_values") or [], apply=True)
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
+    _final_progress(control, s.get("rows_in_scope"))
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
@@ -454,6 +473,7 @@ def _run_chain_replay(db, params, log, control=None):
     s = chain_replay.replay_rule(db, rule, apply=True, log=log,
                                  checkpoint=_checkpoint(control),
                                  business_keys=params.get("business_keys"))
+    _final_progress(control, s.get("rows_scanned"))
     return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
             "rows_updated": s["rows_updated"], "rows_scanned": s["rows_scanned"],
             "withdrawal_candidates": s["skipped_blank_cells"]}
@@ -465,6 +485,7 @@ def _run_withdraw(db, params, log, control=None):
     s = chain_replay.withdraw_source(db, params["table"], params["source"],
                                      columns=params.get("columns"), apply=True, log=log,
                                      checkpoint=_checkpoint(control))
+    _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")))
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
 
@@ -476,6 +497,7 @@ def _run_enrichment_backfill(db, params, log, control=None):
     rule = enrichment_backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
     s = enrichment_backfill.run_backfill(db, rule, apply=True, log=log,
                                          checkpoint=_checkpoint(control))
+    _final_progress(control, s.get("rows_scanned"))
     return {"created_rows": s["created_rows"], "updated_rows": s["updated_rows"],
             "rows_scanned": s["rows_scanned"]}
 
@@ -494,6 +516,7 @@ def _run_enrichment_confirm(db, params, log, control=None):
     # automatic writes, and `run_auto_confirm_sweep` refuses apply without it.
     s = enrichment_analysis.run_auto_confirm_sweep(
         db, _enrichment_rule(params["rule"]), apply=True, ignore_knob=False, log=log)
+    _final_progress(control, s.get("queue_size"))
     return {"confirmed": s.get("confirmed", 0), "written_cells": s.get("written_cells", 0),
             "queue_size": s.get("queue_size", 0)}
 
