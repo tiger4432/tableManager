@@ -784,3 +784,97 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
 #: 🔴 TWO MORE RETIRED 2026-08-28: the ranked-answer tests. `collect` turned the walk
 #: into a ranking over one node KIND, and there is one kind now, so the ranking has nothing to
 #: choose between. `_rank_layers` went with them.
+
+
+# ---------------------------------------------------------------- frames as a derived key
+def seat_atom(number, source, x, y, target_lot):
+    """One source's reading of one physical seat, in ITS OWN frame."""
+    return ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=number)), subject_type="die",
+        subject_keys={"mat_id": "W1", "x": x, "y": y, "mat_type": "Wafer"},
+        predicate="transfer", object_kind="entity_ref",
+        object_payload={"type": "Lot", "keys": {"lot": target_lot}, "qualifiers": {}},
+        occurred_at=NOW, source_who=source, source_translator_ver="v1",
+        source_raw_ref=f"row:{number}", supersedes=None, source_event_id=EVENT,
+        source_event_state="source_molecule")
+
+
+def seat_fixture():
+    """Two logs reading the SAME seat, one of them a quarter turn out.
+
+    `left` writes it as (2, 5).  `right` reads the same physical hole as (5, 5) because its
+    frame is `x = -y + 7`, `y = x`.  Nothing in the ledger says these are the same.
+    """
+    return [seat_atom(701, "left", 2, 5, "L-LEFT"),
+            seat_atom(702, "right", 5, 5, "L-RIGHT")]
+
+
+SEAT_FRAMES = {
+    "ok": True,
+    "keys": {"die": ["x", "y"]},
+    "by_source": {"right": {"die": {"x": {"from": "y", "sign": -1, "offset": 7},
+                                    "y": {"from": "x", "sign": 1, "offset": 0}}}},
+    "declaring": 1,
+}
+
+
+def walk_the_seat(frames):
+    saved = ledger_subgraph._declared_frame_cache
+    try:
+        ledger_subgraph._declared_frame_cache = frames
+        return ledger_subgraph.subgraph(
+            ledger_explorer.entity_id("die", {"mat_id": "W1", "x": 2, "y": 5,
+                                              "mat_type": "Wafer"}),
+            ledger_subgraph.InMemoryEvidenceLookup(seat_fixture()), hops=2)
+    finally:
+        ledger_subgraph._declared_frame_cache = saved
+
+
+def test_two_frames_of_one_seat_are_one_node_and_the_ledger_says_nothing():
+    """🔴 THE POINT: the walk decides they are the same seat, the ledger never says so.
+
+    `right` stored (5, 2); the seed is `left`'s (2, 5).  Half A carries the frontier DOWN
+    through the inverse so the fetch matches `right`'s stored row, and Half B carries the
+    endpoint UP so both readings build one node.  Neither atom is rewritten, and correcting
+    the declaration changes the answer on the next walk with nothing to retract.
+    """
+    body = walk_the_seat(SEAT_FRAMES)
+    seats = [node for node in body["nodes"] if node["type"] == "die"]
+    assert len(seats) == 1, "two readings of one seat must be ONE node"
+    reached = {edge["target"] for edge in body["edges"]}
+    lots = {node["id"] for node in body["nodes"] if node["type"] == "Lot"}
+    assert lots and lots <= reached, "both sides' edges must arrive"
+    assert len(body["edges"]) == 2, "one edge per reading, both kept"
+    assert body["walk"]["frames"]["declaration_read"] is True
+    assert body["walk"]["frames"]["sources_declaring"] == 1
+    assert body["walk"]["frames"]["sources_on_framed_types"] == 2
+    assert body["walk"]["frames"]["sources_on_framed_types_with_frame"] == 1
+
+    # correcting the declaration changes the answer, with no ledger write
+    wrong = dict(SEAT_FRAMES, by_source={"right": {"die": {
+        "x": {"from": "y", "sign": -1, "offset": 99},
+        "y": {"from": "x", "sign": 1, "offset": 0}}}})
+    # 🔴 THE SEAT COUNT CANNOT SEE THIS. A broken frame leaves the seed seat standing
+    # alone, which is also ONE node - the same number the joined case gives. What moves is
+    # what ARRIVES: the other side's edge stops coming.
+    broken = walk_the_seat(wrong)
+    assert len(broken["edges"]) == 1, (
+        "a wrong offset must stop joining them - otherwise the transform is a no-op")
+    assert not [node for node in broken["nodes"]
+                if node.get("keys", {}).get("lot") == "L-RIGHT"], (
+        "the other side must become unreachable when the frame is wrong")
+
+
+def test_without_the_declaration_the_same_fixture_is_TWO_seats():
+    """🔴 THE DISCRIMINATING INPUT, not a copy of the test above.
+
+    With the frame removed the two readings are two different coordinates and must land as
+    two nodes.  Without this, a transform that did nothing at all would still pass the test
+    above whenever the two sides happened to share a coordinate.
+    """
+    body = walk_the_seat({"ok": True, "keys": {}, "by_source": {}, "declaring": 0})
+    seats = [node for node in body["nodes"] if node["type"] == "die"]
+    assert len(seats) == 1, (
+        "only the seeded reading is reachable when no frame is declared")
+    assert len(body["edges"]) == 1, "the other side's atom must NOT be joined"
+    assert body["walk"]["frames"]["sources_declaring"] == 0
