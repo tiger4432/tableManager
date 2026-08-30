@@ -22,6 +22,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import config as ledger_config          # noqa: E402
 from ledger import store as ledger_store            # noqa: E402
+from ledger import backfill as ledger_backfill    # noqa: E402
+from ledger import setup as ledger_setup            # noqa: E402
 from ledger import envelope, gate, schema, uuid7 # noqa: E402
 
 WHEN = datetime(2026, 5, 3, 2, 17, tzinfo=timezone.utc)
@@ -877,3 +879,39 @@ def test_injection_goes_red_individually(name, injection):
                         ledger_config.LedgerConfigError,
                         envelope.PayloadNotPreservable)):
         injection()
+
+
+# ---------------------------------------------------------------- the scope's two refusals
+class _PlanStub:
+    """Stands in for a source plan; only `base_select_columns` reads it, and that is
+    patched, so the object itself carries nothing worth faking."""
+
+
+def _declares(monkeypatch, columns):
+    from ledger import source_preparation
+    monkeypatch.setattr(source_preparation, "base_select_columns",
+                        lambda plan: tuple(columns))
+
+
+def test_a_scope_column_the_declaration_does_not_name_is_refused_by_name(monkeypatch):
+    """🔴 THE REFUSAL IS THE FEATURE, so it is pinned rather than left to a reading.
+
+    A typo answered with "0 rows" reads to the operator as "nothing to correct here" and
+    they walk away believing the fix landed - the exact failure this tool exists to stop.
+    Without this test a later refactor could turn the refusal back into a silent zero and
+    nothing would go red.
+    """
+    _declares(monkeypatch, ["core_wafer", "dt_job", "row_id"])
+    with pytest.raises(ledger_setup.LedgerSetupError) as caught:
+        ledger_backfill._scope_predicate(_PlanStub(), ("no_such_column", ["A"]))
+    assert caught.value.code == "scope_column_not_declared"
+    # the message has to carry the declared list, or the operator cannot fix the typo
+    assert "core_wafer" in str(caught.value)
+
+
+def test_a_scope_with_no_values_is_refused_rather_than_selecting_nothing(monkeypatch):
+    """An empty list would silently select no rows, which is the same silent zero."""
+    _declares(monkeypatch, ["core_wafer"])
+    with pytest.raises(ledger_setup.LedgerSetupError) as caught:
+        ledger_backfill._scope_predicate(_PlanStub(), ("core_wafer", []))
+    assert caught.value.code == "scope_values_empty"
