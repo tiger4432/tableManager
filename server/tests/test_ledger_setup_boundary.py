@@ -1,6 +1,7 @@
 """Stage 7 manifest-only cutover and production lot_event preparation tests."""
 from __future__ import annotations
 
+from collections import Counter
 import json
 from pathlib import Path
 import shutil
@@ -248,12 +249,18 @@ def test_live_physical_batch_normalizes_then_uses_stage6_compiler_path():
         known_registrations=(),
     )
 
-    assert preview.atom_count == 10
+    # THE MEMBERS, NOT THE NUMBER. `has_wafer` and `slot_map` left this source in
+    # d306b450 - three sentence shapes retired from the lot_event mapper, and `has_wafer`
+    # now comes from `lot_slot_wafer` - so ten became six. Retyping 6 would go red again
+    # on the next legitimate move, and would still PASS if one atom quietly vanished
+    # while another quietly appeared. A Counter says which sentences this source makes
+    # and how many of each, so the next move reads as a diff rather than as a defect.
+    assert Counter(item["predicate"] for item in preview.candidate_semantics) == {
+        "register": 5, "derived_from": 1,
+    }
+    assert preview.atom_count == len(preview.candidate_semantics)
     assert preview.molecule_count == 1
     assert preview.incomplete_count == 0
-    assert {item["predicate"] for item in preview.candidate_semantics} == {
-        "register", "has_wafer", "derived_from", "slot_map",
-    }
     assert all(item["source_who"] == "lot_event"
                for item in preview.candidate_semantics)
 
@@ -274,8 +281,14 @@ def test_selected_execute_reuses_preview_candidates_and_existing_store_transacti
 
     assert executed.preview.candidate_semantics == preview.candidate_semantics
     assert len(store.calls) == 1
+    # Built from the DECLARATION for the reason `cursor_for` gives above: this line said
+    # (event_time, txn_seq) for as long as the declaration did, and went on saying it
+    # after the declaration moved to `row_id`. Values are rendered the way the writer
+    # renders them - a timestamp arrives as its isoformat - so what is pinned is WHICH
+    # columns and WHICH row, not a spelling of either.
     assert store.calls[0]["cursor_value"] == {
-        "event_time": NOW.isoformat(), "txn_seq": "R2"}
+        column: value.isoformat() if isinstance(value, pd.Timestamp) else value
+        for column, value in cursor_for(frame).items()}
     assert store.calls[0]["enforce_translator_version"] is True
     assert len(store.calls[0]["atoms"]) == preview.atom_count
 

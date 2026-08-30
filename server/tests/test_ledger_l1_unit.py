@@ -915,3 +915,111 @@ def test_a_scope_with_no_values_is_refused_rather_than_selecting_nothing(monkeyp
     with pytest.raises(ledger_setup.LedgerSetupError) as caught:
         ledger_backfill._scope_predicate(_PlanStub(), ("core_wafer", []))
     assert caught.value.code == "scope_values_empty"
+
+
+
+# ------------------------------------------- the re-read a human's correction rides on
+def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledger(
+        monkeypatch):
+    """🔴 THE RULING THAT THERE IS NOTHING TO PROTECT HERE RESTS ON THIS PROPERTY.
+
+    `dt_map_derivation.plan_retraction` excludes human-touched rows because it deletes
+    DERIVED ROWS and a human's edit lives inside the row it deletes. This deletes ATOMS
+    and then re-reads the source row - and `models.CellOverwrite` carries no value column,
+    it only MARKS a cell as a human's while the value stays in the row - so the re-read is
+    exactly what carries the correction into the new atoms. Excluding those rows here
+    would block a human's correction from reaching the ledger rather than protect it.
+
+    That argument holds only while the fetch is FRESH. A later refactor that reused the
+    preview's rows, or read from a snapshot taken before the withdrawal, would leave every
+    other test green and quietly rebuild the atoms from the PRE-correction value. So what
+    is pinned is the order and the source of the rows: the frame the writer receives comes
+    from a read taken after the withdrawal, and carries the corrected value.
+    """
+    import pandas as pd
+    from ledger import setup as ledger_setup_module
+    from ledger import store as store_module
+
+    events = []
+    STALE, CORRECTED = "before-the-human", "what-the-human-typed"
+
+    class _Cursor:
+        rowcount = 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql, params):
+            events.append("delete" if "DELETE" in sql else "other")
+
+    class _Connection:
+        def cursor(self):
+            return _Cursor()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    class _Store:
+        def __init__(self, engine):
+            pass
+
+        def connection(self):
+            return _Connection()
+
+    class _Engine:
+        def raw_connection(self):
+            return _Connection()
+
+    class _Setup:
+        snapshot = type("S", (), {"source_plans": {"src": object()}})()
+
+    def _fetch(connection, plan, **kwargs):
+        # The live read. It answers with the CORRECTED value, so a writer that used the
+        # preview's rows instead would be visible as the stale one below.
+        events.append("fetch")
+        return [{"core_wafer": "C1", "value": CORRECTED}]
+
+    def _preview(engine, setup, source, column, values):
+        return {"source": source, "scope_column": column, "scope_values": len(values),
+                "rows_in_scope": 1, "withdraw": 1, "remake": 1, "refs": ["REF-1"],
+                # what a caller reusing the preview would hand the writer
+                "stale_rows": [{"core_wafer": "C1", "value": STALE}]}
+
+    written = {}
+
+    def _write(setup, source, frame, scope, reader, store, known_registrations=None):
+        events.append("write")
+        written["frame"] = frame
+        written["scope"] = scope
+        return type("R", (), {"store_result": {"attempted": 1, "inserted": 1,
+                                               "deduped": 0}})()
+
+    monkeypatch.setattr(ledger_backfill, "preview_rescope", _preview)
+    monkeypatch.setattr(ledger_backfill, "_scope_predicate",
+                        lambda plan, scope: ("core_wafer", ["C1"]))
+    monkeypatch.setattr(ledger_backfill, "_fetch_v2_lineage_rows", _fetch)
+    monkeypatch.setattr(ledger_backfill, "_v2_frame", pd.DataFrame)
+    monkeypatch.setattr(ledger_backfill, "_v2_registration_subjects",
+                        lambda plan, frame: None)
+    monkeypatch.setattr(store_module, "LedgerStore", _Store)
+    monkeypatch.setattr(ledger_setup_module, "execute_selected_scoped_batch", _write)
+
+    result = ledger_backfill.rescope(
+        _Engine(), _Setup(), "src", "core_wafer", ["C1"], apply=True)
+
+    # The withdrawal happens first, and the rows are read AFTER it - not carried over
+    # from the preview that decided what to withdraw.
+    assert events == ["delete", "fetch", "write"]
+    assert written["frame"]["value"].tolist() == [CORRECTED]
+    # And the scope travels with the batch, so the writer's own guard can prove it.
+    assert written["scope"] == ("core_wafer", ["C1"])
+    assert result["applied"] is True and result["withdrawn"] == 1
