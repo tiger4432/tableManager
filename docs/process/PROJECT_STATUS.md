@@ -1699,6 +1699,94 @@ frame_confirmation 표 전체    «99행»
 => 씨앗이 메타만 만들어 놓고 확정은 한 번도 안 돌았습니다. 소유자 확인: 「가짜로 넣은 데이터」
 ```
 
+## 🔗 `core → dt → bonding` 계보 — 실행 목록 넷 (소유자와 왕복, 2026-08-30 오후)
+
+⏭ **지시서 대기.** 아래는 그 왕복에서 «수»로 확정된 것만입니다.
+
+### 도메인 사실 — 소유자가 준 것 (스키마로는 못 읽습니다)
+```
+「본딩의 코어가 dt 임」        bonding_log 의 core_lot/slot · c_wx/c_wy 는 실제로 «테이프»다
+                            (스펙 §7.5b 에 이미 적혀 있었고 제가 못 이었습니다)
+「dtlog 는 다른 프레임」       두 장비가 같은 이름(c_wx)으로 «다른 프레임»을 읽는다
+「운영엔 b_wy 밖에 없음」      bx/by · cx/cy · bond_x/bond_y 는 «이 박스 씨앗»이 만든 것
+「corex 는 cwx 의 표준」       _w 계열 = 원시, core_x/dt_x/base_x = 표준
+「dtmap 은 로그가 기본 생성,   -> dt_map 의 생산자가 «셋»이다 (로그 · 사람 · 나중에 디펙 계측)
+  이후 사람이 bin 수정이 기본」
+```
+
+### 그래서 이음매는 «테이프»이고, 방정식은 «양쪽 다 선언돼 있습니다»
+```
+bonding_log   base(b_wx/b_wy)  ↔  테이프(c_wx/c_wy — 이름만 core)
+dt_log        테이프(dt_x/dt_y) ↔  core(core_x/core_y)
+                     ↑ 여기서 만나야 한다
+
+bonding_inventory   base_x/base_y · dt_x/dt_y 의 base·sign·offset
+dt_inventory        core_x/core_y · dt_x/dt_y 의 base·sign·offset
+=> 🔴 본딩이 코어를 안 보는데도 dt 방정식을 갖고 있는 것이 「이음매가 테이프」라는 증거
+```
+
+### 🔴 실제로 끊는 것은 «프레임»이 아니라 «정체»입니다
+```
+dt_log 에서      die{core_wafer, core_x, core_y, Wafer} ─transfer→ die{dt_job,  dt_x,dt_y, «DT»}
+bonding_log 에서 die{base_id,    bx, by,          Wafer} ─transfer→ die{dt_seat, dt_x,dt_y, «DTLotSlot»}
+                                                              ↑ 같은 자리를 «다른 이름»으로 부른다
+좌표를 아무리 맞춰도 «다른 노드»라 영원히 안 만납니다
+dt_job        = «작업». 같은 테이프를 두 번 작업하면 둘
+dt_lot|dt_slot = «물리 테이프». 자리는 하나       ← 상설 「단위는 웨이퍼, 랏은 값」
+```
+
+### 출하본 실측 — 운영에서도 같은 거절이 납니다
+```
+dt_map        composite=[dt_lot,dt_slot,dt_x,dt_y] · map_key=[dt_lot,dt_slot]   ✅ 결정대로
+              🔴 job 컬럼 «없음»
+dt_inventory  business_key=dt_job_id «와» composite=['dt_job']  -> 게이트가 ③을 막습니다
+
+규칙                                enabled  target_job_column
+dt_inventory_to_standard_dt_map      true     "dt_job"   ← 이름을 «대는데 그 칸이 dt_map 에 없다»
+dt_metadata_to_dt_inventory          true      None      ← 안 댐 -> 거절
+dt_log_to_primary_core_frame         true      None      ← 안 댐 -> 거절
+=> 방정식 표를 «채우는» 규칙 둘이 «매 배치 거절». 그래서 dt_inventory 가 안 찹니다
+```
+
+### ✅ 그리고 「사람 수정이 지워지나」는 «이미 막혀 있습니다»
+```
+dt_map_derivation.plan_retraction
+    protected  = _human_touched_row_ids(...)          ← 사람이 만진 행
+    retractable = stale − protected
+로그: "retracted N stale row(s), protected M human-touched row(s)"
+실패 방향: 회수가 터지면 «stale 을 남긴다» — 「절대 구멍을 남기지 않는다」
+=> 로그가 만들고 사람이 bin 을 고치는 «기본 흐름»이 이미 설계돼 있습니다.
+   에디터를 고칠 필요가 «없습니다»
+```
+
+### ⏭ 실행 목록 «넷»
+```
+1  dt_map 에 job 컬럼 «추가»        키 아님(column_types 에만).
+                                   retract 의 주어이자 «생산자 셋 공존»의 전제
+                                   ⚠️ 키에 넣으면 「여러 job 이 한 맵에」가 깨집니다
+                                   ⚠️ 이름은 운영이 정합니다. 규칙의 target_job_column 과 같기만 하면 됨
+2  규칙 둘에 target_job_column 명시  dt_metadata_to_dt_inventory · dt_log_to_primary_core_frame
+                                   -> 이미 도는 규칙과 «같은 모양». 새 문법 아님
+3  원장 선언 «한 줄»                dt_log 쪽 테이프 좌석의 정체를 dt_job/DT -> dt_seat/DTLotSlot
+4  게이트                          이음매 수 «와» 고아 수를 «둘 다» 센다
+                                   개수만 세면 「한 칸 밀린」 경우를 못 봅니다
+                                   (틀린 방정식은 대개 «고아»를 만들지만, 딱 한 칸 밀리면 «틀린 엣지»가 됩니다)
+```
+```
+MI → core   표가 «없습니다» (이름에 mi 가 든 표 0). 별건이고 「만들 것인가」부터
+```
+🔴 1·2 는 «출하본» 수정이라 운영 소관입니다. 3 은 원장 선언, 4 는 신설.
+
+### 🔴 이 왕복에서 제가 «넷» 틀렸습니다 — 전부 도메인을 스키마에서 «추론»한 것
+```
+① 이름이 같으면 같은 프레임        c_wx 가 두 표에 있다고 같은 노드라 했다
+② bonding 에 core 방정식이 없다     본딩은 코어를 «안 봅니다». 이음매는 테이프
+③ 사람이 dt_map 셀을 안 고친다      고치는 것이 «기본 흐름»
+④ retract 가 행을 지운다            «사람이 만진 행은 보호»됩니다 (코드에 이름까지 붙어 있음)
+넷 다 소유자가 «한 줄»로 잡았습니다. ④는 코드에 있는 것을 안 읽고 단정한 것입니다
+```
+
+
 ## ⏭⏭ 열린 안건 — «정본 목록» (2026-08-30 08:1x 갱신)
 🔴 이 목록이 정본입니다. 아래로 흩어진 `⏭ 판정 대기` 표지들은 «그 라운드의 기록»이고,
    확인 결과 대부분 이미 닫혔습니다 — `class` 칸(landed) · 보드 404(0) ·
