@@ -54,7 +54,14 @@ import sys
 #: Subtrees that are NOT loaded by a runtime process, so their imports are not
 #: subject to the runtime path. `scripts/` and `setup/` are operator entry points
 #: that bootstrap their own path; `tests/` is pytest; `scratch/` is disposable.
-NON_RUNTIME_DIRS = ("scripts/", "tests/", "setup/", "scratch/", "migrations/")
+#:
+#: `_archive/` is retired code, kept for reference and imported by nothing that runs.
+#: Its own archived tests import the modules that were archived beside them, and
+#: those names resolve from no directory on any path - so this check was reporting
+#: two retired test files as production outages. The prefix match is anchored at the
+#: top level, which is why `tests/` above does not already cover `_archive/tests/`.
+NON_RUNTIME_DIRS = ("scripts/", "tests/", "setup/", "scratch/", "migrations/",
+                    "_archive/")
 
 #: Exceptions that make an import OPTIONAL rather than required.
 #:
