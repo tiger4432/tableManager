@@ -43,6 +43,33 @@ DEFAULT_SCAN_LIMIT = 200
 MAX_SCAN_LIMIT = 2000
 
 
+#: 🔴 THE CLOSED LIST FROM `task/APPLICATION_RUN_WORDS.md`. An operation CHOOSES one of
+#: these for a number it reports; it does not write a sentence. The screen turns the value
+#: into words, so a new operation cannot invent a seventh way of saying nothing - the list
+#: is closed and operations point INTO it.
+#:
+#: 🔴 TWO OF THEM READ AS THEIR OPPOSITE, which is the whole reason the vocabulary exists:
+#:     already_missing  reads as "nothing to withdraw, so nothing to do"
+#:                      means  "it is already gone - run this to put it back"
+#:     cannot_point     reads as "nothing to make, so we are finished"
+#:                      means  "the old atoms cannot be named - the declaration needs looking at"
+#: Both are "zero, and there IS work". `truly_none` is the one that really means none.
+#:
+#: The field is NULL for an ordinary number, and that null is a statement rather than a
+#: gap: it says "this number means what it says". A count that reports a plain exact
+#: positive figure has nothing to choose from here, because none of the six is true of it.
+ABSENCE_NOT_YET = "not_yet"                  # 아직 — 시작 전, 또는 멈추는 중
+ABSENCE_NOT_EXHAUSTIVE = "not_exhaustive"    # 전수가 아님 — 이 수로 완료를 판단하지 않는다
+ABSENCE_CANNOT_POINT = "cannot_point"        # 가리킬 수 없음 — 올린다. 태워도 안 고쳐진다
+ABSENCE_TRULY_NONE = "truly_none"            # 정말 없음 — 없다. 이것도 정보다
+ABSENCE_ALREADY_MISSING = "already_missing"  # 이미 빠져 있음 — 태운다. 복구다
+ABSENCE_NOT_APPLICABLE = "not_applicable"    # 해당 없음 — 그 수가 성립하지 않는 자리
+
+#: Spelled once so a client can offer exactly these and no more.
+ABSENCE_WORDS = (ABSENCE_NOT_YET, ABSENCE_NOT_EXHAUSTIVE, ABSENCE_CANNOT_POINT,
+                 ABSENCE_TRULY_NONE, ABSENCE_ALREADY_MISSING, ABSENCE_NOT_APPLICABLE)
+
+
 class RetroactiveRefused(Exception):
     """Raised when an operation must not proceed. The message states why."""
 
@@ -69,6 +96,8 @@ def _count_chain_replay(db, params, scan_limit):
     truncated = s["rows_scanned"] >= scan_limit
     return {
         "affected": s["cells_proposed"],
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
+                    else ABSENCE_TRULY_NONE if not s["cells_proposed"] else None),
         "affected_label": "덮어쓸 셀",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
@@ -104,6 +133,8 @@ def _count_withdraw(db, params, scan_limit):
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
+        # An upper bound is not exhaustive either: fewer cells may actually change.
+        "absence": ABSENCE_NOT_EXHAUSTIVE if affected else ABSENCE_TRULY_NONE,
         "affected_label": "회수할 셀 (최대)",
         "count_kind": COUNT_UPPER_BOUND,
         "scanned": None,
@@ -143,6 +174,8 @@ def _count_enrichment_backfill(db, params, scan_limit):
     truncated = s["rows_scanned"] >= scan_limit
     return {
         "affected": s["new_combinations"],
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
+                    else ABSENCE_TRULY_NONE if not s["new_combinations"] else None),
         "affected_label": "새로 만들 파생 행",
         "count_kind": COUNT_SAMPLE,
         "scanned": s["rows_scanned"],
@@ -209,6 +242,8 @@ def _count_enrichment_confirm(db, params, scan_limit):
                    "숫자는 '켜면 무슨 일이 일어나는가'입니다.")
     return {
         "affected": s.get("confirmed", 0),
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
+                    else ABSENCE_TRULY_NONE if not s.get("confirmed") else None),
         "affected_label": "사람 없이 확정 가능한 건",
         "count_kind": COUNT_SAMPLE,
         "scanned": s.get("queue_size", 0),
@@ -258,7 +293,18 @@ def _count_ledger_backfill(db, params, scan_limit):
     return {
         "affected": rows,
         "affected_label": "커서 뒤에 남은 행",
+        "absence": (ABSENCE_TRULY_NONE if not rows
+                    else None if complete else ABSENCE_NOT_EXHAUSTIVE),
         # EXACT only when the page came back short, because then the page IS the remainder.
+        #
+        # 🔴 A FULL PAGE IS `sample`, NOT `upper_bound`, AND THE NEXT READER WILL WANT TO
+        # "FIX" THAT. A full page means "at least N", which is a LOWER bound, and the
+        # vocabulary has no word for one. `upper_bound` would lie in the opposite
+        # direction - the operator would read "at most N" when the truth may be fifty
+        # thousand. `sample` is right because a page IS a sample of the remainder, and the
+        # application vocabulary folds `sample` into "not exhaustive", which sets the
+        # behaviour that matters: do not judge completion by this number. One case is not
+        # enough to add a lower bound to a shared vocabulary.
         "count_kind": COUNT_EXACT if complete else COUNT_SAMPLE,
         "scanned": rows,
         "scan_limit": None,
@@ -277,6 +323,27 @@ def _run_ledger_backfill(db, params, log, control=None):
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
             "molecules": s.get("molecules"), "stopped": bool(s.get("stopped")),
             "cursor_after": s.get("cursor_after")}
+
+
+def _rescope_absence(withdraw, remake, rows):
+    """Which of the six a scoped redo's numbers mean. Chosen from the PAIR, not from one.
+
+    "Withdrew nothing" alone cannot tell `truly_none` from `already_missing`: the
+    difference is whether there is anything to put BACK, and that is the other half of the
+    pair. This is not cosmetic - `already_missing` is exactly the state a run that died
+    between its two commits leaves behind, and reading it as "nothing to do" is how
+    fourteen atoms stayed missing overnight on 2026-08-31.
+
+    Separated from the count so it can be tested on all four corners without a database;
+    the live path only ever produces some of them.
+    """
+    if withdraw:
+        return None                          # 거둔 것이 있다 — 평범한 수다
+    if remake:
+        return ABSENCE_ALREADY_MISSING       # 거둘 것 0 · 다시 만들 것 N -> 복구다
+    if rows:
+        return ABSENCE_CANNOT_POINT          # 행은 있는데 짚을 것이 없다 -> 선언 문제
+    return ABSENCE_TRULY_NONE                # 범위에 행 자체가 없다
 
 
 def _count_ledger_rescope(db, params, scan_limit):
@@ -327,9 +394,16 @@ def _count_ledger_rescope(db, params, scan_limit):
         # would be read as "none exist".
         detail += (f" 행이 사라진 원자는 표본 {orphans['refs_scanned']}건에서는 "
                    f"«0» 입니다(전체 {orphans['refs_total']}건 중 표본).")
+    # 🔴 THIS ONE IS CHOSEN FROM A PAIR, NOT FROM ONE NUMBER, and the entry says so in
+    # advance. "Withdrew nothing" alone cannot tell `truly_none` from `already_missing` -
+    # the difference is whether there is anything to put BACK, which is the other half of
+    # the pair. Getting it wrong is not cosmetic: `already_missing` is the state a run that
+    # died between its two commits leaves behind, and reading it as "nothing to do" is how
+    # fourteen atoms stayed missing overnight on 2026-08-31.
     return {
         "affected": withdraw,
         "affected_label": "회수할 원자",
+        "absence": _rescope_absence(withdraw, remake, rows),
         "count_kind": COUNT_EXACT,
         "scanned": rows,
         "scan_limit": None,
@@ -455,6 +529,7 @@ OPERATIONS = {
         "run": _run_chain_replay,
         "cli": "server/scripts/chain_replay_cli.py replay <rule> --apply",
         "deletes": None,
+        "reads_as": "number",
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per 1000-item write chunk",
@@ -473,6 +548,7 @@ OPERATIONS = {
         # value is recomputed and written, and every changed cell gets an AuditLog
         # entry naming the withdrawn source.
         "deletes": "cell_sources rows (one source's claim on a cell)",
+        "reads_as": "number",
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
@@ -490,6 +566,7 @@ OPERATIONS = {
         # 서버 재기동". It commits per page and resumes from the cursor, so asking it to
         # stop between pages costs nothing and gives that back - the server stays up and
         # every other job with it.
+        "reads_as": "number",
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "atoms and cursor in one commit per page",
@@ -516,6 +593,7 @@ OPERATIONS = {
         # The withdrawal and the remake are two commits, so a run that dies between them
         # leaves the atoms withdrawn and not yet rewritten. Re-running the same scope
         # finishes it - measured on 2026-08-31, when exactly that happened.
+        "reads_as": "pair",
         "cancellable": False,
         "restartable": True,
         "commit_granularity": "one commit for the withdrawal, one for the remake",
@@ -529,6 +607,7 @@ OPERATIONS = {
         "run": _run_enrichment_backfill,
         "cli": "server/scripts/backfill_enrichment.py <rule> --apply",
         "deletes": None,
+        "reads_as": "number",
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per source chunk",
@@ -543,6 +622,7 @@ OPERATIONS = {
         "run": _run_enrichment_confirm,
         "cli": "server/scripts/enrichment_insights.py confirm <rule> --apply",
         "deletes": None,
+        "reads_as": "number",
         "cancellable": False,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per write chunk",
@@ -724,7 +804,7 @@ def inventory() -> list:
         {"op": op, "label": s["label"], "what_is_missing": s["what_is_missing"],
          "params": s["params"], "cli": s["cli"], "cli_only": s["cli_only"],
          "deletes": s["deletes"], "restartable": s["restartable"],
-         "cancellable": s["cancellable"],
+         "cancellable": s["cancellable"], "reads_as": s["reads_as"],
          "commit_granularity": s["commit_granularity"]}
         for op, s in sorted(OPERATIONS.items())
     ]
@@ -802,6 +882,9 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
     finally:
         db.rollback()
     out.setdefault("blocked_reason", None)
+    # Present on every count, so "this number means what it says" is an ANSWER rather
+    # than a count that forgot to choose.
+    out.setdefault("absence", None)
     # NOTE: `scan_limit` is set by the count function, NOT here. Two of the five do
     # not scan rows at all and report null; overwriting that with the requested
     # budget would tell a reader a sample was taken when none was.
@@ -810,6 +893,7 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
                 "label": spec["label"], "cli": spec["cli"],
                 "deletes": spec["deletes"], "restartable": spec["restartable"],
                 "cancellable": spec["cancellable"],
+                "reads_as": spec["reads_as"],
                 "commit_granularity": spec["commit_granularity"]})
     return out
 

@@ -1241,3 +1241,40 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
     # Non-vacuous: the walk has to have reached every operation it claims to judge.
     assert set(seen) == {"chain_replay", "withdraw", "enrichment_backfill",
                          "enrichment_confirm", "ledger_backfill"}
+
+
+def test_a_scoped_redo_reads_its_numbers_as_a_pair_and_all_four_corners_differ():
+    """🔴 THE TWO THAT READ AS THEIR OPPOSITE ARE THE REASON THIS VOCABULARY EXISTS.
+
+    `already_missing` renders to an operator as "nothing to withdraw, so nothing to do",
+    and it means the opposite: the atoms are ALREADY gone and running this puts them back.
+    It is the state a run that died between its two commits leaves behind - the state that
+    kept fourteen atoms missing overnight on 2026-08-31 while every dry-run said zero.
+
+    All four corners are pinned here because the live path only ever produces some of them:
+    a box where nothing has gone missing can never show `already_missing`, so a test that
+    only walked the database would pass while the branch that matters was never entered.
+    """
+    assert retroactive._rescope_absence(14, 14, 14) is None
+    assert retroactive._rescope_absence(0, 14, 14) == retroactive.ABSENCE_ALREADY_MISSING
+    assert retroactive._rescope_absence(0, 0, 14) == retroactive.ABSENCE_CANNOT_POINT
+    assert retroactive._rescope_absence(0, 0, 0) == retroactive.ABSENCE_TRULY_NONE
+    # Every value it can choose is IN the closed list - an operation may not invent a
+    # seventh way of saying nothing.
+    for corner in ((14, 14, 14), (0, 14, 14), (0, 0, 14), (0, 0, 0)):
+        chosen = retroactive._rescope_absence(*corner)
+        assert chosen is None or chosen in retroactive.ABSENCE_WORDS
+
+
+def test_every_operation_answers_the_absence_question_even_when_the_answer_is_nothing():
+    """A count with no `absence` key would be indistinguishable from one that forgot to
+    choose, so the field is always present and `None` is an ANSWER: this number means what
+    it says. And `reads_as` tells a client whether one number decided it or a pair did."""
+    assert set(retroactive.ABSENCE_WORDS) == {
+        "not_yet", "not_exhaustive", "cannot_point", "truly_none", "already_missing",
+        "not_applicable"}
+    units = {row["op"]: row["reads_as"] for row in retroactive.inventory()}
+    assert units["ledger_rescope"] == "pair"
+    assert set(units.values()) <= {"number", "pair"}
+    # Non-vacuous: the pair case has to actually be present among them.
+    assert "pair" in units.values() and "number" in units.values()
