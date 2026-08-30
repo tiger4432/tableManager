@@ -531,6 +531,80 @@ def _no_join_reader():
     return NoJoinReader()
 
 
+def preview_rescope(engine, setup, source, scope_column, scope_values):
+    """What a scoped redo would withdraw and what it would put back. WRITES NOTHING.
+
+    🔴 THE TWO NUMBERS ARE NOT THE SAME QUESTION, so they are counted separately:
+
+        withdraw  atoms this source ALREADY wrote from the rows in scope
+        remake    atoms the CURRENT declaration makes from those same rows
+
+    They differ exactly when the correction did something, which is the point of running
+    this first.
+
+    🔴 AND THE LINK IS `source_raw_ref`, NOT THE SUBJECT KEYS. Measured 2026-08-30 on the
+    four sources this exists for - dt_transfer, bw_dt_seat, transfer_event, bonded_from -
+    every one writes a `die` atom keyed `x, y, mat_id, mat_type` with no qualifiers, so the
+    scope column (`core_wafer`, `dt_job`, `base_id`) appears NOWHERE in the atom. The atom
+    says which die; it does not say which carrier's row made it. `source_raw_ref` is the
+    only exact link back, and it is built in one place - `roleframe._claim_source_raw_ref` -
+    so this reads the refs off a real preview rather than assembling them, where one
+    character of drift would withdraw nothing and then write a duplicate, in silence.
+
+    ⚠️ A ROW THAT NO LONGER EXISTS CANNOT BE NAMED, so its atoms are simply not in scope and
+    are not withdrawn - deleting what the scope cannot name would be the unscoped act this
+    tool exists to avoid. They are also NOT COUNTED here yet: "atoms whose source row is
+    gone" is a different and more expensive question than "atoms outside this scope", and
+    reporting the second under the first's name would be a number that lies.
+    """
+    from . import schema
+    from .store import LedgerStore
+    from .setup import preview_selected_cursor_batch
+    from .runtime_v2 import _filtered_event_atoms
+
+    plan = setup.snapshot.source_plans[source]
+    scoped = _scope_predicate(plan, (scope_column, scope_values))
+    read = engine.raw_connection()
+    try:
+        rows = _fetch_v2_lineage_rows(read, plan, scope=scoped)
+    finally:
+        read.rollback()
+        read.close()
+    result = {"source": source, "scope_column": scoped[0],
+              "scope_values": len(scoped[1]), "rows_in_scope": len(rows),
+              "withdraw": 0, "remake": 0, "refs": []}
+    if not rows:
+        return result
+
+    frame = _v2_frame(rows)
+    subjects = _v2_registration_subjects(plan, frame)
+    ordered = frame.sort_values(list(plan.driver.cursor_columns))
+    last = ordered.iloc[-1]
+    cursor_value = {column: last[column] for column in plan.driver.cursor_columns}
+    preview = preview_selected_cursor_batch(
+        setup, source, frame, cursor_value, _no_join_reader(),
+        known_registrations=None if subjects is None else ())
+    atoms = [atom for group in _filtered_event_atoms(preview.event_results, None)
+             for atom in group]
+    refs = sorted({str(atom.source_raw_ref) for atom in atoms})
+    result["remake"] = len(atoms)
+    result["refs"] = refs
+
+    store = LedgerStore(engine)
+    connection = store.connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT count(*) FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
+                (source, refs))
+            result["withdraw"] = int(cursor.fetchone()[0])
+    finally:
+        connection.rollback()
+        connection.close()
+    return result
+
+
 def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     """Compile ONE batch of this source's FIRST page. WRITES NOTHING, MOVES NO CURSOR.
 
