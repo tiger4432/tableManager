@@ -1,14 +1,20 @@
-> # 🛑 보류 — 착수하지 마십시오 (2026-08-30 20:2x, 총괄)
+> # 🗄️ 기록 — 착수하지 마십시오. **설계가 이 문서를 지나쳤습니다** (2026-08-30 22:1x)
 >
-> **이 지시서가 푸는 것은 «다이 단위» 교차이고, 지금 아무도 그것을 필요로 하지 않습니다.**
-> 원래 목적이던 계보(본딩 ↔ 코어)는 **자재 단위로 이미 걷힙니다** — 선언에 이미 있습니다:
-> `lot_slot_move#seat-to-seat` 의 `slot_map@1`(lot_slot→lot_slot, 다대다 = 스플릿·머지) 과
-> `lot_event#in_slot` 의 `has_wafer@1`(lot_slot→wafer).
-> 소유자 확정: 「자재 단위로 계보는 충분함 걷기로 되잖아」.
+> 이 문서는 「좌표를 **읽을 때** 정규화한다」로 가던 밤의 기록입니다.
+> 소유자 판정으로 방향이 바뀌었습니다:
 >
-> 아래 분석은 «틀리지 않았습니다» — 두 로그가 서로 다른 회전으로 읽는 것은 실재하고,
-> 파생 키 설계도 유효합니다. 다만 **필요해지는 날 꺼내는 문서**입니다.
-> 되살리는 조건: 「다이 단위 교차가 필요하다」는 소유자 판정.
+> ```
+> 「그냥 표준 좌표계로 하고 저 회수를 좀 편리하게 만들어줘」
+> 「프레임 한 100매 중 1매 정도 손대지」   <- 이 수가 설계를 정했습니다
+> ```
+> 1% 면 「고칠 때 그 범위만 다시 번역」이 훨씬 싸고, 그러면 walk 은 아무것도 안 해도 됩니다.
+> 좌표는 **소스에서 표준으로 기록**하고, 착지했던 walk 기작은 되돌렸습니다(`85f41aa7`).
+>
+> **정본은 `task/SCOPED_REDO_BRIEF.md` 입니다.**
+>
+> 아래를 남기는 이유: 폐기된 설계 여섯과 그 사유가 적혀 있어, 같은 것이 다시 제안될 때
+> 「왜 안 되는지」를 다시 유도하지 않아도 됩니다. 특히 「원장에 «같다»를 쓰면 안 된다」와
+> 「가상 엣지는 원자 없는 엣지를 답에 섞는다」 두 가지는 방향과 무관하게 여전히 참입니다.
 
 # Frame-aware seats, via a key the walk DERIVES and never writes
 
@@ -218,4 +224,140 @@ B2  whether production's two readings also differ in `mat_id`.  If they do, this
     from another.  That is a question for the owner, NOT a reason to widen this lane
 B3  saved markings on frame-bearing types will not match derived ids.  Count them after
     landing and report; do not migrate them
+```
+
+---
+
+# PART 2 — where the numbers come from, and what makes the seat findable
+
+Owner rulings that fixed this part (2026-08-30):
+
+> 「프레임이 테이프마다 다르지, 프레임은 잘못 넣을 수 있어서 번역이 돌아도 장담못함」
+> 「프레임임 머쓸거야? 변환식 쓰는게 직관적이고 좋을듯」
+> 「1 가능 2 인벤토리」 — the DT side CAN name the tape; the numbers live in the inventory table
+
+## Two facts that decide the whole shape
+
+```
+F1  the frame differs PER CARRIER, not per source or per equipment
+    -> a source-level frame declaration cannot express it, and the walk cannot pre-load
+       a small set.  The lookup must be by carrier, on demand
+F2  the frame can be ENTERED WRONG, so a translation that ran is not a guarantee
+    -> it must be applied at READ time.  Baked into atoms, a correction costs retraction;
+       read at walk time, a correction is right on the next walk with nothing to withdraw
+```
+F2 is the same reasoning that produced PART 1. F1 is what PART 2 has to solve.
+
+## 🔴 The ordering that makes PART 1 usable at all
+
+`die@1` is keyed `[mat_id, x, y, mat_type]`. Today the DT side puts the JOB in `mat_id`.
+
+```
+job in mat_id     the node does not say WHICH CARRIER it is on
+                  -> to find the frame you must walk to the carrier
+                  -> but the frame is needed to BUILD the node, before any walking
+tape in mat_id    the carrier is IN THE KEY -> the frame lookup is direct
+```
+**So the name change is not a nicety, it is the precondition.** Do it first.
+
+And it is not the ledger asserting sameness — the thing the lead wrongly proposed and then
+wrongly over-corrected against. Each source naming the physical carrier it actually observed
+is a source reporting what it saw. Naming a seat by a job is the LESS faithful choice, and
+split/merge is why: jobs and carriers are many-to-many, so a job cannot point at a seat.
+
+## Step 1 — the transform becomes atoms (one predicate, one source, NO new entity)
+
+Owner: use the equation directly, not a frame identity. A frame NAME would be an extra hop
+and a registry to keep in step, it would have as many values as carriers so it would not
+distinguish anything, and — decisive, given F2 — it would add one more place to enter wrong.
+Nothing hangs off a frame, so making it a node buys none of the extension the standing rule
+exists for.
+
+```
+predicate   subject = lot_slot@1
+            object  = { "kind": "value" }        <- `has_netdie@1` already has this shape
+            qualifiers = the transform values
+source      reads the inventory table.  The table EXISTS; no new table, no reload
+atom        one per carrier.  A person corrects the inventory row -> the next translation
+            carries it -> the next walk answers differently
+```
+⚠️ The qualifier NAMES are production's (the owner indicated the `dtx_transform_base` family).
+Read them off the inventory rather than inventing them, and declare them in the vocabulary's
+optional qualifiers so a missing one is visible rather than silently absent.
+
+## Step 2 — the DT-side seat is named by its carrier
+
+One binding in the DT source: the `transfer@1` target's `mat_id` becomes the carrier seat
+instead of the job. Assembling the seat from its parts is a view expression — the bonding
+side's view already does exactly this, so it is an existing pattern, not new grammar.
+
+```
+cost   that ONE source re-translates.  Not the ledger
+🔴 DO NOT enable this before Step 3 works.  See "the silent middle state" below
+```
+
+## Step 3 — the walk looks the transform up by carrier
+
+PART 1 already transforms; it just has nowhere to read the numbers from. Wire that:
+
+```
+per batch of atoms, collect the carriers appearing in them, fetch their transform atoms in
+ONE query, and use them in Half A (inverse, descending) and Half B (forward, ascending)
+```
+F1 forbids pre-loading everything, so this is a per-hop query. Batch it — one query per hop,
+not one per node. If that measurement turns out badly, STOP and report the number rather
+than caching something whose staleness would be invisible.
+
+## Step 4 — say what each pairing rested on
+
+Not a gate; the owner rejected gates. But F2 says a frame WILL be wrong sometimes, and when
+that surfaces the question is "what did that affect". So each crossing carries which
+carrier's transform produced it. That is what makes a later correction traceable instead of
+merely silent.
+
+## 🔴 The silent middle state — the one thing that must never ship
+
+```
+now          different names + different rotation  ->  they never meet.  An honest break
+Step 2 alone same name + different rotation        ->  🔴 THEY MEET AND THE PAIRS ARE WRONG
+                                                       no error, no orphan, full join
+both         same name + same rotation             ->  correct pairs
+```
+On a square map a 90-degree mismatch joins every position — completely, plausibly, wrongly.
+Counting junctions gives it full marks. This is why Step 2 waits for Step 3.
+
+## Verification
+
+```
+G1..G4   as in PART 1 (grammar refusals; no-regression with nothing declared; one seat with
+         a frame declared; TWO seats with the declaration removed)
+G5 🔴    THE ROUND'S REASON, in the owner's words: 「디펙을 계측한 다이의 보이드 추적」
+         seed a die with an observed void, walk the transfer chain, and reach the voids on
+         the far side.  All the predicates exist already -- `observed@1` (which carries the
+         measurement as qualifiers), `of_kind@1`, `transfer@1`.  Only the broken middle seat
+         stops it today.  If G5 does not light up, the round did not deliver, whatever else
+         is green
+G6       flip one carrier's transform in the inventory, re-translate that source only, and
+         assert the walk's answer changes with NO atom retracted or superseded
+```
+
+## Stop conditions (in addition to PART 1's S1..S4)
+
+```
+S5  the per-hop carrier lookup cannot be batched into one query
+    -> STOP and report the query count; do not cache silently
+S6  the inventory's qualifier names differ per side in a way one predicate cannot carry
+    -> STOP and report both sets; the lead rules, not the lane
+S7  Step 2 turns out to need anything beyond one binding and a view expression
+    -> STOP.  It was scoped as one binding; if it is not, the scoping was wrong
+```
+
+## Still not in scope
+
+```
+⛔ making findings into nodes.  radius / gate / run_uid stay qualifiers this round, so
+   "other voids of the same size / same scan" still does not walk.  That is the standing
+   "remove the terminus" item and it is a different size
+⛔ any gate that blocks landing
+⛔ writing the live declaration -- still the owner's file
 ```

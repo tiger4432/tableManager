@@ -1339,5 +1339,24 @@
       "to_quantity"
     ],
     "composite_key_separator": "|"
+  },
+  "lot_slot_wafer": {
+    "__comment": "READ-ONLY VIEW [2026-08-30]: lot_event 의 colon 목록(slotnumbers/waferids)을 «행»으로 펼친다. has_wafer@1 의 주어가 lot_slot@1(키 둘)인데 커스텀 매퍼는 roleframe._entity_value 의 계약상 «키 하나»짜리 엔티티만 넘길 수 있어 lot_event#in_slot 이 원자를 한 건도 못 만들었다. 선언 소스는 프레임워크가 컬럼에서 직접 키를 만들므로 그 계약에 걸리지 않는다 — lot_slot_move 와 같은 길. 80행 -> 907행, 목록 길이는 80/80 일치. Rollback: DROP VIEW lot_slot_wafer;",
+    "business_key": "lot_slot_wafer_key",
+    "column_types": {
+      "lot": "TEXT",
+      "slot": "TEXT",
+      "wafer": "TEXT",
+      "event_type": "TEXT",
+      "event_time": "TEXT",
+      "lot_slot_wafer_key": "TEXT"
+    },
+    "display_columns": [
+      "lot",
+      "slot",
+      "wafer",
+      "event_type",
+      "event_time"
+    ]
   }
 }

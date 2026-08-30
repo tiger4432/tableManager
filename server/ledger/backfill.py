@@ -661,13 +661,54 @@ def _fetch_v2_lineage_group(connection, plan, page_value):
         connection, plan, group_value=page_value, limit=None)
 
 
+def _scope_predicate(plan, scope):
+    """Validate a scope against the DECLARATION and return `(column, values)` or None.
+
+    🔴 AN UNDECLARED COLUMN IS REFUSED, NOT ANSWERED WITH ZERO. A typo that returns
+    "0 rows" reads to the operator as "nothing to correct here", and they walk away
+    believing the fix landed - which is the exact shape this tool exists to stop. The
+    allow-list is `base_select_columns`, the columns the source's own declaration says it
+    reads, so no column name is written in this file.
+
+    `LedgerSetupError` is imported here rather than at module scope for the reason every
+    other raise site in this file does it: `ledger.setup` imports back into this module,
+    and a module-level import turns that into a cycle.
+    """
+    if not scope:
+        return None
+    from .setup import LedgerSetupError
+    from .source_preparation import base_select_columns
+    column, values = scope
+    column = str(column)
+    declared = base_select_columns(plan)
+    if column not in declared:
+        raise LedgerSetupError(
+            "scope_column_not_declared", column,
+            f"'{column}' is not a column this source reads. Declared: "
+            f"{', '.join(declared)}")
+    values = list(values or ())
+    if not values:
+        raise LedgerSetupError(
+            "scope_values_empty", column,
+            "a scope with no values would select nothing; omit the scope instead")
+    return column, values
+
+
 def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
-                           limit=None):
-    """Read physical catalog columns with identifier-safe psycopg2 composition."""
+                           limit=None, scope=None):
+    """Read physical catalog columns with identifier-safe psycopg2 composition.
+
+    🔴 `scope` NARROWS WHICH ROWS, AND IT IS NOT `limit`. `limit` bounds how much is read
+    and already means three different things across the CLIs; this says WHICH rows, by a
+    column the declaration names. It is ANDed with the paging predicate rather than
+    replacing it, so paging and restartability are untouched - a scoped run still walks
+    the page key in order and can resume.
+    """
     from psycopg2 import sql
 
     from .source_preparation import base_select_columns
     columns = base_select_columns(plan)
+    scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
     # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing
     # group and `walk_group_pages` may resume with `> after`.
@@ -676,14 +717,19 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     select_sql = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
     relation_sql = sql.SQL(".").join(
         sql.Identifier(part) for part in plan.relation.split("."))
-    where_sql = sql.SQL("")
+    clauses = []
     params = []
     if group_value is not None:
-        where_sql = sql.SQL(" WHERE {} = %s").format(sql.Identifier(page_key))
+        clauses.append(sql.SQL("{} = %s").format(sql.Identifier(page_key)))
         params.append(group_value)
     elif after is not None:
-        where_sql = sql.SQL(" WHERE {} > %s").format(sql.Identifier(page_key))
+        clauses.append(sql.SQL("{} > %s").format(sql.Identifier(page_key)))
         params.append(after)
+    if scoped is not None:
+        clauses.append(sql.SQL("{} = ANY(%s)").format(sql.Identifier(scoped[0])))
+        params.append(scoped[1])
+    where_sql = (sql.SQL(" WHERE ") + sql.SQL(" AND ").join(clauses)
+                 if clauses else sql.SQL(""))
     query = sql.SQL("SELECT {} FROM {}{} ORDER BY {}").format(
         select_sql, relation_sql, where_sql,
         sql.SQL(", ").join(sql.Identifier(column) for column in order),
