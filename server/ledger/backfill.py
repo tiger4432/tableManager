@@ -78,6 +78,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+import json
 import logging
 import os
 import sys
@@ -599,6 +600,118 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
                 "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
                 (source, refs))
             result["withdraw"] = int(cursor.fetchone()[0])
+    finally:
+        connection.rollback()
+        connection.close()
+    return result
+
+
+#: How many distinct refs the orphan sweep reads before it calls itself a sample. A source
+#: with 371,593 of them is not a request-path scan, and `count_kind` exists so the answer
+#: can say which of the two it is instead of quietly being the smaller one.
+ORPHAN_SCAN_LIMIT = 4000
+ORPHAN_CHUNK = 1000
+
+
+def _ref_row_keys(ref):
+    """-> [(relation, {key: value}), ...] read OUT of one `source_raw_ref`.
+
+    🔴 SPLIT ON THE FIRST COLON, NOT ANY COLON. Every ref element is
+    `<relation>:<json of that row's identity>`, and the json routinely contains colons -
+    a `run_uid` carries an ISO timestamp, a `void_uid` carries several. Splitting on the
+    last colon, or on all of them, reads a relation name out of the middle of a value and
+    then asks a table that does not exist.
+
+    Reading the keys out is deliberate and is the opposite of rebuilding the ref: the
+    translator owns that string (`roleframe._claim_source_raw_ref`) and one character of
+    drift in a rebuilt one would report every atom as an orphan.
+    """
+    out = []
+    for item in json.loads(ref).get("rows", []):
+        cut = item.index(":")
+        out.append((item[:cut], json.loads(item[cut + 1:])))
+    return out
+
+
+def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
+    """Atoms this source wrote whose SOURCE ROW no longer exists. READ ONLY.
+
+    🔴 THIS IS ABOUT THE SOURCE, NOT ABOUT ANY SCOPE, and the two must not be added
+    together. A scope names rows; a row that was deleted cannot be named by one, so asking
+    "how many of THIS scope's atoms are orphaned" has no answer - the scope is a predicate
+    over a relation and the relation no longer carries the row. What can be answered is the
+    source-wide question, and that is what this is.
+
+    ⚠️ THREE COUNTS, NOT ONE, because they are three different facts and a reader who saw
+    only a total could not tell them apart:
+
+        rows_gone       row identities named by a ref that the relation no longer has
+        atoms           atoms carrying those refs - what an operator would actually see
+        unreadable_refs refs this could not parse at all
+
+    An unreadable ref is NOT an orphan. Folding it in would report a bookkeeping failure
+    of this function as a fact about the data.
+    """
+    from . import schema
+    from .store import LedgerStore
+
+    store = LedgerStore(engine)
+    connection = store.connection()
+    result = {"source": source, "refs_total": 0, "refs_scanned": 0,
+              "count_kind": "exact", "truncated": False, "rows_gone": 0,
+              "refs_gone": 0, "atoms": 0, "unreadable_refs": 0}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT count(DISTINCT source_raw_ref) FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s", (source,))
+            result["refs_total"] = int(cursor.fetchone()[0])
+            cursor.execute(
+                f"SELECT DISTINCT source_raw_ref FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s LIMIT %s", (source, scan_limit))
+            refs = [row[0] for row in cursor.fetchall()]
+            result["refs_scanned"] = len(refs)
+            result["truncated"] = result["refs_total"] > len(refs)
+            if result["truncated"]:
+                result["count_kind"] = "sample"
+
+            groups, owners = {}, {}
+            for ref in refs:
+                try:
+                    named = _ref_row_keys(ref)
+                except Exception:
+                    result["unreadable_refs"] += 1
+                    continue
+                for relation, keys in named:
+                    names = tuple(sorted(keys))
+                    identity = tuple(keys[name] for name in names)
+                    groups.setdefault((relation, names), set()).add(identity)
+                    owners.setdefault((relation, names, identity), set()).add(ref)
+
+            gone_refs = set()
+            for (relation, names), wanted in groups.items():
+                columns = ", ".join('"%s"' % name for name in names)
+                found = set()
+                items = sorted(wanted, key=lambda item: [str(v) for v in item])
+                # One query per thousand identities rather than one per identity: three
+                # sessions share this database and a per-row loop is someone else's wait.
+                for start in range(0, len(items), ORPHAN_CHUNK):
+                    chunk = tuple(items[start:start + ORPHAN_CHUNK])
+                    cursor.execute(
+                        'SELECT %s FROM "%s" WHERE (%s) IN %%s'
+                        % (columns, relation, columns), (chunk,))
+                    found.update(tuple(row) for row in cursor.fetchall())
+                for identity in wanted - found:
+                    result["rows_gone"] += 1
+                    gone_refs |= owners[(relation, names, identity)]
+
+            result["refs_gone"] = len(gone_refs)
+            if gone_refs:
+                cursor.execute(
+                    f"SELECT count(*) FROM {schema.LEDGER_TABLE} "
+                    "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
+                    (source, sorted(gone_refs)))
+                result["atoms"] = int(cursor.fetchone()[0])
     finally:
         connection.rollback()
         connection.close()

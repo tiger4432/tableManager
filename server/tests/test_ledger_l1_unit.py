@@ -10,6 +10,7 @@ another lane in this same session. A count is the only thing that cannot be fake
 empty loop.
 """
 import contextlib
+import json
 import os
 import shutil
 import sys
@@ -1023,3 +1024,36 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     # And the scope travels with the batch, so the writer's own guard can prove it.
     assert written["scope"] == ("core_wafer", ["C1"])
     assert result["applied"] is True and result["withdrawn"] == 1
+
+
+
+# ------------------------------------------- reading a row's identity out of its ref
+def test_a_ref_splits_at_the_relation_and_not_at_a_colon_inside_the_value():
+    """🔴 THE JSON ROUTINELY CONTAINS COLONS, so 'split on the colon' has two answers.
+
+    Every ref element is `<relation>:<json of that row's identity>`, and the identities
+    measured on this box carry ISO timestamps (`run_uid`) and pipe-joined keys with several
+    colons in them. Splitting anywhere but the FIRST colon reads a relation name out of the
+    middle of a value, and the sweep then asks a table that does not exist - which raises,
+    but only for the sources whose keys happen to contain one, so it would look like a
+    defect in those sources rather than in the split.
+
+    The fixture is chosen so the two candidate rules DISAGREE. A ref with a colon-free
+    value would pass under either and would decide nothing.
+    """
+    ref = json.dumps({"event": "E", "rows": [
+        'inspection_run:{"run_uid": "sat|SYN-AUG-BW-001-01|0|6|2026-07-05T02:00:00+09:00"}']})
+    named = ledger_backfill._ref_row_keys(ref)
+    assert [relation for relation, _keys in named] == ["inspection_run"]
+    assert named[0][1] == {
+        "run_uid": "sat|SYN-AUG-BW-001-01|0|6|2026-07-05T02:00:00+09:00"}
+
+
+def test_one_ref_can_name_several_rows_and_every_one_of_them_is_read():
+    """A molecule is built from rows, plural - `dt_job` averages 88 of them per ref on this
+    box. Reading only the first would call every row after it 'gone'."""
+    ref = json.dumps({"event": "E", "rows": [
+        'bonding_core_die:{"base_id": "B1", "bx": 0.0, "by": 6.0}',
+        'bonding_core_die:{"base_id": "B1", "bx": 1.0, "by": 6.0}']})
+    named = ledger_backfill._ref_row_keys(ref)
+    assert [keys["bx"] for _relation, keys in named] == [0.0, 1.0]

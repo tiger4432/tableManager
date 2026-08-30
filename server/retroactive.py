@@ -260,6 +260,21 @@ def _count_ledger_rescope(db, params, scan_limit):
         # The refs come from the CURRENT translation, so there is nothing to aim with.
         detail += (" ⚠️ 범위에 행은 있는데 만들어지는 원자가 «0» 입니다 — 낡은 원자를 "
                    "가리킬 방법이 없어 회수도 못 합니다. 선언을 먼저 보셔야 합니다.")
+    # 🔴 A SOURCE-LEVEL FACT, KEPT OUT OF THE SCOPE NUMBERS. A row that was deleted cannot
+    # be named by a scope - the scope is a predicate over the relation and the relation no
+    # longer carries the row - so this cannot be "orphans in this scope" and is not added
+    # to anything above. It rides in `extra` with its OWN count_kind, because the scope
+    # count is exact while this one is a sample on a large source, and one `count_kind`
+    # cannot honestly describe both.
+    orphans = backfill.count_orphan_atoms(db.get_bind(), source)
+    if orphans["rows_gone"]:
+        detail += (f" \u26a0\ufe0f 이 소스에는 «가리키는 행이 사라진» 원자가 "
+                   f"{orphans['atoms']}건 있습니다 — 이 범위 작업과 «별개»입니다.")
+    elif orphans["truncated"]:
+        # A sampled zero is not an exhaustive zero, and saying "0" without saying which
+        # would be read as "none exist".
+        detail += (f" 행이 사라진 원자는 표본 {orphans['refs_scanned']}건에서는 "
+                   f"«0» 입니다(전체 {orphans['refs_total']}건 중 표본).")
     return {
         "affected": withdraw,
         "affected_label": "회수할 원자",
@@ -268,7 +283,7 @@ def _count_ledger_rescope(db, params, scan_limit):
         "scan_limit": None,
         "truncated": False,
         "detail": detail,
-        "extra": preview,
+        "extra": dict(preview, source_orphans=orphans),
     }
 
 
