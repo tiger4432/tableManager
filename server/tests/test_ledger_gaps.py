@@ -130,3 +130,104 @@ def test_the_live_table_and_the_live_declaration_are_checked_against_each_other(
     assert {item["name"] for item in produced}, "every question carries the spec's name"
     for item in produced:
         assert item["absent"], "a gap is always about a predicate that is not there"
+
+
+class _Cursor:
+    """Answers the shape `measure` expects: (count, oldest, newest, examined)."""
+
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.seen = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def execute(self, sql, params):
+        self.seen.append((sql, params))
+
+    def fetchone(self):
+        return self.rows.pop(0)
+
+
+class _Connection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class _Engine:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def raw_connection(self):
+        return _Connection(self._cursor)
+
+
+def test_a_sample_never_pretends_to_be_the_oldest_and_a_full_scan_never_claims_to_be_one():
+    """🔴 "FIRST FOUND" READ AS "OLDEST" IS THE MISREADING THIS VOCABULARY EXISTS TO STOP.
+
+    The owner asked for ages so an operator can pick what to work on, and a sample chosen by
+    whatever the scan met first would let them pick the wrong thing while believing they had
+    the oldest. Choosing by age means ordering every node of the type - the full scan the
+    budget avoids - so the answer says which it is instead.
+
+    Both directions, because a note attached to everything says nothing: a short scan IS the
+    whole type and must NOT carry the caveat.
+    """
+    # The table below asks four questions; each consumes one row.
+    truncated = _Cursor([(7, None, None, gaps.NODE_SCAN_LIMIT)] * 4)
+    short = _Cursor([(7, None, None, 3)] * 4)
+    declared = declaration({"x@1": edge(["a@1"], ["b@1"]),
+                            "y@1": edge(["c@1"], ["b@1"])})
+    table = {"pairs": [], "subject_sides":
+             [{"predicate": "x", "type": "a@1", "name": "SX", "action": "x"}],
+             "object_sides": []}
+    # `y` must still be named or the walk refuses; give it a row too.
+    table["subject_sides"].append(
+        {"predicate": "y", "type": "c@1", "name": "SY", "action": "y"})
+    table["pairs"] = NAMES["pairs"]
+
+    sampled = gaps.measure(_Engine(truncated), declared, names=table)
+    assert sampled[0]["count_kind"] == "sample"
+    assert sampled[0]["sample_note"] == gaps.SAMPLE_NOT_AGE_ORDERED
+
+    exact = gaps.measure(_Engine(short), declared, names=table)
+    assert exact[0]["count_kind"] == "exact"
+    assert exact[0]["sample_note"] is None
+
+
+def test_a_question_that_cannot_have_members_gets_no_count_rather_than_a_zero():
+    """🔴 ZERO SAYS "WE LOOKED AND FOUND NONE", which sends somebody after the ones that got
+    away. A type whose only appearance is that predicate cannot exist without it, so the set
+    is empty by construction - and the row stays, because dropping it makes the next person
+    ask the same question again."""
+    declared = declaration({
+        "x@1": edge(["a@1"], ["b@1"]),
+        "y@1": edge(["c@1"], ["b@1"]),
+        "only@1": edge(["a@1"], ["lonely@1"]),
+    })
+    table = {"pairs": NAMES["pairs"],
+             "subject_sides": NAMES["subject_sides"],
+             "object_sides": [{"predicate": "only", "type": "lonely@1",
+                               "name": "해당 없음", "action": "없음"}]}
+    table["subject_sides"] = table["subject_sides"] + [
+        {"predicate": "only", "type": "a@1", "name": "SO", "action": "o"}]
+    cursor = _Cursor([(0, None, None, 1)] * 8)
+    rows = gaps.measure(_Engine(cursor), declared, names=table)
+    lonely = [row for row in rows if row["type"] == "lonely@1"]
+    assert len(lonely) == 1
+    assert lonely[0]["absence"] == "not_applicable"
+    assert lonely[0]["count"] is None and lonely[0]["count_kind"] is None
+    # ...and it cost no query at all: a set that cannot have members is not measured.
+    assert not any("lonely" in str(params) for _sql, params in cursor.seen)

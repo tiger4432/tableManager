@@ -186,3 +186,124 @@ def _refuse_unnamed(declaration, live, named):
             + "; ".join(sorted(set(missing)))
             + ". Name them in task/APPLICATION_GAP_SPEC.md and add the rows to "
               "gap_names.json - do not name them here.")
+
+
+#: How many distinct nodes one question examines before it calls itself a sample. Small on
+#: purpose: this is a request path, and the cost measured on 2026-08-31 for a single
+#: unbounded anti-join was 26.20 seconds. The budget is what makes twenty questions
+#: answerable at all, and `count_kind` is what stops the answer pretending otherwise.
+NODE_SCAN_LIMIT = 200
+
+#: 🔴 THE SAMPLE IS NOT THE OLDEST N, AND SAYS SO. Choosing the oldest would mean ordering
+#: every node of the type by age first, which is the full scan the budget exists to avoid.
+#: The rows that come back DO carry their age and are shown oldest-first among themselves,
+#: but the SET was chosen by whatever the scan met first. Letting "first found" read as
+#: "oldest" is the misreading this whole vocabulary exists to prevent, so the wording is
+#: part of the answer rather than a caveat somewhere else.
+SAMPLE_NOT_AGE_ORDERED = (
+    "표본은 «먼저 만난» 노드들입니다 — «가장 오래된» 것들이 아닙니다. "
+    "나이순으로 고르려면 그 타입 전체를 한 번 훑어야 하고, 그게 이 예산이 피하는 그 비용입니다. "
+    "돌아온 것들끼리는 오래된 순으로 보여 드립니다.")
+
+
+def _nodes_of_type_sql():
+    """Nodes of one type, from BOTH sides, with the moment each was first named.
+
+    🔴 SUBJECT *AND* OBJECT, because a node is not stored - it is derived from an atom's
+    keys - so it begins to exist the moment any atom names it, on either side. Measured on
+    this box: `defect_kind@1` and `recipe@1` have ZERO atoms of their own and appear only
+    as objects, so a subject-only enumeration would report them as having no members at
+    all rather than as having no age.
+    """
+    return """
+        SELECT keys, min(occurred_at) AS first_seen FROM (
+            SELECT subject_keys AS keys, occurred_at
+              FROM {table} WHERE subject_type = %(bare)s
+            UNION ALL
+            SELECT object_payload->'keys' AS keys, occurred_at
+              FROM {table}
+             WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
+        ) named GROUP BY keys LIMIT %(scan)s
+    """
+
+
+def _has_predicate_sql():
+    """One expression for "this node has that predicate", whichever side it is on.
+
+    🔴 NO BRANCH ON DIRECTION. A subject-side question asks about a predicate the node
+    should have gone OUT on, a pair asks about one that should have come IN, and both are
+    the same question about the same node: does an atom of that predicate name it? Writing
+    two expressions would mean deciding, per question, which one applies - a branch on the
+    shape of the declaration, and a place for the two to drift apart.
+    """
+    return """
+        EXISTS (
+            SELECT 1 FROM {table} e
+             WHERE e.predicate = ANY(%(preds)s)
+               AND ((e.subject_type = %(bare)s AND e.subject_keys = n.keys)
+                 OR (e.object_kind = 'entity_ref'
+                     AND e.object_payload->>'type' = %(bare)s
+                     AND e.object_payload->'keys' = n.keys)))
+    """
+
+
+def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, sample=20):
+    """Count each named gap over a bounded sample of nodes, with each one's age. READ ONLY.
+
+    🔴 EVERY NUMBER SAYS WHAT KIND OF NUMBER IT IS. `count_kind` is `exact` only when the
+    scan saw every node of the type - the budget came back short - and `sample` otherwise.
+    A question whose type cannot exist without the predicate is `not_applicable` and gets
+    NO count at all: zero would say "we looked and found none" about a set that cannot have
+    members, and the spec is explicit that the row stays so nobody asks again.
+    """
+    from . import schema
+
+    names = names or load_names()
+    asked = questions(declaration, names=names)
+    node_sql = _nodes_of_type_sql().replace("{table}", schema.LEDGER_TABLE)
+    has_sql = _has_predicate_sql().replace("{table}", schema.LEDGER_TABLE)
+
+    out = []
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            for item in asked:
+                row = {"name": item["name"], "type": item["type"], "form": item["form"],
+                       "present": item["present"], "absent": item["absent"],
+                       "action": item.get("action"), "meaning": item.get("meaning")}
+                if item["vacuous"]:
+                    # Not a count and not a zero: the set cannot have members.
+                    row.update({"absence": "not_applicable", "count": None,
+                                "count_kind": None, "examined": None, "oldest": []})
+                    out.append(row)
+                    continue
+                bare = _bare(item["type"])
+                params = {"bare": bare, "scan": scan_limit,
+                          "absent": [_bare(p) for p in item["absent"]],
+                          "present": [_bare(p) for p in item["present"]]}
+                where = ["NOT " + has_sql.replace("%(preds)s", "%(absent)s")]
+                if item["present"]:
+                    where.append(has_sql.replace("%(preds)s", "%(present)s"))
+                cursor.execute(
+                    f"SELECT count(*), min(n.first_seen), max(n.first_seen), "
+                    f"       (SELECT count(*) FROM ({node_sql}) c) "
+                    f"FROM ({node_sql}) n WHERE " + " AND ".join(where), params)
+                count, oldest, newest, examined = cursor.fetchone()
+                complete = (examined or 0) < scan_limit
+                row.update({
+                    "count": int(count or 0),
+                    "examined": int(examined or 0),
+                    # EXACT only when the budget came back short, because then the scan WAS
+                    # every node of the type.
+                    "count_kind": "exact" if complete else "sample",
+                    "sample_note": None if complete else SAMPLE_NOT_AGE_ORDERED,
+                    "oldest": oldest.isoformat() if oldest else None,
+                    "newest": newest.isoformat() if newest else None,
+                    "absence": (None if count else
+                                ("truly_none" if complete else "not_exhaustive")),
+                })
+                out.append(row)
+    finally:
+        connection.rollback()
+        connection.close()
+    return out
