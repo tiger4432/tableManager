@@ -814,7 +814,43 @@ prepare_plugin_imports = _register_legacy_import_shim
 SCAN_UNAVAILABLE = object()
 
 
-def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict | None = None):
+def render_resolution_probe(probe: dict | None) -> str:
+    """Say WHICH of the ways "no parser" happened, not only that it did.
+
+    The sentence this appends to is raised from several structurally different places
+    and reads identically in all of them, so an operator cannot tell a genuine
+    ``match()`` refusal from a folder that was never scanned, a plugin that failed to
+    load, or a table the config does not know.  Those need OPPOSITE fixes -- one is a
+    parser bug, the others are routing -- and the message was the only thing that
+    could have told them apart.
+    """
+    if not probe:
+        return ""
+    files = probe.get("plugin_files") or []
+    classes = probe.get("parser_classes") or []
+    declined = probe.get("declined") or []
+    missing = "" if probe.get("scripts_dir_exists", True) else "   ** MISSING **"
+    lines = ["--- why no parser was used ---",
+             f"  table resolved to : {probe.get('table') or '(none)'}",
+             f"  workspace         : {probe.get('workspace') or '(unknown)'}",
+             f"  scripts folder    : {probe.get('scripts_path') or '(not reached)'}{missing}"]
+    if probe.get("unavailable"):
+        lines.append(f"  scan              : NOT RUN - {probe['unavailable']}")
+    else:
+        lines.append(f"  plugin files      : {len(files)}  {files or '-'}")
+        lines.append(f"  parser classes    : {len(classes)}  {classes or '-'}")
+        lines.append(f"  match() declined  : {len(declined)}  {declined or '-'}")
+    if probe.get("match_errors"):
+        lines.append(f"  match() raised    : {probe['match_errors']}")
+    lines.append(f"  std fallback      : {probe.get('std') or 'not reached'}")
+    lines.append("  reading it: 0 parser classes means the folder or the load is wrong"
+                 " (routing); declined > 0 means the parsers ran and refused this file"
+                 " (matching).")
+    return "\n".join(lines)
+
+
+def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict | None = None,
+                                    probe: dict | None = None):
     """Load every plugin under ``scripts_path`` and offer each parser class to ``visit``.
 
     THE single place a workspace parser is resolved.  A file arriving in the managed
@@ -832,8 +868,18 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
     Returns ``SCAN_UNAVAILABLE``, the ``visit`` claim tuple, or ``None``.
     Script load failures are recorded in ``load_errors`` (filename -> traceback).
     """
+    if probe is not None:
+        probe["scripts_path"] = scripts_path
+        probe.setdefault("plugin_files", [])
+        probe.setdefault("parser_classes", [])
+        probe.setdefault("declined", [])
     if not os.path.exists(scripts_path):
+        if probe is not None:
+            probe["scripts_dir_exists"] = False
+            probe["unavailable"] = "the scripts folder does not exist"
         return SCAN_UNAVAILABLE
+    if probe is not None:
+        probe["scripts_dir_exists"] = True
 
     import importlib.util
     import inspect
@@ -851,6 +897,8 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
         _register_legacy_import_shim()
     except ImportError:
         logger.error("Failed to import BasePipelineParser. Check sys.path.")
+        if probe is not None:
+            probe["unavailable"] = "BasePipelineParser is not importable (sys.path)"
         return SCAN_UNAVAILABLE
 
     if load_errors is None:
@@ -859,6 +907,8 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
     for filename in os.listdir(scripts_path):
         if filename.endswith(".py") and filename != "__init__.py":
             script_path = os.path.join(scripts_path, filename)
+            if probe is not None:
+                probe["plugin_files"].append(filename)
             try:
                 module_name = f"pipeline_plugin_{filename[:-3]}"
                 spec = importlib.util.spec_from_file_location(module_name, script_path)
@@ -880,9 +930,13 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
                                 break
 
                     if is_sub and obj.__name__ != "BasePipelineParser":
+                        if probe is not None:
+                            probe["parser_classes"].append(f"{filename}::{obj.__name__}")
                         claim = visit(filename, obj)
                         if claim is not None:
                             return claim
+                        if probe is not None:
+                            probe["declined"].append(f"{filename}::{obj.__name__}")
             except Exception as e:
                 load_error_detail = traceback.format_exc()
                 logger.error(f"Failed to load plugin script {script_path}: {e}")
@@ -2276,7 +2330,8 @@ class IngestionHandler(FileSystemEventHandler):
             logger.error(f"Failed to move file to archive: {e}")
             return None
 
-    def _discover_and_execute_pipeline(self, file_path: str, meta: dict = None) -> list[dict] | None:
+    def _discover_and_execute_pipeline(self, file_path: str, meta: dict = None,
+                                       probe: dict = None) -> list[dict] | None:
         """
         scripts 폴더 내의 모든 파이썬 파일을 검색하여
         BasePipelineParser를 상속받은 클래스 중 match()가 True인 첫 번째 파서를 실행합니다.
@@ -2322,7 +2377,9 @@ class IngestionHandler(FileSystemEventHandler):
             return (parser_instance.parse(file_path),)
 
         claim = scan_workspace_pipeline_parsers(
-            self.scripts_path, _claim_first_match, load_errors)
+            self.scripts_path, _claim_first_match, load_errors, probe=probe)
+        if probe is not None and match_errors:
+            probe["match_errors"] = sorted(match_errors)
         if claim is SCAN_UNAVAILABLE:
             return None
         if claim is not None:
@@ -2390,7 +2447,9 @@ class IngestionHandler(FileSystemEventHandler):
             # by the same match() rule.  The handler an external root is bound to
             # IS the target table's handler, so `self.scripts_path` is already the
             # right folder; nothing extra has to be carried on the spec.
-            rows = self._discover_and_execute_pipeline(file_path, meta=meta)
+            probe = {"table": t_name, "workspace": self.workspace_path,
+                     "std": "not offered -- this file came from an external source root"}
+            rows = self._discover_and_execute_pipeline(file_path, meta=meta, probe=probe)
             if rows is None:
                 # No std-parser fallback here on purpose.  Registration already
                 # proved a plugin exists in this workspace, so reaching this line
@@ -2400,26 +2459,32 @@ class IngestionHandler(FileSystemEventHandler):
                 raise ValueError(
                     f"No workspace pipeline parser accepted the external file "
                     f"'{os.path.basename(file_path)}' for table {t_name!r} "
-                    f"(searched {self.scripts_path}).")
+                    f"(searched {self.scripts_path}).\n"
+                    + render_resolution_probe(probe))
             return rows, None, 0
 
-        rows = self._discover_and_execute_pipeline(file_path, meta=meta)
+        probe = {"table": t_name, "workspace": self.workspace_path}
+        rows = self._discover_and_execute_pipeline(file_path, meta=meta, probe=probe)
         if rows is not None:
             return rows, None, 0
 
         if self._std_parse_enabled_for(t_name, table_info):
-            std_result = self._try_std_parse(file_path, t_name, table_info)
+            std_result = self._try_std_parse(file_path, t_name, table_info, probe=probe)
             if std_result is not None:
                 if meta is not None:
                     meta["source_kind"] = "std"
                 return std_result
+        else:
+            probe["std"] = "turned off for this table by `std_parse: false`"
 
         raise ValueError(
             f"No custom pipeline parser matched the file '{os.path.basename(file_path)}' format, "
-            f"and the standard parser fallback was not applicable."
+            f"and the standard parser fallback was not applicable.\n"
+            + render_resolution_probe(probe)
         )
 
-    def _try_std_parse(self, file_path: str, t_name: str, table_info: dict):
+    def _try_std_parse(self, file_path: str, t_name: str, table_info: dict,
+                       probe: dict = None):
         """[Std Parser Fallback] 표준 파서 적용을 시도한다.
 
         t_name/table_info는 [D1] 파일 단위 config 스냅샷(호출자 전달) — 헤더 검증과
@@ -2435,15 +2500,25 @@ class IngestionHandler(FileSystemEventHandler):
         from std_parser import is_std_supported, parse_std_file
 
         if not is_std_supported(file_path):
+            if probe is not None:
+                probe["std"] = ("the standard parser does not handle "
+                                f"'{os.path.splitext(file_path)[1] or 'no suffix'}'")
             return None
 
         if not t_name:
+            if probe is not None:
+                probe["std"] = ("this workspace resolved to NO table name -- routing: "
+                                "check workspace_name / default_table_name")
             return None
 
         if not table_info:
             logger.warning(
                 f"[{t_name}] Std parser skipped: table '{t_name}' is not defined in table_config.json"
             )
+            if probe is not None:
+                probe["std"] = (f"table {t_name!r} is not declared in table_config.json "
+                                "-- routing: the folder resolved to a table the config "
+                                "does not know")
             return None
 
         logger.info(f"[{t_name}] 🧰 No custom pipeline matched — engaging Std Parser fallback for: {os.path.basename(file_path)}")
