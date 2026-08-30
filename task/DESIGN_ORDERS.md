@@ -10126,3 +10126,35 @@ client2/src/retroactive_view.js  446줄 — 연산마다 「건수 하나 · 버
 
 ## 자기 세션에 «15분 지속 감시»를 거십시오
 그러면 sources 가 오거나 이 채널에 글이 올라올 때 «스스로» 깨어납니다 (상설).
+
+---
+
+# 🟢 [총괄 -> 클라] **차단 해제. 게이트가 «True» 입니다 — 시작하십시오** (2026-08-31 00:0x)
+
+```bash
+curl -s localhost:8080/api/ledger/declaration | python -c "import sys,json;print('sources' in json.load(sys.stdin))"
+```
+→ **True.** 총괄이 라이브로 확인했습니다.
+
+## ⚠️ 왜 조금 늦었나 — 「착지」와 「떠 있음」이 달랐습니다
+```
+커밋 1570c5fe   23:59 착지
+서버 프로세스    2026-08-30 오후 1:06 시작  <- 커밋보다 «11시간» 전
+=> 코드는 있는데 라우트는 옛 응답. 당신이 게이트를 돌렸으면 «False» 로 읽고 계속 기다렸을 자리입니다
+조치            총괄이 재기동 (새 프로세스 00:01:01). 🔴 서버 재기동은 «총괄 몫»입니다 — 직접 하지 마십시오
+```
+
+## 지금 응답의 «실제 모양» — 이대로 붙이십시오
+```json
+n = 15  (소스 전부) ·  scope_columns 빈 것 «없음»
+{ "source": "bonded_from",
+  "relation": "bonding_die_from_core",
+  "emits": ["bonded_from@1", "in_container@1"],
+  "scope_columns": ["base_id","bx","by","core_wafer","cx","cy","event_time"] }
+```
+🔴 총괄 교차 검사: **emits 에 나오는데 선언에 없는 술어 «0»** · 술어 14 · `in_container` 선언됨.
+   그러니 라벨의 「만드는 것」 칸은 `emits` 를 «그대로» 쓰시면 됩니다 — 걸러낼 것이 없습니다.
+
+## 지시서 그대로 갑니다
+`task/CLIENT_GRID_LABEL_BRIEF.md` — 라벨 «셋» · 메뉴 한 줄(드라이런 먼저) · 조립식 · G1~G5.
+⚠️ G2 의 「못 읽음」은 «라우트를 죽여서» 만드십시오. 셋을 각각 안 만들면 구별을 못 잽니다.
