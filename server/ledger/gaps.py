@@ -138,6 +138,23 @@ def questions(declaration, names=None):
                     "name": row["name"], "action": row["action"],
                     "vacuous": (row["predicate"], row["type"]) in vacuous})
 
+    # 🔴 EXCLUSION ① IS SHOWN, NOT SWALLOWED. A predicate whose object is not a node has no
+    # object side that could be missing - `has_netdie` carries a number, `register` carries
+    # nothing at all - and the brief's G2 asks for that to arrive as "질문이 성립하지 않음"
+    # rather than as a silent absence from the list. Same reason the spec keeps the recipe
+    # row: leaving it out sends the next person to ask why it is not there.
+    #
+    # No name is invented here. The type and the predicate come from the declaration and
+    # the label is the application vocabulary's own value, which is a statement about the
+    # QUESTION rather than about the domain.
+    for name, spec in sorted(live.items()):
+        if _object_kind(spec) == "entity_ref":
+            continue
+        out.append({"form": "object_side", "type": None, "present": [],
+                    "absent": [name], "name": "해당 없음",
+                    "action": "없음 — 목적이 노드가 아니라 가리킬 것이 없습니다",
+                    "vacuous": True})
+
     _refuse_unnamed(declaration, live, out)
     return out
 
