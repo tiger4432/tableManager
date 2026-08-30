@@ -1355,6 +1355,139 @@ issue_all(block)          -> [action]  간극마다 위 둘의 차이를 실어 
 정본이 「기대 정보 이득」이라 했으니 ⓐ가 문자 그대로인데, ⓐ는 **채운 뒤에도 답이 안 생길
 가능성**을 낙관적으로 셉니다. 둘 다 «세기»라 비용이 같아 **범위로 둘 다 싣는 안**도 있습니다.
 
+## 🛑 계측 노드 라운드 «정지» — 시각이 식별키가 못 됩니다 (레인 보고 2026-08-30)
+
+지시서의 멈춤 조건 ①이 걸렸고, 레인이 **아무것도 선언하지 않고** 돌아왔습니다.
+라이브·샘플 둘 다 바이트 무변경, 원자 «0» 기록.
+
+### 막는 것은 «하나»입니다
+```
+server/ledger/roleframe.py:1093  _scalar
+   받는 것  bool · 정수 · 유한 실수 · 문자열
+   eventtime 은 timestamptz -> tz-aware datetime 으로 도착 -> 거절
+   invalid_scalar_role  "Role value must be a finite JSON scalar"
+```
+🔴 **레인이 원인을 2×2 로 격리했습니다** — 「이름 충돌(OCCURRED_AT_ROLE)인가 타입인가」를 안 섞었습니다:
+```
+키 이름        묶는 컬럼                 결과
+occurred_at   eventtime (timestamptz)   거절
+at_time       eventtime (timestamptz)   거절     <- 이름 문제가 «아니다»
+occurred_at   role      (varchar)       OK · 196
+at_time       role      (varchar)       OK · 196
+```
+그리고 «선언으로 도는 길»을 각각 닫았습니다 (「벽인 줄 알았더니 인자 하나」를 먼저 배제):
+```
+바인딩 종류        column · constant · entity 셋뿐. 캐스트/포맷 없음 (setup_bundle.py:400)
+key_types         번역 시점에 «아무도 안 읽는다» (심볼로 훑음)
+prepare           두 소스가 accepts_verified_join_rules: false -> 못 씀
+문자로 든 시각 컬럼  없음. row_id·business_key_val·param_id 는 전부 «행 단위»
+```
+**대체 키를 지어내지 않았습니다.**
+
+### 나머지는 «전부 통과»했습니다 — 그리고 이번 라운드의 «목적»은 안 막혔습니다
+```
+시각 키만 뺀 진단   199행 -> 199분자 -> 796원자
+                  performed 199 · at 199 · produced 199 · measures 199
+=> 엔티티 2 · 술어 3 · station 의 static · 4키 엔티티  전부 문제 «없음»
+
+🔴 station 만  (metrology_station@1{step,eqp} + wafer -at-> station)
+   199행 -> 398원자.  깨끗하게 돕니다
+   => «분모»는 막히지 않았습니다. 막힌 것은 «run»(§7.5b 의 MetrologyEvent) 하나입니다
+```
+
+### 시각을 그냥 뺄 수는 «없습니다» — 수가 그렇게 말합니다
+```
+                    (wafer,step,eqp)   (wafer,step,eqp,time)   시각이 둘 이상인 묶음
+process_param_num       20,313               24,070                 3,757
+process_param_txt        4,450                6,341                 1,891
+```
+빼면 «서로 다른 계측» 5,648 묶음이 한 노드로 합쳐집니다.
+⚠️ `param_id` 의 uuid 접두도 대체물이 «아닙니다» — 접두 24,184 vs 묶음 24,070,
+   접두가 묶음을 넘는 경우 0 인데 묶음이 접두를 넘는 경우가 «114». 더 잘게 갈리는 다른 단위입니다.
+
+### ⏭ 판정 — 길 «넷», 전부 선언 라운드 «밖»
+```
+① _scalar 를 넓힌다        tz-aware datetime 수용 + ISO-8601 UTC 정규화
+                          엔진 변경. 모든 엔티티 식별키 경로를 지납니다
+② 새 바인딩 종류 (캐스트)    엔진 변경 + binding_kinds 계약 변경
+③ 원천에 시각을 «문자»로      새 컬럼/뷰. 지시서가 제외했던 것
+④ station 만 먼저 착지      run 은 ①~③ 중 하나가 선 뒤에
+```
+**총괄 권고: ④ 지금 + ① 다음.**
+```
+④ 먼저   이번 라운드가 필요했던 것은 «분모»고 station 하나로 섭니다.
+        액션 설계의 «감쇠량»이 그 위에서 진짜 수가 됩니다
+① 선택   ②③은 «한 함수의 한계»를 피하려고 영구적인 축을 하나 더 만듭니다
+        (바인딩 종류 하나 · 중복 컬럼 하나) -> 단순 로직에 어긋납니다
+        ①은 «원인»이고, 제조 원장에서 시각이 식별의 일부인 건 정상입니다
+위험     ①은 «넓히는» 변경이라 기존에 통과하던 값의 동작은 안 바뀝니다.
+        반경은 「전에 거절되던 것이 이제 통과」쪽. 그래도 엔진이므로 ④와 «분리»합니다
+```
+
+### 🔴 제 지시서의 검증 씨앗이 틀렸습니다
+```
+지시서   ZZ-DOE-BW-01..04 로 확인하라
+실제     그 넷은 계측 «표»에 행이 «0». DOE 계측 웨이퍼는 CW-01..08 입니다
+왜       제가 그 씨앗을 «walk»(API)으로만 확인하고 «표»에서 안 봤습니다.
+        웨이퍼는 코어를 «거쳐» 물리량에 닿으므로 walk 으로는 참이지만,
+        레인이 태울 «번역 경로»에서는 그 행이 없습니다
+        -> 「한 층에서 참인 씨앗이 다른 층에서는 없을 수 있다」
+바른 씨앗 양성 {CW-01, CW-02} · 대조 {CW-05, CW-06}
+        slurry_A_ml [2,0] · station [2,2]
+        (CMP, ZZ-EQP-01) 이 slurry_A_ml 을 내는 «유일한» 자리 -> 판별이 선다
+        검증 ②는 «다른 자리»의 물리량이라야 합니다 (예: BONDING 의 pressure_MPa).
+        slurry_B_ml 은 «같은 자리»라 안 됩니다
+```
+
+## 🔴 출하 상태에서 «매 배치 거절»되는 체인 하나 — 시험 수리 레인이 찾았습니다 (2026-08-30)
+
+시험 둘을 고치려다 나온 «운영 사실»입니다. 이 박스만의 문제가 «아닙니다» — 라이브와 `.sample` 이 동일합니다.
+```
+chain_rules   dt_metadata_to_dt_inventory   enabled: true · job-column 키 «0 / 2»
+table_config  dt_inventory                  business_key dt_job_id
+                                            composite_key_source ['dt_job']
+chain_bindings.identity_column
+              business_key 경로를 «composite_key_source 의 부재»로 게이트한다
+=> composite_key_source 가 «있으므로» business_key 경로가 안 열리고,
+   target_job_column 은 선언이 없어 «파생도 못 한다»  ->  ColumnBindingRefused
+   즉 이 체인은 «출하 상태 그대로 매 배치 거절»됩니다
+```
+레인 판단: 「시험에 규칙을 쥐여 주면 초록이 되는데, 그건 «경보를 끄는» 것이다」 — 맞습니다.
+⏭ 소유자/서버 판정: 선언을 고칠 것인가(`target_job_column` 선언 또는 `composite_key_source` 제거),
+   아니면 게이트를 고칠 것인가.
+
+## ✅ 시험 수리 레인 «1차» — 20 → 17 · 새 빨강 «0» (`5db3b80c`)
+```
+수리 «3»   prod_import_env          _archive/tests 를 훑고 있었다  155/1470 -> 144/1389
+          dual_stack_bind          run_decoupled_app.py 이 «레포 루트»라 수집 순서가 답을 정했다
+                                   -> 경로로 읽게. 단언 무변경
+          entrypoint_import_isolation  reload 를 엔트리포인트 밖으로 (server/system_reload.py 신설)
+                                   main.py 는 재export -> 문서 여섯 자리의 이름은 «그대로 참»
+기준선     제 21 이 아니라 «20» 이었습니다 — h3 하나가 «플레이크»입니다 (같은 코드에서 양쪽 답)
+검증       두 진행 스트림을 문자 단위로 대조: 4,261 중 «3» 만 다르고 전부 F->pass
+```
+
+### 남은 17 의 «정체» — 대부분 수리가 아니라 «판정»입니다
+```
+판정 «10»  핀이 가리키던 것이 움직인 것들. 레인이 «단언을 하나도 안 고쳤습니다»
+          composite_key_prefetch  201 -> 1 로 고치면 «수리의 기록을 지우는» 것 ([P3] 이 닫음)
+          config_resolve_report   98513743 이 «빌려 오던 어휘»를 지웠다 -> 계약 변경
+          dt_map_derivation       3개 전부 disabled 로 핀 · 실제 2개, 하나는 enabled
+          dt_standard_map         dt_slot "string" 핀 · 선언은 "number", dt_job 은 «없음»
+          job_column_from_config  🔴 «같은 트리의 두 시험이 반대를 단언»합니다 (4d5198c1 이 봉투를 바꾸고 하나만 고침)
+          frame_confirmation_meta 가드가 2026-08-08 에 들어왔고 시험은 08-06 의 «무조건» 속성
+          map2_seam               8 리빌드 핀 · 실제 4 (인덱스 모드에서만 CANDIDATE_FRAMES)
+          trace_fixture           생성기가 «개명 전 어휘»를 낸다 -> 재작성이지 수리가 아님
+          void_base_join ×2       bonding_log 식별자 (제 지시서의 워크드 예시 그대로)
+A-1 «3»    ledger_setup_boundary ×2 · explorer 1  전부 in_slot
+🔴 제 소관 «1»  explorer 의 derivations — 제 지시서에 적은 원인이 «낡았습니다».
+              라이브 번들은 오류 «0» 이고, 깨지는 것은 «재생성된» 번들입니다:
+              map.input_columns = 준비된 프레임 − read 가 잠근 것
+              read.group_by 가 잠금이라 dt_job 이 빠지고, map.unit.columns ['dt_job'] 이 자기 검증기에 걸림
+              (파생 필드 128 중 충돌 «1»)
+              후보 수리 둘이 «서로 다릅니다» -> 제가 판정할 자리
+```
+
 ## ⏭⏭ 열린 안건 — «정본 목록» (2026-08-30 08:1x 갱신)
 🔴 이 목록이 정본입니다. 아래로 흩어진 `⏭ 판정 대기` 표지들은 «그 라운드의 기록»이고,
    확인 결과 대부분 이미 닫혔습니다 — `class` 칸(landed) · 보드 404(0) ·
