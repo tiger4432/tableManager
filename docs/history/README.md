@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **740개** 이력. (거버넌스 규칙 #4)
+> 총 **744개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-29 22:51** — [A Broken Bridge Does Not Hide The Answer It Manufactures A Wrong One](./20260829_225100_a_broken_bridge_does_not_hide_the_answer_it_manufactures_a_wrong_one.md)
+- **2026-08-29 22:24** — [Reaching Counts One And Removing The Division Exposed What It Had Been Hiding](./20260829_222400_reaching_counts_one_and_removing_the_division_exposed_what_it_had_been_hiding.md)
+- **2026-08-29 21:58** — [A Rung Nothing Can Stand On And A Premise Measured Only On The Half That Survived](./20260829_215800_a_rung_nothing_can_stand_on_and_a_premise_measured_only_on_the_half_that_survived.md)
+- **2026-08-29 19:43** — [A Name Is Fetched With A Narrower Follow And A Step Does Not Climb Back Down](./20260829_194300_a_name_is_fetched_with_a_narrower_follow_and_a_step_does_not_climb_back_down.md)
 - **2026-08-29 10:10** — [Direction Is Declared Per Part And The Extra Defects Were The Budget Leak](./20260829_101000_direction_is_declared_per_part_and_the_extra_defects_were_the_budget_leak.md)
 - **2026-08-29 04:59** — [Walking Your Own Lineage Should Not Spend The Budget Meant For Leaving It](./20260829_045900_walking_your_own_lineage_should_not_spend_the_budget_meant_for_leaving_it.md)
 - **2026-08-28 21:52** — [The Marking Is A Value And The Search Is A Tree Of It That Does Not Cut](./20260828_215200_the_marking_is_a_value_and_the_search_is_a_tree_of_it_that_does_not_cut.md)

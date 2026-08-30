@@ -11,19 +11,44 @@
 > | §0 핵심 가치 · §1 방향(**단, 「저장소 = PG 엣지 스토어」 행은 죽음**) | ⚪ **설계 — 살아 있음** |
 > | §2 저장소 스키마 · §4 PG 엣지 스토어/Neo4j 이관 · §5·§5.1 처리량 계약 | 🗄️ **죽음** — 표가 DROP됐습니다 |
 > | §3 매핑 config 예제 · 로더 리로드 | 🗄️ **죽음** — 읽는 워커가 없습니다(`ontology_mapping.json`은 파일로 살아 있으나 **소비자 0**) |
-> | §7 불량 추론망 · §7.5·§7.5b 시공간 위상 · **§7.5c `node_class`+4대 탐색 정책** · §7.6 추론 보조 보강 · §7.7 키 참조 무결성 | ⚪ **설계 — 살아 있음(애초에 미구현)** |
+> | §7 불량 추론망 · §7.5·§7.5b 시공간 위상 · §7.6 추론 보조 보강 · §7.7 키 참조 무결성 | ⚪ **설계 — 살아 있음(애초에 미구현)** |
+> | **§7.5c 정적/동적 + 4대 탐색 정책** | 🟢 **정책 4 는 강제됩니다 · 정책 1 은 «`backbone_hops > 0` 일 때만»**(2026-08-29). 자리는 원장 walk 이고, 규칙 전문은 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) 이 소유합니다. 등급의 근거는 아래 단서 |
 > | §7.5d `GET /graph/chip-trace` · §7.5e 재동기화/고아 스윕/mapping-summary | 🗄️ **죽음** — 전부 410이거나 스케줄러에서 탈락 |
 > | §8 단계표 G1·G2 행 | 🗄️ **죽음**(그 스택 위에서 배달됨) |
 >
 > 🔴 **원장은 이 문서의 어휘를 승계하지 않았습니다 — 자기 어휘를 따로 갖고 있습니다.** [CANONICAL_LEDGER_DESIGN §4.2](../architecture/CANONICAL_LEDGER_DESIGN.md)가 SEMI E90/E142에 정박한 개체 타입·술어를 정의하고, `node_class`·`label`·`ontology_mapping.json`을 **한 번도 참조하지 않습니다.** 그래서 「살아 있는 설계」는 **원장 트랙으로 승계할 후보**이지 오늘 도는 것의 서술이 아닙니다.
 >
-> ⚠️ **§7.5c에 붙는 단서** — 그 분류의 «개념»은 살아 있지만 «선언 채널»은 `ontology_mapping.json` 하나뿐이고, 그 파일은 판정 R-2026-08-14-H의 후속 항목으로 은퇴 예정입니다. 이 절을 살리려면 선언의 거처를 원장 어휘 소유자 쪽으로 다시 앉히는 결정이 필요합니다(**총괄 판정 대상 — 문서 레인이 정하지 않았습니다**).
+> ✅ **§7.5c에 붙는 단서 — 2026-08-29 에 «선언의 거처»가 실제로 옮겨 앉았고, 정책이 강제되기 시작했습니다.**
+> 종전 이 자리는 「선언 채널이 `ontology_mapping.json` 하나뿐이고 그 파일은 은퇴 예정이라,
+> 이 절을 살리려면 선언의 거처를 다시 앉히는 결정이 필요하다」였습니다. 그 결정은 **코드가 착지하며 답해졌습니다.**
+> ```
+> 종전 선언   ontology_mapping.json 의 `node_class: "dynamic"|"static"`   -> 소비자 0. 파싱만 됐다
+> 오늘 선언   ledger_config.json 의 entities.<타입>.class: "static"        -> walk 이 «매 요청» 읽는다
+> 오늘 정적   quantity@1 · defect_kind@1 · recipe@1  (실측 2026-08-29, 라이브 선언)
+> 집행 자리   server/ledger_trace_router.py `_static_types()` · `_static_step_predicates()`
+>            -> server/ledger_api/ledger_subgraph.py `subgraph()`
+> ```
+> 🔴 **이 표시가 이 절이 한 달간 「없는 규칙」으로 읽힌 이유를 끝냅니다.** 판정이 «구현»(`node_class`·
+> `ontology_mapping.json`·graph worker)으로 색인돼 있었고 그 구현이 죽자 판정도 안 보였습니다.
+>
+> **이 문서가 드는 것은 «정책 등급» 하나입니다** — 규칙의 내용·기전·시험은
+> [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) 이 소유하고,
+> 판정 자체는 [LEDGER_RULINGS R-2026-08-29-Q](../process/LEDGER_RULINGS.md) 입니다.
+> 여기에 규칙을 다시 적지 마십시오 — 2026-08-29 밤에 이 사실의 사본이 «여섯»이었고 그중 «넷»이
+> 같은 거짓 문장을 들고 있었습니다.
+>
+> | 정책 | 오늘 |
+> |---|---|
+> | 1 · 동적 → 동적 | 🟡 **`backbone_hops > 0` 일 때만.** 이 정책의 유일한 기계가 D→D 걸음을 «떠남 예산»에서 빼는 것인데, `backbone_hops = 0` 이면 걷기가 이 축이 생기기 «전과 한 걸음도 다르지 않습니다». 오늘 켜는 호출자는 넷(`client2/src/rnd_board/main.js` 좌석 선언) |
+> | 2 · 동적 → 정적 | ⚪ 걸음은 허용되지만 **「1-hop 한정」은 강제되지 않습니다** — 홉 수는 «예산»(`hops`)이 대신합니다 |
+> | 3 · 정적 → 정적 | ⚪ 같은 이유로 1-hop 미강제. 다만 «어느 술어로» 가능한지는 선언에서 유도됩니다 |
+> | 4 · 정적 → 동적 | 🟢 **강제됩니다.** 예외(영향도 분석 모드 — 출발이 정적이면 S→D 1단계 허용)는 **만들지 않습니다**: 소유자 판정 [R-2026-08-29-S](../process/LEDGER_RULINGS.md) 「정적노드는 씨앗으로 안씀」이 그 필요를 닫았습니다 |
 >
 > **후계** — `GET /api/ledger/subgraph` **하나**입니다(walk). 유형 층은 `GET /api/ledger/declaration`, 개체 층은 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md). 🔴 **[2026-08-28] 종전 이 줄은 `GET /api/ledger/trace` 와 `GET /api/ledger/structure` 를 후계로 대고 있었고 둘 다 «없습니다»** — 은퇴한 페이지에서 또 다른 없는 주소 둘로 보내고 있었습니다.
 >
 > ---
 >
-> ~~**Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계)~~ | **Last-verified:** 2026-08-14 (은퇴 반영) · 직전 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
+> ~~**Status:** 🟢 Living (2026-07-25 승격 — G1·뷰어·G2 라이브 가동으로 §1~§6 실증됨. §7.x는 G3+ 설계)~~ | **Last-verified:** 2026-08-29 밤 (**§7.5c 만** — 정적/동적 분류가 원장 walk 에서 강제되기 시작했고 선언의 거처가 옮겨 앉았다. 다른 절은 아래 날짜 기준 그대로) · 직전 2026-08-14 (은퇴 반영) · 그 직전 2026-07-30 (**폐기 형태를 가르치던 세 자리 정정** — `server/config/ontology_mapping.json` 실선언 + `server/ontology_config.py`(`_ALLOWED_NODE_KEYS`·`_normalize_props`) 대조. ① **§3 매핑 예제 전면 교체** — `Chip`/`identity:"log_id"`/`BONDED_FROM→Wafer`/`PLACED_ON→Base`는 `aea4700`이 **셀 체인**으로 대체했다(`CoreCell(core_lot,core_slot,cx,cy)`가 두 로그의 행 노드 · `BONDED_TO→BaseCell` · `TRANSFERRED_TO→DtCell` · `FROM_CORE→Core` · **좌표는 엣지 props가 아니라 identity 안에** · `base←dt`는 파생 · `wafer_id`는 정체가 아니라 속성). 실측 근거(추상 칩에서 17행 붕괴·15행이 다른 `(bx,by)`로 소실 → 셀로 4,432/4,434 생존)와 `identity` 리스트 형·`event_time_column`·`spatial` props 형태를 함께 반영. **`aea4700`은 문서 변경 0건이었고 같은 파일을 고친 `8670e3b`도 이 예제를 건드리지 않았다.** ② **§7.5b `DTEvent` 지위 명시** — 착지한 것은 셀 체인이고 `DTEvent`/`TapeState`는 **G3.5 설계로 미물화**, 셀 체인을 대체하지 않고 그 위에 얹힌다. `dt_eqp` 노드 승격 유보 근거(단일 값 768행 = degree 768 허브) 등재. ③ **§7.5c 동적/정적 예시 정정** — `Chip`·`Base`는 라이브에 없고 `CoreCell`·`BaseCell`·`DtCell`이 정본, `BaseCell`은 마스터가 아니라 셀, 폐기 `Chip` 12,468개는 스윕 대상, `node_class`는 아직 강제되지 않는다. 직전 2026-07-25 최초 검증) | **Owner:** 총괄 PM
 > 상위: [SYSTEM_OVERVIEW (SSOT)](../overview/SYSTEM_OVERVIEW.md) §1 핵심가치 #2 | 대체 완료: [graph_db_integration_plan.md](../_archive/graph_db_integration_plan.md) (Kafka 기반 구상 — 본 스펙이 대체, 2026-07-25 아카이브)
 
 ## 0. 핵심 가치 (사용자 확정 2026-07-25)
@@ -197,7 +222,18 @@ table_config과 같은 사용자 config 패턴. 테이블별:
 | **정적(static)** | 시간이 흘러도 불변에 가까운 공유 기준 정보(마스터) | Eqp, Recipe, Knob, DefectCode, Line, Map | 다수 동적 노드의 in-bound 수렴점 = **슈퍼 허브 후보** |
 
 > 🗄️ **종전 예시의 `Chip`·`Base`는 라이브에 없습니다.** `aea4700`이 `Chip`(추상 칩)을 **`CoreCell`**로, `Base`(지그 마스터)를 **`BaseCell`**(`base_id|bx|by` — base 상의 자리)로 대체했습니다. `BaseCell`을 정적으로 읽으면 분류가 틀립니다 — 그것은 마스터가 아니라 **좌표를 든 셀**입니다. 폐기된 `Chip` 노드 **12,468개**가 라이브에 잔존하며 §7.5e ②의 스윕 대상입니다.
-> ⚠️ **`node_class`는 아직 강제되지 않습니다** — 로더가 파싱·보존만 하고 탐색 정책은 §7.5d처럼 **질의 형상**이 강제합니다(정책 엔진은 G2.5). 그래서 위 표는 **선언 현황이 아니라 분류 기준**입니다.
+> ⚠️ **`node_class`라는 «필드»는 여전히 강제되지 않습니다 — 그 필드를 읽는 소비자가 0입니다.** 위 표는 그 채널에 대해서는 **선언 현황이 아니라 분류 기준**입니다.
+>
+> ✅ **그러나 «분류 자체»는 2026-08-29 부터 다른 자리에서 강제됩니다.** 옮겨 앉은 곳은 원장 선언이고, 낱말이 다릅니다:
+> ```
+> 여기(죽은 채널)   ontology_mapping.json 의 node_class: "dynamic" | "static"
+> 오늘(사는 채널)   ledger_config.json 의 entities.<타입>.class: "static"
+>                  (「dynamic」을 «적지 않습니다» — class 가 없으면 dynamic 입니다. 기본이 오늘 동작이라야 하기 때문)
+> 오늘 정적 셋      quantity@1 · defect_kind@1 · recipe@1        실측 2026-08-29 밤, 라이브 «및 .sample» 동일
+> 강제 자리         ledger_trace_router._static_types() / _static_step_predicates()
+>                  -> ledger_subgraph.subgraph()
+> ```
+> 🔴 **이 절이 예고한 「슈퍼 허브 경유 컨텍스트 범람」은 관측됐습니다** — `defect_kind` 는 원자 103,841 개를 구별되는 목적어 «하나»에 걸고 있고, 정책 4 를 인출 «후» 필터로 적었을 때 걷기가 씨앗에서 두 홉 거리에서 죽었습니다. 그 실측과 규칙의 기전·시험은 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) 이 소유합니다 — **여기 옮겨 적지 마십시오.**
 
 **4대 탐색 정책 (쿼리 계층 글로벌 룰)** — §4.3 "쿼리 국소화" 원칙에 따라 저장소가 아니라 **그래프 쿼리 API 계층에서 강제**한다 (neighbors/trace/G2.5 도구/G3 서브그래프 추출 전부 동일 적용):
 

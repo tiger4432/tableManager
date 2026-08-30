@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 (개정 6 — 읽기 라우트 표와 「드라이버 하나」 정정) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable` 추가. 직전: 개정 6 — 읽기 라우트 표와 「드라이버 하나」 정정) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -259,6 +259,12 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 - `/kinds` — `in_ledger` 는 선언 여부, `ledger_state`/`ledger_atoms` 는 관측 상태다.
 - `/trends` — 선언된 finding kind 와 실제 검사 분모를 쓴다. **관측 부재를 0% 불량으로 표시하지 않는다.**
 - `/subgraph` — `node_limit` 에 걸린 «잘림»을 «부재»로 읽지 않는다. 응답이 잘림을 표시한다.
+  🔴 **[2026-08-29] 대조 블록도 같은 규율을 진다.** `propagation.ranked[]` 의 항목마다
+  `reach`(닿은 씨앗 수)와 **`reachable`(그 «타입»에 닿을 수 있었던 씨앗 수 = 분모)** 이
+  «쌍»으로 나온다. `reach 0 / reachable 0` 은 **「길이 없었다」= 미검사**이고,
+  `reach 0 / reachable 2` 라야 「닿을 수 있었는데 아니었다」= **진짜 차이**다.
+  둘을 같은 픽셀로 그리면 화면이 미검사를 발견으로 바꾼다. 계약은
+  [LEDGER_EVIDENCE_SUBGRAPH_SPEC §4.2-bis](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md).
 
 ### 4.7 합성·픽스처 데이터 걷어내기
 

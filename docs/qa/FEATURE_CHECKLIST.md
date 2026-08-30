@@ -1,6 +1,6 @@
 # ✅ FEATURE_CHECKLIST — 기능 인벤토리 + QA 수동 점검 체크리스트
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** QA / Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 심야 `290bb1af` 재측정 · 직전 2026-08-29 밤 (L3 walk 규칙 셋 · L3-bis 대조 추가. 그 밖의 절은 2026-08-27 기준) | **Owner:** QA / Client
 >
 > 🔴 **이 헤더에 라운드 기록을 쌓지 마십시오.** 변경 이력은 [`docs/history/`](../history/)가 소유합니다.
 >
@@ -183,7 +183,8 @@
 |---|---|---|
 | **L1 원장 저장·번역** | `ledger_events`(월 파티션) + 봉투 + 게이트 + 커서를 «한 트랜잭션»에. 점검: ① 분자가 반쪽으로 안 들어가는가(전부-아니면-전무) ② 거절이 «이름»을 대는가 | `python -m ledger.backfill --source <source>` |
 | **L2 선언이 곧 활성화** | `sources` 에 있으면 돌고, 없으면 `undeclared_source` 로 거절된다. 점검: 그 거절이 «원자 0 · 커서 미이동»인가 — 조용한 0건 성공이 아닌가 | 위 CLI |
-| **L3 walk** | `GET /api/ledger/subgraph` — 마킹에서 걸어 서브그래프를 낸다. 점검: ① `follow` 가 실제로 좁히는가 ② `node_limit` 에 걸린 «잘림»이 «부재»와 다르게 보이는가 | R&D 보드 · `/api/ledger/subgraph` |
+| **L3 walk** | `GET /api/ledger/subgraph` — 마킹에서 걸어 서브그래프를 낸다. 점검: ① `follow` 가 실제로 좁히는가 ② `node_limit` 에 걸린 «잘림»이 «부재»와 다르게 보이는가 ③ **[2026-08-29]** 걷기 규칙 셋이 도는가 — 규칙의 정의는 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) 이 소유하고, **여기 적는 것은 «화면에서 보이는 증상» 둘**이다: 정적 노드(오늘 `quantity`·`defect_kind`·`recipe`)에서 «걸어 나온» 동적 노드가 보이면 결함 · 씨앗의 «형제»가 무더기로 보이면 결함. 🔴 **이 둘은 시험이 이미 잡는다**(`test_a_name_is_FETCHED_...` · `test_the_fetch_does_not_climb_a_container_...`) — 여기서 보는 것은 «라이브 선언이 그 시험의 픽스처와 다를 때»다 | R&D 보드 · `/api/ledger/subgraph` |
+| **L3-bis 대조** | 같은 응답의 `propagation`. 점검: ① 대조군 씨앗이 «없으면» `contrast: "unexamined"` 인가(0 이 아니라) ② 항목마다 `reach` 옆에 **`reachable`** 이 오는가 ③ 🔴 **`reach 0 / reachable 0`(길이 없었다 = 미검사)과 `reach 0 / reachable 2`(닿을 수 있었는데 아니었다 = 진짜 차이)가 화면에서 «다르게» 보이는가** — 같으면 화면이 미검사를 발견으로 바꾼다 ④ 순위가 «한 수»로 접히지 않았는가(`tied`·`incomparable` 이 살아 있는가 — R&D 보드가 「동률」·「종류 다름」으로 «이미 띄운다»). ⚠️ **③ 만 오늘 점검 불가다** — 실측 2026-08-29 밤: `api.js` 가 이 블록을 풀어 쓰지만 행마다의 `reach`·`reachable` **두 수만** 안 읽는다. 그래서 ③ 은 «첫 소비자가 붙는 날»의 항목이고 ①②④ 는 오늘 점검한다 | 같은 응답 |
 | **L4 선언 조회** | `GET /api/ledger/declaration` — 원장을 한 줄도 안 읽는다. 점검: 원장이 비어 있어도 답하는가 | `/api/ledger/declaration` |
 | ⚰️ ~~**L5 구조 뷰**~~ · ~~**L6 발견 종류**~~ · ~~**L7 또래 대조**~~ · ~~**L8 시계열·맵·구성**~~ | 🔴 **[2026-08-28] 네 항목이 대던 라우트가 «전부» 없다** — `structure` · `kinds` · `siblings` · `trends` · `lot_map` · `composition`. **이 행들을 점검하면 없는 것을 「고장」으로 신고하게 된다** (이 표 §1.13 배너가 경고하는 바로 그 모양이다). 이 주소들은 410 이 아니라 SPA 폴백의 HTML 200 을 답하므로 «성공처럼» 보인다. 오늘의 원장 읽기 점검은 **L3 · L4 둘**이다 | — |
 | **L9 설정 드라이런** | `config_root`·`setup_version`·`readiness`·`sources` 를 JSON 한 줄로. 점검: 쓰기가 «0»인가 | `python -m ledger.setup` |
