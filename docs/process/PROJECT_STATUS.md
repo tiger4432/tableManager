@@ -1574,9 +1574,23 @@ walkBox 와 controlBar 에 각각 loadDeclaration 이 «따로» 주입돼 둘�
 
 ### E. 곁가지 (기록만)
 ```
-E-1  `/declaration` 이 화면 로드당 «2회» 나갑니다 — 두 부품이 각자 같은 것을 풉니다
+E-1  ✅ 닫힘  `/declaration` 로드당 1회 (브라우저 실측)
 E-2  ledger_subgraph.py 모듈 독스트링이 «은퇴한 그래프»를 그립니다 (응답 모양의 근거로 쓰면 안 됨)
-E-3  CODE_MAP 의 §5-H 밖 절들은 여전히 옛 리비전 기준
+E-3  ✅ 닫힘  CODE_MAP 갱신 (§1.9 신설 · §5-H 자기모순 해소 · ⑮ 5a73021a 기준)
+E-4  씨앗 타입 철자가 «조용히 빈 답»을 냅니다
+     id=<entity "wafer@1"> -> nodes 1 · edges 0 · hops 0/4 · claims 0   «거절 없음»
+     id=<entity "wafer">   -> nodes 53 · edges 91 · hops 4/4 · claims 163
+     술어는 선언에 없으면 422 인데 엔티티 타입 철자는 조용히 통과합니다
+E-5  🔴 «판정 완료 (총괄)» — _seed_node 의 죽은 갈래 «다섯»을 지웁니다
+     seed_ref 는 decode_node_id 에서만 오고 그건 {"kind":"entity"} 아니면 raise 입니다.
+     event · claim · point · collection · action 갈래는 «영원히 안 돕니다».
+     그런데 그 안에 "Finding Collection" · "Finding Point" ·
+     "terminal_finding_point_projection" 문자열이 살아 있어서
+     🔴 «그 이름으로 grep 하면 죽은 코드가 걸립니다» — 은퇴한 어휘가 검색에 살아 있는 상태입니다.
+     그리고 any(ref["kind"] == "action" …) 은 «항상 거짓»입니다.
+     근거: CLAUDE.md 「투영이 지어낸 노드 타입은 없다」 +
+          「«지울 수 없다»가 나오면 그것이 하드코딩이다 — 무시하고 지운다」
+     ⏭ 착수 대기 (E-2 와 «같은 파일»이므로 한 라운드로 묶습니다)
 ```
 
 ## ✅ 교란까지 만들어 «DOE 방아쇠»가 실제로 걸렸습니다 (2026-08-29 23:1x)
