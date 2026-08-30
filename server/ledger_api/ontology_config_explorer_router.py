@@ -237,10 +237,10 @@ def delete_declaration(
     db: Session = Depends(get_db),
 ):
     try:
-        import main as app_main
+        import system_reload
         return _service.delete_declaration(
             target_key, base_snapshot_hash=base_snapshot_hash,
-            reload_callback=lambda: app_main.reload_system_configs(db=db))
+            reload_callback=lambda: system_reload.reload_system_configs(db))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 
@@ -253,12 +253,12 @@ def activate_draft(
     db: Session = Depends(get_db),
 ):
     try:
-        # Import only at the write boundary to avoid a router/main import cycle.
-        import main as app_main
+        # Import at the write boundary, as the sibling handler does.
+        import system_reload
         return _service.activate_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),
-            reload_callback=lambda: app_main.reload_system_configs(db=db),
+            reload_callback=lambda: system_reload.reload_system_configs(db),
         )
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
