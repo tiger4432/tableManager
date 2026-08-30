@@ -815,3 +815,35 @@ def test_route_400s_on_an_undeclared_map_table(client, env, monkeypatch):
     r = client.get("/api/maps/alignment/worklist",
                    params={"rule": RULE["name"], "map_table": DERIVED})
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# the list opens on the most recently ingested unit (owner 2026-08-30)
+# ---------------------------------------------------------------------------
+
+def test_the_worklist_opens_on_the_most_recently_ingested_and_the_cut_agrees(env):
+    """The default order is newest-first, and the DATABASE cut agrees with it.
+
+    The second assertion is the one worth having. `unit_cap` is applied in SQL, so if the
+    cut ordered by decision key and the page re-sorted by time afterwards, a truncated
+    list would show "the newest among the first N keys" -- which is not the newest, and
+    reads on screen exactly like the newest. Alphabetical order and ingestion order are
+    deliberately OPPOSITE here, so a result that merely looks sorted cannot pass.
+    """
+    import datetime as dt
+    d = models.DYNAMIC_TABLES[DERIVED]
+    base = dt.datetime(2026, 8, 30, 12, 0, 0)
+    for i in range(1, 6):
+        _seed_unit(env, "E%d" % i, "P1", ["J%d" % i])
+    for i in range(1, 6):
+        env.query(d).filter(d.eqp == "E%d" % i).update(
+            {"updated_at": base + dt.timedelta(hours=i)})
+    env.commit()
+
+    w = _wl(env)
+    assert [u["key"]["eqp"] for u in w["units"]] == ["E5", "E4", "E3", "E2", "E1"]
+    assert str(w["units"][0]["ingested_at"]).startswith("2026-08-30T17:00")
+
+    cut = _wl(env, unit_cap=2)
+    assert [u["key"]["eqp"] for u in cut["units"]] == ["E5", "E4"], \
+        "the cut kept the alphabetically first units, so the page is a sample not a head"

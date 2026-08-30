@@ -6158,7 +6158,17 @@ _META_CHUNK = 1_000               # IN 절 청킹
 
 #: 화면이 이름 붙일 수 있는 정렬 키. 규칙이 `list_columns`를 선언하면 그것도 더해진다
 #: (여기 컬럼명을 적지 않는다).
-_BASE_SORT_KEYS = ("unit_key", "state", "map_count", "usable_map_count", "confirmed_at")
+#: The ingestion instant of a unit: MAX over its rows of the derived table's
+#: `updated_at`, which the upsert path stamps on every write.  `created_at` is NOT
+#: used -- it is deliberately unindexed on every dynamic table (models.py [F6]), and
+#: "when did this unit last receive data" is the question an operator is asking.
+INGESTED_SORT_KEY = "ingested_at"
+INGESTED_COLUMN = "updated_at"
+#: Owner 2026-08-30: the worklist opens on the most recently ingested units.
+DEFAULT_WORKLIST_SORT = INGESTED_SORT_KEY
+DEFAULT_WORKLIST_ORDER = "desc"
+_BASE_SORT_KEYS = (INGESTED_SORT_KEY, "unit_key", "state", "map_count",
+                   "usable_map_count", "confirmed_at")
 
 
 def worklist_sort_keys(rule: dict) -> list:
@@ -6672,7 +6682,8 @@ def _unit_maps(db, src_model, decision_key: list, map_key_cols: list,
 
 def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
                              key_values: dict = None, q: str = None,
-                             sort: str = "unit_key", order: str = "asc",
+                             sort: str = DEFAULT_WORKLIST_SORT,
+                             order: str = DEFAULT_WORKLIST_ORDER,
                              limit: int = DEFAULT_WORKLIST_LIMIT, offset: int = 0,
                              unit_cap: int = MAX_WORKLIST_UNITS) -> dict:
     """결정 단위 목록. **읽기 전용이다.**
@@ -6736,17 +6747,37 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         filters.append(or_(*[cast(a, String).ilike(pattern) for a in key_attrs]))
 
     matched = db.query(_func.count()).select_from(derived_model).filter(*filters).scalar()
-    # [R7] Which units survive `unit_cap` decides which units an operator can even
-    # SEE, so the cut is by decision key ascending - the same order the screen's
-    # default sort (`unit_key`) then shows them in, so page 1 of a truncated list is
-    # the head of the list and not a sample of it. `DISTINCT` makes the projection
-    # unique, so this is total; `row_id` cannot be added here (not selected).
-    rows = (db.query(*key_attrs, *list_attrs).filter(*filters)
-              .distinct().order_by(*key_attrs, *list_attrs).limit(unit_cap + 1).all())
+
+    # 🔴 THE SORT IS RESOLVED BEFORE THE CUT, not after it.  [R7] below is the reason:
+    # which units survive `unit_cap` decides which units an operator can even SEE, so
+    # the cut must run in the SAME order the page is then shown in.  Ordering the cut
+    # alphabetically and re-sorting by time afterwards would show 'the newest among the
+    # first N unit keys', which is not the newest.
+    sort_keys = worklist_sort_keys(rule)
+    key = sort if sort in sort_keys else DEFAULT_WORKLIST_SORT
+    reverse = str(order or DEFAULT_WORKLIST_ORDER).lower() == "desc"
+
+    # [R7] page 1 of a truncated list is the head of the list, not a sample of it.
+    # `GROUP BY` over exactly the selected columns is the same projection `DISTINCT`
+    # made (`row_id` still cannot be added here -- not selected); it is a GROUP BY
+    # rather than a DISTINCT only so MAX(updated_at) can ride along.  A derived table
+    # without that column simply has no ingestion instant and falls back to the key
+    # order -- absent, not zero.
+    stamp_attr = getattr(derived_model, INGESTED_COLUMN, None)
+    group_attrs = list(key_attrs) + list(list_attrs)
+    stamp_sel = [_func.max(stamp_attr)] if stamp_attr is not None else []
+    if key == INGESTED_SORT_KEY and stamp_attr is not None:
+        stamped = _func.max(stamp_attr)
+        cut_order = [stamped.desc() if reverse else stamped.asc()] + group_attrs
+    else:
+        cut_order = group_attrs
+    rows = (db.query(*group_attrs, *stamp_sel).filter(*filters)
+              .group_by(*group_attrs).order_by(*cut_order).limit(unit_cap + 1).all())
     units_truncated = len(rows) > unit_cap
     rows = rows[:unit_cap]
 
     nk = len(decision_key)
+    ne = len(list_cols)
     units = []
     for r in rows:
         vals = ["" if v is None else str(v) for v in r[:nk]]
@@ -6754,6 +6785,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
             "key": dict(zip(decision_key, vals)),
             "_tuple": tuple(vals),
             "extras": {c: r[nk + i] for i, c in enumerate(list_cols)},
+            "ingested_at": (r[nk + ne] if stamp_attr is not None else None),
         })
 
     # ---- [2] 확정 — 「현행 행이 있는가」가 곧 confirmed다 -------------------------------
@@ -6899,26 +6931,40 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         reason_detail[REASON_UNIT_KEY_INCOMPLETE] = ", ".join(sorted(unit_key_blank_cols))
 
     # ---- [5] 정렬 → 자르기. 집계는 **자르기 전** 전량에서 낸다 --------------------------
-    sort_keys = worklist_sort_keys(rule)
-    key = sort if sort in sort_keys else "unit_key"
-    reverse = str(order or "asc").lower() == "desc"
+    # `key`/`reverse`/`sort_keys` are resolved above, before the cut, so the page and
+    # the cut cannot disagree about what 'first' means.
 
     def _sk(u):
-        # 🔴 정렬은 `unit_key`가 문자열이라고 가정한다 — 모든 갈래의 두 번째 키가 그것이다.
-        #    이름 없는 단위([2])가 하나라도 섞이면 `None < str` 비교가 `TypeError`로 터져
-        #    목록이 **다시** 500이 된다. [2]의 가드만 두고 여기를 두지 않으면 가드는 반쪽이다.
+        # 🔴 정렬은 `unit_key`가 문자열이라고 가정한다 — 이름 없는 단위([2])가 하나라도
+        #    섞이면 `None < str` 비교가 `TypeError`로 터져 목록이 **다시** 500이 된다.
+        #    [2]의 가드만 두고 여기를 두지 않으면 가드는 반쪽이다.
         uk = u["unit_key"] or ""
+        if key == INGESTED_SORT_KEY:
+            # A unit with no instant sorts as its own group rather than as the oldest.
+            # The presence flag is compared first, so an absent value is never compared
+            # against a datetime -- which is what a naive `or <sentinel>` would risk,
+            # and it needs no module-level sentinel to say so.
+            ts = u.get("ingested_at")
+            return (1, ts) if ts is not None else (0, "")
         if key == "state":
-            return (UNIT_STATE_STRENGTH.get(u["state"], 0), uk)
+            return UNIT_STATE_STRENGTH.get(u["state"], 0)
         if key == "confirmed_at":
-            return ((u["confirmation"] or {}).get("confirmed_at") or "", uk)
+            return (u["confirmation"] or {}).get("confirmed_at") or ""
         if key in ("map_count", "usable_map_count"):
-            return (u[key], uk)
+            return u[key]
         if key in u["extras"]:
             v = u["extras"][key]
-            return (float(v) if isinstance(v, (int, float)) else 0.0, uk)
-        return (uk, "")
+            return float(v) if isinstance(v, (int, float)) else 0.0
+        return uk
 
+    # 🔴 THE TIEBREAK IS NOT REVERSED WITH THE PRIMARY KEY.  It used to ride inside one
+    # composite key, so `reverse=True` flipped it too and equal-valued units came back in
+    # REVERSE alphabetical order.  That was invisible while the default sort was
+    # `unit_key` ascending; it stops being invisible the moment the default is an instant,
+    # because a batch ingested in one second ties on every row and the tiebreak IS the
+    # order the operator reads.  Python's sort is stable, so sorting by the tiebreak first
+    # and the primary key second gives "primary as asked, tiebreak always ascending".
+    units.sort(key=lambda u: u["unit_key"] or "")
     units.sort(key=_sk, reverse=reverse)
     start = max(0, int(offset or 0))
     page = units[start:start + max(1, int(limit or DEFAULT_WORKLIST_LIMIT))]
@@ -6976,7 +7022,14 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
                         "reason_code": u["reason_code"], "map_count": u["map_count"],
                         "usable_map_count": u["usable_map_count"],
                         "assumable_map_count": u["assumable_map_count"],
-                        "confirmation": u["confirmation"]}, **u["extras"])
+                        "confirmation": u["confirmation"],
+                        # ISO-8601, like every other instant in this payload
+                        # (`confirmed_at`). The sort above compares the datetime
+                        # itself; only the wire form is a string, so a mixed UTC
+                        # offset cannot reorder anything.
+                        "ingested_at": (u["ingested_at"].isoformat()
+                                        if hasattr(u["ingested_at"], "isoformat")
+                                        else u["ingested_at"])}, **u["extras"])
                   for u in page],
         "stats": {"build_ms": (time.monotonic() - t0) * 1000.0,
                   "map_pairs": sum(len(s) for s in per_unit_maps.values()),
