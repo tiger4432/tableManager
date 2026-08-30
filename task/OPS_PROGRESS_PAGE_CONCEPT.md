@@ -78,6 +78,45 @@ dt_log 소스   molecules_refused 96
 2  실행        run_id 를 받고 진행을 ①~③ 과 같은 자리에서 본다
 ```
 
+### ⑤ 프로세스 상태 — 「지금 무엇이 살아 있나」
+데이터: `server/config/supervisor_status.json` (감독자가 계속 갱신)
+
+```
+supervisor_pid · started_at · updated_at · stopping
+children              자식 프로세스들 (이 시스템은 «다섯»입니다)
+failed_children       🔴 죽은 것
+correlated_children   묶여 있는 것
+events                최근에 일어난 일
+```
+🔴 **`updated_at` 이 «멈춰 있으면» 감독자 자신이 죽은 것입니다.**
+자식이 다 살아 있다고 그려 놓고 감독자가 10분 전에 멈췄으면, 그 화면은 «10분 전 사진»입니다.
+그래서 **자식 목록보다 `updated_at` 의 나이가 먼저 보여야** 합니다.
+
+### ⑥ 큐 — 「무엇이 밀려 있나」
+데이터: `database_outbox`
+
+```
+status · retry_count      🔴 retry_count 가 높은 것 = «계속 실패하고 있는 것»
+                          밀린 건수만 보면 「많다」로 보이고, 재시도 수를 봐야 「막혔다」가 보입니다
+created_at · processed_at · broadcast_at
+                          가장 오래된 «미처리»의 나이 = 실질 지연
+event_type · table_name   무엇이 밀리나
+```
+
+데이터: `server/config/scheduler_status.json`
+```
+collectors[]   table_name · script_name · cron_expression
+last_updated   🔴 이것도 «나이»를 봐야 합니다 — 스케줄러가 멈추면 이 값이 안 움직입니다
+```
+
+### 🔴 그리고 «없는» 것 하나 — 소급 연산의 실행 기록
+```
+/admin/retroactive/{op}/run 은 run_id 를 «돌려주는데», 그 run 을 적어 두는 표가 «없습니다»
+=> 실행을 걸어 놓고 나면 「그게 지금 어디쯤인지」를 물어볼 데가 없습니다
+=> 목업에는 «있는 것처럼» 그려 두시고, 서버 라운드에서 그 표를 같이 만들겠습니다
+   (이건 화면 탓이 아니라 서버에 빠진 조각입니다)
+```
+
 ---
 
 ## 3. 🔴 섞이면 안 되는 상태 다섯 — 이게 디자인 요구사항입니다
@@ -92,6 +131,18 @@ dt_log 소스   molecules_refused 96
 | **거절됨** | `molecules_refused`>0 + `refusal_reasons` | **사유를 읽어라** — 대개 고칠 수 있는 것 |
 | **지연됨** | `source_head.groups_behind`>0 | 기다리거나 밀어라 |
 | **정상·할 일 없음** | 지연 0 · 거절 0 · 최근 실행됨 | 없음 |
+
+### 프로세스·큐 쪽도 같은 병이 있습니다
+| 상태 | 어떻게 아나 | 사람이 할 일 |
+|---|---|---|
+| **감독자가 죽음** | `supervisor_status.updated_at` 이 «안 움직임» | 🔴 이 화면 전체가 옛 사진 |
+| **자식이 죽음** | `failed_children` | 살려라 |
+| **막힘** | `database_outbox.retry_count` 높음 | 사유를 봐라 |
+| **밀림** | 미처리 중 «가장 오래된 것»의 나이 | 기다려라 |
+| **스케줄러 멈춤** | `scheduler_status.last_updated` 나이 | 살려라 |
+
+⚠️ **「밀림」과 「막힘」을 같은 숫자로 그리면 안 됩니다.** 밀린 건 기다리면 되고,
+막힌 건 사람이 가야 합니다. 둘 다 「큐에 N건」으로 보입니다.
 
 > 「없어서 0」과 「막혀서 0」과 「아직 안 해서 0」을 **같은 회색**으로 그리면
 > 이 화면은 지금 있는 화면과 똑같아집니다. 그 셋을 가르는 것이 이 화면의 전부입니다.
