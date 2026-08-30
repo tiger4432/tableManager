@@ -595,6 +595,9 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
         _validate_entities(value["entities"], problems)
     if isinstance(value.get("sources"), Mapping):
         _validate_sources(value["sources"], problems)
+    if (isinstance(value.get("sources"), Mapping)
+            and isinstance(value.get("entities"), Mapping)):
+        _validate_frames(value["entities"], value["sources"], problems)
 
     # Cross-validation only consumes structurally sound descriptors.  This makes every
     # malformed JSON shape a stable validation result instead of an AttributeError or
@@ -1047,10 +1050,25 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         #: use it, for the reason `continues` is not: a field read as a default when missing
         #: must stay missing, or "declared dynamic" and "never classified" stop being
         #: distinguishable.
+        #: `frame_keys` names the keys that are this entity's COORDINATE, so a source can
+        #: declare the transform that carries its own reading to the datum. Declared once
+        #: per entity because which keys are the coordinate is a property of the entity;
+        #: WHICH WAY they are turned is a property of the source that read them.
+        #: Optional, and absent means "this has no geometry" - today's behaviour for every
+        #: entity that exists.
         if not problems.exact(
                 item, path, required=("keys",),
-                optional=("key_types", "allow_null", "references", "class")):
+                optional=("key_types", "allow_null", "references", "class",
+                          "frame_keys")):
             continue
+        if "frame_keys" in item:
+            # Shape only. The checks that matter - that a source's transform names exactly
+            # these keys and permutes them - need both sections and live in
+            # `_validate_frames`.
+            _nonblank_list(item.get("frame_keys"), f"{path}.frame_keys", problems)
+            if _has_duplicate_strings(item.get("frame_keys")):
+                problems.add("duplicate_id", f"{path}.frame_keys",
+                             "frame keys must be unique")
         if "class" in item and item["class"] not in ("static", "dynamic"):
             problems.add("invalid_entity_ref", f"{path}.class",
                          "must be static or dynamic")
@@ -1324,6 +1342,93 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
                         "entity identity keys allow only column or constant bindings")
 
 
+def _validate_frames(entities: Mapping[str, Any], sources: Mapping[str, Any],
+                    problems: _Problems) -> None:
+    """The four ways a declared frame can be written and do nothing, each refused by name.
+
+    🔴 EVERY ONE OF THESE IS OTHERWISE SILENT. A frame that names a key the entity does not
+    have transforms nothing; a frame that is not a permutation cannot be inverted, and the
+    walk's descent depends on inverting it; a float `offset` turns a JSONB `1` into `1.0`
+    and then matches no row at all. None of those raise, and on screen each is
+    indistinguishable from "no frame declared yet".
+
+    Read as: the coordinate is the ENTITY's (`frame_keys`), the turning is the SOURCE's
+    (`frame.<type>`), and this function is where the two are held against each other.
+    """
+    #: 🔴 A MALFORMED SHAPE IS A VALIDATION RESULT, NOT AN AttributeError. `entities` and
+    #: `sources` are whatever the file held, so a bool where an object belongs must fall
+    #: through to the check that names it - the same reason `_cross_validate` says it
+    #: "only consumes structurally sound descriptors".
+    frame_keys = {}
+    for entity_id, spec in entities.items():
+        if not isinstance(spec, Mapping):
+            continue
+        declared = spec.get("frame_keys")
+        if _is_list(declared):
+            frame_keys[str(entity_id)] = [str(key) for key in declared]
+
+    for source_id in sorted(sources, key=str):
+        source = sources[source_id]
+        if not isinstance(source, Mapping):
+            continue
+        frames = source.get("frame")
+        if frames is None:
+            continue
+        path = f"bundle.sources.{source_id}.frame"
+        if not isinstance(frames, Mapping):
+            problems.add("invalid_type", path, "must be an object")
+            continue
+        for entity_id in sorted(frames, key=str):
+            here = f"{path}.{entity_id}"
+            transform = frames[entity_id]
+            if not isinstance(transform, Mapping):
+                problems.add("invalid_type", here, "must be an object")
+                continue
+            # V4 - a frame on a type with no coordinate can never fire
+            if entity_id not in frame_keys:
+                problems.add(
+                    "invalid_frame", here,
+                    f"'{entity_id}' does not declare frame_keys, so a frame on it "
+                    "would never transform anything")
+                continue
+            declared = frame_keys[entity_id]
+            out_keys = [str(key) for key in transform]
+            # V1 - the out-keys ARE the coordinate, exactly
+            if set(out_keys) != set(declared):
+                problems.add(
+                    "invalid_frame", here,
+                    f"frame keys {sorted(out_keys)} must be exactly the entity's "
+                    f"frame_keys {sorted(declared)}")
+                continue
+            sources_named = []
+            for key in sorted(out_keys):
+                term = transform[key]
+                kpath = f"{here}.{key}"
+                if not isinstance(term, Mapping):
+                    problems.add("invalid_type", kpath, "must be an object")
+                    continue
+                if not problems.exact(term, kpath,
+                                      required=("from", "sign", "offset")):
+                    continue
+                sources_named.append(str(term.get("from")))
+                # V3 - the walk matches keys with JSONB equality, so a float or a sign
+                # outside {+1, -1} silently matches nothing
+                if term.get("sign") not in (1, -1):
+                    problems.add("invalid_frame", f"{kpath}.sign",
+                                 "must be 1 or -1")
+                offset = term.get("offset")
+                if not isinstance(offset, int) or isinstance(offset, bool):
+                    problems.add("invalid_frame", f"{kpath}.offset",
+                                 "must be an integer - a float will not match a stored key")
+            # V2 - invertibility, which the descent depends on absolutely
+            if len(sources_named) == len(out_keys) and sorted(sources_named) != sorted(
+                    str(key) for key in declared):
+                problems.add(
+                    "invalid_frame", here,
+                    f"'from' keys {sorted(sources_named)} must be a permutation of "
+                    f"{sorted(str(key) for key in declared)}")
+
+
 def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
     """Every source, in the order it RUNS.
 
@@ -1350,8 +1455,11 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         path = f"bundle.sources.{source_id}"
         _nonblank_id(source_id, path, problems)
         source = section[source_id]
+        #: `frame` is this source's transform TO THE DATUM, per entity type. Optional, and
+        #: absent means "already in the datum", which is what every source is today.
         if not problems.exact(
-                source, path, required=("relation", "read", "prepare", "map", "bind")):
+                source, path, required=("relation", "read", "prepare", "map", "bind"),
+                optional=("frame",)):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
         # Each clause is judged on its own: one malformed clause must not silence the

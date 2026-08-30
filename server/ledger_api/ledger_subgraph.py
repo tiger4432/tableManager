@@ -319,6 +319,94 @@ class InMemoryEvidenceLookup:
 _entity_key_order = None
 
 
+#: Cache for `_declared_frames`.  `None` means "not read yet"; a dict means read, and the
+#: dict itself records whether the read SUCCEEDED.
+_declared_frame_cache = None
+
+
+def _declared_frames():
+    """Which keys are a coordinate, and how each source turns its own reading to the datum.
+
+    🔴 ONE DELIBERATE DIFFERENCE FROM `_declared_key_order`, WHICH THIS OTHERWISE COPIES.
+    That function documents that an unreadable declaration "leaves every label exactly as it
+    is today rather than taking the walk down with it", and for a LABEL that is right: the
+    worst case is an ugly label. A transform is not a label. Its worst case is silently
+    connecting nothing, and on screen that is identical to "no frame declared yet". So this
+    records whether the file was read and how many sources declared a frame, and the
+    response carries both.
+
+    Returns `{"ok", "keys", "by_source", "declaring"}`:
+      keys       bare entity type -> the key names that are its coordinate
+      by_source  source id -> bare entity type -> {out_key: {from, sign, offset}}
+      declaring  how many sources declared a frame at all
+    """
+    global _declared_frame_cache
+    if _declared_frame_cache is None:
+        found = {"ok": False, "keys": {}, "by_source": {}, "declaring": 0}
+        try:
+            import paths
+            with open(paths.config_path("ontology", "ledger_config.json"),
+                      "r", encoding="utf-8") as handle:
+                document = json.load(handle) or {}
+            for name, spec in (document.get("entities") or {}).items():
+                declared = (spec or {}).get("frame_keys")
+                if isinstance(declared, list) and declared:
+                    found["keys"][str(name).rsplit("@", 1)[0]] = [
+                        str(key) for key in declared]
+            for source_id, spec in (document.get("sources") or {}).items():
+                frames = (spec or {}).get("frame")
+                if not isinstance(frames, dict) or not frames:
+                    continue
+                per_type = {}
+                for entity_id, transform in frames.items():
+                    if isinstance(transform, dict) and transform:
+                        per_type[str(entity_id).rsplit("@", 1)[0]] = transform
+                if per_type:
+                    found["by_source"][str(source_id)] = per_type
+            found["declaring"] = len(found["by_source"])
+            found["ok"] = True
+        except Exception:
+            #: Read failure is REPORTED, not swallowed: `ok` stays False and Layer 3 puts it
+            #: in the response.  The walk still answers - with every source treated as
+            #: already-in-the-datum, which is exactly today's behaviour.
+            found = {"ok": False, "keys": {}, "by_source": {}, "declaring": 0}
+        _declared_frame_cache = found
+    return _declared_frame_cache
+
+
+def _framed(keys, transform, forward):
+    """Carry one coordinate through `transform`, or back through its inverse.
+
+    `out[k] = sign * raw[from] + offset`, so the inverse is `raw[from] = sign * (out - offset)`
+    - exact because `sign` is +-1 and `offset` is an integer, both refused otherwise by the
+    validator.  Keys the transform does not name pass through untouched.
+    """
+    #: 🔴 READ EVERY TERM BEFORE WRITING ANY. A frame is a PERMUTATION, so writing in place
+    #: destroys it: `x` from `y` then `y` from `x` pops the value the first term just wrote,
+    #: and the coordinate comes back one key short - which then matches no row and looks
+    #: exactly like "no frame declared". MEASURED while writing this: the swap case lost
+    #: `y` entirely.
+    moved = dict(keys or {})
+    consumed, updates = set(), {}
+    for out_key, term in transform.items():
+        source_key = str(term.get("from"))
+        sign = term.get("sign")
+        offset = term.get("offset")
+        read_key = source_key if forward else str(out_key)
+        value = (keys or {}).get(read_key)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None
+        consumed.add(read_key)
+        if forward:
+            updates[str(out_key)] = sign * value + offset
+        else:
+            updates[source_key] = sign * (value - offset)
+    for key in consumed:
+        moved.pop(key, None)
+    moved.update(updates)
+    return moved
+
+
 def _declared_key_order(entity_type):
     """The key order one entity type declares, from the LIVE ontology declaration.
 
@@ -782,6 +870,13 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     backbone_hops = max(0, min(int(backbone_hops), MAX_HOPS))
     budget_hops = hops + backbone_hops
     static_types = {str(name).split("@", 1)[0] for name in (static_types or ())}
+    _frames = _declared_frames()
+    #: 🔴 COUNTED, BECAUSE THREE DIFFERENT FAILURES RENDER THE SAME. "no frame
+    #: declared", "frame declared wrongly" and "declaration unreadable" all draw a
+    #: graph that simply does not join, so the response says which one happened. The
+    #: owner rejected a gate; nothing here blocks anything.
+    frame_seen = set()
+    frame_seen_declared = set()
     # 🔴 AND THE STEPS A NAME MAY TAKE, from the same caller and the same declaration.
     # Empty means a static node is not expanded at all, which is what an unreadable
     # declaration should do: refuse the step rather than guess which hub is safe.
@@ -859,6 +954,61 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edges[row["id"]] = row
         return True
 
+    def _frames_for_type(bare_type):
+        """Every distinct transform any source declared for this type.
+
+        Distinct rather than per-source: going DOWN we do not know which source wrote the
+        row we are looking for, so the frontier has to carry one reading per frame that
+        exists. Coming up we do know - `_to_datum` reads `source_who` off the atom.
+        """
+        out, seen = [], set()
+        for per_type in _frames["by_source"].values():
+            transform = per_type.get(bare_type)
+            if not transform:
+                continue
+            fingerprint = json.dumps(transform, sort_keys=True, default=str)
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            out.append(transform)
+        return out
+
+    def _to_datum(source_who, entity_type, keys):
+        """🔴 HALF B - one reading is carried to the datum, so both sides land on ONE node.
+
+        A source that declared no frame is treated as already in the datum, which is what
+        every source is today, so nothing regresses. `source_who` needs no plumbing: it is
+        already on the atom and already on the edge.
+        """
+        transform = (_frames["by_source"].get(str(source_who)) or {}).get(_bare(entity_type))
+        if not transform:
+            return keys
+        moved = _framed(keys, transform, forward=True)
+        return keys if moved is None else moved
+
+    def _frame_expand(entity_refs):
+        """One canonical ref becomes itself plus one raw ref per declared frame."""
+        if not _frames["by_source"]:
+            return entity_refs
+        out, seen = [], set()
+        for ref in entity_refs:
+            candidates = [ref]
+            coordinate = _frames["keys"].get(_bare(ref["type"]))
+            if coordinate:
+                for transform in _frames_for_type(_bare(ref["type"])):
+                    raw = _framed(ref["keys"], transform, forward=False)
+                    if raw is None:
+                        continue
+                    candidates.append(dict(
+                        ref, keys=raw,
+                        id=ledger_explorer.entity_id(ref["type"], raw)))
+            for candidate in candidates:
+                if candidate["id"] in seen:
+                    continue
+                seen.add(candidate["id"])
+                out.append(candidate)
+        return out
+
     def _spend(near_id, far_id, charge):
         """Carry the departure count from the near side to the far one.
 
@@ -893,11 +1043,29 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     def _expand_atom(atom, depth, frontier_entities):
         """Materialise one atom's far side and the single edge that carries it."""
+        # 🔴 EACH SIDE HAS TWO IDS AND THEY ARE NOT INTERCHANGEABLE. The RAW id is what the
+        # frontier was built from (Half A put raw readings there, because that is what the
+        # SQL matched), so it is the only thing `frontier_entities` can be asked about. The
+        # DATUM id is what the node, the edge, the depth and the departure count are keyed
+        # by - the whole point being that two readings of one seat land on one node. Using
+        # the raw id downstream would silently drop the edge, because `add_edge` refuses an
+        # endpoint that is not in `nodes`.
+        if _frames["keys"].get(_bare(atom.subject_type)) or _frames["keys"].get(
+                _bare((atom.object_payload or {}).get("type"))):
+            frame_seen.add(str(atom.source_who))
+            if str(atom.source_who) in _frames["by_source"]:
+                frame_seen_declared.add(str(atom.source_who))
         subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        subject_keys = _to_datum(atom.source_who, atom.subject_type, atom.subject_keys)
+        subject_at = ledger_explorer.entity_id(atom.subject_type, subject_keys)
         payload = atom.object_payload or {}
         target = None
+        target_id = None
         if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
-            target = _entity_node(payload["type"], payload["keys"])
+            target_id = ledger_explorer.entity_id(payload["type"], payload["keys"])
+            target = _entity_node(
+                payload["type"],
+                _to_datum(atom.source_who, payload["type"], payload["keys"]))
         # 🔴 THE FAR SIDE ADVANCES, AND WHICH SIDE IS FAR DEPENDS ON THE ARM THAT FETCHED
         # THE ATOM. `claims_for_entities` has two of them, and on the incoming arm the
         # frontier entity is the OBJECT, so the far side is the SUBJECT. Handing the
@@ -911,7 +1079,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # -> void. `frontier_entities` is what tells the two arms apart; it was already
         # passed in here and read nowhere in the body until now.
         subject_near = subject_id in frontier_entities
-        target_near = target is not None and target["id"] in frontier_entities
+        target_near = target is not None and target_id in frontier_entities
         if subject_near and target_near:
             subject_depth = target_depth = depth
         elif subject_near:
@@ -961,10 +1129,10 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # a container, so expanding it is not the sibling step this refuses.
         near_id = far_id = step_dir = None
         if subject_near and not target_near:
-            near_id, step_dir = subject_id, "outgoing"
+            near_id, step_dir = subject_at, "outgoing"
             far_id = target["id"] if target is not None else None
         elif target_near and not subject_near:
-            near_id, far_id, step_dir = target["id"], subject_id, "incoming"
+            near_id, far_id, step_dir = target["id"], subject_at, "incoming"
         # 🔴 AND IT IS A RULE ABOUT THE WORLD, NOT ABOUT THE NAMES. Between two static
         # types there is no container and so no siblings: `leads_to` walked back to a cause
         # and then forward again reaches THE OTHER EFFECTS OF THAT CAUSE, which is the
@@ -991,16 +1159,16 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                         and near_kind not in static_types
                         and far_kind not in static_types) else 1
         if subject_near and not target_near and target is not None:
-            _spend(subject_id, target["id"], _charge)
+            _spend(subject_at, target["id"], _charge)
         elif target_near and not subject_near:
-            _spend(target["id"], subject_id, _charge)
-        if subject_id not in nodes:
-            subject = _entity_node(atom.subject_type, atom.subject_keys)
+            _spend(target["id"], subject_at, _charge)
+        if subject_at not in nodes:
+            subject = _entity_node(atom.subject_type, subject_keys)
             if not add_node(subject, decode_node_id(subject["id"]), subject_depth):
                 return
         if target is not None:
             if add_node(target, decode_node_id(target["id"]), target_depth):
-                add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate))
+                add_edge(_claim_edge(atom, subject_at, target["id"], atom.predicate))
             return
         # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
         # something about its subject; it is not a second place to stand. The finding-point
@@ -1038,8 +1206,15 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if remaining <= 0:
             claim_cut = True
             break
-        entity_refs = [refs[item] for item in frontier_ids
-                       if refs[item]["kind"] == "entity"]
+        # 🔴 HALF A - THIS IS THE HALF THAT CROSSES. The SQL matches
+        # `e.subject_keys = f.keys` against the keys AS STORED, so a frontier carrying datum
+        # coordinates matches nothing at all. Each ref whose type declares `frame_keys` is
+        # therefore emitted once per declared frame, with its coordinate run BACKWARDS into
+        # that frame's raw reading - plus itself, for the sources that declared none.
+        # Types without `frame_keys` pass through exactly as before; nothing is inferred
+        # from key names.
+        entity_refs = _frame_expand([refs[item] for item in frontier_ids
+                                     if refs[item]["kind"] == "entity"])
         point_refs = [refs[item] for item in frontier_ids
                       if refs[item]["kind"] == "point"
                       and refs[item].get("expandable", False)]
@@ -1172,6 +1347,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "actions_scanned": actions_scanned,
             "enrich_actions": action_lookup is not None,
             "raw_claims": True, "resolver_applied": False,
+            "frames": {
+                "declaration_read": _frames["ok"],
+                "sources_declaring": _frames["declaring"],
+                "sources_on_framed_types": len(frame_seen),
+                "sources_on_framed_types_with_frame": len(frame_seen_declared),
+            },
         },
         "limits": {"nodes": node_limit, "edges": edge_limit,
                    "claims": claim_limit, "actions": edge_limit,
