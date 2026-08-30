@@ -1,5 +1,6 @@
 {
   "_source": "task/APPLICATION_GAP_SPEC.md §2 tables ①, ②, ②-bis. THE SPEC IS THE AUTHORITY; this file is its machine-readable form. Adding a gap means adding a row HERE and in the spec - never inventing one in code. `ledger/gaps.py` refuses to run when this file and the declaration disagree, in either direction.",
+  "_register_shares_one_name_across_three_subjects": "APPLICATION_GAP_SPEC 2026-08-31: the operator does the SAME thing for all three - fetch the registration record - so it is one name with the type swapped in. A fourth subject needs no new name.",
   "_why_names_live_outside_the_code": "A label in code is a second authority that goes stale without anybody noticing. The detector emits declaration names and looks the label up here, so a spec revision is a data change.",
   "pairs": [
     {
@@ -51,10 +52,21 @@
     {"predicate": "inspected", "type": "wafer@1", "name": "검사 안 된 웨이퍼",
      "action": "Ⅲ 세상 — 검사를 겁니다"},
     {"predicate": "measures", "type": "wafer@1", "name": "계측 없는 웨이퍼",
-     "action": "Ⅲ 세상 — 계측을 겁니다"}
+     "action": "Ⅲ 세상 — 계측을 겁니다"},
+    {"predicate": "has_netdie", "type": "dtjob@1", "name": "넷다이가 안 적힌 DT 작업",
+     "action": "Ⅱ 원천 — 그 수를 원천에서 가져옵니다"},
+    {"predicate": "register", "type": "dtjob@1", "name": "등록되지 않은 DT 작업",
+     "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"},
+    {"predicate": "register", "type": "wafer@1", "name": "등록되지 않은 웨이퍼",
+     "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"},
+    {"predicate": "register", "type": "lot@1", "name": "등록되지 않은 랏",
+     "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"}
   ],
   "object_sides": [
     {"predicate": "observed", "type": "defect@1", "name": "어디서 봤는지 모르는 결함",
-     "action": "Ⅱ 원천 — 어느 자리에서 봤는지를 원천에서 가져옵니다"}
+     "action": "Ⅱ 원천 — 어느 자리에서 봤는지를 원천에서 가져옵니다"},
+    {"predicate": "processed_with", "type": "recipe@1", "name": "해당 없음",
+     "action": "없음 — 아래 사유를 화면에 적습니다",
+     "_kept_on_purpose": "APPLICATION_GAP_SPEC: dropping the row sends the next person to ask the same question again. `gaps.vacuous_types` marks it not-applicable MECHANICALLY - processed_with is recipe@1's only appearance in the vocabulary, so a recipe without one cannot exist - and the row is what carries that reason to the screen."}
   ]
 }
