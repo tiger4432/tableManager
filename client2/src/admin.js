@@ -31,6 +31,7 @@ import {
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
+import { takeRescopeHandoff } from './rescope_handoff.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -1990,6 +1991,33 @@ function retroState(op) {
 function initRetroactiveLine() {
   const hint = byId('retroactive-hint');
   if (hint) hint.textContent = RETRO_CHROME.HINT;
+  adoptRescopeHandoff();
+}
+
+/**
+ * 그리드가 «고른 범위»를 넘겨 놓았으면 그것을 받아 이 블록의 파라미터로 앉힙니다.
+ *
+ * 🔴 «한 번만» 먹습니다 (`takeRescopeHandoff` 가 읽으면서 지웁니다). 남겨 두면 다음에
+ *    어드민을 열었을 때 «지금 고른 적 없는» 범위가 채워져 있고, 운영자는 그것을 자기가
+ *    고른 것으로 읽습니다 -- 이 화면이 반복해서 막아 온 부류의 «쓰기» 판입니다.
+ * 🔴 여기서 드라이런을 «자동으로 돌리지 않습니다». 채워 넣기까지가 넘김이고, 미리보기를
+ *    누르는 것은 사람입니다 (지시서: 드라이런이 «먼저», 그리고 그건 사람의 한 걸음).
+ */
+function adoptRescopeHandoff() {
+  const got = takeRescopeHandoff();
+  if (!got) return;
+  const state = retroState(got.op);
+  const params = got.params || {};
+  Object.keys(params).forEach((key) => {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== '') state.params[key] = String(value);
+  });
+  // 넘어온 것은 «파라미터»이지 측정이 아닙니다. 들고 있던 수가 있으면 그건 다른 범위의
+  // 것이므로 버립니다 -- 안 버리면 새 범위 옆에 옛 수가 붙어 있게 됩니다.
+  state.count = null;
+  const block = byId('retroactive');
+  if (block) block.open = true;
+  refreshRetroactiveOperations(true);
 }
 
 /** 이 연산이 **선언한** 파라미터만, 비어 있지 않은 것만. 판정은 뷰 모델이 소유한다 —
