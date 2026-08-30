@@ -145,22 +145,21 @@ class LotEventRoleMapper(BaseLedgerMapper):
     FIRST_SIGHT_HOLDER = SentenceShape()
     #: "this item exists".
     FIRST_SIGHT_ITEM = SentenceShape()
-    #: "this holder carries that item, in this slot".
-    IN_SLOT = SentenceShape(qualifiers=("slot",))
     #: "this lot came out of that lot".
     DESCENT = SentenceShape()
 
-    # Split slot-carry and merge slot-join realize the SAME Claim -- same predicate, same
-    # subject/object types, same three qualifiers -- and differ only in the rule that
-    # computed them, which is what each atom's `derivation` records.  Nothing about their
-    # structure tells them apart, which is why structure stopped being how a sentence is
-    # chosen; each has a name, and the Profile files a mapping under each.  These are this
-    # mapper's words, not the config's: rename anything in `ledger_config.json` and they
-    # still hold.
-    #: "this wafer stayed in its slot as the child was split off".
-    SPLIT_SLOT_CARRY = SentenceShape(qualifiers=("from", "to", "wafer"))
-    #: "this wafer moved from that slot to this one as the two lots merged".
-    MERGE_SLOT_JOIN = SentenceShape(qualifiers=("from", "to", "wafer"))
+    # 🔴 IN_SLOT / SPLIT_SLOT_CARRY / MERGE_SLOT_JOIN RETIRED 2026-08-30.
+    # `in_slot` could never produce an atom from here: its subject is `lot_slot@1`, which has
+    # TWO identity keys, and `roleframe._entity_value` refuses a mapper-supplied Entity
+    # reference that does not carry exactly one.  It now comes from the `lot_slot_wafer`
+    # source, which is `declarative-role`, so the framework builds both keys from columns and
+    # the contract never applies -- the same road `lot_slot_move` already travels.
+    # The two slot-carry sentences went with the `split_slot_carry` predicate that retired
+    # earlier the same day; `slot_map@1` carries seat-to-seat movement now.  Nothing is lost
+    # here: `derived_from` still records parent->child at the LOT level, and `has_wafer` gives
+    # each lot's seats, so a seat on one side reaches a seat on the other THROUGH THE WAFER
+    # they share -- which is a walk over declared edges rather than a sentence only this
+    # mapper knew how to say.
 
     def interpret_unit(
         self,
@@ -223,51 +222,17 @@ class LotEventRoleMapper(BaseLedgerMapper):
         for lot in lots:
             keep(sentences.first_sight(self.FIRST_SIGHT_HOLDER, lot, all_refs))
 
-        pairs_by_row: list[list[tuple[str, str]]] = []
         for position, row in enumerate(rows):
             pairs = _positional_pairs(row, path=f"event_frame.rows[{position}]")
-            pairs_by_row.append(pairs)
             for slot, wafer in pairs:
                 if not wafer:
                     continue
                 keep(sentences.first_sight(
                     self.FIRST_SIGHT_ITEM, wafer, (refs[position],)))
-                keep(sentences.say(
-                    self.IN_SLOT, _text(row["lot"]), (refs[position],),
-                    obj=wafer, qualifiers={"slot": slot}))
 
         if event_type in {"split", "merge"} and parent and child:
             keep(sentences.say(self.DESCENT, child, all_refs, obj=parent))
 
-        if event_type == "split":
-            child_position = next(
-                (index for index, row in enumerate(rows)
-                 if _text(row["lot"]) == child), None)
-            if child_position is not None:
-                for slot, wafer in pairs_by_row[child_position]:
-                    if wafer and slot:
-                        keep(sentences.say(
-                            self.SPLIT_SLOT_CARRY, parent, (refs[child_position],),
-                            obj=child,
-                            qualifiers={"from": slot, "to": slot, "wafer": wafer}))
-        elif event_type == "merge":
-            parent_position = next(
-                (index for index, row in enumerate(rows)
-                 if _text(row["lot"]) == parent), None)
-            child_position = next(
-                (index for index, row in enumerate(rows)
-                 if _text(row["lot"]) == child), None)
-            if parent_position is not None and child_position is not None:
-                parent_slots = {
-                    wafer: slot for slot, wafer in pairs_by_row[parent_position] if wafer}
-                for slot, wafer in pairs_by_row[child_position]:
-                    if wafer and wafer in parent_slots:
-                        keep(sentences.say(
-                            self.MERGE_SLOT_JOIN, parent,
-                            (refs[parent_position], refs[child_position]),
-                            obj=child,
-                            qualifiers={"from": parent_slots[wafer], "to": slot,
-                                        "wafer": wafer}))
         return tuple(emissions)
 
 

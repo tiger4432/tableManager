@@ -895,45 +895,6 @@
               }
             },
             "predicate": "register@1"
-          },
-          "in_slot": {
-            "bind": {
-              "occurred_at": {
-                "approval_status": "approved",
-                "column": "event_time",
-                "kind": "column"
-              },
-              "subject": {
-                "approval_status": "approved",
-                "entity_type": "lot_slot@1",
-                "keys": {
-                  "lot": {
-                    "approval_status": "approved",
-                    "column": "lot",
-                    "kind": "column"
-                  },
-                  "slot": {
-                    "approval_status": "approved",
-                    "kind": "column",
-                    "column": "slots"
-                  }
-                },
-                "kind": "entity"
-              },
-              "target": {
-                "approval_status": "approved",
-                "entity_type": "wafer@1",
-                "keys": {
-                  "wafer": {
-                    "approval_status": "approved",
-                    "column": "wafers",
-                    "kind": "column"
-                  }
-                },
-                "kind": "entity"
-              }
-            },
-            "predicate": "has_wafer@1"
           }
         }
       },
@@ -2082,6 +2043,101 @@
                     "approval_status": "approved",
                     "kind": "constant",
                     "value": "DTLotSlot"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lot_slot_wafer": {
+      "relation": "lot_slot_wafer",
+      "read": {
+        "unit": "row",
+        "identity": [
+          "lot_slot_wafer_key"
+        ],
+        "group_by": [],
+        "order_by": [
+          "lot_slot_wafer_key"
+        ],
+        "cursor": {
+          "columns": [
+            "lot_slot_wafer_key"
+          ]
+        },
+        "occurred_at": {
+          "column": "event_time",
+          "timezone": "Asia/Seoul"
+        }
+      },
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "input_columns": [
+          "lot",
+          "slot",
+          "wafer",
+          "event_type",
+          "event_time",
+          "lot_slot_wafer_key"
+        ],
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "prepare": {
+        "accepts_verified_join_rules": false,
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "inherit_virtual_join_rules": [],
+        "input_columns": [
+          "lot",
+          "slot",
+          "wafer",
+          "event_type",
+          "event_time",
+          "lot_slot_wafer_key"
+        ],
+        "output_columns": {}
+      },
+      "bind": {
+        "mappings": {
+          "seat-holds-wafer": {
+            "predicate": "has_wafer@1",
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "lot_slot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "lot"
+                  },
+                  "slot": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "slot"
+                  }
+                }
+              },
+              "target": {
+                "approval_status": "approved",
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "approval_status": "approved",
+                    "kind": "column",
+                    "column": "wafer"
                   }
                 }
               }
