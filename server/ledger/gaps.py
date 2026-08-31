@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Where the declaration says a link should be and the ledger has none.
 
-🔴 THIS MODULE NAMES NOTHING. `task/APPLICATION_GAP_SPEC.md` named every gap and gave each
+🔴 THIS MODULE NAMES NOTHING. `docs/spec/APPLICATION_GAP_SPEC.md` named every gap and gave each
 an action and an owner; `gap_names.json` is that table in machine-readable form, and this
 file looks names UP. A label written here would be a second authority, and the first one
 would go stale without anybody noticing.
@@ -201,7 +201,7 @@ def _refuse_unnamed(declaration, live, named):
         raise GapTableMismatch(
             "the declaration asks questions the spec has not named: "
             + "; ".join(sorted(set(missing)))
-            + ". Name them in task/APPLICATION_GAP_SPEC.md and add the rows to "
+            + ". Name them in docs/spec/APPLICATION_GAP_SPEC.md and add the rows to "
               "gap_names.json - do not name them here.")
 
 
@@ -296,7 +296,7 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
         if not asked:
             raise GapQuestionUnknown(
                 f"no gap is named {only!r}. The names come from "
-                f"task/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
+                f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
     node_sql = _nodes_of_type_sql().replace("{table}", schema.LEDGER_TABLE)
     has_sql = _has_predicate_sql().replace("{table}", schema.LEDGER_TABLE)
 

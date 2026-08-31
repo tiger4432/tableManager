@@ -326,7 +326,7 @@ def ledger_gap_catalogue(name: str = Query(None)):
     이 화면의 판별식이 「열고 3초 안에 끊을지 정한다」인데, 스물을 한꺼번에 세면 «30초»입니다.
     그래서 목록은 공짜로 주고 «펼 때» 값을 냅니다.
 
-    🔴 이름은 여기서 짓지 «않습니다». `task/APPLICATION_GAP_SPEC.md` 가 정본이고
+    🔴 이름은 여기서 짓지 «않습니다». `docs/spec/APPLICATION_GAP_SPEC.md` 가 정본이고
     `ledger/gap_names.json` 이 그 기계 판형입니다. 선언과 표가 어긋나면 이 라우트는
     «거절»합니다 — 이름 없는 결측을 «이웃 이름»으로 답하면 화면이 멀쩡해 보이면서
     한 종류가 통째로 빠지고, 그건 출력을 봐서는 못 알아챕니다.
