@@ -22,7 +22,7 @@ export function updateSelectedCellUI() {
     return;
   }
 
-  const isSystem = ['created_at', 'updated_at', 'row_id', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(state.selectedCell.colId);
+  const isSystem = ['created_at', 'updated_at', 'row_id'].includes(state.selectedCell.colId);
   // [Virtual join] The same read-only slot, filled with the one thing the write refusal
   // cannot say: WHICH table to go and fix. No new element — this line already existed for
   // system columns and only ever shows for the one selected cell.
@@ -146,7 +146,7 @@ export async function applyValueToSelectedRange(newValue) {
 
   cellsToUpdate.forEach(cell => {
     const { rowIndex, colId } = cell;
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
     if (isSystem) return;
     // [Virtual join] The third write funnel that builds updates from grid column ids
     // (with the two paste branches and the clear path in clipboard.js). Ctrl+Enter bulk

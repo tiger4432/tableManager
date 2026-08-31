@@ -1408,7 +1408,7 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
   if (state.dragStartCell && state.dragEndCell) {
     const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];

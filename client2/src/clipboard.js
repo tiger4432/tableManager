@@ -413,7 +413,7 @@ export function setupClipboardHandlers() {
 
         targetCells.forEach(cell => {
           const { rowIndex, colId } = cell;
-          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
+          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
           if (isSystem) return;
           // [Virtual join] 🔴 THE GATE HERE IS GRID PRESENCE, NOT `currentColumns`. This
           // funnel builds its updates from grid column ids and never consults
@@ -501,7 +501,7 @@ export function setupClipboardHandlers() {
             if (targetColIndex >= visibleCols.length) return;
 
             const colId = visibleCols[targetColIndex];
-            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(colId);
+            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
             if (isSystem) return;
             // [Virtual join] Same guard as the 1x1 branch, and this is the branch that
             // matters most: an MxN paste walks the VISIBLE columns from the anchor, so a
@@ -749,7 +749,7 @@ export async function clearSelectedCells() {
 
   if (cellsToClear.length === 0) return;
 
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
   const updateMapByRow = {};
 
   cellsToClear.forEach(cell => {

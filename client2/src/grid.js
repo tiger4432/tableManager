@@ -416,8 +416,18 @@ export function buildColumnDefs() {
   // Read ONCE per build, not per column: it is the same Map for every column and the rule
   // must not be able to change halfway down the list.
   const fillTargets = fillTargetOrdinals();
-  const columnDefs = state.currentColumns.map((col, index) => {
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'].includes(col);
+  // 🔴 은퇴한 기능의 잔해는 «만들지 않습니다» (숨기는 것이 아니라). 그래프 동기화는 서버가
+  //    은퇴시켰고(`/graph/mapping-summary` -> 410 Gone), `main.js` 의 GRAPH_SYNC_RETIRED 는
+  //    켤 경로가 없는 «리터럴»입니다. 그런데 스키마는 아직 셋을 실어 보내서 44개 표 전부가
+  //    이 셋을 그렸습니다 -- 이모지까지 달고.
+  //    ⚠️ 지우는 것은 «화면»뿐입니다. DB 컬럼도, 서버가 이것을 시스템 컬럼으로 다루는 것도
+  //       그대로입니다 (main.py:2335 · crud.py:2570). `push_columns.js` 는 그 «서버 목록»을
+  //       비추는 계약이라 셋을 그대로 들고 있어야 합니다 -- 거기서 빼면 맵 푸시 게이트가
+  //       이 컬럼들을 「푸시가 파괴할 데이터 컬럼」으로 세게 됩니다.
+  const retired = ['is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+  const shown = state.currentColumns.filter((col) => !retired.includes(col));
+  const columnDefs = shown.map((col, index) => {
+    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
     const colTypes = state.currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
 
@@ -466,14 +476,6 @@ export function buildColumnDefs() {
         if (col === 'updated_at') return params.data.updated_at;
 
         const val = rawCellValue(params.data, col);
-
-        // 그래프 동기화 컬럼 가시성 향상 이모지 매핑
-        if (col === 'is_graph_synced') {
-          return (val === true || String(val).toLowerCase() === 'true') ? '🟢 Synced' : '🔴 Pending';
-        }
-        if (col === 'needs_graph_rollback') {
-          return (val === true || String(val).toLowerCase() === 'true') ? '⚠️ Rollback' : '➖';
-        }
 
         return colType === 'number' ? numericDisplayValue(val) : val;
       },
