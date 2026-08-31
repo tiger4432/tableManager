@@ -51,11 +51,11 @@ import vm from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
-const SRC = readFileSync(SRC_PATH, 'utf8');
+const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 // The response bound lives in config.js, so it is READ from there rather than typed here — a
 // harness that hardcoded 15000 would keep passing after someone retuned the constant.
 const CFG_PATH = join(ROOT, 'client2', 'src', 'config.js');
-const CFG = readFileSync(CFG_PATH, 'utf8');
+const CFG = readFileSync(CFG_PATH, 'utf8').replace(/\r\n/g, '\n');
 const verbose = process.argv.includes('--verbose');
 
 function die(msg) {

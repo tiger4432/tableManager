@@ -550,7 +550,7 @@ function fillRulesHittingRank(cssText) {
   // added here deliberately rather than silently escaping the check.
   const SHEETS = ['map_editor2.css', 'tokens.css'];
   for (const name of SHEETS) {
-    const text = readFileSync(join(here, '..', 'src', name), 'utf8');
+    const text = readFileSync(join(here, '..', 'src', name), 'utf8').replace(/\r\n/g, '\n');
     const hits = fillRulesHittingRank(text);
     eq(hits.length, 0,
       `J1 ${name} declares no \`fill\` that could override the injected ramp colour `

@@ -44,12 +44,12 @@ function die(msg) {
 // Override only to re-baseline deliberately.
 const BASE_REF = process.env.MAP_HARNESS_BASE_REF || '7524d00d43fab05f3221c228fc63d163755c91b5';
 
-const WORK_MAP = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8');
-const WORK_DOE = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
+const WORK_MAP = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8').replace(/\r\n/g, '\n');
+const WORK_DOE = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8').replace(/\r\n/g, '\n');
 // [MEDIUM-2] the copy path now WRITES plain text with tsv.js, the same module the paste path
 // READS with, so those symbols are module IMPORTS rather than map_editor locals. Loaded the
 // same way company_roundtrip_harness.mjs loads them.
-const WORK_TSV = readFileSync(join(ROOT, 'client2', 'src', 'tsv.js'), 'utf8');
+const WORK_TSV = readFileSync(join(ROOT, 'client2', 'src', 'tsv.js'), 'utf8').replace(/\r\n/g, '\n');
 let BASE_MAP;
 try {
   BASE_MAP = execFileSync('git', ['show', `${BASE_REF}:client2/src/map_editor.js`],

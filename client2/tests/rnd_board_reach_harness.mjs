@@ -30,7 +30,7 @@ const LF = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13, 10);
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
-const BODY = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'rnd_board_reach.json'), 'utf8'));
+const BODY = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'rnd_board_reach.json'), 'utf8').replace(/\r\n/g, '\n'));
 
 let ran = 0;
 let failedList = [];
@@ -44,7 +44,7 @@ const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${go
 
 async function loadModules(mutate = {}) {
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').split(CRLF).join(LF);
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n').split(CRLF).join(LF);
     const fn = mutate[file];
     const out = fn ? fn(text) : text;
     if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);

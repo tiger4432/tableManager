@@ -44,9 +44,9 @@ const srcUrl = (rel) => pathToFileURL(path.join(SRC_DIR, rel)).href;
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const FIX_07 = JSON.parse(readFileSync(
-  path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot07.json'), 'utf8'));
+  path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot07.json'), 'utf8').replace(/\r\n/g, '\n'));
 const FIX_03 = JSON.parse(readFileSync(
-  path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot03.json'), 'utf8'));
+  path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot03.json'), 'utf8').replace(/\r\n/g, '\n'));
 
 // ── loading the modules under test, with an optional mutation per file ─────────────
 //
@@ -60,7 +60,7 @@ async function loadModules(mutate = {}) {
   // the scan was reading the shipped file while the suite drove the mutated one.
   const sources = {};
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8')
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n')
       .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     sources[file] = fn ? fn(text) : text;

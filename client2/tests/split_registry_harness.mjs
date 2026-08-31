@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import vm from 'node:vm';
 
 const SRC_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'map_editor.js');
-const src = readFileSync(SRC_PATH, 'utf8');
+const src = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 // ── 소스에서 함수/상수 블록 추출 (brace matching) ──
 function extractFunction(name) {

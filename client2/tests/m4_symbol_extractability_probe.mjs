@@ -40,12 +40,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const HARNESS = join(ROOT, 'contracts', 'map_seam', 'client_harness.mjs');
 const VECTORS = join(ROOT, 'contracts', 'map_seam', 'vectors.json');
-const MAP_SRC = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8');
-const spec = JSON.parse(readFileSync(VECTORS, 'utf8'));
+const MAP_SRC = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8').replace(/\r\n/g, '\n');
+const spec = JSON.parse(readFileSync(VECTORS, 'utf8').replace(/\r\n/g, '\n'));
 
 // ── The harness's OWN slicer, lifted rather than reimplemented ──────────────────────────
 const sliceFunction = (() => {
-  const src = readFileSync(HARNESS, 'utf8');
+  const src = readFileSync(HARNESS, 'utf8').replace(/\r\n/g, '\n');
   const m = /\nfunction sliceFunction\(source, name\) \{[\s\S]*?\n\}/.exec(src);
   if (!m) {
     console.error('PROBE FAILURE: could not lift sliceFunction out of client_harness.mjs.');

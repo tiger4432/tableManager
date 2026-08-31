@@ -67,7 +67,7 @@ const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${go
 
 async function loadModules(mutate = {}) {
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').split(CRLF).join(LF);
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n').split(CRLF).join(LF);
     const fn = mutate[file];
     const out = fn ? fn(text) : text;
     if (fn && out === text) throw new Error(`mutation anchor is GONE: ${file}`);

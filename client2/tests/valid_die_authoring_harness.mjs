@@ -39,13 +39,13 @@ function sliceBalanced(src, startIdx, open, close) {
   return null;
 }
 
-const SRC = readFileSync(SRC_MAP, 'utf8');
+const SRC = readFileSync(SRC_MAP, 'utf8').replace(/\r\n/g, '\n');
 // The 7b canonicalisation (canonIntString / canonicalKeyValue / composeMapId /
 // decomposeMapKey / canonicalMapKey + the two regexes) lives in its own module since the
 // map-key extraction round. It is sliced from THERE now; the slices and everything scored
 // with them are unchanged. `keyFn` dies just as loudly as `fn` if a name goes missing.
 const SRC_KEY_PATH = join(HERE, '..', 'src', 'map_key.js');
-const SRC_KEY = readFileSync(SRC_KEY_PATH, 'utf8');
+const SRC_KEY = readFileSync(SRC_KEY_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 function sliceFn(src, path, name) {
   const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);

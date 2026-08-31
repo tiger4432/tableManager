@@ -872,7 +872,7 @@ const CATALOG = {
 //    about what it does and does not contain. Without this, `decisionKeyOf` could be perfect
 //    and unused: a landed axis with zero consumers is the failure this project keeps paying for.
 {
-  const entry = readFileSync(new URL('../src/map_editor2.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../src/map_editor2.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   ok(/import \{[^}]*decisionKeyOf[^}]*\} from '\.\/map2\/view_model\.js'/.test(entry),
      'L1 the entry imports the declaration-driven composer from the pure module');
   const calls = (entry.match(/decisionKeyOf\(/g) || []).length;
