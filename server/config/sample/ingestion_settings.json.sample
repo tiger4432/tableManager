@@ -43,6 +43,9 @@
     }
   ],
 
+  "_ingestion_pace_doc": "[Pacing] 파일 적재가 «청크 사이»에서 얼마나 쉬는지. server/pacing.json 의 이름 중 하나입니다(fast | slow | trickle). 🔴 기본은 «fast» = 이 손잡이가 생기기 «전»과 정확히 같습니다 — 상한 없음, 쉼 0. 이 키가 없거나 파일이 없으면 그대로 fast 입니다. slow/trickle 은 청크를 커밋한 «직후»에 쉽니다(오프셋이 이미 내려간 자리라 재개가 정확하고, 쉬는 비용이 운영자가 «고른» 벽시계 시간뿐입니다). 언제 쓰나: 적재가 도는 동안 화면·API 가 같이 느려질 때. 인제션은 «피해자이면서 가해자»입니다 — 자기도 밀리고 도는 동안 남도 밉니다. ⚠️ 오타는 «전속력»으로 돕니다(경고 로그 1회) — 설정 오타로 적재 자체를 멈추면 막으려던 것보다 큰 장애가 되기 때문입니다. 그래서 켠 뒤에는 로그로 «걸렸는지» 확인하십시오. 원장 백필도 «같은 표»를 읽습니다(그쪽은 실행마다 고릅니다).",
+  "ingestion_pace": "fast",
+
   "_enrichment_auto_confirm_doc": "[Enrichment ①] 자동 확정의 전역 킬 스위치와 작업단위 키 예산. enabled=false면 규칙별 auto_confirm이 true라도 전부 멈춥니다(기본 true = 막지 않음, 규칙별 opt-in은 여전히 필요). max_keys는 한 작업단위에서 프로브할 판단키 개수 상한입니다(기본 200) — 🔴 이것은 **키 개수** 예산이고 읽기 하나의 폭과 무관합니다. 절단(truncated) 거절을 쫓고 있다면 이 값이 아니라 아래 enrichment_read_caps를 보세요.",
   "enrichment_auto_confirm_enabled": true,
   "enrichment_auto_confirm_max_keys": 200,

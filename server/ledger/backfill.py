@@ -823,40 +823,28 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     return result
 
 
-#: The pacing table. Values live in a FILE because the chain's equivalents do not: its
-#: `OUTBOX_PURGE_MAX_CHUNKS` and `SWEEP_INTERVAL` are constants in
-#: `chain_ingestion_worker.py`, and an operator whose screen is crawling cannot edit a
-#: constant and restart the server - that restart is the thing this round exists to remove.
-#: The SHAPE is copied from the chain (a cap per cycle, then yield); the hardcoding is not.
-PACING_PATH = Path(__file__).with_name("pacing.json")
-DEFAULT_PACE = "fast"
+def resolve_pace(name, paces=None):
+    """The shared pacing table, with this module's refusal shape.
+
+    🔴 THE TABLE MOVED OUT when ingestion became the second caller - one table, every long
+    job. What stays here is the translation of its refusal into `LedgerSetupError`, because
+    every other refusal on this path is one and a caller that had to catch two exception
+    types for "you asked for something undeclared" would eventually catch only one.
+    """
+    from .setup import LedgerSetupError
+
+    import pacing
+
+    try:
+        return pacing.resolve(name, paces)
+    except pacing.UnknownPace as exc:
+        raise LedgerSetupError("unknown_pace", "pace", str(exc)) from exc
 
 
 def load_paces(path=None):
-    return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
+    import pacing
 
-
-def resolve_pace(name, paces=None):
-    """-> (pages_per_cycle, rest_seconds). Refuses an unknown name BY NAME.
-
-    🔴 A TYPO MUST NOT SILENTLY MEAN "fast". An operator who asked for `slow` because the
-    service is struggling, and got full speed because they wrote `slowly`, would watch the
-    thing they were trying to prevent and have no way to tell it from the pace not working.
-    """
-    # Imported inside, like every other raise site in this module: `ledger.setup` imports
-    # from here, so a module-level import is a cycle.
-    from .setup import LedgerSetupError
-
-    paces = paces or load_paces()
-    if name is None:
-        name = DEFAULT_PACE
-    if name not in paces:
-        raise LedgerSetupError(
-            "unknown_pace", "pace",
-            f"'{name}' is not a declared pace. Declared: {', '.join(sorted(paces))} "
-            f"(ledger/pacing.json)")
-    chosen = paces[name]
-    return chosen.get("pages_per_cycle"), float(chosen.get("rest_seconds") or 0)
+    return pacing.load_paces(path)
 
 
 def rows_past_cursor(engine, setup, source, limit=DEFAULT_FETCH_ROWS):

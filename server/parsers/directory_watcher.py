@@ -2611,6 +2611,22 @@ class IngestionHandler(FileSystemEventHandler):
                     f"of {total_rows:,} — {filename}"
                 )
         chunk_index = (processed_rows // batch_size) if batch_size else 0
+        # 🔴 THE SAME HANDLE THE LEDGER BACKFILL GOT, READ FROM THE SAME TABLE. Ingestion is
+        # the second caller, which is when this repo lifts something into a template - and
+        # ingestion is both victim and cause here: it slows down while it slows others down.
+        # Absent knob means `fast`, which is exactly what this did before, so a box that
+        # never configures anything is unchanged.
+        import pacing as _pacing
+        try:
+            _chunks_per_cycle, _rest_seconds = _pacing.resolve(
+                load_ingestion_settings().get("ingestion_pace"))
+        except _pacing.UnknownPace as _pace_err:
+            # A typo must not quietly mean full speed - somebody set this BECAUSE the box
+            # was struggling - but it must not stop the ingestion either: refusing to load
+            # files over a settings typo is a bigger outage than the one being prevented.
+            logger.warning("[Ingestion] %s - running at full speed until it is fixed",
+                           _pace_err)
+            _chunks_per_cycle, _rest_seconds = None, 0
 
         # [M3] Map-meta auto-registration collector. Constructed HERE so the
         # enable-knob snapshot shares the file-boundary discipline (D1) with the
@@ -2708,6 +2724,14 @@ class IngestionHandler(FileSystemEventHandler):
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
 
                     db.commit()
+
+                    # Between chunks, immediately after the commit that made this chunk
+                    # durable and its offset with it: the same boundary the ledger yields
+                    # at, and for the same reason - resuming from here is exact, so the
+                    # pause costs nothing but the wall clock the operator chose to spend.
+                    if _chunks_per_cycle and _rest_seconds and (
+                            chunk_index % _chunks_per_cycle == 0):
+                        time.sleep(_rest_seconds)
 
                     total_changed += len(changed_cells)
                     if created_logs:

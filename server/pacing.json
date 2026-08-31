@@ -1,24 +1,25 @@
 {
-  "_why_this_is_a_file_and_not_constants": "The brief's S1: the chain's own pacing numbers (OUTBOX_PURGE_CHUNK, OUTBOX_PURGE_MAX_CHUNKS, SWEEP_INTERVAL) are hardcoded in chain_ingestion_worker.py, and the order was to copy the SHAPE without copying that. An operator who needs a backfill to stop crowding the database at 2am cannot edit a constant and restart the server - that is the very restart this round exists to remove.",
+  "_one_table_for_every_long_job": "It lived under ledger/ until a second caller appeared. Lifting it then is this repo's rule about templates - earlier and the layer has one consumer, later and the second caller writes its own copy. A unit is a page for the ledger and a chunk for ingestion; the table does not need to know which.",
+  "_why_this_is_a_file_and_not_constants": "The brief's S1 (2026-08-31): the chain's own pacing numbers (OUTBOX_PURGE_CHUNK, OUTBOX_PURGE_MAX_CHUNKS, SWEEP_INTERVAL) are hardcoded in chain_ingestion_worker.py, and the order was to copy the SHAPE without copying that. An operator who needs a backfill to stop crowding the database at 2am cannot edit a constant and restart the server - that is the very restart this round exists to remove.",
   "_default_is_todays_behaviour": "S3: `fast` must be exactly what the backfill did before this existed - no cap, no rest - because changing the default is a different decision and it belongs to the owner. Slowing down is something an operator CHOOSES per run.",
-  "_the_shape_is_the_chain_s": "pages_per_cycle is the chain's max_chunks; rest_seconds is what it gets instead of the chain's sweep interval, because a backfill runs to completion inside one call rather than waking on a timer. Both are per RUN, chosen by whoever starts it.",
+  "_the_shape_is_the_chain_s": "units_per_cycle is the chain's max_chunks; rest_seconds is what it gets instead of the chain's sweep interval, because a backfill runs to completion inside one call rather than waking on a timer. Both are per RUN, chosen by whoever starts it.",
   "paces": {
     "fast": {
       "label": "빠르게 — 지금까지와 같습니다",
       "when": "급할 때. 서비스가 한가하거나, 이 작업이 끝나야 다음이 되는 때",
-      "pages_per_cycle": null,
+      "units_per_cycle": null,
       "rest_seconds": 0
     },
     "slow": {
       "label": "천천히 — 서비스 중에",
       "when": "화면이나 API 가 같이 느려지면. 오래 걸리지만 남을 덜 밉니다",
-      "pages_per_cycle": 5,
+      "units_per_cycle": 5,
       "rest_seconds": 1.0
     },
     "trickle": {
       "label": "아주 천천히 — 밤새 돌릴 때",
       "when": "끝나는 시각보다 «남에게 안 걸리는 것»이 중요할 때",
-      "pages_per_cycle": 1,
+      "units_per_cycle": 1,
       "rest_seconds": 3.0
     }
   }
