@@ -412,6 +412,11 @@ export function applyFillTargetHeaders() {
   state.gridApi.setGridOption('columnDefs', buildColumnDefs());
 }
 
+let selectionListener = null;
+
+/** 선택이 바뀔 때 불릴 함수 하나. 화면이 자기 부품을 연결합니다. */
+export function registerSelectionListener(fn) { selectionListener = fn || null; }
+
 export function buildColumnDefs() {
   // Read ONCE per build, not per column: it is the same Map for every column and the rule
   // must not be able to change halfway down the list.
@@ -909,6 +914,9 @@ export function renderGrid(initialRows) {
       }
     },
     rowSelection: 'multiple',
+    // 선택이 바뀌었다는 «신호»만 냅니다. 누가 듣는지는 화면이 정합니다 --
+    // 이 파일이 배너를 알면 그리드가 헤더를 아는 것이 됩니다.
+    onSelectionChanged: () => { if (selectionListener) selectionListener(); },
     onGridReady: (event) => {
       state.gridApi = event.api;
       updateVisibleColIndexMap();

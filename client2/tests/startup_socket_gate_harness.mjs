@@ -259,7 +259,10 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     // section C -- which is how this line came to be written. They return null so the
     // `if (sourceLabel)` / `if (rescopeMenu)` calls after the awaits stay out of the way.
     initGridSourceLabel: () => null,
-    initGridRescopeMenu: () => null,
+    // The re-translate moved to the header banner, so the name `init()` calls moved with it --
+    // and the banner needs to hear about selection, which is a third call from the same line.
+    initRedoBanner: () => null,
+    registerSelectionListener: noop,
     resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
     showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
     getLocalTimeString: () => '', updatePageCacheOnUpsert: noop, updatePageCacheOnDelete: noop,
@@ -518,8 +521,8 @@ const SITE_SOCKET_LAST = [
     // The tail of `init()` is what this site anchors on, and it has moved once already
     // (two setRelation calls landed after the awaits). If it moves again this site goes
     // INERT and says so out loud, which is the whole point of anchoring on the code.
-    find: '  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);\n}',
-    repl: '  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);\n  initWebSocket();\n}' },
+    find: '    redoBanner.setBusinessKey(state.currentBusinessKey);\n  }\n}',
+    repl: '    redoBanner.setBusinessKey(state.currentBusinessKey);\n  }\n  initWebSocket();\n}' },
 ];
 const SITE_HEALTH_CATCH_UNGUARDED = {
   file: 'api',

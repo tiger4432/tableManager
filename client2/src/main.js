@@ -17,7 +17,7 @@ import {
 } from './api.js';
 import { initWebSocket } from './websocket.js';
 import { GridSourceLabel } from './grid_source_label.js';
-import { GridRescopeMenu } from './grid_rescope_menu.js';
+import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
 import {
   loadHistory,
@@ -41,7 +41,8 @@ import {
   updateViewModeUI,
   updatePaginationUI,
   ensureCellObject,
-  renderGrid
+  renderGrid,
+  registerSelectionListener,
 } from './grid.js';
 import {
   showToast,
@@ -138,7 +139,10 @@ async function init() {
   // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
   // `setRelation` 한 번으로 문장이 확정됩니다.
   sourceLabel = initGridSourceLabel();
-  rescopeMenu = initGridRescopeMenu();
+  redoBanner = initRedoBanner();
+  // 버튼의 활성/비활성은 «선택»이 정합니다. 그 신호를 여기서 부품에 잃습니다 --
+  // 그리드는 배너를 모르고, 배너는 그리드를 모릅니다.
+  registerSelectionListener(() => { if (redoBanner) redoBanner.selectionChanged(); });
   installReferenceKeyboardIsolation();
   installAuditFilters();
   initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
@@ -157,7 +161,12 @@ async function init() {
   // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
   //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
   if (sourceLabel) sourceLabel.setRelation(state.currentTable);
-  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);
+  if (redoBanner) {
+    redoBanner.setRelation(state.currentTable);
+    // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
+    //  「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
+    redoBanner.setBusinessKey(state.currentBusinessKey);
+  }
 }
 
 // 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고
@@ -180,7 +189,7 @@ async function loadLedgerDeclaration() {
 
 // 그리드 머리의 원장 소스 라벨. 자기 div 하나를 받고, 표 이름은 «화면이» 알려 줍니다.
 let sourceLabel = null;
-let rescopeMenu = null;
+let redoBanner = null;
 function initGridSourceLabel() {
   const host = document.getElementById('grid-source-label-host');
   if (!host) return null;
@@ -193,14 +202,14 @@ function initGridSourceLabel() {
 }
 
 /**
- * 컨텍스트 메뉴의 「다시 번역」 줄들. 🔴 이 부품은 실행하지 «않습니다» -- 범위를 조립해
- * 어드민 블록으로 넘길 뿐입니다 (총괄 판정: 고르는 곳은 그리드, 실행하는 곳은 어드민).
- * 그래서 그리드 페이지는 토큰을 «여전히 모릅니다».
+ * 헤더의 「다시 돌리기」 버튼 둘. 🔴 이 부품은 실행하지 «않습니다» -- 그룹을 조립해
+ * 어드민 블록으로 넘길 뿐입니다 (총괄 판정 ⓐ, 2026-08-31: 고르는 곳은 그리드,
+ * 수와 실행은 어드민). 그래서 그리드 페이지는 토큰을 «여전히 모릅니다».
  */
-function initGridRescopeMenu() {
-  const host = document.getElementById('rescope-menu-host');
+function initRedoBanner() {
+  const host = document.getElementById('redo-banner-host');
   if (!host) return null;
-  const part = new GridRescopeMenu(host, {
+  const part = new RedoBanner(host, {
     doc: document,
     getSelection: () => (state.gridApi ? state.gridApi.getSelectedRows() : []),
     // 🔴 이 그리드의 행은 «봉투»입니다 (`{ data: { col: { value } } }`) -- `grid.js` 의
@@ -211,6 +220,7 @@ function initGridRescopeMenu() {
       if (cell && typeof cell === 'object' && 'value' in cell) return cell.value;
       return row ? row[column] : undefined;
     },
+    businessKey: state.currentBusinessKey || null,
     handOff: (payload) => {
       if (!putRescopeHandoff(payload)) {
         // 저장소가 막히면 «조용히 넘어간 척» 하지 않습니다. 그 침묵이 어드민에서
@@ -218,7 +228,6 @@ function initGridRescopeMenu() {
         showToast('could not hand the scope over — browser storage is blocked', 'error');
         return;
       }
-      elements.contextMenu.style.display = 'none';
       window.location.href = '/admin.html';
     },
   });
@@ -407,7 +416,11 @@ function setupEventListeners() {
       countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
       if (sourceLabel) sourceLabel.setRelation(table);
-      if (rescopeMenu) rescopeMenu.setRelation(table);
+      if (redoBanner) {
+        redoBanner.setRelation(table);
+        // 업무 키는 표마다 다릅니다. 체인은 그 값들로 고르므로 표가 바뀌면 같이 바뀝니다.
+        redoBanner.setBusinessKey(state.currentBusinessKey);
+      }
     }
   });
 
@@ -809,9 +822,7 @@ function setupEventListeners() {
   if (gridContainer) {
     gridContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      // 🔴 «열 때» 다시 그립니다. 안 그러면 지난번에 그린 선택 수가 남아, 메뉴가 지금 고른
-      //    것이 아닌 것에 대해 말하게 됩니다 -- 「같은 모양을 두 번 그리면 자리 이동을 못 본다」.
-      if (rescopeMenu) rescopeMenu.render();
+      // 다시 돌리는 줄은 이제 이 메뉴에 «없습니다» (소유자 지시). 배너로 옮겼습니다.
     });
     gridContainer.addEventListener('mouseleave', () => {
       if (state.isDraggingRange) {

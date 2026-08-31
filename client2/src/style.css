@@ -2885,10 +2885,15 @@ body.resizing-active .history-sidebar {
 
 /* 「다시 번역」 줄들. 자기 자리(li#rescope-menu-host) 안에만 그립니다. */
 .rescope-menu-host { padding: 0; }
-.rescope-menu { list-style: none; margin: 0; padding: 0; }
-.rescope-menu__item { padding: 6px 12px; cursor: pointer; }
-.rescope-menu__item:hover { background: rgba(127,127,127,0.14); }
-/* 죽은 줄은 «죽은 것처럼» 보입니다 — 눌러도 되는 것처럼 보이는 줄은 화면이 하는 거짓말입니다. */
-.rescope-menu__item.is-empty { opacity: 0.5; cursor: default; }
-.rescope-menu__item.is-empty:hover { background: none; }
-.rescope-menu__note { padding: 6px 12px; opacity: 0.6; font-size: 12px; }
+.redo-banner { display: inline-flex; gap: 6px; position: relative; }
+/* 그룹 목록은 버튼 밑에 붙어 떨어집니다 -- 새 창도 모달도 아닙니다. */
+.redo-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 900;
+  min-width: 300px; padding: 10px 12px;
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: 8px; font-size: 12px;
+}
+.redo-panel__group { padding: 3px 0; }
+.redo-panel__note { padding: 3px 0; opacity: 0.7; }
+.redo-panel__go { margin-top: 8px; }
+

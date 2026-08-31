@@ -88,6 +88,9 @@
             >
               ⚡ Graph Sync
             </button>
+            <!-- 다시 돌리는 버튼 둘. 선택은 그리드에서 일어나므로 우클릭이 아니라
+                 «배너»입니다 -- 선택 상태를 보고 활성/비활성이 됩니다 (소유자 지적 두 번). -->
+            <span id="redo-banner-host"></span>
             <button
               id="trace-btn"
               class="glass-btn"
@@ -594,8 +597,6 @@
           <li id="menu-delete">🗑️ 선택된 행 삭제</li>
           <!-- 키를 라벨에 적어둔다: 평문 HTTP에서는 클릭만으로 클립보드를 읽을 수 없어
              이 항목은 다음 붙여넣기를 예약할 뿐이다. 단축키가 곧 본동선이다. -->
-          <!-- 「다시 번역」 줄들의 자기 자리. 부품이 이 안에만 그립니다 (UI 상설) -->
-          <li id="rescope-menu-host" class="rescope-menu-host"></li>
           <li id="menu-smart-paste">
             📋 파서로 붙여넣기 (Smart Paste) &nbsp;<span style="opacity: 0.6"
               >Ctrl+Shift+V</span
