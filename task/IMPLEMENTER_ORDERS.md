@@ -21598,3 +21598,24 @@ graph_orphans 가 지도에 «17일» 살아 있었습니다 (해제 08-14, 모�
 ⚠️ 셋 다 「고치면 끝」입니다. 다만 ①은 «후계를 뭐라 적을지»가 필요합니다 —
    지금 그 자리의 후계가 무엇인지 확인해서 적으시고, 없으면 「후계 없음」이라 적으십시오.
    틀린 주소를 적는 것보다 «없다»가 낫습니다.
+
+---
+
+# 🔴 [총괄] **명세는 옮겨졌는데 «거절문이 옛 주소로 보냅니다»** (2026-08-31 13:0x)
+
+```
+이전 완료   docs/spec/APPLICATION_GAP_SPEC.md  (내용 동일 · DOC_OWNERSHIP 갱신됨)
+🔴 남은 것  server/ledger/gaps.py 가 «세 곳»에서 옛 경로를 가리킵니다
+   :4    「task/APPLICATION_GAP_SPEC.md named every gap …」
+   :204  거절문 — 「Name them in task/APPLICATION_GAP_SPEC.md …」
+   :299  거절문 — 「task/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps …」
+=> 거절문이 «없는 파일»로 사람을 보냅니다. 그리고 거절문은 «막혔을 때만» 읽히는 문장이라,
+   틀려도 평소엔 아무도 모릅니다
+```
+🔴 **오늘 아침 `models.py:520` 과 «같은 부류»입니다** — 「후계 주소가 틀려 독자를 404 로 보냈다」.
+   그날 그 실수를 코드가 «스스로 적어 두었는데», 하루에 두 번 났습니다.
+```
+할 것   세 곳을 docs/spec/APPLICATION_GAP_SPEC.md 로
+⚠️ 그리고 파일을 «옮기는» 라운드는 «가리키는 곳»을 같이 세십시오 —
+   옮긴 쪽만 보면 이렇게 됩니다. grep 한 번이면 끝나는 일입니다
+```
