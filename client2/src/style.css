@@ -2892,28 +2892,3 @@ body.resizing-active .history-sidebar {
 .rescope-menu__item.is-empty { opacity: 0.5; cursor: default; }
 .rescope-menu__item.is-empty:hover { background: none; }
 .rescope-menu__note { padding: 6px 12px; opacity: 0.6; font-size: 12px; }
-
-/* ── 도는 것들 ─────────────────────────────────────────────────────────────
-   🔴 말을 안 씁니다. 막대가 「얼마나」를, 색이 「어떤 상태인가」를 말합니다.
-      전체를 아는 것   찬 막대 + %
-      전체를 모르는 것  «흐르는» 막대 — 폭이 아니라 «움직임»이 「도는 중」을 말합니다.
-                      가짜 %를 그리는 것보다 정직하고, 글자보다 짧습니다
-      멈추는 중        색이 죽습니다. 줄은 «남아 있습니다» */
-.running-list { display: flex; flex-direction: column; gap: 4px; }
-.running-row { display: grid; grid-template-columns: minmax(0,1fr) 150px 32px;
-  align-items: center; gap: 8px; font-size: 12px; }
-.running-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.running-progress { display: flex; align-items: center; gap: 6px; }
-.running-bar { flex: 1; height: 6px; border-radius: 3px; overflow: hidden;
-  background: rgba(127,127,127,0.22); position: relative; }
-.running-bar__fill { display: block; height: 100%; background: var(--accent, #4c9be8); }
-/* 전체를 모를 때: 폭을 «주장하지 않고» 움직임만 보입니다. */
-.running-bar.is-unknown .running-bar__fill { width: 35%; animation: running-slide 1.4s linear infinite; }
-@keyframes running-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-.running-pct { min-width: 34px; text-align: right; opacity: 0.75; font-variant-numeric: tabular-nums; }
-.running-elapsed { opacity: 0.5; font-variant-numeric: tabular-nums; }
-.running-act { text-align: right; }
-.running-x { padding: 0 6px; line-height: 1.4; opacity: 0.7; }
-.running-x:hover { opacity: 1; }
-.running-row.is-stopping { opacity: 0.45; }
-.running-row.is-stopping .running-bar__fill { background: var(--text-dim, #888); animation: none; }

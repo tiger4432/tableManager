@@ -203,8 +203,8 @@ const MUTANTS = [
   { id: 'M6', what: 'the label prints the relation instead of the declared source name',
     catches: 'B1',
     mutate: (s) => s.replace(
-      '    name.textContent = `원장 소스 — ${row.source}`;',
-      '    name.textContent = `원장 소스 — ${this.relation}`;') },
+      '    name.textContent = `ledger source — ${row.source}`;',
+      '    name.textContent = `ledger source — ${this.relation}`;') },
 ];
 
 const result = await suite(await loadModule());

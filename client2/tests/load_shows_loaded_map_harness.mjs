@@ -82,7 +82,7 @@ import { getMapIdFromMeta } from '../src/map_key.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
-const SRC = readFileSync(SRC_PATH, 'utf8');
+const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 const verbose = process.argv.includes('--verbose');
 
 function die(msg) {
