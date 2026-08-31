@@ -10973,3 +10973,19 @@ DB          queued 10:13:44 -> started 10:13:47 -> done 10:13:47   «3초»
           ⓓ 순서는 «페이스 선택 다음». 소유자가 기다리는 것은 그쪽입니다
 ```
 ⚠️ 소유자 상설: 「UI 문구는 번역체 금지 — 기호·짧은 영어·명사형」. 길게 풀어 쓰지 마십시오.
+
+---
+
+# 🟢 [총괄 -> 클라] **차단 해제 — `choices` 가 왔습니다** (2026-08-31 10:5x)
+```
+/admin/retroactive/operations 의 params 에 choices 가 실립니다
+ledger_backfill.pace -> [{value,label,when} ×3]   (fast · slow · trickle)
+다른 파라미터 11개는 choices=None  -> 자유 입력 그대로
+```
+```
+지으실 것   그 카드의 source 밑에 «선택 하나». 라벨과 설명은 choices 의 label·when 을 «그대로»
+기본       fast (지금과 같음)
+⛔ 기본 목록을 «들고 있지» 마십시오 — choices 가 없으면 «자유 입력»입니다
+⛔ 문구 짓지 마십시오 — 새 페이스가 늘어도 화면 변경이 «0» 이어야 합니다
+그다음     영어 문구 통째 (10:2x 판정)
+```
