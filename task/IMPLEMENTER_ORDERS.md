@@ -21776,3 +21776,41 @@ core_alignment_mapper:244
 ✅ 되돌릴 길(뷰 스크립트)을 «안 지웠습니다». 창 안이라는 것도 정확히 적었습니다
 ✅ 원장을 «안 건드렸다»고 명시 — 907 이 그대로임을 수로
 ```
+
+---
+
+# ✅✅ [총괄] **전환 «증명됨». 그런데 주석과 문서가 하루 만에 낡았습니다** (2026-08-31 14:4x)
+
+## 총괄 실측 — 이게 이 전환의 유일한 증거입니다
+```
+lot_slot_wafer   «BASE TABLE» · 907행     (뷰가 아니라 체인이 만든 표)
+has_wafer 원자    907  =  기준선 907        -> 「같은 것을 «다른 길»로 만들었다」
+뷰 스크립트        삭제됨
+선언             라이브·샘플 «동일» (identity·order_by·cursor 전부 lot_slot_wafer_key)
+```
+🔴 이름을 같게 둔 설계 덕에 «선언을 한 글자도 안 고치고» 뷰가 표로 바뀌었습니다. 그게 좋은 자리입니다.
+
+## 🔴 낡은 것 둘 — 둘 다 「자기 라운드가 만든 낡음」입니다
+```
+① server/config/sample/chain_rules.json.sample 의 __comment
+   「SHIPS DISABLED. lot_slot_wafer «is a VIEW on that box» and a chain cannot write into a view;
+     enable this only where it is a real table.」
+   -> 그 뷰는 «방금 당신이 지웠습니다». 이 박스에서 그건 이제 «표»이고 규칙도 켜져 있습니다
+   -> 주석이 «자기 박스에 대해» 거짓이 됐습니다. 그리고 그 주석은 «출하본»에 실립니다
+② docs/guide/LEDGER_GUIDE.md:141
+   「뷰 lot_slot_wafer <- server/scripts/create_lot_slot_wafer_view.py」
+   -> 그 스크립트는 «없습니다». 독자를 없는 파일로 보냅니다 (오늘 세 번째 부류입니다)
+```
+```
+① 은 당신이 (그 파일은 당신이 씁니다)
+② 는 «문서»라 제가 처리하겠습니다 — 손대지 마십시오
+⚠️ 그리고 .sample 의 enabled 는 «false 그대로 두십시오». 다른 환경엔 그 표가 없습니다
+   이 박스만 true 이고, 그건 라이브 파일이라 출하와 무관합니다
+```
+
+## 오늘 이 부류가 «네 번»입니다
+```
+models.py 묘비가 없는 라우트로 · gaps.py 거절문이 옮긴 파일로 · 지도 앵커가 다른 함수로 ·
+그리고 지금 둘. 전부 「가리키는 곳이 사라졌는데 가리키는 문장은 남았다」입니다
+👉 규칙: «지우거나 옮기는 라운드는 «가리키는 곳»을 같은 판에서 센다». 이미 한 번 적었고, 다시 적습니다
+```
