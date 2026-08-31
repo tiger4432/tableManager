@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable` 추가. 직전: 개정 6 — 읽기 라우트 표와 「드라이버 하나」 정정) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -61,12 +61,15 @@
 
 ### 1.2 읽기 쪽
 
-**라우트는 «둘»이다** (실측 2026-08-29 — `server/ledger_trace_router.py` 의 `@router.get` 전수).
+**라우트는 «셋»이다** (실측 2026-08-31 — `server/ledger_trace_router.py` 의 `@router.get` 전수).
+🔴 **[2026-08-31] 종전 이 자리는 「둘」이었고 그것이 거짓이 됐다** — `gaps` 가 붙었다.
+⚠️ **그래도 «데이터»에 답하는 것은 `subgraph` 하나다** — 나머지 둘은 «선언에 대해» 답한다.
 
 | 질문 | API |
 |---|---|
 | 마킹에서 걸어 서브그래프 | `GET /api/ledger/subgraph` |
-| 선언 자체 (원장을 안 읽는다) | `GET /api/ledger/declaration` |
+| 선언 자체 (원장을 안 읽는다) | `GET /api/ledger/declaration` — 🆕 **`sources[]` 절이 붙었다**: `{source, relation, emits[], scope_columns[]}`. `scope_columns` 가 곧 범위 재번역(§4.1-ter)이 허용하는 그 목록이다. 🔴 **못 읽으면 키를 «비우지 않고 뺀다»**(부재 = 「모른다」, 빈 배열 = 「없다」) |
+| **무엇이 아직 «없나»** | 🆕 `GET /api/ledger/gaps` — 인자 없으면 질문 «이름»만(DB 접근 0), `?name=` 이면 그 하나를 «잰다»(읽기 전용). 찾는 것은 코드가 **어휘를 순회**해서 하고, 부르는 이름은 `server/ledger/gap_names.json` 이 준다 — **코드에 도메인 낱말이 없다**. 「0」이 세 갈래(정말 없음 · 표본이 다 못 봄 · 해당 없음)로 갈려 나오고 `count_kind` 가 함께 온다 |
 
 ⚰️ **[2026-08-28] 종전 이 표에 있던 나머지 여덟은 «없다»** — `subgraph/table` · `structure` ·
 `trends` · `lot_map` · `composition` · `siblings` · `kinds` · `selection/resolve`, 그리고 그 앞의
@@ -127,6 +130,17 @@ source rows
 
 ⚠️ **한 `SentenceShape` 를 두 별명에 묶지 않는다** — `ambiguous_sentence_shape` 로 거절된다.
 문장 둘이면 shape 둘이지, shape 하나에 이름을 붙여 가르는 것이 아니다.
+
+🔴 **[2026-08-31] 전용 mapper 가 «못 하는» 것 하나 — 주어의 키가 둘 이상이면 안 된다.**
+mapper 가 넘기는 Entity 참조는 **식별 키를 «하나»만 나른다**(거절은 `roleframe._entity_value`
+가 낸다: 「a mapper-supplied Entity reference carries one identity key」). 그래서 주어가
+키 «둘»인 타입이면 그 문장은 **전용 mapper 로 쓸 수 없고 원자가 0 이 된다** — 오류 없이,
+그냥 아무것도 안 만들어진다.
+**처방은 mapper 를 고치는 것이 아니라 «소스를 하나 더 만드는» 것이다** — 그 두 키를 컬럼으로
+펼친 **뷰**를 만들고, 그 뷰를 읽는 소스를 범용 `declarative-role@1` 로 선언한다.
+실례: 좌석↔웨이퍼 문장이 그렇게 옮겨 갔다(뷰 `lot_slot_wafer` ← `server/scripts/create_lot_slot_wafer_view.py`,
+새 소스 하나 · 술어 하나). 옮기면서 옛 mapper 의 문장 셋이 은퇴했다.
+⚠️ **「원자가 0 인데 거절도 0」이면 이 계급을 먼저 의심하라** — 주어의 키 개수를 세는 것이 가장 빠르다.
 
 시각 해석·raw reference·게이트 호출·거절 격리는 `BaseLedgerMapper.map()` 경계와
 `backfill.run` 이 맡는다. `implementations.py` 는 편집하지 않는다 — 그 모듈이 클래스를 «발견»한다.
@@ -199,6 +213,37 @@ conda run -n assy_manager python -m ledger.setup
 
 ⚠️ `--reset-cursor` 와 `--from` 은 별도 승인 없이 `destructive_approval_required` 로 거절된다.
 
+#### 4.1-bis 도는 동안 옆 질의를 굶기지 않기 — `--pace` (2026-08-31 신설)
+
+```bash
+conda run -n assy_manager python -m ledger.backfill --source <source> --pace slow
+```
+
+`fast`(기본 · 오늘까지의 행동 그대로) · `slow` · `trickle`. 선언은 **`server/pacing.json` 하나**이고
+**파일 인제션도 같은 표를 읽는다**(그쪽 이름은 `ingestion_settings.json` 의 `ingestion_pace`).
+백필의 한 사이클 단위는 **페이지**이고 인제션은 **청크**다 — 표가 정하는 것은 «리듬»이지 «양»이 아니다.
+모르는 이름은 **거절**한다(오타를 안은 채 전속력으로 도는 것을 막는다).
+⚠️ 도는 중에 그 파일을 고쳐도 **그 실행에는 안 듣는다** — 읽기가 실행 시작마다 한 번이다.
+🔴 **CLI 도움말이 `ledger/pacing.json` 이라 적지만 실제 경로는 `server/pacing.json` 이다**(2026-08-31 실측).
+
+#### 4.1-ter 범위를 정해 다시 번역하기 — `--scope-column` (2026-08-31 신설)
+
+해석을 고쳤는데 이미 적재된 원자가 옛 해석 그대로일 때, **전부 다시**와 **그냥 둔다** 사이의 셋째 길이다.
+
+```bash
+# 드라이런 — 무엇을 회수하고 무엇을 다시 만들지만 답한다. 한 줄도 안 쓴다
+conda run -n assy_manager python -m ledger.backfill --source <source> \
+    --scope-column <컬럼> --scope-values a,b,c
+# 실행
+… --apply
+```
+
+- 🔴 **커서를 «안» 움직인다.** 커서 행은 위치만이 아니라 누적 계수(`molecules_done`·`atoms_written` …)를 들기 때문에, 이미 지나온 행을 다시 쓰면서 그것을 더하면 **진행도가 앞으로 뛴다.** 그래서 커서 «문장을 통째로» 건너뛴다.
+- 🔴 **범위 컬럼은 «그 소스가 읽는 컬럼»이어야 한다.** 아니면 `scope_column_not_declared` 로 **허용 목록을 대며** 거절하고, 값이 비면 `scope_values_empty` 로 거절한다 — 「아무것도 안 고르는 범위」를 통과시키면 «전체»가 돈다.
+- ⚠️ **`scope` 는 `limit` 이 아니다** — 「어느 행」이지 「몇 행」이 아니고, 페이징 술어를 대체하지 않고 AND 로 걸린다.
+- 🔴 **회수와 재생성이 «두 커밋»이라 그 사이에서 죽을 수 있다** — 원자가 빠진 채 아직 안 돌아온 상태로 남는다. 그래서 어드민 등록부에서 이 연산은 **취소 불가**이고, **복구는 「같은 범위를 다시 돌리는 것」**이다.
+- 어드민 표면(연산 `ledger_rescope`)·취소 규약은 [BACKFILL_GUIDE §7](./BACKFILL_GUIDE.md), 재사용 관점은 [PRIMITIVES §1](../architecture/PRIMITIVES.md).
+
 ### 4.2 커서 지문 — 선언을 고치면 커서가 서는 자리
 
 소스마다 **cursor fingerprint** 가 있다(`setup_registry.source_cursor_fingerprint`).
@@ -244,6 +289,9 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 원장은 append-only 다. 해석 오류는 과거 행을 UPDATE 하지 않고 선언·mapper 를 고친 뒤
 새 provenance 로 재백필한다. 기존 주장을 읽기에서 어떻게 밀어낼지는 해소 규칙이나
 `supersedes` 계약으로 다룬다.
+
+🆕 **[2026-08-31] 그 「재백필」에 «범위» 버전이 생겼다** — §4.1-ter. 전부 다시 돌리지 않고
+**선언된 컬럼 하나로 좁혀** 그 범위의 원자만 회수하고 다시 만든다. 커서는 안 움직인다.
 
 ### 4.6 화면과 API 읽는 법
 

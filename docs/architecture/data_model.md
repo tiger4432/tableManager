@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 (v1 어휘 은퇴 완료)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (§1.1 에 `RetroactiveRun` · **§1.1-quater 신설**(소급 실행 등록부·협조적 취소) · §1.2 그래프 부기 컬럼 셋의 «현재 상태» 명시 — 「없어졌다」가 아니라 「안 그린다」) · 직전 2026-08-27 (v1 어휘 은퇴 완료)
 >
 > 이 문서는 **지금의 데이터 모델**만 적는다. 라운드별 변경 이력은 `docs/history/`가 정본이고 여기에 쌓지 않는다.
 >
@@ -27,6 +27,7 @@
 | ~~`GraphEdge`~~ | ~~`graph_edges`~~ | — | ⚰️ **DROP**(1,034,472행 · 517 MB) |
 | ~~`GraphSyncState`~~ | ~~`graph_sync_state`~~ | — | ⚰️ **DROP** — materializer의 outbox 커서였고, 그 소비자가 스택에서 빠졌습니다 |
 | `InteractionEffortLog` | `interaction_effort_logs` | `transaction_id`(unique), `session_id`, `key_count`, `mouse_count`, `nav_count`, `nav_preserved_count`, `timestamp` | **V1 정본 계기** — tx당 1행, **원시 카운트만**(점수는 조회 시점 계산). 상세 §2.4 |
+| **`RetroactiveRun`** | `retroactive_runs` | `run_id`(PK, str32), `op`(idx), `params`(JSON), `requested_by`, `state`(idx, 기본 `queued`), `processed_rows`, `total_rows`, `result`(JSON), `error`, `queued_at`/`started_at`/`last_progress_at`/`finished_at`. 인덱스 `idx_retroactive_runs_recent(state, queued_at)` | **[2026-08-31 신설] 소급 실행 등록부** — 실행 하나당 1행. 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다.** 🔴 **취소는 프로세스를 죽이지 않고 이 행의 `state` 를 세운다** — 상세 §1.1-quater |
 
 ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 종전 이 자리는 「그래프 3테이블은 `ensure_graph_tables(engine)`로 생성되며 `refresh_dynamic_models`에 동승합니다」였고, 그 문장이 «부활 경로»였습니다.** 표를 DROP한 뒤 **다시 만들** 경로가 셋 있었고 각각 변이 주입으로 증명됐습니다 — ① 부팅 `create_all` ② 핫리로드가 타는 이 `ensure_graph_tables` 동승 ③ **스케줄러가 워커보다 오래 살아남아** 고아 스윕이 첫 동작으로 같은 함수를 부름. 셋 다 봉인됐습니다(`models.py`의 호출 지점에 묘비 주석이 있습니다). 🔴 **[2026-08-18] 그리고 그 봉인만으로는 부족했던 것이 드러났습니다** — 클래스를 남긴 채 부팅에서 «제외»하는 방식이라, 부팅 스키마 점검이 세 표를 매 재기동 **결손으로 신고**했습니다(「SCHEMA DRIFT: missing 3 thing(s)」). 은퇴가 고장처럼 보이는 것은 이 절이 없애려던 바로 그 종류의 거짓말입니다. 이제 **클래스와 `ensure_graph_tables`가 함께 제거**돼 요구 자체가 없습니다. 🔴 **닫지 않았다면 재기동이 «빈 표 셋»을 돌려주고 화면이 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 그 둘은 운영자가 할 일이 정반대입니다. 되돌리는 SQL(`server/migrations/drop_graph_storage_reverse.sql`)은 **모양만 복원할 뿐 갈래를 되살리지 않습니다.** 후계는 [원장 §1.1-ter](#) 및 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
 
@@ -73,6 +74,18 @@
 🔴 **`occurred_at`은 세상 시각이고 그 뜻은 «소스별 선언»입니다**([SCHEMA_CANON R5](./SCHEMA_CANON.md)). 2026-08-13 제품 소유자 판정: fab 타임스탬프는 **현지시간 `Asia/Seoul`**, ISO 8601에 `T` 구분자. 선언이 `UTC`이던 동안 **모든 원자가 9시간 어긋나 있었고 아무것도 항의하지 않았습니다 — 어긋난 시각도 여전히 well-formed한 시각이기 때문입니다.** 정정은 **재백필**이었지 제자리 `UPDATE`가 아닙니다(해결기가 class·`source_who` 동점에서 `occurred_at` 내림차순으로 순위를 매기므로, 낡은 원자가 9시간 «나중»이라 공존시켰으면 **구성상 정정본을 이겼을** 것입니다).
 
 ⚠️ **`tzdata`가 배포 의존성이 됐습니다**(`environment.yml`). `Asia/Seoul`은 런타임에 IANA DB에서 해석되고 `UTC`는 그런 적이 없었습니다. 없으면 `_zone`이 **폴백하지 않고 예외를 냅니다** — UTC로 조용히 떨어지면 방금 고친 결함을 그대로 재현하기 때문입니다.
+
+### 1.1-quater 소급 실행 등록부 `retroactive_runs` — 취소는 «죽이는» 것이 아니라 «세우는» 것이다 (2026-08-31 신설)
+
+즉시 반환하는 실행은 「도는 중인가 · 끝났나 · 얼마나 갔나」를 **로그로만** 답했습니다. 이제 실행마다 **행 하나**가 있습니다.
+
+- **상태 어휘는 닫혀 있습니다** — `queued` · `running` · `done` · `cancel_requested` · `cancelled` · `failed`. 🔴 **`cancel_requested` 와 `cancelled` 는 다른 상태입니다**(부탁했다 ≠ 멈췄다). 둘을 하나로 접으면 화면이 아직 도는 실행을 멈춘 것으로 그립니다.
+- 🔴 **취소는 «협조적»입니다.** 라우트는 `state` 를 `cancel_requested` 로 세우고 끝나며, 도는 쪽이 **배치/페이지 사이에서** 그것을 묻고 스스로 멈춥니다. 아무것도 죽이지 않습니다.
+- 🔴 **그 플래그는 도는 쪽이 «자기 세션»에서 읽습니다.** 연산의 트랜잭션 스냅숏 안에서 읽으면 시작 시점 값에 갇혀 **영원히 「멈추라고 안 했다」**가 되고, 버튼은 눌리는데 아무 일도 안 일어납니다.
+- 🔴 **끝난 실행의 취소는 «거절»합니다** — 「그 일은 이미 커밋됐고 이것으로 되돌릴 수 없다」고 이름 대며 답합니다. 200 을 돌려주면 운영자는 되돌린 줄 압니다.
+- ⚠️ **`total_rows` 의 `NULL` 은 0 이 아니라 «모름»입니다.** 0 으로 접으면 진행률이 「끝났다」로 그려집니다.
+- 🔴 **어느 연산이 취소를 «받는지»는 등록부가 연산마다 선언합니다**(`cancellable`) — 정하는 것은 취향이 아니라 **커밋 입자**입니다. 한 번에 커밋하는 연산에 훅을 달면 «시작 직후에만» 듣는 취소가 되고 그건 없는 것보다 나쁩니다. 오늘 `false` 인 둘과 그 사유는 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md), 라우트 계약은 [backend §2](./backend.md), 재사용 관점은 [PRIMITIVES §6](./PRIMITIVES.md).
+- ⚠️ **마이그레이션 파일이 없습니다** — `create_all` 이 만듭니다. 기존 DB 는 다음 기동에 생깁니다.
 
 ### 1.2-bis 결함 관측(finding) 스키마 — 분모가 자기 행을 갖는다 (2026-08-13 `346aa88` · **2026-08-14 두 번째 종류**)
 
@@ -144,7 +157,8 @@
 
 - 타입 매핑: `number`→Float, `datetime`→DateTime, else String.
 - 공용 메타 컬럼: `row_id`(PK), `business_key_val`, `created_at`, `updated_at`.
-- 그래프 동기화 플래그: `is_graph_synced`, `needs_graph_rollback`, `graph_synced_at`.
+- 그래프 동기화 플래그: `is_graph_synced`, `needs_graph_rollback`, `graph_synced_at`. 🔴 **[2026-08-31] 이 셋은 «부기 잔재»입니다 — 그런데 아직 «있습니다».** 값을 쓰고 읽던 워커는 2026-08-16에 은퇴했고, 클라는 2026-08-31부터 **그리지 않습니다**(컬럼 정의를 만들기 «전에» 거르므로 컬럼 토글 목록에도 없습니다). 그러나 **이미 있는 표들은 세 컬럼과 그중 둘의 인덱스를 그대로 들고 있고**, 서버는 `/tables/{t}/schema` 와 행 페이로드에 **계속 실어 보내며**, `crud`·`event_constants` 의 시스템 컬럼 목록에도 그대로 있습니다. ⚠️ **「없어졌다」로 읽지 마십시오** — 없어진 것은 «그리는 자리»와 «쓰는 워커»입니다.
+  🔴 **정리는 «되돌릴 수 있는 선»에서 갈립니다**(총괄 판정 2026-08-31 · 보드 소유) — **1단**: «새로» 만들어지는 표가 그 셋을 안 받게 한다(빌더만 바뀌고, `create_all` 은 기존 표에 손대지 않으므로 **오늘 있는 표의 모양은 안 바뀐다**. 이 라운드에 진행 중). **2단**: 44개 표에서 컬럼 DROP — **되돌릴 수 없어 판정되지 않았습니다.** 인덱스 관점은 [INDEX_POLICY](./INDEX_POLICY.md), 라우트·클라 관점은 [backend §2 은퇴 블록](./backend.md).
 - 🔴 **인덱스는 이제 «선언»에서 파생됩니다 — 정본은 [architecture/INDEX_POLICY](./INDEX_POLICY.md)** (2026-08-14 F6, 판정 `R-2026-08-14-B`). 표 하나가 받는 인덱스는 **일곱**이고, 그중 `idx_<표>_declared_key`가 `map_key_columns` → 없으면 `composite_key_source` → 없으면 단일 컬럼 `business_key`에서 나옵니다(철자는 `models.declared_key_columns` 한 곳). ⚠️ **「`map_key_columns`를 인덱스한다」는 순진한 규칙은 틀립니다** — 시스템 최다 스캔 인덱스(`wafer_map_metadata`의 `(target_table, map_id)`, 44,103회)가 붙은 표는 `map_key_columns`를 **선언하지 않습니다**. 같은 라운드에서 스캔 0인 `ix_<표>_created_at`·`idx_<표>_bk` 두 가족이 은퇴했고, 기존 DB 반영은 `server/migrations/align_indexes_to_declarations.py`(기본 읽기 전용, `--apply`)입니다. **빌더만 고쳐서는 기존 테이블이 한 개도 안 바뀝니다** — `create_all`은 이미 있는 테이블에 인덱스를 추가하지 않습니다.
 - 신규 컬럼은 이미 매핑된 클래스에 핫스왑되며, `sync_dynamic_tables_schema`가 누락 컬럼에 `ALTER TABLE ADD COLUMN` 발행(기존 테이블 전용).
 - 🔴 **[2026-08-23 실측 · `347c9069`] 그래서 «선언하는 것»이 표를 만든다 — 마이그레이션을 쓰지 않는다.** `dt_transfer_log`(12컬럼)가 그렇게 생겼다: `table_config.json`에 적고 저장하면 config_watcher가 modify에서 이 함수를 부른다. ⚠️ **다만 그 경로가 만드는 업무 키 인덱스는 UNIQUE가 «아니다»** — [SCHEMA_CANON R2](./SCHEMA_CANON.md)가 `business_key` 선언에 지우는 UNIQUE 의무는 **별도 마이그레이션**이 채운다. 선언만으로 생긴 표는 그 의무를 아직 안 갚은 상태로 존재할 수 있다. ⚠️ **그리고 라이브 `table_config.json`은 gitignore다** — 선언은 그 박스에만 살고, 커밋에 들어가는 것은 `.sample`뿐이라 **다른 배포에서는 다시 선언해야 한다**(그 실패로 같은 날 선언 둘이 조용히 죽었다).

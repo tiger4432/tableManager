@@ -1,6 +1,6 @@
 # `ingestion_settings.json` 세팅 — 인제션 런타임 노브
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 (**`external_sources[].parser`가 선택으로 바뀜** — 비워 두면 그 표의 워크스페이스 `scripts/` 플러그인으로 읽습니다. 적힌 선언은 종전과 동일. 등록 시 `External sources declared: N (M disabled).` 한 줄) | **이전:** 2026-08-17 (**`external_sources` 신설** — 외부 읽기 전용 디렉터리의 절대경로·대상 테이블·내장 파서를 선언합니다. created/moved/modified 이벤트 + 300초 재귀 스윕, 원본 이동·삭제 없음. 바인딩 변경은 watcher 재기동 필요) | **이전:** 2026-08-13 2차 (`dedup_by_path_stat` 묶음 관문 정합 확인) | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (**`auto_register_map_meta` 의 기본이 «true»에서 «false»로 뒤집혔습니다** — 2026-08-30 소유자 판정. §3 예시·§5 키 표·§5 주의 세 곳을 함께 고쳤고, 주의는 「끄기 전에」에서 **「켜기 전에」로 방향이 뒤집혔습니다**) · 직전 2026-08-18 (**`external_sources[].parser`가 선택으로 바뀜** — 비워 두면 그 표의 워크스페이스 `scripts/` 플러그인으로 읽습니다. 적힌 선언은 종전과 동일. 등록 시 `External sources declared: N (M disabled).` 한 줄) | **이전:** 2026-08-17 (**`external_sources` 신설** — 외부 읽기 전용 디렉터리의 절대경로·대상 테이블·내장 파서를 선언합니다. created/moved/modified 이벤트 + 300초 재귀 스윕, 원본 이동·삭제 없음. 바인딩 변경은 watcher 재기동 필요) | **이전:** 2026-08-13 2차 (`dedup_by_path_stat` 묶음 관문 정합 확인) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 파이프라인 정본은 [INGESTION_GUIDE §1.8](../INGESTION_GUIDE.md) · 절차 요약은 [CONFIG_GUIDE §3-S5](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -28,7 +28,7 @@
 - **폴더째 드롭한 것을 아예 손대지 않게 하고 싶을 때** — `flatten_nested_dirs`를 `false`로. 🔴 **이 키는 `600b49d`(2026-07-30)에서 이름은 그대로 뜻만 바뀌었습니다** — 아래 §5 참조. 이미 `false`로 넣어 둔 값은 **그대로 유효**합니다(그래서 개명하지 않았습니다)
 - 🔴 **처리된 파일을 옮기지 않고 그 자리에 두고 싶을 때** — `archive_processed_files`를 `false`로. **선행 조건이 둘 있습니다**(§5의 주의 참조): 마이그레이션 `add_ingestion_ledger_path_stat.sql`, 그리고 「무엇이 왜 실패했나」의 답이 `err/` 폴더에서 **원장**으로 옮겨 간다는 사실
 - **스윕이 매번 트리 전체를 다시 읽어 느릴 때** — `dedup_by_path_stat`(기본 `true`)가 그것을 막는 층입니다. 끄면 항상 전체 해시로 돌아갑니다
-- **인제션이 맵 정렬 메타를 자동으로 만드는 것을 멈추고 싶을 때** — `auto_register_map_meta`를 `false`로(§5의 주의 참조)
+- **인제션이 맵 정렬 메타를 자동으로 만들게 «하고» 싶을 때** — `auto_register_map_meta`를 `true`로(🔴 **2026-08-30부터 기본이 «꺼짐»입니다** — §5의 주의를 «켜기 전에» 읽으십시오)
 - **enrichment 자동 확정을 전부 멈추거나, 작업 단위당 탐색량을 조절할 때** — `enrichment_auto_confirm_enabled` / `enrichment_auto_confirm_max_keys`(정본 [config/enrichment_rules §7](./enrichment_rules.md))
 - **다른 시스템이 소유한 폴더를 읽기 전용으로 감시할 때** — `external_sources`. 원본은 성공·실패 어느 쪽에서도 이동·삭제하지 않으며, 대상 테이블은 재전달에 안전한 업무 키를 선언해야 합니다.
 - **파일이 없어도 정상입니다** — 전 항목 기본값으로 동작합니다(현 저장소 상태가 그렇습니다).
@@ -47,7 +47,7 @@
      "archive_processed_files": true,
      "resume_from_checkpoint": true,
      "flatten_nested_dirs": true,
-     "auto_register_map_meta": true,
+     "auto_register_map_meta": false,
      "external_sources": []
    }
    ```
@@ -86,7 +86,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 | `resume_from_checkpoint` | boolean, 기본 `true` | 중단된 적재를 커밋된 오프셋부터 재개. 재개 불가 시 사유를 남기고 처음부터 |
 | `flatten_nested_dirs` | boolean, 기본 `true` | 🔴 **이름은 그대로, 뜻이 바뀌었습니다**(`600b49d` · 2026-07-30). `raws/`에 폴더(다중 층위)가 들어오면 트리가 정온해진 뒤 **각 파일을 자기 중첩 경로 그대로 적재**하고(승격 아님) 비게 된 폴더만 제거합니다. 접두 개명(`~`)과 `__force__` 조작 방어는 **함께 사라졌습니다** — 파일명을 건드리지 않으므로 조작할 접합부가 없습니다. `false` = 디렉터리를 **손대지 않고 그 안의 파일도 적재하지 않습니다**(로그가 그렇게 말합니다). 반영은 **다음 폴더 트리거부터**. 정본 [INGESTION_GUIDE §1.9](../INGESTION_GUIDE.md) |
 | `external_sources` | 배열, 기본 `[]` | **외부 읽기 전용 바인딩**. 항목은 `enabled`(기본 true)·절대 `path`·`table_name`·**`parser`(선택)**·`recursive`(기본 true)·`options`입니다. 대상 테이블은 업무 키를 선언해야 하며 관리 워크스페이스와 겹치는 경로는 거절합니다. 같은 루트가 서로 다른 테이블을 먹이는 것은 허용하지만 같은 테이블의 겹치는 루트는 거절합니다. 🔴 **`parser`를 적지 않으면 그 표의 워크스페이스 `scripts/` 플러그인**(`BasePipelineParser`)으로 읽습니다 — 관리 `raws/`와 같은 입구입니다(2026-08-18). 적으면 종전대로 내장 화이트리스트를 보며 현재 값은 `voids_json` 하나(대상 `inspection_run`/`void_obs`)입니다. 어느 쪽으로도 못 찾으면 **어느 표의 어느 폴더를 봤는지 대며 거절**합니다. **기존 DB에는 `add_ingestion_ledger_path_stat.sql` 선행 필수**, 설정은 **재기동 반영**. 상세·JSON 형태는 [INGESTION_GUIDE §1.12](../INGESTION_GUIDE.md)·[§1.12-bis](../INGESTION_GUIDE.md) |
-| `auto_register_map_meta` | boolean, 기본 `true` | 인제션(**파일 워처·체인 워커 양쪽**)이 `map_key_columns` 선언 맵 테이블에 적재할 때, 그 맵 키의 `wafer_map_metadata` 행이 **없으면** 자동 생성(있으면 절대 건드리지 않음). `false` = 종전 동작(수동 에디터 push만 메타를 등록 → 미등록 맵이 '화면기준' 폴백으로 열림). 반영은 **다음 파일 / 다음 체인 트랜잭션 그룹부터**. 정본 [INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md) |
+| `auto_register_map_meta` | boolean, 🔴 **기본 `false`** (2026-08-30 소유자 판정으로 **뒤집혔습니다** — 종전 이 칸은 `true`라 적고 있었습니다. 철자는 `map_meta_registrar.DEFAULT_ENABLED` 한 곳) | 인제션(**파일 워처·체인 워커 양쪽**)이 `map_key_columns` 선언 맵 테이블에 적재할 때, 그 맵 키의 `wafer_map_metadata` 행이 **없으면** 자동 생성(있으면 절대 건드리지 않음). **키를 안 적으면 «꺼짐»이므로, 쓰려면 `true`를 명시**합니다. 반영은 **다음 파일 / 다음 체인 트랜잭션 그룹부터**. 정본 [INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md) |
 | `enrichment_auto_confirm_enabled` | boolean, 기본 `true` | **전역 킬 스위치**(2026-07-30 ①). `false`면 규칙별 `auto_confirm`이 켜져 있어도 자동 확정을 전부 멈춥니다. 기본 `true`는 "막지 않는다"는 뜻일 뿐이고 **실제로 쓰려면 규칙별 옵트인이 필요**합니다(기본 OFF) — 즉 기본 상태의 동작은 종전과 같습니다. 정본 [config/enrichment_rules §7](./enrichment_rules.md) |
 | `enrichment_auto_confirm_max_keys` | 양의 정수, 기본 `200` | 작업 단위(체인 트랜잭션 그룹)당 참조뷰로 **탐색할 판단키 상한**. 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 대량 인제션에서 쿼리 폭주를 막는 유일한 장치입니다. 상한을 넘은 키는 **쓰지 않고 워크리스트에 그대로 남으며** 건수가 로그에 남습니다(정직한 열화 — 조용히 버리지 않음). 🔴 **이것은 「키 개수」 예산이고 읽기 하나의 폭과 무관합니다** — 절단 거절을 쫓는 중이라면 아래 `enrichment_read_caps`입니다 |
 | `enrichment_read_caps` | 객체, 아래 4키 | 참조뷰 **읽기를 자르는 상한**(2026-08-05 신설 — 종전엔 코드 상수라 재배포 없이 못 움직였습니다). 미선언 키는 **출하 기본값**을 그대로 쓰므로 이 블록을 안 넣어도 동작이 바뀌지 않습니다 |
@@ -107,4 +107,8 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 >
 > ⚠️ **폴더 이름을 컬럼으로 만드는 선언(`filename_rules`)은 이 파일이 아닙니다** — 워크스페이스별 파서 설정(`ingestion_workspace/<table>/config/*.json`)에 있고 규격의 정본은 [INGESTION_GUIDE §1.9-bis](../INGESTION_GUIDE.md)입니다.
 
-> **끄기 전에 알아 둘 것 (`auto_register_map_meta`)**: 이 노브를 끄면 새로 적재되는 맵은 정렬 규격 없이 쌓이고, 에디터에서 열 때마다 **좌표계 선택 모달**이 뜹니다(그것이 켜짐/꺼짐을 확인하는 가장 빠른 관찰 지점이기도 합니다). 자동 생성된 메타는 **정직한 최소치**(배치 bbox·회전 0·마스크 중립 기하)이지 계측값이 아니므로, 실제 웨이퍼 규격이 필요한 맵은 에디터에서 사람이 등록하십시오 — 사용자 등록이 항상 이깁니다(생성 소스 `auto_map_meta` = 최하위 우선순위).
+> 🔴 **[2026-08-30 소유자 판정 — 이 주의는 방향이 «뒤집혔습니다»] 기본이 «꺼짐»이고, 읽어야 하는 것은 「끄기 전에」가 아니라 「켜기 전에」입니다.**
+> **켜기 전에 알아 둘 것**: 자동 등록 행은 `grid_start_x/y`를 **배치의 min x/y**로 박습니다. 그런데 에디터에서 start x/y는 유효 다이 참조와 저장 좌표 사이의 «shift»가 아니라 **좌표 «기준» 자체**입니다 — 그래서 그 행은 구멍을 메우는 것이 아니라 **이후 모든 편집이 대조될 원점을 고정**하고, **에디터가 그것을 되돌리지 못합니다.** 부재 전용·최하위 우선순위는 «행»을 보호했지 «원점»을 보호하지 않았고, 그래서 여기서는 **「행이 없음」이 더 안전한 상태**였습니다.
+> ⚠️ **`auto_registered` 표지를 걷어내지 마십시오** — 그것은 스위치일 뿐 아니라 **여섯 물리 키 위의 표지**이고, 이미 그 값을 든 행의 `grid_start_*`를 설명하는 유일한 것입니다. 지우면 그 행들의 출처가 «declared»로 읽혀 데이터가 뒷받침하지 않는 강한 주장이 됩니다.
+>
+> ~~종전 서술 (끄기 전에 알아 둘 것)~~: 이 노브를 끄면 새로 적재되는 맵은 정렬 규격 없이 쌓이고, 에디터에서 열 때마다 **좌표계 선택 모달**이 뜹니다(그것이 켜짐/꺼짐을 확인하는 가장 빠른 관찰 지점이기도 합니다). 자동 생성된 메타는 **정직한 최소치**(배치 bbox·회전 0·마스크 중립 기하)이지 계측값이 아니므로, 실제 웨이퍼 규격이 필요한 맵은 에디터에서 사람이 등록하십시오 — 사용자 등록이 항상 이깁니다(생성 소스 `auto_map_meta` = 최하위 우선순위).

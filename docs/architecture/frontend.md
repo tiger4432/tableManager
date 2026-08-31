@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
 > **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 라우트 계약: [backend §2](./backend.md)
 
@@ -129,15 +129,23 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 |---|---|---|
 | 진입/상태 | `main.js` (2,182) · `state.js` · `config.js` · `theme.js` | 부팅, 전역 상태, API 주소, 테마 |
 | 통신 | `api.js` · `websocket.js` | REST 호출과 WS 수신·델타 반영 |
-| 그리드 | `grid.js` (1,142) · `clipboard.js` (897) · `tsv.js` · `push_columns.js` | AG-Grid 배선, 엑셀형 복사·붙여넣기 |
+| 그리드 | `grid.js` (1,142) · `clipboard.js` (897) · `tsv.js` · `push_columns.js` · 🆕 `grid_source_label.js` · `grid_rescope_menu.js` · `rescope_handoff.js` | AG-Grid 배선, 엑셀형 복사·붙여넣기. **[2026-08-31] 그리드가 원장을 «안다»** — 아래 §3.1 |
 | 값 편집 | `value_suggest.js` (1,003) · `enrichment*.js` · `timeline.js` (1,148) | 셀 제안, 보정, 이력 타임라인 |
 | 맵(레거시) | `map_editor.js` (11,060) · `map_key.js` · `split_registry_row.js` | 웨이퍼 맵 캔버스·좌표·오버레이 |
 | 맵2 | `map_editor2.js` + `src/map2/*` (18 파일 · 10,437) | 정렬 화면. 층 경계로 읽습니다 — `view_model` 은 DOM 없이 채점됩니다 |
 | 계획 | `transfer_plan.js` (1,875) · `doe_bands.js` (753) | DOE·STACK 구간과 자재 |
 | 온톨로지 작성 | `ontology_explorer*.js` (합 ~3,600) · `ontology_path.js` · `ontology_skeleton.js` | 선언 초안 → 검토 → 활성화 |
 | R&D 보드 | `src/rnd_board/*` (19 파일 · 6,183) | §4 |
-| 어드민 | `admin.js` (3,773) | 파이프라인 생애주기 |
+| 어드민 | `admin.js` (3,773) · 🆕 `retroactive_view.js` | 파이프라인 생애주기. 소급 블록의 폼·실행 목록 조립은 뷰 모듈이 갖는다(파라미터의 `choices` → 선택지 매핑 포함) |
 | 묘비 | `graph_viewer.js` (1,274) · `trace.js` · `trace_core.js` · `trace_launch.js` | 은퇴한 데이터 소스를 «은퇴했다고» 말하는 화면 |
+
+### 3.1 그리드가 원장을 아는 세 자리 (2026-08-31 신설)
+
+- **「이 표가 원장 소스인가」** (`grid_source_label.js`) — `GET /api/ledger/declaration` 의 `sources[]` 에서 이 `relation` 을 찾는다. 🔴 **부재를 «셋»으로 말한다**: 소스다 / 선언을 읽었고 목록에 없다 / **선언을 못 읽었다**. 셋을 「라벨 없음」 하나로 접으면 「소스가 아님」과 「못 읽음」이 같아진다. 🔴 **넷째는 «주장이 아니다»** — 표를 아직 안 골랐을 때는 아무 말도 안 한다(주어가 없는데 술어를 그리면 지어내는 것이다). 「만드는 것」 칸은 `emits` 를 **거르지 않고 그대로** 쓴다 — 거르면 새 술어가 오는 날 화면이 선언보다 «덜» 말한다.
+- **「고른 행을 어느 컬럼으로 묶어 다시 번역할 것인가」** (`grid_rescope_menu.js`) — 🔴 **고를 수 있는 컬럼은 «서버가 준 목록»(`scope_columns`)뿐이다.** 서버가 거절할 컬럼은 **화면에 아예 없어서** 고른 뒤 400 을 받는 길이 없다. 메뉴가 «없는» 것도 셋으로 갈린다(선언 안 된 표 = 줄이 하나도 없음 / 행 미선택 = 안내 한 줄 / 고른 행에 그 컬럼 값이 없음 = 그 줄만 비활성 + 이유). 🔴 **고르는 곳은 그리드, 실행하는 곳은 어드민**이라 이 부품에 `/admin/` 도 토큰도 «없다».
+- **넘김** (`rescope_handoff.js`) — 범위를 **URL 질의에 안 싣는다**(길고, 이력·로그·어깨 너머로 샌다). `localStorage` 에 **한 번 쓰고 한 번 먹는다** — 남겨 두면 다음에 어드민을 열었을 때 「지금 고른 적 없는」 범위가 채워져 있고 운영자는 그것을 자기가 고른 것으로 읽는다. `sessionStorage` 가 아닌 이유는 **새 탭이 자기 세션이라** 조용히 사라지기 때문이다.
+
+⚰️ **같은 라운드에 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.
 
 ---
 
@@ -283,7 +291,7 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 
 | 탭 | 내용 |
 |---|---|
-| **overview** (첫 화면) | 재교정률 · 교정 공수 · 설정 반영 + 헬스 카드 |
+| **overview** (첫 화면) | 재교정률 · 교정 공수 · 설정 반영 + 헬스 카드. 🆕 **[2026-08-31] 소급 적용 블록** — 연산 선택 · 파라미터 폼 · 건수 · 실행, 그리고 **도는 실행 목록 + 취소**. 종전 문서가 「버튼은 아직 없다」고 적던 그 화면이다 |
 | **file** | 인제션 로그(필터·정렬·페이지) + Workspaces + 실패 진단 → 커스텀 파서 편집 딥링크 |
 | **chain** | Rules 현황 + Outbox 실패 재시도 + Mappers + 실패 진단 → 맵퍼 편집 딥링크 |
 | **autoupdate** | 스케줄러 상태와 실행 이력 |
