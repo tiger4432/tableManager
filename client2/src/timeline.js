@@ -259,6 +259,32 @@ function auditKind(group, baseLog, isSummary) {
   return { label: 'SYSTEM', cls: 'kind-auto' };
 }
 
+/**
+ * 그룹이 건드린 «대상 표». 그룹은 트랜잭션이고, 한 트랜잭션은 표를 «여럿» 건드릴 수 있습니다.
+ *
+ * 🔴 그래서 첫 로그의 `table_name` 을 «대표»로 쓰지 않습니다 -- 순서 없는 집합에서
+ *    대표를 고르는 것이고, 둘째 표가 끼는 날 조용히 틀립니다.
+ *
+ * 🔴 그리고 «들고 있는 로그가 전부가 아닐 수 있습니다». `/audit_logs/recent` 는 그룹마다
+ *    로그를 «표본»으로 줍니다 (실측 2026-08-31: 100 그룹 중 98 이 logs 1 개 · total_count 는
+ *    128~1000). 그런 그룹에서 「표는 하나」라고 말하면 표본 하나를 집합이라 부르는 것입니다.
+ *    그래서 표본이 일부일 때는 … 를 붙여 «더 있을 수 있다»를 말합니다.
+ *    펼치면 서버가 나머지를 가져오고, 그때는 이 함수가 정확해집니다.
+ */
+export function auditTargetTable(group) {
+  const logs = (group && Array.isArray(group.logs)) ? group.logs : [];
+  const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];
+  if (!names.length) return '';
+  // total_count 가 없으면 NaN 이고, NaN 은 어떤 `<` 비교도 false 로 만듭니다
+  // -- 즉 «완전함»으로 읽힙니다. 그것이 맞는 동작이라 대체값을 안 둡니다
+  // (넣어 봤는데 «어떤 입력에서도» 답이 같아서 죽은 줄이었고, 변이가 그걸 잡았습니다).
+  const total = Number(group && group.total_count);
+  const sampled = logs.length < total;
+  // 여럿임이 «표본으로 이미 증명된» 때만 수를 붙입니다 (하한입니다).
+  const more = names.length > 1 ? ` +${names.length - 1}` : '';
+  return `${names[0]}${more}${sampled ? ' …' : ''}`;
+}
+
 export function createGlobalTimelineItemDom(group) {
   const txId = group.transaction_id;
   const isSummary = group.total_count > 1;
@@ -334,9 +360,14 @@ export function createGlobalTimelineItemDom(group) {
   const stamp = new Date(baseLog.timestamp);
   const timeStr = [stamp.getHours(), stamp.getMinutes(), stamp.getSeconds()]
     .map(part => String(part).padStart(2, '0')).join(':');
+  // 대상 표는 «줄을 늘리지 않고» 이 칸 안에 들어갑니다. 묶음 줄은 원래 여기에 표 이름을
+  // 그렸고(다만 첫 로그에서 가져왔고), 낱개 줄은 표를 «아예 안 보여 줬습니다» --
+  // 소유자가 본 것이 그쪽입니다.
+  const targetTable = auditTargetTable(group);
+  const rowKey = baseLog.business_key || baseLog.row_id.slice(0, 8);
   const targetKey = isSummary
-    ? baseLog.table_name
-    : (baseLog.business_key || baseLog.row_id.slice(0, 8));
+    ? (targetTable || baseLog.table_name)
+    : (targetTable ? `${targetTable} · ${rowKey}` : rowKey);
   const targetCol = isSummary
     ? `${group.total_count} ROWS`
     : baseLog.column_name;
@@ -387,6 +418,11 @@ export function createGlobalTimelineItemDom(group) {
             const txDetail = await res.json();
             group.logs = txDetail.logs;
             state.fetchingTransactions.delete(txId);
+            // 이제 그룹의 로그를 «전부» 들고 있습니다. 그러면 접힌 줄의 … 가 거짓말이 됩니다 --
+            // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
+            // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
+            const keyEl = li.querySelector('.audit-target-key');
+            if (keyEl) keyEl.textContent = auditTargetTable(group) || keyEl.textContent;
             renderSubDetails(detailsContainer, group.logs);
           } catch (err) {
             console.error('Failed to load transaction details', err);
