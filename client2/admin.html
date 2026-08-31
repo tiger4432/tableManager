@@ -1163,6 +1163,9 @@
        찬 막대(전체 앎) · 흐르는 줄무늬(도는 중) · 빈 궤도(대기). */
     .running-row.is-waiting { opacity: 0.55; }
     .running-bar.is-waiting .running-bar__fill { width: 0; animation: none; }
+    /* 끝난 것: 남아 있되 «지나간 것»으로 보입니다. 세지도, × 를 달지도 않습니다. */
+    .running-row.is-finished { opacity: 0.35; }
+    .running-row.is-finished .running-bar__fill { animation: none; }
     .running-row.is-stopping { opacity: 0.45; }
     .running-row.is-stopping .running-bar__fill { background: var(--text-dim, #888); animation: none; }
 

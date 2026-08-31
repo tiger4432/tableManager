@@ -334,6 +334,16 @@ export function buildCountView(payload) {
 //    운영자가 못 보고, «요청했다»와 «멈컴다»를 같은 것으로 읽게 됩니다.
 // ════════════════════════════════════════════════════════════════════════════
 
+// 🔴 서버가 «선언한» 낱말 그대로입니다 (`server/retroactive.py`: RUN_QUEUED · RUN_RUNNING ·
+//    RUN_DONE · RUN_CANCEL_REQUESTED · RUN_CANCELLED · RUN_FAILED). 앞 판본은 여기에
+//    `succeeded` 라고 적었는데, 그건 이 서버에 «없는 낱말»입니다 -- 즉 그 거르개는 아무것도
+//    거르지 않았고, 실행 행이 0 인 동안은 그 사실이 «안 보였습니다». 끝난 작업이 「Running」에
+//    세어지고 그 줄에 죽은 × 가 달린 것이 그 결과입니다.
+const RUN_FINISHED = ['done', 'cancelled', 'failed'];
+// 끝난 것도 «몇 개는» 남깁니다 -- 방금 끝난 것이 목록에서 즉시 사라지면 「돌긴 했나」를
+// 화면이 못 답합니다. 세지는 않고, × 도 안 답니다.
+const RECENT_FINISHED_SHOWN = 3;
+
 /** 몇 분째인가. 시각이 없으면 «null» — 0 분으로 적으면 「방금 시작」으로 읽힙니다. */
 export function elapsedMinutes(startedAt, now) {
   if (!startedAt) return null;
@@ -376,14 +386,22 @@ export function buildRunsView(payload, now, cancellable) {
   const data = payload || {};
   const canCancel = cancellable || {};
   const rows = [];
+  const done = [];
 
   for (const run of Array.isArray(data.runs) ? data.runs : []) {
     if (!run) continue;
     const state = String(run.state || '');
-    // 끝난 것은 「도는 것」이 아닙니다. 목록이 길어지면 «하나를 끊는» 목적이 흐려집니다.
-    if (state === 'succeeded' || state === 'failed' || state === 'cancelled') continue;
-    const minutes = elapsedMinutes(run.started_at || run.queued_at, now);
-    rows.push({
+    // 🔴 «모르는» 낱말은 도는 것으로 봅니다. 반대로 두면 서버가 상태를 하나 늘리는 날
+    //    도는 작업이 화면에서 조용히 사라지고, 이 화면은 그걸 못 보여 주면 존재 이유가 없습니다.
+    //    대신 모르는 것에는 × 를 안 답니다 (아래 `cancel`) -- 죽은 버튼보다 낫습니다.
+    const finished = RUN_FINISHED.indexOf(state) !== -1;
+    // 🔴 끝난 작업의 시계는 «멈춥니다». 지금 시각으로 재면 그 수가 계속 자라고, 어제 끝난
+    //    작업이 「1,000분째」로 보입니다 -- 이 화면에서 시간은 「얼마나 오래 물고 있나」라서
+    //    그 수는 곧 판단입니다. 끝났으면 «걸린 시간»을 말합니다.
+    const stopped = finished ? Date.parse(run.finished_at || '') : NaN;
+    const clock = Number.isFinite(stopped) ? stopped : now;
+    const minutes = elapsedMinutes(run.started_at || run.queued_at, clock);
+    (finished ? done : rows).push({
       // 🔴 id 는 «열쇠»이지 화면에 나가는 문장이 아닙니다. 태그를 붙이면 취소가 어느 행을
       //    가리키는지 잃습니다 -- 이 파일의 `text()` 는 출처를 «달아» 객체로 만듭니다.
       id: String(run.run_id || ''),
@@ -393,13 +411,15 @@ export function buildRunsView(payload, now, cancellable) {
       progress: buildProgressCell(run.processed_rows, run.total_rows, minutes),
       // 🔴 멈출 수 없는 연산에는 × 를 안 그립니다 — 누르면 아무 일도 안 일어나는
       //    버튼은 화면이 하는 거짓말입니다. 선언이 모르는 연산도 그리지 않습니다.
-      cancel: canCancel[run.op] === true,
+      // 끝난 작업에는 «절대» 안 답니다. 눌러도 아무 일이 안 나거나 더 나쁜 일이 납니다.
+      cancel: !finished && canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
       // 🔴 «기다리는 것»은 도는 것이 아닙니다. 큐에 앉은 실행은 서버를 안 무겁게 하는데,
       //    흐르는 막대를 그리면 도는 것과 «똑같이» 보입니다 — 그러면 이 화면의 목적
       //    (「무엇을 끊어야 서버가 가벼워지나」)이 그 줄에서 거짓말을 합니다.
-      moving: state !== 'queued',
+      moving: !finished && state !== 'queued',
+      finished,
       state,
     });
   }
@@ -420,14 +440,21 @@ export function buildRunsView(payload, now, cancellable) {
       // QUEUED 는 heavy 레인 대기열에 앉아 있는 것입니다 — 선언이 그 대기를 «정상»이라
       // 부르고 TTL 도 24시간입니다. 그 줄이 도는 것처럼 보이면 안 됩니다.
       moving: String(job.status || '') === 'PROCESSING',
+      // 이 레지스트리는 «도는 것만» 들고 있습니다 (FINISHED 는 지워집니다).
+      finished: false,
       state: text(job.status),
     });
   }
 
+  // 끝난 것은 «아래»에, 그리고 몇 개만. 서버가 최근 것부터 주므로 순서는 그대로입니다.
+  const recent = done.slice(0, RECENT_FINISHED_SHOWN);
   return {
-    rows,
+    rows: rows.concat(recent),
+    // 🔴 「몇 개가 도나」는 «도는 것»만 셉니다. 끝난 줄을 같이 세면 접힌 줄 하나로
+    //    판단하는 이 화면이 「지금 하나 돌고 있다」고 거짓을 말합니다.
+    liveCount: rows.length,
     // «비었다»는 사실이고, 한 줄로 말합니다. 빈 표를 그리면 「못 읽었다」처럼 보입니다.
-    empty: rows.length === 0,
+    empty: rows.length + recent.length === 0,
   };
 }
 
