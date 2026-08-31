@@ -1,0 +1,102 @@
+"""`lot_event`'s two parallel lists -> one row per (lot, slot, wafer).
+
+WHY THIS IS A CHAIN RULE AND NOT A VIEW. A view built by a script exists on the box that
+ran the script and nowhere else, so a declaration pointing at it ships a source that simply
+does not appear anywhere the script never ran. Production spreads derived tables with the
+chain; the owner's instruction was to derive this one from `lot_event` the same way
+(2026-08-31: 「어느 slot trace가 아니라 lot event에서 파생하라고」).
+
+🔴 THE DELIMITER IS DECLARED, NOT ASSUMED. A separator is a property of the feed, and this
+box's happens to be `:`. Reading it off the rule means another environment states its own
+instead of finding that every wafer id came out glued together - a failure that produces
+rows rather than an error, so nobody would see it until a map was wrong.
+
+🔴 AND A ROW WHOSE TWO LISTS DISAGREE IS REFUSED, NOT TRIMMED. Zipping to the shorter list
+loses the wafers past the end SILENTLY: the row still lands, the count still looks
+plausible, and the missing wafers are indistinguishable from wafers that were never in the
+lot. Measured on this box before writing this: 80 rows carry both lists, 907 pairs, and
+ZERO rows disagree - so the refusal costs nothing today and exists for the day a feed
+changes shape.
+"""
+from __future__ import annotations
+
+SOURCE_NAME = "chain_ingestion"
+UPDATED_BY = "chain_lot_slot_wafer"
+
+#: Column names on the trigger table. Overridable from the rule for the same reason the
+#: delimiter is: they are properties of the feed, not of this mapper.
+DEFAULT_SLOT_COLUMN = "slotnumbers"
+DEFAULT_WAFER_COLUMN = "waferids"
+DEFAULT_DELIMITER = ":"
+
+
+class ListPairingRefused(ValueError):
+    """A trigger row whose two lists cannot be paired. Named, never trimmed."""
+
+
+def _value(payload, key):
+    cell = (payload.get("data") or {}).get(key)
+    if isinstance(cell, dict):
+        return cell.get("value")
+    return cell
+
+
+def _split(raw, delimiter):
+    if raw is None:
+        return []
+    return [part.strip() for part in str(raw).split(delimiter) if part.strip()]
+
+
+def build_lot_slot_wafer_rows(db, payloads, rule=None):
+    """One row per (lot, slot, wafer, time). Returns chain batches.
+
+    The business key is the four together because that is what makes a row unique: the same
+    lot and slot hold different wafers at different times, and a key without the time would
+    make two real events collide into one row - which is the second guard the brief asked
+    for, expressed as a key rather than as a check.
+    """
+    rule = rule or {}
+    target_table = rule.get("target_table") or "lot_slot_wafer"
+    slot_col = rule.get("slot_list_column") or DEFAULT_SLOT_COLUMN
+    wafer_col = rule.get("wafer_list_column") or DEFAULT_WAFER_COLUMN
+    delimiter = rule.get("list_delimiter") or DEFAULT_DELIMITER
+    lot_col = rule.get("lot_column") or "lot_id"
+    time_col = rule.get("time_column") or "event_time"
+    type_col = rule.get("event_type_column") or "event_type"
+
+    updates = []
+    refused = []
+    for payload in payloads or []:
+        slots = _split(_value(payload, slot_col), delimiter)
+        wafers = _split(_value(payload, wafer_col), delimiter)
+        if not slots or not wafers:
+            # Not a refusal: a lot event that carries no lists is simply not about slots.
+            continue
+        if len(slots) != len(wafers):
+            refused.append({
+                "lot": _value(payload, lot_col),
+                "event_time": _value(payload, time_col),
+                "slots": len(slots), "wafers": len(wafers)})
+            continue
+        lot = _value(payload, lot_col)
+        when = _value(payload, time_col)
+        event_type = _value(payload, type_col)
+        for slot, wafer in zip(slots, wafers):
+            updates.append({"updates": {
+                "lot": lot, "slot": slot, "wafer": wafer,
+                "event_time": when, "event_type": event_type,
+                "lot_slot_wafer_key": f"{lot}|{slot}|{wafer}|{when}",
+            }, "source_name": SOURCE_NAME, "updated_by": UPDATED_BY})
+
+    if refused:
+        # 🔴 RAISED, NOT LOGGED. The chain records a mapper error as a failed rule, which is
+        # visible; a log line during a sweep of thousands of rows is not. And the count is
+        # in the message, because "some rows disagreed" cannot be acted on.
+        raise ListPairingRefused(
+            f"{len(refused)} trigger row(s) have a different number of slots and wafers, "
+            f"so their pairing is not knowable; trimming to the shorter list would drop "
+            f"wafers silently. First: {refused[:3]}")
+
+    if not updates:
+        return []
+    return [{"target_table": target_table, "updates": updates}]
