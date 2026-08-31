@@ -50,7 +50,12 @@ const die = (msg) => {
 if (!existsSync(VIEW_PATH)) die(`no view model at ${VIEW_PATH}`);
 if (!existsSync(BASE_PATH)) die(`no base view model at ${BASE_PATH}`);
 
-const PRISTINE = readFileSync(VIEW_PATH, 'utf8');
+// Several mutation anchors below span more than one line and are written with \n. A
+// worktree checked out with CRLF -- this repo produces one -- makes those unmatchable
+// while the single-line anchors keep matching, so the file announces a lost anchor on a
+// change that never touched the line. That is what happened on 2026-08-31: the
+// `countView` anchor failed in one checkout and matched in another, from the same commit.
+const PRISTINE = readFileSync(VIEW_PATH, 'utf8').replace(/\r\n/g, '\n');
 const BASE_URL = pathToFileURL(BASE_PATH).href;
 
 /** Import a (possibly mutated) copy of the view module without writing into client2/src.
@@ -266,14 +271,18 @@ async function suite(source) {
     ok(Array.isArray(pace.choices) && pace.choices.length === 2,
       'H2 a parameter with a closed set carries exactly the options declared',
       pace.choices);
-    ok(pace.choices.map((c) => c.value).join(',') === 'fast,trickle',
+    // 🔴 read through a local that survives a dropped set: `pace.choices` is null under the
+    //    mutant that drops it, and `null.map` would crash. A crash scores as a catch while
+    //    proving nothing about the line it was meant to test.
+    const opts = pace.choices || [];
+    ok(opts.map((c) => c.value).join(',') === 'fast,trickle',
       'H2 ... in the order the declaration gave them');
-    ok(pace.choices[0].label && pace.choices[0].label.text === 'AAA',
+    ok(opts[0] && opts[0].label && opts[0].label.text === 'AAA',
       'H3 the option text is the DECLARATION\'s label, not one the client wrote',
-      pace.choices[0].label);
-    ok(pace.choices[1].when && pace.choices[1].when.text === 'bbb when',
+      opts[0] && opts[0].label);
+    ok(opts[1] && opts[1].when && opts[1].when.text === 'bbb when',
       'H3 ... and each option carries its own explanation from the same place',
-      pace.choices[1].when);
+      opts[1] && opts[1].when);
 
     // An empty list is not a closed set — it would render a select with nothing in it, which
     // says "choose" and offers nothing.
@@ -289,7 +298,7 @@ async function suite(source) {
         { value: 'a', label: 'A', when: '' }, { label: 'B', when: '' }] }],
         cli: 'c', cli_only: [], deletes: null, restartable: true, commit_granularity: 'g' }],
     }).operations[0].params[0];
-    ok(holed.choices.length === 1 && holed.choices[0].value === 'a',
+    ok(holed.choices && holed.choices.length === 1 && holed.choices[0].value === 'a',
       'H5 an option with nothing to send is dropped rather than drawn dead', holed.choices);
   }
 
@@ -371,7 +380,8 @@ async function suite(source) {
   ok(runView.params.every((p) => p.name && p.values.length),
     'F5: every echoed parameter arrives with its name and its value(s)');
   const listAck = view.buildRunView({ ...RUN_ACK, params: { columns: ['a', 'b'] } });
-  ok(listAck.params[0].values.length === 2
+  ok(listAck.params.length > 0
+     && listAck.params[0].values.length === 2
      && listAck.params[0].values.every((v) => v.src === 'server'),
     'F5: a list parameter carries its elements separately — a joined string is not payload text');
 

@@ -41,48 +41,48 @@ export { CHROME } from './config_resolve_view.js';
  * acquired an opinion the server did not authorise.
  */
 export const RETRO_CHROME = Object.freeze({
-  HEADLINE: '소급 적용',
-  HINT: '자세히 보기',
-  LOADING: '불러오는 중…',
-  LIST_FAILED: '목록 조회 실패',
-  NO_OPERATIONS: '서버가 보고한 소급 적용 연산이 없습니다.',
-  OPERATIONS: '연산',
+  HEADLINE: 'Retroactive',
+  HINT: 'details',
+  LOADING: '…',
+  LIST_FAILED: 'list unavailable',
+  NO_OPERATIONS: 'the server reports no retroactive operations',
+  OPERATIONS: 'operations',
 
-  PARAMS: '파라미터',
-  REQUIRED: '필수',
+  PARAMS: 'parameters',
+  REQUIRED: 'required',
 
-  COUNT: '건수 확인',
-  COUNTING: '세는 중…',
-  COUNT_FAILED: '건수 조회 실패',
+  COUNT: 'count',
+  COUNTING: 'counting…',
+  COUNT_FAILED: 'count failed',
 
-  RUN: '실행',
+  RUN: 'run',
   // 인라인 확인의 물러나기. 표가 «하나»라야 두 자리가 서로 다른 말을 안 합니다.
-  CANCEL: '취소',
-  RUNNING: '요청 중…',
-  RUN_FAILED: '실행 요청 실패',
-  QUEUED: '실행 요청을 큐에 넣었습니다',
-  RUN_ID: '실행 ID',
+  CANCEL: 'cancel',
+  RUNNING: 'requesting…',
+  RUN_FAILED: 'run request failed',
+  QUEUED: 'queued',
+  RUN_ID: 'run id',
 
-  DELETES: '삭제 대상',
-  COMMIT: '커밋 단위',
-  BLOCKED: '실행이 거부되는 상태',
+  DELETES: 'deletes',
+  COMMIT: 'commits',
+  BLOCKED: 'blocked',
   CLI: 'CLI',
-  CLI_ONLY: '버튼이 덮지 않는 것',
+  CLI_ONLY: 'CLI only',
   // A statement about the CLIENT'S OWN state — the inputs moved since the measurement — not a
   // verdict about the data. Same class as 「세는 중…」, and it never reaches the confirmation:
   // there a stale count is simply not shown.
-  STALE: '입력이 바뀌었습니다 — 이 측정은 지금 보낼 요청의 것이 아닙니다',
+  STALE: 'inputs changed — this count is not for the request you would send',
   // A SLOT NAME for `truncated`, whose value is spelled as itself. The server says nothing about
   // truncation in words on this route (its sibling dry-run route does), and the client will not
   // compose the missing sentence — but a border colour cannot reach a plain-text dialog, so the
   // fact travels as label + JSON value, which is `buildSetting`'s shape in the F9 report.
-  TRUNCATED: '표본이 한도까지 찼는가',
-  KIND: '이 수의 종류',
-  PARAMS_ECHO: '큐에 넣은 파라미터',
+  TRUNCATED: 'sample hit its limit',
+  KIND: 'count kind',
+  PARAMS_ECHO: 'queued parameters',
 
   // The single confirmation. It asks the question; every FACT above it in the dialog is a string
   // the server sent (label, deletes, commit_granularity, and the count sentence when one exists).
-  CONFIRM_QUESTION: '이 소급 적용을 실행 큐에 넣습니다. 계속할까요?',
+  CONFIRM_QUESTION: 'Queue this retroactive run?',
 });
 
 export const RETRO_CHROME_STRINGS = Object.freeze(Object.values(RETRO_CHROME));
