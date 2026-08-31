@@ -116,6 +116,10 @@ const WANTED = [
   // The 2c filter strip's helpers. `renderGlobalTimeline` calls all four while painting, so
   // leaving them out makes the slice throw and section H paint nothing.
   'auditFilterState', 'groupKindLabel', 'fillAuditFilterOptions', 'auditFilterPasses',
+  // The 2c row now asks which table the transaction touched. Same story as every name
+  // above it: the row calls it while painting, so leaving it out makes the slice throw
+  // and section H paint nothing -- which is how this harness reported THAT change too.
+  'auditTargetTable',
 ];
 
 function applyOnce(src, find, replace, label) {
