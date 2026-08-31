@@ -91,8 +91,8 @@ function env(frame) {
   return sandbox;
 }
 
-const cells = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-const frames = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+const cells = JSON.parse(readFileSync(process.argv[2], 'utf8').replace(/\r\n/g, '\n'));
+const frames = JSON.parse(readFileSync(process.argv[3], 'utf8').replace(/\r\n/g, '\n'));
 
 // ── 1 + 2: the two regimes, per real frame ─────────────────────────────────────────────
 console.log('== regime per real declared frame (bonding_map) ==');

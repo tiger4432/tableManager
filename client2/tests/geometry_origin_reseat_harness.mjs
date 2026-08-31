@@ -34,7 +34,7 @@ import vm from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
-const SRC = readFileSync(SRC_PATH, 'utf8');
+const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 // [1-b] The markup, for the two assertions that cannot be made against behaviour: a button
 // deleted from the HTML leaves no trace in any event a fixture can dispatch, and a stale
 // instruction in the explanatory <p> is invisible to every sandbox.

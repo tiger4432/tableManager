@@ -78,7 +78,7 @@ const die = (m) => {
 
 let PROD;
 try {
-  PROD = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
+  PROD = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8').replace(/\r\n/g, '\n'));
 } catch (e) {
   die(`cannot read the production fixture at ${FIXTURE_PATH}: ${e.message}`);
 }
