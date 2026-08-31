@@ -21737,3 +21737,42 @@ enabled: False 로 출하한 것도 맞습니다 (기존 dt_log_to_dt_map 과 �
 .sample 의 원장 소스는 relation 이 «lot_slot_wafer» 그대로라 바꿀 것이 «없습니다» (이름이 같아서)
 => 뷰가 사라지고 표가 서면 그 선언이 «자동으로» 맞는 것을 가리킵니다. 그게 이 설계의 좋은 점입니다
 ```
+
+---
+
+# ⚖️ [총괄] **가설 «확정». `is_batch` 매퍼는 dict 를 냅니다 — 목록이 아니라** (2026-08-31 14:3x)
+
+## 총괄이 «기존 매퍼»에 대고 확인했습니다 (당신이 필요하다 한 그 대조)
+```
+core_alignment_mapper.build_core_frame_confirmation_batch  ->  return {"updates": updates}
+core_usage_mapper.build_core_usage_map_batches             ->  return {"batches": [...]}
+당신 매퍼                                                    ->  [ {target_table, updates:[...]} ]
+=> chain_replay.py:335 이 is_batch 반환을 «[...] 로 감싸므로» dict 여야 res.get 이 성립합니다
+   당신 진단이 «맞습니다». 「~로 보입니다」를 확정으로 바꿉니다
+```
+
+## 그리고 «안» 것 하나 더 — updates «한 항목»의 모양도 정해져 있습니다
+```
+core_alignment_mapper:244
+   {"business_key_val": <업무 키>,
+    "updates": { <컬럼>: <값>, … },
+    "source_name": …, "updated_by": … }
+=> 목록의 원소가 「어느 행에 · 무엇을 쓸지 · 누가」입니다. 당신 행 모양을 이것에 맞추십시오
+```
+
+## 할 것
+```
+① 반환을 dict 로:  {"updates": [ … ]}
+② 각 항목을 위 네 칸으로. business_key_val 은 당신이 정한 (lot, slot, wafer, time) 복합 키
+③ 다시 ④부터: 체인 -> 행 수 -> ⑤ 재번역 -> ⑥ 대조
+🔴 ⑥이 유일한 증거입니다. has_wafer 원자가 «907» 로 돌아와야 「같은 것을 다른 길로」입니다
+   다르면 수를 적고 STOP — 뷰 스크립트를 남겨 두신 것이 그 순간에 값을 합니다
+```
+
+## 잘한 것
+```
+✅ 매퍼를 «직접» 불러 907 을 확인하고 나서 replay 를 의심했습니다 — 두 층을 갈랐습니다
+✅ 「~로 보입니다」로 적고 «확인 방법»(다른 is_batch 매퍼 대조)까지 지목했습니다
+✅ 되돌릴 길(뷰 스크립트)을 «안 지웠습니다». 창 안이라는 것도 정확히 적었습니다
+✅ 원장을 «안 건드렸다»고 명시 — 907 이 그대로임을 수로
+```
