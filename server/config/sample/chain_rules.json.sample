@@ -133,6 +133,22 @@
       "mapper_function": "reserve_materials_batch_df",
       "is_batch": true,
       "enabled": true
+    },
+    {
+      "__comment": "lot_event -> lot_slot_wafer: the two parallel colon lists (slotnumbers, waferids) become one row per (lot, slot, wafer, time). Owner ruling 2026-08-31 - derive it from lot_event through the chain, the way production spreads derived tables. A view exists only on the box whose script ran, so a declaration pointing at one ships a source that never appears elsewhere. | list_delimiter IS DECLARED, NOT ASSUMED: a separator is a property of the feed, and a wrong one produces ROWS rather than an error - every wafer id glued into one - so nobody notices until a map is wrong. The five column names are the same kind of fact and are overridable for the same reason. | A row whose two lists DISAGREE is refused by the mapper, never trimmed to the shorter one: trimming drops wafers silently and the loss is indistinguishable from wafers that were never in the lot. Measured on the authoring box 2026-08-31: 80 rows carry both lists, 907 pairs, ZERO disagree. | SHIPS DISABLED. lot_slot_wafer is a VIEW on that box and a chain cannot write into a view; enable this only where it is a real table. Doing so lets the ledger source keep its existing relation, because the table it already declares - business_key lot_slot_wafer_key - is exactly what this mapper builds.",
+      "name": "lot_event_to_lot_slot_wafer",
+      "trigger_table": "lot_event",
+      "target_table": "lot_slot_wafer",
+      "mapper_module": "mappers.lot_slot_wafer_mapper",
+      "mapper_function": "build_lot_slot_wafer_rows",
+      "is_batch": true,
+      "enabled": false,
+      "list_delimiter": ":",
+      "slot_list_column": "slotnumbers",
+      "wafer_list_column": "waferids",
+      "lot_column": "lot_id",
+      "time_column": "event_time",
+      "event_type_column": "event_type"
     }
   ]
 }
