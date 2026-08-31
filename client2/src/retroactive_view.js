@@ -56,6 +56,8 @@ export const RETRO_CHROME = Object.freeze({
   COUNT_FAILED: '건수 조회 실패',
 
   RUN: '실행',
+  // 인라인 확인의 물러나기. 표가 «하나»라야 두 자리가 서로 다른 말을 안 합니다.
+  CANCEL: '취소',
   RUNNING: '요청 중…',
   RUN_FAILED: '실행 요청 실패',
   QUEUED: '실행 요청을 큐에 넣었습니다',
@@ -499,6 +501,13 @@ export function buildRunView(payload) {
  * Deriving both buttons from the record makes that unreachable by construction rather than by
  * remembering to restore a flag at every rebuild site.
  */
+/** 인라인 확인의 두 버튼. 클라가 쓰는 문자열은 전부 «얼어붙은 표»에서 오며,
+ *  그래야 같은 말이 두 자리에서 다르게 적힐 수 없습니다. 확인의 «문장»은 여기가 아니라
+ *  `buildConfirmLines` 의 마지막 줄입니다 -- 버튼은 동사만 듭니다. */
+export function buildConfirmActions() {
+  return { go: chrome(RETRO_CHROME.RUN), cancel: chrome(RETRO_CHROME.CANCEL) };
+}
+
 export function buildActionsView(operation, record) {
   const resolved = resolveCount(record, operation);
   // A STALE count bars nothing: its refusal was measured for parameters that are no longer the
