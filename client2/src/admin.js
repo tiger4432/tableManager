@@ -2196,7 +2196,14 @@ function adoptRescopeHandoff() {
   const got = takeRescopeHandoff();
   if (!got) return;
   const state = retroState(got.op);
-  const params = got.params || {};
+  // 🔴 그리드가 «그룹»을 보냅니다 (총괄 판정 ⓐ). 수와 실행은 여기 일이고,
+  //    그래서 그리드 페이지는 `/admin/*` 를 부르지 않습니다. 여기서는 그것을 «줄로» 놓고,
+  //    줄마다 세고 돌리는 것은 기존 버튼 둘이 그대로 합니다.
+  state.groups = Array.isArray(got.groups) && got.groups.length ? got.groups : null;
+  // 체인은 «규칙마다 한 그룹»인데 규칙 목록을 그리드가 모릅니다 -- 고른 키만 옵니다.
+  // 그 키를 이 연산이 선언한 파라미터로 넣고, 규칙은 운영자가 여기서 고릅니다.
+  const keys = Array.isArray(got.businessKeys) ? got.businessKeys : null;
+  const params = got.params || (keys ? { business_keys: keys.join(',') } : {});
   Object.keys(params).forEach((key) => {
     const value = params[key];
     if (value !== undefined && value !== null && value !== '') state.params[key] = String(value);
@@ -2334,6 +2341,8 @@ function retroOperationEl(op) {
   const state = retroState(op.op);
   const resolved = resolveCount(state, op);
   if (resolved.count) card.appendChild(retroCountEl(resolved.count, resolved.stale));
+  // 그리드에서 넘어온 그룹들. 「무엇이 어떻게 묶여 같이 도는가」를 «수를 재기 전»에 봅니다.
+  if (state.groups) card.appendChild(retroGroupsEl(op, state));
   // 확인은 «카드 안»에서 벌어집니다. 다른 유도 블록들과 같은 자리, 같은 방식입니다.
   if (state.confirm) card.appendChild(retroConfirmEl(op, state.confirm));
   if (state.run) card.appendChild(retroQueuedEl(state.run));
@@ -2341,6 +2350,31 @@ function retroOperationEl(op) {
 
   card.appendChild(retroCliEl(op));
   return card;
+}
+
+/** 그리드가 넘긴 그룹 목록. 한 줄이 한 그룹이고, 누르면 그 그룹의 파라미터가 위 칸에 «채워집니다» —
+ *  그다음은 기존 [건수 확인] [실행] 그대로입니다. 여기서 세거나 돌리는 두 번째 길을 만들지
+ *  않습니다: 그러면 같은 일을 하는 자리가 둘이 되고, 둘은 언젠가 서로 다른 답을 냅니다. */
+function retroGroupsEl(op, state) {
+  const box = cfgEl('div', 'retro-groups');
+  box.appendChild(cfgEl('div', 'cfg-group-label', `${state.groups.length} groups from the grid`));
+  state.groups.forEach((group, index) => {
+    const row = cfgEl('button', 'glass-btn cfg-btn retro-group');
+    row.type = 'button';
+    const params = group.params || {};
+    const detail = Object.keys(params).map((k) => `${k}=${params[k]}`).join(' · ');
+    row.textContent = `${cfgText(group.label) || index + 1} — ${detail}`;
+    if (state.chosenGroup === index) row.className += ' is-chosen';
+    row.addEventListener('click', () => {
+      Object.keys(params).forEach((key) => { state.params[key] = String(params[key]); });
+      // 다른 그룹의 수를 이 그룹 옆에 두지 않습니다 — 그게 「측정이 자기 파라미터보다 오래 산다」입니다.
+      state.count = null;
+      state.chosenGroup = index;
+      renderRetroOperation(op.op);
+    });
+    box.appendChild(row);
+  });
+  return box;
 }
 
 /** 인라인 확인. 줄은 전부 `buildConfirmLines` 가 만든 것이고 여기서는 «옮기기만» 합니다 —
