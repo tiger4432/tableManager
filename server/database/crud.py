@@ -2567,7 +2567,10 @@ def apply_row_update_internal(
     drop_stats: dict = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
-    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
+    # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
+    # this skip list rather than being kept "just in case": the list is what a write path
+    # refuses to touch, and a name here that nothing writes is a rule protecting nothing.
+    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
     
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:

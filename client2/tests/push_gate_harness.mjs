@@ -31,7 +31,10 @@ import * as LIVE from '../src/push_columns.js';
 const MODULE_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'push_columns.js');
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 
-const SYS_TAIL = ['created_at', 'updated_at', 'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+// What the server actually appends to every table's columns. The three graph-sync names
+// were removed from `main.py`'s `system_cols` on 2026-08-31, so a fixture still carrying
+// them would test a server that no longer exists.
+const SYS_TAIL = ['created_at', 'updated_at'];
 
 // ---- served schema fixtures ----
 const dtLog = {
@@ -140,8 +143,8 @@ function run(M, { quiet = false } = {}) {
   //      would stay green while a member was swapped, and a member is what protects a column.
   say('[12] the system roster, member by member');
   check('PUSH_SYSTEM_COLUMNS members', [...PUSH_SYSTEM_COLUMNS].sort(),
-    ['business_key_val', 'created_at', 'graph_synced_at', 'grid_metadata', 'id',
-     'is_graph_synced', 'needs_graph_rollback', 'row_id', 'updated_at', 'updated_by'].sort());
+    ['business_key_val', 'created_at', 'grid_metadata', 'id',
+     'row_id', 'updated_at', 'updated_by'].sort());
 
   return { pass, failures, compared: pass + failures.length };
 }
