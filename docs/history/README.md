@@ -1,13 +1,25 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **753개** 이력. (거버넌스 규칙 #4)
+> 총 **765개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-08 (August 2026)
 
+- **2026-08-31 12:00** — [The Living Docs Catch Up And A Route Count Was False In Thirteen Places](./20260831_120000_the_living_docs_catch_up_and_a_route_count_was_false_in_thirteen_places.md)
+- **2026-08-31 11:30** — [Graph Retirement Stage One Stops Producing And Stops Reserving And The Drop Stays Unruled](./20260831_113000_graph_retirement_stage_one_stops_producing_and_stops_reserving_and_the_drop_stays_unruled.md)
+- **2026-08-31 11:10** — [A Harness Goes Inert On Crlf And Counting Files Hid The Half Normalised Ones](./20260831_111000_a_harness_goes_inert_on_crlf_and_counting_files_hid_the_half_normalised_ones.md)
+- **2026-08-31 09:14** — [One Pacing Table For Two Subsystems And A Chunk Size That Was Never Pacing](./20260831_091400_one_pacing_table_for_two_subsystems_and_a_chunk_size_that_was_never_pacing.md)
+- **2026-08-31 08:26** — [The Screen The Owner Asked For First And Four Greens That Were Measuring Nothing](./20260831_082600_the_screen_the_owner_asked_for_first_and_four_greens_that_were_measuring_nothing.md)
+- **2026-08-31 01:29** — [The Spec Names The Gaps And The Declaration Decides Which Ones Can Be Asked](./20260831_012900_the_spec_names_the_gaps_and_the_declaration_decides_which_ones_can_be_asked.md)
+- **2026-08-31 00:32** — [The Grid Picks The Scope And The Admin Block Keeps The Credential](./20260831_003200_the_grid_picks_the_scope_and_the_admin_block_keeps_the_credential.md)
+- **2026-08-31 00:22** — [One Run Row Per Operation And The Commit Boundary Decides What Can Be Cancelled](./20260831_002200_one_run_row_per_operation_and_the_commit_boundary_decides_what_can_be_cancelled.md)
+- **2026-08-30 22:16** — [A Scoped Redo Goes Through The Same Door And My Aborted Attempt Left Fourteen Atoms Gone](./20260830_221600_a_scoped_redo_goes_through_the_same_door_and_my_aborted_attempt_left_fourteen_atoms_gone.md)
+- **2026-08-30 20:23** — [A Read Time Frame Landed And Was Reverted Three Times And What Survived Was Two Ids](./20260830_202300_a_read_time_frame_landed_and_was_reverted_three_times_and_what_survived_was_two_ids.md)
+- **2026-08-30 20:10** — [Five Standing Rules In One Night And One Corrected A Rule Written That Same Evening](./20260830_201000_five_standing_rules_in_one_night_and_one_corrected_a_rule_written_that_same_evening.md)
+- **2026-08-30 14:39** — [One Sentence Covered Nine Reasons And The Registrar Was Fixing The Origin Not Filling A Hole](./20260830_143900_one_sentence_covered_nine_reasons_and_the_registrar_was_fixing_the_origin_not_filling_a_hole.md)
 - **2026-08-30 11:01** — [Three Tests Were Answering About The Directory They Ran From And A Shipped Chain Refuses Every Batch](./20260830_110100_three_tests_were_answering_about_the_directory_they_ran_from_and_a_shipped_chain_refuses_every_batch.md)
 - **2026-08-30 10:33** — [The Owners Canon Reversed My Ranking Rule And Twenty Of Twentythree Leaders Were Counterfeit](./20260830_103300_the_owners_canon_reversed_my_ranking_rule_and_twenty_of_twentythree_leaders_were_counterfeit.md)
 - **2026-08-30 10:17** — [The Templates Kept A Spelling The Declaration Had Stopped Using And Nothing Compared Them](./20260830_101700_the_templates_kept_a_spelling_the_declaration_had_stopped_using_and_nothing_compared_them.md)
@@ -774,4 +786,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-30 by gen_index.py*
+*Last generated: 2026-08-31 by gen_index.py*
