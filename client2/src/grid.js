@@ -423,12 +423,16 @@ export function buildColumnDefs() {
   const fillTargets = fillTargetOrdinals();
   // 🔴 은퇴한 기능의 잔해는 «만들지 않습니다» (숨기는 것이 아니라). 그래프 동기화는 서버가
   //    은퇴시켰고(`/graph/mapping-summary` -> 410 Gone), `main.js` 의 GRAPH_SYNC_RETIRED 는
-  //    켤 경로가 없는 «리터럴»입니다. 그런데 스키마는 아직 셋을 실어 보내서 44개 표 전부가
-  //    이 셋을 그렸습니다 -- 이모지까지 달고.
-  //    ⚠️ 지우는 것은 «화면»뿐입니다. DB 컬럼도, 서버가 이것을 시스템 컬럼으로 다루는 것도
-  //       그대로입니다 (main.py:2335 · crud.py:2570). `push_columns.js` 는 그 «서버 목록»을
-  //       비추는 계약이라 셋을 그대로 들고 있어야 합니다 -- 거기서 빼면 맵 푸시 게이트가
-  //       이 컬럼들을 「푸시가 파괴할 데이터 컬럼」으로 세게 됩니다.
+  //    켤 경로가 없는 «리터럴»입니다.
+  //
+  //    🔴 2026-08-31 정정 -- 이 주석이 «반대로» 말하고 있었습니다. 그때는 서버가 셋을 실어
+  //       보냈고, 그래서 「push_columns.js 에서 빼면 게이트가 이것을 파괴 대상으로 센다」가
+  //       참이었습니다. 이제 서버가 «안 보냅니다» (main.py 의 system_cols 와 crud.py 의
+  //       skip 목록에서 같은 날 빠졌습니다) -- 그래서 push_columns.js 에서도 뺐습니다.
+  //       실측: 어느 표도 셋을 `column_types` 에 선언하지 «않으므로»(0) 게이트 입력에
+  //       애초에 안 들어가고, 답이 안 바뀝니다.
+  //    ⚠️ 아래 필터는 «남겨 둡니다». 새 클라가 옛 서버를 볼 수 있는 배포 중에는 셋이 아직
+  //       올 수 있고, 그때 이것이 마지막 방어선입니다. DB 컬럼 44개 표 삭제는 «별도 판정»입니다.
   const retired = ['is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
   const shown = state.currentColumns.filter((col) => !retired.includes(col));
   const columnDefs = shown.map((col, index) => {

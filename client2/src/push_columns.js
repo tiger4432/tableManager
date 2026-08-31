@@ -31,9 +31,14 @@
 // serializes it explicitly whenever the column exists.
 export const PUSH_SYSTEM_COLUMNS = [
   'created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'business_key_val',
-  'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at',
   'grid_metadata'
 ];
+// RETIRED 2026-08-31: is_graph_synced, needs_graph_rollback, graph_synced_at left with the
+// branch they served - the server stopped injecting them in the same commit as this edit.
+// 🔴 MEASURED BEFORE REMOVING, because this list is what the push gate calls "not yours to
+// worry about": ZERO tables declare any of the three in `column_types`, so they never reach
+// the gate's input and dropping them changes no answer today. Leaving them would have been a
+// rule protecting a column that no longer exists in any schema the gate sees.
 
 // [Gate 4] Which of the target table's declared columns would a map push DESTROY?
 // A ⚡ Push is `replace_map`: every row in the map-key scope is deleted, then rewritten

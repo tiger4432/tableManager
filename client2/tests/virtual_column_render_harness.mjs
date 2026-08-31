@@ -329,8 +329,9 @@ function runWriteFunnels(sources, schema) {
     },
     clear(colIds) {
       reset();
-      s.sandbox.systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#',
-        'is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+      // Mirrors crud.py's write-path skip list, which lost the three graph-sync names
+      // on 2026-08-31 along with the branch that wrote them.
+      s.sandbox.systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
       colIds.forEach(colId => s.sandbox.__clear({ rowIndex: 0, colId }));
       return written();
     },

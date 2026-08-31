@@ -21475,3 +21475,147 @@ choices 가 None 인 파라미터 «11»  <- 자유 문자열은 그대로. 칸�
 ```
 ✅ 라벨·when 을 «pacing.json 에서 그대로» — 화면이 지을 것이 «없습니다»
 ✅ 두 줄 시험: 「pacing.json 에 한 항목 적으면 화면에 선택지가 생깁니다」 — 코드 «0줄»
+
+---
+
+# 📌 [총괄 -> 구현자] **은퇴한 graph 배관을 «정리»합니다 — 다만 «두 단»으로** (소유자 2026-08-31 11:5x)
+
+> 소유자: 「2 정리해」
+
+## 실측 — 지금 «살아서 유지되고» 있습니다
+```
+main.py:767     서버가 is_graph_synced 를 «모든 행»에 넣습니다
+main.py:2335    system_cols 에 셋이 그대로
+crud.py:2570    쓰기 경로 skip 목록에도
+push_columns.js PUSH_SYSTEM_COLUMNS 가 위를 «비추는 계약» — 맵 푸시 게이트가 읽습니다
+DB              44개 표에 is_graph_synced · needs_graph_rollback · graph_synced_at
+이미 은퇴       /graph/mapping-summary -> «410 Gone» · 클라 GRAPH_SYNC_RETIRED · 그리드에서 제거됨
+```
+
+## 🔴 1단 — «되돌릴 수 있는 것»만. 이번 라운드는 여기까지입니다
+```
+① 먼저 «세십시오»   그 셋을 아직 «읽는» 코드가 어디인가 — graph_sync_worker 포함 전수
+   -> 소비자가 «0» 이 아니면 STOP 하고 목록을 올리십시오. 지우기 전에 «누가 보나»부터입니다
+② 서버가 그 값을 «안 만들게» (main.py:767)
+③ system_cols · skip 목록에서 «걷어내기» (main.py:2335 · crud.py:2570)
+④ push_columns.js 를 «같은 커밋에서» 맞추기
+   🔴 이게 그 게이트의 답을 «바꿉니다» — 그 셋이 「푸시가 파괴할 컬럼」에서 빠집니다
+      push_gate_harness:143 이 그 집합을 못 박고 있으니 «같이» 고치고, 무엇이 바뀌는지 적으십시오
+⑤ 워커·주기 작업이 그 컬럼 때문에 도는 것이 있으면 «같이» 끄십시오
+```
+
+## ⛔ 2단 — **DB 컬럼 삭제는 이번에 «안 합니다»**
+```
+44개 표에서 컬럼을 지우는 것은 «되돌릴 수 없습니다». 소유자의 「정리해」가
+그것까지인지 «배관까지»인지 제가 못 가릅니다 -> 1단이 끝나면 «수와 함께» 다시 여쭙니다
+그때 물을 것: 「값을 더는 안 쓰는데 컬럼을 남길 이유가 있나」
+```
+
+## 검증
+```
+G1  🔴 그 셋을 «읽는» 코드 0 (①의 목록이 비어야 이 라운드가 성립합니다)
+G2  새로 만든 행에 그 컬럼이 «NULL» 로 남는가 — 오류 없이
+G3  맵 푸시 게이트: 무엇이 «보호에서 빠졌는지» 이름으로. 하니스도 같이
+G4  손댄 시험만. `C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest <file>`
+```
+
+---
+
+# ⚖️ [총괄] **`42efb58b` 승인 — 다만 «새 표는 아직 세 칸을 받습니다»** (2026-08-31 12:0x)
+
+## 승인 — 게이트 ⓪를 지켰습니다
+```
+🔴 「지우기 전에 «누가 읽나»부터」   운영 코드가 세 값 «어느 것으로도 갈래를 안 텄습니다»
+   graph_sync_worker.py «없음» · /graph/mapping-summary 410 · 남은 대입은 시험 하나
+🔴 푸시 게이트 영향을 «수»로       column_types 에 그 셋을 선언한 표가 «0» -> 게이트 입력에 안 닿음
+                              -> 오늘 답이 «동일». 제 지시가 걱정한 자리를 정확히 재셨습니다
+✅ 클라 계약이 «같은 커밋»에      두 하니스도 같이 (총괄 재확인: push_gate 34/0 · virtual_column_render 66/0)
+✅ 「무엇도 안 쓰는 이름이 skip 목록에 있는 것은 아무것도 보호하지 않는 규칙」 — 사유가 맞습니다
+```
+
+## 🔴 남은 것 하나 — 이것도 «1단»입니다 (되돌릴 수 있습니다)
+```
+실측   커밋이 server/database/models.py 를 «안 건드렸습니다»
+      models.py:900-902 가 표를 만들 때 그 셋을 «여전히 Column 으로 답니다»
+      Column("is_graph_synced", …) · ("needs_graph_rollback", …) · ("graph_synced_at", …)
+=> 서버가 값을 «안 만들어도», «새 표»는 죽은 칸 셋을 계속 받습니다. 정리가 «앞으로»는 안 멈춘 것입니다
+```
+```
+할 것   그 셋을 «신규 표 생성»에서 뺍니다
+안전 근거  당신이 방금 센 그대로 — 그 값을 읽는 운영 코드가 «0» 입니다
+⚠️ 기존 44개 표는 «그대로»입니다 (그건 2단). 새로 만드는 표만 달라집니다
+S1  기존 표를 «다시 만드는» 경로가 있으면 STOP — 그건 마이그레이션이고 2단입니다
+G1  새 표를 하나 만들어 그 셋이 «없는지» · 기존 표 읽기가 «그대로 도는지»
+```
+
+## ⏭ 그다음 2단은 «수와 함께» 제가 올립니다
+```
+「값을 아무도 안 쓰고 새 표도 안 받는데, 기존 44개 표의 컬럼을 남길 이유가 있나」
+-> 이 문장을 소유자께 낼 준비가 1단이 끝나면 됩니다
+```
+
+---
+
+# 📌 [총괄 -> 구현자] **주석이 «자기 코드보다 낡았습니다» — 셋** (2026-08-31 12:3x)
+
+코드맵 정비가 소스 모순 셋을 찾았습니다. 문서가 아니라 «코드 안 문장»이라 당신 자리입니다.
+```
+server/retroactive.py  모듈 docstring: 「This module names «four» existing operations」 + 넷 나열
+                       실제 «여섯» (ledger_backfill · ledger_rescope 가 늘었습니다)
+client2/src/retroactive_view.js:177  「five buttons: … and «graph_orphans» deletes」
+                       graph_orphans 는 2026-08-14 에 «등록 해제», 08-16 에 모듈 삭제됐습니다
+server/ledger_trace_router.py  docstring: 「the ledger read routes — «ten» of them」
+                       실제 «셋» (GET /gaps 가 늘어 2 -> 3)
+```
+⚠️ 두 번째는 클라 파일이지만 «한 줄 주석»이라 여기 같이 적습니다 — 클라 라운드가 지금 바쁘니
+   당신이 지나가며 고쳐도 되고, 부담되면 알려 주시면 클라로 돌립니다.
+
+## 🔴 그리고 코드맵이 찾은 것 하나는 «규율»로 남길 만합니다
+```
+graph_orphans 가 지도에 «17일» 살아 있었습니다 (해제 08-14, 모듈 삭제 08-16)
+그런데 그 은퇴를 «이미 단언하는 시험»이 있었습니다:
+   test_the_retired_graph_sweep_is_not_offered_as_a_button
+   -> "graph_orphans" not in retroactive.OPERATIONS
+=> 지도가 «그 시험을 안 읽었습니다». 이미 아는 자리가 있는데 따로 세었습니다
+```
+👉 은퇴를 시킬 때 «시험으로 못 박는» 지금 방식은 맞습니다. 그대로 하십시오.
+   (지도 쪽 규율은 코드맵 자기 기억으로 갑니다 — 당신 몫 아닙니다)
+
+---
+
+# 📌 [총괄 -> 구현자] **문서 정비가 찾은 «코드 안» 오류 셋 더** (2026-08-31 12:4x)
+
+앞서 낸 docstring 셋에 이어, doc-keeper 가 셋을 더 찾았습니다. 전부 «코드 안 문장»입니다.
+```
+① server/database/models.py:520   묘비가 후계를 «/api/ledger/trace» 라 적었는데 «그런 라우트가 없습니다»
+   🔴 main.py 에 「바로 이 실수가 2026-08-27 까지 독자를 404 로 보냈다」고 «적혀» 있습니다
+      같은 실수가 다시 있습니다
+② server/ledger/backfill.py  CLI help 이 페이싱 선언을 «ledger/pacing.json» 이라 합니다
+   실제 «server/pacing.json» (당신이 공용으로 옮겼습니다). 운영자에게 보이는 문자열입니다
+③ server/ledger/gaps.py:85   docstring 이 vacuous_types() 를 «{(predicate,type): appearances}» 라 하는데
+   코드는 «집합»을 돌려줍니다
+```
+⚠️ 셋 다 「고치면 끝」입니다. 다만 ①은 «후계를 뭐라 적을지»가 필요합니다 —
+   지금 그 자리의 후계가 무엇인지 확인해서 적으시고, 없으면 「후계 없음」이라 적으십시오.
+   틀린 주소를 적는 것보다 «없다»가 낫습니다.
+
+---
+
+# 🔴 [총괄] **명세는 옮겨졌는데 «거절문이 옛 주소로 보냅니다»** (2026-08-31 13:0x)
+
+```
+이전 완료   docs/spec/APPLICATION_GAP_SPEC.md  (내용 동일 · DOC_OWNERSHIP 갱신됨)
+🔴 남은 것  server/ledger/gaps.py 가 «세 곳»에서 옛 경로를 가리킵니다
+   :4    「task/APPLICATION_GAP_SPEC.md named every gap …」
+   :204  거절문 — 「Name them in task/APPLICATION_GAP_SPEC.md …」
+   :299  거절문 — 「task/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps …」
+=> 거절문이 «없는 파일»로 사람을 보냅니다. 그리고 거절문은 «막혔을 때만» 읽히는 문장이라,
+   틀려도 평소엔 아무도 모릅니다
+```
+🔴 **오늘 아침 `models.py:520` 과 «같은 부류»입니다** — 「후계 주소가 틀려 독자를 404 로 보냈다」.
+   그날 그 실수를 코드가 «스스로 적어 두었는데», 하루에 두 번 났습니다.
+```
+할 것   세 곳을 docs/spec/APPLICATION_GAP_SPEC.md 로
+⚠️ 그리고 파일을 «옮기는» 라운드는 «가리키는 곳»을 같이 세십시오 —
+   옮긴 쪽만 보면 이렇게 됩니다. grep 한 번이면 끝나는 일입니다
+```

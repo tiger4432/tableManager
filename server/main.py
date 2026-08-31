@@ -764,33 +764,15 @@ def inject_system_columns(row):
         # 데이터가 이미 있더라도 DB의 실제 값이 더 최신이므로 동기화
         row.data["updated_at"]["value"] = to_local_str(effective_update)
         
-    # 5. is_graph_synced 주입
-    is_sync_val = getattr(row, "is_graph_synced", False)
-    if is_sync_val is None:
-        is_sync_val = False
-    row.data["is_graph_synced"] = {
-        "value": is_sync_val,
-        "is_overwrite": False,
-        "updated_by": "system"
-    }
-
-    # 6. needs_graph_rollback 주입
-    needs_roll_val = getattr(row, "needs_graph_rollback", False)
-    if needs_roll_val is None:
-        needs_roll_val = False
-    row.data["needs_graph_rollback"] = {
-        "value": needs_roll_val,
-        "is_overwrite": False,
-        "updated_by": "system"
-    }
-
-    # 7. graph_synced_at 주입
-    synced_at_val = getattr(row, "graph_synced_at", None)
-    row.data["graph_synced_at"] = {
-        "value": to_local_str(synced_at_val) if synced_at_val else "미동기화",
-        "is_overwrite": False,
-        "updated_by": "system"
-    }
+    # 5~7. RETIRED 2026-08-31: the three graph-sync columns are no longer injected.
+    # The branch they served is gone - `/graph/mapping-summary` answers 410 and
+    # `graph_sync_worker.py` does not exist - so the server was stamping "미동기화" onto
+    # every row of every table for a synchroniser that cannot run. Measured before removing:
+    # NO production code branches on any of the three values (the only assignment left is a
+    # test constructing the outbox-skip case), so nothing downstream loses an input.
+    #
+    # The COLUMNS still exist on 44 tables and are deliberately not dropped here: that is
+    # irreversible and is a separate ruling. New rows simply leave them NULL.
 
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
@@ -2332,7 +2314,10 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
             columns = []
             
     # [버그 수정] display_columns 정의 여부와 관계없이 시스템 컬럼은 항상 마지막에 보장
-    system_cols = ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]
+    # The three graph-sync names left on 2026-08-31 with the branch they belonged to; the
+    # server no longer fills them, so listing them here would reserve a seat in every table
+    # for a column that is now always empty.
+    system_cols = ["created_at", "updated_at"]
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)

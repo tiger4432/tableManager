@@ -1,6 +1,6 @@
 # 🌐 AssyManager System Overview (Single Source of Truth)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-29 개정 6(엔티티 · 어휘 · walk) — §8 의 「원장 읽기 라우트를 목적별로 분리한다」와 §6 의 「원자가 전부 선언에서 났다」 **둘이 거짓이 되어 정정**했습니다. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-08-23 원장 셋업 완주 · 은퇴 울타리. 직전 2026-08-18 Ontology Config Explorer `COMPLETE / APPROVED` (`2d1ad863`)
+> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 정비 사이클(229 커밋) — §2 그래프 은퇴 블록에 **「은퇴 ≠ 없어짐」 생존자 줄** · §4 에 `RetroactiveRun` · §5 에 **`server/config/` 밖에 사는 선언 둘**(`pacing.json`·`gap_names.json`) · §8 의 「원장 읽기 라우트는 «둘»」이 **거짓이 되어 «셋»으로 정정**(`gaps` 신설) + `/admin/retroactive/*` 행 신설. **사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다**(⚠️ 총괄 검수 대상). 직전 2026-08-29 개정 6(엔티티 · 어휘 · walk). 직전 2026-08-23 원장 셋업 완주 · 은퇴 울타리
 > 
 > ⚰️ **[`2ec78b9` · 판정 R-2026-08-14-H] 구 그래프 갈래가 은퇴해 §2·§3·§5·§6·§8이 갱신됐습니다** — 백엔드 자식이 다섯에서 **넷**, 라우트 일곱이 **410**, 저장소 셋이 **DROP**(약 841 MB). 후계는 정준 원장입니다. 토폴로지 변경이라 SSOT가 반드시 말해야 하는 종류의 사실입니다. **⚠️ 총괄 검수 대상** — 이 문서는 사실 동기화만 받았고 아키텍처 «결정»은 하나도 건드리지 않았습니다.
 > 
@@ -43,6 +43,16 @@ AssyManager는 **전산 인프라가 취약한 R&D 현장**을 위한 데이터 
 ## 2. 프로세스 토폴로지 (멀티프로세스)
 
 🔴 **백엔드 자식은 «넷»입니다** — 그래프 싱크 워커(사본을 만들던 추출→머티리얼라이즈→저장 파이프라인)는 은퇴했습니다. 개체 층은 원장(`ledger_events`)이고, 저장소 `graph_nodes`·`graph_edges`·`graph_sync_state`는 DROP됐습니다.
+
+> 🔴 **[2026-08-31] 「은퇴했다」와 「없어졌다」를 가르십시오 — 배관 정리가 «진행 중»입니다.**
+> 🗄️ **믿지 말 것** — 옛 그래프 «라우트»(일곱, 전부 410) · 그 워커 프로세스 · 저장소 표 셋. 실행 파일도 없습니다.
+> ✅ **아직 살아 있는 것** — **이미 있는 표들이 부기 컬럼 «셋»을 그대로 들고 있습니다**(`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`, 그중 둘은 인덱스까지). 서버는 `/tables/{t}/schema` 와 행 페이로드에 그 셋을 **계속 실어 보내고**, 클라는 **2026-08-31부터 그리지 않습니다**(그리드 컬럼 정의를 만들기 «전에» 거릅니다).
+> 🔴 **정리가 «되돌릴 수 있는 선»에서 갈립니다**(총괄 판정 2026-08-31 · 보드 소유):
+> ```
+> 1단 (되돌릴 수 있다)   «새로» 만들어지는 표가 그 셋을 안 받게 한다 — 빌더만 바뀐다. 이 라운드에 진행 중
+> 2단 (되돌릴 수 없다)   이미 있는 44개 표에서 컬럼을 DROP 한다 — 🔴 «판정되지 않았습니다». 1단이 끝나면 수와 함께 다시 여쭙습니다
+> ```
+> ⚠️ 그래서 **「그래프 컬럼이 없어졌다」로 읽지 마십시오** — 오늘 도는 DB 의 표들에는 있고, 스키마 응답에도 실립니다. 없어진 것은 «그리는 자리»와 «그 값을 쓰던 워커»이고, 1단이 바꾸는 것은 «앞으로 만들어질 표»뿐입니다.
 
 `run_decoupled_app.py`가 아래 프로세스를 통합 기동합니다. 프로세스 간 조정은 PostgreSQL **Transactional Outbox** 패턴(`database_outbox` + `LISTEN/NOTIFY` 채널 `outbox_event`)으로 이루어지며, 워커→웹서버 콜백은 HTTP `POST /internal/events/*`를 사용합니다.
 
@@ -97,7 +107,7 @@ graph TD
   | `map_editor2.html` | `map_editor2.js` (+ `src/map2/*`) | **맵 정렬 화면(좌표계 확정) — 개발 중.** 🔴 **레거시 에디터를 대체하지 않고 *옆에 섭니다***(`vite.config.js`가 그렇게 적고 있습니다). 켜는 데 필요한 선언은 [CONFIG_GUIDE §3 S9](../guide/CONFIG_GUIDE.md), 층 경계는 [frontend §4.2](../architecture/frontend.md) |
   | ~~`enrichment.html`~~ | ~~`enrichment.js`~~ | 🗄️ **[2026-08-11] 삭제됨** — 결손 보정 워크리스트 조회는 지금 메인 그리드 History 패널의 사이드바 **참조뷰** 탭(`enrichment_reference_view.js`). 결손 target을 순차 입력하던 컨베이어 자체는 대체 없이 소멸(그리드 직접 편집으로 흡수) → [architecture/frontend](../architecture/frontend.md) |
   | ⚰️ `graph.html` | `graph_viewer.js` | **[2026-08-14 `2ec78b9`] 구 지식그래프 뷰어 — 데이터 소스가 은퇴했습니다.** 페이지는 딥링크로 여전히 열리고 **묘비(tombstone)**를 띄워 원장 구조 뷰로 보냅니다. 🔴 **파일을 지우지 않은 것이 판정입니다** — 삭제하면 SPA catch-all이 index.html을 200으로 답해 「알 수 없는 오류」가 됩니다 |
-  | ⚰️ `trace.html` | `trace.js` | **[2026-08-14] 구 추적 리포트 — 같은 은퇴.** 후계 라우트는 **없다** — `GET /api/ledger/trace`도 2026-08-28에 은퇴했다. 같은 질문은 오늘 `GET /api/ledger/subgraph`를 `follow`로 좁혀 답한다(실측 2026-08-28: `/api/ledger` 아래 사는 것은 `subgraph`와 `declaration` **둘**이다) |
+  | ⚰️ `trace.html` | `trace.js` | **[2026-08-14] 구 추적 리포트 — 같은 은퇴.** 후계 라우트는 **없다** — `GET /api/ledger/trace`도 2026-08-28에 은퇴했다. 같은 질문은 오늘 `GET /api/ledger/subgraph`를 `follow`로 좁혀 답한다(**수는 여기 적지 않는다 — 정본은 §8**) |
   | `ledger.html` | `ledger_trace.js` 외 | **원장 콘솔** — 혈통 추적 · 케이스-컨트롤 · 유형 구조 뷰 · 트렌드/마킹 대조. 🔴 **[2026-08-14 심야 R-리라이트] 이 페이지의 «화면»은 내일 전면 재작성됩니다** — 서버 계약은 보존, 화면은 계승하지 않습니다([SCENARIO_CONSOLE_BRIEF](../process/SCENARIO_CONSOLE_BRIEF.md)) |
   | `ledger-graph.html` | `src/ledger_graph/*` | **원장 감사 뷰어.** 🔴 **[2026-08-28 실측] 이 페이지는 `client2/`에 «없다»**, 그리고 아래 서술이 기대던 것도 같은 날 은퇴했다: walk이 돌려주는 노드는 **선언된 엔터티 하나**이고(Entity·Source Event·Claim·Enrich Action은 노드가 아니다), 표 투영 `GET /api/ledger/subgraph/table`도 없다. ~~종전 서술: `Ontology` 유형 구조와 `Evidence` 증거를 분리하고, Claim에서 `needs_enrichment`로 도달한 Action을 다시 seed로 열며, 같은 투영을 Nodes/Edges/Properties CSV로 내렸다~~ |
 
@@ -127,6 +137,7 @@ graph TD
 | `FileIngestionLog` | 파일 적재 로그(FAILED/SUCCESS/PENDING_RETRY) |
 | `FileIngestionCheckpoint` | 파일 인제션 오프셋 체크포인트 + 해시 dedup(`file_ingestion_checkpoints`, `UNIQUE(table_name, file_signature)`) |
 | `InteractionEffortLog` | **핵심가치 #1 정본 계기** — 교정 tx당 사람의 상호작용 원시 카운트(`interaction_effort_logs`, `UNIQUE(transaction_id)`) |
+| **`RetroactiveRun`** | **[2026-08-31 신설]** 소급 실행 등록부(`retroactive_runs`) — 실행 하나당 1행(`run_id`·`op`·`params`·`state`·`processed_rows`/`total_rows`·시각 넷). **취소는 프로세스를 죽이지 않고 이 행에 값을 세우며**, 도는 쪽이 배치 사이에서 그것을 묻는다. 상세 [data_model §1.1](../architecture/data_model.md) |
 | `DataRow` | 레거시 JSON blob 저장(동적 테이블로 대체됨) |
 
 **우선순위 결정** (`crud.compute_priority_value`): 수동 핀 우선 → `SOURCE_PRIORITY {user:0, collision_merge:1, pipeline_parser:2, custom_script:3, chain_ingestion:4}`(낮을수록 우선) → 같은 우선순위 안에서는 `ingested_at` 내림차순 → `source_name` 오름차순의 전순서. **2·3층은 계층을 넘지 못한다**(동점만 가르고, 낮은 서열을 승격시키지 않는다). 테이블별 `source_priority` 오버라이드 지원. 서열의 단일 원천은 `crud.resolve_priority_map`(그래프 엣지 provenance도 동일 서열 사용).
@@ -161,6 +172,15 @@ graph TD
 | `server/config/ledger_config.json` | 구 flat legacy 선언(`sources` 옆에 상위 `profiles`를 둘 수 있고, 그 `profiles`는 순수 검증·직렬화 계약이다). 남아 있는 소비자는 어드민 dry-run 경로이며 백필은 읽지 않는다 |
 
 계약과 단계 경계는 [LEDGER_TECHNICAL_SPEC §3.10](../spec/LEDGER_TECHNICAL_SPEC.md)에 있다.
+
+🔴 **[2026-08-31] 선언이 `server/config/` 밖에도 «둘» 산다 — 찾을 때 그 디렉터리만 훑으면 못 본다.**
+
+| 경로 | 무엇 | 왜 거기 있나 |
+|---|---|---|
+| `server/pacing.json` | **페이싱 프로파일**(`fast`·`slow`·`trickle` — 각 `label`·`when`·`units_per_cycle`·`rest_seconds`). 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬»을 선언한다. 소비자 **둘** — 원장 백필(단위 = 페이지)과 파일 인제션(단위 = 청크, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) | 현장이 고쳐 쓰는 값이 아니라 **제품이 든 프로파일 표**라 코드 옆에 살고 **git 에 추적된다**(그래서 `.sample` 이 없다) |
+| `server/ledger/gap_names.json` | **결측 질문의 «이름과 뜻»**(`pairs`·`subject_sides`·`object_sides`). 찾는 것은 코드(`ledger/gaps.py`)가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다 — `_source` 가 그 이름을 정한 명세를 가리킨다 | 같은 이유. 🔴 **표와 선언이 어긋나면 양방향으로 거절한다** — 이름 없는 질문도, 질문 없는 이름도 오류다 |
+
+재사용 관점은 [PRIMITIVES §6 「여러 긴 작업의 속도는 표 하나가 선언한다」](../architecture/PRIMITIVES.md) · [§3 「무엇이 빠졌나는 어휘를 순회해서 찾는다」](../architecture/PRIMITIVES.md).
 
 **설정 파일 전수 지도와 시나리오별 온보딩 절차(무엇을 어떤 순서로 넣고 어떻게 검증하는가)는 [guide/CONFIG_GUIDE](../guide/CONFIG_GUIDE.md)를 참조하세요.**
 
@@ -223,11 +243,12 @@ cd client2 && npm run dev    # :5173 → API/WS는 127.0.0.1:8080로 자동 타�
 - `GET|PUT .../{col}/sources`, `.../priority` — 소스 레이어링/핀
 - `POST /tables/{t}/upload` — 파일 업로드 인제션
 - `WS /ws` — 실시간 브로드캐스트
-- `GET /api/ledger/*` — **원장 읽기 면**(read-only)이고 **라우트는 «둘»입니다**: 데이터에 답하는 `subgraph`(walk)와, 원장을 한 줄도 안 읽는 선언 카탈로그 `declaration`. 🔴 **[2026-08-28] 종전 이 자리는 「목적별 라우트로 분리한다」고 적고 있었고 그것이 거짓이 됐습니다** — 키를 받던 라우트(`lot_map`·`trends`·`siblings`·`composition`·`selection/resolve`·`kinds`·`structure`·`subgraph/table`)는 전부 은퇴했습니다. 키를 받으면 키마다 한 번씩 불리고, 마킹을 받으면 마킹 «전체»에 한 번 답합니다. 파라미터 계약의 정본은 [backend §2](../architecture/backend.md)
+- `GET /api/ledger/*` — **원장 읽기 면**(read-only)이고 **라우트는 «셋»입니다**(실측 2026-08-31 · `server/ledger_trace_router.py` 의 `@router.get` 전수): 데이터에 답하는 `subgraph`(walk) · 원장을 한 줄도 안 읽는 선언 카탈로그 `declaration` · **[2026-08-31 신설] 결측 카탈로그 `gaps`**(선언된 술어 × 엔터티를 순회해 「이 쌍이 원자를 하나도 안 만든다」를 찾는다 — 인자가 없으면 이름만 답하고 `?name=` 이면 그 하나를 «잰다»). 🔴 **[2026-08-28] 종전 이 자리는 「목적별 라우트로 분리한다」고 적고 있었고 그것이 거짓이 됐습니다** — 키를 받던 라우트(`lot_map`·`trends`·`siblings`·`composition`·`selection/resolve`·`kinds`·`structure`·`subgraph/table`)는 전부 은퇴했습니다. 키를 받으면 키마다 한 번씩 불리고, 마킹을 받으면 마킹 «전체»에 한 번 답합니다. ⚠️ **`gaps` 는 셋째 «데이터» 라우트가 아닙니다** — `declaration` 과 같은 계급(선언에 대해 답한다)이고, 잴 때만 읽기 전용으로 원장에 닿습니다. 파라미터 계약의 정본은 [backend §2](../architecture/backend.md)
 - ⚰️ **옛 그래프 갈래는 «없습니다»** — `GET /graph/*` · `POST /graph/trace` · `POST /api/graph/sync` 는 라우트로 존재하지 않습니다(총괄 실측 2026-08-27: `/api/graph/sync` -> «404», `/graph/*` 는 SPA 폴백이라 «HTML»). 후속은 원장의 walk «하나» — `GET /api/ledger/subgraph`.
 - `GET /enrichment/rules`, `.../references/{i}` — Enrichment 규칙·참조뷰
 - `GET /api/maps/overlay`, `/api/maps/paint-rules` — **범용 맵 오버레이**(임의 맵을 타깃 맵 프레임으로 정렬) · 페인트 잠금 선언 정본
 - `GET /api/transfer-plan/{stages,source-summary,validate}`, `/api/bonding-plan/core-summary` — 전사 계획 stage·가용 집계·검증(계획 정체성 = `(ref_table, map_key)`). 🔒 저장 전 반영 확인은 **`GET /admin/transfer-plan/dry-run`**(파라미터 없음 · 행 조회 없음 · 어느 철자가 이겼는지까지 답한다)
+- `/admin/retroactive/*` — **소급 적용 표면**. 인벤토리 `operations`(연산마다 `params`·`cli`·`cli_only`·`deletes`·`restartable`·**`cancellable`**·`commit_granularity`, 그리고 값이 닫힌 파라미터는 `choices` 를 함께 든다) · 건수 `{op}/count` · 실행 `{op}/run`(strict 토큰) · **[2026-08-31 신설] 실행 목록 `runs` + 취소 `runs/{run_id}/cancel`**. 🔴 **취소는 «협조적»입니다** — 프로세스를 죽이지 않고 `retroactive_runs` 행에 값을 세우고, 도는 쪽이 **배치 사이에서** 그것을 묻습니다. 그래서 「멈출 수 있나」가 연산마다 **선언**되고(둘은 `false`, 사유 있음), 화면은 그 값이 거짓이면 버튼을 그리지 않습니다. 운영자 절차 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md) · 계약 [backend §2](../architecture/backend.md)
 - `/admin/*`, `/internal/events/*`, `/map-presets` — 어드민·프로세스간·맵프리셋
   - 🔒 **`/admin/*` 전체 + `/internal/events/*` 전체가 공유 토큰 게이트 뒤에 있다**(🔴 **[2026-08-06] 수를 적지 않는다** — 종전 「24개」·「4개」였고 라우트가 늘 때마다 낡는다. 세는 술어는 `grep -cE '^@app\.(get|post|put|delete|patch)\("/admin' server/main.py`이고, **`^` 앵커를 빼면 함수 안에 조건부로 등록되는 둘까지 세어 다른 답이 나온다**)(2026-07-27, `server/admin_auth.py`) — `ASSY_ADMIN_TOKEN` 환경변수 + `X-Admin-Token` 헤더(**ASCII 전용** — 헤더가 latin-1이라 비-ASCII는 인증 불가, 거부되며 기동 배너가 `ERROR`). 로그인 화면·사용자 관리는 **의도적으로 없다**(2~5명 사내 공유). ⚠️ **이 수는 라우트가 늘 때마다 낡는다** — 커버리지의 정본은 수가 아니라 `test_admin_auth.py`가 **FastAPI 라우트 테이블을 열거**해 내는 단언이다. 토큰 미설정 시 **fail closed 3개**(`POST /admin/scripts/code` · `POST /admin/auto-update/run-now` · **`POST /admin/retroactive/{op}/run`** — 정본은 `test_admin_auth.STRICT_ADMIN_ROUTES`)는 **503**, 나머지는 열린다(첫 재기동에 운영자가 어드민 전체에서 잠기지 않게 — 사용자 확정). 소급 실행이 셋째로 들어간 이유는 코드 실행이라서가 아니라 **같은 아웃박스로 같은 스케줄러 프로세스에 닿고 피해 계급이 같기** 때문이다(테이블 전체 재작성 · 소스 주장 회수 · 노드 삭제). `GET /health`는 무인증 유지. 워커는 런처 환경에서 토큰을 상속하므로 별도 설정이 없다. ⚠️ **토큰을 켜기 전에 `client2/dist` 번들 재빌드가 선행되어야 한다**(옛 번들엔 토큰을 묻는 코드가 없어 어드민이 잠긴다). 설정 → [DEPLOY_SETUP §1-4](../guide/DEPLOY_SETUP.md)
 

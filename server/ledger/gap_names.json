@@ -1,5 +1,5 @@
 {
-  "_source": "task/APPLICATION_GAP_SPEC.md §2 tables ①, ②, ②-bis. THE SPEC IS THE AUTHORITY; this file is its machine-readable form. Adding a gap means adding a row HERE and in the spec - never inventing one in code. `ledger/gaps.py` refuses to run when this file and the declaration disagree, in either direction.",
+  "_source": "docs/spec/APPLICATION_GAP_SPEC.md §2 tables ①, ②, ②-bis. THE SPEC IS THE AUTHORITY; this file is its machine-readable form. Adding a gap means adding a row HERE and in the spec - never inventing one in code. `ledger/gaps.py` refuses to run when this file and the declaration disagree, in either direction.",
   "_register_shares_one_name_across_three_subjects": "APPLICATION_GAP_SPEC 2026-08-31: the operator does the SAME thing for all three - fetch the registration record - so it is one name with the type swapped in. A fourth subject needs no new name.",
   "_why_names_live_outside_the_code": "A label in code is a second authority that goes stale without anybody noticing. The detector emits declaration names and looks the label up here, so a spec revision is a data change.",
   "pairs": [

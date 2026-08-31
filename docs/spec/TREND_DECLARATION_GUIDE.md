@@ -12,7 +12,7 @@
 > 🔴 **여기 적힌 절차를 그대로 따르면 전부 실패합니다.** 오늘 「선언으로 무엇을 늘리나」의
 > 정본은 [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)(작성) ·
 > [LEDGER_GUIDE](../guide/LEDGER_GUIDE.md)(운영) · [PRIMER](../guide/ledger/PRIMER.md)(입문)이고,
-> 읽기 라우트는 `GET /api/ledger/subgraph` 와 `GET /api/ledger/declaration` **둘뿐**입니다.
+> 읽기 라우트의 정본은 [backend §2](../architecture/backend.md) 입니다(**여기에 수를 적지 않습니다** — 이 자리의 「둘뿐」이 2026-08-31에 거짓이 됐습니다).
 >
 > **살아남는 원리 둘**(다시 쓸 때 여기서 가져갈 것) — ① **§7 「거절은 이름을 댄다」**:
 > 미선언·비활성 선택은 조용한 빈 답이 아니라 이름을 댄 422 여야 한다(오늘의 `follow` 가

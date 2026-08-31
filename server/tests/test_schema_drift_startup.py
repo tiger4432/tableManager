@@ -523,7 +523,13 @@ def test_the_predicate_reads_the_dict_the_repairer_iterates(db_session):
 
 TYPE_DRIFT_TABLE = "inventory_master"
 TYPE_BREAKING_COLUMN = "stock_qty"       # config says "number" -> Float
-TYPE_LYING_COLUMN = "graph_synced_at"    # the framework's own DateTime column
+TYPE_LYING_COLUMN = "updated_at"         # the framework's own DateTime column
+# 🔴 WAS `graph_synced_at` UNTIL 2026-08-31, when that column left the framework with
+# the retired graph-sync branch. The fixture died, not the subject: this suite measures
+# the DRIFT DETECTOR and only borrowed a framework DateTime column to plant a lie on.
+# So it borrows one that still exists rather than being deleted with the column - and
+# `updated_at` is a better loan anyway, since a column every table will always have
+# cannot be retired out from under it again.
 TYPE_CONTROL_COLUMN = "unit_price"       # also "number", and built correctly
 
 

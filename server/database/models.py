@@ -897,9 +897,16 @@ def init_dynamic_models(config_dict: dict):
             # file for the drop and its reverse.
             Column("created_at", DateTime(timezone=True), server_default=func.now()),
             Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),
-            Column("is_graph_synced", Boolean, default=False, nullable=True, index=True),
-            Column("needs_graph_rollback", Boolean, default=False, nullable=True, index=True),
-            Column("graph_synced_at", DateTime(timezone=True), nullable=True),
+            # RETIRED 2026-08-31: is_graph_synced, needs_graph_rollback, graph_synced_at.
+            # A NEW table no longer gets three dead columns - two of them INDEXED, so every
+            # insert was maintaining two indexes for a synchroniser that does not exist
+            # (`graph_sync_worker.py` is gone, `/graph/mapping-summary` answers 410).
+            # Counted before removing: no production code branches on any of the three
+            # values, so nothing loses an input.
+            #
+            # ⚠️ EXISTING TABLES KEEP THEIR COLUMNS. This changes what is CREATED, which is
+            # reversible; dropping 44 tables' columns is not, and is a separate ruling.
+            # Nothing here re-creates an existing table, so no table changes shape today.
         ]
         
         # 2. table_config에 정의된 사용자 컬럼들을 native 타입으로 바인딩
