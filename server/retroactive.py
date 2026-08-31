@@ -319,7 +319,7 @@ def _run_ledger_backfill(db, params, log, control=None):
     from ledger import backfill
 
     s = backfill.run(db.get_bind(), source=params["source"],
-                     checkpoint=_checkpoint(control))
+                     checkpoint=_checkpoint(control), pace=params.get("pace"))
     _final_progress(control, s.get("rows_read"))
     return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
@@ -587,10 +587,14 @@ OPERATIONS = {
     "ledger_backfill": {
         "label": "원장 전진 번역 (커서 뒤 전부)",
         "what_is_missing": "선언은 이 소스를 읽는데 커서 뒤의 행이 아직 원장에 없다",
-        "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)")],
+        "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
+                   _p("pace", required=False,
+                      help="how hard to push: fast (the default, unchanged) | slow | "
+                           "trickle. Slowing yields between pages so the database is "
+                           "free for everything else; declared in ledger/pacing.json")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
-        "cli": "server/ledger/backfill.py --source <source>",
+        "cli": "server/ledger/backfill.py --source <source> [--pace slow]",
         "deletes": None,
         # 🔴 THIS IS THE ONE THE OWNER NAMED: "백필 돌리다 서버 렉먹는데 백필만 못꺼서
         # 서버 재기동". It commits per page and resumes from the cursor, so asking it to

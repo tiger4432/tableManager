@@ -1057,3 +1057,40 @@ def test_one_ref_can_name_several_rows_and_every_one_of_them_is_read():
         'bonding_core_die:{"base_id": "B1", "bx": 1.0, "by": 6.0}']})
     named = ledger_backfill._ref_row_keys(ref)
     assert [keys["bx"] for _relation, keys in named] == [0.0, 1.0]
+
+
+
+# ------------------------------------------------------------------ the pacing handle
+def test_a_mistyped_pace_is_refused_rather_than_quietly_meaning_full_speed():
+    """🔴 THE DEFAULT IS THE DANGEROUS FALLBACK HERE, which is why there is no fallback.
+
+    Somebody reaches for `slow` because the service is already struggling. If `slowly` fell
+    back to `fast` they would watch the exact thing they were trying to prevent, with no way
+    to tell "the pace is not working" from "the pace did not help" - and the obvious next
+    move, pressing it again, does nothing either.
+
+    The refusal lists what IS declared, so the fix is in the message.
+    """
+    assert ledger_backfill.resolve_pace(None) == ledger_backfill.resolve_pace("fast"), (
+        "the default has to BE the unchanged behaviour, not merely resemble it")
+    with pytest.raises(ledger_setup.LedgerSetupError) as caught:
+        ledger_backfill.resolve_pace("slowly")
+    assert caught.value.code == "unknown_pace"
+    assert "fast" in str(caught.value) and "slow" in str(caught.value)
+
+
+def test_the_declared_paces_actually_differ_and_fast_costs_nothing():
+    """A pacing table whose entries all mean the same thing is a screen control that lies.
+
+    `fast` must cost NOTHING - no cap and no rest - because it is what ran before this
+    existed; anything else changes the default, which is the owner's decision and not this
+    round's.
+    """
+    paces = ledger_backfill.load_paces()
+    resolved = {name: ledger_backfill.resolve_pace(name, paces) for name in paces}
+    assert resolved["fast"] == (None, 0.0)
+    # Non-vacuous: at least one pace has to actually slow something down, or the handle
+    # is decorative.
+    assert any(pages and rest for pages, rest in resolved.values())
+    # ...and no two of them are the same handle under two names.
+    assert len(set(resolved.values())) == len(resolved)

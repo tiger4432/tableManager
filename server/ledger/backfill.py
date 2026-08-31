@@ -82,6 +82,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 import time
 
 logger = logging.getLogger("Ledger.Backfill")
@@ -247,7 +248,7 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
-        ontology_root=None, retranslate=None, checkpoint=None):
+        ontology_root=None, retranslate=None, checkpoint=None, pace=None):
     """Translate everything past the cursor. Returns a `BackfillResult`.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
@@ -295,12 +296,13 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     return _run_v2_lineage(
         engine, cutover, source=source, fetch_rows=fetch_rows,
         reset_cursor=reset_cursor, start_from=start_from,
-        max_batches=max_batches, retranslate=retranslate, checkpoint=checkpoint)
+        max_batches=max_batches, retranslate=retranslate, checkpoint=checkpoint,
+        pace=pace)
 
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                     reset_cursor=False, start_from=None, max_batches=None,
-                    retranslate=None, checkpoint=None):
+                    retranslate=None, checkpoint=None, pace=None):
     """Run one selected source on the existing Store/cursor.
 
     ``run()`` is the only caller and there is no longer an alternative driver to fall back
@@ -376,6 +378,9 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         if approved and reset_cursor:
             cursor_value = {}
         after_key = cursor_value.get(_page_key(plan))
+        # Resolved BEFORE the first page, so an unknown pace is refused before the run
+        # has written anything rather than partway through.
+        pages_per_cycle, rest_seconds = resolve_pace(pace)
         result = BackfillResult(
             source=source,
             translator_ver=expected_version,
@@ -460,6 +465,15 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
             # so stopping leaves the watermark and the ledger agreeing exactly as a finished
             # run would. Stopping anywhere inside would split a molecule across batches -
             # the same fault this loop's own split guard exists to catch.
+            # 🔴 THE PACE YIELDS AT THE SAME BOUNDARY THE STOP USES, and that is not a
+            # coincidence: between pages is where the last page's atoms and cursor are
+            # committed together and the next has not been read, so it is the only place
+            # where pausing costs nothing and resuming is exact. Cancel is the handle that
+            # STOPS; this is the handle that SLOWS - and most of the time slowing is enough
+            # that nobody has to stop anything.
+            if pages_per_cycle and result["batches"] and rest_seconds and (
+                    result["batches"] % pages_per_cycle == 0):
+                time.sleep(rest_seconds)
             if checkpoint is not None and checkpoint(result["rows_read"]):
                 result["stopped"] = True
                 logger.info("[Ledger] stopped by request after %d rows at cursor %s",
@@ -809,6 +823,42 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     return result
 
 
+#: The pacing table. Values live in a FILE because the chain's equivalents do not: its
+#: `OUTBOX_PURGE_MAX_CHUNKS` and `SWEEP_INTERVAL` are constants in
+#: `chain_ingestion_worker.py`, and an operator whose screen is crawling cannot edit a
+#: constant and restart the server - that restart is the thing this round exists to remove.
+#: The SHAPE is copied from the chain (a cap per cycle, then yield); the hardcoding is not.
+PACING_PATH = Path(__file__).with_name("pacing.json")
+DEFAULT_PACE = "fast"
+
+
+def load_paces(path=None):
+    return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
+
+
+def resolve_pace(name, paces=None):
+    """-> (pages_per_cycle, rest_seconds). Refuses an unknown name BY NAME.
+
+    🔴 A TYPO MUST NOT SILENTLY MEAN "fast". An operator who asked for `slow` because the
+    service is struggling, and got full speed because they wrote `slowly`, would watch the
+    thing they were trying to prevent and have no way to tell it from the pace not working.
+    """
+    # Imported inside, like every other raise site in this module: `ledger.setup` imports
+    # from here, so a module-level import is a cycle.
+    from .setup import LedgerSetupError
+
+    paces = paces or load_paces()
+    if name is None:
+        name = DEFAULT_PACE
+    if name not in paces:
+        raise LedgerSetupError(
+            "unknown_pace", "pace",
+            f"'{name}' is not a declared pace. Declared: {', '.join(sorted(paces))} "
+            f"(ledger/pacing.json)")
+    chosen = paces[name]
+    return chosen.get("pages_per_cycle"), float(chosen.get("rest_seconds") or 0)
+
+
 def rows_past_cursor(engine, setup, source, limit=DEFAULT_FETCH_ROWS):
     """How many rows this source has NOT translated yet. READ ONLY, MOVES NOTHING.
 
@@ -1132,6 +1182,10 @@ def main(argv=None):
     parser.add_argument(
         "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
         help="the Ledger config root (the only operator path)")
+    parser.add_argument("--pace", default=None,
+                        help="fast (default, unchanged) | slow | trickle — yield between "
+                             "pages so the database stays free for everything else. "
+                             "Declared in ledger/pacing.json")
     parser.add_argument("--scope-column", default=None,
                         help="redo only the rows whose <column> is one of --scope-values; "
                              "the column must be one this source's read declares")
@@ -1179,7 +1233,7 @@ def main(argv=None):
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
         return 0
 
-    result = run(engine, source=args.source, fetch_rows=args.fetch_rows,
+    result = run(engine, source=args.source, fetch_rows=args.fetch_rows, pace=args.pace,
                  reset_cursor=args.reset_cursor, start_from=args.start_from,
                  max_batches=args.max_batches, ontology_root=args.ontology_root)
     beat(result)
