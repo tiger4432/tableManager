@@ -21666,3 +21666,36 @@ G3  원장 소스가 그 표를 읽어 has_wafer 원자가 나오는가 — 지�
 G4  뷰와 스크립트가 «사라졌는가». .sample 이 더는 뷰를 안 가리키는가
 ```
 ⚠️ 라이브 선언(ledger_config)과 .sample 은 «총괄이» 고칩니다. 파생 표가 서면 알려 주십시오.
+
+---
+
+# 🔴 [총괄] **매퍼는 왔는데 «규칙»이 없습니다 — 부르는 것이 없어 표가 안 생깁니다** (2026-08-31 13:5x)
+
+```
+커밋 c5147985 이 담은 것   server/mappers/lot_slot_wafer_mapper.py.sample  «한 파일»
+실측                     chain_rules 에 trigger_table=lot_event 인 규칙이 «없습니다»
+                        라이브 server/config/chain_rules.json      -> 없음
+                        추적되는 server/config/sample/chain_rules.json.sample -> «없음»
+=> 매퍼가 «호출자 0» 입니다. 파생 표가 안 생기고, 그래서 원장 소스도 못 돌립니다
+```
+🔴 이건 이 저장소가 「착지는 배선이 아니다」로 적어 둔 그 자리입니다. 그리고 오늘만 두 번째입니다
+   (아침에 당신이 «호출자 0인 규약»을 스스로 잡아 `9615d94b` 로 이었습니다 — 같은 부류입니다).
+
+## 할 것
+```
+① server/config/sample/chain_rules.json.sample 에 규칙을 «추가»하십시오
+   기존 여덟과 같은 모양 — name · trigger_table(lot_event) · target_table · mapper_module ·
+   mapper_function · is_batch · enabled · 그리고 «구분자 칸»(당신이 규칙에서 읽게 만든 그것)
+   🔴 «.sample 이 추적되는 쪽»입니다. 라이브만 고치면 다른 환경에서 안 뜹니다 —
+      매퍼를 .sample 로 낸 당신 판단과 «같은 이유»입니다
+② 라이브 chain_rules.json 은 «총괄»이 넣겠습니다 — 규칙 본문을 채널에 적어 주시거나,
+   .sample 에 넣으시면 제가 그대로 옮기겠습니다
+③ 그다음 파생 표가 서면 알려 주십시오. 원장 소스 relation 을 그 표로 돌리는 것은 «총괄»입니다
+```
+
+## 검증
+```
+G1  규칙이 «선언에» 있는가 (.sample 기준)
+G2  체인을 돌려 파생 표에 행이 «생기는가» — 콜론 목록을 편 수와 대조
+G3  🔴 매퍼의 호출자가 «0이 아닌가» — 그것이 이 지적의 전부입니다
+```
