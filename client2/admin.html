@@ -1169,6 +1169,19 @@
     .running-row.is-stopping { opacity: 0.45; }
     .running-row.is-stopping .running-bar__fill { background: var(--text-dim, #888); animation: none; }
 
+
+    /* 인라인 확인 — 모달이 아니라 카드 안의 블록입니다.
+       새 색을 만들지 않고 경계선과 여백만으로 «여기서 한 번 멈춘다»를 말합니다. */
+    .retro-confirm {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .retro-confirm-ask { margin: 6px 0 8px; font-weight: 600; }
+    .retro-confirm .retro-actions { margin-top: 0; }
+
   </style>
 </head>
 <body>

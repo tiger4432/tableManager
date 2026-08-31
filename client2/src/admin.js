@@ -27,6 +27,7 @@ import {
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView,
+  buildConfirmActions,
 } from './retroactive_view.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
@@ -2333,11 +2334,36 @@ function retroOperationEl(op) {
   const state = retroState(op.op);
   const resolved = resolveCount(state, op);
   if (resolved.count) card.appendChild(retroCountEl(resolved.count, resolved.stale));
+  // 확인은 «카드 안»에서 벌어집니다. 다른 유도 블록들과 같은 자리, 같은 방식입니다.
+  if (state.confirm) card.appendChild(retroConfirmEl(op, state.confirm));
   if (state.run) card.appendChild(retroQueuedEl(state.run));
   if (state.runFailure) card.appendChild(cfgEl('div', 'cfg-dryrun', state.runFailure));
 
   card.appendChild(retroCliEl(op));
   return card;
+}
+
+/** 인라인 확인. 줄은 전부 `buildConfirmLines` 가 만든 것이고 여기서는 «옮기기만» 합니다 —
+ *  마지막 한 줄(질문)만 클라가 쓴 문장이고 나머지는 서버 문자열과 운영자 입력입니다. */
+function retroConfirmEl(op, pending) {
+  const box = cfgEl('div', 'retro-confirm');
+  pending.lines.forEach((node) => {
+    const line = cfgEl('div', node.role === 'question' ? 'retro-confirm-ask' : 'cfg-detail',
+      cfgText(node));
+    box.appendChild(line);
+  });
+  const row = cfgEl('div', 'retro-actions');
+  const labels = buildConfirmActions();
+  const go = cfgEl('button', 'glass-btn btn-primary cfg-btn', cfgText(labels.go));
+  go.type = 'button';
+  go.addEventListener('click', () => confirmRetroactiveRun(op));
+  const no = cfgEl('button', 'glass-btn cfg-btn', cfgText(labels.cancel));
+  no.type = 'button';
+  no.addEventListener('click', () => cancelRetroactiveRun(op));
+  row.appendChild(go);
+  row.appendChild(no);
+  box.appendChild(row);
+  return box;
 }
 
 function retroFactEl(label, value, tone) {
@@ -2606,10 +2632,32 @@ async function runRetroactiveRun(op) {
   // 대화상자를 닫으면서 클릭을 흘리는 경로가 실제로 있다). 여기서 세우면 모달 의미론에 기대지
   // 않고도 두 번째 진입이 위 `if (state.busy) return;`에 걸린다. 취소하면 되돌린다.
   state.busy = 'run';
-  if (!confirm(lines.map((node) => node.text).join('\n'))) {
-    state.busy = null;
-    return;
-  }
+  // 🔴 «네이티브 confirm 이 아닙니다». 이 화면의 상설이 「모드도 모달도 없다」이고, 실측에서
+  //    브라우저 확인창이 렌더러를 세워 총괄이 자기 화면을 못 눌렀습니다(소유자가 대신 누름).
+  //    확인은 «이 카드 안»에 남고, 그때까지 아무것도 서버로 안 갑니다.
+  // 🔴 그리고 «확인한 그 파라미터»를 같이 붙듭니다. 확인 뒤에 입력칸을 고칠 수 있는데
+  //    보낼 때 다시 읽으면, 운영자가 승인한 것과 다른 것이 나갑니다 — 이 파일이 F1 으로
+  //    이미 막아 둔 「측정이 자기 파라미터보다 오래 산다」와 같은 부류입니다.
+  state.confirm = { lines, params };
+  renderRetroOperation(op.op);
+}
+
+/** 인라인 확인의 «취소». 아무것도 안 보냈으므로 되돌릴 것도 없습니다. */
+function cancelRetroactiveRun(op) {
+  const state = retroState(op.op);
+  state.confirm = null;
+  state.busy = null;
+  renderRetroOperation(op.op);
+}
+
+/** 인라인 확인의 «진행». 여기서부터가 원래의 쓰기 경로입니다. */
+async function confirmRetroactiveRun(op) {
+  const state = retroState(op.op);
+  const pending = state.confirm;
+  // 두 번째 클릭은 여기서 걸립니다 — 확인 블록은 첫 클릭에 사라집니다.
+  if (state.busy !== 'run' || !pending) return;
+  const params = pending.params;
+  state.confirm = null;
   renderRetroOperation(op.op);
   let failure = null;
   let failureText = null;
