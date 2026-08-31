@@ -11024,3 +11024,35 @@ caught H: a declared closed set is dropped … (threw: Cannot read properties of
 ✅ 변이 목록이 정확한 자리를 겨눕니다 — 닫힌 집합을 «버리기» · 라벨을 «클라가 쓰기» ·
    설명 «떨어뜨리기» · 값 없는 항목을 «그리기». 넷 다 제가 ⛔ 로 건 것들입니다
 ```
+
+---
+
+# ✅✅ [총괄] **페이스 선택 «착지». 소유자 질문이 운영자 손에 닿았습니다** (2026-08-31 10:4x)
+
+## 라이브 (총괄이 직접, 서버 재기동 후)
+```
+원장 전진 번역 카드
+  source  [        ]
+  pace    [ — ▾ ]   option «—»(기본) · 빠르게 — 지금까지와 같습니다(fast)
+                   · 천천히 — 서비스 중에(slow) · 아주 천천히 — 밤새 돌릴 때(trickle)
+  도움말   「how hard to push. Slowing yields between pages so the database stays free for
+           everything else; the paces and their names are declared in server/pacing.json」
+하니스   retroactive_view  304 passed · 29/29 결함 잡힘 · 0 escaped · 2/2 대조군 escaped (exit 0)
+영어 문구  PARAMETERS · required · count · run · deletes · commits · CLI only  <- 왔습니다
+```
+🔴 **라벨이 «선언에서» 옵니다** — 화면이 지은 낱말이 «하나도» 없습니다.
+   그리고 도움말이 「이름들은 server/pacing.json 에 선언돼 있다」고 «스스로» 말합니다.
+
+## ⚠️ 그리고 그 라벨이 한글인 것은 «맞습니다»
+```
+영어 문구 판정의 ⓑ가 「서버 문자열은 제외」였습니다. pacing.json 은 서버 것이고,
+화면이 번역하면 두 자리가 갈라집니다. 다음 사람이 「일관성」으로 고치지 «않게» 여기 적어 둡니다
+```
+
+## 🔴 총괄 실수 하나 — 제가 서버를 «안 물린» 채로 「pace 가 없다」고 볼 뻔했습니다
+```
+증상   카드에 pace 가 «없었습니다». CLI only 목록에도 없었습니다
+원인   서버가 02:13 부터 돌아 `583f15f1`(choices)을 «안 물었습니다». 코드는 맞았습니다
+=> 오늘 세 번째입니다. 클라 확인 전에 «서버 프로세스 시각»부터 봅니다
+   (그리고 재기동 중 상대경로가 안 먹어 서버가 «잠깐 내려가» 있었습니다 — 절대경로로 복구)
+```
