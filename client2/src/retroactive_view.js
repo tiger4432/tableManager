@@ -396,6 +396,10 @@ export function buildRunsView(payload, now, cancellable) {
       cancel: canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
+      // 🔴 «기다리는 것»은 도는 것이 아닙니다. 큐에 앉은 실행은 서버를 안 무겁게 하는데,
+      //    흐르는 막대를 그리면 도는 것과 «똑같이» 보입니다 — 그러면 이 화면의 목적
+      //    (「무엇을 끊어야 서버가 가벼워지나」)이 그 줄에서 거짓말을 합니다.
+      moving: state !== 'queued',
       state,
     });
   }
@@ -413,6 +417,9 @@ export function buildRunsView(payload, now, cancellable) {
       // 파일 인제션은 이 라우트가 취소를 안 받습니다. 그러니 × 를 안 그립니다.
       cancel: false,
       stopping: false,
+      // QUEUED 는 heavy 레인 대기열에 앉아 있는 것입니다 — 선언이 그 대기를 «정상»이라
+      // 부르고 TTL 도 24시간입니다. 그 줄이 도는 것처럼 보이면 안 됩니다.
+      moving: String(job.status || '') === 'PROCESSING',
       state: text(job.status),
     });
   }

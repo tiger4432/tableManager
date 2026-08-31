@@ -508,6 +508,40 @@ async function suite(source) {
 
     ok(view.elapsedMinutes(null, NOW) === null,
       'G7: a run with no start time has no elapsed, not zero');
+
+    // ── G8. WAITING IS NOT RUNNING ────────────────────────────────────────────────
+    // 🔴 THE DISCRIMINATING FIXTURE. All four rows carry `processed 0 / total null`, so every
+    //    other field on them is IDENTICAL -- same cell mode, same text, same absent percent.
+    //    A queued run loads the server with nothing, and this screen exists to answer "which
+    //    one do I cut". If waiting and working paint the same, that answer is wrong on the
+    //    only rows where it costs something. `moving` is the whole difference, which is what
+    //    makes this fixture able to see it; a payload where the two also differed in count
+    //    would pass with the flag hardcoded either way.
+    const waitPayload = {
+      runs: [
+        { run_id: 'q1', op: 'ledger_backfill', label: '대기', params: {}, state: 'queued',
+          processed_rows: 0, total_rows: null, queued_at: '2026-08-31T08:20:00+09:00' },
+        { run_id: 'w1', op: 'ledger_backfill', label: '진행', params: {}, state: 'running',
+          processed_rows: 0, total_rows: null, started_at: '2026-08-31T08:20:00+09:00' },
+      ],
+      ingestions: [
+        { table_name: 't', filename: 'q.csv', status: 'QUEUED', processed_rows: 0,
+          total_rows: null, elapsed_seconds: 2400 },
+        { table_name: 't', filename: 'p.csv', status: 'PROCESSING', processed_rows: 0,
+          total_rows: null, elapsed_seconds: 30 },
+      ],
+    };
+    const wv = view.buildRunsView(waitPayload, NOW, { ledger_backfill: true });
+    ok(same(wv.rows.map((r) => r.progress.text), ['0', '0', '0', '0']),
+      'G8: the four rows say the same thing about their counts');
+    ok(same(wv.rows.map((r) => r.progress.mode), ['text', 'text', 'text', 'text']),
+      'G8: ... and get the same cell, so nothing else can separate them');
+    ok(same(wv.rows.map((r) => r.moving), [false, true, false, true]),
+      'G8: ... and only the queued ones are marked as not moving');
+    ok(wv.rows[0].moving === false && wv.rows[0].id === 'q1',
+      'G8: a run sitting in the queue is not running, whichever source it came from');
+    ok(wv.rows[2].moving === false && wv.rows[3].moving === true,
+      'G8: ... and the ingestion registry word is read for the same judgement');
   }
 
   const stale = recordFor('lot_alias', 'inv');
@@ -610,6 +644,11 @@ const DEFECTS = [
   ['a slot label is drawn with nothing in it',
     swap('    if (!value) return;',
       '    if (!value) { if (label) lines.push({ ...label, role: \'label\' }); return; }')],
+
+  ['G8: a waiting run paints as a working one (runs)',
+    swap("      moving: state !== 'queued',", '      moving: true,')],
+  ['G8: a waiting file paints as a working one (ingestions)',
+    swap("      moving: String(job.status || '') === 'PROCESSING',", '      moving: true,')],
 
   // ── the QA round's findings, pinned so none of them can come back quietly ────────
   ['F1: a measurement outlives the parameter it was measured for (confirmation)',

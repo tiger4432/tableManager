@@ -322,6 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initConfigResolveLine();
   initRetroactiveLine();
   refreshRunning();
+  scheduleRunsPoll();
   initOntologyExplorer({
     root: ontologyExplorerRoot,
     apiBase: API_BASE,
@@ -2033,6 +2034,27 @@ async function refreshRunning() {
   }
 }
 
+// 🔴 이 목록은 «지금»을 말하는 화면이라 스스로 따라가야 합니다. 사람이 새로고침을 눌러야
+//    안다면 「지금 뭐가 도나」에 답하는 것이 아닙니다 (소유자 관측: 「새로고침 해야하네」).
+//    박자는 «목록이 정합니다» -- 도는 것이 있으면 촘촘히, 없으면 느리게. 조용할 때 촘촘히
+//    두드리면 아무 일도 없는 서버를 하루 종일 깨우는 것이 됩니다.
+const RUNS_POLL_BUSY_MS = 3000;
+const RUNS_POLL_IDLE_MS = 30000;
+let runsTimer = null;
+
+function scheduleRunsPoll() {
+  if (runsTimer) clearTimeout(runsTimer);
+  // «빈 목록»과 «아직 안 읽음»은 다릅니다. 안 읽었으면 빨리 한 번 더 갑니다.
+  const busy = !runsView || !runsView.empty;
+  runsTimer = setTimeout(() => {
+    // 숨은 탭·다른 탭에서는 쉽니다 -- 옆의 공용 자동 갱신이 지키는 것과 같은 규칙입니다.
+    // 그리고 다시 돌아왔을 때를 위해 «타이머는 계속 돕니다».
+    const p = (!document.hidden && currentTab === 'overview')
+      ? refreshRunning() : Promise.resolve();
+    p.then(scheduleRunsPoll, scheduleRunsPoll);
+  }, busy ? RUNS_POLL_BUSY_MS : RUNS_POLL_IDLE_MS);
+}
+
 /** × — 값만 세웁니다. 목록에서 «안 지웁니다». */
 async function requestRunCancel(runId) {
   try {
@@ -2084,7 +2106,7 @@ function renderRunning() {
   list.className = 'running-list';
   for (const row of view.rows) {
     const line = document.createElement('div');
-    line.className = 'running-row';
+    line.className = 'running-row' + (row.moving ? '' : ' is-waiting');
     line.setAttribute('data-run-id', row.id);
 
     const what = document.createElement('span');
@@ -2111,7 +2133,8 @@ function renderRunning() {
       //    글자로 「처리 N」이라 적으면 소유자 지적대로 막대가 있는데 말을 또 하는 것입니다.
       //    움직임이 「도는 중」을, 수가 「어디까지」를 말합니다.
       const bar = document.createElement('span');
-      bar.className = 'running-bar is-unknown';
+      // 🔴 움직임이 「도는 중」입니다. 기다리는 줄은 «빈 궤도»로 앉습니다 — 글자는 안 늘립니다.
+      bar.className = 'running-bar is-unknown' + (row.moving ? '' : ' is-waiting');
       const fill = document.createElement('span');
       fill.className = 'running-bar__fill';
       bar.appendChild(fill);
@@ -2210,7 +2233,7 @@ async function refreshRetroactiveOperations(force = false) {
     retroactiveView = buildOperationsView(JSON.parse(raw));
     // 🔴 진행 목록의 × 는 이 목록의 `cancellable` 로만 그려집니다. 이것이 «늦게» 오므로
     //    도착하면 다시 그립니다 — 안 그러면 첫 로드에서 × 가 영원히 안 보입니다.
-    if (runsView) renderRunning();
+    refreshRunning();
     // 목록이 실제로 달라졌다 = 설정이 바뀌었다 = 들고 있던 측정은 낡은 선언에 대한 것이다.
     // 큐 응답(run_id)은 남긴다: 그것은 선언이 아니라 **일어난 일**이고, 설정이 바뀌었다고
     // 방금 큐에 들어간 실행이 없던 일이 되지 않는다.
@@ -2607,6 +2630,9 @@ async function runRetroactiveRun(op) {
       // run_id를 영구히 지웠다 — 토스트는 이미 사라진 뒤였고, 무언가 실행됐다는 증거가 화면에서
       // 완전히 없어졌다. 카운트와 파라미터는 살아남는데 그것만 못 살아남을 이유가 없다.
       state.run = buildRunView(await res.json());
+      // 방금 큐에 들어간 것을 «지금» 보여 줍니다 -- 다음 박자를 기다리면 그 사이에
+      // 운영자는 안 걸린 줄 알고 한 번 더 누릅니다.
+      refreshRunning().then(scheduleRunsPoll, scheduleRunsPoll);
       showToast(`${cfgText(state.run.queuedLabel)} — `
         + `${cfgText(state.run.runIdLabel)} ${cfgText(state.run.runId)}`, 'success');
     }

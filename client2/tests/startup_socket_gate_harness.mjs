@@ -253,6 +253,13 @@ async function drive(mainSrc, apiSrc, wsSrc, cfgSrc, {
     // the ReferenceError rejects `init` and takes the socket gate's whole section C red,
     // which is the harness doing its job.
     installAuditFilters: noop,
+    // And it now stands up the grid's two assembled parts (the ledger-source label and the
+    // re-translate menu, main.js). Same story as the two above: outside the question scored
+    // here, and their absence rejected `init` with a ReferenceError in all 26 scenarios of
+    // section C -- which is how this line came to be written. They return null so the
+    // `if (sourceLabel)` / `if (rescopeMenu)` calls after the awaits stay out of the way.
+    initGridSourceLabel: () => null,
+    initGridRescopeMenu: () => null,
     resetSuggestLearning: noop, loadSchema: async () => {}, loadHistory: async () => {},
     showIngestionProgress: noop, finishIngestionProgress: noop, showToast: noop,
     getLocalTimeString: () => '', updatePageCacheOnUpsert: noop, updatePageCacheOnDelete: noop,
@@ -508,8 +515,11 @@ const SITE_SOCKET_LAST = [
     find: '  initWebSocket();\n\n  // Load cached settings from localStorage',
     repl: '  // Load cached settings from localStorage' },
   { file: 'main',
-    find: '  await checkServerHealth();\n  await loadTables();\n}',
-    repl: '  await checkServerHealth();\n  await loadTables();\n  initWebSocket();\n}' },
+    // The tail of `init()` is what this site anchors on, and it has moved once already
+    // (two setRelation calls landed after the awaits). If it moves again this site goes
+    // INERT and says so out loud, which is the whole point of anchoring on the code.
+    find: '  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);\n}',
+    repl: '  if (rescopeMenu) rescopeMenu.setRelation(state.currentTable);\n  initWebSocket();\n}' },
 ];
 const SITE_HEALTH_CATCH_UNGUARDED = {
   file: 'api',

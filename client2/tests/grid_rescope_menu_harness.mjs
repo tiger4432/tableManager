@@ -137,7 +137,8 @@ async function suite(mods) {
   {
     const none = build('inspection_run', []);
     ok('C1 no selection says so, rather than offering columns',
-      items(none.host).length === 0 && none.host.textContent.includes('행을 고르면'),
+      items(none.host).length === 0
+        && none.host.textContent.includes('select rows to re-translate'),
       none.host.textContent);
     // 🔴 A column the rows carry no value for is DISABLED, not removed -- removing it would
     //    make it indistinguishable from a column the server refuses (B2).
@@ -146,11 +147,11 @@ async function suite(mods) {
     eq('C2 a column with no values in the selection stays visible but dead',
       items(some.host).length - live(some.host).length, 2);
     ok('C3 ... and says why, naming the column',
-      some.host.textContent.includes('bx — 고른 행에 이 값이 없습니다'), some.host.textContent);
+      some.host.textContent.includes('bx — no value in the selected rows'), some.host.textContent);
     // Rows that carry no value are COUNTED, not dropped in silence.
     const mixed = build('bonding_die_from_core', [{ base_id: 'A' }, { base_id: '' }, { base_id: 'B' }]);
     ok('C4 rows missing the value are counted, not dropped silently',
-      live(mixed.host)[0].textContent.includes('값 없는 행 1'), live(mixed.host)[0].textContent);
+      live(mixed.host)[0].textContent.includes('1 without a value'), live(mixed.host)[0].textContent);
   }
 
   // ── C-bis. THE ROW SHAPE THIS GRID ACTUALLY USES ─────────────────────────────
@@ -163,7 +164,7 @@ async function suite(mods) {
     eq('C6 with the reader the values are found where the grid keeps them',
       live(wired.host).map((n) => n.getAttribute('data-rescope-column')), ['base_id', 'bx']);
     ok('C7 ... and the counts are the values, not the rows',
-      live(wired.host)[1].textContent.includes('bx 1개'), live(wired.host)[1].textContent);
+      live(wired.host)[1].textContent.includes('bx (1)'), live(wired.host)[1].textContent);
   }
 
   // ── D. THE HANDOFF: DECLARED NAMES, WRITTEN ONCE, EATEN ONCE ─────────────────
@@ -236,7 +237,7 @@ const MUTANTS = [
   { id: 'M4', what: 'rows missing the value are dropped without saying how many',
     catches: 'C4',
     mutate: { 'grid_rescope_menu.js': (s) => s.replace(
-      "      const skipped = missing ? ` · 값 없는 행 ${missing}` : '';",
+      "      const skipped = missing ? ` · ${missing} without a value` : '';",
       "      const skipped = '';") } },
   { id: 'M5', what: 'the handoff invents a param name the operation never declared',
     catches: 'D1',
