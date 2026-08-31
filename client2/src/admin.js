@@ -2085,17 +2085,19 @@ function renderRunning() {
     subEl.textContent = '…';
     return;
   }
-  valueEl.textContent = String(view.rows.length);
+  valueEl.textContent = String(view.liveCount);
   // 접힌 줄이 「열지 말지」를 정합니다: 몇 개가 도는지와 가장 오래된 것.
   // 🔴 「가장 오래」는 «최댓값»입니다. 마지막 줄을 집으면 목록 순서가 바뀌는 날 조용히
   //    다른 수를 말합니다 — 접힌 줄만 보고 끊을지 정하는 화면이라 그 한 수가 판단입니다.
-  const oldestMinutes = view.rows.reduce((max, r) => {
+  // 🔴 끝난 줄은 «시간»에서도 빼야 합니다 -- 08:52 에 끝난 것을 09:13 에 「oldest 21m」로
+  //    적으면 그 수가 「21분째 서버를 물고 있다」로 읽힙니다.
+  const oldestMinutes = view.rows.filter((r) => !r.finished).reduce((max, r) => {
     const m = r.progress && typeof r.progress.elapsedMinutes === 'number'
       ? r.progress.elapsedMinutes : null;
     return m === null ? max : (max === null ? m : Math.max(max, m));
   }, null);
   const oldest = oldestMinutes === null ? null : `${oldestMinutes}m`;
-  subEl.textContent = view.empty ? 'idle' : (oldest ? `oldest ${oldest}` : '');
+  subEl.textContent = view.liveCount === 0 ? 'idle' : (oldest ? `oldest ${oldest}` : '');
   if (view.failedSources && view.failedSources.length) {
     // 🔴 못 읽은 출처를 «이름 대어» 말합니다. 안 말하면 그만큼이 「없는 것」이 됩니다.
     subEl.textContent += ` · ${view.failedSources.join(', ')} unreachable`;
@@ -2106,7 +2108,8 @@ function renderRunning() {
   list.className = 'running-list';
   for (const row of view.rows) {
     const line = document.createElement('div');
-    line.className = 'running-row' + (row.moving ? '' : ' is-waiting');
+    line.className = 'running-row'
+      + (row.finished ? ' is-finished' : (row.moving ? '' : ' is-waiting'));
     line.setAttribute('data-run-id', row.id);
 
     const what = document.createElement('span');

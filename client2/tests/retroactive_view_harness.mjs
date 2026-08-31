@@ -466,15 +466,17 @@ async function suite(source) {
         { run_id: 'r2', op: 'chain_replay', label: '체인 리플레이', params: { rule: 'inv' },
           state: 'cancelling', processed_rows: 5, total_rows: null,
           started_at: '2026-08-31T08:58:00+09:00' },
-        { run_id: 'r3', op: 'ledger_rescope', label: '끝남', state: 'succeeded' },
+        { run_id: 'r3', op: 'ledger_rescope', label: '끝남', state: 'done' },
       ],
       ingestions: [{ table_name: 'dt_log', filename: 'a.csv', status: 'PROCESSING',
                      processed_rows: 430, total_rows: 1000, elapsed_seconds: 190 }],
     };
     const rv = view.buildRunsView(payload, NOW, { ledger_backfill: true, chain_replay: true });
 
-    ok(rv.rows.length === 3, 'G1: a finished run is not on the list of what is running');
-    ok(same(rv.rows.map((r) => r.kind), ['run', 'run', 'ingestion']),
+    ok(rv.liveCount === 3, 'G1: a finished run is not counted among what is running');
+    ok(rv.rows[3] && rv.rows[3].id === 'r3' && rv.rows[3].finished === true,
+      'G1: ... it sits below the live ones instead of vanishing, so "did it run" stays answerable');
+    ok(same(rv.rows.slice(0, 3).map((r) => r.kind), ['run', 'run', 'ingestion']),
       'G1: both sources are ONE list, not two');
 
     ok(rv.rows[0].progress.mode === 'text',
@@ -491,9 +493,10 @@ async function suite(source) {
     ok(rv.rows[2].progress.percent === 43,
       'G3: ... at the percentage its own numbers give');
 
-    ok(same(rv.rows.map((r) => r.cancel), [true, true, false]),
+    ok(same(rv.rows.map((r) => r.cancel), [true, true, false, false]),
       'G4: the X is drawn only where the declaration says the run can be cancelled');
-    ok(same(view.buildRunsView(payload, NOW, {}).rows.map((r) => r.cancel), [false, false, false]),
+    ok(same(view.buildRunsView(payload, NOW, {}).rows.map((r) => r.cancel),
+       [false, false, false, false]),
       'G4: an operation the declaration does not mark cancellable gets no X');
 
     ok(rv.rows[1].stopping === true,
@@ -542,6 +545,68 @@ async function suite(source) {
       'G8: a run sitting in the queue is not running, whichever source it came from');
     ok(wv.rows[2].moving === false && wv.rows[3].moving === true,
       'G8: ... and the ingestion registry word is read for the same judgement');
+
+    // ── G9. A FINISHED RUN IS NOT A RUNNING ONE ───────────────────────────────────
+    // 🔴 THE WORD IS THE WHOLE TEST. The server's terminal state is `done`; the first version
+    //    of this filter checked for `succeeded`, which this server never writes -- so it
+    //    filtered nothing, and while the runs table was empty nothing could show that. The
+    //    screen then counted a job finished 21 minutes earlier as running and put a dead x on
+    //    it. A fixture using `succeeded` would agree with both spellings and decide nothing.
+    const doneRun = (id, state) => ({ run_id: id, op: 'ledger_backfill', label: id, params: {},
+      state, processed_rows: 80, total_rows: null,
+      started_at: '2026-08-31T08:52:00+09:00', queued_at: '2026-08-31T08:47:00+09:00' });
+    const dv = view.buildRunsView({
+      runs: [
+        doneRun('d1', 'done'),
+        { run_id: 'live', op: 'ledger_backfill', label: 'live', params: {}, state: 'running',
+          processed_rows: 5, total_rows: null, started_at: '2026-08-31T08:58:00+09:00' },
+        doneRun('d2', 'cancelled'), doneRun('d3', 'failed'), doneRun('d4', 'done'),
+        doneRun('d5', 'done'),
+      ],
+      ingestions: [],
+    }, NOW, { ledger_backfill: true });
+
+    ok(dv.liveCount === 1, 'G9: only the running one is counted as running');
+    ok(dv.rows[0].id === 'live' && dv.rows[0].finished === false,
+      'G9: ... and it is the row that is still going');
+    ok(dv.rows.slice(1).every((r) => r.finished === true),
+      'G9: the finished ones sit below it, marked as finished');
+    ok(dv.rows.slice(1).every((r) => r.cancel === false),
+      'G9: ... and none of them carries an x, because pressing it can do nothing');
+    ok(dv.rows.slice(1).every((r) => r.moving === false),
+      'G9: ... and none of them is painted as moving');
+    ok(dv.rows.length === 4,
+      'G9: only the most recent few finished rows are kept, so the list stays a list');
+    ok(dv.empty === false,
+      'G9: a page holding only finished rows still has something to draw');
+
+    const onlyDone = view.buildRunsView({ runs: [doneRun('d1', 'done')], ingestions: [] },
+      NOW, { ledger_backfill: true });
+    ok(onlyDone.liveCount === 0,
+      'G9: with nothing running the count is zero, whatever is still listed below');
+
+    // 🔴 An unknown state is kept, NOT dropped. If the server adds a word, a job that is
+    //    really running must not vanish from the one screen that exists to show it -- but it
+    //    gets no x either, because we cannot know that stopping it would do anything.
+    const unknown = view.buildRunsView({
+      runs: [{ run_id: 'u1', op: 'ledger_backfill', label: 'u', params: {}, state: 'paused',
+               processed_rows: 1, total_rows: null, started_at: '2026-08-31T08:58:00+09:00' }],
+      ingestions: [],
+    }, NOW, { ledger_backfill: true });
+    ok(unknown.liveCount === 1 && unknown.rows[0].finished === false,
+      'G9: a state this client does not know is still shown as running');
+
+    const stopped = view.buildRunsView({
+      runs: [{ run_id: 'f1', op: 'ledger_backfill', label: 'f', params: {}, state: 'done',
+               processed_rows: 80, total_rows: null,
+               started_at: '2026-08-31T08:52:00+09:00',
+               finished_at: '2026-08-31T08:55:00+09:00' }],
+      ingestions: [],
+    }, NOW, { ledger_backfill: true });
+    ok(stopped.rows[0].progress.elapsed === '3m',
+      'G9: a finished run reports how long it TOOK, not how long ago it started');
+    ok(stopped.rows[0].progress.elapsed !== '8m',
+      'G9: ... so its clock stops instead of climbing for as long as the page is open');
   }
 
   const stale = recordFor('lot_alias', 'inv');
@@ -646,9 +711,24 @@ const DEFECTS = [
       '    if (!value) { if (label) lines.push({ ...label, role: \'label\' }); return; }')],
 
   ['G8: a waiting run paints as a working one (runs)',
-    swap("      moving: state !== 'queued',", '      moving: true,')],
+    swap("      moving: !finished && state !== 'queued',", '      moving: true,')],
   ['G8: a waiting file paints as a working one (ingestions)',
     swap("      moving: String(job.status || '') === 'PROCESSING',", '      moving: true,')],
+
+  ['G9: a finished run keeps counting up from when it started',
+    swap('    const clock = Number.isFinite(stopped) ? stopped : now;',
+      '    const clock = now;')],
+  ['G9: the finished words are ones this server never writes',
+    swap("const RUN_FINISHED = ['done', 'cancelled', 'failed'];",
+      "const RUN_FINISHED = ['succeeded', 'stopped'];")],
+  ['G9: a finished run keeps its x',
+    swap('      cancel: !finished && canCancel[run.op] === true,',
+      '      cancel: canCancel[run.op] === true,')],
+  ['G9: the count includes the rows that already finished',
+    swap('    liveCount: rows.length,', '    liveCount: rows.length + recent.length,')],
+  ['G9: an unrecognised state is treated as finished and disappears',
+    swap("    const finished = RUN_FINISHED.indexOf(state) !== -1;",
+      "    const finished = state !== 'running' && state !== 'queued';")],
 
   // ── the QA round's findings, pinned so none of them can come back quietly ────────
   ['F1: a measurement outlives the parameter it was measured for (confirmation)',
