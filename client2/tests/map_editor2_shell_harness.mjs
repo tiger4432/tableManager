@@ -2565,7 +2565,7 @@ function throws(fn, what) {
   //    If `map_editor2.html` and `makeDocument` stop agreeing, S1-S3 go red here rather than in
   //    production, which is where the two-slot sentence spent its whole life.
   const pageHtml = readFileSync(
-    new URL('../map_editor2.html', import.meta.url), 'utf8');
+    new URL('../map_editor2.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   ok(pageHtml.includes('data-me2-confirm-unit'), 'S1 the page authors ONE unit hook');
   ok(!pageHtml.includes('data-me2-confirm-eqp') && !pageHtml.includes('data-me2-confirm-product'),
      'S2 and no hook on it names an axis');

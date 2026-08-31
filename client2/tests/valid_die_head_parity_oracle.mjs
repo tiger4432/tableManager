@@ -195,7 +195,7 @@ const baseSrc = (() => {
       { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch (e) { die(`could not read ${BASE}:client2/src/map_editor.js from git`); }
 })();
-const workSrc = readFileSync(SRC_PATH, 'utf8');
+const workSrc = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 // Kept, unweakened: comparing a file with itself yields 0 differing cells for the wrong
 // reason. With a fixed acceptance base this fires only if the tree really is checked out AT
 // that base, and dying is the right answer there. See the base note at the top for why it

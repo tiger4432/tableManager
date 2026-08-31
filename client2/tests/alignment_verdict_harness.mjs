@@ -63,7 +63,7 @@ function die(m) {
 
 let CASES;
 try {
-  CASES = JSON.parse(readFileSync(join(HERE, 'fixtures', 'alignment_oracle_cases.json'), 'utf8'));
+  CASES = JSON.parse(readFileSync(join(HERE, 'fixtures', 'alignment_oracle_cases.json'), 'utf8').replace(/\r\n/g, '\n'));
 } catch (e) {
   die(`cannot read fixtures/alignment_oracle_cases.json: ${e.message}`);
 }
@@ -756,7 +756,7 @@ if (process.argv.includes('--mutate')) {
     oracle: join(HERE, 'oracle', 'alignment_scoring_oracle.mjs'),
   };
   const TEXT = {};
-  for (const k of Object.keys(FILES)) TEXT[k] = readFileSync(FILES[k], 'utf8');
+  for (const k of Object.keys(FILES)) TEXT[k] = readFileSync(FILES[k], 'utf8').replace(/\r\n/g, '\n');
 
   const swap = (from, to) => (src) => {
     if (!src.includes(from)) throw new Error(`anchor not found: ${from.slice(0, 70)}`);

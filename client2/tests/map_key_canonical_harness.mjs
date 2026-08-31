@@ -48,7 +48,7 @@ function sliceBalanced(src, startIdx, open, close) {
 }
 
 function makeExtractor(path) {
-  const src = readFileSync(path, 'utf8');
+  const src = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
   return {
     src,
     fn(name) {

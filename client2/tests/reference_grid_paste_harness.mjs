@@ -27,7 +27,7 @@ import { serializeTsv } from '../src/tsv.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
-const read = name => readFileSync(join(SRC, name), 'utf8');
+const read = name => readFileSync(join(SRC, name), 'utf8').replace(/\r\n/g, '\n');
 
 function die(message) {
   console.error(`HARNESS BROKEN: ${message}`);

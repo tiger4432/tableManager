@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src');
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
-const read = (file) => readFileSync(path.join(SRC, file), 'utf8')
+const read = (file) => readFileSync(path.join(SRC, file), 'utf8').replace(/\r\n/g, '\n')
   .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
 
 /** 라이브 `/api/ledger/declaration` 의 `sources` 에서 둘 (2026-08-31, :8080). */

@@ -65,7 +65,7 @@ const bodyWith = (patch) => {
 async function loadModules(mutate = {}) {
   const sources = {};
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8')
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n')
       .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     const out = fn ? fn(text) : text;

@@ -29,7 +29,7 @@ const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8')
 
 async function loadModules(mutate = {}) {
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8')
+    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n')
       .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     const out = fn ? fn(text) : text;

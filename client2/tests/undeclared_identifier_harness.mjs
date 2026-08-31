@@ -39,7 +39,7 @@ try { ({ parseAst } = await import('rolldown/parseAst')); }
 catch (e) { die(`rolldown/parseAst did not load -- ${e && e.message}`); }
 
 let SRC;
-try { SRC = readFileSync(SRC_PATH, 'utf8'); }
+try { SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n'); }
 catch (e) { die(`cannot read ${SRC_PATH} -- ${e && e.message}`); }
 
 // Platform globals a browser module may reference bare. JS builtins + DOM/BOM. Anything the

@@ -46,7 +46,7 @@ const DECLARATION = {
 
 async function loadModule(mutate = null) {
   const file = path.join(SRC, 'grid_source_label.js');
-  const text = readFileSync(file, 'utf8')
+  const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
     .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
   const out = mutate ? mutate(text) : text;
   if (mutate && out === text) throw new Error('mutation anchor is GONE: grid_source_label.js');
