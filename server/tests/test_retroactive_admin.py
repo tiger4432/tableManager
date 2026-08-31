@@ -1309,3 +1309,51 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
         f"cli_only, so the promise is false for them: {missing}")
     # Non-vacuous: there have to be parameters to check.
     assert sum(len(row["params"]) for row in retroactive.inventory()) >= 6
+
+
+def test_adding_a_pace_to_the_declaration_reaches_the_screen_with_no_code_change(monkeypatch):
+    """🔴 THE TWO-LINE TEST THE CHOICES FIELD EXISTS FOR: write one entry in the declaration
+    and the option appears, everywhere, with nothing else edited.
+
+    If the choices were captured at import, or spelled in this module, or held by the
+    client, adding a pace would be one edit here plus one there plus a restart - and the
+    three would drift, which is how a screen ends up offering a pace the server rejects.
+
+    The labels travel with the values for the same reason. A client given bare values has to
+    invent the words, and invented words go stale against a declaration nobody told them
+    about.
+    """
+    import pacing
+
+    monkeypatch.setattr(pacing, "load_paces", lambda path=None: {
+        "fast": {"label": "빠르게", "when": "급할 때"},
+        "glacial": {"label": "아주 느리게", "when": "밤새", "units_per_cycle": 1,
+                    "rest_seconds": 30},
+    })
+    pace = [p for row in retroactive.inventory() if row["op"] == "ledger_backfill"
+            for p in row["params"] if p["name"] == "pace"][0]
+
+    assert [c["value"] for c in pace["choices"]] == ["fast", "glacial"]
+    assert [c["label"] for c in pace["choices"]] == ["빠르게", "아주 느리게"]
+    assert all(c["when"] for c in pace["choices"]), "the screen gets WHEN to pick it too"
+    # ...and the server refuses what the declaration does not offer, by the same list.
+    with pytest.raises(retroactive.RetroactiveRefused) as caught:
+        retroactive.validate("ledger_backfill", {"source": "s", "pace": "trickle"})
+    assert "glacial" in str(caught.value)
+
+
+def test_a_parameter_with_no_closed_set_says_so_instead_of_answering_an_empty_list():
+    """`choices: null` means free text, and a client showing a text box for it is correct.
+
+    An empty LIST would say "a closed set with nothing in it", which renders as a dropdown
+    with no options - the screen looks broken and the operator cannot type the value that
+    would have worked.
+    """
+    for row in retroactive.inventory():
+        for param in row["params"]:
+            assert param["choices"] is None or param["choices"], (
+                f"{row['op']}.{param['name']} answered an empty list")
+    # Non-vacuous: at least one parameter is free text and at least one is a closed set.
+    everything = [p for row in retroactive.inventory() for p in row["params"]]
+    assert any(p["choices"] is None for p in everything)
+    assert any(p["choices"] for p in everything)

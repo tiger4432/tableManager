@@ -78,8 +78,55 @@ class RetroactiveRefused(Exception):
 # Parameter declaration
 # ---------------------------------------------------------------------------
 
-def _p(name, required=True, kind="string", help=""):
-    return {"name": name, "required": required, "type": kind, "help": help}
+def _p(name, required=True, kind="string", help="", choices=None):
+    """One parameter's declaration.
+
+    🔴 `choices` IS FOR ANY PARAMETER WITH A CLOSED SET, not for pace. Only one uses it
+    today, but the field means "the server knows what the legal values are and their names",
+    and a pace-shaped field would have to be replaced the first time something else has a
+    closed set.
+
+    🔴 IT CARRIES LABELS, NOT JUST VALUES. Values alone would make a screen invent the
+    words - and inventing words is the thing every brief in this round forbids, because the
+    invented ones then go stale against the declaration nobody told them about.
+
+    A CALLABLE is allowed and is how "add a pace, change no code" actually holds: resolved
+    when the inventory is asked for, so a new entry in the declaration is visible without a
+    restart. `None` means the parameter is free text, and a client showing free text for it
+    is correct rather than lazy.
+    """
+    return {"name": name, "required": required, "type": kind, "help": help,
+            "choices": choices}
+
+
+def _resolved_choices(param):
+    """`choices` as data, whether it was declared as data or as a way to fetch it.
+
+    A failure to READ the choices is not "there are none": it is "we could not find out",
+    and answering `[]` would make a screen show an empty dropdown that looks like a
+    configuration with nothing in it. `None` puts it back to free text, which at least
+    still works.
+    """
+    choices = param.get("choices")
+    if callable(choices):
+        try:
+            choices = choices()
+        except Exception as exc:                   # noqa: BLE001
+            logger.warning("could not resolve choices for '%s': %s", param["name"], exc)
+            return None
+    return list(choices) if choices else None
+
+
+def _pace_choices():
+    """The pacing table's own entries, in its own words.
+
+    Read from `server/pacing.json` rather than written here, so adding a pace is one entry
+    in that file and no change anywhere else - not in this module and not on the screen.
+    """
+    import pacing
+
+    return [{"value": name, "label": spec.get("label", name), "when": spec.get("when")}
+            for name, spec in pacing.load_paces().items()]
 
 
 # ---------------------------------------------------------------------------
@@ -588,10 +635,10 @@ OPERATIONS = {
         "label": "원장 전진 번역 (커서 뒤 전부)",
         "what_is_missing": "선언은 이 소스를 읽는데 커서 뒤의 행이 아직 원장에 없다",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
-                   _p("pace", required=False,
-                      help="how hard to push: fast (the default, unchanged) | slow | "
-                           "trickle. Slowing yields between pages so the database is "
-                           "free for everything else; declared in ledger/pacing.json")],
+                   _p("pace", required=False, choices=_pace_choices,
+                      help="how hard to push. Slowing yields between pages so the "
+                           "database stays free for everything else; the paces and their "
+                           "names are declared in server/pacing.json")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
         "cli": "server/ledger/backfill.py --source <source> [--pace slow]",
@@ -836,7 +883,7 @@ def inventory() -> list:
     """
     return [
         {"op": op, "label": s["label"], "what_is_missing": s["what_is_missing"],
-         "params": s["params"], "cli": s["cli"], "cli_only": s["cli_only"],
+         "params": [dict(p, choices=_resolved_choices(p)) for p in s["params"]], "cli": s["cli"], "cli_only": s["cli_only"],
          "deletes": s["deletes"], "restartable": s["restartable"],
          "cancellable": s["cancellable"], "reads_as": s["reads_as"],
          "commit_granularity": s["commit_granularity"]}
@@ -877,6 +924,20 @@ def validate(op: str, params: dict) -> dict:
         else:
             value = str(raw).strip()
         out[p["name"]] = value
+
+    for p in spec["params"]:
+        allowed = _resolved_choices(p)
+        if allowed is None or p["name"] not in out:
+            continue
+        legal = {str(c["value"]) for c in allowed if isinstance(c, dict)} or {
+            str(c) for c in allowed}
+        if str(out[p["name"]]) not in legal:
+            # Convenience, like the withdraw check below: the operation refuses this again
+            # where the value is actually used, and THAT one is the safety property. This
+            # one just turns a job that dies in a worker log into a 400 the operator sees.
+            raise RetroactiveRefused(
+                f"'{op}' parameter '{p['name']}' must be one of "
+                f"{sorted(legal)}; got {out[p['name']]!r}")
 
     # R2's first refusal, re-stated here so the operator gets a 400 instead of a
     # queued job that dies in a worker log. `withdraw_source` refuses it AGAIN -
