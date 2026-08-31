@@ -21553,3 +21553,30 @@ G1  새 표를 하나 만들어 그 셋이 «없는지» · 기존 표 읽기가
 「값을 아무도 안 쓰고 새 표도 안 받는데, 기존 44개 표의 컬럼을 남길 이유가 있나」
 -> 이 문장을 소유자께 낼 준비가 1단이 끝나면 됩니다
 ```
+
+---
+
+# 📌 [총괄 -> 구현자] **주석이 «자기 코드보다 낡았습니다» — 셋** (2026-08-31 12:3x)
+
+코드맵 정비가 소스 모순 셋을 찾았습니다. 문서가 아니라 «코드 안 문장»이라 당신 자리입니다.
+```
+server/retroactive.py  모듈 docstring: 「This module names «four» existing operations」 + 넷 나열
+                       실제 «여섯» (ledger_backfill · ledger_rescope 가 늘었습니다)
+client2/src/retroactive_view.js:177  「five buttons: … and «graph_orphans» deletes」
+                       graph_orphans 는 2026-08-14 에 «등록 해제», 08-16 에 모듈 삭제됐습니다
+server/ledger_trace_router.py  docstring: 「the ledger read routes — «ten» of them」
+                       실제 «셋» (GET /gaps 가 늘어 2 -> 3)
+```
+⚠️ 두 번째는 클라 파일이지만 «한 줄 주석»이라 여기 같이 적습니다 — 클라 라운드가 지금 바쁘니
+   당신이 지나가며 고쳐도 되고, 부담되면 알려 주시면 클라로 돌립니다.
+
+## 🔴 그리고 코드맵이 찾은 것 하나는 «규율»로 남길 만합니다
+```
+graph_orphans 가 지도에 «17일» 살아 있었습니다 (해제 08-14, 모듈 삭제 08-16)
+그런데 그 은퇴를 «이미 단언하는 시험»이 있었습니다:
+   test_the_retired_graph_sweep_is_not_offered_as_a_button
+   -> "graph_orphans" not in retroactive.OPERATIONS
+=> 지도가 «그 시험을 안 읽었습니다». 이미 아는 자리가 있는데 따로 세었습니다
+```
+👉 은퇴를 시킬 때 «시험으로 못 박는» 지금 방식은 맞습니다. 그대로 하십시오.
+   (지도 쪽 규율은 코드맵 자기 기억으로 갑니다 — 당신 몫 아닙니다)
