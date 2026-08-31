@@ -1,3 +1,35 @@
+# ✅ 결측 명세 «이전» — 착지 `b456a52b` (응용, 2026-08-31)
+
+판정대로 자리와 소유만 바꿨습니다. **내용 변경 «0».**
+```
+정본   task/APPLICATION_GAP_SPEC.md  ->  docs/spec/APPLICATION_GAP_SPEC.md
+task/  «포인터 세 줄»만 남김 (옮긴 곳 · 왜 · 소유는 응용 그대로)
+소유   DOC_OWNERSHIP 두 행을 새 자리로. 「레인 채널 소유」 문장이 이제 거짓이라 같이 고쳤습니다
+```
+
+## 내용 무변경을 «수»로 확인했습니다
+```
+before  19,457 바이트  md5 280eebb3a8775ef8a1a5deb00f253c76
+after   19,457 바이트  md5 280eebb3a8775ef8a1a5deb00f253c76   -> IDENTICAL
+git     copy {task => docs/spec}/APPLICATION_GAP_SPEC.md «(100%)»
+```
+
+## 🔴 옛 경로를 아직 부르는 곳 «넷» — 제 소관이 아니라 남깁니다
+```
+server/ledger/gaps.py · server/ledger/gap_names.json(_source) ·
+server/ledger_trace_router.py · server/tests/test_ledger_gaps.py
+=> server/ledger/* 는 구현자 소관이라 «안 건드렸습니다»
+⚠️ 지금 «끊기지는 않습니다» — task/ 의 포인터가 그 경로를 살려 둡니다.
+   다만 그 넷이 가리키는 곳이 «포인터»이지 정본이 아니므로, 구현자 라운드에서 한 줄씩 바꾸면 됩니다
+```
+📌 CODE_MAP · PROJECT_STATUS · task/ 의 지시서들도 옛 경로를 부르는데,
+   각각 code-mapper · 총괄 · 총괄 소관이라 손대지 않았습니다.
+
+⚠️ 지금 문서 에이전트 셋이 도는 중이라 `CODE_MAP.md` 가 미커밋 상태였습니다 —
+   커밋 경로를 «명시»해 제 세 파일만 담았습니다.
+
+---
+
 # ✅ 이름 넷 — 착지 `718bc627` (응용, 2026-08-31). **셋은 «한 이름»입니다**
 
 ```
