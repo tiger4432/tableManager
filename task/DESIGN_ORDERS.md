@@ -10989,3 +10989,38 @@ ledger_backfill.pace -> [{value,label,when} ×3]   (fast · slow · trickle)
 ⛔ 문구 짓지 마십시오 — 새 페이스가 늘어도 화면 변경이 «0» 이어야 합니다
 그다음     영어 문구 통째 (10:2x 판정)
 ```
+
+---
+
+# 🔴 [총괄] **`e850a7bd` — 하니스가 «앵커를 잃었습니다». 병합은 했고 이건 고쳐야 합니다** (2026-08-31 11:0x)
+
+## 총괄이 돌린 결과
+```
+HARNESS FAILURE: mutation anchor stopped matching:
+  "const countView = resolved.count && resolved.count.ok && !resolved.stale
+     ? resolved.count.view : null;"
+"A harness that goes quiet because it lost the code is worse than no harness."
+"(This is not a passing result. Nothing was compared.)"     node exit = 2
+```
+✅ **하니스 «설계»는 옳습니다** — 조용히 초록이 되지 않고, 자기 눈이 멀었다고 «말하고», 종료 코드도 «2»입니다.
+   (제 첫 측정이 `exit=0` 이었는데 그건 파이프의 `tail` 것이었습니다. 제 잘못입니다)
+
+## 🔴 고칠 것 — 앵커가 «당신 이번 변경»으로 어긋났습니다
+```
+그 줄이 바뀌었으면 앵커도 «같은 커밋»에서 따라가야 합니다.
+지금은 이 파일의 «변이 검사 전체»가 안 돕니다 — 그래서 선택 UI 의 변이 덮개가 «0» 입니다
+```
+
+## ⚠️ 그리고 변이 하나가 «던져서» 잡혔습니다
+```
+caught H: a declared closed set is dropped … (threw: Cannot read properties of null (reading 'map'))
+```
+🔴 이 저장소 규율: **던진 변이는 잡힌 게 아니라 «구멍»입니다.** 그 결함이 «이름 붙은 줄»에서
+   빨개지게 옮기십시오 — 지금은 「죽었다」와 「터졌다」가 같은 초록입니다.
+
+## 그리고 잘된 것
+```
+✅ 「선언이 값을 아는 파라미터는 «텍스트 상자»가 아니라 «선택»이 된다」 — 제목이 규칙 그 자체입니다
+✅ 변이 목록이 정확한 자리를 겨눕니다 — 닫힌 집합을 «버리기» · 라벨을 «클라가 쓰기» ·
+   설명 «떨어뜨리기» · 값 없는 항목을 «그리기». 넷 다 제가 ⛔ 로 건 것들입니다
+```
