@@ -82,11 +82,17 @@ def build_lot_slot_wafer_rows(db, payloads, rule=None):
         when = _value(payload, time_col)
         event_type = _value(payload, type_col)
         for slot, wafer in zip(slots, wafers):
-            updates.append({"updates": {
-                "lot": lot, "slot": slot, "wafer": wafer,
-                "event_time": when, "event_type": event_type,
-                "lot_slot_wafer_key": f"{lot}|{slot}|{wafer}|{when}",
-            }, "source_name": SOURCE_NAME, "updated_by": UPDATED_BY})
+            updates.append({
+                # The key is stated rather than left to be composed: it IS the uniqueness
+                # guard the brief asked for. The same lot and slot hold different wafers at
+                # different times, so a key without the time collides two real events.
+                "business_key_val": f"{lot}|{slot}|{wafer}|{when}",
+                "updates": {
+                    "lot": lot, "slot": slot, "wafer": wafer,
+                    "event_time": when, "event_type": event_type,
+                    "lot_slot_wafer_key": f"{lot}|{slot}|{wafer}|{when}",
+                },
+                "source_name": SOURCE_NAME, "updated_by": UPDATED_BY})
 
     if refused:
         # 🔴 RAISED, NOT LOGGED. The chain records a mapper error as a failed rule, which is
@@ -98,5 +104,11 @@ def build_lot_slot_wafer_rows(db, payloads, rule=None):
             f"wafers silently. First: {refused[:3]}")
 
     if not updates:
-        return []
-    return [{"target_table": target_table, "updates": updates}]
+        return {"updates": []}
+    # 🔴 A DICT, NOT A LIST. `chain_replay` wraps an `is_batch` mapper's return in a list of
+    # its own and then reads `.get("updates")` on each element, so returning a list of
+    # batches produces a list where a dict is expected - and the chain reports zero items
+    # rather than an error. Measured: the same payloads that make 907 updates here came
+    # back as `mapper_items: 0` through the chain until this changed. `target_table` is not
+    # ours to state either; the RULE declares it, which is why the chain never asked.
+    return {"updates": updates}
