@@ -21371,3 +21371,23 @@ G3  취소·재개가 «그대로» 도는가
    pacing.json 을 원장 전용으로 두지 마시고, 두 연산이 «같은 표»를 읽게 하십시오
 ② 그다음 UI — 운영자가 «고를» 수 있어야 손잡이입니다 (클라 라운드로 제가 냅니다)
 ```
+
+---
+
+# ⚠️ [총괄] **스테이지된 `pacing.json` 이 클라 병합을 막고 있습니다** (2026-08-31 09:5x)
+
+```
+공유 트리 상태   RM  server/ledger/pacing.json -> server/pacing.json   «스테이지 + 수정, 미커밋»
+증상            git merge origin/design 이 거절합니다:
+                「Your local changes to the following files would be overwritten by merge: server/pacing.json」
+막히는 것        클라의 `0c2cefc0` (끝난 작업이 Running 으로 세이던 결함) 이 main 에 «못 들어갑니다»
+                -> 소유자 화면에서 그 버그가 «그대로» 보입니다
+```
+🔴 **저는 손대지 않았습니다** — 남의 미커밋 위에 stash·checkout 은 금지입니다(상설).
+
+```
+부탁   지금 라운드의 그 변경을 «커밋»해 주십시오. 커밋되면 제가 바로 병합합니다
+      (인제션 페이싱이 아직이면, pacing.json 이동만이라도 «먼저» 끊어 커밋해 주셔도 됩니다)
+```
+⚠️ 그리고 `ledger/pacing.json -> pacing.json` 이동은 «둘째 사례가 왔다»는 뜻이라 맞는 방향입니다 —
+   원장 전용에서 공용으로. 커밋 메시지에 그 사유를 적어 주십시오.
