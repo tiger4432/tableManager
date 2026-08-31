@@ -204,6 +204,18 @@ function buildParam(param) {
     help: text(param && param.help),
     required: Boolean(param && param.required),
     requiredLabel: chrome(RETRO_CHROME.REQUIRED),
+    // 🔴 «닫힌 집합»을 가진 파라미터는 선언이 그 집합을 실어 보냅니다. 없으면 «자유 문자열»이고
+    //    입력칸 그대로입니다 — 여기에 «대체 목록을 들지 않습니다». 그것이 이 필드가 생긴 이유고,
+    //    들고 있으면 선언이 늘어난 날 화면이 옛 목록을 그립니다.
+    //    label 과 when 은 선언의 것을 «그대로» 옮깁니다: 화면이 문구를 지으면
+    //    페이스가 넷이 되는 날 그 넷째 문구를 또 이 파일에 적게 됩니다.
+    choices: Array.isArray(param && param.choices) && param.choices.length
+      ? param.choices.map((choice) => ({
+        value: choice && choice.value != null ? String(choice.value) : '',
+        label: text(choice && choice.label),
+        when: text(choice && choice.when),
+      })).filter((choice) => choice.value !== '')
+      : null,
   };
 }
 

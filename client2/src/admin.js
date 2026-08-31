@@ -2382,6 +2382,18 @@ function retroParamsEl(op) {
     const name = cfgEl('span', 'cfg-subject', cfgText(param.name));
     field.appendChild(name);
     if (param.required) field.appendChild(cfgChip(cfgText(param.requiredLabel), 'muted'));
+    if (param.choices) {
+      field.appendChild(retroChoiceEl(op, param, state));
+      // 고른 것의 «설명»은 선언의 `when` 입니다. 아래 help 줄과 같은 자리에 같은 방식으로.
+      const chosen = param.choices.find((c) => c.value === state.params[param.key]);
+      if (chosen && chosen.when) {
+        field.appendChild(cfgEl('span', 'retro-help cfg-path', cfgText(chosen.when)));
+      } else if (param.help) {
+        field.appendChild(cfgEl('span', 'retro-help cfg-path', cfgText(param.help)));
+      }
+      wrap.appendChild(field);
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'retro-input';
@@ -2406,6 +2418,33 @@ function retroParamsEl(op) {
     wrap.appendChild(field);
   });
   return wrap;
+}
+
+/** 닫힌 집합을 가진 파라미터의 컨트롤. 고를 것은 «선언이 준 것뿐»이고, 첫 항목은
+ *  「안 고름」입니다 — 안 고르면 그 파라미터는 아예 «안 실립니다»(`paramEntries` 가 빈 값을
+ *  버립니다), 즉 서버의 기본값이 그대로 돕니다. 클라가 기본을 «정하지» 않는다는 뜻입니다. */
+function retroChoiceEl(op, param, state) {
+  const select = document.createElement('select');
+  select.className = 'retro-input';
+  select.dataset.param = param.key;
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = '—';
+  select.appendChild(blank);
+  param.choices.forEach((choice) => {
+    const option = document.createElement('option');
+    option.value = choice.value;
+    option.textContent = cfgText(choice.label) || choice.value;
+    select.appendChild(option);
+  });
+  select.value = state.params[param.key] || '';
+  select.addEventListener('change', () => {
+    state.params[param.key] = select.value;
+    // 고르면 «설명»이 따라 바뀌어야 하므로 카드를 다시 그립니다 -- 입력칸과 달리
+    // 선택에는 잃을 커서가 없습니다.
+    renderRetroOperation(op.op);
+  });
+  return select;
 }
 
 /** 재렌더 뒤 커서를 원래 칸으로 돌려놓는다. 입력칸은 `data-param`으로 자기를 밝힌다. */

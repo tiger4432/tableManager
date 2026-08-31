@@ -240,6 +240,59 @@ async function suite(source) {
   ok(!ops.empty, 'inventory: a populated payload is not reported as empty');
   ok(view.buildOperationsView({ operations: [] }).empty, 'inventory: an empty payload IS empty');
 
+  // ── H. A PARAMETER WITH A CLOSED SET ──────────────────────────────────────────────
+  // 🔴 The declaration carries the set; the client holds NO fallback list. That is the whole
+  //    point of the field: pacing.json gains a fourth pace and the screen changes by zero.
+  //    The labels here are deliberately not the live wording, so a client-held list or a label
+  //    spelled from the value cannot pass.
+  {
+    const withChoices = view.buildOperationsView({
+      operations: [{
+        op: 'ledger_backfill', label: 'x', params: [
+          { name: 'source', required: true, type: 'string', help: '' },
+          { name: 'pace', required: false, type: 'string', help: 'prose', choices: [
+            { value: 'fast', label: 'AAA', when: 'aaa when' },
+            { value: 'trickle', label: 'BBB', when: 'bbb when' },
+          ] },
+        ],
+        cli: 'c', cli_only: [], deletes: null, restartable: true, commit_granularity: 'g',
+      }],
+    }).operations[0];
+    const pace = withChoices.params.find((p) => p.key === 'pace');
+    const source = withChoices.params.find((p) => p.key === 'source');
+
+    ok(source.choices === null,
+      'H1 a parameter the declaration left open stays open — it gets no select');
+    ok(Array.isArray(pace.choices) && pace.choices.length === 2,
+      'H2 a parameter with a closed set carries exactly the options declared',
+      pace.choices);
+    ok(pace.choices.map((c) => c.value).join(',') === 'fast,trickle',
+      'H2 ... in the order the declaration gave them');
+    ok(pace.choices[0].label && pace.choices[0].label.text === 'AAA',
+      'H3 the option text is the DECLARATION\'s label, not one the client wrote',
+      pace.choices[0].label);
+    ok(pace.choices[1].when && pace.choices[1].when.text === 'bbb when',
+      'H3 ... and each option carries its own explanation from the same place',
+      pace.choices[1].when);
+
+    // An empty list is not a closed set — it would render a select with nothing in it, which
+    // says "choose" and offers nothing.
+    const emptySet = view.buildOperationsView({
+      operations: [{ op: 'x', label: 'x', params: [{ name: 'p', required: false, choices: [] }],
+        cli: 'c', cli_only: [], deletes: null, restartable: true, commit_granularity: 'g' }],
+    }).operations[0].params[0];
+    ok(emptySet.choices === null, 'H4 an empty set is not a set — the input stays');
+
+    // A choice with no value cannot be selected, so it must not be offered.
+    const holed = view.buildOperationsView({
+      operations: [{ op: 'x', label: 'x', params: [{ name: 'p', required: false, choices: [
+        { value: 'a', label: 'A', when: '' }, { label: 'B', when: '' }] }],
+        cli: 'c', cli_only: [], deletes: null, restartable: true, commit_granularity: 'g' }],
+    }).operations[0].params[0];
+    ok(holed.choices.length === 1 && holed.choices[0].value === 'a',
+      'H5 an option with nothing to send is dropped rather than drawn dead', holed.choices);
+  }
+
   // The row's colour follows the two flags; the WORDS come from the payload.
   const byOp = Object.fromEntries(ops.operations.map((o) => [o.op, o]));
   ok(byOp.graph_orphans.tone === 'danger',
@@ -729,6 +782,17 @@ const DEFECTS = [
   ['G9: an unrecognised state is treated as finished and disappears',
     swap("    const finished = RUN_FINISHED.indexOf(state) !== -1;",
       "    const finished = state !== 'running' && state !== 'queued';")],
+
+  ['H: a declared closed set is dropped, so the operator types the value again',
+    swap('    choices: Array.isArray(param && param.choices) && param.choices.length',
+      '    choices: false && Array.isArray(param && param.choices) && param.choices.length')],
+  ['H: the option text is spelled by the client instead of the declaration',
+    swap('        label: text(choice && choice.label),',
+      '        label: text(choice && String(choice.value).toUpperCase()),')],
+  ['H: the per-option explanation is dropped',
+    swap('        when: text(choice && choice.when),', '        when: null,')],
+  ['H: an option with no value is offered anyway',
+    swap("      })).filter((choice) => choice.value !== '')", '      }))')],
 
   // ── the QA round's findings, pinned so none of them can come back quietly ────────
   ['F1: a measurement outlives the parameter it was measured for (confirmation)',
