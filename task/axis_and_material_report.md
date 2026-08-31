@@ -1,3 +1,59 @@
+# 🔴 [디자인 -> 총괄] 페이스 선택 — **클라가 그 라벨을 «볼 수 없습니다»**. 서버 한 줄 부탁드립니다 (2026-08-31 10:4x)
+
+지시대로 착수하려다 멈췄습니다. 지시서가 «문구를 지지 말라»고 했고, 저는 지을 재료도 없습니다.
+
+## 실측 — `label`·`when` 은 파일에만 있고 화면으로 가는 길이 «없습니다»
+```
+server/pacing.json   paces.fast / slow / trickle 에 label · when · units_per_cycle · rest_seconds
+server/pacing.py     load_paces() · resolve()   <- 읽는 함수는 있습니다
+server/main.py       그것을 내보내는 라우트 «0»  (grep: paces · pacing — 히트 없음)
+retroactive.py:591   pace 는 `_p("pace", required=False)` — 즉 «자유 문자열» 입니다
+                    선택지는 help 문장 «안»에 산문으로만 있습니다
+/admin/retroactive/operations 의 params 항목 = {name, required, type, help}   <- 끝
+```
+그래서 지금 선택을 그리려면 클라가 fast/slow/trickle 을 «손으로 적어야» 합니다.
+그것은 지시서의 ⛔ 둘을 동시에 어깁니다 — 문구를 짓고, 새 페이스가 늘 때 화면을 고치게 됩니다.
+
+## 부탁 — 선언이 «선택지를 실어 보내면» 됩니다 (서버 레인)
+```python
+# retroactive.py — _p 에 칸 하나
+def _p(name, required=True, kind="string", help="", choices=None):
+    return {"name": name, "required": required, "type": kind, "help": help,
+            "choices": choices}          # 자유 문자열이면 None
+
+# ledger_backfill 의 pace
+_p("pace", required=False, help=..., choices=[
+    {"value": k, "label": v["label"], "when": v["when"]}
+    for k, v in pacing.load_paces().items()])
+```
+이것이면 클라는 «`choices` 가 있는 파라미터를 선택으로 그린다» 한 갈래만 더합니다.
+```
+새 페이스가 늘면           화면 변경 0    (지시서 요구 그대로)
+다른 연산에는 안 붙습니다   choices 가 없으면 지금처럼 입력칸입니다
+나중에 인제션이 받으면   그쪽 선언에 choices 를 달기만 하면 됩니다
+```
+⚠️ 제가 클라 반쪽을 «먼저» 지을까도 생각했는데 안 했습니다 — 보내는 쪽이 없는 소비자는
+   「착지했는데 배선 0」이고, 필드 이름을 제가 짐작하면 서버가 다른 이름을 고를 때
+   두 번 짓게 됩니다. «이름만 정해 주시면» 그날로 달겠습니다.
+
+## 그리고 물으신 것 — `processed_rows` 의 None 과 0
+```
+이미 갈라져 있습니다 (retroactive_view.buildProgressCell)
+   None  ->  「—」   «모릅니다»
+   0     ->  「0」   «재서 0 입니다»
+```
+둔 줄이 화면에서 서로 다르게 보입니다. 접힌 상태에선 안 보이는 것이 맞고(접힌 줄은
+«도는 것»만 말합니다), 끝난 줄은 펌치면 그 칸이 보입니다.
+
+## ⏭ 순서
+```
+1. 페이스 선택   서버 `choices` 를 기다립니다 (위 한 줄)
+2. 영어 통째 패스  판정받은 대로 페이스 «다음» · 반쪽 금지 · 서버 문자열 제외
+                  · 하니스에 박힌 것은 같은 커밋으로
+```
+
+---
+
 # [디자인 -> 총괄] 결함 ③ 닫힘 — 확인이 «카드 안»으로 들어왔습니다 (`adbe54cc`, 2026-08-31 10:3x)
 
 네이티브 `confirm()` 은 탭 모달이라 총괄께서 자기 화면을 못 누르셨고 소유자가 대신
