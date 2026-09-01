@@ -176,6 +176,12 @@ export function updatePaginationUI(total) {
 // `#tx-filter-banner` pattern, reused rather than reinvented.
 
 let clearAllWired = false;
+let chipsMoreWired = false;
+// Whether the operator has opened the fold. Module-level like `clearAllWired` above, because
+// this module is the screen's own strip and not one of the mountable parts.
+let chipsOpen = false;
+// Below this the truncated chip is a sliver that names nothing, and `+N 필터` alone says more.
+const READABLE_CHIP_PX = 90;
 
 /**
  * One active filter as the operator would say it: `<COLUMN> <type> <value>`.
@@ -284,6 +290,15 @@ export function renderFilterBar() {
     });
   }
 
+  const more = elements.filterChipsMore;
+  if (more && !chipsMoreWired) {
+    chipsMoreWired = true;
+    more.addEventListener('click', () => {
+      chipsOpen = !chipsOpen;
+      foldFilterChips();
+    });
+  }
+
   const clearAll = elements.filterClearAll;
   if (clearAll) {
     // Shown from the SECOND chip on. With one filter its ✕ already is "clear everything",
@@ -299,7 +314,67 @@ export function renderFilterBar() {
     }
   }
 
+  foldFilterChips();
   updateOffscreenIndicator();
+}
+
+/**
+ * Fold the chips that do not fit on one row behind a `+N`, or show them all when opened.
+ *
+ * 🔴 The widths are read BEFORE anything is hidden. Hiding a chip pulls every chip after it
+ *    back into the row, so a loop that hid as it measured would call those "fitting" and fold
+ *    exactly one of them however many overflow.
+ *
+ * Kept out of `updateOffscreenIndicator` on purpose: that one runs on every scroll frame, and
+ * re-measuring the strip sixty times a second to answer a question only a RESIZE can change is
+ * work with nothing to report. `onGridSizeChanged` is where the width actually moves.
+ */
+export function foldFilterChips() {
+  const chips = elements.filterChips;
+  const more = elements.filterChipsMore;
+  const bar = elements.gridFilterBar;
+  if (!chips || !more) return;
+  const all = Array.from(chips.children);
+  all.forEach(chip => {
+    chip.style.display = '';
+    chip.style.maxWidth = '';
+    chip.style.minWidth = '';
+  });
+  chips.classList.toggle('is-open', chipsOpen);
+
+  if (chipsOpen) {
+    more.textContent = '접기';
+    more.title = '한 줄로 접기';
+    more.style.display = all.length ? '' : 'none';
+    return;
+  }
+  // 🔴 Measured against THE STRIP, in the strip's own coordinates. `offsetLeft` is
+  //    relative to the nearest positioned ancestor -- here the header, not this span -- so
+  //    comparing it with `clientWidth` compares a page coordinate (1142) with a width (229)
+  //    and every chip reads as overflowing. Live measurement, 2026-09-02: that folded ALL of
+  //    them and the strip showed a count with nothing to count.
+  const box = chips.getBoundingClientRect();
+  const barBox = bar ? bar.getBoundingClientRect() : box;
+  // The room is what is VISIBLE, which on a tight header is less than this span's own box: the
+  // span keeps its floor and the bar clips the overhang. Measuring the span alone would call a
+  // chip "fitting" while the operator sees it sliced down the middle with no ellipsis to say so.
+  const room = Math.max(0, Math.min(box.right, barBox.right) - box.left);
+  const ends = all.map(chip => chip.getBoundingClientRect().right - box.left);
+  const hidden = all.filter((chip, i) => ends[i] > room + 1);
+  hidden.forEach(chip => { chip.style.display = 'none'; });
+  // Not even the first one fits. Keep it and let its label truncate: `+2 필터` alone names
+  // how many filters are on but not WHICH, and which is the thing the operator came to read.
+  if (hidden.length === all.length && all.length && room >= READABLE_CHIP_PX) {
+    const first = hidden.shift();
+    first.style.display = '';
+    first.style.minWidth = '0';
+    first.style.maxWidth = `${Math.max(0, Math.floor(room))}px`;
+  }
+  // Said, not swallowed: a filter that is hiding rows with nothing on screen to name it reads
+  // as data that is GONE, and the next question gets asked of the table instead of the strip.
+  more.textContent = `+${hidden.length} 필터`;
+  more.title = '눌러서 펼치기';
+  more.style.display = hidden.length ? '' : 'none';
 }
 
 // Ensure that the cell data structure exists as an object: { value, is_overwrite, sources, updated_by }
@@ -944,6 +1019,8 @@ export function renderGrid(initialRows) {
       renderFilterBar();
     },
     onGridSizeChanged: () => {
+      // The strip's right edge moved, so how many chips fit moved with it.
+      foldFilterChips();
       updateOffscreenIndicator();
     },
     onColumnResized: () => {

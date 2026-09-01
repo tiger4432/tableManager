@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-BbCsSZ7S.js"></script>
+    <script type="module" crossorigin src="/assets/main-BhExHMgv.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CEPsXi2l.js">
     <link rel="modulepreload" crossorigin href="/assets/effort_meter-CYDDxuNb.js">
@@ -38,7 +38,7 @@
     <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/admin-BNXK8QC1.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-Bvb5mZgP.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-rU8YO9xD.css">
   </head>
 
   <body>
@@ -133,6 +133,14 @@
               </button>
             </div>
             <span id="filter-chips" class="filter-chips"></span>
+            <!-- The fold count sits OUTSIDE `#filter-chips` on purpose: that span is the
+                 clipped one, and a control living inside it would be the first thing
+                 clipped away. -->
+            <button
+              id="filter-chips-more"
+              class="filter-chips-more"
+              style="display: none"
+            ></button>
             <button
               id="filter-clear-all"
               class="filter-clear-all"

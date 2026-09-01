@@ -1253,7 +1253,44 @@ body.resizing-active .history-sidebar {
    a permanently pulsing badge on an informational band is motion with nothing to report. */
 .filter-banner .banner-icon,
 
-.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* 🔴 ONE ROW. Wrapping here grows the header, and the header growing pushes the GRID
+   down -- two filters were already enough to cost a row of data (owner screenshot, 09-01).
+   The chips that no longer fit are folded behind `+N 필터`, never dropped silently.
+   `.is-open` is the operator asking for them back, and only then may the strip take height. */
+.filter-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  /* The leftover of the strip, and nothing of its own: a content basis here would put the chips
+     back into the strip's width and the fold would be measuring what it is deciding. */
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+}
+.filter-chips.is-open { flex-wrap: wrap; overflow: visible; }
+
+/* 🔴 Neither grows nor shrinks HERE. `.filter-chip` is shared with the history tabs, where
+   `flex: 1` fills the row; on this strip that same rule lets a chip squeeze to 22px, and a chip
+   that shrinks to fit always "fits" -- the fold then has nothing to fold and the operator reads
+   three slivers instead of one chip and a count. Truncation is the fold's decision, made once,
+   on the first chip only. */
+.filter-chips .filter-chip { flex: 0 0 auto; }
+
+/* Same plain-text control as 「전체 해제」 beside it -- a bordered button here would
+   outweigh the chips it is counting. */
+.filter-chips-more {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.filter-chips-more:hover { color: var(--text); }
 
 .filter-chip {
   display: inline-flex;
@@ -2417,7 +2454,16 @@ body.resizing-active .history-sidebar {
    They take the free space between the toolbar and the unsaved badges, so a filter is
    visible from wherever the operator is looking without a strip pushing the grid down. */
 .header-filter-bar {
-  flex: 1;
+  /* 🔴 A CONSTANT basis, not `0%` and not `auto`. Measured 2026-09-02 at 1920:
+       `1 1 0%`   -> this strip absorbs the whole deficit of an over-subscribed header and
+                     settles at 30px, narrower than its own 「전체 해제」
+       `1 1 auto` -> the basis is the CHIPS, so the strip's width depends on how many chips are
+                     showing, which is what the fold is deciding -- fold and layout chase each
+                     other and the same three filters fold differently on the second pass
+       `1 1 240px`-> a width of its own, shrinking with its siblings. 202px at 1920 with the
+                     toolbar uncut (550 of 552), 37px at 1280 where the header was already
+                     over-subscribed before this round (toolbar 468 -> 138 at HEAD). */
+  flex: 1 1 240px;
   min-width: 0;
   display: flex;
   align-items: center;

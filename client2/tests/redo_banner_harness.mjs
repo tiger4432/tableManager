@@ -179,6 +179,21 @@ console.log('\n── C. THE LEDGER GROUPS, ASSEMBLED HERE ───────
   ok('C7 ... and the payload holds only the column that has values',
     holed.handed().groups.length === 1
     && holed.handed().groups[0].label === 'lot_id', holed.handed());
+
+  // THE DISCRIMINATING SELECTION: every fixture above has a value in every row, so the size
+  // of the selection and the number of rows the groups actually cover are THE SAME NUMBER and
+  // no assertion on them can tell the two apart. Here they differ, and the line has to name
+  // the second one -- otherwise it reads "1 group from 3 rows, 2 without a value", which counts
+  // the same rows twice and is what the owner asked about.
+  const partial = build([envelope({ lot_id: 'L1', wafer_id: 'W1' }),
+                         envelope({ lot_id: 'L1' }),
+                         envelope({ lot_id: 'L2' })]);
+  press(partial.host, 'ledger');
+  const pl = groupsShown(partial.host);
+  ok('C8 the row count is the rows that CARRY the value, not the size of the selection',
+    pl[1] === 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value', pl);
+  ok('C9 ... and a column every row does carry still counts them all',
+    pl[0] === 'lot_id \u2014 2 groups from 3 rows', pl);
 }
 
 console.log('\n── D. THE CHAIN KEYS, GROUPED ELSEWHERE ────────────────────────────');
@@ -240,6 +255,8 @@ const DEFECTS = [
     swap("scope_values: g.values.join(',')", "scope_values: g.values.join(' ')")],
   ['M7 a repeated value becomes its own group',
     swap('if (!seen.includes(value)) seen.push(value);', 'seen.push(value);')],
+  ['M8 the line counts the whole selection instead of the rows that carry the value',
+    swap('rows: (rows || []).length - missing', 'rows: (rows || []).length')],
 ];
 
 const CONTROLS = [
@@ -287,6 +304,16 @@ function score(list, mustCatch, heading) {
       holed.render();
       holed.open = 'ledger';
       holed.render();
+      // A selection where "how many rows I picked" and "how many rows this group covers" are
+      // DIFFERENT numbers. Every other fixture here has both values in every row, which makes
+      // the two indistinguishable and lets a count off the selection size score as correct.
+      const partial = new M.RedoBanner(doc.createElement('div'), {
+        doc, sources: SOURCES, readValue: readEnvelope, handOff: () => {},
+        getSelection: () => [envelope({ lot_id: 'L1', wafer_id: 'W1' }),
+                             envelope({ lot_id: 'L1' }), envelope({ lot_id: 'L2' })] });
+      partial.setRelation('dt_log');
+      partial.open = 'ledger';
+      partial.render();
       part.open = 'ledger';
       part.render();
       const lines = groupsShown(host);
@@ -307,7 +334,9 @@ function score(list, mustCatch, heading) {
           .filter((n) => n.textContent.startsWith('wafer_id'))
           .some((n) => !n.textContent.includes('no value'))
         || !handed || handed.groups !== undefined
-        || handed.businessKeys.join(',') !== 'L1,L2';
+        || handed.businessKeys.join(',') !== 'L1,L2'
+        || groupsShown(partial.host)[1]
+           !== 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value';
     } catch (e) {
       bad = true;
     }

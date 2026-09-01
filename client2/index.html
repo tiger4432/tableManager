@@ -119,6 +119,14 @@
               </button>
             </div>
             <span id="filter-chips" class="filter-chips"></span>
+            <!-- The fold count sits OUTSIDE `#filter-chips` on purpose: that span is the
+                 clipped one, and a control living inside it would be the first thing
+                 clipped away. -->
+            <button
+              id="filter-chips-more"
+              class="filter-chips-more"
+              style="display: none"
+            ></button>
             <button
               id="filter-clear-all"
               class="filter-clear-all"
