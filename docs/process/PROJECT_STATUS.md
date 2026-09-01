@@ -124,6 +124,44 @@
   -> 넓히면 정적→정적 면제가 지키는 「같은 원인의 다른 결과」를 같이 죽일 수 있습니다
 ```
 
+---
+
+## ✅ 2026-09-02 00:1x — `follow` 키 제약 «착지·검증 완료» (`965e3af9`)
+
+```
+계약     follow=inspected:x,y  ->  그 엣지는 «씨앗과 그 키가 같은» 노드로만 걷는다
+        콜론 없으면 지금 동작 그대로 (하위호환이 요구사항이었고 게이트 B 가 증거)
+효과     픽스처: 씨앗 1 -> die 3 이 «1» · 씨앗 2 -> die 6(M×N) 이 «2»(M)
+        🔴 라이브에선 «못 잽니다» — 좌석 경유 경로에 데이터가 없습니다(세 술어가 이름 집단이 다름)
+비용     컨텍스트는 씨앗에서 «한 번». node_id 잠금 안 건드림 = 경로별 상태 «없음»
+선언     «0줄» · 원자 «0» · 클라 «0줄»
+```
+
+### 총괄이 «직접» 잰 것 (재기동 pid 61620 · 00:07:52 > 커밋)
+```
+wafer hops=6 both 자재6   264/351/hops3   ✅   wafer hops=1 out inspected   die 39  ✅
+defect_kind{void}         21/21           ✅   defect hops=4 both 자재5     7       ✅
+422   wafer + inspected:x,y -> 「the seed wafer has no x, y」 (0 이 아니라 이름으로)
+시험  test_ledger_subgraph 25 passed · 1 skipped
+```
+
+### 🔴 제 게이트의 결함 — 씨앗을 안 적었습니다
+```
+제 수 7 · 레인 수 5 -> 「무회귀 깨짐」처럼 보였는데 «다른 defect 씨앗»이었습니다
+레인이 수를 «고치지 않고 물어서» 잡혔습니다. 게이트에 씨앗 철자를 «반드시» 적을 것
+```
+
+### 🗂 큐에 넣음 — 한 표에 컬럼이 «두 세대»
+```
+test_trace_fixture.py::test_emitted_columns_satisfy_the_ingestion_contract  «빨강»
+   픽스처가 내는 것   lot · slot_numbers · wafer_ids · equipment
+   table_config 아는 것 lot_id · event_time · txn_seq · event_type · parent_lot · child_lot
+                      · slotnumbers · waferids
+   실제 lot_event 표에 «양쪽 다» 있습니다 (총괄 실측) -> 데이터가 두 세대에 갈려 있을 수 있습니다
+귀속  이 라운드와 무관 (config mtime 08-30 21:26 · 그 시험은 레인 파일을 import 안 함)
+소관  라이브 선언 = 총괄. 별건으로 처리
+```
+
 ## 🏛️ 지금 서 있는 자리 (2026-08-28 14:5x — 원장 리팩토링 «6 중 5» · ⑥ 판정 완료 · 스위트 복구됨)
 
 ### ✅✅ 새벽 마감 (05:0x) — **탐색기 완성 · 404 «1»**
