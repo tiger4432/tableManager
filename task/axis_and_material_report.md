@@ -1,3 +1,43 @@
+# [디자인 -> 총괄] `c10e787c` 착수 전 실측 — 그리고 반쪽에서 «되돌렸습니다» (2026-09-02 새벽)
+
+세 덩이(드롭다운이 직접 실행 · 수 교정 · 필터 칩 접기)를 끝까지 갈 만큼 컨텍스트가 안 남아
+반쌀 고친 파일을 두는 대신 `git checkout --` 로 되돌렸습니다. 하니스 18/0, 트리 깨끗.
+«어디까지가 의도이고 어디부터가 미완인지»를 모를 상태로 넘기는 것이 이 저장소가
+반복해서 맞은 부류라, 알려진 상태로 두는 쪽을 택했습니다.
+
+## 재 둔 것 — 다음 라운드가 다시 안 재도 되게
+```
+토큰 키      admin.js:55   ADMIN_TOKEN_KEY = 'assy.adminToken'   (localStorage · 같은 오리진)
+                -> «읽기만» 합니다. 묻지도 적지도 않습니다 (지시서 그대로)
+실행 라우트   POST /admin/retroactive/{op}/run    require_admin_token_strict
+체인 규칙    GET  /admin/chain/rules             require_admin_token
+필터 칩     grid.js `renderFilterBar` (칩을 그리는 곳) · dom.js `elements.filterChips`
+           🔴 개별 × 는 «이미 있습니다». 없는 것은 «한 줄 유지 + N 접기»뿐입니다
+           전체 지우기(`filterClearAll`)도 이미 있고, 칩이 둘 이상일 때만 뚜니다
+수 교정     redo_banner.js `ledgerGroups` 의 `rows: (rows||[]).length`
+           -> `- missing` 이면 「값이 있는 행 수」가 됩니다 (한 줄)
+```
+
+## 설계 판단 — 다시 고민하지 않도록 적어 둡니다
+```
+① 부품에 fetch 를 넣지 말고 `run(op, params)` 한 함수와 `hasToken()` 을 «주입»합니다
+   근거: 게이트 ⑥ 「하니스에 진짜 토큰이 있으면 안 된다」. 주입이면 가짜로 채점됩니다
+② 체인의 «규칙마다 한 줄»은 `setRules(rules)` 로 받습니다
+   🔴 `null`(못 읽음)과 `[]`(선언에 없음)을 «다르게» 그립니다 — 합치면
+      403 과 빈 설정이 같은 픽셀이 됩니다 (멈춤 조건 ③가 바로 그것)
+③ 드롭다운은 `doc.addEventListener` 로 바깥 클릭·Esc 를 받고, 닫힐 때 «떼 냅니다»
+   하니스의 문서 스텁이 addEventListener/removeEventListener 를 가져야 합니다
+④ 「Open in admin」은 드롭다운 한 줄로 «남깁니다» (지시서 명시).
+   지우면 rescope_handoff · adoptRescopeHandoff 이 가리키는 곳 없는 코드가 됩니다
+```
+
+## 방법론 하나 — 제 패처 스크립트가 «끝에» 씁니다
+여러 sub 을 한 스크립트에 묶고 마지막에 파일을 쓰면, 중간 assert 가 터질 때 «앞의 것도
+안 씁니다». 오늘 그걸 모르고 「앞 둘은 적용됐거니」하고 다음 패치를 올려서
+파일이 반쪽 모양이 됐습니다. 앞으로는 패치마다 쓰거나, 적용 뒤 «모듈이 파싱되는지»를 바로 확인합니다.
+
+---
+
 # [디자인 -> 총괄] 배너 라운드 — ①②③ 한 커밋 (`6e060fd7`, 2026-08-31 12:5x)
 
 ## 검증
