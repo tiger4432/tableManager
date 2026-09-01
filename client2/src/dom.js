@@ -12,6 +12,7 @@ export const elements = {
   get clearTxFilterBtn() { return document.getElementById('clear-tx-filter-btn'); },
   get gridFilterBar() { return document.getElementById('grid-filter-bar'); },
   get filterChips() { return document.getElementById('filter-chips'); },
+  get filterChipsMore() { return document.getElementById('filter-chips-more'); },
   get filterClearAll() { return document.getElementById('filter-clear-all'); },
   get offscreenCols() { return document.getElementById('offscreen-cols'); },
   get prevPageBtn() { return document.getElementById('prev-page-btn'); },

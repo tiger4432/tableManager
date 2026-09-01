@@ -52,7 +52,11 @@ export function ledgerGroups(rows, columns, readValue) {
   for (const column of columns || []) {
     const { values, missing } = scopeValuesFor(rows, column, readValue);
     if (!values.length) { dropped.push(column); continue; }
-    groups.push({ key: column, values, missing, rows: (rows || []).length });
+    // 🔴 «값이 있는 행 수»입니다. 선택 크기를 적으면 이 그룹이 «안 덮는» 행까지
+    //    세고, 화면은 「3 groups from 13 rows · 7 without a value」를 냅니다 --
+    //    13 과 7 이 같은 행을 두 번 세는 수라 서로 안 맞습니다. 실제로 도는 것은 6행입니다.
+    //    소유자가 이 줄을 보고 「무슨 말이야」라고 물으셨고, 그것이 이 수의 판별식입니다.
+    groups.push({ key: column, values, missing, rows: (rows || []).length - missing });
   }
   return { groups, dropped };
 }
