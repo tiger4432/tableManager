@@ -19,6 +19,7 @@ import { initWebSocket } from './websocket.js';
 import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
+import { ADMIN_TOKEN_HEADER, readAdminToken } from './admin_token.js';
 import {
   loadHistory,
   triggerHistoryReloadDebounced,
@@ -201,10 +202,57 @@ function initGridSourceLabel() {
   return part;
 }
 
+/** 고른 줄을 «그 자리에서» 돌립니다. 부품은 이 함수 하나만 알고 라우트도 토큰도 모릅니다.
+ *
+ * 🔴 거절 사유를 «그대로» 올립니다. 「실패」 한 마디로 접으면 운영자가 토큰 문제와 파라미터
+ *    문제를 구별할 수 없고, 구별 못 하면 고칠 곳을 못 찾습니다.
+ */
+async function runRetroactive(op, params) {
+  const token = readAdminToken();
+  if (!token) return { ok: false, error: 'no admin token on this browser' };
+  try {
+    const res = await fetch(`${API_BASE}/admin/retroactive/${encodeURIComponent(op)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', [ADMIN_TOKEN_HEADER]: token },
+      body: JSON.stringify({ params }),
+    });
+    if (!res.ok) {
+      let why = `${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) why = `${res.status} ${body.detail}`;
+      } catch (e) { /* not a JSON body — the status is still a fact */ }
+      return { ok: false, error: why };
+    }
+    const body = await res.json().catch(() => ({}));
+    // 서버가 «말한» 상태입니다. 없으면 큐에 들어갔다는 것까지가 아는 전부입니다.
+    return { ok: true, state: (body && body.status) || 'queued' };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || 'unreachable' };
+  }
+}
+
+/** 체인 규칙 «이름» 목록. 🔴 `null`(못 읽음)과 `[]`(서버가 하나도 선언 안 함)을 «가릅니다» --
+ *  합치면 403 과 빈 설정이 화면에서 같은 픽셀이 되고, 운영자는 엉뚱한 곳을 고칩니다. */
+async function loadChainRuleNames() {
+  const token = readAdminToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${API_BASE}/admin/chain/rules`,
+      { headers: { [ADMIN_TOKEN_HEADER]: token } });
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!body || body.status !== 'success' || !Array.isArray(body.data)) return null;
+    return body.data.map((rule) => (rule && rule.name) || '').filter(Boolean);
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
- * 헤더의 「다시 돌리기」 버튼 둘. 🔴 이 부품은 실행하지 «않습니다» -- 그룹을 조립해
- * 어드민 블록으로 넘길 뿐입니다 (총괄 판정 ⓐ, 2026-08-31: 고르는 곳은 그리드,
- * 수와 실행은 어드민). 그래서 그리드 페이지는 토큰을 «여전히 모릅니다».
+ * 헤더의 「다시 돌리기」 버튼 둘. 🔴 이제 이 부품이 «직접 돌립니다» (소유자 요구, 2026-09-01) --
+ * 2026-08-31 의 판정 ⓐ「실행은 어드민」을 무릅니다. 그래도 부품에는 라우트도 토큰도 없습니다:
+ * 돌리는 것은 아래에서 주입하는 «한 함수»이고, 토큰은 «있는지만» 묻습니다.
  */
 function initRedoBanner() {
   const host = document.getElementById('redo-banner-host');
@@ -221,6 +269,10 @@ function initRedoBanner() {
       return row ? row[column] : undefined;
     },
     businessKey: state.currentBusinessKey || null,
+    // 🔴 값을 넘기지 «않습니다». 있는지만 답합니다 -- 그래서 이 부품의 하니스는 진짜 토큰
+    //    없이도 「토큰이 없을 때 문장이 뜬다」를 채점할 수 있습니다.
+    hasToken: () => readAdminToken() !== '',
+    run: (op, params) => runRetroactive(op, params),
     handOff: (payload) => {
       if (!putRescopeHandoff(payload)) {
         // 저장소가 막히면 «조용히 넘어간 척» 하지 않습니다. 그 침묵이 어드민에서
@@ -235,6 +287,8 @@ function initRedoBanner() {
   loadLedgerDeclaration().then((got) => {
     part.setSources(got && got.ok ? got.sources : null);
   });
+  // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다.
+  loadChainRuleNames().then((names) => part.setRules(names));
   return part;
 }
 

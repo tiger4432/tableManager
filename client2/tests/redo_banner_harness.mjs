@@ -1,13 +1,14 @@
-// redo_banner_harness — THE BUTTONS ASSEMBLE, THEY DO NOT RUN.
+// redo_banner_harness — THE LINES RUN, AND THE FILE STILL KNOWS NO ROUTE.
 //
 // The re-translate moved out of the right-click menu and into the header, because selection
 // happens in the grid and a menu that grows with it is what the owner objected to twice. The
-// ruling that shaped this part is option A: the buttons assemble the groups and hand them over,
-// and the dry-run counts and the run itself stay in admin, where the token is.
+// ruling that shaped the first version was option A: assemble here, run in admin. THAT RULING
+// IS OVERTURNED (owner, 2026-09-01) — a line is pressed and it runs where it was pressed.
 //
-// 🔴 SO THE SHARPEST CHECK IN HERE IS ABOUT WHAT THE FILE DOES NOT CONTAIN. Nothing in it may
-// reach `/admin/*` or hold a token; the moment it does, the boundary the ruling is made of is
-// gone and no behavioural assertion would notice.
+// 🔴 SO THE SHARPEST CHECK IN HERE IS STILL ABOUT WHAT THE FILE DOES NOT CONTAIN. It may ASK
+// whether a token exists; it may never read one, and it may not know a route. Running is one
+// injected function. That is what lets this harness score the whole feature with a fake, and
+// it is why gate ⑥ could ask for no real token in here.
 //
 // The second is that the two buttons group in DIFFERENT PLACES. The ledger's groups come from
 // the declaration this page already has, so they are assembled here. The chain's groups are one
@@ -42,11 +43,15 @@ function ok(what, cond, saw) {
 
 // ── a bare document, so nothing here can lean on a real DOM ─────────────────────────
 function mkDoc() {
+  // Document-level listeners, because outside-click and Escape are how this dropdown closes
+  // and neither can be scored through the part's own DOM. `removeEventListener` is modelled
+  // too: a stub that only ever adds cannot tell a part that detaches from one that leaks.
+  const listeners = {};
   const el = (tag) => {
     const node = {
       tagName: String(tag).toUpperCase(), children: [], className: '',
-      dataset: {}, disabled: false, type: '', handlers: {},
-      appendChild(child) { this.children.push(child); return child; },
+      dataset: {}, disabled: false, type: '', handlers: {}, parentNode: null,
+      appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
       setAttribute(k, v) { this.dataset[k] = String(v); },
       addEventListener(name, fn) { this.handlers[name] = fn; },
       click() { if (this.handlers.click) this.handlers.click(); },
@@ -63,7 +68,19 @@ function mkDoc() {
     });
     return node;
   };
-  return { createElement: el };
+  return {
+    createElement: el,
+    addEventListener(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
+    removeEventListener(name, fn) {
+      const list = listeners[name] || [];
+      const at = list.indexOf(fn);
+      if (at !== -1) list.splice(at, 1);
+    },
+    listenerCount() {
+      return Object.keys(listeners).reduce((n, k) => n + listeners[k].length, 0);
+    },
+    fire(name, event) { (listeners[name] || []).slice().forEach((fn) => fn(event)); },
+  };
 }
 
 const walk = (node) => (node.children || [])
@@ -72,7 +89,7 @@ const byClass = (root, cls) => walk(root)
   .filter((n) => String(n.className || '').split(/\s+/).includes(cls));
 
 function load(src) {
-  const sandbox = { Array, String, Object, Number, Boolean, JSON };
+  const sandbox = { Array, String, Object, Number, Boolean, JSON, Promise };
   vm.createContext(sandbox);
   const body = src.replace(/^export /gm, '');
   vm.runInContext(`${body}\nglobalThis.__x = { RedoBanner, ledgerGroups, scopeValuesFor };`,
@@ -124,7 +141,15 @@ console.log('\n── A. THE BOUNDARY ──────────────
     .join('\n');
   ok('A1 the part never names an admin route', !stripped.includes('/admin/'), stripped.length);
   ok('A2 ... and never fetches at all', !/\bfetch\s*\(/.test(stripped));
-  ok('A3 ... and holds no token', !/token/i.test(stripped));
+  // 🔴 The boundary MOVED on 2026-09-02: the part runs now, so it must ask whether a token
+  //    exists. What it must never do is READ one. Asserting the absence of the word would now
+  //    fail on `hasToken()`, and relaxing it to nothing would leave the real rule unguarded.
+  ok('A3 ... and never reads a token value, it only asks whether there is one',
+    !/localStorage|sessionStorage|X-Admin-Token|Authorization|getItem/i.test(stripped),
+    stripped.length);
+  ok('A4 ... and the asking is a call to something injected, not a value it keeps',
+    /this\.hasToken\(\)/.test(stripped)
+    && /this\.hasToken = options\.hasToken/.test(stripped), stripped.length);
 }
 
 console.log('\n── B. THE BUTTONS ──────────────────────────────────────────────────');
@@ -230,6 +255,166 @@ console.log('\n── E. THE ENVELOPE ──────────────
     groupsShown(wired.host)[0].includes('1 group from 1 row'), groupsShown(wired.host));
 }
 
+console.log('\n── F. THE DROPDOWN CLOSES ──────────────────────────────────────────');
+{
+  // 🔴 「없어지지도 않는다」 was half the owner's complaint, and neither half can be seen from
+  //    the part's own DOM: both live on the DOCUMENT. A stub that could only add listeners
+  //    would score a part that leaks them exactly like one that cleans up.
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const rows = [envelope({ lot_id: 'L1', wafer_id: 'W1' })];
+  const part = new X.RedoBanner(host, { doc, sources: SOURCES, getSelection: () => rows,
+    readValue: readEnvelope, businessKey: 'lot_id', handOff: () => {} });
+  part.setRelation('dt_log');
+  part.render();
+  const open = () => buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+  const isOpen = () => byClass(host, 'redo-panel').length === 1;
+
+  ok('F1 closed, the part holds no document listener at all', doc.listenerCount() === 0);
+  open();
+  ok('F2 opening arms them', isOpen() && doc.listenerCount() > 0, doc.listenerCount());
+  // THE DISCRIMINATING PAIR: a handler that closes on every mousedown would pass an
+  // outside-click check and make the dropdown unusable, because pressing a line is a click too.
+  doc.fire('mousedown', { target: byClass(host, 'redo-panel__group')[0] });
+  ok('F3 a click INSIDE it is not an outside click', isOpen());
+  doc.fire('keydown', { key: 'a' });
+  ok('F4 ... and a key that is not Escape is not Escape', isOpen());
+  doc.fire('keydown', { key: 'Escape' });
+  ok('F5 Escape closes it', !isOpen());
+  ok('F6 ... and the listeners come back off', doc.listenerCount() === 0, doc.listenerCount());
+  open();
+  doc.fire('mousedown', { target: doc.createElement('div') });
+  ok('F7 a click outside closes it', !isOpen() && doc.listenerCount() === 0);
+  open();
+  buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+  ok('F8 the same button pressed twice closes it, listeners and all',
+    !isOpen() && doc.listenerCount() === 0);
+}
+
+console.log('\n── G. A LINE IS PRESSED AND IT RUNS ────────────────────────────────');
+{
+  const rows = [envelope({ lot_id: 'L1' })];   // wafer_id missing -> one line with no params
+  const calls = [];
+  let settle;
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const part = new X.RedoBanner(host, { doc, sources: SOURCES, getSelection: () => rows,
+    readValue: readEnvelope, businessKey: 'lot_id', handOff: () => {},
+    hasToken: () => true,
+    run: (op, params) => { calls.push({ op, params }); return new Promise((r) => { settle = r; }); } });
+  part.setRelation('dt_log');
+  part.render();
+  buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+
+  const lines = () => byClass(host, 'redo-panel__group');
+  ok('G1 with a token the runnable lines are buttons',
+    lines()[0].tagName === 'BUTTON', lines().map((n) => n.tagName));
+  // The dropped column has nothing to run, so it is a line and not a control that does nothing.
+  ok('G2 a line with nothing to run is not a button',
+    lines()[1].tagName === 'DIV' && lines()[1].textContent.includes('no value'),
+    lines().map((n) => n.tagName));
+  lines()[0].click();
+  ok('G3 pressing it calls the injected runner once, with the declared parameter names',
+    calls.length === 1 && calls[0].op === 'ledger_rescope'
+    && calls[0].params.source === 'dt_log_src'
+    && calls[0].params.scope_column === 'lot_id'
+    && calls[0].params.scope_values === 'L1', calls);
+  ok('G4 ... and that line says so immediately, before any answer',
+    lines()[0].textContent.includes('running'), lines()[0].textContent);
+  lines()[0].click();
+  ok('G5 pressing again while it runs does not run it twice', calls.length === 1, calls.length);
+  settle({ ok: true, state: 'queued' });
+  await Promise.resolve(); await Promise.resolve();
+  ok('G6 when the answer comes back the same line says what happened',
+    lines()[0].textContent.includes('queued'), lines()[0].textContent);
+}
+
+console.log('\n── G-bis. AND WHEN IT FAILS, IT SAYS WHY ───────────────────────────');
+{
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const part = new X.RedoBanner(host, { doc, sources: SOURCES,
+    getSelection: () => [envelope({ lot_id: 'L1' })], readValue: readEnvelope,
+    businessKey: 'lot_id', handOff: () => {}, hasToken: () => true,
+    run: () => Promise.resolve({ ok: false, error: 'admin token rejected' }) });
+  part.setRelation('dt_log');
+  part.render();
+  buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+  byClass(host, 'redo-panel__group')[0].click();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const said = byClass(host, 'redo-panel__group')[0].textContent;
+  ok('G7 a refusal is named on the line that asked for it',
+    said.includes('failed') && said.includes('admin token rejected'), said);
+}
+
+console.log('\n── H. NO TOKEN SAYS SO ─────────────────────────────────────────────');
+{
+  const mk = (hasToken) => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new X.RedoBanner(host, { doc, sources: SOURCES,
+      getSelection: () => [envelope({ lot_id: 'L1' })], readValue: readEnvelope,
+      businessKey: 'lot_id', handOff: () => {}, hasToken: () => hasToken, run: () => {} });
+    part.setRelation('dt_log');
+    part.render();
+    buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+    return host;
+  };
+  const without = mk(false);
+  const with_ = mk(true);
+  ok('H1 without a token the panel says so in a sentence',
+    (byClass(without, 'redo-panel__nogo')[0] || {}).textContent !== undefined
+    && byClass(without, 'redo-panel__nogo')[0].textContent.includes('token'),
+    byClass(without, 'redo-panel__nogo').length);
+  ok('H2 ... and its lines are not controls that would do nothing',
+    byClass(without, 'redo-panel__group').every((n) => n.tagName === 'DIV'));
+  // The pair: with a token that sentence is GONE. One of these alone proves nothing.
+  ok('H3 with a token the sentence is not there', byClass(with_, 'redo-panel__nogo').length === 0);
+  ok('H4 ... and the hand-off to admin survives in both',
+    byClass(without, 'redo-panel__go').length === 1
+    && byClass(with_, 'redo-panel__go').length === 1);
+}
+
+console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ─────────────────────────');
+{
+  const mk = (rules) => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new X.RedoBanner(host, { doc, sources: SOURCES,
+      getSelection: () => [envelope({ lot_id: 'L1' }), envelope({ lot_id: 'L2' })],
+      readValue: readEnvelope, businessKey: 'lot_id', handOff: () => {},
+      hasToken: () => true, run: () => Promise.resolve({ ok: true }), rules });
+    part.setRelation('dt_log');
+    part.render();
+    buttons(host).find((b) => b.dataset.redo === 'chain').click();
+    return { host, lines: byClass(host, 'redo-panel__group') };
+  };
+  const unread = mk(null);
+  const declaredEmpty = mk([]);
+  const loaded = mk(['r_alpha', 'r_beta']);
+
+  // 🔴 THE PAIR THIS SECTION EXISTS FOR. 403 and an empty config are different facts, and a
+  //    screen that paints them the same sends the operator to fix the wrong thing.
+  ok('I1 an unread rule list and a declared-empty one do not read the same',
+    unread.lines.map((n) => n.textContent).join('|')
+    !== declaredEmpty.lines.map((n) => n.textContent).join('|'),
+    [unread.lines.map((n) => n.textContent), declaredEmpty.lines.map((n) => n.textContent)]);
+  ok('I2 unread says it could not be loaded',
+    unread.lines.some((n) => n.textContent.includes('not loaded')),
+    unread.lines.map((n) => n.textContent));
+  ok('I3 declared-empty says the server declares none',
+    declaredEmpty.lines.some((n) => n.textContent.includes('declares no chain rule')),
+    declaredEmpty.lines.map((n) => n.textContent));
+  ok('I4 neither offers a line to press, because `rule` is required',
+    unread.lines.every((n) => n.tagName === 'DIV')
+    && declaredEmpty.lines.every((n) => n.tagName === 'DIV'));
+  ok('I5 with rules there is one pressable line per rule',
+    loaded.lines.length === 2 && loaded.lines.every((n) => n.tagName === 'BUTTON')
+    && loaded.lines[0].textContent.startsWith('r_alpha')
+    && loaded.lines[1].textContent.startsWith('r_beta'),
+    loaded.lines.map((n) => n.textContent));
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -248,9 +433,28 @@ const DEFECTS = [
     swap('if (!values.length) { dropped.push(column); continue; }',
       'if (!values.length) { groups.push({ key: column, values, missing, '
       + 'rows: (rows || []).length }); continue; }')],
-  ['M5 the chain hand-off invents a rule grouping the page cannot know',
-    swap('        businessKeys: values,',
-      '        businessKeys: values,\n        groups: values.map((v) => ({ label: v })),')],
+  ['M5 the chain hand-off invents a rule grouping admin would not read',
+    swap("const payload = { op: 'chain_replay', businessKeys: values };",
+      "const payload = { op: 'chain_replay', businessKeys: values, "
+      + "groups: values.map((v) => ({ label: v })) };")],
+  ['M9 closing leaves the document listeners attached',
+    swap('    if (this.dismiss) this.dismiss();', '    if (false) this.dismiss();')],
+  ['M10 a click INSIDE the part closes it too',
+    swap('      while (node) { if (node === this.host) return; node = node.parentNode; }',
+      '      while (node) { node = node.parentNode; }')],
+  ['M11 any key closes it, not just Escape',
+    swap("if (event && event.key === 'Escape') this.close();", 'this.close();')],
+  ['M12 the line is drawn as a button but never wired to run',
+    swap("        line.addEventListener('click', () => this.fire(index, assembled.op, entry.params));",
+      '        line.type = \'button\';')],
+  ['M13 no token goes quietly grey instead of saying so',
+    swap("      why.className = 'redo-panel__nogo';", "      why.className = 'redo-panel__quiet';")],
+  ['M14 the unread rule list paints the same as a declared-empty one',
+    swap("        { text: 'chain rules not loaded — open in admin to pick one', params: null },",
+      "        { text: 'the server declares no chain rule', params: null },")],
+  ['M15 pressing a line says nothing until the answer comes back',
+    swap("    this.said[index] = 'running…';\n    this.render();",
+      "    this.render();")],
   ['M6 the scope values are joined with something the route does not read',
     swap("scope_values: g.values.join(',')", "scope_values: g.values.join(' ')")],
   ['M7 a repeated value becomes its own group',
@@ -267,7 +471,7 @@ const CONTROLS = [
     .join('\n')],
 ];
 
-function score(list, mustCatch, heading) {
+async function score(list, mustCatch, heading) {
   console.log(`\n── ${heading} ─────────────────────────────`);
   let hit = 0;
   for (const [name, mutate] of list) {
@@ -325,6 +529,57 @@ function score(list, mustCatch, heading) {
       const go2 = byClass(host, 'redo-panel__go')[0];
       if (go2) go2.click();
 
+      // ── the dropdown, exercised the way a person uses it ──────────────────────────
+      // Everything above reaches the panel by setting `open` directly, which never touches the
+      // document listeners, the runner or the rule list. A mutant living in any of those walks
+      // straight through a replay that only reads text.
+      const doc2 = mkDoc();
+      const calls = [];
+      let settle = null;
+      const drop = new M.RedoBanner(doc2.createElement('div'), {
+        doc: doc2, sources: SOURCES, getSelection: () => rows, readValue: readEnvelope,
+        businessKey: 'lot_id', handOff: () => {}, hasToken: () => true, rules: ['r_alpha'],
+        run: (op, params) => { calls.push({ op, params });
+          return new Promise((res) => { settle = res; }); },
+      });
+      drop.setRelation('dt_log');
+      drop.render();
+      const armedClosed = doc2.listenerCount();
+      const openIt = () => buttons(drop.host).find((b) => b.dataset.redo === 'ledger').click();
+      const stillOpen = () => byClass(drop.host, 'redo-panel').length === 1;
+      openIt();
+      const armedOpen = doc2.listenerCount();
+      doc2.fire('mousedown', { target: byClass(drop.host, 'redo-panel__group')[0] });
+      const survivedInsideClick = stillOpen();
+      doc2.fire('keydown', { key: 'a' });
+      const survivedOtherKey = stillOpen();
+      byClass(drop.host, 'redo-panel__group')[0].click();
+      const saidWhilePressed = byClass(drop.host, 'redo-panel__group')[0].textContent;
+      if (settle) settle({ ok: true, state: 'queued' });
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      const saidAfter = byClass(drop.host, 'redo-panel__group')[0].textContent;
+      doc2.fire('keydown', { key: 'Escape' });
+      const closedByEsc = !stillOpen();
+      const armedAfter = doc2.listenerCount();
+
+      // the token sentence, and the two absences of a rule list
+      const panelOf = (opts) => {
+        const dd = mkDoc();
+        const p = new M.RedoBanner(dd.createElement('div'), Object.assign({
+          doc: dd, sources: SOURCES, getSelection: () => rows, readValue: readEnvelope,
+          businessKey: 'lot_id', handOff: () => {} }, opts));
+        p.setRelation('dt_log');
+        p.render();
+        buttons(p.host).find((b) => b.dataset.redo === (opts.which || 'ledger')).click();
+        return p.host;
+      };
+      const noToken = panelOf({ hasToken: () => false, run: () => {} });
+      const chainText = (rules) => byClass(
+        panelOf({ hasToken: () => true, run: () => {}, rules, which: 'chain' }),
+        'redo-panel__group').map((n) => n.textContent).join('|');
+      const unread = chainText(null);
+      const declaredEmpty = chainText([]);
+
       bad = buttons(empty.host).some((b) => b.disabled !== true)
         || buttons(notSource.host).map((b) => b.dataset.redo).join(',') !== 'chain'
         || !(lines[0] || '').includes('2 groups from 3 rows')
@@ -336,7 +591,16 @@ function score(list, mustCatch, heading) {
         || !handed || handed.groups !== undefined
         || handed.businessKeys.join(',') !== 'L1,L2'
         || groupsShown(partial.host)[1]
-           !== 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value';
+           !== 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value'
+        || armedClosed !== 0 || armedOpen === 0 || armedAfter !== 0 || !closedByEsc
+        || !survivedInsideClick || !survivedOtherKey
+        || calls.length !== 1 || calls[0].op !== 'ledger_rescope'
+        || calls[0].params.scope_column !== 'lot_id'
+        || calls[0].params.scope_values !== 'L1,L2'
+        || !saidWhilePressed.includes('running')
+        || !saidAfter.includes('queued')
+        || byClass(noToken, 'redo-panel__nogo').length !== 1
+        || unread === declaredEmpty;
     } catch (e) {
       bad = true;
     }
@@ -346,8 +610,8 @@ function score(list, mustCatch, heading) {
   return hit;
 }
 
-const caught = score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
-const escaped = score(CONTROLS, false, 'control mutants (each must ESCAPE)');
+const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
+const escaped = await score(CONTROLS, false, 'control mutants (each must ESCAPE)');
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);

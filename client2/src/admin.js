@@ -7,6 +7,7 @@ import { initTheme, getTheme } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast } from './utils.js';
+import { ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER } from './admin_token.js';
 // Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
 import { queueQuery } from './enrichment_queue.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
@@ -51,8 +52,9 @@ const byId = (id) => document.getElementById(id);
 // When the server has no token configured the gated routes answer normally, so
 // nothing prompts and this is invisible. The prompt appears only on a rejection
 // the GATE issued, which is exactly the first load against a locked server.
-const ADMIN_TOKEN_HEADER = 'X-Admin-Token';
-const ADMIN_TOKEN_KEY = 'assy.adminToken';
+// 🔴 이름은 `admin_token.js` 하나에 삽니다. 그리드 페이지도 같은 키를 «읽어야» 해서(줄을
+//    그 자리에서 돌립니다), 여기 사본을 두면 키가 두 벌이 됩니다.
+
 
 function getAdminToken() {
   try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }

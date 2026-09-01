@@ -4,16 +4,19 @@
 // 🔴 자리가 배너인 이유 (소유자가 두 번 지적). 선택은 «그리드»에서 일어나고, 우클릭에 넣으면
 //    메뉴가 길어집니다. 배너는 «선택 상태»를 보고 활성/비활성이 되므로 고른 뒤에 눈이 갑니다.
 //
-// 🔴 고르는 곳은 그리드, 실행하는 곳은 어드민 (총괄 판정 ⓐ, 2026-08-31 12:2x). 이 부품은
-//    그룹을 «조립해서 넘길» 뿐이고 드라이런도 실행도 «안 합니다» -- 둘 다 토큰이 있는 자리의
-//    일입니다. 그래서 이 파일에 `/admin/` 도 토큰도 «없습니다». 있으면 그 경계가 여기서 지워집니다.
+// 🔴 여기서 «직접 돌립니다» (소유자 요구, 2026-09-01). 2026-08-31 의 판정 ⓐ「고르는 곳은
+//    그리드, 실행하는 곳은 어드민」을 «무릅니다» -- 고른 뒤 다른 페이지로 넘어가는 것이
+//    소유자에게는 한 걸음 더였습니다.
 //
-// 🔴 두 버튼의 그룹은 «서로 다른 곳»이 압니다:
+// 🔴 그래도 이 파일에 `/admin/` 도 fetch 도 토큰도 «없습니다». 돌리는 것은 «주입된 한 함수»
+//    (`run(op, params)`) 이고, 토큰은 «있는지만» 묻습니다 (`hasToken()`). 값을 들고 있지
+//    않으므로 하니스가 «진짜 토큰 없이» 이 부품을 채점할 수 있습니다 -- 그것이 이 경계의 값어치입니다.
+//
+// 🔴 두 버튼의 줄은 «서로 다른 것»이 정합니다:
 //       원장  scope_column 값마다   -> 선언이 주고, 그러니 «여기»서 묶습니다
-//       체인  규칙마다              -> 규칙 목록이 토큰 뒤라 «어드민»이 묶습니다.
-//                                  여기서는 고른 행의 업무 키만 실어 보냅니다
-//    두 번째를 여기서 묶으려 하면 이 파일이 `/admin/chain/rules` 를 불러야 하고, 그 순간
-//    위의 경계가 사라집니다. 무엇을 «모르는지»가 이 부품의 설계입니다.
+//       체인  규칙마다              -> 규칙 «이름 목록»을 화면이 넣어 줍니다 (`setRules`).
+//                                  `null`(못 읽음)과 `[]`(선언에 없음)은 «다르게» 그립니다 --
+//                                  합치면 403 과 빈 설정이 같은 픽셀이 됩니다
 //
 // 🔴 조립식: 자기 div 하나. 남의 헤더 안을 직접 그리지 않고, 화면이 그 div 를 앉힙니다.
 //    모듈 수준 상태 없음 — 같은 페이지에 둘을 앉혀도 서로를 모릅니다.
@@ -76,8 +79,69 @@ export class RedoBanner {
     this.businessKey = options.businessKey || null;
     // 조립한 것을 넘기는 «한 함수». 이 부품은 저장소도 주소도 모릅니다.
     this.handOff = options.handOff || null;
+    // «돌리는» 한 함수. (op, params) -> Promise<{ok, state?, error?}>.
+    this.run = options.run || null;
+    // 토큰이 «있는지»만 묻습니다. 값을 받지 않습니다.
+    this.hasToken = options.hasToken || (() => false);
+    // 체인 규칙 «이름» 목록. `null` 은 「아직/못 읽음」이고 `[]` 와 다릅니다.
+    this.rules = Array.isArray(options.rules) ? options.rules : null;
     this.relation = null;
     this.open = null;
+    // 줄마다의 상태. 누른 뒤 «그 줄이» 말합니다 -- 조용히 닫으면 운영자는 두 번 누릅니다.
+    this.said = {};
+    // 열려 있는 동안만 걸리는 문서 리스너를 «떼는» 함수. 안 떼면 닫힌 뒤에도 클릭을 먹습니다.
+    this.dismiss = null;
+  }
+
+  setRules(rules) { this.rules = Array.isArray(rules) ? rules : null; this.render(); }
+
+  /** 바깥 클릭과 Esc 로 닫힙니다. 「없어지지도 않는다」가 소유자 지적의 절반이었습니다. */
+  watchForDismiss() {
+    if (this.dismiss || !this.doc || !this.doc.addEventListener) return;
+    const onKey = (event) => { if (event && event.key === 'Escape') this.close(); };
+    const onDown = (event) => {
+      // 자기 div 안을 누른 것은 «바깥»이 아닙니다.
+      let node = event && event.target;
+      while (node) { if (node === this.host) return; node = node.parentNode; }
+      this.close();
+    };
+    this.doc.addEventListener('keydown', onKey);
+    this.doc.addEventListener('mousedown', onDown);
+    this.dismiss = () => {
+      if (this.doc.removeEventListener) {
+        this.doc.removeEventListener('keydown', onKey);
+        this.doc.removeEventListener('mousedown', onDown);
+      }
+      this.dismiss = null;
+    };
+  }
+
+  close() {
+    if (!this.open) return;
+    this.open = null;
+    this.said = {};
+    if (this.dismiss) this.dismiss();
+    this.render();
+  }
+
+  /** 한 줄을 돌립니다. 누른 «그 줄»이 답을 답니다 -- 토스트는 사라지고, 사라지면 다시 누릅니다. */
+  fire(index, op, params) {
+    if (!this.run || this.said[index] === 'running…') return;
+    this.said[index] = 'running…';
+    this.render();
+    Promise.resolve(this.run(op, params)).then(
+      (got) => {
+        const answer = got || {};
+        this.said[index] = answer.ok
+          ? (answer.state || 'queued')
+          : `failed — ${answer.error || 'no reason given'}`;
+        this.render();
+      },
+      (err) => {
+        this.said[index] = `failed — ${(err && err.message) || 'unreachable'}`;
+        this.render();
+      },
+    );
   }
 
   setSources(sources) { this.sources = sources; this.render(); }
@@ -86,6 +150,7 @@ export class RedoBanner {
     const next = relation || null;
     if (next === this.relation) return;
     this.relation = next;
+    if (this.open) this.close();
     this.open = null;
     this.render();
   }
@@ -127,7 +192,10 @@ export class RedoBanner {
     // 선택이 없으면 «비활성». 눌러도 아무 일이 없는 버튼은 화면이 하는 거짓말입니다.
     btn.disabled = !enabled;
     btn.addEventListener('click', () => {
-      this.open = this.open === which ? null : which;
+      if (this.open === which) { this.close(); return; }
+      this.open = which;
+      this.said = {};
+      this.watchForDismiss();
       this.render();
     });
     return btn;
@@ -152,16 +220,35 @@ export class RedoBanner {
       return box;
     }
 
-    assembled.lines.forEach((text) => {
-      const line = doc.createElement('div');
+    // 🔴 토큰이 없으면 «문장으로» 말합니다. 조용히 회색으로 두면 운영자는 자기 선택이
+    //    잘못된 줄 알고 골랐던 것을 다시 고릅니다.
+    const runnable = this.hasToken() === true && typeof this.run === 'function';
+    if (!runnable) {
+      const why = doc.createElement('div');
+      why.className = 'redo-panel__nogo';
+      why.textContent = 'no admin token on this browser — open admin once, then come back';
+      box.appendChild(why);
+    }
+
+    assembled.rows.forEach((entry, index) => {
+      const pressable = runnable && !!entry.params;
+      const line = doc.createElement(pressable ? 'button' : 'div');
       line.className = 'redo-panel__group';
-      line.textContent = text;
+      if (pressable) {
+        line.type = 'button';
+        // 확인 창은 없습니다. 줄에 «크기»가 적혀 있고, 그것을 누르는 것이 확인입니다.
+        line.addEventListener('click', () => this.fire(index, assembled.op, entry.params));
+      }
+      const said = this.said[index];
+      line.textContent = said ? `${entry.text} — ${said}` : entry.text;
       box.appendChild(line);
     });
 
+    // 「Open in admin」은 «남깁니다» -- 세어 보거나 규칙을 고르려면 그 자리이고, 여기서 지우면
+    // rescope_handoff.js 와 admin.js 의 adoptRescopeHandoff 가 «가리키는 곳 없는» 코드가 됩니다.
     const go = doc.createElement('button');
     go.type = 'button';
-    go.className = 'glass-btn btn-primary redo-panel__go';
+    go.className = 'glass-btn redo-panel__go';
     go.textContent = 'Open in admin';
     go.addEventListener('click', () => {
       if (this.handOff) this.handOff(assembled.payload);
@@ -176,27 +263,34 @@ export class RedoBanner {
     if (!columns.length) return { note: 'this source declares no scope column' };
     const { groups, dropped } = ledgerGroups(rows, columns, this.readValue);
     if (!groups.length) return { note: 'no scope column has a value in the selected rows' };
-    const lines = groups.map((g) => {
+    const lineRows = groups.map((g) => {
       const skipped = g.missing ? ` · ${g.missing} without a value` : '';
       const n = g.values.length;
-      return `${g.key} — ${n} group${n === 1 ? '' : 's'} from ${g.rows} row${g.rows === 1 ? '' : 's'}${skipped}`;
+      return {
+        text: `${g.key} — ${n} group${n === 1 ? '' : 's'} from ${g.rows} row${g.rows === 1 ? '' : 's'}${skipped}`,
+        params: {
+          source: sourceRow.source,
+          scope_column: g.key,
+          scope_values: g.values.join(','),
+        },
+      };
     });
     // 못 넘긴 컬럼도 «말합니다». 조용히 빼면 운영자는 그 컬럼을 기다립니다.
-    dropped.forEach((column) => lines.push(`${column} — no value in the selected rows`));
+    // 돌릴 것이 없으므로 `params` 가 없고, 그래서 «누르는 줄이 아닙니다».
+    dropped.forEach((column) => lineRows.push({
+      text: `${column} — no value in the selected rows`, params: null,
+    }));
     return {
-      lines,
+      op: 'ledger_rescope',
+      rows: lineRows,
       payload: {
         op: 'ledger_rescope',
         // 🔴 넘기는 이름은 «연산이 선언한 그대로»입니다. 화면이 지어내면 어드민이 그 키로
         //    400 을 받고, 운영자는 자기가 무엇을 잘못했는지 못 봅니다.
-        groups: groups.map((g) => ({
-          label: g.key,
-          params: {
-            source: sourceRow.source,
-            scope_column: g.key,
-            scope_values: g.values.join(','),
-          },
-        })),
+        // 🔴 그리고 «누르면 도는 것»과 «넘기는 것»이 같은 자리에서 나옵니다. 두 벌로 두었더니
+        //    한쪽의 join 만 바꿔도 하니스가 초록이었습니다 (실측 2026-09-02).
+        groups: lineRows.filter((entry) => entry.params)
+          .map((entry) => ({ label: entry.params.scope_column, params: entry.params })),
       },
     };
   }
@@ -206,15 +300,32 @@ export class RedoBanner {
     const { values, missing } = scopeValuesFor(rows, this.businessKey, this.readValue);
     if (!values.length) return { note: 'the selected rows carry no business key' };
     const skipped = missing ? ` · ${missing} without a value` : '';
+    const many = values.length === 1 ? '' : 's';
+    const from = `${values.length} key${many} from ${rows.length} row${rows.length === 1 ? '' : 's'}${skipped}`;
+    // 넘기는 모양은 «그대로»입니다 -- admin.js 의 adoptRescopeHandoff 가 이것을 읽습니다.
+    const payload = { op: 'chain_replay', businessKeys: values };
+    // 🔴 `rule` 은 이 연산의 «필수» 파라미터라, 규칙을 모르면 돌릴 줄이 없습니다.
+    //    그때 「규칙이 없다」로 그리면 «못 읽은 것»과 «선언에 비어 있는 것»이 같아집니다.
+    if (!Array.isArray(this.rules)) {
+      return { op: 'chain_replay', payload, rows: [
+        { text: from, params: null },
+        { text: 'chain rules not loaded — open in admin to pick one', params: null },
+      ] };
+    }
+    if (!this.rules.length) {
+      return { op: 'chain_replay', payload, rows: [
+        { text: from, params: null },
+        { text: 'the server declares no chain rule', params: null },
+      ] };
+    }
+    const keys = values.join(',');
     return {
-      // 🔴 「규칙마다 한 그룹」은 «여기서» 만들지 않습니다 — 규칙 목록이 토큰 뒤라 이 페이지가
-      //    모릅니다. 아는 것(고른 키)만 넘기고, 묶는 것은 아는 쪽이 합니다.
-      lines: [`${values.length} key${values.length === 1 ? '' : 's'} from ${rows.length} row${rows.length === 1 ? '' : 's'}${skipped}`,
-              'grouped by rule in admin, which is where the rules are'],
-      payload: {
-        op: 'chain_replay',
-        businessKeys: values,
-      },
+      op: 'chain_replay',
+      payload,
+      rows: this.rules.map((rule) => ({
+        text: `${rule} — ${from}`,
+        params: { rule, business_keys: keys },
+      })),
     };
   }
 }
