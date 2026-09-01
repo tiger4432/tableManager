@@ -335,41 +335,50 @@ export function foldFilterChips() {
   const bar = elements.gridFilterBar;
   if (!chips || !more) return;
   const all = Array.from(chips.children);
-  all.forEach(chip => {
-    chip.style.display = '';
-    chip.style.maxWidth = '';
-    chip.style.minWidth = '';
-  });
+  all.forEach(chip => { chip.style.display = ''; });
   chips.classList.toggle('is-open', chipsOpen);
 
+  // 🔴 How wide a chip may be. A chip may never reach past the bar, because the bar clips and
+  //    the ✕ is at the chip's RIGHT end -- a chip that overruns loses its delete control
+  //    entirely, and that filter can then only be cleared by clearing all of them. The label's
+  //    ellipsis, already configured, does the rest once the chip is allowed to be narrow.
   if (chipsOpen) {
     more.textContent = '접기';
     more.title = '한 줄로 접기';
     more.style.display = all.length ? '' : 'none';
+    // Opened, the strip scrolls, so a chip no longer has to fit the visible width -- it has to
+    // be READABLE, and 260px is the width the stylesheet already chose for that. Nothing is
+    // measured here on purpose: every measured cap went stale, because the bar sizes around
+    // contents this same function is deciding.
+    chips.style.setProperty('--chip-cap', '260px');
     return;
   }
+  // Folded, a chip may use this span, which is where it is clipped -- and `100%` of the span is
+  // a question CSS answers at draw time, so it cannot go stale the way a measured number can.
+  chips.style.setProperty('--chip-cap', '100%');
+  // Back to the left first. A strip left scrolled from the opened state keeps that offset even
+  // under `overflow: hidden`, and then every chip measures from where it was scrolled TO -- the
+  // ones pushed off the left read as fitting and the fold folds nothing.
+  chips.scrollLeft = 0;
+
+  const box = chips.getBoundingClientRect();
+  const barBox = bar ? bar.getBoundingClientRect() : box;
+  // The room is what is VISIBLE, which on a tight header is less than this span's own box: the
+  // span keeps its basis and the bar clips the overhang. Measuring the span alone would call a
+  // chip "fitting" while the operator sees it sliced down the middle with no ellipsis to say so.
+  const room = Math.max(0, Math.min(box.right, barBox.right) - box.left);
   // 🔴 Measured against THE STRIP, in the strip's own coordinates. `offsetLeft` is
   //    relative to the nearest positioned ancestor -- here the header, not this span -- so
   //    comparing it with `clientWidth` compares a page coordinate (1142) with a width (229)
   //    and every chip reads as overflowing. Live measurement, 2026-09-02: that folded ALL of
   //    them and the strip showed a count with nothing to count.
-  const box = chips.getBoundingClientRect();
-  const barBox = bar ? bar.getBoundingClientRect() : box;
-  // The room is what is VISIBLE, which on a tight header is less than this span's own box: the
-  // span keeps its floor and the bar clips the overhang. Measuring the span alone would call a
-  // chip "fitting" while the operator sees it sliced down the middle with no ellipsis to say so.
-  const room = Math.max(0, Math.min(box.right, barBox.right) - box.left);
   const ends = all.map(chip => chip.getBoundingClientRect().right - box.left);
-  const hidden = all.filter((chip, i) => ends[i] > room + 1);
+  // Under the cap the first chip always fits, so what is left to decide is whether the strip is
+  // wide enough to read one in at all. Below that, `+N 필터` says more than a sliver of a chip.
+  const hidden = room < READABLE_CHIP_PX
+    ? all.slice()
+    : all.filter((chip, i) => ends[i] > room + 1);
   hidden.forEach(chip => { chip.style.display = 'none'; });
-  // Not even the first one fits. Keep it and let its label truncate: `+2 필터` alone names
-  // how many filters are on but not WHICH, and which is the thing the operator came to read.
-  if (hidden.length === all.length && all.length && room >= READABLE_CHIP_PX) {
-    const first = hidden.shift();
-    first.style.display = '';
-    first.style.minWidth = '0';
-    first.style.maxWidth = `${Math.max(0, Math.floor(room))}px`;
-  }
   // Said, not swallowed: a filter that is hiding rows with nothing on screen to name it reads
   // as data that is GONE, and the next question gets asked of the table instead of the strip.
   more.textContent = `+${hidden.length} 필터`;

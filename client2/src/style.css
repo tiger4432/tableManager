@@ -1268,14 +1268,36 @@ body.resizing-active .history-sidebar {
   min-width: 0;
   overflow: hidden;
 }
-.filter-chips.is-open { flex-wrap: wrap; overflow: visible; }
+/* 🔴 OPENED IT SCROLLS, it does not wrap. Wrapping was wrong and the measurement said so:
+   the header is a fixed 52px and the strip is centred in it, so three wrapped rows run from
+   y=-30 to y=81. The first chip's ✕ was ABOVE THE VIEWPORT and hit nothing; the second one's
+   sat under 「전체 해제」, so pressing where that ✕ appeared would have cleared every filter.
+   `el.click()` passed all of it -- a synthetic click skips hit-testing, so it proves the
+   handler is wired, never that a person can reach the control. Measured 2026-09-02.
+   One row always: the header never grows, nothing overlaps a sibling, and every chip is
+   reachable by scrolling to it. */
+.filter-chips.is-open {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
 
-/* 🔴 Neither grows nor shrinks HERE. `.filter-chip` is shared with the history tabs, where
-   `flex: 1` fills the row; on this strip that same rule lets a chip squeeze to 22px, and a chip
-   that shrinks to fit always "fits" -- the fold then has nothing to fold and the operator reads
-   three slivers instead of one chip and a count. Truncation is the fold's decision, made once,
-   on the first chip only. */
-.filter-chips .filter-chip { flex: 0 0 auto; }
+/* 🔴 Neither grows nor shrinks HERE, and never wider than the strip it sits in.
+   `.filter-chip` is shared with the history tabs, where `flex: 1` fills the row and
+   `min-width: max-content` keeps a tab label on one line. On this strip both are wrong:
+     - `flex: 1` lets a chip squeeze to 22px, and a chip that shrinks to fit always "fits",
+       so the fold has nothing to fold and the operator reads slivers instead of one chip
+       and a count;
+     - `min-width: max-content` BEATS the `max-width: 260px` sitting beside it (CSS resolves
+       min-width last), so a long filter value grew the chip to 651px against a 203px bar.
+       The bar clips, the ✕ is at the chip's right end, and that filter could then only be
+       removed by clearing every filter. Measured by the lead, 2026-09-02.
+   `min-width: 0` lets the label's ellipsis -- already configured -- finally apply. */
+.filter-chips .filter-chip {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(260px, var(--chip-cap, 100%));
+}
 
 /* Same plain-text control as 「전체 해제」 beside it -- a bordered button here would
    outweigh the chips it is counting. */
