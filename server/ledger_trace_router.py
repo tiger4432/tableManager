@@ -97,7 +97,9 @@ def evidence_subgraph(
     negative: list[str] | None = Query(
         None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
     follow: list[str] | None = Query(
-        None, description="이 술어만 따라간다. 없으면 «전부» — 오늘 동작 그대로"),
+        None, description=("이 술어만 따라간다. 없으면 «전부» — 오늘 동작 그대로. "
+                           "`이름:키1,키2` 로 쓰면 그 엣지는 씨앗과 «그 키가 같은» "
+                           "노드로만 걷는다. 콜론이 없으면 제약 없음")),
     backbone_hops: int = Query(
         ledger_subgraph.DEFAULT_BACKBONE_HOPS, ge=0, le=40,
         description=("같은 자재를 따라가는 걸음에 주는 «별도» 예산. "
@@ -110,8 +112,12 @@ def evidence_subgraph(
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
     # other layers. The declared set is read from the vocabulary, never restated here.
+    follow, follow_keys = _split_follow(follow)
     if follow:
         followable = _followable_predicates()
+        # 🔴 THE BARE HALF IS WHAT IS CHECKED. `inspected:x,y` is the declared predicate
+        # `inspected` with a constraint on it, so refusing the whole string would make every
+        # keyed request a 422 for a predicate that is in fact declared.
         unknown = sorted(set(follow) - followable)
         if unknown:
             raise HTTPException(status_code=422, detail={
@@ -124,7 +130,7 @@ def evidence_subgraph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-            backbone_hops=backbone_hops)
+            follow_keys=follow_keys, backbone_hops=backbone_hops)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -148,6 +154,35 @@ def _signed_start(node_id, positive, negative):
         return node_id
     return {"positive": [node_id] + list(positive or []),
             "negative": list(negative or [])}
+
+
+def _split_follow(follow):
+    """`follow=inspected:x,y` -> the bare name the walk filters on, and the keys it binds.
+
+    🔴 THE COLON IS OPTIONAL AND ITS ABSENCE IS NOT A DEFAULT — it is the whole of today's
+    behaviour. `follow=slot_map` yields no keys for that predicate, which yields no
+    constraint, which is the walk this repo already ships; the client sends no colons and
+    keeps running unchanged. That is a requirement of this round, not a courtesy.
+
+    Split on the FIRST colon only. A key name with a colon in it is not a thing the ledger
+    can hold - the entity's key names come from the declaration - but a predicate spelled
+    with one would otherwise be silently truncated, and the bare half then answers 422
+    rather than walking something nobody asked for.
+
+    Returns `(names, keys)` where `names` is what `follow` has always been.
+    """
+    names, keys = [], {}
+    for entry in follow or []:
+        name, _, spec = str(entry).partition(":")
+        name = name.strip()
+        names.append(name)
+        wanted = tuple(part.strip() for part in spec.split(",") if part.strip())
+        if wanted:
+            # A predicate named twice keeps the LAST spec rather than merging: two specs for
+            # one predicate is a caller contradicting itself, and intersecting them would
+            # answer a third question neither side asked.
+            keys[name] = wanted
+    return names, keys
 
 
 def _followable_predicates():
@@ -246,7 +281,7 @@ def _static_step_predicates():
 
 
 def _evidence_graph(connection, *, node_id, hops, direction,
-                    node_limit, edge_limit, follow=None,
+                    node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
@@ -263,6 +298,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         connection, relation=LEDGER_RELATION),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
+        follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(),
         static_follow=_static_step_predicates())
 

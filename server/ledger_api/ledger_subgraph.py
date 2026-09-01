@@ -124,6 +124,20 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
+def _json_key(value):
+    """One spelling for a key value, so `1` and `1.0` do not miss each other.
+
+    The same die was measured arriving as `x: 1` from one source and `x: 1.0` from another
+    on 2026-08-28; comparing raw would silently drop the edge that matters, which is the
+    failure this constraint exists to prevent rather than cause.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    return str(value)
+
+
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
@@ -761,7 +775,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
-             static_follow=None):
+             static_follow=None, follow_keys=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -786,6 +800,32 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # Empty means a static node is not expanded at all, which is what an unreadable
     # declaration should do: refuse the step rather than guess which hub is safe.
     static_follow = {str(name).split("@", 1)[0] for name in (static_follow or ())}
+    # 🔴 THE CONTEXT IS TAKEN FROM THE SEEDS, ONCE, AND NEVER CHANGES. The owner's sentence
+    # is "an edge carrying those keys walks only to nodes whose keys match THE SEED", so the
+    # comparison has a fixed right-hand side. Deriving it from the previous node instead
+    # would make it path-dependent - the same node reachable two ways would answer two
+    # different questions, and the walk would need per-path state it deliberately does not
+    # have (`nodes`, `depths` and `arrivals` are all keyed by node id alone).
+    #
+    # 🔴 AND A SEED THAT CANNOT CARRY THE KEY IS REFUSED, NOT ANSWERED WITH ZERO. Asking a
+    # wafer seed for `inspected:x,y` is asking something unsatisfiable; zero would render
+    # exactly like "there is nothing there" and the caller could not tell the two apart.
+    seed_key_sets = {}
+    for predicate, key_names in (follow_keys or {}).items():
+        if not key_names:
+            continue
+        wanted = []
+        for ref in seed_refs.values():
+            keys = (ref or {}).get("keys") or {}
+            missing = [name for name in key_names if name not in keys]
+            if missing:
+                raise ValueError(
+                    f"follow={predicate}:{','.join(key_names)} cannot be satisfied: the "
+                    f"seed {ref.get('type')} has no {', '.join(missing)}. A seed that "
+                    f"cannot carry the key would match nothing, and an empty graph reads "
+                    f"as 'there is nothing here'.")
+            wanted.append(tuple(_json_key(keys[name]) for name in key_names))
+        seed_key_sets[str(predicate).split("@", 1)[0]] = (tuple(key_names), set(wanted))
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -939,6 +979,31 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
         if near_kind in static_types and far_kind and far_kind not in static_types:
             return
+        # 🔴 THE KEY CONSTRAINT, ON THE FAR NODE ONLY. An edge whose predicate was named
+        # with keys may only land on a node matching the SEED on those keys - so a hop out
+        # to a container and back does not hand over the container's OTHER children.
+        # The adjacent-reversal guard cannot do this: it fires only when the two steps use
+        # the SAME predicate, and the path this exists for never repeats one.
+        #
+        # 🔴 NO DOMAIN WORD DECIDES ANYTHING HERE. Which keys are a seat and which are a
+        # vessel is not knowledge this file has or needs - the request names the keys and
+        # the entity's own key names are what it names them by.
+        constraint = seed_key_sets.get(_bare(atom.predicate))
+        if constraint is not None:
+            key_names, allowed = constraint
+            far_keys = None
+            if subject_near and not target_near:
+                far_keys = (payload.get("keys") or {}) if target is not None else None
+            elif target_near and not subject_near:
+                far_keys = atom.subject_keys or {}
+            # Both ends already on the frontier means this step advances nobody, so there is
+            # no far node to constrain - dropping it would remove an edge between two nodes
+            # the walk already holds.
+            if far_keys is not None:
+                if any(name not in far_keys for name in key_names):
+                    return
+                if tuple(_json_key(far_keys[name]) for name in key_names) not in allowed:
+                    return
         # 🔴 A STEP DOES NOT GO BACK DOWN THE PREDICATE IT JUST CLIMBED. Reaching a
         # container by walking one predicate BACKWARDS and then walking the same predicate
         # FORWARDS lands on the container's other children -- the seed's own siblings,

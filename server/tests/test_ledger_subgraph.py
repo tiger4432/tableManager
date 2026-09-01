@@ -848,3 +848,165 @@ def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(m
 
     assert "sources" not in catalogue
     assert catalogue["entities"] and catalogue["predicates"]
+
+
+# --------------------------------------------------------------------------------------
+# `follow=<predicate>:<key>,<key>` -- the edge walks only to nodes matching THE SEED.
+# --------------------------------------------------------------------------------------
+# 🔴 THE FIXTURE EXISTS BECAUSE THE LIVE LEDGER CANNOT SHOW THIS. Measured by the lead PM
+# 2026-09-01: `slot_map` names carriers, `has_wafer` names one wafer family and `inspected`
+# names another, and the three name sets DO NOT INTERSECT -- so no live seed walks out
+# through a seat and back down into another wafer's dies, and there is no "before" to
+# measure. The shape has to be built to be shown.
+
+
+def _seat_atom(number, subject_type, subject_keys, predicate, target_type, target_keys):
+    return ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=number)), subject_type=subject_type,
+        subject_keys=subject_keys, predicate=predicate, object_kind="entity_ref",
+        object_payload={"type": target_type, "keys": target_keys, "qualifiers": {}},
+        occurred_at=NOW, source_who="fixture", source_translator_ver="v1",
+        source_raw_ref="seat:%d" % number, supersedes=None, source_event_id=EVENT,
+        source_event_state="source_record")
+
+
+def _seat_route(index, seed_x, seed_y, coordinates):
+    """One seed die -> its seat -> the wafer sharing that seat -> that wafer's dies.
+
+    🔴 THE SEED'S OWN COORDINATE ARRIVES AS A FLOAT ON THE FAR SIDE. The same die was
+    measured coming back as `x: 1` from one source and `x: 1.0` from another on 2026-08-28,
+    so a raw comparison would drop exactly the edge the constraint exists to keep -- and the
+    test would still be green, because dropping everything and keeping one look the same
+    when N is 1. Here `coordinates[0]` is the float twin of the seed's integer.
+    """
+    base = 200 + index * 20
+    seed_keys = {"mat_id": "S%d" % index, "x": seed_x, "y": seed_y}
+    wafer = {"wafer": "T%d" % index}
+    seat = {"carrier": "C", "slot": index}
+    atoms = [
+        _seat_atom(base, "die", seed_keys, "slot_map", "seat", seat),
+        _seat_atom(base + 1, "wafer", wafer, "slot_map", "seat", seat),
+    ]
+    for offset, (x, y) in enumerate(coordinates):
+        atoms.append(_seat_atom(
+            base + 2 + offset, "wafer", wafer, "inspected", "die",
+            {"mat_id": "T%d" % index, "x": x, "y": y}))
+    return ledger_explorer.entity_id("die", seed_keys), atoms
+
+
+def _dies_reached(body, seed_ids):
+    seeds = set(seed_ids)
+    return [node for node in body["nodes"]
+            if node["type"] == "die" and node["id"] not in seeds]
+
+
+def test_a_keyed_follow_walks_only_to_the_nodes_matching_the_seed():
+    """One seed die, out through a seat, into a wafer carrying THREE dies.
+
+    Unconstrained the walk hands back all three -- the container's other children, which is
+    the complaint. `inspected:x,y` hands back the ONE that sits where the seed sits.
+    """
+    seed, atoms = _seat_route(1, 1, 1, [(1.0, 1.0), (5, 5), (9, 9)])
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
+    walk = dict(hops=6, direction="both", follow=["slot_map", "inspected"])
+
+    wide = ledger_subgraph.subgraph(seed, lookup, **walk)
+    assert len(_dies_reached(wide, [seed])) == 3, (
+        "the fixture must hand back the seat's other children when nothing constrains it, "
+        "or the constrained count below proves nothing")
+
+    narrow = ledger_subgraph.subgraph(
+        seed, lookup, follow_keys={"inspected": ("x", "y")}, **walk)
+    reached = _dies_reached(narrow, [seed])
+    assert len(reached) == 1, (
+        "the seat handed back its other children anyway: %d dies" % len(reached))
+    # and it is the coordinate twin, not merely 「some one die」
+    assert reached[0]["keys"]["x"] == 1.0 and reached[0]["keys"]["y"] == 1.0
+    # the unkeyed predicate is untouched: the route out still runs
+    assert any(node["type"] == "seat" for node in narrow["nodes"])
+
+
+def test_the_constraint_is_taken_from_EVERY_seed_not_only_the_first():
+    """Two seeds, two seats, two wafers of three dies each: 6 unconstrained, 2 constrained.
+
+    🔴 THE SECOND SEED IS THE DISCRIMINATOR. Reading the context off `primary` alone -- the
+    first id, which is what every other seed-derived value in this walk uses -- passes the
+    test above and returns ONE here, silently answering only half the question asked.
+    """
+    seed_a, atoms_a = _seat_route(1, 1, 1, [(1.0, 1.0), (5, 5), (9, 9)])
+    seed_b, atoms_b = _seat_route(2, 2, 2, [(2.0, 2.0), (5, 5), (9, 9)])
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms_a + atoms_b)
+    seeds = {"positive": [seed_a, seed_b], "negative": []}
+    walk = dict(hops=6, direction="both", follow=["slot_map", "inspected"])
+
+    wide = ledger_subgraph.subgraph(seeds, lookup, **walk)
+    assert len(_dies_reached(wide, [seed_a, seed_b])) == 6
+
+    narrow = ledger_subgraph.subgraph(
+        seeds, lookup, follow_keys={"inspected": ("x", "y")}, **walk)
+    reached = _dies_reached(narrow, [seed_a, seed_b])
+    assert len(reached) == 2, (
+        "one seed's coordinate was used for both walks: %s"
+        % sorted((node["keys"]["x"], node["keys"]["y"]) for node in reached))
+    assert {(node["keys"]["x"], node["keys"]["y"]) for node in reached} == {
+        (1.0, 1.0), (2.0, 2.0)}
+
+
+def test_an_unconstrained_follow_answers_exactly_what_it_answered_before():
+    """A colon-less request is not a new code path with the same result -- it must reach
+    `subgraph` with NO keys at all, which is what keeps today's client running unchanged."""
+    _, atoms = _seat_route(1, 1, 1, [(1.0, 1.0), (5, 5), (9, 9)])
+    seed = ledger_explorer.entity_id("die", {"mat_id": "S1", "x": 1, "y": 1})
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
+    walk = dict(hops=6, direction="both", follow=["slot_map", "inspected"])
+    def _body(**extra):
+        # `generated_at` is a clock reading and differs between two calls by construction;
+        # everything else in the response is the answer and must be identical.
+        return {key: value
+                for key, value in ledger_subgraph.subgraph(
+                    seed, lookup, **dict(walk, **extra)).items()
+                if key != "generated_at"}
+
+    assert _body() == _body(follow_keys={})
+    # `follow=name` with a trailing colon and nothing after it is the same statement
+    assert ledger_trace_router._split_follow(["inspected:", "slot_map"]) == (
+        ["inspected", "slot_map"], {})
+
+
+def test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check():
+    names, keys = ledger_trace_router._split_follow(
+        ["inspected:x,y", "slot_map", "observed: run_uid "])
+    assert names == ["inspected", "slot_map", "observed"], (
+        "the declaration check sees the bare names, or every keyed request is a 422")
+    assert keys == {"inspected": ("x", "y"), "observed": ("run_uid",)}
+    # a declared predicate with keys is NOT refused -- the half that is checked is bare
+    followable = ledger_trace_router._followable_predicates()
+    assert "inspected" in followable and set(names[:1]) <= followable
+
+
+def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monkeypatch):
+    """🔴 ZERO AND 「unanswerable」 RENDER IDENTICALLY. A wafer has no x/y, so
+    `follow=inspected:x,y` from a wafer seed can never match; answering an empty graph
+    would read as 「this wafer has no dies」, which is the opposite of true.
+
+    Driven through the ROUTE, because the 422 is the route's translation and a guard that
+    has never been reached is a guard that goes wrong the day it is.
+    """
+
+    class _Db:
+        def connection(self):
+            return None
+
+    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+                        lambda *a, **k: True)
+    monkeypatch.setattr(ledger_trace_router, "_subgraph_contract_state",
+                        lambda *a, **k: [])
+    with pytest.raises(HTTPException) as raised:
+        ledger_trace_router.evidence_subgraph(
+            node_id=ledger_explorer.entity_id("wafer", {"wafer": "T1"}),
+            hops=4, direction="both", node_limit=100, edge_limit=200,
+            positive=None, negative=None,
+            follow=["inspected:x,y"], backbone_hops=0, db=_Db())
+    assert raised.value.status_code == 422
+    assert raised.value.detail["reason"] == "subgraph_request_invalid"
+    assert "x" in raised.value.detail["message"]
