@@ -1380,3 +1380,106 @@ chain_replay.py:335   is_batch 이면  results = [execute_custom_mapper(...)]
    🔴 ⑥이 이 전환의 «유일한 증거»입니다. 다르면 수로 보고하고 STOP
 ```
 컨텍스트가 거의 찼습니다. 짐작으로 고치는 것보다 «상태와 단서»를 남기는 것이 맞다고 판단했습니다.
+
+---
+
+# ✅ [서버 -> 총괄] `follow` 키 제약 착지 — 게이트 A·B·C 전부 통과 (구현자, 2026-09-01)
+
+커밋 `965e3af9`. 파일 «셋»: `server/ledger_api/ledger_subgraph.py` ·
+`server/ledger_trace_router.py` · `server/tests/test_ledger_subgraph.py`.
+⛔ 목록의 「그대로인 것」은 «하나도» 안 건드렸습니다 — 선언 0줄, 원자 쓰기 0,
+`nodes`/`depths`/`arrivals` 의 키 그대로, 인접 반전 가드·정적 분할 그대로, 클라 0줄.
+
+## 무엇이 됐나 — 계약 다섯 그대로
+```
+① 견주는 대상   «씨앗»의 키. 씨앗 여럿이면 키 튜플의 «집합» 하나를 걷기 «시작 전에» 한 번 만듭니다
+                -> 걷는 동안 상수입니다. 경로별 상태를 «만들지 않았습니다»
+② 전선 표기     follow=inspected:x,y  ·  콜론 없으면 빈 목록 = 제약 없음
+                반복 파라미터 그대로. JSON 안 씁니다
+③ 씨앗에 그 키가 없으면   «422» — 기존 `subgraph_request_invalid` 봉투 그대로. 새 봉투 0
+④ 거는 자리     far 노드에만. 양 끝이 «둘 다» 이미 프론티어면 걸지 않습니다
+                (그 걸음은 아무도 전진시키지 않으므로, 거기서 끊으면 «이미 가진 두 노드 사이의
+                 엣지»가 사라집니다 — 제약이 아니라 손실입니다)
+⑤ 키 이름       요청이 말합니다. 코드에 도메인 낱말 «0» — grep 으로 확인했습니다
+```
+
+🔴 **하나 더 넣은 것이 있습니다 — 키 «값»의 표기 통일입니다.**
+같은 다이가 한 소스에서 `x: 1`, 다른 소스에서 `x: 1.0` 으로 도착하는 것이 2026-08-28 에
+측정돼 있습니다. 그대로 견주면 **이 제약이 지키려던 바로 그 엣지를 떨어뜨립니다.**
+숫자는 float, 나머지는 str 로 한 번만 표기해 견줍니다. (변이 ③으로 깨웠습니다 — 아래)
+
+## 게이트 A — 픽스처. «효과»는 여기서만 보입니다
+말씀대로 이 박스에는 좌석 경유 경로가 없어 「전」을 라이브에서 못 잽니다.
+지시하신 모양을 하니스로 세웠습니다: `die ─slot_map→ 좌석 ←slot_map─ wafer ─inspected→ die×N`
+```
+씨앗 die 1개 · 목적지 웨이퍼에 다이 3개
+   제약 없음        -> die «3»
+   inspected:x,y    -> die «1»       그리고 그 하나가 씨앗과 «좌표가 같은» 다이입니다
+                                     (「어떤 하나」가 아니라 «그 하나»인지 단언합니다)
+씨앗 die 2개 · 각 목적지에 다이 3개
+   제약 없음        -> die «6»  (M×N)
+   inspected:x,y    -> die «2»  (M)
+콜론 없는 요청       제약 있는 호출과 응답이 «완전히 동일» (generated_at 만 제외 — 시계입니다)
+```
+
+## 게이트 B — 라이브 무회귀. **넷 다 안 움직였습니다**
+한 프로세스 안에서 «같은 커넥션»에 두 번 태워 비교했습니다 —
+「전」은 `subgraph()` 를 `follow_keys` «없이» 부른 것(바뀌기 전 호출 그대로),
+「후」는 라우트 `evidence_subgraph(follow=[콜론 없는 이름들])` 로 새 파싱을 «지나서».
+```
+wafer SYN-BW-101-16 hops=6 both  follow=자재6   nodes «264» · edges «351» · hops 3 · 절단 없음  SAME
+wafer SYN-BW-101-16 hops=1 out   follow=inspected                        die «39»              SAME
+defect_kind{void}   hops=6       follow=leads_to        nodes «21» · edges «21»                SAME
+defect              hops=4 both  follow=자재5   nodes «5» · edges 4 · inspected 엣지 «1»        SAME
+```
+🔴 앞의 셋은 총괄께서 주신 수와 «정확히» 같습니다.
+⚠️ **넷째만 씨앗을 특정해 주십시오.** 총괄 수는 nodes «7» 인데, 지시서에 씨앗 철자가
+없어서 저는 `defect` 를 «전순서»로 하나 뽑았습니다
+(`void_uid = sat|SYN-AUG-BW-001-01|10|10|7|2026-07-05T03:11:00+09:00|7475.16|4857.94`).
+그 씨앗의 «전/후»는 5 로 같습니다 — 즉 **무회귀는 증명됐고**, 7 과 5 의 차이는
+제 변경이 아니라 «다른 씨앗»입니다. 총괄 씨앗을 주시면 그 자리에서 다시 재겠습니다.
+
+한 가지 더: `defect_kind` 는 이 원장에서 «주어로 한 번도 안 나옵니다»(subject 행 0).
+목적어 payload 로만 존재하므로 B3 씨앗은 `{"defect_kind": "void"}` 로 지었습니다.
+그 씨앗이 21/21 을 그대로 냈으니 총괄 수와 같은 자리입니다.
+
+## 게이트 C — 거절
+```
+wafer 씨앗 + follow=inspected:x,y   ->   422 · reason «subgraph_request_invalid»
+   message: follow=inspected:x,y cannot be satisfied: the seed wafer has no x, y.
+```
+기존 거절 경로를 «넓히지 않았습니다» — `subgraph()` 가 ValueError 를 올리고
+라우트의 «이미 있던» except 가 422 로 옮깁니다. 새 봉투 0, 새 except 0.
+
+## 시험 — 판별식으로. 변이 «다섯»을 각각 깨웠습니다
+새 시험 5본, 전부 `tests/test_ledger_subgraph.py`. 「개수」가 아니라 「이 변이가 이 시험을
+빨갛게 만드나」로 못 박았습니다.
+```
+변이                                   빨개진 시험
+제약이 «절대 발동 안 함»                A-1 · A-2
+컨텍스트를 «첫 씨앗»에서만 뽑음          A-2      <- 이게 안 잡히면 「절반만 답하고 조용」입니다
+키 «값 표기 통일» 제거 (1 vs 1.0)       A-1 · A-2
+씨앗에 키 없을 때 «조용히 건너뜀»        C
+파서가 콜론 «붙은 통짜»로 거절           하위호환 · 파서 · C
+```
+돌린 것: 건드린 파일을 지나는 것만 —
+`test_ledger_subgraph · test_ledger_trace · test_ledger_trace_contract · test_ledger_trace_pg
+ · test_trace_fixture` -> **62 passed · 48 skipped · 1 failed**.
+
+🔴 **그 빨강 하나는 제 것이 아닙니다.**
+`test_trace_fixture.py::test_emitted_columns_satisfy_the_ingestion_contract`.
+제 세 파일을 «하나도 import 하지 않습니다». 내용은 라이브 `config/table_config.json` 과
+`trace_fixture.emit.ORDER` 의 «컬럼 이름 불일치»입니다:
+```
+ORDER 가 내는 것        lot · slot_numbers · wafer_ids · equipment
+table_config 가 아는 것  lot_id · event_time · txn_seq · event_type · parent_lot · child_lot
+                        · slotnumbers · waferids
+```
+라이브 설정 파일이라 제 소관이 아니고, 이번 라운드와 축이 다릅니다. **손대지 않았습니다.**
+판정이 필요하면 올려 주십시오.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 커밋 965e3af9 푸시했습니다
+클라 — 이 라운드 아님. 콜론을 안 붙이므로 «그대로 돕니다» (게이트 B 가 그 증거입니다)
+```
