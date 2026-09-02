@@ -32,6 +32,7 @@
  *   node contracts/map_seam/client_harness.mjs --json
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from '../../client2/tests/lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -177,21 +178,30 @@ const spec = JSON.parse(readFileSync(VECTORS, 'utf8'));
 const notLanded = [];   // `required` and absent — overdue
 const pendingSymbols = []; // `pending` and absent — contract-first, quiet by design
 const stalePending = []; // `pending` but PRESENT — the promise to promote, come due
-const pieces = [];
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT and run in `vm`. The three subjects -- map_editor.js,
+// map_key.js and transfer_plan.js -- are imported WHOLE, one probe each. Slicing scores the
+// SHAPE OF THE LETTERS: the day a manifest symbol starts calling a helper that is not on the
+// list, this contract reddens on correct code and names the missing symbol, not the change.
+//
+// THE ABSENCE TOLERANCE IS KEPT, and it is what `status: live|pending` rides on. The subject
+// is SCANNED for which manifest symbols it declares -- reading a file to ask "is this name
+// declared" is not slicing: nothing is cut, and nothing is executed from the text -- and only
+// the declared ones are asked for. A symbol that is gone lands on the NOT LANDED path exactly
+// as it did when `sliceFunction` returned null.
 const have = new Set();
+const declaresFn = (src, name) =>
+  new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).test(src)
+  || new RegExp(`(^|\\n)\\s*(?:export\\s+)?const\\s+${name}\\s*=\\s*(?:async\\s*)?\\(`).test(src);
+
+const wanted = {};      // file -> { fns: [], consts: [] }
+const fileOf = (f) => (wanted[f] = wanted[f] || { fns: [], consts: [] });
 for (const c of spec.client_consts || []) {
-  const code = sliceConst(SRC[c.file], c.name);
-  if (!code) {
+  if (SRC[c.file] === undefined) die(`client_consts names an unknown file: ${c.file}`);
+  if (!new RegExp(`(^|\\n)\\s*(?:export\\s+)?const\\s+${c.name}\\b`).test(SRC[c.file])) {
     die(`const '${c.name}' is gone from ${c.file}. The canonicalizer it backs cannot be `
       + `evaluated, so nothing would be compared. Update vectors.json client_consts.`);
   }
-  pieces.push(code);
-  // ...and publish it on the sandbox global. A top-level `const` in `vm.runInContext` lives in
-  // the script's lexical scope, so the extracted functions see it but the SCORER cannot — and a
-  // scorer that needs the value (e.g. the fixed valid-die table an expectation is stated in)
-  // would otherwise have to re-type it here, which is the stale copy this whole file exists to
-  // refuse. Function declarations already land on the global; this gives consts the same reach.
-  pieces.push(`globalThis[${JSON.stringify(c.name)}] = ${c.name};`);
+  fileOf(c.file).consts.push(c.name);
 }
 for (const [role, m] of Object.entries(spec.client_symbols)) {
   // `$`-prefixed keys are PROSE, not roles — `$comment`, and `$retired` which records where a
@@ -202,9 +212,9 @@ for (const [role, m] of Object.entries(spec.client_symbols)) {
   if (source === undefined) die(`client_symbols.${role} names an unknown file: ${m.file}`);
   const meta = { role, fn: m.fn, file: m.file, why: m.$why || '',
     owner: m.$owner || 'unassigned', blocks: m.$blocks || '', shape: m.$shape || '' };
-  const code = sliceFunction(source, m.fn);
-  if (code) {
-    pieces.push(code); have.add(role);
+  if (declaresFn(source, m.fn)) {
+    fileOf(m.file).fns.push(m.fn);
+    have.add(role);
     // PROPERTY 3 of `symbol_status`: the symbol landed, so the declaration owes a promotion.
     // Not bookkeeping — while it reads `pending` an ABSENT symbol is forgiven, so a later
     // rename of this now-landed function would be forgiven too and the axis would go
@@ -213,77 +223,89 @@ for (const [role, m] of Object.entries(spec.client_symbols)) {
     continue;
   }
   if (m.status === 'live') {
-    die(`'${m.fn}' is gone from ${m.file} — renamed, removed, or reshaped. The contract names `
-      + `it in vectors.json client_symbols.${role}. Update that manifest deliberately; do `
-      + `not delete the check, and do NOT demote it to \`pending\` to silence this: `
-      + `\`pending\` means 'not written yet', not 'was here and left'.`);
+    missingLive.push(meta);
+  } else {
+    notLanded.push(meta);
   }
-  if (m.status === 'pending') {
-    // QUIET BY DESIGN, and the only state that is. These vectors were written before the
-    // implementation on purpose, so having nothing to score yet is the intended condition
-    // rather than a regression. Rendering it red teaches people to ignore a red suite.
-    if (!meta.owner || meta.owner === 'unassigned' || !meta.blocks) {
-      die(`client_symbols.${role} is \`pending\` without an $owner and $blocks. A pending `
-        + `axis is allowed to be quiet only because someone owns it and the cost of the wait `
-        + `is written down; without those it is an anonymous hole with better manners.`);
-    }
-    pendingSymbols.push(meta);
-    continue;
-  }
-  notLanded.push(meta);
 }
 
-// Module state the extracted functions read. Everything else is pure.
-//   tableSchema            — served by GET /schema/{table} (map_key_columns + column_types)
-//   el                     — the screen controls, and the only metadata source left that is
-//                            module state. The frame is an ARGUMENT now (see `frame_threading`
-//                            in vectors.json); `physNum` and `getTransformedPhysicalConfig`
-//                            already take it and the scorer passes it positionally.
-//   physFrameOverride      — GONE FROM THIS SANDBOX since 2026-08-06, and deliberately not
-//                            replaced. It was here while sliced functions still read the
-//                            binding; none do (`frame_threading.forbidden_module_bindings.
-//                            reads_module_frame` is empty and the scorer proves it every run).
-//                            Removing both routes was MEASURED first — 554 assertions, 12
-//                            pins, identical result — so this is dead weight paid down, not a
-//                            change of behaviour. It is also a TRAP removed: a sandbox global
-//                            named after a forbidden binding is exactly the route the contract
-//                            forbids, sitting pre-built for the next person who needs a frame
-//                            in a hurry. The frame is passed POSITIONALLY or not at all.
-//   S / summaryKeyFor      — transfer_plan module state; the key derivation is not the
-//                            contract, so it is stubbed rather than dragged in.
-const sandbox = {
-  console, tableSchema: {}, el: {},
-  S: { summaries: new Map(), ctx: {} },
-  summaryKeyFor: () => 'K',
-  // The M4 branch point's state. `let validDie` (map_editor.js:1870) is not a const, so it is
-  // not sliceable — and it should not be: the whole point of scoring the branch is to drive it
-  // through the states the contract names.
+// The M4 branch point's state, and the Push boundary's other piece. `let validDie` and
+// `let validDieRefTableTouched` are not consts and should not be: driving the decision through
+// their values is the whole point of scoring the branch. They reach the module through the
+// probe's live accessors, which is what `export` alone could never have done.
+const MAP_STAGE = {
+  tableSchema: {},
   validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-  // The Push boundary's other piece of module state. Like `validDie` it is a `let`, so it is
-  // not sliceable — and it should not be: it records whether the USER opened the table
-  // select, and driving the decision through its two values is the whole point. The app sets
-  // it in exactly one place (the select's `change` listener) and clears it in exactly one
-  // place (`syncValidDieRefControls`), so the harness stands in for the DOM event and lets
-  // the extracted functions do everything else.
-  validDieRefTableTouched: false,
+  // 🔴 `validDieRefTableTouched` USED TO BE STAGED HERE, with a paragraph explaining why the
+  //    Push boundary needed it. THE PRODUCT REMOVED IT -- map_editor.js:2461 records the
+  //    deletion and says the invariant now rests on the key comparison in
+  //    `validDieRefFromControls`. Under `vm` a bare identifier is whatever the sandbox says it
+  //    is, so the contract went on staging a flag nobody reads and the prose went on
+  //    describing a mechanism that no longer exists. The probe asks the module and the module
+  //    says no.
   // [1-a] `syncValidDieRefControls` also decides the key control's SHAPE now (<select> when the
   // list is the whole population, text input otherwise). That is a DOM-shape decision, not a
   // seam value — nothing on the server has an opinion about it — so it is stubbed here and
   // scored where it belongs, client2/tests/map_key_datalist_harness.mjs against a real tree.
-  renderValidDieKeyControl() {},
+  renderValidDieKeyControl: () => {},
 };
-vm.createContext(sandbox);
-try {
-  vm.runInContext(pieces.join('\n'), sandbox);
-} catch (e) {
-  die(`extracted sources did not evaluate: ${e && e.message}`);
+
+globalThis.document = globalThis.document || {
+  getElementById: () => null, addEventListener() {},
+  querySelector: () => null, querySelectorAll: () => [],
+};
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  addEventListener() {},
+};
+
+// Per-file extras the manifest does not name:
+//   map_editor `el`          the control registry the readers look at
+//   transfer_plan `S`        the REAL pool-summary store; the scorer seeds `S.summaries`
+//   transfer_plan `summaryKeyFor`  staged, because the seeded entry is keyed 'K' and the real
+//                            key is derived from the pool -- the lookup has to find the seed
+const EXTRA_EXPOSE = {
+  'client2/src/map_editor.js': ['el'],
+  'client2/src/transfer_plan.js': ['S'],
+};
+const EXTRA_STATE = {
+  'client2/src/map_editor.js': Object.keys(MAP_STAGE),
+  'client2/src/transfer_plan.js': ['summaryKeyFor'],
+};
+
+const probes = {};
+for (const [file, w] of Object.entries(wanted)) {
+  probes[file] = (await loadWithProbe(join(ROOT, ...file.split('/')), {
+    expose: [...w.fns, ...w.consts, ...(EXTRA_EXPOSE[file] || [])],
+    state: EXTRA_STATE[file] || [],
+    tag: `seam_${file.split('/').pop().replace('.js', '')}`,
+  })).probe;
 }
-// FN is a PROXY, not a plain object, and that is load-bearing. Reaching for a role the
-// manifest does not define used to yield `undefined`, and calling it threw a TypeError that
-// `attempt()` swallowed into a string — so a harness bug was reported as a client divergence,
-// or (outside attempt()) as a raw stack trace that reads like a tooling problem rather than a
-// finding. A harness that crashes reports NOTHING while looking like somebody else's fault.
-// Every miss now dies with the role name and says whose bug it is.
+
+// One lookup table, same shape the scorer already used. The map_editor probe is the base so
+// its ACCESSORS survive: `sandbox.validDie = …` has to reach the module, and a flat copy would
+// turn a live binding into a dead value.
+const sandbox = probes['client2/src/map_editor.js'];
+for (const [file, p] of Object.entries(probes)) {
+  if (p === sandbox) continue;
+  for (const [k, v] of Object.entries(p)) if (!(k in sandbox)) sandbox[k] = v;
+  void file;
+}
+Object.assign(sandbox, MAP_STAGE);
+probes['client2/src/transfer_plan.js'].summaryKeyFor = () => 'K';
+
+// 🔴 `el` IS A `const` IN map_editor.js, so the registry cannot be REPLACED from outside --
+//    `sandbox.el = {…}` would land on a property of this object and the module would go on
+//    reading its own, empty one. That is the silent no-op shape: it produced 53 divergences
+//    with nothing in the diff to see. Replacing the registry is the same thing as emptying it
+//    and filling it, so that is what this does, on the module's own object.
+const setEl = (next) => {
+  const el = sandbox.el;
+  for (const k of Object.keys(el)) delete el[k];
+  Object.assign(el, next || {});
+  return el;
+};
+
 const _fn = {};
 for (const role of have) {
   const name = spec.client_symbols[role].fn;
@@ -784,7 +806,7 @@ const shapeOk = {};
 
     for (const c of cases(G)) {
       for (const screen of SCREENS) {
-        sandbox.el = screen.build();
+        setEl(screen.build());
         const frame = attempt(() => FN.frame_from_meta(c.meta));
         if (threw(frame) || frame === null) {
           rec(G, `${c.name}/${screen.name}`, 'frame_built', true, threw(frame) ? frame : false);
@@ -812,7 +834,7 @@ const shapeOk = {};
     // argument exists to make. (That falsy collapse is known defect D1's shape, in a new place.)
     {
       const MF = FT.missing_frame_is_loud || {};
-      sandbox.el = { physChipX: { value: '7', dataset: {} } };
+      setEl({ physChipX: { value: '7', dataset: {} } });
       const omitted = attempt(() => FN.phys_declaration(undefined, 'chipX', sandbox.el.physChipX));
       rec(G, 'missing_frame_is_loud', 'undefined_throws',
         MF.expect_throw_on_undefined, threw(omitted));
@@ -833,7 +855,7 @@ const shapeOk = {};
       if (!marked) {
         rec(G, 'no_residue', 'fixture_has_a_marked_case', true, false);
       } else {
-        sandbox.el = { physChipX: { value: NR.screen_value, dataset: {} } };
+        setEl({ physChipX: { value: NR.screen_value, dataset: {} } });
         const f = attempt(() => FN.frame_from_meta(marked.meta));
         const first = attempt(() => FN.phys_declaration(f, 'chipX', sandbox.el.physChipX));
         rec(G, 'no_residue', 'frame_call_reads_the_frame', 'auto_registered',
@@ -861,7 +883,7 @@ const shapeOk = {};
       rec(G, 'interference', 'fixture_has_one_frame_of_each_kind', true,
         !!declaredCase && !!autoCase);
       if (declaredCase && autoCase) {
-        sandbox.el = {};
+        setEl({});
         const fA = attempt(() => FN.frame_from_meta(declaredCase.meta));
         const fB = attempt(() => FN.frame_from_meta(autoCase.meta));
         const token = (d) => {
@@ -887,7 +909,7 @@ const shapeOk = {};
       cs.some(c => c.expect_auto_registered && Number(c.meta.phys_chip_x) !== 1));
     rec(G, 'fixture_active', 'has_an_absent_spec', true,
       cs.some(c => !c.expect_declared && !c.expect_auto_registered));
-    sandbox.el = {};
+    setEl({});
     }
   }
   // NOT CLAIMED, and listed so the gap is visible in the report rather than invisible in the
@@ -920,7 +942,7 @@ const shapeOk = {};
       // 'read the screen' answer and NOT the same as omitting it (see
       // `frame_threading.missing_frame_is_loud`).
       let frame = null;
-      sandbox.el = {};
+      setEl({});
       if (via === 'frame_override') {
         frame = {};
         for (const [k, v] of Object.entries(KEYS)) frame[k] = c.declared[v];
@@ -992,7 +1014,7 @@ const shapeOk = {};
     }
   }
 
-  sandbox.el = {};
+  setEl({});
 }
 
 // --- M4 the branch point, CLIENT side (INV-M4-1 / INV-M4-2) ----------------------------
@@ -1390,7 +1412,7 @@ if (requireRoles('valid_die_push_decision_cases',
     // 2026-08-04: ONE control. The table <select> and the touched flag that disambiguated it
     // are gone with the ruling that fixes the storage table; the fixture writes the stored raw
     // and nothing else.
-    sandbox.el = { validDieRefKey: { value: 'STALE' } };
+    setEl({ validDieRefKey: { value: 'STALE' } });
     // THE APP'S OWN PATH fills the control. Whatever it puts there is what a user would see —
     // pre-dirtying it means a sync that fails to overwrite is caught rather than inherited.
     const synced = attempt(() => FN.sync_valid_die_ref_controls());
@@ -1498,7 +1520,7 @@ if (requireRoles('valid_die_push_decision_cases',
   }
 
   sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
-  sandbox.el = {};
+  setEl({});
 }
 
 // ── Group completeness ─────────────────────────────────────────────────────────────────
