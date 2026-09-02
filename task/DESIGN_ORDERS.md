@@ -13074,3 +13074,79 @@ valid_die_authoring INV-6 의 앵커   「이름이 처음 나오는 곳」 -> �
 company_roundtrip · effort_instrument · m4_symbol_extractability · map_key_datalist ·
 contracts/legend_map_scope · contracts/map_seam
 ```
+
+---
+
+# 🔵 [총괄 -> 클라] 마지막 하나 — `effort_instrument_harness` 전환 (2026-09-03 08:5x)
+
+소유자 지시로 21/21 을 채웁니다. 인계 노트가 잘 적혀 있어 그대로 쓰되, **제가 다시 재서
+둘을 고쳤습니다.**
+
+## 🔴 정정 ① — 줄 번호가 다릅니다. 그래서 «술어»로 적습니다
+```
+인계 노트   buildEnv(98~312) · 작은 env(318~335)
+실측        vm.createContext 가 «두 곳» — :214~215 와 :327~328
+```
+줄 번호는 유통기한이 있으니 이렇게 찾으십시오:
+```
+env ①  큰 것. 하니스 대부분이 씁니다
+env ②  «작은 것». 바로 아래에 `globalThis.__k = { collectMetaFieldValues, getCurrentMapKey }`
+       가 있는 쪽입니다 — 이 한 줄이 둘을 «확실히» 가릅니다
+🔴 `ctx.globalThis = ctx; vm.createContext(ctx);` 가 «둘 다»에 있습니다.
+   인계 노트대로 «첫 번째만» 겨냥하십시오 (인계자가 여기서 한 번 걸렸습니다)
+```
+
+## 🔴 정정 ② — 유령 이름이 «제품에 있습니다». 다만 «주석»으로만
+```
+grep 하면 나옵니다   client2/src/map_editor.js:2461
+                    「The former `validDieRefTableTouched` flag lived here. …」
+=> «지워진 것을 설명하는 주석»입니다. 코드가 아닙니다
+   그냥 grep 하면 「있네」로 읽고 살려 둘 자리라 미리 적습니다
+그리고            이제 이 이름을 심는 곳은 «이 하니스 하나»뿐입니다 (계약 쪽은 전환 완료)
+```
+
+## 할 일
+```
+대상    client2/tests/effort_instrument_harness.mjs   (전 점수 «78 / 0»)
+현재    잘라쓰기 기제 «6»
+방식    probe.mjs + 로더 훅. 남은 것 중 «제일 큰» 건입니다 (import 스텁 11)
+스텁 11  API_BASE · CURRENT_USER (config)          showToast (utils)
+        ROUTES · countNav · effortSnapshot · effortCommitIfRecorded (effort_meter)
+        getMapIdFromMeta (map_key)                 getMissingDescValues (split_registry_row)
+        logShapedPushDecision (push_columns)       notifyMapContext (transfer_plan)
+```
+
+## 여덟 함정 — 인계자가 정리한 것 그대로입니다. 넘어가기 전에 읽으십시오
+```
+① 소스 텍스트를 읽는 검사   그대로 두되 «변이본»(srcText)을 넘긴다
+② 샌드박스 전역 대입        globalThis 로 겨냥 (vm 에서는 S 가 곧 모듈 전역이었다)
+③ 변이를 «텍스트»로 넘김    spec.mutate 는 문자열을 «무시» -> 전부 «안 변이된» 모듈
+④ await X(...).prop        괄호가 필요하다
+⑤ import 이후에 심는 이름   Object.keys(stage) 가 «못 잡는» 유일한 자리. 따로 적는다
+⑥ 기록용 console 을 전역에  자기 die() 를 삼킨다
+⑦ forEach + async          즉시 반환 -> 변이 수가 0이 될 수 있다
+⑧ 무대장치는 «자가 검사»로  const stage = {…}; state: Object.keys(stage); Object.assign(probe, stage)
+```
+🔴 ①③⑤는 «단언 수가 안 움직입니다». 아래 게이트가 아니면 전부 놓칩니다.
+
+## 게이트 — 어느 하나라도 내려가면 «거기서 멈춤»
+```
+단언   78 / 0        <- 이 수 그대로
+변이   기록해 두고 «같은 수»
+빌드   ✓ built + 게이트 전체 (npm run check:contracts && npm run check:harnesses)
+      🔴 파이프를 붙이지 «마십시오» — 파이프의 종료코드는 tail 것입니다 (제가 어젯밤 걸렸습니다)
+```
+
+## 멈춤 조건
+```
+① 점수가 «올라가면»   회귀 아닙니다. 못 재던 것을 재기 시작한 것이니 «이름을 보고»하십시오
+② 점수가 내려가면    그 자리에서 멈추고 보고
+③ 반쯤 고친 채로 두지 «마십시오» — 안 되면 «되돌리고» 보고하십시오
+```
+
+## 끝나면
+```
+21 / 21 입니다. 보고에 «전/후 두 수»와 위 여덟 중 무엇에 걸렸는지 적어 주십시오
+그리고 게이트가 알려 온 권고 셋(바닥 올리기 3 · 천장 내리기 1 · 바닥 없는 것 12)은
+«이번 라운드 밖»입니다. 손대지 마십시오
+```
