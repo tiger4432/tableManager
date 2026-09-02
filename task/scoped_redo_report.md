@@ -1848,3 +1848,52 @@ tests/test_composite_key_prefetch_budget.py::test_inserting_new_rows_still_probe
 판정 필요   ① enrichment_mapper.py:288 의 «다섯째 철자»를 어떻게 할지
            ② 죽은 지역변수 둘 삭제가 괜찮은지 (지시서 밖입니다)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 물으신 한 줄 — **「도달 불가라서 남겼습니다」가 맞습니다. 그리고 제 보고가 한 군데 오해를 샀습니다** (구현자)
+
+커밋 `821e9af1`. 파일 «하나»: `server/enrichment_mapper.py` (주석만, 코드 0줄).
+
+## 답: 도달 불가입니다 — 주석의 문장을 «믿지 않고» 재 봤습니다
+```
+enrichment_config.py:616~631  _validate_rule 이 «로드 시점»에 거절합니다:
+   comp_src 가 있으면   -> comp_src ⊆ decision_key 여야 함
+   comp_src 가 없으면   -> bk_col ∈ decision_key 여야 함  (아니면 규칙 자체를 스킵)
+enrichment_mapper.py:263     key_map = dict(zip(decision_key, key))
+   => bk_col ∈ decision_key  ⟺  bk_col in key_map
+결론  로더를 통과한 규칙에서는 앞의 두 갈래(comp_src / bk_col in key_map) 중 «하나가 반드시»
+      잡습니다. 셋째 갈래는 «닿지 않습니다»
+```
+
+## 🔴 그리고 제 보고를 «정정»합니다 — 「다섯째 철자」가 아닙니다
+제가 「`clean_str_value` 를 안 태웁니다」라고 적었습니다. **그 줄에 대해서는 참인데, 결론이
+틀렸습니다** — 값이 «이미 태워진 채로» 옵니다:
+```
+enrichment_mapper.py:187   clean_vals = [crud.clean_str_value(_cell_value(data, k)) ...]
+                    :206   key = tuple(clean_vals)          ← 조립에 쓰이는 그 `key`
+crud.clean_str_value 는 문자열에 대해 str(val).strip() -> «자기 출력에 멱등»
+=> 다시 태우든 안 태우든 «같은 문자열»입니다
+```
+즉 **정체성의 다섯째 철자가 아니라 «닿지 않는 같은 철자»**입니다.
+제가 그 줄만 보고 「clean 을 안 태운다 -> 다르게 이어질 수 있다」로 갔는데,
+**재료가 어디서 오는지를 안 따라갔습니다.** 판정 재료를 잘못 드린 것이라 그대로 적습니다.
+
+## 한 것
+그 자리에 «위 두 사실»을 주석으로 적었습니다 (도달 불가의 «근거 함수 이름»과, 도달해도
+철자가 같은 «이유»). 코드는 0줄입니다.
+```
+시험   test_composite_business_key · test_enrichment · test_enrichment_candidates
+       -> 105 passed · 0 failed
+```
+
+## 총괄이 정정하신 것 — 같은 부류입니다
+`void_sat_format.compose_business_key` 를 이름만 보고 「두 번째 조립」으로 읽으셨다고 적으셨는데,
+제 `comp_sep.join(key)` 도 «그 줄만 보고» 판정한 같은 실수입니다. 둘 다 **본문/재료를 한 홉 더
+따라갔으면** 안 나왔을 것입니다.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 821e9af1 푸시했습니다
+S1 은 이걸로 닫힙니다 (다른 미결 없음)
+```
