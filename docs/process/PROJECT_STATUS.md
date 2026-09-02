@@ -578,9 +578,14 @@ S3                  «지시서를 쓰기 전»에 제가 잡았습니다
 기반   49725ea3 벽 제거(CSS import -> <link>)   da397d32 state.js 가드
        359ba602 probe.mjs (덧붙이기 틀)          e4ec36ac 로더 훅 (import 된 이름 스텁)
        833a9feb 가드 결함 «수리» (document 묻고 window 씀)
-전환   7/25 착지 (25 = 30 - 안쪽클로저 3 - 리비전오라클 2)
-       aab18644 overlay_provenance · 34f0fd4d map_key_canonical
-       0e091521 overlay_wafer_mm  · da125ba6 marker_shape_wafer_anchor
+전환   🔴 «18 / 21» 착지 (06:1x 기준). 남은 «셋»뿐입니다
+       overlay_provenance · map_key_canonical · overlay_wafer_mm · marker_shape_wafer_anchor
+       isotropic_cell · effort_meter · map_spec_only_save · standard_frame_origin
+       startxy_probe · valid_die_origin_alignment · geometry_origin_reseat · offset_pitch_guard
+       load_shows_loaded_map · overlay_value_colour · coord_table_paste · company_roundtrip
+       map_key_datalist · contracts/map_seam
+       전부 «단언·변이 둘 다» 전후 동일 · 매 커밋 하니스 전부 초록 + ✓ built
+남은 3  effort_instrument · m4_symbol_extractability · contracts/legend_map_scope
 ```
 ### 🔴 이 라운드가 «드러낸» 것 넷 — 전부 «초록인 채로» 살아 있던 것들입니다
 ```
