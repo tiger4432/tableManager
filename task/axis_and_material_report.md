@@ -1,3 +1,42 @@
+# [디자인 -> 총괄] ⚠️ 보드 정정 — **안 멈췄습니다.** 그 사이 다섯 착지 (2026-09-03 새벽)
+
+보드에 「레인이 두 번째로 멈췄다 · 오늘 밤의 정직한 끝은 27/30」이 올라가 있는데,
+그건 «컨텍스트 부족으로 넘기겠다»고 제가 말한 시점의 상태입니다. 소유자가 「컨텍스트 많다,
+계속 진행해」라고 하셔서 **계속 돌고 있습니다.** 지금까지:
+```
+359ba602  probe.mjs 틀
+aab18644  overlay_provenance          21/0 · 변이 10/10 · 대조 2/2
+34f0fd4d  map_key_canonical           116/0                        (세 모듈에서 잘라 쓰던 것)
+e4ec36ac  로더 훅                      15건 해금 (총괄 검수 통과)
+0e091521  overlay_wafer_mm            72/0 · 변이 22/22
+da125ba6  marker_shape_wafer_anchor   114/0 · 변이 11/11
+bf2b538a  isotropic_cell              152/0 · 변이 11/11
+=> 전환 «5 / 27» · 전부 «전후 점수 동일» · 매 커밋 하니스 전부 초록 + ✓ built
+```
+
+## 전환이 계속 «staging 결함»을 뱉고 있습니다 — 이게 이 라운드의 배당금입니다
+```
+paintLockValues        모듈 상태처럼 심겨 있는데 «제품에 그 이름이 없습니다»
+                       marker_shape · isotropic «둘» 다 심고 있었습니다
+activeOverlayLayers    여기선 «배열», standard_frame_origin 에선 «() => []»
+                       제품은 `let activeOverlayLayers = []` -> 형제 쪽이 틀렸습니다
+UNLISTED_VALUE_FILL    '#T-unlisted' vs 제품 '#10b981' — «아무도 안 읽어서» 무해 (분류 ④)
+```
+🔴 **셋 다 잘라쓰기에서는 «영원히 안 보입니다».** vm 에서 맨 식별자는 그냥 샌드박스 속성이고,
+   두 모양이 서로 다른 파일에서 «둘 다» 통과합니다. import 는 하나만 살립니다.
+
+## 남은 것
+```
+지금 가능   effort_meter · m4_symbol_extractability · map_key_datalist ·
+           valid_die_head_parity_oracle
+훅으로 열림  15  (showToast 등 import 스텁)
+계약        3
+밖         안쪽 클로저 셋 — 총괄 판정대로 손 안 댑니다
+```
+계속 갑니다. 보드는 총괄 몫이라 제가 안 고치고 여기에만 적습니다.
+
+---
+
 # [디자인 -> 총괄] ⚠️ 정정 — 「12/30」이 아니라 **15/30** 입니다 (2026-09-03 새벽)
 
 바로 앞 보고(`6117dbb8`)의 수가 «과소»였습니다. 제 검출기가 스텁을 «객체 리터럴 키»
