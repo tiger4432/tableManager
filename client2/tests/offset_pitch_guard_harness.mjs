@@ -50,6 +50,7 @@
  * Read-only against client2/. Exit: 0 green | 1 a check failed | 2 harness failure.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -160,81 +161,105 @@ function makeDom(P) {
                        addEventListener() {}, removeEventListener() {} }, byId };
 }
 
-function buildEnv(src, P, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    try { new vm.Script(code); }
-    catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
-    pieces.push(code);
-  }
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+// harness reddens on correct code and names the missing symbol rather than the change.
+//
+// 🔴 `COPY_HEADER_KEY: 'copyHeader'` IS GONE, and this file is one of the two that had it.
+//    The product's localStorage key is 'mapCopyHeader'. The retyped copy had DRIFTED, and it
+//    was harmless only because nothing here READ it -- the name occurred once, in the sandbox
+//    declaration. That is the quiet kind of wrong: the day somebody asserts on that key, the
+//    assertion measures a key the product does not have. The real const is now the only one.
+//    (Lead's ruling 2026-09-03: a green run after this conversion confirms the assertions were
+//    never keyed on it; a red one would have meant a product defect to investigate.)
+//
+// The other retyped consts go the same way -- `UNLISTED_VALUE_FILL`, `OVERLAY_CELL_LIMIT`,
+// `VALID_DIE_TEMPLATE_PREFIX`, `KEY_SUGGEST_DEBOUNCE_MS` -- and `API_BASE`, `showToast`,
+// `canonicalMapKey`, `countNav` come through the loader hook because they are IMPORTS and no
+// probe can reach an import binding.
+async function buildEnv(src, P, opts = {}) {
   const log = { toasts: [], warns: [], requests: [] };
   const dom = makeDom(P);
-  const el = {};
-  const sandbox = {
-    console: { warn: (m) => log.warns.push(String(m)), info() {}, error() {}, log() {}, debug() {} },
-    el, document: dom.document,
-    localStorage: { getItem: () => null, setItem() {} },
-    COPY_HEADER_KEY: 'copyHeader',
-    isOriginMode: false,
-    // Everything `initDOMElements` names but this harness never fires — stubbed one by one so
-    // a rename is a ReferenceError, never a silent no-op.
-    fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
-    // See the note in geometry_origin_reseat_harness: the 💾 SAVE handler is wired by
-    // `initDOMElements`, so it must exist; this harness scores the wiring, not that write.
-    onValidDieRefChanged() {}, saveMapSpecOnly() {},
-    populateValidDieRefList() {}, switchTable() {},
-    populateOverlayKeyList() {}, onMetaInputSuggest() {}, KEY_SUGGEST_DEBOUNCE_MS: 120,
-    renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},
-    effortRoute: () => '', handleAddOverlayClick() {}, clearOverlayLayers() {},
-    renderOverlayList() {}, addLegendRowForPanel() {}, clearGrid() {}, fillGrid() {},
-    pushMapData() {}, copyGridToExcel() {}, onMapGridPaste() {}, selectEdgeCells() {},
-    autoPaintE1E2() {}, fillSelectedCells() {}, clearSelectedCells() {},
-    fitGridToWorkspace() {}, initPlanSidebarResizer() {}, debounce: (f) => f,
-    boundingBoxCache: {}, cellsSeatedUnder: null,
-    currentRotation: P.rotation, currentSide: P.side,
-    gridData: {}, gridCells2D: {},
-    legend: [{ value: 'A', color: '#0a0' }],
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0,
-    selectedTable: 'bonding_map', loadedIdentity: null,
-    tableSchema: { column_types: {} },
-    API_BASE: '', OVERLAY_CELL_LIMIT: 2000, UNLISTED_VALUE_FILL: '#10b981',
-    overlayLayers: [], loadedFCells: new Set(), serverCellKeys: null,
-    paintLockValues: null, currentHoverCell: null, lastSelectionBox: null,
-    syncOverlayGeometry() {},
-    getThemeColors: () => ({ outBg: '#eee', line: '#ccc', text: '#000', inBg: '#fff',
-                             origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' }),
-    performance: { now: () => 0 },
-    window: { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} },
-    updateOrientationUI() {}, updateSideIndicator() {}, scheduleRenderGridCanvas() {},
-    updateLegendCounts() {},
-    activeOverlayLayers: () => [], drawOverlayMarkers() {}, updateNotchPosition() {},
-    isBoxDragging: false, dragType: null,
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    renderValidDieChip() {}, syncValidDieRefControls() {},
-    // [1-a] The key control's SHAPE (<select> vs text input) is scored in
-    // map_key_datalist_harness.mjs, which models a real DOM tree. Stubbed here so the
-    // wiring executes without dragging that model in — this harness scores coordinates.
-    renderValidDieKeyControl() {},
-    showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
-    requestAnimationFrame(fn) { fn(); },
-    isLockedValue: () => false,
-    fetchMapKeySpec: async () => ({ ok: true, keyColumns: ['base'], columnTypes: {} }),
-    canonicalMapKey: (kc, k) => String(k),
-    fetchServedBinding: async () => ({ x: 'x', y: 'y', keyColumns: ['base'], source: 'declared' }),
-    fetchGridMetaFor: async () => null,
-    buildKeyFilters: () => ({}),
-    fetch: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }),
-    serverPresets: opts.serverPresets || {},
-    VALID_DIE_TEMPLATE_PREFIX: 'valid-die-template:',
-    enterValidDieAuthoring: () => die('the authoring branch must not be reached'),
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
+
+  globalThis.document = dom.document;
+  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  globalThis.performance = { now: () => 0 };
+  globalThis.window = { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el'],
+    // Everything `initDOMElements` names but this harness never fires, plus the module state.
+    // Listed one name at a time on purpose: a rename must be a loud failure, and the probe
+    // provides that now, because it asks the module for each name it is given.
+    state: [
+      'fetchAndRenderPresets', 'saveCustomPreset', 'deleteCustomPreset', 'onValidDieRefChanged',
+      'saveMapSpecOnly', 'populateValidDieRefList', 'switchTable', 'populateOverlayKeyList',
+      'onMetaInputSuggest', 'renderMetadataInputs', 'handleAddOverlayClick', 'clearOverlayLayers',
+      'renderOverlayList', 'addLegendRowForPanel', 'clearGrid', 'fillGrid',
+      'pushMapData', 'copyGridToExcel', 'onMapGridPaste', 'selectEdgeCells',
+      'autoPaintE1E2', 'fillSelectedCells', 'clearSelectedCells', 'fitGridToWorkspace',
+      'initPlanSidebarResizer', 'syncOverlayGeometry', 'updateOrientationUI', 'updateSideIndicator',
+      'scheduleRenderGridCanvas', 'updateLegendCounts', 'drawOverlayMarkers', 'updateNotchPosition',
+      'renderValidDieChip', 'syncValidDieRefControls', 'renderValidDieKeyControl', 'isOriginMode',
+      'boundingBoxCache', 'cellsSeatedUnder', 'currentRotation', 'currentSide',
+      'gridData', 'gridCells2D', 'legend', 'validDie',
+      'validDieResolveSeq', 'selectedTable', 'loadedIdentity', 'tableSchema',
+      'overlayLayers', 'loadedFCells', 'serverCellKeys', 'currentHoverCell',
+      'lastSelectionBox', 'isBoxDragging', 'dragType', 'serverPresets',
+      'loadExistingMap', 'effortRoute', 'debounce', 'getThemeColors',
+      'isLockedValue', 'fetchMapKeySpec', 'fetchServedBinding', 'fetchGridMetaFor',
+      'buildKeyFilters', 'enterValidDieAuthoring',
+    ],
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }) },
+      './config.js': { API_BASE: '' },
+      './map_key.js': { canonicalMapKey: (kc, k) => String(k) },
+      './effort_meter.js': { countNav: () => {} },
+    },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'offsetpitch',
+  });
+
+  const el = probe.el;
+  const sandbox = probe;
+  for (const n of ['fetchAndRenderPresets', 'saveCustomPreset', 'deleteCustomPreset', 'onValidDieRefChanged', 'saveMapSpecOnly', 'populateValidDieRefList', 'switchTable', 'populateOverlayKeyList', 'onMetaInputSuggest', 'renderMetadataInputs', 'handleAddOverlayClick', 'clearOverlayLayers', 'renderOverlayList', 'addLegendRowForPanel', 'clearGrid', 'fillGrid', 'pushMapData', 'copyGridToExcel', 'onMapGridPaste', 'selectEdgeCells', 'autoPaintE1E2', 'fillSelectedCells', 'clearSelectedCells', 'fitGridToWorkspace', 'initPlanSidebarResizer', 'syncOverlayGeometry', 'updateOrientationUI', 'updateSideIndicator', 'scheduleRenderGridCanvas', 'updateLegendCounts', 'drawOverlayMarkers', 'updateNotchPosition', 'renderValidDieChip', 'syncValidDieRefControls', 'renderValidDieKeyControl']) sandbox[n] = () => {};
+  sandbox.loadExistingMap = async () => ({});
+  sandbox.effortRoute = () => '';
+  sandbox.debounce = (f) => f;
+  sandbox.isLockedValue = () => false;
+  sandbox.getThemeColors = () => ({ outBg: '#eee', line: '#ccc', text: '#000', inBg: '#fff',
+                                    origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' });
+  sandbox.fetchMapKeySpec = async () => ({ ok: true, keyColumns: ['base'], columnTypes: {} });
+  sandbox.fetchServedBinding = async () => ({ x: 'x', y: 'y', keyColumns: ['base'], source: 'declared' });
+  sandbox.fetchGridMetaFor = async () => null;
+  sandbox.buildKeyFilters = () => ({});
+  sandbox.enterValidDieAuthoring = () => die('the authoring branch must not be reached');
+
+  sandbox.isOriginMode = false;
+  sandbox.boundingBoxCache = {};
+  sandbox.cellsSeatedUnder = null;
+  sandbox.currentRotation = P.rotation;
+  sandbox.currentSide = P.side;
+  sandbox.gridData = {};
+  sandbox.gridCells2D = {};
+  sandbox.legend = [{ value: 'A', color: '#0a0' }];
+  sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  sandbox.validDieResolveSeq = 0;
+  sandbox.selectedTable = opts.table || 'bonding_map';
+  sandbox.loadedIdentity = null;
+  sandbox.tableSchema = { column_types: {} };
+  sandbox.overlayLayers = [];
+  sandbox.loadedFCells = new Set();
+  sandbox.serverCellKeys = null;
+  sandbox.currentHoverCell = null;
+  sandbox.lastSelectionBox = null;
+  sandbox.isBoxDragging = false;
+  sandbox.dragType = null;
+  sandbox.serverPresets = opts.serverPresets || {};
+
   try { sandbox.initDOMElements(); }
   catch (e) { die(`initDOMElements threw — the wiring could not be executed: ${e && e.message}`); }
   return { S: sandbox, el, log, byId: dom.byId };
@@ -290,7 +315,7 @@ function unboundedInsideBox(S, P) {
 // ── Scoring ─────────────────────────────────────────────────────────────────────────────
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 
-function run(src) {
+async function run(src) {
   const failures = [];
   const evidence = [];
   let compared = 0;
@@ -308,7 +333,7 @@ function run(src) {
     const OFFX = 7, OFFY = 3;   // both non-zero and DIFFERENT: an axis swap cannot pass
     for (const rot of [0, 90, 180, 270]) {
       for (const side of ['front', 'back']) {
-        const { S } = buildEnv(src, { ...P0, rotation: rot, side, offX: OFFX, offY: OFFY });
+        const { S } = await buildEnv(src, { ...P0, rotation: rot, side, offX: OFFX, offY: OFFY });
         const cfg = S.getTransformedPhysicalConfig(null, rot, side);
         const got = S.getScreenShift(cfg, 1.0, 1.0);
         const want = serverFrameShift(rot, side, P0.chipX, P0.chipY, OFFX, OFFY);
@@ -322,7 +347,7 @@ function run(src) {
     // And the absolute mm, against the server's own formula, at rot 0 front where the frame
     // axes ARE the physical axes. A sign table that cancelled itself would still be caught.
     for (const offX of [0, 5, 11]) {
-      const { S } = buildEnv(src, { ...P0, offX });
+      const { S } = await buildEnv(src, { ...P0, offX });
       const L = S.frameDieLattice({ cols: P0.cols, rows: P0.rows, rotation: 0, side: 'front' });
       for (const c of [10, 14, 18]) {
         const p = S.getDieIndex(null, c, 12, P0.cols, P0.rows, 0, 'front');
@@ -335,8 +360,8 @@ function run(src) {
 
   // ── P. one pitch of offset re-labels the SAME lattice ─────────────────────────────────
   {
-    const a = buildEnv(src, { ...P0, offX: 0 }).S;
-    const b = buildEnv(src, { ...P0, offX: P0.chipX }).S;
+    const a = (await buildEnv(src, { ...P0, offX: 0 })).S;
+    const b = (await buildEnv(src, { ...P0, offX: P0.chipX })).S;
     const La = a.frameDieLattice({ cols: P0.cols, rows: P0.rows, rotation: 0, side: 'front' });
     const Lb = b.frameDieLattice({ cols: P0.cols, rows: P0.rows, rotation: 0, side: 'front' });
     const mmA = new Set();
@@ -378,13 +403,13 @@ function run(src) {
       });
       return out;
     };
-    const base = buildEnv(src, { ...P0, offX: 0 });
+    const base = await buildEnv(src, { ...P0, offX: 0 });
     const ref = storedFor(base.S, { ...P0, offX: 0 });
 
     // (a) INSIDE the cap the box follows the lattice exactly — drift 0 at every step.
     for (const offX of [0, 2, 5, 10, 11]) {
       const P = { ...P0, offX };
-      const { S } = buildEnv(src, P);
+      const { S } = await buildEnv(src, P);
       const box = S.getWaferBoundingBox(null, 0, 'front');
       const t = unboundedInsideBox(S, P);
       eq(`D/in-cap/off${offX}/minC-follows-the-lattice`, box.minC, t.minC);
@@ -396,7 +421,7 @@ function run(src) {
     // (b) BEYOND the cap it stops following, and every stored coordinate moves with it.
     for (const [offX, wantDrift] of [[33, 1], [50, 3], [80, 6]]) {
       const P = { ...P0, offX };
-      const { S } = buildEnv(src, P);
+      const { S } = await buildEnv(src, P);
       const box = S.getWaferBoundingBox(null, 0, 'front');
       const t = unboundedInsideBox(S, P);
       eq(`D/beyond/off${offX}/drift`, box.minC - t.minC, wantDrift);
@@ -427,7 +452,7 @@ function run(src) {
   // ── G. the guard, entered through the real node ───────────────────────────────────────
   {
     // (a) OVER the pitch, committed with `change` -> clamped to the pitch, one toast.
-    const g = buildEnv(src, { ...P0 });
+    const g = await buildEnv(src, { ...P0 });
     const ox = g.byId('phys-offset-x');
     const oy = g.byId('phys-offset-y');
     ox.value = '50';
@@ -444,7 +469,7 @@ function run(src) {
 
     // (b) INSIDE the cap nothing is touched — not the value, not its spelling, no toast.
     //     `10.0` must stay `10.0`: rewriting it to `10` would be a silent edit of the frame.
-    const h = buildEnv(src, { ...P0 });
+    const h = await buildEnv(src, { ...P0 });
     const hx = h.byId('phys-offset-x');
     hx.value = '10.0';
     fire(hx, 'change', '#phys-offset-x');
@@ -452,7 +477,7 @@ function run(src) {
     eq('G/in-cap/no-toast', h.log.toasts.length, 0);
 
     // (c) EXACTLY at the pitch is allowed — the cap is the budget, not one step inside it.
-    const i2 = buildEnv(src, { ...P0 });
+    const i2 = await buildEnv(src, { ...P0 });
     const ix2 = i2.byId('phys-offset-x');
     ix2.value = String(P0.chipX);
     fire(ix2, 'change', '#phys-offset-x');
@@ -461,7 +486,7 @@ function run(src) {
 
     // (d) TYPING is not cut short. `input` fires per keystroke; a guard there would turn a
     //     half-typed "50" into "11" under the cursor.
-    const j = buildEnv(src, { ...P0 });
+    const j = await buildEnv(src, { ...P0 });
     const jx = j.byId('phys-offset-x');
     jx.value = '50';
     fire(jx, 'input', '#phys-offset-x');
@@ -471,14 +496,14 @@ function run(src) {
     // (e) A DECLARED frame is never rewritten. The preset path carries the server's own
     //     numbers, and silently capping them would re-interpret that map's stored coordinates
     //     (invariant 3). Fixture: an offset deliberately over the pitch.
-    const k = buildEnv(src, { ...P0 });
+    const k = await buildEnv(src, { ...P0 });
     k.S.applyPresetObject({ phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
       phys_offset_x: 50, phys_offset_y: 40, phys_edge_margin: 3, rotation: 0, side: 'front' });
     eq('G/declared/preset-offset-not-rewritten', k.byId('phys-offset-x').value, '50');
     eq('G/declared/no-toast', k.log.toasts.filter(t => /OFFSET/.test(t.msg)).length, 0);
 
     // (f) SHRINKING THE CHIP re-arms the guard on an offset that used to be legal.
-    const m = buildEnv(src, { ...P0, offX: 10 });
+    const m = await buildEnv(src, { ...P0, offX: 10 });
     const mc = m.byId('phys-chip-x');
     mc.value = '4';
     fire(mc, 'change', '#phys-chip-x');
@@ -487,7 +512,7 @@ function run(src) {
     // (g) THE CLAMP PRESERVES STORED COORDINATES. The reaction to the origin box moving is
     //     already wired (rule 4); this asserts the guard runs BEFORE it, so the cells are
     //     re-seated under the capped frame and not under the refused one.
-    const n = buildEnv(src, { ...P0, offX: 0 });
+    const n = await buildEnv(src, { ...P0, offX: 0 });
     n.S.renderGridCanvas();
     const f0 = { cols: P0.cols, rows: P0.rows, rot: 0, side: 'front' };
     const cfg0 = n.S.getTransformedPhysicalConfig(null, 0, 'front');
@@ -588,7 +613,7 @@ const MUTANTS = {
 const mutateOnly = process.argv.includes('--mutate');
 const verbose = process.argv.includes('--verbose');
 
-const base = run(SRC0);
+const base = await run(null);
 if (verbose || !mutateOnly) base.evidence.forEach(e => console.log('  ' + e));
 console.log(`${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
   + `${base.failures.length} failure(s)`);
@@ -601,7 +626,10 @@ if (process.argv.includes('--mutate')) {
   const names = Object.keys(MUTANTS);
   for (const name of names) {
     let out;
-    try { out = run(MUTANTS[name](SRC0)); }
+    // 🔴 A FUNCTION, not the mutated text: `spec.mutate` ignores a string, and every mutant
+    //    would then load the UNMUTATED module while the assertion count stayed put. The
+    //    two-witness gate is what catches that, so the mutant count is recorded with it.
+    try { out = await run(() => MUTANTS[name](SRC0)); }
     catch (e) { out = { failures: [`threw: ${String(e && e.message).slice(0, 90)}`] }; }
     const isControl = name.startsWith('CONTROL');
     const killed = out.failures.length > 0;
