@@ -27,6 +27,7 @@
  * the user QA's against, including the two that carry `valid_die_ref`.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -271,105 +272,115 @@ function makeDom(P) {
   return { document, byId };
 }
 
-function buildEnv(src, P, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    try { new vm.Script(code); }
-    catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
-    pieces.push(code);
-  }
+async function buildEnv(src, P, opts = {}) {
   const log = { toasts: [], requests: [], warns: [] };
   const dom = makeDom(P);
-  const el = {};
-  const sandbox = {
-    console: { warn: (m) => log.warns.push(String(m)), info() {}, error() {}, log() {}, debug() {} },
-    el,
-    document: dom.document,
-    localStorage: { getItem: () => null, setItem() {} },
-    COPY_HEADER_KEY: 'copyHeader',
-    isOriginMode: false,
-    // Everything `initDOMElements` names but this harness never fires. Listed one by one on
-    // purpose: a rename must be a ReferenceError, not a silent no-op.
-    fetchAndRenderPresets() {}, saveCustomPreset() {}, deleteCustomPreset() {},
-    // `saveMapSpecOnly` is the 📐 규격만 저장 handler `initDOMElements` now wires (it replaced
-    // the deleted 💾 SAVE). It is a stub for the same reason as its neighbours: this harness
-    // executes the WIRING, not the metadata write path (scored by map_spec_only_save_harness).
-    // `onValidDieRefChanged` is a stub the valid-die COMMIT cases below REPLACE WITH A COUNTER —
-    // that is how "which gesture applies" is scored without running the applier.
-    onValidDieRefChanged() {}, saveMapSpecOnly() {},
-    populateValidDieRefList() {}, switchTable() {},
-    // Key-datalist wiring (2026-07-31). `KEY_SUGGEST_DEBOUNCE_MS` is a VALUE, not a stub:
-    // `initDOMElements` passes it to `debounce`, so a missing binding is a ReferenceError
-    // here exactly as a missing function would be.
-    populateOverlayKeyList() {}, onMetaInputSuggest() {}, KEY_SUGGEST_DEBOUNCE_MS: 120,
-    renderMetadataInputs() {}, loadExistingMap: async () => ({}), countNav() {},
-    effortRoute: () => '', handleAddOverlayClick() {}, clearOverlayLayers() {},
-    renderOverlayList() {}, addLegendRowForPanel() {}, clearGrid() {}, fillGrid() {},
-    pushMapData() {}, copyGridToExcel() {}, onMapGridPaste() {}, selectEdgeCells() {},
-    autoPaintE1E2() {}, fillSelectedCells() {}, clearSelectedCells() {},
-    fitGridToWorkspace() {}, initPlanSidebarResizer() {}, debounce: (f) => f,
-    boundingBoxCache: {},
-    cellsSeatedUnder: null,
-    currentRotation: P.rotation,
-    currentSide: P.side,
-    gridData: {},
-    gridCells2D: {},
-    legend: [{ value: 'A', color: '#0a0' }],
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0,
-    selectedTable: opts.table || 'bonding_map',
-    loadedIdentity: null,
-    tableSchema: { column_types: {} },
-    API_BASE: '',
-    OVERLAY_CELL_LIMIT: 2000,
-    VALID_DIE_TABLE,
-    // Paint constants the real renderer reads. Values are irrelevant here — only the
-    // coordinate DECISIONS are scored — but they must exist or the renderer throws.
-    UNLISTED_VALUE_FILL: '#10b981',
-    overlayLayers: [], loadedFCells: new Set(), serverCellKeys: null,
-    paintLockValues: null, currentHoverCell: null, lastSelectionBox: null,
-    syncOverlayGeometry() {},
-    getThemeColors: () => ({ outBg: '#eee', line: '#ccc', text: '#000', inBg: '#fff',
-                             origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' }),
-    performance: { now: () => 0 },
-    // No ResizeObserver: `initDOMElements` guards on `window.ResizeObserver` being truthy.
-    window: { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} },
-    updateOrientationUI() {}, updateSideIndicator() {},
-    scheduleRenderGridCanvas() {},
-    updateLegendCounts() {},
-    activeOverlayLayers: () => [], drawOverlayMarkers() {}, updateNotchPosition() {},
-    isBoxDragging: false, dragType: null,
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    renderValidDieChip() {}, syncValidDieRefControls() {},
-    // [1-a] The key control's SHAPE (<select> vs text input) is scored in
-    // map_key_datalist_harness.mjs, which models a real DOM tree. Stubbed here so the
-    // wiring executes without dragging that model in — this harness scores coordinates.
-    renderValidDieKeyControl() {},
-    showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
-    requestAnimationFrame(fn) { fn(); },
-    isLockedValue: () => false,
-    fetchMapKeySpec: async (t) => { log.requests.push(`spec:${t}`);
-      return { ok: true, keyColumns: ['base'], columnTypes: {} }; },
-    canonicalMapKey: (kc, k) => String(k),
-    fetchServedBinding: async (t) => { log.requests.push(`binding:${t}`);
-      return { x: 'x', y: 'y', keyColumns: ['base'], source: 'declared' }; },
-    fetchGridMetaFor: async (t, k) => { log.requests.push(`meta:${t}/${k}`); return opts.refMeta || null; },
-    buildKeyFilters: () => ({}),
-    fetch: async (url) => {
-      log.requests.push(`fetch:${String(url).split('?')[0]}`);
-      const rows = (opts.refCells || []).map(c => ({ data: { x: { value: c.x }, y: { value: c.y } } }));
-      return { ok: true, status: 200, json: async () => ({ data: rows }) };
-    },
+  // 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+  // SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+  // harness reddens on correct code and names the missing symbol rather than the change.
+  //
+  // Names dropped rather than carried across, each for its own reason:
+  //   `paintLockValues`             THE PRODUCT HAS NO SUCH NAME. Five harnesses staged it.
+  //   `COPY_HEADER_KEY: 'copyHeader'`  the product's localStorage key is 'mapCopyHeader'. The
+  //                                 retyped copy had DRIFTED, and was harmless only because
+  //                                 nothing here read it -- which is the quiet kind of wrong.
+  //   `UNLISTED_VALUE_FILL` · `OVERLAY_CELL_LIMIT` · `VALID_DIE_TABLE` ·
+  //   `VALID_DIE_TEMPLATE_PREFIX` · `KEY_SUGGEST_DEBOUNCE_MS`
+  //                                 all `const`, all retyped. The real ones are now the only
+  //                                 ones, which is strictly better than a copy that agrees today.
+  //   `activeOverlayLayers: () => []`  the product declares an ARRAY. Third harness to have
+  //                                 staged the wrong shape for this one name.
+  //
+  // `API_BASE`, `showToast`, `canonicalMapKey` and `countNav` are IMPORTS -- no probe can
+  // reach an import binding -- so they come through the loader hook.
+  globalThis.document = dom.document;
+  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  globalThis.performance = { now: () => 0 };
+  // No ResizeObserver: `initDOMElements` guards on `window.ResizeObserver` being truthy.
+  globalThis.window = { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (url) => {
+    log.requests.push(`fetch:${String(url).split('?')[0]}`);
+    const rows = (opts.refCells || []).map(c => ({ data: { x: { value: c.x }, y: { value: c.y } } }));
+    return { ok: true, status: 200, json: async () => ({ data: rows }) };
   };
-  sandbox.serverPresets = opts.serverPresets || {};
-  sandbox.VALID_DIE_TEMPLATE_PREFIX = 'valid-die-template:';
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el'],
+    // Everything `initDOMElements` names but this harness never fires, plus the module state.
+    // Listed one by one on purpose: a rename must be a loud failure, not a silent no-op --
+    // and the probe now provides that, because it asks the module for each name.
+    state: [
+      'fetchAndRenderPresets', 'saveCustomPreset', 'deleteCustomPreset', 'onValidDieRefChanged',
+      'saveMapSpecOnly', 'populateValidDieRefList', 'switchTable', 'populateOverlayKeyList',
+      'onMetaInputSuggest', 'renderMetadataInputs', 'handleAddOverlayClick', 'clearOverlayLayers',
+      'renderOverlayList', 'addLegendRowForPanel', 'clearGrid', 'fillGrid',
+      'pushMapData', 'copyGridToExcel', 'onMapGridPaste', 'selectEdgeCells',
+      'autoPaintE1E2', 'fillSelectedCells', 'clearSelectedCells', 'fitGridToWorkspace',
+      'initPlanSidebarResizer', 'syncOverlayGeometry', 'updateOrientationUI', 'updateSideIndicator',
+      'scheduleRenderGridCanvas', 'updateLegendCounts', 'drawOverlayMarkers', 'updateNotchPosition',
+      'renderValidDieChip', 'syncValidDieRefControls', 'renderValidDieKeyControl', 'isOriginMode',
+      'boundingBoxCache', 'cellsSeatedUnder', 'currentRotation', 'currentSide',
+      'gridData', 'gridCells2D', 'legend', 'validDie',
+      'validDieResolveSeq', 'selectedTable', 'loadedIdentity', 'tableSchema',
+      'overlayLayers', 'loadedFCells', 'serverCellKeys', 'currentHoverCell',
+      'lastSelectionBox', 'activeOverlayLayers', 'isBoxDragging', 'dragType',
+      'serverPresets', 'loadExistingMap', 'effortRoute', 'debounce',
+      'getThemeColors', 'isLockedValue', 'fetchMapKeySpec', 'fetchServedBinding',
+      'fetchGridMetaFor', 'buildKeyFilters', 'enterValidDieAuthoring'
+    ],
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }) },
+      './config.js': { API_BASE: '' },
+      './map_key.js': { canonicalMapKey: (kc, k) => String(k) },
+      './effort_meter.js': { countNav: () => {} },
+    },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'geomreseat',
+  });
+
+  const el = probe.el;
+  const sandbox = probe;
+  for (const n of ['fetchAndRenderPresets', 'saveCustomPreset', 'deleteCustomPreset', 'onValidDieRefChanged', 'saveMapSpecOnly', 'populateValidDieRefList', 'switchTable', 'populateOverlayKeyList', 'onMetaInputSuggest', 'renderMetadataInputs', 'handleAddOverlayClick', 'clearOverlayLayers', 'renderOverlayList', 'addLegendRowForPanel', 'clearGrid', 'fillGrid', 'pushMapData', 'copyGridToExcel', 'onMapGridPaste', 'selectEdgeCells', 'autoPaintE1E2', 'fillSelectedCells', 'clearSelectedCells', 'fitGridToWorkspace', 'initPlanSidebarResizer', 'syncOverlayGeometry', 'updateOrientationUI', 'updateSideIndicator', 'scheduleRenderGridCanvas', 'updateLegendCounts', 'drawOverlayMarkers', 'updateNotchPosition', 'renderValidDieChip', 'syncValidDieRefControls', 'renderValidDieKeyControl']) sandbox[n] = () => {};
+  sandbox.loadExistingMap = async () => ({});
+  sandbox.effortRoute = () => '';
+  sandbox.debounce = (f) => f;
+  sandbox.isLockedValue = () => false;
+  sandbox.getThemeColors = () => ({ outBg: '#eee', line: '#ccc', text: '#000', inBg: '#fff',
+                                    origin: '#f00', notch: '#00f', gridText: '#333', dim: '#999' });
+  sandbox.fetchMapKeySpec = async (t) => { log.requests.push(`spec:${t}`);
+    return { ok: true, keyColumns: ['base'], columnTypes: {} }; };
+  sandbox.fetchServedBinding = async (t) => { log.requests.push(`binding:${t}`);
+    return { x: 'x', y: 'y', keyColumns: ['base'], source: 'declared' }; };
+  sandbox.fetchGridMetaFor = async (t, k) => { log.requests.push(`meta:${t}/${k}`); return opts.refMeta || null; };
+  sandbox.buildKeyFilters = () => ({});
   sandbox.enterValidDieAuthoring = () => die('the authoring branch must not be reached');
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
+
+  sandbox.isOriginMode = false;
+  sandbox.boundingBoxCache = {};
+  sandbox.cellsSeatedUnder = null;
+  sandbox.currentRotation = P.rotation;
+  sandbox.currentSide = P.side;
+  sandbox.gridData = {};
+  sandbox.gridCells2D = {};
+  sandbox.legend = [{ value: 'A', color: '#0a0' }];
+  sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  sandbox.validDieResolveSeq = 0;
+  sandbox.selectedTable = opts.table || 'bonding_map';
+  sandbox.loadedIdentity = null;
+  sandbox.tableSchema = { column_types: {} };
+  sandbox.overlayLayers = [];
+  sandbox.loadedFCells = new Set();
+  sandbox.serverCellKeys = null;
+  sandbox.currentHoverCell = null;
+  sandbox.lastSelectionBox = null;
+  // 🔴 AN ARRAY, see the note above.
+  sandbox.activeOverlayLayers = [];
+  sandbox.isBoxDragging = false;
+  sandbox.dragType = null;
+  sandbox.serverPresets = opts.serverPresets || {};
+
   // THE WIRING RUNS. From here on `el.*` are the same node objects `document.getElementById`
   // hands out, so dispatching on a node reaches the shipped handler.
   try { sandbox.initDOMElements(); }
@@ -450,7 +461,7 @@ function boxOf(S) {
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────────────
-function run(src) {
+async function run(src) {
   const failures = [];
   let compared = 0;
   const evidence = [];
@@ -462,7 +473,7 @@ function run(src) {
 
   // ══ 1a. A TYPED PITCH EDIT, no declared valid die (the user's case) ═══════════════════
   {
-    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const { S } = await buildEnv(src, F.QERWER, { table: 'dt_map' });
     const painted = paintOracle(S);
     S.renderGridCanvas();                       // this is what seeds the seating record
     eq('1a/render-seeds-the-record', true, !!S.cellsSeatedUnder,
@@ -520,7 +531,7 @@ function run(src) {
     const BASE = { cols: 29, rows: 25, startX: 1, startY: 1, invertY: false,
                    rotation: 0, side: 'front', dia: 300, chipX: 11, chipY: 13,
                    offX: 0, offY: 0, margin: 3 };
-    const { S } = buildEnv(src, BASE, { table: 'bonding_map', serverPresets: PRESETS });
+    const { S } = await buildEnv(src, BASE, { table: 'bonding_map', serverPresets: PRESETS });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const dimsBefore = `${S.el.gridCols.value}x${S.el.gridRows.value}`;
@@ -557,7 +568,7 @@ function run(src) {
   //     updates the record; the steps therefore have to COMPOSE. If any step compared against
   //     a record two states old, the coordinate would drift and never come back.
   {
-    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const { S } = await buildEnv(src, F.QERWER, { table: 'dt_map' });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const seen = [];
@@ -605,7 +616,7 @@ function run(src) {
   //       move" is therefore not a proof that there is nothing to react to.
   {
     // (i) the ROW axis, on the frame with anisotropic chip, non-zero offset and negative START
-    const { S } = buildEnv(src, F.DTWWER, { table: 'bonding_map' });
+    const { S } = await buildEnv(src, F.DTWWER, { table: 'bonding_map' });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const before = boxOf(S);
@@ -636,7 +647,7 @@ function run(src) {
   {
     // (ii) the COLUMN axis. A separate frame because DTWWER's column edits all fall in the
     //      self-cancelling group — scoring both axes on one frame would have scored one.
-    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const { S } = await buildEnv(src, F.QERWER, { table: 'dt_map' });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const before = boxOf(S);
@@ -669,7 +680,7 @@ function run(src) {
   //     `#grid-y-invert` sits in the SAME listener array as COLS/ROWS. It is rule 5 — it holds
   //     the die and moves the number — so the reaction must stay out of its path.
   {
-    const { S } = buildEnv(src, F.DTWWER, { table: 'bonding_map' });
+    const { S } = await buildEnv(src, F.DTWWER, { table: 'bonding_map' });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const keysBefore = Object.keys(S.gridData).sort().join('|');
@@ -689,7 +700,7 @@ function run(src) {
   //     One reaction, both bases. Here it must move NOTHING, and that zero is measured, not
   //     assumed: the mask box translates with the cells, so the stored coordinate never moved.
   {
-    const { S } = buildEnv(src, F.DTWWER, { table: 'bonding_map' });
+    const { S } = await buildEnv(src, F.DTWWER, { table: 'bonding_map' });
     const refCells = parseCells(BASE_4E_CELLS);
     const keys = S.projectCellsToPhys(refCells, S.frameFromMeta(F.BASE_4E_META));
     S.validDie = { basis: 'ref', keys, reason: '', ref: { table: 'bonding_map', mapKey: 'BASE_4E' }, raw: null };
@@ -718,12 +729,12 @@ function run(src) {
   // ══ 5. ORIENTATION IS THE OPPOSITE OPERATION (rule 5) ════════════════════════════════
   //     Rotation holds the DIE and moves the number. The geometry reaction must not fire.
   {
-    const { S } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+    const { S } = await buildEnv(src, F.QERWER, { table: 'dt_map' });
     paintOracle(S);
     S.renderGridCanvas();
     const counts = {};
     for (const rot of [90, 180, 270]) {
-      const { S: T } = buildEnv(src, F.QERWER, { table: 'dt_map' });
+      const { S: T } = await buildEnv(src, F.QERWER, { table: 'dt_map' });
       const painted = paintOracle(T);
       T.renderGridCanvas();
       const keysBefore = Object.keys(T.gridData).sort().join('|');
@@ -784,7 +795,7 @@ async function runDesignation(src) {
        'the reference map\'s own production cell count — a mask of a different size is a '
        + 'different fixture');
 
-    const { S } = buildEnv(src, c.panel, { table: 'bonding_map', refMeta: c.refMeta, refCells });
+    const { S } = await buildEnv(src, c.panel, { table: 'bonding_map', refMeta: c.refMeta, refCells });
     const painted = paintOracle(S);
     S.renderGridCanvas();
     const dimsBefore = `${S.el.gridCols.value}x${S.el.gridRows.value}`;
@@ -849,7 +860,7 @@ async function runDesignation(src) {
 //    "apply this" — it is the operator still typing. Reading it as a commit reintroduces the
 //    complaint in the one language this screen is actually used in, so it is scored explicitly.
 // ═══════════════════════════════════════════════════════════════════════════════════════
-function runValidDieCommit(src) {
+async function runValidDieCommit(src) {
   const failures = [];
   let compared = 0;
   const evidence = [];
@@ -869,7 +880,7 @@ function runValidDieCommit(src) {
   //    registered by reference is therefore scored by LISTENER COUNT instead, which is what
   //    `dispatchEvent` returns. (An earlier draft asserted a render counter here and went red
   //    against correct code — the assertion was measuring a binding that was never consulted.)
-  const { S } = buildEnv(src, F.A2, { table: 'bonding_map' });
+  const { S } = await buildEnv(src, F.A2, { table: 'bonding_map' });
   let applies = 0;
   const seenKeyAtApply = [];
   S.onValidDieRefChanged = () => {
@@ -1090,19 +1101,19 @@ const MUTANTS = {
 
 async function scoreMutant(name, src) {
   let out = { failures: [], evidence: [] };
-  try { out = run(src); } catch (e) { return [`threw: ${String(e && e.message).slice(0, 80)}`]; }
+  try { out = await run(src); } catch (e) { return [`threw: ${String(e && e.message).slice(0, 80)}`]; }
   let des = { failures: [] };
   try { des = await runDesignation(src); } catch (e) { des = { failures: [`threw: ${String(e && e.message).slice(0, 80)}`] }; }
   let vdc = { failures: [] };
-  try { vdc = runValidDieCommit(src); } catch (e) { vdc = { failures: [`threw: ${String(e && e.message).slice(0, 80)}`] }; }
+  try { vdc = await runValidDieCommit(src); } catch (e) { vdc = { failures: [`threw: ${String(e && e.message).slice(0, 80)}`] }; }
   return out.failures.concat(des.failures, vdc.failures);
 }
 
 // ── main ────────────────────────────────────────────────────────────────────────────────
 (async () => {
-  const base = run(SRC);
-  const des = await runDesignation(SRC);
-  const vdc = runValidDieCommit(SRC);
+  const base = await run(null);
+  const des = await runDesignation(null);
+  const vdc = await runValidDieCommit(null);
   const failures = base.failures.concat(des.failures, vdc.failures);
   const compared = base.compared + des.compared + vdc.compared;
   const evidence = base.evidence.concat(des.evidence, vdc.evidence);
@@ -1119,7 +1130,11 @@ async function scoreMutant(name, src) {
   let caught = 0;
   const total = Object.keys(MUTANTS).length;
   for (const [name, fn] of Object.entries(MUTANTS)) {
-    const f = await scoreMutant(name, fn(SRC));
+    // 🔴 A FUNCTION, not the mutated text. `buildEnv` hands `src` to the probe as
+    //    `spec.mutate`, and a string there is ignored -- the module would load unmutated and
+    //    every mutant would "escape" while the assertion count stayed at 62/0. That is the
+    //    silent-no-op shape again, caught by the mutation count rather than by the diff.
+    const f = await scoreMutant(name, () => fn(SRC));
     const newOnes = f.filter(x => !failures.includes(x));
     if (newOnes.length > 0) caught++;
     else console.log(`   ✗ mutant '${name}' was NOT caught — the assertions above do not `
