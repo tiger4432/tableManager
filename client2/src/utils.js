@@ -108,12 +108,15 @@ function scheduleToastSweep() {
 }
 
 // 탭 복귀 즉시 정리 — 사용자가 과거 알림 더미를 마주하지 않게 한다
+// The guard asked about `document` and then used `window`. In a browser both exist,
+// so it was inert there; anywhere the DOM is stubbed only in PART - which is every
+// harness that imports this module - it threw. Two globals, two questions.
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) sweepToasts();
   });
-  window.addEventListener('focus', sweepToasts);
 }
+if (typeof window !== 'undefined') window.addEventListener('focus', sweepToasts);
 
 function paintToast(item) {
   const label = item.count > 1 ? `${item.baseMessage} · ${item.count}건` : item.baseMessage;
