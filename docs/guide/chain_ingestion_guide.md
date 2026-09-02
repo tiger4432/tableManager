@@ -191,6 +191,30 @@ composite target, leave that field out. Which kind a target is:
 `crud.TABLE_CONFIG[target]["composite_key_source"]` — `None` means the fourth.
 Measured 2026-09-02: of 44 declared tables, 29 declare a composite source.
 
+🔴 **And the other fifteen tables want the opposite, which is why this is worth
+spelling out.** On a target that declares `business_key` but no
+`composite_key_source`, the framework takes nothing from `updates`:
+`assemble_composite_business_key` returns at once when there is no composite
+source, and `_get_or_create_row` resolves identity from `row_id` and
+`business_key_val` alone — it never reads `updates[key_col]`. Putting the key
+column in `updates` and leaving `business_key_val` unset therefore gives the
+write **no identity at all**:
+
+```
+composite target      emit the source columns, leave business_key_val alone
+non-composite target  set business_key_val yourself; the key column in `updates`
+                      is NOT lifted into it
+```
+
+The failure is silent in the way that costs the most. Nothing raises, the row
+lands, and the upsert simply cannot find it again — so every run inserts another
+copy of the same logical row. `unfilled_key_columns` answers `[]` for such an
+item (measured 2026-09-02 on `lot_slot_wafer`), so the pre-write gate does not
+catch it either. This is the same shape as a key whose declaration changed under
+it: rows accumulate, no error is ever reported, and the duplicates are found much
+later by someone counting.
+
+
 This opt-in is keyed on ONE thing: the outbox payload's `source_name` being
 `chain_ingestion` (`_rule_accepts_event`). Any automated pass that writes rows
 without going through the chain worker must therefore label its writes, or its
