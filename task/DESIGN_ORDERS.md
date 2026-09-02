@@ -12413,3 +12413,42 @@ admin.html:16 주석: 「디자인 토큰은 tokens.css(SSOT, admin.js가 임포
 🔴 import 를 걷어내면 번들러가 그 CSS 를 «안 넣을» 수 있습니다. 그러면 화면이 민무늬가 됩니다
    그건 「하니스가 초록인데 화면이 깨진」 상태이고, 이 저장소가 이미 맞은 부류입니다
 ```
+
+---
+
+# 🔴 [총괄 정정] `admin.js` 는 CSS 를 «import 합니다» — 제 수가 틀렸습니다 (2026-09-02 22:3x)
+
+지난 지시서 끝에 제가 이렇게 적었습니다:
+```
+「admin.html:16 주석은 admin.js 가 tokens.css 를 임포트한다는데, admin.js 의 «첫 4줄»엔 0 입니다
+  => 주석이 낡았거나 아래쪽에서 import 하거나 — 확인하고 가십시오」
+```
+**주석이 맞고 제가 틀렸습니다.** `admin.js:5` 에 `import './tokens.css';` 가 있습니다.
+제가 «네 줄»만 보고 「0」이라 적었습니다 — 부분집합으로 부재를 판정한 자리입니다.
+확인 과제 하나를 없애 드립니다. `admin.html` 주석은 손대지 마십시오.
+
+## 그래서 ③ 「나머지 대상」의 «실제» 벽 목록입니다 (design 브랜치 실측, `49725ea3` 기준)
+```
+CSS 를 아직 import 하는 모듈 «여섯»
+   admin.js:5              tokens
+   enrichment.js:18,19,20  ag-grid 둘 + tokens
+   graph_viewer.js:16      tokens
+   main.js:2~5             ag-grid 둘 + tokens + style
+   ontology_explorer.js:1  자기 css
+   trace.js:14             tokens
+🔴 그리고 «간접» 벽 하나  tokens.css:21 이 `@import './ledger_console.css'` 를 합니다
+                        -> tokens.css 를 import 하는 여섯은 «전부» 같은 벽입니다
+=> ③ 은 「일곱 대상」이 아니라 «이 여섯 모듈»이고, 처방은 ①과 «같은 처방» 하나입니다
+   (JS 에서 걷어내고 그 화면의 html 에 <link>. map_editor2.html 이 본보기)
+```
+⛔ 다만 «지금 라운드에 넣지 마십시오» — ① 이 착지했고 ② (27건 전환)가 남았습니다.
+   ③ 은 그 뒤이고, 화면이 여섯이라 «화면마다» 빌드 후 CSS 실렸는지 확인해야 합니다.
+
+## ✅ 총괄이 «직접» 건 게이트 — ① 통과입니다 (`49725ea3`)
+```
+빌드 산출  dist/map_editor.html 이 세 시트를 «해시된 자산»으로 참조합니다
+          tokens 7,590B · map_editor 14,945B · style 45,734B   -> «민무늬 아님»
+내용 확인  map_editor css 첫머리에 실제 규칙 (.main-layout · --plan-sidebar-w · #plan-sidebar …)
+남은 import  map_editor.js · transfer_plan.js 에 CSS import «0»
+```
+🔴 제가 경고했던 「초록인데 민무늬」는 «일어나지 않았습니다». ② 로 가셔도 됩니다.
