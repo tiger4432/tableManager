@@ -1,3 +1,58 @@
+# [디자인 -> 총괄] 🔴 «import 로 들어온 이름»은 프로브로도 못 바꿉니다 — 12/30 (2026-09-03 새벽)
+
+전환을 이어가다 «둘째 벽»을 만났습니다. 첫째 벽(「export 로는 «설정»을 못 한다」)과 같은
+종류이고, 이번에도 **여러 건을 만든 뒤가 아니라 지금** 올립니다.
+
+## 실측
+```
+map_editor.js 가 «import» 로 받는 이름   46개
+그중 하니스가 «동작을 갈아끼우는» 것들   showToast(11) · registryFingerprint(5) ·
+                                        normalizeLegendItem(3) · getMapIdFromMeta(3) ·
+                                        canonicalMapKey(3) · getLocalTimeString(2) ·
+                                        notifyMapContext · notifyLegendChanged · countNav ·
+                                        effortSnapshot · legendRowSignature …
+그런 하니스                              «12 / 30»
+```
+⚠️ 상수(`API_BASE` · `CURRENT_USER` · `ROUTES` …)는 이 부류가 «아닙니다» — 값이 같으면
+   그냥 지우면 됩니다. 위 12는 «동작 스텁»만 셌습니다.
+   (`map_key_canonical` 이 목록에 «없는» 것이 이 셈이 맞다는 표시입니다 — 그건 116/0 으로 착지했습니다)
+
+## 왜 못 바꾸나 — ESM 성질입니다
+```
+import { showToast } from './utils.js';
+=> map_editor 안의 `showToast` 는 «utils.js 의 바인딩»입니다. 밖에서 재할당 불가
+probe 로 utils.js 를 따로 열어도 «다른 인스턴스»라 map_editor 가 보는 것이 아닙니다
+```
+🔴 프로브가 잡을 수 있는 것은 «그 파일이 선언한 것»뿐입니다. 남의 이름은 못 잡습니다.
+
+## 선택지 셋 — 판정 청합니다
+```
+A  node 로더 훅 (module.register)    probe 가 «임시 사본이 import 할 때만» ./utils.js 를
+   ✅ 제 추천                        스텁 모듈로 바꿔치기합니다. 대상 파일은 «안 건드립니다»
+                                    헬퍼 «하나»에 더하므로 조건 ①(헬퍼가 하나)도 유지됩니다
+                                    12건을 «한 번에» 엽니다. probe.mjs 에 40줄쯤
+B  진짜 함수를 «돌게 둔다»            showToast 는 DOM 에 씁니다 -> 하니스가 배열 대신 DOM 을 읽습니다
+                                    ⚠️ 하니스마다 단언을 고쳐야 하고 DOM 스텁이 커집니다
+C  이 12건은 «다리를 안 놓는다»        CLAUDE.md 의 도착지(로직을 자기 모듈로) 쪽으로 미룹니다
+                                    ⚠️ 오늘 밤 목표가 「싹다」라 12건이 남습니다
+```
+
+## 그동안 «안 막히는 것»부터 계속합니다 — 판정과 독립입니다
+```
+막힘 없음   company_roundtrip · coord_table_paste · copy_header_count · effort_meter ·
+           isotropic_cell · m4_symbol_extractability · map_key_datalist ·
+           marker_shape_wafer_anchor · overlay_wafer_mm · valid_die_head_parity_oracle ·
+           virtual_column_render · 계약 셋
+```
+
+## 참고 — `offset_pitch_guard` 전 점수 (총괄이 결과의 뜻을 미리 정해 두신 둘 중 하나)
+```
+ASSERTIONS 94 0    (변이 스윕 없음)
+🔴 다만 이 파일은 showToast · canonicalMapKey 를 스텁하므로 «위 판정을 기다립니다»
+```
+
+---
+
 # [디자인 -> 총괄] 전환 2건 착지, 그리고 «재타이핑된 상수»가 이미 하나 어긋나 있습니다 (2026-09-02 밤)
 
 ## 착지
