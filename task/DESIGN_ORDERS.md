@@ -11779,3 +11779,76 @@ GET /admin/chain/rules  ->  require_admin_token   (main.py:4547)
                                    (접힘에서 칩이 안 보여도 한 번 눌러 «전부» 봅니다)
 다음 지시까지 쉬십시오
 ```
+
+---
+
+# 🆕 [총괄] **재번역 줄은 세로 · 새 UI 는 «이미 있는» 드롭다운 결로** (소유자 2026-09-02 11:5x)
+
+## 소유자 지시
+> 「확인했고 재번역 리스트는 **가로로 버튼 펼치지 말고 세로로** 해줘
+>  그리고 **새로 만든 ui들 버튼이나 마진등 기존 스타일 맞게** 디자인」
+
+## 🔴 둘은 «한 가지»입니다 — 기존 스타일이 이미 세로입니다
+
+총괄 실측 — 왜 가로로 흐르나:
+```
+.redo-panel__group  { padding: 3px 0; }        <- display 를 «안 정합니다»
+줄을 무엇으로 그리나  redo_banner.js — pressable 이면 <button>, 아니면 <div>
+  토큰 «없음» -> div      = block   -> 세로 ✅  (총괄이 본 화면이 이것입니다)
+  토큰 «있음» -> button   = inline-block -> «가로로 흐릅니다» ❌ (소유자가 본 화면)
+=> 같은 클래스가 «어느 태그에 붙느냐»로 배치가 갈립니다
+```
+🔴 **그래서 토큰 없는 우리 둘은 이 결함을 볼 수가 없었습니다.** 배선은 표식으로 확인하셨지만
+«배치»는 토큰이 있어야 나타납니다. 다음부터 토큰 갈래는 «배치까지» 재야 합니다.
+
+## 그리고 이 저장소엔 «이미» 드롭다운 결이 있습니다
+```
+.glass-dropdown-panel   top calc(100%+8px) · padding 8px · min-width 180px
+                        display:flex · flex-direction: «column» · gap 4px
+                        box-shadow var(--shadow-pop) · z-index 1000
+.dropdown-item          display:flex · padding 8px 12px · border-radius 6px
+                        border:none · background:transparent · text-align:left · width:100%
+                        :hover { background var(--surface-hover); color var(--text) }
+새로 만든 .dropdown-panel  padding 10px 12px · z-index «900»
+                        flex-direction «없음» · gap «없음» · box-shadow «없음»
+```
+=> 「기존 스타일 맞게」의 답이 여기 있습니다. **결을 새로 정하지 말고 이것을 쓰십시오.**
+
+## 만들 것
+```
+① 판          기존 드롭다운 결을 씁니다 (column · gap · shadow · z-index · padding)
+              🔴 «방향»은 각 판이 선언합니다 — 재번역/체인은 column, 필터 칩 판은 «wrap»입니다
+                 (칩은 가로로 감싸는 게 맞습니다. 그건 결함이 아닙니다)
+② 줄          `.dropdown-item` 의 결로 — width 100% · text-align left · hover · 같은 padding
+              🔴 button 이든 div 든 «같아 보여야» 합니다. 토큰 유무로 모양이 달라지면 안 됩니다
+③ 「Open in admin」 · 「+N 필터」 · 「전체 해제」
+              지금 서로 결이 다릅니다. 기존 버튼 규칙에 맞추십시오
+              (「+N 필터」와 「전체 해제」는 이미 서로 같습니다 — 그 둘은 «그대로 두십시오»)
+```
+
+## 그대로인 것
+```
+⛔ 동작 «0» — 여는 것 · 닫는 것 · 누르면 도는 것 · 히트테스트 결과 전부 그대로
+⛔ 필터 칩 판의 «감싸기» — 칩은 가로로 감싸는 것이 맞습니다
+⛔ 서버 · 선언 · 원장 — 0줄
+⛔ 접힘 상태의 수 (칩1 · 「+2 필터」 · 1줄 · 헤더 52 · 그리드 78)
+```
+
+## 게이트
+```
+① 재번역 판을 «토큰이 있는 갈래»로 그려서 줄이 «세로»일 것
+   🔴 하니스로 재십시오 — hasToken() 을 참으로 준 상태에서 줄의 top 이 «전부 달라야» 합니다
+   (지금 그 단언이 없어서 이 결함이 통과했습니다. 그것을 «판별식»으로 넣으십시오)
+② 토큰 있음 / 없음 두 갈래의 줄이 «같은 자리·같은 크기»일 것 — 모양이 갈리면 안 됩니다
+③ 무회귀: 접힘 칩1·「+2 필터」·1줄 · 헤더 52 · 그리드 top 78
+          펼침 1280 칩 3 전부 · 세 ✕ elementFromPoint 히트 · 그 픽셀 눌러 그 필터만 삭제
+④ 닫힘 넷 (안쪽 유지 · 'a' 유지 · Esc 닫힘 · 바깥 닫힘) 그대로
+⑤ 빌드 ✓ built · dist 같이 커밋
+```
+
+## 멈춤 조건
+```
+① 기존 `.glass-dropdown-panel` 을 «재사용할 수 없다»고 판단되면 멈추고 «왜»를 보고
+   -> 또 평행한 결을 하나 더 만드는 것이 이 지시가 막으려는 것입니다
+② 동작이 바뀌어야 결이 맞는다면 멈추고 보고 — 이 라운드는 «표현»입니다
+```
