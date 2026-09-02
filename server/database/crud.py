@@ -2258,6 +2258,30 @@ def _find_business_key_conflict(db: Session, table_model: Any, new_bk_val: str, 
     ).first()
 
 
+def compose_business_key(table_name: str, values) -> str:
+    """These values, joined the way THIS table declares - the one spelling of an identity.
+
+    🔴 THIS IS A DATA-INTEGRITY FUNCTION, NOT A TIDINESS ONE. Four places used to compose
+    a composite `business_key_val`, and the day two of them disagreed the same row would
+    carry two identities with NOTHING raising: one write matches an existing row, the next
+    creates a second, and both look like ordinary rows afterwards.
+
+    🔴 AND IT DELIBERATELY DOES NOT JUDGE BLANKNESS. The four callers do four DIFFERENT
+    things when a component is missing - refuse to build a key, fall back to a
+    caller-supplied one, produce `None`, and compose the partial key anyway (the last is
+    the owner's ruling of 2026-08-05: work with whatever key survived). Those four are not
+    an accident to be tidied into one; folding a blank check in here would silently
+    reverse that ruling. What is shared is the SPELLING - the separator, the order, and
+    `clean_str_value` - and nothing else.
+
+    `values` arrives already ordered by `composite_key_source`, because the material
+    differs per caller (a payload, a row, a decision-key map) and unifying THAT would mean
+    telling three callers to fetch what they already have.
+    """
+    separator = TABLE_CONFIG.get(table_name, {}).get("composite_key_separator", "_")
+    return separator.join(clean_str_value(v) for v in values)
+
+
 def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
     """Fill in `business_key_val` from the payload's own column values, for a table
     whose business key is a join of other columns (`composite_key_source`).
@@ -2293,8 +2317,9 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     if _unfilled_composite_parts(composite_src, update_item.updates):
         return False
 
-    vals = [clean_str_value(update_item.updates.get(col)) for col in composite_src]
-    computed_key = config.get("composite_key_separator", "_").join(vals)
+    # The blank check above is THIS caller's policy; the join below is everyone's.
+    computed_key = compose_business_key(
+        table_name, [update_item.updates.get(col) for col in composite_src])
     update_item.business_key_val = computed_key
     if key_col and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
@@ -2578,7 +2603,6 @@ def apply_row_update_internal(
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
-    composite_sep = config.get("composite_key_separator", "_")
 
     # 인제션 매칭을 위해 updates 기반 선제 키 조립
     # [P6] The batch path now does this for every item BEFORE it builds the prefetch
@@ -2909,9 +2933,12 @@ def apply_row_update_internal(
     if composite_src and key_col:
         is_src_changed = any(col in changed_cols for col in composite_src)
         if is_src_changed or is_new:
-            vals = [clean_str_value(getattr(row, col, None)) for col in composite_src]
-            if all(v != "" for v in vals):
-                new_bk_val = composite_sep.join(vals)
+            raw_vals = [getattr(row, col, None) for col in composite_src]
+            # 🔴 이 자리의 빈 값 판정은 `all(v != "")` 이고, 그것이 «이 호출자의 정책»이다.
+            #    ①은 is_blank_value 로 묻는다 - 두 술어를 하나로 맞추는 것은 별건(S2)이고
+            #    여기서 손대면 이 라운드가 「조립 통합」이 아니라 «동작 변경»이 된다.
+            if all(clean_str_value(v) != "" for v in raw_vals):
+                new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
                 new_bk_val = update_item.business_key_val if (is_new and update_item.business_key_val) else None
@@ -4431,12 +4458,13 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         table_info = TABLE_CONFIG.get(table_name, {})
         composite_src = table_info.get("composite_key_source")
         key_col = table_info.get("business_key")
-        composite_sep = table_info.get("composite_key_separator", "_")
 
         if composite_src and key_col and col_name in composite_src:
-            vals = [clean_str_value(getattr(row, col, None)) for col in composite_src]
-            if all(v != "" for v in vals):
-                new_bk_val = composite_sep.join(vals)
+            raw_vals = [getattr(row, col, None) for col in composite_src]
+            # 이 호출자의 정책은 「하나라도 비면 None」이다 - 위 ②의 폴백과 다르고,
+            # 다른 채로 두는 것이 이 라운드의 요구다.
+            if all(clean_str_value(v) != "" for v in raw_vals):
+                new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 new_bk_val = None
 
