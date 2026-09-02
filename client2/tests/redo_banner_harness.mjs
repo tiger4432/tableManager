@@ -10,6 +10,11 @@
 // injected function. That is what lets this harness score the whole feature with a fake, and
 // it is why gate ⑥ could ask for no real token in here.
 //
+// 🔴 SOURCE IS THE PART PLUS `dropdown.js`, because that is what actually runs. The dismiss
+// behaviour moved there when the filter strip became the second thing needing it, and a harness
+// that kept reading one file would have gone quiet on the two mutants that live in the other —
+// which is the same as not having them.
+//
 // The second is that the two buttons group in DIFFERENT PLACES. The ledger's groups come from
 // the declaration this page already has, so they are assembled here. The chain's groups are one
 // per rule and the rule list is behind the token, so this page hands over the keys and lets
@@ -23,7 +28,13 @@ import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'redo_banner.js');
-const SOURCE = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+const DROPDOWN_PATH = join(HERE, '..', 'src', 'dropdown.js');
+const read = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+// The dependency is INLINED, not stubbed: `load()` evaluates a plain script, so an import
+// statement would not survive it -- and a stub would score a dismiss that is not the one
+// shipping. Two of the mutants live in that file now.
+const SOURCE = read(DROPDOWN_PATH) + '\n'
+  + read(SRC_PATH).replace(/^import .*$/gm, '');
 
 let passed = 0;
 let failed = 0;
@@ -439,11 +450,12 @@ const DEFECTS = [
       + "groups: values.map((v) => ({ label: v })) };")],
   ['M9 closing leaves the document listeners attached',
     swap('    if (this.dismiss) this.dismiss();', '    if (false) this.dismiss();')],
+  // M10 and M11 live in `dropdown.js` now. They are still scored because SOURCE is what runs.
   ['M10 a click INSIDE the part closes it too',
-    swap('      while (node) { if (node === this.host) return; node = node.parentNode; }',
-      '      while (node) { node = node.parentNode; }')],
+    swap('    while (node) { if (node === host) return; node = node.parentNode; }',
+      '    while (node) { node = node.parentNode; }')],
   ['M11 any key closes it, not just Escape',
-    swap("if (event && event.key === 'Escape') this.close();", 'this.close();')],
+    swap("if (event && event.key === 'Escape') close();", 'close();')],
   ['M12 the line is drawn as a button but never wired to run',
     swap("        line.addEventListener('click', () => this.fire(index, assembled.op, entry.params));",
       '        line.type = \'button\';')],

@@ -24,6 +24,10 @@
 // NO DOM GLOBALS, NO NETWORK. 맨 node 문서 스텁으로 채점됩니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// 🔴 닫는 방법은 «한 벌»입니다. 필터 칩 펼침이 둘째로 같은 것을 필요로 했고, 두 번째를
+//    손으로 그리는 대신 올렸습니다 (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기).
+import { watchForDismiss } from './dropdown.js';
+
 /** 고른 행들이 이 컬럼에서 «실제로 들고 있는» 값. 없는 값은 지어내지 않고 «셉니다».
  *
  * 🔴 «읽는 법»을 주입받습니다 (2026-08-31 라이브 실측). 이 그리드는 행을 «봉투»로 들고
@@ -97,23 +101,9 @@ export class RedoBanner {
 
   /** 바깥 클릭과 Esc 로 닫힙니다. 「없어지지도 않는다」가 소유자 지적의 절반이었습니다. */
   watchForDismiss() {
-    if (this.dismiss || !this.doc || !this.doc.addEventListener) return;
-    const onKey = (event) => { if (event && event.key === 'Escape') this.close(); };
-    const onDown = (event) => {
-      // 자기 div 안을 누른 것은 «바깥»이 아닙니다.
-      let node = event && event.target;
-      while (node) { if (node === this.host) return; node = node.parentNode; }
-      this.close();
-    };
-    this.doc.addEventListener('keydown', onKey);
-    this.doc.addEventListener('mousedown', onDown);
-    this.dismiss = () => {
-      if (this.doc.removeEventListener) {
-        this.doc.removeEventListener('keydown', onKey);
-        this.doc.removeEventListener('mousedown', onDown);
-      }
-      this.dismiss = null;
-    };
+    if (this.dismiss) return;
+    const detach = watchForDismiss(this.doc, this.host, () => this.close());
+    if (detach) this.dismiss = () => { detach(); this.dismiss = null; };
   }
 
   close() {
@@ -205,7 +195,7 @@ export class RedoBanner {
   panel(rows, sourceRow) {
     const doc = this.doc;
     const box = doc.createElement('div');
-    box.className = 'redo-panel';
+    box.className = 'dropdown-panel redo-panel';
     box.dataset.redoPanel = this.open;
 
     const assembled = this.open === 'ledger'

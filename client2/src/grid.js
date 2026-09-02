@@ -2,6 +2,9 @@ import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
 import { elements } from './dom.js';
+// 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
+//    그리지 않는 것이 이 저장소의 상설입니다.
+import { watchForDismiss } from './dropdown.js';
 import { handleCellEdit, fetchData } from './api.js';
 import { loadHistory } from './timeline.js';
 import {
@@ -180,6 +183,9 @@ let chipsMoreWired = false;
 // Whether the operator has opened the fold. Module-level like `clearAllWired` above, because
 // this module is the screen's own strip and not one of the mountable parts.
 let chipsOpen = false;
+// 펼쳐졌을 때 칩이 사는 판. 스트립의 자기 div «안»에 있지만 위치 조상은 헤더입니다.
+let chipsPanel = null;
+let chipsDetach = null;
 // Below this the truncated chip is a sliver that names nothing, and `+N 필터` alone says more.
 const READABLE_CHIP_PX = 90;
 
@@ -266,6 +272,8 @@ export function renderFilterBar() {
 
   if (chips) {
     chips.replaceChildren();
+    // 판이 열려 있으면 그 안의 칩도 «옛것»입니다. 안 지우면 새 칩과 옛 칩이 둘 다 남습니다.
+    if (chipsPanel) chipsPanel.replaceChildren();
     colIds.forEach(colId => {
       const chip = document.createElement('span');
       chip.className = 'filter-chip';
@@ -293,10 +301,7 @@ export function renderFilterBar() {
   const more = elements.filterChipsMore;
   if (more && !chipsMoreWired) {
     chipsMoreWired = true;
-    more.addEventListener('click', () => {
-      chipsOpen = !chipsOpen;
-      foldFilterChips();
-    });
+    more.addEventListener('click', () => setChipsOpen(!chipsOpen));
   }
 
   const clearAll = elements.filterClearAll;
@@ -329,29 +334,77 @@ export function renderFilterBar() {
  * re-measuring the strip sixty times a second to answer a question only a RESIZE can change is
  * work with nothing to report. `onGridSizeChanged` is where the width actually moves.
  */
+/** 펼침을 켜고 끕니다. 바깥 클릭과 Esc 는 드롭다운과 «같은 함수»가 답니다.
+ *
+ * 🔴 「안쪽」의 경계는 «바»입니다 -- 판도 「+N 필터」 버튼도 그 안에 있으므로 뱃지의 ✕ 를
+ *    눌러도 닫히지 않고, 버튼을 다시 누르는 것이 «바깥 클릭»으로 세어지지도 않습니다.
+ */
+export function setChipsOpen(next) {
+  chipsOpen = !!next;
+  if (chipsDetach) { chipsDetach(); chipsDetach = null; }
+  if (chipsOpen) {
+    chipsDetach = watchForDismiss(document, elements.gridFilterBar, () => setChipsOpen(false));
+  }
+  foldFilterChips();
+}
+
+/** 펼친 판을 버튼 «아래»에 앉힙니다. 칩은 «옮겨» 옵니다 -- 다시 그리면 개별 ✕ 를 다시
+ *  배선해야 하고, 그러면 이미 도는 것을 두 벌로 만드는 셈입니다. */
+function showChipsPanel(all, bar, more) {
+  if (!bar) return;
+  if (!chipsPanel) {
+    chipsPanel = document.createElement('div');
+    // 🔴 스트립의 자기 div «안»입니다 (조립식). 그런데 그 안에 position 을 가진 조상을 두면
+    //    스트립의 `overflow: hidden` 이 판을 잘라 내고, 잘린 판은 «보이지도 눌리지도» 않습니다.
+    //    그래서 자리는 헤더 좌표로 «JS 가» 씁니다.
+    chipsPanel.className = 'dropdown-panel filter-chips-panel';
+    bar.appendChild(chipsPanel);
+  }
+  chipsPanel.replaceChildren(...all);
+  const anchor = more.getBoundingClientRect();
+  const origin = (chipsPanel.offsetParent || document.body).getBoundingClientRect();
+  chipsPanel.style.top = `${Math.round(anchor.bottom - origin.top + 6)}px`;
+  // 오른쪽 끝을 버튼에 맞춥니다. 왼쪽에 맞추면 좁은 창에서 판이 화면 밖으로 나갑니다.
+  const width = chipsPanel.getBoundingClientRect().width;
+  const wanted = anchor.right - origin.left - width;
+  const rightmost = (document.documentElement.clientWidth || 0) - origin.left - width - 8;
+  chipsPanel.style.left = `${Math.round(Math.max(8, Math.min(wanted, rightmost)))}px`;
+}
+
+/** 칩을 스트립으로 돌려놓고 판을 치웁니다. 판만 숨기면 다음 접힘이 «빈 스트립»을 잽니다. */
+function hideChipsPanel(chips, all) {
+  if (!chipsPanel) return;
+  chips.append(...all);
+  chipsPanel.remove();
+  chipsPanel = null;
+}
+
 export function foldFilterChips() {
   const chips = elements.filterChips;
   const more = elements.filterChipsMore;
   const bar = elements.gridFilterBar;
   if (!chips || !more) return;
-  const all = Array.from(chips.children);
+  // 🔴 칩은 접힘일 땐 «스트립»에, 펼침일 땐 «아래 판»에 삽니다. 어디에 있든 모읍니다 --
+  //    한 곳만 보면 리사이즈로 다시 불렸을 때 판을 통째로 «비워» 버립니다.
+  const all = Array.from(chips.children)
+    .concat(chipsPanel ? Array.from(chipsPanel.children) : []);
   all.forEach(chip => { chip.style.display = ''; });
-  chips.classList.toggle('is-open', chipsOpen);
 
   // 🔴 How wide a chip may be. A chip may never reach past the bar, because the bar clips and
   //    the ✕ is at the chip's RIGHT end -- a chip that overruns loses its delete control
   //    entirely, and that filter can then only be cleared by clearing all of them. The label's
   //    ellipsis, already configured, does the rest once the chip is allowed to be narrow.
-  if (chipsOpen) {
+  if (chipsOpen && all.length) {
     more.textContent = '접기';
     more.title = '한 줄로 접기';
-    more.style.display = all.length ? '' : 'none';
-    // Opened, the strip scrolls, so a chip no longer has to fit the visible width -- it has to
-    // be READABLE, and 260px is the width the stylesheet already chose for that. Nothing is
-    // measured here on purpose: every measured cap went stale, because the bar sizes around
-    // contents this same function is deciding.
-    chips.style.setProperty('--chip-cap', '260px');
+    more.style.display = '';
+    showChipsPanel(all, bar, more);
     return;
+  }
+  hideChipsPanel(chips, all);
+  if (!all.length && chipsOpen) {
+    chipsOpen = false;
+    if (chipsDetach) { chipsDetach(); chipsDetach = null; }
   }
   // Folded, a chip may use this span, which is where it is clipped -- and `100%` of the span is
   // a question CSS answers at draw time, so it cannot go stale the way a measured number can.
