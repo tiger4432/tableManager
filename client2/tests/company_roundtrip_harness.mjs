@@ -19,6 +19,7 @@
 // FAILS LOUDLY (exit 2) when a function cannot be extracted. A harness that goes green
 // because it stopped finding the code is worse than no harness — its green gets cited.
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -43,6 +44,11 @@ const readSrc = (...p) => readFileSync(join(...p), 'utf8').replace(/\r\n/g, '\n'
 const WORK_MAP = readSrc(ROOT, 'client2', 'src', 'map_editor.js');
 const WORK_DOE = readSrc(ROOT, 'client2', 'src', 'doe_bands.js');
 const WORK_TSV = readSrc(ROOT, 'client2', 'src', 'tsv.js');
+// The probe imports a FILE. The `WORK_*` texts above stay: the mutation anchors are checked
+// against them, and reading a file to ask "is this string here, exactly once" is not slicing.
+const SRC_MAP = join(ROOT, 'client2', 'src', 'map_editor.js');
+const SRC_DOE = join(ROOT, 'client2', 'src', 'doe_bands.js');
+const SRC_TSV = join(ROOT, 'client2', 'src', 'tsv.js');
 
 function sliceBalanced(src, startIdx, open, close) {
   let i = src.indexOf(open, startIdx);
@@ -151,30 +157,47 @@ const MAP_FNS = [
 const MAP_CONSTS = ['UNLISTED_VALUE_FILL', 'HDR_COL_PX', 'HDR_PAD_PX', 'HDR_CHAR_PX',
   'HDR_MIN_SPAN', 'HDR_MAX_SPAN', 'HDR_GAP_COLS', 'pasteBlank', 'pasteAt'];
 
-function buildSandbox(src, label, headerOn, elOver, ctxOver) {
-  const parts = [];
-  MAP_FNS.forEach(n => parts.push(fnFrom(src, label, n)));
-  MAP_CONSTS.forEach(n => parts.push(constFrom(src, label, n)));
-  // The real TSV reader and the real DOE column roster — no second parser, no second roster.
-  ['QUOTE', 'TAB'].forEach(n => parts.push(constFrom(WORK_TSV, 'tsv.js', n)));
-  // [MEDIUM-2] `serializeTsv`/`quoteField` come from tsv.js too — the copy path now WRITES
-  // with the same module the paste path READS with, so `parseTsv(serializeTsv(g)) === g` is
-  // the property under test rather than an assumption.
-  ['normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField', 'serializeTsv']
-    .forEach(n => parts.push(fnFrom(WORK_TSV, 'tsv.js', n)));
-  ['ZONES', 'ZONE_LABEL', 'DOE_COLUMNS', 'IGNORED_HEADERS'].forEach(n => parts.push(constFrom(WORK_DOE, 'doe_bands.js', n)));
-  ['parseMaterialList', 'columnIdByHeader', 'looksLikeHeader', 'leadingBlankColumnDropped', 'mapPastedGrid']
-    .forEach(n => parts.push(fnFrom(WORK_DOE, 'doe_bands.js', n)));
-
+// 🔴 NOTHING IS CUT OUT ANY MORE, from any of the three files. map_editor.js, tsv.js and
+// doe_bands.js were sliced into one sandbox; all three are imported whole now. Slicing scores
+// the SHAPE OF THE LETTERS: the day one of those functions calls a helper that is not on the
+// list, this harness reddens on correct code and names the missing symbol, not the change.
+//
+// `showToast` and `serializeTsv` are IMPORTS of map_editor.js -- no probe can reach an import
+// binding -- so they come through the loader hook. The real TSV writer is still what the copy
+// path uses, which is the point of [MEDIUM-2]: `parseTsv(serializeTsv(g)) === g` stays a
+// property under test rather than an assumption.
+//
+// `src` is a MUTATE FUNCTION now (or null): a mutant is a whole module, so one that fails to
+// parse fails loudly instead of counting as caught.
+async function buildSandbox(src, label, headerOn, elOver, ctxOver) {
   const captured = { html: null, text: null, toasts: [], alerts: [], confirms: [], fetches: [] };
-  // The legend-mutation gateways are NOT under test here (they are map_editor's single
-  // legend gate and the DOE panel's paste already scores them). They are RECORDERS, so the
-  // assertion can be made at the boundary: exactly which patch reaches the gate.
+  // The legend-mutation gateways are NOT under test here (map_editor's single legend gate and
+  // the DOE panel's paste already score them). They are RECORDERS, so the assertion can be
+  // made at the boundary: exactly which patch reaches the gate.
   const recorded = { added: [], updates: [] };
-  const ctx = {
-    console: Object.assign(Object.create(console), { debug: () => {} }),
+
+  globalThis.document = globalThis.document || {
+    getElementById: () => null, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+  // INV-F1ⓑ-4 evidence: any server call at all during a paste is a failure. The shim RECORDS
+  // instead of throwing, so the assertion can print the request list.
+  globalThis.fetch = (...args) => {
+    captured.fetches.push(String(args[0]));
+    return Promise.reject(new Error('no network in harness'));
+  };
+  globalThis.confirm = (msg) => { captured.confirms.push(msg); return true; };
+  globalThis.alert = (msg) => { captured.alerts.push(msg); };
+
+  // What this harness stages on map_editor.js. `state` is `Object.keys` of it, so a name the
+  // module does not declare is a loud failure rather than a property nobody reads.
+  const stage = {
     currentRotation: ROT, currentSide: SIDE,
-    validDie: null, boundingBoxCache: {}, el: makeEl(headerOn, elOver),
+    validDie: null, boundingBoxCache: {},
     gridData: {}, gridCells2D: {}, legend: [],
     loadedFCells: new Set(),
     selectedTable: 'bonding_map',
@@ -190,44 +213,83 @@ function buildSandbox(src, label, headerOn, elOver, ctxOver) {
     updateLegendCounts: () => {},
     scheduleCellDraft: () => {},
     persistLegend: () => {},
-    __captured: captured,
-    __recorded: recorded,
+    writeClipboardRich: (html, text) => { captured.html = html; captured.text = text; return true; },
+    autoAddLegendValue: null,        // filled below; it reads the LIVE legend off the probe
+    updateLegendRowForPanel: null,
   };
-  ctx.autoAddLegendValue = (v, d) => {
+
+  const map = (await loadWithProbe(SRC_MAP, {
+    expose: [...MAP_FNS, ...MAP_CONSTS, 'el'],
+    state: Object.keys(stage),
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => { captured.toasts.push({ msg, kind }); } },
+      './tsv.js': { serializeTsv: (...a) => tsv.serializeTsv(...a) },
+    },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'company',
+  })).probe;
+
+  // The real TSV reader and the real DOE column roster -- no second parser, no second roster.
+  const tsv = (await loadWithProbe(SRC_TSV, {
+    expose: ['QUOTE', 'TAB', 'normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField',
+             'serializeTsv'],
+    tag: 'companytsv',
+  })).probe;
+
+  const doe = (await loadWithProbe(SRC_DOE, {
+    expose: ['ZONES', 'ZONE_LABEL', 'DOE_COLUMNS', 'IGNORED_HEADERS', 'parseMaterialList',
+             'columnIdByHeader', 'looksLikeHeader', 'leadingBlankColumnDropped', 'mapPastedGrid'],
+    tag: 'companydoe',
+  })).probe;
+
+  stage.autoAddLegendValue = (v, dsc) => {
     const s = String(v);
-    if (ctx.legend.some(l => String(l.value) === s)) return false;
-    ctx.legend.push({ value: s, desc: String(d || ''), color: '#6b7280', stack: '', mat_1h: [], mat_mid: [], mat_top: [] });
-    recorded.added.push({ value: s, desc: String(d || '') });
+    if (map.legend.some(l => String(l.value) === s)) return false;
+    map.legend.push({ value: s, desc: String(dsc || ''), color: '#6b7280', stack: '',
+                      mat_1h: [], mat_mid: [], mat_top: [] });
+    recorded.added.push({ value: s, desc: String(dsc || '') });
     return true;
   };
-  ctx.updateLegendRowForPanel = (name, patch) => {
+  stage.updateLegendRowForPanel = (name, patch) => {
     recorded.updates.push({ name: String(name), patch: { ...patch } });
-    const it = ctx.legend.find(l => String(l.value) === String(name));
+    const it = map.legend.find(l => String(l.value) === String(name));
     if (!it) return { ok: false, error: 'legend 행을 찾을 수 없습니다.' };
     Object.assign(it, patch);
     return { ok: true, value: String(name) };
   };
-  // INV-F1ⓑ-4 evidence: any server call at all during a paste is a failure. The shim
-  // RECORDS instead of throwing, so the assertion can print the request list.
-  ctx.fetch = (...args) => { captured.fetches.push(String(args[0])); return Promise.reject(new Error('no network in harness')); };
-  ctx.confirm = (msg) => { captured.confirms.push(msg); return true; };
-  ctx.alert = (msg) => { captured.alerts.push(msg); };
-  ctx.showToast = (msg, kind) => { captured.toasts.push({ msg, kind }); };
-  ctx.writeClipboardRich = (html, text) => { captured.html = html; captured.text = text; return true; };
-  Object.assign(ctx, ctxOver || {});
-  vm.createContext(ctx);
-  try {
-    vm.runInContext(parts.join('\n\n')
-      + '\nglobalThis.__h = { getGridCellObject, getTransformedPhysicalConfig, getWaferBoundingBox,'
-      + ' getVisualGridDimensions, copyGridToExcel, copyHeaderAuxRows, computeLegendCounts,'
-      + ' computeNotchCell, notchMarkCell, auxHeadWords, auxHeaderInLine,'
-      + ' copyTitleText, classifyUnsavableCells, eachSavableCell,'
-      + ' readCompanyMapBlock, checkPasteAgainstFrame, applyPastedGridRows, applyPastedAuxRows,'
-      + ' pastedCellCount, serializeTsv, parseTsv };', ctx);
-  } catch (e) {
-    die(`sandbox evaluation failed for ${label} — ${e && e.message ? e.message : e}`);
-  }
-  return { ctx, H: ctx.__h, captured, recorded };
+
+  Object.assign(map, stage);
+  Object.assign(map.el, makeEl(headerOn, elOver));
+  // Per-case overrides land on the module the same way the sandbox ones used to.
+  Object.assign(map, ctxOver || {});
+  map.__captured = captured;
+  map.__recorded = recorded;
+
+  const H = {
+    getGridCellObject: map.getGridCellObject,
+    getTransformedPhysicalConfig: map.getTransformedPhysicalConfig,
+    getWaferBoundingBox: map.getWaferBoundingBox,
+    getVisualGridDimensions: map.getVisualGridDimensions,
+    copyGridToExcel: map.copyGridToExcel,
+    copyHeaderAuxRows: map.copyHeaderAuxRows,
+    computeLegendCounts: map.computeLegendCounts,
+    computeNotchCell: map.computeNotchCell,
+    notchMarkCell: map.notchMarkCell,
+    auxHeadWords: map.auxHeadWords,
+    auxHeaderInLine: map.auxHeaderInLine,
+    copyTitleText: map.copyTitleText,
+    classifyUnsavableCells: map.classifyUnsavableCells,
+    eachSavableCell: map.eachSavableCell,
+    readCompanyMapBlock: map.readCompanyMapBlock,
+    checkPasteAgainstFrame: map.checkPasteAgainstFrame,
+    applyPastedGridRows: map.applyPastedGridRows,
+    applyPastedAuxRows: map.applyPastedAuxRows,
+    pastedCellCount: map.pastedCellCount,
+    serializeTsv: tsv.serializeTsv,
+    parseTsv: tsv.parseTsv,
+  };
+  void doe;   // imported so the module's own consumers see the real roster, not a slice
+  return { ctx: map, H, captured, recorded };
 }
 
 // the app's own cell factory builds gridCells2D — the harness never hand-rolls a cell
@@ -359,8 +421,8 @@ const evidence = {};
 // three are `DOE_COLUMNS` header words — so a reader that does not insist on `VALUE` reads
 // the group band as the aux header and recovers the grid width from the wrong row.
 // Measured 2026-07-30: without this variant that mutation was GREEN.
-function runRoundTrip(src, label, variant) {
-  const sb = buildSandbox(src, label, true);
+async function runRoundTrip(src, label, variant) {
+  const sb = await buildSandbox(src, label, true);
   sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   if (variant === 'no-materials') {
     sb.ctx.legend.forEach(l => { l.mat_1h = []; l.mat_mid = []; l.mat_top = []; });
@@ -410,7 +472,7 @@ function runRoundTrip(src, label, variant) {
   return { sb, dims, paint, before, legendBefore, tsv, html, parsed, frame, verdict, gridStats, auxStats, after, cleanSlate };
 }
 
-const rt = runRoundTrip(WORK_MAP, 'working tree');
+const rt = await runRoundTrip(null, 'working tree');
 
 // ── fixture self-check: the defect axes really are live ─────────────────────────
 {
@@ -499,7 +561,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 // map-pm's own lesson: if the answer is 0, the fixture proved nothing. This reads the SAME
 // artifact one column to the right and counts the cells that change.
 {
-  const sb2 = buildSandbox(WORK_MAP, 'wrong-frame probe', true);
+  const sb2 = await buildSandbox(WORK_MAP, 'wrong-frame probe', true);
   sb2.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   buildCells(sb2);
   paintFixture(sb2);
@@ -620,7 +682,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 
 // ── a map with NO MATERIALS round-trips too (the group band is all labels) ──────
 {
-  const nm = runRoundTrip(WORK_MAP, 'no-materials', 'no-materials');
+  const nm = await runRoundTrip(null, 'no-materials', 'no-materials');
   chk('INV-F1ⓑ-3', 'no-materials: the aux header is found on the GRID row, not the group band',
     nm.parsed.gridWidth, nm.frame.visualCols);
   chk('INV-F1ⓑ-3', 'no-materials: grid round-trips', diffKeys(nm.before, nm.after).slice(0, 8), []);
@@ -646,7 +708,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 // ════════════════════════════════════════════════════════════════════════════════
 {
   const WIDE = { gridCols: inputStub(29), gridRows: inputStub(25) };
-  const sb = buildSandbox(WORK_MAP, 'prod-width', true, WIDE);
+  const sb = await buildSandbox(WORK_MAP, 'prod-width', true, WIDE);
   sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   // 🔴 The dimensions come from the APP, not from the two numbers typed above. This harness
   //    runs at rot 90, which swaps them — an earlier draft hardcoded 29x25 and built the cell
@@ -700,7 +762,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 
 // ── header-OFF copies round-trip too, and say the identity is unknown ───────────
 {
-  const off = buildSandbox(WORK_MAP, 'header-off', false);
+  const off = await buildSandbox(WORK_MAP, 'header-off', false);
   off.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   buildCells(off);
   paintFixture(off);
@@ -732,8 +794,8 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
     physWaferDia: inputStub(300), physChipX: inputStub(1), physChipY: inputStub(1),
     physOffsetX: inputStub(0), physOffsetY: inputStub(0), physEdgeMargin: inputStub(3),
   };
-  const mk = (rot) => {
-    const sb = buildSandbox(WORK_MAP, `no-mask rot${rot}`, true, NO_MASK,
+  const mk = async (rot) => {
+    const sb = await buildSandbox(WORK_MAP, `no-mask rot${rot}`, true, NO_MASK,
       { currentRotation: rot, currentSide: 'front' });
     sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
     const vc = (rot === 90 || rot === 270) ? ROWS : COLS;
@@ -750,7 +812,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   };
 
   // ① the fixture really is a no-mask frame: EVERY cell is inside, so the bbox fills the grid
-  const zero = mk(0);
+  const zero = await mk(0);
   const allInside = Object.keys(zero.sb.ctx.gridCells2D)
     .every(r => Object.keys(zero.sb.ctx.gridCells2D[r]).every(c => zero.sb.ctx.gridCells2D[r][c].inside));
   chk('P0-2', 'no-mask fixture: every cell is inside (bbox fills the grid)', allInside, true);
@@ -759,15 +821,17 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 
   // ② the notch is off grid for ALL FOUR rotations -> computeNotchCell must say null
   const perRot = {};
-  [0, 90, 180, 270].forEach(rot => {
-    const { sb } = mk(rot);
+  // `for...of`: building an env is an import, so an async callback in `forEach` would leave
+  // `perRot` empty and the comparison below would pass on a blank object.
+  for (const rot of [0, 90, 180, 270]) {
+    const { sb } = await mk(rot);
     perRot[rot] = sb.H.computeNotchCell(rot, 'front');
-  });
+  }
   chk('P0-2', 'no-mask: computeNotchCell is null for every rotation (미상 != 0)',
     perRot, { 0: null, 90: null, 180: null, 270: null });
 
   // ③ paint + copy at rot 0, then flip the screen to 180 and offer the artifact back.
-  const src0 = mk(0);
+  const src0 = await mk(0);
   let i = 0;
   Object.keys(src0.sb.ctx.gridCells2D).forEach(r => Object.keys(src0.sb.ctx.gridCells2D[r]).forEach(c => {
     i++;
@@ -777,7 +841,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   const artifact = src0.sb.captured.text;
   chk('P0-2', 'the rot-0 copy produced an artifact', typeof artifact === 'string' && artifact.length > 0, true);
 
-  const flipped = mk(180);
+  const flipped = await mk(180);
   // the same painted map, on a 180° screen (same dimensions — that is the whole hazard)
   Object.keys(src0.sb.ctx.gridData).forEach(k => { flipped.sb.ctx.gridData[k] = src0.sb.ctx.gridData[k]; });
   const parsedFlip = flipped.sb.H.readCompanyMapBlock(artifact);
@@ -817,7 +881,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 // Converse: a cell whose real value IS 'D' was silently cleared, one cell per round trip.
 // ════════════════════════════════════════════════════════════════════════════════
 {
-  const sb = buildSandbox(WORK_MAP, 'painted-notch', true);
+  const sb = await buildSandbox(WORK_MAP, 'painted-notch', true);
   sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   buildCells(sb);
   paintFixture(sb);
@@ -855,7 +919,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
     { value: 'T', desc: '1H\t비교', stack: 2 },
     { value: 'N', desc: '두 줄\n설명', stack: 5 },
   ];
-  const sb = buildSandbox(WORK_MAP, 'hostile-desc', true);
+  const sb = await buildSandbox(WORK_MAP, 'hostile-desc', true);
   sb.ctx.legend = HOSTILE.map(h => ({ ...h, color: '#888', mat_1h: [], mat_mid: [], mat_top: [] }));
   buildCells(sb);
   paintFixture(sb);
@@ -892,7 +956,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
 // to be a roster word the DOE panel's ②→① paste taught the roster (MAT/BIN/MAP/가용/...).
 // ════════════════════════════════════════════════════════════════════════════════
 {
-  const sb = buildSandbox(WORK_MAP, 'roster-collision', true);
+  const sb = await buildSandbox(WORK_MAP, 'roster-collision', true);
   sb.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
   buildCells(sb);
   paintFixture(sb);
@@ -900,8 +964,10 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
   // paint the LAST grid column of the aux-header row with each roster word in turn, copy,
   // and require the recovered width to stay correct.
   const widths = {};
-  ['1', 'BIN', 'MAT', 'MAP', 'COUNT', 'COLOR', '칠함', '가용', '사용', '잔여'].forEach(word => {
-    const s2 = buildSandbox(WORK_MAP, `roster:${word}`, true);
+  // `for...of`, not `forEach`: an async callback there is fire-and-forget, and the widths
+  // map would be read before a single env existed.
+  for (const word of ['1', 'BIN', 'MAT', 'MAP', 'COUNT', 'COLOR', '칠함', '가용', '사용', '잔여']) {
+    const s2 = await buildSandbox(WORK_MAP, `roster:${word}`, true);
     s2.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
     buildCells(s2);
     paintFixture(s2);
@@ -910,7 +976,7 @@ const rt = runRoundTrip(WORK_MAP, 'working tree');
     if (cell) s2.ctx.gridData[cell.key] = word;
     s2.H.copyGridToExcel();
     widths[word] = s2.H.readCompanyMapBlock(s2.captured.text).gridWidth;
-  });
+  }
   const wrong = Object.entries(widths).filter(([, w]) => w !== frame.visualCols);
   chk('MEDIUM-4', 'grid width is recovered correctly whatever the edge cell says', wrong, []);
   // the `value` requirement is still load-bearing on its own
@@ -998,11 +1064,11 @@ const MUTATIONS = [
 
 // ONE scorer, applied to the working tree and to every mutant. It returns the reasons a
 // round trip is wrong; an empty list is "this source behaves like the fixed one".
-function redReasons(src, label, variant) {
+async function redReasons(src, label, variant) {
   const why = [];
   let m;
   try {
-    m = runRoundTrip(src, label, variant);
+    m = await runRoundTrip(src, label, variant);
   } catch (e) {
     return [`threw: ${String(e && e.message).slice(0, 60)}`];   // a mutant that cannot run is caught
   }
@@ -1062,7 +1128,7 @@ function redReasons(src, label, variant) {
   // every rotation, and `computeNotchCell` must say `null` rather than hand back a coordinate
   // that reads as a fingerprint. Needs its own sandbox — the round-trip fixture is masked.
   {
-    const s4 = buildSandbox(src, 'probe:no-mask', true, {
+    const s4 = await buildSandbox(src, 'probe:no-mask', true, {
       physWaferDia: inputStub(300), physChipX: inputStub(1), physChipY: inputStub(1),
       physOffsetX: inputStub(0), physOffsetY: inputStub(0), physEdgeMargin: inputStub(3),
     }, { currentRotation: 0, currentSide: 'front' });
@@ -1071,8 +1137,10 @@ function redReasons(src, label, variant) {
   }
 
   // MEDIUM-4: a grid cell whose TEXT is a roster/aux word must not steal the recovered width.
-  ['BIN', 'COUNT'].forEach(word => {
-    const s2 = buildSandbox(src, `probe:${word}`, true);
+  // `for...of`: an async callback in `forEach` is fire-and-forget and this probe would
+  // report on envs nobody built.
+  for (const word of ['BIN', 'COUNT']) {
+    const s2 = await buildSandbox(src, `probe:${word}`, true);
     s2.ctx.legend = JSON.parse(JSON.stringify(LEGEND));
     buildCells(s2); paintFixture(s2);
     const cell = s2.ctx.gridCells2D[0] ? s2.ctx.gridCells2D[0][f.visualCols - 1] : null;
@@ -1080,10 +1148,10 @@ function redReasons(src, label, variant) {
     s2.H.copyGridToExcel();
     const w = s2.H.readCompanyMapBlock(s2.captured.text).gridWidth;
     if (w !== f.visualCols) why.push(`edge cell '${word}' shifts the recovered width (${w} != ${f.visualCols})`);
-  });
+  }
   // MEDIUM-2: a DESC carrying a quote and a tab must survive the artifact verbatim.
   {
-    const s3 = buildSandbox(src, 'probe:hostile', true);
+    const s3 = await buildSandbox(src, 'probe:hostile', true);
     s3.ctx.legend = [{ value: '1', color: '#888', desc: '"고온"\t조건', stack: 3, mat_1h: [], mat_mid: [], mat_top: [] }];
     buildCells(s3); paintFixture(s3);
     s3.H.copyGridToExcel();
@@ -1104,23 +1172,29 @@ function redReasons(src, label, variant) {
 
 // The scorer must be SILENT on the real source, or every mutant is "caught" by a defect the
 // working tree already has. Both variants.
-['default', 'no-materials'].forEach(v => {
-  chk('harness', `scorer is silent on the working tree (${v})`, redReasons(WORK_MAP, `self-check:${v}`, v), []);
-});
+for (const v of ['default', 'no-materials']) {
+  chk('harness', `scorer is silent on the working tree (${v})`,
+    await redReasons(null, `self-check:${v}`, v), []);
+}
 
 let mutCaught = 0;
 const mutMissed = [];
 const mutNotes = [];
-MUTATIONS.forEach(([name, mut]) => {
+// `for...of` throughout: scoring builds envs, which are imports now. An async callback in
+// `forEach` would leave every mutant unscored while the loop reported success -- the mutation
+// count could fall to zero without a single assertion moving.
+for (const [name, mut] of MUTATIONS) {
   const mutated = mut(WORK_MAP);
   if (mutated === WORK_MAP) die(`mutation did not apply: ${name}`);
   const why = [];
-  ['default', 'no-materials'].forEach(v => {
-    redReasons(mutated, `mutant(${name}/${v})`, v).forEach(r => why.push(`${v}: ${r}`));
-  });
+  for (const v of ['default', 'no-materials']) {
+    // 🔴 A FUNCTION, not the mutated text: `spec.mutate` ignores a string, and the mutant
+    //    would load the UNMUTATED module.
+    (await redReasons(() => mutated, `mutant(${name}/${v})`, v)).forEach(r => why.push(`${v}: ${r}`));
+  }
   if (why.length > 0) { mutCaught++; mutNotes.push({ mutation: name, caught: true, by: why }); }
   else { mutMissed.push(name); mutNotes.push({ mutation: name, caught: false, by: [] }); }
-});
+}
 
 const result = {
   passed: st.pass, failed: st.failures.length, failures: st.failures,
