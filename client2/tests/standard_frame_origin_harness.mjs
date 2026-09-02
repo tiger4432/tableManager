@@ -29,6 +29,7 @@
  * Read-only against client2/. Not gated by `npm run build`; run by hand, per round.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -139,7 +140,24 @@ function makeInput(v) {
            querySelector: () => null, appendChild() {} };
 }
 
-function buildEnv(src, opts = {}) {
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS, and this file's own comments record what that costs: the sibling
+// slicer lands `indexOf('{')` on a DEFAULT VALUE's braces and dies with `Unexpected end of
+// input` naming nothing; a slice of `loadExistingMap` alone ReferenceErrors its way into this
+// harness's catch and is reported as a 0-cell load. Both failure modes are gone with the file
+// whole.
+//
+// Names this staged that the product does not agree with, removed rather than carried:
+//   `paintLockValues`      THE PRODUCT HAS NO SUCH NAME. Also staged by marker_shape and
+//                          isotropic; three harnesses, one binding that never existed.
+//   `LEGEND_PALETTE`       retyped sentinels ('#e11' …) against a real palette of six other
+//                          colours. It occurred once, in the declaration -- nothing scored it.
+//   `activeOverlayLayers`  staged here as `() => []`. THE PRODUCT DECLARES AN ARRAY
+//                          (`let activeOverlayLayers = []`, a render-loop cache). The sibling
+//                          marker_shape harness staged it as an array and was right. Two
+//                          contradictory fictions, both green, because a bare identifier in a
+//                          vm context is whatever the sandbox says it is.
+async function buildEnv(src, opts = {}) {
   const pieces = [];
   for (const name of SYMBOLS) {
     const code = sliceFunction(src, name);
@@ -197,74 +215,132 @@ function buildEnv(src, opts = {}) {
     validDieRefKey: makeInput(''), validDieRefTable: makeInput(''), validDieRefList: null,
   };
 
-  const sandbox = {
-    console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
-    el,
-    document: {
-      querySelectorAll: (sel) => (sel === '[id^="meta-input-"]'
-        ? [{ id: 'meta-input-map_id', value: 'M1' }] : []),
-      addEventListener() {}, removeEventListener() {},
-    },
-    setTimeout,
-    alert: (m) => log.alerts.push(String(m)),
-    boundingBoxCache: {},
-    // Where the cells on screen are currently seated. Module-level in the source; declared
-    // here so a read of it is a value, not a ReferenceError.
-    cellsSeatedUnder: null,
-    currentRotation: 0, currentSide: 'front',
-    gridData: {}, gridCells2D: {},
-    legend: [], activeBrush: '', legendDirty: false,
-    legendReplaceScope: null, legendConflict: null,
-    legendSaveState: { status: 'idle', at: '', error: '' }, draftBase: null,
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    loadedFCells: new Set(), serverCellKeys: null, overlayLayers: [],
-    loadedIdentity: null, selectedTable: 'dt_map',
-    tableSchema: { column_types: { x: 'number', y: 'number', val: 'string' } },
-    API_BASE: '', OVERLAY_CELL_LIMIT: 2000,
-    LEGEND_PALETTE: ['#e11', '#1a1', '#11e', '#ee1', '#1ee', '#e1e'],
-    paintLockValues: null, currentHoverCell: null, lastSelectionBox: null,
-    isBoxDragging: false, dragType: null,
-    performance: { now: () => 0 }, window: { devicePixelRatio: 1 },
-    requestAnimationFrame(fn) { fn(); },
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    getThemeColors: () => ({ outBg: '#eee', line: '#ccc', lineStrong: '#bbb', text: '#000',
-      inBg: '#fff', insideEmpty: '#eef', textEmpty: '#345', textOut: '#567', origin: '#f00',
-      notch: '#00f', gridText: '#333', dim: '#999', waferEdge: '#111', wmFront: '#eef',
-      wmBack: '#fed', accent: '#06c', danger: '#c00', dangerWeak: '#fdd', rangeFill: '#e3e',
-      surface: '#fff', success: '#171', warning: '#850' }),
-    // --- stubbed collaborators (each scored by its own harness) ----------------------
-    showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
-    updateOrientationUI() {}, updateSideIndicator() {}, updateLegendCounts() {},
-    scheduleRenderGridCanvas() {}, renderLegendTable() {}, renderValidDieChip() {},
-    syncValidDieRefControls() {}, syncOverlayGeometry() {}, drawOverlayMarkers() {},
-    updateNotchPosition() {}, clearOverlayLayers() {}, seedEmptyDoe() {},
-    applyRegistryRowsToLegend() {}, saveLegendToStorage() {}, notifyMapContext() {},
-    recordLastOpenMap() {}, setLoadedIdentity() {}, applyDoeDraftRecord: () => false,
-    applyDraftCells: () => 0, readDoeDraft: () => null,
-    readRegistryScope: async () => ({ ok: true, rows: [] }),
-    registryFingerprint: () => 'fp', cellsDigest: () => 'cd',
-    activeOverlayLayers: () => [],
-    declaredLegendRow: () => null,
-    normalizeLegendItem: (o) => o,
-    isLockedValue: () => false,
-    getMapIdFromMeta: () => 'M1',
-    getCurrentMapKey: () => 'M1',
-    // Routing is OFF here on purpose: this harness scores the origin, and F5c has its own.
-    applyRoutedPreset: async () => null,
-    fetchGridMetaFor: async () => (opts.gridMeta || null),
-    resolveValidDie: async () => sandbox.validDie,
-    fetch: async (url) => {
-      log.requests.push(String(url).split('?')[0]);
-      const rows = opts.rows || [];
-      return { ok: true, status: 200,
-               json: async () => ({ data: rows, total: opts.total === undefined ? rows.length : opts.total }) };
-    },
+  // Globals the imported module resolves the way the browser does.
+  globalThis.document = {
+    querySelectorAll: (sel) => (sel === '[id^="meta-input-"]'
+      ? [{ id: 'meta-input-map_id', value: 'M1' }] : []),
+    getElementById: () => null,
+    addEventListener() {}, removeEventListener() {},
+    querySelector: () => null,
   };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  return { sandbox, el, log };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    devicePixelRatio: 1, addEventListener() {}, removeEventListener() {},
+  };
+  globalThis.performance = globalThis.performance || { now: () => 0 };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.alert = (m) => log.alerts.push(String(m));
+  globalThis.fetch = async (url) => {
+    log.requests.push(String(url).split('?')[0]);
+    const rows = opts.rows || [];
+    return { ok: true, status: 200,
+             json: async () => ({ data: rows,
+                                  total: opts.total === undefined ? rows.length : opts.total }) };
+  };
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el', 'OVERLAY_CELL_LIMIT'],
+    state: [
+      'boundingBoxCache',
+      // Where the cells on screen are currently seated.
+      'cellsSeatedUnder',
+      'currentRotation', 'currentSide', 'gridData', 'gridCells2D',
+      'legend', 'activeBrush', 'legendDirty', 'legendReplaceScope', 'legendConflict',
+      'legendSaveState', 'draftBase', 'validDie', 'loadedFCells', 'serverCellKeys',
+      'overlayLayers', 'activeOverlayLayers', 'loadedIdentity', 'selectedTable', 'tableSchema',
+      'currentHoverCell', 'lastSelectionBox', 'isBoxDragging', 'dragType',
+      // stubbed collaborators -- each scored by its own harness. Module-level FUNCTIONS, so
+      // the probe replaces the binding outright.
+      'getThemeColors', 'updateOrientationUI', 'updateSideIndicator', 'updateLegendCounts',
+      'scheduleRenderGridCanvas', 'renderLegendTable', 'renderValidDieChip',
+      'syncValidDieRefControls', 'syncOverlayGeometry', 'drawOverlayMarkers',
+      'updateNotchPosition', 'clearOverlayLayers', 'seedEmptyDoe', 'applyRegistryRowsToLegend',
+      'saveLegendToStorage', 'recordLastOpenMap', 'setLoadedIdentity', 'applyDoeDraftRecord',
+      'applyDraftCells', 'readDoeDraft', 'readRegistryScope', 'cellsDigest',
+      'declaredLegendRow', 'isLockedValue', 'getCurrentMapKey',
+      // Routing is OFF here on purpose: this harness scores the origin, and F5c has its own.
+      'applyRoutedPreset', 'fetchGridMetaFor', 'resolveValidDie',
+    ],
+    // Imported by the subject, so no probe can reach them -- they come through the hook.
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }) },
+      './transfer_plan.js': { notifyMapContext: () => {} },
+      // `canonicalMapKey` and `normalizeLegendItem` were stubbed by the sandbox and are NOT
+      // stubbed here: the real ones run. They were identity-ish stand-ins, and this harness
+      // scores the frame origin -- keeping a fiction that the score does not need is how the
+      // fiction outlives the reason for it.
+    },
+    // This harness has no mutation sweep -- `src` reaches here as the SOURCE TEXT, which the
+    // sliced version needed and the imported one does not. The guard keeps the parameter
+    // harmless rather than silently handing a string to something that expects a function.
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'stdframe',
+  });
+
+  Object.assign(probe.el, el);
+
+  probe.boundingBoxCache = {};
+  probe.cellsSeatedUnder = null;
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.gridData = {};
+  probe.gridCells2D = {};
+  probe.legend = [];
+  probe.activeBrush = '';
+  probe.legendDirty = false;
+  probe.legendReplaceScope = null;
+  probe.legendConflict = null;
+  probe.legendSaveState = { status: 'idle', at: '', error: '' };
+  probe.draftBase = null;
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  probe.loadedFCells = new Set();
+  probe.serverCellKeys = null;
+  probe.overlayLayers = [];
+  // 🔴 AN ARRAY. See the note above `buildEnv`.
+  probe.activeOverlayLayers = [];
+  probe.loadedIdentity = null;
+  probe.selectedTable = 'dt_map';
+  probe.tableSchema = { column_types: { x: 'number', y: 'number', val: 'string' } };
+  probe.currentHoverCell = null;
+  probe.lastSelectionBox = null;
+  probe.isBoxDragging = false;
+  probe.dragType = null;
+
+  probe.getThemeColors = () => ({ outBg: '#eee', line: '#ccc', lineStrong: '#bbb', text: '#000',
+    inBg: '#fff', insideEmpty: '#eef', textEmpty: '#345', textOut: '#567', origin: '#f00',
+    notch: '#00f', gridText: '#333', dim: '#999', waferEdge: '#111', wmFront: '#eef',
+    wmBack: '#fed', accent: '#06c', danger: '#c00', dangerWeak: '#fdd', rangeFill: '#e3e',
+    surface: '#fff', success: '#171', warning: '#850' });
+  probe.updateOrientationUI = () => {};
+  probe.updateSideIndicator = () => {};
+  probe.updateLegendCounts = () => {};
+  probe.scheduleRenderGridCanvas = () => {};
+  probe.renderLegendTable = () => {};
+  probe.renderValidDieChip = () => {};
+  probe.syncValidDieRefControls = () => {};
+  probe.syncOverlayGeometry = () => {};
+  probe.drawOverlayMarkers = () => {};
+  probe.updateNotchPosition = () => {};
+  probe.clearOverlayLayers = () => {};
+  probe.seedEmptyDoe = () => {};
+  probe.applyRegistryRowsToLegend = () => {};
+  probe.saveLegendToStorage = () => {};
+  probe.recordLastOpenMap = () => {};
+  probe.setLoadedIdentity = () => {};
+  probe.applyDoeDraftRecord = () => false;
+  probe.applyDraftCells = () => 0;
+  probe.readDoeDraft = () => null;
+  probe.readRegistryScope = async () => ({ ok: true, rows: [] });
+  probe.cellsDigest = () => 'cd';
+  probe.declaredLegendRow = () => null;
+  probe.isLockedValue = () => false;
+  probe.getCurrentMapKey = () => 'M1';
+  probe.applyRoutedPreset = async () => null;
+  probe.fetchGridMetaFor = async () => (opts.gridMeta || null);
+  probe.resolveValidDie = async () => probe.validDie;
+
+  return { sandbox: probe, el: probe.el, log };
 }
 
 // ── Scoring ────────────────────────────────────────────────────────────────────────────
@@ -299,7 +375,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   let round1 = null;
   let round1Meta = null;
   {
-    const { sandbox: S, el, log } = buildEnv(src, { rows });
+    const { sandbox: S, el, log } = await buildEnv(src, { rows });
     const res = await S.loadExistingMap({ quiet: true });
 
     eq('std/loaded', rows.length, res && res.count);
@@ -368,7 +444,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     });
     // (a) metadata absent again -> the 표준 branch runs a second time
     {
-      const { sandbox: S, el } = buildEnv(src, { rows: back });
+      const { sandbox: S, el } = await buildEnv(src, { rows: back });
       await S.loadExistingMap({ quiet: true });
       const p2 = pushPayload(S);
       const moved = Object.keys(p2).filter(k => !round1[k] || p2[k].coord !== round1[k].coord);
@@ -381,7 +457,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     }
     // (b) metadata present (what a Push leaves behind) -> the `meta` branch runs
     {
-      const { sandbox: S } = buildEnv(src, { rows: back, gridMeta: round1Meta });
+      const { sandbox: S } = await buildEnv(src, { rows: back, gridMeta: round1Meta });
       await S.loadExistingMap({ quiet: true });
       const p2 = pushPayload(S);
       const moved = Object.keys(p2).filter(k => !round1[k] || p2[k].coord !== round1[k].coord);
@@ -399,7 +475,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   {
     const panel = { cols: SPAN_X, rows: SPAN_Y, startX: MIN_X, startY: MIN_Y, invertY: false,
                     dia: 600, chipX: 1, chipY: 1, offX: 0, offY: 0, margin: 3 };
-    const { sandbox: S, el } = buildEnv(src, { rows, choice: 'current', panel });
+    const { sandbox: S, el } = await buildEnv(src, { rows, choice: 'current', panel });
     await S.loadExistingMap({ quiet: true });
     eq('current/panel-origin-kept', [String(MIN_X), String(MIN_Y)],
        [String(el.gridStartX.value), String(el.gridStartY.value)]);
