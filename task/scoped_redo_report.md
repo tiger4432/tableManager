@@ -2003,3 +2003,48 @@ the_schema_does_not_announce_the_retired…     타입만 남으면 클라가 «
 서버 재기동 — 총괄 몫입니다. 6a4d4026 푸시했습니다
 판정 필요   위 §「제가 안 한 것」의 선택지 ①/② — graph_meta_boolean 시험을 어떻게 할지
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 「알려진 빨강」 사유 적었습니다 — 그리고 질문의 «재료» 하나 (구현자)
+
+커밋 `1a1dbf8b`. 파일 «하나»: `server/tests/test_virtual_join_types.py` (docstring 만).
+
+## 한 것
+그 시험의 docstring 에 판정하신 셋을 적었습니다 — «왜 빨간가» · «지금 보이는 값이 계약이 아닌 이유» ·
+«막혀 있는 것과 그 질문». 그리고 맨 앞에 **「초록으로 만들려고 고치지 말 것」**을 박았습니다.
+```
+xfail 마크는 «안 붙였습니다» — 그건 빨강을 «지우는» 것이고, 판정은 「빨강이 맞는 신호」였습니다
+시험 파일 8 failed / 7 passed (그중 하나가 이것). 코드 0줄
+```
+
+## 🔴 질문에 쓸 «재료» 하나 — 픽스처가 스스로 답을 적어 두었습니다
+총괄 질문: 「참조(ref) 모델도 메타데이터 컬럼 셋을 받나?」
+그 파일 «자기 픽스처»에 이렇게 적혀 있습니다:
+```
+tests/test_virtual_join_types.py:81~84
+   "A metadata NAME declared in column_types: the model builder skips it and the
+    shared Boolean metadata column answers instead. This is the only way a Boolean
+    reaches `expose`, and it is reachable from an ordinary config."
+   그 아래  "needs_graph_rollback": "string"      <- vjt_test_ref 의 column_types
+```
+즉 이 픽스처는 **「빌더가 이름을 건너뛰고, 공유 메타데이터 컬럼이 «대신 답한다»」를 전제**로
+`vjt_test_ref` 에 그 이름을 선언했습니다. 그런데 «대신 답하는 컬럼이 없습니다» —
+`VjtTestRef` 에 속성이 «없어서» attach 가 실패합니다.
+```
+=> 이 파일의 :83 「an ordinary config 로도 닿는다」는 주장이 «ref 에서는 이미 거짓»입니다
+   (참/거짓이 갈리는 자리가 «left/right» 인지 «declared/skipped» 인지는 제가 안 쟀습니다 —
+    그건 모델 빌더를 읽어야 하고, 다음 라운드 몫이라 하셨습니다)
+```
+⚠️ 이것은 «질문의 답»이 아니라 «질문이 어디에 걸려 있는지»입니다. 답(빌더 결함이냐 픽스처
+   결함이냐)은 안 쟀습니다 — 우선순위는 소유자 몫이라 하셨으므로 큐에 그대로 둡니다.
+
+## 그리고 dist 판정 감사합니다
+`push_columns.js` 의 비주석 줄이 «0» 이라 재빌드가 필요 없다는 것, 그리고 병합 순서가
+총괄 몫이라는 것 — 그대로 따르겠습니다. 제 쪽에서 병합·빌드는 «하지 않습니다».
+
+## 남은 것
+```
+서버 재기동 «불필요» — 이 커밋은 시험 docstring 뿐입니다
+큐에 남는 것   「ref 모델이 메타데이터 컬럼을 받아야 하나」 (형제 일곱이 걸려 있습니다)
+```
