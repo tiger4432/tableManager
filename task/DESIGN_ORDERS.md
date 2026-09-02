@@ -12367,3 +12367,49 @@ map_editor.js:2   import './style.css';
 ③ 점수가 «올라간» 것이 있으면 그 이름 — 잘라쓰기가 못 보던 결함이 있었다는 뜻입니다
 ④ 남은 것 목록
 ```
+
+## 🔓 추가 — 「CSS import 가 하니스에 필요한가」의 답: **아니오. 그리고 본보기가 이미 있습니다** (소유자 질문, 총괄 실측 2026-09-02 22:1x)
+
+```
+node -e "import('./client2/src/map_editor.js')"
+  ->  TypeError: Unknown file extension ".css" for …/src/tokens.css
+=> 벽은 «줄 수»도 «DOM»도 아니고 «이 한 줄»입니다. 확정
+```
+
+### 그리고 이 저장소가 «이미 다르게» 하고 있습니다 — 새 방식이 아닙니다
+```
+CSS import 개수 (파일 머리)
+   map_editor.js   «2»   ← 여기만 이렇게 묶여 있습니다
+   main.js         3
+   admin.js        «0»
+   map_editor2.js  «0»
+
+본보기   map_editor2.html:19~20
+         <link rel="stylesheet" href="/src/tokens.css">
+         <link rel="stylesheet" href="/src/map_editor2.css">
+         -> JS 는 CSS 를 «안 import» 하고, 화면은 정상입니다
+현재     map_editor.html 에는 그런 <link> 가 «없습니다» — JS import 에만 의존합니다
+```
+
+### 그래서 ①의 첫 걸음이 «재 보기»에서 «따라 하기»로 바뀝니다
+```
+map_editor.js 의 CSS import 둘을 걷어내고
+map_editor.html 에 map_editor2.html 과 «같은 모양»의 <link> 를 넣습니다
+=> node 가 import 할 수 있게 되고, 잘라쓰기 «27건»의 벽이 사라집니다
+```
+
+### ⚠️ 확인하고 가십시오 — 제가 «첫 4줄만» 봤습니다
+```
+admin.html:16 주석: 「디자인 토큰은 tokens.css(SSOT, admin.js가 임포트)에서 공급」
+그런데 admin.js 의 «첫 4줄»엔 CSS import 가 0 입니다
+=> 주석이 낡았거나, 아래쪽에서 import 하거나 — 둘 중 하나입니다
+   admin 이 실제로 어떻게 넣는지 확인하고, «도는 방식»을 따르십시오
+```
+
+### 게이트에 하나 더
+```
+빌드 후 «CSS 가 실제로 실렸는지» 확인하십시오 — dist 의 html 이 style-*.css 를 참조하고,
+그 파일에 map_editor 의 규칙이 «들어 있는지»
+🔴 import 를 걷어내면 번들러가 그 CSS 를 «안 넣을» 수 있습니다. 그러면 화면이 민무늬가 됩니다
+   그건 「하니스가 초록인데 화면이 깨진」 상태이고, 이 저장소가 이미 맞은 부류입니다
+```
