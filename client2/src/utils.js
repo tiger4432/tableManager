@@ -108,12 +108,15 @@ function scheduleToastSweep() {
 }
 
 // 탭 복귀 즉시 정리 — 사용자가 과거 알림 더미를 마주하지 않게 한다
+// The guard asked about `document` and then used `window`. In a browser both exist,
+// so it was inert there; anywhere the DOM is stubbed only in PART - which is every
+// harness that imports this module - it threw. Two globals, two questions.
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) sweepToasts();
   });
-  window.addEventListener('focus', sweepToasts);
 }
+if (typeof window !== 'undefined') window.addEventListener('focus', sweepToasts);
 
 function paintToast(item) {
   const label = item.count > 1 ? `${item.baseMessage} · ${item.count}건` : item.baseMessage;
@@ -343,5 +346,8 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
   setTimeout(() => dismissProgressCard(card), 2500);
 }
 
-// Expose on window object dynamically for any non-ESM environment components if needed
-window.showToast = showToast;
+// Expose on window object dynamically for any non-ESM environment components if needed.
+// 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
+//    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
+//    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
+if (typeof window !== 'undefined') window.showToast = showToast;

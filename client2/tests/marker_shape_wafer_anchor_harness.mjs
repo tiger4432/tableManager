@@ -48,6 +48,7 @@
  * Read-only against client2/. Mutation sweep is unconditional -- there is no flag to forget.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -150,17 +151,66 @@ function recordingCtx(rec) {
   };
 }
 
-function buildEnv(src, opts = {}) {
-  const pieces = SYMBOLS.map(n => {
-    const code = sliceFunction(src, n);
-    try { new vm.Script(code); } catch (e) { die(`slice of '${n}' does not parse: ${e && e.message}`); }
-    return code;
-  });
+// 🔴 THE 31 SYMBOLS ARE NO LONGER CUT OUT. They were regex-sliced from map_editor.js and run
+// in `vm`. That scores the SHAPE OF THE LETTERS: the day one of them calls a helper or reads a
+// const that is not on the list, this harness goes red on correct code, and the red names the
+// missing symbol rather than the change.
+//
+// `UNLISTED_VALUE_FILL: '#T-unlisted'` is GONE, and it is worth saying why rather than just
+// deleting it. The retyped copy disagreed with the product ('#10b981'), and it was harmless
+// only because nothing read it -- the name appeared exactly once in this file, in the sandbox
+// declaration. That is a quieter kind of wrong than a value that is merely stale: the day
+// somebody writes an assertion on it, the assertion measures a colour the product never uses.
+// Imported, the real constant is the only one there is.
+//
+// The theme sentinels (`TOK`) stay, and can: `getThemeColors` is a module-level FUNCTION, so
+// the probe replaces the binding outright. Only `const` cannot be reassigned.
+globalThis.document = globalThis.document || {
+  querySelectorAll: () => [], getElementById: () => null,
+  addEventListener() {}, removeEventListener() {},
+};
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  devicePixelRatio: 1, addEventListener() {}, removeEventListener() {},
+};
+globalThis.performance = globalThis.performance || { now: () => 0 };
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((fn) => fn());
+
+// `src` is a MUTATE FUNCTION now (or null), not source text: the probe hands it the subject
+// and imports what comes back, so a mutant is a whole module and one that fails to parse fails
+// loudly instead of counting as caught.
+async function buildEnv(src, opts = {}) {
   const p = opts.panel || {};
   const rec = { paths: [], fillRects: [], strokeRects: [] };
   const canvas = opts.canvas || { w: 900, h: 380 };
   const blankable = (v) => (v === null ? '' : v);
-  const el = {
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el'],
+    state: [
+      'boundingBoxCache', 'cellsSeatedUnder', 'currentRotation', 'currentSide',
+      'gridData', 'gridCells2D', 'legend', 'overlayContract', 'activeBrush',
+      'validDie', 'validDieResolveSeq', 'loadedFCells', 'overlayLayers',
+      // 🔴 `paintLockValues` WAS STAGED HERE AND THE PRODUCT HAS NO SUCH NAME. The sliced
+      // sandbox could invent it freely -- a bare identifier in a `vm` context is just a
+      // property -- so it sat here looking like module state for as long as anyone read this
+      // file. Imported, the probe asks the module for it and the module says no, loudly.
+      'paintLockConfig', 'currentHoverCell', 'lastSelectionBox',
+      'isBoxDragging', 'dragType', 'isOriginMode', 'isRightDrag',
+      // collaborators this harness deliberately does not exercise -- each is scored by its
+      // own harness. They are module-level FUNCTIONS, so the probe can replace them.
+      'getThemeColors', 'isOverlayLocked', 'activeOverlayLayers',
+      'syncOverlayGeometry', 'updateNotchPosition', 'updateLegendCounts',
+      'scheduleRenderGridCanvas', 'scheduleCellDraft',
+    ],
+    mutate: src || undefined,
+    tag: 'markershape',
+  });
+
+  // The module's own `el` is filled rather than replaced: it is a `const`, and the real object
+  // is what the functions read.
+  Object.assign(probe.el, {
     gridCols: makeInput(p.cols === undefined ? 15 : p.cols),
     gridRows: makeInput(p.rows === undefined ? 11 : p.rows),
     gridStartX: makeInput(p.startX === undefined ? 4 : p.startX),
@@ -179,38 +229,46 @@ function buildEnv(src, opts = {}) {
     cellAspectNote: { style: { display: 'none' }, textContent: '' },
     gridStatusCoords: { textContent: '' },
     btnSetOrigin: { classList: { add() {}, remove() {} }, style: {} },
-  };
-  const sandbox = {
-    console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
-    el,
-    document: { querySelectorAll: () => [], getElementById: () => null,
-                addEventListener() {}, removeEventListener() {} },
-    setTimeout, boundingBoxCache: {}, cellsSeatedUnder: null,
-    currentRotation: p.rotation || 0, currentSide: p.side || 'front',
-    gridData: opts.gridData || {}, gridCells2D: {},
-    legend: MAP_LEGEND.map(r => ({ ...r })),
-    overlayContract: { valueColumnCandidates: [], defaultLegend: [] },
-    activeBrush: 'A',
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0, loadedFCells: new Set(),
-    overlayLayers: [], activeOverlayLayers: opts.layers || [],
-    UNLISTED_VALUE_FILL: '#T-unlisted',
-    paintLockValues: null, paintLockConfig: { enabled: false }, currentHoverCell: null,
-    lastSelectionBox: null, isBoxDragging: false, dragType: null, isOriginMode: false,
-    isRightDrag: false,
-    performance: { now: () => 0 }, window: { devicePixelRatio: 1 },
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    getThemeColors: () => TOK,
-    isOverlayLocked: () => false,
-    syncOverlayGeometry() {}, updateNotchPosition() {},
-    updateLegendCounts() {}, scheduleRenderGridCanvas() {}, scheduleCellDraft() {},
-    rec, canvas,
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  return { sandbox, el, rec };
+  });
+
+  probe.boundingBoxCache = {};
+  probe.cellsSeatedUnder = null;
+  probe.currentRotation = p.rotation || 0;
+  probe.currentSide = p.side || 'front';
+  probe.gridData = opts.gridData || {};
+  probe.gridCells2D = {};
+  probe.legend = MAP_LEGEND.map(r => ({ ...r }));
+  probe.overlayContract = { valueColumnCandidates: [], defaultLegend: [] };
+  probe.activeBrush = 'A';
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  probe.validDieResolveSeq = 0;
+  probe.loadedFCells = new Set();
+  probe.overlayLayers = [];
+  probe.paintLockConfig = { enabled: false };
+  probe.currentHoverCell = null;
+  probe.lastSelectionBox = null;
+  probe.isBoxDragging = false;
+  probe.dragType = null;
+  probe.isOriginMode = false;
+  probe.isRightDrag = false;
+
+  // 🔴 AN ARRAY, not a function. The product declares `let activeOverlayLayers = []` -- a
+  //    render-loop cache, not an accessor. A sibling harness stages it as `() => []`, and
+  //    slicing let both shapes look fine because a bare identifier in a `vm` context is
+  //    whatever the sandbox says it is. Imported, only one of the two can be right.
+  probe.activeOverlayLayers = opts.layers || [];
+  probe.getThemeColors = () => TOK;
+  probe.isOverlayLocked = () => false;
+  probe.syncOverlayGeometry = () => {};
+  probe.updateNotchPosition = () => {};
+  probe.updateLegendCounts = () => {};
+  probe.scheduleRenderGridCanvas = () => {};
+  probe.scheduleCellDraft = () => {};
+
+  // `rec` is the canvas recorder. It was a sandbox property before; the probe object is
+  // extensible, so it rides along and `S.rec` keeps working unchanged.
+  probe.rec = rec;
+  return { sandbox: probe, el: probe.el, rec };
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────────────────────
@@ -228,8 +286,8 @@ const eq = (name, expected, actual, note) => {
 };
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 
-function render(src, opts) {
-  const env = buildEnv(src, opts);
+async function render(src, opts) {
+  const env = await buildEnv(src, opts);
   env.sandbox.renderGridCanvas();
   return env;
 }
@@ -265,10 +323,10 @@ const SAME_WAFER_GRIDS = [
 const waferRing = (rec) => rec.paths.find(p => p.strokes.includes(TOK.waferEdge));
 const effRing = (rec) => rec.paths.find(p => p.strokes.includes(TOK.success));
 
-function scoreWaferConstant(src, evidence) {
+async function scoreWaferConstant(src, evidence) {
   const radii = [];
   for (const g of SAME_WAFER_GRIDS) {
-    const { rec } = render(src, { canvas: CANVAS, panel: { ...g, dia: DIA, margin: 3 } });
+    const { rec } = await render(src, { canvas: CANVAS, panel: { ...g, dia: DIA, margin: 3 } });
     const outer = waferRing(rec);
     if (!outer) { ok(false, `ⓦ1 ${g.tag}: the render drew no wafer edge circle`); continue; }
     radii.push({ tag: g.tag, rx: outer.rx, ry: outer.ry });
@@ -294,10 +352,10 @@ function scoreWaferConstant(src, evidence) {
 }
 
 // ⓦ2 THE ANCHOR IS THE DIAMETER, NOT THE EFFECTIVE RADIUS.
-function scoreAnchorIsDiameter(src, evidence) {
+async function scoreAnchorIsDiameter(src, evidence) {
   const seen = [];
   for (const margin of [1, 3, 7, 12]) {
-    const { rec } = render(src, { canvas: CANVAS, panel: { dia: DIA, margin, cols: 20, rows: 20, chipX: 6, chipY: 6 } });
+    const { rec } = await render(src, { canvas: CANVAS, panel: { dia: DIA, margin, cols: 20, rows: 20, chipX: 6, chipY: 6 } });
     const outer = waferRing(rec), eff = effRing(rec);
     if (!outer || !eff) { ok(false, `ⓦ2 margin ${margin}: no circle recorded`); continue; }
     seen.push({ margin, outer: outer.rx, eff: eff.rx });
@@ -316,7 +374,7 @@ function scoreAnchorIsDiameter(src, evidence) {
 }
 
 // ⓦ3 AN UNDECLARED DIAMETER IS NOT INVENTED.
-function scoreUndeclaredDiameter(src, evidence) {
+async function scoreUndeclaredDiameter(src, evidence) {
   // 🔴 The two grids must differ in SPAN, not merely in dimensions. The first draft used
   //    20x20@6mm and 40x40@3mm -- both 120x120mm, so the grid-fitting scale was identical and
   //    ⓦ3d compared 475 against 475. A fixture that cannot tell the two rules apart proves
@@ -324,7 +382,7 @@ function scoreUndeclaredDiameter(src, evidence) {
   const grids = [{ cols: 20, rows: 20, chipX: 6, chipY: 6 }, { cols: 30, rows: 30, chipX: 6, chipY: 6 }];
   const radii = [];
   for (const g of grids) {
-    const { sandbox: S, el, rec } = render(src, { canvas: CANVAS, panel: { ...g, dia: null } });
+    const { sandbox: S, el, rec } = await render(src, { canvas: CANVAS, panel: { ...g, dia: null } });
     const outer = waferRing(rec);
     radii.push(outer ? outer.rx : NaN);
     const m = metricsOf(S, CANVAS, g.cols, g.rows);
@@ -348,7 +406,7 @@ function scoreUndeclaredDiameter(src, evidence) {
   evidence.push(`  dia undeclared -> grid-anchored, radius ${radii[0].toFixed(2)} vs ${radii[1].toFixed(2)} px (varies, and the screen says so)`);
 
   // ...and the note goes away when the diameter IS declared.
-  const { el: el2 } = render(src, { canvas: CANVAS, panel: { dia: DIA, cols: 20, rows: 20, chipX: 6, chipY: 6 } });
+  const { el: el2 } = await render(src, { canvas: CANVAS, panel: { dia: DIA, cols: 20, rows: 20, chipX: 6, chipY: 6 } });
   eq('ⓦ3e dia declared: the note is hidden', 'none', el2.cellAspectNote.style.display);
 }
 
@@ -356,11 +414,11 @@ function scoreUndeclaredDiameter(src, evidence) {
 //    The overflow fixture is where this can actually fail, so it is scored there too.
 const OVERFLOW_GRID = { tag: '40x40 @8.0x8.0 (320mm grid on a 200mm wafer)',
                         cols: 40, rows: 40, chipX: 8, chipY: 8 };
-function scoreNothingLeavesTheCanvas(src, evidence) {
+async function scoreNothingLeavesTheCanvas(src, evidence) {
   const cases = [...SAME_WAFER_GRIDS, OVERFLOW_GRID];
   for (const g of cases) {
     const opts = { canvas: CANVAS, panel: { ...g, dia: DIA, margin: 3 } };
-    const { sandbox: S } = render(src, opts);
+    const { sandbox: S } = await render(src, opts);
     const rot90 = (S.currentRotation === 90 || S.currentRotation === 270);
     const vCols = rot90 ? g.rows : g.cols, vRows = rot90 ? g.cols : g.rows;
     const m = metricsOf(S, CANVAS, vCols, vRows);
@@ -396,13 +454,14 @@ function scoreNothingLeavesTheCanvas(src, evidence) {
       T.gridCells2D = {}; T.renderGridCanvas();
       return payload(T);
     };
-    const after = seed(buildEnv(src, opts));
+    const after = seed(await buildEnv(src, opts));
     // 🔴 The "before" is reverted out of the PRISTINE source, never out of `src`. During the
     //    mutation sweep `src` is already mutated and no longer contains the anchor expression,
     //    so a nested revert would abort the whole run on a missing pattern -- the harness would
     //    read as "caught" while this claim went unscored, which is the disguise the runner's
     //    own ASSERTIONS line exists to strip.
-    const before = seed(buildEnv(applyMutation(SRC0, GRID_ANCHOR_REVERT, 'grid-anchor revert'), opts));
+    const before = seed(await buildEnv(
+      () => applyMutation(SRC0, GRID_ANCHOR_REVERT, 'grid-anchor revert'), opts));
     eq(`ⓦ4b2 ${g.tag}: the save payload is identical to the pre-change geometry`,
        JSON.stringify(before), JSON.stringify(after),
        `${Object.keys(before).length} vs ${Object.keys(after).length} dies saved`);
@@ -411,8 +470,8 @@ function scoreNothingLeavesTheCanvas(src, evidence) {
   }
   // The overflow branch is EXECUTED, not merely available: the grid governs there and the
   // circle is smaller than the anchored constant. If it never fired, the `min` is untested.
-  const { rec: recA } = render(src, { canvas: CANVAS, panel: { ...SAME_WAFER_GRIDS[0], dia: DIA, margin: 3 } });
-  const { rec: recO } = render(src, { canvas: CANVAS, panel: { ...OVERFLOW_GRID, dia: DIA, margin: 3 } });
+  const { rec: recA } = await render(src, { canvas: CANVAS, panel: { ...SAME_WAFER_GRIDS[0], dia: DIA, margin: 3 } });
+  const { rec: recO } = await render(src, { canvas: CANVAS, panel: { ...OVERFLOW_GRID, dia: DIA, margin: 3 } });
   const rA = waferRing(recA).rx, rO = waferRing(recO).rx;
   ok(rO < rA - 1e-6, 'ⓦ4c the overflow branch really fires (a grid bigger than the wafer takes the scale)',
      `anchored ${rA.toFixed(3)} vs overflow ${rO.toFixed(3)} -- equal means min(sGrid, sWafer) was never exercised`);
@@ -461,8 +520,8 @@ const EXTREME = [
   { tag: '1:30 thin',  w: 1.17,  h: 35 },
 ];
 
-function scoreMarkerRatio(src, evidence) {
-  const { sandbox: S } = buildEnv(src, {});
+async function scoreMarkerRatio(src, evidence) {
+  const { sandbox: S } = await buildEnv(src, {});
   for (const c of RATIOS) {
     const e = paintOne(S, c.w, c.h, [item('1', 1, 1)]);
     if (!e) { ok(false, `ⓜ1 ${c.tag}: no marker was drawn at all`); continue; }
@@ -494,8 +553,8 @@ function scoreMarkerRatio(src, evidence) {
 }
 
 // ⓜ3 A SQUARE CELL IS UNTOUCHED. Same primitive, same radius, same centre as the old formula.
-function scoreSquareCellUnchanged(src) {
-  const { sandbox: S } = buildEnv(src, {});
+async function scoreSquareCellUnchanged(src) {
+  const { sandbox: S } = await buildEnv(src, {});
   for (const side of [30, 12, 8, 60]) {
     const e = paintOne(S, side, side, [item('1', 1, 1)]);
     if (!e) { ok(false, `ⓜ3 square ${side}: nothing drawn`); continue; }
@@ -523,8 +582,8 @@ function scoreSquareCellUnchanged(src) {
 }
 
 // ⓜ4 THE MULTI-SOURCE SPREAD COMES BACK ON A THIN CELL.
-function scoreSpread(src, evidence) {
-  const { sandbox: S } = buildEnv(src, {});
+async function scoreSpread(src, evidence) {
+  const { sandbox: S } = await buildEnv(src, {});
   const chip = { x: 10, y: 10 };
   const three = [item('1', 1, 1), item('1', 5, 5), item('1', 9, 9)];
   const CASES = [
@@ -586,18 +645,18 @@ function scoreSpread(src, evidence) {
 
 // ⓜ5 THE WIRING. The rule above is worth nothing if the render does not hand it the real cell.
 //    Scored by running the WHOLE render with a live marker painter on a real overlay cell.
-function scoreWiring(src, evidence) {
+async function scoreWiring(src, evidence) {
   // Both cell dimensions must clear the visibility floor (>= 1.5 / 0.13 = 11.54px), or ⓜ5c is
   // scoring the floor rather than the ratio. Cell here is 12.5 x 25.0 px.
   const panel = { cols: 20, rows: 10, chipX: 7, chipY: 14, dia: DIA, margin: 3 };
-  const probe = render(src, { canvas: CANVAS, panel });
+  const probe = await render(src, { canvas: CANVAS, panel });
   const anyKey = Object.values(probe.sandbox.gridCells2D)
     .flatMap(row => Object.values(row)).map(co => co.key)[0];
   ok(!!anyKey, 'ⓜ5 the render seated at least one cell to hang an overlay on');
   if (!anyKey) return;
   const layer = { color: LAYER_COLOR, items: new Map([[anyKey, [item('1', 1, 1)]]]),
                   seatAxes, seatChip: { x: panel.chipX, y: panel.chipY } };
-  const { sandbox: S, rec } = render(src, { canvas: CANVAS, panel, layers: [layer] });
+  const { sandbox: S, rec } = await render(src, { canvas: CANVAS, panel, layers: [layer] });
   const m = metricsOf(S, CANVAS, panel.cols, panel.rows);
   ok(m.cellW >= 1.5 / FRAC && m.cellH >= 1.5 / FRAC,
      'ⓜ5b2 the wiring fixture clears the visibility floor on both axes',
@@ -616,8 +675,8 @@ function scoreWiring(src, evidence) {
 }
 
 // ⓜ6 THE VALUE-COLOUR CONTRACT DID NOT MOVE. This file edits that painter, so it re-scores it.
-function scoreColourNotRegressed(src) {
-  const { sandbox: S } = buildEnv(src, {});
+async function scoreColourNotRegressed(src) {
+  const { sandbox: S } = await buildEnv(src, {});
   const one = paintOne(S, 30, 12, [item('1', 1, 1)]);
   eq('ⓜ6 a single listed value is filled with ITS legend colour', '#10b981', one.paths[0].fill);
   ok(one.paths[0].strokes.includes(LAYER_COLOR), 'ⓜ6b ...and ringed with the LAYER colour',
@@ -640,7 +699,7 @@ function scoreColourNotRegressed(src) {
 }
 
 // ── Fixture self-check ────────────────────────────────────────────────────────────────────
-function fixtureSelfCheck(src) {
+async function fixtureSelfCheck(src) {
   ok(RATIOS.some(c => c.w !== c.h), 'fixture: the ratio sweep contains anisotropic cells');
   ok(RATIOS.filter(c => c.w !== c.h).length >= 4,
      'fixture: and several of them, both ways round (one anisotropic case cannot show a ratio)');
@@ -649,7 +708,7 @@ function fixtureSelfCheck(src) {
   ok(SAME_WAFER_GRIDS.some(g => g.rotation === 270), 'fixture: and a rotated frame');
   ok(CANVAS.w !== CANVAS.h, 'fixture: the canvas is non-square (padX and padY are both live)');
   // The isotropic branch is the one being executed -- otherwise every ⓦ claim scores the fallback.
-  const { sandbox: S } = render(src, { canvas: CANVAS, panel: { ...SAME_WAFER_GRIDS[0], dia: DIA } });
+  const { sandbox: S } = await render(src, { canvas: CANVAS, panel: { ...SAME_WAFER_GRIDS[0], dia: DIA } });
   const m = metricsOf(S, CANVAS, 20, 20);
   ok(m.isotropic === true, 'fixture: the isotropic branch is executing');
   ok(m.waferAnchored === true, 'fixture: ...and the wafer anchor is the one governing it');
@@ -720,23 +779,23 @@ const MUTATIONS = [
 ];
 
 // ── Run ───────────────────────────────────────────────────────────────────────────────────
-function scoreAll(src) {
+async function scoreAll(src) {
   failures = []; compared = 0;
   const ev = { wafer: [], marker: [] };
-  fixtureSelfCheck(src);
-  scoreWaferConstant(src, ev.wafer);
-  scoreAnchorIsDiameter(src, ev.wafer);
-  scoreUndeclaredDiameter(src, ev.wafer);
-  scoreNothingLeavesTheCanvas(src, ev.wafer);
-  scoreMarkerRatio(src, ev.marker);
-  scoreSquareCellUnchanged(src);
-  scoreSpread(src, ev.marker);
-  scoreWiring(src, ev.marker);
-  scoreColourNotRegressed(src);
+  await fixtureSelfCheck(src);
+  await scoreWaferConstant(src, ev.wafer);
+  await scoreAnchorIsDiameter(src, ev.wafer);
+  await scoreUndeclaredDiameter(src, ev.wafer);
+  await scoreNothingLeavesTheCanvas(src, ev.wafer);
+  await scoreMarkerRatio(src, ev.marker);
+  await scoreSquareCellUnchanged(src);
+  await scoreSpread(src, ev.marker);
+  await scoreWiring(src, ev.marker);
+  await scoreColourNotRegressed(src);
   return ev;
 }
 
-const ev = scoreAll(SRC0);
+const ev = await scoreAll(null);
 console.log('\n── ⓦ the wafer anchors the scale (radii straight off the draw call) ──');
 ev.wafer.forEach(l => console.log(l));
 console.log('\n── ⓜ the marker follows its cell (extents straight off the draw call) ──');
@@ -752,7 +811,7 @@ const uncaught = [];
 for (const [name, mut] of MUTATIONS) {
   const mutated = applyMutation(SRC0, mut, name);
   let caught = false, threw = '';
-  try { scoreAll(mutated); caught = failures.length > 0; }
+  try { await scoreAll(() => mutated); caught = failures.length > 0; }
   // A throw is a red too, but it is REPORTED: a mutation caught only by an exception may be
   // stopping the run before the assertion written for it ever executes.
   catch (e) { caught = true; threw = ` [threw: ${e && e.message}]`; }
@@ -767,7 +826,7 @@ for (const [name, mut] of MUTATIONS) {
 }
 
 failures = []; compared = 0;
-scoreAll(SRC0);
+await scoreAll(null);
 uncaught.forEach(n => failures.push(`MUTATION NOT CAUGHT: ${n} -- this harness does not score it`));
 compared += MUTATIONS.length;
 

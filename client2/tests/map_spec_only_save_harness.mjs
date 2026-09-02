@@ -44,6 +44,7 @@
 // square, unrotated, isotropic fixture cannot show a swap defect at all, and the stranded-cell
 // count it produced would be an artefact of the symmetry rather than a measurement.
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -152,7 +153,23 @@ function cfgNumber(name) {
   return Number(m[1]);
 }
 
-function buildEnv(src, opts = {}) {
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+// harness reddens on correct code and names the missing symbol rather than the change.
+//
+// Four of the names it staged are things the subject IMPORTS -- `showToast`, `API_BASE`,
+// `CURRENT_USER`, `MAP_SPEC_SAVE_TIMEOUT_MS` -- and no probe can reach an import binding,
+// because it is read-only to everyone but the module that declared it. They arrive through the
+// loader hook, which redirects only this copy's dependencies and leaves every other importer
+// of those modules alone.
+//
+// THE CLOCK IS INSTALLED AFTER THE IMPORT, on purpose. The controllable `setTimeout` is what
+// makes "the bound elapsed" expressible without a wall clock, but installing it globally while
+// a module is being imported would hand the fake clock to the import machinery too. The
+// subject reads `setTimeout` when it runs, not when it loads, so this is both safe and exact.
+const REAL_TIMERS = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+
+async function buildEnv(src, opts = {}) {
   const requests = [];
   const toasts = [];
   const confirms = [];
@@ -166,20 +183,58 @@ function buildEnv(src, opts = {}) {
   let timerSeq = 0;
   const aborts = [];
 
-  const sandbox = {
-    AbortController,
-    setTimeout: (fn, ms) => { const id = ++timerSeq; timers.push({ id, ms, fn }); return id; },
-    clearTimeout: (id) => {
-      const i = timers.findIndex(t => t.id === id);
-      if (i >= 0) timers.splice(i, 1);
+  const fetchImpl = makeFetch();
+
+  // The real timers are put back before the import, then the recording pair goes in after it.
+  globalThis.setTimeout = REAL_TIMERS.setTimeout;
+  globalThis.clearTimeout = REAL_TIMERS.clearTimeout;
+  globalThis.document = globalThis.document || {
+    getElementById: () => null, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el', 'VALID_DIE_TABLE'],
+    state: ['selectedTable', 'currentRotation', 'currentSide', 'validDie', 'loadedIdentity',
+            'serverCellKeys', 'gridData', 'gridCells2D',
+            // [fix E-2] The success path drops the back-guard's baseline, so `saveMapSpecOnly`
+            // READS these two. Without them the function throws ReferenceError inside its own
+            // try and reports a phantom failure -- which is exactly how K5 caught their
+            // absence. They are bindings, not an axis: what the guard should do with them is
+            // scored by `valid_die_dirty_guard_harness.mjs`, which owns the edit predicate.
+            'frameTouched', 'legendDirty',
+            // The identity SOURCE is under test, so this answers something DIFFERENT from
+            // `loadedIdentity.mapKey`: if the product read the loaded identity instead of the
+            // live controls, the recorded request would carry the wrong key and say so.
+            'getCurrentMapKey', 'syncValidDieRefControls'],
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }) },
+      './config.js': {
+        API_BASE: '/api',
+        CURRENT_USER: 'tester',
+        MAP_SPEC_SAVE_TIMEOUT_MS: cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS'),
+      },
     },
-    MAP_SPEC_SAVE_TIMEOUT_MS: cfgNumber('MAP_SPEC_SAVE_TIMEOUT_MS'),
-    console: { warn() {}, log() {}, error() {}, info() {}, debug() {} },
-    JSON, Math, Number, Object, Array, String, Boolean, Set, Map, parseInt, parseFloat,
-    isNaN, encodeURIComponent, Promise,
-    el: makeEl(frame),
-    API_BASE: '/api',
-    CURRENT_USER: 'tester',
+    mutate: src || undefined,
+    tag: 'mapspec',
+  });
+
+  globalThis.AbortController = AbortController;
+  globalThis.confirm = (text) => { confirms.push(String(text)); return opts.approve !== false; };
+  globalThis.fetch = fetchImpl;
+  globalThis.setTimeout = (fn, ms) => { const id = ++timerSeq; timers.push({ id, ms, fn }); return id; };
+  globalThis.clearTimeout = (id) => {
+    const i = timers.findIndex(t => t.id === id);
+    if (i >= 0) timers.splice(i, 1);
+  };
+
+  Object.assign(probe.el, makeEl(frame));
+  const sandbox = probe;
+  Object.assign(sandbox, {
     selectedTable: opts.table || 'bonding_map',
     currentRotation: ROT,
     currentSide: SIDE,
@@ -196,14 +251,17 @@ function buildEnv(src, opts = {}) {
     // `valid_die_dirty_guard_harness.mjs`, which owns the edit predicate end to end.
     frameTouched: false,
     legendDirty: false,
-    // The identity SOURCE is under test, so this is a stub that deliberately answers something
-    // DIFFERENT from `loadedIdentity.mapKey`: if the product read the loaded identity instead
-    // of the live controls, the recorded request would carry the wrong key and say so.
     getCurrentMapKey: () => (opts.currentMapKey !== undefined ? opts.currentMapKey : 'CURRENT_MAP'),
-    showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }),
-    syncValidDieRefControls() {},
-    confirm: (text) => { confirms.push(String(text)); return opts.approve !== false; },
-    fetch: (url, init) => {
+    syncValidDieRefControls: () => {},
+  });
+  return {
+    S: sandbox, requests, toasts, confirms, timers, aborts,
+    // Fire every pending timer, which is how "the bound elapsed" is expressed.
+    fireTimers: () => { [...timers].forEach(t => t.fn()); },
+  };
+
+  function makeFetch() {
+    return (url, init) => {
       const method = (init && init.method) ? init.method : 'GET';
       requests.push({
         method, url: String(url), body: init && init.body ? init.body : null,
@@ -249,24 +307,8 @@ function buildEnv(src, opts = {}) {
         });
       }
       return Promise.resolve(respond());
-    },
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-
-  const pieces = SYMBOLS.map(n => sliceFunction(src, n));
-  // `VALID_DIE_TABLE` is a VALUE the confirm text quotes. Lifted from source, never re-typed.
-  const vd = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
-  if (!vd) die('const VALID_DIE_TABLE is gone from map_editor.js');
-  pieces.unshift(vd[0]);
-  try { vm.runInContext(pieces.join('\n\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-
-  return {
-    S: sandbox, requests, toasts, confirms, timers, aborts,
-    // Fire every pending timer, which is how "the bound elapsed" is expressed.
-    fireTimers: () => { [...timers].forEach(t => t.fn()); },
-  };
+    };
+  }
 }
 
 /** One microtask drain, so a not-awaited call can be inspected mid-flight. */
@@ -305,7 +347,7 @@ function metaPayload(requests) {
 }
 
 // ── Cases ───────────────────────────────────────────────────────────────────────────────
-async function run(src) {
+async function run(src) {   // `src` is a MUTATE FUNCTION now, or null
   const failures = [];
   const evidence = [];
   let compared = 0;
@@ -317,7 +359,7 @@ async function run(src) {
 
   // ── A. THE EVERYDAY UPDATE. Request list, read-modify-write, and the identity source. ──
   {
-    const env = buildEnv(src, { answer: answerWith(storedRow()) });
+    const env = await buildEnv(src, { answer: answerWith(storedRow()) });
     await env.S.saveMapSpecOnly();
 
     // AXIS 1 — cells are untouched, stated as the WHOLE request list rather than as a claim.
@@ -365,7 +407,7 @@ async function run(src) {
 
   // ── B. THE CREATE. The row does not exist yet, and registering it is the useful case. ──
   {
-    const env = buildEnv(src, { answer: answerWith(null) });
+    const env = await buildEnv(src, { answer: answerWith(null) });
     await env.S.saveMapSpecOnly();
     eq('B/a missing row does not stop the save', 1,
       env.requests.filter(r => r.method === 'PUT').length,
@@ -390,7 +432,7 @@ async function run(src) {
   //   proving nothing about the branch.
   {
     let reads = 0;
-    const env = buildEnv(src, {
+    const env = await buildEnv(src, {
       answer: (url, method) => {
         if (method === 'PUT') return { ok: true, body: {} };
         reads++;
@@ -414,7 +456,7 @@ async function run(src) {
   {
     // Painted under the WIDE frame; the panel now declares the NARROW one. The oracle is the
     // set difference of the two frames' covered keys, taken here rather than read off the code.
-    const probe = buildEnv(src, {});
+    const probe = await buildEnv(src, {});
     const wideKeys = keysCovered(probe.S, WIDE);
     const narrowKeys = keysCovered(probe.S, NARROW);
     const strandedOracle = [...wideKeys.keys()].filter(k => !narrowKeys.has(k));
@@ -424,7 +466,7 @@ async function run(src) {
     eq('D/fixture: and it does not strand everything', true,
       narrowKeys.size > 0 && strandedOracle.length < wideKeys.size);
 
-    const env = buildEnv(src, { frame: NARROW, answer: answerWith(storedRow()) });
+    const env = await buildEnv(src, { frame: NARROW, answer: answerWith(storedRow()) });
     // Every wide-frame cell holds a value; the grid the panel declares covers only the narrow set.
     wideKeys.forEach((_v, k) => { env.S.gridData[k] = 'A'; });
     narrowKeys.forEach((v, k) => {
@@ -451,7 +493,7 @@ async function run(src) {
       'the stranded cells are NOT rewritten anywhere — that is the whole point');
 
     // The zero case, so the count above is a measurement and not a constant.
-    const envOk = buildEnv(src, { frame: WIDE, answer: answerWith(storedRow()) });
+    const envOk = await buildEnv(src, { frame: WIDE, answer: answerWith(storedRow()) });
     wideKeys.forEach((v, k) => {
       envOk.S.gridData[k] = 'A';
       if (!envOk.S.gridCells2D[v.r]) envOk.S.gridCells2D[v.r] = {};
@@ -468,7 +510,7 @@ async function run(src) {
 
   // ── E. A DIFFERENT IDENTITY. A zero here would be a lie, so it must not be a zero. ─────
   {
-    const env = buildEnv(src, { answer: answerWith(null), currentMapKey: 'BRAND_NEW' });
+    const env = await buildEnv(src, { answer: answerWith(null), currentMapKey: 'BRAND_NEW' });
     env.S.gridData = { '1_1': 'A' };      // cells on screen, but they belong to LOADED_MAP
     env.S.gridCells2D = {};
     await env.S.saveMapSpecOnly();
@@ -486,7 +528,7 @@ async function run(src) {
   // ── F. CLEARING THE DECLARATION MUST NOT RESURRECT IT FROM THE STORED ROW. ─────────────
   //   The mirror image of axis 2a, and the reason a plain spread is not the merge.
   {
-    const env = buildEnv(src, {
+    const env = await buildEnv(src, {
       answer: answerWith(storedRow({ valid_die_ref: 'OLD_REF' })),
       validDie: { basis: 'ref', keys: new Set(), reason: '', ref: null, raw: 'OLD_REF' },
     });
@@ -510,7 +552,7 @@ async function run(src) {
   //   not be silently normalised by a save the operator made for an unrelated reason.
   {
     const raw = { target_table: 'valid_die_ref', map_key: 'ALIAS_SHAPE' };
-    const env = buildEnv(src, {
+    const env = await buildEnv(src, {
       answer: answerWith(storedRow({ valid_die_ref: raw })),
       validDie: { basis: 'ref', keys: new Set(), reason: '', ref: null, raw },
     });
@@ -524,7 +566,7 @@ async function run(src) {
 
   // ── H. THE OPERATOR SAYS NO. ───────────────────────────────────────────────────────────
   {
-    const env = buildEnv(src, { answer: answerWith(storedRow()), approve: false });
+    const env = await buildEnv(src, { answer: answerWith(storedRow()), approve: false });
     await env.S.saveMapSpecOnly();
     eq('H/declining the confirm writes nothing', 0,
       env.requests.filter(r => r.method === 'PUT').length);
@@ -533,7 +575,7 @@ async function run(src) {
 
   // ── I. NO MAP KEY SET. Registering a spec under a placeholder identity is not a save. ──
   {
-    const env = buildEnv(src, { answer: answerWith(null), currentMapKey: null });
+    const env = await buildEnv(src, { answer: answerWith(null), currentMapKey: null });
     await env.S.saveMapSpecOnly();
     eq('I/no map key -> no requests at all', 0, env.requests.length,
       'the read is skipped too: there is no identity to read about');
@@ -547,7 +589,7 @@ async function run(src) {
   //   ABSENT rows, so it will never revisit one that now exists. Both writers share
   //   `buildPushGridMetadata`, so this is scored on the payload it produces.
   {
-    const marked = buildEnv(src, { answer: answerWith(storedRow()) });
+    const marked = await buildEnv(src, { answer: answerWith(storedRow()) });
     marked.S.markGeometryAutoRegistered(true);
     await marked.S.saveMapSpecOnly();
     eq('J/a a marked spec writes the flag back', true,
@@ -557,7 +599,7 @@ async function run(src) {
     // 🔴 THE OTHER HALF, and the one that protects INV-1: an UNMARKED map must not gain the
     //    key. A writer that always emits it would satisfy J/a and change the payload of every
     //    map in the database.
-    const plain = buildEnv(src, { answer: answerWith(storedRow()) });
+    const plain = await buildEnv(src, { answer: answerWith(storedRow()) });
     await plain.S.saveMapSpecOnly();
     eq('J/b an unmarked spec does NOT gain the flag', false,
       'auto_registered' in metaPayload(plain.requests),
@@ -574,7 +616,7 @@ async function run(src) {
   //   survives the session.
   {
     for (const from of ['data', 'panel']) {
-      const env = buildEnv(src, { answer: answerWith(storedRow()) });
+      const env = await buildEnv(src, { answer: answerWith(storedRow()) });
       env.S.markFrameChosen(from);
       await env.S.saveMapSpecOnly();
       eq(`L/a a frame chosen from the ${from} says so in the payload`, from,
@@ -584,10 +626,10 @@ async function run(src) {
     // 🔴 WHICH choice, not merely THAT one happened. Folding both branches to `true` would pass
     //    a boolean assertion and delete the difference between a bbox-derived frame and the
     //    previous map's panel residue — the two are not the same claim about the same numbers.
-    const a = buildEnv(src, { answer: answerWith(storedRow()) });
+    const a = await buildEnv(src, { answer: answerWith(storedRow()) });
     a.S.markFrameChosen('data');
     await a.S.saveMapSpecOnly();
-    const b = buildEnv(src, { answer: answerWith(storedRow()) });
+    const b = await buildEnv(src, { answer: answerWith(storedRow()) });
     b.S.markFrameChosen('panel');
     await b.S.saveMapSpecOnly();
     eq('L/b the two choices are DISTINGUISHABLE from each other', true,
@@ -595,14 +637,14 @@ async function run(src) {
 
     // INV-1, the same half J/b protects: an unchosen map must not gain the key. Every declared
     // map in the database is this case, and its payload must not move by one byte.
-    const plain = buildEnv(src, { answer: answerWith(storedRow()) });
+    const plain = await buildEnv(src, { answer: answerWith(storedRow()) });
     await plain.S.saveMapSpecOnly();
     eq('L/c a declared frame does NOT gain the marker', false,
       'frame_chosen_from' in metaPayload(plain.requests),
       'the payload of a normal map must be unchanged by this round');
     // ...and the marker is a one-axis-read hazard: the product writes BOTH START boxes and reads
     // both, so a half-written marker must not be reported as a choice.
-    const split = buildEnv(src, { answer: answerWith(storedRow()) });
+    const split = await buildEnv(src, { answer: answerWith(storedRow()) });
     split.S.el.gridStartX.dataset.frameChosen = 'panel';
     await split.S.saveMapSpecOnly();
     eq('L/d a marker on only ONE axis is not a choice', false,
@@ -612,7 +654,7 @@ async function run(src) {
     //    silence. The defect it prevents is the phys marker's, one axis over: with a chosen map
     //    open, overlaying somebody else's map would report the SOURCE's frame as chosen because
     //    the screen still carries this session's marker. Provenance is a fact about a MAP.
-    const win = buildEnv(src, { answer: answerWith(storedRow()) });
+    const win = await buildEnv(src, { answer: answerWith(storedRow()) });
     win.S.markFrameChosen('panel');
     // The frame is an ARGUMENT now: `null` asks the screen, an object asks that map.
     const CHOSEN_FRAME = { frame_chosen_from: 'data' };
@@ -632,7 +674,7 @@ async function run(src) {
   //   `resolveGridFrame`'s `current` branch (`gridFrameControlNum`), which is why there is one
   //   spelling to score rather than two that agree today.
   {
-    const blank = buildEnv(src, { answer: answerWith(storedRow()) });
+    const blank = await buildEnv(src, { answer: answerWith(storedRow()) });
     blank.S.el.gridStartX.value = '';
     await blank.S.saveMapSpecOnly();
     eq('M/a a blank START box writes NOTHING', 0,
@@ -645,7 +687,7 @@ async function run(src) {
 
     // THE COUNTERFACTUAL. A TYPED zero is a legitimate origin and must still save; otherwise
     // "refuses when blank" is satisfied by a writer that refuses, and the assertion is vacuous.
-    const zero = buildEnv(src, { answer: answerWith(storedRow()) });
+    const zero = await buildEnv(src, { answer: answerWith(storedRow()) });
     zero.S.el.gridStartX.value = '0';
     await zero.S.saveMapSpecOnly();
     eq('M/d a TYPED zero still saves', 1, zero.requests.filter(r => r.method === 'PUT').length);
@@ -665,7 +707,7 @@ async function run(src) {
   //      `done` flag set from `.then`) instead of waited for.
   {
     // K1. The fixture, and the reproduction: the request goes out, nothing comes back.
-    const env = buildEnv(src, {
+    const env = await buildEnv(src, {
       answer: (url, method) => (method === 'PUT'
         ? { neverSettles: true }
         : { ok: true, body: { data: [{ data: { grid_metadata: { value: JSON.stringify(storedRow()) } } } ] } }),
@@ -712,8 +754,14 @@ async function run(src) {
     // K4. A PLAIN NETWORK ERROR IS ALSO NOT A DISCARD. `TypeError: Failed to fetch` can happen
     //     before the request is sent OR after it was sent and the response was lost, and JS
     //     cannot tell those apart — so it must not assert the comfortable one.
-    const netEnv = buildEnv(src, { answer: answerWith(storedRow(), { }) });
-    netEnv.S.fetch = (url, init) => {
+    const netEnv = await buildEnv(src, { answer: answerWith(storedRow(), { }) });
+    // 🔴 `globalThis`, not `netEnv.S`. Under the vm sandbox those were the same object -- the
+    //    module's `fetch` WAS a sandbox property. An imported module resolves `fetch` the way
+    //    the browser does, so overriding it on the env would have been a no-op: this case
+    //    would have run the default answer, K4 would have gone green for the wrong reason,
+    //    and the mutant it exists to catch would have escaped. It did exactly that until the
+    //    baseline reddened here.
+    globalThis.fetch = (url, init) => {
       const method = (init && init.method) ? init.method : 'GET';
       netEnv.requests.push({ method, url: String(url) });
       if (method === 'PUT') return Promise.reject(new Error('Failed to fetch'));
@@ -738,7 +786,7 @@ async function run(src) {
     //     answers inside the bound must NOT be aborted. A bound that killed a working save
     //     would turn a successful write into a phantom failure.
     const deferred = {};
-    const slow = buildEnv(src, {
+    const slow = await buildEnv(src, {
       answer: (url, method) => (method === 'PUT'
         ? { deferred }
         : { ok: true, body: { data: [{ data: { grid_metadata: { value: JSON.stringify(storedRow()) } } }] } }),
@@ -757,7 +805,7 @@ async function run(src) {
     eq('K5/...and the bound timer was cleared, not left armed', 0, slow.timers.length);
 
     // K6. The ordinary fast path must not leave a timer behind either.
-    const fast = buildEnv(src, { answer: answerWith(storedRow()) });
+    const fast = await buildEnv(src, { answer: answerWith(storedRow()) });
     await fast.S.saveMapSpecOnly();
     eq('K6/a fast save leaves no timer armed', 0, fast.timers.length);
     eq('K6/...and no abort happened', 0, fast.aborts.length);
@@ -957,7 +1005,7 @@ const MUTANTS = {
 
 // ── main ────────────────────────────────────────────────────────────────────────────────
 (async () => {
-  const base = await run(SRC);
+  const base = await run(null);
   if (verbose) base.evidence.forEach(e => console.log('  ' + e));
   console.log(`${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
     + `${base.failures.length} failure(s)`);
@@ -968,7 +1016,7 @@ const MUTANTS = {
   for (const [name, fn] of Object.entries(MUTANTS)) {
     const isControl = name.startsWith('__control');
     let f = [];
-    try { f = (await run(fn(SRC))).failures; }
+    try { f = (await run(() => fn(SRC))).failures; }
     catch (e) { f = [`threw: ${String(e && e.message).slice(0, 80)}`]; }
     const newOnes = f.filter(x => !base.failures.includes(x));
     if (isControl) {

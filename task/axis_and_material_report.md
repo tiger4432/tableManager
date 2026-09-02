@@ -1,3 +1,823 @@
+# [디자인 -> 총괄] **20 / 21 착지.** 남은 «하나»와 그 레시피 (2026-09-03 아침)
+
+```
+30 슬라이서  =  전환 20  +  남음 1  +  밖 9
+```
+전부 «단언·변이 둘 다» 전후 동일, 매 커밋 하니스 전부 초록 + 계약 7 초록 + ✓ built.
+계약 «둘 다» 끝났습니다 — `map_seam`(556 단언·핀 12) · `legend_map_scope`(71 단언).
+후자는 C1 이 원래 막혔던 그 계약입니다.
+
+## 🔴 남은 하나 — `effort_instrument_harness` (78/0)
+제일 큰 건입니다. **파일은 손 안 댔고 트리는 깨끗합니다** — 반쪽을 남기지 않으려고 멈췄습니다.
+```
+env 둘        buildEnv(98~312) · collectMetaFieldValues 용 작은 것(318~335)
+import 스텁 11  API_BASE·CURRENT_USER(config) · showToast(utils) ·
+              ROUTES·countNav·effortSnapshot·effortCommitIfRecorded(effort_meter) ·
+              getMapIdFromMeta(map_key) · getMissingDescValues(split_registry_row) ·
+              logShapedPushDecision(push_columns) · notifyMapContext(transfer_plan)
+유령          validDieRefTableTouched — 제품이 지운 이름 (다섯 번째 하니스)
+주의          `ctx.globalThis = ctx; vm.createContext(ctx);` 가 «두 env 모두»에 있습니다.
+              첫 번째만 겨냥해야 합니다 (제가 여기서 한 번 걸렸습니다)
+```
+### 이 파일이 스스로 적어 둔 «잘라쓰기 피해» 둘 — 전환의 근거입니다
+```
+pushBlockingCount 가 목록에 없어 샌드박스 빌드가 죽었고, ⚡ Push 경로의 «유일한»
+   종단 채점기가 «아무것도» 안 쟀습니다
+mapKeyListCache 가 없어 «성공한» 푸시가 쓰기 경로 안에서 던졌고, 「데이터 적재 실패」를
+   띄웠는데 A1~A11 은 전부 초록이었습니다 (그 앞에 쓰인 상태만 읽어서)
+=> import 하면 «목록이 없으므로» 이름이 빠질 수가 없습니다
+```
+
+## 이 라운드가 남기는 «형식» (남은 하나에도 그대로)
+```
+① 소스 텍스트를 읽는 검사   그대로 두되 «변이본»(srcText)을 넘긴다
+② 샌드박스 전역 대입        globalThis 로 겨냥 (vm 에서는 S 가 곧 모듈 전역이었다)
+③ 변이를 «텍스트»로 넘김    spec.mutate 는 문자열을 무시 -> 전부 «안 변이된» 모듈
+④ await X(...).prop        괄호가 필요하다
+⑤ import 이후에 심는 이름   Object.keys(stage) 가 못 잡는 유일한 자리
+⑥ 기록용 console 을 전역에  자기 die() 를 삼킨다
+⑦ forEach + async          즉시 반환. «변이 스윕»에 있으면 변이 수가 0이 될 수 있다
+⑧ 무대장치는 자가 검사로    const stage = {…}; state: Object.keys(stage); Object.assign(probe, stage)
+```
+
+## 잘라쓰기가 실제로 무엇을 가리고 있었나 (누적)
+```
+paintLockValues            제품에 «없는» 이름 — 다섯 하니스가 심음
+validDieRefTableTouched    제품이 «지운» 이름 — 계약 하나 + 하니스 하나가 심음
+activeOverlayLayers        배열 vs () => []  — 모순된 두 허구가 «둘 다» 초록
+COPY_HEADER_KEY            'copyHeader' vs 제품 'mapCopyHeader' — 아무도 안 읽어서 무해
+LEGEND_PALETTE·UNLISTED_VALUE_FILL 등 상수 사본 다수
+CONSTS 재발행 해킹          우회로가 «시험 대상을 껐고» 그 경로는 아무것도 안 쟀음
+extractEmptyDoeSeed        배열 하나 읽으려던 20줄 — 렉시컬 const 때문에만 존재
+```
+
+---
+
+# [디자인 -> 총괄] 「빚 4」 중 «하나»는 순서가 다릅니다 — 다만 제 첫 짐작보다 «미묘»합니다 (2026-09-03)
+
+「빨강을 먼저 고쳐야 전환된다」는 순서에, `valid_die_authoring_harness` 는 예외일 «수» 있다고
+보고 확인했습니다. 결과는 **반은 맞고 반은 틀렸습니다.**
+
+## 실측
+```
+map_editor.js 에서 `projectCellsToPhys` 가 «처음» 나오는 곳
+   1894:  //    (`projectCellsToPhys`)은 이 변경 전과 …      <- 주석입니다
+   3615:  // 5b. [Overlay] …                                <- 또 주석
+   8739:  //    ① 비용 — …                                  <- 또 주석
+빨간 단언
+   FAIL [INV-6] resolveValidDie runs the chain check before projecting the cells
+```
+=> 러너의 진단이 맞습니다. **첫 일치가 주석에 떨어져서** 순서를 잘못 읽고 있습니다.
+
+## 🔴 그런데 «전환이 그걸 고치지 않습니다» — 여기서 제 짐작이 틀렸습니다
+```
+그 단언은 «소스 텍스트의 순서»를 읽습니다 — 잘라낸 조각을 «돌리는» 것이 아닙니다
+=> 총괄 판정대로 그건 «구조 검사»이고, 전환 뒤에도 «그대로 남습니다»
+=> 즉 import 로 바꿔도 이 빨강은 «안 없어집니다»
+```
+고쳐야 할 것은 앵커입니다 — 「이름이 처음 나오는 곳」이 아니라 「선언/호출 자리」를 잡아야 합니다.
+
+## 그래서 정확한 문장은 이렇습니다
+```
+총괄의 순서   「빨강을 먼저, 그다음 전환」    -> 이 넷에 «그대로 유효»합니다
+다만          이 하나의 수리는 «한 줄»이고, 오늘 밤 제거하고 있는 것과 «같은 부류»입니다
+             (첫 일치로 텍스트를 짚는 것 — 오늘 세 번 나온 그 병)
+=> 「별도 라운드」가 필요한 크기가 아닙니다. 큐에서 «작은 것»으로 잡으시면 됩니다
+```
+⛔ 지시대로 제가 손대지 않았습니다. 재기만 했습니다.
+
+---
+
+# [디자인 -> 총괄] ⚠️ 답: **ⓑ 25가 과다였습니다.** 30을 이름으로 «전부» 가릅니다 (2026-09-03 새벽)
+
+총괄이 「셋이 어느 쪽에도 없다」고 하신 것이 맞습니다. 원인은 제 «25»입니다 —
+30에서 「안쪽 클로저 3 + 두 리비전 2」만 빼고, **기존 빨강 4를 안 뺐습니다.**
+(제가 「밖 5」라고 쓴 것이 그 둘을 뭉뚱그린 자리입니다.)
+
+## 30을 «하나도 겹치지 않게» 가른 결과
+```
+전환 완료 14
+  overlay_provenance · map_key_canonical · overlay_wafer_mm · marker_shape_wafer_anchor ·
+  isotropic_cell · effort_meter · map_spec_only_save · standard_frame_origin ·
+  startxy_probe · valid_die_origin_alignment · geometry_origin_reseat ·
+  offset_pitch_guard · load_shows_loaded_map · overlay_value_colour
+
+남음 7  ← 이것이 정답입니다
+  company_roundtrip_harness            84/0 · 변이 18
+  coord_table_paste_harness            52/0 · 변이 18
+  effort_instrument_harness            78/0        (import 스텁 11 — 제일 큼)
+  m4_symbol_extractability_probe       15/0        (계약의 슬라이서를 잘라 씀)
+  map_key_datalist_harness             83/0 · 변이 27
+  contracts/legend_map_scope           (C1 이 여기서 막혔던 그 계약)
+  contracts/map_seam
+
+밖 9  ← 손대지 않습니다
+  기존 빨강 4   reposition_regime_probe · split_registry_harness ·
+               valid_die_authoring_harness · valid_die_frame_adoption_harness
+  두 리비전 2   copy_header_count_harness · valid_die_head_parity_oracle
+  안쪽 클로저 3 valid_die_dirty_guard_harness(3곳) · virtual_column_render_harness(7곳) ·
+               contracts/doe_band_rules(7곳)
+  14 + 7 + 9 = 30  ✓
+```
+
+## 🔴 제가 어떻게 틀렸나 — 「부류로 묶되 구성원은 «센다»」입니다
+```
+「밖 5」라고 «부류 이름»으로 적고, 그 안에 기존 빨강 4가 «따로» 있다는 걸 안 셌습니다
+=> 25 − 14 = 11 인데 실제 남은 것은 7. 그 차이 4가 «기존 빨강»입니다
+```
+총괄이 「수로만 맞추지 말고 이름으로」라 하신 것이 정확히 이 병을 막았습니다.
+저는 수를 맞추려 했으면 «없는 셋»을 찾으러 갔을 겁니다.
+
+## 그리고 안쪽 클로저가 «셋»인 것도 이름으로 확정했습니다
+처음엔 `arrowBodyFrom` 만 찾아서 virtual_column_render 하나로 봤는데, 헬퍼 이름이
+파일마다 다릅니다(`extractBracketed` · `sliceBlock`). 이름을 넓혀 다시 세니 셋입니다 —
+그중 하나가 **계약**(doe_band_rules)이라 계약 셋 중 «둘»만 전환 대상입니다.
+
+---
+
+# [디자인 -> 총괄] 전환 14/25 — 그리고 «전환 절차»가 여섯 자리로 굳었습니다 (2026-09-03 새벽)
+
+```
+aab18644 overlay_provenance 21/0·10/10·2/2    34f0fd4d map_key_canonical 116/0
+0e091521 overlay_wafer_mm 72/0·22/22          da125ba6 marker_shape 114/0·11/11
+bf2b538a isotropic_cell 152/0·11/11           28ea188b effort_meter 131/0·8/8
+88ac9d60 map_spec_only_save 72/0·22/22        2076c219 standard_frame_origin 19/0
+28f50329 startxy_probe 75/0                   b3163377 valid_die_origin_alignment 153/0·10/10
+c7952210 geometry_origin_reseat 62/0·13/13    2d79fb58 offset_pitch_guard 94/0·11/11
+fa103f16 load_shows_loaded_map 57/0·14/14     51ff5987 overlay_value_colour 82/0·23/23
+=> 14건, 전부 «단언·변이 둘 다» 전후 동일
+```
+
+## 🔴 이 여섯이 매번 나옵니다 — 남은 11건은 이것만 보면 됩니다
+```
+① 소스 «텍스트»를 읽는 검사      그대로 두되 «변이본»을 넘긴다 (srcText)
+                              안 넘기면 그 검사를 잡던 변이가 조용히 빠져나간다
+② 샌드박스 전역 대입             globalThis 로 겨냥. vm 에서는 S 가 «곧» 모듈 전역이었다
+③ 변이를 «텍스트»로 넘김         spec.mutate 는 문자열을 무시 -> 전부 «안 변이된» 모듈
+④ await X(...).prop            `await (X().prop)` 로 파싱 -> Promise 의 prop 은 undefined
+⑤ import 이후에 심는 이름        Object.keys(stage) 가 못 잡는 «유일한» 자리. 따로 적는다
+⑥ 기록용 console 을 전역에       자기 die() 를 삼킨다. 로드 시점의 진짜 console 을 잡아 둔다
+```
+🔴 ①③⑤는 «단언 수가 안 움직입니다». 총괄이 올리신 «두 증인» 게이트가 아니면 전부 놓칩니다.
+
+## 자가 검사 패턴으로 바꿨습니다
+```
+const stage = { …하니스가 심는 것 전부… };
+loadWithProbe(SRC, { state: Object.keys(stage) });   // 없는 이름이면 프로브가 «던진다»
+Object.assign(probe, stage);
+```
+손으로 옮겨 적던 목록이 사라지고, 빠뜨리면 «조용한 속성»이 아니라 «큰 소리»가 됩니다.
+
+## 잘라쓰기가 «만든» 우회로도 하나 걷어냈습니다
+`load_shows_loaded_map` 은 상수를 스크립트 안에서 «다시 발행»하는 해킹을 갖고 있었습니다 —
+`const` 가 스크립트 최상단에서 렉시컬이라 `sandbox.LAST_OPEN_KEY` 가 undefined 였고,
+그 undefined 키에 부팅 기록을 심으니 `restoreLastOpenMap` 이 «조용히 반환»했습니다.
+import 하면 그냥 스코프에 있습니다.
+
+## 남은 것
+```
+훅 필요·큰 것   effort_instrument(78/0, import 스텁 11) · map_key_datalist(83/0, 변이 27) ·
+              company_roundtrip(84/0·18) · coord_table_paste(52/0·18) ·
+              m4_symbol_extractability(15/0)
+계약 셋        legend_map_scope · map_seam · doe_band_rules
+밖 5          안쪽 클로저 3 · 두 리비전 오라클 2
+```
+
+---
+
+# [디자인 -> 총괄] 7/25 — 훅 첫 실전, 그리고 «남은 14건에 그대로 걸릴» 함정 하나 (2026-09-03 새벽)
+
+```
+88ac9d60  map_spec_only_save   72/0 · 변이 22/22   <- 로더 훅을 실제로 쓴 첫 건
+```
+훅으로 넘긴 것: `showToast`(utils) · `API_BASE` · `CURRENT_USER` · `MAP_SPEC_SAVE_TIMEOUT_MS`(config).
+
+## 🔴 게이트 ③ 이 «제 전환 실수»를 잡았습니다 — 이게 남은 14건의 함정입니다
+```
+기준선이 72/2 로 돌아왔고, 그 두 개가 잡던 변이 하나가 «빠져나갔습니다»
+원인   하니스가 한 케이스에서만 fetch 를 갈아끼웁니다:  netEnv.S.fetch = …
+       vm 에서는 S 가 «곧 모듈의 전역»이라 그게 먹혔습니다
+       import 에서는 모듈이 globalThis.fetch 를 읽습니다 -> 그 대입은 «조용한 무효»가 됩니다
+결과   그 케이스가 기본 응답으로 돌고, K4 가 «엉뚱한 이유로» 초록이 될 뻔했습니다
+고침   globalThis.fetch 로 겨냥 -> 72/0 · 22/22
+```
+🔴 **디프에는 이상한 데가 없었습니다. 이상한 것은 «수»였습니다.** 점수 대조가 이걸 위해 있습니다.
+
+## 그래서 남은 14건은 이걸 «먼저» 봐야 합니다
+```
+검사   `env.S.<전역> = …` / `sandbox.<전역> = …` 꼴이 있나
+       (fetch · confirm · setTimeout · alert · localStorage · performance …)
+있으면  globalThis 로 겨냥합니다. 안 그러면 «조용한 무효»가 되고,
+       그 케이스를 잡던 변이가 같이 빠져나갑니다
+```
+⚠️ 이 부류는 «기준선이 빨개져서» 보였습니다. 만약 그 케이스에 단언이 없었다면 «아무 표시도»
+   없었을 겁니다 — 그래서 점수 대조를 하니스마다 «둘 다»(단언·변이) 적는 것이 맞습니다.
+
+## 시계도 같은 부류라 적어 둡니다
+```
+setTimeout 을 전역으로 갈아끼우는 하니스는 «import 이후»에 걸어야 합니다
+안 그러면 import 기계 자체가 가짜 시계를 받습니다
+대상은 실행할 때 setTimeout 을 읽지, 로드할 때 읽지 않습니다 -- 그래서 이 분리가 정확합니다
+```
+
+## 진행
+```
+25 전환 가능 · 7 착지 · 18 남음  (훅 필요 14 · 그 외 4)
+```
+
+---
+
+# [디자인 -> 총괄] 전환 6/27 — 그리고 «영구 예외» 부류를 하나 더 찾았습니다 (2026-09-03 새벽)
+
+## 착지 (6)
+```
+aab18644  overlay_provenance          21/0 · 변이 10/10 · 대조 2/2
+34f0fd4d  map_key_canonical           116/0
+0e091521  overlay_wafer_mm            72/0 · 변이 22/22
+da125ba6  marker_shape_wafer_anchor   114/0 · 변이 11/11
+bf2b538a  isotropic_cell              152/0 · 변이 11/11
+28ea188b  effort_meter                131/0 · 변이 8/8
+=> 전부 «전후 점수 동일» · 매 커밋 하니스 전부 초록 + ✓ built
+```
+
+## 🔴 손댈 수 «없는» 부류 — 「두 리비전 오라클」 «둘» (새로 찾음)
+```
+valid_die_head_parity_oracle.mjs    execFileSync('git', ['show', `${BASE}:…/map_editor.js`])
+copy_header_count_harness.mjs       같은 모양 (`revision_signature_drift.mjs` 를 공유)
+```
+### 왜 영구 예외인가 — «과거 리비전은 import 될 수 없습니다»
+```
+그 블롭은 «그 시절의» map_editor.js 입니다 -> 그때는 `import './tokens.css'` 가 있었고
+                                          최상단에서 window 를 읽었습니다
+=> 오늘 제가 고친 것은 «오늘 파일»입니다. 과거 커밋은 영원히 그 상태입니다
+=> 한쪽만 import 로 바꾸면 «두 쪽이 서로 다른 기제»로 재게 됩니다 —
+   이 파일 스스로가 「규칙의 사본이 둘이면 두 쪽이 다른 질문에 답하기 시작한다」고 적어 뒀습니다
+```
+⚠️ 이건 결함이 아닙니다. **과거를 실행하려면 텍스트로 읽는 수밖에 없습니다.**
+   지시서의 「잘라쓰기 금지」가 겨냥한 병(오늘 파일이 바뀌면 빨개짐)이 여기엔 «없습니다» —
+   블롭은 안 바뀝니다.
+
+## 그래서 오늘 밤의 «닿을 수 있는» 끝
+```
+30  map_editor 를 잘라 재는 하니스·계약 전부
+-3  안쪽 클로저 (총괄 판정: 오늘 밤 밖)
+-2  두 리비전 오라클 (위 — 영구 예외)
+=  25 가 «전환 가능», 그중 6 착지 · 19 남음
+```
+🔴 25 중 «15» 가 로더 훅이 필요한 것들입니다. 훅은 이미 서 있으니 남은 것은 «양»입니다.
+
+## 전환이 계속 뱉는 것 (이름을 적으라 하신 대로)
+```
+paintLockValues        제품에 없는 이름 — marker_shape · isotropic «둘» 다 심고 있었음
+activeOverlayLayers    배열 vs () => []  — 모순되는 두 허구가 «둘 다 초록»이었음
+UNLISTED_VALUE_FILL    '#T-unlisted' vs 제품 '#10b981' — 아무도 안 읽어서 무해 (④)
+effort_meter 의 손수 쓴 export 목록  — 모듈의 «진짜 표면»으로 교체. 목록은 뒤처집니다
+crypto                 globalThis.crypto 는 node 22 에서 getter 전용 —
+                       vm 샌드박스가 가리고 있던 «환경 사실»입니다
+```
+
+---
+
+# [디자인 -> 총괄] ⚠️ 보드 정정 — **안 멈췄습니다.** 그 사이 다섯 착지 (2026-09-03 새벽)
+
+보드에 「레인이 두 번째로 멈췄다 · 오늘 밤의 정직한 끝은 27/30」이 올라가 있는데,
+그건 «컨텍스트 부족으로 넘기겠다»고 제가 말한 시점의 상태입니다. 소유자가 「컨텍스트 많다,
+계속 진행해」라고 하셔서 **계속 돌고 있습니다.** 지금까지:
+```
+359ba602  probe.mjs 틀
+aab18644  overlay_provenance          21/0 · 변이 10/10 · 대조 2/2
+34f0fd4d  map_key_canonical           116/0                        (세 모듈에서 잘라 쓰던 것)
+e4ec36ac  로더 훅                      15건 해금 (총괄 검수 통과)
+0e091521  overlay_wafer_mm            72/0 · 변이 22/22
+da125ba6  marker_shape_wafer_anchor   114/0 · 변이 11/11
+bf2b538a  isotropic_cell              152/0 · 변이 11/11
+=> 전환 «5 / 27» · 전부 «전후 점수 동일» · 매 커밋 하니스 전부 초록 + ✓ built
+```
+
+## 전환이 계속 «staging 결함»을 뱉고 있습니다 — 이게 이 라운드의 배당금입니다
+```
+paintLockValues        모듈 상태처럼 심겨 있는데 «제품에 그 이름이 없습니다»
+                       marker_shape · isotropic «둘» 다 심고 있었습니다
+activeOverlayLayers    여기선 «배열», standard_frame_origin 에선 «() => []»
+                       제품은 `let activeOverlayLayers = []` -> 형제 쪽이 틀렸습니다
+UNLISTED_VALUE_FILL    '#T-unlisted' vs 제품 '#10b981' — «아무도 안 읽어서» 무해 (분류 ④)
+```
+🔴 **셋 다 잘라쓰기에서는 «영원히 안 보입니다».** vm 에서 맨 식별자는 그냥 샌드박스 속성이고,
+   두 모양이 서로 다른 파일에서 «둘 다» 통과합니다. import 는 하나만 살립니다.
+
+## 남은 것
+```
+지금 가능   effort_meter · m4_symbol_extractability · map_key_datalist ·
+           valid_die_head_parity_oracle
+훅으로 열림  15  (showToast 등 import 스텁)
+계약        3
+밖         안쪽 클로저 셋 — 총괄 판정대로 손 안 댑니다
+```
+계속 갑니다. 보드는 총괄 몫이라 제가 안 고치고 여기에만 적습니다.
+
+---
+
+# [디자인 -> 총괄] ⚠️ 정정 — 「12/30」이 아니라 **15/30** 입니다 (2026-09-03 새벽)
+
+바로 앞 보고(`6117dbb8`)의 수가 «과소»였습니다. 제 검출기가 스텁을 «객체 리터럴 키»
+모양(`showToast: (…) =>`)으로만 찾았고, **할당 모양**을 못 봤습니다:
+```
+ctx.showToast = (msg, kind) => { captured.toasts.push({ msg, kind }); };
+```
+이 모양으로 `showToast` 를 스텁하는 하니스가 «셋» 더 있습니다:
+```
+company_roundtrip_harness.mjs · coord_table_paste_harness.mjs · copy_header_count_harness.mjs
+=> 막힌 것 «15 / 30»
+```
+
+## 🔴 그래서 제가 드린 「안 막히는 것」 목록에서 셋을 «빼야» 합니다
+그 셋을 「지금 전환 가능」으로 적어 올렸는데 **아닙니다.** 그대로 두면 다른 레인이
+집어 들고 중간에 막힙니다. 갱신본:
+```
+✅ 지금 전환 가능   effort_meter · isotropic_cell · m4_symbol_extractability ·
+                  map_key_datalist · marker_shape_wafer_anchor · overlay_wafer_mm ·
+                  valid_die_head_parity_oracle
+🔴 판정 대기(15)   showToast 등 «import 된 함수»를 스텁하는 것들
+⚠️ 별도 부류(3)    안쪽 클로저를 자르는 것 — virtual_column_render(7곳) ·
+                  valid_die_dirty_guard(3곳) · 계약 하나
+                  `arrowBodyFrom('targetCells.forEach(cell => {')` 처럼 «함수 안»의 화살표를
+                  잘라 씁니다. 모듈 바인딩이 아니라 프로브가 «닿을 수 없습니다»
+                  -> 경계 ② 그대로, 이름만 올리고 손대지 않습니다
+```
+
+## 어떻게 틀렸나 — 적어 둡니다
+```
+제가 쓴 검출기   「줄이 `이름:` 으로 시작하나」
+실제 모양 둘     `이름: (…) =>`  «그리고»  `객체.이름 = (…) =>`
+=> 한 모양만 아는 검출기가 «부재»를 만들어 냈습니다. 「부분집합으로 부재를 판정하지 않는다」
+   그대로이고, 이번엔 제가 그걸 어겼습니다. grep 으로 다시 재서 잡았습니다
+```
+
+---
+
+# [디자인 -> 총괄] 🔴 «import 로 들어온 이름»은 프로브로도 못 바꿉니다 — 12/30 (2026-09-03 새벽)
+
+전환을 이어가다 «둘째 벽»을 만났습니다. 첫째 벽(「export 로는 «설정»을 못 한다」)과 같은
+종류이고, 이번에도 **여러 건을 만든 뒤가 아니라 지금** 올립니다.
+
+## 실측
+```
+map_editor.js 가 «import» 로 받는 이름   46개
+그중 하니스가 «동작을 갈아끼우는» 것들   showToast(11) · registryFingerprint(5) ·
+                                        normalizeLegendItem(3) · getMapIdFromMeta(3) ·
+                                        canonicalMapKey(3) · getLocalTimeString(2) ·
+                                        notifyMapContext · notifyLegendChanged · countNav ·
+                                        effortSnapshot · legendRowSignature …
+그런 하니스                              «12 / 30»
+```
+⚠️ 상수(`API_BASE` · `CURRENT_USER` · `ROUTES` …)는 이 부류가 «아닙니다» — 값이 같으면
+   그냥 지우면 됩니다. 위 12는 «동작 스텁»만 셌습니다.
+   (`map_key_canonical` 이 목록에 «없는» 것이 이 셈이 맞다는 표시입니다 — 그건 116/0 으로 착지했습니다)
+
+## 왜 못 바꾸나 — ESM 성질입니다
+```
+import { showToast } from './utils.js';
+=> map_editor 안의 `showToast` 는 «utils.js 의 바인딩»입니다. 밖에서 재할당 불가
+probe 로 utils.js 를 따로 열어도 «다른 인스턴스»라 map_editor 가 보는 것이 아닙니다
+```
+🔴 프로브가 잡을 수 있는 것은 «그 파일이 선언한 것»뿐입니다. 남의 이름은 못 잡습니다.
+
+## 선택지 셋 — 판정 청합니다
+```
+A  node 로더 훅 (module.register)    probe 가 «임시 사본이 import 할 때만» ./utils.js 를
+   ✅ 제 추천                        스텁 모듈로 바꿔치기합니다. 대상 파일은 «안 건드립니다»
+                                    헬퍼 «하나»에 더하므로 조건 ①(헬퍼가 하나)도 유지됩니다
+                                    12건을 «한 번에» 엽니다. probe.mjs 에 40줄쯤
+B  진짜 함수를 «돌게 둔다»            showToast 는 DOM 에 씁니다 -> 하니스가 배열 대신 DOM 을 읽습니다
+                                    ⚠️ 하니스마다 단언을 고쳐야 하고 DOM 스텁이 커집니다
+C  이 12건은 «다리를 안 놓는다»        CLAUDE.md 의 도착지(로직을 자기 모듈로) 쪽으로 미룹니다
+                                    ⚠️ 오늘 밤 목표가 「싹다」라 12건이 남습니다
+```
+
+## 그동안 «안 막히는 것»부터 계속합니다 — 판정과 독립입니다
+```
+막힘 없음   company_roundtrip · coord_table_paste · copy_header_count · effort_meter ·
+           isotropic_cell · m4_symbol_extractability · map_key_datalist ·
+           marker_shape_wafer_anchor · overlay_wafer_mm · valid_die_head_parity_oracle ·
+           virtual_column_render · 계약 셋
+```
+
+## 참고 — `offset_pitch_guard` 전 점수 (총괄이 결과의 뜻을 미리 정해 두신 둘 중 하나)
+```
+ASSERTIONS 94 0    (변이 스윕 없음)
+🔴 다만 이 파일은 showToast · canonicalMapKey 를 스텁하므로 «위 판정을 기다립니다»
+```
+
+---
+
+# [디자인 -> 총괄] 전환 2건 착지, 그리고 «재타이핑된 상수»가 이미 하나 어긋나 있습니다 (2026-09-02 밤)
+
+## 착지
+```
+34f0fd4d  map_key_canonical    116/0 -> 116/0   (세 모듈에서 잘라 쓰던 것)
+aab18644  overlay_provenance   21/0 · 10/10 · 2/2   (앞서)
+```
+
+## 🔴 다음 사람이 걸릴 «멈춤 조건»을 미리 쟀습니다 — 모듈 const 는 probe 로 «못 씁니다»
+map_editor.js 의 모듈 const 42개 중, 하니스가 «값을 적어 넣는» 것이 **아홉**입니다.
+그중 값이 «제품과 다른» 것 셋:
+```
+COPY_HEADER_KEY   하니스 'copyHeader'          제품 'mapCopyHeader'      🔴 어긋남
+LEGEND_PALETTE    하니스 ['#111' …]            제품 ['#10b981' …]        (센티널, 의도적)
+ROUTE_MATERIAL    하니스 'map_editor:material'  제품 `${ROUTES.MAP_EDITOR}:material`
+나머지 여섯       값이 «같습니다» -> 전환하면 그냥 «사라집니다» (사본이 없어지는 것)
+```
+
+### `COPY_HEADER_KEY` 는 «이미» 어긋나 있습니다 — 이게 잘라쓰기의 값입니다
+```
+map_editor.js:6894   const COPY_HEADER_KEY = 'mapCopyHeader';
+map_editor.js:722    localStorage.getItem(COPY_HEADER_KEY)      <- 실제 저장 키
+map_editor.js:725    localStorage.setItem(COPY_HEADER_KEY, …)
+하니스 둘            COPY_HEADER_KEY: 'copyHeader'              <- 제품에 «없는» 키
+   geometry_origin_reseat_harness.mjs:291 · offset_pitch_guard_harness.mjs:179
+```
+🔴 **재타이핑된 사본이 드리프트했고, 두 하니스는 초록입니다.** 지금 어떤 단언을 틀리게
+만들고 있는지는 «따로 봐야» 합니다 — 상수가 «있기만 하면» 되는 자리일 수도 있습니다.
+다만 전환하면 그 가능성 «자체»가 사라집니다. 제품 값을 쓰게 되니까요.
+⚠️ 저는 이 둘을 «안 고쳤습니다» — 전환 라운드에서 같이 없어지는 것이 맞고,
+   지금 값만 고치면 「사본을 최신으로 유지」라는 못 지킬 약속이 하나 더 생깁니다.
+
+### 그래서 남은 26건의 처방에 한 줄 더합니다
+```
+샌드박스가 «모듈 const» 에 값을 적고 있으면
+   ① 값이 제품과 «같으면»  -> 그냥 지웁니다 (사본이 사라지는 것이 이득)
+   ② 값이 «다르면»        -> 센티널인지 «드리프트»인지 봅니다
+                            센티널이면 단언을 제품 값 기준으로 바꿉니다 (약화 아님)
+                            드리프트면 «그 자리를 보고»하십시오 — 결함일 수 있습니다
+   ③ 못 정하겠으면        -> 그 하나에서 멈추고 이름을 올립니다 (경계 ② 그대로)
+```
+
+---
+
+# [디자인 -> 총괄] 전환의 «값»을 재 봤습니다 — 그리고 제 첫 예측은 틀렸습니다 (2026-09-02 밤)
+
+## 실험 — 동작이 «한 글자도» 안 바뀌는 리팩터 하나
+```js
+// map_editor.js — 이 둘은 «같은 함수»입니다
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', … };      // <- 모듈 상수 하나가 생김
+function escapeHtmlAttr(s) { … ch => HTML_ESCAPES[ch] … }
+```
+
+## 결과 — «같은 하니스»를 전/후로 태웠습니다
+```
+전환 «전» (잘라 씀)   ReferenceError: HTML_ESCAPES is not defined     🔴 빨강
+전환 «후» (import)    ASSERTIONS 21 0 · OK                            ✅ 초록
+```
+🔴 **코드는 옳은데 빨개지는 것** — 소유자가 「글자 모양을 잰다」고 하신 그것이 그대로 재현됐습니다.
+   그리고 그 빨강은 «상수 하나»가 원인이라 원인 표시도 안 됩니다. `escapeHtmlAttr` 은 그대로입니다.
+
+## ⚠️ 제 첫 시도는 «판별식이 아니었습니다» — 적어 둡니다
+처음에 `overlay_value_colour_harness`(아직 잘라 씀)로 재고 「빨개질 것」이라 봤는데
+**82/0 초록이었습니다.** 그 하니스도 `escapeHtmlAttr` 을 «자릅니다» — 다만 픽스처가
+`& < > " '` 를 «한 번도 안 먹입니다». 그러니 없는 상수를 «참조할 일이 없습니다».
+```
+=> 「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」 그대로입니다.
+   빨강을 만든 것은 «자르기»가 아니라 «자르기 + 그 값을 먹이는 픽스처»입니다
+   `a&b<map>` · `K"1` 을 들고 있는 overlay_provenance 의 픽스처가 그 조건을 만족합니다
+```
+제 예측이 틀린 것을 «가설로 두지 않고» 판별식으로 다시 재서 답을 얻었습니다.
+
+## 그래서 남은 28건의 값도 «균일하지 않습니다»
+```
+픽스처가 경계값을 먹이는 하니스   전환이 «지금» 거짓 빨강을 막습니다
+안 먹이는 하니스                오늘은 조용합니다 — 그 값을 먹이는 날 터집니다
+=> 우선순위를 매기실 거면 «경계값을 먹이는 것»부터가 이득이 큽니다.
+   다만 둘째 부류도 「아직 안 터졌을 뿐」이라 순서 문제이지 제외 대상은 아닙니다
+```
+⚠️ 실험은 되돌렸습니다 — `map_editor.js` 는 HEAD 그대로이고 트리는 깨끗합니다.
+
+---
+
+# [디자인 -> 총괄] ⚠️ 병합 전에 «dist 를 다시 빌드»하셔야 합니다 — 조용히 사라집니다 (2026-09-02 밤)
+
+일이 아니라 «알림»입니다. 제 브랜치를 main 에 넣기 «전»에 걸리는 자리라 적어 둡니다.
+
+## 실측
+```
+main   6a4d4026 fix(api)   client2/src/push_columns.js  (+8줄)
+                           client2/dist 는 «안 건드렸습니다»
+main   제 분기점 이후 client2/dist 커밋 «0건»
+design 제 dist 는 그 수정이 «없는» 트리에서 빌드됐습니다
+겹치는 파일   «0» -> 병합은 «텍스트로는 깨끗합니다»
+```
+
+## 그래서 무슨 일이 나나
+```
+병합하면   src/push_columns.js 는 «그쪽 것»이 들어오고
+           dist 번들은 «제 것»이 이깁니다 (제 쪽만 dist 를 커밋했으므로)
+결과       그 +8줄이 «출하본에 없습니다». 오류 없음 · git status 깨끗 · 하니스 전부 초록
+```
+🔴 이 저장소가 이미 맞은 부류입니다 — 「소스에 있고 dist 에 없으면 사용자에겐 없는 것」.
+   그리고 이번 건은 «아무도 실수하지 않아도» 일어납니다. 두 레인이 각자 옳게 일한 결과입니다.
+
+## 처방 — 한 줄
+```
+병합 «후»에 client2 에서 `npm run build` 를 한 번 돌리고 그 dist 를 같은 커밋에 담으십시오
+(prebuild 가 계약·하니스를 다 태우므로 그 자체가 통합 게이트입니다)
+```
+⚠️ 제가 «지금» 병합하지 않는 이유: 21커밋을 제 레인으로 끌어오면 다른 레인의 빨강을
+   제 컨텍스트로 디버깅하게 됩니다. 순서는 총괄 몫이라 판단만 올립니다.
+
+---
+
+# [디자인 -> 총괄] 틀 + 첫 전환 착지, 그리고 남은 28건을 위한 **레시피** (2026-09-02 밤)
+
+## 착지
+```
+359ba602  probe.mjs 틀            총괄 검수 통과 (조건 넷)
+aab18644  overlay_provenance 전환  21/0 · 변이 10/10 · 대조 2/2  <- 전/후 «정확히 같음»
+833a9feb  utils.js 가드 분리      전환 중에 나온 결함 (아래)
+```
+전환으로 뭐가 달라졌나: 그 하니스가 «재타이핑한» 칩 함수 셋이 사라졌습니다 --
+잃어버린 것이 아니라 **진짜 칩을 부릅니다.** 재타이핑된 사본은 원본과 «따로 놀면서»
+하니스를 초록으로 놓아두는 물건입니다.
+
+## 🔴 전환 중에 나온 결함 -- `utils.js:111` 가드가 `document` 를 묻고 `window` 를 썼습니다
+```
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', …);
+  window.addEventListener('focus', sweepToasts);      <- 이 줄
+}
+브라우저   둘 다 있어 «무해»했습니다
+하니스     document 만 스턱하면 «던집니다». 그것도 map_editor 에서 «세 모듈 건너»
+=> «가드는 도달 가능해지는 날 틀린다» 그대로입니다. import 가 되게 만든 라운드가
+   그것을 «도달 가능하게» 만들었습니다
+```
+
+---
+
+# 🔴 레시피 -- 남은 28건은 이것만 보면 됩니다
+
+## 실측으로 확인한 «무엇을 잡을 수 있나» -- 이게 핵심입니다
+```
+선언 종류                probe 로                        샘플 상황
+function f(){}       ✅ «교체 가능»  probe.f = () => {}   큰 샌드박스의 협력자 스턱 40개
+let / var x          ✅ get + set                        gridData · legend · validDie …
+const OBJ = {…}      ⚠️ 재할당 불가, «속성은» 가능   Object.assign(probe.el, {…})
+const S = 'str'      ⚠️ 읽기 전용                      대부분 읽기만 하므로 문제 없음
+```
+🔴 **함수가 교체된다는 것이 «큰 샌드박스 형태»를 푸는 열쇠입니다.**
+`standard_frame_origin_harness` 같은 것은 `updateOrientationUI` · `scheduleRenderGridCanvas` 등
+협력자를 마흔 개 스턱하는데, 그게 전부 `state:` 에 넣고 `probe.x = stub` 으로 됩니다.
+
+## 전환 절차 -- `overlay_provenance_harness.mjs` 이 정본 예제입니다
+```
+① 전 점수를 적는다      node <harness> 의 ASSERTIONS · mutations CAUGHT · controls ESCAPED
+② import 를 바꾸고      -import vm from 'node:vm'
+                       +import { loadWithProbe } from './lib/probe.mjs'
+                       (계약은 '../../client2/tests/lib/probe.mjs')
+③ 샌드박스를 나눈다      DOM/전역(document · window · fetch · performance ·
+                         requestAnimationFrame · getComputedStyle) -> globalThis 에 «미리»
+                       모듈 심볼(상태 · 협력자 함수)         -> spec.state
+                       하니스가 «부르는» 것                        -> spec.expose
+④ 변이를 «함수로»     runChecks(소스텍스트) -> runChecks(mutate함수)
+                       스윈는 applyOnce 를 «그대로» 두고 mutate: () => a.src 로 넘깁니다
+                       -> 고유성·무효변이 검사가 전부 살아있습니다
+⑤ async 로 밀어올린다    build/runChecks/sweep 에 async/await. 호출부도
+⑥ 점수를 대조한다      같으면 커밋 · 올라가면 «보고» · 내려가면 «그 하나에서 멈춤»
+```
+⚠️ CSS·HTML 을 텍스트로 읽는 부분은 «그대로 둡니다» -- 스타일시트는 모듈이 아니고
+   import 할 것이 없으며, 선언 자체가 대상입니다. 잘라쓰기가 아닙니다.
+
+## 남은 목록과 크기 (전 점수 기록됨)
+```
+작은 형태 (샌드박스 소수)   map_key_canonical · m4_symbol_extractability ·
+                            overlay_value_colour · isotropic_cell · offset_pitch_guard
+큰 형태 (협력자 수십 개)      standard_frame_origin · map_key_datalist(27변이) ·
+                            copy_header_count(10상태) · company_roundtrip · coord_table_paste ·
+                            load_shows_loaded_map · geometry_origin_reseat · …
+계약 셋                    legend_map_scope · map_seam · doe_band_rules
+⛔ 손대지 않음              기존 빨강 5 (reposition_regime · split_registry ·
+                            valid_die_authoring · valid_die_frame_adoption · alignment_verdict)
+```
+
+## 🔴 그런데 그 «빨강 5» 중 둘은 **잘라쓰기 때문에 빨갱니다** -- 적어 둡니다
+러너의 자기 진단문이 그렇게 말합니다:
+```
+valid_die_authoring   「슬라이서가 projectCellsToPhys 를 «주석 안»(offset 8297)에서 먼저
+                       매칭한다. 코드 순서는 옳다. 수리는 «슬라이서 쪽»에 있다」
+split_registry        「자기가 자르는 심볼이 개명되어 추출 단계에서 던진다」
+=> 둘 다 «전환하면 사라질» 가능성이 높습니다. 지금은 지시대로 손 안 댈니다 --
+   다만 「기존 빨강이라 나중에」가 아니라 「이 라운드가 고치는 병」일 수 있습니다
+```
+
+## 제 상태
+컨텍스트가 얼마 안 남았습니다. **반쪽 전환된 파일을 남기지 않기 위해** 여기서 멈추고
+남은 28건을 이 레시피로 넘깁니다. 틀과 예제가 둘 다 커밋되어 있어
+다른 레인이 바로 복제할 수 있습니다. 병렬로 나누셔도 충돌이 없습니다 --
+하니스마다 «자기 파일 하나»만 고칩니다 (map_editor.js 는 더 안 건드립니다).
+
+---
+
+# [디자인 -> 총괄] 🔴 ②의 처방이 «30건 중 24건»에 안 통합니다 — `export` 로는 «설정»을 못 합니다 (2026-09-02 밤)
+
+`state.js` 는 착지했습니다 (`da397d32`). 그리고 ②에 들어가기 «전»에 전수로 재 봤는데,
+판정하신 처방(「`function f` -> `export function f`, 문법만」)이 **다수에 안 통합니다.**
+27건을 다 만든 뒤에 알면 밤을 버리는 자리라 먼저 올립니다.
+
+## 실측 — map_editor.js 를 «잘라 재는» 하니스 «30» (지시서의 27 + 계약 3)
+```
+24 / 30   샌드박스에 map_editor.js 의 «모듈 변수»를 «넣어서» 잽니다
+           gridData · legend · validDie · selectedTable · overlayLayers · tableSchema …
+           설정하는 이름의 «합집합» = 27개 (모듈 최상단 mutable 47 중)
+ 6 / 30   상태가 필요 없습니다 -> «판정하신 처방 그대로» 전환됩니다
+```
+많이 넣는 순: copy_header_count 10 · legend_map_scope(계약) 6 · valid_die_frame_adoption 6 ·
+valid_die_origin_alignment 5 · geometry_origin_reseat 5 · …
+
+## 🔴 왜 `export` 로 안 되나 — ESM 의 성질입니다. 제 취향이 아닙니다
+```
+import * as M from './map_editor.js';
+M.gridData = fixture;      -> TypeError. 네임스페이스 객체는 «봉인»돼 있습니다
+export let gridData;        -> 밖에서는 «읽기 전용»입니다. 내보내도 «못 씁니다»
+```
+=> 하니스는 함수를 «부를» 수는 있는데, 그 함수가 읽는 «상태»를 못 깝니다.
+   그러면 24건은 재던 것을 못 재게 되고, 그건 게이트 ③의 「점수가 내려가면 멈춤」입니다.
+
+## 제안 — «잘라쓰기 금지»를 어기지 «않는» 방법이 하나 있습니다
+```
+temp 사본 = 원본 «전문» + 뒤에 «덧붙인» 접근자
+   <map_editor.js 전체 그대로>
+   export const __probe = {
+     get gridData() { return gridData }, set gridData(v) { gridData = v },
+     escapeHtmlAttr, renderOverlayList,          // 그 하니스가 «부르는» 것만
+   };
+하니스는 그 사본을 import 합니다. 매 실행마다 «원본에서 다시» 만듭니다
+```
+🔴 **이것은 잘라쓰기가 «아닙니다».** 금지의 사유가 그대로 해소됩니다:
+```
+금지 사유            덧붙이기에서
+import 을 더하면 던짐   원본 전문이 있으므로 «그대로 돕니다»
+const 가 안 보임        모듈 스코프 그대로라 «보입니다»
+헬퍼를 부르면 던짐      헬퍼가 «파일 안에 있습니다»
+=> 「글자 모양」이 아니라 «동작»을 잽니다. 잘라내는 것이 «0» 입니다
+```
+그리고 **운영 코드가 한 줄도 안 바뀝니다** — 판정 ⓑ의 「표면이 는다」 걱정 자체가 사라집니다.
+변이 검사도 같은 자리에 그대로 삽니다 (사본의 앞부분을 변이시킵니다).
+
+### 대안 ②' — 운영 파일에 «접근자 객체 하나»를 export
+```
+map_editor.js 끝에  export const __state = { get gridData(){…}, set gridData(v){…}, … }
+장점  temp 파일이 없습니다
+단점  운영 파일에 «27쌍»의 접근자가 들어갑니다. 「재는 것만」의 정신에서 멉니다
+```
+제 추천은 **덧붙이기(temp 사본)** 입니다. 판정 청합니다.
+
+## 그동안 «막히지 않는» 6건을 먼저 전환합니다 — 판정 그대로 됩니다
+```
+effort_meter_harness · standard_frame_origin_harness · startxy_probe
+virtual_column_render_harness · contracts/doe_band_rules
+(reposition_regime_probe 는 «기존 빨강 5» 라 손대지 않습니다)
+```
+
+## 게이트 ③ 전(前) 점수 — 30건 «전부» 기록해 뒀습니다
+```
+예: virtual_column_render 66/0 · 변이 28/28 · 대조 2/2
+    copy_header_count 151/0 · 13/13     valid_die_dirty_guard 95/0 · 26/26
+    valid_die_head_parity_oracle 17,498/0
+기존 빨강 4건도 이 목록에 있습니다 (valid_die_authoring 100/1 ·
+valid_die_frame_adoption 228/41 · split_registry · reposition_regime) -> 손대지 않습니다
+```
+
+---
+
+# [디자인 -> 총괄] 잘라쓰기 ① 착지 `49725ea3` — map_editor.js 가 «import 됩니다». 벽은 «넷»이었습니다 (2026-09-02 밤)
+
+## 벽이 하나가 아니라 넷이었습니다 — 위를 치워야 «다음 것이 보였습니다»
+```
+① map_editor.js:1-2    import './tokens.css' · './style.css'        <- 지시서가 지목한 것
+② transfer_plan.js:53  import './transfer_plan.css'
+   🔴 map_editor.js 가 이 파일을 import 합니다. ①만 걷으면 벽이 «한 모듈 안쪽»으로 옮겨질 뿐입니다
+③ config.js:1,13       window.location · import.meta.env  (최상단)
+   utils.js:347        window.showToast = showToast
+④ map_editor.js        document.addEventListener 둘 (DOMContentLoaded · themechange)
+```
+CSS 는 `map_editor.html` 이 «`<link>` 로» 답니다 (map_editor2.html 과 같은 모양).
+③④는 `typeof` 가드입니다 — 브라우저엔 window·document 가 있으므로 **같은 갈래를 탑니다**.
+
+## ⚠️ 지시서의 «주의»에 답합니다 — admin 은 본보기가 «아닙니다»
+```
+지시서   「admin.js 의 첫 4줄엔 CSS import 가 0 — 주석이 낡았거나 아래쪽에서 하거나」
+실측     admin.js:5  import './tokens.css';      <- «합니다»
+=> admin.html:16 주석이 «맞습니다». 4줄 훑기가 틀렸습니다.
+   따라서 CSS 를 안 import 하는 본보기는 «map_editor2 하나»뿐입니다
+```
+
+## CSS 게이트 — «해시 동일»로 통과했습니다 (검사보다 강한 증거입니다)
+```
+tokens-ZCVo3oho.css · map_editor-Ciy5K-Co.css(=transfer_plan.css) · style-Db5ZjXn6.css
+   -> 세 파일 «전부» git 상 «무변화». 즉 바이트가 같습니다
+dist/map_editor.html   같은 셋을 «같은 순서»로 link. style.css 가 «마지막» (cascade 계약)
+index.html · map_editor2.html   손 안 탐
+```
+
+## 🔴 빌드 산출물이 «한 군데» 달라졌습니다 — 거동 변화는 «아닙니다»
+```
+전   main 청크에 `user_name=kk980` 이 «상수로 접혀» 있었습니다 (4곳)
+후   `user_name=${encodeURIComponent(a)}` — config 청크에서 «import 해 읽습니다»
+왜   `try { import.meta.env.VITE_USER } catch` 는 상수 접기가 안 됩니다
+값   config 청크에 `try{i=`kk980`}catch{i=void 0}` — define 치환은 «그대로» 일어납니다
+```
+🔴 그래서 `import.meta.env.VITE_USER` 를 «글자 그대로» 남겼습니다. 줄여 쓰면 치환이 조용히
+   안 되고 **모든 사용자가 `web_client` 가 됩니다** — 오류도 없고 화면도 멀쩡합니다.
+
+## 게이트
+```
+하니스   gated 전부 초록 · 계약 7 전부 초록 · ✓ built
+         이 파일을 «잘라 재던» 하니스들도 그대로 초록입니다 (함수 본문이 안 움직였으므로)
+⚠️ undeclared_identifier 의 「ceiling 48 -> 47」은 «제 변경이 아닙니다» — HEAD 도 47 입니다
+```
+
+## 지금 «import 되는 것» / 아직 «안 되는 것»
+```
+✅ map_editor.js · config.js · utils.js · transfer_plan.js · doe_bands.js
+   split_registry_row.js · tsv.js · map_key.js · dom.js
+❌ state.js:136  `new URLSearchParams(window.location.search)`
+   -> 이것 하나가 api.js · grid.js · clipboard.js · timeline.js 를 «같이» 막고 있습니다
+❌ main.js       자기 CSS import 넷
+```
+둘 다 지시서의 «③ 나머지 대상» 단위라 이 커밋에 «안 넣었습니다».
+
+## 🔴 ②로 가기 전에 판정을 하나 청합니다 — **map_editor.js 의 export 가 «0» 입니다**
+```
+import 은 됩니다. 그런데 27개 하니스가 재는 «함수와 상수»에 닿지 못합니다
+=> ②는 「그 심볼들에 `export` 를 붙이는 일」이 됩니다. 하니스 한 벌마다, 그것이 재는 것만
+```
+```
+✅ 제 판단   `export` 는 «추가»일 뿐 거동을 안 바꿉니다. 번들러에 이미 다른 export 가 있는
+            파일들과 같은 모양이고, 잘라쓰기를 없애는 유일한 길입니다
+🔴 다만      이 파일의 «공개 표면»이 늘어납니다. 그걸 총괄이 원치 않으실 수 있어 먼저 올립니다
+            (원치 않으시면 대안은 「재려는 로직을 자기 모듈로 빼기」 — CLAUDE.md 가 정본으로
+             적어 둔 방식이고, `truncation.js`·`match_count.js`·`dropdown.js` 가 그 예입니다.
+             대신 커밋이 훨씬 커집니다)
+```
+멈추지 않고 ③의 `state.js` 를 먼저 풀어 두겠습니다 — 판정과 «독립»이고 넷을 한 번에 엽니다.
+
+---
+
+# [디자인 -> 총괄] C1 절반 `93ec395d` — 🔴 «계약» 하나가 옛 질문을 담고 있어 판정 요청 (2026-09-02 밤)
+
+## 한 것 — 「잘렸나」가 한 함수가 됐습니다
+```
+truncation.js   fetchLimitFor(cap) · isTruncated(rows, cap) · withinCap(rows, cap)
+                🔴 `total` 을 «받지 않습니다» (파일에 그 낱말이 코드로 «0회» — 하니스가 잽니다)
+하니스          12/0 · 변이 6/6 · 대조 2/2
+판별식          «정확히 상한만큼» 왔을 때 — 상한으로 청하고 `>= cap` 으로 보면
+                꽉 찬 정상 응답이 «절단»으로 읽히고, 온전한 맵이 「모름」으로 강등됩니다
+```
+⚠️ 제 변이 하나의 «이름»이 틀렸습니다 — 가드를 지워도 «안 던집니다»(`9 > undefined` 는 false).
+   답이 갈리는 곳은 «음수 상한»이고, 그 입력을 채점기에 안 넣었을 때 그 변이가 빠져나갔습니다.
+   입력을 넣고 이름을 고쳤습니다.
+
+## 🔴 그리고 «멈췄습니다» — 계약 `legend_map_scope` 가 빨개집니다
+전환은 «만들어서 돌려 봤고», 그때 이렇게 됩니다:
+```
+계약 단언   「truncated response is a failure」   expected false · actual «true»
+기제        그 스텁은 절단을 «total > rows» 로 표현합니다
+            새 질문에서는 그 응답이 그냥 «짧은 읽기»라 실패가 «안 납니다»
+=> 불변식은 «그대로 옳습니다». 바뀐 것은 «절단을 어떻게 아는가»입니다
+```
+🔴 **통과시키려면 벡터를 고쳐야 하는데, 러너가 「벡터를 고쳐 통과시키지 말 것」이라고 못 박습니다.**
+그래서 «알려진 상태»로 되돌리고 올립니다 — `truncation.js` + 하니스만 착지했고
+`map_editor.js` 는 «한 줄도» 안 바뀐 상태입니다 (빌드 ✓ built · 하니스 60 초록).
+
+### 판정을 청합니다 — 셋 중 하나
+```
+① 스텁을 새 철자로 «다시 표현»한다 (rows = cap+1). 단언 문장은 그대로
+   -> 같은 불변식을 새 기제로 말하는 것. 약화가 아닙니다
+② 계약이 «total 기반 절단»을 지켜야 하면, split registry 는 total 을 «유지»합니다
+   -> 그러면 C1 은 «셀 로드 하나»만 전환합니다
+③ 다른 방법
+```
+
+## 전환하면 이렇게 됩니다 (판정 나면 바로)
+```
+옮길 자리   4210 split registry(던짐) · 5339 셀 로드(경고)
+이미 같은 방식  9134 · 10451 — «같은 함수»를 쓰게 바꿉니다
+2000 의 두 철자  OVERLAY_CELL_LIMIT = MAIN_CELL_LIMIT 로 하나만 남깁니다
+🔴 5339 는 «자르기»가 build 루프 «위»로 가야 합니다 — 상한+1 로 청하면 그 한 행이
+   이미 gridData 에 들어간 뒤에 판정이 오기 때문입니다 (화면이 상한을 하나 넘겨 그립니다)
+```
+
+## 🔴 멈춤 조건 ① — 10066 은 «수»가 필요합니다
+```
+문구   「등록된 맵 «N개» 중 M개만 목록에 있습니다」
+상한+1 은 「더 있다」는 알지만 N 이 몇인지 «모릅니다»
+=> 그 자리는 total 을 «유지»합니다. 문구를 바꾸는 것은 화면 변경이라 지시서 밖입니다
+```
+
+## 게이트 ③ 에 대한 정정
+지시서가 「다섯 + 셋 = 여덟 자리가 한 함수」라 하셨는데, 실제로 «절단을 판정하는» 자리는
+여덟이 아니라 «다섯»입니다 (4210 · 5339 · 9134 · 10451 · 10066). 나머지 셋(limit=1 · 1 · 2)은
+절단을 «안 봅니다». 그래서 목표는 「직접 쓴 판정 0」이고, 10066 을 빼면 «넷»이 한 함수를 씁니다.
+
+---
+
 # [디자인 -> 총괄] 나머지 절반 `d0be1928` + 맵 에디터 `59ce8bd2` (2026-09-02 밤)
 
 ## ① 그리드 — 행이 먼저, 개수는 따로

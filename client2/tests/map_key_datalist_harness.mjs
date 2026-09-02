@@ -38,6 +38,7 @@
 // on source text rather than on behaviour, and its "caught" column is then worthless — it
 // would be riding on the edit, not scoring its own axis.
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -212,10 +213,15 @@ function makeDocument(roots) {
  * The first match wins; `once: true` removes it after use, which is how a second focus is
  * given a different answer than the first (the "is the failure cached?" question).
  */
-function build(src, { answers = [], table = 'bonding_map', schema = null } = {}) {
-  const pieces = [];
-  for (const name of CONSTS) pieces.push(konst(src, name));
-  for (const name of FUNCS) pieces.push(fn(src, name));
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+// harness reddens on correct code and names the missing symbol rather than the change. The
+// consts it also had to cut in -- `VALID_DIE_TABLE`, the cache maps, the limits -- are simply
+// in scope now.
+//
+// `src` is a MUTATE FUNCTION now (or null): a mutant is a whole module, so one that fails to
+// parse fails loudly instead of counting as caught.
+async function build(src, { answers = [], table = 'bonding_map', schema = null } = {}) {
 
   const container = makeNode('div');
   container.id = 'metadata-fields-container';
@@ -263,53 +269,57 @@ function build(src, { answers = [], table = 'bonding_map', schema = null } = {})
     colMapX: { value: 'x' }, colMapY: { value: 'y' }, colMapVal: { value: 'val' },
   };
 
-  const sandbox = {
-    el,
-    document: makeDocument(roots),
-    API_BASE: '/api',
-    // The live export, not a copy. In the product this name is an `import` in
-    // `map_editor.js`, so providing it the way `API_BASE` is provided models exactly what the
-    // sliced code sees at runtime.
-    //
-    // ⚠️ MEASURED 2026-08-05, AND IT IS NOT COVERAGE. Setting this to `[]` — and deleting the
-    //    binding outright — both leave this harness at 83 passed / 0 failed. The only reader
-    //    is `renderMetadataInputs`'s search-column filter, and no fixture here reaches that
-    //    branch. It is kept (rather than deleted) so that the day a fixture does reach it, the
-    //    value is the real roster instead of a stale copy — but nothing below scores the
-    //    roster's contents, and the push gate's own harness is where that is scored.
-    PUSH_SYSTEM_COLUMNS,
-    selectedTable: table,
-    tableSchema: schema,
-    console: { debug() {}, warn() {}, error() {}, log() {}, info() {} },
-    Number, String, Array, Object, Math, JSON, Promise, Map, Set, WeakMap,
-    encodeURIComponent,
-    // `delay` is what makes an OUT-OF-ORDER landing expressible: without it every answer
-    // arrives in request order and the stale-overwrite race has no fixture. `delay: n`
-    // resolves `json()` after n extra microtask turns.
-    async fetch(url) {
-      requests.push(String(url));
-      const a = answers.find(x => x.match(String(url)));
-      if (!a) throw new Error(`no answer declared for ${url}`);
-      if (a.once) answers.splice(answers.indexOf(a), 1);
-      if (a.throws) throw new Error(a.throws);
-      const status = a.status === undefined ? 200 : a.status;
-      const turns = a.delay || 0;
-      return {
-        ok: status >= 200 && status < 300, status,
-        json: async () => {
-          for (let i = 0; i < turns; i++) await Promise.resolve();
-          return a.body;
-        },
-      };
-    },
+  // The modelled document is the harness's own tree; the two listener methods are added
+  // because map_editor.js wires the page at module scope and reads them at import time --
+  // something a vm sandbox never had to answer for.
+  globalThis.document = Object.assign(makeDocument(roots), {
+    addEventListener() {}, removeEventListener() {},
+  });
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
   };
-  vm.createContext(sandbox);
-  try {
-    vm.runInContext(pieces.join('\n\n'), sandbox);
-  } catch (e) {
-    die(`the sliced code does not evaluate: ${e && e.message}`);
-  }
-  return { sandbox, el, requests, container, roots };
+  // `delay` is what makes an OUT-OF-ORDER landing expressible: without it every answer arrives
+  // in request order and the stale-overwrite race has no fixture. `delay: n` resolves `json()`
+  // after n extra microtask turns.
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    const a = answers.find(x => x.match(String(url)));
+    if (!a) throw new Error(`no answer declared for ${url}`);
+    if (a.once) answers.splice(answers.indexOf(a), 1);
+    if (a.throws) throw new Error(a.throws);
+    const status = a.status === undefined ? 200 : a.status;
+    const turns = a.delay || 0;
+    return {
+      ok: status >= 200 && status < 300, status,
+      json: async () => {
+        for (let i = 0; i < turns; i++) await Promise.resolve();
+        return a.body;
+      },
+    };
+  };
+
+  // What this harness stages. `state` is `Object.keys` of it, so a name the module does not
+  // declare is a loud failure rather than a property nobody reads.
+  const stage = { selectedTable: table, tableSchema: schema };
+
+  // `PUSH_SYSTEM_COLUMNS` was handed in as a value because the sliced code could not import.
+  // The module imports the live export itself now, which is what that note always wanted.
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...FUNCS, ...CONSTS, 'el'],
+    state: Object.keys(stage),
+    stubs: { './config.js': { API_BASE: '/api' } },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'keydatalist',
+  });
+
+  Object.assign(probe.el, el);
+  Object.assign(probe, stage);
+  // The checks reach the modelled tree through `env.sandbox.document`, which the vm sandbox
+  // carried as a property. It rides along here for the HARNESS to read -- the module resolves
+  // `document` as a global, not from this object.
+  probe.document = globalThis.document;
+  return { sandbox: probe, el: probe.el, requests, container, roots };
 }
 
 // ── Scoring ─────────────────────────────────────────────────────────────────────
@@ -452,6 +462,11 @@ function constraintState(input) {
 
 // ── The checks ──────────────────────────────────────────────────────────────────
 async function runChecks(src, { strict = true } = {}) {
+  // The markup block near the end reads the SOURCE TEXT rather than executing it -- it asserts
+  // that generated fields get a `list` attribute and no constraint. That is a check on the
+  // file, not a sliced fragment being run, so it stays; it is handed the MUTATED text, or the
+  // mutants written to trip it would go unnoticed by exactly those assertions.
+  const srcText = src ? src(SRC) : SRC;
   const r = {};
 
   // ── 0. FIXTURE ACTIVITY ───────────────────────────────────────────────────────
@@ -476,7 +491,7 @@ async function runChecks(src, { strict = true } = {}) {
   // ── 1. OVERLAY: the population is "maps with a registered spec", and it is the
   //       SOURCE table's, not the canvas table's ────────────────────────────────
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map',
       answers: [metaAnswer('core_defect_map'), metaAnswer('bonding_map')],
     });
@@ -507,7 +522,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   A stale list is worse than none because it is not visibly stale, so the check is
   //   stated as "how many of the OLD table's keys survive", which is 0 or it is a defect.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map',
       answers: [metaAnswer('core_defect_map'), metaAnswer('bonding_map')],
     });
@@ -531,7 +546,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   the previous table's keys — a list that is wrong and looks completely normal, which
   //   is the same failure mode as a stale list, arriving by a different door.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map',
       answers: [
         { ...metaAnswer('core_defect_map'), delay: 8 },   // asked first, answers last
@@ -562,7 +577,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   still asked for the canvas table would get NO answer and produce an empty list — the
   //   two outcomes cannot be confused.
   {
-    const env = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
+    const env = await build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
     await env.sandbox.populateValidDieRefList();
     r.vdOptions = optionValues(env.el.validDieRefList);
     r.vdFilteredByFixedTable =
@@ -583,7 +598,7 @@ async function runChecks(src, { strict = true } = {}) {
 
   // ── 1-quater. A TRUNCATED MAP-KEY LIST IS NOT CACHED AND SAYS SO ──────────────
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map',
       answers: [metaAnswer('valid_die_ref', 900)],     // total 900 >> 3 rows
     });
@@ -622,7 +637,7 @@ async function runChecks(src, { strict = true } = {}) {
     });
 
     // (a) COMPLETE, and the current key is empty → the dropdown, exactly like the preset one.
-    const envOk = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
+    const envOk = await build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
     await envOk.sandbox.populateValidDieRefList();
     r.vdShapeComplete = shape(envOk);
     r.vdSelectOptions = envOk.el.validDieRefSelect.children.map(o => o.value);
@@ -635,7 +650,7 @@ async function runChecks(src, { strict = true } = {}) {
     r.vdEmptyOptionSaysCircle = /원 기하/.test(envOk.el.validDieRefSelect.children[0].textContent);
 
     // (b) TRUNCATED → the input stays, and a key that is in NO list survives untouched.
-    const envCut = build(src, {
+    const envCut = await build(src, {
       table: 'bonding_map', answers: [metaAnswer('valid_die_ref', 900)],
     });
     envCut.el.validDieRefKey.value = FREE;
@@ -645,7 +660,7 @@ async function runChecks(src, { strict = true } = {}) {
     r.vdTruncatedUnconstrained = constraintState(envCut.el.validDieRefKey);
 
     // (c) UNAVAILABLE (HTTP failure) → the input stays, free key survives.
-    const envDown = build(src, {
+    const envDown = await build(src, {
       table: 'bonding_map',
       answers: [{ match: u => u.includes('/tables/wafer_map_metadata/data'), status: 503, body: {} }],
     });
@@ -659,7 +674,7 @@ async function runChecks(src, { strict = true } = {}) {
     //     read "-- 원 기하 --" for a map that HAS a declaration: a designation shown as no
     //     designation. This is the condition that makes the whole change safe, and without
     //     it the change is itself the defect it is meant to avoid.
-    const envLegacy = build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
+    const envLegacy = await build(src, { table: 'bonding_map', answers: [metaAnswer('valid_die_ref')] });
     envLegacy.el.validDieRefKey.value = FREE;
     await envLegacy.sandbox.populateValidDieRefList();
     r.vdShapeLegacyKey = shape(envLegacy);
@@ -669,7 +684,7 @@ async function runChecks(src, { strict = true } = {}) {
     //     unlisted, so ONE guard failing is enough to keep the input and the other guard is
     //     never exercised. Here only the truncation can forfeit the dropdown, so this is the
     //     fixture that can tell "we checked the population" from "we checked the key".
-    const envCutEmpty = build(src, {
+    const envCutEmpty = await build(src, {
       table: 'bonding_map', answers: [metaAnswer('valid_die_ref', 900)],
     });
     await envCutEmpty.sandbox.populateValidDieRefList();
@@ -716,7 +731,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   Silence is what a broken dropdown looks like. "조회는 됐고 정말로 0건" and "목록을
   //   못 만들었다" must not arrive as the same empty control with the same empty tooltip.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map',
       answers: [{
         match: u => u.includes('/tables/wafer_map_metadata/data'),
@@ -745,7 +760,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   separately, and both scored against expectations written by hand rather than against
   //   the product's own comparator/summariser.
   {
-    const env = build(src, { table: 'bonding_map', answers: [metaAnswer('bonding_map')] });
+    const env = await build(src, { table: 'bonding_map', answers: [metaAnswer('bonding_map')] });
     env.el.overlaySrcTable.value = 'bonding_map';
     env.el.overlaySrcKey.value = FREE;
     await env.sandbox.populateOverlayKeyList();
@@ -815,15 +830,15 @@ async function runChecks(src, { strict = true } = {}) {
   //   Scored as a DISCRIMINATION between two answers that are byte-identical except for
   //   that one field. Either the two outcomes differ, or the field was collapsed.
   {
-    const mkEnv = (body) => {
-      const env = build(src, {
+    const mkEnv = async (body) => {
+      const env = await build(src, {
         table: 'bonding_map', schema: SCHEMA_A,
         answers: [valuesAnswer('bonding_map', 'lot_id', body)],
       });
       env.sandbox.renderMetadataInputs();
       return env;
     };
-    const emptyEnv = mkEnv(complete([]));
+    const emptyEnv = await mkEnv(complete([]));
     await emptyEnv.sandbox.populateColumnValueDatalist(
       'bonding_map', 'lot_id',
       emptyEnv.sandbox.document.getElementById('meta-list-lot_id'),
@@ -831,7 +846,7 @@ async function runChecks(src, { strict = true } = {}) {
     const emptyInput = emptyEnv.sandbox.document.getElementById('meta-input-lot_id');
 
     const REASON = '접두 인덱스 idx_suggest_bonding_map_lot_id 가 없습니다.';
-    const unavEnv = mkEnv(unavailable(REASON));
+    const unavEnv = await mkEnv(unavailable(REASON));
     const unavInput = unavEnv.sandbox.document.getElementById('meta-input-lot_id');
     unavInput.value = FREE;
     await unavEnv.sandbox.populateColumnValueDatalist(
@@ -864,7 +879,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   look" must be re-asked; "not a suggestion target" is a DECLARATION and asking again
   //   is waste. Collapsing these two the other way is the same defect class.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map', schema: SCHEMA_A,
       answers: [valuesAnswer('bonding_map', 'lot_id', unavailable('타임아웃'))],
     });
@@ -875,7 +890,7 @@ async function runChecks(src, { strict = true } = {}) {
     await env.sandbox.populateColumnValueDatalist('bonding_map', 'lot_id', list, input, '');
     r.unavRequests = env.requests.length;
 
-    const env4 = build(src, {
+    const env4 = await build(src, {
       table: 'bonding_map', schema: SCHEMA_A,
       answers: [{ match: u => u.includes('/columns/slot/values'), status: 400, body: {} }],
     });
@@ -903,7 +918,7 @@ async function runChecks(src, { strict = true } = {}) {
 
   // ── 2-ter. AN HTTP FAILURE IS ALSO NOT AN EMPTY COLUMN ────────────────────────
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map', schema: SCHEMA_A,
       answers: [{ match: u => u.includes('/columns/lot_id/values'), status: 500, body: {} }],
     });
@@ -916,7 +931,7 @@ async function runChecks(src, { strict = true } = {}) {
     r.http500Mark = input.dataset.suggest === undefined ? null : input.dataset.suggest;
     r.http500Value = input.value;
 
-    const envThrow = build(src, {
+    const envThrow = await build(src, {
       table: 'bonding_map',
       answers: [{ match: u => u.includes('/tables/wafer_map_metadata/data'),
                   throws: 'NetworkError' }],
@@ -938,7 +953,7 @@ async function runChecks(src, { strict = true } = {}) {
   //       UNREACHABLE — not merely empty
   //   (c) no per-node listener is ever attached, so regeneration cannot leak any
   {
-    const env = build(src, { table: 'bonding_map', schema: SCHEMA_A });
+    const env = await build(src, { table: 'bonding_map', schema: SCHEMA_A });
     env.sandbox.renderMetadataInputs();
     const doc = env.sandbox.document;
     r.genPairs = SCHEMA_A.map_key_columns.map(c => {
@@ -998,7 +1013,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   `dropColumnValueCache` is what stops the new table's field from showing the old
   //   table's values, and the request count is what proves it ran.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map', schema: { ...SCHEMA_A, map_key_columns: ['lot_id'] },
       answers: [
         { match: u => u.includes('/tables/bonding_map/columns/lot_id/values'),
@@ -1037,7 +1052,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   values may have been added while the operator was elsewhere, and a suggestion list
   //   that silently predates them is the stale-list defect wearing a different hat.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map', schema: { ...SCHEMA_A, map_key_columns: ['lot_id'] },
       answers: [{ match: u => u.includes('/tables/bonding_map/columns/lot_id/values'),
                   body: complete(['K23A0011']) }],
@@ -1067,7 +1082,7 @@ async function runChecks(src, { strict = true } = {}) {
   //   This is the honesty rule for truncation, expressed as REQUEST COUNTS. Narrowing a
   //   list the server already cut would present a sample as a population.
   {
-    const env = build(src, {
+    const env = await build(src, {
       table: 'bonding_map', schema: { ...SCHEMA_A, map_key_columns: ['lot_id'] },
       answers: [valuesAnswer('bonding_map', 'lot_id', complete(['K23A0011', 'K23A0012']))],
     });
@@ -1094,7 +1109,7 @@ async function runChecks(src, { strict = true } = {}) {
     await new Promise(r2 => setImmediate(r2));
     r.refocusExtraRequests = env.requests.length - afterFocus;
 
-    const envCut = build(src, {
+    const envCut = await build(src, {
       table: 'bonding_map', schema: { ...SCHEMA_A, map_key_columns: ['lot_id'] },
       answers: [valuesAnswer('bonding_map', 'lot_id', cut(['K23A0011', 'K23A0012']))],
     });
@@ -1136,9 +1151,9 @@ async function runChecks(src, { strict = true } = {}) {
       overlayUnconstrained: !!(ovTag && !/\b(required|pattern=|readonly|disabled)\b/i.test(ovTag[0])),
       validDieStillHasList: !!(vdTag && /list="valid-die-ref-list"/.test(vdTag[0])),
       validDieUnconstrained: !!(vdTag && !/\b(required|pattern=|readonly|disabled)\b/i.test(vdTag[0])),
-      generatedFieldsGetList: /input\.setAttribute\('list', `meta-list-\$\{col\}`\)/.test(src),
+      generatedFieldsGetList: /input\.setAttribute\('list', `meta-list-\$\{col\}`\)/.test(srcText),
       generatedFieldsUnconstrained: !/input\.(required|pattern|readOnly)\s*=/.test(
-        fn(src, 'renderMetadataInputs')),
+        fn(srcText, 'renderMetadataInputs')),
     };
     if (strict) {
       check('the overlay key input suggests and does not constrain', r.markup, {
@@ -1154,7 +1169,7 @@ async function runChecks(src, { strict = true } = {}) {
 
 // ── Baseline ────────────────────────────────────────────────────────────────────
 console.log('=== BASELINE ===');
-await runChecks(SRC, { strict: true });
+await runChecks(null, { strict: true });
 console.log(`  ${pass} passed, ${fail} failed`);
 
 // ── Mutants (must be CAUGHT) ────────────────────────────────────────────────────
@@ -1409,7 +1424,11 @@ async function sweep(list, expectCaught, heading) {
     const before = { pass, fail, failures: failures.length };
     let threw = null;
     quiet = true;
-    try { await runChecks(mutated, { strict: true }); }
+    // 🔴 A FUNCTION, not the mutated text. `spec.mutate` ignores a string, so every mutant
+    //    loaded the UNMUTATED module -- 27 declared, 27 applied, ONE caught, and the
+    //    assertion count sat at 83/0 the whole time. The two-witness gate is the only thing
+    //    that can see this.
+    try { await runChecks(() => mutated, { strict: true }); }
     catch (err) { threw = err; }
     quiet = false;
     const broke = fail > before.fail || threw !== null;

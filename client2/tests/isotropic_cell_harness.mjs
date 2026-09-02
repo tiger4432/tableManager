@@ -38,6 +38,7 @@
  * Read-only against client2/. Executed by client2/scripts/check_harnesses.mjs.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -144,19 +145,63 @@ function recordingCtx(rec) {
   };
 }
 
-function buildEnv(src, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    try { new vm.Script(code); }
-    catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
-    pieces.push(code);
-  }
+// 🔴 THE 26 SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores
+// the SHAPE OF THE LETTERS: the day one of them calls a helper or reads a const that is not on
+// the list, this harness goes red on correct code and names the missing symbol, not the change.
+//
+// Two staged names are gone, and both were wrong rather than merely redundant:
+//   `paintLockValues`      the product has NO SUCH NAME. In a `vm` context a bare identifier
+//                          is just a sandbox property, so it read as module state for as long
+//                          as anyone looked at this file.
+//   `UNLISTED_VALUE_FILL`  retyped as '#T-unlisted'; the product says '#10b981'. Harmless only
+//                          because nothing read it -- the name occurred once, in the sandbox
+//                          declaration. It is a `const`, so the real one is now the only one.
+// The theme sentinels (`TOK`) stay: `getThemeColors` is a module-level FUNCTION, so the probe
+// replaces that binding outright. Only `const` cannot be reassigned.
+globalThis.document = globalThis.document || {
+  querySelectorAll: () => [], getElementById: () => null,
+  addEventListener() {}, removeEventListener() {},
+};
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  devicePixelRatio: 1, addEventListener() {}, removeEventListener() {},
+};
+globalThis.performance = globalThis.performance || { now: () => 0 };
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((fn) => fn());
+
+// `src` is a MUTATE FUNCTION now (or null), not source text: a mutant is a whole module, so
+// one that fails to parse fails loudly instead of counting as caught.
+async function buildEnv(src, opts = {}) {
   const p = opts.panel || {};
   const rec = { ellipses: [], arcs: [], fillRects: [], strokeRects: [] };
   const canvas = opts.canvas || { w: 700, h: 700 };
-  const el = {
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el'],
+    state: [
+      'boundingBoxCache', 'cellsSeatedUnder', 'currentRotation', 'currentSide',
+      'gridData', 'gridCells2D', 'legend', 'activeBrush',
+      'validDie', 'validDieResolveSeq', 'loadedFCells',
+      'overlayLayers', 'activeOverlayLayers',
+      'paintLockConfig', 'currentHoverCell', 'lastSelectionBox',
+      'isBoxDragging', 'dragType', 'isOriginMode', 'isRightDrag',
+      // collaborators this harness does not exercise -- each is scored by its own harness.
+      // Module-level FUNCTIONS, so the probe can replace them. `isOverlayLocked` in
+      // particular: `isProtectedFCell` reaches it on every edit path, and without it the ④d
+      // mutation run would abort on a ReferenceError BEFORE its own assertions execute --
+      // still reading as "caught", but by the wrong thing, with the claim unscored.
+      'getThemeColors', 'isOverlayLocked',
+      'syncOverlayGeometry', 'drawOverlayMarkers', 'updateNotchPosition',
+      'updateLegendCounts', 'scheduleRenderGridCanvas', 'scheduleCellDraft',
+    ],
+    mutate: src || undefined,
+    tag: 'isotropic',
+  });
+
+  // The module's own `el` is filled, not replaced: it is a `const`, and the real object is
+  // what the functions read.
+  Object.assign(probe.el, {
     gridCols: makeInput(p.cols === undefined ? COLS : p.cols),
     gridRows: makeInput(p.rows === undefined ? ROWS : p.rows),
     gridStartX: makeInput(p.startX === undefined ? START_X : p.startX),
@@ -168,10 +213,6 @@ function buildEnv(src, opts = {}) {
     // value straight onto .value, and a null meta field lands as the empty string).
     physChipX: makeInput(p.chipX === undefined ? CHIP_X : (p.chipX === null ? '' : p.chipX)),
     physChipY: makeInput(p.chipY === undefined ? CHIP_Y : (p.chipY === null ? '' : p.chipY)),
-    // [D1] `autoRegistered: true` puts the panel in the state `loadExistingMap` leaves it in
-    // after loading a metadata row that carries `auto_registered: true` — the synthesized
-    // numbers are IN the inputs (that is the whole difficulty), and only the mark says they
-    // were never measured.
     physOffsetX: makeInput(p.offsetX || 0), physOffsetY: makeInput(p.offsetY || 0),
     physEdgeMargin: makeInput(p.margin === undefined ? MARGIN : p.margin),
     gridCanvas: { getBoundingClientRect: () => ({ width: canvas.w, height: canvas.h, left: 0, top: 0 }),
@@ -182,43 +223,48 @@ function buildEnv(src, opts = {}) {
     cellAspectNote: { style: { display: 'none' }, textContent: '' },
     gridStatusCoords: { textContent: '' },
     btnSetOrigin: { classList: { add() {}, remove() {} }, style: {} },
-  };
-  const sandbox = {
-    console: { warn() {}, info() {}, error() {}, log() {}, debug() {} },
-    el,
-    document: { querySelectorAll: () => [], getElementById: () => null,
-                addEventListener() {}, removeEventListener() {} },
-    setTimeout, boundingBoxCache: {}, cellsSeatedUnder: null,
-    currentRotation: p.rotation || 0, currentSide: p.side || 'front',
-    gridData: opts.gridData || {}, gridCells2D: {}, legend: opts.legend || [],
-    activeBrush: opts.activeBrush === undefined ? 'A' : opts.activeBrush,
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0, loadedFCells: new Set(),
-    overlayLayers: [], activeOverlayLayers: [],
-    UNLISTED_VALUE_FILL: '#T-unlisted',
-    paintLockValues: null, paintLockConfig: { enabled: false }, currentHoverCell: null,
-    lastSelectionBox: null, isBoxDragging: false, dragType: null, isOriginMode: false,
-    isRightDrag: false,
-    performance: { now: () => 0 }, window: { devicePixelRatio: 1 },
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    getThemeColors: () => TOK,
-    // `isProtectedFCell` reaches this on every edit path. Without it, the ④d mutation run
-    // aborts on a ReferenceError BEFORE its own assertions execute — it still reads as
-    // "caught", but by the wrong thing, and the claim goes unscored.
-    isOverlayLocked: () => false,
-    syncOverlayGeometry() {}, drawOverlayMarkers() {}, updateNotchPosition() {},
-    updateLegendCounts() {}, scheduleRenderGridCanvas() {}, scheduleCellDraft() {},
-    rec, canvas,
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
+  });
+
+  probe.boundingBoxCache = {};
+  probe.cellsSeatedUnder = null;
+  probe.currentRotation = p.rotation || 0;
+  probe.currentSide = p.side || 'front';
+  probe.gridData = opts.gridData || {};
+  probe.gridCells2D = {};
+  probe.legend = opts.legend || [];
+  probe.activeBrush = opts.activeBrush === undefined ? 'A' : opts.activeBrush;
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  probe.validDieResolveSeq = 0;
+  probe.loadedFCells = new Set();
+  probe.overlayLayers = [];
+  probe.activeOverlayLayers = [];
+  probe.paintLockConfig = { enabled: false };
+  probe.currentHoverCell = null;
+  probe.lastSelectionBox = null;
+  probe.isBoxDragging = false;
+  probe.dragType = null;
+  probe.isOriginMode = false;
+  probe.isRightDrag = false;
+
+  probe.getThemeColors = () => TOK;
+  probe.isOverlayLocked = () => false;
+  probe.syncOverlayGeometry = () => {};
+  probe.drawOverlayMarkers = () => {};
+  probe.updateNotchPosition = () => {};
+  probe.updateLegendCounts = () => {};
+  probe.scheduleRenderGridCanvas = () => {};
+  probe.scheduleCellDraft = () => {};
+
+  // `rec` and `canvas` rode along as sandbox properties before; the probe object is
+  // extensible, so `S.rec` / `S.canvas` keep working unchanged.
+  probe.rec = rec;
+  probe.canvas = canvas;
+
   // [D1] Applied through the PRODUCT's own writer, never by poking the dataset here. A
   // fixture that set the key itself would still pass if `markGeometryAutoRegistered` wrote
-  // somewhere the reader does not look — the two halves have to meet in the product.
-  if (p.autoRegistered) sandbox.markGeometryAutoRegistered(true);
-  return { sandbox, el, rec };
+  // somewhere the reader does not look -- the two halves have to meet in the product.
+  if (p.autoRegistered) probe.markGeometryAutoRegistered(true);
+  return { sandbox: probe, el: probe.el, rec };
 }
 
 // ── Scoring ────────────────────────────────────────────────────────────────────────────
@@ -265,8 +311,8 @@ const payload = (S) => {
   return out;
 };
 
-function render(src, opts) {
-  const env = buildEnv(src, opts);
+async function render(src, opts) {
+  const env = await buildEnv(src, opts);
   env.sandbox.renderGridCanvas();
   return env;
 }
@@ -285,10 +331,10 @@ const PITCHES = [
   { chipX: 7, chipY: 3, tag: '7x3' },
 ];
 
-function scoreCircularity(src, evidence) {
+async function scoreCircularity(src, evidence) {
   for (const a of ASPECTS) {
     for (const pit of PITCHES) {
-      const { rec } = render(src, { canvas: a, panel: { chipX: pit.chipX, chipY: pit.chipY } });
+      const { rec } = await render(src, { canvas: a, panel: { chipX: pit.chipX, chipY: pit.chipY } });
       const outer = rec.ellipses.find(e => e.color === TOK.waferEdge);
       const eff = rec.ellipses.find(e => e.color === TOK.success);
       if (!outer || !eff) {
@@ -314,8 +360,8 @@ function scoreCircularity(src, evidence) {
 // Read entirely off the recorded draw calls: the cell rectangles the render filled, and the
 // ellipse it stroked. If `padX`/`padY` were dropped or halved, the grid slides off the circle
 // and cells the mask calls valid stop being under it.
-function scoreScreenMaskAgreement(src, tag, opts) {
-  const { sandbox: S, rec } = render(src, opts);
+async function scoreScreenMaskAgreement(src, tag, opts) {
+  const { sandbox: S, rec } = await render(src, opts);
   const eff = rec.ellipses.find(e => e.color === TOK.success);
   if (!eff) { ok(false, `③ ${tag}: no effective-radius ellipse recorded`); return; }
 
@@ -342,8 +388,8 @@ function scoreScreenMaskAgreement(src, tag, opts) {
 }
 
 // ── ④ Off the declared grid ────────────────────────────────────────────────────────────
-function scoreOffGrid(src, tag, opts) {
-  const { sandbox: S, rec, el } = render(src, opts);
+async function scoreOffGrid(src, tag, opts) {
+  const { sandbox: S, rec, el } = await render(src, opts);
   const cols = opts.panel && opts.panel.cols !== undefined ? opts.panel.cols : COLS;
   const rows = opts.panel && opts.panel.rows !== undefined ? opts.panel.rows : ROWS;
   const rot90 = (S.currentRotation === 90 || S.currentRotation === 270);
@@ -406,8 +452,8 @@ function scoreOffGrid(src, tag, opts) {
 
 // ④d NOT WRITABLE. The mouse path is the only way a human creates a cell, and it is scored by
 //    calling it — the click is delivered at real pixel coordinates inside the margin.
-function scoreOffGridNotWritable(src, tag, opts) {
-  const { sandbox: S } = render(src, opts);
+async function scoreOffGridNotWritable(src, tag, opts) {
+  const { sandbox: S } = await render(src, opts);
   const cols = COLS, rows = ROWS;
   const rot90 = (S.currentRotation === 90 || S.currentRotation === 270);
   const vCols = rot90 ? rows : cols, vRows = rot90 ? cols : rows;
@@ -452,7 +498,7 @@ const ANISOTROPIC_REVERT = {
   repl: `  return anisotropicFallback;\n  const sGrid = Math.min(width / (visualCols * chipX), height / (visualRows * chipY));`,
 };
 
-function scoreValueNeutrality(src, evidence) {
+async function scoreValueNeutrality(src, evidence) {
   const opts = {
     canvas: { w: 900, h: 380 },
     panel: { rotation: 270, invertY: true, startX: START_X, startY: START_Y,
@@ -465,9 +511,10 @@ function scoreValueNeutrality(src, evidence) {
     S.renderGridCanvas();
   };
 
-  const before = buildEnv(applyMutation(src, ANISOTROPIC_REVERT, 'anisotropic revert'), opts);
+  const before = await buildEnv(
+    () => applyMutation(src ? src(SRC0) : SRC0, ANISOTROPIC_REVERT, 'anisotropic revert'), opts);
   before.sandbox.renderGridCanvas(); seed(before.sandbox);
-  const after = buildEnv(src, opts);
+  const after = await buildEnv(src, opts);
   after.sandbox.renderGridCanvas(); seed(after.sandbox);
 
   const A = cellMap(before.sandbox), B = cellMap(after.sandbox);
@@ -483,7 +530,7 @@ function scoreValueNeutrality(src, evidence) {
   // THE DIFFERENTIAL. A plausible misreading that keeps the SAME cell count: the two chip
   // pitches swapped. If this moved zero dies, the fixture's pitch axis is dead and the
   // agreement above is worth nothing.
-  const wrong = buildEnv(src, { ...opts, panel: { ...opts.panel, chipX: CHIP_Y, chipY: CHIP_X } });
+  const wrong = await buildEnv(src, { ...opts, panel: { ...opts.panel, chipX: CHIP_Y, chipY: CHIP_X } });
   wrong.sandbox.renderGridCanvas(); seed(wrong.sandbox);
   const W = cellMap(wrong.sandbox);
   const wKeys = [...new Set([...Object.keys(B), ...Object.keys(W)])];
@@ -498,13 +545,13 @@ function scoreValueNeutrality(src, evidence) {
 }
 
 // ── Undeclared pitch ───────────────────────────────────────────────────────────────────
-function scoreUndeclaredPitch(src) {
+async function scoreUndeclaredPitch(src) {
   for (const [tag, panel] of [
     ['both blank', { chipX: null, chipY: null }],
     ['x blank', { chipX: null, chipY: CHIP_Y }],
     ['y blank', { chipX: CHIP_X, chipY: null }],
   ]) {
-    const { sandbox: S, el, rec } = render(src, { canvas: { w: 900, h: 380 }, panel });
+    const { sandbox: S, el, rec } = await render(src, { canvas: { w: 900, h: 380 }, panel });
     const vCols = COLS, vRows = ROWS;
     const m = S.cellMetrics(900, 380, vCols, vRows,
       S.getTransformedPhysicalConfig(null, S.currentRotation, S.currentSide));
@@ -518,20 +565,20 @@ function scoreUndeclaredPitch(src) {
        `display=${JSON.stringify(el.cellAspectNote.style.display)} text=${JSON.stringify(el.cellAspectNote.textContent)}`);
   }
   // ...and it goes away again when the pitch IS declared.
-  const { el } = render(src, { canvas: { w: 900, h: 380 }, panel: {} });
+  const { el } = await render(src, { canvas: { w: 900, h: 380 }, panel: {} });
   eq('declared pitch: the 미상 note is hidden', 'none', el.cellAspectNote.style.display);
 }
 
 // ── Fixture self-check ─────────────────────────────────────────────────────────────────
-function fixtureSelfCheck(src) {
+async function fixtureSelfCheck(src) {
   ok(CHIP_X !== CHIP_Y, 'fixture: chip pitch is anisotropic (a square pitch kills the defect axis)');
   ok(COLS !== ROWS, 'fixture: cols != rows');
   ok(START_X !== START_Y && (START_X < 0 || START_Y < 0), 'fixture: start coords differ and one is negative');
-  const box = render(src, { panel: {} }).sandbox.getWaferBoundingBox(null, 0, 'front');
+  const box = (await render(src, { panel: {} })).sandbox.getWaferBoundingBox(null, 0, 'front');
   ok(box.minC > 0 || box.minR > 0, 'fixture: the circle bbox has a non-zero minimum (a dropped bbox term cannot hide)',
      `minC ${box.minC} minR ${box.minR}`);
   // The isotropic branch is actually TAKEN — otherwise every claim below scores the fallback.
-  const { sandbox: S } = render(src, { canvas: { w: 900, h: 380 }, panel: {} });
+  const { sandbox: S } = await render(src, { canvas: { w: 900, h: 380 }, panel: {} });
   const m = S.cellMetrics(900, 380, COLS, ROWS, S.getTransformedPhysicalConfig(null, 0, 'front'));
   ok(m.isotropic === true, 'fixture: the isotropic branch is the one being executed');
   ok(m.padX > 1 || m.padY > 1, 'fixture: the fixture actually produces a margin to test',
@@ -557,11 +604,11 @@ function fixtureSelfCheck(src) {
 //    emptied the chip fields would be scoring the pre-existing 'absent' path and would pass
 //    against a build that ignores the flag completely. So every case below holds a perfectly
 //    readable pitch and differs ONLY in the mark.
-function scoreAutoRegistered(src) {
+async function scoreAutoRegistered(src) {
   const panel = { chipX: 1, chipY: 1, dia: 300, cols: 13, rows: 13 };
 
   // (a) FLAGGED: readable numbers, but they are not a declaration.
-  const flagged = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
+  const flagged = await render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
   const dxF = flagged.sandbox.physDeclaration(null, 'chipX', flagged.el.physChipX);
   const dyF = flagged.sandbox.physDeclaration(null, 'chipY', flagged.el.physChipY);
   eq('D1/a a flagged chipX is reported as NOT declared',
@@ -574,7 +621,7 @@ function scoreAutoRegistered(src) {
 
   // (b) THE SAME NUMBERS WITHOUT THE FLAG ARE A REAL DECLARATION. This is the discrimination
   //     that makes (a) mean something: a build keyed on the VALUE passes (a) and fails here.
-  const bare = render(src, { canvas: { w: 700, h: 700 }, panel });
+  const bare = await render(src, { canvas: { w: 700, h: 700 }, panel });
   eq('D1/b chip 1x1 with NO flag is still a declaration', 'screen',
     bare.sandbox.physDeclaration(null, 'chipX', bare.el.physChipX).source,
     '1 is a legal pitch; only the flag may reclassify it');
@@ -583,11 +630,11 @@ function scoreAutoRegistered(src) {
 
   // (c) A FLAGGED SPEC WITH ANISOTROPIC NUMBERS. The mark is about provenance, not shape —
   //     scored so nobody "optimises" the rule back into a 1x1 value check.
-  const aniso = render(src, { canvas: { w: 700, h: 700 },
+  const aniso = await render(src, { canvas: { w: 700, h: 700 },
     panel: { ...panel, chipX: 1, chipY: 8, autoRegistered: true } });
   eq('D1/c the mark reclassifies a 1x8 spec too (provenance, not shape)', 'auto_registered',
     aniso.sandbox.physDeclaration(null, 'chipY', aniso.el.physChipY).source);
-  const anisoBare = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, chipX: 1, chipY: 8 } });
+  const anisoBare = await render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, chipX: 1, chipY: 8 } });
   eq('D1/c ...while an UNFLAGGED 1x8 stays the real anisotropic declaration it is', 'screen',
     anisoBare.sandbox.physDeclaration(null, 'chipY', anisoBare.el.physChipY).source);
 
@@ -651,7 +698,7 @@ function scoreAutoRegistered(src) {
 
   // (i) BOTH AXES CARRY THE MARK. Scored so that the write to the second input is load-bearing
   //     — an unread write rots silently, and the two halves would then disagree unnoticed.
-  const half = render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
+  const half = await render(src, { canvas: { w: 700, h: 700 }, panel: { ...panel, autoRegistered: true } });
   delete half.el.physChipY.dataset.autoRegistered;
   eq('D1/i a mark on only one axis does NOT reclassify the spec', 'screen',
     half.sandbox.physDeclaration(null, 'chipX', half.el.physChipX).source,
@@ -732,18 +779,18 @@ const MUTATIONS = [
 ];
 
 // ── Run ────────────────────────────────────────────────────────────────────────────────
-function scoreAll(src) {
+async function scoreAll(src) {
   failures = []; compared = 0;
   const evidence = [];
-  fixtureSelfCheck(src);
-  scoreCircularity(src, evidence);
-  scoreValueNeutrality(src, evidence);
+  await fixtureSelfCheck(src);
+  await scoreCircularity(src, evidence);
+  await scoreValueNeutrality(src, evidence);
   for (const a of [{ w: 900, h: 380, tag: '900x380' }, { w: 380, h: 900, tag: '380x900' }, { w: 700, h: 700, tag: '700x700' }]) {
-    scoreScreenMaskAgreement(src, a.tag, { canvas: a, panel: {} });
-    scoreScreenMaskAgreement(src, `${a.tag} rot270 invertY`, { canvas: a, panel: { rotation: 270, invertY: true, offsetX: 2.5, offsetY: -1.5 } });
-    const r = scoreOffGrid(src, a.tag, { canvas: a, panel: {} });
-    scoreOffGrid(src, `${a.tag} rot270`, { canvas: a, panel: { rotation: 270, invertY: true } });
-    scoreOffGridNotWritable(src, a.tag, { canvas: a, panel: {} });
+    await scoreScreenMaskAgreement(src, a.tag, { canvas: a, panel: {} });
+    await scoreScreenMaskAgreement(src, `${a.tag} rot270 invertY`, { canvas: a, panel: { rotation: 270, invertY: true, offsetX: 2.5, offsetY: -1.5 } });
+    const r = await scoreOffGrid(src, a.tag, { canvas: a, panel: {} });
+    await scoreOffGrid(src, `${a.tag} rot270`, { canvas: a, panel: { rotation: 270, invertY: true } });
+    await scoreOffGridNotWritable(src, a.tag, { canvas: a, panel: {} });
     if (a.tag !== '700x700') {
       ok(r.offGridStroked > 0, `④ ${a.tag}: the margin really is filled with lattice cells`,
          'nothing was stroked off-grid — the canvas would show an empty band');
@@ -751,12 +798,12 @@ function scoreAll(src) {
         + `0 registered / 0 filled / 0 saved / 0 writable`);
     }
   }
-  scoreUndeclaredPitch(src);
-  scoreAutoRegistered(src);
+  await scoreUndeclaredPitch(src);
+  await scoreAutoRegistered(src);
   return evidence;
 }
 
-const evidence = scoreAll(SRC0);
+const evidence = await scoreAll(null);
 
 console.log('\n── circularity (rendered pixel radii, straight off the draw call) ──');
 evidence.filter(l => l.includes('rx/ry')).forEach(l => console.log(l));
@@ -774,7 +821,7 @@ let uncaught = [];
 for (const [name, mut] of MUTATIONS) {
   const mutated = applyMutation(SRC0, mut, name);
   let caught = false, threw = '';
-  try { scoreAll(mutated); caught = failures.length > 0; }
+  try { await scoreAll(() => mutated); caught = failures.length > 0; }
   // A throw is a red too, but it is REPORTED: a mutation caught only by an exception may be
   // stopping the run before the assertion written for it ever executes.
   catch (e) { caught = true; threw = ` [threw: ${e && e.message}]`; }
@@ -788,7 +835,7 @@ for (const [name, mut] of MUTATIONS) {
 }
 // Restore the real scoring for the verdict.
 failures = []; compared = 0;
-scoreAll(SRC0);
+await scoreAll(null);
 uncaught.forEach(n => failures.push(`MUTATION NOT CAUGHT: ${n} — this harness does not score it`));
 compared += MUTATIONS.length;
 

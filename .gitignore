@@ -98,3 +98,8 @@ server/config_backup_*/
 # 픽스처 정답(오라클)은 `**/*.csv` 예외 — 이건 원시 데이터가 아니라 **채점 기준**이다.
 # 저장소 밖에 두면 「그때 그 정답」이 사라져 다음 라운드와 비교가 끊긴다.
 !server/trace_fixture_oracle/*.csv
+
+# A crashed probe run can leave a whole-file copy beside its subject. tests/lib/probe.mjs
+# deletes them and sweeps stale ones, but a stray copy in src/ must never be committable.
+*.__probe__.*.js
+*.__probe_stub__.*.js

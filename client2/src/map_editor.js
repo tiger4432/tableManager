@@ -1,5 +1,10 @@
-import './tokens.css';
-import './style.css';
+// 🔴 이 파일은 CSS 를 «import 하지 않습니다». 스타일시트는 `map_editor.html` 이 <link> 로
+//    답니다 -- `map_editor2.html` 이 이미 그 모양입니다.
+//    이유: node 는 `.css` 확장자를 모릅니다. 머리의 CSS import 한 줄 때문에 이 모듈을
+//    «import 하는 순간 던지고», 그래서 이 파일을 재던 하니스 27개가 전부 파일을 «텍스트로
+//    잘라» 재고 있었습니다. 잘라쓰기는 동작이 아니라 «글자 모양»을 재고, import 하나만
+//    늘어도 빨개집니다 (소유자 2026-09-02: 「잘라쓰기 하니스 절대금지」).
+//    ⚠️ 여기에 CSS import 를 다시 넣으면 그 27개가 «한 줄로» 되살아납니다.
 import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
 import { initTheme } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
@@ -342,8 +347,12 @@ function debounce(func, wait = 200) {
   };
 }
 
-// Initialize DOM elements when loaded
-document.addEventListener('DOMContentLoaded', async () => {
+// Initialize DOM elements when loaded.
+// 🔴 이 파일의 «화면 배선»은 여기와 아래 themechange 두 곳뿐입니다. document 가 없는 곳에서는
+//    배선을 안 겁니다 -- 브라우저에서는 전과 «똑같이» 겁니다. 이 가드가 없으면 이 모듈은
+//    import 되는 순간 던지고, 그러면 이 파일을 재는 하니스가 함수를 텍스트로 잘라내는 수밖에
+//    없습니다 (소유자 2026-09-02: 「잘라쓰기 하니스 절대금지」).
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   // [V1 effort instrument] First, so no press or keystroke on this page is missed. The
   // module's listeners are capture-phase and passive - they never preventDefault, never
@@ -3384,7 +3393,8 @@ function toExcelHex(color, backdrop, fallback) {
 }
 
 // 테마 전환 시: 색 캐시 재빌드 + 캔버스 1회 재렌더 (theme.js 'themechange' 구독)
-document.addEventListener('themechange', () => {
+// 위 DOMContentLoaded 와 같은 이유로 가드합니다 -- 브라우저 거동은 그대로입니다.
+if (typeof document !== 'undefined') document.addEventListener('themechange', () => {
   rebuildThemeColorCache();
   scheduleRenderGridCanvas();
 });

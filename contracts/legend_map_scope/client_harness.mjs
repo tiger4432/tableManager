@@ -38,6 +38,7 @@
  *   node contracts/legend_map_scope/client_harness.mjs --json
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from '../../client2/tests/lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -135,68 +136,101 @@ function extractEmptyDoeSeed(source) {
 
 const zoneSrc = readFileSync(join(ROOT, 'client2', 'src', 'doe_bands.js'), 'utf8');
 
-const pieces = [
-  extractConst(rowSrc, 'SPLIT_KEY_SEP', 'split_registry_row.js'),
-  extractConst(rowSrc, 'FP_UNIT', 'split_registry_row.js'),
-  extractConst(rowSrc, 'FP_ROW', 'split_registry_row.js'),
-  extractConst(rowSrc, 'LEGEND_PAYLOAD_COLUMNS', 'split_registry_row.js'),
-  extractConst(editorSrc, 'SPLIT_REGISTRY_TABLE', 'map_editor.js'),
-  extractConst(editorSrc, 'REGISTRY_SCOPES', 'map_editor.js'),
-  extractConst(editorSrc, 'ZONE_COLUMNS', 'map_editor.js'),
-  extractEmptyDoeSeed(editorSrc),
-  extractFunction(editorSrc, 'defaultLegendRows', 'map_editor.js'),
-  extractFunction(planSrc, 'bandToState', 'transfer_plan.js'),   // normalizeBands calls it
-  extractFunction(planSrc, 'prevTo', 'transfer_plan.js'),        // bandsToZones walks with it
-  // map_editor imports these from doe_bands.js. Extracted from THAT file rather than
-  // re-typed: `parseMaterialList` is the single material-list normalizer shared by the
-  // panel's input parsing and the storage layer, and a harness copy would let the two
-  // drift while this file stayed green.
-  extractFunction(zoneSrc, 'boundState', 'doe_bands.js'),
-  extractFunction(zoneSrc, 'parseMaterialList', 'doe_bands.js'),
-  extractFunction(zoneSrc, 'bandsToZones', 'doe_bands.js'),
-  ...NEEDED_ROW.map(n => extractFunction(rowSrc, n, 'split_registry_row.js')),
-  ...NEEDED_EDITOR.map(n => extractFunction(editorSrc, n, 'map_editor.js')),
-];
+// 🔴 NOTHING IS CUT OUT ANY MORE. The four subjects -- map_editor.js, split_registry_row.js,
+// transfer_plan.js and doe_bands.js -- are imported WHOLE, one probe each. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of these functions calls a helper that is not on the list,
+// this contract reddens on correct code and names the missing symbol, not the change.
+//
+// The consts it had to cut in beside them -- SPLIT_KEY_SEP, FP_UNIT, FP_ROW,
+// LEGEND_PAYLOAD_COLUMNS, SPLIT_REGISTRY_TABLE, REGISTRY_SCOPES, ZONE_COLUMNS, EMPTY_DOE_SEED
+// -- are simply in scope. `extractEmptyDoeSeed` is gone with them: a bracket-balancing reader
+// for one array literal existed only because a script-level `const` is lexical, so the sandbox
+// could not see it.
+//
+// `API_BASE`, `CURRENT_USER` and `getLocalTimeString` are IMPORTS of map_editor.js. No probe
+// can reach an import binding, so they come through the loader hook.
+//
+// The real `fetchRegistryRows` still runs: only the socket underneath it is stubbed, so the
+// URL it builds -- specifically whether it carries a `map_key` filter -- is evidence rather
+// than an assumption. `probeZoneColumns` is still NOT stubbed: it is a guard on the
+// destructive write path, and a harness that mocked it would be asserting the guard exists
+// rather than that it works.
+const STUB = { urls: [], writes: [], body: { total: 0, data: [] }, httpOk: true,
+               mapKey: null, zoneBody: null };
 
-// Module state the extracted functions read/write. `legend` is the on-screen legend;
+globalThis.document = {
+  getElementById: () => null, addEventListener() {}, removeEventListener() {},
+  querySelector: () => null, querySelectorAll: () => [],
+};
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  addEventListener() {},
+};
+globalThis.fetch = async (url, init) => {
+  const m = ((init && init.method) || 'GET').toUpperCase();
+  if (m === 'GET') {
+    STUB.urls.push(String(url));
+    const isProbe = String(url).indexOf('limit=1') >= 0 && String(url).indexOf('filters=') < 0;
+    const body = (isProbe && STUB.zoneBody) ? STUB.zoneBody : STUB.body;
+    return { ok: STUB.httpOk, status: STUB.httpOk ? 200 : 500, json: async () => body };
+  }
+  STUB.writes.push(JSON.parse(init.body));
+  return { ok: true, status: 200, json: async () => ({}) };
+};
+
+// Module state the imported functions read and write. `legend` is the on-screen legend;
 // `gridData` is the painted map ("x_y" -> value), which is how a map claims a value.
-const sandbox = { legend: [], legendMeta: {}, activeBrush: '', gridData: {}, legendVocabularySeed: new Map(), console };
-vm.createContext(sandbox);
-try {
-  // The real `fetchRegistryRows` runs: only the socket underneath it is stubbed. That way
-  // the URL it builds - specifically whether it carries a `map_key` filter - is evidence,
-  // not an assumption. `STUB.urls` is the request list this harness reports on.
-  // `saveLegendToStorage` / `saveDoeDraft` are localStorage and are stubbed.
-  //
-  // `probeZoneColumns` is NOT stubbed - it is the real function, answered by the same GET
-  // stub, because it is a guard on the destructive write path and a harness that mocked it
-  // would be asserting the guard exists rather than that it works. `STUB.zoneBody` is the
-  // one-row probe response; scenarios flip it to test both answers.
-  vm.runInContext(
-    'var API_BASE = "http://harness";\n'
-    + 'var CURRENT_USER = "tester";\n'
-    + 'var selectedTable = "bonding_map";\n'
-    + 'var legendReplaceScope = null, legendConflict = null;\n'
-    + 'var overlayContract = null;\n'  // [U6] no served default_legend -> EMPTY_DOE_SEED arm
+const EDITOR_STAGE = {
+  legend: [], legendMeta: {}, activeBrush: '', gridData: {},
+  legendVocabularySeed: new Map(),
+  selectedTable: 'bonding_map',
+  legendReplaceScope: null, legendConflict: null,
+  // [U6] no served default_legend -> the EMPTY_DOE_SEED arm
+  overlayContract: null,
+  legendSaveState: { status: 'idle', at: '', error: '' },
+  zoneColumnsPresent: null, draftBase: null,
+  getCurrentMapKey: () => STUB.mapKey,
+  renderLegendTable: () => {}, renderGridCanvas: () => {}, renderLegendMetaOnly: () => {},
+  saveLegendToStorage: () => {}, saveDoeDraft: () => {}, clearDoeDraft: () => {},
+  cellsDigest: () => '0:0',
+};
 
-    + 'var legendSaveState = { status: "idle", at: "", error: "" };\n'
-    + 'var zoneColumnsPresent = null, draftBase = null;\n'
-    + 'var STUB = { urls: [], writes: [], body: { total: 0, data: [] }, httpOk: true, mapKey: null, zoneBody: null };\n'
-    + 'async function fetch(url, init){ const m = ((init && init.method) || "GET").toUpperCase();\n'
-    + '  if (m === "GET") { STUB.urls.push(String(url));\n'
-    + '    const isProbe = String(url).indexOf("limit=1") >= 0 && String(url).indexOf("filters=") < 0;\n'
-    + '    const body = (isProbe && STUB.zoneBody) ? STUB.zoneBody : STUB.body;\n'
-    + '    return { ok: STUB.httpOk, status: STUB.httpOk ? 200 : 500, json: async () => body }; }\n'
-    + '  STUB.writes.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({}) }; }\n'
-    + 'function getCurrentMapKey(){ return STUB.mapKey; }\n'
-    + 'function getLocalTimeString(){ return "2026-07-27 21:00:00"; }\n'
-    + 'function renderLegendTable(){} function renderGridCanvas(){} function renderLegendMetaOnly(){}\n'
-    + 'function saveLegendToStorage(){} function saveDoeDraft(){} function clearDoeDraft(){}\n'
-    + 'function cellsDigest(){ return "0:0"; }\n'
-    + pieces.join('\n'), sandbox);
-} catch (e) {
-  die(`extracted sources did not evaluate: ${e && e.message}`);
+const editor = (await loadWithProbe(SRC_EDITOR, {
+  expose: [...NEEDED_EDITOR, 'defaultLegendRows', 'SPLIT_REGISTRY_TABLE', 'REGISTRY_SCOPES',
+           'ZONE_COLUMNS', 'EMPTY_DOE_SEED'],
+  state: Object.keys(EDITOR_STAGE),
+  stubs: {
+    './config.js': { API_BASE: 'http://harness', CURRENT_USER: 'tester' },
+    './utils.js': { getLocalTimeString: () => '2026-07-27 21:00:00' },
+  },
+  tag: 'legendscope_editor',
+})).probe;
+
+const rowMod = (await loadWithProbe(SRC_ROW, {
+  expose: [...NEEDED_ROW, 'SPLIT_KEY_SEP', 'FP_UNIT', 'FP_ROW', 'LEGEND_PAYLOAD_COLUMNS'],
+  tag: 'legendscope_row',
+})).probe;
+
+const plan = (await loadWithProbe(SRC_PLAN, {
+  expose: ['bandToState', 'prevTo'],
+  tag: 'legendscope_plan',
+})).probe;
+
+const zones = (await loadWithProbe(join(ROOT, 'client2', 'src', 'doe_bands.js'), {
+  expose: ['boundState', 'parseMaterialList', 'bandsToZones'],
+  tag: 'legendscope_zones',
+})).probe;
+
+// One lookup, the same shape the scorer already used. The map_editor probe is the base so its
+// ACCESSORS survive: `sandbox.legend = …` has to reach the module, and a flat copy would turn
+// a live binding into a dead value.
+const sandbox = editor;
+for (const p of [rowMod, plan, zones]) {
+  for (const [k, v] of Object.entries(p)) if (!(k in sandbox)) sandbox[k] = v;
 }
+Object.assign(sandbox, EDITOR_STAGE);
+sandbox.STUB = STUB;
+
 for (const fn of ['bandToState', ...NEEDED_ROW, ...NEEDED_EDITOR]) {
   if (typeof sandbox[fn] !== 'function') die(`'${fn}' did not evaluate to a function`);
 }
@@ -377,7 +411,7 @@ const filterOf = url => JSON.parse(decodeURIComponent(String(url).split('filters
   //    that is signed and fingerprinted but never actually written would make an edit look
   //    saved on screen and be absent from the server.
   {
-    const cols = vm.runInContext('LEGEND_PAYLOAD_COLUMNS', sandbox);
+    const cols = sandbox.LEGEND_PAYLOAD_COLUMNS;
     const written = Object.keys((ups[0] || { updates: {} }).updates);
     rec('open-mapB/write', 'every LEGEND_PAYLOAD_COLUMNS entry is actually written', [],
       cols.filter(c => written.indexOf(c) < 0));
@@ -498,7 +532,7 @@ const filterOf = url => JSON.parse(decodeURIComponent(String(url).split('filters
     mat_mid: r => { r.mat_mid = ['M_01']; },
     mat_top: r => { r.mat_top = ['T_01']; },
   };
-  const cols = vm.runInContext('LEGEND_PAYLOAD_COLUMNS', sandbox);
+  const cols = sandbox.LEGEND_PAYLOAD_COLUMNS;
   const uncovered = cols.filter(c => !MUTATE[c]);
   if (uncovered.length > 0) {
     die(`LEGEND_PAYLOAD_COLUMNS gained ${uncovered.join(', ')} with no mutation here. A persisted column that this file cannot mutate is a column whose edit the derived claim may not detect - and an undetected edit is shown on screen and dropped from the save.`);
@@ -547,10 +581,12 @@ const filterOf = url => JSON.parse(decodeURIComponent(String(url).split('filters
   sandbox.legendConflict = null;
   sandbox.legend[0].desc = 'typed';
 
-  // the product warns to console on this path by design; muted so a green run is quiet
-  const realWarn = sandbox.console.warn; sandbox.console.warn = () => {};
+  // the product warns to console on this path by design; muted so a green run is quiet.
+  // 🔴 The REAL console: an imported module resolves `console` as a global, so muting it on
+  //    the env would be a silent no-op and the warning would print on a green run.
+  const realWarn = console.warn; console.warn = () => {};
   const blocked = await sandbox.saveLegendToServer('FRESHKEY');
-  sandbox.console.warn = realWarn;
+  console.warn = realWarn;
   rec('zone-gate', 'the save is refused', false, blocked.ok);
   rec('zone-gate', 'and says which guard fired', 'zone-columns-missing', blocked.reason);
   rec('zone-gate', '🔴 NOTHING was written', 0, sandbox.STUB.writes.length);

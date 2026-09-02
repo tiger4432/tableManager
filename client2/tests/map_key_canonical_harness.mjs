@@ -14,10 +14,9 @@
 // --emit-7b prints the 7b canonicalisation matrix as JSON on stdout so the SERVER's
 // canonical_key_value can be fed the identical inputs and diffed key->value
 // (see client2/tests/seam_7b_oracle.py). Self-consistency is not evidence of agreement.
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_MAP = join(HERE, '..', 'src', 'map_editor.js');
@@ -35,89 +34,64 @@ function die(msg) {
   process.exit(2);
 }
 
-function sliceBalanced(src, startIdx, open, close) {
-  let i = src.indexOf(open, startIdx);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === open) depth++;
-    else if (ch === close) { depth--; if (depth === 0) return src.slice(startIdx, j + 1); }
-  }
-  return null;
-}
-
-function makeExtractor(path) {
-  const src = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
-  return {
-    src,
-    fn(name) {
-      const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-      if (!m) die(`function ${name} not found in ${path}`);
-      const out = sliceBalanced(src, m.index, '{', '}');
-      if (!out) die(`unbalanced braces for ${name} in ${path}`);
-      return out;
-    },
-    konst(name) {
-      const m = new RegExp(`const\\s+${name}\\s*=`).exec(src);
-      if (!m) die(`const ${name} not found in ${path}`);
-      let depth = 0;
-      for (let j = m.index; j < src.length; j++) {
-        const ch = src[j];
-        if (ch === '[' || ch === '{' || ch === '(') depth++;
-        else if (ch === ']' || ch === '}' || ch === ')') depth--;
-        else if (ch === ';' && depth === 0) return src.slice(m.index, j + 1);
-      }
-      die(`no terminator for const ${name} in ${path}`);
-    },
-  };
-}
-
-const M = makeExtractor(SRC_MAP);
-const K = makeExtractor(SRC_KEY);
-const P = makeExtractor(SRC_PLAN);
-
-// ── sandbox ────────────────────────────────────────────────────────────────────
-// Module state the extracted functions read. Tests mutate these directly, which is the
-// point: the real functions must be reading the real module state, not a private copy.
-const ctx = {
-  console,
-  currentRotation: 0,
-  currentSide: 'front',
-  validDie: null,
-  el: {},
+// ── the three modules, IMPORTED ────────────────────────────────────────────────
+// 🔴 THESE WERE SLICED. Each function was cut out of its file with a regex and evaluated in
+// `vm`, and the consts they read (`CANON_INT_RE`, `CANON_FLOAT_RE`, `VALID_DIE_TABLE`) had to
+// be cut in beside them or the fragment threw ReferenceError. That is a measurement of the
+// SHAPE OF THE LETTERS: it goes red on correct code the day one of those functions starts
+// reading a fourth const, and the red names the const, not the change.
+// Measured on this very file's subject 2026-09-02: pulling the escape table in map_editor.js
+// out into a module const -- behaviour identical -- turned a sliced harness red and left the
+// imported one at 21/0.
+//
+// `el` is not staged any more. It is a real object in the real module, and these functions
+// only need it to exist.
+globalThis.document = globalThis.document || {
+  getElementById: () => null, addEventListener() {},
+  querySelector: () => null, querySelectorAll: () => [],
 };
-vm.createContext(ctx);
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  addEventListener() {},
+};
 
-try {
-  vm.runInContext([
-    // 7b - the one canonicalisation and its two users (client2/src/map_key.js)
-    K.konst('CANON_INT_RE'),
-    K.fn('canonicalKeyValue'),
-    K.fn('composeMapId'),
-    K.fn('canonIntString'),
-    K.konst('CANON_FLOAT_RE'),
-    K.fn('decomposeMapKey'),
-    K.fn('canonicalMapKey'),
-    // M4 phase 1
-    // [1-a 2026-08-04] `parseValidDieRef` reads the FIXED storage table from this const since
-    // the load path was pinned, so the const must be sliced in ahead of it or the slice throws
-    // ReferenceError. Sliced, not re-typed — same discipline as CANON_INT_RE above.
-    M.konst('VALID_DIE_TABLE'),
-    M.fn('parseValidDieRef'),
-    M.fn('validDieBasis'),
-    M.fn('isValidDieAt'),
-    // 7c - untracked declaration reading (transfer_plan.js)
-    P.fn('untrackedBoundOf'),
-    P.fn('boundText'),
-    `globalThis.__h = { canonicalKeyValue, composeMapId, decomposeMapKey, canonicalMapKey,
-       parseValidDieRef, validDieBasis, isValidDieAt, untrackedBoundOf, boundText,
-       VALID_DIE_TABLE };`,
-  ].join('\n\n'), ctx);
-} catch (e) {
-  die(`sandbox evaluation failed - ${e && e.message ? e.message : e}`);
-}
-const H = ctx.__h;
+const KEY = (await loadWithProbe(SRC_KEY, {
+  expose: ['canonicalKeyValue', 'composeMapId', 'canonIntString', 'decomposeMapKey',
+           'canonicalMapKey'],
+  tag: 'key',
+})).probe;
+
+// `currentRotation` / `currentSide` / `validDie` are module state these functions READ, and
+// the tests below write them. That is the whole reason this file could not simply `export`:
+// an ESM namespace is sealed and an `export let` is read-only to importers.
+const MAP = (await loadWithProbe(SRC_MAP, {
+  expose: ['parseValidDieRef', 'validDieBasis', 'isValidDieAt', 'VALID_DIE_TABLE'],
+  state: ['currentRotation', 'currentSide', 'validDie'],
+  tag: 'mapeditor',
+})).probe;
+
+const PLAN = (await loadWithProbe(SRC_PLAN, {
+  expose: ['untrackedBoundOf', 'boundText'],
+  tag: 'plan',
+})).probe;
+
+MAP.currentRotation = 0;
+MAP.currentSide = 'front';
+MAP.validDie = null;
+
+// Same shape the checks below already use, so all 42 call sites are untouched.
+const H = {
+  canonicalKeyValue: KEY.canonicalKeyValue,
+  composeMapId: KEY.composeMapId,
+  decomposeMapKey: KEY.decomposeMapKey,
+  canonicalMapKey: KEY.canonicalMapKey,
+  parseValidDieRef: MAP.parseValidDieRef,
+  validDieBasis: MAP.validDieBasis,
+  isValidDieAt: MAP.isValidDieAt,
+  VALID_DIE_TABLE: MAP.VALID_DIE_TABLE,
+  untrackedBoundOf: PLAN.untrackedBoundOf,
+  boundText: PLAN.boundText,
+};
 
 // ── assertion plumbing ─────────────────────────────────────────────────────────
 let pass = 0;
@@ -343,28 +317,28 @@ REF_CASES.forEach(([label, meta, table, exp]) => {
 check('M4-1', 'no meta at all -> null (2a9f6c4 behaviour)', H.parseValidDieRef(null, 'bonding_map'), null);
 
 // INV-M4-1: the basis is 'circle' for every map that declares nothing.
-ctx.validDie = null;
+MAP.validDie = null;
 check('M4-1', "basis with no state is 'circle'", H.validDieBasis(), 'circle');
-ctx.validDie = { basis: 'circle', keys: null, reason: '', ref: null };
+MAP.validDie = { basis: 'circle', keys: null, reason: '', ref: null };
 check('M4-1', "basis with no ref is 'circle'", H.validDieBasis(), 'circle');
 // The vocabulary is `circle|ref|refused`, byte-identical to server
 // `map_overlay.resolve_valid_die_basis` and to `contracts/map_seam/vectors.json`. One seam
 // carrying two spellings is how the `declared`/`derived` confusion started; it is not a
 // cosmetic choice, so it is asserted rather than assumed.
 // INV-M4-2: a resolved ref is the basis.
-ctx.validDie = { basis: 'ref', keys: new Set(['0_0']), reason: '', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'ref', keys: new Set(['0_0']), reason: '', ref: { table: 't', mapKey: 'k' } };
 check('M4-2', "resolved ref reports basis 'ref'", H.validDieBasis(), 'ref');
 // INV-M4-3: an unresolvable ref is its own state - never silently 'circle'.
-ctx.validDie = { basis: 'refused', keys: null, reason: '규격 조회 실패', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'refused', keys: null, reason: '규격 조회 실패', ref: { table: 't', mapKey: 'k' } };
 check('M4-3', "unresolvable ref reports basis 'refused', NOT 'circle'", H.validDieBasis(), 'refused');
 // A resolved-but-empty key set is not a resolution: an all-invalid wafer is not an answer.
-ctx.validDie = { basis: 'ref', keys: new Set(), reason: '', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'ref', keys: new Set(), reason: '', ref: { table: 't', mapKey: 'k' } };
 check('M4-3', 'empty key set does not count as basis ref', H.validDieBasis(), 'refused');
 // The retired spellings must NOT resolve to a live state. If `map` still meant `ref`, a
 // half-renamed caller would keep working and the two vocabularies would coexist unnoticed.
-ctx.validDie = { basis: 'map', keys: new Set(['0_0']), reason: '', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'map', keys: new Set(['0_0']), reason: '', ref: { table: 't', mapKey: 'k' } };
 check('M4-2', "retired spelling 'map' is not a live basis", H.validDieBasis(), 'circle');
-ctx.validDie = { basis: 'unresolved', keys: null, reason: 'X', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'unresolved', keys: null, reason: 'X', ref: { table: 't', mapKey: 'k' } };
 check('M4-3', "retired spelling 'unresolved' is not a live basis", H.validDieBasis(), 'circle');
 
 // ── the zero-regression assertion, stated exactly ──────────────────────────────
@@ -377,7 +351,7 @@ const CIRCLE_STATES = [
 ];
 let passthroughOk = true;
 CIRCLE_STATES.forEach(st => {
-  ctx.validDie = st;
+  MAP.validDie = st;
   for (let x = -2; x <= 2; x++) {
     for (let y = -2; y <= 2; y++) {
       if (H.isValidDieAt(null, x, y, true) !== true) passthroughOk = false;
@@ -390,7 +364,7 @@ check('M4-1', 'no ref: isValidDieAt is the identity on the circle verdict (75 pa
 // INV-M4-2: with a resolved ref, the MAP decides and the circle verdict is ignored - in
 // BOTH directions. Checking only one direction would pass an implementation that ORs or
 // ANDs the two, which is exactly "circle still participates".
-ctx.validDie = { basis: 'ref', keys: new Set(['1_1', '2_2']), reason: '', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'ref', keys: new Set(['1_1', '2_2']), reason: '', ref: { table: 't', mapKey: 'k' } };
 check('M4-2', 'in mask, circle says outside -> valid', H.isValidDieAt(null, 1, 1, false), true);
 check('M4-2', 'in mask, circle says inside -> valid', H.isValidDieAt(null, 1, 1, true), true);
 check('M4-2', 'not in mask, circle says inside -> INVALID (circle does not participate)',
@@ -419,11 +393,11 @@ check('M4-2', 'frame window suspends the mask (circle verdict passes through)',
 // renderable state, so it renders the pre-M4 circle and marks the refusal in three places
 // (chip, toast, console). What it must never do is CLAIM the ref, which is what the basis
 // string asserts here.
-ctx.validDie = { basis: 'refused', keys: null, reason: 'X', ref: { table: 't', mapKey: 'k' } };
+MAP.validDie = { basis: 'refused', keys: null, reason: 'X', ref: { table: 't', mapKey: 'k' } };
 check('M4-3', 'refused: verdict passes through, basis says so',
   [H.isValidDieAt(null, 1, 1, true), H.isValidDieAt(null, 1, 1, false), H.validDieBasis()],
   [true, false, 'refused']);
-ctx.validDie = null;
+MAP.validDie = null;
 
 // ── output ─────────────────────────────────────────────────────────────────────
 if (EMIT_7B) {

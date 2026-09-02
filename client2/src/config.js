@@ -1,7 +1,24 @@
-const isDevServer = window.location.port === '5173';
-export const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
-export const WS_URL = isDevServer ? 'ws://127.0.0.1:8080/ws' : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
-export const CURRENT_USER = import.meta.env.VITE_USER || 'web_client';
+// 🔴 브라우저에서는 `loc` 이 «window.location 그 자체»입니다 -- 아래 세 줄의 뜻은 한 글자도
+//    바뀌지 않았습니다. 바뀐 것은 «window 가 없는 곳»에서의 거동뿐입니다.
+//    왜: 이 파일은 client2 의 17개 모듈이 import 합니다. 최상단에서 `window` 를 읽으면
+//    node 가 이 파일을 «import 하는 순간 던지고», 그러면 그 17개를 재는 하니스가 전부 파일을
+//    «텍스트로 잘라» 재는 수밖에 없습니다 (소유자 2026-09-02: 「잘라쓰기 하니스 절대금지」).
+//    ⚠️ 여기에 맨 `window.` 를 다시 쓰면 그 하니스들이 «한 줄로» 잘라쓰기로 되돌아갑니다.
+const loc = typeof window !== 'undefined' && window.location
+  ? window.location
+  : { port: '', origin: '', protocol: '', host: '' };
+const isDevServer = loc.port === '5173';
+export const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : loc.origin;
+export const WS_URL = isDevServer ? 'ws://127.0.0.1:8080/ws' : `${loc.protocol === 'https:' ? 'wss:' : 'ws:'}//${loc.host}/ws`;
+// 🔴 `import.meta.env.VITE_USER` 라는 «글자 그대로»가 계약입니다. vite.config.js 의
+//    `define` 이 이 표현식을 빌드 때 문자열 리터럴로 «치환»하므로, 한 글자라도 다르게 적으면
+//    (`env.VITE_USER` 같은 축약) 치환이 «조용히» 안 일어나고 모든 사용자가 `web_client` 가
+//    됩니다 -- 오류 없이, 화면도 멀쩡하게. 그래서 접근을 try 로 감싸기만 했습니다.
+//    node 에는 `import.meta.env` 자체가 없어 «읽는 순간» TypeError 가 나고, 그 한 줄이
+//    이 파일을 import 하는 17개 모듈을 전부 「텍스트로 잘라 재는」 하니스로 몰아넣었습니다.
+let viteUser;
+try { viteUser = import.meta.env.VITE_USER; } catch (e) { viteUser = undefined; }
+export const CURRENT_USER = viteUser || 'web_client';
 export const pageLimit = 1000; // Chunk size
 
 // ── WebSocket reconnect tuning ────────────────────────────────────────────────

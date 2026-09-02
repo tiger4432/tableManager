@@ -50,7 +50,11 @@ import {
   validateZonePlan, materialRollupRows, remainingState,
   mapPastedGrid, planToGrid,
 } from './doe_bands.js';
-import './transfer_plan.css';
+// 🔴 CSS import 없음 -- `map_editor.html` 이 <link> 로 답니다 (위 map_editor.js 와 같은 이유).
+//    이 파일은 map_editor.js 가 import 하므로, 여기에 남겨 두면 벽이 «한 모듈 안쪽으로»
+//    옮겨질 뿐 map_editor.js 는 여전히 import 가 안 됩니다.
+//    이 모듈을 쓰는 화면은 map_editor.html «하나»입니다 (빌드 전 dist 에서 이 CSS 를
+//    싣는 페이지가 그 하나뿐인 것으로 확인).
 
 // [U6] The builtin stage list is DELETED. Stage declarations have exactly ONE source:
 // GET /api/transfer-plan/stages (server config/transfer_plan_config.json). An
