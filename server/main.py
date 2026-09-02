@@ -885,22 +885,14 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         
-        # 그래프 동기화 컬럼 3종 주입
-        is_sync_val = getattr(row, "is_graph_synced", False)
-        if is_sync_val is None:
-            is_sync_val = False
-            
-        needs_roll_val = getattr(row, "needs_graph_rollback", False)
-        if needs_roll_val is None:
-            needs_roll_val = False
-            
-        synced_at_val = getattr(row, "graph_synced_at", None)
-        synced_at_str = to_local_str(synced_at_val) if synced_at_val else "미동기화"
-        
-        r_data["is_graph_synced"] = {"value": is_sync_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data["needs_graph_rollback"] = {"value": needs_roll_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data["graph_synced_at"] = {"value": synced_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        
+        # 🔴 그래프 동기화 컬럼 «셋»은 여기서 빠졌습니다 (2026-09-02). 2026-08-31 에
+        # `system_cols` 목록에서는 빠졌는데 «채우는 자리»가 안 빠져서, 선언한 표가 «0개»인
+        # 컬럼 셋이 그리드 «모든 행»에 셀 모양으로 실려 나가고 있었습니다 —
+        # 라우트 자기 타이머의 `Dict Conv` 칸에서, 페이지마다, 행마다.
+        # 실측: 라이브 table_config 44개 표 중 셋 중 «하나라도» column_types/display_columns
+        # 에 선언한 표 «0». 즉 아무도 묻지 않은 것을 나르고 있었습니다.
+        # DB 컬럼(models.py)은 «진짜 컬럼»이고 그대로 있습니다 — 그것을 지우는 것은 별건입니다.
+
         # dynamic data attribute 바인딩
         row.data = r_data
         
@@ -2404,18 +2396,24 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
             columns = []
             
     # [버그 수정] display_columns 정의 여부와 관계없이 시스템 컬럼은 항상 마지막에 보장
-    # The three graph-sync names left on 2026-08-31 with the branch they belonged to; the
-    # server no longer fills them, so listing them here would reserve a seat in every table
-    # for a column that is now always empty.
+    # The three graph-sync names left on 2026-08-31 with the branch they belonged to.
+    # 🔴 THIS COMMENT WAS FALSE FOR TWO DAYS. It said "the server no longer fills them" on
+    # the day only the LIST above lost them: `fetch_and_merge_metadata` kept injecting all
+    # three into every row, and a second comment in the client said the same untrue thing.
+    # What actually happened on 2026-08-31 was that the seat was removed; what happened on
+    # 2026-09-02 was that the filling stopped. Written out because a comment that describes
+    # a removal which only half happened is worse than no comment - it is what stops the
+    # next person from looking.
     system_cols = ["created_at", "updated_at"]
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)
             
     col_types = dict(config.get("column_types", {}))
-    col_types["is_graph_synced"] = "boolean"
-    col_types["needs_graph_rollback"] = "boolean"
-    col_types["graph_synced_at"] = "datetime"
+    # 🔴 셋을 여기서 «더하던» 세 줄이 2026-09-02 에 빠졌습니다. 어떤 표도 자기 선언에
+    # 그 셋을 넣지 않으므로(라이브 44개 표 실측: 0), 이 세 줄은 «선언을 덮어쓰는» 것이
+    # 아니라 «없는 컬럼의 타입을 지어내는» 것이었습니다 — 그리고 페이로드가 그 컬럼을
+    # 나르는 것을 멈춘 지금, 타입만 남으면 클라가 «영원히 빈» 컬럼의 머리를 세웁니다.
 
     # [Virtual join] Announce the columns a VERIFIED join ADDS to this table's read
     # payload. The payload has carried them since `d70a33d`; without this key the grid

@@ -34,7 +34,13 @@ export const PUSH_SYSTEM_COLUMNS = [
   'grid_metadata'
 ];
 // RETIRED 2026-08-31: is_graph_synced, needs_graph_rollback, graph_synced_at left with the
-// branch they served - the server stopped injecting them in the same commit as this edit.
+// branch they served.
+// 🔴 THE SENTENCE HERE USED TO SAY THE SERVER STOPPED INJECTING THEM IN THE SAME COMMIT,
+// AND IT WAS NOT TRUE. On 2026-08-31 only the schema's system-column LIST lost them;
+// `fetch_and_merge_metadata` went on putting all three into every row of every grid page
+// until 2026-09-02, when the filling and the announced types were removed as well.
+// Corrected rather than deleted, because "a removal that only half happened, described as
+// finished" is the thing that kept anyone from looking for two days.
 // 🔴 MEASURED BEFORE REMOVING, because this list is what the push gate calls "not yours to
 // worry about": ZERO tables declare any of the three in `column_types`, so they never reach
 // the gate's input and dropping them changes no answer today. Leaving them would have been a
