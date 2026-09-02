@@ -4,6 +4,8 @@ import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, applyFillTargetHeaders } from './grid.js';
+// 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
+import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
 import { refreshTraceEntry } from './trace_launch.js';
@@ -253,7 +255,7 @@ export async function fetchData(resetSkip = true) {
       state.gridApi.setGridOption('rowData', cached.data);
       updateGridSortState();
       updateLoadedCount(cached.data.length);
-      elements.totalRowsCount.textContent = `Matches: ${cached.total}`;
+      setMatchCount(elements.totalRowsCount, cached.total);
       updatePaginationUI(cached.total);
       elements.performanceLog.textContent = `Loaded ${cached.data.length} rows from client cache`;
       return;
@@ -310,7 +312,7 @@ export async function fetchData(resetSkip = true) {
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount();
-    elements.totalRowsCount.textContent = `Matches: ${result.total}`;
+    setMatchCount(elements.totalRowsCount, result.total);
 
     // Update Pagination UI
     updatePaginationUI(result.total);

@@ -19,6 +19,7 @@ import { initWebSocket } from './websocket.js';
 import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
+import { setMatchCount } from './match_count.js';
 import { ADMIN_TOKEN_HEADER, readAdminToken } from './admin_token.js';
 import {
   loadHistory,
@@ -1116,7 +1117,7 @@ function setupEventListeners() {
         updateGridSortState();
 
         updateLoadedCount(accumulatedData.length);
-        elements.totalRowsCount.textContent = `Matches: ${totalRows}`;
+        setMatchCount(elements.totalRowsCount, totalRows);
         updateViewModeUI();
 
         const renderEndTime = performance.now();

@@ -2987,3 +2987,7 @@ body.resizing-active .history-sidebar {
 .redo-panel__group { text-align: left; font-family: inherit; line-height: 1.5; }
 .redo-panel__go { margin-top: 4px; width: 100%; }
 
+
+/* 🔴 세는 중인 수는 «아직 쓸 수 없는» 수입니다. 글자로도(…) 구별되지만
+   표지를 같이 달아 「0 건」과 한눈에 갈리게 합니다. */
+#total-rows.is-counting { opacity: 0.55; font-style: italic; }

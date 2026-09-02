@@ -4,6 +4,7 @@ import { elements } from './dom.js';
 import { switchTable, fetchData } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
+import { setMatchCount } from './match_count.js';
 import { countNav, ROUTES } from './effort_meter.js';
 
 // Feature 3: Load audit log history from API
@@ -1048,7 +1049,7 @@ export function navigatorStep2(log) {
         state.gridApi.setGridOption('rowData', cached.data);
         updateGridSortState();
         updateLoadedCount(cached.data.length);
-        elements.totalRowsCount.textContent = `Matches: ${cached.total}`;
+        setMatchCount(elements.totalRowsCount, cached.total);
         updatePaginationUI(cached.total);
 
         setTimeout(() => {
@@ -1109,7 +1110,7 @@ export async function navigatorStep3(log) {
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount(result.data.length);
-    elements.totalRowsCount.textContent = `Matches: ${result.total}`;
+    setMatchCount(elements.totalRowsCount, result.total);
 
     // Update Pagination UI
     updatePaginationUI(result.total);

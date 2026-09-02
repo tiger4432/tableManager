@@ -2,6 +2,7 @@ import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
 import { elements } from './dom.js';
+import { pagingView } from './match_count.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
 //    그리지 않는 것이 이 저장소의 상설입니다.
 import { watchForDismiss } from './dropdown.js';
@@ -152,22 +153,27 @@ export function updateViewModeUI() {
 }
 
 // Update Pagination controls state
+//
+// 🔴 「몇 쪽인가」는 `match_count.js` 가 답합니다. 여기서 `Math.ceil(total / pageLimit) || 1` 을
+//    직접 쓰면 «아직 안 센 표»(total = null)가 「1쪽뿐」이 되어 다음 버튼이 꺼집니다 --
+//    세는 동안 다음 쪽으로 못 갑니다. 「모른다」와 「1쪽뿐」은 다른 상태입니다.
 export function updatePaginationUI(total) {
-  const currentPage = Math.floor(state.currentSkip / pageLimit) + 1;
-  const totalPages = Math.ceil(total / pageLimit) || 1;
+  const view = pagingView(total, state.currentSkip, pageLimit);
 
   if (elements.pageInput) {
-    elements.pageInput.value = currentPage;
-    elements.pageInput.max = totalPages;
+    elements.pageInput.value = view.currentPage;
+    // 모르는 동안은 상한을 «걸지 않습니다». 1 로 두면 입력이 1쪽에 묶입니다.
+    if (view.totalPages === null) elements.pageInput.removeAttribute('max');
+    else elements.pageInput.max = view.totalPages;
   }
   if (elements.totalPagesSpan) {
-    elements.totalPagesSpan.textContent = totalPages;
+    elements.totalPagesSpan.textContent = view.totalPagesText;
   }
   if (elements.prevPageBtn) {
-    elements.prevPageBtn.disabled = (currentPage === 1);
+    elements.prevPageBtn.disabled = view.prevDisabled;
   }
   if (elements.nextPageBtn) {
-    elements.nextPageBtn.disabled = (currentPage >= totalPages);
+    elements.nextPageBtn.disabled = view.nextDisabled;
   }
 }
 
