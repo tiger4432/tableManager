@@ -729,3 +729,169 @@ def test_a_cancel_stops_between_batches_keeps_what_it_wrote_and_can_be_resumed(r
 
     # SURVIVES: both calls returned - nothing was killed to make the stop happen. The
     # assertions above only ran because the process was still here to run them.
+
+
+# ---------------------------------------------------------------------------
+# Pacing — a long replay yields the database between pages
+# ---------------------------------------------------------------------------
+# 🔴 THE NUMBERS COME FROM THE PACING TABLE, NEVER FROM THIS FILE. Restating `5` and `1.0`
+# here would make these tests assert somebody's memory of `server/pacing.json`, and they
+# would keep passing on the day the table changed - which is the one day they matter.
+
+PACE_PAGES = 12          # pages, because `chunk_size=1` makes one row one page
+
+
+def _paced_rows(n=PACE_PAGES, offset=0):
+    return [{"src_key": "sp%02d" % (i + offset), "part_no": "PP%02d" % (i + offset),
+             "qty": i + 1} for i in range(n)]
+
+
+def _record_sleeps(monkeypatch, db):
+    """Every `time.sleep` the replay makes, with the session state at that instant.
+
+    The state is captured because it is the SAFETY property and not a detail: a sleep that
+    happens while this session holds a transaction is not pacing, it is occupation - the
+    very thing a slow pace is asked for to relieve. Recording it here makes moving the
+    yield back above the page's commits turn this red instead of silently trading one
+    kind of crowding for another.
+    """
+    calls = []
+
+    def fake_sleep(seconds):
+        calls.append({"seconds": seconds, "in_transaction": db.in_transaction()})
+
+    monkeypatch.setattr(chain_replay.time, "sleep", fake_sleep)
+    return calls
+
+
+def test_a_pace_yields_once_per_declared_number_of_pages(rep_env, monkeypatch):
+    """`slow` sleeps every `units_per_cycle` pages — not every page, and not never.
+
+    A unit is a PAGE here. The table does not say so and does not need to: what a unit
+    means belongs to the caller, at the boundary where its own work is already committed.
+    """
+    import pacing
+
+    units, rest = pacing.resolve("slow")
+    assert units and rest, "the 'slow' pace must actually cap and rest, or this proves nothing"
+
+    _seed(rep_env, "crep_test_trigger", _paced_rows())
+    calls = _record_sleeps(monkeypatch, rep_env)
+
+    stats = chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+                                     log=lambda *_: None, pace="slow")
+
+    assert stats["pages"] == PACE_PAGES
+    assert len(calls) == PACE_PAGES // units, (
+        "the cap was ignored: %d pages at %d per cycle should yield %d times, not %d"
+        % (PACE_PAGES, units, PACE_PAGES // units, len(calls)))
+
+
+def test_a_pace_rests_for_the_time_the_table_declares(rep_env, monkeypatch):
+    """And it rests for `rest_seconds` — a yield of zero is a yield in name only.
+
+    Separate from the count above on purpose: a run that yields at the right moments for
+    no time at all keeps the cadence and gives nothing back, so one assertion covering
+    both would report "paced" for a change that paces nothing.
+    """
+    import pacing
+
+    _, rest = pacing.resolve("slow")
+    _seed(rep_env, "crep_test_trigger", _paced_rows())
+    calls = _record_sleeps(monkeypatch, rep_env)
+
+    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+                             log=lambda *_: None, pace="slow")
+
+    assert calls, "it never yielded at all"
+    assert [c["seconds"] for c in calls] == [rest] * len(calls)
+
+
+def test_the_yield_happens_with_nothing_held(rep_env, monkeypatch):
+    """🔴 SLEEPING INSIDE A TRANSACTION IS OCCUPATION, NOT PACING.
+
+    `iter_pages` runs its query and then yields, so at the TOP of the loop body this
+    session is already sitting on the page's read snapshot; a sleep there would hold it
+    for `rest_seconds` every cycle. At the end of the body the page's writes are committed
+    (`crud.apply_batch_updates` commits per chunk) and the next page has not been read.
+    """
+    _seed(rep_env, "crep_test_trigger", _paced_rows())
+    calls = _record_sleeps(monkeypatch, rep_env)
+
+    chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+                             log=lambda *_: None, pace="slow")
+
+    assert calls, "it never yielded at all"
+    assert [c["in_transaction"] for c in calls] == [False] * len(calls), (
+        "the replay slept while holding a transaction open")
+
+
+def test_fast_is_exactly_what_this_did_before_the_handle_existed(rep_env, monkeypatch):
+    """No pace and `fast` are the same run, and neither sleeps once.
+
+    The two halves are disjoint row sets replayed through the same rule, so their numbers
+    are comparable by construction - the alternative, replaying the same rows twice, makes
+    the second pass an update where the first was an insert and compares nothing.
+    """
+    _seed(rep_env, "crep_test_trigger", _paced_rows())
+    _seed(rep_env, "crep_test_trigger", _paced_rows(offset=PACE_PAGES))
+    calls = _record_sleeps(monkeypatch, rep_env)
+
+    unset = chain_replay.replay_rule(
+        rep_env, RULE_RESERVE, apply=True, chunk_size=1, log=lambda *_: None,
+        business_keys=[r["src_key"] for r in _paced_rows()])
+    fast = chain_replay.replay_rule(
+        rep_env, RULE_RESERVE, apply=True, chunk_size=1, log=lambda *_: None, pace="fast",
+        business_keys=[r["src_key"] for r in _paced_rows(offset=PACE_PAGES)])
+
+    assert calls == [], "`fast` rested; it must be today's behaviour exactly"
+    measured = ("rows_scanned", "pages", "cells_written", "rows_created", "rows_updated",
+                "cells_proposed", "mapper_items")
+    assert {k: unset[k] for k in measured} == {k: fast[k] for k in measured}
+    assert unset["rows_scanned"] == PACE_PAGES and unset["cells_written"], (
+        "the halves must actually do work, or 'identical' is two zeros")
+
+
+def test_an_undeclared_pace_is_refused_before_anything_is_written(rep_env):
+    """A typo must not quietly mean `fast`.
+
+    Somebody reaches for a slow pace because the service is already struggling; if the
+    misspelling silently ran at full speed they would watch the exact thing they were
+    preventing, unable to tell "the handle does not work" from "it did not help".
+    """
+    _seed(rep_env, "crep_test_trigger", _paced_rows(n=2))
+
+    with pytest.raises(chain_replay.ReplayRefused) as raised:
+        chain_replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=1,
+                                 log=lambda *_: None, pace="turbo")
+    assert "turbo" in str(raised.value)
+    assert "slow" in str(raised.value), "the refusal must name what IS declared"
+    # refused before the first page: nothing landed
+    assert _target(rep_env, "PP00") is None
+
+
+def test_the_registry_offers_the_pace_from_the_table_and_refuses_the_rest():
+    """The screen's dropdown and the run's refusal read the same declaration.
+
+    Both pace-taking operations are checked, because the point of declaring the parameter
+    once is that neither can drift from the other.
+    """
+    import retroactive
+
+    inventory = {op["op"]: op for op in retroactive.inventory()}
+    for op_id in ("chain_replay", "ledger_backfill"):
+        param = {p["name"]: p for p in inventory[op_id]["params"]}["pace"]
+        assert param["required"] is False
+        assert {c["value"] for c in param["choices"]} == set(pacing_names())
+        assert all(c.get("label") for c in param["choices"]), (
+            "values without labels make a screen invent the words")
+
+    with pytest.raises(retroactive.RetroactiveRefused):
+        retroactive.validate("chain_replay", {"rule": RULE_RESERVE["name"],
+                                              "pace": "turbo"})
+
+
+def pacing_names():
+    import pacing
+
+    return pacing.load_paces().keys()

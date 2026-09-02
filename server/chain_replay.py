@@ -70,6 +70,7 @@ HOW A WITHDRAWAL BECOMES VISIBLE (not silent)
     already answers "why does this cell say what it says".
 """
 import logging
+import time
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,27 @@ PROTECTED_SOURCES = frozenset({"user"})
 
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
+
+
+def resolve_pace(name, paces=None):
+    """The shared pacing table, with this module's refusal shape.
+
+    🔴 THE TABLE IS NOT COPIED. `server/pacing.json` already holds the paces every long job
+    reads, and a second table here would be a second thing to keep in step - which is
+    exactly the drift that lifting it out of `ledger/` was meant to end. What belongs to
+    this module is the translation of its refusal into `ReplayRefused`, because every other
+    refusal on this path is one and a caller made to catch two exception types for "you
+    asked for something undeclared" will eventually catch only one.
+
+    A UNIT HERE IS A PAGE. The table does not know that and does not need to: what a unit
+    means belongs to the caller, at the boundary where ITS work is already committed.
+    """
+    import pacing
+
+    try:
+        return pacing.resolve(name, paces)
+    except pacing.UnknownPace as exc:
+        raise ReplayRefused(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +251,7 @@ def _to_payloads(page, columns: list) -> list:
 
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                checkpoint=None, business_keys=None) -> dict:
+                checkpoint=None, business_keys=None, pace=None) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
     Dry-run (default) reads only and reports what WOULD change, including which
@@ -316,6 +338,9 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
     module_name, func_name = rule.get("mapper_module"), rule.get("mapper_function")
+    # Resolved BEFORE the first page, so an undeclared pace is refused before the run has
+    # written anything rather than partway through.
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
 
     for page in keyset_scan.iter_pages(db, trg_model, columns=[getattr(trg_model, c) for c in columns],
                                        condition=selection,
@@ -427,6 +452,29 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             # is the number that makes "the user layer is safe" observable rather
             # than merely argued.
             stats["user_protected_cells"] += _count_user_protected(db, target_table, items)
+
+        # 🔴 THE YIELD IS AT THE END OF THE PAGE, NOT THE TOP, AND THAT IS THE WHOLE
+        # SAFETY ARGUMENT. Sleeping is only pacing if this session is holding nothing while
+        # it sleeps; hold a transaction and it is OCCUPATION, which is the thing being
+        # complained about rather than a cure for it. At the top of the body the page's
+        # own SELECT has already run - `iter_pages` queries, then yields - so a sleep there
+        # would sit on that read snapshot for `rest_seconds`. Here every write of this page
+        # is committed (`crud.apply_batch_updates` commits per chunk, `apply_retraction`
+        # commits its deletes) and the next page has not been read.
+        #
+        # The `rollback` is what makes that true in EVERY case rather than in the common
+        # one: a page whose mapper produced nothing never reached a commit, so its SELECT's
+        # transaction would still be open. It discards nothing - the writes are already
+        # committed - and in dry-run mode it is the same belt-and-braces this function ends
+        # with. `iter_pages` reads its next cursor BEFORE yielding, so the rollback cannot
+        # take the keyset out from under it.
+        #
+        # A UNIT IS A PAGE, counted in `pages` - the same boundary the cancel checkpoint
+        # uses, for the same reason. Cancel is the handle that STOPS; this is the handle
+        # that SLOWS, and most of the time slowing is enough that nobody has to stop.
+        if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+            db.rollback()
+            time.sleep(rest_seconds)
 
     if not apply:
         db.rollback()  # belt and braces: a dry-run holds no writes, make it structural

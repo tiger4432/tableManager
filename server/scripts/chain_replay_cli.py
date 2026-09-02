@@ -137,6 +137,12 @@ def main(argv=None):
                    help="comma-separated business_key_val list: replay only these rows. "
                         "Omit to replay the whole rule. This chooses WHICH rows; --limit "
                         "still bounds how many are scanned")
+    # Same reason as --business-keys above: the button takes a pace, so the `cli` line has
+    # to do the same job or an operator who types it gets an unpaced run and no error.
+    p.add_argument("--pace", default=None,
+                   help="fast (default, unchanged) | slow | trickle - yield between pages "
+                        "so the database stays free for everything else. Declared in "
+                        "server/pacing.json")
 
     p = sub.add_parser("replay-all")
     p.add_argument("--apply", action="store_true")
@@ -189,7 +195,7 @@ def main(argv=None):
                         if args.business_keys is not None else None)
             print(_report_replay(chain_replay.replay_rule(
                 db, rule, apply=args.apply, limit=args.limit,
-                chunk_size=args.chunk_size, business_keys=selected,
+                chunk_size=args.chunk_size, business_keys=selected, pace=args.pace,
                 log=lambda m: print(f"  {m}"))))
         elif args.cmd == "replay-all":
             out = chain_replay.replay_all(db, apply=args.apply, limit=args.limit,

@@ -129,6 +129,22 @@ def _pace_choices():
             for name, spec in pacing.load_paces().items()]
 
 
+def _pace_param():
+    """The `pace` parameter, declared ONCE for every operation that takes one.
+
+    🔴 THE SECOND OPERATION IS WHY THIS IS A FUNCTION. One pace-taking operation could
+    spell its own; two spelling it separately is how the help of one ends up carrying a
+    fact the other's does not - and the fact below is exactly that kind, because it is
+    true of every retroactive run and not of the ledger's alone.
+    """
+    return _p("pace", required=False, choices=_pace_choices,
+              help="how hard to push. Slowing yields between units of work so the "
+                   "database stays free for everything else; the paces and their names "
+                   "are declared in server/pacing.json. Retroactive runs go ONE AT A "
+                   "TIME, so a slower pace also makes whatever is queued behind this "
+                   "wait that much longer")
+
+
 # ---------------------------------------------------------------------------
 # Counts. Each one calls the operation's OWN dry-run or a cheap query that lives
 # in the operation's own module - never a re-derivation of its logic here.
@@ -519,7 +535,8 @@ def _run_chain_replay(db, params, log, control=None):
     rule = chain_replay.find_rule(params["rule"])
     s = chain_replay.replay_rule(db, rule, apply=True, log=log,
                                  checkpoint=_checkpoint(control),
-                                 business_keys=params.get("business_keys"))
+                                 business_keys=params.get("business_keys"),
+                                 pace=params.get("pace"))
     _final_progress(control, s.get("rows_scanned"))
     return {"cells_written": s["cells_written"], "rows_created": s["rows_created"],
             "rows_updated": s["rows_updated"], "rows_scanned": s["rows_scanned"],
@@ -600,16 +617,19 @@ OPERATIONS = {
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
                            "whole rule. This selects WHICH rows - `limit` still bounds "
-                           "how many are scanned")],
+                           "how many are scanned"),
+                   _pace_param()],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
-                "[--business-keys a,b,c] --apply"),
+                "[--business-keys a,b,c] [--pace slow] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": "crud.apply_batch_updates commits per 1000-item write chunk",
+        "commit_granularity": ("crud.apply_batch_updates commits per 1000-item write "
+                               "chunk; a pace yields at the page boundary, after those "
+                               "commits and before the next page is read"),
         "cli_only": ["replay-all (every rule in dependency order)", "--limit", "--chunk-size"],
     },
     "withdraw": {
@@ -635,10 +655,7 @@ OPERATIONS = {
         "label": "원장 전진 번역 (커서 뒤 전부)",
         "what_is_missing": "선언은 이 소스를 읽는데 커서 뒤의 행이 아직 원장에 없다",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
-                   _p("pace", required=False, choices=_pace_choices,
-                      help="how hard to push. Slowing yields between pages so the "
-                           "database stays free for everything else; the paces and their "
-                           "names are declared in server/pacing.json")],
+                   _pace_param()],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
         "cli": "server/ledger/backfill.py --source <source> [--pace slow]",
