@@ -1611,3 +1611,125 @@ test_retroactive_admin.py::test_every_parameter_a_button_takes_is_findable_in_th
 ```
 서버 재기동 — 총괄 몫입니다. b504c504 푸시했습니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 「Matches」 서버 절반 착지 — 🔴 **인자 이름은 `defer_total` 입니다** (구현자, 2026-09-02)
+
+커밋 `f7a3c372`. 파일 «둘»: `server/main.py` · `server/tests/test_count_cache_invalidation.py`.
+
+## 🔴🔴 클라 레인에 «먼저» 내려 주십시오 — 이름과 계약, 이게 전부입니다
+클라가 이름을 기다리며 멈춘 것이 맞습니다. **서버가 착지했으니 이제 철자가 있습니다.**
+```
+GET /tables/{table}/data?defer_total=true
+   -> 응답의 `total` 이 «null» · count() «0회» · data 는 «그대로»
+   -> 인자를 «안 주면» 지금과 완전히 같습니다 (`defer_total=false` 도 같음)
+
+GET /tables/{table}/data/count?<좁히는 인자 그대로>
+   -> {"table_name": "...", "total": N}      ← «정확한 전수 count»
+   받는 인자: q · cols · transaction_id · filters · enrichment_queue · enrichment_queue_scope
+   🔴 안 받는 인자: skip · limit · order_by · order_desc · target_row_id
+      -> 어느 «행»을 보여줄지는 «몇 개»인지를 안 바꿉니다. 받으면 「정렬을 바꿨더니 개수가
+         달라졌다」가 물어볼 수 있는 질문이 됩니다. 그리드가 쓰는 «좁히는 인자만» 그대로 실으십시오
+```
+`defer_total` 로 지은 이유: 응답에서 «null 이 되는 그 칸의 이름»이 `total` 이고,
+이 라운드가 바꾸는 것은 정확도가 아니라 «미룬다»는 사실이기 때문입니다.
+(`skip_count` 는 기존 페이징 인자 `skip` 과 헷갈리고, 「영영 안 센다」로 읽힙니다)
+
+## 계약 넷 — 지시하신 그대로
+```
+① defer_total=true  ->  total «null» · count() 호출 «0회» (캐시도 «안 봅니다», 아래 ⚠️)
+② GET .../data/count — 같은 필터로 개수만
+③ 같은 캐시 · 같은 키 — 그리드가 채운 칸에 count 라우트가 «히트»합니다
+④ 인자 없으면 지금과 동일 — 응답 전체가 «같은 dict» 임을 단언
+```
+⚠️ **①에서 캐시조차 안 봅니다.** 히트를 먼저 보면 「보통 빠르고 가끔 2초」라는 «지금 그 진동»이
+그대로 남습니다 — 이 라운드가 없애려는 것이 정확히 그것이라 미스/히트를 가리지 않고 안 셉니다.
+
+## 조립은 «한 곳»입니다 (멈춤 조건 ① — 멈출 일 없었습니다)
+`narrowed_table_query(db, table, model, *, q, cols, transaction_id, filters,
+enrichment_queue, enrichment_queue_scope)` -> `(query, binder, cache_key)`.
+두 라우트가 «이 함수만» 부릅니다. **질의와 캐시 키가 같은 자리에서 나오므로 갈릴 수가 없습니다.**
+```
+멈춤 조건 ② (캐시 키를 따로 만들어야 하나)  ->  «아니오». 키가 이 함수에서 나옵니다
+```
+⚠️ **CSV 내보내기는 «셋째 벌»이고 안 건드렸습니다.** 그건 이미 다릅니다 —
+`apply_enrichment_queue_predicate` 를 «아예 안 부릅니다». 합치면 «내보내기 내용이 바뀌므로»
+별건입니다. 총괄이 보드에 올리신 그 항목과 같은 것으로 봅니다. **셋째 벌을 새로 만들지는 않았습니다.**
+
+## 게이트
+```
+① 네 필터 모양에서 두 라우트의 수가 «같음»
+   필터 없음 ✅ · q ✅ · filters ✅   -> 시험으로 못 박음(파라미터라이즈 3본)
+                                       그리고 「그 필터가 실제로 좁히는지」까지 단언 —
+                                       안 좁히면 「같다」가 공허합니다
+   enrichment_queue ⚠️ 규칙 픽스처가 시험에 «없습니다». 대신 «거절»로 쟀습니다:
+      없는 규칙명 -> 두 라우트 «둘 다 400». 자기 조립을 든 count 라우트라면
+      (내보내기가 지금 그런 것처럼 술어를 빠뜨려) «200 + 안 좁혀진 전체»를 냈을 겁니다
+② Count: 0.000s  -> 더 «센» 것으로 쟀습니다. `sqlalchemy.orm.Query.count` 에 스파이를 걸어
+   «호출 0회»를 단언합니다. (t_count 는 애초에 대입되지 않으므로 로그도 0.000s 입니다)
+③ 인자 없는 요청이 지금과 같은 응답 ✅ — 숫자 하나가 아니라 «응답 dict 전체»를 비교
+④ target_row_id 점프 ✅ — 아래 §점프
+```
+
+## 이 라운드가 «덜어내는 것» — 라이브 DB 실측 (⚠️ «이 박스» 수입니다)
+count 와 첫 페이지를 «따로» 재서, 첫 페인트의 몇 %가 count 인지를 수로 냈습니다.
+1,000행 이상인 표 «전부»:
+```
+표                     행 수     count      페이지     count 비중
+bonding_log          380,353   123.7ms      6.7ms       95%
+core_wafer_map        78,563    27.9ms      6.6ms       81%
+process_param         80,330    24.8ms      4.6ms       85%
+inspection_run       117,742    22.5ms      5.0ms       82%
+void_obs             103,857    20.6ms      5.5ms       79%
+dt_log                34,939    15.6ms      6.2ms       72%
+... (17개 표 전부 66% ~ 95%)
+```
+🔴 **count 가 첫 페인트 DB 비용의 «3분의 2에서 19분의 18»이고, «표 크기를 따라 자라는 쪽»입니다.**
+페이지는 안 자랍니다(limit 만큼만). 그래서 미루는 것이 효과가 있습니다.
+⚠️ 이 수는 **한가할 때** 잰 것입니다. 소유자가 보신 600~2000ms 는 «부하 중 + 캐시 항상 미스»
+상태이므로, 위 수는 «모양»을 보이지 «크기»를 보이지 않습니다. 크기는 운영에서만 나옵니다.
+
+## 점프(target_row_id) — 제외를 «재서» 확인했습니다
+```
+있던 시험   «미스 경로»뿐 (test_table_data_serialization: 없는 id -> fast-fail)
+없던 것     «히트 경로» — 행 id 를 offset 으로 바꾸려고 «자기 count()» 를 도는 그 자리
+            그런데 그 자리가 이제 «공유 조립이 만든 query» 를 받습니다
+=> 「안 건드렸다」로 넘기지 않고 시험 한 본을 붙였습니다: 점프가 그 행이 «들어 있는 페이지»를
+   계산하고, defer_total 을 켜도 target_offset 이 «같은 값»입니다
+```
+🔴 **그리고 점프는 defer_total 을 켜도 «셉니다» (count 1회).** offset 은 total 이 아니고
+`/data/count` 가 답할 수 있는 수가 아닙니다. 지시대로 점프를 그대로 뒀으니 그렇게 되는 것이고,
+**클라에 알려야 합니다** — 「defer_total 을 켰는데 점프만 느리다」가 결함으로 보고될 수 있습니다.
+
+## 시험 — 변이 «다섯», 각각 «정확히 한 시험»이 빨개집니다
+새 시험 7본(파라미터라이즈 3 포함), 전부 `tests/test_count_cache_invalidation.py`
+(주제가 같은 자리입니다 — count 캐시와 그 캐시를 채우는 라우트).
+```
+변이                                         빨개진 시험
+수만 null 로 하고 «세기는 함»                  deferring_the_total_does_not_count_at_all
+null 대신 «0»                                a_deferred_total_is_null_and_null_is_not_zero
+count 라우트가 «자기 조립» (큐 술어 빠뜨림)     both_routes_apply_the_named_queue_predicate
+count 라우트가 «자기 캐시 키»                  the_two_routes_share_one_cache_entry
+count 라우트가 ?filters= 를 «무시»             same_number_the_grid_used_to_carry[filters]
+```
+돌린 것: `/tables/{t}/data` 를 지나는 시험 전부 —
+`count_cache_invalidation · table_data_serialization · schema_virtual_columns ·
+virtual_column_export · virtual_join_executor · enrichment · undeclared_column_warning ·
+runtime_table_create · void_schema · api · replace_map · batch_response_log_budget`
+-> **191 passed · 0 failed.**
+
+## 🔴 곁가지 하나 — 고치지 «않았습니다». 판정 부탁드립니다
+점프의 «미스» 경로(`main.py`, 타겟이 현재 질의에 없을 때)가 **`total: 0` 을 돌려줍니다.**
+```
+그 응답의 뜻   「이 필터에 맞는 행이 «0개»」
+실제           타겟 «한 행»이 안 맞을 뿐, 필터에 맞는 행은 «많을 수» 있습니다
+```
+이 라운드가 「null 은 0 이 아니다」를 세우는 자리인데, **바로 옆에 「0 인데 0 이 아닌」 자리가
+하나 있습니다.** 기존 동작이고 점프는 제외 대상이라 손대지 않았습니다.
+
+## 남은 것
+```
+클라 레인   위 §「먼저 내려 주십시오」 의 이름과 계약 — 그게 그들이 기다리던 것입니다
+서버 재기동  총괄 몫입니다. f7a3c372 푸시했습니다
+```
