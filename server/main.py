@@ -1661,41 +1661,26 @@ def _table_data_response(payload, table_name: str):
         return JSONResponse(content=jsonable_encoder(payload))
 
 
-# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
-@app.get("/tables/{table_name}/data")
-def get_table_data(
-    table_name: str, 
-    skip: int = 0, 
-    limit: int = 500, 
-    q: str = None, 
-    cols: str = None, 
-    order_by: str = "row_id", 
-    order_desc: bool = False,
-    target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
-    transaction_id: str = None, # [NEW] 특정 트랜잭션 결과만 필터링
-    filters: str = None, # [NEW] AG-Grid 컬럼 필터링 조건
-    enrichment_queue: str = None,       # [2026-08-05] 이름으로 요청하는 큐 술어 (규칙명)
-    enrichment_queue_scope: str = None, # queue(기본) | keyed | blank_key | resolved
-    db: Session = Depends(get_db)
-):
-    """
-    Lazy Loading을 위한 페이징 엔드포인트
-    target_row_id가 있으면 해당 행이 포함된 페이지의 skip을 자동으로 계산합니다.
+def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
+                         transaction_id=None, filters=None,
+                         enrichment_queue=None, enrichment_queue_scope=None):
+    """The narrowed query AND the count-cache key that belongs to it. ONE assembly.
 
-    `enrichment_queue`는 일반 필터가 아니라 **이름 붙은 서버측 술어**입니다
-    (`apply_enrichment_queue_predicate` 참조). `filters`와 함께 쓸 수 있고 서로
-    AND로 결합됩니다.
+    🔴 THE ROWS AND THE COUNT OF THEM MUST BE READ FROM THE SAME SENTENCE. `/data` and
+    `/data/count` answer the same question in two halves, and a second interpretation of
+    `?filters=` would make them disagree WITHOUT ERRORING - the grid would show rows the
+    footer says are not there, and nothing in either response would say which is wrong.
+    So the two get one function, not two blocks that look alike.
+
+    The cache key comes back from here for the same reason: a route that spelled its own
+    would split the cache in half, and `invalidate_table_cache` would clear one of them.
+
+    ⚠️ THE CSV EXPORT IS A THIRD BLOCK AND IS NOT TOUCHED HERE. It already differs - it
+    never applies the named queue predicate - so folding it in would change what an export
+    contains, which is a different decision from this one. Consolidating it is its own item.
     """
-    t_total_start = time.time()
-    t_target = 0.0
-    t_count = 0.0
-    
-    table_model = models.DYNAMIC_TABLES.get(table_name)
-    if not table_model:
-        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
-        
     query = db.query(table_model)
-    
+
     # [NEW] 트랜잭션 필터링
     if transaction_id:
         subquery = db.query(models.AuditLog.row_id).filter(
@@ -1717,6 +1702,89 @@ def get_table_data(
 
     # ── [Step 0] 검색 필터 구성 (실제 컬럼 기준 ilike 다중 OR 검색) ──
     query = apply_search_filter(query, table_model, table_name, q, cols, binder)
+
+    # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
+    cache_key_parts = ["total_count"]
+    if q: cache_key_parts.append(f"q:{q}")
+    if cols: cache_key_parts.append(f"cols:{cols}")
+    if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
+    if filters: cache_key_parts.append(f"filters:{filters}")
+    # The named queue predicate narrows the query exactly like `?filters=` does, so
+    # it must narrow the CACHE KEY too. Omitting it would serve the unfiltered
+    # table total as the queue remainder for 5 seconds - a progress bar reading
+    # 0% with everything answered, which is N36 wearing the other face.
+    if enrichment_queue:
+        cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
+    # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
+    #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
+    return query, binder, build_count_cache_key(table_name, *cache_key_parts)
+
+
+def cached_table_count(query, cache_key):
+    """The cached count, or one fresh `count()` stored under the same key. -> (count, seconds).
+
+    Both routes read the cache through this, so `?defer_total=true` on one and a call to
+    the other cannot end up looking at two different caches - and the TTL and the
+    invalidation rule stay exactly what they were, which this round does not touch.
+    """
+    hit = TABLE_COUNT_CACHE.get(cache_key)
+    if hit is not None and (time.time() - hit[1] < COUNT_CACHE_TTL):
+        return hit[0], 0.0
+    t_tmp = time.time()
+    total = query.count()
+    elapsed = time.time() - t_tmp
+    store_table_count(cache_key, total)
+    return total, elapsed
+
+
+# [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
+@app.get("/tables/{table_name}/data")
+def get_table_data(
+    table_name: str, 
+    skip: int = 0, 
+    limit: int = 500, 
+    q: str = None, 
+    cols: str = None, 
+    order_by: str = "row_id", 
+    order_desc: bool = False,
+    target_row_id: str = None, # [신규] 특정 행 위치 추적 점프 기능
+    transaction_id: str = None, # [NEW] 특정 트랜잭션 결과만 필터링
+    filters: str = None, # [NEW] AG-Grid 컬럼 필터링 조건
+    enrichment_queue: str = None,       # [2026-08-05] 이름으로 요청하는 큐 술어 (규칙명)
+    enrichment_queue_scope: str = None, # queue(기본) | keyed | blank_key | resolved
+    defer_total: bool = False,          # [2026-09-02] 세는 것을 GET .../data/count 로 미룬다
+    db: Session = Depends(get_db)
+):
+    """
+    Lazy Loading을 위한 페이징 엔드포인트
+    target_row_id가 있으면 해당 행이 포함된 페이지의 skip을 자동으로 계산합니다.
+
+    `enrichment_queue`는 일반 필터가 아니라 **이름 붙은 서버측 술어**입니다
+    (`apply_enrichment_queue_predicate` 참조). `filters`와 함께 쓸 수 있고 서로
+    AND로 결합됩니다.
+
+    🔴 `defer_total=true`는 개수를 **덜 정확하게** 만들지 않는다. 개수가 **언제 오는가**만
+    바꾼다: `total`이 `null`로 나가고 `count()`는 한 번도 불리지 않으며, 같은 수를
+    `GET /tables/{table_name}/data/count`가 **같은 필터로** 답한다. 근사치도 TTL 연장도
+    아니다 - 첫 페인트가 전수 count를 기다리지 않게 하는 것뿐이다.
+
+    🔴 `null`은 `0`이 아니다. `0`은 「일치하는 행이 없다」이고 화면은 그렇게 읽는다.
+    아직 모르는 것과 정말 없는 것이 같은 픽셀이 되면 이 라운드는 실패한 것이다.
+
+    인자를 주지 않으면 응답은 지금과 **완전히 같다** - `total`이 실려 나간다.
+    """
+    t_total_start = time.time()
+    t_target = 0.0
+    t_count = 0.0
+    
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        
+    query, _binder, cache_key = narrowed_table_query(
+        db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
+        filters=filters, enrichment_queue=enrichment_queue,
+        enrichment_queue_scope=enrichment_queue_scope)
 
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
@@ -1779,29 +1847,12 @@ def get_table_data(
                 skip = max(0, actual_target_offset - (limit // 2))
     
     # ── [Step 2] 데이터 페칭 및 개수 산출 (Optimization) ──
-    # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
-    cache_key_parts = ["total_count"]
-    if q: cache_key_parts.append(f"q:{q}")
-    if cols: cache_key_parts.append(f"cols:{cols}")
-    if transaction_id: cache_key_parts.append(f"tx:{transaction_id}")
-    if filters: cache_key_parts.append(f"filters:{filters}")
-    # The named queue predicate narrows the query exactly like `?filters=` does, so
-    # it must narrow the CACHE KEY too. Omitting it would serve the unfiltered
-    # table total as the queue remainder for 5 seconds - a progress bar reading
-    # 0% with everything answered, which is N36 wearing the other face.
-    if enrichment_queue:
-        cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
-    # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
-    #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
-    cache_key = build_count_cache_key(table_name, *cache_key_parts)
-
-    if cache_key in TABLE_COUNT_CACHE and (time.time() - TABLE_COUNT_CACHE[cache_key][1] < COUNT_CACHE_TTL):
-        total_count = TABLE_COUNT_CACHE[cache_key][0]
-    else:
-        t_tmp = time.time()
-        total_count = query.count()
-        t_count = time.time() - t_tmp
-        store_table_count(cache_key, total_count)
+    # 🔴 `defer_total`이면 캐시도 보지 않는다. 히트를 먼저 보면 「보통은 빠르고 가끔
+    #    2초」라는 지금 그 진동이 그대로 남고, 이 라운드가 없애려는 것이 바로 그것이다.
+    #    `None`으로 나가고 `/data/count`가 같은 키로 답한다.
+    total_count = None
+    if not defer_total:
+        total_count, t_count = cached_table_count(query, cache_key)
     
     from sqlalchemy.sql import func
     if order_by == "updated_at":
@@ -1862,6 +1913,45 @@ def get_table_data(
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
     }, table_name)
+
+
+@app.get("/tables/{table_name}/data/count")
+def get_table_data_count(
+    table_name: str,
+    q: str = None,
+    cols: str = None,
+    transaction_id: str = None,
+    filters: str = None,
+    enrichment_queue: str = None,
+    enrichment_queue_scope: str = None,
+    db: Session = Depends(get_db)
+):
+    """`GET .../data?defer_total=true`가 미룬 그 수. **정확한 전수 count다.**
+
+    🔴 이 라우트는 필터를 **두 번째로 해석하지 않는다.** `narrowed_table_query`가 그리드
+    요청에도 이 요청에도 같은 질의를 만든다. 두 벌이 되는 순간 두 수가 갈리고, 그것은
+    오류를 내지 않는다 - 화면은 없다는 행을 그리고 바닥글은 없다고 말한다.
+
+    캐시도 **같은 것**이다. 키가 `narrowed_table_query`에서 나오므로 그리드가 방금 채운
+    값이 여기 히트하고, 쓰기 하나가 `invalidate_table_cache`로 **둘 다** 비운다. 키를
+    따로 지었으면 캐시가 반으로 갈려 무효화가 한쪽만 지웠을 것이다.
+
+    파라미터는 그리드 요청의 **좁히는 것들만**이다: `skip`/`limit`/`order_by`는 어느 행을
+    보여줄지를 정할 뿐 몇 개인지를 바꾸지 않으므로 받지 않는다. 받으면 「정렬을 바꿨더니
+    개수가 달라졌다」가 물어볼 수 있는 질문이 된다.
+    """
+    table_model = models.DYNAMIC_TABLES.get(table_name)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    query, _binder, cache_key = narrowed_table_query(
+        db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
+        filters=filters, enrichment_queue=enrichment_queue,
+        enrichment_queue_scope=enrichment_queue_scope)
+    total, seconds = cached_table_count(query, cache_key)
+    logger.debug(f"[get_table_data_count] '{table_name}' total={total} "
+                 f"count={seconds:.3f}s cached={seconds == 0.0} q={q}")
+    return {"table_name": table_name, "total": total}
 
 import json
 from fastapi import HTTPException
