@@ -585,7 +585,10 @@ S3                  «지시서를 쓰기 전»에 제가 잡았습니다
 ```
 가드 결함      document 를 묻고 window 를 씀 (수리됨)
 드리프트 상수   하니스 'copyHeader' vs 제품 'mapCopyHeader' — «아무도 안 읽어서» 조용했음
-지어낸 이름 둘  paintLockValues 는 제품에 «없음» · activeOverlayLayers 는 «배열»인데 함수로 다룸
+지어낸 이름 둘  paintLockValues 는 제품에 «없음» (하니스 «둘»이 심고 있었음)
+🔴 모순되는 허구  activeOverlayLayers 를 marker_shape 는 «배열»로, standard_frame_origin 은
+              «() => []» 로 심습니다. 제품은 `let activeOverlayLayers = []`
+              -> 서로 «모순되는 두 허구»가 «둘 다 초록»이었습니다. 이 라운드의 정본 증거입니다
               vm 의 맨 식별자는 그냥 «속성»이라 잘라쓰기는 이름을 «지어낼 수» 있었습니다
 가려진 조인    (서버) 주입된 셀이 attach 실패를 덮고 있었음 -> 6a4d4026 이 치움
 ```
