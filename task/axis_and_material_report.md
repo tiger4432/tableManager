@@ -1,3 +1,77 @@
+# [디자인 -> 총괄] 잘라쓰기 ① 착지 `49725ea3` — map_editor.js 가 «import 됩니다». 벽은 «넷»이었습니다 (2026-09-02 밤)
+
+## 벽이 하나가 아니라 넷이었습니다 — 위를 치워야 «다음 것이 보였습니다»
+```
+① map_editor.js:1-2    import './tokens.css' · './style.css'        <- 지시서가 지목한 것
+② transfer_plan.js:53  import './transfer_plan.css'
+   🔴 map_editor.js 가 이 파일을 import 합니다. ①만 걷으면 벽이 «한 모듈 안쪽»으로 옮겨질 뿐입니다
+③ config.js:1,13       window.location · import.meta.env  (최상단)
+   utils.js:347        window.showToast = showToast
+④ map_editor.js        document.addEventListener 둘 (DOMContentLoaded · themechange)
+```
+CSS 는 `map_editor.html` 이 «`<link>` 로» 답니다 (map_editor2.html 과 같은 모양).
+③④는 `typeof` 가드입니다 — 브라우저엔 window·document 가 있으므로 **같은 갈래를 탑니다**.
+
+## ⚠️ 지시서의 «주의»에 답합니다 — admin 은 본보기가 «아닙니다»
+```
+지시서   「admin.js 의 첫 4줄엔 CSS import 가 0 — 주석이 낡았거나 아래쪽에서 하거나」
+실측     admin.js:5  import './tokens.css';      <- «합니다»
+=> admin.html:16 주석이 «맞습니다». 4줄 훑기가 틀렸습니다.
+   따라서 CSS 를 안 import 하는 본보기는 «map_editor2 하나»뿐입니다
+```
+
+## CSS 게이트 — «해시 동일»로 통과했습니다 (검사보다 강한 증거입니다)
+```
+tokens-ZCVo3oho.css · map_editor-Ciy5K-Co.css(=transfer_plan.css) · style-Db5ZjXn6.css
+   -> 세 파일 «전부» git 상 «무변화». 즉 바이트가 같습니다
+dist/map_editor.html   같은 셋을 «같은 순서»로 link. style.css 가 «마지막» (cascade 계약)
+index.html · map_editor2.html   손 안 탐
+```
+
+## 🔴 빌드 산출물이 «한 군데» 달라졌습니다 — 거동 변화는 «아닙니다»
+```
+전   main 청크에 `user_name=kk980` 이 «상수로 접혀» 있었습니다 (4곳)
+후   `user_name=${encodeURIComponent(a)}` — config 청크에서 «import 해 읽습니다»
+왜   `try { import.meta.env.VITE_USER } catch` 는 상수 접기가 안 됩니다
+값   config 청크에 `try{i=`kk980`}catch{i=void 0}` — define 치환은 «그대로» 일어납니다
+```
+🔴 그래서 `import.meta.env.VITE_USER` 를 «글자 그대로» 남겼습니다. 줄여 쓰면 치환이 조용히
+   안 되고 **모든 사용자가 `web_client` 가 됩니다** — 오류도 없고 화면도 멀쩡합니다.
+
+## 게이트
+```
+하니스   gated 전부 초록 · 계약 7 전부 초록 · ✓ built
+         이 파일을 «잘라 재던» 하니스들도 그대로 초록입니다 (함수 본문이 안 움직였으므로)
+⚠️ undeclared_identifier 의 「ceiling 48 -> 47」은 «제 변경이 아닙니다» — HEAD 도 47 입니다
+```
+
+## 지금 «import 되는 것» / 아직 «안 되는 것»
+```
+✅ map_editor.js · config.js · utils.js · transfer_plan.js · doe_bands.js
+   split_registry_row.js · tsv.js · map_key.js · dom.js
+❌ state.js:136  `new URLSearchParams(window.location.search)`
+   -> 이것 하나가 api.js · grid.js · clipboard.js · timeline.js 를 «같이» 막고 있습니다
+❌ main.js       자기 CSS import 넷
+```
+둘 다 지시서의 «③ 나머지 대상» 단위라 이 커밋에 «안 넣었습니다».
+
+## 🔴 ②로 가기 전에 판정을 하나 청합니다 — **map_editor.js 의 export 가 «0» 입니다**
+```
+import 은 됩니다. 그런데 27개 하니스가 재는 «함수와 상수»에 닿지 못합니다
+=> ②는 「그 심볼들에 `export` 를 붙이는 일」이 됩니다. 하니스 한 벌마다, 그것이 재는 것만
+```
+```
+✅ 제 판단   `export` 는 «추가»일 뿐 거동을 안 바꿉니다. 번들러에 이미 다른 export 가 있는
+            파일들과 같은 모양이고, 잘라쓰기를 없애는 유일한 길입니다
+🔴 다만      이 파일의 «공개 표면»이 늘어납니다. 그걸 총괄이 원치 않으실 수 있어 먼저 올립니다
+            (원치 않으시면 대안은 「재려는 로직을 자기 모듈로 빼기」 — CLAUDE.md 가 정본으로
+             적어 둔 방식이고, `truncation.js`·`match_count.js`·`dropdown.js` 가 그 예입니다.
+             대신 커밋이 훨씬 커집니다)
+```
+멈추지 않고 ③의 `state.js` 를 먼저 풀어 두겠습니다 — 판정과 «독립»이고 넷을 한 번에 엽니다.
+
+---
+
 # [디자인 -> 총괄] C1 절반 `93ec395d` — 🔴 «계약» 하나가 옛 질문을 담고 있어 판정 요청 (2026-09-02 밤)
 
 ## 한 것 — 「잘렸나」가 한 함수가 됐습니다
