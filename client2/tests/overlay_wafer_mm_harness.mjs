@@ -39,6 +39,7 @@
  * Read-only against client2/. Mutation sweep is unconditional -- there is no flag to forget.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -92,28 +93,53 @@ const SYMBOLS = [
 
 const inp = (v) => ({ value: String(v) });
 
-function makeSandbox(src) {
-  const body = SYMBOLS.map(n => sliceFunction(src, n)).join('\n\n');
-  const ctx = {
-    console, Math, Number, String, Array, Object, Map, Set, JSON, parseInt, parseFloat,
-    boundingBoxCache: {},
-    // NOT reset by setScreen on purpose: if the cache key were incomplete, a stale key set
-    // would survive a frame change and the assertions below would see it.
-    seatKeyCache: { key: '', sets: null },
-    currentRotation: 0,
-    currentSide: 'front',
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0,
-    el: {
-      physWaferDia: inp(300), physChipX: inp(2.5), physChipY: inp(2.5),
-      physOffsetX: inp(0), physOffsetY: inp(0), physEdgeMargin: inp(3),
-      gridCols: inp(10), gridRows: inp(10), gridStartX: inp(0), gridStartY: inp(0),
-      gridYInvert: { checked: false },
-    },
-  };
-  vm.createContext(ctx);
-  try { vm.runInContext(body, ctx); } catch (e) { die(`sandbox did not evaluate: ${e.message}`); }
-  return ctx;
+// 🔴 THE 30 SYMBOLS ARE NO LONGER CUT OUT. They were regex-sliced from map_editor.js and run
+// in `vm`, which scores the SHAPE OF THE LETTERS: the day one of them starts calling a helper
+// or reading a const that is not on the list, this harness goes red on correct code and the
+// red names the missing name, not the change. Measured on this same subject 2026-09-02 --
+// lifting the escape table into a module const, behaviour identical, turned a sliced harness
+// red and left the imported one at its full score.
+//
+// `document`/`window` are globals now rather than sandbox properties, because the imported
+// module resolves them the way the browser does.
+globalThis.document = globalThis.document || {
+  getElementById: () => null, addEventListener() {},
+  querySelector: () => null, querySelectorAll: () => [],
+};
+globalThis.window = globalThis.window || {
+  location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+  addEventListener() {},
+};
+
+// `mutate` is a function now, not mutated source text: the probe hands it the subject and
+// imports what comes back, so a mutant is a WHOLE MODULE and one that fails to parse fails
+// loudly instead of counting as caught.
+async function makeSandbox(mutate) {
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el'],
+    // Read AND written by `setScreen` and the checks. `seatKeyCache` is deliberately not
+    // reset by `setScreen`: if the cache key were incomplete, a stale key set would survive a
+    // frame change and the assertions below would see it.
+    state: ['boundingBoxCache', 'seatKeyCache', 'currentRotation', 'currentSide',
+            'validDie', 'validDieResolveSeq'],
+    mutate: mutate || undefined,
+    tag: 'wafermm',
+  });
+  // `el` is the module's own object -- filled here rather than replaced, because it is a
+  // `const` binding and, more to the point, the real one is what the functions read.
+  Object.assign(probe.el, {
+    physWaferDia: inp(300), physChipX: inp(2.5), physChipY: inp(2.5),
+    physOffsetX: inp(0), physOffsetY: inp(0), physEdgeMargin: inp(3),
+    gridCols: inp(10), gridRows: inp(10), gridStartX: inp(0), gridStartY: inp(0),
+    gridYInvert: { checked: false },
+  });
+  probe.boundingBoxCache = {};
+  probe.seatKeyCache = { key: '', sets: null };
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  probe.validDieResolveSeq = 0;
+  return probe;
 }
 
 // Put a frame on the fake screen controls -- "what the canvas currently declares".
@@ -264,11 +290,16 @@ function targetKeyIndex(ctx, f) {
 }
 
 // ── Assertions ─────────────────────────────────────────────────────────────────────────
-function runAll(src) {
+async function runAll(mutate) {
+  // A12g-i read the SOURCE TEXT of `addOverlayLayer` rather than executing it (it is async and
+  // does REST). That is a structural check on the file, not a sliced fragment being run, so it
+  // stays -- but it must see the MUTATED text, or a mutant that edits that function would go
+  // unnoticed by exactly the three assertions written to notice it.
+  const src = mutate ? mutate(SRC0) : SRC0;
   const fails = [];
   let ran = 0;   // H1 protocol: how many assertions actually executed, crash-distinguishable
   const ok = (cond, name, detail) => { ran++; if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
-  const ctx = makeSandbox(src);
+  const ctx = await makeSandbox(mutate);
 
   // A1 -- the oracle is anchored to a quantity that predates this round.
   for (const [name, f] of [['source', SRC], ['target', TGT]]) {
@@ -732,7 +763,7 @@ function runAll(src) {
 }
 
 // ── Baseline ───────────────────────────────────────────────────────────────────────────
-const base = runAll(SRC0);
+const base = await runAll(null);
 console.log('― rule 6 overlay by physical position ―');
 console.log(`fixture: ${base.stats.rows} source cells -> ${base.stats.cells} target cells, max fan-in ${base.stats.maxFan}`);
 console.log(`discrimination: wrong pitch moves ${base.stats.dSrcPitch} cells; axis swap ${base.stats.dSwap}; parity flip ${base.stats.dParity}`);
@@ -890,7 +921,7 @@ for (const [name, from, to] of MUTATIONS) {
   const mutated = SRC0.replace(from, to);
   let red = false, why = '';
   try {
-    const r = runAll(mutated);
+    const r = await runAll(() => mutated);
     red = r.fails.length > 0;
     why = r.fails[0] || '';
   } catch (e) { red = true; why = `threw: ${e.message}`; }
