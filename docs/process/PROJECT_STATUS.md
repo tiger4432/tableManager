@@ -592,7 +592,7 @@ S3                  «지시서를 쓰기 전»에 제가 잡았습니다
               vm 의 맨 식별자는 그냥 «속성»이라 잘라쓰기는 이름을 «지어낼 수» 있었습니다
 가려진 조인    (서버) 주입된 셀이 attach 실패를 덮고 있었음 -> 6a4d4026 이 치움
 ```
-### 남은 것 — 오늘 밤의 «정직한» 끝은 27/30 입니다
+### 남은 것 — 오늘 밤 «닿을 수 있는» 끝은 25/30 입니다 (안쪽 클로저 3 + 리비전 오라클 2 제외)
 ```
 5   안 막히는 것 중 남은 것   effort_meter · isotropic_cell · m4_symbol_extractability ·
                             map_key_datalist · valid_die_head_parity_oracle
