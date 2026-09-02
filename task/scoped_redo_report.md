@@ -1897,3 +1897,109 @@ crud.clean_str_value 는 문자열에 대해 str(val).strip() -> «자기 출력
 서버 재기동 — 총괄 몫입니다. 821e9af1 푸시했습니다
 S1 은 이걸로 닫힙니다 (다른 미결 없음)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 은퇴 컬럼 셋 착지 — 그리고 «빨강 하나»가 이 라운드의 발견입니다 (구현자, 2026-09-02)
+
+커밋 `6a4d4026`. 파일 «셋»: `server/main.py` · `client2/src/push_columns.js`(주석만) ·
+`server/tests/test_table_data_serialization.py`.
+
+## 🔴 착수 전 재고 — 물으신 질문의 답은 «0» 입니다
+```
+질문   라이브 table_config.json 의 어떤 표가 셋 중 하나를 «스스로» 선언하나?
+방법   라이브 파일을 «읽기만» 했습니다 (쓰기 0)
+답     표 «44» 개 중 «0» 개. column_types 도 display_columns 도 «0»
+=> ②는 «순수 제거»입니다. 진행했습니다
+```
+그리고 이 0 이 :2416~2418 의 «성격»을 바꿔 말해 줍니다 — 그 세 줄은 「선언을 덮어쓰던 것」이
+아니라 **「어떤 표에도 없는 컬럼의 타입을 지어내던 것」**입니다.
+📎 `view_model.js:1097` 의 「dt_map declares graph_synced_at: datetime」은 «선언이 아니라»
+   :2416 이 넣은 것이었습니다 — dt_map 도 0 입니다.
+
+## 게이트 ② — 수로
+```
+한 행의 data 키 개수 (inventory_master, 라우트를 실제로 태워서)
+   전   «9»   [category, created_at, graph_synced_at, is_graph_synced,
+               needs_graph_rollback, part_no, stock_qty, unit_price, updated_at]
+   후   «6»   [category, created_at, part_no, stock_qty, unit_price, updated_at]
+스키마 column_types
+   전   «7»   후   «4»
+```
+
+## 게이트 ③ — 다섯 호출자는 셋을 «기대하지 않습니다»
+```
+:2554 · :2902 · :3351 · :3427 · :3503  ->  전부 user_cols 를
+   [c for c in col_types if c not in ("created_at","updated_at")]  로 만듭니다
+   셋의 «이름이 한 번도 안 나옵니다». 그리고 col_types 는 TABLE_CONFIG 에서 오는데
+   거기에 셋이 «0» 개이므로 애초에 들어올 길이 없습니다
+=> 멈춤 조건 해당 없음
+```
+지역변수 넷(`is_sync_val`·`needs_roll_val`·`synced_at_val`·`synced_at_str`)은 그 세 줄 «말고»
+쓰는 데가 없어서 같이 지웠습니다. `to_local_str` 은 created_at/updated_at 이 쓰므로 «남깁니다».
+
+## 🔴 게이트 ① — 빨강 «하나»가 늘었고, 그게 이 라운드의 발견입니다
+```
+같은 세 파일(virtual_join_types · undeclared_schema_report · declared_key_indexes)
+   HEAD   «9 failed / 37 passed»
+   지금   «10 failed / 36 passed»
+차이 «하나»
+   test_virtual_join_types.py::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+```
+**그 시험의 docstring 이 «이 일을 예고해 뒀습니다»:**
+> 「If the injection ever moves after `attach`, this goes red and the payload assertions
+>  above become the live ones.」
+
+즉 그 시험의 «전제»가 제 제거로 사라진 것입니다. 여기까지는 정상입니다.
+
+### 🔴 그런데 «드러난 것»이 더 중요합니다 — 주입이 «깨진 픽스처를 가리고» 있었습니다
+```
+지금 그 자리의 값   payload["L1"] == None      (조인이 채운 "true" 가 «아닙니다»)
+왜                virtual_join attach 가 그 픽스처에서 «HEAD 에서도 이미 실패»합니다:
+                  "[VirtualJoin] attach failed on 'vjt_test_log', columns omitted:
+                   type object 'VjtTestRef' has no attribute 'needs_graph_rollback'"
+그 실패가          같은 파일의 «형제 시험 일곱»을 HEAD 에서 이미 빨갛게 만들고 있습니다
+=> 주입된 셀이 그 자리를 «차지하고» 있어서, 조인이 못 채우는 것이 «안 보였습니다»
+```
+🔴 **셋을 걷어내는 것이 그 가림막을 치웠습니다.** 「없어서 0」이 아니라 「가려져서 안 보이던 것」입니다.
+
+### 제가 «안 한 것»과 이유
+그 시험을 새 동작에 맞춰 고치지 «않았습니다». 고치려면 「이 이음매가 무엇을 해야 하나」를
+정해야 하는데, 그 대상 픽스처의 조인이 «이미 깨져 있어서» 지금 관측되는 값(None)은
+«올바른 새 계약»이 아니라 «깨진 픽스처의 값»입니다. 그 위에 단언을 얹으면
+「깨진 것을 계약으로 굳히는」 것이 됩니다. 판정 부탁드립니다.
+```
+선택지 ①  그 시험을 은퇴 (전제가 죽었으므로) + 픽스처의 VjtTestRef 결함은 별건으로
+선택지 ②  픽스처를 먼저 고쳐(attach 가 실제로 도는 상태) 그 다음 새 단언을 얹는다
+```
+📎 나머지 «9» 는 HEAD 에서도 빨갛습니다 — 제 것이 아닙니다
+   (virtual_join_types 7 · undeclared_schema_report 1 · declared_key_indexes 1)
+   `test_schema_drift_startup` · `test_outbox_notify_budget` 은 «전부 초록»입니다.
+
+## 새 시험 «둘» — 이 제거의 판별식
+`tests/test_table_data_serialization.py` (그 라우트의 페이로드 «모양»을 다루는 파일).
+```
+no_row_carries_the_retired_graph_sync_cells   실제 행을 «넣고» 잽니다 —
+                                              빈 페이지면 공허하게 초록이 되는 자리라서
+the_schema_does_not_announce_the_retired…     타입만 남으면 클라가 «영원히 빈» 컬럼의
+                                              머리를 세웁니다. 그 반쪽도 같이 못 박습니다
+둘 다 «편집 전에» 빨갰습니다 — 위 「전 9키」가 그 실패 메시지에서 나온 수입니다
+```
+
+## ⛔ 안 한 것 (지시대로)
+```
+⛔ models.py 의 «진짜 DB 컬럼» 셋 — 그대로. 별도 판정
+⛔ grid.js:582 필터 — 클라 소관, 지금 «일하는» 방어선
+⛔ table_config.json — «읽기만» 했습니다
+⛔ main.py:725 · :2394 의 제외 목록 — 725 는 col_types 기준이라 이미 무동작이고,
+   2394 는 «모델의 진짜 컬럼»을 거르는 자리라 살아 있습니다. 둘 다 이번 라운드 밖입니다
+⛔ 15개 파일(tests/scripts) — 안 건드렸습니다
+```
+⚠️ `push_columns.js` 는 «주석 한 덩이»뿐입니다. 서빙되는 동작이 0 이라 dist 재빌드는
+   하지 않았습니다 (필요하다 판단하시면 말씀해 주십시오).
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 6a4d4026 푸시했습니다
+판정 필요   위 §「제가 안 한 것」의 선택지 ①/② — graph_meta_boolean 시험을 어떻게 할지
+```
