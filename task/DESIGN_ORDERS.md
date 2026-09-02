@@ -13150,3 +13150,53 @@ grep 하면 나옵니다   client2/src/map_editor.js:2461
 그리고 게이트가 알려 온 권고 셋(바닥 올리기 3 · 천장 내리기 1 · 바닥 없는 것 12)은
 «이번 라운드 밖»입니다. 손대지 마십시오
 ```
+
+---
+
+# 🔵 [총괄 -> 클라] 「빚」 다섯 — 🔴 **제 순서 판정이 절반 틀렸습니다** (2026-09-03 09:0x)
+
+소유자 지시로 이것도 붙입니다. 그런데 지시서를 쓰려고 `KNOWN_RED` 목록을 «읽어 보니»
+제가 「빨강 먼저, 그다음 전환」이라 한 것이 **둘에는 거꾸로**입니다.
+
+## 실측 — 목록에 기록된 수
+```
+reposition_regime_probe       ran «0» · failed «0»   「dies before asserting」
+split_registry_harness        ran «0» · failed «0»   「dies at extraction」   🔴 «잘라내다» 죽습니다
+alignment_verdict_harness     ran 163 · failed 6
+valid_die_authoring_harness   ran 100 · failed 1
+valid_die_frame_adoption      ran 228 · failed 41
+```
+
+## 🔴 그래서 다섯이 «두 부류»입니다
+```
+A. 빨강의 «원인이 잘라쓰기»인 것 — 둘
+   reposition_regime · split_registry.  단언을 «한 개도» 못 돌리고 추출에서 죽습니다
+   => 여기서는 «전환이 곧 수리»입니다. 제 순서가 거꾸로였습니다
+   ⚠️ 전/후 비교가 안 되는 것은 맞지만, «0 → N» 은 비교가 아니라 «복구»입니다.
+      그 N 을 새 바닥으로 기록하십시오
+
+B. 빨강이 «진짜 발견»인 것 — 셋
+   alignment_verdict(6) · valid_die_authoring(1) · frame_adoption(41)
+   => 단언이 «돌고» 실패합니다. 여기서는 제 순서가 그대로 유효합니다:
+      «무엇을 말하고 있는지» 먼저 알아내고, 그다음 전환
+   🔴 valid_die_authoring 은 이미 진단됐습니다 — 첫 일치가 «주석»에 떨어집니다.
+      앵커를 「이름이 처음 나오는 곳」에서 「선언/호출 자리」로. 한 줄입니다
+```
+
+## 순서
+```
+1  A 둘을 «전환»합니다 (probe + 로더 훅). 이게 곧 수리입니다
+2  valid_die_authoring 의 앵커 한 줄
+3  alignment_verdict(6) · frame_adoption(41) 은 «진단만» 하고 보고
+   🔴 이 둘은 수가 큽니다. 「빨강을 없애려고」 고치지 마십시오 —
+      41개가 무엇을 말하는지가 먼저이고, 그건 별도 라운드일 수 있습니다
+```
+
+## 게이트
+```
+A 둘   전 «0/0» -> 후 «N/0». N 을 보고하고 FLOORS 에 새 바닥으로 넣으십시오
+      🔴 N 이 0 이면 전환이 안 된 것입니다. 멈추고 보고
+B 셋   수가 «그대로»여야 합니다 (진단은 코드를 안 바꿉니다)
+공통   파이프 없이 게이트 전체. 어느 하나라도 내려가면 그 자리에서 멈춤
+```
+⚠️ 이건 마지막 하니스(`effort_instrument`) «다음»입니다. 그것부터 끝내십시오.
