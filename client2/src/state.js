@@ -133,7 +133,13 @@ export const state = {
   pendingTxEdits: {}, // key: row_id + "_" + col_name -> { rowId, colId, newValue, oldValue, oldIsOverwrite, data }
   viewMode: 'pagination', // 'pagination' | 'infinite'
   allDataLoaded: false,
-  isDesktop: new URLSearchParams(window.location.search).get('client') === 'desktop',
+  // 🔴 브라우저에서는 전과 «같은 값»입니다 -- window 가 있으면 같은 질의문자열을 읽습니다.
+  //    window 가 «없는» 곳(node)에서는 false 이고, 그게 데스크톱이 아닌 것과 같은 답입니다.
+  //    이 한 줄이 state.js 를 import 불가로 만들고, state.js 를 import 하는
+  //    api.js · grid.js · clipboard.js · timeline.js «넷»을 같이 막고 있었습니다.
+  isDesktop: typeof window !== 'undefined' && window.location
+    ? new URLSearchParams(window.location.search).get('client') === 'desktop'
+    : false,
   dragRefreshPending: false,
   visibleColIndexMap: {}, // key: colId -> visibleIndex
   // Smart paste latch. `navigator.clipboard` is undefined on the plain-HTTP intranet, so the
