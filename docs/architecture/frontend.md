@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (**§3.2 신설 — 「몇 건인가」가 세 상태로**(개수가 늦게 온다) · §3.1 의 **`grid_rescope_menu.js` → `redo_banner.js`** 정정(우클릭 메뉴 → 헤더 배너) · `dropdown.js` 의 닫힘 한 벌) · 직전 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
 > **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 라우트 계약: [backend §2](./backend.md)
 
@@ -129,7 +129,7 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 |---|---|---|
 | 진입/상태 | `main.js` (2,182) · `state.js` · `config.js` · `theme.js` | 부팅, 전역 상태, API 주소, 테마 |
 | 통신 | `api.js` · `websocket.js` | REST 호출과 WS 수신·델타 반영 |
-| 그리드 | `grid.js` (1,142) · `clipboard.js` (897) · `tsv.js` · `push_columns.js` · 🆕 `grid_source_label.js` · `grid_rescope_menu.js` · `rescope_handoff.js` | AG-Grid 배선, 엑셀형 복사·붙여넣기. **[2026-08-31] 그리드가 원장을 «안다»** — 아래 §3.1 |
+| 그리드 | `grid.js` · `clipboard.js` · `tsv.js` · `push_columns.js` · `grid_source_label.js` · **`redo_banner.js`** · `rescope_handoff.js` · 🆕 **`dropdown.js`** · 🆕 **`match_count.js`** | AG-Grid 배선, 엑셀형 복사·붙여넣기. **[2026-08-31] 그리드가 원장을 «안다»** — 아래 §3.1. ⚠️ **줄 수는 여기 적지 않는다**(정본은 [CODE_MAP §7](./CODE_MAP.md)) |
 | 값 편집 | `value_suggest.js` (1,003) · `enrichment*.js` · `timeline.js` (1,148) | 셀 제안, 보정, 이력 타임라인 |
 | 맵(레거시) | `map_editor.js` (11,060) · `map_key.js` · `split_registry_row.js` | 웨이퍼 맵 캔버스·좌표·오버레이 |
 | 맵2 | `map_editor2.js` + `src/map2/*` (18 파일 · 10,437) | 정렬 화면. 층 경계로 읽습니다 — `view_model` 은 DOM 없이 채점됩니다 |
@@ -142,10 +142,27 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 ### 3.1 그리드가 원장을 아는 세 자리 (2026-08-31 신설)
 
 - **「이 표가 원장 소스인가」** (`grid_source_label.js`) — `GET /api/ledger/declaration` 의 `sources[]` 에서 이 `relation` 을 찾는다. 🔴 **부재를 «셋»으로 말한다**: 소스다 / 선언을 읽었고 목록에 없다 / **선언을 못 읽었다**. 셋을 「라벨 없음」 하나로 접으면 「소스가 아님」과 「못 읽음」이 같아진다. 🔴 **넷째는 «주장이 아니다»** — 표를 아직 안 골랐을 때는 아무 말도 안 한다(주어가 없는데 술어를 그리면 지어내는 것이다). 「만드는 것」 칸은 `emits` 를 **거르지 않고 그대로** 쓴다 — 거르면 새 술어가 오는 날 화면이 선언보다 «덜» 말한다.
-- **「고른 행을 어느 컬럼으로 묶어 다시 번역할 것인가」** (`grid_rescope_menu.js`) — 🔴 **고를 수 있는 컬럼은 «서버가 준 목록»(`scope_columns`)뿐이다.** 서버가 거절할 컬럼은 **화면에 아예 없어서** 고른 뒤 400 을 받는 길이 없다. 메뉴가 «없는» 것도 셋으로 갈린다(선언 안 된 표 = 줄이 하나도 없음 / 행 미선택 = 안내 한 줄 / 고른 행에 그 컬럼 값이 없음 = 그 줄만 비활성 + 이유). 🔴 **고르는 곳은 그리드, 실행하는 곳은 어드민**이라 이 부품에 `/admin/` 도 토큰도 «없다».
+- **「고른 행을 어느 컬럼으로 묶어 다시 번역할 것인가」** (**`redo_banner.js`** — ⚠️ **[2026-09-02] 종전 철자 `grid_rescope_menu.js` 는 없다**: 우클릭 메뉴에서 **헤더의 배너**로 옮겼다(`6e060fd7`). 소유자 지시가 「컨텍스트 메뉴에 두지 마라」였고, **선택이 그리드에서 일어나므로** 버튼이 선택을 지켜보다 같이 살아나는 것이 맞는 모양이다. `scopeValuesFor` 는 그대로 옮겨 왔다) — 🔴 **고를 수 있는 컬럼은 «서버가 준 목록»(`scope_columns`)뿐이다.** 서버가 거절할 컬럼은 **화면에 아예 없어서** 고른 뒤 400 을 받는 길이 없다. 「없음」도 셋으로 갈린다(선언 안 된 표 = 줄이 하나도 없음 / 행 미선택 = 버튼이 죽어 있음 / 고른 행에 그 컬럼 값이 없음 = **그 줄을 지우지 않고 이름을 댄다** — 빈 범위는 어드민에서 400 이라 운영자가 «왜 없는지»를 봐야 한다). 🔴 **고르는 곳은 그리드, 실행하는 곳은 어드민**이라 이 부품에 `/admin/` 도 토큰도 «없다» — 하네스가 그 사실을 «출력»이 아니라 «파일»에 대고 단언한다(렌더 결과로는 못 보이므로).
+- **체인 쪽은 «그룹»이 아니라 «키»를 넘긴다** — 그 비대칭이 판정이 보이는 자리다. 체인의 그룹은 룰 단위인데 룰 목록이 **어드민 토큰 뒤**에 있어서, 여기서 묶으면 이 화면이 게이트 걸린 라우트를 부르게 된다. 그래서 **고른 업무 키를 넘기고 묶는 것은 룰을 아는 어드민이 한다.**
+- **닫는 방법은 «한 벌»이다** (`dropdown.js::watchForDismiss`) — Re-translate 패널과 필터 칩 펼침이 **같은 함수**로 닫힌다. 🔴 **떼는 것까지가 그 함수다**(반환값이 «떼는 함수»). 안 떼면 닫힌 드롭다운이 계속 클릭을 먹고 다음에 열린 것이 남의 바깥 클릭에 닫히는데, **그 고장은 오류를 안 낸다**. 재사용 관점 [PRIMITIVES §6](./PRIMITIVES.md).
 - **넘김** (`rescope_handoff.js`) — 범위를 **URL 질의에 안 싣는다**(길고, 이력·로그·어깨 너머로 샌다). `localStorage` 에 **한 번 쓰고 한 번 먹는다** — 남겨 두면 다음에 어드민을 열었을 때 「지금 고른 적 없는」 범위가 채워져 있고 운영자는 그것을 자기가 고른 것으로 읽는다. `sessionStorage` 가 아닌 이유는 **새 탭이 자기 세션이라** 조용히 사라지기 때문이다.
 
-⚰️ **같은 라운드에 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.
+### 3.2 「몇 건인가」가 «세 상태»가 됐다 (2026-09-02 신설)
+
+행을 먼저 그리고 개수는 **두 번째 요청**으로 온다(`?defer_total=true` → `total: null`, 그 수는 `GET /tables/{t}/data/count` 가 답한다 — [backend §2](./backend.md)). 그래서 화면이 여태 없던 상태를 든다.
+
+```
+숫자    Matches: 12     센 결과
+null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-counting`)
+0       Matches: 0      «진짜 없다»
+```
+
+- **정본은 `match_count.js` 하나다** (`isCounted` · `matchCountText` · `setMatchCount` · `pagingView`). 🔴 **「Matches:」를 쓰던 자리가 «다섯»이었고**(`api.js` 둘 · `timeline.js` 둘 · `main.js` 하나) 마크업에 **여섯째**가 있었다(하드코딩된 `Matches: 0` 첫 그림 — 아무것도 안 물어본 시점에 「0 건」을 말하고 있었다). 한 자리만 고치면 나머지가 그 경로에서만 `Matches: null` 을 찍는다.
+- 🔴 **표지를 «글자»와 «클래스» 둘로 단다.** truthiness 로 판정하면 **진짜 `0` 이 「세는 중」으로** 표시되고 운영자는 영원히 안 오는 수를 기다린다. 판정은 `typeof === 'number' && Number.isFinite`.
+- 🔴 **조용히 깨지는 것은 글자가 아니라 «페이지 컨트롤»이다.** `Math.ceil(null / limit) || 1` 은 **1** 이라 안 센 표가 「1쪽뿐」이 되고 `currentPage >= totalPages` 가 참이 되어 **다음 버튼이 꺼진다** — 그리고 회색은 「마지막 쪽」과 똑같이 생겼다. 그래서 판정이 `pagingView(total, skip, limit)` 라는 **수만 받는 함수**로 나가 있고(DOM 없이 채점된다), 모르는 동안 `totalPages` 는 `null` · 다음은 **켜 둔다**.
+- 채점 `client2/tests/match_count_harness.mjs`. 재사용 관점 [PRIMITIVES §7](./PRIMITIVES.md).
+
+⚰️ **[2026-08-31] 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.
 
 ---
 

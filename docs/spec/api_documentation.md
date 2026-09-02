@@ -1,6 +1,6 @@
 # assyManager Data Update Server API Documentation
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-27 | **Owner:** Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (**§5.1-bis 신설** — `?defer_total=true` 로 `total` 이 `null` 이 되고 `GET /tables/{t}/data/count` 가 그 수를 답한다. 둘이 **한 조립**을 쓴다. ⚠️ **이 문서는 `GET /tables/{t}/data` 자체를 여전히 «안 싣는다»** — 라우트 계약의 정본은 [architecture/backend §2](../architecture/backend.md)) · 직전 2026-08-27 | **Owner:** Backend
 > **범위 주의:** 이 문서는 **행·셀 쓰기 계약**의 상세 레퍼런스이고 **전체 라우트 지도가 아니다.** 엔드포인트 전수는 [architecture/backend §2](../architecture/backend.md)가 정본이다.
 > ⚠️ **본문이 영어인 것은 이 파일의 기존 관례다**(나머지 `docs/`는 한국어). 한 파일 안에서 언어를 섞지 않으려고 신규 절도 영어로 썼다 — 언어 통일은 총괄 판단 대기.
 
@@ -370,6 +370,47 @@ Queries comprehensive source information (history values, pinning status) for mu
     }
   ]
   ```
+
+### 5.1-bis Row Count — the number the grid's first paint may defer (2026-09-02)
+
+The grid reads rows from `GET /tables/{table_name}/data`. Counting every matching row is the
+most expensive part of that answer, so a caller may ask for the rows **without** it and fetch
+the number separately.
+
+- **`GET /tables/{table_name}/data?defer_total=true`** — `total` comes back **`null`**, and the
+  count cache is **not consulted at all**. (Consulting it first would make the first paint
+  "usually fast, occasionally slow", which is the very thing deferring removes.)
+- **`GET /tables/{table_name}/data/count`** — the deferred number. `{"table_name": …, "total": N}`.
+  This is an **exact full count**, not an approximation and not a widened TTL.
+
+```
+total: 12     counted
+total: null   NOT YET KNOWN  -- ask .../data/count
+total: 0      genuinely no matches
+```
+
+🔴 **The two routes interpret the narrowing arguments EXACTLY ONCE.** Both go through
+`narrowed_table_query` in `server/main.py`, which returns the query **and** the count-cache key.
+A second interpretation of `?filters=` would let the two disagree **without erroring** — the grid
+would show rows the footer says are not there, and neither response would say which is wrong.
+The shared cache key matters for the same reason: a route spelling its own would split the cache
+in half and `invalidate_table_cache` would clear only one.
+
+- **Accepted parameters are the narrowing ones only**: `q`, `cols`, `filters`, `transaction_id`,
+  `enrichment_queue`, `enrichment_queue_scope`. 🔴 **`skip`, `limit` and `order_by` are NOT
+  accepted.** They choose which rows are shown, not how many there are; accepting them would make
+  "the count changed when I re-sorted" a question a caller could ask.
+- **Unknown table → `404`.** Malformed `filters` → `400`, same as on `/data`.
+- 🔴 **`null` is not `0`.** A client that paints it as `0` tells the operator their filter matched
+  nothing, and they widen a filter that was never narrow. The three states and the paging
+  consequence are [frontend §3.2](../architecture/frontend.md); the reusable shape is
+  [PRIMITIVES §7](../architecture/PRIMITIVES.md).
+- **Scored by** `server/tests/test_count_cache_invalidation.py`.
+- ⚠️ **The CSV export is a third block and is not part of this assembly** — it already differs
+  (it never applies the named queue predicate), so folding it in would change what an export
+  contains. That consolidation is its own item.
+
+---
 
 ### 5.2 Table Schema
 Returns the column contract a client needs to build a grid for one table.

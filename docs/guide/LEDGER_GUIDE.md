@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (🔴 **§4.6 이 은퇴한 라우트 «셋»(`/structure`·`/kinds`·`/trends`)의 읽는 법을 현재형으로 가르치고 있었다** — §1.2 는 같은 파일에서 그것들을 은퇴 목록에 올려 두고 있었고 §4.6 만 안 고쳐졌다. 묘비 + «생존자 줄»로 교체. `/subgraph` 의 «둘째» 422(`follow` 키를 못 드는 씨앗) 추가) · 직전 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -307,12 +307,26 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 안 골랐다  ·  그런 종류가 없다  ·  서버가 답할 수 없다  ·  걸었는데 비었다  ·  «잘렸다»
 ```
 
-- `/structure` — 선언된 절반과 센서스 절반을 «병합»한다.
-  `declared_only` 는 「선언됐지만 원자가 없다」, `undeclared` 는 「원장에 있는데 선언이
-  설명 못 한다」(= 드리프트). `atoms: 0`(세었고 없다)과 `atoms: null`(아무도 안 셌다)은 다른 답이다.
-- `/kinds` — `in_ledger` 는 선언 여부, `ledger_state`/`ledger_atoms` 는 관측 상태다.
-- `/trends` — 선언된 finding kind 와 실제 검사 분모를 쓴다. **관측 부재를 0% 불량으로 표시하지 않는다.**
+🗄️ **[2026-09-02 정정] 이 목록이 라우트 «셋»을 현재형으로 설명하고 있었고 셋 다 없다.**
+`/structure`·`/kinds`·`/trends` 는 §1.2 의 은퇴 목록에 이미 올라 있는데 이 절만 안 고쳐졌다
+(같은 파일 안에서 §1.2 와 §4.6 이 서로를 반박하고 있었다 — 검색으로 §4.6 에 도착한 사람은
+없는 라우트의 «읽는 법»을 배웠다).
+
+```
+🗄️ 믿지 말 것    /structure · /kinds · /trends -- 라우트도 모듈도 없다
+✅ 살아남는 생각  ① 「선언됐다」와 「원자가 있다」는 «다른 축»이다
+                 ② `0`(세었고 없다)과 `null`(아무도 안 셌다)은 «다른 답»이다
+                 ③ 관측 부재를 0% 불량으로 그리지 않는다 -- 분모가 없으면 비율도 없다
+      -> 지금 «어디» 있나: ①②는 `GET /api/ledger/gaps` 가 `count_kind`(`exact`/`sample`)로,
+         ③은 아래 `/subgraph` 의 `reach`/`reachable` «쌍»이 같은 규율을 진다
+```
+
 - `/subgraph` — `node_limit` 에 걸린 «잘림»을 «부재»로 읽지 않는다. 응답이 잘림을 표시한다.
+  🔴 **[2026-09-02] 거절도 두 가지다** — 선언에 없는 술어는 `predicate_not_declared`,
+  **`follow` 가 요구한 키를 씨앗이 못 들면** `subgraph_request_invalid` 다(둘 다 422).
+  후자는 `follow=inspected:x,y` 처럼 **키를 건 걷기**에서 나온다 — 웨이퍼 씨앗에 다이의
+  좌표를 묻는 것은 성립하지 않는 질문이라 **빈 그래프가 아니라 거절**로 답한다.
+  구문·규칙은 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §5.1 규칙 ④](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md).
   🔴 **[2026-08-29] 대조 블록도 같은 규율을 진다.** `propagation.ranked[]` 의 항목마다
   `reach`(닿은 씨앗 수)와 **`reachable`(그 «타입»에 닿을 수 있었던 씨앗 수 = 분모)** 이
   «쌍»으로 나온다. `reach 0 / reachable 0` 은 **「길이 없었다」= 미검사**이고,

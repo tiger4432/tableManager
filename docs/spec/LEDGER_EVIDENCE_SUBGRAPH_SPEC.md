@@ -1,6 +1,6 @@
 # Ledger Evidence Subgraph — 걷기 하나가 답한다
 
-> **Status:** 🟢 Living · **Last verified:** 2026-08-29 밤 · `290bb1af` 기준 재측정 (걷기 규칙 셋 · 대조 규칙 둘. **§5.1 이 걷기 규칙의 유일한 정본**)
+> **Status:** 🟢 Living · **Last verified:** 2026-09-02 (**걷기 규칙이 셋에서 «넷»으로** — `follow` 가 키를 받고(`follow=inspected:x,y`), 그 키를 못 드는 씨앗은 «0» 이 아니라 **422** 다. §1·§3 파라미터 표·§4 거절 표·§5.1 규칙 표가 그에 맞춰 갱신됐다) · 직전 2026-08-29 밤 · `290bb1af` 기준 재측정 (걷기 규칙 셋 · 대조 규칙 둘. **§5.1 이 걷기 규칙의 유일한 정본**)
 > **정본 코드:** `server/ledger_api/ledger_subgraph.py` · `server/ledger_trace_router.py` ·
 > `server/ledger/envelope.py` · `server/ledger/schema.py`
 > **선언 정본:** `server/config/ontology/ledger_config.json` (`entities` · `vocabulary` · `sources`)
@@ -16,7 +16,9 @@
 ```
 노드    선언된 엔터티. 이것뿐이다
 엣지    원장 원자 하나. 이것뿐이다
-좁히기  follow (선언된 술어 이름). 이것뿐이다
+좁히기  follow. 축은 이것뿐이고, 그 축이 «두 칸»을 받는다 -- 술어 이름과 (선택) 키 목록
+        follow=inspected        그 술어를 따라간다            <- 여태까지의 전부
+        follow=inspected:x,y    그 술어는 «씨앗과 x,y 가 같은» 노드로만 걷는다
 ```
 
 **원자 하나가 엣지 하나이고, 그 원자가 인출된 «그 깊이»에서 바로 펼쳐진다.** 주장이
@@ -130,7 +132,7 @@ GET /api/ledger/subgraph
 | `edge_limit` | 아니오 | 1200 | 20..6000 | 응답 엣지 하드캡 |
 | `positive` | 아니오 | — | 노드 id, 반복 가능 | 추가 관측 씨앗. `id` 는 항상 positive 다 |
 | `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
-| `follow` | 아니오 | — | 선언된 술어 이름, **반복 가능** | 이 술어만 따라간다. 없으면 전부. **SQL 에서 좁힌다**(§5 규칙 ①) |
+| `follow` | 아니오 | — | `술어` 또는 `술어:키1,키2`, **반복 가능** | 이 술어만 따라간다. 없으면 전부. **SQL 에서 좁힌다**(§5 규칙 ①). 🆕 콜론 뒤에 키를 대면 **그 엣지는 씨앗과 그 키가 같은 노드로만** 걷는다(§5 규칙 ④) |
 | `backbone_hops` | 아니오 | 0 | 0..40 | 같은 자재에 머무는 걸음에 주는 «둘째» 예산. **양 끝이 둘 다 dynamic 인 걸음만** 여기서 빠진다 |
 
 🔴 **`backbone_hops` 는 「어느 술어가 공짜냐」를 «묻지» 않는다.** 그 판정은 선언의
@@ -149,17 +151,32 @@ GET /api/ledger/subgraph
 읽을 수 없는 선언은 **빈 집합**으로 떨어지고, 그 뜻은 「정적 노드를 아예 안 펼친다」이지
 「전부 펼친다」가 아니다.
 
-🔴 **`follow` 는 반복 파라미터다** — `follow=a&follow=b`. 쉼표 목록(`follow=a,b`)은 **422**
-`predicate_not_declared` 이고 `unknown` 에 그 «문자열 통째»가 실린다. 선언에 없는 이름도 같은
-거절이다 — 절대 «빈 그래프»로 답하지 않는다. 못 맞추는 필터와 「여기 아무것도 없다」가 같은
-바이트를 내면 호출자가 오타와 사실을 못 가른다.
+🔴 **`follow` 는 반복 파라미터다** — `follow=a&follow=b`. **술어를 쉼표로 나열하는 것은
+안 된다**(`follow=a,b` 는 `a,b` 라는 «이름 하나»로 읽혀 **422** `predicate_not_declared` 이고
+`unknown` 에 그 문자열 통째가 실린다). 선언에 없는 이름도 같은 거절이다 — 절대 «빈 그래프»로
+답하지 않는다. 못 맞추는 필터와 「여기 아무것도 없다」가 같은 바이트를 내면 호출자가 오타와
+사실을 못 가른다.
+
+⚠️ **쉼표가 «키 목록»에는 쓰인다** — `follow=inspected:x,y` 는 정상이고 422 가 아니다.
+파싱은 **첫 콜론에서만** 나뉘고(`_split_follow`), 왼쪽 맨 이름이 선언 대조를 받는다. 그래서
+「쉼표는 422」는 **콜론 왼쪽에 대해서만** 참이다.
+
+🆕 **키를 대면 그 술어는 «씨앗과 그 키가 같은» 노드로만 걷는다** — 오른쪽 변이 **씨앗에
+고정**이라 경로에 따라 답이 달라지지 않는다(이전 노드에서 유도하면 같은 노드가 두 길로
+닿을 때 두 답을 내고, 걷기는 그런 경로별 상태를 «일부러» 안 든다). 🔴 **그 키를 못 드는
+씨앗은 «0» 이 아니라 422 로 거절된다** — 아래 §「거절」.
 
 파이썬을 직접 부르면 기본이 하나 다르다: `edge_limit=6000` (라우트가 자기 기본 1200 을 따로 준다).
 
 ```python
 subgraph(id, lookup, hops=12, direction="both", follow=["inspected"])
+subgraph(id, lookup, follow=["inspected"], follow_keys={"inspected": ("x", "y")})
 subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup)
 ```
+
+🔴 **라우트와 파이썬의 «모양이 다르다»** — 라우트는 `inspected:x,y` 한 문자열을 받아
+`_split_follow` 가 둘로 가르고, 파이썬은 `follow` 와 `follow_keys` 를 **따로** 받는다.
+가르는 자리가 라우터라 그 아래는 콜론을 모른다.
 
 **부호는 셋이고 셋이다.**
 
@@ -268,8 +285,8 @@ reachable   [관측 씨앗 몇이 이 «타입»에 닿았나, 대조군 쪽 같
 |---|---|---|
 | 200 `ready` | 연결 증거 있음 | 그래프 렌더 |
 | 200 `empty` | 씨앗은 유효하지만 연결 증거 없음 | 씨앗 1개와 설명을 렌더 |
-| 422 | `subgraph_request_invalid` | id 철자·방향·범위 오류를 이름 대어 표시 |
-| 422 | `predicate_not_declared` | `unknown[]` 과 `declared[]` 을 같이 돌려준다 |
+| 422 | `subgraph_request_invalid` | id 철자·방향·범위 오류, 그리고 🆕 **`follow` 가 요구한 키를 씨앗이 못 드는 경우**를 이름 대어 표시. 메시지가 «어느 술어·어느 키·어느 씨앗 타입»인지 다 댄다. 🔴 **여기서 0 을 돌려주지 않는 이유**: 못 맞추는 제약과 「여기 아무것도 없다」가 같은 그림으로 렌더돼 호출자가 둘을 못 가른다 |
+| 422 | `predicate_not_declared` | `unknown[]` 과 `declared[]` 을 같이 돌려준다. 🔴 **대조되는 것은 콜론 «왼쪽»** — `inspected:x,y` 는 선언된 `inspected` 에 제약이 걸린 것이라, 문자열 통째로 대조하면 정상 요청이 전부 422 가 된다 |
 | 503 | 원장 relation absent | 배포 부재를 «이름 대어» 답한다 |
 
 ## 5. 탐색 알고리즘
@@ -294,7 +311,7 @@ reachable   [관측 씨앗 몇이 이 «타입»에 닿았나, 대조군 쪽 같
 안쪽에서 씨앗으로 잡으면 `bond_pressure -> interface_unfill -> void` 가 보였다. 고친 뒤 같은 요청이
 노드 21 · `hops_reached` 3 · `bond_pressure` 를 깊이 2 에 놓는다.
 
-### 5.1 걷기 규칙 셋 (2026-08-29 착지) — 🔴 **이 절이 걷기 규칙의 «유일한 정본»이다**
+### 5.1 걷기 규칙 넷 (2026-08-29 셋 · 2026-09-02 넷째) — 🔴 **이 절이 걷기 규칙의 «유일한 정본»이다**
 
 > 🔴 **다른 문서는 이 절을 «링크»하고 규칙을 다시 적지 않는다.** 2026-08-29 밤 실측에서
 > 이 사실이 **여섯 곳에 산문으로** 복사돼 있었고, 그중 **넷이 같은 거짓 문장**을 들고 있었다
@@ -306,14 +323,16 @@ reachable   [관측 씨앗 몇이 이 «타입»에 닿았나, 대조군 쪽 같
 > **판정 자체**의 정본은 [LEDGER_RULINGS R-2026-08-29-Q](../process/LEDGER_RULINGS.md) 이고,
 > 이 절은 그 판정의 **계약·기전**을 소유한다.
 
-위의 유계 BFS 위에 **거절 규칙 셋**이 얹힌다. 셋 다 「이 걸음을 갈 것인가」이고, 셋 다
-**엔터티 «클래스»와 술어 이름**만 보며 도메인 낱말이 코드에 하나도 없다.
+위의 유계 BFS 위에 **거절 규칙 넷**이 얹힌다. 넷 다 「이 걸음을 갈 것인가」이고, 넷 다
+**엔터티 «클래스»·술어 이름·«선언된 키 이름»**만 보며 도메인 낱말이 코드에 하나도 없다.
+①②③ 은 «항상» 도는 규칙이고 ④ 는 **호출자가 켤 때만** 도는 규칙이다.
 
 | # | 규칙 | 어디서 강제되나 | 끄면 빨개지는 시험 |
 |---|---|---|---|
 | ① | **`follow` 는 SQL 에서 좁힌다.** 안 따라가는 술어는 «인출조차» 안 된다 | `SqlEvidenceLookup.claims_for_entities` 의 `e.predicate = ANY(%(follow)s)` | `test_a_name_is_FETCHED_with_the_narrower_follow_rather_than_filtered_after` · `test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empty_list` |
 | ② | **정적 노드는 «모으되 펼치지 않는다».** 예외는 «양 끝이 둘 다 정적»인 술어 | **자리 셋** — `subgraph()` 의 프론티어 클래스 분할 · `_expand_atom` 의 가드 · `_reach` 의 가드. 술어 목록은 `_static_step_predicates()` | 위의 둘(인출) · `test_the_static_step_predicates_are_DERIVED_from_the_declaration`(유도) · `test_reach_obeys_the_two_walk_rules_the_fetch_obeys`(대조) |
 | ③ | **방금 «거꾸로» 타고 올라온 술어로 다시 «내려가지» 않는다.** 양 끝이 둘 다 정적이면 면제 | **자리 둘** — `_expand_atom` 의 `arrivals` 대조 · `_reach` 의 같은 검사 | `test_the_fetch_does_not_climb_a_container_and_come_back_down_to_its_siblings`(인출) · `test_reach_obeys_the_two_walk_rules_the_fetch_obeys`(대조) |
+| 🆕④ | **키가 걸린 술어는 «씨앗과 그 키가 같은» 노드로만 간다**(`follow=inspected:x,y`). 오른쪽 변은 **씨앗에 고정**이고 경로에 따라 안 변한다. 🔴 **그 키를 못 드는 씨앗은 «0» 이 아니라 422** | `subgraph()` 의 `seed_key_sets` 조립(거절이 여기서 난다) · 콜론 파싱은 라우터의 `_split_follow` | `test_a_keyed_follow_walks_only_to_the_nodes_matching_the_seed` · `test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check` · `test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero` |
 
 🔴 **「무엇이 이걸 재나」는 «시험 이름»으로 적는다 — grep 건수로 적지 않는다.** 이 표의
 오른쪽 칸이 2026-08-29 밤에 «비어 있다»고 쓰인 적이 있고, 그 근거가 «`static_types` 를 grep 해
@@ -360,9 +379,11 @@ grep 에 안 걸린다 — 응답 그래프만 보면 「인출 후 필터」와
 된다. 지우려면 그 경우를 먼저 막아라. 대조가 자기 사본을 드는 이유는
 그래프를 «다시» 걷기 때문이다 — 안 그러면 씨앗이 이름에서 기어 나오거나 컨테이너를 넘어 남의
 자식으로 내려가, 분수를 뗀 순간 후보 996 개가 **전부 `[2, 2]`** 로 나왔다(실측 2026-08-29).
-규칙이 넷째로 늘면 **여기가 먼저 지울 중복**이다.
+~~규칙이 넷째로 늘면 **여기가 먼저 지울 중복**이다.~~ 🔴 **[2026-09-02] 넷째가 왔는데
+«이 중복은 안 지웠다»** — 규칙 ④ 는 대조(`_reach`)가 아니라 **씨앗 조립**에서 걸리므로,
+이 문단이 말하는 「대조가 자기 사본을 든다」와 겹치지 않는다. 지울 근거가 안 생겼다.
 
-📌 **`backbone_hops` 는 이 셋과 «다른 축»이다** — 걸음을 거절하지 않고 «어느 예산에서 빼나»만
+📌 **`backbone_hops` 는 이 넷과 «다른 축»이다** — 걸음을 거절하지 않고 «어느 예산에서 빼나»만
 정한다. 그래서 §4.1 에 있고 이 표에 없다. 시험은
 `test_backbone_hops_buys_depth_for_steps_that_stay_inside_the_world`(0 이면 노드 2, 4 면 노드 6).
 
