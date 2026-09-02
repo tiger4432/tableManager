@@ -24,6 +24,7 @@
 // FAILS LOUDLY (exit 2) when a function cannot be extracted or a mutation anchor is not
 // unique. A harness that goes green because it stopped finding the code is worse than none.
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -44,6 +45,11 @@ const readSrc = (...p) => readFileSync(join(...p), 'utf8').replace(/\r\n/g, '\n'
 const WORK_MAP = readSrc(ROOT, 'client2', 'src', 'map_editor.js');
 const WORK_DOE = readSrc(ROOT, 'client2', 'src', 'doe_bands.js');
 const WORK_TSV = readSrc(ROOT, 'client2', 'src', 'tsv.js');
+// The probe imports a FILE, so the paths are named here. The `WORK_*` texts above stay:
+// the mutation anchors below are checked against them, which is a read, not a slice.
+const SRC_MAP = join(ROOT, 'client2', 'src', 'map_editor.js');
+const SRC_DOE = join(ROOT, 'client2', 'src', 'doe_bands.js');
+const SRC_TSV = join(ROOT, 'client2', 'src', 'tsv.js');
 
 function sliceBalanced(src, startIdx, open, close) {
   let i = src.indexOf(open, startIdx);
@@ -147,21 +153,38 @@ const MAP_CONSTS = ['UNLISTED_VALUE_FILL', 'HDR_COL_PX', 'HDR_PAD_PX', 'HDR_CHAR
   'HDR_MIN_SPAN', 'HDR_MAX_SPAN', 'HDR_GAP_COLS', 'pasteBlank', 'pasteAt',
   'COORD_MIN_TICKS', 'coordInt', 'coordMonotonic'];
 
-function buildSandbox(src, label, elOver) {
-  const parts = [];
-  MAP_FNS.forEach(n => parts.push(fnFrom(src, label, n)));
-  MAP_CONSTS.forEach(n => parts.push(constFrom(src, label, n)));
-  ['QUOTE', 'TAB'].forEach(n => parts.push(constFrom(WORK_TSV, 'tsv.js', n)));
-  ['normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField', 'serializeTsv']
-    .forEach(n => parts.push(fnFrom(WORK_TSV, 'tsv.js', n)));
-  ['ZONES', 'ZONE_LABEL', 'DOE_COLUMNS', 'IGNORED_HEADERS'].forEach(n => parts.push(constFrom(WORK_DOE, 'doe_bands.js', n)));
-  ['parseMaterialList', 'columnIdByHeader', 'looksLikeHeader'].forEach(n => parts.push(fnFrom(WORK_DOE, 'doe_bands.js', n)));
-
+// 🔴 NOTHING IS CUT OUT ANY MORE, from any of the three files. This harness sliced
+// map_editor.js, tsv.js and doe_bands.js and ran the fragments in `vm`, which scores the SHAPE
+// OF THE LETTERS: the day one of those functions calls a helper that is not on the list, the
+// harness reddens on correct code and names the missing symbol rather than the change.
+//
+// All three are imported whole. `showToast` is an IMPORT of map_editor.js -- no probe can
+// reach an import binding -- so it comes through the loader hook.
+//
+// `src` is a MUTATE FUNCTION now (or null): a mutant is a whole module, so one that fails to
+// parse fails loudly instead of counting as caught.
+async function buildSandbox(src, label, elOver) {
   const captured = { html: null, text: null, toasts: [], confirms: [], fetches: [] };
-  const ctx = {
-    console: Object.assign(Object.create(console), { debug: () => {} }),
+
+  globalThis.document = globalThis.document || {
+    getElementById: () => null, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+  globalThis.fetch = (...a) => {
+    captured.fetches.push(String(a[0]));
+    return Promise.reject(new Error('no network'));
+  };
+  globalThis.confirm = (m) => { captured.confirms.push(m); return true; };
+
+  // What this harness stages on map_editor.js. `state` is `Object.keys` of it, so a name the
+  // module does not declare is a loud failure rather than a property nobody reads.
+  const stage = {
     currentRotation: ROT, currentSide: SIDE,
-    validDie: null, boundingBoxCache: {}, el: makeEl(elOver),
+    validDie: null, boundingBoxCache: {},
     gridData: {}, gridCells2D: {}, legend: [],
     loadedFCells: new Set(),
     selectedTable: 'bonding_map',
@@ -172,24 +195,59 @@ function buildSandbox(src, label, elOver) {
     isOverlayLocked: () => false,
     getThemeColors: () => THEME,
     getCurrentMapKey: () => '4B12',
-    __captured: captured,
+    writeClipboardRich: (html, text) => { captured.html = html; captured.text = text; return true; },
   };
-  ctx.fetch = (...a) => { captured.fetches.push(String(a[0])); return Promise.reject(new Error('no network')); };
-  ctx.confirm = (m) => { captured.confirms.push(m); return true; };
-  ctx.showToast = (msg, kind) => { captured.toasts.push({ msg, kind }); };
-  ctx.writeClipboardRich = (html, text) => { captured.html = html; captured.text = text; return true; };
-  vm.createContext(ctx);
-  try {
-    vm.runInContext(parts.join('\n\n')
-      + '\nglobalThis.__h = { getGridCellObject, getTransformedPhysicalConfig, getWaferBoundingBox,'
-      + ' getVisualGridDimensions, getDbCoords, getCanvasCellFromDb, getDieIndex,'
-      + ' copyGridToExcel, notchMarkCell, copyTitleText, classifyUnsavableCells,'
-      + ' readCompanyMapBlock, checkPasteAgainstFrame, applyPastedGridRows, pastedCellCount,'
-      + ' coordRulerTicks, readCoordTableBlock, planCoordPaste, serializeTsv, parseTsv };', ctx);
-  } catch (e) {
-    die(`sandbox evaluation failed for ${label} — ${e && e.message ? e.message : e}`);
-  }
-  return { ctx, H: ctx.__h, captured };
+
+  const map = (await loadWithProbe(SRC_MAP, {
+    expose: [...MAP_FNS, ...MAP_CONSTS, 'el'],
+    state: Object.keys(stage),
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => { captured.toasts.push({ msg, kind }); } },
+    },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'coordpaste',
+  })).probe;
+
+  const tsv = (await loadWithProbe(SRC_TSV, {
+    expose: ['QUOTE', 'TAB', 'normalizeNewlines', 'parseTsv', 'needsQuote', 'quoteField',
+             'serializeTsv'],
+    tag: 'coordtsv',
+  })).probe;
+
+  const doe = (await loadWithProbe(SRC_DOE, {
+    expose: ['ZONES', 'ZONE_LABEL', 'DOE_COLUMNS', 'IGNORED_HEADERS',
+             'parseMaterialList', 'columnIdByHeader', 'looksLikeHeader'],
+    tag: 'coorddoe',
+  })).probe;
+
+  Object.assign(map, stage);
+  Object.assign(map.el, makeEl(elOver));
+
+  // Same shape the checks already use, so their call sites are untouched.
+  const H = {
+    getGridCellObject: map.getGridCellObject,
+    getTransformedPhysicalConfig: map.getTransformedPhysicalConfig,
+    getWaferBoundingBox: map.getWaferBoundingBox,
+    getVisualGridDimensions: map.getVisualGridDimensions,
+    getDbCoords: map.getDbCoords,
+    getCanvasCellFromDb: map.getCanvasCellFromDb,
+    getDieIndex: map.getDieIndex,
+    copyGridToExcel: map.copyGridToExcel,
+    notchMarkCell: map.notchMarkCell,
+    copyTitleText: map.copyTitleText,
+    classifyUnsavableCells: map.classifyUnsavableCells,
+    readCompanyMapBlock: map.readCompanyMapBlock,
+    checkPasteAgainstFrame: map.checkPasteAgainstFrame,
+    applyPastedGridRows: map.applyPastedGridRows,
+    pastedCellCount: map.pastedCellCount,
+    coordRulerTicks: map.coordRulerTicks,
+    readCoordTableBlock: map.readCoordTableBlock,
+    planCoordPaste: map.planCoordPaste,
+    serializeTsv: tsv.serializeTsv,
+    parseTsv: tsv.parseTsv,
+  };
+  void doe;   // imported so the module's own consumers see the real thing, not a slice
+  return { ctx: map, H, captured };
 }
 
 // the app's own cell factory builds gridCells2D — the harness never hand-rolls a cell
@@ -267,7 +325,7 @@ const evidence = {};
 // ════════════════════════════════════════════════════════════════════════════════
 // 0 — THE FIXTURE IS ADVERSARIAL. Assert the axes are live before scoring anything.
 // ════════════════════════════════════════════════════════════════════════════════
-const base = buildSandbox(WORK_MAP, 'working tree');
+const base = await buildSandbox(WORK_MAP, 'working tree');
 buildCells(base);
 paintFixture(base);
 const BOX = base.H.getWaferBoundingBox(null, ROT, SIDE);
@@ -367,7 +425,7 @@ let coord;
 const PROT = oracleCell(7, 4);
 let placedRun;
 {
-  const sb = buildSandbox(WORK_MAP, 'placement');
+  const sb = await buildSandbox(WORK_MAP, 'placement');
   buildCells(sb);
   paintFixture(sb);
   const protKey = sb.ctx.gridCells2D[PROT.r][PROT.c].key;
@@ -503,8 +561,11 @@ let placedRun;
 // ════════════════════════════════════════════════════════════════════════════════
 {
   const results = {};
-  [false, true].forEach(headerOn => {
-    const sb = buildSandbox(WORK_MAP, `plain:${headerOn}`, { copyHeaderToggle: { checked: headerOn } });
+  // 🔴 `for...of`, not `forEach`. An async callback handed to `forEach` is fire-and-forget:
+  //    the loop returns immediately, the assertions below read an env that was never built,
+  //    and nothing says so. Building an env is an import now, so it has to be awaited in order.
+  for (const headerOn of [false, true]) {
+    const sb = await buildSandbox(WORK_MAP, `plain:${headerOn}`, { copyHeaderToggle: { checked: headerOn } });
     buildCells(sb);
     paintFixture(sb);
     const before = gridSnapshot(sb);
@@ -526,7 +587,7 @@ let placedRun;
     const differ = Object.keys(before).filter(kk => before[kk] !== after[kk]);
     chk('negative', `the positional round trip is cell-for-cell identical (header=${headerOn})`, differ, []);
     results[`header=${headerOn}`] = { detector: k, verdict: verdict.ok, cellsDiffering: differ.length };
-  });
+  }
 
   // ③ adversarial plain blocks that must NOT be taken for a coordinate table
   const H = base.H;
@@ -721,11 +782,11 @@ const MUTATIONS = [
 
 // ONE scorer, applied to the working tree and to every mutant. Returns the list of reasons
 // this build is wrong — empty means "indistinguishable from correct".
-function score(src, label) {
+async function score(src, label) {
   const why = [];
   let sb;
   try {
-    sb = buildSandbox(src, label);
+    sb = await buildSandbox(src, label);
     buildCells(sb);
     paintFixture(sb);
   } catch (e) { return [`sandbox: ${e && e.message}`]; }
@@ -784,8 +845,10 @@ function score(src, label) {
   // ④ the NEGATIVE case: a real copy artifact is still not a coordinate table, and the
   //    positional path still round-trips it cell for cell
   try {
-    [false, true].forEach(headerOn => {
-      const s2 = buildSandbox(src, `${label}:plain`, { copyHeaderToggle: { checked: headerOn } });
+    // `for...of`, not `forEach` -- see the note on the other one. An async callback handed to
+    // `forEach` returns immediately and the checks below would read an env nobody built.
+    for (const headerOn of [false, true]) {
+      const s2 = await buildSandbox(src, `${label}:plain`, { copyHeaderToggle: { checked: headerOn } });
       buildCells(s2);
       paintFixture(s2);
       const b2 = gridSnapshot(s2);
@@ -802,7 +865,7 @@ function score(src, label) {
       const a2 = gridSnapshot(s2);
       const d = Object.keys(b2).filter(kk => b2[kk] !== a2[kk]).length;
       if (d > 0) why.push(`positional round trip broke on ${d} cells (header=${headerOn})`);
-    });
+    }
   } catch (e) { why.push(`negative case threw: ${e && e.message}`); }
 
   // ⑤ the refusals still refuse
@@ -838,7 +901,7 @@ function score(src, label) {
   return why;
 }
 
-const baseWhy = score(WORK_MAP, 'working tree');
+const baseWhy = await score(null, 'working tree');
 if (baseWhy.length > 0) {
   baseWhy.forEach(w => fails.push({ group: 'scorer', what: 'the working tree fails its own scorer', got: w, want: '(nothing)' }));
 } else {
@@ -846,14 +909,18 @@ if (baseWhy.length > 0) {
 }
 
 const mutationResults = [];
-MUTATIONS.forEach(([name, apply]) => {
+// `for...of`, not `forEach`: scoring builds envs, which are imports now, and an async callback
+// handed to `forEach` would leave every mutant unscored while the loop reported success.
+for (const [name, apply] of MUTATIONS) {
   const mutated = apply(WORK_MAP, name);
   // 🔴 CONFIRM THE MUTATED STATE, not just the outcome. `once` already dies on a missing or
   //    non-unique anchor; this is the third guard — the source really is different.
   if (mutated === WORK_MAP) die(`mutation "${name}" did not change the source`);
-  const why = score(mutated, `mutant:${name}`);
+  // 🔴 A FUNCTION, not the mutated text: `spec.mutate` ignores a string, and every mutant
+  //    would then load the UNMUTATED module while the assertion count stayed put.
+  const why = await score(() => mutated, `mutant:${name}`);
   mutationResults.push({ name, caught: why.length > 0, why: why.slice(0, 3) });
-});
+}
 const missed = mutationResults.filter(m => !m.caught);
 chk('mutations', 'every injected defect is caught', missed.map(m => m.name), []);
 evidence.mutations = mutationResults;
