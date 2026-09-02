@@ -120,3 +120,41 @@ timeline.js:1076~1092                  같은 q·filters 를 «손으로»
 서버   방송(broadcast) 페이로드 조립 · 아웃박스 봉투 · 시각/타임존 처리 · 정렬 키 조립
 클라   오류 토스트 · 표 그리기(부품 안에서 반복) · 좌표 변환 · 색 규칙
 ```
+
+---
+
+## 🔴 S3. 아웃박스 봉투 — «아홉 자리, 세 모양» (서버)
+
+이벤트를 아웃박스에 넣는 자리가 아홉인데, «봉투를 만드는 함수»를 지나는 것은 둘뿐입니다.
+
+```
+_outbox_envelope() 를 지나는 것   database.py:232 · database.py:271
+   -> tx_id · user · source · ts 를 «한 곳»에서 뽑습니다
+지나지 «않는» 것 (일곱)
+   internal_event_client.py:135   event_uuid · table_name · event_type · payload · processed_chain
+   main.py:5467                   «같은 다섯»
+   main.py:5827                   (reload)
+   retroactive.py:1031            «같은 다섯»
+   outbox_expand.py:273           🔴 processed_chain «없음»
+   system_reload.py:132           🔴 processed_chain «없음» · transaction_id 는 «있음»
+```
+
+### 왜 위험한가
+```
+① processed_chain 이 빠지는 자리가 «둘»
+   그 컬럼엔 부분 인덱스가 걸려 있습니다 — idx_outbox_unprocessed (WHERE processed_chain = false)
+   기본값에 따라 그 이벤트가 「미처리」 목록에 «들어가느냐»가 갈립니다
+   그리고 그 차이는 «조용합니다» — 안 뜨면 아무도 안 찾습니다
+② source_name 을 «아무도 안 싣습니다»
+   그건 순환 필터의 «채널»입니다 (chain_ingestion_guide 가 「CHANNEL, not provenance」라고 못 박음)
+   봉투를 안 지나는 일곱은 그 값을 «컨텍스트 변수»에 의존합니다
+   -> 그 변수를 안 세운 경로에서 이벤트가 «사람 편집»으로 읽히고, 모든 룰을 깨웁니다
+   (chain_ingestion_guide 가 그 사고를 ffb23d6 · 53f9187 두 건으로 기록해 두었습니다)
+```
+
+### 해체 방향 (제안, 미승인)
+```
+「이벤트 하나를 아웃박스에 넣는다」를 한 함수로. 봉투(tx_id·user·source·ts·processed_chain)는
+그 함수가 채우고, 호출자는 «무슨 일이 있었나»(table·type·payload)만 줍니다
+⚠️ S1 과 같은 성질: «채우는 것»은 합치되 «정책»(예: 어떤 이벤트가 체인을 깨우나)은 호출자 몫입니다
+```
