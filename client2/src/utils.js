@@ -343,5 +343,8 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
   setTimeout(() => dismissProgressCard(card), 2500);
 }
 
-// Expose on window object dynamically for any non-ESM environment components if needed
-window.showToast = showToast;
+// Expose on window object dynamically for any non-ESM environment components if needed.
+// 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
+//    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
+//    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
+if (typeof window !== 'undefined') window.showToast = showToast;
