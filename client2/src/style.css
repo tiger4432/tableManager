@@ -2952,27 +2952,38 @@ body.resizing-active .history-sidebar {
 /* 「다시 번역」 줄들. 자기 자리(li#rescope-menu-host) 안에만 그립니다. */
 .rescope-menu-host { padding: 0; }
 .redo-banner { display: inline-flex; gap: 6px; position: relative; }
-/* 🔴 드롭다운의 «껍데기» 한 벌. 필터 칩 펼침이 «둘째»로 같은 모양을 필요로 했고, 두 번째를
-   손으로 그리는 대신 올렸습니다 (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기).
-   결은 여기서 오고, «자리»는 각자 선언합니다 -- 둘의 앵커가 다릅니다. */
-.dropdown-panel {
-  position: absolute; z-index: 900;
-  padding: 10px 12px;
-  background: var(--bg-surface); border: 1px solid var(--border-strong);
-  border-radius: 8px; font-size: 12px;
-}
-/* 그룹 목록은 버튼 밑에 붙어 떨어집니다 -- 새 창도 모달도 아닙니다. */
-.redo-panel { top: calc(100% + 6px); right: 0; min-width: 300px; }
+/* 🔴 껍데기는 «이 화면에 이미 있는» `.glass-dropdown-panel` 입니다 (소유자 「기존 스타일 맞게」,
+   총괄 2026-09-02). 평행한 결을 하나 더 정하지 않습니다 -- 그 클래스가 column·gap·shadow·
+   z-index 를 이미 들고 있고, `.dropdown-item` 이 `display:flex; width:100%` 라
+   «button 이든 div 든 같은 자리»에 놓입니다. 두 판은 «자기 것»만 선언합니다. */
 
-/* 🔴 자리는 JS 가 씁니다. 이 판의 «위치 조상»은 헤더여야 합니다 -- 스트립 안에 position 을
+/* 그룹 목록은 버튼 밑에 붙어 떨어집니다 -- 새 창도 모달도 아닙니다. */
+/* 폭은 «고정»입니다. 내용에 따라 늘게 두면 토큰이 없을 때만 안내 문장이 판을 밀어
+   같은 줄이 두 갈래에서 다른 크기가 됩니다 (실측 2026-09-02: 403px/302px 대 300px/282px).
+   토큰 유무로 화면이 갈리면 그것이 결함입니다 — 둘 다 보는 사람은 없습니다. */
+.redo-panel { width: 300px; font-size: 12px; }
+/* 누를 수 없는 줄도 «같은 자리»에 섭니다. 토큰 유무로 줄이 어긋나면 그건 다른 화면입니다. */
+.redo-panel__note, .redo-panel__nogo {
+  padding: 8px 12px; width: 100%; opacity: 0.7;
+}
+
+/* 🔴 «방향»만 이 판이 선언합니다 -- 껍데기는 column 이지만 칩은 가로로 감싸는 것이 맞습니다
+   (총괄 판정: 그건 결함이 아닙니다).
+   🔴 자리는 JS 가 씁니다. 이 판의 «위치 조상»은 헤더여야 합니다 -- 스트립 안에 position 을
    가진 조상을 두면 스트립의 `overflow: hidden` 이 판을 잘라 내고, 잘린 판은 «보이지도 눌리지도»
    않습니다 (실측 2026-09-02: elementFromPoint 가 판 대신 뒤의 라벨을 돌려줬습니다).
    여기서 칩은 «감쌉니다» -- 헤더 폭과 무관한 자리라 감싸도 헤더가 안 자랍니다. */
 .filter-chips-panel {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center;
   max-width: min(560px, calc(100vw - 24px));
 }
-.redo-panel__group { padding: 3px 0; }
-.redo-panel__note { padding: 3px 0; opacity: 0.7; }
-.redo-panel__go { margin-top: 8px; }
+/* 🔴 `padding: 3px 0` 였습니다 -- `display` 를 안 정해서 «태그가 배치를 정했습니다»:
+   토큰이 없으면 div(block)라 세로, 있으면 button(inline-block)이라 «가로로 흘렀습니다».
+   소유자가 본 것이 그 화면이고, 토큰이 없던 우리는 볼 수가 없었습니다. 이제 줄은
+   `.dropdown-item` 을 달고, 그 규칙이 `display:flex; width:100%` 를 줍니다. */
+/* 🔴 폰트와 줄높이를 «못 박습니다». 버튼은 UA 폰트를 쓰고 div 는 페이지
+   폰트를 썬서, 같은 글자가 31px 와 36px 로 다르게 섬니다 (실측 2026-09-02).
+   줄의 모양이 토큰 유무로 갈리면 그것이 이 라운드가 고치는 바로 그 부류입니다. */
+.redo-panel__group { text-align: left; font-family: inherit; line-height: 1.5; }
+.redo-panel__go { margin-top: 4px; width: 100%; }
 

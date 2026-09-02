@@ -29,6 +29,9 @@ import vm from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'redo_banner.js');
 const DROPDOWN_PATH = join(HERE, '..', 'src', 'dropdown.js');
+// The direction of this panel is a STYLESHEET fact, and a stub document has no layout to
+// measure it with. What can be scored here is that the tag was not left to decide it.
+const STYLE_PATH = join(HERE, '..', 'src', 'style.css');
 const read = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // The dependency is INLINED, not stubbed: `load()` evaluates a plain script, so an import
 // statement would not survive it -- and a stub would score a dismiss that is not the one
@@ -386,6 +389,56 @@ console.log('\n── H. NO TOKEN SAYS SO ────────────�
     && byClass(with_, 'redo-panel__go').length === 1);
 }
 
+console.log('\n── J. THE TAG DOES NOT DECIDE THE LAYOUT ───────────────────────────');
+{
+  // 🔴 THE DEFECT THIS SECTION EXISTS FOR (owner, 2026-09-02): `.redo-panel__group` set only
+  //    `padding`, so the TAG decided the direction — a div is block and stacked, a button is
+  //    inline-block and flowed sideways. The panel was therefore vertical for anyone without a
+  //    token and horizontal for anyone with one, and the two of us who checked it had none.
+  const mk = (hasToken) => {
+    const doc = mkDoc();
+    const host = doc.createElement('div');
+    const part = new X.RedoBanner(host, { doc, sources: SOURCES,
+      getSelection: () => [envelope({ lot_id: 'L1' })], readValue: readEnvelope,
+      businessKey: 'lot_id', handOff: () => {}, hasToken: () => hasToken,
+      run: () => Promise.resolve({ ok: true }) });
+    part.setRelation('dt_log');
+    part.render();
+    buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+    return host;
+  };
+  const withToken = mk(true);
+  const without = mk(false);
+  const classesOf = (host) => byClass(host, 'redo-panel__group').map((n) => n.className);
+  const tagsOf = (host) => byClass(host, 'redo-panel__group').map((n) => n.tagName);
+
+  // The pair: the tags DIFFER, on purpose — which is exactly why the tag may not be what
+  // positions them. If these were the same the section would prove nothing.
+  ok('J1 the tags differ between the two token states',
+    tagsOf(withToken).join(',') !== tagsOf(without).join(','),
+    [tagsOf(withToken), tagsOf(without)]);
+  ok('J2 ... and the class does NOT, so the layout cannot follow the tag',
+    classesOf(withToken).join('|') === classesOf(without).join('|'),
+    [classesOf(withToken), classesOf(without)]);
+  ok('J3 every line carries the item class this screen already lays out',
+    classesOf(withToken).length > 0
+    && classesOf(withToken).every((c) => c.split(/\s+/).includes('dropdown-item')),
+    classesOf(withToken));
+  ok('J4 the panel wears the dropdown shell this screen already has, not a parallel one',
+    byClass(withToken, 'glass-dropdown-panel').length === 1
+    && byClass(without, 'glass-dropdown-panel').length === 1,
+    byClass(withToken, 'glass-dropdown-panel').length);
+
+  // And the stylesheet has to be the thing that decides, not the tag default.
+  const css = readFileSync(STYLE_PATH, 'utf8').replace(/\r\n/g, '\n');
+  const rule = (css.match(/\.glass-dropdown-panel \.dropdown-item \{[^}]*\}/) || [''])[0];
+  ok('J5 the stylesheet gives that class a display and a width of its own',
+    /display\s*:/.test(rule) && /width\s*:\s*100%/.test(rule), rule.slice(0, 90));
+  const shell = (css.match(/\.glass-dropdown-panel \{[^}]*\}/) || [''])[0];
+  ok('J6 ... and the shell stacks its children, which is where vertical comes from',
+    /flex-direction\s*:\s*column/.test(shell), shell.slice(0, 90));
+}
+
 console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ─────────────────────────');
 {
   const mk = (rules) => {
@@ -464,6 +517,13 @@ const DEFECTS = [
   ['M14 the unread rule list paints the same as a declared-empty one',
     swap("        { text: 'chain rules not loaded — open in admin to pick one', params: null },",
       "        { text: 'the server declares no chain rule', params: null },")],
+  ['M16 the line drops the item class when it becomes a button',
+    swap("      line.className = 'dropdown-item redo-panel__group';",
+      "      line.className = pressable ? 'redo-panel__group'\n"
+      + "        : 'dropdown-item redo-panel__group';")],
+  ['M17 the panel stops wearing the shell and picks its own',
+    swap("    box.className = 'glass-dropdown-panel redo-panel';",
+      "    box.className = 'redo-panel';")],
   ['M15 pressing a line says nothing until the answer comes back',
     swap("    this.said[index] = 'running…';\n    this.render();",
       "    this.render();")],
@@ -586,6 +646,15 @@ async function score(list, mustCatch, heading) {
         return p.host;
       };
       const noToken = panelOf({ hasToken: () => false, run: () => {} });
+      // 🔴 A FRESH OPEN ONE. `drop` was closed by the Escape above, so reading its classes here
+      //    returns '' for every mutant AND every control -- the guard would be vacuously false
+      //    and score everything as caught for a reason that is not the reason. The controls
+      //    catching is what exposed it: a check that cannot pass cannot discriminate either.
+      const withToken = panelOf({ hasToken: () => true, run: () => {} });
+      const classes = (host) => byClass(host, 'redo-panel__group').map((n) => n.className).join('|');
+      const sameClassBothWays = classes(withToken) !== ''
+        && classes(withToken) === classes(noToken);
+      const wearsTheShell = byClass(withToken, 'glass-dropdown-panel').length === 1;
       const chainText = (rules) => byClass(
         panelOf({ hasToken: () => true, run: () => {}, rules, which: 'chain' }),
         'redo-panel__group').map((n) => n.textContent).join('|');
@@ -612,7 +681,8 @@ async function score(list, mustCatch, heading) {
         || !saidWhilePressed.includes('running')
         || !saidAfter.includes('queued')
         || byClass(noToken, 'redo-panel__nogo').length !== 1
-        || unread === declaredEmpty;
+        || unread === declaredEmpty
+        || !sameClassBothWays || !wearsTheShell;
     } catch (e) {
       bad = true;
     }

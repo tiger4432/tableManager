@@ -170,7 +170,33 @@ export class RedoBanner {
     bar.appendChild(this.button('chain', 'Replay chain', rows.length > 0));
     this.host.appendChild(bar);
 
-    if (this.open) this.host.appendChild(this.panel(rows, row));
+    if (this.open) {
+      const box = this.panel(rows, row);
+      this.host.appendChild(box);
+      this.place(box, bar);
+    }
+  }
+
+  /** 판을 버튼 줄 «밑»에 앉힙니다.
+   *
+   * 🔴 판을 버튼 줄 «안»에 넣으면 안 됩니다. 그러면 위치 조상이 그 줄이 되고, 그 줄은
+   *    `overflow: hidden` 인 버튼 그룹 «안»에 있어서 판이 통째로 잘립니다 -- 박스는 있고
+   *    레이아웃도 되는데 elementFromPoint 가 «뒤의 그리드»를 돌려줍니다 (실측 2026-09-02,
+   *    다섯 줄 전부). 밖에 두면 위치 조상이 헤더라 안 잘리고, 그래서 «자리는 여기서» 씁니다.
+   *
+   * 🔴 그냥 `right: 0` 으로 두면 그 0 이 «헤더의 오른쪽 끝»입니다 -- 판이 버튼에서 660px
+   *    떨어져 떴습니다 (x 1620 / 버튼 958). 오른쪽 끝을 «버튼 줄»에 맞춥니다.
+   */
+  place(box, bar) {
+    if (!box.getBoundingClientRect || !bar.getBoundingClientRect) return;
+    const anchor = bar.getBoundingClientRect();
+    const parent = box.offsetParent;
+    const origin = (parent && parent.getBoundingClientRect)
+      ? parent.getBoundingClientRect() : { left: 0, top: 0 };
+    box.style.right = 'auto';
+    box.style.top = `${Math.round(anchor.bottom - origin.top + 8)}px`;
+    const width = box.getBoundingClientRect().width;
+    box.style.left = `${Math.round(Math.max(8, anchor.right - origin.left - width))}px`;
   }
 
   button(which, label, enabled) {
@@ -195,7 +221,8 @@ export class RedoBanner {
   panel(rows, sourceRow) {
     const doc = this.doc;
     const box = doc.createElement('div');
-    box.className = 'dropdown-panel redo-panel';
+    // 🔴 이 화면에 «이미 있는» 드롭다운 껍데기입니다. 세로도 간격도 그림자도 거기서 옵니다.
+    box.className = 'glass-dropdown-panel redo-panel';
     box.dataset.redoPanel = this.open;
 
     const assembled = this.open === 'ledger'
@@ -223,7 +250,9 @@ export class RedoBanner {
     assembled.rows.forEach((entry, index) => {
       const pressable = runnable && !!entry.params;
       const line = doc.createElement(pressable ? 'button' : 'div');
-      line.className = 'redo-panel__group';
+      // 🔴 «태그가 달라도 클래스는 같습니다». 여기서 갈리면 토큰이 있을 때만 줄이 가로로
+      //    흐르고, 토큰이 없는 사람은 그 결함을 «볼 수가 없습니다» (2026-09-02 소유자 지적).
+      line.className = 'dropdown-item redo-panel__group';
       if (pressable) {
         line.type = 'button';
         // 확인 창은 없습니다. 줄에 «크기»가 적혀 있고, 그것을 누르는 것이 확인입니다.

@@ -357,13 +357,16 @@ function showChipsPanel(all, bar, more) {
     // 🔴 스트립의 자기 div «안»입니다 (조립식). 그런데 그 안에 position 을 가진 조상을 두면
     //    스트립의 `overflow: hidden` 이 판을 잘라 내고, 잘린 판은 «보이지도 눌리지도» 않습니다.
     //    그래서 자리는 헤더 좌표로 «JS 가» 씁니다.
-    chipsPanel.className = 'dropdown-panel filter-chips-panel';
+    chipsPanel.className = 'glass-dropdown-panel filter-chips-panel';
     bar.appendChild(chipsPanel);
   }
   chipsPanel.replaceChildren(...all);
   const anchor = more.getBoundingClientRect();
   const origin = (chipsPanel.offsetParent || document.body).getBoundingClientRect();
-  chipsPanel.style.top = `${Math.round(anchor.bottom - origin.top + 6)}px`;
+  // 껍데기는 `right: 0` 으로 붙습니다. 왼쪽을 «쓰면서» 오른쪽을 안 풀면 판이 둘 사이로
+  // 늘어나 화면 폭만큼 벌어집니다.
+  chipsPanel.style.right = 'auto';
+  chipsPanel.style.top = `${Math.round(anchor.bottom - origin.top + 8)}px`;
   // 오른쪽 끝을 버튼에 맞춥니다. 왼쪽에 맞추면 좁은 창에서 판이 화면 밖으로 나갑니다.
   const width = chipsPanel.getBoundingClientRect().width;
   const wanted = anchor.right - origin.left - width;
