@@ -602,7 +602,16 @@ S3                  «지시서를 쓰기 전»에 제가 잡았습니다
               undefined 키에 심음 -> restoreLastOpenMap 이 조용히 반환). 그런데 «초록»이었습니다
               앞의 것들은 「틀린 걸 쟀다」이고, 이건 「아무것도 안 쟀다」입니다
 ```
-### 남은 것 — 오늘 밤 «닿을 수 있는» 끝은 25/30 입니다 (안쪽 클로저 3 + 리비전 오라클 2 제외)
+### 남은 것 — 이름으로 가른 30 — «14 착지 · 7 남음 · 9 밖» (04:4x 재확정. 앞서 적은 25/27 은 «과다»였습니다)
+```
+밖 9 는 무게가 «셋»으로 다릅니다
+  두 리비전 2    영구 예외 — 텍스트가 «주어»입니다. 판정 끝
+  안쪽 클로저 3  별건 — 운영 코드에서 인라인 화살표를 «이름 있는 함수»로 올려야 전환됩니다
+  🔴 기존 빨강 4 «빚»입니다 — 닫힌 것으로 세지 마십시오
+     reposition_regime · split_registry · valid_die_authoring · valid_die_frame_adoption
+     빨간 하니스는 «전/후 비교가 성립 안 해» 전환 불가이고,
+     빨강을 고치려면 지금은 «잘라쓰기 위에서» 고쳐야 합니다 -> 순서가 묶여 있습니다
+```
 ```
 5   안 막히는 것 중 남은 것   effort_meter · isotropic_cell · m4_symbol_extractability ·
                             map_key_datalist · valid_die_head_parity_oracle
