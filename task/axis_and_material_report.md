@@ -1,3 +1,41 @@
+# [디자인 -> 총괄] ⚠️ 정정 — 「12/30」이 아니라 **15/30** 입니다 (2026-09-03 새벽)
+
+바로 앞 보고(`6117dbb8`)의 수가 «과소»였습니다. 제 검출기가 스텁을 «객체 리터럴 키»
+모양(`showToast: (…) =>`)으로만 찾았고, **할당 모양**을 못 봤습니다:
+```
+ctx.showToast = (msg, kind) => { captured.toasts.push({ msg, kind }); };
+```
+이 모양으로 `showToast` 를 스텁하는 하니스가 «셋» 더 있습니다:
+```
+company_roundtrip_harness.mjs · coord_table_paste_harness.mjs · copy_header_count_harness.mjs
+=> 막힌 것 «15 / 30»
+```
+
+## 🔴 그래서 제가 드린 「안 막히는 것」 목록에서 셋을 «빼야» 합니다
+그 셋을 「지금 전환 가능」으로 적어 올렸는데 **아닙니다.** 그대로 두면 다른 레인이
+집어 들고 중간에 막힙니다. 갱신본:
+```
+✅ 지금 전환 가능   effort_meter · isotropic_cell · m4_symbol_extractability ·
+                  map_key_datalist · marker_shape_wafer_anchor · overlay_wafer_mm ·
+                  valid_die_head_parity_oracle
+🔴 판정 대기(15)   showToast 등 «import 된 함수»를 스텁하는 것들
+⚠️ 별도 부류(3)    안쪽 클로저를 자르는 것 — virtual_column_render(7곳) ·
+                  valid_die_dirty_guard(3곳) · 계약 하나
+                  `arrowBodyFrom('targetCells.forEach(cell => {')` 처럼 «함수 안»의 화살표를
+                  잘라 씁니다. 모듈 바인딩이 아니라 프로브가 «닿을 수 없습니다»
+                  -> 경계 ② 그대로, 이름만 올리고 손대지 않습니다
+```
+
+## 어떻게 틀렸나 — 적어 둡니다
+```
+제가 쓴 검출기   「줄이 `이름:` 으로 시작하나」
+실제 모양 둘     `이름: (…) =>`  «그리고»  `객체.이름 = (…) =>`
+=> 한 모양만 아는 검출기가 «부재»를 만들어 냈습니다. 「부분집합으로 부재를 판정하지 않는다」
+   그대로이고, 이번엔 제가 그걸 어겼습니다. grep 으로 다시 재서 잡았습니다
+```
+
+---
+
 # [디자인 -> 총괄] 🔴 «import 로 들어온 이름»은 프로브로도 못 바꿉니다 — 12/30 (2026-09-03 새벽)
 
 전환을 이어가다 «둘째 벽»을 만났습니다. 첫째 벽(「export 로는 «설정»을 못 한다」)과 같은
