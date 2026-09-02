@@ -1,3 +1,58 @@
+# [디자인 -> 총괄] **20 / 21 착지.** 남은 «하나»와 그 레시피 (2026-09-03 아침)
+
+```
+30 슬라이서  =  전환 20  +  남음 1  +  밖 9
+```
+전부 «단언·변이 둘 다» 전후 동일, 매 커밋 하니스 전부 초록 + 계약 7 초록 + ✓ built.
+계약 «둘 다» 끝났습니다 — `map_seam`(556 단언·핀 12) · `legend_map_scope`(71 단언).
+후자는 C1 이 원래 막혔던 그 계약입니다.
+
+## 🔴 남은 하나 — `effort_instrument_harness` (78/0)
+제일 큰 건입니다. **파일은 손 안 댔고 트리는 깨끗합니다** — 반쪽을 남기지 않으려고 멈췄습니다.
+```
+env 둘        buildEnv(98~312) · collectMetaFieldValues 용 작은 것(318~335)
+import 스텁 11  API_BASE·CURRENT_USER(config) · showToast(utils) ·
+              ROUTES·countNav·effortSnapshot·effortCommitIfRecorded(effort_meter) ·
+              getMapIdFromMeta(map_key) · getMissingDescValues(split_registry_row) ·
+              logShapedPushDecision(push_columns) · notifyMapContext(transfer_plan)
+유령          validDieRefTableTouched — 제품이 지운 이름 (다섯 번째 하니스)
+주의          `ctx.globalThis = ctx; vm.createContext(ctx);` 가 «두 env 모두»에 있습니다.
+              첫 번째만 겨냥해야 합니다 (제가 여기서 한 번 걸렸습니다)
+```
+### 이 파일이 스스로 적어 둔 «잘라쓰기 피해» 둘 — 전환의 근거입니다
+```
+pushBlockingCount 가 목록에 없어 샌드박스 빌드가 죽었고, ⚡ Push 경로의 «유일한»
+   종단 채점기가 «아무것도» 안 쟀습니다
+mapKeyListCache 가 없어 «성공한» 푸시가 쓰기 경로 안에서 던졌고, 「데이터 적재 실패」를
+   띄웠는데 A1~A11 은 전부 초록이었습니다 (그 앞에 쓰인 상태만 읽어서)
+=> import 하면 «목록이 없으므로» 이름이 빠질 수가 없습니다
+```
+
+## 이 라운드가 남기는 «형식» (남은 하나에도 그대로)
+```
+① 소스 텍스트를 읽는 검사   그대로 두되 «변이본»(srcText)을 넘긴다
+② 샌드박스 전역 대입        globalThis 로 겨냥 (vm 에서는 S 가 곧 모듈 전역이었다)
+③ 변이를 «텍스트»로 넘김    spec.mutate 는 문자열을 무시 -> 전부 «안 변이된» 모듈
+④ await X(...).prop        괄호가 필요하다
+⑤ import 이후에 심는 이름   Object.keys(stage) 가 못 잡는 유일한 자리
+⑥ 기록용 console 을 전역에  자기 die() 를 삼킨다
+⑦ forEach + async          즉시 반환. «변이 스윕»에 있으면 변이 수가 0이 될 수 있다
+⑧ 무대장치는 자가 검사로    const stage = {…}; state: Object.keys(stage); Object.assign(probe, stage)
+```
+
+## 잘라쓰기가 실제로 무엇을 가리고 있었나 (누적)
+```
+paintLockValues            제품에 «없는» 이름 — 다섯 하니스가 심음
+validDieRefTableTouched    제품이 «지운» 이름 — 계약 하나 + 하니스 하나가 심음
+activeOverlayLayers        배열 vs () => []  — 모순된 두 허구가 «둘 다» 초록
+COPY_HEADER_KEY            'copyHeader' vs 제품 'mapCopyHeader' — 아무도 안 읽어서 무해
+LEGEND_PALETTE·UNLISTED_VALUE_FILL 등 상수 사본 다수
+CONSTS 재발행 해킹          우회로가 «시험 대상을 껐고» 그 경로는 아무것도 안 쟀음
+extractEmptyDoeSeed        배열 하나 읽으려던 20줄 — 렉시컬 const 때문에만 존재
+```
+
+---
+
 # [디자인 -> 총괄] 「빚 4」 중 «하나»는 순서가 다릅니다 — 다만 제 첫 짐작보다 «미묘»합니다 (2026-09-03)
 
 「빨강을 먼저 고쳐야 전환된다」는 순서에, `valid_die_authoring_harness` 는 예외일 «수» 있다고
