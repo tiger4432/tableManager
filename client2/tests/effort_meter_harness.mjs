@@ -16,6 +16,7 @@
 //   - an allowlist entry naming a route that does not exist is LOUD, never silently inert
 //   - session id generation works in an INSECURE context (production is plain HTTP)
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -26,6 +27,24 @@ const SRC_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'eff
 // makes every multi-line mutation fail to apply. (loadMutated throws in that case rather
 // than reporting a false pass, but the suite should not depend on the editor of the day.)
 const rawSrc = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+
+// 🔴 THE MODULE IS IMPORTED NOW, NOT REWRITTEN AND EVALUATED. This file used to strip the ESM
+// plumbing out of the source text -- replace the `./config.js` import with a literal, delete
+// every `export `, append an `exports.*` block -- and run the result in `vm`. That measures the
+// SHAPE OF THE LETTERS: add a SECOND import to effort_meter.js and the replacement above still
+// matches its one target, the new `import` survives into the vm script, and the whole harness
+// dies with a SyntaxError on correct code.
+//
+// `API_BASE` still has to be the harness's value rather than the real one, and it is a const
+// that the subject IMPORTS, so no probe can reach it. It arrives through the loader hook,
+// which redirects the copy's `./config.js` and leaves every other importer of that module
+// alone.
+//
+// The globals below are installed per load rather than handed to a sandbox, because an
+// imported module resolves them the way the browser does. `console` forwards `log` to the real
+// one -- a recording console installed globally would swallow this harness's own output.
+const REAL_CONSOLE = console;
+const REAL_CRYPTO = globalThis.crypto;
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -72,49 +91,37 @@ function makeConsole() {
   return { errors, warns, log() {}, warn(...a) { warns.push(fmt(a)); }, error(...a) { errors.push(fmt(a)); } };
 }
 
-function load({ storage, cryptoImpl, fetchImpl, origin = 'http://host', pathname = '/index.html' } = {}) {
+async function load({ storage, cryptoImpl, fetchImpl, origin = 'http://host',
+                     pathname = '/index.html' } = {}, mutate) {
   const document = makeDocument();
   const consoleStub = makeConsole();
   const location = {
     origin, pathname, href: origin + pathname, port: '', protocol: 'http:', host: 'host'
   };
-  const sandbox = {
-    console: consoleStub,
-    sessionStorage: storage || makeStorage(),
-    document,
-    window: { location },
-    location,
-    crypto: cryptoImpl === undefined ? globalThis.crypto : cryptoImpl,
-    fetch: fetchImpl || (() => Promise.reject(new Error('no server'))),
-    URL,
-    Set, Map, Array, Object, JSON, Number, Math, String, Uint8Array, Error,
-    exports: {}
-  };
-  vm.createContext(sandbox);
+  globalThis.document = document;
+  globalThis.window = { location };
+  globalThis.location = location;
+  globalThis.sessionStorage = storage || makeStorage();
+  // `globalThis.crypto` is getter-only in node 22, so a plain assignment throws. The tests
+  // that hand in a broken `crypto` are scoring the module's fallback, so the substitution has
+  // to actually happen -- defineProperty rather than quietly skipping it.
+  Object.defineProperty(globalThis, 'crypto', {
+    value: cryptoImpl === undefined ? REAL_CRYPTO : cryptoImpl,
+    configurable: true, writable: true,
+  });
+  globalThis.fetch = fetchImpl || (() => Promise.reject(new Error('no server')));
+  globalThis.console = { ...consoleStub, log: (...a) => REAL_CONSOLE.log(...a) };
 
-  // Strip the ESM plumbing: replace the config import with a literal, turn `export`
-  // declarations into plain ones, then publish the public names onto `exports`.
-  let src = rawSrc
-    .replace(/^import\s+\{[^}]*\}\s+from\s+'\.\/config\.js';?$/m, "const API_BASE = 'http://host/api-base';")
-    .replace(/^export\s+/gm, '');
-  src += `
-    exports.startSession = startSession;
-    exports.countKey = countKey;
-    exports.countMouse = countMouse;
-    exports.countNav = countNav;
-    exports.snapshot = snapshot;
-    exports.commit = commit;
-    exports.commitIfRecorded = commitIfRecorded;
-    exports.getConfig = getConfig;
-    exports.installGlobalListeners = installGlobalListeners;
-    exports.installNavLinkCounting = installNavLinkCounting;
-    exports.routeFromHref = routeFromHref;
-    exports.currentRoute = currentRoute;
-    exports.ROUTES = ROUTES;
-    exports.ROUTE_IDS = ROUTE_IDS;
-  `;
-  vm.runInContext(src, sandbox);
-  return { api: sandbox.exports, document, sandbox, errors: consoleStub.errors, warns: consoleStub.warns };
+  // The api is the module's OWN public surface now. The hand-written `exports.*` block this
+  // replaced had to be kept in step with the module by hand -- a list that falls behind is
+  // how a renamed export goes unmeasured while the harness stays green.
+  const { module } = await loadWithProbe(SRC_PATH, {
+    stubs: { './config.js': { API_BASE: 'http://host/api-base' } },
+    mutate: mutate || undefined,
+    tag: 'effort',
+  });
+  return { api: module, document, sandbox: { window: globalThis.window },
+           errors: consoleStub.errors, warns: consoleStub.warns };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -125,7 +132,7 @@ const tick = () => new Promise(r => setImmediate(r));
 console.log('\n=== 1. session id + persistence ===');
 {
   const storage = makeStorage();
-  const { api } = load({ storage });
+  const { api } = await load({ storage });
   const id = api.startSession();
   ok('startSession returns a UUID-shaped id', UUID_RE.test(id), `(got ${id})`);
   eq('startSession is idempotent', api.startSession(), id);
@@ -133,7 +140,7 @@ console.log('\n=== 1. session id + persistence ===');
 
   api.countKey(3); api.countMouse(2);
   // Simulate a reload in the same tab: brand new module instance, same storage.
-  const { api: api2 } = load({ storage });
+  const { api: api2 } = await load({ storage });
   const s = api2.snapshot();
   eq('session_id survives reload', s.session_id, id);
   eq('key count survives reload', s.key, 3);
@@ -142,7 +149,7 @@ console.log('\n=== 1. session id + persistence ===');
 
 console.log('\n=== 2. counting + snapshot must not reset ===');
 {
-  const { api } = load({});
+  const { api } = await load({});
   api.startSession();
   api.countKey(); api.countKey(); api.countMouse();
   eq('key=2', api.snapshot().key, 2);
@@ -161,7 +168,7 @@ console.log('\n=== 2b. an empty snapshot is ABSENT, not a measured zero (F2) ===
   // save carrying no accumulated interaction files a genuine score of 0 and drags the
   // baseline down with a phantom (measured: one real score-37 correction + one of these in
   // the same session => avg_score 18.5). Absence is the contract's own "not measured".
-  const { api } = load({});
+  const { api } = await load({});
   api.startSession();
   eq('nothing accumulated => snapshot() is undefined', api.snapshot(), undefined);
 
@@ -184,7 +191,7 @@ console.log('\n=== 2b. an empty snapshot is ABSENT, not a measured zero (F2) ===
   // A session whose only activity was context-preserving navigation DID happen. It scores 0
   // under today's weights, but the raw count is precisely what makes the allowlist
   // re-scorable later — omitting it would destroy the thing nav_preserved exists to protect.
-  const { api } = load({ fetchImpl: okCfg({ context_preserving_transitions: [{ from: 'grid', to: 'trace' }] }) });
+  const { api } = await load({ fetchImpl: okCfg({ context_preserving_transitions: [{ from: 'grid', to: 'trace' }] }) });
   api.startSession();
   await tick(); await tick();
   api.countNav('grid', 'trace');
@@ -196,7 +203,7 @@ console.log('\n=== 2b. an empty snapshot is ABSENT, not a measured zero (F2) ===
 
 console.log('\n=== 3. commit resets ONLY on success ===');
 {
-  const { api } = load({});
+  const { api } = await load({});
   const id = api.startSession();
   api.countKey(4); api.countMouse(3);
 
@@ -226,7 +233,7 @@ console.log('\n=== 3b. reset is gated on the server having RECORDED (F1) ===');
   // deletes the effort that attempt cost — and the operator, seeing nothing change, redoes
   // it properly with a handful of keys. The two-attempt correction (the highest-friction
   // event there is) would then record the LOWEST score in the dataset.
-  const { api } = load({});
+  const { api } = await load({});
   api.startSession();
   api.countKey(20); api.countMouse(5);
 
@@ -247,7 +254,7 @@ console.log('\n=== 3b. reset is gated on the server having RECORDED (F1) ===');
   // Older server, or a body we could not parse: fall back to the previous behaviour.
   // Never resetting would grow the counter without bound and bill a whole session's
   // browsing to whichever save finally succeeds — its own defect, and a louder one.
-  const { api } = load({});
+  const { api } = await load({});
   api.startSession();
   api.countKey(4);
   eq('field absent => falls back to resetting', api.commitIfRecorded({ change_count: 1 }), true);
@@ -265,7 +272,7 @@ console.log('\n=== 3b. reset is gated on the server having RECORDED (F1) ===');
 console.log('\n=== 4. countNav classification (fail CLOSED) ===');
 {
   // 4a. config never arrives -> everything counted
-  const { api } = load({ fetchImpl: () => Promise.reject(new Error('offline')) });
+  const { api } = await load({ fetchImpl: () => Promise.reject(new Error('offline')) });
   api.startSession();
   await tick(); await tick();
   api.countNav('grid', 'map_editor');
@@ -274,7 +281,7 @@ console.log('\n=== 4. countNav classification (fail CLOSED) ===');
 }
 {
   // 4b. HTTP 404 (endpoint not deployed yet) -> everything counted
-  const { api } = load({ fetchImpl: () => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) }) });
+  const { api } = await load({ fetchImpl: () => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) }) });
   api.startSession();
   await tick(); await tick();
   api.countNav('grid', 'map_editor');
@@ -282,7 +289,7 @@ console.log('\n=== 4. countNav classification (fail CLOSED) ===');
 }
 {
   // 4c. served allowlist, string form
-  const { api } = load({
+  const { api } = await load({
     fetchImpl: okCfg({ weights: { key: 1, mouse: 3, nav: 5 }, context_preserving_transitions: [{ from: 'grid', to: 'map_editor' }] })
   });
   api.startSession();
@@ -302,7 +309,7 @@ console.log('\n=== 4. countNav classification (fail CLOSED) ===');
 }
 {
   // 4d. object form + garbage entries + wildcard must NOT be honoured
-  const { api } = load({
+  const { api } = await load({
     fetchImpl: okCfg({
       context_preserving_transitions: [
         { from: 'grid', to: 'map_editor' },
@@ -320,13 +327,13 @@ console.log('\n=== 4. countNav classification (fail CLOSED) ===');
 }
 {
   // 4e. race: countNav before the config response lands -> counted (biased safe)
-  const { api } = load({ fetchImpl: okCfg({ context_preserving_transitions: [{ from: 'grid', to: 'map_editor' }] }) });
+  const { api } = await load({ fetchImpl: okCfg({ context_preserving_transitions: [{ from: 'grid', to: 'map_editor' }] }) });
   api.startSession();
   api.countNav('grid', 'map_editor'); // config still in flight
   eq('pre-config transition counted (never flatters)', api.snapshot().nav, 1);
 }
 {
-  const { api } = load({});
+  const { api } = await load({});
   api.startSession();
   api.countNav('', 'grid'); api.countNav('grid', null); api.countNav(undefined, undefined);
   eq('empty route ids are ignored, not counted as moves', api.snapshot(), undefined);
@@ -338,7 +345,7 @@ console.log('\n=== 4f. allowlist entries are validated against the route vocabul
   // ids are `map_editor` and `map_editor:material` — so this exempts nothing. Its EFFECT
   // (everything keeps counting) is identical to it working, which is why silence is fatal
   // here: the config author has no way to tell the two apart.
-  const { api, errors } = load({
+  const { api, errors } = await load({
     fetchImpl: okCfg({
       context_preserving_transitions: [
         { from: 'doe', to: 'dt_map' },
@@ -367,7 +374,7 @@ console.log('\n=== 4f. allowlist entries are validated against the route vocabul
 }
 {
   // One bad half is enough to reject the entry, and neighbours must not be collateral.
-  const { api } = load({
+  const { api } = await load({
     fetchImpl: okCfg({ context_preserving_transitions: [
       { from: 'grid', to: 'tracee' }, { from: 'grid', to: 'trace' }, { from: '*', to: '*' }
     ] })
@@ -391,7 +398,7 @@ console.log('\n=== 4g. accept EXACTLY what the server accepts (B-F5) ===');
   // drops everything else. Tolerating the "from>to" shorthand here meant an author could
   // write an entry that the client honoured and the server discarded — one side obeys, the
   // other ignores, and nothing says so.
-  const { api, errors } = load({
+  const { api, errors } = await load({
     fetchImpl: okCfg({
       context_preserving_transitions: ['grid>trace', { from: 'grid', to: 'trace' }]
     })
@@ -412,7 +419,7 @@ console.log('\n=== 4h. the loaded/failed state is observable in a BUILT bundle (
   // getConfig() had no caller in client2/src, so the bundler shook it out of dist and the
   // one distinction the fail-closed design rests on became unobservable in production.
   // The window assignment is a real reference, so it cannot be shaken out.
-  const { api, sandbox, warns } = load({ fetchImpl: () => Promise.reject(new Error('offline')) });
+  const { api, sandbox, warns } = await load({ fetchImpl: () => Promise.reject(new Error('offline')) });
   api.startSession();
   await tick(); await tick();
   ok('startSession publishes window.__assyEffort', !!sandbox.window.__assyEffort);
@@ -425,7 +432,7 @@ console.log('\n=== 4h. the loaded/failed state is observable in a BUILT bundle (
      warns.some(w => /api\/effort\/config failed/.test(w) && /fail-closed/.test(w)), JSON.stringify(warns));
 }
 {
-  const { api, sandbox, warns } = load({ fetchImpl: okCfg({ context_preserving_transitions: [] }) });
+  const { api, sandbox, warns } = await load({ fetchImpl: okCfg({ context_preserving_transitions: [] }) });
   api.startSession();
   await tick(); await tick();
   eq('a config that ARRIVED and is empty reports loaded:true', sandbox.window.__assyEffort.getConfig().loaded, true);
@@ -436,7 +443,7 @@ console.log('\n=== 5. insecure context (production is plain HTTP) ===');
 {
   // crypto.randomUUID is secure-context gated and absent in production.
   const insecure = { getRandomValues: (b) => { for (let i = 0; i < b.length; i++) b[i] = (i * 37 + 11) & 0xff; return b; } };
-  const { api } = load({ cryptoImpl: insecure });
+  const { api } = await load({ cryptoImpl: insecure });
   const id = api.startSession();
   ok('getRandomValues fallback yields a valid v4 uuid', V4_RE.test(id), `(got ${id})`);
 }
@@ -446,26 +453,26 @@ console.log('\n=== 5. insecure context (production is plain HTTP) ===');
     randomUUID: () => { throw new Error('SecurityError'); },
     getRandomValues: (b) => { for (let i = 0; i < b.length; i++) b[i] = 0xab; return b; }
   };
-  const { api } = load({ cryptoImpl: throwing });
+  const { api } = await load({ cryptoImpl: throwing });
   ok('throwing randomUUID falls through', V4_RE.test(api.startSession()));
 }
 {
   // no crypto at all
-  const { api } = load({ cryptoImpl: null });
+  const { api } = await load({ cryptoImpl: null });
   const id = api.startSession();
   ok('no crypto => Math.random fallback still yields an id', UUID_RE.test(id), `(got ${id})`);
 }
 
 console.log('\n=== 6. instrumentation must never break the page ===');
 {
-  const { api } = load({ storage: makeStorage({ throwOnSet: true }) });
+  const { api } = await load({ storage: makeStorage({ throwOnSet: true }) });
   const id = api.startSession();
   ok('storage write blocked => still returns an id', !!id);
   api.countKey(2);
   eq('degrades to in-memory counting', api.snapshot().key, 2);
 }
 {
-  const { api } = load({ storage: makeStorage({ throwOnGet: true }) });
+  const { api } = await load({ storage: makeStorage({ throwOnGet: true }) });
   api.startSession();
   api.countMouse(1);
   eq('storage read blocked => still counts', api.snapshot().mouse, 1);
@@ -473,13 +480,13 @@ console.log('\n=== 6. instrumentation must never break the page ===');
 {
   const storage = makeStorage();
   storage._raw.set('assy.effort', '{not json');
-  const { api } = load({ storage });
+  const { api } = await load({ storage });
   ok('corrupt entry => fresh session, no throw', UUID_RE.test(api.startSession()));
 }
 {
   const storage = makeStorage();
   storage._raw.set('assy.effort', JSON.stringify({ session_id: 'abc', key: -5, mouse: 'x', nav: 2.7 }));
-  const { api } = load({ storage });
+  const { api } = await load({ storage });
   const s = api.snapshot();
   eq('negative count sanitised to 0', s.key, 0);
   eq('non-numeric count sanitised to 0', s.mouse, 0);
@@ -492,7 +499,7 @@ console.log('\n=== 6. instrumentation must never break the page ===');
 
 console.log('\n=== 7. global listeners ===');
 {
-  const { api, document } = load({});
+  const { api, document } = await load({});
   api.startSession();
   api.installGlobalListeners();
   api.installGlobalListeners(); // must be idempotent
@@ -518,7 +525,7 @@ console.log('\n=== 7. global listeners ===');
 
 console.log('\n=== 8. route resolution + nav link counting ===');
 {
-  const { api, document } = load({});
+  const { api, document } = await load({});
   api.startSession();
   eq('/ resolves to grid', api.routeFromHref('/'), 'grid');
   eq('/index.html resolves to grid', api.routeFromHref('/index.html'), 'grid');
@@ -635,32 +642,31 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 {
   // Re-run the two load-bearing invariants against deliberately broken sources.
   // If these "broken" builds still pass, the assertions above prove nothing.
-  function loadMutated(mutate, fetchImpl) {
-    const document = makeDocument();
-    const location = { origin: 'http://host', pathname: '/index.html', href: 'http://host/index.html', port: '', protocol: 'http:', host: 'host' };
-    const sandbox = {
-      console: makeConsole(), sessionStorage: makeStorage(), document, window: { location }, location,
-      crypto: globalThis.crypto, fetch: fetchImpl || (() => Promise.reject(new Error('offline'))),
-      URL, Set, Map, Array, Object, JSON, Number, Math, String, Uint8Array, Error, exports: {}
-    };
-    vm.createContext(sandbox);
-    let src = rawSrc
-      .replace(/^import\s+\{[^}]*\}\s+from\s+'\.\/config\.js';?$/m, "const API_BASE = 'http://host/api-base';")
-      .replace(/^export\s+/gm, '');
-    const mutated = mutate(src);
-    // A mutation whose target string has drifted becomes a silent no-op, and the "broken"
-    // build then passes for the wrong reason. Refuse to run unless the source really changed.
-    if (mutated === src) throw new Error('mutation did not apply — its target string is stale');
-    src = mutated;
-    src += `
-      exports.startSession = startSession; exports.countKey = countKey;
-      exports.countMouse = countMouse;
-      exports.countNav = countNav; exports.snapshot = snapshot; exports.commit = commit;
-      exports.commitIfRecorded = commitIfRecorded; exports.getConfig = getConfig;
-    `;
-    vm.runInContext(src, sandbox);
-    sandbox.exports.__sandboxWindow = sandbox.window;
-    return sandbox.exports;
+  // The mutants are WHOLE MODULES now. One that fails to parse fails loudly instead of
+  // counting as caught -- the failure mode that made the rewritten-source version measure
+  // letter shapes. The "did it actually apply" guard is kept: a mutation whose target string
+  // has drifted becomes a silent no-op, and the "broken" build then passes for the wrong
+  // reason. (The probe refuses an unchanged source too; this keeps the local message.)
+  async function loadMutated(mutate, fetchImpl) {
+    const { api, sandbox } = await load({ fetchImpl }, (src) => {
+      // Normalised to LF first, for the reason `rawSrc` is: the targets below are
+      // multi-line strings, and the file's line endings are not stable across editors on
+      // Windows. The probe hands over the bytes as they are ON DISK -- that is the whole
+      // point of it -- so the normalisation that used to happen at read time happens here.
+      const flat = src.replace(/\r\n/g, '\n');
+      const mutated = mutate(flat);
+      // A mutation whose target string has drifted becomes a silent no-op, and the
+      // "broken" build then passes for the wrong reason. (The probe refuses an unchanged
+      // source too; this keeps the local message.)
+      if (mutated === flat) {
+        throw new Error('mutation did not apply -- its target string is stale');
+      }
+      return mutated;
+    });
+    // Mutant H is detected by the ABSENCE of the published diagnostics object, so the window
+    // the module published onto has to travel with the api. A module namespace is sealed, so
+    // this is a plain copy of it rather than a property bolted onto the namespace.
+    return Object.assign({}, api, { __sandboxWindow: sandbox.window });
   }
 
   // snapshot() is now absent-when-empty, so a defect can legitimately make it undefined.
@@ -669,7 +675,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
   const snap = (m) => m.snapshot() || {};
 
   // Mutation A: make snapshot() reset (the classic mistake).
-  const mA = loadMutated(s => s.replace(
+  const mA = await loadMutated(s => s.replace(
     '    nav_preserved: s.nav_preserved\n  };',
     '    nav_preserved: (s.key = 0, s.nav_preserved)\n  };'
   ));
@@ -677,7 +683,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
   ok('mutation A (snapshot resets) IS detected', snap(mA).key !== 3);
 
   // Mutation B: fail OPEN on config error (treat everything as context-preserving).
-  const mB = loadMutated(s => s.replace(
+  const mB = await loadMutated(s => s.replace(
     'if (preservingSet.has(key)) s.nav_preserved += 1;',
     'if (!configLoaded || preservingSet.has(key)) s.nav_preserved += 1;'
   ));
@@ -689,7 +695,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
   // Mutation C: discard the exempted transition instead of bucketing it (the pre-addendum
   // behaviour). This is the one that could never be repaired later — the metric is not
   // retroactively computable, so a discarded transition is gone for good.
-  const mC = loadMutated(
+  const mC = await loadMutated(
     s => s.replace(
       'if (preservingSet.has(key)) s.nav_preserved += 1;\n  else s.nav += 1;',
       'if (preservingSet.has(key)) return;\n  s.nav += 1;'
@@ -703,7 +709,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 
   // Mutation D: report the all-zero blob instead of omitting it (the F2 defect). The server
   // files that as a genuine, measured score-0 correction.
-  const mD = loadMutated(s => s.replace(
+  const mD = await loadMutated(s => s.replace(
     '  if (!s.key && !s.mouse && !s.nav && !s.nav_preserved) return undefined;\n',
     ''
   ));
@@ -712,7 +718,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 
   // Mutation E: commit regardless of the server's flag (the F1 defect) — a no-op save
   // erases the effort it cost.
-  const mE = loadMutated(s => s.replace(
+  const mE = await loadMutated(s => s.replace(
     '    if (recorded) commit();\n    return recorded;',
     '    commit();\n    return recorded;'
   ));
@@ -722,7 +728,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 
   // Mutation F: accept unknown route ids (the F3 defect). The entry is inert either way —
   // what the fix buys is that it stops being SILENT, so that is what must break.
-  const mF = loadMutated(
+  const mF = await loadMutated(
     s => s.replace('if (unknown.length) { reject(', 'if (false) { reject('),
     okCfg({ context_preserving_transitions: [{ from: 'doe', to: 'dt_map' }] })
   );
@@ -733,7 +739,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 
   // Mutation G: tolerate the string shorthand again (the B-F5 defect) — the client would
   // honour an entry the server drops.
-  const mG = loadMutated(
+  const mG = await loadMutated(
     s => s.replace(
       "      reject(entry, 'string form is not accepted",
       "      { const _p = String(entry).split('>'); preserving.add(normRoute(_p[0]) + '>' + normRoute(_p[1])); continue; }\n"
@@ -748,7 +754,7 @@ console.log('\n=== 9. mutation check (does this harness actually detect a regres
 
   // Mutation H: drop the window publication (the B-F3 defect) — getConfig becomes
   // unreferenced and the bundler shakes it out of the built chunk.
-  const mH = loadMutated(s => s.replace('  publishDiagnostics();\n', ''));
+  const mH = await loadMutated(s => s.replace('  publishDiagnostics();\n', ''));
   mH.startSession();
   ok('mutation H (diagnostics not published) IS detected', mH.__sandboxWindow.__assyEffort === undefined);
 }
