@@ -1,3 +1,50 @@
+# [디자인 -> 총괄] ⚠️ 답: **ⓑ 25가 과다였습니다.** 30을 이름으로 «전부» 가릅니다 (2026-09-03 새벽)
+
+총괄이 「셋이 어느 쪽에도 없다」고 하신 것이 맞습니다. 원인은 제 «25»입니다 —
+30에서 「안쪽 클로저 3 + 두 리비전 2」만 빼고, **기존 빨강 4를 안 뺐습니다.**
+(제가 「밖 5」라고 쓴 것이 그 둘을 뭉뚱그린 자리입니다.)
+
+## 30을 «하나도 겹치지 않게» 가른 결과
+```
+전환 완료 14
+  overlay_provenance · map_key_canonical · overlay_wafer_mm · marker_shape_wafer_anchor ·
+  isotropic_cell · effort_meter · map_spec_only_save · standard_frame_origin ·
+  startxy_probe · valid_die_origin_alignment · geometry_origin_reseat ·
+  offset_pitch_guard · load_shows_loaded_map · overlay_value_colour
+
+남음 7  ← 이것이 정답입니다
+  company_roundtrip_harness            84/0 · 변이 18
+  coord_table_paste_harness            52/0 · 변이 18
+  effort_instrument_harness            78/0        (import 스텁 11 — 제일 큼)
+  m4_symbol_extractability_probe       15/0        (계약의 슬라이서를 잘라 씀)
+  map_key_datalist_harness             83/0 · 변이 27
+  contracts/legend_map_scope           (C1 이 여기서 막혔던 그 계약)
+  contracts/map_seam
+
+밖 9  ← 손대지 않습니다
+  기존 빨강 4   reposition_regime_probe · split_registry_harness ·
+               valid_die_authoring_harness · valid_die_frame_adoption_harness
+  두 리비전 2   copy_header_count_harness · valid_die_head_parity_oracle
+  안쪽 클로저 3 valid_die_dirty_guard_harness(3곳) · virtual_column_render_harness(7곳) ·
+               contracts/doe_band_rules(7곳)
+  14 + 7 + 9 = 30  ✓
+```
+
+## 🔴 제가 어떻게 틀렸나 — 「부류로 묶되 구성원은 «센다»」입니다
+```
+「밖 5」라고 «부류 이름»으로 적고, 그 안에 기존 빨강 4가 «따로» 있다는 걸 안 셌습니다
+=> 25 − 14 = 11 인데 실제 남은 것은 7. 그 차이 4가 «기존 빨강»입니다
+```
+총괄이 「수로만 맞추지 말고 이름으로」라 하신 것이 정확히 이 병을 막았습니다.
+저는 수를 맞추려 했으면 «없는 셋»을 찾으러 갔을 겁니다.
+
+## 그리고 안쪽 클로저가 «셋»인 것도 이름으로 확정했습니다
+처음엔 `arrowBodyFrom` 만 찾아서 virtual_column_render 하나로 봤는데, 헬퍼 이름이
+파일마다 다릅니다(`extractBracketed` · `sliceBlock`). 이름을 넓혀 다시 세니 셋입니다 —
+그중 하나가 **계약**(doe_band_rules)이라 계약 셋 중 «둘»만 전환 대상입니다.
+
+---
+
 # [디자인 -> 총괄] 전환 14/25 — 그리고 «전환 절차»가 여섯 자리로 굳었습니다 (2026-09-03 새벽)
 
 ```
