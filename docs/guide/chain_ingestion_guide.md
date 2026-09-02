@@ -118,6 +118,79 @@ Return `{"updates": []}` for an intentional no-op. Chain-created events reach
 a downstream mapper only when that downstream rule explicitly sets
 `allow_chain_trigger: true`.
 
+### Reading with the session, and returning a DataFrame's worth of rows (2026-09-02)
+
+The `db` a mapper receives is a live session, so a mapper may run its own SQL and
+work in pandas. Three things are measured and none of them are obvious.
+
+**Read through the session's own connection.** Bind every value; never build SQL by
+concatenation.
+
+```python
+import pandas as pd
+from sqlalchemy import text
+
+df = pd.read_sql(
+    text("SELECT lot, slot_numbers, wafer_ids FROM lot_event WHERE event_type = :et"),
+    db.connection(),                      # the worker's transaction, not a new one
+    params={"et": "split"},
+)
+```
+
+⚠️ `db.connection()` reads **inside the worker's open transaction**, so rows this
+chain has already written in the same group are visible. That is usually what a
+mapper wants, but it means the read is not "what is committed". Reading committed
+state only would need a session outside the worker's transaction, which is a
+separate decision — raise it rather than opening one.
+
+Two limits carry over unchanged: the mapper must not `commit()` (§"Mapper call
+contract"), and a column name still comes from the declaration, never from a
+literal (§"Column names: read them, never spell them"). A query that spells its
+own column names is the same defect as a mapper that does.
+
+**A DataFrame is not a return value.** The worker's test is
+`if target_payload and isinstance(target_payload, dict) and target_payload.get("updates")`
+(`chain_ingestion_worker.py`, the `execute_custom_mapper` call sites). Returning a
+frame raises `ValueError: The truth value of a DataFrame is ambiguous` on the first
+clause — loudly, which is the good case. Convert instead:
+
+```python
+def df_to_updates(df, *, source_name, updated_by):
+    clean = df.astype(object).where(pd.notna(df), None)          # NaN/NaT -> None
+    return {"updates": [
+        {"updates": {k: (v.item() if hasattr(v, "item") else v)  # numpy scalar -> python
+                     for k, v in rec.items()},
+         "source_name": source_name, "updated_by": updated_by}
+        for rec in clean.to_dict("records")]}
+```
+
+🔴 **The `where(pd.notna(...))` line is the one that matters.** `pd.read_sql` turns
+SQL `NULL` into `NaN`, whose type is `float` — so a plain `to_dict("records")` carries
+`nan` where the source had no value, and "there is no value" becomes "the value is
+nan". Measured 2026-09-02 on `lot_event.parent_lot`.
+
+**Let the declaration assemble the key.** For a target that declares
+`composite_key_source`, emit its source columns and do **not** set
+`business_key_val`: `crud.assemble_composite_business_key` builds it — separator
+included — and also fills the physical `business_key` column.
+
+```
+emit the source columns only    -> business_key_val 'J1|3|7', updates gains dt_cell_key
+set business_key_val yourself   -> assembly is SKIPPED; your string becomes the key
+omit one source column          -> nothing is assembled; the key stays None
+target declares no composite    -> the mapper must supply business_key_val itself
+```
+
+🔴 **The second line is silent.** `assemble_composite_business_key` returns at its
+first statement when the item already carries `row_id` or `business_key_val`, so a
+mapper that spells the key on a composite table writes rows successfully and stops
+tracking the declaration — the day its separator or column list changes, only that
+mapper's keys drift, and nothing errors. The canonical return example above shows
+`business_key_val` because it was written for a target of the fourth kind; on a
+composite target, leave that field out. Which kind a target is:
+`crud.TABLE_CONFIG[target]["composite_key_source"]` — `None` means the fourth.
+Measured 2026-09-02: of 44 declared tables, 29 declare a composite source.
+
 This opt-in is keyed on ONE thing: the outbox payload's `source_name` being
 `chain_ingestion` (`_rule_accepts_event`). Any automated pass that writes rows
 without going through the chain worker must therefore label its writes, or its
