@@ -239,6 +239,54 @@ export async function loadSchema(tableName) {
   }
 }
 
+// 늦게 오는 개수의 «세대». 표를 바꾸거나 필터를 고치면 앞선 요청의 답은 «다른 질문»의
+// 답이 됩니다 -- 그게 도착해서 화면을 덮으면 화면과 바닥글이 서로 다른 것을 말합니다.
+let countGeneration = 0;
+
+/** 「몇 건인가」를 «바꾸는» 인자만. `skip`·`limit`·`order_by` 는 어느 행을 보여줄지를 정할 뿐
+ *  개수를 바꾸지 않으므로 여기 없습니다 (서버의 `/data/count` 도 같은 이유로 안 받습니다).
+ *
+ * 🔴 이 한 곳에서 만들어 data 와 count 가 «같은 것»을 싣습니다. 두 벌로 조립하면 두 수가
+ *    갈리고, 그건 오류를 내지 않습니다 -- 화면은 없는 행을 그리고 바닥글은 없다고 말합니다.
+ */
+function narrowingParams() {
+  const params = new URLSearchParams();
+  const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
+  const cols = elements.searchCols ? elements.searchCols.value : '';
+  const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
+  if (state.currentTransactionId) params.set('transaction_id', state.currentTransactionId);
+  if (q) {
+    params.set('q', q);
+    if (cols) params.set('cols', cols);
+  }
+  if (Object.keys(filterModel).length > 0) params.set('filters', JSON.stringify(filterModel));
+  return params;
+}
+
+/** 미룬 개수를 가져와 채웁니다. 행은 «이미» 그려져 있습니다.
+ *
+ * 🔴 못 가져오면 «세는 중»인 채로 둡니다. 0 으로 떨어뜨리면 「일치 없음」이라는 거짓이고,
+ *    「모른다」는 못 세었을 때도 참입니다.
+ */
+async function fillMatchCount(params, table) {
+  const mine = ++countGeneration;
+  const tail = params.toString();
+  try {
+    const res = await fetch(`${API_BASE}/tables/${table}/data/count${tail ? `?${tail}` : ''}`);
+    const body = await res.json();
+    // 늦게 온 답은 버립니다 -- 그 사이에 표나 필터가 바뀌었으면 이건 «다른 질문»의 답입니다.
+    if (mine !== countGeneration || table !== state.currentTable) return;
+    if (!res.ok || !Number.isFinite(body.total)) return;
+    setMatchCount(elements.totalRowsCount, body.total);
+    updatePaginationUI(body.total);
+    // 캐시된 쪽들은 «같은 좁힘»의 것들입니다 (필터가 바뀌면 캐시가 비워집니다).
+    // 안 채우면 캐시 적중이 「세는 중」으로 되돌아갑니다.
+    state.pageCache.forEach((entry) => { entry.total = body.total; });
+  } catch (e) {
+    console.error('Failed to fetch match count', e);
+  }
+}
+
 // Fetch row data and render inside AG-Grid (Handles Pagination)
 export async function fetchData(resetSkip = true) {
   if (!state.currentTable || state.isLoadingMore) return;
@@ -257,6 +305,8 @@ export async function fetchData(resetSkip = true) {
       updateLoadedCount(cached.data.length);
       setMatchCount(elements.totalRowsCount, cached.total);
       updatePaginationUI(cached.total);
+      // 아직 안 센 쪽이 캐시에 있으면 «다시 묻습니다». 안 그러면 「세는 중」이 영영 남습니다.
+      if (!Number.isFinite(cached.total)) fillMatchCount(narrowingParams(), state.currentTable);
       elements.performanceLog.textContent = `Loaded ${cached.data.length} rows from client cache`;
       return;
     }
@@ -267,26 +317,17 @@ export async function fetchData(resetSkip = true) {
 
   const startTime = performance.now();
 
-  const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
-  const cols = elements.searchCols ? elements.searchCols.value : '';
   const sortLatest = elements.sortLatestToggle.checked;
-  const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
-  const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+  const narrowing = narrowingParams();
+  const table = state.currentTable;
 
-  let url = `${API_BASE}/tables/${state.currentTable}/data?skip=${state.currentSkip}&limit=${pageLimit}`;
+  // 🔴 `defer_total=true` -> 응답의 `total` 이 «null» 입니다. 행이 먼저 나오고 개수는
+  //    두 번째 요청이 채웁니다. 세는 데 걸리는 시간이 첫 화면에서 빠집니다.
+  let url = `${API_BASE}/tables/${table}/data?skip=${state.currentSkip}&limit=${pageLimit}`;
   url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
-  if (state.currentTransactionId) {
-    url += `&transaction_id=${state.currentTransactionId}`;
-  }
-  if (q) {
-    url += `&q=${encodeURIComponent(q)}`;
-    if (cols) {
-      url += `&cols=${encodeURIComponent(cols)}`;
-    }
-  }
-  if (filterStr) {
-    url += `&filters=${encodeURIComponent(filterStr)}`;
-  }
+  url += '&defer_total=true';
+  const tail = narrowing.toString();
+  if (tail) url += `&${tail}`;
 
   try {
     const res = await fetch(url);
@@ -318,6 +359,9 @@ export async function fetchData(resetSkip = true) {
     updatePaginationUI(result.total);
 
     elements.performanceLog.textContent = `Loaded ${result.data.length} rows in ${fetchTime}ms`;
+
+    // 행은 그려졌습니다. 이제 개수를 가지러 갑니다 -- «기다리지 않고» 돌려줍니다.
+    if (!Number.isFinite(result.total)) fillMatchCount(narrowing, table);
 
     // Save to Cache
     if (state.viewMode !== 'infinite') {

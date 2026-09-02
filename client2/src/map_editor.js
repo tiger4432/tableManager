@@ -4197,6 +4197,8 @@ async function fetchRegistryRows(scope, refTable, mapKey) {
   if (scope === 'map' && !mapKey) throw new Error('registry scope "map" requires a map key');
   const filters = { ref_table: { filterType: 'text', type: 'equals', filter: refTable } };
   if (scope === 'map') filters.map_key = { filterType: 'text', type: 'equals', filter: mapKey };
+  // 🔴 `defer_total` 을 «안 붙입니다». 아래에서 `result.total` 로 절단을 판정하고 «던집니다»
+  //    -- null 이 오면 `typeof null === 'number'` 가 거짓이라 그 가드가 조용히 눈이 멉니다.
   const url = `${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=500&filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`split registry fetch failed (HTTP ${res.status})`);
@@ -4469,7 +4471,9 @@ const ZONE_COLUMNS = ['stack', 'mat_1h', 'mat_mid', 'mat_top'];
 async function probeZoneColumns() {
   if (zoneColumnsPresent !== null) return zoneColumnsPresent;
   try {
-    const res = await fetch(`${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=1`);
+    // 이 호출은 응답의 `total` 을 «안 씁니다» -- 표가 있는지만 봅니다. 그래서 세지 않게 합니다.
+    const res = await fetch(
+      `${API_BASE}/tables/${SPLIT_REGISTRY_TABLE}/data?limit=1&defer_total=true`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const result = await res.json();
     const first = (result && Array.isArray(result.data) && result.data[0]) ? (result.data[0].data || {}) : null;
@@ -4953,7 +4957,9 @@ async function probeMapExists(table, metaValues) {
       filters[col] = { filterType: 'text', type: 'equals', filter: String(val) };
     });
     if (Object.keys(filters).length === 0) return null;
-    const res = await fetch(`${API_BASE}/tables/${table}/data?limit=1&filters=${encodeURIComponent(JSON.stringify(filters))}`);
+    // `total` 을 안 씁니다 -- 첫 행 하나만 봅니다.
+    const res = await fetch(`${API_BASE}/tables/${table}/data?limit=1&defer_total=true`
+      + `&filters=${encodeURIComponent(JSON.stringify(filters))}`);
     if (!res.ok) return null;
     const result = await res.json();
     return !!(result && Array.isArray(result.data) && result.data.length > 0);
@@ -4990,7 +4996,9 @@ async function fetchGridMetaFor(table, mapId) {
     target_table: { filterType: 'text', type: 'equals', filter: String(table) },
     map_id: { filterType: 'text', type: 'equals', filter: String(mapId) },
   };
-  const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=2&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
+  // `total` 을 안 씁니다 -- 두 행을 보고 «둘 이상인가»를 행 수로 판정합니다.
+  const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data?limit=2&defer_total=true`
+    + `&filters=${encodeURIComponent(JSON.stringify(metaFilter))}`);
   // 🔴 [M2 fix] Same discipline as fetchPaintRules — distinguish "there is no declaration"
   //    from "we could not confirm". This used to return null on every failure, and the overlay
   //    path read that null as "spec not registered" and silently fell back to the on-screen
@@ -5110,6 +5118,7 @@ async function loadExistingMap(opts = {}) {
   el.btnLoadMap.textContent = '📂 Loading...';
   el.btnLoadMap.disabled = true;
 
+  // 🔴 `defer_total` 을 «안 붙입니다». 이 응답의 `total` 로 셀 절단을 경고합니다 (아래).
   const url = `${API_BASE}/tables/${selectedTable}/data?limit=2000&filters=${encodeURIComponent(JSON.stringify(filterModel))}`;
 
   try {
@@ -9112,8 +9121,10 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     if (chain) return refuse(ref, chain);
 
     const filters = buildKeyFilters(binding.keyColumns, ref.mapKey, spec.columnTypes);
+    // 🔴 절단은 «행 수»로 봅니다 (`rows.length > OVERLAY_CELL_LIMIT`, 아래). `total` 을 안 쓰므로
+    //    세지 않게 합니다 -- 그래서 이 호출은 total 이 null 이어도 판정이 그대로입니다.
     const url = `${API_BASE}/tables/${ref.table}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
-      + `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+      + `&defer_total=true&filters=${encodeURIComponent(JSON.stringify(filters))}`;
     const res = await fetch(url);
     if (!res.ok) return refuse(ref, `${ref.table}: 참조 맵 셀 조회 실패 (HTTP ${res.status}).`);
     const result = await res.json();
@@ -10037,6 +10048,8 @@ async function populateMapKeyDatalist(table, listEl, input) {
   let items, total, rowCount;
   try {
     const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
+    // 🔴 `defer_total` 을 «안 붙입니다». 아래에서 `total > rowCount` 로 「등록된 맵 N개 중
+    //    M개만」을 말합니다 -- null 이면 `Number(null)` 이 0 이라 그 안내가 «영영 안 뜹니다».
     const res = await fetch(`${API_BASE}/tables/wafer_map_metadata/data`
       + `?limit=${VALID_DIE_LIST_LIMIT}&filters=${encodeURIComponent(JSON.stringify(filters))}`);
     if (!res.ok) {
@@ -10399,8 +10412,9 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    with allSettled. Requests still go out in parallel — no extra round trip.
   let rows, sourceMeta, targetMeta;
   const filters = buildKeyFilters(binding.keyColumns, sourceKey, srcSpec.columnTypes);
+  // `total` 을 안 씁니다 -- `result.data` 만 읽습니다.
   const cellUrl = `${API_BASE}/tables/${sourceTable}/data?limit=${OVERLAY_CELL_LIMIT + 1}`
-    + `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    + `&defer_total=true&filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const [cellR, sMetaR, tMetaR] = await Promise.allSettled([
     fetch(cellUrl),
     fetchGridMetaFor(sourceTable, sourceKey),
