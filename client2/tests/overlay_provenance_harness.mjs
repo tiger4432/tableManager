@@ -47,7 +47,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const JS_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -63,6 +63,12 @@ function die(msg) {
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────────
+// 🔴 THE JS IS NO LONGER EXTRACTED. `renderOverlayList` used to be regex-sliced out of
+// map_editor.js and evaluated in `vm`, which measures the SHAPE OF THE LETTERS: add one
+// import to that function's file and the fragment throws on correct code. The module is now
+// imported WHOLE (`lib/probe.mjs`), and the chips it calls are the REAL chips.
+// The CSS below is still read as text, and that is not the same thing -- a stylesheet is not
+// a module, there is nothing to import, and the declarations ARE the subject.
 function sliceBalanced(src, startIdx, open, close) {
   const i = src.indexOf(open, startIdx);
   if (i < 0) return null;
@@ -74,16 +80,6 @@ function sliceBalanced(src, startIdx, open, close) {
   }
   return null;
 }
-function fn(src, name) {
-  // Anchored at a real declaration, never at a bare name: `projectCellsToPhys` was matched
-  // inside a comment once and a whole harness scored the wrong function for a week.
-  const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in ${JS_PATH} — renamed or reshaped.`);
-  const out = sliceBalanced(src, m.index, '{', '}');
-  if (!out) die(`unbalanced braces for ${name}`);
-  return out;
-}
-
 // A CSS rule body, by selector. Returned WITHOUT comments so a mutation that only edits a
 // comment cannot move any of the structural answers (that is control C2's job).
 function cssRule(css, selector) {
@@ -130,47 +126,50 @@ const LAYERS = [
     visible: true, failed: false, count: 4, fanout: 1, cellCount: 4 },
 ];
 
-// Realistic chip markup. The chips have their own owner (`overlay_value_colour_harness.mjs`
-// A9/A10) and are STUBS here on purpose — two harnesses on one axis is how a contract ends up
-// with two sources of truth. What they must do here is be present and non-trivial, so the
-// row this harness reads is the crowded row the defect actually lived in.
-const CHIP_STUBS = `
-function overlayAlignChip(o) {
-  return o.failed
-    ? '<span class="ov-chip bad">' + o.status + '</span>'
-    : '<span class="ov-chip ok">정렬됨</span><span class="ov-chip dim">화면기준</span>';
-}
-function overlayFanChip(o) { return (!o.failed && o.fanout > 1) ? '<span class="ov-chip warn">최대 2:1</span>' : ''; }
-function overlayLegendChip(o) { return (!o.failed && o.id === 1) ? '<span class="ov-chip warn">범례 밖 3종</span>' : ''; }
-`;
+// 🔴 THE CHIP STUBS ARE GONE, AND THAT IS THE POINT OF THE CONVERSION. They existed because
+// a sliced `renderOverlayList` could not see the chip functions that live beside it, so this
+// file had to re-type them -- and a re-typed copy is free to drift from the real ones while
+// this harness stays green. The imported module calls the REAL `overlayAlignChip`,
+// `overlayFanChip` and `overlayLegendChip`. The chips still have their own owner
+// (`overlay_value_colour_harness.mjs` A9/A10); this file just no longer keeps a second copy.
 
-function buildRows(jsSrc, layers) {
+// The page objects the renderer writes into. `document` has to be a GLOBAL now rather than a
+// vm sandbox property, because the imported module resolves `document` the way the browser
+// does. `addEventListener` is present because map_editor.js wires the page at module scope.
+function installPage() {
   const nodes = {};
   const mk = id => (nodes[id] = {
     id, textContent: '', innerHTML: '', style: {},
     querySelectorAll: () => [],   // the click wiring is not this harness's axis
   });
   mk('overlay-count'); mk('btn-clear-overlays'); mk('overlay-list');
-
-  const pieces = [
-    `var overlayLayers = [];`,
-    fn(jsSrc, 'escapeHtmlAttr'),
-    CHIP_STUBS,
-    fn(jsSrc, 'renderOverlayList'),
-  ];
-  const sandbox = {
-    document: { getElementById: id => nodes[id] || null },
-    console: { debug() {}, warn() {}, error() {}, log() {} },
-    Number, String, Array, Object, JSON,
+  globalThis.document = {
+    getElementById: id => nodes[id] || null,
+    addEventListener() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
   };
-  vm.createContext(sandbox);
-  try {
-    vm.runInContext(pieces.join('\n\n'), sandbox);
-  } catch (e) {
-    die(`the sliced code does not evaluate: ${e && e.message}`);
-  }
-  sandbox.overlayLayers = layers;
-  sandbox.renderOverlayList();
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+  return nodes;
+}
+
+// `jsMutate` is a function now, not mutated source text: the probe hands it the subject and
+// imports whatever comes back, so a mutant is a WHOLE MODULE. A mutant that fails to parse
+// therefore fails loudly instead of scoring as "caught", which is the failure mode that made
+// the sliced version measure letter shapes.
+async function buildRows(jsMutate, layers) {
+  const nodes = installPage();
+  const { probe } = await loadWithProbe(JS_PATH, {
+    expose: ['renderOverlayList'],
+    state: ['overlayLayers'],
+    mutate: jsMutate || undefined,
+    tag: 'ovprov',
+  });
+  probe.overlayLayers = layers;
+  probe.renderOverlayList();
   return { html: nodes['overlay-list'].innerHTML, count: nodes['overlay-count'].textContent };
 }
 
@@ -207,12 +206,12 @@ function countOf(s, needle) {
 }
 
 // ── The checks ──────────────────────────────────────────────────────────────────
-function runChecks(jsSrc, cssSrc, { strict = true } = {}) {
+async function runChecks(jsMutate, cssSrc, { strict = true } = {}) {
   const r = {};
 
   // ── A. THE ROW SAYS WHICH TABLE AND WHICH KEY, IN READABLE TEXT ──────────────
   {
-    const out = buildRows(jsSrc, LAYERS);
+    const out = await buildRows(jsMutate, LAYERS);
     const rows = splitRows(out.html);
     r.rowCount = rows.length;
     r.names = rows.map(nameText);
@@ -257,7 +256,7 @@ function runChecks(jsSrc, cssSrc, { strict = true } = {}) {
   //   SOURCE. This reads what the renderer PRODUCED, which is the half that catches a control
   //   added through a helper rather than through a literal in the function body.
   {
-    const out = buildRows(jsSrc, LAYERS);
+    const out = await buildRows(jsMutate, LAYERS);
     const rows = splitRows(out.html);
     r.buttonsOk = countOf(rows[0], '<button');
     r.buttonsFailed = countOf(rows[3], '<button');
@@ -345,7 +344,7 @@ function runChecks(jsSrc, cssSrc, { strict = true } = {}) {
 
 // ── Baseline ────────────────────────────────────────────────────────────────────
 console.log('=== BASELINE ===');
-runChecks(JS0, CSS0, { strict: true });
+await runChecks(null, CSS0, { strict: true });
 console.log(`  ${pass} passed, ${fail} failed`);
 if (fail > 0) {
   console.error(`BASELINE RED — ${fail} failed: ${failures.join(' | ')}`);
@@ -482,7 +481,7 @@ function applyOnce(src, find, repl, label) {
   return { ok: true, src: out };
 }
 
-function sweep(list, expectCaught, heading) {
+async function sweep(list, expectCaught, heading) {
   console.log(`\n=== ${heading} ===`);
   let applied = 0, caught = 0;
   const notApplied = [], wrong = [];
@@ -514,7 +513,11 @@ function sweep(list, expectCaught, heading) {
     const before = { pass, fail, n: failures.length };
     quiet = true;
     try {
-      runChecks(m.file === 'css' ? JS0 : a.src, m.file === 'css' ? a.src : CSS0, { strict: true });
+      // A js mutant is applied to JS0 above -- for its uniqueness and no-op checks -- and then
+      // handed to the probe as a function returning that same whole-file text. The CSS half is
+      // unchanged: it is read, not run.
+      await runChecks(m.file === 'css' ? null : () => a.src,
+        m.file === 'css' ? a.src : CSS0, { strict: true });
     } catch (e) {
       // A mutant that makes the renderer throw is still detected — but say so, because a
       // crash and a wrong answer are different evidence.
@@ -540,8 +543,8 @@ function sweep(list, expectCaught, heading) {
   return { applied, caught, notApplied, wrong };
 }
 
-const mut = sweep(MUTATIONS, true, 'MUTATION SWEEP (these must be CAUGHT)');
-const ctl = sweep(CONTROLS, false, 'CONTROL SWEEP (these must ESCAPE)');
+const mut = await sweep(MUTATIONS, true, 'MUTATION SWEEP (these must be CAUGHT)');
+const ctl = await sweep(CONTROLS, false, 'CONTROL SWEEP (these must ESCAPE)');
 
 console.log(`\n=== SUMMARY ===`);
 console.log(`  baseline assertions : ${pass} passed, ${fail} failed`);
