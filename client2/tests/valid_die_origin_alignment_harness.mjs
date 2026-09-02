@@ -35,6 +35,7 @@
  * Read-only against client2/. Not gated by `npm run build`; run by hand, per round.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -135,34 +136,28 @@ function makeInput(v) {
            addEventListener() {}, removeEventListener() {} };
 }
 
-function buildEnv(src, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    // Compiled one at a time so a slice that goes wrong NAMES ITSELF.
-    try { new vm.Script(code); }
-    catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
-    pieces.push(code);
-  }
-  // `parseValidDieRef` pins its lookup table to this module const, so the slice above is not
-  // self-contained without it. Taken from the source rather than retyped: a harness that
-  // hardcoded 'valid_die_ref' would keep passing after the product changed the name.
-  const vdTable = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
-  if (!vdTable) die('const VALID_DIE_TABLE is gone from map_editor.js');
-  pieces.unshift(vdTable[0]);
-
-  const log = { toasts: [], alerts: [], warns: [], resolveCalls: [] };
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+// harness reddens on correct code and names the missing symbol rather than the change.
+//
+// `src` is a MUTATE FUNCTION now (or null), not source text. A mutant is a whole module, so
+// one that fails to parse fails loudly instead of counting as caught.
+//
+// Two staged names removed: `paintLockValues` (THE PRODUCT HAS NO SUCH NAME -- four harnesses
+// staged it) and `LEGEND_PALETTE` (retyped sentinels, read by nothing here).
+// `UNLISTED_VALUE_FILL` was retyped as the SAME value the product uses, so it simply goes.
+// `activeOverlayLayers` was staged here as an array, which is what the product declares --
+// this file had it right where two siblings had it as `() => []`.
+async function buildEnv(src, opts = {}) {
+  const log = { toasts: [], alerts: [], warns: [], requests: [], resolveCalls: [] };
   const panel = opts.panel || {};
-  const choice = opts.choice || 'meta';
-
+  const choice = opts.choice || 'standard';
   const choiceBtn = (which) => {
     const b = makeInput('');
     b.addEventListener = (type, fn) => { if (type === 'click' && which === choice) setTimeout(fn, 0); };
     b.removeEventListener = () => {};
     return b;
   };
-
   const el = {
     gridCols: makeInput(panel.cols === undefined ? COLS : panel.cols),
     gridRows: makeInput(panel.rows === undefined ? ROWS : panel.rows),
@@ -190,88 +185,135 @@ function buildEnv(src, opts = {}) {
     sideIndicator: null, mapWorkspace: null, gridWrapper: null,
   };
 
-  const sandbox = {
-    console: { warn: (m) => log.warns.push(String(m)), info() {}, error() {}, log() {}, debug() {} },
-    el,
-    document: {
-      querySelectorAll: (sel) => (sel === '[id^="meta-input-"]'
-        ? [{ id: 'meta-input-map_id', value: 'M1' }] : []),
-      getElementById: () => null,
-      addEventListener() {}, removeEventListener() {},
-    },
-    setTimeout,
-    alert: (m) => log.alerts.push(String(m)),
-    boundingBoxCache: {},
-    // Where the cells on screen are currently seated. Module-level in the source; declared
-    // here so a read of it is a value, not a ReferenceError.
-    cellsSeatedUnder: null,
-    currentRotation: 0, currentSide: 'front',
-    gridData: {}, gridCells2D: {},
-    legend: [], activeBrush: '', legendDirty: false,
-    legendReplaceScope: null, legendConflict: null,
-    legendSaveState: { status: 'idle', at: '', error: '' }, draftBase: null,
-    validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    validDieResolveSeq: 0,
-    loadedFCells: new Set(), serverCellKeys: null, overlayLayers: [], activeOverlayLayers: [],
-    loadedIdentity: null, selectedTable: 'dt_map',
-    tableSchema: { column_types: { x: 'number', y: 'number', val: 'string' } },
-    API_BASE: '', OVERLAY_CELL_LIMIT: 2000,
-    LEGEND_PALETTE: ['#e11', '#1a1', '#11e', '#ee1', '#1ee', '#e1e'],
-    UNLISTED_VALUE_FILL: '#10b981',
-    paintLockValues: null, paintLockConfig: { enabled: false }, currentHoverCell: null,
-    lastSelectionBox: null, isBoxDragging: false, dragType: null, isOriginMode: false,
-    performance: { now: () => 0 }, window: { devicePixelRatio: 1 },
-    requestAnimationFrame(fn) { fn(); },
-    getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
-    getThemeColors: () => ({ outBg: '#eee', line: '#ccc', lineStrong: '#bbb', text: '#000',
-      inBg: '#fff', insideEmpty: '#eef', textEmpty: '#345', textOut: '#567', origin: '#f00',
-      notch: '#00f', gridText: '#333', dim: '#999', waferEdge: '#111', wmFront: '#eef',
-      wmBack: '#fed', accent: '#06c', danger: '#c00', dangerWeak: '#fdd', rangeFill: '#e3e',
-      surface: '#fff', success: '#171', warning: '#850' }),
-    showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
-    updateOrientationUI() {}, updateSideIndicator() {}, updateLegendCounts() {},
-    scheduleRenderGridCanvas() {}, renderLegendTable() {}, renderValidDieChip() {},
-    syncValidDieRefControls() {}, syncOverlayGeometry() {}, drawOverlayMarkers() {},
-    updateNotchPosition() {}, clearOverlayLayers() {}, seedEmptyDoe() {},
-    applyRegistryRowsToLegend() {}, saveLegendToStorage() {}, notifyMapContext() {},
-    recordLastOpenMap() {}, setLoadedIdentity() {}, applyDoeDraftRecord: () => false,
-    applyDraftCells: () => 0, readDoeDraft: () => null, scheduleCellDraft() {},
-    readRegistryScope: async () => ({ ok: true, rows: [] }),
-    registryFingerprint: () => 'fp', cellsDigest: () => 'cd',
-    declaredLegendRow: () => null, normalizeLegendItem: (o) => o,
-    isLockedValue: () => false, getMapIdFromMeta: () => 'M1', getCurrentMapKey: () => 'M1',
-    applyRoutedPreset: async () => null,
-    fetchGridMetaFor: async () => (opts.gridMeta || null),
-    // 🔴 THE ORDERING PROBE. The real `resolveValidDie` installs the mask; the only thing
-    //    this round changed about the CALL is WHEN it runs. So the stub records how many
-    //    cells `loadExistingMap` had already placed when it was reached. Non-zero = the mask
-    //    landed after the cells, which is the ordering the user's sequencing forbids.
-    resolveValidDie: async () => {
-      log.resolveCalls.push({ cellsPlacedBefore: Object.keys(sandbox.gridData).length });
-      if (opts.mask) {
-        sandbox.validDieResolveSeq++;
-        sandbox.validDie = { basis: 'ref', keys: opts.mask, reason: '',
-                             ref: { table: 'dt_map', mapKey: 'TPL' }, raw: 'TPL' };
-      }
-      return sandbox.validDie;
-    },
-    fetch: async () => {
-      const rows = opts.rows || [];
-      return { ok: true, status: 200,
-               json: async () => ({ data: rows, total: rows.length }) };
-    },
+  globalThis.document = {
+    querySelectorAll: (sel) => (sel === '[id^="meta-input-"]'
+      ? [{ id: 'meta-input-map_id', value: 'M1' }] : []),
+    getElementById: () => null, querySelector: () => null,
+    addEventListener() {}, removeEventListener() {},
   };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  return { sandbox, el, log };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    devicePixelRatio: 1, addEventListener() {}, removeEventListener() {},
+  };
+  globalThis.performance = globalThis.performance || { now: () => 0 };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '#000' });
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.alert = (m) => log.alerts.push(String(m));
+  globalThis.fetch = async () => {
+    const rows = opts.rows || [];
+    return { ok: true, status: 200,
+             json: async () => ({ data: rows, total: rows.length }) };
+  };
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS, 'el', 'OVERLAY_CELL_LIMIT'],
+    state: [
+      'boundingBoxCache',
+      // Where the cells on screen are currently seated.
+      'cellsSeatedUnder',
+      'currentRotation', 'currentSide', 'gridData', 'gridCells2D',
+      'legend', 'activeBrush', 'legendDirty', 'legendReplaceScope', 'legendConflict',
+      'legendSaveState', 'draftBase', 'validDie', 'validDieResolveSeq', 'loadedFCells',
+      'serverCellKeys', 'overlayLayers', 'activeOverlayLayers', 'loadedIdentity',
+      'selectedTable', 'tableSchema', 'paintLockConfig', 'currentHoverCell',
+      'lastSelectionBox', 'isBoxDragging', 'dragType', 'isOriginMode',
+      'getThemeColors', 'updateOrientationUI', 'updateSideIndicator', 'updateLegendCounts',
+      'scheduleRenderGridCanvas', 'renderLegendTable', 'renderValidDieChip',
+      'syncValidDieRefControls', 'syncOverlayGeometry', 'drawOverlayMarkers',
+      'updateNotchPosition', 'clearOverlayLayers', 'seedEmptyDoe', 'applyRegistryRowsToLegend',
+      'saveLegendToStorage', 'recordLastOpenMap', 'setLoadedIdentity', 'applyDoeDraftRecord',
+      'applyDraftCells', 'readDoeDraft', 'scheduleCellDraft', 'readRegistryScope',
+      'cellsDigest', 'declaredLegendRow', 'isLockedValue', 'getCurrentMapKey',
+      'applyRoutedPreset', 'fetchGridMetaFor', 'resolveValidDie',
+    ],
+    stubs: {
+      './utils.js': { showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }) },
+      './transfer_plan.js': { notifyMapContext: () => {} },
+    },
+    mutate: src || undefined,
+    tag: 'vdorigin',
+  });
+
+  Object.assign(probe.el, el);
+
+  probe.boundingBoxCache = {};
+  probe.cellsSeatedUnder = null;
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.gridData = {};
+  probe.gridCells2D = {};
+  probe.legend = [];
+  probe.activeBrush = '';
+  probe.legendDirty = false;
+  probe.legendReplaceScope = null;
+  probe.legendConflict = null;
+  probe.legendSaveState = { status: 'idle', at: '', error: '' };
+  probe.draftBase = null;
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  probe.validDieResolveSeq = 0;
+  probe.loadedFCells = new Set();
+  probe.serverCellKeys = null;
+  probe.overlayLayers = [];
+  probe.activeOverlayLayers = [];
+  probe.loadedIdentity = null;
+  probe.selectedTable = 'dt_map';
+  probe.tableSchema = { column_types: { x: 'number', y: 'number', val: 'string' } };
+  probe.paintLockConfig = { enabled: false };
+  probe.currentHoverCell = null;
+  probe.lastSelectionBox = null;
+  probe.isBoxDragging = false;
+  probe.dragType = null;
+  probe.isOriginMode = false;
+
+  probe.getThemeColors = () => ({ outBg: '#eee', line: '#ccc', lineStrong: '#bbb', text: '#000',
+    inBg: '#fff', insideEmpty: '#eef', textEmpty: '#345', textOut: '#567', origin: '#f00',
+    notch: '#00f', gridText: '#333', dim: '#999', waferEdge: '#111', wmFront: '#eef',
+    wmBack: '#fed', accent: '#06c', danger: '#c00', dangerWeak: '#fdd', rangeFill: '#e3e',
+    surface: '#fff', success: '#171', warning: '#850' });
+  probe.updateOrientationUI = () => {};
+  probe.updateSideIndicator = () => {};
+  probe.updateLegendCounts = () => {};
+  probe.scheduleRenderGridCanvas = () => {};
+  probe.renderLegendTable = () => {};
+  probe.renderValidDieChip = () => {};
+  probe.syncValidDieRefControls = () => {};
+  probe.syncOverlayGeometry = () => {};
+  probe.drawOverlayMarkers = () => {};
+  probe.updateNotchPosition = () => {};
+  probe.clearOverlayLayers = () => {};
+  probe.seedEmptyDoe = () => {};
+  probe.applyRegistryRowsToLegend = () => {};
+  probe.saveLegendToStorage = () => {};
+  probe.recordLastOpenMap = () => {};
+  probe.setLoadedIdentity = () => {};
+  probe.applyDoeDraftRecord = () => false;
+  probe.applyDraftCells = () => 0;
+  probe.readDoeDraft = () => null;
+  probe.scheduleCellDraft = () => {};
+  probe.readRegistryScope = async () => ({ ok: true, rows: [] });
+  probe.cellsDigest = () => 'cd';
+  probe.declaredLegendRow = () => null;
+  probe.isLockedValue = () => false;
+  probe.getCurrentMapKey = () => 'M1';
+  probe.applyRoutedPreset = async () => null;
+  probe.fetchGridMetaFor = async () => (opts.gridMeta || null);
+  // 🔴 THE ORDERING PROBE. The real `resolveValidDie` installs the mask; the only thing this
+  //    round changed about the CALL is WHEN it runs. So the stub records how many cells
+  //    `loadExistingMap` had already placed when it was reached. Non-zero = the mask landed
+  //    after the cells, which is the ordering the user's sequencing forbids.
+  probe.resolveValidDie = async () => {
+    log.resolveCalls.push({ cellsPlacedBefore: Object.keys(probe.gridData).length });
+    if (opts.mask) {
+      probe.validDieResolveSeq++;
+      probe.validDie = { basis: 'ref', keys: opts.mask, reason: '',
+                         ref: { table: 'dt_map', mapKey: 'TPL' }, raw: 'TPL' };
+    }
+    return probe.validDie;
+  };
+
+  return { sandbox: probe, el: probe.el, log };
 }
 
-// ── The mask, built once from the circle so it is a realistic subset ───────────────────
-// Keys are PHYSICAL (`px_py`) — that is what `isValidDieAt` tests and what
-// `projectCellsToPhys` produces in the app. Physical keys are rotation-invariant, so the
-// same Set describes the same dies at every orientation. That is the whole point.
 function buildMask(S) {
   const cfg = S.getTransformedPhysicalConfig(null, 0, 'front');
   const circle = [];
@@ -325,8 +367,8 @@ const pushPayload = (S) => {
 };
 
 // One orientation, rendered, reduced to what the screen shows.
-function observe(src, mask, { rotation, side, invertY, startX = START_X, startY = START_Y }) {
-  const { sandbox: S } = buildEnv(src, { panel: { startX, startY, invertY } });
+async function observe(src, mask, { rotation, side, invertY, startX = START_X, startY = START_Y }) {
+  const { sandbox: S } = await buildEnv(src, { panel: { startX, startY, invertY } });
   S.validDieResolveSeq = 1;
   S.validDie = { basis: 'ref', keys: mask, reason: '', ref: { table: 'dt_map', mapKey: 'TPL' }, raw: 'TPL' };
   S.currentRotation = rotation;
@@ -362,7 +404,7 @@ function observe(src, mask, { rotation, side, invertY, startX = START_X, startY 
 async function measureDisplacedReferenceGate(src, mask) {
   // 1) The map as an operator painted it, in an ALIGNED session: every die carries its own
   //    coordinate as its value, so the rows are exactly what the server would hold.
-  const { sandbox: P } = buildEnv(src, {});
+  const { sandbox: P } = await buildEnv(src, {});
   P.validDieResolveSeq = 1;
   P.validDie = { basis: 'ref', keys: mask.keys, reason: '', ref: null, raw: 'TPL' };
   P.boundingBoxCache = {};
@@ -385,7 +427,7 @@ async function measureDisplacedReferenceGate(src, mask) {
     phys_wafer_dia: DIA, phys_chip_x: CHIP_X, phys_chip_y: CHIP_Y,
     phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: MARGIN, valid_die_ref: 'TPL',
   };
-  const { sandbox: S } = buildEnv(src, { rows, gridMeta, mask: displaced });
+  const { sandbox: S } = await buildEnv(src, { rows, gridMeta, mask: displaced });
   await S.loadExistingMap({ quiet: true });
   const u = S.classifyUnsavableCells();
   const nonEmpty = Object.keys(S.gridData).filter(k => (S.gridData[k] || '') !== '').length;
@@ -398,12 +440,17 @@ for (const rotation of ROTATIONS) for (const side of SIDES) for (const invertY o
   combos.push({ rotation, side, invertY });
 }
 
-function scoreAll(src, { verbose = false, reference = null } = {}) {
+async function scoreAll(src, { verbose = false, reference = null } = {}) {
+  // The structural block below reads the SOURCE TEXT rather than executing it -- it asserts
+  // that a deleted machinery stays deleted and that a call site keeps its shape. That is a
+  // check on the file, not a sliced fragment being run, so it stays. It has to see the MUTATED
+  // text, or the mutants written to trip it would go unnoticed by exactly those assertions.
+  const srcText = src ? src(SRC0) : SRC0;
   failures = []; compared = 0;
   const evidence = [];
 
   // ── Fixture self-check: every defect axis is live, or nothing below proves anything ──
-  const { sandbox: S0 } = buildEnv(src, {});
+  const { sandbox: S0 } = await buildEnv(src, {});
   const mask = buildMask(S0);
   {
     eq('fixture/chip-is-anisotropic', true, CHIP_X !== CHIP_Y,
@@ -428,7 +475,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
   const drift = [];
   for (const combo of combos) {
     const tag = `rot${combo.rotation}/${combo.side}/${combo.invertY ? 'invY' : 'y'}`;
-    const o = observe(src, mask.keys, combo);
+    const o = await observe(src, mask.keys, combo);
     obs[tag] = o;
     if (o.empty) { failures.push(`${tag}: the screen drew ZERO valid dies`); compared++; continue; }
 
@@ -456,7 +503,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
   //    x == 0 in the origin's canvas column and a die that reads y == 0 in its canvas row.
   for (const combo of combos) {
     const tag = `rot${combo.rotation}/${combo.side}/${combo.invertY ? 'invY' : 'y'}`;
-    const o = observe(src, mask.keys, { ...combo, startX: 0, startY: 0 });
+    const o = await observe(src, mask.keys, { ...combo, startX: 0, startY: 0 });
     if (o.empty) continue;
     eq(`${tag}/origin-cell-is-unique`, 1, o.origins.length);
     const org = o.origins[0] || {};
@@ -474,7 +521,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
   // Each is a boundary the origin change had to respect; without these the fixture cannot
   // tell "the box follows the mask" from "the box follows the mask everywhere, always".
   {
-    const { sandbox: S } = buildEnv(src, {});
+    const { sandbox: S } = await buildEnv(src, {});
     const circleBox = S.getWaferBoundingBox(null, 0, 'front', { circleOnly: true });
     const seeRef = (keys, seq) => {
       S.validDieResolveSeq = seq;
@@ -531,7 +578,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
       return `${COLS - 1 - px}_${py}`;
     }));
     eq('boundary/mirrored-mask-has-the-same-cardinality', mask.keys.size, mirrored.size);
-    const { sandbox: S2 } = buildEnv(src, {});
+    const { sandbox: S2 } = await buildEnv(src, {});
     S2.validDieResolveSeq = 1;
     S2.validDie = { basis: 'ref', keys: mask.keys, reason: '', ref: null, raw: 'A' };
     const boxA = S2.getWaferBoundingBox(null, 0, 'front');
@@ -572,7 +619,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
   // Uses `loadExistingMap` itself. The rows' values encode their own stored coordinate.
   {
     const combo = { rotation: 90, side: 'back', invertY: true };   // the hardest corner
-    const seed = observe(src, mask.keys, combo);
+    const seed = await observe(src, mask.keys, combo);
     if (seed.empty) die('round-trip seed produced no dies');
     // 1) paint every die, 2) read the coordinate the screen states, 3) make that the value.
     const rows = seed.inMask.map(co => ({
@@ -585,7 +632,7 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
       phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: MARGIN,
       valid_die_ref: 'TPL',
     };
-    const { sandbox: S, log } = buildEnv(src, { rows, gridMeta, mask: mask.keys });
+    const { sandbox: S, log } = await buildEnv(src, { rows, gridMeta, mask: mask.keys });
     const res = S.loadExistingMap({ quiet: true });
     return Promise.resolve(res).then(() => {
       eq('load/rows-parsed', rows.length, Object.keys(S.gridData).length);
@@ -610,19 +657,19 @@ function scoreAll(src, { verbose = false, reference = null } = {}) {
 
       // ── Structural guards ────────────────────────────────────────────────────────────
       eq('structural/no-push-side-compensation', true,
-         !/cellObj\.x\s*[+-]/.test(src) && !/xParsed\s*[+-]=/.test(src),
+         !/cellObj\.x\s*[+-]/.test(srcText) && !/xParsed\s*[+-]=/.test(srcText),
          'adjusting coordinates on the way out is the defect this round removes');
       eq('structural/render-does-not-re-derive-the-zero-cell', true,
-         !/const c_zero = isXMirrored/.test(src),
+         !/const c_zero = isXMirrored/.test(srcText),
          'the (0,0) cell must come from getCanvasCellFromDb, not a hand-written copy');
       eq('structural/notch-still-asks-for-the-circle', true,
-         /getWaferBoundingBox\([A-Za-z_$][\w$]*, rotation, side, \{ circleOnly: true \}\)/.test(src),
+         /getWaferBoundingBox\([A-Za-z_$][\w$]*, rotation, side, \{ circleOnly: true \}\)/.test(srcText),
          'the clipboard frame fingerprint must not follow a mask that a network failure can change');
       // The deleted adoption machinery must stay deleted (94b9baa).
       const gone = ['storedCoordRepositionPlan', 'applyStoredCoordReposition', 'repositionRefusalReason',
                     'adoptionCoordinateCost', 'adoptedFrameOf', 'dbCoordsByPhysKey', 'adoptFrameSpec',
                     'announceFrameAdoption'];
-      eq('structural/frame-adoption-stays-deleted', [], gone.filter(n => src.includes(n)));
+      eq('structural/frame-adoption-stays-deleted', [], gone.filter(n => srcText.includes(n)));
 
       if (verbose) {
         console.log('  ── where the mask sits and what it reads ──');
@@ -719,21 +766,21 @@ const doMutate = process.argv.includes('--mutate');
   // The defective source, observed first, so the counter-measurement has a reference.
   const defectiveSrc = SRC0.replace(TAG_LINE, "  const tag = 'C';");
   if (defectiveSrc === SRC0) die('the D0 mutation did not apply — the anchor text moved. Nothing compared.');
-  const { sandbox: SD } = buildEnv(defectiveSrc, {});
+  const { sandbox: SD } = await buildEnv(() => defectiveSrc, {});
   const maskD = buildMask(SD);
   const reference = {};
   for (const combo of combos) {
     reference[`rot${combo.rotation}/${combo.side}/${combo.invertY ? 'invY' : 'y'}`] =
-      observe(defectiveSrc, maskD.keys, combo);
+      await observe(() => defectiveSrc, maskD.keys, combo);
   }
 
-  const base = await scoreAll(SRC0, { verbose: true, reference });
+  const base = await scoreAll(null, { verbose: true, reference });
 
   // QA finding ① — reported, not claimed as fixed. The gate is `pushMapData`'s, not this
   // round's; what this round changes is how many cells reach it.
-  const gateOld = await measureDisplacedReferenceGate(defectiveSrc, maskD);
-  const { sandbox: SN } = buildEnv(SRC0, {});
-  const gateNew = await measureDisplacedReferenceGate(SRC0, buildMask(SN));
+  const gateOld = await measureDisplacedReferenceGate(() => defectiveSrc, maskD);
+  const { sandbox: SN } = await buildEnv(null, {});
+  const gateNew = await measureDisplacedReferenceGate(null, buildMask(SN));
   console.log('\n  ── QA finding ① · displaced valid-die reference vs the Push contrast gate ──');
   console.log(`  circle-anchored origin: ${gateOld.blocking} of ${gateOld.nonEmpty} painted cells `
     + `blocked (${gateOld.offGrid} off-grid, ${gateOld.outside} outside the mask)`);
@@ -755,7 +802,7 @@ const doMutate = process.argv.includes('--mutate');
     const mutated = mutate(SRC0);
     if (mutated === SRC0) { console.log(`  ⚠ ${name} — DID NOT APPLY (anchor text moved)`); survivors++; continue; }
     let r;
-    try { r = await scoreAll(mutated, { reference }); }
+    try { r = await scoreAll(() => mutated, { reference }); }
     catch (e) { console.log(`  ✓ ${name} — threw (${e && e.message})`); continue; }
     if (r.failures.length === 0) { console.log(`  ✗ ${name} — SURVIVED`); survivors++; }
     else console.log(`  ✓ ${name} — caught by ${r.failures.length}: ${r.failures[0].slice(0, 110)}`);
