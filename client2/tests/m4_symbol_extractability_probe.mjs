@@ -35,12 +35,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const HARNESS = join(ROOT, 'contracts', 'map_seam', 'client_harness.mjs');
 const VECTORS = join(ROOT, 'contracts', 'map_seam', 'vectors.json');
-const MAP_SRC = readFileSync(join(ROOT, 'client2', 'src', 'map_editor.js'), 'utf8').replace(/\r\n/g, '\n');
+const MAP_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
+// The TEXT is still read -- to BUILD the mutant, and to answer the extractability
+// question this probe is named for. The PATH is what gets imported.
+const MAP_SRC = readFileSync(MAP_PATH, 'utf8').replace(/\r\n/g, '\n');
 const spec = JSON.parse(readFileSync(VECTORS, 'utf8').replace(/\r\n/g, '\n'));
 
 // ── The harness's OWN slicer, lifted rather than reimplemented ──────────────────────────
@@ -64,24 +68,75 @@ const ROLES = {
   render_chip: 'renderValidDieChip',     // not a seam symbol — the user-visible surface
 };
 
-function build(mutator) {
-  const pieces = [];
-  for (const [role, fn] of Object.entries(ROLES)) {
-    let code = sliceFunction(MAP_SRC, fn);
-    if (!code) return { error: `'${fn}' (role ${role}) is NOT extractable by the harness slicer` };
-    pieces.push(mutator ? mutator(role, code) : code);
+// 🔴 THE FIVE SYMBOLS ARE NO LONGER CUT OUT AND RUN. map_editor.js is imported WHOLE, so a
+// role that starts calling a helper does not turn this probe red on correct code.
+//
+// THE SLICER STAYS, and only for one job: BUILDING the mutant. A mutant is the whole file with
+// one function's text swapped, which is the same shape every converted harness uses for its
+// mutation anchors -- text used to CONSTRUCT a module, never text executed as a fragment. The
+// extractability check the probe is named for therefore still means something: if a role stops
+// being sliceable, the mutants cannot be built and this says so.
+//
+// The lifted-from-the-contract slicer is kept for the reason it was lifted: `map_seam`'s
+// `client_harness.mjs` still uses `sliceFunction` for its two STRUCTURAL assertions (the
+// declared parameter list, and whether a body reaches for a module binding), which are
+// text-as-subject and outside the ban. If that slicer changes shape, this file follows.
+async function build(mutator) {
+  let mutate;
+  if (mutator) {
+    const edits = [];
+    for (const [role, fn] of Object.entries(ROLES)) {
+      const code = sliceFunction(MAP_SRC, fn);
+      if (!code) return { error: `'${fn}' (role ${role}) is NOT extractable by the harness slicer` };
+      const next = mutator(role, code);
+      if (next !== code) edits.push([code, next]);
+    }
+    if (!edits.length) return { error: 'the mutator changed nothing — nothing would be scored' };
+    mutate = (src) => {
+      let out = src.replace(/\r\n/g, '\n');
+      for (const [from, to] of edits) {
+        if (!out.includes(from)) return out;      // the probe below reports the no-op
+        out = out.replace(from, to);
+      }
+      return out;
+    };
+  } else {
+    for (const [role, fn] of Object.entries(ROLES)) {
+      if (!sliceFunction(MAP_SRC, fn)) {
+        return { error: `'${fn}' (role ${role}) is NOT extractable by the harness slicer` };
+      }
+    }
   }
-  // Same sandbox shape the contract harness uses for these symbols.
-  const sandbox = {
-    console, validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
+
+  // Unconditional: the chip cases below replace `document` with a two-method stub, and the
+  // NEXT import would then wire the page against it and die on `addEventListener`. Every
+  // mutant was being "killed" by that, which is a crash wearing a pass's clothes.
+  globalThis.document = {
+    getElementById: () => null, addEventListener() {}, removeEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
   };
-  vm.createContext(sandbox);
-  try { vm.runInContext(pieces.join('\n'), sandbox); }
-  catch (e) { return { error: `extracted sources did not evaluate: ${e && e.message}` }; }
-  for (const fn of Object.values(ROLES)) {
-    if (typeof sandbox[fn] !== 'function') return { error: `'${fn}' did not evaluate to a function` };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+
+  let probe;
+  try {
+    ({ probe } = await loadWithProbe(MAP_PATH, {
+      expose: Object.values(ROLES),
+      // The branch point's state, driven through the values the contract names.
+      state: ['validDie'],
+      mutate,
+      tag: 'm4probe',
+    }));
+  } catch (e) {
+    return { error: `the module did not evaluate: ${e && e.message}` };
   }
-  return { sandbox };
+  probe.validDie = { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined };
+  for (const fn of Object.values(ROLES)) {
+    if (typeof probe[fn] !== 'function') return { error: `'${fn}' did not evaluate to a function` };
+  }
+  return { sandbox: probe };
 }
 
 // The canonical vocabulary is READ FROM THE CONTRACT, never spelled out here — a literal
@@ -178,7 +233,14 @@ function runChecks(sandbox) {
       const host = mk('paint-lock-indicator');
       host.parentNode = { insertBefore: (n) => { n.parentNode = host.parentNode; nodes.set(n.id, n); } };
       nodes.set(host.id, host);
-      sandbox.document = { getElementById: (id) => nodes.get(id) || null, createElement: () => mk('') };
+      // 🔴 `globalThis`, not `sandbox`. Under `vm` those were the same object; an imported
+      //    module resolves `document` the way the browser does, so setting it on the env
+      //    is a silent no-op -- the chip checks went red with an empty chip and nothing
+      //    in the diff to see.
+      globalThis.document = {
+        getElementById: (id) => nodes.get(id) || null, createElement: () => mk(''),
+        addEventListener() {}, removeEventListener() {}, querySelectorAll: () => [],
+      };
       sandbox.validDie = state;
       sandbox.renderValidDieChip();
       sandbox.validDie = { basis: 'circle', keys: null, reason: '', ref: null };
@@ -198,7 +260,7 @@ function runChecks(sandbox) {
 }
 
 // ── Run ─────────────────────────────────────────────────────────────────────────────────
-const built = build(null);
+const built = await build(null);
 if (built.error) { console.error(`PROBE FAILURE: ${built.error}`); process.exit(2); }
 const results = runChecks(built.sandbox);
 const bad = results.filter(r => !r.ok);
@@ -259,7 +321,7 @@ if (process.argv.includes('--mutate')) {
   console.log('\n  MUTATION CONTROLS — a surviving mutant means the check above it is inert.\n');
   let inert = 0;
   for (const m of MUTANTS) {
-    const b = build(m.f);
+    const b = await build(m.f);
     let killedBy = [];
     if (b.error) killedBy = [`build: ${b.error}`];
     else { try { killedBy = runChecks(b.sandbox).filter(r => !r.ok).map(r => r.name); }
