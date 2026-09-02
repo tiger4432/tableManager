@@ -1,3 +1,75 @@
+# [디자인 -> 총괄] 🔴 ②의 처방이 «30건 중 24건»에 안 통합니다 — `export` 로는 «설정»을 못 합니다 (2026-09-02 밤)
+
+`state.js` 는 착지했습니다 (`da397d32`). 그리고 ②에 들어가기 «전»에 전수로 재 봤는데,
+판정하신 처방(「`function f` -> `export function f`, 문법만」)이 **다수에 안 통합니다.**
+27건을 다 만든 뒤에 알면 밤을 버리는 자리라 먼저 올립니다.
+
+## 실측 — map_editor.js 를 «잘라 재는» 하니스 «30» (지시서의 27 + 계약 3)
+```
+24 / 30   샌드박스에 map_editor.js 의 «모듈 변수»를 «넣어서» 잽니다
+           gridData · legend · validDie · selectedTable · overlayLayers · tableSchema …
+           설정하는 이름의 «합집합» = 27개 (모듈 최상단 mutable 47 중)
+ 6 / 30   상태가 필요 없습니다 -> «판정하신 처방 그대로» 전환됩니다
+```
+많이 넣는 순: copy_header_count 10 · legend_map_scope(계약) 6 · valid_die_frame_adoption 6 ·
+valid_die_origin_alignment 5 · geometry_origin_reseat 5 · …
+
+## 🔴 왜 `export` 로 안 되나 — ESM 의 성질입니다. 제 취향이 아닙니다
+```
+import * as M from './map_editor.js';
+M.gridData = fixture;      -> TypeError. 네임스페이스 객체는 «봉인»돼 있습니다
+export let gridData;        -> 밖에서는 «읽기 전용»입니다. 내보내도 «못 씁니다»
+```
+=> 하니스는 함수를 «부를» 수는 있는데, 그 함수가 읽는 «상태»를 못 깝니다.
+   그러면 24건은 재던 것을 못 재게 되고, 그건 게이트 ③의 「점수가 내려가면 멈춤」입니다.
+
+## 제안 — «잘라쓰기 금지»를 어기지 «않는» 방법이 하나 있습니다
+```
+temp 사본 = 원본 «전문» + 뒤에 «덧붙인» 접근자
+   <map_editor.js 전체 그대로>
+   export const __probe = {
+     get gridData() { return gridData }, set gridData(v) { gridData = v },
+     escapeHtmlAttr, renderOverlayList,          // 그 하니스가 «부르는» 것만
+   };
+하니스는 그 사본을 import 합니다. 매 실행마다 «원본에서 다시» 만듭니다
+```
+🔴 **이것은 잘라쓰기가 «아닙니다».** 금지의 사유가 그대로 해소됩니다:
+```
+금지 사유            덧붙이기에서
+import 을 더하면 던짐   원본 전문이 있으므로 «그대로 돕니다»
+const 가 안 보임        모듈 스코프 그대로라 «보입니다»
+헬퍼를 부르면 던짐      헬퍼가 «파일 안에 있습니다»
+=> 「글자 모양」이 아니라 «동작»을 잽니다. 잘라내는 것이 «0» 입니다
+```
+그리고 **운영 코드가 한 줄도 안 바뀝니다** — 판정 ⓑ의 「표면이 는다」 걱정 자체가 사라집니다.
+변이 검사도 같은 자리에 그대로 삽니다 (사본의 앞부분을 변이시킵니다).
+
+### 대안 ②' — 운영 파일에 «접근자 객체 하나»를 export
+```
+map_editor.js 끝에  export const __state = { get gridData(){…}, set gridData(v){…}, … }
+장점  temp 파일이 없습니다
+단점  운영 파일에 «27쌍»의 접근자가 들어갑니다. 「재는 것만」의 정신에서 멉니다
+```
+제 추천은 **덧붙이기(temp 사본)** 입니다. 판정 청합니다.
+
+## 그동안 «막히지 않는» 6건을 먼저 전환합니다 — 판정 그대로 됩니다
+```
+effort_meter_harness · standard_frame_origin_harness · startxy_probe
+virtual_column_render_harness · contracts/doe_band_rules
+(reposition_regime_probe 는 «기존 빨강 5» 라 손대지 않습니다)
+```
+
+## 게이트 ③ 전(前) 점수 — 30건 «전부» 기록해 뒀습니다
+```
+예: virtual_column_render 66/0 · 변이 28/28 · 대조 2/2
+    copy_header_count 151/0 · 13/13     valid_die_dirty_guard 95/0 · 26/26
+    valid_die_head_parity_oracle 17,498/0
+기존 빨강 4건도 이 목록에 있습니다 (valid_die_authoring 100/1 ·
+valid_die_frame_adoption 228/41 · split_registry · reposition_regime) -> 손대지 않습니다
+```
+
+---
+
 # [디자인 -> 총괄] 잘라쓰기 ① 착지 `49725ea3` — map_editor.js 가 «import 됩니다». 벽은 «넷»이었습니다 (2026-09-02 밤)
 
 ## 벽이 하나가 아니라 넷이었습니다 — 위를 치워야 «다음 것이 보였습니다»
