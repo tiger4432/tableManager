@@ -1733,3 +1733,118 @@ runtime_table_create · void_schema · api · replace_map · batch_response_log_
 클라 레인   위 §「먼저 내려 주십시오」 의 이름과 계약 — 그게 그들이 기다리던 것입니다
 서버 재기동  총괄 몫입니다. f7a3c372 푸시했습니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] S1 착지 — 🔴 **답부터: 넷은 «아직 안 갈려 있었습니다»** (구현자, 2026-09-02)
+
+커밋 `98a8d82a`. 파일 «셋»: `server/database/crud.py` · `server/enrichment_mapper.py` ·
+`server/tests/test_composite_business_key.py`.
+
+## 🔴 지시하신 「보고에 적을 것」 — 수로 적습니다
+```
+네 자리에 «같은 입력»을 먹여 «같은 문자열»이 나오는지 -> 시험을 «먼저» 쓰고
+코드를 «한 줄도 안 바꾼 상태»에서 돌렸습니다
+   결과   9 passed / 0 failed      ← ①②③④ 가 «전부 일치»
+   즉     갈리기 «전»에 잠근 것입니다. 멈춤 조건 ①에 해당하지 «않았습니다»
+그 뒤 추출하고 다시 돌림 -> 9 passed (같은 수)
+```
+🔴 **이 순서가 이 라운드의 값입니다.** 추출한 «다음»에 재면 「내가 방금 만든 일치」를
+재는 것이라 「이미 갈려 있었나」에 답을 못 합니다.
+
+## 구분자는 «|» 로 쟀습니다 (지시하신 그대로)
+시험 표 `s1_pipe_key` 의 `composite_key_separator = "|"`.
+`"_"` 로만 재면 **구분자를 엉뚱한 데서 읽거나 박아 넣은 결함이 안 보입니다.**
+그리고 `slot` 을 `number` 로 두어 `clean_str_value` 의 `7.0 -> "7"` 접기도 경로에 올렸습니다 —
+`str()` 로 문자열화하는 자리가 있었으면 `7.0` 을 뱉고 걸립니다.
+```
+입력   {"lot": "LOT-A", "slot": 7.0, "wafer": "W03"}
+기대   "LOT-A|7|W03"        ← 네 자리 «전부» 이 문자열
+```
+
+## 만든 것 — 「조립」 하나. 정책은 «안 건드렸습니다»
+```
+crud.compose_business_key(table_name, values) -> str
+   구분자   TABLE_CONFIG[table].composite_key_separator, 기본 "_"   ← «한 곳»에서만 읽습니다
+   문자열화 clean_str_value «하나»
+   🔴 빈 값 판정 «없음». 그건 호출자 몫입니다
+```
+호출자 넷은 **각자 지금 하던 판정을 그대로** 하고 조립만 넘깁니다:
+```
+① crud.py  assemble_composite_business_key   _unfilled_composite_parts 로 «먼저 묻고» 조립
+② crud.py  행 동기화                          all(clean_str_value(v) != "") 그대로 -> 폴백 그대로
+③ crud.py  셀 하나 바뀔 때                     같은 판정 그대로 -> None 그대로
+④ enrichment_mapper.py                        판정 «없이» 그대로 조립 (2026-08-05 재정 유지)
+```
+⛔ `is_blank_value` vs `all(v != "")` — **안 건드렸습니다** (S2 안건이라 적어 두셨습니다).
+   ②③ 은 `clean_str_value(v) != ""` 로 «글자 그대로» 같은 술어를 유지합니다.
+⛔ 재료 통일 «안 함» — payload · 행 · key_map 그대로. 호출자가 «값 목록»만 만들어 넘깁니다.
+⛔ 선언·원장·클라 0줄.
+
+## 곁가지 — 죽은 지역변수 «둘»을 지웠습니다
+`crud.py:2581` 과 `4434` 의 `composite_sep = ...` 가 이 변경 뒤 **아무도 안 읽습니다.**
+남겨 두면 「구분자를 읽는 두 번째 자리」가 그대로 남아 이 라운드가 없애려는 그것이 됩니다.
+(지시서에 없는 삭제라 여기 적습니다. 되살리는 데 두 줄입니다)
+
+## 멈춤 조건 셋 — 전부 «해당 없음»
+```
+① 네 자리가 다른 키를 내나        -> 아니오. 위 실측 (9 passed, 추출 «전»)
+② 조립을 합치려니 정책도?          -> 아니오. 조립만으로 갈렸고, 정책 넷은 그대로입니다
+③ ④가 다른 구분자·다른 규칙?      -> 아니오. ④의 comp_src 갈래는
+                                   «같은 구분자(derived_cfg)» · «같은 clean_str_value» ·
+                                   «같은 순서(comp_src)» 였습니다
+```
+
+## 🔴 그런데 «다섯째 철자»를 찾았습니다 — 고치지 «않았습니다». 판정 부탁드립니다
+```
+enrichment_mapper.py:288   joined = comp_sep.join(key)      ← 방어적 폴백 갈래
+   같은 것   구분자 (comp_sep)
+   다른 것   🔴 `clean_str_value` 를 «안 태웁니다». decision_key 원본 튜플을 그대로 잇습니다
+   도달성    「로더가 키 계약을 검증하므로 정상 경로에선 도달하지 않음」이라 주석이 말합니다
+```
+지시서의 넷에 «없고», comp_src 조립이 아니며, 통과시키면 «값이 정리되어» 동작이 바뀝니다.
+그래서 손대지 않았습니다 — 다만 **「구분자로 잇는 다섯째 자리」인 것은 사실**이고,
+이 라운드의 목적(정체성 철자를 하나로)에 비추면 남겨 둘지 판정이 필요합니다.
+
+## 게이트
+```
+① 기존 시험 전부 초록   ✅ (아래 무회귀)
+② 판별식 — 네 자리가 «같은 문자열»   ✅ 시험 4본, 「|」 구분자, 7.0 접기 포함
+③ 빈 값 정책 «각각» 그대로            ✅ 시험 1본이 넷을 «따로» 단언
+                                     (안 함 / 폴백 / None / 부분 키)
+④ 무회귀 — crud · enrichment 계열      ✅ 360 passed · 0 failed
+   composite_business_key · blank_business_key_is_null · business_key_conflict_retry ·
+   business_key_unique_migration · key_canonicalization · syn_complex_composite ·
+   enrichment · enrichment_analysis · enrichment_candidates · backfill_enrichment ·
+   chain_key_gate · chain_cascade · chain_replay · cell_value_resolution
+```
+
+## 시험 — 변이 «다섯»
+새 시험 5본, `tests/test_composite_business_key.py` (같은 주제의 기존 파일).
+```
+변이                                                빨개진 시험
+공유 조립이 구분자를 «박아 넣음» ("_")                일치 시험 «넷» + 정책 시험   <- 이게 「일치」의 정의
+②가 caller-supplied 폴백을 «버림»                    정책 시험
+④가 빈 값 게이트를 «얻음» (2026-08-05 재정 뒤집기)     정책 시험
+①이 부분 페이로드를 «거절 안 함»                      정책 시험 + «기존» draft_state 시험
+③이 «자기가» 이어 붙임 ("_")                          ③ 시험
+```
+🔴 첫 변이가 정확히 이 라운드의 결함을 재현합니다 — **한 자리가 다르게 이으면 네 시험이
+동시에 빨개집니다.** 그게 「넷이 같은 철자를 쓴다」의 관측 가능한 형태입니다.
+그리고 ③은 «이 라운드 전에 시험이 하나도 없던» 경로입니다 — 핀(수동 우선순위)으로 키 컬럼의
+표시값을 바꿔야 도달합니다. 그 자리에 네 철자 중 하나가 조용히 앉아 있을 수 있었습니다.
+
+## ⚠️ 무회귀에서 «남의 빨강» 하나 — 제 것이 아닙니다
+```
+tests/test_composite_key_prefetch_budget.py::test_inserting_new_rows_still_probes_once_per_row
+확인 방법   제 두 파일을 HEAD 내용으로 «바꿔 놓고» 같은 시험을 돌렸습니다 -> «그때도 빨강»
+=> 귀속: 제 변경과 무관합니다. 손대지 않았습니다
+```
+(그래서 위 무회귀 360 에는 이 파일을 «뺐습니다». 넣으면 361 중 1 빨강이고, 그 1은 HEAD 것입니다)
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 98a8d82a 푸시했습니다
+판정 필요   ① enrichment_mapper.py:288 의 «다섯째 철자»를 어떻게 할지
+           ② 죽은 지역변수 둘 삭제가 괜찮은지 (지시서 밖입니다)
+```
