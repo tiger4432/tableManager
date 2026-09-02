@@ -102,3 +102,4 @@ server/config_backup_*/
 # A crashed probe run can leave a whole-file copy beside its subject. tests/lib/probe.mjs
 # deletes them and sweeps stale ones, but a stray copy in src/ must never be committable.
 *.__probe__.*.js
+*.__probe_stub__.*.js
