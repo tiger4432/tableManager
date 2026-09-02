@@ -1,13 +1,24 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **765개** 이력. (거버넌스 규칙 #4)
+> 총 **777개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
+## 2026-09 (September 2026)
+
+- **2026-09-02 20:34** — [The Count Leaves The First Paint And Null Had To Stop Rendering As Zero](./20260902_203400_the_count_leaves_the_first_paint_and_null_had_to_stop_rendering_as_zero.md)
+- **2026-09-02 19:23** — [The Yield Had To Move To The End Of The Page To Be A Yield At All](./20260902_192300_the_yield_had_to_move_to_the_end_of_the_page_to_be_a_yield_at_all.md)
+- **2026-09-02 12:24** — [Two Panels Become One Shell And A Token Branch Has To Be Measured For Layout Too](./20260902_122400_two_panels_become_one_shell_and_a_token_branch_has_to_be_measured_for_layout_too.md)
+- **2026-09-02 01:18** — [The Number I Approved Was Measuring The Defect And A Synthetic Click Proves Nothing](./20260902_011800_the_number_i_approved_was_measuring_the_defect_and_a_synthetic_click_proves_nothing.md)
+- **2026-09-02 00:05** — [A Follow Can Name Keys And The Gate That Looked Broken Had No Seed Written Down](./20260902_000500_a_follow_can_name_keys_and_the_gate_that_looked_broken_had_no_seed_written_down.md)
+
 ## 2026-08 (August 2026)
 
+- **2026-08-31 14:41** — [The View Becomes A Table The Chain Builds And A Matching Count Was Not The Evidence](./20260831_144100_the_view_becomes_a_table_the_chain_builds_and_a_matching_count_was_not_the_evidence.md)
+- **2026-08-31 12:34** — [The Re Translate Leaves The Context Menu And The Asymmetry Between The Two Buttons Is The Ruling](./20260831_123400_the_re_translate_leaves_the_context_menu_and_the_asymmetry_between_the_two_buttons_is_the_ruling.md)
+- **2026-08-31 12:12** — [A Refusal Is Only Read When Someone Is Already Stuck And The Sites Were Five Not Three](./20260831_121200_a_refusal_is_only_read_when_someone_is_already_stuck_and_the_sites_were_five_not_three.md)
 - **2026-08-31 12:00** — [The Living Docs Catch Up And A Route Count Was False In Thirteen Places](./20260831_120000_the_living_docs_catch_up_and_a_route_count_was_false_in_thirteen_places.md)
 - **2026-08-31 11:30** — [Graph Retirement Stage One Stops Producing And Stops Reserving And The Drop Stays Unruled](./20260831_113000_graph_retirement_stage_one_stops_producing_and_stops_reserving_and_the_drop_stays_unruled.md)
 - **2026-08-31 11:10** — [A Harness Goes Inert On Crlf And Counting Files Hid The Half Normalised Ones](./20260831_111000_a_harness_goes_inert_on_crlf_and_counting_files_hid_the_half_normalised_ones.md)
@@ -33,6 +44,10 @@
 - **2026-08-29 22:24** — [Reaching Counts One And Removing The Division Exposed What It Had Been Hiding](./20260829_222400_reaching_counts_one_and_removing_the_division_exposed_what_it_had_been_hiding.md)
 - **2026-08-29 21:58** — [A Rung Nothing Can Stand On And A Premise Measured Only On The Half That Survived](./20260829_215800_a_rung_nothing_can_stand_on_and_a_premise_measured_only_on_the_half_that_survived.md)
 - **2026-08-29 19:43** — [A Name Is Fetched With A Narrower Follow And A Step Does Not Climb Back Down](./20260829_194300_a_name_is_fetched_with_a_narrower_follow_and_a_step_does_not_climb_back_down.md)
+- **2026-08-29 13:25** — [The Rule Moved Onto The Step And The Flag It Replaced Left By Name](./20260829_132500_the_rule_moved_onto_the_step_and_the_flag_it_replaced_left_by_name.md)
+- **2026-08-29 13:20** — [The Y Axis Became A Pair And A Zero That Was True Of The Source And False Of The Page](./20260829_132000_the_y_axis_became_a_pair_and_a_zero_that_was_true_of_the_source_and_false_of_the_page.md)
+- **2026-08-29 10:59** — [Two Premises Invisible Wherever They Already Hold And A Ceiling Nobody Could Ask For](./20260829_105900_two_premises_invisible_wherever_they_already_hold_and_a_ceiling_nobody_could_ask_for.md)
+- **2026-08-29 10:35** — [A Table Built From What The Parts Declare Cannot See What The Screen Requests](./20260829_103500_a_table_built_from_what_the_parts_declare_cannot_see_what_the_screen_requests.md)
 - **2026-08-29 10:10** — [Direction Is Declared Per Part And The Extra Defects Were The Budget Leak](./20260829_101000_direction_is_declared_per_part_and_the_extra_defects_were_the_budget_leak.md)
 - **2026-08-29 04:59** — [Walking Your Own Lineage Should Not Spend The Budget Meant For Leaving It](./20260829_045900_walking_your_own_lineage_should_not_spend_the_budget_meant_for_leaving_it.md)
 - **2026-08-28 21:52** — [The Marking Is A Value And The Search Is A Tree Of It That Does Not Cut](./20260828_215200_the_marking_is_a_value_and_the_search_is_a_tree_of_it_that_does_not_cut.md)
@@ -786,4 +801,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-08-31 by gen_index.py*
+*Last generated: 2026-09-02 by gen_index.py*

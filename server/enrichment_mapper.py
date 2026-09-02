@@ -275,7 +275,12 @@ def map_enrichment_dedup(db, payloads, rule=None):
         # 온전한 키의 결과는 종전과 100% 동일하다: 성분이 전부 non-blank일 때 이 식은
         # 옛 식과 글자 그대로 같다.
         if comp_src:
-            joined = comp_sep.join(crud.clean_str_value(key_map.get(c)) for c in comp_src)
+            # 🔴 조립은 `crud.compose_business_key` 하나다 (S1). 여기서 따로 이어 붙이면
+            #    같은 행이 두 철자를 갖게 되고 그날 오류는 «안 난다».
+            #    빈 성분 판정은 «하지 않는다» — 부분 키를 그대로 조립하는 것이
+            #    2026-08-05 소유자 재정이고, 그 판정은 위 `blank_key_cols` 가 «세기만» 한다.
+            joined = crud.compose_business_key(
+                derived_table, [key_map.get(c) for c in comp_src])
         elif bk_col and bk_col in key_map:
             joined = key_map[bk_col]
         else:

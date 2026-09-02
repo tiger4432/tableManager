@@ -18,6 +18,7 @@
 
 | 절 / 파일 | 상태 | 기준 리비전 | 비고 |
 |---|---|---|---|
+| 🆕⑰ §7 클라 **신설 넷**(`match_count`·`dropdown`·`admin_token`·`redo_banner`) + **삭제 하나**(`grid_rescope_menu`) · §1 개수 라우트 · §5-I `follow_keys` · §5-G 체인 맵퍼 · §5-J 호출자 · §5-D `_pace_param` · §5 `models.py` — 「개수가 «늦게» 오게 된 날, 그리고 뷰가 체인이 된 날」 | 🟢 **지목 심볼·시그니처·계수 실측 + §0 게이트 전건 재실행(2026-09-02)** | **측정 리비전 `64b562b6`** — ⚠️ 측정 중 HEAD 가 `944941a8` 로 움직였으나 **`server/`·`client2/` 트리 해시가 양쪽에서 동일하다**(`d8f6fe0e1716` · `e493e28bc97a` — 그 여덟 커밋은 `docs/`·`task/` 만 건드렸다). 즉 이 절의 앵커는 **두 리비전 모두에서 참**이다. 직전 정비 `4b6014b6`(측정 리비전 `9eb30691`) 에서 코드 커밋 **22** | 🔴 **지시서의 기준선 `23dfeb2c` 는 «다섯 세대 낡았다»** — 그 뒤 `641dbb4e`·`4248a6fe`·`3636409e`·`d3db636e`·`4b6014b6` 다섯 번의 정비가 더 있었다. 173커밋이 아니라 **22커밋**이 실제 범위이고, 그 차이가 「이미 등재된 것을 신설로 다시 적는」 부류를 만든다. 🔴 **`client2/src/grid_rescope_menu.js` 가 «없는 파일인데 §7 에 자기 절을 통째로 들고 있었다»**(심볼 표·소비자·채점자까지) — `6e060fd7` 이 그 파일과 하니스를 지우고 `redo_banner.js` 로 갈았다. 🔴 **`server/scripts/create_lot_slot_wafer_view.py` 삭제 + 체인 맵퍼 신설** — `lot_slot_wafer` 가 «뷰 → 체인 파생 표»가 됐다(지도에 «한 번도» 없던 계열). 🔴 **§5-J 호출자가 «셋 → 넷»**(`chain_replay.py` 가 같은 표를 읽는다). 🔴 **`gaps.py`·`gap_names.json` 의 거절문이 가리키는 스펙이 `task/` → `docs/spec/` 로 옮겨졌다.** ✅ **§0 게이트 ㉓-c/㉓-d/㉓-e/㉔-a/㉔-b/㉕ 여섯 전부 기대값 그대로**(0 · 3 · 9+1+1 · 0 · 1+2 · 0). ⚠️ **이 패스가 열어 본 소스**: `main.py`(`narrowed_table_query`·`cached_table_count`·`get_table_data_count`·`fetch_and_merge_metadata` + 계수 전건) · `ledger_api/ledger_subgraph.py`(최상위 심볼 + `subgraph` 시그니처·키 가드) · `ledger_trace_router.py`(전량) · `chain_replay.py`(`resolve_pace`·`replay_rule`·페이싱 루프) · `retroactive.py`(`_pace_param`·`OPERATIONS` 키) · `database/models.py`·`crud.py`(해당 diff) · `mappers/lot_slot_wafer_mapper.py.sample`(전량) · `chain_rules.json.sample`(규칙 전건) · 클라 신설 넷(전량) + `grid.js`/`main.js`/`api.js` 지목 심볼. **§1.3·§1.5~§1.8·§2~§4·§5-A~§5-F·§7-A·§7-B 는 열지 않았다.** |
 | 🆕⑯ §5-J **신설**(`pacing`) · §5-H `gaps` **신설** · §5-D `retroactive` · §5-H 파일 표·라우터·채점자 · §1 라우트 계수 · §7 클라 신설 셋 — 「긴 작업에 손잡이가 둘 생긴 날: **멈춤**과 **늦춤**」 | 🟢 **지목 심볼·시그니처·파일 전건 실측(2026-08-31)** | **`9eb30691`**(HEAD) 기준 · 직전 정비 `5a73021a` 에서 **232커밋** | 🔴 **`retroactive.OPERATIONS` 가 «5종에서 6종»이 됐고 그 사이에 «구성원이 바뀌었다»** — `graph_orphans` 는 **없는 이름**(서버 전건 grep 0)이고 `ledger_backfill`·`ledger_rescope` 둘이 들어왔다. 지도는 없는 op 를 심볼 표에 싣고 있었다. 🔴 **`server/pacing.py`·`pacing.json` 신설** — 원장 백필·파일 인제션·소급 등록부 «셋»이 같은 표를 읽는다([§5-J](#5-j-serverpacingpy--pacingjson--긴-작업이-얼마나-미는가-표-하나-49988247-신설)). 🔴 **`server/ledger/gaps.py`·`gap_names.json` 신설** + 라우터에 `GET /api/ledger/gaps` — **라우트가 «둘»에서 «셋»이 됐다.** 🔴 **§5-H 파일 표에 «없는 파일 다섯»이 행으로 살아 있었다**(`chain_mapper`·`profile_chain_mapper`·`profile_lookup_adapters`·`legacy_import`·`shadow_parity` — 🆕⑬ 이 산문으로만 적고 표는 안 고쳤다). ⚠️ **이 패스가 열어 본 소스**: `server/pacing.py`(전량) · `pacing.json`(전량) · `ledger/gaps.py`(전량) · `ledger/gap_names.json`(전량) · `retroactive.py`(전량) · `ledger/backfill.py`(`run`·`_run_v2_lineage` 페이싱 루프·`resolve_pace`/`load_paces`/`rows_past_cursor`/`preview_first_batch` · 최상위 심볼) · `ledger/runtime_v2.py`(최상위 심볼 + `execute_scoped_batch`) · `ledger/store.py`(최상위 심볼 + `write_batch` docstring) · `chain_replay.py`(최상위 심볼 + `replay_rule` 시그니처) · `main.py`(소급 라우트 다섯 전량 · 라우트/게이트 전건 계수 · 줄 수) · `ledger_trace_router.py`(라우트 전건 · `/gaps`·`/declaration` 핸들러 · 모듈 docstring · 줄 수) · `database/models.py`(`RetroactiveRun` 전량 · 줄 수) · `parsers/directory_watcher.py`(페이싱 블록과 그 감싸는 메서드 · 쉼 자리) · `config/sample/ingestion_settings.json.sample`(`ingestion_pace` 키) · `client2/src/{grid_source_label,rescope_handoff,grid_rescope_menu}.js`(전량) · `retroactive_view.js`(export 전건) · `admin.js`·`main.js`(배선부만) · `server/ledger/**` 전건 `wc -l` · 원장 계열 시험 열넷의 줄 수·`def test_` 계수. 🔴 **그 밖의 절은 열지 않았다** — §1.1~§1.3·§1.5~§1.9·§2~§4·§5-A~§5-G·§5-H-bis·§5-I·§6·§7-A·§7-B 는 앞 패스 기준 그대로다 |
 | 🆕⑮ §1.9 **신설** · §1.1 · §1.4 · §5-H 라우터/`setup_bundle` · §5-I `ledger_subgraph` — 리로드가 엔트리포인트 밖으로 나간 날 | 🟢 **지목 심볼·시그니처 실측(2026-08-30)** | **`5a73021a`**(HEAD) 기준 | 🔴 **`server/system_reload.py` 가 신설·추적됐고 이 지도에 «절이 아예 없었다»**(`5db3b80c`) — [§1.9](#19-serversystem_reloadpy--리로드가-엔트리포인트-밖으로-나간-자리-5db3b80c-신설) 로 등재. `main.reload_local_process_cache` 는 **`def` 가 아니라 재export 대입**이 됐다(§1.1 행 정정). 🔴 **`ledger_api/ledger_subgraph.py` 의 «모듈 docstring» 이 은퇴한 그래프를 그린다** — 파일 자체는 `2a4e51cf` 와 **blob 동일**이라 🆕⑭ 심볼 표는 그대로 참이고, 낡은 것은 docstring 하나다(§5-I). 🔴 **`continues` 가 검증기에서 «나갔다»** — `setup_bundle._validate_vocabulary` 의 `optional=("continues",)` 가 삭제돼 이제 «거절»이다(`1d17c34a`). 🔴 **`_followable_predicates` 의 docstring 자기모순이 «해소됐다»**(`12a94097`) — 🆕⑬/🆕⑭ 가 두 번 적어 둔 그 반박은 이제 낡았다. 🔴 **`ledger_skeleton.json` 에 `references` 노드가 «생겼다»** — 「문법은 있는데 아무도 안 읽는다」에 **작성 폼이 그린다**가 더해졌다. ⚠️ **이 패스가 열어 본 소스**: `server/system_reload.py`(전량) · `main.py`(리로드 블록 · `startup_event` 의 `active_watcher` 대입 · 줄 수) · `ledger_api/ontology_config_explorer_router.py`(`system_reload` 호출부만) · `ledger_api/ledger_subgraph.py`(docstring · `decode_node_id` · `_seed_node` · `subgraph` 의 mechanism 주석) · `ledger_trace_router.py`(`_followable_predicates` docstring · 라우트 계수 · 줄 수) · `ledger/setup_bundle.py`(`_validate_vocabulary`·`_validate_entities`·`_validate_references` 만) · `ledger/ledger_skeleton.json`(diff) · `ledger/source_profile_builtins.py`(diff) · `config/sample/ledger_config.json.sample`(구조 프로브 — 실값 미전재) · `tests/test_entrypoint_import_isolation.py`. 🔴 **그 밖의 절은 열지 않았다** — §1.2~§1.7·§2~§4·§5~§7·§7-B 는 앞 패스 기준 그대로다 |
 | 🆕⑭ §5-H · §5-I 원장 **읽기 측** — 걷기 가드 둘이 들어온 밤 | 🟢 **지목 심볼·시그니처 실측(2026-08-29 심야)** | **`2a4e51cf`** 기준 · 아래 ⚠️ 재측정 줄 참조 | 🔴 **`continues` 축이 «엔티티 class» 축으로 통째 교체됐다.** `DEFAULT_CONTINUES_HOPS` → **`DEFAULT_BACKBONE_HOPS`** · `subgraph(..., continuing=…)` → **`static_types=` + `static_follow=`** · 라우터 `_continuing_predicates()` → **`_static_types()` + `_static_step_predicates()`** · 쿼리 파라미터 `continues_hops` → **`backbone_hops`**. 🔴 **`_reach` 가 «나누기를 그만뒀다»** — 반환이 2-튜플에서 **3-튜플 `(reach, parents, kinds)`** 이 되고 값이 정수다. 🔴 **`NODE_TABLE_COLUMNS`·`EDGE_TABLE_COLUMNS`·`PROPERTY_TABLE_COLUMNS` 는 이제 «없는 이름»이다**(앞 패스가 「호출자 0」으로 남겨 둔 셋이 삭제됐다). ⚠️ **이 패스가 열어 본 소스**: `ledger_api/ledger_subgraph.py`(전량) · `ledger_trace_router.py`(전량) · `ledger_trace.py`(`DEFAULT_RESOLVER_CONFIG` 만) · `ledger_explorer.py`(최상위 심볼) · `ledger/config.py`(최상위 심볼 + `load`/`_validate_for_version`) · `ledger/setup_bundle.py`(`_validate_entities`·`_validate_references`·`_validate_vocabulary` 만) · `server/config/sample/**` 둘의 «키 존재만» · `server/tests/` 읽기 측 아홉의 줄 수·`def test_` 계수. 🔴 **그 밖의 절은 열지 않았다** — §5-H 쓰기 측 심볼 표·§5-H-bis·§1–§7·§7-B 는 앞 패스 기준 그대로다 |
@@ -488,6 +489,24 @@
 > #       그게 옳다. 범위를 넓히면 이 검사가 영원히 빨개진다.
 > #    🔬 실측: HEAD **0** · `5a73021a` 도 **0**(즉 파일은 진작 나갔고 «표만» 낡아 있었다).
 > git ls-tree -r --name-only HEAD -- server/ledger/ | grep -cE "/(chain_mapper|profile_chain_mapper|profile_lookup_adapters|legacy_import|shadow_parity)\.py$"
+> # ㉖ [🆕⑰ 2026-09-02 신설] **`grid_rescope_menu` — 소스 히트 0건**이어야 한다.
+> #    🔴 이 문서는 이것을 §7 의 «자기 절»로 싣고 있었다 — 심볼 표(`scopeValuesFor` ·
+> #       `class GridRescopeMenu`)·소비자(`main.js` 의 `initGridRescopeMenu`)·채점자
+> #       (`client2/tests/grid_rescope_menu_harness.mjs` **282줄**)까지 전부. `6e060fd7`
+> #       (2026-09-01)이 **모듈과 하니스를 같은 커밋에 지웠고** 우클릭 메뉴는 `redo_banner.js`
+> #       의 배너가 됐다. 🔴 **경로 훑기로는 이것을 못 잡는다** — 지도가 이 파일을 «맨 파일명»
+> #       으로만 부르고 `client2/src/` 접두를 안 붙였기 때문이다. 그래서 이 검사는 «이름»으로 건다.
+> #    🔬 고장 주입 완료: `6e060fd7^` 에 대고 돌리면 **4파일 / 16히트**
+> #       (`src/grid_rescope_menu.js` 1 · `src/main.js` 4 · `tests/grid_rescope_menu_harness.mjs` 10
+> #        · `tests/startup_socket_gate_harness.mjs` 1), HEAD 는 **0**.
+> git grep -c "GridRescopeMenu\|initGridRescopeMenu\|grid_rescope_menu" -- client2 server
+> # ㉖-b 그 자리를 물려받은 것 — `redo_banner.js` 는 **살아 있어야** 한다(0이면 또 갈렸다는 뜻).
+> #    🔬 실측 HEAD **4파일**: `src/redo_banner.js`(정의) · `src/main.js`(소비) ·
+> #       `tests/redo_banner_harness.mjs`(채점) · `tests/startup_socket_gate_harness.mjs`.
+> #    ⚠️ 넷째를 «추론으로 셋이라 적었다가» 실행에서 고쳤다 — 기동 게이트 하니스가 이 화면의
+> #       부품 목록을 들고 있다. 이 파일이 «부품이 늘 때마다» 같이 늘어난다는 뜻이므로,
+> #       앞의 ㉖ 이 잡은 삭제 잔재도 정확히 거기 하나가 남아 있었다.
+> git grep -l "redo_banner\|RedoBanner" -- client2
 > ```
 >
 > 🆕⑪ **⑳/㉑/㉒도 고장 주입으로 확인했다 — 그리고 그 주입이 내가 쓰려던 숫자를 «둘» 고쳤다.** 실측(2026-08-23): ⑳ HEAD **0** ↔ `7eb11dde` **9**(10이 아니다 — `_plain`을 뺀 아홉이 검사 대상이다) · ㉑ HEAD **2** ↔ `7eb11dde` **5**(0이 아니다 — 남은 둘이 docstring 묘비라 **기대값이 0이 아니라 「정확히 2, 둘 다 묘비」**다. 0이라고 적었으면 이 검사는 착지하는 순간 빨개졌을 것이다) · ㉑-b HEAD **0** ↔ base **1** · ㉒ HEAD **0** ↔ base **1**.
@@ -602,7 +621,7 @@
 | 🆕 **`server/map_alignment.py`**(프레임 정렬 채점자) + **`server/frame_confirmation.py`**(확정 기록자) + `migrations/add_frame_confirmation.py` | 🆕🆕🆕 **6,468** + **798** (@`68db020` 실측 — 등재 당시 3,272 + 688. 🔴 **`frame_confirmation`이 처음으로 줄었다** — private `_basis_cells_for`가 `map_alignment.basis_cells_for`로 이사·공개됐다) | [§5](#-servermap_alignmentpy--프레임-정렬의-채점자) · [§5-F](#5-f--정렬-채점-계열-index-scoring-family--servermap_alignmentpy-2026-08-07-등재) |
 | 🆕 **Map Editor 2** — `client2/src/map_editor2.js` + `client2/src/map2/` **18**모듈 (구 에디터를 **대체하지 않고 옆에 선다**) | **408** + **8,378** (신설) | [§7-A](#7-a--map-editor-2--map_editor2html--client2srcmap2-2026-08-0506-신설) |
 | 🆕 `client2/src/push_columns.js`(푸시 컬럼 계약 — `map_editor.js`에서 이사) + `client2/src/enrichment_queue.js`(큐 술어) | **77** + **94** (신설) | [§7](#7-client2src--웹-클라이언트) |
-| 🆕⑯ **[신설] 그리드 ↔ 원장 이음매 3종** — `grid_source_label.js`(「이 표가 원장 소스인가」를 **세 문장**으로) + `grid_rescope_menu.js`(선택 행 → 범위 조립) + `rescope_handoff.js`(그리드 → 어드민 넘김) | **149** + **138** + **52** (신설 `e7b84e9b`·`f5d847c9`) | [§7](#7-client2src--웹-클라이언트) |
+| 🆕⑯ **[신설] 그리드 ↔ 원장 이음매 3종** — `grid_source_label.js`(「이 표가 원장 소스인가」를 **세 문장**으로) + ~~`grid_rescope_menu.js`(선택 행 → 범위 조립)~~ + `rescope_handoff.js`(그리드 → 어드민 넘김) | **149** + ~~138~~ + **52** (신설 `e7b84e9b`·`f5d847c9`) | [§7](#7-client2src--웹-클라이언트) · 🆕⑰ **가운데는 «없는 파일»이다**(`6e060fd7` 삭제 → `redo_banner.js`) |
 | `client2/src/*` | **44,400** (js **39,363** + css 4,983 — `d3ed167` 31,301에서 🔴 **+13,099**. 대부분은 🆕 **Map Editor 2**(`map2/` **8,378** + `map_editor2.js` 408 + `map_editor2.css`)와 `map_editor.js` **+165**) | [§7](#7-client2src--웹-클라이언트) |
 | 🆕⑬ **R&D 보드** — `client2/rnd-board.html` + `client2/src/rnd_board/` **20**파일 (삭제된 원장 콘솔의 후계) | js **7,148** + css **623** (@`3b77fbc3`) | [§7-B](#7-b-rd-보드-rnd_board-2026-08-29-신설-등재) |
 | 주요 호출 흐름 | — | [§8](#8-주요-호출-흐름-요약) |
@@ -617,7 +636,28 @@
 
 FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outbox + `/internal/events/*`로 통신.
 
-> 🆕⑯ 🔴 **[2026-08-31 실측] 이 파일은 `9eb30691`(HEAD)에서 **5,912줄**이다** — 🆕⑮ 의 5,860 에서 **+52**. 증분의 머리기사는 **소급 실행 목록·취소 라우트 둘**(`GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel`, [§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트))이다. 🔢 **같은 패스의 계수 재측정 — 세 수가 다 밀려 있었다**(철자를 함께 적는다, 아래 🔢 문단의 규율 그대로): 파일 **최상단** `@app.<verb>(` = **88**(구 표기 82) · 들여쓰기 포함 = **97**(구 표기 91) · `@app.…(dependencies=[Depends(require_admin_token…)])` 꼴의 게이트 데코레이터 = **33**(구 표기 28). ✅ **strict 는 여전히 «셋»이고 이름도 그대로다** — `POST /admin/retroactive/{op}/run` · `POST /admin/auto-update/run-now` · `POST /admin/scripts/code`. 🔴 **새로 들어온 소급 라우트 둘은 strict 가 «아니다»** — 취소는 값 하나를 세울 뿐 코드를 실행시키지 않는다(라우트 docstring 이 그 구분을 적는다). ⚠️ **이 패스가 잰 것은 줄 수·계수와 소급 라우트 다섯뿐이다** — §1.1~§1.3·§1.5~§1.9 의 심볼 표는 열지 않았다.
+> 🆕⑰ 🔴 **[2026-09-02 실측] 이 파일은 `64b562b6`(HEAD)에서 **5,987줄**이다** — 🆕⑯ 의 5,912 에서 **+75**. 증분의 머리기사는 **개수 라우트 하나**(`GET /tables/{table_name}/data/count`, [§1.2](#12-api-라우트-표--데이터-조회편집))와 그 라우트가 «그리드 조회와 공유하는 조립» 둘이다.
+>
+> 🔢 **계수 재측정 — 철자를 «명시»한다. 종전 표기의 `@app.<verb>(` 는 `@app.websocket` 을 «안 세는» 철자였고, 그 사실이 안 적혀 있어서 다시 재는 사람은 하나 큰 수를 얻는다.**
+> ```
+> 철자                                                        9eb30691   64b562b6(HEAD)
+> ^@app\.(get|post|put|delete)\(          <- 이 표의 «정본»       88          89
+>   + websocket 까지                                            89          90
+> ^\s*@app\.(get|post|put|delete)\(  (들여쓰기 포함)              97          98
+>   + websocket 까지                                            98          99
+> @app.…(dependencies=[Depends(require_admin_token…)])  «한 줄»   33          33
+>   + 여러 줄 데코레이터의 이어지는 줄까지                          34          34
+> ```
+> ✅ **게이트는 여전히 «셋»이고 이름도 그대로다**(`POST /admin/retroactive/{op}/run` · `POST /admin/auto-update/run-now` · `POST /admin/scripts/code` — `require_admin_token_strict`). 🔴 **새 개수 라우트는 게이트가 «없다»** — 그리드 조회(`/data`)와 «같은 노출 면»이고, 개수만 따로 잠그면 그 잠금이 아무것도 안 지킨다(같은 필터로 행 자체를 이미 내주므로).
+>
+> 🔴 **`?defer_total=true` — 「개수를 «덜 정확하게»」가 아니라 「개수를 «늦게»」다.** 소스가 그 구분을 명시적으로 적는다: 근사치도 TTL 연장도 없고, 미룬 수는 `GET /tables/{t}/data/count` 가 **같은 필터로 정확한 전수 count** 를 답한다. 🔴 **`defer_total` 이면 캐시도 «보지 않는다»** — 히트를 먼저 보면 「보통은 빠르고 가끔 느린」 두 모양이 되고, 화면은 그 둘 중 어느 쪽인지 모른 채 그려야 한다.
+>
+> | 신설 심볼 | 무엇인가 |
+> |---|---|
+> | **`narrowed_table_query(db, table_name, table_model, *, q=None, cols=None, transaction_id=None, filters=None, enrichment_queue=None, enrichment_queue_scope=None)` → `(query, binder, cache_key)`** | 🔴 **좁힌 질의«와» 그 질의에 딸린 캐시 키를 «한 조립»에서 낸다.** `/data` 와 `/data/count` 가 같은 질문의 두 반쪽이라, `?filters=` 를 «두 번째로 해석»하면 두 수가 **오류 없이** 갈린다 — 그리드는 바닥글이 없다고 말하는 행을 그린다. 캐시 키가 여기서 나오는 것도 같은 이유다: 라우트가 자기 키를 철자하면 캐시가 반으로 갈리고 `invalidate_table_cache` 가 한쪽만 지운다. 🔴 **키 철자는 `build_count_cache_key` «하나»** — 여기서 `"\|".join(...)` 을 다시 쓰면 무효화 판정과 갈라져 여덟 호출 지점이 죽는다(소스가 그 사고를 이름 대고 적는다). ⚠️ **CSV export 는 «세 번째 블록»이고 여기 안 들어왔다** — 이름 붙은 큐 술어를 «원래 안 걸므로» 접으면 export 내용이 바뀐다. 소스가 그것을 별건이라 적어 둔다 |
+> | **`cached_table_count(query, cache_key)` → `(count, seconds)`** | 캐시 히트이거나 `count()` 한 번. 🔴 **두 라우트가 «이것으로만» 캐시를 본다** — 그래서 한쪽의 `defer_total` 과 다른 쪽의 호출이 서로 다른 캐시를 보게 될 수 없다. TTL·무효화 규칙은 이 라운드가 **안 건드렸다** |
+>
+> 🆕⑯ 🔴 **[2026-08-31 실측] 이 파일은 `9eb30691`(HEAD)에서 **5,912줄**이었다** — 🆕⑮ 의 5,860 에서 **+52**. 증분의 머리기사는 **소급 실행 목록·취소 라우트 둘**(`GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel`, [§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트))이다. 🔢 **같은 패스의 계수 재측정 — 세 수가 다 밀려 있었다**(철자를 함께 적는다, 아래 🔢 문단의 규율 그대로): 파일 **최상단** `@app.<verb>(` = **88**(구 표기 82) · 들여쓰기 포함 = **97**(구 표기 91) · `@app.…(dependencies=[Depends(require_admin_token…)])` 꼴의 게이트 데코레이터 = **33**(구 표기 28). ✅ **strict 는 여전히 «셋»이고 이름도 그대로다** — `POST /admin/retroactive/{op}/run` · `POST /admin/auto-update/run-now` · `POST /admin/scripts/code`. 🔴 **새로 들어온 소급 라우트 둘은 strict 가 «아니다»** — 취소는 값 하나를 세울 뿐 코드를 실행시키지 않는다(라우트 docstring 이 그 구분을 적는다). ⚠️ **이 패스가 잰 것은 줄 수·계수와 소급 라우트 다섯뿐이다** — §1.1~§1.3·§1.5~§1.9 의 심볼 표는 열지 않았다.
 >
 > 🆕⑮ 🔴 **[2026-08-30 실측] 이 파일은 `5a73021a`(HEAD)에서 **5,860줄**이었다** — 직전 `2a4e51cf` 의 5,962 에서 **−102**이고, 그 감소는 전부 `5db3b80c` 가 리로드 두 함수의 «몸»을 [`server/system_reload.py`](#19-serversystem_reloadpy--리로드가-엔트리포인트-밖으로-나간-자리-5db3b80c-신설) 로 옮긴 것이다. ⚠️ **이 패스가 잰 것은 줄 수와 리로드 블록·`startup_event` 뿐이다** — §1.2~§1.7 의 라우트 표·심볼 표는 열지 않았다.
 >
@@ -703,7 +743,8 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | GET `/` | `read_root` | index 서빙 |
 | GET `/api/download/client` | `download_desktop_client` | 데스크톱 셸 배포 |
 | GET `/tables` | `list_tables` | 테이블 목록 |
-| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합 |
+| GET `/tables/{t}/data` | `get_table_data` | **메인 조회** — 페이지네이션+필터+정렬+메타 병합. 🆕⑰ **`defer_total: bool = False`** — 참이면 응답의 `total` 이 **`null`** 이고 개수는 아래 라우트가 답한다 |
+| 🆕⑰ **GET `/tables/{t}/data/count`** | **`get_table_data_count`** | **[2026-09-02 신설] 미룬 그 수 — «정확한 전수 count»다.** 🔴 **필터를 두 번째로 해석하지 않는다** — 위 라우트와 `narrowed_table_query` **하나**를 공유하고 캐시 키도 거기서 나온다. 🔴 **받는 파라미터는 «좁히는 것»뿐이다**(`q`·`cols`·`transaction_id`·`filters`·`enrichment_queue`·`enrichment_queue_scope`). **`skip`/`limit`/`order_by` 는 «안 받는다»** — 어느 행을 보여줄지를 정할 뿐 몇 개인지를 안 바꾸므로, 받으면 「정렬을 바꿨더니 개수가 달라졌다」가 물어볼 수 있는 질문이 된다. 없는 표는 404 |
 | GET `/tables/{t}/schema` | `get_table_schema` | 스키마 계약(`table_config.json` 기반). **[gate4 `deed6d2`] `map_push_ok` 필드 동봉** — `config.get("map_push_ok") is True` **엄격 판정**: 문자열 `"true"`·1 등 오타는 잠금 유지, JSON boolean true만 유효. 클라 gate 4의 site 선언 서빙 — [§7 map_editor.js](#7-client2src--웹-클라이언트). 테스트: `tests/test_schema_map_push_ok.py` **3건**(`grep -c "def test_" = 3`) |
 | **GET `/tables/{t}/columns/{c}/values`** | **`get_column_unique_values`** | **[F3 `4e8e867` 신설] 입력 제안용 유일값 조회** — `value_suggest.suggest_values` 위임([§5-A](#5-a-2026-07-30-신설-서버-모듈-8종)), `SuggestValidationError` → 그 안의 `status_code`로 변환. 🔴 **등록 위치가 계약이다**: `/tables/{t}/{row_id}`보다 **위**에 있어야 한다 — 아래에 두면 `columns`가 `{row_id}`로 먹혀 단일 행 조회로 떨어진다 |
 | GET `/tables/{t}/{row_id}` | `get_row_data` | 단일 행 조회 |
@@ -1421,9 +1462,25 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 >
 > ⚠️ zone 규칙(V1–V6)·토큰 문법·수요 산술은 **양쪽 구현이 공유 벡터로 고정**돼 있다 — [§6-2 `contracts/doe_band_rules/`](#6-2-교차-구현-계약-contracts) 참조 (레거시 `bands` 산술은 `contracts/band_arithmetic/`). **[`2baf9ff` U9] `stack`의 명시적 `'0'`은 marker(상태 표시 값)** — 층·구역·수요 없는 조건 선언이고, 구역 자재와 공존하면 V6이 차단한다(blank와 다르다 — blank는 V5).
 
-### `server/database/models.py` (🆕⑯ **1,127줄** @`9eb30691` — 🆕⑨ 1,079 @`5359fdd` blob `fbe4bde`, 제목의 636줄은 세 세대 낡은 값이었다) — ORM + 동적 모델/런타임 DDL
+### `server/database/models.py` (🆕⑰ **1,134줄** @`64b562b6` — 🆕⑯ 1,127 @`9eb30691` — 🆕⑨ 1,079 @`5359fdd` blob `fbe4bde`, 제목의 636줄은 세 세대 낡은 값이었다) — ORM + 동적 모델/런타임 DDL
 정적 ORM 클래스 🆕⑯ **10종**과 config 주도 동적 테이블 관리 함수 — `AuditLog` · `InteractionEffortLog` · `DatabaseOutbox` · `FileIngestionLog` · `FileIngestionCheckpoint` · `CellOverwrite` · `CellSource` · **`FrameConfirmation`** · **`FrameConfirmationSource`**(이 둘의 확정 스키마 서술은 [§5 `frame_confirmation.py`](#-serverframe_confirmationpy--확정의-기록자)와 `migrations/add_frame_confirmation.py`) · 🆕⑯ **`RetroactiveRun`**. **그래프 3모델은 2026-08-18에 제거됐습니다**(아래 취소선 행). 모듈 레벨에 `mapper_registry` · `_KEY_TIERS` · **`declared_key_columns(table_cfg)`**(미등재)도 있다.
 
+> 🆕⑰ 🔴 **[2026-09-02 실측 — `64b562b6` 에서 **1,134줄**] `init_dynamic_models` 가 «새 표»에 그래프 동기화 컬럼 «셋»을 더는 만들지 않는다** — `is_graph_synced` · `needs_graph_rollback` · `graph_synced_at`(`42efb58b`·`21e9df3d`). 앞의 둘은 **인덱스가 걸려 있었으므로**, 모든 insert 가 존재하지 않는 동기화기를 위해 인덱스 둘을 유지하고 있었다(`graph_sync_worker.py` 는 없고 `/graph/mapping-summary` 는 410 — [§1.5](#15-그래프-조회-구간은-410으로-은퇴했다)).
+>
+> ⚠️ **「지워졌다」로 읽으면 세 군데를 틀린다. 바뀐 것은 «무엇이 CREATE 되는가» 하나다.**
+> ```
+> 바뀐 것    새로 만들어지는 표에 그 세 컬럼이 «없다»                    models.py init_dynamic_models
+>           `crud.apply_row_update_internal` 의 `system_cols` 에서도 빠졌다 — 아무도 안 쓰는
+>           이름을 「쓰기 금지」 목록에 두면 아무것도 안 지키는 규칙이 된다
+> 안 바뀐 것 🔴 **기존 표는 컬럼을 그대로 갖는다.** 44개 표의 컬럼을 떨구는 것은 되돌릴 수
+>           없고 별건 판정이다. 이 라운드는 아무 표의 모양도 «오늘» 바꾸지 않는다
+> 안 바뀐 것 🔴 **API 는 여전히 세 «칸»을 만들어 내보낸다** — `main.py::fetch_and_merge_metadata`
+>           가 `getattr(row, "is_graph_synced", False)` 꼴로 세 pseudo-cell 을 «모든 행»에
+>           주입하고, `get_table_schema` 쪽도 `col_types` 에 셋을 얹는다. 컬럼이 없는 새 표에서는
+>           그 `getattr` 기본값이 나가므로 **화면은 「미동기화」를 «보고», 그건 결측이 아니다**
+> ```
+> 🔴 **그래서 「이 세 이름이 소스에 몇 건인가」로 은퇴를 재면 안 된다** — 산문·주석·마이그레이션 역방향 SQL·시험까지 세면 여전히 여럿이고, 실제로 죽은 것은 **DDL 한 자리**다.
+>
 > 🆕⑯ **[2026-08-31 신설] `class RetroactiveRun(Base)` — `__tablename__ = "retroactive_runs"`.** 요청형 연산 실행 «하나»의 행이고 **등록부 전체가 이 표 하나를 쓴다**([§5-D](#5-d-2026-08-04-신설-서버-모듈)). 컬럼: `run_id`(String(32) PK — `retroactive.publish` 가 만드는 12자리 hex 이고 **큐 이벤트 payload 와 같은 값**이라 아웃박스 행과 서로를 가리킨다) · `op`(indexed) · `params`(JSON 문자열) · `requested_by` · `state`(indexed, 기본 `"queued"`) · `processed_rows` · **`total_rows`(🔴 NULL 가능 — «0 이 아니라 모름»)** · `result`(JSON) · `error` · `queued_at`(`server_default=func.now()`) · `started_at` · **`last_progress_at`**(배치마다 갱신 — 「살아 있나」를 이 값의 «나이»로 본다) · `finished_at`. 🔴 **마이그레이션 파일이 «없다»** — 새 표라 `create_all` 이 만든다(옆의 `FileIngestionCheckpoint` 가 적어 둔 그 사유 그대로: 기존 표에 컬럼을 붙이는 것과 달리 순서 의존이 없다). `server/migrations/` 에서 `retroactive` 를 찾으면 **0건**이고 그것이 정상이다. 🔴 **연산마다 표를 만들지 않는 것이 설계다** — 그러면 새 op 가 「등록부 항목 하나」가 아니라 「마이그레이션」이 되고 등록부가 범용이라는 성질이 끝난다. ⚠️ **상시형(파일 인제션)은 여기 «들어오지 않는다»** — `FileIngestionCheckpoint` 가 이미 파일마다 total/processed/chunk 를 든다.
 
 > ✅ **[2026-08-18 재대조 완료] 심볼 실측 749건 중 소스에 없는 이름은 «한 행»이었습니다**(`config_backup.py`의 `archive_dir`/`weekly_dir`/`changes_dir`/`restore_dir` — 넷 다 부재, 아래 §5에서 정정). 나머지 드리프트는 심볼이 아니라 **구조**였습니다: 삭제된 파일 다섯을 서술하는 절 82줄. 그 절들은 묘비로 대체됐습니다.
@@ -1956,7 +2013,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 파일 | 줄 | 역할 · 앵커 |
 |---|---|---|
 | **`server/keyset_scan.py`** | 89 | **[전 테이블 순회의 단일 구현]** `iter_pages(db, model, columns=None, condition=None, chunk_size=DEFAULT_CHUNK_SIZE, limit=None, max_row_id=None)`(~38, **행이 아니라 페이지(list)를 yield** — 호출자가 페이지당 묶음 쿼리 1회를 하게 해 N+1을 막는다) · `current_max_row_id(db, model)`(~85) · `DEFAULT_CHUNK_SIZE=1000`(~35). `row_id > last` 시크이고 **OFFSET을 쓰지 않는다**. ⚠️ **`columns`에 `row_id`를 넣지 마라** — 순회가 커서를 소유해 **맨 앞에 끼워 넣으므로**(`row[0]`이 항상 커서) 중복 지정은 하류 인덱스를 조용히 밀어낸다(`enrichment_analysis`·`chain_replay` 둘 다 `row[1:]`을 위치로 언팩한다). **`max_row_id`는 최적화가 아니라 정확성 요건**이다: 타깃 테이블이 곧 트리거 테이블인 재생은 이 스냅샷 없이는 자기가 방금 쓴 행을 만나 **끝나지 않는다**. ✅ **"백필의 수제 루프 2개를 대체했다"는 주장 검증됨** — `6422326` diff에서 `_load_existing_business_keys`·`run_backfill`의 `while True` 커서 루프 둘이 삭제됐고, 현 소비자는 백필(2곳)·`enrichment_analysis.iter_derived_rows`·`chain_replay.replay_rule`이다. 🆕⑨ ⚠️ **[2026-08-18] 종전 이 칸의 마지막 문장 — 「"서버 유일의 순회"는 아니다, `graph_materializer.resync_table`이 자체 사본을 유지한다」 — 은 이제 «반례가 사라져» 무효다.** `graph_materializer.py`는 삭제됐다. **그렇다고 「유일」이 참이 된 것은 아니다** — 이 패스는 다른 수제 커서 루프를 찾는 전수 조사를 **하지 않았다**(범위 밖). 반례 하나가 없어졌을 뿐이므로 **여기서 「유일」이라고 읽지 마라** |
-| **`server/chain_replay.py`** | 🆕🆕🆕🆕 **947** @`347de78`(712 → **+235**) 🆕🆕🆕🆕 **R3 신설 — `recompute_display_values(db, table_name, columns=None, row_ids=None, apply=False, chunk_size=…, limit=None, max_report=DEFAULT_MAX_REPORT, log=…) -> dict`.** R1·R2는 **저장된 것을 바꾸지만** R3는 아무 `cell_sources` 행도 만들거나 지우거나 고치지 않는다 — `compute_priority_value`가 「어느 저장된 레이어가 이기는가」를 다시 답하고, 그 답이 움직인 셀만 **표시 컬럼을 재기록**한다. 존재 이유는 `compute_priority_value`의 tie-break 수정이 **미래의 쓰기만** 고치기 때문(과거에 잘못 확정된 값은 재배달이 없으면 영원히 그대로). **안전장치는 최적화가 아니다** — 레이어 2개 미만인 셀은 절대 건드리지 않는다(1개는 동률이 없고, 0개는 다른 쓰기 경로가 소유한 컬럼을 `(None, None)`으로 지울 수 있다). 바뀐 셀마다 `AuditLog`(`source_name=R3_AUDIT_SOURCE="resolution_recompute"`, `updated_by="resolved:<승자 소스>"`)를 남겨 클라 이력 타임라인이 그대로 설명한다. `keyset_scan.iter_pages`로 페이지당 커밋(대형 실행은 재시작 가능). 반환 `changes`(최대 `max_report`)+`changes_truncated`, `changed_by_tiebreak`/`changed_by_stale_materialisation`/`pinned_changed`/`pinned_examined` 카운터 분리.<br>🔴 **R2·R3가 판정 로직을 공유하도록 추출된 헬퍼 둘** — **`_load_cell_state(db, table_name, chunk_row_ids) -> (sources, pins)`**(청크 전체를 배치 질의 2개로, 셀당 질의 아님. `sources[(row_id,col)][source_name] = {"value","ingested_at"}` — `ingested_at`이 함께 실리는 것이 `compute_priority_value`의 tie-break 입력이다) / **`_resolve_cell(table_name, col_types, row, col, cell_sources, pin, exclude_source=None) -> dict`**(저장된 레이어에서 "무엇을 보여줘야 하는가"를 다시 답하되 **쓰지 않는다** — dry-run과 apply가 같은 계산을 돈다. `exclude_source`가 R2를 "레이어 하나 뺀 R3"로 만드는 유일한 차이). **`withdraw_source`(R2)는 이번에 이 둘로 재배선됐다** — 종전엔 자기 안에서 남은 레이어를 조립했다. 🆕🆕 **[DT/core 체인이 재생 경로에 요구한 것 셋]** `_map_metadata_outputs(result, rule, target_table)` · `_scoped_batch_outputs(result, rule, target_table)` · `_apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page, replace_map=False, scope=None)` — 🔴 **맵퍼가 이제 한 규칙에서 *여러 타깃 모양*을 낸다**(메타 행 · 스코프된 배치). 재생이 라이브 경로와 같은 쓰기를 하려면 그 분해가 여기에도 있어야 한다([§5-G](#5-g--dtcore-프레임-유도-체인-2026-08-11-신설-등재)).<br>🆕 **`count_withdrawable(db, table_name, source_name, columns=None) -> {cells_claimed, pinned}`**(집계 2개, 요청 경로 안전 — R2 미리보기) + `_claimed_filter(...)` 추출로 `withdraw_source` 1단계가 같은 술어를 쓴다. 🔴 **비용 주석이 실측으로 정정됐다**: 구 인덱스 `idx_sources_lookup_source`는 `source_name`이 **마지막**이라 Seq Scan(861ms / 263,369 buffers / 13.1M행)이었고, `idx_sources_by_source`는 **10.9ms / 1,106 buffers**다 | **[R1 규칙 소급 재적용 / R2 소스 철회]** "기계 판단은 철회할 수 있어야 안전하다"의 두 절반. `load_rules`(~94)·`find_rule`(~105)·`order_rules`(~114, 생산자→소비자 위상 정렬)·`is_self_triggering`(~159)·**`replay_rule(db, rule, apply=False, limit=None, chunk_size=…, log=…)`(~201)**·`replay_all`(~378)·**`withdraw_source(db, table_name, source_name, columns=None, row_ids=None, apply=False, chunk_size=…, log=…)`(~404)**·`class ReplayRefused`(~86). 상수 `WRITE_CHUNK=1000`(~65)·`SAMPLE_LIMIT=20`(~66)·`R1_SOURCE_NAME="chain_ingestion"`(~71)·`R2_AUDIT_SOURCE="chain_replay_withdraw"`(~74)·**`SKIP_BLANK=True`(~78)**·**`PROTECTED_SOURCES=frozenset({"user"})`(~83)**.<br>🔴 **R1은 공백을 절대 쓰지 않는다** — `SKIP_BLANK`은 **파라미터가 아니라 모듈 상수**다. 맵퍼가 빈 값을 돌려주면 `skipped_blank_cells`로 세고 **R2 후보로 보고**한다("규칙이 여기서 아무것도 못 만든다"는 R1이 아니라 R2의 문장이다). 끄면 부재가 조용히 "쓰인 빈 값"이 된다.<br>🔴 **R1이 `source_name="chain_ingestion"`으로 쓰는 것이 의도다** — 라이브 워커 자신의 provenance라서 ① 사용자 레이어(0)가 특별 분기 0줄로 이긴다 ② 워커의 `source_name != "chain_ingestion"` 루프 필터가 재생의 outbox 이벤트를 떨어뜨린다. **개명하면 루프 가드와 사람 보호 논거가 동시에 깨진다.**<br>**R2의 이중 거부**: `PROTECTED_SOURCES`면 raise, 사람이 Pin한 셀(`manual_priority_source`가 철회 대상)은 skip + `pinned_skipped`. ⚠️ **표시값이 안 바뀌어도 provenance는 지운다** — `value_unchanged`로 센 셀은 그 `cell_sources` 행을 잃고 **감사 항목이 남지 않는다**(카운트가 유일한 흔적). 도달: CLI `server/scripts/chain_replay_cli.py`(155→**210**줄). 🆕🆕🆕🆕 **[`347de78`] `resolve <table> [--columns a,b] [--row-ids …] [--limit N] [--apply]` 서브커맨드 신설**(R3 노출) — 기존 `replay`/`replay-all`/`withdraw`/`list`와 나란히 |
+| **`server/chain_replay.py`** | 🆕⑰ **1,200** @`64b562b6` (🆕🆕🆕🆕 947 @`347de78`, 712 → **+235**) — 🆕⑰ 🔴 **페이싱이 들어왔다**(`b504c504`): `replay_rule(..., pace=None)` · **`resolve_pace(name, paces=None)`**(🔴 **표를 «베끼지 않고» `pacing.resolve` 를 부른다** — 하는 일은 `pacing.UnknownPace` → **`ReplayRefused`** 로 «거절의 모양»을 맞추는 것 하나. 이 경로의 다른 모든 거절이 `ReplayRefused` 라, 예외 «둘»을 잡게 만든 호출자는 결국 하나만 잡는다). 🔴 **첫 페이지 «전»에 해석한다** — 선언 안 된 페이스는 아무것도 쓰기 전에 거절된다. 쉬는 자리와 그 논거는 [§5-J](#5-j-serverpacingpy--pacingjson--긴-작업이-얼마나-미는가-표-하나-49988247-신설). 짝: `server/scripts/chain_replay_cli.py`(**226줄**)의 **`--pace`** — 🔴 **버튼이 받는 것을 CLI 도 받아야 한다**고 소스가 적는다(안 그러면 같은 일을 하는 두 길 중 하나가 «페이스 없이» 돈다). 채점자 `server/tests/test_chain_replay.py` 🆕⑰ **897줄 / `def test_` 35**(구 731/29) 🆕🆕🆕🆕 **R3 신설 — `recompute_display_values(db, table_name, columns=None, row_ids=None, apply=False, chunk_size=…, limit=None, max_report=DEFAULT_MAX_REPORT, log=…) -> dict`.** R1·R2는 **저장된 것을 바꾸지만** R3는 아무 `cell_sources` 행도 만들거나 지우거나 고치지 않는다 — `compute_priority_value`가 「어느 저장된 레이어가 이기는가」를 다시 답하고, 그 답이 움직인 셀만 **표시 컬럼을 재기록**한다. 존재 이유는 `compute_priority_value`의 tie-break 수정이 **미래의 쓰기만** 고치기 때문(과거에 잘못 확정된 값은 재배달이 없으면 영원히 그대로). **안전장치는 최적화가 아니다** — 레이어 2개 미만인 셀은 절대 건드리지 않는다(1개는 동률이 없고, 0개는 다른 쓰기 경로가 소유한 컬럼을 `(None, None)`으로 지울 수 있다). 바뀐 셀마다 `AuditLog`(`source_name=R3_AUDIT_SOURCE="resolution_recompute"`, `updated_by="resolved:<승자 소스>"`)를 남겨 클라 이력 타임라인이 그대로 설명한다. `keyset_scan.iter_pages`로 페이지당 커밋(대형 실행은 재시작 가능). 반환 `changes`(최대 `max_report`)+`changes_truncated`, `changed_by_tiebreak`/`changed_by_stale_materialisation`/`pinned_changed`/`pinned_examined` 카운터 분리.<br>🔴 **R2·R3가 판정 로직을 공유하도록 추출된 헬퍼 둘** — **`_load_cell_state(db, table_name, chunk_row_ids) -> (sources, pins)`**(청크 전체를 배치 질의 2개로, 셀당 질의 아님. `sources[(row_id,col)][source_name] = {"value","ingested_at"}` — `ingested_at`이 함께 실리는 것이 `compute_priority_value`의 tie-break 입력이다) / **`_resolve_cell(table_name, col_types, row, col, cell_sources, pin, exclude_source=None) -> dict`**(저장된 레이어에서 "무엇을 보여줘야 하는가"를 다시 답하되 **쓰지 않는다** — dry-run과 apply가 같은 계산을 돈다. `exclude_source`가 R2를 "레이어 하나 뺀 R3"로 만드는 유일한 차이). **`withdraw_source`(R2)는 이번에 이 둘로 재배선됐다** — 종전엔 자기 안에서 남은 레이어를 조립했다. 🆕🆕 **[DT/core 체인이 재생 경로에 요구한 것 셋]** `_map_metadata_outputs(result, rule, target_table)` · `_scoped_batch_outputs(result, rule, target_table)` · `_apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page, replace_map=False, scope=None)` — 🔴 **맵퍼가 이제 한 규칙에서 *여러 타깃 모양*을 낸다**(메타 행 · 스코프된 배치). 재생이 라이브 경로와 같은 쓰기를 하려면 그 분해가 여기에도 있어야 한다([§5-G](#5-g--dtcore-프레임-유도-체인-2026-08-11-신설-등재)).<br>🆕 **`count_withdrawable(db, table_name, source_name, columns=None) -> {cells_claimed, pinned}`**(집계 2개, 요청 경로 안전 — R2 미리보기) + `_claimed_filter(...)` 추출로 `withdraw_source` 1단계가 같은 술어를 쓴다. 🔴 **비용 주석이 실측으로 정정됐다**: 구 인덱스 `idx_sources_lookup_source`는 `source_name`이 **마지막**이라 Seq Scan(861ms / 263,369 buffers / 13.1M행)이었고, `idx_sources_by_source`는 **10.9ms / 1,106 buffers**다 | **[R1 규칙 소급 재적용 / R2 소스 철회]** "기계 판단은 철회할 수 있어야 안전하다"의 두 절반. `load_rules`(~94)·`find_rule`(~105)·`order_rules`(~114, 생산자→소비자 위상 정렬)·`is_self_triggering`(~159)·**`replay_rule(db, rule, apply=False, limit=None, chunk_size=…, log=…)`(~201)**·`replay_all`(~378)·**`withdraw_source(db, table_name, source_name, columns=None, row_ids=None, apply=False, chunk_size=…, log=…)`(~404)**·`class ReplayRefused`(~86). 상수 `WRITE_CHUNK=1000`(~65)·`SAMPLE_LIMIT=20`(~66)·`R1_SOURCE_NAME="chain_ingestion"`(~71)·`R2_AUDIT_SOURCE="chain_replay_withdraw"`(~74)·**`SKIP_BLANK=True`(~78)**·**`PROTECTED_SOURCES=frozenset({"user"})`(~83)**.<br>🔴 **R1은 공백을 절대 쓰지 않는다** — `SKIP_BLANK`은 **파라미터가 아니라 모듈 상수**다. 맵퍼가 빈 값을 돌려주면 `skipped_blank_cells`로 세고 **R2 후보로 보고**한다("규칙이 여기서 아무것도 못 만든다"는 R1이 아니라 R2의 문장이다). 끄면 부재가 조용히 "쓰인 빈 값"이 된다.<br>🔴 **R1이 `source_name="chain_ingestion"`으로 쓰는 것이 의도다** — 라이브 워커 자신의 provenance라서 ① 사용자 레이어(0)가 특별 분기 0줄로 이긴다 ② 워커의 `source_name != "chain_ingestion"` 루프 필터가 재생의 outbox 이벤트를 떨어뜨린다. **개명하면 루프 가드와 사람 보호 논거가 동시에 깨진다.**<br>**R2의 이중 거부**: `PROTECTED_SOURCES`면 raise, 사람이 Pin한 셀(`manual_priority_source`가 철회 대상)은 skip + `pinned_skipped`. ⚠️ **표시값이 안 바뀌어도 provenance는 지운다** — `value_unchanged`로 센 셀은 그 `cell_sources` 행을 잃고 **감사 항목이 남지 않는다**(카운트가 유일한 흔적). 도달: CLI `server/scripts/chain_replay_cli.py`(155→**210**줄). 🆕🆕🆕🆕 **[`347de78`] `resolve <table> [--columns a,b] [--row-ids …] [--limit N] [--apply]` 서브커맨드 신설**(R3 노출) — 기존 `replay`/`replay-all`/`withdraw`/`list`와 나란히 |
 | **`server/enrichment_analysis.py`** | **548** (532 → **+16**: 큐 술어의 번역기 출처가 `main`에서 **`column_filter`**로 바뀌고, 그 사유가 모듈 docstring **~16–40**에 기록됐다. 앵커는 **전건 +16~+20** 이동) | **[④ 원인 분류 / ② 규칙 승격 제안 / ① 스윕의 드라이런]** 전부 읽기 전용(①의 `--apply` 제외). `iter_derived_rows`(**110**)·**`classify_queue(db, rule, probe_limit=200, limit=None, log=…)`(**217**)**·`_human_resolved_cells`(**336**)·**`analyze_promotions(db, rule, min_support=3, limit=None, log=…)`(**361**)**·`_proposed_reference_view`(**475**)·`run_auto_confirm_sweep(db, rule, apply=False, limit=None, ignore_knob=False, log=…)`(**500**)·`class AnalysisRefused`(**72**)·`_source_target_presence`(**171**). 분류 어휘 `CLS_MAPPING_GAP`(**61**, **버그 계급**)·`CLS_NO_SOURCE_ROWS`·`CLS_RESOLVABLE`·`CLS_AMBIGUOUS`·`CLS_NO_EVIDENCE`·`CLS_UNPROBED`(**66**) + `BUG_CLASSES`(**68**)/`REAL_WORK_CLASSES`(**69**).<br>🔴 **큐 술어를 여기서 다시 정의하지 않는다** — `_queue_condition`(**80**)이 `enrichment_config.to_public_rule(rule)["queue_filters"]`를 받아 **`column_filter.get_column_filter_condition`**(즉 `GET /tables/{t}/data`와 **같은 번역기**)로 변환한다(호출 **~101**). 그래서 워크리스트·배지·어드민 카운트·이 리포트가 어긋날 수 없다. 번역 불가 필터는 폴백이 아니라 `AnalysisRefused`.<br>🔴 **⚠️ 여기 있던 서술은 지금 시행되는 규칙의 정반대였다 — 정정.** 구 지도: *"`main` import가 함수 안 지연 import인 것이 의도다(워커에서 웹앱을 끌어오지 않기 위해) — 모듈 스코프로 올리면 그 성질이 깨진다."* **틀렸다.** 소스가 그 문장을 이름으로 반박한다(**~32–40**): *"지연 import는 `main`을 안전하게 만든 것이 아니라 늦게 만들었을 뿐이다."* 스케줄러가 컬렉터 디렉터리를 `sys.path[0]`에 꽂으므로 그 프로세스에서 `import main`은 **엉뚱한 파일에 바인딩**되고, 결과는 `module 'main' has no attribute 'get_column_filter_condition'`인데 **같은 작업을 CLI에서 돌리면 성공**했다. 지금 이 파일이 부르는 것은 **`import column_filter  # NOT main`**(**~88**)이고, 소스 주석이 그 `# NOT main`을 그대로 달고 있다. 전문은 [§1.8](#18-servercolumn_filterpy--필터-dsl-번역기가-엔트리포인트-밖으로-나간-자리-신설).<br>**②는 `source_name == 'user'` 셀만 채굴한다** — 넓히면 기계 추측(백필·이전 자동확정)이 config 규칙으로 세탁된다. 선행절은 `decision_key`의 **진부분집합**이어야 하고(단일 컬럼 키는 `refused: "no_proper_subset"`), 생성된 뷰는 전부 `enrichment_config._validate_view_sql`을 통과해야 제안이 된다. 도달: CLI `server/scripts/enrichment_insights.py`(200줄)뿐 |
 | **`server/enrichment_candidates.py`** | **613** (591 → **+22**, `f9289f6`) | **[① "후보가 하나면 그것은 판단이 아니라 동의다"]** 📐 **앵커 이동 다섯 구간**(구 39 이전 무이동 · 40–136 +6 · 137–320 +19 · 321–322 +23 · 323–327 +20 · 328 이후 +22).<br>**`resolve_target_candidate(db, rule, key_values, target_field)`(**~281** — THE 술어)**·`find_unresolved_cells`(**~371**, **부재 전용 관문**)·**`confirm_keys(db, rule, keyed_rows, apply=False, stats=None, tx_prefix=None)`(**~396**)**·`declaring_views`(**~240**)·`candidate_target_fields`(**~246**)·`rule_auto_confirm_enabled`(**~220**)·`global_auto_confirm_enabled`(**~191**)·`max_keys_per_unit`(**~205**)·`_refused`(**~251**)·`log_stats`(**~475**)·`reset_warnings`(**~186**)·`_warn_once`(**~179**)·`_load_ingestion_settings`(**~161**)·**`class AutoConfirmCollector`(**~487** — `__init__(derived_table, rules=None, settings=None)` **~502**(「`candidate_for` 0건」 경고는 **~522**의 `_warn_once` 호출) · `collect(items)` **~534** · `pending()` **~563** · `flush(db)` **~566**)**.<br>**[F9] `_diagnose_probe_failure(db, view, column, key_values) -> str`(**~258**) — 「컬럼이 없는 건가, 뷰가 깨진 건가」의 판별자.** 구 행 기반 경로는 결과의 컬럼 목록을 읽어 이 둘을 **공짜로** 갈랐지만, 그룹 프로브는 컬럼명을 **SQL에 보간**하므로 없는 이름이 다른 드라이버 오류와 구분되지 않는다. 둘을 `view_error`로 뭉개면 **「`candidate_for`가 뷰에 없는 컬럼을 지목한다」는 유일한 사유가 사라진다**. 그래서 **실패했을 때만** 평범한 표시 래핑(`execute_reference_view`)을 한 번 더 돌려 컬럼 유무를 묻는다 — **행복 경로의 비용은 정확히 쿼리 1회 그대로.** 🔴 **[`f9289f6`] 이 판별자는 그때까지 PG에서 도달 불가였다** — 재조회가 **같은 세션**에서 일어나는데 앞선 실패가 트랜잭션을 abort시켜 두었기 때문이다. `enrichment_config._isolated_execute`의 SAVEPOINT가 그것을 고쳤다([§5](#5-소형-서버-모듈)).<br>**[F9] `REASON_PROBE_TRUNCATED = "probe_truncated"`(**~143**)** — 프로브가 `enrichment_config.CANDIDATE_PROBE_MAX_ROWS`에 닿아 **읽기가 잘렸다**는 뜻.<br>🆕 **[`f9289f6`] `REASON_DISTINCT_TRUNCATED = "distinct_truncated"`(**~156**) — 이름 있는 거절이 하나 늘었다.** 🔴 **구 지도가 이 사실을 정반대로 적고 있었다**: *"이미 2개 이상이라 호출자의 `ambiguous`로 자연히 흘러간다"*. **틀렸고, 소스가 그 이유를 주석(**~144–155**)에 적어 두었다** — 이 함수는 `crud.clean_str_value`로 값을 **접는다**(**~332**). 잘려 돌아온 `limit+1`개 그룹이 전부 같은 정규값으로 접히면 distinct는 **1개**가 되고 판정은 `single`이 된다. 실증(`limit: 1`): `pairs=[('WF01',1), ('WF01 ',1)]` → 접으면 `{WF01}` → `single`, 그러나 잘려나간 곳에 **WF02**가 있었다. **절단은 접기 이전의 사실**이므로 그 자체가 거절이고, 두 절단은 **같은 자세로 나란히** 세워진다(**~345–350**: `row_truncated` → `probe_truncated`, `distinct_truncated` → 동명 사유).<br>🔴 **`resolve_target_candidate`의 실행 형태 — 시그니처는 그대로다.** `enrichment_config.execute_candidate_probe`(뷰 결과 **전체**에 GROUP BY)를 부른다. `support`는 GROUP BY의 count 합이고 `evidence[]`(**~337–340**)에 `rows`(= 창 함수가 센 `scanned`)/`distinct_values`/`candidate_rows`/`distinct_truncated`가 실린다.<br>🔴 **`SOURCE_NAME="enrichment_auto_confirm"`(~97)은 `crud.SOURCE_PRIORITY`에 의도적으로 없다** → 99(최하위) → 사용자 편집(0)이 언제나 이긴다. **등록하는 단 한 줄이 기계 확정을 사람 위에 올린다.**<br>🔴 **뷰 하나가 실패하면 판정 전체가 오염된다**(**~355–359**) — 선언 뷰 중 **아무거나** 에러면(`view_error`/`missing_bind`/`candidate_column_missing`/`probe_truncated`/**`distinct_truncated`**) 생존 뷰들이 **정확히 한 값에 합의해도** 결과는 `refused`다. 부분 발견은 UI용으로 `value`/`support`에 실리지만 쓰기를 관장하는 것은 `status`뿐.<br>🔴 **`DEFAULT_ENABLED=False`(~104)** — 형태가 같은 M3 등록기는 기본 ON인데 여기만 OFF다. 이 모듈이 쓰는 필드의 **공백이 곧 큐 소속의 정의**라서, 잘못된 확정은 항목을 워크리스트에서 **빼내 다시 검토되지 않게** 만든다. 이중 관문(전역 킬 스위치 `GLOBAL_KILL_SWITCH_KEY` ~109 + 규칙별 `RULE_KNOB` ~103) 둘 다 필요. `REASON_CELL_HAS_PROVENANCE`(~137)는 행 부재보다 엄격하다 — **누가 썼든** 타깃 셀에 `CellSource`가 있으면 차단. 캡 `DEFAULT_MAX_KEYS_PER_UNIT=200`(~118) — 키마다 선언 뷰 수만큼 쿼리가 나가므로 **1000만 행 인제션과 쿼리 폭풍 사이의 유일한 방벽**이고, 초과 키는 조용히 버려지지 않고 `REASON_OVER_CAP`으로 세어 워크리스트에 남는다.<br>**도달: 워커 호출자 1곳** — `chain_ingestion_worker.process_chain_transaction_group`(~373) 안 **~487**에서 `AutoConfirmCollector(target_table)` 생성→`collect`→`flush`, `crud.apply_batch_updates` **직후** M3 `MapMetaCollector`와 나란히. 전체가 `try/except`(**~486–497**). ⚠️ **그 `except`가 무엇을 사지 못하는지는 [§4](#4-serverchain_ingestion_workerpy--체인-워커)를 보라** — 체인 쓰기는 정말 커밋돼 있지만(`server/database/crud.py`의 `apply_batch_updates` 말미 `db.commit()`) 오염된 세션은 이 블록을 **탈출한다**. 그리고 **[F9]로 읽기 경로가 하나 늘었다** — `config_resolve_report._rule_fields`가 `declaring_views`를 불러 「어느 뷰가 어느 필드의 후보를 나르는가」를 보고서에 싣는다([§5-B](#5-b-serverconfig_resolve_reportpy--내-config가-먹었는가의-답-f3fd785-신설)) |
 | **`server/value_suggest.py`** | 🆕⑨ **1,166** @`5359fdd`(blob `ba921bb`) — 구 등재 1,154 | **[F3 유일값 조회 + 프리픽스 술어]** 🆕⑨ 🔴 **[2026-08-18] 이 칸의 라인 앵커 40여 개를 전부 걷어냈다 — 「~NNN」은 하나도 남기지 않았다.** 실측 결과 **드리프트가 일괄 오프셋이 아니라 조각(piecewise)**이었다(`DEFAULTS` +1 · `LIST_MAP_KEYS` +1 · `SYSTEM_PREFIX_INDEX_TARGETS` +8 · `load_config` +8 · `prefix_upper_bound` +12 · `classify_seek_plan` +12) — **일괄 가산은 맞던 앵커를 깨뜨린다.** 대신 **아래 심볼 40건의 존재를 HEAD blob에서 전건 확인**했고(소실 0), 위치는 `git grep -n "<심볼>" -- server/value_suggest.py`로 확정하라.<br>**심볼(선언 순)**: `CONFIG_PATH` · `DEFAULTS` · `LIST_MAP_KEYS` · `SYSTEM_PREFIX_INDEX_TARGETS` · `INDEX_PREFIX="idx_suggest_"` · `_MAX_IDENTIFIER=63` · `_MAX_MAGNITUDE=15` · `class SuggestValidationError` · `load_config` · `resolve_settings` · `_resolve_column_map` · `_MAX_CODE_POINT` · **`prefix_upper_bound(prefix)`** · `byte_order(expr, is_postgres)` · **`db_fold(db, prefix)`** · **`prefix_conditions(col, folded, is_postgres)`** · `_short_hash` / `suggest_index_name` / `suggest_index_definition` · `_mirror_negative` / `numeric_prefix_ranges` · `_resolve_target` · `_canonical` · `STOP_BUDGET` / `STOP_DEADLINE` · `_stop_reason` · **`text_seek_query(col, folded, is_pg, cursor=None)`** · `_text_values` / `_numeric_values` · **`suggest_values(db, table, column, prefix="", limit=None, settings=None)`** · `_slow_warned` / **`_slow_reason`** · `_diagnose` · **`_index_advice(db, table, column, settings)`** · `_why_not_a_target` · `_approx_row_count` · `_INDEX_USABLE`/`_INVALID`/`_ABSENT` · `_index_state` · `PLAN_OK`/`PLAN_NO_INDEX_COND`/`PLAN_PREFIX_NOT_A_RANGE`/`PLAN_FILTER_DISCARDS` · `_MAX_DISCARDED=100` · **`classify_seek_plan(plan_text, expect_range=True, max_discarded=100)`** · `index_targets(table_config, settings, row_counts)`.<br>⚠️ 🆕⑨ **`SYSTEM_PREFIX_INDEX_TARGETS`는 이제 빈 튜플 `()`이다** — 유일한 멤버였던 그래프 노드 타깃이 은퇴와 함께 빠졌다. 이름은 살아 있고 **외연이 0**이다.<br>정책 기본값은 `DEFAULTS` 한 dict: `default_limit`50·`max_limit`200·`min_prefix_length`0·**`max_probe_values`400**·**`timeout_ms`1500**(요청 `statement_timeout`과 시크 루프 데드라인 **양쪽**)·`index_min_rows`10000.<br>**왜 `SELECT DISTINCT … LIKE 'p%'`가 아닌가** 둘: ① `Korean_Korea.949` PG에서 평범한 btree는 `LIKE prefix%` 범위를 못 서빙해 인덱스를 고른 뒤 전 엔트리를 Filter로 버린다 → 그래서 이 모듈이 **정렬이 곧 바이트 순서인** 인덱스 `(lower(col) COLLATE "C", col COLLATE "C")`를 소유한다 ② `DISTINCT`는 스캔 행수에 비례하므로 **loose index scan(skip scan)**을 한다: 첫 값을 시크하고 "마지막보다 큰 다음 값"을 반복 시크 → 비용이 **반환 값 1개당 인덱스 시크 1회**.<br>🔴 **`STOP_DEADLINE`은 절단이 아니다** — 시간이 다한 것은 프리픽스 인덱스 부재가 취하는 모양이고, 살아남은 값들을 주면 "짧지만 완전한 목록"으로 읽힌다(INV-F3-6 금지). 그래서 **값 없이 `unavailable_reason`**을 준다. 반대로 `STOP_BUDGET`은 진짜 첫 N개라 값을 유지하고 `truncated: true`. 절단 증명은 `limit+1`을 요청해서 한다. ⚠️ **[`a5eb934` 기록] `timeout_ms`는 지연 상한이 아니다** — `_stop_reason`이 시계를 **프로브 발행 전에** 보므로 데드라인 1μs 전에 시작한 프로브는 세션 `statement_timeout`(같은 `timeout_ms`)까지 완주한다. 실제 최악은 **`2 × timeout_ms`**이고 실측 1,901ms/선언 1,500ms(1.27배). 고치지 **않은** 이유가 docstring에 있다: 프로브마다 남은 예산으로 `statement_timeout`을 다시 세우면 핫패스에 왕복이 프로브당 1회(20값 답변이면 21회) 붙는다. 대신 **`elapsed_ms`를 모든 응답에 실어** 호출자가 이 수를 믿지 않아도 되게 했다.<br>**`text_seek_query`가 public인 이유**: **쿼리를 스스로 재조립하는 플랜 검사는 아무도 실행하지 않는 쿼리를 검사한다.** `COLLATE "C"` 사건이 그 비용이었다. **`classify_seek_plan`**은 순수 텍스트 in / `(verdict, reasons, discarded)` out이라 실패 플랜이 **1.7M행 없이 재현되는 회귀 픽스처**가 된다 — 판정 두 축은 `Index Cond`의 범위 비교(`>=`/`<`) 유무와 `Rows Removed by Filter`가 `_MAX_DISCARDED`를 넘는가다. ⚠️ **`Filter` 줄의 존재 자체는 아무것도 증명하지 않는다**(건강한 플랜에도 `base <> ''`가 있고 0행을 버린다).<br>🔴 🆕⑨ **[2026-08-18 실측 정정] 서버 소비는 3곳이 아니라 «2곳»이고, 이 모듈의 부제 「프로젝트의 단일 프리픽스 술어」는 이제 공허하다.** 실측(`git grep` HEAD, 테스트 제외): `main.py`가 이 모듈에서 쓰는 이름은 **`suggest_values`와 `SuggestValidationError` 둘뿐**(`main.py:2421`·`2423`)이고, 빌더 `server/scripts/setup_db_performance.py`가 `text_seek_query`/`classify_seek_plan`/`PLAN_OK`/`resolve_settings`/`load_config`/`index_targets`/`INDEX_PREFIX`를 쓴다(**`_verify_plan_shapes(conn, targets)`** = **Step 3.9 "Verifying suggestion index PLAN SHAPE"**, 그리고 Step 3.11이 같은 판정 어휘를 재사용한다). 🔴 **종전에 3번째로 적혀 있던 `/graph/nodes/search`의 술어는 사라졌다** — 그 라우트는 **410으로 은퇴**했고([§1.5](#15-그래프-조회-구간은-410으로-은퇴했다)), 그래서 **`prefix_conditions`와 `db_fold`의 모듈 밖 호출자는 0이다**(실측: `server/` 전체에서 두 이름의 히트가 `value_suggest.py` 자기 자신 8건뿐). 이름은 살아 있고 **공유가 끝났다** — 「단일 술어」는 «둘 이상이 같은 것을 쓸 때»만 뜻이 있는 주장이다. ⚠️ 빌더 주석 두 곳이 아직 `graph_nodes.identity_key`를 그 규율이 존재하는 이유로 지목한다(`setup_db_performance.py:29`·`:61`) — **서버 도메인 소관이라 여기서 고치지 않았다.**<br>**거부**: `datetime` 선언 컬럼은 **400**(답하려면 datetime 캐노니컬화를 발명해야 하고 그것이 INV-F3-4가 금지하는 두 번째 정규화다 — `map_overlay.canonical_key_value`가 유일 정규화기). 미선언 테이블 404 · `column_types` 밖 400 · 모델 미등록 404 · 선언됐으나 물리 부재 400. **`table_config`가 권위이고 물리 스키마가 아니다**(INV-F3-3), 호출자 문자열은 SQL 텍스트에 절대 닿지 않는다. `_index_state`는 **INVALID 인덱스**(취소된 `CREATE INDEX CONCURRENTLY`)를 부재와 따로 지목한다. 이음매의 **클라 절반**은 같은 이름의 **`client2/src/value_suggest.js`**다([§7](#7-client2src--웹-클라이언트)) |
@@ -2118,7 +2175,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 **소비자(전건, `41b17ee`)**: `main.fetch_and_merge_metadata`(**~782**) · `main.VirtualColumnBinder`(**1193** — `apply_column_filters` **1233** / `apply_search_filter` **1271**이 소비) · `main.export_table_csv`(**1688**) · `main.get_table_schema`(**1924**) · `main.reload_local_process_cache`(**3883**) · `crud.refuse_virtual_join_columns`(**2187**). **테스트**: 🆕 **`server/tests/test_virtual_join_types.py`(436줄)** — 🔴 **expose 가능한 타입 우주 전체(String/Float/DateTime/Boolean)를 단언으로 열거해, 네 번째 타입이 들어오면 프로덕션 읽기가 500이 되는 대신 이 파일이 빨개진다.**
 
-### `server/retroactive.py` (🆕⑯ **1,139줄** @`9eb30691` — 🆕⑨ 545 @`5359fdd`, 구 표기 697) — 소급 적용의 **레지스트리**
+### `server/retroactive.py` (🆕⑰ **1,156줄** @`64b562b6` — 🆕⑯ 1,139 @`9eb30691` — 🆕⑨ 545 @`5359fdd`, 구 표기 697) — 소급 적용의 **레지스트리**
 
 > 🟢 🆕⑯ **[2026-08-31 전량 재측정 — `9eb30691` 커밋 blob]** 최상위 심볼 전건 + `OPERATIONS` 항목 전건 + 실행 행 계열 전량. 🔴 **라인 번호는 싣지 않는다** — 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라.
 
@@ -2128,12 +2185,13 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 - 상수: `RUN_EVENT_TYPE = event_constants.EVENT_RETROACTIVE_RUN` · `RUN_EVENT_TABLE = "__retroactive__"` · `COUNT_EXACT`/`COUNT_SAMPLE`/`COUNT_UPPER_BOUND` · `DEFAULT_SCAN_LIMIT=200`/`MAX_SCAN_LIMIT=2000` · `class RetroactiveRefused(Exception)`.
 - 🆕⑯ 🔴 **부재 어휘 «여섯» — 닫힌 목록이고 연산은 그 안을 «가리킨다».** `ABSENCE_NOT_YET`(`"not_yet"`) · `ABSENCE_NOT_EXHAUSTIVE` · `ABSENCE_CANNOT_POINT` · `ABSENCE_TRULY_NONE` · `ABSENCE_ALREADY_MISSING` · `ABSENCE_NOT_APPLICABLE`, 그리고 그 여섯을 한 번에 담는 **`ABSENCE_WORDS` 튜플**(클라가 «정확히 이것만» 낼 수 있게 한 번만 철자한다). 🔴 **둘은 자기 반대로 읽힌다** — `already_missing` 은 「회수할 게 없다」가 아니라 「이미 빠졌으니 태워서 되돌려라」이고, `cannot_point` 는 「만들 게 없다」가 아니라 「옛 원자를 이름댈 수 없으니 선언을 봐라」다. **평범한 수에는 `null` 이고 그 null 도 문장이다**(「이 수는 말 그대로다」). 📎 선언 정본은 `task/APPLICATION_RUN_WORDS.md`.
+- 🆕⑰ **`_pace_param()` — 「`pace` 파라미터를 «한 번» 선언한다」**(`b504c504`). 🔴 **둘째 연산이 생긴 «그 순간»에 함수가 됐다** — 페이스를 받는 op 가 `ledger_backfill` «하나»일 땐 그 자리에서 철자해도 됐지만, `chain_replay` 가 둘째가 되면서 한쪽의 도움말만 사실을 하나 더 들고 있는 모양이 된다. 🔴 실제로 그 사실이 이번에 «들어왔다»: 「소급 실행은 **한 번에 하나씩** 돌므로, 느린 페이스는 **뒤에 줄 선 것도 그만큼 더 기다리게 한다**」 — 이것은 원장 백필만의 사실이 아니라 **모든 소급 실행의 사실**이다. **페이스를 받는 op 는 🆕⑰ «둘»**: `chain_replay` · `ledger_backfill`(전건 — `_pace_param()` 호출 2). [§5-J](#5-j-serverpacingpy--pacingjson--긴-작업이-얼마나-미는가-표-하나-49988247-신설)
 - 🆕⑯ **파라미터 선언에 `choices` 가 생겼다.** `_p(name, required=True, kind="string", help="", choices=None)` → `{name, required, type, help, choices}`. 🔴 **`choices` 는 «값과 라벨»을 같이 나른다** — 값만 주면 화면이 낱말을 지어내고 그 낱말이 선언과 갈라진다. 🔴 **콜러블을 받는다** — `inventory()` 를 물을 때 풀리므로 선언에 항목을 하나 더해도 «재기동 없이» 보인다. `_resolved_choices(param)` 이 그 해소를 맡고 **읽기 실패는 `[]` 가 아니라 `None`**(빈 드롭다운은 「설정에 아무것도 없다」로 보이지만 사실은 「알아내지 못했다」다). `_pace_choices()` 는 `pacing.load_paces()` 를 그대로 투영한다([§5-J](#5-j-serverpacingpy--pacingjson--긴-작업이-얼마나-미는가-표-하나-49988247-신설)) — 오늘 `choices` 를 쓰는 파라미터는 **`ledger_backfill.pace` 하나뿐**이지만 필드는 「닫힌 집합을 가진 아무 파라미터」용이다.
 - **`OPERATIONS` — 🆕⑯ «6종»**(전건): `chain_replay` · `withdraw` · **`ledger_backfill`** · **`ledger_rescope`** · `enrichment_backfill` · `enrichment_confirm`. 항목마다 `label`·`what_is_missing`·`params`·`count`·`run`·`cli`·`cli_only`·`deletes`·**`reads_as`**·**`cancellable`**·`restartable`·`commit_granularity`.
 
 | op | `deletes` | `reads_as` | `cancellable` | `restartable` | 커밋 단위 |
 |---|---|---|---|---|---|
-| `chain_replay` | — | number | ✅ | ✅ | `crud.apply_batch_updates` 1000건 쓰기 청크마다 |
+| `chain_replay` | — | number | ✅ | ✅ | 🆕⑰ `crud.apply_batch_updates` 1000건 쓰기 청크마다 — **그리고 페이스는 «페이지 경계»에서 양보한다**(그 커밋들 «뒤», 다음 페이지를 읽기 «전») |
 | `withdraw` | `cell_sources` 행(한 소스의 셀 «주장») | number | ✅ | ✅ | 행 청크마다 명시 커밋 |
 | 🆕⑯ `ledger_backfill` | — | number | ✅ | ✅ | **원자와 커서를 «한 커밋»으로, 페이지마다** |
 | 🆕⑯ `ledger_rescope` | `ledger_events` 행(**이 소스가 «지목된 행»에 쓴 원자만**) | **pair** | ❌ | ✅ | 회수에 한 번, 재작성에 한 번 — **둘** |
@@ -2350,9 +2408,19 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `model_column(model, table, column, purpose)` | 로드된 ORM 모델에서 그 속성을 찾아 돌려주거나 거절 — 종전의 `hasattr(...) → return {}` 패턴을 대체(그 패턴은 `table_config`와 물리 테이블이 어긋났을 때 **빈 배치를 조용히 성공으로** 기록했다) |
 | `ORIGIN_DECLARED` / `ORIGIN_INHERITED` | provenance 어휘(`map_overlay`의 바인딩 provenance와 같은 낱말) — ⚠️ **`ORIGIN_INHERITED`는 선언만 되고 이 파일 안에서 실제로 반환되지 않는다**(`identity_column`이 실제로 돌려주는 origin 문자열은 `_FROM_MAP_KEY_COLUMNS`/`_FROM_BUSINESS_KEY`, 즉 `"table_config.map_key_columns"`/`"table_config.business_key"`) — 죽은 상수인지 예약값인지는 이 패스가 확인하지 못했다 |
 
-### 🆕🆕 체인 맵퍼 5종 (`server/mappers/*.py.sample`) — 선언은 `chain_rules.json`
+### 🆕🆕 체인 맵퍼 — DT/core 계열 **5종** (`server/mappers/*.py.sample`) — 선언은 `chain_rules.json`
 
 🔴 **맵퍼 본체는 gitignored**(`server/mappers/*.py`). 아래는 `.sample`이 선언하는 **구조**다. 규칙 이름·트리거·타깃은 `server/config/sample/chain_rules.json.sample` 기준.
+
+> 🆕⑰ 🔢 **[2026-09-02 계수 정정 — 「5종」은 «이 표»의 수이지 디렉터리의 수가 아니다.]** 제목의 글로브가 그렇게 읽히므로 철자를 적는다. 실측 `64b562b6`:
+> ```
+> git ls-tree HEAD --name-only server/mappers/ | grep -c '\.py\.sample$'   ->  9
+>   이 표가 덮는 DT/core 계열                                              ->  5
+>   표 밖 · 아래 ⚠️ 문단이 이름 대는 것                                     ->  1  dt_map_mapper
+>   표 밖 · 이 문서에 «한 번도» 등재된 적 없는 것                            ->  2  cross_table_lookup_mapper · production_mapper
+>   🆕⑰ 신설, 아래 별항                                                    ->  1  lot_slot_wafer_mapper
+> ```
+> ⚠️ **`server/mappers/*.py` 는 `.gitignore:68` 로 무시되지만 «예외 둘»이 tracked 다** — `ledger_v2_dt_job_mapper.py`(65) · `ledger_v2_lot_event_role_mapper.py`(321). 원장 v2 계열이고 [§5-H-bis](#5-h-bis-온톨로지-config-작성탐색-표면-2026-08-21-신설-등재) 가 임자다.
 
 | 규칙 (`chain_rules`) | 트리거 → 타깃 | 맵퍼 모듈 / 함수 | 무엇을 하나 |
 |---|---|---|---|
@@ -2365,6 +2433,24 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 - 공통 provenance: `SOURCE_NAME = "chain_ingestion"`(라이브 워커와 **같은 이름** — 사용자 레이어 0이 특별 분기 0줄로 이긴다), `UPDATED_BY`는 규칙별(`chain_alignment` · `chain_core_alignment` · `chain_core_usage`).
 - 🆕🆕 **연쇄가 깊어져 워커가 그래프를 검증한다** — `chain_ingestion_worker._validate_chain_cascade_graph(rules)` · `_rule_accepts_event(rule, event)`. 테스트 `server/tests/test_chain_cascade.py`.
 - 🆕🆕🆕🆕 ⚠️ **여섯 번째 맵퍼가 이 표 밖에 있다 — `server/mappers/dt_map_mapper.py.sample`.** 이 문서에 **애초에 등재된 적이 없다**(별개의 구 체인 계열: 규칙 `dt_log_to_dt_map`/`dt_job_attribution_to_dt_map`/`eqp_frame_attribution_to_dt_map`이 전부 이 한 맵퍼·한 타깃 `dt_map`을 공유 — 트리거만 셋). `5b09d69`에서 이 파일도 `DEFAULT_SOURCE_COLUMN = "dt_job"` 리터럴 기본값을 지우고 `_rule_source_column(rule)`이 `chain_bindings.resolve_column(rule, "derivation_source_column", _rule_source_table(rule), …)`으로 해석하도록 바뀌었다(그 밖의 함수 전부는 `server/dt_map_derivation.py`로 이미 빠져 있다 — 이 맵퍼 자신은 "어느 행이 이 트리거에 속하는가"만 답한다). **이번에 확인한 것은 이 사실 하나뿐이고, 파일의 나머지 구조(3규칙 공유 이유·`derivation_source_table`)는 여전히 미등재·미검증이다** — 신규 섹션 신설은 이 패스의 지시 범위 밖이었다.
+
+### 🆕⑰ `server/mappers/lot_slot_wafer_mapper.py.sample` (**114줄**, `c5147985`·`4ffc8a7c`·`60b16345` 신설) — **뷰가 «체인 파생 표»가 된 자리**
+
+> 🔴 **이 계열은 이 지도에 «한 번도» 없었다** — `lot_slot_wafer` 라는 낱말이 종전 문서 전건에서 **0건**이었다.
+>
+> 🪦 **`server/scripts/create_lot_slot_wafer_view.py` 는 삭제됐다**(`60b16345`, 2026-09-01). 그 파일이 `DROP VIEW lot_slot_wafer;` 를 롤백으로 들고 있던 **SQL 뷰 생성 스크립트**였다.
+> 🔴 **바뀐 이유는 성능이 아니라 «어디에 존재하는가»다.** 소스가 그 문장을 그대로 적는다 — 스크립트가 만든 뷰는 **그 스크립트를 돌린 상자에만** 있고 다른 데엔 없으므로, 그 뷰를 가리키는 선언은 「어디에도 안 나타나는 소스」를 출하한다. 운영은 파생 표를 **체인으로** 퍼뜨린다. (소유자 지시 2026-08-31: 「어느 slot trace가 아니라 lot event에서 파생하라고」)
+> ⚠️ 구 뷰가 «뷰»였던 원래 사유도 소스에 남아 있었다 — `has_wafer@1` 의 주어 `lot_slot@1` 이 **식별 키 둘**이라 `ledger/roleframe.py::_entity_value` 가 맵퍼가 준 Entity 참조를 거절한다(「키 하나」 계약). 오늘의 답은 뷰가 아니라 **체인 규칙**이고, 원장 쪽은 `declarative-role` 소스가 두 키를 «컬럼에서» 짓는 기존 길을 그대로 쓴다.
+
+| 항목 | 실측 (`64b562b6`) |
+|---|---|
+| 규칙 | **`lot_event_to_lot_slot_wafer`** — 트리거 `lot_event` → 타깃 `lot_slot_wafer`, `is_batch: true`, 🔴 **`enabled: false`**(샘플 기준. 켜는 것은 라이브 선언의 일이다) |
+| 함수 | **`build_lot_slot_wafer_rows(db, payloads, rule=None)`** — 「한 행 = (lot, slot, wafer, time)」 |
+| 규칙이 «주는» 이름들 | `list_delimiter`(`:`) · `slot_list_column`(`slotnumbers`) · `wafer_list_column`(`waferids`) · `lot_column` · `time_column` · `event_type_column`. 🔴 **구분자가 «선언»인 것이 요점** — 구분자는 피드의 성질이라, 박아 두면 다른 환경에서 웨이퍼 id 가 **전부 붙어 나오고 그건 오류가 아니라 행을 만든다**. 모듈 기본값 `DEFAULT_SLOT_COLUMN`/`DEFAULT_WAFER_COLUMN`/`DEFAULT_DELIMITER` 는 규칙이 안 주었을 때만 |
+| **`class ListPairingRefused(ValueError)`** | 🔴 **길이가 다른 두 목록은 «잘라 맞추지 않고 거절»한다.** 짧은 쪽에 맞춰 zip 하면 넘치는 웨이퍼가 **조용히** 사라지고, 그 결과는 「애초에 랏에 없던 웨이퍼」와 구별되지 않는다. 🔴 **raise 이지 log 가 아니다** — 체인은 맵퍼 오류를 «실패한 규칙»으로 기록해 눈에 보이지만, 수천 행 스윕 중의 로그 한 줄은 안 보인다. 개수를 메시지에 싣는다(「일부가 어긋났다」로는 아무것도 할 수 없다) |
+| 업무 키 | **`f"{lot}\|{slot}\|{wafer}\|{when}"`** — 🔴 **시각이 키에 «들어가는» 것이 두 번째 가드다.** 같은 랏·같은 슬롯이 시각마다 다른 웨이퍼를 담으므로, 시각 없는 키는 서로 다른 두 사건을 한 행으로 충돌시킨다. 검사가 아니라 **키로** 표현했다 |
+| 반환 | 🔴 **dict 하나이지 배치 «목록»이 아니다** — `chain_replay` 가 `is_batch` 맵퍼의 반환을 자기 목록으로 한 번 감싸고 각 원소에 `.get("updates")` 를 부르므로, 목록을 돌려주면 **오류 없이 `mapper_items: 0`** 이 된다. `target_table` 도 «규칙»이 선언하는 것이라 맵퍼가 말하지 않는다 |
+| 목록이 없는 행 | **거절이 아니다** — 슬롯 목록을 안 실은 lot event 는 그냥 슬롯 얘기가 아니다(`continue`) |
 
 ### 🆕🆕 씨앗·프로브 스크립트 🆕⑪ **4종**(구 표기 3)
 
@@ -2439,7 +2525,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `source_profile.py` | 🆕⑪ **1,429**(구 표기 1,512) | v1 Profile. **줄어들었다** — 은퇴한 바인딩 필드 셋을 삼키는 자리(`_RETIRED_BINDING_FIELDS` 계열, 「읽고 버린다」)만 남고 승인 게이트가 빠졌다 |
 | `ledger_frame.py` | **278** | (🆕⑯ 무변동) |
 | 🆕⑯ **`gaps.py`** | **346**(신설 `b18b22a6`) | 선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳을 «센다». 🔴 **이름은 여기서 짓지 않는다.** 아래 별항 |
-| 🆕⑯ **`gap_names.json`** | **72**(신설 `b18b22a6`) | 그 결측들의 «이름표» — `task/APPLICATION_GAP_SPEC.md` 의 기계 판형. 아래 별항 |
+| 🆕⑯ **`gap_names.json`** | **72**(신설 `b18b22a6`, 🆕⑰ 무변동) | 그 결측들의 «이름표» — 🆕⑰ **`docs/spec/APPLICATION_GAP_SPEC.md`** 의 기계 판형(`21407fac` 에서 `task/` → `docs/spec/`). 아래 별항 |
 | 🪦 🆕⑯ `chain_mapper.py` · `profile_chain_mapper.py` · `profile_lookup_adapters.py` · `legacy_import.py` · `shadow_parity.py` | — | 🔴 **`server/ledger/` 에 이 파일들이 «없다»**(`9eb30691` 전건 실측). 앞의 셋은 **`server/_archive/` 로 옮겨졌고**, `legacy_import.py`·`shadow_parity.py` 는 **삭제됐다**(`_archive/` 에도 없다). 🆕⑬ 이 산문으로 적어 두고 «표는 안 고쳤기 때문에» 이 다섯이 두 패스 동안 살아 있는 행으로 남았다 — 특히 `shadow_parity.py` 는 「레거시 ↔ v2 결정적 의미 그림자 대조」라는 역할 서술까지 달고 있었다. 🔴 **이 이름들을 앵커로 쓰지 마라** |
 | 🪦 `declared_translator.py` · `lot_event_translator.py` · `observation_translator.py` · `transfer_translator.py` · `translator_pattern.py` · `cutover_v2.py` · `examples/grouped_translator_template.py` | — | **파일이 없습니다**(2026-08-21 실측). 소유자 판정 「remove legacy」로 v1 문법 넷이 통째로 은퇴했다. `cutover_v2.py`는 삭제가 아니라 **`setup.py`로 개명**(위 행). 🔴 **이 이름들을 앵커로 쓰지 마라** |
 
@@ -2625,6 +2711,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 #### 🆕⑯ `gaps.py`(**346줄**) + `gap_names.json`(**72줄**) — 「선언은 있어야 한다는데 원장이 비어 있는 곳」 (`b18b22a6` 신설)
 
+> 🆕⑰ 🔴 **[2026-09-02] 줄 수는 «둘 다 무변동»인데 «가리키는 곳»이 바뀌었다** — 정본 스펙이 `task/APPLICATION_GAP_SPEC.md` 에서 **`docs/spec/APPLICATION_GAP_SPEC.md`** 로 옮겨졌고(`21407fac`), 모듈 docstring·거절문 둘·`gap_names.json` 의 `_source` 가 **전부** 새 경로를 댄다(4자리 전건). ⚠️ **`task/` 쪽 파일은 «아직 있다»** — 두 벌이 존재하므로 「경로가 죽었다」로는 안 잡히고, **코드가 이름 대는 쪽이 `docs/spec/` 이라는 사실로만** 갈린다. 결측 하나를 더하는 것은 여전히 「스펙에 행 하나 + 이 JSON 에 행 하나」다.
+
 > 🔴 **이 모듈은 «아무것도 이름 짓지 않는다».** 무엇을 계산하는가는 **선언**에서(어느 것이 노드이고, 어느 술어가 그 타입의 유일한 등장인가), 무엇이라 부르는가는 **표**(`gap_names.json`)에서 온다. 정본은 `task/APPLICATION_GAP_SPEC.md` 이고 JSON 은 그 기계 판형이다. 🔴 **여기 라벨을 쓰면 «두 번째 정본»이 되고, 첫 번째가 낡아도 아무도 모른다.**
 >
 > 🔴 **둘을 «양방향»으로 대조한다 — 그게 이 파일의 핵심이다.** 선언은 물을 수 있는데 표에 이름이 없으면 → 그 결측이 «이웃 이름»으로 보고된다. 표가 이름 대는 술어를 선언이 더는 안 가지면 → 그 질문이 조용히 안 물어진다. **둘 다 화면이 «멀쩡해 보이면서» 한 종류가 통째로 빠지고, 출력을 봐서는 못 알아챈다.** 그래서 `GapTableMismatch` 는 로그가 아니라 **거절**이다.
@@ -2702,7 +2790,19 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ### `server/ledger_trace_router.py` — 🆕⑯ **라우트는 «셋»이다** (🆕⑬ 「둘」에서 `GET /gaps` 가 붙었다)
 
-> 🆕⑯ **크기: 460줄 @`9eb30691`(HEAD)** — 🆕⑮ 374 에서 **+86**, 전부 신설 `GET /gaps` 핸들러와 `GET /declaration` 의 `sources` 절이다. 🔴 **라우트 전건 계수(`grep -c '^@router\.'`)가 «2 → 3»이 됐다** — 이 절이 두 패스 동안 「둘」로 못 박아 온 수이고, 「둘」에 기대어 「울타리를 그을 짝이 없다」고 적은 문단이 아래 있다(그 문단은 여전히 참이지만 **수는 셋이다**). ⚠️ **모듈 docstring 은 여전히 「the ledger read routes — ten of them」이고 열을 나열한다**(`9eb30691` 재확인) — 실재는 셋이고, 그중 docstring 이 이름 대는 것은 `subgraph`·`declaration` 둘뿐이다. **docstring 을 라우트 목록의 출처로 쓰지 마라.**
+> 🆕⑰ **크기: 496줄 @`64b562b6`(HEAD)** — 🆕⑯ 460 에서 **+36**. 🔴 **라우트는 «여전히 셋»이다**(`grep -c '^@router\.'` = 3, §0 ㉓-d 그대로) — 늘어난 것은 라우트가 아니라 **`follow` 의 문법**이다.
+>
+> 🆕⑰ 🔴 **[2026-09-02 신설] `_split_follow(follow)` → `(names, keys)` — 「`follow=inspected:x,y` 는 술어 `inspected` «에 붙은 제약»이지 다른 술어가 아니다」** (`965e3af9`)
+> ```
+> follow=slot_map          -> names ["slot_map"],  keys {}            <- 오늘까지의 동작 «그대로»
+> follow=inspected:x,y     -> names ["inspected"], keys {"inspected": ("x","y")}
+> ```
+> - 🔴 **콜론이 없는 것은 «기본값»이 아니라 오늘의 동작 전부다.** 키가 없으면 제약이 없고, 그것이 이 저장소가 이미 출하한 걷기다 — 클라는 콜론을 하나도 안 보내고 그대로 돈다. 소스가 그것을 「예의가 아니라 이번 라운드의 요구사항」이라 적는다.
+> - 🔴 **422 를 판정하는 것은 «맨 이름 쪽»이다.** `inspected:x,y` 를 통째로 어휘와 대조하면 **선언돼 있는 술어인데도** 키를 붙인 요청이 전부 거절된다. 그래서 `_followable_predicates()` 검사는 `names` 에 건다.
+> - **첫 콜론에서만 자른다** — 키 이름에 콜론이 든 것은 원장이 담을 수 없지만(키 이름은 선언에서 온다), 콜론이 든 «술어»는 조용히 잘려 아무도 안 시킨 것을 걷게 되므로 맨 앞 반쪽이 422 로 답하게 둔다.
+> - **같은 술어가 두 번 이름 붙으면 «마지막» 것을 쓴다**(교집합 아님) — 한 술어에 두 명세는 호출자가 자기모순인 것이고, 교집합은 **양쪽 다 안 물어본 세 번째 질문**에 답한다.
+>
+> 🆕⑯ **[구 기록] 크기: 460줄 @`9eb30691`** — 🆕⑮ 374 에서 **+86**, 전부 신설 `GET /gaps` 핸들러와 `GET /declaration` 의 `sources` 절이다. 🔴 **라우트 전건 계수(`grep -c '^@router\.'`)가 «2 → 3»이 됐다** — 이 절이 두 패스 동안 「둘」로 못 박아 온 수이고, 「둘」에 기대어 「울타리를 그을 짝이 없다」고 적은 문단이 아래 있다(그 문단은 여전히 참이지만 **수는 셋이다**). ⚠️ **모듈 docstring 은 여전히 「the ledger read routes — ten of them」이고 열을 나열한다**(`9eb30691` 재확인) — 실재는 셋이고, 그중 docstring 이 이름 대는 것은 `subgraph`·`declaration` 둘뿐이다. **docstring 을 라우트 목록의 출처로 쓰지 마라.**
 >
 > 🆕⑮ **[구 기록] 크기: 374줄 @`5a73021a`** — 🆕⑭ 374 @`3a8494dc` 에서 **무변동**(369 @`2a4e51cf`)(🆕⑬ 324 @`3b77fbc3` — **+45**, 신설 `_static_types`/`_static_step_predicates` 둘이 그 대부분이다). **제목에 줄 수를 얹지 않는다** — 제목은 이름이지 측정값이 아니다. ⚠️ 🆕⑮ **그 사이에 `12a94097` 이 이 파일을 «건드렸지만» 줄 수가 안 움직였다** — 바뀐 것은 `_followable_predicates` 의 docstring 뿐이고 본체는 무변동이다(아래 ✅🆕⑮ 문단). **줄 수 무변동을 「이 파일은 안 봐도 된다」로 읽으면 정확히 이런 것을 놓친다.**
 >
@@ -2797,8 +2897,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `test_finding_kinds.py` | **166** | **7** | 165 / 7 (🆕⑯ 무변동) |
 | `test_ledger_observed_unit.py` | **91** | **2** | ~~330 / 14~~ (🆕⑯ 무변동) |
 | `test_ledger_transfer_unit.py` | 🆕⑯ **219** | **9** | ~~209 / 10~~ — 🔴 **시험이 «하나 줄었다»** |
-| `test_ledger_subgraph.py` | 🆕⑯ **850** | **21** | ~~786 / 19~~ @`3a8494dc` · ~~576 / 14~~ · ~~500 / 12~~ |
-| 🆕⑯ **`test_ledger_gaps.py`** | **263** | **8** | **신설**(`b18b22a6`) — `ledger/gaps.py` 의 채점자 |
+| `test_ledger_subgraph.py` | 🆕⑰ **1,012** | **26** | ~~850 / 21~~ @`9eb30691` · ~~786 / 19~~ @`3a8494dc` · ~~576 / 14~~ · ~~500 / 12~~ — 🆕⑰ **+162 / +5**, 전부 `follow_keys` 채점 |
+| 🆕⑯ **`test_ledger_gaps.py`** | **263** | **8** | 신설(`b18b22a6`) — `ledger/gaps.py` 의 채점자 (🆕⑰ 무변동) |
 | 🪦 `test_ledger_kinds_pg.py` · `test_ledger_siblings_pg.py` · `test_ledger_structure_pg.py` · `test_ledger_lots.py` · `test_ledger_lot_map_pg.py` · `test_ledger_walk_contrast.py` | — | — | **삭제** — 재던 모듈과 같은 구간에 죽었다 |
 | 🪦 `test_mechanism_gate.py` · `test_enrichment_actions.py` | — | — | **`server/_archive/tests/`로 이동** |
 
@@ -3012,7 +3112,21 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 > 🔴 🆕⑬ **`ledger_api/__init__.py`의 「Nothing here is imported by a write path」는 이제 거짓이다.** 실측 — `server/ledger/config.py`가 `from ledger_api import declared_entities`를(두 함수 안에서), `server/ledger/source_profile_builtins.py`가 같은 모듈을 지연 import한다. **쓰기 측이 읽기 측 패키지를 부른다.** 의도된 뜻(부팅 경로 무접촉)은 여전히 참이지만 — 둘 다 함수 안 import다 — **문장은 글자 그대로 반증됐다.** 코드 소관이라 여기서 고치지 않는다.
 
-#### 🆕⑭ `server/ledger_api/ledger_subgraph.py` (**1,188줄** @`2a4e51cf`) — **노드 종류가 «하나»가 됐고, 이제 걷기에 가드가 «둘» 있다**
+#### 🆕⑰ `server/ledger_api/ledger_subgraph.py` (**1,253줄** @`64b562b6` — 🆕⑭ 1,188 @`2a4e51cf`) — **노드 종류가 «하나»고, 걷기의 가드가 «셋»이 됐다**
+
+> 🆕⑰ 🔴 **[2026-09-02] 가드가 «둘 → 셋»이다. 신설은 «키 제약»이고, 앞의 둘이 잡지 못하는 모양을 잡는다** (`965e3af9`)
+> ```
+> ① s -> d 거절        가까운 쪽이 static, 먼 쪽이 아니면 버린다 (s -> s 는 허용)
+> ② 🆕⑰ 키 제약        키로 이름 붙은 술어의 엣지는 «씨앗과 그 키가 같은» 먼 노드에만 앉는다
+> ③ 인접 역행 거절      방금 «거꾸로» 올라온 술어로 다시 «앞으로» 내려가지 않는다
+> ```
+> 🔴 **②가 ③으로 대체되지 않는 이유를 소스가 적는다** — ③은 두 걸음이 **같은 술어**일 때만 발동하는데, ②가 존재하는 이유인 그 경로는 **술어를 되풀이하지 않는다**(좌석을 거쳐 밖으로 나갔다가 돌아오는 홉).
+> 🔴 **오른쪽 변이 «고정»이다 — 씨앗에서 한 번 뽑고 절대 안 바뀐다.** 직전 노드에서 유도하면 경로 의존이 되어, 두 길로 닿을 수 있는 같은 노드가 **두 개의 다른 질문**에 답하게 된다. 걷기는 그럴 상태를 의도적으로 안 들고 있다(`nodes`·`depths`·`arrivals` 가 전부 노드 id «하나»로만 키가 잡힌다).
+> 🔴 **키를 «못 실는» 씨앗은 0 이 아니라 «거절»이다.** 웨이퍼 씨앗에 `inspected:x,y` 를 묻는 것은 만족 불가능한 요청이고, 0 으로 답하면 「거기 아무것도 없다」와 **글자 그대로 같은 픽셀**이 되어 호출자가 둘을 못 가른다. `ValueError` 메시지가 씨앗 타입과 «없는 키 이름»을 댄다(라우터가 422 로 옮긴다).
+> 🔴 **먼 쪽에만 건다.** 양 끝이 이미 프론티어에 있으면 이 걸음은 아무도 전진시키지 않으므로 제약할 «먼 노드»가 없다 — 거기서 떨어뜨리면 걷기가 «이미 들고 있는» 두 노드 사이의 엣지가 사라진다.
+> 🔴 **이 파일에 도메인 낱말이 «하나도» 안 늘었다.** 어느 키가 좌석이고 어느 키가 그릇인지는 이 파일의 지식이 아니다 — **요청이 키를 이름 대고**, 엔티티 자신의 키 이름이 그 이름표다. (소스 주석: `NO DOMAIN WORD DECIDES ANYTHING HERE`)
+
+#### 🆕⑭ [구 제목] **노드 종류가 «하나»가 됐고, 이제 걷기에 가드가 «둘» 있다**
 
 🔴 **[2026-08-29] 이 자리에 있던 심볼 표 아홉 행 중 넷이 없는 이름이었다.** `NODE_KINDS` · `quantity_node_id` · `_quantity_node` · `_bound_quantities`가 `collect`·`observation_mode`·`include_values`와 함께 2026-08-28에 은퇴했다. **그리고 파일이 «옮겨 왔다»** — `server/ledger_subgraph.py` → `server/ledger_api/ledger_subgraph.py`(그래서 `git show b3e1ec83:server/ledger_api/ledger_subgraph.py`는 실패한다. 구 리비전을 열려면 **구 경로**로 열어라).
 
@@ -3043,7 +3157,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑬ `decode_node_id(value)` | 🔴 **접두어가 «하나»다** — `ledger-entity:v1:` 만 풀고, 그 밖은 전부 `ValueError("node id must be ledger-entity:v1:")`. 🪦 은퇴한 갈래: event · claim-atom · finding-point · finding-collection · value · quantity. **claim seed는 «거절»이다** — claim이 2026-08-25에 엣지가 됐으므로 claim id는 그래프에 노드가 없는 것을 가리킨다(빈 그래프로 답하면 「이 claim에 붙은 게 없다」와 구별 불가). 소스 주석이 「marking을 먼저 확인했다: 아무것도 claim을 마킹하지 않는다」고 적는다 |
 | 🆕⑬ **은퇴한 id 빌더 여섯** | `event_node_id` · `claim_node_id` · `value_node_id` · `finding_point_node_id` · `finding_collection_node_id` · `quantity_node_id` — 전부 없다. 살아 있는 것은 `ledger_explorer.entity_id` **하나**다. ⚠️ **엣지 id 접두어 `ledger-evidence-edge:v1:`는 «살아 있다»**(`_edge()` 안) — 「접두어 하나」는 **노드** id의 이야기이고, 엣지까지 세면 검사가 잘못 빨개진다 |
 | 🪦 🆕⑭ ~~`DEFAULT_CONTINUES_HOPS`~~ → **`DEFAULT_BACKBONE_HOPS = 0`** | **옛 철자는 없는 이름이다**(전건 grep 0). 🔴 **자재를 따라가는 걸음에 주는 «별도» 예산이고 기본이 «0»이다** — 0 아닌 기본값이면 축을 들여온 그 커밋이 기존 화면의 답을 전부 바꿨을 것이다. 🔴 **공짜가 아니다** — 자재 걸음도 `depths` 한 층을 쓰므로 상한은 `budget_hops = hops + backbone_hops`이고, 두 번째 예산이 사는 것은 「한 웨이퍼의 자기 이력을 따라가는 것이 «떠나는» 몫을 안 먹는다」뿐이다. 🔴 **옛 철자의 별칭을 «받지 않는다»** — 소스 주석: 소비자가 둘 다 우리 것이라 호환층은 걷어 낼 사람이 없어진다 |
-| 🆕⑭ `subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both", node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT, action_lookup=None, follow=None, backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None, static_follow=None)` | 🔴 **`continuing=` 은 없다.** 술어별 플래그가 **엔티티의 `class`** 로 갈렸고, 그래서 인자가 «둘»이다 — `static_types`(이름인 타입들) · `static_follow`(양 끝이 둘 다 static 인 술어들). 🔴 **둘 다 «호출자»가 준다** — 선언에서 읽은 것이고 이 파일에는 타입 낱말도 술어 낱말도 하나도 안 적혀 있다. 양쪽 다 `@` 앞에서 자른 맨 이름으로 비교한다(선언은 `defect_kind@1`, 투영 노드는 `defect_kind`). 🔴 **`static_follow` 가 비면 static 노드를 «아예 안 펼친다»** — 못 읽는 선언은 어느 허브가 안전한지 추측하는 대신 그 걸음을 거절한다. ⚠️ **`action_lookup=None` 키워드는 남아 있으나 넘기는 호출자가 레포에 «0»이다**(`enrichment_actions`가 `_archive/`로 갔다) |
+| 🆕⑰ `subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both", node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT, action_lookup=None, follow=None, backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None, static_follow=None, follow_keys=None)` | 🔴 **`continuing=` 은 없다.** 술어별 플래그가 **엔티티의 `class`** 로 갈렸고, 그래서 인자가 «둘»이다 — `static_types`(이름인 타입들) · `static_follow`(양 끝이 둘 다 static 인 술어들). 🔴 **둘 다 «호출자»가 준다** — 선언에서 읽은 것이고 이 파일에는 타입 낱말도 술어 낱말도 하나도 안 적혀 있다. 양쪽 다 `@` 앞에서 자른 맨 이름으로 비교한다(선언은 `defect_kind@1`, 투영 노드는 `defect_kind`). 🆕⑰ 🔴 **`follow_keys` 는 `{술어: (키이름들)}` 이고 라우터의 `_split_follow` 가 만든다** — 씨앗마다 그 키 값을 뽑아 `seed_key_sets[맨술어] = (키이름들, {허용 튜플들})` 로 접고, **첫 페이지를 읽기 전에** 못 실는 씨앗을 거절한다(빈 `key_names` 는 건너뛰므로 «제약 없음»과 같다). 🔴 **`static_follow` 가 비면 static 노드를 «아예 안 펼친다»** — 못 읽는 선언은 어느 허브가 안전한지 추측하는 대신 그 걸음을 거절한다. ⚠️ **`action_lookup=None` 키워드는 남아 있으나 넘기는 호출자가 레포에 «0»이다**(`enrichment_actions`가 `_archive/`로 갔다) |
 | 🆕⑭ `subgraph` 안 프론티어 루프 — **동적/정적 «두 무리»로 갈려 각각 한 번씩 `claims_for_entities`** | 한 홉의 엔티티 프론티어를 `dynamic_refs`(타입이 static 아님) / `static_refs`(static)로 나누고, **`follow` 만 다르게** 하여 그룹당 한 번씩 부른다(정적 쪽은 `sorted(static_follow & set(follow))`, `follow` 가 없으면 `sorted(static_follow)`). 🔴 **빈 리스트를 `None` 대신 넘기면 «전부»가 된다** — `claims_for_entities` 는 falsy `follow` 를 「모든 술어」로 읽으므로, 교집합이 비면 그룹을 **건너뛴다**. 🔴 **거르는 자리가 투영이 아니라 질의인 것이 요점이다** — 투영에서 버리면 원자를 이미 읽고 `claims_scanned` 를 다 쓴 뒤다 |
 | 🆕⑭ `_expand_atom(atom, depth, frontier_entities)` — **가드 둘, 그리고 `arrivals` 장부** | ① **`s -> d` 거절**: 가까운 쪽이 static 이고 먼 쪽이 static 이 아니면 그 걸음을 버린다(`s -> s` 는 «허용» — 기전 사슬이 전부 quantity→quantity 라, 「static 노드를 펼치지 않는다」로 적으면 그 사슬이 통째로 죽는다. 소스 실측: 18노드 4홉 → 1노드 0엣지). ② **인접 역행 거절**: `arrivals[near_id] == {(predicate, "incoming")}` 이면 같은 술어를 «앞으로» 다시 밟지 않는다 — 컨테이너를 거꾸로 올라가 형제로 내려오는 걸음이라 한쪽으로만 나오는 답이 된다(소스 실측: defect 씨앗 `direction=both` `hops=4` 에서 199 중 **189**가 그 모양). 🔴 **`==` 이지 `in` 이 아니다** — 다른 길로도 닿은 노드는 순수한 컨테이너로 쓰인 게 아니다. 🔴 **양 끝이 «둘 다» static 이면 이 규칙에서 면제된다**(이름과 이름 사이엔 컨테이너가 없다). `arrivals` 는 `defaultdict(set)`, 노드 → 그 노드에 «도착한» `(술어, incoming\|outgoing)` 집합. 씨앗은 빈 집합이라 면제가 필요 없다 |
 | 🆕⑭ `_bare(name)` | 신설 모듈 헬퍼 — 엔티티 타입에서 `@version` 을 뗀다(`defect_kind@1` → `defect_kind`). `subgraph`·`_expand_atom`·프론티어 분류가 전부 이걸 쓴다 |
@@ -3120,15 +3234,18 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 **`pacing.json` — `paces` 셋**(값 그대로): `fast` = `{units_per_cycle: null, rest_seconds: 0}` · `slow` = `{5, 1.0}` · `trickle` = `{1, 3.0}`. 각 항목은 `label`·`when` 을 **한국어로** 들고 있고, 🔴 **화면은 그 낱말을 «지어내지 않고 읽는다**»([§5-D](#5-d-2026-08-04-신설-서버-모듈) 의 `_pace_choices`). 페이스를 하나 더하는 것은 **이 파일에 항목 하나**이고 코드는 어디도 안 바뀐다.
 
-**호출자 — 전건(`9eb30691` grep 실측, 셋)**
+**호출자 — 🆕⑰ 전건(`64b562b6` grep 실측, «넷». 🆕⑯ 은 셋이었다)**
+
+> 🆕⑰ 🔴 **네 번째가 «표를 베끼지 않았다»는 것이 이 절이 재는 것 전부다.** `chain_replay.resolve_pace(name, paces=None)` 는 자기 표를 들지 않고 `pacing.resolve` 를 부르며, 하는 일은 **거절의 모양을 바꾸는 것 하나**다(`pacing.UnknownPace` → `ReplayRefused`). 사유를 소스가 적는다 — 이 경로의 다른 모든 거절이 `ReplayRefused` 라, 「선언 안 된 것을 물었다」에 예외 타입 «둘»을 잡게 만든 호출자는 결국 하나만 잡는다.
 
 | 부르는 곳 | 단위 | 어디서 쉬나 | 페이스를 «누가» 고르나 |
 |---|---|---|---|
+| 🆕⑰ `chain_replay.py` (`resolve_pace` 껍질 → `replay_rule`) | **페이지** | 페이지 «끝» — 🔴 **맨 위가 아닌 것이 안전성 논거 전부다.** `iter_pages` 는 질의하고 나서 yield 하므로 본문 «머리»에서 자면 그 페이지의 SELECT 스냅샷을 `rest_seconds` 동안 깔고 앉는다 — 그건 페이싱이 아니라 «점유»이고, 고치려던 바로 그것이다. 끝에서는 이 페이지의 쓰기가 전부 커밋됐고 다음 페이지는 아직 안 읽혔다. 🔴 **`db.rollback()` 이 그것을 «드문 경우»에도 참으로 만든다** — 맵퍼가 아무것도 못 낸 페이지는 커밋에 닿은 적이 없어 SELECT 의 트랜잭션이 열린 채다 | **실행마다** (`retroactive` 의 `chain_replay.pace` 파라미터 — 🆕⑰ `_pace_param()`) |
 | `ledger/backfill.py` (`resolve_pace`/`load_paces` 껍질 → `_run_v2_lineage`) | **페이지** | 페이지 사이 — 직전 페이지의 원자와 커서가 «한 커밋»으로 내려간 뒤 | **실행마다** (`retroactive` 의 `ledger_backfill.pace` 파라미터, `choices` 로 옴) |
 | `parsers/directory_watcher.py` — 🔴 **`IngestionHandler._send_to_upsert` 안**(모듈 함수가 아니다) | **청크** | `db.commit()` **직후** — 오프셋이 이미 내려간 자리라 재개가 정확하다 | **설정으로** — `ingestion_settings.json` 의 **`ingestion_pace`**(`.sample` 에 키와 긴 설명이 있다). ⚠️ **오타는 «전속력»으로 돈다 + 경고 로그 1회** — 설정 오타로 적재를 멈추면 막으려던 것보다 큰 장애다 |
 | `retroactive._pace_choices()` | — (읽기만) | — | 화면에 낼 «선택지»를 만든다 — 값·`label`·`when` 을 그대로 투영 |
 
-🔴 **두 소비자가 «같은 경계»에서 쉬는 것은 우연이 아니다** — 원장은 「멈춤(취소)이 안전한 자리」와 「늦춤이 공짜인 자리」가 같은 지점이고, 인제션도 같은 이유로 커밋 직후다. **취소는 «멈추는» 손잡이, 페이스는 «늦추는» 손잡이이고, 대개는 늦추는 것으로 충분해서 아무도 멈출 필요가 없다.**
+🔴 **🆕⑰ «세» 소비자가 같은 경계에서 쉬는 것은 우연이 아니다**(구 표기 「두 소비자」 — 그 뒤 `chain_replay` 가 셋째가 됐고 **같은 자리를 골랐다**) — 원장은 「멈춤(취소)이 안전한 자리」와 「늦춤이 공짜인 자리」가 같은 지점이고, 인제션도 같은 이유로 커밋 직후이며, 체인 재생은 **취소 체크포인트가 이미 쓰던 바로 그 페이지 경계**다(소스가 그 동일성을 이름 대고 적는다). **취소는 «멈추는» 손잡이, 페이스는 «늦추는» 손잡이이고, 대개는 늦추는 것으로 충분해서 아무도 멈출 필요가 없다.**
 
 ---
 
@@ -3273,9 +3390,11 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - 자동 배선: **`installGlobalListeners()`(~565)** / **`installNavLinkCounting(fromRoute)`(~538)**.
 - **소비 지도(6엔트리 + 3보조, 실측)**: 세션 시작 4곳 — `main.js`(~102–104, `ROUTES.GRID`) · `admin.js`(~295–297) · `enrichment.js`(~751–753) · `graph_viewer.js`(~1206–1208) · `trace.js`(~432–434). 쓰기에 `snapshot()`을 싣는 곳 4곳 — `api.js`(~307) · `clipboard.js`(~522·~766) · `ui.js`(~219) · `enrichment.js`(~475, 배출은 ~496). `countNav`만 쓰는 곳 — `timeline.js`(~517 로그 점프) · `trace_launch.js`(~95) · `map_editor.js`(~929/~1010/~5575/~5605).
 
-### `main.js` (🆕⑯ **2,267줄** @`9eb30691` — 🆕⑪ 2,112 @`b3e1ec83`, 구 표기 2,048) — index 페이지 오케스트레이터
+### `main.js` (🆕⑰ **2,333줄** @`64b562b6` — 🆕⑯ 2,267 @`9eb30691`, 🆕⑪ 2,112 @`b3e1ec83`, 구 표기 2,048) — index 페이지 오케스트레이터
 
-> 🆕⑯ **[2026-08-31] 그리드 부품 «둘»의 합성 루트가 여기다.** 신설 import 셋(`GridSourceLabel` · `GridRescopeMenu` · `putRescopeHandoff`)과 모듈 지역 `sourceLabel`/`rescopeMenu`, 초기화 `initGridSourceLabel()`/`initGridRescopeMenu()`, 그리고 🔴 **`loadLedgerDeclaration()`** — `GET /api/ledger/declaration` 을 **여기서만** 부르고 성공·실패를 «같은 모양»(`{ok, sources|message}`)으로 돌려준다. 🔴 **부품은 라우트도 `API_BASE` 도 모른다** — 함수 하나를 «주입»받는다(조립식 상설). 🔴 **선언은 «한 번만» 긷는다** — 라벨이 읽은 결과를 `initGridRescopeMenu` 가 `part.setSources(...)` 로 나눠 쓴다. ⚠️ **부팅 자동 선택도 «표를 고른 것»이라 `setRelation(state.currentTable)` 을 명시 호출한다** — 안 하면 첫 화면의 라벨만 조용히 비고 사용자가 표를 «한 번 바꿔야» 나타나며, **그 침묵이 「소스가 아님」처럼 보인다**. 호스트 div 둘은 `index.html` 의 `#grid-source-label-host` · `#rescope-menu-host`(후자는 컨텍스트 메뉴 `<ul>` 안의 `<li>`).
+> 🆕⑰ **[2026-09-02] 합성 루트의 부품이 «둘 → 둘»인데 «구성원이 바뀌었다».** `GridRescopeMenu` 가 나가고 **`RedoBanner`** 가 들어왔다 — 신설 import 셋(`RedoBanner` · `setMatchCount` · `{ADMIN_TOKEN_HEADER, readAdminToken}`), 모듈 지역 `redoBanner`, 초기화 `initRedoBanner()`, 그리고 «부르는 함수» 둘: **`runRetroactive(op, params)`**(`POST /admin/retroactive/{op}/run`, `X-Admin-Token` 첨부 — 🔴 **부품은 이 함수만 받고 주소도 토큰도 모른다**) · **`loadChainRuleNames()`**(`GET /admin/chain/rules` → `part.setRules(names)`). `registerSelectionListener(() => redoBanner.selectionChanged())` 로 그리드의 선택 변화를 잇는다. 🪦 **`initGridRescopeMenu` 는 «없는 이름»이다**(전건 grep 0, §0 ㉖).
+>
+> 🆕⑯ **[구 기록] 그리드 부품 «둘»의 합성 루트가 여기다.** 신설 import 셋(`GridSourceLabel` · `GridRescopeMenu` · `putRescopeHandoff`)과 모듈 지역 `sourceLabel`/`rescopeMenu`, 초기화 `initGridSourceLabel()`/`initGridRescopeMenu()`, 그리고 🔴 **`loadLedgerDeclaration()`** — `GET /api/ledger/declaration` 을 **여기서만** 부르고 성공·실패를 «같은 모양»(`{ok, sources|message}`)으로 돌려준다. 🔴 **부품은 라우트도 `API_BASE` 도 모른다** — 함수 하나를 «주입»받는다(조립식 상설). 🔴 **선언은 «한 번만» 긷는다** — 라벨이 읽은 결과를 `initGridRescopeMenu` 가 `part.setSources(...)` 로 나눠 쓴다. ⚠️ **부팅 자동 선택도 «표를 고른 것»이라 `setRelation(state.currentTable)` 을 명시 호출한다** — 안 하면 첫 화면의 라벨만 조용히 비고 사용자가 표를 «한 번 바꿔야» 나타나며, **그 침묵이 「소스가 아님」처럼 보인다**. 호스트 div 둘은 `index.html` 의 `#grid-source-label-host` · `#rescope-menu-host`(후자는 컨텍스트 메뉴 `<ul>` 안의 `<li>`).
 
 > 🆕⑪ ⚠️ **[2026-08-23] 이 절의 라인 앵커는 이 패스가 재측정하지 않았다.** 이 구간에 `d21fd821`(감사 필터 스트립 배선)·`c3b248fa`·`db5feac3`·`ce68f849`가 이 파일을 건드렸으므로 **아래 `~NNNN` 값은 밀렸다고 가정하라** — 위치는 `git grep -n "<심볼>" -- client2/src/main.js`로 확정하라.
 - 진입 `init()`(**~77**, `initTraceEntry()` 호출 포함 · **~112**에서 `registerSmartPasteHandler(smartPasteFromPasteEvent)`) → `setupEventListeners()`(**~120**, 거대 — 툴바·모달·키보드 전체 배선), `setupDragAndDrop()`(**~1083**).
@@ -3292,7 +3411,16 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
   - `showClipboardTypeModal`(**~1743**). `client2/index.html`의 메뉴 항목이 **단축키를 라벨에 적는다**(~185) — 클릭만으로는 클립보드를 못 읽으므로 그 항목은 **다음 붙여넣기를 예약할 뿐**이고, 단축키가 본동선이다.
 - ⛔ **[`90e284f`] 키보드 배선에서 Ctrl+C 분기가 삭제됐다 — 되돌리지 마라**(**~489–492**에 그 자리를 지키는 주석이 있다). 복사는 `clipboard.js`의 `copy` 리스너(~290 내부)가 `e.clipboardData`로 처리하므로 **`navigator.clipboard`가 없는 비보안 컨텍스트(평문 HTTP)에서도 동작한다.** 구 분기는 `navigator.clipboard.writeText`를 썼고 사내 평문 HTTP 배포에서는 그것이 `undefined`다 — 즉 삭제된 코드가 하던 일은 **작동하는 경로를 가로채 아무 일도 안 하는 것**이었다. `getRangeSelectedTSV` import도 함께 빠졌다(이 파일에서 더는 안 쓴다 — 여전히 `clipboard.js`가 export한다).
 
-### `api.js` (🆕⑪ **541줄** @`b3e1ec83` — 구 표기 534) — REST 소비 계층 (경계 계약의 클라이언트측)
+### `api.js` (🆕⑰ **587줄** @`64b562b6` — 🆕⑪ 541 @`b3e1ec83`, 구 표기 534) — REST 소비 계층 (경계 계약의 클라이언트측)
+
+> 🆕⑰ 🔴 **[2026-09-02] 개수가 «두 번째 요청»으로 갈렸다** — `fetchData` 가 `&defer_total=true` 를 붙여 «행을 먼저» 그리고, 개수는 뒤따라 채운다.
+>
+> | 신설 module-private | 무엇인가 |
+> |---|---|
+> | **`narrowingParams() -> URLSearchParams`** | 🔴 **「몇 건인가」를 «바꾸는» 인자만** — `transaction_id`·`q`(+`cols`)·`filters`. **`skip`/`limit`/`order_by` 는 «없다»**(서버의 `/data/count` 가 안 받는 것과 같은 이유). 🔴 **한 곳에서 만들어 data 와 count 가 «같은 것»을 싣는다** — 두 벌로 조립하면 두 수가 갈리고, 그건 오류를 안 낸다 |
+> | **`fillMatchCount(params, table)`** | 미룬 개수를 `GET /tables/{t}/data/count` 로 가져와 채운다. 🔴 **못 가져오면 «세는 중»인 채로 둔다** — 0 으로 떨어뜨리면 「일치 없음」이라는 거짓이고, 「모른다」는 못 세었을 때도 참이다. 🔴 **캐시된 쪽들도 같이 채운다**(`state.pageCache` 전부) — 안 하면 캐시 적중이 「세는 중」으로 «되돌아간다» |
+> | **`let countGeneration = 0`** | 🔴 **늦게 온 답은 버린다.** 표를 바꾸거나 필터를 고치면 앞선 요청의 답은 «다른 질문»의 답이고, 그게 도착해 화면을 덮으면 **행과 바닥글이 서로 다른 것을 말한다.** 판정은 세대 «와» `table !== state.currentTable` 둘 다 |
+
 
 > 🆕 🔴 **[신설] 검색 컬럼 드롭다운이 조인 해석 컬럼까지 제안한다**(`loadSchema` 안, **~148–175**). **저장 컬럼 먼저, 그다음 조인 해석 이름**이고 라벨에만 `🔗`가 붙는다(`option.value`는 서버로 보내는 맨 이름 그대로 — `grid.js`가 이미 쓰는 헤더 어휘를 재사용한 것이지 같은 뜻의 두 번째 표기를 만든 것이 아니다).
 > - 🔴 **목록은 *알림에서 읽지 여기서 조립하지 않는다*.** `?cols=`의 범위는 서버의 `apply_search_filter`가 정하고 그 가상 어휘는 `virtual_join_executor.exposed_columns` — **`/schema`가 `join_resolved_columns`로 발행하는 바로 그 집합**이다. 클라가 지어낸 이름은 서버에 식이 없는 이름이고 **서버는 그런 스코프를 400으로 거절한다**(테이블 전체로 답하지 않는다). 알림이 없거나 비면 저장 컬럼만 제안 = 변경 전 서버 전부와 정확히 같은 동작.
@@ -3303,14 +3431,14 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - 소비 API: `/tables*`, `/tables/{t}/data`, `/schema`, PUT `/data/updates`, POST `rows`, `batch_delete`.
 - 🔴 **[F3 `d5f75a8`] `loadSchema`가 첫 줄에서 `resetSuggestLearning()`을 부른다(**~110**)** — `import { resetSuggestLearning } from './value_suggest.js'`(~10). 이유가 배선의 전부다: 제안 모듈이 붙드는 부정 사실(비대상 컬럼·프리픽스 바닥·불가 쿨다운)은 **서버의 거절**에서 배웠고 그 거절은 `table_config`에서 나오는데, **`table_config`는 핫리로드**다. `/schema` 재조회는 클라가 그 선언을 다시 읽는 **유일한 신호 지점**이므로, 여기서 비우지 않으면 새로 제안 대상이 된 컬럼이 이미 열린 탭에서 `LEARNED_TTL_MS`(60초) 동안 죽어 있다. 래치들은 시간으로도 만료되지만 **이 호출이 신호가 있는 경로에서 즉시 반영시킨다**([§7 `value_suggest.js`](#7-client2src--웹-클라이언트)).
 
-### `grid.js` (🆕⑯ **1,144줄** @`9eb30691` — 🆕⑪ 1,142 @`b3e1ec83`, 구 표기 871) — AG-Grid 구성
+### `grid.js` (🆕⑰ **1,304줄** @`64b562b6` — 🆕⑯ 1,144 @`9eb30691`, 🆕⑪ 1,142 @`b3e1ec83`, 구 표기 871) — AG-Grid 구성
 
 > 🆕⑪ 🔴 **[2026-08-23] export가 7 → «10»이고, 필터가 사이드바에서 «헤더 바»로 올라왔다.** 신설 export: **`renderFilterBar()`**(컬럼별 필터 칩 — `3815dc46`·`ce68f849`) · **`updateOffscreenIndicator()`** · **`applyFillTargetHeaders()`**(붙여넣기가 어느 컬럼에 앉는지 «헤더에» 표시 — `b0ac78cb`, 짝은 `enrichment_reference_view.fillTargetOrdinals`). 신설 module-private: `filterChipText(colId, model)` · `offscreenColumnCount(api)` · `MOCKUP_COLUMN_LAYOUT`/`HEADER_CHROME_PX = 32`/`headerLabelWidth(label)`/`applyMockupLayout(columnDefs)`(🆕 **컬럼 순서·폭은 «table config»에서 온다** — `d4451405`. 폭은 컬럼 «이름»에 양보한다: `c3b248fa`). 🔴 **`visibleRangeColIds`는 더 이상 이 파일에 없다 — `state.js`로 이사했고 export다**(위 `state.js` 절). `extendRangeByKeyboard`는 여전히 여기 있고 여전히 module-private다.
 
 > ⚠️ **구 지도에 이 절의 export 목록이 두 벌 있었고 뒤엣것이 낡아 있었다**(2026-07-30 정정). `~17/~42/~66/~74/~94/~112/~254` 세트는 `883b680`(+117) **이전** 값이라 전 항목이 **+91~+102** 어긋나 있었는데, 바로 위 줄의 올바른 세트와 나란히 있어서 어느 쪽도 틀려 보이지 않았다. 중복 목록은 **오차 허용 범위 안에 있는 쪽이 정답처럼 읽히는 것이 아니라, 둘 다 그럴듯해서 아무 검사도 통과시킨다.** 한 벌만 남긴다.
 
 - **[`883b680`] 마우스 없이 범위 선택** — `RANGE_ARROW_DELTA`(`Object.freeze`) · **`extendRangeByKeyboard(api, key)`**. 목적은 **Ctrl+Enter 일괄 채우기를 키보드만으로 완결**시키는 것이다(종전엔 범위를 만들려면 반드시 마우스를 잡아야 했다). ⚠️ **`extendRangeByKeyboard`는 `export`가 아니다**(모듈 내부). 🆕⑪ 🔴 **`visibleRangeColIds()`는 여기 «없다» — `state.js`로 이사했고 export다**(`f7bd1dd5`). 종전 이 줄은 「둘 다 export가 아니다 — 외부에서 이름으로 부르려 하면 없다」였는데 **그 문장이 이 심볼에 대해 정확히 거꾸로가 됐다**: `grid.js`에서 grep하면 정의가 0건이고 `state.js`에서 나온다.
-- export 🆕⑪ **10종**(구 표기 7, `^export ` 전건 계수 @`b3e1ec83`): `updateGridSortState` · `updateLoadedCount` · `updateViewModeUI` · `updatePaginationUI` · 🆕⑪ **`updateOffscreenIndicator`** · 🆕⑪ **`renderFilterBar`** · **`ensureCellObject(dataObj, colId)`**(셀 형태 `{value,is_overwrite,priority_source}` 정규화 — 셀 계약의 단일 관문) · 🆕⑪ **`applyFillTargetHeaders`** · **`buildColumnDefs`** · `renderGrid(initialRows)`. ⚠️ 🆕⑪ **이 절의 `~NNN` 라인 앵커는 이 패스가 재측정하지 않았고, 파일이 871 → 1,142로 자랐으므로 전부 밀렸다고 가정하라** — 위치는 `git grep -n "<심볼>" -- client2/src/grid.js`로 확정하라.
+- export 🆕⑰ **13종**(🆕⑪ 10, 구 표기 7 — `grep -c '^export '` 전건 @`64b562b6`). 🆕⑰ 신설 «셋»: **`setChipsOpen(next)`** · **`foldFilterChips()`**(필터 칩 스트립이 «한 줄»을 지키고 넘치는 것은 «아래로 펼친다» — 닫는 방법은 **`dropdown.js`**(아래 절) 한 벌을 쓴다. module-private 짝: `READABLE_CHIP_PX = 90` · `showChipsPanel(all, bar, more)` · `hideChipsPanel(chips, all)`) · **`registerSelectionListener(fn)`**(🔴 **선택이 바뀌었다는 «사실만» 흘린다** — 그리드가 배너를 «모르는» 채로 `main.js` 가 `redoBanner.selectionChanged()` 를 걸어 둔다. `fn` 이 falsy 면 해제). 구 목록: `updateGridSortState` · `updateLoadedCount` · `updateViewModeUI` · `updatePaginationUI` · 🆕⑪ **`updateOffscreenIndicator`** · 🆕⑪ **`renderFilterBar`** · **`ensureCellObject(dataObj, colId)`**(셀 형태 `{value,is_overwrite,priority_source}` 정규화 — 셀 계약의 단일 관문) · 🆕⑪ **`applyFillTargetHeaders`** · **`buildColumnDefs`** · `renderGrid(initialRows)`. ⚠️ 🆕⑪ **이 절의 `~NNN` 라인 앵커는 이 패스가 재측정하지 않았고, 파일이 871 → 1,142로 자랐으므로 전부 밀렸다고 가정하라** — 위치는 `git grep -n "<심볼>" -- client2/src/grid.js`로 확정하라.
 - 🆕 **[`cd3e0f4`] 가상 컬럼 3종**: `rawCellValue(rowData, colId)`(~207) · **`numericDisplayValue(val)`(~224 — 🔴 서버 `crud.numeric_text_sql`의 화면 쪽 짝이다: 정수형은 정수로 찍는다. slot이 `3.0`으로 보이면 운영자가 config에서 찾는 토큰과 화면의 토큰이 갈린다)** · `JOIN_RESOLVED_FILTER_OPTIONS`(~261)/`joinResolvedFilterDef(entry, baseTooltip)`(~265). ⚠️ **편집 금지 판정은 `state.isVirtualColumn`에 위임한다 — 여기에 사본이 없다.**
 - **[F3 `77a2c15`] 값 제안 에디터의 배선 2곳 — 이 파일이 이음매의 클라 쪽 접합부다**(모듈 본체는 [`value_suggest.js`](#7-client2src--웹-클라이언트)):
   - `import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js'`(~15).
@@ -3355,7 +3483,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - 🆕 **[`c3a5239`] 스마트 페이스트의 소비 지점** — 모듈 로컬 `smartPasteHandler`(**~300**)를 `main.js`가 1회 등록하고, `paste` 리스너 **첫 분기**(**~317**)가 `smartPasteHandler && state.smartPasteArmedUntil > Date.now()`면 **래치를 즉시 소비(0으로 리셋)한 뒤** 그 핸들러로 이벤트를 넘긴다 — 그 외에는 종전 셀 범위 붙여넣기 그대로. 🔴 **두 번째 `paste` 리스너를 만들지 않은 것이 요점이다**: 리스너가 둘이면 어느 쪽이 먼저 이벤트를 소비하는지가 등록 순서에 달리고, 그 순서는 엔트리 파일의 import 순서라 보이지 않는다.
 - **[`b35bc9f`]** TSV 인용/파싱은 자체 구현 대신 **`tsv.js`의 `parseTsv`/`serializeTsv`** import(~11).
 
-### `timeline.js` (🆕⑯ **1,184줄** @`9eb30691` — 🆕⑪ 1,148 @`b3e1ec83`, 구 표기 1,008 · ⚠️ **줄 수만 재측정**) — 이력 타임라인 + 내비게이션
+### `timeline.js` (🆕⑰ **1,185줄** @`64b562b6` — 🆕⑯ 1,184 @`9eb30691` — 🆕⑪ 1,148 @`b3e1ec83`, 구 표기 1,008 · ⚠️ **줄 수만 재측정**) — 이력 타임라인 + 내비게이션
 
 > 🆕⑪ 🔴 **[2026-08-23] 전역(global) 이력 탭이 «카드 더미»에서 «표»가 됐고, 그 위에 감사 필터 스트립이 섰다**(`fc70ef0b`·`d21fd821`·`8b831b44`). **이 구간의 신설 심볼은 감사 필터 계열뿐이다**(전건 대조 — 나머지는 이미 있었다): export **`installAuditFilters()`** 하나, module-private **`auditFilterState()`** · **`auditFilterPasses(group, filters)`** · **`fillAuditFilterOptions(groups)`** · **`groupKindLabel(group)`** · **`auditVal(value, isOld)`** · **`auditKind(group, baseLog, isSummary)`**. 🔴 **필터의 종류 목록은 «있는 데이터에서 읽는다»** — 고정 목록이 아니다(`fillAuditFilterOptions`가 도착한 그룹에서 채운다). ⚠️ **`renderGlobalTimeline()`(무인자)·`formatVal(v, isOld=false)`·`triggerHistoryReloadDebounced()`·`createHistoryEmptyDom()`은 이 구간 «이전부터» 있었다** — 이 지도에 등재된 적이 없었을 뿐이다(`7eb11dde` blob 대조). `readHistoryPage(body, listKey='logs')`도 그대로다.
 
@@ -3365,7 +3493,9 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - **module-private**: `historyUrl(rowId, colId, cursor=null)`(행/셀 URL 조립의 유일한 철자 — `loadHistory`와 `loadMoreHistory`가 공유, 갈라지면 페이저가 사이드바와 다른 탭을 조회할 수 있다) · 🆕🆕🆕 **`beginHistorySession()`**(세션 토큰 `+=1` — 매 `await` 뒤 토큰 비교로 stale 응답을 버린다: 다른 셀을 고르거나 탭을 바꾼 사이에 도착한 이전 요청이 화면을 덮지 않도록) · `renderHistoryMore`/`historyMoreLabel`/`markMoreFailed`/`markMoreLost`.
 - 소비 API: `/audit_logs/recent`, `/audit_logs/transaction/{tx}`, `/tables/{t}/rows/{r}/history`, `/tables/{t}/rows/{r}/cells/{c}/history`.
 
-### `map_editor.js` (🆕⑯ **11,092줄** @`9eb30691` — 🆕⑨ 11,060 @`5359fdd`, 구 표기 11,031. ⚠️ **줄 수만 재측정** — 「코드 6,391 / 주석 3,858 / 공백 782」 분해는 `5359fdd` 기준이고 이 패스가 다시 재지 않았다) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
+### `map_editor.js` (🆕⑰ **11,106줄** @`64b562b6` — 🆕⑯ 11,092 @`9eb30691` — 🆕⑨ 11,060 @`5359fdd`, 구 표기 11,031. ⚠️ **줄 수만 재측정** — 「코드 6,391 / 주석 3,858 / 공백 782」 분해는 `5359fdd` 기준이고 이 패스가 다시 재지 않았다) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
+
+> 🆕⑰ 🔴 **[2026-09-02 `59ce8bd2`] 이 파일의 «데이터 호출 여덟» 중 «다섯»이 세기를 그만뒀다** — `&defer_total=true`. 🔴 **나머지 «셋»은 «일부러» 센다**, 그리고 그 셋이 무엇을 하는지가 판별식이다: **응답의 `total` 로 «절단»을 판정한다**(`total > rowCount` → 「등록된 맵 N개 중 M개만」). 즉 개수를 «화면 라벨»로만 쓰는 호출은 미룰 수 있고, 개수로 **분기**하는 호출은 못 미룬다 — 미루면 그 자리에서 `total` 이 `null` 이고 «절단 없음»과 같아 보인다. 소스가 그 셋마다 「`defer_total` 을 «안 붙입니다»」를 사유와 함께 적어 둔다. 전건: `defer_total=true` **5** · 그 사유 주석 **3**.
 
 > 🟢 **심볼 실측 완료** — 이 절의 심볼은 **`5609ff0`의 커밋된 blob에 존재함이 확인됐고, 그 뒤 HEAD가 움직인 다음 재대조에서도 동일했다**(워킹트리 아님). 🔴 **라인 번호는 싣지 않는다** — 위치는 `git grep -n "<심볼>" -- <경로>`로 확정하라. 숫자가 남아 있는 곳은 **파일 줄 수**이거나, 이름이 없는 덩어리를 가리키며 측정 sha가 함께 적힌 자리뿐이다.
 
@@ -3807,17 +3937,75 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 > 🔴 **`sessionStorage` 가 아니라 `localStorage` 다** — 새 탭은 자기 세션이라 sessionStorage 는 «따라가지 않고» 그때 넘김이 **오류 없이 조용히** 사라진다(`trace_launch.js` 가 같은 이유를 반대편에서 적어 두었다).
 
 - `const KEY = 'assy.rescope.handoff.v1'` · **`putRescopeHandoff(payload, store) -> bool`**(🔴 저장소가 막혀 있으면 «조용히 실패하지 않고» `false` — `main.js` 가 그것을 토스트로 말한다) · **`takeRescopeHandoff(store) -> payload|null`**(깨진 값은 «빈 것»으로 읽지 않고 `null`. 이미 지웠으므로 다음 번엔 깨끗하다).
-- **소비자**: 쓰는 쪽 `main.js`, 먹는 쪽 `admin.js`.
+- **소비자**: 쓰는 쪽 `main.js`, 먹는 쪽 `admin.js`(`adoptRescopeHandoff`). 🆕⑰ **여전히 «살아 있다»** — `redo_banner.js` 의 「Open in admin」 버튼이 `handOff` 로 이것을 부른다.
+- 🆕⑰ 🔴 **채점자가 «없어졌다».** 이 모듈을 재던 유일한 하니스가 `client2/tests/grid_rescope_menu_harness.mjs` 였고 `6e060fd7` 이 그것을 **자기가 재던 모듈과 같은 커밋에** 지웠다(후계 `redo_banner_harness.mjs` 는 `rescope_handoff.js` 를 부르지 않는다). **모듈은 살고 채점만 죽은 모양**이라 조용하다 — 코드 소관이라 여기서 고치지 않고 사실만 등재한다.
 
-### 🆕⑯ `grid_rescope_menu.js` (**138줄**, `f5d847c9` 신설) — 「고른 행을 어느 컬럼으로 묶어 다시 번역할 것인가」
+### 🆕⑰ `redo_banner.js` (**350줄**, `0a888db4`·`0e48f79f`·`6e060fd7` 신설) — 「고른 행을 «어떤 그룹으로 묶어» 다시 돌릴 것인가」
 
-> 🔴 **고르는 곳은 그리드, 실행하는 곳은 어드민**(총괄 판정 2026-08-31). 이 부품은 범위를 «조립해 넘길» 뿐이고 드라이런도 실행도 **안 한다** — **그래서 이 파일에 `/admin/` 도 토큰도 없다.** 있으면 그 경계가 여기서 지워진다.
-> 🔴 **고를 수 있는 컬럼은 «서버가 준 목록»뿐이다**(게이트 G3) — 선언의 `scope_columns` 이고 그건 범위 읽기가 **거절에 쓰는 그 목록**이다. 서버가 거절할 컬럼은 화면에 **아예 없다**.
-> 🔴 **메뉴가 «없는» 것도 셋으로 갈린다**: 선언 안 된 표 → 줄이 **하나도** 없다(G1 — 비활성 줄로 두면 「눌러도 되는 것처럼 보이는 죽은 버튼」이 된다) · 고른 행 없음 → 「행을 고르면 여기에 나옵니다」 한 줄 · 고른 행에 그 컬럼 값이 없음 → 그 컬럼 줄만 **비활성**이고 왜인지 말한다.
+> 🔴 **`grid_rescope_menu.js` 의 후계이고, «실행»까지 한다**(소유자 요구 2026-09-01). 앞 절의 판정 ⓐ「고르는 곳은 그리드, 실행하는 곳은 어드민」을 무른 자리다.
+> 🔴 **그런데도 이 파일에 `/admin/` 도 fetch 도 토큰도 «없다».** 돌리는 것은 **주입된 한 함수** `run(op, params) -> Promise<{ok, state?, error?}>` 이고, 토큰은 **있는지만** 묻는다(`hasToken()`). 값을 안 들고 있으므로 하니스가 **진짜 토큰 없이** 이 부품을 채점한다 — 그것이 이 경계의 값어치라고 소스가 적는다.
+> 🔴 **두 버튼의 «줄»을 서로 다른 것이 정한다**: 원장은 `scope_column` **값**마다(선언이 준다 → 여기서 묶는다) · 체인은 **규칙**마다(규칙 이름 목록을 화면이 넣어 준다, `setRules`).
+> 🔴 **`null`(못 읽음)과 `[]`(선언에 없음)을 «다르게» 그린다** — `this.sources` 도 `this.rules` 도. 합치면 **403 과 빈 설정이 같은 픽셀**이 된다.
+> 🔴 **확인 창이 없다** — 줄에 «크기»가 적혀 있고 그것을 누르는 것이 확인이다. 그리고 누른 뒤 **그 줄이** 말한다(`this.said[index]`) — 조용히 닫으면 운영자는 두 번 누른다.
+> 🔴 **조립식**: 자기 div 하나(호스트 `#redo-banner-host`), 모듈 수준 상태 0. 남의 헤더 안을 직접 그리지 않는다.
 
-- **`scopeValuesFor(rows, column, readValue) -> {values, missing}`** — 🔴 **`readValue` 를 «주입»받는다**(2026-08-31 라이브 실측): 이 그리드의 행은 «봉투»(`row.data[col].value`)라 평범한 `row[col]` 읽기는 값이 있는데도 **전부 없음**을 내고, 화면이 「이 값이 없습니다」라는 **거짓**을 말한다. 부품이 봉투를 알면 그리드를 아는 것이므로 아는 쪽(`main.js`)이 함수로 알려 준다.
-- **`class GridRescopeMenu(host, deps)`** — `deps = {doc, sources, getSelection, handOff, readValue}`. `setSources`/`setRelation`/`sourceRow()`/`render()`. 🔴 **자기 `<ul>` 하나**(호스트는 `index.html` 의 `#rescope-menu-host` `<li>`), 모듈 수준 상태 없음.
-- **소비자**: `main.js`(`initGridRescopeMenu` — `handOff` 가 `putRescopeHandoff` 를 부르고 성공하면 `/admin.html` 로 이동). **채점자**: `client2/tests/grid_rescope_menu_harness.mjs`(**282줄** — `rescope_handoff.js` 도 같이 채점한다).
+- **`scopeValuesFor(rows, column, readValue) -> {values, missing}`** — 🆕⑰ **삭제된 모듈에서 이름·시그니처 그대로 옮겨 왔다.** `readValue` 주입 사유도 그대로: 이 그리드의 행은 «봉투»(`row.data[col].value`)라 평범한 `row[col]` 읽기는 값이 있는데도 **전부 없음**을 내고, 화면이 「이 값이 없습니다」라는 **거짓**을 말한다.
+- **`ledgerGroups(rows, columns, readValue) -> {groups, dropped}`** — 신설. 선언의 `scope_columns` 마다 한 줄.
+- **`class RedoBanner(host, deps)`** — `deps = {doc, sources, getSelection, readValue, businessKey, handOff, run, hasToken, rules}`. 메서드: `setRules`/`setSources`/`setRelation`/`setBusinessKey`/`selectionChanged`/`sourceRow`/`render`/`place`/`button`/`panel`/`fire`/`close`/`watchForDismiss`/`ledgerPayload`/`chainPayload`.
+  - **`chainPayload(rows)` → `{op: 'chain_replay', businessKeys: [...]}`** — 체인은 «업무 키»로 고른다(`businessKey` 컬럼 이름을 화면이 준다).
+  - 🔴 **`ledgerPayload` 의 「Open in admin」 버튼은 «일부러 남겼다»** — 세어 보거나 규칙을 고르려면 그 자리이고, 지우면 `rescope_handoff.js` 와 `admin.js::adoptRescopeHandoff` 가 «가리키는 곳 없는» 코드가 된다(소스 주석).
+  - 닫기는 자기 것이 아니다 → `dropdown.js::watchForDismiss` 를 쓴다.
+- **소비자**: `main.js`(`initRedoBanner()` · `runRetroactive(op, params)` → `POST /admin/retroactive/{op}/run` · `loadChainRuleNames()` → `GET /admin/chain/rules`). **채점자**: `client2/tests/redo_banner_harness.mjs`.
+
+### 🆕⑰ `dropdown.js` (**38줄**, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
+
+> 🔴 **«둘째»가 나와서 생긴 파일이다**(상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 첫째는 Re-translate 드롭다운, 둘째는 필터 칩 펼침. 비슷한 것을 하나 더 그리는 대신 «닫는 방법»을 한 곳에 뒀다.
+> 🔴 **떼는 것까지가 이 함수다.** 안 떼면 닫힌 드롭다운이 계속 클릭을 먹고, 그다음 **열려 있는 것이 남의 바깥 클릭에 닫힌다.** 🔴 **그 고장은 오류를 내지 않는다.**
+
+- **`watchForDismiss(doc, host, close) -> detach | null`** — 바깥 클릭과 Esc. `host` «밑»을 누른 것은 바깥이 아니다. 문서 스텁이면 되므로 맨 node 로 채점된다.
+- **소비자**: `grid.js`(필터 칩 펼침) · `redo_banner.js`.
+
+### 🆕⑰ `match_count.js` (**58줄**, `f7a3c372`·`07068feb` 신설) — 「몇 건인가」를 **«세 상태»로** 답하는 한 곳
+
+> 🔴 **개수가 «늦게» 오게 되면서**(서버 쪽 `?defer_total=true`, [§1.2](#12-api-라우트-표--데이터-조회편집)) 화면이 구별해야 할 것이 «둘 → 셋»이 됐다:
+> ```
+> 숫자   `Matches: 12`   센 결과
+> null   `Matches: …`    «아직 모른다» — 세는 중        (`COUNTING = '…'`, `.is-counting` 클래스)
+> 0      `Matches: 0`    «진짜 없다»
+> ```
+> 🔴 **`null` 을 0 으로 그리면 「일치 없음」이라는 «거짓»이고, 빈칸으로 두면 «고장»으로 읽힌다.**
+> 🔴 **이 파일이 생긴 이유가 「부류로 판정한다」의 교과서 사례다** — 「Matches:」를 쓰는 자리가 **다섯**이었고(`api.js` 둘 · `timeline.js` 둘 · `main.js` 하나), 하나만 고치면 나머지 넷이 «그 경로에서만» `Matches: null` 을 찍는다. 그건 0 도 빈칸도 아니면서 「세는 중」도 아닌 **세 번째 거짓말**이다.
+
+- export: `COUNTING` · `isCounted(total)`(`null`·`undefined`·NaN 은 «아니다») · `matchCountText(total)` · `setMatchCount(el, total)` · `pagingView(total, currentSkip, pageLimit)`.
+- 🔴 **쪽수도 여기서 답한다** — `grid.js` 가 `Math.ceil(total / pageLimit) || 1` 을 다시 쓰지 않는다(주석이 그것을 못 박는다). 안 세었으면 `totalPagesText` 도 `COUNTING`.
+- **소비자 전건(4)**: `api.js` · `grid.js` · `main.js` · `timeline.js`. **채점자**: `client2/tests/match_count_harness.mjs`.
+
+### 🆕⑰ `admin_token.js` (**21줄**, `6e060fd7` 신설) — 어드민 토큰이 「어디에 있나」를 아는 **한 곳**
+
+> 🔴 **읽기와 «이름»만 안다. 묻지(프롬프트) 않고 쓰지 않는다** — 쓰는 곳은 `admin.js` 하나이고 그쪽이 이 상수를 쓴다.
+> 🔴 **왜 갈라져 나왔나**: 그리드 페이지가 「토큰이 있나」를 묻게 되면서 **같은 키 문자열이 두 파일에 생길 참이었다.** 키가 두 벌이면 한쪽만 바뀌는 날 「토큰이 있는데 없다고 하는 화면」이 되고, **그건 오류를 내지 않는다.**
+
+- export: `ADMIN_TOKEN_KEY = 'assy.adminToken'` · `ADMIN_TOKEN_HEADER = 'X-Admin-Token'` · `readAdminToken()`.
+- 🔴 **헤더로만 보낸다** — 질의 문자열은 서버 접근 로그에 남고 헤더는 안 남는다(소스 주석).
+- 🔴 **저장소가 막혀 있어도 «던지지 않는다»** — `try/catch` 로 빈 문자열.
+- **소비자**: `admin.js`(쓰는 쪽) · `main.js`(읽는 쪽).
+
+### 🪦 🆕⑰ `grid_rescope_menu.js` — **파일이 없다 (2026-09-01 삭제, `6e060fd7`)**
+
+> 🔴 **지도가 이 파일에 «자기 절»을 통째로 들고 있었다** — 심볼 표(`scopeValuesFor` · `class GridRescopeMenu(host, deps)`)·소비자(`main.js` 의 `initGridRescopeMenu`)·채점자(`client2/tests/grid_rescope_menu_harness.mjs` 282줄)까지. **모듈과 하니스가 같은 커밋에 지워졌고**, 그 자리는 **`redo_banner.js`**(바로 위 절) 가 물려받았다. 전건 grep: `GridRescopeMenu`·`initGridRescopeMenu`·`grid_rescope_menu` → **0**(§0 ㉖).
+>
+> 🔴 **왜 옮겼나 — «자리»가 틀렸다**(소유자가 두 번 지적, 2026-09-01). 선택은 그리드에서 일어나는데 우클릭 메뉴에 넣으면 메뉴가 길어지고, 고른 뒤에 눈이 가지 않는다. 배너는 **선택 상태를 보고** 활성/비활성이 된다.
+> 🔴 **그리고 판정 하나가 «무름당했다»** — 🆕⑯ 이 이 절에 적어 둔 「고르는 곳은 그리드, 실행하는 곳은 어드민」(총괄 판정 2026-08-31)은 **하루 만에 소유자가 뒤집었다**: 고른 뒤 다른 페이지로 넘어가는 것이 한 걸음 더였다. 후계는 **그 자리에서 돌린다**. ⚠️ **그렇다고 `rescope_handoff.js` 가 죽은 것은 아니다** — 「Open in admin」 버튼이 «남아 있고», 후계 소스가 그 버튼을 지우면 `rescope_handoff.js` 와 `admin.js::adoptRescopeHandoff` 가 «가리키는 곳 없는 코드»가 된다고 이름 대어 적는다.
+
+✅ **살아남은 생각 — 후계가 «그대로» 물려받았다**
+```
+scopeValuesFor(rows, column, readValue)   이름·시그니처까지 그대로. redo_banner.js 에 있다
+readValue 를 «주입»받는 이유              이 그리드의 행은 «봉투»(row.data[col].value)라
+                                        평범한 row[col] 은 값이 있는데도 «전부 없음»을 낸다
+고를 수 있는 컬럼 = 서버가 준 목록만       선언의 scope_columns — 범위 읽기가 «거절»에 쓰는 그 목록
+「없음」을 «셋»으로 가르기                 선언 안 된 표 / 고른 행 없음 / 그 컬럼에 값 없음
+자기 div 하나 · 모듈 수준 상태 0           조립식 규약. 후계도 같다
+```
 
 ### `transfer_plan.js` (**1,875줄**, `1dc761b` 1,772에서 **+103**) — 「2. Legend & DOE」 패널 (map_editor.html에서 소비)
 
@@ -3867,7 +4055,7 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 ### `tsv.js` (~121줄) — TSV 파서/직렬화기 (`b35bc9f` 신설)
 Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/`quoteField`(~121). 소비자 둘: `clipboard.js`(그리드 복붙) · `transfer_plan.js`(DOE 6열 계약). 인용부호·개행 처리를 한 곳으로 모은 것이 존재 이유다.
 
-### `admin.js` (🆕⑯ **4,082줄** @`9eb30691` — 🆕⑨ 3,814 @`5359fdd`, 구 표기 3,704) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
+### `admin.js` (🆕⑰ **4,118줄** @`64b562b6` — 🆕⑯ 4,082 @`9eb30691`, 🆕⑨ 3,814 @`5359fdd`, 구 표기 3,704) — 어드민 페이지 (2026-07-25 전면 재작성 — 파이프라인 5탭, export 없음)
 
 > 🆕⑯ **[2026-08-31] 소급 블록에 «실행 목록·취소·범위 수신»이 들어왔다.** 신설 import `takeRescopeHandoff`(`rescope_handoff.js`)와 `buildRunsView`/`buildConfirmActions`(`retroactive_view.js`). 🔴 **판정은 전부 `retroactive_view` 에 있고 여기서는 «그린 것»만 한다**(파일 주석). 실측 심볼: `initRetroactiveLine`(🔴 **`takeRescopeHandoff()` 를 «한 번만» 먹는 자리**) · `refreshRetroactiveOperations(force=false)` · `renderRetroactive` · `renderRetroOperation` · `retroOperationEl`/`retroConfirmEl`/`retroFactEl`/`retroParamsEl`/**`retroChoiceEl`**(🆕⑯ — 서버가 준 `choices` 를 «드롭다운»으로. 값이 아니라 `label`/`when` 을 쓴다)/`retroFocusParam`/`retroActionsEl`/`retroCliEl`/`retroCountEl`/`retroQueuedEl` · `runRetroactiveCount`/`runRetroactiveRun`/`confirmRetroactiveRun`/**`cancelRetroactiveRun`** · `retroState`/`retroParamEntries`/`retroFailureLine`/`renderRetroactiveFailure`. 🔴 **실행 목록의 폴링이 두 속도다** — `RUNS_POLL_BUSY_MS = 3000` / `RUNS_POLL_IDLE_MS = 30000`. ⚠️ **진행 목록의 × 는 `/operations` 의 `cancellable` 로만 그린다** — 그게 «늦게» 오므로 도착하면 다시 그린다.
 

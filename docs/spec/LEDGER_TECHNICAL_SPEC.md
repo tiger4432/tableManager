@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-08-29 (개정 6 — §1~§3 쓰기측은 유효, **읽기측 §4.7·§4.8·§4.10·§5.7·§6.4-bis 는 은퇴한 라우트를 서술하며 묘비를 달았습니다**) | **Owner:** Server / Ledger
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-09-02 (§2.1 인덱스 표의 `idx_ledger_register_search` 가 **은퇴한 라우트를 「이름 붙은 소비자」로 대고 있었다** — 그 절의 admission rule 을 그 행이 어기고 있어 표시했다(**판정은 총괄 몫**) · §6.4 묘비가 후계로 대던 `/structure` **도 없다**(죽은 이름을 죽은 이름으로 갈아 끼운 모양) · 머리의 술어 수 «열셋»이 같은 파일 §461 의 «열넷»과 충돌해 **수를 지우고 묻는 자리를 남겼다**) · 직전 2026-08-29 (개정 6 — §1~§3 쓰기측은 유효, **읽기측 §4.7·§4.8·§4.10·§5.7·§6.4-bis 는 은퇴한 라우트를 서술하며 묘비를 달았습니다**) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/setup_bundle.py`(선언 검증) ·
 > `server/config/ontology/ledger_config.json`(선언 자체)
 >
@@ -11,7 +11,11 @@
 > ```
 > ① 원장은 «선언» 위에 서 있다
 >    정본은 «하나» — server/config/ontology/ledger_config.json (setup_version 5)
->    그 파일의 entities «아홉» · vocabulary «열셋» 이 무엇에 대해 무엇을 말할 수 있는지를 «전부» 정한다
+>    그 파일의 entities 와 vocabulary 가 무엇에 대해 무엇을 말할 수 있는지를 «전부» 정한다
+>    🔴 수는 여기 안 적는다 — GET /api/ledger/declaration 이 답한다
+>       (2026-09-02 정정: 여기가 «열셋»이었고 같은 파일 §「in_container」 절이 «열넷»이라 적어
+>        서로를 반박했다. 그 수는 follow 가 대조받는 «바로 그 집합»이라, 틀리면
+>        「어느 이름이 422 인가」를 틀리게 가르친다)
 >    개정 6(2026-08-28): 노드는 «선언된 엔터티»뿐, 엣지는 «선언된 술어»뿐이다
 > ② 답은 «walk» 이 한다
 >    읽기측의 질문은 「마킹한 노드에서 걸어 닿는 하위 그래프」 하나이고, 차트는 그것을 보는 창이다
@@ -187,7 +191,7 @@ override 카운트가 과소보고된 QA D-1.)
 | `uq_ledger_atom` | **UNIQUE** `(occurred_at, predicate, subject_type, subject_keys, coalesce(object_payload,'{}'::jsonb), source_translator_ver, source_raw_ref)` | **멱등성 그물 ②** — `store.insert_atoms`의 `ON CONFLICT DO NOTHING`. 커서가 **첫** 답이고(재실행은 0행을 읽는다) 이것은 **커서를 리셋해도 남는** 답이다 | **284.6 B/원자** — 청구서에서 가장 큰 한 줄(`source_raw_ref` + jsonb 둘을 싣는다). 스키마로 강제되는 멱등성의 값이고, **다시 발견하지 말고 다시 «판정»하라고** 적어 둔 것 |
 | `idx_ledger_subject_lot` | `((subject_keys->>'lot'), predicate)` | `ledger_trace`의 재귀 혈통 보행(`subject_keys->>'lot' = :lot AND predicate = ANY(...)`) | ⚠️ **소스에 기록되지 않았다.** 총 673에서 나머지 셋을 빼면 ≈59 B/원자인데 이는 **산술이지 측정이 아니다** — 인용 전 실측할 것 |
 | `idx_ledger_register` | `(subject_type, subject_keys) WHERE predicate='register'` | `store.existing_registrations` — 페이지당 1질의. 개체마다 조회하면 천만 행 백필이 **2차식**이 된다 | **16.6 B/원자, 그리고 감소 중**(부분 인덱스라 register는 O(개체), 테이블은 O(원자)) |
-| `idx_ledger_register_search` | `GIN ((subject_keys::text) gin_trgm_ops) WHERE predicate='register'` | `GET /api/ledger/entities?q=`의 모든 등록 타입 contains 검색. 인덱스가 없으면 소비자가 전량 JSON 스캔을 **거절**한다 | 개발 DB 자식 인덱스 합계 **656 kB**(2026-08-15 실측). register 개체 수에 비례하며 전체 원자 수로 환산하지 않는다 |
+| `idx_ledger_register_search` | `GIN ((subject_keys::text) gin_trgm_ops) WHERE predicate='register'` | 🔴 **[2026-09-02] 이 칸의 소비자가 «없다».** 대고 있던 `GET /api/ledger/entities?q=` 는 은퇴했고(살아 있는 원장 라우트는 `subgraph`·`declaration`·`gaps` 셋뿐), 서버 전건에 이 인덱스를 이름으로 쓰는 자리가 없다. **이 절의 제목이 걸어 둔 admission rule 을 이 행이 어기고 있다** — 「이름 붙은 소비자가 있어야 한다」인데 그 이름이 죽었다. ⚠️ **그렇다고 「지워라」가 아니다**: contains 검색이 없으면 전량 JSON 스캔이라 다음 검색 소비자가 이 인덱스를 «다시 발견»하게 된다. **판정이 필요한 자리이고 이 문서가 정하지 않는다** — 총괄에 올린다 | 개발 DB 자식 인덱스 합계 **656 kB**(2026-08-15 실측). register 개체 수에 비례하며 전체 원자 수로 환산하지 않는다 |
 | `idx_ledger_subject_entity` | `(subject_type, subject_keys)` | 구조화된 exact subject identity 조회 (🔴 종전 이 칸이 대던 `/explore_entity` 는 «없다» — 지금 이 인덱스를 쓰는 것은 걷기의 씨앗 해소다) frontier join | 개발 DB 자식 인덱스 합계 **13 MB**(2026-08-15 실측). 모든 원자를 싣는 대가이며 generic entity 탐색의 JSON 전량 스캔을 막는다 |
 | `idx_ledger_source_event` | `(source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL` | 원자를 자기 원천 사건으로 묶는 조회 (🔴 종전 이 칸은 「Event→Claim exact batch」라 적었고, **Event 는 노드가 아니고 Claim 은 엣지다** — 2026-08-25·28). walk 은 이 컬럼 둘의 «존재»를 배포 사실로 확인한다(`_subgraph_contract_state` — 없으면 503) | 가격 재측정 대기. 기존 파티션에는 child별 CONCURRENTLY 후 parent ATTACH |
 | `idx_ledger_object_entity` | `((object_payload->>'type'), (object_payload->'keys')) WHERE object_kind='entity_ref'` | `/api/ledger/subgraph`의 Entity←object Claim exact reverse lookup | 가격 재측정 대기. JSON text 전량 스캔으로 강등 금지 |
@@ -458,7 +462,7 @@ walk 에서 삭제됐고, 같은 밤 `entities.die@1.references` 도 지워졌�
 > ✅ 살아남는 생각  다이가 자기 웨이퍼에 닿는 다리는 «필요하다» — 그것을 «술어로» 선언한 것이 지금이다
 > ```
 > 🔴 **그래서 아래 마지막 두 항목은 «지금 거짓»이다** — `in_container` 는 어휘에 있고,
-> `follow=in_container` 는 **422 가 아니라 정상 인출**이다. 선언된 술어는 오늘 «열넷».
+> `follow=in_container` 는 **422 가 아니라 정상 인출**이다 — 그 술어가 `vocabulary` 에 «선언돼 있기» 때문이고, 그것이 이 문장의 전부다. ⚠️ **[2026-09-02] 여기 있던 「선언된 술어는 오늘 «열넷»」은 지웠다** — 선언 파일이 gitignore 대상이라 그 수는 «이 박스»의 수이고, 운영은 자기 선언을 따로 든다. **어느 이름이 422 인지는 수가 아니라 «그 배포의 선언»이 정한다** — `GET /api/ledger/declaration` 이 답한다.
 > ✅ **`.sample` 도 같다** — 어휘 **14 대 14**, 차집합 양쪽 «0», `class: "static"` 셋과
 > `bonded_from` 매핑 셋까지 동일(실측 2026-08-29 밤, `0fe0ec09` 이후 재측정).
 > ⚠️ **종전 이 자리는 「`.sample` 은 아직 열셋이라 새로 설치한 환경은 그 다리를 못 건넌다」였고,
@@ -1417,7 +1421,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 생 psycopg2 경로거나 SQLAlchemy가 래핑 에러를 포맷하는 방식이 바뀌면 **배포 사실이 조용히 코드 결함처럼 읽히는 500**이 된다.
 **즉 고장나 있던 것이 아니라 «아무것도 보장하지 않는 문자열» 위에 앉아 있었다** — 그것이 옮긴 이유다.
 
-⚰️ **`GET /api/ledger/coverage` — 은퇴했다**(실측 2026-08-27, 라우트 표에 없음). 🔴 **그 규율은 살아남아 지금 `/structure` 가 진다** — **부재·공백에도 «에러가 아니라» 200과 `state`를 낸다.**
+⚰️ **`GET /api/ledger/coverage` — 은퇴했다**(실측 2026-08-27, 라우트 표에 없음). 🔴 **[2026-09-02 정정] 후계로 대던 `/structure` 도 «없다»** — 그 라우트와 `server/ledger_structure.py` 가 함께 삭제됐다. 후계를 대는 문장이 «또 다른 죽은 이름»으로 갈아 끼워져 있었고, 그 모양은 문장이 살아 있는 것처럼 보이게 한다. **살아남은 규율은 오늘 `GET /api/ledger/gaps` 가 진다** — **부재·공백에도 «에러가 아니라» 200과 상태를 낸다.**
 이 둘이야말로 이 엔드포인트가 존재하는 이유이고, 여기서 raise하면 운영자를 **색깔만 다른 같은 빈 화면** 앞에 되돌려 놓는다.
 
 | `state` | 뜻 |

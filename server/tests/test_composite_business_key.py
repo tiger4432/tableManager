@@ -374,3 +374,180 @@ def test_user_vs_user_conflict_merge(sqlite_db):
     assert backup_src.value == "GOOD"
 
 
+# ===========================================================================
+# S1 — the FOUR places that spell a composite identity, measured against each other
+# ===========================================================================
+# 🔴 THIS IS NOT A REFACTORING TEST. Four pieces of code decide what a row IS, and on the
+# day they disagree the same row carries two identities and NOTHING ERRORS. So the question
+# is not "did the extraction keep working" - it is "do the four agree, and do their four
+# DIFFERENT blank-value policies stay four".
+#
+# The separator here is `|`, not the default `_`, because a bug that reads the separator
+# from the wrong place (or hardcodes it) is invisible on a table that uses the default -
+# and `dt_log`, the table the owner hit this on, uses `|`.
+
+import uuid as _uuid
+
+import enrichment_mapper
+
+PIPE_TABLE = "s1_pipe_key"
+PIPE_SEP = "|"
+PIPE_SRC = ["lot", "slot", "wafer"]
+PIPE_CONFIG = {
+    PIPE_TABLE: {
+        "business_key": "row_key",
+        "composite_key_source": PIPE_SRC,
+        "composite_key_separator": PIPE_SEP,
+        "column_types": {"row_key": "string", "lot": "string", "slot": "number",
+                         "wafer": "string", "note": "string"},
+        "display_columns": ["row_key", "lot", "slot", "wafer", "note"],
+    }
+}
+
+#: One input, used by all four. `slot` is a NUMBER so `clean_str_value`'s 7.0 -> "7" fold
+#: is on the path: a site that stringified with `str()` would spell `7.0` and be caught.
+PIPE_VALUES = {"lot": "LOT-A", "slot": 7.0, "wafer": "W03"}
+PIPE_EXPECTED = "LOT-A|7|W03"
+
+
+@pytest.fixture(name="pipe_db")
+def fixture_pipe_db():
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    models.init_dynamic_models(PIPE_CONFIG)
+    crud.TABLE_CONFIG.update(PIPE_CONFIG)
+    Base.metadata.create_all(bind=engine)
+    models.sync_dynamic_tables_schema(engine)
+    db = Session()
+    yield db
+    db.close()
+    Base.metadata.drop_all(bind=engine)
+    crud.TABLE_CONFIG.pop(PIPE_TABLE, None)
+
+
+def _item(updates, **kw):
+    return schemas.GeneralUpdateItem(updates=dict(updates), source_name="s1_test",
+                                     updated_by="s1", **kw)
+
+
+def _write(db, updates, source_name="s1_test", tx="s1"):
+    batch = schemas.GeneralUpdateBatch(
+        updates=[schemas.GeneralUpdateItem(updates=dict(updates), source_name=source_name,
+                                          updated_by="s1")],
+        transaction_id=tx, silent=True)
+    return crud.apply_batch_updates(db, PIPE_TABLE, batch)
+
+
+def _the_row(db):
+    model = models.DYNAMIC_TABLES[PIPE_TABLE]
+    return db.query(model).first()
+
+
+# ---------------------------------------------------------------------------
+# The four, on ONE input
+# ---------------------------------------------------------------------------
+
+def test_the_payload_assembler_spells_it_this_way(pipe_db):
+    """① `assemble_composite_business_key` — material: the payload's `updates`."""
+    item = _item(PIPE_VALUES)
+    assert crud.assemble_composite_business_key(PIPE_TABLE, item) is True
+    assert item.business_key_val == PIPE_EXPECTED
+
+
+def test_the_row_sync_spells_it_the_same_way(pipe_db):
+    """② the row-sync recompute — material: the ROW's attributes, not the payload.
+
+    Driven through a real write, so what is asserted is the identity that LANDED, not the
+    one an assembler proposed on the way in.
+    """
+    _write(pipe_db, PIPE_VALUES)
+    assert _the_row(pipe_db).business_key_val == PIPE_EXPECTED
+
+
+def test_the_single_cell_recompute_spells_it_the_same_way(pipe_db):
+    """③ the per-cell recompute — reached by PINNING a source on a key column.
+
+    Two sources disagree about `wafer`; pinning the loser changes the displayed value, and
+    that is what makes this path recompute the identity. Nothing else in the suite walks
+    it, which is part of why four spellings could sit here unnoticed.
+    """
+    _write(pipe_db, PIPE_VALUES, source_name="parser_a", tx="a")
+    row_id = _the_row(pipe_db).row_id
+
+    # 🔴 THE SECOND SOURCE MUST NAME THE ROW. `wafer` is part of the identity, so a
+    # payload carrying a different `wafer` composes a DIFFERENT key and lands as a second
+    # row - two rows, one source each, and nothing to pin. Naming `row_id` is what makes
+    # two sources compete for one cell, which is the only way this path is reachable.
+    crud.apply_batch_updates(pipe_db, PIPE_TABLE, schemas.GeneralUpdateBatch(
+        updates=[schemas.GeneralUpdateItem(row_id=row_id, updates={"wafer": "W99"},
+                                           source_name="parser_b", updated_by="s1")],
+        transaction_id="b", silent=True))
+    pipe_db.expire_all()
+
+    row = _the_row(pipe_db)
+    winner = row.wafer
+    loser_source = "parser_a" if winner == "W99" else "parser_b"
+    loser_value = "W03" if winner == "W99" else "W99"
+
+    crud.set_cell_manual_priority_batch(
+        pipe_db, PIPE_TABLE, [{"row_id": row_id, "column_name": "wafer"}],
+        source_name=loser_source)
+    pipe_db.commit()
+    pipe_db.expire_all()
+
+    row = _the_row(pipe_db)
+    assert row.wafer == loser_value, "the pin did not change the cell; this proved nothing"
+    assert row.business_key_val == PIPE_SEP.join(["LOT-A", "7", loser_value])
+
+
+def test_the_enrichment_mapper_spells_it_the_same_way(pipe_db):
+    """④ the derived-table key — material: the decision-key map."""
+    rule = {"enrichment": {
+        "name": "s1_probe", "source_table": PIPE_TABLE, "derived_table": PIPE_TABLE,
+        "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
+        "aggregations": {},
+    }}
+    out = enrichment_mapper.map_enrichment_dedup(
+        pipe_db, [{"data": {k: {"value": v} for k, v in PIPE_VALUES.items()}}], rule=rule)
+    assert len(out["updates"]) == 1
+    assert out["updates"][0]["business_key_val"] == PIPE_EXPECTED
+
+
+# ---------------------------------------------------------------------------
+# The blank-value policies — FOUR of them, and they must stay four
+# ---------------------------------------------------------------------------
+
+def test_the_four_blank_policies_are_still_four(pipe_db):
+    """🔴 THE POLICIES ARE NOT UNIFIED, AND UNIFYING THEM WOULD BE THIS ROUND'S FAILURE.
+
+    Each of the four has its own reason for what it does with a missing component, and
+    ④'s is a 2026-08-05 owner ruling (work with whatever key survived). Sharing the
+    ASSEMBLY must leave all four answers exactly where they were.
+    """
+    partial = {"lot": "LOT-A", "wafer": "W03"}          # `slot` missing
+
+    # ① refuses to build a key at all
+    item = _item(partial)
+    assert crud.assemble_composite_business_key(PIPE_TABLE, item) is False
+    assert item.business_key_val in (None, "")
+
+    # ② falls back to a business_key_val the caller supplied on a NEW row
+    batch = schemas.GeneralUpdateBatch(
+        updates=[schemas.GeneralUpdateItem(updates=dict(partial),
+                                           business_key_val="CALLER-SUPPLIED",
+                                           source_name="s1_test", updated_by="s1")],
+        transaction_id="s1-partial", silent=True)
+    crud.apply_batch_updates(pipe_db, PIPE_TABLE, batch)
+    assert _the_row(pipe_db).business_key_val == "CALLER-SUPPLIED"
+
+    # ④ composes the PARTIAL key rather than refusing it - the owner ruling
+    rule = {"enrichment": {
+        "name": "s1_probe", "source_table": PIPE_TABLE, "derived_table": PIPE_TABLE,
+        "decision_key": PIPE_SRC, "target_fields": ["note"], "list_columns": [],
+        "aggregations": {},
+    }}
+    out = enrichment_mapper.map_enrichment_dedup(
+        pipe_db, [{"data": {k: {"value": v} for k, v in partial.items()}}], rule=rule)
+    assert out["updates"][0]["business_key_val"] == "LOT-A||W03", (
+        "the enrichment mapper stopped composing a partial key - that reverses the "
+        "2026-08-05 ruling, and sharing the assembly must not touch it")
