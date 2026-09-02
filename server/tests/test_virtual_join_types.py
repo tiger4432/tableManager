@@ -359,6 +359,42 @@ def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_take
 
     Pinned because it decides where the boolean fix matters. If the injection ever moves
     after `attach`, this goes red and the payload assertions above become the live ones.
+
+    🔴 KNOWN RED SINCE 2026-09-02, AND THE RED IS THE CORRECT SIGNAL. Do not repair this
+    test to make it green. Recorded on the lead PM's ruling of the same night.
+
+        WHY IT IS RED   the premise above - "the injected graph-meta cell always wins" -
+                        was removed on purpose. `fetch_and_merge_metadata` no longer
+                        injects `is_graph_synced` / `needs_graph_rollback` /
+                        `graph_synced_at`; measured first, ZERO of the 44 live tables
+                        declare any of the three, so every row of every page was carrying
+                        three cells nobody had asked for.
+
+        WHAT IT NOW SEES  `None`, not the join's `true`. That is NOT the new contract: it
+                        is a BROKEN FIXTURE showing through. `attach` already failed here
+                        at HEAD - "type object 'VjtTestRef' has no attribute
+                        'needs_graph_rollback'" - and seven sibling tests in this file
+                        were red for that same reason before the injection was removed.
+                        The injected cell was OCCUPYING the seat, so the join's inability
+                        to fill it could not be seen. Not "zero because absent" but
+                        "zero because covered", which is the least visible kind here.
+
+        WHAT IS BLOCKED  Retiring this test would remove the only cover over "a Boolean
+                        expose column reaches the read surface"; its own text says the
+                        payload assertions become the live ones, so what died is the
+                        MECHANISM, not the assertion. Repairing the fixture is blocked on
+                        a question nobody has answered yet:
+
+        THE QUESTION    do REF models get the three metadata columns too?
+                        yes -> the model builder is at fault, and fixing it turns the
+                               seven siblings green with this one.
+                        no  -> this fixture's expose list asks for something impossible,
+                               a different Boolean sample is needed, and this file's own
+                               claim at :83 - that an ordinary config reaches it too - is
+                               FALSE on a ref.
+
+        Asserting anything on top of today's `None` would freeze the broken half as the
+        contract, which is why this is left failing and named instead.
     """
     payload = _payload(type_env, "needs_graph_rollback")
     assert payload["L1"] is False, (
