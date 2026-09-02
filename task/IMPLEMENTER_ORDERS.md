@@ -22344,3 +22344,76 @@ enrichment_mapper.py:288   joined = comp_sep.join(key)
    나머지 절반은 「닿았을 때 같은 답을 내는가」이고, 그것까지 있어야 «안 고쳐도 되는» 것이 됩니다
    ①만 있으면 그건 「오늘은 안전」이고, 이 저장소가 반복해서 맞은 「가드는 도달 가능해지는 날 틀린다」입니다
 ```
+
+---
+
+# 🔵 [총괄 -> 구현자] 은퇴한 컬럼 셋이 «모든 행»에 실려 나갑니다 — 그리고 «주석이 아니라고 적혀 있습니다» (2026-09-02 23:0x)
+
+## 무엇이 사실인가 — 코드로만 잰 것입니다 (커밋된 파일, 운영에도 참)
+```
+main.py:900~902   r_data["is_graph_synced"]    = {value, is_overwrite, sources, updated_by}
+                  r_data["needs_graph_rollback"] = {…}
+                  r_data["graph_synced_at"]      = {…}
+                  🔴 «가드 없음». 880~903 사이의 if 둘은 None->False 정규화뿐입니다
+자리              fetch_and_merge_metadata (:778) 안
+호출자            7곳. 그중 :1905 가 «그리드 읽기»(get_table_data :1742) 이고
+                  타이머 상 `Dict Conv` 구간입니다
+=> 그리드 한 페이지의 «모든 행»이 이 셋을 «셀 모양으로» 싣고 나갑니다
+```
+
+## 🔴 그런데 같은 파일의 주석이 «반대로» 적혀 있습니다
+```
+main.py:2409  「the server no longer fills them」          <- 거짓입니다. :900 이 채웁니다
+main.py:2416~2418  col_types["is_graph_synced"]="boolean" … <- 스키마는 셋을 «아직 알립니다»
+client2/src/push_columns.js:36  「the server stopped injecting them in the same commit」 <- 거짓
+client2/src/grid.js:582  필터를 「배포 중 마지막 방어선」이라 적어 뒀는데,
+                         실제로는 «지금 일하고 있는» 방어선입니다
+```
+🔴 2026-08-31 에 «절반만» 걷혔습니다 — `system_cols` 목록에서는 빠졌는데
+   **채우는 자리는 안 빠졌습니다.** 그리고 주석이 다 빠진 것처럼 적혔습니다.
+
+## 할 일 — 세 자리. 그뿐입니다
+```
+① main.py:889~902   셋을 «만드는» 줄과 «넣는» 줄을 걷어냅니다
+                    (is_sync_val · needs_roll_val · synced_at_val · synced_at_str 은
+                     이 셋 말고 쓰는 데가 없으면 같이. 있으면 «남깁니다»)
+② main.py:2416~2418 col_types 에 셋을 «더하는» 세 줄
+③ 주석 둘           main.py:2409 와 push_columns.js:36 을 «사실»로 고칩니다
+                    -> 「같은 커밋에 빠졌다」가 아니라 「그때는 목록만 빠졌고 오늘 채우기가 빠졌다」
+```
+
+## ⛔ 하지 않는 것
+```
+⛔ DB 컬럼 삭제       models.py 의 셋은 «진짜 컬럼»입니다. 별도 판정입니다
+⛔ grid.js:582 필터    클라 소관이고, 지금 «일하는» 방어선입니다. 서버가 멈춘 뒤 별건
+⛔ table_config.json  라이브 선언은 총괄/소유자 파일입니다. «읽기만» 하십시오
+⛔ 그 밖의 15개 파일   tests/scripts 에 이름이 나오는 것들 — 이번 라운드 «밖»입니다
+```
+
+## 🔴 착수 전 «재고» 시작하십시오 — 이것 하나가 답을 바꿉니다
+```
+질문   `table_config.json` 의 «어떤 표»가 셋 중 하나를 `column_types` 에 «스스로» 선언하나?
+        (라이브 파일을 «읽어서». 쓰지 마십시오)
+0 이면   ②는 순수 제거입니다. 그대로 진행
+0 이 아니면  그 표는 :2416 이 «자기 선언을 덮어쓰고» 있었다는 뜻입니다.
+        -> ② 를 지우면 그 표의 served 타입이 «바뀝니다». 멈추고 그 표 이름을 보고하십시오
+```
+📎 근거: `client2/src/map2/view_model.js:1097` 이 「`dt_map` declares `graph_synced_at: datetime`」
+   이라 적어 뒀는데, 그게 «선언»인지 :2416 이 «넣은 것»인지 그 주석만으로는 안 갈립니다.
+
+## 게이트
+```
+① 시험    셋 중 하나라도 이름이 나오는 시험만 «골라» 돌리십시오 —
+          test_virtual_join_types · test_undeclared_schema_report · test_schema_drift_startup
+          · test_declared_key_indexes · test_outbox_notify_budget
+          🔴 conda run 은 «멈춥니다». 인터프리터를 직접 부르십시오:
+             C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest …
+② 응답 모양  한 행의 «키 개수»가 셋 줄었음을 한 줄로 보이십시오 (전/후)
+③ 무회귀    :2554 · :2902 · :3351 · :3427 · :3503 도 같은 함수를 씁니다.
+          그 다섯이 셋을 «기대하는지» 먼저 grep 하고, 기대하면 멈추고 보고
+```
+
+## 왜 지금인가 — 소유자의 「600↔1000ms」와 «같은 구간»입니다
+`Dict Conv` 가 그 타이머의 칸 하나이고, 소유자 말씀이 「다 첫페이지 600, 1000 얘기」입니다.
+⚠️ **이것이 원인이라고 말하지 않습니다.** 원인은 DEBUG 로그가 갈라 줄 것이고, 이건
+「재기 전에 없앨 수 있는 순수 낭비」라서 먼저 치우는 것입니다.
