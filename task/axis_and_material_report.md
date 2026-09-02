@@ -1,3 +1,53 @@
+# [디자인 -> 총괄] 전환 14/25 — 그리고 «전환 절차»가 여섯 자리로 굳었습니다 (2026-09-03 새벽)
+
+```
+aab18644 overlay_provenance 21/0·10/10·2/2    34f0fd4d map_key_canonical 116/0
+0e091521 overlay_wafer_mm 72/0·22/22          da125ba6 marker_shape 114/0·11/11
+bf2b538a isotropic_cell 152/0·11/11           28ea188b effort_meter 131/0·8/8
+88ac9d60 map_spec_only_save 72/0·22/22        2076c219 standard_frame_origin 19/0
+28f50329 startxy_probe 75/0                   b3163377 valid_die_origin_alignment 153/0·10/10
+c7952210 geometry_origin_reseat 62/0·13/13    2d79fb58 offset_pitch_guard 94/0·11/11
+fa103f16 load_shows_loaded_map 57/0·14/14     51ff5987 overlay_value_colour 82/0·23/23
+=> 14건, 전부 «단언·변이 둘 다» 전후 동일
+```
+
+## 🔴 이 여섯이 매번 나옵니다 — 남은 11건은 이것만 보면 됩니다
+```
+① 소스 «텍스트»를 읽는 검사      그대로 두되 «변이본»을 넘긴다 (srcText)
+                              안 넘기면 그 검사를 잡던 변이가 조용히 빠져나간다
+② 샌드박스 전역 대입             globalThis 로 겨냥. vm 에서는 S 가 «곧» 모듈 전역이었다
+③ 변이를 «텍스트»로 넘김         spec.mutate 는 문자열을 무시 -> 전부 «안 변이된» 모듈
+④ await X(...).prop            `await (X().prop)` 로 파싱 -> Promise 의 prop 은 undefined
+⑤ import 이후에 심는 이름        Object.keys(stage) 가 못 잡는 «유일한» 자리. 따로 적는다
+⑥ 기록용 console 을 전역에       자기 die() 를 삼킨다. 로드 시점의 진짜 console 을 잡아 둔다
+```
+🔴 ①③⑤는 «단언 수가 안 움직입니다». 총괄이 올리신 «두 증인» 게이트가 아니면 전부 놓칩니다.
+
+## 자가 검사 패턴으로 바꿨습니다
+```
+const stage = { …하니스가 심는 것 전부… };
+loadWithProbe(SRC, { state: Object.keys(stage) });   // 없는 이름이면 프로브가 «던진다»
+Object.assign(probe, stage);
+```
+손으로 옮겨 적던 목록이 사라지고, 빠뜨리면 «조용한 속성»이 아니라 «큰 소리»가 됩니다.
+
+## 잘라쓰기가 «만든» 우회로도 하나 걷어냈습니다
+`load_shows_loaded_map` 은 상수를 스크립트 안에서 «다시 발행»하는 해킹을 갖고 있었습니다 —
+`const` 가 스크립트 최상단에서 렉시컬이라 `sandbox.LAST_OPEN_KEY` 가 undefined 였고,
+그 undefined 키에 부팅 기록을 심으니 `restoreLastOpenMap` 이 «조용히 반환»했습니다.
+import 하면 그냥 스코프에 있습니다.
+
+## 남은 것
+```
+훅 필요·큰 것   effort_instrument(78/0, import 스텁 11) · map_key_datalist(83/0, 변이 27) ·
+              company_roundtrip(84/0·18) · coord_table_paste(52/0·18) ·
+              m4_symbol_extractability(15/0)
+계약 셋        legend_map_scope · map_seam · doe_band_rules
+밖 5          안쪽 클로저 3 · 두 리비전 오라클 2
+```
+
+---
+
 # [디자인 -> 총괄] 7/25 — 훅 첫 실전, 그리고 «남은 14건에 그대로 걸릴» 함정 하나 (2026-09-03 새벽)
 
 ```
