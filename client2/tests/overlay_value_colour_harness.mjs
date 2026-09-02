@@ -34,6 +34,7 @@
  * Read-only against client2/. Mutation sweep is unconditional -- there is no flag to forget.
  */
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -100,33 +101,61 @@ const UNLISTED = ['ZZ9', 'QQ'];                          // declared by neither
 // draft was written" and "it was written once per value" are different claims.
 const ctxSaves = [];
 
-function makeSandbox(src) {
+// 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`. Slicing scores the
+// SHAPE OF THE LETTERS: the day one of them calls a helper that is not on the list, this
+// harness reddens on correct code and names the missing symbol rather than the change.
+//
+// `src` is a MUTATE FUNCTION now (or null): a mutant is a whole module, so one that fails to
+// parse fails loudly instead of counting as caught.
+async function makeSandbox(src) {
   ctxSaves.length = 0;
-  const body = SYMBOLS.map(n => sliceFunction(src, n)).join('\n\n');
-  const ctx = {
-    console, Math, Number, String, Array, Object, Map, Set, JSON,
+
+  globalThis.document = globalThis.document || {
+    getElementById: () => null, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+
+  // What this harness stages. `state` is `Object.keys` of it, so a name the module does not
+  // declare is a loud failure rather than a property nobody reads.
+  const stage = {
     legend: MAP_LEGEND.map(r => ({ ...r })),
     overlayContract: { valueColumnCandidates: [], defaultLegend: SERVED_DEFAULT.map(r => ({ ...r })) },
-    // ── A12 support. STUBBED deliberately, and only the parts that are somebody else's
-    //    contract: `normalizeLegendItem`/`legendRowSignature` live in
-    //    `client2/src/split_registry_row.js` and are scored by `split_registry_harness.mjs`;
-    //    `saveLegendToStorage` is the local-draft writer and its own axis is the draft
-    //    lifecycle. What is NOT stubbed is everything this axis actually claims —
-    //    `overlayLayerValues`, `ensureLegendValues`, `autoAddLegendValue` and
-    //    `legendColorForValue` are the real thing.
-    //    🔴 The stub signature is NOT identity: it must preserve `vocab`, because the whole
-    //    "nothing reaches the server" argument rides on that field surviving the round trip.
-    normalizeLegendItem: (o) => ({ desc: '', ...o }),
-    legendRowSignature: (o) => JSON.stringify([o.value, o.desc, o.color]),
     legendVocabularySeed: new Map(),
     // A13 reads the LIVE layer set, so it has to be settable from a check.
     overlayLayers: [],
     pickUnusedColor: () => '#123456',
+    // the local-draft writer; its own axis is the draft lifecycle, scored elsewhere
     saveLegendToStorage: () => { ctxSaves.push('save'); },
   };
-  vm.createContext(ctx);
-  try { vm.runInContext(body, ctx); } catch (e) { die(`sandbox did not evaluate: ${e.message}`); }
-  return ctx;
+
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: [...SYMBOLS],
+    state: Object.keys(stage),
+    // ── A12 support. STUBBED deliberately, and only the parts that are somebody else's
+    //    contract: `normalizeLegendItem`/`legendRowSignature` live in
+    //    `client2/src/split_registry_row.js` and are scored by `split_registry_harness.mjs`.
+    //    They are IMPORTS of the subject, so the loader hook is the only way to reach them --
+    //    an import binding is read-only to everyone but the module that declared it.
+    //    What is NOT stubbed is everything this axis actually claims — `overlayLayerValues`,
+    //    `ensureLegendValues`, `autoAddLegendValue` and `legendColorForValue` are the real thing.
+    //    🔴 The stub signature is NOT identity: it must preserve `vocab`, because the whole
+    //    "nothing reaches the server" argument rides on that field surviving the round trip.
+    stubs: {
+      './split_registry_row.js': {
+        normalizeLegendItem: (o) => ({ desc: '', ...o }),
+        legendRowSignature: (o) => JSON.stringify([o.value, o.desc, o.color]),
+      },
+    },
+    mutate: src || undefined,
+    tag: 'ovcolour',
+  });
+
+  Object.assign(probe, stage);
+  return probe;
 }
 
 // A canvas 2D context that records instead of drawing. `fillStyle` is recorded on assignment
@@ -159,7 +188,12 @@ function recordingCtx() {
 const item = (val) => ({ val, rx: 1, ry: 2, mmX: 0, mmY: 0, srcX: 0, srcY: 0 });
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────
-function runAll(src) {
+async function runAll(src) {
+  // Several checks below read the SOURCE TEXT of a function rather than executing it -- they
+  // assert on the shape of the renderer, which is a check on the file, not a sliced fragment
+  // being run. They stay, and they are handed the MUTATED text: with the baseline text they
+  // would go blind to exactly the mutants written to trip them.
+  const srcText = src ? src(SRC0) : SRC0;
   const fails = [];
   let ran = 0;
   const ok = (cond, name, detail) => { ran++; if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
@@ -170,7 +204,7 @@ function runAll(src) {
   const eqDeep = (got, want, name) =>
     ok(JSON.stringify(got) === JSON.stringify(want), name,
        `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
-  const ctx = makeSandbox(src);
+  const ctx = await makeSandbox(src);
 
   // ── A1: PATH ONE -- the value is in THE OPEN MAP'S legend (its registry rows). ──
   eq(ctx.legendColorForValue('1'), '#10b981', 'A1 map legend colour');
@@ -195,7 +229,7 @@ function runAll(src) {
   // the source so a new palette colour cannot slip past this list.
   const paletteHits = [];
   for (const arrName of ['LEGEND_PALETTE', 'OVERLAY_COLORS']) {
-    const m = new RegExp(`const ${arrName} = \\[([^\\]]*)\\]`, 's').exec(src);
+    const m = new RegExp(`const ${arrName} = \\[([^\\]]*)\\]`, 's').exec(srcText);
     if (!m) { ok(false, `A4b ${arrName} not found in source`, 'the palette moved; this check is blind'); continue; }
     const colours = m[1].match(/#[0-9a-fA-F]{6}/g) || [];
     ok(colours.length > 3, `A4b ${arrName} parsed`, `only ${colours.length} colours found`);
@@ -288,7 +322,7 @@ function runAll(src) {
   // ── A10: WIRING. The functions above are worth nothing if the renderer does not call them.
   //         (`drawOverlayMarkers` needs a live canvas + module state, so this reads its source.)
   {
-    const draw = stripComments(sliceFunction(src, 'drawOverlayMarkers'));
+    const draw = stripComments(sliceFunction(srcText, 'drawOverlayMarkers'));
     const nFill = countOf(draw, 'overlayMarkerFill(');
     const nPaint = countOf(draw, 'paintOverlayDot(');
     ok(nPaint >= 2, 'A10 both marker branches go through the painter', `${nPaint} call(s)`);
@@ -301,17 +335,17 @@ function runAll(src) {
     ok(/it\.rx/.test(draw) && /it\.ry/.test(draw), 'A10d the in-chip remainder is still used',
       'the mm remainder was dropped while this path was being edited');
 
-    const lookup = stripComments(sliceFunction(src, 'legendColorForValue'));
+    const lookup = stripComments(sliceFunction(srcText, 'legendColorForValue'));
     ok(/legend\.find/.test(lookup), 'A10e the lookup reads the open map legend');
     ok(/declaredLegendRow\s*\(/.test(lookup), 'A10f the lookup falls back to the served default_legend');
     ok(!/pickUnusedColor|LEGEND_PALETTE|OVERLAY_COLORS/.test(lookup),
       'A10g the lookup never reaches for a palette', 'that is the invented colour');
 
-    const list = stripComments(sliceFunction(src, 'renderOverlayList'));
+    const list = stripComments(sliceFunction(srcText, 'renderOverlayList'));
     ok(/overlayLegendChip\s*\(/.test(list), 'A10h the overlay row shows the unlisted chip');
 
     // The chip counts against the LIVE legend, so a legend edit has to re-render the row.
-    const legendTable = stripComments(sliceFunction(src, 'renderLegendTable'));
+    const legendTable = stripComments(sliceFunction(srcText, 'renderLegendTable'));
     // 🔴 The GUARD is asserted, not merely the call. `if (false) renderOverlayList();` still
     //    contains the call, and that is exactly how a refresh gets disabled without anyone
     //    noticing -- the chip then keeps the count it had before the user added the value.
@@ -323,7 +357,7 @@ function runAll(src) {
   // ── A11: COMPLEXITY BUDGET. No control was added for this feature. ──
   //         The overlay row's buttons are the whole interactive surface of this block.
   {
-    const list = stripComments(sliceFunction(src, 'renderOverlayList'));
+    const list = stripComments(sliceFunction(srcText, 'renderOverlayList'));
     const buttons = countOf(list, '<button');
     eq(buttons, 3, `A11 the overlay row still has exactly 3 buttons (import / toggle / delete)`);
     ok(!/<input|<select|type="checkbox"/.test(list), 'A11b and no input was added to it');
@@ -412,7 +446,7 @@ function runAll(src) {
 
     // ⑤ WIRING. As with A10, the functions above are worth nothing if the display path does
     //    not call them — and this is precisely the call that was missing.
-    const add = stripComments(sliceFunction(src, 'addOverlayLayer'));
+    const add = stripComments(sliceFunction(srcText, 'addOverlayLayer'));
     ok(/ensureLegendValues\s*\(\s*overlayLayerValues\s*\(\s*layer\s*\)\s*,\s*\{\s*vocab:\s*true\s*\}\s*\)/.test(add),
       'A12n adding a display layer registers that layer\'s values as vocabulary');
     // The GUARD, not merely the call: `if (false) ensureLegendValues(...)` still contains it.
@@ -482,7 +516,7 @@ function runAll(src) {
       'A13h ...and removing every overlay does not take that colour away');
 
     // The mark is TEXT in the value cell, not a control, and not sized below the token.
-    const render = stripComments(sliceFunction(src, 'renderLegendTable'));
+    const render = stripComments(sliceFunction(srcText, 'renderLegendTable'));
     ok(/legendOverlaySources\s*\(\s*item\s*\)/.test(render),
       'A13i the legend renderer asks for the mark');
     ok(/createElement\('span'\)/.test(render.slice(render.indexOf('legendOverlaySources'))),
@@ -499,7 +533,7 @@ function runAll(src) {
 }
 
 // ── Baseline ─────────────────────────────────────────────────────────────────────────────
-const base = runAll(SRC0);
+const base = await runAll(null);
 console.log('― N2 overlay markers coloured by the overlay value ―');
 console.log(`legend authority: map row #10b981 for '1' (beats served #000000) · served #8b5cf6 for 'R' · ${UNLISTED.join('/')} undeclared -> no fill`);
 console.log(`ASSERTIONS ${base.ran} ${base.fails.length}`);
@@ -614,7 +648,7 @@ for (const [name, from, to] of MUTATIONS) {
   const mutated = SRC0.replace(from, to);
   let red = false, why = '';
   try {
-    const r = runAll(mutated);
+    const r = await runAll(() => mutated);
     red = r.fails.length > 0;
     why = r.fails[0] || '';
   } catch (e) { red = true; why = `threw: ${e.message}`; }
