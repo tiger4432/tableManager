@@ -43,9 +43,15 @@ const SINKS = '__harness_probe_sinks__';
 let seq = 0;
 let registered = false;
 
+// 🔴 THE REAL CONSOLE, CAPTURED AT LOAD. Harnesses install a RECORDING console on
+// `globalThis` so they can assert on what the subject reported -- and one of them swallowed
+// this file's own failure message, leaving `exit 2` with no output at all. An instrument that
+// goes blind under its own fault is worse than no instrument.
+const OUT = console;
+
 function die(msg) {
-  console.error(`HARNESS FAILURE (probe): ${msg}`);
-  console.error('(This is not a passing result. Nothing was compared.)');
+  OUT.error(`HARNESS FAILURE (probe): ${msg}`);
+  OUT.error('(This is not a passing result. Nothing was compared.)');
   process.exit(2);
 }
 

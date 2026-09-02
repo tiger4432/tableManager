@@ -74,6 +74,7 @@
 // "the canvas holds the draft cells" would be the same measurement and every green below
 // would be evidence of nothing. P1–P6 assert that before anything else runs.
 import { readFileSync } from 'node:fs';
+import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -85,9 +86,14 @@ const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
 const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 const verbose = process.argv.includes('--verbose');
 
+// 🔴 THE REAL CONSOLE, CAPTURED AT LOAD. `buildEnv` installs a RECORDING console on
+// `globalThis` so the two swallow points can be asserted on -- and that console ate this
+// function's own message, leaving `exit 2` with no output at all. An instrument that goes
+// blind under its own fault is worse than no instrument.
+const OUT = console;
 function die(msg) {
-  console.error(`HARNESS FAILURE: ${msg}`);
-  console.error('(This is not a passing result. Nothing was compared.)');
+  OUT.error(`HARNESS FAILURE: ${msg}`);
+  OUT.error('(This is not a passing result. Nothing was compared.)');
   process.exit(2);
 }
 
@@ -177,7 +183,7 @@ function makeInput(v) { return { value: String(v), checked: false, style: {}, da
  *                           SITE branch; sections C/F run the real one instead.
  * @param opts.store         a pre-seeded localStorage Map (carried between phases)
  */
-function buildEnv(src, opts = {}) {
+async function buildEnv(src, opts = {}) {
   const toasts = [];
   const confirms = [];
   const alerts = [];
@@ -201,30 +207,62 @@ function buildEnv(src, opts = {}) {
     mapWorkspace: { scrollLeft: 0, scrollTop: 0 },
   };
 
-  const sandbox = {
-    AbortController, setTimeout: (fn) => { void fn; return 0; }, clearTimeout: () => {},
-    setImmediate, Promise, JSON, Math, Number, Object, Array, String, Boolean, Set, Map,
-    parseInt, parseFloat, isNaN, encodeURIComponent, Date,
-    // 🔴 TWO SWALLOW POINTS, BOTH RECORDED. `loadExistingMap`'s catch reports through
-    //    `console.error`; `restoreLastOpenMap`'s own catch reports through `console.warn`
-    //    ("last-open restore failed"). A harness that recorded only the first would read a
-    //    boot restore that died in its opening statements as a boot restore that ran.
-    console: {
-      log() {}, info() {}, debug() {},
-      warn(...a) {
-        const s = a.map(x => String((x && x.stack) || x)).join(' ');
-        if (s.includes('last-open restore failed')) loadErrors.push(s);
-      },
-      error(e) { loadErrors.push(String((e && e.stack) || (e && e.message) || e)); },
+  // 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`.
+  //
+  // THE `CONSTS` REPUBLISHING HACK IS GONE WITH IT, and it is worth saying why it existed:
+  // `const` at script top level is LEXICAL, not a global property, so the sliced code could
+  // read `LAST_OPEN_KEY` while `sandbox.LAST_OPEN_KEY` was `undefined` -- and seeding the boot
+  // record under `undefined` made `restoreLastOpenMap` return in its second statement while
+  // throwing nothing at all. That whole workaround was a cost of slicing. Imported, the consts
+  // are simply in scope and the probe reads them.
+  //
+  // Retyped constants dropped: `LEGEND_PALETTE` (sentinels nothing here reads) and
+  // `ROUTE_MATERIAL` (staged 'map_editor:material'; the product computes exactly that from
+  // `ROUTES.MAP_EDITOR` -- same value, so the copy simply goes).
+  //
+  // Nine names are IMPORTS of the subject and no probe can reach an import binding, so they
+  // come through the loader hook. `getMapIdFromMeta` is not among the stubs: this file already
+  // imports the real one at the top, and that is the SAME module instance the subject sees.
+  //
+  // 🔴 TWO SWALLOW POINTS, BOTH RECORDED. `loadExistingMap`'s catch reports through
+  //    `console.error`; `restoreLastOpenMap`'s own catch reports through `console.warn`
+  //    ("last-open restore failed"). A harness that recorded only the first would read a
+  //    boot restore that died in its opening statements as a boot restore that ran.
+  globalThis.console = {
+    log: (...a) => OUT.log(...a), info() {}, debug() {},
+    warn(...a) {
+      const s = a.map(x => String((x && x.stack) || x)).join(' ');
+      if (s.includes('last-open restore failed')) loadErrors.push(s);
     },
-    el,
-    API_BASE: '/api',
-    CURRENT_USER: 'tester',
+    error(e) { loadErrors.push(String((e && e.stack) || (e && e.message) || e)); },
+  };
+  globalThis.setTimeout = (fn) => { void fn; return 0; };
+  globalThis.clearTimeout = () => {};
+  globalThis.confirm = (t) => { confirms.push(String(t)); return opts.approve !== false; };
+  globalThis.alert = (t) => { alerts.push(String(t)); };
+  globalThis.document = {
+    querySelectorAll: (sel) => (sel === '[id^="meta-input-"]' ? metaInputs : []),
+    getElementById: (id) => metaInputs.find(i => i.id === id) || null,
+    addEventListener() {}, removeEventListener() {}, querySelector: () => null,
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {}, removeEventListener() {},
+  };
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); writeLog.push(String(k)); },
+    removeItem: (k) => { store.delete(k); },
+  };
+
+  // Everything the harness STAGES on the module. `state` is `Object.keys` of this, so a name
+  // the module does not declare is a loud failure instead of a property nobody reads -- the
+  // silent-no-op shape this round has already produced twice.
+  const stage = {
     selectedTable: TABLE,
     tableSchema: TABLE_SCHEMA,
     currentRotation: 0,
     currentSide: 'front',
-    LEGEND_PALETTE: ['#111', '#222', '#333'],
     // ── module state the load writes ──
     gridData: opts.gridData ? { ...opts.gridData } : {},
     gridCells2D: {},
@@ -247,23 +285,6 @@ function buildEnv(src, opts = {}) {
     framePushed: false,
     cellDraftTimer: null,
     validDie: { basis: 'circle', keys: null, reason: '', ref: null, raw: undefined },
-    // ── real, imported ──
-    getMapIdFromMeta,
-    // ⚠️ MONOTONIC, not fixed. A fixed timestamp would make a REWRITE of a draft slot
-    //    byte-identical to the thing it replaced, and section S/D compare bytes.
-    getLocalTimeString: () => `T${String(++clock).padStart(4, '0')}`,
-    showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }),
-    confirm: (t) => { confirms.push(String(t)); return opts.approve !== false; },
-    alert: (t) => { alerts.push(String(t)); },
-    document: {
-      querySelectorAll: (sel) => (sel === '[id^="meta-input-"]' ? metaInputs : []),
-      getElementById: (id) => metaInputs.find(i => i.id === id) || null,
-    },
-    localStorage: {
-      getItem: (k) => (store.has(k) ? store.get(k) : null),
-      setItem: (k, v) => { store.set(k, String(v)); writeLog.push(String(k)); },
-      removeItem: (k) => { store.delete(k); },
-    },
     // ── the load body, stubbed to SUCCEED ────────────────────────────────────────────────
     // ③ always resolves, and it names the map key the META INPUTS resolve to — the same
     //    identity the draft key is built from, so the two cannot drift inside a case.
@@ -289,14 +310,12 @@ function buildEnv(src, opts = {}) {
       ? { ok: false, error: 'harness: registry read refused' }
       : { ok: true, rows: [] }),
     applyRegistryRowsToLegend() {},
-    registryFingerprint: (rows) => `REGFP:${JSON.stringify(rows)}`,
     seedEmptyDoe() {},
     renderLegendTable() {}, renderGridCanvas() {}, updateLegendCounts() {},
-    notifyLegendChanged() {}, notifyMapContext() {}, renderValidDieChip() {},
+    renderValidDieChip() {},
     populateValidDieRefList() {}, renderValidDieKeyControl() {}, syncValidDieRefControls() {},
-    restoreEditorState() {}, renderBreadcrumb() {}, countNav() {},
+    restoreEditorState() {}, renderBreadcrumb() {},
     effortRoute: () => 'map_editor',
-    ROUTE_MATERIAL: 'map_editor:material',
     switchTable: async () => {},
     // ⚠️ THE FRAME IS THE LEADING ARGUMENT, matching the live signature. These do not model
     //    rotation/side/invertY — see the header. `_frame` is unused on purpose.
@@ -322,29 +341,38 @@ function buildEnv(src, opts = {}) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: rows }) });
     },
   };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
 
-  const pieces = [];
-  for (const c of CONSTS) {
-    const m = new RegExp(`^const ${c} = .*;$`, 'm').exec(src);
-    if (!m) die(`const ${c} is gone from map_editor.js`);
-    pieces.push(m[0]);
-  }
-  for (const n of SYMBOLS) pieces.push(sliceFunction(src, n));
-  // ⚠️ `const` AT SCRIPT TOP LEVEL IS LEXICAL, NOT A GLOBAL PROPERTY. The sliced code sees
-  //    these fine, but `sandbox.LAST_OPEN_KEY` is `undefined` — and seeding the boot record
-  //    under `undefined` made `restoreLastOpenMap` return in its second statement while
-  //    throwing nothing at all. This line republishes them where the harness can read them,
-  //    from inside the same script scope. (Function declarations DO become global
-  //    properties, which is why the stubs above can be swapped.)
-  pieces.push(`globalThis.__CONSTS = { ${CONSTS.join(', ')} };`);
-  try { vm.runInContext(pieces.join('\n\n'), sandbox); }
-  catch (e) { die(`extracted sources did not evaluate: ${e && e.message}`); }
-  for (const c of CONSTS) {
-    if (sandbox.__CONSTS[c] === undefined) die(`const ${c} did not survive extraction`);
-    sandbox[c] = sandbox.__CONSTS[c];
-  }
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    // `restoreDoeDraftWithPrecedence` is in SYMBOLS, but it is STAGED below rather than merely
+    // called, and `state` already gives both a getter and a setter -- asking for it twice is
+    // a duplicate key in the appended object, which the probe refuses outright.
+    expose: [...SYMBOLS.filter(n => n !== 'restoreDoeDraftWithPrecedence'), ...CONSTS, 'el'],
+    // 🔴 `restoreDoeDraftWithPrecedence` is staged AFTER the import (the ⑦ sentinel below
+    //    wraps or replaces it), so it cannot come from `stage`. It has to be named here or
+    //    the assignment lands on a property the module never reads -- which it did, and the
+    //    draft block was then never reached.
+    state: [...Object.keys(stage), 'restoreDoeDraftWithPrecedence'],
+    stubs: {
+      './config.js': { API_BASE: '/api', CURRENT_USER: 'tester' },
+      './utils.js': {
+        showToast: (msg, kind) => toasts.push({ msg: String(msg), kind }),
+        // ⚠️ MONOTONIC, not fixed. A fixed timestamp would make a REWRITE of a draft slot
+        //    byte-identical to the thing it replaced, and section S/D compare bytes.
+        getLocalTimeString: () => `T${String(++clock).padStart(4, '0')}`,
+      },
+      './transfer_plan.js': { notifyLegendChanged: () => {}, notifyMapContext: () => {} },
+      './split_registry_row.js': {
+        registryFingerprint: (rows) => `REGFP:${JSON.stringify(rows)}`,
+      },
+      './effort_meter.js': { countNav: () => {} },
+    },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'loadshows',
+  });
+
+  const sandbox = probe;
+  Object.assign(sandbox.el, el);
+  Object.assign(sandbox, stage);
 
   // ── ⑦'s SENTINEL. Replaces the real function with one that writes a KNOWN, DISJOINT cell
   //    set into the LIVE `gridData` (the load reassigns the binding, so it is read at call
@@ -425,7 +453,7 @@ async function run(src, isBaseline = false) {
     eq('P3/the server actually returns cells', 3, sKeys.length);
     eq('P4/map A and map B resolve to DIFFERENT keys', true, MAPKEY_A !== MAPKEY_B,
       'section S compares one map\'s draft slot across a load of the other');
-    const env0 = buildEnv(src, {});
+    const env0 = await buildEnv(src, {});
     eq('P5/…and therefore to different draft slots', true,
       env0.S.doeDraftKey(TABLE, MAPKEY_A) !== env0.S.doeDraftKey(TABLE, MAPKEY_B));
     eq('P6/the draft key carries BOTH the table and the map', true,
@@ -441,7 +469,7 @@ async function run(src, isBaseline = false) {
   // IMMEDIATELY BEFORE the call — is established on a plain load, which is how we know the
   // plain-load zero is "the branch chose not to call" and not "the block was never reached".
   {
-    const env = buildEnv(src, { sentinelDraft: true });
+    const env = await buildEnv(src, { sentinelDraft: true });
     env.store.set(env.S.LAST_OPEN_KEY,
       JSON.stringify({ v: 1, table: TABLE, metaValues: META_A, at: 'T0' }));
     await env.S.restoreLastOpenMap();
@@ -483,7 +511,7 @@ async function run(src, isBaseline = false) {
     evidence.push(`R4b/ writes during the boot restore: ${JSON.stringify([...new Set(env.writeLog)])}`);
   }
   {
-    const env = buildEnv(src, { sentinelDraft: true });
+    const env = await buildEnv(src, { sentinelDraft: true });
     await env.S.loadExistingMap();
     noSwallowed(env, 'R/plain load');
     eq('R5/a plain load REACHES the block (draftBase is the statement just above ⑦)',
@@ -498,7 +526,7 @@ async function run(src, isBaseline = false) {
 
   // ══ A. THE CANVAS AFTER A PLAIN LOAD — the product owner's sentence. ════════════════════
   {
-    const env = buildEnv(src, { sentinelDraft: true, gridData: { '99_99': 'STALE' } });
+    const env = await buildEnv(src, { sentinelDraft: true, gridData: { '99_99': 'STALE' } });
     await env.S.loadExistingMap();
     noSwallowed(env, 'A/plain load');
     eq('A1/the canvas is the SERVER cells, key for key', SERVER_CELLS_A, env.S.gridData,
@@ -514,7 +542,7 @@ async function run(src, isBaseline = false) {
   {
     // 🔴 `quiet` MUST NOT IMPLY RESTORE. The commit refused to fold the two together; this is
     //    the assertion that makes that refusal falsifiable. `openMapFrame` loads quietly.
-    const env = buildEnv(src, { sentinelDraft: true });
+    const env = await buildEnv(src, { sentinelDraft: true });
     await env.S.loadExistingMap({ quiet: true });
     noSwallowed(env, 'A/quiet load');
     eq('A6/a QUIET load restores nothing — quiet is a display decision', 0, env.draftCalls.length);
@@ -522,7 +550,7 @@ async function run(src, isBaseline = false) {
   }
   {
     // allowEmpty is the other caller-side flag on this door; it must not imply restore either.
-    const env = buildEnv(src, { sentinelDraft: true });
+    const env = await buildEnv(src, { sentinelDraft: true });
     await env.S.loadExistingMap({ quiet: true, allowEmpty: true });
     noSwallowed(env, 'A/allowEmpty load');
     eq('A8/allowEmpty does not imply restore', 0, env.draftCalls.length);
@@ -530,7 +558,7 @@ async function run(src, isBaseline = false) {
 
   // ══ B. THE CANVAS AFTER A BOOT RESTORE — the other half of the contract. ════════════════
   {
-    const env = buildEnv(src, { sentinelDraft: true });
+    const env = await buildEnv(src, { sentinelDraft: true });
     env.store.set(env.S.LAST_OPEN_KEY,
       JSON.stringify({ v: 1, table: TABLE, metaValues: META_A, at: 'T0' }));
     await env.S.restoreLastOpenMap();
@@ -548,11 +576,11 @@ async function run(src, isBaseline = false) {
     v: 4, at: 'T-op', registryFp: 'REGFP:[]', cellsFp, doe: {}, cells,
   });
   {
-    const probe = buildEnv(src, {});
+    const probe = await buildEnv(src, {});
     const baseFp = probe.S.cellsDigest(SERVER_CELLS_A);
     const slot = probe.S.doeDraftKey(TABLE, MAPKEY_A);
 
-    const env = buildEnv(src, {});
+    const env = await buildEnv(src, {});
     env.store.set(slot, realDraftRecord(MERGED_A, baseFp));
     await env.S.loadExistingMap();
     noSwallowed(env, 'C/plain load, real draft');
@@ -560,7 +588,7 @@ async function run(src, isBaseline = false) {
       SERVER_CELLS_A, env.S.gridData);
     eq('C2/…the real ⑦ was not called', 0, env.draftCalls.length);
 
-    const env2 = buildEnv(src, {});
+    const env2 = await buildEnv(src, {});
     env2.store.set(slot, realDraftRecord(MERGED_A, baseFp));
     env2.store.set(env2.S.LAST_OPEN_KEY,
       JSON.stringify({ v: 1, table: TABLE, metaValues: META_A, at: 'T0' }));
@@ -576,9 +604,9 @@ async function run(src, isBaseline = false) {
     // The precedence rule still holds at boot: a draft whose baseline no longer matches the
     // server is NOT applied and NOT discarded. This is what stops a stale draft from erasing
     // somebody else's save.
-    const probe = buildEnv(src, {});
+    const probe = await buildEnv(src, {});
     const slot = probe.S.doeDraftKey(TABLE, MAPKEY_A);
-    const env = buildEnv(src, {});
+    const env = await buildEnv(src, {});
     env.store.set(slot, realDraftRecord(MERGED_A, 'STALE:0'));
     env.store.set(env.S.LAST_OPEN_KEY,
       JSON.stringify({ v: 1, table: TABLE, metaValues: META_A, at: 'T0' }));
@@ -597,9 +625,9 @@ async function run(src, isBaseline = false) {
   // because it is the ONE exception to 「로드한 맵이 나온다」 and a future tidy-up would
   // "fix the inconsistency" and silently empty the screen.
   {
-    const probe = buildEnv(src, {});
+    const probe = await buildEnv(src, {});
     const slot = probe.S.doeDraftKey(TABLE, MAPKEY_A);
-    const env = buildEnv(src, { registryOk: false });
+    const env = await buildEnv(src, { registryOk: false });
     env.store.set(slot, realDraftRecord(MERGED_A, probe.S.cellsDigest(SERVER_CELLS_A)));
     await env.S.loadExistingMap();
     noSwallowed(env, 'F/registry read failed');
@@ -615,7 +643,7 @@ async function run(src, isBaseline = false) {
   // a change to the key shape breaks it in silence and nothing else in this repository would
   // say so. Seeded through the REAL `saveDoeDraft` so the key under test is the product's.
   {
-    const env = buildEnv(src, { frameTouched: true });
+    const env = await buildEnv(src, { frameTouched: true });
     const baseFp = env.S.cellsDigest(SERVER_CELLS_A);
     const { key: slotA } = seedDraftAs(env, META_A, MERGED_A, baseFp);
     const snapshotA = env.store.get(slotA);
@@ -650,7 +678,7 @@ async function run(src, isBaseline = false) {
   }
   {
     // Same shape, one step further: A's slot still READS BACK as A's edits afterwards.
-    const env = buildEnv(src, { frameTouched: true });
+    const env = await buildEnv(src, { frameTouched: true });
     const baseFp = env.S.cellsDigest(SERVER_CELLS_A);
     const { key: slotA } = seedDraftAs(env, META_A, MERGED_A, baseFp);
     setMeta(env, META_B);
@@ -690,7 +718,7 @@ async function run(src, isBaseline = false) {
   //    already carries the candidate repair as a mutant. Invert them to MERGED_A and raise
   //    the floor; do not delete them.
   {
-    const env = buildEnv(src, { frameTouched: true });
+    const env = await buildEnv(src, { frameTouched: true });
     const baseFp = env.S.cellsDigest(SERVER_CELLS_A);
     const { key: slotA } = seedDraftAs(env, META_A, MERGED_A, baseFp);
     const snapshotA = env.store.get(slotA);
@@ -710,11 +738,12 @@ async function run(src, isBaseline = false) {
       'the load re-persisted the slot, and that write is an operator\'s unsaved work');
     eq('D2/…so it drops none of the unsaved cells', [], dropped,
       'these cells existed only in the draft and the load overwrote them');
+    // The IIFE is `async` now: building an env is an import, and the value has to be awaited
+    // before `eq` compares it -- a Promise would compare unequal to MERGED_A and the failure
+    // would read as a product defect rather than a harness one.
+    const env2 = await buildEnv(src, { store: env.store });
     eq('D3/…and the next refresh still finds them', MERGED_A,
-      (() => {
-        const env2 = buildEnv(src, { store: env.store });
-        return JSON.parse(env2.store.get(slotA)).cells;
-      })());
+      JSON.parse(env2.store.get(slotA)).cells);
     evidence.push(`D/ slot A before=${Object.keys(JSON.parse(snapshotA).cells).join('|')}`
       + ` after=${Object.keys(JSON.parse(env.store.get(slotA)).cells).join('|')}`
       + ` dropped=${JSON.stringify(dropped)}`);
@@ -799,7 +828,7 @@ function applyMutation(src, m) {
 }
 
 // ── Runner ──────────────────────────────────────────────────────────────────────────────
-const base = await run(SRC, true);
+const base = await run(null, true);
 if (verbose) base.evidence.forEach(e => console.log(`   · ${e}`));
 base.failures.forEach(f => console.log(`✗ ${f}`));
 console.log(`${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
@@ -807,7 +836,7 @@ console.log(`${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.comp
 
 let mutCompared = 0, mutFailed = 0;
 for (const m of MUTANTS) {
-  const r = await run(applyMutation(SRC, m));
+  const r = await run(() => applyMutation(SRC, m));
   mutCompared++;
   if (r.failures.length === 0) {
     mutFailed++;
@@ -819,7 +848,7 @@ for (const m of MUTANTS) {
   }
 }
 for (const c of CONTROLS) {
-  const r = await run(applyMutation(SRC, c));
+  const r = await run(() => applyMutation(SRC, c));
   mutCompared++;
   if (r.failures.length > 0) {
     mutFailed++;
