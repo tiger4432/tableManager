@@ -1,3 +1,92 @@
+# [디자인 -> 총괄] 틀 + 첫 전환 착지, 그리고 남은 28건을 위한 **레시피** (2026-09-02 밤)
+
+## 착지
+```
+359ba602  probe.mjs 틀            총괄 검수 통과 (조건 넷)
+aab18644  overlay_provenance 전환  21/0 · 변이 10/10 · 대조 2/2  <- 전/후 «정확히 같음»
+833a9feb  utils.js 가드 분리      전환 중에 나온 결함 (아래)
+```
+전환으로 뭐가 달라졌나: 그 하니스가 «재타이핑한» 칩 함수 셋이 사라졌습니다 --
+잃어버린 것이 아니라 **진짜 칩을 부릅니다.** 재타이핑된 사본은 원본과 «따로 놀면서»
+하니스를 초록으로 놓아두는 물건입니다.
+
+## 🔴 전환 중에 나온 결함 -- `utils.js:111` 가드가 `document` 를 묻고 `window` 를 썼습니다
+```
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', …);
+  window.addEventListener('focus', sweepToasts);      <- 이 줄
+}
+브라우저   둘 다 있어 «무해»했습니다
+하니스     document 만 스턱하면 «던집니다». 그것도 map_editor 에서 «세 모듈 건너»
+=> «가드는 도달 가능해지는 날 틀린다» 그대로입니다. import 가 되게 만든 라운드가
+   그것을 «도달 가능하게» 만들었습니다
+```
+
+---
+
+# 🔴 레시피 -- 남은 28건은 이것만 보면 됩니다
+
+## 실측으로 확인한 «무엇을 잡을 수 있나» -- 이게 핵심입니다
+```
+선언 종류                probe 로                        샘플 상황
+function f(){}       ✅ «교체 가능»  probe.f = () => {}   큰 샌드박스의 협력자 스턱 40개
+let / var x          ✅ get + set                        gridData · legend · validDie …
+const OBJ = {…}      ⚠️ 재할당 불가, «속성은» 가능   Object.assign(probe.el, {…})
+const S = 'str'      ⚠️ 읽기 전용                      대부분 읽기만 하므로 문제 없음
+```
+🔴 **함수가 교체된다는 것이 «큰 샌드박스 형태»를 푸는 열쇠입니다.**
+`standard_frame_origin_harness` 같은 것은 `updateOrientationUI` · `scheduleRenderGridCanvas` 등
+협력자를 마흔 개 스턱하는데, 그게 전부 `state:` 에 넣고 `probe.x = stub` 으로 됩니다.
+
+## 전환 절차 -- `overlay_provenance_harness.mjs` 이 정본 예제입니다
+```
+① 전 점수를 적는다      node <harness> 의 ASSERTIONS · mutations CAUGHT · controls ESCAPED
+② import 를 바꾸고      -import vm from 'node:vm'
+                       +import { loadWithProbe } from './lib/probe.mjs'
+                       (계약은 '../../client2/tests/lib/probe.mjs')
+③ 샌드박스를 나눈다      DOM/전역(document · window · fetch · performance ·
+                         requestAnimationFrame · getComputedStyle) -> globalThis 에 «미리»
+                       모듈 심볼(상태 · 협력자 함수)         -> spec.state
+                       하니스가 «부르는» 것                        -> spec.expose
+④ 변이를 «함수로»     runChecks(소스텍스트) -> runChecks(mutate함수)
+                       스윈는 applyOnce 를 «그대로» 두고 mutate: () => a.src 로 넘깁니다
+                       -> 고유성·무효변이 검사가 전부 살아있습니다
+⑤ async 로 밀어올린다    build/runChecks/sweep 에 async/await. 호출부도
+⑥ 점수를 대조한다      같으면 커밋 · 올라가면 «보고» · 내려가면 «그 하나에서 멈춤»
+```
+⚠️ CSS·HTML 을 텍스트로 읽는 부분은 «그대로 둡니다» -- 스타일시트는 모듈이 아니고
+   import 할 것이 없으며, 선언 자체가 대상입니다. 잘라쓰기가 아닙니다.
+
+## 남은 목록과 크기 (전 점수 기록됨)
+```
+작은 형태 (샌드박스 소수)   map_key_canonical · m4_symbol_extractability ·
+                            overlay_value_colour · isotropic_cell · offset_pitch_guard
+큰 형태 (협력자 수십 개)      standard_frame_origin · map_key_datalist(27변이) ·
+                            copy_header_count(10상태) · company_roundtrip · coord_table_paste ·
+                            load_shows_loaded_map · geometry_origin_reseat · …
+계약 셋                    legend_map_scope · map_seam · doe_band_rules
+⛔ 손대지 않음              기존 빨강 5 (reposition_regime · split_registry ·
+                            valid_die_authoring · valid_die_frame_adoption · alignment_verdict)
+```
+
+## 🔴 그런데 그 «빨강 5» 중 둘은 **잘라쓰기 때문에 빨갱니다** -- 적어 둡니다
+러너의 자기 진단문이 그렇게 말합니다:
+```
+valid_die_authoring   「슬라이서가 projectCellsToPhys 를 «주석 안»(offset 8297)에서 먼저
+                       매칭한다. 코드 순서는 옳다. 수리는 «슬라이서 쪽»에 있다」
+split_registry        「자기가 자르는 심볼이 개명되어 추출 단계에서 던진다」
+=> 둘 다 «전환하면 사라질» 가능성이 높습니다. 지금은 지시대로 손 안 댈니다 --
+   다만 「기존 빨강이라 나중에」가 아니라 「이 라운드가 고치는 병」일 수 있습니다
+```
+
+## 제 상태
+컨텍스트가 얼마 안 남았습니다. **반쪽 전환된 파일을 남기지 않기 위해** 여기서 멈추고
+남은 28건을 이 레시피로 넘깁니다. 틀과 예제가 둘 다 커밋되어 있어
+다른 레인이 바로 복제할 수 있습니다. 병렬로 나누셔도 충돌이 없습니다 --
+하니스마다 «자기 파일 하나»만 고칩니다 (map_editor.js 는 더 안 건드립니다).
+
+---
+
 # [디자인 -> 총괄] 🔴 ②의 처방이 «30건 중 24건»에 안 통합니다 — `export` 로는 «설정»을 못 합니다 (2026-09-02 밤)
 
 `state.js` 는 착지했습니다 (`da397d32`). 그리고 ②에 들어가기 «전»에 전수로 재 봤는데,
