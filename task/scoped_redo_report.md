@@ -2379,3 +2379,129 @@ boolean 으로 다루면 필터 값으로 JSON `true` 를 보내고, `column_fil
              열리면 그 순서로 하겠습니다. 지금은 안 엽니다
           ② 규칙 단위 가드(390f0ec4)의 시험 — 여전히 «미도달»입니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 체인 대기열 계측기 착지 — 🔴 **다만 총괄 전제 하나가 «틀렸습니다». 인덱스가 «있습니다»** (구현자, 2026-09-03)
+
+커밋 `a9144dfe`. 파일 «둘»: `server/main.py`(라우트) · `server/tests/test_outbox_notify_budget.py`(시험 6본).
+
+## 🔴 먼저 — `processed_chain` 은 «인덱스가 있습니다»
+```
+models.py:244   Index("idx_outbox_unprocessed", "processed_chain", "id",
+                      postgresql_where=text("processed_chain = false"))
+                주석: 「미처리 체인 이벤트 큐 스캔(processed_chain==false order by id asc) 전용 부분 인덱스」
+라이브 확인     pg_indexes 에 «실재»합니다:
+                btree (processed_chain, id) WHERE (processed_chain = false)
+```
+그래서 「전수 훑기라 멈추고 보고」로 갈 자리가 «아니었고», 그대로 셌습니다.
+
+## ① EXPLAIN — 그대로 붙입니다 (⚠️ 실행 안 했습니다. `EXPLAIN` 만, ANALYZE «없이»)
+```
+① 대기 건수      SELECT count(*) ... WHERE processed_chain = false
+   Aggregate  (cost=6.02..6.03 rows=1 width=8)
+     ->  Index Only Scan using idx_outbox_unprocessed  (cost=0.25..6.01 rows=1 width=0)
+
+② 가장 오래된 대기의 나이   ... WHERE processed_chain = false ORDER BY id ASC LIMIT 1
+   Limit  (cost=0.25..6.02 rows=1 width=36)
+     ->  Index Scan using idx_outbox_unprocessed  (cost=0.25..6.02 rows=1 width=36)
+
+③b 대기 중 재시도된 것    ... WHERE processed_chain = false AND retry_count > 0
+   Aggregate  (cost=6.02..6.03 rows=1 width=8)
+     ->  Index Scan using idx_outbox_unprocessed  (cost=0.25..6.02 rows=1 width=0)
+           Filter: (retry_count > 0)
+
+🔴 ③ 재시도 «표 전체»     ... WHERE retry_count > 0
+   Aggregate  (cost=272812.73..272812.74 rows=1 width=8)
+     ->  Seq Scan on database_outbox  (cost=0.00..272812.72 rows=1 width=0)
+
+🔴 ④ 최근 처리량          ... WHERE processed_at >= now() - interval '10 minutes'
+   Aggregate  (cost=272817.82..272817.83 rows=1 width=8)
+     ->  Seq Scan on database_outbox  (cost=0.00..272817.82 rows=1 width=0)
+```
+⚠️ **rows 추정치는 믿지 마십시오** — 이 표의 `reltuples` 가 «1018» 인데 실물은 «2293 MB» 입니다.
+   통계가 낡았습니다. 제가 읽은 것은 «계획»(어떤 인덱스를 타나 / Seq Scan 인가)이고,
+   그건 스키마의 성질이라 같은 인덱스가 있는 곳이면 참입니다. 행수는 이 박스 것입니다.
+
+## ③④ — «멈추고 보고»합니다. 인덱스 안 더했습니다
+```
+비용 차이   6  vs  272,812   =  «45,000배»
+안 더한 이유  두 칸에 인덱스가 없고, 이 저장소는 «안 읽히는 인덱스를 걷어내는 중»입니다
+            (retire_unread_framework_indexes.py · models.py 의 created_at 은퇴 주석)
+            진단 패널 하나 때문에 색인을 더하면 «모든 insert» 가 그 값을 뭅니다
+```
+🔴 그래서 **응답에 «세지 않은 것»을 이름으로 적었습니다** — 없는 수는 「0」으로 읽힙니다.
+주신 대안 셋(시간창 · status 근사 · 표본) 중 어느 쪽인지 판정 부탁드립니다.
+
+## ⚠️ 그리고 «넷째 수»를 하나 넣었습니다 — 이름이 좁힘을 말합니다
+```
+retried_among_waiting   «대기 중인 행 가운데» 재시도된 수 (③b, 인덱스로 답합니다)
+지시하신 ③ 과 다릅니다   ③ 은 「표 전체에서 retry_count > 0」이고 그건 Seq Scan 입니다
+                      지나간 재시도는 «안 셉니다»
+```
+지시 밖 추가라 여기 «드러내» 둡니다. 빼는 것이 맞으면 한 줄입니다.
+
+## ② 응답 예시 한 벌
+```json
+// 대기 둘(132초 · 40초), 처리 끝난 것 하나
+{
+  "waiting": 2,
+  "oldest_waiting_seconds": 132.013966,
+  "oldest_waiting_at": "2026-09-03 10:01:00",
+  "retried_among_waiting": 1,
+  "not_measured": {
+    "retried_total": "retry_count 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,812)",
+    "processed_recently": "processed_at 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,817)"
+  }
+}
+// 큐가 비었을 때 — 🔴 «null» 이지 0 이 아닙니다
+{ "waiting": 0, "oldest_waiting_seconds": null, "oldest_waiting_at": null,
+  "retried_among_waiting": 0, "not_measured": { ... } }
+```
+
+## ③ 「어떤 표도 안 쓴다」 — 코드가 아니라 «실행»으로 보였습니다
+```
+test_the_route_writes_nothing   라우트를 태우고 «세션이 실제로 낸 문장의 동사»를 모읍니다
+                               SELECT/BEGIN/COMMIT/ROLLBACK/SET/PRAGMA 밖이면 빨강
+                               그리고 「SELECT 가 하나라도 있나」까지 — 아니면 공허한 초록입니다
+```
+
+## 🔴 재는 중에 «제 결함» 둘을 잡았습니다
+```
+① 시간대   SQLite 는 이 컬럼을 naive 로 돌려줍니다. 로컬 now() 에서 빼니
+          «빈 큐에 9시간 밀림»이 나왔습니다 — 계측기가 장애를 «지어낸» 것입니다
+          -> UTC 로 통일. PostgreSQL(timestamptz)에서는 애초에 안 나던 결함이라
+             SQLite 시험이 «없었으면 운영에서만 멀쩡»했을 자리입니다
+② 지름길의 «전제»   가장 오래된 행을 MIN(created_at) 대신 «id 오름차순 첫 행»으로 찾습니다
+          그 전제(도착 순서 = id 순서)를 «재서» 확인했습니다 —
+          DatabaseOutbox 를 만드는 «아홉 자리» 전부가 created_at 을 server_default 에 맡깁니다
+          -> 손으로 과거 시각을 넣는 생산 경로가 «없습니다»
+          그리고 시험이 「싼 답 == MIN(created_at)」을 «직접 대조»합니다
+```
+
+## 시험 — 변이 «여섯», 각각 빨개집니다
+```
+나이를 «가장 새» 행에서                     the_age_is_measured_from_the_oldest_waiting_row
+빈 큐가 «0» 을 답함                         an_empty_queue_reports_no_age_rather_than_zero (+1)
+UTC 대신 «로컬 시계»                        위 둘
+처리 끝난 행도 «대기»로 셈                   a_row_the_chain_has_run_stops_counting (+1)
+재시도를 «표 전체»에서 셈                    retries_are_counted_among_the_waiting_only
+not_measured 이름이 «사라짐»                 what_it_did_not_measure_is_named…
+```
+무회귀: `outbox_notify_budget · outbox_collapse · api · admin_auth · chain_replay`
+-> **227 passed · 0 failed**.
+
+## 경계 — 지키셨는지 확인하실 것
+```
+✅ 읽기 전용 · 새 표 0 · 쓰기 0 · 인덱스 0
+✅ require_admin_token (기존 어드민 라우트와 같은 모양)
+✅ 화면 «안 만들었습니다» · 폴링 주기 «서버가 안 정합니다»(인자도 없습니다)
+⛔ 취소·재시도·순서 조작 «없습니다»
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. a9144dfe 푸시했습니다
+판정 요청   ① ③④(Seq Scan 둘)를 어떻게 할지 — 시간창 · status 근사 · 표본 중
+           ② retried_among_waiting 를 남길지
+```
