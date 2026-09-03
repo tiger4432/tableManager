@@ -285,6 +285,17 @@ def map_enrichment_dedup(db, payloads, rule=None):
             joined = key_map[bk_col]
         else:
             # 방어적 폴백(로더가 키 계약을 검증하므로 정상 경로에선 도달하지 않음)
+            #
+            # 🔴 S1 확인 (2026-09-02): 이 갈래가 `crud.compose_business_key` 를 «안 쓰는»
+            #    이유는 «도달 불가»이기 때문이다. `enrichment_config._validate_rule` 이
+            #    「comp_src ⊆ decision_key 이거나 bk_col ∈ decision_key」를 어기는 규칙을
+            #    «로드 시점에 거절»한다. `key_map` 은 decision_key 로 zip 되므로
+            #    `bk_col ∈ decision_key` 는 곧 `bk_col in key_map` 이고, 따라서 로더를
+            #    통과한 규칙에서는 위 두 갈래 중 하나가 «반드시» 잡는다.
+            #    그리고 도달하더라도 «철자는 같다»: `key` 는 이미
+            #    `tuple(crud.clean_str_value(...))` 이고 그 함수는 자기 출력에 멱등이므로,
+            #    여기서 다시 태우든 안 태우든 같은 문자열이 나온다. 즉 이것은 정체성의
+            #    «다섯째 철자»가 아니라 «닿지 않는 같은 철자»다.
             joined = comp_sep.join(key)
         item["business_key_val"] = joined
         if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:

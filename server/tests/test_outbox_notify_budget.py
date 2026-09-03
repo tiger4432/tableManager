@@ -301,3 +301,154 @@ def test_the_channel_is_the_one_the_chain_worker_listens_on(notify_db):
     channel = listener._channel
     assert channel == "outbox_event"
     assert notifies == [f"NOTIFY {channel};"]
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/chain/queue — the chain-queue instrument
+# ---------------------------------------------------------------------------
+# 🔴 THE POINT OF THIS ROUTE IS ONE NUMBER: how old the oldest waiting row is. Depth alone
+# cannot tell "busy" from "stuck" - it rises and falls under load either way - so the tests
+# below pin the age's three states (nothing waiting / something waiting / it grows) and the
+# fact that the route writes nothing.
+
+import datetime as _dt
+import uuid
+
+import main as _main
+from database import models as _models
+from sql_budget import record_statements
+
+
+def _queue(client):
+    r = client.get("/admin/chain/queue")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _stage(db, *, processed_chain, created_at=None, retry_count=0):
+    row = _models.DatabaseOutbox(
+        event_uuid=str(uuid.uuid4()), event_type="TEST", table_name=TABLE,
+        payload={}, status="PENDING", retry_count=retry_count,
+        processed_chain=processed_chain)
+    if created_at is not None:
+        row.created_at = created_at
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_an_empty_queue_reports_no_age_rather_than_zero(client, db_session):
+    """🔴 `null` IS NOT `0`, and on a screen the two are one careless `or` apart.
+
+    `0` says "something arrived this instant"; `null` says "nothing is waiting". An
+    instrument built to remove an ambiguity must not introduce one.
+    """
+    db_session.query(_models.DatabaseOutbox).delete()
+    db_session.commit()
+
+    body = _queue(client)
+    assert body["waiting"] == 0
+    assert body["oldest_waiting_seconds"] is None
+    assert body["oldest_waiting_at"] is None
+
+
+def test_the_age_is_measured_from_the_oldest_waiting_row(client, db_session):
+    """And it is the OLDEST, not the newest and not the average.
+
+    🔴 THE ROWS ARRIVE THE WAY THE SYSTEM MAKES THEM: `created_at` ascending together with
+    `id`. That correlation is what lets the route find the oldest row by walking the
+    partial index in `id` order instead of asking for `MIN(created_at)`, which has no
+    index and would scan the table. It is not an assumption about luck - measured
+    2026-09-03, all NINE places that construct a `DatabaseOutbox` leave `created_at` to
+    `server_default=func.now()`, so nothing can back-date a row into the queue.
+
+    The assertion below is the one that matters: the cheap answer must equal the expensive
+    one. A route that read the LAST row, or let the newest win, fails it.
+    """
+    db_session.query(_models.DatabaseOutbox).delete()
+    db_session.commit()
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    for age in (600, 30, 5):                       # oldest first, as arrivals happen
+        _stage(db_session, processed_chain=False,
+               created_at=now - _dt.timedelta(seconds=age))
+
+    body = _queue(client)
+    assert body["waiting"] == 3
+    assert 550 <= body["oldest_waiting_seconds"] <= 700, (
+        f"the age must come from the 600s row, not another one: {body}")
+
+    # 🔴 THE CHEAP SCAN MUST AGREE WITH THE EXPENSIVE QUESTION. `MIN(created_at)` is what
+    # the instrument MEANS; the index walk is only how it is afforded. Asserting the two
+    # match on data the system can produce is what makes the shortcut checkable rather
+    # than argued - and it is affordable here because the fixture is three rows.
+    from sqlalchemy import func as _sqlf
+    truth = (db_session.query(_sqlf.min(_models.DatabaseOutbox.created_at))
+             .filter(_models.DatabaseOutbox.processed_chain == False).scalar())  # noqa: E712
+    if truth.tzinfo is None:
+        truth = truth.replace(tzinfo=_dt.timezone.utc)
+    expected = (_dt.datetime.now(_dt.timezone.utc) - truth).total_seconds()
+    assert abs(body["oldest_waiting_seconds"] - expected) < 5, (
+        f"the id-ordered walk and MIN(created_at) disagree: "
+        f"{body['oldest_waiting_seconds']} vs {expected}")
+
+
+def test_a_row_the_chain_has_run_stops_counting(client, db_session):
+    """The queue is what has NOT been processed. A finished row that kept counting would
+    make the depth grow forever and the age never fall - the instrument would report a
+    jam that had already cleared."""
+    db_session.query(_models.DatabaseOutbox).delete()
+    db_session.commit()
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    _stage(db_session, processed_chain=True, created_at=now - _dt.timedelta(seconds=9999))
+    assert _queue(client)["waiting"] == 0
+    assert _queue(client)["oldest_waiting_seconds"] is None
+
+    _stage(db_session, processed_chain=False, created_at=now - _dt.timedelta(seconds=42))
+    body = _queue(client)
+    assert body["waiting"] == 1
+    assert 30 <= body["oldest_waiting_seconds"] <= 120, (
+        "the processed row's age leaked into the answer")
+
+
+def test_retries_are_counted_among_the_waiting_only(client, db_session):
+    """The name says the narrowing, and the narrowing is why it is affordable.
+
+    Counting every row ever retried is a sequential scan of the whole table
+    (EXPLAIN cost 272,812 against 6 for this one), so what is offered is the half that
+    rides the partial index. A retried row that has since been processed is NOT here.
+    """
+    db_session.query(_models.DatabaseOutbox).delete()
+    db_session.commit()
+
+    _stage(db_session, processed_chain=False, retry_count=2)
+    _stage(db_session, processed_chain=False, retry_count=0)
+    _stage(db_session, processed_chain=True, retry_count=7)      # done: not our business
+
+    body = _queue(client)
+    assert body["waiting"] == 2
+    assert body["retried_among_waiting"] == 1
+
+
+def test_the_route_writes_nothing(client, db_session):
+    """🔴 A DIAGNOSTIC THAT MUTATES IS NOT A DIAGNOSTIC. Asserted on the statements the
+    session actually issues, not on the absence of an obvious `add()` - the route is read
+    only by construction and this is what makes that claim checkable."""
+    _stage(db_session, processed_chain=False)
+
+    with record_statements(db_session) as recorded:
+        _queue(client)
+
+    verbs = {str(call.sql).strip().split()[0].upper() for call in recorded if call.sql}
+    assert verbs <= {"SELECT", "BEGIN", "COMMIT", "ROLLBACK", "SET", "PRAGMA"}, (
+        f"the queue route issued something other than reads: {sorted(verbs)}")
+    assert any(v == "SELECT" for v in verbs), "it did not read anything; test is vacuous"
+
+
+def test_what_it_did_not_measure_is_named_rather_than_left_to_look_like_zero(client):
+    """An absent number reads as zero. Both of the two the brief asked for and this route
+    refused to pay for are named in the body, with the reason."""
+    body = _queue(client)
+    assert set(body["not_measured"]) == {"retried_total", "processed_recently"}
+    assert all(body["not_measured"].values()), "a reason that is empty explains nothing"

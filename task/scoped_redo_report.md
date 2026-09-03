@@ -1848,3 +1848,660 @@ tests/test_composite_key_prefetch_budget.py::test_inserting_new_rows_still_probe
 판정 필요   ① enrichment_mapper.py:288 의 «다섯째 철자»를 어떻게 할지
            ② 죽은 지역변수 둘 삭제가 괜찮은지 (지시서 밖입니다)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 물으신 한 줄 — **「도달 불가라서 남겼습니다」가 맞습니다. 그리고 제 보고가 한 군데 오해를 샀습니다** (구현자)
+
+커밋 `821e9af1`. 파일 «하나»: `server/enrichment_mapper.py` (주석만, 코드 0줄).
+
+## 답: 도달 불가입니다 — 주석의 문장을 «믿지 않고» 재 봤습니다
+```
+enrichment_config.py:616~631  _validate_rule 이 «로드 시점»에 거절합니다:
+   comp_src 가 있으면   -> comp_src ⊆ decision_key 여야 함
+   comp_src 가 없으면   -> bk_col ∈ decision_key 여야 함  (아니면 규칙 자체를 스킵)
+enrichment_mapper.py:263     key_map = dict(zip(decision_key, key))
+   => bk_col ∈ decision_key  ⟺  bk_col in key_map
+결론  로더를 통과한 규칙에서는 앞의 두 갈래(comp_src / bk_col in key_map) 중 «하나가 반드시»
+      잡습니다. 셋째 갈래는 «닿지 않습니다»
+```
+
+## 🔴 그리고 제 보고를 «정정»합니다 — 「다섯째 철자」가 아닙니다
+제가 「`clean_str_value` 를 안 태웁니다」라고 적었습니다. **그 줄에 대해서는 참인데, 결론이
+틀렸습니다** — 값이 «이미 태워진 채로» 옵니다:
+```
+enrichment_mapper.py:187   clean_vals = [crud.clean_str_value(_cell_value(data, k)) ...]
+                    :206   key = tuple(clean_vals)          ← 조립에 쓰이는 그 `key`
+crud.clean_str_value 는 문자열에 대해 str(val).strip() -> «자기 출력에 멱등»
+=> 다시 태우든 안 태우든 «같은 문자열»입니다
+```
+즉 **정체성의 다섯째 철자가 아니라 «닿지 않는 같은 철자»**입니다.
+제가 그 줄만 보고 「clean 을 안 태운다 -> 다르게 이어질 수 있다」로 갔는데,
+**재료가 어디서 오는지를 안 따라갔습니다.** 판정 재료를 잘못 드린 것이라 그대로 적습니다.
+
+## 한 것
+그 자리에 «위 두 사실»을 주석으로 적었습니다 (도달 불가의 «근거 함수 이름»과, 도달해도
+철자가 같은 «이유»). 코드는 0줄입니다.
+```
+시험   test_composite_business_key · test_enrichment · test_enrichment_candidates
+       -> 105 passed · 0 failed
+```
+
+## 총괄이 정정하신 것 — 같은 부류입니다
+`void_sat_format.compose_business_key` 를 이름만 보고 「두 번째 조립」으로 읽으셨다고 적으셨는데,
+제 `comp_sep.join(key)` 도 «그 줄만 보고» 판정한 같은 실수입니다. 둘 다 **본문/재료를 한 홉 더
+따라갔으면** 안 나왔을 것입니다.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 821e9af1 푸시했습니다
+S1 은 이걸로 닫힙니다 (다른 미결 없음)
+```
+
+---
+
+# ✅ [서버 -> 총괄] 은퇴 컬럼 셋 착지 — 그리고 «빨강 하나»가 이 라운드의 발견입니다 (구현자, 2026-09-02)
+
+커밋 `6a4d4026`. 파일 «셋»: `server/main.py` · `client2/src/push_columns.js`(주석만) ·
+`server/tests/test_table_data_serialization.py`.
+
+## 🔴 착수 전 재고 — 물으신 질문의 답은 «0» 입니다
+```
+질문   라이브 table_config.json 의 어떤 표가 셋 중 하나를 «스스로» 선언하나?
+방법   라이브 파일을 «읽기만» 했습니다 (쓰기 0)
+답     표 «44» 개 중 «0» 개. column_types 도 display_columns 도 «0»
+=> ②는 «순수 제거»입니다. 진행했습니다
+```
+그리고 이 0 이 :2416~2418 의 «성격»을 바꿔 말해 줍니다 — 그 세 줄은 「선언을 덮어쓰던 것」이
+아니라 **「어떤 표에도 없는 컬럼의 타입을 지어내던 것」**입니다.
+📎 `view_model.js:1097` 의 「dt_map declares graph_synced_at: datetime」은 «선언이 아니라»
+   :2416 이 넣은 것이었습니다 — dt_map 도 0 입니다.
+
+## 게이트 ② — 수로
+```
+한 행의 data 키 개수 (inventory_master, 라우트를 실제로 태워서)
+   전   «9»   [category, created_at, graph_synced_at, is_graph_synced,
+               needs_graph_rollback, part_no, stock_qty, unit_price, updated_at]
+   후   «6»   [category, created_at, part_no, stock_qty, unit_price, updated_at]
+스키마 column_types
+   전   «7»   후   «4»
+```
+
+## 게이트 ③ — 다섯 호출자는 셋을 «기대하지 않습니다»
+```
+:2554 · :2902 · :3351 · :3427 · :3503  ->  전부 user_cols 를
+   [c for c in col_types if c not in ("created_at","updated_at")]  로 만듭니다
+   셋의 «이름이 한 번도 안 나옵니다». 그리고 col_types 는 TABLE_CONFIG 에서 오는데
+   거기에 셋이 «0» 개이므로 애초에 들어올 길이 없습니다
+=> 멈춤 조건 해당 없음
+```
+지역변수 넷(`is_sync_val`·`needs_roll_val`·`synced_at_val`·`synced_at_str`)은 그 세 줄 «말고»
+쓰는 데가 없어서 같이 지웠습니다. `to_local_str` 은 created_at/updated_at 이 쓰므로 «남깁니다».
+
+## 🔴 게이트 ① — 빨강 «하나»가 늘었고, 그게 이 라운드의 발견입니다
+```
+같은 세 파일(virtual_join_types · undeclared_schema_report · declared_key_indexes)
+   HEAD   «9 failed / 37 passed»
+   지금   «10 failed / 36 passed»
+차이 «하나»
+   test_virtual_join_types.py::test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+```
+**그 시험의 docstring 이 «이 일을 예고해 뒀습니다»:**
+> 「If the injection ever moves after `attach`, this goes red and the payload assertions
+>  above become the live ones.」
+
+즉 그 시험의 «전제»가 제 제거로 사라진 것입니다. 여기까지는 정상입니다.
+
+### 🔴 그런데 «드러난 것»이 더 중요합니다 — 주입이 «깨진 픽스처를 가리고» 있었습니다
+```
+지금 그 자리의 값   payload["L1"] == None      (조인이 채운 "true" 가 «아닙니다»)
+왜                virtual_join attach 가 그 픽스처에서 «HEAD 에서도 이미 실패»합니다:
+                  "[VirtualJoin] attach failed on 'vjt_test_log', columns omitted:
+                   type object 'VjtTestRef' has no attribute 'needs_graph_rollback'"
+그 실패가          같은 파일의 «형제 시험 일곱»을 HEAD 에서 이미 빨갛게 만들고 있습니다
+=> 주입된 셀이 그 자리를 «차지하고» 있어서, 조인이 못 채우는 것이 «안 보였습니다»
+```
+🔴 **셋을 걷어내는 것이 그 가림막을 치웠습니다.** 「없어서 0」이 아니라 「가려져서 안 보이던 것」입니다.
+
+### 제가 «안 한 것»과 이유
+그 시험을 새 동작에 맞춰 고치지 «않았습니다». 고치려면 「이 이음매가 무엇을 해야 하나」를
+정해야 하는데, 그 대상 픽스처의 조인이 «이미 깨져 있어서» 지금 관측되는 값(None)은
+«올바른 새 계약»이 아니라 «깨진 픽스처의 값»입니다. 그 위에 단언을 얹으면
+「깨진 것을 계약으로 굳히는」 것이 됩니다. 판정 부탁드립니다.
+```
+선택지 ①  그 시험을 은퇴 (전제가 죽었으므로) + 픽스처의 VjtTestRef 결함은 별건으로
+선택지 ②  픽스처를 먼저 고쳐(attach 가 실제로 도는 상태) 그 다음 새 단언을 얹는다
+```
+📎 나머지 «9» 는 HEAD 에서도 빨갛습니다 — 제 것이 아닙니다
+   (virtual_join_types 7 · undeclared_schema_report 1 · declared_key_indexes 1)
+   `test_schema_drift_startup` · `test_outbox_notify_budget` 은 «전부 초록»입니다.
+
+## 새 시험 «둘» — 이 제거의 판별식
+`tests/test_table_data_serialization.py` (그 라우트의 페이로드 «모양»을 다루는 파일).
+```
+no_row_carries_the_retired_graph_sync_cells   실제 행을 «넣고» 잽니다 —
+                                              빈 페이지면 공허하게 초록이 되는 자리라서
+the_schema_does_not_announce_the_retired…     타입만 남으면 클라가 «영원히 빈» 컬럼의
+                                              머리를 세웁니다. 그 반쪽도 같이 못 박습니다
+둘 다 «편집 전에» 빨갰습니다 — 위 「전 9키」가 그 실패 메시지에서 나온 수입니다
+```
+
+## ⛔ 안 한 것 (지시대로)
+```
+⛔ models.py 의 «진짜 DB 컬럼» 셋 — 그대로. 별도 판정
+⛔ grid.js:582 필터 — 클라 소관, 지금 «일하는» 방어선
+⛔ table_config.json — «읽기만» 했습니다
+⛔ main.py:725 · :2394 의 제외 목록 — 725 는 col_types 기준이라 이미 무동작이고,
+   2394 는 «모델의 진짜 컬럼»을 거르는 자리라 살아 있습니다. 둘 다 이번 라운드 밖입니다
+⛔ 15개 파일(tests/scripts) — 안 건드렸습니다
+```
+⚠️ `push_columns.js` 는 «주석 한 덩이»뿐입니다. 서빙되는 동작이 0 이라 dist 재빌드는
+   하지 않았습니다 (필요하다 판단하시면 말씀해 주십시오).
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 6a4d4026 푸시했습니다
+판정 필요   위 §「제가 안 한 것」의 선택지 ①/② — graph_meta_boolean 시험을 어떻게 할지
+```
+
+---
+
+# ✅ [서버 -> 총괄] 「알려진 빨강」 사유 적었습니다 — 그리고 질문의 «재료» 하나 (구현자)
+
+커밋 `1a1dbf8b`. 파일 «하나»: `server/tests/test_virtual_join_types.py` (docstring 만).
+
+## 한 것
+그 시험의 docstring 에 판정하신 셋을 적었습니다 — «왜 빨간가» · «지금 보이는 값이 계약이 아닌 이유» ·
+«막혀 있는 것과 그 질문». 그리고 맨 앞에 **「초록으로 만들려고 고치지 말 것」**을 박았습니다.
+```
+xfail 마크는 «안 붙였습니다» — 그건 빨강을 «지우는» 것이고, 판정은 「빨강이 맞는 신호」였습니다
+시험 파일 8 failed / 7 passed (그중 하나가 이것). 코드 0줄
+```
+
+## 🔴 질문에 쓸 «재료» 하나 — 픽스처가 스스로 답을 적어 두었습니다
+총괄 질문: 「참조(ref) 모델도 메타데이터 컬럼 셋을 받나?」
+그 파일 «자기 픽스처»에 이렇게 적혀 있습니다:
+```
+tests/test_virtual_join_types.py:81~84
+   "A metadata NAME declared in column_types: the model builder skips it and the
+    shared Boolean metadata column answers instead. This is the only way a Boolean
+    reaches `expose`, and it is reachable from an ordinary config."
+   그 아래  "needs_graph_rollback": "string"      <- vjt_test_ref 의 column_types
+```
+즉 이 픽스처는 **「빌더가 이름을 건너뛰고, 공유 메타데이터 컬럼이 «대신 답한다»」를 전제**로
+`vjt_test_ref` 에 그 이름을 선언했습니다. 그런데 «대신 답하는 컬럼이 없습니다» —
+`VjtTestRef` 에 속성이 «없어서» attach 가 실패합니다.
+```
+=> 이 파일의 :83 「an ordinary config 로도 닿는다」는 주장이 «ref 에서는 이미 거짓»입니다
+   (참/거짓이 갈리는 자리가 «left/right» 인지 «declared/skipped» 인지는 제가 안 쟀습니다 —
+    그건 모델 빌더를 읽어야 하고, 다음 라운드 몫이라 하셨습니다)
+```
+⚠️ 이것은 «질문의 답»이 아니라 «질문이 어디에 걸려 있는지»입니다. 답(빌더 결함이냐 픽스처
+   결함이냐)은 안 쟀습니다 — 우선순위는 소유자 몫이라 하셨으므로 큐에 그대로 둡니다.
+
+## 그리고 dist 판정 감사합니다
+`push_columns.js` 의 비주석 줄이 «0» 이라 재빌드가 필요 없다는 것, 그리고 병합 순서가
+총괄 몫이라는 것 — 그대로 따르겠습니다. 제 쪽에서 병합·빌드는 «하지 않습니다».
+
+## 남은 것
+```
+서버 재기동 «불필요» — 이 커밋은 시험 docstring 뿐입니다
+큐에 남는 것   「ref 모델이 메타데이터 컬럼을 받아야 하나」 (형제 일곱이 걸려 있습니다)
+```
+
+---
+
+# ✅ [서버 -> 총괄] 확인 라운드 — **반증 못 했습니다. 총괄 실측이 맞습니다.** 그리고 빨강은 «7+1»이고 그 7이 «4+3»입니다 (구현자, 2026-09-03)
+
+커밋 `9e5063df`. 파일 «하나»: `server/tests/test_virtual_join_types.py` — **주석만. 코드 0줄.**
+시험 수 «전/후 동일»: 세 파일 «10 failed / 36 passed».
+
+## ① 반증 시도 — «실패했습니다». 실제 빌더에 먹여 봤습니다
+읽지 않고 «돌렸습니다». `init_dynamic_models` 에 config 를 주고 나온 컬럼을 봤습니다:
+```
+새 표 probe_new_tbl 의 column_types = {k:string, flag:«boolean», n:number,
+                                      t:datetime, plain:string, weird:«Boolean»}
+나온 것   row_id String · business_key_val String · created_at DateTime · updated_at DateTime
+         k String · flag «String» · n Float · t DateTime · plain String · weird «String»
+Boolean 컬럼      «NONE»
+셋(is_graph_synced·needs_graph_rollback·graph_synced_at)   «NONE»
+```
+🔴 **`"boolean"` 은 선언 가능한 타입이 «아닙니다».** `"number"`->Float · `"datetime"`->DateTime ·
+**그 밖 전부 String** 이고, 대소문자도 안 봐 줍니다(`"Boolean"` 도 String).
+=> **새로 만드는 표에 Boolean 이 붙는 다른 경로는 «없습니다».** 총괄 실측 그대로입니다.
+
+## 🔴 다만 «능력이 사라진 곳»은 새 표뿐입니다 — 한 줄 보태 드립니다
+`models.py` 주석이 「EXISTING TABLES KEEP THEIR COLUMNS」이라 적어 뒀고, 그 «코드 사실»을
+이 박스에서 확인했습니다 (⚠️ 이 수는 이 박스 것입니다 — 코드 문장의 «방증»으로만 씁니다):
+```
+information_schema   선언된 44개 표 «전부»가 셋을 아직 들고 있습니다
+sql 타입             is_graph_synced «boolean» · needs_graph_rollback «boolean»
+                    graph_synced_at timestamptz
+```
+=> 참인 문장은 **「2026-08-31 «이전»에 만들어진 표에서는 닿고, «이후»에 만든 표에서는 안 닿는다」**
+   이고, 그 컬럼들을 «지우는 날» 아무 데서도 안 닿게 됩니다 (models.py 가 「별도 판정」이라 적어 둔 그것).
+
+## ② 빨강은 «8» 이고 «한 원인»이 아닙니다 — 7 + 1, 그리고 그 7 이 «4 + 3»
+판별식으로 갈랐습니다 — 픽스처의 `expose` 에서 `needs_graph_rollback` 만 «빼고» 돌려 봤습니다
+(측정용이고 «커밋 안 했습니다»):
+```
+전체        8 failed / 7 passed
+그 한 줄 빼면 5 failed / 10 passed      -> «셋»이 초록으로 돌아옵니다
+```
+### 부류 A — 2026-08-31 은퇴 (총괄이 지목한 원인) : «7»
+```
+A-1 «직접» — Boolean 자체가 주어인 시험 : «4»
+    expose_type_universe_is_exactly_what_this_file_covers      (Boolean 이 목록에 있다고 단언)
+    a_boolean_expose_column_does_not_claim_a_value_it_does_not_have
+    the_boolean_render_twin_spells_it_the_way_sql_does
+    a_boolean_filter_value_arriving_as_a_bool_is_bridged
+A-2 «부수» — 다른 컬럼을 단언하는데 같이 죽은 것 : «3»
+    the_grid_and_the_search_spell_a_timestamp_the_same_way     (event_at)
+    export_carries_the_temporal_virtual_column_in_the_pinned_spelling  (event_at)
+    a_collide_temporal_column_diverges_on_left_owned_cells_exactly_here (stamp_at)
+    -> 이 셋이 위 측정에서 «초록으로 돌아온 셋»입니다
+```
+### 부류 B — 2026-09-02 제 주입 제거 : «1»
+```
+a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+   expose 를 빼도 «그대로 빨강»입니다 — 이 시험이 단언하는 것은 «주입된 셀»이지 조인이 아닙니다
+   (어제 판정하신 「알려진 빨강」 그것입니다)
+```
+
+## 🔴 그리고 A-2 가 «새 발견»입니다 — 「한 컬럼이 못 서면 «전부» 빠진다」
+```
+main.py:918~922   virtual_join_executor.attach(...) 가 «통째로» try/except 안입니다
+                  -> expose 한 줄이 못 서면 그 표의 «모든» 조인 컬럼이 그 요청에서 빠집니다
+                  로그는 "columns omitted" 하나. 응답에는 «오류 표시가 없습니다»
+그 자리 주석      「A failure here must not take the grid down. The safe direction is the
+                  ABSENT column」 — «의도된» 설계입니다
+```
+⚠️ 의도가 「그리드를 안 죽인다」인 것은 맞는데, **반경이 「그 컬럼」이 아니라 「그 표의 조인 전부」**
+입니다. 시험 셋이 그 반경을 그대로 보여 줬습니다. 고치지 «않았습니다» — 이번 라운드 밖이고,
+좁히는 것이 옳은지(컬럼 단위 격리)는 판정이 필요합니다. 올려 두십니다.
+
+## ③ 주석 — «셋»을 고쳤습니다. 하나가 아니라
+지시는 :81~84 였는데, **같은 거짓 문장이 «세 군데»에 있었습니다.** 낱개로 고치면 옆에 둘이 남습니다:
+```
+① 파일 docstring (:12~19)   「an ordinary declaration 으로 Boolean expose 가 나온다」
+② 픽스처 주석 (:81~84)      지시하신 그 자리
+③ 어제 제가 단 「알려진 빨강」 주석   «ref 질문»을 열린 질문으로 적어 뒀습니다
+                                -> 오늘 «틀린 질문»으로 판정났으므로 그대로 두면
+                                   다음 사람을 죽은 길로 보냅니다. 같이 고쳤습니다
+```
+고친 문장의 요지: 「빌더가 이름을 건너뛰는 것은 여전하나, **이 픽스처는 표를 새로 만들므로**
+그 컬럼을 못 받고, `"boolean"` 은 선언 가능한 타입이 아니라 다른 길도 없다. 그래서 이 파일의
+Boolean 갈래에는 «주어가 없다». 남겨 두는 이유는 그 빨강이 «능력이 제거됐다는 정확한 보고»이기
+때문이다 — 초록으로 만들면 그것을 가린다.」
+
+## ⛔ 안 한 것 (지시대로)
+```
+⛔ 초록으로 안 만들었습니다 · xfail 안 붙였습니다
+⛔ "boolean" 을 선언 가능한 타입으로 «추가 안 했습니다»
+⛔ 44개 표 컬럼 «안 건드렸습니다»
+⛔ attach 의 all-or-nothing 도 «안 건드렸습니다» (위 A-2, 판정 요청만)
+```
+
+## 곁가지 하나
+`models.py:840` 이 `Boolean` 을 import 하는데 그 함수 안에서 **더는 안 씁니다** (은퇴의 잔재).
+지우면 한 줄이지만 지시 밖이라 손대지 않았습니다.
+
+## 남은 것
+```
+서버 재기동 «불필요» — 주석뿐입니다. 9e5063df 푸시했습니다
+판정 요청   ① attach 의 실패 반경을 «컬럼 단위»로 좁힐지 (A-2 의 셋이 그 증거입니다)
+           ② models.py:840 의 죽은 import
+```
+
+---
+
+# ⚠️ [서버 -> 총괄] `attach` 반경 좁혔습니다 — **다만 게이트가 «안 맞습니다». 전제가 틀렸습니다** (구현자, 2026-09-03)
+
+커밋 `390f0ec4`. 파일 «셋»: `server/virtual_join_executor.py` ·
+`server/database/models.py`(죽은 import) · `server/tests/test_virtual_join_types.py`(주석).
+
+## ① 지시한 것은 «했고», 그것은 «돕니다» — 수로
+경계는 지시대로 «직접 확인»했습니다. `for rule in rules: joined = execute_rule(...)` 가 모으기이고,
+`label_items = list(labels.items())` 부터가 결정입니다. 그 사이에 걸었습니다.
+```
+던지는 자리   virtual_join_executor.py:466  execute_rule 안의 getattr(right, c)
+             -> «제안이 병합되기 전»입니다. 그래서 「제안 0개」가 «정확»하고 근사가 아닙니다
+로그          이제 «규칙 이름 + 그 규칙의 expose 목록»을 찍습니다 (전에는 표 이름뿐)
+```
+### 효과 실측 — 규칙 «둘»(성한 것 + 깨진 것)로 갈라 놓고 잰 것
+```
+같은 픽스처, executor 만 바꿔 가며
+   HEAD (가드 없음)   8 failed / 7 passed
+   이 커밋            6 failed / 9 passed        <- «둘»이 돌아옵니다
+돌아온 둘   the_grid_and_the_search_spell_a_timestamp_the_same_way   (event_at)
+           a_collide_temporal_column_diverges_on_left_owned_cells…  (stamp_at)
+```
+=> **성한 규칙의 컬럼이 남의 고장으로 사라지던 것이 멈췄습니다.** 방향(없는 것 > 틀린 것)과
+   순서 논증(모아서 한 번에 결정) 둘 다 그대로입니다.
+
+## 🔴 ② 그런데 게이트는 «못 맞췄습니다» — 그 셋은 «같은 규칙»에 있습니다
+```
+게이트     「후: 그 셋의 사유 = Boolean 컬럼 «하나»만 부재」
+실제       출하 픽스처의 선언은 «규칙 하나»입니다:
+           vjt_rule.expose = [site, slot_no, event_at, stamp_at, needs_graph_rollback]
+=> 규칙 단위로 격리해도 «한 규칙 안»은 못 가릅니다. 그 셋은 깨진 컬럼과 «한 규칙»입니다
+현재 수    10 failed / 36 passed — 이 라운드 «전과 동일». 즉 그 셋은 그대로 빨강입니다
+```
+🔴 **총괄 전제(부수 피해가 «다른 규칙»에서 왔다)가 틀렸습니다.** 어제 제가 「expose 한 줄만 빼면
+셋이 초록」이라 보고했는데, 그것이 「다른 규칙」이 아니라 「같은 규칙의 다른 «컬럼»」이라는 뜻이었고
+제 보고가 그 구분을 안 적었습니다. 제 쪽 누락입니다.
+
+### 게이트를 맞추려면 «컬럼 단위» 격리입니다 — 지시 밖이라 «안 했습니다»
+```
+자리    execute_rule 이 SELECT 를 만들 때 `getattr(right, c)` 가 없는 컬럼을 «빼고» 세우는 것
+효과    깨진 컬럼만 제안 0 -> 결정에서 라벨(미상)로 떨어짐. 나머지 넷은 정상
+쟁점    「선언에 있는데 모델에 없는 컬럼」을 «조용히 빼는» 것이 옳은가 —
+       지금은 «시끄럽게 전부 빼는» 쪽이고, 그 시끄러움이 오늘 이 결함을 드러냈습니다
+=> 판정 부탁드립니다. 크기는 한 함수입니다
+```
+
+## 🔴 ③ 셋째 이음매를 하나 더 찾았습니다 — CSV 내보내기
+규칙을 둘로 갈라도 «끝까지 빨간» 것이 하나 있습니다:
+```
+export_carries_the_temporal_virtual_column_in_the_pinned_spelling
+   실패 자리   sqlalchemy/orm/util.py 에서 AttributeError — «attach 를 안 지납니다»
+   뜻         내보내기는 노출 컬럼의 SQL 을 «자기가» 세웁니다. 그래서 이 가드가 «안 덮습니다»
+```
+즉 깨진 expose 하나의 반경은 «셋»입니다 — 페이로드(가드로 좁힘) · 필터/검색 · 내보내기.
+이번 라운드는 첫째만 좁혔습니다. 나머지 둘은 «보고만» 합니다.
+
+## ⚠️ ④ 이 가드에 «시험이 없습니다» — 출하 픽스처가 못 깨웁니다
+```
+가드를 깨우려면 «규칙이 둘» 필요합니다. 출하 픽스처는 하나입니다
+그래서 위 8->6 은 «스크래치 측정»이고 커밋에 남지 않았습니다
+```
+🔴 「가드는 도달 가능해지는 날 틀린다」에 정확히 걸리는 자리라 적습니다. 시험을 «지시 없이»
+   더하지 않았습니다 — 붙일지, 붙인다면 별도 픽스처인지 판정 부탁드립니다.
+
+## ⑤ 승인하신 둘 — 같이 실었습니다
+```
+boolean 영구   픽스처 주석에 «소유자 판정(2026-09-03) 불리언 필요 없음» 을 적었습니다
+              -> 그 빨강이 «보류»가 아니라 «영구»로 읽힙니다
+죽은 import    models.py:840 의 `Boolean` 제거 (+ 왜 죽었는지 두 줄). 이 라운드에 묶었습니다
+```
+
+## 무회귀
+```
+9개 파일(virtual_join 계열 · 직렬화 · 런타임 표 생성) -> 10 failed / 161 passed
+그 10 은 이 라운드 «전과 같은 10» 입니다 (vjt 8 + undeclared_schema_report 1 + declared_key_indexes 1)
+정상 경로에는 던지는 규칙이 «없으므로» 페이로드가 달라질 이유가 없고, 실제로 안 달라졌습니다
+```
+
+## 남은 것 / 판정 요청
+```
+서버 재기동 — 총괄 몫입니다. 390f0ec4 푸시했습니다
+① 컬럼 단위 격리로 갈지 (게이트를 맞추려면 그것이 필요합니다)
+② 필터/검색·내보내기의 같은 반경을 좁힐지
+③ 이 가드의 시험을 붙일지 (지금 «미도달 가드»입니다)
+```
+
+---
+
+# ✅ [서버 -> 총괄] 컬럼 «사전 걸러내기» 착지 — **게이트 넷 중 셋 충족, 넷째는 «다른 이음매»입니다** (구현자, 2026-09-03)
+
+커밋 `dd6c9516`. 파일 «하나»: `server/virtual_join_executor.py`.
+
+## 게이트
+```
+✅ 사유    출하 픽스처(규칙 «하나» · 다섯 컬럼)에서 «8 failed -> 6 failed»
+          돌아온 둘   the_grid_and_the_search_spell_a_timestamp_the_same_way   (event_at)
+                     a_collide_temporal_column_diverges_on_left_owned_cells…  (stamp_at)
+          -> 지난 라운드에 «규칙 단위»로는 못 닿던 자리에 이번엔 닿았습니다
+✅ 쿼리    실측 — 오른쪽 표에 대한 SELECT
+             컬럼 하나가 «빠진» 선언   SELECT «1» · 전체 문장 «1»
+             걸러낼 것이 «없는» 선언   SELECT «1» · 전체 문장 «1»
+          => 늘지 않았습니다. 걸러내기는 DB 를 안 만집니다(hasattr 한 번)
+✅ 로그    빠진 컬럼을 «이름으로» 남깁니다 — 규칙 이름 · 없는 컬럼 이름 · 오른쪽 표 이름 ·
+          «살아남은 컬럼 목록»까지. 「무엇이 빠졌고 무엇은 멀쩡한가」가 한 줄에 있습니다
+⚠️ 무회귀  정상 경로 표 «변화 0» — 12개 파일 204 passed.
+          빨강 8 = vjt 6 + 이 라운드와 무관한 기존 둘
+          (undeclared_schema_report 1 · declared_key_indexes 1, 어제도 빨갰습니다)
+```
+
+## 어떻게 했나 — 지시하신 그대로 «실행 전 목록 검증»
+```
+자리   execute_rule 이 `cols = [...] + [getattr(right, c) for c in expose]` 를 짓기 «직전»
+술어   hasattr(right, c) — 다음 줄의 getattr 과 «같은 술어»입니다. 더 엄한 흉내를 안 냈습니다
+       (이 모델들에서는 둘이 갈릴 수도 없습니다 — init_dynamic_models 는 Column «만» 답니다)
+결과   빠진 컬럼은 제안 0 -> 결정에서 라벨(미상). 형제 넷은 «전과 같은 한 번의 SELECT»로 그대로
+```
+🔴 **컬럼마다 try 를 안 쓴 이유**를 코드에 적었습니다 — 그러면 「어느 것이 던지나」를 알려고
+   SELECT 를 컬럼 수만큼 지어 돌려야 하고, 이 이음매의 «비용이 바뀝니다». 총괄 지적 그대로입니다.
+
+## 남은 빨강 «여섯»의 구성 — 셋으로 갈립니다
+```
+① Boolean 갈래 «넷»   주어가 «영영» 없습니다 (소유자 판정: 불리언 필요 없음)
+     expose_type_universe_is_exactly_what_this_file_covers
+     a_boolean_expose_column_does_not_claim_a_value_it_does_not_have
+     the_boolean_render_twin_spells_it_the_way_sql_does
+     a_boolean_filter_value_arriving_as_a_bool_is_bridged
+② 제 알려진 빨강 «하나»   a_graph_meta_boolean_never_reaches_the_payload… (주입 제거)
+③ 🔴 «셋째 이음매» 하나   export_carries_the_temporal_virtual_column_in_the_pinned_spelling
+```
+
+## 🔴 ③ — 이번 변경이 «안 덮는» 자리입니다. 판정 요청
+```
+내보내기는 attach 를 «안 지납니다». 노출 컬럼의 SQL 을 «자기가» 세웁니다
+   -> 그래서 event_at(멀쩡한 컬럼)을 내보내는 시험이 «여전히» 깨진 컬럼 때문에 죽습니다
+   -> 반경 셋 중 «페이로드»만 좁혔고, «내보내기»는 그대로입니다
+       (필터/검색은 ①에 속합니다 — 그 시험은 Boolean «자체»를 필터하므로 주어가 없는 쪽입니다)
+```
+같은 사전 걸러내기를 그쪽에도 걸면 될 것으로 보이지만, **다른 함수이고 지시 밖이라 손대지
+않았습니다.** 하실지 판정 부탁드립니다.
+
+## ⚠️ 그리고 지난 라운드의 «미도달 가드»는 여전히 미도달입니다
+```
+390f0ec4 의 «규칙 단위» try/except 는 규칙이 «둘 이상»이라야 깨어납니다
+출하 픽스처는 규칙 «하나» -> 여전히 시험이 «없습니다»
+이번 변경으로 그 가드가 «덜 자주» 도달됩니다 — 컬럼 부재는 이제 여기서 걸러지므로,
+   그 try 는 「execute_rule 이 «다른 이유»로 던질 때」만 발동합니다
+=> 두 겹인 것 자체는 맞습니다(사전 검증 + 최후 그물). 다만 안쪽 그물에 시험이 없습니다
+```
+지시 없이 시험을 더하지 않았습니다. ③ 판정과 함께 봐 주시면 좋겠습니다.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. dd6c9516 푸시했습니다
+판정 요청   ① 내보내기 쪽에도 같은 사전 걸러내기를 걸지
+           ② 규칙 단위 가드(390f0ec4)의 시험을 붙일지
+```
+
+---
+
+# ✅ [서버 -> 총괄] Boolean 갈래 «은퇴» 완료 — **8 -> 2. 남은 둘이 지시하신 그 둘입니다** (구현자, 2026-09-03)
+
+커밋 `91e7aa29`. 파일 «하나»: `server/tests/test_virtual_join_types.py`. 코드 «0줄».
+
+## 게이트 — 이름으로
+```
+전   8 failed / 7 passed
+후   «2» failed / 11 passed
+빠진 «넷» (전부 Boolean 갈래)
+   test_the_expose_type_universe_is_exactly_what_this_file_covers   -> «초록». 아래 ③
+   test_a_boolean_expose_column_does_not_claim_a_value_it_does_not_have  -> 은퇴
+   test_the_boolean_render_twin_spells_it_the_way_sql_does               -> 은퇴(조인 절반)
+   test_a_boolean_filter_value_arriving_as_a_bool_is_bridged             -> 은퇴(필터 절반)
+남은 «둘» — 지시하신 대로 «그대로 빨강»입니다
+   export_carries_the_temporal_virtual_column_in_the_pinned_spelling  <- 셋째 이음매(큐)
+   a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken  <- 주입 제거 건
+=> 은퇴가 «넓게 안 잡혔습니다». 둘 다 Boolean 갈래 실패가 «아니고», 둘 다 살아 있습니다
+```
+
+## 🔴 그런데 「단언만 은퇴」가 «그냥 지우기»와 갈리는 자리가 있었습니다
+셋 중 «둘»이 **조인 이음매와 무관한 단언**을 같이 들고 있었고, 그 단언이
+`boolean_text_value` · `comparison_text_value` 의 **스위트 전체에서 유일한 커버**였습니다:
+```
+grep 전수   boolean_text_value      -> 시험은 그 한 줄뿐
+           comparison_text_value   -> 시험은 그 두 줄뿐 (하나는 «datetime» 단언입니다)
+소비자      column_filter.py:88 이 «지금도» 부릅니다
+```
+🔴 **주어가 죽은 것은 「Boolean «컬럼»」이지 「Boolean «값»」이 아닙니다.** AG-Grid 는 어떤 컬럼이든
+boolean 으로 다루면 필터 값으로 JSON `true` 를 보내고, `column_filter` 는 그것을 텍스트 식에
+견주기 «전»에 렌더해야 합니다. 그래서 그 네 줄은 **픽스처 없는 시험 하나로 옮겨** 살렸습니다.
+통째로 지웠으면 커버가 «0» 이 됐을 자리입니다 — 은퇴가 주어를 넘어간 셈이 됩니다.
+
+## ③ 타입 우주 시험 — 목록에서 빼는 대신 «부재를 단언»하게 했습니다
+```
+전   got == {... "needs_graph_rollback": "Boolean"}     -> AttributeError 로 빨강
+후   got == {문자·문자·문자·Float·DateTime·DateTime}     (모델에 «있는» 것만)
+     + assert not hasattr(right, "needs_graph_rollback")
+     + assert "Boolean" not in got.values()
+```
+🔴 픽스처의 `needs_graph_rollback` 선언은 «그대로 뒀습니다». 그래야
+   「선언은 유효한데 컬럼이 없다」는 상태가 계속 재현되고, **Boolean 이 다시 닿게 되는 날
+   이 시험이 빨개져 「무엇을 되살려야 하는지」를 가리킵니다.** 기록이 주석이 아니라 «단언»입니다.
+⚠️ 그리고 그 선언을 빼면 «export 빨강»도 같이 사라집니다 — 셋째 이음매의 증거가 없어집니다.
+   그것도 안 뺀 이유입니다.
+
+## 곁가지 — 낡은 수 «둘» 고쳤습니다
+```
+「seven sibling tests」   -> 그 일곱이 «셋(부수, 초록으로 복귀) + 넷(은퇴)»으로 갈렸음을 적었습니다
+파일 docstring          진단만 있고 «무엇을 했는지»가 없었습니다. 은퇴 사실과 그 이유를 적었습니다
+```
+「부류로 묶되 구성원은 센다」를 이 파일 안에서도 지킨 것입니다.
+
+## 무회귀
+```
+10개 파일 -> 4 failed / 176 passed
+그 4 = 이 파일 2 (위) + 이 라운드와 무관한 기존 2
+       (undeclared_schema_report 1 · declared_key_indexes 1 — 어제부터 빨갰습니다)
+```
+
+## 남은 것
+```
+서버 재기동 «불필요» — 시험 파일 하나입니다. 91e7aa29 푸시했습니다
+큐        ① 셋째 이음매(export) — «세고 · 함수 하나로 · 전부 그것을 부르게» 라고 모양을 주셨습니다
+             열리면 그 순서로 하겠습니다. 지금은 안 엽니다
+          ② 규칙 단위 가드(390f0ec4)의 시험 — 여전히 «미도달»입니다
+```
+
+---
+
+# ✅ [서버 -> 총괄] 체인 대기열 계측기 착지 — 🔴 **다만 총괄 전제 하나가 «틀렸습니다». 인덱스가 «있습니다»** (구현자, 2026-09-03)
+
+커밋 `a9144dfe`. 파일 «둘»: `server/main.py`(라우트) · `server/tests/test_outbox_notify_budget.py`(시험 6본).
+
+## 🔴 먼저 — `processed_chain` 은 «인덱스가 있습니다»
+```
+models.py:244   Index("idx_outbox_unprocessed", "processed_chain", "id",
+                      postgresql_where=text("processed_chain = false"))
+                주석: 「미처리 체인 이벤트 큐 스캔(processed_chain==false order by id asc) 전용 부분 인덱스」
+라이브 확인     pg_indexes 에 «실재»합니다:
+                btree (processed_chain, id) WHERE (processed_chain = false)
+```
+그래서 「전수 훑기라 멈추고 보고」로 갈 자리가 «아니었고», 그대로 셌습니다.
+
+## ① EXPLAIN — 그대로 붙입니다 (⚠️ 실행 안 했습니다. `EXPLAIN` 만, ANALYZE «없이»)
+```
+① 대기 건수      SELECT count(*) ... WHERE processed_chain = false
+   Aggregate  (cost=6.02..6.03 rows=1 width=8)
+     ->  Index Only Scan using idx_outbox_unprocessed  (cost=0.25..6.01 rows=1 width=0)
+
+② 가장 오래된 대기의 나이   ... WHERE processed_chain = false ORDER BY id ASC LIMIT 1
+   Limit  (cost=0.25..6.02 rows=1 width=36)
+     ->  Index Scan using idx_outbox_unprocessed  (cost=0.25..6.02 rows=1 width=36)
+
+③b 대기 중 재시도된 것    ... WHERE processed_chain = false AND retry_count > 0
+   Aggregate  (cost=6.02..6.03 rows=1 width=8)
+     ->  Index Scan using idx_outbox_unprocessed  (cost=0.25..6.02 rows=1 width=0)
+           Filter: (retry_count > 0)
+
+🔴 ③ 재시도 «표 전체»     ... WHERE retry_count > 0
+   Aggregate  (cost=272812.73..272812.74 rows=1 width=8)
+     ->  Seq Scan on database_outbox  (cost=0.00..272812.72 rows=1 width=0)
+
+🔴 ④ 최근 처리량          ... WHERE processed_at >= now() - interval '10 minutes'
+   Aggregate  (cost=272817.82..272817.83 rows=1 width=8)
+     ->  Seq Scan on database_outbox  (cost=0.00..272817.82 rows=1 width=0)
+```
+⚠️ **rows 추정치는 믿지 마십시오** — 이 표의 `reltuples` 가 «1018» 인데 실물은 «2293 MB» 입니다.
+   통계가 낡았습니다. 제가 읽은 것은 «계획»(어떤 인덱스를 타나 / Seq Scan 인가)이고,
+   그건 스키마의 성질이라 같은 인덱스가 있는 곳이면 참입니다. 행수는 이 박스 것입니다.
+
+## ③④ — «멈추고 보고»합니다. 인덱스 안 더했습니다
+```
+비용 차이   6  vs  272,812   =  «45,000배»
+안 더한 이유  두 칸에 인덱스가 없고, 이 저장소는 «안 읽히는 인덱스를 걷어내는 중»입니다
+            (retire_unread_framework_indexes.py · models.py 의 created_at 은퇴 주석)
+            진단 패널 하나 때문에 색인을 더하면 «모든 insert» 가 그 값을 뭅니다
+```
+🔴 그래서 **응답에 «세지 않은 것»을 이름으로 적었습니다** — 없는 수는 「0」으로 읽힙니다.
+주신 대안 셋(시간창 · status 근사 · 표본) 중 어느 쪽인지 판정 부탁드립니다.
+
+## ⚠️ 그리고 «넷째 수»를 하나 넣었습니다 — 이름이 좁힘을 말합니다
+```
+retried_among_waiting   «대기 중인 행 가운데» 재시도된 수 (③b, 인덱스로 답합니다)
+지시하신 ③ 과 다릅니다   ③ 은 「표 전체에서 retry_count > 0」이고 그건 Seq Scan 입니다
+                      지나간 재시도는 «안 셉니다»
+```
+지시 밖 추가라 여기 «드러내» 둡니다. 빼는 것이 맞으면 한 줄입니다.
+
+## ② 응답 예시 한 벌
+```json
+// 대기 둘(132초 · 40초), 처리 끝난 것 하나
+{
+  "waiting": 2,
+  "oldest_waiting_seconds": 132.013966,
+  "oldest_waiting_at": "2026-09-03 10:01:00",
+  "retried_among_waiting": 1,
+  "not_measured": {
+    "retried_total": "retry_count 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,812)",
+    "processed_recently": "processed_at 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,817)"
+  }
+}
+// 큐가 비었을 때 — 🔴 «null» 이지 0 이 아닙니다
+{ "waiting": 0, "oldest_waiting_seconds": null, "oldest_waiting_at": null,
+  "retried_among_waiting": 0, "not_measured": { ... } }
+```
+
+## ③ 「어떤 표도 안 쓴다」 — 코드가 아니라 «실행»으로 보였습니다
+```
+test_the_route_writes_nothing   라우트를 태우고 «세션이 실제로 낸 문장의 동사»를 모읍니다
+                               SELECT/BEGIN/COMMIT/ROLLBACK/SET/PRAGMA 밖이면 빨강
+                               그리고 「SELECT 가 하나라도 있나」까지 — 아니면 공허한 초록입니다
+```
+
+## 🔴 재는 중에 «제 결함» 둘을 잡았습니다
+```
+① 시간대   SQLite 는 이 컬럼을 naive 로 돌려줍니다. 로컬 now() 에서 빼니
+          «빈 큐에 9시간 밀림»이 나왔습니다 — 계측기가 장애를 «지어낸» 것입니다
+          -> UTC 로 통일. PostgreSQL(timestamptz)에서는 애초에 안 나던 결함이라
+             SQLite 시험이 «없었으면 운영에서만 멀쩡»했을 자리입니다
+② 지름길의 «전제»   가장 오래된 행을 MIN(created_at) 대신 «id 오름차순 첫 행»으로 찾습니다
+          그 전제(도착 순서 = id 순서)를 «재서» 확인했습니다 —
+          DatabaseOutbox 를 만드는 «아홉 자리» 전부가 created_at 을 server_default 에 맡깁니다
+          -> 손으로 과거 시각을 넣는 생산 경로가 «없습니다»
+          그리고 시험이 「싼 답 == MIN(created_at)」을 «직접 대조»합니다
+```
+
+## 시험 — 변이 «여섯», 각각 빨개집니다
+```
+나이를 «가장 새» 행에서                     the_age_is_measured_from_the_oldest_waiting_row
+빈 큐가 «0» 을 답함                         an_empty_queue_reports_no_age_rather_than_zero (+1)
+UTC 대신 «로컬 시계»                        위 둘
+처리 끝난 행도 «대기»로 셈                   a_row_the_chain_has_run_stops_counting (+1)
+재시도를 «표 전체»에서 셈                    retries_are_counted_among_the_waiting_only
+not_measured 이름이 «사라짐»                 what_it_did_not_measure_is_named…
+```
+무회귀: `outbox_notify_budget · outbox_collapse · api · admin_auth · chain_replay`
+-> **227 passed · 0 failed**.
+
+## 경계 — 지키셨는지 확인하실 것
+```
+✅ 읽기 전용 · 새 표 0 · 쓰기 0 · 인덱스 0
+✅ require_admin_token (기존 어드민 라우트와 같은 모양)
+✅ 화면 «안 만들었습니다» · 폴링 주기 «서버가 안 정합니다»(인자도 없습니다)
+⛔ 취소·재시도·순서 조작 «없습니다»
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. a9144dfe 푸시했습니다
+판정 요청   ① ③④(Seq Scan 둘)를 어떻게 할지 — 시간창 · status 근사 · 표본 중
+           ② retried_among_waiting 를 남길지
+```

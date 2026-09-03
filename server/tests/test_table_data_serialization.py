@@ -223,3 +223,50 @@ def test_route_fast_fail_exit_also_returns_json(client):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/json")
     assert resp.json()["target_offset"] == -1
+
+
+# ───────────────── 5. the retired graph-sync columns are not on the wire ─────────────
+
+#: Retired 2026-08-31 with the branch they served. The `system_cols` list dropped them
+#: that day and the code that FILLED them did not, so every row of every grid page kept
+#: carrying three cells - and three comments were rewritten to say the server had stopped.
+RETIRED_GRAPH_COLUMNS = ("is_graph_synced", "needs_graph_rollback", "graph_synced_at")
+
+
+def test_no_row_carries_the_retired_graph_sync_cells(client, db_session):
+    """🔴 A COLUMN NOBODY DECLARES IS SHIPPED ON EVERY ROW OF EVERY PAGE.
+
+    Measured before removing: ZERO of the 44 tables in the live `table_config.json`
+    declare any of the three in `column_types` or `display_columns`, so nothing on the
+    wire is answering a question anyone asked - it is per-row, per-page pure waste in the
+    `Dict Conv` span of the route's own timer.
+
+    Asserted on a REAL row rather than on an empty page: an empty `data` list would make
+    this pass while the injection sat untouched, which is the shape of a vacuous green.
+    """
+    from database import models
+
+    model = models.DYNAMIC_TABLES["inventory_master"]
+    db_session.add(model(row_id=str(uuid.uuid4()), business_key_val="GS-PROBE",
+                         part_no="GS-PROBE"))
+    db_session.commit()
+
+    rows = client.get("/tables/inventory_master/data?limit=10").json()["data"]
+    assert rows, "no row came back; this test would pass vacuously"
+    for row in rows:
+        leaked = [c for c in RETIRED_GRAPH_COLUMNS if c in row["data"]]
+        assert not leaked, (
+            f"a retired column is still shipped on every row: {leaked} "
+            f"({len(row['data'])} keys in this row's data)")
+
+
+def test_the_schema_does_not_announce_the_retired_graph_sync_columns(client):
+    """And the schema stops calling them types, which is the other half.
+
+    Announcing a type for a column no payload carries is how a client builds a header for
+    a column that is always empty - the seat the `system_cols` edit removed on the other
+    side of the same round.
+    """
+    types = client.get("/tables/inventory_master/schema").json()["column_types"]
+    leaked = [c for c in RETIRED_GRAPH_COLUMNS if c in types]
+    assert not leaked, f"the schema still declares retired columns: {leaked}"

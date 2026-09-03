@@ -459,7 +459,40 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
         return {}
 
     onclause = join_onclause(left, right, rule)
-    expose = list(rule["expose"])
+    # 🔴 THE LIST IS CHECKED BEFORE THE SELECT IS BUILT, NOT CAUGHT WHILE IT RUNS. A name
+    # the right model does not carry makes `getattr` below raise, and that one name used to
+    # take the whole rule with it - every sibling column omitted for a fault that belongs
+    # to one of them. A column absent because a NEIGHBOUR is broken renders exactly like a
+    # column that is empty, which is the least visible failure this codebase has.
+    #
+    # 🔴 A LIST CHECK AND NOT A TRY PER COLUMN, deliberately: wrapping each column would
+    # mean building and running the SELECT once per column to find out which one throws,
+    # and the cost of this seam would change. Everything needed is knowable before
+    # execution, because what throws is the ATTRIBUTE LOOKUP while composing the query.
+    # So the query count is exactly what it was - one per chunk, whatever gets dropped.
+    #
+    # `hasattr` is the exact twin of the `getattr` on the next line rather than a stricter
+    # imitation of it. For these models the two agree in any case: `init_dynamic_models`
+    # gives a dynamic class nothing but Columns, so "has the attribute" and "is a column of
+    # the table" cannot disagree here.
+    #
+    # HOW A DECLARED NAME GOES MISSING (measured 2026-09-03): `virtual_join_config`
+    # validates `expose` against the right table's `column_types` KEYS, and the model
+    # builder SKIPS the graph-sync metadata names - which a table created after
+    # 2026-08-31 no longer receives. So the declaration is valid and the column is not
+    # there, and neither side is wrong.
+    declared = list(rule["expose"])
+    expose = [c for c in declared if hasattr(right, c)]
+    if len(expose) != len(declared):
+        for name in declared:
+            if name in expose:
+                continue
+            logger.error(
+                "[VirtualJoin] rule '%s': '%s' is declared in expose but '%s' has no such "
+                "column - that ONE column is omitted; the rule's other columns (%s) are "
+                "unaffected",
+                rule.get("name") or rule.get("rule_name") or "<unnamed>", name,
+                rule["right_table"], expose or "none")
     # 오른쪽 `row_id`는 표시 대상이 아니라 **①/②를 가르는 유일한 증거**다.
     # 오른쪽 expose 값이 NULL이면 "행이 없었다"인지 "행은 있었고 값이 NULL이었다"인지
     # 값만 봐서는 구별할 수 없다.
@@ -555,8 +588,44 @@ def attach(db, table_name: str, data_list: list) -> int:
     # 않은 조인 값이 이긴다.
     proposals = {}          # col -> {row_id: 조인이 준 원값(비어 있을 수 있음)}
     labels = {}             # col -> 그 컬럼을 노출한 첫 선언의 unresolved_label
+    # 🔴 THE COLLECT STEP FAILS PER RULE, AND THAT IS THE WHOLE OF THIS GUARD. One rule
+    # that cannot be built used to take EVERY exposed column of this table down with it:
+    # `main.py`'s outer `try` wraps the entire call, so the failure skipped the decide step
+    # too and columns belonging to perfectly healthy rules simply were not there. Measured
+    # 2026-09-03 - three tests in `test_virtual_join_types` were red about `event_at` and
+    # `stamp_at`, neither of which had anything wrong with it, purely because a fourth
+    # column in the same declaration could not be built.
+    #
+    # That vanishing renders EXACTLY like "this cell has no value", which is the failure
+    # this repo keeps meeting: a column absent because somebody ELSE broke looks the same
+    # as a column that is genuinely empty.
+    #
+    # 🔴 IT GOES HERE AND NOT AROUND THE DECIDE STEP BELOW. The "collect everything, then
+    # decide once per cell" shape is deliberate - deciding rule by rule lets a later rule
+    # read an earlier rule's 미상 as a LEFT value, which makes rule ORDER change the answer.
+    # Wrapping the decision would run it on partial proposals and reintroduce exactly that.
+    # A rule that raises contributes ZERO proposals, and at the decision a rule with no
+    # proposals is indistinguishable from a rule whose proposals were all empty: neither
+    # wins. So the direction the outer handler documents - an absent column beats a wrong
+    # one - is preserved, and it is preserved for that rule ALONE.
+    #
+    # Verified rather than assumed: the only statement here that can raise in practice is
+    # `execute_rule`, which builds the SELECT (`getattr(right, c)` on a column the model
+    # does not have). It raises BEFORE anything is merged, so "zero proposals" is exact
+    # and not approximate.
     for rule in rules:
-        joined = execute_rule(db, rule, row_ids)
+        try:
+            joined = execute_rule(db, rule, row_ids)
+        except Exception as exc:                                        # noqa: BLE001
+            # 🔴 THE RULE'S NAME, because the outer handler only ever said the TABLE's and
+            # an operator reading "columns omitted on dt_log" could not tell which of the
+            # declarations was the broken one.
+            logger.error(
+                "[VirtualJoin] rule '%s' could not be built on '%s'; its columns %s are "
+                "omitted and every OTHER rule's columns are unaffected: %s",
+                rule.get("name") or rule.get("rule_name") or "<unnamed>", table_name,
+                list(rule.get("expose") or ()), exc)
+            continue
         label = rule["unresolved_label"]
         for col in rule["expose"]:
             labels.setdefault(col, label)

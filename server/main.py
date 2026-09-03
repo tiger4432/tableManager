@@ -885,22 +885,14 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
         
-        # 그래프 동기화 컬럼 3종 주입
-        is_sync_val = getattr(row, "is_graph_synced", False)
-        if is_sync_val is None:
-            is_sync_val = False
-            
-        needs_roll_val = getattr(row, "needs_graph_rollback", False)
-        if needs_roll_val is None:
-            needs_roll_val = False
-            
-        synced_at_val = getattr(row, "graph_synced_at", None)
-        synced_at_str = to_local_str(synced_at_val) if synced_at_val else "미동기화"
-        
-        r_data["is_graph_synced"] = {"value": is_sync_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data["needs_graph_rollback"] = {"value": needs_roll_val, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data["graph_synced_at"] = {"value": synced_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        
+        # 🔴 그래프 동기화 컬럼 «셋»은 여기서 빠졌습니다 (2026-09-02). 2026-08-31 에
+        # `system_cols` 목록에서는 빠졌는데 «채우는 자리»가 안 빠져서, 선언한 표가 «0개»인
+        # 컬럼 셋이 그리드 «모든 행»에 셀 모양으로 실려 나가고 있었습니다 —
+        # 라우트 자기 타이머의 `Dict Conv` 칸에서, 페이지마다, 행마다.
+        # 실측: 라이브 table_config 44개 표 중 셋 중 «하나라도» column_types/display_columns
+        # 에 선언한 표 «0». 즉 아무도 묻지 않은 것을 나르고 있었습니다.
+        # DB 컬럼(models.py)은 «진짜 컬럼»이고 그대로 있습니다 — 그것을 지우는 것은 별건입니다.
+
         # dynamic data attribute 바인딩
         row.data = r_data
         
@@ -2404,18 +2396,24 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
             columns = []
             
     # [버그 수정] display_columns 정의 여부와 관계없이 시스템 컬럼은 항상 마지막에 보장
-    # The three graph-sync names left on 2026-08-31 with the branch they belonged to; the
-    # server no longer fills them, so listing them here would reserve a seat in every table
-    # for a column that is now always empty.
+    # The three graph-sync names left on 2026-08-31 with the branch they belonged to.
+    # 🔴 THIS COMMENT WAS FALSE FOR TWO DAYS. It said "the server no longer fills them" on
+    # the day only the LIST above lost them: `fetch_and_merge_metadata` kept injecting all
+    # three into every row, and a second comment in the client said the same untrue thing.
+    # What actually happened on 2026-08-31 was that the seat was removed; what happened on
+    # 2026-09-02 was that the filling stopped. Written out because a comment that describes
+    # a removal which only half happened is worse than no comment - it is what stops the
+    # next person from looking.
     system_cols = ["created_at", "updated_at"]
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)
             
     col_types = dict(config.get("column_types", {}))
-    col_types["is_graph_synced"] = "boolean"
-    col_types["needs_graph_rollback"] = "boolean"
-    col_types["graph_synced_at"] = "datetime"
+    # 🔴 셋을 여기서 «더하던» 세 줄이 2026-09-02 에 빠졌습니다. 어떤 표도 자기 선언에
+    # 그 셋을 넣지 않으므로(라이브 44개 표 실측: 0), 이 세 줄은 «선언을 덮어쓰는» 것이
+    # 아니라 «없는 컬럼의 타입을 지어내는» 것이었습니다 — 그리고 페이로드가 그 컬럼을
+    # 나르는 것을 멈춘 지금, 타입만 남으면 클라가 «영원히 빈» 컬럼의 머리를 세웁니다.
 
     # [Virtual join] Announce the columns a VERIFIED join ADDS to this table's read
     # payload. The payload has carried them since `d70a33d`; without this key the grid
@@ -3698,6 +3696,77 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
                 f"chunk(s); their rows are queued individually.")
     return {"status": "success", "message": msg,
             "skipped_reexpanded": len(already_expanded)}
+
+@app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
+def get_chain_queue_depth(db: Session = Depends(get_db)):
+    """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.
+
+    🔴 **답하는 수는 `oldest_waiting_seconds` 하나다.** 나머지는 맥락이다.
+    깊이(`waiting`)는 바쁠 때 커졌다가 줄어드는 것이 정상이고, 그것만 보면 「많다」와
+    「밀린다」를 구별할 수 없다. 나이는 다르다 — **계속 자라면 실제로 안 나가는 것이고,
+    0 근처를 오가면 큐는 흐르고 있으며 문제는 화면 쪽이다.** 그 한 수를 얻는 것이 이
+    라우트의 목적이다.
+
+    ⚠️ 큐가 비면 `oldest_waiting_seconds`는 **`null`**이지 `0`이 아니다. `0`은
+    「방금 들어온 것이 있다」이고 `null`은 「기다리는 것이 없다」다 — 화면에서 두 상태가
+    같은 픽셀이 되면 이 계측기는 자기가 없애려는 그 모호함을 재생산한다.
+
+    [왜 이 세 수인가 — 비용을 «먼저» 재고 골랐다]
+    `EXPLAIN`(실행 없이, 2026-09-03)으로 후보 다섯을 재서 **인덱스로 답하는 것만** 남겼다.
+    셋 다 `idx_outbox_unprocessed`(부분 인덱스, `WHERE processed_chain = false`)를 타고
+    계획 비용이 6 근처다. 브리핑이 함께 요청한 두 수는 여기 **없다**:
+
+        retry_count > 0  (표 전체)          Seq Scan, 비용 272,812
+        processed_at >= now() - interval    Seq Scan, 비용 272,817
+
+    두 칸에는 인덱스가 없고, 이 저장소는 **안 읽히는 인덱스를 걷어내는 중**이라
+    (`retire_unread_framework_indexes.py`) 진단 패널 하나 때문에 색인을 더하면 모든
+    insert 가 그 값을 물게 된다. 그래서 더하지 않고 **비운 채 보고**했다.
+
+    `retried_among_waiting`은 「재시도된 것이 있나」의 **싼 절반**이다. 표 전체가 아니라
+    **아직 기다리는 행 중** 재시도된 수이므로, 이름이 그 좁힘을 말한다. 지나간 재시도는
+    세지 않는다.
+    """
+    from sqlalchemy import func as _f
+
+    outbox = models.DatabaseOutbox
+    waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
+
+    waiting = db.query(_f.count()).select_from(outbox).filter(waiting_only).scalar()
+    retried = (db.query(_f.count()).select_from(outbox)
+               .filter(waiting_only, outbox.retry_count > 0).scalar())
+
+    # 🔴 가장 오래된 대기 행은 `MIN(created_at)`이 아니라 **`id` 오름차순의 첫 행**으로
+    # 찾는다. 부분 인덱스가 `(processed_chain, id)`라 그 순서는 인덱스가 이미 들고 있고,
+    # `created_at`은 색인돼 있지 않아 `MIN`을 물으면 같은 행을 찾으려고 전수를 훑는다.
+    # `id`는 단조이므로 두 질문의 답은 같은 행이다.
+    oldest = (db.query(outbox.created_at).filter(waiting_only)
+              .order_by(outbox.id.asc()).limit(1).scalar())
+
+    oldest_seconds = None
+    if oldest is not None:
+        # 🔴 시각은 «UTC 로» 뺀다. 이 컬럼은 PostgreSQL 에서 `timestamptz` 라 tz 를 달고
+        # 오지만, SQLite(시험 dialect)는 tz 를 버리고 «naive» 로 돌려준다. 그때 로컬
+        # `now()` 에서 빼면 시차만큼(이 워크스테이션은 9시간) 나이가 «부풀고», 큐가
+        # 비었는데도 「9시간 밀렸다」고 보고한다 — 계측기가 지어낸 장애다.
+        # naive 를 UTC 로 읽는 것이 맞는 이유: 두 dialect 다 이 컬럼에 UTC 를 넣는다
+        # (`server_default=func.now()` 가 SQLite 에서는 `CURRENT_TIMESTAMP` = UTC).
+        stamped = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
+        oldest_seconds = max(0.0, (datetime.now(timezone.utc) - stamped).total_seconds())
+
+    return {
+        "waiting": int(waiting or 0),
+        "oldest_waiting_seconds": oldest_seconds,
+        "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
+        "retried_among_waiting": int(retried or 0),
+        # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
+        # 그 오독이 바로 이 라우트가 없애려는 부류다.
+        "not_measured": {
+            "retried_total": "retry_count 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,812)",
+            "processed_recently": "processed_at 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,817)",
+        },
+    }
+
 
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
