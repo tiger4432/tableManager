@@ -2048,3 +2048,107 @@ tests/test_virtual_join_types.py:81~84
 서버 재기동 «불필요» — 이 커밋은 시험 docstring 뿐입니다
 큐에 남는 것   「ref 모델이 메타데이터 컬럼을 받아야 하나」 (형제 일곱이 걸려 있습니다)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 확인 라운드 — **반증 못 했습니다. 총괄 실측이 맞습니다.** 그리고 빨강은 «7+1»이고 그 7이 «4+3»입니다 (구현자, 2026-09-03)
+
+커밋 `9e5063df`. 파일 «하나»: `server/tests/test_virtual_join_types.py` — **주석만. 코드 0줄.**
+시험 수 «전/후 동일»: 세 파일 «10 failed / 36 passed».
+
+## ① 반증 시도 — «실패했습니다». 실제 빌더에 먹여 봤습니다
+읽지 않고 «돌렸습니다». `init_dynamic_models` 에 config 를 주고 나온 컬럼을 봤습니다:
+```
+새 표 probe_new_tbl 의 column_types = {k:string, flag:«boolean», n:number,
+                                      t:datetime, plain:string, weird:«Boolean»}
+나온 것   row_id String · business_key_val String · created_at DateTime · updated_at DateTime
+         k String · flag «String» · n Float · t DateTime · plain String · weird «String»
+Boolean 컬럼      «NONE»
+셋(is_graph_synced·needs_graph_rollback·graph_synced_at)   «NONE»
+```
+🔴 **`"boolean"` 은 선언 가능한 타입이 «아닙니다».** `"number"`->Float · `"datetime"`->DateTime ·
+**그 밖 전부 String** 이고, 대소문자도 안 봐 줍니다(`"Boolean"` 도 String).
+=> **새로 만드는 표에 Boolean 이 붙는 다른 경로는 «없습니다».** 총괄 실측 그대로입니다.
+
+## 🔴 다만 «능력이 사라진 곳»은 새 표뿐입니다 — 한 줄 보태 드립니다
+`models.py` 주석이 「EXISTING TABLES KEEP THEIR COLUMNS」이라 적어 뒀고, 그 «코드 사실»을
+이 박스에서 확인했습니다 (⚠️ 이 수는 이 박스 것입니다 — 코드 문장의 «방증»으로만 씁니다):
+```
+information_schema   선언된 44개 표 «전부»가 셋을 아직 들고 있습니다
+sql 타입             is_graph_synced «boolean» · needs_graph_rollback «boolean»
+                    graph_synced_at timestamptz
+```
+=> 참인 문장은 **「2026-08-31 «이전»에 만들어진 표에서는 닿고, «이후»에 만든 표에서는 안 닿는다」**
+   이고, 그 컬럼들을 «지우는 날» 아무 데서도 안 닿게 됩니다 (models.py 가 「별도 판정」이라 적어 둔 그것).
+
+## ② 빨강은 «8» 이고 «한 원인»이 아닙니다 — 7 + 1, 그리고 그 7 이 «4 + 3»
+판별식으로 갈랐습니다 — 픽스처의 `expose` 에서 `needs_graph_rollback` 만 «빼고» 돌려 봤습니다
+(측정용이고 «커밋 안 했습니다»):
+```
+전체        8 failed / 7 passed
+그 한 줄 빼면 5 failed / 10 passed      -> «셋»이 초록으로 돌아옵니다
+```
+### 부류 A — 2026-08-31 은퇴 (총괄이 지목한 원인) : «7»
+```
+A-1 «직접» — Boolean 자체가 주어인 시험 : «4»
+    expose_type_universe_is_exactly_what_this_file_covers      (Boolean 이 목록에 있다고 단언)
+    a_boolean_expose_column_does_not_claim_a_value_it_does_not_have
+    the_boolean_render_twin_spells_it_the_way_sql_does
+    a_boolean_filter_value_arriving_as_a_bool_is_bridged
+A-2 «부수» — 다른 컬럼을 단언하는데 같이 죽은 것 : «3»
+    the_grid_and_the_search_spell_a_timestamp_the_same_way     (event_at)
+    export_carries_the_temporal_virtual_column_in_the_pinned_spelling  (event_at)
+    a_collide_temporal_column_diverges_on_left_owned_cells_exactly_here (stamp_at)
+    -> 이 셋이 위 측정에서 «초록으로 돌아온 셋»입니다
+```
+### 부류 B — 2026-09-02 제 주입 제거 : «1»
+```
+a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+   expose 를 빼도 «그대로 빨강»입니다 — 이 시험이 단언하는 것은 «주입된 셀»이지 조인이 아닙니다
+   (어제 판정하신 「알려진 빨강」 그것입니다)
+```
+
+## 🔴 그리고 A-2 가 «새 발견»입니다 — 「한 컬럼이 못 서면 «전부» 빠진다」
+```
+main.py:918~922   virtual_join_executor.attach(...) 가 «통째로» try/except 안입니다
+                  -> expose 한 줄이 못 서면 그 표의 «모든» 조인 컬럼이 그 요청에서 빠집니다
+                  로그는 "columns omitted" 하나. 응답에는 «오류 표시가 없습니다»
+그 자리 주석      「A failure here must not take the grid down. The safe direction is the
+                  ABSENT column」 — «의도된» 설계입니다
+```
+⚠️ 의도가 「그리드를 안 죽인다」인 것은 맞는데, **반경이 「그 컬럼」이 아니라 「그 표의 조인 전부」**
+입니다. 시험 셋이 그 반경을 그대로 보여 줬습니다. 고치지 «않았습니다» — 이번 라운드 밖이고,
+좁히는 것이 옳은지(컬럼 단위 격리)는 판정이 필요합니다. 올려 두십니다.
+
+## ③ 주석 — «셋»을 고쳤습니다. 하나가 아니라
+지시는 :81~84 였는데, **같은 거짓 문장이 «세 군데»에 있었습니다.** 낱개로 고치면 옆에 둘이 남습니다:
+```
+① 파일 docstring (:12~19)   「an ordinary declaration 으로 Boolean expose 가 나온다」
+② 픽스처 주석 (:81~84)      지시하신 그 자리
+③ 어제 제가 단 「알려진 빨강」 주석   «ref 질문»을 열린 질문으로 적어 뒀습니다
+                                -> 오늘 «틀린 질문»으로 판정났으므로 그대로 두면
+                                   다음 사람을 죽은 길로 보냅니다. 같이 고쳤습니다
+```
+고친 문장의 요지: 「빌더가 이름을 건너뛰는 것은 여전하나, **이 픽스처는 표를 새로 만들므로**
+그 컬럼을 못 받고, `"boolean"` 은 선언 가능한 타입이 아니라 다른 길도 없다. 그래서 이 파일의
+Boolean 갈래에는 «주어가 없다». 남겨 두는 이유는 그 빨강이 «능력이 제거됐다는 정확한 보고»이기
+때문이다 — 초록으로 만들면 그것을 가린다.」
+
+## ⛔ 안 한 것 (지시대로)
+```
+⛔ 초록으로 안 만들었습니다 · xfail 안 붙였습니다
+⛔ "boolean" 을 선언 가능한 타입으로 «추가 안 했습니다»
+⛔ 44개 표 컬럼 «안 건드렸습니다»
+⛔ attach 의 all-or-nothing 도 «안 건드렸습니다» (위 A-2, 판정 요청만)
+```
+
+## 곁가지 하나
+`models.py:840` 이 `Boolean` 을 import 하는데 그 함수 안에서 **더는 안 씁니다** (은퇴의 잔재).
+지우면 한 줄이지만 지시 밖이라 손대지 않았습니다.
+
+## 남은 것
+```
+서버 재기동 «불필요» — 주석뿐입니다. 9e5063df 푸시했습니다
+판정 요청   ① attach 의 실패 반경을 «컬럼 단위»로 좁힐지 (A-2 의 셋이 그 증거입니다)
+           ② models.py:840 의 죽은 import
+```
