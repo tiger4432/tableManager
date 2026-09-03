@@ -1,3 +1,177 @@
+# [디자인 -> 총괄] 🔴 「빚 다섯」 B 부류 셋 — **진단만. 코드 변경 0.** 셋이 «서로 다른 병»입니다 (2026-09-03)
+
+수는 그대로입니다: `alignment_verdict 163/6` · `valid_die_authoring 100/1` ·
+`valid_die_frame_adoption 228/41`. 진단은 코드를 바꾸지 않았습니다.
+
+---
+
+## ① `valid_die_authoring` 100/1 — 앵커 «한 줄»이 아닙니다. 단언이 «텍스트로 동작을 재고» 있습니다
+
+죽는 단언 하나(`valid_die_authoring_harness.mjs:592`):
+```js
+resolveSrc.indexOf('validDieChainError') < resolveSrc.indexOf('projectCellsToPhys')
+```
+`resolveValidDie` 슬라이스(22,253자) 안에서 «전수»로 셌습니다:
+```
+validDieChainError    적중 1  @9836   const chain = validDieChainError(ref, refMeta, {...})
+projectCellsToPhys    적중 7  @8591 12670 13393 13934 14559 14994  <- 여섯 «전부 주석»
+                             @15063  const rawKeys = [...projectCellsToPhys(cells, refFrame).keys()];  <- 유일한 호출
+=> 9836 < 15063 이므로 «코드 순서는 옳습니다». 9836 > 8591 이라서 단언이 빨갛습니다
+```
+🔴 **그래서 앵커를 「선언/호출 자리」로 옮기는 한 줄은 «이 빨강»만 끕니다.**
+일곱 중 «여섯»이 주석이고, 그 여섯은 이 함수가 지난 라운드마다 남긴 판정 기록입니다.
+다음 라운드가 주석을 하나 더 쓰면 앵커는 다시 틀립니다 — 고쳐도 «같은 병»이 남습니다.
+
+**이건 「텍스트가 대리인」 부류입니다** (CLAUDE.md 판별식). 재려는 것은 「체인 검사가 셀을
+믿기 «전»에 돈다」는 **동작**이고, 텍스트 순서는 그 대리일 뿐입니다.
+```
+부류를 없애는 수리   projectCellsToPhys 를 스텁으로 두고, 체인 오류가 나는 ref 로
+                   resolveValidDie 를 «돌린 뒤», 그 스텁이 «안 불렸음»을 단언한다
+                   -> 주석이 아무리 늘어도 안 움직입니다
+```
+⛔ 이번 라운드에 «안 했습니다» — 진단만 하라 하셨고, 이건 수정입니다.
+
+---
+
+## ② `alignment_verdict` 163/6 — **여섯이 «한 원인»이 아닙니다. 둘입니다**
+
+### 원인 A (6 중 5) — 후보의 «둘째 축»이 좌석기에 «닿지 않습니다»
+
+2026-08-08 에 `side: back` 이 후보 집합을 떠나고 **훑기 시작 모서리**가 그 자리를 받았습니다
+(`client2/src/map2/candidates.js` 헤더). 그런데 —
+```
+candidateList()      -> {id, rotation, side:'front', start:'top_left'|'top_right'}   ✅ start 있음
+candidateFrames()    -> frame = {...base, rotation, side}                            🔴 start «안 실림»
+flatFrame()          -> 일곱 축만 복사 (cols rows startX startY rotation side invertY) 🔴 start «없음»
+```
+실측(`candidateFrames` 를 직접 호출):
+```
+후보 8개 -> «서로 다른 프레임 4개». rot0_tl 과 rot0_tr 이 «완전히 같은 프레임»입니다
+```
+그 결과가 실패 다섯 그대로입니다 (씨앗 `core_defect_map LOT-A/05`):
+```
+top rot180_tl · 준우승 rot180_tr · «margin 0 dies»     <- 쌍둥이라 «정의상» 동점
+truth rot90_tr 416  <  declared rot0_tl 438            <- 진실이 선언보다 «낮게» 나옵니다
+verdict = indistinguishable · blind 7
+```
+🔴 **서버는 이 병을 «이미 맞았고 고쳤습니다».** `server/map_alignment.py:1085 first_die_of` —
+그 독스트링에 2026-08-08 라이브 실측이 그대로 있습니다:
+> 「`rot0_tl`과 `rot0_tr`이 **시프트도 배치도 완전히 같았다**」
+> 「보행 순서만 바꾸고 기준점을 안 바꾸면 두 후보는 **정의상 쌍둥이**이고, 판정은 동점이 된다」
+
+클라 오라클에는 그 기준점이 «없습니다» — `anchor|first_die|serpentine|left_to_right` 로 훑어
+`alignment_scoring_oracle.mjs` · `seating.js` 의 «채점 경로» · `candidates.js` 에서 적중 0.
+(`seating.js` 의 anchor 언급은 «서버가 보낸 placement 를 그리는» 별개 함수입니다.)
+
+⚠️ **그래서 KNOWN_RED 의 처방이 뒤집힙니다.** 거기엔 「은퇴한 front/back 후보 공간을 단언한다
+… 오라클/픽스처를 다시 써라」로 적혀 있는데, 실측은 반대입니다 —
+**픽스처가 «현행»입니다**(`truth=rot90_tr` 는 시작 모서리 이름입니다). 낡은 것은 «오라클의 변환»입니다.
+
+**곁가지 하나 (지금은 아무것도 안 깨지만, 닿게 되는 날 조용히 틀립니다):**
+```
+storedCandidateId(frame)  ->  «rot0_undefined»
+   candidateId(rotation, side) 로 부르는데 둘째 인자는 «시작 모서리»여야 합니다
+   START_TOKEN['front'] === undefined  ->  어떤 후보 id 와도 «영원히» 안 맞습니다
+```
+
+### 원인 B (6 중 1) — `grid_y_invert` 를 «안 찾아도 되는 근거»가 거울과 함께 사라졌습니다
+```
+실패   「8개 후보가 16 튜플을 전부 실현한다(평행이동 무시)」: got 8, want 16
+못 덮은 8   rot{0,90,180,270}_front_inv«true» + rot{0,90,180,270}_back_inv«false»
+           = Y 반전 «한 패리티 계급» 통째로
+```
+후보가 전부 `front` 가 되면서 8개가 «한 패리티»에만 삽니다. 거울이 있던 시절에는
+front 후보가 (front,invF)+(back,invT) 를, back 후보가 나머지 둘을 덮어 16이 됐습니다.
+
+🔴 그런데 오라클의 C1 주석은 **그 측정을 「축을 안 찾아도 되는 «면허»」로 지금도 적어 두고**
+있습니다 — 「Both halves are load-bearing. Neither alone licenses dropping the axis」.
+**주석이 주장하는 면허를 측정이 회수했습니다.** 이건 픽스처를 고칠 일이 아니라 «다시 판정»할 일입니다.
+
+---
+
+## ③ `valid_die_frame_adoption` 228/41 — **41은 «세 무리»이고, 셋 다 다른 결정이 필요합니다**
+
+### 먼저 «누가 썼는지»를 추적했습니다 (프레임 컨트롤에 setter 덫 · 임시 사본 · 지웠습니다)
+```
+resolveValidDie -> set() -> applyPresetObject      physChipX 7->11 · physChipY 7->13 · offset 0->11/13
+                         -> applyPhysicalGeometry  gridCols 45->29 · gridRows 45->25
+```
+즉 **제품이 «제 소스가 소리내어 적어 둔 대로» 하고 있습니다** (`map_editor.js:9011`):
+「[규칙 ①-b] 격자는 유효 다이 맵 기하에 맞게 변경 — 참조가 «선언한» 수를 베끼는 것이 아니라
+규격이 «낳는» 수다」. 같은 주석이 거절당한 `94b9baa`(선언 치수를 베끼고 셀은 칸에 둠)를
+이름으로 구분해 둡니다.
+
+### 41의 분류 — 12 · 13 · 16 (합 41)
+```
+G1  12개  「프레임이 안 움직인다」    frame-untouched · physical-spec-NOT-adopted ·
+                                  grid-NOT-opened-at-reference-size · screen-position-NOT-re-derived
+          -> «폐기된 절반»을 재고 있습니다. 은퇴 후보. 다만 G2 가 먼저입니다
+G2  13개  「좌표가 안 움직인다」      stored-coordinates-preserved · nothing-became-unaddressable ·
+                                  target-index-space-unmoved · alarm-tracks-the-actual-misalignment
+          -> 이건 «아직 사는» 절반입니다 (da8f390 규칙 ④: 셀은 자기 좌표를 붙든다)
+G3  16개  「알림 문구」              notice-says-nothing-changed · alarm-fired-exactly-once ·
+                                  alarm-names-both-origins · MEDIUM-1(토스트 1 기대, 3 나옴)
+          -> 주어가 「아무것도 안 바뀌었다」인 문장입니다. G1/G2 가 정해지기 «전»에는 못 정합니다
+```
+
+### 🔴 G2 가 이 라운드의 «진짜 발견»입니다 — 좌표가 «균일하게» 옮겨갔습니다
+씨앗 A 에서 칠한 290칸을 지정 전/후로 전수 대조:
+```
+지정 전   주소 있는 좌표 290   x -2..42 · y -2..42
+지정 후   주소 있는 좌표  66   x -1..27 · y  6..21
+          새 프레임이 «주소를 못 내는» 것 224
+겹침 0. 그리고 66 «전부»가 이전 좌표를 «정확히 (0,+8)» 옮긴 것입니다
+   (0,+8) -> 66/66 일치 · (0,-8)·(8,0)·(0,0) -> 각 0)
+```
+🔴 **균일 평행이동은 «원점이 움직인» 지문이지 재배치가 «흐트러진» 지문이 아닙니다.**
+읽는 법이 둘이고, 판정 없이는 제가 못 고릅니다:
+```
+ⓐ 옳다   원점 상자가 «원»에서 «마스크»로 정당하게 옮겨간 것이다 (da8f390 규칙 ③).
+        그러면 저장 좌표가 다시 매겨지는 것이 «맞고», F8 의 「좌표 불변」은 그 규칙보다
+        먼저 쓰인 문장이라 지금은 틀린 것이다  -> G2 는 G1 과 «함께 은퇴»
+ⓑ 결함   셀은 자기 좌표를 붙들어야 했고, +8 이 «못 붙든 양»이다
+        -> 지정 경로의 «살아 있는 좌표 밀림»이고, 하니스 라운드보다 큽니다
+```
+⚠️ 그리고 음성 대조가 이미 한마디 합니다: `O/aligned` 는 **0을 기대했는데 58** 입니다 —
+「정렬된 참조는 어느 프레임으로 읽어도 «같아야» 한다」는 자리입니다. ⓐ 로 읽어도 이 58은 남습니다.
+
+### 곁가지 둘 (남이 같은 자리를 다시 쫓지 않도록)
+```
+O/specimen/frame-untouched   기대 ["23","23","-4","-3"] · 실측 ["29","25","-4","-3"]
+   -> 치수는 움직였고 «startX/startY 는 안 움직였습니다». 제품의 「start 는 에디터가 안 쓴다」는 «살아 있습니다»
+applyGridMetaObject (map_editor.js:8236)   호출자 «0»
+   -> F8 이 금지하는 프레임 칸들을 정확히 쓰는 함수인데 «닿는 길이 없습니다». 이 경로가 아닙니다
+```
+
+### ⚠️ 유보 하나 — 이 하니스는 «잘라쓰기» 하니스입니다
+G1 은 «제품 소스 주석»이 받쳐 주고, 위 추적은 «제품 함수들의 스택»이라 경로가 실제로 돌았습니다.
+G2 의 수도 제품의 `getDieIndex`/`getDbCoords` 를 부른 것입니다. 그래도 **G2 가 「결함」으로
+승격되면 «import 하니스로 다시 재고» 나서 손대야 합니다** — 이번 라운드에 전환은 안 했습니다
+(부채 목록의 전환은 지시에 없었습니다).
+
+---
+
+## 게이트 — 진단은 아무것도 안 바꿨습니다
+```
+64 하니스 · 60 gated «전부 초록» · 부채 4 · 건너뜀 1 (reposition_regime_probe)
+alignment_verdict 163/6 · valid_die_authoring 100/1 · valid_die_frame_adoption 228/41  (전부 «전과 같음»)
+임시 진단 사본 client2/tests/__diag_frame_adoption.mjs 은 만들어 쓰고 «지웠습니다». 커밋 0
+```
+
+## 🔴 올립니다 — 판정 필요한 것 «하나»
+> **지정(designation) 이후의 저장 좌표는 «원의 상자»가 아니라 «마스크의 상자» 기준으로
+> 다시 매겨져도 됩니까?**
+```
+예   -> G2 13개는 G1 12개와 «함께 은퇴». 224 unaddressable 은 «예상된 값»이 됩니다
+아니오 -> 지정 경로의 좌표 밀림이고, 이건 «별도 라운드»입니다 (총괄이 예고하신 그것)
+```
+①과 ②는 판정 없이도 갑니다 — ①은 「동작으로 재는 단언」으로 바꾸는 일, ②는 「오라클에
+기준점을 넣는 일 + `grid_y_invert` 면허 재판정」입니다. 지시 주시면 그 순서로 잡겠습니다.
+
+다음은 지시 순서대로 **`split_registry` ⓐ 실행**으로 갑니다.
+
+---
+
 # [디자인 -> 총괄] 🔴 「빚 다섯」 A 부류 둘 — **전환이 수리가 «아닙니다».** 둘 다 다른 병입니다 (2026-09-03)
 
 지시대로 A 둘부터 잡았고, 착수 전에 «왜 죽는지»를 재 봤습니다. 결과가 판정과 다릅니다.
