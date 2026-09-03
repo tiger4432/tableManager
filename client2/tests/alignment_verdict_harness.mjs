@@ -107,7 +107,22 @@ function run(V, D, O) {
     const seated = seatViaLayer4(sampleCells, cand.frame);
     candImages.set(cand.id, seated);
   }
+  // 🔴 THIS COUNTS NAMES AND CANNOT FAIL. `candImages` is keyed by candidate id, so its size
+  //    is 8 whatever the frames underneath do. Kept because "eight are offered" is a real
+  //    property of the control, and followed by the one that can fail.
   eq('A: the oracle emits exactly 8 candidates', candImages.size, 8);
+  // ...and the eight are eight DIFFERENT SEATINGS. A candidate that seats identically to
+  // another is its TWIN, and twins make the margin 0 dies by construction -- the server met
+  // exactly this and named it (`map_alignment.py` `first_die_of`: 「보행 순서만 바꾸고 기준점을
+  // 안 바꾸면 두 후보는 정의상 쌍둥이이고, 판정은 동점이 된다」, live 2026-08-08).
+  //
+  // Measured 2026-09-03: `candidateFrames` copies only `rotation` and `side` into the frame,
+  // and `flatFrame` keeps seven axes of which `start` is not one -- so the walk start corner
+  // that REPLACED the mirror on 2026-08-08 never reaches the seater at all.
+  const distinctSeatings = new Set([...candImages.values()].map(img => JSON.stringify(img)));
+  eq('A: and the eight are eight DISTINCT seatings (a twin makes every margin 0 by '
+    + 'construction)', distinctSeatings.size, 8);
+  say(`A: 8 candidate ids -> ${distinctSeatings.size} distinct seatings`);
 
   let coveredExact = 0;
   let coveredModT = 0;

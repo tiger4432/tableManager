@@ -76,32 +76,70 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // printed 41. Whether a harness crashed or merely failed is machine-visible too (`ran > 0`),
 // so it does not belong here either. If you want to record how a figure moved, that is what
 // git and the round's report are for.
+// ── NOT HARNESSES ─────────────────────────────────────────────────────────────
+// Files under `tests/` that are DIAGNOSTIC TOOLS, not gated checks. They are skipped, and
+// the reason is written here rather than left as a permanent red.
+//
+// 🔴 WHY NOT `KNOWN_RED`. An entry there means "red today, green one day" — it is a DEBT,
+//    and something on it is expected to be repaid. A tool that reads `process.argv` and is
+//    run by a person will never go green under a runner that passes no arguments, so
+//    parking it in the debt list makes the debt list a lie: the count says five are owed
+//    when one of them can never be paid.
+//
+// Measured 2026-09-03: `reposition_regime_probe.mjs:94-95` reads `process.argv[2]` and
+// `[3]` as JSON file paths. The runner spawns with no arguments, so it dies in
+// `readFileSync(undefined)` before reaching anything. Its own KNOWN_RED note already said
+// "asserts nothing by design; see its ASSERTIONS 0 0" — the note described a tool while
+// the list it sat in described a test.
+const NOT_A_HARNESS = new Map([
+  ['reposition_regime_probe.mjs',
+    'a manual diagnostic: it takes two JSON file paths on argv (cells, frames) and PRINTS '
+    + 'the regime table. It asserts nothing, so there is no verdict for a runner to collect. '
+    + 'Run it by hand: node client2/tests/reposition_regime_probe.mjs <cells.json> <frames.json>'],
+]);
+
 const KNOWN_RED = new Map([
-  ['alignment_verdict_harness.mjs', { ran: 163, failed: 6,
-    // This harness's six assertions share three scope prefixes (A/C/D0), so the runner's
-    // deliberately de-duplicated failure-name parser cannot member-pin them one by one.
-    namesUnavailable: 'six legacy front/back assertions collapse to three scope labels (A/C/D0)',
-    why: 'Lead PM accepted 2026-08-09: the harness asserts the retired front/back candidate '
-       + 'space (including an 8-of-16 mirror/invert equivalence). The product now scores '
-       + 'front rot*_tl/tr start corners; rewrite the oracle/fixtures before re-gating.' }],
+  ['alignment_verdict_harness.mjs', { ran: 164, failed: 7,
+    // These assertions share three scope prefixes (A/C/D0), so the runner's deliberately
+    // de-duplicated failure-name parser cannot member-pin them one by one.
+    namesUnavailable: 'the failures collapse to three scope labels (A/C/D0)',
+    why: 'MEASURED 2026-09-03, and the 2026-08-09 prescription ("rewrite the oracle/fixtures") '
+       + 'is backwards: the fixtures are CURRENT and the oracle is one repair behind. Two facts. '
+       + '(1) `candidateFrames` copies only rotation and side into the frame and `flatFrame` '
+       + 'keeps seven axes without `start`, so the walk start corner that replaced the mirror on '
+       + '2026-08-08 never reaches the seater -- 8 candidate ids produce 4 distinct seatings, '
+       + 'every candidate ties its twin, and the margin is 0 dies by construction. The server hit '
+       + 'this and repaired it (`map_alignment.py` `first_die_of`). (2) 5 of the 7 are ONE '
+       + 'fixture, `core_defect_map LOT-A/05`, whose targetMetaTruth is rotation 270 / side back '
+       + '/ invert false -- which the harness\'s own alias16 measurement lists among the 8 '
+       + 'tuples NO candidate covers. Its recorded truth `rot90_tr` therefore names a candidate '
+       + 'that cannot reproduce it, and repairing (1) does NOT turn those 5 green: a start corner '
+       + 'moves an anchor (and on the server only in index mode), it is not a mirror. Open ruling '
+       + 'with the Lead: either the candidate space regains a way to express a mirrored frame, or '
+       + 'that fixture states an unreachable truth and its assertions retire.' }],
+  // 163/6 -> 164/7 (2026-09-03). The added assertion is the one that names cause (1) out loud:
+  // `A: the oracle emits exactly 8 candidates` counts NAMES (a Map keyed by candidate id, so its
+  // size is 8 whatever the frames do) and could never fail. The new one counts distinct SEATINGS
+  // and reports 4. It is red on purpose -- it states a defect rather than hiding one.
   // `map_editor2_shell_harness.mjs`, `map_editor2_question_harness.mjs` and
   // `map2_placement_seat_harness.mjs` were here with `ran: 0` from 2026-08-09 to 2026-08-11.
   // Their fixtures were rewritten for the walk-start candidate space and they are back on the
   // gate with floors of their own -- see FLOORS below, which carries what moved and why.
-  ['reposition_regime_probe.mjs',{ ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
-    why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
-  ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
-    why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
-  ['valid_die_authoring_harness.mjs', { ran: 100, failed: 1,
-    failures: [
-      "[INV-6] resolveValidDie runs the chain check before projecting the cells",
-    ],
-    why: 'ATTRIBUTED 2026-08-04 ― this is a HARNESS defect, not a code defect. The slicer '
-       + 'matches `projectCellsToPhys` where it first appears in the file, which is inside a '
-       + 'COMMENT at offset 8297, ahead of the chain guard\'s real call at 9564. The code '
-       + 'order is correct. Same first-match trap the overlay round hit from the other side '
-       + '(a mutation string that is not unique lands on the wrong function). Fix belongs '
-       + 'with the slicer, not with map_editor.js' }],
+  // `split_registry_harness.mjs` was here from 2026-07-30 to 2026-09-03 with `ran: 0`, and the
+  // recorded reason -- "symbols it slices were renamed" -- was only half of it. It sliced
+  // FOURTEEN names out of map_editor.js as text. Nine moved or stayed; FIVE were DELETED FROM
+  // THE PRODUCT (DEFAULT_LEGEND, loadLegendFromStorage, fetchLegendFromServer, loadLegend,
+  // maybeOfferLegendMigration), so no re-pointing could have revived those assertions. Retired
+  // with an ABSENCE CHECK in their place, re-aimed on the nine that live, and converted to
+  // import. 0 -> 34/0; see FLOORS below.
+  // `valid_die_authoring_harness.mjs` was here from 2026-08-04 to 2026-09-03 at 100/1. The
+  // attribution was right (a harness defect, not a code defect) and the prescription was not:
+  // it read "fix belongs with the slicer". Re-pointing the anchor would have put the red out
+  // and left the disease in -- `projectCellsToPhys` appears SEVEN times inside the
+  // `resolveValidDie` slice and SIX of them are comments, so any first/last-match anchor is one
+  // comment away from being wrong again. The assertion was scoring a RUN order through a TEXT
+  // proxy. It now runs the function (probe, [INV-6 §reach]) and the harness is green at
+  // 103/0 with its 19 mutants still caught -- see FLOORS below.
   ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 41,
     failures: [
       "F6/A(stored==derived)/F8/domain-is-not-empty",
@@ -211,6 +249,14 @@ const FLOORS = new Map([
   //    the numbers were dismissed. Run it by hand: `node tests/alignment_verdict_harness.mjs`.
   // ['alignment_verdict_harness.mjs', 163],
   ['availability_gross_marker_harness.mjs', 48],
+  // NEW 2026-09-03 with the chain-queue instrument. The count is the one it reports on the
+  // commit that introduces it -- there is no earlier tree to measure it against.
+  // Most of it is one property: an EMPTY queue (`oldest_waiting_seconds: null`) and a queue
+  // that just received something (`0`) must not render the same. The assertions compare the
+  // two states AGAINST EACH OTHER rather than against fixed strings, so a copy edit cannot
+  // redden them and cannot silently collapse them either. A drop here means the instrument
+  // regained the ambiguity it was built to remove.
+  ['chain_queue_panel_harness.mjs', 38],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
@@ -940,6 +986,12 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 34],
   ['retroactive_view_harness.mjs', 263],
+  // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
+  // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
+  // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of
+  // those six is its own control: a name that DOES live must be found by the same scan, or a
+  // stripper that emptied every file would make the other five pass silently.
+  ['split_registry_harness.mjs', 34],
   ['standard_frame_origin_harness.mjs', 19],
   // New 2026-08-04 with the startup-gate round (the page ran a whole session with no WebSocket
   // and no retry, because `initWebSocket()` was the last statement of `init()` behind two
@@ -964,6 +1016,14 @@ const FLOORS = new Map([
   // be reset until a map carrying its OWN declaration is loaded, and the clear that survived
   // three repair rounds arrives through `resolveValidDie`, not from `loadExistingMap` — so K
   // runs the REAL resolver and scores all three clear sites, one mutant each.
+  // 100 -> 103 (2026-09-03) and OFF the debt list. The one text-order assertion became four
+  // that RUN `resolveValidDie` through the probe: a chained reference is refused and the cells
+  // are never projected, plus the negative control -- with the chain removed the reference is
+  // accepted and the projection DOES run, so the zero is a refusal rather than a path nobody
+  // walks. Those four are scored once, outside the mutant loop: the mutants edit a slice and
+  // the probe imports the real file, so counting them there would score "caught" for a reason
+  // unrelated to the defect.
+  ['valid_die_authoring_harness.mjs', 103],
   ['valid_die_dirty_guard_harness.mjs', 95],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
@@ -1100,7 +1160,20 @@ if (!existsSync(TESTS_DIR)) {
 const harnesses = readdirSync(TESTS_DIR, { withFileTypes: true })
   .filter(d => d.isFile() && d.name.endsWith('.mjs'))
   .map(d => d.name)
+  .filter(n => !NOT_A_HARNESS.has(n))
   .sort((a, b) => a.localeCompare(b));
+
+// Named out loud on every run. A file that is skipped silently is a file nobody remembers
+// exists, and the next person to read `tests/` cannot tell "deliberately not gated" from
+// "forgotten".
+for (const [name, why] of NOT_A_HARNESS) {
+  if (!existsSync(path.join(TESTS_DIR, name))) {
+    fail(`\`NOT_A_HARNESS\` names \`${name}\`, which is not in \`client2/tests/\`. `
+      + 'Either it was deleted and this entry should go with it, or it was renamed and the '
+      + 'entry now skips nothing.');
+  }
+  console.log(`  · skipped (not a harness) ${name} — ${why}`);
+}
 
 if (harnesses.length === 0) {
   fail(`\`client2/tests/\` holds no \`*.mjs\`. Either every harness was deleted or the layout `

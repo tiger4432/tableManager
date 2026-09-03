@@ -1,10 +1,17 @@
 // M4 phase 2 - valid-die map AUTHORING. INV-1 .. INV-7.
 // Run: node client2/tests/valid_die_authoring_harness.mjs [--json] [--mutate]
 //
-// Same technique as map_key_canonical_harness.mjs / push_gate_harness.mjs: map_editor.js
-// imports ./config.js which touches window at module scope, so it cannot be imported in
-// node. The functions under test stay module-private; their declarations are sliced out of
-// the SOURCE TEXT and evaluated in a vm sandbox with stubs for the module state they read.
+// The functions under test stay module-private; their declarations are sliced out of the
+// SOURCE TEXT and evaluated in a vm sandbox with stubs for the module state they read.
+//
+// 🔴 THAT IS A DEBT, NOT A DESIGN. The reason recorded here used to read "map_editor.js
+//    imports ./config.js which touches window at module scope, so it cannot be imported in
+//    node" -- and it stopped being true when config.js and the CSS import were repaired. The
+//    file imports cleanly today; this suite has simply not been converted yet (owner,
+//    2026-09-02: 잘라쓰기 하니스 절대 금지). The one assertion that could not be written
+//    against a slice at all already imports the module through the probe -- see
+//    [INV-6 §reach] at the foot. The two mechanisms sit side by side deliberately, and the
+//    discriminant is per ASSERTION, not per file.
 //
 // FAILS LOUDLY (exit 2) when a function cannot be extracted. A harness that goes green
 // because it stopped finding the code is worse than no harness - its green gets cited.
@@ -15,6 +22,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_MAP = join(HERE, '..', 'src', 'map_editor.js');
@@ -588,10 +596,16 @@ function runSuite(sb, st) {
   chk('INV-6', "'LOT_01' under slot:string is NOT the home identity -> perfectly legal",
     H.validDieChainError(canonRef({ lot: 'string', slot: 'string' }),
       { grid_cols: 6 }, HOME), null);
-  // and the check is reached BEFORE the cells are trusted
-  chk('INV-6', 'resolveValidDie runs the chain check before projecting the cells',
-    resolveSrc.indexOf('validDieChainError') > 0
-    && resolveSrc.indexOf('validDieChainError') < resolveSrc.indexOf('projectCellsToPhys'), true);
+  // and the check is reached BEFORE the cells are trusted -- scored at [INV-6 §reach], below.
+  //
+  // 🔴 IT WAS SCORED HERE, AS TEXT, AND IT WAS RED ON CORRECT CODE:
+  //        resolveSrc.indexOf('validDieChainError') < resolveSrc.indexOf('projectCellsToPhys')
+  //    Measured 2026-09-03: inside the `resolveValidDie` slice `projectCellsToPhys` appears
+  //    SEVEN times and six of them are comments, so `indexOf` landed on a comment at offset
+  //    8591 while the only call is at 15063 -- and the chain check, at 9836, does come first.
+  //    Re-pointing the anchor would have put the red out and left the disease in: the property
+  //    is a RUN order and text order is only its proxy, so the next comment that mentions
+  //    either name breaks it again. It is scored by running the function instead.
 
   // ════════════════════════════════════════════════════════════════════════════
   // INV-7  ONE canonicaliser. The designation path must not grow a second one.
@@ -632,6 +646,125 @@ sb.ctx.projectCellsToPhys = vm.runInContext('projectCellsToPhys', sb.ctx);
 if (!JSON_OUT) console.log('\n=== M4 phase 2 - valid-die authoring ===\n');
 const main = newRun();
 runSuite(sb, main);
+
+// ── [INV-6 §reach] the chain check is reached BEFORE the cells are projected ────────────
+//
+// Scored by RUNNING `resolveValidDie`, not by reading it. This is the one assertion in this
+// file that cannot be written against a slice: `resolveValidDie` is not in the sandbox (it
+// reaches the whole render stack), and what is being asserted is that something does NOT
+// happen -- which text can only ever approximate.
+//
+// The module is imported WHOLE (`lib/probe.mjs`; nothing is cut out) and two of its own
+// bindings are replaced: `projectCellsToPhys` by a recorder, and `resolveReferenceSpec` by a
+// stub that hands back a reference whose metadata either does or does not declare a valid-die
+// reference of its own. `validDieChainError` itself is NOT stubbed -- it is the guard under
+// test, and a harness that mocked it would be asserting that the guard exists.
+//
+// ⚠️ SCORED ONCE, OUTSIDE THE MUTANT LOOP. The mutants are text edits to a SLICE and the probe
+//    imports the real file, so no mutant can reach this pair; counting it in there would score
+//    "caught" for a reason that has nothing to do with the defect. The negative control is
+//    what proves the pair can fail: with the chain removed, the recorder MUST fire.
+{
+  const inputStub = (v) => ({ value: String(v), checked: false, querySelector: () => null,
+                              appendChild() {} });
+  // The browser surface `resolveValidDie` touches on the way through. Installed AFTER
+  // `runSuite` has finished so the vm sandbox above never sees any of it.
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+  };
+  globalThis.document = globalThis.document || {
+    getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
+    addEventListener() {}, removeEventListener() {},
+    documentElement: { style: { setProperty() {} } },
+    body: { appendChild() {}, classList: { add() {}, remove() {} } },
+    createElement: () => ({ style: {}, appendChild() {}, remove() {},
+                            classList: { add() {}, remove() {} } }),
+  };
+  globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((f) => f());
+  globalThis.getComputedStyle = globalThis.getComputedStyle || (() => ({ getPropertyValue: () => '' }));
+  // Two cells is enough: the assertion is about WHETHER the projection runs, not about what
+  // it produces.
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: [
+    { data: { x: { value: '1' }, y: { value: '1' } } },
+    { data: { x: { value: '2' }, y: { value: '2' } } },
+  ] }) });
+
+  const REF_FRAME = { cols: 6, rows: 6, startX: 1, startY: 1, invertY: false, rotation: 0,
+                      side: 'front', waferDia: DIA, chipX: CHIP_X, chipY: CHIP_Y,
+                      offsetX: 0, offsetY: 0, edgeMargin: EM };
+  let refMeta = { grid_cols: 6, grid_rows: 6 };
+  const projected = [];
+
+  const { probe } = await loadWithProbe(SRC_MAP, {
+    // `el` is EXPOSED, not staged: it is a `const` in the module, so the binding cannot be
+    // reassigned -- the object it already holds is filled instead (below).
+    expose: ['resolveValidDie', 'validDieBasis', 'el'],
+    state: ['currentRotation', 'currentSide', 'validDie', 'boundingBoxCache',
+            'projectCellsToPhys', 'resolveReferenceSpec'],
+    stubs: {
+      './config.js': { API_BASE: 'http://harness', CURRENT_USER: 'tester',
+                       MAP_SPEC_SAVE_TIMEOUT_MS: 1000 },
+      './utils.js': { showToast: () => {}, getLocalTimeString: () => '2026-09-03 00:00:00' },
+    },
+    tag: 'validdiereach',
+  });
+
+  // `el` is a `const` OBJECT in the module, so it is filled rather than replaced -- assigning
+  // to the binding throws, and a flat copy would leave the module reading its own empty one.
+  for (const k of Object.keys(probe.el)) delete probe.el[k];
+  Object.assign(probe.el, makeEl(), {
+    // The diameter control is a <select> carrying a "custom" option, so the preset path
+    // reaches into it; `makeEl`'s plain input stub has no `querySelector`, and the whole
+    // designation came back as an internal error because of that one missing method.
+    physWaferDia: { value: String(DIA), querySelector: () => ({}), appendChild() {} },
+    gridCanvas: { getBoundingClientRect: () => ({ width: 700, height: 700 }) },
+    waferCanvas: { width: 0, height: 0, getContext: () => new Proxy({}, {
+      get: (t, k) => (k in t ? t[k] : (t[k] = () => {})), set: (t, k, v) => (t[k] = v, true) }) },
+    showAnnotations: { checked: false },
+    validDieRefKey: inputStub(''), validDieRefTable: inputStub(''), validDieRefList: null,
+  });
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.validDie = null;
+  probe.boundingBoxCache = {};
+
+  const realProject = probe.projectCellsToPhys;
+  probe.projectCellsToPhys = (...a) => { projected.push(1); return realProject(...a); };
+  probe.resolveReferenceSpec = async () => ({
+    ok: true,
+    spec: { ok: true, keyColumns: ['map_id'], columnTypes: { map_id: 'string' } },
+    binding: { keyColumns: ['map_id'], x: 'x', y: 'y' },
+    refMeta,
+    refFrame: REF_FRAME,
+  });
+
+  const designate = async () => {
+    projected.length = 0;
+    probe.validDie = null;
+    probe.boundingBoxCache = {};
+    const out = await probe.resolveValidDie(
+      { valid_die_ref: { table: 'valid_die_ref', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
+    return { basis: probe.validDieBasis(out), projected: projected.length };
+  };
+
+  // The reference declares a valid-die map of its own -> a chain, which INV-6 refuses.
+  refMeta = { grid_cols: 6, grid_rows: 6, valid_die_ref: 'SECOND_LEVEL' };
+  const chained = await designate();
+  main.check('INV-6 §reach', 'a chained reference is refused when the function is RUN '
+    + '(not just when validDieChainError is called directly)', chained.basis, 'refused');
+  main.check('INV-6 §reach', 'and the cells are never projected — the chain check is reached '
+    + 'first', chained.projected, 0);
+
+  // NEGATIVE CONTROL. Same everything, chain removed. If this does not fire, the assertion
+  // above is vacuous: it would pass on a build where the projection never runs at all.
+  refMeta = { grid_cols: 6, grid_rows: 6 };
+  const clean = await designate();
+  main.check('INV-6 §reach', 'negative control: with no chain the reference IS accepted',
+    clean.basis, 'ref');
+  main.check('INV-6 §reach', 'negative control: and the cells ARE projected, so the zero above '
+    + 'is a refusal rather than a path nobody walks', clean.projected > 0, true);
+}
 
 // ── mutation check: put each defect BACK and require this suite to go red ────────
 const MUTATIONS = [
