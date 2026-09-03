@@ -249,6 +249,14 @@ const FLOORS = new Map([
   //    the numbers were dismissed. Run it by hand: `node tests/alignment_verdict_harness.mjs`.
   // ['alignment_verdict_harness.mjs', 163],
   ['availability_gross_marker_harness.mjs', 48],
+  // NEW 2026-09-03 with the chain-queue instrument. The count is the one it reports on the
+  // commit that introduces it -- there is no earlier tree to measure it against.
+  // Most of it is one property: an EMPTY queue (`oldest_waiting_seconds: null`) and a queue
+  // that just received something (`0`) must not render the same. The assertions compare the
+  // two states AGAINST EACH OTHER rather than against fixed strings, so a copy edit cannot
+  // redden them and cannot silently collapse them either. A drop here means the instrument
+  // regained the ambiguity it was built to remove.
+  ['chain_queue_panel_harness.mjs', 38],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],

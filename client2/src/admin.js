@@ -10,6 +10,9 @@ import { showToast } from './utils.js';
 import { ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER } from './admin_token.js';
 // Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
 import { queueQuery } from './enrichment_queue.js';
+// 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
+// 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
+import { ChainQueuePanel } from './chain_queue_panel.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -834,18 +837,30 @@ async function fetchData(options = {}) {
       renderWorkspaceTable();
       renderFileTable();
     } else if (tab === 'chain') {
-      const [obRes, rulesRes, mapRes] = await Promise.all([
+      // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
+      //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
+      const [obRes, rulesRes, mapRes, queueRes] = await Promise.all([
         adminFetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}`),
         adminFetch(`${API_BASE}/admin/chain/rules`),
-        adminFetch(`${API_BASE}/admin/mappers/list`)
+        adminFetch(`${API_BASE}/admin/mappers/list`),
+        adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null)
       ]);
       if (!obRes.ok || !rulesRes.ok || !mapRes.ok) throw new Error('API fetch failed');
       const [ob, rules, maps] = await Promise.all([obRes.json(), rulesRes.json(), mapRes.json()]);
+      // 🔴 못 읽은 이유를 «이름으로» 넘긴다. 404 는 「이 프로세스에 라우트가 없다」이고,
+      //    그것은 「대기가 없다」와 «완전히 다른» 사실이다.
+      let queueBody = null;
+      let queueOpts = {};
+      if (!queueRes) queueOpts = { unavailable: '대기열 조회에 실패했습니다 (네트워크). 수를 그리지 않습니다.' };
+      else if (queueRes.status === 404) queueOpts = { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404) — 재기동이 필요합니다.' };
+      else if (!queueRes.ok) queueOpts = { unavailable: `대기열 조회 실패 (HTTP ${queueRes.status}). 수를 그리지 않습니다.` };
+      else queueBody = await queueRes.json().catch(() => null);
       if (isStale()) return false;
       outboxData = ob.data || [];
       outboxTotal = ob.total || 0;
       chainData = rules.data || [];
       mapperData = maps.data || [];
+      renderChainQueue(queueBody, queueOpts);
       renderChainTable();
       renderOutboxTable();
       renderMapperTable();
@@ -896,6 +911,22 @@ async function fetchData(options = {}) {
 // ── Renderers ──────────────────────────────────────────────
 
 // Chain 탭 §오류: 실패 트랜잭션 목록 (Grouped by Transaction ID)
+// 한 번만 만들고 재사용한다. 패널이 자기 div 를 소유하므로 mount 를 비울 필요가 없다.
+let chainQueuePanel = null;
+function renderChainQueue(payload, opts) {
+  const mount = byId('chain-queue-mount');
+  if (!mount) return;
+  if (!chainQueuePanel) chainQueuePanel = new ChainQueuePanel(mount);
+  const view = chainQueuePanel.render(payload, opts);
+  const count = byId('chain-queue-count');
+  // 🔴 절 머리의 수는 «깊이»다. 못 읽었으면 «0 이 아니라» 대시다 — 없는 수가 0 으로 읽히는
+  //    것이 이 라우트가 없애려는 바로 그 오독이다.
+  if (count) {
+    const depth = view.available ? view.cards.find(c => c.key === 'waiting') : null;
+    count.textContent = depth ? depth.main : '—';
+  }
+}
+
 function renderOutboxTable() {
   outboxListBody.innerHTML = '';
   setSectionCount('chain-fail-count', outboxTotal, outboxTotal > 0 ? 'danger' : 'ok');

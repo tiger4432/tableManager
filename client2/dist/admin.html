@@ -176,6 +176,15 @@
       gap: 5px;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
+    .chain-queue-notmeasured {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
     .health-card:hover {
       transform: translateY(-1px);
       border-color: var(--accent);
@@ -1189,7 +1198,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-JGLzOk4O.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BkOffj9e.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
@@ -1455,6 +1464,19 @@
                 <div class="empty-text">No active chained ingestion rules found.</div>
               </div>
             </div>
+          </div>
+
+          <div class="stage-section" id="sec-chain-queue">
+            <div class="section-header" data-section="sec-chain-queue">
+              <span class="stage-chip">계측</span>
+              <span class="section-title">Chain 대기열 (읽기 전용)</span>
+              <span class="section-count" id="chain-queue-count">—</span>
+              <span class="section-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <!-- 🔴 취소·재시도·순서 조작 «없습니다». 큐를 소유한 것은 워커이고, 여기서 순서를
+                 바꿀 수 있으면 쓰는 쪽이 둘이 됩니다. 이 절은 «보기»만 합니다. -->
+            <div class="section-body"><div id="chain-queue-mount"></div></div>
           </div>
 
           <div class="stage-section" id="sec-chain-fails">
