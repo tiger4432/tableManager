@@ -140,7 +140,7 @@ const KNOWN_RED = new Map([
   // comment away from being wrong again. The assertion was scoring a RUN order through a TEXT
   // proxy. It now runs the function (probe, [INV-6 §reach]) and the harness is green at
   // 103/0 with its 19 mutants still caught -- see FLOORS below.
-  ['valid_die_frame_adoption_harness.mjs', { ran: 239, failed: 13,
+  ['valid_die_frame_adoption_harness.mjs', { ran: 241, failed: 13,
     failures: [
       "F6/A(stored==derived)/F8/domain-is-not-empty",
       "F6/A(stored==derived)/F8/stored-coordinates-preserved-total",
@@ -156,7 +156,7 @@ const KNOWN_RED = new Map([
       "MEDIUM-1/coord/classification-survives-a-designation",
       "O/aligned/alarm-tracks-the-actual-misalignment",
     ],
-    why: 'OWNER RULING 2026-09-03 (ⓐ): a designation adopts the reference PHYSICAL spec and re-derives the grid from it. 228/41 -> 239/13, and every remaining failure is ONE question. Twelve assertions said nothing is adopted: eleven were REPLACED by their inverse (retiring them alone would have left the adoption unscored) and the twelfth was MOVED, because what it scored was whether the CELLS moved. Sixteen scored the wording of a notice that said nothing changed; the notice now names both grids and which one is in use, and the harness selects it by its dedupe key instead of by grepping its text -- pinning wording is what reddened sixteen assertions on a copy edit, none of which was about the sentence. WHAT IS LEFT, AND WHY IT STAYS RED: the ruling settled where the grid comes from, NOT whether a stored coordinate may be re-based when it moves. Measured on fixture A: of 290 painted cells, 224 land where the new frame issues no address and all 66 that remain are the earlier coordinate translated by exactly (0,+8). These are NOT re-aimed to whatever the code produces today -- that would decide the question by writing down the answer -- and their numbers are to be re-measured through an IMPORTED harness before any of it is promoted to a defect, because this file still slices its subject and slicing is wrong in both directions.' }],
+    why: 'OWNER RULING 2026-09-03 (ⓐ): a designation adopts the reference PHYSICAL spec and re-derives the grid from it. 228/41 -> 241/13, and every remaining failure is ONE question. Twelve assertions said nothing is adopted: eleven were REPLACED by their inverse (retiring them alone would have left the adoption unscored) and the twelfth was MOVED, because what it scored was whether the CELLS moved. Sixteen scored the wording of a notice that said nothing changed; the notice now names both grids and which one is in use, and the harness selects it by its dedupe key instead of by grepping its text -- pinning wording is what reddened sixteen assertions on a copy edit, none of which was about the sentence. WHAT IS LEFT, AND WHY IT STAYS RED: the ruling settled where the grid comes from, NOT whether a stored coordinate may be re-based when it moves. Measured on fixture A: of 290 painted cells, 224 land where the new frame issues no address and all 66 that remain are the earlier coordinate translated by exactly (0,+8). These are NOT re-aimed to whatever the code produces today -- that would decide the question by writing down the answer -- and their numbers are to be re-measured through an IMPORTED harness before any of it is promoted to a defect, because this file still slices its subject and slicing is wrong in both directions.' }],
 ]);
 
 // ── the floors ──────────────────────────────────────────────────────────────────

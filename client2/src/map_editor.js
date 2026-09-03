@@ -8961,6 +8961,16 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   //    비우므로 집합이 비어 무비용이고, 로드는 이미 옳다(사용자 QA 통과). 여기가 고치는 것은
   //    **화면에 이미 앉아 있는 셀** ― 지정/해제/변경뿐이다.
   let screenShift = null;   // 화면이 실제로 움직인 양. 토스트가 쓰는 수는 이것이다.
+  // 🔴 재배치의 «관측» 둘. 토스트가 종전에 「좌표는 하나도 바뀌지 않았다」고
+  //    «보증»했고, 그 보증은 삭제됐다(아래 §알림). 그런데 지우기만 하면 화면이
+  //    «아무 말도 안 하게» 된다 ― 없는 문장은 「말할 것이 없다」로 읽힌다. 그래서
+  //    «일어난 일»을 수로 말한다: 몇 칸이 다시 앉았는가, 그중 몇 칸이 새 격자 밖으로
+  //    나갔는가. 둘 다 0 이면 줄이 «안 나온다».
+  // ⚠️ 「좌표는 유지된다」고 붙이지 «않는다». `reseatCellsToStoredCoords` 는 구성상
+  //    그렇게 동작하지만, 지정 경로의 저장 좌표가 실제로 보존되는지는 지금 «미판정»이고
+  //    (상위 「미판정」 표시), 확인 안 된 것을 화면이 보증하면 그게 지운 문장과
+  //    같은 병이다. 수만 말하고 판단은 운영자가 한다.
+  let reseatFacts = null;
   // 재배치 결과는 담아 두고 **1~6 다음에** 찍는다. `set`은 로그 블록보다 먼저 돌기 때문이다.
   let placementNote = '';
   // 격자가 넓어졌는가. 로그 블록이 읽는다(토스트는 늘리지 않는다 ― UI 규율).
@@ -9057,6 +9067,8 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     //    넘기면 같은 이동을 두 번 적용한다.
     const placed = reseatCellsToStoredCoords(cellsSeatedUnder);
     const moved = summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys);
+    // 관측만 올린다 ― 위 §reseatFacts.
+    reseatFacts = { moved: moved.netMoved, offGrid: placed ? placed.offGrid : 0 };
     if (moved.netMoved > 0) {
       placementNote = moved.note;
       if (basis !== 'ref') console.log(placementNote);   // ref는 1~6 뒤에 찍는다
@@ -9349,7 +9361,11 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       showToast(`유효 다이 참조 ― ${why}`
         + (screenShift
           ? ` ― 화면 ${Math.abs(screenShift.dc)}칸·${Math.abs(screenShift.dr)}행 이동`
-          : ' ― 화면 이동 없음'),
+          : ' ― 화면 이동 없음')
+        // 재배치가 없었으면 이 두 줄은 «안 나온다» ― 격자 절반을 조건부로 둔 것과 같다.
+        + (reseatFacts && reseatFacts.moved > 0 ? ` ― 셀 ${reseatFacts.moved}칸 재배치` : '')
+        + (reseatFacts && reseatFacts.offGrid > 0
+          ? ` ― 새 격자 밖 ${reseatFacts.offGrid}칸` : ''),
         'info', { dedupeKey: 'valid_die_frame_differs' });
     }
     return out;

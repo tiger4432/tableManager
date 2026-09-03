@@ -766,12 +766,19 @@ async function scoreAll(src, { verbose = false } = {}) {
        /규격 적용/.test(t ? t.msg : ''), t ? t.msg : '(none)');
     eq('F6/C/a/notice-makes-no-promise-about-coordinates', false,
        /좌표는 하나도|그대로입니다/.test(t ? t.msg : ''), t ? t.msg : '(none)');
-    // ── INVERTED (was `clause4/announcement-has-one-number-for-one-quantity`) ─────────
-    // 🔴 Invariant ⑥ survives the removal in a stronger form. F6's sentence had to carry ONE
-    //    number for one quantity; F8's must carry NO cell count at all, because no cell moved.
-    //    Any `셀 N개` reappearing here means a reposition came back with it.
-    eq('F6/C/F8/notice-claims-no-cell-moved', false,
-       /셀 \d+개|기존 셀|재배치/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    // ── [ⓐ] REPLACES `notice-claims-no-cell-moved` ───────────────────────────────────
+    // 🔴 THE RULE IT CAME FROM SURVIVES; ITS SIGN FLIPS. Invariant ⑥ was "one number for one
+    //    quantity", and F8 sharpened it to "no cell count at all, because no cell moved".
+    //    Under ⓐ cells DO move, and the Lead's ruling is that a screen which says nothing
+    //    about that is as wrong as one that guarantees the opposite: an absent sentence reads
+    //    as "there was nothing to say". So the count must BE there -- and it must still be ONE
+    //    number per quantity, which is what this now scores: the re-seated count and the
+    //    off-grid count are named separately and neither is a percentage or a range.
+    eq('F6/C/a/notice-reports-the-reseat-as-a-count', true,
+       /셀 \d+칸 재배치/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('F6/C/a/and-the-off-grid-population-has-its-own-number', true,
+       /새 격자 밖 \d+칸/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('F6/C/a/no-percentage-anywhere', false, /%/.test(t ? t.msg : ''), t ? t.msg : '(none)');
     // ...and the two numbers it DOES carry are the two grid sizes, so the operator can see
     // WHICH ONE WAS USED rather than only that they differ.
     eq('F6/C/a/notice-names-both-grids', true,
