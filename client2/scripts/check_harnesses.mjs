@@ -76,6 +76,28 @@ const fail = msg => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 // printed 41. Whether a harness crashed or merely failed is machine-visible too (`ran > 0`),
 // so it does not belong here either. If you want to record how a figure moved, that is what
 // git and the round's report are for.
+// ── NOT HARNESSES ─────────────────────────────────────────────────────────────
+// Files under `tests/` that are DIAGNOSTIC TOOLS, not gated checks. They are skipped, and
+// the reason is written here rather than left as a permanent red.
+//
+// 🔴 WHY NOT `KNOWN_RED`. An entry there means "red today, green one day" — it is a DEBT,
+//    and something on it is expected to be repaid. A tool that reads `process.argv` and is
+//    run by a person will never go green under a runner that passes no arguments, so
+//    parking it in the debt list makes the debt list a lie: the count says five are owed
+//    when one of them can never be paid.
+//
+// Measured 2026-09-03: `reposition_regime_probe.mjs:94-95` reads `process.argv[2]` and
+// `[3]` as JSON file paths. The runner spawns with no arguments, so it dies in
+// `readFileSync(undefined)` before reaching anything. Its own KNOWN_RED note already said
+// "asserts nothing by design; see its ASSERTIONS 0 0" — the note described a tool while
+// the list it sat in described a test.
+const NOT_A_HARNESS = new Map([
+  ['reposition_regime_probe.mjs',
+    'a manual diagnostic: it takes two JSON file paths on argv (cells, frames) and PRINTS '
+    + 'the regime table. It asserts nothing, so there is no verdict for a runner to collect. '
+    + 'Run it by hand: node client2/tests/reposition_regime_probe.mjs <cells.json> <frames.json>'],
+]);
+
 const KNOWN_RED = new Map([
   ['alignment_verdict_harness.mjs', { ran: 163, failed: 6,
     // This harness's six assertions share three scope prefixes (A/C/D0), so the runner's
@@ -88,8 +110,6 @@ const KNOWN_RED = new Map([
   // `map2_placement_seat_harness.mjs` were here with `ran: 0` from 2026-08-09 to 2026-08-11.
   // Their fixtures were rewritten for the walk-start candidate space and they are back on the
   // gate with floors of their own -- see FLOORS below, which carries what moved and why.
-  ['reposition_regime_probe.mjs',{ ran: 0, failed: 0, namesUnavailable: 'dies before asserting; 0 failure lines emitted (measured 2026-08-06)',
-    why: 'throws with ERR_INVALID_ARG_TYPE ― DEAD: a path/arg it reads has moved (and it asserts nothing by design; see its ASSERTIONS 0 0)' }],
   ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
   ['valid_die_authoring_harness.mjs', { ran: 100, failed: 1,
@@ -1100,7 +1120,20 @@ if (!existsSync(TESTS_DIR)) {
 const harnesses = readdirSync(TESTS_DIR, { withFileTypes: true })
   .filter(d => d.isFile() && d.name.endsWith('.mjs'))
   .map(d => d.name)
+  .filter(n => !NOT_A_HARNESS.has(n))
   .sort((a, b) => a.localeCompare(b));
+
+// Named out loud on every run. A file that is skipped silently is a file nobody remembers
+// exists, and the next person to read `tests/` cannot tell "deliberately not gated" from
+// "forgotten".
+for (const [name, why] of NOT_A_HARNESS) {
+  if (!existsSync(path.join(TESTS_DIR, name))) {
+    fail(`\`NOT_A_HARNESS\` names \`${name}\`, which is not in \`client2/tests/\`. `
+      + 'Either it was deleted and this entry should go with it, or it was renamed and the '
+      + 'entry now skips nothing.');
+  }
+  console.log(`  · skipped (not a harness) ${name} — ${why}`);
+}
 
 if (harnesses.length === 0) {
   fail(`\`client2/tests/\` holds no \`*.mjs\`. Either every harness was deleted or the layout `
