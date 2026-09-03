@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from verified_join_contract import (
+    usable_expose,
     VerifiedJoinDescriptor,
     is_physically_verified_descriptor,
 )
@@ -221,7 +222,16 @@ class SQLAlchemyVerifiedJoinBatchReader(VerifiedJoinBatchReader):
                 "source_preparation_incomplete", "source_preparation.right_relation",
                 "right relation must expose row_id and updated_at provenance columns",
             )
-        expose_columns = [getattr(right, name) for name in descriptor["expose"]]
+        # 🔴 THE SAME CHECK THE READ PATH USES, FROM THE SAME FUNCTION. This is the third
+        # place that composes SQL from an `expose` list; the other two are
+        # `virtual_join_executor.execute_rule` (the row payload) and `resolved_expression`
+        # (filter, search, export). A name the right model does not carry raises here
+        # while the SELECT is being built, and the whole preparation dies for one column.
+        # ⚠️ `usable` is used for the unpacking below TOO. Selecting a filtered list and
+        # unpacking the declared one would shift every value one place to the left - a
+        # silent wrong answer, which is worse than the exception it replaces.
+        usable, _missing = usable_expose(descriptor, right, "the ledger source preparation")
+        expose_columns = [getattr(right, name) for name in usable]
         selected = raw_key_columns + [row_id_column, updated_at_column] + expose_columns
         query = self._db.query(*selected)
         if len(key_expressions) == 1:
@@ -242,7 +252,7 @@ class SQLAlchemyVerifiedJoinBatchReader(VerifiedJoinBatchReader):
             updated_at = row[offset + 1]
             values = {
                 name: row[offset + 2 + index]
-                for index, name in enumerate(descriptor["expose"])
+                for index, name in enumerate(usable)
             }
             result.setdefault(normalized_key, []).append(JoinRightRow(
                 key=normalized_key,

@@ -355,6 +355,33 @@ def test_export_carries_the_temporal_virtual_column_in_the_pinned_spelling(type_
     assert by_id["L3"]["event_at"] == LABEL and by_id["L4"]["event_at"] == LABEL
 
 
+def test_the_export_drops_only_the_column_the_model_cannot_answer(type_env):
+    """🔴 ONE UNANSWERABLE NAME USED TO TAKE THE WHOLE EXPORT DOWN, with a 500.
+
+    This declaration exposes five columns and one of them - `needs_graph_rollback` - is a
+    metadata name a table created after 2026-08-31 does not receive. Announcing it put a
+    header slot in the CSV that no expression could fill, and the route refuses a
+    misaligned extract rather than shipping one, so the operator got NO file at all for a
+    fault in a column they may not even have been exporting for.
+
+    The four that resolve are asserted BY NAME rather than by counting: a header of the
+    right length with the wrong members would pass a count, and this is the seam where a
+    shifted column is the failure being prevented.
+    """
+    r = type_env.get("/tables/vjt_test_log/export")
+    assert r.status_code == 200, r.text
+    header = next(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+
+    assert "needs_graph_rollback" not in header, (
+        "a column the right model cannot answer was given a header slot")
+    for survivor in ("site", "slot_no", "event_at"):
+        assert survivor in header, (
+            f"'{survivor}' resolves and belongs in the extract; a sibling's fault removed it")
+    # `stamp_at` is a collide column - it is the LEFT table's own, announced by the schema
+    # rather than by the join - so it rides in the business columns and must be here too.
+    assert "stamp_at" in header
+
+
 # ---------------------------------------------------------------------------
 # 🔴 boolean - the crash on PostgreSQL, the SILENT WRONG ANSWER on SQLite
 # ---------------------------------------------------------------------------
@@ -404,18 +431,18 @@ def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_take
                         declare any of the three, so every row of every page was carrying
                         three cells nobody had asked for.
 
-        WHAT IT NOW SEES  `None`, not the join's `true`. That is NOT the new contract: it
-                        is a BROKEN FIXTURE showing through. `attach` already failed here
-                        at HEAD - "type object 'VjtTestRef' has no attribute
-                        'needs_graph_rollback'" - and seven sibling tests in this file
-                        were red for that same reason before the injection was removed.
-                        (Of those seven: three were collateral and came back green when
-                        the join stopped dropping every column for one bad name, and four
-                        were retired on 2026-09-03 because a Boolean column can no longer
-                        reach the seam at all. This one is neither - see below.)
-                        The injected cell was OCCUPYING the seat, so the join's inability
-                        to fill it could not be seen. Not "zero because absent" but
-                        "zero because covered", which is the least visible kind here.
+        WHAT IT NOW SEES  `미상` - the unresolved label. Not `False`, and no longer the
+                        `None` it briefly returned: as of 2026-09-03 the join FILTERS the
+                        unanswerable name out of its SELECT and the cell falls to the
+                        label, which is the honest answer for "this column resolves to
+                        nothing here". So what is left is only the missing premise.
+                        The injected cell used to OCCUPY that seat, so the join's
+                        inability to fill it could not be seen - not "zero because
+                        absent" but "zero because covered", the least visible kind here.
+                        (Seven siblings were red with it: three were collateral and came
+                        back when the join stopped dropping every column for one bad name,
+                        four were retired because a Boolean column cannot reach the seam
+                        at all. This one is neither.)
 
         WHAT IS BLOCKED  Retiring this test would remove the only cover over "a Boolean
                         expose column reaches the read surface"; its own text says the

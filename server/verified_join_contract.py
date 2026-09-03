@@ -12,6 +12,9 @@ import inspect
 from types import MappingProxyType
 from typing import Any
 from weakref import WeakSet
+import logging
+
+_logger = logging.getLogger("VerifiedJoin")
 
 __all__ = ["VerifiedJoinDescriptor", "is_physically_verified_descriptor"]
 
@@ -32,6 +35,47 @@ def _plain(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
     return value
+
+
+def usable_expose(descriptor: Mapping[str, Any], right_model, where: str):
+    """Which of this rule's `expose` names the right model can actually be asked for.
+
+    -> `(usable, missing)`. `usable` keeps the declared order; `missing` is what was left
+    out, already logged HERE so that the places building SQL over an expose list cannot
+    describe the same event three different ways.
+
+    🔴 WHY A SHARED FUNCTION AND NOT A SHARED IDEA. Three sites compose SQL from an expose
+    list, and each of them used to hand the whole list to `getattr` - so a name the model
+    does not carry raised, and the caller lost EVERYTHING it was building, not just that
+    column. A column missing because a NEIGHBOUR is broken renders exactly like a column
+    that is empty, which is the least visible failure this codebase has. Copying the
+    check into each site would put the same judgement in three places, and the third copy
+    is where they start disagreeing about what "missing" means.
+
+    🔴 HOW A DECLARED NAME GOES MISSING, so this does not read as defensive noise: a rule
+    is verified against the right table's `column_types` KEYS, while the model builder
+    SKIPS the shared metadata names - and a table created after 2026-08-31 no longer
+    receives those columns at all. The declaration is valid, the column is absent, and
+    neither side is wrong.
+
+    `hasattr` is the exact twin of the `getattr` each caller does next, not a stricter
+    imitation of it: for a dynamic model the two cannot disagree, because
+    `models.init_dynamic_models` gives such a class nothing but Columns.
+
+    The log fires per CALL rather than once per process. That is deliberate - the state it
+    reports is a broken declaration, which should be loud, and remembering "already said"
+    would need state that outlives a request and goes stale when the declaration is fixed.
+    """
+    declared = list(descriptor["expose"])
+    usable = [name for name in declared if hasattr(right_model, name)]
+    missing = [name for name in declared if name not in usable]
+    if missing:
+        _logger.error(
+            "[VerifiedJoin] rule %r: %s declared in expose but '%s' has no such column - "
+            "only those are omitted at %s; the rule's other columns (%s) are unaffected",
+            descriptor["name"], missing, descriptor["right_table"], where,
+            usable or "none")
+    return usable, missing
 
 
 @dataclass(frozen=True, init=False, eq=False)
