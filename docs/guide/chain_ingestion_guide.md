@@ -155,11 +155,31 @@ frame raises `ValueError: The truth value of a DataFrame is ambiguous` on the fi
 clause — loudly, which is the good case. Convert with the one that ships:
 
 ```python
-from mapper_sdk import df_to_updates
+from mapper_sdk import mapper, sql
 
-return df_to_updates(out, rule["target_table"],
-                     source_name="chain_ingestion", updated_by="my_mapper")
+@mapper()
+def my_mapper(df, db):
+    ref = sql(db, "SELECT ... WHERE lot = :lot", {"lot": lot})   # reads on YOUR session
+    ...
+    return out                                                   # a DataFrame
 ```
+
+`@mapper` does the payload→frame step on the way in and the frame→envelope step on the
+way out, so what is left in the file is the derivation. The worker still calls it as
+`(db, payloads, rule=None)`, so a decorated function goes into `chain_rules.json` exactly
+where a hand-written one did. Without the decorator the same two steps are
+`mapper_sdk.payloads_to_df` and `mapper_sdk.df_to_updates`.
+
+🔴 **`sql(db, ...)` reads on the session it is given, not on a new connection.** A mapper
+runs inside the worker's transaction; a helper that opened its own would read the database
+as it was *before* this batch — silently, and only under concurrency.
+
+**One thing each box does once.** `BaseMapper` now lives in `server/mapper_sdk.py` so its
+implementation ships; `server/mappers/` is gitignored, so the copy of `base.py` on a
+running machine still holds the old class. Replace that file's body with
+`from mapper_sdk import BaseMapper` (or point the mappers at `from mapper_sdk import
+BaseMapper` directly). Either way it is one edit, and after it the implementation travels
+with the server.
 
 🔴 **This used to be a code snippet here, and that was the mistake.** A conversion
 printed in a guide is copied into every mapper that reads it, and then there are

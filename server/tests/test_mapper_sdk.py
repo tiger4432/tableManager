@@ -338,3 +338,50 @@ def test_the_provenance_defaults_to_the_authors_own_function_name():
         None, [{"row_id": "r1", "data": {"part_no": {"value": "P1"}}}],
         rule={"target_table": PLAIN})
     assert got["updates"][0]["updated_by"] == "my_specific_derivation"
+
+
+# ---------------------------------------------------------------------------
+# BaseMapper - moved so its implementation ships, and it must still be ONE class
+# ---------------------------------------------------------------------------
+
+def test_base_mapper_is_reachable_by_both_names_and_is_the_same_class():
+    """🔴 THE ASSERTION IS `is`, NOT "both work". Two copies would each answer correctly
+    and drift the day one is fixed - which is the whole reason the class moved out of
+    `mappers/base.py`, a file `.gitignore` keeps on the box that wrote it.
+
+    The old import is what the production mappers use (`from mappers.base import
+    BaseMapper`), so it has to keep working; the new one is where the implementation now
+    lives. If `mappers/base.py` is absent - a fresh checkout, where it never shipped -
+    only the SDK path exists and that is the point of the move, so the old name is
+    skipped rather than failed.
+    """
+    from mapper_sdk import BaseMapper as from_sdk
+
+    try:
+        from mappers.base import BaseMapper as from_mappers
+    except ImportError:
+        pytest.skip("mappers/base.py is not present - it is gitignored and never ships")
+
+    assert from_mappers is from_sdk, (
+        "two BaseMapper classes exist; a fix to one would never reach the other")
+
+
+def test_base_mapper_still_answers_exactly_what_it_did():
+    """Same name, same static method, same result - the owner's "leave it alone"."""
+    from mapper_sdk import BaseMapper
+
+    payloads = [{"row_id": "r1", "data": {"part_no": {"value": "P1"}, "qty": {"value": 5}}}]
+    from_class = BaseMapper.payloads_to_df(payloads)
+    from_function = mapper_sdk.payloads_to_df(payloads)
+
+    assert from_class.equals(from_function), "the class re-implemented what it delegates to"
+    assert list(from_class["part_no"]) == ["P1"]
+
+
+def test_base_mapper_keeps_exactly_one_method():
+    """Adding to it would make inheritance look like the intended route; new mappers use
+    the functions. Asserted so that growing it is a decision rather than a drift."""
+    from mapper_sdk import BaseMapper
+
+    public = [n for n in vars(BaseMapper) if not n.startswith("_")]
+    assert public == ["payloads_to_df"], f"BaseMapper grew: {public}"

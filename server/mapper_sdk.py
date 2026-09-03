@@ -74,6 +74,29 @@ def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(flat_rows)
 
 
+class BaseMapper:
+    """The name the production mappers already import. Owner's ruling: leave it alone.
+
+    🔴 IT LIVES HERE SO THE IMPLEMENTATION SHIPS. It was defined in `mappers/base.py`,
+    which `.gitignore` excludes, so production carries its own copy and a fix here would
+    never reach it. Moving the class into a tracked file makes `mappers/base.py` a
+    re-export - one edit per box, once - and after that the implementation travels the
+    normal way.
+
+    🔴 THE SURFACE IS UNCHANGED AND STAYS THAT WAY. One static method, the same name and
+    signature, delegating to the same `payloads_to_df` the SDK exposes - there is no
+    second copy to drift. Nothing inherits from this class today (both call sites use
+    `BaseMapper.payloads_to_df(...)` statically, whatever the old docstring said), so the
+    move breaks no inheritance chain. Adding a method here would start making inheritance
+    look like the intended route; new mappers should use the functions.
+    """
+
+    @staticmethod
+    def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Nested outbox payloads -> a flat DataFrame. Delegated, never re-implemented."""
+        return payloads_to_df(payloads)
+
+
 def sql(db, query: str, params: dict | None = None) -> pd.DataFrame:
     """A read, as a DataFrame, ON THE CALLER'S SESSION. Step ② is the author's; this is
     the one piece of it they should not have to assemble.
