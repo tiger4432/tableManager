@@ -74,6 +74,36 @@ def payloads_to_df(payloads: List[Dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(flat_rows)
 
 
+def sql(db, query: str, params: dict | None = None) -> pd.DataFrame:
+    """A read, as a DataFrame, ON THE CALLER'S SESSION. Step ② is the author's; this is
+    the one piece of it they should not have to assemble.
+
+    🔴 IT USES `db`, NOT A NEW CONNECTION, AND THAT IS THE PROPERTY THAT MATTERS. A chain
+    mapper runs inside the worker's transaction and is forbidden to commit, so rows the
+    chain has already staged in that transaction are visible to it and to nothing else. A
+    helper that opened its own connection would read the database as it was BEFORE this
+    batch - the mapper would derive from stale state, silently, and only under
+    concurrency. Passing the session through is what keeps "what I can see" the same
+    question for the ORM path and this one.
+
+    🔴 PARAMETERS ARE BOUND, NEVER FORMATTED. `sql(db, "... WHERE lot = :lot", {"lot": x})`.
+    A mapper composing its own string would be one value away from an injection and, more
+    ordinarily, one `None` away from `WHERE lot = None` silently matching nothing.
+
+    ⚠️ COLUMN NAMES STILL COME FROM THE DECLARATION. This helper cannot check that for
+    you: a query that spells its own column names is the same defect as a mapper that
+    does, and it is the author's to avoid (guide, "Column names: read them, never spell
+    them").
+
+    ⚠️ AND SQL NULL ARRIVES AS `NaN`, whose type is float. That is pandas, not this
+    function - `df_to_updates` turns it back into `None` on the way out, which is the
+    only reason a mapper can round-trip a null without spelling the repair itself.
+    """
+    from sqlalchemy import text
+
+    return pd.read_sql(text(query), db.connection(), params=params or {})
+
+
 def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> dict:
     """DataFrame -> the `{"updates": [...]}` a chain mapper returns. Step ③.
 
@@ -158,3 +188,56 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
             item["business_key_val"] = crud.clean_str_value(identity)
         updates.append(item)
     return {"updates": updates}
+
+def mapper(target_table=None, *, source_name: str = "chain_ingestion",
+           updated_by: str | None = None):
+    """Wrap an author's `(df, db) -> df` so that ① and ③ leave their file. Step ③ of the
+    owner's shape, as a decorator.
+
+        @mapper()
+        def build_rows(df, db):
+            ...                       # the author writes ONLY this
+            return out                # a DataFrame
+
+    What the worker calls is still `(db, payloads, rule=None)`, so a decorated function
+    drops into `chain_rules.json` exactly where a hand-written one did - the SDK is not a
+    second calling convention.
+
+    🔴 THE TARGET TABLE COMES FROM THE RULE, NOT FROM THE DECORATOR, unless the author
+    names one. `rule["target_table"]` is where that fact already lives, and a mapper that
+    restates it is a second place for it to be wrong - the same defect as a mapper that
+    spells a column name. The argument exists for the case where a rule cannot supply it;
+    when both are present the rule wins, because the rule is what the operator edits.
+
+    🔴 AND `updated_by` DEFAULTS TO THE AUTHOR'S FUNCTION NAME. Provenance that has to be
+    typed is provenance that gets copied from the last mapper and then names the wrong
+    one; the function's own name cannot drift from the function.
+
+    ⚠️ A DataFrame that comes back EMPTY is an intentional no-op, and `{"updates": []}` is
+    what the worker reads as one. A mapper returning `None` would hit
+    `if target_payload and ...` and be read the same way, but only by accident.
+    """
+    def decorate(fn):
+        import functools
+
+        @functools.wraps(fn)
+        def run(db, payloads, rule=None):
+            table = (rule or {}).get("target_table") or target_table
+            if not table:
+                raise MapperContractError(
+                    f"'{fn.__name__}' has no target table: the rule declares no "
+                    f"'target_table' and the decorator was given none. The business key "
+                    f"is decided from that table's declaration, so there is nothing to "
+                    f"decide it from.")
+            out = fn(payloads_to_df(payloads), db)
+            if out is None:
+                return {"updates": []}
+            if not isinstance(out, pd.DataFrame):
+                raise MapperContractError(
+                    f"'{fn.__name__}' returned {type(out).__name__}; a decorated mapper "
+                    f"returns a DataFrame and the envelope is built for it. Returning the "
+                    f"envelope yourself means this decorator is not the thing you want.")
+            return df_to_updates(out, table, source_name=source_name,
+                                 updated_by=updated_by or fn.__name__)
+        return run
+    return decorate

@@ -181,3 +181,160 @@ def test_payloads_to_df_keeps_the_value_and_drops_the_cell_envelope():
     assert list(df["part_no"]) == ["P1", "P2"]
     assert list(df["row_id"]) == ["r1", "r2"], "identity is not a data column"
     assert mapper_sdk.payloads_to_df([]).empty
+
+
+# ---------------------------------------------------------------------------
+# step ② - sql(db, ...) reads on the CALLER'S session
+# ---------------------------------------------------------------------------
+
+def test_the_query_runs_on_the_callers_transaction_not_a_new_connection(db_session):
+    """🔴 THE PROPERTY, AND IT IS ONLY OBSERVABLE BEFORE A COMMIT. A chain mapper runs
+    inside the worker's transaction and may not commit, so rows the chain has staged are
+    visible to that session and to nothing else. A helper that opened its own connection
+    would read the database as it was BEFORE this batch - deriving from stale state,
+    silently, and only under concurrency.
+
+    The row below is written and NOT committed. Seeing it is the whole assertion.
+    """
+    from sqlalchemy import text
+
+    db_session.execute(text(
+        "CREATE TABLE IF NOT EXISTS sdk_probe (k TEXT, v INTEGER)"))
+    db_session.execute(text("DELETE FROM sdk_probe"))
+    db_session.execute(text("INSERT INTO sdk_probe (k, v) VALUES ('a', 1)"))
+    # deliberately NOT committed
+
+    used = []
+    real_connection = db_session.connection
+
+    def spy():
+        used.append(1)
+        return real_connection()
+
+    db_session.connection = spy
+    try:
+        got = mapper_sdk.sql(db_session, "SELECT k, v FROM sdk_probe ORDER BY k")
+    finally:
+        db_session.connection = real_connection
+
+    # 🔴 THE SPY IS THE ASSERTION, AND THE VISIBILITY BELOW IS NOT.
+    # Measured 2026-09-03: swapping `db.connection()` for `db.get_bind()` - handing pandas
+    # the ENGINE, which is exactly the "opens its own connection" defect - leaves the two
+    # assertions below GREEN on this suite, because SQLite hands back the same pooled
+    # connection and sees the uncommitted row either way. So the dialect that runs the
+    # tests cannot tell the two apart by behaviour, and a test that only looked at rows
+    # would pass with the defect in place. It did, before this was written this way.
+    assert used, "the query did not go through the session's own connection"
+    # Kept underneath because it is what the spy is FOR - on PostgreSQL a second
+    # connection cannot see this row at all, and then the meaning and the mechanism agree.
+    assert list(got["k"]) == ["a"]
+    assert list(got["v"]) == [1]
+
+
+def test_parameters_are_bound_rather_than_formatted(db_session):
+    """A value that would break a formatted string must go through untouched, and a
+    parameter must actually narrow - a helper that ignored `params` would return
+    everything and look like it worked."""
+    from sqlalchemy import text
+
+    db_session.execute(text(
+        "CREATE TABLE IF NOT EXISTS sdk_probe2 (k TEXT, v INTEGER)"))
+    db_session.execute(text("DELETE FROM sdk_probe2"))
+    db_session.execute(text("INSERT INTO sdk_probe2 (k, v) VALUES ('a', 1)"))
+    db_session.execute(text("INSERT INTO sdk_probe2 (k, v) VALUES (:k, 2)"),
+                       {"k": "it's a value"})
+
+    narrowed = mapper_sdk.sql(db_session, "SELECT v FROM sdk_probe2 WHERE k = :k",
+                              {"k": "it's a value"})
+    assert list(narrowed["v"]) == [2], "the parameter did not narrow, or the quote broke it"
+
+
+# ---------------------------------------------------------------------------
+# step ③ - @mapper, so ① and ③ leave the author's file
+# ---------------------------------------------------------------------------
+
+def test_a_decorated_mapper_takes_payloads_and_returns_the_envelope():
+    """The author's function sees a frame and returns a frame; the worker's call shape is
+    unchanged, so a decorated mapper drops into `chain_rules.json` where a hand-written
+    one did."""
+    @mapper_sdk.mapper()
+    def double_qty(df, db):
+        out = df[["part_no"]].copy()
+        out["qty"] = df["qty"] * 2
+        return out
+
+    payloads = [{"row_id": "r1", "data": {"part_no": {"value": "P1"},
+                                          "qty": {"value": 5}}}]
+    got = double_qty(None, payloads, rule={"target_table": PLAIN})
+
+    assert got == {"updates": [{
+        "updates": {"part_no": "P1", "qty": 10},
+        "source_name": "chain_ingestion", "updated_by": "double_qty",
+        "business_key_val": "P1"}]}
+
+
+def test_the_target_table_comes_from_the_rule_and_the_rule_wins():
+    """🔴 `rule["target_table"]` is where that fact already lives. A mapper restating it
+    is a second place for it to be wrong, so the decorator's argument is only a fallback -
+    and when both are present the RULE wins, because the rule is what an operator edits.
+    """
+    @mapper_sdk.mapper(COMPOSITE)                     # a wrong guess, on purpose
+    def emit(df, db):
+        return df
+
+    payloads = [{"row_id": "r1", "data": {"part_no": {"value": "P1"}, "qty": {"value": 1}}}]
+    got = emit(None, payloads, rule={"target_table": PLAIN})
+
+    assert "business_key_val" in got["updates"][0], (
+        "the decorator's table won over the rule's; the operator's edit lost")
+
+
+def test_a_mapper_with_no_table_anywhere_is_refused_by_name():
+    @mapper_sdk.mapper()
+    def emit(df, db):
+        return df
+
+    with pytest.raises(mapper_sdk.MapperContractError) as raised:
+        emit(None, [{"row_id": "r1", "data": {"part_no": {"value": "P1"}}}], rule={})
+    assert "emit" in str(raised.value)
+
+
+def test_returning_something_that_is_not_a_frame_is_refused_rather_than_guessed():
+    """Returning the envelope yourself means the decorator is not what you want, and
+    saying so beats half-handling it."""
+    @mapper_sdk.mapper()
+    def emit(df, db):
+        return {"updates": []}
+
+    with pytest.raises(mapper_sdk.MapperContractError):
+        emit(None, [{"row_id": "r1", "data": {"part_no": {"value": "P1"}}}],
+             rule={"target_table": PLAIN})
+
+
+def test_an_empty_result_is_the_intentional_no_op_the_worker_reads():
+    """`{"updates": []}` is what the worker tests for. `None` from the author is treated
+    the same way DELIBERATELY rather than by falling through `if target_payload`."""
+    @mapper_sdk.mapper()
+    def nothing_to_do(df, db):
+        return None
+
+    @mapper_sdk.mapper()
+    def empty_frame(df, db):
+        return df.iloc[0:0]
+
+    args = ([{"row_id": "r1", "data": {"part_no": {"value": "P1"}}}],)
+    assert nothing_to_do(None, *args, rule={"target_table": PLAIN}) == {"updates": []}
+    assert empty_frame(None, *args, rule={"target_table": PLAIN}) == {"updates": []}
+
+
+def test_the_provenance_defaults_to_the_authors_own_function_name():
+    """Provenance that has to be typed gets copied from the last mapper and then names
+    the wrong one. The function's name cannot drift from the function."""
+    @mapper_sdk.mapper()
+    def my_specific_derivation(df, db):
+        return df
+
+    got = my_specific_derivation(
+        None, [{"row_id": "r1", "data": {"part_no": {"value": "P1"}}}],
+        rule={"target_table": PLAIN})
+    assert got["updates"][0]["updated_by"] == "my_specific_derivation"
