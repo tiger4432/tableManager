@@ -464,6 +464,24 @@ async function scoreAll(src, { verbose = false } = {}) {
   // A's grid, stashed by the loop below so B can be compared against it.
   let gridFromSharedSpec = null;
 
+  // 🛑 THE THIRTEEN COORDINATE ASSERTIONS BELOW ARE KNOWN RED AND ARE BEING LEFT ALONE.
+  //
+  //    「맵 에디터 동작은 소유자가 «정상»으로 판정함 (2026-09-03). 이 단언들은 그 판정과
+  //     맞지 않으나, 무엇으로 바꿀지는 «파지 않기로» 결정됨」
+  //
+  // ⚠️ THIS IS NOT THE "retire what can never be green" CASE. That one applies when the
+  //    SUBJECT no longer exists -- the five deleted names in `split_registry_harness.mjs` are
+  //    that shape, and an absence check took their place. Here the subject exists and runs;
+  //    what stopped is the DIGGING. So they are neither retired nor rewritten: rewriting them
+  //    would mean choosing what the contract is, and that is exactly the decision that was
+  //    called off.
+  //
+  //    Three explanations of the numbers were produced in one day and all three were withdrawn
+  //    (direction, then arguments, then causation), every one of them a fault in the measuring
+  //    rather than in the product. What survived is recorded in `task/axis_and_material_report.md`:
+  //    the five facts stated without interpretation, the exact 290/290 round trip, and the
+  //    off-grid count agreeing with the product's own log.
+
   // ══ F8 — a target that already holds cells is DESIGNATED, and nothing moves ══════════
   //
   // ⚠️ THIS BLOCK USED TO ASSERT A REFUSAL. F6 refused here because adopting the reference's
