@@ -491,8 +491,7 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
                 "[VirtualJoin] rule '%s': '%s' is declared in expose but '%s' has no such "
                 "column - that ONE column is omitted; the rule's other columns (%s) are "
                 "unaffected",
-                rule.get("name") or rule.get("rule_name") or "<unnamed>", name,
-                rule["right_table"], expose or "none")
+                rule["name"], name, rule["right_table"], expose or "none")
     # 오른쪽 `row_id`는 표시 대상이 아니라 **①/②를 가르는 유일한 증거**다.
     # 오른쪽 expose 값이 NULL이면 "행이 없었다"인지 "행은 있었고 값이 NULL이었다"인지
     # 값만 봐서는 구별할 수 없다.
@@ -623,8 +622,10 @@ def attach(db, table_name: str, data_list: list) -> int:
             logger.error(
                 "[VirtualJoin] rule '%s' could not be built on '%s'; its columns %s are "
                 "omitted and every OTHER rule's columns are unaffected: %s",
-                rule.get("name") or rule.get("rule_name") or "<unnamed>", table_name,
-                list(rule.get("expose") or ()), exc)
+                # `name` is REQUIRED by `VerifiedJoinDescriptor` - a fallback here
+                # would be a reserved value nothing can produce, which is how a dead
+                # branch starts looking like a handled case.
+                rule["name"], table_name, list(rule["expose"]), exc)
             continue
         label = rule["unresolved_label"]
         for col in rule["expose"]:
