@@ -2899,3 +2899,91 @@ env 토큰 · SQL 문 · 선언의 이름/타임존 · 프로버넌스 id · 검
               아니면 «문법»이 탐침 컬럼의 타입을 제약하게 할지 (그건 선언 표면 결정입니다)
 다음      맵퍼 SDK (7ba18abc) 로 갑니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 맵퍼 SDK «1단계» 착지 — 🔴 **그런데 `mappers/` 가 통째로 gitignore 입니다** (구현자, 2026-09-03)
+
+커밋 `9b0f9f18` 계열. 파일 «셋» 추적: `server/mapper_sdk.py`(신설) ·
+`server/tests/test_mapper_sdk.py`(시험 10) · `docs/guide/chain_ingestion_guide.md`(조각 제거).
+그리고 «추적 안 되는» 하나: `server/mappers/utils.py`(위임) — 아래 §경계.
+
+## 🔴 착수하자마자 나온 것 — SDK 를 «어디에» 둘 수 있나
+```
+.gitignore:68~75
+   server/mappers/*
+   !server/mappers/*.sample
+   !server/mappers/ledger_v2_*.py
+=> server/mappers/ 안에 새 .py 를 두면 «안 나갑니다»
+실측  git ls-files server/mappers/ -> «11» (샘플 9 + ledger_v2_ 2)
+     실제 .py -> «15».  base.py · utils.py · __init__.py «전부 untracked»
+```
+🔴 **그래서 새 체크아웃에는 `mappers/base.py` 도 `mappers/utils.py` 도 «없습니다».**
+`BaseMapper` 가 아예 존재하지 않습니다 — 소유자께서 「운영에 BaseMapper 쓰는 게 있다」 하신 것은
+그 박스의 `mappers/` 가 «운영자 관리 파일»이라는 뜻으로 읽힙니다(라이브 config 와 같은 성격).
+=> SDK 는 `server/mapper_sdk.py` 에 두었습니다. 여기는 추적됩니다.
+
+## 만든 것 — ③ 「DF -> updates」
+```
+mapper_sdk.df_to_updates(df, table_name, *, source_name, updated_by)
+mapper_sdk.payloads_to_df(payloads)          ① 도 같이 (utils 가 이걸 부릅니다)
+```
+🔴 **업무키를 «선언»이 정합니다 — 이 함수가 table_name 을 받는 이유가 그것뿐입니다.**
+```
+컴포짓 표    business_key_val 을 «안 답니다» -> assemble_composite_business_key 가 조립
+비컴포짓 표  business_key_val 을 «답니다»   -> 아무도 updates[key] 를 안 들어올리므로
+저자        둘 다 «컬럼만» 냅니다. 어느 쪽인지 «기억할 필요가 없습니다»
+```
+두 실수 다 «조용»합니다 — 컴포짓에 키를 적으면 선언이 안 따라지고(구분자 바뀌는 날 그 맵퍼만 어긋남),
+비컴포짓에 안 적으면 «정체성 없는 행»이 매 실행마다 한 벌씩 쌓입니다.
+그리고 키 컬럼이 «없거나 비면» 이름과 함께 «거절»합니다 — 정체성 없이 착지한 배치는 나중에
+「보낸 적 없는 것」과 구별이 안 됩니다.
+
+## 🔴 재는 중에 «죽은 갈래»를 하나 잡았습니다 — 지우지 않고 «닿게» 했습니다
+```
+가이드 조각의  v.item() if hasattr(v, "item") else v
+실측 2026-09-03  astype(object).to_dict("records") 가 돌려주는 것:
+   int · float · bool · Timestamp · str   -> «.item() 를 가진 것이 하나도 없습니다»
+=> 프레임 경로로는 그 갈래에 «닿을 수 없습니다». 실제로 그 줄을 지워도 시험이 «초록»이었습니다
+```
+지우지 않은 이유: 옛 pandas 는 `to_dict` 에서 numpy 스칼라를 돌려줬고, 그건 계약의 일부입니다.
+대신 `_python_scalar` 로 빼서 **numpy 스칼라를 «직접 먹이는» 시험**을 붙였습니다.
+어제 판정하신 「죽은 갈래가 처리된 케이스처럼 읽힌다」를 피하면서 계약은 남깁니다.
+
+## 가이드 — 조각을 지우고 함수를 가리킵니다
+```
+전   df_to_updates 를 «코드 조각»으로 인쇄 -> 읽는 맵퍼마다 «복사»됩니다 (지금 15개)
+후   from mapper_sdk import df_to_updates  세 줄 + «왜 그렇게 하는지»만 남김
+     (NaN/NaT 의 이유 · 「키는 선언이 정한다」로 넘어가는 다리)
+```
+
+## 게이트
+```
+① 컴포짓 «하나» + 비컴포짓 «하나», 저자가 business_key_val 을 «안 줘도» 양쪽 다 맞게    ✅
+   그리고 「저자 코드가 둘 다 같다」를 단언 하나로 못 박았습니다
+② NaN · NaT · numpy 스칼라 «각각»                                                  ✅
+   NaN 은 `is None` 으로 단언합니다 — `nan != nan` 이라 등호 비교는 시험이 아닙니다
+③ 변이 «다섯», 각각 다른 시험이 빨개짐                                               ✅
+   컴포짓에 키 적기 · 비컴포짓에 키 빼기 · astype(object) 제거 · 스칼라 변환 제거 · 거절 제거
+무회귀  체인/맵퍼 계열 9개 파일 -> 87 passed / 4 failed
+   🔴 그 4 는 «제 것이 아닙니다». 원래 utils.py 로 되돌려 놓고 «같은 4» 를 확인했습니다
+      전부 «gitignore 된 라이브 파일»을 읽습니다 —
+      live .py 와 .sample 의 바이트 불일치 · 라이브 table_config 의 dt_inventory 선언 부족
+```
+
+## 경계 — 지시대로
+```
+⛔ 도메인 모듈 «0» — pandas 와 crud(지연) 뿐입니다
+⛔ 상속 «강요 안 함» — 함수 import 입니다
+⛔ 기존 15개 맵퍼 «개조 0»
+✅ BaseMapper 동작·시그니처 «그대로». utils.py 가 SDK 를 부르게만 했습니다
+⚠️ 다만 그 utils.py 편집은 «이 박스에만» 남습니다 (추적 안 됨). 다른 박스는 각자 해야 합니다
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다
+다음 단계   2 sql(db, "...") -> DataFrame  ·  3 @mapper 로 ①③ 감싸기
+판정 요청   `mappers/base.py` · `utils.py` 에 «.sample 을 만들지» — 지금은 새 체크아웃에
+           BaseMapper 가 «없습니다». 만들면 다음 박스는 위임된 채로 시작합니다
+```
