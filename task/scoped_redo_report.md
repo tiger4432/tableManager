@@ -3055,3 +3055,74 @@ mapper_sdk · chain_replay · chain_cascade · chain_key_gate · cross_table_loo
 판정 대기  ① mappers/base.py · utils.py 의 .sample (새 체크아웃에 BaseMapper 가 없습니다)
           ② 운영 BaseMapper 를 SDK 에 잇는 것 — 총괄이 소유자께 올리셨습니다. 저는 손 안 댑니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] `BaseMapper` 이전 완료 — SDK 마지막 조각입니다 (구현자, 2026-09-03)
+
+커밋 `47835320`. 추적 파일 «셋»: `server/mapper_sdk.py` · `server/tests/test_mapper_sdk.py`(시험 21) ·
+`docs/guide/chain_ingestion_guide.md`. 그리고 «추적 안 되는» 하나: `server/mappers/base.py`.
+
+## 게이트 넷
+```
+① from mappers.base import BaseMapper 가 «그대로» 되고 같은 답        ✅
+② from mapper_sdk import BaseMapper 도 «됩니다»                      ✅
+③ 두 경로가 «같은 객체» — `is` 로 단언                                ✅
+④ 건드린 것만, 인터프리터 직접                                        ✅  122 passed / 0 failed
+```
+🔴 ③을 「둘 다 된다」가 아니라 **`is`** 로 쓴 이유를 시험에 적었습니다 — 사본이 둘이면
+«둘 다 맞게 답하고», 한쪽을 고치는 날 갈립니다. 그게 이 이전이 없애려는 바로 그 상태입니다.
+
+## 한 것
+```
+mapper_sdk.py   class BaseMapper — 이름·메서드·시그니처·동작 «그대로»
+                구현은 같은 파일의 payloads_to_df 를 «부릅니다» (사본 0)
+mappers/base.py  from mapper_sdk import BaseMapper  «한 줄» + 왜 그런지
+                ⚠️ 이 파일은 gitignore 라 «이 박스만» 바뀝니다. 다른 박스는 각자 한 번
+```
+총괄 실측대로 «상속하는 곳이 없습니다» — 두 사용처 다 `BaseMapper.payloads_to_df(...)` 정적
+호출입니다(옛 주석은 「inherits」라 적혀 있었지만). 그래서 옮겨도 사슬이 안 깨집니다.
+
+## 🔵 시험 하나를 «더» 붙였습니다 — 지시 밖이라 밝힙니다
+```
+test_base_mapper_keeps_exactly_one_method
+   public 메서드가 ["payloads_to_df"] «하나»인지 단언합니다
+이유  지시서의 ⛔ 가 「메서드를 더하지 마십시오 — 늘리면 상속이 «유혹»이 된다」였는데,
+     그 금지가 «주석»에만 있으면 다음 사람이 못 봅니다. 단언이면 늘리는 것이 «결정»이 됩니다
+```
+빼는 것이 맞으면 한 줄입니다.
+
+## 가이드 — 「운영이 한 번 해야 할 한 줄」을 적었습니다
+```
+@mapper + sql 예시로 바꾸고(복사되던 조각 자리), 그 아래에:
+   「BaseMapper 가 server/mapper_sdk.py 로 갔다. server/mappers/ 는 gitignore 이므로
+    도는 기계의 base.py 사본은 «옛 클래스»를 들고 있다. 그 파일 본문을
+    `from mapper_sdk import BaseMapper` 로 바꾸거나, 맵퍼가 직접 그걸 import 하게 하라.
+    어느 쪽이든 «한 번»이고 그 뒤로는 구현이 서버와 함께 다닌다」
+```
+
+## 경계 — 지시대로
+```
+⛔ BaseMapper 에 메서드 «안 더했습니다» (시험으로 못 박기만 했습니다)
+⛔ 맵퍼들의 import 문 «안 고쳤습니다» — 운영 기계 몫이고 이 박스 파일은 출하 안 됩니다
+⛔ 기존 두 사용처 «동작 변화 0» — payloads_to_df 의 결과를 함수 것과 `.equals` 로 대조
+```
+
+## SDK 라운드 «닫힘» — 저자가 쓰는 것
+```
+from mapper_sdk import mapper, sql
+
+@mapper()
+def my_mapper(df, db):
+    ref = sql(db, "... WHERE lot = :lot", {"lot": lot})
+    return out          # DataFrame. ①③ 도 업무키도 저자 코드에 «없습니다»
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 47835320 푸시했습니다
+큐        샘플 하나를 SDK 모양으로 (전파 경로) — 열라 하시면 갑니다
+          「SQLite 로 도는 시험이 PG 에서만 드러날 결함을 못 잡는다」의 다른 눈먼 자리 훑기
+판정 대기  mappers/base.py · utils.py 의 .sample — 이번 이전으로 base.py 는 «한 줄»이 됐으니
+          샘플로 만들 값이 더 커졌습니다 (새 체크아웃이 위임된 채로 시작합니다)
+```
