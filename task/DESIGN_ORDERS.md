@@ -15150,3 +15150,66 @@ graph.html:1186-1193  #stats-retired 를 error 상태와 «따로» 둔 이유�
 ```
 ⛔ `graph.html` 은 이 라운드에서 건드리지 마십시오. 이미 판정대로 서 있습니다.
 ⛔ 은퇴 문구를 새로 지어내지 마십시오 — graph 의 것을 «같은 상수/같은 모양»으로 씁니다.
+
+
+---
+
+# 🔴 [총괄 -> 클라] 앞 지시를 «갈아엎습니다» — 은퇴 안내가 아니라 **제거**입니다 (소유자 판정 2026-09-04 09:3x)
+
+> 소유자: 「저거 레거시 그래프 뷰어잖아 은퇴해도 무방」 · 「그냥 저거 없애. 관련도」
+
+바로 위 「trace 은퇴 — 안내 페이지로」 지시는 **무효입니다.** 안내를 남기지 않고 지웁니다.
+아직 시작 안 하셨으면 그대로 이 지시로 오십시오. 시작했으면 되돌리고 오십시오.
+
+## ⚠️ 그리고 그 지시서에 제가 쓴 수가 틀렸습니다 — 고칩니다
+```
+제가 쓴 것   GET /graph/mapping-summary -> «404» {"detail":"Not Found"}
+실제        -> «410» {"reason":"old_graph_branch_retired",
+                     "successor":"/api/ledger/subgraph","ruling":"R-2026-08-14-H", ...}
+원인        제가 «/api/» 를 붙여 물었습니다. API_BASE = loc.origin 이라 클라는 접두 «없이» 부릅니다
+```
+🔴 그러니 「게이트가 조용히 404 를 낸다」는 제 서사도 틀렸습니다 — **서버는 이유·후속·판정번호를
+같이 돌려주고 있었습니다.** 당신이 앞서 보고한 「410 ×2」가 맞았고 제 수가 틀렸습니다.
+오늘 제 네 번째입니다.
+
+## 지울 것 — 실측한 반경 그대로
+```
+화면      graph.html · trace.html            + vite.config.js 의 진입점 «둘»
+로직      src/graph_viewer.js   1,274줄   소비자는 graph.html «하나»
+         src/trace.js            462줄   진입점 전용, importer 0
+         src/trace_core.js       234줄   importer 가 trace.js·trace_launch.js «둘뿐» -> 같이 감
+         src/trace_launch.js     111줄   🔴 그리드가 로드·새로고침마다 410 을 부르던 자리
+호출 자리  main.js:66,151 (initTraceEntry) · api.js:12,157 (refreshTraceEntry)
+계측      effort_meter.js:525 '/trace.html': ROUTES.TRACE
+         -> ROUTES.TRACE 소비자가 «0» 이 되는지 «심볼»로 세고 처리
+하니스     tests/effort_meter_harness.mjs · scripts/check_harnesses.mjs (FLOORS)
+         🔴 재던 코드와 «같은 커밋»에서 같이 손봅니다
+```
+그밖에 이름이 걸린 곳 — **읽고 «갈래»를 나누십시오. 전부 지우는 것이 아닙니다**:
+`src/grid.js` · `src/map_editor2.js` · `src/rescope_handoff.js` · `src/rnd_board/api.js` ·
+`tests/map_key_datalist_harness.mjs`
+```
+⛔ src/rnd_board/api.js 의 그래프스러운 이름(typeGraph 등)은 «R&D 보드 것»입니다. 남깁니다
+⛔ 주석에서 「graph_viewer 선례」처럼 «참조»만 하는 것은 지우지 말고 판단하십시오
+```
+
+## 🔴 `index.html` 의 묘비 주석 — 지우지 말고 «고치십시오»
+:298~309 가 「graph.html 은 파일이 «남아 있다»」고 적고 있습니다. 지우면 그 문장이 «거짓»이 됩니다.
+```
+지금    「화면 파일 자체는 지우지 않았고(북마크·딥링크가 있다)…」
+바뀜   파일이 없어졌으므로 그 절이 틀립니다 -> 이번 판정으로 «갱신»합니다
+🔴 죽은 이름을 갈아끼우지 말고, «무엇이 언제 왜» 사라졌는지로 다시 쓰십시오.
+   바로 아래 ledger.html 묘비가 그 모양의 예입니다 (「파일이 남아 있지 않다 — 링크를 두면 404」)
+```
+
+## 게이트 — 수로
+```
+① 전   그리드를 새 탭에서 열어 /graph/* 요청이 «몇 번» 나가나 (지금 로드당 1, 새로고침마다 +1)
+② 후   «0». 그리고 그리드가 그대로 도는가 (행·컬럼 수를 같이 적으십시오)
+③ 후   빌드 후 dist 에서 graph-*.js · trace-*.js 청크가 «사라지는가»
+       main 청크에서 trace_core 가 «사라지는가»
+④ 하니스 전수 초록 (FLOORS 포함)
+⚠️ 캐시 — 새 탭에서, 캐시 무력화하고. 오늘 두 번 걸리신 자리입니다
+```
+⛔ `rnd_board/**` 는 이 라운드에서 «건드리지 않습니다».
+⛔ 서버의 `/graph/*` 스텁은 «구현자»가 같은 시각에 지웁니다. 순서 의존 없습니다.
