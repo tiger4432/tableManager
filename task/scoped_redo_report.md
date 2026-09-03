@@ -2239,3 +2239,74 @@ boolean 영구   픽스처 주석에 «소유자 판정(2026-09-03) 불리언 �
 ② 필터/검색·내보내기의 같은 반경을 좁힐지
 ③ 이 가드의 시험을 붙일지 (지금 «미도달 가드»입니다)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 컬럼 «사전 걸러내기» 착지 — **게이트 넷 중 셋 충족, 넷째는 «다른 이음매»입니다** (구현자, 2026-09-03)
+
+커밋 `dd6c9516`. 파일 «하나»: `server/virtual_join_executor.py`.
+
+## 게이트
+```
+✅ 사유    출하 픽스처(규칙 «하나» · 다섯 컬럼)에서 «8 failed -> 6 failed»
+          돌아온 둘   the_grid_and_the_search_spell_a_timestamp_the_same_way   (event_at)
+                     a_collide_temporal_column_diverges_on_left_owned_cells…  (stamp_at)
+          -> 지난 라운드에 «규칙 단위»로는 못 닿던 자리에 이번엔 닿았습니다
+✅ 쿼리    실측 — 오른쪽 표에 대한 SELECT
+             컬럼 하나가 «빠진» 선언   SELECT «1» · 전체 문장 «1»
+             걸러낼 것이 «없는» 선언   SELECT «1» · 전체 문장 «1»
+          => 늘지 않았습니다. 걸러내기는 DB 를 안 만집니다(hasattr 한 번)
+✅ 로그    빠진 컬럼을 «이름으로» 남깁니다 — 규칙 이름 · 없는 컬럼 이름 · 오른쪽 표 이름 ·
+          «살아남은 컬럼 목록»까지. 「무엇이 빠졌고 무엇은 멀쩡한가」가 한 줄에 있습니다
+⚠️ 무회귀  정상 경로 표 «변화 0» — 12개 파일 204 passed.
+          빨강 8 = vjt 6 + 이 라운드와 무관한 기존 둘
+          (undeclared_schema_report 1 · declared_key_indexes 1, 어제도 빨갰습니다)
+```
+
+## 어떻게 했나 — 지시하신 그대로 «실행 전 목록 검증»
+```
+자리   execute_rule 이 `cols = [...] + [getattr(right, c) for c in expose]` 를 짓기 «직전»
+술어   hasattr(right, c) — 다음 줄의 getattr 과 «같은 술어»입니다. 더 엄한 흉내를 안 냈습니다
+       (이 모델들에서는 둘이 갈릴 수도 없습니다 — init_dynamic_models 는 Column «만» 답니다)
+결과   빠진 컬럼은 제안 0 -> 결정에서 라벨(미상). 형제 넷은 «전과 같은 한 번의 SELECT»로 그대로
+```
+🔴 **컬럼마다 try 를 안 쓴 이유**를 코드에 적었습니다 — 그러면 「어느 것이 던지나」를 알려고
+   SELECT 를 컬럼 수만큼 지어 돌려야 하고, 이 이음매의 «비용이 바뀝니다». 총괄 지적 그대로입니다.
+
+## 남은 빨강 «여섯»의 구성 — 셋으로 갈립니다
+```
+① Boolean 갈래 «넷»   주어가 «영영» 없습니다 (소유자 판정: 불리언 필요 없음)
+     expose_type_universe_is_exactly_what_this_file_covers
+     a_boolean_expose_column_does_not_claim_a_value_it_does_not_have
+     the_boolean_render_twin_spells_it_the_way_sql_does
+     a_boolean_filter_value_arriving_as_a_bool_is_bridged
+② 제 알려진 빨강 «하나»   a_graph_meta_boolean_never_reaches_the_payload… (주입 제거)
+③ 🔴 «셋째 이음매» 하나   export_carries_the_temporal_virtual_column_in_the_pinned_spelling
+```
+
+## 🔴 ③ — 이번 변경이 «안 덮는» 자리입니다. 판정 요청
+```
+내보내기는 attach 를 «안 지납니다». 노출 컬럼의 SQL 을 «자기가» 세웁니다
+   -> 그래서 event_at(멀쩡한 컬럼)을 내보내는 시험이 «여전히» 깨진 컬럼 때문에 죽습니다
+   -> 반경 셋 중 «페이로드»만 좁혔고, «내보내기»는 그대로입니다
+       (필터/검색은 ①에 속합니다 — 그 시험은 Boolean «자체»를 필터하므로 주어가 없는 쪽입니다)
+```
+같은 사전 걸러내기를 그쪽에도 걸면 될 것으로 보이지만, **다른 함수이고 지시 밖이라 손대지
+않았습니다.** 하실지 판정 부탁드립니다.
+
+## ⚠️ 그리고 지난 라운드의 «미도달 가드»는 여전히 미도달입니다
+```
+390f0ec4 의 «규칙 단위» try/except 는 규칙이 «둘 이상»이라야 깨어납니다
+출하 픽스처는 규칙 «하나» -> 여전히 시험이 «없습니다»
+이번 변경으로 그 가드가 «덜 자주» 도달됩니다 — 컬럼 부재는 이제 여기서 걸러지므로,
+   그 try 는 「execute_rule 이 «다른 이유»로 던질 때」만 발동합니다
+=> 두 겹인 것 자체는 맞습니다(사전 검증 + 최후 그물). 다만 안쪽 그물에 시험이 없습니다
+```
+지시 없이 시험을 더하지 않았습니다. ③ 판정과 함께 봐 주시면 좋겠습니다.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. dd6c9516 푸시했습니다
+판정 요청   ① 내보내기 쪽에도 같은 사전 걸러내기를 걸지
+           ② 규칙 단위 가드(390f0ec4)의 시험을 붙일지
+```
