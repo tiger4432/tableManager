@@ -459,7 +459,40 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
         return {}
 
     onclause = join_onclause(left, right, rule)
-    expose = list(rule["expose"])
+    # 🔴 THE LIST IS CHECKED BEFORE THE SELECT IS BUILT, NOT CAUGHT WHILE IT RUNS. A name
+    # the right model does not carry makes `getattr` below raise, and that one name used to
+    # take the whole rule with it - every sibling column omitted for a fault that belongs
+    # to one of them. A column absent because a NEIGHBOUR is broken renders exactly like a
+    # column that is empty, which is the least visible failure this codebase has.
+    #
+    # 🔴 A LIST CHECK AND NOT A TRY PER COLUMN, deliberately: wrapping each column would
+    # mean building and running the SELECT once per column to find out which one throws,
+    # and the cost of this seam would change. Everything needed is knowable before
+    # execution, because what throws is the ATTRIBUTE LOOKUP while composing the query.
+    # So the query count is exactly what it was - one per chunk, whatever gets dropped.
+    #
+    # `hasattr` is the exact twin of the `getattr` on the next line rather than a stricter
+    # imitation of it. For these models the two agree in any case: `init_dynamic_models`
+    # gives a dynamic class nothing but Columns, so "has the attribute" and "is a column of
+    # the table" cannot disagree here.
+    #
+    # HOW A DECLARED NAME GOES MISSING (measured 2026-09-03): `virtual_join_config`
+    # validates `expose` against the right table's `column_types` KEYS, and the model
+    # builder SKIPS the graph-sync metadata names - which a table created after
+    # 2026-08-31 no longer receives. So the declaration is valid and the column is not
+    # there, and neither side is wrong.
+    declared = list(rule["expose"])
+    expose = [c for c in declared if hasattr(right, c)]
+    if len(expose) != len(declared):
+        for name in declared:
+            if name in expose:
+                continue
+            logger.error(
+                "[VirtualJoin] rule '%s': '%s' is declared in expose but '%s' has no such "
+                "column - that ONE column is omitted; the rule's other columns (%s) are "
+                "unaffected",
+                rule.get("name") or rule.get("rule_name") or "<unnamed>", name,
+                rule["right_table"], expose or "none")
     # 오른쪽 `row_id`는 표시 대상이 아니라 **①/②를 가르는 유일한 증거**다.
     # 오른쪽 expose 값이 NULL이면 "행이 없었다"인지 "행은 있었고 값이 NULL이었다"인지
     # 값만 봐서는 구별할 수 없다.
