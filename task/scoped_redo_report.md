@@ -2987,3 +2987,71 @@ mapper_sdk.payloads_to_df(payloads)          ① 도 같이 (utils 가 이걸 �
 판정 요청   `mappers/base.py` · `utils.py` 에 «.sample 을 만들지» — 지금은 새 체크아웃에
            BaseMapper 가 «없습니다». 만들면 다음 박스는 위임된 채로 시작합니다
 ```
+
+---
+
+# ✅ [서버 -> 총괄] 맵퍼 SDK «②③» 착지 — 저자가 쓰는 것은 이제 `(df, db) -> df` 하나입니다 (구현자, 2026-09-03)
+
+커밋 `ec118223`. 파일 «둘»: `server/mapper_sdk.py` · `server/tests/test_mapper_sdk.py`(시험 18).
+
+## ② `sql(db, query, params) -> DataFrame`
+```
+🔴 db.connection() 을 씁니다 — «새 커넥션이 아니라». 그게 이 함수의 «성질»입니다
+   맵퍼는 워커의 트랜잭션 «안»에서 돌고 커밋이 금지돼 있습니다
+   -> 체인이 그 트랜잭션에 쌓아 둔 행은 «그 세션에만» 보입니다
+   -> 자기 커넥션을 열면 «배치 이전»의 DB 를 읽습니다. 조용히, 그리고 «동시성에서만»
+파라미터  바인딩입니다. 문자열 조립 금지 (주석에 이유)
+```
+
+## 🔴 그 시험이 «판별식이 아니었습니다» — 다시 썼습니다
+```
+1차   「커밋 안 한 행이 보이나」로만 단언
+변이   db.connection() -> db.get_bind()   (= pandas 에 «엔진»을 넘김 = 바로 그 결함)
+결과   «18 전부 초록»                      <- 안 잡힙니다
+왜    SQLite 가 «같은 풀 커넥션»을 돌려주고, 커밋 안 한 행도 양쪽 다 보입니다
+     -> 시험이 도는 dialect 가 두 갈래를 «behaviour 로 구별 못 합니다»
+2차   `db.connection` 에 «스파이»를 걸어 「세션의 커넥션을 통했나」를 단언
+     행 단언은 «그 밑에» 남겼습니다 — 스파이가 «대신하는 뜻»이 그것이고,
+     PostgreSQL 에서는 둘째 커넥션이 그 행을 아예 못 봅니다
+=> 같은 변이가 이제 «빨개집니다»
+```
+「두 규칙이 같은 답을 내는 표본은 판별식이 아니다」에 제가 걸렸고, 커밋 전에 잡았습니다.
+
+## ③ `@mapper()`
+```
+저자    def build(df, db): ... return out_df        <- 이것뿐입니다
+워커    여전히 (db, payloads, rule=None) 으로 부릅니다 -> chain_rules.json 에 «그대로» 들어갑니다
+        (SDK 가 «두 번째 호출 규약»이 되지 않습니다)
+```
+🔴 **대상 표는 «룰»에서 옵니다.** 데코레이터 인자는 «폴백»이고, 둘 다 있으면 «룰이 이깁니다» —
+운영자가 편집하는 것이 룰이고, 맵퍼가 대상 표를 다시 적으면 «틀릴 자리가 하나 더» 생깁니다
+(컬럼 이름을 맵퍼가 적는 것과 같은 결함).
+🔴 **`updated_by` 는 저자 «함수 이름»이 기본입니다.** 타이핑해야 하는 프로버넌스는
+직전 맵퍼에서 «복사»되고 그때부터 «엉뚱한 이름»을 답니다. 함수 이름은 함수와 어긋날 수 없습니다.
+```
+DataFrame 이 아닌 것을 반환   -> «이름으로 거절». 「봉투를 직접 만들 거면 이 데코레이터가 아닙니다」
+None / 빈 프레임              -> {"updates": []} 로 «의도적으로». 워커의 truthiness 에 «걸려서»가 아니라
+```
+
+## 변이 — 각각 다른 시험이 빨개집니다
+```
+엔진으로 읽기 (db.get_bind())      the_query_runs_on_the_callers_transaction…   <- 2차 시험이라야 잡힙니다
+params 무시                        parameters_are_bound_rather_than_formatted
+데코레이터 표가 룰을 이김            target_table_comes_from_the_rule_and_the_rule_wins
+updated_by 를 상수로                provenance_defaults_to_the_authors_own_function_name (+1)
+(1단계 변이 다섯은 그대로 유효)
+```
+
+## 무회귀
+```
+mapper_sdk · chain_replay · chain_cascade · chain_key_gate · cross_table_lookup · enrichment
+-> 119 passed / 0 failed
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. ec118223 푸시했습니다
+큐        샘플 하나를 SDK 모양으로 (총괄이 「전파 경로」라 적어 두신 것). 열라 하시면 갑니다
+판정 대기  ① mappers/base.py · utils.py 의 .sample (새 체크아웃에 BaseMapper 가 없습니다)
+          ② 운영 BaseMapper 를 SDK 에 잇는 것 — 총괄이 소유자께 올리셨습니다. 저는 손 안 댑니다
+```
