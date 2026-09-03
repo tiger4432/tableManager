@@ -1125,6 +1125,20 @@ def _v2_registration_subjects(plan, frame):
             if column in frame.columns:
                 values.extend(frame[column].tolist())
         for value in values:
+            # 🔴 `or ""` HERE IS NOT `crud.is_blank_value`, AND ON THIS PATH THE DIFFERENCE
+            # IS REACHABLE. `values` comes from `frame[column].tolist()` - the SOURCE
+            # ROWS - so whatever the probe column actually holds arrives here. `or ""`
+            # swallows every falsy value before `str` sees it, so a probe column holding
+            # exactly `0` or `False` reads as blank and the subject is skipped with no
+            # error and no log line.
+            #
+            # NOT A DEFECT TODAY, MEASURED 2026-09-03: every probe column the shipped
+            # declaration names is an identifier - `dt_job`, `lot_id`, `waferids` - and an
+            # identifier is never `0`. But the grammar constrains `columns` to a list of
+            # NAMES and says nothing about their type, so declaring a numeric probe column
+            # is one config line away, and the day it happens this loses rows silently.
+            # Left as it is on the lead PM's ruling (report it, do not fix it); what makes
+            # it safe is the declaration, not this line.
             text = str(value or "").strip()
             if not text:
                 continue

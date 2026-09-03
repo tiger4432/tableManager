@@ -152,27 +152,34 @@ own column names is the same defect as a mapper that does.
 `if target_payload and isinstance(target_payload, dict) and target_payload.get("updates")`
 (`chain_ingestion_worker.py`, the `execute_custom_mapper` call sites). Returning a
 frame raises `ValueError: The truth value of a DataFrame is ambiguous` on the first
-clause — loudly, which is the good case. Convert instead:
+clause — loudly, which is the good case. Convert with the one that ships:
 
 ```python
-def df_to_updates(df, *, source_name, updated_by):
-    clean = df.astype(object).where(pd.notna(df), None)          # NaN/NaT -> None
-    return {"updates": [
-        {"updates": {k: (v.item() if hasattr(v, "item") else v)  # numpy scalar -> python
-                     for k, v in rec.items()},
-         "source_name": source_name, "updated_by": updated_by}
-        for rec in clean.to_dict("records")]}
+from mapper_sdk import df_to_updates
+
+return df_to_updates(out, rule["target_table"],
+                     source_name="chain_ingestion", updated_by="my_mapper")
 ```
 
-🔴 **The `where(pd.notna(...))` line is the one that matters.** `pd.read_sql` turns
-SQL `NULL` into `NaN`, whose type is `float` — so a plain `to_dict("records")` carries
-`nan` where the source had no value, and "there is no value" becomes "the value is
-nan". Measured 2026-09-02 on `lot_event.parent_lot`.
+🔴 **This used to be a code snippet here, and that was the mistake.** A conversion
+printed in a guide is copied into every mapper that reads it, and then there are
+fifteen of them to fix when one of its lines turns out to be wrong. `mapper_sdk.py`
+holds it now; what a guide can usefully say is *why* the function does what it does:
 
-**Let the declaration assemble the key.** For a target that declares
-`composite_key_source`, emit its source columns and do **not** set
-`business_key_val`: `crud.assemble_composite_business_key` builds it — separator
-included — and also fills the physical `business_key` column.
+- `NaN`/`NaT` become `None`. `pd.read_sql` turns SQL `NULL` into `NaN`, whose type is
+  `float`, so a bare `to_dict("records")` carries `nan` where the source had no value
+  and "there is no value" becomes "the value is nan". Measured 2026-09-02 on
+  `lot_event.parent_lot`.
+- **the business key is decided from the declaration, not by the author** — see the
+  next section, which is the whole reason the function takes a table name.
+
+**Let the declaration assemble the key** — and if you use `df_to_updates` you get
+this for free, because it reads `TABLE_CONFIG` and decides. The rest of this section
+is what it decides and why, which is worth knowing even when the function is doing it.
+
+For a target that declares `composite_key_source`, emit its source columns and do
+**not** set `business_key_val`: `crud.assemble_composite_business_key` builds it —
+separator included — and also fills the physical `business_key` column.
 
 ```
 emit the source columns only    -> business_key_val 'J1|3|7', updates gains dt_cell_key

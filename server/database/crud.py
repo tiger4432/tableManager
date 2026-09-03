@@ -917,6 +917,19 @@ def is_blank_value(val: Any) -> bool:
     `enrichment_candidates`. Same meaning, so those keep working unchanged; having a
     name is what lets the SQL spelling below point at something instead of re-deriving
     the rule from a comment.
+
+    🔴 `str(x or "").strip() == ""` IS NOT THIS, AND MUST NOT BE FOLDED INTO IT. It looks
+    like the same test and it is a DIFFERENT PREDICATE: `or ""` swallows every falsy value
+    before `str` ever sees it, so it calls `0`, `0.0`, `False`, `[]` and `{}` blank while
+    this function calls all five NON-blank. Measured over a twelve-value matrix on
+    2026-09-03: this spelling and `v is None or str(v).strip() == ""` disagree ZERO times,
+    and the `or ""` spelling disagrees FIVE.
+
+    The warning lives HERE rather than beside each of the 67 `or ""` sites for the reason
+    that round was about: a judgement copied to 67 places is 67 chances to disagree, and
+    anyone folding one of them has to arrive at this function to do it. What each site
+    still owes is only "can a falsy non-string reach ME", which is a fact about that site
+    and not about blankness.
     """
     return clean_str_value(val) == ""
 
