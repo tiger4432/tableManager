@@ -140,40 +140,23 @@ const KNOWN_RED = new Map([
   // comment away from being wrong again. The assertion was scoring a RUN order through a TEXT
   // proxy. It now runs the function (probe, [INV-6 §reach]) and the harness is green at
   // 103/0 with its 19 mutants still caught -- see FLOORS below.
-  ['valid_die_frame_adoption_harness.mjs', { ran: 237, failed: 30,
+  ['valid_die_frame_adoption_harness.mjs', { ran: 239, failed: 13,
     failures: [
       "F6/A(stored==derived)/F8/domain-is-not-empty",
-      "F6/A(stored==derived)/F8/notice-is-info-not-error",
-      "F6/A(stored==derived)/F8/notice-says-nothing-changed",
-      "F6/A(stored==derived)/F8/notice-shown-exactly-once",
       "F6/A(stored==derived)/F8/stored-coordinates-preserved-total",
       "F6/B(stored!=derived)/F8/domain-is-not-empty",
-      "F6/B(stored!=derived)/F8/notice-is-info-not-error",
-      "F6/B(stored!=derived)/F8/notice-says-nothing-changed",
-      "F6/B(stored!=derived)/F8/notice-shown-exactly-once",
       "F6/B(stored!=derived)/F8/stored-coordinates-preserved-total",
       "F6/C/F8/nothing-became-unaddressable",
-      "F6/C/F8/notice-names-both-grids",
-      "F6/C/F8/notice-says-nothing-changed",
-      "F6/C/F8/offset-notice-announced",
-      "F6/C/F8/offset-notice-is-info",
       "F6/C/F8/stored-coordinates-preserved",
       "F6/C/coord/screen-position-unmoved",
       "F6/E/F8/no-coordinate-changed",
-      "F6/E/F8/notice-shown-exactly-once",
       "F6/E/F8/stored-coordinates-preserved-total",
       "F6/empty-A/F8/target-index-space-unmoved",
       "F6/empty-B/F8/target-index-space-unmoved",
-      "MEDIUM-1/classification-survives-a-designation",
+      "MEDIUM-1/coord/classification-survives-a-designation",
       "O/aligned/alarm-tracks-the-actual-misalignment",
-      "O/rot-only/alarm-tracks-the-actual-misalignment",
-      "O/specimen/alarm-fired-exactly-once",
-      "O/specimen/alarm-is-info",
-      "O/specimen/alarm-names-both-origins",
-      "O/specimen/alarm-names-the-measured-offset",
-      "O/specimen/alarm-tracks-the-actual-misalignment",
     ],
-    why: 'OWNER RULING 2026-09-03 (ⓐ): a designation adopts the reference PHYSICAL spec and re-derives the grid from it. 228/41 -> 237/30. The TWELVE that asserted the opposite are gone: eleven were REPLACED by their inverse (retiring them alone would have left the adoption unscored) and the twelfth, `screen-position-NOT-re-derived`, was MOVED rather than replaced -- under ⓐ its literal claim is false because the grid changed, but what it scores is whether the CELLS moved, which is the same subject as the coordinate assertions. Replacing it in place would have taken it out of the set the pending ruling is about. The 30 that remain are two groups, neither of which ⓐ settles: FOURTEEN on coordinates (the ruling said where the grid comes from, not whether a stored coordinate may be re-based -- measured on fixture A, 224 of 290 painted cells land where the new frame issues no address and all 66 that remain are the earlier coordinate translated by exactly (0,+8)), and SIXTEEN scoring the wording of a notice whose subject is "nothing changed". The notice wording is decided and lands next; the coordinate question is open and its numbers are to be re-measured through an imported harness before anything is promoted to a defect.' }],
+    why: 'OWNER RULING 2026-09-03 (ⓐ): a designation adopts the reference PHYSICAL spec and re-derives the grid from it. 228/41 -> 239/13, and every remaining failure is ONE question. Twelve assertions said nothing is adopted: eleven were REPLACED by their inverse (retiring them alone would have left the adoption unscored) and the twelfth was MOVED, because what it scored was whether the CELLS moved. Sixteen scored the wording of a notice that said nothing changed; the notice now names both grids and which one is in use, and the harness selects it by its dedupe key instead of by grepping its text -- pinning wording is what reddened sixteen assertions on a copy edit, none of which was about the sentence. WHAT IS LEFT, AND WHY IT STAYS RED: the ruling settled where the grid comes from, NOT whether a stored coordinate may be re-based when it moves. Measured on fixture A: of 290 painted cells, 224 land where the new frame issues no address and all 66 that remain are the earlier coordinate translated by exactly (0,+8). These are NOT re-aimed to whatever the code produces today -- that would decide the question by writing down the answer -- and their numbers are to be re-measured through an IMPORTED harness before any of it is promoted to a defect, because this file still slices its subject and slicing is wrong in both directions.' }],
 ]);
 
 // ── the floors ──────────────────────────────────────────────────────────────────

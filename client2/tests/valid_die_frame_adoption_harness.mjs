@@ -223,7 +223,12 @@ function buildEnv(src, opts = {}) {
     isBoxDragging: false, dragType: null,
     getComputedStyle: () => ({ getPropertyValue: () => '#000' }),
     renderValidDieChip() {}, syncValidDieRefControls() {},
-    showToast: (msg, kind) => log.toasts.push({ msg: String(msg), kind }),
+    // 🔴 THE THIRD ARGUMENT IS KEPT. Selecting a notice by GREPPING ITS TEXT pins wording,
+    //    and wording is the thing a UI round is allowed to change -- this file went red on
+    //    sixteen assertions the day the sentence was rewritten, none of which was about the
+    //    sentence. `dedupeKey` is the notice's IDENTITY and it survives a copy edit.
+    showToast: (msg, kind, opts) => log.toasts.push({ msg: String(msg), kind,
+                                                      key: opts && opts.dedupeKey }),
     requestAnimationFrame(fn) { fn(); },
     // --- network (all stubbed; every call is counted) ---
     fetchMapKeySpec: async (t) => { log.requests.push(`spec:${t}`); return { ok: true, keyColumns: ['map_id'], columnTypes: {} }; },
@@ -594,12 +599,29 @@ async function scoreAll(src, { verbose = false } = {}) {
     // An offset mask leaves no visible cause (the grid looks fine, only the mask is wrong), so
     // silence would make the operator suspect the data. One info toast, no dialog: reads stay
     // frictionless (UI discipline).
-    const notices = log.toasts.filter(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg));
+    const notices = log.toasts.filter(x => x.key === 'valid_die_frame_differs');
     eq(`F6/${label}/F8/notice-shown-exactly-once`, 1, notices.length,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
     eq(`F6/${label}/F8/notice-is-info-not-error`, ['info'], notices.map(x => x.kind));
-    eq(`F6/${label}/F8/notice-says-nothing-changed`, true,
-       /하나도 바뀌지 않았고/.test(notices[0] ? notices[0].msg : ''), notices[0] && notices[0].msg);
+    // ── [ⓐ] REPLACES `notice-says-nothing-changed` ────────────────────────────────
+    // That sentence asserted the thing the ruling left OPEN, and a screen must not guarantee
+    // what has not been decided. What it says now is what is decided: the two grids, and which
+    // one is in use.
+    //
+    // ⚠️ CONDITIONAL, AND THAT IS THE POINT. The grid half only appears when the reference's
+    //    DECLARATION and its DERIVED value differ. On fixture A they are the same numbers
+    //    (`stored==derived`), so there is nothing to report and the notice must NOT invent a
+    //    difference -- the source says as much: 「파생으로 같아졌다면 말할 것이 없다」.
+    const msg0 = notices[0] ? notices[0].msg : '';
+    if (String(REF.grid_cols) === gridFromSharedSpec[0]
+        && String(REF.grid_rows) === gridFromSharedSpec[1]) {
+      eq(`F6/${label}/a/notice-does-NOT-report-a-grid-difference-there-is-none`, false,
+         /규격 파생/.test(msg0), msg0);
+    } else {
+      eq(`F6/${label}/a/notice-names-both-grids-and-which-was-used`, true,
+         msg0.includes(`${REF.grid_cols}x${REF.grid_rows}`)
+         && msg0.includes(gridFromSharedSpec.join('x')) && /규격 적용/.test(msg0), msg0);
+    }
     // 🔴 and it names NO cell population. F6's announcement counted cells it had moved; if any
     //    such count reappears it means something moved again.
     eq(`F6/${label}/F8/notice-counts-no-cells`, false,
@@ -733,21 +755,26 @@ async function scoreAll(src, { verbose = false } = {}) {
     // The toast is no longer an adoption announcement; it is the offset notice. Its kind can
     // now be pinned to 'info' outright — F6 could not, because a stranded population pushed the
     // same sentence onto the warning branch. Nothing is stranded when nothing is adopted.
-    const t = log.toasts.find(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg));
+    const t = log.toasts.find(x => x.key === 'valid_die_frame_differs');
     eq('F6/C/F8/offset-notice-announced', true, !!t,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
     eq('F6/C/F8/offset-notice-is-info', 'info', t && t.kind);
-    // ── INVERTED (was `clause4/announcement-says-coordinates-were-kept`) ──────────────
-    eq('F6/C/F8/notice-says-nothing-changed', true,
-       /하나도 바뀌지 않았고/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    // ── [ⓐ] REPLACES `notice-says-nothing-changed` ────────────────────────────────
+    // It said the coordinates were kept. That is the question the ruling left open, so the
+    // notice no longer claims it and neither does this.
+    eq('F6/C/a/notice-names-the-grid-it-used', true,
+       /규격 적용/.test(t ? t.msg : ''), t ? t.msg : '(none)');
+    eq('F6/C/a/notice-makes-no-promise-about-coordinates', false,
+       /좌표는 하나도|그대로입니다/.test(t ? t.msg : ''), t ? t.msg : '(none)');
     // ── INVERTED (was `clause4/announcement-has-one-number-for-one-quantity`) ─────────
     // 🔴 Invariant ⑥ survives the removal in a stronger form. F6's sentence had to carry ONE
     //    number for one quantity; F8's must carry NO cell count at all, because no cell moved.
     //    Any `셀 N개` reappearing here means a reposition came back with it.
     eq('F6/C/F8/notice-claims-no-cell-moved', false,
        /셀 \d+개|기존 셀|재배치/.test(t ? t.msg : ''), t ? t.msg : '(none)');
-    // ...and the two numbers it DOES carry are the two grid sizes, so the operator can see why.
-    eq('F6/C/F8/notice-names-both-grids', true,
+    // ...and the two numbers it DOES carry are the two grid sizes, so the operator can see
+    // WHICH ONE WAS USED rather than only that they differ.
+    eq('F6/C/a/notice-names-both-grids', true,
        /46x46/.test(t ? t.msg : '') && /45x45/.test(t ? t.msg : ''), t ? t.msg : '(none)');
 
     evidence.push(`[F6/C] ${dimsBefore.join('x')} panel <- ${REF_C.grid_cols}x${REF_C.grid_rows} `
@@ -867,7 +894,7 @@ async function scoreAll(src, { verbose = false } = {}) {
        storedData(S, S.currentFrame()));
     eq('F6/E/F8/payload-is-not-empty', true, Object.keys(payloadBefore).length > 0);
     eq('F6/E/F8/notice-shown-exactly-once', 1,
-       log.toasts.filter(x => /마스크가 화면에서 밀려 보입니다/.test(x.msg)).length,
+       log.toasts.filter(x => x.key === 'valid_die_frame_differs').length,
        JSON.stringify(log.toasts.map(x => x.msg.slice(0, 44))));
 
     evidence.push(`[F6/E] 33x25(start -4,-3) panel <- 29x25 reference, the 4MAIN_TRIM shape: `
@@ -1156,7 +1183,15 @@ async function scoreAll(src, { verbose = false } = {}) {
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
     eq('MEDIUM-1/designation-does-not-reclassify', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
     const u2 = S.classifyUnsavableCells();
-    eq('MEDIUM-1/classification-survives-a-designation', EXPECT_BLOCKING, S.pushBlockingCount(u2));
+    // 🔴 THIS ONE BELONGS TO THE COORDINATE QUESTION, NOT TO THIS SECTION. It reads
+    //    "a designation does not re-partition the served set", and under ⓐ the grid changes,
+    //    so which cells fall outside the valid dies changes with it. Whether that is correct is
+    //    the SAME open ruling as `stored-coordinates-preserved` -- may a designation re-base
+    //    what a cell's coordinate means. Left red and named, rather than re-aimed to whatever
+    //    the code happens to produce today, which would decide the question by writing down
+    //    the answer.
+    eq('MEDIUM-1/coord/classification-survives-a-designation',
+       EXPECT_BLOCKING, S.pushBlockingCount(u2));
     evidence.push(`[MEDIUM-1] blocking=${EXPECT_BLOCKING} stray=${u.outsideStray.length} `
       + `(offGrid ${u.offGrid.length} / outsideRetained ${u.outsideRetained.length}); `
       + `pushBlockingCount excludes stray, and a valid-die designation leaves the partition at `
@@ -1298,7 +1333,7 @@ async function scoreAll(src, { verbose = false } = {}) {
                        rotation: 0, side: 'front',
                        phys_wafer_dia: 300, phys_chip_x: 11, phys_chip_y: 13,
                        phys_offset_x: 0, phys_offset_y: 0, phys_edge_margin: 3 };
-  const alignNotices = (log) => log.toasts.filter(t => /\ub9c8\uc2a4\ud06c\uac00 \ud654\uba74\uc5d0\uc11c \ubc00\ub824 \ubcf4\uc785\ub2c8\ub2e4/.test(t.msg));
+  const alignNotices = (log) => log.toasts.filter(t => t.key === 'valid_die_frame_differs');
 
   // -- O1: the specimen. Equal dimensions, different origin -> the alarm MUST fire ---------
   {
@@ -1331,9 +1366,14 @@ async function scoreAll(src, { verbose = false } = {}) {
        JSON.stringify(log.toasts.map(t => t.msg.slice(0, 60))));
     eq('O/specimen/alarm-tracks-the-actual-misalignment', symDiff > 0 ? 1 : 0, notes.length);
     eq('O/specimen/alarm-is-info', ['info'], notes.map(t => t.kind));
-    // The offset is MEASURED and named. 5 columns and 4 rows is the specimen's own number.
-    eq('O/specimen/alarm-names-the-measured-offset', true,
-       /5\uce78\u00b74\ud589 \uc5b4\uae0b\ub0a9\ub2c8\ub2e4/.test(notes[0] ? notes[0].msg : ''),
+    // The offset is MEASURED and named -- as a screen movement in 칸/행, not as the origin gap.
+    // 🔴 THE TWO ARE DIFFERENT QUANTITIES AND THE SOURCE SAYS SO: the origin gap is a fact
+    //    about frame alignment, the screen shift is how far the cells actually moved. A live
+    //    case had (1,1) and (-3,-2) for the same designation. So this asserts the shape of the
+    //    screen term rather than a transcribed pair -- pinning the pair here would be a second
+    //    copy of a number the product computes.
+    eq('O/specimen/a/alarm-names-a-measured-screen-shift', true,
+       /화면 \d+칸·\d+행 이동|화면 이동 없음/.test(notes[0] ? notes[0].msg : ''),
        notes[0] && notes[0].msg);
     eq('O/specimen/alarm-names-both-origins', true,
        /1,1/.test(notes[0] ? notes[0].msg : '') && /-4,-3/.test(notes[0] ? notes[0].msg : ''),
@@ -1381,7 +1421,18 @@ async function scoreAll(src, { verbose = false } = {}) {
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } },
                                         'dt_map', 'HOME_1');
     eq('O/aligned/designated', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
-    eq('O/aligned/silent', [], alignNotices(log).map(t => t.msg.slice(0, 60)));
+    // ── [ⓐ] SPLIT. It expected TOTAL silence; under ⓐ that is the wrong test, and the
+    //    fixture is the reason why: the reference and the panel share one physical spec and
+    //    both DECLARE 23x23, but 23x23 is not what that spec derives (29x25 is). So they are
+    //    aligned in ORIGIN and not in GRID, and the notice must say the second while staying
+    //    quiet about the first. One assertion could not express that -- it read the two as one
+    //    fact and called the whole notice a false alarm.
+    const alignedMsg = (alignNotices(log)[0] || { msg: '' }).msg;
+    eq('O/aligned/a/no-ORIGIN-term-the-origins-do-match', false,
+       /최솟값|START/.test(alignedMsg), alignedMsg || '(none)');
+    eq('O/aligned/a/but-the-grid-difference-IS-reported', true,
+       /규격 파생/.test(alignedMsg) && /규격 적용/.test(alignedMsg),
+       'the operator saved 23x23 and the editor opened 29x25 ― that has to be said');
     // ...and silence is CORRECT here, by the same measured property used on the other two.
     const cellsA = refCellsFor(REF);
     const symDiffA = (() => {

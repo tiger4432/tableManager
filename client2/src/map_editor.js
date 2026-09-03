@@ -9326,24 +9326,30 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
       //    `screenShift`  ― 이번 지정으로 셀과 마스크가 화면에서 실제로 움직인 칸 수.
       //    실측 사례(4E → DT)에서 전자는 (1,1)인데 후자는 (-3,-2)였다. 종전 문구는 전자를
       //    「어긋남」으로 내놓아 사용자가 본 이동량과 맞지 않았다.
+      // 🔴 「어긋났습니다」만 말하면 «무엇을 썼는지»를 안 말한다. 두 수를 «둘 다» 적고
+      //    어느 쪽을 썼는지까지 적는다. 판단은 운영자가 한다 ― 화면은 «관측»만 말한다.
+      //    그래서 「저장된 격자가 틀렸습니다」라고 쓰지 않는다. 그건 판정이지 관측이 아니다.
       const why = [
-        originDiffer ? `참조가 부르는 최솟값 ${originDiffer.there} 과 이 맵의 선언된 START `
-          + `${originDiffer.here} 이 다릅니다` : '',
-        dimsDiffer ? `격자 치수가 다릅니다 (참조 ${dimsDiffer.there} · 이 맵 ${dimsDiffer.here})` : '',
-      ].filter(Boolean).join(' · ');
-      console.info('[Map Editor][F8] valid-die reference is not aligned with the editor frame ― '
+        dimsDiffer ? `참조 격자 ${dimsDiffer.there} · 규격 파생 ${dimsDiffer.here} → 규격 적용` : '',
+        originDiffer ? `참조 최솟값 ${originDiffer.there} · 이 맵 START ${originDiffer.here}` : '',
+      ].filter(Boolean).join(' ― ');
+      console.info('[Map Editor][규칙 ①-b] valid-die designation ― '
+        + (dimsDiffer ? `the reference DECLARES ${dimsDiffer.there} and its own physical spec `
+          + `DERIVES ${dimsDiffer.here}; the derived grid is the one in use (owner ruling `
+          + `2026-09-03); ` : '')
         + (originDiffer ? `the reference calls its minimum die (${originDiffer.there}) while this map's `
           + `declared START is (${originDiffer.here}), a gap of (${originDiffer.dx},${originDiffer.dy}); ` : '')
-        + (dimsDiffer ? `grid ${dimsDiffer.there} != ${dimsDiffer.here}; ` : '')
-        + 'NOTHING adopted and NO coordinate changed ― grid_start_x/y stay as declared, so the x/y '
-        + 'Push writes are untouched. The mask is re-centred on this grid, so cells and mask moved '
-        + 'together on SCREEN only.');
-      showToast(`유효 다이 참조 맵이 이 맵과 정렬되지 않아 마스크가 밀려 있습니다 ― `
-        + `${why}. 좌표는 하나도 바뀌지 않았고 ⚡ Push가 기록할 x/y도 그대로입니다. `
+        + 'grid_start_x/y stay as declared. The mask is re-centred on this grid, so cells and mask '
+        + 'move together on screen.');
+      // ⚠️ 「좌표는 하나도 바뀌지 않았고 Push 기록도 그대로」는 «지웠습니다».
+      //    그것은 지금 «미판정»인 것을 단언하는 문장입니다 ― 격자가 규격에서 다시
+      //    파생되면 원점 상자가 움직이고, 그때 저장 좌표를 다시 매겨도 되는지는 아직
+      //    판정되지 않았습니다(위 「미판정」 표시). 확인 안 된 것을 화면이 보장하면,
+      //    그 문장이 거짓이 되는 날 운영자는 «화면을 믿고» 틀립니다.
+      showToast(`유효 다이 참조 ― ${why}`
         + (screenShift
-          ? `셀과 마스크는 화면에서 ${Math.abs(screenShift.dc)}칸·${Math.abs(screenShift.dr)}행 `
-          + `함께 이동했습니다 ― 각 셀은 자기 좌표가 가리키는 칸으로 다시 앉았습니다.`
-          : `셀이 앉는 칸은 이번에 바뀌지 않았습니다.`),
+          ? ` ― 화면 ${Math.abs(screenShift.dc)}칸·${Math.abs(screenShift.dr)}행 이동`
+          : ' ― 화면 이동 없음'),
         'info', { dedupeKey: 'valid_die_frame_differs' });
     }
     return out;
