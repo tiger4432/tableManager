@@ -5,6 +5,7 @@ import './tokens.css';
 import './style.css';
 import { initTheme } from './theme.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
+import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import {
@@ -1031,26 +1032,17 @@ function setupEventListeners() {
       elements.performanceLog.textContent = '⚡ 1/3. Initializing bulk request...';
       const startTime = performance.now();
 
-      const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
-      const cols = elements.searchCols ? elements.searchCols.value : '';
       const sortLatest = elements.sortLatestToggle.checked;
-      const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
-      const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+      // The narrowing set comes from ONE place now (`narrowing.js`). Order stays here because
+      // the count route must not carry it -- see that file's header.
+      const narrowing = narrowingTail({
+        globalSearch: elements.globalSearch, searchCols: elements.searchCols,
+        gridApi: state.gridApi, transactionId: state.currentTransactionId,
+      });
 
       const baseApiUrl = `${API_BASE}/tables/${state.currentTable}/data`;
-      let queryParams = `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
-      if (state.currentTransactionId) {
-        queryParams += `&transaction_id=${state.currentTransactionId}`;
-      }
-      if (q) {
-        queryParams += `&q=${encodeURIComponent(q)}`;
-        if (cols) {
-          queryParams += `&cols=${encodeURIComponent(cols)}`;
-        }
-      }
-      if (filterStr) {
-        queryParams += `&filters=${encodeURIComponent(filterStr)}`;
-      }
+      const queryParams = `order_by=${sortLatest ? 'updated_at' : 'row_id'}`
+        + `&order_desc=${sortLatest}${narrowing}`;
 
       try {
         const chunkLimit = 3000; // 청크 단위로 분할 로드
@@ -1193,26 +1185,19 @@ function setupEventListeners() {
         }
       }
 
-      const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
-      const cols = elements.searchCols ? elements.searchCols.value : '';
       const sortLatest = elements.sortLatestToggle.checked;
-      const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
-      const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+      // The narrowing set comes from ONE place now (`narrowing.js`). Order stays here because
+      // the count route must not carry it -- see that file's header.
+      const narrowing = narrowingTail({
+        globalSearch: elements.globalSearch, searchCols: elements.searchCols,
+        gridApi: state.gridApi, transactionId: state.currentTransactionId,
+      });
 
-      let url = `${API_BASE}/tables/${state.currentTable}/export?`;
-      url += `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
-      if (state.currentTransactionId) {
-        url += `&transaction_id=${state.currentTransactionId}`;
-      }
-      if (q) {
-        url += `&q=${encodeURIComponent(q)}`;
-        if (cols) {
-          url += `&cols=${encodeURIComponent(cols)}`;
-        }
-      }
-      if (filterStr) {
-        url += `&filters=${encodeURIComponent(filterStr)}`;
-      }
+      // 🔴 THE EXPORT URL. This is the site the audit missed, and the reason C3 was worth
+      //    doing: if this drifted from the grid's own query the operator would download a
+      //    file that does not match what they were looking at, with nothing on screen to say so.
+      const url = `${API_BASE}/tables/${state.currentTable}/export?`
+        + `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}${narrowing}`;
 
       elements.performanceLog.textContent = 'Connecting...';
       showToast('📄 CSV 다운로드를 시작합니다.', 'success');

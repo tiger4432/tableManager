@@ -1,4 +1,5 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
+import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
@@ -249,18 +250,14 @@ let countGeneration = 0;
  * 🔴 이 한 곳에서 만들어 data 와 count 가 «같은 것»을 싣습니다. 두 벌로 조립하면 두 수가
  *    갈리고, 그건 오류를 내지 않습니다 -- 화면은 없는 행을 그리고 바닥글은 없다고 말합니다.
  */
+// Reads the screen and hands it to the one builder. The BUILDING lives in `narrowing.js`
+// so a harness can score it -- this wrapper is the part that cannot be imported, because it
+// reaches for `elements` and `state`.
 function narrowingParams() {
-  const params = new URLSearchParams();
-  const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
-  const cols = elements.searchCols ? elements.searchCols.value : '';
-  const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
-  if (state.currentTransactionId) params.set('transaction_id', state.currentTransactionId);
-  if (q) {
-    params.set('q', q);
-    if (cols) params.set('cols', cols);
-  }
-  if (Object.keys(filterModel).length > 0) params.set('filters', JSON.stringify(filterModel));
-  return params;
+  return buildNarrowing({
+    globalSearch: elements.globalSearch, searchCols: elements.searchCols,
+    gridApi: state.gridApi, transactionId: state.currentTransactionId,
+  });
 }
 
 /** 미룬 개수를 가져와 채웁니다. 행은 «이미» 그려져 있습니다.

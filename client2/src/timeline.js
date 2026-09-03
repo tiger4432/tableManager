@@ -1,4 +1,5 @@
 import { API_BASE, pageLimit } from './config.js';
+import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { switchTable, fetchData } from './api.js';
@@ -1073,24 +1074,15 @@ export function navigatorStep2(log) {
 export async function navigatorStep3(log) {
   elements.performanceLog.textContent = '🌐 Requesting target position from server...';
 
-  const q = elements.globalSearch ? elements.globalSearch.value.trim() : '';
-  const cols = elements.searchCols ? elements.searchCols.value : '';
   const sortLatest = elements.sortLatestToggle.checked;
-  const filterModel = state.gridApi ? state.gridApi.getFilterModel() : {};
-  const filterStr = Object.keys(filterModel).length > 0 ? JSON.stringify(filterModel) : '';
+  const narrowing = narrowingTail({
+    globalSearch: elements.globalSearch, searchCols: elements.searchCols,
+    gridApi: state.gridApi, transactionId: state.currentTransactionId,
+  });
 
-  let url = `${API_BASE}/tables/${state.currentTable}/data?target_row_id=${log.row_id}&limit=${pageLimit}`;
-  url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
-  if (state.currentTransactionId) {
-    url += `&transaction_id=${state.currentTransactionId}`;
-  }
-  if (q) {
-    url += `&q=${encodeURIComponent(q)}`;
-    if (cols) url += `&cols=${encodeURIComponent(cols)}`;
-  }
-  if (filterStr) {
-    url += `&filters=${encodeURIComponent(filterStr)}`;
-  }
+  const url = `${API_BASE}/tables/${state.currentTable}/data?target_row_id=${log.row_id}`
+    + `&limit=${pageLimit}&order_by=${sortLatest ? 'updated_at' : 'row_id'}`
+    + `&order_desc=${sortLatest}${narrowing}`;
 
   try {
     const res = await fetch(url);
