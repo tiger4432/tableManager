@@ -125,8 +125,13 @@ const KNOWN_RED = new Map([
   // `map2_placement_seat_harness.mjs` were here with `ran: 0` from 2026-08-09 to 2026-08-11.
   // Their fixtures were rewritten for the walk-start candidate space and they are back on the
   // gate with floors of their own -- see FLOORS below, which carries what moved and why.
-  ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
-    why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
+  // `split_registry_harness.mjs` was here from 2026-07-30 to 2026-09-03 with `ran: 0`, and the
+  // recorded reason -- "symbols it slices were renamed" -- was only half of it. It sliced
+  // FOURTEEN names out of map_editor.js as text. Nine moved or stayed; FIVE were DELETED FROM
+  // THE PRODUCT (DEFAULT_LEGEND, loadLegendFromStorage, fetchLegendFromServer, loadLegend,
+  // maybeOfferLegendMigration), so no re-pointing could have revived those assertions. Retired
+  // with an ABSENCE CHECK in their place, re-aimed on the nine that live, and converted to
+  // import. 0 -> 34/0; see FLOORS below.
   // `valid_die_authoring_harness.mjs` was here from 2026-08-04 to 2026-09-03 at 100/1. The
   // attribution was right (a harness defect, not a code defect) and the prescription was not:
   // it read "fix belongs with the slicer". Re-pointing the anchor would have put the red out
@@ -973,6 +978,12 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 34],
   ['retroactive_view_harness.mjs', 263],
+  // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
+  // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
+  // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of
+  // those six is its own control: a name that DOES live must be found by the same scan, or a
+  // stripper that emptied every file would make the other five pass silently.
+  ['split_registry_harness.mjs', 34],
   ['standard_frame_origin_harness.mjs', 19],
   // New 2026-08-04 with the startup-gate round (the page ran a whole session with no WebSocket
   // and no retry, because `initWebSocket()` was the last statement of `init()` behind two

@@ -1,3 +1,87 @@
+# [디자인 -> 총괄] ✅ **`split_registry` ⓐ 착지 — N = «34», 0 실패. 부채 5 -> «2»** (2026-09-03)
+
+지시하신 멈춤 조건(「N 이 0 이면 전환이 안 된 것」)은 «안 걸렸습니다».
+
+```
+전   ASSERTIONS 없음 (추출 단계에서 던짐, 2026-07-30 부터 «0» 점수)
+후   ASSERTIONS «34 0»          -> 부채 목록에서 나갔습니다. FLOORS 34 로 등록
+게이트  64 하니스 · «62 gated» 전부 초록 · 부채 «2» · 건너뜀 1
+```
+
+## ① 사라진 다섯 — «은퇴», 그리고 그 자리에 «부재 검사» (총괄 규칙 ①)
+주석이 아니라 «단언»입니다. 다섯이 돌아오는 날 하니스가 «스스로» 말합니다.
+```
+[T0] 83개 소스 파일 전수 (주석 제거 후)
+  DEFAULT_LEGEND · loadLegendFromStorage · fetchLegendFromServer · loadLegend
+  · maybeOfferLegendMigration                                        -> 전부 «부재» ✅
+  + 대조 하나: «사는» 이름(buildLegendRegistryUpdates)이 «같은 스캔»에 잡힐 것
+    -> 없으면 위 다섯의 초록은 「스트리퍼가 파일을 비웠다」와 구별이 안 됩니다
+```
+🔴 주석을 지우는 이유가 있습니다 — `map_editor.js:4605` 가 «자기 삭제를 기록한 주석»에서
+   `maybeOfferLegendMigration` 을 언급합니다. 날 grep 은 그걸 «존재»로 읽습니다.
+
+### 삭제 시점 — «찾았습니다». 지어내지 않았습니다
+선언 개수를 커밋 전/후로 세어 확인했습니다 (전 1 -> 후 0).
+```
+DEFAULT_LEGEND             95bf072f  2026-07-28  feat(config): U6 — 클라 하드코딩을 선언으로
+loadLegendFromStorage      b35bc9fc  2026-07-28  feat(doe): zone 모델 종단 착지
+fetchLegendFromServer      269b39eb  2026-07-27  fix(map): 한 맵의 DOE 가 모든 맵에 뜨는 것
+loadLegend                 269b39eb              (같은 커밋)
+maybeOfferLegendMigration  4ba13ae3  2026-07-27  feat: 격리 개발환경 …
+```
+그리고 그 다섯이 재던 것(범례 로드 우선순위 · 1회 마이그레이션 제안)은 «옮겨간 기능»이 아니라
+«철회된 기능»입니다 — 읽기 경로의 confirm 이었고, 묻는 말이 「split registry」라는 내부 낱말이었습니다.
+
+## ② 사는 아홉 — 재조준 «완료». 아홉 «전부»에 닿습니다
+```
+split_registry_row.js (그냥 import — 전부 export 되어 있습니다)
+  buildLegendRegistryUpdates · parseLegendRegistryRows · getMissingDescValues
+  · formatLegendMetaText                                  [T1-T4] 19개
+  SPLIT_KEY_SEP · buildSplitKey    -> 모듈 비공개라 «출력으로» 못 박습니다
+                                      (bk = `bonding_map|BASE01|1`. 서버가 보는 것이 그 문자열입니다)
+map_editor.js (probe — 모듈 비공개)                          [T5] 9개
+  SPLIT_REGISTRY_TABLE   레지스트리 «자기» 표. 페이로드의 ref_table 은 «맵의» 표일 것
+  saveLegendToStorage    옛 `map_legend_<table>` 캐시를 «지우고» DOE 초안을 씁니다
+  saveLegendToServer     맵 키 없음 -> 거절, 그리고 «요청 0»
+```
+
+## 🔴 ③ 「같은 질문의 두 번째 철자」를 피했습니다 — 무엇을 «안» 넣었는지 적습니다
+`saveLegendToServer` 의 옛 일곱 단언은 «옛 시그니처»(`=== true`)를 재고 있었습니다.
+지금은 `{ok, reason}` 이고, 앞에 zone 컬럼 게이트·scope 권한·지문이 붙었습니다.
+```
+✅ 여기서 잽니다   맵 키 없음 -> ok:false · reason «no-map-key» · 그리고 «요청 0»
+                🔴 순서 주장입니다: zone 프로브 «뒤»에서 거절해도 ok:false 는 같습니다.
+                   그 둘을 가르는 것은 «요청 수»뿐입니다
+                + 음성 대조: 맵 키가 있으면 그 관문을 «지나» 서버에 닿습니다
+                  -> 그래서 위의 0 이 「막았다」이지 「아무도 안 걷는 길」이 아닙니다
+⛔ 여기서 «안» 잽니다   전체 쓰기 경로(zone 게이트 · 권한 · 지문 · replace_map 페이로드)
+                    -> `contracts/legend_map_scope/client_harness.mjs` §5g·§5h 가 «종단»으로 잽니다
+                       그건 서버 상태를 «옆에 두고» 재는 자리이고, 여기서 얇게 다시 쓰면
+                       그게 「같은 질문의 두 번째 철자」입니다
+                    ⚠️ 그리고 그 계약이 «안» 재는 것이 정확히 no-map-key 입니다 (grep 0건)
+                       -> 그래서 이 아홉은 «덮개»이지 중복이 아닙니다
+```
+
+## ④ 잘라쓰기 — 이 파일에서 «사라졌습니다»
+```
+전   map_editor.js 를 텍스트로 읽어 함수/상수 «14개»를 잘라 vm 에 넣었습니다
+후   split_registry_row.js 는 «import», map_editor.js 는 «probe»(원본 전문 + 접근자 덧붙이기)
+     텍스트를 읽는 곳은 [T0] «부재 검사» 하나이고, 거기서는 텍스트가 «주어»입니다
+```
+
+## 부채 목록 현황
+```
+전   5 (2026-09-03 아침)
+후   «2»   alignment_verdict 164/7 (판정 대기 — 거울 프레임)
+            valid_die_frame_adoption 228/41 (판정 대기 — 선언 치수 vs 파생 치수)
+사이  reposition_regime(하니스가 아님) · valid_die_authoring(103/0) · split_registry(34/0)
+```
+남은 둘은 «둘 다» 소유자/총괄 판정 대기이고, 제 손으로 갚을 수 있는 것은 «없습니다».
+
+다음: 지시 순서대로 **어드민 «체인 대기열» 패널**로 갑니다.
+
+---
+
 # [디자인 -> 총괄] ✅ **① 착지 (103/0, 부채 4→3)** · ② — 🔴 **제 어제 귀속이 절반만 맞았습니다** (2026-09-03)
 
 ## ① `valid_die_authoring` — 초록입니다
