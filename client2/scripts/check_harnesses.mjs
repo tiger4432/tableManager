@@ -99,13 +99,28 @@ const NOT_A_HARNESS = new Map([
 ]);
 
 const KNOWN_RED = new Map([
-  ['alignment_verdict_harness.mjs', { ran: 163, failed: 6,
-    // This harness's six assertions share three scope prefixes (A/C/D0), so the runner's
-    // deliberately de-duplicated failure-name parser cannot member-pin them one by one.
-    namesUnavailable: 'six legacy front/back assertions collapse to three scope labels (A/C/D0)',
-    why: 'Lead PM accepted 2026-08-09: the harness asserts the retired front/back candidate '
-       + 'space (including an 8-of-16 mirror/invert equivalence). The product now scores '
-       + 'front rot*_tl/tr start corners; rewrite the oracle/fixtures before re-gating.' }],
+  ['alignment_verdict_harness.mjs', { ran: 164, failed: 7,
+    // These assertions share three scope prefixes (A/C/D0), so the runner's deliberately
+    // de-duplicated failure-name parser cannot member-pin them one by one.
+    namesUnavailable: 'the failures collapse to three scope labels (A/C/D0)',
+    why: 'MEASURED 2026-09-03, and the 2026-08-09 prescription ("rewrite the oracle/fixtures") '
+       + 'is backwards: the fixtures are CURRENT and the oracle is one repair behind. Two facts. '
+       + '(1) `candidateFrames` copies only rotation and side into the frame and `flatFrame` '
+       + 'keeps seven axes without `start`, so the walk start corner that replaced the mirror on '
+       + '2026-08-08 never reaches the seater -- 8 candidate ids produce 4 distinct seatings, '
+       + 'every candidate ties its twin, and the margin is 0 dies by construction. The server hit '
+       + 'this and repaired it (`map_alignment.py` `first_die_of`). (2) 5 of the 7 are ONE '
+       + 'fixture, `core_defect_map LOT-A/05`, whose targetMetaTruth is rotation 270 / side back '
+       + '/ invert false -- which the harness\'s own alias16 measurement lists among the 8 '
+       + 'tuples NO candidate covers. Its recorded truth `rot90_tr` therefore names a candidate '
+       + 'that cannot reproduce it, and repairing (1) does NOT turn those 5 green: a start corner '
+       + 'moves an anchor (and on the server only in index mode), it is not a mirror. Open ruling '
+       + 'with the Lead: either the candidate space regains a way to express a mirrored frame, or '
+       + 'that fixture states an unreachable truth and its assertions retire.' }],
+  // 163/6 -> 164/7 (2026-09-03). The added assertion is the one that names cause (1) out loud:
+  // `A: the oracle emits exactly 8 candidates` counts NAMES (a Map keyed by candidate id, so its
+  // size is 8 whatever the frames do) and could never fail. The new one counts distinct SEATINGS
+  // and reports 4. It is red on purpose -- it states a defect rather than hiding one.
   // `map_editor2_shell_harness.mjs`, `map_editor2_question_harness.mjs` and
   // `map2_placement_seat_harness.mjs` were here with `ran: 0` from 2026-08-09 to 2026-08-11.
   // Their fixtures were rewritten for the walk-start candidate space and they are back on the

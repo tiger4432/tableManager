@@ -43,11 +43,28 @@
 //     it (spec section 2; fixture `server/tests/test_grid_y_invert_aliasing.py`).
 //
 //     `grid_y_invert` is deliberately NOT a candidate axis; it is carried through from the
-//     target's own declaration. The licence for that is a measurement, not the spec sentence:
+//     target's own declaration. The licence for that WAS a measurement, not the spec sentence:
 //     the harness enumerates all 16 (rotation x side x invert) tuples through the production
 //     path and checks that the 8 emitted candidates realise every one of them UP TO A
-//     TRANSLATION -- and translation is exactly what C2 solves. Both halves are load-bearing.
-//     Neither alone licenses dropping the axis, and the harness reports both counts.
+//     TRANSLATION -- and translation is exactly what C2 solves.
+//
+// 🔴 THAT LICENCE IS WITHDRAWN, BY THE SAME MEASUREMENT. Measured 2026-09-03: the eight
+//    candidates realise 8 of the 16, not 16, and the eight they miss are one whole Y parity
+//    class -- rot{0,90,180,270}_front_inv«true» and rot{0,90,180,270}_back_inv«false». When
+//    `side: back` left the candidate set on 2026-08-08 and the walk start corner took its
+//    place, the front candidates kept covering (front,invF) and (back,invT) and nothing was
+//    left to cover the other two. The sentence above stayed; the property it asserted did not.
+//
+// ⚠️ THE CONSEQUENCE IS NOT ONLY ABOUT `grid_y_invert`. The recovery fixture
+//    `core_defect_map LOT-A/05` has `targetMetaTruth` rotation 270 / side back / invert false
+//    -- which is IN the uncovered eight. So its recorded `truthCandidateId: 'rot90_tr'` names
+//    a candidate that cannot reproduce it, and no repair to this file makes that fixture
+//    green: a mirrored frame is not expressible in the current candidate space.
+//    The start corner is NOT a mirror. On the server it moves the anchor and only in INDEX
+//    mode (`map_alignment.py` ~3392: `_base = (_rf - _sf) if index_mode else (0, 0)`), so on a
+//    coordinate-identified map `tl` and `tr` are twins there too, deliberately.
+//    Open ruling, put to the Lead 2026-09-03: whether the candidate space must regain a way to
+//    express a mirrored frame, or those fixtures state an unreachable truth and retire.
 //
 // C2. `start` IS SOLVED, NOT SEARCHED. Per candidate, the integer shift maximising agreement
 //     is computed exactly: every offset with non-zero agreement is voted for by at least one
