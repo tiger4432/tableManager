@@ -508,15 +508,40 @@
     .stage-section {
       border-bottom: 1px solid var(--border);
     }
+    /* 🔴 가로 넘침 ― 두 근원을 각각 한 줄로 (총괄 지시 6a7196a8 · 실측 2026-09-04)
+       좌패널이 좀아지면 절이 `#chain-tab-wrapper` 밖으로 밀려난다. 넘친 것이
+       «재러진» 것은 아니다 ― 그 래퍼가 `overflow-x: auto` 라 스크롤로 닿긴 한다
+       (`.panel-body` 도 auto 이고, `hidden` 은 그 바깥의 `.panel.left-panel` 이라
+        거기까지 닿기 전에 안쪽이 흡수한다). 다만 «탭 전체»가 옆으로 움직인다.
+
+       좌패널 폭별 넘침(px) ― 자산 네 절 · 래퍼 기준:
+         폭     546  496  446  396  346
+         전      43   93  143  208  258
+         후       0    0    0    0    0
+       순서가 있다 ― 표만 담으면 20/70/135/185 가 남고, 그 나머지는 전부
+       이 헤더의 «버튼 줄»이다. 두 자리를 다 고쳐야 0 이 된다.
+       ⛔ `table-layout: fixed` 는 «재서» 버렸다 ― chain-rules 가 0 -> 339 로 더 넘쳐고
+          칸 네개가 내용을 잘랐다. 소유자가 청한 수를 지우는 쪽이라 쓰지 않는다. */
     .section-header {
       display: flex;
       align-items: center;
+      /* 띄울 자리가 없으면 버튼이 넘치는 대신 «다음 줄»로 내려앉는다.
+         546px 위에서는 한 번도 발동하지 않는다(실측 넘침 0). */
+      flex-wrap: wrap;
       gap: 10px;
       padding: 11px 20px;
       background: var(--bg-header);
       border-bottom: 1px solid var(--border);
       cursor: pointer;
       user-select: none;
+    }
+    /* 표는 «자기 절 안에서» 옆으로 움직인다. 이것이 없으면 넓은 표 하나가
+       탭 전체를 밀어서, 개의 없는 절까지 같이 옆으로 간다.
+       ⚠️ 안 재 본 값: `thead` 가 `position: sticky` 이라, 이제 그것이 붙는 상대는
+          탭 래퍼가 아니라 «이 절»이 된다. 행이 많은 표를 세로로 굴릴 때 머리가
+          화면 위에 남는지는 토큰이 있어야 보이고, 그건 소유자만 칩니다 ― 안 재음. */
+    .section-body {
+      overflow-x: auto;
     }
     .section-header:hover .section-chevron { color: var(--accent); }
     .stage-chip {
