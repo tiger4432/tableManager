@@ -2240,9 +2240,15 @@ def export_table_csv(
     for col in virtual_only_cols:
         query, expr = binder.expr(query, col)
         if expr is None:
-            # Cannot happen while `announced_columns` and `exposed_columns` come from the
-            # same `rules_for`, but a header slot with no expression would shift every
-            # column after it. Fail loudly rather than emit a misaligned extract.
+            # 🔴 THE PREMISE OF THIS BRANCH CHANGED ON 2026-09-03, so it is written out
+            # rather than left saying something that is no longer why. It used to read
+            # "cannot happen while both lists come from the same `rules_for`" - and it DID
+            # happen: a name the right model does not carry was announced, had no
+            # expression, and this refusal took the whole export down for one column while
+            # its siblings were fine. `announced_columns` now drops what it cannot answer
+            # (`verified_join_contract.usable_expose`), so the header only holds columns
+            # that resolve. The refusal stays because a header slot with no expression
+            # would shift every column after it, and a misaligned CSV looks complete.
             raise HTTPException(
                 status_code=500,
                 detail=(f"'{table_name}'의 가상 조인 컬럼 '{col}'을(를) 추출 쿼리에 실을 수 "

@@ -67,6 +67,8 @@ provenance가 있는가**를 묻는다(쓰기 전 검사라 영속 흔적이 답
 import logging
 import time
 
+from verified_join_contract import usable_expose
+
 logger = logging.getLogger("VirtualJoinExecutor")
 
 # 셀 소스 어휘. `cell_sources.source_name`이 쓰는 것과 같은 문자열 공간이다 ―
@@ -225,7 +227,7 @@ def announced_columns(db, left_table: str) -> list:
     클라이언트가 **편집을 제안하지 않게** 하는 표시일 뿐이라, 그 표시를 지워도 쓰기는
     여전히 400이다(테스트가 그 독립성을 따로 고정한다).
     """
-    from database import crud
+    from database import crud, models
 
     out, seen = [], set()
     for rule in rules_for(db, left_table):
@@ -233,6 +235,19 @@ def announced_columns(db, left_table: str) -> list:
         if vo is None:
             continue
         right_types = (crud.TABLE_CONFIG.get(rule["right_table"]) or {}).get("column_types") or {}
+        # 🔴 답할 수 «없는» 컬럼은 알리지 «않는다» — 이 목록의 계약이 위 docstring 에
+        # 「`attach` 가 만드는 집합과 «같아야 한다»」이기 때문이다. `attach` 는 2026-09-03
+        # 부터 모델이 못 가진 이름을 SELECT 에서 «걸러내므로», 여기서 그대로 알리면 바로
+        # 그 docstring 이 경계하는 상태가 된다 — «알렸는데 값이 없는 컬럼».
+        # 그리고 CSV 내보내기가 그 알림으로 «머리글 칸»을 만든다: 답이 없는 칸 하나가
+        # 뒤의 모든 컬럼을 «밀어» 버리므로 그 라우트는 500 으로 거절한다. 즉 이름 하나가
+        # 못 서면 «내보내기 전체»가 죽는다 — 형제 컬럼은 멀쩡한데도.
+        # ⚠️ 쓰기 거부(`virtual_only_columns`)는 «좁히지 않는다». 그쪽은 「모르면 막는다」가
+        # 안전한 방향이고, 여기는 「모르면 안 알린다」가 안전한 방향이다 — 반대다.
+        right_model = models.DYNAMIC_TABLES.get(rule["right_table"])
+        if right_model is not None:
+            answerable = set(usable_expose(rule, right_model, "the schema announcement")[0])
+            vo = [col for col in vo if col in answerable]
         for col in vo:                      # `expose` 순서를 그대로 물려받은 목록이다
             if col in seen:
                 continue                    # 먼저 온 선언이 이긴다 ― `attach`와 같은 규칙
@@ -411,6 +426,13 @@ def resolved_expression(db, left_model, left_table: str, col_name: str, query):
         right_model = models.DYNAMIC_TABLES.get(rule["right_table"])
         if right_model is None:
             continue
+        # 🔴 THE SAME CHECK AS THE PAYLOAD SIDE, FROM THE SAME FUNCTION. This is the SQL
+        # half of the seam - it serves the grid filter, `?q=` search and the CSV export -
+        # and it used to hand `col_name` straight to `getattr`. One name the model does not
+        # carry raised, and the whole request died: an export of a perfectly good column
+        # failed because a DIFFERENT column in the same declaration could not be built.
+        if col_name not in usable_expose(rule, right_model, "a filter, search or export")[0]:
+            continue
         # Aliased per rule: two declarations may name the same right table, and an
         # unaliased second join would collide on the table name.
         right = aliased(right_model)
@@ -481,17 +503,7 @@ def execute_rule(db, rule: dict, row_ids: list, chunk_size: int = CHUNK_SIZE) ->
     # builder SKIPS the graph-sync metadata names - which a table created after
     # 2026-08-31 no longer receives. So the declaration is valid and the column is not
     # there, and neither side is wrong.
-    declared = list(rule["expose"])
-    expose = [c for c in declared if hasattr(right, c)]
-    if len(expose) != len(declared):
-        for name in declared:
-            if name in expose:
-                continue
-            logger.error(
-                "[VirtualJoin] rule '%s': '%s' is declared in expose but '%s' has no such "
-                "column - that ONE column is omitted; the rule's other columns (%s) are "
-                "unaffected",
-                rule["name"], name, rule["right_table"], expose or "none")
+    expose, _missing = usable_expose(rule, right, "the row payload")
     # 오른쪽 `row_id`는 표시 대상이 아니라 **①/②를 가르는 유일한 증거**다.
     # 오른쪽 expose 값이 NULL이면 "행이 없었다"인지 "행은 있었고 값이 NULL이었다"인지
     # 값만 봐서는 구별할 수 없다.
