@@ -2310,3 +2310,72 @@ boolean 영구   픽스처 주석에 «소유자 판정(2026-09-03) 불리언 �
 판정 요청   ① 내보내기 쪽에도 같은 사전 걸러내기를 걸지
            ② 규칙 단위 가드(390f0ec4)의 시험을 붙일지
 ```
+
+---
+
+# ✅ [서버 -> 총괄] Boolean 갈래 «은퇴» 완료 — **8 -> 2. 남은 둘이 지시하신 그 둘입니다** (구현자, 2026-09-03)
+
+커밋 `91e7aa29`. 파일 «하나»: `server/tests/test_virtual_join_types.py`. 코드 «0줄».
+
+## 게이트 — 이름으로
+```
+전   8 failed / 7 passed
+후   «2» failed / 11 passed
+빠진 «넷» (전부 Boolean 갈래)
+   test_the_expose_type_universe_is_exactly_what_this_file_covers   -> «초록». 아래 ③
+   test_a_boolean_expose_column_does_not_claim_a_value_it_does_not_have  -> 은퇴
+   test_the_boolean_render_twin_spells_it_the_way_sql_does               -> 은퇴(조인 절반)
+   test_a_boolean_filter_value_arriving_as_a_bool_is_bridged             -> 은퇴(필터 절반)
+남은 «둘» — 지시하신 대로 «그대로 빨강»입니다
+   export_carries_the_temporal_virtual_column_in_the_pinned_spelling  <- 셋째 이음매(큐)
+   a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken  <- 주입 제거 건
+=> 은퇴가 «넓게 안 잡혔습니다». 둘 다 Boolean 갈래 실패가 «아니고», 둘 다 살아 있습니다
+```
+
+## 🔴 그런데 「단언만 은퇴」가 «그냥 지우기»와 갈리는 자리가 있었습니다
+셋 중 «둘»이 **조인 이음매와 무관한 단언**을 같이 들고 있었고, 그 단언이
+`boolean_text_value` · `comparison_text_value` 의 **스위트 전체에서 유일한 커버**였습니다:
+```
+grep 전수   boolean_text_value      -> 시험은 그 한 줄뿐
+           comparison_text_value   -> 시험은 그 두 줄뿐 (하나는 «datetime» 단언입니다)
+소비자      column_filter.py:88 이 «지금도» 부릅니다
+```
+🔴 **주어가 죽은 것은 「Boolean «컬럼»」이지 「Boolean «값»」이 아닙니다.** AG-Grid 는 어떤 컬럼이든
+boolean 으로 다루면 필터 값으로 JSON `true` 를 보내고, `column_filter` 는 그것을 텍스트 식에
+견주기 «전»에 렌더해야 합니다. 그래서 그 네 줄은 **픽스처 없는 시험 하나로 옮겨** 살렸습니다.
+통째로 지웠으면 커버가 «0» 이 됐을 자리입니다 — 은퇴가 주어를 넘어간 셈이 됩니다.
+
+## ③ 타입 우주 시험 — 목록에서 빼는 대신 «부재를 단언»하게 했습니다
+```
+전   got == {... "needs_graph_rollback": "Boolean"}     -> AttributeError 로 빨강
+후   got == {문자·문자·문자·Float·DateTime·DateTime}     (모델에 «있는» 것만)
+     + assert not hasattr(right, "needs_graph_rollback")
+     + assert "Boolean" not in got.values()
+```
+🔴 픽스처의 `needs_graph_rollback` 선언은 «그대로 뒀습니다». 그래야
+   「선언은 유효한데 컬럼이 없다」는 상태가 계속 재현되고, **Boolean 이 다시 닿게 되는 날
+   이 시험이 빨개져 「무엇을 되살려야 하는지」를 가리킵니다.** 기록이 주석이 아니라 «단언»입니다.
+⚠️ 그리고 그 선언을 빼면 «export 빨강»도 같이 사라집니다 — 셋째 이음매의 증거가 없어집니다.
+   그것도 안 뺀 이유입니다.
+
+## 곁가지 — 낡은 수 «둘» 고쳤습니다
+```
+「seven sibling tests」   -> 그 일곱이 «셋(부수, 초록으로 복귀) + 넷(은퇴)»으로 갈렸음을 적었습니다
+파일 docstring          진단만 있고 «무엇을 했는지»가 없었습니다. 은퇴 사실과 그 이유를 적었습니다
+```
+「부류로 묶되 구성원은 센다」를 이 파일 안에서도 지킨 것입니다.
+
+## 무회귀
+```
+10개 파일 -> 4 failed / 176 passed
+그 4 = 이 파일 2 (위) + 이 라운드와 무관한 기존 2
+       (undeclared_schema_report 1 · declared_key_indexes 1 — 어제부터 빨갰습니다)
+```
+
+## 남은 것
+```
+서버 재기동 «불필요» — 시험 파일 하나입니다. 91e7aa29 푸시했습니다
+큐        ① 셋째 이음매(export) — «세고 · 함수 하나로 · 전부 그것을 부르게» 라고 모양을 주셨습니다
+             열리면 그 순서로 하겠습니다. 지금은 안 엽니다
+          ② 규칙 단위 가드(390f0ec4)의 시험 — 여전히 «미도달»입니다
+```
