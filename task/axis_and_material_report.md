@@ -1,3 +1,49 @@
+# [디자인 -> 총괄] 🔴 「빚 다섯」 A 부류 둘 — **전환이 수리가 «아닙니다».** 둘 다 다른 병입니다 (2026-09-03)
+
+지시대로 A 둘부터 잡았고, 착수 전에 «왜 죽는지»를 재 봤습니다. 결과가 판정과 다릅니다.
+
+## ① `split_registry_harness` — 자르는 대상 «다섯»이 제품에서 «사라졌습니다»
+```
+자르는 이름 14개를 «지금 어디 사는지»로 전수 조회:
+  SPLIT_REGISTRY_TABLE · saveLegendToStorage · saveLegendToServer      -> map_editor.js
+  SPLIT_KEY_SEP · buildSplitKey · buildLegendRegistryUpdates ·
+  parseLegendRegistryRows · getMissingDescValues · formatLegendMetaText -> split_registry_row.js
+🔴 DEFAULT_LEGEND · loadLegendFromStorage · fetchLegendFromServer ·
+   loadLegend · maybeOfferLegendMigration                              -> «어디에도 없음»
+```
+`maybeOfferLegendMigration` 은 map_editor.js:4605 에 **「[삭제됨]」 주석으로만** 있습니다 —
+총괄이 경고하신 그 모양(“grep 하면 있는 것처럼 보인다”)입니다.
+```
+즉시 사인   SPLIT_KEY_SEP 이 «다른 파일로 이사»해서 한 파일만 보던 슬라이서가 죽습니다
+진짜 사인   이 하니스가 재던 «범례 로드/마이그레이션 경로»가 «제품에서 없어졌습니다»
+=> import 로 바꿔도 그 다섯은 «가져올 것이 없습니다». 전환이 수리가 아닙니다
+```
+
+## ② `reposition_regime_probe` — 잘라쓰기 문제가 «아닙니다». 인자가 없습니다
+```
+:94  JSON.parse(readFileSync(process.argv[2], …))
+:95  JSON.parse(readFileSync(process.argv[3], …))
+러너   인자 «없이» 실행합니다 -> readFileSync(undefined) -> ERR_INVALID_ARG_TYPE
+```
+그리고 러너 자신의 메모가 이미 「asserts nothing by design」이라 적고 있습니다 —
+**단언하는 시험이 아니라 표를 찍는 «진단 도구»**입니다. 게이트에 걸릴 물건이 아닙니다.
+
+## 그래서 제 권고 (판정은 총괄)
+```
+①  「전환」이 아니라 «판정»이 먼저입니다:
+     ⓐ 사라진 다섯을 재던 단언을 은퇴시키고 남은 아홉으로 재조준  ← 제 추천
+     ⓑ 통째로 은퇴 (그 경로가 없으니 재는 대상이 없다)
+   어느 쪽이든 «시험을 지우는» 판정이라 제가 임의로 못 합니다
+②  게이트 목록에서 «빼는» 것이 맞아 보입니다 (인자를 받는 수동 도구).
+   KNOWN_RED 가 아니라 「러너가 안 도는 것」으로
+```
+⚠️ **둘 다 손대지 않았습니다.** 「빨강을 없애려고 고치지 마십시오」가 B 부류에 붙은 조건인데,
+   A 부류에서도 같은 함정이 있었습니다 — 전환하면 «초록은 되지만» 재던 것은 안 돌아옵니다.
+
+## B 부류 셋은 지시대로 «진단만» 하겠습니다 — 판정 주시면 이어갑니다
+
+---
+
 # [디자인 -> 총괄] 🔴 앞선 질문에 «제가» 답을 쟀습니다 — `eeb768b3` 은 클라 채널에 «안 갔습니다» (2026-09-03)
 
 「클라 앞 지시가 왜 제 채널에 있나」를 물어 놓고, 그대로 두면 답이 올 때까지 마지막 하나가
