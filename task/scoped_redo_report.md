@@ -2585,3 +2585,80 @@ virtual_join 계열 8개 파일 -> 2 failed / 150 passed
 서버 재기동 «불필요» — 시험과 로그 문자열뿐입니다. 6952f788 푸시했습니다
 큐        CSV export 셋째 이음매 (모양은 정해져 있습니다: 검증을 «함수 하나»로, 복사 금지)
 ```
+
+---
+
+# ✅ [서버 -> 총괄] CSV export 이음매 닫힘 — 🔴 **자리는 «셋»이 아니라 «넷»이고, 구성이 다릅니다** (구현자, 2026-09-03)
+
+커밋 `4b728132`. 파일 «다섯»: `verified_join_contract.py`(그 함수) ·
+`virtual_join_executor.py`(세 자리) · `ledger/source_preparation.py`(넷째 자리) ·
+`main.py`(주석) · `tests/test_virtual_join_types.py`(시험 +1, 주석).
+
+## ① 자리 수 — «이름»으로 셌습니다. 한 철자로 grep 안 했습니다
+먼저 「expose 를 읽는 곳」을 «전부» 뽑고, 그중 「SQL 을 짓다가 «던질 수 있는» 곳」만 걸렀습니다.
+```
+✅ 넷 — expose 이름으로 SQL 을 짓다가 getattr 에서 던지는 자리
+   ① virtual_join_executor.execute_rule          행 페이로드의 SELECT      (오늘 아침 이미 걸러짐)
+   ② virtual_join_executor.resolved_expression   SQL 절반 — 필터 · ?q= 검색 · «내보내기»
+   ③ virtual_join_executor.announced_columns     스키마가 «더해» 알리는 컬럼 + CSV 머리글
+   ④ ledger/source_preparation                   자기 SELECT (descriptor["expose"])
+🔴 ④ 는 총괄 목록에 «없던» 자리입니다
+⛔ 반대로 총괄이 세신 「main.py 바깥 try」는 SQL 을 «안 짓습니다» — 최후 그물이라 그대로 뒀습니다
+읽기만 하고 안 던지는 곳 (세지 않음)
+   resolved_column_announcements · exposed_columns · virtual_only_columns
+   config_resolve_report · dt_map_derivation  -> 이름만 다룹니다
+```
+
+## ② 판정은 «한 곳» — `verified_join_contract.usable_expose`
+```
+자리   descriptor 의 정의가 사는 모듈. «양쪽 패키지가 이미 import 하고 있어» 새 의존이 0
+서명   usable_expose(descriptor, right_model, where) -> (usable, missing)
+로그   여기서 «한 번» 납니다 — 규칙 이름 · 없는 이름들 · 오른쪽 표 · «어디서» · 살아남은 컬럼
+술어   hasattr — 다음 줄 getattr 의 «정확한 쌍둥이»입니다 (동적 모델은 Column 만 답니다)
+```
+
+## 🔴 ③ 내보내기가 «아직 빨갛던» 이유 — SQL 보다 «한 걸음 뒤»였습니다
+아침의 컬럼 걸러내기(dd6c9516)를 넣고도 export 는 빨갰습니다. 재 보니:
+```
+announced_columns 가 «답할 수 없는 이름»을 알림
+   -> export 가 알림 하나당 «머리글 칸» 하나를 만듦
+   -> 그 칸을 채울 식이 없음 -> 라우트가 «500 으로 거절» (밀린 CSV 를 안 내보냄 — 옳은 거절)
+=> 이름 «하나» 때문에 «파일이 아예 안 나옵니다». 멀쩡한 컬럼 넷이 있는데도
+```
+🔴 그리고 그 알림 함수의 **자기 docstring 이 「`attach` 가 만드는 집합과 «같아야 한다»」**라고
+적어 두었습니다. `attach` 는 오늘 아침부터 걸러내므로, **알림이 이미 그 계약을 어기고 있었습니다**
+(「알렸는데 값이 없는 컬럼」 — 그 docstring 이 경계하던 바로 그 상태). 좁힌 것은 복원입니다.
+
+⛔ **쓰기 거부는 «안 좁혔습니다».** `virtual_only_columns` 는 그대로입니다 —
+   거기는 「모르면 «막는다»」가 안전한 방향이고, 알림은 「모르면 «안 알린다»」가 안전한 방향이라
+   두 방향이 «반대»입니다. 한 함수로 묶되 정책은 안 묶었습니다.
+
+## ⚠️ ④ 에서 «조용한 오답»이 될 뻔한 자리
+`source_preparation` 은 결과를 «위치»로 풉니다 (`row[offset + 2 + index]`).
+걸러진 목록으로 SELECT 하고 «선언된» 목록으로 풀면 **모든 값이 한 칸씩 밀립니다** —
+예외보다 나쁜 조용한 오답입니다. 그래서 `usable` 을 «양쪽에» 씁니다.
+
+## 게이트
+```
+자리 수   위 §① — «넷», 이름으로                                                  ✅
+중복      판정 로직이 «한 곳». 넷이 같은 함수를 부릅니다                              ✅
+export   없는 컬럼만 빠지고 형제는 나옵니다 — 새 시험이 «이름으로» 단언합니다          ✅
+         (길이만 세면 «자리가 밀린» 머리글도 통과합니다. 밀림이 여기서 막는 결함입니다)
+쿼리 수   오른쪽 표에 대한 SELECT: 없는 컬럼 있을 때 «3» · 온전한 선언 «3»            ✅
+무회귀    12개 파일 -> 2 failed / 210 passed
+         그 2 = «알려진 빨강»(주입 제거) + 라운드 무관 기존 하나                     ✅
+```
+
+## 🔴 그리고 «알려진 빨강»이 보는 값이 바뀌었습니다 — 주석을 갱신했습니다
+```
+전   None   (attach 가 통째로 죽어서 «셀이 아예 없음»)
+후   미상   (조인이 그 이름을 걸러내고 «라벨로» 답함 — 정직한 답입니다)
+```
+그 시험이 빨간 «이유»는 그대로입니다(주입된 셀이 이긴다는 전제가 없어짐). 다만 「깨진 픽스처가
+비쳐 보인다」는 제 설명이 이제 사실이 아니라 고쳤습니다 — 낡은 설명을 두면 다음 사람이 그걸 읽습니다.
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 4b728132 푸시했습니다
+서버 미결   «없습니다». 큐도 비었습니다
+```
