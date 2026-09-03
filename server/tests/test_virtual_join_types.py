@@ -34,6 +34,13 @@ carry forward is "reachable on a table created before 2026-08-31, and on no tabl
 after it" - and it becomes reachable nowhere on the day those columns are dropped, which
 `models.py` records as a separate ruling.
 
+WHAT THIS FILE DID ABOUT IT (2026-09-03, lead PM ruling): the Boolean assertions were
+RETIRED rather than left red. A red that can never go green is not a record, it is noise
+that teaches people to ignore red. The record lives in the block where they used to be and
+in the type-universe test, which now asserts that Boolean is NOT reachable - so the day it
+becomes reachable again, that test fails and names what has to come back. The string,
+number and datetime arms are untouched and still cover this seam.
+
 [RED before the fix, per type, measured 2026-08-04]
   string   : green already (unchanged funnel arm).
   number   : green already (N7).
@@ -231,12 +238,23 @@ def test_the_expose_type_universe_is_exactly_what_this_file_covers(type_env):
     from sqlalchemy.sql import sqltypes
     right = models.DYNAMIC_TABLES["vjt_test_ref"]
     got = {c: type(getattr(right, c).type).__name__
-           for c in TYPE_TABLES["vjt_test_ref"]["column_types"]}
+           for c in TYPE_TABLES["vjt_test_ref"]["column_types"] if hasattr(right, c)}
     assert got == {
         "ref_key": "String", "core_lot": "String", "site": "String",
         "slot_no": "Float", "event_at": "DateTime", "stamp_at": "DateTime",
-        "needs_graph_rollback": "Boolean",
     }, f"the declaration->type mapping changed: {got}"
+
+    # BOOLEAN LEFT THE UNIVERSE ON 2026-08-31 AND ITS ABSENCE IS NOW THE ASSERTION.
+    # `needs_graph_rollback` is still declared in the fixture above and is deliberately
+    # NOT in `got`: the model builder gives a table created after that day no such column,
+    # and `"boolean"` is not a declarable type and will not become one (owner ruling
+    # 2026-09-03), so no route is left. If either of those is undone this fails, and the
+    # Boolean assertions retired that day have to come back with it - which is why the
+    # check is written as an absence instead of being deleted.
+    assert not hasattr(right, "needs_graph_rollback"), (
+        "a Boolean expose column is reachable again - restore the Boolean assertions "
+        "retired on 2026-09-03 (see this module docstring)")
+    assert "Boolean" not in set(got.values())
 
     # And every one of them must leave `column_text_sql` as a TEXT expression. This is
     # the property the COALESCE actually needs; the type names above are only how we got
@@ -341,42 +359,26 @@ def test_export_carries_the_temporal_virtual_column_in_the_pinned_spelling(type_
 # 🔴 boolean - the crash on PostgreSQL, the SILENT WRONG ANSWER on SQLite
 # ---------------------------------------------------------------------------
 
-def test_a_boolean_expose_column_does_not_claim_a_value_it_does_not_have(type_env, db_session):
-    """RED before this round: on SQLite every row - including the ones with NO right row -
-    came back `True`, because SQLAlchemy's Boolean result processor turned the label into
-    `bool('미상')`. On PostgreSQL 18.3 the same expression raised
-    `InvalidTextRepresentation`. The SQLite symptom is the one worth naming: 미상 became
-    unfindable and every unresolved cell asserted a value."""
-    got = _sql(db_session, "needs_graph_rollback")
-    assert got["L1"] == "true"
-    assert got["L2"] == "false", "False is a VALUE - folding it into the label loses half the domain"
-    assert got["L3"] == LABEL, "right row exists, value NULL"
-    assert got["L4"] == LABEL, "no right row at all - this is the one that used to say True"
-
-
-def test_the_boolean_render_twin_spells_it_the_way_sql_does(type_env, db_session):
-    """`'true'`, not Python's `'True'`. `clean_str_value(True)` is `'True'`, the one
-    spelling no operator ever sees - the N9 lesson applied before it can bite.
-
-    Scored on `attach`'s OWN output rather than on the HTTP payload, because of the fact
-    the next test pins: on the wire the cell is already taken.
-    """
-    import virtual_join_executor as vjx_
-    got = {}
-    for rid, log_id in (("l1", "L1"), ("l2", "L2"), ("l3", "L3"), ("l4", "L4")):
-        entry = [{"row_id": rid, "data": {}}]
-        vjx_.attach(db_session, "vjt_test_log", entry)
-        cell = entry[0]["data"].get("needs_graph_rollback")
-        got[log_id] = cell["value"] if isinstance(cell, dict) else None
-    sql = _sql(db_session, "needs_graph_rollback")
-    assert got["L1"] == "true" and got["L2"] == "false"
-    for log_id, shown in got.items():
-        assert shown == sql[log_id], (
-            f"needs_graph_rollback/{log_id}: the payload twin says {shown!r}, "
-            f"search compares {sql[log_id]!r}")
-    assert crud.boolean_text_value(True) == "true"
-    assert crud.clean_str_value(True) == "True", (
-        "if this ever became 'true', the two spellings merged and the comment above is stale")
+# RETIRED 2026-09-03 - THREE BOOLEAN ASSERTIONS, NOT THIS FILE'S BOOLEAN KNOWLEDGE.
+#
+#   test_a_boolean_expose_column_does_not_claim_a_value_it_does_not_have
+#   test_the_boolean_render_twin_spells_it_the_way_sql_does      (its join half)
+#   test_a_boolean_filter_value_arriving_as_a_bool_is_bridged    (its filter half)
+#
+# All three drove a Boolean COLUMN through the join seam, and no Boolean column can reach
+# that seam any more: a table created after 2026-08-31 receives none of the shared metadata
+# columns, and `"boolean"` is not a declarable type and will not become one (owner ruling
+# 2026-09-03). A red that can never go green stops being information and starts teaching
+# people to ignore red - the lead PM's own /health rule, turned on this file.
+#
+# WHAT THEY MEASURED IS NOT LOST, and neither half of that sentence is decoration:
+#   * the type-universe test above now asserts the ABSENCE, so the day a Boolean becomes
+#     reachable again it fails and points at this block;
+#   * the two crud helpers these were the ONLY cover for in the whole suite -
+#     `boolean_text_value` and `comparison_text_value` - keep their assertions below,
+#     because THEIR subject still exists. A Boolean COLUMN is gone; a Boolean VALUE is not:
+#     AG-Grid sends a JSON `true` as a filter value for any column it treats as boolean,
+#     and `column_filter` still has to render it before comparing against text.
 
 
 def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken(type_env):
@@ -407,6 +409,10 @@ def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_take
                         at HEAD - "type object 'VjtTestRef' has no attribute
                         'needs_graph_rollback'" - and seven sibling tests in this file
                         were red for that same reason before the injection was removed.
+                        (Of those seven: three were collateral and came back green when
+                        the join stopped dropping every column for one bad name, and four
+                        were retired on 2026-09-03 because a Boolean column can no longer
+                        reach the seam at all. This one is neither - see below.)
                         The injected cell was OCCUPYING the seat, so the join's inability
                         to fill it could not be seen. Not "zero because absent" but
                         "zero because covered", which is the least visible kind here.
@@ -435,14 +441,21 @@ def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_take
     assert payload["L4"] is False, "an unmatched row keeps the injected default too"
 
 
-def test_a_boolean_filter_value_arriving_as_a_bool_is_bridged(type_env):
-    """AG-Grid sends a boolean-typed filter as a JSON boolean. Against a text-resolved
-    expression that must compare as `'true'` - not error, not miss."""
-    ids, total = _get(type_env, filters=json.dumps(
-        {"needs_graph_rollback": {"type": "equals", "filter": True}}))
-    assert ids == {"L1"} and total == 1
-    ids, total = _get(type_env, filters=_filters("needs_graph_rollback", "equals", "false"))
-    assert ids == {"L2"} and total == 1
+def test_the_type_bridge_still_spells_a_bool_and_a_timestamp_the_way_sql_does():
+    """The surviving half of the three retired above, kept because its subject survives.
+
+    A Boolean COLUMN can no longer reach the join seam, but a Boolean VALUE still reaches
+    the filter funnel: AG-Grid sends a JSON `true` for any column it treats as boolean and
+    `column_filter` renders it through `comparison_text_value` before comparing it against
+    a text expression. Comparing a text expression to a typed bind is the dialect lottery
+    N7/N8 closed - Postgres errors, SQLite silently matches nothing - so these four lines
+    are the whole of that bridge's cover in this suite.
+
+    No fixture and no database: the subject is the funnel, not the seam.
+    """
+    assert crud.boolean_text_value(True) == "true", "'True' is the spelling no operator sees"
+    assert crud.clean_str_value(True) == "True", (
+        "if this ever became 'true', the two spellings merged and the bridge is moot")
     assert crud.comparison_text_value(True) == "true"
     assert crud.comparison_text_value(T_MICRO) == T_MICRO_TEXT
 
