@@ -18,6 +18,22 @@ Boolean expose column through an ordinary declaration. `test_the_expose_type_uni
 exactly_what_this_file_covers` pins that list: a fourth type appearing in the mapper turns
 this file red instead of turning a production read into a 500.
 
+🔴 THE PARAGRAPH ABOVE STOPPED BEING TRUE FOR A NEW TABLE ON 2026-08-31, and this file has
+been red about it ever since. `models.init_dynamic_models` no longer puts the three
+graph-sync columns on a table it CREATES ("A NEW table no longer gets three dead columns"),
+and the fixture below creates its tables, so `VjtTestRef` has no `needs_graph_rollback` at
+all and `attach` raises. Measured 2026-09-03 by building a config through the real builder:
+`"boolean"` is NOT a declarable type - `"number"` maps to Float, `"datetime"` to DateTime,
+and EVERYTHING ELSE to String - so once the shared column is gone there is no second route
+to a Boolean, and the Boolean arm of this file has no subject to test.
+
+The capability itself is not gone everywhere: `models.py` says in the same breath that
+EXISTING tables keep their columns, and on the authoring box all 44 declared tables still
+carry `is_graph_synced` / `needs_graph_rollback` as real SQL booleans. So the sentence to
+carry forward is "reachable on a table created before 2026-08-31, and on no table created
+after it" - and it becomes reachable nowhere on the day those columns are dropped, which
+`models.py` records as a separate ruling.
+
 [RED before the fix, per type, measured 2026-08-04]
   string   : green already (unchanged funnel arm).
   number   : green already (N7).
@@ -78,9 +94,22 @@ TYPE_TABLES = {
             "slot_no": "number",        # Float      - N7's arm, kept in the class
             "event_at": "datetime",     # DateTime   - N8, virtual_only
             "stamp_at": "datetime",     # DateTime   - N8, collide
-            # A metadata NAME declared in column_types: the model builder skips it and the
-            # shared Boolean metadata column answers instead. This is the only way a
-            # Boolean reaches `expose`, and it is reachable from an ordinary config.
+            # A metadata NAME declared in column_types: the model builder skips it, and on
+            # a table created BEFORE 2026-08-31 the shared Boolean metadata column answers
+            # instead. That was the only way a Boolean reached `expose`.
+            #
+            # 🔴 THIS FIXTURE CREATES ITS TABLES, SO IT NO LONGER GETS ONE. The retirement
+            # of that day stopped NEW tables from receiving the three graph-sync columns,
+            # and `"boolean"` is not a declarable type - `init_dynamic_models` maps
+            # `"number"` to Float, `"datetime"` to DateTime and everything else to String
+            # (measured through the real builder, 2026-09-03). So `VjtTestRef` has no such
+            # attribute, `attach` raises, and this entry is asking for something that
+            # cannot exist here.
+            #
+            # It is LEFT IN PLACE on the lead PM's ruling: the resulting red is the correct
+            # report that a capability was removed, and making it green would hide that.
+            # Whether to bring the type back is a declaration-surface decision for the
+            # owner, not a repair.
             "needs_graph_rollback": "string",
         },
     },
@@ -385,13 +414,14 @@ def test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_take
                         MECHANISM, not the assertion. Repairing the fixture is blocked on
                         a question nobody has answered yet:
 
-        THE QUESTION    do REF models get the three metadata columns too?
-                        yes -> the model builder is at fault, and fixing it turns the
-                               seven siblings green with this one.
-                        no  -> this fixture's expose list asks for something impossible,
-                               a different Boolean sample is needed, and this file's own
-                               claim at :83 - that an ordinary config reaches it too - is
-                               FALSE on a ref.
+        THE QUESTION    ANSWERED 2026-09-03, AND IT WAS THE WRONG QUESTION. It is not
+                        ref-versus-left: it is whether the table was CREATED before
+                        2026-08-31. `init_dynamic_models` stopped giving NEW tables the
+                        three graph-sync columns that day, this fixture creates its
+                        tables, and `"boolean"` is not a declarable type - so the Boolean
+                        arm of this file has no subject on any table made after it.
+                        Existing tables keep theirs, so the capability survives where the
+                        columns already are. Full account in this module's docstring.
 
         Asserting anything on top of today's `None` would freeze the broken half as the
         contract, which is why this is left failing and named instead.
