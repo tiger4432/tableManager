@@ -628,6 +628,14 @@ C6 ⛔ 템플릿이 마킹 노드를 전제            C4 ⛔ 통일 = 로케일
 2 /health 가 «영원히 빨감»    supervisor 를 안 띄우고 워커를 «직접» 띄우는데 /health 는
   supervisor 표를 읽습니다. 실측: run_chain_worker·run_auto_update «둘 다 돕니다» · DB ok
   🔴 항상 빨간 등은 «진짜 장애를 못 알립니다». ⓐ supervisor 띄우기 ⓑ /health 가 프로세스를 보기 ⓒ 그대로
+🔴 **정정 (2026-09-04 08:0x) — 위 「갈래: ⓐⓑⓒ」는 틀렸습니다.**
+ⓑ(/health 가 프로세스를 보기)는 **이미 구현돼 있습니다** (`health.py:139`,
+`supervisor_status is None` -> `absent` -> escalate 없음 -> 비트로 대체).
+진짜 원인은 `GET /health` 가 직접 말해 줍니다 — **`supervisor_status.json` 이
+«14일 전 런처가 남긴 유물»인데 `None` 이 아니라서** advisory 갈래가
+영원히 도달 불가이고, 그 죽은 파일의 children 목록이 정답지가 됩니다.
+🔴 제가 **코드를 안 읽고 갈래를 세 개 지어낸** 것입니다. 지시서는 구현자 채널에.
+
 3 끈 서버 셋 (소유자 「세개 끄고 필요할때 다시 열자」) — «고장 아님». 되살리는 법:
   :8784 python "…/Temp/claude/C--Users-kk980-Developments-assyManager/
                 c2c07335-c153-4434-b3fd-738de17bd036/scratchpad/serve_design.py"
