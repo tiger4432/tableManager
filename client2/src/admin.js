@@ -103,22 +103,39 @@ function askForAdminToken(message) {
       // Deferred a tick so sibling handlers from the same Promise.all attach to
       // this promise before the modal blocks the thread.
       setTimeout(() => {
-        const entered = window.prompt(message, '');
-        tokenPromptInFlight = null;
-        if (entered === null) {
-          // Cancel. Do NOT clear the stored token - the previous code turned a
-          // cancel into storeAdminToken('') and DELETED a working token.
-          adminTokenDeclined = true;
-          showToast('관리자 토큰 입력을 취소했습니다. 새로고침하면 다시 물어봅니다.', 'warning');
-          resolve('');
-          return;
+        let value = '';
+        let asked = true;
+        let entered = null;
+        try {
+          entered = window.prompt(message, '');
+        } catch (e) {
+          // 🔴 물을 «수 없는» 경우다. 수상한 상황이 아니다 — 크롬은 운영자가
+          //    「추가 대화상자 차단」을 켜면 prompt 를 막는다. 결말은 취소와 같다:
+          //    토큰을 못 얻었다. 다만 «취소했다»고 말하지는 않는다 — 운영자는 안 눌렀다.
+          asked = false;
         }
-        const value = entered.trim();
-        if (value) {
-          storeAdminToken(value);
-          adminTokenGeneration += 1;
+        try {
+          if (!asked || entered === null || entered === undefined) {
+            // Cancel. Do NOT clear the stored token - the previous code turned a
+            // cancel into storeAdminToken('') and DELETED a working token.
+            adminTokenDeclined = true;
+            if (asked) showToast('관리자 토큰 입력을 취소했습니다. 새로고침하면 다시 물어봅니다.', 'warning');
+            return;
+          }
+          value = String(entered).trim();
+          if (value) {
+            storeAdminToken(value);
+            adminTokenGeneration += 1;
+          }
+        } finally {
+          // 🔴 어떤 경로로 끝나든 «반드시» 지우고 «반드시» 푼다.
+          //    결함은 이 둘이 prompt 의 «정상 반환 뒤에만» 돌았다는 것이었다: 던지면
+          //    이 프로미스가 «영원히 미결 + 영원히 미삭제» 로 남고, 이후 «모든» 어드민
+          //    요청이 그것을 await 한다 — 오류도 타임아웃도 없이 화면이 선다.
+          //    토큰 «값» 은 이 변경이 건드리지 않는다. 바뀌는 것은 프로미스의 «수명» 뿐이다.
+          tokenPromptInFlight = null;
+          resolve(value);
         }
-        resolve(value);
       }, 0);
     });
   }
