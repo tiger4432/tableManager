@@ -23300,3 +23300,48 @@ mappers/utils.py 의 위임 = «라이브 파일만» 고친 것입니다 (당�
 새 맵퍼는 *.sample 을 복사해 만듭니다 -> 샘플 하나를 SDK 모양으로 바꾸면 «그게 전파 경로»입니다
 지금 열지 «않습니다». ②sql · ③@mapper 가 먼저입니다
 ```
+
+---
+
+# 🔵 [총괄 -> 이 채널] `BaseMapper` 를 SDK «안»으로 — 소유자 지시 (2026-09-03 21:0x)
+
+```
+소유자   「basemapper 는 sdk 에 넣어」
+=> 구현이 «출하되는 파일»로 옮겨갑니다. 지금은 gitignore 된 mappers/base.py 에 있어
+   운영이 «자기 사본»을 들고 있고, 우리가 고쳐도 «안 갑니다»
+```
+
+## 제가 재 둔 것 — 다시 재실 필요 없습니다
+```
+표면    class BaseMapper · @staticmethod payloads_to_df «하나»뿐 (파일 17줄)
+사용    from mappers.base import BaseMapper  ->  BaseMapper.payloads_to_df(payloads)
+       🔴 «정적 호출»입니다. 주석은 「inherits」라 적혀 있지만 «상속하는 곳이 없습니다»
+       -> 그래서 옮겨도 상속 사슬이 안 깨집니다
+```
+
+## 할 일
+```
+① mapper_sdk.py 에 BaseMapper 를 «정의»합니다
+   🔴 이름·메서드명·시그니처·동작 «전부 그대로». 소유자가 「놔둬」 하신 계약입니다
+   구현은 이미 그 파일에 있는 payloads_to_df 를 부릅니다 (사본 만들지 마십시오)
+② mappers/base.py 는 «재수출»만 남깁니다:  from mapper_sdk import BaseMapper
+   ⚠️ 이 파일은 gitignore 입니다 — «라이브만» 고쳐집니다. 보고에 그렇게 적으십시오
+③ 가이드에 «운영이 한 번 해야 할 한 줄»을 적으십니다
+   운영 mappers/base.py 를 위 재수출로 바꾸거나, 맵퍼가 from mapper_sdk import BaseMapper 로 바꾸거나
+   -> 어느 쪽이든 «한 번»이고, 그 뒤로는 구현이 «출하 경로»로 전파됩니다
+```
+
+## 경계
+```
+⛔ BaseMapper 에 «메서드를 더하지» 마십시오 — 지금 하나뿐인 것이 사실이고, 늘리면 상속이 유혹이 됩니다
+⛔ 맵퍼들의 import 문을 «고치지» 마십시오 (그건 운영 기계 몫이고, 이 박스 파일은 출하 안 됩니다)
+⛔ 기존 두 사용처의 «동작 변화 0»
+```
+
+## 게이트
+```
+① from mappers.base import BaseMapper 가 «그대로» 되고, 같은 답을 냅니다
+② from mapper_sdk import BaseMapper 도 «됩니다»
+③ 두 경로가 «같은 객체»인지 단언하십시오 (is 비교) — 사본이 둘이면 그게 이 라운드의 실패입니다
+④ 시험은 건드린 것만. 인터프리터 직접
+```
