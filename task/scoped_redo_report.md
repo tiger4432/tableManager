@@ -2752,3 +2752,84 @@ False     F      F                     🔴 T
 판정 부탁드립니다 — Ⓑ 26 만 2단계로 갈지, Ⓒ 를 어떻게 할지
 그 뒤 체인 맵퍼 SDK 로 가겠습니다 (지시서 순서대로)
 ```
+
+---
+
+# ⚠️ [서버 -> 총괄] S2 첫째 «14/22» 접었습니다 — 그리고 🔴 **제가 트리를 한 번 깼다가 되돌렸습니다** (구현자, 2026-09-03)
+
+커밋 `386911e9`. 파일 «여덟».
+
+## 🔴 먼저 — 제 사고부터 적습니다
+```
+1차 시도   22 자리를 «전부» 접었습니다. `crud` 가 모듈 수준 이름인 줄 알고
+결과      시험 «119 빨강». `name 'crud' is not defined`
+          (map_overlay · transfer_plan · dt_map_derivation · map_alignment …)
+복구      건드린 «열한» 파일 전부 HEAD 내용으로 되돌림 -> git status «clean» 확인 ->
+          재실행해 «잃은 것 0» 확인 (그 셋은 CRLF 만 달랐고 내용은 동일이라 줄바꿈도 복원)
+```
+🔴 **원인:** 이 파일들은 `crud` 를 «함수 안»에서 import 합니다 — 모듈 수준이면 «순환»이기
+때문입니다(`crud` 가 `virtual_join_executor` 를 import 하고, 그 모듈이 자기 주석에 같은 제약을
+적어 두었습니다). 저는 「한 자리 한 줄」로 봤는데, 실제로는 **자리마다 «import 가 닿는가»가 먼저**였습니다.
+
+## 그래서 «자리마다» 스코프를 재고 갈랐습니다 (눈이 아니라 ast 로)
+```
+✅ 접은 것 «14» — 감싸는 함수가 crud 를 «이미» 들고 있거나 같은 모듈
+   database/crud.py «6» (is_blank_value 가 같은 모듈)
+   chain_replay:375 · enrichment_mapper:212 · parsers/void_sat_format:436
+   enrichment_candidates:465 · :923 · enrichment_config:1199 · frame_confirmation:460
+   scripts/rebuild_blank_business_keys:200 (모듈 수준 import 있음)
+⛔ 안 접은 것 «8» — 그 함수에 crud 가 «없습니다». import 를 «새로» 넣어야 합니다
+   dt_map_derivation:405(_blank) · :910 · enrichment_backfill:140
+   map_overlay:602 · :955 · transfer_plan:3206 · :3278 · migrations/migrate_jsonb_numeric:20
+```
+🔴 이 여덟에 import 를 넣는 것은 «빈 값 판정»에 대한 결정이 아니라 «import 구조»에 대한
+결정입니다 — 모듈 수준은 순환이고, 함수 지역은 «셀마다 도는 루프» 안에 `sys.modules` 조회를
+넣는 것입니다. 지시받은 범위 밖이라 손대지 않고 올립니다.
+⚠️ 그리고 `mappers/*.py` 넷은 «gitignore» 입니다 (추적본은 `.sample`). 라이브만 고쳐도 안 나갑니다.
+
+## 🔵 둘째 «재고» — 「0·0.0·False 를 실제로 받을 수 있나」
+```
+⚠️ 「그 다섯 자리」라 쓰셨는데, 제 보고의 «5»는 «값 부류»(0·0.0·False·[]·{})이고
+   `or ""` 계열은 «61 자리»입니다. 둘이 섞인 것 같아 그대로 적습니다
+```
+비문자열이 «올 수 있어 보이는» 자리를 골라 그 값의 «출처»까지 따라갔습니다:
+```
+ledger_explorer:53 · ledger_subgraph:143   value = 노드 «id 문자열» (ledger-entity:v1:…)  -> 안전
+transfer_plan:3156                          vals 는 «문자열 rsplit» 결과. "0" 은 truthy    -> 안전
+transfer_plan:3303 · :3379                  stack. 바로 위에서 «비문자열을 거부»합니다      -> 안전
+score_trace_fixture:118 · baseline_trace:166  core_wafer — 웨이퍼 id 문자열                -> 안전
+ledger/config.py «18»                        선언의 «이름·타임존» 문자열                    -> 안전
+나머지                                        env 토큰 · SQL 문 · 메시지 · prefix · 표/컬럼명 -> 문자열 정의역
+=> «0·0.0·False 가 실제로 도달하는 자리를 «못 찾았습니다»»
+```
+⚠️ 61 을 «전수로» 읽지는 않았습니다. 비문자열이 그럴듯한 «열 자리»를 골라 출처를 따라갔고,
+나머지는 식 자체가 문자열 정의역입니다. 「없다」가 아니라 **「찾은 것이 없다」**로 읽어 주십시오.
+
+## 🔴 그리고 「자리마다 한 줄 주석」에 대해 — 대안을 제안합니다
+```
+지시   `or ""` 자리마다 「is_blank_value 와 의도적으로 다르다」를 한 줄
+문제   그 자리가 «61» 입니다. 그리고 위 재고에서 «실제 위험이 0» 으로 나왔습니다
+대안   그 한 줄을 «is_blank_value 의 docstring» 한 곳에 둡니다 —
+       「`str(x or "").strip()` 은 이것과 «다른 술어»다. 0·0.0·False·[]·{} 에서 갈린다.
+        철자 통일이라며 합치지 말 것」
+근거   이 라운드가 방금 «네 자리를 한 함수로» 모은 그 원칙과 같습니다.
+       판정을 61곳에 복사하면 그게 이 감사가 잡으려던 그 병입니다
+```
+판정 부탁드립니다 — 61곳에 다실지, 정본 한 곳에 다실지.
+
+## 무회귀
+```
+18개 파일 -> 683 passed / 1 failed
+그 1 = HEAD 것입니다: test_dt_map_derivation::test_all_three_declared_rules_ship_disabled
+       추적 샘플 chain_rules.json.sample 에 dt_map 규칙이 «2» 인데 시험이 «3» 을 기대합니다
+       (dt_log · dt_inventory 만 있고 dt_job_attribution · eqp_frame_attribution 이 없습니다)
+추가로 test_void_base_join_fixture «2» 도 HEAD 에서 빨갛습니다 (제 파일을 HEAD 로 바꿔 확인)
+```
+
+## 남은 것
+```
+서버 재기동 — 총괄 몫입니다. 386911e9 푸시했습니다
+판정 요청   ① 남은 «8» 자리에 import 를 넣을지 (import 구조 결정입니다)
+           ② `or ""` 주석을 61곳에 vs 정본 한 곳에
+그 뒤      체인 맵퍼 SDK 로 갑니다
+```
