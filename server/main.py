@@ -3697,6 +3697,77 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     return {"status": "success", "message": msg,
             "skipped_reexpanded": len(already_expanded)}
 
+@app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
+def get_chain_queue_depth(db: Session = Depends(get_db)):
+    """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.
+
+    🔴 **답하는 수는 `oldest_waiting_seconds` 하나다.** 나머지는 맥락이다.
+    깊이(`waiting`)는 바쁠 때 커졌다가 줄어드는 것이 정상이고, 그것만 보면 「많다」와
+    「밀린다」를 구별할 수 없다. 나이는 다르다 — **계속 자라면 실제로 안 나가는 것이고,
+    0 근처를 오가면 큐는 흐르고 있으며 문제는 화면 쪽이다.** 그 한 수를 얻는 것이 이
+    라우트의 목적이다.
+
+    ⚠️ 큐가 비면 `oldest_waiting_seconds`는 **`null`**이지 `0`이 아니다. `0`은
+    「방금 들어온 것이 있다」이고 `null`은 「기다리는 것이 없다」다 — 화면에서 두 상태가
+    같은 픽셀이 되면 이 계측기는 자기가 없애려는 그 모호함을 재생산한다.
+
+    [왜 이 세 수인가 — 비용을 «먼저» 재고 골랐다]
+    `EXPLAIN`(실행 없이, 2026-09-03)으로 후보 다섯을 재서 **인덱스로 답하는 것만** 남겼다.
+    셋 다 `idx_outbox_unprocessed`(부분 인덱스, `WHERE processed_chain = false`)를 타고
+    계획 비용이 6 근처다. 브리핑이 함께 요청한 두 수는 여기 **없다**:
+
+        retry_count > 0  (표 전체)          Seq Scan, 비용 272,812
+        processed_at >= now() - interval    Seq Scan, 비용 272,817
+
+    두 칸에는 인덱스가 없고, 이 저장소는 **안 읽히는 인덱스를 걷어내는 중**이라
+    (`retire_unread_framework_indexes.py`) 진단 패널 하나 때문에 색인을 더하면 모든
+    insert 가 그 값을 물게 된다. 그래서 더하지 않고 **비운 채 보고**했다.
+
+    `retried_among_waiting`은 「재시도된 것이 있나」의 **싼 절반**이다. 표 전체가 아니라
+    **아직 기다리는 행 중** 재시도된 수이므로, 이름이 그 좁힘을 말한다. 지나간 재시도는
+    세지 않는다.
+    """
+    from sqlalchemy import func as _f
+
+    outbox = models.DatabaseOutbox
+    waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
+
+    waiting = db.query(_f.count()).select_from(outbox).filter(waiting_only).scalar()
+    retried = (db.query(_f.count()).select_from(outbox)
+               .filter(waiting_only, outbox.retry_count > 0).scalar())
+
+    # 🔴 가장 오래된 대기 행은 `MIN(created_at)`이 아니라 **`id` 오름차순의 첫 행**으로
+    # 찾는다. 부분 인덱스가 `(processed_chain, id)`라 그 순서는 인덱스가 이미 들고 있고,
+    # `created_at`은 색인돼 있지 않아 `MIN`을 물으면 같은 행을 찾으려고 전수를 훑는다.
+    # `id`는 단조이므로 두 질문의 답은 같은 행이다.
+    oldest = (db.query(outbox.created_at).filter(waiting_only)
+              .order_by(outbox.id.asc()).limit(1).scalar())
+
+    oldest_seconds = None
+    if oldest is not None:
+        # 🔴 시각은 «UTC 로» 뺀다. 이 컬럼은 PostgreSQL 에서 `timestamptz` 라 tz 를 달고
+        # 오지만, SQLite(시험 dialect)는 tz 를 버리고 «naive» 로 돌려준다. 그때 로컬
+        # `now()` 에서 빼면 시차만큼(이 워크스테이션은 9시간) 나이가 «부풀고», 큐가
+        # 비었는데도 「9시간 밀렸다」고 보고한다 — 계측기가 지어낸 장애다.
+        # naive 를 UTC 로 읽는 것이 맞는 이유: 두 dialect 다 이 컬럼에 UTC 를 넣는다
+        # (`server_default=func.now()` 가 SQLite 에서는 `CURRENT_TIMESTAMP` = UTC).
+        stamped = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
+        oldest_seconds = max(0.0, (datetime.now(timezone.utc) - stamped).total_seconds())
+
+    return {
+        "waiting": int(waiting or 0),
+        "oldest_waiting_seconds": oldest_seconds,
+        "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
+        "retried_among_waiting": int(retried or 0),
+        # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
+        # 그 오독이 바로 이 라우트가 없애려는 부류다.
+        "not_measured": {
+            "retried_total": "retry_count 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,812)",
+            "processed_recently": "processed_at 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,817)",
+        },
+    }
+
+
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
