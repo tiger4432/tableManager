@@ -138,6 +138,12 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
     # -------------------------------------------------------------- supervisor
     sup_check = {}
     sup_children = {}
+    # Set when the status file is too old to be read as the present. Everything
+    # below that reads `sup_children` has to know, because a table whose writer
+    # stopped updating it is a RECORD - and a record stated in the present tense
+    # is a claim with nothing behind it.
+    sup_stale = False
+    sup_age = None
     if supervisor_status is None:
         # No launcher-managed supervisor (a bare uvicorn, or the isolated dev
         # stack). Worker beats found on disk are still checked, but nothing can
@@ -166,6 +172,8 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         }
         if age > stale_after:
             sup_check["status"] = "stale"
+            sup_stale = True
+            sup_age = age
             escalate(STATUS_UNHEALTHY)
             problems.append(
                 f"supervisor status is {age:.0f}s old - the supervisor itself "
@@ -212,6 +220,20 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         sup_state = (cinfo or {}).get("state")
         uptime = (cinfo or {}).get("uptime_seconds")
 
+        # 🔴 IS THIS WORKER BEING WATCHED *NOW*? Having a row in the table is a
+        # different question. Once the supervisor stopped updating the file, its
+        # row records what was true when it was written and nothing about the
+        # present, so it decides nothing below and the beats on disk decide
+        # instead. The check above has already said as much - this is the same
+        # conclusion applied to the lines that consume the table.
+        #
+        # MEASURED 2026-09-04 ON THIS BOX, which is why this is not a tidy-up:
+        # the file was 14.2 days old and named three workers 'stopped', and two
+        # of them had written a beat 0.1 s and 0.6 s before the request. The
+        # endpoint called all three down while the evidence refuting it was
+        # already in `hb`, in the same response.
+        watched = cinfo is not None and not sup_stale
+
         # A beat only counts if the SUPERVISED process wrote it. Heartbeat files
         # are keyed by worker role, so without this check any second process of
         # the same role masks the real one. Two ways that bites:
@@ -226,7 +248,10 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         # dev_env kept `chain.json` fresh while the supervised chain worker was
         # suspended, and /health reported ok. Treat a mismatched pid as no beat
         # at all, which routes into the starting/missing logic below.
-        if (hb is not None and cinfo is not None
+        # (`watched`, not `cinfo is not None`: when the supervisor is gone there is
+        # no supervised pid for a beat to disagree with, so the mismatch below is
+        # not a fact that can be established.)
+        if (hb is not None and watched
                 and cinfo.get("pid") is not None
                 and hb.get("pid") is not None
                 and hb.get("pid") != cinfo.get("pid")):
@@ -236,11 +261,23 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                 f"supervised pid {cinfo.get('pid')}")
             hb = None
 
-        if cinfo is not None and sup_state != "running":
+        if watched and sup_state != "running":
             entry["status"] = "down"
             entry["detail"] = f"supervisor reports state '{sup_state}'"
             escalate(STATUS_UNHEALTHY)
             problems.append(f"worker '{hb_name}' is down (supervisor state: {sup_state})")
+        elif hb is None and cinfo is not None and sup_stale:
+            # No beat, and the only other witness stopped writing. Unhealthy
+            # either way - but "down" would restate the dead table, and the
+            # "missing" wording below says the process is running and has never
+            # beaten, which asserts a running process nobody has seen. What is
+            # actually known is that nothing here says anything about now.
+            entry["status"] = "unknown"
+            entry["detail"] = (
+                f"no beat on disk, and the supervisor that recorded state "
+                f"'{sup_state}' stopped updating {sup_age:.0f}s ago")
+            escalate(STATUS_UNHEALTHY)
+            problems.append(f"worker '{hb_name}': {entry['detail']}")
         elif hb is None:
             why = entry.pop("detail_beat", None)
             if uptime is not None and uptime < STARTUP_GRACE_SEC:
@@ -255,7 +292,7 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                 problems.append(f"worker '{hb_name}': {entry['detail']}")
         elif hb.get("stale"):
             # The case a pid check cannot see.
-            entry["status"] = "wedged" if cinfo is not None else "stale"
+            entry["status"] = "wedged" if watched else "stale"
             entry["age_seconds"] = hb.get("age_seconds")
             entry["beats"] = hb.get("beats")
             if hb.get("error"):
@@ -264,7 +301,7 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             problems.append(
                 f"worker '{hb_name}' has made no progress for "
                 f"{hb.get('age_seconds')}s (threshold {stale_after:.0f}s)"
-                + (" although its process is alive" if cinfo is not None else ""))
+                + (" although its process is alive" if watched else ""))
         else:
             entry["status"] = STATUS_OK
             entry["age_seconds"] = hb.get("age_seconds")

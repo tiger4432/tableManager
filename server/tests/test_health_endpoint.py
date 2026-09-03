@@ -206,6 +206,77 @@ def test_supervisor_itself_dead_is_unhealthy():
     assert any("supervisor itself is not running" in p for p in payload["problems"])
 
 
+def test_a_dead_supervisors_table_may_not_call_a_beating_worker_down():
+    """🔴 THE CHECK ONE PARAGRAPH EARLIER HAS ALREADY SAID THIS FILE CANNOT BE
+    READ AS THE PRESENT. Asserting "worker 'chain' is down (supervisor state:
+    stopped)" out of the same file is that conclusion contradicted immediately -
+    and here the refuting evidence is in the very same response, because the beat
+    is fresh.
+
+    Measured on this box 2026-09-04, which is what this test is made of: a
+    14.2-day-old status file named three workers 'stopped' while two of them had
+    written a beat 0.1 s and 0.6 s before the request. /health reported all three
+    down. Nothing was wrong with the workers.
+
+    What must NOT change: the supervisor problem itself stays, and so does 503.
+    Nobody is watching those workers, and that is the real alarm - it is just not
+    a claim about what they are doing.
+    """
+    stopped = {"state": "stopped", "heartbeat": "chain", "pid": None,
+               "restarts": 0, "uptime_seconds": None, "last_exit_code": 0,
+               "failure_reason": None}
+    payload, code = run(hbs={"chain": fresh()},
+                        sup=supervisor_status({"Chain": stopped},
+                                              updated_age=600.0))
+    assert code == 503
+    assert payload["checks"]["workers"]["chain"]["status"] == "ok",         "a worker that beat one second ago was called down by a ten-minute-old file"
+    assert not any("is down" in p for p in payload["problems"]), payload["problems"]
+    assert any("supervisor itself is not running" in p for p in payload["problems"]),         "the real alarm was collapsed away with the false one"
+
+
+def test_a_dead_supervisor_and_no_beat_is_unknown_not_a_claim():
+    """With no beat there is nothing to contradict the table with - and still
+    nothing that says what the worker is doing NOW. Unhealthy either way; the
+    sentence is what this fixes.
+
+    Both wordings this replaces asserted something unestablished: 'down' restates
+    the dead table in the present tense, and the 'missing' branch says the process
+    is running and has never beaten - a running process nobody has seen.
+    """
+    stopped = {"state": "stopped", "heartbeat": "chain", "pid": None,
+               "restarts": 0, "uptime_seconds": None, "last_exit_code": 0,
+               "failure_reason": None}
+    payload, code = run(hbs={}, sup=supervisor_status({"Chain": stopped},
+                                                      updated_age=600.0))
+    assert code == 503
+    w = payload["checks"]["workers"]["chain"]
+    assert w["status"] == "unknown", w
+    assert "stopped updating" in w["detail"], w
+    assert "process is running" not in w["detail"],         "the replacement wording asserts a running process too"
+
+
+def test_a_stale_beat_under_a_dead_supervisor_is_not_wedged():
+    """'wedged' MEANS "alive but not progressing" - the suffix says so out loud:
+    "although its process is alive". Both come from the same table that stopped
+    being written, so both are the present-tense claim again, in the branch that
+    LOOKS like it is reading the beat.
+
+    'stale' is what the identical beat is called when there is no supervisor at
+    all, and that is the honest name here too: the beat is old, and nothing
+    trustworthy says whether a process is behind it.
+    """
+    stopped = {"state": "stopped", "heartbeat": "watcher", "pid": None,
+               "restarts": 0, "uptime_seconds": None, "last_exit_code": 0,
+               "failure_reason": None}
+    payload, code = run(hbs={"watcher": stale()},
+                        sup=supervisor_status({"Watcher": stopped},
+                                              updated_age=600.0))
+    assert code == 503
+    assert payload["checks"]["workers"]["watcher"]["status"] == "stale",         "'wedged' asserts a live process, on the word of a file that stopped updating"
+    assert not any("although its process is alive" in p for p in payload["problems"]),         payload["problems"]
+    assert any("no progress" in p for p in payload["problems"]),         "the beat is genuinely old and that has to still be said"
+
+
 def test_no_supervisor_is_advisory_not_a_failure():
     """A bare uvicorn or the isolated dev stack has no launcher."""
     payload, code = run(hbs={"chain": fresh()}, sup=None)

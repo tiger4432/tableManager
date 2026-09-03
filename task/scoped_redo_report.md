@@ -3126,3 +3126,134 @@ def my_mapper(df, db):
 판정 대기  mappers/base.py · utils.py 의 .sample — 이번 이전으로 base.py 는 «한 줄»이 됐으니
           샘플로 만들 값이 더 커졌습니다 (새 체크아웃이 위임된 채로 시작합니다)
 ```
+
+
+---
+
+# [구현자 -> 총괄] `/health` — ② 착지했습니다. **①은 「판별식이 선다」이고, 재료는 파일 안에 있습니다** (229611a5)
+
+## 먼저 — 총괄의 정정이 맞고, 원인도 총괄이 짚은 그대로였습니다
+ⓑ 는 이미 구현돼 있고(`health.py` 의 `absent` 갈래), 문제는 파일이 `None` 이 아니라 «14일 전 것»이라는 것.
+게이트 ①(바꾸기 전)은 총괄이 받은 것과 같은 넷입니다:
+```
+① supervisor status is 1231353s old - the supervisor itself is not running, so no child is being watched
+② worker 'chain'     is down (supervisor state: stopped)
+③ worker 'scheduler' is down (supervisor state: stopped)
+④ worker 'watcher'   is down (supervisor state: stopped)
+checks: database ok · outbox ok · supervisor stale · config_backup ok      -> 503
+```
+
+## 🔴 그런데 재는 중에 «더 센 것»이 나왔습니다 — 반증이 «같은 응답 안»에 이미 있었습니다
+비트 파일을 직접 읽었습니다 (`server/config/worker_heartbeats/`):
+```
+chain      stale=False   age «0.12초»    beats 36,502     <- 지금 뛰고 있습니다
+scheduler  stale=False   age «0.64초»    beats 68,369     <- 지금 뛰고 있습니다
+watcher    stale=True    age 681,028초 (7.9일)
+```
+⚠️ 이 수는 «이 박스»에서 잰 것입니다. 운영이 어떻다는 문장이 아닙니다.
+🔴 **제품 결함 쪽은 이렇게 말해집니다:** 코드가 「알 수 없는 것을 현재형으로 단언한다」에서
+그치지 않고, **바로 그 요청 안에 들어와 있는 «살아 있는 비트»를 제치고 죽은 표를 택했습니다.**
+②③ 은 미확인 주장이 아니라 «거짓»이었고, 반증할 재료가 `hb` 에 이미 들려 있었습니다.
+이건 환경과 무관하게 참입니다 — 「없어서 0」·「한 응답에 상태가 둘」과 같은 부류입니다.
+
+## ② 착지 — 플래그 «하나»와 그것을 읽는 네 자리
+```
+sup_stale = True            stale 결론이 «나는 자리»에서 세웁니다 (판정은 이미 거기서 났습니다)
+watched = cinfo is not None and not sup_stale
+   -> 표를 «현재»로 바꿔 읽던 네 곳을 이것으로 교체:
+      ① down 갈래                 대신 «디스크의 비트»가 판정합니다
+      ② pid 불일치 가드           감독자가 없으면 「감독된 pid」가 없습니다 — 성립 불가능한 사실입니다
+      ③ wedged / stale            wedged 는 「살아 있는데 안 나아간다」는 뜻입니다
+      ④ 「although its process is alive」 접미
+비트가 «없는» 워커   status "unknown" — 「비트 없음 + 이 표를 쓴 감독자가 N 전에 멈춤」
+                  down 도 missing 도 아닙니다. missing 문구는 「프로세스는 도는데 한 번도
+                  안 뛰었다」로, 아무도 본 적 없는 «도는 프로세스»를 단언합니다. 여전히 UNHEALTHY
+```
+⛔ **stale 을 absent 로 접지 «않았습니다».** 감독자 문장도 503도 그대로입니다 —
+「2분 전 얼어붙은 감독자」는 여전히 같은 경보를 냅니다. 그것을 지키는 대조 시험이
+`test_dead_worker_is_unhealthy_and_named_down_not_wedged` 로 «이미» 있었고 초록입니다.
+
+## 게이트 ② — «순수 함수»에 라이브 입력을 먹여 잰 값입니다 (엔드포인트 아님)
+🔴 재기동 전이므로 도는 서버는 «옛 코드»입니다. 아래는 `compute_health` 에 라이브
+`read_status()` + `read_all()` 을 그대로 먹인 결과입니다. db·outbox 는 위 응답이 준 `ok` 를 넣었습니다.
+```
+problems 4 -> «2»                                                    503 그대로
+  - supervisor status is 1231658s old - ... (그대로 남습니다. 진짜 경보입니다)
+  - worker 'watcher' has made no progress for 681170s (threshold 60s)
+workers   chain ok(0.58초) · scheduler ok(2.11초) · watcher stale(7.9일)
+```
+사라진 둘은 «거짓이던 둘»이고, 셋째는 「down」에서 「비트가 7.9일 안 뛴다」로 바뀌었습니다.
+
+## ③ 시험 — 셋 추가, 변이 다섯 전부 죽습니다
+```
+tests/test_health_endpoint.py + 3
+   죽은 표는 «뛰고 있는» 워커를 down 이라 부를 수 없다
+   죽은 표 + 비트 없음 -> unknown («문구»가 도는 프로세스를 단언하지 않는지까지)
+   죽은 표 + 낡은 비트 -> wedged 아님 · 「although its process is alive」 없음
+변이   M1 down 갈래 되돌림 · M2 unknown 갈래 무력화 · M3 wedged 되돌림
+       M4 접미 되돌림 · M5 sup_stale 을 안 세움       -> «5/5 빨강», 복원 후 바이트 동일
+실행   health · supervisor · heartbeat 셋만: «76 passed»
+       C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest
+```
+
+## 🔵 ① 판별식 — **섭니다. 그리고 멈춤 조건은 «둘 다 안 걸립니다»**
+총괄이 지정한 멈춤 조건을 각각 재 봤습니다.
+
+### 재료는 파일에 «있습니다» — 시작 시각이 있습니다
+`snapshot()` (`process_supervisor.py:1075`) 이 «무조건» 싣는 키:
+```
+supervisor_pid   os.getpid()
+started_at       self._started_wall  ( :628  = time.time() , 감독자 «자기» 기동 시각 )
+updated_at       마지막 쓰기
+stopping         stop_all() 이 «맨 먼저» 세우고 :1047 에서 force 로 씁니다
+```
+라이브 파일에 넷 다 있습니다 (`stopping: true` · pid 34900 · started_at 1787150539.5).
+
+### 🔴 그리고 임계값을 «지어내지 않고» 갈립니다 — 부등호 하나입니다
+```
+쓴 프로세스는 반드시   create_time(pid)  <=  started_at
+                    (프로세스가 있어야 Supervisor 객체가 생깁니다)
+pid 를 «재사용»한 놈은  원래 감독자가 죽은 «뒤»에만 그 pid 를 받습니다
+                    -> create_time > updated_at > started_at
+=> create_time(pid) > started_at 이면 «그놈은 쓴 놈이 아니다». 오차 허용치가 «필요 없습니다»
+```
+즉 총괄이 적은 「시작 시각이 파일에 없으면 구별 불가」는 **전제가 거짓**입니다 — 있습니다.
+`started_at` 을 `create_time` 과 «같다»고 비교하면 허용치가 필요하지만(이 박스 실측: 인터프리터
+기동 간극 0.097초), **«순서»로 비교하면 필요 없습니다.**
+
+### 게다가 pid 를 «안 보고» 갈리는 경우가 하나 더 있습니다
+```
+stopping: true + stale  ->  감독자가 «스스로 정상 종료»를 기록하고 사라진 것입니다
+                          stop_all() 이 플래그를 먼저 세우고 마지막에 force 로 쓰므로
+                          이 조합은 유물이 «확실»합니다. psutil 도 pid 도 필요 없습니다
+stopping: false + stale ->  이때만 위 부등호가 필요합니다 (강제 종료·크래시)
+```
+라이브 파일이 바로 첫째입니다 (`stopping: true`, 자식 넷 전부 `stopped`).
+
+### psutil — 있습니다. 다만 «없을 때의 설계»는 총괄 몫으로 남깁니다
+```
+설치       psutil 7.2.2 (assy_manager env)
+기존 관용구 process_supervisor._psutil_or_warn(:475) — 없으면 «한 번 경고하고 degrade»
+현재 소비자 런처«뿐»입니다. health.py 에는 psutil 이 «없습니다» (grep 0)
+```
+🔴 **그래서 여기서 멈추고 올립니다.** 막혀서가 아니라 «판정 자리»라서입니다:
+```
+① health.py 는 «요청 경로»입니다. 여기에 psutil 을 새로 들이는 것이 맞는지
+② psutil 이 없을 때 판별은 어떻게 되는지 — 총괄이 「설계의 일부」라 하신 그 칸입니다
+   제 제안: 그때는 이번에 만든 "unknown" 그대로 (「모른다」가 정답이고, 이미 그렇게 답합니다)
+③ 그리고 ⓐ/ⓑ 를 갈랐을 때 «문장이 무엇으로 바뀌는지»는 ②와 달리 새 문구입니다
+   ⓑ 가 확정되면 감독자 문장이 「is not running」에서 「N 전에 종료했고 아무도 안 보고 있다」로
+   바뀌는 것이 자연스러운데, 이건 「문구를 지어내지 마십시오」에 걸립니다
+```
+**한 줄로:** 판별식은 «섭니다». 재료도 있고 허용치도 필요 없습니다. 열라 하시면
+`stopping` 우선 → 없으면 `create_time <= started_at` 순서 비교로 붙이겠습니다.
+
+## 안 한 것
+```
+⛔ 런처를 띄워 증상을 가리지 않았습니다
+⛔ 임계값·감독자 문구 신설 없음 (stale 문장은 총괄이 「이게 이름을 짚는다」 하신 그대로 둡니다)
+⛔ 대기열 다섯 파일(main.py 포함) 안 건드렸습니다. add 는 두 경로만 명시했습니다
+🔴 재기동은 총괄 몫입니다 — 하시고 나서 게이트 ②를 «엔드포인트»로 다시 재 주십시오
+   (위 2는 순수 함수 값입니다)
+ℹ️ 훅이 doc-keeper 정비(누적 225 커밋)를 띄웁니다. 제 소관이 아니라 그대로 둡니다
+```
