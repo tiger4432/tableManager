@@ -404,6 +404,21 @@ function setSectionCount(id, value, tone) {
   else delete el.dataset.tone;
 }
 
+// 🔴 「못 읽었다」의 철자는 «하나»다. 대기열 칩이 `admin.html` 에서 이미 이렇게 적혀 있었고,
+//    나머지 아홉은 «0» 으로 적혀 있었다 — 안 읽은 것을 「없다」로 말하는 것이라, 절 머리가
+//    바로 이 라우트가 없애려던 오독을 하고 있었다. 새 문구를 만들지 않는다. 있는 것을 쓴다.
+const UNREAD = '—';
+function markSectionUnread(id) { setSectionCount(id, UNREAD, null); }
+
+// 탭 로드 실패 문구. 두 자리(부분 실패 · 예외)가 «같은 말»을 하도록 한곳에 둔다.
+const TAB_ERROR_MSG = {
+  overview: '❌ 파이프라인 Overview 로드 실패',
+  file: '❌ File Ingestion 현황 로드 실패',
+  chain: '❌ Chain 파이프라인 현황 로드 실패',
+  autoupdate: '❌ Auto Update 현황 로드 실패',
+  enrichment: '❌ Enrichment 규칙 현황 로드 실패'
+};
+
 // mapper_module ("mappers.foo" / "pkg.mod") → 편집 가능한 파일 경로
 function mapperModuleToPath(mod) {
   const p = mod || '';
@@ -810,6 +825,12 @@ async function fetchData(options = {}) {
   const seq = ++fetchSeq;
   const tab = currentTab;
   const isStale = () => (seq !== fetchSeq || currentTab !== tab);
+  // 🔴 경계 — 한 절의 실패가 «남을 지우지» 않는다.
+  //    전에는 각 탭이 `if (!a.ok || !b.ok) throw` 로 시작했고, 그 throw 뒤에 renderer 가
+  //    줄줄이 있었다. 실측(2026-09-04): throw «셋» 뒤에 renderer «아홉». 즉 라우트 하나가
+  //    401 이면 잘못한 것 없는 절까지 같이 사라졌다. 이제 못 읽은 절만 «—» 가 되고
+  //    나머지는 자기 데이터를 그린다.
+  let allRead = true;
   try {
     if (tab === 'overview') {
       await fetchOverview(isStale);
@@ -821,21 +842,19 @@ async function fetchData(options = {}) {
         adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
         adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null)
       ]);
-      if (!logsRes.ok || !wsRes.ok) throw new Error('API fetch failed');
-      const [logs, ws] = await Promise.all([logsRes.json(), wsRes.json()]);
+      const logs = logsRes.ok ? await logsRes.json().catch(() => null) : null;
+      const ws = wsRes.ok ? await wsRes.json().catch(() => null) : null;
       // [Heavy Lane P1] 진행 목록은 보조 정보 — 조회 실패해도 본문 흐름 비방해
-      let active = { data: [] };
-      if (activeRes && activeRes.ok) {
-        try { active = await activeRes.json(); } catch (e) { /* keep empty */ }
-      }
+      // ⚠️ 다만 「실패」와 「비어 있음」은 다르다. 전에는 실패해도 빈 목록을 그려서
+      //    «안 읽은 것»이 «없는 것»으로 보였다. 이제 못 읽으면 그 절만 «—» 다.
+      const active = (activeRes && activeRes.ok) ? await activeRes.json().catch(() => null) : null;
       if (isStale()) return false;
-      fileData = logs.data || [];
-      fileTotal = logs.total || 0;
-      workspaceData = ws.data || [];
-      activeIngestionData = active.data || [];
-      renderActiveIngestions();
-      renderWorkspaceTable();
-      renderFileTable();
+      if (logs) { fileData = logs.data || []; fileTotal = logs.total || 0; renderFileTable(); }
+      else { markSectionUnread('file-log-count'); allRead = false; }
+      if (ws) { workspaceData = ws.data || []; renderWorkspaceTable(); }
+      else { markSectionUnread('workspace-count'); allRead = false; }
+      if (active) { activeIngestionData = active.data || []; renderActiveIngestions(); }
+      else { markSectionUnread('active-ingestion-count'); allRead = false; }
     } else if (tab === 'chain') {
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
       //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
@@ -845,8 +864,9 @@ async function fetchData(options = {}) {
         adminFetch(`${API_BASE}/admin/mappers/list`),
         adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null)
       ]);
-      if (!obRes.ok || !rulesRes.ok || !mapRes.ok) throw new Error('API fetch failed');
-      const [ob, rules, maps] = await Promise.all([obRes.json(), rulesRes.json(), mapRes.json()]);
+      const ob = obRes.ok ? await obRes.json().catch(() => null) : null;
+      const rules = rulesRes.ok ? await rulesRes.json().catch(() => null) : null;
+      const maps = mapRes.ok ? await mapRes.json().catch(() => null) : null;
       // 🔴 못 읽은 이유를 «이름으로» 넘긴다. 404 는 「이 프로세스에 라우트가 없다」이고,
       //    그것은 「대기가 없다」와 «완전히 다른» 사실이다.
       let queueBody = null;
@@ -856,54 +876,51 @@ async function fetchData(options = {}) {
       else if (!queueRes.ok) queueOpts = { unavailable: `대기열 조회 실패 (HTTP ${queueRes.status}). 수를 그리지 않습니다.` };
       else queueBody = await queueRes.json().catch(() => null);
       if (isStale()) return false;
-      outboxData = ob.data || [];
-      outboxTotal = ob.total || 0;
-      chainData = rules.data || [];
-      mapperData = maps.data || [];
+      // 🔴 이것이 «항상» 돌다. 전에는 위의 throw 때문에 여기까지 못 와서, 토큰이 없으면
+      //    패널이 «자기 거절 사유를 그릴 기회»를 잃고 절이 통째로 비었다.
       renderChainQueue(queueBody, queueOpts);
-      renderChainTable();
-      renderOutboxTable();
-      renderMapperTable();
+      if (queueOpts.unavailable) allRead = false;
+      if (ob) { outboxData = ob.data || []; outboxTotal = ob.total || 0; renderOutboxTable(); }
+      else { markSectionUnread('chain-fail-count'); allRead = false; }
+      if (rules) { chainData = rules.data || []; renderChainTable(); }
+      else { markSectionUnread('chain-rule-count'); allRead = false; }
+      if (maps) { mapperData = maps.data || []; renderMapperTable(); }
+      else { markSectionUnread('mapper-count'); allRead = false; }
     } else if (tab === 'autoupdate') {
       const [stRes, failRes, wsRes] = await Promise.all([
         adminFetch(`${API_BASE}/admin/auto-update/status`),
         adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
         adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`)
       ]);
-      if (!stRes.ok) throw new Error('API fetch failed');
-      const st = await stRes.json();
-      const fails = failRes.ok ? await failRes.json() : { data: [], total: 0 };
-      const ws = wsRes.ok ? await wsRes.json() : { data: [] };
+      const st = stRes.ok ? await stRes.json().catch(() => null) : null;
+      const fails = failRes.ok ? await failRes.json().catch(() => null) : null;
+      const ws = wsRes.ok ? await wsRes.json().catch(() => null) : null;
       if (isStale()) return false;
-      autoUpdateData = st.data || [];
-      workspaceData = ws.data || [];
-      // 산출물 인제션 연계 (감사 §1.2): auto-update 대상 테이블 ∩ 최근 실패 로그
-      const autoTables = new Set(autoUpdateData.map(c => c.table_name));
-      const failLogs = fails.data || [];
-      linkedFailLogs = failLogs.filter(l => autoTables.has(l.table_name));
-      linkedFailTotalHint = (fails.total || 0) > failLogs.length;
-      renderAutoUpdateTable();
-      renderLinkedFailTable();
+      if (ws) workspaceData = ws.data || [];
+      if (st) { autoUpdateData = st.data || []; renderAutoUpdateTable(); }
+      else { markSectionUnread('autoupdate-count'); allRead = false; }
+      // 산출물 인제션 연계 (감사 §1.2): auto-update 대상 테이블 ∩ 최근 실패 로그.
+      // 🔴 «둘 다» 있어야 답이 나온다 — 하나만 있으면 교집합이 「없음」처럼 보인다.
+      if (st && fails) {
+        const autoTables = new Set(autoUpdateData.map(c => c.table_name));
+        const failLogs = fails.data || [];
+        linkedFailLogs = failLogs.filter(l => autoTables.has(l.table_name));
+        linkedFailTotalHint = (fails.total || 0) > failLogs.length;
+        renderLinkedFailTable();
+      } else { markSectionUnread('autoupdate-linked-count'); allRead = false; }
     } else if (tab === 'enrichment') {
       const status = await fetchEnrichmentStatus();
       if (isStale()) return false;
       renderEnrichmentTable(status);
     }
+    // 부분 실패도 «말한다». 문구는 예외 경로와 같은 것을 쓴다 — 새로 짓지 않는다.
+    if (!allRead && !silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
     markRefreshed();
-    return true;
+    return allRead;
   } catch (err) {
     if (isStale()) return false; // 무효화된 요청의 실패는 무음 처리
     console.error('Failed to fetch items', err);
-    if (!silent) {
-      const errorMsgs = {
-        overview: '❌ 파이프라인 Overview 로드 실패',
-        file: '❌ File Ingestion 현황 로드 실패',
-        chain: '❌ Chain 파이프라인 현황 로드 실패',
-        autoupdate: '❌ Auto Update 현황 로드 실패',
-        enrichment: '❌ Enrichment 규칙 현황 로드 실패'
-      };
-      showToast(errorMsgs[tab] || '❌ 목록 로드 실패', 'error');
-    }
+    if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
     return false;
   }
 }
