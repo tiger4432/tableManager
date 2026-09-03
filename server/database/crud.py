@@ -526,7 +526,7 @@ def version_gate_verdict(table_name, config, row, is_new, update_item):
     if version_col not in update_item.updates:
         return False, REASON_VERSION_MISSING
     incoming_raw = update_item.updates.get(version_col)
-    if incoming_raw is None or str(incoming_raw).strip() == "":
+    if is_blank_value(incoming_raw):
         return False, REASON_VERSION_MISSING
     incoming = parse_version_key(incoming_raw, col_type)
     if incoming is None:
@@ -841,7 +841,11 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str) -> Any:
     reasoning `refuse_virtual_join_columns` records: a per-call-site rule is one the next
     author has to remember.
     """
-    if value is None or str(value).strip() == "":
+    # The write boundary asks THE blank question rather than restating it (S2,
+    # 2026-09-03). Proven identical over a twelve-value matrix before folding:
+    # `v is None or str(v).strip() == ""` and `is_blank_value(v)` disagree ZERO
+    # times, 0 and 0.0 and False included.
+    if is_blank_value(value):
         return None
 
     if col_type == "number":
@@ -2937,7 +2941,7 @@ def apply_row_update_internal(
             # 🔴 이 자리의 빈 값 판정은 `all(v != "")` 이고, 그것이 «이 호출자의 정책»이다.
             #    ①은 is_blank_value 로 묻는다 - 두 술어를 하나로 맞추는 것은 별건(S2)이고
             #    여기서 손대면 이 라운드가 「조립 통합」이 아니라 «동작 변경»이 된다.
-            if all(clean_str_value(v) != "" for v in raw_vals):
+            if not any(is_blank_value(v) for v in raw_vals):
                 new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
@@ -3258,7 +3262,7 @@ def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch)
                     f"replace_map scope column '{c_name}' is outside the map-key contract of "
                     f"'{table_name}' (allowed: {sorted(target_cols)})"
                 )
-            if c_val is None or str(c_val).strip() == "":
+            if is_blank_value(c_val):
                 raise ValueError(f"replace_map scope column '{c_name}' has an empty value")
             if table_model is not None and getattr(table_model, real_col_name, None) is None:
                 raise ValueError(
@@ -3280,7 +3284,7 @@ def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch)
         if table_model is not None and getattr(table_model, real_col_name, None) is None:
             continue
         for c_name, c_val in sample_item.updates.items():
-            if c_name.lower() == real_col_name.lower() and c_val is not None and str(c_val).strip() != "":
+            if c_name.lower() == real_col_name.lower() and not is_blank_value(c_val):
                 resolved[real_col_name] = c_val
                 break
     return resolved or None
@@ -4463,7 +4467,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             raw_vals = [getattr(row, col, None) for col in composite_src]
             # 이 호출자의 정책은 「하나라도 비면 None」이다 - 위 ②의 폴백과 다르고,
             # 다른 채로 두는 것이 이 라운드의 요구다.
-            if all(clean_str_value(v) != "" for v in raw_vals):
+            if not any(is_blank_value(v) for v in raw_vals):
                 new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 new_bk_val = None

@@ -457,7 +457,7 @@ def _resolve_frames(rule: dict, frames: dict, frame: str) -> dict:
                 "확정 대상 '%s'의 프레임이 비었습니다 - 이름만으로는 무엇을 확정했는지 "
                 "말하지 못합니다" % k)
         out[k] = val
-    if not out and crud.clean_str_value(frame) == "":
+    if not out and crud.is_blank_value(frame):
         raise ConfirmationRefused(
             "확정된 프레임이 없습니다 - 무엇을 확정했는지가 이 기록의 내용입니다")
     return out

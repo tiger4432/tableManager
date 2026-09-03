@@ -197,7 +197,7 @@ def run(table: str, apply: bool) -> dict:
                 #    세어 둔다. 그 이름이 없으면 운영자는 370,000 을 손에 들고
                 #    다음에 무엇을 할지 알 수 없다.
                 empty = [c for c in sources
-                         if r.get(c) is None or str(r.get(c)).strip() == ""]
+                         if crud.is_blank_value(r.get(c))]
                 for c in (empty or ["(재료는 다 찼는데 조합기가 거절)"]):
                     empty_by_col[c] = empty_by_col.get(c, 0) + 1
                 continue

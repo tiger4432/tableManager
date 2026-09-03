@@ -462,7 +462,7 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
         column = (view.get("candidate_for") or {})[target_field]
         needed = set(view.get("required_binds") or [])
         missing = sorted(needed - set(k for k, v in key_values.items()
-                                      if crud.clean_str_value(v) != ""))
+                                      if not crud.is_blank_value(v)))
         if missing:
             errors.append({"label": label, "reason": REASON_MISSING_BIND, "detail": missing})
             continue
@@ -920,7 +920,7 @@ class AutoConfirmCollector:
             for row in db.query(*cols).filter(model.business_key_val.in_(chunk)).all():
                 row_id, bk = row[0], row[1]
                 blanks = [f for f, v in zip(target_fields, row[2:])
-                          if crud.clean_str_value(v) == ""]
+                          if crud.is_blank_value(v)]
                 if not blanks:
                     continue
                 keyed_rows.append({
