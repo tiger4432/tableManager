@@ -108,8 +108,11 @@ TYPE_TABLES = {
             #
             # It is LEFT IN PLACE on the lead PM's ruling: the resulting red is the correct
             # report that a capability was removed, and making it green would hide that.
-            # Whether to bring the type back is a declaration-surface decision for the
-            # owner, not a repair.
+            #
+            # 🔴 OWNER RULING 2026-09-03: `"boolean"` will NOT be made a declarable type
+            # ("불리언 필요 없음"). So this is not a pending repair - the Boolean arm of
+            # this file has no subject and will not get one back. What the file covers is
+            # now the set of types that CAN reach `expose`, and Boolean has left it.
             "needs_graph_rollback": "string",
         },
     },

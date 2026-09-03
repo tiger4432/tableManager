@@ -837,7 +837,9 @@ def init_dynamic_models(config_dict: dict):
     Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
     이미 로드된 테이블에 새 컬럼이 추가된 경우, 런타임에 동적으로 매핑에 결합(Hot-swap)합니다.
     """
-    from sqlalchemy import Table, Column, String, DateTime, Float, Index, Boolean
+    # `Boolean` left with the three graph-sync columns on 2026-08-31 - nothing in
+    # this function builds one any more, and `"boolean"` is not a declarable type.
+    from sqlalchemy import Table, Column, String, DateTime, Float, Index
     from sqlalchemy.sql import func
     from sqlalchemy.orm import class_mapper
     

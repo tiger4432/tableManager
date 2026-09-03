@@ -555,8 +555,44 @@ def attach(db, table_name: str, data_list: list) -> int:
     # 않은 조인 값이 이긴다.
     proposals = {}          # col -> {row_id: 조인이 준 원값(비어 있을 수 있음)}
     labels = {}             # col -> 그 컬럼을 노출한 첫 선언의 unresolved_label
+    # 🔴 THE COLLECT STEP FAILS PER RULE, AND THAT IS THE WHOLE OF THIS GUARD. One rule
+    # that cannot be built used to take EVERY exposed column of this table down with it:
+    # `main.py`'s outer `try` wraps the entire call, so the failure skipped the decide step
+    # too and columns belonging to perfectly healthy rules simply were not there. Measured
+    # 2026-09-03 - three tests in `test_virtual_join_types` were red about `event_at` and
+    # `stamp_at`, neither of which had anything wrong with it, purely because a fourth
+    # column in the same declaration could not be built.
+    #
+    # That vanishing renders EXACTLY like "this cell has no value", which is the failure
+    # this repo keeps meeting: a column absent because somebody ELSE broke looks the same
+    # as a column that is genuinely empty.
+    #
+    # 🔴 IT GOES HERE AND NOT AROUND THE DECIDE STEP BELOW. The "collect everything, then
+    # decide once per cell" shape is deliberate - deciding rule by rule lets a later rule
+    # read an earlier rule's 미상 as a LEFT value, which makes rule ORDER change the answer.
+    # Wrapping the decision would run it on partial proposals and reintroduce exactly that.
+    # A rule that raises contributes ZERO proposals, and at the decision a rule with no
+    # proposals is indistinguishable from a rule whose proposals were all empty: neither
+    # wins. So the direction the outer handler documents - an absent column beats a wrong
+    # one - is preserved, and it is preserved for that rule ALONE.
+    #
+    # Verified rather than assumed: the only statement here that can raise in practice is
+    # `execute_rule`, which builds the SELECT (`getattr(right, c)` on a column the model
+    # does not have). It raises BEFORE anything is merged, so "zero proposals" is exact
+    # and not approximate.
     for rule in rules:
-        joined = execute_rule(db, rule, row_ids)
+        try:
+            joined = execute_rule(db, rule, row_ids)
+        except Exception as exc:                                        # noqa: BLE001
+            # 🔴 THE RULE'S NAME, because the outer handler only ever said the TABLE's and
+            # an operator reading "columns omitted on dt_log" could not tell which of the
+            # declarations was the broken one.
+            logger.error(
+                "[VirtualJoin] rule '%s' could not be built on '%s'; its columns %s are "
+                "omitted and every OTHER rule's columns are unaffected: %s",
+                rule.get("name") or rule.get("rule_name") or "<unnamed>", table_name,
+                list(rule.get("expose") or ()), exc)
+            continue
         label = rule["unresolved_label"]
         for col in rule["expose"]:
             labels.setdefault(col, label)
