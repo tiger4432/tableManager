@@ -5,6 +5,17 @@ import { getLocalTimeString } from './utils.js';
 import { updateGridSortState } from './grid.js';
 import { ensureCellObject } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
+// 🔴 STATIC, and it must stay static. `api.js` imports THIS file back, so the two form an
+//    ESM cycle -- but all three bindings that cross it (`fetchData` here, `updateSelectedCellUI`
+//    and `updateTxModeUI` there) are FUNCTION DECLARATIONS, initialised at instantiation before
+//    either body runs, and every call sits inside a function body. A `const` arrow on either
+//    side would be a TDZ hazard; a declaration cannot be.
+//    Why it matters that this is not `import()`: the app's ONLY dynamic import made the bundler
+//    emit a runtime namespace-object helper, and with no `manualChunks` it landed in the ADMIN
+//    ENTRY chunk. The grid page then statically imported that chunk for the helper alone --
+//    evaluating admin's top level on every grid load (1 TypeError) and pulling ~197 KB of admin
+//    js+css nobody on that page used. Removing this one `import()` removed the helper itself.
+import { fetchData } from './api.js';
 
 export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
@@ -109,9 +120,7 @@ export function setTransactionFilter(txId) {
   });
 
   // Reload data from skip = 0
-  import('./api.js').then(({ fetchData }) => {
-    fetchData(true);
-  });
+  fetchData(true);
 }
 
 export async function applyValueToSelectedRange(newValue) {

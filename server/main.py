@@ -3703,6 +3703,10 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
     return {"status": "success", "message": msg,
             "skipped_reexpanded": len(already_expanded)}
 
+# 대기열 목록이 «훑는» 행 수의 상한. 목록은 진단용이고, 이 수를 넘겨 읽어야 답이 갈리는
+# 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
+_QUEUE_LIST_CAP = 200
+
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
 def get_chain_queue_depth(db: Session = Depends(get_db)):
     """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.
@@ -3746,8 +3750,14 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 찾는다. 부분 인덱스가 `(processed_chain, id)`라 그 순서는 인덱스가 이미 들고 있고,
     # `created_at`은 색인돼 있지 않아 `MIN`을 물으면 같은 행을 찾으려고 전수를 훑는다.
     # `id`는 단조이므로 두 질문의 답은 같은 행이다.
-    oldest = (db.query(outbox.created_at).filter(waiting_only)
-              .order_by(outbox.id.asc()).limit(1).scalar())
+    #
+    # 그 «첫 행»과 아래의 «앞에서부터 N 행»은 같은 인덱스의 같은 순서라, 목록을 뜨면
+    # 첫 행은 그 목록의 머리다. 그래서 `LIMIT 1` 질의를 따로 두지 않는다 — 질의가
+    # 하나 줄고, 두 수가 «같은 스냅샷»에서 나온다(따로 뜨면 사이에 큐가 움직인다).
+    head = (db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.payload,
+                     outbox.retry_count, outbox.created_at)
+            .filter(waiting_only).order_by(outbox.id.asc()).limit(_QUEUE_LIST_CAP).all())
+    oldest = head[0].created_at if head else None
 
     oldest_seconds = None
     if oldest is not None:
@@ -3760,11 +3770,57 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         stamped = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
         oldest_seconds = max(0.0, (datetime.now(timezone.utc) - stamped).total_seconds())
 
+    # ── 대기 «트랜잭션» 목록 ────────────────────────────────────────────────────
+    # 깊이 하나로는 「누가」 기다리는지 모른다. 행을 트랜잭션으로 접어서 돌려준다 —
+    # 접는 것은 파이썬이다. `transaction_id`는 payload(JSON) 안에 있어 SQL 로 묶으면
+    # 색인이 없어 전수를 훑는다 (바로 아래 `/admin/outbox/failed` 가 같은 이유로 같은
+    # 방식을 쓴다). 대신 «훑는 행 수»를 위에서 잘라 비용을 고정했다.
+    from collections import OrderedDict
+    groups = OrderedDict()  # id 오름차순 = 오래 기다린 순. 그 순서가 답이라 dict 를 정렬하지 않는다
+    for row in head:
+        tx = (get_payload_dict(row) or {}).get("transaction_id") or f"(no tx · outbox#{row.id})"
+        g = groups.get(tx)
+        if g is None:
+            g = groups[tx] = {"transaction_id": tx, "rows": 0, "tables": [], "event_types": [],
+                              "max_retry": 0, "first_id": row.id, "created_at": row.created_at}
+        g["rows"] += 1
+        if row.table_name and row.table_name not in g["tables"]:
+            g["tables"].append(row.table_name)
+        if row.event_type and row.event_type not in g["event_types"]:
+            g["event_types"].append(row.event_type)
+        g["max_retry"] = max(g["max_retry"], int(row.retry_count or 0))
+
+    now_utc = datetime.now(timezone.utc)
+
+    def _age(dt):
+        if dt is None:
+            return None
+        stamped = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (now_utc - stamped).total_seconds())
+
+    waiting_transactions = [{
+        "transaction_id": g["transaction_id"],
+        "rows": g["rows"],
+        "tables": g["tables"],
+        "event_types": g["event_types"],
+        "max_retry": g["max_retry"],
+        "waiting_seconds": _age(g["created_at"]),
+        "waiting_at": to_local_str(g["created_at"]) if g["created_at"] is not None else None,
+    } for g in groups.values()]
+
     return {
         "waiting": int(waiting or 0),
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
         "retried_among_waiting": int(retried or 0),
+        "waiting_transactions": waiting_transactions,
+        # 🔴 자른 것을 «말한다». 목록이 짧은 것이 「이것뿐」인지 「여기까지만 봤다」인지
+        #    화면이 구별할 수 있어야 한다 — 조용히 자르면 목록이 «전부»로 읽힌다.
+        "listed": {
+            "rows_scanned": len(head),
+            "cap": _QUEUE_LIST_CAP,
+            "capped": len(head) >= _QUEUE_LIST_CAP,
+        },
         # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
         # 그 오독이 바로 이 라우트가 없애려는 부류다.
         "not_measured": {

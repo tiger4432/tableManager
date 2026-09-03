@@ -23,10 +23,25 @@
 //    refreshes, not a property of one sample. So the age is stated, the way to read it is
 //    stated, and no colour pretends to have judged it.
 //
+// ④ THE LIST IS CUT, AND THE CUT IS SAID. The route reads at most `listed.cap` rows, so
+//    a short list can mean 「this is all of it」 or 「this is as far as I looked」. Those are
+//    different facts, and a silently truncated list reads as the whole queue — the same
+//    class of misreading as ② one layer out. When `listed.capped`, the screen says so.
+//
 // ═══ SHAPE ═════════════════════════════════════════════════════════════════════════════
+// 🔴 A LIST, NOT A CARD STRIP (owner, 2026-09-04: 「chain 대기열 너무 가로로 길게
+//    배치되어있음. 그냥 대기중인 트랜잭션 리스트로 보여줘 kpi 카드 형태 말고」).
+//    Depth and retry count were cards; they are now COLUMNS of the thing they were
+//    counting, which is what a person came here to see — WHICH transactions are waiting,
+//    oldest first. The one number that cannot become a column stays as a single headline
+//    line: the age of the oldest wait is a property of the QUEUE, not of any one row,
+//    and rule ① lives in it.
+//
 // The view model is pure and total (`queueView`), so a harness scores it by importing it.
 // The class owns exactly one div, takes its mount in the constructor, and holds no
 // module-level state — two of these can sit on one page without touching each other.
+// The table reuses `admin.html`'s existing `.table-container` / `.table-header` /
+//    `.table-row` styles — a diagnostic panel is not a reason to grow a second table style.
 
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
@@ -36,7 +51,7 @@ export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE:
  * never `NaN초`.
  *
  * The unit pair stops at two on purpose ("1시간 5분", not "1시간 5분 3초"): the third unit is
- * never the reason anyone looks at this card, and it makes the number wider than the label.
+ * never the reason anyone looks at this panel, and it makes the number wider than the label.
  */
 export function formatAge(seconds) {
   // 🔴 `Number(null) === 0`, and so is `Number('')`. Without this line an ABSENCE formats
@@ -61,13 +76,19 @@ function countOf(v) {
   return Number.isFinite(Number(v)) && v !== null && v !== undefined ? String(Number(v)) : '—';
 }
 
+/** head8… — the same abbreviation the failed-transaction table beside this one uses. */
+function shortTx(id) {
+  const t = String(id ?? '');
+  return t.length > 9 ? `${t.slice(0, 8)}…` : t;
+}
+
 /**
  * `payload` -> what to draw. Pure and total.
  *
  * @param {object|null} payload  the route's body, or null
  * @param {{unavailable?: string}} [opts]  a reason the body could not be had (HTTP status,
  *        an older server process without this route, a network failure). When present, NO
- *        numbers are drawn: a stale or invented zero here is worse than an empty card.
+ *        numbers are drawn: a stale or invented zero here is worse than an empty panel.
  */
 export function queueView(payload, opts = {}) {
   if (opts.unavailable || !payload || typeof payload !== 'object') {
@@ -75,7 +96,10 @@ export function queueView(payload, opts = {}) {
       available: false,
       reason: opts.unavailable
         || '응답을 읽지 못했습니다 — 수를 그리지 않습니다 (빈 값이 0으로 읽히는 것을 막습니다).',
-      cards: Object.freeze([]),
+      headline: null,
+      depth: '—',
+      rows: Object.freeze([]),
+      truncated: '',
       notMeasured: Object.freeze([]),
     });
   }
@@ -85,16 +109,16 @@ export function queueView(payload, opts = {}) {
   //   null    nothing is waiting
   //   0       something is waiting and it arrived within this second
   //   n > 0   something has been waiting n
-  let age;
+  let headline;
   if (secs === null || secs === undefined) {
-    age = { main: '대기 없음', sub: '기다리는 행이 «없습니다». 「0초」와 다릅니다 — 0초는 방금 '
-                                + '들어온 것이 있다는 뜻입니다.', status: STATUS.OK };
+    headline = { main: '대기 없음', sub: '기다리는 행이 «없습니다». 「0초」와 다릅니다 — 0초는 '
+                                      + '방금 들어온 것이 있다는 뜻입니다.', status: STATUS.OK };
   } else {
     const text = formatAge(secs);
-    age = text === null
+    headline = text === null
       ? { main: '—', sub: `나이를 읽지 못했습니다 (받은 값: ${JSON.stringify(secs)}).`,
           status: STATUS.UNAVAILABLE }
-      : { main: text,
+      : { main: `제일 오래된 대기 ${text}`,
           // rule ③: say how to read it instead of colouring it.
           sub: payload.oldest_waiting_at
             ? `${payload.oldest_waiting_at} 부터 대기 · 한 번의 값으로는 판정되지 않습니다 — `
@@ -103,17 +127,29 @@ export function queueView(payload, opts = {}) {
           status: STATUS.NEUTRAL };
   }
 
-  const cards = [
-    // The answer first. Depth is context, and the route's docstring is explicit that depth
-    // alone cannot separate 「많다」 from 「밀린다」.
-    { key: 'oldest', title: '제일 오래된 대기의 나이', ...age },
-    { key: 'waiting', title: '대기 깊이', main: countOf(payload.waiting),
-      sub: '바쁠 때 커졌다 줄어드는 것이 «정상»입니다. 이 수만으로는 「많다」와 「밀린다」를 '
-         + '구별하지 못합니다.', status: STATUS.NEUTRAL },
-    { key: 'retried', title: '대기 중 재시도', main: countOf(payload.retried_among_waiting),
-      sub: '아직 «기다리는» 행 중 재시도된 수입니다. 이미 지나간 재시도는 세지 않습니다.',
-      status: STATUS.NEUTRAL },
-  ];
+  // ── the list. Server order is `id` ascending = longest waiting first; that order IS the
+  //    answer, so it is not re-sorted here. ──
+  const src = Array.isArray(payload.waiting_transactions) ? payload.waiting_transactions : [];
+  const rows = src.map(t => Object.freeze({
+    txId: String(t.transaction_id ?? ''),
+    txShort: shortTx(t.transaction_id),
+    rows: countOf(t.rows),
+    tables: Array.isArray(t.tables) && t.tables.length ? t.tables.join(', ') : '—',
+    eventTypes: Object.freeze(Array.isArray(t.event_types) ? t.event_types.map(String) : []),
+    // rule ①, per row: an unreadable age is a dash, never 「0초」.
+    age: formatAge(t.waiting_seconds) ?? '—',
+    at: t.waiting_at || '',
+    // An empty string means zero retries. The column exists to surface the NON-zero ones,
+    // and a column of 「0」 down every row is noise that hides the one row that is not 0.
+    maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
+  }));
+
+  // ── rule ④: a cut list says it was cut ──
+  const listed = payload.listed && typeof payload.listed === 'object' ? payload.listed : null;
+  const truncated = listed && listed.capped
+    ? `앞에서 ${countOf(listed.rows_scanned)}행까지만 읽었습니다 (상한 ${countOf(listed.cap)}). `
+      + '아래 목록은 대기열의 «전부가 아닙니다».'
+    : '';
 
   // ── rule ②: the two the route refuses to compute, by name and with its reason ──
   const nm = payload.not_measured;
@@ -121,10 +157,19 @@ export function queueView(payload, opts = {}) {
     ? Object.keys(nm).map(name => ({ name, why: String(nm[name]) }))
     : [];
 
+  // 🔴 The card strip carried `waiting` and `retried_among_waiting`. Dropping the strip must
+  //    not drop the numbers — a measured number that stops being drawn is rule ② with the
+  //    sign flipped. They become ONE line beside the age, not two cards.
+  headline.aggregate = `대기 ${countOf(payload.waiting)}개 · 그중 재시도 `
+                     + `${countOf(payload.retried_among_waiting)}개`;
+
   return Object.freeze({
     available: true,
     reason: '',
-    cards: Object.freeze(cards.map(c => Object.freeze(c))),
+    headline: Object.freeze(headline),
+    depth: countOf(payload.waiting),
+    rows: Object.freeze(rows),
+    truncated,
     notMeasured: Object.freeze(notMeasured.map(x => Object.freeze(x))),
   });
 }
@@ -149,6 +194,34 @@ export class ChainQueuePanel {
     this.mount.appendChild(this.root);
   }
 
+  /** @param {string} cls @param {string} text */
+  _line(cls, text) {
+    const el = this.doc.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  }
+
+  /** @param {string} text @param {string} [align] */
+  _td(text, align) {
+    const td = this.doc.createElement('td');
+    td.textContent = text;
+    if (align) td.style.textAlign = align;
+    return td;
+  }
+
+  /** @param {string} icon @param {string} text */
+  _empty(icon, text) {
+    const box = this.doc.createElement('div');
+    box.className = 'empty-state';
+    const ic = this.doc.createElement('div');
+    ic.className = 'empty-icon';
+    ic.textContent = icon;
+    box.appendChild(ic);
+    box.appendChild(this._line('empty-text', text));
+    return box;
+  }
+
   /** @param {object|null} payload  @param {{unavailable?: string}} [opts] */
   render(payload, opts = {}) {
     const view = queueView(payload, opts);
@@ -156,64 +229,101 @@ export class ChainQueuePanel {
     this.root.textContent = '';
 
     if (!view.available) {
-      const box = doc.createElement('div');
-      box.className = 'empty-state';
-      const icon = doc.createElement('div');
-      icon.className = 'empty-icon';
-      icon.textContent = '⚪';
-      const text = doc.createElement('div');
-      text.className = 'empty-text';
-      text.textContent = view.reason;
-      box.appendChild(icon);
-      box.appendChild(text);
-      this.root.appendChild(box);
+      this.root.appendChild(this._empty('⚪', view.reason));
       return view;
     }
 
-    const strip = doc.createElement('div');
-    strip.className = 'health-strip';
-    for (const c of view.cards) {
-      // A `div`, not the `button` the dashboard cards use: these do not navigate anywhere,
-      // and a button that does nothing when clicked is a promise the screen cannot keep.
-      const card = doc.createElement('div');
-      card.className = 'health-card';
-      card.style.cursor = 'default';
-      card.setAttribute('data-status', c.status);
-      card.setAttribute('data-key', c.key);
-      const top = doc.createElement('div');
-      top.className = 'health-card-top';
-      const dot = doc.createElement('span');
-      dot.className = 'health-dot';
-      const title = doc.createElement('span');
-      title.className = 'health-card-title';
-      title.textContent = c.title;
-      top.appendChild(dot);
-      top.appendChild(title);
-      const main = doc.createElement('div');
-      main.className = 'health-card-main';
-      main.textContent = c.main;
-      const sub = doc.createElement('div');
-      sub.className = 'health-card-sub';
-      sub.textContent = c.sub;
-      card.appendChild(top);
-      card.appendChild(main);
-      card.appendChild(sub);
-      strip.appendChild(card);
+    // ── headline: ONE line, not a card. Rule ① lives here. ──
+    const head = doc.createElement('div');
+    head.className = 'chain-queue-headline';
+    head.setAttribute('data-status', view.headline.status);
+    const dot = doc.createElement('span');
+    dot.className = 'health-dot';
+    head.appendChild(dot);
+    head.appendChild(this._line('chain-queue-headline-main', view.headline.main));
+    head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
+    head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
+    this.root.appendChild(head);
+
+    if (view.truncated) this.root.appendChild(this._line('chain-queue-truncated', view.truncated));
+
+    if (view.rows.length === 0) {
+      this.root.appendChild(this._empty('🎉', '대기 중인 트랜잭션이 없습니다.'));
+      return view;
     }
-    this.root.appendChild(strip);
+
+    const table = doc.createElement('table');
+    table.className = 'table-container';
+    const thead = doc.createElement('thead');
+    thead.className = 'table-header';
+    const hr = doc.createElement('tr');
+    // Width is set on the header cells so the body columns follow — the same shape the
+    // failed-transaction table beside this one uses.
+    for (const [label, width, align] of [
+      ['Transaction ID', '130px', ''], ['대기', '100px', ''], ['Tables', '', ''],
+      ['Event', '110px', ''], ['행', '60px', 'center'], ['재시도', '70px', 'center'],
+    ]) {
+      const th = doc.createElement('th');
+      th.textContent = label;
+      if (width) th.style.width = width;
+      if (align) th.style.textAlign = align;
+      hr.appendChild(th);
+    }
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    const tbody = doc.createElement('tbody');
+    for (const r of view.rows) {
+      const tr = doc.createElement('tr');
+      tr.className = 'table-row';
+      tr.setAttribute('data-txid', r.txId);
+
+      const tdId = doc.createElement('td');
+      const chip = doc.createElement('span');
+      chip.className = 'tx-id-chip';
+      chip.title = r.txId;
+      chip.textContent = r.txShort;
+      tdId.appendChild(chip);
+      tr.appendChild(tdId);
+
+      const tdAge = this._td(r.age);
+      tdAge.className = 'chain-queue-age';
+      if (r.at) tdAge.title = `${r.at} 부터 대기`;
+      tr.appendChild(tdAge);
+
+      tr.appendChild(this._td(r.tables));
+
+      const tdEv = doc.createElement('td');
+      if (r.eventTypes.length) {
+        for (const t of r.eventTypes) {
+          const b = doc.createElement('span');
+          b.className = `badge ${t === 'CREATE' ? 'badge-warning' : 'badge-danger'}`;
+          b.style.marginRight = '4px';
+          b.textContent = t;
+          tdEv.appendChild(b);
+        }
+      } else {
+        tdEv.textContent = '—';
+      }
+      tr.appendChild(tdEv);
+
+      tr.appendChild(this._td(r.rows, 'center'));
+      // rule ③ applies here too: the retry count is stated, never coloured into a verdict.
+      tr.appendChild(this._td(r.maxRetry, 'center'));
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    this.root.appendChild(table);
 
     if (view.notMeasured.length > 0) {
       const box = doc.createElement('div');
       box.className = 'chain-queue-notmeasured';
-      const head = doc.createElement('div');
-      head.className = 'health-card-title';
-      head.textContent = `여기서 «재지 않는» 수 ${view.notMeasured.length}개 — 없는 것이 아니라 안 잰 것입니다`;
-      box.appendChild(head);
+      box.appendChild(this._line('health-card-title',
+        `여기서 «재지 않는» 수 ${view.notMeasured.length}개 — 없는 것이 아니라 안 잰 것입니다`));
       for (const x of view.notMeasured) {
-        const line = doc.createElement('div');
-        line.className = 'health-card-sub';
+        const line = this._line('health-card-sub', `${x.name} — ${x.why}`);
         line.setAttribute('data-name', x.name);
-        line.textContent = `${x.name} — ${x.why}`;
         box.appendChild(line);
       }
       this.root.appendChild(box);

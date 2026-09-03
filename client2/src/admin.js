@@ -921,10 +921,9 @@ function renderChainQueue(payload, opts) {
   const count = byId('chain-queue-count');
   // 🔴 절 머리의 수는 «깊이»다. 못 읽었으면 «0 이 아니라» 대시다 — 없는 수가 0 으로 읽히는
   //    것이 이 라우트가 없애려는 바로 그 오독이다.
-  if (count) {
-    const depth = view.available ? view.cards.find(c => c.key === 'waiting') : null;
-    count.textContent = depth ? depth.main : '—';
-  }
+  //    깊이는 카드였다가 이제 목록 위의 수가 됐다 — `view.depth` 는 읽지 못했을 때
+  //    이미 «대시»로 돌아오므로 여기서 다시 가르지 않는다.
+  if (count) count.textContent = view.depth;
 }
 
 function renderOutboxTable() {

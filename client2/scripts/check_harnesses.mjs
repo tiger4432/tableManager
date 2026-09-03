@@ -228,7 +228,11 @@ const FLOORS = new Map([
   // two states AGAINST EACH OTHER rather than against fixed strings, so a copy edit cannot
   // redden them and cannot silently collapse them either. A drop here means the instrument
   // regained the ambiguity it was built to remove.
-  ['chain_queue_panel_harness.mjs', 38],
+  // 2026-09-04, 38 -> 71: the card strip became a TABLE (owner: 「kpi 카드 형태 말고」) and
+  // rule ④ arrived with it -- a list the route CUT has to say it was cut, because a silently
+  // truncated list reads as the whole queue. The two numbers the strip carried (depth, retries)
+  // are asserted on the headline, so losing the strip cannot quietly lose them.
+  ['chain_queue_panel_harness.mjs', 71],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
