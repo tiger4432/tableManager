@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 // The REAL key composer, not a re-typed one. Group K compares two spellings of the same
 // business key and a second implementation here would compare this file against itself.
 // `map_key.js` imports nothing, so this needs no node_modules.
@@ -50,7 +51,7 @@ function check(name, actual, expected) {
 // ── Sandbox ─────────────────────────────────────────────────────────────────────
 // `log` records what the instrument DID: every fetch body, and every effort call.
 // Assertions read this log, so the evidence is a request list, not "it worked".
-function makeCtx(src, opts = {}) {
+async function makeCtx(src, opts = {}) {
   const log = { requests: [], effort: [], nav: [], toasts: [], alerts: [], confirms: [] };
   let counters = opts.zeroEffort
     ? { session_id: 'sess-TEST', key: 0, mouse: 0, nav: 0 }
@@ -95,16 +96,67 @@ function makeCtx(src, opts = {}) {
     0: { 0: { inside: true, x: 1, y: 1, key: '1_1' }, 1: { inside: true, x: 2, y: 1, key: '2_1' } }
   };
 
-  const ctx = {
-    // `debug` is here because the success epilogue calls it. Without it the epilogue threw
-    // a TypeError into `pushMapData`'s own catch, which alerted 「데이터 적재 실패」 on a push
-    // that had in fact succeeded -- and every assertion in group A stayed green, because
-    // they all read state written BEFORE that point. See `mapKeyListCache` below.
-    console: { log() {}, warn() {}, error() {}, debug() {}, group() {}, groupEnd() {} },
-    JSON, Object, Array, Number, String, Set, Map, Boolean, Math, Promise,
-    parseInt, parseFloat, isNaN, Error,
-    API_BASE: 'http://x', CURRENT_USER: 'tester',
-    el, gridCells2D,
+  // 🔴 THE SYMBOLS ARE NO LONGER CUT OUT of map_editor.js and run in `vm`, and this file's
+  // own comments record what that cost TWICE: a missing `pushBlockingCount` crashed the
+  // sandbox build and left the only end-to-end scorer of the ⚡ Push path scoring NOTHING,
+  // and a missing `mapKeyListCache` made every "successful" push throw inside the write path
+  // while A1-A11 stayed green. Imported, a name cannot be missing from a list, because there
+  // is no list.
+  //
+  // The globals go on `globalThis`: an imported module resolves them the way the browser
+  // does, and setting them on the env would be a silent no-op. `debug` is kept because the
+  // success epilogue calls it -- without it that epilogue threw a TypeError into
+  // `pushMapData`'s own catch and alerted 「데이터 적재 실패」 on a push that had succeeded.
+  const OUT = console;
+  // 🔴 `log`, `info` and `error` FORWARD. The sandbox console silenced the module's chatter,
+  //    and installing that silence GLOBALLY silences this harness's own output too -- the run
+  //    printed one banner and exited 1 with nothing to read. What stays muted is the noise the
+  //    module makes by design (`warn`, `debug`, `group`).
+  globalThis.console = {
+    log: (...a) => OUT.log(...a), info: (...a) => OUT.info(...a),
+    error: (...a) => OUT.error(...a),
+    warn() {}, debug() {}, group() {}, groupEnd() {},
+  };
+  globalThis.document = {
+    querySelectorAll: () => (opts.metaInputs || [{ id: 'meta-input-map_id', value: 'MAP-1' }]),
+    getElementById: () => ({ value: '' }),
+    addEventListener() {}, removeEventListener() {}, querySelector: () => null,
+  };
+  globalThis.window = globalThis.window || {
+    location: { port: '', origin: '', protocol: 'http:', host: '', search: '' },
+    addEventListener() {},
+  };
+  // `opts.confirmSeq` answers the dialogs IN ORDER; anything past its end falls back to
+  // `opts.confirmAnswer`. Answering by position, not by matching the message text, is
+  // deliberate: a scorer that greps a Korean confirm string is pinning wording, and wording
+  // is the thing a UI round is allowed to change.
+  globalThis.confirm = (msg) => {
+    log.confirms.push(msg);
+    const i = log.confirms.length - 1;
+    if (Array.isArray(opts.confirmSeq) && i < opts.confirmSeq.length) return opts.confirmSeq[i];
+    return opts.confirmAnswer !== false;
+  };
+  globalThis.alert = (msg) => { log.alerts.push(msg); };
+  // The write surface under test. Records every request body verbatim.
+  //
+  // `effort_recorded` is the server's answer to "did I actually write an effort row?". A
+  // no-op save (the stored value already equals the submitted one) is a 200 that records
+  // NOTHING, so the response carries false. opts.effortRecorded:
+  //   undefined -> true (normal), false -> the no-op case, 'absent' -> an older server.
+  globalThis.fetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(init.body) : null;
+    log.requests.push({ url, method: init && init.method, body });
+    const ok = opts.failCellPush && String(url).includes('bonding_map') ? false : true;
+    const okBody = { updated_count: 2 };
+    if (opts.effortRecorded !== 'absent') okBody.effort_recorded = opts.effortRecorded !== false;
+    return { ok, status: ok ? 200 : 500, json: async () => (ok ? okBody : { detail: 'boom' }) };
+  };
+
+  // Everything this harness STAGES on the module. `state` is `Object.keys` of it, so a name
+  // the module does not declare is a loud failure rather than a property nobody reads.
+  const stage = {
+    gridCells2D,
+    // reassigned below by the call recorder, so it needs a setter rather than a read
     gridData: opts.gridData || { '1_1': 'A', '2_1': 'B' },
     legend: [{ value: 'A', split_desc: 'd' }, { value: 'B', split_desc: 'd' }],
     tableSchema: opts.schema
@@ -112,9 +164,9 @@ function makeCtx(src, opts = {}) {
     // Read by `physNum` (the whole transform chain below goes through it). Never opened
     // here: the push path is the MAIN load, which is the "source meta == current controls"
     // special case of the frame window (SPEC §5.1).
-    // Every `isCellInsideWafer` call ⑤ makes, as (c, r, visualCols, visualRows, inside).
-    // The evidence for the outside-circle assertions is this coordinate list, not a boolean.
-    insideCalls: [],
+    // ⑤'s coordinate evidence used to be staged here as `insideCalls`. THE PRODUCT HAS NO
+    // SUCH NAME -- it is the harness's own list, and under `vm` a bare identifier is whatever
+    // the sandbox says it is. It lives beside the recorder below and rides on the env.
     selectedTable: 'bonding_map',
     loadedIdentity: null, framePushed: false, frameTouched: false, legendDirty: false,
     // [F2b] provenance of the on-screen cells. null = "the server state is unknown", which
@@ -127,7 +179,9 @@ function makeCtx(src, opts = {}) {
     // 「데이터 적재 실패」. Nothing noticed: A1-A11 all read state written earlier. That is
     // byte for byte the `dde342c` incident the source comment at this call site records,
     // reproduced inside the harness meant to catch it. G18 now scores the epilogue.
-    mapKeyListCache: new Map(),
+    // 🔴 `mapKeyListCache` is a `const Map` in the product, so it is CLEARED below rather
+    //    than replaced -- a const binding cannot be reassigned, and replacing it here would
+    //    have left the module reading its own. Same shape as `el`.
     currentRotation: opts.rotation !== undefined ? opts.rotation : 90,
     currentSide: opts.side || 'back',
     editorFrames: [],
@@ -136,69 +190,21 @@ function makeCtx(src, opts = {}) {
     // reads this state. `null` = the map declared nothing, which is what every assertion
     // in this file assumes: the pushed payload must stay byte-identical to 2a9f6c4.
     validDie: opts.validDie !== undefined ? opts.validDie : null,
-    // [M4② F1] the designation controls only mean "the user chose this" once the change
-    // listener says so; false is the boot state and the state after every app-driven sync.
-    validDieRefTableTouched: false,
+    // 🔴 `validDieRefTableTouched` WAS STAGED HERE, and THE PRODUCT DELETED IT.
+    //    map_editor.js:2461 still mentions the name -- inside a comment recording the
+    //    removal and saying the invariant now rests on the key comparison in
+    //    `validDieRefFromControls`. A plain grep reads that comment as "it exists".
+    //    Under `vm` a bare identifier is whatever the sandbox says it is, so this file went
+    //    on staging a flag nobody reads. The probe asks the module, and the module says no.
 
-    document: {
-      querySelectorAll: () => (opts.metaInputs || [{ id: 'meta-input-map_id', value: 'MAP-1' }]),
-      getElementById: () => ({ value: '' }),
-    },
-    // `opts.confirmSeq` answers the dialogs IN ORDER; anything past its end falls back to
-    // `opts.confirmAnswer`. Answering by position, not by matching the message text, is
-    // deliberate: a scorer that greps a Korean confirm string is pinning wording, and
-    // wording is the thing a UI round is allowed to change.
-    confirm: (msg) => {
-      log.confirms.push(msg);
-      const i = log.confirms.length - 1;
-      if (Array.isArray(opts.confirmSeq) && i < opts.confirmSeq.length) return opts.confirmSeq[i];
-      return opts.confirmAnswer !== false;
-    },
-    alert: (msg) => { log.alerts.push(msg); },
-    showToast: (m, t) => { log.toasts.push([m, t]); },
 
-    // The write surface under test. Records every request body verbatim.
-    //
-    // `effort_recorded` is the server's answer to "did I actually write an effort row?".
-    // A no-op save (the stored value already equals the submitted one) is a 200 that
-    // records NOTHING, so the response carries false. opts.effortRecorded:
-    //   undefined -> true (normal), false -> the no-op case, 'absent' -> an older server.
-    fetch: async (url, init) => {
-      const body = init && init.body ? JSON.parse(init.body) : null;
-      log.requests.push({ url, method: init && init.method, body });
-      const ok = opts.failCellPush && String(url).includes('bonding_map') ? false : true;
-      const okBody = { updated_count: 2 };
-      if (opts.effortRecorded !== 'absent') okBody.effort_recorded = opts.effortRecorded !== false;
-      return { ok, status: ok ? 200 : 500, json: async () => (ok ? okBody : { detail: 'boom' }) };
-    },
-
-    // ── the collector, stubbed at the module boundary ──
-    // Mirrors the real collector: with nothing accumulated it reports ABSENCE, never an
-    // all-zero blob (the server would file that as a genuine measured score of 0).
-    effortSnapshot: () => {
-      log.effort.push('snapshot');
-      if (!counters.key && !counters.mouse && !counters.nav) return undefined;
-      return { ...counters };
-    },
-    effortCommitIfRecorded: (resBody) => {
-      const flag = resBody && typeof resBody === 'object' ? resBody.effort_recorded : undefined;
-      const known = typeof flag === 'boolean';
-      log.effort.push(`commitIfRecorded:${known ? flag : 'absent'}`);
-      if (known ? flag : true) { // absent -> legacy fallback (reset on success)
-        log.effort.push('commit');
-        counters = { ...counters, key: 0, mouse: 0, nav: 0 };
-      }
-    },
-    countNav: (f, t) => { log.nav.push(`${f}>${t}`); },
-    ROUTES: { MAP_EDITOR: 'map_editor', GRID: 'grid' },
 
     // ── collaborators kept deliberately inert ──
-    logShapedPushDecision: () => (opts.gate4 || { mode: 'clean', extras: [] }),
     currentIdentityMismatch: () => null,
-    getMapIdFromMeta: (m) => m.map_id || null,
-    getMissingDescValues: () => (opts.missingDesc || []),
     setLoadedIdentity(t, k) { ctx.loadedIdentity = t && k ? { table: t, mapKey: k } : null; },
-    notifyMapContext() {}, recordLastOpenMap() {}, saveLegendToStorage() {},
+    // `notifyMapContext` is an IMPORT of the subject -- read-only from outside, so it goes
+    // through the loader hook rather than being staged here.
+    recordLastOpenMap() {}, saveLegendToStorage() {},
     saveLegendToServer: async () => ({ ok: true, count: 2 }),
     applyLegendSaveResult() {},
     snapshotEditorState: () => ({ tag: 'frame' }),
@@ -211,127 +217,110 @@ function makeCtx(src, opts = {}) {
     getCurrentMapKey: () => 'MAP-1',
     frameTitle: () => 't',
   };
-  ctx.globalThis = ctx;
-  vm.createContext(ctx);
-
-  vm.runInContext([
-    `const ROUTE_MAIN = ROUTES.MAP_EDITOR;`,
-    `const ROUTE_MATERIAL = \`\${ROUTES.MAP_EDITOR}:material\`;`,
-    extractFunction(src, 'effortRoute'),
-    // [M4②] real, not stubbed - the push branch that decides whether `valid_die_ref`
-    // appears in grid_metadata at all
-    extractFunction(src, 'validDieRefDisplay'),
-    extractFunction(src, 'validDieRefFromControls'),
-    extractFunction(src, 'validDieRefForPush'),
-    // the decision -> payload turn. Extracted out of pushMapData so it can be scored
-    // instead of retyped; pushMapData now CALLS it, so it must be here or pushMapData
-    // throws at the push point.
-    extractFunction(src, 'validDieRefPayload'),
-    extractFunction(src, 'applyValidDieRef'),
-    extractFunction(src, 'validDieBasis'),
-    // [F2] the ONE savable-cell predicate. `pushMapData` no longer restates the
-    // `inside` + non-empty walk - it calls this, and so do the on-screen counters, so
-    // "화면 수량 == 저장 수량" cannot drift. Same reason as validDieRefPayload above:
-    // extracted so it can be scored, therefore it must be in this sandbox.
-    extractFunction(src, 'eachSavableCell'),
-    // [F2b] the complement of that predicate: which non-empty cells will NOT be saved, and
-    // which of those the server demonstrably never sent. `pushMapData`'s data-protection
-    // gate calls it, so it must be here too. Scored in copy_header_count_harness.mjs; here
-    // it just has to be the REAL one, because the effort assertions below depend on the
-    // push actually reaching the request.
-    extractFunction(src, 'classifyUnsavableCells'),
-    extractFunction(src, 'serverCellKeySet'),
-    // [F2b] the ONE reason a push refuses on coverage. It has been missing from this list
-    // since it was introduced, and that single missing name crashed the sandbox build --
-    // this whole file was DEAD, so the only end-to-end scorer of the ⚡ Push path scored
-    // nothing at all. Adding a name here is not optional bookkeeping: `pushMapData` calls
-    // it, so its absence is a ReferenceError, not a red assertion.
-    extractFunction(src, 'pushBlockingCount'),
-    // ⑤'s wafer-circle predicate, REAL, with its whole chain. Invariant ①: there is one
-    // transform implementation, and a scorer that stubs it would be testing a second one.
-    // None of these touch the DOM in this sandbox -- `el.gridCanvas` is absent, so
-    // `isCellInsideWafer` takes its documented 700x700 fallback.
-    extractFunction(src, 'physNum'),
-    extractFunction(src, 'getTransformedPhysicalConfig'),
-    extractFunction(src, 'getScreenShift'),
-    extractFunction(src, 'isCellInsideWaferFast'),
-    extractFunction(src, 'isCellInsideWafer'),
-    // ...wrapped so every call it receives is recorded. The wrapper adds no arithmetic:
-    // it forwards to the extracted function and reports what it was asked and what it said.
-    `{ const __realInside = isCellInsideWafer;
-       isCellInsideWafer = function (c, r, vc, vr) {
-         const v = __realInside(c, r, vc, vr);
-         insideCalls.push([c, r, vc, vr, v]);
-         return v;
-       }; }`,
-    // `pushMapData`'s named steps. They are CALLED by the function sliced below, so a
-    // missing name here is a ReferenceError on the very first line of the push, not a
-    // red assertion. Whenever a block leaves `pushMapData`, it must be added here in
-    // the same commit. (The gate block and both PUT blocks deliberately did NOT leave —
-    // see the banner above the step definitions in map_editor.js for why.)
-    extractFunction(src, 'confirmLogShapedPushTarget'),
-    extractFunction(src, 'collectMetaFieldValues'),
-    // [2] The frame controls now have ONE reader, shared by `pushMapData` and
-    // `saveMapSpecOnly`, so that the two writers cannot spell the same geometry two ways.
-    // Sliced rather than re-typed for the usual reason: a copy here would let this harness
-    // score a payload the product does not build.
-    // [2b] ...and that reader now asks ONE question about a blank box, shared with
-    // `resolveGridFrame`'s `current` branch. `parseInt('') || 0` used to promote silence to a
-    // declared 0; sliced rather than re-typed so the refusal this harness's push path meets is
-    // the product's refusal.
-    extractFunction(src, 'controlIsSilent'),
-    extractFunction(src, 'gridFrameControlNum'),
-    extractFunction(src, 'readGridFrameControls'),
-    // [D1] `buildPushGridMetadata` now asks whether the geometry it is serialising was
-    // AUTO-REGISTERED, so that a synthesized spec is not promoted to a declared one by a
-    // single push. Sliced, not stubbed: this harness owns the byte-identical payload
-    // invariant, and the whole point is that an UNMARKED map's payload is unchanged.
-    // [D4] ...and the same question for the FRAME half (`frame_chosen_from`). Same reason it is
-    // sliced: the byte-identical-payload invariant is exactly the claim that an unmarked map
-    // gains nothing from either of these two reads.
-    extractFunction(src, 'geometryIsAutoRegistered'),
-    extractFunction(src, 'frameChosenFrom'),
-    extractFunction(src, 'markFrameChosen'),
-    extractFunction(src, 'buildPushGridMetadata'),
-    extractFunction(src, 'confirmMissingSplitDescriptions'),
-    extractFunction(src, 'outsideCircleNoteForPush'),
-    extractFunction(src, 'pushMapData'),
-    extractFunction(src, 'openMapFrame'),
-    // [fix E-3] `popMapFrame` no longer spells the unsaved-work predicate inline — it and the
-    // map-replacing load both ask this one function, so that the two doors cannot drift apart
-    // again. Sliced, not stubbed: a stub here would let this harness score frame navigation
-    // over a guard that does not exist. What the guard should ANSWER is scored by
-    // `valid_die_dirty_guard_harness.mjs`.
-    extractFunction(src, 'unsavedWorkNotice'),
-    extractFunction(src, 'popMapFrame'),
-    `globalThis.__h = { pushMapData, openMapFrame, popMapFrame, effortRoute,
-       outsideCircleNoteForPush };`
-  ].join('\n\n'), ctx);
-
-  return { ctx, log, api: ctx.__h };
+  const { probe: ctx } = await loadWithProbe(SRC_PATH, {
+    expose: [
+    'el', 'mapKeyListCache',
+    'effortRoute', 'validDieRefDisplay', 'validDieRefFromControls', 'validDieRefForPush',
+    'validDieRefPayload', 'applyValidDieRef', 'validDieBasis', 'eachSavableCell',
+    'classifyUnsavableCells', 'serverCellKeySet', 'pushBlockingCount', 'physNum',
+    'getTransformedPhysicalConfig', 'getScreenShift', 'isCellInsideWaferFast',
+    'confirmLogShapedPushTarget', 'collectMetaFieldValues', 'controlIsSilent', 'gridFrameControlNum',
+    'readGridFrameControls', 'geometryIsAutoRegistered', 'frameChosenFrom', 'markFrameChosen',
+    'buildPushGridMetadata', 'confirmMissingSplitDescriptions', 'outsideCircleNoteForPush', 'pushMapData',
+    'openMapFrame', 'unsavedWorkNotice', 'popMapFrame',
+    ],
+    // 🔴 `isCellInsideWafer` is here rather than in `expose` because the ⑤ recorder below
+    //    REPLACES it. A read-only reference could not be wrapped, and the wrap is how every
+    //    call it receives becomes evidence.
+    state: [...Object.keys(stage), 'isCellInsideWafer'],
+    // `el` is the module's own control registry -- a `const` object the readers look at. It
+    // was a sandbox property before, so it is not among the names the old vm block extracted.
+    // Filled below rather than replaced, because a `const` binding cannot be reassigned.
+    // Eleven of the names this harness stages are IMPORTS of the subject, and no probe can
+    // reach an import binding -- it is read-only to everyone but the module that declared it.
+    stubs: {
+      './config.js': { API_BASE: 'http://x', CURRENT_USER: 'tester' },
+      './utils.js': { showToast: (m, t) => { log.toasts.push([m, t]); } },
+      './effort_meter.js': {
+        // Mirrors the real collector: with nothing accumulated it reports ABSENCE, never an
+        // all-zero blob (the server would file that as a genuine measured score of 0).
+        effortSnapshot: () => {
+          log.effort.push('snapshot');
+          if (!counters.key && !counters.mouse && !counters.nav) return undefined;
+          return { ...counters };
+        },
+        effortCommitIfRecorded: (resBody) => {
+          const flag = resBody && typeof resBody === 'object' ? resBody.effort_recorded : undefined;
+          const known = typeof flag === 'boolean';
+          log.effort.push(`commitIfRecorded:${known ? flag : 'absent'}`);
+          if (known ? flag : true) { // absent -> legacy fallback (reset on success)
+            log.effort.push('commit');
+            counters = { ...counters, key: 0, mouse: 0, nav: 0 };
+          }
+        },
+        countNav: (f, t) => { log.nav.push(`${f}>${t}`); },
+        ROUTES: { MAP_EDITOR: 'map_editor', GRID: 'grid' },
+      },
+      './map_key.js': { getMapIdFromMeta: (m) => m.map_id || null },
+      './split_registry_row.js': { getMissingDescValues: () => (opts.missingDesc || []) },
+      './push_columns.js': {
+        logShapedPushDecision: () => (opts.gate4 || { mode: 'clean', extras: [] }),
+      },
+      './transfer_plan.js': { notifyMapContext: () => {} },
+    },
+    // `src` is a MUTATE FUNCTION (or null): a mutant is a whole module, so one that fails to
+    // parse fails loudly instead of counting as caught.
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'effortinstr',
+  });
+  const probeInside = ctx.isCellInsideWafer;
+  // The success epilogue invalidates this cache INSIDE the write path, and it was absent from
+  // the old sandbox -- so every "successful" push threw a ReferenceError right there, was
+  // swallowed by `pushMapData`'s catch, and alerted 「데이터 적재 실패」. Nothing noticed:
+  // A1-A11 all read state written earlier. Emptied per env so each case starts cold.
+  ctx.mapKeyListCache.clear();
+  Object.assign(ctx.el, el);
+  Object.assign(ctx, stage);
+  // ⑤'s call recorder. The sandbox used to wrap `isCellInsideWafer` INSIDE the script; the
+  // probe replaces the module's own binding from outside, which is the same thing done where
+  // the module can see it. The wrapper adds no arithmetic: it forwards and reports what it was
+  // asked and what it said.
+  //
+  // 🔴 `insideCalls` is the HARNESS's list, not module state -- the product has no such name,
+  //    and the probe said so. It rides on the env for the ⑤ checks to read.
+  const insideCalls = [];
+  const realInside = probeInside;
+  ctx.isCellInsideWafer = (c, r, vc, vr) => {
+    const v = realInside(c, r, vc, vr);
+    insideCalls.push([c, r, vc, vr, v]);
+    return v;
+  };
+  ctx.insideCalls = insideCalls;
+  const api = ctx;
+  return { ctx, log, api };
 }
 
 // A second, much smaller sandbox holding only the TWO readers of the metadata panel that
 // compose a map key. Kept separate from `makeCtx` on purpose: `getCurrentMapKey` is a
 // function DECLARATION, so extracting it would overwrite the stub the A/B groups depend on.
-function makeKeyCtx(src, schema, metaInputs) {
-  const ctx = {
-    console: { log() {}, warn() {}, error() {} },
-    JSON, Object, Array, Number, String, Set, Map, Boolean, Math,
-    parseInt, parseFloat, isNaN, Error,
-    alert() {},
-    tableSchema: schema,
-    getMapIdFromMeta: realGetMapIdFromMeta,
-    document: { querySelectorAll: () => metaInputs },
-  };
-  ctx.globalThis = ctx;
-  vm.createContext(ctx);
-  vm.runInContext([
-    extractFunction(src, 'collectMetaFieldValues'),
-    extractFunction(src, 'getCurrentMapKey'),
-    `globalThis.__k = { collectMetaFieldValues, getCurrentMapKey };`
-  ].join('\n\n'), ctx);
-  return ctx.__k;
+async function makeKeyCtx(src, schema, metaInputs) {
+  // A SECOND probe, and the separation is the same one the sandbox needed: `getCurrentMapKey`
+  // is a function DECLARATION, and env ① stages a stub over it for the A/B groups. Two probes
+  // are two module instances, so the real one runs here without touching that stub.
+  globalThis.document = { querySelectorAll: () => metaInputs,
+                          getElementById: () => null, addEventListener() {},
+                          removeEventListener() {}, querySelector: () => null };
+  globalThis.alert = () => {};
+  const stage = { tableSchema: schema };
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: ['collectMetaFieldValues', 'getCurrentMapKey'],
+    state: Object.keys(stage),
+    stubs: { './map_key.js': { getMapIdFromMeta: realGetMapIdFromMeta } },
+    mutate: typeof src === 'function' ? src : undefined,
+    tag: 'effortkey',
+  });
+  Object.assign(probe, stage);
+  return probe;
 }
 
 const cellReq = (log) => log.requests.filter(r => String(r.url).includes('/tables/bonding_map/'));
@@ -360,7 +349,7 @@ async function groupA(src, label) {
 
   // A1/A2/A3 — successful push
   {
-    const { log, api } = makeCtx(src);
+    const { log, api } = await makeCtx(src);
     await api.pushMapData();
     r.A1 = cellReq(log).length === 1 ? (cellReq(log)[0].body.effort || null) : 'NO-CELL-REQUEST';
     r.A2 = metaReq(log).map(q => hasEffortAnywhere(q.body) ? 'HAS-EFFORT' : 'none');
@@ -370,7 +359,7 @@ async function groupA(src, label) {
 
   // A5/A6 — failed push: counters must survive
   {
-    const { log, api } = makeCtx(src, { failCellPush: true });
+    const { log, api } = await makeCtx(src, { failCellPush: true });
     await api.pushMapData();
     r.A5 = log.effort.join(',');
     r.A6 = cellReq(log)[0].body.effort;
@@ -378,8 +367,8 @@ async function groupA(src, label) {
 
   // A7 — a push refused BEFORE any request must not touch the counters at all
   {
-    const { log, api } = makeCtx(src, { confirmAnswer: false });
-    const c = makeCtx(src, { confirmAnswer: false });
+    const { log, api } = await makeCtx(src, { confirmAnswer: false });
+    const c = await makeCtx(src, { confirmAnswer: false });
     c.ctx.logShapedPushDecision = () => ({ mode: 'confirm', extras: ['dt_id'] });
     await c.api.pushMapData();
     r.A7 = `${c.log.requests.length}|${c.log.effort.join(',')}`;
@@ -391,7 +380,7 @@ async function groupA(src, label) {
   // Committing here would delete the effort the push cost, and the operator's next attempt
   // — the one that finally changes something — would report only its own few clicks.
   {
-    const { log, api } = makeCtx(src, { effortRecorded: false });
+    const { log, api } = await makeCtx(src, { effortRecorded: false });
     await api.pushMapData();
     r.A8 = log.effort.join(',');
     r.A9 = cellReq(log)[0].body.effort;   // the counts still rode with the request
@@ -400,7 +389,7 @@ async function groupA(src, label) {
   // A10 — an older server that does not send the flag at all must still reset, or the
   // counter would grow without bound and bill a whole session to one later save.
   {
-    const { log, api } = makeCtx(src, { effortRecorded: 'absent' });
+    const { log, api } = await makeCtx(src, { effortRecorded: 'absent' });
     await api.pushMapData();
     r.A10 = log.effort.join(',');
   }
@@ -409,7 +398,7 @@ async function groupA(src, label) {
   // blob. The server accepts an explicit zero as a genuine measured score-0 correction,
   // so a phantom here halves the session baseline.
   {
-    const { log, api } = makeCtx(src, { zeroEffort: true });
+    const { log, api } = await makeCtx(src, { zeroEffort: true });
     await api.pushMapData();
     r.A11 = hasEffortAnywhere(cellReq(log)[0].body) ? 'HAS-EFFORT' : 'none';
   }
@@ -424,53 +413,53 @@ async function groupB(src) {
 
   // B1 — frame push from depth 0 emits exactly one transition
   {
-    const { log, api } = makeCtx(src);
+    const { log, api } = await makeCtx(src);
     await api.openMapFrame({ table: 'dt_map', metaValues: { lot: 'L1' }, presetKind: 'tape' });
     r.B1 = log.nav.join(',');
   }
   // B2 — nested push reports the material surface as `from`
   {
-    const { ctx, log, api } = makeCtx(src);
+    const { ctx, log, api } = await makeCtx(src);
     ctx.editorFrames = [{ tag: 'depth1' }];
     await api.openMapFrame({ table: 'dt_map', metaValues: { lot: 'L1' } });
     r.B2 = log.nav.join(',');
   }
   // B3 — a cancelled open moved no screen
   {
-    const { log, api } = makeCtx(src, { loadResult: { count: 0, cancelled: true } });
+    const { log, api } = await makeCtx(src, { loadResult: { count: 0, cancelled: true } });
     await api.openMapFrame({ table: 'dt_map', metaValues: { lot: 'L1' } });
     r.B3 = log.nav.join(',') || '(none)';
   }
   // B4 — an empty (not-yet-built) material map IS a screen move
   {
-    const { log, api } = makeCtx(src, { loadResult: { count: 0, empty: true } });
+    const { log, api } = await makeCtx(src, { loadResult: { count: 0, empty: true } });
     await api.openMapFrame({ table: 'dt_map', metaValues: { lot: 'L1' } });
     r.B4 = log.nav.join(',');
   }
   // B5 — depth guard: a refused push (stack too deep) is not a transition
   {
-    const { ctx, log, api } = makeCtx(src);
+    const { ctx, log, api } = await makeCtx(src);
     ctx.editorFrames = [1, 2, 3, 4];
     await api.openMapFrame({ table: 'dt_map', metaValues: { lot: 'L1' } });
     r.B5 = log.nav.join(',') || '(none)';
   }
   // B6 — pop back to depth 0
   {
-    const { ctx, log, api } = makeCtx(src);
+    const { ctx, log, api } = await makeCtx(src);
     ctx.editorFrames = [{ tag: 'parent' }];
     api.popMapFrame();
     r.B6 = log.nav.join(',');
   }
   // B7 — pop to a nested frame lands on the material surface
   {
-    const { ctx, log, api } = makeCtx(src);
+    const { ctx, log, api } = await makeCtx(src);
     ctx.editorFrames = [{ tag: 'p0' }, { tag: 'p1' }];
     api.popMapFrame();
     r.B7 = log.nav.join(',');
   }
   // B8 — declining the unsaved-edit confirm keeps the user put: no transition
   {
-    const { ctx, log, api } = makeCtx(src, { confirmAnswer: false });
+    const { ctx, log, api } = await makeCtx(src, { confirmAnswer: false });
     ctx.editorFrames = [{ tag: 'parent' }];
     ctx.framePushed = false; ctx.frameTouched = true;
     api.popMapFrame();
@@ -536,7 +525,7 @@ async function groupG(src) {
   // The near-miss the source records: dt_log opened as a map, ⚡ Push would have
   // replace_map'ed 256 real log rows into editor-fabricated (key, x, y, val) cells.
   {
-    const { log, api } = makeCtx(src, {
+    const { log, api } = await makeCtx(src, {
       gate4: { mode: 'block', extras: ['dt_id', 'eventtime', 'cx', 'cy', 'dt_eqp'] } });
     await api.pushMapData();
     r.G1 = log.requests.length;                     // nothing reached the server
@@ -547,7 +536,7 @@ async function groupG(src) {
   // Without this the refusal above could be satisfied by a gate that never lets anything
   // through, which is not the contract.
   {
-    const { log, api } = makeCtx(src, { gate4: { mode: 'confirm', extras: ['dt_id'] } });
+    const { log, api } = await makeCtx(src, { gate4: { mode: 'confirm', extras: ['dt_id'] } });
     await api.pushMapData();
     r.G4 = `${log.requests.length}|${log.confirms.length}|${log.alerts.length}`;
   }
@@ -557,7 +546,7 @@ async function groupG(src) {
     // every confirm, so a gate that ignores its own answer is still stopped one dialog later
     // and the request list never moves. The sequence is what makes the gate's answer the
     // only variable.
-    const { log, api } = makeCtx(src, {
+    const { log, api } = await makeCtx(src, {
       gate4: { mode: 'confirm', extras: ['dt_id'] }, confirmSeq: [false] });
     await api.pushMapData();
     r.G19 = `${log.requests.length}|${log.confirms.length}`;
@@ -565,14 +554,14 @@ async function groupG(src) {
 
   // ── ② the metadata panel ────────────────────────────────────────────────────
   {
-    const { log, api } = makeCtx(src, { metaInputs: [{ id: 'meta-input-lot', value: '' }] });
+    const { log, api } = await makeCtx(src, { metaInputs: [{ id: 'meta-input-lot', value: '' }] });
     await api.pushMapData();
     r.G5 = `${log.requests.length}|${log.alerts.length}`;   // declared but blank -> stop
   }
   {
     // ...and a table that declares NO metadata fields is NOT stopped. This is the second
     // term of the emptiness test; without it "always refuse" would satisfy G5.
-    const { log, api } = makeCtx(src, { metaInputs: [] });
+    const { log, api } = await makeCtx(src, { metaInputs: [] });
     await api.pushMapData();
     r.G6 = log.requests.length;
   }
@@ -580,7 +569,7 @@ async function groupG(src) {
     // The type coercion, scored key -> value ON THE WIRE. A `number`-declared column that
     // ships as a string is the "화면은 멀쩡한데 값이 틀린" class: the row is accepted and
     // the column silently holds text.
-    const { log, api } = makeCtx(src, {
+    const { log, api } = await makeCtx(src, {
       schema: NUM_SCHEMA,
       metaInputs: [{ id: 'meta-input-lot', value: 'L1' }, { id: 'meta-input-slot', value: '7' }] });
     await api.pushMapData();
@@ -594,7 +583,7 @@ async function groupG(src) {
   // coordinate assertions elsewhere in the repo cannot see it: they compare the
   // coordinates a cell carries, not the frame those coordinates are later read through.
   {
-    const { log, api } = makeCtx(src, { controls: FRAME, cells2D: CELLS2 });
+    const { log, api } = await makeCtx(src, { controls: FRAME, cells2D: CELLS2 });
     await api.pushMapData();
     r.G9 = byKey(pushedGridMeta(log));
     r.G10 = 'valid_die_ref' in pushedGridMeta(log);   // nothing declared -> field ABSENT
@@ -602,7 +591,7 @@ async function groupG(src) {
   {
     // A declaration the operator did not touch must be carried forward VERBATIM. Dropping
     // it re-locks the map to `refused` on the next read, and there is no UI that undoes it.
-    const { log, api } = makeCtx(src, {
+    const { log, api } = await makeCtx(src, {
       controls: { ...FRAME, validDieRefKey: 'TPL-9' }, cells2D: CELLS2, validDie: REF_DIE });
     await api.pushMapData();
     r.G11 = pushedGridMeta(log).valid_die_ref;
@@ -613,20 +602,20 @@ async function groupG(src) {
     // confirmSeq answers the split confirm NO. If the gate stops refusing, the Clean
     // Replace confirm (unanswered by the sequence, so YES) lets the push through and the
     // request list is what changes -- no wording is compared.
-    const { log, api } = makeCtx(src, { missingDesc: ['A', 'B'], confirmSeq: [false] });
+    const { log, api } = await makeCtx(src, { missingDesc: ['A', 'B'], confirmSeq: [false] });
     await api.pushMapData();
     r.G12 = `${log.requests.length}|${log.confirms.length}`;
   }
   {
     // ...and YES proceeds. The gate is a report, not a validity ruling (V1-V5).
-    const { log, api } = makeCtx(src, { missingDesc: ['A', 'B'], confirmSeq: [true] });
+    const { log, api } = await makeCtx(src, { missingDesc: ['A', 'B'], confirmSeq: [true] });
     await api.pushMapData();
     r.G13 = `${log.requests.length}|${log.confirms.length}`;
   }
 
   // ── ⑤ the outside-circle note ───────────────────────────────────────────────
   {
-    const { ctx, log, api } = makeCtx(src, {
+    const { ctx, log, api } = await makeCtx(src, {
       controls: FRAME, cells2D: CELLS_FULL, gridData: DATA_FULL, validDie: TEMPLATE_DIE });
     await api.pushMapData();
     const calls = ctx.insideCalls.slice();
@@ -654,7 +643,7 @@ async function groupG(src) {
   {
     // INV-1: a map whose valid-die basis IS the circle says nothing extra. The confirm
     // must be byte-identical to what it was before ⑤ existed.
-    const { ctx, api } = makeCtx(src, { controls: FRAME, cells2D: CELLS_FULL, gridData: DATA_FULL });
+    const { ctx, api } = await makeCtx(src, { controls: FRAME, cells2D: CELLS_FULL, gridData: DATA_FULL });
     r.G17 = api.outsideCircleNoteForPush(11, 9, 90, ctx.gridCells2D, ctx.gridData);
   }
 
@@ -665,7 +654,7 @@ async function groupG(src) {
   // The predicate is shared with `saveMapSpecOnly` and with `resolveGridFrame`'s `current`
   // branch (`gridFrameControlNum`), so what is scored here is that THIS consumer asks it.
   {
-    const { log, api } = makeCtx(src, { controls: { gridStartX: '' } });
+    const { log, api } = await makeCtx(src, { controls: { gridStartX: '' } });
     await api.pushMapData();
     r.G20 = `${log.requests.length}|${log.confirms.length}`;   // nothing sent, nothing asked
     r.G21 = log.toasts.some(t => t[1] === 'error' && /START X/.test(t[0]) && /비어 있/.test(t[0]));
@@ -680,7 +669,7 @@ async function groupG(src) {
   // object). This is the other half: a frame that came out of the coordinate-choice modal must
   // say so in the record the next load and every overlay align through.
   {
-    const { ctx, log, api } = makeCtx(src, { controls: FRAME, cells2D: CELLS2 });
+    const { ctx, log, api } = await makeCtx(src, { controls: FRAME, cells2D: CELLS2 });
     ctx.markFrameChosen('panel');
     await api.pushMapData();
     r.G22 = pushedGridMeta(log).frame_chosen_from;
@@ -693,7 +682,7 @@ async function groupG(src) {
   // completed write into 「데이터 적재 실패」 while the cells are already on the server.
   // That is exactly what `dde342c` did in production for a full round.
   {
-    const { log, api } = makeCtx(src);
+    const { log, api } = await makeCtx(src);
     await api.pushMapData();
     r.G18 = `${log.alerts.length}|${log.toasts.map(t => t[1]).join(',')}`;
   }
@@ -717,28 +706,30 @@ async function groupG(src) {
 //    WHEN THE FIX LANDS, K4 AND K5 GO RED. That is the point: the fix round must come
 //    back here and collapse each pair to one spelling, deliberately and on the record.
 // ════════════════════════════════════════════════════════════════════════════════
-function groupK(src) {
+async function groupK(src) {
   const numeric = {
     columns: ['lot', 'slot'],
     column_types: { lot: 'string', slot: 'number' },
     map_key_columns: ['lot', 'slot'],
   };
   const textual = { ...numeric, column_types: { lot: 'string', slot: 'string' } };
-  const spell = (slotVal, schema) => {
-    const api = makeKeyCtx(src, schema, [
+  const spell = async (slotVal, schema) => {
+    const api = await makeKeyCtx(src, schema, [
       { id: 'meta-input-lot', value: 'L1' }, { id: 'meta-input-slot', value: slotVal }]);
     const push = realGetMapIdFromMeta(api.collectMetaFieldValues(schema).metaValues, schema)
       || 'default_map';
     const read = api.getCurrentMapKey();
     return `${push}|${read}`;
   };
+  // Each `spell` builds an env, which is an import now, so the six are awaited IN ORDER.
+  // Left as an object literal of promises they would all be pending when the comparison ran.
   return {
-    K1: spell('07', numeric),
-    K2: spell('7.0', numeric),
-    K3: spell('1e3', numeric),
-    K4: spell('007.5', numeric),   // 🔴 diverges
-    K5: spell('ABC', numeric),     // 🔴 diverges
-    K6: spell('07', textual),      // a string column keeps its padding on BOTH sides
+    K1: await spell('07', numeric),
+    K2: await spell('7.0', numeric),
+    K3: await spell('1e3', numeric),
+    K4: await spell('007.5', numeric),   // 🔴 diverges
+    K5: await spell('ABC', numeric),     // 🔴 diverges
+    K6: await spell('07', textual),      // a string column keeps its padding on BOTH sides
   };
 }
 
@@ -830,7 +821,7 @@ const g = await groupG(SRC);
 for (const k of Object.keys(EXPECT_G)) check(k, g[k], EXPECT_G[k]);
 
 console.log('\n=== K. two spellings of one map key (invariant ⑥ — RECORDED, not blessed) ===');
-const kk = groupK(SRC);
+const kk = await groupK(null);
 for (const k of Object.keys(EXPECT_K)) check(k, kk[k], EXPECT_K[k]);
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1047,6 +1038,9 @@ const CONTROLS = [
   },
 ];
 
+// 🔴 The group functions take a MUTATE FUNCTION now (or null), not source text. `spec.mutate`
+//    ignores a string, so passing the mutated text would load the UNMUTATED module and every
+//    mutant would report「STILL PASSED against the defect」-- which is exactly what it did.
 const RUN = { A: groupA, B: groupB, G: groupG, K: async s => groupK(s) };
 const EXPECTED = { A: EXPECT_A, B: EXPECT_B, G: EXPECT_G, K: EXPECT_K };
 
@@ -1055,7 +1049,7 @@ for (const m of MUTANTS) {
   if (mutated === SRC) { fail++; console.error(`  FAIL ${m.name}: mutation did not apply (source drifted)`); continue; }
   let got;
   try {
-    got = await RUN[m.group](mutated);
+    got = await RUN[m.group](() => mutated);
   } catch (e) {
     console.log(`  ok   ${m.name} -> threw (${e.message.slice(0, 48)})`);
     pass++; continue;
@@ -1082,7 +1076,7 @@ for (const c of CONTROLS) {
   }
   for (const grp of ['A', 'B', 'G', 'K']) {
     let got;
-    try { got = await RUN[grp](mutated); }
+    try { got = await RUN[grp](() => mutated); }
     catch (e) { got = { __threw: e.message }; }
     // Compared as a MAPPING: the order in which a group happens to fill its result object
     // is not behaviour, and a control that "failed" on key order would be pinning the
