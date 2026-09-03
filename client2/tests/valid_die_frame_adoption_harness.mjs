@@ -437,6 +437,28 @@ async function scoreAll(src, { verbose = false } = {}) {
     return n;
   };
 
+  // ── [ⓐ 2026-09-03] WHAT "THE SPEC IS ADOPTED AND THE GRID IS DERIVED" IS SCORED AS ──
+  //
+  // Owner ruling: 「규격 격자가 당연히 맞지」. A designation takes the reference's PHYSICAL
+  // spec and re-derives cols/rows from it. It does NOT copy the dimensions the reference
+  // declared -- that was ⓑ, and it was discarded.
+  //
+  // 🔴 THE DERIVATION FORMULA IS NOT RESTATED HERE. A harness that recomputes
+  //    `ceil(2r/chip)+2` holds a COPY of the code and goes red the day the code is refactored
+  //    without being wrong. What is scored instead is (a) pure assignment -- the six physical
+  //    values equal the reference's -- and (b) the property that actually MEANS "derived":
+  //    two references that declare DIFFERENT dimensions but carry the SAME spec must land on
+  //    the SAME grid. `REF_B` is `{...REF_A, grid_cols: 41, grid_rows: 51}`, so the pair is
+  //    already in the fixtures and the comparison needs no formula at all.
+  const specOfEl = (el) => [el.physChipX.value, el.physChipY.value, el.physOffsetX.value,
+                            el.physOffsetY.value, el.physWaferDia.value,
+                            el.physEdgeMargin.value].map(String);
+  const specOfMeta = (m) => [m.phys_chip_x, m.phys_chip_y, m.phys_offset_x, m.phys_offset_y,
+                             m.phys_wafer_dia, m.phys_edge_margin].map(String);
+  const gridOfEl = (el) => [String(el.gridCols.value), String(el.gridRows.value)];
+  // A's grid, stashed by the loop below so B can be compared against it.
+  let gridFromSharedSpec = null;
+
   // ══ F8 — a target that already holds cells is DESIGNATED, and nothing moves ══════════
   //
   // ⚠️ THIS BLOCK USED TO ASSERT A REFUSAL. F6 refused here because adopting the reference's
@@ -499,11 +521,35 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq(`F6/${label}/F8/gridData-byte-identical`, {},
        Object.fromEntries(Object.keys(S.gridData).filter(k => S.gridData[k] !== 'A').map(k => [k, S.gridData[k]])));
     eq(`F6/${label}/F8/gridData-key-set-unchanged`, painted.length, Object.keys(S.gridData).length);
-    // nothing on the editor moved — not the dimensions, not the physical spec
-    eq(`F6/${label}/F8/frame-untouched`, frameBefore,
-       { cols: el.gridCols.value, rows: el.gridRows.value,
-         chipX: el.physChipX.value, chipY: el.physChipY.value,
-         rot: S.currentRotation, side: S.currentSide });
+    // ── [ⓐ] REPLACES `F8/frame-untouched`, WHICH ASSERTED THE OPPOSITE ────────────────
+    // Retiring it without a replacement would leave the adoption UNSCORED, so this is a swap.
+    eq(`F6/${label}/a/spec-adopted-from-the-reference`, specOfMeta(REF), specOfEl(el));
+    // Orientation and origin are still NOT adopted -- that half of the old assertion survives
+    // and the transform handles rotation/side on its own.
+    eq(`F6/${label}/a/orientation-untouched`, { rot: frameBefore.rot, side: frameBefore.side },
+       { rot: S.currentRotation, side: S.currentSide });
+    // 🔴 THE DISCRIMINANT, AND IT IS THE PAIR THAT MAKES IT ONE. A and B carry the SAME
+    //    physical spec and declare DIFFERENT dimensions (29x25 vs 41x51). Under ⓐ they must
+    //    land on the same grid; under ⓑ they would land on their own declarations. On A alone
+    //    the two rules agree -- its declaration happens to equal what its spec derives, which
+    //    is exactly what `stored==derived` names -- so A cannot decide this and B can.
+    if (label.startsWith('A')) {
+      gridFromSharedSpec = gridOfEl(el);
+      eq(`F6/${label}/a/this-fixture-cannot-tell-the-two-rules-apart`, true,
+         String(REF.grid_cols) === gridFromSharedSpec[0]
+         && String(REF.grid_rows) === gridFromSharedSpec[1],
+         'A is the `stored==derived` fixture; if this ever fails the pair below stops being a '
+         + 'discriminant and B alone would be scoring an accident');
+    } else {
+      eq(`F6/${label}/a/grid-follows-the-SPEC-not-the-declaration`,
+         gridFromSharedSpec, gridOfEl(el),
+         `B declares ${REF.grid_cols}x${REF.grid_rows} and A declares 29x25 on the SAME spec, `
+         + 'so under ⓐ both must land on A\'s grid');
+      eq(`F6/${label}/a/and-the-two-declarations-really-differ`, true,
+         String(REF.grid_cols) !== gridFromSharedSpec[0]
+         || String(REF.grid_rows) !== gridFromSharedSpec[1],
+         'if B declared what A derives, the assertion above would be vacuous');
+    }
     // ══ [F8] THE WHOLE CONTRACT, IN ONE ASSERTION ═════════════════════════════════════
     // The user asked for exactly one guarantee: a valid-die designation changes NO DB
     // coordinate. The payload's key SET may legitimately shrink — a mask is allowed to put
@@ -623,21 +669,27 @@ async function scoreAll(src, { verbose = false } = {}) {
     const res = await S.resolveValidDie({ valid_die_ref: { table: 'ref_tbl', map_id: 'TPL_1' } }, 'dt_map', 'HOME_1');
 
     eq('F6/C/allowed', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
-    // ── INVERTED (was `clause3/grid-opened-at-reference-size`) ────────────────────────
-    // 🔴 The old assertion required the editor grid to become the reference's 46x46. That is
-    //    the precise thing the user told us to stop doing, so the NAME is gone — but deleting
-    //    it outright would leave this fixture without the assertion that carries the round.
-    //    Its inverse is the contract: the grid stays 45x45, and the physical spec with it
-    //    (adopting chipX/chipY moves `getWaferBoundingBox`, hence the derived coordinate, just
-    //    as surely as adopting the dimensions does).
-    eq('F6/C/F8/grid-NOT-opened-at-reference-size', dimsBefore,
-       [el.gridCols.value, el.gridRows.value]);
-    eq('F6/C/F8/reference-really-is-a-different-size', true,
+    // ── [ⓐ] THIS FIXTURE'S DECLARATION CAN NEVER BE DERIVED, WHICH IS WHY IT IS HERE ──
+    // C declares 46x46 -- EVEN -- and the derivation forces its result odd, so no physical
+    // spec whatever can produce it. ⓑ would have opened the grid at 46x46; ⓐ cannot, ever.
+    eq('F6/C/a/declared-dimensions-NOT-copied', true,
+       String(el.gridCols.value) !== String(REF_C.grid_cols)
+       || String(el.gridRows.value) !== String(REF_C.grid_rows),
+       `declared ${REF_C.grid_cols}x${REF_C.grid_rows} · editor `
+       + `${el.gridCols.value}x${el.gridRows.value}`);
+    eq('F6/C/a/reference-really-is-a-different-size', true,
        REF_C.grid_cols !== parseInt(dimsBefore[0], 10),
        'if the reference matched the panel the assertion above would be vacuous');
-    eq('F6/C/F8/physical-spec-NOT-adopted', physBefore,
-       [el.physChipX.value, el.physChipY.value,
-        el.physOffsetX.value, el.physOffsetY.value, el.physWaferDia.value]);
+    // ⚠️ The spec comparison is TRUE HERE BUT NOT DISCRIMINATING: C was built with the
+    //    panel's own physical spec, so "adopted" and "untouched" are the same six numbers.
+    //    It is kept because it must not become false, and the discrimination is carried by
+    //    the A/B pair above and by [ⓐ/independence] below.
+    eq('F6/C/a/spec-adopted-from-the-reference', specOfMeta(REF_C), specOfEl(el));
+    eq('F6/C/a/and-the-spec-comparison-is-not-a-discriminant-here', physBefore,
+       [String(REF_C.phys_chip_x), String(REF_C.phys_chip_y), String(REF_C.phys_offset_x),
+        String(REF_C.phys_offset_y), String(REF_C.phys_wafer_dia)],
+       'C shares the panel spec by construction; if that ever stops being true this fixture '
+       + 'starts scoring adoption and the note above is wrong');
 
     // ── DATA half: not one stored coordinate changed meaning ──────────────────────────
     const frameAfter = S.currentFrame();
@@ -646,14 +698,18 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq('F6/C/F8/nothing-became-unaddressable', [],
        Object.keys(dataAfter).filter(k => k.startsWith('unaddressable:')).slice(0, 6));
     eq('F6/C/F8/population-is-not-empty', true, Object.keys(dataBefore).length > 0);
-
-    // ── INVERTED (was `clause4/screen-position-re-derived`), SCREEN half ──────────────
-    // F6 re-derived every screen position and called that success. F8's screen contract is the
-    // opposite and it is the user's own words: 「화면 표기 밀리게 그냥 보여주기」 — the cells do
-    // not move, the MASK lands offset around them. Zero is the assertion.
+    // 🔴 MOVED HERE 2026-09-03, NOT REPLACED. It used to sit below as
+    //    `F8/screen-position-NOT-re-derived` among the assertions about the FRAME, and under
+    //    ⓐ its literal claim is false -- the grid changed, so screen positions are re-derived.
+    //    But what it was really scoring is 「화면 표기 밀리게 그냥 보여주기」: the cells do not
+    //    move, the mask lands offset around them. That is the SAME subject as the two
+    //    assertions directly above, and the ruling that decides it -- may a stored coordinate
+    //    be re-based -- has not been made. Replacing it in place would have removed it from
+    //    the set that ruling is about, and it would have been decided without it.
     const screenAfter = coordToScreen(S);
     const screenMoves = diffCount(screenBefore, screenAfter);
-    eq('F6/C/F8/screen-position-NOT-re-derived', 0, screenMoves);
+    eq('F6/C/coord/screen-position-unmoved', 0, screenMoves);
+
 
     // ── the three caches: untouched, because nothing had to migrate ───────────────────
     // A migration that drops keys turns served rows into "never served" and the cleanup path
@@ -694,12 +750,13 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq('F6/C/F8/notice-names-both-grids', true,
        /46x46/.test(t ? t.msg : '') && /45x45/.test(t ? t.msg : ''), t ? t.msg : '(none)');
 
-    evidence.push(`[F6/C] 45x45 panel <- 46x46 reference (identical physical spec, ODD -> EVEN): `
-      + `designated, and NOTHING moved — ${Object.keys(dataBefore).length} stored coordinates `
-      + `byte-identical, ${screenMoves} screen positions changed, grid still `
-      + `${dimsBefore.join('x')}, serverCellKeys ${servedSample.length} and loadedFCells `
-      + `${fLock.length} untouched. Had F6's adoption run, ${wouldMove} valued cells would have `
-      + `needed re-keying and the Push contrast gate would have reported NOTHING`);
+    evidence.push(`[F6/C] ${dimsBefore.join('x')} panel <- ${REF_C.grid_cols}x${REF_C.grid_rows} `
+      + `reference (identical physical spec, ODD -> EVEN, so the declaration can NEVER be `
+      + `derived): designated; grid now ${gridOfEl(el).join('x')}, `
+      + `${Object.keys(dataBefore).length} stored coordinates before, ${screenMoves} screen `
+      + `positions changed, serverCellKeys ${servedSample.length} and loadedFCells `
+      + `${fLock.length} untouched. ⓑ would have opened it at ${REF_C.grid_cols}x`
+      + `${REF_C.grid_rows}, which ${wouldMove} valued cells would have paid for`);
   }
 
   // ══ E — THE SHAPE REAL DATA TAKES, WITH ALL THREE CACHES DECLARED ═══════════════════
@@ -773,10 +830,14 @@ async function scoreAll(src, { verbose = false } = {}) {
     eq('F6/E/F8/not-refused', 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
     // ── INVERTED (was `E/no-mask`) ───────────────────────────────────────────────────
     eq('F6/E/F8/mask-was-built', true, !!res.keys && res.keys.size > 0, `reason='${res.reason}'`);
-    // ── these two were already the contract and survive unchanged ────────────────────
-    eq('F6/E/F8/frame-untouched', dimsBefore, [el.gridCols.value, el.gridRows.value]);
-    eq('F6/E/F8/physical-spec-untouched', physBefore,
-       [el.physChipX.value, el.physChipY.value, el.physWaferDia.value]);
+    // ── [ⓐ] REPLACES `F8/frame-untouched` and `F8/physical-spec-untouched` ───────────
+    // E's reference declares 29x25 on an 11x13 spec while the panel is 33x25 on its own, so
+    // this fixture watches the adoption change BOTH halves.
+    eq('F6/E/a/spec-adopted-from-the-reference', specOfMeta(REF_E), specOfEl(el));
+    eq('F6/E/a/grid-left-the-panel-value', true,
+       gridOfEl(el)[0] !== String(dimsBefore[0]) || gridOfEl(el)[1] !== String(dimsBefore[1]),
+       `panel ${dimsBefore[0]}x${dimsBefore[1]} · after ${gridOfEl(el).join('x')} — if these `
+       + 'were equal the adoption would be unobservable on this fixture');
     eq('F6/E/F8/gridData-key-count-untouched', gridBefore, Object.keys(S.gridData).length);
     eq('F6/E/F8/every-value-survived', valued.length,
        Object.keys(S.gridData).filter(k => (S.gridData[k] || '') !== '').length);
@@ -904,6 +965,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   // ⚠️ Three assertions per fixture are INVERSIONS of what F6 asserted here
   //    (`grid-opened-at-reference-size`, `phys-adopted`, `adoption-is-not-a-no-op`). None was
   //    deleted: each marked a real decision, and each now states its opposite.
+  let emptyGridFromSharedSpec = null;
   for (const [label, REF] of [['A', REF_A], ['B', REF_B]]) {
     const cells = refCellsFor(REF);
     const { sandbox: S, el, log } = buildEnv(src, { refMeta: REF, refCells: cells });
@@ -919,25 +981,45 @@ async function scoreAll(src, { verbose = false } = {}) {
 
     // the designation resolves instead of refusing on dimensions (unchanged since F6)
     eq(`F6/empty-${label}/basis`, 'ref', S.validDieBasis(res), `reason='${res.reason}'`);
-    // ── INVERTED (was `grid-opened-at-reference-size`) ────────────────────────────────
-    eq(`F6/empty-${label}/F8/grid-NOT-opened-at-reference-size`, dimsBefore,
-       [parseInt(el.gridCols.value, 10), parseInt(el.gridRows.value, 10)]);
-    eq(`F6/empty-${label}/F8/reference-really-is-a-different-size`, true,
+    // ── [ⓐ] REPLACES `F8/grid-NOT-opened-at-reference-size` ───────────────────────────
+    // Same pair, same discriminant as the painted loop: this one reuses REF_A and REF_B, which
+    // share a spec and declare different dimensions. A cannot tell ⓐ from ⓑ (its declaration
+    // IS what its spec derives) and B can.
+    eq(`F6/empty-${label}/a/reference-really-is-a-different-size`, true,
        REF.grid_cols !== dimsBefore[0] || REF.grid_rows !== dimsBefore[1],
        'if the reference matched the panel the assertion above would be vacuous');
+    if (label === 'A') {
+      emptyGridFromSharedSpec = [String(el.gridCols.value), String(el.gridRows.value)];
+      eq(`F6/empty-${label}/a/this-fixture-cannot-tell-the-two-rules-apart`, true,
+         String(REF.grid_cols) === emptyGridFromSharedSpec[0]
+         && String(REF.grid_rows) === emptyGridFromSharedSpec[1],
+         'A is the `stored==derived` reference; if this fails the B comparison below stops '
+         + 'being a discriminant');
+    } else {
+      eq(`F6/empty-${label}/a/grid-follows-the-SPEC-not-the-declaration`,
+         emptyGridFromSharedSpec, [String(el.gridCols.value), String(el.gridRows.value)],
+         `B declares ${REF.grid_cols}x${REF.grid_rows} on A's spec, so under ⓐ it must land `
+         + 'where A landed');
+      eq(`F6/empty-${label}/a/and-the-two-declarations-really-differ`, true,
+         String(REF.grid_cols) !== emptyGridFromSharedSpec[0]
+         || String(REF.grid_rows) !== emptyGridFromSharedSpec[1],
+         'if B declared what A derives, the assertion above would be vacuous');
+    }
     // rotation/side (and origin) are NOT adopted — unchanged since F6, the transform handles them
     eq(`F6/empty-${label}/orientation-untouched`, orientBefore,
        { rot: S.currentRotation, side: S.currentSide,
          sx: el.gridStartX.value, sy: el.gridStartY.value, inv: el.gridYInvert.checked });
-    // ── INVERTED (was `phys-adopted`) ─────────────────────────────────────────────────
-    // 🔴 THE PHYSICAL SPEC IS THE HALF THAT LOOKS HARMLESS AND IS NOT. Chip pitch and offsets
-    //    feed `getWaferBoundingBox`, whose `minC/minR/maxR` the DB coordinate is computed from —
-    //    so adopting only the physical spec, with the dimensions left alone, still moves every
-    //    stored coordinate. Deleting this assertion would have left that door open.
-    eq(`F6/empty-${label}/F8/phys-NOT-adopted`, physBefore,
-       [parseFloat(el.physChipX.value), parseFloat(el.physChipY.value),
-        parseFloat(el.physOffsetX.value), parseFloat(el.physOffsetY.value)]);
-    eq(`F6/empty-${label}/F8/reference-physical-spec-really-differs`, true,
+    // ── [ⓐ] REPLACES `F8/phys-NOT-adopted`, WHICH SAID THE OPPOSITE ──────────────────
+    // 🔴 THE PHYSICAL SPEC IS THE HALF THAT LOOKS HARMLESS AND IS NOT, and that is now the
+    //    reason to WATCH it rather than to forbid it. Chip pitch and offsets feed
+    //    `getWaferBoundingBox`, whose `minC/minR/maxR` the DB coordinate is computed from -- so
+    //    this is the write that carries the whole consequence of ⓐ, and if it ever silently
+    //    stops happening the grid stops following the spec with it.
+    eq(`F6/empty-${label}/a/spec-adopted-from-the-reference`,
+       [REF.phys_chip_x, REF.phys_chip_y, REF.phys_offset_x, REF.phys_offset_y].map(String),
+       [el.physChipX.value, el.physChipY.value,
+        el.physOffsetX.value, el.physOffsetY.value].map(String));
+    eq(`F6/empty-${label}/a/reference-physical-spec-really-differs`, true,
        REF.phys_chip_x !== physBefore[0] || REF.phys_chip_y !== physBefore[1],
        'if the reference shared the panel spec the assertion above would be vacuous');
     eq(`F6/empty-${label}/no-metadata-write`, [],
@@ -1266,9 +1348,25 @@ async function scoreAll(src, { verbose = false } = {}) {
          .filter(k => k in payloadAfterO && payloadAfterO[k] !== payloadBefore[k]).slice(0, 6));
     eq('O/specimen/shared-population-is-not-empty', true,
        Object.keys(payloadBefore).filter(k => k in payloadAfterO).length > 0);
-    eq('O/specimen/frame-untouched', [String(ALIGN_PANEL.cols), String(ALIGN_PANEL.rows),
-                                      String(ALIGN_PANEL.startX), String(ALIGN_PANEL.startY)],
-       [el.gridCols.value, el.gridRows.value, el.gridStartX.value, el.gridStartY.value].map(String));
+    // ── [ⓐ] REPLACES `O/specimen/frame-untouched` ─────────────────────────────────────
+    // This is the fixture that shows the ruling's consequence at its sharpest: the reference
+    // and the panel carry an IDENTICAL physical spec and both DECLARE 23x23, yet 23x23 is not
+    // what that spec derives. Under ⓐ the editor sits on the derived value, and the two maps
+    // stop sharing an index space even though nothing about them differs.
+    eq('O/specimen/a/origin-untouched',
+       [String(ALIGN_PANEL.startX), String(ALIGN_PANEL.startY)],
+       [el.gridStartX.value, el.gridStartY.value].map(String));
+    eq('O/specimen/a/grid-left-the-declared-value', true,
+       String(el.gridCols.value) !== String(ALIGN_META.grid_cols)
+       || String(el.gridRows.value) !== String(ALIGN_META.grid_rows),
+       `declared ${ALIGN_META.grid_cols}x${ALIGN_META.grid_rows} · editor `
+       + `${el.gridCols.value}x${el.gridRows.value}`);
+    eq('O/specimen/a/and-the-spec-was-identical-on-both-sides', true,
+       ALIGN_META.phys_chip_x === ALIGN_PANEL.chipX
+       && ALIGN_META.phys_chip_y === ALIGN_PANEL.chipY
+       && ALIGN_META.phys_wafer_dia === ALIGN_PANEL.dia,
+       'if the two specs differed, the grid moving would be unremarkable; it is remarkable '
+       + 'BECAUSE they are the same six numbers');
     evidence.push(`[O/specimen] MID_01-shaped 23x23 start(-4,-3) <- 4MAIN_DT-shaped 23x23 `
       + `start(1,1): dimensions EQUAL so the old guard was silent; the origin cell differs and `
       + `the alarm names 5\uce78\u00b74\ud589. ${symDiff} mask cells land on a different die; `
