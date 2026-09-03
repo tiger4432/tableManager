@@ -112,16 +112,14 @@ const KNOWN_RED = new Map([
   // gate with floors of their own -- see FLOORS below, which carries what moved and why.
   ['split_registry_harness.mjs', { ran: 0, failed: 0, namesUnavailable: 'dies at extraction; 0 failure lines emitted (measured 2026-08-06)',
     why: 'throws at its extraction step ― DEAD: symbols it slices were renamed (known since 2026-07-30)' }],
-  ['valid_die_authoring_harness.mjs', { ran: 100, failed: 1,
-    failures: [
-      "[INV-6] resolveValidDie runs the chain check before projecting the cells",
-    ],
-    why: 'ATTRIBUTED 2026-08-04 ― this is a HARNESS defect, not a code defect. The slicer '
-       + 'matches `projectCellsToPhys` where it first appears in the file, which is inside a '
-       + 'COMMENT at offset 8297, ahead of the chain guard\'s real call at 9564. The code '
-       + 'order is correct. Same first-match trap the overlay round hit from the other side '
-       + '(a mutation string that is not unique lands on the wrong function). Fix belongs '
-       + 'with the slicer, not with map_editor.js' }],
+  // `valid_die_authoring_harness.mjs` was here from 2026-08-04 to 2026-09-03 at 100/1. The
+  // attribution was right (a harness defect, not a code defect) and the prescription was not:
+  // it read "fix belongs with the slicer". Re-pointing the anchor would have put the red out
+  // and left the disease in -- `projectCellsToPhys` appears SEVEN times inside the
+  // `resolveValidDie` slice and SIX of them are comments, so any first/last-match anchor is one
+  // comment away from being wrong again. The assertion was scoring a RUN order through a TEXT
+  // proxy. It now runs the function (probe, [INV-6 §reach]) and the harness is green at
+  // 103/0 with its 19 mutants still caught -- see FLOORS below.
   ['valid_die_frame_adoption_harness.mjs', { ran: 228, failed: 41,
     failures: [
       "F6/A(stored==derived)/F8/domain-is-not-empty",
@@ -984,6 +982,14 @@ const FLOORS = new Map([
   // be reset until a map carrying its OWN declaration is loaded, and the clear that survived
   // three repair rounds arrives through `resolveValidDie`, not from `loadExistingMap` — so K
   // runs the REAL resolver and scores all three clear sites, one mutant each.
+  // 100 -> 103 (2026-09-03) and OFF the debt list. The one text-order assertion became four
+  // that RUN `resolveValidDie` through the probe: a chained reference is refused and the cells
+  // are never projected, plus the negative control -- with the chain removed the reference is
+  // accepted and the projection DOES run, so the zero is a refusal rather than a path nobody
+  // walks. Those four are scored once, outside the mutant loop: the mutants edit a slice and
+  // the probe imports the real file, so counting them there would score "caught" for a reason
+  // unrelated to the defect.
+  ['valid_die_authoring_harness.mjs', 103],
   ['valid_die_dirty_guard_harness.mjs', 95],
   ['valid_die_head_parity_oracle.mjs', 17498],
   ['valid_die_origin_alignment_harness.mjs', 153],
