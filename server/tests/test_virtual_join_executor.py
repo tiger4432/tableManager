@@ -26,6 +26,7 @@ sqlite로 돈다 ― `unique_index_covering`은 postgresql이 아니면 **항상
 따로 지킨다.
 """
 import json
+import logging
 
 import pytest
 
@@ -668,3 +669,125 @@ def test_a_table_with_no_declaration_pays_nothing(join_env, approved):
     finally:
         event.remove(bind, "before_cursor_execute", _on_exec)
     assert seen == []
+
+
+# ---------------------------------------------------------------------------
+# A rule that cannot be built takes only ITS OWN columns down
+# ---------------------------------------------------------------------------
+# 🔴 THIS IS THE COVER FOR A GUARD THAT SHIPPED WITHOUT ONE (2026-09-03). The collect step
+# wraps each rule, so one that raises contributes zero proposals and the others are
+# decided as usual. Until then `main.py`'s outer handler wrapped the whole call and one
+# unbuildable rule omitted EVERY exposed column of that table - which on screen is
+# indistinguishable from those columns being empty.
+#
+# 🔴 THE FAILURE IS INJECTED, and it has to be. The natural cause - a declared column the
+# right model does not carry - is now filtered out of the SELECT before it can raise, so
+# the only way left to reach the guard is to make a rule raise on purpose. A guard whose
+# trigger has been removed upstream is exactly the kind that is wrong on the day it
+# becomes reachable again, so it is exercised rather than argued.
+
+
+def _three_rules(tmp_path, monkeypatch):
+    """`boom` + `miss` + `hit` on `fab_site`, and `solo` on `wafer_id`.
+
+    `miss` joins on a key that never matches, so it proposes NOTHING for `fab_site`; `hit`
+    holds the real answer. That pair is what makes the DECISION observable: it can only
+    come out right if every rule's proposals are collected BEFORE any cell is decided.
+    `solo` owns a column no other rule touches, so its survival is observable on its own.
+    """
+    decls = {
+        "boom": _decl(["fab_site"]),
+        "miss": {"left_table": "vjx_test_log", "right_table": "vjx_test_wafer",
+                 "join_key": [{"left": "eqp_id", "right": "core_lot"}],
+                 "expose": ["fab_site"]},
+        "hit": _decl(["fab_site"]),
+        "solo": _decl(["wafer_id"]),
+    }
+    p = tmp_path / "guard_rules.json"
+    p.write_text(json.dumps(decls), encoding="utf-8")
+    monkeypatch.setattr(vjc, "VIRTUAL_JOIN_RULES_PATH", str(p))
+    monkeypatch.setattr(vjc, "unique_index_covering",
+                        lambda db, table, columns: "uq_fake"
+                        if table == "vjx_test_wafer" else None)
+    vjx.reset_cache()
+
+
+def _explode(monkeypatch, rule_name):
+    """Make exactly one rule raise while every other one runs for real."""
+    real = vjx.execute_rule
+
+    def _maybe(db, rule, row_ids, **kw):
+        if rule["name"] == rule_name:
+            raise RuntimeError(f"injected failure in rule {rule_name}")
+        return real(db, rule, row_ids, **kw)
+
+    monkeypatch.setattr(vjx, "execute_rule", _maybe)
+
+
+@pytest.fixture()
+def guard_env(join_env, tmp_path, monkeypatch):
+    db = join_env
+    _seed(db, "vjx_test_wafer", [{"wafer_key": "K1", "core_lot": "LOT-A",
+                                  "core_slot": "01", "wafer_id": "WF-1",
+                                  "fab_site": "M1"}])
+    _seed(db, "vjx_test_log", [{"log_id": "L1", "core_lot": "LOT-A", "core_slot": "01",
+                                "eqp_id": "NO-SUCH-KEY"}])
+    _three_rules(tmp_path, monkeypatch)
+    assert len(vjx.rules_for(db, "vjx_test_log")) == 4, "the fixture must declare four rules"
+    return db
+
+
+def test_a_rule_that_raises_does_not_take_another_rules_column_with_it(guard_env,
+                                                                      monkeypatch):
+    """The whole reason the guard exists, in one number: `solo`'s column still arrives.
+
+    Without the guard the exception leaves `attach` entirely, `main.py`'s outer handler
+    logs "columns omitted" and EVERY joined column of this table is gone - so this cell
+    would hold the left row's own (absent) `wafer_id` instead of the joined one.
+    """
+    _explode(monkeypatch, "boom")
+
+    cell = _payload(guard_env)["L1"]["wafer_id"]
+    assert cell["value"] == "WF-1", (
+        "a healthy rule's column vanished because a DIFFERENT rule could not be built")
+
+
+def test_the_guard_sits_on_collect_so_the_decision_still_sees_every_proposal(guard_env,
+                                                                            monkeypatch):
+    """🔴 WHERE the guard sits, made observable - this is the assertion that pins it.
+
+    `miss` runs before `hit` and proposes nothing for `fab_site`. The answer is `M1` only
+    if all four rules are collected first and the cell is decided once at the end. Move
+    the guard (or the decision) inside the rule loop and `miss`'s empty proposal is decided
+    into 미상, which `hit` then reads as a left value it must not overwrite - so the cell
+    stays 미상 and this fails while the test above still passes.
+
+    That is the ordering defect the "collect everything, then decide" shape exists to
+    prevent, asserted here with a RAISING rule in the middle of it - which is the case the
+    guard introduced and the one nothing else covers.
+    """
+    _explode(monkeypatch, "boom")
+
+    cell = _payload(guard_env)["L1"]["fab_site"]
+    assert cell["value"] == "M1", (
+        "the decision ran on partial proposals: an earlier rule's empty answer won over a "
+        f"later rule's real one ({cell['value']!r})")
+
+
+def test_the_failed_rule_is_named_in_the_log(guard_env, monkeypatch, caplog):
+    """The table name alone cannot be acted on when four declarations point at it.
+
+    `main.py`'s outer handler only ever said which TABLE lost its columns; an operator
+    reading that could not tell which of the declarations was the broken one.
+    """
+    _explode(monkeypatch, "boom")
+
+    with caplog.at_level(logging.ERROR):
+        _payload(guard_env)
+
+    failures = [r.getMessage() for r in caplog.records if "could not be built" in r.getMessage()]
+    assert failures, "the failure was swallowed without a word"
+    assert any("boom" in message for message in failures), (
+        f"the log does not name the rule that failed: {failures}")
+    assert any("fab_site" in message for message in failures), (
+        "the log does not say which columns went missing with it")
