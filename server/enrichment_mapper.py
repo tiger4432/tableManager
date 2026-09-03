@@ -209,7 +209,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
             if col in aggregations or col in target_fields:
                 continue
             v = _cell_value(data, col)
-            if v is not None and str(v).strip() != "":
+            if not crud.is_blank_value(v):
                 g["reps"][col] = v
     if skipped:
         logger.warning(

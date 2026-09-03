@@ -1196,7 +1196,7 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
     from database import crud
 
     needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
-    have = {k for k, v in (bind_params or {}).items() if crud.clean_str_value(v) != ""}
+    have = {k for k, v in (bind_params or {}).items() if not crud.is_blank_value(v)}
     return sorted(needed - have)
 
 

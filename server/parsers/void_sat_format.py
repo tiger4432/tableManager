@@ -433,7 +433,7 @@ def screen(table_name: str, rows, source: str = None):
             detail = detail or f"unit={unit!r} is not one of {list(UNITS)}"
 
         gate = row.get("stack_gate")
-        if gate is not None and str(gate).strip() != "":
+        if not crud.is_blank_value(gate):
             try:
                 as_float = float(gate)
                 if not math.isfinite(as_float) or as_float != int(as_float):

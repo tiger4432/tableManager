@@ -372,7 +372,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 updates = item.get("updates") or {}
                 kept = {}
                 for col, val in updates.items():
-                    if SKIP_BLANK and crud.clean_str_value(val) == "":
+                    if SKIP_BLANK and crud.is_blank_value(val):
                         # Absence is not zero. Record it as an R2 candidate and
                         # write nothing - a blank here would look like a value.
                         stats["skipped_blank_cells"] += 1
