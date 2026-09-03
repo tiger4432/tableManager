@@ -15089,3 +15089,127 @@ executor 가 그것을 «window.prompt 가 반환한 뒤에» 지웁니다
 ## 열한 번째 칩
 `display:none` 이라 병을 안 나른다는 판단 받습니다. 다만 **읽히면 보이게 되는 칩**이므로,
 ①을 고치는 라운드에서 «같은 상수»를 쓰는지만 확인해 주십시오 — 나중에 혼자 「0」으로 남는 자리입니다.
+
+
+---
+
+# 🔴 [총괄 -> 클라] `trace` 은퇴 — 소유자 판정. 그런데 **범위가 화면 하나가 아닙니다** (2026-09-04 09:2x)
+
+> 소유자: 「trace 도 은퇴」
+
+## ⚠️ 먼저 — 제가 소유자께 드린 문장이 틀렸고, 그 정정이 이 지시의 «내용»입니다
+제가 「`trace.html` 은 사람이 누를 수 있는 링크가 0곳」이라고 보고했습니다. **거짓입니다.**
+```
+trace_launch.js:96   window.open(`trace.html?seeds=${...}`, '_blank')
+                     index 그리드에서 «행을 골라» 들어가는 진입점입니다
+```
+🔴 제 grep 이 `^\./src/trace` 를 제외했는데, 그게 `trace.js`·`trace_core.js` 만 뺄 의도였고
+**`trace_launch.js` 를 같이 지웠습니다.** 필터가 자기를 반증할 것을 먼저 지운 것입니다.
+
+## 그래서 «진짜» 죽인 것은 무엇인가 — 실측
+```
+main.js:151        initTraceEntry()      화면 뜰 때
+api.js:157         refreshTraceEntry()   데이터 부를 때마다
+   -> GET ${API_BASE}/graph/mapping-summary
+   -> 실측: HTTP «404» {"detail":"Not Found"}
+   -> trace_launch 가 「매핑 없음」으로 읽고 «진입 UI 를 숨깁니다»
+```
+🔴 **판정 없이 죽어 있었고, 죽인 것은 링크 부재가 아니라 «게이트 라우트의 은퇴»입니다.**
+그리고 그 대가로 **그리드가 로드·새로고침마다 실패할 요청을 보냅니다.**
+
+## 범위 — 넷입니다. 셋은 «죽었고» 하나는 «남습니다»
+```
+trace.html      462줄짜리 화면의 껍데기        -> 은퇴 «안내»로 (graph.html 과 «같은 모양»)
+src/trace.js        462줄  진입점 전용, importer 0   -> 갑니다
+src/trace_core.js   234줄  importer 는 trace.js 와 trace_launch.js «둘뿐»
+                           둘 다 가면 소비자 «0» -> 갑니다
+src/trace_launch.js 111줄  + main.js:66,151 · api.js:12,157   -> 갑니다
+                           🔴 이게 매 로드의 404 를 만드는 자리입니다
+effort_meter.js:525  '/trace.html': ROUTES.TRACE   -> ROUTES.TRACE 소비자가 0 이 되는지 «세고» 처리
+```
+⚠️ `trace_core.js` 가 `main-*.js` 청크에 실려 있는 것은 **`trace_launch` 를 통해서**입니다.
+직접 소비자가 아닙니다 — 확인하고 지우십시오. 「먹이던 축이 조용히 죽는」 자리입니다.
+
+## 모양 — `graph.html` 이 «템플릿»입니다. 새로 짓지 마십시오
+```
+graph.html:1186-1193  #stats-retired 를 error 상태와 «따로» 둔 이유가 주석에 있습니다:
+                      error = 「지금 실패했다, 다시 해 봐라」
+                      은퇴  = 「다시 해도 안 된다」
+                      -> 두 상태를 합치면 사용자를 무한 재시도로 보냅니다
+```
+`trace.html` 도 열리면 그 모양이어야 합니다 — 빈 화면도 스피너도 아니고,
+**은퇴 안내 + 후속 화면(R&D 보드) 링크.** 파일은 남깁니다(딥링크가 `?seeds=` 로 존재할 수 있습니다).
+
+## 게이트
+```
+① 지우기 «전»   그리드를 열어 /graph/mapping-summary 요청이 «몇 번» 나가나 (지금 로드당 1+N)
+② 지운 «후»    «0» 이어야 합니다. 그리고 그리드가 그대로 도는가
+③ 소비자 0 확인  ROUTES.TRACE · trace_core 의 import 를 «심볼»로 세십시오. 리터럴 말고
+   🔴 오늘 제가 리터럴 grep 으로 틀렸습니다. 같은 실수를 물려드리지 않겠습니다
+④ 빌드 후 main 청크에서 trace_core 가 «사라지는지» — 사라져야 합니다
+```
+⛔ `graph.html` 은 이 라운드에서 건드리지 마십시오. 이미 판정대로 서 있습니다.
+⛔ 은퇴 문구를 새로 지어내지 마십시오 — graph 의 것을 «같은 상수/같은 모양»으로 씁니다.
+
+
+---
+
+# 🔴 [총괄 -> 클라] 앞 지시를 «갈아엎습니다» — 은퇴 안내가 아니라 **제거**입니다 (소유자 판정 2026-09-04 09:3x)
+
+> 소유자: 「저거 레거시 그래프 뷰어잖아 은퇴해도 무방」 · 「그냥 저거 없애. 관련도」
+
+바로 위 「trace 은퇴 — 안내 페이지로」 지시는 **무효입니다.** 안내를 남기지 않고 지웁니다.
+아직 시작 안 하셨으면 그대로 이 지시로 오십시오. 시작했으면 되돌리고 오십시오.
+
+## ⚠️ 그리고 그 지시서에 제가 쓴 수가 틀렸습니다 — 고칩니다
+```
+제가 쓴 것   GET /graph/mapping-summary -> «404» {"detail":"Not Found"}
+실제        -> «410» {"reason":"old_graph_branch_retired",
+                     "successor":"/api/ledger/subgraph","ruling":"R-2026-08-14-H", ...}
+원인        제가 «/api/» 를 붙여 물었습니다. API_BASE = loc.origin 이라 클라는 접두 «없이» 부릅니다
+```
+🔴 그러니 「게이트가 조용히 404 를 낸다」는 제 서사도 틀렸습니다 — **서버는 이유·후속·판정번호를
+같이 돌려주고 있었습니다.** 당신이 앞서 보고한 「410 ×2」가 맞았고 제 수가 틀렸습니다.
+오늘 제 네 번째입니다.
+
+## 지울 것 — 실측한 반경 그대로
+```
+화면      graph.html · trace.html            + vite.config.js 의 진입점 «둘»
+로직      src/graph_viewer.js   1,274줄   소비자는 graph.html «하나»
+         src/trace.js            462줄   진입점 전용, importer 0
+         src/trace_core.js       234줄   importer 가 trace.js·trace_launch.js «둘뿐» -> 같이 감
+         src/trace_launch.js     111줄   🔴 그리드가 로드·새로고침마다 410 을 부르던 자리
+호출 자리  main.js:66,151 (initTraceEntry) · api.js:12,157 (refreshTraceEntry)
+계측      effort_meter.js:525 '/trace.html': ROUTES.TRACE
+         -> ROUTES.TRACE 소비자가 «0» 이 되는지 «심볼»로 세고 처리
+하니스     tests/effort_meter_harness.mjs · scripts/check_harnesses.mjs (FLOORS)
+         🔴 재던 코드와 «같은 커밋»에서 같이 손봅니다
+```
+그밖에 이름이 걸린 곳 — **읽고 «갈래»를 나누십시오. 전부 지우는 것이 아닙니다**:
+`src/grid.js` · `src/map_editor2.js` · `src/rescope_handoff.js` · `src/rnd_board/api.js` ·
+`tests/map_key_datalist_harness.mjs`
+```
+⛔ src/rnd_board/api.js 의 그래프스러운 이름(typeGraph 등)은 «R&D 보드 것»입니다. 남깁니다
+⛔ 주석에서 「graph_viewer 선례」처럼 «참조»만 하는 것은 지우지 말고 판단하십시오
+```
+
+## 🔴 `index.html` 의 묘비 주석 — 지우지 말고 «고치십시오»
+:298~309 가 「graph.html 은 파일이 «남아 있다»」고 적고 있습니다. 지우면 그 문장이 «거짓»이 됩니다.
+```
+지금    「화면 파일 자체는 지우지 않았고(북마크·딥링크가 있다)…」
+바뀜   파일이 없어졌으므로 그 절이 틀립니다 -> 이번 판정으로 «갱신»합니다
+🔴 죽은 이름을 갈아끼우지 말고, «무엇이 언제 왜» 사라졌는지로 다시 쓰십시오.
+   바로 아래 ledger.html 묘비가 그 모양의 예입니다 (「파일이 남아 있지 않다 — 링크를 두면 404」)
+```
+
+## 게이트 — 수로
+```
+① 전   그리드를 새 탭에서 열어 /graph/* 요청이 «몇 번» 나가나 (지금 로드당 1, 새로고침마다 +1)
+② 후   «0». 그리고 그리드가 그대로 도는가 (행·컬럼 수를 같이 적으십시오)
+③ 후   빌드 후 dist 에서 graph-*.js · trace-*.js 청크가 «사라지는가»
+       main 청크에서 trace_core 가 «사라지는가»
+④ 하니스 전수 초록 (FLOORS 포함)
+⚠️ 캐시 — 새 탭에서, 캐시 무력화하고. 오늘 두 번 걸리신 자리입니다
+```
+⛔ `rnd_board/**` 는 이 라운드에서 «건드리지 않습니다».
+⛔ 서버의 `/graph/*` 스텁은 «구현자»가 같은 시각에 지웁니다. 순서 의존 없습니다.

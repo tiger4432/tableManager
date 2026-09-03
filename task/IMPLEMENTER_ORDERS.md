@@ -23535,3 +23535,60 @@ psutil 이 없는 환경      그때 판별이 어떻게 되는지가 설계의 
 🔴 재기동은 총괄 몲입니다. 끝나면 말씀하십시오 — 제가 올리고 제가 다시 재서 확인합니다
 ⚠️ 예측치를 게이트에 넣지 않았습니다. «돌려서 나오는 수»가 정답입니다
 ```
+
+
+---
+
+# 🔴 [총괄 -> 구현자] 구 그래프 분기를 **없앱니다** — 은퇴 스텁까지 (소유자 판정 2026-09-04 09:3x)
+
+> 소유자: 「그냥 저거 없애. 관련도」
+
+2026-08-14 판정 `R-2026-08-14-H` 로 «은퇴»했던 것을 이제 «제거»합니다.
+클라 쪽(그래프 뷰어·trace 화면·그 진입점)은 같은 시각 클라 채널로 내렸습니다.
+
+## ⚠️ 먼저 — 제가 이 실타래에서 낸 수 하나가 틀렸습니다
+제가 「`/graph/mapping-summary` 가 404」라고 적었는데, **`/api/` 를 붙여서 물었기 때문**입니다.
+```
+/graph/mapping-summary        -> «410»  {"reason":"old_graph_branch_retired",
+                                        "successor":"/api/ledger/subgraph",
+                                        "ruling":"R-2026-08-14-H", ...}
+/api/graph/mapping-summary    ->  404   ← 제가 물었던 «없는» 경로
+API_BASE = loc.origin  이므로 클라는 «접두 없이» 부릅니다
+```
+🔴 그러니 지금 상태는 «드리프트»가 아니라 **의도대로 선 은퇴**입니다.
+지우는 이유는 「고장나서」가 아니라 「부르는 쪽이 같이 사라지므로 더 설 이유가 없어서」입니다.
+
+## 지울 것 — `server/main.py` 한 구역
+```
+:3090  GRAPH_BRANCH_RETIRED_REASON
+:3096  GRAPH_BRANCH_SUCCESSOR
+:3099  _graph_branch_retired()
+:3116~3148  스텁 «일곱»
+       POST /api/graph/sync · GET /graph/stats · /graph/neighbors · /graph/nodes/search
+       POST /graph/trace · GET /graph/chip-trace · GET /graph/mapping-summary
+```
+```
+tests/test_graph_branch_retired.py   🔴 «같은 커밋»에서 같이 갑니다
+                                     (테스트는 자기가 재던 코드와 같은 커밋에 죽습니다)
+tests/test_ledger_subgraph.py        위 낱말을 언급합니다 — «재는지» 확인만. 재면 그 단언만 손봅니다
+```
+
+## ⛔ 건드리지 마십시오
+```
+migrations/drop_graph_storage.py:64   `_graph_branch_retired()` 를 «언급»하지만 그건 «이력»입니다
+                                      그때 무엇을 했는지의 기록이라 지금 사실과 안 맞아도 그대로 둡니다
+                                      (투영은 지워도 되고 «기록»은 안 됩니다)
+/api/ledger/subgraph                  successor 로 적혀 있던 바로 그 라우트입니다. 그대로
+```
+
+## 순서와 게이트
+```
+① 지우기 «전»  /graph/stats · /graph/mapping-summary 가 «410» 인지 확인 (지금 그렇습니다)
+② 지운 «후»   같은 둘이 «404». 그게 이 라운드의 전/후 수입니다
+③ 시험       server/tests 중 «건드린 것만». graph 계열 + ledger_subgraph
+             C:/Users/kk980/anaconda3/envs/assy_manager/python.exe -m pytest 로 직접
+🔴 재기동은 총괄 몫입니다 — 끝나면 말씀하십시오
+```
+⚠️ 클라와 «동시»에 돕니다. 순서 의존은 «없습니다» — 어느 쪽이 먼저 가도 나머지 한쪽은
+   부르는 이가 없거나 이미 숨어 있습니다. 다만 `server/main.py` 는 오늘 아침 다른 라운드가
+   지난 파일이니 **경로를 명시해 커밋**하십시오.
