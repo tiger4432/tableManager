@@ -931,6 +931,12 @@ const FLOORS = new Map([
   // replaced the two `oe-bucket--missing` blocks (the tree row and the map's `is-left`),
   // and added a G block for the binding template the same round introduced. Same four
   // questions, three more answers.
+  // NEW 2026-09-03 with the C3 extraction. Two halves, and the second is the durable one:
+  // the grid's own query and the EXPORT url must carry an identical narrowing (a drift there
+  // hands the operator a file that does not match the screen, silently), and the builder must
+  // have exactly FOUR callers with nobody assembling the set by hand. The audit recorded two
+  // sites and there were four; the count assertion is what stops a fifth appearing quietly.
+  ['narrowing_trio_harness.mjs', 17],
   ['ontology_authoring_panel_harness.mjs', 44],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
