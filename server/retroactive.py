@@ -741,6 +741,119 @@ RUN_CANCEL_REQUESTED = "cancel_requested"
 RUN_CANCELLED = "cancelled"
 RUN_FAILED = "failed"
 
+#: How a run that is still `running` is MOVING. `running` alone cannot say it: a backfill
+#: that legitimately takes an hour and one that stopped an hour ago are the same row, the
+#: same gate, and the same silence. On 2026-09-04 that silence is what an operator saw -
+#: one outbox row aging with no reason attached to it anywhere.
+MOVING_PROGRESSING = "progressing"
+MOVING_STALLED = "stalled"
+MOVING_UNREPORTED = "unreported"
+
+#: Whether a cancel request can reach this run AT ALL.
+#:
+#: 🔴 THE ANSWER IS OFTEN NO, AND SAYING SO IS THE POINT. Stopping is cooperative and only
+#: happens at a batch boundary (`RunControl`), so a run stuck INSIDE a batch never reaches
+#: the place that reads the flag - and two registered operations declare
+#: `cancellable: False`, which means they have no batch boundary to offer in the first
+#: place. A screen that shows a cancel button in either case shows a button that does
+#: nothing, which this repository has already ruled against once.
+CANCEL_AT_NEXT_BATCH = "at_next_batch"
+CANCEL_UNKNOWN = "unknown"
+CANCEL_NEVER = "never"
+
+#: The states in which a run still holds the scheduler's gate closed.
+#:
+#: 🔴 `cancel_requested` BELONGS HERE. Asking a run to stop does not stop it - the flag is
+#: read at a batch boundary and the thread stays alive until it reaches one, so the gate
+#: stays shut and the outbox row keeps waiting. Leaving this state out would report "no
+#: run in flight" beside a queue that is demonstrably waiting for something, which is the
+#: same silence this whole round is about.
+IN_FLIGHT_STATES = (RUN_RUNNING, RUN_CANCEL_REQUESTED)
+
+
+def in_flight(db, now=None, stall_after=None):
+    """The run the scheduler's gate is closed on, and whether it is still moving.
+
+    Returns ``None`` when no run is recorded as in flight. Otherwise a dict carrying the
+    run, its `moving` state, and whether a cancel could reach it.
+
+    🔴 IT READS THE `retroactive_runs` TABLE, NOT THE THREAD. The thread is in the
+    scheduler process and the reader of this is the web process, so the thread is not
+    observable from here at all - which is exactly why the stall was invisible. The table
+    is written by `RunControl` on its own session precisely so it survives the operation's
+    transaction, and that is what makes it readable from outside.
+
+    ⚠️ AND THAT MEANS THE ROW CAN OUTLIVE THE PROCESS. A scheduler killed mid-run leaves
+    `running` behind forever, and this will keep reporting it as in flight. The report is
+    still the true one for an operator - the work is not going to finish and the run has
+    to be pressed again - but it is not proof that a thread exists.
+
+    ⚠️ `unreported` IS NOT `stalled`. `_mark_run(started=True)` stamps `last_progress_at`
+    at the start, and only four of the six registered operations pass a `_checkpoint` hook
+    (measured 2026-09-04: `ledger_rescope` and `enrichment_confirm` never report progress
+    while they run). For those two, and for any run that stops before its first batch
+    boundary, "no progress since the start" is all that is known - and calling that a
+    stall would name a fault that has not been established.
+    """
+    from datetime import datetime, timezone
+
+    from database import models
+
+    if stall_after is None:
+        # The threshold `/health` already uses for "claimed work that stopped
+        # progressing". One spelling of "long enough to be a stall" for both.
+        from utils import heartbeat
+        stall_after = heartbeat.DEFAULT_STALL_AFTER_SEC
+    now = now or datetime.now(timezone.utc)
+
+    row = (db.query(models.RetroactiveRun)
+           .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES))
+           .order_by(models.RetroactiveRun.started_at.desc().nullslast())
+           .first())
+    if row is None:
+        return None
+
+    def _utc(dt):
+        if dt is None:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    started, progressed = _utc(row.started_at), _utc(row.last_progress_at)
+    since = None if progressed is None else max(0.0, (now - progressed).total_seconds())
+    reported = bool(started and progressed and progressed > started)
+
+    if since is not None and since <= stall_after:
+        moving = MOVING_PROGRESSING
+    elif reported:
+        moving = MOVING_STALLED
+    else:
+        moving = MOVING_UNREPORTED
+
+    try:
+        cancellable = bool(operation(row.op)["cancellable"])
+    except RetroactiveRefused:
+        cancellable = False
+    if not cancellable:
+        cancel = CANCEL_NEVER
+    elif moving == MOVING_PROGRESSING:
+        cancel = CANCEL_AT_NEXT_BATCH
+    else:
+        cancel = CANCEL_UNKNOWN
+
+    return {
+        "run_id": row.run_id,
+        "op": row.op,
+        "state": row.state,
+        "moving": moving,
+        "no_progress_seconds": None if since is None else round(since, 1),
+        "stall_after_seconds": stall_after,
+        "processed_rows": row.processed_rows,
+        "total_rows": row.total_rows,
+        "cancel_reaches": cancel,
+        "recovery": ("이 실행은 취소로 멈출 수 없습니다. 로그를 먼저 건진 뒤 "
+                     "스케줄러를 재기동하고, at-most-once 라 «다시» 실행해야 합니다."),
+    }
+
 
 class RunControl:
     """What an operation asks between batches: "should I stop" and "here is where I am".

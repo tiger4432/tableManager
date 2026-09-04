@@ -40,6 +40,48 @@ EVENT_BROADCAST_RECOVERY = "BROADCAST_RECOVERY"
 CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
                                  EVENT_BROADCAST_RECOVERY})
 
+# ---------------------------------------------------------------------------
+# WHO DRAINS A WAITING ROW
+#
+# 🔴 `processed_chain = false` DOES NOT MEAN "the chain worker is behind". Two daemons
+# empty this table, and an instrument that adds their rows together reports the chain as
+# backed up when the row it is counting belongs to the scheduler. That happened on
+# 2026-09-04: one RETROACTIVE_RUN row aged in place while /health called the chain worker
+# healthy, and the queue screen - which says "chain queue" - sent the reader to the chain.
+#
+# The sets live HERE because the judgement has to have one home. The scheduler's two
+# watchers spelled one of them as a literal in its own filter, and a second copy in the
+# instrument is how the two drift apart without either being wrong at the time.
+# ---------------------------------------------------------------------------
+
+#: Drained by `run_auto_update.py`. It watches exactly these two.
+SCHEDULER_OWNED_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN})
+
+#: Drained by `chain_ingestion_worker.py`. These are the data events it groups by
+#: transaction and marks processed on success (`CREATE`/`EDIT` are named at its
+#: `valid_events`; every event in a successful group is marked, `DELETE` included).
+CHAIN_OWNED_EVENT_TYPES = frozenset({"CREATE", "EDIT", "DELETE"})
+
+OUTBOX_OWNER_SCHEDULER = "scheduler"
+OUTBOX_OWNER_CHAIN = "chain"
+OUTBOX_OWNER_UNKNOWN = "unknown"
+
+
+def outbox_owner(event_type):
+    """Which daemon empties a waiting row of this type - or that nobody has established it.
+
+    🔴 `unknown` IS A REAL ANSWER AND MUST NOT BE FOLDED INTO `chain`. An unlisted type is
+    one nobody has traced to a consumer, and "assume chain" reproduces exactly the
+    misreading this split exists to end. `SYSTEM_RELOAD` is deliberately unlisted: the
+    chain worker marks the LATEST one on a throttled branch of its own, so its fate
+    depends on which row it is rather than on its type, and that is not a per-type answer.
+    """
+    if event_type in SCHEDULER_OWNED_EVENT_TYPES:
+        return OUTBOX_OWNER_SCHEDULER
+    if event_type in CHAIN_OWNED_EVENT_TYPES:
+        return OUTBOX_OWNER_CHAIN
+    return OUTBOX_OWNER_UNKNOWN
+
 # [C-5] 인제션/체인 완료 통지에 동봉하는 감사 로그(created_logs) 상한.
 # 웹서버(main.py /internal/events/*)와 audit_cache는 어차피 트랜잭션당 500건만 유지하므로,
 # 발신 측이 전량(수만~수십만 dict, 직렬화 시 수십 MB JSON)을 메모리 누적·HTTP POST하는 것은

@@ -666,8 +666,38 @@ class MultiDiscoveryScheduler:
             return None
 
     def retroactive_busy(self) -> bool:
+        """Is the gate closed. 🔴 THIS ANSWER IS UNCHANGED AND MUST STAY UNCHANGED.
+
+        A long run and a wedged one both close it, and both SHOULD: the reason the gate
+        exists is that two concurrent replays of one rule write the same cells from two
+        sessions. Opening it after a timeout would trade a stuck run for the one ordering
+        nobody could reason about afterwards. What was missing was never permission - it
+        was that nothing SAID which of the two states the closed gate was in.
+        """
         t = self._retroactive_thread
         return bool(t and t.is_alive())
+
+    def retroactive_moving_state(self):
+        """WHICH of the two the closed gate is in, as a value, or None if unknowable.
+
+        Read from `retroactive_runs`, never from the thread: the thread only answers
+        "alive", which is the very question that cannot tell a long run from a stopped
+        one. Never fatal, and never called unless the gate has already refused something -
+        a diagnosis must not be able to stop the scheduler, nor cost a query per tick
+        while nothing is in flight.
+        """
+        try:
+            import retroactive
+            from database.database import SessionLocal
+
+            session = SessionLocal()
+            try:
+                return retroactive.in_flight(session)
+            finally:
+                session.close()
+        except Exception as e:                                   # noqa: BLE001
+            logger.debug("[Retroactive] could not read the in-flight state: %s", e)
+            return None
 
     def start_retroactive_run(self, payload: dict) -> bool:
         """Run one queued retroactive (backfill) operation OFF the tick thread.
@@ -694,10 +724,19 @@ class MultiDiscoveryScheduler:
         import retroactive
 
         if self.retroactive_busy():
+            # The gate is closed either way; this log line is where the two states become
+            # distinguishable. Without it the operator's only evidence was an outbox row
+            # whose age grew with no reason attached to it anywhere.
+            in_flight = self.retroactive_moving_state()
             logger.warning(
-                "[Retroactive] a run is already in flight (%s); leaving run_id=%s "
+                "[Retroactive] a run is already in flight (%s, %s); leaving run_id=%s "
                 "queued for a later tick",
-                self._retroactive_last, (payload or {}).get("run_id"))
+                self._retroactive_last,
+                "no run row" if not in_flight else
+                "run_id=%s op=%s %s for %ss" % (
+                    in_flight["run_id"], in_flight["op"], in_flight["moving"],
+                    in_flight["no_progress_seconds"]),
+                (payload or {}).get("run_id"))
             return False
 
         def _worker():
@@ -771,7 +810,8 @@ class MultiDiscoveryScheduler:
                     
                     # 1-2. SCHEDULER_RUN_NOW 감시
                     latest_trigger = db.query(DatabaseOutbox).filter(
-                        DatabaseOutbox.event_type == "SCHEDULER_RUN_NOW",
+                        DatabaseOutbox.event_type
+                        == event_constants.EVENT_SCHEDULER_RUN_NOW,
                         DatabaseOutbox.processed_chain == False
                     ).first()
                     

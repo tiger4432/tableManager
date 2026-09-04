@@ -1037,6 +1037,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
     return existing_keys
 
 from audit_cache import audit_cache
+import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
 from ingestion_activity import registry as ingestion_activity_registry
@@ -3685,6 +3686,18 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     retried = (db.query(_f.count()).select_from(outbox)
                .filter(waiting_only, outbox.retry_count > 0).scalar())
 
+    # ── 누가 이 행을 비우나 ────────────────────────────────────────────────────
+    # 🔴 이 라우트의 이름은 「체인 대기열」인데 이 표를 비우는 것은 «둘»이다. 합친 수는
+    # 「체인이 밀렸다」로 읽히고, 2026-09-04 실제로 그렇게 읽혔다 — 소급 실행 «한 건»이
+    # 제자리에서 나이만 먹는 동안 /health 는 체인을 건강하다 했고, 화면은 사람을 체인으로
+    # 보냈다. 그래서 깊이와 나이를 «소유자별로» 가른다.
+    #
+    # 같은 부분 인덱스(`idx_outbox_unprocessed`)를 탄다 — EXPLAIN 상 위 count 와 같은
+    # 스캔이고, 훑는 범위는 «대기 중인 행»이지 표 전체가 아니다. `min(created_at)` 도
+    # 여기서는 싸다: 위 주석이 경고하는 전수 훑기는 «WHERE 가 없을 때»의 이야기다.
+    by_type = (db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at))
+               .filter(waiting_only).group_by(outbox.event_type).all())
+
     # 🔴 가장 오래된 대기 행은 `MIN(created_at)`이 아니라 **`id` 오름차순의 첫 행**으로
     # 찾는다. 부분 인덱스가 `(processed_chain, id)`라 그 순서는 인덱스가 이미 들고 있고,
     # `created_at`은 색인돼 있지 않아 `MIN`을 물으면 같은 행을 찾으려고 전수를 훑는다.
@@ -3742,13 +3755,44 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "rows": g["rows"],
         "tables": g["tables"],
         "event_types": g["event_types"],
+        # 같은 판정을 행 목록에도. 화면이 event_type 을 보고 «스스로» 누구 것인지 정하면
+        # 그 판정의 사본이 하나 더 생긴다 — 집이 하나여야 하는 이유가 그것이다.
+        "owners": sorted({event_constants.outbox_owner(t) for t in g["event_types"]}),
         "max_retry": g["max_retry"],
         "waiting_seconds": _age(g["created_at"]),
         "waiting_at": to_local_str(g["created_at"]) if g["created_at"] is not None else None,
     } for g in groups.values()]
 
+    owners = {}
+    for event_type, rows_of_type, oldest_of_type in by_type:
+        name = event_constants.outbox_owner(event_type)
+        bucket = owners.get(name)
+        if bucket is None:
+            bucket = owners[name] = {"owner": name, "waiting": 0,
+                                     "oldest_waiting_seconds": None, "event_types": []}
+        bucket["waiting"] += int(rows_of_type or 0)
+        if event_type and event_type not in bucket["event_types"]:
+            bucket["event_types"].append(event_type)
+        age = _age(oldest_of_type)
+        if age is not None and (bucket["oldest_waiting_seconds"] is None
+                                or age > bucket["oldest_waiting_seconds"]):
+            bucket["oldest_waiting_seconds"] = age
+
+    # 스케줄러 소유 행이 «왜» 기다리는지. 나이만 자라고 이유가 없던 것이 사람을 체인으로
+    # 보냈다. 🔴 소급 실행이 «없으면» 이 칸은 null 이고, 그건 「이유를 모른다」이지
+    # 「막힌 것이 없다」가 아니다 — 스케줄러 소유 행은 소급 말고도 있다.
+    scheduler_bucket = owners.get(event_constants.OUTBOX_OWNER_SCHEDULER)
+    if scheduler_bucket is not None:
+        try:
+            import retroactive
+            scheduler_bucket["blocked_by"] = retroactive.in_flight(db)
+        except Exception as e:                                   # noqa: BLE001
+            logger.debug("in-flight retroactive unreadable for the queue view: %s", e)
+            scheduler_bucket["blocked_by"] = None
+
     return {
         "waiting": int(waiting or 0),
+        "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
         "retried_among_waiting": int(retried or 0),
