@@ -3816,8 +3816,18 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             logger.debug("in-flight retroactive unreadable for the queue view: %s", e)
             scheduler_bucket["blocked_by"] = None
 
+    # ── 지금 «돌고 있는» 것 ────────────────────────────────────────────────────
+    # 아웃박스는 «기다리는» 것만 압니다. 「집었는데 안 끝난다」와 「아무것도 안 집는다」는
+    # 대기 수가 같고, 그 둘을 가르는 것은 맵퍼를 «돌리는 프로세스»만 압니다.
+    # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
+    #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
+    import chain_activity
+    running = chain_activity.registry.snapshot()
+
     return {
         "waiting": int(waiting or 0),
+        "running": running,
+        "loop_in_this_process": chain_activity.registry.attached,
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,

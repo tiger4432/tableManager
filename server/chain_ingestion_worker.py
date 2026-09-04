@@ -53,6 +53,7 @@ import chain_key_gate
 # [Retraction] Removing what ONE SOURCE owns, for a map fed by several. `replace_map`
 # removes by map and cannot express it - see the retract branch in the write loop.
 import dt_map_derivation
+import chain_activity
 
 #: 🔴 THE FILE THIS PROCESS LOGS TO, NAMED ONCE AND CARRIED ONTO THE MAPPER LINES.
 #  A mapper runs in THIS process, so its lines land here and not in the web server's
@@ -509,6 +510,9 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
     rows_in = _payload_row_count(payload)
     logger.info("[%s] START rule=%s mapper=%s target=%s rows_in=%d",
                 MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
+    # The log says what RAN; this says what is running. A line in a file cannot answer
+    # "is it in one right now" without somebody tailing it.
+    token = chain_activity.registry.start(rule_name, who, target_table, rows_in)
     try:
         module = importlib.import_module(module_name)
         mapper_func = getattr(module, function_name)
@@ -547,6 +551,12 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
                      MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
                      time.monotonic() - started, type(e).__name__, e)
         raise e
+    finally:
+        # 🔴 IN `finally`, NOT AFTER THE RETURN. A mapper that throws is exactly the case
+        # where an entry left behind would sit in the view forever, saying a mapper is
+        # still running - and a stuck-looking chain is the symptom this whole step exists
+        # to stop inventing.
+        chain_activity.registry.finish(token)
 
 def _group_target_tables(events_in_tx, rules):
     """[Latency Fix #5] 이 트랜잭션 그룹이 기록할 target_table 집합을 매퍼 실행 없이 규칙에서 추정한다.
@@ -1499,6 +1509,11 @@ class QueueHeadWatch:
 
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
+
+    # 🔴 THIS PROCESS RUNS THE LOOP, AND THE QUEUE VIEW HAS TO KNOW THAT. Without it an
+    # empty "running" list means both "no mapper is in flight" and "the loop is in
+    # another process and I cannot see it" - the second dressed as the first.
+    chain_activity.registry.attach()
 
     # [F8] Everything about this process's path to /internal/events/*, before any
     # data is in flight: which token it holds (as a one-way fingerprint the API
