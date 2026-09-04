@@ -57,7 +57,17 @@ function chooseDirtyNavigation(root) {
 }
 
 function errorMessage(error) {
-  return error?.detail?.message || error?.message || String(error);
+  // 🔴 `code` 와 `path` 를 «버리지» 않습니다. `jsonRequest` 가 서버의 detail 을
+  //    «통째로» 달아 주는데(code·path 포함) 이 함수가 message «하나»만 꺼내 쓰고 있었고,
+  //    그래서 토스트로 나가는 여덟 자리 «전부»에서 주소가 사라졌습니다 — 서버가 실어 온
+  //    것이 «꺼내는 자리»에서 없어진 것입니다.
+  //    ⛔ 문장을 짓지 않습니다. 서버의 낱말 셋을 «값으로» 잇습니다.
+  const detail = error?.detail;
+  const base = detail?.message || error?.message || String(error);
+  const parts = [base];
+  if (detail?.code) parts.push(String(detail.code));
+  if (detail?.path) parts.push(String(detail.path));
+  return parts.join(' · ');
 }
 
 /** `at`, plus every container the seed put inside it -- the rows a new member arrives as.
