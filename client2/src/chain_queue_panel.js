@@ -91,6 +91,25 @@ const countOf = countText;
  *    back together and would be this screen asserting something the server did not say.
  *    The recovery sentence is the server's too, and is carried verbatim.
  */
+/** 「<요청자> 가 <큐 시각> 에 <연산> 을 <인자> 에 걸었습니다」 — 한 줄, 값만. */
+function whyLine(b) {
+  const who = b.requested_by ? String(b.requested_by) : '모름';
+  const when = b.queued_at ? String(b.queued_at) : '모름';
+  const op = b.op == null ? '' : String(b.op);
+  const params = (b.params && typeof b.params === 'object' && !Array.isArray(b.params))
+    ? b.params : null;
+  // ⛔ 값은 «안 나갑니다». 키는 «선언 순서» 그대로이고, 배열이면 개수를 셉니다.
+  const args = params
+    ? (Object.keys(params).length
+      ? Object.keys(params).map(k => {
+        const v = params[k];
+        return Array.isArray(v) ? `${k}: ${v.length}개` : k;
+      }).join(' · ')
+      : '없음')
+    : '없음';
+  return `${who} 가 ${when} 에 ${op} 을 ${args} 에 걸었습니다`;
+}
+
 function blockedView(b) {
   if (!b || typeof b !== 'object') return null;
   return Object.freeze({
@@ -105,6 +124,13 @@ function blockedView(b) {
     processed: countOf(b.processed_rows),
     total: countOf(b.total_rows),
     recovery: b.recovery ? String(b.recovery) : '',
+    // 🔴 「왜 도는지」. 서버가 셋을 «날것»으로 냅니다 — 요청자 · 큐 시각 · 인자.
+    //    문장은 화면 몫이고(서버가 안 짓습니다), 「한 줄」입니다.
+    //    ⚠️ 요청자가 없으면 «모름»입니다. 서버가 `null` 을 보내고, 이름을 지어내지
+    //       않는 것이 이 도구의 규율입니다 — 「없음」도 답입니다.
+    //    🔴 인자는 «키와 개수»만입니다. 값이 운영 데이터를 담을 수 있어서,
+    //       무엇이 걸렸는지는 알 수 있고 «내용은 안 나갑니다». 보안 조건입니다.
+    why: whyLine(b),
   });
 }
 
@@ -344,6 +370,8 @@ export class ChainQueuePanel {
       box.appendChild(this._line('chain-queue-blocked-fact',
         `processed_rows ${b.blocked.processed} / total_rows ${b.blocked.total}`
         + ` · no_progress ${b.blocked.noProgress} · stall_after ${b.blocked.stallAfter}`));
+      // 🔴 「왜 도는지」가 «사실» 줄들 다음, 복구 문장 앞에 섭니다.
+      if (b.blocked.why) box.appendChild(this._line('chain-queue-blocked-why', b.blocked.why));
       if (b.blocked.recovery) {
         box.appendChild(this._line('chain-queue-blocked-recovery', b.blocked.recovery));
       }
