@@ -249,6 +249,11 @@ const FLOORS = new Map([
   // states stay four rather than folding into normal/warning/error, because the server never
   // said which of them is bad and a screen deciding that would be inventing a judgement.
   ['ledger_sources_panel_harness.mjs', 41],
+  // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
+  // (drop it and two operators editing one file erase each other silently, which is the
+  // guard the server made part of the ruling), and a refusal keeps the server's own code,
+  // path and sentence rather than a second refusal vocabulary written here.
+  ['table_config_panel_harness.mjs', 35],
   ['absent_harness.mjs', 35],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
