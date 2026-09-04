@@ -1,3 +1,65 @@
+# [디자인 -> 총괄] **조각 2 — 스물셋 다 읽었고, 고칠 것이 «0» 입니다** (2026-09-04)
+
+코드 변경 «없습니다». 읽은 결과가 그렇습니다.
+
+## 23 -> 0 — 왜 하나도 안 고쳤나, 자리별로
+```
+① 바로 다음 줄이 «이미» 막습니다  (5)
+   grid.js:646        Number(params.newValue) -> 바로 아래 `if (isNaN(parsed))` + 위에서 ''·null·undefined 처리
+   main.js:431        parseInt(pageInput.value) -> 바로 아래 `if (isNaN(targetPage) || < 1)`
+   map2/excel_io:160  parseInt(...) -> 바로 아래 `Number.isFinite(n) ? ... : m`
+   map2/api:120       Number(opts.timeoutMs) -> :419 에서 `Number.isFinite(timeoutMs) ? : null`
+   ontology_explorer:1225  Number(typed) -> 바로 위 :1224 가 `Number.isFinite(Number(typed))`
+
+② «선택자»가 그 속성을 보장합니다  (12)
+   ontology_explorer 964·971·991      target = event.target.closest('[data-action]')  <- :886
+                     1205·1237·1252    event.target «자신»이 그 dataset 을 들고 있습니다
+   enrichment_reference_view 238~441   querySelectorAll('td[data-row]') <- 선택자가 data-row 를 요구합니다
+   admin.js:3343                       자기가 그린 행의 data-id 입니다
+   -> 없으면 NaN 이 되지만, 결과는 «비교가 거짓» 이고 그 자리의 뜻은 「고르지 않음」입니다.
+      틀린 답이 아니라 «아무 일도 안 일어남» 입니다
+
+③ 의도된 기본값  (3)
+   admin.js:629   parseInt(select.value) || 10   <- <select> 의 값은 언제나 옵션 중 하나입니다
+   utils.js:139   Number(opts.ttl) || TOAST_TTL[type] || 5000
+   map2/api 545·546  이미 `Number.isFinite(...) ? ... : null` 입니다  <- 정본 철자입니다
+
+④ 생성 시점에 수입니다  (2)
+   doe_bands:487  used 는 `{used: 0}` 로 만들어져 `+=` 로만 자랍니다
+   admin.js:1212  제가 조각 1 에서 «넣은» isCount 입니다
+```
+
+## ⚠️ 「고치지 말고 표에」로 남긴 것 «하나»
+```
+transfer_plan.js:467   block.entries.find(e => Number(e.bin) === Number(pool.bin))
+   위험한 모양   한쪽이 «null» 이면 0 이 되고, bin 0 인 항목과 «잘못 맞습니다»
+   그런데       `e.bin` 은 서버가, `pool.bin` 은 파싱이 만듭니다. 둘 중 하나가 «null» 로
+                오는 경로를 «못 찾았습니다» (undefined 면 NaN 이라 안 맞고, 그건 bin_absent 로 갑니다)
+=> 지시하신 규칙대로 «고치지 않고» 적습니다. 「닿는 경로를 못 찾겠다」의 그 자리입니다
+```
+
+## 🔴 그리고 비율에 대한 정정 — 조각 1 의 22% 를 «예측»으로 쓰지 말라 하신 것이 옳았습니다
+```
+조각 1   화면에 닿는 것        41 -> 9   (22%)
+조각 2   바깥 값 변환          23 -> 0   ( 0%)
+```
+🔵 부류가 «다릅니다». 조각 1 은 «글자로 나가는» 자리라 가드가 없으면 곧장 보이고,
+   조각 2 는 «비교·인덱스»로 쓰이는 자리라 NaN 이 되면 대개 「아무 일도 안 일어남」입니다.
+   그래서 저자들이 ①처럼 «바로 옆에» 가드를 달아 뒀습니다.
+
+## ⚠️ 그리고 이 «0» 의 주어를 밝힙니다
+23 은 «제 패턴이 잡은 것»이지 부류의 전수가 아닙니다. 「조각 2 가 깨끗하다」가 아니라
+**「제 스캔이 지목한 스물셋 중 고칠 것이 0」** 입니다. 상한이었던 41·90 도 같은 성질이었고,
+그 말을 조각 1 보고에 적었어야 했습니다.
+
+## 상태
+```
+코드 변경   «0» · 트리 깨끗 · 게이트 초록(변경이 없으므로 그대로)
+남은 조각   3 (map_editor.js 67) — 총괄 판정대로 «추출 라운드»이지 NaN 라운드가 아닙니다
+```
+
+---
+
 # [디자인 -> 총괄] 🔴 **그 500 — «정상 거절이 아닙니다»** (2026-09-04)
 
 지시하신 세 줄입니다. 고치지 않았습니다.
