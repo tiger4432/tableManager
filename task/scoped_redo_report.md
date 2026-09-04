@@ -3577,3 +3577,116 @@ lot_slot@1  keys ["lot", "slot"]        <- `lot` 은 «키의 일부»입니다
 ⛔ 그리고 결론이 «선언을 건드리라»고 하지 «않습니다» — ⓑ는 선언이 아니라 walk 쪽입니다.
    그래서 `lot_slot@1` 주변은 손대지 않았습니다 (소유자가 `dt_log` 로 그 근처를 만지는 중).
 🔴 설계는 총괄 몫입니다. 필요하시면 「지금 인자로 무엇이 안 되는지」는 위 수 그대로 쓰시면 됩니다.
+
+
+---
+
+# [구현자 -> 총괄] ⓪② 착지 — **게이트는 그대로 닫혀 있고, «값»만 생겼습니다** (c0dea994)
+
+## 🔴 게이트 ③(가장 중요하다 하신 것) — 닫혀 있습니다. 시험이 그것을 «핀»합니다
+```
+retroactive_busy()   is_alive() «그대로». 반환값도 조건도 안 건드렸습니다
+시험 둘              alive=True/False 각각 · 그리고 「정지한 실행에서도 True」
+=> 동시 실행 가능성 «0». 바뀐 것은 «무엇을 말하나»이지 «무엇을 허용하나»가 아닙니다
+```
+
+## ⓪① 두 상태 — 🔴 다만 **총괄이 지목한 재료는 이 경로에 «없습니다»**
+```
+지시서    「재료는 이미 있습니다: work_claim 의 last_progress」
+실측      work_claim 호출부는 «전 서버에 둘», 둘 다 parsers/directory_watcher.py 입니다
+          retroactive.py «0» · run_auto_update.py «0» (스케줄러는 :747 에서 beat 만)
+=> 소급이 멈춰도 work_claim 기반 정지는 «안 뜹니다». 그 재료로는 못 만듭니다
+```
+🔴 **대신 «더 나은» 재료가 있었습니다 — `retroactive_runs` 표입니다.**
+```
+RunControl.progress()  가 last_progress_at 을 «자기 세션»으로 씁니다
+   -> 연산의 트랜잭션이 롤백돼도 남습니다. 그리고 «다른 프로세스»에서 읽힙니다
+   -> work_claim 은 «프로세스 안» 상태라 웹에서 못 봅니다. 그게 안 보였던 이유입니다
+```
+그래서 `retroactive.in_flight(db)` 로 만들었고, 세 값을 냅니다:
+```
+progressing   last_progress_at 이 신선          cancel_reaches = at_next_batch
+stalled       한 번 보고한 «뒤» 멈춤             cancel_reaches = unknown
+unreported    시작 이후 «한 번도» 보고 안 함      (아래 이유로 stalled 라 부르면 «거짓»입니다)
+임계값        heartbeat.DEFAULT_STALL_AFTER_SEC (300) — 새로 짓지 «않고» /health 것을 씁니다
+```
+🔴 **`unreported` 가 필요한 이유가 실측입니다:**
+```
+_mark_run(started=True) 이 last_progress_at 을 «시작 시각으로» 찍습니다 -> NULL 이 아닙니다
+그리고 등록된 연산 «여섯» 중 _checkpoint 훅을 받는 것은 «넷»입니다
+   받는 넷   ledger_backfill · chain_replay · withdraw · enrichment_backfill
+   못 받는 둘 ledger_rescope · enrichment_confirm  <- 도는 동안 «한 번도» 보고 안 합니다
+   🔴 그 둘이 바로 cancellable:false 인 둘입니다 (배치 경계가 «없어서» 양쪽이 같이 없습니다)
+=> 그 둘의 침묵을 「정지」라 부르면 «없는 결함»을 세우는 것입니다
+```
+
+## ⓪② 대기 행이 «이유»를 들고 나옵니다
+```
+/admin/chain/queue  waiting_by_owner[].blocked_by = in_flight(db)
+   run_id · op · moving · no_progress_seconds · processed/total · cancel_reaches · recovery
+⚠️ 소급이 «없으면» blocked_by = null 입니다. 그건 「막힌 게 없다」가 아니라 「이유를 모른다」입니다 —
+   스케줄러 소유 행은 소급 말고 SCHEDULER_RUN_NOW 도 있습니다
+```
+
+## ⓪③ 「취소가 안 닿는다」를 «값»으로
+```
+never          cancellable:false — 배치 경계가 «없습니다». 버튼을 내면 아무것도 안 하는 버튼입니다
+unknown        stalled/unreported — 협조적 취소는 배치 «경계»에서만 듣습니다.
+               배치 «안»에서 멈췄으면 그 자리에 영원히 못 갑니다
+at_next_batch  progressing 일 때만
+recovery       「취소로 못 멈춥니다. 로그 먼저 건지고 재기동, at-most-once 라 다시 실행」
+```
+
+## ② 소유 워커 분리 — 집을 «하나»로
+```
+event_constants.py   SCHEDULER_OWNED_EVENT_TYPES = {SCHEDULER_RUN_NOW, RETROACTIVE_RUN}
+                     CHAIN_OWNED_EVENT_TYPES     = {CREATE, EDIT, DELETE}
+                     outbox_owner(event_type) -> scheduler | chain | «unknown»
+run_auto_update.py   :774 의 리터럴 "SCHEDULER_RUN_NOW" -> 상수로. 사본을 없앴습니다
+main.py              waiting_by_owner[] (깊이·나이를 소유자별로) · 그룹마다 owners[]
+비용                 같은 부분 인덱스 idx_outbox_unprocessed 를 «그대로» 탑니다
+                     (EXPLAIN: count 6.03 / group by 6.05 — ⚠️ 이 박스는 대기 0이라
+                      추정이 1행입니다. 증거는 «같은 인덱스를 탄다»는 계획 모양입니다)
+```
+⛔ **「모르면 chain」 안 했습니다.** 모르는 타입은 `unknown` 이고, 시험이 그것을 핀합니다.
+🔴 **`SYSTEM_RELOAD` 을 «일부러» unknown 으로 뒀습니다** — 체인 워커가 «최신 하나»만 찍으므로
+   운명이 «타입»이 아니라 «어느 행이냐»에 달렸습니다. 타입별 소유자로는 말할 수 없습니다.
+   ⚠️ 그리고 코드에 그 행을 찍을 «두 경로»가 보입니다 (:1389 최신 전용 · :1033 그룹 커밋).
+   어느 쪽이 실제로 도는지는 «안 정했습니다» — 그건 다음 라운드(전수 감사) 몫입니다.
+
+## ⚠️ 「재지만 고치지는 말라」 하신 것 — 재료가 «등록부에 이미» 있습니다
+배치 «안»에서 얼마나 머무는지는 각 연산이 «선언»하고 있습니다 (`commit_granularity`):
+```
+chain_replay          1000건 쓰기 청크마다 커밋 (+ pace yield)      cancellable ✅
+withdraw              행 청크마다 명시적 커밋                       cancellable ✅
+ledger_backfill       페이지마다 원자와 커서를 한 커밋에            cancellable ✅
+enrichment_backfill   소스 청크마다 커밋                            cancellable ✅
+ledger_rescope        회수 한 커밋 + 재생성 한 커밋 «둘뿐»          cancellable ❌
+enrichment_confirm    쓰기 청크마다 커밋                            cancellable ❌
+```
+🔴 그래서 「배치 안 확인점 추가」의 크기는 **연산 둘**입니다 — `ledger_rescope` 는 커밋이
+«둘»뿐이라 경계를 만들려면 연산 자체를 쪼개야 하고, `enrichment_confirm` 은 청크마다 커밋하니
+훅을 «넣을 자리는» 있습니다. ⚠️ 실제 «시간»은 안 쟀습니다 — 이 박스에서 재현이 안 됩니다.
+그리고 지시대로 **넣지 않았습니다.**
+
+## 시험 — 건드린 것만
+```
+tests/test_outbox_owner_and_stall.py  «신규 13»
+변이 6 «전부 죽음»  unknown->chain · scheduler->chain · unreported->stalled
+                  stalled->progressing · never->at_next_batch · cancel_requested 제외
+🔴 그중 M6 은 «처음에 살아남았습니다» — 제 스텁이 filter() 를 무시해서 그 단언이 판별을
+   못 했습니다. IN_FLIGHT_STATES 를 이름 붙이고 «그 집합»을 직접 단언해 고쳤습니다
+전체   test_outbox_* · test_retroactive_admin · test_auto_update_toggle · test_admin_auth
+       «261 passed»
+```
+
+## 안 한 것
+```
+⛔ 게이트를 «시한으로 푸는» 것 — 안 했습니다. 시험이 막습니다
+⛔ 스레드를 죽이는 것 · 취소/재시도/순서 조작 — 안 했습니다
+⛔ 체인 워커 «안 건드렸습니다»
+⛔ ①(수집기 인라인) «안 건드렸습니다» — 잠복으로 강등하신 그대로
+⛔ 보증(at-least/at-most-once) 변경 «0» — 갈래를 만들 일이 없었습니다(스레드 처방은 이미 있었음)
+🔴 재기동은 총괄 몫입니다 — 하시면 /admin/chain/queue 를 엔드포인트로 재겠습니다
+   (이 박스는 대기 0이라 waiting_by_owner 가 «빈 목록»으로 나옵니다. 그게 정상입니다)
+```
