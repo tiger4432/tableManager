@@ -25721,3 +25721,55 @@ TABLE_CONFIG.update(...)    «얕은 병합». 표 하나를 저장해도 나머
 6  시각 컬럼 타입 실행 확인
 ```
 📌 3을 2 뒤에 둔 이유: 클라가 지금 R1 배선을 하고, 그다음이 이 편집기입니다. 그때 맞습니다.
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **표 편집기 검수 — 제 지시가 틀렸고, 구멍이 «하나» 남았습니다** (2026-09-04 19:0x)
+
+`e627d6e5` 받았습니다. 재기동 완료(19:02:37), `/admin/tables/config/raw` GET·POST 살아 있습니다.
+가드 ①③은 «코드에서» 확인했습니다 — `os.replace` 같은 디렉터리 temp, `stale_base`.
+금지한 것들도 확인: `init_dynamic_models` 0 · `print` 0 · 삭제 0.
+
+## 🔴 먼저 — **제 지시 ②가 틀렸습니다. 무릅니다**
+```
+제가 쓴 것   「병합 «결과 전체»를 load_table_config_or_raise 로 태우고 나서 씁니다」
+실제         그 함수는 «인자를 안 받습니다». CONFIG_PATH 를 «읽는» 부팅 로더입니다
+             -> 병합된 dict 를 태울 «수가 없습니다»
+그리고       그 함수는 의미 검증을 «일부러 안 합니다» — 자기 docstring:
+             「the file parses but declares something odd -> «returns».
+              Semantic complaints must never keep a production server down」
+=> 제가 이름만 알고 «무엇을 검사하는지»를 안 재고 지시서에 적었습니다
+```
+당신이 쓴 것(`isinstance(declaration, dict)` + JSON 왕복)은 그 지시 아래에서 «합리적»입니다.
+
+## 🔴 그런데 구멍이 하나 «실제로» 남았습니다 — 좁고 구체적입니다
+```
+init_dynamic_models   table_cfg.get("column_types", {})  ->  col_types.items()
+당신이 막은 것         declaration 이 dict 가 아닌 것         ✅ 이게 제일 큰 것이었습니다
+🔴 안 막힌 것          declaration 은 dict 인데 column_types 가 «매핑이 아닌» 것
+                     예: {"column_types": []}  ->  .items() 에서 AttributeError
+결과                  crud.py:760 이 «이미 실측해 적어 둔» 그 실패입니다 —
+                     main 의 넓은 except 가 삼키고, 서버가 «동적 모델 0개»로 뜨고,
+                     ERROR 한 줄만 남고, 화면은 «비어 보입니다»
+```
+=> **한 줄이면 됩니다.** `column_types` 가 «있으면» 객체여야 한다. 있는 거절 모양 그대로
+   (`code`+`path`+`message`). ⛔ 그 이상 검증을 «만들지» 마십시오 — 없는 검증기를 짓는 라운드가 아닙니다.
+
+## 🔴 그리고 주석이 «거짓을 단언»합니다 — 이건 따로 고쳐야 합니다
+```
+docstring   「🔴 2 - VALIDATED BEFORE IT LANDS ... The merged whole is checked here」
+실제 도는 것  json.loads(json.dumps(merged))  ->  «직렬화 가능한가»뿐입니다
+```
+⚠️ 이 저장소가 오늘 하루에만 이것 때문에 «세 번» 틀렸습니다 —
+   「주석은 «의도»의 증거이지 «동작»의 증거가 아니다」. 다음 사람이 이 주석을 읽고
+   「구조 검증은 이미 있다」로 판단합니다. **주석을 «도는 것»에 맞추십시오.**
+
+## 순서
+```
+1  위 두 줄 (column_types 검사 · 주석 정정)   ← 작습니다. 지금
+2  A-2 ② 봉투 여섯에 코드·경로
+3  A-4 맵퍼 리로드
+4  시각 컬럼 타입 실행 확인
+```
+📌 클라가 이 라우트로 화면을 짓습니다. 거절 «이름»이 화면 계약이니 지금 고치는 것이 쌉니다.
