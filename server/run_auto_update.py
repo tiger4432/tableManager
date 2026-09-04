@@ -808,6 +808,96 @@ class MultiDiscoveryScheduler:
         self._retroactive_thread.start()
         return True
 
+    def handle_retroactive_trigger(self, db):
+        """The RETROACTIVE_RUN half of one tick. Extracted so it can be DRIVEN.
+
+        🔴 IT WAS INLINE IN A 200-LINE `while True`, WHICH IS WHY IT WAS NEVER
+        TESTED - and a test that re-implemented the block instead would have
+        stayed green while the block itself was reverted. Production stopped on
+        this path on 2026-09-04, and a defect that stops production is exactly
+        the one a test has to be able to reach.
+
+        Nothing else changed: the same objects, the same order, the same
+        guarantee.
+        """
+        from database.models import DatabaseOutbox
+
+        # 1-3. RETROACTIVE_RUN 감시 (소급 적용 실행 — server/retroactive.py)
+        #   The apply half of GET /admin/retroactive/{op}/count. Same outbox
+        #   mechanism as SCHEDULER_RUN_NOW; unlike it, the work is handed to a
+        #   thread so this tick keeps beating (see start_retroactive_run).
+        if not self.retroactive_busy():
+            retro_trigger = db.query(DatabaseOutbox).filter(
+                DatabaseOutbox.event_type == event_constants.EVENT_RETROACTIVE_RUN,
+                DatabaseOutbox.processed_chain == False
+            ).order_by(DatabaseOutbox.id.asc()).first()
+
+            if retro_trigger:
+                # Bound before the `try` so the failure path can name the run
+                # even when it is the parse itself that raised - which is the
+                # one way this row is left unmarked forever.
+                retro_payload = None
+                try:
+                    retro_payload = (
+                        json.loads(retro_trigger.payload)
+                        if isinstance(retro_trigger.payload, str)
+                        else retro_trigger.payload)
+                    # Marked BEFORE the run starts, not after: the run is on
+                    # another thread and can outlive many ticks, so waiting
+                    # for it would re-read the same row every tick and start
+                    # the job again. At-most-once is the right guarantee here
+                    # - a retroactive run that silently repeats is worse than
+                    # one an operator has to press twice.
+                    if self.start_retroactive_run(retro_payload):
+                        retro_trigger.processed_chain = True
+                        db.commit()
+                except Exception as retro_err:
+                    # 🔴 A REQUEST THAT THREW IS FINISHED, NOT PENDING, AND
+                    # LEAVING IT UNMARKED STOPPED PRODUCTION. Measured
+                    # 2026-09-04: one row whose payload could not be handled
+                    # was re-picked at every tick - `order_by(id.asc())` puts
+                    # it first forever - so every LATER retroactive request
+                    # behind it was never reached, a restart did not clear it
+                    # (the fault is in the row, not this process), and nothing
+                    # raised anywhere. The board's C-4 named this shape.
+                    #
+                    # 🔴 MARKING IT MATCHES THE GUARANTEE THIS PATH ALREADY
+                    # CHOSE. Ten lines up: at-most-once, because "a run that
+                    # silently repeats is worse than one an operator has to
+                    # press twice". Retrying forever a request that cannot
+                    # even be parsed is the opposite of that decision.
+                    #
+                    # ⛔ NOT skipped to the next row either - that leaves the
+                    # row waiting for ever and the queue counting one that
+                    # nobody will ever take. ⛔ And retry_count is NOT raised:
+                    # a payload that will not parse does not parse next time.
+                    #
+                    # ⚠️ The REASON must survive: the row, the run and the op
+                    # are named. The payload body is not logged - it is
+                    # operational data.
+                    logger.error(
+                        "Failed to handle RETROACTIVE_RUN trigger "
+                        "(outbox#%s, run_id=%s, op=%s); marking it FAILED so "
+                        "the requests behind it can run: %s",
+                        getattr(retro_trigger, "id", "?"),
+                        (retro_payload or {}).get("run_id", "?"),
+                        (retro_payload or {}).get("op", "?"),
+                        retro_err)
+                    try:
+                        db.rollback()
+                        retro_trigger.status = "FAILED"
+                        retro_trigger.processed_chain = True
+                        db.commit()
+                    except Exception as mark_err:
+                        # If even this fails the row stays and the block
+                        # remains - but it says so instead of being silent.
+                        logger.error(
+                            "Could not mark the failed RETROACTIVE_RUN "
+                            "(outbox#%s) as finished; the queue is still "
+                            "blocked behind it: %s",
+                            getattr(retro_trigger, "id", "?"), mark_err)
+
+
     def run(self):
         """
         주기적으로 DB의 SYSTEM_RELOAD 및 SCHEDULER_RUN_NOW 아웃박스 신호를 모니터링하며,
@@ -890,52 +980,7 @@ class MultiDiscoveryScheduler:
                         except Exception as trig_err:
                             logger.error(f"Failed to handle SCHEDULER_RUN_NOW trigger: {trig_err}")
 
-                    # 1-3. RETROACTIVE_RUN 감시 (소급 적용 실행 — server/retroactive.py)
-                    #   The apply half of GET /admin/retroactive/{op}/count. Same outbox
-                    #   mechanism as SCHEDULER_RUN_NOW; unlike it, the work is handed to a
-                    #   thread so this tick keeps beating (see start_retroactive_run).
-                    if not self.retroactive_busy():
-                        retro_trigger = db.query(DatabaseOutbox).filter(
-                            DatabaseOutbox.event_type == event_constants.EVENT_RETROACTIVE_RUN,
-                            DatabaseOutbox.processed_chain == False
-                        ).order_by(DatabaseOutbox.id.asc()).first()
-
-                        if retro_trigger:
-                            # Bound before the `try` so the failure path can name the run
-                            # even when it is the parse itself that raised - which is the
-                            # one way this row is left unmarked forever.
-                            retro_payload = None
-                            try:
-                                retro_payload = (
-                                    json.loads(retro_trigger.payload)
-                                    if isinstance(retro_trigger.payload, str)
-                                    else retro_trigger.payload)
-                                # Marked BEFORE the run starts, not after: the run is on
-                                # another thread and can outlive many ticks, so waiting
-                                # for it would re-read the same row every tick and start
-                                # the job again. At-most-once is the right guarantee here
-                                # - a retroactive run that silently repeats is worse than
-                                # one an operator has to press twice.
-                                if self.start_retroactive_run(retro_payload):
-                                    retro_trigger.processed_chain = True
-                                    db.commit()
-                            except Exception as retro_err:
-                                # 🔴 THE ROW AND THE OPERATION, NOT JUST THE EXCEPTION.
-                                # This is the one path on which a RETROACTIVE_RUN row is
-                                # never marked processed, so it is retried at every tick
-                                # forever - and a restart does NOT clear it, because the
-                                # failure is in the row rather than in this process. An
-                                # operator reading only the exception cannot tell WHICH
-                                # request is stuck, and that is what they need in order to
-                                # act (owner's observation, 2026-09-04).
-                                logger.error(
-                                    "Failed to handle RETROACTIVE_RUN trigger "
-                                    "(outbox#%s, run_id=%s, op=%s): %s",
-                                    getattr(retro_trigger, "id", "?"),
-                                    (retro_payload or {}).get("run_id", "?"),
-                                    (retro_payload or {}).get("op", "?"),
-                                    retro_err)
-
+                    self.handle_retroactive_trigger(db)
                     db.close()
                 except Exception as e:
                     logger.warning(f"Database outbox polling failed inside scheduler: {e}")
