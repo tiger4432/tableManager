@@ -201,8 +201,8 @@
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 8px;
-      padding: 2px 2px 12px;
+      gap: 6.8px;
+      padding: 3.4px 3.4px 10.2px;
     }
     .chain-queue-headline-main {
       font-weight: 600;
@@ -211,13 +211,13 @@
     }
     .chain-queue-headline-sub {
       color: var(--text-dim);
-      font-size: 0.8rem;
+      font-size: 13px;
     }
     .chain-queue-truncated {
-      margin: 0 0 10px;
-      padding: 8px 12px;
+      margin: 0 0 10.2px;
+      padding: 6.8px 10.2px;
       border: 1px dashed var(--warning);
-      border-radius: 8px;
+      border-radius: 0;
       color: var(--text-dim);
       font-size: 0.8rem;
     }
@@ -243,46 +243,51 @@
       font-size: 0.85rem;
       font-variant-numeric: tabular-nums;
     }
+    /* 탐색기의 «고르개» 답은 `.oe-field-select` 입니다 — 본문 글꼴 · 14px ·
+       패딩 6px 10px · 최소 높이 36px · 모서리 0. 값을 그대로 옮깁니다. */
     .table-config-picker {
       width: 100%;
       max-width: 320px;
-      margin: 0 0 8px;
-      height: 30px;
-      font-size: 0.85rem;
+      margin: 0 0 6.8px;
+      min-height: 36px;
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 0;
     }
     .table-config-raw {
       display: block;
       width: 100%;
       min-height: 180px;
       resize: vertical;
-      padding: 8px 10px;
+      padding: 10.2px;
       font-family: var(--font-mono);
-      font-size: 0.8rem;
+      font-size: 12px;
       line-height: 1.5;
+      border-radius: 0;
     }
-    .table-config-controls { margin: 8px 0 0; }
+    .table-config-controls { margin: 6.8px 0 0; }
     /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
     .table-config-refusal {
-      margin: 8px 0 0;
-      padding: 8px 12px;
+      margin: 6.8px 0 0;
+      padding: 6.8px 10.2px;
       border: 1px solid var(--warning);
-      border-radius: 8px;
+      border-radius: 0;
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 3.4px;
     }
     .table-config-refusal-code,
     .table-config-refusal-path {
       font-family: var(--font-mono);
-      font-size: 0.75rem;
+      font-size: 11px;
       color: var(--text-dim);
       white-space: normal;
     }
-    .table-config-refusal-why { color: var(--text); font-size: 0.82rem; white-space: normal; }
+    .table-config-refusal-why { color: var(--text); font-size: 13px; white-space: normal; }
     .table-config-saved {
-      margin: 8px 0 0;
+      margin: 6.8px 0 0;
       font-family: var(--font-mono);
-      font-size: 0.75rem;
+      font-size: 11px;
       color: var(--text-dim);
       white-space: normal;
     }
@@ -327,15 +332,15 @@
     }
     .chain-queue-owner {
       color: var(--text);
-      font-size: 0.85rem;
+      font-size: 13px;
       font-variant-numeric: tabular-nums;
     }
     /* `blocked_by` — 서버가 준 값만 적습니다. 문장은 서버의 `recovery` 입니다. */
     .chain-queue-blocked {
-      margin: 0 0 10px;
-      padding: 8px 12px;
+      margin: 0 0 10.2px;
+      padding: 6.8px 10.2px;
       border: 1px solid var(--warning);
-      border-radius: 8px;
+      border-radius: 0;
       display: flex;
       flex-direction: column;
       gap: 3px;
@@ -343,19 +348,19 @@
     .chain-queue-blocked-head { font-weight: 600; color: var(--text); }
     .chain-queue-blocked-fact {
       color: var(--text-dim);
-      font-size: 0.8rem;
+      font-size: 12px;
       font-family: var(--font-mono);
       white-space: normal;
     }
     .chain-queue-blocked-recovery {
       color: var(--text);
-      font-size: 0.8rem;
+      font-size: 13px;
       line-height: 1.5;
       white-space: normal;
     }
     .chain-queue-row-owners {
       color: var(--text-dim);
-      font-size: 0.72rem;
+      font-size: 11px;
       margin-top: 2px;
     }
     .chain-queue-age {
@@ -363,10 +368,10 @@
       white-space: nowrap;
     }
     .chain-queue-notmeasured {
-      margin-top: 10px;
-      padding: 10px 14px;
+      margin-top: 10.2px;
+      padding: 10.2px 13.6px;
       border: 1px dashed var(--border);
-      border-radius: 10px;
+      border-radius: 0;
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -705,6 +710,11 @@
           화면 위에 남는지는 토큰이 있어야 보이고, 그건 소유자만 칩니다 ― 안 재음. */
     .section-body {
       overflow-x: auto;
+      /* 🔴 절 «본문»의 글꼴. 탐색기의 뿌리가 `--oe-font-body` 를 자기 안 전부에
+         물려주는 것과 «같은 자리»입니다. 이것 하나로 목록(대기열)과 폼(표 등록)의
+         컨테이너가 따라옵니다 — 그 둘이 통일에서 빠져 있던 이유가 «자기 글꼴을 안
+         정해서 body(Outfit) 를 상속»받았기 때문입니다. */
+      font-family: var(--oe-font-body);
     }
     .section-header:hover .section-chevron { color: var(--accent); }
     /* 🔴 절 안의 «유일한» 알약이자 «유일한» 700 이었습니다 — 두 축을 혼자 어겼습니다.
