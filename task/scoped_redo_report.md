@@ -3690,3 +3690,107 @@ tests/test_outbox_owner_and_stall.py  «신규 13»
 🔴 재기동은 총괄 몫입니다 — 하시면 /admin/chain/queue 를 엔드포인트로 재겠습니다
    (이 박스는 대기 0이라 waiting_by_owner 가 «빈 목록»으로 나옵니다. 그게 정상입니다)
 ```
+
+
+---
+
+# [구현자 -> 총괄] 아웃박스 전수 감사 — **표. 코드 0줄.** 그리고 총괄 지도 «두 칸»이 틀렸습니다
+
+⚠️ 앞의 ⓪②가 착지(c0dea994)해서 이걸 열었습니다. 지시대로 **고치지 않았습니다.**
+
+## 게이트 ① — 리터럴 grep 이 아니라 «AST» 로 전수했습니다
+```
+훑은 것   DatabaseOutbox(...) «생성» 전부 + stage_event(...) 호출 전부 (ast.walk)
+          -> 생성 지점 «10». 리터럴 grep 은 event_type=변수 · 상수참조를 못 봅니다
+          실제로 10 중 «5»가 리터럴이 아니었습니다 (변수 3 · 상수참조 2)
+제외      tests/ · scripts/ · migrations/  (운영 경로 아님 — TEST 타입이 여기서 나옵니다)
+교차확인   이 박스 DISTINCT = CREATE · EDIT · RETROACTIVE_RUN «셋»뿐
+          ⚠️ 제 씨앗입니다. 코드가 쓰는 «일곱»의 부분집합이고, 코드에 없는 타입은 «0» 이었습니다
+```
+
+## 표 — `event_type | 쓰는 자리 | 완료를 찍는 자리 | 소비자가 죽으면 | 그때 말하는 자리`
+```
+CREATE   database.py:155 _emit → stage_event:263 / stage_collapsed_event:239
+         찍음  chain :1033 (그룹 성공) · :1099/:1105 (FAILED 격리도 «찍습니다»)
+         죽으면 false 로 쌓임
+         말함  /health outbox 나이(300s degraded · 900s unhealthy) + queue owner=chain
+EDIT     database.py:173 _emit            나머지 CREATE 와 동일
+DELETE   database.py:182 stage_event (절대 안 접힘)
+         찍음  chain :1033 — 🔴 다만 «no-op 으로». valid_events 가 CREATE/EDIT «만»이라
+               (:432) DELETE 는 매퍼를 «한 번도» 안 태웁니다. 소비자 «0» 인 이벤트입니다
+SYSTEM_RELOAD   main.py:5946 · system_reload.py:132
+         찍음  🔴 «둘». chain :1390 (최신 하나) «그리고» chain :1033 (그룹 no-op 으로 전부)
+         읽음  scheduler :756 · watcher 는 «워터마크»로 읽고 안 찍습니다 (옳습니다)
+SCHEDULER_RUN_NOW   main.py:5586
+         찍음  scheduler :826 — 인라인 실행 «뒤». 🔴 그 질의에 ORDER BY 가 «없습니다»(:811)
+               그리고 틱당 «하나»만 처리합니다
+         죽으면 🔴 «아무도» 안 찍습니다 — 체인은 CONTROL_EVENT_TYPES 라 «건너뜁니다»(:1441)
+         말함  queue owner=scheduler (어제까지 «없었습니다». 이번 라운드에 생겼습니다)
+RETROACTIVE_RUN     retroactive.py:1144 (RUN_EVENT_TYPE)
+         찍음  scheduler :854 — «시작에 성공했을 때만» (at-most-once, 주석이 그 이유를 적음)
+         죽으면 게이트가 안 열리면 «영구 대기» = 이번 사건
+         말함  blocked_by (이번 라운드에 생겼습니다)
+BROADCAST_RECOVERY  internal_event_client.py:146 — 태어날 때 processed_chain=True. 대기열에 «안 뜹니다»
+(파생)   outbox_expand.py:273 — 접힌 부모를 펼친 «자식». 부모의 event_type 을 그대로 씁니다
+```
+
+## 🔴 총괄 지도의 «두 칸»을 정정합니다 — 둘 다 코드로 확인했습니다
+```
+① 「SYSTEM_RELOAD 은 최신 하나만 찍혀 옛 행은 «영원히» false」
+   -> 틀렸습니다. 체인의 «보통 경로»가 같이 찍습니다:
+      SYSTEM_RELOAD 는 CONTROL_EVENT_TYPES 에 «없어서» :1441 을 통과합니다
+      payload 에 transaction_id 가 «없어» single_<uuid> 로 «자기 그룹»이 되고
+      process_chain_transaction_group 이 `if not valid_events: return True` (:435-436)
+      -> 성공으로 읽혀 :1033 이 processed_chain=True · status=SUCCESS 를 찍습니다
+   => 「청소 코드 없음」이 아니라 «no-op 으로 청소되고 있습니다»
+
+② 「③ 아무도 안 찍음 = 옛 SYSTEM_RELOAD」
+   -> 그 부류는 실재하지만 «주어가 다릅니다». 영구 false 가 될 수 있는 것은
+      «컨트롤 타입»입니다 — 체인이 :1441 에서 건너뛰므로 «스케줄러만» 찍을 수 있고,
+      스케줄러가 죽으면 그 행들은 아무도 안 건드립니다
+      (SCHEDULER_RUN_NOW · RETROACTIVE_RUN. BROADCAST_RECOVERY 는 태어날 때 True)
+```
+
+## 축 2 — status: 🔴 **`processed_chain=True` 인데 `status='PENDING'` 인 행이 «정상»으로 생깁니다**
+```
+전이  기본 PENDING -> SUCCESS(:1034) / FAILED(:1098,:1104) / RETRYING(:1113)
+      main.py:3627 이 FAILED -> PENDING 으로 되돌림 (재시도 라우트)
+🔴 컨트롤 타입은 체인이 건너뛰므로 status 를 «아무도» 안 옮깁니다.
+   스케줄러는 processed_chain «만» 찍습니다 (:826 · :854)
+   => 그 행들은 처리가 끝나도 status 가 PENDING 인 채로 남습니다
+   => idx_outbox_pending(WHERE status='PENDING') 이 그 행들을 계속 답니다
+   => /admin/outbox/failed 는 FAILED 만 보므로 «안 보입니다»
+⚠️ 해로운지는 «안 정했습니다» — status 를 읽고 판단하는 소비자를 전수로 세지 않았습니다.
+   그건 별건이고, 지시가 「표만」이라 여기서 멈춥니다
+```
+
+## 축 3 — broadcast_at
+```
+스탬프  :1038 (통지할 것이 «없는» 그룹은 즉시) · _dispatch_broadcasts (성공 통지 후)
+스윕    sweep_undelivered_broadcasts(:1144) — processed_chain=True AND status='SUCCESS'
+        AND broadcast_at IS NULL 을 모아 재발사. 부분 인덱스 idx_outbox_undelivered + LIMIT 500
+        + grace(created_at < now()-5s)
+호출    체인 워커 루프 «안», SWEEP_INTERVAL 마다 (:1396)
+죽으면  🔴 스윕은 체인 워커의 «일부»라 워커가 죽으면 같이 죽습니다 -> 통지가 영원히 안 갑니다
+말함    워커가 «죽으면» /health 가 말합니다 (비트).
+        🔴 그러나 워커는 «살아 있는데 스윕만» 안 도는 경우를 말하는 자리가 «없습니다» —
+           스윕은 자기 실행을 어디에도 안 남깁니다(로그 외). 못 정한 것이 아니라 «없습니다»
+```
+
+## 📌 표를 보고 남는 것 — 처방은 총괄 몫이라 «적기만» 합니다
+```
+㉠ 컨트롤 타입의 status 가 영원히 PENDING           (축 2)
+㉡ 스케줄러가 죽으면 컨트롤 행은 «아무도» 안 찍음    (축 1) — 이번 라운드의 owner 분리가
+   그걸 «보이게» 만들었지, 찍는 사람을 만든 것은 아닙니다
+㉢ SCHEDULER_RUN_NOW 질의에 ORDER BY 없음(:811)     — 대표를 임의로 고릅니다
+㉣ DELETE 는 매퍼 소비자가 «0»                      (:432) — 의도인지 모릅니다
+㉤ 스윕이 «안 도는» 것을 말하는 자리가 없음          (축 3)
+```
+
+## 안 한 것
+```
+⛔ 고치지 않았습니다. 코드 «0줄». 색인·라우트·정리 스크립트 «0»
+⛔ 옛 SYSTEM_RELOAD 안 지웠습니다 (그리고 지울 것도 아니었습니다 — ①의 정정)
+⛔ 이 박스 행 수로 결론 내지 않았습니다. 교차확인으로만 썼고 그렇게 적었습니다
+🔴 못 정한 것: status 소비자 전수 · DELETE 무소비가 의도인지 — 둘 다 «안 정했다»고 적었습니다
+```
