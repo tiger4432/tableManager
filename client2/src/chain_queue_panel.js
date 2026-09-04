@@ -181,6 +181,15 @@ export function queueView(payload, opts = {}) {
   //    `loop_in_this_process` 가 가릅니다 — 루프가 «다른 프로세스»면 이 API 의 목록은
   //    영원히 비어 있고, 그것을 그냥 그리면 「도는 게 없다」가 됩니다.
   //    ⚠️ 그 값이 «없으면» 0 도 아니고 「없다」도 아닙니다 — «모름»입니다.
+  // 🔴 「그래서 어느 «파일»인가」. 화면이 그 이름을 내는 자리가 «0» 이었고, 줄에 붙은
+  //    태그는 «이미 맞는 파일을 연 사람»에게만 보입니다 — 열 파일을 고르는 데는 못 씁니다.
+  //    서버가 로거에서 «읽어» 이름으로 냅니다 (경로가 아닙니다 — 디스크 구조는 화면 것이 아닙니다).
+  //    ⚠️ 세 상태입니다: 이름 · null(«모름») · 키 없음(옛 서버 -> «안 그립니다»).
+  //    ⛔ 부품(countWithAbsence)의 자리가 «아닙니다» — 그 부품은 「수 + 그 0 이 무엇인지」이고
+  //       이것은 셀 것이 없는 «이름»입니다. 세 상태 규율만 같습니다.
+  const logName = !('log_filename' in payload) ? ''
+    : (typeof payload.log_filename === 'string' && payload.log_filename
+      ? payload.log_filename : '모름');
   const running = Array.isArray(payload.running) ? payload.running.length : null;
   const sees = payload.loop_in_this_process;
   const runningCell = countWithAbsence(
@@ -269,6 +278,7 @@ export function queueView(payload, opts = {}) {
     headline: Object.freeze(headline),
     failed,
     running: `도는 체인 ${runningCell.text}`,
+    logName: logName ? `로그 ${logName}` : '',
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
@@ -351,6 +361,8 @@ export class ChainQueuePanel {
     // 🔴 「도는 것이 보인다」. 빈 목록이 「없다」로 읽히지 않게, 그 0 이 무엇의 0 인지가
     //    «부품»에서 같이 나옵니다. 문장이 아니라 낱말 하나입니다.
     if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
+    // 🔴 「어느 프로세스인가」는 이 패널이 거절할 때 이미 말합니다. 그 «옆 칸»이 이것입니다.
+    if (view.logName) head.appendChild(this._line('chain-queue-headline-log', view.logName));
     head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
     head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
     this.root.appendChild(head);
