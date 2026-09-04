@@ -799,11 +799,27 @@ INGESTION_NOTE = (
     "원자를 지우거나 재건해도 이 수는 되돌아가지 않습니다."
 )
 
-#: What the cursor row carries into the view. `refusal_reasons` is deliberately NOT here:
-#: its NULL and its `{}` mean different things (schema.py says so at length) and a
-#: catalogue row is the wrong place to teach that difference.
+#: What the cursor row carries into the view.
+#:
+#: 🔴 `refusal_reasons` IS HERE NOW, AND ITS THREE STATES ARE CARRIED SEPARATELY. It was
+#: left out on the grounds that NULL and `{}` mean different things and a catalogue row is
+#: the wrong place to teach that difference - which is true about the difference and wrong
+#: about the conclusion: the answer is to carry THREE states, exactly as the source states
+#: beside them are carried, not to drop the column.
+#:
+#: What it cost while it was out: "how many were refused" reached a screen and "WHY" did
+#: not, so an operator got as far as a number and stopped. The reasons were never lost -
+#: they are written per source in one statement with the aggregate - but the only code
+#: that read them hung off `ledger_trace.coverage`, whose route retired on 2026-08-28 and
+#: took the read with it.
 _CURSOR_FIELDS = ("translator_ver", "molecules_done", "atoms_written",
-                  "atoms_deduped", "molecules_refused", "updated_at")
+                  "atoms_deduped", "molecules_refused", "refusal_reasons",
+                  "updated_at")
+
+#: The three states of a breakdown, as VALUES.
+REFUSALS_NONE = "none"                  # `{}` - the writer owned this row, nothing refused
+REFUSALS_NAMED = "named"                # a breakdown exists
+REFUSALS_UNKNOWABLE = "unknowable"      # NULL - the row predates the column
 
 
 def ingestion_view(db, declared) -> dict:
@@ -854,6 +870,21 @@ def ingestion_view(db, declared) -> dict:
                     value = row.get(field)
                     entry[field] = (value.isoformat() if hasattr(value, "isoformat")
                                     else value)
+                # 🔴 THREE STATES, NOT TWO. Folding "cannot be broken down" into "nothing
+                # was refused" puts `모른다` and `없다` on the same pixel - the defect this
+                # view already avoids for the source states above it.
+                reasons = row.get("refusal_reasons")
+                entry["refusals"] = (
+                    REFUSALS_UNKNOWABLE if reasons is None
+                    else REFUSALS_NAMED if reasons
+                    else REFUSALS_NONE)
+                # How much of the aggregate the breakdown explains. The SIGN carries the
+                # meaning (`ledger_trace._unaccounted` states it): 0 ordinary, >0 refusals
+                # counted before the column existed, <0 a real bookkeeping fault. Imported,
+                # never respelled - two spellings would disagree about a fault.
+                from ledger_trace import _unaccounted
+                entry["refusals_unaccounted"] = _unaccounted(
+                    {"molecules_refused": row.get("molecules_refused")}, reasons)
             rows.append(entry)
     return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable}
 

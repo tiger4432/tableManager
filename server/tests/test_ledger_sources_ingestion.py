@@ -42,10 +42,10 @@ class _Cursor:
                 for source, row in self.rows.items()]
 
 
-def wrote(atoms=10, molecules=5):
+def wrote(atoms=10, molecules=5, refused=0, reasons=None):
     return {"translator_ver": "ledger-v2:abc", "molecules_done": molecules,
-            "atoms_written": atoms, "atoms_deduped": 0, "molecules_refused": 0,
-            "updated_at": None}
+            "atoms_written": atoms, "atoms_deduped": 0, "molecules_refused": refused,
+            "refusal_reasons": reasons, "updated_at": None}
 
 
 def states(view):
@@ -131,3 +131,56 @@ def test_the_added_key_leaves_the_declaration_view_as_it_was():
     for key in ("kinds", "unsupported_kinds", "sources", "config_path", "error"):
         assert key in view, key
     assert "ingestion" in view
+
+
+# ------------------------------------------------------- WHY, not only HOW MANY
+
+def test_a_breakdown_travels_with_the_count():
+    """🔴 THE OTHER HALF OF THE PHASE'S DoD. "How many were refused" reached a screen and
+    "why" did not, so an operator got as far as a number and stopped at "what do I fix".
+
+    The reasons were never lost - they are written per source in ONE statement with the
+    aggregate, so the two cannot drift - but the only code that read them hung off a route
+    that retired on 2026-08-28 and took the read with it.
+    """
+    view = ledger_admin.ingestion_view(
+        _Cursor({"alive": wrote(refused=3, reasons={"missing_occurred_at":
+                                                    {"count": 3, "last_at": None}})}),
+        declared=["alive"])
+    row = view["sources"][0]
+    assert row["refusals"] == "named"
+    assert row["refusal_reasons"]["missing_occurred_at"]["count"] == 3
+    assert row["refusals_unaccounted"] == 0
+
+
+def test_nothing_refused_and_cannot_be_broken_down_are_DIFFERENT_states():
+    """🔴 THREE STATES. `{}` is "the writer owned this row and nothing was refused"; NULL
+    is "this row predates the column, so it CANNOT be broken down". Folding them puts
+    `모른다` and `없다` on the same pixel - the defect this view already avoids for the
+    source states beside them.
+
+    ⛔ And the empty state is not dropped because this box happens to have no NULLs:
+    fifteen rows here are all `{}`, and production is not this box.
+    """
+    view = ledger_admin.ingestion_view(
+        _Cursor({"quiet": wrote(reasons={}), "ancient": wrote(refused=1, reasons=None)}),
+        declared=["quiet", "ancient"])
+    states = {r["source"]: r["refusals"] for r in view["sources"]}
+    assert states == {"quiet": "none", "ancient": "unknowable"}
+
+
+def test_refusals_counted_before_the_column_existed_are_reported_as_such():
+    """⚠️ The SIGN carries the meaning, which is why the number travels rather than a
+    boolean: >0 is deployment history, not a fault. A screen rendering "1 refused" beside
+    an empty list would be reporting a bookkeeping problem that is not there."""
+    view = ledger_admin.ingestion_view(
+        _Cursor({"ancient": wrote(refused=4, reasons=None)}), declared=["ancient"])
+    assert view["sources"][0]["refusals_unaccounted"] == 4
+
+
+def test_the_unaccounted_figure_is_the_shared_one_not_a_local_sum():
+    """Two spellings would disagree about a fault. `ledger_trace._unaccounted` states the
+    sign convention; this view imports it."""
+    from ledger_trace import _unaccounted
+    assert _unaccounted({"molecules_refused": 5},
+                        {"a": {"count": 2}, "b": {"count": 3}}) == 0
