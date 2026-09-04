@@ -1654,21 +1654,6 @@ async def start_chain_ingestion_worker(db_session_factory):
                         mark_processed(latest_reload, "SUCCESS")
                         db.commit()
 
-                # [Reliability F1] 통지 미확정(broadcast_at IS NULL) 교정 행 안전망 스윕(throttle).
-                #   commit됐으나 통지가 유실된 행을 주기적으로 재발사하여 eventual delivery를 보장한다.
-                if now_ts - last_sweep_ts >= SWEEP_INTERVAL:
-                    last_sweep_ts = now_ts
-                    await sweep_undelivered_broadcasts(db, rules, db_session_factory)
-
-                # [C-3] outbox 7일 보관 purge (저빈도·비블로킹·별도 세션)
-                if (purge_task is None or purge_task.done()) and (
-                    last_purge_ts is None or now_ts - last_purge_ts >= OUTBOX_PURGE_INTERVAL
-                ):
-                    last_purge_ts = now_ts
-                    purge_task = asyncio.create_task(
-                        asyncio.to_thread(purge_expired_outbox_sync, db_session_factory)
-                    )
-
                 # Fetch pending outbox records
                 pending_events = db.query(DatabaseOutbox).filter(
                     DatabaseOutbox.processed_chain == False
@@ -1783,6 +1768,41 @@ async def start_chain_ingestion_worker(db_session_factory):
                 logger.error(f"Error in Chain Worker execution loop: {e}")
                 await asyncio.sleep(3)
             finally:
+                # ── 유지보수는 «일 뒤»에 ─────────────────────────────────────────────
+                # 🔴 이 자리로 옮긴 이유: 앞에 있으면 «이번 회차의 일»이 유지보수를 기다린다.
+                # sweep 은 진짜 미전달을 잡으면 표마다 통지를 쏘고, 그 통지는 3초 타임아웃을 가진
+                # POST 다 — 웹서버가 느린 순간(= 통지가 유실되는 순간)에 fetch 가 그 뒤에 줄을 선다.
+                # 이제는 «다음 회차»가 기다린다. 이번 회차의 일은 이미 끝나 있다.
+                #
+                # 🔴 그리고 `finally` 인 이유: 위 본문은 «일이 없으면» continue 로 빠져나간다.
+                # 그 경로가 가장 흔하고, 유지보수가 가장 필요한 자리다. 본문 «끝»에 두면 한가한
+                # 루프에서 스윕이 영영 안 돈다 — 순서를 고치려다 안전망을 끄는 것이 된다.
+                #
+                # ⚠️ sweep 은 `await` 그대로다. 백그라운드로 돌리면 본 루프의 «배치-끝» 발사와
+                # 창이 겹쳐 같은 그룹을 두 번 발사한다 (실측: 1000행 배치 21.4초 vs grace 5초).
+                # 순차라는 것 하나가 지금 그 안전을 만든다.
+                try:
+                    # 시각을 «다시» 읽는다: 위의 now_ts 는 배치 «시작» 시각이라, 긴 배치 뒤에는
+                    # 그만큼 낡아 스로틀이 매 회차 열린다.
+                    maint_ts = time.monotonic()
+                    # [Reliability F1] 통지 미확정(broadcast_at IS NULL) 교정 행 안전망 스윕(throttle).
+                    #   commit됐으나 통지가 유실된 행을 주기적으로 재발사하여 eventual delivery를 보장한다.
+                    if maint_ts - last_sweep_ts >= SWEEP_INTERVAL:
+                        last_sweep_ts = maint_ts
+                        await sweep_undelivered_broadcasts(db, rules, db_session_factory)
+
+                    # [C-3] outbox 7일 보관 purge (저빈도·비블로킹·별도 세션)
+                    if (purge_task is None or purge_task.done()) and (
+                        last_purge_ts is None or maint_ts - last_purge_ts >= OUTBOX_PURGE_INTERVAL
+                    ):
+                        last_purge_ts = maint_ts
+                        purge_task = asyncio.create_task(
+                            asyncio.to_thread(purge_expired_outbox_sync, db_session_factory)
+                        )
+                except Exception as maint_err:                       # noqa: BLE001
+                    # 유지보수의 실패가 «일»의 오류를 덮지 않게 한다. 이 finally 는 예외 경로에서도
+                    # 돌고, 거기서 새 예외를 던지면 원래 예외가 사라진다.
+                    logger.error(f"[Chain Worker] maintenance pass failed: {maint_err}")
                 db.close()
         except Exception as e:
             logger.error(f"Database session setup failed in Chain Worker: {e}")
