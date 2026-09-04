@@ -756,7 +756,7 @@ def _resolve_model_columns(source_cfg: dict, required: tuple):
     return model, _ResolvedColumns(resolved, unresolved)
 
 
-def _finite_point(px, py):
+def finite_point(px, py):
     """Is this ONE (x, y) usable as a coordinate?
 
     🔴 `is not None` IS NOT THAT TEST, AND THAT IS THE DEFECT. A coordinate column is
@@ -935,7 +935,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                         pts = _fetch_points(db, cols, filters)
                         n = 0
                         for (px, py) in pts:
-                            if not _finite_point(px, py):
+                            if not finite_point(px, py):
                                 continue
                             cx, cy = transform(px, py) if transform else (int(px), int(py))
                             if _point_in_rects(cx, cy, clamped_rects):
@@ -972,7 +972,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                 if "x" in cols and "y" in cols:
                     pts = _fetch_points(db, cols, filters, distinct_pairs=True)
                     pts = [(int(px), int(py)) for (px, py) in pts
-                           if _finite_point(px, py)]
+                           if finite_point(px, py)]
                     counts["used"] = len(set(pts))
                     if region_counts is not None:
                         region_counts["used"] = sum(

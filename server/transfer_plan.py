@@ -125,7 +125,7 @@ import paths  # single override point (ASSY_DATA_ROOT)
 # block is the site stating "no such table here" — status `not_declared`, its
 # subtraction inactive (named in `inactive_subtractions`), NOT a degradation.
 # A PRESENT-but-broken declaration keeps every pre-existing demotion.
-from bonding_plan import STATUS_NOT_DECLARED, role_is_declared
+from bonding_plan import STATUS_NOT_DECLARED, finite_point, role_is_declared
 
 CONFIG_PATH = paths.config_path("transfer_plan_config.json")
 
@@ -933,7 +933,12 @@ def load_source_region(db, cfg: dict, ref_table: str, map_key: str,
         return None
     if len(rows) >= MAX_REGION_CELLS:
         logger.warning("[TransferPlan] source_region hit hard cap (%d)", MAX_REGION_CELLS)
-    return {(int(x), int(y)) for (x, y) in rows if x is not None and y is not None}
+    # 🔴 `is not None` DOES NOT SKIP A NaN, and these coordinates come straight from a
+    # `double precision` column. `int(nan)` raises and one bad row takes the whole
+    # count down. Same judgement as the bonding-plan reader, imported rather than
+    # respelled - two spellings of "is this a coordinate" would answer differently
+    # the day one of them is corrected.
+    return {(int(x), int(y)) for (x, y) in rows if finite_point(x, y)}
 
 
 def _region_block(total_pts, fail_sets: dict, used_set: set, region: set) -> dict:
@@ -1419,7 +1424,7 @@ def _fetch_pairs(db, cols, filters, distinct=False, cap=MAX_FAIL_POINTS, tag="")
     truncated = len(pts) >= cap
     if truncated:
         logger.warning("[TransferPlan] %s point fetch hit hard cap (%d) — counts truncated", tag, cap)
-    return [(int(x), int(y)) for (x, y) in pts if x is not None and y is not None], truncated
+    return [(int(x), int(y)) for (x, y) in pts if finite_point(x, y)], truncated
 
 
 def _origin_map_id(source_cfg, origin_lot, origin_slot, binding=None) -> str:

@@ -600,6 +600,59 @@ def test_tape_projection_align_negative_control(tp_env, client):
     assert body["sources"]["eds_fail"] == "connected"
 
 
+class _RowsWithANaN:
+    """A db whose coordinate query answers with one bad row among good ones.
+
+    Injected HERE, at the database, because that is where a NaN actually comes from - a
+    `double precision` column. `crud.cast_value_by_type` refuses nan/inf on the ordinary
+    write path, so such a row can only be written by something that skipped it, and this
+    repository has those: seed scripts write table rows directly.
+    """
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def query(self, *a, **k):
+        return self
+
+    def filter(self, *a, **k):
+        return self
+
+    def distinct(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
+def test_a_nan_coordinate_is_dropped_by_the_pair_reader():
+    """🔴 `if x is not None` DOES NOT SKIP A NaN, and `int(nan)` raises
+    `cannot convert float NaN to integer` - the error class the owner reported from
+    production. One bad row would take a whole summary down with it.
+
+    ⚠️ Asserted on WHAT SURVIVES, not merely on "it did not raise": a guard that threw
+    everything away would also avoid the exception and would be a different silent defect.
+    """
+    import transfer_plan as tp
+
+    db = _RowsWithANaN([(1, 1), (float("nan"), 2), (3, float("inf")),
+                        (4, 4), (None, 5)])
+    pts, truncated = tp._fetch_pairs(db, {"x": "x", "y": "y"}, [])
+    assert pts == [(1, 1), (4, 4)], pts
+    assert truncated is False
+
+
+# ⚠️ THE SECOND CALL SITE IS NOT TESTED HERE, and that is deliberate rather than an
+# omission: `load_source_region` is dormant - its own docstring records that
+# `plan_store.source_region` is not declared in the live config, so the function returns
+# None before it ever reads a row. It carries the same one-line judgement because the
+# guard would be wrong on the day it is revived, but a test would be asserting on a path
+# nothing can reach, which is how a fixture starts deciding the answer.
+
+
 def test_tape_projection_align_unavailable(tp_env, client):
     """메타는 있는데 phys 규격이 없으면 → 조용히 raw 계산하지 않고 명시 실패 (QA F2 승계).
 
