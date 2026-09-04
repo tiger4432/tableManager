@@ -54,11 +54,34 @@ class _EngineThatCannotAlter:
 class _Inspector:
     """Says the relation exists and lacks exactly the declared column."""
 
+    views = ()
+
     def has_table(self, name):
         return True
 
     def get_columns(self, name):
         return [{"name": "some_source_column"}]
+
+    def get_view_names(self):
+        return list(self.views)
+
+
+class _ViewInspector(_Inspector):
+    """The same relation, but the database holds a VIEW under that name."""
+
+    views = ("probe_relation",)
+
+
+class _EngineThatCountsAlters(_EngineThatCannotAlter):
+    """Records every ALTER attempt, so "did not try" is checkable, not assumed."""
+
+    def __init__(self):
+        super().__init__()
+        self.attempts = 0
+
+    def begin(self):
+        self.attempts += 1
+        return super().begin()
 
 
 @pytest.fixture
@@ -97,3 +120,85 @@ def test_a_failing_repair_does_not_take_the_boot_down(one_unrepairable_table):
     """🔴 The behaviour that must NOT change. It already carried on; the silence was the
     defect, not the survival."""
     models.sync_dynamic_tables_schema(_EngineThatCannotAlter())    # must not raise
+
+
+# --------------------------------------------------- a declared relation that is a VIEW
+
+@pytest.fixture
+def one_declared_view(monkeypatch):
+    monkeypatch.setattr(models, "DYNAMIC_TABLES", {"probe_relation": _Model})
+    monkeypatch.setattr(sqlalchemy, "inspect", lambda target: _ViewInspector())
+    return "probe_relation"
+
+
+def test_a_declared_view_is_named_once_instead_of_failing_per_column(
+        caplog, one_declared_view):
+    """🔴 ONE LINE PER RELATION, NOT ONE PER COLUMN. Measured 2026-09-04: nine declared
+    views produced 28 identical failures per boot, which is 28 chances to read the same
+    fact and no chance to read it as one.
+
+    And the line has to carry WHY - a view has exactly the columns its own query selects,
+    so the declaration's extra ones are not missing, they are unattainable there.
+    """
+    engine = _EngineThatCountsAlters()
+    with caplog.at_level(logging.ERROR, logger="Server"):
+        models.sync_dynamic_tables_schema(engine)
+
+    lines = [r.getMessage() for r in caplog.records if "Schema Sync" in r.getMessage()]
+    assert len(lines) == 1, lines
+    assert "VIEW" in lines[0], lines[0]
+    assert "created_at" in lines[0], "the line must say what could not be added"
+    assert engine.attempts == 0, (
+        "an ALTER was still issued against a view; it can never succeed")
+
+
+def test_a_declared_view_is_NOT_passed_over_in_silence(caplog, one_declared_view):
+    """⛔ Skipping quietly is the defect this whole day was about. The relation is named
+    even though nothing can be done about it here."""
+    with caplog.at_level(logging.ERROR, logger="Server"):
+        models.sync_dynamic_tables_schema(_EngineThatCountsAlters())
+    assert any("probe_relation" in r.getMessage() for r in caplog.records)
+
+
+def test_a_declared_view_is_not_REFUSED_either(one_declared_view):
+    """⛔ "a view may not be declared" is a policy, and policy is the owner's. This
+    function reports and carries on."""
+    models.sync_dynamic_tables_schema(_EngineThatCountsAlters())   # must not raise
+
+
+def test_a_real_table_still_gets_its_ALTER(caplog, one_unrepairable_table):
+    """🔴 NO REGRESSION. The view branch must not swallow the ordinary path: a genuine
+    table with a missing column is still attempted, and its failure still speaks."""
+    engine = _EngineThatCountsAlters()
+    with caplog.at_level(logging.ERROR, logger="Server"):
+        models.sync_dynamic_tables_schema(engine)
+    assert engine.attempts == 1, "the ordinary repair stopped being attempted"
+    assert any("could not add column" in r.getMessage() for r in caplog.records)
+
+
+class _HealthyViewInspector(_ViewInspector):
+    """A declared view whose query DOES select every declared column."""
+
+    def get_columns(self, name):
+        return [{"name": "created_at"}]
+
+
+def test_a_view_that_lacks_nothing_is_said_but_not_cried_about(caplog, monkeypatch):
+    """🔴 FOUND BY COUNTING KINDS INSTEAD OF FAILURES. Nine views were visible because
+    they produced failing ALTERs; a TENTH is a view too, and invisible that way, because
+    its query selects everything the declaration names. Nothing about it is wrong today.
+
+    So it is still SAID - a declared view is worth knowing before its query changes - but
+    not at ERROR. A status line that cries wolf about its own bookkeeping is worse than
+    none, which this repository has already ruled once.
+    """
+    monkeypatch.setattr(models, "DYNAMIC_TABLES", {"probe_relation": _Model})
+    monkeypatch.setattr(sqlalchemy, "inspect", lambda target: _HealthyViewInspector())
+
+    with caplog.at_level(logging.DEBUG, logger="Server"):
+        models.sync_dynamic_tables_schema(_EngineThatCountsAlters())
+
+    said = [r for r in caplog.records if "Schema Sync" in r.getMessage()]
+    assert len(said) == 1, [r.getMessage() for r in said]
+    assert said[0].levelno == logging.INFO, said[0].levelname
+    assert "VIEW" in said[0].getMessage()

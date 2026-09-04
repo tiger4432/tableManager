@@ -999,11 +999,49 @@ def sync_dynamic_tables_schema(engine):
     
     inspector = inspect(engine)
     dialect = engine.dialect
-    
+
+    # 🔴 A DECLARED RELATION MAY BE A VIEW, AND `has_table` SAYS TRUE FOR ONE. Measured
+    # 2026-09-04: nine declared "tables" were views, so this function issued 28 ALTERs per
+    # boot that CANNOT succeed - ADD COLUMN on a view is `WrongObjectType`, permanently -
+    # and said so 28 times to a print. A view is not broken and not missing: it has
+    # exactly the columns its own query selects, which is why the declaration's extra ones
+    # are absent.
+    #
+    # ⛔ NOT SKIPPED QUIETLY. Silence is the defect this repository spent the day removing;
+    # the relation is named ONCE, with what was not added, and the loop moves on.
+    # ⛔ AND NOT REFUSED EITHER - whether a view may be declared as a table is a policy
+    # question, and policy is not this function's to invent.
+    view_names = set()
+    try:
+        view_names = {v.lower() for v in inspector.get_view_names()}
+    except Exception as err:                                     # pragma: no cover
+        # A dialect that cannot list views behaves exactly as before rather than
+        # pretending nothing is a view.
+        logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", err)
+
     for table_name, model_class in DYNAMIC_TABLES.items():
         if not inspector.has_table(table_name):
             continue
-            
+
+        if table_name.lower() in view_names:
+            db_cols = {c["name"].lower() for c in inspector.get_columns(table_name)}
+            absent = [c.name for c in model_class.__table__.columns
+                      if c.name.lower() not in db_cols]
+            # ⚠️ ERROR only when something IS unattainable. Measured 2026-09-04: one of
+            # the ten declared views selects every column the declaration names, so
+            # nothing about it is wrong today - and a status line that cries wolf about
+            # its own bookkeeping is worse than none (the same ruling the translator
+            # cursor's breakdown carries). It is still SAID, at INFO, because a declared
+            # view is a fact worth knowing before its query changes.
+            logger.log(
+                logging.ERROR if absent else logging.INFO,
+                "[Schema Sync] '%s' is declared as a table but the database holds a VIEW; "
+                "a view has only the columns its own query selects, so %d declared "
+                "column(s) cannot be added here%s",
+                table_name, len(absent),
+                (": " + ", ".join(absent)) if absent else "")
+            continue
+
         db_cols = {c["name"].lower() for c in inspector.get_columns(table_name)}
         table_obj = model_class.__table__
         
