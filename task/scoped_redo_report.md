@@ -3435,3 +3435,87 @@ WHERE object_kind='entity_ref' AND object_payload->>'type'='Lot'  «14,777»  Bi
 ⛔ EXPLAIN «만» 썼습니다. ANALYZE 없음 -> 질의를 실행하지 않았습니다 (남의 DB 대기 안 만듦)
 ⛔ 선언 파일 안 열었습니다 — 소스 목록은 «도는 서버»의 /api/ledger/declaration 으로 받았습니다
 ```
+
+
+---
+
+# [구현자 -> 총괄] 소스 축 착지 — 네 상태 «값»으로, 커서에서 (4898c6ba)
+
+## 붙인 자리 — 라우트 «안 팠습니다»
+```
+GET /admin/ledger/sources   기존 응답에 «키 하나» 추가: ingestion
+  { note, sources: [...], unavailable }
+  라우트는 db 세션을 하나 받습니다 (옆 /admin/ledger/relations 와 같은 모양)
+```
+🔴 **선언 문서 «안»에 넣지 않고 «옆»에 붙였습니다.** 이유 둘, 둘 다 구조적입니다:
+```
+① orphan 은 «선언에 없는» 소스입니다 -> 걸어 둘 선언 항목이 «없습니다»
+② 응답의 `sources` 는 폼이 «편집해서 되돌려 보내는» 그 문서입니다
+   거기에 선언 아닌 필드를 심으면 저장 때 같이 갈 수 있습니다
+```
+
+## 게이트 ① — 비용 1.13, 제가 잰 그 수 그대로
+```
+SELECT source, translator_ver, molecules_done, atoms_written, atoms_deduped,
+       molecules_refused, updated_at FROM ledger_translator_cursor
+-> Seq Scan on ledger_translator_cursor  (cost=0.00..«1.13» rows=13 width=133)
+```
+원장은 «한 줄도» 안 읽습니다. 시험 하나가 그것을 «질의 문자열»로 단언합니다
+(`ledger_translator_cursor` 포함 · `ledger_events` 불포함) — 안 그러면 이 라우트가
+그럴듯한 수를 내면서 조용히 전수 훑기로 돌아갈 수 있습니다.
+
+## 게이트 ② — 🔴 이 박스에는 «네 중 하나»만 있습니다. 씨앗 안 심었습니다
+```
+ran_and_wrote      «15»   ← 전부 이것입니다
+ran_wrote_nothing    0    이 박스에 «없습니다»
+never_ran            0    선언 15 · 커서 15 · 차집합 0 이라 나올 수가 없습니다
+orphan               0    같은 이유
+```
+지시대로 «만들려고 심지 않았습니다». 대신 셋을 **함수에 직접 먹여서** 고정했습니다 —
+DB 에 상태를 만드는 대신 커서 행을 인자로 주는 방식이라, 픽스처가 답을 «정하지» 않습니다.
+```
+시험 7 · 변이 5 «전부 죽음»
+   orphan 을 ran_and_wrote 로 접기 · wrote_nothing 을 never_ran 으로 접기
+   읽기 실패인데 행을 내보내기 · note 지우기 · 질의를 ledger_events 로 돌리기
+```
+🔴 그중 «둘»이 이 저장소의 오래된 병 그대로입니다:
+```
+ran_wrote_nothing  «0 이 정답인» 상태 — 수를 «들고» 나옵니다
+never_ran          행이 없는 상태 — 🔴 `atoms_written: 0` 을 «지어내지 않습니다»
+                   (안 그러면 위 둘이 화면에서 같아 보입니다)
+읽기 실패          sources: [] + unavailable «이름». 15개를 never_ran 으로 «안» 내보냅니다
+                   -> DB 오류 하나가 「전부 한 번도 안 돌았다」로 읽히는 것을 막는 자리입니다
+```
+그리고 `note` 가 수와 «같이» 나갑니다 — 「번역기의 장부이지 지금 원장의 수가 아니다.
+지우거나 재건해도 안 되돌아간다」. 시험이 그 문장의 «존재»를 단언합니다.
+
+## 게이트 ③ — 🔴 **폼이 없습니다. 이 라우트의 소비자가 «0» 입니다**
+```
+client2/src            `admin/ledger/sources` 참조 «0»
+client2/*.html         ledger.html «없음» (admin.js:473 이 「이미 없고」라 적어 둠)
+client2/dist           그 문자열을 가진 번들 «0»
+남아 있는 것           agent_workspace/vite_enrich/assets/admin-*.js (오래된 산출물)
+                      client2/src/ledger_console.css (화면 없는 스타일시트)
+```
+그래서 「필드를 더한 것이 기존 소비자를 깨는가」는 **잴 대상이 없습니다.**
+서버 쪽 소비자는 `sources_view()` 호출 «하나»(그 라우트)뿐이고, 기존 다섯 키는 시험이
+이름으로 단언합니다. ⚠️ 다만 이건 「안 깨진다」가 아니라 **「지금 이 수를 볼 화면이 없다」**입니다 —
+착지는 배선이 아니므로 그대로 적습니다. 화면이 필요하면 클라 채널 몫입니다.
+
+## 시험 — 건드린 것만
+```
+tests/test_ledger_sources_ingestion.py   «신규 7»
+tests/test_ledger_admin_setup.py         ledger_admin 을 재는 기존 파일
+tests/test_admin_auth.py · test_config_resolve_routes.py   라우트 표를 훑는 것
+합계 «179 passed»
+```
+
+## 안 한 것
+```
+⛔ 색인 0개 · 새 라우트 0개 · 선언 변경 0
+⛔ predicate · subject_type 축 «안 만들었습니다» (총괄 보류 · 소유자 판정 대기)
+⛔ object 축 «안 만들었습니다» (총괄이 이번 라운드 제외)
+⛔ refusal_reasons 는 안 실었습니다 — NULL 과 {} 가 다른 뜻인 컬럼이라
+   카탈로그 행에서 그 차이를 가르칠 자리가 아닙니다 (schema.py 가 그 이유를 적어 둡니다)
+🔴 재기동은 총괄 몫입니다 — 하시면 엔드포인트로 다시 재겠습니다
+```
