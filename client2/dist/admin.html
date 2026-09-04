@@ -208,6 +208,13 @@
     .chain-queue-headline-sub {
       color: var(--text-dim);
     }
+    /* 실패 수는 «대기 옆»입니다. 값 하나이고 문장이 아닙니다. */
+    .chain-queue-headline-fail {
+      color: var(--danger);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
     .chain-queue-truncated {
       margin: 0 0 10.2px;
       padding: 6.8px 10.2px;
@@ -1294,6 +1301,7 @@
     }
     /* ② 라벨 · 부제 */
     .section-summary,
+    .chain-queue-headline-fail,
     .chain-queue-row-owners,
     .ledger-sources-sub,
     .ledger-sources-reason,
@@ -1511,7 +1519,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DFo6lP8u.js"></script>
+  <script type="module" crossorigin src="/assets/admin-Baz1cEZx.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">

@@ -915,6 +915,10 @@ async function fetchData(options = {}) {
       if (isStale()) return false;
       // 🔴 이것이 «항상» 돌다. 전에는 위의 throw 때문에 여기까지 못 와서, 토큰이 없으면
       //    패널이 «자기 거절 사유를 그릴 기회»를 잃고 절이 통째로 비었다.
+      // 🔴 실패 수를 «같이» 넘깁니다. 새 라우트가 아니라 «바로 위에서 이미 받은» 값입니다 —
+      //    실패한 행은 `processed_chain=true` 라 큐에서 빠지므로, 「대기 0」이 혼자 서면
+      //    「밀린 것 없음」으로 읽힙니다. 못 읽었으면 «안 넘깁니다» (0 으로 넘기지 않습니다).
+      if (ob && typeof ob.total === 'number') queueOpts.failedTotal = ob.total;
       renderChainQueue(queueBody, queueOpts);
       if (queueOpts.unavailable) allRead = false;
       if (ob) { outboxData = ob.data || []; outboxTotal = ob.total || 0; renderOutboxTable(); }
