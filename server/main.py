@@ -3910,12 +3910,28 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
             "failed_at": failed_at,
             "events": event_details
         })
-        
+
+    # ── 「언제부터 실패하고 있나」 ──────────────────────────────────────────────
+    # 🔴 행마다 실린 `failed_at` 은 그 그룹의 «MAX» 라 이 질문에 답할 수 없다. 그룹은
+    # 최신순이고 각 그룹의 시각은 그 그룹이 «마지막»으로 실패한 때이므로, 「1분 전 하나」와
+    # 「나흘째 스물」이 어느 페이지에서도 같은 모양이 된다 (클라 실측 2026-09-04).
+    # 그래서 «집합 전체»의 MIN 을 한 칸으로 낸다 — 페이지를 넘겨도 답이 같아야 한다.
+    #
+    # 질의를 «더 하지 않는다»: 이 라우트는 이미 실패 행 전부를 메모리에 들고 있고(`all_failed`),
+    # 그 위의 min 은 공짜다. 같은 수를 SQL 로 다시 물으면 스캔이 하나 더 늘 뿐이다.
+    #
+    # 🔴 실패가 «없으면» null 이다. 0 도 «지금»도 아니다 — 화면이 「없다」와 「모른다」를
+    # 가를 수 있어야 하고, 그 둘을 한 픽셀로 만드는 것이 오늘 하루 내내 잡던 병이다.
+    stamped = [e.created_at for e in all_failed if e.created_at]
+    # 같은 응답의 다른 시각 칸들과 «같은 모양»(isoformat). 여기서 형식을 새로 만들지 않는다.
+    oldest_failed_at = min(stamped).isoformat() if stamped else None
+
     return {
         "status": "success",
         "total": total,
         "page": page,
         "limit": limit,
+        "oldest_failed_at": oldest_failed_at,
         "data": result_list
     }
 
