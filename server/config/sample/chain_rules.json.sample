@@ -98,7 +98,7 @@
       "enabled": true
     },
     {
-      "__comment": "Usage overlay refresh after a core frame/equation update. The output is its own derived table and replaces exactly one enriched core_wafer map. This is the allowed second hop from the automatic core-frame chain.",
+      "__comment": "DISABLED 2026-09-04 by lead: this rule refuses on every dt_inventory event (trigger_job_column is not declared and dt_inventory's business key is composite), so it has never run -- and because it shares a trigger group with dt_inventory_to_standard_dt_map, its raise ROLLS BACK that rule's writes. Filling the slots is NOT the safe fix: core_usage_map's map key is core_wafer, dt_inventory has no core_wafer, and the mapper emits replace_map with scope={'core_wafer': None} -- a whole-map purge with a null scope. Turning it off changes no working behaviour because nothing worked. | Usage overlay refresh after a core frame/equation update. The output is its own derived table and replaces exactly one enriched core_wafer map. This is the allowed second hop from the automatic core-frame chain.",
       "name": "dt_inventory_to_core_usage_map",
       "trigger_table": "dt_inventory",
       "target_table": "core_usage_map",
@@ -110,7 +110,7 @@
       "allow_chain_trigger": true,
       "allow_map_metadata_upsert": true,
       "allow_replace_map": true,
-      "enabled": true
+      "enabled": false
     },
     {
       "__comment": "Usage overlay revisit after raw ingest or enrichment fills core_wafer. lot/slot-only rows are intentionally a no-op; when enrichment writes core_wafer the same rule rebuilds that wafer's complete usage footprint.",
