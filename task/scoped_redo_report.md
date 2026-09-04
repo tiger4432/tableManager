@@ -4283,3 +4283,75 @@ tests/test_dashboard_table_isolation.py  «신규 5» (전부 라우트를 탑�
 합계 89 passed (dashboard_table_isolation · recorrection_rate · effort_metric)
 🔴 재기동은 총괄 몫입니다 — 하시면 게이트 ①②③을 «엔드포인트»로 다시 재겠습니다
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] ㉮ 소비자 전수 — **「전부 같거나 더 옳아진다」가 «아닙니다». 소유자 판정입니다** (68c97c94)
+
+## 🔴 먼저 — 이 조사가 «제 앞 라운드의 구멍»을 찾았습니다. 그것부터 고쳤습니다
+```
+앞 보고   「㉯ 착지」로 «완료» 보고했습니다
+조사 결과  키를 «만드는» 자리가 둘 더 있었고, 둘 다 아직 is_blank_value 였습니다
+   database/crud.py:2985   apply_row_update_internal 안
+   database/crud.py:4511   set_cell_manual_priority_batch 안
+=> 관문은 거절하는데 조립기는 «만들고» 있었습니다 — 관문 docstring 이 경고하는 바로 그 어긋남
+   (「둘은 THE SAME QUESTION 이어야 한다」)
+✅ 둘 다 is_blank_key_part 로. 각자의 «정책»(폴백이냐 None 이냐)은 그대로 뒀습니다
+⚠️ 둘 다 «직접 시험 못 붙였습니다» — 라이브 세션·동적 모델·선언된 표가 필요한 쓰기 함수 깊숙이
+   있습니다. 소스 «텍스트»를 단언하는 시험을 썼다가 «지웠습니다» — 글자를 재는 것이라서요.
+   시험 파일에 「왜 없는지」를 적었습니다
+```
+
+## 소비자 전수 — 「NaN 이 공백이 되면 무엇이 달라지나」
+```
+✅ 더 옳아짐 (읽기·거절만 바뀜)
+   crud:529    버전 컬럼   NaN 버전 -> 지금은 파싱 시도, 바뀌면 「버전 없음」 거절
+   crud:3306   replace_map 범위   NaN -> 지금은 통과해 필터값이 됨, 바뀌면 «이름 대고 거절»
+   crud:3328   범위 컬럼 선택     NaN -> 지금은 «그것이 선택됨», 바뀌면 건너뜀
+   enrichment_mapper:212  대표값   NaN 이 대표가 되는 일이 없어짐
+   void_sat_format:436    stack_gate   float(nan) 성공 -> 건너뜀
+   map_alignment:6810     단위키 공백 판정 -> 더 많은 단위가 「이름 없음」이 됨 (화면 목록이 바뀜)
+
+🔴 «쓰기»가 달라짐 — 여기가 판정이 필요한 자리입니다
+   ① enrichment_candidates:923   「이 셀이 비었나」로 «채울 대상»을 고릅니다
+      NaN 셀이 지금은 «안 채워집니다». 바뀌면 «덮어씁니다» — 오늘 없던 쓰기가 생깁니다
+   ② chain_replay:375            SKIP_BLANK 이면 그 셀을 «안 씁니다»
+      NaN 셀이 지금은 «써집니다». 바뀌면 «안 써집니다» — 오늘 있던 쓰기가 사라집니다
+   ③ enrichment_candidates:465 · enrichment_config:1199·1231   바인드 «있음/없음»
+      NaN 바인드가 지금은 «있음». 바뀌면 «missing_bind» 로 그 후보가 통째로 거절됩니다
+   ④ crud:848 cast_value_by_type   지금 nan/inf 를 «이름 대고 거절»합니다
+      바뀌면 «조용히 NULL». 시끄러운 거절이 조용한 결측으로 «내려갑니다»
+
+🔴 그리고 «양면 계약»입니다 — Python 만 넓히면 계약이 깨집니다
+   blank_sql_condition / not_blank_sql_condition / blank_to_null 이 SQL 쪽 쌍둥이이고
+   `contracts/blank_predicate` 가 「둘이 «똑같이» 답한다」를 채점합니다
+   소비자: column_filter (그리드의 「빈 칸」 필터) · blank_to_null (쓰기 경로)
+   => SQL 쪽도 같이 넓히면 «그리드의 빈칸 필터»가 NaN 행을 잡기 시작하고,
+      blank_to_null 이 NaN 을 «NULL 로 써 버립니다»
+```
+
+## 결론 — 지시하신 판별식 그대로
+```
+「전부 같거나 더 옳아진다」  ->  ❌ 아닙니다. 쓰기가 달라지는 자리가 «넷»입니다
+「한 곳이라도 쓰기가 달라지면 소유자 판정」  ->  🔴 그래서 올립니다
+```
+소유자께 한 줄로 여쭐 것: **「NaN 을 «빈 칸»으로 볼 것인가」** — 그렇다면 채움(enrichment)이
+NaN 셀을 덮고, 그리드의 「빈 칸」 필터가 NaN 을 잡고, `cast_value_by_type` 의 거절이 사라집니다.
+아니라면 지금처럼 «신원에서만» 결측으로 보고 나머지는 그대로 둡니다.
+
+⚠️ 그리고 저는 «신원에서만» 고친 상태로 두었습니다 — 그게 이번 판정의 범위였습니다.
+
+## 📌 하나 더 — `mapper_sdk.py:206` 도 «신원» 자리인데 아직 `is_blank_value` 입니다
+```
+df_to_updates 가 평문 키의 공백을 그 술어로 봅니다 -> NaN 키가 «통과»합니다
+⛔ 지시대로 이번 라운드에 mapper_sdk «안 건드렸습니다» (mappers/base.py 재수출 조건)
+=> 그 조건이 풀리는 라운드에서 «같이» 가야 합니다. 안 그러면 SDK 로 쓴 맵퍼만 구멍이 남습니다
+```
+
+## 시험
+```
+tests/test_key_part_nan.py  17 (앞 16 + 「술어 둘을 갈라 놓는」 것 유지)
+합계 75 passed · 1 skipped (key_part_nan · blank_predicate_contract · chain_key_gate
+                           · blank_business_key_is_null)
+```
