@@ -4667,3 +4667,88 @@ print -> logger.error(관계 · 컬럼 · 사유)   models.py 에 로거가 «�
    📌 ①「지금 실행 중을 알 다른 재료가 있나」를 먼저 재라 하셨는데,
       2번(맵퍼 실행 로그)이 바로 그 재료가 될 수 있어 «2 를 먼저» 하는 것이 맞아 보입니다
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] 시험 실행 — **ⓑ 입니다. 한 행이 배치 전체를 죽입니다.** 코드 0줄
+
+## ① ⓐ인가 ⓑ인가 — **ⓑ. 「try 가 어디를 감싸나」가 그대로 답입니다**
+```
+config_explorer_service.py:603
+    try:
+        rows_read, preview = backfill.preview_first_batch(engine, setup, source_id)
+    except Exception as exc:                    <- 🔴 «호출 전체»를 하나로 감쌉니다
+        result["refusal"] = self._test_run_refusal(exc)
+        result["status"] = "refused"
+        return result                           <- 🔴 여기서 «끝». 부분 결과가 «없습니다»
+=> molecules · atoms · sentences 는 «성공했을 때만» 채워집니다
+=> 200행 중 «한 행»이 던지면 나머지 199행에 대해 «아무 말도 안 합니다»
+```
+그리고 그 행이 던지는 자리는 «둘», 둘 다 «행 단위»로 던집니다:
+```
+source_preparation.py:768   SourcePreparationError("source_preparation_incomplete",
+                            path, "occurred_at value must be datetime")
+ledger_frame.py:187         LedgerFrameError("invalid_occurred_at",
+                            f"{row_path}.occurred_at", "occurred_at must be a
+                            timezone-aware source world time")
+중간에 «분자 단위로» 잡아 주는 자리 «없음»
+   유일한 except 는 source_preparation.py:327 인데, 그건 «준비기가 던진 것»을
+   이름 붙여 다시 던지는 자리이지 «건너뛰는» 자리가 아닙니다
+```
+🔴 **그래서 소유자 문장(「비었다는데 실제로는 채워져 있음」)이 정확히 ⓑ의 증상입니다.**
+일부가 비었는데 화면은 «선언 전체»가 실패로 보입니다.
+
+## ② 의도인가 — **의도라고 적힌 곳이 «없습니다». 반대로 이 파일은 부분 실패를 싫어합니다**
+```
+preview_first_batch docstring 은 「첫 페이지를 읽는 이유」만 말하고
+   「한 행이 틀리면 전체를 거절한다」는 «어디에도 없습니다»
+같은 파일 _scope_predicate 주석: 「0행으로 답하지 말고 «거절»하라 — 0은 «여기 고칠 것 없음»으로 읽힌다」
+   -> 이 파일의 태도는 「조용히 넘기지 마라」이지 「하나 틀리면 전부 버려라」가 아닙니다
+config_explorer_service:603 의 except 주석도 「모든 예외를 답으로 만들라」는 취지이지
+   「부분 결과를 버리라」는 «판단이 아닙니다» — 부분 결과가 «없어서» 그렇게 된 것입니다
+```
+=> 즉 ⓑ 는 «설계된 정책»이 아니라 «구조의 결과»로 보입니다.
+   그리고 소유자 지적(「어떻게 실무 소스에 모든 행값이 다 채워짐」)과 정면으로 부딪힙니다.
+
+## ③ 거절문이 무엇을 말하나 — **「이 행이」까지는 말하고, 「N 중 M」은 «못 말합니다»**
+```
+말합니다   code = source_preparation_incomplete | invalid_occurred_at
+          path = «행 경로».occurred_at        <- 어느 행인지는 «들어 있습니다»
+          message = occurred_at value must be datetime
+못 말합니다 🔴 몇 행이 그런지 · 나머지 몇 행은 «통과»했는지 · 그 행의 «식별자»가 무엇인지
+          (path 는 프레임 안 위치이지 사람이 소스에서 찾을 «키»가 아닙니다)
+=> 운영자가 「어느 행을 고치면 되나」를 «못 봅니다». 첫 번째로 걸린 하나만 보고 끝납니다
+```
+
+## ④ 200행의 «순서» — 🔴 **소유자 가설(빈 것만 뽑힌다)은 «지지되지 않습니다»**
+```
+_fetch_v2_lineage_rows :1087   SELECT … ORDER BY {page_key, *driver.order_by}
+page_key = driver.cursor_columns[0]     (_page_key 의 docstring 이 그 이유를 적어 뒀습니다)
+PostgreSQL 의 ASC 기본값 = «NULLS LAST»
+=> 정렬 컬럼이 비어 있는 행은 «맨 뒤»로 갑니다. 첫 200행에 «덜» 들어옵니다
+🔴 그런데 «비는 컬럼이 정렬 컬럼이 아닐 수 있습니다» —
+   같은 docstring 이 「page_key 와 occurred_at.column 이 «달랐던» 적이 있다」고 적어 뒀습니다
+   그 둘이 다른 소스에서는 occurred_at 이 빈 행이 «순서와 무관하게» 첫 200행에 섞입니다
+=> 「하필 빈 것만」은 아니고, 「한 행만 섞여도 전체가 죽는다」가 실제 기제입니다
+   ⓑ 가 원인이라 표본이 커질수록 «반드시» 걸립니다 — 200행이면 걸릴 확률이 높습니다
+```
+
+## 처방 후보 — ⛔ 고르지 않았습니다. ①②의 답이 정한다 하셨으므로
+```
+㉠ 행 단위로 세고 «둘 다» 보고    통과 M · 거절 N + 거절 사유별 행 목록(상한)
+   -> 「선언이 도는지」에 답하면서 「무엇을 고쳐야 하는지」도 답합니다
+   ⚠️ 비용: 지금 «한 번의 예외»로 끝나는 자리를 «행마다 판정»으로 바꿉니다
+㉡ 첫 예외에서 멈추되 «부분 결과»는 실어 보냄   rows_read · 여기까지 통과한 분자 수 + 그 행
+   -> 훨씬 작은 변경. 다만 「몇 행이 문제인가」에는 여전히 답 못 합니다
+㉢ 그대로 두고 «문구»만  「이 «행» 때문에 배치 전체가 거절됐습니다」
+   -> 오해는 없어지지만 한 달째 막힌 것은 «안 풀립니다»
+```
+🔴 제 의견 한 줄: **㉠ 이라야 「한 달째 안 돈다」가 풀립니다.** ㉡㉢ 은 같은 벽을 다시 만납니다 —
+운영 소스는 «반드시» 일부 행이 비어 있고, 그 하나가 전체를 죽이는 한 시험 실행은 영원히 빨갛습니다.
+
+## 안 한 것
+```
+⛔ 고치지 않았습니다 (지시). 코드 0줄
+⛔ ONTOLOGY_BLOCKERS A-2(화면 57 vs 런타임 85)는 «안 봤습니다» — 별건이고 지시가 없었습니다
+```
