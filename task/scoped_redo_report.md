@@ -4355,3 +4355,67 @@ tests/test_key_part_nan.py  17 (앞 16 + 「술어 둘을 갈라 놓는」 것 �
 합계 75 passed · 1 skipped (key_part_nan · blank_predicate_contract · chain_key_gate
                            · blank_business_key_is_null)
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] 선언 표 아홉 — **제 지난 보고를 «정정»합니다. 「소스 소유 스키마」가 아니었습니다**
+
+## 🔴 먼저 정정 — 제가 «물리 모양을 보고» 원인을 지어냈습니다
+```
+지난 보고   「이들은 소스 소유 표다. 프레임워크가 만들지 않은 원천 스키마이고,
+            그 형태는 설계상 허용이다 -> 선언이 틀린 게 아니다」
+실측       ❌ 틀렸습니다. «선언도 모델도 그 컬럼들을 요구합니다»
+   config     아홉 전부 «평범»합니다 — business_key · column_types · display_columns …
+              「소스 소유」를 표시하는 칸이 «없습니다»
+   model      init_dynamic_models 가 만든 모델이 row_id · business_key_val
+              · created_at · updated_at 을 «전부 선언»합니다 (정상 표와 «같은» 목록)
+=> 즉 「원천 스키마라서 없는 것」이 아니라 «물리 표가 선언과 갈린 것»입니다
+   제가 `lot_slot_move` 가 원장 소스 이름과 같은 것을 보고 나머지 넷까지 그렇게 읽었습니다
+   (아홉 중 원장 소스로 «선언된» 것은 lot_slot_move «하나»뿐입니다)
+```
+
+## 아홉의 «두 모양» — 총괄이 말한 넷은 이것입니다
+```
+A 다섯   row_id · business_key_val · created_at · updated_at «전부» 없음
+        void_obs_observed · bonding_core_lot · bonding_core_die · lot_slot_move
+        · bonding_die_from_core
+B 넷     row_id · business_key_val 은 «있고» created_at · updated_at 만 없음
+        process_param_num · process_param_txt
+        · mechanism_edge_to_quantity · mechanism_edge_to_finding
+⚠️ 이 «이름들»은 이 박스 라이브 스키마입니다. 운영이 그렇다는 말이 아닙니다
+```
+
+## 🔴 그래서 원인은 총괄의 후보 «둘 다 아닙니다» — 셋째입니다
+```
+후보 ①  「프레임워크가 안 만든 표가 선언에 들어왔나」   -> ❌ 모델이 컬럼을 요구합니다
+후보 ②  「만들어진 뒤 스키마가 갈렸나」                -> ⭕ 갈린 건 맞습니다. 그런데 «그다음»이 문제입니다
+🔴 셋째   그 갈림을 «메우는 장치가 이미 있는데, 실패가 조용합니다»
+   models.sync_dynamic_tables_schema  = 부팅마다 「선언에 있고 DB 에 없는 컬럼」을 ALTER 로 «추가»합니다
+   지금 그 함수가 발행할 ALTER 를 «읽기 전용으로» 세어 봤습니다 -> «28건» (위 아홉 표)
+   -> 즉 부팅 때마다 시도되고 있고, 28건이 «매번 실패하거나 아예 안 돌고» 있습니다
+   -> 그리고 그 실패는 :1017  `print(f"[Schema Sync] Failed to add column ...")`
+      «print» 입니다. logger 도 아니고, /health 도 모르고, 화면에도 없습니다
+```
+🔴 **이게 오늘 하루의 그 부류 그대로입니다** — 「안전망이 자기 실패를 아무에게도 말하지 않는다」.
+   그 침묵의 대가가 «대시보드 500» 이었고, 그건 두 계기(재교정률·교정 공수)를 어둡게 했습니다.
+   즉 오늘 아침의 500 은 «증상»이고, 원인은 이 조용한 실패입니다.
+
+## ⛔ 안 한 것 — 지시대로 «재기만» 했습니다
+```
+⛔ count() 로 안 바꿨습니다 (지시)
+⛔ ALTER 를 «실행하지 않았습니다» — 쓰기이고, 이 박스 DB 이고, 지시받지 않았습니다
+   (발행될 목록만 «읽기 전용»으로 세었습니다)
+⛔ print -> logger 로도 «안 바꿨습니다». 그게 옳아 보이지만 지시 없이 손대지 않습니다
+```
+
+## 📌 판정 요청 — 두 줄입니다
+```
+① 조용한 실패를 «말하게» 할까요
+   print -> logger.error, 그리고 「선언과 물리가 갈린 표」를 /health 나 대시보드가 «세어» 말하기
+   -> 오늘 고친 uncounted_tables 가 이미 «증상»을 말합니다. 원인 쪽은 아직 조용합니다
+② 왜 28건이 실패하는지는 «아직 모릅니다»
+   ALTER 를 실제로 돌려야 사유가 나오는데, 그건 이 박스 DB 에 대한 «쓰기»라 안 했습니다
+   -> 돌려 보라 하시면 사유를 받아 오겠습니다 (되돌릴 수 있는 방향입니다: ADD COLUMN)
+   -> 다만 «운영»에서도 같은 28건이 실패하고 있는지는 이 박스로 말할 수 «없습니다»
+```
