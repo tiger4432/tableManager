@@ -232,7 +232,13 @@ const FLOORS = new Map([
   // rule ④ arrived with it -- a list the route CUT has to say it was cut, because a silently
   // truncated list reads as the whole queue. The two numbers the strip carried (depth, retries)
   // are asserted on the headline, so losing the strip cannot quietly lose them.
-  ['chain_queue_panel_harness.mjs', 71],
+  // 2026-09-04, 71 -> 104: the route now names WHO empties each waiting row, and the
+  // load-bearing one is that `unknown` must not be counted as `chain`. Reading the queue as
+  // one undifferentiated number sent someone to inspect a healthy worker while a scheduler
+  // run sat still; the server keeps the buckets apart and a screen that folded them would
+  // rebuild that misreading one layer out, with no existing assertion noticing. The
+  // `blocked_by` assertions score that the server's own tokens are MOVED, not translated.
+  ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],

@@ -76,6 +76,34 @@ function countOf(v) {
   return Number.isFinite(Number(v)) && v !== null && v !== undefined ? String(Number(v)) : '—';
 }
 
+/**
+ * `blocked_by` → what to draw, or null. EVERY FIELD IS THE SERVER'S OWN VALUE.
+ *
+ * 🔴 NOTHING IS TRANSLATED HERE. `moving` is `progressing`/`stalled`/`unreported` and
+ *    `cancel_reaches` is `at_next_batch`/`unknown`/`never`; those are the server's words for
+ *    states it distinguishes deliberately (`unreported` is NOT `stalled` — four of six
+ *    operations report progress and two never do, so "no progress since the start" is all
+ *    that is known). Rewriting them into 「멈춤」/「안 닿음」 would fold that apart-ness
+ *    back together and would be this screen asserting something the server did not say.
+ *    The recovery sentence is the server's too, and is carried verbatim.
+ */
+function blockedView(b) {
+  if (!b || typeof b !== 'object') return null;
+  return Object.freeze({
+    runId: String(b.run_id == null ? '' : b.run_id),
+    op: String(b.op == null ? '' : b.op),
+    state: String(b.state == null ? '' : b.state),
+    moving: String(b.moving == null ? '' : b.moving),
+    cancelReaches: String(b.cancel_reaches == null ? '' : b.cancel_reaches),
+    // rule ① again: `null` here means the run never reported, which is not 「0초」.
+    noProgress: formatAge(b.no_progress_seconds) ?? '—',
+    stallAfter: formatAge(b.stall_after_seconds) ?? '—',
+    processed: countOf(b.processed_rows),
+    total: countOf(b.total_rows),
+    recovery: b.recovery ? String(b.recovery) : '',
+  });
+}
+
 /** head8… — the same abbreviation the failed-transaction table beside this one uses. */
 function shortTx(id) {
   const t = String(id ?? '');
@@ -98,6 +126,8 @@ export function queueView(payload, opts = {}) {
         || '응답을 읽지 못했습니다 — 수를 그리지 않습니다 (빈 값이 0으로 읽히는 것을 막습니다).',
       headline: null,
       depth: '—',
+      byOwner: Object.freeze([]),
+      splitByOwner: false,
       rows: Object.freeze([]),
       truncated: '',
       notMeasured: Object.freeze([]),
@@ -129,6 +159,24 @@ export function queueView(payload, opts = {}) {
 
   // ── the list. Server order is `id` ascending = longest waiting first; that order IS the
   //    answer, so it is not re-sorted here. ──
+  // ── 「누가 이 행을 비우나」 (2026-09-04) ────────────────────────────────
+  // 🔴 `unknown` IS NOT `chain`. The server keeps the two apart on purpose, and folding
+  //    them here would rebuild the exact misreading that sent someone to inspect a healthy
+  //    worker: one undifferentiated number called 「체인 대기열」 while a scheduler run sat
+  //    still. The buckets are carried through 1:1, in the server's order, with no arithmetic.
+  const buckets = Array.isArray(payload.waiting_by_owner) ? payload.waiting_by_owner : [];
+  const byOwner = buckets.map(b => Object.freeze({
+    owner: String((b && b.owner) == null ? '' : b.owner),
+    waiting: countOf(b && b.waiting),
+    age: formatAge(b && b.oldest_waiting_seconds) ?? '—',
+    eventTypes: Object.freeze(Array.isArray(b && b.event_types) ? b.event_types.map(String) : []),
+    blocked: blockedView(b && b.blocked_by),
+  }));
+  // 🔴 ONE OWNER IS NOT A SPLIT. Drawing a per-owner breakdown of a single owner adds a
+  //    row that says the same thing as the headline, and the reader has to compare two numbers
+  //    to learn they are the same number.
+  const splitByOwner = byOwner.length > 1;
+
   const src = Array.isArray(payload.waiting_transactions) ? payload.waiting_transactions : [];
   const rows = src.map(t => Object.freeze({
     txId: String(t.transaction_id ?? ''),
@@ -138,6 +186,10 @@ export function queueView(payload, opts = {}) {
     eventTypes: Object.freeze(Array.isArray(t.event_types) ? t.event_types.map(String) : []),
     // rule ①, per row: an unreadable age is a dash, never 「0초」.
     age: formatAge(t.waiting_seconds) ?? '—',
+    // 🔴 WHO EMPTIES THIS ROW. The server decides it once, from `event_type`; if the screen
+    //    re-decided it from the same field there would be TWO copies of that judgement and they
+    //    would drift. A row whose owners the server did not name draws a dash, not 「chain」.
+    owners: Array.isArray(t.owners) && t.owners.length ? t.owners.join(', ') : '—',
     at: t.waiting_at || '',
     // An empty string means zero retries. The column exists to surface the NON-zero ones,
     // and a column of 「0」 down every row is noise that hides the one row that is not 0.
@@ -168,6 +220,8 @@ export function queueView(payload, opts = {}) {
     reason: '',
     headline: Object.freeze(headline),
     depth: countOf(payload.waiting),
+    byOwner: Object.freeze(byOwner),
+    splitByOwner,
     rows: Object.freeze(rows),
     truncated,
     notMeasured: Object.freeze(notMeasured.map(x => Object.freeze(x))),
@@ -245,6 +299,43 @@ export class ChainQueuePanel {
     head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
     this.root.appendChild(head);
 
+    // ── 누가 비우나 ── 소유자가 «하나»면 그리지 않는다 (위 `splitByOwner` 참조).
+    if (view.splitByOwner) {
+      const strip = doc.createElement('div');
+      strip.className = 'chain-queue-owner-strip';
+      for (const b of view.byOwner) {
+        const line = this._line('chain-queue-owner',
+          `${b.owner} · 대기 ${b.waiting}개 · 제일 오래 ${b.age}`);
+        line.setAttribute('data-owner', b.owner);
+        strip.appendChild(line);
+      }
+      this.root.appendChild(strip);
+    }
+
+    // ── 그 소유자가 «왜» 기다리는가 ──
+    // 🔴 `blocked_by` 가 null 이면 «아무것도» 그리지 않는다. 서버가 적어 둔 대로
+    //    null 은 「막힌 것이 없다」가 아니라 「이유를 모른다」이고, 「없음」으로 그리면
+    //    이 파일이 없애려는 바로 그 0 이 하나 더 생긴다.
+    // 🔴 값은 «서버의 낟말로» 적는다. `moving` 과 `cancel_reaches` 를 번역하면
+    //    서버가 일부러 갈라 둔 `stalled` 와 `unreported` 가 한 말로 접힌다.
+    for (const b of view.byOwner) {
+      if (!b.blocked) continue;
+      const box = doc.createElement('div');
+      box.className = 'chain-queue-blocked';
+      box.setAttribute('data-owner', b.owner);
+      box.appendChild(this._line('chain-queue-blocked-head',
+        `${b.owner} · blocked_by — ${b.blocked.op} ${b.blocked.runId}`));
+      box.appendChild(this._line('chain-queue-blocked-fact',
+        `state ${b.blocked.state} · moving ${b.blocked.moving} · cancel_reaches ${b.blocked.cancelReaches}`));
+      box.appendChild(this._line('chain-queue-blocked-fact',
+        `processed_rows ${b.blocked.processed} / total_rows ${b.blocked.total}`
+        + ` · no_progress ${b.blocked.noProgress} · stall_after ${b.blocked.stallAfter}`));
+      if (b.blocked.recovery) {
+        box.appendChild(this._line('chain-queue-blocked-recovery', b.blocked.recovery));
+      }
+      this.root.appendChild(box);
+    }
+
     if (view.truncated) this.root.appendChild(this._line('chain-queue-truncated', view.truncated));
 
     if (view.rows.length === 0) {
@@ -305,6 +396,12 @@ export class ChainQueuePanel {
       } else {
         tdEv.textContent = '—';
       }
+      // 🔴 소유자를 «칸을 늘리지 않고» 보입니다. 일곱째 컬럼을 더하면 좀은 패널에서
+      //    표가 다시 넘칩니다 — 바로 앞 라운드에서 0 으로 만든 수입니다.
+      //    event_type 이 그 판정의 재료이므로 같은 칸이 자연스러운 자리입니다.
+      const ow = this._line('chain-queue-row-owners', r.owners);
+      ow.setAttribute('data-owners', r.owners);
+      tdEv.appendChild(ow);
       tr.appendChild(tdEv);
 
       tr.appendChild(this._td(r.rows, 'center'));

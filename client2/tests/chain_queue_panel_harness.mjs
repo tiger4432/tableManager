@@ -85,6 +85,14 @@ const BACKED_UP = { waiting: 812, oldest_waiting_seconds: 3725.4,
                     not_measured: NOT_MEASURED };
 
 const rowsOf = (host) => byClass(host, 'table-row');
+// Re-read one blocked field through the real view, so the assertion exercises `blockedView`
+// rather than a copy of it.
+const blockedOf = (v, over) => queueView({
+  waiting_by_owner: [{ owner: 'scheduler', waiting: 1, oldest_waiting_seconds: 1,
+    event_types: [], blocked_by: { run_id: 'r', op: 'o', state: 'running', moving: 'unreported',
+      stall_after_seconds: 300, processed_rows: 0, total_rows: 0, cancel_reaches: 'unknown',
+      ...over } }],
+}).byOwner[0].blocked.noProgress;
 const cellsOf = (row) => row.children;
 
 // ═══ ① null IS NOT 0 ═══════════════════════════════════════════════════════════════
@@ -293,6 +301,102 @@ console.log('\n[7] two panels on one page');
   p1.render(BACKED_UP);
   eq('a re-render replaces, it does not append', rowsOf(h1).length, 2);
   eq('and leaves exactly one headline', byClass(h1, 'chain-queue-headline').length, 1);
+}
+
+// ═══ ⑧ WHO EMPTIES THE ROW — and the fold that must not happen ══════════════════
+//
+// 🔴 THE ONE THIS SECTION EXISTS FOR: `unknown` must not be counted as `chain`. The route
+//    was read as one undifferentiated queue called the chain's, and on 2026-09-04 that sent
+//    someone to inspect a worker that was healthy while a scheduler run sat still. The server
+//    now keeps the buckets apart; the screen folding them would rebuild the misreading one
+//    layer out, and no existing assertion would notice.
+console.log('\n[8] the owner split, and unknown is not chain');
+{
+  const OWNED = {
+    ...BACKED_UP,
+    waiting: 8,
+    waiting_by_owner: [
+      { owner: 'chain', waiting: 5, oldest_waiting_seconds: 90, event_types: ['CREATE'] },
+      { owner: 'scheduler', waiting: 2, oldest_waiting_seconds: 3725.4,
+        event_types: ['RETRO'],
+        blocked_by: {
+          run_id: 'run-77', op: 'ledger_rescope', state: 'running', moving: 'stalled',
+          no_progress_seconds: 900, stall_after_seconds: 300,
+          processed_rows: 12, total_rows: 400, cancel_reaches: 'never',
+          recovery: '이 실행은 취소로 멈출 수 없습니다.',
+        } },
+      { owner: 'unknown', waiting: 1, oldest_waiting_seconds: 5, event_types: ['WAT'] },
+    ],
+    waiting_transactions: [
+      { ...BACKED_UP.waiting_transactions[0], owners: ['chain'] },
+      { ...BACKED_UP.waiting_transactions[1], owners: ['scheduler', 'unknown'] },
+    ],
+  };
+  const v = queueView(OWNED);
+
+  // 🔴 THE DISCRIMINANT. Compared against the server's own numbers, not a fixed string.
+  eq('three buckets stay three', v.byOwner.map(b => b.owner), ['chain', 'scheduler', 'unknown']);
+  eq('chain carries ONLY chain\'s rows', v.byOwner[0].waiting, '5');
+  ok('and not the sum of chain + unknown', v.byOwner[0].waiting !== '6', v.byOwner[0].waiting);
+  ok('nor the whole queue', v.byOwner[0].waiting !== '8', v.byOwner[0].waiting);
+  eq('unknown is its own bucket with its own number', v.byOwner[2].waiting, '1');
+  eq('each bucket keeps its own age', v.byOwner[1].age, '1시간 2분');
+
+  // one owner is not a split
+  const ONE = { ...OWNED, waiting_by_owner: [OWNED.waiting_by_owner[0]] };
+  eq('two or more owners split', v.splitByOwner, true);
+  eq('one owner does NOT split', queueView(ONE).splitByOwner, false);
+  eq('and a server that sends no buckets at all splits nothing',
+    queueView(BACKED_UP).splitByOwner, false);
+  eq('...and draws no bucket', queueView(BACKED_UP).byOwner.length, 0);
+
+  // per row
+  eq('a row shows who empties it', v.rows[0].owners, 'chain');
+  eq('a row with two owners shows both', v.rows[1].owners, 'scheduler, unknown');
+  eq('a row the server did not name draws a dash, not chain',
+    queueView({ ...OWNED, waiting_transactions: [
+      { ...BACKED_UP.waiting_transactions[0] }] }).rows[0].owners, '—');
+
+  // ── blocked_by: the server's words, moved not translated ──
+  const bl = v.byOwner[1].blocked;
+  ok('the scheduler bucket carries its blocker', !!bl, JSON.stringify(v.byOwner[1]));
+  eq('moving is the server\'s token', bl.moving, 'stalled');
+  eq('cancel_reaches is the server\'s token', bl.cancelReaches, 'never');
+  eq('the run is named', bl.runId, 'run-77');
+  eq('progress is carried', `${bl.processed} / ${bl.total}`, '12 / 400');
+  eq('the recovery sentence is the server\'s, verbatim', bl.recovery,
+    '이 실행은 취소로 멈출 수 없습니다.');
+  // rule ① one layer down: a run that never reported is not a run at 0 seconds
+  eq('an unreported run\'s no-progress is a dash', blockedOf(v, { no_progress_seconds: null }), '—');
+  eq('...and a real zero is a zero', blockedOf(v, { no_progress_seconds: 0 }), '0초');
+
+  // 🔴 NEGATIVE CONTROL. A bucket with no blocker draws NOTHING — an 「없음」 here is the
+  //    same invented zero the whole file exists to prevent, and the server says so itself.
+  eq('a bucket with blocked_by null carries no blocker', v.byOwner[0].blocked, null);
+  eq('and a bucket that never had the field carries none either', v.byOwner[2].blocked, null);
+
+  // ── and all of it reaches the screen ──
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  new ChainQueuePanel(host, { doc }).render(OWNED);
+  const owners = walk(host).filter(n => n.getAttribute && n.getAttribute('data-owner'));
+  eq('three owner elements are drawn as three', new Set(owners.map(n => n.getAttribute('data-owner'))).size, 3);
+  ok('chain\'s line says 5, not 8', /chain · 대기 5개/.test(host.textContent), host.textContent.slice(0, 120));
+  ok('unknown appears on screen under its own name', /unknown · 대기 1개/.test(host.textContent));
+  eq('exactly one blocked box is drawn', byClass(host, 'chain-queue-blocked').length, 1);
+  ok('and it prints the tokens rather than a translation',
+    /stalled/.test(host.textContent) && /never/.test(host.textContent));
+  ok('the row owners reach the screen',
+    walk(host).some(n => n.getAttribute && n.getAttribute('data-owners') === 'scheduler, unknown'));
+  // the table did not grow a column — the overflow round measured that cost
+  eq('the header still declares six', byTag(host, 'TH').length, 6);
+  eq('and each row still has six cells', cellsOf(rowsOf(host)[0]).length, 6);
+
+  const doc2 = makeDoc();
+  const host2 = doc2.createElement('div');
+  new ChainQueuePanel(host2, { doc: doc2 }).render(BACKED_UP);
+  eq('a bucket-less response draws no owner strip', byClass(host2, 'chain-queue-owner-strip').length, 0);
+  eq('and no blocked box', byClass(host2, 'chain-queue-blocked').length, 0);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
