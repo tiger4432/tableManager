@@ -341,6 +341,24 @@ out = Bad()
 # 4. sys.exit() containment - a user script must not kill the scheduler daemon
 # ---------------------------------------------------------------------------
 
+def _await_collector(collector, timeout=5.0):
+    """Wait for a collector started off the tick thread.
+
+    🔴 2026-09-04: `check_and_run_schedules` used to run the collector INLINE, so these
+    cases could assert the moment it returned. That inline call is exactly what stopped
+    `heartbeat.beat("scheduler")` for the length of a user script and made /health report
+    the daemon as making no progress. The work now runs on a thread and the scheduling
+    pass returns immediately - so the wait is the change, not the assertion.
+    """
+    import time as _time
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        if collector.last_status not in (None, "RUNNING"):
+            return collector.last_status
+        _time.sleep(0.02)
+    return collector.last_status
+
+
 class TestSystemExitContainment:
     def test_sys_exit_zero_keeps_out_and_does_not_propagate(self, tmp_path):
         body = '''
@@ -369,6 +387,7 @@ sys.exit(0)
         now = datetime.now()
         collector.next_run = now - timedelta(seconds=1)
         scheduler.check_and_run_schedules(now=now)  # daemon death ends the test here
+        _await_collector(collector)
 
         assert collector.last_status == "SUCCESS"
         assert _written(collector) == ["a\n1\n"]

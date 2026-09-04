@@ -407,6 +407,13 @@ class MultiDiscoveryScheduler:
         # One retroactive run at a time (see start_retroactive_run).
         self._retroactive_thread = None
         self._retroactive_last = None
+        # 🔴 THE DOOR FOR COLLECTORS, and the reason it had to be created rather than
+        # found: until now the door WAS the inline call. A cron collector ran on the tick
+        # thread, so the tick could not come round and fire it again - and that same
+        # property is what stopped the heartbeat for the whole run. Taking the work off
+        # the tick removes the accident that was doing this job, so the job becomes
+        # explicit. `retroactive_busy()` is the same idea one level up.
+        self._collectors_running = set()
 
     def discover_and_load_collectors(self):
         """
@@ -550,6 +557,49 @@ class MultiDiscoveryScheduler:
         except Exception as e:
             logger.error(f"Failed to write scheduler status file: {e}")
 
+    def start_collector(self, collector) -> bool:
+        """Run one collector OFF the tick thread, at most one of it at a time.
+
+        [Why a thread] `collector.execute()` runs a user script. On the tick thread that
+        stops `heartbeat.beat("scheduler")` for the whole run, and /health then reports
+        this daemon as making no progress - the monitoring surface goes down as a direct
+        consequence of a collector doing its job. Measured 2026-09-04: the tick's own
+        `check_and_run_schedules` called `execute_collector` inline, so every cron run
+        was that outage. `start_retroactive_run` had already been given this prescription
+        and its docstring names this call site as the one that had not.
+
+        [Why the claim is taken HERE and not in the thread] The tick comes round every
+        `check_interval` seconds. `execute_collector` advances `next_run` at its start, so
+        with the work on a thread there is a window - however small - in which the tick
+        sees the old `next_run` and fires the same collector again. A cron collector
+        running twice is not something an operator can undo, so the claim is taken
+        synchronously, before the thread exists.
+
+        Returns True when the run was started, False when this collector is already
+        running - REFUSED and said so, never queued silently.
+        """
+        key = self._collector_key(collector)
+        with self._lock:
+            if key in self._collectors_running:
+                logger.warning(
+                    "[Collector] '%s' is already running; this trigger is refused rather "
+                    "than started a second time", key)
+                return False
+            self._collectors_running.add(key)
+
+        def _worker():
+            try:
+                self.execute_collector(collector)
+            finally:
+                # Released here and nowhere else: a claim left behind by a raising
+                # collector would refuse that collector forever, which looks exactly
+                # like a schedule that stopped working.
+                with self._lock:
+                    self._collectors_running.discard(key)
+
+        threading.Thread(target=_worker, name=f"collector-{key}", daemon=True).start()
+        return True
+
     def run_collector_on_demand(self, table_name: str, script_name: str):
         """
         On-Demand 강제 구동 지시를 받아 비동기로 대상 수집기를 실행합니다.
@@ -559,8 +609,11 @@ class MultiDiscoveryScheduler:
             col_script_name = os.path.basename(getattr(collector, "script_path", "")) if getattr(collector, "script_path", None) else collector.__class__.__name__
             if collector.table_name == table_name and col_script_name == script_name:
                 logger.info(f"[Trigger] On-Demand trigger received. Executing collector '{script_name}' for table '{table_name}' immediately...")
-                threading.Thread(target=self.execute_collector, args=(collector,), daemon=True).start()
-                return True
+                # Through the same door as the cron path. This call already ran on its own
+                # thread, so it was never the beat's problem - but it had NO door, which
+                # means an on-demand run and a cron run of the same collector could
+                # overlap. One door, both entrances.
+                return self.start_collector(collector)
         logger.warning(f"[Trigger] Trigger requested but no matching collector found for table='{table_name}', script='{script_name}'")
         return False
 
@@ -632,7 +685,10 @@ class MultiDiscoveryScheduler:
                         logger.info(f"[Skip] Collector '{key}' is disabled via control file. Skipping scheduled run (Next Run: {collector.next_run}).")
                         self._write_status_file()
                     else:
-                        self.execute_collector(collector)
+                        # 🔴 OFF THE TICK. This line ran the collector inline, and the beat
+                        # comes from this same thread (`run()` -> heartbeat.beat), so a
+                        # long collector took /health down with it.
+                        self.start_collector(collector)
 
     def maybe_backup_configs(self, now=None):
         """Weekly ``server/config/`` snapshot — a maintenance job, NOT a collector.

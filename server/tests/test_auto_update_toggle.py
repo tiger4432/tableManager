@@ -105,6 +105,24 @@ class TestControlFileIO:
 # 2. 스케줄러 핫 스킵
 # ---------------------------------------------------------------------------
 
+def _await_collector(collector, timeout=5.0):
+    """Wait for a collector started off the tick thread.
+
+    🔴 2026-09-04: `check_and_run_schedules` used to run the collector INLINE, so these
+    cases could assert the moment it returned. That inline call is exactly what stopped
+    `heartbeat.beat("scheduler")` for the length of a user script and made /health report
+    the daemon as making no progress. The work now runs on a thread and the scheduling
+    pass returns immediately - so the wait is the change, not the assertion.
+    """
+    import time as _time
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        if collector.last_status not in (None, "RUNNING"):
+            return collector.last_status
+        _time.sleep(0.02)
+    return collector.last_status
+
+
 class TestSchedulerSkip:
     def _build_scheduler(self, tmp_path):
         from run_auto_update import MultiDiscoveryScheduler
@@ -149,6 +167,7 @@ class TestSchedulerSkip:
         now = datetime.now()
         collector.next_run = now - timedelta(seconds=1)
         scheduler.check_and_run_schedules(now=now)
+        _await_collector(collector)
 
         assert collector.last_status == "SUCCESS"
         outputs = os.listdir(collector.target_dir)
