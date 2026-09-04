@@ -276,6 +276,33 @@ load_chain_rules()  enabled 를 «안 거릅니다». "Loaded 13 active" = 파�
    알아채는 데 몇 걸음인가」, 세 절, 멈춤 조건 셋. 화면을 «열어» 보고 적을 것.
 📌 문서 정비 밀림: 마지막 동기화 이후 커밋 «473». 라운드가 잦아 아직 안 걸었습니다
 
+## 🔴🔴 **체인이 «끝까지» 안 닿습니다 — 이게 「왜 안 돌았나」의 완성된 답입니다** (총괄 실측 23:1x)
+
+`resolve_column` 을 규칙마다 «직접 태워» 잰 것입니다. 추론 아닙니다.
+```
+dt_log ─→ wafer_map_metadata     ✅ 돕니다      (dt_log_to_dt_alignment_metadata)
+wafer_map_metadata ─→ dt_inventory  🔴 «거절»    (dt_metadata_to_dt_inventory)
+dt_inventory ─→ dt_map           ✅ 돕니다      (오늘 제가 고친 것. 4회차 SUCCESS 확인)
+```
+### 🔴 `dt_inventory` 를 쓰는 규칙이 «둘»인데 «둘 다» 못 씁니다
+```
+dt_metadata_to_dt_inventory    켜짐   -> target_job_column 이 «거절»
+dt_log_to_primary_core_frame   꺼짐   -> 제가 껐고, 켜도 «거절»입니다
+=> 체인이 «스스로» dt_inventory 에 못 씁니다. 사람이나 인제션이 써야만 뒷단이 돕니다
+```
+🔵 **그래서 오늘 밤 고친 마지막 홉은 도는데 «그 앞이 끊겨» 아무것도 도착하지 않습니다.**
+
+### 고치는 법은 «한 줄»입니다 — 그런데 제가 «안 했습니다»
+```
+필요한 것   규칙 dt_metadata_to_dt_inventory 에  "target_job_column": "dt_job"
+           (dt_inventory.column_types 에 dt_job 이 «있습니다» — #3 때와 같은 자리, 같은 값)
+🔴 안 한 이유  이건 «잠자던 쓰기 경로를 깨우는» 일입니다. 데이터를 씁니다.
+           오늘 밤 제가 켠 것은 «없고», 끈 것은 «지우고 있던 것»뿐입니다.
+           깨우는 것은 대표님 한 마디면 됩니다 — 그리고 되돌리기가 «쓰기»라 어렵습니다
+⚠️ 다만 이 규칙은 «업서트 전용»입니다 (replace_map·retraction 선언 «없음»).
+   #5·#6 같은 「맵 통째 교체」 위험은 «없습니다». 그래서 판단이 쉬운 쪽입니다
+```
+
 ## 대표님께 남은 것 — 넷에서 «여섯»으로
 ```
 1 배포 · 2 선언 저장 · 3 retro SQL · 4 setup_version >= 5     (그대로)
