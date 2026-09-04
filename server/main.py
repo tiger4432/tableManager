@@ -5027,6 +5027,33 @@ def post_table_config_raw(payload: dict = Body(...)):
         str(payload.get("base") or ""))
 
 
+@app.get("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
+def get_chain_rule_raw(rule: str = None):
+    """체인 규칙 «하나» + base 지문. 편집 단위는 표·선언 편집기와 «같습니다».
+
+    🔴 변환 «코드»는 앱 안에서 쓸 수 있는데, 그 코드를 표에 «거는» 규칙은 읽기만 있었습니다 —
+    전략(「체인이 표를 만든다」)의 마지막 한 걸음이 앱 «밖»이었습니다.
+    """
+    import ledger_admin
+    return ledger_admin.chain_rule_raw_view(rule)
+
+
+@app.post("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
+def post_chain_rule_raw(payload: dict = Body(...)):
+    """규칙 «하나»를 저장한다. 🔴 «새» 규칙은 «켜지지 않은 채로» 저장된다.
+
+    표 저장은 등록일 뿐 아무것도 돌지 않지만, 규칙 저장은 다음 SYSTEM_RELOAD 가 읽어
+    «즉시 돕니다» (`rule.get("enabled", True)` 가 여섯 자리 전부 기본 켜짐). 그래서
+    「표 편집기와 같은 모양」이 되려면 저장이 «같은 무게»여야 하고, 새 규칙은 장전까지만입니다.
+    ⚠️ 기존 규칙을 고쳐 저장할 때는 `enabled` 를 «건드리지 않습니다» — 돌던 것을 조용히
+       끄는 것이 더 나쁩니다. 켜는 방법은 이 raw 편집기에서 그 값을 고치는 것입니다.
+    """
+    import ledger_admin
+    return ledger_admin.save_chain_rule_raw(
+        str(payload.get("name") or ""), payload.get("declaration"),
+        str(payload.get("base") or ""))
+
+
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
 def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
     """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""

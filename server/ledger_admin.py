@@ -557,6 +557,115 @@ def _table_config_refusal(code: str, path: str, message: str):
         "ok": False, "code": code, "path": path, "message": message})
 
 
+def chain_rules_path() -> str:
+    """Where `chain_rules.json` lives. Read from the worker, never respelled here."""
+    import chain_ingestion_worker
+    return chain_ingestion_worker.RULES_PATH
+
+
+def chain_rule_raw_view(name: str = None) -> dict:
+    """One chain RULE's raw JSON plus the base fingerprint a save will check.
+
+    🔴 THE ASYMMETRY THIS CLOSES: the transform CODE has list, read and write routes and a
+    screen - it is inside the application - while the rule that HANGS that code on a table
+    had only a read. The last step of "the chain builds the table" was outside the app.
+
+    Same unit and same shape as the table and declaration editors: ONE rule. The whole
+    document is readable for context; it is not the unit of writing.
+    """
+    path = chain_rules_path()
+    document, error = {}, None
+    try:
+        document = _read_json(path, {})
+    except Exception as exc:
+        error = f"{exc.__class__.__name__}: {exc}"
+    rules = (document.get("rules") or []) if isinstance(document, dict) else []
+    named = {str(r.get("name")): r for r in rules if isinstance(r, dict) and r.get("name")}
+    out = {
+        "config_path": path,
+        "base": file_fingerprint(path),
+        "rules": sorted(named),
+        "error": error,
+        "editable_unit": "rule",
+    }
+    if name is not None:
+        out["name"] = name
+        out["declaration"] = named.get(name)
+        out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
+        out["enabled"] = bool((named.get(name) or {}).get("enabled", True))
+    return out
+
+
+def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
+    """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
+
+    A saved table registers something and nothing runs; a saved rule is re-read by
+    `load_chain_rules` on the next SYSTEM_RELOAD and RUNS - no restart needed - because
+    `rule.get("enabled", True)` defaults to on at all six sites that ask. So "the same
+    shape as the table editor" means the save must carry the same weight, and it does not
+    unless a new rule lands switched off.
+
+    ⚠️ NEW MEANS "this name was not in the file". Editing an EXISTING rule leaves its
+    `enabled` exactly as it was - silently switching off something that was running would
+    be the worse half of this same mistake.
+
+    ⚠️ AND THE CODE DEFAULT IS UNTOUCHED. Nothing about rules written by hand changes;
+    what changes is only the document this route writes, which is why it is reversible.
+    """
+    if not isinstance(name, str) or not name.strip():
+        raise _table_config_refusal("rule_name_required", "name",
+                                    "저장할 규칙 이름이 없습니다")
+    if not isinstance(declaration, dict):
+        raise _table_config_refusal("declaration_not_object", f"rules.{name}",
+                                    "규칙은 JSON 객체여야 합니다")
+
+    path = chain_rules_path()
+    if base != file_fingerprint(path):
+        raise _table_config_refusal(
+            "stale_base", "base",
+            "이 파일이 열어 본 뒤에 바뀌었습니다. 다시 열어 확인한 뒤 저장하십시오")
+
+    document = _read_json(path, {})
+    if not isinstance(document, dict) or not isinstance(document.get("rules"), list):
+        raise _table_config_refusal(
+            "config_not_object", "chain_rules.json",
+            "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
+
+    rules = [dict(r) for r in document["rules"] if isinstance(r, dict)]
+    existing = next((i for i, r in enumerate(rules) if r.get("name") == name), None)
+    entry = dict(declaration)
+    entry["name"] = name
+    if existing is None:
+        # Armed, not firing. The operator turns it on by editing `enabled` in this same
+        # raw editor - no second control is invented for it.
+        entry.setdefault("enabled", False)
+        rules.append(entry)
+    else:
+        if "enabled" not in entry:
+            entry["enabled"] = rules[existing].get("enabled", True)
+        rules[existing] = entry
+
+    merged = dict(document)
+    merged["rules"] = rules
+
+    # The one validator that exists for these, found by measurement: it reads the WHOLE
+    # set and refuses a cycle of opt-in chain triggers. Nothing validates a single rule's
+    # shape - `chain_bindings` refuses at run time - and none was invented here.
+    try:
+        import chain_ingestion_worker
+        chain_ingestion_worker._validate_chain_cascade_graph(rules)
+    except Exception as exc:                                   # noqa: BLE001
+        raise _table_config_refusal(
+            "chain_cycle", f"rules.{name}", str(exc)) from exc
+
+    backup = _atomic_write(path, merged)
+    return {"ok": True, "name": name, "base": file_fingerprint(path),
+            "backup": backup, "rules": len(rules),
+            # The value an operator needs next, never a sentence: a new rule is saved off.
+            "enabled": bool(entry.get("enabled", True)),
+            "created": existing is None}
+
+
 def parse_raw_declaration(raw: str):
     """Operator JSON -> a declaration, or a `declaration_rejected` violation naming the line.
 
