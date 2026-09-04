@@ -843,6 +843,16 @@ def in_flight(db, now=None, stall_after=None):
     return {
         "run_id": row.run_id,
         "op": row.op,
+        # 🔴 WHY IT IS RUNNING, NOT JUST THAT IT IS. The queue shows this row as the reason
+        # everything behind it waits, and an operator looking at it could not tell WHICH
+        # request was holding the line - the same three facts the runs list has carried all
+        # along. Same names as `runs()` so the two windows cannot describe one row
+        # differently.
+        # ⚠️ `requested_by` is "모름" when the row does not carry one, never blank: an empty
+        # author reads as "nobody", and this is the field an operator acts on.
+        "params": json.loads(row.params) if row.params else {},
+        "requested_by": row.requested_by or "모름",
+        "queued_at": row.queued_at.isoformat() if row.queued_at else None,
         "state": row.state,
         "moving": moving,
         "no_progress_seconds": None if since is None else round(since, 1),

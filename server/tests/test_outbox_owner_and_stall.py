@@ -81,10 +81,14 @@ class _Runs:
 
 
 def run_row(op="ledger_backfill", state=retroactive.RUN_RUNNING,
-            started_ago=3600.0, progressed_ago=None):
+            started_ago=3600.0, progressed_ago=None, params='{"source": "lot_event"}',
+            requested_by="kim", queued_ago=7200.0):
     now = datetime.now(timezone.utc)
     return types.SimpleNamespace(
         run_id="abc123", op=op, state=state,
+        params=params, requested_by=requested_by,
+        queued_at=(None if queued_ago is None
+                   else now - timedelta(seconds=queued_ago)),
         started_at=now - timedelta(seconds=started_ago),
         last_progress_at=(None if progressed_ago is None
                           else now - timedelta(seconds=progressed_ago)),
@@ -164,3 +168,31 @@ def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one():
     scheduler = types.SimpleNamespace(
         _retroactive_thread=types.SimpleNamespace(is_alive=lambda: True))
     assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
+
+
+# ------------------------------------------- why it is running, not only that it is
+
+def test_the_blocking_run_says_WHY_it_is_running():
+    """🔴 THE QUEUE POINTS AT THIS ROW AS THE REASON EVERYTHING BEHIND IT WAITS, and an
+    operator could not tell WHICH request was holding the line. The three facts have been
+    on the runs list all along; the window that matters had none of them.
+    """
+    got = retroactive.in_flight(_Runs(run_row(progressed_ago=5.0)))
+    assert got["params"] == {"source": "lot_event"}
+    assert got["requested_by"] == "kim"
+    assert got["queued_at"], got
+
+
+def test_an_unnamed_requester_is_모름_rather_than_blank():
+    """⚠️ An empty author reads as "nobody asked for this", and this is the field an
+    operator acts on - they go and ask that person."""
+    got = retroactive.in_flight(_Runs(run_row(progressed_ago=5.0, requested_by=None)))
+    assert got["requested_by"] == "모름"
+
+
+def test_the_two_windows_describe_one_row_with_the_same_names():
+    """⛔ `runs()` and `in_flight` both show this row. Different spellings of the same
+    three facts would let one window contradict the other."""
+    got = retroactive.in_flight(_Runs(run_row(progressed_ago=5.0)))
+    for field in ("run_id", "op", "params", "requested_by", "queued_at", "state"):
+        assert field in got, field
