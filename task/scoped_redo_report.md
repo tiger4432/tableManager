@@ -6010,3 +6010,67 @@ database_outbox.processed_at   모델에 선언돼 있고 «nullable»
 ⛔ processed_at 은 여전히 아무도 안 씁니다 -> 구간 ④ 미측정 (앞 보고 그대로)
 ⛔ 라이브 선언·규칙 무변경. 프로세스도 안 건드렸습니다
 ```
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **로그 파일 이름 칸 착지 (`6d9f2ea3`) · 그리고 `processed_at` 은 «멈춥니다 — 네 곳입니다»**
+
+## ① 「어느 파일을 열어야 하나」 — 칸 하나 (`GET /admin/chain/queue`)
+```
+칸      log_filename
+읽는 곳  «로거». 상수 아님 — utils.logger.active_log_filename()
+🔴 상수를 안 쓴 이유가 «오늘 밤 제 실수»입니다. 맵퍼 태그가 상수라 server.log 에 앉아
+   chain_worker.log 라고 적을 뻔했습니다. 같은 병에 두 번 걸리지 않게 «시험이 로거에 못 박습니다»
+   (test_it_follows_the_logger_rather_than_a_constant — 로거를 바꾸면 칸도 «따라와야» 통과)
+```
+```
+게이트  ① ✅ 응답에 생겼습니다 — 라이브에서 «server.log» 를 냅니다 (이 통합 프로세스가 진짜 쓰는 파일)
+       ② ✅ 로거에서 읽습니다. 시험 넷 중 둘이 그것만 잽니다
+       ③ ✅ «이름»입니다. 경로 구분자가 들어가면 시험이 빨개집니다
+       ④ ✅ 못 정하면 «null». 「모를 때 기본값」 안 지어냈습니다
+       ⑤ ✅ 새 라우트 0 · DB 컬럼 0 · 설정 축 0
+```
+📌 화면은 이제 「이 서버 «프로세스»에」 옆에 「…의 «server.log»」를 세울 수 있습니다.
+   그리고 단독 워커로 띄우면 그 칸이 «chain_worker.log» 로 «스스로» 바뀝니다.
+
+## 🔴 ② `processed_at` — 지시대로 «먼저 셌고», 한 곳이 아닙니다. **멈춥니다**
+지시: 「한 곳이면 거기서 찍는다 · 여럿이면 멈추고 수를 들고 온다」. **여럿입니다.**
+```
+이벤트를 «처리됨으로 바꾸는» 자리 — 전수 (AST 로 함수까지 붙였습니다)
+  chain_ingestion_worker.py:1204   process_pending_groups        SUCCESS  (그룹 성공)
+  chain_ingestion_worker.py:1270   process_pending_groups        FAILED   (재확장 갈래)
+  chain_ingestion_worker.py:1276   process_pending_groups        FAILED   (격리)
+  chain_ingestion_worker.py:1632   start_chain_ingestion_worker  SUCCESS  (SYSTEM_RELOAD 트리거)
+=> «네 곳»
+```
+```
+그리고 «다섯째»는 성격이 다릅니다 — 세지만 «같은 부류로 안 셉니다»:
+  internal_event_client.py:146   행을 «processed_chain=True 로 만들어 넣습니다»
+  (미전달 통지 표식. 기존 이벤트를 «바꾸는» 것이 아니라 «이미 끝난 상태로 태어납니다»)
+```
+
+### 제가 «안 하고» 올리는 이유
+```
+네 곳에 각각 한 줄을 더하면 «네 곳이 각자 판단하는 자리»가 하나 더 생깁니다.
+오늘 밤 내내 잡은 것이 그 부류(같은 판정의 사본이 여러 곳)입니다 — 그래서 멈춥니다
+```
+
+### 🔵 그래도 «판정 재료»는 같이 냅니다 — 네 곳이 «같은 두 줄»입니다
+```
+전부   event.status = <…>  +  event.processed_chain = True
+=> 조임쇠 하나(`_mark_processed(event, status)`)를 두면 «한 곳»이 됩니다.
+   그 자리에서 processed_at 을 찍으면 지시의 「한 곳이면 거기서」가 «성립»합니다
+⚠️ 다만 그건 «네 자리를 고치는» 변경입니다 — 최소 수정보다 큽니다. 그래서 판정 청합니다:
+   ㉠ 조임쇠를 만들고 거기서 찍는다   (네 자리 수정 · 이후 다섯째가 생겨도 자동으로 걸림)
+   ㉡ 네 곳에 한 줄씩 찍는다         (수정은 작고 · 사본이 넷)
+   ㉢ 지금은 두고 응답에서 «빼는» 쪽 -> ⛔ 지시가 「쓰는 쪽」이라 하셨으니 제외했습니다
+```
+🔴 그리고 어느 쪽이든 «SYSTEM_RELOAD 자리(1632)»는 따로 봐야 합니다 — 그건 맵퍼를 안 돌리는
+   «신호» 이벤트라, 거기의 processed_at 이 「처리에 걸린 시간」과 같은 뜻인지 제가 못 정합니다.
+
+## ③ 그대로
+```
+⛔ 규칙 안 건드렸습니다 (다섯 꺼짐) · ⛔ 고리 검증기 안 건드렸습니다 · ⛔ 라이브 선언 무변경
+다음   판정 오면 processed_at, 그다음 루프 재구조 «제안», 그다음 시각 컬럼 타입
+```
