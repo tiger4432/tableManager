@@ -969,7 +969,12 @@ const FLOORS = new Map([
   // not say' -- because an older build sends neither key and a two-state test passes
   // against a view that reads absent as false. G4 keeps the red result on screen: this
   // round removes the misreading, not the information.
-  ['ontology_authoring_panel_harness.mjs', 68],
+  // 68 -> 79 the same evening: blocks H and I score what R2 landed with no reader.
+  // H4 is the load-bearing one -- without the partial_apply line the operator reads
+  // 「나머지는 들어가겠지」, which is the promise the server was forbidden to make, so a
+  // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
+  // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
+  ['ontology_authoring_panel_harness.mjs', 79],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this

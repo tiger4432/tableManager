@@ -1095,6 +1095,23 @@
 #ontology-explorer-root .oe-testrun-refusal {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
 }
+/* 수는 수로. 말을 붙이지 않습니다 — 서버의 문장이 바로 옆에 있습니다. */
+#ontology-explorer-root .oe-testrun-rows {
+  font-family: var(--oe-font-mono);
+  font-size: 12px;
+  color: var(--oe-muted);
+  overflow-wrap: anywhere;
+}
+
+/* 이슈의 코드. 주소(path) 앞에 서고, 번역되지 않습니다. */
+#ontology-explorer-root .oe-tree-why-code {
+  font-family: var(--oe-font-mono);
+  font-size: 10.5px;
+  color: var(--oe-muted);
+  margin-right: 4px;
+  overflow-wrap: anywhere;
+}
+
 #ontology-explorer-root .oe-testrun-why {
   font-size: 13px; color: var(--oe-text); overflow-wrap: anywhere;
 }

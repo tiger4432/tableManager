@@ -232,8 +232,17 @@ function renderTree(state) {
       // its own fault, or knocked out by something else that is not read yet. No second
       // badge and no second colour: 「빨강이 번지면 읽을 수가 없습니다」.
       if (unread) {
+        // 🔴 THE CODE RIDES WITH THE ADDRESS. The server sends `(code, path, message)`
+        //    per issue and this loop printed two of the three; the code is what the
+        //    operator matches against the server's own vocabulary, and a message alone
+        //    cannot be looked up. ⚠️ An issue with no code draws none -- 「안 보냈다」 is
+        //    not an empty string on screen.
+        // ⛔ EVERY reason, never a slice. The server already says how many it found; a
+        //    list cut here would read as 「그게 전부」, which is the class this repository
+        //    fixed four times today.
         for (const reason of unread.reasons || []) {
           const why = h('div', 'oe-tree-why');
+          if (reason.code) why.append(h('code', 'oe-tree-why-code', reason.code));
           why.append(h('code', '', reason.path), h('span', '', reason.message));
           group.append(why);
         }
@@ -745,6 +754,24 @@ function renderTestRunRefusal(refusal) {
                       'oe-testrun-goto'));
   } else if (refusal.path) {
     box.append(h('code', 'oe-testrun-path', refusal.path));
+  }
+  // 🔴 HOW MANY, OUT OF HOW MANY, IN WHICH COLUMN. 「이 컬럼이 비었다」 alone cannot
+  //    separate 「내 선언이 틀렸다」 from 「내 소스의 한 행이 비었다」, and those need
+  //    opposite moves. ⚠️ All three or none: a count without its column, or a column
+  //    without its count, is a number nobody can act on.
+  if (typeof refusal.rows_read === 'number'
+      && typeof refusal.rows_missing === 'number' && refusal.column) {
+    box.append(h('span', 'oe-testrun-rows',
+                 `${refusal.rows_read}행 중 ${refusal.rows_missing}행 · ${refusal.column}`));
+  }
+  // 🔴 WHAT EXECUTION WILL DO. Without this the operator reads 「나머지는 들어가겠지」,
+  //    which is the promise the server was forbidden to make -- so a screen that omits it
+  //    makes that promise on the server's behalf. The run shares `_event_frames` with the
+  //    preview and is all-or-nothing.
+  //    ⚠️ `true` and «absent» both draw nothing: the first is a promise this build has
+  //       never seen the server make, and the second is 「안 물어봤다」.
+  if (refusal.partial_apply === false) {
+    box.append(h('span', 'oe-testrun-rows', '좋은 행도 안 들어갑니다'));
   }
   return box;
 }
