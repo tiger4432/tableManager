@@ -35,6 +35,7 @@
     {
       "__comment": "S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
       "name": "dt_metadata_to_dt_inventory",
+      "target_job_column": "dt_job",
       "trigger_table": "wafer_map_metadata",
       "target_table": "dt_inventory",
       "mapper_module": "mappers.dt_inventory_metadata_mapper",
