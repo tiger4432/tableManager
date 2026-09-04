@@ -4130,3 +4130,85 @@ tests/test_bonding_plan.py                   «+1» — 라우트를 태워 두 
 합계 52 passed (bonding_plan · coordinate_guard · mapper_boundary)
 🔴 재기동은 총괄 몫입니다
 ```
+
+
+---
+
+# [구현자 -> 총괄] ㉯ 채택안 착지 + 조각 1 — **상한 183 -> 실제 «3»** (157b11d6 · 9fe8ac89)
+
+## ✅ ㉯ — «새 거절» 안 만들었습니다. 관문이 NaN 을 «보게» 했습니다
+```
+있는 관문   unfilled_key_columns  ->  _unfilled_composite_parts  ->  is_blank_value
+문제       is_blank_value(nan) = False  (clean_str_value(nan) 이 «'nan'» 이라 값처럼 보입니다)
+고침       is_blank_key_part(v) = 「비유한 float 이면 결측」 + is_blank_value(v)
+          -> 복합 관문 · 평문 키 갈래 · business_key_val 조기수락 «셋» 다 이것을 씁니다
+🔴 조립기도 «같은 헬퍼»를 봅니다 -> 'A_nan_C' 는 거절되는 게 아니라 «만들어지지 않습니다»
+⛔ compose_business_key 안에 raise 안 넣었습니다 (판정 자리가 둘이 됩니다)
+⛔ is_blank_value «안 건드렸습니다» — 시험이 그 둘을 «갈라» 못 박습니다
+```
+게이트 셋:
+```
+① NaN 키 부분이 관문에 «걸립니다»            unfilled == ["slot"]
+② 'A_nan_C' 가 «안 만들어집니다»              assemble... -> False · business_key_val 은 None
+③ 🔴 무회귀: 평범한 키는 «글자 그대로»        LOT1_01_W3 그대로. 0·False·"nan"(문자열)도 키가 됩니다
+변이 7 -> 7 죽음. 그중 하나가 «㉮를 실수로 해 버리는» 변이(공유 술어를 넓히기)입니다
+```
+
+## ✅ 조각 1 (좌표 계열) — 🔴 **상한 183 -> 실제 «3». 이미 하나는 어제 고쳤으니 새로 «2»**
+```
+읽은 방식   AST 183 사이트를 «출처»로 분류. 「모양」이 아니라 「NaN 이 닿는가」로
+결과
+  실제      transfer_plan.py:1422  _fetch_pairs      DB float 컬럼 + `is not None` 가드   ✅ 고침
+           transfer_plan.py:936   load_source_region 같은 모양                          ✅ 고침(아래 단서)
+           (bonding_plan :915·:949 는 앞 커밋에서 이미)
+  아님      config·meta dict 에서 온 것 (grid_cols · start_x · rotation · equations)
+           numpy 크기/키 (ref_sorted.size · int(ref_keys[i]))
+           집계 int(x or 0) — 값이 «프로세스 안에서 센 수»라 float 조차 아닙니다
+           루프 인덱스 · 문자열 포맷 (rot%d)
+```
+🔴 **총괄 예측(「183 중 열 안팎」)보다 «적습니다».** 이유는 이 계열의 대부분이
+「DB 좌표」가 아니라 «선언/메타에서 온 격자 수»이기 때문입니다 — 그건 int 로 선언되고
+`cast_value_by_type` 을 지나 들어옵니다.
+
+## ⚠️ 단서 하나 — 고친 둘 중 하나는 «휴면» 경로입니다. 시험도 «일부러» 안 붙였습니다
+```
+load_source_region  자기 docstring 이 「plan_store.source_region 바인딩이 라이브 config 에
+                    선언돼 있지 않아 이 경로는 «항상 None»」이라 적어 뒀습니다
+=> 한 줄짜리 같은 판정이라 «같이» 고쳤습니다 (「가드는 도달 가능해지는 날 틀린다」)
+=> 그러나 «시험은 안 붙였습니다» — 아무것도 닿을 수 없는 경로에 단언을 붙이면
+   그 픽스처가 답을 정하기 시작합니다. 대신 시험 파일에 «왜 없는지»를 적었습니다
+```
+
+## 🔴 집을 «하나»로 — 두 모듈이 같은 판정을 씁니다
+```
+전   bonding_plan._finite_point (사설) · transfer_plan 은 자기 `is not None`
+후   bonding_plan.finite_point (공개) 하나 · transfer_plan 이 «import» 합니다
+     (transfer_plan 은 이미 bonding_plan 에서 둘을 import 하고 있었습니다)
+```
+
+## 🔴 제 시험이 «처음에 틀렸습니다» — 픽스처가 답을 정할 뻔했습니다
+```
+1차 시도   _fetch_pairs 의 «반환값»에 NaN 점을 덧붙였습니다
+          -> 그건 «필터를 지난 뒤»라 그냥 세어집니다. transferred 3 -> 5 로 «빨간» 실패
+          -> 즉 제가 잰 것은 제품이 아니라 «제 주입»이었습니다
+2차       가짜 세션이 «DB 행»으로 NaN 을 답하게 바꿨습니다 — NaN 이 실제로 오는 자리입니다
+          그리고 「안 터진다」가 아니라 «무엇이 살아남는가»를 단언합니다
+          (전부 버리는 가드도 예외는 안 냅니다 — 변이 M2 가 그것입니다)
+```
+
+## 시험
+```
+tests/test_key_part_nan.py       «신규 16»  · 변이 7/7
+tests/test_transfer_plan.py      «+1»       · 변이 2/2
+tests/test_bonding_plan*.py      이름 변경 반영
+합계 196 passed
+```
+
+## 다음 — ㉮ 측정 (코드 0줄) 은 «아직 안 했습니다»
+지시대로 조각 1 뒤에 하겠습니다: `is_blank_value` 소비자 전수 + 각각 「NaN 이 공백이 되면
+무엇이 달라지나」 한 줄. 지금은 여기까지 보고합니다.
+```
+🔴 재기동은 총괄 몫입니다
+⚠️ map_alignment.py 는 시작 전 git status 로 확인했습니다 — 남의 미커밋 «없었습니다»
+   (그리고 결과적으로 그 파일에서 «고칠 것이 없었습니다» — 95 사이트 전부 격자/메타/인덱스입니다)
+```
