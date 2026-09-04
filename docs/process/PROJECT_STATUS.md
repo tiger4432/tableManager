@@ -58,6 +58,15 @@
 > └ 셋이 «각각» 뜨고 각각 자기 시작 시각을 가집니다. 둘은 WorkingDirectory 가 `server/` 입니다
 > 🔴 실측: uvicorn 만 오늘 것이고 워커 둘은 «나흘 전»이었습니다.
 >    그날 착지한 워커 쪽 수정이 하나도 안 돌고 있었고, 포트만 보면 «통과»로 나옵니다
+> 🔴 「이 진입점이 그 파일을 읽나」는 «grep 하지 말고 import 해서» 물으십시오 (2026-09-04 실측)
+>    grep 은 basename 이 흔한 낱말이면(config 같은) «전부» 맞습니다 — 제가 그걸로 한 번 틀렸습니다
+> ```
+> python -c "import sys,importlib; sys.path.insert(0,'.');
+>            importlib.import_module('<진입점>');
+>            print(sorted(m for m in sys.modules if m.startswith('<패키지>')))"
+> ```
+>    -> 실측: 체인 워커·스케줄러 둘 다 `ledger` 모듈 «0개» 로드. 그날 ledger 변경엔 «스테일 아님»
+>    ⚠️ 이건 «import 시점»을 잽니다. 함수 안에서 늦게 import 하는 자리가 있으면 그건 별개입니다
 > 🔴 확인은 포트가 아니라:
 >    Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Select ProcessId,CreationDate,CommandLine
 >    -> «고친 파일을 읽는» 진입점의 시작 시각을 그 파일의 mtime 과 견줍니다
