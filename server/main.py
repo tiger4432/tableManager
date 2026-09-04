@@ -4892,15 +4892,20 @@ def _ledger_admin_refusal(violations):
 
 
 @app.get("/admin/ledger/sources", dependencies=[Depends(require_admin_token)])
-def get_ledger_sources():
-    """소스 선언과 **kind별 필수/선택 컬럼 목록**. 폼은 이 선언에서 생성된다.
+def get_ledger_sources(db: Session = Depends(get_db)):
+    """소스 선언과 **kind별 필수/선택 컬럼 목록**, 그리고 소스마다 **번역기가 남긴 장부**.
 
     `unsupported_kinds`가 비어 있지 않은 것이 중요하다: 판정은 났지만 번역기가 없는 종류
     (`derivation`)를 목록에서 지우면 화면이 「이 시스템은 그런 걸 못 한다」로 읽히고,
     사유와 함께 실으면 「아직 안 왔다」로 읽힌다.
+
+    🔴 `ingestion`은 「내 소스가 잘 들어갔나」에 답한다 — **원장을 읽지 않고**
+    `ledger_translator_cursor`(소스당 한 행)로. 원장을 `source_who`로 세면 파티션 전부를
+    훑는다(실측 2026-09-04: 플래너 비용 110,832 대 1.13). 그 수가 무엇에 대한 수인지는
+    응답의 `note`가 같이 나른다 — 번역기의 장부이지 원자의 인구조사가 아니다.
     """
     import ledger_admin
-    return ledger_admin.sources_view()
+    return ledger_admin.sources_view(db)
 
 
 @app.get("/admin/ledger/config/raw", dependencies=[Depends(require_admin_token)])

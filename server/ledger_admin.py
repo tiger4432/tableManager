@@ -648,7 +648,85 @@ UNSUPPORTED_KINDS = (
 )
 
 
-def sources_view() -> dict:
+#: The four states a declared source can be in, AS VALUES. Nothing here asks a reader to
+#: infer a state from a missing key: "never ran" inferred from absence is wrong the day a
+#: key goes missing for some other reason, and `ran_wrote_nothing` is a zero that is
+#: CORRECT - which is exactly the zero an absence gets mistaken for.
+SOURCE_RAN_AND_WROTE = "ran_and_wrote"
+SOURCE_RAN_WROTE_NOTHING = "ran_wrote_nothing"
+SOURCE_NEVER_RAN = "never_ran"
+SOURCE_ORPHAN = "orphan"
+
+#: 🔴 SHIPPED WITH THE NUMBERS, NOT LEFT TO THE READER. `atoms_written` is what the
+#: translator RECORDED WRITING, and nothing decrements it: deleting atoms or rebuilding
+#: the ledger leaves this number where it was. Without this sentence beside them these
+#: counts read as "how many are in the ledger right now", which is a different question
+#: and one this row cannot answer.
+INGESTION_NOTE = (
+    "이 수는 «번역기의 장부»입니다 — 지금 원장에 몇 개 있는지가 아닙니다. "
+    "원자를 지우거나 재건해도 이 수는 되돌아가지 않습니다."
+)
+
+#: What the cursor row carries into the view. `refusal_reasons` is deliberately NOT here:
+#: its NULL and its `{}` mean different things (schema.py says so at length) and a
+#: catalogue row is the wrong place to teach that difference.
+_CURSOR_FIELDS = ("translator_ver", "molecules_done", "atoms_written",
+                  "atoms_deduped", "molecules_refused", "updated_at")
+
+
+def ingestion_view(db, declared) -> dict:
+    """Per source: what the translator recorded, and which of the four states it is in.
+
+    🔴 IT READS `ledger_translator_cursor`, NOT THE LEDGER. One row per source, so the
+    cost does not grow with the atoms - measured 2026-09-04, the planner costs this at
+    1.13 against a full `GROUP BY source_who` over the atoms at 110,832, which is what
+    this view exists instead of. The ledger is partitioned by `occurred_at` and carries
+    no index on `source_who`, so counting it by source is a scan of every partition.
+
+    ⚠️ AND IT IS A DIFFERENT QUESTION FROM "what is in the ledger now" - see
+    `INGESTION_NOTE`, which travels with the answer.
+
+    An unreadable cursor table yields `sources: []` and a named `unavailable`, never a
+    list of `never_ran`: not knowing is not the same as knowing nothing ran, and the
+    declared names are already in the response beside this.
+    """
+    declared = list(declared or [])
+    cursor, unavailable = {}, None
+    if db is None:
+        unavailable = "no database session"
+    else:
+        try:
+            from sqlalchemy import text
+            from ledger import schema as ledger_schema
+            columns = ", ".join(("source",) + _CURSOR_FIELDS)
+            for row in db.execute(text(
+                    f"SELECT {columns} FROM {ledger_schema.CURSOR_TABLE}")):
+                cursor[row[0]] = dict(zip(_CURSOR_FIELDS, row[1:]))
+        except Exception as exc:
+            logger.warning("ledger translator cursor unreadable: %s", exc)
+            unavailable = f"{exc.__class__.__name__}: {exc}"
+
+    rows = []
+    if unavailable is None:
+        for name in sorted(set(declared) | set(cursor)):
+            entry = {"source": name, "declared": name in declared}
+            row = cursor.get(name)
+            if row is None:
+                entry["state"] = SOURCE_NEVER_RAN
+            else:
+                written = row.get("atoms_written") or 0
+                entry["state"] = (SOURCE_ORPHAN if name not in declared
+                                  else SOURCE_RAN_AND_WROTE if written
+                                  else SOURCE_RAN_WROTE_NOTHING)
+                for field in _CURSOR_FIELDS:
+                    value = row.get(field)
+                    entry[field] = (value.isoformat() if hasattr(value, "isoformat")
+                                    else value)
+            rows.append(entry)
+    return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable}
+
+
+def sources_view(db=None) -> dict:
     from ledger import config as ledger_config
 
     path = ledger_config.config_path()
@@ -661,10 +739,20 @@ def sources_view() -> dict:
             path = sample
     except Exception as exc:
         error = f"{exc.__class__.__name__}: {exc}"
+    sources = (document.get("sources") or {})
+    # The declaration is a mapping here; a list spelling would name each source inside
+    # its entry. Both are read the same way rather than assumed, because the two other
+    # readers of this file disagree about which they get.
+    declared = (list(sources) if isinstance(sources, dict)
+                else [s.get("source") for s in sources if isinstance(s, dict)])
     return {
         "kinds": kinds_view(),
         "unsupported_kinds": [dict(k) for k in UNSUPPORTED_KINDS],
-        "sources": (document.get("sources") or {}),
+        "sources": sources,
+        # Additive: a reader that does not know this key is unaffected. It is a separate
+        # key rather than a field inside each declared source because one of the four
+        # states - `orphan` - has NO declared source to hang off.
+        "ingestion": ingestion_view(db, declared),
         "config_path": path,
         "error": error,
     }
