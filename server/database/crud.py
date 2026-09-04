@@ -2343,6 +2343,33 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     return True
 
 
+def is_blank_key_part(value) -> bool:
+    """`is_blank_value`, PLUS: a non-finite float is not an identity.
+
+    🔴 WHY THE IDENTITY PATH NEEDS ITS OWN ANSWER AND `is_blank_value` DOES NOT CHANGE.
+    `clean_str_value(float("nan"))` is the STRING `"nan"`, so a NaN key part does not
+    look empty to anything - it looks like a value. Measured 2026-09-04:
+
+        compose_business_key("t", ["A", float("nan"), "C"])  ->  "A_nan_C"
+
+    That string then behaves as an identity, and two rows whose key part is missing for
+    unrelated reasons land on the SAME one. Worse, the row whose value arrives later gets
+    a different key, so the first is orphaned with nothing raised anywhere. This is the
+    class this repository already knows - a guard goes wrong the day it becomes reachable
+    - and the door is open today: seed scripts write table rows directly, bypassing
+    `cast_value_by_type`, which is the one place that refuses nan/inf into a column.
+
+    ⚠️ IT IS DELIBERATELY NOT FOLDED INTO `is_blank_value`. That predicate is read by the
+    virtual join's "only fill an empty cell", by the enrichment gate and by
+    `blank_to_null` - places where calling a NaN blank would change what gets WRITTEN, not
+    just what gets refused. Whether that is also right is a separate measurement (lead PM,
+    2026-09-04); until it is made, only identity is answered here.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return True
+    return is_blank_value(value)
+
+
 def _unfilled_composite_parts(composite_src, updates) -> list:
     """Which `composite_key_source` columns this payload does not supply a value for.
 
@@ -2356,7 +2383,7 @@ def _unfilled_composite_parts(composite_src, updates) -> list:
     """
     updates = updates or {}
     return [col for col in composite_src
-            if col not in updates or is_blank_value(updates.get(col))]
+            if col not in updates or is_blank_key_part(updates.get(col))]
 
 
 def unfilled_key_columns(table_name: str, update_item) -> list:
@@ -2390,7 +2417,8 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     # here either.
     if update_item.row_id:
         return []
-    if update_item.business_key_val and not is_blank_value(update_item.business_key_val):
+    if (update_item.business_key_val
+            and not is_blank_key_part(update_item.business_key_val)):
         return []
 
     config = TABLE_CONFIG.get(table_name, {})
@@ -2406,7 +2434,7 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
 
     if declared:
         updates = update_item.updates or {}
-        if key_col in updates and not is_blank_value(updates.get(key_col)):
+        if key_col in updates and not is_blank_key_part(updates.get(key_col)):
             return []
         return [key_col]
 
