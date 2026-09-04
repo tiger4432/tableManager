@@ -60,7 +60,10 @@ function element(tag) {
   };
   return node;
 }
-globalThis.document = { createElement: element };
+// `createDocumentFragment` joined the stub when block G started rendering the 원본 JSON
+// tab: `keyValue` builds a fragment, and a fragment that only has to be appended into
+// a parent is an element with no tag as far as these assertions can tell.
+globalThis.document = { createElement: element, createDocumentFragment: () => element('#fragment') };
 globalThis.requestAnimationFrame = (fn) => fn();
 
 const { renderOntologyExplorer } = await import('../src/ontology_explorer_view.js');
@@ -676,6 +679,69 @@ const renderDraft = (plan) => {
   check('F5 every folded row is a control that opens it',
     foldedCards.every((card) =>
       byClass(card, 'oe-field-folded').some((n) => n.dataset?.action === 'toggle-field')));
+}
+
+  // --- G. R1: the server says a red run does not block, and says what would ----------
+//
+// 🔴 THE DEFECT THIS SCORES IS A MONTH LONG AND HAD NO ERROR. `activate` refuses on
+//    exactly one thing and a red test run is not it -- but the screen could only show the
+//    red, so declarations that were writable the whole time were never written.
+//
+// 🔴 EVERY CASE IS SCORED IN THREE, not two. The third is "the server did not say":
+//    an older build sends neither key, and 「안 물어봤다」 must not draw as 「안 막는다」.
+//    A two-state test passes against a view that treats absent as false.
+{
+  const RUN = { status: 'ok', rows_read: 12, molecules: 3, atoms: 9, sentences: [],
+                refusal: null, relation: 'dt_job' };
+  const draw = (run, blockers) => {
+    const root = element('div');
+    // `target_key` is what puts the EDITOR on screen (the view asks whether the
+    // selection and the draft are the same declaration), and the controls live in it.
+    const draft = { target_kind: 'source_plan', target_id: 'dt_job',
+                    target_key: 'source_plan|dt_job' };
+    if (blockers !== undefined) draft.activation_blockers = blockers;
+    renderOntologyExplorer(root, {
+      // the editor -- and so the Save control -- lives on the 원본 JSON tab
+      ...stateWith(PLAN), detailTab: 'raw', draft, editorText: JSON.stringify(DOCUMENT),
+      ...(run === undefined ? {} : { testRun: run }),
+    });
+    return root;
+  };
+  const noteText = (root) => byClass(root, 'oe-testrun-note').map((n) => n.textContent).join('|');
+
+  // ① the test run's own line
+  check('G1 a run that does not block says so',
+    noteText(draw({ ...RUN, blocks_activation: false })).includes('저장 차단 아님'));
+  check('G2 a run that DOES block says the opposite',
+    noteText(draw({ ...RUN, blocks_activation: true })).includes('저장 차단')
+    && !noteText(draw({ ...RUN, blocks_activation: true })).includes('아님'));
+  // 🔴 THE THIRD STATE. Without this one, a view that read `!run.blocks_activation`
+  //    would pass G1 and G2 and still lie to every operator on an older server.
+  check('G3 a server that did not say draws NEITHER word',
+    !noteText(draw(RUN)).includes('차단'), noteText(draw(RUN)));
+  // and the red result itself is still on screen -- this round does not turn red green
+  check('G4 the refusal is not hidden by any of that',
+    byClass(draw({ ...RUN, status: 'refused', blocks_activation: false,
+                   refusal: { message: 'x', code: 'y' } }), 'oe-testrun-refusal').length === 1);
+
+  // ② what would refuse the save, beside Save
+  const blockerText = (root) =>
+    byClass(root, 'oe-editor-blockers').map((n) => n.textContent).join('|');
+  check('G5 an empty list says nothing blocks',
+    blockerText(draw(undefined, [])) === '막는 것 없음');
+  check('G6 a blocker is named as the server named it',
+    blockerText(draw(undefined, ['stale_draft'])) === 'stale_draft');
+  check('G7 several are joined, still unranslated',
+    blockerText(draw(undefined, ['stale_draft', 'conflict_draft']))
+      === 'stale_draft · conflict_draft');
+  // 🔴 THE THIRD STATE AGAIN, and the one that matters most here: an absent key is
+  //    NOT an empty list. Drawing 「막는 것 없음」 for a server that never answered would
+  //    be this screen asserting something it was not told.
+  check('G8 an absent key draws nothing at all',
+    byClass(draw(undefined, undefined), 'oe-editor-blockers').length === 0);
+  // the control it sits beside still exists, and there is still only one of it
+  check('G9 Save is still the one primary control',
+    byClass(draw(undefined, []), 'oe-editor-action-primary').length === 1);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

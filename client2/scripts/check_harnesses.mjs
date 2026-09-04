@@ -964,7 +964,12 @@ const FLOORS = new Map([
   // have exactly FOUR callers with nobody assembling the set by hand. The audit recorded two
   // sites and there were four; the count assertion is what stops a fifth appearing quietly.
   ['narrowing_trio_harness.mjs', 17],
-  ['ontology_authoring_panel_harness.mjs', 44],
+  // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
+  // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
+  // not say' -- because an older build sends neither key and a two-state test passes
+  // against a view that reads absent as false. G4 keeps the red result on screen: this
+  // round removes the misreading, not the information.
+  ['ontology_authoring_panel_harness.mjs', 68],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this

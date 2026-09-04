@@ -658,6 +658,19 @@ function renderRaw(state) {
     // name for what Save already does, and the second was a control nobody asked for.
     const controls = h('div', 'oe-editor-controls');
     controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
+    // 🔴 WHAT WOULD REFUSE THIS SAVE, BY NAME. An empty list is the answer the screen
+    //    never had: it could see a red test run and nothing else, so a draft that was
+    //    writable looked blocked.
+    //    ⛔ THE NAMES ARE THE SERVER'S. They are the codes `activate` itself raises, so the
+    //       two cannot drift; translating them here would put that wording in a second place.
+    //    ⚠️ Not an array = the server did not say. That draws nothing, which is not the
+    //       same pixel as 「막는 것 없음」.
+    if (Array.isArray(state.draft.activation_blockers)) {
+      controls.append(h('span', 'oe-editor-blockers',
+                        state.draft.activation_blockers.length
+                          ? state.draft.activation_blockers.join(' · ')
+                          : '막는 것 없음'));
+    }
     // 🔴 DELETE WHERE THE FILE HOLDS IT, WHICH IS NOT THE SAME AS "IN THE INDEX".
     // This used to require a selection, so an UNREAD declaration -- visible, in the file,
     // not in the snapshot -- had no delete button. That was a dead end with no other exit:
@@ -755,6 +768,16 @@ function renderTestRun(state) {
   head.append(h('span', 'oe-testrun-count',
                 `행 ${run.rows_read} · 분자 ${run.molecules} · 원자 ${run.atoms}`));
   if (run.incomplete) head.append(h('span', 'oe-testrun-note', `미완 ${run.incomplete}`));
+  // 🔴 A RED RESULT IS NOT A GATE, AND THE SCREEN HAD NO WAY TO SAY SO. `activate`
+  //    refuses on one thing -- the snapshot compare-and-swap -- and this is not it. Nobody
+  //    presses Save beside a red panel though, so declarations that were writable the whole
+  //    time were never written; the ledger has not run in production for a month.
+  //    ⚠️ THREE STATES, NOT TWO. An older server sends no such key, and 「안 물어봤다」 must
+  //       not render as 「안 막는다」 -- so an absent key draws nothing.
+  //    ⚠️ The control this screen has is `Save`, not `Activate`: saving IS the write
+  //       (owner, 「저장이 곀 설정 파일 반영」), so the word beside it is 저장.
+  if (run.blocks_activation === false) head.append(h('span', 'oe-testrun-note', '저장 차단 아님'));
+  else if (run.blocks_activation === true) head.append(h('span', 'oe-testrun-note', '저장 차단'));
   box.append(head);
   if (run.refusal) box.append(renderTestRunRefusal(run.refusal));
   if (run.status === 'empty') {
