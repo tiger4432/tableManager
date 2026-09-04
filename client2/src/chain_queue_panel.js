@@ -45,6 +45,7 @@
 
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
 import { countText } from './absent.js';
+import { countWithAbsence } from './count_with_absence.js';
 
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
 
@@ -173,8 +174,19 @@ export function queueView(payload, opts = {}) {
   // 🔴 「대기 0」은 「밀린 것 없음」이 «아닐 수» 있습니다 — 실패한 행은
   //    `processed_chain=true` 라 «큐에서 빠집니다». 그래서 그 수가 «옆에» 서야 합니다.
   //    ⛔ 문장을 늘리지 않습니다. 값 하나이고, 없으면 «안 그립니다» (0 으로도 안 그립니다).
-  const failed = Number.isFinite(Number(opts.failedTotal)) && opts.failedTotal !== null
-    && opts.failedTotal !== '' ? `실패 ${Number(opts.failedTotal)}` : null;
+  //  «부품»으로 그립니다 — 「수 + 그 0 이 무엇인지」의 자리는 한 곳입니다.
+  const failedCell = countWithAbsence({ value: opts.failedTotal });
+  const failed = failedCell.read ? `실패 ${failedCell.text}` : null;
+  // 🔴 «두 번째 소비자»: 도는 체인 루프. 빈 목록이 「없다」인지 「내가 못 본다」인지는
+  //    `loop_in_this_process` 가 가릅니다 — 루프가 «다른 프로세스»면 이 API 의 목록은
+  //    영원히 비어 있고, 그것을 그냥 그리면 「도는 게 없다」가 됩니다.
+  //    ⚠️ 그 값이 «없으면» 0 도 아니고 「없다」도 아닙니다 — «모름»입니다.
+  const running = Array.isArray(payload.running) ? payload.running.length : null;
+  const sees = payload.loop_in_this_process;
+  const runningCell = countWithAbsence(
+    sees === false ? { unread: '이 프로세스에 루프 없음' }
+      : sees === true ? { value: running, absence: 'truly_none' }
+        : { unread: '모름' });
   let headline;
   if (secs === null || secs === undefined) {
     headline = { main: '대기 없음', sub: '기다리는 행이 «없습니다». 「0초」와 다릅니다 — 0초는 '
@@ -256,6 +268,7 @@ export function queueView(payload, opts = {}) {
     reason: '',
     headline: Object.freeze(headline),
     failed,
+    running: `도는 체인 ${runningCell.text}`,
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
@@ -335,6 +348,9 @@ export class ChainQueuePanel {
     // 🔴 실패 수는 «대기 옆»에 섭니다. 탭을 옮기지 않고 둘이 같이 읽혀야, 「대기 0」이
     //    「잘 돌고 있다」로 «안» 읽힙니다. 값을 모르면 아무것도 안 그립니다.
     if (view.failed) head.appendChild(this._line('chain-queue-headline-fail', view.failed));
+    // 🔴 「도는 것이 보인다」. 빈 목록이 「없다」로 읽히지 않게, 그 0 이 무엇의 0 인지가
+    //    «부품»에서 같이 나옵니다. 문장이 아니라 낱말 하나입니다.
+    if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
     head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
     head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
     this.root.appendChild(head);

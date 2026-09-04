@@ -262,6 +262,12 @@ const FLOORS = new Map([
   // a question nobody asked.
   ['chain_rule_panel_harness.mjs', 38],
   ['absent_harness.mjs', 35],
+  // THE ZERO THAT LIES. Four tabs each grew their own sentence for "0 but there is work",
+  // while the server has shipped a closed list of six absence words that nothing read.
+  // This scores the part that draws them: a zero and an unread number are different
+  // pixels, the word belongs to zero and not to any other count, and a token this build
+  // has never seen survives instead of folding into the six.
+  ['count_with_absence_harness.mjs', 27],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],

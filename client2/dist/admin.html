@@ -209,6 +209,12 @@
       color: var(--text-dim);
     }
     /* 실패 수는 «대기 옆»입니다. 값 하나이고 문장이 아닙니다. */
+    /* 도는 체인 — 「수 + 그 0 이 무엇인지」. 값이고 문장이 아닙니다. */
+    .chain-queue-headline-running {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
     .chain-queue-headline-fail {
       color: var(--danger);
       font-weight: 600;
@@ -1303,6 +1309,7 @@
     /* ② 라벨 · 부제 */
     .section-summary,
     .chain-queue-headline-fail,
+    .chain-queue-headline-running,
     .chain-queue-row-owners,
     .ledger-sources-sub,
     .ledger-sources-reason,
@@ -1521,7 +1528,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-B80vInBc.js"></script>
+  <script type="module" crossorigin src="/assets/admin-0wQlRFQ2.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">
