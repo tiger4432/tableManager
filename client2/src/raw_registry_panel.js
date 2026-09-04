@@ -134,7 +134,9 @@ export class RawRegistryPanel {
 
     // 고르는 자리. 이름을 외우게 하지 않습니다 — 서버가 목록을 줍니다.
     const picker = doc.createElement('select');
-    picker.className = `${spec.cls}-picker`;
+    // 🔴 탐색기의 고르개 «그 자체»를 씁니다 — 값을 베끼는 대신 규칙에 «닿습니다».
+    //    남는 `${spec.cls}-picker` 는 «배치»만 합니다 (폭·여백).
+    picker.className = `${spec.cls}-picker oe-field-select`;
     picker.setAttribute('data-picker', spec.nameKey);
     for (const name of view.names) {
       const o = doc.createElement('option');
