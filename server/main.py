@@ -3824,10 +3824,24 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     import chain_activity
     running = chain_activity.registry.snapshot()
 
+    # 🔴 «어느 파일을 열어야 하나». `loop_in_this_process` 는 「어느 «프로세스»인가」를
+    # 답하는데, 운영자가 다음에 하는 일은 «파일을 여는» 것이고 그 이름을 내는 자리가
+    # 어디에도 없었다 (응용·클라가 각각 재서 같은 자리를 지목).
+    #
+    # 🔴 로거에서 «읽는다». 상수로 적으면 거짓이 된다 — 통합 프로세스는 server.log 를,
+    # 단독 워커는 chain_worker.log 를 쓰고, 그 판정은 「누가 먼저 열었나」가 한다. 오늘 밤
+    # 맵퍼 태그가 상수라 거짓말할 뻔한 것과 «같은 병»이라 같은 방식으로 막는다.
+    #
+    # ⚠️ «이름»이지 경로가 아니다. 서버 디스크 구조는 화면에 나갈 것이 아니고, 데이터 루트가
+    # 그 경로를 옮길 수도 있다. 아직 정해지지 않았으면 null — 「모를 때의 기본값」을 지어내면
+    # 화면이 「모름」을 그릴 수 없다.
+    from utils import logger as process_logging
+
     return {
         "waiting": int(waiting or 0),
         "running": running,
         "loop_in_this_process": chain_activity.registry.attached,
+        "log_filename": process_logging.active_log_filename(),
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
