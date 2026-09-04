@@ -240,6 +240,7 @@
     }
     /* 탐색기의 «고르개» 답은 `.oe-field-select` 입니다 — 본문 글꼴 · 14px ·
        패딩 6px 10px · 최소 높이 36px · 모서리 0. 값을 그대로 옮깁니다. */
+    .chain-rule-picker,
     .table-config-picker {
       width: 100%;
       max-width: 320px;
@@ -249,6 +250,7 @@
       font-size: 14px;
       border-radius: 0;
     }
+    .chain-rule-raw,
     .table-config-raw {
       display: block;
       width: 100%;
@@ -258,8 +260,19 @@
       line-height: 1.5;
       border-radius: 0;
     }
+    .chain-rule-controls,
     .table-config-controls { margin: 6.8px 0 0; }
+    /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
+       저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
+       ⛔ 문장은 없습니다. `enabled true` / `enabled false` 가 전부입니다. */
+    .chain-rule-state {
+      margin: 0 0 6.8px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+    }
+    .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
     /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
+    .chain-rule-refusal,
     .table-config-refusal {
       margin: 6.8px 0 0;
       padding: 6.8px 10.2px;
@@ -269,13 +282,17 @@
       flex-direction: column;
       gap: 3.4px;
     }
+    .chain-rule-refusal-code,
+    .chain-rule-refusal-path,
     .table-config-refusal-code,
     .table-config-refusal-path {
       font-family: var(--font-mono);
       color: var(--text-dim);
       white-space: normal;
     }
+    .chain-rule-refusal-why,
     .table-config-refusal-why { color: var(--text); white-space: normal; }
+    .chain-rule-saved,
     .table-config-saved {
       margin: 6.8px 0 0;
       font-family: var(--font-mono);
@@ -1281,6 +1298,9 @@
     .ledger-sources-sub,
     .ledger-sources-reason,
     .ledger-sources-unaccounted,
+    .chain-rule-refusal-code,
+    .chain-rule-refusal-path,
+    .chain-rule-saved,
     .table-config-refusal-code,
     .table-config-refusal-path,
     .table-config-saved {
@@ -1299,6 +1319,7 @@
     .chain-queue-owner,
     .chain-queue-headline-sub,
     .chain-queue-blocked-recovery,
+    .chain-rule-refusal-why,
     .table-config-refusal-why,
     .stage-section .empty-state,
     .stage-section .empty-text {
@@ -1308,6 +1329,8 @@
     /* ⑤ 수 · 식별자 (등폭) */
     .section-count,
     .chain-queue-blocked-fact,
+    .chain-rule-raw,
+    .chain-rule-state,
     .table-config-raw {
       font-family: var(--font-mono);
       font-size: 12px;
@@ -1747,6 +1770,22 @@
                 <div class="empty-text">No active chained ingestion rules found.</div>
               </div>
             </div>
+          </div>
+
+
+          <!-- 🔴 변환 «코드»는 목록·읽기·쓰기와 화면이 다 있는데, 그 코드를 표에 «거는»
+               규칙은 읽기만 있었습니다. 「체인이 표를 만든다」의 마지막 걸음이 앱 밖이었습니다.
+               ⚠️ 저장은 «장전»까지입니다 — 새 규칙은 `enabled: false` 로 적혀 저장되고,
+                  그 값이 절 안에 그대로 보입니다. 켜는 것은 원문에서 그 칸을 고치는 것입니다. -->
+          <div class="stage-section" id="sec-chain-rule-editor">
+            <div class="section-header" data-section="sec-chain-rule-editor">
+              <span class="stage-chip">수정</span>
+              <span class="section-title">규칙 등록 (chain_rules.json)</span>
+              <span class="section-count" id="chain-rule-editor-count">—</span>
+              <span class="section-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div id="chain-rule-mount"></div></div>
           </div>
 
           <div class="stage-section" id="sec-chain-queue">

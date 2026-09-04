@@ -254,6 +254,13 @@ const FLOORS = new Map([
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
   // path and sentence rather than a second refusal vocabulary written here.
   ['table_config_panel_harness.mjs', 35],
+  // CHAIN RULE. The one this exists for beyond the table's two: a saved rule may not be
+  // a RUNNING rule. The server writes a new rule with `enabled: false` because the loader
+  // re-reads on reload, so saving would otherwise arm and fire at once - and if the screen
+  // does not show that value the operator reads "saved" as "running". Three states, because
+  // the list response carries no `enabled` at all and drawing that as `false` would answer
+  // a question nobody asked.
+  ['chain_rule_panel_harness.mjs', 38],
   ['absent_harness.mjs', 35],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],

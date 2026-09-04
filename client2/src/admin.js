@@ -39,6 +39,7 @@ import {
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { TableConfigPanel } from './table_config_panel.js';
+import { ChainRulePanel } from './chain_rule_panel.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
 const isDevServer = window.location.port === '5173';
@@ -889,6 +890,9 @@ async function fetchData(options = {}) {
       if (active) { activeIngestionData = active.data || []; renderActiveIngestions(); }
       else { markSectionUnread('active-ingestion-count'); allRead = false; }
     } else if (tab === 'chain') {
+      // 규칙 편집기는 «따로» 받습니다 — 이 라우트가 없는 옛 서버에서 Chain 탭 전체가
+      // 안 뜨는 것을 막는, 대기열과 같은 이유입니다.
+      void refreshChainRule();
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
       //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
       const [obRes, rulesRes, mapRes, queueRes] = await Promise.all([
@@ -964,6 +968,72 @@ async function fetchData(options = {}) {
 // 표 등록 — 제품 «안»에서. 편집 단위는 «표 하나»이고, 저장은 열 때 받은
 // `base` 지문을 그대로 되돌려 보냅니다 — 둘이 같은 파일을 열면 둘째가 첫째를
 // 조용히 지웁니다. 서버가 `stale_base` 로 거절하고, 그건 «실패가 아니라» 「다시 열어라」입니다.
+// 체인 규칙 등록 — 표 등록과 «같은 부품»입니다. 다른 것은 선언뿐이고,
+// 그것이 「둘째를 손으로 그리지 않는다」의 뜻입니다.
+// 🔴 그리고 하나 더 있습니다 — 저장이 «장전»까지라는 사실을 서버가 `enabled` 로
+//    말하고, 패널은 그 «값»을 그립니다. 문구는 지지 않습니다.
+let chainRulePanel = null;
+async function refreshChainRule(name, extra = {}) {
+  const mount = byId('chain-rule-mount');
+  if (!mount) return;
+  if (!chainRulePanel) {
+    chainRulePanel = new ChainRulePanel(mount, {
+      onOpen: (rule) => refreshChainRule(rule),
+      onSave: (payload) => saveChainRule(payload),
+    });
+  }
+  let body = null;
+  let opts = { ...extra };
+  try {
+    const qs = name ? `?name=${encodeURIComponent(name)}` : '';
+    const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw${qs}`);
+    if (res.status === 404) {
+      opts.unavailable = '이 서버 프로세스에 /admin/chain/rules/raw 가 없습니다 (404) — 재기동이 필요합니다.';
+    } else if (!res.ok) {
+      opts.unavailable = `규칙 등록 조회 실패 (HTTP ${res.status}).`;
+    } else {
+      body = await res.json().catch(() => null);
+    }
+  } catch (e) {                                              // noqa
+    opts.unavailable = '규칙 등록 조회에 실패했습니다 (네트워크).';
+  }
+  const view = chainRulePanel.render(body, opts);
+  const count = byId('chain-rule-editor-count');
+  if (count) count.textContent = view.count;
+}
+
+async function saveChainRule({ name, base, raw }) {
+  // 표 등록과 같은 길입니다 — 운영자가 쓴 것이 JSON 이 아니면 «서버까지 가기 전»에
+  // 걸리고, `code` 는 «비웁니다». 서버의 코드를 다른 조건에 찍지 않습니다.
+  let declaration = null;
+  try {
+    declaration = JSON.parse(raw);
+  } catch (e) {
+    await refreshChainRule(name, { refusal: {
+      code: '', path: `rules.${name}`,
+      message: String(e && e.message ? e.message : e) } });
+    return;
+  }
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, declaration, base }),
+    });
+    const answer = await res.json().catch(() => null);
+    if (!res.ok) {
+      await refreshChainRule(name, { refusal: (answer && answer.detail) || answer || {} });
+      return;
+    }
+    // 🔴 저장 답이 `enabled` 를 실어 옵니다 — 새 규칙이면 `false` 입니다.
+    //    그것을 그대로 넘기면 패널이 «방금 쓴 값»을 보여 줍니다.
+    await refreshChainRule(name, { saved: answer || {} });
+  } catch (e) {                                              // noqa
+    await refreshChainRule(name, { refusal: {
+      code: '', path: '', message: '저장 요청이 서버에 닿지 못했습니다 (네트워크).' } });
+  }
+}
+
 let tableConfigPanel = null;
 async function refreshTableConfig(table, extra = {}) {
   const mount = byId('table-config-mount');
