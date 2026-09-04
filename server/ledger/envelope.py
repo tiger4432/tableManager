@@ -296,6 +296,24 @@ ROW_COLUMNS = (
 )
 
 
+#: The envelope's own refusals, as codes. 🔴 THEY EXIST SO A SCREEN CAN POINT AT A BOX.
+#: These six are the ones an operator meets most often - they are checked per ATOM - and
+#: until now they were the only refusals in this system with no code and no address, while
+#: the three validators around them all answer `(code, path, message)`. A screen could
+#: render the sentence and nothing else, so "which field do I fix" had no answer.
+#:
+#: ⚠️ THEY ARE ALSO WHAT THE GATE BRANCHES ON. It used to decide the refusal reason by
+#: searching the MESSAGE for "raw_ref" and "occurred_at", so rewording a sentence would
+#: silently change which refusal an atom got - and the payload arm matched three different
+#: phrases from another module's exception text.
+ENVELOPE_OCCURRED_AT_MISSING = "occurred_at_missing"
+ENVELOPE_OCCURRED_AT_NAIVE = "occurred_at_naive"
+ENVELOPE_SOURCE_WHO_EMPTY = "source_who_empty"
+ENVELOPE_TRANSLATOR_VER_EMPTY = "source_translator_ver_empty"
+ENVELOPE_RAW_REF_EMPTY = "source_raw_ref_empty"
+ENVELOPE_PAYLOAD_NOT_PRESERVABLE = "payload_not_preservable"
+
+
 def check_envelope(atom: Atom):
     """Violations of the envelope's own rules, independent of what the atom SAYS.
 
@@ -304,27 +322,38 @@ def check_envelope(atom: Atom):
     which retired with that file on 2026-08-27. This function asks the questions the
     ENVELOPE asks of every atom regardless of what it says: is there a world time, is
     there a source, is there a route back to the raw utterance.
+
+    🔴 EACH VIOLATION IS `(code, path, message)`, the same shape the three validators
+    around this one already use. The sentences are unchanged; what is new is that they
+    now carry WHERE - `atom.occurred_at`, `atom.source.raw_ref` - so a screen can put the
+    refusal on a field instead of printing a paragraph.
     """
     violations = []
+
+    def refuse(code, path, message):
+        violations.append({"code": code, "path": path, "message": message})
+
     if not isinstance(atom.occurred_at, datetime):
-        violations.append(
-            "occurred_at is missing or is not a datetime - the world time must come "
-            "from the source's declared time column, never from arrival")
+        refuse(ENVELOPE_OCCURRED_AT_MISSING, "atom.occurred_at",
+               "occurred_at is missing or is not a datetime - the world time must come "
+               "from the source's declared time column, never from arrival")
     elif atom.occurred_at.tzinfo is None:
-        violations.append(
-            "occurred_at is naive; the source's timezone must be declared in "
-            "ledger_config.json so the value is anchored rather than guessed")
+        refuse(ENVELOPE_OCCURRED_AT_NAIVE, "atom.occurred_at",
+               "occurred_at is naive; the source's timezone must be declared in "
+               "ledger_config.json so the value is anchored rather than guessed")
     if not (atom.source_who or "").strip():
-        violations.append("source.who is empty (ICD 206: provenance is mandatory)")
+        refuse(ENVELOPE_SOURCE_WHO_EMPTY, "atom.source.who",
+               "source.who is empty (ICD 206: provenance is mandatory)")
     if not (atom.source_translator_ver or "").strip():
-        violations.append("source.translator_ver is empty - without it a re-translation "
-                          "cannot tell which rules produced this atom")
+        refuse(ENVELOPE_TRANSLATOR_VER_EMPTY, "atom.source.translator_ver",
+               "source.translator_ver is empty - without it a re-translation "
+               "cannot tell which rules produced this atom")
     if not (atom.source_raw_ref or "").strip():
-        violations.append("source.raw_ref is empty - atomicity check 4 (can it be "
-                          "re-uttered?) fails, because nothing points back at the source "
-                          "row")
+        refuse(ENVELOPE_RAW_REF_EMPTY, "atom.source.raw_ref",
+               "source.raw_ref is empty - atomicity check 4 (can it be "
+               "re-uttered?) fails, because nothing points back at the source row")
     try:
         freeze_payload(atom.object_payload)
     except PayloadNotPreservable as exc:
-        violations.append(str(exc))
+        refuse(ENVELOPE_PAYLOAD_NOT_PRESERVABLE, "atom.object_payload", str(exc))
     return violations

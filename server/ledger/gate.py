@@ -352,6 +352,29 @@ def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1):
             "reason: %d", source, reason, rows, detail, total)
 
 
+#: Envelope code -> the gate's refusal reason. 🔴 ONE MAPPING, AND IT READS THE CODE.
+#: Both sites used to search the MESSAGE for "raw_ref" and "occurred_at", so rewording a
+#: sentence would silently change which refusal an atom got - and the payload arm matched
+#: three phrases lifted from another module's exception text, which nothing kept in step.
+_ENVELOPE_REASONS = {
+    envelope.ENVELOPE_RAW_REF_EMPTY: REFUSE_NO_RAW_REF,
+    envelope.ENVELOPE_OCCURRED_AT_MISSING: REFUSE_MISSING_OCCURRED_AT,
+    envelope.ENVELOPE_OCCURRED_AT_NAIVE: REFUSE_MISSING_OCCURRED_AT,
+    envelope.ENVELOPE_PAYLOAD_NOT_PRESERVABLE: REFUSE_PAYLOAD_NOT_PRESERVABLE,
+}
+
+
+def _envelope_reason(violations):
+    """The reason for the FIRST violation, exactly as before.
+
+    ⚠️ An unmapped code falls back to `REFUSE_NOT_TRUE_ALONE`, which is what the old
+    substring chain did with anything it did not recognise - a new envelope check gets a
+    truthful refusal rather than a KeyError.
+    """
+    first = violations[0]
+    return _ENVELOPE_REASONS.get(first.get("code"), REFUSE_NOT_TRUE_ALONE)
+
+
 def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1):
     """Refuse something that never became atoms at all - an undeclared `event_type`, a
     source with no declared time column, a molecule with no resolvable subject.
@@ -464,16 +487,15 @@ def screen_molecule(source: str, atoms, declared_derivations, declared_subject_t
 
         envelope_violations = envelope.check_envelope(atom)
         if envelope_violations:
-            reason = REFUSE_NOT_TRUE_ALONE
-            for violation in envelope_violations:
-                if "raw_ref" in violation:
-                    reason = REFUSE_NO_RAW_REF
-                elif "occurred_at" in violation:
-                    reason = REFUSE_MISSING_OCCURRED_AT
-                elif "NaN" in violation or "no JSON spelling" in violation \
-                        or "non-string key" in violation:
-                    reason = REFUSE_PAYLOAD_NOT_PRESERVABLE
-                break
+            reason = _envelope_reason(envelope_violations)
+            report.update(refused=True, reason=reason)
+            report["violations"].extend(
+                f"{where}: {v['message']}" for v in envelope_violations)
+            # The same violations with their code and address kept, so a screen can put
+            # each on a field instead of printing the paragraph.
+            report.setdefault("violation_details", []).extend(
+                dict(v, where=where) for v in envelope_violations)
+            break
             report.update(refused=True, reason=reason)
             report["violations"].extend(f"{where}: {v}" for v in envelope_violations)
             break
@@ -550,16 +572,15 @@ def screen_compiled_molecule(source: str, atoms, declared_derivations,
             break
         envelope_violations = envelope.check_envelope(atom)
         if envelope_violations:
-            reason = REFUSE_NOT_TRUE_ALONE
-            for violation in envelope_violations:
-                if "raw_ref" in violation:
-                    reason = REFUSE_NO_RAW_REF
-                elif "occurred_at" in violation:
-                    reason = REFUSE_MISSING_OCCURRED_AT
-                elif ("NaN" in violation or "no JSON spelling" in violation
-                      or "non-string key" in violation):
-                    reason = REFUSE_PAYLOAD_NOT_PRESERVABLE
-                break
+            reason = _envelope_reason(envelope_violations)
+            report.update(refused=True, reason=reason)
+            report["violations"].extend(
+                f"{where}: {v['message']}" for v in envelope_violations)
+            # The same violations with their code and address kept, so a screen can put
+            # each on a field instead of printing the paragraph.
+            report.setdefault("violation_details", []).extend(
+                dict(v, where=where) for v in envelope_violations)
+            break
             report.update(refused=True, reason=reason)
             report["violations"].extend(
                 f"{where}: {violation}" for violation in envelope_violations)
