@@ -647,6 +647,12 @@ class OntologyExplorerService:
                     result["refusal"]["rows_read"] = read
                     result["refusal"]["rows_missing"] = missing
                     result["refusal"]["column"] = column
+            # 🔴 WHAT EXECUTION WILL DO, AS A VALUE. The preview and the run share
+            # `_event_frames`, so the run is all-or-nothing exactly as this was: the good
+            # rows do NOT go in. Saying "199 rows would be written" would be a promise the
+            # backfill then breaks, which is a worse lie than the one being fixed.
+            # ⛔ A value, not a sentence - the screen writes the words (same rule as R1).
+            result["refusal"]["partial_apply"] = False
             return result
         result["rows_read"] = rows_read
         if preview is None:

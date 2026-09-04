@@ -329,7 +329,21 @@ DEFAULT_OCCURRED_AT_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
 
 class LedgerConfigError(ValueError):
-    """The declaration is missing or self-contradictory. Raised at load, never later."""
+    """The declaration is missing or self-contradictory. Raised at load, never later.
+
+    🔴 IT CAN CARRY THE STRUCTURED ISSUES, AND THE ONE BOUNDARY THAT HAD THEM DROPPED THEM.
+    The v5 validator returns `(code, path, message)` per issue - the path being the
+    authoring box the operator must open - and `_validate_for_version` used to join the
+    first three into a sentence, so the screen received prose with no address and no idea
+    that anything had been cut.
+
+    `errors` stays OPTIONAL and defaults to an empty tuple: every existing raise site
+    passes a message only, and none of them has to change to keep working.
+    """
+
+    def __init__(self, *args, errors=None):
+        super().__init__(*args)
+        self.errors = tuple(errors or ())
 
 
 def _config_dir():
@@ -431,9 +445,23 @@ def _validate_for_version(raw: dict, origin: str):
     errors = _bundle.validate_bundle_errors(
         raw, catalog=_setup.live_physical_catalog())
     if errors:
+        # 🔴 THE ADDRESSES SURVIVE. Every one of these errors already carries
+        # `(code, path, message)` - the path is the authoring box the operator has to open
+        # - and this boundary used to flatten them into one sentence and keep only the
+        # first three. What reached the screen was prose with no code, no path, and a
+        # silent cut: an operator was told the declaration was refused and not where.
+        #
+        # ⛔ AND THE CUT IS NEVER SILENT. If a message is trimmed it says how many of how
+        # many, because a short list reads as "that is all of them" - the same defect this
+        # repository fixed four times today in other places.
         raise LedgerConfigError(
-            "%s: setup_version %d declaration refused by the v5 validator - %s"
-            % (origin, version, "; ".join(str(e) for e in errors[:3])))
+            "%s: setup_version %d declaration refused by the v5 validator - "
+            "%d issue(s): %s"
+            % (origin, version, len(errors),
+               "; ".join(str(e) for e in errors)),
+            errors=[e.to_mapping() if hasattr(e, "to_mapping")
+                    else {"code": "", "path": "", "message": str(e)}
+                    for e in errors])
 
 
 def validate(cfg: dict, origin: str = "<memory>"):
