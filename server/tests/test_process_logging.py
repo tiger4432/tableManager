@@ -205,3 +205,71 @@ print("@@" + json.dumps({"log_path": paths.log_path("launcher.log")}))
         "the launcher's banner is still stdout-only"
     # Console output must not have been traded away for it.
     assert "CHILD PERMANENTLY FAILED: probe" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# Which file wins when one process configures logging twice
+# ---------------------------------------------------------------------------
+
+SECOND_CALLER = r"""
+import os, sys, json, logging
+sys.path.insert(0, os.environ["PROBE_SERVER_DIR"])
+import paths
+from utils.logger import get_process_logger, active_log_filename
+
+first = os.environ["PROBE_LOG_NAME"]
+second = "_second_caller.log"
+
+# The process entry point, then something it imports - exactly main.py's shape:
+# `get_process_logger("Server", "server.log")` at import, then a startup event that
+# imports the chain worker, whose module level asks for chain_worker.log.
+get_process_logger("Server", first)
+get_process_logger("Chain", second)
+
+logging.getLogger("Server").info("AFTER_SECOND_CALL_MARKER")
+for h in logging.getLogger().handlers:
+    try:
+        h.flush()
+    except Exception:
+        pass
+
+print("@@" + json.dumps({
+    "log_path": paths.log_path(first),
+    "second_path": paths.log_path(second),
+    "second_exists": os.path.exists(paths.log_path(second)),
+    "active": active_log_filename(),
+    "root_handlers": len(logging.getLogger().handlers),
+}))
+"""
+
+
+def test_the_first_caller_in_a_process_keeps_the_log_file(tmp_path):
+    """🔴 THE 2026-09-04 DEFECT, IN ONE ASSERTION.
+
+    It used to be last-wins. `main.py` bound the root to `server.log` at import, its
+    startup event imported `chain_ingestion_worker`, and that module's own call
+    re-pointed the root at `chain_worker.log` - so four seconds after boot the API's log
+    file went silent and every subsequent `[Server]` line landed in the chain worker's
+    file. Somebody reading `server.log` for a mapper's output saw an empty tail and read
+    it as "the mapper did not run".
+
+    First-wins makes the file follow the PROCESS: its entry point is whatever configured
+    logging first. No setting decides it - the import order already says which process
+    this is.
+    """
+    meta, text, _ = _run_probe(tmp_path, source=SECOND_CALLER)
+    assert "AFTER_SECOND_CALL_MARKER" in text, \
+        "a line written after the second call did not reach the first caller's file"
+    assert meta["active"] == "_b3probe.log", "the first caller's file is not the active one"
+    assert not meta["second_exists"], \
+        "the second caller opened its own file; lines are split across two logs"
+    assert meta["root_handlers"] == 2, "the second call added another handler pair"
+
+
+def test_the_process_publishes_which_file_it_actually_writes(tmp_path):
+    """A component that names its log file in its own output has to name the real one.
+    `chain_ingestion_worker.MAPPER_LOG_TAG` reads this; without it the tag printed
+    `mapper@chain_worker.log` on lines sitting in `server.log`."""
+    meta, _, _ = _run_probe(tmp_path, source=SECOND_CALLER)
+    assert meta["active"] == "_b3probe.log", \
+        "active_log_filename() reports a file this process is not writing to"

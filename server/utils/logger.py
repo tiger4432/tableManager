@@ -147,6 +147,43 @@ NOISY_THIRD_PARTY = (
 )
 
 
+#: Which file THIS process's root handlers actually write to, set by the first
+#: `get_process_logger` call and not changed afterwards. Published because a component
+#: that names its log file in its own output has to name the real one - see
+#: `chain_ingestion_worker.MAPPER_LOG_TAG`, which was a constant and would otherwise
+#: print `mapper@chain_worker.log` on lines landing in `server.log`.
+_ACTIVE = {"process_name": None, "filename": None, "path": None}
+
+
+def active_log_filename():
+    """The log file this process writes to, or None before any process logger is set up."""
+    return _ACTIVE["filename"]
+
+
+def active_log_path():
+    return _ACTIVE["path"]
+
+
+def reset_active_log_for_test():
+    """Forget the binding so a test can exercise the first-wins rule. Test-only: the
+    handlers themselves are left alone, so this cannot half-rewire a running process."""
+    _ACTIVE.update({"process_name": None, "filename": None, "path": None})
+
+
+def _configured_logger(process_name: str) -> logging.Logger:
+    """The named logger, carrying no handlers of its own.
+
+    It reaches the file by propagating to root like everything else; a handler here as
+    well would print every one of its own lines twice.
+    """
+    logger = logging.getLogger(process_name)
+    logger.setLevel(logging.INFO)
+    logger.propagate = True  # 자식 모듈들의 로깅 전파를 부모 로거로 허용
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+    return logger
+
+
 def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     """
     공통 로깅 규격을 따르며, 프로세스별 고유 컬러(ANSI) 스트림 핸들러와
@@ -174,6 +211,33 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     such.
     """
     log_format = '[%(name)s] [%(asctime)s] %(levelname)s - %(message)s'
+
+    # 🔴 THE FIRST CALLER IN A PROCESS WINS, AND THAT IS A FIX, NOT A STYLE CHOICE.
+    #
+    # This used to be "the last caller wins", and the consequence was measured on
+    # 2026-09-04: `main.py` binds the root to `server.log` at import, its startup event
+    # then imports `chain_ingestion_worker`, whose module-level call re-pointed the root
+    # at `chain_worker.log` - so four seconds after boot the API's own log file went
+    # silent and every line the web server wrote from then on landed in the chain
+    # worker's file. An operator reading `server.log` for a mapper's output saw an empty
+    # tail and concluded the mapper had not run. It had; the file had stopped.
+    #
+    # The first caller is the process's ENTRY POINT - `main.py` for the integrated
+    # server, `run_chain_worker.py` for the standalone worker - so first-wins makes the
+    # log file follow the process rather than follow whatever was imported last. No new
+    # setting decides it; the import order already says which process this is.
+    #
+    # ⛔ NOT "add instead of clear": that duplicates every line into every file.
+    if _ACTIVE["filename"] is not None:
+        if _ACTIVE["filename"] != log_filename:
+            # Said out loud, once, rather than silently ignored. Somebody looking for
+            # `chain_worker.log` in an integrated process needs to be told where it went.
+            logging.getLogger(process_name).info(
+                "[logging] this process already logs to %s (opened by %s); "
+                "%s stays closed here. The lines are in %s.",
+                _ACTIVE["filename"], _ACTIVE["process_name"], log_filename,
+                _ACTIVE["filename"])
+        return _configured_logger(process_name)
 
     # Root owns the handlers. Clear whatever was there (another basicConfig, or a
     # previous call in the same process) so repeated calls cannot double up.
@@ -208,14 +272,8 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     for noisy in NOISY_THIRD_PARTY:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    logger = logging.getLogger(process_name)
-    logger.setLevel(logging.INFO)
-    logger.propagate = True  # 자식 모듈들의 로깅 전파를 부모 로거로 허용
+    _ACTIVE["process_name"] = process_name
+    _ACTIVE["filename"] = log_filename
+    _ACTIVE["path"] = log_path
 
-    # No handlers on the process logger: it reaches the file by propagating to
-    # root like everything else. A handler here as well would print every one of
-    # its own lines twice.
-    for handler in list(logger.handlers):
-        logger.removeHandler(handler)
-
-    return logger
+    return _configured_logger(process_name)

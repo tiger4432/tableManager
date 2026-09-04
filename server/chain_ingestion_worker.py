@@ -17,6 +17,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Setup Unified Logger
+from utils import logger as process_logging
 from utils.logger import get_process_logger
 from utils.payload_helper import get_payload_dict
 from utils import heartbeat
@@ -66,7 +67,14 @@ LOG_FILENAME = "chain_worker.log"
 logger = get_process_logger("Chain", LOG_FILENAME)
 
 #: Prefix on every mapper-execution line: what ran it, and where to read it.
-MAPPER_LOG_TAG = "mapper@%s" % LOG_FILENAME
+#
+# 🔴 READ FROM THE LOGGER, NOT FROM `LOG_FILENAME`. In the integrated server the chain
+# loop runs inside the web server's process, whose log file was opened first, so these
+# lines land in `server.log` - and a constant tag would print `mapper@chain_worker.log`
+# on top of them. The rule this tag exists to serve is "say which file you are in", and
+# a tag that names the file this module WANTED rather than the one it GOT breaks that
+# rule while looking like it follows it.
+MAPPER_LOG_TAG = "mapper@%s" % (process_logging.active_log_filename() or LOG_FILENAME)
 
 class OutboxListener:
     """[Latency Fix #4] 상시 유지되는 LISTEN 전용 raw 커넥션.

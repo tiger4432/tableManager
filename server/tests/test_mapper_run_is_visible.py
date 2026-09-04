@@ -68,14 +68,20 @@ def test_a_mapper_that_runs_logs_a_start_and_an_end(monkeypatch, caplog):
     assert "elapsed=" in end[0]
 
 
-def test_the_line_says_which_process_log_it_is_in():
+def test_the_line_says_which_file_it_is_actually_in():
     """The whole reason the owner lost a day: the answer was in another file.
 
-    Pinned against `LOG_FILENAME` rather than the literal, so renaming the log file
-    cannot leave the tag pointing at a file that no longer exists.
+    🔴 Asserted against the file the process ACTUALLY writes to, not against this
+    module's `LOG_FILENAME`. The chain loop runs inside the web server in the integrated
+    deployment, where `server.log` was opened first and wins, and a tag naming
+    `chain_worker.log` on lines landing in `server.log` would break the very rule it
+    exists to serve.
     """
-    assert worker.LOG_FILENAME in worker.MAPPER_LOG_TAG
-    assert worker.LOG_FILENAME == "chain_worker.log"
+    from utils import logger as process_logging
+
+    expected = process_logging.active_log_filename() or worker.LOG_FILENAME
+    assert worker.MAPPER_LOG_TAG == "mapper@%s" % expected
+    assert worker.LOG_FILENAME == "chain_worker.log"      # what it asks for when it is first
 
 
 def test_the_payload_body_never_reaches_the_log(monkeypatch, caplog):
