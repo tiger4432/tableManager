@@ -4,6 +4,12 @@ from .database import Base, is_sqlite
 
 from sqlalchemy.dialects.postgresql import JSONB
 
+import logging
+
+# Same channel as `database/crud.py` - one process, one logger name, so a schema
+# repair failure lands where every other server line does rather than on stdout.
+logger = logging.getLogger("Server")
+
 # [2026-07-25 정리] 레거시 JSONB blob 저장 모델 `DataRow`(data_rows)는 동적 네이티브 테이블로
 # 완전 대체되어 제거됨(0행·런타임 인스턴스화 지점 전무). 물리 테이블 DROP은
 # scripts/drop_legacy_tables_20260725.sql 참조.
@@ -1012,9 +1018,22 @@ def sync_dynamic_tables_schema(engine):
                 try:
                     with engine.begin() as conn:
                         conn.execute(text(alter_query))
-                    print(f"[Schema Sync] Successfully added column '{col_name}' to table '{table_name}'.")
+                    logger.info("[Schema Sync] added column '%s' to '%s'",
+                                col_name, table_name)
                 except Exception as err:
-                    print(f"[Schema Sync] Failed to add column '{col_name}' to table '{table_name}': {err}")
+                    # 🔴 A LOGGER, NOT A print. This is the REPAIR: the one thing that
+                    # closes a gap between what the declaration says a table has and what
+                    # the database gives it. Measured 2026-09-04, it had been failing on
+                    # 28 statements across 9 relations at every boot and saying so only to
+                    # stdout - so the first anyone heard of it was a route answering 500
+                    # much later, which took two core-value meters down with it.
+                    #
+                    # ⚠️ IT STILL DOES NOT RAISE, and that is deliberate: a boot that dies
+                    # because one column could not be added is worse than a boot that says
+                    # so and carries on. What was missing was the saying.
+                    logger.error(
+                        "[Schema Sync] could not add column '%s' to '%s': %s",
+                        col_name, table_name, err)
 
 
 # [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
