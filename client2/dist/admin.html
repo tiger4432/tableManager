@@ -716,13 +716,18 @@
       overflow-x: auto;
     }
     .section-header:hover .section-chevron { color: var(--accent); }
+    /* 🔴 절 안의 «유일한» 알약이자 «유일한» 700 이었습니다 — 두 축을 혼자 어겼습니다.
+       탐색기의 태그(`.oe-node-badge`: 11px · 0.02em · 3px 6.8px · 모서리 0)로 옵니다.
+       ⚠️ 색은 «그대로 둡니다». 13개가 «전부 같은 accent» 라 색이 아무것도 안 가르는데,
+          그걸 걷는 것은 지시된 「알약 · 700」 밖이라 재서 올리고 판정을 기다립니다. */
     .stage-chip {
-      font-size: 0.66rem;
-      font-weight: 700;
-      letter-spacing: 0.6px;
+      font-family: var(--sec-font-body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
       text-transform: uppercase;
-      padding: 2px 8px;
-      border-radius: 999px;
+      padding: 3px 6.8px;
+      border-radius: 0;
       background: var(--accent-weak);
       color: var(--accent);
       flex-shrink: 0;
