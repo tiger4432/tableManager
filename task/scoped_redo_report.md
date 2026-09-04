@@ -5685,3 +5685,86 @@ mappers/dt_alignment_metadata_mapper.py.sample:158  «같은 줄». 이건 커�
 지시대로 걸음 ④-2(진행 레지스트리) · ④-3(내부 토큰)로 갑니다
 ⛔ 규칙 #2·#4·#6 은 안 건드렸습니다. 라이브 선언 무변경
 ```
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **④-2 착지 · ④-3 은 「서버 변경 0」 · 그리고 «server.log 가 죽어 있습니다»**
+
+## ④-2 진행 레지스트리 — 착지 (`2574e251`)
+```
+새 파일   server/chain_activity.py    (ingestion_activity 와 «같은 모양»: 레지스트리 + 조회)
+갱신자    execute_custom_mapper — 로그를 찍는 «그 한 자리». start/finish 한 쌍
+조회      GET /admin/chain/queue 에 «두 칸» 추가. 🔴 새 라우트 «없음»
+⛔ DB 컬럼 없음 · ⛔ WS 푸시 없음 · ⛔ 새 라우트 없음 · ⛔ HTTP 홉 없음
+```
+```
+running               [{rule, mapper, target_table, rows_in, running_seconds}, …]
+loop_in_this_process  true/false
+```
+🔴 **HTTP 대신 «직접 호출»입니다 — 파일 인제션과 갈리는 지점이고, 이유가 있습니다.**
+워처는 «항상» 다른 프로세스라 상태가 이동해야 합니다. 체인 루프는 `main.py` 의 startup 이
+자기 안에서 띄웁니다 — 맵퍼와 라우트가 «같은 프로세스»입니다. 그 사이의 HTTP 는 자기 자신에게
+거는 홉입니다.
+
+🔴 **그리고 «같은 프로세스가 아닐 때»를 그 자리에서 말합니다.**
+`run_chain_worker.py` 로 따로 띄우면 API 의 레지스트리는 «영원히 빈 목록»입니다 —
+그게 「도는 게 없다」로 읽히면 오늘 하루 종일 잡은 «거짓 0» 이 하나 더 생깁니다.
+그래서 `loop_in_this_process` 가 «같이» 나갑니다: 자기 루프가 시작한 프로세스에서만 true 입니다.
+```
+검증   라우트를 «한 번 태웠습니다» (라이브 DB, 읽기 전용):
+       keys = [… loop_in_this_process · running …]   running=[] · loop_in_this_process=false
+       (그 프로세스엔 체인 루프가 없으니 false 가 «맞는» 답입니다)
+변이   넷 다 잡힙니다 — finally 대신 성공시에만 해제 · attach 제거 · snapshot 항상 빈 목록 ·
+       attached 를 true 로 박기
+```
+📌 해제를 `finally` 에 둔 이유: 던진 맵퍼가 «영원히 도는 중»으로 남는 것이 이 계측기가
+   없애려는 바로 그 오독입니다.
+
+## ④-3 내부 토큰 — **서버 변경 «0» 입니다. 만들지 않았습니다**
+총괄 실측 그대로이고, 저도 «직접» 확인했습니다:
+```
+retroactive.in_flight  params · requested_by · queued_at 을 «이미» 냅니다 (오늘 제가 넣은 것)
+main.py                requested_by 를 `or None` 로 냅니다 -> 이름을 «지어내지» 않습니다
+=> 화면 몫만 남습니다. 서버에 더할 것이 없습니다
+```
+
+## 정정② (FAILED 가 「완료」로 읽힘) — **이것도 서버 변경 «0»**. 인용이 아니라 확인했습니다
+```
+GET /admin/outbox/failed   status='FAILED' 를 transaction 단위로 묶어 페이지로 냅니다 (main.py:3852)
+GET /admin/chain/queue     waiting · retried_among_waiting · oldest_waiting_seconds
+=> 실패 «수»와 대기 «수»가 이미 서버에서 «따로» 나갑니다. 서버가 둘을 합치고 있지 않습니다
+   합치는 것은 «화면»입니다 — 거기가 고칠 자리입니다
+```
+⛔ 그래서 아무것도 «안 만들었습니다». 관문(무분별한 기능 추가 금지) 통과로 보고합니다.
+
+## 🔴🔴 그리고 하나 — **통합 모드에서 `server.log` 가 «기동 직후 죽습니다»**
+오늘의 그 하루(「서버 로그를 봤는데 없더라」)의 «진짜» 기제로 보입니다. 실측:
+```
+서버 재기동 22:49:20 (uvicorn pid 21140, 체인 루프가 그 안에 있습니다)
+server.log        마지막 줄 «22:49:24,400»  — 그 뒤로 «한 줄도 없습니다»
+chain_worker.log  22:49:26 부터 «[Server]» 줄이 들어옵니다
+                  예: [Server] … INFO - Client connected. Total clients: 3
+```
+기제는 커밋된 코드에 있습니다:
+```
+utils/logger.py    get_process_logger 는 «루트 로거»의 핸들러를 «전부 제거»하고 자기 것을 답니다
+main.py:24         get_process_logger("Server", "server.log")        <- import 시점
+main.py:513        startup 안에서 chain_ingestion_worker 를 import
+chain_ingestion_worker.py:57  get_process_logger("Chain", "chain_worker.log")  <- «나중»에 돕니다
+=> 나중 것이 이깁니다. 기동 직후부터 «프로세스 전체»가 chain_worker.log 로 갑니다
+```
+```
+🔴 그래서 운영자가 server.log 를 열면 «기동 몇 초»까지만 보입니다. 그 뒤는 «빈 파일»처럼 보입니다
+   -> 「맵퍼가 안 돌았다」가 아니라 「그 로그가 그때 이미 죽어 있었다」입니다
+⚠️ 「79,967 줄」 같은 수는 «안 내겠습니다» — 그 파일엔 시험 프로세스 것도 섞여 있습니다.
+   위 열세 줄만이 오늘 재기동 뒤의 «명확한» 증거입니다
+```
+⛔ **고치지 않았습니다.** 로깅 배선은 프로세스 전체에 걸리고, 되돌리기 어려운 쪽입니다.
+   판정 주시면 «최소 수정»으로 올리겠습니다 — 후보는 「루트 핸들러를 «지우지» 말고 더한다」와
+   「통합 모드에서는 체인이 자기 로거를 «안» 갈아끼운다」 둘입니다. 재서 제안하겠습니다.
+
+## 다음
+```
+지시대로 부하 시험 50 / 200 / 1000 으로 갑니다. 멈춤 조건 그대로
+```
