@@ -445,6 +445,15 @@
  * whatever ends up beneath it -- covering a row is exactly what this round is curing. It
  * needs the opaque ground and the rule above it because it floats over the panel in
  * between. */
+/* Save 옆의 한 줄. 단락이 아니고 상자도 아닙니다 — 「지금 무엇이 막는가」만 말합니다. */
+#ontology-explorer-root .oe-editor-blockers {
+  align-self: center;
+  font-size: 12px;
+  color: var(--oe-muted);
+  font-family: var(--oe-font-mono);
+  overflow-wrap: anywhere;
+}
+
 #ontology-explorer-root .oe-editor-controls {
   display: flex; justify-content: flex-end; gap: 6.8px; flex-wrap: wrap;
   position: sticky; bottom: 0; z-index: 2;
