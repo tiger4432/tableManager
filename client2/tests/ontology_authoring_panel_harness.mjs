@@ -744,5 +744,81 @@ const renderDraft = (plan) => {
     byClass(draw(undefined, []), 'oe-editor-action-primary').length === 1);
 }
 
+// --- H. R2: how many rows, what execution will do, and every issue's code ----------
+//
+// 🔴 H4 IS THE ONE. Without the partial_apply line the operator reads 「나머지는
+//    들어가겠지」, which is the promise the server was forbidden to make -- so a screen
+//    that omits it makes that promise on the server's behalf.
+{
+  const REFUSAL = { code: 'occurred_at_empty', path: 'sources.dt_job.read.cursor',
+                    message: '이 컬럼이 비었습니다' };
+  const drawRefusal = (extra) => {
+    const root = element('div');
+    renderOntologyExplorer(root, {
+      ...stateWith(PLAN),
+      testRun: { status: 'refused', rows_read: 0, molecules: 0, atoms: 0, sentences: [],
+                 refusal: { ...REFUSAL, ...extra } },
+    });
+    return root;
+  };
+  const rowsText = (root) =>
+    byClass(root, 'oe-testrun-rows').map((n) => n.textContent).join('|');
+
+  check('H1 the counts and the column are said together',
+    rowsText(drawRefusal({ rows_read: 200, rows_missing: 1, column: 'occurred_at' }))
+      .includes('200행 중 1행 · occurred_at'));
+  // ⚠️ all three or none -- a count with no column is a number nobody can act on
+  check('H2 two of the three draws nothing',
+    !rowsText(drawRefusal({ rows_read: 200, rows_missing: 1 })).includes('200'));
+  check('H3 and neither does a column with no counts',
+    !rowsText(drawRefusal({ column: 'occurred_at' })).includes('occurred_at'));
+
+  check('H4 a refusal that will not partially apply SAYS SO',
+    rowsText(drawRefusal({ partial_apply: false })).includes('좋은 행도 안 들어갑니다'));
+  // 🔴 THE THIRD STATE. An older server sends no such key, and 「안 물어봤다」 must not
+  //    render as a promise about what execution does.
+  check('H5 a server that did not say draws nothing',
+    rowsText(drawRefusal({})) === '');
+  check('H6 and `true` draws nothing either -- this build has never seen that answer',
+    !rowsText(drawRefusal({ partial_apply: true })).includes('안 들어갑니다'));
+
+  // the server's own sentence and address are still there; this round adds, never replaces
+  check('H7 the message and the path survive',
+    byClass(drawRefusal({ partial_apply: false }), 'oe-testrun-why').length === 1
+    && byClass(drawRefusal({ partial_apply: false }), 'oe-testrun-path').length === 1);
+}
+
+// --- I. a refused declaration keeps its code, and the whole list ------------------
+{
+  const reasons = [
+    { code: 'unknown_predicate', path: 'bundle.sources.a.bind', message: 'x' },
+    { code: 'missing_role', path: 'bundle.sources.a.emit', message: 'y' },
+    { code: '', path: 'bundle.sources.a', message: 'z' },
+  ];
+  const drawTree = (list) => {
+    const root = element('div');
+    renderOntologyExplorer(root, {
+      ...stateWith(PLAN),
+      items: [{ key: 'source_plan|a', kind: 'source_plan', canonical_id: 'a',
+                change_status: 'unread' }],
+      invalid: { 'source_plan|a': { reasons: list } },
+    });
+    return root;
+  };
+  const codes = (root) =>
+    byClass(drawTree(root), 'oe-tree-why-code').map((n) => n.textContent);
+
+  // ⛔ EVERY reason, never a slice: a cut list reads as 「그게 전부」
+  check('I1 every reason is drawn',
+    byClass(drawTree(reasons), 'oe-tree-why').length === 3);
+  check('I2 each carries the server\'s code, untranslated',
+    codes(reasons).slice(0, 2).join(',') === 'unknown_predicate,missing_role');
+  // ⚠️ an issue with no code draws no code element -- not an empty one
+  check('I3 an issue with no code draws none', codes(reasons).length === 2);
+  check('I4 the address is still there for every one',
+    byClass(drawTree(reasons), 'oe-tree-why')
+      .every((why) => why.textContent.includes('bundle.sources.a')));
+}
+
 console.log(`ASSERTIONS ${ran} ${failed}`);
 if (failed) process.exit(1);
