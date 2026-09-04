@@ -33,7 +33,7 @@
       "enabled": true
     },
     {
-      "__comment": "S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
+      "__comment": "DISABLED 2026-09-04 by lead, on measured cost rather than on principle. It refuses on every event, so it contributes nothing; I first left it enabled because it is alone in its trigger group and so destroys no sibling's writes. The 50-row load run falsified the other half of that: 50 input rows became 101 outbox events, and this rule turned the 51 derived ones into 153 refusal groups at three retries each, draining at 2.5-3.5s per group. The mapper itself took 0.5s; the run took 3.5 minutes. That multiplier IS the owner's 'the chain does not tick'. Re-enable by declaring the job column it asks for -- and see the cycle note on the standard-map rule before doing so. | S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
       "name": "dt_metadata_to_dt_inventory",
       "trigger_table": "wafer_map_metadata",
       "target_table": "dt_inventory",
@@ -42,7 +42,7 @@
       "is_batch": true,
       "metadata_target_table": "dt_log",
       "allow_chain_trigger": true,
-      "enabled": true
+      "enabled": false
     },
     {
       "__comment": "S3: dt_inventory carries the confirmed dt_lot/dt_slot, the confirmed dt_frame and its derived portable X/Y/sign/offset equation. Project matching dt_log rows into the standard-coordinate dt_map, which is keyed by the PHYSICAL unit (dt_lot, dt_slot). | Several jobs converge on one map, so this rule RETRACTS instead of replacing: replace_map purges a whole map and would delete a sibling job's cells to correct this one's. `retract` removes only what this job owns and no longer derives, selected positively by target_job_column. | target_job_column must be DECLARED here -- dt_map now declares two map_key_columns and neither of them is the job, so the name can no longer be derived. | map_key_source_columns is omitted because dt_inventory spells the confirmed lot and slot with the same names dt_map's map key uses; declare it if a deployment differs.",
