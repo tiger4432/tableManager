@@ -1695,7 +1695,16 @@ function renderAutoUpdateTable() {
 function renderLinkedFailTable() {
   autoLinkedBody.innerHTML = '';
   const suffix = linkedFailTotalHint && linkedFailLogs.length > 0 ? '+' : '';
-  setSectionCount('autoupdate-linked-count', `${linkedFailLogs.length}${suffix}`,
+  // 🔴 이 0 이 «무엇의 0 인가». 이 수는 «교집합»입니다 — 수집기의 표 ∩ 최근 실패 로그.
+  //    수집기가 «하나도 없으면» 교집합은 «반드시» 0 이고, 그건 「실패가 없다」가 아니라
+  //    「그 수가 성립하지 않는다」입니다. 부품의 닫힌 목록에 그 낱말이 있습니다.
+  //    ⛔ 새 부품도 새 문장도 만들지 않았습니다 — «선언»만 더했습니다.
+  const linkedCell = countWithAbsence({
+    value: linkedFailLogs.length,
+    absence: autoUpdateData.length ? 'truly_none' : 'not_applicable',
+  });
+  setSectionCount('autoupdate-linked-count',
+    linkedFailLogs.length > 0 ? `${linkedFailLogs.length}${suffix}` : linkedCell.text,
     linkedFailLogs.length > 0 ? 'danger' : 'ok');
 
   if (linkedFailLogs.length === 0) {
@@ -1728,7 +1737,18 @@ function renderEnrichmentTable(status) {
   const missEl = byId('enrichment-missing-count');
   if (missEl) {
     missEl.style.display = status.rules.length ? 'inline' : 'none';
-    missEl.textContent = `결손 ${status.totalMissing}`;
+    // 🔴 `totalMissing` 은 «잰 규칙만» 더합니다 — 큐 조건을 못 만들거나 조회가 실패한
+    //    규칙은 `missing = null` 이고 합계에 «0 을 보태지도 않습니다». 그래서 규칙이 «전부»
+    //    안 재졌으면 합계가 0 이고, 그 0 은 「채울 게 없다」와 «같은 픽셀»이었습니다.
+    //    ⚠️ 일부만 안 재졌으면 그 합계는 «전수가 아닙니다» — 닫힌 목록의 그 낱말입니다.
+    const unmeasured = (status.perRule || []).filter(p => p.missing === null).length;
+    const missCell = countWithAbsence(
+      status.perRule && status.perRule.length && unmeasured === status.perRule.length
+        ? { unread: '모름' }
+        : { value: status.totalMissing,
+            absence: unmeasured ? 'not_exhaustive' : 'truly_none' });
+    missEl.textContent = `결손 ${unmeasured && missCell.read && status.totalMissing > 0
+      ? `${status.totalMissing} · 전수가 아님` : missCell.text}`;
     missEl.dataset.tone = status.totalMissing > 0 ? 'warn' : 'ok';
   }
 
