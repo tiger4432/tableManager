@@ -716,13 +716,18 @@
       overflow-x: auto;
     }
     .section-header:hover .section-chevron { color: var(--accent); }
+    /* 🔴 절 안의 «유일한» 알약이자 «유일한» 700 이었습니다 — 두 축을 혼자 어겼습니다.
+       탐색기의 태그(`.oe-node-badge`: 11px · 0.02em · 3px 6.8px · 모서리 0)로 옵니다.
+       ⚠️ 색은 «그대로 둡니다». 13개가 «전부 같은 accent» 라 색이 아무것도 안 가르는데,
+          그걸 걷는 것은 지시된 「알약 · 700」 밖이라 재서 올리고 판정을 기다립니다. */
     .stage-chip {
-      font-size: 0.66rem;
-      font-weight: 700;
-      letter-spacing: 0.6px;
+      font-family: var(--sec-font-body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
       text-transform: uppercase;
-      padding: 2px 8px;
-      border-radius: 999px;
+      padding: 3px 6.8px;
+      border-radius: 0;
       background: var(--accent-weak);
       color: var(--accent);
       flex-shrink: 0;
@@ -1447,7 +1452,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-sN2-SWBh.js"></script>
+  <script type="module" crossorigin src="/assets/admin-CWqLp8Uw.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">
@@ -1505,6 +1510,7 @@
       <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
           <button id="tab-overview-btn" class="tab-btn active">Overview</button>
+          <button id="tab-tables-btn" class="tab-btn">Tables</button>
           <button id="tab-file-btn" class="tab-btn">File Ingestion</button>
           <button id="tab-chain-btn" class="tab-btn">Chain</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
@@ -1851,6 +1857,30 @@
           </div>
         </div>
 
+        <!-- 🔴 표 등록이 «온톨로지 탭»에 있었습니다. 소유자: 「좀 이상한 듯」.
+             `table_config.json` 은 온톨로지 것이 «아닙니다» — 동적 모델을 먹이고
+             그리드도 인제션도 전부 그 표를 읽습니다. 온톨로지 옆에 두면 «온톨로지
+             전용»으로 읽힙니다.
+             ⚠️ 자리는 Overview «다음»입니다. 표가 선언되기 «전»에는 아무것도 들어올 수
+                없고, `unknown_relation` 거절문이 「거기 먼저 선언하라」고 말합니다 —
+                그래서 여정의 첫걸음입니다. -->
+        <div id="tables-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <!-- 🔴 표 등록이 «제품 밖»이었습니다 — 이 파일을 쓰는 어드민 라우트가 «0» 이라
+               표 하나 등록하려면 서버 호스트의 파일을 직접 고쳐야 했습니다.
+               «문»이 아니라 «자리»입니다 — 문은 열려야 보이고, 자리는 놓칠 수 없습니다.
+               그리고 `undeclared_table` 거절문이 이미 이 파일 이름을 말합니다. -->
+          <div class="stage-section" id="sec-table-config">
+            <div class="section-header" data-section="sec-table-config">
+              <span class="stage-chip">수정</span>
+              <span class="section-title">표 등록 (table_config.json)</span>
+              <span class="section-count" id="table-config-count">—</span>
+              <span class="section-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div id="table-config-mount"></div></div>
+          </div>
+        </div>
+
         <!-- ═══ Enrichment 탭: 현황(Rules + 결손) 조회 전용 / 실행은 메인 그리드, 수정은 read-only 안내 ═══ -->
         <div id="enrichment-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
           <div class="stage-section" id="sec-enrichment-rules">
@@ -1916,20 +1946,6 @@
             <div class="section-body"><div id="ledger-sources-mount"></div></div>
           </div>
 
-          <!-- 🔴 표 등록이 «제품 밖»이었습니다 — 이 파일을 쓰는 어드민 라우트가 «0» 이라
-               표 하나 등록하려면 서버 호스트의 파일을 직접 고쳐야 했습니다.
-               «문»이 아니라 «자리»입니다 — 문은 열려야 보이고, 자리는 놓칠 수 없습니다.
-               그리고 `undeclared_table` 거절문이 이미 이 파일 이름을 말합니다. -->
-          <div class="stage-section" id="sec-table-config">
-            <div class="section-header" data-section="sec-table-config">
-              <span class="stage-chip">수정</span>
-              <span class="section-title">표 등록 (table_config.json)</span>
-              <span class="section-count" id="table-config-count">—</span>
-              <span class="section-summary"></span>
-              <span class="section-chevron">▾</span>
-            </div>
-            <div class="section-body"><div id="table-config-mount"></div></div>
-          </div>
         </div>
       </div>
 
