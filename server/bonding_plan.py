@@ -29,6 +29,7 @@ bbox가 0이 아닌 맵(원에 잘리는 실격자)에서 거울 변환이 끼�
 [스냅샷 규율] config는 요청(작업) 경계에서 1회 로드해 전 구간에 인자로 전달한다.
 맵 메타도 요청 경계에서 1회 캐시한다(역할 × 요청 = 고정 소수 — N+1 금지).
 """
+import math
 import json
 import logging
 import os
@@ -755,6 +756,30 @@ def _resolve_model_columns(source_cfg: dict, required: tuple):
     return model, _ResolvedColumns(resolved, unresolved)
 
 
+def _finite_point(px, py):
+    """Is this ONE (x, y) usable as a coordinate?
+
+    🔴 `is not None` IS NOT THAT TEST, AND THAT IS THE DEFECT. A coordinate column is
+    `double precision`, so its missing marker on the ORM path is `None` - but a NaN is
+    NOT None, it walks straight through such a guard, and the `int()` two lines later
+    raises `cannot convert float NaN to integer`. That is the error class the owner hit
+    in production on 2026-09-04, in a different place.
+
+    Infinities are excluded for the same reason one line up: `int(inf)` raises too, and a
+    coordinate that is infinite is not a coordinate.
+
+    ⚠️ The ordinary write path cannot put a NaN here - `crud.cast_value_by_type` refuses
+    nan/inf into a numeric column, and says why. This guards the rows that did not come
+    that way, which this repository knows it has: seed scripts have written table rows
+    directly. A screen that 500s on one such row is a worse answer than a count that
+    skips it, and skipping is what this function already does for `None`.
+    """
+    if px is None or py is None:
+        return False
+    return (not (isinstance(px, float) and not math.isfinite(px))
+            and not (isinstance(py, float) and not math.isfinite(py)))
+
+
 def _fetch_points(db, cols, filters, distinct_pairs=False):
     """(x,y) 좌표 페치 — 하드캡 MAX_REGION_POINTS (좌표는 응답에 싣지 않는 내부 연산용)."""
     q = db.query(cols["x"], cols["y"]).filter(*filters)
@@ -910,7 +935,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                         pts = _fetch_points(db, cols, filters)
                         n = 0
                         for (px, py) in pts:
-                            if px is None or py is None:
+                            if not _finite_point(px, py):
                                 continue
                             cx, cy = transform(px, py) if transform else (int(px), int(py))
                             if _point_in_rects(cx, cy, clamped_rects):
@@ -946,7 +971,8 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
             try:
                 if "x" in cols and "y" in cols:
                     pts = _fetch_points(db, cols, filters, distinct_pairs=True)
-                    pts = [(int(px), int(py)) for (px, py) in pts if px is not None and py is not None]
+                    pts = [(int(px), int(py)) for (px, py) in pts
+                           if _finite_point(px, py)]
                     counts["used"] = len(set(pts))
                     if region_counts is not None:
                         region_counts["used"] = sum(

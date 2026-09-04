@@ -212,6 +212,50 @@ def test_core_summary_counts(bdp_env, client):
     assert "region_chips" not in body
 
 
+def test_a_nan_coordinate_is_skipped_instead_of_taking_the_screen_down(
+        bdp_env, client, monkeypatch):
+    """🔴 `if px is not None` DOES NOT SKIP A NaN. A coordinate column is
+    `double precision`, so its missing marker on the ORM path is None - and a NaN walks
+    through that guard into `int()`, which raises `cannot convert float NaN to integer`.
+    One bad row then 500s the whole count screen.
+
+    The NaN is injected at `_fetch_points` rather than seeded into the table on purpose:
+    `crud.cast_value_by_type` REFUSES nan/inf into a numeric column, so the ordinary
+    write path cannot produce this row. What can is a writer that did not go through it,
+    which this repository knows it has - seed scripts write table rows directly.
+
+    Both call sites are covered here because the route walks both: the `used` count reads
+    distinct points, and the region count walks them again.
+    """
+    _seed_core(bdp_env)
+    real_fetch = bonding_plan._fetch_points
+
+    def with_a_bad_point(db, cols, filters, distinct_pairs=False):
+        return list(real_fetch(db, cols, filters, distinct_pairs)) + [
+            (float("nan"), 2.0), (3.0, float("inf"))]
+
+    monkeypatch.setattr(bonding_plan, "_fetch_points", with_a_bad_point)
+
+    res = client.get("/api/bonding-plan/core-summary", params={
+        "lot": "LOTX", "slot": "01",
+        "region": _region([{"x1": 1, "y1": 1, "x2": 2, "y2": 2}]),
+    })
+    assert res.status_code == 200, res.text
+    body = res.json()
+    # ⚠️ COUNTS, not merely "it did not raise": a guard that threw everything away
+    # would also avoid the exception, and would be a different silent defect.
+    assert body["chips"]["used"] == 2
+    # 🔴 BOTH SHAPES, because they are two different call sites. `used` is the
+    # comprehension; the other region counts come from the loop, and a NaN reaching that
+    # one raises inside its `try` - which turns a real count into a zero WITHOUT any
+    # error reaching the response. The unchanged numbers are the whole assertion.
+    assert body["region_chips"]["used"] == 1
+    assert body["region_chips"]["total"] == 4
+    assert body["region_chips"]["defect"] == 1
+    assert body["region_chips"]["eds_fail"] == 1
+    assert body["sources"]["used_chips"] == "connected"
+
+
 def test_history_and_warnings(bdp_env, client):
     _seed_core(bdp_env)
     body = client.get("/api/bonding-plan/core-summary",
