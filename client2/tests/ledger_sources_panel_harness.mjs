@@ -188,6 +188,87 @@ console.log('\n[5] two panels on one page');
   eq('and leaves exactly one table', byTag(h1, 'TABLE').length, 1);
 }
 
+// ═══ ⑥ WHY they were refused — three states, and the sign of what is left over ═════
+//
+// 🔴 THE THREE MUST NOT FOLD. `none` (nothing was refused) and `unknowable` (this row
+//    predates the column) are DIFFERENT FACTS, and the server carries them as separate
+//    values for that reason. Folded, 「모른다」 and 「없다」 become one pixel — the class this
+//    panel already refuses for the four source states above it.
+// ⚠️ AND THERE IS A FOURTH: no key at all. A source that never ran has no cursor row, so
+//    the server sends none of the three; a screen that read that as `none` would answer
+//    「거절 없음」 about a translator that has never spoken.
+console.log('\n[6] how many, why, and what is unaccounted for');
+{
+  const drawOne = (over) => {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    new LedgerSourcesPanel(host, { doc }).render({
+      ingestion: { note: NOTE, unavailable: null, sources: [row('a', 'ran_and_wrote', over)] },
+    });
+    return host;
+  };
+  const reasonsIn = (host) => byClass(host, 'ledger-sources-reason').map((n) => n.textContent);
+
+  // ① the breakdown, in the server's words, beside the count
+  const named = drawOne({
+    molecules_refused: 4, refusals: 'named',
+    refusal_reasons: { occurred_at_empty: { count: 3, last_at: 'x' },
+                       key_part_missing: { count: 1, last_at: 'y' } },
+    refusals_unaccounted: 0,
+  });
+  eq('every reason is drawn — never a slice', reasonsIn(named).length, 2);
+  ok('the server own name, untranslated',
+    reasonsIn(named)[0].includes('occurred_at_empty'), reasonsIn(named)[0]);
+  ok('...with how many of them', reasonsIn(named)[0].includes('3'), reasonsIn(named)[0]);
+  ok('...and the second one too',
+    reasonsIn(named)[1].includes('key_part_missing') && reasonsIn(named)[1].includes('1'));
+  ok('the aggregate is still there', /4/.test(named.textContent));
+
+  // ② `unknowable` draws NO number — the breakdown is impossible, not zero
+  const unknowable = drawOne({ molecules_refused: 2, refusals: 'unknowable',
+                               refusal_reasons: null, refusals_unaccounted: 2 });
+  eq('unknowable draws no breakdown line', reasonsIn(unknowable)
+    .filter((t) => t.includes('·')).length, 0);
+  ok('...and says so in the server word', reasonsIn(unknowable).join('').includes('unknowable'));
+
+  // ③ `none` and `unknowable` are NOT the same pixel
+  const none = drawOne({ molecules_refused: 0, refusals: 'none',
+                         refusal_reasons: {}, refusals_unaccounted: 0 });
+  eq('none draws no breakdown at all', reasonsIn(none).length, 0);
+  ok('...and none is not unknowable',
+    byClass(none, 'ledger-sources-reason').length
+    !== byClass(unknowable, 'ledger-sources-reason').length);
+
+  // ④ the fourth state: the server did not say. Drawing `none` here would be an answer
+  //    nobody gave.
+  const silent = drawOne({ molecules_refused: 0 });
+  eq('a row with no refusals key draws no breakdown', reasonsIn(silent).length, 0);
+  eq('...and no unaccounted line', byClass(silent, 'ledger-sources-unaccounted').length, 0);
+
+  // ⑤ THE SIGN. 0 ordinary · >0 deployment history · <0 a real bookkeeping fault.
+  const signOf = (host) => byClass(host, 'ledger-sources-unaccounted')
+    .map((n) => n.getAttribute('data-sign'));
+  eq('0 draws nothing', signOf(named), []);
+  eq('a surplus is drawn as a surplus', signOf(unknowable), ['over']);
+  const fault = drawOne({ molecules_refused: 1, refusals: 'named',
+                          refusal_reasons: { a: { count: 3 } }, refusals_unaccounted: -2 });
+  eq('and a fault is drawn as a fault', signOf(fault), ['under']);
+  ok('the two are not the same pixel', signOf(fault)[0] !== signOf(unknowable)[0]);
+  ok('the number rides with it', byClass(fault, 'ledger-sources-unaccounted')[0]
+    .textContent.includes('-2'));
+  ok('and a surplus carries its sign too', byClass(unknowable, 'ledger-sources-unaccounted')[0]
+    .textContent.includes('+2'));
+
+  // ⚠️ a reason with no count is `—`, not 0 — rule ④ of this file
+  const noCount = drawOne({ molecules_refused: 1, refusals: 'named',
+                            refusal_reasons: { a: {} } });
+  ok('a reason with no count says so', reasonsIn(noCount)[0].includes(ABSENT), reasonsIn(noCount)[0]);
+  // and a breakdown that is not a mapping is not guessed at
+  const junk = drawOne({ molecules_refused: 1, refusals: 'named', refusal_reasons: ['a'] });
+  eq('a breakdown of the wrong shape draws nothing', reasonsIn(junk).length, 0);
+}
+
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

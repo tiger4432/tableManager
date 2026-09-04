@@ -274,6 +274,31 @@
       margin-top: 2px;
       white-space: normal;
     }
+    /* 사유는 «서버 낱말»입니다 — 수 아래에 줄로 쌓이고, 칸을 늘리지 않습니다. */
+    .ledger-sources-reason {
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      margin-top: 2px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: left;
+    }
+    /* 🔴 부호가 다르면 픽셀도 다릅니다. `under`(<0)는 «장부 결함»이라고 서버가 자기
+       주석에 적어 뒀고, `over`(>0)는 배포 이력입니다. 색은 그 «서버의 판단»을 나르는
+       것이지 화면이 지어낸 판단이 아닙니다 — 위의 네 상태에 색이 없는 이유와 같습니다. */
+    .ledger-sources-unaccounted {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      margin-top: 2px;
+      white-space: nowrap;
+      text-align: left;
+      color: var(--text-dim);
+    }
+    .ledger-sources-unaccounted[data-sign="under"] {
+      color: var(--danger);
+      font-weight: 600;
+    }
     .chain-queue-owner-strip {
       display: flex;
       flex-direction: column;
@@ -1375,7 +1400,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DqtLfUoB.js"></script>
+  <script type="module" crossorigin src="/assets/admin-sN2-SWBh.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">

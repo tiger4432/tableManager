@@ -22,6 +22,10 @@
 //
 // ④ 없는 수는 `—` 입니다. 0 이 아닙니다. 철자는 `absent.js` 하나뿐입니다.
 //
+//
+// ⑤ 거절은 «셋»입니다 — `none` · `named` · `unknowable`. 그리고 «키가 없는» 것이 넷째입니다.
+//    접으면 「모른다」와 「없다」가 같은 픽셀이 됩니다. `refusals_unaccounted` 는 «부호»가
+//    뜻이고(0 보통 · >0 배포 이력 · <0 장부 결함), 그래서 부호로 갈래를 텁니다.
 // ═══ 모양 ══════════════════════════════════════════════════════════════════════════
 // 여섯 칸: source · state · atoms_written · molecules_done · molecules_refused · updated_at
 // 🔴 일곱째 칸을 만들지 «않습니다». 좁은 패널에서 표가 넘치는 것을 546~346px 전 구간
@@ -35,6 +39,23 @@ import { ABSENT, countText, localeCountText } from './absent.js';
 export const STATES = Object.freeze([
   'ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan',
 ]);
+
+/** 사유 이름은 «서버 낱말»입니다 — 번역하지 않고, «전부» 나갑니다(자르지 않습니다). */
+function reasonsOf(s) {
+  const r = s && s.refusal_reasons;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return [];
+  return Object.keys(r).map(name => Object.freeze({
+    name: String(name),
+    // 수가 없으면 `—` 입니다. 0 이 아닙니다 — 이 파일의 규칙 ④ 그대로입니다.
+    count: countText(r[name] && typeof r[name] === 'object' ? r[name].count : undefined),
+  }));
+}
+
+/** `refusals_unaccounted` 는 «부호»가 뜻입니다. 수가 아니라 부호로 갈래를 텁니다. */
+function unaccountedOf(s) {
+  const v = s && s.refusals_unaccounted;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
 
 /**
  * `payload` -> 그릴 것. 순수하고 총체적입니다.
@@ -82,6 +103,19 @@ export function sourcesView(payload, opts = {}) {
     // 보조 줄 — 칸을 늘리지 않기 위해 행 안에 둡니다
     translatorVer: (s && s.translator_ver) ? String(s.translator_ver) : ABSENT,
     atomsDeduped: countText(s && s.atoms_deduped),
+    // 🔴 셋을 접지 «않습니다». `none`(거절이 없었다) · `named`(분해가 있다) ·
+    //    `unknowable`(이 행이 컬럼보다 오래됐다) 는 서로 «다른 사실»이고, 접으면
+    //    「모른다」와 「없다」가 같은 픽셀이 됩니다. 그리고 «키가 아예 없는» 것이 넷째입니다 —
+    //    한 번도 안 돈 소스에는 커서 행이 없어 서버가 이 셋을 싣지 않습니다.
+    refusals: (s && typeof s.refusals === 'string') ? s.refusals : '',
+    refusalReasons: Object.freeze(reasonsOf(s)),
+    // 🔴 0 은 보통 · >0 은 «배포 이력»(컬럼이 생기기 전에 센 거절) · <0 은 «장부 결함».
+    //    서버가 그 셋을 자기 주석에 그렇게 갈라 뒀으므로 화면도 «부호»로 가릅니다.
+    unaccounted: unaccountedOf(s),
+    unaccountedSign: (() => {
+      const n = unaccountedOf(s);
+      return n === null || n === 0 ? '' : n > 0 ? 'over' : 'under';
+    })(),
   }));
 
   // 상태별 수. 서버가 준 순서가 아니라 «나온 순서»로 세되, 아는 넷을 먼저 놓습니다.
@@ -214,7 +248,30 @@ export class LedgerSourcesPanel {
       tr.appendChild(this._td(r.state));
       tr.appendChild(this._td(r.atomsWritten, 'center'));
       tr.appendChild(this._td(r.moleculesDone, 'center'));
-      tr.appendChild(this._td(r.moleculesRefused, 'center'));
+      // 🔴 「몇 개」 옆에 「무슨 사유로 몇 개」. 수만 있으면 운영자가 수까지 가고 멈춥니다.
+      //    ⚠️ 칸을 «늘리지 않습니다» — 같은 칸 안에서 줄로 쌓입니다.
+      const tdRefused = this._td(r.moleculesRefused, 'center');
+      for (const reason of r.refusalReasons) {
+        const line = this._line('ledger-sources-reason', `${reason.name} · ${reason.count}`);
+        line.setAttribute('data-reason', reason.name);
+        tdRefused.appendChild(line);
+      }
+      // 🔴 `unknowable` 은 «수를 안 그립니다». 분해가 «불가능»한 것이지 0 이 아닙니다.
+      //    서버의 낱말을 그대로 둡니다 — 화면이 이 상태에 다른 이름을 붙이지 않습니다.
+      if (r.refusals === 'unknowable') {
+        const line = this._line('ledger-sources-reason', 'unknowable');
+        line.setAttribute('data-refusals', 'unknowable');
+        tdRefused.appendChild(line);
+      }
+      // 🔴 부호가 다르면 «픽셀도 다릅니다». <0 은 장부 결함이고, 배포 이력과 같아 보이면
+      //    안 됩니다. ⛔ 그 뜻을 «문장으로» 적지 않습니다 (소유자 상설 2026-09-04).
+      if (r.unaccountedSign) {
+        const line = this._line('ledger-sources-unaccounted',
+          `unaccounted ${r.unaccounted > 0 ? '+' : ''}${r.unaccounted}`);
+        line.setAttribute('data-sign', r.unaccountedSign);
+        tdRefused.appendChild(line);
+      }
+      tr.appendChild(tdRefused);
       tr.appendChild(this._td(r.updatedAt));
 
       tbody.appendChild(tr);
