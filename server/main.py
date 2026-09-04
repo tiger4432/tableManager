@@ -1348,17 +1348,42 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     
     table_names = list(crud.TABLE_CONFIG.keys())
     table_stats = []
+    uncounted = []
     total_global_rows = 0
     
     for name in table_names:
         table_model = models.DYNAMIC_TABLES.get(name)
         if not table_model:
             continue
-        # [최적화] 각 테이블의 행 개수 및 최신 업데이트 시간 조회
-        count = db.query(sa.func.count(table_model.row_id)).scalar() or 0
-        
-        last_item = db.query(sa.func.max(sa.func.coalesce(table_model.updated_at, table_model.created_at))).scalar()
-        
+        # 🔴 EACH TABLE BUYS ITS OWN FAILURE. One declared table whose physical shape has
+        # drifted (measured 2026-09-04: a table declared with `row_id` that the database
+        # does not have that column for) made this whole route answer 500, so twenty-odd
+        # tables' figures disappeared because of one. Same ruling as this morning's
+        # per-unit isolation, and the same shape: it is a BOUNDARY problem, not an
+        # ordering one.
+        #
+        # 🔴 AND THE ROLLBACK IS NOT OPTIONAL. PostgreSQL aborts the whole transaction on
+        # a failed statement, so without it every table AFTER the bad one would fail too -
+        # the isolation would be a comment rather than a behaviour, and the response would
+        # name one table while quietly losing the rest.
+        #
+        # ⛔ NOT counted as zero, and not dropped either: an uncounted table is a third
+        # state, and it is reported by name below.
+        try:
+            # [최적화] 각 테이블의 행 개수 및 최신 업데이트 시간 조회
+            count = db.query(sa.func.count(table_model.row_id)).scalar() or 0
+
+            last_item = db.query(sa.func.max(sa.func.coalesce(table_model.updated_at, table_model.created_at))).scalar()
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.warning("[Dashboard] '%s' could not be counted: %s", name, e)
+            uncounted.append(schemas.UncountedTable(
+                table_name=name, reason=f"{type(e).__name__}: {e}"))
+            continue
+
         table_stats.append(schemas.TableStat(
             table_name=name,
             row_count=count,
@@ -1386,7 +1411,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         table_stats=table_stats,
         system_health="Excellent",
         recorrection=recorrection,
-        effort=effort
+        effort=effort,
+        uncounted_tables=uncounted
     )
 
 # The AG-Grid filter DSL translator lives in `column_filter.py`, not here, and this

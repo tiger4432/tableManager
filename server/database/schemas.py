@@ -300,6 +300,19 @@ class TableStat(BaseModel):
     last_updated: Optional[str] = None
     status: str = "Active" # Active / Idle
 
+class UncountedTable(BaseModel):
+    """A table the dashboard could not count, WITH the reason.
+
+    🔴 IT IS NOT A ROW OF ZERO. A table whose count failed and a table that is genuinely
+    empty are different facts and an operator acts differently on them, so the failed one
+    is not put in `table_stats` at all - it is named here. Dropping it silently would read
+    as "that table does not exist", which is the same misreading with a different shape.
+    """
+
+    table_name: str
+    reason: str
+
+
 class RecorrectionStat(BaseModel):
     """재교정률 — 사람이 같은 셀을 두 번 이상 고친 비율 (SYSTEM_OVERVIEW §1 핵심가치 #1의 계기).
 
@@ -344,3 +357,5 @@ class DashboardSummaryResponse(BaseModel):
     # 신규 필드는 Optional — 구 클라이언트 호환(응답 확장은 하위호환이지만 명시적으로 둔다).
     recorrection: Optional[RecorrectionStat] = None
     effort: Optional[EffortStat] = None
+    # 못 센 표. 빈 목록이 정상이고, 비어 있지 않으면 `total_rows`가 그만큼 «모자란» 수다.
+    uncounted_tables: list[UncountedTable] = []
