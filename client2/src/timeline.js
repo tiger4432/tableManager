@@ -1,4 +1,5 @@
 import { API_BASE, pageLimit } from './config.js';
+import { ABSENT } from './absent.js';
 import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
@@ -172,7 +173,11 @@ export function createTimelineItemDom(log) {
     li.classList.add('active-tx-log');
   }
 
-  const dateStr = new Date(log.timestamp).toLocaleString();
+  // 🔴 `new Date(undefined)` 는 Invalid Date 이고, 그것을 그리면 화면에
+  //    「Invalid Date」라는 «글자»가 나갑니다. 이 부류의 날짜 판입니다.
+  const stamped = log.timestamp ? new Date(log.timestamp) : null;
+  const dateStr = (stamped && !Number.isNaN(stamped.getTime()))
+    ? stamped.toLocaleString() : ABSENT;
 
   li.innerHTML = `
     <div class="timeline-time">${dateStr}</div>

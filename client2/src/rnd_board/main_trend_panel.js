@@ -47,10 +47,20 @@ function valueOf(point) {
 
 /** 비율은 %, 집계는 «그 수 그대로». 단위를 지어내지 않습니다. */
 function formatValue(model, value) {
+  // 🔴 `valueOf` 는 point 에 `value` 도 `rate` 도 없으면 undefined 를 돌려줍니다.
+  //    그러면 아래 첫 줄은 «던지고» (undefined.toFixed), 둘째 줄은 「NaN%」를
+  //    그립니다. 둘 다 사용자가 보는 자리입니다 (상세 툴팁 · 축 라벨).
+  //    ⚠️ `Number.isFinite(value)` 하나로는 부족합니다 — null 과 '' 이 통과합니다.
+  // ⚠️ `absent.js` 가 이 철자의 정본인데 여기서는 «import 할 수 없습니다» —
+  //    이 파일을 재는 하니스가 모듈을 data: URL 로 집어넣거나 함수를 «잘라내어» eval 합니다.
+  //    둘 다 새 import 를 못 따라옵니다. 그래서 «같은 판정»을 여기 적되, typeof 로
+  //    좁혀 사본이 벌어질 여지를 없앱니다. 하니스 쪽은 별도 라운드입니다.
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  const n = value;
   if (model && model.valueKind === 'aggregate') {
-    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
+    return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
   }
-  return `${(value * 100).toFixed(2)}%`;
+  return `${(n * 100).toFixed(2)}%`;
 }
 
 export class MainTrendPanel extends Panel {

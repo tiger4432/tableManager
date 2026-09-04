@@ -238,6 +238,12 @@ const FLOORS = new Map([
   // run sat still; the server keeps the buckets apart and a screen that folded them would
   // rebuild that misreading one layer out, with no existing assertion noticing. The
   // `blocked_by` assertions score that the server's own tokens are MOVED, not translated.
+  // The NaN/absence class, slice 1 (2026-09-04). Every assertion is scored IN PAIRS -- a
+  // missing value beside the genuine 0 it must not become -- because a one-sided test would
+  // pass against a function that dashes EVERYTHING, which is the opposite failure. It also
+  // pins that chain_queue_panel uses this spelling rather than a private copy: the copy it
+  // used to carry rendered an empty string as 0.
+  ['absent_harness.mjs', 35],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
