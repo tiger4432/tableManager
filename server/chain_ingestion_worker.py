@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import logging
 import importlib
@@ -9,6 +10,8 @@ import select
 import time
 from collections import defaultdict
 
+import numpy as np
+import pandas as pd
 from sqlalchemy import type_coerce, text
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -377,6 +380,72 @@ def _mapper_accepts_rule(mapper_func) -> bool:
         return True
     return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
 
+def _is_missing_scalar(value) -> bool:
+    """Is this ONE value a missing marker? Same rule as `parsers/pipeline_base.py:73-75`.
+
+    🔴 THE SPELLING IS COPIED FROM THERE ON PURPOSE, INCLUDING `inf`. That file already
+    decided what "no value" means when a frame becomes rows - `pd.isna` for None/NaN/NaT,
+    and a second clause turning float infinities into None as well - and the mapper
+    boundary is the same decision in a third place, not a new one. If these two ever
+    disagree, the same source value becomes a number on one path and a blank on the other.
+
+    ⚠️ `pd.isna` ANSWERS ELEMENTWISE FOR CONTAINERS, so a DataFrame or an ndarray comes
+    back as an array of booleans rather than one. Those are not scalars and are left
+    alone; taking their truth value here would raise, which is how this kind of guard
+    usually fails - loudly, on the one payload shape nobody tested.
+    """
+    if value is None:
+        return True
+    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        return True
+    try:
+        answer = pd.isna(value)
+    except (TypeError, ValueError):                      # unhashable / odd objects
+        return False
+    return bool(answer) if isinstance(answer, (bool, np.bool_)) else False
+
+
+def _missing_as_none(value):
+    """Deep-replace missing markers with `None`. Returns `(value, changed)`.
+
+    🔴 UNCHANGED INPUT COMES BACK AS THE SAME OBJECT, not a rebuilt copy. A payload with
+    no missing value in it must pass through byte-identical: a normaliser that quietly
+    rewrites healthy values is a silent regression, and one that copies every payload
+    would also make every mapper's `is` comparison and every large batch pay for a defect
+    that was not there.
+    """
+    if isinstance(value, dict):
+        changed = False
+        rebuilt = {}
+        for key, item in value.items():
+            new_item, item_changed = _missing_as_none(item)
+            rebuilt[key] = new_item
+            changed = changed or item_changed
+        return (rebuilt, True) if changed else (value, False)
+
+    if isinstance(value, (list, tuple)):
+        changed = False
+        rebuilt = []
+        for item in value:
+            new_item, item_changed = _missing_as_none(item)
+            rebuilt.append(new_item)
+            changed = changed or item_changed
+        if not changed:
+            return value, False
+        return (tuple(rebuilt) if isinstance(value, tuple) else rebuilt), True
+
+    if value is None:
+        return value, False                              # already missing; nothing to do
+    if _is_missing_scalar(value):
+        return None, True
+    return value, False
+
+
+def without_missing(value):
+    """`_missing_as_none` without the flag - the shape the call sites want."""
+    return _missing_as_none(value)[0]
+
+
 def execute_custom_mapper(module_name: str, function_name: str, db, payload, rule=None):
     """
     Dynamically imports a python mapper module and executes the mapping function.
@@ -388,9 +457,27 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
     try:
         module = importlib.import_module(module_name)
         mapper_func = getattr(module, function_name)
+        # 🔴 NaN IS NOT A VALUE AND A MAPPER AUTHOR SHOULD NOT HAVE TO KNOW THAT. Owner
+        # report 2026-09-04: `cannot convert float NaN to integer` from the chain. This is
+        # the one place every custom mapper is called through, so the rule is applied here
+        # rather than remembered in each mapper - a rule that has to be remembered is a
+        # trap, and it fires in production the first time somebody forgets.
+        #
+        # ⚠️ WHAT THIS DOES NOT FIX, stated so nobody reads more into it: it stops a NaN
+        # arriving IN the payload. A mapper that builds its own frame with pandas can
+        # still create a NaN inside itself and raise before returning, and no boundary can
+        # see that.
+        #
+        # Missing becomes None, never 0: a zero is a VALUE, and the two being confused is
+        # the defect this repository spent the day removing elsewhere.
+        payload = without_missing(payload)
         if rule is not None and _mapper_accepts_rule(mapper_func):
-            return mapper_func(db, payload, rule=rule)
-        return mapper_func(db, payload)
+            result = mapper_func(db, payload, rule=rule)
+        else:
+            result = mapper_func(db, payload)
+        # The way out as well: whatever the mapper returns goes on to the write path,
+        # which has its own integer columns and would hit the same conversion.
+        return without_missing(result)
     except Exception as e:
         logger.error(f"Error executing custom mapper {module_name}.{function_name}: {e}")
         raise e
