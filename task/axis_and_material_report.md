@@ -1,3 +1,55 @@
+# [디자인 -> 총괄] 🔵 **표 라우트가 «섰습니다» — 계약 읽었고, 「문」의 전제 하나를 먼저 올립니다** (2026-09-04)
+
+## 착지 확인 — 제 ③ 가 풀렸습니다
+```
+GET  /admin/tables/config/raw?table=<name>   main.py:5000
+POST /admin/tables/config/raw                main.py:5016
+```
+### 계약 (설명이 아니라 `ledger_admin` 에서 읽었습니다)
+```
+GET  -> { config_path, base, tables:[이름들], error, editable_unit:"table",
+          table?, declaration?, raw? }      <- 뒤 셋은 ?table= 을 줬을 때만
+POST <- { table, declaration, base }
+     -> 200 { ok:true, table, base, backup, tables:<수> }
+     -> 400 detail { ok:false, code, path, message }
+        code: table_name_required · declaration_not_object · stale_base
+              · config_not_object · declaration_not_serialisable
+```
+🔵 삭제는 «없습니다»(얕은 병합이 남의 등록을 지키는 장치라 반경이 다릅니다).
+   `init_dynamic_models` 도 여기서 «안» 부릅니다 — config_watcher 몫입니다.
+
+## ⚠️ 그런데 「거절이 그 문을 연다」의 전제가 지금 «성립하지 않습니다»
+```
+실측   소스 저장이 거절되면 그 문장은 «토스트»로만 나옵니다
+       ontology_explorer.js:506 · 533   showToast(errorMessage(error), ...)
+       errorMessage = detail.message || message
+=> `undeclared_table` 의 그 좋은 문장이 «사라지는 알림»에 실립니다
+=> 토스트에는 «문을 달 자리»가 없습니다 (남지 않으므로)
+```
+🔴 그래서 ③ 은 「문을 하나 단다」가 아니라 «거절이 어디에 사는가»를 먼저 정해야 합니다.
+```
+ⓐ 토스트에 행동을 붙인다        가장 작지만, 토스트는 «사라집니다» — 놓치면 끝입니다
+ⓑ 저장 거절을 «남는 자리»에 그린다  편집기에 이미 oe-editor-validation 이 있습니다.
+                              거기 그리면 문을 달 «표면»이 생깁니다
+                              -> 다만 이건 «거절의 채널을 바꾸는» 것이라 R1/R2 보다 큽니다
+ⓒ 표 편집기 절이 «항상 거기 있다»  같은 탭 · 소스 상태 절 옆. 「문」이 아니라 «자리»입니다
+                              -> 거절문이 파일 이름을 말하고, 그 파일의 편집기가 같은 화면에 있습니다
+```
+🔵 제 추천은 **ⓒ + ⓐ**: 절은 항상 있고(놓칠 수 없음), 토스트가 그 절로 «데려다» 줍니다.
+   ⓑ 는 거절의 채널을 바꾸는 것이라 별도 판정이라고 봅니다.
+
+## 다음 — 제가 지을 것
+```
+① 표 편집기 절   온톨로지 탭, 소스 상태 절 «옆». 조립식 패널 하나 (LedgerSourcesPanel 과 같은 모양)
+                 GET 으로 열고 · raw 를 고치고 · base 를 되돌려 저장
+                 400 의 code·path·message 를 «그대로» 그립니다 (번역 안 함)
+                 stale_base 는 「다시 열어라」이지 실패가 아닙니다 — 서버 문장 그대로
+② 문             거절 -> 그 절로. 위 판정을 받아 붙입니다
+```
+⛔ 새 문구 «0» 으로 갑니다 — 서버가 다섯 코드 전부에 문장을 실어 뒀습니다.
+
+---
+
 # [디자인 -> 총괄] ✅ **R2 배선 착지 `c12dade5` — 68 -> 79/0** (2026-09-04)
 
 ## ① 시험 실행 거절 — 두 줄이 붙었습니다
