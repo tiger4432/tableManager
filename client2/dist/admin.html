@@ -223,6 +223,49 @@
       font-size: 0.85rem;
       font-variant-numeric: tabular-nums;
     }
+    .table-config-picker {
+      width: 100%;
+      max-width: 320px;
+      margin: 0 0 8px;
+      height: 30px;
+      font-size: 0.85rem;
+    }
+    .table-config-raw {
+      display: block;
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+    .table-config-controls { margin: 8px 0 0; }
+    /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
+    .table-config-refusal {
+      margin: 8px 0 0;
+      padding: 8px 12px;
+      border: 1px solid var(--warning);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .table-config-refusal-code,
+    .table-config-refusal-path {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: normal;
+    }
+    .table-config-refusal-why { color: var(--text); font-size: 0.82rem; white-space: normal; }
+    .table-config-saved {
+      margin: 8px 0 0;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: normal;
+    }
     .ledger-sources-name { font-weight: 600; color: var(--text); }
     .ledger-sources-sub {
       color: var(--text-dim);
@@ -1332,7 +1375,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-D95ARDZ0.js"></script>
+  <script type="module" crossorigin src="/assets/admin-DqtLfUoB.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">
@@ -1799,6 +1842,21 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body"><div id="ledger-sources-mount"></div></div>
+          </div>
+
+          <!-- 🔴 표 등록이 «제품 밖»이었습니다 — 이 파일을 쓰는 어드민 라우트가 «0» 이라
+               표 하나 등록하려면 서버 호스트의 파일을 직접 고쳐야 했습니다.
+               «문»이 아니라 «자리»입니다 — 문은 열려야 보이고, 자리는 놓칠 수 없습니다.
+               그리고 `undeclared_table` 거절문이 이미 이 파일 이름을 말합니다. -->
+          <div class="stage-section" id="sec-table-config">
+            <div class="section-header" data-section="sec-table-config">
+              <span class="stage-chip">수정</span>
+              <span class="section-title">표 등록 (table_config.json)</span>
+              <span class="section-count" id="table-config-count">—</span>
+              <span class="section-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div id="table-config-mount"></div></div>
           </div>
         </div>
       </div>

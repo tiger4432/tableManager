@@ -38,6 +38,7 @@ import {
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
+import { TableConfigPanel } from './table_config_panel.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
 const isDevServer = window.location.port === '5173';
@@ -564,6 +565,7 @@ function switchTab(tabName, opts = {}) {
     //    판정입니다 — 그때는 throw 하나가 렌더러 아홉을 지웠습니다. 이 함수는 자기
     //    안에서 모두 잡고, 못 읽은 사유를 패널이 «그립니다».
     refreshLedgerSources();
+    refreshTableConfig();
   } else fetchData();
 }
 
@@ -952,6 +954,75 @@ async function fetchData(options = {}) {
 // \u2464 \u300c\ub0b4 \uc18c\uc2a4\uac00 \uc6d0\uc7a5\uae4c\uc9c0 \uac14\ub098\u300d \u2014 \ubc88\uc5ed\uae30\uc758 \uc7a5\ubd80\ub97c \uadf8\ub9bd\ub2c8\ub2e4.
 // \U0001f534 \uc11c\ubc84\ub294 \uc774 \uac12\uc744 \uc774\ubbf8 \ub0b4\uace0 \uc788\uc5c8\uace0(4898c6ba), \uc77d\ub294 \ucabd\uc774 \u00ab0\u00bb \uc774\uc5c8\uc2b5\ub2c8\ub2e4.
 //    \uadf8\uac83\uc774 \uc774 \ud328\ub110\uc758 \uc720\uc77c\ud55c \uacb0\ud568\uc774\uace0, \uadf8\ub798\uc11c \uc11c\ubc84\ub97c \uae30\ub2e4\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.
+// 표 등록 — 제품 «안»에서. 편집 단위는 «표 하나»이고, 저장은 열 때 받은
+// `base` 지문을 그대로 되돌려 보냅니다 — 둘이 같은 파일을 열면 둘째가 첫째를
+// 조용히 지웁니다. 서버가 `stale_base` 로 거절하고, 그건 «실패가 아니라» 「다시 열어라」입니다.
+let tableConfigPanel = null;
+async function refreshTableConfig(table, extra = {}) {
+  const mount = byId('table-config-mount');
+  if (!mount) return;
+  if (!tableConfigPanel) {
+    tableConfigPanel = new TableConfigPanel(mount, {
+      onOpen: (name) => refreshTableConfig(name),
+      onSave: (payload) => saveTableConfig(payload),
+    });
+  }
+  let body = null;
+  let opts = { ...extra };
+  try {
+    const qs = table ? `?table=${encodeURIComponent(table)}` : '';
+    const res = await adminFetch(`${API_BASE}/admin/tables/config/raw${qs}`);
+    if (res.status === 404) {
+      opts.unavailable = '이 서버 프로세스에 /admin/tables/config/raw 가 없습니다 (404) — 재기동이 필요합니다.';
+    } else if (!res.ok) {
+      opts.unavailable = `표 등록 조회 실패 (HTTP ${res.status}).`;
+    } else {
+      body = await res.json().catch(() => null);
+    }
+  } catch (e) {                                              // noqa
+    opts.unavailable = '표 등록 조회에 실패했습니다 (네트워크).';
+  }
+  const view = tableConfigPanel.render(body, opts);
+  const count = byId('table-config-count');
+  if (count) count.textContent = view.count;
+}
+
+async function saveTableConfig({ table, base, raw }) {
+  // 운영자가 쓴 JSON 이 아닌 것은 «서버까지 가기 전»에 걸립니다. 다만 거절의
+  // 모양은 서버와 «같은 셋»입니다 — 화면이 두 번째 거절 어휘를 만들지 않습니다.
+  // 🔴 그래서 `code` 를 «비워» 보냅니다. 서버의 `declaration_not_serialisable` 은
+  //    「직렬화할 수 없는 «값»」의 이름이고, 여기는 「애초에 JSON 이 아니다」입니다.
+  //    남의 코드를 다른 조건에 찍으면 코드와 문장이 서로 다른 말을 합니다 — 그리고
+  //    운영자가 서버 어휘에 대고 찾아보는 것이 바로 그 코드입니다.
+  //    자리는 파서가 자기 문장에 실어 줍니다.
+  let declaration = null;
+  try {
+    declaration = JSON.parse(raw);
+  } catch (e) {
+    await refreshTableConfig(table, { refusal: {
+      code: '', path: `tables.${table}`,
+      message: String(e && e.message ? e.message : e) } });
+    return;
+  }
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/tables/config/raw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, declaration, base }),
+    });
+    const answer = await res.json().catch(() => null);
+    if (!res.ok) {
+      // 400 은 detail 안에 code·path·message 를 실어 보냅니다. 그대로 그립니다.
+      await refreshTableConfig(table, { refusal: (answer && answer.detail) || answer || {} });
+      return;
+    }
+    await refreshTableConfig(table, { saved: answer || {} });
+  } catch (e) {                                              // noqa
+    await refreshTableConfig(table, { refusal: {
+      code: '', path: '', message: '저장 요청이 서버에 닿지 못했습니다 (네트워크).' } });
+  }
+}
+
 let ledgerSourcesPanel = null;
 async function refreshLedgerSources() {
   const mount = byId('ledger-sources-mount');
