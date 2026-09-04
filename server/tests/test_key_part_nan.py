@@ -101,6 +101,19 @@ def test_values_that_are_not_missing_still_key_the_row(composite_table, value):
         composite_table, Item({"lot": "A", "slot": value, "wafer": "C"})) == []
 
 
+# 🔴 TWO MORE KEY-COMPOSING SITES WERE FOUND AFTER THIS FIX WAS FIRST REPORTED, by
+# the consumer survey rather than by a test: `apply_row_update_internal` and
+# `set_cell_manual_priority_batch` each build a business key from source columns and each
+# still asked `is_blank_value`, so a NaN composed `A_nan_C` there even while the GATE
+# refused it - a gate and an assembler disagreeing, which is the failure the gate's own
+# docstring warns about. Both now ask `is_blank_key_part`.
+#
+# ⚠️ NEITHER IS DIRECTLY TESTED HERE, and that is said rather than papered over. Both sit
+# deep inside write functions that need a live session, dynamic models and a declared
+# table; a test asserting on their SOURCE TEXT would be measuring letters, not behaviour,
+# which this repository forbids. What is pinned below is the predicate they now share.
+
+
 def test_the_blankness_predicate_itself_is_left_alone():
     """Deliberate, and pinned so the next round cannot widen it by accident: whether a
     NaN counts as blank where blankness decides WRITES is unmeasured."""

@@ -2982,7 +2982,10 @@ def apply_row_update_internal(
             # 🔴 이 자리의 빈 값 판정은 `all(v != "")` 이고, 그것이 «이 호출자의 정책»이다.
             #    ①은 is_blank_value 로 묻는다 - 두 술어를 하나로 맞추는 것은 별건(S2)이고
             #    여기서 손대면 이 라운드가 「조립 통합」이 아니라 «동작 변경»이 된다.
-            if not any(is_blank_value(v) for v in raw_vals):
+            # 🔴 신원을 «만드는» 자리이므로 `is_blank_key_part` 다. NaN 은 `is_blank_value`
+            #    에는 안 걸리고 `clean_str_value` 를 지나 «'nan'» 이라는 글자가 되어,
+            #    결측이 든 서로 다른 행들이 «같은 키»로 겹친다 (2026-09-04 판정).
+            if not any(is_blank_key_part(v) for v in raw_vals):
                 new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
@@ -4508,7 +4511,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
             raw_vals = [getattr(row, col, None) for col in composite_src]
             # 이 호출자의 정책은 「하나라도 비면 None」이다 - 위 ②의 폴백과 다르고,
             # 다른 채로 두는 것이 이 라운드의 요구다.
-            if not any(is_blank_value(v) for v in raw_vals):
+            # 🔴 «무엇이 비었나»는 신원 술어로 묻는다 (위와 같은 이유). 정책은 그대로다.
+            if not any(is_blank_key_part(v) for v in raw_vals):
                 new_bk_val = compose_business_key(table_name, raw_vals)
             else:
                 new_bk_val = None
