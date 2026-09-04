@@ -274,9 +274,12 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
     return;
   }
 
+  // 🔴 `|| 0` 가 셋 다 있었습니다 — 안 온 수가 「0행 처리됨」이 됩니다.
+  //    막대의 `p` 는 «폭» 이라 수가 아니면 0 이 맞습니다 (길이를 못 그리니까).
+  //    바뀌는 것은 «글자로 나가는» 둘입니다.
   const p = parseInt(progress, 10) || 0;
-  const pr = parseInt(processedRows, 10) || 0;
-  const tr = parseInt(totalRows, 10) || 0;
+  const pr = parseInt(processedRows, 10);
+  const tr = parseInt(totalRows, 10);
 
   card.innerHTML = `
     <div class="progress-header">
@@ -287,10 +290,11 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
     <div class="progress-bar-container">
       <div class="progress-bar" style="width: ${p}%;"></div>
     </div>
-    <div class="progress-stats">${pr.toLocaleString()} / ${tr.toLocaleString()} 행 처리됨</div>
+    <div class="progress-stats">${localeCountText(pr)} / ${localeCountText(tr)} 행 처리됨</div>
   `;
 
-  const isComplete = p >= 100 || (tr > 0 && pr >= tr);
+  const isComplete = p >= 100
+    || (Number.isFinite(tr) && tr > 0 && Number.isFinite(pr) && pr >= tr);
   if (isComplete) {
     card.classList.add('status-auto-dismiss');
     card.classList.add('status-success');
@@ -349,5 +353,6 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
 // Expose on window object dynamically for any non-ESM environment components if needed.
 // 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
 //    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
+import { localeCountText } from './absent.js';
 //    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
 if (typeof window !== 'undefined') window.showToast = showToast;

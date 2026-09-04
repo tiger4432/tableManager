@@ -436,15 +436,17 @@ const DEFECTS = [
   ['reference columns are keyed by label, so duplicates collapse',
     s => s.replace('    field: `c${i}`,', '    field: String(name),')],
   ['the subset is never disclosed',
-    s => s.replace('  const body = buffered < total', '  const body = buffered < 0')],
+    // anchor moved 2026-09-04: the line gained a null guard when `S.totalBlank` stopped
+    // being assumed a number. Same defect, same mutant, new spelling of the same line.
+    s => s.replace('buffered < total)', 'buffered < 0)')],
   ['the subset tag is always on, even when nothing was cut',
-    s => s.replace('  const body = buffered < total', '  const body = buffered <= total')],
+    s => s.replace('buffered < total)', 'buffered <= total)')],
   ['the filtered count is announced even with no filter',
     s => s.replace('const head = shown !== buffered ? `필터 ${shown.toLocaleString()} · ` : \'\';',
                    'const head = `필터 ${shown.toLocaleString()} · `;')],
   ['the buffer size is read off the filtered view',
-    s => s.replace('  const total = Math.max(S.totalBlank, buffered);',
-                   '  const total = Math.max(S.totalBlank, shown);\n  buffered = shown;')
+    s => s.replace('? Math.max(S.totalBlank, buffered) : null;',
+                   '? Math.max(S.totalBlank, shown) : null;\n  buffered = shown;')
           .replace('  const buffered = bufferRowCount();\n  const shown',
                    '  let buffered = bufferRowCount();\n  const shown')],
   ['the overlay counts the filtered view, so a filter reads as an empty queue',

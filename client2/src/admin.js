@@ -3,6 +3,7 @@
 // (구 메커니즘 7탭 폐지 — Outbox·Rules·Mappers는 Chain 탭으로, Workspaces는 File 탭으로 수렴.
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
+import { localeCountText, isCount } from './absent.js';
 import { initTheme, getTheme } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -1204,9 +1205,12 @@ function renderActiveIngestions() {
       : `<span class="badge badge-success">normal</span>`;
     const pct = Math.max(0, Math.min(item.progress || 0, 100));
     const statusNote = item.status === 'QUEUED' ? ' 대기' : '';
+    // 🔴 `|| 0` USED TO BE HERE and it turned 「안 왔다」 into 「0개 처리했다」 — a
+    //    number the server never sent. `localeCountText` keeps the two apart.
     const rowsText = (item.total_rows != null)
-      ? `${(item.processed_rows || 0).toLocaleString()} / ${item.total_rows.toLocaleString()}`
-      : ((item.processed_rows || 0) > 0 ? item.processed_rows.toLocaleString() : '-');
+      ? `${localeCountText(item.processed_rows)} / ${localeCountText(item.total_rows)}`
+      : (isCount(item.processed_rows) && Number(item.processed_rows) > 0
+        ? localeCountText(item.processed_rows) : '-');
     row.innerHTML = `
       <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text); word-break: break-all;">${item.filename}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${item.table_name}</td>
@@ -1608,10 +1612,13 @@ function renderRecorrection(stat) {
   }
 
   const { rate_pct: rate, measured_cells: cells, recorrected_cells: recorr, window_days: days } = stat;
+  // 🔴 THE GUARD ABOVE CHECKS `rate_pct` AND NOTHING ELSE. A response carrying the rate
+  //    without `measured_cells` reached `cells.toLocaleString()` and THREW — the loud half of
+  //    this class. The rate itself is guarded by that early return, so it stays as it was.
   valueEl.textContent = `${rate.toFixed(1)}%`;
   // 분모는 항상 함께 — 표본이 작으면 읽는 사람이 스스로 알아채야 한다.
   subEl.textContent =
-    `최근 ${days}일 · 사람이 고친 셀 ${cells.toLocaleString()}개 중 ${recorr.toLocaleString()}개를 두 번 이상 고침`
+    `최근 ${days}일 · 사람이 고친 셀 ${localeCountText(cells)}개 중 ${localeCountText(recorr)}개를 두 번 이상 고침`
     + (cells < 100 ? ' · 표본이 작아 추세로 읽지 말 것' : '');
   line.dataset.tone = cells < 100 ? 'muted' : (rate >= 10 ? 'danger' : (rate >= 5 ? 'warn' : ''));
 }
@@ -1660,7 +1667,9 @@ function renderEffort(stat) {
   valueEl.textContent = `${score.toFixed(1)}점`;
   const lowCoverage = ratio != null && ratio < 0.5;
   subEl.textContent =
-    `최근 ${days}일 · 세션 ${(sessions || 0).toLocaleString()}개 평균 · 교정 ${(txs || 0).toLocaleString()}건 계측(${covText})`
+    // 🔴 `|| 0` HERE TOO — 「안 왔다」가 「0개」가 되던 자리입니다. 두 줄 위의 던지는 자리와
+    //    «같은 함수 안»에 있었고, 그것이 이것을 «부류»로 만듭니다.
+    `최근 ${days}일 · 세션 ${localeCountText(sessions)}개 평균 · 교정 ${localeCountText(txs)}건 계측(${covText})`
     + (ratio == null ? ' · 커버리지를 알 수 없어 대표값으로 읽지 말 것'
        : lowCoverage ? ' · 커버리지가 낮아 대표값으로 읽지 말 것' : '');
   line.dataset.tone = (ratio == null || lowCoverage) ? 'warn' : '';

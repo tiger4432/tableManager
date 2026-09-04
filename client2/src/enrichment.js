@@ -353,9 +353,17 @@ function worklistCountText() {
   const shown = S.gridApi ? S.gridApi.getDisplayedRowCount() : buffered;
   // 서버가 센 큐 전체(`S.totalBlank`). 버퍼보다 작게 보고되면(낙관적 감산 직후 등) 버퍼를
   // 쓴다 — 「전체보다 많이 들고 있다」는 문장은 어느 쪽으로도 참일 수 없다.
-  const total = Math.max(S.totalBlank, buffered);
+  // 🔴 `S.totalBlank = result.total` 에 가드가 «없습니다». 서버가 `total` 을 빼면
+  //    undefined 가 들어오고, `Math.max(undefined, n)` 은 «NaN» 입니다 — 그러면 아래
+  //    줄이 「전체 NaN건」을 그립니다. 수가 아니면 버퍼만 말합니다.
+  // ⚠️ `absent.js` 가 이 철자의 정본인데 여기서는 «import 할 수 없습니다» —
+  //    이 파일을 재는 하니스가 모듈을 data: URL 로 집어넣거나 함수를 «잘라내어» eval 합니다.
+  //    둘 다 새 import 를 못 따라옵니다. 그래서 «같은 판정»을 여기 적되, typeof 로
+  //    좁혀 사본이 벌어질 여지를 없앱니다. 하니스 쪽은 별도 라운드입니다.
+  const total = (typeof S.totalBlank === 'number' && Number.isFinite(S.totalBlank))
+    ? Math.max(S.totalBlank, buffered) : null;
   const head = shown !== buffered ? `필터 ${shown.toLocaleString()} · ` : '';
-  const body = buffered < total
+  const body = (total !== null && buffered < total)
     ? `버퍼 ${buffered.toLocaleString()} / 전체 ${total.toLocaleString()}건`
     : `버퍼 ${buffered.toLocaleString()}건`;
   return `${head}${body}`;
@@ -508,9 +516,13 @@ function refillIfNeeded() {
 
 // ── 헤더 통계 (진행률 / 잔여 / 세션) ───────────────────────
 function updateHeaderStats() {
-  const remaining = Math.max(0, S.totalBlank);
+  // 🔴 같은 자리. `S.totalBlank` 이 수가 아니면 「잔여 NaN건」이 나갔습니다.
+  //    「결손 없음」은 «0 을 세었을 때»만 말합니다 — 모를 때가 아니라.
+  const remaining = (typeof S.totalBlank === 'number' && Number.isFinite(S.totalBlank))
+    ? Math.max(0, S.totalBlank) : null;
   const badge = el('remaining-badge');
-  badge.textContent = remaining === 0 ? '✅ 결손 없음' : `잔여 ${remaining.toLocaleString()}건`;
+  badge.textContent = remaining === 0 ? '✅ 결손 없음'
+    : (remaining === null ? '잔여 —' : `잔여 ${remaining.toLocaleString()}건`);
   badge.classList.toggle('all-done', remaining === 0);
   el('session-badge').textContent = `이번 세션 ${S.doneCount.toLocaleString()}건`;
 

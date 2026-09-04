@@ -44,6 +44,8 @@
 //    `.table-row` styles — a diagnostic panel is not a reason to grow a second table style.
 
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
+import { countText } from './absent.js';
+
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
 
 /**
@@ -71,10 +73,12 @@ export function formatAge(seconds) {
   return h % 24 ? `${d}일 ${h % 24}시간` : `${d}일`;
 }
 
-/** A count that is genuinely absent renders as `—`, never as `0`. See rule ②. */
-function countOf(v) {
-  return Number.isFinite(Number(v)) && v !== null && v !== undefined ? String(Number(v)) : '—';
-}
+// 🔴 `countOf` LIVED HERE UNTIL 2026-09-04 and it had this bug: `Number('') === 0` and
+//    `''` is neither null nor undefined, so an empty string rendered as 「0」. The same
+//    collapse `formatAge` guards against, in the function beside it. It moved to `absent.js`
+//    with that hole closed, because this round needed the SAME spelling in five more files
+//    and six private copies drift silently.
+const countOf = countText;
 
 /**
  * `blocked_by` → what to draw, or null. EVERY FIELD IS THE SERVER'S OWN VALUE.
