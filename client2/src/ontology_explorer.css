@@ -18,7 +18,19 @@
    Layout  figures that came from the 6b card (240/330 body, 214/198/92 rows, 7px 12px row
            padding, 16px-per-depth label indent, 10px row gap) are NOT on the 3.4 grid and
            are left exactly as the mockup states them. */
-#ontology-explorer-root {
+/* 🔴 THE 22 TOKENS LIVE HERE, NOT ON THE EXPLORER'S ROOT (총괄 판정 5becb9ba).
+   They were declared on `#ontology-explorer-root`, so NOTHING OUTSIDE COULD READ THEM --
+   `var(--oe-line)` resolved to an empty value on any other element. The admin sections
+   were therefore unified by COPYING the values, which is one design with two spellings:
+   the copied axes matched on the day and the uncopied ones never did, and the day the
+   explorer changes they part company in silence. Owner: 「묘하게 다르다」.
+
+   ⚠️ `color-scheme` MOVES WITH THEM AND HAS TO. `light-dark()` resolves against the
+   `color-scheme` OF THE ELEMENT THAT USES THE VALUE, and the document root's was `normal`
+   -- measured. Tokens alone would hand every section the LIGHT half in dark mode, silently.
+   The explorer keeps its own copy of these three lines below; same value, so its computed
+   output is unchanged, and removing them is a separate question from this ruling. */
+:root {
   --oe-bg: light-dark(#f4f6f8, #111419);
   --oe-surface: light-dark(#ffffff, #191d23);
   --oe-surface-2: light-dark(#f8fafb, #20252c);
@@ -48,6 +60,12 @@
   --oe-ink-th: color-mix(in srgb, var(--oe-text) 60%, transparent);
   --oe-ink-meta: color-mix(in srgb, var(--oe-text) 50%, transparent);
 
+  color-scheme: light dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+#ontology-explorer-root {
   color-scheme: light dark;
   color: var(--oe-text);
   font-family: var(--oe-font-body);

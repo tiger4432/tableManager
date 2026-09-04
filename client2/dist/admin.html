@@ -13,19 +13,10 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.min.js"></script>
   <style>
-    /* 🔴 통일 — 탐색기의 «레시피»에 우리 팔레트를 먹입니다 (총괄 판정 ebfcf05f).
-       탐색기의 `--oe-*` 는 `#ontology-explorer-root` 안에서만 살아서 밖에선 못 씁니다.
-       그리고 소유자 판정은 애초에 「css는 이거쓰고 «컬러만 기존거»」였습니다 — 그래서
-       옮기는 것은 «비율과 모양»이고, 색은 이 페이지가 쓰던 토큰 그대로입니다.
-       ⛔ 철자는 «여기 하나»입니다. 스택을 규칙마다 다시 적으면 둘이 어긋납니다. */
-    body {
-      --sec-font-head: "Barlow Condensed", system-ui, sans-serif;
-      --sec-font-body: "Barlow", system-ui, sans-serif;
-      --sec-ink-th: color-mix(in srgb, var(--text) 60%, transparent);
-      --sec-tint-row: color-mix(in srgb, var(--text) 4%, transparent);
-      --sec-tint-hover: color-mix(in srgb, var(--text) 7%, transparent);
-      --sec-tint-press: color-mix(in srgb, var(--text) 14%, transparent);
-    }
+    /* 🔴 여기에 «베낀 여섯»이 있었습니다 (`--oe-font-head` 등). 지우고 탐색기의
+       토큰을 «그대로» 참조합니다 — 그 22개가 이제 `:root` 에 살고 있습니다
+       (`src/ontology_explorer.css`). 값이 «한 벌»이라 탐색기가 바뀌면 절들도
+       같이 바뀌고, 조용히 어긋나는 자리가 없습니다 (총괄 판정 5becb9ba). */
     /* ── 디자인 토큰은 tokens.css(SSOT, admin.js가 임포트)에서 공급 ──
        구 Catppuccin 별도 팔레트·Fira Code 폐기 → 공통 토큰/폰트로 통일.
        이 블록은 페이지 전용 레이아웃/컴포넌트만 정의하며 시맨틱 토큰만 참조한다. */
@@ -95,7 +86,7 @@
       color: var(--text);
       padding: 6.8px 12.24px;
       border-radius: 0;
-      font-family: var(--sec-font-head);
+      font-family: var(--oe-font-head);
       font-size: 14px;
       font-weight: 600;
       line-height: 1.2;
@@ -109,12 +100,12 @@
     }
 
     .glass-btn:hover {
-      background: var(--sec-tint-hover);
+      background: var(--oe-tint-hover);
       border-color: var(--accent);
       color: var(--accent);
     }
 
-    .glass-btn:active { background: var(--sec-tint-press); }
+    .glass-btn:active { background: var(--oe-tint-press); }
 
     @media (max-width: 480px) {
       header {
@@ -510,12 +501,12 @@
           뜻이 아닙니다. 옮기는 것은 «지금 쓰는 값»입니다. */
     .table-header th {
       text-align: left;
-      font-family: var(--sec-font-body);
+      font-family: var(--oe-font-body);
       font-weight: 400;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--sec-ink-th);
+      color: var(--oe-ink-th);
       padding: 6.8px 10.2px;
       border-bottom: 1px solid var(--border);
     }
@@ -528,7 +519,7 @@
     /* 🔴 줄무늬가 «없어집니다». 탐색기는 줄무늬를 안 쓰고 hover 틴트를 씁니다 —
        한 규칙이 표 열 개 전부에 걸려 있었고, 한 줄로 사라집니다. */
     .table-row:hover {
-      background: var(--sec-tint-row);
+      background: var(--oe-tint-row);
     }
 
     .table-row.active {
@@ -539,7 +530,7 @@
     /* 행 높이도 탐색기에 «없어» 3.4 격자의 배수로 갑니다. 목업의 7px/12px 은
        «트리 행»의 것이라 안 씁니다. `tabular-nums` 는 이미 있던 관행이라 유지합니다. */
     .table-row td {
-      font-family: var(--sec-font-body);
+      font-family: var(--oe-font-body);
       padding: 6.8px 10.2px;
       font-size: 13px;
       border-bottom: 1px solid var(--border);
@@ -721,7 +712,7 @@
        ⚠️ 색은 «그대로 둡니다». 13개가 «전부 같은 accent» 라 색이 아무것도 안 가르는데,
           그걸 걷는 것은 지시된 「알약 · 700」 밖이라 재서 올리고 판정을 기다립니다. */
     .stage-chip {
-      font-family: var(--sec-font-body);
+      font-family: var(--oe-font-body);
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.02em;
@@ -733,7 +724,7 @@
       flex-shrink: 0;
     }
     .section-title {
-      font-family: var(--sec-font-head);
+      font-family: var(--oe-font-head);
       font-weight: 600;
       font-size: 14px;
       line-height: 1.12;
@@ -1452,14 +1443,14 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CWqLp8Uw.js"></script>
+  <script type="module" crossorigin src="/assets/admin-C9pGl247.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bq30MK2W.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
   <link rel="modulepreload" crossorigin href="/assets/theme-DDt32gF5.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
-  <link rel="stylesheet" crossorigin href="/assets/admin-_9XLgIqA.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-DtZ-Hiym.css">
 </head>
 <body>
   <header>
