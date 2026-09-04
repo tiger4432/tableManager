@@ -5520,3 +5520,91 @@ audit_logs 누적       15 행 (5×3). 판정 ㉠대로 남깁니다
 🔴 총괄 판정 둘이 필요합니다:  ㉠ 루프 둘 중 무엇을 내립니까   ㉡ 규칙 #5 의 두 줄
 그동안 저는 «3번»으로 갑니다 — 진행 레지스트리 + 정정 ②(FAILED 가 완료로 안 읽히게)
 ```
+
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **4회차 — #3 이 «착지했습니다». 그리고 같은 부류가 «셋 더» 있습니다 (전수)**
+
+먼저: **회수(retract)는 남의 행을 안 건드렸습니다.** 그다음이 무겁습니다.
+
+## ① 4회차 결과 — 규칙 #3 «SUCCESS». 처음입니다
+```
+제 5건        dt_inventory CREATE -> status «SUCCESS» · retry 0
+만들어진 것    wafer_map_metadata «5» 행   (맵 메타. 셀은 0 — LOADTEST 잡이 dt_log 에 없어서)
+회수          dt_map 5,747 -> 5,747 · core_usage_map 366 -> 366 · wafer_map_metadata(남의 것) 4,925 -> 4,925
+              🔴 «표식 밖이 한 행도 안 줄었습니다». 회수가 제 잡 안에 갇혔습니다 — 확인됐습니다
+```
+📌 그리고 `rows_out=5` 를 «갈라» 셌습니다: 배치 5개 × updates 0 + «맵 메타 5» = 5. 셀은 «0» 입니다.
+
+## ② 🔴 그런데 «그다음 이벤트»가 죽었습니다 — 부류의 «세 번째» 구성원
+```
+메타 5행이 써지자 -> 규칙 #2 (wafer_map_metadata -> dt_inventory) 가 깨어나 «6번 던졌습니다»
+로그          RAISED rule=dt_metadata_to_dt_inventory
+              ColumnBindingRefused: does not declare «'target_job_column'» ...
+              'dt_inventory' declares neither a single-column map_key_columns nor business_key
+```
+같은 병 · 같은 표(`dt_inventory`) · **다른 칸**(`target_job_column`).
+
+## ③ 그래서 «전수»로 셌습니다 — 규칙 × 그 맵퍼가 «실제로» 부르는 칸
+맵퍼 소스에서 `resolve_column(rule, "…")` 의 리터럴을 읽어 그 칸만 태웠습니다(짐작 없음):
+```
+rule                              key                    table          ->
+dt_log_to_dt_alignment_metadata   reference_job_column   dt_log          'dt_job'        ✅
+dt_metadata_to_dt_inventory       source_job_column      dt_log          'dt_job_id'     ⚠️
+dt_metadata_to_dt_inventory       target_job_column      dt_inventory    🔴 REFUSED
+dt_inventory_to_standard_dt_map   trigger/source/target  …               'dt_job' ×3     ✅ (총괄이 고친 것)
+dt_log_to_primary_core_frame      target_job_column      dt_inventory    🔴 REFUSED
+dt_inventory_to_core_usage_map    trigger_job_column     dt_inventory    🔴 REFUSED  (꺼짐)
+dt_inventory_to_core_usage_map    inventory_job_column   dt_inventory    🔴 REFUSED  (꺼짐)
+dt_log_to_core_usage_map          inventory_job_column   dt_inventory    🔴 REFUSED
+dt_log_to_core_usage_map          trigger/source         dt_log          'dt_job_id'     ⚠️
+```
+```
+🔴 거절 «다섯». 그리고 «다섯 다 주어가 dt_inventory» 입니다. 한 가지 병입니다
+🔴 «켜져 있는» 규칙 중 아직 거절하는 것 «셋»:
+      #2 dt_metadata_to_dt_inventory     target_job_column
+      #4 dt_log_to_primary_core_frame    target_job_column
+      #6 dt_log_to_core_usage_map        inventory_job_column
+```
+### 🔴🔴 그중 «둘»(#4 · #6)은 `dt_log` 가 트리거입니다
+```
+즉 dt_log 에 «무엇이 써질 때마다» 그 그룹이 거절로 죽습니다.
+dt_log 는 이 체인에서 «가장 자주 써지는» 표입니다 (이 박스: 34,939 행 · 잡 396)
+=> 소유자의 「체인이 재깍재깍 안 돌아」에 이 자리가 «들어 있을» 수 있습니다.
+   ⚠️ 「이다」라고 말하지 않겠습니다 — 운영에서 그 규칙들이 켜져 있는지 제가 모릅니다
+```
+
+## ④ ⚠️ 그리고 «조용한» 쪽이 따로 있습니다 — 거절 없이 «0 을 읽습니다»
+```
+#2 · #5 · #6 의 source_job_column 은 «도출»되어 'dt_job_id' 가 됩니다
+   (dt_log 의 map_key_columns = ['dt_job_id'] — 라이브·샘플 «동일», 커밋된 선언입니다)
+이 박스에서   dt_log.dt_job_id  non-null «0» / 34,939      dt_log.dt_job  non-null 34,939
+=> 거절을 고쳐도 이 셋은 «빈 소스»를 읽습니다. 오류 없이 0 행입니다
+   규칙 #3 만 총괄이 source_job_column="dt_job" 으로 «명시»해서 벗어났습니다
+```
+🔴 **즉 이 부류는 두 겹입니다** — 「거절하는 셋」과 「조용히 0 을 읽는 셋」. 겹칩니다.
+
+## ⑤ 청소 — 4회차도 «0». 그리고 계약이 «두 군데» 틀렸던 것을 고쳤습니다
+이번엔 체인이 «진짜로» 파생 행을 만들어서, 제 청소 목록의 구멍이 드러났습니다:
+```
+❌ cell_sources 를 updated_by='chain_load_probe' 로 지웠음
+   -> 파생 행의 provenance 는 «맵퍼 이름»입니다. 15행이 남았습니다
+   ✅ 고침: 제 행 + 파생 행의 «row_id 집합»으로 지웁니다 (삭제 «전»에 잡습니다)
+❌ database_outbox 를 payload::text LIKE 로만 지웠음
+   -> 그룹 이벤트의 payload 는 «{"row_ids": [...]}» 라 표식이 «없습니다». 1행이 남았습니다
+   ✅ 고침: payload 의 row_ids 가 제 집합과 겹치면 «같이» 지웁니다
+```
+최종 전수 재대조: **audit_logs «만» +10. 나머지 72 표 전부 시작값과 동일.**
+⚠️ audit_logs 는 «10» 입니다(제 5 + 파생 5). 파생 쪽은 `business_key` 가 «NULL» 이라
+   표식으로 못 셉니다 — row_id 로만 셉니다. 판정 ㉠대로 «남깁니다».
+
+## ⑥ 청함
+```
+㉠ 위 «켜져 있는 셋»의 칸 — 부류째 채우시겠습니까 (#2 · #4 · #6)
+   ⛔ 저는 라이브 선언 무변경입니다. 손대지 않았습니다
+㉡ 그리고 「조용히 0」 쪽(source_job_column -> dt_job_id) 도 «같은 판단»이 필요합니다
+   -> 이건 「고치면 갑자기 일이 생긴다」는 뜻이라 부하가 «달라집니다». 부하 시험 전에 정해야 합니다
+```
+📌 큐 1번(토폴로지 선언)은 다음 턴에 재서 올리겠습니다. 이 보고를 먼저 낸 이유는
+   ③의 셋이 «지금 켜져 있고 지금 죽고 있어서»입니다.
