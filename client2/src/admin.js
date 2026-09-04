@@ -40,6 +40,7 @@ import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explor
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { TableConfigPanel } from './table_config_panel.js';
 import { ChainRulePanel } from './chain_rule_panel.js';
+import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
 const isDevServer = window.location.port === '5173';
@@ -3215,6 +3216,20 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
   // ② Chain 카드 (outbox fail = chain fail)
   {
     const total = outbox ? (outbox.total || 0) : null;
+    // 🔴 「언제부터」. 서버가 «집합 전체»의 MIN 을 최상위 한 칸으로 냅니다
+    //    (`oldest_failed_at`, 구현자 8f0b4858) — 페이지를 넘겨도 답이 같습니다.
+    //    수만 있으면 「방금 하나」와 「나흘째 스물」이 «같아 보입니다».
+    //    ⚠️ 세 상태입니다. 오늘 만든 부품이 그 셋을 가릅니다:
+    //       못 읽음      -> 「모름」        (수를 안 그립니다)
+    //       읽었고 0     -> 「실패 없음」
+    //       읽었고 N>0   -> 그 시각부터
+    const oldestFailed = outbox ? (outbox.oldest_failed_at || null) : null;
+    const failCell = countWithAbsence(outbox
+      ? { value: total, absence: '실패 없음' }
+      : { unread: '모름' });
+    const sinceWord = failCell.read
+      ? (total > 0 && oldestFailed ? `${formatTimestamp(oldestFailed)} 부터` : failCell.word)
+      : failCell.word;
     const ruleCount = rules ? (rules.data || []).length : null;
     const mapperCount = mappers ? (mappers.data || []).length : null;
     const status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
@@ -3228,7 +3243,9 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       status,
       title: 'Chain',
       metrics: [
-        { value: total == null ? '—' : total, label: '실패 트랜잭션', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
+        { value: failCell.read ? String(total) : failCell.text,
+          label: sinceWord ? `실패 트랜잭션 · ${sinceWord}` : '실패 트랜잭션',
+          tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
         { value: ruleCount == null ? '—' : ruleCount, label: 'Rules' },
         { value: mapperCount == null ? '—' : mapperCount, label: 'Mappers' }
       ],
