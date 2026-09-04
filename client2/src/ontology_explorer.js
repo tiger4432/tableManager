@@ -56,6 +56,11 @@ function chooseDirtyNavigation(root) {
   });
 }
 
+/** 서버의 «문장»만. 코드를 «자기 칸»에 따로 싣는 자리가 이것을 씁니다. */
+function errorSentence(error) {
+  return error?.detail?.message || error?.message || String(error);
+}
+
 function errorMessage(error) {
   // 🔴 `code` 와 `path` 를 «버리지» 않습니다. `jsonRequest` 가 서버의 detail 을
   //    «통째로» 달아 주는데(code·path 포함) 이 함수가 message «하나»만 꺼내 쓰고 있었고,
@@ -63,7 +68,7 @@ function errorMessage(error) {
   //    것이 «꺼내는 자리»에서 없어진 것입니다.
   //    ⛔ 문장을 짓지 않습니다. 서버의 낱말 셋을 «값으로» 잇습니다.
   const detail = error?.detail;
-  const base = detail?.message || error?.message || String(error);
+  const base = errorSentence(error);
   const parts = [base];
   if (detail?.code) parts.push(String(detail.code));
   if (detail?.path) parts.push(String(detail.path));
@@ -736,7 +741,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       dispatch({
         type: 'REQUEST_FAILED', generation: requestId,
         code: error?.detail?.code || error?.code,
-        message: errorMessage(error),
+        // 🔴 코드를 «자기 칸»에 이미 싣습니다 — 문장에 또 붙이면 화면에 두 번 나옵니다.
+        message: errorSentence(error),
         selection,
       });
       // A blank or broken root is precisely when `/view` cannot answer and the authoring
@@ -1095,7 +1101,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       } catch (error) {
         dispatch({
           type: 'TEST_RUN_FAILED', sourceId,
-          code: error?.detail?.code, message: errorMessage(error),
+          // 🔴 위와 같습니다 — 이 자리의 코드는 `oe-tree-why-code` 가 그립니다.
+          code: error?.detail?.code, message: errorSentence(error),
         });
       }
     } else if (action === 'create-draft') {
