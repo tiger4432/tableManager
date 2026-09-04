@@ -210,6 +210,12 @@
     }
     /* 실패 수는 «대기 옆»입니다. 값 하나이고 문장이 아닙니다. */
     /* 도는 체인 — 「수 + 그 0 이 무엇인지」. 값이고 문장이 아닙니다. */
+    /* 어느 로그 파일을 열어야 하나 — 이름 하나입니다. 경로가 아닙니다. */
+    .chain-queue-headline-log {
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
     .chain-queue-headline-running {
       color: var(--text-dim);
       font-variant-numeric: tabular-nums;
@@ -1310,6 +1316,7 @@
     .section-summary,
     .chain-queue-headline-fail,
     .chain-queue-headline-running,
+    .chain-queue-headline-log,
     .chain-queue-row-owners,
     .ledger-sources-sub,
     .ledger-sources-reason,
