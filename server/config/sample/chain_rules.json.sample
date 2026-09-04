@@ -52,6 +52,8 @@
       "source_table": "dt_log",
       "mapper_module": "mappers.dt_standard_map_mapper",
       "mapper_function": "build_standard_dt_map_batches",
+      "trigger_job_column": "dt_job",
+      "source_job_column": "dt_job",
       "target_job_column": "dt_job",
       "is_batch": true,
       "allow_chain_trigger": true,

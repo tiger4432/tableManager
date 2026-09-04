@@ -54,7 +54,18 @@ import chain_key_gate
 # removes by map and cannot express it - see the retract branch in the write loop.
 import dt_map_derivation
 
-logger = get_process_logger("Chain", "chain_worker.log")
+#: 🔴 THE FILE THIS PROCESS LOGS TO, NAMED ONCE AND CARRIED ONTO THE MAPPER LINES.
+#  A mapper runs in THIS process, so its lines land here and not in the web server's
+#  `server.log`. On 2026-09-04 the owner put a `print` inside a mapper, watched "the
+#  server log", saw nothing, and concluded the mapper had not run - it had, and the
+#  line was in this file. A tag that says which file it is costs one string and closes
+#  that question at the place where it is asked.
+LOG_FILENAME = "chain_worker.log"
+
+logger = get_process_logger("Chain", LOG_FILENAME)
+
+#: Prefix on every mapper-execution line: what ran it, and where to read it.
+MAPPER_LOG_TAG = "mapper@%s" % LOG_FILENAME
 
 class OutboxListener:
     """[Latency Fix #4] 상시 유지되는 LISTEN 전용 raw 커넥션.
@@ -446,6 +457,33 @@ def without_missing(value):
     return _missing_as_none(value)[0]
 
 
+def _payload_row_count(payload):
+    """How many trigger rows this call carries. A batch mapper is handed a list."""
+    if isinstance(payload, (list, tuple)):
+        return len(payload)
+    return 1 if payload else 0
+
+
+def _result_row_count(result):
+    """How many rows the mapper produced, counted across the shapes a mapper returns.
+
+    Counted rather than assumed. A mapper returns `{"updates": [...]}`, or
+    `{"batches": [{"updates": [...]}, ...]}`, and either may also carry
+    `map_metadata_updates` - the three shapes are all in production today. A number
+    that read only the first would report 0 for a mapper that did a map's worth of
+    work, and "0" is the answer the operator is trying to tell apart from "did not
+    run".
+    """
+    if not isinstance(result, dict):
+        return 0
+    total = len(result.get("updates") or ())
+    for batch in result.get("batches") or ():
+        if isinstance(batch, dict):
+            total += len(batch.get("updates") or ())
+    total += len(result.get("map_metadata_updates") or ())
+    return total
+
+
 def execute_custom_mapper(module_name: str, function_name: str, db, payload, rule=None):
     """
     Dynamically imports a python mapper module and executes the mapping function.
@@ -453,7 +491,24 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
     rule: 현재 실행 중인 체인 룰 dict. 맵퍼가 `rule` 인자를 선언한 경우에만 전달한다
     (generic 맵퍼가 룰 설정을 참조하는 용도 — 예: enrichment_mapper.map_enrichment_dedup).
     기존 (db, payload) 시그니처 맵퍼는 종전과 완전히 동일하게 호출된다.
+
+    🔴 IT ALSO SAYS, ONCE PER GROUP, THAT THE MAPPER RAN. This is the only place every
+    custom mapper is called through, so one pair of lines here covers all of them and
+    no mapper author has to remember to log. What goes on the line is the identity
+    (rule, mapper, target table), the size (rows in, rows out) and the time - never the
+    payload body, which is operator data, and never one line per row: a mapper handed a
+    thousand-row group must not turn into a thousand log lines.
+
+    ⚠️ INFO, NOT DEBUG. A line that only exists when somebody remembered to raise the
+    level does not exist on the deployment where the question is being asked.
     """
+    started = time.monotonic()
+    rule_name = (rule or {}).get("name") or "<unnamed rule>"
+    target_table = (rule or {}).get("target_table") or "<none>"
+    who = "%s.%s" % (module_name, function_name)
+    rows_in = _payload_row_count(payload)
+    logger.info("[%s] START rule=%s mapper=%s target=%s rows_in=%d",
+                MAPPER_LOG_TAG, rule_name, who, target_table, rows_in)
     try:
         module = importlib.import_module(module_name)
         mapper_func = getattr(module, function_name)
@@ -477,9 +532,20 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
             result = mapper_func(db, payload)
         # The way out as well: whatever the mapper returns goes on to the write path,
         # which has its own integer columns and would hit the same conversion.
-        return without_missing(result)
+        cleaned = without_missing(result)
+        logger.info("[%s] END   rule=%s mapper=%s target=%s rows_in=%d rows_out=%d "
+                    "elapsed=%.3fs",
+                    MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
+                    _result_row_count(cleaned), time.monotonic() - started)
+        return cleaned
     except Exception as e:
-        logger.error(f"Error executing custom mapper {module_name}.{function_name}: {e}")
+        # The throw gets its OWN line rather than being folded into the end line: a
+        # mapper that raised produced no rows, and "rows_out=0" would be the same text
+        # a mapper that legitimately had nothing to do writes.
+        logger.error("[%s] RAISED rule=%s mapper=%s target=%s rows_in=%d elapsed=%.3fs "
+                     "-> %s: %s",
+                     MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
+                     time.monotonic() - started, type(e).__name__, e)
         raise e
 
 def _group_target_tables(events_in_tx, rules):

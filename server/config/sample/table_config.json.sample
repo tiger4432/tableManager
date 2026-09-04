@@ -179,6 +179,7 @@
     ],
     "composite_key_separator": "|",
     "column_types": {
+      "dt_job": "string",
       "dt_lot": "string",
       "dt_slot": "number",
       "dt_x": "number",
