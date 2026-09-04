@@ -232,6 +232,11 @@ class OntologyExplorerService:
                     f"requested revision {revision}, current is {record['revision']}",
                 )
             draft = self.draft_store.public(record)
+            # 🔴 WHAT WOULD REFUSE ACTIVATION, BY NAME - and an empty list is the answer
+            # the screen never had. It could see a red test run and nothing else, so a
+            # draft that was activatable the whole time looked blocked.
+            draft["activation_blockers"] = self.draft_store.activation_blockers(
+                record, active_index)
             preview = self.draft_store.preview(record, setup, active_index)
             if view_mode == "draft_preview" and preview.valid and preview.index is not None:
                 index = preview.index
@@ -586,6 +591,15 @@ class OntologyExplorerService:
             "sentences": [],
             "refusal": None,
             "status": self.UNVERIFIED,
+            # 🔴 A TEST RUN IS INFORMATION, NOT A GATE, AND THE SCREEN COULD NOT TELL.
+            # `activate` refuses on ONE thing - the snapshot compare-and-swap - and a red
+            # test result is not it. Nobody presses activate next to a red panel, so a
+            # declaration that was always activatable sat unactivated; the ledger has not
+            # run in production for a month (owner, 2026-09-04).
+            #
+            # ⛔ A VALUE, NOT A SENTENCE. The screen writes the words; a message invented
+            # here would be a second place for that wording to live.
+            "blocks_activation": False,
         }
         # 🔴 A DECLARATION THAT DID NOT LOAD IS ITS OWN ANSWER. It is not in the compiled
         # snapshot, so there is nothing to run -- and the reason it was dropped is already

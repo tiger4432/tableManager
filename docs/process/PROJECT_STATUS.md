@@ -34,7 +34,35 @@
 > 각 레인이 자기 세션에 15분 지속 감시를 걸어 «스스로» 깨어납니다(세 지시서 맨 위에 상설).
 > ⚠️ 레인이 완전히 죽어 있으면 **소유자가 그 창에 한 글자** 쳐야 합니다.
 >
+> ### ①-quater 🔴 **초인종이 «있습니다» — `send_message`. 2026-09-04 발견**
+> 보드가 「커밋은 초인종이 아니다 -> 소유자가 창에 한 글자 쳐야 한다」로만 적어 뒀는데,
+> **총괄이 «직접» 깨울 수 있습니다.** 소유자 손을 빌릴 일이 아니었습니다.
+> ```
+> ① mcp__ccd_session_mgmt__list_sessions   -> isRunning 과 lastActivityAt 을 봅니다
+>      isRunning:false + 마지막 활동이 «자기 보고 커밋 시각» = 멈춘 것입니다
+> ② mcp__ccd_session_mgmt__send_message    -> 그 sessionId 로 «판정 요지»를 보냅니다
+>      상대 세션에 «사용자 턴»으로 도착합니다. 채널 파일이 정본이고 이건 «알림»입니다
+> ```
+> 🔴 **레인은 「이어서 가겠습니다」라고 적고도 «멈춥니다»** — 오늘 구현자·클라가 각각 그랬습니다.
+>    턴이 끝나면 세션이 서기 때문이고, 자기 의지와 무관합니다. 「간다고 했으니 간다」로 읽지 않습니다.
+> 🔴 소유자 상설 (2026-09-04): 「세 세션 모두 «놀지 않게» 잘 관리해」
+>    -> 이건 «깨우는» 문제가 아니라 «다음 것이 큐에 있나»의 문제입니다.
+>       각 레인의 지시 끝에 «다음 항목»을 미리 적어 둡니다 — 그래야 제 판정을 안 기다립니다
+>
 > ### ② 서버 재기동 — 총괄 몫 (소유자 상설)
+> 🔴🔴 **「서버」는 «셋»입니다 — 하나만 올리면 고친 것이 안 돕니다** (2026-09-04 실측)
+> ```
+> -m uvicorn main:app     API 라우트 · 부팅 시각의 Schema Sync
+> run_chain_worker.py     체인 규칙 · 맵퍼 · 아웃박스 소비
+> run_auto_update.py      스케줄러 · 소급 실행 · 크론
+> └ 셋이 «각각» 뜨고 각각 자기 시작 시각을 가집니다. 둘은 WorkingDirectory 가 `server/` 입니다
+> 🔴 실측: uvicorn 만 오늘 것이고 워커 둘은 «나흘 전»이었습니다.
+>    그날 착지한 워커 쪽 수정이 하나도 안 돌고 있었고, 포트만 보면 «통과»로 나옵니다
+> 🔴 확인은 포트가 아니라:
+>    Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Select ProcessId,CreationDate,CommandLine
+>    -> «고친 파일을 읽는» 진입점의 시작 시각을 그 파일의 mtime 과 견줍니다
+> 📎 워커는 콘솔에만 찍혀 있습니다 — -RedirectStandardOutput 으로 스크래치패드에 남기십시오
+> ```
 > ```
 > Start-Process C:\Users\kk980\anaconda3\envs\assy_manager\python.exe
 >   -ArgumentList '-m','uvicorn','main:app','--host','0.0.0.0','--port','8080'
