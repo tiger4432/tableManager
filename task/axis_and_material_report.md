@@ -1,3 +1,81 @@
+# [디자인 -> 총괄] ✅ **둘 — 프롬프트 잠김 게이트 초록 · graph/trace 제거 착지** `6332d371` `45d8b66f` (2026-09-04)
+
+## ① 프롬프트 잠김 — 게이트 그대로 재습니다. **이번엔 «스텁 없이»**
+이 브라우저는 `prompt()` 가 «원래» 던집니다. 즉 고치려던 «그 상태» 자체입니다.
+```
+게시본        admin-eADDfRSu.js
+칩 덮기        네 개를 SENTINEL 로 덮고 Chain 탭 클릭
+생존 SENTINEL  «0»    -> 코드가 넷을 다 썼습니다
+대기열 절      자식 1 · 「⚪ 대기열 조회 실패 (HTTP «401»). 수를 그리지 않습니다.」
+              🔵 «진짜 401» 입니다. 지난번 제가 주입한 500 이 아닙니다
+요청           프롬프트가 던진 «뒤»에도 어드민 요청이 계속 나갑니다 (배치 여럿 실측)
+```
+🔴 **전에는 여기서 «두 번째 요청이 아예 없었습니다»** — 그게 잠김이었고, 지난 라운드에
+살아남은 SENTINEL 이 그 증거였습니다. 지금은 같은 자리에서 0 입니다.
+
+## ② `graph` · `trace` 제거 — `45d8b66f`
+지시대로 «안내 페이지 없이» 지웠습니다.
+```
+지운 것   graph.html · trace.html + vite 진입점 둘
+         graph_viewer.js 1,274 · trace.js 462 · trace_core.js 234 · trace_launch.js 111
+         main.js 부팅 호출 · api.js 매-fetch 호출 · index.html 의 추적 버튼과 메뉴 항목
+합계     «6,773줄» 삭제
+```
+
+### 게이트 ① 전 — 로드당 «2» 입니다 (지시서의 「1」보다 큽니다)
+```
+GET /graph/mapping-summary -> 410 Gone   x2   (한 번은 initTraceEntry, 한 번은 refreshTraceEntry)
+그리드                                   37행 x 12컬럼
+```
+
+### 게이트 ③ 후 — dist 에서 «사라졌습니다»
+```
+graph-*.js · trace-*.js · trace_core-*.js 청크   «없음»
+dist/graph.html · dist/trace.html                «없음»
+main 청크의 composeIdentity · capSeeds · SEED_CAP · mapping-summary
+             · refreshTraceEntry · initTraceEntry   전부 «0건»
+main 청크    1,217,182 -> 1,215,528 바이트
+```
+
+### 게이트 ④ — 하니스 전수 초록. 재던 하니스는 «같은 커밋»에서 옮겼습니다
+```
+effort_meter_harness   131(2 빨강) -> «133/0»   FLOORS 131 -> 133
+  READ_PAGES 가 두 멤버를 잃음 -> 남은 멤버 admin.js 로 «이사»
+  변이 둘(수집기 없는 페이지 · 자기를 틀린 라우트로 세는 페이지)도 admin.js 로 재조준
+  routeFromHref 단언 둘이 /trace.html -> /admin.html
+  🔴 그리고 «제거 자체»를 재는 단언 둘을 더했습니다 — 은퇴 화면은 null 이어야 합니다.
+     안 넣으면 이 삭제에 채점자가 «하나도» 없습니다
+```
+
+## 🔵 세지 않고 지우지 않은 것들 — 갈래를 나눴습니다
+```
+ROUTES.GRAPH · ROUTES.TRACE   «남깁니다». href 키 둘만 지웠습니다
+                              이 파일의 ROUTES.ENRICHMENT 주석이 이유를 이미 적어 두었습니다 —
+                              ROUTE_IDS 는 «서빙되는 허용목록의 검증기»이지 살아 있는 항해의
+                              인구조사가 아닙니다. 지우면 그 id 를 쓴 항목이 «unknown» 이 되어
+                              오히려 «계속 세어집니다». 같은 상황, 같은 처리
+grid.js is_graph_synced 컬럼   다른 기능입니다. 남깁니다
+map_key_datalist 하니스        히트 전부 「lexicographic」 이었습니다 (글자 안에 graph)
+rnd_board/**                   손대지 않았습니다
+주석 둘                        map_editor2 · rescope_handoff 가 지워진 파일을 «이름으로» 부르고
+                              있었습니다 -> 이유는 남기고 참조만 고쳤습니다 (죽은 이름 방치 금지)
+index.html 묘비                지우지 않고 «다시 썼습니다». 전 문장은 「파일은 남아 있다」였고
+                              이제 거짓이라, ledger.html 묘비와 같은 모양으로 바꿨습니다
+```
+
+## ⚠️ rnd_board dist — 이번엔 «같이 갑니다»
+빌드가 dist 를 통째로 비우고 다시 쓰므로 옛 청크 파일이 디스크에서 사라졌고,
+`rnd-board.html` 이 새 청크를 가리킵니다. 지난 두 커밋에서 제가 보류했던 그 드리프트가
+이번엔 «일관된 산출물의 일부»라 빼면 오히려 깨집니다. 그래서 포함했고, 여기 적습니다.
+
+## 남은 게이트 — 게시가 필요합니다
+```
+① 후   그리드 새 탭에서 /graph/* 요청 «0» 인가 · 그리드 행·컬럼 그대로인가
+```
+게시해 주시면 한 판으로 재겠습니다.
+
+---
+
 # [디자인 -> 총괄] ✅ **보이는 절반 초록 — 9/9 · 대기열이 사유를 그립니다** (2026-09-04)
 
 그런데 **첫 판이 통과했는데 그게 가짜였습니다.** 그 이야기부터 적습니다.
