@@ -4997,6 +4997,36 @@ def get_ledger_config_raw(source: str = None):
     return ledger_admin.source_raw_view(source)
 
 
+@app.get("/admin/tables/config/raw", dependencies=[Depends(require_admin_token)])
+def get_table_config_raw(table: str = None):
+    """`table_config.json` 의 «표 하나» + 저장이 검사할 base 지문.
+
+    🔴 표 등록이 «제품 밖»이었습니다 — 이 파일을 쓰는 어드민 라우트가 «0» 이라, 표를 하나
+    등록하려면 서버 호스트의 파일을 직접 고쳐야 했습니다. 완성 판정의 두 줄이 세 줄이 되고
+    그 한 줄이 「앱을 나간다」였습니다 (소유자 판정 2026-09-04).
+
+    편집 단위는 «표 하나»입니다. 이유는 `/admin/ledger/config/raw` 가 자기 주석에 적어 둔
+    것과 같습니다: 파일 전체를 쓰기 단위로 삼으면 모든 저장이 «남의 등록»을 다시 쓰는 일이
+    됩니다.
+    """
+    import ledger_admin
+    return ledger_admin.table_config_raw_view(table)
+
+
+@app.post("/admin/tables/config/raw", dependencies=[Depends(require_admin_token)])
+def post_table_config_raw(payload: dict = Body(...)):
+    """표 «하나»를 등록/수정한다. 원자적 쓰기 · 저장 전 검증 · base 지문 셋 다 건다.
+
+    ⛔ 삭제는 «없습니다» — 병합이 얕아서 지우지 못하고, 지우는 것은 반경이 다릅니다.
+    ⛔ `init_dynamic_models` 를 여기서 부르지 «않습니다». 그 일은 config_watcher 가 합니다 —
+       두 번째 문을 만들면 둘이 다른 순간에 다른 것을 봅니다.
+    """
+    import ledger_admin
+    return ledger_admin.save_table_config_raw(
+        str(payload.get("table") or ""), payload.get("declaration"),
+        str(payload.get("base") or ""))
+
+
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])
 def get_ledger_relations(q: str = None, limit: int = 200, db: Session = Depends(get_db)):
     """실재하는 관계와 컬럼. **카탈로그만 읽는다** — 비용이 테이블 행 수와 무관하다."""
