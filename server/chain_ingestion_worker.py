@@ -466,6 +466,31 @@ def without_missing(value):
     return _missing_as_none(value)[0]
 
 
+def mark_processed(event, status: str):
+    """The ONE place an outbox event stops being work. Status, the flag, and the time.
+
+    🔴 IT IS ONE FUNCTION BECAUSE IT WAS FOUR PLACES. "Processed" was hand-written at
+    four sites - the group's success, two failure branches, and the SYSTEM_RELOAD
+    trigger - each setting `status` and `processed_chain` itself. `processed_at` was
+    declared on the model, reported by `/admin/outbox/failed`, and written by NOBODY, so
+    the column answered "unknown" forever; adding a line at each of the four would have
+    made eight hand-written copies of one judgement, and the fifth branch to appear
+    would have been the one that forgot.
+
+    🔴 FAILURE IS STAMPED TOO. The column means "when this stopped being worked on", and
+    a permanently failed event has stopped. Stamping only success would leave every row
+    on the failed-events route - the one route that publishes this column - answering
+    "unknown" about itself.
+
+    ⚠️ `func.now()`, not Python's clock: `created_at` is a server default, so both ends
+    of "queued until finished" have to be read from the same clock or the difference is
+    a measurement of clock skew.
+    """
+    event.status = status
+    event.processed_chain = True
+    event.processed_at = func.now()
+
+
 def _payload_row_count(payload):
     """How many trigger rows this call carries. A batch mapper is handed a list."""
     if isinstance(payload, (list, tuple)):
@@ -1201,8 +1226,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).
             event_ids = [event.id for event in events_in_tx]
             for event in events_in_tx:
-                event.processed_chain = True
-                event.status = "SUCCESS"
+                mark_processed(event, "SUCCESS")
                 # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
                 # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
                 if not has_messages:
@@ -1266,14 +1290,12 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                 "reason": reason,
                                 "reexpanded_into": n,
                             }
-                            event.status = "FAILED"
-                            event.processed_chain = True
+                            mark_processed(event, "FAILED")
                             event.payload = payload_copy
                             failed_permanently_count += 1
                             continue
 
-                    event.status = "FAILED"
-                    event.processed_chain = True  # Quarantine from worker queries
+                    mark_processed(event, "FAILED")   # Quarantine from worker queries
                     payload_copy["error_log"] = {
                         "failed_at": datetime.now().isoformat(),
                         "reason": reason
@@ -1629,8 +1651,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)
                     if latest_reload.processed_chain == False:
-                        latest_reload.processed_chain = True
-                        latest_reload.status = "SUCCESS"
+                        mark_processed(latest_reload, "SUCCESS")
                         db.commit()
 
                 # [Reliability F1] 통지 미확정(broadcast_at IS NULL) 교정 행 안전망 스윕(throttle).
