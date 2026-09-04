@@ -248,7 +248,7 @@ const FLOORS = new Map([
   // -- the server keeps 'could not read' and 'nothing ran' apart on purpose -- and the four
   // states stay four rather than folding into normal/warning/error, because the server never
   // said which of them is bad and a screen deciding that would be inventing a judgement.
-  ['ledger_sources_panel_harness.mjs', 41],
+  ['ledger_sources_panel_harness.mjs', 62],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
