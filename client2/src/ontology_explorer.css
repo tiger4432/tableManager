@@ -961,6 +961,11 @@
 #ontology-explorer-root .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
   width: 100%; min-height: 36px; padding: 6px 10px; font-size: 14px;
+  /* 🔴 글꼴을 «명시»합니다. 탐색기 안에서는 뿌리에서 상속돼 Barlow 였는데, 폼 컨트롤은
+     밖에서 UA 글꼴(Arial)로 떨어집니다 — `font: inherit` 재설정도 뿌리 안에만 있어서
+     어드민의 고르개가 «모양만 같고 글꼴이 달랐습니다»(실측). 값은 같으므로 탐색기의
+     계산값은 «안 바뀝니다». */
+  font-family: var(--oe-font-body);
   border: 1px solid var(--oe-line); border-radius: 0;
   background: var(--oe-surface); color: var(--oe-text); caret-color: var(--oe-accent);
 }
