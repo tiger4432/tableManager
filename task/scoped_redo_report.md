@@ -5326,3 +5326,105 @@ config/sample/chain_rules.json.sample    dt_inventory 트리거 규칙 둘 다 t
 ```
 📌 그래서 큐에 있는 「맵퍼 실행 로그」(걸음 ④ 절반)가 이 사고의 «정확한» 대응입니다 —
    오늘 이 거절은 **아웃박스 payload 를 SQL 로 열어야만** 보였습니다.
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **시범 다섯 «재실행» — 아직 «거절»입니다. 고친 선언이 «안 실렸습니다»**
+
+판정 셋 접수했습니다. ㉠ audit_logs DELETE 폐기했습니다(청소 스크립트에서 뺐습니다).
+㉡ 선언 셋은 손대지 않았습니다. ㉢ 재실행했고 — **아직 못 갑니다.**
+
+## 🔴 먼저 «사고 보고» — 총괄 파일 셋이 제 커밋에 «딸려 갔습니다**
+```
+b7d967b1 에 제 둘 말고 셋이 더 들어갔습니다:
+   server/config/sample/chain_rules.json.sample    (+2)   <- 총괄의 두 줄
+   server/config/sample/table_config.json.sample   (+1)   <- 총괄의 dt_job
+   task/IMPLEMENTER_ORDERS.md                      (+90)  <- 총괄의 이 판정 블록
+```
+`git add` 에는 «경로를 붙였는데» `git commit` 에는 «안 붙였습니다». 그 사이에 총괄이 스테이지하신 것이
+전부 실렸습니다. 제 기록에 이미 있는 실수입니다(「경로 없는 commit 이 add 규율을 무력화한다」).
+⚠️ **잃은 것은 없습니다** — 내용 그대로 푸시됐습니다. 다만 «총괄 커밋 메시지로 남을 것»이 제 것에 섞였습니다.
+되돌리지 «않았습니다» (푸시된 이력 재작성이 더 나쁩니다). 앞으로 `commit` 에도 경로를 붙입니다.
+
+## ㉢ 재실행 결과 — **5 건 전부 «같은 거절»입니다**
+```
+표식 LOADTEST-0904220603-      5 행 -> 아웃박스 5098232..36
+watch                          waiting=0 · «FAILED=5» · meta 0 · cells 0
+거절문                          «22:02:51 이전»의 그 문장 그대로:
+   'trigger_job_column' ... cannot be derived: 'dt_inventory' declares neither ...
+```
+
+### 🔴 왜 — 고친 선언이 «디스크에만» 있습니다. 도는 프로세스는 «옛 규칙»을 들고 있습니다
+```
+선언 파일   config/chain_rules.json · config/table_config.json   수정 «22:02:51»
+체인 워커   기동 «21:17» (heartbeat started_at) — 선언보다 «45분 먼저»
+SYSTEM_RELOAD 행   아웃박스에 «0 건». 파일을 고치는 것은 이벤트를 «안 만듭니다»
+=> 워커는 자기가 «기동 때 읽은» 규칙으로 계속 돕니다. 제 A-4 보고의 그 사슬 그대로입니다:
+   반영은 «앱을 통한 저장» 또는 POST /admin/reload-configs 가 SYSTEM_RELOAD 를 발행할 때입니다
+```
+🔵 **덤으로 하나 — 트레이스백이 「프로세스가 파일보다 낡았다」를 «스스로» 말합니다.**
+   거절 트레이스백의 «줄 번호»는 맞는데 그 줄에 인용된 «소스 텍스트»가 엉뚱합니다
+   (제 커밋으로 파일이 밀렸기 때문입니다). 즉 파이썬이 «지금 디스크»에서 소스를 읽어 찍는데
+   프레임의 줄 번호는 «기동 때 컴파일된» 것이라 어긋납니다. 이건 무료 표지입니다.
+
+### 그래서 청합니다 — **리로드 한 번** (재기동은 총괄 몫이라 제가 안 했습니다)
+```
+필요한 것   SYSTEM_RELOAD 발행 한 번 (POST /admin/reload-configs) 또는 워커 재기동
+그러면      규칙 셋이 실리고, 시범 다섯이 «진짜 경로»를 탑니다
+📌 재기동이면 «덤»이 있습니다 — b7d967b1 의 맵퍼 로그가 그때 같이 실립니다
+   (리로드만 하면 맵퍼 «모듈»은 다시 읽지만 워커 «자기 코드»는 안 바뀝니다)
+```
+
+## 청소 — **두 번째도 0 입니다**. 계약이 두 번 재졌습니다
+```
+전수 재대조(73 표)   audit_logs «만» +5. 나머지 72 표 전부 시작값과 «동일»
+남의 행 확인         dt_map 5,747 · core_usage_map 366 · wafer_map_metadata 4,925
+                    -> 시험 «전후 동일». 회수가 «한 번도 안 돌았으니» 당연합니다
+                    🔴 그래서 이 수는 «회수를 확인한 것이 아닙니다». 리로드 뒤 다시 봐야 합니다
+audit_logs 누적      «10 행» (시범 1회 5 + 2회 5). 판정 ㉠대로 «남깁니다»
+```
+📌 「남의 행이 안 줄었나」를 «표식을 뺀 count» 로 따로 재도록 고쳤습니다 —
+   지시하신 그대로입니다. 늘어난 것만 세면 «셋 지우고 셋 넣기»가 0 으로 보입니다.
+
+## 🔴 그리고 리로드 «전에» 하나 여쭙습니다 — 규칙이 돌면 «셀이 두 칸을 잃습니다»
+```
+맵퍼가 내는 셀    cell.update({"dt_x", "dt_y", "dt_index", "c_bn"}) + 식별자 + dt_job
+dt_map 선언       column_types = dt_job · dt_lot · dt_slot · dt_x · dt_y · value  «여섯»
+=> dt_index 와 c_bn 은 «선언에 없습니다» -> apply_batch_updates 가 «떨어뜨립니다»
+   (경고 한 줄 + 200. 맵퍼 자기 주석이 그 동작을 적어 둔 그 자리입니다)
+```
+그리고 그 두 칸은 «지금 있는 맵이 실제로 들고 있는» 칸입니다:
+```
+dt_map.c_bn      non-null  5,747 / 5,747      <- «전부»
+dt_map.dt_index  non-null  5,466 / 5,747
+dt_map.dt_job    non-null  5,747 / 5,747
+dt_map.value     non-null      «0» / 5,747    <- 선언에 «있는데» 아무도 안 채웁니다
+```
+🔴 즉 리로드하면 규칙 #3 은 «돌기 시작하고», 만드는 맵은 «빈(bin)이 없는» 맵입니다.
+   부하 수를 재기 «전»에 갈라야 할 것 같습니다 — 안 그러면 「빨랐다」와 「맞았다」가 섞입니다.
+⛔ 선언은 총괄 몫이라 제가 «안 건드렸습니다». 수만 올립니다.
+
+## 걸음 ④ 절반 중 «로그» — 착지했습니다 (`b7d967b1`)
+```
+자리    execute_custom_mapper «한 곳». 그룹당 START/END 한 줄씩, 던지면 RAISED «따로»
+담긴 것  규칙 · 맵퍼 · 대상 표 · rows_in · rows_out · elapsed
+⛔ payload 본문 «없음» · ⛔ DEBUG 아님(INFO) · ⛔ 행당 아님
+🔴 그리고 «어느 로그인지»를 태그가 말합니다: [mapper@chain_worker.log]
+```
+실제 줄 (게이트 ①. 워커가 옛 코드라 «인프로세스»에서 «진짜 맵퍼»를 태워 뽑았습니다):
+```
+[Chain] INFO - [mapper@chain_worker.log] START rule=dt_inventory_to_standard_dt_map
+        mapper=mappers.dt_standard_map_mapper.build_standard_dt_map_batches target=dt_map rows_in=5
+[Chain] INFO - [mapper@chain_worker.log] END   ... rows_in=5 rows_out=89 elapsed=0.000s
+```
+변이 다섯 전부 잡힙니다(START 제거 · updates 만 세기 · 던짐을 END 로 접기 · DEBUG 강등 · payload 싣기).
+📌 rows_out 이 `batches` 모양을 «세지 않으면» 맵 한 장이 «0» 으로 찍힙니다 — 그 변이가 그것입니다.
+
+## 다음 — 큐 그대로 갑니다
+```
+1  리로드 대기 중에 «진행 레지스트리»(걸음 ④ 나머지 절반)를 짭니다
+   🔴 정정 ②를 그 안에 넣습니다: FAILED 가 «완료»로 안 읽히게
+2  리로드되면 시범 다섯 «재실행» -> 회수 발자국 포함 전수 -> 0 -> 50/200/1000
+3  루프 재구조 제안
+```
