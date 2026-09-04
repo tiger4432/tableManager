@@ -4045,3 +4045,88 @@ NaN · NaT · pd.NA · inf · -inf · None                        -> None
 🔴 재기동은 총괄 몫입니다
 📌 소유자 오류 로그가 오면 「맵퍼가 자기 안에서 만든 것」인지 갈립니다 — 그때 별건으로 받겠습니다
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] NaN 전수 — **둘 고쳤고, 상한이 «15를 훨씬 넘어» 멈춥니다** (99459a31)
+
+## 🔴 먼저 — 제 «첫 훑기가 틀렸습니다». 그 필터였으면 고친 둘을 «못 봤습니다»
+```
+1차   「pandas 를 쓰는 파일」로 좁혀 AST -> 17파일 · int()/round() «27»
+      -> 그런데 제가 실제로 고친 bonding_plan.py 는 «pandas 를 안 씁니다». 걸러졌습니다
+      -> NaN 은 «DB float 컬럼»으로도 옵니다. pandas 는 생산자의 «하나»일 뿐입니다
+2차   필터 «없이» 전 추적 모듈 -> «358» 사이트 · 50 파일
+```
+그래서 상한은 **358** 입니다. 27이 아닙니다. (지시하신 「리터럴 grep 금지」는 지켰지만
+«필터»에서 같은 병을 만들 뻔했습니다 — 「부분집합으로 부재를 재지 않는다」의 그 부류입니다.)
+
+## 실제로 읽은 것과 그 결과 — 「상한 N -> 실제 M」
+```
+읽음   1차의 27 전부 + `or <숫자>` 8 + 총괄이 이름 대신 지목한 자리들
+결과   실제 M = «2»  (bonding_plan.py :915 · :949)
+       나머지 25는 «닿을 수 없습니다» — 근거를 값의 출처로 적습니다:
+         backfill 12         DB count(*) · cursor.rowcount · store 결과 dict · time.monotonic
+         main.py 13          SQL count · retry_count(int 컬럼) · time.time() · try/except 안의 int(limit)
+         roleframe :108      isinstance(Integral) 로 이미 갈림 (NaN 은 Real 로 빠집니다)
+       그리고 «이미 막는» 자리 확인: roleframe json.dumps(allow_nan=False) :118·:1229 ·
+       ledger_frame pd.isna :186 · crud.cast_value_by_type(nan/inf «거절», 사유까지 주석)
+```
+
+## ✅ 고친 둘 — 같은 파일, 같은 «틀린 가드». 부류로 덮었습니다
+```
+bonding_plan.py :915  if px is None or py is None: continue   -> NaN 은 None 이 «아닙니다»
+                :949  [... if px is not None and py is not None]   같은 모양
+=> _finite_point(px, py) «하나»로. None · NaN · ±inf 를 좌표가 «아닌 것»으로 봅니다
+   (int(inf) 도 던집니다. 무한대인 좌표는 좌표가 아닙니다)
+닿는 경로     ⚠️ 보통 쓰기로는 «못 옵니다» — cast_value_by_type 이 nan/inf 를 거절합니다
+             그 문을 «안 거친» 쓰기(씨앗 스크립트가 표에 직접 씁니다)로만 옵니다
+             그래서 「닿을 수 있나」에 «예»이고, 한 행 때문에 화면이 500 이 되는 자리입니다
+```
+🔴 **변이 여섯 중 «둘»이 처음에 살아남았습니다.** 시험 다섯이 헬퍼만 부르고
+«호출자 두 곳»을 아무도 안 지났습니다 — 오늘 아침과 «같은 실수»입니다.
+실제 라우트를 태우고 «수»를 단언하는 시험으로 바꿔 둘 다 잡았습니다.
+특히 :915 는 감싸는 try 가 예외를 삼켜서, 틀린 가드가 «응답에 아무 흔적 없이» 실제 수를
+0으로 바꿉니다 — 그래서 「안 터진다」가 아니라 「수가 그대로다」를 단언했습니다.
+
+## 🔴 그리고 «조용한 변종» 하나 — 이건 «고치지 않고» 올립니다. 계약을 건드립니다
+```
+실측    crud.clean_str_value(nan)  ->  «'nan'»        (문자열이 됩니다)
+       crud.is_blank_value(nan)   ->  «False»        (결측으로 «안» 봅니다)
+       crud.compose_business_key('t', ['A', nan, 'C'])  ->  «'A_nan_C'»
+=> 결측이 든 행이 «A_nan_C» 라는 신원으로 착지합니다
+   ① 그 문자열은 «값처럼» 보입니다 — 나중에 진짜 값이 오면 키가 달라져 앞 행이 «영영 고아»
+   ② 결측이 든 서로 «다른» 행들이 «같은 키»로 겹칩니다
+   ③ is_blank_value 가 False 라 쓰기 전 관문(unfilled_key_columns)이 «안 잡습니다»
+```
+🔴 **왜 안 고쳤나:** `is_blank_value` 는 이 저장소의 «공백 술어 정본»이고,
+`contracts/blank_predicate` 가 12값 행렬로 채점하며 docstring 이 어느 값이 공백인지
+«열거»합니다. 거기에 NaN 을 더하는 것은 낱개 수정이 아니라 «채점되는 계약의 변경»입니다.
+그리고 오늘 기준 생산자 넷(pipeline_base · mapper_sdk · 체인 경계 · cast_value_by_type)이
+모두 위에서 씻으므로 «지금 도달 경로는 좁습니다». 그래서 판정을 올립니다:
+```
+갈래 ㉮  is_blank_value 에 「비유한 float 은 공백」을 더한다 (계약 개정 + 벡터 갱신)
+갈래 ㉯  compose_business_key 에서만 «거절»한다 (신원 자리에서만 막고 술어는 그대로)
+갈래 ㉰  안 건드린다 — 생산자 넷이 이미 씻는다는 것에 기댄다 (오늘 상태)
+```
+
+## ⛔ 15 관문 — **여기서 멈춥니다**
+```
+남은 것    358 - 읽은 35 = «323» 사이트가 «안 읽혔습니다»
+자르기 제안 (지시하신 순서 — 조용한 변종 «먼저»)
+  1차   좌표 계열 «183» (map_alignment 95 · transfer_plan 38 · map_overlay 26
+        · bonding_plan 14 · dt_frame_transform 10) — 방금 고친 둘과 «같은 부류»입니다
+        DB float 컬럼을 int() 로 만들고, 가드가 대개 `is not None` 입니다
+  2차   crud 10 · value_suggest 8 · column_stats 11 — 신원·통계라 «조용한 변종» 쪽
+  3차   나머지
+```
+⛔ 추적 안 되는 `mappers/*` (production_mapper:12 · core_usage_mapper:45) — 표에만 적고
+   «안 고쳤습니다». 고쳐도 운영에 안 갑니다.
+
+## 시험
+```
+tests/test_bonding_plan_coordinate_guard.py  «신규 11»
+tests/test_bonding_plan.py                   «+1» — 라우트를 태워 두 호출자를 지납니다
+합계 52 passed (bonding_plan · coordinate_guard · mapper_boundary)
+🔴 재기동은 총괄 몫입니다
+```
