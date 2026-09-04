@@ -954,6 +954,10 @@
 #ontology-explorer-root .oe-new-id,
 #ontology-explorer-root .oe-field-input,
 #ontology-explorer-root .oe-field-select,
+/* 🔴 어드민의 고르개가 «이 규칙에 닿게» 하려고 붙인 «맨» 선택자입니다.
+   탐색기의 선택자는 그대로 두었습니다 — 특이도가 안 바뀌므로 탐색기 «출력»도 안 바뀝니다.
+   두 번째 철자가 아니라 «같은 블록»에 선택자 하나를 더한 것입니다 (총괄 판정 5bd6858b). */
+.oe-field-select,
 #ontology-explorer-root .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
   width: 100%; min-height: 36px; padding: 6px 10px; font-size: 14px;
@@ -970,6 +974,7 @@
 #ontology-explorer-root .oe-new-id:hover,
 #ontology-explorer-root .oe-field-input:hover,
 #ontology-explorer-root .oe-field-select:hover,
+.oe-field-select:hover,
 #ontology-explorer-root .oe-form-new-id:hover,
 #ontology-explorer-root .oe-editor-textarea:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-search:focus-visible,
@@ -977,6 +982,7 @@
 #ontology-explorer-root .oe-new-id:focus-visible,
 #ontology-explorer-root .oe-field-input:focus-visible,
 #ontology-explorer-root .oe-field-select:focus-visible,
+.oe-field-select:focus-visible,
 #ontology-explorer-root .oe-form-new-id:focus-visible,
 #ontology-explorer-root .oe-editor-textarea:focus-visible {
   border-color: var(--oe-accent); outline-offset: 0;
@@ -988,7 +994,8 @@
    down to 13px, so the spec landed everywhere except the size a person reads. */
 #ontology-explorer-root .oe-key-input,
 #ontology-explorer-root .oe-field-input,
-#ontology-explorer-root .oe-field-select { font-size: 14px; }
+#ontology-explorer-root .oe-field-select,
+.oe-field-select { font-size: 14px; }
 #ontology-explorer-root .oe-key-row .oe-key-input { flex: 1; width: auto; }
 /* The datalist wrapper is a span; without this the input inside it cannot be 100% wide. */
 #ontology-explorer-root .oe-form-suggested { display: block; min-width: 0; }
