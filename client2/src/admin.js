@@ -3182,6 +3182,9 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
     const total = failed ? (failed.total || 0) : null;
     const wsCount = ws ? (ws.data || []).length : null;
     const activeItems = active ? (active.data || []) : [];
+    const activeCell = countWithAbsence(active
+      ? { value: activeItems.length, absence: '없음' }
+      : { unread: '모름' });
     let status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
     if (status === 'ok' && activeItems.length > 0) status = 'warn';
     // 진행 중 항목을 이벤트 라인 상단에 노출 (실패 라인보다 앞) — 재기동 전 확인 유도
@@ -3204,11 +3207,17 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
       title: 'File Ingestion',
       metrics: [
         { value: total == null ? '—' : total, label: '인제션 실패', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
-        { value: activeItems.length, label: '진행 중', tone: activeItems.length > 0 ? 'warn' : null },
+        // 🔴 못 읽은 것을 «0 으로» 그리던 자리입니다. `active` 가 null 이면
+        //    `activeItems` 가 [] 가 되고 그 길이가 0 이라, 「조회 실패」가 「진행 중 없음」과
+        //    «같은 픽셀»이었습니다. 부품이 그 둘을 가릅니다.
+        { value: activeCell.read ? String(activeItems.length) : activeCell.text,
+          label: activeCell.word ? `진행 중 · ${activeCell.word}` : '진행 중',
+          tone: activeItems.length > 0 ? 'warn' : null },
         { value: wsCount == null ? '—' : wsCount, label: 'Workspaces' }
       ],
       events,
-      emptyText: total == null ? '상태 조회 실패' : '최근 실패 없음 — 파이프라인 정상',
+      // 위와 «같은 부류»입니다 — 0 이 「안 돌았다」일 수도 있어 건강을 주장하지 않습니다.
+      emptyText: total == null ? '상태 조회 실패' : '최근 실패 없음',
       onOpen: () => switchTab('file', total > 0 ? { statusFilter: 'FAILED' } : {})
     }));
   }
@@ -3250,7 +3259,9 @@ function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, acti
         { value: mapperCount == null ? '—' : mapperCount, label: 'Mappers' }
       ],
       events,
-      emptyText: total == null ? '상태 조회 실패' : '실패 트랜잭션 없음 — 체인 정상',
+      // 🔴 「0 이니 정상」이라고 «주장하지» 않습니다. 규칙이 거절되거나 꺼져 있어
+      //    체인이 «아예 안 돌아도» 실패는 0 입니다 — 그 0 으로 건강을 말하면 거짓입니다.
+      emptyText: total == null ? '상태 조회 실패' : '실패 트랜잭션 없음',
       onOpen: () => switchTab('chain')
     }));
   }
