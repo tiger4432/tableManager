@@ -3341,3 +3341,97 @@ tests/test_value_suggest.py   `/graph/nodes/search` 를 «산문»으로만 언�
    git rm 한 시험 파일 외에 딸려간 것 «없습니다»
 🔴 재기동은 총괄 몫입니다 — 하시면 위 세 수(200·200·404)를 제가 다시 재겠습니다
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] 원장 요약 — **게이트 ①에서 «멈춤 조건»이 걸렸습니다. 세 축 다 전수 훑기입니다**
+
+지시하신 대로 «착수 전» EXPLAIN 만 냈습니다. **라우트는 만들지 않았습니다.**
+그리고 멈춘 자리에서 「다른 모양으로 물을 수 있나」까지 재 왔습니다 — 아래 ③이 그 답입니다.
+
+## ⓪ 먼저 이름 하나 — 표는 `ledger_atom` 이 아니라 **`ledger_events`** 입니다
+`ledger/schema.py:LEDGER_TABLE`. `occurred_at` 으로 «RANGE 파티션»돼 있고 이 박스엔 자식 «7».
+축 셋의 컬럼은 지시하신 그대로 있습니다: `predicate` · `subject_type` · `source_who`
+(「소스」는 `source_who` 입니다 — `backfill.py` 가 `WHERE source_who = %s` 로 소스 단위 삭제를 합니다).
+
+## ① EXPLAIN 표 — 지시하신 모양 «그대로» (count + min/max occurred_at)
+```
+축                              계획                       총비용
+by=predicate                   Parallel Seq Scan ×7      110,832
+by=subject_type                Parallel Seq Scan ×7      110,832
+by=source (source_who)         Parallel Seq Scan ×7      110,832
+object 필터  ->> 'type'         Parallel Seq Scan         107,284
+object 필터  @> '{"type":..}'   Parallel Seq Scan         106,373
+```
+🔴 **세 축 다 전수 훑기입니다 -> 지시하신 멈춤 조건.** 여기서 멈추고 올립니다.
+⚠️ 비용·행수는 «이 박스» 값입니다 (플래너 추정 850,552행). 운영 수가 아닙니다.
+
+## ② 왜 그런지 — 원인은 «min/max occurred_at» 입니다. 같은 질의를 count 만으로 재면:
+```
+축              min/max 포함        count 만          차이
+predicate      110,832 (Seq)  ->   «25,349» (Index Only)   4.4배
+subject_type   110,832 (Seq)  ->   101,463  (Index Only)   1.09배 — «사실상 없음»
+source_who     110,832 (Seq)  ->   109,049  (Seq)          «없음». 색인 자체가 없습니다
+```
+🔴 **그런데 predicate 의 4.4배는 «이 박스에만 있는 색인»이 낸 것입니다.** 쓴 색인이
+`(subject_keys->>'lot', predicate)` 인데, 이건 `ledger/schema.py` 에 «없습니다».
+라이브에만 있는 색인이 «둘» 확인됩니다:
+```
+라이브에 있고 코드에 없음   idx_ledger_subject_lot     ((subject_keys->>'lot'), predicate)
+                        idx_ledger_register        (subject_type, subject_keys) WHERE predicate='register'
+```
+⚠️ 즉 **새로 배포한 곳에서는 그 4.4배도 안 나옵니다.** `schema.py` 가 자기 머리에 적어 둔
+그 병(「두 박스, 두 색인, 양쪽 다 무오류」)이 여기서도 그대로 관측됩니다.
+🔴 그리고 코드가 실어 보내는 색인 중 **`predicate` 로 «시작»하는 것도, `source_who` 를 «담은»
+것도 «없습니다»** — 이건 이 박스 얘기가 아니라 «선언된 스키마»의 성질입니다.
+
+## ③ 그래서 「다른 모양으로 물을 수 있나」 — **소스 축은 «이미» 답이 있습니다**
+```
+ledger_translator_cursor          «15행» · 소스당 한 줄 · Seq Scan cost «1.13»
+   컬럼: source · translator_ver · molecules_done · atoms_written · atoms_deduped
+         · molecules_refused · refusal_reasons · source_head · head_probed_at · updated_at
+```
+소유자 질문(「내가 원하는 소스가 잘 들어가 있는지」)에 **원장을 한 줄도 안 읽고** 답합니다.
+그리고 「없음 vs 0」도 이 모양이 «구조적으로» 냅니다 — 총괄이 ①로 지키라 하신 그 구별입니다:
+```
+선언에 있고 커서 행 «있음» + atoms_written>0   들어왔다
+선언에 있고 커서 행 «있음» + atoms_written=0   «돌았는데 0» — 다른 상태입니다
+선언에 있고 커서 행 «없음»                    «한 번도 안 돌았다» — 또 다른 상태
+커서 행만 있고 선언에 «없음»                  고아 (은퇴한 소스의 잔재)
+지금 이 박스: 선언 15 · 커서 15 · 양쪽 차집합 «0»
+```
+⚠️ **다만 커서는 «번역기의 장부»이지 원장의 «인구조사»가 아닙니다.** 원자를 지우거나 재건해도
+`atoms_written` 은 안 줄어듭니다 — 오늘 이 저장소가 이미 그 부류로 한 번 다쳤습니다
+(「코드를 되물린 것은 데이터를 되돌린 것이 아니다」). 그래서 이건 **「번역기가 무엇을 썼나」**에
+정직한 답이고, **「원장에 지금 무엇이 있나」**는 아닙니다. 두 질문이 갈립니다.
+
+## ③-bis object 필터 — «한 모양»은 색인으로 답합니다
+```
+WHERE object_payload->>'type' = 'Lot'                          107,284  Seq
+WHERE object_kind='entity_ref' AND object_payload->>'type'='Lot'  «14,777»  Bitmap/Index
+   -> idx_ledger_object_entity 가 «부분 색인»이라, 그 부분 조건을 «같이 써야» 탑니다
+```
+🔴 즉 목적어 필터는 「entity_ref 인 목적어의 type」으로 물으면 «싸고», 그 밖이면 전수입니다.
+이건 색인이 코드에 «있는» 것이라 어느 배포에서도 참입니다.
+
+## 판정 요청 — 셋 중 하나로 갈립니다. 색인은 «더하지 않았습니다»
+```
+㉠ 소스 축을 «커서»로 답한다        원장 안 읽음 · 비용 1.13 · 없음/0/미실행 구별 «공짜»
+                                 한계: 번역기 장부. 「지금 원장에 있나」는 답 못 함
+㉡ 축 셋을 원장에서 «그대로» 답한다   전수 1회를 «치른다». 조건 ①(자기 비용 보고) ②(폴링 금지)
+                                 는 만들 수 있습니다. 다만 셋 다 훑습니다
+㉢ min/max 를 «뺀다»              predicate 만 싸집니다. 그것도 라이브 전용 색인 덕이라
+                                 새 배포에선 안 싸집니다 -> 사실상 ㉡과 같습니다
+```
+제 의견을 «한 줄»로: **소유자의 질문은 ㉠이 정확히 답하고, ㉡은 다른 질문(원장 인구조사)입니다.**
+둘을 한 라우트에 섞으면 「번역기가 썼다」와 「원장에 있다」가 한 화면에서 같아 보입니다 —
+이 저장소가 이미 아는 부류입니다(「한 응답에 상태가 둘일 수 있다」).
+
+## 안 한 것
+```
+⛔ 색인 «0개» 추가했습니다 (지시대로)
+⛔ 라우트 «안 만들었습니다» — 멈춤 조건이 걸린 자리에서 멈췄습니다
+⛔ EXPLAIN «만» 썼습니다. ANALYZE 없음 -> 질의를 실행하지 않았습니다 (남의 DB 대기 안 만듦)
+⛔ 선언 파일 안 열었습니다 — 소스 목록은 «도는 서버»의 /api/ledger/declaration 으로 받았습니다
+```
