@@ -86,10 +86,6 @@
       color: var(--text);
       padding: 6.8px 12.24px;
       border-radius: 0;
-      font-family: var(--oe-font-head);
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1.2;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -211,7 +207,6 @@
     }
     .chain-queue-headline-sub {
       color: var(--text-dim);
-      font-size: 13px;
     }
     .chain-queue-truncated {
       margin: 0 0 10.2px;
@@ -260,8 +255,6 @@
       min-height: 180px;
       resize: vertical;
       padding: 10.2px;
-      font-family: var(--font-mono);
-      font-size: 12px;
       line-height: 1.5;
       border-radius: 0;
     }
@@ -279,22 +272,19 @@
     .table-config-refusal-code,
     .table-config-refusal-path {
       font-family: var(--font-mono);
-      font-size: 11px;
       color: var(--text-dim);
       white-space: normal;
     }
-    .table-config-refusal-why { color: var(--text); font-size: 13px; white-space: normal; }
+    .table-config-refusal-why { color: var(--text); white-space: normal; }
     .table-config-saved {
       margin: 6.8px 0 0;
       font-family: var(--font-mono);
-      font-size: 11px;
       color: var(--text-dim);
       white-space: normal;
     }
     .ledger-sources-name { font-weight: 600; color: var(--text); }
     .ledger-sources-sub {
       color: var(--text-dim);
-      font-size: 0.72rem;
       font-family: var(--font-mono);
       margin-top: 2px;
       white-space: normal;
@@ -302,7 +292,6 @@
     /* 사유는 «서버 낱말»입니다 — 수 아래에 줄로 쌓이고, 칸을 늘리지 않습니다. */
     .ledger-sources-reason {
       color: var(--text-dim);
-      font-size: 0.72rem;
       font-family: var(--font-mono);
       margin-top: 2px;
       white-space: normal;
@@ -313,7 +302,6 @@
        주석에 적어 뒀고, `over`(>0)는 배포 이력입니다. 색은 그 «서버의 판단»을 나르는
        것이지 화면이 지어낸 판단이 아닙니다 — 위의 네 상태에 색이 없는 이유와 같습니다. */
     .ledger-sources-unaccounted {
-      font-size: 0.72rem;
       font-family: var(--font-mono);
       margin-top: 2px;
       white-space: nowrap;
@@ -332,7 +320,6 @@
     }
     .chain-queue-owner {
       color: var(--text);
-      font-size: 13px;
       font-variant-numeric: tabular-nums;
     }
     /* `blocked_by` — 서버가 준 값만 적습니다. 문장은 서버의 `recovery` 입니다. */
@@ -348,19 +335,15 @@
     .chain-queue-blocked-head { font-weight: 600; color: var(--text); }
     .chain-queue-blocked-fact {
       color: var(--text-dim);
-      font-size: 12px;
-      font-family: var(--font-mono);
       white-space: normal;
     }
     .chain-queue-blocked-recovery {
       color: var(--text);
-      font-size: 13px;
       line-height: 1.5;
       white-space: normal;
     }
     .chain-queue-row-owners {
       color: var(--text-dim);
-      font-size: 11px;
       margin-top: 2px;
     }
     .chain-queue-age {
@@ -506,11 +489,6 @@
           뜻이 아닙니다. 옮기는 것은 «지금 쓰는 값»입니다. */
     .table-header th {
       text-align: left;
-      font-family: var(--oe-font-body);
-      font-weight: 400;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
       color: var(--oe-ink-th);
       padding: 6.8px 10.2px;
       border-bottom: 1px solid var(--border);
@@ -535,9 +513,7 @@
     /* 행 높이도 탐색기에 «없어» 3.4 격자의 배수로 갑니다. 목업의 7px/12px 은
        «트리 행»의 것이라 안 씁니다. `tabular-nums` 는 이미 있던 관행이라 유지합니다. */
     .table-row td {
-      font-family: var(--oe-font-body);
       padding: 6.8px 10.2px;
-      font-size: 13px;
       border-bottom: 1px solid var(--border);
       vertical-align: middle;
       font-variant-numeric: tabular-nums;
@@ -548,7 +524,6 @@
       align-items: center;
       padding: 4px 8px;
       border-radius: 0;
-      font-size: 0.75rem;
       font-weight: 600;
     }
 
@@ -722,10 +697,6 @@
        ⚠️ 색은 «그대로 둡니다». 13개가 «전부 같은 accent» 라 색이 아무것도 안 가르는데,
           그걸 걷는 것은 지시된 「알약 · 700」 밖이라 재서 올리고 판정을 기다립니다. */
     .stage-chip {
-      font-family: var(--oe-font-body);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
       text-transform: uppercase;
       padding: 3px 6.8px;
       border-radius: 0;
@@ -733,18 +704,7 @@
       color: var(--accent);
       flex-shrink: 0;
     }
-    .section-title {
-      font-family: var(--oe-font-head);
-      font-weight: 600;
-      font-size: 14px;
-      line-height: 1.12;
-      letter-spacing: -0.015em;
-      color: var(--text);
-      flex-shrink: 0;
-    }
     .section-count {
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
       font-variant-numeric: tabular-nums;
       color: var(--text-muted);
       background: var(--bg-inset);
@@ -757,7 +717,6 @@
     .section-count[data-tone="warn"] { color: var(--warning); border-color: var(--warning); background: var(--warning-weak); }
     .section-count[data-tone="ok"] { color: var(--success); border-color: var(--success); background: var(--success-weak); }
     .section-summary {
-      font-size: 11px;
       color: var(--text-dim);
       font-family: var(--font-mono);
       white-space: nowrap;
@@ -791,10 +750,9 @@
       gap: 0;
       padding: 10.2px;
       color: var(--text-muted);
-      font-size: 13px;
     }
     .stage-section .empty-icon { display: none; }
-    .stage-section .empty-text { font-size: 13px; font-weight: 400; }
+    .stage-section .empty-text { font-weight: 400; }
     .section-note {
       margin: 14px 20px 18px;
       padding: 12px 16px;
@@ -1291,6 +1249,89 @@
     .toast-message {
       font-size: 0.9rem;
       font-weight: 500;
+    }
+
+
+    /* 🔴🔴 «역할 그룹» — 자리마다가 아니라 «역할마다» 한 자리입니다 (총괄 판정 f3459291).
+       소유자: 「제목 장평 좀 늘려라」 한 마디에 여러 자리를 찾아 고쳐야 했던 것이 이유입니다.
+       이제 한 그룹을 고치면 그 역할을 하는 «모든 자리»가 따라옵니다.
+
+       값은 «탐색기의 해당 요소»에서 실측해 옮긴 것입니다 — 주석이 아니라 «요소»입니다:
+         제목    `.oe-bucket h3`      13px · 600 · 대문자 · +0.08em   (묶음 위의 머리)
+                 가족만 «정폭 Barlow» — `.oe-tree-title`/`-heading`/`.oe-spine-title` 셋이
+                 전부 정폭이고, 소유자 지시가 「장평을 늘려라」이기 때문입니다.
+                 ⚠️ `.oe-bucket h3` 이 Condensed 인 것은 h1~h6 가족을 «안 덮어서»입니다
+         표 머리  `.oe-tree-title`     11px · 400 · 대문자 · +0.08em
+         본문    `.oe-empty`          13px
+         버튼    `.oe-editor-action`  Condensed · 14px · 600
+         상태    `.oe-node-badge`     11px · +0.02em
+       🔴 위계: 제목 13/600 vs 표 머리 11/400 — 탐색기가 «자기 안에서» 그 두 단을
+          쓰고 있으므로, 둘이 같아져 위계가 사라지는 것을 그 값이 막아 줍니다.
+
+       ⛔ 색은 이 그룹에 «안 들어갑니다» — 색은 «뜻»을 나르고(위험·경고·상태), 그건
+          자리마다 다릅니다. 여기 있는 것은 «타이포»뿐입니다. */
+
+    /* ① 제목 — 타이포도 색도 여기 «한 자리»입니다. 그것이 게이트①의 정의입니다. */
+    .section-title {
+      font-family: var(--oe-font-body);
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+    /* ② 라벨 · 부제 */
+    .section-summary,
+    .chain-queue-row-owners,
+    .ledger-sources-sub,
+    .ledger-sources-reason,
+    .ledger-sources-unaccounted,
+    .table-config-refusal-code,
+    .table-config-refusal-path,
+    .table-config-saved {
+      font-size: 11px;
+    }
+    /* ③ 표 머리 */
+    .table-header th {
+      font-family: var(--oe-font-body);
+      font-size: 11px;
+      font-weight: 400;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    /* ④ 본문 */
+    .table-row td,
+    .chain-queue-owner,
+    .chain-queue-headline-sub,
+    .chain-queue-blocked-recovery,
+    .table-config-refusal-why,
+    .stage-section .empty-state,
+    .stage-section .empty-text {
+      font-family: var(--oe-font-body);
+      font-size: 13px;
+    }
+    /* ⑤ 수 · 식별자 (등폭) */
+    .section-count,
+    .chain-queue-blocked-fact,
+    .table-config-raw {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    /* ⑥ 상태 표기 */
+    .stage-chip,
+    .badge {
+      font-family: var(--oe-font-body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    /* ⑦ 버튼 */
+    .glass-btn {
+      font-family: var(--oe-font-head);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.2;
     }
 
     /* Empty states */
