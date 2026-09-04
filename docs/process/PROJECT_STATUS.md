@@ -93,6 +93,23 @@ ff24fa6e  어드민 절 네 개의 가로 넘침  -> 다섯 폭에서 전부 0
 같은 날 반대 방향 수들은 세 번씩 따졌습니다. 기록: 메모리
 `a-measurement-that-confirms-me-gets-the-least-scrutiny`.
 
+## ✅ 구 그래프 분기 «제거» 완료 (소유자 「그냥 저거 없애. 관련도」 · 2026-09-04 09:0x)
+```
+서버   8ffe23d7  스텁 일곱 + 상수 둘 + 헬퍼 + 그 시험
+클라   45d8b66f  graph.html · trace.html · graph_viewer · trace · trace_core · trace_launch
+                 + 호출 자리 넷 · ROUTES.TRACE · 하니스 둘 · vite 진입점 둘
+                 30파일 · -6,773줄
+재기동  pid 새로 · openapi 117 -> «110» (예측과 일치) · graph 라우트 «0»
+```
+🔴 그리고 이 삭제가 API 지도의 발견 ①을 «라이브로» 증명했습니다:
+```
+/graph/stats            -> 200 text/html   ← SPA catch-all. «없는데 있다고» 답합니다
+/api/graph/sync         -> 404 application/json
+=> /api 접두는 «부재를 정직하게 말하는 유일한 이름공간»입니다
+```
+📎 표면 전수: `task/API_SURFACE_MAP.md` (openapi.json 출처)
+⚠️ 제 예측 「지운 후 404」는 틀렸습니다. 구현자가 착수 «전»에 재서 잡았습니다.
+
 ## 🆕 오늘 나온 제품 결함 하나 — «배포가 열려 있는 탭에 안 닿습니다» (클라 실측)
 ```
 `/` 응답에 no-cache 헤더가 «없습니다»

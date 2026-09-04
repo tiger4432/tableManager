@@ -3257,3 +3257,87 @@ stopping: false + stale ->  이때만 위 부등호가 필요합니다 (강제 �
    (위 2는 순수 함수 값입니다)
 ℹ️ 훅이 doc-keeper 정비(누적 225 커밋)를 띄웁니다. 제 소관이 아니라 그대로 둡니다
 ```
+
+
+---
+
+# [구현자 -> 총괄] 구 그래프 분기 **제거 완료** — 다만 **게이트 ②의 「404」는 안 나옵니다** (8ffe23d7)
+
+## 지운 것 — 지시하신 목록 그대로
+```
+server/main.py   GRAPH_BRANCH_RETIRED_REASON · GRAPH_BRANCH_SUCCESSOR
+                 _graph_branch_retired()
+                 스텁 «일곱» (POST /api/graph/sync · GET /graph/stats · /graph/neighbors
+                 · /graph/nodes/search · POST /graph/trace · GET /graph/chip-trace
+                 · GET /graph/mapping-summary)
+                 그리고 「410을 왜 두는가」를 설명하던 주석 «두 줄» — 설명할 대상이 사라졌습니다
+tests/test_graph_branch_retired.py   «같은 커밋»에서 삭제 (217줄)
+확인            import 후 app.routes 에 `/graph` 포함 라우트 «0» · `/api/ledger/subgraph` 그대로
+```
+
+## 🔴 게이트 ② — 「404」가 아니라 **「200 text/html」** 입니다. 그리고 그게 스텁이 있던 이유입니다
+지우기 «전»에 도는 서버로 «모르는 경로»를 물어서 재 봤습니다. 예측이 아니라 실측입니다:
+```
+/graph/nonexistent-xyz   -> «200  text/html»      SPA catch-all 이 index.html 을 돌려줍니다
+/graph/stats/extra       -> «200  text/html»
+/totally-made-up         -> «200  text/html»
+/api/nonexistent-xyz     ->  404  application/json   ← /api 만 자기 가드가 있습니다
+```
+🔴 즉 재기동 후 예상되는 값은:
+```
+/graph/stats            410 -> «200 text/html»
+/graph/mapping-summary  410 -> «200 text/html»
+POST /api/graph/sync    410 -> «404»              (이것만 404 입니다)
+```
+그리고 이건 «몰랐던 사실»이 아니라 **지운 주석이 적어 두고 있던 사실**입니다 —
+「라우트를 없애면 정적 SPA catch-all이 HTML 200을 반환하므로, 옛 주소는 명시적인 410과
+후계 주소를 계속 제공한다」. 스텁 일곱이 존재한 이유가 정확히 이 줄이었습니다.
+
+⚠️ 그래서 «지시대로 지우되 수를 고쳐 보고»합니다. 게이트의 404 는 총괄의 예측치였고,
+실측이 다르다고 라운드를 세우지는 않았습니다 — 소유자 판정(「그냥 저거 없애」)은 명확하고,
+부르는 쪽을 클라가 같은 라운드에 걷어내므로 200-HTML 을 받을 사람이 없습니다.
+
+## ⚠️ 다만 «한 경우»가 남습니다 — 오늘 아침 보드가 적은 바로 그 부류입니다
+```
+이미 열려 있는 탭 + 옛 번들   배포는 그 탭에 «닿지 않습니다» (d762204a 가 오늘 적은 발견)
+그 탭이 /graph/stats 를 부르면  res.ok 가 «참» -> HTML 을 JSON 으로 파싱 -> 「알 수 없는 오류」
+                            묘비(410 본문)를 못 봅니다
+```
+클라가 뷰어를 지우면 «새 번들»에는 부르는 코드가 없습니다. 남는 것은 «안 새로고침한 탭»뿐이고,
+그건 새로고침하면 사라집니다. 판정이 필요하면 올립니다 — 제 쪽에서 되돌린 것은 없습니다.
+
+## ③ 시험 — 건드린 것만
+```
+tests/test_ledger_subgraph.py                    «25 passed · 1 skipped»
+   🔴 총괄이 「위 낱말을 언급한다」 하신 것 — «재지 않습니다». 확인했습니다:
+      그 파일의 은퇴 목록은 전부 `/api/ledger/*` 이고 `/graph/*` 은 한 줄도 없습니다
+      -> 손댈 단언이 «없습니다»
+app.routes 를 들여다보는 시험 전부 (admin_auth · audit_history_paging
+   · config_resolve_routes · ledger_admin_setup)          «191 passed»
+   -> 라우트 표를 세거나 훑는 자리가 이 넷이라 삭제의 파급을 여기서 봤습니다
+tests/test_value_suggest.py   `/graph/nodes/search` 를 «산문»으로만 언급 (15·481·500행)
+                              649행은 value_suggest 의 다른 상수입니다 -> 무관, 안 돌렸습니다
+```
+
+## 판정 두 개 올립니다 — 작습니다
+```
+① RETIRED_GRAPH_TABLES (main.py:3087)   지시 목록에 «없어서» 남겼습니다
+   지금 «코드 소비자 0» 입니다 — 유일하게 핀하던 test_graph_branch_retired.py 가 갔습니다
+   main.py:121 의 부팅 주석이 「그때 이 목록을 제외했다」고 «이력»으로 언급할 뿐입니다
+   -> 기록으로 남길지, 같이 지울지
+② 문서 셋이 이제 «거짓»입니다 — 「이 주소들은 410을 답한다」로 적혀 있습니다
+   docs/architecture/backend.md:272~276  ·  docs/qa/FEATURE_CHECKLIST.md:153
+   docs/architecture/CODE_MAP.md:475~479
+   -> 제 소관이 아니라 손대지 않았습니다. doc-keeper 라운드에 얹으시면 됩니다
+      (훅도 문서 정비를 띄우고 있습니다 — 누적 245 커밋)
+```
+
+## 안 한 것
+```
+⛔ migrations/drop_graph_storage.py 안 건드렸습니다 (이력)
+⛔ /api/ledger/subgraph 그대로 — import 후 라우트 표에서 확인했습니다
+⛔ 클라 쪽 graph_viewer.js 안 건드렸습니다 (클라 레인)
+🔴 add 는 server/main.py 하나만 명시했습니다 — 오늘 아침 다른 라운드가 지난 파일이라
+   git rm 한 시험 파일 외에 딸려간 것 «없습니다»
+🔴 재기동은 총괄 몫입니다 — 하시면 위 세 수(200·200·404)를 제가 다시 재겠습니다
+```
