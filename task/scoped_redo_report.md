@@ -4419,3 +4419,64 @@ B 넷     row_id · business_key_val 은 «있고» created_at · updated_at 만
    -> 돌려 보라 하시면 사유를 받아 오겠습니다 (되돌릴 수 있는 방향입니다: ADD COLUMN)
    -> 다만 «운영»에서도 같은 28건이 실패하고 있는지는 이 박스로 말할 수 «없습니다»
 ```
+
+
+---
+
+# 🔴 [구현자 -> 총괄] 28건이 왜 실패하나 — **사유가 «하나»입니다. 그 아홉은 «표가 아니라 뷰»입니다** (5951bcbd)
+
+## ② 실측 — 롤백하면서 한 문장씩. 스키마는 «안 바뀌었습니다»
+```
+방식   문장마다 새 커넥션 · BEGIN · SET LOCAL lock_timeout='2s' · ALTER · «항상 ROLLBACK»
+잠금   대기 없음. 락 타임아웃에 걸린 문장 «0» -> 남의 세션을 세운 적 «없습니다»
+게이트③ 전/후 컬럼 목록 «동일» (before == after -> True)
+```
+```
+28건 / 9관계 · 사유 유형 «단 하나»:
+   psycopg2 WrongObjectType
+   「ADD COLUMN ALTER 작업은 "<이름>" 릴레이션 대상으로 수행할 수 없습니다」
+```
+
+## 🔴 그래서 확인했습니다 — `pg_class.relkind`
+```
+void_obs_observed · bonding_core_lot · bonding_core_die · lot_slot_move
+· bonding_die_from_core · process_param_num · process_param_txt
+· mechanism_edge_to_quantity · mechanism_edge_to_finding      -> 전부 relkind = «v» (VIEW)
+정상 비교군  lot_event -> relkind = «r» (ordinary TABLE)
+```
+⚠️ 이 «이름들»은 이 박스 라이브 스키마입니다. 아래 «기제»만 운영에도 참입니다.
+
+### 그래서 오늘의 모든 증상이 한 줄로 설명됩니다
+```
+① 뷰에는 ADD COLUMN 이 «영원히» 불가능합니다 -> 28건은 «가끔 실패»가 아니라 «구조적으로 불가»
+② 그런데 inspector.has_table() 이 뷰에 «True» 를 답합니다 (실측)
+   -> 부팅의 create_all 도, 수리기도 「이미 있는 표」로 보고 «넘어갑니다»
+   -> 즉 수리기는 매 부팅 «시도하고 실패»하고, 그 실패는 print 로만 갔습니다
+③ 모델은 그 넷을 «선언»합니다 -> row_id·updated_at 을 읽는 소비자는 «전부» 깨집니다
+   -> 아침의 /dashboard/summary 500 이 그 소비자였습니다
+```
+🔴 **그리고 「updated_at 만 없는 넷」은 «다른 부류가 아닙니다».** 아홉 전부 뷰이고,
+   차이는 «그 뷰가 무엇을 select 하느냐»일 뿐입니다 — 넷은 row_id·business_key_val 을
+   select 하고 다섯은 안 합니다. 부류는 «하나»입니다.
+
+## ✅ 판정 ① 「침묵을 말하게」 — 최소로 했습니다
+```
+print -> logger.error(관계 · 컬럼 · 사유)   models.py 에 로거가 «아예 없어서» crud 와 «같은 채널»("Server")로
+⛔ 새 화면·라우트 «0»
+⛔ 던지게 «안» 바꿨습니다 — 한 컬럼 때문에 부팅이 죽는 것이 더 나쁩니다. 시험이 그것을 핀합니다
+시험 3 · 변이 4 «전부 죽음» (print 로 되돌리기 · DEBUG 로 낮추기 · 사유 빼기 · 던지게 하기)
+   🔴 DEBUG 변이가 특히 — DEBUG 를 켜지 않는 모든 배포에서 «안 보입니다»
+```
+📌 게이트 ①(부팅 로그에 28줄)은 **재기동이 필요합니다.** 총괄 몫이라 하셨으니 말씀드립니다 —
+   재기동 후 `[Schema Sync] could not add column ...` 이 «아홉 관계 · 28줄» 나와야 합니다.
+
+## 📌 남는 판정 — 제 소관 밖이라 올립니다
+```
+㉠ 뷰를 «선언 표»로 등록한 것이 의도인가
+   CLAUDE.md 상설: 「뷰가 필요하면 «왜 선언으로 안 되는지»를 같이 말해야 하고, 그게 설계의 빚이다」
+   -> 지금 그 빚이 «아홉»이고, 그중 하나(lot_slot_move)만 원장 소스로도 선언돼 있습니다
+㉡ 뷰라면 프레임워크가 «알아야» 합니다
+   지금은 has_table 이 True 라 「고칠 수 있다」고 믿고 매 부팅 28번 실패합니다
+   -> 뷰를 「수리 대상 아님」으로 아는 것이 옳은 모양이겠지만, 그건 «선언의 축»이라 총괄 판정입니다
+⛔ 어느 쪽도 «안 만들었습니다». 사유만 가져왔습니다
+```
