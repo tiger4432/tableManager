@@ -5196,3 +5196,133 @@ dt_standard_map_mapper  자기 주석이 derive_replace_map_scope 를 논합니�
    코드가 정하는 사실이라 운영에도 참입니다
 ```
 📌 루프 제안은 이 시험의 수가 나온 «뒤»에 내겠습니다 — 지금 내면 상수를 읽은 것이 됩니다.
+
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **시범 다섯 완료 — 청소는 «측정»이 됐고, 그 다섯이 «규칙 #3 이 죽어 있다»를 잡았습니다**
+
+지시하신 ①②③ 그대로 했습니다. **50 은 안 넣었습니다** — ③이 0 이 아닌 자리가 «하나» 남았고,
+그보다 먼저, **부하를 걸 대상이 지금 «일을 하지 않습니다».**
+
+## ① 넣은 것 — 5 행, 표식 `LOADTEST-0904214959-`
+```
+표      dt_inventory «만» (판정 ① 그대로. dt_log 안 넣었습니다)
+키      dt_job / dt_lot / dt_slot 전부 표식. 선언된 19 컬럼만 보냈습니다
+경로    crud.apply_batch_updates (source_name=custom_script · updated_by=chain_load_probe)
+```
+
+## ② 어느 표에 무엇이 남았나 — «73 개 표 전수 count(*) 전/후 대조». 짐작 안 했습니다
+```
+audit_logs        3,892,422 -> 3,892,427   +5     <- 표식 5
+cell_sources     23,376,267 -> 23,376,322  +55    <- 제 5 행 × 컬럼 11. 표식이 «값»에 없어 못 찾았습니다
+database_outbox         911 ->       916   +5     <- payload 가 JSON 이라 컬럼 LIKE 로 «안 잡힙니다»
+dt_inventory            401 ->       406   +5     <- 표식 5
+그 밖의 69 개 표: 변화 «0» (dt_map · wafer_map_metadata · core_usage_map 포함)
+```
+🔴 **제 첫 청소 목록이 «둘» 모자랐습니다** — `cell_sources` 와 `audit_logs`.
+   둘 다 「생각한 자리」에 없었고, 전수 대조가 아니었으면 **못 봤습니다.** ③을 시키신 이유가 이것입니다.
+   그리고 `database_outbox` 는 목록에 있었지만 «세는 질의»가 틀렸습니다(JSON 컬럼) — 지울 땐 `payload::text`.
+
+## ③ 청소 — 여섯 자리 «0», 한 자리 «5» 남았습니다
+```
+dt_map / core_usage_map / wafer_map_metadata   0 -> 0     (애초에 안 생겼습니다. 아래 ④ 때문입니다)
+cell_sources                                  55 -> 0
+dt_inventory                                   5 -> 0
+database_outbox                                5 -> 0
+------------------------------------------------------------
+audit_logs                                     5 -> «5»   🔴 안 지웠습니다
+전수 재대조: 73 개 표 중 «audit_logs 만» +5. 나머지는 시작값과 «같습니다»
+```
+🔴 **`audit_logs` 를 제 판단으로 지우지 않았습니다.** 상설 판정이 「투영은 지워도 되고 «기록»은 안 된다」이고,
+감사 로그는 «행의 투영»이 아니라 «쓰기의 기록»입니다. 다만 그 기록이 가리키는 행은 방금 제가 지웠습니다.
+```
+지울 것이면   DELETE FROM audit_logs WHERE business_key LIKE 'LOADTEST-%'   (5 행)
+판정 청함     지웁니까, 남깁니까. 남기면 「청소 뒤 전부 0」은 «앞으로도» 못 만듭니다 —
+             그러면 게이트를 「audit_logs 를 제외한 전부 0」으로 «고쳐서» 적겠습니다
+```
+
+## 🔴🔴 ④ 그런데 — **규칙 #3 은 «모든» dt_inventory 이벤트를 거절합니다. 부하 시험 이전의 문제입니다**
+
+제 5 행은 전부 `status=FAILED` (retry 3) 로 끝났습니다. 맵퍼가 «첫 줄»에서 던집니다:
+```
+chain_bindings.ColumnBindingRefused:
+  chain rule 'dt_inventory_to_standard_dt_map' does not declare 'trigger_job_column'
+  and it cannot be derived: 'dt_inventory' declares neither a single-column
+  'map_key_columns' nor a single-column 'business_key'
+```
+🔴 **이건 제 행 때문이 아닙니다 — payload 를 «보기 전»에 던집니다. 선언만으로 갈립니다.**
+```
+이 박스의 증거   같은 트레이스백을 단 dt_inventory FAILED 행이 «2026-08-31 08:14» 에 이미 있습니다
+                (그 뒤로 아웃박스에 남은 dt_inventory 이벤트는 제 5 건이 «전부»입니다)
+```
+
+### 🔴 그리고 이건 «이 박스 얘기»가 아닙니다 — 커밋된 선언이 «같은 모양»입니다
+```
+config/table_config.json          dt_map/dt_log/dt_inventory 세 표
+config/sample/table_config.json.sample   ^ «완전히 동일»합니다 (bk · composite · mapkeys · 컬럼 목록 전부)
+config/sample/chain_rules.json.sample    dt_inventory 트리거 규칙 둘 다 trigger_job_column «없음»
+=> 출하 선언 쌍이 그대로 이 거절을 만듭니다. 라이브만의 사고가 아닙니다
+```
+
+### 그리고 «뒤에 둘이 더» 있습니다 — 첫째를 고치면 그때 보입니다
+`chain_bindings.resolve_column` 을 세 키에 대해 «그대로 태웠습니다» (읽기만, 선언 무수정):
+```
+지금 그대로
+  trigger_job_column  on dt_inventory  -> 🔴 REFUSED (위 그것)
+  source_job_column   on dt_log        -> 'dt_job_id'
+  target_job_column   on dt_map        -> 🔴 REFUSED: dt_map 이 'dt_job' 을 «선언하지 않습니다»
+                                            (dt_map 선언 컬럼은 dt_lot · dt_slot · dt_x · dt_y · value «다섯»)
+두 줄을 «메모리에서» 더해 보면 (trigger_job_column=dt_job · source_job_column=dt_job)
+  trigger_job_column  -> 'dt_job'   ✅
+  source_job_column   -> 'dt_job'   ✅
+  target_job_column   -> 🔴 여전히 REFUSED
+```
+🔴 **둘째가 «조용한» 쪽입니다.** `source_job_column` 이 `dt_job_id` 로 «도출»되는데:
+```
+이 박스에서   dt_log.dt_job_id  non-null «0» / 34,939      distinct 0
+             dt_log.dt_job     non-null 34,939            distinct «396»
+=> 첫째만 고치면 맵퍼는 «거절 없이» 0 셀짜리 맵을 씁니다. 「돌았는데 빈 맵」이 됩니다
+```
+📌 순서상 지금은 첫째에서 죽어서 둘째·셋째가 «안 보입니다». 셋을 같이 봐야 합니다.
+
+## ⑤ 그래서 판정 청합니다 — 셋입니다
+```
+㉠ audit_logs 5 행 — 지웁니까 남깁니까 (위 ③)
+㉡ 규칙 #3 의 «선언 세 줄» — 누가 고칩니까
+   ⛔ 저는 「라이브 선언·규칙 무변경」 지시를 받았고 지키고 있습니다. 한 줄도 안 고쳤습니다
+   필요한 것:  rule  "trigger_job_column": "dt_job"
+              rule  "source_job_column":  "dt_job"
+              그리고 target_job_column="dt_job" 이 통과하려면 «dt_map 이 dt_job 을 선언»해야 합니다
+              (dt_map 물리 표엔 dt_job 이 «있고» 기존 5,747 행이 그 값을 «들고» 있습니다.
+               선언이 다섯 컬럼으로 좁아져 있는 것이라 — 이건 제가 판정할 것이 아닙니다)
+㉢ 부하 시험을 «지금» 계속합니까
+   지금 50/200/1000 을 넣으면 재는 것은 «거절 경로»입니다 — ①②④ 는 나오고 ③(맵퍼 비용)은 «0»입니다
+   ⚠️ 그리고 🔴 규칙이 고쳐지면 발자국이 «달라집니다» (dt_map · wafer_map_metadata 가 «생깁니다»)
+      -> 그때는 ③(시범 다섯)을 «다시» 돌려야 합니다. 지금 확인한 0 은 «거절 경로의» 0 입니다
+```
+
+## ⑥ 그래도 나온 수 — 「거절 경로 · 큐가 빈 상태」라고 붙여 적습니다
+```
+쓰기(5 행 · 커밋 포함)                 0.703 s
+① 커밋 -> 아웃박스가 «다른 접속»에 보이기   0.003 s
+②+③+④ 커밋 -> FAILED 로 찍히기          «1.30 s»  (21:50:02.654 -> 21:50:03.956, 재시도 3 회 포함)
+```
+🔵 즉 큐가 비어 있을 때 워커는 «1.3 초 안»에 집어서 세 번 돌리고 끝냅니다.
+   앞서 올린 구조적 답(「② 가 커지는 원인은 sweep 이 인라인」)은 «부하가 있을 때»의 문장이고,
+   이 수는 그것을 반증하지 «않습니다» — 대기 0 에서 잰 것이라 그 구간이 «안 눌린» 값입니다.
+
+## ⑦ 제 앞 보고의 «정정» 둘
+```
+정정 ①  「dt_standard_map_mapper 가 «맵 단위 purge»를 한다」 -> «틀렸습니다»
+        코드는 {"retract": {"source_column": dt_job, "source_value": job_id}} 를 냅니다 — «잡별» 회수입니다
+        제가 근거로 든 것은 그 파일의 «주석»이었고, 그 주석은 「replace_map 을 왜 «안» 쓰는가」를
+        설명하는 대목이었습니다. 주석을 동작으로 읽었습니다
+        ⚠️ 다만 core_usage_mapper 는 «진짜로» {"scope": {"core_wafer": …}} 를 냅니다 — 그쪽 경고는 유효합니다
+정정 ②  제 감시 질의가 「processed_chain = false 인 것이 없으면 끝」이었는데,
+        FAILED 도 processed_chain=true 입니다 -> «실패를 «완료»로 읽었습니다». 0.16 초 만에 「SETTLED」가 떴습니다
+        🔴 이건 화면에도 같은 병으로 있습니다 — status=FAILED · processed_chain=true · processed_at=NULL 이라
+           «어디에도 빨간 것이 안 뜹니다». 소유자가 「체인이 안 돈다」를 못 짚으신 자리가 여기입니다
+```
+📌 그래서 큐에 있는 「맵퍼 실행 로그」(걸음 ④ 절반)가 이 사고의 «정확한» 대응입니다 —
+   오늘 이 거절은 **아웃박스 payload 를 SQL 로 열어야만** 보였습니다.
