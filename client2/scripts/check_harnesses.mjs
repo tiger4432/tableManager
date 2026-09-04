@@ -242,7 +242,12 @@ const FLOORS = new Map([
   // executable scorer at all. It gets a floor like any other green harness precisely
   // because of how it died: silently, while the debt list recorded it as merely red.
   ['effort_instrument_harness.mjs', 78],
-  ['effort_meter_harness.mjs', 131],
+  // 2026-09-04, 131 -> 133: `graph_viewer.js` and `trace.js` were retired outright, so the
+  // two mutants that scored them moved to `admin.js` -- the surviving member of the same
+  // class -- and the two route-resolution assertions that named /trace.html now name
+  // /admin.html, with two more added so the REMOVAL itself has a scorer: a retired screen
+  // must resolve to null rather than to a route id nothing can navigate to.
+  ['effort_meter_harness.mjs', 133],
   // New 2026-08-05 with the partial-decision-key round (the client asked for NO reference
   // view when ANY key column was blank, so the sweep could resolve a row whose evidence a
   // human could not see). Floor is the count it reports on the commit that introduces it --

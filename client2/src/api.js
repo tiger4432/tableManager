@@ -9,7 +9,6 @@ import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI,
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString } from './utils.js';
-import { refreshTraceEntry } from './trace_launch.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 import { syncReferenceViewRule } from './enrichment_reference_view.js';
@@ -153,8 +152,6 @@ export async function switchTable(tableName) {
   // to a bare call would otherwise turn a silent failure into an unhandled rejection.
   syncReferenceViewRule().then(applyFillTargetHeaders).catch(() => {});
 
-  // G2 추적 진입점: 현재 테이블의 그래프 매핑 여부 재판정 (fire-and-forget, 실패 무음)
-  refreshTraceEntry();
 }
 
 // Load table column schema

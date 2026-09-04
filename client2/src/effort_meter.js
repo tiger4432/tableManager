@@ -520,9 +520,15 @@ const ROUTE_BY_PATH = Object.freeze({
   // construction -- this is a flat lookup and `routeFromHref` returns null for anything absent,
   // so no other path's resolution moves. The ROUTE ID itself (`ROUTES.ENRICHMENT`) is deliberately
   // NOT removed here; see the note on `ROUTE_IDS`.
-  '/graph.html': ROUTES.GRAPH,
-  '/admin.html': ROUTES.ADMIN,
-  '/trace.html': ROUTES.TRACE
+  // `/graph.html` and `/trace.html` were here until 2026-09-04, removed with the pages
+  // themselves (owner: 「그냥 저거 없애. 관련도」). Same treatment as `/enrichment.html`
+  // above and for the same reason: the KEY names a path this build cannot serve, and
+  // removing it is local -- this is a flat lookup and `routeFromHref` returns null for
+  // anything absent. The ROUTE IDS (`ROUTES.GRAPH` / `ROUTES.TRACE`) are deliberately NOT
+  // removed; see the note on `ROUTE_IDS`, which is a VALIDATOR for a served allowlist
+  // rather than a census of live navigations. Counted before deciding: after this round
+  // no module names either id, exactly as with `ROUTES.ENRICHMENT`.
+  '/admin.html': ROUTES.ADMIN
 });
 
 export function routeFromHref(href) {

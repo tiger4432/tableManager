@@ -25,13 +25,12 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-hqLpGOE_.js"></script>
+    <script type="module" crossorigin src="/assets/main-BU5ROzZ4.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
     <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
     <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
-    <link rel="modulepreload" crossorigin href="/assets/effort_meter-B7RDYg7e.js">
+    <link rel="modulepreload" crossorigin href="/assets/effort_meter-D9MCnC62.js">
     <link rel="modulepreload" crossorigin href="/assets/theme-DDt32gF5.js">
-    <link rel="modulepreload" crossorigin href="/assets/trace_core-CpTaLBRA.js">
     <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
     <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
@@ -102,14 +101,6 @@
             <!-- 다시 돌리는 버튼 둘. 선택은 그리드에서 일어나므로 우클릭이 아니라
                  «배너»입니다 -- 선택 상태를 보고 활성/비활성이 됩니다 (소유자 지적 두 번). -->
             <span id="redo-banner-host"></span>
-            <button
-              id="trace-btn"
-              class="glass-btn"
-              style="display: none"
-              title="선택 행을 시드로 온톨로지 추적 리포트 열기"
-            >
-              🕸️ 추적
-            </button>
           </div>
           <!-- Mockup 2b: active filters live IN the header bar, taking the free space
                between the toolbar and the unsaved-changes badges. They are not a strip
@@ -306,15 +297,15 @@
               <a href="/map_editor2.html" class="dropdown-item nav-link"
                 >📐 맵 정렬기</a
               >
-              <!-- ⚰️ [R-2026-08-14-H] 「🕸️ Knowledge Graph」(/graph.html) 진입이
-                   여기 있었다. 판정의 정정(`4652777` 실측)에 따라 graph.html은
-                   살아남는 뷰어가 «아니다» — 은퇴한 라우트 셋만 부르므로 실패만
-                   할 수 있는 화면이다. 메뉴에 남기면 사용자를 막다른 곳으로
-                   보내게 되므로 진입을 끊는다.
-                   화면 파일 자체는 지우지 않았고(북마크·딥링크가 있다), 열리면
-                   빈 캔버스나 「다시 시도」가 아니라 은퇴 안내와 후속 화면 링크를
-                   보여 준다. 살아남는 것은 파일이 아니라 «능력»이고, 그 능력은
-                   아래 원장 화면의 생성형 뷰가 잇는다. -->
+              <!-- ⚰️ 2026-09-04  「Knowledge Graph」(/graph.html) 와 「추적」(/trace.html)
+                   의 진입이 여기와 위 배너에 있었다. 소유자 판정 「저거 레거시 그래프
+                   뷰어잖아 은퇴해도 무방」 · 「그냥 저거 없애. 관련도」 에 따라 화면·모듈·
+                   진입점을 «전부» 지웠다 — 은퇴 안내도 남기지 않는다. 그래서 바로 아래
+                   ledger.html 때와 같이 파일이 «없으므로» 링크를 두면 404 다.
+                   추적 진입은 그리드 로드마다 `/graph/mapping-summary` 를 불렀고, 그
+                   라우트는 이미 410(은퇴)을 돌려주고 있었다 — 판정 전에 이미 죽어 있었고,
+                   사용자에게는 안 보이면서 요청만 나갔다(로드당 2회 실측).
+                   두 화면이 하던 질문은 R&amp;D 보드의 walk 이 답한다. -->
               <!-- 2026-08-24 「원장 혈통 추적」(/ledger.html) 진입이 여기
                    있었다. 소유자 판정 「ㅇㅇ 버려」로 화면 «자체»를 지웠으므로 --
                    위 graph.html 때와 달리 파일이 남아 있지 않다 -- 링크를 두면
@@ -623,7 +614,6 @@
               >Ctrl+Shift+V</span
             >
           </li>
-          <li id="menu-trace" style="display: none">🕸️ 선택 행 추적 (Trace)</li>
         </ul>
       </div>
 

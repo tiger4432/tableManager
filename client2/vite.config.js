@@ -24,8 +24,6 @@ export default defineConfig({
         // product-owner ruling (`5116f67` took its links; this takes the page), because
         // correction happens in the grid with the sidebar 참조뷰 beside it. Building an entry
         // nobody can reach is how a retired screen keeps looking shipped.
-        graph: resolve(__dirname, 'graph.html'),
-        trace: resolve(__dirname, 'trace.html'),
         // `ledger` was here until 2026-08-24, and `ledger_graph` below it. Both pages were
         // DELETED by owner ruling 「ㅇㅇ 버려」 -- not retired from navigation like
         // `enrichment` above, deleted, so there is no file left to name here. The lineage

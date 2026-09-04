@@ -125,7 +125,7 @@ function start() {
   //    so this page always honoured a theme chosen elsewhere and its own button did nothing --
   //    a control that looks live, reads as broken, and cannot be told apart from a dead page
   //    by any test that only checks what the page renders. `initTheme` is the same entry every
-  //    other page calls (`main`, `admin`, `graph_viewer`, `trace`, `enrichment`, the legacy
+  //    other page calls (`main`, `admin`, `enrichment`, the legacy
   //    `map_editor`); this entry was the only one missing it. Bound before the composition
   //    root so the button works even if bootstrap below fails.
   initTheme();
