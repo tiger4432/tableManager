@@ -624,6 +624,29 @@ class OntologyExplorerService:
             # silence, and a 500 on this route is silence with extra steps.
             result["refusal"] = self._test_run_refusal(exc)
             result["status"] = "refused"
+            # 🔴 「비어 있다」 로 끝내지 않습니다. The compile stops at the FIRST row it
+            # cannot use, so a page that is 199 parts fine is reported as a failed
+            # declaration - and the owner's answer was, correctly, "but the column IS
+            # filled". Both were true. An operator cannot act on "empty" alone: "my
+            # declaration is wrong" and "one row of my source is blank" need opposite
+            # moves, and only a COUNT separates them.
+            #
+            # ⚠️ Values, never a sentence: how many, out of how many, in which column.
+            # ⚠️ And it must never turn one refusal into two. A counter that itself
+            # raises would replace the real reason with its own.
+            column = str(getattr(
+                setup.snapshot.source_plans[source_id].driver.occurred_at,
+                "column", "") or "")
+            if column:
+                try:
+                    missing, read = backfill.count_rows_missing(
+                        engine, setup, source_id, column)
+                except Exception:                      # noqa: BLE001
+                    missing = read = None
+                if read:
+                    result["refusal"]["rows_read"] = read
+                    result["refusal"]["rows_missing"] = missing
+                    result["refusal"]["column"] = column
             return result
         result["rows_read"] = rows_read
         if preview is None:

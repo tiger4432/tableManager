@@ -952,6 +952,43 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     return len(frame), preview
 
 
+def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_ROWS):
+    """Of the page a test run reads, how many rows leave `column` empty. `(missing, read)`.
+
+    🔴 THE TEST RUN COULD ONLY SAY "IT IS EMPTY", AND THE OWNER'S ANSWER WAS "IT IS NOT".
+    Both were true: one row of two hundred was empty and the compile stops at the first,
+    so a page that is 199 parts fine was reported as a failed declaration. Without a
+    count, an operator cannot tell "my declaration is wrong" from "one row of my source is
+    blank" - and those need opposite actions. The ledger has not run in production for a
+    month (owner, 2026-09-04).
+
+    ⚠️ IT ASKS THE SAME PAGE, THE SAME WAY. Same fetch, same order, same size as
+    `preview_first_batch`, so the number describes the rows the refusal came from rather
+    than some other reading of the relation.
+
+    ⚠️ AND THE SAME PREDICATE. `_is_missing` is imported from the preparer that raised, not
+    respelled here - two spellings of "empty" would disagree on exactly the values this
+    question is about.
+    """
+    from .source_preparation import _is_missing
+
+    plan = setup.snapshot.source_plans[source]
+    read = engine.raw_connection()
+    try:
+        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
+    finally:
+        read.rollback()
+        read.close()
+    if not rows:
+        return 0, 0
+    missing = 0
+    for row in rows:
+        value = row.get(column) if isinstance(row, dict) else None
+        if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+            missing += 1
+    return missing, len(rows)
+
+
 def _v2_frame(rows):
     import pandas as pd
     return pd.DataFrame(rows)
