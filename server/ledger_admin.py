@@ -610,6 +610,32 @@ def declaration_token(target: str, name: str, declaration) -> str:
 # 3단 — 저장(백업 → 원자적 교체)
 # ---------------------------------------------------------------------------
 
+def backup_file(path: str) -> str:
+    """Copy `path` aside before it is overwritten. Returns the copy, or "" if there was
+    nothing to copy.
+
+    🔴 THE COPY IS THE UNDO (R-2026-08-13-G), AND THIS IS THE ONLY MAKER OF ONE. It was
+    private to the config writer, so the ONE place a person can write code inside this
+    application - the transform editor - overwrote without keeping anything. That is the
+    part of the strategy that WORKS, and a bad save there took the previous version with
+    it: config files have no git history by design, and neither does a mapper written
+    through the screen.
+
+    ⛔ Not a second mechanism. Anything that needs an undo calls this, so there is one
+    place to be wrong about where copies live and how they are named.
+    """
+    if not os.path.exists(path):
+        return ""
+    backup_dir = config_backup.backup_dir_for(path)
+    os.makedirs(backup_dir, exist_ok=True)
+    backup = os.path.join(
+        backup_dir,
+        f"{os.path.basename(path)}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    )
+    shutil.copy2(path, backup)
+    return backup
+
+
 def _atomic_write(path: str, payload: dict) -> str:
     """임시 파일에 쓰고 `os.replace`로 갈아 끼운다. 반환값은 백업 경로(없으면 "").
 
@@ -618,15 +644,7 @@ def _atomic_write(path: str, payload: dict) -> str:
     거절한다. `os.replace`는 같은 볼륨에서 원자적이므로 독자는 옛 파일이나 새 파일 중
     하나를 보고, 그 사이는 없다.
     """
-    backup = ""
-    if os.path.exists(path):
-        backup_dir = config_backup.backup_dir_for(path)
-        os.makedirs(backup_dir, exist_ok=True)
-        backup = os.path.join(
-            backup_dir,
-            f"{os.path.basename(path)}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        )
-        shutil.copy2(path, backup)       # 사본이 곧 undo (R-2026-08-13-G)
+    backup = backup_file(path)
     temporary = f"{path}.tmp.{os.getpid()}"
     with open(temporary, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)

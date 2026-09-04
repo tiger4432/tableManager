@@ -5989,8 +5989,25 @@ async def save_admin_script_code(
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     
     try:
-        with open(full_path, "w", encoding="utf-8", newline="") as f:
+        # 🔴 THE COPY IS THE UNDO, AND THIS PATH KEPT NONE. This is the ONE place a person
+        # can write code inside the application, and a bad save took the previous version
+        # with it - a mapper written through this screen has no git history, exactly like
+        # the config files beside it. Same maker as the config writer's, never a second
+        # one (`ledger_admin.backup_file`).
+        #
+        # 🔴 AND THE WRITE IS ATOMIC FOR A MEASURED REASON, not for symmetry: this handler
+        # publishes SYSTEM_RELOAD immediately below, and a reload re-imports the mapper
+        # modules. `open(w)` truncates FIRST, so a write that raises leaves a syntactically
+        # broken module for the next reload to import - and the worker caches modules for
+        # the life of the process, so it would stay broken until a restart.
+        import ledger_admin as _ledger_admin
+        backup_path = _ledger_admin.backup_file(full_path)
+        temporary = f"{full_path}.tmp.{os.getpid()}"
+        with open(temporary, "w", encoding="utf-8", newline="") as f:
             f.write(code)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, full_path)
             
         # Trigger System Reload
         reload_payload = {
@@ -6016,6 +6033,9 @@ async def save_admin_script_code(
             
         return {
             "status": "success",
+            # The copy that can undo this save. A value, so a screen can offer the
+            # restore instead of the operator having to know a path on the server.
+            "backup": backup_path,
             "message": f"Successfully saved file: {clean_path} and triggered system reload."
         }
     except Exception as e:
