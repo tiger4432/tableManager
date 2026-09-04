@@ -350,6 +350,25 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                 f"outbox backlog draining slowly: oldest unprocessed event is "
                 f"{oldest:.0f}s old")
 
+        # The undelivered-broadcast sweep. Judged by the SAME thresholds as the backlog
+        # above rather than new ones: it is the same question - is this queue draining -
+        # and those numbers already carry their justification at the top of this file.
+        # The sweep's own interval is 5 s plus a 5 s grace, so five minutes of a row
+        # sitting undelivered is far outside anything the sweep does when it is running.
+        undelivered = outbox_check.get("undelivered_oldest_age_seconds")
+        if undelivered is not None and undelivered > OUTBOX_AGE_UNHEALTHY_SEC:
+            escalate(STATUS_UNHEALTHY)
+            problems.append(
+                f"undelivered broadcasts are not being swept: the oldest row written "
+                f"but never announced is {undelivered:.0f}s old - the chain worker's "
+                f"recovery sweep is not clearing them, so clients are not being told "
+                f"about writes that succeeded")
+        elif undelivered is not None and undelivered > OUTBOX_AGE_DEGRADED_SEC:
+            escalate(STATUS_DEGRADED)
+            problems.append(
+                f"undelivered broadcasts are draining slowly: the oldest row written "
+                f"but never announced is {undelivered:.0f}s old")
+
     # ----------------------------------------------------------- config backup
     # A weekly job that silently stopped three weeks ago is worse than no job at
     # all, because the rollback procedure will claim a backup exists. This is the
@@ -418,4 +437,25 @@ def probe_outbox(db):
     out["pending"] = min(cnt, OUTBOX_COUNT_CAP)
     out["pending_capped"] = cnt > OUTBOX_COUNT_CAP
     out["count_cap"] = OUTBOX_COUNT_CAP
+
+    # 🔴 THE SAFETY NET LIVES INSIDE THE THING IT PROTECTS, so nothing outside could
+    # tell it had stopped. `sweep_undelivered_broadcasts` re-fires notifications whose
+    # `broadcast_at` never got stamped, and it runs INSIDE the chain worker's loop - if
+    # that sweep stops while the worker keeps beating, every affected client simply never
+    # hears about rows that were written. Nothing reported that, at all.
+    #
+    # This measures the sweep's BACKLOG rather than its last run, for the same reason
+    # this file measures the outbox by age and not by size: a sweep that runs and fails
+    # every time leaves a fresh timestamp and a growing backlog, and it is the backlog
+    # that hurts. It also needs no new state anywhere - the row set is exactly the one
+    # `idx_outbox_undelivered` already indexes for the sweep itself (EXPLAIN 2026-09-04:
+    # index scan, cost 4.15), so the watcher and the watched read the same definition.
+    row = db.execute(text(
+        "SELECT EXTRACT(EPOCH FROM (now() - created_at)) AS age "
+        "FROM database_outbox "
+        "WHERE processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL "
+        "ORDER BY id ASC LIMIT 1"
+    )).fetchone()
+    out["undelivered_oldest_age_seconds"] = (
+        round(float(row[0]), 2) if row and row[0] is not None else None)
     return out

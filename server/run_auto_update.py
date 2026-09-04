@@ -865,11 +865,17 @@ class MultiDiscoveryScheduler:
                         logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
                     
                     # 1-2. SCHEDULER_RUN_NOW 감시
+                    # 🔴 ORDERED, like its sibling below. Without `order_by` the row this
+                    # picks is whatever the plan happens to return, so which trigger runs
+                    # first is decided by the query plan rather than by arrival - and the
+                    # answer changes the day the plan does. Oldest first is also the only
+                    # order that cannot starve a trigger: an unordered pick can keep
+                    # choosing the newest while an older one waits forever.
                     latest_trigger = db.query(DatabaseOutbox).filter(
                         DatabaseOutbox.event_type
                         == event_constants.EVENT_SCHEDULER_RUN_NOW,
                         DatabaseOutbox.processed_chain == False
-                    ).first()
+                    ).order_by(DatabaseOutbox.id.asc()).first()
                     
                     if latest_trigger:
                         try:

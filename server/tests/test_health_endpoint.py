@@ -291,6 +291,44 @@ def test_no_supervisor_still_flags_a_stale_beat():
     assert payload["checks"]["workers"]["chain"]["status"] == "stale"
 
 
+# ------------------------------------------------- the sweep that guards the sweeper
+
+def test_a_sweep_that_stopped_is_reported_even_though_the_worker_is_beating():
+    """🔴 THE SAFETY NET LIVED INSIDE THE THING IT PROTECTS. The undelivered-broadcast
+    sweep runs inside the chain worker's loop, so if the sweep stops while the worker
+    keeps beating, rows are written and no client is ever told - and every other check
+    here stays green, because the worker IS alive and the outbox IS draining.
+
+    The worker beats and the ordinary backlog is empty in this case, on purpose: without
+    both, this could pass on some other check's escalation.
+    """
+    payload, code = run(hbs={"chain": fresh()},
+                        outbox={"oldest_age_seconds": None, "pending": 0,
+                                "undelivered_oldest_age_seconds": 4000.0})
+    assert code == 503, "a dead sweep read as healthy"
+    assert any("undelivered broadcasts are not being swept" in p
+               for p in payload["problems"]), payload["problems"]
+
+
+def test_a_sweep_that_is_merely_behind_is_degraded_not_unhealthy():
+    payload, code = run(hbs={"chain": fresh()},
+                        outbox={"oldest_age_seconds": None, "pending": 0,
+                                "undelivered_oldest_age_seconds": 400.0})
+    assert payload["status"] == "degraded", payload["problems"]
+    assert any("draining slowly" in p for p in payload["problems"])
+
+
+def test_nothing_undelivered_is_silence_not_an_alarm():
+    """`None` is "no row is waiting to be announced", which is the normal state. Reading
+    it as 0-and-therefore-fine and reading it as a fault are both wrong; it produces no
+    sentence at all."""
+    payload, code = run(hbs={"chain": fresh()},
+                        outbox={"oldest_age_seconds": None, "pending": 0,
+                                "undelivered_oldest_age_seconds": None})
+    assert code == 200
+    assert not any("undelivered" in p for p in payload["problems"]), payload["problems"]
+
+
 # ----------------------------------------------------------------- database
 def test_database_down_is_unhealthy():
     payload, code = run(db={"status": "down", "error": "connection refused"},
