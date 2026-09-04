@@ -201,6 +201,46 @@
       color: var(--text-dim);
       font-size: 0.8rem;
     }
+    /* 누가 비우나 — 머리 줄 아래의 한 줄씩. 세로로 쌓입니다(가로로 늘어놓지 않습니다). */
+    .chain-queue-owner-strip {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 0 0 10px;
+    }
+    .chain-queue-owner {
+      color: var(--text);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    /* `blocked_by` — 서버가 준 값만 적습니다. 문장은 서버의 `recovery` 입니다. */
+    .chain-queue-blocked {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      border: 1px solid var(--warning);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .chain-queue-blocked-head { font-weight: 600; color: var(--text); }
+    .chain-queue-blocked-fact {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      white-space: normal;
+    }
+    .chain-queue-blocked-recovery {
+      color: var(--text);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      white-space: normal;
+    }
+    .chain-queue-row-owners {
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      margin-top: 2px;
+    }
     .chain-queue-age {
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
