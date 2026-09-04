@@ -1367,6 +1367,70 @@ def _worker_note():
     return " | ".join(parts) or None
 
 
+class QueueHeadWatch:
+    """Says when the loop keeps picking the SAME head and nothing drains.
+
+    🔴 THIS IS THE SIGNATURE OF THE 2026-09-04 INCIDENT, and the reason it is worth
+    instrumenting rather than guessing: 570 rows waiting, the oldest 9 minutes old, NO
+    error anywhere, and "it does not clear until a restart". A loop that picks work up and
+    puts nothing down looks exactly like a busy loop from outside - the only observable
+    difference is that the head never moves.
+
+    ⛔ A NORMAL LOOP MUST STAY SILENT. The queue draining, the queue being empty, and the
+    head advancing are all ordinary; this speaks only when the head has been the same row
+    for `stall_after` seconds WHILE still being fetched, and then at most once per that
+    interval. An instrument that talks during healthy operation gets filtered out, and
+    then it is not an instrument.
+
+    ⚠️ THE THRESHOLD IS NOT A NEW NUMBER. It is `heartbeat.DEFAULT_STALE_AFTER_SEC`, which
+    this system already uses for "a worker that is not progressing".
+    """
+
+    def __init__(self, stall_after=None, now=None):
+        self.stall_after = (heartbeat.DEFAULT_STALE_AFTER_SEC if stall_after is None
+                            else stall_after)
+        started = time.time() if now is None else now
+        self.started_at = started
+        self.reloaded_at = None
+        self.head_id = None
+        self.head_since = started
+        self.last_said = None
+
+    def note_reload(self, now=None):
+        """A SYSTEM_RELOAD re-imported the mappers. Recorded because "a restart clears it"
+        is the operator's own description of this failure, and the distance from the last
+        reload is what turns that sentence into a number."""
+        self.reloaded_at = time.time() if now is None else now
+
+    def observe(self, picked, head_id, now=None):
+        """One iteration. Returns a sentence to log, or None to stay quiet."""
+        now = time.time() if now is None else now
+
+        if not picked:
+            # An empty queue is not a stall - there is nothing to drain.
+            self.head_id, self.head_since = None, now
+            return None
+
+        if head_id != self.head_id:
+            self.head_id, self.head_since = head_id, now
+            return None
+
+        stuck_for = now - self.head_since
+        if stuck_for < self.stall_after:
+            return None
+        if self.last_said is not None and (now - self.last_said) < self.stall_after:
+            return None
+        self.last_said = now
+
+        since_reload = ("never" if self.reloaded_at is None
+                        else "%.0fs" % (now - self.reloaded_at))
+        return ("[Chain Loop] the queue head has not moved for %.0fs: outbox#%s is still "
+                "first and %d row(s) were fetched again with no error. Uptime %.0fs, last "
+                "mapper reload %s. If a restart clears this, the state is in this process "
+                "(module cache) rather than in the data."
+                % (stuck_for, head_id, picked, now - self.started_at, since_reload))
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -1389,6 +1453,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
     # [Reliability F1] 통지 미확정 교정 행 안전망 스윕도 매 루프가 아니라 최소 간격(초)으로만 수행한다.
     last_sweep_ts = 0.0
+    head_watch = QueueHeadWatch()
     SWEEP_INTERVAL = 5.0
 
     # [C-3] outbox 보관 정책(7일) purge — 기동 직후 1회(다운타임 백로그 소화) + 이후 1시간 주기.
@@ -1454,6 +1519,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
                     # 1. Reload dynamic modules cache
                     reload_worker_process_cache()
+                    head_watch.note_reload()
                     # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
                     #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
                     try:
@@ -1497,6 +1563,15 @@ async def start_chain_ingestion_worker(db_session_factory):
                 pending_events = db.query(DatabaseOutbox).filter(
                     DatabaseOutbox.processed_chain == False
                 ).order_by(DatabaseOutbox.id.asc()).limit(200).all()
+
+                # The head of this ordered fetch is the oldest waiting row. If it is still
+                # the head next time round, and the time after that, the loop is running
+                # and draining nothing - see QueueHeadWatch.
+                stalled = head_watch.observe(
+                    len(pending_events),
+                    pending_events[0].id if pending_events else None)
+                if stalled:
+                    logger.error(stalled)
                 
                 if not pending_events:
                     loop_wake_ts = None

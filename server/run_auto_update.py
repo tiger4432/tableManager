@@ -901,6 +901,10 @@ class MultiDiscoveryScheduler:
                         ).order_by(DatabaseOutbox.id.asc()).first()
 
                         if retro_trigger:
+                            # Bound before the `try` so the failure path can name the run
+                            # even when it is the parse itself that raised - which is the
+                            # one way this row is left unmarked forever.
+                            retro_payload = None
                             try:
                                 retro_payload = (
                                     json.loads(retro_trigger.payload)
@@ -916,8 +920,21 @@ class MultiDiscoveryScheduler:
                                     retro_trigger.processed_chain = True
                                     db.commit()
                             except Exception as retro_err:
+                                # 🔴 THE ROW AND THE OPERATION, NOT JUST THE EXCEPTION.
+                                # This is the one path on which a RETROACTIVE_RUN row is
+                                # never marked processed, so it is retried at every tick
+                                # forever - and a restart does NOT clear it, because the
+                                # failure is in the row rather than in this process. An
+                                # operator reading only the exception cannot tell WHICH
+                                # request is stuck, and that is what they need in order to
+                                # act (owner's observation, 2026-09-04).
                                 logger.error(
-                                    f"Failed to handle RETROACTIVE_RUN trigger: {retro_err}")
+                                    "Failed to handle RETROACTIVE_RUN trigger "
+                                    "(outbox#%s, run_id=%s, op=%s): %s",
+                                    getattr(retro_trigger, "id", "?"),
+                                    (retro_payload or {}).get("run_id", "?"),
+                                    (retro_payload or {}).get("op", "?"),
+                                    retro_err)
 
                     db.close()
                 except Exception as e:
