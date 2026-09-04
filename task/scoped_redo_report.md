@@ -5768,3 +5768,66 @@ chain_ingestion_worker.py:57  get_process_logger("Chain", "chain_worker.log")  <
 ```
 지시대로 부하 시험 50 / 200 / 1000 으로 갑니다. 멈춤 조건 그대로
 ```
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **`server.log` 죽음 수리 착지 (`e304a5e6`) — 태그도 같이 고쳤습니다**
+
+## 채택하신 대로 «먼저 부른 쪽이 이깁니다»
+```
+utils/logger.py   이미 붙어 있으면 «그대로 두고» 돌아갑니다. 핸들러를 다시 안 답니다
+                  나중에 다른 파일을 요청하면 «한 줄로» 말합니다 (조용히 무시하지 않습니다)
+                  [logging] this process already logs to server.log (opened by Server);
+                            chain_worker.log stays closed here. The lines are in server.log.
+⛔ 새 설정 축 «0». 갈리는 것은 «import 순서»뿐입니다 — 그게 이미 「어느 프로세스인가」입니다
+⛔ 「지우지 말고 더한다」 안 했습니다 (모든 줄이 두 파일에 중복됩니다)
+```
+
+## 🔴 그리고 지적하신 대로 — «제 태그가 거짓말할 뻔했습니다»
+```
+전   MAPPER_LOG_TAG = "mapper@%s" % LOG_FILENAME              <- 상수. 통합에선 거짓
+후   MAPPER_LOG_TAG = "mapper@%s" % (active_log_filename() or LOG_FILENAME)
+```
+📌 제가 만든 규율(「어느 파일인지 말하라」)이 저에게 걸린 것이 맞습니다. 상수는 그 규율을
+   «지키는 척»만 합니다.
+
+## 게이트 — ③은 «실측», ①②는 재기동이 필요합니다
+```
+③ ✅ 격리 데이터 루트에서 «통합 모양»을 그대로 재현했습니다
+     import main  ->  import chain_ingestion_worker  (main.py:513 과 같은 순서)
+     결과   만들어진 파일 «server.log 하나». chain_worker.log 는 «안 생깁니다»
+            active file        = server.log
+            MAPPER_LOG_TAG     = «mapper@server.log»      <- 실제 쓰는 파일과 같습니다
+            worker LOG_FILENAME = chain_worker.log        (단독으로 뜨면 이걸 씁니다)
+            그리고 두 import 뒤에 찍은 [Server] 줄이 «server.log 에» 들어갑니다
+① ⏸ 라이브 재기동 뒤 확인해 주십시오 — 기동 몇 초 뒤의 API 줄이 server.log 에 있는가
+② ⏸ 단독 워커로 띄우면 chain_worker.log 인가
+   (기제는 서브프로세스 시험으로 덮었습니다 — 아래)
+④ ✅ 새 설정 축 0 · 다른 로거 이름 안 건드림
+```
+
+## 시험 — 기존 로깅 시험 파일에 «두 개» 더했습니다
+```
+test_the_first_caller_in_a_process_keeps_the_log_file
+   별도 «프로세스»에서 main.py 모양(첫 호출 -> 둘째 호출)을 재현하고,
+   둘째 파일이 «안 생기는지» + 그 뒤 줄이 첫 파일에 «있는지»를 봅니다
+test_the_process_publishes_which_file_it_actually_writes
+   active_log_filename() 이 «진짜 쓰는» 파일을 말하는지
+변이 셋 전부 잡힙니다   나중이 이기게 되돌리기 · active 기록 안 하기 · 태그를 상수로 되돌리기
+무회귀   기존 로깅 시험 전부 통과 (test_process_logging · console_safe · dev_env_isolation
+         · mapper_run_is_visible · chain_activity — 78 통과)
+```
+
+## 접수한 것
+```
+② ④-2 는 «반쪽» — 화면이 0. 접수했습니다. 서버 쪽은 더 낼 것이 없습니다
+③ 총괄이 켰다 되돌리신 것 + «고리 검증기가 못 보는 변»(메타 쓰기) — 알겠습니다. 안 건드립니다
+```
+
+## 다음
+```
+부하 시험 50 / 200 / 1000. 멈춤 조건 그대로 (② 구간 30초 or 큐가 안 비면 멈추고 보고)
+⚠️ 다만 재기동 «전»에는 워커가 옛 코드입니다 — 부하 수는 «재기동 뒤»에 재겠습니다.
+   지금 재면 맵퍼 로그도 진행 레지스트리도 «없는» 코드로 재는 것이 됩니다
+```
