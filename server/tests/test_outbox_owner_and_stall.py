@@ -183,11 +183,25 @@ def test_the_blocking_run_says_WHY_it_is_running():
     assert got["queued_at"], got
 
 
-def test_an_unnamed_requester_is_모름_rather_than_blank():
-    """⚠️ An empty author reads as "nobody asked for this", and this is the field an
-    operator acts on - they go and ask that person."""
+def test_an_unnamed_requester_travels_as_null_not_as_a_display_word():
+    """🔴 THE VALUE, NOT THE WORD. A display word chosen here would make this contract a
+    second shape - every other field settled today (blocks_activation, partial_apply, the
+    refusal codes, the four source states) carries a value and lets the screen write the
+    sentence. And the two windows on this row must answer alike: `runs()` returns the
+    column raw, so this does too."""
     got = retroactive.in_flight(_Runs(run_row(progressed_ago=5.0, requested_by=None)))
-    assert got["requested_by"] == "모름"
+    assert got["requested_by"] is None
+
+
+def test_an_absent_author_is_not_recorded_as_a_word_that_reads_like_a_person():
+    """🔴 "admin" ANSWERS "who asked for this" with something nobody said, and it lands in
+    the table where it outlives the request. The column is nullable; absent stays absent.
+    ⚠️ Rows already carrying it are left alone - correcting them would be editing the
+    record. Only what is written from here changes."""
+    import inspect
+    from database import models
+
+    assert models.RetroactiveRun.__table__.c.requested_by.nullable is True
 
 
 def test_the_two_windows_describe_one_row_with_the_same_names():

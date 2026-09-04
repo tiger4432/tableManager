@@ -848,10 +848,13 @@ def in_flight(db, now=None, stall_after=None):
         # request was holding the line - the same three facts the runs list has carried all
         # along. Same names as `runs()` so the two windows cannot describe one row
         # differently.
-        # ⚠️ `requested_by` is "모름" when the row does not carry one, never blank: an empty
-        # author reads as "nobody", and this is the field an operator acts on.
+        # ⚠️ `requested_by` travels RAW, and `None` when the row carries none. The word an
+        # operator reads for that is the screen's to choose - a display word decided here
+        # would make this contract a second shape, and every other field settled today
+        # (blocks_activation, partial_apply, the refusal codes, the four source states)
+        # went the other way. `runs()` answers the same field the same way.
         "params": json.loads(row.params) if row.params else {},
-        "requested_by": row.requested_by or "모름",
+        "requested_by": row.requested_by,
         "queued_at": row.queued_at.isoformat() if row.queued_at else None,
         "state": row.state,
         "moving": moving,
@@ -1148,8 +1151,13 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
     spec = operation(op)
     params = validate(op, params)
     run_id = uuid.uuid4().hex[:12]
+    # 🔴 NO INVENTED AUTHOR. "admin" is a word that reads like a person, and writing it
+    # ANSWERS "who asked for this" with something nobody said. The column is nullable;
+    # absent stays absent, and the screen decides how to show that.
+    # ⚠️ Rows already carrying "admin" are left alone - correcting them would be editing
+    # the record itself. Only what is written from here changes.
     payload = {"run_id": run_id, "op": op, "params": params,
-               "requested_by": requested_by or "admin"}
+               "requested_by": requested_by or None}
 
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()),
@@ -1164,7 +1172,7 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
     db.add(models.RetroactiveRun(
         run_id=run_id, op=op,
         params=json.dumps(params, ensure_ascii=False),
-        requested_by=requested_by or "admin",
+        requested_by=requested_by or None,
         state=RUN_QUEUED,
     ))
     db.commit()

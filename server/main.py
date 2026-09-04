@@ -5411,7 +5411,10 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
     params = body.get("params") if isinstance(body.get("params"), dict) else {}
     try:
         return retroactive.publish(db, op, params,
-                                   requested_by=body.get("requested_by") or "admin")
+                                   # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
+                                   # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
+                                   # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
+                                   requested_by=body.get("requested_by") or None)
     except retroactive.RetroactiveRefused as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

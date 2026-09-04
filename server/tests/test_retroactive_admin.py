@@ -1030,11 +1030,20 @@ class TestTheSchedulerRunsItOffTheTickThread:
         assert sched.retroactive_busy() is False
 
     def test_the_scheduler_consumes_the_declared_event_type(self):
+        """The subject here IS the text: does the scheduler NAME the shared constant, or
+        does it spell the string again? A second spelling is how the publisher and the
+        consumer come to disagree about an event type.
+
+        ⚠️ Widened from `run` to the whole class on 2026-09-04: that block moved into
+        `handle_retroactive_trigger` so a test could drive it, and this assertion went red
+        while the behaviour was unchanged - the ordinary cost of pinning a location
+        instead of a predicate.
+        """
         import inspect
 
         import run_auto_update
 
-        src = inspect.getsource(run_auto_update.MultiDiscoveryScheduler.run)
+        src = inspect.getsource(run_auto_update.MultiDiscoveryScheduler)
         assert "EVENT_RETROACTIVE_RUN" in src
         assert "start_retroactive_run" in src
 
