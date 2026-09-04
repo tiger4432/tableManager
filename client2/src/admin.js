@@ -37,6 +37,7 @@ import {
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
+import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 
 const isDevServer = window.location.port === '5173';
@@ -557,8 +558,13 @@ function switchTab(tabName, opts = {}) {
   else history.replaceState(null, '', `#${t.tab}`);
 
   if (!FULL_BLEED_TABS.includes(t.tab)) refreshHealthStrip();
-  if (t.tab === 'ontology') refreshOntologyExplorer();
-  else fetchData();
+  if (t.tab === 'ontology') {
+    refreshOntologyExplorer();
+    // 🔴 «따로» 받습니다. 하나의 실패가 다른 하나를 지우지 않는 것이 오늘 아침의
+    //    판정입니다 — 그때는 throw 하나가 렌더러 아홉을 지웠습니다. 이 함수는 자기
+    //    안에서 모두 잡고, 못 읽은 사유를 패널이 «그립니다».
+    refreshLedgerSources();
+  } else fetchData();
 }
 
 // ── Event Listeners ────────────────────────────────────────
@@ -941,6 +947,36 @@ async function fetchData(options = {}) {
     if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
     return false;
   }
+}
+
+// \u2464 \u300c\ub0b4 \uc18c\uc2a4\uac00 \uc6d0\uc7a5\uae4c\uc9c0 \uac14\ub098\u300d \u2014 \ubc88\uc5ed\uae30\uc758 \uc7a5\ubd80\ub97c \uadf8\ub9bd\ub2c8\ub2e4.
+// \U0001f534 \uc11c\ubc84\ub294 \uc774 \uac12\uc744 \uc774\ubbf8 \ub0b4\uace0 \uc788\uc5c8\uace0(4898c6ba), \uc77d\ub294 \ucabd\uc774 \u00ab0\u00bb \uc774\uc5c8\uc2b5\ub2c8\ub2e4.
+//    \uadf8\uac83\uc774 \uc774 \ud328\ub110\uc758 \uc720\uc77c\ud55c \uacb0\ud568\uc774\uace0, \uadf8\ub798\uc11c \uc11c\ubc84\ub97c \uae30\ub2e4\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.
+let ledgerSourcesPanel = null;
+async function refreshLedgerSources() {
+  const mount = byId('ledger-sources-mount');
+  if (!mount) return;
+  if (!ledgerSourcesPanel) ledgerSourcesPanel = new LedgerSourcesPanel(mount);
+  let body = null;
+  let opts = {};
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/ledger/sources`);
+    // \ubabb \uc77d\uc740 \uc774\uc720\ub97c \u00ab\uc774\ub984\uc73c\ub85c\u00bb \ub118\uae41\ub2c8\ub2e4. 404 \ub294 \u300c\uc774 \ud504\ub85c\uc138\uc2a4\uc5d0 \ub77c\uc6b0\ud2b8\uac00 \uc5c6\ub2e4\u300d\uc774\uace0,
+    // \uadf8\uac83\uc740 \u300c\uc18c\uc2a4\uac00 \uc5c6\ub2e4\u300d\uc640 \u00ab\uc644\uc804\ud788 \ub2e4\ub978\u00bb \uc0ac\uc2e4\uc785\ub2c8\ub2e4.
+    if (res.status === 404) {
+      opts = { unavailable: '\uc774 \uc11c\ubc84 \ud504\ub85c\uc138\uc2a4\uc5d0 /admin/ledger/sources \uac00 \uc5c6\uc2b5\ub2c8\ub2e4 (404) \u2014 \uc7ac\uae30\ub3d9\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.' };
+    } else if (!res.ok) {
+      opts = { unavailable: `\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c \uc2e4\ud328 (HTTP ${res.status}). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.` };
+    } else {
+      body = await res.json().catch(() => null);
+    }
+  } catch (e) {                                              // noqa
+    opts = { unavailable: '\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4 (\ub124\ud2b8\uc6cc\ud06c). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.' };
+  }
+  const view = ledgerSourcesPanel.render(body, opts);
+  const count = byId('ledger-sources-count');
+  // \ubabb \uc77d\uc5c8\uc73c\uba74 \u00ab0 \uc774 \uc544\ub2c8\ub77c\u00bb \ub300\uc2dc\uc785\ub2c8\ub2e4 \u2014 view.count \uac00 \uc774\ubbf8 \uadf8\ub807\uac8c \ub3cc\uc544\uc635\ub2c8\ub2e4.
+  if (count) count.textContent = view.count;
 }
 
 // ── Renderers ──────────────────────────────────────────────

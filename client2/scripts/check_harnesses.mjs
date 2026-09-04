@@ -243,6 +243,12 @@ const FLOORS = new Map([
   // pass against a function that dashes EVERYTHING, which is the opposite failure. It also
   // pins that chain_queue_panel uses this spelling rather than a private copy: the copy it
   // used to carry rendered an empty string as 0.
+  // Phase step (5), 2026-09-04. Two things it exists for, and neither is visible to any
+  // other harness: an unreadable translator cursor must NOT render as a list of never_ran
+  // -- the server keeps 'could not read' and 'nothing ran' apart on purpose -- and the four
+  // states stay four rather than folding into normal/warning/error, because the server never
+  // said which of them is bad and a screen deciding that would be inventing a judgement.
+  ['ledger_sources_panel_harness.mjs', 41],
   ['absent_harness.mjs', 35],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
