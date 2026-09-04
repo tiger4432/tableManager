@@ -473,9 +473,20 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
     who open the same file both write, and without this the second silently erases the
     first.
 
-    🔴 2 - VALIDATED BEFORE IT LANDS, NOT AFTER. The merged whole is checked here; a file
-    validated after writing has already been read by `config_watcher` and by whatever
-    reloaded from it.
+    🔴 2 - CHECKED BEFORE IT LANDS, AND ONLY AS FAR AS IT ACTUALLY CHECKS. What runs here
+    is: the declaration is an object, `column_types` is a mapping when present, and the
+    merged whole round-trips through JSON. That is NOT a semantic validation of the
+    registration, and this paragraph says so on purpose - the docstring above it used to
+    claim "the merged whole is checked", which the next reader would take as "structural
+    validation already exists here". A comment is evidence of INTENT, never of behaviour.
+
+    `crud.load_table_config_or_raise` cannot be that validator either, and its own
+    docstring says why: it takes no argument (it reads CONFIG_PATH), and it deliberately
+    RETURNS rather than raises when a file "parses but declares something odd", because
+    semantic complaints must never keep a production server down.
+
+    Whatever is checked is checked BEFORE the write: a file validated afterwards has
+    already been read by `config_watcher` and by whatever reloaded from it.
 
     🔴 3 - ATOMIC. `crud.update_table_config` - the function this replaces, which had no
     callers at all - used a plain `open(w)` and swallowed the failure in a `print`, so an
@@ -494,6 +505,17 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
         raise _table_config_refusal(
             "declaration_not_object", f"tables.{table}",
             "표 등록은 JSON 객체여야 합니다")
+    # 🔴 `column_types` IS READ AS A MAPPING AT BOOT AND NOWHERE ELSE CHECKS IT.
+    # `init_dynamic_models` does `table_cfg.get("column_types", {}).items()`, so a list
+    # here raises INSIDE the boot path, where `main`'s broad except swallows it: the server
+    # comes up with ZERO dynamic models, one ERROR line, and a screen that looks empty.
+    # `crud.py:760` records having measured exactly that failure.
+    # ⛔ One check, not a validator. Nothing else about the registration is judged here.
+    if "column_types" in declaration and not isinstance(
+            declaration.get("column_types"), dict):
+        raise _table_config_refusal(
+            "column_types_not_object", f"tables.{table}.column_types",
+            "column_types 는 JSON 객체여야 합니다 (부팅이 이 값을 매핑으로 읽습니다)")
 
     path = table_config_path()
     current_base = file_fingerprint(path)

@@ -115,3 +115,37 @@ def test_the_previous_registration_is_kept_as_the_undo(config_file, tmp_path):
     assert os.path.exists(result["backup"])
     assert "existing" in json.loads(
         open(result["backup"], encoding="utf-8").read())
+
+
+@pytest.mark.parametrize("bad", [[], "text", 3, None])
+def test_column_types_must_be_a_mapping_because_boot_reads_it_as_one(config_file, bad):
+    """🔴 THE ONE HOLE THE REVIEW FOUND. `init_dynamic_models` calls
+    `table_cfg.get("column_types", {}).items()`, so a list here raises INSIDE the boot
+    path - where main's broad except swallows it. The server then comes up with ZERO
+    dynamic models, one ERROR line, and a screen that looks empty; crud.py:760 records
+    having measured that exact failure.
+
+    ⚠️ And nothing is written: the file must be byte-identical after the refusal.
+    """
+    before = config_file.read_bytes()
+    with pytest.raises(Exception) as raised:
+        ledger_admin.save_table_config_raw(
+            "probe", {"column_types": bad}, base_of(config_file))
+    assert raised.value.detail["code"] == "column_types_not_object"
+    assert raised.value.detail["path"] == "tables.probe.column_types"
+    assert config_file.read_bytes() == before
+
+
+def test_a_registration_without_column_types_is_still_allowed(config_file):
+    """⛔ Present-and-wrong is refused; ABSENT is not. Requiring it would invent a rule
+    this round was told not to write, and boot defaults it to an empty mapping."""
+    ledger_admin.save_table_config_raw(
+        "probe", {"business_key": "pk"}, base_of(config_file))
+    assert json.loads(config_file.read_text(encoding="utf-8"))["probe"]
+
+
+def test_a_good_column_types_mapping_goes_through(config_file):
+    ledger_admin.save_table_config_raw(
+        "probe", {"column_types": {"a": "string"}}, base_of(config_file))
+    saved = json.loads(config_file.read_text(encoding="utf-8"))
+    assert saved["probe"]["column_types"] == {"a": "string"}
