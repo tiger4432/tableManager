@@ -243,6 +243,7 @@ const AUTO_REFRESH_MS = 30000;      // 절제된 자동 갱신 주기 (Overview/
 // 구 탭 딥링크·북마크 호환: 구 메커니즘 탭 이름 → 신 파이프라인 탭
 const TAB_ALIASES = {
   overview: 'overview',
+  tables: 'tables',
   file: 'file',
   chain: 'chain',
   autoupdate: 'autoupdate',
@@ -256,6 +257,7 @@ const TAB_ALIASES = {
 
 // ── DOM Elements ────────────────────────────────────────────
 const tabOverviewBtn = byId('tab-overview-btn');
+const tabTablesBtn = byId('tab-tables-btn');
 const tabFileBtn = byId('tab-file-btn');
 const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
@@ -263,6 +265,7 @@ const tabEnrichmentBtn = byId('tab-enrichment-btn');
 const tabOntologyBtn = byId('tab-ontology-btn');
 
 const overviewWrapper = byId('overview-wrapper');
+const tablesTabWrapper = byId('tables-tab-wrapper');
 const fileTabWrapper = byId('file-tab-wrapper');
 const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
@@ -565,6 +568,9 @@ function switchTab(tabName, opts = {}) {
     //    판정입니다 — 그때는 throw 하나가 렌더러 아홉을 지웠습니다. 이 함수는 자기
     //    안에서 모두 잡고, 못 읽은 사유를 패널이 «그립니다».
     refreshLedgerSources();
+  } else if (t.tab === 'tables') {
+    // 🔴 자기 탭입니다. 온톨로지 탭에 있을 때는 그 탭이 부르는 «셋째»였는데,
+    //    이제 이 탭이 부르는 «전부»입니다.
     refreshTableConfig();
   } else fetchData();
 }
@@ -574,6 +580,7 @@ function switchTab(tabName, opts = {}) {
 function setupEventListeners() {
   tabDefs = [
     { btn: tabOverviewBtn, tab: 'overview', wrapper: overviewWrapper },
+    { btn: tabTablesBtn, tab: 'tables', wrapper: tablesTabWrapper },
     { btn: tabFileBtn, tab: 'file', wrapper: fileTabWrapper },
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
