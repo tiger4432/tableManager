@@ -455,9 +455,6 @@
     }
 
     .panel-title {
-      font-size: 1.15rem;
-      font-weight: 600;
-      color: var(--text);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -1116,11 +1113,6 @@
       gap: 10px;
     }
     .ov-title {
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      color: var(--text-muted);
       flex: 1;
     }
     .ov-metrics {
@@ -1271,8 +1263,14 @@
        ⛔ 색은 이 그룹에 «안 들어갑니다» — 색은 «뜻»을 나르고(위험·경고·상태), 그건
           자리마다 다릅니다. 여기 있는 것은 «타이포»뿐입니다. */
 
-    /* ① 제목 — 타이포도 색도 여기 «한 자리»입니다. 그것이 게이트①의 정의입니다. */
-    .section-title {
+    /* ① 제목 — 타이포도 색도 여기 «한 자리»입니다. 그것이 게이트①의 정의입니다.
+       🔴 그리고 «모든 영역»입니다 — 진단 패널의 머리(`.panel-title`)와
+       개관 카드의 머리(`.ov-title`) 도 같은 역할이라 여기 들어옵니다.
+       ⚠️ `.panel-title` 은 18.4px 에서 13px 로 «작아집니다». 절 제목과 «같은 단»이
+          된다는 뜻이고, 그것이 「모든 영역 다」의 결과입니다. 보고에 적어 올립니다. */
+    .section-title,
+    .panel-title,
+    .ov-title {
       font-family: var(--oe-font-body);
       font-size: 13px;
       font-weight: 600;
