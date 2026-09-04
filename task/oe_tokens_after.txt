@@ -1,0 +1,26 @@
+light oe-tree-title :: Barlow, system-ui, sans-serif|11px|400|0.88px|uppercase|3.4px 6.8px 10.2px|0px|0px|color(srgb 0.109804 0.137255 0.168627 / 0.6)|rgba(0, 0, 0, 0)|color(srgb 0.109804 0.137255 0.168627 / 0.6)|0px
+light oe-field-select :: Barlow, system-ui, sans-serif|14px|400|normal|none|6px 10px|0px|1px|rgb(216, 222, 229)|rgb(255, 255, 255)|rgb(28, 35, 43)|36px
+light oe-field-input :: "Cascadia Code", Consolas, ui-monospace, monospace|14px|400|normal|none|6px 10px|0px|1px|rgb(216, 222, 229)|rgb(255, 255, 255)|rgb(28, 35, 43)|36px
+light oe-node-badge :: Barlow, system-ui, sans-serif|11px|400|0.22px|none|3px 6.8px|0px|1px|rgb(216, 222, 229)|rgba(0, 0, 0, 0)|color(srgb 0.109804 0.137255 0.168627 / 0.6)|0px
+light oe-chip :: "Cascadia Code", Consolas, ui-monospace, monospace|11px|400|0.22px|none|3px 10px|0px|1px|rgb(216, 222, 229)|rgb(248, 250, 251)|rgb(28, 35, 43)|0px
+light oe-editor-action :: "Barlow Condensed", system-ui, sans-serif|14px|600|normal|none|6.8px 12.24px|0px|1px|rgb(216, 222, 229)|rgba(0, 0, 0, 0)|rgb(28, 35, 43)|0px
+light oe-editor-action-primary :: Barlow, system-ui, sans-serif|15px|400|normal|none|0px|0px|2px|rgb(23, 105, 170)|rgb(23, 105, 170)|rgb(244, 246, 248)|0px
+light oe-spine-title :: Barlow, system-ui, sans-serif|11px|400|0.88px|uppercase|0px|0px|0px|color(srgb 0.109804 0.137255 0.168627 / 0.6)|rgba(0, 0, 0, 0)|color(srgb 0.109804 0.137255 0.168627 / 0.6)|0px
+light oe-empty :: Barlow, system-ui, sans-serif|13px|400|normal|none|10.2px 6.8px|0px|0px|rgb(100, 113, 128)|rgba(0, 0, 0, 0)|rgb(100, 113, 128)|0px
+light oe-testrun-rows :: "Cascadia Code", Consolas, ui-monospace, monospace|12px|400|normal|none|0px|0px|0px|rgb(100, 113, 128)|rgba(0, 0, 0, 0)|rgb(100, 113, 128)|0px
+light oe-tree-why-code :: "Cascadia Code", Consolas, ui-monospace, monospace|10.5px|400|normal|none|0px|0px|0px|rgb(100, 113, 128)|rgba(0, 0, 0, 0)|rgb(100, 113, 128)|0px
+light oe-search :: "Cascadia Code", Consolas, ui-monospace, monospace|11.5px|400|normal|none|5px 9px|0px|1px|rgb(216, 222, 229)|rgb(255, 255, 255)|rgb(28, 35, 43)|0px
+light #root :: Barlow, system-ui, sans-serif|15px|400|normal|none|0px|0px|0px|rgb(28, 35, 43)|rgba(0, 0, 0, 0)|rgb(28, 35, 43)|0px|light|23.25px
+dark oe-tree-title :: Barlow, system-ui, sans-serif|11px|400|0.88px|uppercase|3.4px 6.8px 10.2px|0px|0px|color(srgb 0.933333 0.94902 0.964706 / 0.6)|rgba(0, 0, 0, 0)|color(srgb 0.933333 0.94902 0.964706 / 0.6)|0px
+dark oe-field-select :: Barlow, system-ui, sans-serif|14px|400|normal|none|6px 10px|0px|1px|rgb(52, 59, 69)|rgb(25, 29, 35)|rgb(238, 242, 246)|36px
+dark oe-field-input :: "Cascadia Code", Consolas, ui-monospace, monospace|14px|400|normal|none|6px 10px|0px|1px|rgb(52, 59, 69)|rgb(25, 29, 35)|rgb(238, 242, 246)|36px
+dark oe-node-badge :: Barlow, system-ui, sans-serif|11px|400|0.22px|none|3px 6.8px|0px|1px|rgb(52, 59, 69)|rgba(0, 0, 0, 0)|color(srgb 0.933333 0.94902 0.964706 / 0.6)|0px
+dark oe-chip :: "Cascadia Code", Consolas, ui-monospace, monospace|11px|400|0.22px|none|3px 10px|0px|1px|rgb(52, 59, 69)|rgb(32, 37, 44)|rgb(238, 242, 246)|0px
+dark oe-editor-action :: "Barlow Condensed", system-ui, sans-serif|14px|600|normal|none|6.8px 12.24px|0px|1px|rgb(52, 59, 69)|rgba(0, 0, 0, 0)|rgb(238, 242, 246)|0px
+dark oe-editor-action-primary :: Barlow, system-ui, sans-serif|15px|400|normal|none|0px|0px|2px|rgb(121, 184, 243)|rgb(121, 184, 243)|rgb(17, 20, 25)|0px
+dark oe-spine-title :: Barlow, system-ui, sans-serif|11px|400|0.88px|uppercase|0px|0px|0px|color(srgb 0.933333 0.94902 0.964706 / 0.6)|rgba(0, 0, 0, 0)|color(srgb 0.933333 0.94902 0.964706 / 0.6)|0px
+dark oe-empty :: Barlow, system-ui, sans-serif|13px|400|normal|none|10.2px 6.8px|0px|0px|rgb(174, 184, 196)|rgba(0, 0, 0, 0)|rgb(174, 184, 196)|0px
+dark oe-testrun-rows :: "Cascadia Code", Consolas, ui-monospace, monospace|12px|400|normal|none|0px|0px|0px|rgb(174, 184, 196)|rgba(0, 0, 0, 0)|rgb(174, 184, 196)|0px
+dark oe-tree-why-code :: "Cascadia Code", Consolas, ui-monospace, monospace|10.5px|400|normal|none|0px|0px|0px|rgb(174, 184, 196)|rgba(0, 0, 0, 0)|rgb(174, 184, 196)|0px
+dark oe-search :: "Cascadia Code", Consolas, ui-monospace, monospace|11.5px|400|normal|none|5px 9px|0px|1px|rgb(52, 59, 69)|rgb(25, 29, 35)|rgb(238, 242, 246)|0px
+dark #root :: Barlow, system-ui, sans-serif|15px|400|normal|none|0px|0px|0px|rgb(238, 242, 246)|rgba(0, 0, 0, 0)|rgb(238, 242, 246)|0px|dark|23.25px
