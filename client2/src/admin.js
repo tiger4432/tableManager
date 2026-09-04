@@ -365,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // 절제된 자동 갱신: 백그라운드 탭·에디터 사용 중엔 건너뛴다 (감사 F2)
   setInterval(() => {
     if (document.hidden) return;
-    if (currentTab !== 'overview') refreshHealthStrip(); // Overview에선 본문이 확장판이므로 스트립 생략
     if (isInlineEditorActive || isEditorDirty) return;
     if (currentTab === 'overview' || currentTab === 'file' || currentTab === 'chain') {
       fetchData({ silent: true });
@@ -521,7 +520,10 @@ function updatePanelLayout() {
     splitResizerEl.style.display = 'block';
     rightPanelEl.style.display = 'flex';
   }
-  healthStripEl.style.display = FULL_BLEED_TABS.includes(currentTab) ? 'none' : 'grid';
+  // 🔴 소유자: 「띄 다 빼」 (2026-09-05). 카드 넷이 하던 일 둘 중
+  //    «이동»은 탭 바가 이미 하고, «수»는 각 탭의 절이 다시 말합니다(보고 참조).
+  //    마크업과 `refreshHealthStrip` 은 남깁니다 — 되돌리는 것이 한 줄이어야 하기 때문입니다.
+  healthStripEl.style.display = 'none';
 }
 
 // ── 탭 전환 본체 — 탭 버튼·헬스 카드·해시 라우터가 공용 ────
@@ -561,7 +563,6 @@ function switchTab(tabName, opts = {}) {
   if (t.tab === 'ontology') history.replaceState(null, '', '#ontology');
   else history.replaceState(null, '', `#${t.tab}`);
 
-  if (!FULL_BLEED_TABS.includes(t.tab)) refreshHealthStrip();
   if (t.tab === 'ontology') {
     refreshOntologyExplorer();
     // 🔴 «따로» 받습니다. 하나의 실패가 다른 하나를 지우지 않는 것이 오늘 아침의
@@ -673,7 +674,6 @@ function setupEventListeners() {
   // Actions — Refresh: fetch 완료 후 실제 결과로만 토스트 (감사 F3)
   refreshBtn.addEventListener('click', async () => {
     enrichmentStatusCache = null; // 수동 새로고침은 enrichment 캐시도 강제 만료
-    if (currentTab !== 'overview') refreshHealthStrip();
     const ok = await fetchData();
     if (!ok) return; // 실패 토스트는 fetchData가 담당
     const messages = {
@@ -3734,7 +3734,6 @@ async function retryTransaction(txId) {
 
     setTimeout(async () => {
       await fetchData({ silent: true });
-      refreshHealthStrip();
       if (currentTab !== 'chain') return;
       const still = outboxData.find(t => t.transaction_id === txId);
       if (still) {
@@ -3760,7 +3759,6 @@ async function retryFileIngestion(logId) {
     const result = await res.json().catch(() => ({}));
 
     await fetchData({ silent: true });
-    refreshHealthStrip();
     const stillFailed =
       (currentTab === 'file' && fileData.some(f => f.id === logId && f.status === 'FAILED')) ||
       (currentTab === 'autoupdate' && linkedFailLogs.some(f => f.id === logId));
@@ -3798,7 +3796,6 @@ async function retryAllFailed(kind) {
       filePage = 1;
     }
     fetchData();
-    refreshHealthStrip();
   } catch (err) {
     console.error('Failed to retry all failed items', err);
     showToast('❌ 일괄 재시도 요청 실패', 'error');
@@ -3826,7 +3823,6 @@ async function reloadSystemConfigs() {
     // 달라졌을 때만 측정을 버리고 다시 그린다. 눌렀는데 아무것도 안 바뀌었으면 화면도 그대로다.
     refreshRetroactiveOperations(true);
     fetchData();
-    refreshHealthStrip();
   } catch (err) {
     console.error('Failed to reload configs', err);
     showToast('❌ 시스템 핫-리로드 요청 실패', 'error');
