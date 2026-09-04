@@ -63,7 +63,6 @@ import {
   updatePageCacheOnUpsert,
   updatePageCacheOnDelete
 } from './ui.js';
-import { initTraceEntry } from './trace_launch.js';
 
 // Every control that shows `localStorage['copyHeader']`. Read through `elements`' lazy
 // getters, the convention the whole module already uses, and `filter(Boolean)` so a missing
@@ -148,7 +147,6 @@ async function init() {
   registerSelectionListener(() => { if (redoBanner) redoBanner.selectionChanged(); });
   installReferenceKeyboardIsolation();
   installAuditFilters();
-  initTraceEntry(); // G2 추적 진입점 (mapping-summary 기반 표시 — fire-and-forget)
   setupClipboardHandlers();
   // The `paste` listener in clipboard.js owns the only readable clipboard on plain HTTP;
   // this hands it the smart-paste reader without clipboard.js having to import main.js.

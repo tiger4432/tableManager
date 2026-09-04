@@ -530,8 +530,13 @@ console.log('\n=== 8. route resolution + nav link counting ===');
   eq('/ resolves to grid', api.routeFromHref('/'), 'grid');
   eq('/index.html resolves to grid', api.routeFromHref('/index.html'), 'grid');
   eq('/map_editor.html resolves', api.routeFromHref('/map_editor.html'), 'map_editor');
-  eq('/trace.html resolves', api.routeFromHref('/trace.html'), 'trace');
-  eq('relative href resolves', api.routeFromHref('trace.html?seeds=%5B%5D'), 'trace');
+  eq('/admin.html resolves', api.routeFromHref('/admin.html'), 'admin');
+  eq('relative href resolves', api.routeFromHref('admin.html?tab=chain'), 'admin');
+  // The two above named /trace.html until 2026-09-04. Its KEY went with the page, and
+  // these two score that: a retired screen must resolve to null, not to a route id no
+  // navigation can reach. Without them the removal has no scorer at all.
+  eq('a retired screen resolves to nothing (trace)', api.routeFromHref('/trace.html'), null);
+  eq('a retired screen resolves to nothing (graph)', api.routeFromHref('/graph.html'), null);
   eq('api download path is not a screen', api.routeFromHref('/api/download/client'), null);
   eq('external origin is not a screen', api.routeFromHref('https://fonts.googleapis.com/x'), null);
   eq('garbage href is not fatal', api.routeFromHref('::::'), null);
@@ -580,8 +585,12 @@ function effortImports(src) {
 // A correction write path: attaches `effort` and must gate its reset on the server.
 const WRITE_PAGES = ['api.js', 'ui.js', 'clipboard.js', 'main.js', 'enrichment.js', 'map_editor.js'];
 // A read surface: writes no corrections, so nothing carries `effort` — but LEAVING counts.
+// `graph_viewer.js`/GRAPH and `trace.js`/TRACE were here until 2026-09-04 and went with
+// the pages. Their two mutants below MOVED to `admin.js` rather than being deleted: what
+// they score -- a read surface with no collector, and one counting itself as the wrong
+// route -- is a property of the CLASS, and admin.js is the member that survived.
 const READ_PAGES = [
-  ['admin.js', 'ADMIN'], ['graph_viewer.js', 'GRAPH'], ['trace.js', 'TRACE']
+  ['admin.js', 'ADMIN']
 ];
 
 function auditWiring(srcOf) {
@@ -627,15 +636,15 @@ console.log('\n=== 8b. call-site wiring across every page ===');
   ok('audit catches a write path reverting to bare commit()',
      g1.bareCommit.includes('api.js') && g1.missingGated.includes('api.js'), JSON.stringify(g1));
 
-  const g2 = auditWiring(mutate('graph_viewer.js',
+  const g2 = auditWiring(mutate('admin.js',
     s => s.replace(/import\s*\{[^}]*\}\s*from\s*'\.\/effort_meter\.js';/, '')));
   ok('audit catches a page with no collector at all (B-F1)',
-     g2.unwiredRead.includes('graph_viewer.js'), JSON.stringify(g2));
+     g2.unwiredRead.includes('admin.js'), JSON.stringify(g2));
 
-  const g3 = auditWiring(mutate('trace.js',
-    s => s.replace('installNavLinkCounting(ROUTES.TRACE)', 'installNavLinkCounting(ROUTES.GRID)')));
+  const g3 = auditWiring(mutate('admin.js',
+    s => s.replace('installNavLinkCounting(ROUTES.ADMIN)', 'installNavLinkCounting(ROUTES.GRID)')));
   ok('audit catches a page counting itself as the wrong route',
-     g3.missingInstall.includes('trace.js:route=TRACE'), JSON.stringify(g3));
+     g3.missingInstall.includes('admin.js:route=ADMIN'), JSON.stringify(g3));
 }
 
 console.log('\n=== 9. mutation check (does this harness actually detect a regression?) ===');
