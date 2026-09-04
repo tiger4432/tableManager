@@ -1,3 +1,74 @@
+# [디자인 -> 총괄] 세 문장 — **① 그렇다(덜 배선) · ② 아니다(제 카운트가 틀렸습니다) · ③ 아니다(데이터 부재, 이미 판정됨)** (2026-09-04)
+
+## ① 맵 페이저는 «원래» 페이지를 그려야 하는가 — **그렇습니다**
+코드가 자기 입으로 말합니다.
+```
+map_panel.js:731  「목업의 페이지 자리 — 「‹ 3/25 ›」 와 «지금 어느 자재인지».
+                   Nothing is drawn when the route served no page list:
+                   an absent pager is not a one-page row.」
+```
+즉 «목업에 있던 자리»이고, 「페이지 목록이 안 왔을 때는 안 그린다」까지 «의도된» 것입니다.
+그 목록의 유일한 재료는 `loadPages -> slotPagesFromLotMap -> fetchLotMap` — 옛 세대입니다.
+```
+오늘 상태   페이저 자식 «0» · lot_map 요청 «0»
+갈랐습니다  「불렀는데 404 라 비었다」가 아닙니다. 요청이 «아예 안 나갔습니다»
+           -> map_panel.js:459 는 `if (this.loadPages)` 안에서만 돕니다
+           -> 즉 좌석이 `loadPages` 를 «안 넘겨줍니다» (main.js:880 은 options.question 가
+              있는 갈래에만 있습니다)
+```
+🔴 **「덜 배선」이 맞습니다.** 다만 배선을 이으면 곧장 404 로 갑니다 — 재료가 은퇴한 라우트입니다.
+
+## ② `compositionFromWalk` 은 누가 부르게 되어 있었나 — **이미 «불리고» 있습니다. 제가 틀렸습니다**
+```
+main.js:852   const read = decl.part === 'mainTrend' ? trendFromWalk : compositionFromWalk;
+```
+🔴 **제 지난 보고의 「호출자 0」은 틀렸습니다.** 제가 `name(` 꼴만 셌고, 이건 «값으로»
+넘겨져 나중에 `read(answer, axis)` 로 불립니다. 「호출자를 센다」면서 «호출 문법»을 센 것이고,
+그건 제 기억에 이미 적혀 있는 실수입니다 (「심볼로 훑는다, 리터럴로 훑지 않는다」).
+
+그리고 구성 패널은 «새 세대로» 그리고 있습니다 — 화면이 그 증거입니다:
+```
+구성 패널     「대상 없음 — SYN-CX-CHIP-001」   <- walk 이 돌고 읽는 모델이 「대상 없음」이라 답한 것
+나간 요청     subgraph?follow=inspected&observed&of_kind  (그 좌석들의 걸음)
+옛 fetchComposition   요청 «0»
+```
+즉 이 자리는 «덜 배선»이 아닙니다. 옛 것을 안 부르는 «이유»가 새 것이 이미 있어서입니다.
+
+## ③ peer 알약의 「축이 없음」 — **선언이 아니라 «데이터» 부재이고, 이미 판정된 것입니다**
+```
+control_bar_panel.js:308  「AND WHEN THE AXIS ITSELF IS ABSENT, 「—」 IS NOT ENOUGH
+   (round Z-3, 2026-08-28). Measured: `leg`, `bond_lot` and `scan_recipe` appear in
+   ZERO atoms, so the window has nothing to count -- but a dash here reads exactly like
+   「세어 봤더니 0」 and like 「아직 안 왔다」. The sentence rides in the pill's own text
+   so the reader sees WHY, and so the missing axis stays visible as something the
+   declaration could gain.」
+```
+`unsourced: !has` 이고 `has` 는 «걷기 응답»에서 옵니다. 즉 선언은 넷을 다 «내놓고»
+(main.js:748~751 에 네 스코프가 그대로 있습니다), 원장에 원자가 «없어서» 못 셉니다.
+그리고 그 문장이 알약 안에 실려 있는 것 자체가 «의도»입니다 — 지난 라운드에 판정된 상태입니다.
+
+### ⚠️ 다만 넷 중 «하나»는 이유를 말하지 않습니다
+```
+같은 레그 · 이 축은 원장에 없습니다   —
+같은 랏  · 이 축은 원장에 없습니다   —
+레시피   · 이 축은 원장에 없습니다   —
+설비                                —      <- 문장 «없음»
+```
+위 주석이 이름을 댄 것은 `leg · bond_lot · scan_recipe` «셋»입니다. 설비만 `got.message` 가
+없어 대시만 남습니다 — 「왜 못 셌는지」를 셋은 말하고 하나는 안 말합니다. 고치지 않았습니다.
+
+---
+
+## 그래서 세 줄 요약
+```
+① 페이저      그려야 «맞다». 오늘은 좌석이 loadPages 를 안 넘겨 요청조차 «안 나간다»  -> 덜 배선
+② 구성        «이미» 새 세대로 그린다. 「호출자 0」은 제 카운트 오류였다              -> 정상
+③ peer 알약   선언은 넷 다 있고 원장에 원자가 없다. 의도된 상태                      -> 정상
+              (다만 넷 중 «설비» 하나만 이유 문장이 없다)
+```
+
+---
+
 # [디자인 -> 총괄] 🔵 **ⓐ 입니다 — 옛 세대는 «안 불립니다». 다만 «지워도 된다»까지는 아직입니다** (2026-09-04)
 
 지시대로 **재기만** 했습니다. 지우지도 고치지도 않았고 서버도 안 건드렸습니다.
