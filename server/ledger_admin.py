@@ -425,6 +425,116 @@ def source_raw_view(source: str = None) -> dict:
     return out
 
 
+def table_config_path() -> str:
+    """The file `table_config.json` lives in. Read from `crud`, never respelled here."""
+    from database import crud
+    return crud.CONFIG_PATH
+
+
+def table_config_raw_view(table: str = None) -> dict:
+    """One TABLE's raw registration, plus the base fingerprint a save will check.
+
+    🔴 SAME UNIT AND SAME SHAPE AS `source_raw_view`, deliberately. Registering a table was
+    outside the product until now - no admin route wrote `table_config.json`, so the only
+    way to add one was to edit a file on the server host, which turns the completion rule's
+    two lines into three and makes the third "leave the application". The unit is ONE
+    TABLE for the reason that route records: whole-file editing makes every save a rewrite
+    of everyone else's registration.
+
+    The whole document is still readable (`tables`) so an operator can see the edit in
+    context; it is simply not the unit of writing.
+    """
+    path = table_config_path()
+    document, error = {}, None
+    try:
+        document = _read_json(path, {})
+    except Exception as exc:
+        error = f"{exc.__class__.__name__}: {exc}"
+    if not isinstance(document, dict):
+        document, error = {}, error or "table_config.json is not a JSON object"
+    out = {
+        "config_path": path,
+        "base": file_fingerprint(path),
+        "tables": sorted(t for t in document if not str(t).startswith("__")),
+        "error": error,
+        "editable_unit": "table",
+    }
+    if table is not None:
+        out["table"] = table
+        out["declaration"] = document.get(table)
+        out["raw"] = json.dumps(document.get(table), ensure_ascii=False, indent=2)
+    return out
+
+
+def save_table_config_raw(table: str, declaration, base: str) -> dict:
+    """Write ONE table's registration. Three guards, and each is part of the ruling.
+
+    🔴 1 - THE BASE FINGERPRINT. Same refusal name as the ledger raw editor: two operators
+    who open the same file both write, and without this the second silently erases the
+    first.
+
+    🔴 2 - VALIDATED BEFORE IT LANDS, NOT AFTER. The merged whole is checked here; a file
+    validated after writing has already been read by `config_watcher` and by whatever
+    reloaded from it.
+
+    🔴 3 - ATOMIC. `crud.update_table_config` - the function this replaces, which had no
+    callers at all - used a plain `open(w)` and swallowed the failure in a `print`, so an
+    exception left a ZERO-BYTE registration for five processes to read. `config_watcher`'s
+    own comments record having read a partially-written file from that writer. The temp
+    lands in the SAME directory so the watcher sees a replace rather than a delete and a
+    create.
+
+    ⛔ It cannot DELETE a table: the merge is shallow, which is what keeps a save from
+    erasing everyone else, and removal has a different blast radius. Separate ruling.
+    """
+    if not isinstance(table, str) or not table.strip():
+        raise _table_config_refusal("table_name_required", "table",
+                                    "저장할 표 이름이 없습니다")
+    if not isinstance(declaration, dict):
+        raise _table_config_refusal(
+            "declaration_not_object", f"tables.{table}",
+            "표 등록은 JSON 객체여야 합니다")
+
+    path = table_config_path()
+    current_base = file_fingerprint(path)
+    if base != current_base:
+        raise _table_config_refusal(
+            "stale_base", "base",
+            "이 파일이 열어 본 뒤에 바뀌었습니다. 다시 열어 확인한 뒤 저장하십시오")
+
+    document = _read_json(path, {})
+    if not isinstance(document, dict):
+        raise _table_config_refusal(
+            "config_not_object", "table_config.json",
+            "table_config.json 이 JSON 객체가 아닙니다")
+
+    merged = dict(document)
+    merged[table] = declaration
+    # The whole result, through the product's OWN parse rules, before anything is written.
+    try:
+        json.loads(json.dumps(merged, ensure_ascii=False))
+    except Exception as exc:                                   # noqa: BLE001
+        raise _table_config_refusal(
+            "declaration_not_serialisable", f"tables.{table}",
+            f"저장할 수 없는 값이 들어 있습니다: {exc}") from exc
+
+    backup = _atomic_write(path, merged)
+    return {"ok": True, "table": table, "base": file_fingerprint(path),
+            "backup": backup, "tables": len(merged)}
+
+
+def _table_config_refusal(code: str, path: str, message: str):
+    """One refusal shape, carrying the code and the address rather than prose.
+
+    ⛔ The function this replaces printed its failure and returned None, so a save that
+    did not happen looked exactly like one that did (fixed in the schema sync earlier
+    today for the same reason).
+    """
+    from fastapi import HTTPException
+    return HTTPException(status_code=400, detail={
+        "ok": False, "code": code, "path": path, "message": message})
+
+
 def parse_raw_declaration(raw: str):
     """Operator JSON -> a declaration, or a `declaration_rejected` violation naming the line.
 
