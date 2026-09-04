@@ -202,6 +202,35 @@
       font-size: 0.8rem;
     }
     /* 누가 비우나 — 머리 줄 아래의 한 줄씩. 세로로 쌓입니다(가로로 늘어놓지 않습니다). */
+    /* 표 머리의 한 줄. 단락이 아니고 상자도 아닙니다 — 수가 무엇의 수인지만 말합니다. */
+    .ledger-sources-note {
+      caption-side: top;
+      text-align: left;
+      padding: 0 0 6px;
+      color: var(--text-dim);
+      font-size: 0.78rem;
+    }
+    .ledger-sources-states {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 0 0 10px;
+    }
+    /* 🔴 색이 없습니다. 네 상태 중 무엇이 «나쁜지» 를 서버가 말하지 않았고,
+       화면이 그걸 정하면 서버가 안 한 판단을 지어내는 것입니다. */
+    .ledger-sources-state {
+      color: var(--text);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .ledger-sources-name { font-weight: 600; color: var(--text); }
+    .ledger-sources-sub {
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      margin-top: 2px;
+      white-space: normal;
+    }
     .chain-queue-owner-strip {
       display: flex;
       flex-direction: column;
@@ -1742,8 +1771,27 @@
 
         <!-- Ledger V2 compiled snapshot을 읽는 구성 탐색기. DOM/상태/편집 흐름은
              ontology_explorer 모듈이 전담하고 admin은 인증 fetch와 탭 자리만 제공한다. -->
-        <div id="ontology-tab-wrapper" style="flex: 1; min-height: 0; overflow: hidden; display: none;">
+        <!-- 🔴 `overflow: hidden` 이었고 `auto` 가 됐습니다. 탭이 스크롤 안 되면
+             아래의 절이 «쟘려» 사람이 못 봅니다. explorer 는 자기 높이(100%)를 그대로
+             잡고 자기 안에서 스크롤하므로, 이 변경은 explorer 의 픽셀을 안 율직입니다.
+             그래서 절을 explorer «아래»에 둡니다 — 위에 두면 explorer 가 내려가고,
+             그것이 이 라운드의 게이트(「explorer 가 안 변했다」)를 가장 많이 건드립니다. -->
+        <div id="ontology-tab-wrapper" style="flex: 1; min-height: 0; overflow: auto; display: none;">
           <div id="ontology-explorer-root"></div>
+
+          <!-- ⑤ 「선언 하나가 원장까지 도달했나」 의 끝입니다. 시작(선언 작성)이 바로
+               위에 있으므로 끝을 그 옆에 둡니다. ⛔ 파일 탭에 붙이지 «않습니다» —
+               그러면 「인제션」이라는 한 낱말이 서로 다른 두 파이프라인을 가리키게 됩니다. -->
+          <div class="stage-section" id="sec-ledger-sources">
+            <div class="section-header" data-section="sec-ledger-sources">
+              <span class="stage-chip">계측</span>
+              <span class="section-title">소스 상태 (읽기 전용)</span>
+              <span class="section-count" id="ledger-sources-count">—</span>
+              <span class="section-summary"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div id="ledger-sources-mount"></div></div>
+          </div>
         </div>
       </div>
 
