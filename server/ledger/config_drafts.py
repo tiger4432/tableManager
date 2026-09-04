@@ -698,6 +698,28 @@ class OntologyDraftStore:
             "created_at", "updated_at",
         )}
 
+    @classmethod
+    def activation_blockers(cls, record: Mapping[str, Any],
+                            active_index: ExplorerIndex) -> list[str]:
+        """What would make `activate` refuse THIS draft right now, by name.
+
+        🔴 AN EMPTY LIST MEANS "NOTHING STOPS YOU", AND THAT HAD NO WAY OF BEING SAID.
+        `activate` refuses on exactly one thing - the snapshot compare-and-swap ten lines
+        below - and a red test run is not it. Nobody presses activate beside a red panel
+        though, so declarations that were activatable the whole time were not activated;
+        the ledger has not run in production for a month (owner, 2026-09-04).
+
+        ⛔ NAMES, NOT SENTENCES. These are the same codes `activate` raises, so the screen
+        can say what it likes and the two cannot drift; inventing a message here would put
+        that wording in a second place.
+
+        ⚠️ It is a READ. Unlike `activate`, which records the status it found, this
+        answers without writing - so a screen may ask it as often as it likes.
+        """
+        if record.get("base_snapshot_hash") != active_index.snapshot_hash:
+            return [f"{cls.stale_status(record, active_index)}_draft"]
+        return []
+
     @staticmethod
     def stale_status(record: Mapping[str, Any], active_index: ExplorerIndex) -> str:
         """`stale` -- the file moved under us. `conflict` -- it moved UNDER THIS TARGET.
