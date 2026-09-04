@@ -5134,3 +5134,65 @@ POST /admin/reload-configs 같은 행을 발행합니다 (system_reload.py:134) 
 ```
 ⚠️ 이 박스에서 «재현»은 못 했습니다 — logs/ 에 파일이 없고(이 박스는 워커를 그렇게 안 띄웁니다),
    맵퍼를 저장해 이벤트를 만드는 것은 «운영 데이터를 건드리는» 쓰기라 안 했습니다.
+
+
+---
+
+# 🔴 [구현자 -> 총괄] 부하 시험 — **치우는 법을 «먼저» 정하라 하셔서, 정하다가 멈췄습니다**
+
+지시의 ⛔ 그대로입니다: 「넣은 행을 치우는 법을 먼저 정하고 시작 · 못 치우면 시작하지 마십시오」.
+정해 보니 **두 가지가 걸립니다.** 아직 «한 행도 안 넣었습니다».
+
+## 먼저 확인한 것 — 워커는 «살아 있습니다»
+```
+chain      비트 1.6초 전 · beats 730      ✅ 큐를 비울 사람이 있습니다
+scheduler  비트 3.4초 전 · beats 2,386    ✅
+watcher    8.4일 전                       (이 시험과 무관)
+```
+
+## 🔴 걸림 ① — **두 맵퍼가 «범위 purge»(replace_map)를 합니다**
+```
+core_usage_mapper       반환에 {"scope": {"core_wafer": wafer}}  -> 그 웨이퍼의 기존 셀을 «지우고» 씁니다
+dt_standard_map_mapper  자기 주석이 derive_replace_map_scope 를 논합니다 — 맵 단위 purge 입니다
+=> 실재하는 (dt_lot, dt_slot) 로 시험 행을 넣으면 «남의 진짜 맵 행을 지웁니다»
+   부하 시험이 «데이터 삭제»가 됩니다. 되돌릴 수 없는 부류입니다
+```
+✅ 회피는 있습니다 — 키를 «전부 지어낸 값»으로 넣는 것입니다 (`LOADTEST-…`).
+그러면 purge 범위가 제 행들 안에 갇히고, 청소가 «LIKE 한 줄»이 됩니다.
+
+## 🔴 걸림 ② — **그렇게 하면 「두 갈래」 중 «한 갈래»만 돕니다**
+```
+소유자 지시   「dt_inventory 한 번의 쓰기가 규칙 «둘»을 깨우는」 그 부하
+실측         dt_inventory 의 컬럼 19개에 «core_wafer 가 없습니다»
+             core_usage_mapper 는 row.core_wafer 를 읽습니다 -> dt_inventory 행에서는 «None»
+=> dt_inventory 에 넣어서는 core_usage 갈래가 «안 벌어집니다»
+   (그 갈래를 깨우는 것은 세 번째 규칙 dt_log -> core_usage_map 입니다)
+```
+⚠️ 즉 「가장 부하 큰 체인」을 «지시하신 모양»으로 재려면 dt_log 쪽에도 넣어야 하고,
+   그건 청소 범위가 «한 표 더» 늘어난다는 뜻입니다.
+
+## 그래서 제안하는 «청소 계약» — 이걸 승인해 주시면 바로 시작합니다
+```
+표식     모든 시험 행의 키 컬럼에 `LOADTEST-<타임스탬프>-` 접두
+넣는 곳   dt_inventory   dt_job / dt_lot / dt_slot 전부 표식
+         (두 갈래를 다 재야 하면 dt_log 에도 같은 표식 — 승인 주시면 포함합니다)
+치우는 법  DELETE FROM dt_inventory   WHERE dt_job  LIKE 'LOADTEST-%'
+         DELETE FROM dt_map         WHERE dt_lot  LIKE 'LOADTEST-%'
+         DELETE FROM core_usage_map WHERE core_wafer LIKE 'LOADTEST-%'   (dt_log 갈래를 넣을 때만)
+         DELETE FROM database_outbox WHERE payload::text LIKE '%LOADTEST-%'  ← 잔여 아웃박스
+확인      청소 뒤 위 네 표에서 LIKE 'LOADTEST-%' 가 «0» 인 것을 세어 보고에 적습니다
+```
+⚠️ **되돌릴 수 없는 것에 닿습니다** — `DELETE` 넷입니다. 표식이 정확해야 «제 행만» 지워집니다.
+그래서 시작 «전»에 승인을 청합니다. 총괄 진행 규칙의 그 예외에 해당한다고 봅니다.
+
+## 그리고 «지금 손에 있는» 구조적 답 하나 — 부하와 무관하게 참입니다
+```
+② 구간(「보이기 -> 집기」)이 유지보수에 밀리는 것은 «순서가 정합니다»:
+   워커 루프 한 바퀴 = 리로드 확인(1초 throttle) -> sweep(5초 간격) -> purge(비동기 태스크)
+                    -> «그다음» pending 200 fetch
+   -> sweep 은 «await» 로 인라인입니다. 그것이 끝나야 fetch 가 시작됩니다
+   -> purge 는 asyncio.to_thread 라 루프를 «안» 막습니다 (그건 좋습니다)
+=> 즉 ②가 커지는 «구조적» 원인은 «sweep 이 인라인»인 것이고, 이건 이 박스 수치가 아니라
+   코드가 정하는 사실이라 운영에도 참입니다
+```
+📌 루프 제안은 이 시험의 수가 나온 «뒤»에 내겠습니다 — 지금 내면 상수를 읽은 것이 됩니다.
