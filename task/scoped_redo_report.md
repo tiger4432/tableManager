@@ -7404,3 +7404,86 @@ column «107» · entity «38» · constant «13»   · 식별키 안의 entity 
 
 판정 대기: 위 ㉮/㉯ 갈래 · 6번 가운데 홉(소유자) · B 는 lot_event 의 그 둘 · SQ 가르기 착수 여부
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금 / bb2pounfl 커밋 정체 · 정상 침묵
+
+---
+
+# 【마디 1 «배선»】 착지 — `b72843cc`
+
+## 갈림길 답: **읽을 수 있었습니다**
+```
+🔴 총괄 물음   「그 함수가 «선언을 읽을 수» 있어야 합니다 -> 못 하면 «그때» 한 줄」
+답            읽습니다. 한 줄이 필요 없었습니다
+자리          authoring_schema() 가 이미 config_root 를 들고 있고, authoring() 이
+              «같은 파일»을 이미 관대하게 읽습니다. 그 읽기를 한 벌 더 두고 sources 만 넘깁니다
+```
+`closed_lists(sources=None)` — 인자 «하나», 선택적. 그리고 이 인자가 이 함수에서 «유일하게»
+필요한 이유가 그대로 설계 문장입니다:
+```
+나머지 목록 전부   «코드»의 성질  ->  어느 운영이든 «같은 답». 선언이 없어도 답이 나옵니다
+implementations   «이 선언»의 성질 ->  자기 소스가 무엇을 제일 많이 쓰나. 그래서 선언이 필요합니다
+```
+
+## 게이트 넷 — 전부 «수»로
+```
+① 값이 나온다          prepare_implementation  = direct-join · lot-event-live-frame
+                      map_implementation      = declarative-role · dt-job-role · lot-event-role
+                      (레지스트리에서 옵니다. 리터럴 «0»)
+② default 가 따라 움직인다  소스 (p1×2, p2×1) -> p1 · 소스 (p2×2, p1×1) -> p2
+                      라우트 실측: 파일에 (p9×2, p8×1) 을 써 두면 counts {p9:2, p8:1} · default p9
+③ 없으면 default 없음   None · {} · () 셋 다 -> default null, «옵션은 그대로 나옴»
+④ 기존 목록 무변동      키 19 -> 22. 지운 것 «0» · 바뀐 것 «0» · 더한 것 «셋»
+                      + 더 센 단언: 선언을 바꿨을 때 «움직이는 키»가 `implementations` «하나»뿐
+```
+
+## 배선의 «끝»이 어디인가 — 스켈레톤 잎 둘
+```
+전   sources.*.prepare.implementation_id   hint: free   <- 알아야 칠 수 있는 칸
+     sources.*.map.implementation_id       hint: free
+후   hint: choice · list: prepare_implementation / map_implementation
+=> 클라 «무변경». `closed_list.js` 의 일반 경로가 그대로 그립니다
+```
+🔴 그리고 그 둘을 «다른 목록»으로 나눴습니다 — 준비기 이름을 매퍼 칸에 권하면
+   «거절밖에 못 하는 값»을 권하는 것입니다 (교집합 0 을 단언으로 박았습니다).
+
+## ⛔ 채우지 «않습니다»
+default 는 «공표»만 하고 문서에 쓰지 않습니다. 파일이 안 들고 있는 칸을 화면이 채우면
+그리는 것만으로 남의 config 를 고쳐 쓰는 것입니다. `_implementation_fields` 는 손대지 않았습니다.
+
+## 🔴 제가 남긴 빨강 하나 — 같이 고쳤습니다
+```
+b143e162 (0-c)  스켈레톤에서 references 를 빼고 문법은 남겼습니다
+그런데          test_skeleton_and_validator_name_the_same_fields 가
+                「검증기가 부르는 이름은 스켈레톤이 전부 들고 있어야 한다」를 잽니다
+=> 그 커밋 이후로 «빨강»이었고 저는 그 시험을 «안 돌렸습니다». 제 새 시험만 돌렸습니다
+```
+고친 방식: 면제를 «이름 붙이고 닫았습니다» — `NOT_OFFERED = ("entities.*.references",)`.
+```
+면제되는 경로  «정확히 7» (전부 entity 의 references 밑)
+변이 확인      entities.*.class 를 떨어뜨려 보면 «여전히 빨감»
+=> 두 번째 칸이 조용히 사라지면 이 게이트가 «다시» 웁니다
+```
+
+## ⚠️ 남은 빨강 «둘» — 제 변경이 아닙니다. «라이브 선언»을 읽는 시험입니다
+```
+test_derivations_rebuild_by_force_what_the_operator_typed_by_hand
+   bundle.sources.dt_job.map.unit.columns: group_by columns must be mapper input columns: ['dt_job']
+test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list
+   KeyError: 'in_slot'
+```
+둘 다 `DEFAULT_ONTOLOGY_ROOT/ledger_config.json` 을 «입력»으로 읽습니다 — 즉 이 빨강은
+«코드»에 대한 문장이 아니라 «지금 그 파일»에 대한 문장입니다.
+🔴 제 diff 는 `config_authoring.py` 에서 «import 한 줄 + closed_lists() 안»뿐이고
+   `authoring_plan` 은 한 글자도 안 건드렸습니다 (`git diff -U0` 의 hunk 헤더로 확인).
+⛔ 라이브 선언은 «열지 않았습니다». 진단이 필요하면 올려 주십시오.
+
+## 돌린 시험
+```
+tests/test_the_form_offers_an_implementation_name.py     10 통과 (신규)
+tests/test_ledger_skeleton.py                             통과 (위 수리 포함)
+tests/test_form_does_not_offer_references.py              통과
+tests/test_implementation_choices_are_counted.py          통과
+tests/test_ontology_config_explorer.py                    위 둘 제외 통과
+```
+
+판정 대기: 없음 (다음으로 「마디 2 — 작성 시점이 준비기 산출을 아나」 로 이어갑니다)
+감시: baelm14dp 15분 자가 기상 (채널 새 커밋) · 마지막 이벤트 없음 — 건 뒤로 채널에 커밋 없음, 정상 침묵
