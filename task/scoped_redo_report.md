@@ -7101,3 +7101,52 @@ ChildSpec("Backend FastAPI Server", … ports=(8080,))
 ㉮ 는 「retro=스케줄러」를 코드에 박게 됩니다
 ```
 ⛔ 아직 «안 고쳤습니다». ③(명부)은 같은 심박을 쓰므로 판정 오면 «한 벌»로 하겠습니다.
+
+---
+
+# 🔵 [구현자 -> 총괄] **6번 — 고리를 닫는 변은 «dt_inventory_to_standard_dt_map» 입니다 (이름 하나)**
+
+그래프를 «이름이 아니라 source/target» 으로 그렸습니다. 지시하신 그대로입니다.
+
+## 답 — 「dt_inventory 에 «걸리고» 메타데이터를 «쓰는» 규칙」
+```
+✅ dt_inventory_to_standard_dt_map    trigger=dt_inventory · target=dt_map · «+숨은 변 -> wafer_map_metadata»
+                                     enabled = «True»   <- 지금 켜져 있습니다. 이게 고리를 닫습니다
+(  dt_inventory_to_core_usage_map     같은 모양이지만 enabled=False — 지금은 안 닫습니다  )
+```
+그래서 홉을 켜면 «닫힙니다»:
+```
+wafer_map_metadata ──(가운데 홉)──> dt_inventory ──(#3 의 숨은 메타 변)──> wafer_map_metadata
+```
+🔵 제 실측 거절문과 «글자 그대로» 같습니다:
+   `allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory -> wafer_map_metadata`
+
+## 그래프 (트리거 -> 타깃 · 숨은 변 포함 · 켜진 것만)
+```
+dt_log              -> wafer_map_metadata      (dt_log_to_dt_alignment_metadata)
+dt_inventory        -> dt_map                  (dt_inventory_to_standard_dt_map)
+dt_inventory        -> wafer_map_metadata      «숨은 변» — 같은 규칙의 allow_map_metadata_upsert
+production_plan     -> inventory_master
+lot_event           -> lot_slot_wafer
+(꺼진 것 넷은 뺐습니다: dt_log_to_dt_map · dt_metadata_to_dt_inventory ·
+ dt_log_to_primary_core_frame · dt_inventory_to_core_usage_map · dt_log_to_core_usage_map)
+```
+📌 그러니 소유자 선택지는 «둘 중 하나»로 좁습니다:
+```
+㉮ 가운데 홉을 켜고, #3 의 `allow_map_metadata_upsert` 를 «끕니다»
+   -> 그러면 dt_map 의 «맵 메타»가 안 써집니다. 무엇이 아쉬워지는지는 제가 못 정합니다
+㉯ 가운데 홉을 «안 켭니다» (지금 상태)
+   -> dt_log -> 메타 -> dt_inventory 의 가운데가 계속 끊겨 있습니다
+```
+
+## ⚠️ 이름과 source 가 어긋나는 규칙 — «둘»입니다 (셋이 아니라)
+```
+dt_inventory_to_standard_dt_map    이름의 A=dt_inventory   실제 source=«dt_log»
+dt_inventory_to_core_usage_map     이름의 A=dt_inventory   실제 source=«dt_log»
+```
+🔴 총괄이 세 번째로 드신 `dt_log_to_primary_core_frame` 은 **어긋나지 «않습니다»** —
+   그 규칙은 source=dt_log · target=dt_inventory 라 이름 「dt_log_to_...」가 «맞습니다».
+   어긋난 것은 «target» 이 아니라 «source» 쪽 둘뿐입니다.
+⚠️ 그리고 앞의 둘도 «이름이 틀린 것»이라 단정하지 않겠습니다 — trigger 는 «dt_inventory» 가 맞습니다.
+   이름이 「trigger_to_target」을 뜻한다면 «맞는 이름»이고, 「source_to_target」이면 틀린 이름입니다.
+   어느 규약인지는 제가 정할 것이 아닙니다. ⛔ 개명 안 했습니다
