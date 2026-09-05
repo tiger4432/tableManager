@@ -7937,3 +7937,52 @@ mapper_reload_age_seconds    한 시간 전에 «재적재한» 루프
 판정 대기: 🔴 **Ⅱ-2 의 «목적지» ㉮/㉯/㉰ 중 하나** — 캐리어는 준비됐고 금지는 지켰습니다
           🔴 그리고 앞 보고의 ㉡ — fold 는 이미 있어서, `temporal_text` 로 갈아끼울지
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【8-b】 Ⅱ-4 «신원» 착지 — `de5b51e3`
+
+## 고친 쪽은 «읽는 쪽»입니다. 판정하신 그대로 — 만든 것이 «없습니다»
+```
+쓰는 쪽   retroactive.py:1313  table_name = RUN_EVENT_TABLE ("__retroactive__")
+          -> 그대로 뒀습니다. 그 컬럼은 관례상 비지 않아서 자리를 채운 것이고,
+             그 사실 자체는 기록입니다
+읽는 쪽   main.py 대기 트랜잭션 접기 — 그 문자열을 「이 트랜잭션이 건드리는 표」로 «올렸습니다»
+          -> 운영자가 그 표를 «찾으러 갑니다». 그 헛걸음이 비용입니다
+고친 것   통제 이벤트의 table_name 은 «표로 안 셉니다». 신원은 event_types 가 이미 들고 있습니다
+```
+
+## ⛔ «낱개»가 아니라 «부류»로 판정했습니다
+```
+❌ 안 한 것   `__retroactive__` 를 읽는 쪽에서 «문자열로» 비교 — 그러면 자리표시자가
+             읽는 쪽에도 생기고, 다음 통제 이벤트가 «같은 결함»을 들고 옵니다
+✅ 한 것      event_constants.CONTROL_EVENT_TYPES  — 이미 있는 frozenset 입니다
+             (SCHEDULER_RUN_NOW · RETROACTIVE_RUN · BROADCAST_RECOVERY …)
+             시험이 그 집합 «전건»으로 parametrize 됩니다 -> 하나로 좁히면 나머지가 빨개집니다
+```
+
+## 「신원을 지우는 것」이 되지 않게 «반대쪽»도 박았습니다
+```
+test_a_real_data_row_still_names_its_table          진짜 데이터 행은 «여전히» 표를 말합니다
+test_one_transaction_holding_both_...              한 트랜잭션에 둘이 섞이면
+                                                   진짜 표는 남고 «행 수는 2 그대로»
+=> 「표 이름을 전부 숨긴다」는 규칙이면 첫 단언은 통과하고 이 둘이 빨개집니다
+```
+
+## 돌린 시험
+```
+tests/test_a_control_event_names_no_table.py          8 통과 (신규 · 부류 전건 parametrize)
+tests/test_retroactive_admin.py · test_broadcast_recovery.py ·
+tests/test_queue_says_which_log_to_open.py · test_failed_outbox_says_since_when.py ·
+tests/test_chain_activity_is_visible.py               76 통과
+```
+
+## ⏭ 제 큐가 «비었습니다» — 판정 대기 셋만 남았습니다
+```
+Ⅱ-2   캐리어(_samples)는 준비됐고 «목적지»가 판정 대기 (앞 보고 ㉮/㉯/㉰)
+㉡     fold 는 이미 있어서 `temporal_text` 로 갈아끼울지 판정 대기
+㉠     pg 계수 스파이 — 값이 오면
+```
+
+판정 대기: Ⅱ-2 목적지 · ㉡ 대상 교체 여부 (둘 다 앞 보고에 선택지까지 적어 뒀습니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
