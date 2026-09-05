@@ -17,7 +17,7 @@
        파일을 텍스트로 잘라 재는 수밖에 없습니다 (map_editor2.html 이 이미 이 모양입니다).
        ⚠️ 순서가 계약입니다 -- 빌드가 싣던 순서가 tokens -> transfer_plan -> style 이고,
           style.css 가 «마지막»이어야 지금 화면과 같은 cascade 가 나옵니다. -->
-  <script type="module" crossorigin src="/assets/map_editor-BYL-mGui.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-DWB8Cu-v.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-f0ywbkU2.js">
@@ -25,7 +25,7 @@
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor-D6VuCMOe.css">
-  <link rel="stylesheet" crossorigin href="/assets/style-Db5ZjXn6.css">
+  <link rel="stylesheet" crossorigin href="/assets/style-BbdddHOh.css">
 </head>
 
 <body>
@@ -80,7 +80,7 @@
             </div>
             <!-- 메타데이터 기반 기존 맵 불러오기 버튼 -->
             <button type="button" id="btn-load-map" class="glass-btn w-full"
-              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; padding: 8px; margin-top: 4px;">📂
+              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; margin-top: 4px;">📂
               Load Existing Map</button>
             <!-- The 0.7rem note ("[📂 Load]는 항상 교체 로드입니다 …") was deleted: it sat below the
                  0.8rem fact floor and restated what the two buttons already say by being two
@@ -152,14 +152,10 @@
             <div class="control-group-vertical">
               <label>Map Rotation (회전)</label>
               <div style="display: flex; gap: 5px;">
-                <button type="button" class="glass-btn btn-rot active" data-rot="0"
-                  style="flex: 1; padding: 4px; justify-content: center;">0°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="90"
-                  style="flex: 1; padding: 4px; justify-content: center;">90°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="180"
-                  style="flex: 1; padding: 4px; justify-content: center;">180°</button>
-                <button type="button" class="glass-btn btn-rot" data-rot="270"
-                  style="flex: 1; padding: 4px; justify-content: center;">270°</button>
+                <button type="button" class="glass-btn btn-rot active" data-rot="0">0°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="90">90°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="180">180°</button>
+                <button type="button" class="glass-btn btn-rot" data-rot="270">270°</button>
               </div>
             </div>
             <!-- 관찰면 설정 -->
@@ -298,7 +294,7 @@
               <input type="number" id="phys-edge-margin" class="glass-input w-full" step="0.1" value="3.0" />
             </div>
             <button type="button" id="btn-apply-phys-geom" class="glass-btn"
-              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); padding: 6px; font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡
+              style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; width: 100%; justify-content: center; margin-top: 2px;">⚡
               Apply Physical Geometry</button>
           </div>
 
@@ -348,9 +344,9 @@
             <div id="selection-actions-container"
               style="display: none; align-items: center; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 15px;">
               <button id="btn-fill-selected" class="glass-btn success-glow"
-                style="padding: 4px 12px; font-size: 0.8rem;">🎨 Fill Selected</button>
+                >🎨 Fill Selected</button>
               <button id="btn-clear-selected" class="glass-btn hover-danger"
-                style="padding: 4px 12px; font-size: 0.8rem;">🧹 Clear Selected</button>
+                >🧹 Clear Selected</button>
             </div>
           </div>
           <div class="map-editor-toolbar__actions">
@@ -394,7 +390,7 @@
 
             <!-- Primary Save Action -->
             <button id="btn-push-map" class="glass-btn"
-              style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold; padding: 6px 20px;">⚡
+              style="background: var(--success-weak); border-color: var(--success); color: var(--success); font-weight: bold;">⚡
               Push Map Data</button>
             <!-- [2] 규격만 저장 (사용자 지시 2026-08-04: "맵 에디터에 메타만 저장하는 기능 필요").
                  새 패널도 모달도 아니고 ⚡ Push 바로 옆의 버튼 하나다. 새 라우트도 없다 —
@@ -402,7 +398,7 @@
                  규격 블록 전체로 넓혔을 뿐이고, 규격 객체는 Push와 **같은 조립기**
                  (`buildPushGridMetadata`)가 만든다. 대상은 지금 화면에 설정된 테이블·맵 키다. -->
             <button id="btn-save-map-spec" class="glass-btn"
-              style="border-color: var(--color-secondary); color: var(--color-secondary); padding: 6px 14px;"
+              style="border-color: var(--color-secondary); color: var(--color-secondary);"
               title="규격만 기록 — 셀은 하나도 쓰지 않습니다">📐 규격만 저장</button>
           </div>
         </div>

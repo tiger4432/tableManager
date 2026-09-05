@@ -1982,7 +1982,14 @@ body.resizing-active .history-sidebar {
   cursor: pointer;
   vertical-align: middle;
 }
+/* 🔴 이 셋은 «인라인»에서 여기로 왔습니다. 회전 토글은 «좁은 한 줄»을 넷이 나눠 쓰는
+   컨트롤이라 그 치수에 뜻이 있고, 뜻이 있는 차이는 «선언»에 사는 것이 맞습니다 —
+   인라인에 있으면 부품이 무엇을 정하든 이깁니다(오늘 세 번째로 확인된 부류).
+   기본형의 8px 16px 을 그대로 쓰면 네 칸이 줄을 넘칩니다. */
 .btn-rot {
+  flex: 1;
+  padding: 4px;
+  justify-content: center;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 .btn-rot.active {
