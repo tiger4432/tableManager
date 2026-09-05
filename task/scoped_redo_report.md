@@ -8102,3 +8102,62 @@ tests/test_envelope_refusals_carry_an_address.py           합계 30 통과
 판정 대기: 없음 (①로 답했고 한 칸만 이었습니다 — 새 표면 «0». 무르실 거면 한 줄 주십시오)
 다음: ㉡ `temporal_text` 계약
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【㉡' `temporal_text` 계약】 착지 — `ebde9b9d`
+
+## 지시대로 «갈아끼웠습니다» — fold 는 안 건드렸고, 템플릿만 가져왔습니다
+```
+템플릿   contracts/notation_fold/   (vectors.json · 기록된 기댓값 · 공허 방지 · 시끄러운 skip · shim)
+데이터   temporal_text 로 교체
+새 기제  «0» — 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」 그대로입니다
+```
+
+## pg 없이 «24개가 돕니다». 지시하신 「두 팔이 내는 SQL」이 그 축입니다
+```
+축1 파이썬 렌더    9케이스 + 통과 3 · 폭 고정(26) · 자기 출력에 멱등 ·
+                 🔴 «텍스트 정렬 순서 == 인스턴트 정렬 순서» (이 핀이 존재하는 이유 그 자체)
+축2 두 팔의 SQL   pg   to_char(timezone('UTC', probe.ts), 'YYYY-MM-DD HH24:MI:SS.US')
+                 sqlite  CAST(probe.ts AS VARCHAR)
+                 🔴 literal_binds 로 뜹니다 — 포맷이 «바인드 파라미터»라서,
+                    그것 없이 뜨면 `%(to_char_1)s` 를 채점하고 «포맷이 바뀌어도 동일»로 읽습니다
+                    그 함정 자체를 단언으로 박았습니다
+축3 pg 런타임      11 skip — 무엇이 막히고 누가 owner 이고 어떻게 푸는지 전부 적힌 skip
+```
+
+## 🔴 공허 방지 — 「빨개진 적 없는 계약은 아무것도 증명 못 한다」
+일부러 틀린 넷을 코퍼스에 먹여 «잡히는지» 단언합니다:
+```
+소수부를 «자르는» 렌더 · UTC 정규화를 «건너뛰는» 렌더 · `.MS`(3자리) · pg 에서 «맨 CAST»
+```
+그리고 코퍼스가 «어떤 실패 방식»을 덮는지도 체크리스트로 박았습니다 —
+정각(pg CAST 가 소수부를 버리는 그 자리) · 1마이크로초 · 오프셋 둘(하나는 «날짜»가 바뀝니다) · 한자리수 패딩.
+
+## ⚠️ fold 와 «다른 점 하나»를 정직하게 적었습니다
+```
+notation_fold 의 skip   「2026-08-04 PostgreSQL 18.3 에서 43×4 전건 일치」를 «인용»합니다
+이 계약의 skip          인용할 «기록된 통과가 없습니다» — pg 없이 썼습니다
+=> skip 문구에 「NOT YET MEASURED」라고 «적었습니다». 없는 측정을 인용하지 않겠습니다
+```
+
+## ⚠️ 이웃 파일에 빨강 하나 — 제 것이 아닙니다 («혼자 돌려도» 빨감)
+```
+server/tests/test_virtual_join_types.py::
+   test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+단독 실행    1 failed, 13 passed     <- 제 커밋 «없이도» 빨갛습니다
+제 이번 diff  새 파일 셋뿐입니다 (contracts/temporal_text/ 2 + shim 1). 서버 코드 «0줄»
+📌 다만 그 파일이 temporal_text 를 «유일하게» 재던 곳이라 인접해서 적어 둡니다
+```
+
+## 돌린 시험
+```
+contracts/temporal_text/                       24 통과 · 11 skip
+server/tests/test_temporal_text_contract.py    25 통과 (shim 자기 점검 포함) · 11 skip
+server/tests/test_notation_fold_contract.py    변동 없음 (40 통과 · 4 skip)
+```
+
+판정 대기: 없음
+다음: 제 큐가 «비었습니다». 8-a·8-b·㉡' 다 닫혔고, 남은 것은 ㉠(값 대기)과 6번(소유자)입니다
+     새 지시 없으면 «대기»합니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
