@@ -353,6 +353,14 @@ class RetroactiveRun(Base):
     error = Column(String, nullable=True)
     queued_at = Column(DateTime(timezone=True), server_default=func.now())
     started_at = Column(DateTime(timezone=True), nullable=True)
+    # 🔴 WHO IS RUNNING IT — «host/pid», stamped when the run starts.
+    # A run row can outlive the process that owns it: a scheduler killed mid-run leaves
+    # `running` behind forever and nothing here could say whether a thread still existed.
+    # Without an identity, "it died" and "it is slow" are the same row, and reaping on
+    # that basis would turn "never finishes" into "two of them finish at once", which is
+    # worse. This records; it does not judge.
+    # ⚠️ NULL on rows written before this column existed, and NULL is "unknown", not "none".
+    runner = Column(String(160), nullable=True)
     # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.
     last_progress_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)

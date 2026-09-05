@@ -858,6 +858,16 @@ def in_flight(db, now=None, stall_after=None):
         "queued_at": row.queued_at.isoformat() if row.queued_at else None,
         "state": row.state,
         "moving": moving,
+        # 🔴 «WHO» IS HOLDING THE GATE, and it travels raw. A run row can outlive its
+        # process, so an operator asking "is anything actually doing this" had nothing to
+        # look at. NULL means the row predates this column - unknown, not "nobody".
+        "runner": row.runner,
+        # 🔴 THE GATE'S OWN STATE, SAID OUT LOUD. `moving` was computed here and thrown
+        # away: the response carried "a run is in flight" and the screen could not tell
+        # "about to finish" from "stopped and blocking everything behind it". Those are
+        # the three states the owner asked to be able to see, and the second one is the
+        # one that looks like nothing at all.
+        "gate_blocked": moving in (MOVING_STALLED, MOVING_UNREPORTED),
         "no_progress_seconds": None if since is None else round(since, 1),
         "stall_after_seconds": stall_after,
         "processed_rows": row.processed_rows,
@@ -1251,6 +1261,26 @@ def execute(payload: dict, log=logger.info) -> dict:
     return out
 
 
+def runner_identity() -> str:
+    """Who is running this, as `host/pid`.
+
+    🔴 READ WHEN THE RUN STARTS, NOT AT IMPORT. A process that forks, or one re-executed
+    in place, would otherwise stamp the identity of whatever imported this module first -
+    and an identity that can be inherited is worse than none, because it looks specific.
+
+    ⚠️ IT RECORDS, IT DOES NOT JUDGE. Nothing reaps a run on the strength of this. Without
+    an identity "it died" and "it is slow" are the same row; with one they still are,
+    until somebody decides what evidence of death looks like. This is the material for
+    that decision, not the decision.
+    """
+    import os as _os
+    import socket as _socket
+    try:
+        return "%s/%d" % (_socket.gethostname(), _os.getpid())
+    except Exception:                                            # noqa: BLE001
+        return "?/%d" % _os.getpid()
+
+
 def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None):
     """Move the run row. On its OWN session, and never fatal.
 
@@ -1271,6 +1301,7 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
         if started:
             values["started_at"] = now
             values["last_progress_at"] = now
+            values["runner"] = runner_identity()
         if finished:
             values["finished_at"] = now
         if result is not None:

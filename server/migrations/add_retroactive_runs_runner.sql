@@ -1,0 +1,22 @@
+-- The identity of whatever is running a retroactive operation.
+--
+-- Declared in `server/database/models.py` (RetroactiveRun.runner) so that NEW databases
+-- get it from `create_all`. `create_all` never adds a COLUMN to a table that already
+-- exists, so every EXISTING database - production included - needs this file run once.
+--
+-- WHY IT EXISTS. A run row is written on its own session precisely so it survives the
+-- operation's transaction, which also means it OUTLIVES the process: a scheduler killed
+-- mid-run leaves `state = 'running'` behind forever, `finished_at` is never stamped, and
+-- the gate that row holds never reopens. Measured 2026-09-05, nothing on the row said
+-- which process owned it - so "it died" and "it is slow" were the same row.
+--
+-- ⛔ AND NOTHING JUDGES ON IT YET. Automatic reaping was explicitly NOT built: without an
+-- identity, reaping turns "never finishes" into "two of them run at once", and the second
+-- is worse. This column is what makes that judgement possible later; it is not the
+-- judgement.
+--
+-- NULL on every row written before this ran, and NULL means "unknown", not "nobody".
+--
+-- Additive and idempotent: no rewrite, no lock beyond the catalogue update.
+
+ALTER TABLE retroactive_runs ADD COLUMN IF NOT EXISTS runner VARCHAR(160);
