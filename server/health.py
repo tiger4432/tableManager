@@ -459,3 +459,66 @@ def probe_outbox(db):
     out["undelivered_oldest_age_seconds"] = (
         round(float(row[0]), 2) if row and row[0] is not None else None)
     return out
+
+
+#: The four states a declared process can be in. Three of them were obvious and the fourth
+#: is the one that gets forgotten - twice today, in two different lists.
+ROSTER_RUNNING = "running"        # declared, beating
+ROSTER_STARTING = "starting"      # declared, no beat YET - the launcher started it moments ago
+ROSTER_DOWN = "down"              # declared, no beat and long past the point one was due
+ROSTER_OFF_ROSTER = "off_roster"  # beating, but nothing declares it
+
+
+def roster_states(roster, heartbeats, now=None, grace=None):
+    """Declared processes x heartbeats -> one state each. Four, not three.
+
+    🔴 THE FOURTH STATE IS "STARTING", AND IT IS NOT HYPOTHETICAL. A process writes no
+    heartbeat file until its first beat, so between the launcher starting it and that beat
+    there is a window with a declaration and no heartbeat. Calling that "down" makes
+    /health answer 503 every single restart - measured twice on 2026-09-05 - and an
+    instrument that goes red on the most ordinary operation is one nobody reads.
+
+    🔴 AND "OFF ROSTER" IS REPORTED, NOT HIDDEN. A heartbeat nobody declares is how this
+    box came to be permanently unhealthy: graph at 21 days, ledger at 5, watcher at 9,
+    all of them things that ran once and stayed on the roll forever. Dropping them
+    silently would trade a false alarm for a blind spot, which is the worse half.
+
+    ⚠️ THE GRACE IS THE EXISTING THRESHOLD, NOT A NEW ONE. `DEFAULT_STALE_AFTER_SEC` is
+    already this system's answer to "long enough that silence means something", and the
+    undelivered sweep already uses the same shape - a young row is left alone rather than
+    judged. A second number here would be a second thing to tune.
+
+    ⚠️ AND WHEN IT REALLY CANNOT BE TOLD, IT SAYS SO. `starting` means "no beat yet, and
+    not long enough to conclude anything" - not "healthy". A roster entry with no start
+    time cannot be aged, so it stays `starting` rather than being called down on a guess.
+
+    `roster` is {name: started_epoch_or_None}; `heartbeats` is `heartbeat.read_all()`.
+    """
+    import time as _time
+
+    from utils import heartbeat as _hb
+
+    now = _time.time() if now is None else now
+    grace = _hb.DEFAULT_STALE_AFTER_SEC if grace is None else grace
+
+    out = {}
+    for name, started_at in (roster or {}).items():
+        entry = (heartbeats or {}).get(name)
+        if entry is not None and not entry.get("stale"):
+            out[name] = {"state": ROSTER_RUNNING, "age_seconds": entry.get("age_seconds")}
+            continue
+        # No beat, or a stale one. Young enough that no beat is expected yet?
+        since_start = None if started_at is None else max(0.0, now - float(started_at))
+        if entry is None and (since_start is None or since_start <= grace):
+            out[name] = {"state": ROSTER_STARTING, "since_start_seconds": since_start,
+                         "grace_seconds": grace}
+            continue
+        out[name] = {"state": ROSTER_DOWN,
+                     "age_seconds": None if entry is None else entry.get("age_seconds"),
+                     "since_start_seconds": since_start}
+
+    for name in (heartbeats or {}):
+        if name not in (roster or {}):
+            out[name] = {"state": ROSTER_OFF_ROSTER,
+                         "age_seconds": (heartbeats[name] or {}).get("age_seconds")}
+    return out
