@@ -242,6 +242,29 @@
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
+/* 🔴 「집는 이의 생사」 is the first fact on this line and reads as one -- the queue
+       length cannot separate 「about to run」 from 「nothing is picking up」 and this can.
+       ⚠️ It is NOT the danger colour: the age is a number to read, not a verdict, and
+       painting it red would be the invented threshold the part refuses to compute. */
+    .chain-queue-headline-pickup {
+      color: var(--text);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .chain-queue-headline-basis,
+    .chain-queue-headline-ahead {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    /* 「도는 중인데 주인이 없음」 -- decided by the heartbeat, and the one line here that IS
+       a fault rather than a number. */
+    .chain-queue-headline-orphan {
+      color: var(--danger);
+      font-weight: 600;
+      white-space: nowrap;
+    }
     .chain-queue-truncated {
       margin: 0 0 10.2px;
       padding: 6.8px 10.2px;
@@ -1397,6 +1420,8 @@
     .chain-queue-headline-fail,
     .chain-queue-headline-running,
     .chain-queue-headline-log,
+    .chain-queue-headline-basis,
+    .chain-queue-headline-ahead,
     .chain-queue-row-owners,
     .ledger-sources-sub,
     .ledger-sources-reason,
@@ -1615,7 +1640,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-C0f2eun9.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BZyeCd8y.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-f0ywbkU2.js">
