@@ -1130,6 +1130,9 @@ const FLOORS = new Map([
   // 「거절」 and 「진단 못 냄」 are different instructions -- one has a DDL to run and the
   // other has no answer yet -- and shape-level rejections are counted with the rest
   ['join_verification_harness.mjs', 24],
+  // 「declared impossible」 and 「merely empty」 are not one row, and the totals keep them
+  // apart -- mixing them sends an operator looking for data the declaration forbids
+  ['gap_catalogue_harness.mjs', 26],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
