@@ -466,10 +466,10 @@ function availabilityOfPool(pool) {
   }
   const hit = block.entries.find(e => e && Number(e.bin) === Number(pool.bin));
   if (!hit) {
-    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: '이 맵에 해당 BIN이 없습니다 · 소진된 것이 아닙니다.' };
   }
   if (hit.status === 'bin_absent') {
-    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 — 소진된 것이 아닙니다.' };
+    return { status: 'bin_absent', value: null, reliable: false, bound: null, inactive, reason: hit.reason || '이 맵에 해당 BIN이 없습니다 · 소진된 것이 아닙니다.' };
   }
   const reasons = [];
   if (hit.reliable !== true) reasons.push(hit.reason || '서버 판정: 이 BIN의 잔여 신뢰 불가');
