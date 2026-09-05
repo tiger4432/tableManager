@@ -7548,3 +7548,59 @@ BaseSourcePreparer 의 공개 표면 «전부»:
 판정 대기: 🔴 **마디 2 — 「클래스가 자기 산출을 말한다」를 «올릴까요»?** 측정은 「안다」로 끝났고
           다음 걸음은 «코드 변경»이라 게이트에 없습니다. 지시 주시면 그 한 칸만 놓겠습니다
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금 (중복으로 걸었던 baelm14dp 는 정지시켰습니다)
+
+---
+
+# 【(a) 식별 바인딩용 «노드 따로»】 착지 — `06bd33a9`
+
+## 게이트 셋 — 전부 «수»로
+```
+① 기존 선언 전건 통과   커밋된 샘플, «식별키 슬롯 안»의 바인딩:
+                     column «64» · constant «13» · entity «0»
+                     -> 판정서의 「column 64 · constant 13」과 «정확히 일치»합니다
+                     -> 좁혀도 «깨질 선언이 0» 입니다
+   📌 컴팩트 전에 제가 「column 107 · entity 38 · constant 13」을 내며 「판정의 수와 다르다」고
+      적었는데, 그건 제가 «모든» 바인딩을 센 것이었습니다. 슬롯 안만 세면 판정의 수가 나옵니다.
+      판정의 수가 맞았고 제 계수기가 다른 질문에 답하고 있었습니다
+
+② 식별키 칸의 목록이 둘   identity_binding_kinds = ["column", "constant"]
+   🔴 그리고 이 목록을 «믿지 않고 쟀습니다» — binding_kinds 의 셋을 각각 식별키 자리에
+      «검증기에 먹여» 보고, «깨끗하게 돌아온 것»과 목록이 같은지 단언합니다
+      entity -> invalid_binding "entity identity keys allow only column or constant bindings"
+      => 넷째 종류가 나중에 생기면 이 게이트가 «배우거나 빨개집니다». 조용히 넘어가지 않습니다
+
+③ 여전히 «바인딩 레코드»   kind: "record" · fields = [kind, column, value] · 한 층
+                        그 밑에 `use` 도 `of` 도 «없습니다» -> 내려갈 곳이 없습니다
+                        바깥 칸은 여전히 셋 전부 제공 (역할 재료로서의 entity 는 평범합니다)
+```
+
+## 「능력을 잃는 것이 아니다」를 «단언»으로 박았습니다
+```
+test_the_kind_that_was_offered_is_the_one_that_is_refused
+   검증기가 entity 를 «거절하지 않게 되면» 이 좁히기는 «진짜 손실»이 되고, 그때 빨개집니다
+=> 좁히기의 정당성이 «검증기의 거절»에 매여 있습니다. 그 거절이 사라지면 알게 됩니다
+```
+
+## 스켈레톤 정합 게이트가 낱말 하나를 배웠습니다 — «좁힘»
+```
+문제   검증기 함수는 «하나»(_validate_binding)라 두 노드가 «한 앵커»에 놓입니다
+      역방향 지도(ANCHORS)가 둘째를 이름 댈 수 없습니다
+답    NARROWED = {"def:identity_binding": "def:binding"}
+      좁힌 노드는 «칸을 덜» 가질 수만 있고 «더» 가질 수 없다 -> invented 는 재고 missing 은 면제
+      (거기서 전건을 요구하면 «검증기가 거절하는 그 칸»을 요구하게 됩니다)
+```
+
+## 돌린 시험
+```
+tests/test_identity_keys_are_not_offered_an_entity.py    9 통과 (신규)
+tests/test_ledger_skeleton.py                              통과
+tests/test_form_does_not_offer_references.py               통과
+tests/test_the_form_offers_an_implementation_name.py      10 통과
+tests/test_ontology_config_explorer.py                    54 통과 / 2 빨강 «그대로»
+   ⚠️ 그 둘은 앞 보고에 적은 «라이브 선언을 읽는» 시험 둘로 동일합니다. 늘지 않았습니다
+```
+
+판정 대기: 🔴 마디 2 — 「클래스가 자기 산출을 말한다」를 놓을까요 (앞 보고)
+          다음 큐 항목은 8-a/8-b 인데 «자리 목록»을 제가 못 들고 있습니다 —
+          Ⅱ-2 · Ⅳ-3 · Ⅱ-4 가 어느 파일의 무엇인지 한 줄 주시면 바로 갑니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
