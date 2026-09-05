@@ -34,6 +34,9 @@ import { joinVerificationView } from './join_verification.js';
 // The gap detector's list. Free without an argument -- it reads the declaration and no
 // rows -- which is why it may sit on the same refresh as the two above.
 import { gapCatalogueView } from './gap_catalogue.js';
+// The plan's own refusals, with what to change. Admin-side because the route is gated and
+// the screen that shows the one-word version cannot send a token.
+import { planDryRunView } from './plan_dry_run.js';
 // [Queue 25] 소급 적용(retroactive/backfill). 같은 규율의 두 번째 표면 — 서버가 문장을 만들고
 // 여기서는 그대로 렌더한다. 특히 **숫자는 서버가 붙인 라벨과 함께가 아니면 화면에 나오지
 // 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
@@ -2150,6 +2153,72 @@ function renderGapCatalogue(view) {
   }
 }
 
+/** 🔴 WHY A DECLARATION IS REFUSED, NOT JUST THAT IT IS.
+ *
+ * ⚠️ Read-only and row-free: the route resolves models and columns and queries no data,
+ *    which is why it sits on an ordinary refresh.
+ * ⛔ No sentence is composed here -- `bonding_plan.explain_binding_refusal` is the one
+ *    generator, and the server says so explicitly.
+ */
+async function refreshPlanDryRun() {
+  const body = byId('plan-dry-run-body');
+  if (!body) return;
+  let view;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/transfer-plan/dry-run`);
+    view = res.ok
+      ? planDryRunView(await res.json())
+      : planDryRunView(null,
+          { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
+  } catch (e) {                                                          // noqa
+    view = planDryRunView(null, { failed: String(e && e.message ? e.message : e) });
+  }
+  renderPlanDryRun(view);
+}
+
+function renderPlanDryRun(view) {
+  const body = byId('plan-dry-run-body');
+  if (!body) return;
+  body.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'join-verify-head';
+  head.append(cfgEl('span', 'join-verify-label', '계획 선언'));
+  head.append(cfgEl('span', 'join-verify-total', view.text));
+  if (view.reason) head.append(cfgEl('span', 'join-verify-reason', view.reason));
+  body.append(head);
+  for (const row of view.roles) {
+    // 🔴 통과한 역할은 «줄을 안 씁니다». 스물이 통과하고 하나가 거절이면 그 하나가
+    //    스무 줄 아래에 묻히고, 그러면 이 블록이 답하려던 질문이 사라집니다.
+    if (row.state === 'accepted') continue;
+    const line = document.createElement('div');
+    line.className = 'join-verify-row';
+    line.dataset.state = row.state === 'refused' ? 'refused' : 'undiagnosed';
+    line.append(cfgEl('code', '', row.where || row.role));
+    // 🔴 THE VERDICT WORD IS THE SERVER'S, RENDERED. A table from its reason names to
+    //    Korean labels stood here for one build and the seam contract (INV-F9-7) refused
+    //    it: the server names the reason and composes the sentence, and a client that
+    //    writes the names down goes quiet on the day a new one is added.
+    if (row.reason) line.append(cfgEl('span', 'join-verify-verdict', row.reason));
+    else if (row.state !== 'refused') {
+      line.append(cfgEl('span', 'join-verify-verdict', '판정 없음'));
+    }
+    if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
+    // 🔴 「무엇을 바꾸나」 — 틀린 선언을 지우면 무엇이 유도되는지.
+    for (const fix of row.removable) {
+      line.append(cfgEl('code', 'join-verify-ddl',
+                        `${fix.role} 선언 삭제 → ${fix.wouldDerive} 유도`));
+    }
+    // 해석된 컬럼은 «출처»와 함께. 이름만으로는 지워도 되는 것이 구별되지 않습니다.
+    for (const col of row.columns) {
+      if (col.exists === false) {
+        line.append(cfgEl('span', 'join-verify-key',
+                          `${col.role} · ${col.column} · 표에 없음`));
+      }
+    }
+    body.append(line);
+  }
+}
+
 async function refreshConfigResolve(force = false) {
   const now = Date.now();
   // A token that ARRIVED since the last attempt is a changed cause, not a timer tick. Without
@@ -2183,6 +2252,7 @@ async function refreshConfigResolve(force = false) {
     // one-word summary stays exactly as it was.
     refreshJoinVerification();
     refreshGapCatalogue();
+    refreshPlanDryRun();
   } catch (e) {
     // A failed read is NOT "the config is fine" - it leaves a dash and a reason. Which reason
     // matters: a 404 is not a failure to reach the server, it is the server saying it does not

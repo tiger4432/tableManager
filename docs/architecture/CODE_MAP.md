@@ -3246,7 +3246,9 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | `client2/src/pickup_state.js` | 84 | `PICKUP_UNREAD` · `ageText` · `pickupState` | 「집는 이가 살아 있나」 — 대기는 «두 봉우리»라 줄 길이로는 안 갈린다. `/admin/chain/queue` 의 `queue` 버킷(안 읽히던 것)이 재료 |
 
-🔴 이 열셋이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
+| `client2/src/plan_dry_run.js` | 110 | `DRY_RUN_UNREAD` · `planDryRunView` | 「왜 거절됐고 «무엇을 바꾸나»」 — `GET /admin/transfer-plan/dry-run` 의 첫 소비자. 🔴 상태는 «불리언»으로만 가른다 (계약 INV-F9-7) |
+
+🔴 이 열넷이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
    못 읽은 수는 `—` 이고, 0 은 «그 0 이 무엇의 0 인지»를 옆에 답니다.
 
 🆕⑪ **[2026-08-23] 이 구간에 화면 결함 다섯이 닫혔고, 그중 넷이 「기본값·유도가 «언제» 사람의 일이 되는가」라는 한 질문이었다.**
