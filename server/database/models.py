@@ -75,6 +75,27 @@ class AuditLog(Base):
             postgresql_where=text("source_name = 'user'"),
         ),
 
+        # [dashboard] "how many edits today", over ALL audit rows. The index above cannot
+        # serve it: it is PARTIAL on `source_name = 'user'`, so a count that includes
+        # machine writes falls back to reading the table.
+        #
+        # MEASURED 2026-09-05 on 3,897,752 rows of which 2,800 were written today:
+        #   none    Parallel Seq Scan   468.8 ms
+        #   BRIN    Bitmap Heap Scan      1.2 ms      72 kB
+        #   btree   Index Scan            0.7 ms      71 MB
+        #
+        # BRIN because the half-millisecond between the two is noise against a 469 ms
+        # scan, and a thousandfold size difference is not: a btree here is 71 MB that
+        # every audit write maintains, on the table this system writes to most - the same
+        # argument the [C-3] note above uses to retire indexes. It fits because the column
+        # is physically almost ordered (correlation 0.995: audit rows are appended in time
+        # order and never updated), which is the condition BRIN exists for.
+        #
+        # ⚠️ ALSO IN server/migrations/add_audit_logs_timestamp_brin_index.sql -- fix both
+        # places. create_all does not add an index to a table that already exists, so that
+        # file is the only path onto an existing database.
+        Index("idx_audit_logs_timestamp_brin", "timestamp", postgresql_using="brin"),
+
         # [history keyset] The two indexes that make a row click cost O(page)
         # instead of O(everything ever written to that row).
         #

@@ -1,0 +1,46 @@
+-- The index `/dashboard/summary`'s "edits today" count needs.
+--
+-- Declared in `server/database/models.py` (AuditLog.__table_args__) so that NEW
+-- databases get it from `create_all`. `create_all` never adds an index to a table
+-- that already exists, so every EXISTING database - production included - needs
+-- this file run once.
+--
+-- WHAT WAS WRONG. `main.get_dashboard_summary` counts the audit rows written since
+-- local midnight. `audit_logs` already carries a timestamp index, but it is PARTIAL
+-- (`idx_audit_user_recorrection ... WHERE source_name = 'user'`), so a count over
+-- ALL audit rows cannot use it and the planner fell back to reading the table.
+--
+-- MEASURED 2026-09-05 on 3,897,752 rows, of which 2,800 were written today (0.07%):
+--
+--   before   Parallel Seq Scan on audit_logs   cost 218,016   468.8 ms
+--   BRIN     Bitmap Heap Scan                  cost   9,284     1.2 ms      72 kB
+--   btree    Index Scan                                         0.7 ms      71 MB
+--
+-- WHY BRIN AND NOT BTREE. Both answer in about a millisecond against a 469 ms
+-- scan, so the half-millisecond between them is noise at this scale. What is not
+-- noise is a thousandfold difference in size and what that size costs: a btree
+-- over this column would be a 71 MB structure that EVERY audit write has to
+-- maintain, on the table this system writes to most (`models.py`'s [C-3] note
+-- retired other indexes on exactly that argument). BRIN fits because the column is
+-- physically almost ordered - `correlation(timestamp) = 0.995`, since audit rows
+-- are appended in time order and never updated - which is the condition BRIN is
+-- for. If that correlation ever collapses (a bulk backfill inserting old
+-- timestamps into new pages), this index degrades toward a scan and the answer
+-- would be to REINDEX rather than to have chosen btree.
+--
+-- CONCURRENTLY, and that is not decoration: three lanes share this database.
+-- Verified 2026-09-05 by sampling `pg_locks` for the whole build - the only mode
+-- held on `audit_logs` was ShareUpdateExclusiveLock, which does not block INSERT.
+--
+-- CONCURRENTLY cannot run inside a transaction block. Run this file with psql (or
+-- any client in autocommit); do NOT wrap it in BEGIN/COMMIT.
+--
+-- If a build is interrupted it leaves an INVALID index behind. Check with:
+--
+--   SELECT c.relname, i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+--   WHERE c.relname = 'idx_audit_logs_timestamp_brin';
+--
+-- and if `indisvalid` is false, DROP INDEX CONCURRENTLY it and run this again.
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_logs_timestamp_brin
+    ON audit_logs USING brin ("timestamp");
