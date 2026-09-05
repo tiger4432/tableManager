@@ -1133,6 +1133,9 @@ const FLOORS = new Map([
   // 「declared impossible」 and 「merely empty」 are not one row, and the totals keep them
   // apart -- mixing them sends an operator looking for data the declaration forbids
   ['gap_catalogue_harness.mjs', 26],
+  // the door: a NEW declaration has no plan rows, so the skeleton has to say what the
+  // square wants -- and 「plan not arrived」, 「plan empty」 and 「shape unreadable」 are three
+  ['form_demand_harness.mjs', 22],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

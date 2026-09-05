@@ -1001,6 +1001,14 @@
 #ontology-explorer-root .oe-field-input,
 #ontology-explorer-root .oe-field-select,
 .oe-field-select { font-size: 14px; }
+/* 🔴 WHO IS SPEAKING FOR A BOX THE PLAN HAS NO ROW FOR. Same column as the plan's own
+   state chip, because it answers the same question -- what does this square want -- just
+   from the skeleton instead. ⚠️ 「필수」 is the warning colour and 「모름」 is not: a demand
+   nobody stated must not look like one that was. */
+#ontology-explorer-root .oe-demand--warn { color: var(--oe-warn); }
+#ontology-explorer-root .oe-demand--muted { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-demand--danger { color: var(--oe-warn); font-weight: 600; }
+
 /* 🔴 THE DECLARED KEY, AND WHAT THE DATA SAID ABOUT IT -- BESIDE THE DEFAULT IT JUDGES.
    The row's ground already says where the ordering default came from; this says whether
    that ground survives measurement. Colour carries the verdict and the words carry the
