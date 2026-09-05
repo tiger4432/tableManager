@@ -31,6 +31,9 @@ import {
 // approve it. Two routes because the approval condition lives in `pg_index`, which the
 // resolve report cannot read without a session.
 import { joinVerificationView } from './join_verification.js';
+// The gap detector's list. Free without an argument -- it reads the declaration and no
+// rows -- which is why it may sit on the same refresh as the two above.
+import { gapCatalogueView } from './gap_catalogue.js';
 // [Queue 25] 소급 적용(retroactive/backfill). 같은 규율의 두 번째 표면 — 서버가 문장을 만들고
 // 여기서는 그대로 렌더한다. 특히 **숫자는 서버가 붙인 라벨과 함께가 아니면 화면에 나오지
 // 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
@@ -2084,6 +2087,67 @@ function renderJoinVerification(view) {
   }
 }
 
+/** 🔴 WHAT THE DECLARATION SAYS SHOULD BE THERE AND THE LEDGER HAS NOT GOT.
+ *
+ * The route had no caller, so its refusal message sent people to a spec that explains
+ * what a name MEANS while nobody could see which of their own gaps it was.
+ *
+ * 🔴 Three of the four facts the detector knows, and the third is why this exists:
+ * a gap the declaration makes IMPOSSIBLE and a gap that is merely empty look identical
+ * on screen, and only one of them is worth looking for data about.
+ * ⛔ The vacuousness is not computed here -- the detector already knows it, and a
+ *    second derivation would drift from the first the day the declaration changes.
+ *
+ * ⚠️ Asked WITHOUT `name`, which reads the declaration and no rows. Measuring all
+ *    twenty at once is ~30s by the server's own note; the list is free and counting is
+ *    what costs, so counting is not done here.
+ */
+async function refreshGapCatalogue() {
+  const body = byId('gap-catalogue-body');
+  if (!body) return;
+  let view;
+  try {
+    const res = await fetch(`${API_BASE}/api/ledger/gaps`);
+    const payload = await res.json().catch(() => null);
+    // 🔴 A 503 here is the declaration and the spec DISAGREEING -- an author's
+    //    question, not a failed request -- and the server's sentence already names the
+    //    form, the type and the predicate. It is carried, never rewritten.
+    view = res.ok
+      ? gapCatalogueView(payload)
+      : gapCatalogueView(null, {
+          refusal: (payload && payload.detail && typeof payload.detail === 'object')
+            ? payload.detail
+            : { message: `server refused (${res.status})` } });
+  } catch (e) {                                                          // noqa
+    view = gapCatalogueView(null);
+  }
+  renderGapCatalogue(view);
+}
+
+function renderGapCatalogue(view) {
+  const body = byId('gap-catalogue-body');
+  if (!body) return;
+  body.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'join-verify-head';
+  head.append(cfgEl('span', 'join-verify-label', '원장 격차'));
+  head.append(cfgEl('span', 'join-verify-total', view.text));
+  if (view.reason) head.append(cfgEl('span', 'join-verify-reason', view.reason));
+  body.append(head);
+  for (const row of view.rows) {
+    const line = document.createElement('div');
+    line.className = 'join-verify-row';
+    // 🔴 공허한 것은 «상태»가 다릅니다 -- 찾으러 갈 것이 없는 줄입니다.
+    line.dataset.state = row.vacuous ? 'undiagnosed' : 'refused';
+    line.append(cfgEl('code', '', row.name));
+    line.append(cfgEl('span', 'join-verify-key', row.side));
+    if (row.type) line.append(cfgEl('span', 'join-verify-key', row.type));
+    line.append(cfgEl('span', 'join-verify-verdict', row.vacuous ? '공허' : '열림'));
+    if (row.action) line.append(cfgEl('span', 'join-verify-detail', row.action));
+    body.append(line);
+  }
+}
+
 async function refreshConfigResolve(force = false) {
   const now = Date.now();
   // A token that ARRIVED since the last attempt is a changed cause, not a timer tick. Without
@@ -2116,6 +2180,7 @@ async function refreshConfigResolve(force = false) {
     // Asked beside it, never instead of it. The two answer different questions and the
     // one-word summary stays exactly as it was.
     refreshJoinVerification();
+    refreshGapCatalogue();
   } catch (e) {
     // A failed read is NOT "the config is fine" - it leaves a dash and a reason. Which reason
     // matters: a 404 is not a failure to reach the server, it is the server saying it does not
