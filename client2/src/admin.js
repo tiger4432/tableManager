@@ -26,6 +26,11 @@ import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } 
 import {
   buildConfigResolveView, buildDryRunView, CHROME, fetchFailureLine,
 } from './config_resolve_view.js';
+// The other half of the same question: `/admin/config/resolve` says whether a virtual-join
+// declaration is VALID, and this says whether it is APPROVED -- plus the DDL that would
+// approve it. Two routes because the approval condition lives in `pg_index`, which the
+// resolve report cannot read without a session.
+import { joinVerificationView } from './join_verification.js';
 // [Queue 25] 소급 적용(retroactive/backfill). 같은 규율의 두 번째 표면 — 서버가 문장을 만들고
 // 여기서는 그대로 렌더한다. 특히 **숫자는 서버가 붙인 라벨과 함께가 아니면 화면에 나오지
 // 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
@@ -2005,6 +2010,80 @@ function failureFactOf(res) {
   };
 }
 
+/** 🔴 THE HALF `/admin/config/resolve` CANNOT ANSWER, ASKED ON THE SAME REFRESH.
+ *
+ * The resolve report says whether a virtual-join declaration is VALID; whether it is
+ * APPROVED needs `pg_index`, so a second route answers it -- and carries the DDL that
+ * would approve it. That route had no caller, so the screen showed a word and the fix
+ * sat on the server unread.
+ *
+ * ⚠️ Cheap on purpose: the server reads the catalog and counts no rows, so its cost does
+ *    not grow with the table. That is why it may sit on a refresh at all.
+ * ⛔ A failure never blanks the resolve line beside it. It draws 「모름」 with its reason,
+ *    because 「못 물어봤다」 and 「승인 안 됐다」 are opposite instructions.
+ */
+async function refreshJoinVerification() {
+  const body = byId('join-verify-body');
+  if (!body) return;
+  let view;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/config/virtual-join/verify`);
+    view = res.ok
+      ? joinVerificationView(await res.json())
+      : joinVerificationView(null,
+          { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
+  } catch (e) {                                                          // noqa
+    view = joinVerificationView(null, { failed: String(e && e.message ? e.message : e) });
+  }
+  renderJoinVerification(view);
+}
+
+function renderJoinVerification(view) {
+  const body = byId('join-verify-body');
+  if (!body) return;
+  body.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'join-verify-head';
+  head.append(cfgEl('span', 'join-verify-label', '조인 승인'));
+  head.append(cfgEl('span', 'join-verify-total', view.text));
+  body.append(head);
+  if (!view.read) {
+    // 못 물어봤거나 못 받았습니다. 사유를 답니다 — 사유 없는 「모름」은 고칠 자리가 없습니다.
+    if (view.reason) head.append(cfgEl('span', 'join-verify-reason', view.reason));
+    return;
+  }
+  for (const row of view.rows) {
+    const line = document.createElement('div');
+    line.className = 'join-verify-row';
+    line.dataset.state = row.state;
+    line.append(cfgEl('code', '', row.name));
+    line.append(cfgEl('span', 'join-verify-key', row.joinKey.join(' · ')));
+    if (row.state === 'accepted') {
+      line.append(cfgEl('span', 'join-verify-verdict', '승인'));
+    } else if (row.state === 'refused') {
+      line.append(cfgEl('span', 'join-verify-verdict', '거절'));
+      // 🔴 서버의 문장 그대로. 여기서 지으면 같은 거부가 두 화면에서 달라집니다.
+      if (row.detail) line.append(cfgEl('span', 'join-verify-detail', row.detail));
+      // 🔴 그리고 «무엇을 바꾸나» — 이것이 한 낱말이 못 하던 일입니다.
+      if (row.ddl) line.append(cfgEl('code', 'join-verify-ddl', row.ddl));
+    } else {
+      line.append(cfgEl('span', 'join-verify-verdict', '진단 못 냄'));
+    }
+    // 접기는 이 조인만 다른 인덱스를 요구하는 «이유»입니다.
+    for (const fold of row.folded) line.append(cfgEl('span', 'join-verify-fold', fold));
+    body.append(line);
+  }
+  for (const bad of view.invalid) {
+    const line = document.createElement('div');
+    line.className = 'join-verify-row';
+    line.dataset.state = 'invalid';
+    line.append(cfgEl('code', '', bad.subject));
+    line.append(cfgEl('span', 'join-verify-verdict', '선언 거절'));
+    if (bad.detail) line.append(cfgEl('span', 'join-verify-detail', bad.detail));
+    body.append(line);
+  }
+}
+
 async function refreshConfigResolve(force = false) {
   const now = Date.now();
   // A token that ARRIVED since the last attempt is a changed cause, not a timer tick. Without
@@ -2034,6 +2113,9 @@ async function refreshConfigResolve(force = false) {
     dryRunByRule.clear();
     configResolveView = buildConfigResolveView(JSON.parse(raw));
     renderConfigResolve();
+    // Asked beside it, never instead of it. The two answer different questions and the
+    // one-word summary stays exactly as it was.
+    refreshJoinVerification();
   } catch (e) {
     // A failed read is NOT "the config is fine" - it leaves a dash and a reason. Which reason
     // matters: a 404 is not a failure to reach the server, it is the server saying it does not

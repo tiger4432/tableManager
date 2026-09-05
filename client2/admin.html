@@ -1100,6 +1100,31 @@
     /* 「가독성은 기능이다」 — 입력칸은 이 블록의 본문(`.cfg-detail` 0.88rem)보다 작지 않다.
        앞선 판본은 0.86rem을 적어 두고 주석으로는 「본문 크기」라고 주장했다. 주석이 규칙보다
        관대하면 그 주석은 규칙을 지키지 않아도 되는 허가로 읽힌다. */
+/* 🔴 진단은 요약 «옆»이지 요약 «대신»이 아니다. 그래서 같은 블록 안, 한 단 아래.
+       거절 줄만 색을 쓴다 — 승인 줄까지 칠하면 색이 뜻을 잃고, 「모름」은 회색이다
+       (안 물어본 것이 나쁜 답의 옷을 입으면 안 된다). */
+    .join-verify-head {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
+      margin: 6.8px 0 3.4px; font-size: 0.82rem; color: var(--text-dim);
+    }
+    .join-verify-total { color: var(--text); }
+    .join-verify-reason { color: var(--text-muted); }
+    .join-verify-row {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
+      padding: 3.4px 0; font-size: 0.82rem; min-width: 0;
+    }
+    .join-verify-key, .join-verify-fold { color: var(--text-dim); }
+    .join-verify-detail { color: var(--text); }
+    /* 🔴 만들 DDL 은 «복사해서 붙일 것»이라 등폭이고 줄바꿈을 허용한다 —
+       잘려 보이면 붙여넣을 수 없고, 그러면 이 줄을 그린 이유가 사라진다. */
+    .join-verify-ddl {
+      font-family: var(--font-mono); font-size: 0.78rem; color: var(--text);
+      background: var(--bg-inset); padding: 2px 6px; overflow-wrap: anywhere; min-width: 0;
+    }
+    .join-verify-row[data-state="accepted"] .join-verify-verdict { color: var(--success); }
+    .join-verify-row[data-state="refused"] .join-verify-verdict,
+    .join-verify-row[data-state="invalid"] .join-verify-verdict { color: var(--warning); }
+    .join-verify-row[data-state="undiagnosed"] .join-verify-verdict { color: var(--text-muted); }
     .retro-input {
       font-family: var(--font-mono);
       font-size: 0.9rem;
@@ -1688,6 +1713,12 @@
               </span>
             </summary>
             <div class="cfg-body" id="config-resolve-body"></div>
+            <!-- 🔴 「승인됐나」는 「선언이 유효한가」와 «다른 질문»이고 다른 라우트가 답한다.
+                 `/admin/config/resolve` 는 「DB 질의 0건」이 계약이라 설정 파일만 읽는데,
+                 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index` 가 아는 사실이다.
+                 `/admin/config/virtual-join/verify` 가 그것을 «만들 DDL 문장»까지 내고 있었고
+                 소비자가 0 이었다. ⛔ 위의 한 낱말을 «지우지» 않는다 — 여기는 그 옆이다. -->
+            <div class="cfg-body" id="join-verify-body"></div>
           </details>
           <!-- 소급 적용 한 줄 (Queue 25): 「규칙보다 오래된 데이터에 지금 적용하면 몇 건인가」.
                다섯 연산 전부 CLI로만 존재했고 어드민에는 화면이 없었다. 위의 「설정 반영」과
