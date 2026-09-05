@@ -1,13 +1,25 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **793개** 이력. (거버넌스 규칙 #4)
+> 총 **805개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-05 19:15** — [The Postgres Arm Of The Temporal Text Seam Was Scored By Nothing](./20260905_191500_the_postgres_arm_of_the_temporal_text_seam_was_scored_by_nothing.md)
+- **2026-09-05 19:05** — [The Recorded Reason For The Slicing Ban Was Overtaken By Its Own Order In Twenty Two Minutes](./20260905_190500_the_recorded_reason_for_the_slicing_ban_was_overtaken_by_its_own_order_in_twenty_two_minutes.md)
+- **2026-09-05 18:49** — [Three Carriers Had No Reader So A Refusal Had A Sentence And No Address](./20260905_184900_three_carriers_had_no_reader_so_a_refusal_had_a_sentence_and_no_address.md)
+- **2026-09-05 18:34** — [The Reload Instant Became A Number And The Class I Ruled On Was One Member Too Wide](./20260905_183400_the_reload_instant_became_a_number_and_the_class_i_ruled_on_was_one_member_too_wide.md)
+- **2026-09-05 18:23** — [The Harness Population Became Its Subject And Sixteen It Had Been Hiding Came Out](./20260905_182300_the_harness_population_became_its_subject_and_sixteen_it_had_been_hiding_came_out.md)
+- **2026-09-05 17:55** — [The Completion Definition Passed For The First Time And It Passed With A Scope Attached](./20260905_175500_the_completion_definition_passed_for_the_first_time_and_it_passed_with_a_scope_attached.md)
+- **2026-09-05 17:49** — [The Buttons Became A Part And One Inline Style Survived As A Declaration](./20260905_174900_the_buttons_became_a_part_and_one_inline_style_survived_as_a_declaration.md)
+- **2026-09-05 16:58** — [The Form Stopped Offering Two Squares And One Of Them Left A Gate Red For An Hour](./20260905_165800_the_form_stopped_offering_two_squares_and_one_of_them_left_a_gate_red_for_an_hour.md)
+- **2026-09-05 16:33** — [The Failure Copy Was Fixed By Shape With The Harness Written First](./20260905_163300_the_failure_copy_was_fixed_by_shape_with_the_harness_written_first.md)
+- **2026-09-05 16:12** — [A Word Cannot Fix A Config And The Seam Contract Refused My Shortcut](./20260905_161200_a_word_cannot_fix_a_config_and_the_seam_contract_refused_my_shortcut.md)
+- **2026-09-05 15:55** — [The Palette Got One Source In Ten Lines And The Wider Reading Would Have Moved The Boundary](./20260905_155500_the_palette_got_one_source_in_ten_lines_and_the_wider_reading_would_have_moved_the_boundary.md)
+- **2026-09-05 15:28** — [A Run Row That Could Not Be Updated Said Queued While The Work Ran](./20260905_152800_a_run_row_that_could_not_be_updated_said_queued_while_the_work_ran.md)
 - **2026-09-05 14:44** — [The Two Line Completion Test Was Written For The First Time And What Stops It Is A Door Not A Joint](./20260905_144400_the_two_line_completion_test_was_written_for_the_first_time_and_what_stops_it_is_a_door_not_a_joint.md)
 - **2026-09-05 14:00** — [A Contract Spelled Twice By Hand And The Mutation That Tests A Seam Is The One That Splits It](./20260905_140000_a_contract_spelled_twice_by_hand_and_the_mutation_that_tests_a_seam_is_the_one_that_splits_it.md)
 - **2026-09-05 13:14** — [Unknown Stopped Being Produced Instead Of Being Handled Better](./20260905_131400_unknown_stopped_being_produced_instead_of_being_handled_better.md)
@@ -818,30 +830,3 @@
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
 *Last generated: 2026-09-05 by gen_index.py*
-
----
-
-## 🔴 2026-09-05 정비분(16건)의 «근거» — 총괄이 대신 적습니다
-
-이 16건은 `4fa4e065` 에 실려 있는데, **그 커밋은 히스토리 담당의 것이 아닙니다.**
-담당이 경로를 붙여 스테이지한 사이에 총괄이 «경로 없는 commit» 을 실행해 통째로 가져갔습니다.
-내용은 그대로이고 «커밋 메시지에 있었어야 할 근거»가 사라졌습니다. 그 근거를 여기 복원합니다.
-
-```
-기간      2026-09-02 20:34 → 2026-09-05 14:50 (직전 경계 `59ce8bd2` 이후 861 커밋)
-묶는 축   커밋 단위가 아니라 «그 라운드가 답하려던 질문» 단위
-남긴 것   🔴 «실패와 되돌림을 일부러 남겼습니다» — 고친 것만 적으면 왜 그 길로 갔는지가 사라집니다
-표시한 것 🔴 개발 박스에서 잰 수는 «항목 안에서 그렇게 표시»했습니다
-         (감사 색인 수치 · 50행 체인 실행 · `compose_business_key` 재현 등)
-         구조적 논거(가장 많이 쓰는 표에 71MB 색인)는 표시와 «무관하게» 삽니다
-```
-
-### 정직하게 못 적은 것 — 담당이 스스로 적어 올린 것들
-```
-부재 «다섯째»    코드가 «없습니다». 명세로 넘어갔을 뿐이라 「명세」로 적었고 「착지」로 안 적었습니다
-변이 «둘»       코드가 옳아서가 아니라 «환경» 때문에 삽니다 — 스위트가 SQLite 인데 코드가 PG 전용
-              -> 문장으로 덮지 않고 «열린 사각»으로 남겼습니다
-RETIRED_GRAPH_TABLES  소비자 0. «판단이 아니라 상태»로만 적었습니다
-「다섯 줄, 편집 0」  레인이 라이브로 잰 수인데 그 근거 주석이 그날 두 번 바뀌었습니다
-              -> «레인의 수»로 표시하고 담당의 것으로 «채택하지 않았습니다»
-```
