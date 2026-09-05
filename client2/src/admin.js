@@ -1818,22 +1818,23 @@ function renderRecorrection(stat) {
   if (!stat) {
     valueEl.textContent = '—';
     line.dataset.tone = 'muted';
-    subEl.textContent = '서버가 이 계기를 보고하지 않음 (/dashboard/summary 응답에 recorrection 없음)';
+    // 상설(2026-09-05): 상태는 «명사», 수와 사유는 «옆에», 접속사 대신 `·`.
+    subEl.textContent = '보고 없음 · /dashboard/summary';
     return;
   }
   if (stat.rate_pct == null) {
     valueEl.textContent = '—';
     line.dataset.tone = 'muted';
     // ⚠️ 창의 «길이»도 모르면 말하지 않습니다 — 오늘의 NULL 규칙과 같은 자리입니다.
-    const win = stat.window_days == null ? '' : `최근 ${stat.window_days}일간 `;
+    // ⚠️ 창의 «길이»는 «단위»라 남깁니다 — 없으면 다른 수로 읽힙니다. 모르면 «안 붙입니다».
+    const win = stat.window_days == null ? '' : ` · 최근 ${stat.window_days}일`;
     if (stat.unavailable_reason) {
-      subEl.textContent = `집계 실패: ${stat.unavailable_reason}`;
+      subEl.textContent = `집계 실패 · ${stat.unavailable_reason}`;
     } else if (stat.measured_cells == null) {
       // 🔴 넷째 갈래 — 「센 값이 «안 왔다»」와 「세었더니 «0» 이다」는 다른 사실입니다.
-      //    옆 줄(renderEffort)이 `ratio === 0` 으로 같은 자리를 갈라 둔 것과 같은 축입니다.
-      subEl.textContent = `${win}사람이 고친 셀을 «세지 못했음»`;
+      subEl.textContent = `미집계${win}`;
     } else {
-      subEl.textContent = `${win}사람이 고친 셀 없음`;
+      subEl.textContent = `교정 셀 없음${win}`;
     }
     return;
   }
