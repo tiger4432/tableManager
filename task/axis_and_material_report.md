@@ -1,3 +1,95 @@
+# [디자인 -> 총괄] ✅ **큐 1 착지 — 「멤버 하나면 값」이 «부품»이 됐습니다** (2026-09-05)
+
+📌 **CODE_MAP §5-H-bis** (2925행 「온톨로지 config 작성·탐색 표면」)을 먼저 열었습니다.
+   거기서 `closed_lists()` 의 「화면은 이것이 내는 것을 그리고 사본을 갖지 않는다」를 확인하고,
+   그 목록을 «그리는 자리»가 어디인지부터 셌습니다.
+
+## 먼저 «셌습니다» — 출하 코드의 닫힌 목록과 멤버 수
+```
+occurred_at_basis   «1»  ingested        setup_bundle.py:135 · 표의 CHECK(schema.py:107)도 같은 말
+source_unit          2   row · group     setup_bundle.py:131
+predicate_status     2                   config_authoring.py:92
+mapper_unit          3                   setup_bundle.py:132
+object_kind          4                   setup_bundle.py:130
+```
+멤버가 «하나»인 목록은 출하 코드에 «하나»뿐이고, 그것이 총괄이 지목한 그 칸입니다.
+
+## 그리는 자리는 «둘»이었습니다 — 그래서 부품으로 올렸습니다
+```
+① 계획 행     `candidates` 가 공표된 닫힌 목록과 «정확히 일치»할 때 (editable.kind === 'closed')
+② 스켈레톤 잎  `schema[node.list]` (hint: choice)   <- occurred_at_basis 가 오는 길
+```
+한쪽만 고치면 남은 쪽은 «이미 고친 것»으로 읽힙니다. 그래서 판단을 `src/closed_list.js` «하나»로
+옮기고 두 자리는 «선언»이 됐습니다 — 다른 것은 쓰기 주소(`edit-shape` / `edit-field`)뿐입니다.
+🔴 view 모듈에 `oe-field-select` 가 «0개» 남았습니다 (하니스가 이 수를 지킵니다).
+
+## 상태는 «넷»입니다
+```
+목록 안 옴   「목록 · 모름」        schema 는 도착 전에 `{}` 라 이걸 「멤버 0」으로 읽으면 «모든» 목록이 빔
+멤버 0       「선택지 없음 · <이름>」  어느 목록인지 이름을 답니다
+멤버 1       ✅ «값»               고르개로 안 그립니다
+멤버 2+      고르개
+```
+⚠️ 「모름」과 「없음」 둘 다 «문서가 든 값»을 같이 답니다. 목록을 못 읽었다고 값까지 지우면
+   화면이 지운 적 없는 것을 지운 것처럼 읽힙니다.
+
+## 🔴 한 군데 «조였습니다» — 판정 부탁드립니다
+```
+지시   멤버 1 -> 값
+저     멤버 1 «이고 문서가 그 값을 들고 있을 때» -> 값
+       멤버 1 «인데 문서가 비었을 때»           -> 고르개 그대로 (빈칸 · 그 하나)
+```
+**이유:** 그 고르개가 그 값을 써 넣는 «유일한 길»입니다. 값으로 바꾸면 그 칸은 영영 못 채워지고,
+새 소스가 `occurred_at_basis` 를 «선언 불가»가 됩니다 (「도출로 바꾸면 먹이던 축이 죽는다」).
+그리고 화면에서도 다릅니다 — **항목이 하나뿐인 고르개만 「고장난 것」처럼 보입니다.** 빈 칸의
+고르개는 항목이 둘(빈칸 · 그 하나)이라 그렇게 안 보입니다. 지시가 겨냥한 병은 «채워진» 쪽입니다.
+📌 이대로 두는 것이 아니라면 한 줄만 주십시오 — 되돌리는 것은 판별식 한 줄입니다.
+
+## 잰 것
+```
+closed_list_harness.mjs            34 / 0   (신설)
+ontology_authoring_panel_harness   79 / 0   무회귀 — view 모듈을 재는 다른 하니스는 이것뿐
+node --check                       closed_list.js · ontology_explorer_view.js 통과
+```
+
+---
+
+# [디자인 -> 총괄] 🔴 **큐 0 정정 — 재료가 «함수»로 왔지 «전선»에 오지 않았습니다** (2026-09-05)
+
+큐에 「재료 실림 (113752bc: choices · counts · default)」로 적히셨는데, 실측이 다릅니다.
+```
+implementation_choices  소비자 «0»   git grep -l -- server/  ->  implementations.py «자기 자신»뿐
+                                    (나머지 9히트는 전부 자기 시험 파일)
+커밋 자신도 그렇게 적었습니다        「Nothing running reads this yet ... wiring it to the
+                                     authoring surface is the next step」
+=> /authoring/plan 응답에 choices · counts · default 가 «아직 없습니다»
+```
+🔴 지금 클라가 `row.default` 를 읽게 하면 «픽셀 0»이고 하니스는 초록입니다 —
+   「재료 없이 채택된 계약이 화면을 끈다」 그 자리입니다. 그래서 «안 썼습니다».
+
+## 그리고 제 지난 경고(r22)를 «정정»합니다 — 두 겹으로 틀렸습니다
+```
+제가 쓴 것   ① row.candidates 로 오면 ⛔ 그 행이 <select> 가 됩니다 -> 15 중 2가 선언 불가
+실측 ⓐ      candidates 가 온다고 <select> 가 «안 됩니다». `closedListFor` 는 후보 집합이
+            «공표된 닫힌 목록과 정확히 일치»할 때만 닫힘으로 봅니다. 등록 id 는
+            closed_lists() 에 «없습니다» -> `kind: 'string'` -> ✅ datalist (타이핑 그대로)
+실측 ⓑ      그리고 그 길은 «이미 열려 있습니다». _implementation_clause_fields 가
+            `candidates=_registered_ids(...)` 를 지금도 싣고, Field 직렬화(:274)가 전선에 올립니다
+```
+**즉 「고르되 막지 않는다」는 이미 만족돼 있습니다.** 제가 ⛔ 로 적은 길이 정답이었습니다.
+
+## 그래서 «남은 것»은 둘뿐입니다
+```
+칸        sources.<id>.prepare.implementation_id  ·  sources.<id>.map.implementation_id
+          (버전 둘은 `state:"derived"` 라 «상자가 없습니다» — id 를 고르면 따라옵니다)
+지금      입력 + datalist(등록 id) + 「고를 수 있는 값 · N」
+남은 것   ① 기본값이 «미리 채워져» 있어야 합니다 — 이 화면의 규칙이 이미 「기본값은 박스 «안»에
+             있지 placeholder 가 아니다」입니다. 서버가 `value` 를 채워 주면 그대로 그려집니다
+          ② counts 를 «옆에» — 「기본값」이라는 낱말 대신 «무엇을 세서»인지
+```
+📌 서버가 그 두 칸을 실으면 제 쪽 변경은 «행 하나 그리기»입니다. 지금은 그릴 것이 없습니다.
+
+---
 # [디자인 -> 총괄] 🔵 **큐 0 — 「어느 칸」과 「목록이 오면 어디가 바뀌나」 한 줄** (2026-09-05)
 
 ## 어느 칸인가 — 넷

@@ -1001,6 +1001,23 @@
 #ontology-explorer-root .oe-field-input,
 #ontology-explorer-root .oe-field-select,
 .oe-field-select { font-size: 14px; }
+/* 🔴 A CLOSED LIST THAT CANNOT CHANGE ANYTHING IS A VALUE, AND IT HAS TO LOOK LIKE ONE.
+   Drawn with a control's box it reads as clickable, and an operator who clicks it and gets
+   nothing has been told the screen is broken. Same size as the input beside it so the column
+   does not jump when one field has a choice and its neighbour does not. */
+#ontology-explorer-root .oe-field-onechoice {
+  display: inline-block; min-width: 0; overflow-wrap: anywhere;
+  padding: 5.1px 0; font-size: 14px; color: var(--oe-text);
+}
+/* ⚠️ 「목록 · 모름」와 「선택지 없음」은 같은 픽셀이 아니다 — 앞은 질문이 살아 있고(다시 읽으면
+   온다), 뒤는 서버가 내놓을 것이 없다. 색으로 가르고, 둘 다 문서가 든 값을 같이 든다. */
+#ontology-explorer-root .oe-field-unread,
+#ontology-explorer-root .oe-field-nochoice {
+  display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6.8px;
+  min-width: 0; padding: 5.1px 0; font-size: 14px;
+}
+#ontology-explorer-root .oe-field-unread small { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-field-nochoice small { color: var(--oe-warn); }
 #ontology-explorer-root .oe-key-row .oe-key-input { flex: 1; width: auto; }
 /* The datalist wrapper is a span; without this the input inside it cannot be 100% wide. */
 #ontology-explorer-root .oe-form-suggested { display: block; min-width: 0; }
