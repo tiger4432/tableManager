@@ -261,6 +261,17 @@
        여기 남은 것은 «배치»뿐입니다 — 베낀 타이포는 지웠습니다. */
     /* 🔴 소유자: 「너무 꽉차게 있어 마진좀」. 격자는 그대로 두고 «한 단계»씩 올립니다
        (6.8 -> 10.2). 탐색기가 같은 성격의 자리에서 쓰는 단계입니다. */
+    /* 🔴 «바깥» 여백. 폼이 절의 벽에 «붙어» 있었습니다 — 실측으로 좌·우가 «0» 이었고,
+       그래서 안쪽 블록 사이를 3.4px 넓혀도 「그대로」로 보였습니다 (총괄 정정 4703fbdf).
+       ⚠️ `.section-body` 에 주지 «않습니다». 그 규칙은 열두 절이 «전부» 쓰고, 표를 담은
+          열 절에서는 표 머리 글자가 지금 10.2 에서 시작해 절 머리의 13.6 과 «거의 맞는데»,
+          본문에 13.6 을 주면 23.8 로 밀려 그 맞음이 깨집니다 (실측). 그래서 «폼 컨테이너»에만.
+       좌·우 13.6 은 절 머리의 왼쪽 여백과 «같은 수»라 폼의 왼쪽 변이 머리와 한 줄에 섭니다. */
+    .table-config-panel,
+    .chain-rule-panel {
+      padding: 10.2px 13.6px 13.6px;
+    }
+
     .chain-rule-picker,
     .table-config-picker {
       max-width: 320px;
@@ -282,7 +293,7 @@
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
        ⛔ 문장은 없습니다. `enabled true` / `enabled false` 가 전부입니다. */
     .chain-rule-state {
-      margin: 0 0 6.8px;
+      margin: 0 0 10.2px;
       font-family: var(--font-mono);
       color: var(--text-dim);
     }
@@ -593,7 +604,10 @@
       font-family: var(--font-mono);
       font-size: 0.77rem;
     }
-    .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: 4px; }
+    /* 4px 은 3.4 격자 «밖»이었습니다. 위로(6.8)가 아니라 «아래로»(3.4) 갑니다 —
+       이 둘은 «바로 윗줄에 붙는» 보조 줄이고, 6.8 이면 그 붙음이 끊어집니다.
+       소유자가 지적한 것은 «폼이 빡빡하다»였지 이 붙음이 아니었습니다. */
+    .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: 3.4px; }
     .chain-flow { display: flex; align-items: center; gap: 7px; font-weight: 500; }
     .chain-flow-arrow { color: var(--accent); font-family: var(--font-sans); }
     .chain-capabilities { display: flex; flex-wrap: wrap; gap: 5px; }
