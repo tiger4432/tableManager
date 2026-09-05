@@ -1811,12 +1811,25 @@ function renderRecorrection(stat) {
   const subEl = byId('recorrection-sub');
   if (!line || !valueEl || !subEl) return;
 
-  if (!stat || stat.rate_pct == null) {
+  // 🔴 갈래가 «셋»입니다. 전에는 둘이었고, 그래서 「stat 자체가 안 온」 경우가
+  //    「최근 7일간 고친 셀 없음」으로 찍혔습니다 — 응답이 그 계기를 «보고하지 않은» 것을
+  //    「없다」로 말하고, 게다가 그 `7` 은 «리터럴 기본값»이라 안 읽은 창의 «길이»까지
+  //    지어냈습니다. 옆 줄(renderEffort)이 이 갈래를 이미 넷으로 적어 두고 있었습니다.
+  if (!stat) {
     valueEl.textContent = '—';
     line.dataset.tone = 'muted';
-    subEl.textContent = stat && stat.unavailable_reason
+    subEl.textContent = '서버가 이 계기를 보고하지 않음 (/dashboard/summary 응답에 recorrection 없음)';
+    return;
+  }
+  if (stat.rate_pct == null) {
+    valueEl.textContent = '—';
+    line.dataset.tone = 'muted';
+    // ⚠️ 창의 «길이»도 모르면 말하지 않습니다 — 오늘의 NULL 규칙과 같은 자리입니다.
+    subEl.textContent = stat.unavailable_reason
       ? stat.unavailable_reason
-      : `최근 ${stat ? stat.window_days : 7}일간 사람이 고친 셀 없음`;
+      : (stat.window_days == null
+        ? '사람이 고친 셀 없음'
+        : `최근 ${stat.window_days}일간 사람이 고친 셀 없음`);
     return;
   }
 
