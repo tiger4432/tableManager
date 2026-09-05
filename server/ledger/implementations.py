@@ -170,3 +170,59 @@ def role_mapper_registry() -> RoleMapperImplementationRegistry:
     for (identifier, version), implementation in sorted(mapper_declarations().items()):
         registry.register(identifier, version, implementation)
     return registry.seal()
+
+
+def implementation_choices(sources=None) -> dict:
+    """What an author may pick, and what this deployment already picks most.
+
+    🔴 THE LIST COMES FROM THE REGISTRY, NEVER FROM A LITERAL. Asking an operator to type
+    `declarative-role` from nothing is not a domain question - it is a question they
+    cannot answer - but writing that string into the code or the form would be worse: it
+    is a domain word in code, and the ratio behind it (13 of 15 shipped sources) is
+    evidence about the SHIPPED SAMPLE, not about any deployment.
+
+    🔴 SO THE DEFAULT IS COUNTED, NOT DECLARED. It is whatever THIS deployment's sources
+    already use most; hand it a different set of sources and it answers differently, which
+    is the property that keeps it out of the code. `counts` travels with it so a reader
+    can see what the default was counted from rather than trusting the word "default".
+
+    ⚠️ A TIE IS AN ANSWER, NOT A FAILURE. Two implementations used equally often leave the
+    default `None`, and so does an empty declaration - "pick from the list" is the honest
+    outcome, and inventing a winner would decide by an axis that is not evidence.
+
+    ⚠️ AND THE AXIS STAYS OPEN. The default is a starting value, not a constraint: every
+    registered implementation stays selectable, because the sources that use a different
+    one are the reason the field exists.
+    """
+    def _ids(declarations):
+        # Latest version wins per id; the id is what a declaration spells.
+        best = {}
+        for name, version in declarations:
+            best[name] = max(best.get(name, 0), version)
+        return [{"id": name, "version": v} for name, v in sorted(best.items())]
+
+    def _count(kind):
+        seen = {}
+        for source in (sources or {}).values() if isinstance(sources, dict) else (sources or ()):
+            block = (source or {}).get(kind) if isinstance(source, dict) else None
+            chosen = (block or {}).get("implementation_id") if isinstance(block, dict) else None
+            if isinstance(chosen, str) and chosen.strip():
+                seen[chosen] = seen.get(chosen, 0) + 1
+        return seen
+
+    def _default(counts):
+        if not counts:
+            return None
+        ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+        if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+            return None                     # a tie decides nothing
+        return ranked[0][0]
+
+    out = {}
+    for kind, declarations in (("prepare", source_preparer_declarations()),
+                               ("map", mapper_declarations())):
+        counts = _count(kind)
+        out[kind] = {"options": _ids(declarations),
+                     "counts": counts,
+                     "default": _default(counts)}
+    return out
