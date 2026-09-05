@@ -7799,3 +7799,365 @@ derived 행의 value 는 filled_declaration 이 «파일에 씁니다»
 
 판정 대기: 없음 — 다음은 ㉡ (두 fold 이음매 계약 + B 의 값싼 질문 하나)로 이어갑니다
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【B 한 질문】 답: **그런 단언이 «0» 입니다. B 는 통째로 구조라 «끝»입니다**
+
+## 먼저 — 앞 보고의 「23」을 «정확히» 풉니다 (그건 줄 수였습니다)
+```
+Index(...) 호출 중 postgresql_* 를 «든 것»    14
+   그 안의 옵션 occurrence  where 12 · include 3 · using 1   = 16
+with_variant( 호출                            8   (그중 JSONB 3)
+=> 앞 보고의 23 은 «패턴이 걸린 줄 수»였습니다. 부류는 맞았고 단위가 달랐습니다
+```
+
+## 🔴 판별식 — 「그 행«만» 담긴다」에 «기댈 수 있는» 단언은 어떤 것인가
+```
+그 술어가 «받아들여지는 것»을 바꾸려면 그 인덱스가 UNIQUE 여야 합니다
+   부분 UNIQUE  -> PG 는 술어에 맞는 행끼리만 유일. SQLite 는 술어가 «떨어져» 전건 유일
+                 => 두 방언이 «다른 답». 이게 유일하게 위험한 모양입니다
+   부분 non-UNIQUE -> 플래너 물건입니다. 값은 «양쪽에서 같습니다»
+실측   UNIQUE + where = «0» 입니다. 14개 중 unique 인 것이 «하나도» 없습니다
+```
+
+## 그리고 훑어서도 «0» — 후보 넷이 전부 다른 것이었습니다
+```
+인덱스 «이름»을 적는 시험 4
+   idx_sources_lookup_source · idx_sources_by_source · idx_effort_window
+      -> 부분 인덱스가 «아닙니다» (where 없음)
+   idx_audit_user_recorrection  -> 부분 인덱스는 맞는데, 단언이
+      「거절문에 이 인덱스 이름이 들어 있나」입니다. 문자열이지 «담긴 행»에 대한 주장이 아닙니다
+「EXPLAIN」이 걸린 파일 5
+   test_binding_refusal   -> 지역 헬퍼 `_explain(src)` 였습니다. 질의 계획이 아닙니다
+   chain_replay · outbox_notify_budget -> «주석»
+   ledger_trace_pg · ledger_v2_pg      -> pg 픽스처 위. 방언이 맞습니다
+JSONB 연산자가 걸린 파일 3
+   ledger_l1_pg · ledger_trace_pg -> pg 위. sqlite 쪽 test_outbox_collapse 는 «주석»
+```
+=> **부분 인덱스의 술어에 기대는 단언 «0».** B(선언 변형)는 전부 «구조»이고 여기서 닫힙니다.
+⛔ 세는 것까지만 했습니다. 고치지 않았습니다.
+
+---
+
+# 【㉡ 두 fold 이음매 계약】 — **이미 있습니다.** 짓지 않았습니다
+
+## 실측 — `contracts/notation_fold/` (2026-08-04 착지)
+```
+오늘 돌려 봤습니다   40 통과 · 4 skip   (기본 스위트에 shim 으로 이미 들어와 있습니다:
+                                      server/tests/test_notation_fold_contract.py)
+채점 방식           vectors.json «기록된 기댓값» 43케이스 × 규칙 4조합
+                   -> 엔진끼리 대조만 하지 «않습니다». 양쪽이 «같이 틀리는» 것을 막습니다
+공허 방지           test_..._goes_red_when_the_sql_side_is_perturbed
+                   일부러 틀린 SQL 둘(translate 대신 upper · g 플래그 뺀 regexp_replace)을
+                   같은 코퍼스에 먹여 «잡히는지» 단언합니다
+skip 4개            PG 축. 그리고 그 skip 사유가 «무엇이 막히는지·누가 owner 인지·어떻게 푸는지»를
+                   전부 적고 있습니다 (-rs 로 읽힙니다). 조용한 skip 이 아닙니다
+```
+🔵 지시하신 ⓵(「pg 없이 오늘 반쪽이 돈다」)은 **이미 40개가 돌고 있었습니다.**
+🔵 ⓷(「가르는 변이로 찌른다」)도 **이미 그 파일이 하고 있습니다.**
+
+## 🔴 그래서 «진짜 빈 자리»는 fold 가 아니라 그 «쌍둥이»입니다
+SQ 보고의 A④ 는 자리가 «둘»이었습니다. 하나는 계약이 있고 하나는 없습니다.
+```
+notation_norm._NotationFold   ✅ 계약 있음 (위)
+database/crud._TemporalText   ❌ 계약 «없음»  — contracts/ 전체 grep 0
+```
+그리고 그 자리가 «위험한 이유»를 그 시험의 docstring 이 스스로 적고 있습니다:
+```
+「PostgreSQL 의 CAST(timestamptz AS varchar) 는 «세션 타임존»으로 렌더하고
+  소수부가 0이면 «생략»한다 — 그래서 같은 행을 든 두 서버가 다른 텍스트를 비교하게 된다」
+=> PG 팔(to_char(timezone('UTC', col), 'YYYY-MM-DD HH24:MI:SS.US'))이 «그것을 고치려고» 있습니다
+실측   그 팔을 «평가하는 시험이 0» 입니다
+      유일한 시험 test_the_temporal_text_is_pinned_not_the_dialects_default 는 db_session
+      (SQLite) 위에서 돌고, 거기서는 _default 팔(맨 CAST)이 컴파일됩니다
+      -> 즉 «애초에 어긋난 적 없는 팔»을 채점하고 있습니다
+```
+🔵 그리고 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」가 그대로 적용됩니다 —
+   `notation_fold` 계약이 «템플릿»이고, `temporal_text` 가 «데이터 갈아끼우기»입니다.
+
+판정 대기: 🔴 **㉡ 을 `temporal_text` 로 «갈아끼울까요».** 지시하신 fold 는 이미 서 있어서
+          그대로 지으면 «중복»입니다. 같은 부류의 빈 자리는 저것 하나입니다
+          (⛔ 임의로 시작하지 않았습니다 — 주제가 지시서와 다릅니다)
+          그동안 저는 8-a 로 갑니다. 자리는 이미 찾아 뒀습니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【8-a】 Ⅳ-3 착지 `f8bbdf47` · **Ⅱ-2 는 «내놓을 자리»가 없습니다 — 판정 청합니다**
+
+## Ⅳ-3 «내놓기» — 나갈 구멍이 «이미» 있었습니다
+```
+값이 있던 곳   QueueHeadWatch.reloaded_at   (chain_ingestion_worker:1523)
+나가던 방식   «로그 문장 속 글자» — 그것도 큐 머리가 «1분 넘게 막힌 뒤에만»
+             -> 즉 「재시작하면 풀리나」를 «이미 멈춘 시스템의 로그를 읽는 사람»만 물을 수 있었습니다
+나가는 방식   chain_activity.registry 가 «같은 자리»에서 같은 순간을 받고,
+             GET /admin/chain/queue 가 수로 냅니다 (그 라우트가 이미 이 레지스트리를 읽습니다)
+```
+⚠️ 값이 «둘»입니다 — 한 수로 접으면 안 됩니다:
+```
+loop_uptime_seconds          한 시간 떠 있고 «한 번도 재적재 안 한» 루프
+mapper_reload_age_seconds    한 시간 전에 «재적재한» 루프
+=> 두 상태는 «다른 답»이고, 재적재 없음은 null 입니다. 0 은 「방금」이라는 «반대» 사실입니다
+```
+🔵 `QueueHeadWatch` 의 자기 사본은 «그대로» 뒀습니다. 결함은 사본을 든 것이 아니라
+   그것이 «유일한» 사본이었던 것입니다. 시험이 «두 호출이 같은 자리»에 있는지 단언합니다.
+
+## 🔴 Ⅱ-2 — 지시서의 전제 하나가 «오늘 실측과 다릅니다». 그래서 멈춥니다
+지시: 「할 일은 «내놓기»입니다. «만들기»가 아닙니다」 — Ⅳ-3 는 그 말이 맞았습니다.
+그런데 Ⅱ-2 는 «받아 줄 곳이 없습니다». 세 겹 다 비어 있습니다:
+```
+① report["violation_details"]     쓰는 곳 «2» (gate.py:496 · 581)   읽는 곳 «0»
+                                 그리고 그 유일한 운영 호출자가 «버립니다»:
+                                 runtime_v2.py:307  `kept, _report = gate.screen_compiled_molecule(...)`
+② gate.samples()                  전량 grep — 부르는 곳 «0»
+③ gate.captured()                 전량 grep — 부르는 곳 «0» (정의부와 자기 주석뿐)
+=> 코드·주소가 «세 카리어»에 담겨 있고 «셋 다» 아무도 안 읽습니다
+   오늘 게이트 거절이 운영자에게 닿는 유일한 길은 observability.note() -> 심박 «한 줄 문장»입니다
+```
+⛔ 그래서 지금 제가 «목적지를 고르면» 그건 «만들기»이고, 이 라운드의 지시와 다릅니다.
+
+## 제가 준비해 둔 답 — «캐리어»는 정해집니다. «목적지»만 판정해 주십시오
+```
+⛔ 금지 그대로   _refusals (사유 내역) 에는 «절대» 안 넣습니다
+                 그 dict 가 (source, reason) -> count 이고 불변식이 「내역의 합 = 거절 수」입니다
+                 원자마다 주소를 달면 그 등식이 깨집니다 — 응용이 찾은 그것입니다
+✅ 캐리어        _samples  — «거절 한 건당 한 줄», MAX_REFUSAL_SAMPLES 로 상한이 있고
+                 어떤 «합»에도 안 들어갑니다. code·path 를 여기 실으면 불변식이 그대로입니다
+   경로          check_envelope 는 이미 {code, path, message} 를 냅니다
+                 -> refuse(...) 에 선택 인자 code·path -> _record 가 _samples 항목에 실음
+   크기          gate.py 안에서 «세 줄» 정도입니다
+
+🔴 목적지 후보 — 이건 «만들기»라 제가 안 고릅니다
+   ㉮ 백필 실행 결과에 실어 보낸다        (운영자가 이미 보는 결과)
+   ㉯ 이미 있는 진단 라우트 하나에 붙인다  (어느 것인지 지정 주시면)
+   ㉰ 지금은 캐리어까지만 하고 목적지는 «다음 라운드»
+```
+
+판정 대기: 🔴 **Ⅱ-2 의 «목적지» ㉮/㉯/㉰ 중 하나** — 캐리어는 준비됐고 금지는 지켰습니다
+          🔴 그리고 앞 보고의 ㉡ — fold 는 이미 있어서, `temporal_text` 로 갈아끼울지
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【8-b】 Ⅱ-4 «신원» 착지 — `de5b51e3`
+
+## 고친 쪽은 «읽는 쪽»입니다. 판정하신 그대로 — 만든 것이 «없습니다»
+```
+쓰는 쪽   retroactive.py:1313  table_name = RUN_EVENT_TABLE ("__retroactive__")
+          -> 그대로 뒀습니다. 그 컬럼은 관례상 비지 않아서 자리를 채운 것이고,
+             그 사실 자체는 기록입니다
+읽는 쪽   main.py 대기 트랜잭션 접기 — 그 문자열을 「이 트랜잭션이 건드리는 표」로 «올렸습니다»
+          -> 운영자가 그 표를 «찾으러 갑니다». 그 헛걸음이 비용입니다
+고친 것   통제 이벤트의 table_name 은 «표로 안 셉니다». 신원은 event_types 가 이미 들고 있습니다
+```
+
+## ⛔ «낱개»가 아니라 «부류»로 판정했습니다
+```
+❌ 안 한 것   `__retroactive__` 를 읽는 쪽에서 «문자열로» 비교 — 그러면 자리표시자가
+             읽는 쪽에도 생기고, 다음 통제 이벤트가 «같은 결함»을 들고 옵니다
+✅ 한 것      event_constants.CONTROL_EVENT_TYPES  — 이미 있는 frozenset 입니다
+             (SCHEDULER_RUN_NOW · RETROACTIVE_RUN · BROADCAST_RECOVERY …)
+             시험이 그 집합 «전건»으로 parametrize 됩니다 -> 하나로 좁히면 나머지가 빨개집니다
+```
+
+## 「신원을 지우는 것」이 되지 않게 «반대쪽»도 박았습니다
+```
+test_a_real_data_row_still_names_its_table          진짜 데이터 행은 «여전히» 표를 말합니다
+test_one_transaction_holding_both_...              한 트랜잭션에 둘이 섞이면
+                                                   진짜 표는 남고 «행 수는 2 그대로»
+=> 「표 이름을 전부 숨긴다」는 규칙이면 첫 단언은 통과하고 이 둘이 빨개집니다
+```
+
+## 돌린 시험
+```
+tests/test_a_control_event_names_no_table.py          8 통과 (신규 · 부류 전건 parametrize)
+tests/test_retroactive_admin.py · test_broadcast_recovery.py ·
+tests/test_queue_says_which_log_to_open.py · test_failed_outbox_says_since_when.py ·
+tests/test_chain_activity_is_visible.py               76 통과
+```
+
+## ⏭ 제 큐가 «비었습니다» — 판정 대기 셋만 남았습니다
+```
+Ⅱ-2   캐리어(_samples)는 준비됐고 «목적지»가 판정 대기 (앞 보고 ㉮/㉯/㉰)
+㉡     fold 는 이미 있어서 `temporal_text` 로 갈아끼울지 판정 대기
+㉠     pg 계수 스파이 — 값이 오면
+```
+
+판정 대기: Ⅱ-2 목적지 · ㉡ 대상 교체 여부 (둘 다 앞 보고에 선택지까지 적어 뒀습니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【정정 + 8-a Ⅱ-2】 착지 둘 — `2742446f` · `75dc3b59`
+
+## ① 정정 — 판정이 맞았습니다. 부류가 «한 명» 넓었습니다 (`2742446f`)
+먼저 청하신 대로 «오늘 코드에서 빨간지» 확인했습니다:
+```
+probe   SCHEDULER_RUN_NOW · table_name="dt_map" -> tables 가 ["dt_map"] 인가
+결과    E  assert [] == ['dt_map']      <- «빨갛습니다». 총괄 읽기가 맞습니다
+근거    main.py 온디맨드 발행부가 호출자가 준 «실재하는» 표 이름을 싣습니다
+```
+🔴 제가 「통제 이벤트에는 표가 없다」를 «세 명 다» 참인 것처럼 썼습니다. 셋 중 하나에서 거짓이고,
+   그 하나의 «참인 이름»을 제 코드가 지웠습니다. 「부류로 묶되 구성원은 «센다»」를 어겼습니다.
+```
+바뀐 부류   「통제 이벤트인가」  ->  「그 이름이 «없는 표»인가」
+선언 자리   event_constants.PLACEHOLDER_TABLE_NAMES  (RETROACTIVE_RUN_TABLE 이 첫 구성원)
+            retroactive.RUN_EVENT_TABLE 가 «그것을 읽습니다» — 철자가 하나입니다
+게이트 ③    SCHEDULER_RUN_NOW 은 «뜹니다» (새 단언)
+게이트 ④    선언에 이름을 하나 더하면 그것도 «안 뜹니다» (부류가 살아 있다는 증거)
+=> 앞 커밋의 단언 넷은 «그대로» 두고 둘을 더했습니다. 부류 parametrize 만 뺐습니다
+```
+
+## ② Ⅱ-2 «내놓기» — 목적지 ㉮ 채택 (`75dc3b59`)
+```
+캐리어   _samples   상한 있고 «어떤 합에도» 안 들어갑니다
+⛔ 금지   _refusals 는 안 건드렸습니다. 「내역의 합 = 거절 수」를 «단언»으로 박았습니다
+목적지   백필 실행 결과 —  refused_total · refused_samples · refused_samples_capped
+잘림 게이트  상한 아래면 주소가 거절 수만큼 · 상한 초과면 «둘 다» 보입니다
+            (400 거절 · 20 주소가 「거절 20」으로 읽히는 것을 막습니다. 문장 아니고 «수»)
+```
+
+## 🔴 판정과 «한 군데» 다르게 했습니다 — 재 보고 그렇게 했습니다
+판정: 「버리는 자리를 그만 버리게 — `runtime_v2.py:307` `kept, _report = …` 가 «진짜» 자리」
+```
+실측   그 줄은 `gate.building_molecule` «안»입니다. 거기서 gate.refuse 는 «raise» 합니다
+      -> 그래서 그 줄이 «묶는 쌍»은 언제나 «수락된» 보고입니다
+      -> 그것을 읽어도 «거절에 대해서는 아무것도» 안 나옵니다
+      -> `_report` 를 이름만 바꾸면 안 쓰는 변수가 하나 생길 뿐입니다 (연극입니다)
+그래서  버리는 것은 그대로 두고 «왜 그래도 되는지»를 그 줄에 적었습니다
+       주소는 «거절 경로»로 나갑니다 — screen_compiled_molecule 이
+       report["violation_details"] 를 gate.refuse(addresses=…) 에 넘깁니다
+🔵 그 전제를 시험으로도 박았습니다 (test_the_refusal_path_is_what_carries_it_not_...)
+```
+⚠️ 제 읽기가 틀렸으면 되물러 주십시오 — 근거는 「refuse 가 molecule 열린 동안 raise 한다」
+   한 줄이고, 게이트 docstring 이 같은 말을 이미 적고 있습니다.
+
+## 돌린 시험
+```
+tests/test_a_control_event_names_no_table.py 외 3파일       70 통과
+tests/test_a_refusal_says_which_field_to_fix.py             9 통과 (신규)
+tests/test_envelope_refusals_carry_an_address.py ·
+test_declaration_refusal_keeps_its_address.py ·
+test_backfill_enrichment.py · test_ledger_v2_runtime.py ·
+test_ledger_l1_unit.py                                    128 통과
+```
+
+판정 대기: 🔴 위 「runtime_v2 를 안 고친 것」 — 무르실 거면 근거 한 줄 주십시오
+다음: ㉡ `temporal_text` 계약 (판정 b648a29a 수령 — fold 는 짓지 않고 쌍둥이로 갈아끼웁니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【Ⅱ-2 목적지】 물으신 셋에 답합니다 — **①이 맞습니다.** 그리고 그 한 칸을 이었습니다 (`71b0de61`)
+
+## ① `test_run` 이 그 주소를 실을 수 «있습니까» → **있습니다. 읽는 쪽이 «이미 묻고 있었습니다»**
+```
+그 함수의 거절 경로   backfill.preview_first_batch(...) 를 부르고 «except Exception» 으로 받습니다
+                   (backfill.run 이 아닙니다 — 그건 ②)
+                   게이트 거절은 MoleculeRefused 로 «raise 되어» 거기로 옵니다
+_test_run_refusal   getattr(exc, "code") · getattr(exc, "path") 를 «이미» 읽고,
+                   없으면 «클래스 이름»으로 떨어집니다
+MoleculeRefused     (source, reason, detail) 뿐 — code 도 path 도 «없었습니다»
+=> 그래서 그 화면이 받던 것:   code="MoleculeRefused"   path=""
+   「어느 칸을 고치나」가 존재 이유인 화면에 «예외 클래스 이름»을 주고 있었습니다
+```
+이어 놓은 뒤:
+```
+code="source_raw_ref_empty"   path="atom.source.raw_ref"
+```
+🔵 새 화면도 새 라우트도 «없습니다». 읽는 쪽·폴백·경로 매핑이 전부 이미 쓰여 있었습니다.
+
+⚠️ **과장하지 않습니다** — `form_path` 는 «여전히 None» 입니다. `atom.source.raw_ref` 는
+   «원자»의 주소이지 폼의 칸이 아니고, `_test_run_refusal` 은 못 앉히는 것을 «raw 로» 둡니다
+   (그 함수 자기 규칙: 「지어낸 상자가 못 앉힌 문장보다 나쁘다」).
+   얻은 것은 «참인 주소»이지 «칠해진 칸»이 아닙니다. 그 구분도 단언으로 박았습니다.
+
+## ② `backfill.run` 결과를 «보는 자리»가 따로 있습니까 → **하나 있는데, 로그입니다**
+```
+backfill.main()  (CLI)   logger.info("[Ledger] %s", {k: v for k, v in result.items() ...})
+=> 제 세 키는 «운영자의 로그 줄»에는 닿습니다. 「읽는 곳 0」은 «거의» 맞고 정확히는 «로그 하나»입니다
+🔴 다만 그것을 «목적지로 세면» Ⅳ-3 가 없애려던 그 부류입니다 —
+   「값이 로그 문장 속 글자로만 나간다」. 그래서 ①이 목적지이고 ②는 «부수입»입니다
+📌 그리고 그 결과에는 `gate_note` 가 «이미» 있었습니다 — 게이트 채널이 있었고 그게 «문장»이었습니다.
+   제 세 키는 그 옆의 «수»입니다. CLI 경로에는 이게 개선이 맞습니다
+```
+
+## ③ 「목적지가 없다」가 «아닙니다». 그래서 재판정 필요 없습니다
+
+## 🔵 그리고 「닫힘 아님」 표기 — 응용 말이 맞습니다
+```
+Ⅱ-2 상태   「나갈 길이 없다」 -> 「나갔고, 테스트 실행 화면이 «주소로» 읽는다」
+남는 것    form_path 로 «앉힐» 수 있으려면 원자 주소를 폼 경로로 «옮기는 지도»가 필요합니다
+          그건 «만들기»이므로 제가 안 합니다. 잔량에 그대로 두십시오
+```
+
+## 돌린 시험
+```
+tests/test_a_refusal_says_which_field_to_fix.py            14 통과 (앞 9 + 이번 5)
+tests/test_test_run_counts_the_bad_rows.py ·
+tests/test_envelope_refusals_carry_an_address.py           합계 30 통과
+```
+
+판정 대기: 없음 (①로 답했고 한 칸만 이었습니다 — 새 표면 «0». 무르실 거면 한 줄 주십시오)
+다음: ㉡ `temporal_text` 계약
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【㉡' `temporal_text` 계약】 착지 — `ebde9b9d`
+
+## 지시대로 «갈아끼웠습니다» — fold 는 안 건드렸고, 템플릿만 가져왔습니다
+```
+템플릿   contracts/notation_fold/   (vectors.json · 기록된 기댓값 · 공허 방지 · 시끄러운 skip · shim)
+데이터   temporal_text 로 교체
+새 기제  «0» — 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」 그대로입니다
+```
+
+## pg 없이 «24개가 돕니다». 지시하신 「두 팔이 내는 SQL」이 그 축입니다
+```
+축1 파이썬 렌더    9케이스 + 통과 3 · 폭 고정(26) · 자기 출력에 멱등 ·
+                 🔴 «텍스트 정렬 순서 == 인스턴트 정렬 순서» (이 핀이 존재하는 이유 그 자체)
+축2 두 팔의 SQL   pg   to_char(timezone('UTC', probe.ts), 'YYYY-MM-DD HH24:MI:SS.US')
+                 sqlite  CAST(probe.ts AS VARCHAR)
+                 🔴 literal_binds 로 뜹니다 — 포맷이 «바인드 파라미터»라서,
+                    그것 없이 뜨면 `%(to_char_1)s` 를 채점하고 «포맷이 바뀌어도 동일»로 읽습니다
+                    그 함정 자체를 단언으로 박았습니다
+축3 pg 런타임      11 skip — 무엇이 막히고 누가 owner 이고 어떻게 푸는지 전부 적힌 skip
+```
+
+## 🔴 공허 방지 — 「빨개진 적 없는 계약은 아무것도 증명 못 한다」
+일부러 틀린 넷을 코퍼스에 먹여 «잡히는지» 단언합니다:
+```
+소수부를 «자르는» 렌더 · UTC 정규화를 «건너뛰는» 렌더 · `.MS`(3자리) · pg 에서 «맨 CAST»
+```
+그리고 코퍼스가 «어떤 실패 방식»을 덮는지도 체크리스트로 박았습니다 —
+정각(pg CAST 가 소수부를 버리는 그 자리) · 1마이크로초 · 오프셋 둘(하나는 «날짜»가 바뀝니다) · 한자리수 패딩.
+
+## ⚠️ fold 와 «다른 점 하나»를 정직하게 적었습니다
+```
+notation_fold 의 skip   「2026-08-04 PostgreSQL 18.3 에서 43×4 전건 일치」를 «인용»합니다
+이 계약의 skip          인용할 «기록된 통과가 없습니다» — pg 없이 썼습니다
+=> skip 문구에 「NOT YET MEASURED」라고 «적었습니다». 없는 측정을 인용하지 않겠습니다
+```
+
+## ⚠️ 이웃 파일에 빨강 하나 — 제 것이 아닙니다 («혼자 돌려도» 빨감)
+```
+server/tests/test_virtual_join_types.py::
+   test_a_graph_meta_boolean_never_reaches_the_payload_because_the_cell_is_taken
+단독 실행    1 failed, 13 passed     <- 제 커밋 «없이도» 빨갛습니다
+제 이번 diff  새 파일 셋뿐입니다 (contracts/temporal_text/ 2 + shim 1). 서버 코드 «0줄»
+📌 다만 그 파일이 temporal_text 를 «유일하게» 재던 곳이라 인접해서 적어 둡니다
+```
+
+## 돌린 시험
+```
+contracts/temporal_text/                       24 통과 · 11 skip
+server/tests/test_temporal_text_contract.py    25 통과 (shim 자기 점검 포함) · 11 skip
+server/tests/test_notation_fold_contract.py    변동 없음 (40 통과 · 4 skip)
+```
+
+판정 대기: 없음
+다음: 제 큐가 «비었습니다». 8-a·8-b·㉡' 다 닫혔고, 남은 것은 ㉠(값 대기)과 6번(소유자)입니다
+     새 지시 없으면 «대기»합니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금

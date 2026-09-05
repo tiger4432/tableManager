@@ -1,0 +1,103 @@
+{
+  "$comment": "TEMPORAL TEXT -- the seam between `crud.temporal_text_value` (Python) and `crud.temporal_text_sql` (SQL, two dialect arms). Both are scored against the `expected` recorded here rather than only against each other: engine-vs-engine alone stays green when both drift the same wrong way, and these two are built from constants that make drifting together the EASY mistake.",
+  "version": 1,
+  "seam": {
+    "python": "server/database/crud.py :: temporal_text_value",
+    "sql": "server/database/crud.py :: temporal_text_sql / _install_temporal_text_construct",
+    "why": "PostgreSQL's own CAST(timestamptz AS varchar) renders in the SESSION's timezone and omits the fractional part when it is zero, so two servers holding one row would compare different text. The postgres arm exists to remove exactly that, and until 2026-09-05 nothing evaluated it: the only test ran on SQLite, where the `_default` arm is a plain CAST -- the arm that never had the problem."
+  },
+  "format": {
+    "python": "%Y-%m-%d %H:%M:%S.%f",
+    "postgres": "YYYY-MM-DD HH24:MI:SS.US"
+  },
+  "compiled_sql": {
+    "postgresql": "to_char(timezone('UTC', probe.ts), 'YYYY-MM-DD HH24:MI:SS.US')",
+    "sqlite": "CAST(probe.ts AS VARCHAR)",
+    "note": "Recorded with literal_binds so the FORMAT STRING is visible: it rides as a bound parameter, and a compile without literal binds would score a placeholder and call a changed format identical."
+  },
+  "cases": [
+    {
+      "label": "microseconds",
+      "value": "2026-08-03T12:23:39.123456",
+      "kind": "datetime",
+      "note": "the ordinary shape: six digits, all significant",
+      "expected": "2026-08-03 12:23:39.123456"
+    },
+    {
+      "label": "whole_second",
+      "value": "2026-08-03T12:00:00",
+      "kind": "datetime",
+      "note": "PostgreSQL's own CAST omits the fraction when it is zero; the pin must not",
+      "expected": "2026-08-03 12:00:00.000000"
+    },
+    {
+      "label": "one_microsecond",
+      "value": "2026-08-03T12:00:00.000001",
+      "kind": "datetime",
+      "note": "the smallest non-zero fraction - a five-digit render loses it",
+      "expected": "2026-08-03 12:00:00.000001"
+    },
+    {
+      "label": "aware_plus_nine",
+      "value": "2026-08-03T12:23:39.123456+09:00",
+      "kind": "datetime",
+      "note": "normalised to UTC, so the text does not follow a session GUC",
+      "expected": "2026-08-03 03:23:39.123456"
+    },
+    {
+      "label": "aware_minus_five",
+      "value": "2026-08-03T02:00:00-05:00",
+      "kind": "datetime",
+      "note": "crosses the date boundary westward - a naive render reports the wrong DAY",
+      "expected": "2026-08-03 07:00:00.000000"
+    },
+    {
+      "label": "date_only",
+      "value": "2026-08-03",
+      "kind": "date",
+      "note": "a DATE becomes midnight, not a bare date",
+      "expected": "2026-08-03 00:00:00.000000"
+    },
+    {
+      "label": "midnight",
+      "value": "2026-01-01T00:00:00",
+      "kind": "datetime",
+      "note": "all-zero time; a format that trims would collapse this to the date",
+      "expected": "2026-01-01 00:00:00.000000"
+    },
+    {
+      "label": "year_boundary",
+      "value": "2025-12-31T23:59:59.999999",
+      "kind": "datetime",
+      "note": "the largest fraction, at a rollover",
+      "expected": "2025-12-31 23:59:59.999999"
+    },
+    {
+      "label": "single_digit_parts",
+      "value": "2026-01-02T03:04:05.000006",
+      "kind": "datetime",
+      "note": "every field needs zero-padding; %-style and unpadded renders differ here",
+      "expected": "2026-01-02 03:04:05.000006"
+    }
+  ],
+  "passthrough": [
+    {
+      "label": "none",
+      "value": null,
+      "expected": null,
+      "note": "NULL propagates: CAST and to_char both answer NULL, and a temporal column is never ''"
+    },
+    {
+      "label": "empty_string",
+      "value": "",
+      "expected": "",
+      "note": "not a datetime, so it is not folded - the funnel is elsewhere"
+    },
+    {
+      "label": "already_text",
+      "value": "2026-08-03 12:23:39.123456",
+      "expected": "2026-08-03 12:23:39.123456",
+      "note": "a non-datetime passes through untouched"
+    }
+  ]
+}

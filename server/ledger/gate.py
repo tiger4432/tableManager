@@ -72,6 +72,7 @@ reason (R-H-bis 1): one grammar, so a future caller cannot pick the wrong one.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import contextlib
 import logging
 import threading
@@ -100,11 +101,26 @@ class MoleculeRefused(Exception):
     `or []`, `or {}`, a bare `extend`, and an ignored return value alike.
     """
 
-    def __init__(self, source: str, reason: str, detail: str):
+    def __init__(self, source: str, reason: str, detail: str, addresses=()):
         super().__init__(f"{source}: {reason}: {detail}")
         self.source = source
         self.reason = reason
         self.detail = detail
+        #: 🔴 `code` AND `path` BECAUSE THE READER ALREADY ASKS FOR THEM.
+        #: `config_explorer_service._test_run_refusal` reads `getattr(exc, "code")` and
+        #: `getattr(exc, "path")` and falls back to the CLASS NAME when they are absent --
+        #: so a gate refusal reaching the test-run screen used to be reported as
+        #: `code="MoleculeRefused"`, `path=""`. The screen's whole reason for existing is
+        #: "which field do I fix", and it was being told the name of an exception class.
+        #:
+        #: ⚠️ THE FIRST ADDRESS, and `addresses` keeps the rest. `check_envelope` can
+        #: answer several at once and the reader's shape is one; picking the first matches
+        #: what `_envelope_reason` already does with the same list, so the code and the
+        #: address describe the SAME violation rather than two.
+        self.addresses = [dict(a) for a in (addresses or ()) if isinstance(a, Mapping)]
+        first = self.addresses[0] if self.addresses else {}
+        self.code = first.get("code") or None
+        self.path = first.get("path") or None
 
 
 #: Per-thread depth of open molecules. Thread-local rather than a module global because
@@ -327,7 +343,8 @@ def record_incomplete(source: str, count: int = 1):
     _incomplete[source] = _incomplete.get(source, 0) + int(count)
 
 
-def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1):
+def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1,
+            addresses=()):
     key = (source, reason)
     before = _refusals.get(key, 0)
     total = before + 1
@@ -335,8 +352,19 @@ def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1):
     _atoms_lost[source] = _atoms_lost.get(source, 0) + int(atoms)
     _rows_refused[source] = _rows_refused.get(source, 0) + int(rows)
     if len(_samples) < MAX_REFUSAL_SAMPLES:
+        # 🔴 THE ADDRESS RIDES THE SAMPLE, NEVER THE COUNTS. `_refusals` is
+        # `(source, reason) -> count` and its invariant is that the breakdown SUMS to the
+        # number of refusals; hanging a per-atom address off it breaks that equality while
+        # still looking right. `_samples` is one entry per refusal, already capped, and is
+        # in no sum at all -- so this is the only carrier here that can hold an address.
+        #
+        # Code and path only. The sentence is already in `detail`, and repeating it would
+        # put the same text in the payload twice.
         _samples.append({"source": source, "reason": reason, "atoms": int(atoms),
-                         "rows": int(rows), "detail": detail})
+                         "rows": int(rows), "detail": detail,
+                         "addresses": [{"code": a.get("code"), "path": a.get("path")}
+                                       for a in (addresses or ())
+                                       if isinstance(a, Mapping)]})
     # Announce on the 1st, 10th, 100th ... occurrence so a fixed deployment and a
     # broken one do not produce identical logs.
     if total in _ANNOUNCE_AT:
@@ -375,7 +403,8 @@ def _envelope_reason(violations):
     return _ENVELOPE_REASONS.get(first.get("code"), REFUSE_NOT_TRUE_ALONE)
 
 
-def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1):
+def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1,
+           addresses=()):
     """Refuse something that never became atoms at all - an undeclared `event_type`, a
     source with no declared time column, a molecule with no resolvable subject.
 
@@ -395,9 +424,9 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1)
         # one is the same rule the gate applies to predicates.
         raise ValueError(f"'{reason}' is not a declared refusal reason "
                          f"({sorted(REFUSAL_REASONS)})")
-    _record(source, reason, atoms, detail, rows=rows)
+    _record(source, reason, atoms, detail, rows=rows, addresses=addresses)
     if molecule_is_open():
-        raise MoleculeRefused(source, reason, detail)
+        raise MoleculeRefused(source, reason, detail, addresses=addresses)
 
 
 def screen_molecule(source: str, atoms, declared_derivations, declared_subject_types,
@@ -593,9 +622,15 @@ def screen_compiled_molecule(source: str, atoms, declared_derivations,
             break
 
     if report["refused"]:
+        # 🔴 THE ADDRESS TRAVELS WITH THE REFUSAL. `check_envelope` has answered
+        # `(code, path, message)` since it landed and the report has carried them since --
+        # and both stopped there, because the report's only production caller discarded it.
+        # A screen could render the sentence and nothing else, so "which field do I fix"
+        # had no answer.
         refuse(source, report["reason"],
                f"molecule={molecule_ref} :: " +
                " ; ".join(report["violations"][:3]),
-               atoms=len(atoms), rows=source_rows)
+               atoms=len(atoms), rows=source_rows,
+               addresses=report.get("violation_details") or ())
         return [], report
     return atoms, report

@@ -31,7 +31,7 @@ RUN_EVENT_TYPE = event_constants.EVENT_RETROACTIVE_RUN
 
 #: `DatabaseOutbox.table_name` is NOT NULL-ish by convention and is what the
 #: scheduler logs; a retroactive run has no single table, so it carries this.
-RUN_EVENT_TABLE = "__retroactive__"
+RUN_EVENT_TABLE = event_constants.RETROACTIVE_RUN_TABLE
 
 COUNT_EXACT = "exact"
 COUNT_SAMPLE = "sample"

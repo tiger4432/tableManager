@@ -529,6 +529,22 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         result["retranslated"] = bool(approved)
         result["cursor_before"] = cursor_before
         result["cursor_after"] = result.get("cursor")
+        # 🔴 WHICH FIELD DO I FIX. The gate has produced `(code, path)` per refusal since
+        # `check_envelope` landed and it reached nobody: three carriers, no reader, and the
+        # only production caller of the report threw it away. This is the read.
+        #
+        # ⚠️ AND THE CAP IS SAID OUT LOUD, AS A NUMBER. `refused_samples` stops at
+        # `MAX_REFUSAL_SAMPLES`, so "400 refused, 20 addressed" must not render as "20
+        # refusals" -- that is truncation read as absence, which is the failure this
+        # whole surface exists to remove. Two counts, no sentence.
+        # Imported here, like everything else in this file: `.gate` is reachable only
+        # through the lazy chain the module docstring explains.
+        from . import gate
+
+        result["refused_total"] = sum(gate.refusals().values())
+        result["refused_samples"] = gate.samples()
+        result["refused_samples_capped"] = (
+            result["refused_total"] > len(result["refused_samples"]))
         return result
     finally:
         read.close()
