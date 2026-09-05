@@ -1140,6 +1140,9 @@ const FLOORS = new Map([
   // separates 「about to run」 from 「nothing is picking up」 -- and the count is the
   // server's, because the list is newest-first and truncates invisibly
   ['pickup_state_harness.mjs', 28],
+  // why a plan declaration is refused and what to change -- and that the state comes
+  // from booleans, never from the server's reason words, which the seam contract forbids
+  ['plan_dry_run_harness.mjs', 25],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
