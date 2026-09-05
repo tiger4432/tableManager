@@ -144,7 +144,7 @@
       "mapper_module": "mappers.lot_slot_wafer_mapper",
       "mapper_function": "build_lot_slot_wafer_rows",
       "is_batch": true,
-      "enabled": false,
+      "enabled": true,
       "list_delimiter": ":",
       "slot_list_column": "slotnumbers",
       "wafer_list_column": "waferids",
