@@ -47,7 +47,6 @@ function collapseOverflow(container) {
   overflow.innerHTML =
     `<div class="progress-header"><span class="progress-title">📤 그 외 ${hidden}건 적재 중</span></div>`;
   container.appendChild(overflow);
-  return overflow;
 }
 
 // 카드 제거는 두 경로(자동 완료 / finish 호출)에서 같은 일을 했다. 한 곳으로 모은 이유는
