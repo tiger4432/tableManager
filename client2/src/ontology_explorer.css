@@ -1001,6 +1001,36 @@
 #ontology-explorer-root .oe-field-input,
 #ontology-explorer-root .oe-field-select,
 .oe-field-select { font-size: 14px; }
+/* 🔴 THE DECLARED KEY, AND WHAT THE DATA SAID ABOUT IT -- BESIDE THE DEFAULT IT JUDGES.
+   The row's ground already says where the ordering default came from; this says whether
+   that ground survives measurement. Colour carries the verdict and the words carry the
+   numbers, because a colour alone cannot say 「겹침 4,939」 and a number alone cannot be
+   scanned. ⚠️ 「모름」 is grey, NOT the warning colour -- a question that has not been
+   asked must not wear the costume of a bad answer. */
+#ontology-explorer-root .oe-uniqueness {
+  display: flex; flex-direction: column; gap: 3.4px; margin-top: 6.8px;
+}
+#ontology-explorer-root .oe-uniqueness > small { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-uniqueness-row,
+#ontology-explorer-root .oe-uniqueness-pick {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
+  min-width: 0; font-size: 13px;
+}
+#ontology-explorer-root .oe-uniqueness-detail { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-uniqueness-row[data-state="unique"] .oe-uniqueness-verdict {
+  color: var(--oe-ok);
+}
+#ontology-explorer-root .oe-uniqueness-row[data-state="duplicated"] .oe-uniqueness-verdict {
+  color: var(--oe-warn);
+}
+#ontology-explorer-root .oe-uniqueness-row[data-state="unmeasurable"] .oe-uniqueness-verdict,
+#ontology-explorer-root .oe-uniqueness-row[data-state="empty"] .oe-uniqueness-verdict,
+#ontology-explorer-root .oe-uniqueness-row[data-state="unread"] .oe-uniqueness-verdict {
+  color: var(--oe-ink-meta);
+}
+#ontology-explorer-root .oe-uniqueness-pick > small { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-uniqueness-pick[data-state="none"] > span { color: var(--oe-warn); }
+
 /* 🔴 A CLOSED LIST THAT CANNOT CHANGE ANYTHING IS A VALUE, AND IT HAS TO LOOK LIKE ONE.
    Drawn with a control's box it reads as clickable, and an operator who clicks it and gets
    nothing has been told the screen is broken. Same size as the input beside it so the column

@@ -774,9 +774,36 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
             : jsonRequest('/authoring/plan'),
       ]);
       dispatch({ type: 'AUTHORING_RECEIVED', plan, schema, whole: whole || plan });
+      // 🔴 THE ANSWER THE SERVER ALREADY COMPUTES AND NOBODY ASKED FOR. The plan hands
+      // the author the shortest DECLARED unique key as the ordering default; whether that
+      // key is unique IN THE DATA is a different question, and `column_stats` answers it.
+      // On 2026-08-18 a declared composite key was three empty columns, and a default
+      // nobody measured was handed over as the recommendation.
+      //
+      // ⚠️ EXPENSIVE, SO ASKED ONCE PER RELATION. It costs a full table scan by design
+      // (the counts are exact). Never on a keystroke, never on a re-render -- the guard is
+      // inside `loadColumnStats`, and a failure annotates instead of retrying.
+      const relation = (plan?.fields || []).find(
+        (field) => /\.relation$/.test(field.path || '') && typeof field.value === 'string'
+          && field.value)?.value;
+      if (selection && relation) loadColumnStats(relation);
     } catch (error) {
       console.warn('[ontology] authoring plan unavailable', error);
       dispatch({ type: 'AUTHORING_FAILED', message: errorMessage(error) });
+    }
+  };
+
+  /** Ask once per relation. Anything already known -- answer OR failure -- is not re-asked. */
+  const loadColumnStats = async (relation) => {
+    if (!relation || (state.columnStats || {})[relation]) return;
+    try {
+      const stats = await jsonRequest(
+        `/columns?relation=${encodeURIComponent(relation)}`);
+      dispatch({ type: 'COLUMNS_RECEIVED', relation, stats });
+    } catch (error) {
+      // ⚠️ Not a toast. Nothing the operator did failed, and the plan is still correct
+      //    -- what is missing is one annotation, which the row says for itself.
+      dispatch({ type: 'COLUMNS_FAILED', relation, message: errorMessage(error) });
     }
   };
 
