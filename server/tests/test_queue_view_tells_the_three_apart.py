@@ -69,31 +69,30 @@ def test_waiting_runs_are_listed_oldest_first_with_the_server_counting_position(
 
 
 def test_a_running_row_whose_pid_is_gone_is_reported_orphaned(db_session, monkeypatch):
-    import socket
-
-    import psutil
-    monkeypatch.setattr(psutil, "pid_exists", lambda pid: False)
+    """The heartbeat of that kind is alive and beating under a DIFFERENT pid, so the
+    process this run belonged to is gone."""
+    from utils import heartbeat
+    monkeypatch.setattr(heartbeat, "read_all", lambda **k: {"scheduler": {"pid": 5, "stale": False}})
     add(db_session, "stuck", "running", queued_ago=900, started_ago=880,
-        runner="%s/424242" % socket.gethostname())
+        runner="scheduler/any-host/424242")
     out = retroactive.queue_view(db_session, now=NOW)
     assert [o["run_id"] for o in out["orphaned"]] == ["stuck"]
     assert out["orphaned"][0]["owner"] == "orphaned"
 
 
 def test_a_live_pid_is_not_orphaned(db_session, monkeypatch):
-    import socket
-
-    import psutil
-    monkeypatch.setattr(psutil, "pid_exists", lambda pid: True)
+    from utils import heartbeat
+    monkeypatch.setattr(heartbeat, "read_all", lambda **k: {"scheduler": {"pid": 4242, "stale": False}})
     add(db_session, "working", "running", queued_ago=90, started_ago=80,
-        runner="%s/4242" % socket.gethostname())
+        runner="scheduler/any-host/4242")
     assert retroactive.queue_view(db_session, now=NOW)["orphaned"] == []
 
 
-def test_a_pid_on_another_host_is_unknown_rather_than_dead(db_session, monkeypatch):
-    """⚠️ Calling a foreign pid dead is how "never finishes" becomes "two at once"."""
-    import psutil
-    monkeypatch.setattr(psutil, "pid_exists", lambda pid: False)
+def test_a_row_without_a_heartbeat_name_is_unknown_rather_than_dead(db_session, monkeypatch):
+    """⚠️ Rows written before the stamp carried a name have a shape this cannot judge, and
+    reaping on a shape a row never had is how "never finishes" becomes "two at once"."""
+    from utils import heartbeat
+    monkeypatch.setattr(heartbeat, "read_all", lambda **k: {"scheduler": {"pid": 5, "stale": False}})
     add(db_session, "elsewhere", "running", queued_ago=900, started_ago=880,
         runner="some-other-host/9")
     out = retroactive.queue_view(db_session, now=NOW)

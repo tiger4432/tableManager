@@ -866,18 +866,27 @@ def _runner_state(runner):
     here, and calling it dead is how "never finishes" would become "two at once". Rows
     with no stamp at all predate the column and are unknown, not orphaned.
     """
-    if not runner or "/" not in str(runner):
+    parts = str(runner or "").split("/")
+    if len(parts) != 3 or parts[0] in ("", "?"):
+        # Rows written before the stamp carried a heartbeat name, or by a process that had
+        # not beaten yet. Unknown, and unknown is not orphaned.
         return "unknown"
-    host, _, pid = str(runner).rpartition("/")
+    name, _host, pid = parts
     try:
-        import os as _os
-        import socket as _socket
-        if host != _socket.gethostname():
-            return "unknown"
-        import psutil
-        return "owned" if psutil.pid_exists(int(pid)) else "orphaned"
+        from utils import heartbeat as _hb
+        entry = _hb.read_all().get(name)
     except Exception:                                            # noqa: BLE001
         return "unknown"
+    if entry is None or entry.get("stale"):
+        # 🔴 THE HEARTBEAT IS WHY THE HOST STOPPED MATTERING. Asking `host/pid` meant a
+        # run stamped on another machine could never be judged from here, so every such
+        # row was "unknown" forever. The name is answerable from anywhere that can read
+        # the heartbeats, so the unknown disappears rather than being handled.
+        return "orphaned"
+    beating = entry.get("pid")
+    # Fresh beat, different pid: the process that started this run is gone and a newer one
+    # of the same kind is beating. The run it left behind is nobody's.
+    return "owned" if str(beating) == str(pid) else "orphaned"
 
 
 def in_flight(db, now=None, stall_after=None):
@@ -1385,9 +1394,14 @@ def runner_identity() -> str:
     import os as _os
     import socket as _socket
     try:
-        return "%s/%d" % (_socket.gethostname(), _os.getpid())
+        from utils import heartbeat as _hb
+        name = _hb.own_name() or "?"
     except Exception:                                            # noqa: BLE001
-        return "?/%d" % _os.getpid()
+        name = "?"
+    try:
+        return "%s/%s/%d" % (name, _socket.gethostname(), _os.getpid())
+    except Exception:                                            # noqa: BLE001
+        return "%s/?/%d" % (name, _os.getpid())
 
 
 def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None):

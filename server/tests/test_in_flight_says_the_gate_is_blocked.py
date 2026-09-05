@@ -99,4 +99,5 @@ def test_an_unresolvable_hostname_still_yields_an_identity(monkeypatch):
 
     monkeypatch.setattr(socket, "gethostname", lambda: (_ for _ in ()).throw(OSError()))
     got = retroactive.runner_identity()
-    assert got.startswith("?/") and got.split("/")[1].isdigit()
+    parts = got.split("/")
+    assert len(parts) == 3 and parts[1] == "?" and parts[2].isdigit()

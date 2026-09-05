@@ -142,6 +142,18 @@ def heartbeat_path(name):
     return os.path.join(heartbeat_dir(), f"{name}.json")
 
 
+#: The name THIS process beats under, set by the first `beat`. Published because a
+#: component that has to say "who am I" otherwise writes the name down a second time -
+#: and a second spelling is a second thing to get wrong. `retroactive.runner_identity`
+#: reads it so a run can record which heartbeat owns it.
+_own_name = None
+
+
+def own_name():
+    """This process's heartbeat name, or None before it has beaten once."""
+    return _own_name
+
+
 def beat(name, note=None, force=False):
     """Record one unit of progress for worker ``name``.
 
@@ -149,6 +161,9 @@ def beat(name, note=None, force=False):
     True when the beat reached the disk, False when it was throttled or failed —
     callers ignore the result; it exists for the tests.
     """
+    global _own_name
+    _own_name = name
+
     now = time.time()
     tid = threading.get_ident()
     with _state_lock:
