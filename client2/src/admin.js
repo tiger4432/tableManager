@@ -1825,11 +1825,16 @@ function renderRecorrection(stat) {
     valueEl.textContent = '—';
     line.dataset.tone = 'muted';
     // ⚠️ 창의 «길이»도 모르면 말하지 않습니다 — 오늘의 NULL 규칙과 같은 자리입니다.
-    subEl.textContent = stat.unavailable_reason
-      ? stat.unavailable_reason
-      : (stat.window_days == null
-        ? '사람이 고친 셀 없음'
-        : `최근 ${stat.window_days}일간 사람이 고친 셀 없음`);
+    const win = stat.window_days == null ? '' : `최근 ${stat.window_days}일간 `;
+    if (stat.unavailable_reason) {
+      subEl.textContent = `집계 실패: ${stat.unavailable_reason}`;
+    } else if (stat.measured_cells == null) {
+      // 🔴 넷째 갈래 — 「센 값이 «안 왔다»」와 「세었더니 «0» 이다」는 다른 사실입니다.
+      //    옆 줄(renderEffort)이 `ratio === 0` 으로 같은 자리를 갈라 둔 것과 같은 축입니다.
+      subEl.textContent = `${win}사람이 고친 셀을 «세지 못했음»`;
+    } else {
+      subEl.textContent = `${win}사람이 고친 셀 없음`;
+    }
     return;
   }
 
