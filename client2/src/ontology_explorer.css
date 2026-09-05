@@ -31,16 +31,33 @@
    The explorer keeps its own copy of these three lines below; same value, so its computed
    output is unchanged, and removing them is a separate question from this ruling. */
 :root {
-  --oe-bg: light-dark(#f4f6f8, #111419);
-  --oe-surface: light-dark(#ffffff, #191d23);
-  --oe-surface-2: light-dark(#f8fafb, #20252c);
-  --oe-text: light-dark(#1c232b, #eef2f6);
-  --oe-muted: light-dark(#647180, #aeb8c4);
-  --oe-line: light-dark(#d8dee5, #343b45);
-  --oe-accent: light-dark(#1769aa, #79b8f3);
-  --oe-accent-soft: light-dark(#e8f2fb, #183248);
-  --oe-ok: light-dark(#1f7a4d, #71d6a3);
-  --oe-warn: light-dark(#9b6516, #efbe63);
+  /* 🔴 ONE SOURCE OF COLOUR, AND THIS IS THE WHOLE OF IT. These ten used to be a
+     SECOND palette: the app's `tokens.css` holds the same ten roles a few RGB away, and a
+     part carried from this screen to another changed colour for no reason anybody
+     declared. Every one of them is now the app's own token.
+
+     🔴 TEN LINES RATHER THAN TWO HUNDRED. The other reading -- rewriting every
+     `var(--border)` in `admin.html` to `var(--oe-line)` -- moves the boundary instead of
+     removing it: ten other files keep the app palette, so two palettes survive and a part
+     moved to `rnd_board` still changes colour. Repointing the DEFINITIONS satisfies the
+     same rule with no call site touched and no selector changed.
+
+     ⚠️ `light-dark()` goes with them, and that is not a loss. The app tokens redefine
+     themselves per theme already, so dark follows one declaration instead of two -- all
+     ten carry both halves in `tokens.css`, checked before this landed.
+
+     The derived mixes below are untouched and follow automatically; they are percentages
+     OF these, which is why there are ten lines here and not nineteen. */
+  --oe-bg: var(--bg-inset);
+  --oe-surface: var(--bg-surface);
+  --oe-surface-2: var(--bg-header);
+  --oe-text: var(--text);
+  --oe-muted: var(--text-dim);
+  --oe-line: var(--border);
+  --oe-accent: var(--accent);
+  --oe-accent-soft: var(--accent-weak);
+  --oe-ok: var(--success);
+  --oe-warn: var(--warning);
 
   /* The mockup's two families. Mono is kept for identifiers and JSON -- the design file
      names two faces because it has no identifiers to show; this screen is made of them. */
