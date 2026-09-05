@@ -6795,3 +6795,48 @@ INSERT 를 막는 모드(Share/Exclusive/AccessExclusive)   «없음»
 ```
 🔴 **천장 확인**: 총괄이 박아 주신 대로, 질의를 «전부» 0으로 만들어도 파이썬/직렬화 «0.2~0.3 s»가
    남습니다. ㉮ 를 해도 «0.3 s 대»이지 0.1 s 가 아닙니다.
+
+---
+
+# 🔴 [구현자 -> 총괄] **A 착수 전 멈춤 — `table_stats` 를 지우면 «두 칸이 같이» 사라집니다 (게이트 ①과 충돌)**
+
+## 지시하신 사전 확인 — `schemas.py:308` 경고는 «다른 것»을 지킵니다
+```
+그 주석   `UncountedTable` 의 것입니다 — 「셀 수 없던 표는 «0행이 아니»라서 table_stats 에
+         «안 넣고» 여기 이름으로 둔다. 조용히 지우면 「그 표가 없다」로 읽힌다」
+=> 지키는 대상이 `uncounted_tables` 입니다. table_stats 를 지워도 그건 «안 지워집니다»
+   오히려 그 취지(0 으로 읽히면 안 된다)는 그대로 남습니다  -> 멈출 사유 «아님»
+```
+
+## 🔴 그런데 «진짜» 멈출 자리가 있습니다 — 그 루프가 «셋»을 만듭니다
+```
+main.py:1354~1396 의 한 루프가 만드는 것
+   table_stats     <- 지시하신 것
+   total_rows      <- 같은 루프의 count 를 «합산»합니다 (total_global_rows)
+   total_tables    <- 같은 자리에서 len(table_names)
+=> table_stats 만 지우고 total_rows 를 남기려면 «count 39개(46.9%)를 그대로» 둬야 합니다
+   그러면 이 라운드가 얻는 것은 max() «20.1%» 뿐입니다 (67% 가 아니라)
+```
+```
+게이트 ①  「table_stats «말고» 달라지는 칸이 «없어야» 합니다」
+=> 67% 를 얻으려면 total_rows·total_tables «도» 사라집니다 -> 게이트 ①과 «충돌»합니다
+   그래서 손대기 «전»에 멈춥니다
+```
+
+## 그 두 칸도 «읽는 곳이 없습니다» — 세었습니다
+```
+total_tables   client2/src «0» · 출하 번들 «0» · 서버는 schemas 정의 + main.py 대입 «뿐»
+total_rows     client2/src 의 히트는 «전부 다른 객체»입니다
+               (admin.js:1399 은 «인제션 item.total_rows» · chain_queue_panel · retroactive_view 동일)
+               대시보드 응답의 total_rows 를 읽는 코드 «0»
+```
+
+## 판정 청함 — 한 줄이면 됩니다
+```
+㉮ 셋을 «같이» 지웁니다 (table_stats · total_rows · total_tables)  -> 67% · 질의 80 -> 6
+   게이트 ①을 「세 칸은 한 덩어리」로 읽어 주시면 그대로 갑니다
+㉯ table_stats «만» 지웁니다                                      -> 20.1% · 질의 80 -> 45
+   count 39개는 total_rows 를 위해 남습니다 (아무도 안 읽는 수를 위해)
+```
+📌 저는 ㉮ 로 보지만, 응답 «계약»이 바뀌는 것이라 제가 정하지 않습니다.
+   그동안 B(고리 검증기)로 갑니다 — 그건 막힌 데가 없고, 가운데 홉의 «전제»입니다.
