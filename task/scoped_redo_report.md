@@ -7728,3 +7728,74 @@ dt_log_to_core_usage_map          dt_log -> core_usage_map
 
 판정 대기: 없음 (요청받은 비용 한 줄입니다 — 6번은 여전히 소유자 판정)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【★ 마디 2 «한 칸»】 착지 — `172efda6` · 게이트 다섯 전부
+
+## 게이트 다섯 — 전부 «수»로. ⑤ 를 먼저 적습니다
+```
+🔴⑤ 런타임 거절이 «여전히 발화»한다
+   찔러 본 방식   선언에서 이름 «하나 빼기» · 없는 이름 «하나 넣기» — 양쪽 다
+   결과          둘 다 SourcePreparationError(code="unsupported_source_preparer_output")
+   왜 안 공허한가  도출값은 «폼이 채우는 값»이고, prepare_outputs 는 여전히
+                «자기가 낸 것 vs 선언»을 잽니다. 클래스 답을 그 비교에 끌어오면
+                클래스가 «자기 자신»과 대조하게 되고 그 순간 이 칸을 자유도 0으로
+                만들어 주던 장치가 사라집니다 -> 그래서 «안 끌어왔습니다»
+   ⛔ 코드에도 박아 뒀습니다: 「NOTHING AT RUNTIME MAY READ THIS」
+
+① lot-event-live-frame   derived · 7 · 운영자가 적는 것 «0»
+                        그리고 그 7이 «클래스가 실제로 내는 것»과 같은지 단언합니다
+                        (LIVE_LOT_EVENT_OUTPUT_MAP ∪ 상수 셋 == declared_output_columns)
+② direct-join            14 «전부 무변동» — unanswered · n=0. 아무 일도 안 일어납니다
+③ 말 안 하는 준비기       칸이 «남고» 오늘 그대로 — ground 도 그대로
+                        (preparer_output_collision_from_relation)
+④ 기존 선언 전건 통과     커밋된 샘플 15소스 전건. 그리고 더 센 것:
+                        lot_event 의 «채워질 값 == 이미 선언된 값» (True)
+                        -> 채워도 파일이 «안 바뀝니다». 검증 결과가 바뀔 자리가 없습니다
+```
+
+## 「말 못 한다」가 기본 — 지시하신 그대로
+```
+BaseSourcePreparer.declared_output_columns = None      <- 기본
+lot-event-live-frame  = {7칸: 타입}                     <- 이 클래스만 말합니다
+direct-join           -> None                          <- 말 안 합니다
+상속으로 «빌려주지» 않습니다 — __dict__ 로 읽습니다 (정체 읽기와 같은 이유).
+   하위 클래스를 만들어 확인: 답이 None (시험에 있습니다)
+⚠️ None 은 「말 안 함」이지 「내는 게 없음」이 «아닙니다». {} 는 «없다는 말»입니다 — 갈라 뒀습니다
+```
+
+## 🔴 지나가다 잡은 함정 하나 — 하마터면 «채운 칸을 검증기가 거절»할 뻔했습니다
+```
+derived 행의 value 는 filled_declaration 이 «파일에 씁니다»
+그런데 이 칸의 파일 모양은 «{컬럼: 타입} 매핑»이고, 오늘 행의 value 는 «이름 리스트»입니다
+=> 리스트 그대로 derived 로 올렸으면 「채웠습니다」라고 말한 «바로 그 칸»을
+   _column_types 가 invalid_type 으로 거절했을 것입니다
+=> 매핑으로 싣고, 그것을 단언으로 박았습니다
+```
+
+## 그래서 B 도 같이 닫힙니다
+「lot_event 의 그 둘을 어떻게」 — 그 둘(그리고 나머지 다섯)이 이제 «클래스에서» 옵니다.
+운영자가 적을 것이 «0» 이라 물어볼 것이 남지 않았습니다.
+
+## ⚠️ 스위트에서 본 빨강 «넷» — 둘은 앞서 보고한 그대로, 둘은 «제 것이 아닙니다»
+```
+기존 둘   test_ontology_config_explorer 의 두 시험 — «라이브 선언»을 입력으로 읽습니다 (변동 없음)
+새로 본 둘  test_ledger_v2_lot_event_parity::…_told_apart_by_its_key_and_nothing_else
+            -> AttributeError: LotEventRoleMapper 에 SPLIT_SLOT_CARRY «없음»
+               제 diff 는 LiveLotEventSourcePreparer 에 «칸 하나 추가»뿐이고
+               LotEventRoleMapper 는 한 글자도 안 건드렸습니다
+          contracts/map2_seam::test_scoring_rebuilds_a_full_meta_per_candidate
+            -> 후보 8 중 «4»만 meta 를 다시 짓습니다. 맵2 기하이고 제 반경 밖입니다
+🔴 둘 다 «제 것이 아니라고 생각합니다»만, 제가 그 라운드를 안 봤으므로 단정하지 않겠습니다.
+   해당 레인에 전달할 값이면 총괄께서 넘겨 주십시오
+```
+
+## 돌린 시험
+```
+변경 모듈을 import 하는 스위트 «전량» (25파일) — 548 통과 · 11 skip · 4 빨강(위 설명)
+신규  tests/test_a_preparer_can_state_its_own_outputs.py   12 통과
+```
+
+판정 대기: 없음 — 다음은 ㉡ (두 fold 이음매 계약 + B 의 값싼 질문 하나)로 이어갑니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
