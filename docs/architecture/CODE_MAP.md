@@ -3075,8 +3075,11 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `client2/src/chain_rule_panel.js` | 59 | `CHAIN_RULE_REGISTRY` · `chainRuleView` · `ChainRulePanel` | 위 템플릿의 «선언» ② (체인 규칙) |
 | `client2/src/ledger_sources_panel.js` | 283 | `STATES` · `sourcesView` · `LedgerSourcesPanel` | 번역기 장부(소스 상태) |
 | `client2/src/progress_card.js` | 182 | `showProgressCard` · `finishProgressCard` | 진행 카드의 근원 템플릿 (소비자: 파일 인제션) |
+| `client2/src/closed_list.js` | 92 | `LIST_UNREAD` · `NO_CHOICE` · `closedListChoice` · `renderClosedList` | 닫힌 목록의 «멤버 수»가 컨트롤을 정한다 — 부르는 곳 «둘» |
 
-🔴 이 일곱이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
+🔴 여덟째(`closed_list.js`)가 재는 것은 「수」가 아니라 「컨트롤」이지만 규율은 같다 — 목록이 «아직 안 온» 것과 「멤버 0」이 다른 픽셀이다. `ontology_explorer_view.js` 의 두 자리(계획 행의 `candidates` · 스켈레톤 잎의 `hint: choice`)가 이것의 «선언»이고, 그래서 그 파일에 `oe-field-select` 가 «0개» 남았다. 하니스 `closed_list_harness.mjs` 가 그 수를 지킨다.
+
+🔴 이 여덟이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
    못 읽은 수는 `—` 이고, 0 은 «그 0 이 무엇의 0 인지»를 옆에 답니다.
 
 🆕⑪ **[2026-08-23] 이 구간에 화면 결함 다섯이 닫혔고, 그중 넷이 「기본값·유도가 «언제» 사람의 일이 되는가」라는 한 질문이었다.**
