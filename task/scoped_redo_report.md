@@ -8046,3 +8046,59 @@ test_ledger_l1_unit.py                                    128 통과
 판정 대기: 🔴 위 「runtime_v2 를 안 고친 것」 — 무르실 거면 근거 한 줄 주십시오
 다음: ㉡ `temporal_text` 계약 (판정 b648a29a 수령 — fold 는 짓지 않고 쌍둥이로 갈아끼웁니다)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【Ⅱ-2 목적지】 물으신 셋에 답합니다 — **①이 맞습니다.** 그리고 그 한 칸을 이었습니다 (`71b0de61`)
+
+## ① `test_run` 이 그 주소를 실을 수 «있습니까» → **있습니다. 읽는 쪽이 «이미 묻고 있었습니다»**
+```
+그 함수의 거절 경로   backfill.preview_first_batch(...) 를 부르고 «except Exception» 으로 받습니다
+                   (backfill.run 이 아닙니다 — 그건 ②)
+                   게이트 거절은 MoleculeRefused 로 «raise 되어» 거기로 옵니다
+_test_run_refusal   getattr(exc, "code") · getattr(exc, "path") 를 «이미» 읽고,
+                   없으면 «클래스 이름»으로 떨어집니다
+MoleculeRefused     (source, reason, detail) 뿐 — code 도 path 도 «없었습니다»
+=> 그래서 그 화면이 받던 것:   code="MoleculeRefused"   path=""
+   「어느 칸을 고치나」가 존재 이유인 화면에 «예외 클래스 이름»을 주고 있었습니다
+```
+이어 놓은 뒤:
+```
+code="source_raw_ref_empty"   path="atom.source.raw_ref"
+```
+🔵 새 화면도 새 라우트도 «없습니다». 읽는 쪽·폴백·경로 매핑이 전부 이미 쓰여 있었습니다.
+
+⚠️ **과장하지 않습니다** — `form_path` 는 «여전히 None» 입니다. `atom.source.raw_ref` 는
+   «원자»의 주소이지 폼의 칸이 아니고, `_test_run_refusal` 은 못 앉히는 것을 «raw 로» 둡니다
+   (그 함수 자기 규칙: 「지어낸 상자가 못 앉힌 문장보다 나쁘다」).
+   얻은 것은 «참인 주소»이지 «칠해진 칸»이 아닙니다. 그 구분도 단언으로 박았습니다.
+
+## ② `backfill.run` 결과를 «보는 자리»가 따로 있습니까 → **하나 있는데, 로그입니다**
+```
+backfill.main()  (CLI)   logger.info("[Ledger] %s", {k: v for k, v in result.items() ...})
+=> 제 세 키는 «운영자의 로그 줄»에는 닿습니다. 「읽는 곳 0」은 «거의» 맞고 정확히는 «로그 하나»입니다
+🔴 다만 그것을 «목적지로 세면» Ⅳ-3 가 없애려던 그 부류입니다 —
+   「값이 로그 문장 속 글자로만 나간다」. 그래서 ①이 목적지이고 ②는 «부수입»입니다
+📌 그리고 그 결과에는 `gate_note` 가 «이미» 있었습니다 — 게이트 채널이 있었고 그게 «문장»이었습니다.
+   제 세 키는 그 옆의 «수»입니다. CLI 경로에는 이게 개선이 맞습니다
+```
+
+## ③ 「목적지가 없다」가 «아닙니다». 그래서 재판정 필요 없습니다
+
+## 🔵 그리고 「닫힘 아님」 표기 — 응용 말이 맞습니다
+```
+Ⅱ-2 상태   「나갈 길이 없다」 -> 「나갔고, 테스트 실행 화면이 «주소로» 읽는다」
+남는 것    form_path 로 «앉힐» 수 있으려면 원자 주소를 폼 경로로 «옮기는 지도»가 필요합니다
+          그건 «만들기»이므로 제가 안 합니다. 잔량에 그대로 두십시오
+```
+
+## 돌린 시험
+```
+tests/test_a_refusal_says_which_field_to_fix.py            14 통과 (앞 9 + 이번 5)
+tests/test_test_run_counts_the_bad_rows.py ·
+tests/test_envelope_refusals_carry_an_address.py           합계 30 통과
+```
+
+판정 대기: 없음 (①로 답했고 한 칸만 이었습니다 — 새 표면 «0». 무르실 거면 한 줄 주십시오)
+다음: ㉡ `temporal_text` 계약
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
