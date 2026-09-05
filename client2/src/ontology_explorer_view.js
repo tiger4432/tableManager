@@ -4,6 +4,7 @@ import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
   declarationShape, fieldApplies, memberPath, membersOf, shapeAt,
 } from './ontology_skeleton.js';
+import { closedListChoice, renderClosedList } from './closed_list.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -1264,24 +1265,20 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
         return input;
       };
       if (editable.kind === 'closed') {
+        // 🔴 THE MEMBER COUNT DECIDES THE CONTROL, AND `closed_list.js` IS WHAT DECIDES
+        // IT -- for this site and for the skeleton's `hint: choice` alike. A list with one
+        // member drawn as a dropdown is indistinguishable on screen from a dropdown that is
+        // BROKEN, and those two want opposite fixes. The rule is the part's, not this call
+        // site's, because the list arrives here from `candidates` and there from
+        // `closed_lists()`; fixing one path leaves the other looking already-fixed.
+        //
         // 🔴 THE CURRENT VALUE IS ALWAYS AN OPTION, even when it is not in the list. A
         // dropdown that silently swaps an unrecognised value for its first option would
-        // rewrite the operator's file by being rendered -- the same silent-change defect
-        // this screen has been removing all day. A stray value stays visible and stays
-        // wrong until a person changes it.
-        const select = h('select', 'oe-field-select');
-        select.dataset.action = 'edit-field';
-        select.dataset.value = row.path;
-        select.setAttribute('aria-label', row.label);
-        const options = editable.options.includes(editable.value)
-          ? editable.options : [editable.value, ...editable.options];
-        for (const item of options) {
-          const option = h('option', '', item);
-          option.value = item;
-          if (item === editable.value) option.selected = true;
-          select.append(option);
-        }
-        box.append(select);
+        // rewrite the operator's file by being rendered. That rule still holds -- it now
+        // lives in the part, which is also how it survives the value-vs-picker split.
+        box.append(renderClosedList(
+          closedListChoice(editable.options, editable.value, { name: row.label }),
+          h, { action: 'edit-field', path: row.path, label: row.label }));
       } else if (editable.kind === 'list') {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
         // the same path tools, so save, dirty-tracking and the revision guard are untouched.
@@ -1732,20 +1729,18 @@ function renderSkeletonLeaf(context, node, path, value) {
   }
   const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
   if (node.hint === 'choice') {
-    const options = context.schema[node.list] || [];
-    const select = h('select', 'oe-field-select');
-    select.dataset.action = 'edit-shape';
-    select.dataset.value = path;
-    select.setAttribute('aria-label', path);
-    // The value in the document is always an option, recognised or not -- rendering must
-    // never rewrite the file. An absent value shows blank, not as the first choice.
-    for (const item of (options.includes(text) ? options : [text, ...options])) {
-      const option = h('option', '', item);
-      option.value = item;
-      if (item === text) option.selected = true;
-      select.append(option);
-    }
-    return select;
+    // 🔴 THE MEMBER COUNT DECIDES THE CONTROL. `occurred_at_basis` is the shipped case:
+    // one member (`setup_bundle._OCCURRED_AT_BASES`, and the table's own CHECK agrees), so
+    // its dropdown could never do anything -- and looked exactly like the two dropdowns on
+    // this screen that were genuinely broken.
+    //
+    // ⚠️ `context.schema` IS `{}` UNTIL THE FETCH LANDS, and reading that as "no members"
+    // would draw EVERY list as empty for as long as it takes. 「모름」 and 「없음」 are not the
+    // same pixel; the part keeps them apart and this line is what tells it which one.
+    const loaded = Object.keys(context.schema || {}).length > 0;
+    return renderClosedList(
+      closedListChoice(context.schema[node.list], text, { loaded, name: node.list }),
+      h, { action: 'edit-shape', path });
   }
   const input = h('input', 'oe-field-input');
   // 🔴 A NUMBER FIELD SAYS SO, BECAUSE OTHERWISE IT CANNOT BE FILLED AT ALL. Typing 1 into a
