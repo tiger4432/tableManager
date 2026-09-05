@@ -51,6 +51,13 @@ export const RETRO_CHROME = Object.freeze({
   PARAMS: 'parameters',
   REQUIRED: 'required',
 
+  // 🔴 이 값은 «오고 있었습니다». 쓰이는 곳이 `operationTone` 하나뿐이라
+  //    「테두리 색」으로만 살았고, 「다시 걸어도 중복 안 된다」는 «한 번도 말해지지» 않았습니다.
+  //    상설(2026-09-05)대로 상태는 «명사»로, 접속사 대신 `·`.
+  RESTARTABLE: 'restartable',
+  RESTARTABLE_YES: '재실행 안전 · 중복 없음',
+  RESTARTABLE_NO: '재실행 불가',
+
   COUNT: 'count',
   COUNTING: 'counting…',
   COUNT_FAILED: 'count failed',
@@ -192,6 +199,13 @@ function buildFacts(spec) {
     deletes: text(spec && spec.deletes),
     commitLabel: chrome(RETRO_CHROME.COMMIT),
     commit: text(spec && spec.commit_granularity),
+    // ⚠️ 세 상태입니다 — 참 · 거짓 · «안 왔음». 안 왔으면 «안 그립니다»:
+    //    서버가 말하지 않은 것을 「불가」로도 「안전」으로도 적으면 둘 다 지어낸 것입니다.
+    restartableLabel: chrome(RETRO_CHROME.RESTARTABLE),
+    restartable: typeof (spec && spec.restartable) === 'boolean'
+      ? chrome(spec.restartable ? RETRO_CHROME.RESTARTABLE_YES : RETRO_CHROME.RESTARTABLE_NO)
+      : null,
+    restartableTone: (spec && spec.restartable) === false ? 'danger' : '',
     tone: operationTone(spec),
   };
 }

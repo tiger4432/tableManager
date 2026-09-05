@@ -2634,6 +2634,11 @@ function retroOperationEl(op) {
   // 덮으면 그 하나가 틀리므로, 사실은 각 행이 자기 것을 들고 있는다.
   if (op.deletes) card.appendChild(retroFactEl(op.deletesLabel, op.deletes, 'danger'));
   if (op.commit) card.appendChild(retroFactEl(op.commitLabel, op.commit, ''));
+  // 🔴 「다시 걸어도 되나」를 «값으로» 말합니다. 전에는 이 사실이 확인창의
+  //    «테두리 색»으로만 살아 있었습니다 — 색은 읽는 사람에 따라 안 보입니다.
+  if (op.restartable) {
+    card.appendChild(retroFactEl(op.restartableLabel, op.restartable, op.restartableTone));
+  }
 
   if (op.params.length) card.appendChild(retroParamsEl(op));
 
