@@ -6737,3 +6737,106 @@ INSERT 를 막는 모드(Share/Exclusive/AccessExclusive)   «없음»
 📌 그리고 BRIN 의 «전제»를 파일에 적어 뒀습니다 — 상관이 무너지면(옛 timestamp 를 새 페이지에
    대량 백필하는 등) 이 색인은 스캔 쪽으로 퇴화합니다. 그때 답은 REINDEX 이지 «btree 였어야 했다»가
    아닙니다.
+
+---
+
+# 🔴 [구현자 -> 총괄] **㉡ 1단계 — 묶음 표. 80개는 «두 종류»이고, 그 둘을 «화면이 안 읽습니다»**
+
+지시대로 «묶음 표부터» 냅니다. ⛔ 아무것도 «안 고쳤습니다».
+
+## 묶음 표 — 80개 → «일곱» 모양, 그중 둘이 전부입니다
+```
+ n      초    %벽시계   모양
+39   0.491   46.9%   SELECT count(<표>.row_id) FROM <표>
+35   0.210   20.1%   SELECT max(coalesce(<표>.updated_at, <표>.created_at)) FROM <표>
+ 1   0.008    0.8%   count(audit_logs.id) WHERE timestamp >= ?      <- 아침에 색인 붙인 그것
+ 1   0.006    0.6%   effort 집계 (avg/count/sum)
+ 1   0.006    0.5%   recorrection 집계
+ 1   0.000      -    count(DISTINCT audit_logs.transaction_id) WHERE source_name...
+ 2   0.000      -    SET LOCAL statement_timeout = 1500
+                     (벽시계 1.047 s · 질의 합 0.721 s)
+```
+
+## 지시의 세 물음에 답합니다
+```
+① N+1 인가        «예». 선언된 표마다 «count 하나 + max 하나», 파이썬 for 루프 안에서
+                 (main.py:1354~1376). 표가 늘면 질의가 «두 개씩» 늡니다
+② 몇 «종류»인가    «둘»입니다. 74/80 이 그 둘이고 «67%»입니다. 나머지 여섯은 다 합쳐 «2% 미만»
+③ 화면이 «안 읽는» 것이 있나
+   🔴 «있습니다. 그 둘이 그것입니다»
+```
+
+## 🔴 ③의 근거 — `table_stats` 를 «읽는 곳이 없습니다»
+```
+/dashboard/summary 의 유일한 클라 소비자   client2/src/admin.js
+그 파일이 쓰는 것                        recorrection · effort «둘뿐»
+전 저장소 grep (node_modules·dist 제외, js/html/ts)
+   "table_stats"   «0건»
+   "row_count"     «0건»
+   "last_updated"  «0건»
+서버 쪽 소비자     schemas 정의와 main.py 의 «생성 자리»뿐. 읽는 코드 «없음»
+```
+```
+=> 즉 벽시계의 «67%»가 «아무도 읽지 않는 칸» 셋(row_count · last_updated · status)을 채우는 데
+   쓰입니다. 그리고 그 칸들의 «비용»은 표 크기에 비례해 «계속 자랍니다»
+```
+⛔ **지우지 않았습니다.** 지시 ④ 그대로 — 「안 읽는 것이면 «그 사실»을 먼저 보고」입니다.
+⚠️ 그리고 제 grep 의 «범위»를 밝힙니다: 이 저장소의 js/html/ts (node_modules·dist 제외) + server/*.py.
+   저장소 «밖»의 소비자(외부 스크립트·다른 클라)는 제가 못 봅니다. 그건 총괄이 아실 자리입니다.
+
+## 그래서 «가장 큰 묶음 하나»는 명백합니다 — 판정 청합니다
+```
+후보 ㉮  두 모양을 «둘 다» 걷어냅니다 (table_stats 를 안 채웁니다)  -> 67% 가 사라집니다
+        ⚠️ 응답에서 «칸이 사라지는» 것이라 계약 변경입니다. 저장소 밖 소비자가 있으면 깨집니다
+후보 ㉯  max() 「35개」만 걷어냅니다 (20%)                        -> row_count 는 남습니다
+후보 ㉰  두 모양을 «한 질의»로 합칩니다 (표별 count 를 한 번에)
+        -> 값은 그대로. ⚠️ 다만 pg_class.reltuples 는 «근사»라 뜻이 바뀝니다. 정확히 하려면
+           UNION ALL 44개인데 그건 질의 «수»만 줄고 «일»은 그대로입니다
+```
+🔴 **천장 확인**: 총괄이 박아 주신 대로, 질의를 «전부» 0으로 만들어도 파이썬/직렬화 «0.2~0.3 s»가
+   남습니다. ㉮ 를 해도 «0.3 s 대»이지 0.1 s 가 아닙니다.
+
+---
+
+# 🔴 [구현자 -> 총괄] **A 착수 전 멈춤 — `table_stats` 를 지우면 «두 칸이 같이» 사라집니다 (게이트 ①과 충돌)**
+
+## 지시하신 사전 확인 — `schemas.py:308` 경고는 «다른 것»을 지킵니다
+```
+그 주석   `UncountedTable` 의 것입니다 — 「셀 수 없던 표는 «0행이 아니»라서 table_stats 에
+         «안 넣고» 여기 이름으로 둔다. 조용히 지우면 「그 표가 없다」로 읽힌다」
+=> 지키는 대상이 `uncounted_tables` 입니다. table_stats 를 지워도 그건 «안 지워집니다»
+   오히려 그 취지(0 으로 읽히면 안 된다)는 그대로 남습니다  -> 멈출 사유 «아님»
+```
+
+## 🔴 그런데 «진짜» 멈출 자리가 있습니다 — 그 루프가 «셋»을 만듭니다
+```
+main.py:1354~1396 의 한 루프가 만드는 것
+   table_stats     <- 지시하신 것
+   total_rows      <- 같은 루프의 count 를 «합산»합니다 (total_global_rows)
+   total_tables    <- 같은 자리에서 len(table_names)
+=> table_stats 만 지우고 total_rows 를 남기려면 «count 39개(46.9%)를 그대로» 둬야 합니다
+   그러면 이 라운드가 얻는 것은 max() «20.1%» 뿐입니다 (67% 가 아니라)
+```
+```
+게이트 ①  「table_stats «말고» 달라지는 칸이 «없어야» 합니다」
+=> 67% 를 얻으려면 total_rows·total_tables «도» 사라집니다 -> 게이트 ①과 «충돌»합니다
+   그래서 손대기 «전»에 멈춥니다
+```
+
+## 그 두 칸도 «읽는 곳이 없습니다» — 세었습니다
+```
+total_tables   client2/src «0» · 출하 번들 «0» · 서버는 schemas 정의 + main.py 대입 «뿐»
+total_rows     client2/src 의 히트는 «전부 다른 객체»입니다
+               (admin.js:1399 은 «인제션 item.total_rows» · chain_queue_panel · retroactive_view 동일)
+               대시보드 응답의 total_rows 를 읽는 코드 «0»
+```
+
+## 판정 청함 — 한 줄이면 됩니다
+```
+㉮ 셋을 «같이» 지웁니다 (table_stats · total_rows · total_tables)  -> 67% · 질의 80 -> 6
+   게이트 ①을 「세 칸은 한 덩어리」로 읽어 주시면 그대로 갑니다
+㉯ table_stats «만» 지웁니다                                      -> 20.1% · 질의 80 -> 45
+   count 39개는 total_rows 를 위해 남습니다 (아무도 안 읽는 수를 위해)
+```
+📌 저는 ㉮ 로 보지만, 응답 «계약»이 바뀌는 것이라 제가 정하지 않습니다.
+   그동안 B(고리 검증기)로 갑니다 — 그건 막힌 데가 없고, 가운데 홉의 «전제»입니다.

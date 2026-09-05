@@ -1346,10 +1346,24 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     from datetime import datetime, date, timezone
     import sqlalchemy as sa
     
+    # 🔴 THE PER-TABLE COUNTS ARE GONE, AND WITH THEM `table_stats`, `total_rows` and
+    # `total_tables`. Measured 2026-09-05 by timing this handler's own statements: two
+    # shapes - `count(<t>.row_id)` 39 times and `max(coalesce(updated_at, created_at))`
+    # 35 times - were 74 of 80 statements and 67% of the wall, and NOTHING read what they
+    # produced. Zero references to table_stats, row_count, last_updated, total_rows or
+    # total_tables in client2/src, zero in the shipped bundle, and on the server only the
+    # schema definition and the assignment here. It was an N+1 whose cost grew with both
+    # the number of declared tables and their size, filling fields no screen opens.
+    #
+    # ⚠️ THE THREE WENT TOGETHER BECAUSE ONE LOOP MADE THEM. `total_rows` was the sum of
+    # those same counts, so keeping it would have meant keeping 39 of the 74 queries -
+    # 46.9% of the wall - for a number with no reader. Owner ruled the three are one unit.
+    #
+    # ⛔ `uncounted_tables` STAYS. It is a different fact ("this table could not be
+    # counted"), it is cheap, and `schemas.UncountedTable` explains why it must not be
+    # folded into a row of zero.
     table_names = list(crud.TABLE_CONFIG.keys())
-    table_stats = []
     uncounted = []
-    total_global_rows = 0
     
     for name in table_names:
         table_model = models.DYNAMIC_TABLES.get(name)
@@ -1370,10 +1384,17 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         # ⛔ NOT counted as zero, and not dropped either: an uncounted table is a third
         # state, and it is reported by name below.
         try:
-            # [최적화] 각 테이블의 행 개수 및 최신 업데이트 시간 조회
-            count = db.query(sa.func.count(table_model.row_id)).scalar() or 0
-
-            last_item = db.query(sa.func.max(sa.func.coalesce(table_model.updated_at, table_model.created_at))).scalar()
+            # 🔴 A SHAPE PROBE, NOT A COUNT. The counts and max() calls that used to be
+            # here were 67% of this route and filled fields nothing read (see the note at
+            # the top). But `uncounted_tables` was a BY-PRODUCT of them: a declared table
+            # whose physical shape has drifted was discovered by the count failing.
+            # Deleting the queries outright would have emptied that list silently - nine
+            # tables today - and "no table is broken" is not the same fact as "I did not
+            # look". So the same columns are still resolved, with LIMIT 0 so the database
+            # plans the statement and returns nothing: the UndefinedColumn is raised
+            # exactly as before, at a fraction of the cost of scanning the table.
+            db.query(table_model.row_id, table_model.updated_at,
+                     table_model.created_at).limit(0).all()
         except Exception as e:
             try:
                 db.rollback()
@@ -1384,16 +1405,6 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
                 table_name=name, reason=f"{type(e).__name__}: {e}"))
             continue
 
-        table_stats.append(schemas.TableStat(
-            table_name=name,
-            row_count=count,
-            last_updated=to_local_str(last_item) if last_item else "No Activity",
-            status="Active" if (last_item and (datetime.now(timezone.utc) - (last_item.replace(tzinfo=timezone.utc) if last_item.tzinfo is None else last_item)).total_seconds() < 3600) else "Idle"
-        ))
-        total_global_rows += count
-
-    # [신규] 테이블 정렬: 상태순(Active 우선) -> 이름순(A-Z)
-    table_stats.sort(key=lambda x: (x.status != "Active", x.table_name))
 
     # 오늘의 업데이트 건수 (AuditLog 기준 - 각 항목이 셀 단위 수정임)
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -1420,10 +1431,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     effort = _get_effort_stat(db)
 
     return schemas.DashboardSummaryResponse(
-        total_tables=len(table_names),
-        total_rows=total_global_rows,
         today_updates=today_updates_count,
-        table_stats=table_stats,
         system_health="Excellent",
         recorrection=recorrection,
         effort=effort,
