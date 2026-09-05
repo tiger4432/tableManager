@@ -685,13 +685,29 @@
       opacity: 0.5;
     }
 
+/* 🔴 THE DROPDOWN'S SHAPE IS DECLARED ONCE, AND EVERY SELECT ON THIS PAGE DECLARES IT.
+       Three of them had been overriding height, padding and font-size INLINE, which beats
+       any stylesheet -- so the rule below was true and the screen still showed three
+       different dropdowns (30/28/28px tall, 0.8/0.8/0.78rem). That is the assembly rule
+       failing inside a single page: a control moved from one toolbar to another changed
+       size.
+
+       The values are the explorer's, reached by matching rather than by borrowing:
+       `#ontology-explorer-root .oe-field-select` is specificity (1,1,0) and its tokens are
+       scoped, so wearing that class out here would style nothing. Radius 0 / 1px solid /
+       14px / 6-10 padding / 36px is what it computes to.
+
+       ⚠️ The colour tokens are this page's own, unchanged. Which palette survives is a
+       separate ruling and it is still open; naming them here is what makes that a one-line
+       edit instead of a sweep. */
     .glass-select {
       background: var(--bg-surface) !important;
       border: 1px solid var(--border-strong);
       color: var(--text);
-      padding: 6px 12px;
-      font-size: 0.85rem;
-      border-radius: 6px;
+      min-height: 36px;
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 0;
       cursor: pointer;
       outline: none;
       transition: border-color 0.2s;
@@ -1758,7 +1774,7 @@
               <span class="section-count" id="file-log-count">—</span>
               <span class="section-summary"></span>
               <span class="section-actions">
-                <select id="status-filter" class="glass-select" style="height: 30px; padding: 0 10px; font-size: 0.8rem;">
+                <select id="status-filter" class="glass-select">
                   <option value="ALL" selected>All Status</option>
                   <option value="FAILED">Failed</option>
                   <option value="SUCCESS">Success</option>
@@ -2067,7 +2083,7 @@
       <!-- Left Panel Footer: Pagination Controls (File 로그 / Chain 실패 목록 전용) -->
       <div class="panel-footer" style="padding: 12px 24px; border-top: 1px solid var(--border-color); display: none; justify-content: space-between; align-items: center; background: var(--bg-header);">
         <div style="display: flex; gap: 12px; align-items: center;">
-          <select id="page-size-select" class="glass-select" style="height: 28px; padding: 0 8px; font-size: 0.8rem;" title="페이지당 표시 건수">
+          <select id="page-size-select" class="glass-select" title="페이지당 표시 건수">
             <option value="10" selected>10 / page</option>
             <option value="50">50 / page</option>
             <option value="100">100 / page</option>
@@ -2131,7 +2147,7 @@
           <div class="detail-block" style="flex: 1; max-height: none; display: flex; flex-direction: column; height: 100%;">
             <div class="detail-block-header">
               <div style="display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1;">
-                <select id="editor-file-picker" class="glass-select" style="max-width: 300px; height: 28px; padding: 0 8px; font-size: 0.78rem;" title="편집할 스크립트 선택 (구 Code Editor 트리 대체)">
+                <select id="editor-file-picker" class="glass-select" style="max-width: 300px;" title="편집할 스크립트 선택 (구 Code Editor 트리 대체)">
                   <option value="">스크립트 선택…</option>
                 </select>
                 <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Select a script file</span>

@@ -1090,6 +1090,40 @@ const FLOORS = new Map([
   // it — the production hang produced exactly 1 attempt and 0 retries. Same rule as the other
   // new entries: the floor is the count it reports on the commit that introduces it.
   ['ws_connect_watchdog_harness.mjs', 39],
+  // 🔴 THIRTEEN THAT RAN UNGATED, RECORDED 2026-09-05 AT THE COUNT THEY REPORT TODAY.
+  //    The gate had been saying so on every run; an ungated harness can quietly score LESS
+  //    and still print a tick, which is the one failure a green run cannot show you.
+  //    ⛔ NOT ONE ASSERTION WAS ADDED to produce these numbers -- that was the instruction,
+  //    and it is also what keeps the floor honest: a floor invented alongside new coverage
+  //    records the coverage, not the ground it is meant to hold.
+  //    Same rule as every other new entry: the floor is what it reports on the commit that
+  //    records it, because there is no earlier tree to measure it against.
+  // which table an audit is about, when the answer comes from a declaration
+  ['audit_target_table_harness.mjs', 12],
+  // a one-member list is a value; and 「not arrived」 stays distinct from 「no members」
+  ['closed_list_harness.mjs', 34],
+  // the grid says WHERE its rows came from
+  ['grid_source_label_harness.mjs', 18],
+  // how many matched, and the difference between 0 and unmeasured
+  ['match_count_harness.mjs', 20],
+  // the banner that offers a re-run, and what it refuses to offer one for
+  ['redo_banner_harness.mjs', 51],
+  // the board part: composition
+  ['rnd_board_composition_harness.mjs', 40],
+  // the board part: control trend
+  ['rnd_board_control_trend_harness.mjs', 59],
+  // the board shell that seats the parts above
+  ['rnd_board_harness.mjs', 170],
+  // the board part: intersection
+  ['rnd_board_intersection_harness.mjs', 24],
+  // the board part: reach
+  ['rnd_board_reach_harness.mjs', 63],
+  // the board part: the walk box
+  ['rnd_board_walk_box_harness.mjs', 48],
+  // the board part: the walk itself
+  ['rnd_board_walk_harness.mjs', 32],
+  // a cut-off count says it was cut off -- 「끊김 != 없음」
+  ['truncation_harness.mjs', 12],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
