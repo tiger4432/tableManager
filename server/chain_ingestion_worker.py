@@ -1557,8 +1557,61 @@ class QueueHeadWatch:
                 % (stuck_for, head_id, picked, now - self.started_at, since_reload))
 
 
+def another_chain_loop_is_running(now=None):
+    """Is a DIFFERENT, LIVE process already running the chain loop? Returns its identity
+    or None.
+
+    🔴 IT USES THE HEARTBEAT, NOT A NEW MECHANISM. `main.py` starts this loop from the web
+    server's startup event unconditionally, so running `run_chain_worker.py` beside it
+    produces TWO loops on one queue - measured 2026-09-04, two pids alternating in one
+    heartbeat file, the same rows picked up twice, and a restart of the standalone worker
+    leaving the older code live inside uvicorn. The heartbeat already answers "who is
+    beating and how long ago", which is exactly the question, so nothing new is declared.
+
+    🔴 IT IS DELIBERATELY PERMISSIVE. Three conditions must ALL hold before it says yes:
+    the beat is FRESH, the pid is NOT this process, and that pid is ALIVE. If any of them
+    cannot be established - no psutil, unreadable file, a beat older than the stale
+    threshold - the answer is None and the loop starts, which is today's behaviour. The
+    common case this must not break is a RESTART: a killed worker leaves a heartbeat that
+    stays fresh for another minute, and refusing to start then would be a false positive
+    on the most ordinary operation there is. Checking that the pid is alive is what
+    separates "someone is running" from "someone was running".
+    """
+    import os as _os
+    try:
+        from utils import heartbeat as _hb
+        entry = _hb.read_all(now=now).get("chain") or {}
+    except Exception:                                            # noqa: BLE001
+        return None
+    pid = entry.get("pid")
+    if entry.get("stale") or not pid or pid == _os.getpid():
+        return None
+    try:
+        import psutil
+        if not psutil.pid_exists(int(pid)):
+            return None
+    except Exception:                                            # noqa: BLE001
+        # Cannot tell whether it is alive. Start, rather than refuse on a guess.
+        return None
+    return "pid %s, last beat %.1fs ago" % (pid, entry.get("age_seconds") or 0.0)
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
+
+    # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
+    # pick the same rows up twice and write one heartbeat file between them, so neither
+    # "is the chain alive" nor "which code is running" has an answer. Standing down
+    # SILENTLY would be the worse half of that - a process that does nothing and says
+    # nothing is indistinguishable from one that is working.
+    _other = another_chain_loop_is_running()
+    if _other:
+        logger.warning(
+            "[Chain Worker] NOT starting: another chain loop is already running (%s). "
+            "This process will not consume the outbox. Two loops on one queue pick the "
+            "same rows up twice and share one heartbeat, so neither can be observed. "
+            "If this is the process you meant to run, stop the other one first.", _other)
+        return
 
     # 🔴 THIS PROCESS RUNS THE LOOP, AND THE QUEUE VIEW HAS TO KNOW THAT. Without it an
     # empty "running" list means both "no mapper is in flight" and "the loop is in
