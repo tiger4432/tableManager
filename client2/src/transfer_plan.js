@@ -1050,7 +1050,7 @@ function renderDoeList() {
     <div class="tp-foot-note">
       <b>STACK</b>=총 층수 · <b>STACK 0 = 상태 표시 값</b>(예: BASE FAIL — 층·자재·소요 없음) ·
       <b>MID 구역 = (1H 있으면 2, 없으면 1) … (TOP 있으면 STACK−1, 없으면 STACK)</b> ·
-      <b>구역이 0층이면 MID는 필요 없습니다</b><br>
+      <b>구역 0층 · MID 불필요</b><br>
       자재는 줄바꿈 또는 쉼표로 나눔 · <code>lot_slot:BIN</code> · <code>lot:BIN</code>=로트 전체 · BIN 생략=1
     </div>` : '');
 

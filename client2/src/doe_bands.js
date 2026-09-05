@@ -300,7 +300,10 @@ function validateZonePlan(plan) {
     // to prevent. blank and invalid are ONE case here on purpose - both mean "no height".
     if (st.state !== 'ok') {
       const shown = st.state === 'blank' ? '(비어 있음)' : JSON.stringify(row && row.stack);
-      add(blocks, 'V5', `값 '${v}'의 STACK ${shown}을(를) 1 이상의 정수로 읽을 수 없습니다 — 층 구조를 계산할 수 없습니다.`,
+      // 🔴 상태는 명사, 가르는 것은 「·」 (상설 2026-09-05). 남기는 것은 «고칠 자리»
+      //    (어느 값의 STACK 인가)와 «사유», 그리고 이것이 «막는» 것이라는 사실입니다 —
+      //    셋 다 운영자가 움직이는 데 쓰는 것이라 짧게 해도 안 지웁니다.
+      add(blocks, 'V5', `값 '${v}' · STACK ${shown} · 1 이상 정수 아님 · 층 구조 계산 불가`,
         { value: v });
     } else if (st.value === 1 && mats.mat_1h.length > 0 && mats.mat_top.length > 0) {
       // V2. At STACK 1 there is exactly one layer and both zones claim it. Note this is
