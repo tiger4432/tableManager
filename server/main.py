@@ -3835,6 +3835,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         try:
             import retroactive
             scheduler_bucket["blocked_by"] = retroactive.in_flight(db)
+            # 🔴 「곧 돔 · 늦음 · 안 돎」을 가르는 재료. `blocked_by` 는 «도는 것»만 말하므로
+            # 「아무것도 안 집고 있다」는 그 칸이 null 인 것과 «구별이 안 됐습니다» — 큐가 짧아도
+            # 집는 쪽이 없으면 영원히 안 돕니다. 그 셋을 가르는 것은 «마지막 집어간 시각»이고,
+            # 그래서 그 칸이 이 묶음의 «첫째»입니다.
+            # ⛔ 「몇 초 뒤 시작」 같은 «한 수»는 만들지 않습니다 — 대기가 두 봉우리(한 틱 · 무한)라
+            #    그 수는 대부분 거짓입니다. 값만 내고 읽는 것은 화면이 합니다.
+            scheduler_bucket["queue"] = retroactive.queue_view(db)
         except Exception as e:                                   # noqa: BLE001
             logger.debug("in-flight retroactive unreadable for the queue view: %s", e)
             scheduler_bucket["blocked_by"] = None

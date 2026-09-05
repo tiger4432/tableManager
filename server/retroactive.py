@@ -771,6 +771,115 @@ CANCEL_NEVER = "never"
 IN_FLIGHT_STATES = (RUN_RUNNING, RUN_CANCEL_REQUESTED)
 
 
+def queue_view(db, now=None):
+    """The queue's own state, for the three the owner asked to tell apart.
+
+    🔴 `last_pickup` IS THE FIRST FIELD, not one of four. The picker is the scheduler's
+    tick; if it is alive a run waits one tick, and if it is not, a run waits forever -
+    measured 2026-09-05, three runs at 3.0s, 3.0s and 320.5s, with nothing in between.
+    So "how long has the queue been" does not separate "about to run" from "nothing is
+    picking up", and the age of the last pickup does. A short queue with an old pickup is
+    the state that used to look like an empty one.
+
+    ⛔ NO DISTRIBUTION. An earlier instruction asked for one; the measurement retired it.
+    The waits are two peaks - one tick, or unbounded - and drawing a spread would draw a
+    middle that does not exist.
+
+    ⛔ AND NO PREDICTED START TIME. The spread between the peaks is a hundredfold, so a
+    single "starts in N seconds" would be false most of the time. Values go out; the
+    reading is the screen's.
+
+    Nouns and numbers, no sentences: a phrase composed here is a phrase the screen has to
+    render verbatim, and the wording is not the server's to choose.
+    """
+    from datetime import datetime, timezone
+
+    from database import models
+
+    now = now or datetime.now(timezone.utc)
+
+    def _utc(dt):
+        return None if dt is None else (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
+
+    def _age(dt):
+        d = _utc(dt)
+        return None if d is None else round(max(0.0, (now - d).total_seconds()), 1)
+
+    # WHEN THE PICKER LAST TOOK SOMETHING. `started_at` is stamped by the tick that picked
+    # the run up, so its newest value is the picker's own last sign of life - read from the
+    # same table as everything else rather than from a second mechanism.
+    last_started = (db.query(models.RetroactiveRun.started_at)
+                    .filter(models.RetroactiveRun.started_at.isnot(None))
+                    .order_by(models.RetroactiveRun.started_at.desc()).first())
+    last_at = _utc(last_started[0]) if last_started else None
+
+    waiting_rows = (db.query(models.RetroactiveRun)
+                    .filter(models.RetroactiveRun.state == RUN_QUEUED)
+                    .order_by(models.RetroactiveRun.queued_at.asc()).all())
+    waiting = [{
+        "run_id": r.run_id,
+        "op": r.op,
+        # RAW, and None when the row carries none - the word for "unknown" is the screen's.
+        "requested_by": r.requested_by,
+        "queued_at": _utc(r.queued_at).isoformat() if r.queued_at else None,
+        "waiting_seconds": _age(r.queued_at),
+    } for r in waiting_rows]
+
+    # 🔴 THE SERVER COUNTS THE POSITION. The list can be capped or reordered on the way to
+    # a screen, and a screen counting its own rows would then answer a different question
+    # than the one it looks like it is answering.
+    for position, item in enumerate(waiting, start=1):
+        item["ahead"] = position - 1
+
+    # 5-bis: rows that claim to be running while nobody on this host owns the pid. Only
+    # decidable for runs stamped by THIS host - a pid on another machine is not something
+    # this process may call dead, so it is reported as unknown rather than orphaned.
+    orphaned = []
+    running_rows = (db.query(models.RetroactiveRun)
+                    .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES)).all())
+    for r in running_rows:
+        owner = _runner_state(r.runner)
+        if owner in ("orphaned", "unknown"):
+            orphaned.append({"run_id": r.run_id, "op": r.op, "runner": r.runner,
+                             "owner": owner, "started_seconds": _age(r.started_at)})
+
+    return {
+        "last_pickup_at": last_at.isoformat() if last_at else None,
+        "last_pickup_age_seconds": _age(last_at),
+        "picker_interval_seconds": PICKER_INTERVAL_SECONDS,
+        "waiting_count": len(waiting),
+        "waiting": waiting,
+        "orphaned": orphaned,
+    }
+
+
+#: The scheduler tick that picks queued runs up (`SchedulerDaemon.check_interval`). Published
+#: so a reader can say "one tick" without knowing the scheduler's internals - and so that
+#: "last pickup" has something to be compared against.
+PICKER_INTERVAL_SECONDS = 5
+
+
+def _runner_state(runner):
+    """`owned` / `orphaned` / `unknown` for a `host/pid` stamp.
+
+    ⚠️ ONLY THIS HOST IS DECIDABLE. A pid on another machine cannot be called dead from
+    here, and calling it dead is how "never finishes" would become "two at once". Rows
+    with no stamp at all predate the column and are unknown, not orphaned.
+    """
+    if not runner or "/" not in str(runner):
+        return "unknown"
+    host, _, pid = str(runner).rpartition("/")
+    try:
+        import os as _os
+        import socket as _socket
+        if host != _socket.gethostname():
+            return "unknown"
+        import psutil
+        return "owned" if psutil.pid_exists(int(pid)) else "orphaned"
+    except Exception:                                            # noqa: BLE001
+        return "unknown"
+
+
 def in_flight(db, now=None, stall_after=None):
     """The run the scheduler's gate is closed on, and whether it is still moving.
 
