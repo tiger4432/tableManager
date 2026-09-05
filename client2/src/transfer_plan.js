@@ -1590,7 +1590,7 @@ async function rewardAfterReturn(from) {
   }));
   await probeMaterialMap(table, id, true);
   if (failed) {
-    showToast(`자재 ${id} 가용 재조회 실패 — 미상으로 표시합니다. [↻ 가용]으로 다시 시도하십시오.`, 'warning');
+    showToast(`자재 ${id} · 가용 재조회 실패 · 미상 표시 · [↻ 가용]으로 재시도`, 'warning');
   }
   renderMaterialPane();
 }
