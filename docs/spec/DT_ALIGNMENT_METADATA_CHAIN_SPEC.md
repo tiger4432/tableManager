@@ -1,6 +1,6 @@
 # DT alignment metadata chain
 
-> **Status:** Living · **Last-verified:** 2026-08-30 (**§S2 머리 한 줄만** — 이 규칙이 오늘 모든 배치에서 거절한다) · 직전 2026-08-09 · **Owner:** Lead PM
+> **Status:** Living · **Last-verified:** 2026-09-05 (「승인된 그래프는 유한하다」가 «엣지를 과소계수»해 거짓이었다 — S3 가 두 번째 엣지를 낸다) · 직전 2026-08-30 (**§S2 머리 한 줄만** — 이 규칙이 오늘 모든 배치에서 거절한다) · 직전 2026-08-09 · **Owner:** Lead PM
 
 ## 목적
 
@@ -36,8 +36,31 @@ duplicate job in one batch is a no-op.
 The generic chain worker normally rejects every event whose source is
 `chain_ingestion`. S2 declares `allow_chain_trigger: true` explicitly. The worker
 filters chain-produced events per rule (not merely per trigger table), and rejects
-a cycle made of opt-in edges while loading the rule configuration. The approved
-graph is therefore finite: `dt_log -> wafer_map_metadata -> dt_inventory`.
+a cycle made of opt-in edges while loading the rule configuration.
+
+🔴 **[2026-09-05] The sentence that used to close this paragraph — "the approved graph is
+therefore finite: `dt_log -> wafer_map_metadata -> dt_inventory`" — was FALSE, and it was
+false in the direction that matters: it under-counted the graph.** It listed one edge per
+rule. S3 (`dt_inventory_to_standard_dt_map`) declares `allow_map_metadata_upsert`, so it
+writes `wafer_map_metadata` as well as `dt_map`, and **that write raises its own chain
+event**. The real graph therefore contains `dt_inventory -> wafer_map_metadata`, which
+closes a loop straight back onto S2's trigger:
+
+```
+S2   wafer_map_metadata ──► dt_inventory
+S3   dt_inventory       ──► dt_map
+S3   dt_inventory       ──► wafer_map_metadata     <- 이 엣지가 빠져 있었다
+                            => wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+```
+
+That loop was **live**, and the load-time validator passed it, because the validator was
+built on the same "one rule, one edge" assumption this paragraph stated. It now builds
+both edges and refuses. ⚠️ **So "the approved graph is finite" is not a property of this
+design — it is a property of which hops are currently opt-in**, and enabling S2 together
+with an `allow_map_metadata_upsert` rule on `dt_inventory` is exactly the configuration
+that is refused. Contract:
+[chain_ingestion_guide 「Target-map metadata within a chain」](../guide/chain_ingestion_guide.md) ·
+[DT_CORE_FRAME_CHAINS](../architecture/DT_CORE_FRAME_CHAINS.md).
 
 No S2 write derives `dt_map`, changes a coordinate, or removes anything from a
 map — neither `replace_map` nor `retract`.  (`retract` added 2026-08-13: it is the

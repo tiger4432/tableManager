@@ -1,6 +1,6 @@
 # 📖 체인 인제션 DB 세션 활용 데이터 조회 및 계산 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (**§5 에 `--pace` 신설** — R1 이 페이싱 표에 합류했다(단위 = **페이지**), 표는 `server/pacing.json` «하나»이고 사본을 안 만들었다. 모르는 이름은 **첫 페이지 전에** 거절된다. 멈춤이 «페이지 경계에서 묻는 것»이라는 계약도 같은 자리에. ⚠️ **§1 의 「세션으로 읽기」·「비-복합 열다섯」 두 절은 총괄이 같은 날 쓴 것이고 이 패스가 손대지 않았다.** 🔴 **`lot_slot_wafer` 는 «뷰»가 아니라 체인이 만드는 표다** — 뷰와 그 생성 스크립트(`server/scripts/create_lot_slot_wafer_view.py`)는 삭제됐고, 파생 계보의 정본은 [LEDGER_GUIDE](./LEDGER_GUIDE.md) 다) · 직전 2026-08-13 (**§1 「제거 전략은 둘이고, 하나만 고르는 것이 아니라 맵의 생산자 수가 고른다」 신설**(`4d5198c` — 구현 라인이 같은 커밋에서 썼다) + doc-keeper 정정 둘: 🔴 **파생 스코프 실측표 아래 문장 「`dt_map`·`core_usage_map`은 맵 키가 하나라 안 걸린다」의 절반이 거짓이 됐다** — `dt_map`이 두 키가 되어 **노출 쪽으로 넘어왔다**(체인은 명시 경로라 무관, 위험은 API/맵 Push). **노출은 테이블의 성질이 아니라 선언의 arity다.** 🔴 **§6은 `dt_map`이 `dt_job`으로 키가 잡혀 있던 시절의 글이라 그 전제가 깨졌다** — 절 머리에 경고를 달았다(철회 레시피 자체는 유효 · 표의 세 룰 중 실재하는 것은 하나뿐이라는 **선행 드리프트**도 함께 기록). 직전 2026-08-11 **§5.6 신설 — 「측정하지 않았다」가 닫혔고, 세 연산 중 *둘*이 같은 결함이었다**(`ffb23d6` R3 · `53f9187` R2). 소급 패스는 아웃박스 이벤트를 **낸다**(변경 *행*마다 `EDIT` 하나 — 셀마다 아님, `--chunk-size`는 커밋·NOTIFY만 움직인다). 🔴 **결함은 개수가 아니라 라벨**이었다: `user`/`system`+이벤트마다 uuid4로 나가 사람의 그리드 편집과 구별되지 않아 하류 매퍼 전원이 깨어났다. 지금은 둘 다 `chain_ingestion` 라벨 + 실행당 tx id 하나이고 🔴 **억제가 아니라 옵트인**이다. 🔴 **라벨(`request_source`)과 층(`update_item.source_name`)은 다른 필드**이고, R2에서는 **삭제 술어**가 파라미터로 짜여 라벨과 경로가 없다는 것을 생존 집합 sha256으로 확인했다. 🔴 **R2의 WS 프레임 4→0은 손실이 아니다** — 클라는 실제로 바뀐 셀을 전후 어느 쪽에서도 못 듣고 있었고, 없어진 것은 엉뚱한 캐스케이드 통지다. ⚠️ **R1은 라벨이 구성상 옳지만 tx id가 *페이지당* 하나로 남아 있다**(같은 비용의 약한 형태 — 미수리). §1 매퍼 계약 절과 쓰기 능력 표에 **R3 행 + 라벨=채널 규율**을 함께 실었다. 직전 **§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ✅ ~~**「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기).~~ **적지 않은 것이 옳았고, 그 읽기가 맞았다** — 위 §5.6 참조. 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (§순환 가드가 «두 엣지»를 세운다 · «맵 메타데이터 쓰기는 체인 홉이 아니다»가 거짓이었다 · §2 예시가 어느 키도 실재 이름이 아니었다) · 직전 2026-09-02 (**§5 에 `--pace` 신설** — R1 이 페이싱 표에 합류했다(단위 = **페이지**), 표는 `server/pacing.json` «하나»이고 사본을 안 만들었다. 모르는 이름은 **첫 페이지 전에** 거절된다. 멈춤이 «페이지 경계에서 묻는 것»이라는 계약도 같은 자리에. ⚠️ **§1 의 「세션으로 읽기」·「비-복합 열다섯」 두 절은 총괄이 같은 날 쓴 것이고 이 패스가 손대지 않았다.** 🔴 **`lot_slot_wafer` 는 «뷰»가 아니라 체인이 만드는 표다** — 뷰와 그 생성 스크립트(`server/scripts/create_lot_slot_wafer_view.py`)는 삭제됐고, 파생 계보의 정본은 [LEDGER_GUIDE](./LEDGER_GUIDE.md) 다) · 직전 2026-08-13 (**§1 「제거 전략은 둘이고, 하나만 고르는 것이 아니라 맵의 생산자 수가 고른다」 신설**(`4d5198c` — 구현 라인이 같은 커밋에서 썼다) + doc-keeper 정정 둘: 🔴 **파생 스코프 실측표 아래 문장 「`dt_map`·`core_usage_map`은 맵 키가 하나라 안 걸린다」의 절반이 거짓이 됐다** — `dt_map`이 두 키가 되어 **노출 쪽으로 넘어왔다**(체인은 명시 경로라 무관, 위험은 API/맵 Push). **노출은 테이블의 성질이 아니라 선언의 arity다.** 🔴 **§6은 `dt_map`이 `dt_job`으로 키가 잡혀 있던 시절의 글이라 그 전제가 깨졌다** — 절 머리에 경고를 달았다(철회 레시피 자체는 유효 · 표의 세 룰 중 실재하는 것은 하나뿐이라는 **선행 드리프트**도 함께 기록). 직전 2026-08-11 **§5.6 신설 — 「측정하지 않았다」가 닫혔고, 세 연산 중 *둘*이 같은 결함이었다**(`ffb23d6` R3 · `53f9187` R2). 소급 패스는 아웃박스 이벤트를 **낸다**(변경 *행*마다 `EDIT` 하나 — 셀마다 아님, `--chunk-size`는 커밋·NOTIFY만 움직인다). 🔴 **결함은 개수가 아니라 라벨**이었다: `user`/`system`+이벤트마다 uuid4로 나가 사람의 그리드 편집과 구별되지 않아 하류 매퍼 전원이 깨어났다. 지금은 둘 다 `chain_ingestion` 라벨 + 실행당 tx id 하나이고 🔴 **억제가 아니라 옵트인**이다. 🔴 **라벨(`request_source`)과 층(`update_item.source_name`)은 다른 필드**이고, R2에서는 **삭제 술어**가 파라미터로 짜여 라벨과 경로가 없다는 것을 생존 집합 sha256으로 확인했다. 🔴 **R2의 WS 프레임 4→0은 손실이 아니다** — 클라는 실제로 바뀐 셀을 전후 어느 쪽에서도 못 듣고 있었고, 없어진 것은 엉뚱한 캐스케이드 통지다. ⚠️ **R1은 라벨이 구성상 옳지만 tx id가 *페이지당* 하나로 남아 있다**(같은 비용의 약한 형태 — 미수리). §1 매퍼 계약 절과 쓰기 능력 표에 **R3 행 + 라벨=채널 규율**을 함께 실었다. 직전 **§5.5 신설 — Chain Replay에 세 번째 연산 R3(`resolve`)가 들어왔다.** 저장된 층을 하나도 바꾸지 않고 **「그중 무엇이 이기는가」만 다시 답해** materialise된 표시 컬럼을 고친다 — R1(매퍼 재실행·새 층 쓰기)도 R2(주장 삭제)도 답할 수 없던 질문이다. 층이 2개 미만인 셀은 **구조적으로** 손대지 않고(0개면 컬럼을 비워 버린다), 값이 움직인 셀마다 `resolution_recompute` 감사 행이 남는다(**CLI 전용** — 어드민 소급 등록부에 없다). ✅ ~~**「아웃박스 이벤트를 안 낸다」는 문장은 일부러 적지 않았다** — 전역 `before_flush`가 dirty 행마다 `EDIT`을 실을 것으로 읽히고 측정되지 않았다(총괄 확인 대기).~~ **적지 않은 것이 옳았고, 그 읽기가 맞았다** — 위 §5.6 참조. 계기가 된 해결 순서 수리는 [data_model §2.1](../architecture/data_model.md). 직전 **§1 — 컬럼 이름 해석 계약 신설**: 맵퍼는 정체성 컬럼 이름을 리터럴로도 기본값으로도 갖지 않는다. `server/chain_bindings.py`가 `룰 선언 > table_config 유도 > 이름을 대고 거절`로 해석하며, `dt_job` 기본값은 전부 삭제됐다. `replace_map` 경계 절에 **스코프 철자가 틀렸을 때 실제로 무엇이 지워지는가**를 실측표로 추가 — 명시 스코프는 삭제 전에 거절하고, 유도 경로는 map_key가 둘 이상일 때 필터를 조용히 빼서 **삭제를 넓힌다**. 직전 2026-08-05 **§1 — 트래킹되는 `.sample`이 셋으로 늘었습니다**: 트리거 테이블 밖을 읽는 맵퍼의 참조 구현 `cross_table_lookup_mapper.py.sample` 추가. "둘뿐"이라 적혀 있던 문장을 교정하고, virtual join과의 경계·세션 소유권·SAVEPOINT 격리 진입점을 링크했습니다. 맵퍼 호출 계약 자체는 변화 없음. 직전 2026-07-31 **§5 머리에 운영자 진입점 링크 추가** — 소급 경로 다섯 개의 운영자 정본은 [BACKFILL_GUIDE](./BACKFILL_GUIDE.md)로 신설됐고 이 절은 **개발자 계약**으로 남습니다. 서술 변경 없음. 직전 2026-07-30 **§4.4 ① 자동 확정** + **§5 Chain Replay R1/R2** 신설 — 맵퍼 계약 변화 없음) | **Owner:** Ingester | **Source-of-truth:** `server/chain_ingestion_worker.py`, `server/mappers/`, `server/enrichment_config.py`, `server/enrichment_mapper.py`, `server/enrichment_candidates.py`, `server/chain_replay.py`, `server/keyset_scan.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 체인 인제션 파서 및 맵퍼 모듈을 작성할 때, 단순히 유입되는 파일의 값뿐만 아니라 **데이터베이스의 기존 테이블(예: 재고 정보, 설비 마스터 등)을 직접 검색 및 조인(Join)하여 파생 컬럼을 계산**해야 하는 경우가 많습니다.
 
@@ -117,6 +117,21 @@ return {
 Return `{"updates": []}` for an intentional no-op. Chain-created events reach
 a downstream mapper only when that downstream rule explicitly sets
 `allow_chain_trigger: true`.
+
+Because those opt-in edges can form a loop, `load_chain_rules` builds a graph of them at
+config load and **refuses cycles before the worker starts**
+(`_validate_chain_cascade_graph`). Three field names decide what that graph sees, and two
+of them are easy to confuse:
+
+| 필드 | 그래프에서 하는 일 |
+|---|---|
+| `enabled` | 켜는 키. `false` 인 규칙은 그래프에 **안 들어간다**(생략하면 켜짐) |
+| `trigger_table` | **엣지의 출발점.** 이 표에 커밋이 나면 이 규칙이 깨어난다 |
+| `source_table` | 🔴 **엣지가 아니다** — 맵퍼가 데이터를 «읽는» 곳이다. 그래프와 무관하다 |
+
+🔴 **`trigger_table` 과 `source_table` 을 바꿔 읽으면 그래프를 틀리게 그리고 «없는 불일치»를
+보고하게 된다** — 이 저장소가 이미 치른 값이다. 그리고 한 규칙이 표를 **둘** 쓸 수 있다는 것이
+이 그래프의 두 번째 함정이다(아래 「Target-map metadata within a chain」).
 
 ### Reading with the session, and returning a DataFrame's worth of rows (2026-09-02)
 
@@ -420,8 +435,31 @@ return {
 ```
 
 The worker validates that the metadata target equals the rule's target table and
-writes it before that rule's map cells. This is an ancillary write inside the
-same chain rule, not a third chain hop.
+writes it before that rule's map cells.
+
+🔴 **[2026-09-04] The previous sentence here — "this is an ancillary write inside the
+same chain rule, not a third chain hop" — is FALSE, and believing it is what let a live
+cycle through.** The metadata write lands in `map_meta_registrar.META_TABLE`
+(`wafer_map_metadata`) and **raises its own chain event**, so any rule whose
+`trigger_table` is that table wakes up. Measured on this box: rule #3
+(`dt_inventory` → `dt_map`, `allow_map_metadata_upsert`) wrote 5 metadata rows per run,
+those woke rule #2 (`wafer_map_metadata` → `dt_inventory`), and #3 consumes
+`dt_inventory` under `allow_chain_trigger`. That is a cycle, it was live, and the
+load-time validator **passed it** — because it built one edge per rule.
+
+**So a rule declaring `allow_map_metadata_upsert` is TWO edges, not one:**
+
+```
+trigger_table  ──►  target_table                      항상
+trigger_table  ──►  map_meta_registrar.META_TABLE     allow_map_metadata_upsert 일 때 «추가로»
+```
+
+⚠️ **The metadata table comes from the registrar, not from the rule.** A rule may set the
+flag and declare no metadata table at all, and `metadata_target_table` cannot be borrowed
+for it — in `dt_metadata_to_dt_inventory` that same key names the mapper's **source**.
+The one place metadata actually lands is the registrar constant, so that is what the edge
+points at. Guard: `chain_ingestion_worker._validate_chain_cascade_graph`, scored by
+`server/tests/test_cascade_graph_sees_metadata_writes.py`.
 
 ## 💡 실전 예시 시나리오: 생산 부족 수량 자동 계산
 
@@ -535,24 +573,37 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 
 가공 연산이 정의된 파이썬 함수를 실제 인제션 파이프라인 흐름에 바인딩하기 위해 체인 룰 설정 파일에 맵퍼 모듈 정보를 기재합니다.
 
-### [chain_rules.json](file:///c:/Users/kk980/Developments/assyManager/server/config/chain_rules.json)
+### chain_rules.json
+
+🔴 **[2026-09-05] 종전 이 자리의 예시는 «어느 키도 실제 이름이 아니었다».** `rule_name`·
+`source_table`·`active`·`mappers[]` 는 워커가 읽지 않는 철자이고, 그중 **둘은 하필
+「그래프가 무엇을 보나」를 정하는 칸과 뜻이 겹친다** — `source_table` 은 실재하는 키이지만
+**맵퍼가 «읽는» 곳**이지 엣지가 아니고(엣지는 `trigger_table`), 켜는 키는 `active` 가 아니라
+`enabled` 다(§1의 표). 이 예시를 따라 쓴 규칙은 **트리거가 안 잡히고 그래프에도 안 올라간다.**
+
+정본 모양은 아래이고, 전수 예시는 [`docs/guide/config_reference/chain_rules.json`](./config_reference/chain_rules.json)
+이다(⚠️ **그 파일은 오늘 로더가 «거절»한다** — 파일 안 `__comment_refused_as_shipped` 참조.
+그대로 복사하지 말 것).
 
 ```json
-[
-  {
-    "rule_name": "Production Plan Shortage Ingestion",
-    "source_table": "production_plan_raw",
-    "target_table": "production_plan",
-    "active": true,
-    "mappers": [
-      {
-        "module": "mappers.calculate_shortage",
-        "function": "map_production_plan_shortage"
-      }
-    ]
-  }
-]
+{
+  "rules": [
+    {
+      "name": "production_to_inventory_reservation_batch",
+      "trigger_table": "production_plan",
+      "target_table": "inventory_master",
+      "mapper_module": "mappers.production_mapper",
+      "mapper_function": "reserve_materials_batch_df",
+      "is_batch": true,
+      "enabled": true
+    }
+  ]
+}
 ```
+
+⚠️ **위는 참조 파일에서 «그대로» 옮긴 실재 규칙이다** — 이 절 앞의 부족수량 예시를 붙이려면
+`mapper_module`/`mapper_function` 두 칸만 그 함수로 바꾼다. **없는 모듈 이름을 예시에 적지 않는다**:
+`untrusted`/`unknown` 오류는 로드가 아니라 **첫 이벤트에서** 나므로 조용한 시간이 길다.
 
 ---
 

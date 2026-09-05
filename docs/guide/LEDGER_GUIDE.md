@@ -1,6 +1,6 @@
 # Canonical Ledger 개발·운영 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (🔴 **§4.6 이 은퇴한 라우트 «셋»(`/structure`·`/kinds`·`/trends`)의 읽는 법을 현재형으로 가르치고 있었다** — §1.2 는 같은 파일에서 그것들을 은퇴 목록에 올려 두고 있었고 §4.6 만 안 고쳐졌다. 묘비 + «생존자 줄»로 교체. `/subgraph` 의 «둘째» 422(`follow` 키를 못 드는 씨앗) 추가) · 직전 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (준비기가 자기 산출을 밝힐 수 있고 구현 이름은 고르개가 됐다 · 완성 조건에 «두 줄» 조임쇠) · 직전 2026-09-02 (🔴 **§4.6 이 은퇴한 라우트 «셋»(`/structure`·`/kinds`·`/trends`)의 읽는 법을 현재형으로 가르치고 있었다** — §1.2 는 같은 파일에서 그것들을 은퇴 목록에 올려 두고 있었고 §4.6 만 안 고쳐졌다. 묘비 + «생존자 줄»로 교체. `/subgraph` 의 «둘째» 422(`follow` 키를 못 드는 씨앗) 추가) · 직전 2026-08-31 (§1.2 라우트가 «둘»에서 «셋»으로 — `gaps` 신설 · `declaration` 에 `sources` 절 · **§4.1-bis 페이싱 · §4.1-ter 범위 재번역 신설**) · 직전 2026-08-29 밤 (§1.2 `/subgraph` 에 대조 쌍 `reach`/`reachable`) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) · `server/ledger/`
 
 이 문서는 **새 소스를 붙이고 백필 결과를 확인하는 방법**만 설명한다.
@@ -40,6 +40,13 @@
 **먼저 범용 구현 둘로 끝나는지 보고, 안 되는 부분만 코드로 쓴다.**
 구현 클래스는 자기 `implementation_id`/`implementation_version` 을 선언하고
 `server/ledger/implementations.py` 가 **코드에서 발견**한다 — 손으로 유지하는 등록 목록은 없다.
+🆕 **[2026-09-05] 그리고 이제 «신원»만 말하는 것이 아니다** — `BaseSourcePreparer` 하위 클래스는
+`declared_output_columns` 로 **자기가 내놓는 컬럼**까지 밝힐 수 있고, 밝히면 선언의
+`prepare.output_columns` 가 **파생**이 되어 운영자가 그 칸을 안 적는다.
+🔴 **밝히는 것은 «선택»이고 기본값은 침묵이다** — 오늘 준비기 둘이 마침 둘 다 알지만, 그것을
+「준비기는 안다」로 일반화하면 그 둘에 대한 서술이지 규칙이 아니다. 절차 [ONTOLOGY_LEDGER_SETUP §7.3-bis](./ONTOLOGY_LEDGER_SETUP.md).
+🆕 **이름을 «타이핑»하지도 않는다** — 작성 폼이 고르개를 그리고, 그 목록과 기본값은
+**이 배포의 소스에서 세어** 나온다([ONTOLOGY_LEDGER_SETUP §0](./ONTOLOGY_LEDGER_SETUP.md)).
 `declarative-role@1` 은 시각 Role 도 채운다(Role kind 가 `time` 이면 준비 경계가 이미 해석한
 `__occurred_at` 을 읽는다). 그래서 「Python 0줄」이 시각 있는 소스에도 참이다.
 
@@ -124,7 +131,9 @@ source rows
 
 🔴 **mapper 는 선언의 이름을 하나도 모른다.** 술어 철자도 개체 타입 이름도 이 파일에 없다 —
 그것들은 배포마다 바뀌는 운영자의 낱말이고, 「다른 스키마의 운영 환경에서 코드 0줄」이
-완성 조건이기 때문이다. mapper 가 아는 것은 **자기가 그 문장을 부르는 별명**이고,
+완성 조건이기 때문이다(⚠️ **[2026-09-05] 그 조건에 조임쇠가 붙었다** — 코드가 0줄이어도
+**선언법을 「두 줄」로 말할 수 없으면 미완**이다. 그 두 줄의 정본은
+[ONTOLOGY_LEDGER_SETUP §0](./ONTOLOGY_LEDGER_SETUP.md)). mapper 가 아는 것은 **자기가 그 문장을 부르는 별명**이고,
 그 별명이 어느 술어가 되는지는 `bind.mappings.<별명>.predicate` 한 칸이 정한다.
 배선은 `ledger.roleframe.ProfileSentences` 가 한다.
 

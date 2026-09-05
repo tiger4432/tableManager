@@ -113,6 +113,18 @@ Neither appends a second version of the same map.  The ingestion worker permits
 the inventory-to-map dependency explicitly, while cycle validation continues to
 reject unapproved chain loops.
 
+🔴 **[2026-09-04] These are the exact rules the cycle guard used to be blind to — read
+this before enabling the middle hop.**  The `dt_inventory → dt_map` rule declares
+`allow_map_metadata_upsert`, so it writes **two** tables: `dt_map` and the map metadata
+table.  That second write raises its own chain event, which wakes the
+`wafer_map_metadata → dt_inventory` rule, which feeds the first rule again.  Measured:
+5 metadata rows per run, a live loop, and the load-time validator **passed it** because
+it modelled one edge per rule.  It now builds both edges, so the same config is refused
+at load with `allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory ->
+wafer_map_metadata`.  ⚠️ **A refusal here is the guard working, not a regression** —
+the resolution is to decide which hop should not be opt-in, not to widen the guard.
+Contract: [chain_ingestion_guide 「Target-map metadata within a chain」](../guide/chain_ingestion_guide.md).
+
 ### The retraction is a prerequisite of the key, not an enhancement
 
 `plan_retraction` in `server/dt_map_derivation.py` was present but had **zero

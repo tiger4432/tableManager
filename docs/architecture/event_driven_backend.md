@@ -224,8 +224,19 @@ outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at
 }
 ```
 
-### 3.4 순환 루프 방지 장치
-체인 워커는 무한 재트리거(A 테이블 ➡️ B 테이블 ➡️ A 테이블...)를 막기 위해, 이벤트 페이로드 내 `source_name`이 `"chain_ingestion"`으로 설정된 건에 대해서는 **체인 규칙을 발동시키지 않고 즉시 패스**하도록 설계되어 있습니다.
+### 3.4 순환 루프 방지 장치 — **문이 둘이고, 하나는 「기본값」이지 「금지」가 아닙니다**
+
+무한 재트리거(A 테이블 ➡️ B 테이블 ➡️ A 테이블...)는 **두 장치**가 막습니다.
+
+**① 런타임 옵트인** (`_rule_accepts_event`). 이벤트 페이로드의 `source_name`이 `"chain_ingestion"`인 건은 체인 규칙을 발동시키지 않고 **즉시 패스**합니다 — 🔴 **다만 그 규칙이 `allow_chain_trigger: true`를 «선언한» 경우는 예외이고, 그 규칙은 여전히 받습니다.** 종전 이 절은 예외 없이 「발동시키지 않는다」고 적고 있었고 그것은 거짓입니다. **침묵과 동의는 다른 물건**이라 억제가 아니라 옵트인으로 설계돼 있습니다(§2.2·[chain_ingestion_guide §5.6](../guide/chain_ingestion_guide.md)).
+
+**② 로드 시점 그래프 검증** (`load_chain_rules` → `_validate_chain_cascade_graph`). ①이 옵트인이라 **옵트인 엣지끼리 고리를 만들 수 있고**, 그래서 워커가 뜨기 전에 그 엣지만으로 그래프를 세워 순환이면 **거절**합니다.
+```
+꼭짓점  표
+엣지    켜져 있고(`enabled`) 옵트인인 규칙마다  trigger_table ──► target_table
+        🔴 그리고 `allow_map_metadata_upsert` 이면  trigger_table ──► «맵 메타데이터 표»  «하나 더»
+```
+🔴 **[2026-09-04] 종전에는 규칙 하나가 엣지 하나였고, 그래서 살아 있는 순환이 검증을 통과했습니다.** 그 규칙은 `target_table` 말고 맵 메타데이터 표에도 쓰는데 **그 쓰기가 자기 체인 이벤트를 냅니다** — 즉 엣지는 도는 시스템에 **있었고** 그래프에만 없었습니다. 「한 규칙 = 한 엣지」를 가정하는 문장을 어디서 보든 낡은 것입니다. ⚠️ **`source_table` 은 엣지가 아닙니다** — 맵퍼가 데이터를 읽는 곳이고, 그래프가 걷는 것은 `trigger_table` 입니다. 세부·실측은 [chain_ingestion_guide 「Target-map metadata within a chain」](../guide/chain_ingestion_guide.md).
 
 ### 3.5 폴링·브로드캐스트 지연 최적화 (Latency Model)
 간헐적 반응 지연을 없애기 위해 다음 두 축이 적용되어 있습니다.

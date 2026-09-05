@@ -86,7 +86,8 @@
 |---|---|---|---|
 | 규칙 기반 파생 | 원본 테이블 변경(outbox NOTIFY) → `chain_rules.json` 매칭 맵퍼 실행 → 파생 테이블 업서트 → WS 위임 | (자동) 원본 테이블 인제션/편집 | `chain_ingestion_worker.process_chain_transaction_group`(§4) · [chain_ingestion_guide](../guide/chain_ingestion_guide.md) |
 | 지연 SLO 100ms | 원본 커밋 → 파생 반영·통지까지 100ms 목표(정상 실측 31ms). `[Latency]`/`[Warmup]` 상시 계측 | (자동) 워커 로그 | `_dispatch_broadcasts/warmup_worker`(§4) · 이슈 #0 종결 기록 |
-| 순환 차단 | source=chain_ingestion 이벤트는 재트리거하지 않음(무한 체인 방지) | (내부 불변식) | `process_chain_transaction_group`(§4) |
+| 순환 차단 — 런타임 | source=chain_ingestion 이벤트는 재트리거하지 않음(무한 체인 방지). ⚠️ **예외는 «옵트인»이다** — `allow_chain_trigger`를 선언한 룰은 **여전히 받는다**(침묵과 동의는 다른 물건) | (내부 불변식) | `_rule_accepts_event`(§4) |
+| 순환 차단 — 로드 시점 | 옵트인 엣지끼리 고리를 만들면 **워커가 뜨기 전에 거절**한다. 🔴 **[2026-09-04] 한 룰이 엣지 «둘»일 수 있다** — `allow_map_metadata_upsert`를 선언한 룰은 `target_table` 말고 맵 메타데이터 표에도 쓰고 그 쓰기가 자기 체인 이벤트를 낸다. 종전 그래프가 앞의 하나만 보아 **살아 있는 순환이 통과**했다 | config 로드/`reload-configs` | `_validate_chain_cascade_graph`(§4) · `tests/test_cascade_graph_sees_metadata_writes.py` |
 | 실패 그룹 격리 | 실패 tx 그룹은 skip하고 후속 그룹 진행(HOL 블로킹 제거), 미전달 통지는 스윕 안전망 | (자동) | `process_pending_groups/sweep_undelivered_broadcasts`(§4) |
 
 ### 1.6 Enrichment Queue (결손 보정 워크리스트)
@@ -265,7 +266,8 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 | 기능 | 설명 | 진입 경로 | 코드 |
 |---|---|---|---|
 | 자식 프로세스 감시·자동 재시작 | ⚠️ **[2026-08-14] 수를 여기 적지 않는다 — 정본은 `run_decoupled_app.py`의 `specs`다**(그래프 싱크 워커 은퇴로 백엔드 자식이 다섯에서 넷이 됐고, 이 자리의 「5~6」은 그 라운드에 낡았다). 런처가 자식을 1초 주기로 감시. 죽으면 백오프 재시작(2/4/8/16/32초), **6번째 연속 실패에서 영구 `FAILED`**(배너 로그 + `/health` 503). 60초 이상 살아 있었으면 예산 회복. 데스크톱 셸 종료 = 전체 종료 | `python run_decoupled_app.py` (상태 파일 `config/supervisor_status.json`) | `server/process_supervisor.py` · [backend §1.3](../architecture/backend.md) |
-| 워커 진행 박동 | 런처가 띄우는 워커 **3종**(`watcher`/`chain`/`scheduler`)이 **자기 작업 루프 안에서** 박동한다(⚰️ **[2026-08-14] 종전 여기 있던 `graph`는 스택에서 빠졌다**). 원장 백필도 돌 때 `ledger` 이름으로 박동한다. pid가 아니라 진행이 신호라 **살아 있는 채 멈춘 워커**(`wedged`)를 잡는다. 정체 임계 60초. 상태값은 **8종**(`ok`·`starting`·`missing`·`foreign_beat`·`wedged`·`stale`·`stalled`·`down` — [backend §1.3](../architecture/backend.md)). ⚠️ **`stalled`는 별개 검출기**: 박동은 신선한데 claim한 작업이 **300초** 무진행인 경우로, 워처의 재시도 폴러가 계속 박동하는 동안 인제션이 멈춰 있던 실제 사고를 잡는다 | (자동) `config/worker_heartbeats/*.json` | `server/utils/heartbeat.py` |
+| 워커 진행 박동 | 런처가 띄우는 워커가 **자기 작업 루프 안에서** 박동한다(⚰️ **[2026-08-14] 종전 여기 있던 `graph`는 스택에서 빠졌다** — 🔴 **이름도 수도 여기 적지 않는다, 정본은 `run_decoupled_app.py`의 `ChildSpec(heartbeat=…)`**). 원장 백필도 돌 때 `ledger` 이름으로 박동한다. pid가 아니라 진행이 신호라 **살아 있는 채 멈춘 워커**(`wedged`)를 잡는다. 정체 임계 60초. 🔴 **상태값 전수도 여기 적지 않는다 — [backend §1.3](../architecture/backend.md)의 표가 정본**이다(종전 「8종」은 `unknown`이 붙으면서 낡았다). ⚠️ **`stalled`는 별개 검출기**: 박동은 신선한데 claim한 작업이 **300초** 무진행인 경우로, 워처의 재시도 폴러가 계속 박동하는 동안 인제션이 멈춰 있던 실제 사고를 잡는다 | (자동) `config/worker_heartbeats/*.json` | `server/utils/heartbeat.py` |
+| **런처 명부(roster)** | **[2026-09-05 신설]** 「누가 돌고 있어야 하나」를 디스크 박동에서 **유추하지 않고** 런처가 `{이름: 시작 epoch}`로 **공표**한다. 그 값이 `/health`의 **기존** 워커 루프에 들어가 ① 기대 집합을 만들고 ② 감시자가 없을 때 **시작 시각으로 나이를 재** `starting` 갈래를 살린다. ⚠️ **판정자를 늘리지 않았다**(옆에 분류기를 두지 않는다). 명부 밖 박동은 `off_roster`로 **이름을 대되 격상하지 않는다** | (자동) `config/worker_heartbeats/_roster.json` | `heartbeat.write_roster`/`read_roster` → `health.compute_health` · `tests/test_health_roster_feeds_the_loop.py` |
 | 헬스 엔드포인트 | **항상 JSON**, 정상 200 / `unhealthy` 503. `checks{database, workers, outbox, supervisor}` + 사람이 읽는 `problems[]`. DB 프로브 2초 타임아웃·중복 프로브 차단 | `GET /health` | `server/health.py` · `main.py` |
 | outbox 적체 판정 | **크기가 아니라 나이**(5분 degraded / 15분 unhealthy). 정상적인 10만 행 적재가 outbox 11.6만 행을 만들기 때문에 크기 임계는 큰 파일마다 오경보한다 | 위 응답의 `checks.outbox` | `health.probe_outbox` |
 | 격리 개발/검증 환경 | 스냅샷 DB(`assy_qa`) + 별도 포트(:8081/:8091) + 별도 데이터 루트(`dev_env/`). `up`은 워처·스케줄러를 **일부러 안 띄운다**. 드릴용 워처는 별도 동사이며 **운영을 향하면 기동을 거부** | `python server/scripts/dev_env/devenv.py {snapshot,up,status,env,down,watcher-up,watcher-down}` | `server/scripts/dev_env/devenv.py` · `iso_watcher.py` · `server/paths.py` · [DEPLOY_SETUP §5](../guide/DEPLOY_SETUP.md) |
@@ -486,7 +488,8 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 
 - [ ] **파생 정상**: 원본 테이블(스모크: `production_plan`)에 행 인제션/편집 → 파생 테이블(`line_model_registry`)에 규칙대로 파생 행 생성/갱신.
 - [ ] 🎯 **SLO 100ms**: 원본 편집 커밋 → 파생 반영 WS 통지까지 워커 `[Latency]` 로그 기준 100ms 이내(정상 상태 기대치 ~31ms). 재기동 직후 첫 체인은 ~600ms까지 허용(웜업 잔여, 알려짐).
-- [ ] 🎯 **순환 차단**: 파생 테이블 갱신이 다시 체인을 트리거하지 않음(워커 로그에 재귀 처리 없음, outbox 무한 증가 없음).
+- [ ] 🎯 **순환 차단 — 런타임**: 파생 테이블 갱신이 다시 체인을 트리거하지 않음(워커 로그에 재귀 처리 없음, outbox 무한 증가 없음). ⚠️ **`allow_chain_trigger`를 선언한 룰은 예외이고, 그것이 안 깨어나면 그쪽이 결함이다** — 「아무것도 안 깨어남」을 통과로 읽지 말 것.
+- [ ] 🎯 **순환 차단 — 로드 시점(두 엣지)**: `allow_chain_trigger`가 걸린 룰에 `allow_map_metadata_upsert: true`를 더해 **맵 메타데이터 표를 `trigger_table`로 삼는 룰과 고리를 만든 뒤** `reload-configs` → **워커가 뜨기 전에 `allow_chain_trigger cycle: …` 로 거절**하고 경로를 이름 댄다. 🔴 **이 항목이 재는 것은 「거절한다」가 아니라 「«두 번째 엣지»를 본다」이다** — 룰의 `target_table`만으로 고리를 만들면 옛 그래프도 잡으므로 **판별식이 못 된다.** 되돌린 config로 다시 로드하면 통과.
 - [ ] **멱등성 — 체인 재실행**: 동일 원본 재드롭 → 파생 테이블 행 수 불변, count류 집계값 정확(중복 가산 없음).
 - [ ] **실패 격리 에지**: 맵퍼 예외를 유발하는 그룹 발생 시 해당 그룹만 실패(어드민 Chain 탭 outbox FAILED)하고 이후 정상 그룹은 계속 처리됨.
 - [ ] **대형 tx 통지 비동결(인시던트 `cc57b64` 회귀)**: 수만 행 파일 재인제션 등 대형 tx 발생 시 :8080이 동결되지 않고(`[Latency] notify=` 정상), 히스토리 패널 트랜잭션 총계는 실건수(`total_log_count`) 표기 — 로그 항목 자체는 500건까지만 보존(부분 보존이 정상). ⚠️ 알려진 잔여: 멀티 target-table tx 총계 과소(이슈 #10, D-1).
@@ -814,12 +817,15 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 
 > ⚠️ **아래 정지·종료 항목은 격리 환경에서 하십시오** — `devenv.py up`(:8081) + `ASSY_API_PORT=8081`. 운영 스택에서 워커를 죽여 보는 것은 실데이터 유입을 끊는 행위입니다.
 
-- [ ] **헬스 기본**: `curl -i http://localhost:8080/health` → **200 + `Content-Type: application/json`**. 본문 `status: ok`, `checks.workers`에 워커 4종이 모두 있고 전부 `ok`.
+- [ ] **헬스 기본**: `curl -i http://localhost:8080/health` → **200 + `Content-Type: application/json`**. 본문 `status: ok`, `checks.workers`가 전부 `ok`. 🔴 **수를 세지 말고 «런처가 띄운 이름»과 대조하라**(`config/worker_heartbeats/_roster.json` 또는 `run_decoupled_app.py`의 `ChildSpec`) — 종전 이 자리는 「워커 4종」이라 적고 있었고 그래프 워커 은퇴로 낡았다. **여기 수를 박으면 워커가 늘거나 줄 때마다 이 항목이 거짓말한다.**
 - [ ] **catch-all과 구분**: 아무 오타 경로(`/healthz` 등) → **HTML 200**이 온다. `/health`만 JSON인지 확인(감시 대상 경로를 틀리면 죽은 서버가 살아 보인다).
 - [ ] 🎯 **죽으면 되살아난다**: 워커 프로세스 하나를 강제 종료 → 로그에 재시작 줄 + `supervisor_status.json`의 `restarts` 증가 → 수십 초 내 `/health` 다시 `ok`.
 - [ ] 🎯 **살아 있는데 멈춘 것을 잡는다**: 워커를 **정지(suspend)**시킨다(kill 아님) → **약 1분 뒤**(마지막 박동 기준 60초) `/health`가 **503**, 해당 워커 `status: wedged`. 재개하면 곧(초 단위) `ok`, pid 불변. *(pid만 보는 감시로는 절대 안 잡히는 케이스 — 이 항목이 이 절의 핵심이다)*
 - [ ] 🎯 **박동하는데 일이 안 되는 것을 잡는다**(`stalled`): 인제션 작업을 claim한 상태에서 **작업만** 멈춘다(워커 루프는 계속 돌게 둘 것) → **약 5분 뒤**(300초) 해당 워커 `status: stalled` + 503. ⚠️ **`wedged` 시험으로 이 항목을 대신할 수 없다** — 임계도 조건도 다르고, 실제 사고는 워처의 3초 재시도 폴러가 계속 박동하는 동안 인제션이 멈춘 형태였다. 또 더 구체적인 판정을 덮지 않는지 확인: `down`/`wedged`인 워커는 `stalled`로 바뀌면 안 된다.
 - [ ] **박동 pid 위조 방지**(`foreign_beat`): 같은 역할 이름으로 다른 프로세스가 박동 파일을 쓰게 한 뒤 → 감시자가 띄운 pid와 불일치하므로 `ok`가 아니라 `foreign_beat`가 뜬다(유령 프로세스가 정체를 가리지 못한다).
+- [ ] 🎯 **[2026-09-05 신설] 은퇴한 워커가 스택을 영원히 아프게 하지 않는다**: `config/worker_heartbeats/`에 **런처가 안 띄우는 이름**의 박동 파일을 하나 둔다(예: 옛 `graph.json`) → `/health`가 **200을 유지**하고 그 이름은 `status: off_roster`로 **이름만 뜬다**. 🔴 **503이면 회귀**(디스크 박동에서 기대 집합을 유추하던 옛 동작), 🔴 **응답에서 아예 사라져도 회귀**(조용히 버리면 거짓 경보를 사각지대와 맞바꾼 것이다).
+- [ ] 🎯 **[2026-09-05 신설] 재기동 창에서 503이 나지 않는다**: 스택을 재기동하고 **첫 박동이 쓰이기 전에** `/health`를 친다 → 아직 박동 없는 워커가 `missing`이 아니라 **`starting`**이고 HTTP는 **200**(또는 `degraded`)이다. 🔴 **503이면 회귀다** — 「아직 안 왔다」와 「영영 안 온다」가 다시 한 사실이 된 것이고, 그것을 가르는 재료는 명부의 **시작 시각**뿐이다.
+- [ ] **명부가 없어도 죽지 않는다**: `_roster.json`을 지우고 `/health` → 디스크 박동으로 **폴백**해 종전처럼 답한다. 🔴 **빈 명부를 「아무도 안 돈다」로 읽어 전부 `off_roster`가 되면 회귀다**(정상 가동 중인 스택을 미선언으로 부른다).
 - [ ] **영구 실패는 조용히 넘어가지 않는다**: 자식이 즉사하도록 만들면(예: 잘못된 config) 5회 재시작 후 **`FAILED` 배너 로그** + `/health` 503이 **계속** 유지된다(무한 재시작 금지).
 
 **중복 기동 거절 (2026-08-04 `06b7761`)** — 재시도로 고칠 수 없는 실패는 예산을 태우기 전에 이름을 얻어야 한다.

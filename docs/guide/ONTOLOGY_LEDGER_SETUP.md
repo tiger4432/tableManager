@@ -36,6 +36,31 @@ Position/Frame, 마이그레이션·cursor reset 중심의 옛 설정 절차는 
 
 ---
 
+## 0. 임의의 스키마에서 소스 하나를 붙이는 법 — **두 줄** (2026-09-05)
+
+아래 두 줄이 이 문서 전체의 요약이고, **스키마 이름이 빈칸**이라는 것이 요점이다.
+
+```
+① 운영에서는 <이 표>에 «주어를 가리키는 칸» · «언제인지 칸» · «값 칸» 을 각각 하나씩 두십시오
+② 그다음 선언에서 <그 표>를 고르고 술어 하나를 골라, 그 셋을 «주어 · 시각 · 목적어»에 짝지으십시오
+```
+
+🔴 **이 두 줄이 «오늘» 참이 된 것이고, 그 전에는 아니었다.** 막고 있던 것이 둘이었다:
+
+| 막던 것 | 어떻게 풀렸나 |
+|---|---|
+| 구현 이름(`declarative-role` 등)을 **아무 데도 안 보고 타이핑**해야 했다 | 작성 폼이 «고르개»가 됐고 목록·기본값이 **이 배포의 소스에서 세어** 나온다(§7.3-bis · [PRIMITIVES §7](../architecture/PRIMITIVES.md)) |
+| `prepare.output_columns` 에 **준비기가 새로 만드는 컬럼 이름을 같이 적어야** 했다 | 구현이 자기 산출을 밝히면 그 칸이 **묻기를 멈춘다**(§7.3-bis) |
+
+⚠️ **범위**: 위 두 줄은 «준비기가 자기 산출을 말할 때» 참이다. 말하지 않는 구현을 고르면
+둘째 줄에 절이 하나 붙는다 — **그래도 두 줄**이다. 그리고 그 침묵은 **부재가 아니라 기본값**이다.
+🔴 **이것은 「제품 완성」이 아니다.** 두 줄 시험이 재는 것은 「선언법을 두 줄로 말할 수 있나」이고,
+「막는 것이 없나」는 다른 축이다 — 그쪽의 정본은 [보드](../process/PROJECT_STATUS.md)다.
+📎 상위 판정은 소유자 관문(`CLAUDE.md` 「완성의 정의」)이고, 종전 DoD 「다른 스키마 운영 환경에서
+코드 0줄, 선언 교체만으로 발화」의 **조임쇠**다 — 코드가 0줄이어도 선언이 서른 줄이면 미완이다.
+
+---
+
 ## 1. 먼저 이해할 전체 흐름
 
 ```text
@@ -648,12 +673,36 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `implementation_id` | trusted code catalog에서 찾을 구현 이름 |
 | `implementation_version` | 구현 계약 버전. **재사용되는 것은 이 «코드»이지 선언이 아니다.** |
 | `input_columns` | base physical SELECT와 join left key로 필요한 컬럼 전수 |
-| `output_columns` | Mapper가 받을 EventFrame 컬럼명 → 타입 문자열 |
+| `output_columns` | Mapper가 받을 EventFrame 컬럼명 → 타입 문자열. 🆕 **[2026-09-05] 구현이 자기 산출을 «밝히면» 이 칸은 운영자가 적는 칸이 아니다** — 아래 「구현이 말하는 산출 컬럼」 |
 | `accepts_verified_join_rules` | physical verification을 통과한 join descriptor 수용 여부 |
 | `inherit_virtual_join_rules` | 상속할 `virtual_joins` 규칙 이름 목록(§6). 안 쓰면 `[]` |
 
-여섯 필드 **전부 필수**다(빈 목록이라도 적는다). 정본은
+여섯 필드 **전부 필수**다(빈 목록이라도 적는다) — **문법의 이야기다.** 정본은
 `setup_bundle._validate_preparation`.
+🔴 **「필수」와 「운영자가 적는다」는 다른 문장이다.** 키는 여섯 다 있어야 하지만, `output_columns`
+값은 구현이 밝혔으면 **작성 화면이 채워 문서에 내려놓는다**(§7.3-bis). 문법은 안 바뀌었고 바뀐 것은
+**누가 그 값을 대는가**다.
+
+#### 7.3-bis 구현이 말하는 산출 컬럼 — 그 칸이 «묻기를 멈춘다» (`172efda6`, 2026-09-05)
+
+`BaseSourcePreparer` 하위 클래스는 자기 `implementation_id`/`implementation_version` 말고
+**자기가 내놓는 컬럼**도 클래스에 밝힐 수 있다(`declared_output_columns`).
+
+```
+밝힌 구현     계획이 그 행을 «파생»으로 낸다 (state="derived", 근거 = 같은 절의 implementation_id)
+             -> 작성 화면이 값을 채우고 저장이 문서에 내려놓는다. 운영자는 «아무것도 안 적는다»
+밝히지 않은 구현  그 칸은 종전 그대로 «운영자가 적는 칸»으로 남는다
+```
+
+- 🔴 **기본값은 «말하지 않음»이고, 그것이 판정이다.** 오늘 출하되는 준비기 둘이 마침 둘 다 알지만,
+  그것을 「준비기는 안다」로 일반화하면 **그 둘에 대한 서술**이지 규칙이 아니다. 침묵한 클래스는
+  칸을 **한 글자도 안 건드린다** — 없는 답을 `{}` 로 채우는 것이 이 자리가 없애려는 결함 그 자체다.
+- ⚠️ **`{}` 는 「없다」이고 침묵은 「모른다」다.** 빈 매핑은 「나는 컬럼을 안 더한다」는 «진술»이고,
+  둘을 합치면 말한 적 없는 클래스의 칸이 채워진다.
+- 🔴 **실행의 대조는 «선언»에 대고 그대로 한다.** 준비기가 실제로 낸 컬럼을 **클래스가 아니라 선언과**
+  견주고 부분집합·초과집합 둘 다 거절한다 — 클래스와 대조하면 **자기를 자기와 비교**하게 되고,
+  이 칸을 자유도 0으로 만드는 바로 그 거절이 공허해진다.
+- 📎 이것이 「두 줄로 말해진다」의 조건 둘 중 하나였다 — §0.
 
 🔴 **이 절에 «id»는 없다** (소유자 판정 2026-08-20 「소스플랜 준비기 맵퍼」, `087e7d8`).
 preparer의 `input_columns`는 물리 relation의 컬럼이어야 하는데 `relation`을 선언하는 것은
@@ -713,6 +762,9 @@ Config는 Python module/function/path를 지정할 수 없다. 다음은 금지�
 자기 `implementation_id`/`implementation_version`을 스스로 선언하고
 `server/ledger/implementations.py`가 그것을 **코드에서 발견해** 신뢰 집합을 만든다. 별도
 목록에 이름을 다시 적을 곳은 없다.
+🆕 **[2026-09-05] 클래스가 말할 수 있는 것이 «신원»만이 아니다** — `declared_output_columns`로
+**자기가 내놓는 컬럼**까지 밝히면 선언의 `output_columns` 칸이 파생이 된다(§7.3-bis).
+밝히는 것은 **선택**이고 기본값은 침묵이다.
 
 ### 7.4 `sources.<id>.map` — EventFrame에서 Role만 해석
 
@@ -1372,6 +1424,12 @@ Mapper는 여전히 Role 값만 반환한다. `object_payload` dict를 Mapper가
 - 위치: mapper는 `server/mappers/ledger_v2_*.py`, preparer는 `server/ledger/`
 - 신뢰 등록: **없다.** 클래스가 `implementation_id`/`implementation_version`을 자기 자신에
   선언하면 `server/ledger/implementations.py`가 발견한다. 손으로 유지하는 목록은 없다.
+- 🆕 **산출 컬럼(선택, preparer만)**: `declared_output_columns`(`{컬럼: 타입}`)를 클래스에 두면
+  선언의 `prepare.output_columns`가 **파생**이 되어 운영자가 그 칸을 안 적는다(§7.3-bis).
+  🔴 **안 두는 것이 기본값이고 그것도 답이다** — 산출 이름이 «행에서» 나오는 준비기는 밝힐 수
+  없고, 그때 칸은 종전 그대로 남는다. 🔴 **`{}`를 두지 마라** — 그것은 「나는 컬럼을 안 더한다」는
+  진술이라 침묵과 다르다. **읽기는 `__dict__` 로 한다**(상속으로 물려주면 컬럼 하나를 더한
+  하위 클래스가 «하나 모자란» 선언을 파생받는다).
 
 설정에 module path를 넣어 우회하지 않는다. `implementation_id`가 발견되지 않으면
 `untrusted_implementation` 또는 unknown implementation 오류가 정상이다.
@@ -1717,6 +1775,21 @@ CAS activation 전까지 active snapshot을 바꾸지 않는다.
 
 - 거절의 path가 폼의 칸을 가리키면 **그 칸으로 가는 버튼**이 되고, 가리키지 않으면
   **원문 그대로 찍는다** — 지어낸 칸보다 자리 없는 문장이 낫다.
+- 🆕 **[2026-09-05 `1936c356`] 게이트 거절도 이제 «코드와 주소»를 들고 여기까지 온다.**
+  종전에는 이 화면이 `code`/`path` 를 **묻고 있었는데 게이트 거절에는 그 값이 없어**, 폴백이
+  **예외의 클래스 이름**을 코드 자리에 찍었다 — 즉 운영자가 본 것이 `code: "MoleculeRefused"` ·
+  `path: ""` 였다. 「어느 칸을 고치나」에 답하려고 있는 화면이 **예외 클래스 이름**을 듣고 있었다.
+  ```
+  나르는 쪽  envelope.check_envelope  ->  {code, path, message}   «착지한 날부터» 그랬다
+  읽는 쪽    _test_run_refusal        ->  getattr(exc, "code")     «착지한 날부터» 그랬다
+  없던 것    그 사이를 잇는 세 홉                                   <- 오늘 이어진 것은 이것뿐
+  ```
+  🔴 **그 주소가 가리키는 것은 «원자»다 — 폼의 칸이 아니다**(`atom.occurred_at` 처럼). 그래서
+  **어느 상자도 강조되지 않고**, 그것이 의도이며 시험이 못박는다. 원자 경로를 선언 경로로 옮기는
+  매핑은 **아직 없고**, 없는 채로 두는 편이 틀린 칸을 가리키는 것보다 낫다.
+  ⚠️ 위반이 여럿이면 **첫 번째**가 `code`/`path` 가 되고 나머지는 `addresses` 에 남는다 —
+  사유(`reason`)도 같은 첫 번째에서 접히므로 **코드와 사유가 같은 위반을 가리킨다.**
+  어휘 대조표는 [LEDGER_TECHNICAL_SPEC §3.5-ter](../spec/LEDGER_TECHNICAL_SPEC.md).
 - POST인 이유는 바꾸는 것이 있어서가 아니라 **페이지 읽기 한 번 + 컴파일 한 번**이 드는
   비싼 읽기이기 때문이다. 인증은 `/columns`와 같은 일반 admin token이다.
 - **0행을 읽은 것도 결과다** — 통과는 아니다(`status: "empty"`). 컴파일된 적 없는 선언이
@@ -1906,6 +1979,11 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 - [ ] config에 module/path/SQL/Python/expression을 넣지 않았다.
 - [ ] `prepare`의 input/output과 `map.input_columns`가 exact하게 맞는다.
+      🆕 **`output_columns`를 «내가 적었나 파생됐나»를 구별해서 본다**(§7.3-bis) — 구현이
+      `declared_output_columns`를 밝히면 그 칸은 계획이 `derived`로 채우므로 **손으로 적을 것이
+      없고**, 적어 둔 값이 구현과 다르면 실행이 거절한다. 🔴 **빈 `{}`가 들어가 있으면 의심하라** —
+      「구현이 컬럼을 안 더한다」와 「구현이 말한 적 없다」는 다른 상태이고, 앞쪽이면 매퍼가 쓸
+      컬럼이 하나도 안 생긴다.
 - [ ] `implementation_id`/version을 가진 클래스가 코드에 실제 있다(범용 `direct-join@1`·
       `declarative-role@1`으로 끝나는지 먼저 확인했다).
 - [ ] `bind.mappings`의 **키가 mapper의 문장 별명**이다. 전용 mapper면 그 목록의 정본은

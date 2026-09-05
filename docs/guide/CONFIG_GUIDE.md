@@ -1,6 +1,6 @@
 # AssyManager 설정 가이드
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (§1 에 **「`server/config/` 밖에 사는 선언」 신설** — `server/pacing.json` · `server/ledger/gap_names.json`) · 직전 2026-08-19 (§1 원장 config 행만 재대조) | **Owner:** Lead / Backend
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (S8 순환 검사가 «두 엣지» · 페이싱 소비자 「둘」이 SSOT 와 갈려 「셋」으로 정정) · 직전 2026-08-31 (§1 에 **「`server/config/` 밖에 사는 선언」 신설** — `server/pacing.json` · `server/ledger/gap_names.json`) · 직전 2026-08-19 (§1 원장 config 행만 재대조) | **Owner:** Lead / Backend
 > **Source-of-truth:** `server/config/` · 각 config loader
 
 이 문서는 **설정 파일의 위치, 의존 순서, 반영 확인 방법**만 설명한다.
@@ -48,7 +48,7 @@
 
 | 경로 | 무엇 | 누가 읽나 |
 |---|---|---|
-| **`server/pacing.json`** | 페이싱 프로파일 `fast`·`slow`·`trickle`(각 `label`·`when`·`units_per_cycle`·`rest_seconds`) — 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬» | **둘.** 원장 백필(단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 가 고른다) · 파일 인제션(단위 = **청크**, 이름은 **`ingestion_settings.json` 의 `ingestion_pace`** 가 고른다) |
+| **`server/pacing.json`** | 페이싱 프로파일 `fast`·`slow`·`trickle`(각 `label`·`when`·`units_per_cycle`·`rest_seconds`) — 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬» | **셋.** 원장 백필(단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 가 고른다) · **체인 재적용 R1**(단위 = **페이지**, 2026-09-02 합류) · 파일 인제션(단위 = **청크**, 이름은 **`ingestion_settings.json` 의 `ingestion_pace`** 가 고른다). ⚠️ 종전 이 자리가 「둘」이라 SSOT §5 와 갈려 있었다 — **수의 정본은 [backend §4](../architecture/backend.md)** 이고 이 표는 사본이다 |
 | **`server/ledger/gap_names.json`** | 결측 질문의 **이름과 뜻**(`pairs`·`subject_sides`·`object_sides`) — 찾는 것은 코드가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다. `_source` 가 그 이름을 정한 명세를 가리킨다 | `server/ledger/gaps.py` → `GET /api/ledger/gaps` |
 
 - ⚠️ **`ingestion_pace` 는 `ingestion_settings.json` 에 있고 값은 `pacing.json` 이 정의한다** — 두 파일을 함께 봐야 뜻이 완성된다. 프로파일 이름을 지우면 그것을 고른 인제션이 «경고 후 전속력»으로 떨어지고, 백필은 **거절**한다(같은 오타에 반응이 다르다).
@@ -133,7 +133,13 @@ auto-confirm dry-run으로 효과와 예상 건수를 확인한다.
 ### S8. Chain 규칙 추가
 
 생산자→소비자 방향과 business key를 확인하고 dry-run/replay로 과거 행에 적용될 범위를
-본다. 순환이나 자기 트리거 규칙을 허용하지 않는다.
+본다. 순환이나 자기 트리거 규칙을 허용하지 않는다 — 로더가 **config 로드 시점에 그래프를 세워
+거절**한다(`_validate_chain_cascade_graph`).
+🔴 **방향을 그리는 칸은 `trigger_table` 이다. `source_table` 은 맵퍼가 «읽는» 곳이고 엣지가 아니다.**
+🔴 **[2026-09-04] 그리고 한 규칙이 표를 «둘» 쓸 수 있다** — `allow_map_metadata_upsert` 를 선언한
+규칙은 `target_table` 말고 **맵 메타데이터 표에도** 쓰고 그 쓰기가 자기 체인 이벤트를 낸다.
+그래서 그런 규칙은 엣지가 «둘»이다. 종전 그래프가 «앞의 하나»만 보아 **살아 있는 순환이
+검증을 통과**했다. 세부는 [chain_ingestion_guide 「Target-map metadata within a chain」](./chain_ingestion_guide.md).
 
 ### S9. 맵 정렬 화면 활성화
 

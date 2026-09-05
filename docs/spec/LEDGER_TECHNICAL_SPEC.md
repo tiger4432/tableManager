@@ -1,6 +1,6 @@
 # 정준 원장 기술 명세 (Canonical Ledger — Technical Specification)
 
-> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-09-02 (§2.1 인덱스 표의 `idx_ledger_register_search` 가 **은퇴한 라우트를 「이름 붙은 소비자」로 대고 있었다** — 그 절의 admission rule 을 그 행이 어기고 있어 표시했다(**판정은 총괄 몫**) · §6.4 묘비가 후계로 대던 `/structure` **도 없다**(죽은 이름을 죽은 이름으로 갈아 끼운 모양) · 머리의 술어 수 «열셋»이 같은 파일 §461 의 «열넷»과 충돌해 **수를 지우고 묻는 자리를 남겼다**) · 직전 2026-08-29 (개정 6 — §1~§3 쓰기측은 유효, **읽기측 §4.7·§4.8·§4.10·§5.7·§6.4-bis 는 은퇴한 라우트를 서술하며 묘비를 달았습니다**) | **Owner:** Server / Ledger
+> **Status:** 🟠 부분 최신 | **Last-verified:** 2026-09-05 (§3.5-ter 신설 — 거절이 «사유» 말고 «주소(code/path)»도 나르고, 둘은 다른 어휘다) · 직전 2026-09-02 (§2.1 인덱스 표의 `idx_ledger_register_search` 가 **은퇴한 라우트를 「이름 붙은 소비자」로 대고 있었다** — 그 절의 admission rule 을 그 행이 어기고 있어 표시했다(**판정은 총괄 몫**) · §6.4 묘비가 후계로 대던 `/structure` **도 없다**(죽은 이름을 죽은 이름으로 갈아 끼운 모양) · 머리의 술어 수 «열셋»이 같은 파일 §461 의 «열넷»과 충돌해 **수를 지우고 묻는 자리를 남겼다**) · 직전 2026-08-29 (개정 6 — §1~§3 쓰기측은 유효, **읽기측 §4.7·§4.8·§4.10·§5.7·§6.4-bis 는 은퇴한 라우트를 서술하며 묘비를 달았습니다**) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/ledger/schema.py`(DDL) · `server/ledger/setup_bundle.py`(선언 검증) ·
 > `server/config/ontology/ledger_config.json`(선언 자체)
 >
@@ -346,6 +346,45 @@ PostgreSQL이 jsonb를 jsonb와 **의미적으로** 비교하고 쓰는 쪽은 �
 | `ambiguous_pair` | 한 행이 짝의 **양쪽**을 채웠다 — 신원이 없는 게 아니라 **둘**이고 행이 어느 쪽인지 말하지 않는다 |
 | **`undeclared_subject_type`** | **설계의 넷이 아닌 «다섯째 질문»** — R-2026-08-13-D. §3.5-bis |
 
+#### 3.5-ter 거절은 «사유» 말고 «주소»도 나른다 — 그리고 그 둘은 **다른 어휘**다 (2026-09-05 `1936c356`)
+
+위 표의 `사유`는 **운영자 로그·`/health`·커서 행**이 쓰는 이름이다. 그와 **별도로** 거절은
+`(code, path)` 짝을 나르고, 그것을 답하는 것은 `envelope.check_envelope` 다 — **착지한 날부터
+줄곧 그랬고**, 바뀐 것은 그것이 «읽는 쪽에 닿는다»는 것뿐이다.
+
+```
+gate.REFUSAL_REASONS   무엇이 잘못됐나의 «분류»       예: no_raw_ref
+envelope 의 code       어느 «칸»이 잘못됐나           예: source_raw_ref_empty  ·  path "atom.source.raw_ref"
+```
+
+🔴 **철자가 다르다는 것이 요점이다.** 둘은 이름이 겹치기도 하지만(`payload_not_preservable`)
+대개 다르고, **한쪽을 다른 쪽으로 개명해 합치면** 저장된 커서 내역과 갈라진다(§1.5-bis).
+`_envelope_reason` 이 **첫 위반**의 code 를 사유로 접고, `MoleculeRefused` 는 **같은 첫 위반**의
+`code`/`path` 를 자기 속성으로 들며 나머지는 `addresses` 에 남긴다 — **같은 위반을 가리키게**
+하려고 양쪽이 「첫 번째」로 맞춰져 있다.
+
+| 봉투 code | path | 위 표의 사유 | 어떻게 |
+|---|---|---|---|
+| `occurred_at_missing` · `occurred_at_naive` | `atom.occurred_at` | `missing_occurred_at` | `_ENVELOPE_REASONS` 에 **명시** |
+| `source_raw_ref_empty` | `atom.source.raw_ref` | `no_raw_ref` | 명시 |
+| `payload_not_preservable` | `atom.object_payload` | `payload_not_preservable` | 명시(이름이 겹치는 유일한 짝) |
+| `source_who_empty` | `atom.source.who` | `not_true_alone` | 🔴 **매핑에 없다 — 폴백** |
+| `source_translator_ver_empty` | `atom.source.translator_ver` | `not_true_alone` | 🔴 **매핑에 없다 — 폴백** |
+
+⚠️ **매핑에 없는 code 는 `not_true_alone` 으로 «떨어진다»** — 봉투 검사가 하나 늘었을 때 `KeyError`
+가 아니라 **참인 거절**이 나오게 한 것이다. 🔴 **그래서 위 표의 마지막 두 줄은 「그렇게 분류하기로
+정했다」가 아니라 「아직 분류되지 않았다」이고, 둘은 다른 문장이다** — 출처 두 칸을 따로 세고 싶어지면
+`_ENVELOPE_REASONS` 에 줄을 더하는 것이 그 자리다. 봉투 검사를 더할 때도 같다.
+
+🔴 **주소가 가리키는 것은 «원자»이지 «폼의 칸»이 아니다**(`atom.occurred_at` — 선언 파일의 경로가
+아니다). 그래서 이 주소를 받은 작성 화면은 **어느 상자도 강조하지 않고 원문 그대로 찍는다**, 그리고
+그 동작을 시험이 못박는다(`test_an_atom_address_is_shown_raw_and_is_not_forced_onto_a_form_box`).
+**지어낸 칸은 자리 없는 문장보다 나쁘다** — 사람을 틀린 곳으로 보낸다. 이 주소가 폼 좌표가 되려면
+「원자 경로 → 선언 경로」라는 **별도의 매핑**이 있어야 하고 그것은 아직 없다.
+
+📎 화면에 어떻게 도착하는지는 [ONTOLOGY_LEDGER_SETUP §13.3-ter](../guide/ONTOLOGY_LEDGER_SETUP.md).
+채점 `server/tests/test_envelope_refusals_carry_an_address.py` · `test_a_refusal_says_which_field_to_fix.py`.
+
 #### 3.5-bis `undeclared_subject_type` — **선언이 물어야 한다** (2026-08-13 `eb1ae8b` · R-2026-08-13-D)
 
 **다섯째 질문: 이 원자는 «이 소스가 말하겠다고 한 것»에 대한 것인가?**
@@ -365,7 +404,10 @@ PostgreSQL이 jsonb를 jsonb와 **의미적으로** 비교하고 쓰는 쪽은 �
 
 🔴 **이 판정이 승격시킨 상설 규칙: 선언 필드는 «집행 지점»을 갖거나, 존재하지 않는다.**
 
-**카운터 이름과 그 뜻** (프로세스 수명 내내, `(소스, 사유)`별):
+**카운터 이름과 그 뜻** (프로세스 수명 내내, `(소스, 사유)`별).
+🔴 **주소(`code`/`path`)는 이 카운터들에 들어가지 «않는다» — 별도 채널이다**(§3.5-ter).
+세는 단위는 여전히 **분자**이고, 주소는 «표본»으로 실린다(상한 + 잘렸다는 표시). 원자마다 주소를
+세기 시작하면 「내역의 합 = 거절 수」 불변식이 깨진다:
 
 | 카운터 | 뜻 |
 |---|---|
