@@ -7799,3 +7799,85 @@ derived 행의 value 는 filled_declaration 이 «파일에 씁니다»
 
 판정 대기: 없음 — 다음은 ㉡ (두 fold 이음매 계약 + B 의 값싼 질문 하나)로 이어갑니다
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【B 한 질문】 답: **그런 단언이 «0» 입니다. B 는 통째로 구조라 «끝»입니다**
+
+## 먼저 — 앞 보고의 「23」을 «정확히» 풉니다 (그건 줄 수였습니다)
+```
+Index(...) 호출 중 postgresql_* 를 «든 것»    14
+   그 안의 옵션 occurrence  where 12 · include 3 · using 1   = 16
+with_variant( 호출                            8   (그중 JSONB 3)
+=> 앞 보고의 23 은 «패턴이 걸린 줄 수»였습니다. 부류는 맞았고 단위가 달랐습니다
+```
+
+## 🔴 판별식 — 「그 행«만» 담긴다」에 «기댈 수 있는» 단언은 어떤 것인가
+```
+그 술어가 «받아들여지는 것»을 바꾸려면 그 인덱스가 UNIQUE 여야 합니다
+   부분 UNIQUE  -> PG 는 술어에 맞는 행끼리만 유일. SQLite 는 술어가 «떨어져» 전건 유일
+                 => 두 방언이 «다른 답». 이게 유일하게 위험한 모양입니다
+   부분 non-UNIQUE -> 플래너 물건입니다. 값은 «양쪽에서 같습니다»
+실측   UNIQUE + where = «0» 입니다. 14개 중 unique 인 것이 «하나도» 없습니다
+```
+
+## 그리고 훑어서도 «0» — 후보 넷이 전부 다른 것이었습니다
+```
+인덱스 «이름»을 적는 시험 4
+   idx_sources_lookup_source · idx_sources_by_source · idx_effort_window
+      -> 부분 인덱스가 «아닙니다» (where 없음)
+   idx_audit_user_recorrection  -> 부분 인덱스는 맞는데, 단언이
+      「거절문에 이 인덱스 이름이 들어 있나」입니다. 문자열이지 «담긴 행»에 대한 주장이 아닙니다
+「EXPLAIN」이 걸린 파일 5
+   test_binding_refusal   -> 지역 헬퍼 `_explain(src)` 였습니다. 질의 계획이 아닙니다
+   chain_replay · outbox_notify_budget -> «주석»
+   ledger_trace_pg · ledger_v2_pg      -> pg 픽스처 위. 방언이 맞습니다
+JSONB 연산자가 걸린 파일 3
+   ledger_l1_pg · ledger_trace_pg -> pg 위. sqlite 쪽 test_outbox_collapse 는 «주석»
+```
+=> **부분 인덱스의 술어에 기대는 단언 «0».** B(선언 변형)는 전부 «구조»이고 여기서 닫힙니다.
+⛔ 세는 것까지만 했습니다. 고치지 않았습니다.
+
+---
+
+# 【㉡ 두 fold 이음매 계약】 — **이미 있습니다.** 짓지 않았습니다
+
+## 실측 — `contracts/notation_fold/` (2026-08-04 착지)
+```
+오늘 돌려 봤습니다   40 통과 · 4 skip   (기본 스위트에 shim 으로 이미 들어와 있습니다:
+                                      server/tests/test_notation_fold_contract.py)
+채점 방식           vectors.json «기록된 기댓값» 43케이스 × 규칙 4조합
+                   -> 엔진끼리 대조만 하지 «않습니다». 양쪽이 «같이 틀리는» 것을 막습니다
+공허 방지           test_..._goes_red_when_the_sql_side_is_perturbed
+                   일부러 틀린 SQL 둘(translate 대신 upper · g 플래그 뺀 regexp_replace)을
+                   같은 코퍼스에 먹여 «잡히는지» 단언합니다
+skip 4개            PG 축. 그리고 그 skip 사유가 «무엇이 막히는지·누가 owner 인지·어떻게 푸는지»를
+                   전부 적고 있습니다 (-rs 로 읽힙니다). 조용한 skip 이 아닙니다
+```
+🔵 지시하신 ⓵(「pg 없이 오늘 반쪽이 돈다」)은 **이미 40개가 돌고 있었습니다.**
+🔵 ⓷(「가르는 변이로 찌른다」)도 **이미 그 파일이 하고 있습니다.**
+
+## 🔴 그래서 «진짜 빈 자리»는 fold 가 아니라 그 «쌍둥이»입니다
+SQ 보고의 A④ 는 자리가 «둘»이었습니다. 하나는 계약이 있고 하나는 없습니다.
+```
+notation_norm._NotationFold   ✅ 계약 있음 (위)
+database/crud._TemporalText   ❌ 계약 «없음»  — contracts/ 전체 grep 0
+```
+그리고 그 자리가 «위험한 이유»를 그 시험의 docstring 이 스스로 적고 있습니다:
+```
+「PostgreSQL 의 CAST(timestamptz AS varchar) 는 «세션 타임존»으로 렌더하고
+  소수부가 0이면 «생략»한다 — 그래서 같은 행을 든 두 서버가 다른 텍스트를 비교하게 된다」
+=> PG 팔(to_char(timezone('UTC', col), 'YYYY-MM-DD HH24:MI:SS.US'))이 «그것을 고치려고» 있습니다
+실측   그 팔을 «평가하는 시험이 0» 입니다
+      유일한 시험 test_the_temporal_text_is_pinned_not_the_dialects_default 는 db_session
+      (SQLite) 위에서 돌고, 거기서는 _default 팔(맨 CAST)이 컴파일됩니다
+      -> 즉 «애초에 어긋난 적 없는 팔»을 채점하고 있습니다
+```
+🔵 그리고 「근원 템플릿 요소 개발 후 데이터 갈아끼우기」가 그대로 적용됩니다 —
+   `notation_fold` 계약이 «템플릿»이고, `temporal_text` 가 «데이터 갈아끼우기»입니다.
+
+판정 대기: 🔴 **㉡ 을 `temporal_text` 로 «갈아끼울까요».** 지시하신 fold 는 이미 서 있어서
+          그대로 지으면 «중복»입니다. 같은 부류의 빈 자리는 저것 하나입니다
+          (⛔ 임의로 시작하지 않았습니다 — 주제가 지시서와 다릅니다)
+          그동안 저는 8-a 로 갑니다. 자리는 이미 찾아 뒀습니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
