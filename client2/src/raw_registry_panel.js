@@ -175,7 +175,7 @@ export class RawRegistryPanel {
     const controls = doc.createElement('div');
     controls.className = `${spec.cls}-controls`;
     const save = doc.createElement('button');
-    save.className = `glass-btn btn-primary ${spec.cls}-save`;
+    save.className = `admin-btn btn-primary ${spec.cls}-save`;
     save.setAttribute('data-action', `save-${spec.cls}`);
     save.textContent = 'Save';
     if (save.addEventListener && this.onSave) {

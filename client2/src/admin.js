@@ -1202,7 +1202,7 @@ function renderOutboxTable() {
       <td style="text-align: center; ${retryStyle}">${tx.retry_count}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${tx.failed_at || ''}">${timeStr}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
+        <button class="admin-btn btn-primary btn-retry-tx" data-txid="${tx.transaction_id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>
       </td>
     `;
 
@@ -1302,8 +1302,8 @@ function buildFileLogRow(log, { withStatus }) {
   const timeStr = formatTimestamp(log.created_at);
   const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${log.status || 'FAILED'}</span>`;
   const retryBtnHtml = log.status === 'SUCCESS'
-    ? `<button class="glass-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
-    : `<button class="glass-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
+    ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
+    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
   // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만
   const retryStyle = log.retry_count > 0
     ? 'color: var(--warning); font-weight: 600;'
@@ -1608,7 +1608,7 @@ function renderMapperTable() {
       <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">${mapper.module_name}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: 0.75rem;">🛠️ Edit</button>
+        <button class="admin-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: 0.75rem;">🛠️ Edit</button>
       </td>
     `;
 
@@ -1671,7 +1671,7 @@ function renderAutoUpdateTable() {
         </label>
       </td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="glass-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}"
+        <button class="admin-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}"
           style="padding: 4px 10px; font-size: 0.75rem;"
           title="${isActive ? '즉시 1회 수집 실행' : '비활성 수집기도 수동 실행은 가능합니다'}">Run Now</button>
       </td>
@@ -2197,7 +2197,7 @@ function cfgViewsEl(entry) {
 
 function cfgMeasureEl(rule) {
   const wrap = cfgEl('div');
-  const btn = cfgEl('button', 'glass-btn cfg-btn', CHROME.MEASURE);
+  const btn = cfgEl('button', 'admin-btn cfg-btn', CHROME.MEASURE);
   btn.type = 'button';
   btn.title = CHROME.MEASURE_HINT;
   // 결과는 이 host 안에서만 교체한다 — 블록 전체를 다시 그리면 운영자가 펼쳐 둔 참조뷰가
@@ -2482,7 +2482,7 @@ function renderRunning() {
       line.title = 'stopping after the current batch';
     } else if (row.cancel) {
       const btn = document.createElement('button');
-      btn.className = 'glass-btn running-x';
+      btn.className = 'admin-btn running-x';
       btn.textContent = '×';
       btn.title = 'stop this one — the server keeps running';
       btn.addEventListener('click', () => requestRunCancel(row.id));
@@ -2682,7 +2682,7 @@ function retroGroupsEl(op, state) {
   const box = cfgEl('div', 'retro-groups');
   box.appendChild(cfgEl('div', 'cfg-group-label', `${state.groups.length} groups from the grid`));
   state.groups.forEach((group, index) => {
-    const row = cfgEl('button', 'glass-btn cfg-btn retro-group');
+    const row = cfgEl('button', 'admin-btn cfg-btn retro-group');
     row.type = 'button';
     const params = group.params || {};
     const detail = Object.keys(params).map((k) => `${k}=${params[k]}`).join(' · ');
@@ -2711,10 +2711,10 @@ function retroConfirmEl(op, pending) {
   });
   const row = cfgEl('div', 'retro-actions');
   const labels = buildConfirmActions();
-  const go = cfgEl('button', 'glass-btn btn-primary cfg-btn', cfgText(labels.go));
+  const go = cfgEl('button', 'admin-btn btn-primary cfg-btn', cfgText(labels.go));
   go.type = 'button';
   go.addEventListener('click', () => confirmRetroactiveRun(op));
-  const no = cfgEl('button', 'glass-btn cfg-btn', cfgText(labels.cancel));
+  const no = cfgEl('button', 'admin-btn cfg-btn', cfgText(labels.cancel));
   no.type = 'button';
   no.addEventListener('click', () => cancelRetroactiveRun(op));
   row.appendChild(go);
@@ -2821,13 +2821,13 @@ function retroActionsEl(op) {
   const wrap = cfgEl('div', 'retro-actions');
   const actions = buildActionsView(op, retroState(op.op));
 
-  const countBtn = cfgEl('button', 'glass-btn cfg-btn', cfgText(actions.count.label));
+  const countBtn = cfgEl('button', 'admin-btn cfg-btn', cfgText(actions.count.label));
   countBtn.type = 'button';
   countBtn.disabled = actions.count.disabled;
   countBtn.addEventListener('click', () => runRetroactiveCount(op));
   wrap.appendChild(countBtn);
 
-  const runBtn = cfgEl('button', 'glass-btn btn-primary cfg-btn', cfgText(actions.run.label));
+  const runBtn = cfgEl('button', 'admin-btn btn-primary cfg-btn', cfgText(actions.run.label));
   runBtn.type = 'button';
   runBtn.disabled = actions.run.disabled;
   // 서버가 `blocked_reason`을 카운트와 **따로** 실어 보내는 이유가 이것이다 — 눌러 보고 워커
@@ -3178,7 +3178,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
 
   (extraButtons || []).forEach(({ label, onClick }) => {
     const b = document.createElement('button');
-    b.className = 'glass-btn btn-primary';
+    b.className = 'admin-btn btn-primary';
     b.style.cssText = 'padding: 4px 12px; font-size: 0.78rem;';
     b.textContent = label;
     b.addEventListener('click', (e) => {
@@ -3189,7 +3189,7 @@ function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButton
   });
 
   const openBtn = document.createElement('button');
-  openBtn.className = 'glass-btn';
+  openBtn.className = 'admin-btn';
   openBtn.style.cssText = 'padding: 4px 12px; font-size: 0.78rem;';
   openBtn.textContent = '탭 열기 →';
   openBtn.addEventListener('click', (e) => {
@@ -3461,7 +3461,7 @@ function selectAutoUpdateRow(col) {
     col.last_status === 'FAIL' ? 'badge badge-danger' : 'badge badge-warning';
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Collector Config & Execution Metadata
-    <button id="inline-edit-collector-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Collector Script</button>`;
+    <button id="inline-edit-collector-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Collector Script</button>`;
 
   tracebackViewer.textContent = col.last_error || 'No error traceback log captured (Last execution was successful).';
   payloadViewer.textContent = JSON.stringify(col, null, 2);
@@ -3635,7 +3635,7 @@ function selectFileRow(log, bodyEl = fileListBody) {
   const ws = workspaceData.find(w => w.table_name === log.table_name);
   if (ws && (ws.custom_scripts || []).length > 0) {
     payloadTitle.innerHTML = 'File Metadata / Log Details ' + ws.custom_scripts.map(s =>
-      `<button class="glass-btn btn-primary btn-edit-parser" data-script="${s}" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;">🛠️ ${s}</button>`
+      `<button class="admin-btn btn-primary btn-edit-parser" data-script="${s}" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;">🛠️ ${s}</button>`
     ).join('');
     payloadTitle.querySelectorAll('.btn-edit-parser').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -3691,7 +3691,7 @@ function selectWorkspaceRow(ws) {
       div.style.paddingBottom = '8px';
       div.innerHTML = `
         <span>📄 <strong style="color: var(--text); font-family: var(--font-mono);">${s}</strong> (Active Custom Parser)</span>
-        <button class="glass-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
+        <button class="admin-btn btn-primary btn-inline-edit-script" data-script="${s}" style="padding: 2px 8px; font-size: 0.75rem;">🛠️ Edit Parser</button>
       `;
 
       const btn = div.querySelector('.btn-inline-edit-script');
@@ -3729,7 +3729,7 @@ function selectChainRow(rule) {
   tracebackSeverity.className = chainRuleIsActive(rule) ? 'badge badge-success' : 'badge badge-danger';
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration
-    <button id="inline-edit-mapper-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
+    <button id="inline-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
 
   tracebackViewer.textContent = chainRuleNarrative(rule) +
     (rule.description ? `\n\n${rule.description}` : '');
@@ -3836,7 +3836,7 @@ function showEventDiagnostics(ev) {
   const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);
   if (rule && rule.mapper_module) {
     payloadTitle.innerHTML = `Raw Event Payload / Details
-      <button id="tx-edit-mapper-btn" class="glass-btn btn-primary" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;" title="rule: ${rule.name}">🛠️ Edit Mapper</button>`;
+      <button id="tx-edit-mapper-btn" class="admin-btn btn-primary" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 8px;" title="rule: ${rule.name}">🛠️ Edit Mapper</button>`;
     const btn = byId('tx-edit-mapper-btn');
     if (btn) {
       btn.addEventListener('click', () => {
