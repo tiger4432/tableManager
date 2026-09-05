@@ -397,6 +397,11 @@ b72843cc  closed_lists() 가 인자 «하나»(sources)를 받고 implementation
 ## ⏸ 대기 중인 것 — «소유자 손»이 있어야 움직입니다 (20:4x 현재)
 ```
 판정 1   6번 가운데 홉 — 승인하신 것과 #4 의 메타 되쓰기를 «둘 다» 켤 수 없음
+         🔴 **무거워졌습니다 (09-05 심야, 문서 정비에서)** — 같은 고리가 «출하 참조 설정»에도 있습니다:
+            `docs/guide/config_reference/chain_rules.json` 을 «커밋된 검증기»로 돌리면 «거절»
+               allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+            => 「이 배포에서 켤까」가 아니라 「우리가 내보내는 참조가 로드에서 거절된다」이기도 합니다
+            ⛔ doc-keeper 가 플래그를 «안 건드리고» 주석에 재현 가능하게 적어 뒀습니다 — 설정 판단이라서
          갈래 A(안 켬 · 오늘 그대로 · 비용 0) / B(#4 끄고 켬 · 매퍼 수정 동반) / C(구조 변경)
          🔵 출하 샘플에서 고리 재현 완료. A 가 기본값이라 «아무것도 안 하셔도» 오늘 상태 유지
 조치 3   ① 마이그레이션  ② 배포(대시보드 키 셋 빠짐)  ③ 선언 저장 + setup_version
