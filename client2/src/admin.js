@@ -1064,6 +1064,21 @@ async function refreshTableConfig(table, extra = {}) {
   } catch (e) {                                              // noqa
     opts.unavailable = '표 등록 조회에 실패했습니다 (네트워크).';
   }
+  // 🔴 「선언은 됐는데 물리 표가 없는 것」을 «같이» 묻습니다 — 새 라우트가 아니라
+  //    서버가 이미 내던 칸(`missing_relations`)이고, 읽는 곳이 «0» 이었습니다.
+  //    ⚠️ «따로» 받습니다: 이 조회가 실패해도 표 등록 자체는 그려져야 합니다.
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/ledger/relations`);
+    if (res.ok) {
+      const rel = await res.json().catch(() => null);
+      if (rel && Array.isArray(rel.missing_relations)) opts.missingRelations = rel.missing_relations;
+      else opts.relationsUnread = true;
+    } else {
+      opts.relationsUnread = true;
+    }
+  } catch (e) {                                              // noqa
+    opts.relationsUnread = true;
+  }
   const view = tableConfigPanel.render(body, opts);
   const count = byId('table-config-count');
   if (count) count.textContent = view.count;

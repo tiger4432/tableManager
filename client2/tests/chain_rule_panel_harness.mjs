@@ -159,8 +159,14 @@ console.log('\n[4] two registries, one part');
     CHAIN_RULE_REGISTRY.listKey !== TABLE_REGISTRY.listKey
     && CHAIN_RULE_REGISTRY.nameKey !== TABLE_REGISTRY.nameKey
     && CHAIN_RULE_REGISTRY.cls !== TABLE_REGISTRY.cls);
-  ok('only this one carries a state of its own',
-    typeof CHAIN_RULE_REGISTRY.extra === 'function' && !TABLE_REGISTRY.extra);
+  // ⚠️ 전에는 「이쪽만 자기 상태를 든다」였습니다. 표 등록도 자기 것을 갖게 되면서
+  //    그 문장이 «거짓»이 됐고, 지키려던 것은 「둘이 «같은 것»을 안 그린다」였습니다.
+  //    그래서 재는 것을 «다른 함수인가»로 바꿉니다 — 같은 함수를 나눠 쓰면 한쪽이
+  //    남의 상태를 그립니다.
+  ok('each registry brings its own state, and not the same one',
+    typeof CHAIN_RULE_REGISTRY.extra === 'function'
+    && typeof TABLE_REGISTRY.extra === 'function'
+    && CHAIN_RULE_REGISTRY.extra !== TABLE_REGISTRY.extra);
   // 조립식: 같은 화면에 둘을 놓아도 서로를 안 건드린다
   const doc = makeDoc();
   const h1 = doc.createElement('div'), h2 = doc.createElement('div');
