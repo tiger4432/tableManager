@@ -205,7 +205,7 @@ async function fetchPaintRules(table) {
     paintLockConfig = { ...paintLockConfig, source: 'stale' };
     // The toolbar chip (`⚠ 잠금 규칙 미확인`) is the on-screen signal and it PERSISTS; a toast
     // that fades said the same thing a third time. Diagnosis goes to the console.
-    console.log(`[Map Editor] paint-rules 조회 실패 (${t}): ${why} — 직전 잠금 규칙을 유지합니다.`);
+    console.log(`[Map Editor] paint-rules 조회 실패 (${t}): ${why} · 직전 잠금 규칙을 유지합니다.`);
     updatePaintLockIndicator();
   };
   try {
@@ -257,7 +257,7 @@ function updatePaintLockIndicator() {
     ? '⚠ 잠금 규칙 미확인'
     : `🔒 잠금 ${paintLockConfig.blocking_values.join(',')}`;
   el2.title = stale
-    ? '페인트 잠금 규칙 조회에 실패해 직전 값을 쓰고 있습니다 — 맵을 다시 로드하면 재조회합니다.'
+    ? '페인트 잠금 규칙 조회에 실패해 직전 값을 쓰고 있습니다 · 맵을 다시 로드하면 재조회합니다.'
     : '이 값의 셀은 편집할 수 없습니다 (서버 선언).';
 }
 
@@ -800,7 +800,7 @@ function initDOMElements() {
         clampOffsetToPitch(el.physOffsetY, el.physChipY, 'OFFSET Y', 'CHIP Y'),
       ].filter(Boolean);
       if (capped.length > 0) {
-        showToast(`OFFSET은 CHIP 크기를 넘을 수 없습니다 — ${capped.join(' / ')}. `
+        showToast(`OFFSET은 CHIP 크기를 넘을 수 없습니다 · ${capped.join(' / ')}. `
           + '칩 피치를 넘는 오프셋은 같은 격자에 번호만 다시 매기고, '
           + 'ORIGIN을 유효 다이 영역 밖으로 밀어냅니다.', 'warning');
       }
@@ -2502,7 +2502,7 @@ function parseValidDieRef(meta, currentTable) {
     return { table: VALID_DIE_TABLE, mapKey: s, declaredTable: home };
   }
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    return bad(`valid_die_ref의 형태를 읽을 수 없습니다 (${typeof raw}) — {table, map_id} 또는 맵 키 문자열이어야 합니다.`);
+    return bad(`valid_die_ref의 형태를 읽을 수 없습니다 (${typeof raw}) · {table, map_id} 또는 맵 키 문자열이어야 합니다.`);
   }
   // `target_table`은 wafer_map_metadata가 실제로 쓰는 컬럼명이고 `table`은 그 짧은 이름이다 —
   // 같은 한 쌍을 가리키는 두 이름이라 둘 다 받는다. 그 밖의 이름은 추측하지 않는다.
@@ -2510,7 +2510,7 @@ function parseValidDieRef(meta, currentTable) {
   const k = raw.map_id !== undefined ? raw.map_id : raw.map_key;
   const key = (k === null || k === undefined) ? '' : String(k).trim();
   if (key === '') {
-    return bad('valid_die_ref에 map_id가 없습니다 — 어느 맵을 가리키는지 알 수 없습니다.');
+    return bad('valid_die_ref에 map_id가 없습니다 · 어느 맵을 가리키는지 알 수 없습니다.');
   }
   // 종전에는 여기서 테이블이 비면 「대상 테이블을 알 수 없습니다」로 거절했다. 고정 이후
   // 대상은 알 수 없어질 수가 없으므로 그 가지는 사라진다 — 그 결과 이음매의 선언된
@@ -4497,7 +4497,7 @@ async function probeZoneColumns() {
       zoneColumnsPresent = ZONE_COLUMNS.every(c => cols.indexOf(c) >= 0);
     }
     if (zoneColumnsPresent === false) {
-      console.warn(`[Map Editor] ${SPLIT_REGISTRY_TABLE}에 zone 컬럼(${ZONE_COLUMNS.join(', ')})이 없습니다 — `
+      console.warn(`[Map Editor] ${SPLIT_REGISTRY_TABLE}에 zone 컬럼(${ZONE_COLUMNS.join(', ')})이 없습니다 · `
         + 'DOE 저장을 보류합니다. 선언은 server/product_tables.py에 있으나 물리 ALTER가 아직 실행되지 않았습니다.');
     }
     return zoneColumnsPresent;
@@ -5847,7 +5847,7 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
       // 🔴 빈 칸은 답이 아니다. 지어낸 0으로 좌표계를 세우면 셀은 전부 다른 다이에 앉고
       //    화면은 멀쩡하다 — 이 도메인이 존재하는 이유 그 자체다. 새 확인창을 늘리지 않고
       //    이 선택지 자체를 거절한다(호출부가 취소와 같은 자리로 접는다).
-      showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 좌표계를 정할 수 없습니다 — `
+      showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 좌표계를 정할 수 없습니다 · `
         + `값을 채우고 다시 불러오십시오.`, 'error');
       return null;
     }
@@ -6017,7 +6017,7 @@ function fillGrid() {
   // 0칸은 반드시 말해야 한다 — 아무 일도 일어나지 않은 것과 구별되지 않으면 사용자는
   // 같은 버튼을 계속 누른다(규격이 없는 맵에서는 원 판정이 전부 false다).
   if (filled === 0) {
-    showToast(`칠할 셀이 없습니다 — ${skippedOutside}칸 모두 유효 다이 밖입니다.`, 'warning');
+    showToast(`칠할 셀이 없습니다 · ${skippedOutside}칸 모두 유효 다이 밖입니다.`, 'warning');
   } else if (skippedOutside > 0) {
     // [1e] This branch is only reached when `skippedOutside > 0`, i.e. the message says
     // "some cells will not be saved" — yet it rendered as a green success. Tone corrected
@@ -7105,7 +7105,7 @@ function copyGridToExcel() {
     ? Object.keys(gridCells2D).reduce((n, r) => n + Object.keys(gridCells2D[r] || {}).length, 0)
     : 0;
   if (cellCount === 0) {
-    showToast('격자가 없습니다 — 맵을 먼저 불러오십시오.', 'warning');
+    showToast('격자가 없습니다 · 맵을 먼저 불러오십시오.', 'warning');
     return;
   }
 
@@ -8440,7 +8440,7 @@ async function openMapFrame(spec) {
       const key = getCurrentMapKey();
       setLoadedIdentity(spec.table, key);
       renderGridCanvas();
-      showToast(`${spec.table} · ${key || ''} — 맵이 아직 없습니다. 빈 격자로 열었습니다.`, 'info');
+      showToast(`${spec.table} · ${key || ''} · 맵이 아직 없습니다. 빈 격자로 열었습니다.`, 'info');
     }
     // [V1 effort instrument] Only here: both success shapes (map loaded / opened empty)
     // reach this line, while the cancel branch above and the catch below rolled the frame
@@ -9167,7 +9167,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     });
     if (cells.length === 0) {
       // [1-a] 규격은 있는데 셀이 없다 — 이것도 「여기서 찾지 못했다」이므로 같은 어휘로 말한다.
-      return refuse(ref, `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 — 키 `
+      return refuse(ref, `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 · 키 `
         + `「${ref.mapKey}」의 규격은 있으나 좌표로 읽히는 셀이 한 건도 없습니다.${redirectNote}`);
     }
 
@@ -9513,7 +9513,7 @@ async function resolveReferenceSpec(ref) {
     // 고정 이전에 저작된 선언의 키는 `valid_die_ref`에 없다. 거절문은 **찾은 키를
     // 이름으로 말한다**: 빈 마스크는 데이터처럼 보이는 거짓말이라 그보다 낫다.
     return { ok: false, notFound: true,
-      reason: `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 — 키 「${ref.mapKey}」로 `
+      reason: `이 유효 다이 맵을 ${VALID_DIE_TABLE}에서 찾을 수 없습니다 · 키 「${ref.mapKey}」로 `
         + `등록된 맵 규격(wafer_map_metadata)이 없습니다.` };
   }
   return { ok: true, spec, binding, refMeta, refFrame };
@@ -9841,7 +9841,7 @@ async function saveMapSpecOnly() {
     + `· 대상 테이블: ${table}\n`
     + `· 대상 맵 키: ${mapKey}\n`
     + `· ${isNew
-      ? '이 식별자에는 등록된 규격이 없습니다 — 규격을 **새로 등록**합니다.'
+      ? '이 식별자에는 등록된 규격이 없습니다 · 규격을 **새로 등록**합니다.'
       : '등록된 규격을 **갱신**합니다.'}\n`
     + orphanLine
     + `\n· 격자 ${cols} × ${rows} · 시작 (${startX}, ${startY}) · 회전 ${currentRotation}° · ${currentSide}\n`
@@ -9890,7 +9890,7 @@ async function saveMapSpecOnly() {
       ...(abort ? { signal: abort.signal } : {}),
     });
     if (!res.ok) {
-      showToast(`맵 규격 저장 실패 (HTTP ${res.status}) — 아무것도 기록되지 않았습니다.`, 'error');
+      showToast(`맵 규격 저장 실패 (HTTP ${res.status}) · 아무것도 기록되지 않았습니다.`, 'error');
       return;
     }
     // 저장이 성립했으므로 **저장된 원문**이 바뀌었다. `validDie.raw`를 그 값으로 맞춘다:
@@ -10132,7 +10132,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
     // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전
     // (`complete`)이므로 캐시도 하고 select도 쓸 수 있지만, **말은 한다**.
     markSuggestState(input, '',
-      `${table}에 등록된 맵이 아직 없습니다 — 조회는 성공했고 정말로 0건입니다.`);
+      `${table}에 등록된 맵이 아직 없습니다 · 조회는 성공했고 정말로 0건입니다.`);
     mapKeyListCache.set(table, items);
   } else {
     markSuggestState(input, '', '');
@@ -10237,7 +10237,7 @@ async function populateColumnValueDatalist(table, column, listEl, input, prefix)
     columnValueComplete.delete(key);
     fillDatalist(listEl, []);
     markSuggestState(input, 'unavailable',
-      `값 제안을 사용할 수 없습니다 — ${body.unavailable_reason}`);
+      `값 제안을 사용할 수 없습니다 · ${body.unavailable_reason}`);
     console.debug('[map] value suggest unavailable:', table, column, body.unavailable_reason);
     return;
   }
@@ -10419,7 +10419,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   }
   if (!binding) {
     return fail(
-      `${sourceTable}: 맵 좌표 바인딩을 해석할 수 없습니다 — table_config에 x/y 컬럼, ` +
+      `${sourceTable}: 맵 좌표 바인딩을 해석할 수 없습니다 · table_config에 x/y 컬럼, ` +
       `map_key_columns(또는 lot/slot), 값 컬럼 후보가 있어야 합니다. 컬럼명이 관례와 다르면 ` +
       `map_overlay_config.table_bindings에 선언하십시오.`,
       'binding_unavailable');
@@ -10432,7 +10432,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // would.)
   if (binding.source === 'fallback_guess') {
     return fail(
-      `${sourceTable}: 값 컬럼을 확정할 수 없습니다 — 후보에 없는 '${binding.val}' 추측뿐입니다. ` +
+      `${sourceTable}: 값 컬럼을 확정할 수 없습니다 · 후보에 없는 '${binding.val}' 추측뿐입니다. ` +
       `엉뚱한 값이 겹쳐 보이는 것을 막기 위해 겹치지 않습니다. map_overlay_config.table_bindings에 ` +
       `값 컬럼을 선언하십시오.`,
       'binding_unavailable');
@@ -10561,7 +10561,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
         + `해당 맵의 물리 규격을 선언한 뒤 다시 시도하십시오.`
       : '';
     return fail(
-      `${sourceTable}: 칩 크기(phys_chip_x/phys_chip_y)를 확정할 수 없습니다 — `
+      `${sourceTable}: 칩 크기(phys_chip_x/phys_chip_y)를 확정할 수 없습니다 · `
       + `소스 ${say(srcPitch)} · 타깃 ${say(seatPitch)}. `
       + `셀 크기를 모르면 웨이퍼 내 물리 위치를 맞출 근거가 없으므로 겹치지 않습니다.${autoNote}`,
       'align_unavailable');

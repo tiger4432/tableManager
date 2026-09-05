@@ -1146,7 +1146,7 @@ const FLOORS = new Map([
   // the copy that is only on screen while something is failing, which no screen read in
   // this box can reach -- so the SHAPE is asserted instead of the strings. One assertion
   // per shape, plus the guards that stop a broken scanner from passing vacuously
-  ['failure_copy_harness.mjs', 5],
+  ['failure_copy_harness.mjs', 6],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

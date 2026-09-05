@@ -372,7 +372,7 @@ function setupEventListeners() {
         const res = await fetch(url, { signal: probe.signal });
         probe.abort();
         if (!res.ok) {
-          showToast('데스크톱 빌드가 없습니다 — 서버에 zip 이 아직 없습니다.', 'error');
+          showToast('데스크톱 빌드가 없습니다 · 서버에 zip 이 아직 없습니다.', 'error');
           return;
         }
       } catch (err) {

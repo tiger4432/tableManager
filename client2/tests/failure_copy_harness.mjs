@@ -77,6 +77,17 @@ console.log('\n[2] shape A+C: a reason and an instruction are not one sentence')
     withAction, []);
 }
 
+// ═══ ③ 모양 B — 사유 다음에 그 결과를 다시 말하지 않는다 ═══
+//
+// 전례: `doe_bands` V5 (1028c855) — 「읽을 수 없습니다 — 계산할 수 없습니다」는
+// 둘째 절이 첫째의 결과를 되풀이합니다. ⚠️ 결과를 «지우는» 것이 아니라
+// «마디»로 가릅니다 — 「이것이 무엇을 막는가」는 운영자가 쓰는 사실입니다.
+console.log('\n[3] shape B: a reason does not restate its own consequence');
+{
+  const withDash = failureCopy.filter((s) => / [—―] /.test(s));
+  eq('no failure line carries a dash clause', withDash, []);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
