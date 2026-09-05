@@ -80,7 +80,22 @@
     }
 
     /* 보조가 «기본»입니다 — 투명 + 1px 실선. 등급은 «채움 여부»로 말합니다. */
-    .glass-btn {
+/* 🔴 THIS PAGE'S BUTTON, AND THE NAME SAYS SO BECAUSE ONE NAME MEANT TWO BUTTONS.
+       `.glass-btn` drew a flat square condensed button here and a rounded, lifting, sans one
+       in `src/style.css` -- which index.html and map_editor.html wear. A part carried from
+       one page to the other changed SHAPE, not just colour, and that is the assembly rule
+       (「같은 화면에 둘을 놓아도 간섭 없음」) failing across pages instead of within one.
+
+       Split by NAME rather than unified by look: the two looks are the owner's screens to
+       decide, and this rename moves no pixel. Measured before renaming -- the admin CSS
+       bundle carried 0 `.glass-btn` rules and the index bundle 16, so the two were already
+       separate everywhere except in what they were called. The admin side was renamed
+       because it is both smaller (41 occurrences against 43) and provably contained: all
+       three files that spell it are reached only from this page.
+
+       The modifiers stay as they were -- `btn-primary`, `btn-danger`, `cfg-btn` and three
+       more are already declarations written beside it, which is why no part was extracted. */
+    .admin-btn {
       background: transparent;
       border: 1px solid var(--border-strong);
       color: var(--text);
@@ -95,13 +110,13 @@
       transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }
 
-    .glass-btn:hover {
+    .admin-btn:hover {
       background: var(--oe-tint-hover);
       border-color: var(--accent);
       color: var(--accent);
     }
 
-    .glass-btn:active { background: var(--oe-tint-press); }
+    .admin-btn:active { background: var(--oe-tint-press); }
 
     @media (max-width: 480px) {
       header {
@@ -117,7 +132,7 @@
         gap: 6px;
         flex-wrap: wrap;
       }
-      .header-actions .glass-btn {
+      .header-actions .admin-btn {
         max-width: 100%;
         padding: 7px 9px;
         font-size: .75rem;
@@ -128,30 +143,30 @@
 
     /* 🔴 주(主)는 «채움»입니다. 초록으로 등급을 말하던 것을 거둡니다 — 색은 «뜻»이
        있을 때만 쓰고, 「주 버튼」은 뜻이 아니라 등급입니다 (총괄 판정 ③). */
-    .glass-btn.btn-primary {
+    .admin-btn.btn-primary {
       background: var(--accent);
       border-color: var(--accent);
       color: var(--bg-surface);
     }
 
-    .glass-btn.btn-primary:hover {
+    .admin-btn.btn-primary:hover {
       background: color-mix(in srgb, var(--accent) 88%, var(--text));
       border-color: var(--accent);
       color: var(--bg-surface);
     }
 
-    .glass-btn.btn-primary:active {
+    .admin-btn.btn-primary:active {
       background: color-mix(in srgb, var(--accent) 76%, var(--text));
     }
 
-    .glass-btn.btn-danger {
+    .admin-btn.btn-danger {
       background: var(--danger-weak);
       border-color: var(--danger);
       color: var(--danger);
     }
 
     /* ⚠️ 위험은 «뜻이 있는 색»이라 그대로 둡니다 (판정 ③의 예외). 그림자만 걷습니다. */
-    .glass-btn.btn-danger:hover {
+    .admin-btn.btn-danger:hover {
       background: color-mix(in srgb, var(--danger) 12%, transparent);
       border-color: var(--danger);
       color: var(--danger);
@@ -1107,7 +1122,7 @@
     /* 이 줄에는 **쓰기 촉발**이 있다. 위 드라이런 버튼보다 크게 둔다 — 누르기 전에 읽히는
        것이 이 표면의 요점이고, 작은 글씨는 없느니만 못하다. */
     .retro-actions .cfg-btn { padding: 6px 16px; font-size: 0.84rem; }
-    .retro-actions .glass-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .retro-actions .admin-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
     /* 🔴 이 화면의 목적은 「이 쓰기가 몇 행을 건드리며 그 수를 얼마나 믿을 수 있는가」다.
        그런데 앞선 판본은 그 **두 사실을 상자 안에서 가장 작은 글씨**로 뒀다 — 숫자가
@@ -1408,7 +1423,7 @@
       letter-spacing: 0.02em;
     }
     /* ⑦ 버튼 */
-    .glass-btn {
+    .admin-btn {
       font-family: var(--oe-font-head);
       font-size: 14px;
       font-weight: 600;
@@ -1586,8 +1601,8 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="reload-configs-btn" class="glass-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
-      <a href="/" class="glass-btn">🏠 Return to Main</a>
+      <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
+      <a href="/" class="admin-btn">🏠 Return to Main</a>
       <button class="theme-toggle-btn" data-theme-toggle type="button" title="테마 전환" aria-label="테마 전환">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -1634,7 +1649,7 @@
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <span id="last-refreshed" style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);"></span>
-          <button id="refresh-btn" class="glass-btn" style="padding: 6px 12px; font-size: 0.85rem;">🔄 Refresh</button>
+          <button id="refresh-btn" class="admin-btn" style="padding: 6px 12px; font-size: 0.85rem;">🔄 Refresh</button>
         </div>
       </div>
 
@@ -1779,7 +1794,7 @@
                   <option value="FAILED">Failed</option>
                   <option value="SUCCESS">Success</option>
                 </select>
-                <button id="retry-all-file-btn" class="glass-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🔄 Retry All Failed</button>
+                <button id="retry-all-file-btn" class="admin-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🔄 Retry All Failed</button>
               </span>
               <span class="section-chevron">▾</span>
             </div>
@@ -1872,7 +1887,7 @@
               <span class="section-count" id="chain-fail-count">—</span>
               <span class="section-summary"></span>
               <span class="section-actions">
-                <button id="retry-all-outbox-btn" class="glass-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🔄 Retry All Failed</button>
+                <button id="retry-all-outbox-btn" class="admin-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🔄 Retry All Failed</button>
               </span>
               <span class="section-chevron">▾</span>
             </div>
@@ -2091,9 +2106,9 @@
           <div class="pagination-info" id="pagination-info" style="font-size: 0.85rem; color: var(--text-muted);">Showing 1-10 of 25 items</div>
         </div>
         <div class="pagination-controls" style="display: flex; gap: 8px; align-items: center;">
-          <button id="prev-page-btn" class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">◀ Prev</button>
+          <button id="prev-page-btn" class="admin-btn" style="padding: 4px 10px; font-size: 0.8rem;">◀ Prev</button>
           <span id="page-indicator" style="font-size: 0.85rem; font-weight: 500; min-width: 40px; text-align: center;">1 / 3</span>
-          <button id="next-page-btn" class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">Next ▶</button>
+          <button id="next-page-btn" class="admin-btn" style="padding: 4px 10px; font-size: 0.8rem;">Next ▶</button>
         </div>
       </div>
     </section>
@@ -2134,7 +2149,7 @@
           <div class="detail-block">
             <div class="detail-block-header">
               <span id="payload-title">Raw Event Payload / Details</span>
-              <button id="copy-payload-btn" class="glass-btn" style="padding: 2px 6px; font-size: 0.7rem;">📋 Copy</button>
+              <button id="copy-payload-btn" class="admin-btn" style="padding: 2px 6px; font-size: 0.7rem;">📋 Copy</button>
             </div>
             <div class="detail-block-body">
               <pre id="payload-viewer" style="color: var(--success);"></pre>
@@ -2153,8 +2168,8 @@
                 <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Select a script file</span>
               </div>
               <div style="display: flex; gap: 8px;">
-                <button id="editor-back-btn" class="glass-btn" style="padding: 4px 12px; font-size: 0.8rem; display: none;">🔙 Back to Details</button>
-                <button id="save-code-btn" class="glass-btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem; display: none;">💾 Save Code</button>
+                <button id="editor-back-btn" class="admin-btn" style="padding: 4px 12px; font-size: 0.8rem; display: none;">🔙 Back to Details</button>
+                <button id="save-code-btn" class="admin-btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem; display: none;">💾 Save Code</button>
               </div>
             </div>
             <div class="detail-block-body" style="padding: 0; overflow: hidden; position: relative; height: 100%; flex: 1;">
