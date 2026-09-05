@@ -259,10 +259,12 @@
     }
     /* 🔴 고르개의 «모양»은 이제 `.oe-field-select` 가 줍니다 (탐색기와 «같은 규칙»).
        여기 남은 것은 «배치»뿐입니다 — 베낀 타이포는 지웠습니다. */
+    /* 🔴 소유자: 「너무 꽉차게 있어 마진좀」. 격자는 그대로 두고 «한 단계»씩 올립니다
+       (6.8 -> 10.2). 탐색기가 같은 성격의 자리에서 쓰는 단계입니다. */
     .chain-rule-picker,
     .table-config-picker {
       max-width: 320px;
-      margin: 0 0 6.8px;
+      margin: 0 0 10.2px;
     }
     .chain-rule-raw,
     .table-config-raw {
@@ -275,7 +277,7 @@
       border-radius: 0;
     }
     .chain-rule-controls,
-    .table-config-controls { margin: 6.8px 0 0; }
+    .table-config-controls { margin: 10.2px 0 0; }
     /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
        ⛔ 문장은 없습니다. `enabled true` / `enabled false` 가 전부입니다. */
@@ -288,13 +290,13 @@
     /* 거절은 서버의 낱말로. 세 칸이고, 없는 칸은 안 그립니다. */
     .chain-rule-refusal,
     .table-config-refusal {
-      margin: 6.8px 0 0;
-      padding: 6.8px 10.2px;
+      margin: 10.2px 0 0;
+      padding: 10.2px 13.6px;
       border: 1px solid var(--warning);
       border-radius: 0;
       display: flex;
       flex-direction: column;
-      gap: 3.4px;
+      gap: 6.8px;
     }
     .chain-rule-refusal-code,
     .chain-rule-refusal-path,
@@ -308,7 +310,7 @@
     .table-config-refusal-why { color: var(--text); white-space: normal; }
     .chain-rule-saved,
     .table-config-saved {
-      margin: 6.8px 0 0;
+      margin: 10.2px 0 0;
       font-family: var(--font-mono);
       color: var(--text-dim);
       white-space: normal;
