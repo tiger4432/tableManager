@@ -5,6 +5,7 @@ import {
   declarationShape, fieldApplies, memberPath, membersOf, shapeAt,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
+import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -1136,7 +1137,59 @@ function foldDecision(row, expanded = {}) {
   return { open: true, reason: '' };
 }
 
-function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
+/** 🔴 THE GROUND THIS MEASUREMENT JUDGES, NAMED BY THE SERVER RATHER THAN BY A PATH.
+ *
+ * `read.order_by`'s default is the shortest key `table_config.json` DECLARES unique, and
+ * the server stamps that provenance on the row. A declaration can be wrong -- one shipped
+ * composite key was three empty columns -- and `column_stats` is the only thing that says
+ * so. Hanging the verdict on the ground's own name rather than on `path.endsWith(...)`
+ * keeps the screen from owning a second map of which paths mean what; the day the default
+ * moves, the annotation moves with it instead of pointing at nothing.
+ */
+const ORDERING_GROUND = 'ordering_default_from_catalog_key';
+
+/**
+ * The declared keys, each with what the DATA said about it.
+ *
+ * ⚠️ Four states plus one the server's boolean cannot spell -- see `uniqueness.js`. What
+ *    matters here: 「아직 안 물음」 and 「유니크 아님」 are not the same pixel, and an
+ *    empty table is neither.
+ * ⛔ Nothing is recomputed. The recommendation is the server's pick, carried.
+ */
+function renderUniqueness(row, stats) {
+  if (!row.ground || row.ground.rule !== ORDERING_GROUND) return null;
+  const failed = stats && typeof stats.failed === 'string';
+  const view = orderingVerdicts(failed ? null : stats?.ordering,
+                                { read: !failed && !!stats });
+  const box = h('div', 'oe-uniqueness');
+  box.append(h('small', '', view.read ? `선언 키 측정 · ${view.keys.length}` : '선언 키 측정'));
+  if (!view.read) {
+    // 「안 물어봤다」 and 「물었는데 못 받았다」 are both 「모름」, and neither is 「아니다」.
+    const line = h('div', 'oe-uniqueness-row');
+    line.dataset.state = 'unread';
+    line.append(h('span', 'oe-uniqueness-verdict', UNIQUENESS_UNREAD));
+    if (failed) line.append(h('span', 'oe-uniqueness-detail', stats.failed));
+    box.append(line);
+    return box;
+  }
+  for (const key of view.keys) {
+    const line = h('div', 'oe-uniqueness-row');
+    line.dataset.state = key.state;
+    line.append(h('code', '', key.columns.join(' · ')));
+    line.append(h('span', 'oe-uniqueness-verdict', key.text));
+    if (key.detail) line.append(h('span', 'oe-uniqueness-detail', key.detail));
+    box.append(line);
+  }
+  const pick = h('div', 'oe-uniqueness-pick');
+  pick.dataset.state = view.recommended ? 'recommended' : 'none';
+  pick.append(h('small', '', '추천'));
+  pick.append(h('span', '', view.text));
+  box.append(pick);
+  return box;
+}
+
+function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
+                            stats = null) {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
                         + (bare ? ' is-bare' : ''));
@@ -1176,6 +1229,11 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false) {
   if (row.state !== 'missing') card.append(renderValue(row));
   const ground = renderGround(row);
   if (ground) card.append(ground);
+  // Beside the ground, because the ground is what it judges -- 「rendered NEXT TO the
+  // value, never in a tooltip」 is this screen's rule for provenance and it is the same
+  // rule for the measurement of that provenance.
+  const measured = renderUniqueness(row, stats);
+  if (measured) card.append(measured);
   if (row.conflicts) {
     const clash = h('div', 'oe-field-conflict');
     clash.append(h('b', '', '선언과 불일치'));
@@ -1794,6 +1852,14 @@ function renderAuthoring(state) {
     return wrap;
   }
   if (state.authoringError) wrap.append(h('div', 'oe-warning', state.authoringError));
+  // 🔴 THE MEASUREMENT OF THIS SOURCE'S TABLE, FOUND THE SAME WAY THE FETCH FOUND IT.
+  //    The relation is a plan row, so the screen does not have to be told which table it is
+  //    looking at; and `undefined` here means 「not asked yet」, which the row draws as
+  //    「모름」 rather than as an answer.
+  const relation = (plan.fields || []).find(
+    (field) => /\.relation$/.test(field.path || '') && typeof field.value === 'string'
+      && field.value)?.value;
+  const columnStats = relation ? (state.columnStats || {})[relation] : null;
   // The blocked strongest tier, stated rather than absorbed: fields whose value is fully
   // determined AND that the grammar still demands as a key. Each is a question the screen
   // can answer but cannot remove, and that is a config-grammar item, not a UI one.
@@ -2090,7 +2156,7 @@ function renderAuthoring(state) {
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
     renderRow: (row, node, bare = false) => renderAuthoringRow(
-      row, state.expandedFields, editableFor(row, node), bare),
+      row, state.expandedFields, editableFor(row, node), bare, columnStats),
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
     hot: attentionPaths(plan),
@@ -2128,7 +2194,8 @@ function renderAuthoring(state) {
     section.append(h('h3', '', `${label} · ${rows.length}`));
     if (!rows.length) section.append(h('div', 'oe-empty', 'None defined'));
     for (const row of rows) {
-      section.append(renderAuthoringRow(row, state.expandedFields, editableFor(row)));
+      section.append(renderAuthoringRow(
+        row, state.expandedFields, editableFor(row), false, columnStats));
     }
     wrap.append(section);
   }

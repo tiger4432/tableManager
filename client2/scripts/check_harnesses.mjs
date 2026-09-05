@@ -1124,6 +1124,9 @@ const FLOORS = new Map([
   ['rnd_board_walk_harness.mjs', 32],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   ['truncation_harness.mjs', 12],
+  // whether the DECLARED unique key survives measurement -- and that an empty table
+  // is neither unique nor duplicated, which the server's own boolean cannot spell
+  ['uniqueness_harness.mjs', 31],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

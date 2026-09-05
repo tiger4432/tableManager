@@ -318,6 +318,26 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         authoringAll: action.whole ?? state.authoringAll,
         authoringError: null,
       };
+    // 🔴 THE MEASUREMENT OF THE DECLARED KEY, KEYED BY RELATION AND FETCHED ONCE.
+    //    `/columns` costs a full table scan, so it is asked once per relation and never
+    //    on a keystroke. Cached under the relation name because that is what the answer
+    //    is about -- two sources on one table ask one question.
+    case 'COLUMNS_RECEIVED':
+      return {
+        ...state,
+        columnStats: { ...(state.columnStats || {}), [action.relation]: action.stats },
+      };
+    // ⚠️ A FAILED ASK IS NOT 「no unique key」. It is stored so the fetch is not
+    //    retried in a loop, and it is stored as a FAILURE so the screen can say 「모름」
+    //    rather than draw an empty list of keys, which would read as an answer.
+    case 'COLUMNS_FAILED':
+      return {
+        ...state,
+        columnStats: {
+          ...(state.columnStats || {}),
+          [action.relation]: { failed: action.message || '' },
+        },
+      };
     case 'AUTHORING_FAILED':
       // Keep the last good plan on screen and SAY it is stale. Blanking the panel would
       // read as "nothing left to author", which is the silent empty panel again.
