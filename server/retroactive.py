@@ -850,6 +850,10 @@ def queue_view(db, now=None):
         "waiting_count": len(waiting),
         "waiting": waiting,
         "orphaned": orphaned,
+        # 🔴 "THE ROWS BELOW MAY BE WRONG." When a run row cannot be updated the work still
+        # runs and the row still says queued, so every number above it is stale in a way
+        # nothing else can detect. Published as a value, not left in a log.
+        "record_failures": record_failures(),
     }
 
 
@@ -1379,6 +1383,30 @@ def execute(payload: dict, log=logger.info) -> dict:
     return out
 
 
+#: Run rows this process could not update, and why. Kept because the failure is silent
+#: by nature: the work continues and the row simply stops describing it, so nothing else
+#: in the system would ever notice. Bounded - only the most recent matters for "is
+#: bookkeeping broken right now".
+_RECORD_FAILURES = []
+
+
+def _record_failure(run_id, exc):
+    import time as _time
+    _RECORD_FAILURES.append({"run_id": run_id, "at": _time.time(),
+                             "error": "%s: %s" % (type(exc).__name__, exc)})
+    del _RECORD_FAILURES[:-20]
+
+
+def record_failures():
+    """Run-row updates that did not land. Empty is the normal answer.
+
+    ⚠️ NOT EMPTY MEANS THE QUEUE VIEW IS LYING, not that a run failed. The runs are fine;
+    what stopped is the record of them, which is why this is published beside the queue
+    instead of being left in a log.
+    """
+    return list(_RECORD_FAILURES)
+
+
 def runner_identity() -> str:
     """Who is running this, as `host/pid`.
 
@@ -1436,6 +1464,22 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
         session.commit()
     except Exception as exc:                       # noqa: BLE001
         session.rollback()
-        logger.debug("run row update failed for run_id=%s: %s", run_id, exc)
+        # 🔴 NOT `debug`. This failing means the run row no longer describes the run: the
+        # work goes on, and the row keeps saying `queued` with no `started_at`, so every
+        # screen reads "waiting" while the operation is actually running. Measured cause
+        # 2026-09-05: deploying the `runner` column before its migration makes every
+        # UPDATE raise UndefinedColumn, and at debug level nobody would ever see it.
+        #
+        # ⛔ AND STILL NOT `raise`. Losing the record must not kill the run - a bookkeeping
+        # failure that takes down the work is worse than one that is merely loud.
+        # So it is reported at ERROR and counted, and the count goes out with the queue
+        # (`queue_view`), the same shape as `gate_blocked`: the fact travels as a value
+        # rather than as a log line nobody is tailing.
+        _record_failure(run_id, exc)
+        logger.error(
+            "[Retroactive] run row update FAILED for run_id=%s: %s. The run itself is "
+            "unaffected, but its row no longer tracks it - a screen will read this as "
+            "waiting while it runs. If this is a fresh deployment, check that the "
+            "migrations in server/migrations/ have been applied.", run_id, exc)
     finally:
         session.close()
