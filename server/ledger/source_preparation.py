@@ -312,6 +312,22 @@ class BaseSourcePreparer:
     implementation_id: str | None = None
     implementation_version: int | None = None
 
+    #: What this preparer ADDS to the frame, as ``{column: type}`` -- the same object the
+    #: declaration's ``output_columns`` holds -- or ``None`` for "I cannot say".
+    #:
+    #: 🔴 ``None`` IS THE DEFAULT AND HAS TO STAY THE DEFAULT.  Two preparers ship today
+    #: and both happen to know their own outputs; a preparer whose output NAMES came from
+    #: its rows would not, and turning "these two know" into "preparers know" would be a
+    #: description of these two rather than a rule.  A class that does not say leaves the
+    #: authoring square exactly as it is -- a question, asked.
+    #:
+    #: ⛔ AND NOTHING AT RUNTIME MAY READ THIS.  ``_assemble_prepared_frame`` scores the
+    #: produced columns against the DECLARATION; scoring them against this instead would
+    #: compare the class with itself, and the check that makes the square zero-degrees-of-
+    #: freedom in the first place would become vacuous.  This is what the authoring form
+    #: writes INTO the declaration, never the other side of the comparison.
+    declared_output_columns: dict[str, str] | None = None
+
     @final
     def prepare_batch(
         self,

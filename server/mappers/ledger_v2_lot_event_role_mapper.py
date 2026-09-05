@@ -63,6 +63,20 @@ class LiveLotEventSourcePreparer(BaseSourcePreparer):
     implementation_id = "lot-event-live-frame"
     implementation_version = 1
 
+    #: 🔴 SPELLED OUT RATHER THAN COMPREHENDED, so that adding a normalized column forces
+    #: a type to be decided here instead of inheriting `"string"` from a loop.
+    #: `test_a_preparer_can_state_its_own_outputs` scores this against what
+    #: `prepare_outputs` actually emits, so the two cannot drift apart in silence.
+    declared_output_columns = {
+        "lot": "string",
+        "row_identity": "string",
+        "slots": "string",
+        "wafers": "string",
+        EVENT_GROUP_COLUMN: "string",
+        SOURCE_EVENT_INCOMPLETE_COLUMN: "boolean",
+        SOURCE_ROW_EXCLUDED_COLUMN: "boolean",
+    }
+
     def prepare_outputs(
         self,
         context: SourcePreparationContext,

@@ -42,7 +42,7 @@ this module is not edited.
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 import importlib
 import pkgutil
 
@@ -170,6 +170,39 @@ def role_mapper_registry() -> RoleMapperImplementationRegistry:
     for (identifier, version), implementation in sorted(mapper_declarations().items()):
         registry.register(identifier, version, implementation)
     return registry.seal()
+
+
+def preparer_output_columns(identifier, version=None):
+    """What the named preparer SAYS it adds, or ``None`` when it does not say.
+
+    🔴 READ BACK OFF THE CLASS, THE SAME WAY THE IDENTITY IS.  `__dict__` rather than
+    `getattr` for the same reason `_self_declared_identity` uses it: an intermediate base
+    that answered would lend its answer to every subclass, and a subclass that adds one
+    column would then get a declaration filled in that is quietly short by one.
+
+    ⚠️ `None` IS "IT DOES NOT SAY", WHICH IS NOT "IT ADDS NOTHING".  An empty mapping is a
+    preparer stating it adds no columns; the caller has to keep those apart, because
+    filling a square with `{}` on behalf of a class that never spoke is inventing an
+    answer -- the failure this whole file exists to have deleted.
+
+    `version` picks one registration; omitted, the LATEST registered under the name wins,
+    which is what `implementation_choices` offers and what the form therefore selects.
+    """
+    if not isinstance(identifier, str) or not identifier.strip():
+        return None
+    declarations = source_preparer_declarations()
+    if version is None:
+        versions = [v for name, v in declarations if name == identifier]
+        if not versions:
+            return None
+        version = max(versions)
+    implementation = declarations.get((identifier, version))
+    if implementation is None:
+        return None
+    said = implementation.__dict__.get("declared_output_columns")
+    if not isinstance(said, Mapping):
+        return None
+    return {str(name): str(said[name]) for name in sorted(said)}
 
 
 def implementation_choices(sources=None) -> dict:

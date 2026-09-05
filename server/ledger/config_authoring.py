@@ -68,6 +68,7 @@ from .implementations import (
     _IMPLEMENTATION_PACKAGE,
     implementation_choices,
     mapper_declarations,
+    preparer_output_columns,
     source_preparer_declarations,
 )
 from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
@@ -972,21 +973,57 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             )
             outputs = preparation.get("output_columns")
             names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
-            # NOT a derived value.  The relation's columns are what this field may not
-            # BE; filling the field with them would declare exactly the collisions
-            # `output_column_collision` refuses.
-            yield Field(
-                path=f"{prep_base}.output_columns", step="sources",
-                label="준비기 output_columns",
-                state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
-                value=names, declared=names if names else _ABSENT,
-                forbidden=tuple(physical),
-                ground=Ground(
-                    "preparer_output_collision_from_relation",
-                    f"제한: relation {relation}의 컬럼 {len(physical)}개와 이름이 겹칠 수 없음",
-                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
-                note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
-            )
+            # 🔴 THE IMPLEMENTATION IS ASKED FIRST, AND MOST CANNOT ANSWER.  A preparer
+            # that states its own outputs turns this square into a copy of a fact the
+            # code already holds -- owner ruling 2026-08-20: 「닿을 수 없으면 선언도 닿지
+            # 않는다 - 자유도 0인 선언은 계약이 아니라 사본이다. state="derived"가 그 표지」.
+            # Measured 2026-09-05: `lot-event-live-frame` emits exactly 7 names, all module
+            # constants, and `prepare_outputs` REFUSES when the declaration disagrees, so
+            # the operator's degrees of freedom here are zero.
+            #
+            # ⛔ `None` MEANS "IT DID NOT SAY", WHICH IS NOT "IT ADDS NOTHING".  Two
+            # preparers ship and both happen to know; a third whose output NAMES came from
+            # its rows would not, and filling its square on a rule induced from two would
+            # be a description of those two.  So the ask fails closed to today's row.
+            said = preparer_output_columns(preparation.get("implementation_id"),
+                                           preparation.get("implementation_version"))
+            if said is not None:
+                yield Field(
+                    path=f"{prep_base}.output_columns", step="sources",
+                    label="준비기 output_columns", state="derived", tier=TIER_STRUCTURAL,
+                    # The MAPPING, not the name list: `filled_declaration` writes a derived
+                    # value into the file, and `_column_types` refuses anything that is not
+                    # `{column: type}` -- a list of names here would fill the square with a
+                    # shape the validator then refuses on the square that said it was full.
+                    value=dict(said),
+                    declared=dict(outputs) if isinstance(outputs, Mapping) else _ABSENT,
+                    forbidden=tuple(physical),
+                    # The grammar names `output_columns` in `_validate_preparation`'s
+                    # `required` tuple, so the key stays even though its value is forced.
+                    disposition="grammar_requires_it",
+                    ground=Ground(
+                        "preparer_output_columns_from_implementation",
+                        "채움: %s가 내는 컬럼 %d개 · 다르면 실행이 거절"
+                        % (preparation.get("implementation_id"), len(said)),
+                        (f"{prep_base}.implementation_id",), dict(said)),
+                    note="구현이 밝힌 산출 컬럼.",
+                )
+            else:
+                # NOT a derived value.  The relation's columns are what this field may not
+                # BE; filling the field with them would declare exactly the collisions
+                # `output_column_collision` refuses.
+                yield Field(
+                    path=f"{prep_base}.output_columns", step="sources",
+                    label="준비기 output_columns",
+                    state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
+                    value=names, declared=names if names else _ABSENT,
+                    forbidden=tuple(physical),
+                    ground=Ground(
+                        "preparer_output_collision_from_relation",
+                        f"제한: relation {relation}의 컬럼 {len(physical)}개와 이름이 겹칠 수 없음",
+                        (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
+                    note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
+                )
         inherited = _listed(preparation.get("inherit_virtual_join_rules"))
         # 🔴 IS THIS DECLARATION EVEN NEEDED -- ASKED BEFORE IT WAS WIRED.  Measured
         # 2026-08-21: exactly one file outside the validator mentions the key, and it does
