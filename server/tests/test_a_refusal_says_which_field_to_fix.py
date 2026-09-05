@@ -129,3 +129,61 @@ def test_the_refusal_path_is_what_carries_it_not_the_returned_report():
     body = inspect.getsource(gate.screen_compiled_molecule)
     assert "addresses=report.get(\"violation_details\")" in body, (
         "the refusal stopped carrying the addresses the report worked out")
+
+
+# ------------------------------------------------ the reader that already asked for it
+
+def raised(addresses):
+    """The refusal as the test-run screen receives it: an exception, not a return value."""
+    with pytest.raises(gate.MoleculeRefused) as caught:
+        with gate.building_molecule("probe"):
+            gate.refuse("probe", gate.REFUSE_NO_RAW_REF, "detail", atoms=1, rows=1,
+                        addresses=addresses)
+    return caught.value
+
+
+def test_the_exception_carries_the_code_and_the_path():
+    """🔴 THE ONE SQUARE. `_test_run_refusal` has always read `getattr(exc, "code")` and
+    `getattr(exc, "path")`; `MoleculeRefused` never had them, so it fell back to the CLASS
+    NAME. The screen whose reason for existing is "which field do I fix" was being handed
+    the name of an exception class."""
+    exc = raised([ADDRESS])
+    assert exc.code == envelope.ENVELOPE_RAW_REF_EMPTY
+    assert exc.path == "atom.source.raw_ref"
+
+
+def test_the_screen_reads_a_real_code_instead_of_the_class_name():
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    shown = OntologyExplorerService._test_run_refusal(raised([ADDRESS]))
+    assert shown["code"] == envelope.ENVELOPE_RAW_REF_EMPTY
+    assert shown["path"] == "atom.source.raw_ref"
+    assert shown["code"] != "MoleculeRefused"
+
+
+def test_an_atom_address_is_shown_raw_and_is_not_forced_onto_a_form_box():
+    """⚠️ NOT OVERCLAIMED. `atom.source.raw_ref` addresses the ATOM, not a square in the
+    form, and `_test_run_refusal` leaves `form_path` empty for anything it cannot place --
+    its own rule, because a guessed box is worse than an unplaced sentence. The win here
+    is a true address, not a highlighted field."""
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    assert OntologyExplorerService._test_run_refusal(raised([ADDRESS]))["form_path"] is None
+
+
+def test_a_refusal_with_no_address_still_falls_back_rather_than_breaking():
+    from ledger.config_explorer_service import OntologyExplorerService
+
+    exc = raised([])
+    assert exc.code is None and exc.path is None
+    shown = OntologyExplorerService._test_run_refusal(exc)
+    assert shown["code"] == "MoleculeRefused", "the fallback stopped working"
+
+
+def test_the_code_and_the_address_describe_the_same_violation():
+    """`check_envelope` can answer several at once and the reader's shape is one. Taking
+    the FIRST matches what `_envelope_reason` does with the same list, so the two do not
+    end up describing different violations."""
+    exc = raised([ADDRESS, {"code": "second", "path": "atom.other"}])
+    assert exc.code == ADDRESS["code"] and exc.path == ADDRESS["path"]
+    assert len(exc.addresses) == 2, "the rest are kept rather than dropped"

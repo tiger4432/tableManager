@@ -101,11 +101,26 @@ class MoleculeRefused(Exception):
     `or []`, `or {}`, a bare `extend`, and an ignored return value alike.
     """
 
-    def __init__(self, source: str, reason: str, detail: str):
+    def __init__(self, source: str, reason: str, detail: str, addresses=()):
         super().__init__(f"{source}: {reason}: {detail}")
         self.source = source
         self.reason = reason
         self.detail = detail
+        #: 🔴 `code` AND `path` BECAUSE THE READER ALREADY ASKS FOR THEM.
+        #: `config_explorer_service._test_run_refusal` reads `getattr(exc, "code")` and
+        #: `getattr(exc, "path")` and falls back to the CLASS NAME when they are absent --
+        #: so a gate refusal reaching the test-run screen used to be reported as
+        #: `code="MoleculeRefused"`, `path=""`. The screen's whole reason for existing is
+        #: "which field do I fix", and it was being told the name of an exception class.
+        #:
+        #: ⚠️ THE FIRST ADDRESS, and `addresses` keeps the rest. `check_envelope` can
+        #: answer several at once and the reader's shape is one; picking the first matches
+        #: what `_envelope_reason` already does with the same list, so the code and the
+        #: address describe the SAME violation rather than two.
+        self.addresses = [dict(a) for a in (addresses or ()) if isinstance(a, Mapping)]
+        first = self.addresses[0] if self.addresses else {}
+        self.code = first.get("code") or None
+        self.path = first.get("path") or None
 
 
 #: Per-thread depth of open molecules. Thread-local rather than a module global because
@@ -411,7 +426,7 @@ def refuse(source: str, reason: str, detail: str, atoms: int = 0, rows: int = 1,
                          f"({sorted(REFUSAL_REASONS)})")
     _record(source, reason, atoms, detail, rows=rows, addresses=addresses)
     if molecule_is_open():
-        raise MoleculeRefused(source, reason, detail)
+        raise MoleculeRefused(source, reason, detail, addresses=addresses)
 
 
 def screen_molecule(source: str, atoms, declared_derivations, declared_subject_types,
