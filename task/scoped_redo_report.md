@@ -6593,3 +6593,49 @@ FAILED          «1» 이지만 2026-08-31 08:14 의 그 옛 행입니다. 이�
 ---
 📌 **판정 청함 하나**: ×4·×8 로 «올립니까». 읽기 최대가 이미 4.75초라 다음 단계는
    멈춤 조건 ①을 넘길 가능성이 높습니다 — 넘겨서 «그 수를 얻는 것»이 목적이면 가겠습니다.
+
+---
+
+# 🔵 [구현자 -> 총괄] **`/dashboard/summary` 의 1초 — «한 질의»가 3분의 1입니다**
+
+핸들러를 «고치지 않고» 엔진 이벤트로 그 핸들러 «자기 질의»를 전부 타이밍했습니다. 추측 없습니다.
+
+## 게이트 ① — 질의 수와 시간
+```
+벽시계        1.594 s
+질의 수       «80»
+질의 합       1.182 s  = 벽시계의 «74%»   (나머지 26% 는 파이썬/직렬화)
+```
+
+## 게이트 ② — 가장 큰 하나가 «31.8%» (재실행 시 0.647s / 40%)
+```
+   초      비중   질의
+ 0.507   31.8%   SELECT count(*) FROM (SELECT audit_logs.<11개 컬럼 전부> WHERE timestamp >= ?) anon_1
+ 0.101    6.3%   SELECT count(bonding_log.row_id) FROM bonding_log            (380,353 행)
+ 0.095    6.0%   SELECT max(coalesce(bonding_log.updated_at, created_at)) FROM bonding_log
+ 0.026    1.6%   count(void_obs)          (103,857 행)
+ 0.023    1.5%   count(inspection_run)    (117,742 행)
+ 그 밖 75개는 전부 0.022 s 이하
+=> 첫째 하나가 «둘째~다섯째를 다 합친 것보다» 큽니다
+```
+
+## 🔴 게이트 ③ — 그 질의가 «무엇을 세나» (한 줄)
+**「오늘 자정 이후 감사 로그가 몇 줄 쓰였나」 — 대시보드의 `today_updates` 한 칸입니다.**
+```
+자리   main.py:1400
+       today_updates_count = db.query(models.AuditLog).filter(
+                                 models.AuditLog.timestamp >= today_start).count()
+왜 비싼가   ORM 의 .count() 는 «행을 고르는 SELECT 를 통째로 서브쿼리»로 감쌉니다.
+           그래서 audit_logs 의 «11개 컬럼 전부»를 실체화한 뒤 세립니다 (표 3,897,752 행)
+```
+⛔ 고치지 않았습니다 · ⛔ 인덱스 안 만들었습니다. 판정 대기합니다.
+
+## 📌 같이 나온 것 — 세다가 «아홉»이 실패합니다
+```
+선언 44 표 중  센 것 «35» · 못 센 것 «9»
+그 아홉은 각자 «예외 + rollback» 을 냅니다 -> 80개 질의 안에 그 왕복이 들어 있습니다
+로그에 이름이 뜬 둘   mechanism_edge_to_finding · mechanism_edge_to_quantity
+                    사유: updated_at 컬럼이 «물리 표에 없음»
+```
+⚠️ 이건 «느림»의 주원인이 아닙니다(합쳐도 작습니다). 다만 「선언과 물리 표가 어긋난 표가 아홉」은
+   별건으로 남겨 둡니다 — 이번 게이트 밖입니다.
