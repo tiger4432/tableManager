@@ -1375,9 +1375,12 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     """
     from database.models import DatabaseOutbox
 
+    # 🔴 THE SAME SPELLING THE WRITER USES. The two sides used to name the marker's shape
+    # independently, so a change to either made the sweeper silently stop collecting what
+    # the writer still produced - see the note in `event_constants`.
     stale = db.query(DatabaseOutbox).filter(
-        DatabaseOutbox.processed_chain == True,
-        DatabaseOutbox.status == "SUCCESS",
+        DatabaseOutbox.processed_chain == event_constants.UNDELIVERED_MARKER_PROCESSED_CHAIN,
+        DatabaseOutbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
         DatabaseOutbox.broadcast_at.is_(None),
         DatabaseOutbox.created_at < func.now() - text("interval '5 seconds'"),
     ).order_by(DatabaseOutbox.id.asc()).limit(500).all()

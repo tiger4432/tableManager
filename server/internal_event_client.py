@@ -141,9 +141,9 @@ def record_undelivered_notification(session_factory, table_name, endpoint,
             # 500 audit log entries, and a marker that big is how a recovery
             # path turns into the next incident (2026-07-25, ~50 MB payload).
             payload={"endpoint": endpoint, "reason": str(reason)[:500],
-                     "marker": "undelivered_notification"},
-            status="SUCCESS",
-            processed_chain=True,
+                     "marker": event_constants.UNDELIVERED_MARKER_TAG},
+            status=event_constants.UNDELIVERED_MARKER_STATUS,
+            processed_chain=event_constants.UNDELIVERED_MARKER_PROCESSED_CHAIN,
         ))
         db.commit()
         return True

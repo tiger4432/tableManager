@@ -263,3 +263,24 @@ def truncate_audit_value(value, max_chars: int = MAX_AUDIT_VALUE_CHARS):
             True,
         )
     return value, False
+
+
+#: The shape an UNDELIVERED-NOTIFICATION marker has, in ONE place.
+#
+# 🔴 IT WAS TWO PLACES AND NOTHING JOINED THEM. `internal_event_client
+# .record_undelivered_notification` builds the row and
+# `chain_ingestion_worker.sweep_undelivered_broadcasts` filters for it, and both spelled
+# the same three values by hand. Change one side and the marker is written in a shape the
+# sweeper does not collect: no error, no exception, and the row sits in the database
+# forever while the screen never learns - which is precisely the incident this mechanism
+# exists to prevent.
+#
+# 🔴 AND THE TESTS COULD NOT SEE IT. The five covering the sweep hand-build their own
+# rows, so they stay green whatever the writer does. A shared spelling is what makes the
+# two sides fail together instead of drifting apart quietly.
+#
+# ⚠️ `broadcast_at` IS NOT HERE, deliberately: NULL is not a value the writer sets, it is
+# the absence the sweeper looks for. Naming it would invite somebody to write it.
+UNDELIVERED_MARKER_STATUS = "SUCCESS"          # the DATA succeeded; only the notice failed
+UNDELIVERED_MARKER_PROCESSED_CHAIN = True      # never re-run as a data transaction
+UNDELIVERED_MARKER_TAG = "undelivered_notification"   # payload["marker"], for attribution
