@@ -1143,6 +1143,10 @@ const FLOORS = new Map([
   // why a plan declaration is refused and what to change -- and that the state comes
   // from booleans, never from the server's reason words, which the seam contract forbids
   ['plan_dry_run_harness.mjs', 25],
+  // the copy that is only on screen while something is failing, which no screen read in
+  // this box can reach -- so the SHAPE is asserted instead of the strings. One assertion
+  // per shape, plus the guards that stop a broken scanner from passing vacuously
+  ['failure_copy_harness.mjs', 5],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

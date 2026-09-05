@@ -1912,7 +1912,7 @@ async function smartPasteFromPasteEvent(e) {
   const dt = e.clipboardData;
   if (!dt) {
     elements.performanceLog.textContent = '❌ Smart paste: paste event carried no clipboardData';
-    showToast('붙여넣기 이벤트에 클립보드 데이터가 없습니다. 다시 시도해 주세요.', 'error');
+    showToast('클립보드 데이터 없음 · 다시 시도', 'error');
     return;
   }
 

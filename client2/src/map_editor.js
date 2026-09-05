@@ -5689,7 +5689,7 @@ async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, 
         + 'this row is dropped ON PURPOSE: a declared grid size on a chosen origin is a frame '
         + 'nobody declared and nobody chose.');
       // 조회 동선의 확인창은 아니다(모달이 곧 그 자리다) — 왜 묻는지만 말한다.
-      showToast('맵 규격에 START X,Y가 없습니다 — 좌표계를 선택하십시오.', 'warning');
+      showToast('맵 규격에 START X,Y 없음 · 좌표계 선택', 'warning');
       return { ok: true, gridMeta: null, mapKey: loadedMapKey };
     }
     loadedGridMeta.grid_start_x = sx;
@@ -6183,7 +6183,7 @@ async function pushMapData() {
   }
 
   if (updates.length === 0) {
-    alert('격자에 적재할 셀이 없습니다 — 먼저 칠하십시오.');
+    alert('적재할 셀 없음 · 먼저 칠하기');
     return;
   }
 
@@ -7350,7 +7350,7 @@ function copyGridToExcel() {
     return;
   }
   // 정직한 실패. 조용히 성공한 척하면 사용자는 낡은 클립보드 내용을 엑셀에 붙인다.
-  showToast('복사 실패 — 표를 클릭한 뒤 다시 시도하십시오.', 'error');
+  showToast('복사 실패 · 표 클릭 후 재시도', 'error');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -9123,10 +9123,11 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
     // **참조가 선언한 적 없는 인덱스 공간**으로 읽어 마스크가 조용히 틀린다. clamp하지 않는다.
     const dimErr = frameDimError(refFrame);
     if (dimErr) {
-      return refuse(ref, `${ref.table} · ${ref.mapKey}: 참조 맵이 선언한 격자 치수가 편집기가 다룰 수 `
-        + `있는 범위를 벗어났습니다 — ${dimErr}. 이 치수를 그대로 채택하면 격자 계산이 그만큼 커져 `
-        + `화면이 응답하지 않습니다. 참조 맵의 wafer_map_metadata에 있는 grid_cols/grid_rows를 `
-        + `확인하십시오(자동 등록된 행이면 잘못 추정된 값일 수 있습니다).`);
+      // 🔴 사유 · 값 · 결과 · 고칠 자리 -- 넷 다 남기되 문단이 아니라 마디로.
+      //    「자동 등록이면 추정값일 수 있다」는 «어디를 의심할지»라 지우지 않습니다.
+      return refuse(ref, `${ref.table} · ${ref.mapKey} · 격자 치수 범위 초과 · ${dimErr}`
+        + ` · 채택 시 화면 정지 · 참조 맵 wafer_map_metadata 의 grid_cols/grid_rows 확인`
+        + ` · 자동 등록 행이면 추정값 가능`);
     }
     // [M4② INV-6] 셀을 한 건도 읽기 전에 체인부터 끊는다. 규격을 받은 직후가 이 판정이
     // 가능해지는 가장 이른 지점이고, 여기서 막으면 순환 참조가 네트워크를 타지도 못한다.
