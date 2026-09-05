@@ -304,6 +304,15 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
     for result, atoms in zip(preview.event_results, event_atoms):
         molecule_ref = result.role_frame.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
+            # 🔴 `_report` STAYS DISCARDED HERE, AND THAT IS MEASURED RATHER THAN LAZY.
+            # This call sits inside `gate.building_molecule`, and a refusal there does not
+            # return -- `gate.refuse` raises `MoleculeRefused` while a molecule is open, so
+            # the pair this line binds is only ever the ACCEPTING answer. Consuming it
+            # would therefore yield nothing about any refusal.
+            # The refusal's code and address travel on the refusal path instead:
+            # `screen_compiled_molecule` hands `report["violation_details"]` to
+            # `gate.refuse(..., addresses=...)`, which stamps them on the gate's sample
+            # list, and `backfill`'s run result reads that list.
             kept, _report = gate.screen_compiled_molecule(
                 source_id,
                 atoms,
