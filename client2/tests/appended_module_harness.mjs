@@ -92,6 +92,51 @@ console.log('\n[1-bis] the bridge reaches everything the slicing reached');
 }
 
 
+// ═══ ①-ter 2-b — «도는가»: 모듈의 «자기» el 자루를 채우면 실제 함수가 돕니다 ═════════
+//
+// 🔴 2-b 는 「document 최소 스텁이 필요한가」를 물었고, 답은 «아니오»입니다.
+//    모듈은 `const el = {}` 를 최상위에 두고 «나중에» 채웁니다 — 그래서 import 가 DOM 을
+//    안 건드리고, 시험은 그 자루에 «직접» 넣으면 됩니다. getElementById 를 흉내 낼 필요가
+//    없습니다. 잘라쓰기 샌드박스가 하던 일 중 «가장 큰 덩어리»가 이렇게 사라집니다.
+//
+// ⚠️ 그리고 이것이 총괄이 요구한 「모형화 안 한 것에 시끄러울 것」을 «더 세게» 만족시킵니다:
+//    스텁이 없으므로, 어떤 함수가 document 를 만지면 `ReferenceError: document is not
+//    defined` 로 «즉시» 죽습니다. 너그러운 스텁이 조용히 초록을 만들 여지가 «0» 입니다.
+const EL_BAG = ['gridCols', 'gridRows', 'gridStartX', 'gridStartY', 'gridYInvert',
+  'physChipX', 'physChipY', 'physOffsetX', 'physOffsetY', 'physEdgeMargin',
+  'physWaferDia', 'gridCanvas'];
+
+console.log('\n[1-ter] the real functions run once the module bag is filled');
+{
+  const ns = await importWithAccessors(SRC, [
+    'export const __el = el;',
+    'export const __fn = { applyPhysicalGeometry, currentFrame, cellMetrics };',
+    'export const __set = { currentRotation: (v) => { currentRotation = v; },',
+    '  currentSide: (v) => { currentSide = v; }, gridData: (v) => { gridData = v; } };',
+    'export const __documentSeen = () => typeof document;',
+  ].join('\n'));
+  eq('the bag is empty at import, which is why loading needs no DOM',
+    Object.keys(ns.__el).length, 0);
+  eq('and the module never saw a document', ns.__documentSeen(), 'undefined');
+  const mk = (v) => ({ value: String(v), checked: false, querySelector: () => null,
+                       appendChild() {} });
+  Object.assign(ns.__el, Object.fromEntries(EL_BAG.map((k) => [k, mk(1)])));
+  ns.__el.gridYInvert = { checked: false };
+  ns.__el.gridCols = mk(13); ns.__el.gridRows = mk(13);
+  ns.__el.physChipX = mk(7); ns.__el.physChipY = mk(7); ns.__el.physEdgeMargin = mk(3);
+  ns.__el.physWaferDia = { value: '300', querySelector: () => ({}), appendChild() {} };
+  ns.__el.gridCanvas = { getBoundingClientRect: () => ({ width: 700, height: 700 }) };
+  ns.__set.currentRotation(0); ns.__set.currentSide('front'); ns.__set.gridData({});
+  // 🔴 THE ANSWER TO 2-b: a real module function, not a slice of one, produces a value.
+  const frame = ns.__fn.currentFrame();
+  ok('a real module function returns a frame', frame && frame.cols > 0,
+    JSON.stringify(frame).slice(0, 60));
+  // The heaviest of the sliced set. If anything needed a DOM this is where it would.
+  let ran = true;
+  try { ns.__fn.applyPhysicalGeometry(); } catch (e) { ran = String(e.message); }
+  eq('the heaviest one runs with no DOM at all', ran, true);
+}
+
 // ═══ ② 🔴 퇴화 방지 — 사본이 원본으로 «시작»하지 않으면 던진다 ═══════════════════════════
 //
 // 이 단언이 이 파일의 «존재 이유»입니다. 「그 import 하나만 빼면 되잖아」가 덧붙이기를
