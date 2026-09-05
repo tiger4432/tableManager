@@ -3785,17 +3785,23 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             g = groups[tx] = {"transaction_id": tx, "rows": 0, "tables": [], "event_types": [],
                               "max_retry": 0, "first_id": row.id, "created_at": row.created_at}
         g["rows"] += 1
-        # 🔴 통제 이벤트에는 «표가 없다». `database_outbox.table_name` 은 관례상 비지
-        #    않아서, 표가 없는 행은 자리를 채우려고 «있지도 않은 표 이름»을 싣는다
-        #    (`retroactive.RUN_EVENT_TABLE` = `__retroactive__`). 그것이 이 목록에 뜨면
-        #    운영자는 그 표를 «찾으러 간다» — 「없음」을 「있는 이름」으로 말한 것이고,
-        #    그 헛걸음이 이 결함의 비용이다.
-        #    ⚠️ 신원을 «지우는» 것이 아니다: 이 행이 무엇인지는 바로 아래에서 모으는
-        #    `event_types` 가 이미 말하고 있고, 그것이 이 행의 «진짜» 신원이다.
-        #    부류로 판정한다 — 낱개(`__retroactive__`)가 아니라 `CONTROL_EVENT_TYPES`.
-        #    그래서 통제 이벤트가 하나 더 생겨도 이 자리는 안 고친다.
-        is_control = row.event_type in event_constants.CONTROL_EVENT_TYPES
-        if row.table_name and not is_control and row.table_name not in g["tables"]:
+        # 🔴 «없는 표 이름»은 표로 안 센다. `database_outbox.table_name` 은 관례상 비지
+        #    않아서, 표가 없는 행은 자리를 채우려고 이름을 «지어낸다»
+        #    (`event_constants.RETROACTIVE_RUN_TABLE` = `__retroactive__`). 그것이 이
+        #    목록에 뜨면 운영자는 그 표를 «찾으러 간다» — 「없음」을 「있는 이름」으로 말한
+        #    것이고, 그 헛걸음이 이 결함의 비용이다.
+        #    ⚠️ 신원을 «지우는» 것이 아니다: 이 행이 무엇인지는 아래의 `event_types` 가
+        #    이미 말한다.
+        #    🔴 부류는 「통제 이벤트인가」가 «아니라» 「그 이름이 없는 표인가」다. 앞의 것으로
+        #    걸렀더니 `SCHEDULER_RUN_NOW` 의 «진짜» 표 이름까지 지웠다 — 그 이벤트는
+        #    호출자가 준 실재하는 표를 싣는다(아래 `SCHEDULER_RUN_NOW` 발행 지점). 그러면
+        #    운영자가 「어느 표에 대한 온디맨드 실행인지」를 잃고, `event_types` 는 그 답을
+        #    들고 있지 않다.
+        #    ⛔ 그렇다고 리터럴로 맞추지 않는다 — 자리표시자들은 한 곳에 «선언»돼 있고,
+        #    그 선언이 곧 「이 이름들은 표가 아니다」라는 문서다. 다음 자리표시자는 거기
+        #    한 줄이고 이 자리는 안 고친다.
+        is_placeholder = row.table_name in event_constants.PLACEHOLDER_TABLE_NAMES
+        if row.table_name and not is_placeholder and row.table_name not in g["tables"]:
             g["tables"].append(row.table_name)
         if row.event_type and row.event_type not in g["event_types"]:
             g["event_types"].append(row.event_type)

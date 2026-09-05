@@ -40,6 +40,22 @@ EVENT_BROADCAST_RECOVERY = "BROADCAST_RECOVERY"
 CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
                                  EVENT_BROADCAST_RECOVERY})
 
+#: `database_outbox.table_name` is not empty by convention, so a row that is about no
+#: single table fills the column with an invented name. `retroactive` writes this one: a
+#: run spans whatever its operation touches, which is not a table.
+RETROACTIVE_RUN_TABLE = "__retroactive__"
+
+#: 🔴 EVERY NAME IN THAT COLUMN THAT IS NOT A TABLE, and this declaration IS the
+#: statement "these are not tables". A reader that shows the column to an operator asks
+#: this set first, because a name nobody created sends them looking for it -- absence
+#: spoken as a name, which costs a trip rather than a fact.
+#:
+#: ⛔ IT IS NOT "IS THIS A CONTROL EVENT". That class was tried on 2026-09-05 and is one
+#: member too wide: `SCHEDULER_RUN_NOW` carries the REAL table its caller named
+#: (`main.py`'s on-demand publisher), so filtering on the event type deleted a true name
+#: and lost "which table is this run about" -- `event_types` does not carry that.
+PLACEHOLDER_TABLE_NAMES = frozenset({RETROACTIVE_RUN_TABLE})
+
 # ---------------------------------------------------------------------------
 # WHO DRAINS A WAITING ROW
 #
