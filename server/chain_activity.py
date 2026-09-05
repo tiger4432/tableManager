@@ -33,6 +33,8 @@ class ChainActivityRegistry:
         self._lock = threading.Lock()
         self._running = {}
         self._attached = False
+        self._attached_at = None
+        self._reloaded_at = None
         self._seq = 0
 
     def attach(self):
@@ -40,6 +42,23 @@ class ChainActivityRegistry:
         mappers, which is what makes an empty list mean "idle" instead of "blind"."""
         with self._lock:
             self._attached = True
+            self._attached_at = time.time()
+
+    def note_reload(self):
+        """A SYSTEM_RELOAD re-imported the mapper modules in THIS process.
+
+        🔴 IT WAS ALREADY RECORDED AND COULD NOT LEAVE. `QueueHeadWatch.note_reload` has
+        kept this instant since the stall watcher landed, and it leaves only as TEXT
+        inside a sentence the loop logs -- and only once the queue head has already been
+        stuck for a minute. So the one question this answers ("is the state in this
+        process rather than in the data?") could be asked only by someone already reading
+        the log of a system already stalled.
+
+        ⚠️ NEVER-RELOADED STAYS `None`. `0` would read as "just now", which is the
+        opposite fact, and the loop starting is not a reload.
+        """
+        with self._lock:
+            self._reloaded_at = time.time()
 
     @property
     def attached(self) -> bool:
@@ -72,9 +91,28 @@ class ChainActivityRegistry:
                      "running_seconds": round(now - e["started"], 3)}
                     for e in entries]
 
+    def ages(self) -> dict:
+        """How long this process's loop has been up, and how long since it re-imported.
+
+        Ages rather than instants: the reader is comparing them with each other and with
+        `oldest_waiting_seconds`, and a clock string would have to be reconciled against
+        the reader's own clock first.
+        """
+        now = time.time()
+        with self._lock:
+            attached_at, reloaded_at = self._attached_at, self._reloaded_at
+        return {
+            "loop_uptime_seconds": (None if attached_at is None
+                                    else round(now - attached_at, 3)),
+            "mapper_reload_age_seconds": (None if reloaded_at is None
+                                          else round(now - reloaded_at, 3)),
+        }
+
     def clear(self):
         with self._lock:
             self._running.clear()
+            self._attached_at = None
+            self._reloaded_at = None
             self._seq = 0
 
 

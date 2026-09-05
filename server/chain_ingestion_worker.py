@@ -1707,6 +1707,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # 1. Reload dynamic modules cache
                     reload_worker_process_cache()
                     head_watch.note_reload()
+                    chain_activity.registry.note_reload()
                     # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
                     #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
                     try:

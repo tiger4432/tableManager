@@ -3872,6 +3872,11 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "running": running,
         "loop_in_this_process": chain_activity.registry.attached,
         "log_filename": process_logging.active_log_filename(),
+        # 🔴 「재시작하면 풀리나」에 답하는 두 수. 그 판단의 근거는 이미 이 프로세스 안에
+        #    있었는데 «큐가 1분 이상 막힌 뒤에만» «로그 문장 속 글자»로 나갔다 — 즉 이미
+        #    멈춘 시스템의 로그를 읽고 있는 사람만 물을 수 있는 질문이었다.
+        #    ⚠️ 재적재가 없었으면 `null` 이다. `0` 은 「방금」이라는 «반대» 사실이다.
+        **chain_activity.registry.ages(),
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
