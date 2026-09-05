@@ -3172,14 +3172,18 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | ⚠️ **동률은 답이지 실패가 아니다** | 같은 횟수로 쓰인 구현 둘이면 `default` 는 **`None`** 이고, 빈 선언도 마찬가지다. 「목록에서 고르세요」가 정직한 결과이고, 승자를 지어내면 **증거가 아닌 축이 답을 정한다** |
 | ⚠️ **축은 열린 채로 둔다** | 기본값은 «출발값»이지 제약이 아니다 — 등록된 구현은 전부 선택 가능하게 남는다. **다른 것을 쓰는 소스가 이 칸이 존재하는 이유**이기 때문이다 |
 
-> 🔴 🆕⑱ **[2026-09-05 전건 실측 · `6345ef3d`] 이 함수의 «운영 소비자는 0» 이다.**
+> 🔴 🆕⑲ **[2026-09-05 저녁 · `b72843cc`] 배선됐다. 위 「소비자 0」은 «그날 낮»의 실측이고 지금은 거짓이다.**
 > ```
-> git grep -n implementation_choices -- server/
->   server/ledger/implementations.py:175                     정의 자신
->   server/tests/test_implementation_choices_are_counted.py  호출 «8»
-> => 라우터도 서비스도 config_authoring 도 이것을 «부르지 않는다»
+> config_authoring.closed_lists(sources=None)          <- 인자가 «하나» 생겼다. 이 함수의 유일한 인자다
+>   "prepare_implementation" / "map_implementation"     레지스트리 id «문자열» 목록 (choice 잎이 그릴 수 있는 모양)
+>   "implementations"                                   options(+version) · counts · default 통째로
+> ledger_skeleton.json  sources.*.prepare|map.implementation_id
+>   hint: "free"  ->  hint: "choice" · list: 위 둘        => 클라 «무변경». 일반 choice 경로가 그린다
+> config_explorer_service.authoring_schema()           config 를 «관대하게» 읽어 sources 를 넘긴다
+>                                                      (안 읽히면 sources 없음 = 옵션은 나오고 default 는 None)
 > ```
-> 즉 **작성 폼이 이 목록을 아직 못 받는다.** [§5 `health.roster_states`](#5-소형-서버-모듈) 와 **같은 부류**다 — 순수 함수가 시험까지 갖춰 서 있고 배선 한 칸이 비어 있다. 🔴 **다음 패스가 이 줄을 다시 재는 것이 이 행의 목적이다.**
+> 🔴 **인자가 «하나»뿐인 이유가 설계 문장이다.** `closed_lists` 의 나머지 목록은 전부 «코드»의 성질이라 어느 배포에서든 같은 답이고, 이것만 «이 선언»의 성질이라 선언이 필요하다. 시험이 그것을 «세어서» 박는다 — 선언을 바꿨을 때 움직이는 키가 `implementations` «하나»뿐(`test_the_form_offers_an_implementation_name.py`).
+> ⛔ **default 는 «공표»만 하고 문서에 쓰지 않는다.** 파일이 안 들고 있는 칸을 화면이 채우면 그리는 것만으로 남의 config 를 고쳐 쓰는 것이다. `_implementation_fields`(계획 행의 `candidates`)는 손대지 않았고, 그래서 이 칸을 그리는 자리가 «둘»이다 — 계획 행과 스켈레톤 잎.
 
 ### 🆕⑩ `server/ledger/column_stats.py` (**287줄**, 신설) — 컬럼을 «고르기 위한» 물리 프로브
 
