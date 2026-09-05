@@ -3057,10 +3057,27 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 | 파일 | 줄(구 표기) | `^export` 심볼 (실측) |
 |---|---|---|
-| `client2/src/ontology_explorer.js` | **1,323**(368) | `createOntologyExplorerController({root, apiBase, adminFetch, showToast})` · `initOntologyExplorer(options)` · `refreshOntologyExplorer()`. 모듈 내부: `chooseDirtyNavigation` · `errorMessage` · `seededPaths` · `ancestorPaths` |
+| `client2/src/ontology_explorer.js` | **1,323**(368) | `createOntologyExplorerController({root, apiBase, adminFetch, showToast})` · `initOntologyExplorer(options)` · `refreshOntologyExplorer()`. 모듈 내부: `chooseDirtyNavigation` · `errorMessage`(문장+code+path) · `errorSentence`(문장만 — 코드를 «자기 칸»에 싣는 두 자리가 씁니다) · `seededPaths` · `ancestorPaths` |
 | `client2/src/ontology_explorer_store.js` | **465**(246) | `initialExplorerState`(frozen) · `assertOneContext` · `reduceExplorerState` · `reduceNewDeclaration` · `reduceFieldFold` · `sectionMembers` · `mirrorLoaded` · `canLeaveSelection` · `dirtyNavigationDecision` · `restoreDirtyEditorCheckpoint` · `isDraftRevisionEditable` · `declarationIdFor` |
 | `client2/src/ontology_explorer_view.js` | 🆕⑪ **2,277**(2,199 / 375) | `renderOntologyExplorer(root, state)` **하나**(🆕⑪ 재확인 — export는 여전히 이것뿐이다) |
 | `client2/src/ontology_explorer.css` | — | |
+
+### 🆕 클라 — 어드민의 «부품» 일곱 (2026-09-04~05 신설, 이 라운드 실측)
+
+각각 「같은 종류가 둘째로 필요해졌을 때」 첫째를 템플릿으로 올린 것이고, 소비자는 «선언»입니다.
+
+| 파일 | 줄 | `^export` 심볼 | 소비자 |
+|---|---|---|---|
+| `client2/src/absent.js` | 41 | `ABSENT` · `isCount` · `countText` · `localeCountText` | 「없는 수」의 철자 «한 곳» |
+| `client2/src/count_with_absence.js` | 55 | `ABSENCE_WORDS` · `countWithAbsence` | 「0 인데 일감이 있다」 — 소비자 넷 |
+| `client2/src/raw_registry_panel.js` | 208 | `registryView` · `RawRegistryPanel` | 「선언 하나를 앱 안에서 등록」의 근원 템플릿 |
+| `client2/src/table_config_panel.js` | 54 | `TABLE_REGISTRY` · `tableConfigView` · `TableConfigPanel` | 위 템플릿의 «선언» ① (표 등록) |
+| `client2/src/chain_rule_panel.js` | 59 | `CHAIN_RULE_REGISTRY` · `chainRuleView` · `ChainRulePanel` | 위 템플릿의 «선언» ② (체인 규칙) |
+| `client2/src/ledger_sources_panel.js` | 283 | `STATES` · `sourcesView` · `LedgerSourcesPanel` | 번역기 장부(소스 상태) |
+| `client2/src/progress_card.js` | 182 | `showProgressCard` · `finishProgressCard` | 진행 카드의 근원 템플릿 (소비자: 파일 인제션) |
+
+🔴 이 일곱이 공유하는 규율 하나: **「모름」과 「없음」을 같은 픽셀로 그리지 않는다.**
+   못 읽은 수는 `—` 이고, 0 은 «그 0 이 무엇의 0 인지»를 옆에 답니다.
 
 🆕⑪ **[2026-08-23] 이 구간에 화면 결함 다섯이 닫혔고, 그중 넷이 「기본값·유도가 «언제» 사람의 일이 되는가」라는 한 질문이었다.**
 
