@@ -1416,3 +1416,48 @@ admin.js:1817  subEl.textContent = stat && stat.unavailable_reason
 문서에 없으면     실측하고, «그 결과를 문서에» 넣습니다
 ```
 📌 보고에 「CODE_MAP 의 어느 절을 봤나」를 «한 줄»로 남겨 주십시오. 없으면 안 본 것으로 읽습니다.
+
+---
+
+# 🔴 신설 — 「**폼이 «그리는데» 읽는 쪽도 받는 쪽도 없는 칸**」 전수 (소유자 2026-09-05)
+
+> 소유자: 「이거도 대기열에 넣어. 이렇게 이상하게 리스트 뜨는거 더 조사해서 고쳐」
+
+**부류 이름은 CODE_MAP 이 이미 붙여 뒀습니다** — 「문법은 살아 있는데 «읽는 쪽»이 없다」.
+찾기 전에 **`docs/architecture/CODE_MAP.md` §5-H-bis** 를 먼저 여십시오 (작성·탐색 표면).
+
+## 이미 아는 «둘» — 이걸 씨앗으로 부류를 넓히십시오
+```
+① `references`      엔티티 밑. 검증기가 «전건 검사»하고 폼이 «그립니다»
+                    그런데 투영의 `_link_containers` 는 삭제됐고 `follow` 는 `vocabulary` 만 봅니다
+                    -> 선언해도 «아무 일도 안 일어납니다» (CODE_MAP §5-H setup_bundle 행)
+② 식별키의 `entity`  `binding_kinds` = [column, constant, entity] 는 «납작한» 목록입니다
+                    `role_binding_kinds()` 가 «역할»은 좁히는데,
+                    ledger_skeleton.json 의 `keys` 가 `of:{use:"binding"}` 로 통째 재사용
+                    -> 식별키 칸이 «안 좁혀진» 목록을 받아 `entity` 가 선택지로 뜹니다
+                    실사용 (출하 샘플): column 64 · constant 13 · entity «0»
+```
+
+## 무엇을 재나 — 세 줄로 «칸마다»
+```
+① 폼이 «그리나»       ledger_skeleton.json 에 그 칸이 있나
+② 검증기가 «받나»     setup_bundle 의 _validate_* 가 통과시키나 (거절이면 그것도 결함입니다)
+③ 🔴 «읽는 쪽»이 있나  선언에 적으면 «무엇이 달라지나». 아무것도 안 달라지면 그 칸이 이 부류입니다
+```
+```
+훑을 자리   스켈레톤의 choice 슬롯 «여섯» (총괄 실측):
+              binding_kinds · predicate_status · object_kind · source_unit
+              · occurred_at_basis · mapper_unit
+           그리고 record 필드 중 «선택»인 것들 — 위 셋으로 각각 재십시오
+⛔ 고치지 마십시오 · ⛔ UI 설계 금지 · ⛔ 이 박스의 행 수 금지 (출하 샘플은 «모양»으로만 인용)
+✅ 산출물은 이 파일에 «절 하나». 마지막에 「셋이 같은 부류인가 다른가」 한 줄
+```
+📌 이건 대표님이 «직접» 화면에서 보신 것에서 나왔습니다 — 폼에 이상한 선택지가 뜬다는 것.
+   그러니 「선언에 없으니 괜찮다」로 닫지 마십시오. **폼이 내놓으면 누군가 고릅니다.**
+
+# 📋 큐
+```
+1  🔴 위 전수 — 「그리는데 읽는 쪽 없는 칸」            ← 지금 이것
+2  BLOCKERS_NOW 유지 (13)
+3  큐 비면 한 줄
+```
