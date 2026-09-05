@@ -316,3 +316,56 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 "error": f"unreadable heartbeat: {type(e).__name__}",
             }
     return out
+
+
+def roster_path():
+    """Where the launcher publishes what it started. Beside the heartbeats, on purpose:
+    the two are read together and a reader that can reach one can reach the other."""
+    return os.path.join(heartbeat_dir(), "_roster.json")
+
+
+def write_roster(names, now=None):
+    """The launcher's declaration of what it started, as {name: started_epoch}.
+
+    🔴 IT IS PUBLISHED, NOT DECLARED A SECOND TIME. The roster already exists - the
+    launcher's `ChildSpec` list names a heartbeat per process - but it lives in a script
+    at the repository root whose module body runs on import, so no server process can read
+    it where it is. This writes what that list already says; it is not a second place to
+    edit.
+
+    🔴 AND THE START TIME IS THE POINT. Without it "no heartbeat yet" and "no heartbeat
+    ever" are one fact, which is what made /health answer 503 on every restart. With it,
+    a name younger than the stale threshold is starting and an older one is down.
+
+    Never raises: a launcher that cannot write this must still start its children.
+    """
+    import time as _time
+
+    now = _time.time() if now is None else now
+    payload = {"written_at": now,
+               "processes": {str(n): now for n in (names or ()) if n}}
+    try:
+        os.makedirs(heartbeat_dir(), exist_ok=True)
+        tmp = roster_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp, roster_path())
+        return True
+    except Exception:                                            # noqa: BLE001
+        return False
+
+
+def read_roster():
+    """{name: started_epoch}. Empty when nothing published one.
+
+    ⚠️ EMPTY IS "NOBODY SAID", NOT "NOTHING RUNS". A reader must not turn an absent roster
+    into "every heartbeat is off-roster" - that would call a correctly running system
+    undeclared. The caller decides; this only reports what was written.
+    """
+    try:
+        with open(roster_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        procs = data.get("processes")
+        return dict(procs) if isinstance(procs, dict) else {}
+    except Exception:                                            # noqa: BLE001
+        return {}

@@ -337,7 +337,23 @@ def main():
                                root_dir, restartable=False,
                                log_file=paths.log_path("desktop_client_stdout.log")))
 
-    supervisor = Supervisor(specs, log=log_launcher)
+    # 🔴 PUBLISH WHAT WE ARE STARTING. `/health` treated every heartbeat file it found as
+    # a worker that must be alive, so anything that ever ran stayed on the roll forever -
+    # this box reads permanently unhealthy because of a graph worker retired weeks ago.
+    # The roster already exists in the ChildSpec list above; it just could not be read
+    # from a server process, because this file's module body runs on import. So it is
+    # published rather than declared again, and it carries the start time - without that,
+    # "no heartbeat yet" and "no heartbeat ever" are the same fact and every restart
+    # answers 503.
+    try:
+        sys.path.insert(0, server_dir)
+        from utils import heartbeat as _hb
+        _hb.write_roster([s.heartbeat for s in specs if getattr(s, "heartbeat", None)])
+    except Exception as _roster_err:                             # noqa: BLE001
+        log_launcher("Could not publish the process roster: %s. /health will fall back to "
+                     "reporting every heartbeat it finds." % _roster_err, level="WARNING")
+
+    supervisor = Supervisor(specs, log=log_launcher)
 
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
