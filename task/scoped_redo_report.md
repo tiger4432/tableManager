@@ -7986,3 +7986,63 @@ tests/test_chain_activity_is_visible.py               76 통과
 
 판정 대기: Ⅱ-2 목적지 · ㉡ 대상 교체 여부 (둘 다 앞 보고에 선택지까지 적어 뒀습니다)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【정정 + 8-a Ⅱ-2】 착지 둘 — `2742446f` · `75dc3b59`
+
+## ① 정정 — 판정이 맞았습니다. 부류가 «한 명» 넓었습니다 (`2742446f`)
+먼저 청하신 대로 «오늘 코드에서 빨간지» 확인했습니다:
+```
+probe   SCHEDULER_RUN_NOW · table_name="dt_map" -> tables 가 ["dt_map"] 인가
+결과    E  assert [] == ['dt_map']      <- «빨갛습니다». 총괄 읽기가 맞습니다
+근거    main.py 온디맨드 발행부가 호출자가 준 «실재하는» 표 이름을 싣습니다
+```
+🔴 제가 「통제 이벤트에는 표가 없다」를 «세 명 다» 참인 것처럼 썼습니다. 셋 중 하나에서 거짓이고,
+   그 하나의 «참인 이름»을 제 코드가 지웠습니다. 「부류로 묶되 구성원은 «센다»」를 어겼습니다.
+```
+바뀐 부류   「통제 이벤트인가」  ->  「그 이름이 «없는 표»인가」
+선언 자리   event_constants.PLACEHOLDER_TABLE_NAMES  (RETROACTIVE_RUN_TABLE 이 첫 구성원)
+            retroactive.RUN_EVENT_TABLE 가 «그것을 읽습니다» — 철자가 하나입니다
+게이트 ③    SCHEDULER_RUN_NOW 은 «뜹니다» (새 단언)
+게이트 ④    선언에 이름을 하나 더하면 그것도 «안 뜹니다» (부류가 살아 있다는 증거)
+=> 앞 커밋의 단언 넷은 «그대로» 두고 둘을 더했습니다. 부류 parametrize 만 뺐습니다
+```
+
+## ② Ⅱ-2 «내놓기» — 목적지 ㉮ 채택 (`75dc3b59`)
+```
+캐리어   _samples   상한 있고 «어떤 합에도» 안 들어갑니다
+⛔ 금지   _refusals 는 안 건드렸습니다. 「내역의 합 = 거절 수」를 «단언»으로 박았습니다
+목적지   백필 실행 결과 —  refused_total · refused_samples · refused_samples_capped
+잘림 게이트  상한 아래면 주소가 거절 수만큼 · 상한 초과면 «둘 다» 보입니다
+            (400 거절 · 20 주소가 「거절 20」으로 읽히는 것을 막습니다. 문장 아니고 «수»)
+```
+
+## 🔴 판정과 «한 군데» 다르게 했습니다 — 재 보고 그렇게 했습니다
+판정: 「버리는 자리를 그만 버리게 — `runtime_v2.py:307` `kept, _report = …` 가 «진짜» 자리」
+```
+실측   그 줄은 `gate.building_molecule` «안»입니다. 거기서 gate.refuse 는 «raise» 합니다
+      -> 그래서 그 줄이 «묶는 쌍»은 언제나 «수락된» 보고입니다
+      -> 그것을 읽어도 «거절에 대해서는 아무것도» 안 나옵니다
+      -> `_report` 를 이름만 바꾸면 안 쓰는 변수가 하나 생길 뿐입니다 (연극입니다)
+그래서  버리는 것은 그대로 두고 «왜 그래도 되는지»를 그 줄에 적었습니다
+       주소는 «거절 경로»로 나갑니다 — screen_compiled_molecule 이
+       report["violation_details"] 를 gate.refuse(addresses=…) 에 넘깁니다
+🔵 그 전제를 시험으로도 박았습니다 (test_the_refusal_path_is_what_carries_it_not_...)
+```
+⚠️ 제 읽기가 틀렸으면 되물러 주십시오 — 근거는 「refuse 가 molecule 열린 동안 raise 한다」
+   한 줄이고, 게이트 docstring 이 같은 말을 이미 적고 있습니다.
+
+## 돌린 시험
+```
+tests/test_a_control_event_names_no_table.py 외 3파일       70 통과
+tests/test_a_refusal_says_which_field_to_fix.py             9 통과 (신규)
+tests/test_envelope_refusals_carry_an_address.py ·
+test_declaration_refusal_keeps_its_address.py ·
+test_backfill_enrichment.py · test_ledger_v2_runtime.py ·
+test_ledger_l1_unit.py                                    128 통과
+```
+
+판정 대기: 🔴 위 「runtime_v2 를 안 고친 것」 — 무르실 거면 근거 한 줄 주십시오
+다음: ㉡ `temporal_text` 계약 (판정 b648a29a 수령 — fold 는 짓지 않고 쌍둥이로 갈아끼웁니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
