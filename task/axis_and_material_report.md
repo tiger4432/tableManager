@@ -1,3 +1,59 @@
+# [디자인 -> 총괄] ✅ **버튼 부품화 — 기하 인라인 «12 → 0»** (2026-09-05)
+
+## 게이트 ② — 전/후. 🔴 총괄이 말씀하신 «인라인 수»를 앞에 둡니다
+```
+                        전    후
+map_editor.html 기하 인라인   10  ->  «0»
+index.html      기하 인라인    2  ->  «0»      (숨은 둘)
+                            ──     ──
+                            12  ->  «0»
+```
+```
+계산값 (전은 8080 실측 · 후는 규칙에서 — 퍼블리시되면 실측으로 바꿔 올립니다)
+버튼                     전                            후
+btn-fill-selected        4px 12px · 12.8px            8px 16px · 13.6px   <- 커집니다
+btn-clear-selected       4px 12px · 12.8px            8px 16px · 13.6px   <- 커집니다
+btn-push-map             6px 20px                     8px 16px
+btn-save-map-spec        6px 14px                     8px 16px
+btn-apply-phys-geom      6px                          8px 16px
+btn-load-map             8px                          8px 16px
+btn-rot ×4               4px                          4px  «무변화» (선언으로 옮겼습니다)
+tx-apply / tx-discard    12.8px                       13.6px  «보이지 않음» (display:none)
+```
+
+## 게이트 ③ — 맥락 선언 «안 줄었습니다». 오히려 «하나 늘었습니다»
+```
+그대로   hover-danger · success-glow · w-full · btn-rot · btn-rot.active · glass-btn-group
+        · .app-header · .glass-modal-footer · .map-editor-toolbar__actions
+늘어난 것  `.btn-rot` 이 이제 «자기 치수를 선언»합니다 (flex:1 · padding:4px · justify-content)
+        -> 인라인에 있던 것이 «사라진 게 아니라» 선언으로 «올라왔습니다»
+```
+🔵 이게 「의도를 흡수로 지우지 않았다」의 증거입니다. 회전 토글은 좁은 한 줄을 넷이 나눠 쓰는
+   컨트롤이라 4px 에 뜻이 있고, 기본형 8px 16px 을 주면 줄을 넘칩니다.
+
+## 게이트 ④ — 🔴 **배포하면 소유자께 «보이는» 변화**
+```
+map_editor 의 버튼 «여섯»이 커지고 여백이 같아집니다:
+   🎨 Fill Selected · 🧹 Clear Selected   가장 크게 바뀝니다 (작고 촘촘하던 둘이 기본 크기로)
+   ⚡ Push · 📐 규격만 저장 · ⚡ 적용 · 📂 Load   여백이 8px 16px 으로 통일
+색은 «하나도» 안 바뀝니다 — accent · success · secondary 그대로입니다
+회전 토글(0°/90°/180°/270°)과 index 는 «눈에 띄는 변화 없음»
+```
+
+## 게이트 ⑤ — 하니스
+```
+계약 7/7 무발산 · 게이트 하니스 전부 초록 · 오늘 기록한 바닥 «전부 유지»
+```
+
+## ⚠️ 남긴 것 «둘» — 이유와 함께
+```
+.app-header 의 radius 6      선택자가 `.glass-input` · `.glass-log-badge` · `.glass-btn-group` 과
+                            «묶여» 있습니다 -> 버튼만 떼려면 그 셋의 모양이 바뀝니다. 별건입니다
+.glass-modal-footer 글꼴 14.4  맥락 규칙이고 인라인이 아닙니다. 원인 목록의 «다음» 것입니다
+```
+📌 둘 다 「인라인」이 아니라 «맥락 규칙»이라, 이번 라운드가 겨냥한 원인 밖입니다. 판정 청합니다.
+
+---
 # [디자인 -> 총괄] 🔴 **정정 — 표류의 «원인»이 제가 적은 것과 다릅니다** (2026-09-05)
 
 부품화를 시작하려고 «무엇이 그 모양을 만드나»를 버튼 단위로 재다가, 게이트 ① 보고의
