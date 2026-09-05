@@ -6,6 +6,7 @@ import {
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
+import { demandState } from './form_demand.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -1549,10 +1550,16 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls) {
 }
 
 /** One node: its own row, and -- when it is a branch that is open -- its children below. */
-function renderSkeletonForm(context, node, path, value, depth = 0, label = null) {
+function renderSkeletonForm(context, node, path, value, depth = 0, label = null,
+                           required = undefined) {
   const shape = context.deref(node);
-  if (!shape) return null;
-  if (shape.kind === 'leaf') return renderTreeLeaf(context, shape, path, value, depth, label);
+  // 🔴 A SHAPE THIS SCREEN CANNOT READ IS A FAULT, AND IT USED TO VANISH. Returning
+  //    null drew nothing and said nothing, so a broken `use` reference and a field that
+  //    simply does not apply looked identical -- and the second is normal. It says so now.
+  if (!shape) return renderTreeLeaf(context, null, path, value, depth, label, required);
+  if (shape.kind === 'leaf') {
+    return renderTreeLeaf(context, shape, path, value, depth, label, required);
+  }
   // 🔴 A BRANCH THE PLAN OFFERS CANDIDATES FOR IS PICKED AT THE BRANCH. See `covering`.
   // An index map becomes ONE row carrying the picker -- its members are the picked values,
   // so drawing them again below would be the same list twice with two ways to edit it.
@@ -1676,8 +1683,10 @@ function renderSkeletonRecord(context, node, path, value, depth, covers = null) 
     // Always one level in: the node drawing these children has its own row now, including
     // the root. While the root drew no row, its fields had to stay at its depth or the whole
     // declaration would have been indented under nothing.
+    // 🔴 `required` TRAVELS WITH THE FIELD. It is what the skeleton knows and the
+    //    plan cannot say on a declaration it has no rows for -- which is every NEW one.
     const drawn = renderSkeletonForm(context, field.node, at, current, depth + 1,
-                                     field.label || field.key);
+                                     field.label || field.key, field.required);
     if (!drawn) continue;
     // An optional field the document holds can be taken back out. The tree row owns the
     // chrome now, so the control rides in the label column beside the name.
@@ -1745,11 +1754,20 @@ function renderSkeletonMap(context, node, path, value, depth) {
 }
 
 /** A leaf row. The control itself is unchanged -- only the chrome around it is new. */
-function renderTreeLeaf(context, node, path, value, depth, label) {
-  const planned = context.planRow(path);
-  const control = planned
-    ? context.renderRow(context.suggest(planned, node, path), node, true)
-    : renderSkeletonLeaf(context, node, path, value);
+function renderTreeLeaf(context, node, path, value, depth, label, required = undefined) {
+  const planned = node ? context.planRow(path) : null;
+  // 🔴 WHO IS SPEAKING FOR THIS BOX. On a declaration the plan has no rows for -- a
+  //    NEW one, which is the only way anybody starts -- every leaf used to draw a bare
+  //    text box with no name for what it wants. The skeleton knew all along; it just was
+  //    never asked once the plan came up empty.
+  const demand = demandState({
+    planned: Boolean(planned), planLoaded: context.planLoaded !== false,
+    hasShape: Boolean(node), required,
+  });
+  const control = demand.source === 'broken' ? null
+    : planned
+      ? context.renderRow(context.suggest(planned, node, path), node, true)
+      : renderSkeletonLeaf(context, node, path, value);
   const box = h('div', 'oe-node');
   box.dataset.path = path;             // the map's jump target; see `renderSkeletonForm`
   let state = null;
@@ -1760,6 +1778,10 @@ function renderTreeLeaf(context, node, path, value, depth, label) {
               fold.open ? planned.tier : fold.reason);
     cls = planned.remaining ? 'is-remaining'
       : planned.refusals && planned.refusals.length ? 'is-refused' : '';
+  } else if (demand.text) {
+    // The plan's own state column, carrying the skeleton's word instead of the plan's.
+    state = h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text);
+    cls = demand.source === 'broken' ? 'is-refused' : '';
   }
   box.append(treeRow(depth, label || path, [], control, state, cls));
   return box;
@@ -2159,6 +2181,10 @@ function renderAuthoring(state) {
       row, state.expandedFields, editableFor(row, node), bare, columnStats),
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
+    // 🔴 「계획이 «아직 안 옴»」 and 「계획이 «비었음»」 are different answers and the
+    //    second is normal -- it is what every NEW declaration looks like. A payload with
+    //    no `fields` array is the first; an empty one is the second.
+    planLoaded: Array.isArray(plan.fields),
     hot: attentionPaths(plan),
     expanded: state.expandedFields || {},
     absolute: (path) => (base ? base + '.' + path : path),
