@@ -353,7 +353,7 @@ def main():
         log_launcher("Could not publish the process roster: %s. /health will fall back to "
                      "reporting every heartbeat it finds." % _roster_err, level="WARNING")
 
-    supervisor = Supervisor(specs, log=log_launcher)
+    supervisor = Supervisor(specs, log=log_launcher)
 
     # Graceful shutdown handler
     def shutdown_all(signum=None, frame=None):
