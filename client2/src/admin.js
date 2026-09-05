@@ -1899,17 +1899,19 @@ function renderEffort(stat) {
       // 응답에 effort 필드 자체가 없다 = 구 서버이거나 계약이 어긋난 것. "교정이 없었다"고
       // 적으면 서버가 말하지 않은 것을 대신 지어내는 것이 된다.
       line.dataset.tone = 'muted';
-      subEl.textContent = '서버가 이 계기를 보고하지 않음 (/dashboard/summary 응답에 effort 없음)';
+      subEl.textContent = '보고 없음 · /dashboard/summary';
     } else if (stat.unavailable_reason) {
       line.dataset.tone = 'danger';
-      subEl.textContent = `집계 실패: ${stat.unavailable_reason}`;
+      subEl.textContent = `집계 실패 · ${stat.unavailable_reason}`;
     } else if (ratio === 0) {
       // 사람이 고친 교정은 있는데 계측된 것이 0건 = 수집 중단. 이 한 줄이 그 감지기다.
+      // 🔴 판정을 «낱말로» 내지 않는다. 두 수를 나란히 두면 운영자가 읽습니다 —
+      //    「끊겼다」는 이 파일이 지어낼 것이 아니고, 큐 화면에서 같은 이유로 안 썼습니다.
       line.dataset.tone = 'danger';
-      subEl.textContent = `⚠ 최근 ${days}일 사람 교정은 있으나 계측 0건 — 수집이 끊겼는지 확인`;
+      subEl.textContent = `⚠ 계측 0건 · 사람 교정 있음 · 최근 ${days}일`;
     } else {
       line.dataset.tone = 'muted';
-      subEl.textContent = `최근 ${days}일간 사람이 고친 교정 없음`;
+      subEl.textContent = `교정 없음 · 최근 ${days}일`;
     }
     return;
   }
