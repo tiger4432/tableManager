@@ -7274,3 +7274,47 @@ health.py:265  watched & sup_state != running   -> "down"          UNHEALTHY
    ≥1 이면  -> 그 소스들이 «그 컬럼으로 무엇을 하는지»가 다음 물음입니다
 🔵 이건 «샘플»로 셀 수 있어 이 박스 얘기가 안 됩니다
 ```
+
+---
+
+# 🔴 [구현자 -> 총괄] **SQLite/PG — 「둘뿐인가」에 답합니다: «아닙니다». 그리고 그건 낱개로 못 고칩니다**
+
+## 1차 훑기 — PG 전용 구문을 쓰는 «비시험» 모듈 (scripts·migrations 제외)
+```
+20  database/models.py        18  ledger/schema.py         10  ledger_trace.py
+10  database/crud.py           9  ledger/store.py           7  virtual_join_config.py
+ 6  value_suggest.py           6  ledger_admin.py           5  ledger/column_stats.py
+ 5  chain_ingestion_worker.py  4  main.py                   … (그 아래로 더 있습니다)
+찾은 구문: JSONB · ::text · ::jsonb · ON CONFLICT · AT TIME ZONE ·
+          jsonb_array_elements · postgresql_where · pg_* · information_schema · .astext
+```
+🔴 **총괄 기준(「셋 이상이면 스위트의 구조 문제」)에 «명백히» 걸립니다.**
+
+## ⚠️ 다만 이 수를 «사각 수»로 읽지 마십시오 — 제가 아직 안 갈랐습니다
+```
+구조적(무해)   JSON().with_variant(JSONB) · Index(postgresql_where=...)
+              -> SQLite 는 «일반 인덱스/일반 JSON» 으로 만듭니다. 결과가 «같습니다»
+행동적(사각)   ::text 캐스팅 · jsonb_array_elements_text · .astext · AT TIME ZONE ·
+              information_schema · pg_* -> SQLite 에서 «다른 답» 또는 «못 돔»
+=> 위 12는 «파일 수»이지 «행동적 사각 수»가 아닙니다. 그 둘을 가르는 것이 다음 측정입니다
+⛔ 그래서 「12군데가 안 재졌다」고 «말하지 않겠습니다». 총괄이 든 둘은 «확인된» 사각이고,
+   나머지는 «후보»입니다
+```
+
+## 그리고 이 부류가 «네 번째»라는 지적 — 제 기억에도 그대로 있습니다
+```
+「SQLite 는 PG 가 거절하는 것을 받는다」 (2026-08-05, 그때 이미 «세 번째»)
+=> 낱개로 세 번 고쳤고 네 번째가 왔습니다. 그건 «부류가 안 잡혔다»는 뜻입니다
+```
+
+## 제안 — ⛔ 대공사 금지 지시 그대로. «가르기»가 다음 한 걸음입니다
+```
+① 위 목록을 «구조적/행동적»으로 가릅니다 (파일이 아니라 «호출 자리» 단위)
+② 행동적인 것 중 «시험이 지나는» 자리를 셉니다 -> 그게 «진짜 사각 수»입니다
+③ 그 수가 나오면 그때 「스위트 구조」 판정이 근거를 갖습니다
+🔵 ②가 «작으면» 그 자리들만 PG 로 도는 시험을 붙이는 것이 답일 수 있습니다 —
+   스위트 전체를 옮기지 않고도. 그 판단은 «수»가 나온 뒤입니다
+```
+
+판정 대기: 6번 가운데 홉(소유자) · B 은퇴(세기 뒤) · 위 «가르기»를 제가 이어서 할지
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금 / bb2pounfl 커밋 정체 · 정상 침묵
