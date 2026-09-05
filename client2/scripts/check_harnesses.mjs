@@ -1136,6 +1136,10 @@ const FLOORS = new Map([
   // the door: a NEW declaration has no plan rows, so the skeleton has to say what the
   // square wants -- and 「plan not arrived」, 「plan empty」 and 「shape unreadable」 are three
   ['form_demand_harness.mjs', 22],
+  // the queue's first fact: waits are two peaks, so only the age of the last pickup
+  // separates 「about to run」 from 「nothing is picking up」 -- and the count is the
+  // server's, because the list is newest-first and truncates invisibly
+  ['pickup_state_harness.mjs', 28],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

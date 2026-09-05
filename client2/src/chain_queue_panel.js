@@ -46,6 +46,7 @@
 /** The status tokens `admin.html`'s `.health-dot` already understands. */
 import { countText } from './absent.js';
 import { countWithAbsence } from './count_with_absence.js';
+import { pickupState } from './pickup_state.js';
 
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
 
@@ -222,6 +223,17 @@ export function queueView(payload, opts = {}) {
   //    worker: one undifferentiated number called 「체인 대기열」 while a scheduler run sat
   //    still. The buckets are carried through 1:1, in the server's order, with no arithmetic.
   const buckets = Array.isArray(payload.waiting_by_owner) ? payload.waiting_by_owner : [];
+  // 🔴 THE PICKER'S OWN STATE, WHICH THIS PAYLOAD HAS BEEN CARRYING UNREAD. The server
+  //    measured why it matters: waits are TWO peaks -- one tick, or unbounded -- so
+  //    「how long is the queue」 cannot separate 「about to run」 from 「nothing is picking
+  //    up」, and the age of the last pickup can. A short queue with an old pickup is the
+  //    state that used to look like an empty one.
+  //
+  // ⚠️ Drawn only where the server sent the bucket. A deployment with no picker has no
+  //    pickup to be unknown about, and 「모름」 on every screen that never had one is noise
+  //    standing where a fact should be.
+  const withQueue = buckets.find((b) => b && b.queue && typeof b.queue === 'object');
+  const pickup = withQueue ? pickupState(withQueue.queue) : null;
   const byOwner = buckets.map(b => Object.freeze({
     owner: String((b && b.owner) == null ? '' : b.owner),
     waiting: countOf(b && b.waiting),
@@ -282,6 +294,8 @@ export function queueView(payload, opts = {}) {
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
+    // 🔴 THE FIRST FACT, NOT THE FOURTH. Null when the server sent no picker bucket.
+    pickup: pickup ? Object.freeze(pickup) : null,
     rows: Object.freeze(rows),
     truncated,
     notMeasured: Object.freeze(notMeasured.map(x => Object.freeze(x))),
@@ -363,6 +377,25 @@ export class ChainQueuePanel {
     if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
     // 🔴 「어느 프로세스인가」는 이 패널이 거절할 때 이미 말합니다. 그 «옆 칸»이 이것입니다.
     if (view.logName) head.appendChild(this._line('chain-queue-headline-log', view.logName));
+    // 🔴 「집는 이가 살아 있나」. Biggest of the extra facts because it is the one that
+    //    separates 「곧 돈다」 from 「아무도 안 집는다」 -- the queue length cannot.
+    // ⛔ No verdict word and no predicted start: the age and the declared interval go out
+    //    side by side with their units, and the reading is the operator's. A threshold
+    //    invented here would be a rule nobody declared.
+    if (view.pickup) {
+      head.appendChild(this._line('chain-queue-headline-pickup', view.pickup.pickup));
+      if (view.pickup.basis) {
+        head.appendChild(this._line('chain-queue-headline-basis', view.pickup.basis));
+      }
+      if (view.pickup.waitingText) {
+        head.appendChild(this._line('chain-queue-headline-ahead', view.pickup.waitingText));
+      }
+      // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
+      for (const orphan of view.pickup.orphaned) {
+        head.appendChild(this._line('chain-queue-headline-orphan',
+                                    `주인 없음 · ${orphan.op} · ${orphan.age}`));
+      }
+    }
     head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
     head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
     this.root.appendChild(head);
