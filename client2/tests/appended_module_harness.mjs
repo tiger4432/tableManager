@@ -10,7 +10,7 @@
 //
 // Run: node client2/tests/appended_module_harness.mjs
 import { importWithAccessors, startsWithOriginal } from './lib/appended_module.mjs';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
@@ -49,6 +49,48 @@ console.log('\n[1] the module is reached without cutting it');
     && ns.__probe.table.length > 0, `saw ${JSON.stringify(ns.__probe.table)}`);
   ok('...and a module-level function too', ns.__probe.hasGeometry === true);
 }
+
+// ═══ ①-bis 2-a — «닿는가»: 잘라내던 46 개와 모듈이 «쓰는» 상태 15 개 ═══════════════
+//
+// 🔴 이것이 잘라쓰기가 하던 일 «전부»입니다. `valid_die_frame_adoption` 은 46 개 함수를
+//    이름으로 잘라 vm 에 넣고, 모듈 최상위 `let` 15 개를 «자기 객체의 속성»으로 흉내 냅니다.
+//    덧붙이기로 그 둘 다 닿으면 그 하니스가 «잘라낼 이유»가 없어집니다.
+//
+// ⚠️ setter 가 필요한 이유: ESM 밖에서는 모듈의 `let` 에 «못 씁니다». 접근자 블록은 모듈
+//    «안»에 있으므로 쓸 수 있고, 그것이 이 다리가 사는 이유입니다.
+// 🔵 그리고 그 접근자는 «사본»에만 있습니다 — 출하되는 모듈은 setter 를 갖지 않습니다.
+const SLICED = (() => {
+  const t = readFileSync(new URL('./valid_die_frame_adoption_harness.mjs', import.meta.url), 'utf8');
+  const blk = /const SYMBOLS = \[([\s\S]*?)\n\];/.exec(t)[1];
+  return [...new Set([...blk.matchAll(/'([A-Za-z_$][\w$]*)'/g)].map((m) => m[1]))];
+})();
+const MODULE_LETS = ['activeOverlayLayers', 'boundingBoxCache', 'cellsSeatedUnder',
+  'currentRotation', 'currentSide', 'gridCells2D', 'gridData', 'isBoxDragging', 'legend',
+  'loadedIdentity', 'overlayLayers', 'selectedTable', 'tableSchema', 'validDie',
+  'validDieResolveSeq'];
+
+console.log('\n[1-bis] the bridge reaches everything the slicing reached');
+{
+  const acc = [
+    'export const __fn = { ' + SLICED.join(', ') + ' };',
+    'export const __get = {', ...MODULE_LETS.map((n) => `  ${n}: () => ${n},`), '};',
+    'export const __set = {', ...MODULE_LETS.map((n) => `  ${n}: (v) => { ${n} = v; },`), '};',
+  ].join('\n');
+  const ns = await importWithAccessors(SRC, acc);
+  // 🔴 목록에서 «셉니다». 46 을 손으로 적으면 그 하니스가 심볼을 하나 더할 때 이 수가 거짓이 됩니다.
+  const reached = Object.values(ns.__fn).filter((v) => typeof v === 'function').length;
+  eq('every sliced symbol is reachable without cutting', reached, SLICED.length);
+  ok('...and there is more than a handful of them', SLICED.length > 40, `saw ${SLICED.length}`);
+  eq('every module-level binding it fakes has a getter',
+    Object.keys(ns.__get).length, MODULE_LETS.length);
+  // 🔴 THE ONE THAT MATTERS: writing a module `let` from outside, which ESM forbids and the
+  //    accessor block permits. Without this the harness could read but not drive.
+  const before = ns.__get.currentRotation();
+  ns.__set.currentRotation(before === 90 ? 180 : 90);
+  ok('a module-level `let` can be driven from the test',
+    ns.__get.currentRotation() !== before);
+}
+
 
 // ═══ ② 🔴 퇴화 방지 — 사본이 원본으로 «시작»하지 않으면 던진다 ═══════════════════════════
 //

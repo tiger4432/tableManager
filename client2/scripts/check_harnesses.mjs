@@ -1149,7 +1149,7 @@ const FLOORS = new Map([
   ['failure_copy_harness.mjs', 6],
   // the bridge that replaces slicing: a copy is the original IN FULL plus accessors, and
   // the byte-prefix assertion is what stops it degenerating back into cutting
-  ['appended_module_harness.mjs', 9],
+  ['appended_module_harness.mjs', 13],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
