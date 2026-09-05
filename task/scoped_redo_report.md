@@ -7673,3 +7673,58 @@ ON CONFLICT 의미   대상 인덱스 매칭 규칙이 다르다
 ```
 그리고 여전히: 마디 2 「클래스가 자기 산출을 말한다」 · 8-a/8-b 의 «자리 목록»
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【6번 가운데 홉】 «비용 한 줄» — 요청하신 것. 올리실 때 붙이십시오
+
+## 🔴 한 줄: **끄면 행이 «빠지는» 게 아니라 그룹이 «거절»됩니다**
+```
+매퍼 둘 다 플래그를 «안 봅니다» — map_metadata_updates 를 «무조건» 냅니다
+   mappers/dt_standard_map_mapper.py:199   return {"map_metadata_updates": …, "batches": …}
+   mappers/core_usage_mapper.py:187        "map_metadata_updates": _usage_metadata_updates(…)
+워커가 플래그 없이 그걸 받으면        chain_ingestion_worker.py:719-721  raise ValueError
+그 예외가 그룹 실패로                 1243 `if success:` 가 거짓 -> 1273 `db.rollback()`
+```
+
+## 그래서 «값»이 이것뿐이 아닙니다 — 되돌아가는 것이 넷
+```
+① 메타데이터           wafer_map_metadata 행 (맵의 «규격» — 좌표계·격자)
+② 그 규칙의 «본 타깃»   dt_map · core_usage_map 행도 «같이» 안 들어갑니다
+③ «형제 규칙»의 쓰기    그룹이 원자적이라 같은 tx 의 다른 규칙 쓰기도 폐기됩니다
+④ 뒤 그룹              영구 실패하면 blocked_targets 가 잡혀 «뒤 그룹까지» 섭니다
+                     ("… held by an earlier failed group", 1235)
+   그리고 그 사이 재시도가 큐를 «곱합니다» — 제가 앞서 잰 그 기제와 같은 것입니다
+```
+📌 즉 「끄기」는 «기능 하나 내리기»가 아니라 «그 체인 전체 세우기»입니다.
+   내리려면 매퍼가 «메타데이터를 안 내도록» 같이 고쳐야 합니다 — 그게 진짜 비용입니다.
+
+## 「어느 행」 — 커밋된 샘플 기준, 규칙 9 중 «셋»이 이 플래그를 답니다
+```
+dt_inventory_to_standard_dt_map   dt_log -> dt_map            <- 6번의 그 가운데 홉
+dt_inventory_to_core_usage_map    dt_log -> core_usage_map
+dt_log_to_core_usage_map          dt_log -> core_usage_map
+행의 모양  {target_table, map_id, grid_metadata}  · 웨이퍼(맵) 하나에 «한 줄»
+```
+⚠️ 샘플은 «모양»의 증거입니다 — 운영 규칙 수의 주장이 아닙니다. 위 ①~④ 는 «코드»의 성질이라
+   운영에도 참입니다.
+
+## 「누가 쓰나」 — `wafer_map_metadata` 를 «언급»하는 산 코드 (씨앗·스크립트·아카이브 제외)
+```
+서버   map_overlay 21 · map_alignment 21 · map_meta_registrar 12(쓰는 쪽) ·
+      chain_ingestion_worker 9(쓰는 쪽) · frame_confirmation 7 · main 3 ·
+      parsers/directory_watcher 3 · product_tables 2 · map_preset_routing 2 ·
+      database/crud 2 · mappers/dt_alignment_metadata_mapper 2 ·
+      + 1씩: transfer_plan · bonding_plan · chain_replay · dt_map_derivation ·
+             notation_norm · config_resolve_report · database/models · database/schemas ·
+             mappers/dt_inventory_metadata_mapper
+클라   map_editor.js «41» · map2/declaration.js 3 · rnd_board/api.js 2 ·
+      timeline.js 1 · map_key.js 1  (map2/authoring.js 도 걸리는데 grep 이 binary 로 봅니다)
+```
+⚠️ 위 수는 «언급 수»이지 «읽는 곳 수»가 아닙니다. 크기의 «자릿수»를 보시라는 뜻입니다.
+🔴 그리고 없을 때의 «이름 붙은 거절»이 이미 서 있습니다 —
+   `map_alignment.EXCLUDE_META_TABLE_UNDECLARED` = 「wafer_map_metadata 테이블 미선언 -
+   서버가 규격을 읽지 못함」. 즉 규격이 없으면 정렬이 «조용히 틀리는» 게 아니라 «거절»합니다.
+
+판정 대기: 없음 (요청받은 비용 한 줄입니다 — 6번은 여전히 소유자 판정)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
