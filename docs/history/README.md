@@ -1,13 +1,29 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **777개** 이력. (거버넌스 규칙 #4)
+> 총 **793개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-05 14:44** — [The Two Line Completion Test Was Written For The First Time And What Stops It Is A Door Not A Joint](./20260905_144400_the_two_line_completion_test_was_written_for_the_first_time_and_what_stops_it_is_a_door_not_a_joint.md)
+- **2026-09-05 14:00** — [A Contract Spelled Twice By Hand And The Mutation That Tests A Seam Is The One That Splits It](./20260905_140000_a_contract_spelled_twice_by_hand_and_the_mutation_that_tests_a_seam_is_the_one_that_splits_it.md)
+- **2026-09-05 13:14** — [Unknown Stopped Being Produced Instead Of Being Handled Better](./20260905_131400_unknown_stopped_being_produced_instead_of_being_handled_better.md)
+- **2026-09-05 12:20** — [Absence Has Five Shapes Across Three Layers And The Fifth Starts An Operator Instead Of Stopping One](./20260905_122000_absence_has_five_shapes_across_three_layers_and_the_fifth_starts_an_operator_instead_of_stopping_one.md)
+- **2026-09-05 11:14** — [The Projection I Named As The Cost Was Never The Cost And The Index Was Measured Not Guessed](./20260905_111400_the_projection_i_named_as_the_cost_was_never_the_cost_and_the_index_was_measured_not_guessed.md)
+- **2026-09-04 23:50** — [Three Chain Rules Were Turned Off And One Declaration Was Reverted Two Minutes Later](./20260904_235000_three_chain_rules_were_turned_off_and_one_declaration_was_reverted_two_minutes_later.md)
+- **2026-09-04 19:00** — [Registering A Table Stopped Being A Trip To The Server Host](./20260904_190000_registering_a_table_stopped_being_a_trip_to_the_server_host.md)
+- **2026-09-04 18:44** — [The Gate Decided A Refusal By Searching The Message Text And Six Refusals Had No Address](./20260904_184400_the_gate_decided_a_refusal_by_searching_the_message_text_and_six_refusals_had_no_address.md)
+- **2026-09-04 17:46** — [A Collector Doing Its Job Took The Monitoring Down And One Bad Row Held The Whole Queue](./20260904_174600_a_collector_doing_its_job_took_the_monitoring_down_and_one_bad_row_held_the_whole_queue.md)
+- **2026-09-04 12:45** — [Nan Is Missing At The Boundary And My Own Filter Would Have Missed Both Real Defects](./20260904_124500_nan_is_missing_at_the_boundary_and_my_own_filter_would_have_missed_both_real_defects.md)
+- **2026-09-04 09:05** — [The Graph Branch Goes Tombstones Included And The Dead Screen Was Still Costing Two Requests A Page](./20260904_090500_the_graph_branch_goes_tombstones_included_and_the_dead_screen_was_still_costing_two_requests_a_page.md)
+- **2026-09-03 19:43** — [The Mapper Author Writes Df To Df And The Framework Decides The Identity](./20260903_194300_the_mapper_author_writes_df_to_df_and_the_framework_decides_the_identity.md)
+- **2026-09-03 18:53** — [Folding Twenty Two Blank Checks Turned 119 Tests Red So Fourteen Landed And Eight Were Named](./20260903_185300_folding_twenty_two_blank_checks_turned_119_tests_red_so_fourteen_landed_and_eight_were_named.md)
+- **2026-09-03 11:35** — [One Broken Join Rule Took Every Other Rules Columns With It](./20260903_113500_one_broken_join_rule_took_every_other_rules_columns_with_it.md)
+- **2026-09-03 08:45** — [The Wall Was Four Walls And The Honest Number Moved Five Times](./20260903_084500_the_wall_was_four_walls_and_the_honest_number_moved_five_times.md)
+- **2026-09-02 22:04** — [The Text Slicing Ban Landed And Had To Be Amended Three Times The Same Night](./20260902_220400_the_text_slicing_ban_landed_and_had_to_be_amended_three_times_the_same_night.md)
 - **2026-09-02 20:34** — [The Count Leaves The First Paint And Null Had To Stop Rendering As Zero](./20260902_203400_the_count_leaves_the_first_paint_and_null_had_to_stop_rendering_as_zero.md)
 - **2026-09-02 19:23** — [The Yield Had To Move To The End Of The Page To Be A Yield At All](./20260902_192300_the_yield_had_to_move_to_the_end_of_the_page_to_be_a_yield_at_all.md)
 - **2026-09-02 12:24** — [Two Panels Become One Shell And A Token Branch Has To Be Measured For Layout Too](./20260902_122400_two_panels_become_one_shell_and_a_token_branch_has_to_be_measured_for_layout_too.md)
@@ -801,4 +817,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-02 by gen_index.py*
+*Last generated: 2026-09-05 by gen_index.py*
