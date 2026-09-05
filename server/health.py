@@ -205,8 +205,20 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         hb_name = cinfo.get("heartbeat")
         if hb_name:
             expected[hb_name] = cinfo
+    # 🔴 THE ROSTER BEFORE THE DISK. Falling straight back to "every heartbeat file that
+    # exists" put anything that ever ran on the roll forever - a graph worker retired weeks
+    # ago, a ledger worker and a watcher are why this box reads permanently unhealthy. The
+    # launcher publishes what it actually started, so that is asked first.
+    #
+    # ⚠️ AN EMPTY ROSTER STILL FALLS THROUGH TO THE DISK. "Nobody published one" is not
+    # "nothing should be running", and a box whose launcher predates this must keep
+    # reporting what it can see rather than going quiet.
+    roster = {}
     if not expected:
-        expected = {name: None for name in heartbeats}
+        from utils import heartbeat as _hb
+        roster = _hb.read_roster()
+        expected = ({name: None for name in roster} if roster
+                    else {name: None for name in heartbeats})
 
     workers = {}
     for hb_name, cinfo in sorted(expected.items()):
@@ -219,6 +231,16 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
 
         sup_state = (cinfo or {}).get("state")
         uptime = (cinfo or {}).get("uptime_seconds")
+        if uptime is None and roster.get(hb_name):
+            # 🔴 THE ONE LINE THAT WAS THE RESTART 503. The "starting" branch below already
+            # exists, with its own grace - it just tests `uptime`, which comes from the
+            # supervisor's child record. With no supervisor there is no cinfo, so uptime is
+            # None, the branch is unreachable, and a process that has simply not written
+            # its first beat yet is reported "missing" and UNHEALTHY. Measured twice on
+            # 2026-09-05: every restart answered 503 for the length of that window.
+            # The roster already publishes when the launcher started each process, which is
+            # exactly the missing material - no new state, no new threshold.
+            uptime = max(0.0, time.time() - float(roster[hb_name]))
 
         # 🔴 IS THIS WORKER BEING WATCHED *NOW*? Having a row in the table is a
         # different question. Once the supervisor stopped updating the file, its
@@ -328,6 +350,21 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                     f"{work.get('what')}")
         entry["stale_after_seconds"] = stale_after
         workers[hb_name] = entry
+
+    # 🔴 OFF ROSTER, NOT DROPPED. Narrowing `expected` to the roster is what stops a
+    # retired worker making the box unhealthy forever - but silently forgetting those
+    # heartbeats would trade a false alarm for a blind spot, and the file is still on
+    # disk. They are named, with their age, and they do not escalate: nothing declares
+    # them, so nothing is promised about them.
+    for hb_name in sorted(heartbeats):
+        if hb_name in workers:
+            continue
+        hb = heartbeats.get(hb_name) or {}
+        workers[hb_name] = {"heartbeat": hb_name, "status": "off_roster",
+                            "detail": "beating, but no launcher roster declares it",
+                            "age_seconds": hb.get("age_seconds"),
+                            "beats": hb.get("beats"),
+                            "stale_after_seconds": stale_after}
 
     # ------------------------------------------------------------------ outbox
     outbox_check = dict(outbox_result or {})
@@ -458,67 +495,4 @@ def probe_outbox(db):
     )).fetchone()
     out["undelivered_oldest_age_seconds"] = (
         round(float(row[0]), 2) if row and row[0] is not None else None)
-    return out
-
-
-#: The four states a declared process can be in. Three of them were obvious and the fourth
-#: is the one that gets forgotten - twice today, in two different lists.
-ROSTER_RUNNING = "running"        # declared, beating
-ROSTER_STARTING = "starting"      # declared, no beat YET - the launcher started it moments ago
-ROSTER_DOWN = "down"              # declared, no beat and long past the point one was due
-ROSTER_OFF_ROSTER = "off_roster"  # beating, but nothing declares it
-
-
-def roster_states(roster, heartbeats, now=None, grace=None):
-    """Declared processes x heartbeats -> one state each. Four, not three.
-
-    🔴 THE FOURTH STATE IS "STARTING", AND IT IS NOT HYPOTHETICAL. A process writes no
-    heartbeat file until its first beat, so between the launcher starting it and that beat
-    there is a window with a declaration and no heartbeat. Calling that "down" makes
-    /health answer 503 every single restart - measured twice on 2026-09-05 - and an
-    instrument that goes red on the most ordinary operation is one nobody reads.
-
-    🔴 AND "OFF ROSTER" IS REPORTED, NOT HIDDEN. A heartbeat nobody declares is how this
-    box came to be permanently unhealthy: graph at 21 days, ledger at 5, watcher at 9,
-    all of them things that ran once and stayed on the roll forever. Dropping them
-    silently would trade a false alarm for a blind spot, which is the worse half.
-
-    ⚠️ THE GRACE IS THE EXISTING THRESHOLD, NOT A NEW ONE. `DEFAULT_STALE_AFTER_SEC` is
-    already this system's answer to "long enough that silence means something", and the
-    undelivered sweep already uses the same shape - a young row is left alone rather than
-    judged. A second number here would be a second thing to tune.
-
-    ⚠️ AND WHEN IT REALLY CANNOT BE TOLD, IT SAYS SO. `starting` means "no beat yet, and
-    not long enough to conclude anything" - not "healthy". A roster entry with no start
-    time cannot be aged, so it stays `starting` rather than being called down on a guess.
-
-    `roster` is {name: started_epoch_or_None}; `heartbeats` is `heartbeat.read_all()`.
-    """
-    import time as _time
-
-    from utils import heartbeat as _hb
-
-    now = _time.time() if now is None else now
-    grace = _hb.DEFAULT_STALE_AFTER_SEC if grace is None else grace
-
-    out = {}
-    for name, started_at in (roster or {}).items():
-        entry = (heartbeats or {}).get(name)
-        if entry is not None and not entry.get("stale"):
-            out[name] = {"state": ROSTER_RUNNING, "age_seconds": entry.get("age_seconds")}
-            continue
-        # No beat, or a stale one. Young enough that no beat is expected yet?
-        since_start = None if started_at is None else max(0.0, now - float(started_at))
-        if entry is None and (since_start is None or since_start <= grace):
-            out[name] = {"state": ROSTER_STARTING, "since_start_seconds": since_start,
-                         "grace_seconds": grace}
-            continue
-        out[name] = {"state": ROSTER_DOWN,
-                     "age_seconds": None if entry is None else entry.get("age_seconds"),
-                     "since_start_seconds": since_start}
-
-    for name in (heartbeats or {}):
-        if name not in (roster or {}):
-            out[name] = {"state": ROSTER_OFF_ROSTER,
-                         "age_seconds": (heartbeats[name] or {}).get("age_seconds")}
     return out
