@@ -268,6 +268,13 @@ const FLOORS = new Map([
   // pixels, the word belongs to zero and not to any other count, and a token this build
   // has never seen survives instead of folding into the six.
   ['count_with_absence_harness.mjs', 27],
+  // PROGRESS CARD. An unknown percentage is not zero: a replay can run with no total at
+  // all, and a 0% bar claims nothing has happened about something that may be nearly
+  // done. The bar is a LENGTH, so with no number it is not drawn and the percent reads
+  // as a dash. Also scores that a finished card does not reopen when a late message
+  // arrives, and counts the one remaining domain word - the overflow summary - so that
+  // a second one turns this red.
+  ['progress_card_harness.mjs', 19],
   ['chain_queue_panel_harness.mjs', 104],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],

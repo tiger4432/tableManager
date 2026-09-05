@@ -15,7 +15,7 @@
 // ③ 🔴 모르는 수를 «0 으로» 그리지 않습니다. 막대의 «폭»은 수가 아니면 0 이 맞지만
 //    (길이를 못 그리니까), «글자로 나가는» 수는 `—` 입니다. 철자는 `absent.js` 하나뿐입니다.
 
-import { localeCountText } from './absent.js';
+import { ABSENT, localeCountText } from './absent.js';
 
 const CONTAINER_ID = 'ingestion-progress-container';
 const OVERFLOW_ID = 'progress-overflow';
@@ -103,24 +103,30 @@ export function showProgressCard(decl) {
   // ② 끝난 카드는 되돌리지 않습니다.
   if (isDone(card)) return card;
 
-  // ③ 막대의 `p` 는 «폭»이라 수가 아니면 0 이 맞습니다. 글자로 나가는 둘은 `—` 입니다.
-  const p = parseInt(decl.progress, 10) || 0;
+  // ③ 🔴 진행률을 «모를 수» 있습니다 — 전체 수가 없는 실행이 실재합니다.
+  //    그때 «0%» 로 그리면 「아직 아무것도 안 됐다」는 «거짓»을 말합니다.
+  //    막대는 «길이»라 모르면 그릴 것이 없어서 «안 그립니다». 백분율 자리는 `—` 입니다.
+  //    (어제 만든 부재 규율 그대로 — 다시 유도하지 않았습니다)
+  const raw = parseInt(decl.progress, 10);
+  const known = Number.isFinite(raw);
+  const p = known ? raw : 0;
   const pr = parseInt(decl.processed, 10);
   const tr = parseInt(decl.total, 10);
 
   card.innerHTML = `
     <div class="progress-header">
       <span class="progress-title">${title}</span>
-      <span class="progress-percent">${p}%</span>
+      <span class="progress-percent">${known ? `${p}%` : ABSENT}</span>
     </div>
     <div class="progress-filename" title="${subtitle}">${subtitle}</div>
-    <div class="progress-bar-container">
+    ${known ? `<div class="progress-bar-container">
       <div class="progress-bar" style="width: ${p}%;"></div>
-    </div>
+    </div>` : ''}
     <div class="progress-stats">${localeCountText(pr)} / ${localeCountText(tr)}${statsSuffix}</div>
   `;
 
-  const complete = p >= 100
+  // 모르는 진행률로는 «완료 판정»도 못 합니다 — 0 을 100 과 견주는 셈이 됩니다.
+  const complete = (known && p >= 100)
     || (Number.isFinite(tr) && tr > 0 && Number.isFinite(pr) && pr >= tr);
   if (complete) {
     card.classList.add('status-auto-dismiss');
