@@ -371,9 +371,29 @@ def _validate_chain_cascade_graph(rules):
     for rule in rules:
         if not rule.get("enabled", True) or not rule.get("allow_chain_trigger"):
             continue
-        src, dst = rule.get("trigger_table"), rule.get("target_table")
-        if src and dst:
-            graph[src].add(dst)
+        src = rule.get("trigger_table")
+        if not src:
+            continue
+        # 🔴 A RULE CAN WRITE TWO TABLES, AND THE GRAPH USED TO SEE ONE. `target_table` is
+        # where the mapper's rows go; a rule that also declares `allow_map_metadata_upsert`
+        # writes MAP METADATA as well, and that write raises its own chain event. So the
+        # edge to the metadata table existed in the running system and not in this graph.
+        #
+        # MEASURED 2026-09-04: rule #3 (dt_inventory -> dt_map) wrote 5 metadata rows per
+        # run under that flag, those woke rule #2 (wafer_map_metadata -> dt_inventory),
+        # and #3 consumes dt_inventory under allow_chain_trigger. That is a cycle, it was
+        # live, and this validator passed it - the lead PM enabled the middle hop, saw the
+        # loop, and had to reverse it by hand. A guard that cannot see one of the two
+        # writes is not guarding the graph, it is guarding half of it.
+        # ⚠️ THE METADATA TABLE COMES FROM THE REGISTRAR, NOT FROM THE RULE. Rule #3 sets
+        # `allow_map_metadata_upsert` and declares no metadata table at all, and
+        # `metadata_target_table` cannot be borrowed for it - in `dt_metadata_to_dt_inventory`
+        # that same key names the mapper's SOURCE. The one place the metadata actually
+        # lands is `map_meta_registrar.META_TABLE`, so that is what the edge points at.
+        for dst in (rule.get("target_table"),
+                    map_meta_registrar.META_TABLE if rule.get("allow_map_metadata_upsert") else None):
+            if dst:
+                graph[src].add(dst)
 
     visiting, visited = set(), set()
     def visit(node, trail):
