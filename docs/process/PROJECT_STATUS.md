@@ -55,7 +55,17 @@
 > -m uvicorn main:app     API 라우트 · 부팅 시각의 Schema Sync
 > run_chain_worker.py     체인 규칙 · 맵퍼 · 아웃박스 소비
 > run_auto_update.py      스케줄러 · 소급 실행 · 크론
-> └ 셋이 «각각» 뜨고 각각 자기 시작 시각을 가집니다. 둘은 WorkingDirectory 가 `server/` 입니다
+> └ 각각 자기 시작 시각을 가집니다. 둘은 WorkingDirectory 가 `server/` 입니다
+> 🔴🔴 **정정 (2026-09-05 실측) — 「셋을 «각각» 띄운다」로 읽으면 «사고»입니다**
+> ```
+> main.py:513 이 uvicorn «안에서» 체인 워커를 «무조건» 띄웁니다 — 플래그도 조건도 없습니다
+>       main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+> 실측 11:52 재기동: uvicorn 로그에 [Chain] Loaded 13 active chain ingestion rules
+> 그리고 run_chain_worker.py 는 «떠 있지 않았습니다». 그런데 체인은 «돌고 있었습니다»
+> ```
+> ✅ 지금 상태 = 체인 루프 «하나» (uvicorn 안). 이게 «안전»합니다
+> 🔴 uvicorn 이 뜬 채로 `run_chain_worker.py` 를 «따로» 띄우면 루프가 «둘»이 됩니다
+>    -> 그것이 구현자 큐 4번이 막으려는 바로 그 상태입니다. **재기동은 uvicorn «하나»로 끝냅니다**
 > 🔴 실측: uvicorn 만 오늘 것이고 워커 둘은 «나흘 전»이었습니다.
 >    그날 착지한 워커 쪽 수정이 하나도 안 돌고 있었고, 포트만 보면 «통과»로 나옵니다
 > 🔴 「이 진입점이 그 파일을 읽나」는 «grep 하지 말고 import 해서» 물으십시오 (2026-09-04 실측)
