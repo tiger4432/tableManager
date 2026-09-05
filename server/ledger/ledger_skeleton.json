@@ -423,7 +423,8 @@
                       "required": true,
                       "node": {
                         "kind": "leaf",
-                        "hint": "free"
+                        "hint": "choice",
+                        "list": "prepare_implementation"
                       }
                     },
                     {
@@ -498,7 +499,8 @@
                       "required": true,
                       "node": {
                         "kind": "leaf",
-                        "hint": "free"
+                        "hint": "choice",
+                        "list": "map_implementation"
                       }
                     },
                     {

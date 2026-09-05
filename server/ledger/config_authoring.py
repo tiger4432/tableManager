@@ -66,6 +66,7 @@ from .implementations import (
     # ranks candidates by exactly that distinction.  A second copy of the word here is
     # the hand-kept list `implementations.py` exists to have deleted.
     _IMPLEMENTATION_PACKAGE,
+    implementation_choices,
     mapper_declarations,
     source_preparer_declarations,
 )
@@ -530,15 +531,28 @@ def versioned_sections() -> frozenset[str]:
     return frozenset(carries)
 
 
-def closed_lists() -> dict[str, Any]:
+def closed_lists(sources: Any = None) -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 
     The screen renders what this returns and owns no copy.  A list literal in the UI is
     a second author for a value whose first author is a validator, and the two diverge in
     silence on the day a declaration is added -- which is the same failure mode as the
     `tables` section that was removed from the ledger config for duplicating the catalog.
+
+    🔴 `sources` IS THE ONE ARGUMENT, AND IT IS OPTIONAL BECAUSE ONE ENTRY HERE IS COUNTED
+    RATHER THAN FIXED.  Every other list above is a property of the CODE and is the same
+    answer in every deployment.  `implementation_choices` is a property of THIS
+    DEPLOYMENT'S DECLARATION -- which implementation its own sources already use most --
+    so it needs the declaration, and a caller that has none (a skeleton conformance check,
+    a screen served while the config is unreadable) gets the options with no default,
+    which is the honest answer rather than a guessed one.
     """
     schema = public_bundle_schema()
+    # ONE call, read here and projected twice below. The strings are what a `choice` leaf
+    # can draw (`closed_list.js` keeps only strings); the block beside them carries the
+    # version and the counted default, which a list of members cannot hold. Both come from
+    # this one value, so there is no second author to diverge from.
+    implementations = implementation_choices(sources)
     return {
         **schema,
         "predicate_status": list(PREDICATE_STATUSES),
@@ -569,6 +583,21 @@ def closed_lists() -> dict[str, Any]:
              "versioned": section in versioned_sections()}
             for kind, section in sorted(AUTHORABLE_SECTIONS.items())
         ],
+        # 🔴 THE NAME THE OPERATOR CANNOT INVENT, FROM THE REGISTRY THAT ENFORCES IT.
+        # Both `implementation_id` squares were free text, so the only way to reach
+        # `declarative-role` was to already know it -- and `untrusted_implementation` at
+        # compile time is where a typo showed up. Two keys rather than one because the
+        # preparer and the mapper registries are two different sets, and offering a
+        # mapper's name in the preparer square is a value that can only refuse.
+        "prepare_implementation": [
+            option["id"] for option in implementations["prepare"]["options"]],
+        "map_implementation": [
+            option["id"] for option in implementations["map"]["options"]],
+        # ⚠️ THE DEFAULT IS A STARTING VALUE AND IS PUBLISHED, NOT APPLIED. Nothing here
+        # writes it into a document: a screen that fills a square the file does not hold
+        # edits somebody's config by drawing it. `counts` rides along so a reader can see
+        # what the default was counted from instead of trusting the word.
+        "implementations": implementations,
         "tiers": [
             {"id": TIER_STRUCTURAL, "label": "구조적 제거"},
             {"id": TIER_DERIVATION, "label": "유도"},

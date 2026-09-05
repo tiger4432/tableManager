@@ -760,8 +760,23 @@ class OntologyExplorerService:
         Served from the constants the VALIDATOR enforces, so the screen never carries a
         copy.  A list literal in the UI is a second author for a value whose first author
         is a refusal, and the two diverge in silence the day a declaration is added.
+
+        🔴 ONE ENTRY IS COUNTED OFF THIS DEPLOYMENT'S OWN SOURCES, so the declaration is
+        read here and handed over -- see `closed_lists`. It is read TOLERANTLY and on
+        purpose: this payload is what the form needs in order to REPAIR a config, so a
+        file that does not parse must still produce the lists. An unreadable file counts
+        as no sources, which publishes the options with no default -- the same answer a
+        blank root gets, and a true one either way. `authoring()` is where the parse error
+        itself is reported, with its position; it is not this route's job to raise it and
+        blank the form that would fix it.
         """
-        return closed_lists()
+        try:
+            document = json.loads(
+                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
+            sources = document.get("sources") if isinstance(document, Mapping) else None
+        except Exception:
+            sources = None
+        return closed_lists(sources)
 
     @staticmethod
     def authoring_prefix(selection: str | None) -> str | None:

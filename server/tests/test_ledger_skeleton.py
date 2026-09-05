@@ -203,14 +203,29 @@ def skeleton_fields() -> dict[str, set[str]]:
 
 # ------------------------------------------------------------------------ the counts
 
+#: 🔴 ACCEPTED BY THE GRAMMAR, DELIBERATELY NOT OFFERED BY THE FORM -- and the list is
+#: CLOSED so the SECOND field to go quiet turns this red instead of joining a habit.
+#: `references` has no reader across five layers, so the form stopped recommending it on
+#: 2026-09-05; the syntax stays, because retiring it would fail every config that carries
+#: one. `test_form_does_not_offer_references.py` holds that other half.
+#: ⚠️ An entry here is a claim that a field is unreachable, not that it is unimportant.
+NOT_OFFERED = ("entities.*.references",)
+
+
+def deliberately_not_offered(path: str) -> bool:
+    return any(path == name or path.startswith(f"{name}.") for name in NOT_OFFERED)
+
+
 def test_skeleton_and_validator_name_the_same_fields():
     validator = validator_fields()
     described = skeleton_fields()
 
     missing = sorted(
-        f"{anchor or '<root>'}.{name}"
+        path
         for anchor, names in validator.items()
-        for name in names - described.get(anchor, set()))
+        for name in names - described.get(anchor, set())
+        if not deliberately_not_offered(
+            path := f"{anchor or '<root>'}.{name}"))
     invented = sorted(
         f"{anchor or '<root>'}.{name}"
         for anchor, names in described.items()
