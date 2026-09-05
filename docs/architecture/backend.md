@@ -1,6 +1,6 @@
 # 🖥️ Backend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (**§2 `GET /tables/{t}/data/count` 신설** + `?defer_total=true` 로 `total` 이 `null` — 둘이 «한 조립»을 쓴다 · **`follow` 가 키를 받는다**(`follow=inspected:x,y`)와 그 «둘째» 422 · 페이싱 소비자 **둘 → 셋**(`chain_replay`) · `grid_rescope_menu.js` → `redo_banner.js` 정정) · 직전 2026-08-31 (**§2 원장 라우트가 «둘»에서 «셋»으로** — `gaps` 신설 · `declaration` 에 `sources` 절 · 소급 등록부 라우트 둘 · 그래프 은퇴 블록에 「은퇴 ≠ 없어짐」 생존자 줄 · **§4.1 페이싱 신설**) · 직전 2026-08-30 (§1.2 · §2 리로드 라우트 행만 — 리로드가 진입점 밖으로 나갔다) · 그 직전 2026-08-29 심야 `290bb1af` 재측정 · 그 직전 2026-08-29 밤 (§2 walk 라우트 행 — 걷기 규칙 셋 · `backbone_hops` · `propagation` 의 `reach`/`reachable`. 직전: 개정 6 — 엔티티·어휘·walk)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (**§2 `/dashboard/summary` 에서 «셋»이 빠졌다** — `table_stats`·`total_rows`·`total_tables`, 배포 시 응답 모양이 바뀐다. `uncounted_tables` 는 `LIMIT 0` 형상 프로브로 «남았다» · **종전 「테이블마다 `count(*)` 도는 무거운 엔드포인트(~1.5s)」는 이제 거짓** · §1.3 워커 상태에 **`unknown`** 신설 + 「상태 파일이 낡으면 그 표는 아무것도 결정하지 않는다」(`watched`) · **명부(roster) 절 신설** — 런처가 공표, ⚠️ `/health` 는 아직 안 읽는다 · `/health` 가 **미전달 스윕 backlog** 를 본다 · §2 소급 실행 행에 **`runner`**) · 직전 2026-09-02 (**§2 `GET /tables/{t}/data/count` 신설** + `?defer_total=true` 로 `total` 이 `null` — 둘이 «한 조립»을 쓴다 · **`follow` 가 키를 받는다**(`follow=inspected:x,y`)와 그 «둘째» 422 · 페이싱 소비자 **둘 → 셋**(`chain_replay`) · `grid_rescope_menu.js` → `redo_banner.js` 정정) · 직전 2026-08-31 (**§2 원장 라우트가 «둘»에서 «셋»으로** — `gaps` 신설 · `declaration` 에 `sources` 절 · 소급 등록부 라우트 둘 · 그래프 은퇴 블록에 「은퇴 ≠ 없어짐」 생존자 줄 · **§4.1 페이싱 신설**) · 직전 2026-08-30 (§1.2 · §2 리로드 라우트 행만 — 리로드가 진입점 밖으로 나갔다) · 그 직전 2026-08-29 심야 `290bb1af` 재측정 · 그 직전 2026-08-29 밤 (§2 walk 라우트 행 — 걷기 규칙 셋 · `backbone_hops` · `propagation` 의 `reach`/`reachable`. 직전: 개정 6 — 엔티티·어휘·walk)
 >
 > 이 문서는 **지금의 백엔드**만 적는다. 라운드별 변경 이력은 `docs/history/`가 정본이고,
 > 여기에 쌓지 않는다.
@@ -152,6 +152,16 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - 쓰기는 워커당 1초 이하로 스로틀되고, 원자적 replace이며, **모든 디스크 오류를 삼킨다**(감시 기능이 새 장애 원인이 되면 안 된다).
 - 🔴 **박동은 진행 신호만 나르지 않는다 — `note=`가 프로세스 경계를 넘는 기존 채널이다** (2026-08-11). 체인 워커는 `beat("chain", note=...)`에 **미선언 컬럼 드롭 집계 다이제스트**를 실어 보낸다(아래 §3의 「드롭은 세고 다시 알린다」). **드롭은 워커에서 일어나는데 「이 배포가 아직 컬럼을 잃고 있나」는 웹서버에서 답해야 하므로**(다른 프로세스다) 로그는 읽을 수 있는 채널이 아니었고, `/health`가 **이미 읽는** 이 파일이 그 자리다 — **두 번째 채널을 만들지 않았다.** 🔴 **건강한 워커에서는 `note=None`이라 깨끗한 배포의 박동 파일은 오늘과 바이트 단위로 같다**(다이제스트는 상위 5건 + `(+N more)`으로 잘라 ~200바이트 파일을 못 부풀린다).
 - 정체 임계 기본 **60초** — 워커별 루프 주기(2~5초) 대비 연속 12회 이상 누락에 해당한다. DB가 아니라 파일에 두는 이유는, DB 장애 때 전 워커가 동시에 정체로 보여 "DB 다운"과 "워커 정지"가 뭉개지기 때문이다.
+- **박동 이름은 «자기가 벤 이름»을 공표한다** (`heartbeat.own_name()` — 첫 `beat()` 가 세운다). 자기가 누구인지 말해야 하는 부품이 그 이름을 **두 번째로 철자하지 않도록** 내놓은 값이고, 오늘 그것을 읽는 곳은 소급 실행의 `runner_identity()` 하나다(아래 §2 실행 등록부).
+
+**명부** (`heartbeat.write_roster` / `read_roster` — `<DATA_ROOT>/config/worker_heartbeats/_roster.json`, 2026-09-05 신설)
+
+런처가 **자기가 띄운 것**을 `{이름: 시작 epoch}` 로 한 번 쓴다(`run_decoupled_app` 의 `ChildSpec` 목록에서 그대로 — **선언을 두 번 하는 것이 아니라 «공표»다**. 그 목록은 저장소 루트의 스크립트 안에 있고 모듈 본문이 import 시점에 돌아서, 서버 프로세스가 «있는 자리에서» 읽을 수 없었다). 못 써도 **절대 raise 하지 않는다** — 명부를 못 쓴다고 자식을 안 띄우면 감시 기능이 장애 원인이 된다.
+
+- 🔴 **시작 시각이 요점이다.** 그것이 없으면 「아직 박동 안 함」과 「영영 박동 안 함」이 **한 사실**이 되고, 그게 재기동마다 503 을 내던 이유다.
+- 🔴 **빈 명부는 「아무도 안 돈다」가 아니라 「아무도 말 안 했다」다.** 읽는 쪽이 그것을 「모든 박동이 명부 밖」으로 접으면 **정상 가동 중인 스택을 미선언으로 부른다.**
+- **판정은 상태 «넷»이다** (`health.roster_states` — `running` · `starting` · `down` · `off_roster`). 넷째(`off_roster` = 박동은 있는데 아무도 선언 안 함)가 잊히는 자리이고, 그것을 **조용히 버리면** 거짓 경보를 사각지대와 맞바꾸는 것이다. 유예는 새 숫자가 아니라 **`DEFAULT_STALE_AFTER_SEC` 를 그대로** 쓴다. 시작 시각이 없는 항목은 나이를 못 재므로 `down` 이 아니라 `starting` 으로 남는다.
+- 🔴 **이 판정은 아직 «강제되는 자리»가 없다 — `/health` 응답에 안 실린다.** `roster_states` 를 부르는 곳은 오늘 `server/tests/test_roster_has_four_states.py` 뿐이고(2026-09-05 실측: `server/` 전체에서 호출 0), `compute_health` 는 여전히 **감시자 자식 목록 → 없으면 디스크의 박동 전수**로 「누가 박동해야 하나」를 정한다. 즉 **명부는 «쓰이고 있고» 조인은 «채점되고 있지만» 라우트는 아직 그것을 안 읽는다.** 배선하는 사람이 읽어야 하는 줄이다.
 
 **판정 조인** (`server/health.py`) — 프로세스 존재는 감시자가, 진행은 워커가 권위를 갖는다.
 
@@ -165,14 +175,17 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | running | 다른 pid의 박동 | `foreign_beat` | 아래 pid 규율 참조 |
 | running | 정체(60초) | `wedged` | **살아 있는데 진행 없음** — pid 검사로는 안 보이는 케이스 |
 | 정보 없음 | 정체(60초) | `stale` | 감시자 상태 파일이 없어(`supervisor: absent`) 프로세스 관점을 못 얻음 |
+| **상태 파일이 낡음** | **없음** | **`unknown`** | **[2026-09-05 신설]** 박동도 없고 감시자도 갱신을 멈췄다 — **지금에 대해 아무것도 말하는 것이 없다** |
 | running | 신선 | `ok` | |
 | running | 신선하지만 **claim한 작업이 300초간 무진행** | `stalled` | |
 
 - ⚠️ **`stalled`는 `wedged`와 다른 검출기다.** 박동은 *루프 하나가 돈다*는 것만 증명한다 — 워처의 3초 재시도 폴러가 계속 박동하는 동안 인제션이 멈춰 있었고 `/health`는 `ok`였다. 그래서 **작업 단위의 진행**을 따로 본다. 임계가 60초가 아니라 **300초**인 것은 의도적이다(박동은 2~5초 루프, 작업 청크는 실측 p95 9.7초·max 12.5초로 균일하지 않다). 더 구체적인 판정(`down`/`wedged`/`missing`)은 **덮어쓰지 않는다** — `ok`일 때만 `stalled`로 강등된다.
-- **박동은 감시자가 띄운 pid의 것만 인정한다.** 같은 역할의 유령 프로세스나 재기동 직전에 죽은 전임자의 박동이 정체를 가리는 사례가 드릴에서 관측됐다(불일치 시 `foreign_beat`).
+- 🔴 **[2026-09-05] 감시자 상태 파일이 «낡으면» 그 표는 아무것도 결정하지 않는다.** 종전에는 「그 워커의 행이 있나」(`cinfo is not None`)로 갈래를 텄는데, 행이 있다는 것과 **지금 감시되고 있다**는 것은 다른 질문이다. 상태 파일이 `stale_after` 를 넘기면 그 안의 행은 **쓰인 시점의 기록**이지 현재에 대한 진술이 아니므로, 이제 `watched = 행이 있다 AND 상태 파일이 안 낡았다` 가 `down`·`wedged`·`foreign_beat` 세 판정을 모두 문지킨다. 상태 파일이 낡았는데 박동이 신선하면 **박동이 이긴다.** 낡았고 박동도 없으면 `unknown` 이다 — 「없다」가 아니라 **「말할 수 있는 것이 없다」**이고, `down`(죽은 표를 현재형으로 되읊음)이나 `missing`(아무도 못 본 프로세스가 «돌고 있다»고 단언)과 구별된다. **이 셋은 다 `unhealthy` 다** — 갈리는 것은 심각도가 아니라 **운영자가 다음에 무엇을 볼 것인가**이다.
+- **박동은 감시자가 띄운 pid의 것만 인정한다.** 같은 역할의 유령 프로세스나 재기동 직전에 죽은 전임자의 박동이 정체를 가리는 사례가 드릴에서 관측됐다(불일치 시 `foreign_beat`). ⚠️ 감시자가 사라진 상태에서는 **비교 대상 pid 자체가 없으므로** 이 불일치는 성립할 수 없는 사실이고, 그래서 위 `watched` 아래에서만 판정한다.
 - **감시자 자신의 상태값은 별개 어휘다** — `absent` · `ok` · `stale` · `correlated_failure` · `failed_children` 5종. 워커 상태값과 섞어 쓰지 말 것(`stale`만 두 어휘에 모두 존재하며 뜻이 다르다).
 - **outbox 적체는 크기가 아니라 나이로 판정한다** — 멈춘 워커를 잡을 만큼 낮은 크기 임계는 큰 배치마다 오경보한다. 가장 오래된 미처리 행이 5분 초과 `degraded` / 15분 초과 `unhealthy`, 건수는 참고값(1만 캡). 두 질의 모두 부분 인덱스 `idx_outbox_unprocessed` 위 O(1).
   - ⚠️ **[2026-08-11] 이 판정의 *근거로 적혀 있던 수*는 낡았다** — 종전 문장은 *「정상적인 10만 행 적재 하나가 outbox 약 11.6만 행을 만든다」*였는데, `528dfcb` 이후 **파일 인제션과 체인 파생 쓰기는 축약**돼 10만 행이 outbox **약 100행**이 된다([event_driven_backend §2.4](./event_driven_backend.md)). 🔴 **판정은 안 바뀐다** — **사람의 맵 Push는 여전히 per-row**이고(축약은 명시적 opt-in) 수천 행짜리 Push가 실재하므로, 크기 임계는 여전히 그 경로에서 오경보한다. **수만 낡았고 규칙은 살아 있다.**
+- 🔴 **[2026-09-05] 미전달 브로드캐스트 스윕도 «나이»로 감시한다** (`checks.outbox.undelivered_oldest_age_seconds`). **안전망이 자기가 지키는 것 «안»에 살아서 밖에서는 멈춘 줄 알 수 없었다** — `sweep_undelivered_broadcasts` 는 체인 워커의 루프 «안»에서 돌므로, 워커가 계속 박동하는 채로 그 스윕만 죽으면 **쓰기는 성공했는데 화면이 영영 못 듣는** 상태가 조용히 쌓인다. 임계는 **위 outbox 적체와 같은 둘**(5분 `degraded` / 15분 `unhealthy`)을 재사용한다 — 같은 질문(「이 큐가 빠지고 있나」)이고 새 숫자는 새 튜닝 대상이다. 재는 것은 **마지막 실행 시각이 아니라 backlog** 다(매번 돌고 매번 실패하는 스윕은 시각을 신선하게 남기고 backlog 만 자란다). 행 집합은 스윕 자신이 쓰는 부분 인덱스 `idx_outbox_undelivered` 와 **같은 정의**라 감시자와 감시 대상이 어긋날 수 없다.
 - 감시자 상태 파일이 없으면 `supervisor: absent`(bare uvicorn·격리 스택) — 디스크의 박동만 참고 판정한다.
 - **`config_backup`은 프로세스가 아니라 *산출물*을 본다** (2026-07-28, C3). 주간 config 스냅샷의 최신 파일이 없으면 `missing`, 10일 초과면 `stale`, 읽지 못하면 `unknown` — 셋 다 **`degraded`(HTTP 200 유지)**다. 백업 부재는 *다음* 사고를 어렵게 만들 뿐 지금 스택이 죽은 것이 아니므로, 503을 내면 멀쩡한 스택을 재기동하라고 모니터에 지시하는 꼴이 된다.
   - 판정 근거가 **디스크의 스냅샷 파일**이지 작업이 스스로 기록한 "마지막 실행" 필드가 아니라는 점이 핵심이다. 3주 전에 조용히 죽은 작업은 자기 성공 기록을 그대로 들고 있다.
@@ -236,7 +249,16 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - **비용 방어 2중화**: ① `RECORRECTION_CACHE` 60초 TTL(대시보드 로드마다 GROUP BY 금지) ② PostgreSQL `SET LOCAL statement_timeout`(`RECORRECTION_TIMEOUT_MS`, 기본 1500ms). 타임아웃 시 `db.rollback()` 후 `rate_pct=null` + 사유 — **지표 한 칸이 비는 것이 대시보드 전체가 느려지는 것보다 낫다.**
 - **`unavailable_reason`은 실제 원인을 지목한다 (2026-07-29 F6 쌍둥이 — 상호작용 점수와 동일 규율).** 타임아웃일 때만 시간 초과 + `idx_audit_user_recorrection`를 말하고, 그 외에는 `집계 실패 — [예외타입] 첫 줄`을 싣는다. 종전 고정 문구("집계 시간 초과 또는 실패 (idx_audit_user_recorrection 인덱스 확인)")는 어떤 실패든 인덱스를 지목해, 컬럼 누락 같은 사고가 인덱스 문제로 읽혔다.
 - 계산은 엔드포인트 **맨 마지막**에 수행한다(타임아웃 rollback이 앞선 집계를 건드리지 않도록).
-- ⚠️ `/dashboard/summary` 자체가 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(2026-07-27 실측 ~1.5s, `bonding_map` 176만 행 단독 0.5s). **주기 폴링에 얹지 말 것** — 클라이언트는 별도 간격(5분)으로 비차단 조회한다.
+- ⚠️ 클라이언트는 이 라우트를 **별도 간격(5분)으로 비차단 조회**한다. 🔴 **[2026-09-05] 종전 이 자리는 「`/dashboard/summary` 자체가 테이블마다 `count(*)`를 도는 무거운 엔드포인트다(~1.5s)」라 적고 있었고, 그것은 이제 거짓이다** — 아래 「응답에서 «셋»이 빠졌다」 참조. 남은 비용은 이 절의 재교정률과 아래 상호작용 점수 두 집계이고, 둘 다 캐시 + `statement_timeout` 으로 이미 상한이 걸려 있다.
+
+#### `/dashboard/summary` 응답에서 «셋»이 빠졌다 — `table_stats` · `total_rows` · `total_tables` (2026-09-05)
+
+🔴 **배포 시 응답 «모양»이 바뀌는 변경이다.** `schemas.DashboardSummaryResponse` 에서 세 필드가 **제거**됐다. 남는 것은 `today_updates` · `system_health` · `recorrection` · `effort` · `uncounted_tables` 다.
+
+- **왜 셋이 함께 갔나**: **루프 «하나»가 셋을 다 만들었다.** 표마다 `count(<t>.row_id)` 와 `max(coalesce(updated_at, created_at))` 를 도는 그 루프가 `table_stats` 를 채웠고, `total_rows` 는 **같은 count 들의 합**, `total_tables` 는 같은 목록의 길이였다. `table_stats` 만 지우면 count 질의가 그대로 남아 얻는 것이 절반도 안 된다 — 그래서 소유자 판정이 「셋은 한 단위」였다.
+- **읽는 쪽이 없었다** — 저장소 전수 기준: `client2/src` 에 `table_stats`·`row_count`·`last_updated`·`total_rows`·`total_tables` 참조 **0**, 출하 번들에도 **0**, 서버에는 스키마 정의와 이 핸들러의 대입뿐. ⚠️ 벽시계 비중(전체 질의의 대부분)은 **이 개발 박스에서 이 핸들러의 자기 문장을 타이밍해 잰 값**이며 운영 수치가 아니다. 운영에 대해서도 참인 것은 **「읽는 소비자가 없다」와 「비용이 선언된 표 수 × 표 크기로 자란다」** 쪽이다.
+- 🔴 **`uncounted_tables` 는 남는다 — 그리고 그것이 이 변경의 미묘한 자리다.** 「이 표는 셀 수 없었다」는 **다른 사실**이고(0 행이 아니다 — [schemas §`UncountedTable`]), 그 목록은 **count 질의의 부산물**이었다: 선언과 물리 형상이 어긋난 표는 count 가 터지면서 발견됐다. 질의를 그냥 지웠으면 그 목록이 **조용히 비었을** 것이고, 「고장난 표가 없다」와 「안 봤다」는 같은 값이 된다. 그래서 같은 컬럼을 **`LIMIT 0` 으로 계속 해석한다** — 데이터베이스가 문장을 «계획»하므로 `UndefinedColumn` 은 전과 똑같이 나고, 표는 스캔되지 않는다.
+- ⚠️ **표 하나의 실패가 라우트 전체를 죽이지 않는다** — 표마다 `try` 이고 실패 시 `db.rollback()` 이 «필수»다(PostgreSQL 은 실패 문장 하나로 트랜잭션 전체를 중단하므로, 롤백이 없으면 나쁜 표 **뒤의 전부**가 같이 실패해 격리가 주석이 된다).
 
 #### 상호작용 점수 (`/dashboard/summary` → `effort`) — **정본 계기** (2026-07-29 신설)
 핵심가치 #1 **최소 공수 교정**의 **정본 계기** — 한 교정 tx를 완료하는 데 사람이 쓴 손의 양(낮을수록 좋음). 정의·집계 결정은 [data_model §2.4](./data_model.md)가 정본, 집계는 `crud.get_effort_stats`, 응답 래핑은 `main._get_effort_stat`.
@@ -269,7 +291,18 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 ### ⚰️ 구 그래프 조회 — **은퇴했습니다** (2026-08-14 `2ec78b9` · 판정 R-2026-08-14-H)
 
-🔴 **아래 표의 라우트는 전부 `410 Gone`을 답합니다.** 2026-08-16에 도달 불가였던 옛 몸통과 helper를 제거했고, 각 주소에는 `main.py::_graph_branch_retired()`를 raise하는 얇은 거절 함수만 남겼습니다. 표는 「무엇이 있었나」의 기록으로만 읽으십시오.
+> 🔴 **[2026-09-05 정정 · `8ffe23d7`] 이 절의 「전부 410 을 답한다」는 «거짓»이 됐습니다 — 묘비까지 삭제됐습니다.** 소유자가 「갈래를 통째로」라 판정해 `GRAPH_BRANCH_RETIRED_REASON` · `GRAPH_BRANCH_SUCCESSOR` · `_graph_branch_retired()` 와 **거절 스텁 일곱이 전부** `main.py` 에서 사라졌고, 그 본문을 읽던 클라 화면도 같은 라운드에 갔습니다([frontend §2](./frontend.md)). 그 어휘를 채점하던 `server/tests/test_graph_branch_retired.py` 도 **같은 커밋에서** 갔습니다(그 코드를 재던 시험이라 남기면 부재로 실패한다).
+>
+> ```
+> 🗄️ 믿지 말 것   410 · Cache-Control: no-store · reason "old_graph_branch_retired"
+>                successor 필드 · GRAPH_BRANCH_SUCCESSOR · test_graph_branch_retired.py
+> ✅ 지금 실제로 무슨 일이 일어나나   /graph/* 는 SPA catch-all 이 «index.html + 200» 으로 답한다
+>                                  /api/graph/sync 만 404 다 (/api 에 자기 가드가 있다)
+> ```
+> 🔴 **그리고 그것이 이 절이 원래 경고하던 바로 그 상태입니다** — 「없는 경로에 200 + HTML」. 다시 부르는 코드가 생기면 `res.ok` 가 참이 되어 HTML 을 JSON 으로 파싱하다 죽고, 사용자는 「알 수 없는 오류」를 봅니다. **오늘 그 코드가 없어서 무해할 뿐입니다.** 같은 사정이 은퇴한 `/api/ledger/*` 주소들에도 그대로 있습니다(아래 원장 라우트 행).
+> ✅ **살아남는 판정** — 아래 「왜 404 가 아니라 410 인가」 · 「본문은 산문이 아니라 구조화 필드」 · 「`no-store` 가 계약의 일부」 셋은 **묘비를 세워야 하는 다음 자리의 지침으로 유효**합니다. 오늘 그것을 구현한 코드가 없을 뿐입니다. 재사용 관점 [PRIMITIVES §6](./PRIMITIVES.md).
+
+⚰️ **아래는 이제 «역사 기록»입니다** (2026-08-16 시점 서술 — 위 정정을 먼저 읽으십시오). 2026-08-16에 도달 불가였던 옛 몸통과 helper를 제거했고, 각 주소에는 `main.py::_graph_branch_retired()`를 raise하는 얇은 거절 함수만 남겼습니다. 표는 「무엇이 있었나」의 기록으로만 읽으십시오.
 
 - **왜 404가 아니라 410인가** — 404는 「그런 것은 없다」이고 410은 「있었고, 의도적으로 은퇴시켰다」입니다. 이 화면을 다시 여는 사람이 알아야 하는 것은 후자입니다. 판정문의 낱말은 "404"였고 이 선택은 그 letter에서 벗어난 **의도된 이탈**입니다.
 - **왜 «지우지» 않는가** — 이 앱의 정적 catch-all(`@app.get("/{file_name:path}")`)이 없는 경로에 **index.html을 200으로** 돌려줍니다. 라우트를 삭제하면 `res.ok`가 참이 되어 클라가 HTML을 JSON으로 파싱하다 죽고, 은퇴가 사용자에게 **「알 수 없는 오류」**로 보입니다. 테스트가 이것을 핀합니다(`server/tests/test_graph_branch_retired.py`).
@@ -277,11 +310,12 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - 🔴 **`Cache-Control: no-store`가 계약의 일부입니다** — **410은 HTTP 기본값이 캐시 가능**이라, 붙이지 않으면 거절이 거절보다 오래 삽니다(실측: 문구를 고쳤는데 화면이 옛 본문을 계속 보여 줬습니다). 나중에 이 갈래를 되살려도 브라우저가 한동안 410을 답하게 됩니다.
 - **저장소는 DROP됐습니다** — `graph_nodes`(590,885행 324 MB)·`graph_edges`(1,034,472행 517 MB)·`graph_sync_state`, 합계 약 841 MB. 실행 도구 `server/migrations/drop_graph_storage.py`(dry-run 기본 · 소유자 플래그 없는 쓰기는 거절), 역방향 `drop_graph_storage_reverse.sql`은 🔴 **모양만 복원할 뿐 갈래를 되살리지 않습니다**(되돌려야 할 코드 변경 다섯이 그 docstring에 있습니다).
 - 🔴 **워커를 멈추는 것만으로는 부족했고, 그것이 이 라운드의 발견입니다.** DROP 뒤에 표를 **다시 만들** 경로가 셋 있었고 각각 변이 주입으로 증명됐습니다: ① 부팅 `create_all`이 셋 전부 재생성 ② 핫리로드가 `ensure_graph_tables` 호출 ③ **스케줄러가 워커보다 오래 살아남아** 고아 스윕이 첫 동작으로 `ensure_graph_tables`를 부름. 닫지 않았다면 재기동이 빈 표 셋을 돌려주고 뷰어가 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — **은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 이 프로젝트가 하루를 들여 없앤 바로 그 실패입니다.
-- **후계** — 온톨로지 탐색은 `GET /api/ledger/subgraph`(walk) **하나**입니다. 🔴 **[2026-08-28] 종전 이 문장이 함께 대던 「유형 수준 구조 `GET /api/ledger/structure`」는 «없는 라우트»입니다.** 유형 층을 보고 싶으면 `GET /api/ledger/declaration`(선언 카탈로그 — 원장을 한 줄도 안 읽는다)이 그 자리에 있습니다. `graph.html`은 딥링크로 열리되 **묘비**만 띄웁니다. 메인 그리드의 「🕸️ 추적」 버튼은 판정 라우트가 거절하므로 **클라 변경 0줄로 스스로 숨습니다.**
+- **후계** — 온톨로지 탐색은 `GET /api/ledger/subgraph`(walk) **하나**입니다. 🔴 **[2026-08-28] 종전 이 문장이 함께 대던 「유형 수준 구조 `GET /api/ledger/structure`」는 «없는 라우트»입니다.** 유형 층을 보고 싶으면 `GET /api/ledger/declaration`(선언 카탈로그 — 원장을 한 줄도 안 읽는다)이 그 자리에 있습니다. 🔴 **[2026-09-04 `45d8b66f`] 종전 이 자리의 「`graph.html`은 딥링크로 열리되 **묘비**만 띄웁니다. 메인 그리드의 「🕸️ 추적」 버튼은 판정 라우트가 거절하므로 클라 변경 0줄로 스스로 숨습니다」는 «거짓»이 됐습니다** — 소유자가 안내 페이지 지시를 거두어 `graph.html`·`trace.html` 과 그 모듈 넷이 **트리에서 제거**됐고, 추적 버튼도 함께 갔습니다. ⚠️ **그리고 「스스로 숨는다」가 무해하지 않았습니다**: 그 진입점은 조회가 실패하면 자기를 숨겼으므로, 화면이 죽은 채로 **페이지 로드마다 410 을 받는 요청 둘**을 계속 내고 있었고 아무에게도 안 보였습니다.
 - ⚰️ **`ontology_mapping.json` 샘플·로더·materializer·worker는 제거했습니다.** 과거 예시만 `docs/_archive/retired_graph_sync/`에 보관합니다.
 - 🔴 **[2026-08-31] 「은퇴했다」와 「없어졌다」를 가르십시오 — 배관 정리가 «진행 중»입니다.**
   ```
-  🗄️ 믿지 말 것   라우트 일곱(전부 410) · 워커 프로세스 · 실행 파일 · 저장소 표 셋
+  🗄️ 믿지 말 것   라우트 일곱 · 워커 프로세스 · 실행 파일 · 저장소 표 셋
+                 (⚠️ 2026-09-05 갱신: 「전부 410」도 믿지 마십시오 — 묘비까지 삭제됐습니다)
   ✅ 아직 있는 것   «이미 있는» 표들의 부기 컬럼 셋 — is_graph_synced · needs_graph_rollback · graph_synced_at
                   그중 둘의 인덱스(ix_<표>_is_graph_synced · ix_<표>_needs_graph_rollback)
                   -> 지금 «어디» 있나: 오늘 도는 DB 의 표들, 그리고 /tables/{t}/schema 응답
@@ -295,7 +329,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
   ```
   ⚠️ **그러니 「그래프 컬럼이 없어졌다」로 쓰지 마십시오** — 1단이 바꾸는 것은 «앞으로 만들어질 표»뿐입니다. 클라는 **2026-08-31부터 그 셋을 그리지 않고**(컬럼 정의를 만들기 «전에» 거른다 → 컬럼 토글 목록에서도 사라진다), `push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 **일부러 남겨** 두었습니다 — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 «지워도 되는 데이터 컬럼»으로 셉니다.
 
-| ~~경로~~ (전부 410) | ~~용도~~ (역사 기록) |
+| ~~경로~~ (⚠️ **더는 410 이 아니다 — 위 정정 참조**) | ~~용도~~ (역사 기록) |
 |---|---|
 | `GET /graph/stats` | label/edge_type 카운트 + `last_sync`(graph_sync_state) — 뷰어 첫 화면 |
 | `GET /graph/neighbors` | k-hop(1\|2) 이웃 서브그래프. **노드 limit 하드캡 500, 초과 시 `truncated`**, (from,type)/(to,type) 인덱스 경로만(C-7) |
@@ -309,7 +343,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|
 | `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor, config_backup}}`. DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
 | `POST /tables/{t}/upload` | 클라이언트 파일을 `raws/`로 업로드 |
-| ⚰️ `POST /api/graph/sync` | **[2026-08-14] 410** — 프록시 대상 워커가 스택에 없습니다(위 은퇴 블록). 이것이 일곱 번째 거절 지점입니다 |
+| ⚰️ ~~`POST /api/graph/sync`~~ | 🔴 **[2026-09-05 정정] 종전 「410 — 이것이 일곱 번째 거절 지점입니다」는 «거짓»입니다.** 거절 스텁이 `8ffe23d7` 에서 삭제돼 이 주소는 **404** 를 답합니다(`/api` 에 자기 가드가 있어 SPA catch-all 로 안 떨어지는 «유일한» 주소입니다 — `/graph/*` 여섯은 index.html + 200 입니다). 위 은퇴 블록의 정정을 보십시오 |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |
 | `GET /admin/file-ingestion/active` | **[P1]** 진행 중 인제션 스냅샷(웹서버 인메모리 `ingestion_activity.py` 레지스트리 — TTL 퇴거 포함). admin File 탭 진행 섹션·재기동 경고의 데이터원 |
 | `GET /api/bonding-plan/core-summary` | **[본딩 M1]** 코어(lot,slot) 역할별 집계(`bonding_plan.py` — 역할 바인딩 config, `remaining = total − defect − eds_fail − used`, align은 서버 단독 변환). `region` rects 파라미터, 잘못된 region 400 |
@@ -336,7 +370,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
   - 🔴 **읽기 실패는 상태코드가 아니라 헤더로 분류한다** (`1dc761b`). **401/403이 우리 게이트라는 보장은 상태코드에 없다** — 그 판정은 **`WWW-Authenticate: X-Admin-Token`**이고, 앞단 프록시는 같은 포트에 자기 `Basic realm=…`으로 답한다(2026-07-30 loopback 인시던트가 그 모양이었고 오후 하나를 썼다). 클라 판정자는 `admin.js`의 `isGateRejection` **하나**이고 뷰 모델은 그것을 **인자로 받는다**(사본 금지).
   - 🔴 **그래서 그 헤더는 CORS `expose_headers`에 있어야 한다** (`cde3398`). 없으면 브라우저가 **교차 출처에서 그 헤더를 지우므로**, vite dev(`:5173`)에서 **진짜 게이트 거부가 「앞단이 답했다」로 확신 있게 잘못 표시된다.** 같은 출처(`:8080`/`:8081` 직접 서빙)에서는 원래 읽혔다 — **이 결함은 dev 오리진에서만 보인다.** 값은 헤더의 **이름**뿐이라 비밀이 없다. 목록의 정본은 `server/main.py`의 `CORSMiddleware` 한 줄이다. 🔴 **INV-F9-8 — `detail`은 운영자가 읽는 최종 문자열이다**(`f9289f6`): Python repr(`['slot']을(를)`)도 리터럴 마크다운(`**…**`)도 실어 보내지 않는다. 클라가 자기 문장을 짓는 것이 금지돼 있으므로 **하류에 고칠 자리가 없다** — 운영자에게 되비추는 값은 그가 편집한 파일의 문법인 **JSON으로** 적는다(JSON `true`는 `'true'`가 아니다). 사유는 닫힌 어휘 4종이고 **전부 런타임 열화 어휘 재사용**(`not_declared`·`mapping_unavailable`·`scope_unresolved`·`not_reached` — `main.CHIP_TRACE_*`의 부분집합임을 계약 테스트가 검사). `settings`는 실효값 + **그 값이 온 파일**을 말한다(파일 부재로 기본값인 경우 포함). **DB 질의 0건**(config만) — 그래서 요청 경로에 앉을 수 있다. 구현 `server/config_resolve_report.py`(`_RESOLVERS`에 도메인당 등록기 1개 — 🔴 **[2026-08-11 정정] 종전 「`enrichment` · `virtual_join` · `notation`」은 낡았다 — 지금은 그 셋에 `binding`이 더해져 넷이고, 여기도 수를 다시 적지 않는다.** `binding`(`68db020`)은 **키마다** `declared`/`inherited`/`absent`/`refused`를 답하고, **응답 `domains` 배열에서 반드시 마지막**이다(`contracts/config_resolve_report`가 `domains[0]`을 `enrichment`로 고정하기 때문). 나머지 config가 같은 틀로 붙는다), 계약 벡터 `contracts/config_resolve_report/` |
 | `GET /admin/retroactive/operations` | **[2026-08-31 재실측 — 종전 「넷」은 낡았다]** 등재된 연산은 `chain_replay`(R1) · `withdraw`(R2) · `enrichment_backfill` · `enrichment_confirm` · **`ledger_backfill`** · **`ledger_rescope`** 다. **수를 여기 적지 않는다 — 정본은 `server/retroactive.py` 의 `OPERATIONS` 이고 이 응답이 그것을 그대로 낸다.** 각 항목이 싣는 것: `op`·`label`·`what_is_missing`·`params`·`cli`·`cli_only`·`deletes`·`restartable`·**`cancellable`**·`reads_as`·`commit_granularity`. 🔴 **파라미터가 «닫힌 집합»이면 `choices` 를 함께 든다**(`{value, label, when}` — 값만이 아니라 「언제 쓰나」까지). 없거나 못 풀면 **`[]` 가 아니라 `null`** 이고 그 뜻은 「자유 입력」이다 — 빈 배열로 접으면 화면이 「고를 수 있는 것이 없다」를 그린다. 오늘 그것을 선언한 파라미터는 **`pace` 이고, 그것을 든 연산이 «둘»이다** — `ledger_backfill` 과 🆕 `chain_replay`(2026-09-02). 선택지는 요청 시점에 `server/pacing.json` 에서 만들어진다(§4 페이싱). ⚠️ **여기에도 수를 핀으로 박지 마라** — 정본은 같은 `OPERATIONS` 의 `params` 이고, 이 문장은 「어느 파라미터가 닫혀 있나」의 예시다. ⚰️ `graph_orphans`는 구 그래프 코드와 함께 제거됐다 |
-| **`GET /admin/retroactive/runs`** · **🔒 `POST /admin/retroactive/runs/{run_id}/cancel`** | **[2026-08-31 신설 — 실행 등록부]** 실행 하나가 표 `retroactive_runs` 에 **행 하나**를 갖는다(`run_id`·`op`·`params`·`state`·`processed_rows`/`total_rows`·`queued_at`/`started_at`/`last_progress_at`/`finished_at`). 상태 어휘는 **닫혀 있다**: `queued`·`running`·`done`·`cancel_requested`·`cancelled`·`failed`. 🔴 **취소는 «협조적»이다** — 라우트는 프로세스를 죽이지 않고 `state` 를 `cancel_requested` 로 «세우기»만 하고, 도는 쪽이 **배치/페이지 사이에서** 그것을 묻고 스스로 멈춘다. 🔴 **플래그는 도는 쪽이 «자기 세션»에서 읽는다** — 연산의 트랜잭션 스냅숏 안에서 읽으면 시작 시점 값에 갇혀 영원히 「멈추라고 안 했다」가 된다. 🔴 **`cancel_requested` 와 `cancelled` 는 다른 상태다**(부탁했다 ≠ 멈췄다). 🔴 **이미 끝난 실행의 취소는 «거절»한다** — 「그 일은 커밋됐고 이것으로 되돌릴 수 없다」고 이름 대며 답한다. ⚠️ **`total_rows` 의 `NULL` 은 0 이 아니라 «모름»이다.** 어느 연산이 취소를 «받는지»는 `cancellable` 선언이 정하고(§ 위 행), 화면은 거짓이면 버튼을 그리지 않는다 — 재사용 관점 [PRIMITIVES §6](./PRIMITIVES.md) |
+| **`GET /admin/retroactive/runs`** · **🔒 `POST /admin/retroactive/runs/{run_id}/cancel`** | **[2026-08-31 신설 — 실행 등록부]** 실행 하나가 표 `retroactive_runs` 에 **행 하나**를 갖는다(`run_id`·`op`·`params`·`state`·`processed_rows`/`total_rows`·`queued_at`/`started_at`/`last_progress_at`/`finished_at`). 상태 어휘는 **닫혀 있다**: `queued`·`running`·`done`·`cancel_requested`·`cancelled`·`failed`. 🔴 **취소는 «협조적»이다** — 라우트는 프로세스를 죽이지 않고 `state` 를 `cancel_requested` 로 «세우기»만 하고, 도는 쪽이 **배치/페이지 사이에서** 그것을 묻고 스스로 멈춘다. 🔴 **플래그는 도는 쪽이 «자기 세션»에서 읽는다** — 연산의 트랜잭션 스냅숏 안에서 읽으면 시작 시점 값에 갇혀 영원히 「멈추라고 안 했다」가 된다. 🔴 **`cancel_requested` 와 `cancelled` 는 다른 상태다**(부탁했다 ≠ 멈췄다). 🔴 **이미 끝난 실행의 취소는 «거절»한다** — 「그 일은 커밋됐고 이것으로 되돌릴 수 없다」고 이름 대며 답한다. ⚠️ **`total_rows` 의 `NULL` 은 0 이 아니라 «모름»이다.** 어느 연산이 취소를 «받는지»는 `cancellable` 선언이 정하고(§ 위 행), 화면은 거짓이면 버튼을 그리지 않는다 — 재사용 관점 [PRIMITIVES §6](./PRIMITIVES.md).<br>🔴 **[2026-09-05] 행이 «누가 돌리고 있나»를 든다 — `runner`.** 값은 `박동이름/호스트/pid`(`retroactive.runner_identity()`)이고, **실행이 «시작될 때» 읽는다** — import 시점에 읽으면 fork 되거나 제자리 재실행된 프로세스가 «처음 import 한 쪽»의 신원을 찍고, 물려받을 수 있는 신원은 없는 것보다 나쁘다(구체적으로 «보이기» 때문이다). 앞머리가 박동 이름인 것이 핵심이다 — `host/pid` 만으로는 **다른 기계에서 찍힌 행을 여기서 영원히 판정할 수 없어** 전부 「모름」이 됐는데, 이름은 박동을 읽을 수 있는 곳이면 어디서나 답해진다. 판정 어휘는 `owned`/`orphaned`/`unknown` 셋이고 **`NULL` = 이 컬럼 이전에 쓰인 행 = `unknown` 이지 「아무도 아님」이 아니다.**<br>⛔ **아직 아무것도 이 값으로 «판정하지» 않는다 — 자동 회수(reaping)는 «의도적으로» 안 만들었다.** 신원 없이 회수하면 「영영 안 끝난다」가 「둘이 동시에 돈다」로 바뀌고 뒤쪽이 더 나쁘다. 이 컬럼은 그 판단을 **가능하게 하는 재료**이지 판단이 아니다. 오늘 이 값을 읽는 곳은 **표시**뿐이다: `GET /admin/chain/queue` 의 `blocked_by.runner`(게이트를 쥔 실행) 와 `queue.orphaned[]`(도는 중이라 «주장»하는데 이 호스트의 누구도 안 쥔 행) |
 | `GET /admin/retroactive/{op}/count` | **[2026-07-31 `fbc1053`]** 「이 연산은 몇 건에 영향을 주는가」 — 쓰기 없는 계기(구조적 `rollback`). 🔴 **모든 카운트가 `count_kind`를 함께 답한다**: `exact`(값싼 질의가 전부를 답함) · `sample`(`scanned`+`truncated` 동반, **테이블이 아니라 표본에 대한 수**) · `upper_bound`(`why_upper_bound`가 부족분을 **말로** 말한다). 다섯 중 셋은 「몇 건인가」가 곧 드라이런 자체(테이블 전수 + 매퍼)라 요청 경로에 정확한 수가 앉을 수 없고, 그래서 **어느 것도 정확하다고 주장하지 않는다**(F9 auto-confirm 드라이런의 자세를 일반화). 예산 파라미터는 `scan_limit`(기본 200 / 최대 2000, `retroactive.DEFAULT_SCAN_LIMIT`·`MAX_SCAN_LIMIT`)이고 **어떤 CLI의 `--limit`도 아니다** — 다섯 CLI에서 그 철자는 서로 다른 세 가지를 뜻하고 고아 스윕에는 아예 없다. 행을 실제로 훑지 않은 연산은 응답 `scan_limit`이 **`null`**이다(안 한 표본을 했다고 말하지 않는다). 실행이 막힐 상태면 `blocked_reason`(예: `auto_confirm_off`). 모르는 파라미터 이름은 400 — **오타가 조용히 무시되면 「0건」이 정답처럼 보인다** |
 | **🔒[STRICT]** `POST /admin/retroactive/{op}/run` | **[2026-07-31 `fbc1053`]** 소급 실행을 **큐에 넣고 즉시 반환**한다(`{"params": {...}}`). `POST /admin/auto-update/run-now`와 **같은 형태** — `DatabaseOutbox` 한 줄(`RETROACTIVE_RUN`, `table_name="__retroactive__"`) + `NOTIFY outbox_event`이고, 실제 실행은 auto-update 스케줄러가 **자기 스레드**에서 한다(§4 · [AUTO_UPDATE_GUIDE §4-quater](../guide/AUTO_UPDATE_GUIDE.md)). 동기 핸들러는 브라우저가 포기할 때까지 요청과 웹서버 워커를 붙잡는다. 🔴 **파라미터 판정은 `retroactive.validate` 한 곳뿐**이라 라우트와 워커가 「무엇이 유효한 요청인가」에 다른 답을 낼 수 없다. R2의 두 거절(`user` 소스 거부 · 사람이 핀한 셀 건너뛰기)은 `chain_replay.withdraw_source` **안**에 있고 이 경로는 그 함수로 들어가므로 **어드민을 거쳐도 우회되지 않는다**(라우트의 재확인은 400을 즉시 주려는 편의이지 안전장치가 아니다 — 테스트가 라우트 가드를 monkeypatch로 지우고 워커를 몰아 그 사실을 고정한다) |
 | `GET /admin/enrichment/auto-confirm/dry-run?rule=&limit=` | **[F9 2026-07-30]** 「이 규칙은 사람 없이 몇 건을 확정 가능한가」. `enrichment_analysis.run_auto_confirm_sweep(apply=False)`를 그대로 노출(이미 읽기 전용 + 구조적 rollback — 새 계기를 만들지 않았다). 🔴 **`apply`는 이 경로에 존재하지 않는다**(쓰기는 CLI 전용). `ignore_knob=True`로 **꺼진 규칙도 측정**한다 — sweep 자신이 그 플래그와 apply의 결합을 거부한다. 큐 walk이므로 표본(`limit` 기본 200 / 최대 2000)이고 `truncated`로 그 사실을 말한다. 선언이 없으면 500이 아니라 `refused_reason: "not_declared"` — 위 라우트와 **같은 어휘**다 |
@@ -354,7 +388,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | 🔒 `POST /admin/ontology-explorer/test-run` `{source_id}` | **[Ledger V2 작성 모드 · 2026-08-21 `fd3dda05`]** 선언된 소스로 **진짜 배치 하나**를 돌리고 **아무것도 쓰지 않는다** — 원자 0, `ledger_cursor` 미이동, 게이트 한 걸음 앞에서 멈춘다. 첫 페이지(`backfill.PREVIEW_FETCH_ROWS`=200)를 읽고 snapshot이 이미 지목한 trusted 구현만 실행해 `rows_read`·`molecules`·`incomplete`·`atoms`·**문장별 원자 수**를 답한다. 🔴 **존재 이유는 「두 번째 판정자를 짓지 않는 것」이다** — 런타임은 85가지로, 작성 화면은 57가지로 거절하는데 **둘은 코드 이름을 하나도 공유하지 않아** 폼이 초록인 선언이 백필에서 죽었다(`lot_event`가 하루 다섯 번). 런타임 거절을 폼 검증으로 옮겨 적으면 판정자가 하나 더 생기므로(`main.py`가 금지) **진짜를 한 번 돌린다.** 거절은 **그대로** 돌려주고, path가 폼의 칸을 가리킬 때만 `form_path`를 채운다(지어낸 칸보다 자리 없는 문장이 낫다). 0행은 `status: "empty"`로 **통과가 아니고**, 컴파일 안 된 선언은 「없는 소스」가 아니라 **안 읽힌 사유**를 답한다. POST인 것은 상태 변경이 아니라 **페이지 읽기 1회 + 컴파일 1회**가 드는 비싼 읽기이기 때문이며 인증은 `/columns`와 같은 일반 admin token이다. |
 | **🔒[STRICT]** `POST /admin/ontology-explorer/drafts` · `PUT /admin/ontology-explorer/drafts/{id}` · `POST .../{id}/{review,revise,activate}` · `DELETE .../{id}` | config root가 소유한 단일 `ledger_config.json` 선언만 target identity로 초안화한다. 저장은 active 무변경 + 동일 compiler preview, review는 exact revision 불변, revise만 새 editing revision을 만든다. 활성화는 base/hash CAS·백업·atomic replace·reload 뒤 선언된 persistent consumer 전부의 새 hash 수렴을 요구하고 empty/mismatch를 rollback한다. stale와 conflict는 분리하며 임의 경로/pointer/catalog/physical join 쓰기는 금지한다. |
 | `WS /ws` | `ConnectionManager` 브로드캐스트 허브 |
-| `GET /`, `/admin`, `/map-editor`, `/enrichment`, `/{file:path}` | SPA 서빙 + fallback(`graph.html`/`trace.html`/**`ledger.html`**(2026-08-13 `d9b98ab`)은 catch-all 경유) |
+| `GET /`, `/admin`, `/map-editor`, `/enrichment`, `/{file:path}` | SPA 서빙 + fallback. ⚰️ **[2026-09-05 정정] 종전 이 칸이 catch-all 경유로 대던 `graph.html`·`trace.html`·`ledger.html` 은 «셋 다 client2 에 없다»** — 앞의 둘은 `45d8b66f` 에서 제거됐고 `ledger.html` 은 그보다 먼저 사라졌다. 오늘 빌드되는 페이지는 `vite.config.js` 의 `rollupOptions.input` 이 정본이다([frontend §2](./frontend.md)) |
 
 🔴 **[2026-08-16 · Source Contract 가산 확장]** `GET /admin/ledger/sources`의
 `kinds[].translator`는 `{profile, implementation, molecule, operator}`를 싣는다. 따라서 kind

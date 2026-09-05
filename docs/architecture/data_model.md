@@ -1,6 +1,6 @@
 # 🗄️ Data Model & Layering
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (§1.1 에 `RetroactiveRun` · **§1.1-quater 신설**(소급 실행 등록부·협조적 취소) · §1.2 그래프 부기 컬럼 셋의 «현재 상태» 명시 — 「없어졌다」가 아니라 「안 그린다」) · 직전 2026-08-27 (v1 어휘 은퇴 완료)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (§1.1 · §1.1-quater 에 **`RetroactiveRun.runner`** — 「지금 누가 돌리나」. 🔴 **표에는 마이그레이션이 없지만 이 «컬럼»에는 있다**(`create_all` 은 있는 표에 컬럼을 안 더한다 — 기존 DB 는 `add_retroactive_runs_runner.sql` 을 한 번). ⛔ 자동 회수는 «의도적으로» 없다) · 직전 2026-08-31 (§1.1 에 `RetroactiveRun` · **§1.1-quater 신설**(소급 실행 등록부·협조적 취소) · §1.2 그래프 부기 컬럼 셋의 «현재 상태» 명시 — 「없어졌다」가 아니라 「안 그린다」) · 직전 2026-08-27 (v1 어휘 은퇴 완료)
 >
 > 이 문서는 **지금의 데이터 모델**만 적는다. 라운드별 변경 이력은 `docs/history/`가 정본이고 여기에 쌓지 않는다.
 >
@@ -27,7 +27,7 @@
 | ~~`GraphEdge`~~ | ~~`graph_edges`~~ | — | ⚰️ **DROP**(1,034,472행 · 517 MB) |
 | ~~`GraphSyncState`~~ | ~~`graph_sync_state`~~ | — | ⚰️ **DROP** — materializer의 outbox 커서였고, 그 소비자가 스택에서 빠졌습니다 |
 | `InteractionEffortLog` | `interaction_effort_logs` | `transaction_id`(unique), `session_id`, `key_count`, `mouse_count`, `nav_count`, `nav_preserved_count`, `timestamp` | **V1 정본 계기** — tx당 1행, **원시 카운트만**(점수는 조회 시점 계산). 상세 §2.4 |
-| **`RetroactiveRun`** | `retroactive_runs` | `run_id`(PK, str32), `op`(idx), `params`(JSON), `requested_by`, `state`(idx, 기본 `queued`), `processed_rows`, `total_rows`, `result`(JSON), `error`, `queued_at`/`started_at`/`last_progress_at`/`finished_at`. 인덱스 `idx_retroactive_runs_recent(state, queued_at)` | **[2026-08-31 신설] 소급 실행 등록부** — 실행 하나당 1행. 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다.** 🔴 **취소는 프로세스를 죽이지 않고 이 행의 `state` 를 세운다** — 상세 §1.1-quater |
+| **`RetroactiveRun`** | `retroactive_runs` | `run_id`(PK, str32), `op`(idx), `params`(JSON), `requested_by`, `state`(idx, 기본 `queued`), `processed_rows`, `total_rows`, **`runner`(str160, nullable — 2026-09-05 신설)**, `result`(JSON), `error`, `queued_at`/`started_at`/`last_progress_at`/`finished_at`. 인덱스 `idx_retroactive_runs_recent(state, queued_at)` | **[2026-08-31 신설] 소급 실행 등록부** — 실행 하나당 1행. 🔴 **표 자체는 마이그레이션 파일이 없다. `create_all` 이 만든다.** ⚠️ **그러나 `runner` 컬럼에는 있다** — `create_all` 은 **이미 있는 표에 컬럼을 더하지 않으므로**, 기존 DB(운영 포함)는 `server/migrations/add_retroactive_runs_runner.sql` 을 한 번 돌려야 한다. 🔴 **취소는 프로세스를 죽이지 않고 이 행의 `state` 를 세운다** — 상세 §1.1-quater |
 
 ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 종전 이 자리는 「그래프 3테이블은 `ensure_graph_tables(engine)`로 생성되며 `refresh_dynamic_models`에 동승합니다」였고, 그 문장이 «부활 경로»였습니다.** 표를 DROP한 뒤 **다시 만들** 경로가 셋 있었고 각각 변이 주입으로 증명됐습니다 — ① 부팅 `create_all` ② 핫리로드가 타는 이 `ensure_graph_tables` 동승 ③ **스케줄러가 워커보다 오래 살아남아** 고아 스윕이 첫 동작으로 같은 함수를 부름. 셋 다 봉인됐습니다(`models.py`의 호출 지점에 묘비 주석이 있습니다). 🔴 **[2026-08-18] 그리고 그 봉인만으로는 부족했던 것이 드러났습니다** — 클래스를 남긴 채 부팅에서 «제외»하는 방식이라, 부팅 스키마 점검이 세 표를 매 재기동 **결손으로 신고**했습니다(「SCHEMA DRIFT: missing 3 thing(s)」). 은퇴가 고장처럼 보이는 것은 이 절이 없애려던 바로 그 종류의 거짓말입니다. 이제 **클래스와 `ensure_graph_tables`가 함께 제거**돼 요구 자체가 없습니다. 🔴 **닫지 않았다면 재기동이 «빈 표 셋»을 돌려주고 화면이 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 그 둘은 운영자가 할 일이 정반대입니다. 되돌리는 SQL(`server/migrations/drop_graph_storage_reverse.sql`)은 **모양만 복원할 뿐 갈래를 되살리지 않습니다.** 후계는 [원장 §1.1-ter](#) 및 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
 
@@ -85,7 +85,13 @@
 - 🔴 **끝난 실행의 취소는 «거절»합니다** — 「그 일은 이미 커밋됐고 이것으로 되돌릴 수 없다」고 이름 대며 답합니다. 200 을 돌려주면 운영자는 되돌린 줄 압니다.
 - ⚠️ **`total_rows` 의 `NULL` 은 0 이 아니라 «모름»입니다.** 0 으로 접으면 진행률이 「끝났다」로 그려집니다.
 - 🔴 **어느 연산이 취소를 «받는지»는 등록부가 연산마다 선언합니다**(`cancellable`) — 정하는 것은 취향이 아니라 **커밋 입자**입니다. 한 번에 커밋하는 연산에 훅을 달면 «시작 직후에만» 듣는 취소가 되고 그건 없는 것보다 나쁩니다. 오늘 `false` 인 둘과 그 사유는 [BACKFILL_GUIDE §7](../guide/BACKFILL_GUIDE.md), 라우트 계약은 [backend §2](./backend.md), 재사용 관점은 [PRIMITIVES §6](./PRIMITIVES.md).
-- ⚠️ **마이그레이션 파일이 없습니다** — `create_all` 이 만듭니다. 기존 DB 는 다음 기동에 생깁니다.
+- 🔴 **[2026-09-05] 행이 «누가 돌리고 있나»를 듭니다 — `runner`.** 값은 `박동이름/호스트/pid` 이고 **실행이 시작될 때** 찍힙니다(import 시점이 아닙니다 — fork 나 제자리 재실행이 남의 신원을 물려받으면, 없는 것보다 나쁩니다. 구체적으로 «보이기» 때문입니다).
+  - **왜 필요했나**: 실행 행은 연산의 트랜잭션과 «따로» 쓰이므로 **프로세스보다 오래 삽니다.** 도중에 죽은 스케줄러는 `state='running'` 을 영원히 남기고 `finished_at` 은 끝내 안 찍히며, 그 행이 쥔 게이트는 다시 안 열립니다. 행에 아무것도 «누구»를 말하지 않으면 **「죽었다」와 「느리다」가 같은 행**입니다.
+  - **왜 앞머리가 박동 이름인가**: `호스트/pid` 만으로는 **다른 기계에서 찍힌 행을 여기서 판정할 수 없어** 영원히 「모름」이 됩니다. 박동 이름은 박동 파일을 읽을 수 있는 곳이면 어디서나 답해지므로 그 「모름」이 **처리되는 것이 아니라 사라집니다.** 이름의 정본은 `heartbeat.own_name()` 이고 — **두 번째 철자를 만들지 않으려고** 그것을 읽습니다.
+  - **판정 어휘 셋**: `owned`(그 이름의 박동이 신선하고 pid 도 같다) · `orphaned`(박동이 없거나 낡음, 또는 같은 이름의 «다른» pid 가 박동 중 = 시작한 프로세스는 갔다) · `unknown`(이 컬럼 이전에 쓰인 행, 또는 아직 한 번도 안 벤 프로세스가 찍은 행). ⚠️ **`NULL` 은 「아무도 아님」이 아니라 「모름」입니다.**
+  - ⛔ **아무것도 이 값으로 «판정하지» 않습니다 — 자동 회수는 «의도적으로» 안 만들었습니다.** 신원 없이 회수하면 「영영 안 끝난다」가 「둘이 동시에 돈다」로 바뀌고 뒤쪽이 더 나쁩니다. 이 컬럼은 그 판단의 **재료**이지 판단이 아닙니다. 오늘의 소비는 표시뿐입니다(`GET /admin/chain/queue` 의 `blocked_by.runner` · `queue.orphaned[]`).
+- ⚠️ **표에는 마이그레이션 파일이 없습니다** — `create_all` 이 만듭니다. 기존 DB 는 다음 기동에 생깁니다.
+- 🔴 **다만 `runner` «컬럼»은 다르고, 이것은 「돌리면 좋은」 마이그레이션이 아닙니다.** `create_all` 은 **이미 있는 표에 컬럼을 더하지 않으므로** 기존 DB(운영 포함)는 `server/migrations/add_retroactive_runs_runner.sql` 을 **한 번** 돌려야 합니다. 안 돌리면 **`retroactive_runs` 가 통째로 죽습니다** — `models.RetroactiveRun` 이 그 컬럼을 선언하므로 SQLAlchemy 가 이 표의 **모든 엔티티 SELECT 에 이름을 싣고**(`runs()`·`in_flight()`·`queue_view()` 가 전부 엔티티 질의입니다), `_mark_run` 의 UPDATE 도 실패합니다. **그리고 `_mark_run` 은 「절대 치명적이지 않게」 설계돼 모든 예외를 삼키고 `logger.debug` 로만 남깁니다** — 즉 연산은 «돌면서» 행은 `queued` 에 머물고 `started_at` 이 끝내 안 찍힙니다. 배포 가이드의 `TABLE-DOWN` 계급이 정확히 이것입니다([DEPLOY_SETUP §6](../guide/DEPLOY_SETUP.md)). 마이그레이션 자체는 추가만 하고 멱등이라 잠금은 카탈로그 갱신뿐입니다.
 
 ### 1.2-bis 결함 관측(finding) 스키마 — 분모가 자기 행을 갖는다 (2026-08-13 `346aa88` · **2026-08-14 두 번째 종류**)
 

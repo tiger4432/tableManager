@@ -1,6 +1,6 @@
 # 🖼️ Frontend Architecture
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (**§3.2 신설 — 「몇 건인가」가 세 상태로**(개수가 늦게 온다) · §3.1 의 **`grid_rescope_menu.js` → `redo_banner.js`** 정정(우클릭 메뉴 → 헤더 배너) · `dropdown.js` 의 닫힘 한 벌) · 직전 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (**§3.3 신설 — 부재가 «일급»이 됐다**(`absent.js`·`count_with_absence.js`·`closed_list.js`) · §3 표에 **어드민 패널 여섯 · 진행 카드 · 부재 어휘** 행 · 🔴 **「묘비」 행이 거짓이 되어 묘비 주석으로 교체** — `graph_viewer.js`·`trace*.js` 넷과 `graph.html`·`trace.html` 은 **트리에서 제거**됐다(`45d8b66f`), 안내 페이지도 남기지 않는다) · 직전 2026-09-02 (**§3.2 신설 — 「몇 건인가」가 세 상태로**(개수가 늦게 온다) · §3.1 의 **`grid_rescope_menu.js` → `redo_banner.js`** 정정(우클릭 메뉴 → 헤더 배너) · `dropdown.js` 의 닫힘 한 벌) · 직전 2026-08-31 (**§3.1 신설** — 그리드가 원장을 아는 세 자리 + 은퇴한 그래프 컬럼 셋이 그리드에서 빠진 사실 · §6 overview 탭에 소급 블록·실행 목록·취소) · 직전 2026-08-29 (개정 6 — §4 의 `collect` 서술 정정) | **Owner:** Client
 > **Source-of-truth:** `client2/src/*` · `client2/vite.config.js` · `client/desktop_wrapper.py`
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 라우트 계약: [backend §2](./backend.md)
 
@@ -67,11 +67,11 @@
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 | ✅ |
 | `map_editor2.html` | `src/map_editor2.js` + `src/map2/*` | 맵 정렬 화면. 레거시 에디터를 **대체하지 않고 «옆에»** 섭니다 | ✅ |
 | `rnd-board.html` | `src/rnd_board/*` | **R&D 진단 보드** — 조립식 부품의 격자 (§4) | ⛔ 링크 없음 · 직접 연다 |
-| `graph.html` | `src/graph_viewer.js` | 데이터 소스가 은퇴한 페이지. **묘비**를 그립니다 | ⛔ |
-| `trace.html` | `src/trace.js` | 같은 은퇴. 서버가 410 을 냅니다 | ⛔ |
 
-🔴 **묘비는 상태코드가 아니라 `detail.reason` 을 봅니다** — 410 은 다른 사정으로도 오고,
-그때 「은퇴했다」고 쓰면 거짓말이 됩니다.
+⚠️ **온톨로지 선언 작성 화면은 «자기 페이지가 없다»** — `admin.html` 안의 탭이다(`admin.js` 가 `ontology_explorer.js` 를 `import` 한다). 위 표에서 그 이름을 찾지 마십시오.
+
+⚰️ **[2026-09-04 `45d8b66f`] 종전 이 표에 있던 `graph.html`(`graph_viewer.js`) · `trace.html`(`trace.js`) 두 줄은 «거짓»이 됐다 — 두 페이지와 그 vite 진입이 트리에서 제거됐다.** 종전 서술은 「데이터 소스가 은퇴한 페이지가 **묘비**를 그린다」였고, 그 판정을 **소유자가 거두었다**(「그냥 저거 없애. 관련도」). 지금은 그 경로가 SPA catch-all 로 떨어진다.
+> 🔴 **함께 사라진 판정 한 줄**: 종전 이 자리에 「**묘비는 상태코드가 아니라 `detail.reason` 을 본다** — 410 은 다른 사정으로도 오고, 그때 「은퇴했다」고 쓰면 거짓말이 된다」가 있었다. **그 생각은 살아 있다** — 은퇴를 «화면이» 말해야 하는 다음 자리에서 다시 쓴다. 지금 그것을 구현한 코드가 없을 뿐이다.
 
 ```bash
 cd client2
@@ -134,10 +134,15 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 | 맵(레거시) | `map_editor.js` (11,060) · `map_key.js` · `split_registry_row.js` | 웨이퍼 맵 캔버스·좌표·오버레이 |
 | 맵2 | `map_editor2.js` + `src/map2/*` (18 파일 · 10,437) | 정렬 화면. 층 경계로 읽습니다 — `view_model` 은 DOM 없이 채점됩니다 |
 | 계획 | `transfer_plan.js` (1,875) · `doe_bands.js` (753) | DOE·STACK 구간과 자재 |
-| 온톨로지 작성 | `ontology_explorer*.js` (합 ~3,600) · `ontology_path.js` · `ontology_skeleton.js` | 선언 초안 → 검토 → 활성화 |
+| 온톨로지 작성 | `ontology_explorer*.js` · `ontology_path.js` · `ontology_skeleton.js` · 🆕 **`closed_list.js`** · 🆕 `uniqueness.js` | 선언 초안 → 검토 → 활성화. 닫힌 목록을 «값으로 그릴지 고르개로 그릴지»는 아래 §3.3 |
+| **부재 어휘** | 🆕 **`absent.js`** · 🆕 **`count_with_absence.js`** | **「안 왔다」와 「0이다」를 다른 글자로 적는 한 곳.** 아래 §3.3 |
 | R&D 보드 | `src/rnd_board/*` (19 파일 · 6,183) | §4 |
-| 어드민 | `admin.js` (3,773) · 🆕 `retroactive_view.js` | 파이프라인 생애주기. 소급 블록의 폼·실행 목록 조립은 뷰 모듈이 갖는다(파라미터의 `choices` → 선택지 매핑 포함) |
-| 묘비 | `graph_viewer.js` (1,274) · `trace.js` · `trace_core.js` · `trace_launch.js` | 은퇴한 데이터 소스를 «은퇴했다고» 말하는 화면 |
+| 어드민 | `admin.js` · 🆕 `retroactive_view.js` · 🆕 **`chain_queue_panel.js`** · 🆕 **`ledger_sources_panel.js`** · 🆕 `raw_registry_panel.js` · 🆕 `table_config_panel.js` · 🆕 `chain_rule_panel.js` · 🆕 `join_verification.js` | 파이프라인 생애주기. 소급 블록의 폼·실행 목록 조립은 뷰 모듈이 갖는다(파라미터의 `choices` → 선택지 매핑 포함). **패널은 클래스이고 자기 mount 와 deps 를 받는다** — 한 화면에 둘을 놓아도 서로를 안 건드린다 |
+| 진행 표시 | 🆕 **`progress_card.js`** | 「무언가가 도는 동안 진행을 보여 준다」의 **근원 템플릿**(파일 인제션 · 리플레이 «둘»이 쓴다). 도메인 낱말이 인자에 «없다» |
+
+⚰️ **[2026-09-04 `45d8b66f`] 종전 이 표의 마지막 줄은 「묘비 — `graph_viewer.js` · `trace.js` · `trace_core.js` · `trace_launch.js` = 은퇴한 데이터 소스를 «은퇴했다고» 말하는 화면」이었고, 그 넷은 이제 «트리에 없다».** 소유자가 안내 페이지를 남기라던 앞선 지시를 거두었습니다 — 「그냥 저거 없애. 관련도」. `graph.html`·`trace.html` 과 그 vite 진입 둘도 함께 갔습니다.
+> 🔴 **죽은 코드 정리가 아니라 «요청»이 걸려 있었습니다.** `trace_launch` 가 그리드 로드마다 «그리고» 데이터 fetch 마다 `/graph/mapping-summary` 를 쐈고, 그 라우트는 은퇴 이후 계속 **410** 이었습니다 — 화면은 이미 죽어 있는데 페이지 로드당 거절된 요청 둘을 계속 내고 있었고, 진입점이 «조회 실패 시 자기를 숨겼기» 때문에 아무에게도 안 보였습니다.
+> ⚠️ **`effort_meter` 의 `ROUTES.GRAPH`·`ROUTES.TRACE` 는 «남았습니다»** — `ROUTE_IDS` 는 «서빙되는 허용목록»을 검증하지 살아 있는 이동을 census 하지 않으므로, id 를 빼면 그 이름을 대는 항목이 «미지»로 보고되며 계속 세어집니다. 지우는 것과 남기는 것을 «세어서» 갈랐지 grep 으로 쓸지 않았습니다.
 
 ### 3.1 그리드가 원장을 아는 세 자리 (2026-08-31 신설)
 
@@ -161,6 +166,24 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 - 🔴 **표지를 «글자»와 «클래스» 둘로 단다.** truthiness 로 판정하면 **진짜 `0` 이 「세는 중」으로** 표시되고 운영자는 영원히 안 오는 수를 기다린다. 판정은 `typeof === 'number' && Number.isFinite`.
 - 🔴 **조용히 깨지는 것은 글자가 아니라 «페이지 컨트롤»이다.** `Math.ceil(null / limit) || 1` 은 **1** 이라 안 센 표가 「1쪽뿐」이 되고 `currentPage >= totalPages` 가 참이 되어 **다음 버튼이 꺼진다** — 그리고 회색은 「마지막 쪽」과 똑같이 생겼다. 그래서 판정이 `pagingView(total, skip, limit)` 라는 **수만 받는 함수**로 나가 있고(DOM 없이 채점된다), 모르는 동안 `totalPages` 는 `null` · 다음은 **켜 둔다**.
 - 채점 `client2/tests/match_count_harness.mjs`. 재사용 관점 [PRIMITIVES §7](./PRIMITIVES.md).
+
+### 3.3 부재가 «일급»이 됐다 — 「모른다」·「없다」·「고를 것이 없다」 (2026-09-05 신설)
+
+세 자리에서 같은 병이 났다: **화면이 «못 받은 것»을 «0» 으로 그린다.** JS 에서 이 부류가 조용한 것이 원인이다 — `Number(null) === 0` · `Number('') === 0` · `Number('   ') === 0`(전부 유한하다!) · `Number(undefined)` 는 `NaN` 이고 `NaN` 은 **모든 비교가 거짓** · `undefined.toLocaleString()` 은 **던진다**. 그래서 `Number.isFinite(Number(v))` «하나»로는 부족하고, `null`·`undefined`·빈 문자열을 **먼저** 걸러야 한다.
+
+- **철자는 «한 곳»이다** (`absent.js`) — 결측은 `—` 이고 그 글자는 여기서만 정해진다. `isCount(v)` · `countText(v)`(좁은 배지용, 천단위 없음) · `localeCountText(v)`(문장 안). 🔴 **0 으로 대체하지 않는다** — 「없음」은 값이 아니고 0 은 값이다. 오늘 소비자 일곱(`admin.js`·`timeline.js`·`chain_queue_panel`·`ledger_sources_panel`·`raw_registry_panel`·`progress_card`·`count_with_absence`).
+- **「0」 옆의 «한 낱말»** (`count_with_absence.js`) — 「0 인데 일감이 있다」가 네 탭에서 «따로» 생기면서 화면마다 자기 문장을 썼다. 🔴 **부재 낱말은 «0 일 때만» 뜻이 있다** — 0 이 아닌 수 옆에 붙이면 그 수를 부정한다. 🔴 **만든 것이 아니라 «이은» 것이다**: 서버가 부재 어휘를 **닫힌 목록 여섯**으로 이미 값으로 내고 있었고(`retroactive.ABSENCE_WORDS` — `not_yet`·`not_exhaustive`·`cannot_point`·`truly_none`·`already_missing`·`not_applicable`) 읽는 화면이 0 이었다. ⚠️ **모르는 토큰은 «그대로» 내보낸다** — 아는 여섯으로 접으면 새 낱말이 조용히 사라진다.
+- **닫힌 목록은 «멤버 수»가 컨트롤을 정한다** (`closed_list.js`) — 🔴 **「고를 게 없는 고르개」와 「고장난 고르개」가 화면에서 «똑같이» 보인다.** 판별식은 하나다: **이 컨트롤이 지금 값 말고 «다른 것»을 고를 수 있나.** 없으면 컨트롤이 아니라 값이다.
+  ```
+  목록이 아직 안 옴   control='unread'  「목록 · 모름」   <- 「멤버 0」이 아니다
+  멤버 0             control='none'    「선택지 없음」   <- 「모름」이 아니다
+  제시 항목이 하나뿐  control='value'   값만 그린다      <- 고르개가 아니다
+  둘 이상           control='picker'  <select>
+  ```
+  - 🔴 **「멤버 하나 = 항상 값」이 «아니다».** 문서가 그 하나를 **들고 있을 때만** 값이다 — 칸이 비어 있으면 그 하나를 써 넣는 **유일한 길**이 이 고르개라, 값으로 바꾸면 그 칸이 영영 못 채워진다(그때 항목은 «빈칸 · 그 하나» 둘이라 고장나 보이지도 않는다).
+  - ⚠️ **현재 값은 «언제나» 항목에 남는다.** 목록에 없는 값을 조용히 첫 항목으로 바꾸면 **그리는 것만으로 남의 파일을 고쳐 쓰는 것**이 된다. 목록이 없을 때도 값은 «사유와 함께» 남는다 — 사라지면 화면이 그 값을 지운 것처럼 읽힌다.
+  - 🔴 **낱개 수정이 아니라 «규칙»이라 목록이 «어디서 오든» 이 부품이 판단한다.** 오늘 부르는 곳이 둘이다 — 계획 행의 `candidates`(서버가 그 행에 실어 준 것)와 스켈레톤 잎의 `schema[node.list]`(서버가 `closed_lists()` 로 공표한 것). **한쪽만 고치면 남은 쪽이 「이미 고쳤다」로 읽힌다.**
+- 재사용 관점 [PRIMITIVES §7](./PRIMITIVES.md).
 
 ⚰️ **[2026-08-31] 그리드에서 «빠진» 것 — 은퇴한 그래프 컬럼 셋** (`is_graph_synced`·`needs_graph_rollback`·`graph_synced_at`). 컬럼 정의를 만들기 **전에** 거르므로 **컬럼 토글 목록에서도 사라진다**(그 목록이 같은 집합이다). 🔴 **서버는 여전히 셋을 보낸다** — 없어진 것은 «그리는 자리»이지 컬럼이 아니다([backend §2 은퇴 블록](./backend.md)). 🔴 **`push_columns.js` 의 `PUSH_SYSTEM_COLUMNS` 에는 «일부러» 남겼다** — 그쪽은 표시 목록이 아니라 **서버의 시스템 컬럼 분류의 사본**이라, 빼면 맵 Push 게이트가 그 셋을 「지워도 되는 데이터 컬럼」으로 센다.
 

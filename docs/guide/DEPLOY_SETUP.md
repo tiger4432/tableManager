@@ -1,6 +1,6 @@
 # 🚀 운영 배포 — 직접 세팅해야 하는 것들 (요약)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-15 (8-septies를 셋업 정본으로 이관)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (**§6 에 마이그레이션 둘** — **8-octies** `retroactive_runs.runner`(🔴 **`TABLE-DOWN` 계급이고 «조용히» 죽는다** — 행 갱신이 예외를 삼켜 「소급이 안 도는 것 같다」로만 나타난다) · **8-nonies** `audit_logs.timestamp` BRIN(안 돌려도 안 깨진다, `CONCURRENTLY` 라 트랜잭션 블록 밖에서). **§6.1 의 「워커 상태값은 8종」이 거짓이 되어 수를 지웠다** + `unknown`·미전달 스윕 항목 추가) · 직전 2026-08-15 (8-septies를 셋업 정본으로 이관)
 >
 > **이번 라운드 (2026-08-15 · 🧱 원장·온톨로지 셋업 통폐합 — 소유자 지시)**: **8-septies가 명령을 들고 있던 자리에서 «가리키는» 자리가 됐다.** 같은 절차가 **네 곳**(이 파일 · `LEDGER_GUIDE §4.1·§4.2` · `OPERATOR_RUNBOOK §6` · `CONFIG_GUIDE §1`)에 있었고 **각각 다른 사실을 하나씩만** 들고 있었다 — 이 파일만 `tzdata`를, 런북만 선행 조건을, 가이드만 플래그를. 정본은 **[guide/ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md)** 하나이고, **이 파일이 계속 소유하는 것은 「배포 순서에서의 자리」**(tzdata 선행 · 시간대 판정 다음)뿐이다. 🔴 **8-sexies가 이미 같은 모양이었다**(순서는 런북 §4, 여기는 3단계 명령 하나) — 이 저장소에 선례가 있었다.
 >
@@ -594,6 +594,25 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
      🔴 **사본을 두지 않는 이유**: 같은 절차가 네 곳에 있었고(이 파일 · `LEDGER_GUIDE §4.1·§4.2` · `OPERATOR_RUNBOOK §6` · `CONFIG_GUIDE §1`) **서로 다른 사실을 하나씩만** 들고 있었다.
    - **이 파일이 계속 소유하는 것은 «배포 순서에서의 자리»뿐이다**: 🔴 **`environment.yml`에 `tzdata`가 들어 있어야 하고**(`conda env update -f environment.yml`) — `Asia/Seoul`은 런타임에 IANA DB에서 해석되며 **없으면 조용히 UTC로 폴백하지 않고 예외를 낸다** — 🔴 **시간대 판정 «다음»에 원장을 돌린다**(어긋난 시각도 well-formed해서 어떤 가드도 못 알아챈다. 정정은 재백필이지 제자리 `UPDATE`가 아니다).
    - **급하지 않다**: 추가 전용·멱등이고 **안 돌려도 아무것도 안 깨진다**. 다만 그 상태에서 **`GET /api/ledger/subgraph`** 는 **503 + 관계 이름**(`reason: "ledger_relation_absent"`)으로 답한다. 🔴 **[2026-08-28] 종전 이 줄이 대던 `/api/ledger/trace` 와 `/api/ledger/coverage` 는 둘 다 «없다».** 🔴 **그리고 부재 신호가 «둘»이다** — 관계 자체가 없으면 위의 503 이고, 관계는 있는데 `source_event_id`·`source_event_state` 컬럼이나 인덱스 둘이 없으면 **503 `source_event_projection_not_deployed`** 에 빠진 이름이 실려 온다.
+8-octies. 🔴 **소급 실행 등록부의 `runner` 컬럼 — 「돌리면 좋은」 것이 아니라 «안 돌리면 표가 죽는» 것이다** (2026-09-05)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/add_retroactive_runs_runner.sql
+   ```
+   - **왜 `create_all` 로 안 되나**: 표 `retroactive_runs` 자체는 `create_all` 이 만들지만 **`create_all` 은 «이미 있는» 표에 컬럼을 더하지 않는다.** 새 DB 는 저절로 생기고 **기존 DB(운영 포함)만** 이 파일이 필요하다.
+   - 🔴 **`TABLE-DOWN` 계급이다** — `models.RetroactiveRun` 이 이 컬럼을 선언하므로 SQLAlchemy 가 **이 표의 모든 엔티티 SELECT 에 이름을 싣는다**(위 8-quinquies 의 `file_ingestion_checkpoints` 와 **같은 기제**). 소급 실행 목록·대기열·in-flight 조회가 전부 `UndefinedColumn` 으로 죽는다.
+   - 🔴 **그리고 «조용히» 죽는다.** 실행 행을 옮기는 `_mark_run` 은 「절대 치명적이지 않게」 설계돼 모든 예외를 삼키고 `logger.debug` 로만 남긴다 — 즉 **연산은 돌면서 행은 `queued` 에 머물고 `started_at` 이 끝내 안 찍힌다.** 배너나 500 이 아니라 「소급이 안 도는 것 같다」로 나타난다.
+   - 추가 전용·멱등(`ADD COLUMN IF NOT EXISTS`)이라 잠금은 카탈로그 갱신뿐이다. 되돌리기 파일은 없다(컬럼 하나를 되돌릴 이유가 없다).
+
+8-nonies. **`audit_logs.timestamp` BRIN 인덱스 — 대시보드의 「오늘 수정 건수」가 표를 통째로 훑고 있었다** (2026-09-05)
+   ```bash
+   psql "$DATABASE_URL" -f server/migrations/add_audit_logs_timestamp_brin_index.sql
+   ```
+   - **왜 기존 인덱스로 안 되나**: `audit_logs` 에 timestamp 인덱스가 이미 있지만 그것은 **부분 인덱스**(`idx_audit_user_recorrection … WHERE source_name = 'user'`)라, **모든** 감사 행을 세는 질의는 그것을 쓸 수 없어 플래너가 표 읽기로 떨어진다.
+   - 같은 이유로 `create_all` 이 새 DB 에만 붙인다 — **기존 DB 만** 이 파일이 필요하다.
+   - **왜 btree 가 아니라 BRIN 인가**: 둘 다 답하는 속도는 사실상 같고, 갈리는 것은 **크기와 그 크기의 유지비**다 — btree 는 **이 시스템이 가장 많이 쓰는 표의 모든 INSERT 가 유지해야 하는 구조**가 된다(같은 논거로 이 표의 다른 인덱스들이 이미 은퇴했다). BRIN 이 맞는 조건은 **컬럼이 물리적으로 거의 정렬돼 있다**는 것이고, 감사 행은 시간순으로 append 되고 갱신되지 않으므로 그 조건을 만족한다. ⚠️ **그 상관이 무너지면**(옛 timestamp 를 새 페이지에 넣는 대량 백필) 이 인덱스는 스캔 쪽으로 퇴화하고, 답은 **btree 로 바꾸는 것이 아니라 `REINDEX`** 다.
+   - 🔴 **`CONCURRENTLY` 이고 그것은 장식이 아니다** — 이 DB 를 레인 셋이 공유한다. **트랜잭션 블록 «안»에서는 못 돈다**: `psql`(또는 autocommit 클라이언트)로 그대로 돌리고 `BEGIN/COMMIT` 으로 감싸지 마라. 빌드가 중단되면 **INVALID 인덱스가 남는다** — `pg_index.indisvalid` 가 거짓이면 `DROP INDEX CONCURRENTLY` 후 다시 돌린다(확인 질의는 파일 주석에 있다).
+   - **안 돌려도 «깨지지는 않는다»** — 느려질 뿐이다(위 8-bis·8-ter 와 같은 계급). ⚠️ 파일 주석의 벽시계·크기 수치는 **개발 박스 실측**이고 운영 수치가 아니다. 운영에도 참인 것은 **「부분 인덱스는 전수 count 에 안 쓰인다」**와 위의 **인덱스 유지비 논거** 쪽이다.
+
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 
@@ -601,8 +620,10 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
 
 `GET /health`를 폴링하면 된다. **HTTP 코드만 봐도 된다** — 정상 200, 조치 필요 503. 어디가 문제인지는 본문 `problems[]`가 문장으로 담는다.
 
-- 워커는 pid가 아니라 **진행 박동**으로 판정된다 — 살아 있는 채 멈춘 프로세스(`wedged`)를 잡기 위해서다. 상태값은 8종이고([backend §1.3](../architecture/backend.md)), 그중 **`stalled`는 따로 봐야 한다**: 박동은 신선한데 **claim한 작업이 300초간 무진행**인 경우로, "워커는 살아 있고 루프도 도는데 일이 안 나가는" 상태다.
+- 워커는 pid가 아니라 **진행 박동**으로 판정된다 — 살아 있는 채 멈춘 프로세스(`wedged`)를 잡기 위해서다. 🔴 **[2026-09-05] 종전 이 줄의 「상태값은 8종」은 거짓이 됐고, 이번에는 «수를 안 적는다»** — 목록의 정본은 [backend §1.3](../architecture/backend.md)의 표이고 여기 적는 수는 그 두 번째 사본이라 반드시 갈린다(이 자리가 낡은 것이 처음이 아니다). 그중 **`stalled`는 따로 봐야 한다**: 박동은 신선한데 **claim한 작업이 300초간 무진행**인 경우로, "워커는 살아 있고 루프도 도는데 일이 안 나가는" 상태다.
+- 🔴 **[2026-09-05] `unknown` 이 보이면 그건 워커 얘기가 아니라 «감시자» 얘기다** — 감시자 상태 파일이 갱신을 멈췄고 그 워커의 박동도 없다는 뜻이다. **`down` 과 다르게 읽어라**: `down` 은 감시자가 「없다」고 말한 것이고 `unknown` 은 **말하는 사람이 없어진 것**이라, 먼저 볼 것이 워커가 아니라 런처다.
 - outbox 적체는 **크기가 아니라 나이**로 판정된다. 큰 파일 하나가 outbox 십만 행을 만드는 것은 정상이다.
+- 🔴 **[2026-09-05] 미전달 브로드캐스트도 나이로 본다**(`checks.outbox.undelivered_oldest_age_seconds`, 임계는 위 적체와 **같은 둘**). 이 항목이 뜨면 「쓰기는 됐는데 화면이 그것을 못 듣고 있다」이고, **체인 워커가 `ok` 라도 뜰 수 있다** — 그 안전망은 워커 루프 «안»에 살아서 워커 박동으로는 안 보인다.
 - 자식 프로세스는 런처가 감시·재시작한다. **6번째 연속 실패에서 포기**하고 `/health`가 계속 503을 낸다 — 그때는 사람이 고쳐야 한다는 뜻이다.
 - 🔴 **스키마 드리프트는 `/health`에 나오지 않는다 — 부팅 배너에만 있다**(2026-08-05). 폴링으로는 절대 안 잡히므로 **배포·재기동 때마다 §6의 8을 돌리는 것이 유일한 관측 지점**이다. 드리프트난 스택은 `/health`가 **정상 200**을 답하면서 그 테이블의 화면만 500을 낸다 — 실제로 2026-08-05 하루에 3건이 그렇게 나갔고 **전부 제품 소유자가 제품을 쓰다가 발견했다.**
 - 계약 상세: [backend §1.3](../architecture/backend.md)
