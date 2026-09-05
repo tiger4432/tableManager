@@ -3162,11 +3162,11 @@ async function saveCustomPreset() {
       console.debug(`[map] preset saved: ${presetName} (${data.preset_key})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      alert(`프리셋 저장 실패 — ${errorData.detail || res.statusText}`);
+      alert(`프리셋 저장 실패 · ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error saving preset:', err);
-    alert(`프리셋 저장 실패 — ${err.message}`);
+    alert(`프리셋 저장 실패 · ${err.message}`);
   }
 }
 
@@ -3193,11 +3193,11 @@ async function deleteCustomPreset() {
       console.debug(`[map] preset deleted: ${preset.name} (${val})`);
     } else {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      alert(`프리셋 삭제 실패 — ${errorData.detail || res.statusText}`);
+      alert(`프리셋 삭제 실패 · ${errorData.detail || res.statusText}`);
     }
   } catch (err) {
     console.error('[Map Presets] Error deleting preset:', err);
-    alert(`프리셋 삭제 실패 — ${err.message}`);
+    alert(`프리셋 삭제 실패 · ${err.message}`);
   }
 }
 
@@ -4502,7 +4502,7 @@ async function probeZoneColumns() {
     }
     return zoneColumnsPresent;
   } catch (e) {
-    console.warn('[Map Editor] zone 컬럼 확인 실패 — 캐시하지 않고 다음 저장에 재시도:', e);
+    console.warn('[Map Editor] zone 컬럼 확인 실패 · 캐시하지 않고 다음 저장에 재시도:', e);
     return null;      // 미상. 저장은 보류되지만 다음 시도에서 다시 묻는다.
   }
 }
@@ -4519,7 +4519,7 @@ const LEGEND_SAVE_MESSAGE = {
   'unknown-server-state': '서버 DOE 상태 미확인으로 저장 보류 — 맵을 다시 열면 재시도합니다.',
   conflict: '다른 사람이 이 계획을 바꿨습니다 — 저장하지 않았습니다. 맵을 다시 불러오십시오.',
   adopted: '서버 계획을 불러왔습니다 — 그 사이 편집한 내용은 반영되지 않았습니다.',
-  error: 'DOE·legend 저장 실패 — 로컬 초안만 남았습니다.',
+  error: 'DOE·legend 저장 실패 · 로컬 초안만 남았습니다.',
 };
 
 function applyLegendSaveResult(r) {
@@ -4949,7 +4949,7 @@ async function fetchMapKeySpec(table) {
   } catch (e) {
     // [M5] 종전에는 실패 결과 []를 캐시에 박고 무효화하지 않아, 그 세션 내내
     // 해당 자재 맵이 "맵 없음"으로 오표시됐다. 실패는 캐시하지 않는다.
-    console.warn(`[Map Editor] ${table} 스키마 조회 실패 — 캐시하지 않고 다음 호출에 재시도:`, e);
+    console.warn(`[Map Editor] ${table} 스키마 조회 실패 · 캐시하지 않고 다음 호출에 재시도:`, e);
     return { ok: false, keyColumns: [], columnTypes: {} };
   }
 }
@@ -5505,8 +5505,8 @@ async function loadExistingMap(opts = {}) {
     return { count, mapKey: loadedMapKey };
   } catch (err) {
     console.error(err);
-    if (quiet) showToast('맵 로드 실패 — 테이블·맵 키를 확인하십시오.', 'error');
-    else alert('맵 로드 실패 — 테이블·맵 키를 확인하십시오.');
+    if (quiet) showToast('맵 로드 실패 · 테이블·맵 키 확인', 'error');
+    else alert('맵 로드 실패 · 테이블·맵 키 확인');
     return { count: 0, error: true };
   } finally {
     el.btnLoadMap.textContent = '📂 Load Existing Map';
@@ -6343,7 +6343,7 @@ async function pushMapData() {
         && legendSaved.reason !== 'unknown-server-state') {
         // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
         // 여기서 "오프라인 캐시"로 덮어 말하면 원인이 사라진다.
-        showToast('DOE·split 서술 registry 저장 실패 — 오프라인 캐시에만 보관됨', 'warning');
+        showToast('DOE·split 서술 registry 저장 실패 · 오프라인 캐시에만 보관됨', 'warning');
       }
 
       if (metaPushFailed) {
@@ -6362,7 +6362,7 @@ async function pushMapData() {
   } catch (err) {
     console.error('❌ [API Error]', err);
     console.groupEnd();
-    alert(`데이터 적재 실패 — ${err.message}`);
+    alert(`데이터 적재 실패 · ${err.message}`);
   } finally {
     el.btnPushMap.textContent = '⚡ Push Map Data';
     el.btnPushMap.disabled = false;
@@ -9083,7 +9083,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
   };
   const refuse = (ref, reason) => {
     if (stale()) return validDie;
-    console.warn(`[Map Editor][M4] valid_die_ref 해석 실패 — ${reason}`);
+    console.warn(`[Map Editor][M4] valid_die_ref 해석 실패 · ${reason}`);
     showToast(`유효 다이 맵을 해석하지 못했습니다 — ${reason}`, 'error');
     return set('refused', null, reason, ref);
   };
@@ -10120,7 +10120,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
-      `맵 키 목록 조회 실패 — ${(e && e.message) ? e.message : e}`);
+      `맵 키 목록 조회 실패 · ${(e && e.message) ? e.message : e}`);
     return;
   }
   if (Number.isFinite(total) && total > rowCount) {
@@ -10225,7 +10225,7 @@ async function populateColumnValueDatalist(table, column, listEl, input, prefix)
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
-      `값 목록 조회 실패 — ${(e && e.message) ? e.message : e}`);
+      `값 목록 조회 실패 · ${(e && e.message) ? e.message : e}`);
     return;
   }
   if (!isCurrent()) return;   // 이 목록에 대한 더 새로운 질문이 이미 있다
@@ -10415,7 +10415,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   try {
     binding = await fetchServedBinding(sourceTable);
   } catch (e) {
-    return fail(`${sourceTable}: 좌표 바인딩 조회 실패 — ${errText(e)}`, 'error');
+    return fail(`${sourceTable}: 좌표 바인딩 조회 실패 · ${errText(e)}`, 'error');
   }
   if (!binding) {
     return fail(
@@ -10470,7 +10470,7 @@ async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     const result = await cellR.value.json();
     rows = Array.isArray(result && result.data) ? result.data : [];
   } catch (e) {
-    return fail(`${sourceTable}: 셀 조회 실패 — ${errText(e)}`, 'error');
+    return fail(`${sourceTable}: 셀 조회 실패 · ${errText(e)}`, 'error');
   }
   // 🔴 A failed spec *fetch* is not "spec not registered". Falling back to identity without
   //    confirming puts markers at silently wrong coordinates and leaves the chip showing
