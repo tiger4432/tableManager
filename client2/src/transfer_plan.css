@@ -150,6 +150,14 @@
 .tp-band.bad { border-color: var(--border); }
 
 /* ── 계획 헤더: 입력이 아니라 "유도된 사실"의 표시 ────── */
+/* 🔴 어디에 진단이 있는지 한 줄. 이 화면은 거절이 «나는» 자리이고 진단은 어드민에
+   있다 -- 그 자리를 고른 판정의 «비용»이 이 줄이다. 조용해야 한다: 경고가 아니라
+   주소이고, 색을 쓰면 여기서 무엇이 잘못됐다는 뜻이 된다. */
+.tp-diagnosis-at {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  padding: 2px 2px 0;
+}
 .tp-plan-head {
   background: var(--bg-inset);
   border: 1px solid var(--border);

@@ -1656,8 +1656,15 @@ function renderAll() {
 }
 
 function buildWorkspace(root) {
+  // 🔴 「선언이 왜 거절됐나」의 진단이 «어디 있는지» 한 줄. 이 화면에는 그 진단을 부를
+  //    토큰이 없고(어드민 게이트), 자격증명 표면을 여기 만드는 것은 UI 라운드가 할 결정이
+  //    아니라는 것이 판정이다. 그 선택의 «비용»이 이것이다 — 거절은 여기서 나고 진단은
+  //    저기 있으니, 가리키는 줄이 없으면 운영자는 «진단이 있다는 사실 자체»를 모른다.
+  //
+  // ⚠️ 정적이다. 부르지도 않고 받지도 않는다 — 토큰이 필요 없는 이유가 그것이다.
   root.innerHTML = `
     <div class="tp-plan-head" id="tp-head"></div>
+    <div class="tp-diagnosis-at">선언 거절 진단 · 어드민 › 설정 반영</div>
     <div class="tp-split">
       <div class="tp-pane" id="tp-pane1">
         <div class="tp-pane-h">
