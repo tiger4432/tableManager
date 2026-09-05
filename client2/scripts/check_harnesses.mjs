@@ -1127,6 +1127,9 @@ const FLOORS = new Map([
   // whether the DECLARED unique key survives measurement -- and that an empty table
   // is neither unique nor duplicated, which the server's own boolean cannot spell
   ['uniqueness_harness.mjs', 31],
+  // 「거절」 and 「진단 못 냄」 are different instructions -- one has a DDL to run and the
+  // other has no answer yet -- and shape-level rejections are counted with the rest
+  ['join_verification_harness.mjs', 24],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
