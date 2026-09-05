@@ -36,12 +36,18 @@ export const CHROME = Object.freeze({
   MEASURE_FAILED: '드라이런 요청 실패',
   REFUSED: '보류 사유',
   FETCH_FAILED: '조회 실패',
-  // The four failure sentences. See `fetchFailureText` below for why these are client-owned.
-  FETCH_OLD_SERVER: '실행 중인 서버가 구버전입니다 ― 서버를 재시작하세요',
-  FETCH_UNREACHABLE: '서버에 연결할 수 없습니다 ― 서버가 실행 중인지 확인하세요',
-  FETCH_UNAUTHORIZED: '관리자 토큰이 거부되었습니다 ― 새로고침 후 다시 입력하세요',
-  FETCH_INTERCEPTED: '관리자 게이트가 아닌 응답입니다 ― 프록시 등 앞단에 무엇이 있는지 확인하세요',
-  NO_DOMAINS: '서버가 보고한 설정 도메인이 없습니다.',
+  // The four failure lines. See `fetchFailureText` below for why these are client-owned:
+  // the server did not answer, so it cannot be the one to say why.
+  //
+  // 🔴 상태는 «명사», 다음 행동은 «옆에», 가르는 것은 「·」 (상설 2026-09-05). 이 다섯이
+  //    화면에서 «문장»으로 남아 있던 마지막 자리였습니다 — 읽어서 찾았고, 어느 체크리스트에도
+  //    없었습니다. ⚠️ «고칠 자리»는 남깁니다: 사유만 남기고 행동을 지우면 짧아진 것이 아니라
+  //    운영자가 갈 곳을 잃습니다.
+  FETCH_OLD_SERVER: '구버전 서버 · 재시작 필요',
+  FETCH_UNREACHABLE: '서버 연결 불가 · 실행 중인지 확인',
+  FETCH_UNAUTHORIZED: '토큰 거부 · 새로고침 후 재입력',
+  FETCH_INTERCEPTED: '관리자 게이트 아님 · 앞단 프록시 확인',
+  NO_DOMAINS: '설정 도메인 없음',
 });
 
 export const CHROME_STRINGS = Object.freeze(Object.values(CHROME));
