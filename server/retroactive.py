@@ -771,6 +771,12 @@ CANCEL_NEVER = "never"
 IN_FLIGHT_STATES = (RUN_RUNNING, RUN_CANCEL_REQUESTED)
 
 
+def _hb_stale_after():
+    """The existing "silence has lasted long enough" constant. Read, never redefined."""
+    from utils import heartbeat as _hb
+    return _hb.DEFAULT_STALE_AFTER_SEC
+
+
 def queue_view(db, now=None):
     """The queue's own state, for the three the owner asked to tell apart.
 
@@ -847,6 +853,17 @@ def queue_view(db, now=None):
         "last_pickup_at": last_at.isoformat() if last_at else None,
         "last_pickup_age_seconds": _age(last_at),
         "picker_interval_seconds": PICKER_INTERVAL_SECONDS,
+        # 🔴 THE BOUNDARY, FROM THE CONSTANT THIS SYSTEM ALREADY HAS. A reader given only
+        # an age has to invent the line it is judged against, and an invented threshold is
+        # one more number to keep in step. `DEFAULT_STALE_AFTER_SEC` is already this
+        # system's answer to "long enough that silence means something".
+        #
+        # ⚠️ AND IT ONLY MEANS ANYTHING WHEN SOMETHING IS WAITING. An idle queue has an old
+        # last-pickup for the ordinary reason that nothing has been queued, so reading this
+        # against the age alone would call a healthy system stalled. The pair is
+        # `waiting_count > 0` AND `last_pickup_age_seconds > stall_after_seconds`; the
+        # values go out and the reading stays the screen's, as with everything else here.
+        "stall_after_seconds": _hb_stale_after(),
         "waiting_count": len(waiting),
         "waiting": waiting,
         "orphaned": orphaned,

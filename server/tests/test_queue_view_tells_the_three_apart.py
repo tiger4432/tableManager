@@ -107,3 +107,24 @@ def test_no_distribution_and_no_predicted_start_are_published(db_session):
     for banned in ("eta", "eta_seconds", "expected_start", "median_wait_seconds",
                    "wait_distribution", "p50_wait_seconds"):
         assert banned not in out, "%s is a predicted number, not a value" % banned
+
+
+def test_the_stall_boundary_comes_from_the_existing_constant(db_session):
+    """🔴 NOT A NEW THRESHOLD. A reader given only an age has to invent the line it is
+    judged against, and an invented one is another number to keep in step - this system
+    already has an answer to "silence has lasted long enough"."""
+    from utils import heartbeat
+
+    add(db_session, "recent", "done", queued_ago=100, started_ago=97)
+    out = retroactive.queue_view(db_session, now=NOW)
+    assert out["stall_after_seconds"] == heartbeat.DEFAULT_STALE_AFTER_SEC
+
+
+def test_an_idle_queue_is_not_stalled_by_an_old_pickup_alone(db_session):
+    """⚠️ THE PAIR, NOT THE AGE. Nothing queued for hours leaves an old last-pickup for
+    the most ordinary reason there is; judging on the age alone would call a healthy
+    system stalled."""
+    add(db_session, "long_ago", "done", queued_ago=99_000, started_ago=98_000)
+    out = retroactive.queue_view(db_session, now=NOW)
+    assert out["waiting_count"] == 0
+    assert out["last_pickup_age_seconds"] > out["stall_after_seconds"]
