@@ -349,10 +349,12 @@ class EffortStat(BaseModel):
 
 
 class DashboardSummaryResponse(BaseModel):
-    total_tables: int
-    total_rows: int
+    # 🔴 `total_tables`, `total_rows` and `table_stats` were REMOVED 2026-09-05. One loop
+    # produced all three and it was 67% of this route's wall (74 of 80 statements), while
+    # nothing read any of them - zero references in client2/src, zero in the shipped
+    # bundle, and on the server only this definition and the assignment. Owner ruled the
+    # three go together, since `total_rows` was the sum of the same counts.
     today_updates: int
-    table_stats: list[TableStat]
     system_health: str = "Excellent"
     # 신규 필드는 Optional — 구 클라이언트 호환(응답 확장은 하위호환이지만 명시적으로 둔다).
     recorrection: Optional[RecorrectionStat] = None
