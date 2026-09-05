@@ -10,7 +10,7 @@
 >                          총괄 채널 파일«만» 건드린 커밋이 조용하다. 새 파일은 접두가 뭐든 «울린다»
 > 2 디자인 푸시      90초   git fetch origin design + main..origin/design
 > 3 라이브 config    30초   server/config/ontology/ledger_config.json stat
-> 4 레인 정지 감시   900초  🔴 **각 레인의 «자기 커밋»** (b8eprqc1h, 2026-09-05 13:3x 교체)
+> 4 레인 정지 감시   900초  🔴 **각 레인의 «자기 커밋»** (b7f2ecrv9, 2026-09-05 13:3x 교체)
 >                          ⛔ 옛 것은 `IMPLEMENTER_ORDERS.md`·`MARKING_CONTRACT.md` 의 «mtime»을
 >                             쟀는데 **그 파일은 «내가» 씁니다** — 「구현자 9분」이
 >                             「내가 9분 전 지시를 썼다」였습니다. 내 활동에 «레인 이름표»
