@@ -286,6 +286,14 @@
       padding: 10.2px;
       line-height: 1.5;
       border-radius: 0;
+      /* 🔴 이 셋이 «없었습니다» — 그래서 테두리가 rgb(118,118,118), 글자가 rgb(0,0,0) 인
+         «브라우저 기본값»으로 그려지고 있었습니다 (실측). 고르개는 공용 규칙에 닿았는데
+         원문 상자만 안 닿아 있었습니다. 값은 이 페이지의 팔레트 그대로입니다 — 모양(1px ·
+         모서리 0 · 12px 등폭 · 10.2 여백)은 이미 탐색기의 것입니다. */
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text);
+      caret-color: var(--accent);
     }
     .chain-rule-controls,
     .table-config-controls { margin: 10.2px 0 0; }
