@@ -197,162 +197,41 @@ export function getCleanFilename(filename) {
 // 집계(④)로 풀었으므로 여기도 같은 취지로 **상한 + 나머지 한 줄 집계**를 쓴다.
 // 진행률은 개별 파일마다 의미가 있으므로 합치지 않고 **가리기만** 한다 — 가려진 카드도
 // 갱신은 계속 받고, 완료되면 스스로 사라지며 뒤 카드가 올라온다(대기열처럼 보인다).
-const MAX_VISIBLE_PROGRESS_CARDS = 3;
-const PROGRESS_OVERFLOW_ID = 'progress-overflow';
-
-function progressCards(container) {
-  return Array.from(container.children).filter(el => el.id !== PROGRESS_OVERFLOW_ID);
-}
-
-function collapseProgressOverflow(container) {
-  if (!container) return;
-  const cards = progressCards(container);
-  cards.forEach((el, i) => {
-    el.style.display = i < MAX_VISIBLE_PROGRESS_CARDS ? '' : 'none';
-  });
-
-  const hidden = cards.length - MAX_VISIBLE_PROGRESS_CARDS;
-  let overflow = document.getElementById(PROGRESS_OVERFLOW_ID);
-  if (hidden <= 0) {
-    if (overflow) overflow.remove();
-    return;
-  }
-  if (!overflow) {
-    overflow = document.createElement('div');
-    overflow.id = PROGRESS_OVERFLOW_ID;
-    overflow.className = 'progress-card';
-  }
-  overflow.innerHTML =
-    `<div class="progress-header"><span class="progress-title">📤 그 외 ${hidden}건 적재 중</span></div>`;
-  container.appendChild(overflow);   // 항상 맨 아래
-}
-
-// 카드 제거는 두 경로(자동 완료 / finish 호출)에서 같은 일을 했다. 한 곳으로 모은 이유는
-// 빈 컨테이너 판정 때문이다 — 집계 카드를 자식으로 세면 컨테이너가 영원히 안 지워진다.
-function dismissProgressCard(card) {
-  card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
-  card.style.animation = 'none';
-  card.style.opacity = '0';
-  card.style.transform = 'translateY(20px) scale(0.9)';
-
-  setTimeout(() => {
-    const container = card.parentElement;
-    card.remove();
-    if (!container) return;
-    if (progressCards(container).length === 0) {
-      container.remove();
-    } else {
-      collapseProgressOverflow(container);
-    }
-  }, 400);
+// 파일 인제션의 «선언». 모양은 `progress_card.js` 가 들고 있고, 여기 남은 것은
+// 「이 진행이 무엇에 대한 것인가」뿐입니다 — 표 이름과 파일 이름은 «신원»을 만드는 데만
+// 쓰이고, 부품은 그 낱말을 모릅니다 (상설: 근원 템플릿 -> 데이터 갈아끼우기).
+function ingestionKey(tableName, filename) {
+  return `${tableName}-${getCleanFilename(filename).replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 
 export function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
-  let container = document.getElementById('ingestion-progress-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'ingestion-progress-container';
-    document.body.appendChild(container);
-  }
-
-  const cleanFilename = getCleanFilename(filename);
-  const safeFilename = cleanFilename.replace(/[^a-zA-Z0-9]/g, '_');
-  const cardId = `progress-${tableName}-${safeFilename}`;
-  let card = document.getElementById(cardId);
-
-  if (!card) {
-    card = document.createElement('div');
-    card.id = cardId;
-    card.className = 'progress-card';
-    container.appendChild(card);
-    collapseProgressOverflow(container);
-  }
-
-  if (card.classList.contains('status-success') ||
-    card.classList.contains('status-error') ||
-    card.classList.contains('status-auto-dismiss')) {
-    return;
-  }
-
-  // 🔴 `|| 0` 가 셋 다 있었습니다 — 안 온 수가 「0행 처리됨」이 됩니다.
-  //    막대의 `p` 는 «폭» 이라 수가 아니면 0 이 맞습니다 (길이를 못 그리니까).
-  //    바뀌는 것은 «글자로 나가는» 둘입니다.
-  const p = parseInt(progress, 10) || 0;
-  const pr = parseInt(processedRows, 10);
-  const tr = parseInt(totalRows, 10);
-
-  card.innerHTML = `
-    <div class="progress-header">
-      <span class="progress-title">📤 파일 파싱 및 적재 중</span>
-      <span class="progress-percent">${p}%</span>
-    </div>
-    <div class="progress-filename" title="${cleanFilename}">${cleanFilename}</div>
-    <div class="progress-bar-container">
-      <div class="progress-bar" style="width: ${p}%;"></div>
-    </div>
-    <div class="progress-stats">${localeCountText(pr)} / ${localeCountText(tr)} 행 처리됨</div>
-  `;
-
-  const isComplete = p >= 100
-    || (Number.isFinite(tr) && tr > 0 && Number.isFinite(pr) && pr >= tr);
-  if (isComplete) {
-    card.classList.add('status-auto-dismiss');
-    card.classList.add('status-success');
-
-    const title = card.querySelector('.progress-title');
-    if (title) title.textContent = '✅ 파일 적재 완료';
-    const percent = card.querySelector('.progress-percent');
-    if (percent) percent.textContent = '100%';
-    const bar = card.querySelector('.progress-bar');
-    if (bar) bar.style.width = '100%';
-    const stats = card.querySelector('.progress-stats');
-    if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
-
-    setTimeout(() => dismissProgressCard(card), 2500);
-  }
+  showProgressCard({
+    key: ingestionKey(tableName, filename),
+    title: '\ud83d\udce4 파일 파싱 및 적재 중',
+    subtitle: getCleanFilename(filename),
+    progress,
+    processed: processedRows,
+    total: totalRows,
+    statsSuffix: ' 행 처리됨',
+    doneTitle: '\u2705 파일 적재 완료',
+    doneStats: '적재 성공 및 정합성 검증 완료',
+  });
 }
 
 export function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
-  const cleanFilename = getCleanFilename(filename);
-  const safeFilename = cleanFilename.replace(/[^a-zA-Z0-9]/g, '_');
-  const cardId = `progress-${tableName}-${safeFilename}`;
-  const card = document.getElementById(cardId);
-  if (!card) return;
-
-  if (card.classList.contains('status-success') ||
-    card.classList.contains('status-error') ||
-    card.classList.contains('status-auto-dismiss')) {
-    return;
-  }
-
-  card.classList.add('status-auto-dismiss');
-
-  if (status === 'SUCCESS') {
-    card.classList.add('status-success');
-    const title = card.querySelector('.progress-title');
-    if (title) title.textContent = '✅ 파일 적재 완료';
-    const percent = card.querySelector('.progress-percent');
-    if (percent) percent.textContent = '100%';
-    const bar = card.querySelector('.progress-bar');
-    if (bar) bar.style.width = '100%';
-    const stats = card.querySelector('.progress-stats');
-    if (stats) stats.textContent = '적재 성공 및 정합성 검증 완료';
-  } else {
-    card.classList.add('status-error');
-    const title = card.querySelector('.progress-title');
-    if (title) title.textContent = '❌ 파일 적재 실패';
-    const bar = card.querySelector('.progress-bar');
-    if (bar) bar.style.width = '100%';
-    const stats = card.querySelector('.progress-stats');
-    if (stats) stats.textContent = errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생';
-  }
-
-  setTimeout(() => dismissProgressCard(card), 2500);
+  finishProgressCard({
+    key: ingestionKey(tableName, filename),
+    ok: status === 'SUCCESS',
+    okTitle: '\u2705 파일 적재 완료',
+    okStats: '적재 성공 및 정합성 검증 완료',
+    failTitle: '\u274c 파일 적재 실패',
+    failStats: errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생',
+  });
 }
 
 // Expose on window object dynamically for any non-ESM environment components if needed.
 // 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
 //    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
-import { localeCountText } from './absent.js';
+import { showProgressCard, finishProgressCard } from './progress_card.js';
 //    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
 if (typeof window !== 'undefined') window.showToast = showToast;
