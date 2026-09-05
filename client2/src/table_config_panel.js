@@ -9,11 +9,30 @@
 
 import { registryView, RawRegistryPanel } from './raw_registry_panel.js';
 
+/**
+ * 🔴 「선언은 됐는데 «물리 표»가 없는 것」을 «고르기 전»에 말합니다.
+ *
+ * 서버가 이것을 `admin/ledger/relations` 에서 «계속» 내고 있었고 (`missing_relations`),
+ * 읽는 화면이 «0» 이었습니다. 그걸 고르면 저장이 `unknown_relation` 으로 거절되는데,
+ * 거절은 «고른 뒤»에 옵니다 — 고르기 «전»에 말하는 것이 이 줄의 전부입니다.
+ *
+ * ⚠️ 세 상태입니다: 못 읽음 · 없음 · 있음.
+ *    못 읽었으면 「모름」이고, 없으면 «아무것도 안 그립니다» (경고할 것이 없습니다).
+ * ⛔ 문장을 쓰지 않습니다 — 상태는 명사, 이름은 `·` 로 (상설 2026-09-05).
+ */
+function missingRelations(payload, opts) {
+  if (opts && opts.relationsUnread) return { value: 'unread', text: '물리 표 · 모름' };
+  const names = Array.isArray(opts && opts.missingRelations) ? opts.missingRelations : null;
+  if (!names || !names.length) return null;
+  return { value: 'missing', text: `물리 표 없음 · ${names.join(' · ')}` };
+}
+
 /** 이 등록부의 낱말. 도메인 이름이 사는 자리는 «여기 하나»입니다. */
 export const TABLE_REGISTRY = Object.freeze({
   listKey: 'tables',
   nameKey: 'table',
   cls: 'table-config',
+  extra: missingRelations,
 });
 
 /**
