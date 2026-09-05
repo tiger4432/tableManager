@@ -398,6 +398,15 @@ def public_bundle_schema() -> dict[str, Any]:
         # `tables` is no longer here.
         "physical_schema_file": PHYSICAL_CATALOG_FILENAME,
         "binding_kinds": ["column", "constant", "entity"],
+        # 🔴 THE SAME LIST MINUS THE ONE THE VALIDATOR REFUSES THERE. `_validate_binding`
+        # already answers `invalid_binding` for an `entity` binding used as an entity's
+        # IDENTITY KEY ("entity identity keys allow only column or constant bindings"), so
+        # a form that offers all three at that square recommends a value that can only be
+        # refused. This is not a second rule -- it is the first one, said where the screen
+        # can read it; `test_identity_keys_are_not_offered_an_entity.py` measures the two
+        # against each other by feeding every kind to the validator rather than trusting
+        # this literal.
+        "identity_binding_kinds": ["column", "constant"],
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --

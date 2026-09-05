@@ -216,9 +216,27 @@ def deliberately_not_offered(path: str) -> bool:
     return any(path == name or path.startswith(f"{name}.") for name in NOT_OFFERED)
 
 
+#: 🔴 A NODE THAT DELIBERATELY NARROWS ANOTHER, keyed narrowed -> the node it narrows.
+#: One validator function checks both, so both place at ONE anchor and the reverse map
+#: (`ANCHORS`) cannot name the second. A narrowed node may carry FEWER fields and never
+#: more, so it is checked for `invented` and exempted from `missing`: demanding the full
+#: set there would demand exactly the field the validator refuses.
+#: ⚠️ `entities.*.keys` narrows `binding` by dropping `entity` -- `_validate_binding` says
+#: "entity identity keys allow only column or constant bindings".
+NARROWED = {"def:identity_binding": "def:binding"}
+
+
 def test_skeleton_and_validator_name_the_same_fields():
     validator = validator_fields()
     described = skeleton_fields()
+
+    for narrowed, widest in NARROWED.items():
+        assert narrowed in described, f"{narrowed} is not in the skeleton any more"
+        extra = described[narrowed] - validator[widest]
+        assert not extra, (
+            f"{narrowed} carries fields {sorted(extra)} that {widest} does not -- a "
+            f"narrowing may only take fields away")
+        described = {**described, narrowed: set()}          # checked above, not below
 
     missing = sorted(
         path
@@ -231,7 +249,8 @@ def test_skeleton_and_validator_name_the_same_fields():
         for anchor, names in described.items()
         if anchor in validator
         for name in names - validator[anchor])
-    unreached = sorted(anchor for anchor in described if anchor not in validator)
+    unreached = sorted(anchor for anchor in described
+                       if anchor not in validator and anchor not in NARROWED)
 
     print(f"\nfields the validator names, that the skeleton does not carry: {len(missing)}")
     print(f"fields the skeleton carries, that the validator never names  : {len(invented)}")

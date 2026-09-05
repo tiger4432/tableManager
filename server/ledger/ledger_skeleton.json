@@ -64,8 +64,48 @@
             "keyed_by": "name",
             "member": "식별키",
             "of": {
-              "use": "binding"
+              "use": "identity_binding"
             }
+          }
+        }
+      ]
+    },
+    "identity_binding": {
+      "kind": "record",
+      "note": "An entity's identity key. The same record as `binding` with the `entity` kind removed -- `_validate_binding` refuses a nested entity there, so offering it recommends a value that can only be refused. Still ONE layer, and still a binding record.",
+      "fields": [
+        {
+          "key": "kind",
+          "required": true,
+          "label": "바인딩",
+          "node": {
+            "kind": "leaf",
+            "hint": "choice",
+            "list": "identity_binding_kinds"
+          }
+        },
+        {
+          "key": "column",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "column"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        },
+        {
+          "key": "value",
+          "required": true,
+          "when": {
+            "field": "kind",
+            "is": "constant"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
           }
         }
       ]
