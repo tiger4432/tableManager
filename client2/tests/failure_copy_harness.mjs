@@ -85,13 +85,13 @@ console.log('\n[3] shape B: a reason does not restate its own consequence');
     failureCopy.filter((s) => DASH_JOINT.test(s)), []);
 }
 
-// ═══ ④ 🔴 이 계기가 «안 본» 것의 크기 — 단언이 아니라 «기록»입니다 ═══════════════════════
-//
-// 🔴 「이 기준으로 0」과 「이 축 잔량 0」은 다른 문장입니다. 좁힌 그물은 네 낱말이 없는 실패
-//    문구를 놓치고, 그건 「없어서 0」이 아니라 «안 봐서 0» 입니다. 그래서 총계로 올리지
-//    않고 그 폭을 수로 남깁니다. 안을 «읽지» 않습니다 — 읽으면 검증이 사람에게 돌아가고,
-//    그러면 다음 사람이 또 세어야 합니다.
-console.log('\n[4] what this instrument does NOT look at');
+// ⏸ 모양 D 는 «보류»입니다 — 단언을 여기 넣으면 `valid_die_frame_adoption_harness` 와
+//    «동시에 초록일 수 없습니다». 그 하니스는 map_editor.js 를 «잘라내어» vm 에서 돌리고,
+//    제 문구 수정이 그 잘라내는 자리를 바꿉니다(단일 편집으로는 재현 안 됨 — 집계 텍스트가
+//    자릅니다). HEAD 13 · 제 판 14. 총괄 판정 대기.
+
+// ═══ ⑤ 🔴 이 계기가 «안 본» 것의 크기 — 단언이 아니라 «기록»입니다 ═══════════════════
+console.log('\n[5] what this instrument does NOT look at');
 console.log(`  NOTE wide net ${wideNet.length} · narrowed ${failureCopy.length}`
   + ` · unexamined ${wideNet.length - failureCopy.length}`);
 console.log('  NOTE a FLOOR, not a total. The ceiling needs a call-site scan.');
