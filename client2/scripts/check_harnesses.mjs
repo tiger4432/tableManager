@@ -1147,6 +1147,9 @@ const FLOORS = new Map([
   // this box can reach -- so the SHAPE is asserted instead of the strings. One assertion
   // per shape, plus the guards that stop a broken scanner from passing vacuously
   ['failure_copy_harness.mjs', 6],
+  // the bridge that replaces slicing: a copy is the original IN FULL plus accessors, and
+  // the byte-prefix assertion is what stops it degenerating back into cutting
+  ['appended_module_harness.mjs', 9],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
