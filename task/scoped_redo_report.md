@@ -8507,3 +8507,73 @@ __comment                        「DISABLED … Re-enable by …」를 «지웠
 판정 대기: 🔴 **재기동 보류 요청** — 지금 재기동하셔도 이 규칙은 안 돕니다(꺼져 있음).
           위험은 «없습니다»만, ⓒⓓ 는 못 합니다 · 그리고 위 ㉮㉯㉰ 판정
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【정정 수용 + 남기신 측정】 「운영자가 «왜 전부 섰는지»를 어디서 아나」
+
+## 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0
+
+## 먼저 제 잘못 — 저도 문서를 «안 열었습니다»
+```
+제가 쓴 것   「로더에 «가드가 없다»」  -> 사실은 맞습니다 (try 가 없습니다)
+제가 «함의»한 것  「그래서 결함이다」   -> 🔴 틀렸습니다. §3.4 ②가 「워커가 뜨기 전에 거절」을
+                                    «설계로» 적고 있습니다. 던지는 것이 «의도»입니다
+```
+CLAUDE.md 의 「손대기 «전»에 코드맵·아키텍처 문서부터」는 «제게도» 걸리는 규율인데
+저도 grep 부터 갔습니다. 총괄과 «같은 자리»에서 틀렸습니다.
+🔵 그리고 그 절을 이제 읽었더니 §3.4 는 이 라운드에서 제가 물은 것들을 이미 들고 있었습니다 —
+   엣지가 `trigger_table` 이라는 것, `allow_map_metadata_upsert` 가 «엣지를 하나 더» 만든다는 것
+   (제가 어제 「숨은 엣지」라고 부른 그것이 2026-09-04 에 이미 문서화돼 있었습니다).
+
+---
+
+## 측정 — 🔴 **답이 «프로세스마다 다릅니다». 그리고 uvicorn 쪽이 나쁩니다**
+
+### ② 독립 워커 (`run_chain_worker.py`) — **사유가 보입니다**
+```
+run_chain_worker.py:47   await start_chain_ingestion_worker(SessionLocal)
+                :51-52   except Exception as e:  logger.error(f"Exception occurred: {e}")
+=> 로그에 이렇게 남습니다:
+   Exception occurred: allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+   접두는 밋밋하지만 «사유 문장이 그대로» 들어 있습니다. 운영자가 읽을 수 있습니다
+```
+
+### ① uvicorn (`main.py:513-516`) — 🔴 **사유가 안 나가고, 나가는 줄은 «반대»를 말합니다**
+```
+main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+logger.info("Chained Ingestion Worker background task spawned.")     <- 이 줄이 «찍힙니다»
+except Exception as e:
+    logger.error(f"Failed to start Directory Watcher: {e}")
+```
+```
+① 예외가 «태스크 안»에서 납니다. create_task 는 성공하므로 그 except 에 «안 걸립니다»
+② 그래서 「background task spawned」가 «그대로 찍힙니다» — 방금 죽은 것을 «떴다»고 말합니다
+③ add_done_callback «없음» (main.py·chain_ingestion_worker.py 전체 grep 0).
+   아무도 그 태스크를 await 하지도 관찰하지도 않습니다
+   -> 사유는 asyncio 의 「Task exception was never retrieved」로만, 그것도 «GC 시점»에,
+      이 앱의 logger 가 아니라 asyncio 예외 핸들러로 나갑니다
+④ 그러면 운영자에게 남는 것은 «심박이 안 뛰는 워커» 하나입니다
+   -> /health 는 「worker 'chain' 없음」이라고 말합니다. 「왜」는 «없습니다»
+```
+🔵 즉 총괄이 남기신 그 물음의 답: **①은 「안 나간다」, ②는 「사유가 아니라 «워커 없음»만 보인다」**
+   — 다만 «uvicorn 에서만»입니다. 독립 워커에서는 사유가 보입니다.
+
+### 📌 그리고 지나가다 하나 더 — 그 except 의 «주어가 틀렸습니다»
+```
+except 문구: "Failed to start Directory Watcher: {e}"
+그런데 그 try 블록은 워처 «와» 체인 워커를 «둘 다» 감쌉니다
+=> 워처 뒤쪽에서 나는 예외도 「워처가 못 떴다」로 보고됩니다. 복사-붙여넣기 자국으로 보입니다
+⛔ 안 고쳤습니다 — 오늘은 빼는 날이고 이건 지시받지 않은 수리입니다. 부류만 올립니다
+```
+
+## 제안 (지시 주시면 «한 줄»입니다)
+```
+add_done_callback 하나로 그 태스크의 예외를 «이 앱 로거»로 끌어냅니다
+=> 「spawned」 다음 줄에 「그리고 곧바로 죽었다, 사유는 이것」이 붙습니다
+⛔ 아직 안 했습니다. 그리고 이건 «더하기»라 빼는 날의 취지와 반대라서 판정을 청합니다
+```
+
+판정 대기: 🔴 위 add_done_callback (더하기입니다) · 🔴 except 주어 오류 수리 ·
+          🔴 그리고 앞 보고의 ㉮㉯㉰ (홉을 켜는 길) — 그게 안 정해지면 ④ 는 계속 멈춰 있습니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
