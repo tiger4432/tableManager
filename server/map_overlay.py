@@ -936,6 +936,21 @@ def orientation_declaration(meta: dict | None) -> dict:
     marked = m.get(AUTO_REGISTERED_KEY) is True
     grid_borrowed = bool(m.get(GRID_ASSUMED_KEY))
     frame_confirmed = bool(m.get(FRAME_CONFIRMED_KEY))
+    # 🔴 **하나의 불리언이 두 질문을 대답하고 있었다** — 「정렬 결정이 있나」와
+    #    「사람이 확정했나」. 앞을 `GEOMETRY_CONFIRMED` 가 쓰고(그리고 `map_alignment`
+    #    :516·:4751 이 그것을 **신뢰 토큰**으로 읽는다), 뒤를 화면이 쓴다.
+    #
+    #    표지는 둘을 이미 가른다. 사람 경로는 `confirmation_uid`(확정 **행**의 열쇠)와
+    #    `confirmed_by`·`confirmed_at` 을 싫고(`frame_confirmation.py:638`), 체인 맵퍼 둘은
+    #    자기 이름(`chain_alignment` · `chain_core_alignment`)만 대고 그 셋을 **안 실는다**.
+    #    즉 거짓말하는 것은 표지가 아니라 그것을 `bool()` 로 접는 **읽는 줄**이었고,
+    #    그래서 같은 맵을 오버레이는 「확정됨」으로 확정 화면은 「pending」으로 그렸다.
+    #
+    # ⚠️ 토큰은 **안 가른다.** `GEOMETRY_CONFIRMED` 를 움직이면 위 신뢰 판정이 같이
+    #    움직이고, 그건 맵 도메인 물음이다. 여기서는 **새 칸을 더해서** 답한다.
+    _confirm_mark = m.get(FRAME_CONFIRMED_KEY)
+    frame_confirmed_by_person = bool(
+        isinstance(_confirm_mark, dict) and _confirm_mark.get("confirmation_uid"))
     out = {}
     for axis, (reader, absent_default, synth_could_write,
                value_can_indicate_absence) in _ORIENTATION_READERS.items():
@@ -948,7 +963,11 @@ def orientation_declaration(meta: dict | None) -> dict:
             value, ok = reader(m.get(axis))
             # 읽히지 않는 값에는 표지를 얹지 않는다 — 확정이 「읽을 수 없는 값」을 확정으로
             # 승격시키면 그것이 정확히 이 어휘가 막는 사칭이다.
-            out[axis] = ({"value": value, "source": GEOMETRY_CONFIRMED} if ok
+            # 🔴 `source` 는 **오늘과 같다** — 정렬 동작이 한 글자도 안 움직인다.
+            #    더해지는 것은 `confirmed_by_person` 하나고, 그것만이 「누가 확정했나」에
+            #    답한다. 읽는 쪽이 이 칸을 안 보면 오늘과 완전히 같은 답을 받는다.
+            out[axis] = ({"value": value, "source": GEOMETRY_CONFIRMED,
+                          "confirmed_by_person": frame_confirmed_by_person} if ok
                          else {"value": absent_default, "source": GEOMETRY_UNPARSABLE})
             continue
         raw = m.get(axis)

@@ -8,6 +8,8 @@ import { localeCountText } from './absent.js';
 // 🔴 「이 본문이 오류를 나르나」의 «유일한» 철자. 봉투가 둘이라 «칸 이름»으로 물으면
 //    한쪽에서 조용히 아무것도 안 잡는다 (총괄 판정 22, 2026-09-07).
 import { errorText } from './body_error.js';
+// 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
+import { absentPath } from './absent_listing.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -453,6 +455,19 @@ function setSectionCount(id, value, tone) {
 //    바로 이 라우트가 없애려던 오독을 하고 있었다. 새 문구를 만들지 않는다. 있는 것을 쓴다.
 const UNREAD = '—';
 function markSectionUnread(id) { setSectionCount(id, UNREAD, null); }
+
+// 🔴 「0개」가 «거짓»인 자리. 원천 경로가 없으면 세어서 0 이 나온 것이
+//    아니라 «셀 것이 없는» 것입니다. 경로를 `title` 로 달아 운영자가
+//    고칠 자리를 찾게 합니다 — 문구를 늘리지 않습니다.
+// ⚠️ `path` 가 없으면 «아무것도 안 합니다» — 그런 목록은 진짜로 «빈» 것이고
+//    그때는 「0개」가 맞는 답입니다.
+const ABSENT_LABEL = '없음';
+function markSectionAbsent(id, path) {
+  if (!path) return;
+  setSectionCount(id, ABSENT_LABEL, 'warn');
+  const el = byId(id);
+  if (el) el.title = path;
+}
 
 // 탭 로드 실패 문구. 두 자리(부분 실패 · 예외)가 «같은 말»을 하도록 한곳에 둔다.
 const TAB_ERROR_MSG = {
@@ -908,7 +923,7 @@ async function fetchData(options = {}) {
       if (isStale()) return false;
       if (logs) { fileData = logs.data || []; fileTotal = logs.total || 0; renderFileTable(); }
       else { markSectionUnread('file-log-count'); allRead = false; }
-      if (ws) { workspaceData = ws.data || []; renderWorkspaceTable(); }
+      if (ws) { workspaceData = ws.data || []; renderWorkspaceTable(); markSectionAbsent('workspace-count', absentPath(ws)); }
       else { markSectionUnread('workspace-count'); allRead = false; }
       if (active) { activeIngestionData = active.data || []; renderActiveIngestions(); }
       else { markSectionUnread('active-ingestion-count'); allRead = false; }
@@ -949,12 +964,12 @@ async function fetchData(options = {}) {
       // 🔴 200 이어도 본문이 오류를 나를 수 있다 (main.py:4913). `data` 는 그때 «빈 목록»이라
       //    그대로 넘기면 화면이 「선언된 규칙 없음」을 그린다 — 깨진 것과 없는 것이 같아진다.
       const rulesFailure = errorText(rules);
-      if (rules && !rulesFailure) { chainData = rules.data || []; renderChainTable(); }
+      if (rules && !rulesFailure) { chainData = rules.data || []; renderChainTable(); markSectionAbsent('chain-rule-count', absentPath(rules)); }
       else {
         markSectionUnread('chain-rule-count'); allRead = false;
         if (rulesFailure) bodyFailures.push(rulesFailure);
       }
-      if (maps) { mapperData = maps.data || []; renderMapperTable(); }
+      if (maps) { mapperData = maps.data || []; renderMapperTable(); markSectionAbsent('mapper-count', absentPath(maps)); }
       else { markSectionUnread('mapper-count'); allRead = false; }
     } else if (tab === 'autoupdate') {
       const [stRes, failRes, wsRes] = await Promise.all([
@@ -969,7 +984,7 @@ async function fetchData(options = {}) {
       if (ws) workspaceData = ws.data || [];
       // 🔴 같은 봉투, 같은 병 (main.py:5732).
       const stFailure = errorText(st);
-      if (st && !stFailure) { autoUpdateData = st.data || []; renderAutoUpdateTable(); }
+      if (st && !stFailure) { autoUpdateData = st.data || []; renderAutoUpdateTable(); markSectionAbsent('autoupdate-count', absentPath(st)); }
       else {
         markSectionUnread('autoupdate-count'); allRead = false;
         if (stFailure) bodyFailures.push(stFailure);
