@@ -94,3 +94,46 @@ def test_nothing_in_this_route_decides_the_class():
     code = ast.unparse(function)
     for decided in ("'dynamic'", '"dynamic"'):
         assert decided not in code, "the route names a class value it does not read"
+
+
+# ------------------------------------------- the authoring form says which value matters
+
+def test_the_class_field_label_names_the_value_the_code_reads():
+    """🔴 THE FORM ASKED FOR A VALUE WITHOUT SAYING WHICH VALUES EXIST. `class` is a free
+    text box labelled 「노드 분류」, and the only value any code looks at is the one
+    `_static_types()` compares against - so an operator had to read the server to know
+    what to type.
+
+    ⛔ NOT CLOSED INTO A LIST. The skeleton's leaf grammar offers `free` (shows nothing)
+    or `choice` (shows them and closes the list), and closing the declaration's own
+    vocabulary is the failure this repository spent the night removing. The label is the
+    one affordance the existing grammar has, so the label carries it.
+    """
+    import json
+    import os
+
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    skeleton = json.load(open(os.path.join(here, "ledger", "ledger_skeleton.json"),
+                              encoding="utf-8"))
+
+    def find(node):
+        if isinstance(node, dict):
+            if node.get("key") == "class":
+                return node
+            for value in node.values():
+                got = find(value)
+                if got:
+                    return got
+        elif isinstance(node, list):
+            for value in node:
+                got = find(value)
+                if got:
+                    return got
+        return None
+
+    field = find(skeleton)
+    assert field, "the class field left the skeleton"
+    assert "static" in field["label"], \
+        "the label does not name the one value the walk actually reads"
+    # ⛔ Still open, deliberately: showing the value must not become closing the list.
+    assert field["node"]["hint"] == "free"
