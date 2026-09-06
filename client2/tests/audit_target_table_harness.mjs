@@ -18,10 +18,16 @@
 // ═══ 🔴 이 파일은 «잘라쓰기»였습니다 (2026-09-06 전환, truncation 과 «같은 틀») ═══
 // 종전에는 함수 «하나»를 시그니처와 열 0 의 닫는 중괄호로 «잘라» vm 에 넣었습니다.
 // 그 함수가 헬퍼를 하나 부르게 되는 날 「코드가 맞는데」 빨개집니다.
-import { importMutated } from './lib/appended_module.mjs';
+import { fileURLToPath } from 'node:url';
+import { loadWithProbe } from './lib/probe.mjs';//
+// 🔴 정정 (2026-09-06 오후): 이 파일은 «제가 오늘 만든» 다리를 쓰고 있었습니다. 그런데 그
+//    기제는 «이미 있었습니다» — `tests/lib/probe.mjs` (251줄 · 소비자 21). 덧붙이기도,
+//    바이트 접두 단언도, 「변이가 안 먹으면 죽는다」도, 의존 모듈 갈아끼우기도 «전부» 거기
+//    있습니다. 제가 그것을 안 찾고 두 번째 경로를 지었고, 그게 기준 ④ 위반입니다.
+//    -> 정본 하나로 모읍니다. 제 헬퍼는 삭제했습니다.
 import { auditTargetTable } from '../src/timeline.js';
 
-const SRC = new URL('../src/timeline.js', import.meta.url);
+const SRC_PATH = fileURLToPath(new URL('../src/timeline.js', import.meta.url));
 
 let passed = 0;
 let failed = 0;
@@ -151,9 +157,10 @@ async function score(list, mustCatch, heading) {
       // A mutant that throws counts as caught only because it cannot answer -- the throw is
       // recorded as such rather than hidden. A mutant that did not APPLY is not caught: that
       // is instrument failure, and it kills the run.
-      bad = verdict((await importMutated(SRC, mutate)).auditTargetTable);
+      bad = verdict((await loadWithProbe(SRC_PATH, { mutate, tag: 'audittt' }))
+        .module.auditTargetTable);
     } catch (e) {
-      if (/mutation changed nothing/.test(String(e && e.message))) die(`${name}: ${e.message}`);
+      if (/did not mutate|unchanged/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;
     }
     if (bad === mustCatch) {

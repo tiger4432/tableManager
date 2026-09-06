@@ -1151,9 +1151,11 @@ const FLOORS = new Map([
   // this box can reach -- so the SHAPE is asserted instead of the strings. One assertion
   // per shape, plus the guards that stop a broken scanner from passing vacuously
   ['failure_copy_harness.mjs', 6],
-  // the bridge that replaces slicing: a copy is the original IN FULL plus accessors, and
-  // the byte-prefix assertion is what stops it degenerating back into cutting
-  ['appended_module_harness.mjs', 17],
+  // 🔴 the mechanism that REPLACES slicing, scored on its own guards. Nothing else scores
+  //    them: 21 harnesses use `lib/probe.mjs` and not one asserted that its append-only
+  //    check or its no-op-mutant check still fires. Two of those guards exit(2), so they are
+  //    measured in a child process -- 「cannot measure it here」 is how a guard disappears.
+  ['probe_mechanism_harness.mjs', 17],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
