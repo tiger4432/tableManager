@@ -181,3 +181,100 @@ def test_a_merge_that_changes_nothing_writes_no_history(db_session):
     column that did not move would make every merge look like a change."""
     logs, _ = run_the_merge(db_session, shell_bn="SAME", conflict_bn="SAME")
     assert [d for d in logs if d.get("source_name") == "collision_merge"] == []
+
+
+# ------------------------------------------- [P-4] the merge reads the overwrites ONCE
+
+def overwrite_selects(recorded):
+    """Statements that read `cell_overwrites`, which is what the merge loop used to
+    issue once per column per row."""
+    return [c for c in recorded
+            if "FROM cell_overwrites" in c.sql or "from cell_overwrites" in c.sql]
+
+
+def pin(db, row, column, by="user"):
+    """A user overwrite on one cell - what the merge's protection guard reads."""
+    from datetime import datetime
+
+    db.add(models.CellOverwrite(table_name=TABLE, row_id=row.row_id, column_name=column,
+                                is_overwrite=True, updated_by=by,
+                                manual_priority_source=by, updated_at=datetime.now()))
+    db.flush()
+
+
+def test_the_merge_reads_the_overwrites_in_one_statement(db_session):
+    """🔴 THE COUNT, NOT THE CLOCK. The loop asked per column and per row, and a column
+    with no overwrite asked too - so the cost scaled with the table's WIDTH for a fact
+    that fits in one read of two row ids."""
+    from sql_budget import record_statements
+
+    shell, conflict = merge_pair(db_session)
+    with record_statements(db_session) as recorded:
+        crud.apply_row_update_internal(
+            db_session, TABLE,
+            schemas.GeneralUpdateItem(row_id=shell.row_id, updates={"cx": 1},
+                                      source_name="user", updated_by="tester"),
+            logs_to_cache=[])
+    reads = overwrite_selects(recorded)
+    # 🔴 THE PROPERTY IS THE SHAPE, NOT A TOTAL. Other reads on this path are not the
+    # merge's, and pinning a total would make this test go red for their reasons. What
+    # the repair removed is the PER-COLUMN read, so that is what is asserted gone.
+    # ⚠️ NOT ZERO, AND THE REASON IS NAMED. The ordinary metadata path reads the
+    # overwrite of each cell this update CHANGED, and that read is not the merge's and
+    # not this repair's. What the merge used to add was one per column OF THE TABLE, so
+    # the property is that the count no longer scales with the table's width.
+    merged_columns = [c.name for c in models.DYNAMIC_TABLES[TABLE].__table__.columns
+                      if c.name not in ("cell_key", "row_id", "business_key_val",
+                                        "created_at", "updated_at")]
+    per_column = [c for c in reads if "cell_overwrites.column_name = " in c.sql]
+    assert len(per_column) < len(merged_columns), (
+        "%d per-column overwrite reads for %d merged columns - the merge is still "
+        "asking once per column" % (len(per_column), len(merged_columns)))
+    batched = [c for c in reads if "row_id IN " in c.sql]
+    assert len(batched) == 1, (
+        "expected exactly one batched read for the two rows, got %d: %s"
+        % (len(batched), [c.sql[-60:] for c in batched]))
+
+
+def test_the_protection_decision_is_unchanged(db_session):
+    """🔴 THE OTHER ARM. A batch that loses the overwrites would also issue one
+    statement, and would silently stop protecting the user's value."""
+    shell, conflict = merge_pair(db_session, conflict_bn="MINE", shell_bn="THEIRS")
+    pin(db_session, conflict, "bn")                     # the conflict row's cell is pinned
+    crud.apply_row_update_internal(
+        db_session, TABLE,
+        schemas.GeneralUpdateItem(row_id=shell.row_id, updates={"cx": 1},
+                                  source_name="parser_x", updated_by="parser_x"),
+        logs_to_cache=[])
+    db_session.flush()
+    assert conflict.bn == "MINE", "the pinned value was overwritten by the merge"
+
+
+def test_an_unpinned_cell_still_merges(db_session):
+    """The control for the test above: without the pin the same call DOES merge, so the
+    assertion there is about the guard rather than about the merge never running."""
+    shell, conflict = merge_pair(db_session, conflict_bn="OLD", shell_bn="NEW")
+    crud.apply_row_update_internal(
+        db_session, TABLE,
+        schemas.GeneralUpdateItem(row_id=shell.row_id, updates={"cx": 1},
+                                  source_name="parser_x", updated_by="parser_x"),
+        logs_to_cache=[])
+    db_session.flush()
+    assert conflict.bn == "NEW"
+
+
+def test_both_collision_sites_go_through_the_one_helper():
+    """⛔ TWO SITES, ONE READ. They each spelled this lookup by hand, which is how one of
+    them gets repaired and the other keeps the old cost."""
+    import inspect
+
+    module = inspect.getsource(crud)
+    assert module.count("prime_merge_overwrites(db, table_name, merge_ow,") == 2
+    # Scoped to the two merge functions: `column_name ==` is still correct elsewhere
+    # (the chunked delete builds an `or_()` of exactly those comparisons), so asserting
+    # its absence module-wide would assert something untrue about other code.
+    for fn in (crud.apply_row_update_internal, crud.set_cell_manual_priority_batch):
+        body = inspect.getsource(fn)
+        assert "CellOverwrite.column_name == col_name" not in body
+        assert "CellOverwrite.column_name == c_name" not in body
+        assert "prime_merge_overwrites(" in body

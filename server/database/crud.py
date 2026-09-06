@@ -3009,20 +3009,22 @@ def apply_row_update_internal(
                         
                         # 3. 임시 행(row_to_delete)에 채워진 모든 실제 값을 충돌 행(row)에 덮어쓰기 병합
                         columns_to_merge = [c.name for c in table_model.__table__.columns]
+                        # [P-4] 두 행의 덮어쓰기를 «한 번에» 읽는다. 종전에는 컬럼마다 두 번씩
+                        # 물었고 그 대다수가 「덮어쓰기가 «없는» 컬럼」이었다 — 없는 것을 확인하려고
+                        # 컬럼 수만큼 왕복했다. `overwrites_cache` 가 None 인 호출자를 위해 지역
+                        # dict 로 떨어지므로 «판정은 한 글자도 바뀌지 않는다».
+                        merge_ow = overwrites_cache if overwrites_cache is not None else {}
+                        prime_merge_overwrites(db, table_name, merge_ow,
+                                               [row.row_id, row_to_delete.row_id],
+                                               columns_to_merge)
                         for col_name in columns_to_merge:
                             if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
                                 continue
-                            
+
                             is_explicitly_edited = (col_name in update_item.updates)
-                            
+
                             # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 수정하는 셀이 아니면 기존 값 보존
-                            old_ow = overwrites_cache.get((row.row_id, col_name)) if overwrites_cache else None
-                            if not old_ow:
-                                old_ow = db.query(models.CellOverwrite).filter(
-                                    models.CellOverwrite.table_name == table_name,
-                                    models.CellOverwrite.row_id == row.row_id,
-                                    models.CellOverwrite.column_name == col_name
-                                ).first()
+                            old_ow = merge_ow.get((row.row_id, col_name))
                                 
                             is_old_user_overwritten = False
                             if old_ow:
@@ -3032,13 +3034,7 @@ def apply_row_update_internal(
                                 
                             # 새 값이 사용자 입력값인지 판단
                             is_new_user_overwritten = (update_item.source_name == "user" or (update_item.updated_by and update_item.updated_by != "system" and "parser" not in str(update_item.updated_by).lower()))
-                            new_ow = overwrites_cache.get((row_to_delete.row_id, col_name)) if overwrites_cache else None
-                            if not new_ow:
-                                new_ow = db.query(models.CellOverwrite).filter(
-                                    models.CellOverwrite.table_name == table_name,
-                                    models.CellOverwrite.row_id == row_to_delete.row_id,
-                                    models.CellOverwrite.column_name == col_name
-                                ).first()
+                            new_ow = merge_ow.get((row_to_delete.row_id, col_name))
                             if new_ow:
                                 if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
                                     is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
@@ -3270,6 +3266,44 @@ def apply_row_update_internal(
             # what forced one statement per row (see `_get_or_create_row`).
             row.updated_at = func.now()
     return row, is_new, changed_cols
+
+
+def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids, columns):
+    """Every overwrite these rows carry, in ONE query, with the ABSENCES cached too.
+
+    🔴 A CACHE MISS AND AN ABSENT OVERWRITE WERE THE SAME VALUE. The collision-merge
+    loop asked with `.get(...)` and treated a falsy answer as "not loaded", so every
+    column that simply HAS no overwrite issued its own SELECT - and having no overwrite
+    is the ordinary state of a column. The cost was 2 x (columns) statements per merged
+    row rather than one statement for the pair of rows.
+
+    🔴 AND THE CONFLICT ROW WAS NEVER PREFETCHED AT ALL. `_apply_batch_updates_once`
+    primes `overwrites_cache` from the row ids the batch NAMED; the conflict row is found
+    by a business key recomputed during the pass, so it is not among them and not one of
+    its columns was cached.
+
+    Storing `None` for a (row, column) with no overwrite is what `_load_metadata_row_cell`
+    already does a few hundred lines above, and for the same reason: with `None` stored,
+    "asked, and there is none" stops looking like "never asked".
+
+    ⚠️ IT DECIDES NOTHING. The merge's protection rules read the same objects they read
+    before; only where those objects come from changed.
+    """
+    if overwrites_cache is None or not row_ids or not columns:
+        return 0
+    ids = [r for r in dict.fromkeys(row_ids) if r]
+    unprimed = [r for r in ids
+                if any((r, c) not in overwrites_cache for c in columns)]
+    if not unprimed:
+        return 0
+    for ow in (db.query(models.CellOverwrite)
+                 .filter(models.CellOverwrite.table_name == table_name,
+                         models.CellOverwrite.row_id.in_(unprimed)).all()):
+        overwrites_cache[(ow.row_id, ow.column_name)] = ow
+    for r in unprimed:
+        for c in columns:
+            overwrites_cache.setdefault((r, c), None)
+    return len(unprimed)
 
 
 def purge_map_rows(db, table_model, table_name: str, row_ids):
@@ -4571,20 +4605,21 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                         
                         # 1. 임시 행의 모든 실제 값을 충돌 행에 덮어쓰기 병합
                         columns_to_merge = [c.name for c in table_model.__table__.columns]
+                        # [P-4] 형제 자리(`apply_row_update_internal`)와 «같은 헬퍼»를 지난다.
+                        # 두 자리가 각자 이 읽기를 손으로 적고 있었고, 그것이 한쪽만 고쳐질 수
+                        # 있는 상태였다.
+                        merge_ow = overwrites_cache if overwrites_cache is not None else {}
+                        prime_merge_overwrites(db, table_name, merge_ow,
+                                               [row.row_id, row_to_delete.row_id],
+                                               columns_to_merge)
                         for c_name in columns_to_merge:
                             if c_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
                                 continue
-                            
+
                             is_explicitly_edited = any(u["column_name"] == c_name for u in updates)
-                            
+
                             # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 핀 고정 수정하는 셀이 아니면 기존 값 보존
-                            old_ow = overwrites_cache.get((row.row_id, c_name)) if overwrites_cache else None
-                            if not old_ow:
-                                old_ow = db.query(models.CellOverwrite).filter(
-                                    models.CellOverwrite.table_name == table_name,
-                                    models.CellOverwrite.row_id == row.row_id,
-                                    models.CellOverwrite.column_name == c_name
-                                ).first()
+                            old_ow = merge_ow.get((row.row_id, c_name))
                                 
                             is_old_user_overwritten = False
                             if old_ow:
@@ -4594,13 +4629,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 
                             # 새 값이 사용자 입력값인지 판단
                             is_new_user_overwritten = (source_name == "user" or (updated_by and updated_by != "system" and "parser" not in str(updated_by).lower()))
-                            new_ow = overwrites_cache.get((row_to_delete.row_id, c_name)) if overwrites_cache else None
-                            if not new_ow:
-                                new_ow = db.query(models.CellOverwrite).filter(
-                                    models.CellOverwrite.table_name == table_name,
-                                    models.CellOverwrite.row_id == row_to_delete.row_id,
-                                    models.CellOverwrite.column_name == c_name
-                                ).first()
+                            new_ow = merge_ow.get((row_to_delete.row_id, c_name))
                             if new_ow:
                                 if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
                                     is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
