@@ -2706,6 +2706,14 @@ function renderRunning() {
 
     // 🔴 실패 사유는 «서버가 쓴 문장» 그대로입니다.
     //    없으면 아무것도 그리지 않습니다 — 성한 줄은 오늘과 같습니다.
+    // 🔴 서버가 만든 문장 그대로. 끝난 실행이 «무엇을 얼마나» 했는지를
+    //    서버가 이미 나르고 있었고 화면이 안 보고 있었습니다.
+    if (cfgText(row.summary)) {
+      const sum = document.createElement('span');
+      sum.className = 'running-elapsed';
+      sum.textContent = ` · ${cfgText(row.summary)}`;
+      line.appendChild(sum);
+    }
     if (cfgText(row.reason)) {
       const why = document.createElement('span');
       why.className = 'running-reason';

@@ -447,6 +447,9 @@ export function buildRunsView(payload, now, cancellable) {
       //    목록은 «성공»으로 오고 실패한 «줄»이 그 안에 있습니다.
       //    그래서 `body_error.errorText` 를 여기 갖다 대면 아무것도 안 잡힙니다.
       reason: text(run.error),
+      // 🔴 서버가 만든 문장을 «그대로» 나릅니다. 여기서 해석하면
+      //    연산별 갈래가 화면에 생기고, 그것이 판정 33 이 막는 그것입니다.
+      summary: text(run.result_sentence),
       cancel: !finished && canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',

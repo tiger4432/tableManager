@@ -1138,6 +1138,10 @@ def runs(db, limit: int = 50) -> list:
             .limit(max(1, min(int(limit or 50), 500))).all())
     return [{
         "run_id": row.run_id,
+        # 🔴 화면이 `result` 를 «해석하지 않습니다». 연산마다 키가 다르고
+        #    선언이 그 모양을 안 고정하므로, 「이 수를 이 이름으로」를 화면이
+        #    정하면 그것이 계약을 «지어내는» 것입니다 (총괄 판정 33).
+        "result_sentence": run_result_sentence(row.result),
         "op": row.op,
         "label": (OPERATIONS.get(row.op) or {}).get("label"),
         "params": json.loads(row.params) if row.params else {},
@@ -1447,6 +1451,25 @@ def runner_identity() -> str:
         return "%s/%s/%d" % (name, _socket.gethostname(), _os.getpid())
     except Exception:                                            # noqa: BLE001
         return "%s/?/%d" % (name, _os.getpid())
+
+
+def run_result_sentence(stored) -> str | None:
+    """연산이 돌려준 수들 -> 화면이 «그대로 그릴» 한 문장. 없으면 None.
+
+    🔴 낱말을 «지어내지 않습니다» — 연산이 쓴 키를 그대로 씨니다.
+    연산별 갈래를 만드는 순간 이 함수가 «등록부가 범용이라는 성질»을 깨고,
+    그러면 새 연산이 항목 하나가 아니라 «이 함수의 갈래»가 됩니다.
+    ⚠️ 빈 dict 는 None 입니다 — 「수가 없다」와 「빈 문장」은 다릅니다.
+    """
+    if not stored:
+        return None
+    try:
+        values = json.loads(stored) if isinstance(stored, str) else stored
+    except Exception:                                            # noqa: BLE001
+        return None
+    if not isinstance(values, dict) or not values:
+        return None
+    return " · ".join("%s %s" % (k, v) for k, v in values.items())
 
 
 def _mark_run(run_id, *, state, started=False, finished=False, result=None, error=None):

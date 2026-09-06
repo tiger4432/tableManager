@@ -590,6 +590,23 @@ async function suite(source) {
     ok(fv.rows[0].what && fv.rows[0].what.text.length > 0,
       'G7: ... the reason is an ADDITION -- what the row already said is still there');
 
+    // G8 -- what a finished run actually DID. The server composes the sentence (retroactive.py
+    // `run_result_sentence`) because `result` has different keys per operation and the
+    // declaration does not fix its shape, so a screen deciding 「this number is called that」
+    // would be inventing the contract rather than reading it (ruling 33).
+    const summaryPayload = { runs: [
+      { run_id: 'r7', op: 'ledger_backfill', label: '끝난 것', state: 'done',
+        result_sentence: 'atoms 1,204 · skipped 3' },
+      { run_id: 'r6', op: 'ledger_backfill', label: '수 없음', state: 'done' },
+    ], ingestions: [] };
+    const sv = view.buildRunsView(summaryPayload, NOW, {});
+    ok(sv.rows[0].summary && sv.rows[0].summary.text === 'atoms 1,204 · skipped 3',
+      'G8: the sentence is carried VERBATIM -- the view does not reformat it');
+    ok(sv.rows[1].summary === null,
+      'G8: ... and a run with no numbers carries none, rather than an empty sentence');
+    ok(sv.rows[0].reason === null,
+      'G8: ... the summary is not the failure reason -- two questions, two fields');
+
     ok(view.elapsedMinutes(null, NOW) === null,
       'G7: a run with no start time has no elapsed, not zero');
 
