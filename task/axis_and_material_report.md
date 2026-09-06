@@ -1,3 +1,65 @@
+# [디자인 -> 총괄] 🔴 **F-13 — 물으신 것보다 «나은» 재료가 있고, 그런데 그 사실이 «두 번 계산»됩니다** (2026-09-06)
+
+## ① 물으신 것: 「`is_overwrite` 로 그릴 수 있나」 — 답은 «그것보다 나은 것이 있다» 입니다
+```
+✅ `manual_priority_source` 가 «이미 전선에 있습니다»   server/main.py:920
+✅ 그리고 클라가 «이미 읽습니다»                        main.js:1541 · 1654
+🔴 그런데 읽는 곳이 «소스 상세 패널»입니다. 그리드의 `cellClassRules` 는 그것을 «안 봅니다»
+   grid.js:676·684  ->  `priority_source === 'collision_merge'` · `=== 'user'` «둘뿐»
+=> 오늘 «일곱 번째» 「능력이 있는데 안 이어진」 자리입니다. 필드도, 배달도, 소비자도 있습니다
+```
+
+## ② 🔴 그런데 더 큰 것을 찾았습니다 — `priority_source` 가 «두 갈래»로 계산됩니다
+```python
+# server/main.py:894-907
+if not include_sources:                       # 싼 길
+    if manual_pin == "collision_merge" or updated_by == "collision_merge":
+        priority_source = "collision_merge"
+    elif is_ow or updated_by == "user" or manual_pin == "user":
+        priority_source = "user"              # 🔵 is_ow 만으로도 «user» 가 됩니다
+    else:
+        priority_source = None
+else:                                          # 비싼 길
+    _, priority_source = crud.compute_priority_value(col_srcs, manual_pin, …)
+```
+🔴 **같은 사실을 두 함수가 «따로» 계산하고, 답이 다릅니다.**
+```
+싼 길    `is_ow` 가 참이면 -> "user"          -> CSS 가 «켜집니다». 핀이 보입니다
+비싼 길  `compute_priority_value` 가 정합니다 -> 행이 말하는 "pipeline_parser" 가 여기서 나옵니다
+=> 즉 「핀이 보이나」가 «어느 길로 읽었나»에 달립니다. 기준 ④ 입니다
+```
+⚠️ 그리고 행의 두 줄이 그 두 갈래와 «정확히» 대응합니다 — 행은 둘을 «따로» 적었는데
+   저는 그것이 «한 사실의 두 계산»이라고 읽습니다.
+
+## ③ 그래서 수리 모양이 셋 있고, 크기가 다릅니다
+```
+㉮ 클라만    그리드가 `manual_priority_source` 를 «직접» 봅니다
+            -> 두 계산을 «둘 다 우회»합니다. 가장 작고, 상세 패널과 «같은 필드»를 씁니다
+            🔴 다만 «manual_pin 이 진짜 핀에서 채워지나»에 달립니다 — 아래 미지
+㉯ 서버      두 갈래를 하나로 (C-7 「priority_source 저자 하나로」) -> 제 담당 아님
+㉰ 임시      `is_overwrite` 로 그리기 -> ⛔ 권하지 않습니다.
+            그건 «덮어썼다»이지 «사람이 핀을 꽂았다»가 아닙니다. 다른 사실을 그리는 것입니다
+```
+
+## ④ 🔴 모르는 것 — 이것이 ㉮ 를 가릅니다
+```
+❓ 사람이 핀을 꽂았을 때 `cell_overwrites.manual_priority_source` 에 «무엇이 들어가나»
+   행은 「user/collision_merge 가 아니라 None」이라 적습니다. 그렇다면 ㉮ 도 «못 그립니다»
+   -> 그때는 C-7 을 기다리는 것이 맞습니다
+   🔴 이건 «쓰기 경로»를 봐야 아는데, 저는 읽기만 봤습니다. 그리고 이 상자에서 핀을 꽂아
+      재는 것은 «제가 만든 행»이 되므로 운영 주장이 안 됩니다
+❓ `compute_priority_value` 가 무엇을 보고 "pipeline_parser" 를 내는지 — «안 열었습니다»
+```
+
+## 이 라운드가 «뺀» 것 — «0» (측정 라운드)
+## ④ 를 움직였나 — «아니오». 다만 ④ 자리를 «하나 찾았습니다» (위 ②)
+
+판정 대기: **㉮ 로 갈지 — 그러려면 「진짜 핀에서 manual_priority_source 가 채워지나」 한 줄이
+필요하고, 그건 쓰기 경로라 구현자 쪽이 빠릅니다.** 채워지면 클라만으로 닫힙니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 05:3x — bbax7m97u (지시서·dist) · 05:3x — bj415tf59 (자가 기상) · 02:0x
+
+---
+
 # [디자인 -> 총괄] 🔴 **도달 가능성 — 클라 주석과 서버 주석이 «서로 반대»로 적혀 있습니다** (2026-09-06)
 
 물으신 것은 빈도가 아니라 «낼 수 있나»였고, 서버 코드에서 답이 나왔습니다.
