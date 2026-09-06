@@ -231,8 +231,12 @@ def test_a_nan_coordinate_is_skipped_instead_of_taking_the_screen_down(
     real_fetch = bonding_plan._fetch_points
 
     def with_a_bad_point(db, cols, filters, distinct_pairs=False):
-        return list(real_fetch(db, cols, filters, distinct_pairs)) + [
-            (float("nan"), 2.0), (3.0, float("inf"))]
+        # [P-7] `_fetch_points` now returns `(points, capped)`. This stub follows the
+        # real shape rather than a list, because a stub that keeps the OLD shape would
+        # make the call sites unpack a plain list and fail for a reason that has
+        # nothing to do with what this test is about.
+        pts, capped = real_fetch(db, cols, filters, distinct_pairs)
+        return list(pts) + [(float("nan"), 2.0), (3.0, float("inf"))], capped
 
     monkeypatch.setattr(bonding_plan, "_fetch_points", with_a_bad_point)
 
@@ -690,3 +694,70 @@ def test_declared_typo_history_column_demotes_but_rows_survive(bdp_env, client, 
                       params={"lot": "LOTX", "slot": "01"}).json()
     assert body["sources"]["process_history"] == "connected(column_unresolved:time)"
     assert len(body["history"]) == 3
+
+
+# ---------------------------------------------------------------- [P-7] the cap speaks
+#
+# `_fetch_points` used to hit its hard cap, write `logger.warning`, and return the short
+# list anyway. The instrument was then held by whoever reads server logs, while the code
+# that COUNTS the list got a number that reads as "this is how many there are" and is
+# indistinguishable from "there are more and we stopped looking".
+#
+# 🔴 BOTH ARMS ARE ASSERTED. Testing only the capped case would stay green if someone
+# hard-coded the flag to True, and testing only the uncapped case would stay green if the
+# flag were removed and defaulted to False. The pair is what pins it.
+
+def test_fetch_points_returns_the_flag_beside_the_points(bdp_env, monkeypatch):
+    """🔴 THE CONTRACT. Two values, and the second one is not optional."""
+    db = bdp_env
+    _seed_core(db)
+    model = models.DYNAMIC_TABLES["bdp_test_core_defect_map"]
+    cols = {"x": model.x, "y": model.y}
+    filters = [model.lot == "LOTX", model.slot == "01"]
+
+    monkeypatch.setattr(bonding_plan, "MAX_REGION_POINTS", 4)
+    pts, capped = bonding_plan._fetch_points(db, cols, filters)
+    assert len(pts) == 4 and capped is True
+
+    monkeypatch.setattr(bonding_plan, "MAX_REGION_POINTS", 10_000)
+    pts, capped = bonding_plan._fetch_points(db, cols, filters)
+    assert len(pts) == 36 and capped is False, "an uncapped read must SAY it was uncapped"
+
+
+def test_the_response_always_carries_the_cap_field(bdp_env, client):
+    """⚠️ ALWAYS, like `frame_basis`. An absent key cannot distinguish "nothing was
+    truncated" from "this server does not say" - which is the state the field removes."""
+    _seed_core(bdp_env)
+    body = client.get("/api/bonding-plan/core-summary",
+                      params={"lot": "LOTX", "slot": "01"}).json()
+    assert body["counts_capped"] == {"cap": bonding_plan.MAX_REGION_POINTS, "roles": []}
+
+
+def test_a_capped_count_names_itself_in_the_response(bdp_env, client, monkeypatch):
+    """🔴 THE POINT, END TO END. The screen gets the number AND the fact that the number
+    came off a truncated read, without anyone opening a log file."""
+    _seed_core(bdp_env)
+    monkeypatch.setattr(bonding_plan, "MAX_REGION_POINTS", 2)
+    body = client.get("/api/bonding-plan/core-summary", params={
+        "lot": "LOTX", "slot": "01",
+        "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
+    }).json()
+    field = body["counts_capped"]
+    assert field["cap"] == 2
+    assert field["roles"], "the cap bound and the response did not say so"
+    # BOTH call sites: `used` comes from the distinct-pair branch, the rest from the
+    # region loop. A repair that only reached one of them would satisfy a weaker test.
+    assert "used" in field["roles"]
+    assert [r for r in field["roles"] if r != "used"], "the region loop did not report"
+
+
+def test_the_roles_are_deduplicated_and_ordered(bdp_env, client, monkeypatch):
+    """The region loop runs once per role, so a role could otherwise appear twice and
+    the field would read as a count of something."""
+    _seed_core(bdp_env)
+    monkeypatch.setattr(bonding_plan, "MAX_REGION_POINTS", 2)
+    roles = client.get("/api/bonding-plan/core-summary", params={
+        "lot": "LOTX", "slot": "01",
+        "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
+    }).json()["counts_capped"]["roles"]
+    assert roles == sorted(set(roles))

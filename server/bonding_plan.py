@@ -781,14 +781,24 @@ def finite_point(px, py):
 
 
 def _fetch_points(db, cols, filters, distinct_pairs=False):
-    """(x,y) 좌표 페치 — 하드캡 MAX_REGION_POINTS (좌표는 응답에 싣지 않는 내부 연산용)."""
+    """(x,y) 좌표 페치 — 하드캡 MAX_REGION_POINTS. 반환 `(points, capped)`.
+
+    🔴 `capped` 를 «같이» 돌려주는 것이 이 함수의 계약이다. 종전에는 상한에 닿으면
+    `logger.warning` 만 남기고 목록을 «그대로» 돌려줬는데, 그러면 계기를 가진 쪽은
+    «로그를 읽는 사람»이고 틀린 수를 받는 쪽은 «그 목록을 세는 코드»다. 잘린 목록을
+    센 값은 「이만큼 있다」로 읽히고, 「더 있는데 안 봤다」와 «같은 픽셀»이 된다.
+
+    ⚠️ 상한에 «안» 닿은 것도 사실이라 `False` 로 «말한다». 부재로 두면 읽는 쪽이
+    「모른다」와 「안 잘렸다」를 구별할 수 없다.
+    """
     q = db.query(cols["x"], cols["y"]).filter(*filters)
     if distinct_pairs:
         q = q.distinct()
     pts = q.limit(MAX_REGION_POINTS).all()
-    if len(pts) >= MAX_REGION_POINTS:
+    capped = len(pts) >= MAX_REGION_POINTS
+    if capped:
         logger.warning("[BondingPlan] region point fetch hit hard cap (%d) — counts may be truncated", MAX_REGION_POINTS)
-    return pts
+    return pts, capped
 
 
 def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -> dict:
@@ -813,6 +823,10 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
         return map_overlay.compose_map_id(identity_cols, identity_vals, src)
 
     statuses = {}
+    # [P-7] 어느 집계가 «잘린 목록»에서 나왔나. `_fetch_points` 가 상한에 닿으면 그 자리의
+    # 이름이 여기 들어오고, 아래에서 `result` 에 «항상» 실린다 — `frame_basis` 와 같은 이유로
+    # 항상 싣는다(잘린 수가 안 잘린 수와 «똑같이 보이는» 것이 이 필드가 없애는 상태다).
+    capped_roles = []
     counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0}
     region_counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0} if rects is not None else None
     history = []
@@ -932,7 +946,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                         # [QA 감사 F2 취지] 규격 불명 시 조용히(raw 좌표로) 계산하지 않는다
                         region_counts[count_key] = 0
                     else:
-                        pts = _fetch_points(db, cols, filters)
+                        pts, capped = _fetch_points(db, cols, filters)
+                        if capped:
+                            capped_roles.append(count_key)
                         n = 0
                         for (px, py) in pts:
                             if not finite_point(px, py):
@@ -970,7 +986,9 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                        cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot)]
             try:
                 if "x" in cols and "y" in cols:
-                    pts = _fetch_points(db, cols, filters, distinct_pairs=True)
+                    pts, capped = _fetch_points(db, cols, filters, distinct_pairs=True)
+                    if capped:
+                        capped_roles.append("used")
                     pts = [(int(px), int(py)) for (px, py) in pts
                            if finite_point(px, py)]
                     counts["used"] = len(set(pts))
@@ -1066,6 +1084,11 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # 선언 순서(퇴화형)로 골랐는지. **항상 싣는다** — 퇴화형이 확정과 똑같이 보이는 것이
     # 바로 이 사슬이 없애려는 상태다. 기존 키는 한 글자도 바뀌지 않는 추가 전용 필드다.
     result["frame_basis"] = frame_basis
+    # [P-7] 잘린 집계가 «있으면 어느 것인지», 없으면 «없다»고 말한다. `frame_basis` 와 같은
+    # 규율로 **항상 싣는다** — 이 키가 없으면 읽는 쪽은 「안 잘렸다」와 「이 서버는 그 말을
+    # 안 한다」를 구별할 수 없다. 기존 키는 한 글자도 바뀌지 않는 추가 전용 필드다.
+    result["counts_capped"] = {"cap": MAX_REGION_POINTS,
+                               "roles": sorted(set(capped_roles))}
     if region_counts is not None:
         region_counts["remaining"] = (
             region_counts["total"] - region_counts["defect"]
