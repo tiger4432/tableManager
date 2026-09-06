@@ -4683,6 +4683,24 @@ async function refreshFileAndAutoHealth() {
     const res = await adminFetch(`${API_BASE}/admin/auto-update/status`);
     if (!res.ok) throw new Error('auto-update status fetch failed');
     const r = await res.json();
+    // 🔴 THE SAME THREE READINGS THE TAB ALREADY DOES (see the auto-update tab load).
+    //    This card recomputed both numbers from the same two sources and asked NONE of the
+    //    questions the tab asks, so a repair that landed there did not land here. 실측
+    //    2026-09-07: 이 두 수를 그리는 자리 «둘» · 가드가 있는 자리 «하나».
+    const autoFailure = errorText(r);
+    if (autoFailure) {
+      // 200 with an error envelope. `r.data` is undefined here, so the old code drew
+      // 「수집기 없음」 - 「못 물어봤다」 painted as 「등록된 것이 없다」.
+      setHealthCard('auto', 'loading', '—', autoFailure);
+      return;
+    }
+    const autoAbsent = absentPath(r);
+    if (autoAbsent) {
+      // ⚠️ 「한 번도 안 돌았다」 ≠ 「상태 파일이 사라졌다」. Both arrive as an empty
+      //    `data`, and the second one is the one an operator has to act on.
+      setHealthCard('auto', 'warn', '상태 파일 없음', autoAbsent);
+      return;
+    }
     const collectors = r.data || [];
     if (collectors.length === 0) {
       setHealthCard('auto', 'loading', '수집기 없음', '등록된 auto-update 설정 없음');
@@ -4694,22 +4712,32 @@ async function refreshFileAndAutoHealth() {
     // 감사 §1.2 실증 시나리오 연계: 수집기는 SUCCESS인데 산출물 파일 인제션이
     // 실패 중인 경우를 카드에서 즉시 노출 (auto-update 대상 테이블 ∩ 최근 실패 로그)
     const autoTables = new Set(collectors.map(c => c.table_name));
-    const linkedFails = failedLogs.filter(l => autoTables.has(l.table_name)).length;
-    const linkedSuffix = (failedTotal !== null && failedTotal > failedLogs.length) ? '+' : '';
+    // 🔴 THE INTERSECTION NEEDS BOTH SIDES, AND ONE OF THEM MAY NOT HAVE ANSWERED.
+    //    `failedTotal === null` is this function's own word for 「실패 로그를 못 읽었다」 - the
+    //    File card three lines above already refuses to draw on it. This card did not, so an
+    //    unanswered query produced `linkedFails = 0` and the card said 「최근 실행 …」, which
+    //    reads as 「연계 실패 없음」. Not knowing and knowing there is none are not one fact.
+    const linkedRead = failedTotal !== null;
+    const linkedFails = linkedRead
+      ? failedLogs.filter(l => autoTables.has(l.table_name)).length : null;
+    const linkedSuffix = (linkedRead && failedTotal > failedLogs.length) ? '+' : '';
 
     let status = 'ok';
     if (failCount > 0) status = 'danger';
     else if (linkedFails > 0) status = 'warn';
+    else if (!linkedRead) status = 'warn';   // 못 읽은 것은 「없음」이 아니다
     else if (activeCount === 0) status = 'warn'; // 전 수집기 비활성 = 자동 수집 전면 중단
 
     const main = failCount > 0
       ? `수집기 실패 ${failCount}/${collectors.length}`
       : `수집기 ${collectors.length}개 중 ${activeCount} 활성`;
-    const sub = linkedFails > 0
-      ? `산출물 인제션 실패 ${linkedFails}${linkedSuffix}건`
-      : (activeCount === 0
-        ? '모든 수집기가 비활성 상태입니다'
-        : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`);
+    const sub = !linkedRead
+      ? '산출물 인제션 연계 미확인 — 실패 로그를 못 읽었습니다'
+      : (linkedFails > 0
+        ? `산출물 인제션 실패 ${linkedFails}${linkedSuffix}건`
+        : (activeCount === 0
+          ? '모든 수집기가 비활성 상태입니다'
+          : `최근 실행 ${formatTimestamp(latestLastRun(collectors))}`));
     setHealthCard('auto', status, main, sub);
   } catch (e) {
     setHealthCard('auto', 'loading', '—', '상태 조회 실패');
