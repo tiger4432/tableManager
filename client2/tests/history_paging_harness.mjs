@@ -997,14 +997,19 @@ const MUTANTS = [
   // must be caught, and the reason it is worth a mutant of its own is that it does NOT crash:
   // the TypeError lands in `loadHistory`'s catch and the panel reports a failed fetch.
   { name: 'the global panel assigns the envelope where the array belongs', defect: true,
-    find: "      const { logs: groups } = readHistoryPage(await res.json(), 'groups');\n"
+    // Re-anchored 2026-09-06: the read was SPLIT so truncation could be taken from the body
+    // rather than from `readHistoryPage`'s collapse (F-12). The mutant is unchanged -- it still
+    // puts the envelope where the array belongs. This harness died loudly instead of scoring
+    // nothing, which is the only reason the split was noticed.
+    find: "      const body = await res.json();\n"
+        + "      const { logs: groups } = readHistoryPage(body, 'groups');\n"
         + '      state.globalHistoryData = groups;',
     repl: '      state.globalHistoryData = await res.json();' },
   // Half-flipped: the envelope is opened, under the wrong list name. The panel then declares an
   // empty history over a full database, which is a wrong answer wearing an empty state.
   { name: 'the global read opens the wrong list of the envelope', defect: true,
-    find: "readHistoryPage(await res.json(), 'groups')",
-    repl: 'readHistoryPage(await res.json())' },
+    find: "readHistoryPage(body, 'groups')",
+    repl: 'readHistoryPage(body)' },
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,

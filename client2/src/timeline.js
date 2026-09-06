@@ -35,8 +35,15 @@ export async function loadHistory() {
       // calls `.find`, so the panel dies on load and every live WebSocket update after it.
       // The list key is `groups`, not `logs`, because that is what this route returns — each
       // group carries a `logs` of its own. A bare array is still read as a complete list.
-      const { logs: groups } = readHistoryPage(await res.json(), 'groups');
+      // 🔴 F-12. The envelope is opened by the shared reader, but TRUNCATION IS READ FROM THE
+      //    BODY. `readHistoryPage` collapses `truncated && next_cursor` into one flag, which is
+      //    right for `/history` and wrong here -- and reading the body does not depend on
+      //    whether the cursorless state is reachable, so a query predicate changing upstream
+      //    cannot silently turn this back off.
+      const body = await res.json();
+      const { logs: groups } = readHistoryPage(body, 'groups');
       state.globalHistoryData = groups;
+      state.globalHistoryTruncated = !!(body && body.truncated);
       renderGlobalTimeline();
     } catch (err) {
       console.error('Failed to load global history', err);
@@ -134,10 +141,16 @@ function beginHistorySession() {
 // non-null exactly when `truncated` is true; requiring both here means a `truncated: true` that
 // arrives without a usable position can never paint a control that has nowhere to go. That state
 // is the "looks clickable, does nothing" failure, and it is cheaper to make it unrepresentable.
-// ⚠️ `/audit_logs/recent` CAN legitimately send `truncated` with a null cursor (a live merge that
-// trims the projection loses its resume position), and the sidebar reads that as "not truncated"
-// — correct today only because the global tab paints no pager at all. Anything that gives it one
-// must read that third state from the body, not from this collapse.
+// ⚠️ `/audit_logs/recent` can carry `truncated` with a null cursor, and this reader folds that
+// into "not truncated". THE GLOBAL TAB NO LONGER RELIES ON THAT FOLD -- it reads `truncated`
+// from the body (see `loadHistory`), so the fold is confined to the `/history` contract it was
+// written for.
+// 🔴 THE STATED CAUSE HERE WAS 「a live merge that trims the projection loses its resume
+//    position」. THAT PATH IS UNCONFIRMED: searching the server on 2026-09-06 found no such
+//    merge. The one route to a null cursor that does exist is `audit_cache.py:316-319`, where a
+//    null-stamped edge fails to encode -- and the comment above it calls that branch
+//    unreachable. Two files, opposite claims; neither is settled here. Written as unconfirmed
+//    rather than as fact, because the previous wording was used as evidence.
 // 🔴 UNKNOWN KEYS USED TO BE DROPPED HERE, AND THAT IS WHY NOTHING BROKE AND NOTHING SHOWED.
 //    `row_history_total`/`row_history_truncated` have been on the wire since `721b175`; this
 //    reader threw them away, so the cell tab kept drawing one "no history" for two different
@@ -831,7 +844,17 @@ export function renderGlobalTimeline() {
   });
 
   if (!shown.length) {
-    elements.timeline.innerHTML = '<li class="timeline-empty">조건에 맞는 기록이 없습니다.</li>';
+    elements.timeline.innerHTML = '<li class="timeline-empty">\uc870\uac74\uc5d0 \ub9de\ub294 \uae30\ub85d\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</li>';
+  } else if (state.globalHistoryTruncated) {
+    // 🔴 FACT ONLY, NO CONTROL. The cell/row tabs pair 「일부만」 with 더 보기, but this route
+    //    PUBLISHES `next_cursor` and ACCEPTS none -- `get_recent_audit_logs` takes
+    //    `limit_groups` and nothing else (server/main.py:1085). A pager here would be the
+    //    「clickable, goes nowhere」 control this module already refuses to build. The word is
+    //    the one this client already uses for a server-capped list; no third spelling.
+    const li = document.createElement('li');
+    li.className = 'timeline-empty';
+    li.textContent = `\uc77c\ubd80\ub9cc (${state.globalHistoryData.length}\uac74)`;
+    elements.timeline.appendChild(li);
   }
   if (count) count.textContent = `${state.globalHistoryData.length}건 중 ${shown.length}`;
 }
