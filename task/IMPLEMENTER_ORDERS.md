@@ -30184,3 +30184,60 @@ uvicorn   예외가 «태스크 안»에서 남 -> create_task 는 성공 -> exc
 ```
 📌 지난 보고는 «고치지 마십시오». 내용이 맞고, 번호가 낡은 것은 제 탓입니다.
 🔵 그리고 이 규칙은 문서에도 겁니다 — SYSTEM_FLOWS 의 표에서 번호는 «읽기 편의»이지 «주소»가 아닙니다.
+
+---
+---
+
+# 🔴🔴 **어제 제 「Ⅱ-2 닫힘」이 틀렸습니다 — 양끝은 맞고 «만나지 않습니다»** (총괄 10:3x · 흐름 실측)
+
+## 제가 어제 닫은 근거와, 오늘 실측
+```
+제 근거   「_test_run_refusal 이 «처음부터» code·path 를 읽고 있었다」   -> ✅ 참입니다
+그리고    「MoleculeRefused 가 이제 그것을 든다」                      -> ✅ 참입니다
+🔴 실측    그 둘이 «만나는 실행 경로»가 «없습니다»
+   MoleculeRefused 는 `gate.building_molecule` «안»에서만 raise 됩니다
+   그 스코프를 여는 곳은 runtime_v2.py:306 «하나»
+   거기 닿는 길은 _screened_atoms(:146, :226) «둘» — «둘 다 execute 계열»입니다
+   시험 실행 경로는 preview_first_batch -> preview_selected_cursor_batch
+                  -> runtime_v2.preview_cursor_batch:72  <- «screen 을 안 합니다»
+=> 게이트 거절이 그 화면에 «도달할 수 없습니다». 제가 이은 code·path 는 그 길에서 ⚰️ 입니다
+```
+🔴 **양끝을 각각 확인하면 「이어짐」으로 읽힙니다.** 제가 어제 정확히 그렇게 했습니다.
+   그리고 그 오류를 «이 문서를 쓰면서» 저질렀습니다 — 이 문서가 잡으려는 바로 그 모양입니다.
+
+## ✅ 규율로 올립니다 (실측자 제안 그대로 채택)
+```
+「그 리더가 그 칸을 읽나」 «보다 먼저»  ->  「그 «경로»가 그 예외를 낼 수 있나」를 묻는다
+방법: 예외를 만드는 «스코프의 보유자»를 grep -> 그 호출자 -> 두 끝을 «호출 그래프»로 잇는다
+```
+
+## 하십시오 — 셋. ★ 깊이는 그대로 앞입니다
+```
+1  🔴 «한 줄» 격차 — 소급 실행 결과가 거절 셋을 «버립니다»
+   retroactive.py:387-390 이 결과에서 «7 키만» 복사합니다
+   -> refused_total · refused_samples · refused_samples_capped 가 «거기서» 떨어집니다
+   -> 화면(admin.js:2551)은 「N 분자」만 말하고 «거절이 있었다는 것을 영영 못 말합니다»
+   ⚠️ 이건 «경계 계약 모양»이 바뀌는 일입니다 — 키가 셋 늘어납니다. 소비자 확인하고 하십시오
+
+2  ⚰️ 죽은 것 «넷» 추가 (앞 목록에 더합니다)
+   gate.py:528-530 · :613-616  — break 뒤 도달 불가
+   backfill.py:1298 result["gate_note"] — 읽는 곳 1 · «쓰는 곳 0» (CLI 경고가 «영영 못 뜹니다»)
+   screen_molecule — 운영 호출자 «0» (전부 seed 스크립트와 시험)
+
+3  📌 낡은 주석 셋 — 지나가며
+   gate.py:256  「samples() 는 /health 용」   -> /health 는 게이트를 «안 읽습니다»
+   gate.py:146  「building_molecule 보유자는 backfill.run」 -> 실제 runtime_v2.py:306
+   event_constants.py:125  «없는 상수 이름»을 가리킵니다
+```
+
+## 🔴 그리고 관측 흐름에 «마지막 홉»이 없습니다 — 판정을 청하지 말고 «재만» 주십시오
+```
+실측   /health 를 부르는 곳 client2 «0»
+      api.js:38 checkServerHealth() 는 «/tables» 를 부릅니다 (이름이 health 인데)
+      refreshHealthStrip 호출자 «0» (소유자 지시로 스트립을 내린 것 — 함수는 일부러 남김)
+=> 워커·감독·아웃박스 판정이 «바깥 모니터»에만 닿는데, 저장소에 그 모니터를 «세우는 것이 없습니다»
+그리고 중간에 떨어지는 값 둘: heartbeat 의 note · supervisor 의 terminal_verdict
+그리고 backfill.beat(result) 가 «main() 안»에 있어 어드민이 부른 백필은 «심박을 안 냅니다»
+```
+⛔ 지금 고치지 마십시오. 이건 「청중이 누구냐」라 «소유자 판정»입니다. 제가 올립니다.
+🔴 보고 끝에 «두 줄» + 「이 라운드가 «뺀» 것」 한 줄.
