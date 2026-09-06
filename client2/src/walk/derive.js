@@ -42,3 +42,43 @@ export function followChoices(fromStartType, declaredNames, selected) {
   const extra = (declaredNames || []).filter((name) => picked.has(name));
   return [...new Set([...(fromStartType || []), ...extra])];
 }
+
+/**
+ * The types the walk treats as static, read off the declaration rather than decided here.
+ *
+ * 🔴 THE PREDICATE IS `class === 'static'` AND NOTHING ELSE, because that is the server's:
+ *    `_static_types()` collects exactly that, so a type with NO class is dynamic to the walk.
+ *    Measured 2026-09-06 on the served declaration: three carry it (defect_kind, quantity,
+ *    recipe) and six carry nothing at all - and treating those six as "unknown, so leave them
+ *    alone" is what leaves refused routes on the screen.
+ * ⚠️ No list of type names lives in this client. Asking the declaration means the screen follows
+ *    it the day it changes; writing the names here would make this the second author of a fact.
+ */
+export function staticTypes(entities) {
+  return new Set((entities || [])
+    .filter((e) => e && e.class === 'static')
+    .map((e) => bareName(e.type)));
+}
+
+/**
+ * Drop the routes the walk will refuse.
+ *
+ * 🔴 THE STEP THAT IS REFUSED IS `static -> not static`, NOT "the path touches a static type".
+ *    static -> static is a mechanism chain and the walk allows it, so filtering on "passes
+ *    through a static type" would delete the answers `defect_kind` exists to give.
+ *    Measured live before this existed: `wafer -> quantity -> defect_kind -> defect` was offered
+ *    and returned the seed alone - one node, or zero with a collect - while the route the screen
+ *    should have led with returned 121.
+ */
+export function keepWalkableRoutes(entities, routes) {
+  const statics = staticTypes(entities);
+  return (routes || []).filter((route) => {
+    const chain = (route && route.chain) || [];
+    for (let i = 0; i + 1 < chain.length; i += 1) {
+      const here = bareName(chain[i]);
+      const next = bareName(chain[i + 1]);
+      if (statics.has(here) && !statics.has(next)) return false;
+    }
+    return true;
+  });
+}

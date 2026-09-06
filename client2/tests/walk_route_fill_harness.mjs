@@ -36,6 +36,25 @@ const FROM_WAFER = ['inspected@1', 'measures@1', 'processed_with@1', 'register@1
 const ROUTE_2HOP = ['inspected', 'observed'];
 const ROUTE_3HOP = ['measures', 'leads_to', 'of_kind'];
 
+// 🔴 The served declaration's own shape, measured 2026-09-06: three entities carry
+//    `class: "static"` and the other six carry NO class field at all. The absence is the point,
+//    so it is written as absence rather than as `class: null`.
+const ENTITIES = [
+  { type: 'defect_kind@1' , class: 'static' }, { type: 'quantity@1', class: 'static' },
+  { type: 'recipe@1', class: 'static' },
+  { type: 'defect@1' }, { type: 'die@1' }, { type: 'dtjob@1' },
+  { type: 'lot@1' }, { type: 'lot_slot@1' }, { type: 'wafer@1' },
+];
+// Routes as `pathsBetween` returns them; the first is the one measured live to answer with the
+// seed alone (1 node, 0 under a collect) while `wafer>die>defect` answered with 121.
+const ROUTES = [
+  { hops: 3, follow: ['measures', 'leads_to', 'of_kind'],
+    chain: ['wafer', 'quantity', 'defect_kind', 'defect'] },
+  { hops: 2, follow: ['inspected', 'observed'], chain: ['wafer', 'die', 'defect'] },
+  { hops: 1, follow: ['leads_to'], chain: ['defect_kind', 'quantity'] },
+  { hops: 1, follow: ['measures'], chain: ['quantity', 'die'] },
+];
+
 function suite(M) {
   const before = { pass, fail };
 
@@ -69,6 +88,31 @@ function suite(M) {
   ok(M.bareName('observed@1') === 'observed' && M.bareName('observed') === 'observed',
     'B1 the version suffix is dropped, and a bare name survives unchanged');
 
+  // 🔴 THE STATIC FILTER. The walk refuses a static -> not-static step, so offering one is
+  //    offering a route that answers with the seed alone. The server's predicate is
+  //    `class === 'static'` and a type with NO class is dynamic to it, so these entities carry
+  //    the live shape: three with the class, the rest with the field absent entirely.
+  const stat = M.staticTypes(ENTITIES);
+  ok(stat.has('defect_kind') && stat.has('quantity') && stat.has('recipe') && stat.size === 3,
+    'S1 exactly the types declaring class static are static');
+  ok(!stat.has('wafer') && !stat.has('defect'),
+    'S2 a type with NO class is not static — that is the walk\'s own rule, not an unknown');
+
+  const kept = M.keepWalkableRoutes(ENTITIES, ROUTES);
+  const names = kept.map((r) => r.chain.join('>'));
+  ok(!names.includes('wafer>quantity>defect_kind>defect'),
+    'S3 a route with a static -> not-static step is dropped');
+  ok(names.includes('wafer>die>defect'),
+    'S4 ... and a route that never leaves a static type is untouched');
+  ok(names.includes('defect_kind>quantity'),
+    'S5 static -> static stays — the mechanism chain is what defect_kind exists to answer');
+  ok(!names.includes('quantity>die'),
+    'S6 a static step INTO a type with no class is dropped, which is the corrected rule');
+  // 🔴 The control for S3/S6: with nothing declared static, nothing may be dropped. Without it,
+  //    a filter that returned [] would satisfy every "is dropped" assertion above.
+  ok(M.keepWalkableRoutes([], ROUTES).length === ROUTES.length,
+    'S7 with no static types declared, every route survives');
+
   return { fail: fail - before.fail };
 }
 
@@ -95,6 +139,15 @@ const DEFECTS = [
   ['the list widens to everything instead of to what is selected',
     (s) => s.replace('  const extra = (declaredNames || []).filter((name) => picked.has(name));',
       '  const extra = (declaredNames || []);')],
+  // Gate ④ of the 22:00 ruling: deleting the filtering line must turn the first assertion red.
+  ['the refused routes are offered again',
+    (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;', '')],
+  ['a type with no class counts as static, so the corrected rule is undone',
+    (s) => s.replace(".filter((e) => e && e.class === 'static')",
+      ".filter((e) => !e || e.class !== 'dynamic')")],
+  ['the filter drops any route that TOUCHES a static type, killing the mechanism chain',
+    (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;',
+      '      if (statics.has(here) || statics.has(next)) return false;')],
 ];
 const CONTROLS = [
   ['a local rename', (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));',

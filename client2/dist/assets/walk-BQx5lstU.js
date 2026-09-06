@@ -1,0 +1,58 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/config-C6wMXuF6.js","assets/config-BUp4smhE.js"])))=>i.map(i=>d[i]);
+import"./tokens-nTqwt3FA.js";import{a as e,s as t,t as n,u as r}from"./preload-helper-D5ytDLcZ.js";var i=`data-wk-styles`,a=`
+.wk-form { display: flex; flex-direction: column; gap: 10px;
+  font-family: 'Outfit', system-ui, sans-serif; font-size: 15px; color: var(--text, #111); }
+.wk-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px; }
+.wk-label { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-dim, #71717a); }
+.wk-note { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+
+.wk-select, .wk-input, .wk-go, .wk-check { min-height: 44px; box-sizing: border-box;
+  font: inherit; }
+.wk-select, .wk-input { width: 100%; padding: 0 8px; color: var(--text, #111);
+  background: var(--bg, #fff); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
+.wk-keyrow { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.wk-keyname { flex: none; width: 8.5em; font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem; color: var(--text-dim, #71717a);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+.wk-check.is-on { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
+
+.wk-go { width: 100%; border: 0; border-radius: 8px;
+  background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
+.wk-go[disabled] { opacity: 0.45; }
+
+.wk-result { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px; }
+.wk-counts { font-weight: 600; }
+/* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. */
+.wk-path { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; width: 100%;
+  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0 0 6px;
+  border: 1px solid var(--line, #e4e4e7); border-radius: 6px; cursor: pointer;
+  background: var(--surface, #fff); color: inherit; font: inherit; }
+.wk-path:hover { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
+.wk-pathchain { font-size: 0.86rem; }
+.wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+/* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
+.wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line, #e4e4e7); font-size: 0.82rem; }
+.wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
+.wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+.wk-walk { color: var(--text-dim, #71717a); }
+.wk-trunc { color: var(--warn, #b45309); }
+.wk-fail { color: var(--danger, #dc2626); font-size: 0.86rem; }
+.wk-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
+  border-top: 1px solid var(--border, #d4d4d8); font-size: 0.82rem; }
+.wk-rowtype { flex: none; width: 7.5em; font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem; color: var(--text-dim, #71717a);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-rowlabel { overflow-wrap: anywhere; }
+`;function o(e){if(!e||typeof e.createElement!=`function`||e.querySelector&&e.querySelector(`style[${i}]`))return!1;let t=e.createElement(`style`);return t.setAttribute(i,``),t.textContent=a,(e.head||e.documentElement).appendChild(t),!0}function s(e){return String(e||``).split(`@`)[0]}function c(e,t){let n=new Set((t||[]).map(s));return(e||[]).filter(e=>n.has(s(e)))}function l(e,t,n){let r=n instanceof Set?n:new Set(n||[]),i=(t||[]).filter(e=>r.has(e));return[...new Set([...e||[],...i])]}function u(e){return new Set((e||[]).filter(e=>e&&e.class===`static`).map(e=>s(e.type)))}function d(e,t){let n=u(e);return(t||[]).filter(e=>{let t=e&&e.chain||[];for(let e=0;e+1<t.length;e+=1){let r=s(t[e]),i=s(t[e+1]);if(n.has(r)&&!n.has(i))return!1}return!0})}var f=[`both`,`outgoing`,`incoming`],p=`서버 기본`,m=(e,t,n,r)=>{let i=e.createElement(t);return n&&(i.className=n),r!==void 0&&(i.textContent=String(r)),i};function h(n,i,a){let u=a||{},h=u.apiBase||``;o(n);let g=e({apiBase:h,fetchImpl:u.fetchImpl}),_={decl:null,declState:`loading`,declReason:``,type:``,keys:{},follow:new Set,collect:new Set,direction:``,hops:``,nodeLimit:``,run:`idle`,result:null,reason:``},v=s,y=()=>_.decl&&_.decl.entities||[],b=e=>{let t=y().find(t=>t.type===e);return t&&t.keys||[]},x=()=>(_.decl&&_.decl.predicates||[]).map(e=>e.name),S=()=>{let e=_.decl&&_.decl.predicates||[];return _.type?l(e.filter(e=>(e.subjects||[]).includes(_.type)).map(e=>e.name),x(),_.follow):e.map(e=>e.name)};function C(){if(!_.decl||!_.type||!_.collect.size)return[];let e=[];for(let t of _.collect)for(let n of r(_.decl,v(_.type),v(t)))e.push({...n,to:v(t)});return d(y(),e).sort((e,t)=>e.hops-t.hops||e.follow.length-t.follow.length)}function w(){let e={type:_.type,keys:_.keys};_.follow.size&&(e.follow=[..._.follow]),_.collect.size&&(e.collect=[..._.collect]),_.direction&&(e.direction=_.direction);let t=parseInt(_.hops,10);Number.isFinite(t)&&(e.hops=t);let n=parseInt(_.nodeLimit,10);return Number.isFinite(n)&&(e.node_limit=n),e}async function T(){if(!_.type)return;_.run=`running`,_.result=null,_.reason=``,k();let e=await g(w());e&&e.ok?(_.run=`done`,_.result=e):(_.run=`failed`,_.reason=e&&e.message||`알 수 없음`),k()}function E(e){let t=m(n,`div`,`wk-field`);return t.append(m(n,`div`,`wk-label`,e)),t}function D(e){let t=E(`노드 타입`),r=m(n,`select`,`wk-select`);r.append(m(n,`option`,``,`— 고르십시오 —`));for(let e of y()){let t=m(n,`option`,``,e.type);t.value=e.type,e.type===_.type&&(t.selected=!0),r.append(t)}r.addEventListener(`change`,()=>{_.type=r.value;let e=new Set(b(_.type));_.keys=Object.fromEntries(Object.entries(_.keys).filter(([t])=>e.has(t)));let t=new Set(S());_.follow=new Set([..._.follow].filter(e=>t.has(e))),_.result=null,_.run=`idle`,k()}),t.append(r),e.append(t);let i=E(`키`),a=b(_.type);_.type?a.length||i.append(m(n,`div`,`wk-note`,`이 타입은 키가 없습니다`)):i.append(m(n,`div`,`wk-note`,`타입을 고르면 키가 나옵니다`));for(let e of a){let t=m(n,`label`,`wk-keyrow`);t.append(m(n,`span`,`wk-keyname`,e));let r=m(n,`input`,`wk-input`);r.type=`text`,r.value=_.keys[e]===void 0?``:_.keys[e],r.addEventListener(`input`,()=>{_.keys[e]=r.value}),t.append(r),i.append(t)}e.append(i);let o=E(`collect · 무엇을 가져오나`),s=y().map(e=>e.type);s.length||o.append(m(n,`div`,`wk-note`,`선언에 엔터티 없음`));for(let e of s){let t=m(n,`label`,`wk-check`+(_.collect.has(e)?` is-on`:``));t.setAttribute(`data-collect`,e);let r=m(n,`input`);r.type=`checkbox`,r.checked=_.collect.has(e),r.addEventListener(`change`,()=>{_.collect.has(e)?_.collect.delete(e):_.collect.add(e),k()}),t.append(r,m(n,`span`,``,e)),o.append(t)}if(s.length&&o.append(m(n,`div`,`wk-note`,`안 고르면 ${p} · 전부`)),e.append(o),_.type&&_.collect.size){let t=E(`경로 · 선언이 아는 길`),r=C();r.length||t.append(m(n,`div`,`wk-note`,`${v(_.type)} 에서 ${[..._.collect].map(v).join(` · `)} 로 가는 길 없음`));for(let e of r){let r=m(n,`button`,`wk-path`);r.type=`button`,r.append(m(n,`span`,`wk-pathto`,`→ ${e.to}`)),r.append(m(n,`span`,`wk-pathchain`,e.chain.join(` → `))),r.append(m(n,`span`,`wk-pathmeta`,`${e.hops}홉 · ${e.follow.join(`, `)}`)),r.addEventListener(`click`,()=>{_.follow=new Set(c(x(),e.follow)),_.hops=String(e.hops),k()}),t.append(r)}e.append(t)}let l=E(`follow · 어느 길로`),u=S();u.length||l.append(m(n,`div`,`wk-note`,_.type?`${_.type} 에서 나가는 술어 없음`:`선언에 술어 없음`));for(let e of u){let t=m(n,`label`,`wk-check`+(_.follow.has(e)?` is-on`:``));t.setAttribute(`data-follow`,e);let r=m(n,`input`);r.type=`checkbox`,r.checked=_.follow.has(e),r.addEventListener(`change`,()=>{_.follow.has(e)?_.follow.delete(e):_.follow.add(e),k()}),t.append(r,m(n,`span`,``,e)),l.append(t)}u.length&&l.append(m(n,`div`,`wk-note`,`안 고르면 ${p}`)),e.append(l);let d=E(`걸음`),h=m(n,`label`,`wk-keyrow`);h.append(m(n,`span`,`wk-keyname`,`direction`));let g=m(n,`select`,`wk-select`);g.append(m(n,`option`,``,p));for(let e of f){let t=m(n,`option`,``,e);t.value=e,e===_.direction&&(t.selected=!0),g.append(t)}g.addEventListener(`change`,()=>{_.direction=g.value}),h.append(g),d.append(h);for(let[e,t,r,i]of[[`hops`,`hops`,1,40],[`node_limit`,`nodeLimit`,10,5e3]]){let a=m(n,`label`,`wk-keyrow`);a.append(m(n,`span`,`wk-keyname`,e));let o=m(n,`input`,`wk-input`);o.type=`number`,o.min=String(r),o.max=String(i),o.placeholder=p,o.value=_[t],o.addEventListener(`input`,()=>{_[t]=o.value}),a.append(o),d.append(a)}e.append(d);let w=m(n,`button`,`wk-go`,_.run===`running`?`걷는 중`:`날리기`);w.type=`button`,w.disabled=!_.type||_.run===`running`,w.addEventListener(`click`,T),e.append(w)}function O(e){if(_.run===`idle`)return;let t=m(n,`div`,`wk-result`);if(_.run===`running`)t.append(m(n,`div`,`wk-note`,`걷는 중`));else if(_.run===`failed`){let e=m(n,`div`,`wk-fail`);e.append(m(n,`b`,``,`실패`),m(n,`span`,``,` · `+_.reason)),t.append(e)}else if(_.result){let e=_.result;if(t.append(m(n,`div`,`wk-counts`,`노드 ${e.nodes.length} · 엣지 ${e.edges.length}`)),e.walk&&t.append(m(n,`div`,`wk-walk`,`요청 ${e.walk.hops_requested}홉 · 도달 ${e.walk.hops_reached}홉 · ${e.walk.direction}`)),e.cut&&t.append(m(n,`div`,`wk-trunc`,`절단됨 · ${e.truncated.reason}`)),e.nodes.length){let r=new Map;for(let t of e.nodes){let e=t.type||`—`;r.set(e,(r.get(e)||0)+1)}let i=m(n,`div`,`wk-dist`);i.append(m(n,`span`,`wk-distlabel`,`타입`));for(let[e,t]of[...r.entries()].sort((e,t)=>t[1]-e[1])){let r=m(n,`span`,`wk-distchip`+(_.collect.has(e)||_.collect.has(`${e}@1`)?` is-asked`:``));r.append(m(n,`b`,``,e),m(n,`span`,``,` ${t}`)),i.append(r)}t.append(i)}e.nodes.length||t.append(m(n,`div`,`wk-note`,e.message||`닿은 노드 없음`));for(let r of e.nodes.slice(0,200)){let e=m(n,`div`,`wk-row`);e.append(m(n,`span`,`wk-rowtype`,r.type||`—`)),e.append(m(n,`span`,`wk-rowlabel`,r.label||r.id||``)),t.append(e)}e.nodes.length>200&&t.append(m(n,`div`,`wk-note`,`이 아래 ${e.nodes.length-200} 개 안 그림`))}e.append(t)}function k(){i.textContent=``;let e=m(n,`div`,`wk-form`);if(_.declState===`loading`)e.append(m(n,`div`,`wk-note`,`선언 · 읽는 중`));else if(_.declState===`failed`){let t=m(n,`div`,`wk-fail`);t.append(m(n,`b`,``,`선언 못 읽음`),m(n,`span`,``,` · `+_.declReason));let r=m(n,`button`,`wk-go`,`다시`);r.type=`button`,r.addEventListener(`click`,A),e.append(t,r)}else D(e),O(e);i.append(e)}async function A(){_.declState=`loading`,k();let e=await t({apiBase:h,fetchImpl:u.fetchImpl});e&&e.ok?(_.decl=e,_.declState=`ready`):(_.declState=`failed`,_.declReason=e&&e.message||`알 수 없음`),k()}return A(),{state:_,spec:w,fire:T,render:k}}if(typeof document<`u`){let e=document.getElementById(`wk-host`);e&&n(async()=>{let{API_BASE:e}=await import(`./config-C6wMXuF6.js`);return{API_BASE:e}},__vite__mapDeps([0,1])).then(({API_BASE:t})=>{h(document,e,{apiBase:t})})}

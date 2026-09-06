@@ -29,7 +29,7 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween } from '../rnd_board/
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
-import { bareName, followFromRoute, followChoices } from './derive.js';
+import { bareName, followFromRoute, followChoices, keepWalkableRoutes } from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -101,7 +101,9 @@ export function boot(doc, host, deps) {
         out.push({ ...r, to: bare(to) });
       }
     }
-    return out.sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length);
+    // 🔴 걷기가 «거절할» 길은 내놓지 않습니다. 규칙과 사유는 `derive.js` 에 있습니다.
+    const walkable = keepWalkableRoutes(entities(), out);
+    return walkable.sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length);
   }
 
   /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */
