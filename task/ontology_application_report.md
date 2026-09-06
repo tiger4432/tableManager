@@ -12355,3 +12355,68 @@ peer           또래 수          ❌ `fetchSiblings` «해당 없음»   「�
    그 이전(trend_y 의 404 대기 같은 것)은 그 자리 주석이 이미 적고 있고 제가 판정할 것이 아닙니다.
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔴 S-23 키 전수 — **`direction` 은 «안 떨어집니다». 조립기는 «덮을» 뿐입니다** (09:4x)
+
+⛔ 코드 0줄 · 읽기만. 그리고 이 라운드는 «전제 반증»이 본문입니다.
+
+## 배선을 «세 마디» 다 걸었습니다 (조각으로 읽지 않았습니다)
+```
+① 좌석 -> question   main.js:676-687  `if (decl.follow|direction|hops|node_limit|backbone_hops) question.<k> = …`
+                     -> 다섯 키가 «전부» 실립니다 (`direction` «포함», :678)
+② question -> spec   main.js:689      `(spec) => walk({ ...question, ...(spec || {}) })`
+③ spec -> 전선       api.js:1541      `const { start, legacyRoute, ...rest } = spec`
+                     api.js:1572      `run({ apiBase, fetchImpl, ...rest, ...params(start) })`
+                     🔴 `...rest` 가 «먼저», `params(start)` 가 «나중» -> params 는 «자기가 이름 댄 키만» 덮습니다
+```
+🔵 **그러므로 조립기는 좌석 선언을 «떨어뜨리지» 않습니다 — 이름 댄 키만 «덮습니다».**
+   `candidate.params`(:1478) 와 `reach.params`(:1522) «둘 다» `direction` 을 «안 냅니다» -> 좌석 것이 «살아서» 갑니다.
+
+## 표 — 키 · candidate · reach · 근거(줄)
+```
+키                candidate   reach     근거
+follow            ✅ 닿음      ✅ 닿음    rest 로 감 · params 가 이 키를 안 냄 · fetchSubgraph:339 받고 :396 append
+direction         ✅ 닿음      ✅ 닿음    같은 경로 · :398 `if (direction) query.set(...)`
+node_limit        ✅ 닿음      ✅ 닿음    question:683 -> rest · params 가 안 냄 · :375 set
+backbone_hops     ✅ 닿음      ✅ 닿음    question:685 -> rest · params 가 안 냄 · :388 set
+hops              ✅ 닿음      🔒 덮임    reach.params 가 `hops: 1` 을 «냅니다»(:1523).
+                                        그 자리 주석: 「홉 수가 부품의 손잡이가 아니라 이 «선언의 뜻»」 = 의도
+positive/negative 🔒 덮임      🔒 덮임    params 가 `start.positive/negative` 를 냅니다 —
+                                        :1570 「START WINS … 마킹을 바꾸면 따라온다」 = 의도
+🔴 collect        ❌ 못 감      ❌ 못 감    ①에서 «안 실립니다»(question 이 안 복사) · fetchSubgraph 의
+                                        고정 인자 목록(:338-340)에도 없습니다. 2026-08-28 에 라우트가 인자를
+                                        버렸고(:1473-1477) 선언하면 «조용히» 사라집니다
+```
+
+## 🔴 그래서 판정 54 의 전제가 «안 섭니다»
+```
+판정 54   「조립기가 떨어뜨림 -> 서버 기본 both -> 후보 목록이 «잘린 목록»」
+실측      후보 좌석은 `...CANDIDATE_QUESTION`(:587)으로 `direction:'outgoing'` 을 «선언»하고,
+         그 키는 ①②③ 을 다 통과합니다. 조립기가 그것을 «안 덮습니다»
+=> 「오늘 both 로 걷는다」는 이 기제로는 «성립하지 않습니다»
+```
+⚠️ 그리고 저도 «같은 실수»를 했습니다 — 제 앞 보고에서 조립기 `params:` 만 보고 「좌석 선언을 안 나른다」고
+   적었습니다. 그 함수를 «부르는 줄»(:1572)을 안 봤습니다. 부류: 「축소판 재현은 동작이 아니다」.
+   총괄과 제가 «같은 조각»을 각자 읽고 같은 결론에 도달했고, 둘 다 틀렸습니다.
+
+## 못 쟀습니다
+```
+🔴 클라가 잰 「both 877 -> outgoing 384」가 «어느 요청»의 수인지 — 저는 못 봅니다.
+   위 기제가 아니라면 원인이 «다른 자리»에 있고, 그 수는 여전히 참일 수 있습니다.
+   그 요청의 «실제 URL»(브라우저 네트워크 탭)이 있으면 한 줄로 갈립니다
+```
+
+## 판정 대기: **쉰하나**
+```
+51  🔴 S-23 의 전제 재확인이 필요합니다 — `direction` 은 이미 전선에 갑니다(기제로 확인).
+    ㉠ 그 「both 877」 요청의 URL 을 클라에 물어 주십시오 (한 줄이면 갈립니다)
+    ㉡ 그동안 S-23 에서 «진짜» ❌ 인 것은 `collect` 하나입니다 — 다만 그건 «은퇴한 인자»라
+       고칠 것이 아니라 「선언해도 안 간다」를 «어딘가에 적을» 일입니다
+```
+```
+판정 대기: 🔴 51 (첫 제출 09:4x)   ·   🔁 이월: 47 (S-14 의 주어)
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
