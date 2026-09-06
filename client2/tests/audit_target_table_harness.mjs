@@ -14,14 +14,14 @@
 //
 // Every check is paired with a mutant. Two controls must escape, or the checks are reading the
 // source text rather than the behaviour.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+//
+// ═══ 🔴 이 파일은 «잘라쓰기»였습니다 (2026-09-06 전환, truncation 과 «같은 틀») ═══
+// 종전에는 함수 «하나»를 시그니처와 열 0 의 닫는 중괄호로 «잘라» vm 에 넣었습니다.
+// 그 함수가 헬퍼를 하나 부르게 되는 날 「코드가 맞는데」 빨개집니다.
+import { importMutated } from './lib/appended_module.mjs';
+import { auditTargetTable } from '../src/timeline.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SRC = join(HERE, '..', 'src', 'timeline.js');
-const SOURCE = readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
+const SRC = new URL('../src/timeline.js', import.meta.url);
 
 let passed = 0;
 let failed = 0;
@@ -39,26 +39,9 @@ function ok(cond, what, saw) {
   console.log(`  FAIL ${what}${saw === undefined ? '' : `  -- saw ${JSON.stringify(saw)}`}`);
 }
 
-// Slice the one function out. Anchored on its signature and its closing brace at column 0, so a
-// rename or a move makes this stop rather than silently score a different function.
-function slice(src) {
-  const start = src.indexOf('export function auditTargetTable(group) {');
-  if (start === -1) return null;
-  const end = src.indexOf('\n}\n', start);
-  if (end === -1) return null;
-  return src.slice(start, end + 3).replace('export function', 'function');
-}
+const f = auditTargetTable;
+if (typeof f !== 'function') die('auditTargetTable is not exported from timeline.js.');
 
-function load(src) {
-  const body = slice(src);
-  if (body === null) return null;
-  const sandbox = { Array, Number, Set, String, JSON };
-  vm.createContext(sandbox);
-  vm.runInContext(`${body}\nglobalThis.__f = auditTargetTable;`, sandbox);
-  return sandbox.__f;
-}
-
-const f = load(SOURCE);
 if (!f) die('auditTargetTable could not be sliced out of timeline.js -- it was renamed or moved.');
 
 const log = (table) => ({ table_name: table, row_id: 'r', column_name: 'c' });
@@ -144,22 +127,33 @@ const CONTROLS = [
     .join('\n')],
 ];
 
-function score(list, mustCatch, heading) {
-  console.log(`\n── ${heading} ──────────────────────────────────`);
+/** 채점기. 기준선과 변이가 «같은 질문»에 답해야 비교가 뜻을 가집니다. */
+function verdict(g) {
+  return g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'
+    || g(group(['dt_log'], 128)) !== 'dt_log …'
+    || g(group(['dt_log', 'dt_inventory'], 2)) !== 'dt_log +1'
+    || g({ logs: [log('dt_log'), { row_id: 'r' }], total_count: 2 }) !== 'dt_log'
+    || g({ logs: [log('dt_log')] }) !== 'dt_log';
+}
+
+// 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부
+//    변이가 아니라 채점기를 잰 것입니다.
+if (verdict(auditTargetTable)) die('the scorer already fails on the UNMUTATED module — '
+  + 'every "caught" below would be scoring the scorer, not the mutant.');
+
+async function score(list, mustCatch, heading) {
+  console.log(`
+── ${heading} ──────────────────────────────────`);
   let caught = 0;
   for (const [name, mutate] of list) {
-    const g = load(mutate(SOURCE));
-    if (!g) { console.log(`  INERT  ${name} -- the slice stopped matching`); failed++; continue; }
     let bad = false;
     try {
-      // Re-run the checks that matter against the mutant. A mutant that throws counts as caught
-      // only because it cannot answer -- so the throw is recorded as such rather than hidden.
-      bad = g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'
-        || g(group(['dt_log'], 128)) !== 'dt_log …'
-        || g(group(['dt_log', 'dt_inventory'], 2)) !== 'dt_log +1'
-        || g({ logs: [log('dt_log'), { row_id: 'r' }], total_count: 2 }) !== 'dt_log'
-        || g({ logs: [log('dt_log')] }) !== 'dt_log';
+      // A mutant that throws counts as caught only because it cannot answer -- the throw is
+      // recorded as such rather than hidden. A mutant that did not APPLY is not caught: that
+      // is instrument failure, and it kills the run.
+      bad = verdict((await importMutated(SRC, mutate)).auditTargetTable);
     } catch (e) {
+      if (/mutation changed nothing/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;
     }
     if (bad === mustCatch) {
@@ -173,8 +167,8 @@ function score(list, mustCatch, heading) {
   return caught;
 }
 
-const caught = score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
-const escaped = score(CONTROLS, false, 'control mutants (each must ESCAPE)');
+const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
+const escaped = await score(CONTROLS, false, 'control mutants (each must ESCAPE)');
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);
