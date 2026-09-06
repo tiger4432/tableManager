@@ -1642,7 +1642,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CJ2Uy8bE.js"></script>
+  <script type="module" crossorigin src="/assets/admin-esUIxgdv.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CCzwOa49.js">
   <link rel="modulepreload" crossorigin href="/assets/admin_token-BrUpdOsE.js">
@@ -1868,10 +1868,16 @@
               <span class="section-count" id="file-log-count">—</span>
               <span class="section-summary"></span>
               <span class="section-actions">
+                <!-- 🔴 THE STATES ARE NOT SPELLED HERE. Two of the five were, and the
+                     one that means 「someone else still has to act」 (PENDING_RETRY) was not
+                     among them - so the only state an operator needed to look for was the one
+                     state they could not filter to. `admin.js` draws the rest from the
+                     `status_vocabulary` the server publishes, so this list cannot fall behind
+                     the server again. `ALL` stays because it is not a state: it is 「거르지
+                     않음」, and putting it in the vocabulary would make 「상태 다섯」 and
+                     「고를 수 있는 것 여섯」 the same number. -->
                 <select id="status-filter" class="glass-select">
                   <option value="ALL" selected>All Status</option>
-                  <option value="FAILED">Failed</option>
-                  <option value="SUCCESS">Success</option>
                 </select>
                 <button id="retry-all-file-btn" class="admin-btn btn-primary" style="padding: 5px 12px; font-size: 0.8rem;">🔄 Retry All Failed</button>
               </span>
