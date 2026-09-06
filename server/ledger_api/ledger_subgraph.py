@@ -388,6 +388,41 @@ def _edge(edge_type, source, target, *, original_predicate=None):
     }
 
 
+def _canonical_seed(item):
+    """The seed id the ledger can actually be ASKED about.
+
+    🔴 `/declaration` publishes `wafer@1` and the ledger writes `wafer`, so an id
+    minted from the spelling the catalogue PRINTS names a `subject_type` that has no rows.
+    The walk answered that with an EMPTY graph, and an empty graph reads as
+    「여기 아무것도 없다」 rather than
+    「버전을 붙여 물으셨습니다」.
+    This is NOT leniency being added - it is an ABSENCE being closed: `collect` already
+    trims the version on both sides (`_bare` below) and the seed did not, so the two axes
+    disagreed about one declaration.
+
+    🔴 THE VERSION BELONGS TO THE DECLARATION, NOT TO THE NAME. `ledger.gaps._bare`
+    says exactly that in its own docstring, and this is the same trim.
+
+    🔴 RE-MINTED, NOT ONLY TRIMMED, because the id IS the node's identity. Atoms
+    mint their subject id from the BARE type (`entity_id(atom.subject_type, ...)`), so a
+    seed keyed on the versioned token and its own evidence keyed on the bare one are TWO
+    nodes - the graph would come back with the seed sitting alone beside the very atoms it
+    asked for, which is a wrong answer wearing the face of a shy one.
+
+    Anything that is not an entity id comes back UNCHANGED, so `decode_node_id` stays the
+    one place that refuses a seed and the refusal keeps its wording.
+    """
+    text = str(item)
+    try:
+        entity_type, keys = ledger_explorer.decode_entity_id(text)
+    except ValueError:
+        return text
+    bare = _bare(entity_type)
+    if bare == entity_type:
+        return text
+    return ledger_explorer.entity_id(bare, keys)
+
+
 def _signed_seeds(start):
     """`start` widens from one id to a signed SET without leaving its argument slot.
 
@@ -408,7 +443,12 @@ def _signed_seeds(start):
         positive, negative = [str(start)], []
     signs = {}
     for sign, group in ((1, positive), (-1, negative)):
-        for item in group:
+        for raw_seed in group:
+            # 🔴 ONE PLACE. Canonicalising HERE rather than in the two lists above
+            # means the conflict check below compares the same subject to itself: `wafer@1`
+            # positive and `wafer` negative are ONE subject asked two ways, and before this
+            # they were two keys that both got through.
+            item = _canonical_seed(raw_seed)
             if signs.get(item, sign) != sign:
                 raise ValueError(
                     "a seed cannot be both observed and a control: " + item)
