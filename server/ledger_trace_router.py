@@ -341,7 +341,10 @@ KEY_VALUE_MAX_LIMIT = 500
 @router.get("/key-values")
 def ledger_key_values(
     type: str = Query(..., description="선언된 엔터티 타입 (`@` 버전은 있어도 없어도 된다)"),
-    key: str = Query(..., description="그 타입이 «선언한» 키 이름"),
+    key: str | None = Query(
+        None, description=("한 축만 보고 싶을 때의 «선택» 인자. 없으면 그 타입의 «주어»를 "
+                           "답한다. 복합 키 타입에서 축 하나의 값은 «단독으로 씨앗이 안 될 "
+                           "수» 있고, 응답의 `seedable` 이 그것을 말한다")),
     limit: int = Query(KEY_VALUE_DEFAULT_LIMIT, ge=1, le=KEY_VALUE_MAX_LIMIT),
     db: Session = Depends(get_db),
 ):
@@ -373,7 +376,7 @@ def ledger_key_values(
             "message": "선언에 없는 노드 타입입니다: " + wanted_type})
 
     declared_keys = _declared_keys(wanted_type)
-    if key not in declared_keys:
+    if key is not None and key not in declared_keys:
         raise HTTPException(status_code=422, detail={
             "reason": "key_not_declared", "unknown": [key],
             "declared": sorted(declared_keys), "type": wanted_type,
@@ -383,24 +386,54 @@ def ledger_key_values(
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
 
+    # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
+    # type answers with one list per axis, and a screen that pairs them offers the CROSS
+    # PRODUCT - measured 2026-09-06 on one wafer: 144 pairs against 128 dies that exist.
+    # Choosing one of the 16 that do not builds a seed the walk answers emptily, and an
+    # empty answer reads as "there is nothing there" rather than "you asked for a die
+    # that was never made". That is the same defect as a route list offering a walk the
+    # policy refuses: selectable, and only wrong AFTER it is chosen.
+    grouping = [key] if key else sorted(declared_keys)
+    if not grouping:
+        raise HTTPException(status_code=422, detail={
+            "reason": "type_declares_no_keys", "type": wanted_type,
+            "message": "'%s' 가 키를 선언하지 않아 주어를 셀 수 없습니다" % wanted_type})
+
+    params = {"type_prefix": wanted_type + "%",
+              "scan": KEY_VALUE_SCAN_ROWS + 1, "limit": limit + 1}
+    # Key NAMES are bound, never interpolated - they came from the declaration, and
+    # binding them keeps that true no matter what a declaration is allowed to contain.
+    selected = []
+    for index, name in enumerate(grouping):
+        params["k%d" % index] = name
+        selected.append("subject_keys ->> %%(k%d)s AS v%d" % (index, index))
+    columns = ", ".join("v%d" % index for index in range(len(grouping)))
+    present = " AND ".join("subject_keys ? %%(k%d)s" % index
+                           for index in range(len(grouping)))
+    not_null = " AND ".join("v%d IS NOT NULL" % index for index in range(len(grouping)))
+
     rows = connection.exec_driver_sql(
         # The window is taken FIRST and grouped after, so the work is bounded by
         # `KEY_VALUE_SCAN_ROWS` rather than by how many rows the type has.
-        "SELECT value, count(*) AS n FROM ("
-        "  SELECT subject_keys ->> %(key)s AS value FROM " + LEDGER_RELATION +
-        "  WHERE subject_type LIKE %(type_prefix)s AND subject_keys ? %(key)s"
+        "SELECT " + columns + ", count(*) AS n FROM ("
+        "  SELECT " + ", ".join(selected) + " FROM " + LEDGER_RELATION +
+        "  WHERE subject_type LIKE %(type_prefix)s AND " + present +
         "  LIMIT %(scan)s"
-        ") w WHERE value IS NOT NULL GROUP BY value "
-        "ORDER BY n DESC, value ASC LIMIT %(limit)s",
-        {"key": key, "type_prefix": wanted_type + "%",
-         "scan": KEY_VALUE_SCAN_ROWS + 1, "limit": limit + 1},
+        ") w WHERE " + not_null + " GROUP BY " + columns +
+        " ORDER BY n DESC, " + columns + " LIMIT %(limit)s",
+        params,
     ).fetchall()
 
-    scanned = sum(int(row[1]) for row in rows)
-    values = [{"value": row[0], "count": int(row[1])} for row in rows[:limit]]
+    scanned = sum(int(row[-1]) for row in rows)
+    subjects = [{"keys": {name: row[index] for index, name in enumerate(grouping)},
+                 "count": int(row[-1])} for row in rows[:limit]]
     return {
-        "type": wanted_type, "key": key,
-        "values": values,
+        "type": wanted_type, "key": key, "keys": grouping,
+        "subjects": subjects,
+        # ⚠️ A SINGLE AXIS OF A COMPOSITE KEY IS NOT A SEED. Said in the answer rather
+        # than left for the caller to infer from `keys`, because inferring it is exactly
+        # what produced the cross product.
+        "seedable": set(grouping) == set(declared_keys),
         "scanned": min(scanned, KEY_VALUE_SCAN_ROWS),
         # 🔴 TWO CUTS, SAID SEPARATELY. Neither implies the other: a small key can fill
         # the value list off an untruncated scan, and a huge scan can yield three values.
