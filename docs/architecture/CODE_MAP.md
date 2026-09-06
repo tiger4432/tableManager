@@ -1582,6 +1582,19 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ⚠️ 클라 쪽 짝은 `client2/src/body_error.js` 다 — 「없음」은 **오류가 아니라서** `status` 가 `success` 라는 것을 그쪽 주석이 적는다.
 
+### 🆕 `server/file_ingestion_status.py` (**32줄**, 2026-09-07 신설) — 인제션 실행이 «쓸 수 있는 상태 어휘»의 **정본**
+
+| 심볼 | 무엇인가 |
+|---|---|
+| `FILE_INGESTION_STATUS_VOCABULARY` | 다섯 — `SUCCESS` · `FAILED` · `PENDING` · `PENDING_RETRY` · `SKIPPED`. 🔴 **약속은 「이 목록의 상태」가 아니라 「이 계열이 «쓸 수 있는» 어휘」다** — 그래서 목록 라우트의 «내용»이 아니라 그 계열의 «어휘»로 실려 나간다. 그 구분이 없으면 다음 사람이 「왜 실패 목록이 SUCCESS 를 말하나」로 읽는다 |
+
+🔴 **호출자 둘**: `main.py:10`(import) → `:4027` 이 `status_vocabulary` 로 응답에 싣고 `:4035` 독스트링이 여기를 정본으로 가리킨다 · `database/models.py:312` 주석이 같은 곳을 가리킨다(값을 «다시 적지» 않는다).
+
+🔴 **왜 생겼나 — 이 집합을 «손으로» 적은 자리가 셋이었고 «셋 다» 낡아 있었다**(소스가 실측을 적어 둔다): `models.py` 컬럼 주석 «셋» · `main.py` 독스트링 «셋» · `client2/admin.html` 필터 옵션 «셋». 그런데 «쓰는» 자리는 «다섯»이라 **운영자가 고를 수 없는 상태가 셋**이었다.
+
+⚠️ **`ALL` 은 여기 «없다»** — 그건 상태가 아니라 「거르지 않음」이고, 한 이름에 두 뜻을 담는 순간 「상태 다섯」과 「고를 수 있는 것 여섯」이 갈라진다.
+⛔ **선언(config)으로 내지 «않는다»**(총괄 판정 25) — 실행의 «생애 주기»는 이 코드의 어휘이지 도메인이 아니다. 새 상태는 그것을 «읽는 코드»가 같이 있어야 존재한다.
+
 ### `server/product_tables.py` (**158줄**(🆕⑨ `5359fdd` 실측 — 구 표기 232), `ed9cfdb` 201에서 **+31**) — 제품 소유 테이블 선언 정본
 **`8e80fcc` 신설.** 소유권 경계: **제품 소유**(assyManager 자신의 저장소 — 이름·컬럼을 제품이 정하고 사이트가 바꿀 이유가 없다)는 여기 선언, **사이트 소유**(고객 공장 데이터 — 배포마다 이름이 다르다)는 여기 절대 등재하지 않고 설치기도 건드리지 않는다.
 
@@ -4446,6 +4459,8 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | 🆕 `walk/derive.js` (**102**) | 걷기 화면(`walk.html` → `src/walk/main.js`)의 **순수 판정 여섯** — `bareName` · `followFromRoute` · `followChoices` · `tableColumns` · `staticTypes` · `keepWalkableRoutes`. 유일한 소비자는 `walk/main.js:34`. 🔴 **약속: 도메인 낱말도 키 이름도 이 파일에 없다** — 표의 컬럼은 선언의 그 타입 `keys` + 응답이 실어 온 qualifier 이름에서 오고(`tableColumns`), 정적 타입은 `class === 'static'` **하나**로 갈린다(서버 `_static_types()`와 «같은 술어»). 🔴 거르는 것은 「정적 타입을 지나는 경로」가 아니라 **`static → not static` 걸음**이다 — static→static 은 기제 연쇄라 walk 이 허용한다. 🔴 `bareName`이 있는 이유: 선언은 `wafer@1`로 판을 붙이고 타입 그래프와 전선은 안 붙인다 — 두 철자를 «직접» 비교하는 것이 이 파일이 닫은 결함이고, 그 결함은 **조용했다**(아무것도 안 켜져서 클릭을 무시한 것처럼 보였다). 자기 모듈인 이유는 `main.js`의 클로저였으면 채점에 DOM 을 세워야 해서다 — 하니스 `walk_route_fill_harness.mjs`가 **같은 함수를 import** 한다 |
 | `walk/styles.js` (**109**) | 걷기 폼의 겉모양이 **부품과 같이 다니는** 자리 — `WALK_CSS` + `ensureWalkStyles(doc)`(문서당 한 번, `data-wk-styles` 표지). 🔴 `import './walk.css'`가 **아닌** 이유: 모듈 최상단 CSS import 는 node 에서 import 문 자체를 죽여 하니스가 잘라쓰기로 내몰린다. 색은 `tokens.css` 변수를 읽고 없으면 기본값으로 떨어진다 |
 | 🆕 `truncation.js` (**76**) | 「잘렸나」의 **정본 하나**. export 넷 — `fetchLimitFor(cap)` · `isTruncated(rows, cap)` · `withinCap(rows, cap)` · `saysTruncated(said)`. 소비: `map_editor.js` · `timeline.js` · `value_suggest.js` (import 셋 · `saysTruncated` 호출 «넷» — timeline 이 둘). 🔴 **한 파일에 «두 질문»이 있고 그게 의도다**: 앞의 셋은 「돌아온 행이 상한을 넘었나」를 «클라가» 판정하고, `saysTruncated` 는 「«서버가» 자기 응답을 잘렸다고 말하나」다. 운영자에게 「잘렸다」는 «하나»라서 답도 한 자리에 있어야 한다. 🔴 **`total` 을 받지 않는다** — 받으면 전수 count 를 다시 치르고(첫 화면 비용의 66~95%), 상한+1 로 청해 「한 행 더 왔나」를 보면 «같은 정확도»다. 🔴 **판별식은 `>` 이지 `>=` 가 아니다** — 상한만큼 «딱 맞게» 온 정상 응답을 절단으로 읽으면 온전한 맵이 「불완전」으로 강등된다. 🔴 `saysTruncated` 는 **`true`·`false`·`null`(모름) 셋**을 낸다 — 「잘렸다」의 «진릿값»이 아니라 「그렇게 «말했나»」이고, 전선의 `truncated` 가 실측 «다섯 모양»이라 있음·진릿값만 보면 틀린다. ⚠️ 이 파일의 값어치는 「코드 재사용」이 아니라 **「두 독자가 «같은 답»을 받는다」**다 — `value_suggest` 와 `map_editor` 는 «같은 라우트의 같은 칸»을 각자 읽어 다른 문장을 만들고, 갈라져도 **오류가 안 난다**. ⬜ 아직 안 부르는 후보 둘이 소스에 «이름으로» 적혀 있다(`map2/decode.js:787` · `map2/api.js:548`) — 그래서 이 파일이 `map2` 가 `../truncation.js` 로 부를 수 있는 자리에 산다 |
+| 🆕 `retry_verdict.js` (**73**) | 「재시도가 어떻게 됐나」의 **정본 하나**. export 둘 — `retryVerdict(status)` → `{state, tone, settled}` · `retryMessage(status, serverMessage)`. 소비: `admin.js` «둘»(`:3932` 색조 · `:4241` 문장) + 하니스 둘(`retry_verdict` · `health_card_absence`). 🔴 **약속은 「세 상태를 «셋»으로 답한다」이고 넷째가 «모름»이다** — `SUCCESS`=done/settled · `FAILED`=failed/settled · `PENDING_RETRY`=queued/**settled false** · 그 밖=`unknown`/settled false. 🔴 **`settled` 가 이 파일이 있는 이유다**: DECOUPLED 모드에서 재시도 라우트는 «재시도하지 않고» FAILED 를 `PENDING_RETRY` 로 표시만 하고 돌아오며, 실제 처리는 `run_watcher.py` 가 자기 질의로 집어 간다. 화면이 성공을 「아직 FAILED 인가」로 물었으므로 그 세 번째 상태가 물음을 «만족»했고 — **시작도 안 한 일에 「✅ 재시도 완료」가 떴다**. ⚠️ **이 결함은 «모드에 따라» 조용히 참/거짓이 바뀐다** — DECOUPLED 가 꺼지면 그 라우트는 동기라 「완료」가 참이다. 그래서 반쯤 참인 채로 오래 살았고, 「어떤 환경에선 멀쩡한데?」로 되돌리지 않도록 소스가 그것을 적어 둔다. ⚠️ 「모른다」는 「아니다」가 아니다 — 서버가 상태를 하나 더 만드는 날 화면은 «조용히 완료라고 말하는» 대신 「모르는 상태」라고 말한다. 그리고 `retryMessage` 는 서버가 «이미 말한» 문장을 덮지 않고 뒤에 싣는다 |
+| 🆕 `map2/attestation.js` (**49**) | 「**사람이** 이 프레임을 확정했나」의 클라 **한 자리**(F-19). export 하나 — `sourceFrameAttestation(src, spellFrame)` → `{attest, text, mark}`. 소비: `map2/main.js` «하나»(`renderSources`) + 하니스 `map2_attestation_harness`. 🔴 **약속: 「프레임이 있나」와 「사람이 확정했나」는 «다른 질문»이다.** `declared_frame_source === 'confirmed'` 는 둘을 «구별 못 한다» — 체인 맵퍼 둘이 같은 토큰을 찍으므로, 오버레이가 「확정됨」이라 그린 맵을 확정 워크리스트는 「pending」이라 그렸다. 가르는 것은 서버의 `maps[].confirmed_by_person` «불리언 하나»다. ⛔ **토큰(`GEOMETRY_CONFIRMED`)은 «가르지 않는다»**(총괄 판정 29) — `map_alignment.py` 가 그것을 «신뢰 토큰»으로 읽어 가르면 «정렬 동작»이 움직인다. 🔴 **체인 표지 맵도 «프레임은 그대로 그린다»** — 마크(✓)만 뗀다. 「고르지 않음」으로 떨어뜨리면 거짓 문장을 «다른 거짓 문장»으로 바꾸는 것이고, 그 프레임은 실재한다. ⚠️ 「없는 칸」은 「확정 아님」이지 「확정」이 아니다 — 옛 서버도, 문자열 `"true"` 도 마크를 못 얻는다. ⚠️ `attest` 의 `attested` 는 «아무도 안 읽는» 속성(`data-me2-attest`)의 넷째 값이다(실측: 이 저장소에서 «쓰기만» 하고 스타일시트·마크업·하니스 어디서도 «안 읽는다») — `none` 으로 접지 않은 것은 프레임이 있는데 그것이 «거짓»이기 때문이다 |
 | `clipboard.js`·`counter.js` | counter.js는 Vite 템플릿 잔재(미사용) |
 
 ---
