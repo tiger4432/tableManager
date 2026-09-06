@@ -3261,6 +3261,56 @@ def apply_row_update_internal(
     return row, is_new, changed_cols
 
 
+def purge_map_rows(db, table_model, table_name: str, row_ids):
+    """Delete map rows and their cell metadata, and TELL THE OUTBOX.
+
+    🔴 THE ONE WRITE THE OUTBOX COULD NOT SEE. Every other write in this system reaches
+    `database.stage_event` through SQLAlchemy's `before_flush`, which walks
+    `session.deleted`. A bulk `.delete(synchronize_session=False)` never loads the rows
+    into the session, so that list stays empty and these deletions produced no event at
+    all: no history to ask later, and the graph and sweep never learned. That made this
+    write the exception to a rule everything else in the codebase follows -- the fourth
+    cleanliness rule, one capability with two paths.
+
+    ⛔ AND THERE WERE TWO PURGE SITES, NOT ONE. The diff branch (`removed_row_ids`) and the
+    non-diff branch (`purged_row_ids`) each spelled the same three deletes by hand, so
+    repairing only the one that was read would have left the other still invisible. They
+    call this instead, which is why the event cannot be added to one and forgotten on the
+    other.
+
+    ⚠️ THIS PUTS THE DELETION IN THE OUTBOX. IT DOES NOT WRITE AUDIT HISTORY -- those are
+    different things and only the first is closed here. The event says WHICH rows went;
+    `AuditLog` still has no entry for them.
+
+    🔵 A `DELETE` event cannot wake the chain: `chain_ingestion_worker` filters its
+    triggers to `CREATE`/`EDIT` in all three places it selects them, so this adds no
+    cascade. Measured before it was written rather than left to the depth limit, which
+    bounds an unbounded chain and would not have prevented a new one.
+    """
+    from database.database import stage_collapsed_event
+
+    row_ids = list(row_ids or [])
+    if not row_ids:
+        return []
+
+    # Staged BEFORE the deletes so the event is added to the same flush that removes the
+    # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
+    stage_collapsed_event(db, "DELETE", table_name, row_ids)
+
+    db.query(models.CellSource).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id.in_(row_ids)
+    ).delete(synchronize_session=False)
+    db.query(models.CellOverwrite).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids)
+    ).delete(synchronize_session=False)
+    db.query(table_model).filter(
+        table_model.row_id.in_(row_ids)
+    ).delete(synchronize_session=False)
+    return row_ids
+
+
 def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch) -> Optional[dict]:
     """Resolve the exact {column: value} filters a replace_map purge will DELETE by.
 
@@ -3694,22 +3744,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 purged_row_ids = []
 
             if purged_row_ids:
-                # 1. Purge cell sources & overwrites for old map rows
-                db.query(models.CellSource).filter(
-                    models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(purged_row_ids)
-                ).delete(synchronize_session=False)
-
-                db.query(models.CellOverwrite).filter(
-                    models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(purged_row_ids)
-                ).delete(synchronize_session=False)
-
-                # 2. Purge main dynamic table rows
-                db.query(table_model).filter(
-                    table_model.row_id.in_(purged_row_ids)
-                ).delete(synchronize_session=False)
-
+                # One helper for both purge sites, so the outbox event cannot be added to
+                # one branch and forgotten on the other. See `purge_map_rows`.
+                purge_map_rows(db, table_model, table_name, purged_row_ids)
                 db.flush()
 
             if replace_report is not None:
@@ -4007,17 +4044,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             claimed_row_ids = set(unique_results.keys()) | set(deleted_row_ids)
             removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
             if removed_row_ids:
-                db.query(models.CellSource).filter(
-                    models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(removed_row_ids)
-                ).delete(synchronize_session=False)
-                db.query(models.CellOverwrite).filter(
-                    models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(removed_row_ids)
-                ).delete(synchronize_session=False)
-                db.query(table_model).filter(
-                    table_model.row_id.in_(removed_row_ids)
-                ).delete(synchronize_session=False)
+                purge_map_rows(db, table_model, table_name, removed_row_ids)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
             deleted_row_ids = list(deleted_row_ids) + removed_row_ids
