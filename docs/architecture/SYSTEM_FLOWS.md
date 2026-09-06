@@ -667,7 +667,10 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 - **자동 메타 등록**(`map_meta_registrar.py`, `MapMetaCollector`) — `directory_watcher:2635` · `chain_ingestion_worker:993` 이 트리거. **`DEFAULT_ENABLED = False`**(2026-08-30 이후)라 선언으로 켜야 돈다. 켜지면 `source='auto_map_meta'`(우선순위 99)로 합성 프레임을 만들고, 그 행을 `map_alignment.make_frame_transform` 이 거절한다 — **워크리스트 `unscorable` 의 큰 원천**.
 - 🔴 **`wafer_map_metadata` 에 기록자가 «다섯»이다**: 레거시 Push(1/2) · 레거시 규격 저장 · 확정(`_write_confirmed_meta`) · 체인 자동 정렬 · 자동 등록. **다섯이 같은 `grid_metadata` 한 칸을 쓴다.**
 - **범례/DOE 계획**은 별도 표(`map_split_registry`)에 `replace_map:true` 로 간다. `transfer_plan.js` 는 서버에 **쓰지 않는다** — fetch 3건 전부 GET(`/api/transfer-plan/stages`·`/source-summary`·`/validate`). `frontend.md` §5.1 의 「쓰기 소유권」 문장 ✅ 정확.
-- ⚠️ **`map2/main.js` 에 리터럴 NUL 바이트가 있다**(오프셋 28521, `join('\x00')`). 그래서 ripgrep·Grep 도구가 이 파일을 **binary 로 보고 건너뛴다** — **grep 기반 감사가 map2 의 합성 루트 2,610줄을 통째로 못 본다.** 이번 측정도 `grep -a`/`sed` 로만 읽혔다. 🔴 이건 「도구가 이 파일에서 눈이 먼다」는 뜻이라, 이 저장소의 감사 전반에 걸리는 사각이다.
+- ⚠️ **[2026-09-06 닫힘 · 시제를 고침]** `map2/main.js` 에 리터럴 NUL 바이트가 **있었다**(오프셋 28521). 그동안 ripgrep·Grep 도구가 이 파일을 **binary 로 보고 건너뛰었고** — **grep 기반 감사가 map2 의 합성 루트 2,610줄을 통째로 못 봤다.** 이 절의 측정도 `grep -a`/`sed` 로만 읽혔다.
+  🔵 **`78a88e7f` 가 이스케이프로 바꿔 닫았다**(런타임 문자열은 동일). 같은 날 `8121549e` 가 `enrichment.js`·`map2/authoring.js` 의 같은 결함을 닫았다 — 셋을 합쳐 **4,288줄**이 안 보이고 있었다. 2026-09-07 재측정: 셋 다 NUL **없음**.
+  🔴 **그래도 이 줄을 지우지 않는다** — 사각은 «열두 리비전» 동안 «실재했고», 그 창에서 이 트리에 대고 잰 「0 히트」는 **자기가 말한 트리보다 작은 트리**에 답한 것이다. 그 시기에 세어진 수를 인용하려면 «다시 세야» 한다.
+  📎 히스토리: `docs/history/20260906_110700_two_more_source_files_were_binary_to_every_search_tool.md`
 
 ### ⑨ 양끝이 다 있는데 아무것도 잇지 않는 이음매 (다섯)
 
