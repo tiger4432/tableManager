@@ -44,6 +44,23 @@ export function followChoices(fromStartType, declaredNames, selected) {
 }
 
 /**
+ * The result table's columns for one type section.
+ *
+ * 🔴 NO KEY NAME IS WRITTEN HERE OR ANYWHERE IN THIS CLIENT. The identity columns come from the
+ *    DECLARATION's `keys` for that type, and the qualifier columns come from what the response
+ *    actually carried. So a key added to the declaration adds a column with no edit here, which
+ *    is the whole point: the screen follows the declaration instead of copying it.
+ * 🔴 `depth` first because the first question about a returned node is how far it is from the
+ *    seed, and `id` last because it is long and is for picking up, not for reading.
+ */
+export function tableColumns(entities, type, qualifierNames) {
+  const bare = bareName(type);
+  const found = (entities || []).find((e) => e && bareName(e.type) === bare);
+  const declared = (found && found.keys) || [];
+  return ['깊이', ...declared, ...(qualifierNames || []), '라벨', 'id'];
+}
+
+/**
  * The types the walk treats as static, read off the declaration rather than decided here.
  *
  * 🔴 THE PREDICATE IS `class === 'static'` AND NOTHING ELSE, because that is the server's:

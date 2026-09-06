@@ -1046,7 +1046,7 @@ const FLOORS = new Map([
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 18],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
-  ['walk_route_fill_harness.mjs', 17],
+  ['walk_route_fill_harness.mjs', 23],
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured

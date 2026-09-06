@@ -67,6 +67,20 @@ export const WALK_CSS = `
 .wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
   border: 1px solid var(--line, #e4e4e7); font-size: 0.82rem; }
 .wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
+/* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
+.wk-sec { margin: 10px 0 14px; }
+.wk-sechead { font-weight: 700; font-size: 0.86rem; margin: 0 0 4px; }
+.wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
+  overflow-x: auto; white-space: nowrap; }
+.wk-table th, .wk-table td { border-bottom: 1px solid var(--line, #e4e4e7);
+  padding: 5px 8px; text-align: left; }
+.wk-table th { font-weight: 600; color: var(--text-dim, #71717a); position: sticky; top: 0;
+  background: var(--surface, #fff); }
+/* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */
+.wk-table td.wk-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
+.wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;
+  color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warn, #b45309); }

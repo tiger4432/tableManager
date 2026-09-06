@@ -113,6 +113,27 @@ function suite(M) {
   ok(M.keepWalkableRoutes([], ROUTES).length === ROUTES.length,
     'S7 with no static types declared, every route survives');
 
+  // 🔴 THE RESULT TABLE'S COLUMNS. The gate the ruling asked for is "add a key to the
+  //    declaration and the column follows, without editing code" - so the declaration is the
+  //    only thing that moves between T1 and T3.
+  const DIE = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
+    { type: 'wafer@1', keys: ['wafer'] }];
+  ok(M.tableColumns(DIE, 'die', []).join(',') === '깊이,mat_id,x,y,mat_type,라벨,id',
+    'T1 the columns are depth, the declared keys in order, label, then id');
+  ok(M.tableColumns(DIE, 'wafer', []).join(',') === '깊이,wafer,라벨,id',
+    'T2 a different type brings its OWN keys, which is why sections are per type');
+  const GREW = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type', 'lot'] }];
+  ok(M.tableColumns(GREW, 'die', []).includes('lot'),
+    'T3 a key added to the declaration adds a column, with no edit here');
+  ok(M.tableColumns(DIE, 'die', ['gate', 'unit']).join(',')
+    === '깊이,mat_id,x,y,mat_type,gate,unit,라벨,id',
+    'T4 qualifiers that arrived become columns too, after the keys');
+  // 🔴 The control: a type the declaration does not carry must not invent identity columns.
+  ok(M.tableColumns(DIE, 'unknown_type', []).join(',') === '깊이,라벨,id',
+    'T5 an undeclared type gets no key columns rather than borrowed ones');
+  ok(M.tableColumns(DIE, 'die@1', []).includes('mat_id'),
+    'T6 the version suffix does not hide the declaration from the lookup');
+
   return { fail: fail - before.fail };
 }
 
@@ -136,6 +157,12 @@ const DEFECTS = [
   ['the later-hop predicate stops being shown',
     (s) => s.replace('  return [...new Set([...(fromStartType || []), ...extra])];',
       '  return [...(fromStartType || [])];')],
+  ['the column list stops asking the declaration and hardcodes what it saw once',
+    (s) => s.replace('  const declared = (found && found.keys) || [];',
+      "  const declared = ['mat_id', 'x', 'y', 'mat_type'];")],
+  ['the columns stop carrying the qualifiers that arrived',
+    (s) => s.replace("  return ['깊이', ...declared, ...(qualifierNames || []), '라벨', 'id'];",
+      "  return ['깊이', ...declared, '라벨', 'id'];")],
   ['the list widens to everything instead of to what is selected',
     (s) => s.replace('  const extra = (declaredNames || []).filter((name) => picked.has(name));',
       '  const extra = (declaredNames || []);')],

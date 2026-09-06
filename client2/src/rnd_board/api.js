@@ -1842,8 +1842,13 @@ export function createWalkBoxWalk(deps) {
       }
       // 🔴 여기서 «거르지 않습니다». 거르는 것은 walk 이 할 일이고, 부품이 받은 것을
       //    다시 좁히면 그 순간 화면이 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
+      // 🔴 `keys` 와 `depth` 를 «싣습니다» (2026-09-06). 종전에 셋으로 좁히고 있었는데, 그 둘이
+      //    바로 표가 서는 자리입니다 -- 사람이 읽는 신원은 라벨이 아니라 «키»이고, 첫 물음은
+      //    「내 씨앗에서 몇 홉인가」입니다. 서버는 둘 다 «이미» 보냈고 이 줄이 버리고 있었습니다.
+      //    좁히는 쪽이 「무엇을 못 봤는지」를 말할 수 없게 만든다는 것이 바로 아래 주석인데,
+      //    그 주석을 단 함수가 스스로 그러고 있었습니다.
       const nodes = (body.nodes || [])
-        .map((n) => ({ id: n.id, type: n.type, label: n.label }));
+        .map((n) => ({ id: n.id, type: n.type, label: n.label, keys: n.keys || null, depth: n.depth }));
       // ⚠️ 엣지는 «모양을 안 바꿉니다». 노드처럼 세 칸으로 줄이면 술어 이름과 수식어가
       //    사라지고, 그러면 「무엇을 타고 왔나」를 화면이 영원히 못 말합니다.
       const edges = Array.isArray(body.edges) ? body.edges : [];
