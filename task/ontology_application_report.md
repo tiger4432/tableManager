@@ -12606,3 +12606,63 @@ source_rows.js:28   같은 가드가 «한 번 더» 있습니다
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔒 C-3 세는 라운드 — **교차 «다섯», 순서 가드에 보이는 것 «0». 그리고 선언 밖 읽기가 «하나 더»** (11:0x)
+
+⛔ 코드 0줄 · `depends_on` 문법 제안 «안 했습니다».
+```
+🔒 예약   줄 C-3 · 파일 (읽기만) `server/config/sample/chain_rules.json.sample` ·
+         `server/chain_ingestion_worker.py` · `server/mappers/*`
+```
+
+## ① 순서 가드가 «무엇을» 보나 — 쓰는 것뿐입니다
+```
+chain_ingestion_worker.py:1272  `if blocked_targets and (group_targets & blocked_targets): continue`
+                        :640-654  `_group_target_tables(...)` -> 규칙의 «target_table» 집합
+그 함수 자기 독스트링: 「이 트랜잭션 그룹이 «기록할» target_table 집합」
+=> 🔴 «읽는 표»는 그 집합에 «안 들어갑니다». 그래서 A 가 쓰다 실패한 표를 B 가 «읽어도» B 는 «안 보류됩니다»
+```
+
+## ② 교차 전수 (커밋된 샘플 규칙 «아홉») — **다섯 쌍, «전부» 안 보임**
+```
+dt_log_to_dt_alignment_metadata  --[wafer_map_metadata]-->  dt_metadata_to_dt_inventory     🔴 안 보임
+dt_metadata_to_dt_inventory      --[dt_inventory]------->  dt_inventory_to_standard_dt_map  🔴 안 보임
+dt_metadata_to_dt_inventory      --[dt_inventory]------->  dt_inventory_to_core_usage_map   🔴 안 보임
+dt_log_to_primary_core_frame     --[dt_inventory]------->  dt_inventory_to_standard_dt_map  🔴 안 보임
+dt_log_to_primary_core_frame     --[dt_inventory]------->  dt_inventory_to_core_usage_map   🔴 안 보임
+```
+🔴 **다섯 다 「같은 target 이 아니라서」 안 보입니다.** 예: `dt_metadata_to_dt_inventory` 가 실패하면
+   `blocked_targets = {dt_inventory}` 인데, `dt_inventory_to_standard_dt_map` 의 target 은 `dt_map` 이라
+   교집합이 «빔» -> «돕니다». 그런데 그 규칙의 트리거가 «방금 실패한» `dt_inventory` 입니다.
+   => 「순서가 «조용히» 틀린다」의 기제이고, 오류가 «안 납니다».
+
+## ③ 그리고 선언이 «표현할 수 없는» 읽기가 하나 더 — 이 수는 «하한»입니다
+```
+mappers/core_alignment_mapper.py:215  `map_overlay.load_map_meta(db, basis["table"], …)`
+map_meta_registrar.py:69              `META_TABLE = "wafer_map_metadata"`
+그 규칙의 선언                          trigger=dt_log · source=dt_log   -> `wafer_map_metadata` «없음»
+=> 맵퍼가 «선언에 없는 표»를 읽습니다. 이건 trigger/source 로 만든 어떤 표에도 «안 잡힙니다»
+🔴 그러므로 위 «다섯»은 «선언으로 볼 수 있는» 교차의 수이고, 진짜 수는 그보다 «큽니다» — 하한입니다
+   (맵퍼 아홉의 «내부 읽기 전수»는 안 훑었습니다 — 그건 다음 라운드의 크기입니다)
+```
+
+## ⚠️ 이 박스 얘기와 «가른» 것
+```
+쟀다   커밋된 `.sample` 규칙 «아홉» · 워커 코드 · 맵퍼 소스 -> 운영에도 참입니다
+안 썼다  `server/config/chain_rules.json`(gitignore 된 라이브)의 «활성 규칙 수» — 이 박스 얘기입니다
+```
+
+## 판정 대기: **쉰다섯**
+```
+55  🔴 C-3 의 «수»가 나왔습니다: 선언으로 보이는 교차 «5» · 가드가 보는 것 «0» · 그리고 «하한»입니다
+    ㉠ 다음 걸음이 「맵퍼 내부 읽기 전수」인지 (크기: 맵퍼 아홉)
+    ㉡ 아니면 이 수만으로 «문법 판정»으로 갈지 — ⛔ 문법은 제가 제안하지 않습니다 (지시 그대로)
+```
+```
+판정 대기: 🔴 55 (첫 제출 11:0x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
