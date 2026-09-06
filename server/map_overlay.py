@@ -557,6 +557,25 @@ PHYS_CONFIRMED_KEY = "phys_confirmed_from"      # 웨이퍼·칩 기하를 확�
 FRAME_CONFIRMED_KEY = "frame_confirmed_from"    # 회전·면을 확정한 곳 + 그 확정
 GEOMETRY_CONFIRMED = "confirmed"                # 확정 아래 파생됐다 — 선언은 아니다
 
+
+def confirmed_by_person(meta):
+    """이 맵의 회전·면을 «사람이» 확정했나. 🔴 「정렬 결정이 있나」와 다른 질문이다.
+
+    표지는 둘을 이미 가른다 — 사람 경로는 `confirmation_uid`(확정 «행»의 열쇠)와
+    `confirmed_by`·`confirmed_at` 을 싣고, 체인 맵퍼 둘(`chain_alignment` ·
+    `chain_core_alignment`)은 자기 이름만 대고 그 셋을 «안 싣는다». 거짓말하는 것은 표지가
+    아니라 그것을 `bool()` 로 접는 «읽는 줄»이었다.
+
+    🔴 그리고 이 판정은 «한 자리»다. 같은 물음이 `orientation_declaration`(축별)과
+    `map_alignment` 의 `maps[]`(맵별) 두 곳에서 필요한데, 각자 적으면 그 둘이 갈릴 수 있다 —
+    오늘 밤 이 저장소가 `_bare` 에서 «한 이름 네 본체»로 만난 그 모양이다. 여기가 그 자리다.
+
+    ⚠️ 토큰은 «안 가른다». `GEOMETRY_CONFIRMED` 를 움직이면 `map_alignment` 의 신뢰 판정
+    (`:516` · `:4751`)이 같이 움직이고, 그건 맵 도메인 물음이다 (판정 29).
+    """
+    mark = (meta if isinstance(meta, dict) else {}).get(FRAME_CONFIRMED_KEY)
+    return bool(isinstance(mark, dict) and mark.get("confirmation_uid"))
+
 # 사유는 **사람이 읽는 자리에서 한 번만** 사람 말로 옮긴다(클라 `7ea2c2f`와 같은 규율).
 # 판정은 `geometry_declaration`이 이미 끝냈고 여기서는 표시만 한다 — 두 번째 판정이 아니다.
 _GEOMETRY_REFUSAL_TEXT = {
@@ -948,9 +967,7 @@ def orientation_declaration(meta: dict | None) -> dict:
     #
     # ⚠️ 토큰은 **안 가른다.** `GEOMETRY_CONFIRMED` 를 움직이면 위 신뢰 판정이 같이
     #    움직이고, 그건 맵 도메인 물음이다. 여기서는 **새 칸을 더해서** 답한다.
-    _confirm_mark = m.get(FRAME_CONFIRMED_KEY)
-    frame_confirmed_by_person = bool(
-        isinstance(_confirm_mark, dict) and _confirm_mark.get("confirmation_uid"))
+    frame_confirmed_by_person = confirmed_by_person(m)
     out = {}
     for axis, (reader, absent_default, synth_could_write,
                value_can_indicate_absence) in _ORIENTATION_READERS.items():

@@ -6029,6 +6029,17 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                           declared_frame=_df(sm)["frame"],
                           declared_frame_source=_df(sm)["source"],
                           geometry=map_overlay.geometry_declaration(sm.get("meta")),
+                          # 🔴 「사람이 확정했나」 — «맵별» 한 칸. `geometry` 가
+                          #    「정렬 결정이 있나」를 말하고, 그 둘이 «다른 질문»인데 한
+                          #    불리언이 둘 다 답하고 있었다: 워크리스트가 「pending」이라
+                          #    부르는 맵을 오버레이가 「확정됨」이라 불렀다.
+                          # ⚠️ dict 도 사유 문자열도 사람 이름도 «아니다**. 맵마다 축 dict 를
+                          #    실으면 40맵에서 payload 가 +72% 라는 것을 이 블록이 «바로
+                          #    아래»에 적어 뒀고, 같은 논거가 여기에도 그대로 걸린다.
+                          # 🔴 판정은 `map_overlay` «한 자리»에서 온다 — 여기서 다시
+                          #    적으면 축별 답과 맵별 답이 갈릴 수 있다.
+                          confirmed_by_person=map_overlay.confirmed_by_person(
+                              sm.get("meta")),
                           # [D6] 바닥 메타를 함께 넘긴다 — 격자만 빌린 맵은 phys가 `declared`
                           # 여서 이 인자 없이는 「선언 위에 섰다」고 답한다.
                           geometry_basis=geometry_basis_of(
