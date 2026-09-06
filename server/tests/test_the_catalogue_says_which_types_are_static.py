@@ -266,20 +266,31 @@ def test_a_composite_type_is_grouped_by_every_declared_key(monkeypatch):
     # 🔴 RUN IT, DO NOT READ IT. A source match passed while the grouping was truncated to
     # `sorted(declared_keys)[:1]` - the mutated line still CONTAINED the asserted text.
     # Measured 2026-09-06, and it is the same vacuous shape as a one-typed collect fixture.
+    # 🔴 THE VALUES ARE NUMBERS HERE ON PURPOSE. The ledger stores 0.0, the text
+    # extractor returned "0.0", and the canonical seed id writes those two differently -
+    # so every composite seed came back empty. The route must hand back what the ledger
+    # holds, not a rendering of it.
     answer = _run(monkeypatch, keys=["x", "y"],
-                  rows=[("1", "2", 5), ("3", "4", 1)])
+                  rows=[(0.0, 5.0, 5), (3.0, 4.0, 1)])
     assert answer["keys"] == ["x", "y"], "the subject was grouped by one axis"
-    assert answer["subjects"][0]["keys"] == {"x": "1", "y": "2"}, \
+    assert answer["subjects"][0]["keys"] == {"x": 0.0, "y": 5.0}, \
         "a subject must carry every key, or the caller has to pair them again"
-    assert answer["seedable"] is True
+    assert answer["covers_declared_keys"] is True
+    assert "->>" not in answer["_sql"], \
+        "the text extractor is back; it stringifies the ledger's numbers"
+    assert "subject_keys -> " in answer["_sql"]
 
 
 def test_one_axis_of_a_composite_key_says_it_is_not_a_seed(monkeypatch):
     """⚠️ SAID, NOT INFERRED. Leaving the caller to compare `keys` against the declaration
     is exactly the inference that produced the cross product."""
-    asked = _run(monkeypatch, keys=["x", "y"], rows=[("1", 5)], key="x")
+    asked = _run(monkeypatch, keys=["x", "y"], rows=[(0.0, 5)], key="x")
     assert asked["keys"] == ["x"]
-    assert asked["seedable"] is False, "one axis was offered as if it could seed a walk"
+    # ⚠️ THE NAME IS THE POINT. `seedable` claimed the walk would answer, which this
+    # route never checked and which was false for every composite subject while the
+    # values came back as text. What a set comparison can know is coverage.
+    assert asked["covers_declared_keys"] is False
+    assert "seedable" not in asked, "an unmeasured claim came back"
 
 
 def test_the_key_argument_is_optional_now():
