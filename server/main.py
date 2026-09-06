@@ -6185,6 +6185,26 @@ client2_dist_path = os.path.abspath(os.path.join(script_dir, "..", "client2", "d
 if not os.path.exists(client2_dist_path):
     client2_dist_path = os.path.join(script_dir, "dist")
 
+#: 🔴 THE HTML MUST NOT BE REUSED FROM CACHE, AND THE ASSETS MUST.
+#: Vite names every bundle after its CONTENT (`walk-eV9dpnRJ.js`), so an asset can be
+#: cached forever and a new build simply asks for a new name. The html is the one file
+#: whose name never changes, and it is the file that HOLDS those names - so a cached copy
+#: of it points a fresh browser at the PREVIOUS build. Measured 2026-09-06: the page
+#: responses carried `last-modified` and `etag` but no `cache-control`, and both a lead
+#: session and the client lane were served a stale page on the night the screen shipped.
+#:
+#: ⚠️ THIS IS "BUILT IS NOT LOADED" ONE LAYER OUT. The bundle was in `dist`, and a
+#: browser that never asked for it makes that indistinguishable from never having built.
+#:
+#: 🔴 ONE SPELLING. Four handlers each wrote this dict out by hand, and the SPA catch-all
+#: - which is what serves every page that does not have its own route, `walk.html`
+#: included - wrote none, so the pages most recently added were the ones without it.
+HTML_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
 if os.path.exists(client2_dist_path):
     assets_dir = os.path.join(client2_dist_path, "assets")
     if os.path.exists(assets_dir):
@@ -6194,11 +6214,7 @@ if os.path.exists(client2_dist_path):
     @app.get("/admin.html")
     def serve_admin_page():
         """어드민 페이지(admin.html)를 반환합니다."""
-        no_cache_headers = {
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
+        no_cache_headers = HTML_NO_CACHE_HEADERS
         admin_file = os.path.join(client2_dist_path, "admin.html")
         if os.path.exists(admin_file):
             return FileResponse(admin_file, headers=no_cache_headers)
@@ -6211,11 +6227,7 @@ if os.path.exists(client2_dist_path):
     @app.get("/map_editor.html")
     def serve_map_editor_page():
         """맵 에디터 페이지(map_editor.html)를 반환합니다."""
-        no_cache_headers = {
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
+        no_cache_headers = HTML_NO_CACHE_HEADERS
         map_file = os.path.join(client2_dist_path, "map_editor.html")
         if os.path.exists(map_file):
             return FileResponse(map_file, headers=no_cache_headers)
@@ -6237,11 +6249,7 @@ if os.path.exists(client2_dist_path):
         레거시 `/map_editor.html`은 그대로 살아 있다. 유효 다이 저작과 오버레이는 아직
         그쪽 소관이고, 이 화면은 좌표계 확정 ― 후보 채점·판정·확정 ― 을 맡는다.
         """
-        no_cache_headers = {
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
+        no_cache_headers = HTML_NO_CACHE_HEADERS
         map2_file = os.path.join(client2_dist_path, "map_editor2.html")
         if os.path.exists(map2_file):
             return FileResponse(map2_file, headers=no_cache_headers)
@@ -6254,11 +6262,7 @@ if os.path.exists(client2_dist_path):
     @app.get("/enrichment.html")
     def serve_enrichment_page():
         """Enrichment Queue 페이지(enrichment.html)를 반환합니다."""
-        no_cache_headers = {
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
+        no_cache_headers = HTML_NO_CACHE_HEADERS
         page_file = os.path.join(client2_dist_path, "enrichment.html")
         if os.path.exists(page_file):
             return FileResponse(page_file, headers=no_cache_headers)
@@ -6311,10 +6315,17 @@ if os.path.exists(client2_dist_path):
             raise HTTPException(status_code=404)
 
         if file_name and os.path.exists(target_path) and os.path.isfile(target_path):
+            # 🔴 ONLY THE HTML. A hashed asset is safe to reuse forever precisely because
+            # its name changes when its bytes do, so adding no-cache here would throw away
+            # the one thing content hashing buys. This route does not serve `/assets`
+            # anyway (that is a separate mount) - the guard is about pages parked in the
+            # dist root beside them.
+            if target_path.lower().endswith(".html"):
+                return FileResponse(target_path, headers=HTML_NO_CACHE_HEADERS)
             return FileResponse(target_path)
 
         index_file = os.path.join(client2_dist_path, "index.html")
         if os.path.exists(index_file):
-            return FileResponse(index_file)
+            return FileResponse(index_file, headers=HTML_NO_CACHE_HEADERS)
         raise HTTPException(status_code=404, detail="Index file not found")
 
