@@ -3,11 +3,17 @@
 // (구 메커니즘 7탭 폐지 — Outbox·Rules·Mappers는 Chain 탭으로, Workspaces는 File 탭으로 수렴.
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
-import { localeCountText, isCount } from './absent.js';
+// `isCount` 는 인제션 행이 `admin_rows.js` 로 옮겨가며 이 파일에서 «쓰는 곳이 없어졌습니다».
+import { localeCountText } from './absent.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast } from './utils.js';
+// C-14: 서버가 준 «이름»을 찍는 목록 행 다섯. 하니스가 import 로 채점할 수 있게 자기 모듈에
+// 삽니다 — 이 파일은 `tokens.css` 를 import 해서 node 가 못 읽습니다.
+import {
+  fileLogRowHtml, activeIngestionRowHtml, workspaceRowHtml, mapperRowHtml, autoUpdateRowHtml,
+} from './admin_rows.js';
 import { ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER } from './admin_token.js';
 // Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
 import { queueQuery } from './enrichment_queue.js';
@@ -1345,27 +1351,10 @@ function buildFileLogRow(log, { withStatus }) {
   row.className = `table-row ${selectedFileId === log.id ? 'active' : ''}`;
   row.dataset.id = log.id;
 
-  const timeStr = formatTimestamp(log.created_at);
-  const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${log.status || 'FAILED'}</span>`;
-  const retryBtnHtml = log.status === 'SUCCESS'
-    ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
-    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${log.id}" style="padding: 4px 10px; font-size: 0.75rem;">Retry</button>`;
-  // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만
-  const retryStyle = log.retry_count > 0
-    ? 'color: var(--warning); font-weight: 600;'
-    : 'color: var(--text-dim);';
-
-  row.innerHTML = `
-    <td>${log.id}</td>
-    <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${log.filename}</td>
-    <td style="font-weight: bold; color: var(--color-primary);">${log.table_name}</td>
-    ${withStatus ? `<td style="text-align: center;">${statusBadge}</td>` : ''}
-    <td style="text-align: center; ${retryStyle}">${log.retry_count}</td>
-    <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${log.created_at || ''}">${timeStr}</td>
-    <td style="text-align: center;" onclick="event.stopPropagation()">
-      ${retryBtnHtml}
-    </td>
-  `;
+  row.innerHTML = fileLogRowHtml(log, {
+    withStatus,
+    timeStr: formatTimestamp(log.created_at),
+  });
 
   row.addEventListener('click', () => {
     selectFileRow(log, row.parentElement || fileListBody);
@@ -1460,32 +1449,9 @@ function renderActiveIngestions() {
   items.forEach(item => {
     const row = document.createElement('tr');
     row.className = 'table-row';
-    const laneBadge = item.lane === 'heavy'
-      ? `<span class="badge badge-warning" style="font-weight: bold;">HEAVY</span>`
-      : `<span class="badge badge-success">normal</span>`;
-    const pct = Math.max(0, Math.min(item.progress || 0, 100));
-    const statusNote = item.status === 'QUEUED' ? ' 대기' : '';
-    // 🔴 `|| 0` USED TO BE HERE and it turned 「안 왔다」 into 「0개 처리했다」 — a
-    //    number the server never sent. `localeCountText` keeps the two apart.
-    const rowsText = (item.total_rows != null)
-      ? `${localeCountText(item.processed_rows)} / ${localeCountText(item.total_rows)}`
-      : (isCount(item.processed_rows) && Number(item.processed_rows) > 0
-        ? localeCountText(item.processed_rows) : '-');
-    row.innerHTML = `
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text); word-break: break-all;">${item.filename}</td>
-      <td style="font-weight: bold; color: var(--color-primary);">${item.table_name}</td>
-      <td style="text-align: center;">${laneBadge}</td>
-      <td>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="flex: 1; height: 6px; border-radius: 3px; background: var(--bg-inset); border: 1px solid var(--border); overflow: hidden;">
-            <div style="width: ${pct}%; height: 100%; background: var(--accent); transition: width 0.4s;"></div>
-          </div>
-          <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); min-width: 46px; text-align: right;">${pct}%${statusNote}</span>
-        </div>
-      </td>
-      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${rowsText}</td>
-      <td style="text-align: center; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${formatElapsed(item.elapsed_seconds)}</td>
-    `;
+    row.innerHTML = activeIngestionRowHtml(item, {
+      elapsedText: formatElapsed(item.elapsed_seconds),
+    });
     activeIngestionBody.appendChild(row);
   });
 }
@@ -1516,26 +1482,7 @@ function renderWorkspaceTable() {
     row.className = `table-row ${selectedWorkspaceName === ws.name ? 'active' : ''}`;
     row.dataset.name = ws.name;
 
-    const configBadge = ws.has_config
-      ? `<span class="badge badge-success">${ws.config_file}</span>`
-      : `<span class="badge badge-danger">None</span>`;
-
-    const scriptCount = ws.custom_scripts.length;
-    const scriptsBadge = scriptCount > 0
-      ? `<span class="badge badge-success" style="font-family: var(--font-mono);">${scriptCount} script(s)</span>`
-      : `<span class="badge badge-warning">None (Standard)</span>`;
-
-    const rawFilesBadge = ws.raw_files_count > 0
-      ? `<span class="badge badge-warning" style="font-family: var(--font-mono); font-weight: bold;">${ws.raw_files_count} file(s)</span>`
-      : `<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;
-
-    row.innerHTML = `
-      <td style="font-weight: bold; color: var(--color-primary);">${ws.name}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;">${ws.table_name}</td>
-      <td style="text-align: center;">${configBadge}</td>
-      <td style="text-align: center;">${scriptsBadge}</td>
-      <td style="text-align: center;">${rawFilesBadge}</td>
-    `;
+    row.innerHTML = workspaceRowHtml(ws);
 
     row.addEventListener('click', () => {
       selectWorkspaceRow(ws);
@@ -1657,16 +1604,7 @@ function renderMapperTable() {
     row.className = `table-row ${selectedMapperFile === mapper.filename ? 'active' : ''}`;
     row.dataset.file = mapper.filename;
 
-    const funcCount = mapper.functions.length;
-
-    row.innerHTML = `
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${mapper.filename}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">${mapper.module_name}</td>
-      <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
-      <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: 0.75rem;">🛠️ Edit</button>
-      </td>
-    `;
+    row.innerHTML = mapperRowHtml(mapper);
 
     row.addEventListener('click', () => {
       selectMapperRow(mapper);
@@ -1704,34 +1642,11 @@ function renderAutoUpdateTable() {
     row.dataset.script = col.script_name;
     row.dataset.table = col.table_name;
 
-    const statusBadge = `<span class="badge ${
-      col.last_status === 'SUCCESS' ? 'badge-success' :
-      col.last_status === 'FAIL' ? 'badge-danger' :
-      col.last_status === 'RUNNING' ? 'badge-warning' : 'badge-warning'
-    }">${col.last_status || 'PENDING'}</span>`;
-
-    const inactiveBadge = isActive ? '' :
-      '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">비활성</span>';
-
-    row.innerHTML = `
-      <td style="font-weight: bold; color: var(--color-primary);">${col.table_name}</td>
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;">${col.script_name}${inactiveBadge}</td>
-      <td style="font-family: var(--font-mono); font-size: 0.85rem; text-align: center;">${col.cron_expression}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.next_run || ''}">${formatTimestamp(col.next_run)}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-mono);" title="${col.last_run || ''}">${formatTimestamp(col.last_run)}</td>
-      <td style="text-align: center;">${statusBadge}</td>
-      <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
-        <label class="au-switch" title="${isActive ? '클릭 → 수집기 비활성화 (스케줄 중단)' : '클릭 → 수집기 활성화 (스케줄 재개)'}">
-          <input type="checkbox" class="au-active-toggle" ${isActive ? 'checked' : ''} aria-label="수집기 스케줄 활성 토글">
-          <span class="au-slider"></span>
-        </label>
-      </td>
-      <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-run-now" data-table="${col.table_name}" data-script="${col.script_name}"
-          style="padding: 4px 10px; font-size: 0.75rem;"
-          title="${isActive ? '즉시 1회 수집 실행' : '비활성 수집기도 수동 실행은 가능합니다'}">Run Now</button>
-      </td>
-    `;
+    row.innerHTML = autoUpdateRowHtml(col, {
+      isActive,
+      nextRunText: formatTimestamp(col.next_run),
+      lastRunText: formatTimestamp(col.last_run),
+    });
 
     row.addEventListener('click', () => {
       selectAutoUpdateRow(col);
