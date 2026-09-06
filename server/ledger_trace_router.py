@@ -327,6 +327,110 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         static_follow=_static_step_predicates(), collect=collect)
 
 
+#: How many ledger rows one key-values answer may READ. The scan is bounded, not the
+#: grouping: a `GROUP BY` over a whole subject_type would visit every row that type has,
+#: which is the full scan this route exists beside rather than adds.
+KEY_VALUE_SCAN_ROWS = 20000
+
+#: How many distinct values one answer may CARRY. Asked as `limit + 1` so the answer can
+#: say it was cut instead of looking complete.
+KEY_VALUE_DEFAULT_LIMIT = 50
+KEY_VALUE_MAX_LIMIT = 500
+
+
+@router.get("/key-values")
+def ledger_key_values(
+    type: str = Query(..., description="선언된 엔터티 타입 (`@` 버전은 있어도 없어도 된다)"),
+    key: str = Query(..., description="그 타입이 «선언한» 키 이름"),
+    limit: int = Query(KEY_VALUE_DEFAULT_LIMIT, ge=1, le=KEY_VALUE_MAX_LIMIT),
+    db: Session = Depends(get_db),
+):
+    """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
+
+    🔴 값을 적으라면서 «어떤 값이 있는지»는 안 알려 주던 자리다. 걷기 상자의 키는 자유
+    텍스트였고, 운영자는 씨앗 하나를 «외워서» 쳐야 했다.
+
+    🔴 **읽는 «행 수»를 자른다. 그룹을 자르는 것이 아니다.** 한 타입 전체에 `GROUP BY` 를
+    걸면 그 타입의 모든 행을 방문하고, 그것이 오늘 밤 등급 5 로 올린 바로 그 모양이다.
+    그래서 `KEY_VALUE_SCAN_ROWS` 로 «먼저 자르고» 그 위에서 센다 -- 같은 규율이
+    `enrichment_candidates.execute_candidate_probe` 에 이미 있고 이 함수는 그것을 따른다.
+
+    🔴 **절단이 «둘»이고 따로 보고한다.** `scan_truncated` 는 「행을 다 못 봤다」이고
+    `values_truncated` 는 「값이 더 있는데 안 실었다」다. 한 표지로 접으면 「이 키에는 값이
+    이만큼뿐」과 「이만큼까지만 봤다」가 같은 답이 된다 -- 오늘 밤 내내 걷어낸 그 부류다.
+
+    정렬은 «빈도 내림차순, 동률은 값 오름차순»이다. 적어 두지 않으면 질의가 정한다.
+
+    ⚠️ 세는 대상은 «읽은 창» 안의 빈도다. 창이 잘렸으면 그 빈도는 표본이지 전수가 아니고,
+    `scan_truncated` 가 그것을 말한다.
+    """
+    wanted_type = str(type).split("@", 1)[0]
+    collectable = _collectable_types()
+    if wanted_type not in collectable:
+        raise HTTPException(status_code=422, detail={
+            "reason": "node_type_not_declared", "unknown": [wanted_type],
+            "declared": sorted(collectable),
+            "message": "선언에 없는 노드 타입입니다: " + wanted_type})
+
+    declared_keys = _declared_keys(wanted_type)
+    if key not in declared_keys:
+        raise HTTPException(status_code=422, detail={
+            "reason": "key_not_declared", "unknown": [key],
+            "declared": sorted(declared_keys), "type": wanted_type,
+            "message": "'%s' 가 선언하지 않은 키입니다: %s" % (wanted_type, key)})
+
+    connection = db.connection()
+    if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
+        raise _relation_absent()
+
+    rows = connection.exec_driver_sql(
+        # The window is taken FIRST and grouped after, so the work is bounded by
+        # `KEY_VALUE_SCAN_ROWS` rather than by how many rows the type has.
+        "SELECT value, count(*) AS n FROM ("
+        "  SELECT subject_keys ->> %(key)s AS value FROM " + LEDGER_RELATION +
+        "  WHERE subject_type LIKE %(type_prefix)s AND subject_keys ? %(key)s"
+        "  LIMIT %(scan)s"
+        ") w WHERE value IS NOT NULL GROUP BY value "
+        "ORDER BY n DESC, value ASC LIMIT %(limit)s",
+        {"key": key, "type_prefix": wanted_type + "%",
+         "scan": KEY_VALUE_SCAN_ROWS + 1, "limit": limit + 1},
+    ).fetchall()
+
+    scanned = sum(int(row[1]) for row in rows)
+    values = [{"value": row[0], "count": int(row[1])} for row in rows[:limit]]
+    return {
+        "type": wanted_type, "key": key,
+        "values": values,
+        "scanned": min(scanned, KEY_VALUE_SCAN_ROWS),
+        # 🔴 TWO CUTS, SAID SEPARATELY. Neither implies the other: a small key can fill
+        # the value list off an untruncated scan, and a huge scan can yield three values.
+        "scan_truncated": scanned > KEY_VALUE_SCAN_ROWS,
+        "values_truncated": len(rows) > limit,
+        "limits": {"scan_rows": KEY_VALUE_SCAN_ROWS, "values": limit},
+        "order": "count_desc_then_value_asc",
+    }
+
+
+def _declared_keys(bare_type: str) -> set:
+    """The keys THIS type declares -- the same list `/declaration` publishes.
+
+    🔴 Read, never restated: a key list held here would answer differently from the
+    catalogue on the day an entity gains a key, and the caller reads both.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("entities") or {}
+    except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
+        logger.error("declaration unreadable while resolving keys: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"선언을 읽지 못했습니다: {exc}"})
+    for name, spec in declared.items():
+        if str(name).split("@", 1)[0] == bare_type:
+            return {str(k) for k in ((spec or {}).get("keys") or [])}
+    return set()
+
+
 def _collectable_types():
     """Every node type a caller may name in `collect` -- read from the DECLARATION, only.
 
