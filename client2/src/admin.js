@@ -4,7 +4,7 @@
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
 import { localeCountText, isCount } from './absent.js';
-import { initTheme, getTheme } from './theme.js';
+import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast } from './utils.js';
@@ -4307,7 +4307,7 @@ function markEditorClean() {
 }
 
 // 테마 토글 시 Monaco 에디터 테마 동기화 (theme.js 'themechange' 구독)
-document.addEventListener('themechange', (e) => {
+document.addEventListener(THEME_CHANGE_EVENT, (e) => {
   if (window.monaco && isMonacoLoaded) {
     window.monaco.editor.setTheme(e.detail.theme === 'dark' ? 'vs-dark' : 'vs');
   }
