@@ -440,6 +440,13 @@ export function buildRunsView(payload, now, cancellable) {
       // 🔴 멈출 수 없는 연산에는 × 를 안 그립니다 — 누르면 아무 일도 안 일어나는
       //    버튼은 화면이 하는 거짓말입니다. 선언이 모르는 연산도 그리지 않습니다.
       // 끝난 작업에는 «절대» 안 답니다. 눌러도 아무 일이 안 나거나 더 나쁜 일이 납니다.
+      // 🔴 실패한 실행이 «끝난 실행»과 같은 줄로
+      //    그려지고 있었습니다 — 서버는 사유를 2000자까지 보관하는데
+      //    이 화면이 그 칸을 «안 읽었습니다» (retroactive.py:1150 · :1478).
+      // ⚠️ 이건 «봉투»의 오류가 아니라 «행의 칸»입니다 —
+      //    목록은 «성공»으로 오고 실패한 «줄»이 그 안에 있습니다.
+      //    그래서 `body_error.errorText` 를 여기 갖다 대면 아무것도 안 잡힙니다.
+      reason: text(run.error),
       cancel: !finished && canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
