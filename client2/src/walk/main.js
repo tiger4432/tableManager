@@ -30,8 +30,9 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
-import { bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns }
-  from './derive.js';
+import {
+  bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns, cutBudgets,
+} from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -478,7 +479,8 @@ export function boot(doc, host, deps) {
       // 🔴 «자른 축»을 씁니다. `reason` 을 그대로 쓰면 2홉을 물어 2홉을 걸은 답에도 "depth" 가
       //    실려, 바로 위 「요청 2홉 · 도달 2홉」과 «정반대»를 말합니다 (실측 2026-09-06).
       if (r.cut) {
-        box.append(el(doc, 'div', 'wk-trunc', `절단됨 · ${(r.truncatedAxes || []).join(', ')}`));
+        box.append(el(doc, 'div', 'wk-trunc',
+          `절단됨 · ${cutBudgets(r.truncatedAxes, r.limits).join(' · ')}`));
       }
       // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. 수만 보면
       //    collect 를 건 것과 안 건 것이 같아 보입니다: 둘 다 「노드 N」이니까요.

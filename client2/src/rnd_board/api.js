@@ -1873,6 +1873,9 @@ export function createWalkBoxWalk(deps) {
         // ⚠️ 같은 물음이 `/admin/chain/queue` 에서는 «발신 자체가 없습니다» — 그쪽은 서버
         //    라운드이고, 이쪽은 «이 한 줄»입니다. 둘을 한 행으로 묶지 않는 이유가 그것입니다.
         generatedAt: body.generated_at || null,
+        // 🔴 S-13: 「«얼마»에서 잘렸나」. `truncated` 는 읽고 있었으므로 화면이 「절단됨」을
+        //    말할 수는 있었는데, 예산을 몰라 「많아서」와 「상한이 낮아서」가 같아 보였습니다.
+        limits: body.limits || null,
         // 「닿은 것이 없다」와 「못 물어봤다」를 화면이 가를 수 있게 «둘 다» 나릅니다.
         state: body.state || null,
         message: body.message || null,

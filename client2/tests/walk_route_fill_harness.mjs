@@ -134,6 +134,23 @@ function suite(M) {
   ok(M.tableColumns(DIE, 'die@1', []).includes('mat_id'),
     'T6 the version suffix does not hide the declaration from the lookup');
 
+  // ── S-13: 「잘렸다」 옆의 「«얼마»에서」 ─────────────────────────────────────────
+  // 🔴 화면은 `truncated` 를 읽어 절단을 «말할 수» 있었는데 `limits` 를 안 읽어 예산을
+  //    «못 말했습니다». 그러면 「많아서 잘렸다」와 「상한이 낮아서 잘렸다」가 같아 보입니다.
+  ok(M.cutBudgets(['nodes'], { nodes: 400, max_hops: 12 }).join(',') === 'nodes 400',
+    'U1 a cut axis carries the budget it was cut at');
+  // 🔴 이름이 «다릅니다» — `limits` 에는 `depth` 가 없고 `max_hops` 가 있습니다.
+  //    그대로 찾으면 «언제나 없음»이 되어 조용히 축 이름만 그리던 때로 돌아갑니다.
+  ok(M.cutBudgets(['depth'], { nodes: 400, max_hops: 12 }).join(',') === 'depth 12',
+    'U2 depth reads its budget from max_hops, which is spelled differently');
+  // ⚠️ 없는 예산을 «지어내지» 않습니다. 옛 서버는 `limits` 를 안 보냅니다.
+  ok(M.cutBudgets(['nodes', 'edges'], null).join(',') === 'nodes,edges',
+    'U3 an older server without limits still names the axes, and invents no number');
+  ok(M.cutBudgets(['nodes'], { nodes: null }).join(',') === 'nodes',
+    'U4 a null budget is not drawn as a budget');
+  ok(M.cutBudgets([], { nodes: 400 }).length === 0,
+    'U5 CONTROL: nothing cut yields nothing — the budget alone is not a truncation');
+
   return { fail: fail - before.fail };
 }
 
