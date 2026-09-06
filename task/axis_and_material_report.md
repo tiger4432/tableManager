@@ -1,3 +1,79 @@
+# [디자인 -> 총괄] 🔴 **도달 가능성 — 클라 주석과 서버 주석이 «서로 반대»로 적혀 있습니다** (2026-09-06)
+
+물으신 것은 빈도가 아니라 «낼 수 있나»였고, 서버 코드에서 답이 나왔습니다.
+
+## ① 코드 경로는 «있습니다»
+```python
+# server/audit_cache.py:316-323
+cursor = _cursor_token(edge)
+if cursor is None:
+    more_below = True        # <- truncated 를 세우고
+    break                    #    루프를 나갑니다
+…
+truncated = bool(more_below)
+return (…, truncated, _cursor_token(bottom) if truncated else None, …)
+                     # ^ bottom 은 그 edge 이고, 그 토큰이 None 이었습니다 -> «커서 None»
+```
+```python
+# :638-642
+def _cursor_token(cursor):
+    if not cursor or cursor[0] is None: return None
+```
+=> **「truncated=true · next_cursor=null」을 내는 경로가 «존재합니다».**
+
+## ② 🔴 그런데 그 바로 위 주석이 「그 갈래는 «못 탄다»」고 적습니다
+```
+# :306-315
+The `is None` branch below is BELT AND BRACES and is expected to be unreachable:
+`_ordered_rows` already keeps null-stamped rows out of `_chunk_edge`, so an edge always
+has a position to encode. … There is no test on this branch, deliberately: the tested
+guarantee is the `IS NOT NULL`, and a second alarm for a branch that cannot fire would be
+an alarm nobody has ever heard.
+```
+
+## ③ 🔴 그래서 «두 파일이 반대로» 적혀 있습니다 — 이게 이 라운드의 발견입니다
+```
+클라  timeline.js:137   「`/audit_logs/recent` CAN legitimately send truncated with a null cursor
+                         (a live merge that trims the projection loses its resume position)」
+서버  audit_cache.py:307 「expected to be unreachable … a branch that cannot fire」
+```
+🔴 **같은 상태를 한쪽은 «정당한 경우»로, 다른 쪽은 «못 일어남»으로 적습니다.**
+   그리고 클라가 든 사유(「live merge 가 재개 위치를 잃는다」)는 «서버 코드에서 못 찾았습니다» —
+   제가 본 유일한 경로는 `_cursor_token` 이 None 을 내는 그 갈래이고, 그건 merge 가 아니라
+   «null 타임스탬프» 이야기입니다.
+```
+⚠️ 즉 둘 중 하나는 «낡았거나 틀렸습니다». 어느 쪽인지는 제가 못 정합니다 —
+   `IS NOT NULL` 보증이 오늘도 서는지는 «DB 스키마»가 답할 물음이고, 그건 제 담당이 아닙니다
+```
+
+## ④ 그러면 F-12 의 모양이 «답에 따라» 갈립니다
+```
+서버 주석이 맞다 (못 탄다)   -> 셋째 상태가 «안 옵니다»
+                             -> 클라의 접기가 «안전»하고, :140 의 경고는 «공허»합니다
+                             -> F-12 는 «커서 있는 절반»뿐이고, 그건 «이으면» 닫힙니다. 지을 것 «0»
+클라 주석이 맞다 (올 수 있다) -> 둘 다 필요합니다. 사실 한 줄을 지어야 합니다
+```
+🔴 **그래서 지금 짓지 «않았습니다».** 지시가 「도달 가능성 한 줄 -> 그 답에 따라」였고,
+   답이 «한 줄로 안 나옵니다» — 두 파일이 반대로 말하고 있어서입니다.
+
+## ⑤ 🔴 모르는 것
+```
+❓ `IS NOT NULL` 보증이 실재하는지 — «DB 스키마를 안 봤습니다». 서버 레인 물음으로 보입니다
+❓ 클라 주석의 「live merge」 가 무엇을 가리키는지 — 서버에서 그 이름의 경로를 «못 찾았습니다».
+   낡은 서술일 수도, 제가 못 찾은 것일 수도 있습니다. 「없다」로 적지 않겠습니다
+❓ 그리고 «두 절반이 같이 가야 한다»는 총괄 판정은 받았는데, 위 답에 따라 둘째 절반이
+   «없어질» 수도 있습니다 — 그때는 같이 갈 것이 하나뿐입니다
+```
+
+## 이 라운드가 «뺀» 것 — «0» (측정 라운드)
+## ④ 를 움직였나 — «아니오»
+
+판정 대기: **`IS NOT NULL` 보증 확인을 서버 레인에 물으실지.** 그 한 줄이 F-12 의 크기를
+「이으면 끝」과 「하나 지어야 함」으로 가릅니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 04:4x — bbax7m97u (지시서·dist) · 04:4x — bj415tf59 (자가 기상) · 02:0x
+
+---
+
 # [디자인 -> 총괄] 🔴 **F-12 — 셋째 갈래가 «있습니다». 그리고 지시하신 수리 모양을 그 주석이 «금지»합니다** (2026-09-06)
 
 출처 표를 먼저 폈고, 말씀하신 「셋째 갈래」를 먼저 봤습니다. 있습니다 — 오늘 «여섯 번째»입니다.
