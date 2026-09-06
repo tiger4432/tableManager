@@ -406,11 +406,18 @@ def ledger_key_values(
     selected = []
     for index, name in enumerate(grouping):
         params["k%d" % index] = name
-        selected.append("subject_keys ->> %%(k%d)s AS v%d" % (index, index))
+        # 🔴 `->` NOT `->>`. The text extractor turns the ledger's 0.0 into "0.0", the
+        # canonical seed id writes those two differently, and the walk then answers a seed
+        # nobody has - measured 2026-09-06: composite seeds 8/8 empty, the same 8 ready
+        # once the type survives. A key's TYPE is part of its identity here.
+        selected.append("subject_keys -> %%(k%d)s AS v%d" % (index, index))
     columns = ", ".join("v%d" % index for index in range(len(grouping)))
     present = " AND ".join("subject_keys ? %%(k%d)s" % index
                            for index in range(len(grouping)))
-    not_null = " AND ".join("v%d IS NOT NULL" % index for index in range(len(grouping)))
+    # jsonb `->` gives SQL NULL for a missing key and `'null'::jsonb` for a declared one
+    # holding JSON null; neither is a value a seed can carry, and they are different rows.
+    not_null = " AND ".join("v%d IS NOT NULL AND v%d <> 'null'::jsonb" % (index, index)
+                            for index in range(len(grouping)))
 
     rows = connection.exec_driver_sql(
         # The window is taken FIRST and grouped after, so the work is bounded by
@@ -430,10 +437,12 @@ def ledger_key_values(
     return {
         "type": wanted_type, "key": key, "keys": grouping,
         "subjects": subjects,
-        # ⚠️ A SINGLE AXIS OF A COMPOSITE KEY IS NOT A SEED. Said in the answer rather
-        # than left for the caller to infer from `keys`, because inferring it is exactly
-        # what produced the cross product.
-        "seedable": set(grouping) == set(declared_keys),
+        # ⚠️ THIS SAYS WHAT IT MEASURED, AND `seedable` DID NOT. The old name claimed the
+        # combination would seed a walk, which this route never checked and which was
+        # FALSE for every composite subject while the values came back as text. Key
+        # coverage is what a set comparison can know; whether the walk answers is a
+        # different question and belongs to whoever asks it.
+        "covers_declared_keys": set(grouping) == set(declared_keys),
         "scanned": min(scanned, KEY_VALUE_SCAN_ROWS),
         # 🔴 TWO CUTS, SAID SEPARATELY. Neither implies the other: a small key can fill
         # the value list off an untruncated scan, and a huge scan can yield three values.
