@@ -9502,3 +9502,95 @@ server/scripts/     구조 계기에서 «뺐습니다» (㉧-2 는 낱말 계�
 ```
 
 **감시:** `b8imsoqu7`(지시 채널) · `b9fi6fi75`(보드) · `b7b6fyr7w`(자가 기상) — 마지막 이벤트 09:5x
+
+---
+
+# 🔴🔴 서버 등급 6 ㉨ — **자로 갈랐고 «멈춤 조건이 걸립니다»** (09-07 10:3x, 지시 `14b90bc4`)
+
+```
+자    「이 폴백이 «넓히는» 것인가, «단언하는» 것인가」
+결과   단언 «24» · 넓힘 «20» · 🟡 못 가름 «8» · 무관 «1»   (= 53)
+🔴 규율의 멈춤 조건: 「한 쪽이 «열 줄»을 넘으면 «부류»다. 멈추고 올려라」 -> 걸렸습니다
+```
+
+## 🔴 그리고 그 «부류»의 이름이 이미 이 저장소에 있습니다 — **같은 수리가 «형제»에 안 갔습니다**
+
+단언 24 중 «열여덟»이 **매퍼 규칙의 표·필드 이름 기본값**입니다:
+```
+core_alignment_mapper     "core_frame_review" · "dt_log" · "core_frame" · "dt_inventory" · "dt_log"
+core_usage_mapper         "dt_log" · "dt_inventory" · "core_usage_map"
+dt_inventory_metadata_mapper  "dt_log" · "dt_inventory"
+dt_standard_map_mapper    "dt_log" · "dt_map"
+bonding_plan              "target_table" · "map_id" · "grid_metadata"  (컬럼 이름을 자기 이름으로)
+map_alignment · map_overlay   `b.get("val", "val")` ×2
+```
+🔴 **`server/chain_bindings.py` 가 존재하는 이유가 «정확히 이 모양»입니다** — 그 머리말이
+`rule.get("job_column", "dt_job")` 를 두고 「쓴 사람 기계에서만 맞는 기본값은 «없느니만 못하다»」고
+적고, 그 모듈이 **`job_column` «하나»를 선언에서 읽게** 만들었습니다.
+```
+실측   `job_column` 의 그 기본값은 «살아 있지 않습니다» (히트가 머리말 하나뿐)
+🔴 그런데 «같은 규칙 dict 의 형제 키»들은 «그대로»입니다 —
+   `source_table` · `target_table` · `map_table` · `inventory_table` · `target_field` · `val`
+=> 「낱개로 고치고 «부류»로 안 고쳤다」의 실물이고, 소유자 상설이 이름 붙인 그 병입니다
+```
+🔵 그래서 이건 **줄 열여덟이 아니라 «부류 하나»**입니다: 「매퍼 규칙의 «이름 칸»이
+선언에서 읽히지 않고 기본값으로 지어진다」.
+
+## 나머지 여섯 — 부류 밖의 단언
+```
+paths.py       "postgres" · "localhost" · "assy_manager"   <- DB 접속. 「쓴 기계에서만 맞다」의 원형
+advanced_ingester  "advanced_ingester"(source_name) · "agent_adv"(updated_by)  <- 신원 라벨
+migrations/normalize_schema  "system"(updated_by) ×2                          <- 저자를 지어냅니다
+```
+⚠️ 뒤의 둘은 «저자»를 단언합니다 — 감사 행이 「누가 썼나」에 답하는데 그 답이 기본값입니다.
+
+## 🟡 셋째 답 — **이 축으로 «안 갈리는» 폴백 «여덟»**
+```
+"shape"(code) ×2 · "ontology"(layer) · "active"(change_status) ×3 · "front"(side) · "one"(join_cardinality)
+```
+🔴 **이들은 «이름»이 아니라 «상태»를 단언합니다.** 자가 「이름을 지어내나」를 묻는데
+이들은 「선언이 없을 때 «어느 상태»로 볼 것인가」를 답합니다 — 다른 축입니다.
+```
+🔴 그중 «둘»이 특히 조용해 보입니다 (이름만 답니다 · 판정 안 함):
+   `map_overlay.get("side", "front")`          면(front/back)을 «앞»으로 단언합니다
+   `virtual_join_config.get("join_cardinality", "one")`  선언 없으면 조인을 «1:1»로 봅니다
+=> 둘 다 「틀리면 조용히 «다른 답»이 나오는」 쪽입니다. 다만 자가 «이 축»이 아니라 안 갈랐습니다
+```
+
+## 넓힘 «20» — 결함 아님
+```
+`col_types.get(col, "string")` 류 «7» · `"none"`(lineage/slot_pairing) «7» ·
+`"str"`(cast_type) «3» · `"unknown"` · `"contains"`(filter type) · `"missing"`(role status)
+=> 전부 「선언이 없으면 «더 넓게/중립으로» 받는다」입니다
+```
+
+## 판정 대기: **열넷** (열셋 + 하나)
+```
+14  🔴 부류 하나 — 「매퍼 규칙의 «이름 칸»이 선언에서 안 읽히고 기본값으로 지어진다」(열여덟)
+    `chain_bindings` 가 `job_column` 에 «이미» 한 일을 형제 키들에 안 한 것입니다.
+    ⛔ 제가 «안 고쳤습니다». 부류로 올립니다
+```
+
+## 해결 여부 / 모르는 것
+```
+✅ 잰 것    53 을 «전수» 분류했습니다 (24 · 20 · 8 · 1)
+🔴 «판정 안 한 것»  못 가르는 여덟의 축 — 「상태 기본값」이 등급 6 의 모양인지 아닌지
+🔴 모르는 것  매퍼 기본값 열여덟이 «운영에서 실제로 틀리는지» — 이 박스에서 못 잽니다.
+            구조로만 말합니다: 「선언 안 해도 돌고, 틀려도 안 알려 준다」
+```
+
+## 이 라운드가 «뺀» 것
+```
+고치기          ⛔ 지시대로
+넓힘 20 파헤치기   결함 아님으로 닫았습니다
+「상태 기본값」 여덟 판정   다른 축이라 «이름만» 달았습니다
+```
+
+## ①②③④ 중 무엇을 움직였나
+```
+② (최소한의 하드코딩)  🔴 열여덟이 «선언이 아니라 코드»에 도메인 이름을 들고 있습니다
+④ (한 능력에 길 둘)    🔴 같은 수리가 «한 키»에만 갔습니다 — `job_column` 은 선언에서 읽고
+                    형제 여섯 종류는 기본값으로 지어냅니다
+```
+
+**감시:** `b8imsoqu7`(지시 채널) · `b9fi6fi75`(보드) · `b7b6fyr7w`(자가 기상) — 마지막 이벤트 10:2x
