@@ -13922,3 +13922,94 @@ server/tests/test_availability_relaxation.py   2 시험의 «M1 절반»만 — 
 예약 그대로   server/map_alignment.py `_resolve_reference` 의 «선언 갈래» · contracts/map_seam · 게이트
 ⛔ 안 건드림   캐시·캡·벌크 시딩은 «코어 밖»에 그대로 (순수성이 계약의 전제)
 ```
+
+---
+
+# 🔒 [구현자 -> 총괄] **C-9 집습니다 — 예약. S-15 ④ Ⓑ 는 «한 글자도 안 지었습니다»**
+
+```
+S-15 ④ Ⓑ   되돌릴 것이 «없습니다» — 예약만 했고 편집 «0» 입니다. 트리는 그 줄에 손대기 전 상태 그대로
+            🔁 이월로 둡니다 (판정 58 의 잇기 설계는 그대로 유효합니다)
+```
+
+## 🔒 예약 (C-9)
+```
+server/chain_ingestion_worker.py   `batch_row_upsert` 메시지 «한 자리» (:1133)
+server/tests/…                     게이트 신설
+⛔ 안 건드림   `batch_refresh_message` 헬퍼 · 다른 다섯 발신자 · 클라
+```
+
+## 부류를 «닫고» 왔습니다 — 여섯 중 하나입니다
+AST 로 `batch_row_upsert` 를 내는 dict 를 전수했습니다(리터럴이 아니라 «키 집합»으로):
+```
+OK  main.py:3064 · 3338 · 3384 · 3481 · 3544        전부 `change_count` 를 «싣습니다»
+🔴  chain_ingestion_worker.py:1133                  «없습니다» — 이 하나뿐입니다
+```
+🔵 그리고 계약이 «이미 적혀» 있습니다 — `event_constants.py:185`
+   「`change_count` IS ALWAYS PRESENT, INCLUDING WHEN IT IS 0 … `{change_count: 0}` 과
+    키 부재는 «다르다»」. 즉 새 계약이 아니라 «어긴 자리 하나»입니다.
+   같은 파일 `:1475` 이 스윕 복구에서 「change_count 0 은 «표준 계약 필드»」라고도 적었습니다.
+
+## 값은 «어느 수»인가 — 골라야 해서 적습니다
+```
+`len(msg_items)`  이 메시지가 «싣고 있는» 항목 수. 정본(main.py:3067 `len(chunk)`)과 «같은 뜻»
+`len(results)`    형제 갈래(refresh)가 쓰는 수
+=> 이 자리에서 «둘은 같습니다». 바로 위 주석이 그 불변을 적어 뒀습니다
+   (「The loop appends exactly one item per entry of `results`, unconditionally」)
+✅ `len(msg_items)` 를 씁니다 — 그 불변이 깨지는 날 이 수는 «메시지에 대해» 계속 참이고,
+   `len(results)` 는 그날 «과대»가 됩니다
+```
+
+## 읽는 쪽 «수» — 적고 갑니다
+```
+이 필드(«웹소켓» 메시지)의 클라 독자 «0»
+   client2/src 의 `change_count` 히트 넷은 전부 «HTTP 응답 본문»(`result.change_count`)이고
+   `websocket.js` 는 그 이름을 «한 번도» 안 읽습니다 (워커 주석 `:1415` 도 그렇게 적었습니다)
+=> 그래서 이 라운드는 「화면이 바뀐다」가 아니라 «계약을 어긴 자리를 맞춘다»입니다.
+   판정 45 의 순서 그대로 «발신»이고, 읽는 쪽은 제 몫이 아닙니다
+```
+
+---
+
+# 🟢 [구현자 -> 총괄] **C-9 착지 (`9bb08246`) — 그리고 HEAD 의 주인 없는 빨강이 «둘»입니다**
+
+## 닫은 것 — 새 계약이 아니라 «어긴 자리 하나»
+```
+여섯 발신자 중 다섯이 `change_count` 를 싣고, 체인 워커 하나가 «안 실었습니다»
+계약은 «이미» 적혀 있었습니다 — `event_constants.py:185`
+   「ALWAYS PRESENT, INCLUDING WHEN IT IS 0 … `{change_count: 0}` 과 키 부재는 «다르다»」
+=> 그 경로에서만 「체인이 몇 칸을 바꿨나」가 «말해지지 않았고», 키 부재는 화면에서 0 으로 읽힙니다
+값   `len(msg_items)` — «이 메시지가 싣고 있는 수». `len(results)` 와 지금은 같지만
+     그 자리 불변이 깨지는 날 이 수는 계속 참이고 형제 수는 «과대»가 됩니다
+```
+🔵 **부류로 판정했습니다** — 게이트가 발신 모듈을 AST 로 훑어 `batch_row_upsert` dict 를
+   «키 집합»으로 찾습니다. 이름을 grep 하면 주석에도 걸리고, «없는» 것을 못 셉니다.
+   그래서 «다른» 발신자에서 그 칸을 빼는 변이(M3)가 빨개집니다 — 다음 사람이 못 빠뜨립니다.
+```
+게이트 5 · 변이 5   M1 워커가 다시 뺌 → 셋 · M2 형제 수로 바꿈 → 값 · M3 «다른» 발신자가 뺌 → 부류
+                  M4 헬퍼가 0 일 때 키 생략 → 계약 · M5 주석이 그 이름 → GREEN 대조군
+354 passed · 읽는 쪽 «0» (그 넷은 HTTP 응답 본문이고 `websocket.js` 는 이 이름을 안 읽습니다)
+```
+
+## 🔴 S-27 에 재료 하나 — HEAD 의 주인 없는 빨강이 «둘»입니다
+```
+① server/tests/test_plan_frame_basis.py::test_a_unit_with_no_confirmation_keeps_every_pre_existing_key_unchanged
+   증상: 응답에 `counts_capped` 가 «더» 있습니다 (「추가 규칙」 단언이 그것을 못 봅니다)
+② server/tests/test_effort_metric.py::test_dashboard_survives_a_failing_effort_query
+   🆕 이번 무회귀에서 나왔습니다. 제 것이 아님을 HEAD 로 되돌려 «단독 실행»해 확인했습니다
+```
+⚠️ 「HEAD 의 빨간 시험 «하나»」로 세시면 ②가 계속 남습니다. S-27 의 주어를 «둘»로 읽으십시오.
+
+---
+
+# 🔒 [구현자 -> 총괄] **C-1 예약 — 먼저 «세기»입니다. 지시하신 멈춤 조건 그대로**
+
+```
+이번 걸음   «세기만» 합니다 — 규칙 «결과»가 «어디에» 기록되나(큐 패널 라우트 · 아웃박스 · 로그),
+           그리고 그 자리에 「skipped: disabled」와 「ran: 0 changed」가 «구별되는 값»으로 있나
+⛔ 이 박스의 disabled 목록(gitignore)은 «증거 아님» — 구조로만 답합니다
+🔴 멈춤     기록 자리가 «둘 이상»이면 세고 멈춥니다 (그건 ④ 이고 판정 자리입니다)
+읽는 파일   server/chain_ingestion_worker.py · chain_rules 를 읽는 자리 · 큐 패널 라우트 ·
+           `docs/architecture/` 의 체인 절 (문서 «먼저», grep «검증»)
+⛔ 이 걸음에 코드 «0줄»
+```
