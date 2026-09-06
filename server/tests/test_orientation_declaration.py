@@ -363,3 +363,68 @@ def test_nothing_on_the_coordinate_path_calls_the_refusal_yet():
         assert "orientation_refusal" not in src and "orientation_declaration" not in src, (
             "%s now consults the orientation declaration - that is a stage B change and it "
             "needs its blast radius measured first" % fn.__name__)
+
+
+# ── F-19 · 「확정됨」이 두 화면에서 다른 말을 하던 자리 ────────────────────────────
+#
+# 🔴 오버레이는 `frame_confirmed_from` 표지를 `bool()` 로 접어서 「확정됨」이라 불렀고, 확정
+#    화면은 확정 «행»을 보고 「pending」이라 불렀다. 같은 맵, 오류 없음, 서로 다른 답.
+#    표지는 둘을 이미 가르고 있었다 — 사람 경로만 `confirmation_uid`(행의 열쇠)를 싣는다.
+#
+# ⚠️ 토큰(`GEOMETRY_CONFIRMED`)은 «안 가른다». 그것은 `map_alignment:516·4751` 이 신뢰
+#    판정으로 읽는 값이고, 그 변경은 맵 도메인 물음이다 (총괄 판정 29).
+
+_PERSON_MARK = {"table": "dt_log", "map_id": "M1",
+                "confirmation_uid": "fc-0001",
+                "confirmed_by": "operator", "confirmed_at": "2026-09-07T00:00:00+09:00"}
+_CHAIN_MARK = {"source": "chain_alignment", "rule": "dt_frame_review",
+               "decision_key": {"job_id": "J1"}, "winner": "rot90_front",
+               "input_fingerprint": "abc123"}
+
+
+def test_a_chain_mark_is_not_called_person_confirmed():
+    """게이트 ①. 워크리스트가 「pending」이라 하는 맵을 오버레이도 확정이라 «주장하지 않는다»."""
+    d = map_overlay.orientation_declaration(
+        _meta(rotation=90, side="front", **{map_overlay.FRAME_CONFIRMED_KEY: _CHAIN_MARK}))
+    assert d["rotation"]["confirmed_by_person"] is False
+    assert d["side"]["confirmed_by_person"] is False
+
+
+def test_a_person_mark_is_called_person_confirmed():
+    """같은 칸이 «사람» 경로에서는 참이다 — 아니면 이 칸은 항상 거짓인 상수다."""
+    d = map_overlay.orientation_declaration(
+        _meta(rotation=90, side="front", **{map_overlay.FRAME_CONFIRMED_KEY: _PERSON_MARK}))
+    assert d["rotation"]["confirmed_by_person"] is True
+    assert d["side"]["confirmed_by_person"] is True
+
+
+def test_the_trust_token_does_not_move_for_either_mark():
+    """🔴 게이트 ② — 제일 중요하다. `GEOMETRY_CONFIRMED` 가 «오늘과 정확히 같은 맵»에 붙는다.
+
+    한쪽만 보면 못 본다: 사람 표지 맵 «과» 체인 표지 맵 «둘 다» 로 확인한다.
+    """
+    for mark in (_PERSON_MARK, _CHAIN_MARK):
+        d = map_overlay.orientation_declaration(
+            _meta(rotation=90, side="front", **{map_overlay.FRAME_CONFIRMED_KEY: mark}))
+        assert d["rotation"]["source"] == map_overlay.GEOMETRY_CONFIRMED
+        assert d["side"]["source"] == map_overlay.GEOMETRY_CONFIRMED
+
+
+def test_the_new_field_would_die_if_it_were_computed_the_old_way():
+    """게이트 ③(변이). 「사람이 확정했나」를 오늘의 `bool(표지)` 로 되돌리면 ①이 빨개진다.
+
+    그것을 «표본»으로 못 박는다: 체인 표지는 `bool()` 에는 참이고 새 칸에는 거짓이라야 한다.
+    두 규칙이 «같은 답을 내는» 표본이면 아무것도 안 가른다.
+    """
+    assert bool(_CHAIN_MARK) is True                      # 옛 계산
+    d = map_overlay.orientation_declaration(
+        _meta(rotation=90, **{map_overlay.FRAME_CONFIRMED_KEY: _CHAIN_MARK}))
+    assert d["rotation"]["confirmed_by_person"] is False   # 새 계산
+
+
+def test_an_unreadable_value_gains_no_person_claim():
+    """읽히지 않는 값에는 표지를 안 얹는다는 기존 규율 그대로 — 새 칸도 «안 생긴다»."""
+    d = map_overlay.orientation_declaration(
+        _meta(rotation="nonsense", **{map_overlay.FRAME_CONFIRMED_KEY: _PERSON_MARK}))
+    assert d["rotation"]["source"] == map_overlay.GEOMETRY_UNPARSABLE
+    assert "confirmed_by_person" not in d["rotation"]
