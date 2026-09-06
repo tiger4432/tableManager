@@ -69,3 +69,47 @@ export function startsWithOriginal(original, appended) {
   return typeof original === 'string' && typeof appended === 'string'
     && appended.startsWith(original);
 }
+
+/**
+ * 원본에 «변이 하나»를 넣은 사본을 만들어 import 합니다. 변이 하니스 전용입니다.
+ *
+ * 🔴 왜 별도 함수인가: `importWithAccessors` 는 「사본이 원본 바이트로 «시작»한다」를 단언합니다.
+ *    그것이 덧붙이기가 잘라쓰기로 퇴화하지 않게 막는 장치인데, «변이»는 정의상 바이트를
+ *    바꿉니다. 그래서 같은 함수에 넣을 수 없고, 대신 «다른 단언»이 자리를 지킵니다:
+ *
+ *      덧붙이기   사본이 원본으로 «시작»해야 한다        (아무것도 안 빠졌다)
+ *      변이       사본이 원본과 «달라야» 한다            (변이가 «먹었다»)
+ *
+ * ⚠️ 이 단언이 없으면 「변이가 안 먹었는데 초록」이 되고, 그건 이 저장소가 겪은 부류입니다 —
+ *    앵커가 낡아 안 맞으면 변이 하니스가 «조용히» 아무것도 안 재게 됩니다.
+ *
+ * 🔵 그리고 이건 잘라쓰기가 «아닙니다» — 잘라내는 것이 없습니다. 파일 전문이 그대로 있고
+ *    한 자리만 바뀝니다. import·const·헬퍼가 전부 사본 안에 살아 있습니다.
+ *
+ * @param {URL|string} sourceUrl  대상 모듈
+ * @param {(src: string) => string} mutate  원본 소스를 받아 «바뀐» 소스를 돌려줍니다
+ * @returns {Promise<object>} import 된 네임스페이스
+ */
+export async function importMutated(sourceUrl, mutate) {
+  const srcPath = typeof sourceUrl === 'string' ? sourceUrl : fileURLToPath(sourceUrl);
+  // 🔴 줄바꿈을 정규화합니다. 변이 앵커는 줄바꿈이 든 여러 줄 문자열인데 저장소는 CRLF 로
+  //    체크아웃되므로, 정규화 없이는 «맞는 앵커»가 새 워크트리에서만 조용히 빗나갑니다
+  //    (2026-07-30 실측: 변이 18 중 8 이 그렇게 안 먹은 채 초록이었습니다).
+  const original = readFileSync(srcPath, 'utf8').replace(/\r\n/g, '\n');
+  const body = mutate(original);
+  if (typeof body !== 'string') {
+    throw new Error('mutate() must return the mutated source as a string');
+  }
+  if (body === original) {
+    throw new Error('the mutation changed nothing — its anchor no longer matches. '
+      + 'A mutant that does not apply reads as a pass, which is worse than no harness.');
+  }
+  const copyPath = join(dirname(srcPath),
+    `.appended-${basename(srcPath, '.js')}-${process.pid}-${seq++}.mjs`);
+  writeFileSync(copyPath, body, 'utf8');
+  try {
+    return await import(pathToFileURL(copyPath).href);
+  } finally {
+    try { unlinkSync(copyPath); } catch { /* already gone */ }
+  }
+}

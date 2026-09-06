@@ -11,14 +11,22 @@
 // Asking for cap+1 and testing `>` is what separates "full" from "there is more".
 //
 // Every check is paired with a mutant; two controls must escape.
+//
+// ═══ 🔴 이 파일은 «잘라쓰기»였습니다 (2026-09-06 전환) ═══
+// 종전: 소스를 텍스트로 읽어 `export` 를 지우고 vm 컨텍스트에서 돌렸습니다. 그러면 재는 것이
+// «동작»이 아니라 «글자 모양»이 됩니다 — 이 모듈이 헬퍼를 하나 import 하게 되는 날
+// 「코드가 맞는데」 빨개지고, 반대로 틀렸는데 초록일 수도 있습니다 (소유자 상설 2026-09-02).
+//
+// 지금:
+//   기준선  «그냥 import» 합니다. `truncation.js` 는 export 를 가진 평범한 모듈이라
+//           다리조차 필요 없습니다 — 이 모듈이 «import 되라고» 뽑힌 파일이기 때문입니다
+//   변이    `importMutated` 가 원본 «전문»에 한 자리만 바꾼 사본을 만들어 import 합니다.
+//           잘라내는 양은 «0» 이고, 「변이가 안 먹으면 던진다」가 그 헬퍼 안에 있습니다
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { importMutated } from './lib/appended_module.mjs';
+import * as BASELINE from '../src/truncation.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SRC_PATH = join(HERE, '..', 'src', 'truncation.js');
-const SOURCE = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+const SRC = new URL('../src/truncation.js', import.meta.url);
 
 let passed = 0;
 let failed = 0;
@@ -35,17 +43,9 @@ function ok(name, cond, saw) {
   else { failed++; console.log(`  FAIL ${name}${saw === undefined ? '' : `  saw: ${JSON.stringify(saw)}`}`); }
 }
 
-function load(src) {
-  const sandbox = { Number, Array, Math, Object, Boolean };
-  vm.createContext(sandbox);
-  vm.runInContext(`${src.replace(/^export /gm, '')};
-    __out = { fetchLimitFor, isTruncated, withinCap };`, sandbox);
-  return sandbox.__out;
-}
-
 const rows = (n) => Array.from({ length: n }, (_, i) => ({ i }));
-const X = load(SOURCE);
-if (!X || !X.isTruncated) die('truncation.js did not evaluate — its exports moved or renamed.');
+const X = BASELINE;
+if (!X || !X.isTruncated) die('truncation.js did not import — its exports moved or renamed.');
 
 const CAP = 2000;
 
@@ -62,8 +62,12 @@ console.log('\n── A. THE QUESTION IT ASKS ───────────�
     && X.isTruncated(null, CAP) === false);
   ok('A7 an unusable cap answers no rather than throwing',
     X.isTruncated(rows(9), undefined) === false && X.isTruncated(rows(9), -1) === false);
+  // 🔴 이 «하나»는 텍스트가 «주어»입니다 (CLAUDE.md 2026-09-03 예외, 단언 단위).
+  //    묻는 것이 「무엇을 돌려주나」가 아니라 「이 모듈이 `total` 을 «받지 않나»」이고, 그건
+  //    출력으로 관측할 수 없습니다 — 안 쓰는 것은 «안 보이기» 때문입니다. 대리가 아니라 주어입니다.
+  const SOURCE_TEXT = readFileSync(new URL('../src/truncation.js', import.meta.url), 'utf8');
   ok('A8 the total is not part of the question',
-    !/\btotal\b/.test(SOURCE.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')), 'source mentions total');
+    !/\btotal\b/.test(SOURCE_TEXT.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')), 'source mentions total');
 }
 
 console.log('\n── B. THE EXTRA ROW IS A SIGNAL, NOT A CELL ────────────────────────');
@@ -78,6 +82,9 @@ console.log('\n── B. THE EXTRA ROW IS A SIGNAL, NOT A CELL ─────�
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ `swap` 은 앵커가 안 맞으면 «죽습니다». 그리고 `importMutated` 가 「사본이 원본과 다른가」를
+//    한 번 더 잽니다 — 두 그물이 같은 구멍을 봅니다: «변이가 안 먹었는데 초록».
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
     + 'A harness that goes quiet because it lost the code is worse than no harness.');
@@ -112,24 +119,36 @@ const CONTROLS = [
     .join('\n')],
 ];
 
-function score(list, mustCatch, heading) {
+/** 채점기. 기준선과 변이가 «같은 질문»에 답해야 비교가 뜻을 가집니다. */
+function verdict(M) {
+  return M.fetchLimitFor(CAP) !== CAP + 1
+    || M.isTruncated(rows(CAP), CAP) !== false
+    || M.isTruncated(rows(CAP + 1), CAP) !== true
+    || M.isTruncated([], CAP) !== false
+    || M.isTruncated(undefined, CAP) !== false
+    || M.isTruncated(rows(9), undefined) !== false
+    || M.isTruncated(rows(9), -1) !== false
+    || M.withinCap(rows(CAP + 1), CAP).length !== CAP
+    || M.withinCap(rows(7), CAP).length !== 7
+    || M.withinCap(null, CAP).length !== 0;
+}
+
+// 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부
+//    변이가 아니라 채점기를 잰 것입니다.
+if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '
+  + 'every "caught" below would be scoring the scorer, not the mutant.');
+
+async function score(list, mustCatch, heading) {
   console.log(`\n── ${heading} ─────────────────────────────`);
   let hit = 0;
   for (const [name, mutate] of list) {
     let bad = false;
     try {
-      const M = load(mutate(SOURCE));
-      bad = M.fetchLimitFor(CAP) !== CAP + 1
-        || M.isTruncated(rows(CAP), CAP) !== false
-        || M.isTruncated(rows(CAP + 1), CAP) !== true
-        || M.isTruncated([], CAP) !== false
-        || M.isTruncated(undefined, CAP) !== false
-        || M.isTruncated(rows(9), undefined) !== false
-        || M.isTruncated(rows(9), -1) !== false
-        || M.withinCap(rows(CAP + 1), CAP).length !== CAP
-        || M.withinCap(rows(7), CAP).length !== 7
-        || M.withinCap(null, CAP).length !== 0;
+      bad = verdict(await importMutated(SRC, mutate));
     } catch (e) {
+      // 🔴 「던졌다」와 「틀린 답을 냈다」는 둘 다 «잡힘»이지만, 사본이 아예 «안 만들어진»
+      //    것(변이가 안 먹음)은 잡힘이 아닙니다 — 그건 계기 고장이라 죽어야 합니다.
+      if (/mutation changed nothing/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;
     }
     if (bad === mustCatch) { hit++; console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`); }
@@ -138,8 +157,8 @@ function score(list, mustCatch, heading) {
   return hit;
 }
 
-const caught = score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
-const escaped = score(CONTROLS, false, 'control mutants (each must ESCAPE)');
+const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
+const escaped = await score(CONTROLS, false, 'control mutants (each must ESCAPE)');
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);
