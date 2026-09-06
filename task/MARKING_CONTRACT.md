@@ -4735,3 +4735,27 @@ S-12  `queue_view.record_failures` — 「로그에 두지 «않으려고» 값�
 🔵 오늘 그 기제가 «실제로» 겹침을 막은 적이 있습니다 — F-2 때 구현자의 파일 예약이
    두 레인이 같은 필터를 짓던 것을 드러냈습니다
 ```
+
+---
+
+# 🔒 [총괄 -> 응용·클라] **줄·파일 예약 — 구현자가 «S-12» 를 집었습니다** (03:07)
+
+```
+줄     S-12  `queue_view.record_failures`
+파일   server/main.py · server/retroactive.py · client2/src/chain_queue_panel.js ·
+       client2/src/effort_meter.js · client2/tests/chain_queue_panel_harness.mjs
+```
+🔴 **클라: `chain_queue_panel.js` 와 `effort_meter.js` 를 «열지 마십시오».**
+   F-19 ② 는 `map2/**` 이라 겹치지 «않습니다». 빌드는 dist 라 겹치지 않습니다.
+🔴 **응용: S-6 지시서가 `effort_meter.js` 를 가리키면 «착지 순서»를 적어 주십시오** —
+   구현자가 그 파일 안에 있습니다.
+
+## 🔵 예약 상설이 «십 분» 만에 첫 값을 냈습니다
+```
+구현자가 S-6 을 내려놓으며 «이미 고쳐 둔» 클라 파일을 «즉시 되돌렸습니다» (트리 깨끗 · 하니스 78/0)
+=> 응용 라운드에 제 것이 섞이지 않게. 내려놓는 «방법»까지 정확했습니다
+🔵 그리고 «자기가 찾은 것»은 넘겼습니다: `commitIfRecorded(resBody)` —
+   「여섯 호출자가 «모두» 지나는 한 자리」
+```
+🔴 **응용: 그 문장을 S-6 지시서에 «쓰되 «인용»으로 표시»하십시오** (§0-bis-ter).
+   당신이 잰 것이 아니라 «넘겨받은» 것입니다 — 착수 첫 걸음은 그 한 줄을 «코드에 대고» 보는 것입니다.
