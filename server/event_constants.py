@@ -106,6 +106,51 @@ def outbox_owner(event_type):
 # 실제 총 로그 건수는 total_log_count 필드로 별도 전달한다(순수 추가 필드).
 MAX_NOTIFY_CREATED_LOGS = 500
 
+
+#: The `batch_refresh_required` event name, and the ONE place its payload is built.
+EVENT_BATCH_REFRESH_REQUIRED = "batch_refresh_required"
+
+
+def batch_refresh_message(table_name, change_count, *, transaction_id=None,
+                          created_logs=None, total_log_count=None,
+                          deleted_row_ids_omitted=None):
+    """The `batch_refresh_required` payload, built in one place.
+
+    🔴 NINE SENDERS WERE EACH WRITING THIS DICT BY HAND, and a payload written nine times
+    is a payload that will differ nine ways -- silently, because the client reads
+    `msg.table_name` as a guard and then this event's body not at all, so a sender that
+    dropped or misspelled a key would produce no error, no warning and no visible change.
+    That is the owner's fourth cleanliness rule: one capability must not have two paths.
+    Now they all pass through here, so drifting apart takes editing this function.
+
+    ⛔ THE PAYLOAD IS UNCHANGED - NOT ONE KEY ADDED OR REMOVED. The optional four are
+    omitted when they are not given, so every sender still produces exactly the object it
+    produced before: seven send `{event, table_name, change_count}`, one adds
+    `deleted_row_ids_omitted`, one adds the audit trio. Unifying the SHAPES is a different
+    change and would be a boundary-contract decision, not this one.
+
+    ⚠️ `change_count` IS ALWAYS PRESENT, INCLUDING WHEN IT IS 0. The client does not use it
+    to decide whether to refresh, but `{change_count: 0}` and a missing key are different
+    objects and the sweep's recovery message deliberately sends the zero.
+    """
+    message = {
+        "event": EVENT_BATCH_REFRESH_REQUIRED,
+        "table_name": table_name,
+        "change_count": change_count,
+    }
+    # `is not None` rather than truthiness: an empty list and a zero are things a sender
+    # meant to say, and dropping them would make "nothing was omitted" indistinguishable
+    # from "this sender does not report omissions".
+    if transaction_id is not None:
+        message["transaction_id"] = transaction_id
+    if created_logs is not None:
+        message["created_logs"] = created_logs
+    if total_log_count is not None:
+        message["total_log_count"] = total_log_count
+    if deleted_row_ids_omitted is not None:
+        message["deleted_row_ids_omitted"] = deleted_row_ids_omitted
+    return message
+
 # [P1b] Row count above which a write's broadcast degrades from per-row `batch_row_upsert`
 # items to a single `batch_refresh_required` carrying only a count (the client refetches).
 #

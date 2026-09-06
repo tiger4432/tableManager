@@ -463,11 +463,7 @@ async def startup_event():
             # 캐시 무효화
             invalidate_table_cache(table_name)
                 
-            msg = {
-                "event": "batch_refresh_required",
-                "table_name": table_name,
-                "change_count": count
-            }
+            msg = event_constants.batch_refresh_message(table_name, count)
             if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
                 
@@ -3054,12 +3050,10 @@ async def apply_batch_updates_endpoint(
                     # response's `scope.delete_ids_omitted`. A cap that drops the tail
                     # without saying so would rebuild, one level up, exactly the silence
                     # this change exists to remove.
-                    await manager.broadcast(json.dumps({
-                        "event": "batch_refresh_required",
-                        "table_name": table_name,
-                        "change_count": delete_ids_omitted,
-                        "deleted_row_ids_omitted": delete_ids_omitted,
-                    }))
+                    await manager.broadcast(json.dumps(
+                        event_constants.batch_refresh_message(
+                            table_name, delete_ids_omitted,
+                            deleted_row_ids_omitted=delete_ids_omitted)))
                 else:
                     delete_msg = {
                         "event": "batch_row_delete",
@@ -3069,12 +3063,8 @@ async def apply_batch_updates_endpoint(
                     await manager.broadcast(json.dumps(delete_msg))
 
             if not broadcast_needs_items:
-                msg = {
-                    "event": "batch_refresh_required",
-                    "table_name": table_name,
-                    # len(msg_items) on this arm; msg_items is now empty by construction.
-                    "change_count": len(results)
-                }
+                # len(msg_items) on this arm; msg_items is now empty by construction.
+                msg = event_constants.batch_refresh_message(table_name, len(results))
                 if created_logs and len(created_logs) <= 5000:
                     msg["created_logs"] = created_logs
                 await manager.broadcast(json.dumps(msg))
@@ -3490,11 +3480,7 @@ async def set_cell_priority_batch_endpoint(
         # by construction, exactly as in the batch-update endpoint.
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
-            msg = {
-                "event": "batch_refresh_required",
-                "table_name": table_name,
-                "change_count": len(changed_rows)
-            }
+            msg = event_constants.batch_refresh_message(table_name, len(changed_rows))
             if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
@@ -3557,11 +3543,7 @@ async def delete_cell_source_batch_endpoint(
         # construction on this arm now. See `_delete_and_merge`.
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
-            msg = {
-                "event": "batch_refresh_required",
-                "table_name": table_name,
-                "change_count": len(changed_rows)
-            }
+            msg = event_constants.batch_refresh_message(table_name, len(changed_rows))
             if created_logs and len(created_logs) <= 5000:
                 msg["created_logs"] = created_logs
             await manager.broadcast(json.dumps(msg))
@@ -5644,11 +5626,7 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
     loop = asyncio.get_running_loop()
     
     def sync_refresh_callback(t_name: str, count: int, created_logs: list = None, total_log_count: int = None):
-        msg = {
-            "event": "batch_refresh_required",
-            "table_name": t_name,
-            "change_count": count
-        }
+        msg = event_constants.batch_refresh_message(t_name, count)
         if created_logs and len(created_logs) <= 5000:
             msg["created_logs"] = created_logs
         
@@ -5853,11 +5831,7 @@ async def internal_event_batch_refresh(
     import json
     from fastapi.concurrency import run_in_threadpool
     invalidate_table_cache(table_name)
-    msg = {
-        "event": "batch_refresh_required",
-        "table_name": table_name,
-        "change_count": change_count
-    }
+    msg = event_constants.batch_refresh_message(table_name, change_count)
     if created_logs:
         # [C-5] 워처가 이미 500건으로 절단해 보내며(total_log_count = 실제 총 건수),
         # 구버전 워처(무절단 전량 전송) 호환을 위해 서버측 절단도 유지한다.

@@ -1082,15 +1082,12 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             serialized_logs.append(log_copy)
 
                     if not needs_items:
-                        msg = {
-                            "event": "batch_refresh_required",
-                            "table_name": target_table,
-                            # len(msg_items) before; empty by construction on this arm now.
-                            "change_count": len(results),
-                            "transaction_id": chain_tx_id,
-                            "created_logs": serialized_logs,
-                            "total_log_count": total_log_count
-                        }
+                        # len(msg_items) before; empty by construction on this arm now.
+                        msg = event_constants.batch_refresh_message(
+                            target_table, len(results),
+                            transaction_id=chain_tx_id,
+                            created_logs=serialized_logs,
+                            total_log_count=total_log_count)
                     else:
                         msg = {
                             "event": "batch_row_upsert",
@@ -1431,11 +1428,8 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     # table당 1건 dedup된 batch_refresh_required 발사(기존 계약 재사용). 전부 성공해야 확정한다.
     all_ok = True
     for tgt in sorted(refresh_targets):
-        msg = {
-            "event": "batch_refresh_required",
-            "table_name": tgt,
-            "change_count": 0,  # 표준 계약 필드(정보성). 스윕 복구는 테이블 전체 새로고침 신호로 동작.
-        }
+        # change_count 0 은 «표준 계약 필드»(정보성). 스윕 복구는 테이블 전체 새로고침 신호다.
+        msg = event_constants.batch_refresh_message(tgt, 0)
         try:
             ok = await post_event_async("/internal/events/broadcast", msg)
             if not ok:
