@@ -448,3 +448,17 @@ def file_ingestion_completed_message(table_name, filename, status, error_msg=Non
     if reason:
         msg["error_msg"] = reason[:MAX_INGESTION_ERROR_CHARS]
     return msg
+
+
+#: 「이 묶음의 소급 정보를 «읽었나»」. `blocked_by` 와 `queue` 는 «한 번의 읽기»에서 나오므로
+#: 상태도 하나다 — 둘 중 하나만 실패하는 경우가 없다.
+#:
+#: 🔴 낱말을 «새로 짓지 않았다**. `ready` 는 `ledger_trace.COVERAGE_STATES` 가,
+#: `unknown` 은 `config_backup`(ok/stale/missing/unknown)과 `enrichment_candidates.EXPECT_UNKNOWN`
+#: 이 이미 쓰는 것이다. 같은 뜻에 네 번째 철자를 만들면 화면이 그중 하나만 알게 된다.
+#:
+#: ⚠️ 그리고 이것은 `blocked_by` 의 null 을 «대체하지 않는다**. 그 null 은 이미 뜻이 있다 —
+#: 「도는 것이 없다」이고, 화면이 그것을 「막힌 것 없음」으로 그리지 «않도록» 패널이 일부러
+#: 아무것도 안 그린다. 여기서 가르는 것은 그 null 과 「못 읽어서 null」이다.
+RETROACTIVE_READ_READY = "ready"
+RETROACTIVE_READ_UNKNOWN = "unknown"

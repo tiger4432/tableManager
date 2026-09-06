@@ -3870,9 +3870,19 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # ⛔ 「몇 초 뒤 시작」 같은 «한 수»는 만들지 않습니다 — 대기가 두 봉우리(한 틱 · 무한)라
             #    그 수는 대부분 거짓입니다. 값만 내고 읽는 것은 화면이 합니다.
             scheduler_bucket["queue"] = retroactive.queue_view(db)
+            scheduler_bucket["blocked_by_state"] = \
+                event_constants.RETROACTIVE_READ_READY
         except Exception as e:                                   # noqa: BLE001
-            logger.debug("in-flight retroactive unreadable for the queue view: %s", e)
+            # 🔴 WARNING, NOT DEBUG. 운영에서 debug 는 «안 보입니다» — 이 줄이 debug 인
+            #    동안 이 실패는 「아무 일도 없었다」와 로그에서도 구별되지 않았습니다.
+            #    실패하는 것이 무해한 것은 아닙니다.
+            logger.warning("in-flight retroactive unreadable for the queue view: %s", e)
+            # ⚠️ null 은 «그대로» 둡니다 — 그 값에는 이미 뜻이 있고(「도는 것이 없다」),
+            #    패널이 그 뜻에 맞춰 아무것도 안 그립니다. 바뀌는 것은 «그 옆의 상태»이고,
+            #    그것이 「못 읽어서 null」을 「도는 것이 없어서 null」에서 가릅니다.
             scheduler_bucket["blocked_by"] = None
+            scheduler_bucket["blocked_by_state"] = \
+                event_constants.RETROACTIVE_READ_UNKNOWN
 
     # ── 지금 «돌고 있는» 것 ────────────────────────────────────────────────────
     # 아웃박스는 «기다리는» 것만 압니다. 「집었는데 안 끝난다」와 「아무것도 안 집는다」는

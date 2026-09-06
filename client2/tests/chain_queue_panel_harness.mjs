@@ -375,6 +375,22 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('a bucket with blocked_by null carries no blocker', v.byOwner[0].blocked, null);
   eq('and a bucket that never had the field carries none either', v.byOwner[2].blocked, null);
 
+  // 🔴 THE THIRD STATE. 「못 읽었다」 arrives as the SAME `blocked_by: null` as 「도는 것이
+  //    없다」, because the server's `except` wrote that null too — and the panel's silence on
+  //    null, which is right for the first, made the second invisible as well. The server now
+  //    says which it is; these two say the panel keeps them apart.
+  const stateOf = (over) => queueView({
+    waiting_by_owner: [Object.assign({ owner: 'scheduler', waiting: 0,
+      oldest_waiting_seconds: null, event_types: [], blocked_by: null }, over)],
+  }).byOwner[0];
+  eq('an unread retroactive read is carried as unknown',
+    stateOf({ blocked_by_state: 'unknown' }).blockedState, 'unknown');
+  eq('a read that answered is not unknown',
+    stateOf({ blocked_by_state: 'ready' }).blockedState, 'ready');
+  // ⚠️ 키가 없는 옛 서버는 «둘 중 어느 쪽도 아닙니다» — 빈 문자열이고, 화면은 아무것도
+  //    안 그립니다. 없는 것을 `ready` 로 채우면 「읽었다」를 지어내는 것입니다.
+  eq('an old server without the field claims neither', stateOf({}).blockedState, '');
+
   // ── and all of it reaches the screen ──
   const doc = makeDoc();
   const host = doc.createElement('div');
@@ -397,6 +413,28 @@ console.log('\n[8] the owner split, and unknown is not chain');
   new ChainQueuePanel(host2, { doc: doc2 }).render(BACKED_UP);
   eq('a bucket-less response draws no owner strip', byClass(host2, 'chain-queue-owner-strip').length, 0);
   eq('and no blocked box', byClass(host2, 'chain-queue-blocked').length, 0);
+
+  // 🔴 AND THE UNREAD CASE REACHES THE SCREEN. Drawing nothing was the whole defect:
+  //    a failed read looked exactly like a quiet system. One box, one line.
+  const UNREAD = { waiting_transactions: [], waiting_by_owner: [{ owner: 'scheduler', waiting: 0,
+    oldest_waiting_seconds: null, event_types: [], blocked_by: null,
+    blocked_by_state: 'unknown' }] };
+  const doc3 = makeDoc();
+  const host3 = doc3.createElement('div');
+  new ChainQueuePanel(host3, { doc: doc3 }).render(UNREAD);
+  eq('an unread blocker draws a box', byClass(host3, 'chain-queue-blocked').length, 1);
+  ok('and the box says it is unknown rather than none',
+    /모름/.test(byClass(host3, 'chain-queue-blocked-head')[0].textContent));
+
+  // 🔴 NEGATIVE CONTROL, AND IT IS THE ONE THAT MATTERS. A quiet system must stay
+  //    quiet — if this drew a box too, the new line would be the invented zero's twin.
+  const QUIET = { waiting_transactions: [], waiting_by_owner: [{ owner: 'scheduler', waiting: 0,
+    oldest_waiting_seconds: null, event_types: [], blocked_by: null,
+    blocked_by_state: 'ready' }] };
+  const doc4 = makeDoc();
+  const host4 = doc4.createElement('div');
+  new ChainQueuePanel(host4, { doc: doc4 }).render(QUIET);
+  eq('a read that answered draws no box', byClass(host4, 'chain-queue-blocked').length, 0);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

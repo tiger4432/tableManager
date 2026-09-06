@@ -240,6 +240,11 @@ export function queueView(payload, opts = {}) {
     age: formatAge(b && b.oldest_waiting_seconds) ?? '—',
     eventTypes: Object.freeze(Array.isArray(b && b.event_types) ? b.event_types.map(String) : []),
     blocked: blockedView(b && b.blocked_by),
+    // \u{1f534} 「못 읽었다」는 「도는 것이 없다」가 아닙니다. 둘 다 `blocked_by: null` 로 오고,
+    //    이 패널은 null 에 «아무것도 안 그립니다» -- 그 선택은 옳지만, 그러면 읽기가 실패한
+    //    날에도 화면이 «조용»합니다. 서버가 이제 그 둘을 가르고, 여기서는 후자만 그립니다.
+    // ⚠️ 키가 «없으면» 옛 서버입니다 -- 빈 문자열이 되어 아래 갈래를 안 탑니다.
+    blockedState: String((b && b.blocked_by_state) == null ? '' : b.blocked_by_state),
   }));
   // 🔴 ONE OWNER IS NOT A SPLIT. Drawing a per-owner breakdown of a single owner adds a
   //    row that says the same thing as the headline, and the reader has to compare two numbers
@@ -420,7 +425,18 @@ export class ChainQueuePanel {
     // 🔴 값은 «서버의 낟말로» 적는다. `moving` 과 `cancel_reaches` 를 번역하면
     //    서버가 일부러 갈라 둔 `stalled` 와 `unreported` 가 한 말로 접힌다.
     for (const b of view.byOwner) {
-      if (!b.blocked) continue;
+      if (!b.blocked) {
+        // 🔴 여기가 그 하나입니다. 「없음」이 아니라 「못 읽었다」일 때만 한 줄 나갑니다.
+        if (b.blockedState === 'unknown') {
+          const box = doc.createElement('div');
+          box.className = 'chain-queue-blocked';
+          box.setAttribute('data-owner', b.owner);
+          box.appendChild(this._line('chain-queue-blocked-head',
+            `${b.owner} · blocked_by — 모름 (소급 조회 실패)`));
+          this.root.appendChild(box);
+        }
+        continue;
+      }
       const box = doc.createElement('div');
       box.className = 'chain-queue-blocked';
       box.setAttribute('data-owner', b.owner);
