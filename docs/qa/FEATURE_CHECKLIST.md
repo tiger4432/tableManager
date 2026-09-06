@@ -86,8 +86,9 @@
 |---|---|---|---|
 | 규칙 기반 파생 | 원본 테이블 변경(outbox NOTIFY) → `chain_rules.json` 매칭 맵퍼 실행 → 파생 테이블 업서트 → WS 위임 | (자동) 원본 테이블 인제션/편집 | `chain_ingestion_worker.process_chain_transaction_group`(§4) · [chain_ingestion_guide](../guide/chain_ingestion_guide.md) |
 | 지연 SLO 100ms | 원본 커밋 → 파생 반영·통지까지 100ms 목표(정상 실측 31ms). `[Latency]`/`[Warmup]` 상시 계측 | (자동) 워커 로그 | `_dispatch_broadcasts/warmup_worker`(§4) · 이슈 #0 종결 기록 |
-| 순환 차단 — 런타임 | source=chain_ingestion 이벤트는 재트리거하지 않음(무한 체인 방지). ⚠️ **예외는 «옵트인»이다** — `allow_chain_trigger`를 선언한 룰은 **여전히 받는다**(침묵과 동의는 다른 물건) | (내부 불변식) | `_rule_accepts_event`(§4) |
+| 순환 차단 — 런타임 | source=chain_ingestion 이벤트는 재트리거하지 않음(무한 체인 방지). ⚠️ **예외는 «옵트인»이다** — `allow_chain_trigger`를 선언한 룰은 **여전히 받는다**(침묵과 동의는 다른 물건). 🔴 **[2026-09-06] 다만 «깊이까지»다** — 옵트인한 연쇄도 선언된 홉 수를 넘으면 아래 「순환 차단 — 실행 시점(깊이)」이 거절한다. 종전엔 이 줄과 다음 줄 «사이»에 아무것도 없어서 옵트인이 곧 무제한이었다 | (내부 불변식) | `_rule_accepts_event`(§4) |
 | 순환 차단 — 로드 시점 | 옵트인 엣지끼리 고리를 만들면 **워커가 뜨기 전에 거절**한다. 🔴 **[2026-09-04] 한 룰이 엣지 «둘»일 수 있다** — `allow_map_metadata_upsert`를 선언한 룰은 `target_table` 말고 맵 메타데이터 표에도 쓰고 그 쓰기가 자기 체인 이벤트를 낸다. 종전 그래프가 앞의 하나만 보아 **살아 있는 순환이 통과**했다 | config 로드/`reload-configs` | `_validate_chain_cascade_graph`(§4) · `tests/test_cascade_graph_sees_metadata_writes.py` |
+| **순환 차단 — 실행 시점(깊이)** (2026-09-06) | 체인이 «자기 홉을 센다» — 아웃박스 봉투가 `chain_depth`를 나르고, 선언된 한계를 넘는 이벤트를 워커가 **이름을 대고 거절**한 뒤 그 행을 **끝낸다**(FAILED — 안 끝내면 매 틱 다시 읽혀 뒤를 영원히 막는다). 한계는 상수가 아니라 **선언**이다(`chain_rules.json`의 `max_chain_depth`). 🔴 **표지는 «세 상태»다** — 키 없음(체인 밖, 깊이로 거절하면 안 된다) · 0 · N. ⛔ **로드 시점 고리 검사를 대신하지 않는다** — 깊이는 «긴» 폭포를, 고리 검사는 «도는» 폭포를 막는다. 그리고 깊이는 «무한»을 막지 «시작»을 막지 않는다 | (내부 불변식) | `event_constants.chain_depth_of`/`max_chain_depth` · `chain_ingestion_worker`(§4) · `tests/test_the_chain_counts_its_hops.py` · [event_driven_backend §3.4](../architecture/event_driven_backend.md) |
 | 실패 그룹 격리 | 실패 tx 그룹은 skip하고 후속 그룹 진행(HOL 블로킹 제거), 미전달 통지는 스윕 안전망 | (자동) | `process_pending_groups/sweep_undelivered_broadcasts`(§4) |
 
 ### 1.6 Enrichment Queue (결손 보정 워크리스트)
@@ -490,6 +491,7 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 - [ ] 🎯 **SLO 100ms**: 원본 편집 커밋 → 파생 반영 WS 통지까지 워커 `[Latency]` 로그 기준 100ms 이내(정상 상태 기대치 ~31ms). 재기동 직후 첫 체인은 ~600ms까지 허용(웜업 잔여, 알려짐).
 - [ ] 🎯 **순환 차단 — 런타임**: 파생 테이블 갱신이 다시 체인을 트리거하지 않음(워커 로그에 재귀 처리 없음, outbox 무한 증가 없음). ⚠️ **`allow_chain_trigger`를 선언한 룰은 예외이고, 그것이 안 깨어나면 그쪽이 결함이다** — 「아무것도 안 깨어남」을 통과로 읽지 말 것.
 - [ ] 🎯 **순환 차단 — 로드 시점(두 엣지)**: `allow_chain_trigger`가 걸린 룰에 `allow_map_metadata_upsert: true`를 더해 **맵 메타데이터 표를 `trigger_table`로 삼는 룰과 고리를 만든 뒤** `reload-configs` → **워커가 뜨기 전에 `allow_chain_trigger cycle: …` 로 거절**하고 경로를 이름 댄다. 🔴 **이 항목이 재는 것은 「거절한다」가 아니라 「«두 번째 엣지»를 본다」이다** — 룰의 `target_table`만으로 고리를 만들면 옛 그래프도 잡으므로 **판별식이 못 된다.** 되돌린 config로 다시 로드하면 통과.
+- [ ] 🎯 **순환 차단 — 실행 시점(깊이)**: `allow_chain_trigger`가 걸린 룰로 **선언된 한계보다 긴** 폭포를 만든다(고리는 만들지 않는다 — 고리면 로드 시점이 먼저 잡아서 **판별식이 못 된다**) → 한계를 넘는 홉에서 워커가 **자기 이름을 대며 거절**하고 그 행은 **끝난 것으로 표시**된다. 🔴 **이 항목이 재는 것은 「거절한다」가 아니라 「«긴» 것을 잡는다」이다** — 고리로 시험하면 옛 검사도 통과시키므로 아무것도 못 가른다. 🔴 **그리고 거절된 행이 뒤를 막으면 회귀다** — 그것이 독 든 행 결함의 모양이다. ⚠️ 체인 «밖»에서 온 이벤트(표지 키가 «없는» 것)가 깊이로 거절되면 회귀다.
 - [ ] **멱등성 — 체인 재실행**: 동일 원본 재드롭 → 파생 테이블 행 수 불변, count류 집계값 정확(중복 가산 없음).
 - [ ] **실패 격리 에지**: 맵퍼 예외를 유발하는 그룹 발생 시 해당 그룹만 실패(어드민 Chain 탭 outbox FAILED)하고 이후 정상 그룹은 계속 처리됨.
 - [ ] **대형 tx 통지 비동결(인시던트 `cc57b64` 회귀)**: 수만 행 파일 재인제션 등 대형 tx 발생 시 :8080이 동결되지 않고(`[Latency] notify=` 정상), 히스토리 패널 트랜잭션 총계는 실건수(`total_log_count`) 표기 — 로그 항목 자체는 500건까지만 보존(부분 보존이 정상). ⚠️ 알려진 잔여: 멀티 target-table tx 총계 과소(이슈 #10, D-1).

@@ -1,13 +1,17 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **805개** 이력. (거버넌스 규칙 #4)
+> 총 **809개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-06 12:48** — [The Chain Counts Its Hops And A Declared Limit Refuses Beyond Them](./20260906_124800_the_chain_counts_its_hops_and_a_declared_limit_refuses_beyond_them.md)
+- **2026-09-06 11:07** — [Two More Source Files Were Binary To Every Search Tool](./20260906_110700_two_more_source_files_were_binary_to_every_search_tool.md)
+- **2026-09-06 10:45** — [Nine Senders Wrote One Payload And The Reader Checked None Of It](./20260906_104500_nine_senders_wrote_one_payload_and_the_reader_checked_none_of_it.md)
+- **2026-09-06 10:16** — [The Repair Had Landed On One Of Two Watchers And The Other Blocked Forever](./20260906_101600_the_repair_had_landed_on_one_of_two_watchers_and_the_other_blocked_forever.md)
 - **2026-09-05 19:15** — [The Postgres Arm Of The Temporal Text Seam Was Scored By Nothing](./20260905_191500_the_postgres_arm_of_the_temporal_text_seam_was_scored_by_nothing.md)
 - **2026-09-05 19:05** — [The Recorded Reason For The Slicing Ban Was Overtaken By Its Own Order In Twenty Two Minutes](./20260905_190500_the_recorded_reason_for_the_slicing_ban_was_overtaken_by_its_own_order_in_twenty_two_minutes.md)
 - **2026-09-05 18:49** — [Three Carriers Had No Reader So A Refusal Had A Sentence And No Address](./20260905_184900_three_carriers_had_no_reader_so_a_refusal_had_a_sentence_and_no_address.md)
@@ -829,4 +833,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-05 by gen_index.py*
+*Last generated: 2026-09-06 by gen_index.py*
