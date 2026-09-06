@@ -29,6 +29,9 @@ SPEC_EXCLUDED = ("observed@1",)
 NAMES_PATH = Path(__file__).with_name("gap_names.json")
 
 
+from declaration_names import bare_name as _bare_name
+
+
 class GapTableMismatch(ValueError):
     """The declaration and the name table disagree. Raised instead of guessing.
 
@@ -38,10 +41,11 @@ class GapTableMismatch(ValueError):
     """
 
 
-def _bare(name):
-    """`of_kind@1` -> `of_kind`. The table writes predicates bare and the declaration
-    versions them; the version belongs to the declaration, not to the name."""
-    return str(name).split("@")[0]
+#: `of_kind@1` -> `of_kind`. 🔴 이 번역의 «본체»는 `declaration_names` 에 있다 —
+#: 같은 이름에 «네 본체»가 있었고 그 넷이 공백·대소문자·None 에서 갈렸다. 이름은 여기 남겨
+#: 이 모듈의 아홉 호출부를 그대로 두고, 몸통만 한 자리로 보낸다.
+#: ⚠️ 종전 이 판은 `str(None)` 을 태워 `"None"` 이라는 이름을 만들었다. 이제 빈 이름이다.
+_bare = _bare_name
 
 
 def load_names(path=None):

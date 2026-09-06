@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import ledger_explorer
+from declaration_names import bare_name as _bare_name
 import ledger_trace
 
 
@@ -806,9 +807,10 @@ def _seed_node(seed_id, seed_ref, action_lookup):
             "predicates": [],
         }
     return seed_node
-def _bare(name):
-    """The same trim for an ENTITY type: `defect_kind@1` -> `defect_kind`."""
-    return str(name or "").split("@", 1)[0]
+#: The same trim for an ENTITY type: `defect_kind@1` -> `defect_kind`.
+#: 🔴 본체는 `declaration_names.bare_name` 하나다 — 이 이름을 쓰던 네 모듈이 «다른 답»을
+#: 낼 수 있었다. 앞뒤 공백을 이제 턴다(종전 이 판은 안 텄다).
+_bare = _bare_name
 
 
 def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",

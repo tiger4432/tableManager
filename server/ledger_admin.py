@@ -34,6 +34,8 @@ import logging
 import os
 import re
 import shutil
+
+from declaration_names import bare_name as _bare_name
 from datetime import datetime
 
 import config_backup
@@ -1050,9 +1052,9 @@ def sources_view(db=None) -> dict:
 
 
 
-def _bare(name):
-    """`wafer@1` -> `wafer`. The ledger writes the bare name; the declaration versions it."""
-    return str(name or "").split("@", 1)[0].strip()
+#: `wafer@1` -> `wafer`. 🔴 본체는 `declaration_names.bare_name` 하나다.
+#: 이 판이 넷 중 «공통 몸통»과 같았다 — 그래서 여기는 답이 한 글자도 안 바뀐다.
+_bare = _bare_name
 
 
 def _declaration() -> dict:

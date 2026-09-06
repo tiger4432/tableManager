@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import threading
+from declaration_names import bare_name as _bare_name
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,12 @@ def identity_keys(entity_type):
 
 
 def _bare(entity_type):
-    """`wafer@1` -> `wafer`. The ledger stores the bare type; the declaration versions it."""
-    return str(entity_type or "").split("@", 1)[0].strip().lower()
+    """`wafer@1` -> `wafer`, 🔴 그리고 이 모듈만의 «소문자 접기».
+
+    버전을 버리는 몸통은 `declaration_names.bare_name` 하나이고, 대소문자 접기는 «여기의 추가»다 —
+    공통으로 올리면 나머지 세 호출자의 답이 조용히 바뀐다. 공통이 아닌 것을 공통에 넣는 것은
+    사본을 만드는 것과 같은 부류의 실수다.
+    """
+    return _bare_name(entity_type).lower()
 
 
