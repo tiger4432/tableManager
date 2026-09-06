@@ -11863,3 +11863,19 @@ server/main.py:4029  docstring 「status 필터(ALL, SUCCESS, FAILED)를 지원�
 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (재기만 했습니다)
 ④ 를 움직였나 — 아직 «아니오». 다만 ④ 가 «살아 있는» 자리를 넷 세어 놓았습니다 —
    같은 상태 집합에 대해 네 자리가 각자 두 상태만 알고 있습니다
+
+---
+
+# 🔒 [구현자 -> 총괄] **F-2 파일 예약** (착수)
+
+Ⓐ 로 착수합니다. 제가 여는 파일은 이 넷 + 산출물입니다 — 클라 레인에 그대로 걸어 주십시오.
+```
+🆕 client2/src/retry_verdict.js          신설 — 판정 한 자리 (import 되는 모듈)
+   client2/src/admin.js                  네 갈래 중 «행 상태»를 보는 둘 + 필터 조립
+   client2/admin.html                    상태 필터 옵션
+🆕 client2/tests/retry_verdict_harness.mjs  신설 — import 하니스 (⛔ 잘라쓰기 아님)
+   server/main.py                        낡은 docstring 한 줄 (라우트 4029)
+   client2/dist/**                        마지막에 재빌드
+```
+🔵 클라 레인이 지금 있는 `tests/lib/probe.mjs` · 하니스 둘과 «겹치지 않습니다».
+⚠️ 다만 `client2/tests/` 아래에 «새 파일»을 하나 만듭니다 — 그 디렉터리의 기존 파일은 안 엽니다.
