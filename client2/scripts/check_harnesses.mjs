@@ -974,7 +974,7 @@ const FLOORS = new Map([
   // and no retry, because `initWebSocket()` was the last statement of `init()` behind two
   // awaited REST calls). Same rule as the other new entries: the floor is the count it reports
   // on the commit that introduces it — there is no earlier tree to measure it against.
-  ['startup_socket_gate_harness.mjs', 103],
+  ['startup_socket_gate_harness.mjs', 111],
   ['startxy_probe.mjs', 75],
   ['undeclared_identifier_harness.mjs', 10],
   // New 2026-08-04 with the back-guard round. A valid-die selection set `frameTouched`
