@@ -245,8 +245,13 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     # the declaration alone unless asked for one gap by name, so it does not reopen any of
     # the retired data routes above - those took a KEY and answered per key, which is what
     # made them multiply.
+    # `/key-values` joined on 2026-09-06 and belongs with `/gaps` rather than with the
+    # retired per-key data routes: it does NOT answer a walk for a key, it answers which
+    # keys exist so the operator stops having to memorise a seed id. It reads a BOUNDED
+    # window and says when the window or the value list was cut, so it cannot become the
+    # per-key multiplier those routes were.
     assert set(routes) == {"/api/ledger/subgraph", "/api/ledger/declaration",
-                           "/api/ledger/gaps"}
+                           "/api/ledger/gaps", "/api/ledger/key-values"}
     # `id` alone must reach subgraph() as the very same argument it always was.
     seed = ledger_explorer.entity_id("Lot", {"lot": "A"})
     assert ledger_trace_router._signed_start(seed, None, None) == seed

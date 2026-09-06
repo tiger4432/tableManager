@@ -137,3 +137,82 @@ def test_the_class_field_label_names_the_value_the_code_reads():
         "the label does not name the one value the walk actually reads"
     # ⛔ Still open, deliberately: showing the value must not become closing the list.
     assert field["node"]["hint"] == "free"
+
+
+# --------------------------------------------- the key list: which values may seed a walk
+
+def test_an_undeclared_type_is_refused_by_name():
+    """Same door as `follow` and `collect`: a name nobody declared can never match, so an
+    empty list would be indistinguishable from "this key has no values"."""
+    with pytest.raises(Exception) as raised:
+        ledger_trace_router.ledger_key_values(type="not_a_type", key="k", limit=10, db=None)
+    detail = raised.value.detail
+    assert detail["reason"] == "node_type_not_declared"
+    assert detail["declared"], "the refusal must say what IS available"
+
+
+def test_a_key_the_type_did_not_declare_is_refused_by_name(monkeypatch):
+    """🔴 THE SECOND DOOR. A declared type with an undeclared key would otherwise scan for
+    a JSON field that cannot exist and report "no values", which reads as a fact."""
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"wafer@1": {"keys": ["wafer_id"]}}, "vocabulary": {}})
+    with pytest.raises(Exception) as raised:
+        ledger_trace_router.ledger_key_values(type="wafer", key="nope", limit=10, db=None)
+    detail = raised.value.detail
+    assert detail["reason"] == "key_not_declared"
+    assert detail["declared"] == ["wafer_id"]
+    assert detail["type"] == "wafer"
+
+
+def test_the_declared_keys_come_from_the_declaration(monkeypatch):
+    """Read, not restated - adding a key to the declaration must widen this without an
+    edit here, which is the only way the catalogue and this route stay one answer."""
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"wafer@1": {"keys": ["a", "b"]}}, "vocabulary": {}})
+    assert ledger_trace_router._declared_keys("wafer") == {"a", "b"}
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"wafer@1": {"keys": ["a"]}}, "vocabulary": {}})
+    assert ledger_trace_router._declared_keys("wafer") == {"a"}
+
+
+def test_the_scan_is_bounded_and_the_grouping_is_not_the_bound():
+    """🔴 THE ONE PROPERTY THAT KEEPS THIS OFF THE GRADE-5 LIST. The window is taken with
+    a LIMIT and grouped afterwards; a GROUP BY over the whole subject_type would visit
+    every row that type has."""
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(ledger_trace_router.ledger_key_values).lstrip())
+    function = tree.body[0]
+    if (function.body and isinstance(function.body[0], ast.Expr)
+            and isinstance(function.body[0].value, ast.Constant)):
+        function.body = function.body[1:]
+    code = ast.unparse(function)
+    assert "LIMIT %(scan)s" in code, "the scan window lost its bound"
+    assert code.index("LIMIT %(scan)s") < code.index("GROUP BY value"), \
+        "the grouping happens before the window is cut - that is the full scan"
+
+
+def test_the_two_truncations_are_separate_facts():
+    """⛔ NOT ONE FLAG. "I stopped reading" and "there are more values" are different, and
+    folding them makes "this key has three values" and "I saw three" one answer."""
+    import inspect
+
+    body = inspect.getsource(ledger_trace_router.ledger_key_values)
+    assert '"scan_truncated"' in body and '"values_truncated"' in body
+    # limit + 1 / scan + 1 is how each one can be KNOWN rather than guessed.
+    assert '"limit": limit + 1' in body
+    assert "KEY_VALUE_SCAN_ROWS + 1" in body
+
+
+def test_the_order_is_stated_in_the_answer():
+    """If nobody writes the order down, the query picks it and it changes with the plan."""
+    import inspect
+
+    body = inspect.getsource(ledger_trace_router.ledger_key_values)
+    assert "ORDER BY n DESC, value ASC" in body
+    assert '"order": "count_desc_then_value_asc"' in body
