@@ -633,8 +633,13 @@ def test_no_winner_names_missing_index_values_before_margin():
 def test_the_state_vocabulary_is_closed():
     assert {ma.STATE_SCORED, ma.STATE_NO_WINNER, ma.STATE_NOT_SCORABLE,
             ma.STATE_COMPUTING} == {"scored", "no_winner", "not_scorable", "computing"}
+    # S-15 (4): the reference states are the SEAM's vocabulary, not this file's.  The client
+    # answers 'ref'/'circle'/'refused' and the contract scores those words; production used to
+    # spell the same three states 'resolved'/'absent'/'refused', and a green contract therefore
+    # said nothing about production.  Borrowed rather than translated, so they cannot diverge.
     assert {ma.REFERENCE_RESOLVED, ma.REFERENCE_ABSENT,
-            ma.REFERENCE_REFUSED} == {"resolved", "absent", "refused"}
+            ma.REFERENCE_REFUSED} == {"ref", "circle", "refused"}
+    assert ma.REFERENCE_RESOLVED is map_overlay.SOURCE_REF
 
 
 def test_the_scorer_writes_nothing_and_needs_no_session():

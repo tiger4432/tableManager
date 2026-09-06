@@ -171,9 +171,21 @@ STATE_COMPUTING = "computing"          # 예약 — 이 엔드포인트는 동�
 STATE_NOT_CONSIDERED = "not_considered"
 TEXT_SIDE_NOT_CONSIDERED = "미채점 - 면 선언 제외"
 
-REFERENCE_RESOLVED = "resolved"
-REFERENCE_ABSENT = "absent"            # 기준 선언이 없다 (**흔한 경우다**)
-REFERENCE_REFUSED = "refused"          # 선언은 있는데 풀리지 않는다
+# 🔴 이 셋은 «이음새의 어휘»다 — 여기서 지어내지 않는다. 클라의 `validDieBasis()` 가
+#    `'ref'`/`'circle'`/`'refused'` 로 답하고 계약(`contracts/map_seam`)이 그 낱말로 채점하는데,
+#    이 파일이 «같은 세 상태»를 `resolved`/`absent`/`refused` 로 따로 부르고 있었다. 한 사실에
+#    철자가 둘이면 갈라질 수 있고, 갈려도 «오류가 안 난다» — 계약의 초록이 «운영»에 대해
+#    아무 말도 하지 않던 것이 그 갈라짐의 값이다.
+# 🔴 그래서 «값을 빌려온다». 번역 함수를 두면 두 경로를 한 칸 옮긴 것일 뿐이고, 이렇게 두면
+#    두 철자가 «갈라질 수가 없다» — 같은 객체다.
+# ⚠️ 이름은 남는다. 이 파일 안에서 「기준이 풀렸나」를 읽는 자리가 57 군데이고, 그 자리의
+#    문장은 `REFERENCE_*` 로 읽는 것이 맞다. 바뀌는 것은 «누가 값을 정하나»다.
+# 🔵 실측: 이 값은 응답의 `reference.state` 로 나가지만 클라에 «독자가 없다»
+#    (`map2/decode.js:461` 이 `referenceState` 로 풀고, client2 전수에서 그 이름의 등장이
+#     «그 한 줄»뿐이다). 그래서 이 접기는 화면을 한 픽셀도 안 움직인다.
+REFERENCE_RESOLVED = map_overlay.SOURCE_REF        # 참조가 풀렸다
+REFERENCE_ABSENT = map_overlay.SOURCE_CIRCLE       # 기준 선언이 없다 (**흔한 경우다**)
+REFERENCE_REFUSED = map_overlay.SOURCE_REFUSED     # 선언은 있는데 풀리지 않는다
 
 # 기준이 **무엇을 싣고 있는가**. 클라가 모양을 보고 추론하면 안 되는 값이다 — 서버는 값 컬럼을
 # 바인딩에서 알고 있고 클라는 셀 배열의 생김새로 짐작할 뿐이다.
