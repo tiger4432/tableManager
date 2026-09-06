@@ -204,6 +204,32 @@ follow = «길»   ·   collect = «짐»       -> 오늘 «길만» 있습니�
            => 안 물은 것이 예산을 먹고 «물은 것이 잘려 나갑니다» (그 파일 자기 주석의 실측)
 값        «도메인 노드 타입» — 선언된 엔터티 이름. ⛔ 배관 낱말(entity·point·claim) 아님
 ```
+### 🔬 총괄 «라이브» 실측 (21:0x · 깨끗한 트리 · 재기동 후) — 두 축이 «각자» 일합니다
+```
+씨앗 = wafer 하나 · hops=4
+① follow 없음 · collect 없음        nodes 400  edges 527   🔴 400 = «정확히 상한» = «잘림»
+② collect=die                      nodes 278  «die 만»
+③ collect=defect                   nodes 121  «defect 만»
+④ collect=die,defect               nodes 399  (씨앗 wafer 만 빠짐)
+⑤ collect=die@1                    nodes 278  🔵 버전 붙여도 같음 — 관대함 작동
+⑥ collect=banana                   🔴 거절 `node_type_not_declared` unknown=[banana]
+```
+```
+⑤ follow=inspected,observed · collect 없음   nodes «250» edges 249  허공 엣지 «0»
+   🔵 follow «만으로» 400(잘림) -> 250(«완전»). 길을 좁히니 예산이 안 터집니다
+⑥ follow=inspected,observed · collect=defect nodes 121  edges 249  🔴 허공 엣지 «249 / 249»
+```
+🔴 **그러므로 「엣지는 follow 가 정한다」는 참이고, «허공 엣지»는 follow 로 «안 고쳐집니다»** —
+   그건 `collect` 가 노드를 «뺐다»에서 나오고, 두 축이 독립이라 생깁니다. -> 아래 판정 대기
+
+### ⚠️ 판정 대기 — 엣지 정책 (총괄이 소유자께 올림, 21:0x)
+```
+읽기 ①  결함이다      응답이 «없는 노드»를 249번 가리킨다. 소비자가 «어쩌라고» 상태
+읽기 ②  결함 아니다    엣지는 «길의 기록»이다 — 「이 defect 121 이 «어느 die 를 거쳐» 왔나」
+        (코드가 ②를 골랐고 사유를 «코드보다 먼저» 적었다: 「끝점이 걸러진 엣지를 버리면 경로가 안 보인다」)
+=> ②면 «소비자가 「이 id 는 nodes 에 없다」를 알 방법»이 필요하고, ①이면 엣지도 collect 로 거른다
+```
+
 ### 🟢 착지 (`a4dc4b54`, 20:46) — **검수는 «응용»입니다** (소유자가 소유를 그쪽에 두심)
 ```
 라우트    `collect: list[str] | None` 복원. 선언에 «없는» 이름은 «미지/선언 집합»을 본문에 넣어 거절
