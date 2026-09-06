@@ -1158,7 +1158,11 @@ function initMouseDragEvents() {
 // Fetch tables list
 async function loadTablesList() {
   try {
+    // 🔴 Unchecked, a failure body has no `tables` key, the dropdown is built empty, and
+    //    the screen says 「this server has no tables」 -- an answer, where the truth was
+    //    「could not ask」. Same class as F-11; the catch below already says it properly.
     const res = await fetch(`${API_BASE}/tables`);
+    if (!res.ok) throw new Error(`tables ${res.status}`);
     const data = await res.json();
     el.tableSelect.innerHTML = '';
 

@@ -414,6 +414,17 @@ async function runChecks(mainSrc, apiSrc, wsSrc, cfgSrc, { strict = true } = {})
             `not "rejected" (got ${run.rejection && run.rejection.message})`);
           checkFn(`C: the failure is still REPORTED, not swallowed — ${label}`,
             run.errors.length, v => v >= 1, '>= 1 console.error');
+          // 🔴 A COUNT CANNOT SAY *WHICH* REPORT SURVIVED. `>= 1` was enough only while this
+          //    scenario produced exactly one console.error; the moment `loadTables` began
+          //    reporting its own failure too (2026-09-06, the res.ok round), deleting the
+          //    health report left the count at 1 and mutant M7 walked straight through.
+          //    So the health failure is asserted BY NAME. `[health]` is a tag, not a
+          //    sentence -- pinning wording is what reddens a harness on a copy edit.
+          if (restMode === 'http500') {
+            checkFn(`C: and the HEALTH failure specifically is named — ${label}`,
+              run.errors.filter(e => e.includes('[health]')).length, v => v >= 1,
+              'an error mentioning [health]');
+          }
           // The SOCKET's bootstrap runs the same two functions. A catch that throws breaks the
           // reconnect path too, silently — `onopen`'s rejection belongs to nobody.
           check(`C: the socket's own onopen bootstrap does not reject either — ${label}`,

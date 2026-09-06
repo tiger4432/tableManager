@@ -430,7 +430,12 @@ export function createGlobalTimelineItemDom(group) {
           detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
 
           try {
+            // 🔴 Unchecked, `txDetail.logs` is undefined on a failure body and the group
+            //    renders as though the transaction has no rows. The catch below already
+            //    says 「Failed to load details.」 and releases `fetchingTransactions`, so a
+            //    throw both tells the truth and leaves the group retryable.
             const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
+            if (!res.ok) throw new Error(`transaction ${res.status}`);
             const txDetail = await res.json();
             group.logs = txDetail.logs;
             state.fetchingTransactions.delete(txId);
