@@ -110,8 +110,14 @@ console.log('\n[3] a finished card does not reopen');
 
 console.log('\n[4] the part carries no domain word - and the one place that still does');
 {
-  const fs = await import('node:fs');
-  const raw = fs.readFileSync(new URL('../src/progress_card.js', import.meta.url), 'utf-8');
+  // 🔴 THROUGH THE ONE READER. The stripper below ends at `$`, which a `.` cannot reach across
+  //    a carriage return — so on a checked-out (CRLF) tree the line comments SURVIVE the strip
+  //    and this block reads them as code. The comments it trips on are the ones explaining why
+  //    the part carries no domain words, written in those words, so it accused the part of
+  //    exactly what the comment says it avoids. Measured 2026-09-07: green as authored, red
+  //    after the first checkout, product code untouched.
+  const { readSourceText } = await import('./lib/probe.mjs');
+  const raw = readSourceText(new URL('../src/progress_card.js', import.meta.url)).text;
   const code = raw.replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
