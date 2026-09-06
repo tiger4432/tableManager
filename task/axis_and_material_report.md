@@ -1,3 +1,90 @@
+# [디자인 -> 총괄] 📋 **등급 6 클라 훑기 — 줄 «다섯». 원시 후보 «417», 뺀 사유 아래** (2026-09-06)
+
+훑은 범위: `client2/src/**/*.js` — **96 파일 · 56,940 줄**. 고친 것 «0».
+
+## ㉣ 한 이름이 «두 뜻» — 줄 «1»
+```
+1  전선 필드 `truncated` 가 «네 모양»으로 해독됩니다
+   어디  map2/api.js:normaliseReferenceCatalog      -> `rec.truncated === true`      «불리언»
+         rnd_board/api.js:subgraphModel             -> `truncationNames(body.truncated)` «축 이름 배열»
+                                                    + `body.truncated.reason`         «객체»
+                                                    + 거절 시 `truncated: null`       «미지»
+         chain_queue_panel.js:ChainQueuePanel.render-> `view.truncated` 를 «문장»으로 그립니다
+   왜 구조  같은 이름이 어느 라우트에서 왔는지에 따라 뜻이 갈리는데 그 «짝을 짓는 것이 클라에 없어서»,
+            불리언을 객체로 읽는 쪽은 `.reason` 이 undefined 이고 객체를 불리언으로 읽는 쪽은 «영원히 참»입니다
+   🔵 이미 «알려져» 있습니다: retroactive_view.js:buildCountView 가 `typeof data.truncated === 'boolean'`
+      으로 «타입을 방어»합니다 — 읽는 쪽이 모양을 가정할 수 없다는 것을 그 자리가 말합니다
+```
+
+## ㉧ 계약이 «두 곳»에 살아 어긋난다 — 줄 «3»
+```
+2  전선 이벤트 이름: 서버는 «상수», 클라는 «리터럴», 그리고 «else 가 없습니다»
+   어디  server/event_constants.py (EVENT_BATCH_REFRESH_REQUIRED …)
+         ↔ client2/src/websocket.js:handleWebSocketMessage — `event === 'batch_row_create'` 꼴 «넷»
+   왜 구조  이름을 잇는 것이 «양쪽 어디에도 없고», 그 if/else-if 사슬이 «종단 else 없이» 닫혀서
+            서버가 이름을 바꾸거나 더하면 클라가 «조용히 아무것도 안 합니다» — 오류도 로그도 없습니다
+
+3  `themechange` CustomEvent 가 세 파일에 «각자» 적혀 있습니다
+   어디  theme.js:applyTheme 이 dispatch  ↔  admin.js · map_editor.js 가 addEventListener
+   왜 구조  발신·수신을 잇는 공유 상수가 없어, 이름이 바뀌면 두 구독자가 «오류 없이» 테마를 안 따라갑니다
+
+4  쓰기 후 «낙관적 행 패치»가 다섯 곳에 있고 «이미 갈렸습니다»
+   어디  api.js:handleCellEdit · grid.js:buildColumnDefs      -> `is_overwrite` + `priority_source`
+         clipboard.js:setupClipboardHandlers · main.js:applyPendingTxEdits
+         · ui.js:applyValueToSelectedRange                     -> `is_overwrite` «만»
+   왜 구조  같은 사실을 짓는 «정본 하나»가 없어 다섯이 각자 적고 있고, 그중 셋은 그리기가 읽는 칸을
+            «안 채웁니다» — 그리드 규칙이 `priority_source`/`manual_priority_source` 를 보는데
+            어느 경로로 편집했느냐에 따라 표시가 갈립니다 (`manual_priority_source` 는 클라가 «아무도 안 씁니다»)
+```
+
+## ㉨ 기본값이 «위험한 쪽» — 줄 «1»
+```
+5  이스케이프가 «옵트인»입니다. 기본은 «날것»입니다
+   어디  admin.js:buildFileLogRow · timeline.js:createTimelineItemDom · main.js · transfer_plan.js
+         · progress_card.js · counter.js · ui.js  (innerHTML 템플릿 «28» 중 이스케이프 «2»)
+   왜 구조  안전한 길이 «호출자가 기억해야 하는 것»이고, 그 헬퍼조차 셋이 «각자»입니다
+            (map2/excel_io.js:esc · transfer_plan.js:esc · map_editor.js:escapeHtmlAttr — 공유 없음)
+            보간되는 값이 서버가 실어 준 문자열입니다: `log.filename` · `log.table_name`
+            · `log.updated_by` · `log.source_name` · `log.column_name` · `tx.transaction_id`
+```
+
+## 🔴 원시 후보 «417» -> 줄 «5». 뺀 사유
+```
+㉧  교차 모듈 문자열 리터럴 321 -> 프로토콜 모양 46 -> 교차 19 -> 줄 1
+    뺀 것 18: 전부 «DOM 이 이름을 소유»합니다 (click · change · paste …) — 우리가 어긋날 수 없습니다
+㉧  websocket 이벤트 리터럴 6 -> 줄 1 (낱개가 아니라 «사슬 하나»가 부류입니다)
+㉧  `overwrite=true` 히트 6 -> 다섯을 열었더니 «기본값이 아니라 대입»이었습니다 -> ㉨ «0»
+    🔵 그런데 그 자리에서 ㉧ 이 나왔습니다 (줄 4). 낱말이 겨눈 모양과 «다른» 모양이 나왔습니다
+㉨  `=== true` 히트 20 -> 전부 «삼상태를 엄격히 읽는» 자리였습니다 — 안전한 쪽입니다 -> 0
+㉨  `(strict|validate|confirm|safe)=false` 기본 인자 -> 히트 «0»
+㉨  이스케이프 없는 보간 26 -> 일곱을 열어 서버 문자열 확인 -> 줄 «1»
+    낱개 26줄로 안 냅니다. 결함은 자리가 아니라 «기본값»이라 한 줄입니다
+㉣  `truncated` 20 · `keys` 12 -> 줄 1
+    `keys` 는 열어 보니 «서로 무관한 모듈의 지역 변수»였습니다 (businessKeys · 물리키 Set · 채점 키)
+    ADMIN_TOKEN_KEY 는 import 로 «이미 공유»되고, `copyHeader`/`mapCopyHeader` 는 «다른 키»였습니다
+```
+
+## 🔴 훑는 중에 «계기»를 두 번 고쳤습니다 — 둘 다 「0」이 모양을 지울 뻔했습니다
+```
+① 전선 이벤트를 `msg.type` 으로 찾았습니다 -> 히트 0
+   이 코드베이스는 `msg.event` 입니다. «없다»가 아니라 «내가 못 본» 것이었습니다 -> 줄 2 가 여기서 나왔습니다
+② 보간 innerHTML 을 줄 단위 grep 으로 셌습니다 -> 「보간 0」
+   템플릿이 «여러 줄»이라 grep 이 첫 줄만 봅니다. 여러 줄로 다시 재니 28 중 26 -> 줄 5
+```
+
+## 🔴 «안 훑은» 것
+```
+· `source`/`sources` 이름 무리 — 375/145 회. ㉣ 후보로 보이지만 «줄이 아니라 부류»이고,
+  낱개로 열면 열 줄을 넘습니다. 별도 라운드로 올립니다
+· client2/tests/ · contracts/ · *.html · *.css — 이번 범위 밖입니다
+· 서버 쪽 — 구현자 담당입니다 (줄 2 는 서버 파일을 «인용»만 했습니다)
+```
+
+## 이 라운드가 «뺀» 것 — «0» (훑기 라운드, 고치지 말라 하셨습니다)
+## ④ 를 움직였나 — «아니오». 다만 줄 4 가 ④ 의 실물이고, 줄 3·5 도 같은 부류입니다
+
+판정 대기: **줄 다섯 중 무엇부터인지.** 그리고 `source` 무리를 «부류»로 올릴지.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 20:0x — bbax7m97u (지시서·dist) · 20:0x — bj415tf59 (자가 기상) · 18:2x
 # [디자인 -> 총괄] ✅ **② 착지 — 자를 고쳤습니다. 하니스 «0개» 변경 · `failed` 뜻 «불변»** (2026-09-06)
 
 「자가 먼저」 받았습니다. 접지도, 칸을 늘리지도 «않았습니다» — 셋째 길이 있었습니다.
