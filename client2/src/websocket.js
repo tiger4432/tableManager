@@ -297,6 +297,13 @@ export function initWebSocket() {
       handleWebSocketMessage(msg);
     } catch (err) {
       console.error('WebSocket parsing error', err);
+      // 🔴 A dropped frame means the grid is now BEHIND the server, and nothing said so. The
+      //    screen showed less than exists and stayed quiet about it -- the same family as a
+      //    failed read drawn as an absence, except here the absence is a missing UPDATE.
+      // 🔵 `dedupeKey` collapses a burst into one line with a count; a malformed stream would
+      //    otherwise paper the screen with toasts and bury what it is telling you.
+      showToast('\uc2e4\uc2dc\uac04 \uac31\uc2e0\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 \uc0c8\ub85c\uace0\uce68\ud558\uba74 \ub9de\ucdb0\uc9d1\ub2c8\ub2e4', 'error',
+        { dedupeKey: 'ws-parse' });
     }
   };
 }

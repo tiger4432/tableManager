@@ -1169,6 +1169,11 @@ async function loadTablesList() {
     if (data.tables && data.tables.length > 0) {
       // Fetch schema for all tables and filter ONLY map tables that have map_key_columns configured
       const mapTables = [];
+      // 🔴 A table whose schema cannot be read was dropped here in TWO ways -- the catch
+      //    logged to the console, and a non-ok response was skipped without even that. Either
+      //    way it simply vanished from the picker, indistinguishable from 「not a map table」.
+      //    The operator then looks for a map that is there and cannot find it.
+      let unreadable = 0;
       for (const tableName of data.tables) {
         try {
           const sRes = await fetch(`${API_BASE}/tables/${tableName}/schema`);
@@ -1178,10 +1183,20 @@ async function loadTablesList() {
             if (Array.isArray(keys) && keys.length > 0) {
               mapTables.push(tableName);
             }
+          } else {
+            unreadable++;
+            console.warn(`schema ${sRes.status} for ${tableName}`);
           }
         } catch (e) {
+          unreadable++;
           console.warn(`Failed to fetch schema for ${tableName}:`, e);
         }
+      }
+      // 🔵 One line, one number. Naming every table would push the real list off screen, and
+      //    the count is what tells the operator the picker is short.
+      if (unreadable > 0) {
+        showToast(`\uc2a4\ud0a4\ub9c8\ub97c \ubabb \uc77d\uc5b4 \ubaa9\ub85d\uc5d0\uc11c \ube60\uc9c4 \ud45c ${unreadable}\uac1c`,
+          'error', { dedupeKey: 'map-table-schema' });
       }
 
       if (mapTables.length > 0) {
