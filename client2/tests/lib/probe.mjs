@@ -34,6 +34,38 @@ import { pathToFileURL } from 'node:url';
 // load, so this can never shadow something the subject already had.
 export const MARK = '__harness_probe__';
 
+/**
+ * Read a subject's source as text with newlines normalised to LF, and hand back the way to put
+ * the file's own convention back.
+ *
+ * 🔴 WHY THIS EXISTS. `core.autocrlf` is true, so a file is LF in the working tree on the day it
+ *    is written and CRLF after its first checkout — with nothing about the code having changed.
+ *    Anything that matches source text with `\n` in its pattern therefore goes green when it is
+ *    authored and red at the next merge. Measured 2026-09-07: five harnesses red on untouched
+ *    product code, four of them because `spec.mutate` matched nothing and the probe correctly
+ *    refused to score a mutant that did not mutate.
+ * 🔴 ONE READER. Two places read subject text — this file and a harness reading the file itself
+ *    to grep it — and if each normalised on its own they would drift. They call this.
+ * 🔴 `restore` IS NOT OPTIONAL for the probe. `assertAppendOnly` proves the copy begins with the
+ *    subject's own bytes, and that proof is what stops appending from decaying into slicing.
+ *    Writing the normalised text would break it, so the convention goes back on before the write.
+ * ⚠️ A file with MIXED endings cannot round-trip through this, so it fails LOUDLY here rather
+ *    than silently rewriting lines the subject never asked to change.
+ */
+export function readSourceText(srcPath) {
+  const originalBytes = readFileSync(srcPath);
+  const originalText = originalBytes.toString('utf8');
+  const crlf = originalText.includes('\r\n');
+  const text = crlf ? originalText.replace(/\r\n/g, '\n') : originalText;
+  const restore = crlf ? (s) => s.replace(/\n/g, '\r\n') : (s) => s;
+  if (restore(text) !== originalText) {
+    die(`${basename(srcPath)} mixes CRLF and LF line endings, so normalising it cannot be `
+      + 'undone exactly. Refusing to guess — a copy that is not byte-identical would defeat '
+      + 'the append-only proof.');
+  }
+  return { originalBytes, originalText, text, restore };
+}
+
 const COPY_INFIX = '.__probe__.';
 const STUB_INFIX = '.__probe_stub__.';
 // Where a generated stub finds the functions the harness supplied. The stub only DELEGATES --
@@ -182,8 +214,10 @@ export async function loadWithProbe(srcPath, spec = {}) {
   const dir = dirname(srcPath);
   if (seq === 0) sweep(dir);
 
-  const originalBytes = readFileSync(srcPath);
-  const originalText = originalBytes.toString('utf8');
+  // 🔴 `sourceText` is LF whatever the checkout did; `restore` puts the file's convention back
+  //    before anything is written. Matching happens on LF so a `spec.mutate` anchor written with
+  //    a bare newline means the same thing in every worktree.
+  const { originalBytes, originalText, text: sourceText, restore } = readSourceText(srcPath);
 
   // ── condition ③: the mark must not already be in the subject ────────────────────────────
   if (originalText.includes(MARK)) {
@@ -191,12 +225,13 @@ export async function loadWithProbe(srcPath, spec = {}) {
       + 'harness would measure the probe instead of the module.');
   }
 
-  const prefixText = spec.mutate ? spec.mutate(originalText) : originalText;
-  if (typeof prefixText !== 'string') die('spec.mutate must return the mutated source text.');
-  if (spec.mutate && prefixText === originalText) {
+  const mutatedText = spec.mutate ? spec.mutate(sourceText) : sourceText;
+  if (typeof mutatedText !== 'string') die('spec.mutate must return the mutated source text.');
+  if (spec.mutate && mutatedText === sourceText) {
     die('spec.mutate returned the source unchanged. A mutant that did not mutate scores as '
       + '"caught" for the wrong reason — it proves nothing.');
   }
+  const prefixText = restore(mutatedText);
 
   const suffix = buildSuffix(expose, state);
   const prefixBytes = Buffer.from(prefixText, 'utf8');
@@ -223,7 +258,7 @@ export async function loadWithProbe(srcPath, spec = {}) {
       if (!sib) die(`stub specifier ${JSON.stringify(specifier)} is not a sibling module. `
         + 'Only `./name.js` can be redirected — a package or a deep path is out of scope.');
       const names = Object.keys(stubs[specifier]);
-      const declared = importedNames(originalText, specifier);
+      const declared = importedNames(sourceText, specifier);
       const missing = names.filter(n => !declared.has(n));
       if (missing.length) {
         die(`${basename(srcPath)} does not import ${missing.join(', ')} from ${specifier}. `
