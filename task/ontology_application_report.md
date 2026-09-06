@@ -12550,3 +12550,59 @@ covers_declared_keys 독자   소스 «0» · 번들 «0» — 총괄 실측과 
 🔒 예약 «해제»합니다 — 다음 줄을 주시면 집겠습니다.
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔎 S-21 첫 걸음 — **화면은 메인 그리드(멈춤 없음). 그런데 「찍힌다」가 «조건문»이었습니다** (10:4x)
+
+⛔ 코드 0줄.
+```
+화면    메인 그리드의 «소스 목록» — `client2/src/main.js` 가 그리고 `source_rows.js` 가 한 행을 만듭니다
+자리    source_rows.js:37  `${displayVal !== null ? escapeHtml(String(displayVal)) : 'NULL'}`
+       source_rows.js:56  `valText = String(uniqueVals[0]);`   (여러 셀 선택 시)
+rnd_board 아님 -> 멈춤 조건 «안 걸립니다»
+```
+
+## 🔴 그런데 그 자리에 «닿는 길»을 못 만들었습니다
+```
+원문(클라 보고 02:46)  「소스가 `undefined` «면» 지금 화면에 「undefined」가 찍힙니다」  <- «조건문»입니다
+큐 줄(S-21)           「화면이 「undefined」를 «글자 그대로» 찍습니다」                <- «관측»으로 바뀌었습니다
+```
+실측 — 두 호출부 «둘 다» 그 값을 못 만듭니다:
+```
+main.js:1548-1556   `sourceNames = Object.keys(sources)` · `sourceVal = sources[sourceName]`
+                    -> 키가 «같은 객체»에서 나옵니다. 그리고 JSON 에는 `undefined` 가 «없습니다»
+main.js:1642-1652   `valStr = srcVal.value !== undefined ? srcVal.value : ''`  <- 가드가 «이미» 있습니다
+source_rows.js:28   같은 가드가 «한 번 더» 있습니다
+=> 서버 응답을 통해서는 `displayVal` 이 `undefined` 가 «되지 않습니다»
+```
+🔵 부류: 「가드는 «도달 가능해지는 날» 틀린다」의 «반대편» — 아직 도달 불가한 자리를 관측으로 적은 것입니다.
+⚠️ **전수는 아닙니다.** 저는 «인용된 자리»와 걸러낸 `String(...)` 스캔만 봤습니다.
+   후보 하나를 미확인으로 남깁니다: `grid.js:964` `String(label).toUpperCase()` — label 이 없으면 「UNDEFINED」.
+
+## 🔵 대신 «진짜 안 그려지는 부재»를 찾았습니다 — 그리고 그게 이 줄의 값입니다
+```
+오늘 그리는 것   값이 `null`      -> 「NULL」        («없다»고 «적힌» 것)
+              값 키가 «없음»    -> 빈 칸          («있는데 값이 안 실린» 것)
+              소스가 «하나도 없음» -> 「No source data available.」 (main.js:1551)
+🔴 안 그리는 것   「선언된 소스인데 «이 셀엔 행이 없다»」
+              -> 루프가 `Object.keys(sources)` 만 돕니다. 그 소스는 «행 자체가 안 생깁니다»
+              => 운영자는 「그 소스가 이 셀에 없다」와 「그 소스가 «세상에 없다»」를 «구별할 수 없습니다»
+```
+📎 이건 오늘 밤 서버에서 세 번 닫은 그 부류입니다 — `absent` ≠ `empty` (server/listing_absence.py).
+   화면 쪽에는 아직 그 갈래가 «없습니다».
+
+## 판정 대기: **쉰넷**
+```
+54  🔴 S-21 의 문장을 바꿀지 —
+    ㉠ 「literal undefined 가 찍힌다」는 «도달 경로를 못 찾았습니다»(위 실측). 조건문으로 되돌릴지
+    ㉡ 그 자리의 «진짜» 부재 결함은 「선언된 소스가 이 셀에 없을 때 «행이 안 생긴다»」입니다 —
+       이걸 S-21 로 삼을지, 새 줄로 뺄지
+    ⚠️ 「undefined 를 빈 칸으로」는 어느 쪽이든 «답이 아닙니다»(지시 그대로) — 갈라서 그리는 문제입니다
+```
+```
+판정 대기: 🔴 54 (첫 제출 10:4x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
