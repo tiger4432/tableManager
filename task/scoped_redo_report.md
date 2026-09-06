@@ -13827,3 +13827,57 @@ M3 서버가 넷째 상태를 지어냄 → 부재 기록 · M4 주석이 옛 �
 이 라운드가 «뺀» 것   파일 0 · 줄 «3» (지어낸 철자 셋) · 축 0
 ④ 를 움직였나   «예». 한 사실의 철자가 «하나»입니다. 그리고 갈라질 «수가 없습니다» — 의도가 아니라 구조로
 ```
+
+---
+
+# 🔒 [구현자 -> 총괄] **S-15 ① 예약 — 전제를 «먼저» 열었고, 판정문이 제 줄보다 «넓습니다»**
+
+## ① 전제 확인 — 「승인된 은퇴」는 «실재»합니다. 다만 조건이 붙어 있었습니다
+```
+`docs/process/LEDGER_RULINGS.md:368`  R-2026-08-14-C 「은퇴 승인, 실행은 «기한 후»」
+조건   「오늘 착수 금지 — 콘솔 기한이 전부를 앞선다」  -> 그날은 2026-08-14. «지났습니다»
+범위   🔴 판정문이 제 줄보다 «넓습니다»:
+       제 줄        「라우트 + 그 시험」
+       판정문       「라우트 + `bonding_plan.get_core_summary` «사슬» + 소비자였던 테스트」
+       그리고       「테스트는 «삭제가 아니라» M2 등가 검증으로 전환 여부를 «레인이 판단»해
+                    근거와 함께 커밋에 적는다」 <- 이 라운드의 «진짜 일»입니다
+```
+
+## ② 발화 관문 ① — «제가» 셌습니다
+```
+클라        «0» — client2/src · client2/tests · client2/dist 전수 히트 0
+데코레이터   `@app.get("/api/bonding-plan/core-summary")` — 핸들러 직접 호출자가 0 인 것은 «정상»입니다.
+            그래서 «경로 문자열»로 셌습니다
+설정 문자열  운영 설정에 «없음». 히트 둘은 `server/config/backup/*.bak-*` 의 «설명문»입니다
+시험 전용    test_bonding_plan.py «22/26» · test_availability_relaxation.py «2/15»
+사슬        `get_core_summary` 의 호출자 «1» (그 라우트) · `parse_region` «1»(그 라우트) ·
+            `clamp_rects` «1»(get_core_summary) · `_fetch_points` «2»(get_core_summary 안)
+살아남는 것  `bonding_plan.py` 는 «삽니다» — `transfer_plan` 이 `canonical_basis` ·
+            `STATUS_NOT_DECLARED` · `finite_point` · `role_is_declared` 를 씁니다
+```
+
+## 🔴 ③ 그런데 «반쪽»이 남습니다 — 그건 판정을 청합니다
+```
+`bonding_plan_config.json` 의 «남은 소비자가 그 라우트 하나»입니다
+   근거는 제 실측이 아니라 «문서 자신»입니다: docs/guide/config/bonding_plan_config.md:14
+   「② 남은 소비자는 하나뿐입니다 — `GET /api/bonding-plan/core-summary`」
+=> 라우트를 은퇴시키면 그 선언이 «고아»가 됩니다. 그리고 R-2026-08-14-C 는
+   「대기열의 bonding_plan_config 은퇴 «본건»에 합류」라 적었습니다
+⚠️ 그 「본건」을 큐·보드에서 «못 찾았습니다» (히트 0). 없어졌는지 닫혔는지 모릅니다
+🔴 그리고 «선언 삭제»는 조작자 표면이라 라우트 삭제와 «같은 부류»입니다 — 레인 재량이 아닙니다
+```
+**그래서 이 라운드는 «서버 사슬까지»만 합니다. 선언·가이드는 «안 건드립니다».**
+👉 청합니다(구현자 3): `bonding_plan_config.json` + 그 가이드의 은퇴를 «이 라운드에 합류»시킬지,
+   아니면 «별도 줄»로 세울지. 제 권고는 «별도 줄» — 선언 은퇴는 조작자가 그 파일을 들고 있을 수 있고
+   그 사실은 이 박스에서 잴 수 없습니다.
+
+## 🔒 예약
+```
+server/main.py                          라우트 하나 (`:4216-4241`) + 그 import 줄
+server/bonding_plan.py                  `get_core_summary` · `parse_region` · `clamp_rects` · `_fetch_points`
+server/tests/test_bonding_plan.py       22/26 (남는 넷은 «다른» 헬퍼를 잽니다)
+server/tests/test_availability_relaxation.py   2 시험의 «M1 절반»만 — M2 절반은 «남깁니다»
+⛔ 안 건드림   `bonding_plan_config.json` · 그 가이드 · `canonical_basis` 등 «사는» 수출 넷 · transfer_plan
+```
+🔵 겹침 실측: 추적 미커밋 «0».
+🔴 그리고 «테스트 전환 판단»을 커밋에 적습니다 — 판정문이 그것을 «레인 몫»으로 명시했습니다.
