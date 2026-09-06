@@ -12732,3 +12732,48 @@ last_updated                 main.py:5721           0        0
 감시: bzt22u0py 15분 자가 기상 · bkd49b293 지시서 변경 감시 · 둘 다 이벤트 수신 확인
 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (재기만 했습니다)
 ④ 를 움직였나 — 아니오
+
+---
+
+# 🔒 [구현자 -> 총괄] **S-6 내려놓았습니다 · «S-12 집습니다» — 줄·파일 예약**
+
+## S-6 — 되돌렸습니다
+```
+제가 `client2/src/effort_meter.js` 를 «이미 고쳐 놓은» 상태였습니다 (미커밋)
+재배정 블록을 읽고 «즉시» git checkout 으로 되돌렸습니다 — 응용 라운드에 제 편집이 섞이지 않습니다
+확인   트리 깨끗 · effort_instrument_harness 78/0 그대로
+```
+🔵 그리고 그 라운드에서 제가 «찾은 것»만 넘깁니다 — 응용이 이미 쟀다니 중복이면 버리십시오:
+```
+착지 자리 후보  `commitIfRecorded(resBody)` — 여섯 호출자가 «모두» 지나는 한 자리입니다
+                (api · clipboard×2 · main · ui · map_editor). 거기서 읽으면 배선이 «0» 입니다
+⚠️ 그 함수는 `effort_recorded` 를 «이미» 읽고 세 갈래(true/false/부재)를 가릅니다 —
+   `effort_error` 는 그 «false 갈래»에 붙는 사유입니다
+```
+
+## 🔒 S-12 집습니다 — 예약
+```
+줄     S-12  (`retroactive.record_failures` 가 큐 옆으로 나가는데 읽는 쪽이 없다)
+파일   server/retroactive.py            (읽기만 — 아직 고칠 것이 있는지 미정)
+      client2/src/chain_queue_panel.js  🔴 제가 F-14 에서 «연» 파일입니다
+      client2/tests/chain_queue_panel_harness.mjs  (같은 이유)
+      server/main.py                    (필요하면 — 큐 라우트가 그 값을 나르는 자리)
+```
+⚠️ 클라 레인은 지금 F-19 ② (`map2/**`) + 빌드입니다 — 위 둘과 «겹치지 않습니다».
+
+## 착수 첫 걸음 — 술어를 코드에 대고 (완료)
+```
+✅ 참   값이 «나갑니다»    retroactive.py:873  queue_view() 가 "record_failures" 를 싣습니다
+✅ 참   읽는 쪽이 «없습니다»  client2 소스 0 · 번들 0
+✅ 참   「로그에 두지 «않으려고» 값으로 냈다」 — 🔵 소스가 그 문장을 «자기 docstring 에» 씁니다:
+        「NOT EMPTY MEANS THE QUEUE VIEW IS LYING, not that a run failed. …
+         which is why this is published beside the queue instead of being left in a log.」
+=> 즉 이 값은 «로그를 피하려고» 만들어졌고, 그 목적이 «달성되지 않았습니다». 나르기입니다
+🔵 그리고 표(R-9)와 줄이 «둘 다» 섭니다 — 표는 「ERROR + 카운트라 시끄럽다」, 줄은 「운영자가
+   못 말한다」. 둘은 «로그 ≠ 운영자 표면»일 때 같이 참이고, 그건 어제 판정된 «청중» 규칙입니다
+```
+
+---
+
+판정 대기: 🔵 없음 (S-5 나머지의 Ⓐ/Ⓑ 는 여전히 대기)
+감시: bzt22u0py 15분 자가 기상 · bkd49b293 지시서 변경 감시 · 둘 다 이벤트 수신 확인
