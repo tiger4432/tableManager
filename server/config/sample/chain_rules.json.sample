@@ -35,6 +35,7 @@
     {
       "__comment": "DISABLED 2026-09-04 by lead, on measured cost rather than on principle. It refuses on every event, so it contributes nothing; I first left it enabled because it is alone in its trigger group and so destroys no sibling's writes. The 50-row load run falsified the other half of that: 50 input rows became 101 outbox events, and this rule turned the 51 derived ones into 153 refusal groups at three retries each, draining at 2.5-3.5s per group. The mapper itself took 0.5s; the run took 3.5 minutes. That multiplier IS the owner's 'the chain does not tick'. Re-enable by declaring the job column it asks for -- and see the cycle note on the standard-map rule before doing so. | S2 identity projection. This is the explicitly allowed second hop of dt_log -> wafer_map_metadata -> dt_inventory. The worker keeps all other chain-created events blocked; allow_chain_trigger is safe only because the loader rejects cycles among such edges.",
       "name": "dt_metadata_to_dt_inventory",
+      "target_job_column": "dt_job",
       "trigger_table": "wafer_map_metadata",
       "target_table": "dt_inventory",
       "mapper_module": "mappers.dt_inventory_metadata_mapper",
