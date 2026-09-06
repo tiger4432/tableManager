@@ -667,13 +667,27 @@ export function buildColumnDefs() {
           const key = `${params.data.row_id}_${col}`;
           return state.pendingTxEdits.hasOwnProperty(key);
         },
+        // 🔴 F-13. BOTH rules also read `manual_priority_source`, and that is the whole fix.
+        //    `priority_source` is computed TWICE on the server with different answers
+        //    (server/main.py:894-907): the cheap read lights 'user' from `is_ow` alone, the
+        //    declared read defers to `compute_priority_value`. So a pin was visible or not
+        //    depending on WHICH READ the screen happened to make. `manual_priority_source` is
+        //    the STORED pin -- it ships already (main.py:920) and the source-detail panel
+        //    already reads it (main.js:1541) -- so consulting it here bypasses both
+        //    computations and gives the same answer either way. That is why this and not a
+        //    unified `priority_source`, which is C-7 and belongs to the server.
+        // ⚠️ If the write path leaves `manual_priority_source` null for a real pin, this arm is
+        //    simply never true and nothing changes -- inert, not wrong. That question is open.
+        // 🔵 No new class and no new badge: a pin is an overwrite, and it wears the mark this
+        //    grid already gives one.
         'cell-collision-merge': (params) => {
           if (isSystem) return false;
           if (!params.data) return false;
           const key = `${params.data.row_id}_${col}`;
           if (state.pendingTxEdits.hasOwnProperty(key)) return false;
           const cell = params.data.data?.[col];
-          return cell?.priority_source === 'collision_merge';
+          return cell?.priority_source === 'collision_merge'
+            || cell?.manual_priority_source === 'collision_merge';
         },
         'cell-overwrite': (params) => {
           if (isSystem) return false;
@@ -681,7 +695,8 @@ export function buildColumnDefs() {
           const key = `${params.data.row_id}_${col}`;
           if (state.pendingTxEdits.hasOwnProperty(key)) return false;
           const cell = params.data.data?.[col];
-          return cell?.priority_source === 'user';
+          return cell?.priority_source === 'user'
+            || cell?.manual_priority_source === 'user';
         },
         'custom-range-selected': (params) => {
           return isCellInRange(params.node.rowIndex, col);
