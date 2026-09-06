@@ -147,7 +147,13 @@ ok(rows.autoUpdateRowHtml(benignCol, opts).includes('data-table="wafer"'),
 //    so the population is asked of the source. The number is the one this round leaves behind,
 //    and it must go DOWN or be re-baselined deliberately.
 console.log('\n-- how many templates still interpolate without escaping --------------');
-const { readFileSync, readdirSync, statSync } = await import('node:fs');
+// 🔴 THROUGH THE SHARED READER. This oracle matches source text, so it is the same class as the
+//    five harnesses a checkout reddened on 2026-09-07 — it is safe today only because `\s` in its
+//    pattern happens to swallow a carriage return, which is luck, not a decision. Measured while
+//    repairing those five: 33 harnesses carry their OWN copy of this normalisation. This one does
+//    not become the 34th.
+const { readdirSync, statSync } = await import('node:fs');
+const { readSourceText } = await import('./lib/probe.mjs');
 const path = (await import('node:path')).default;
 const { fileURLToPath } = await import('node:url');
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
@@ -164,7 +170,7 @@ const BT = String.fromCharCode(96);
 const RX = new RegExp(`innerHTML\\s*=\\s*${BT}([\\s\\S]*?)${BT}`, 'g');
 let unescaped = 0;
 for (const p of jsFiles(SRC)) {
-  const src = readFileSync(p, 'utf8');
+  const src = readSourceText(p).text;
   for (const m of src.matchAll(RX)) {
     const body = m[1];
     if (!body.includes('${')) continue;
