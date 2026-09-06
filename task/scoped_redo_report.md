@@ -12527,3 +12527,76 @@ batch_refresh_required 재적재  «도달 불가»    도달 가능   <- 이 �
 이 라운드가 «뺀» 것 — 파일 0 · 줄 **1**(죽은 철자) · 축 0
 ④ 를 움직였나 — 🔵 **예.** 한 기능의 두 철자 중 «죽은 쪽»을 없앴습니다. 그게 이 줄의 실제 결함이었습니다
 🔴 빌드 필요 — 클라 변경이 «여섯»입니다 (F-2 둘 · F-4 · F-6 · F-14 화면 · S-5)
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-5 나머지 나르개 — «발신자부터» 셌고, 크기가 달라 멈춥니다**
+
+## ① 물으신 것: 「발신자가 결함인가, 청자가 결함인가」 — **발신자는 결함이 아닙니다**
+```
+살아 있나   `main.py:2944`  delete_ids_omitted = len(ids) if len(ids) > BROADCAST_ITEM_LIMIT else 0
+도달 가능?  ✅ 시험 «둘»이 이 값을 «비영으로» 몰고 단언합니다
+           test_replace_map_cross_scope.py:162 · test_replace_map_scope_diff.py:235
+           상한은 BROADCAST_ITEM_LIMIT = 100 이고, 소스 주석이 「adopt 로 «도달 가능해졌다»」를 적습니다
+의도적인가  ✅ 소스가 «사유»를 적어 뒀습니다 — 「Never omitted silently — a refresh signal carrying
+           this same count goes out instead」
+=> 발신자는 «살아 있고 · 도달 가능하고 · 의도적이고 · 사유가 적혀» 있습니다. 여기는 고칠 것이 없습니다
+```
+
+## 🔴 ② 그런데 청자를 세다가 «크기가 달라졌습니다»
+```
+이 값은 응답의 `scope` 블록 «한 칸»입니다. 그 블록은 «일곱 칸»입니다:
+   filters · deleted · inserted · adopted · mode · reason · delete_ids_omitted
+클라 독자   «0» — `"scope"` 로 src 0 · 번들 0
+```
+🔴 **그리고 둘은 소스가 「부르는 쪽이 «내보여야» 한다」고 적어 둔 칸입니다:**
+```
+inserted  「a scope wipe with an empty payload legitimately reports inserted: 0 —
+           the caller must surface that」
+adopted   「Rows this write updated that were NOT inside the scope it declared — i.e. cells it
+           took over from ANOTHER MAP. … It is reported rather than prevented」
+```
+⚠️ `adopted` 는 «표기 문제»가 아니라 «데이터 사실»입니다 — 이 저장이 «다른 맵의 셀을 가져갔다».
+
+## ③ 그리고 응답은 «읽히고 있습니다» — 이 블록만 안 읽힙니다
+```
+호출자   PUT /tables/{t}/data/updates 를 부르는 클라 자리 «아홉»
+        api.js · clipboard.js ×2 · main.js · ui.js · map_editor.js ×4 (맵 저장 포함) · map2/authoring
+본문     «파싱됩니다» — `result.change_count` 를 쓰고 `commitIfRecorded(result)` 에 넘깁니다
+=> 「본문을 안 읽어서」가 아니라 «이 블록을 안 묻습니다». 그리고 그 블록을 채우는 것이
+   맵 저장 경로(replace_map)입니다 — 즉 «값이 실제로 생기는» 그 저장에서 안 읽힙니다
+```
+
+## 🔴 그래서 멈춥니다 — 「한 칸 나르기」가 아닙니다
+```
+S-5 첫 나르개  독자가 «있어야 할 자리»가 분명했습니다(이력 덧붙이기 바로 그 줄) -> 나르기였습니다
+이 절반        독자가 «어디»여야 하는지가 «화면 결정»입니다:
+               · 일곱 중 «무엇»을 말하나 (전부 말하면 자막이고, ⛔ 금지하신 그것입니다)
+               · 언제 말하나 (매 저장? adopted 가 0 이 아닐 때만?)
+               · 어떤 톤인가 (adopted 는 «경고»인가 «정보»인가 — 데이터 사실이라 제가 못 정합니다)
+```
+
+## 판정을 «한 줄»로 부탁드립니다
+```
+Ⓐ 지금 짓는다   -> 「일곱 중 어느 칸을, 어느 조건에서」를 «주십시오». 자리는 맵 저장의 성공 토스트입니다
+Ⓑ 큐로 넘긴다   -> 「응답 `scope` 블록 일곱 칸 · 독자 0 · 그중 둘은 소스가 «내보이라»고 적음」으로
+                 한 줄 올리고, 저는 등급 2 의 다음 줄로 갑니다
+```
+🔵 제 권고는 **Ⓑ** 입니다 — 이건 「값이 안 나간다」가 아니라 「화면이 이 사실을 «어떻게 말할지»
+   아직 정해진 적이 없다」이고, 그건 제가 아니라 «화면을 아는 쪽»이 정할 것입니다.
+   그리고 오늘 밤 제가 화면 문구를 정한 세 번은 전부 «서버가 이미 말한 문장»을 나른 것이었습니다 —
+   여기는 그 문장이 «없습니다».
+
+## 🔴 모르는 것
+```
+· `adopted` 가 «운영에서» 0 이 아닌 적이 있는지 «모릅니다». 소스는 「map key 가 business key
+  밖에 있는 표(오늘은 dt_log)에서만 가능」이라 적습니다 — 그 표가 운영에서 쓰이는지는 제가 모릅니다
+· 그 답에 따라 Ⓐ 의 «급함»이 달라집니다 (쓰이면 지금, 안 쓰이면 큐)
+```
+
+---
+
+판정 대기: 🔴 **Ⓐ/Ⓑ 한 줄** (Ⓐ면 「어느 칸·어느 조건」까지)
+감시: bzt22u0py 15분 자가 기상 · bkd49b293 지시서 변경 감시 · 둘 다 이벤트 수신 확인
+이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (재기만 했습니다)
+④ 를 움직였나 — 아니오. 다만 「보내는 쪽이 아니라 «듣는 쪽»이 없다」를 «수»로 갈랐습니다
