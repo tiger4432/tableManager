@@ -8374,3 +8374,78 @@ allow_chain_trigger 를 단 규칙 셋: dt_metadata_to_dt_inventory ·
           🔴 `captured()` 는 «두지» 마십시오가 제 판단인데 판정 청합니다 ·
           🔴 `_archive` 아홉의 처리(배너를 달까 / 옮길까 / 둘까)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【④ 가운데 홉 잡 컬럼】 착지 `d2e305c3` — ⚠️ **재기동 «전»에 한 줄 읽어 주십시오**
+
+## 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (한 줄 «더한» 라운드입니다)
+
+## ⓐ 고치기 «전» 실측 — 이 박스의 수입니다 (운영 주장 아님, 전/후 대조용)
+```
+dt_inventory          401 행 · dt_job 있는 것 401 · distinct dt_job 401
+wafer_map_metadata   4,925 행
+```
+
+## 한 줄, «두 파일» — 지시대로
+```
+"target_job_column": "dt_job"    server/config/chain_rules.json          (라이브 · gitignore)
+                                 server/config/sample/chain_rules.json.sample  (커밋됨)
+검증기   둘 다 «ACCEPTS» (규칙 9). 고리 검사 통과 확인했습니다
+근거     dt_inventory_metadata_mapper.py:88 이 chain_bindings.resolve_column(rule,
+        "target_job_column", ...) 로 «묻고 있는데» 규칙이 이름을 안 대고 있었습니다
+```
+
+## 🔴 그런데 ⓒ 를 그대로 하면 «0 이 나옵니다» — 그 0 은 「없다」가 아니라 「꺼져 있다」입니다
+```
+그 규칙은 지금도  "enabled": false 입니다
+그 규칙의 __comment 자신이 적어 뒀습니다:
+   「DISABLED 2026-09-04 by lead … Re-enable by declaring the job column it asks for」
+=> 즉 «컬럼 선언»과 «켜기»가 한 쌍인데, 지시서는 「이 한 줄뿐입니다」라고 못 박았습니다
+```
+🔴 **그래서 `enabled` 는 «건드리지 않았습니다».** 자는 쓰기 경로를 «먼저» 깨우는 쪽이 비싼 방향이고,
+   지시서가 명시적으로 한 줄이라 했기 때문입니다. 다만 그대로 두면:
+```
+ⓒ 「한 배치 돌리고 몇 행 들어왔나」  ->  «0 행»
+   그리고 그 0 은 「할 일이 없다」가 아니라 「스위치가 꺼져 있다」입니다
+   -> 이 저장소가 어제 하루 종일 닫은 그 부류(「0 으로 거짓말」)를 제가 만들 뻔했습니다
+```
+🔵 **말씀만 주시면 «한 줄»입니다** — `"enabled": true` 를 두 파일에. 그때 ⓑⓒⓓ 가 뜻이 생깁니다.
+⛔ 다른 규칙은 «하나도» 안 건드렸습니다.
+
+---
+
+# 【③ `_archive` 후속 측정】 — **줍습니다. 그리고 «넷» 전부 깨져 있습니다**
+```
+루트에서 맨 pytest --collect-only   ->  4,810 수집 · «33 errors»
+그중 _archive/tests    «4» (네 파일 «전부» ImportError. 어제 제가 3이라 한 것은
+                       `server/_archive/tests/` 를 «직접» 가리켰을 때의 수였습니다)
+그 밖의 29
+   agent_workspace/…   24   PermissionError (스크래치 디렉터리) — 환경 문제
+   server/scripts/archive/  2   OperationalError (여기도 «archive» 디렉터리입니다)
+   계약 shim            3   map2_seam · notation_fold · temporal_text
+```
+🔵 **shim 셋이 «다 같이» 터집니다 — 2026-08-04 의 notation_fold 템플릿 포함입니다.**
+   즉 어제 제가 만든 temporal_text shim 이 «새 고장을 들여온 게 아니라» 템플릿의 성질을
+   그대로 물려받았습니다. 「템플릿 + 데이터 갈아끼우기」의 결과로는 맞습니다만,
+   ⚠️ 셋 다 «맨 루트 pytest 에서는 안 도는» 상태입니다. 문서화된 `pytest server/tests/` 는 정상입니다
+📌 `server/scripts/archive/` 라는 «두 번째 아카이브»가 있다는 것도 이번에 나왔습니다 (2파일)
+
+---
+
+# 【⑤㉡ 출하 참조 설정】 — 🔴 **깊이가 들어와도 «안 풀립니다». 따로 손봐야 합니다**
+```
+판정 ①   「검증기는 «거절 유지»」  <- 오늘 총괄 판정
+그런데   docs/guide/config_reference/chain_rules.json 이 막히는 이유가 «그 검증기»입니다
+        실측: REFUSES -> allow_chain_trigger cycle:
+              wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+=> 깊이는 «런타임»의 폭주를 막고, 이 파일은 «정적 검사»에서 막힙니다. 다른 층입니다
+=> 깊이가 아무리 들어와도 그 파일은 «여전히 로드에서 거절»됩니다
+```
+🔵 즉 어제 제가 「같은 변이라 같이 풀린다」고 적은 것은 «반만» 맞았습니다 —
+   변은 같은데 «막는 주체»가 다릅니다. 정정합니다.
+
+판정 대기: 🔴 ④ 의 `enabled` 를 켤까요 (안 켜면 ⓒⓓ 가 0 을 냅니다) ·
+          🔴 계약 shim 셋이 맨 루트에서 터지는 것 — 고칠 부류입니까 ·
+          🔴 `_archive` 아홉의 현재형 docstring 수리 착수 여부 (판정 ③ 은 「고치십시오」로 읽었습니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
