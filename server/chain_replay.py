@@ -951,7 +951,14 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                         stats["samples"].append({
                             "row_id": row_id, "column": col, "action": "withdraw",
                             "old_value": old_val, "new_value": new_val,
-                            "revealed_source": top_src,
+                            # 🔴 ONE SPELLING FOR THE LAYER WINNER. This said `revealed_source` and the block
+                            #    below said `winning_source`, for the SAME value from the same
+                            #    helper -- the name was restating what the container already
+                            #    says. A dict sitting next to `row_id`/`column` is that cell's
+                            #    answer; the preview's return dict is the preview's. Subject in
+                            #    the name means one more name per container, which is how this
+                            #    got to three (ruling 40).
+                            "top_source": top_src,
                             "remaining_sources": sorted(survivors)})
 
                     if apply:
@@ -1171,7 +1178,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                         "business_key_val": getattr(row, "business_key_val", None),
                         "old_value": decision["old_value"],
                         "new_value": decision["new_value"],
-                        "winning_source": decision["top_source"],
+                        # Same value, same name (ruling 40).
+                        "top_source": decision["top_source"],
                         "reason": reason,
                         "sources": sorted(srcs),
                     })
