@@ -1101,6 +1101,21 @@ const FLOORS = new Map([
   //    check or its no-op-mutant check still fires. Two of those guards exit(2), so they are
   //    measured in a child process -- 「cannot measure it here」 is how a guard disappears.
   ['probe_mechanism_harness.mjs', 17],
+
+  // New 2026-09-07, both introduced by the same night's work on 「the screen draws a lie
+  // instead of a fact」. Same rule as the other new entries: the floor is the count reported
+  // on the commit that introduces it, because there is no earlier tree to measure against.
+  //
+  // 🔴 THE TWO EXIST SEPARATELY ON PURPOSE and merging them would be the defect they close.
+  //    A listing can arrive in THREE states -- the envelope carries an error, the source path
+  //    is absent, or the source is present and empty -- and the screen had words for one.
+  //    `body_error` answers the first across two envelope shapes (`status: "error"` on the
+  //    admin routes, a TRUE `error` key on the ledger ones, where that key is present and
+  //    null on the happy path too). `absent_listing` answers the second, which arrives as
+  //    `status: "success"` because the REQUEST did not fail. A drop in either count means the
+  //    screen went back to saying 「0 rows」 for a source that is missing or broken.
+  ['body_error_harness.mjs', 16],
+  ['absent_listing_harness.mjs', 11],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

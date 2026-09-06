@@ -309,7 +309,10 @@ class FileIngestionLog(Base):
     filename = Column(String, index=True)
     filepath = Column(String)
     table_name = Column(String, index=True)
-    status = Column(String(20), default="FAILED", index=True) # "FAILED", "SUCCESS", "PENDING"
+    # 쓸 수 있는 상태는 `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY` 가 정본이다 —
+    # 여기에 목록을 «다시 적으면» 그 사본이 낡는다. 실측 2026-09-07: 이 주석은
+    # 셋을 적고 있었고 코드는 다섯을 쓰고 있었다.
+    status = Column(String(20), default="FAILED", index=True)
     error_message = Column(String, nullable=True)
     retry_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
