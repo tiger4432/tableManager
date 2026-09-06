@@ -246,37 +246,54 @@ def poll_pending_retries():
                 # Update status to processing (PENDING) to prevent concurrent runs
                 log.status = "PENDING"
                 db.commit()
-                
-                # Setup handler and run synchronous retry
-                table_name = log.table_name or "unknown"
-                # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도가
-                # ingestion_workspace/<table_name> 허공 경로로 오배송되지 않게 한다.
-                from directory_watcher import resolve_workspace_root, load_global_table_config
-                import paths
-                workspace_root = resolve_workspace_root(
-                    paths.WORKSPACE_DIR, table_name, load_global_table_config()
-                )
 
-                config_path = os.path.join(workspace_root, "config", "config.json")
-                if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
-                    json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]
-                    if json_files:
-                        config_path = os.path.join(workspace_root, "config", json_files[0])
-                        
-                archives_path = os.path.join(workspace_root, "archives")
-                
-                handler = IngestionHandler(
-                    workspace_path=workspace_root,
-                    config_path=config_path if os.path.exists(config_path) else None,
-                    archives_path=archives_path,
-                    default_table_name=table_name,
-                    on_refresh_callback=trigger_ws_refresh,
-                    on_file_processed_callback=trigger_ws_file_processed,
-                    on_progress_callback=trigger_ws_progress
-                )
-                
-                # Process the file
+                # 🔴 EVERYTHING FROM HERE IS INSIDE THE TRY, AND THAT IS THE REPAIR.
+                # The claim above is committed BEFORE any work, so from this line until the
+                # row reaches a terminal status it exists in a state the poller's own query
+                # cannot see again (`status == "PENDING_RETRY"` selects it, and the claim
+                # just made it "PENDING"). Setup used to sit OUTSIDE the try -- workspace
+                # resolution, two imports, `os.listdir`, and the handler construction -- so
+                # an ordinary exception there escaped to the loop's outer handler, which
+                # logs "Error in retry poller loop" and does not touch `log.status`. The row
+                # then sat PENDING for ever with nothing naming it.
+                #
+                # ⚠️ NOT ONLY A CRASH. The measurement that opened this said "if the watcher
+                # DIES in that window"; a plain exception in setup was enough, and setup is
+                # where an alias workspace lookup or a config directory permission fails.
+                #
+                # ⛔ This does not close the window that a process DEATH opens -- nothing in
+                # this process can. That is the reclaim sweep's half, and it is separate.
+                # Bound BEFORE the try, like the payload in the scheduler's twin: the
+                # failure branch names the table, and an unbound name there would replace
+                # the reason with a NameError.
+                table_name = log.table_name or "unknown"
                 try:
+                    # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도가
+                    # ingestion_workspace/<table_name> 허공 경로로 오배송되지 않게 한다.
+                    from directory_watcher import resolve_workspace_root, load_global_table_config
+                    import paths
+                    workspace_root = resolve_workspace_root(
+                        paths.WORKSPACE_DIR, table_name, load_global_table_config()
+                    )
+
+                    config_path = os.path.join(workspace_root, "config", "config.json")
+                    if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
+                        json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]
+                        if json_files:
+                            config_path = os.path.join(workspace_root, "config", json_files[0])
+                        
+                    archives_path = os.path.join(workspace_root, "archives")
+                
+                    handler = IngestionHandler(
+                        workspace_path=workspace_root,
+                        config_path=config_path if os.path.exists(config_path) else None,
+                        archives_path=archives_path,
+                        default_table_name=table_name,
+                        on_refresh_callback=trigger_ws_refresh,
+                        on_file_processed_callback=trigger_ws_file_processed,
+                        on_progress_callback=trigger_ws_progress
+                    )
+                
                     # [QA F3] 재처리 폴러는 heavy 워커·observer와 같은 프로세스 —
                     # 워크스페이스 직렬화 락을 잡아 heavy/normal 레인 처리와 재처리
                     # 업서트가 같은 테이블에서 인터리빙되지 않게 한다(순서 계약 편입).
