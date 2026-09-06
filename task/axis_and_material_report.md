@@ -1,3 +1,79 @@
+# [디자인 -> 총괄] 🟢 **㉡ 은 «있습니다» — 그리고 그 기계가 «이름까지» 찍습니다. 새 캠페인 «불필요»** (2026-09-06)
+
+물으신 대로 «있나 없나»만 봤습니다. 수는 안 셌습니다.
+
+## ① 답: **예. 매 라운드 도는 그 게이트가 ㉡ 을 «이름으로» 답합니다**
+사슬을 끝까지 따라갔습니다 — 하니스에서 게이트 출력까지 «끊긴 데가 없습니다».
+```
+하니스   escapedNames  ->  bad  ->  process.exit(1)
+         + console.error('defects that escaped:\n  <이름들>')          retroactive_view:875
+게이트   ok=false · KNOWN_RED 아님  ->  마지막 else  ->  blocking       check_harnesses:1354
+게이트   blocking 이면 그 하니스의 stdout+stderr 를 «그대로 쏟습니다»   :1399-1405
+         (「re-summarising it here would lose exactly that」라고 적혀 있습니다)
+=> 탈출한 변이의 «이름»이 게이트 출력에 «찍힙니다». 주입 캠페인이 «필요 없습니다»
+```
+
+## ② 🔴 다만 «증거 줄»이 그것을 말하지 않습니다 — 이게 이 라운드의 발견입니다
+```
+탈출한 변이의 증거 줄:   ✗ <name>  [BLOCKING] (ran 318, failed 0)
+                                                        ^^^^^^^^^
+`ASSERTIONS` 의 failed 는 `base.fail` 이고 «탈출은 안 들어갑니다» (retroactive_view:885)
+=> ㉡ 이 잡히면 「빨간데 실패 0」입니다. 이유는 «아래 덤프»에만 있습니다
+```
+🔴 그리고 그 파일 «머리말»이 바로 그 위장을 막으려고 이 줄을 만들었다고 적습니다 —
+   「exit code alone cannot tell "red with N assertions" from "red with 0 assertions"」.
+   지금은 «반대 방향»으로 같은 위장이 납니다. 요약 한 줄만 읽으면 ㉡ 을 «크래시로 읽습니다».
+
+## ③ 🔴 그리고 «무효 방지 가드»가 ㉡ 에 «구조적으로 눈이 멉니다» — 실물이 기록돼 있습니다
+```
+가드   probe.mjs:196  「spec.mutate returned the source unchanged」-> 던집니다
+       손으로 짠 31 중 24 도 같은 취지의 가드를 답니다
+기록   check_harnesses:447-452
+       `way-forward-offered-on-every-nothing` 이 코어가 «두 번 적는» 문자열에 앵커를 걸었고
+       String.replace 가 «첫 번째»를 집어, 변이가 «아무도 안 읽는 자리»에 내려앉아 ESCAPED 했다
+       ── 그런데 «did-it-apply 가드는 통과했다. 소스가 진짜로 바뀌었으니까»
+```
+🔴 **가드는 「글자가 바뀌었나」를 묻지 「단언이 «보는 자리»가 바뀌었나」를 안 묻습니다.**
+   ㉡ 이 정확히 그 틈에 삽니다. 그래서 가드를 세는 것으로는 이 팔이 «안 닫힙니다».
+⚠️ 같은 자리에 «거울»도 적혀 있습니다 — `M8h` 는 너무 넓어 **컨트롤 둘 다 «잡았고»**,
+   그 파일은 그것을 「검사가 고장 났다는 이 파일 자신의 신호」라 부릅니다.
+
+## ④ 기계가 «침묵»하는 자리 — 아니라는 뜻이 아니라 «할 말이 없다»는 뜻
+```
+하니스 80 중 변이 어휘를 «든» 것  54   ->  나머지 26 은 ㉡ 에 대해 아무 말도 안 합니다
+스텁 짓는 36 중 코퍼스 «있는» 것  32   ->  없는 넷: map2_geometry_assumption · split_registry
+                                          · startxy_probe · walk_wire  🔴 «마지막은 제 것입니다»
+표본 다섯 중 요약 줄이 «없는» 것  2    ->  map2_index_ramp 는 변이를 «보통 단언»에 접어 넣어
+                                          verdict 줄 자체가 없습니다 (ASSERTIONS 94 0 뿐)
+```
+
+## ⑤ 표본 다섯 (지시하신 대비책) — **오늘 살아 있는 탈출 «0»**
+```
+retroactive_view          29/29 caught, 0 escaped; 2/2 controls escaped
+virtual_column_render     28/28 caught, 0 escaped; 2/2 controls escaped
+reference_grid_paste       2/2  caught, 0 escaped; 2/2 controls escaped
+redo_banner               17/17 caught;            2/2 controls escaped
+rnd_board                 변이마다 「M9 caught by B5 (11 red)」 — «몇 개가 빨개졌나»까지 찍습니다
+                          🔵 이 «(N red)» 가 ㉠(너무 넓은 단언)과 진짜 포착을 가르는 유일한 신호입니다
+```
+게이트 전량: **78 초록 · known-red 2 (`alignment_verdict` · `valid_die_frame_adoption`, 둘 다 제 것 아님) · exit 0.**
+
+## ⑥ 🔴 모르는 것
+```
+❓ 코퍼스가 «상상한 변화»의 바깥은 여전히 못 봅니다. 변이는 손으로 씁니다 —
+   그러니 이 기계는 ㉡ 의 «부분집합»에 답합니다. 전체에 답하는 기계는 «없습니다»
+❓ 26개 무코퍼스 하니스가 ㉡ 을 «얼마나» 안고 있는지 — 안 쟀습니다 (수는 묻지 말라 하셨습니다)
+❓ 손으로 짠 31 중 가드 없는 7 이 «진짜로» 무방비인지 — 제 grep 프록시입니다.
+   둘(dom_patch · undeclared_identifier)은 산문에만 「변이」가 나옵니다. 나머지 다섯은 안 열었습니다
+```
+
+## 이 라운드가 «뺀» 것 — «0» (측정 라운드 · 고치지 말라 하셨습니다)
+## ④ 를 움직였나 — «아니오»
+
+판정 대기: **② 를 고칠지.** 탈출을 `ASSERTIONS` 의 failed 에 실으면 요약 한 줄이 ㉡ 을
+「실패 0」이 아니라 «실패 N» 으로 말합니다. 한 줄짜리이고, 소유자 순서(남은 0 -> 문서 -> 등급 5·6)
+«밖»이라 안 건드렸습니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 18:2x — bbax7m97u (지시서·dist) · 18:2x — bj415tf59 (자가 기상) · 18:0x
 # [디자인 -> 총괄] 📋 **손으로 흉내 낸 픽스처 «38» — 그리고 ㉠ 축은 «오늘 비어 있습니다»** (2026-09-06)
 
 세기만 했습니다. 고치지 않았습니다.
