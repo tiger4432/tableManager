@@ -35,7 +35,7 @@ export class HeadSummaryPanel extends Panel {
     this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
     // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
     this.start = options.start || null;
-    this.collect = options.collect || 'wafer_process';
+    this.legacyRoute = options.legacyRoute || 'wafer_process';
     // 🔴 좌석이 라우트 이름을 안 대면 «합성 루트가 묶어 준 걷기»를 씁니다 (round Z-3).
     //    안 그러면 this.collect 의 기본값 'wafer_process' 가 살아나서, 좌석이 이름을
     //    지웠는데도 죽은 라우트를 계속 부릅니다 -- 실측으로 composition 404 가 그렇게
@@ -104,7 +104,7 @@ export class HeadSummaryPanel extends Panel {
       //    `startFor()` 는 마킹이 비면 «null» 을 줍니다 -- 그게 「아직 안 골랐다」이고 부재가
       //    아닙니다. 박힌 씨앗으로 되돌아가지 «않습니다»: 그 값은 원장이 모르는 이름입니다.
       start: this.subjectStart(),
-      collect: this.collect,
+      legacyRoute: this.legacyRoute,
       }));
     this.loadState = this.model.ok ? 'ready' : 'refused';
     this.render();

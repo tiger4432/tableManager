@@ -82,7 +82,7 @@ export class MainTrendPanel extends Panel {
     //    🔴 배울 것: «기본값은 아무도 안 쓴 선언»입니다. 선언에서 지워도 부품이 들고 있으면
     //       그대로 돌고, 「좌석 선언에서 사라졌나」로 재는 게이트는 그때 초록입니다.
     //       그래서 이제 «없으면 안 걷고 말합니다» -- 지어내는 것보다 조용한 답이 낫습니다.
-    this.collect = options.collect || null;
+    this.legacyRoute = options.legacyRoute || null;
     this.kinds = options.kinds || null;
     this.window = options.window || '180d';
     // Declared by the screen, never assembled here: this part does not know what a grain means.
@@ -181,7 +181,7 @@ export class MainTrendPanel extends Panel {
     //    would look like an answer about the candidate nobody picked. It waits, and says so.
     // 🔴 무엇을 모을지 «아무도 안 말했으면» 묻지 않습니다. 기본값을 지어내면 그 순간 화면이
     //    선언에 없는 질문을 하게 되고, 그 답이 404 여도 화면은 「서버가 거절」이라 말합니다.
-    if (!this.boundWalk && !this.collect) {
+    if (!this.boundWalk && !this.legacyRoute) {
       this.model = null;
       this.loadState = 'undeclared';
       this.render();
@@ -199,7 +199,7 @@ export class MainTrendPanel extends Panel {
     this.model = await (this.boundWalk
       ? this.boundWalk({ start, axis: this.axis })
       : this.walk({
-        start, collect: this.collect,
+        start, legacyRoute: this.legacyRoute,
         kinds: this.kinds, window: this.window, grain: this.grain,
       }));
     this.loadState = this.model.ok ? 'ready' : 'refused';

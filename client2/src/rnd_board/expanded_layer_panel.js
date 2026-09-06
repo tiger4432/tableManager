@@ -30,7 +30,7 @@ export class ExpandedLayerPanel extends Panel {
     //    「이 좌석은 요청을 안 낸다」로 읽었습니다. 세 좌석이 같은 하나를 나눠 쓰고 있었습니다.
     this.start = options.start || null;
     this.walkFn = options.walk || null;
-    this.collect = options.collect || 'wafer_process';
+    this.legacyRoute = options.legacyRoute || 'wafer_process';
     // 🔴 좌석이 라우트 이름을 안 대면 «합성 루트가 묶어 준 걷기»를 씁니다 (round Z-3).
     //    이 기본값이 살아 있으면 좌석이 이름을 지웠는데도 죽은 라우트를 계속 부릅니다.
     this.boundWalk = options.load || null;
@@ -75,7 +75,7 @@ export class ExpandedLayerPanel extends Panel {
       //    `startFor()` 는 마킹이 비면 «null» 을 줍니다 -- 그게 「아직 안 골랐다」이고 부재가
       //    아닙니다. 박힌 씨앗으로 되돌아가지 «않습니다»: 그 값은 원장이 모르는 이름입니다.
       start: this.subjectStart(),
-      collect: this.collect,
+      legacyRoute: this.legacyRoute,
       }));
     this.loadState = this.model && this.model.ok ? 'ready' : 'refused';
     this.render();

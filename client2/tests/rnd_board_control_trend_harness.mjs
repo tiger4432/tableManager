@@ -320,7 +320,7 @@ async function suite(mods) {
       // 🔴 `collect` 을 «적습니다» (총괄 검수 14:3x). 전에는 부품의 기본값이 이걸 대신
       //    골라 줘서 픽스처가 «무엇을 묻는지 안 말하고도» 돌았습니다 -- 그게 바로 그 기본값이
       //    화면에서 한 일입니다. 시험도 선언을 해야 «선언대로 도는지»를 잰다고 말할 수 있습니다.
-      collect: 'trend_y',
+      legacyRoute: 'trend_y',
       apiBase: '', fetchImpl: routedFetch(TRENDS),
       // 화면이 실제로 선언하는 것과 같은 모양 -- 「접는 단위」 줄이 이 선언에서 나옵니다.
       grain: { subject_type: 'WaferLeg', identity_fields: ['wafer'] },
@@ -367,7 +367,7 @@ async function suite(mods) {
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings, reads: 'marking:0', writes: 'marking:0',
-      collect: 'trend_y',
+      legacyRoute: 'trend_y',
       apiBase: '', fetchImpl: routedFetch(FLAT_TRENDS),
     });
     t.mount();
@@ -393,7 +393,7 @@ async function suite(mods) {
     const host = doc.createElement('div');
     const t = new trend.MainTrendPanel(host, {
       doc, markings: new MarkingStore(), reads: null, writes: null,
-      collect: 'trend_y',
+      legacyRoute: 'trend_y',
       apiBase: '', fetchImpl: refusingFetch(),
     });
     t.mount();
@@ -603,8 +603,8 @@ const MUTANTS = [
   { id: 'M20', what: 'the trend invents a collect nobody declared, reviving the dead route',
     catches: 'E2',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      '    this.collect = options.collect || null;',
-      "    this.collect = options.collect || 'trend_y';") } },
+      '    this.legacyRoute = options.legacyRoute || null;',
+      "    this.legacyRoute = options.legacyRoute || 'trend_y';") } },
   { id: 'M8', what: 'the legend drops the denominator, leaving a rate nobody can check',
     catches: 'C5',
     mutate: { 'main_trend_panel.js': (s) => s.replace(

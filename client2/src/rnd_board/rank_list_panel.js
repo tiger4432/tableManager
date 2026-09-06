@@ -38,7 +38,7 @@ export class RankListPanel extends Panel {
     //    남겨 둔 이유는 이 부품이 «혼자 설» 때입니다: 그때는 질문을 얹어 줄 선언이 없습니다.
     this.nodeLimit = options.nodeLimit || null;
     this.seedNodeId = options.seedNodeId || null;
-    this.collect = options.collect || 'candidate';
+    this.legacyRoute = options.legacyRoute || 'candidate';
     this.fetchImpl = options.fetchImpl || null;
     this.model = null;
     this.loadState = this.seedNodeId ? 'idle' : 'no-seed';
@@ -56,7 +56,7 @@ export class RankListPanel extends Panel {
     this.render();
     this.model = await this.walk({
       start: this.start || { groupby: 'wafer', value: this.seedNodeId },
-      collect: this.collect,
+      legacyRoute: this.legacyRoute,
       ...(this.nodeLimit ? { node_limit: this.nodeLimit } : {}),
     });
     this.loadState = this.model.ok ? 'ready' : 'refused';

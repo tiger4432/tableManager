@@ -111,7 +111,7 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
 //            ranked 가 0 이고, 1000 이면 후보 21 이 나옵니다. 구성이 스텝 267개를 물고
 //            옵니다. 컨트롤이 아니라 «선언»입니다 -- 버튼도 자동 재시도도 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-const CANDIDATE_QUESTION = { collect: 'candidate', direction: 'outgoing', node_limit: 1000 };
+const CANDIDATE_QUESTION = { legacyRoute: 'candidate', direction: 'outgoing', node_limit: 1000 };
 
 export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
@@ -618,7 +618,7 @@ export const BOARD = Object.freeze({
       id: 'reach',
       part: 'reach',
       start: { marking: 'marking:1', groupby: 'wafer' },
-      collect: 'reach',
+      legacyRoute: 'reach',
       title: '닿는 곳 · 마킹 1 에서 한 홉',
       at: { column: 1, row: 7, columnSpan: 2 },
       reads: 'marking:1',
@@ -802,19 +802,19 @@ export function bindLoaders(layout, deps) {
       }
       if (options.basisChipId) {
         bound.loadBasisCounts = () => walkHere({
-          start: { groupby: 'chip', value: options.basisChipId }, collect: 'basis',
+          start: { groupby: 'chip', value: options.basisChipId }, legacyRoute: 'basis',
         });
       }
       // 🔴 질문이 «박히지 않은» 맵은 walk 에서 옵니다. 라우트 이름은 여기서도 안 나옵니다 --
       //    선언의 collect 하나가 어디로 갈지 정합니다.
       if (!options.question) {
-        if (decl.part === 'map' && decl.collect) {
-          bound.load = (override) => walkHere({ collect: decl.collect, ...(override || {}) });
+        if (decl.part === 'map' && decl.legacyRoute) {
+          bound.load = (override) => walkHere({ legacyRoute: decl.legacyRoute, ...(override || {}) });
         }
         // 🔴 라우트 이름을 «안 가진» 맵 좌석 (round Z). 걷기는 좌석의 선언 그대로 나가고,
         //    격자는 «두 번째 재료»로 여기서 묶입니다 -- 부품은 apiBase 도 fetchImpl 도 모르는
         //    채로 남습니다. 이미 있는 loadPages · loadByWafer · loadBasisCounts 와 같은 모양입니다.
-        if (decl.part === 'map' && !decl.collect && decl.follow) {
+        if (decl.part === 'map' && !decl.legacyRoute && decl.follow) {
           // 🔴 씨앗은 «원장 노드 id» 입니다. lot_map 은 웨이퍼를 «이름»으로 받았고 walk 은 안
           //    받습니다 -- 이름을 그대로 보내면 422 이고, 화면엔 「서버가 거절」이 뜹니다
           //    (실측 2026-08-28: `id=SYN-CX-BW-001` -> 422). 마킹에서 오는 좌석은 이미 id 를
@@ -846,7 +846,7 @@ export function bindLoaders(layout, deps) {
         // 🔴 구성 세 좌석 (round Z-3). 맵과 «같은 걸음»이고 읽는 모델만 다릅니다 -- 라우트를
         //    되살리지 않고, 새 술어도 안 만들고, `bonded_from` 이 이미 답하는 것을 읽습니다.
         //    부품은 «자기가 무엇을 읽는지»만 알고 어디서 오는지는 모릅니다.
-        if (decl.part !== 'map' && !decl.collect && decl.follow) {
+        if (decl.part !== 'map' && !decl.legacyRoute && decl.follow) {
           // 🔴 같은 걷기, «읽는 모델»만 다릅니다. 갈래는 부품 이름 하나이고, 그 이름은 이미
           //    선언에 있습니다 -- 여기에 라우트 표를 다시 만들지 않으려면 이 한 줄이어야 합니다.
           const read = decl.part === 'mainTrend' ? trendFromWalk : compositionFromWalk;
@@ -869,16 +869,16 @@ export function bindLoaders(layout, deps) {
           // The override is how a part turns a page without learning a route: it hands back
           // the one field it is changing and the question stays the composition root's.
           load: (override) => walkHere({
-            collect: 'map', ...options.question, ...(override || {}),
+            legacyRoute: 'map', ...options.question, ...(override || {}),
           }),
           // 씨앗으로 찍힌 웨이퍼를 그리는 길. 같은 라우트, 축만 웨이퍼.
           loadByWafer: (wafer) => walkHere({
             start: { groupby: 'wafer', value: wafer },
-            collect: 'map', ...options.question, slot: undefined,
+            legacyRoute: 'map', ...options.question, slot: undefined,
           }),
           // 목업의 페이지 목록. Measured: a slot-less call carries the row's whole slot list.
           loadPages: () => walkHere({
-            collect: 'map', ...options.question, slot: undefined,
+            legacyRoute: 'map', ...options.question, slot: undefined,
           }).then(slotPagesFromLotMap),
         },
       };
