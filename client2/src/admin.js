@@ -1170,6 +1170,19 @@ async function refreshLedgerSources() {
       opts = { unavailable: `\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c \uc2e4\ud328 (HTTP ${res.status}). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.` };
     } else {
       body = await res.json().catch(() => null);
+      // 🔴 F-10. This route answers 200 with an `error` STRING when it could not read the
+      //    declaration -- `sources_view` catches the exception and reports it in the payload
+      //    rather than throwing (server/ledger_admin.py:1029-1047). Splitting on HTTP status
+      //    alone let that through as an ordinary body: a broken file yields `sources: {}`, so
+      //    the panel drew an empty-but-healthy table and 「broken」 was indistinguishable from
+      //    「none declared」 -- the operator then hunts for missing sources, not a syntax error.
+      // 🔵 No new mechanism: `unavailable` is the reason channel this function already uses
+      //    three times above, and the panel already refuses to draw a table when it is set.
+      //    The body is dropped for the same reason the 404 path drops it.
+      if (body && body.error) {
+        opts = { unavailable: `\uc120\uc5b8\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 ${body.error}` };
+        body = null;
+      }
     }
   } catch (e) {                                              // noqa
     opts = { unavailable: '\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4 (\ub124\ud2b8\uc6cc\ud06c). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.' };
