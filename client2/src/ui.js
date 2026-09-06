@@ -1,7 +1,7 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn } from './state.js';
 import { elements } from './dom.js';
-import { getLocalTimeString } from './utils.js';
+import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
 import { ensureCellObject, markCellOverwritten } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
@@ -39,12 +39,19 @@ export function updateSelectedCellUI() {
   // system columns and only ever shows for the one selected cell.
   const virt = (state.currentVirtualColumns || [])
     .find(vc => vc && vc.name === state.selectedCell.colId);
+  // 🔴 C-14. Every value here is one the client did not author: the row id and column name come
+  //    from the table, `right_table` from the join declaration, and the cell value is whatever an
+  //    operator last typed — reflected straight back into markup, which is the same shape as the
+  //    history row repaired in tranche one. Escaped in place rather than moved out because this
+  //    file IMPORTS cleanly, so the harness scores `updateSelectedCellUI` itself.
+  // ⚠️ The `!== null` ternary is kept as it was: it is what turns an absent value into the word
+  //    NULL, and folding it into escapeHtml would print an empty cell instead.
   elements.selectedCellInfo.innerHTML = `
-    <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${state.selectedCell.rowId}</span></div>
-    <div><strong>Column:</strong> <span style="color:var(--color-primary)">${state.selectedCell.colId.toUpperCase()}</span></div>
-    <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? state.selectedCell.value : 'NULL'}</code></div>
+    <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${escapeHtml(state.selectedCell.rowId)}</span></div>
+    <div><strong>Column:</strong> <span style="color:var(--color-primary)">${escapeHtml(String(state.selectedCell.colId).toUpperCase())}</span></div>
+    <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? escapeHtml(String(state.selectedCell.value)) : 'NULL'}</code></div>
     ${isSystem ? '<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only System Column</div>' : ''}
-    ${virt ? `<div style="color:var(--text-dim);margin-top:4px;font-style:italic">읽기 전용 조인 컬럼 — 원본 '${virt.right_table}'</div>` : ''}
+    ${virt ? `<div style="color:var(--text-dim);margin-top:4px;font-style:italic">읽기 전용 조인 컬럼 — 원본 '${escapeHtml(virt.right_table)}'</div>` : ''}
   `;
 }
 

@@ -142,6 +142,59 @@ ok(opens(rows.autoUpdateRowHtml(benignCol, opts), 'button') === opens(hostCol, '
 ok(rows.autoUpdateRowHtml(benignCol, opts).includes('data-table="wafer"'),
   'E4 CONTROL: a benign table name is still readable by the click handler');
 
+// -- tranche 3: where a value CAME FROM, and the selected-cell panel --------------------
+// 🔴 TWO DIFFERENT TREATMENTS, AND THE REASON IS MEASURED, NOT ASSUMED. `main.js` imports
+//    ag-grid's CSS so node cannot load it, and its two source rows were lifted into
+//    `source_rows.js` to be importable. `ui.js` HAS no such import — checked by importing it —
+//    so its template was escaped in place and the harness runs the real `updateSelectedCellUI`.
+//    Extracting it anyway would have created a module for no reason the measurement supports.
+console.log('\n-- the source rows, and the selected-cell panel ------------------------');
+const srcRows = await import('../src/source_rows.js');
+
+const baseSrc = srcRows.sourceRowHtml('excel', { value: 42, updated_by: 'kim', timestamp: null }, { isPinned: false });
+const hostSrc = srcRows.sourceRowHtml(CELL_BREAK, { value: BREAKOUT, updated_by: ATTR_BREAK, timestamp: null }, { isPinned: false });
+ok(opens(baseSrc, 'td') === opens(hostSrc, 'td'), 'F1 a hostile source name opens no extra cell');
+ok(opens(baseSrc, 'span') === opens(hostSrc, 'span') && !hostSrc.includes('<script'),
+  'F2 ... and a hostile value opens no element of its own');
+// 🔴 THE ATTRIBUTE POSITION AGAIN. `updated_by` lands inside `title="…"`, which is where the
+//    quote-only drift found in tranche one was unsafe while reading as correct.
+ok(!/title="Updated by x" onmouseover=/.test(hostSrc), 'F3 updated_by cannot close the title attribute');
+ok(baseSrc.includes('excel') && baseSrc.includes('kim') && baseSrc.includes('>42<'),
+  'F4 CONTROL: benign name, author and value all still reach the row');
+
+const baseAll = srcRows.sourceRowAllHtml('excel', ['a', 'a'], { isPinnedAll: true });
+const hostAll = srcRows.sourceRowAllHtml(BREAKOUT, [CELL_BREAK], { isPinnedAll: true });
+ok(opens(baseAll, 'td') === opens(hostAll, 'td') && opens(baseAll, 'span') === opens(hostAll, 'span'),
+  'G1 the selection row is closed the same way');
+ok(srcRows.sourceRowAllHtml('excel', ['a', 'b'], { isPinnedAll: false }).includes('Multiple Values (2 types)'),
+  'G2 CONTROL: the distinct-count sentence is still built and not escaped away');
+
+// -- the real ui.js function, driven through a DOM stub ----------------------------------
+// 🔴 `elements` reads `document.getElementById` through LAZY getters, so the stub only has to
+//    exist when the function is CALLED. That is what makes scoring the real function possible
+//    here without a browser, and it is why this one did not need extracting.
+const slot = { innerHTML: '' };
+globalThis.document = { getElementById: () => slot };
+const { state } = await import('../src/state.js');
+const { updateSelectedCellUI } = await import('../src/ui.js');
+
+state.currentVirtualColumns = [{ name: 'joined', right_table: BREAKOUT }];
+state.selectedCell = { rowId: CELL_BREAK, colId: 'joined', value: '<script>alert(1)</script>' };
+updateSelectedCellUI();
+const panel = slot.innerHTML;
+ok(!panel.includes('<script'), 'U1 a scripted cell value is not a script element');
+ok(opens(panel, 'div') === 4, `U2 the panel opens exactly its own four divs (saw ${opens(panel, 'div')})`);
+ok(opens(panel, 'td') === 0, 'U3 a row id carrying a cell break opens no cell');
+ok(!panel.includes(BREAKOUT), 'U4 a hostile join table name does not arrive as markup');
+
+state.selectedCell = { rowId: 'r1', colId: 'qty', value: null };
+state.currentVirtualColumns = [];
+updateSelectedCellUI();
+ok(slot.innerHTML.includes('NULL'), 'U5 CONTROL: an absent value still reads NULL, not empty');
+state.selectedCell = { rowId: 'r1', colId: 'qty', value: 0 };
+updateSelectedCellUI();
+ok(/<code>0<\/code>/.test(slot.innerHTML), 'U6 CONTROL: zero survives as zero, not as NULL');
+
 // 🔴 DRIFT ORACLE, named as one. No behavioural check can see a NEW template appearing in
 //    another file with the value dropped in raw — that code is on no path this harness calls —
 //    so the population is asked of the source. The number is the one this round leaves behind,
@@ -178,8 +231,8 @@ for (const p of jsFiles(SRC)) {
     unescaped += 1;
   }
 }
-// 20 is what this round leaves: 25 before, minus the five admin list rows repaired above.
-ok(unescaped <= 20, `P1 unescaped interpolating templates: ${unescaped} (ceiling 20, was 25)`);
+// 17 is what this round leaves: 20 before, minus the two source rows and the cell panel.
+ok(unescaped <= 17, `P1 unescaped interpolating templates: ${unescaped} (ceiling 17, was 20)`);
 ok(unescaped > 0, 'P2 ... and the ceiling is not vacuously true — the work is not finished');
 
 console.log(`\n${pass} passed, ${fail} failed.`);
