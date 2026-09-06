@@ -411,17 +411,17 @@ export function createGlobalTimelineItemDom(group) {
     : baseLog.column_name;
 
   li.innerHTML = `
-    <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}" title="${displayTitle}">
+    <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}" title="${escapeHtml(displayTitle)}">
       <div class="audit-cell audit-time">${timeStr}</div>
-      <div class="audit-cell audit-user">${user}</div>
+      <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
       <div class="audit-cell audit-target">
-        <span class="audit-target-key">${targetKey}</span>
-        <span class="audit-target-col">${targetCol}</span>
+        <span class="audit-target-key">${escapeHtml(targetKey)}</span>
+        <span class="audit-target-col">${escapeHtml(targetCol)}</span>
       </div>
       <div class="audit-cell audit-change">
-        ${hadOldValue ? `<span class="val-old">${auditVal(baseLog.old_value, true)}</span><span class="val-arrow">→</span>` : ''}
-        <span class="val-new">${auditVal(baseLog.new_value, false)}</span>
+        ${hadOldValue ? `<span class="val-old">${escapeHtml(auditVal(baseLog.old_value, true))}</span><span class="val-arrow">→</span>` : ''}
+        <span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>
       </div>
       ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="이 트랜잭션만 보기">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
@@ -900,9 +900,13 @@ export function renderSubDetails(container, logs) {
       labelText = `[${col}] ${val} (ID: ${targetId})`;
     }
 
+    // 🔴 C-14. `labelText` is assembled from a column name, a business key and the value an
+    //    operator last typed — all three arrive from the server and none is authored here.
+    //    Escaped at the interpolation, which is where this file already escapes (`:224`), so
+    //    `formatVal` stays a formatter and does not become a second escaping author.
     li.innerHTML = `
       <span class="sub-bullet">└</span>
-      <span class="sub-log-text">${labelText}</span>
+      <span class="sub-log-text">${escapeHtml(labelText)}</span>
     `;
 
     li.addEventListener('click', (e) => {

@@ -195,6 +195,68 @@ state.selectedCell = { rowId: 'r1', colId: 'qty', value: 0 };
 updateSelectedCellUI();
 ok(/<code>0<\/code>/.test(slot.innerHTML), 'U6 CONTROL: zero survives as zero, not as NULL');
 
+// -- tranche 4: the audit timeline, which reflects what an operator typed ----------------
+// 🔴 THE REAL EXPORTED FUNCTIONS, driven through a DOM stub. `timeline.js` imports cleanly, so
+//    like `ui.js` it is scored in place rather than carved up. What makes this surface matter:
+//    `formatVal` does NOT escape — it returns `String(v)` — so the old and new cell values
+//    reached the DOM raw, which is the same shape as the history row repaired in tranche one,
+//    on the row beside it.
+// ⚠️ Escaping is applied AT THE INTERPOLATION, because `timeline.js:224` already does exactly
+//    that. Putting it inside `formatVal` would make the formatter a second escaping author and
+//    double-escape the site that already wraps it.
+console.log('\n-- the audit timeline, as the screen builds it ------------------------');
+function stubEl() {
+  const el = {
+    className: '', innerHTML: '', textContent: '', dataset: {}, children: [],
+    classList: { add() {}, remove() {}, contains: () => false },
+    style: {}, addEventListener() {},
+    // 🔴 PERMISSIVE ONLY WHERE IT CANNOT SOFTEN THE ASSERTION. The real function looks up
+    //    `.timeline-card` to bind a click, and returning null there kills it before it returns.
+    //    Every assertion below reads `innerHTML`, which is already set by then, so handing back
+    //    an element lets the subject finish without deciding anything the test measures.
+    querySelector: () => stubEl(),
+    appendChild(c) { el.children.push(c); return c; },
+  };
+  return el;
+}
+globalThis.document = { getElementById: () => slot, createElement: () => stubEl() };
+const tl = await import('../src/timeline.js');
+
+const benignLog = {
+  updated_by: 'kim', table_name: 'wafer', column_name: 'qty', business_key: 'BK-1',
+  row_id: 'abcdef1234', old_value: '1', new_value: '2', source_name: 'user',
+  timestamp: '2026-09-07T01:00:00Z',
+};
+const baseItem2 = tl.createGlobalTimelineItemDom({ transaction_id: 't1', total_count: 1, logs: [benignLog] });
+const hostItem2 = tl.createGlobalTimelineItemDom({
+  transaction_id: 't1', total_count: 1,
+  logs: [{ ...benignLog, updated_by: ATTR_BREAK, column_name: BREAKOUT, new_value: '<script>alert(1)</script>', business_key: CELL_BREAK }],
+});
+ok(baseItem2 && hostItem2, 'T0 both rows were actually built — else the rest is vacuous');
+ok(!hostItem2.innerHTML.includes('<script'), 'T1 a scripted cell value is not a script element');
+ok(opens(baseItem2.innerHTML, 'span') === opens(hostItem2.innerHTML, 'span'),
+  'T2 a hostile column name opens no extra span');
+ok(opens(baseItem2.innerHTML, 'td') === 0 && opens(hostItem2.innerHTML, 'td') === 0,
+  'T3 a business key carrying a cell break opens no cell');
+// 🔴 `displayTitle` lands inside `title="…"`, and it is BUILT from updated_by — so an attribute
+//    break in the author name reaches an attribute by way of a composed string.
+ok(!/title="[^"]*" onmouseover=/.test(hostItem2.innerHTML), 'T4 the composed title cannot close its attribute');
+ok(baseItem2.innerHTML.includes('kim') && baseItem2.innerHTML.includes('qty'),
+  'T5 CONTROL: a benign author and column still reach the row');
+ok(baseItem2.innerHTML.includes('kind-overwrite') || baseItem2.innerHTML.includes('audit-pill'),
+  'T6 CONTROL: the locally decided kind pill is still markup');
+
+const subBox = stubEl();
+tl.renderSubDetails(subBox, [{ ...benignLog, column_name: BREAKOUT, new_value: CELL_BREAK }]);
+// ⚠️ The rows are nested inside a `ul` the function builds, so reading only the container's
+//    direct children returned empty markup and the count assertion read 0 — a pass shaped like
+//    a failure. Walk the tree instead of guessing the depth.
+const allHtml = (el) => [el.innerHTML || '', ...el.children.flatMap(allHtml)].join('');
+const subHtml = allHtml(subBox);
+ok(subHtml.length > 0, 'T7 a sub-detail row was actually built and its markup was found');
+ok(!subHtml.includes('<td') && opens(subHtml, 'span') === 2,
+  `T8 a sub-detail label opens only its own two spans (saw ${opens(subHtml, 'span')})`);
+
 // 🔴 DRIFT ORACLE, named as one. No behavioural check can see a NEW template appearing in
 //    another file with the value dropped in raw — that code is on no path this harness calls —
 //    so the population is asked of the source. The number is the one this round leaves behind,
@@ -231,8 +293,8 @@ for (const p of jsFiles(SRC)) {
     unescaped += 1;
   }
 }
-// 17 is what this round leaves: 20 before, minus the two source rows and the cell panel.
-ok(unescaped <= 17, `P1 unescaped interpolating templates: ${unescaped} (ceiling 17, was 20)`);
+// 15 is what this round leaves: 17 before, minus the audit row and its sub-detail line.
+ok(unescaped <= 15, `P1 unescaped interpolating templates: ${unescaped} (ceiling 15, was 17)`);
 ok(unescaped > 0, 'P2 ... and the ceiling is not vacuously true — the work is not finished');
 
 console.log(`\n${pass} passed, ${fail} failed.`);

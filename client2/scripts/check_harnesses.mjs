@@ -1044,7 +1044,7 @@ const FLOORS = new Map([
   // one writer for "a person overwrote this cell", and it writes the half the paint rule reads
   ['cell_overwrite_mark_harness.mjs', 11],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
-  ['escaping_harness.mjs', 47],
+  ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
   ['walk_route_fill_harness.mjs', 23],
   // an event nothing matches is audible, and the theme notification has one speller
