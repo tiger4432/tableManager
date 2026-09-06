@@ -76,10 +76,16 @@ export function boot(doc, host, deps) {
   };
   // 🔴 술어도 «선언»에서, 그리고 «고른 타입을 주어로 갖는 것»만. 이것이 사람이 배관 낱말을
   //    몰라도 되는 이유입니다 — 고를 수 있는 것만 보입니다.
+  const allPredicates = () => ((state.decl && state.decl.predicates) || []).map((p) => p.name);
   const followOptions = () => {
     const all = (state.decl && state.decl.predicates) || [];
     if (!state.type) return all.map((p) => p.name);
-    return all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
+    const fromHere = all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
+    // 🔴 «고른 것은 언제나 보입니다». 이 목록은 「시작 타입에서 나가는 술어」인데, 도출된 경로는
+    //    «뒤쪽 홉»의 술어도 씁니다 — wafer -inspected-> die -observed-> defect 에서 `observed` 의
+    //    주어는 die 라 이 목록에 «없습니다». 합치지 않으면 체크는 켜져 있고 화면에는 안 보이는,
+    //    「보낼 것을 화면이 숨기는」 상태가 됩니다.
+    return [...new Set([...fromHere, ...allPredicates().filter((n) => state.follow.has(n))])];
   };
 
   /**
@@ -220,7 +226,12 @@ export function boot(doc, host, deps) {
         row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
         row.append(el(doc, 'span', 'wk-pathmeta', `${r.hops}홉 · ${r.follow.join(', ')}`));
         row.addEventListener('click', () => {
-          state.follow = new Set(r.follow);
+          // 🔴 도출은 «bare» 이름(`observed`)을 주고 체크박스는 «선언 철자»(`observed@1`)를 씁니다.
+          //    그대로 넣으면 어느 상자도 안 켜지고 hops «만» 채워집니다 — 실측으로 잡았습니다
+          //    (2026-09-06 브라우저: hops=2 는 들어갔고 체크는 «0»). 같은 `@1` 함정이 타입에
+          //    이어 술어에서 «한 번 더» 났습니다.
+          const wanted = new Set(r.follow.map(bare));
+          state.follow = new Set(allPredicates().filter((n) => wanted.has(bare(n))));
           state.hops = String(r.hops);
           render();
         });
