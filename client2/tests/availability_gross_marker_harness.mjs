@@ -31,10 +31,19 @@
 // EXTRACTION ANCHORS ARE THE ONE PLACE SOURCE TEXT IS READ, and this file exits 2 — loudly,
 // not green — when one stops matching. A harness that goes quiet because it lost the code is
 // worse than no harness.
+//
+// ═══ 🔴 이 파일은 «잘라쓰기»였습니다 (2026-09-06 전환) ═══
+// 종전: 두 파일에서 함수 16개와 const 넷을 «잘라내» 한 vm 에 이어 붙이고, 모듈이 쓰는
+// `S` 와 `stageOfTable` 은 «하니스가 지어» 넣었습니다.
+// 지금: `transfer_plan.js` 를 «통째로» import 합니다 (`lib/probe.mjs`).
+//   🔵 그래서 스텁 «둘»이 사라집니다 — 진짜 `S` 가 그 모듈의 캐시이고, 진짜
+//      `stageOfTable` 이 `S.stages` 를 찾습니다. 씨앗 하나만 심으면 «출하된» 함수가 답합니다.
+//   🔵 그리고 `doe_bands.js` 를 따로 이어 붙일 필요가 없습니다 — transfer_plan 이 그것을
+//      «진짜로» import 하므로 `remainingState` 가 자기 `REMAINING_UNKNOWN_REASON` 을 데려옵니다.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -49,75 +58,30 @@ function die(msg) {
 const read = f => readFileSync(join(SRC, f), 'utf8').replace(/\r\n/g, '\n');
 const PRISTINE = { tp: read('transfer_plan.js'), doe: read('doe_bands.js') };
 
-// ── extraction ──────────────────────────────────────────────────────────────────
-
-function balanced(src, from, open, close) {
-  const i = src.indexOf(open, from);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === open) depth++;
-    else if (src[j] === close) { depth--; if (depth === 0) return { start: i, end: j }; }
-  }
-  return null;
-}
-
-function fnFrom(src, label, name) {
-  const m = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} not found in ${label}`);
-  const b = balanced(src, m.index, '{', '}');
-  if (!b) die(`unbalanced braces for ${name} in ${label}`);
-  return src.slice(m.index, b.end + 1).replace(/^export\s+/, '');
-}
-
-function constFrom(src, label, name) {
-  const m = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=`).exec(src);
-  if (!m) die(`const ${name} not found in ${label}`);
-  let depth = 0;
-  for (let j = m.index; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === '[' || ch === '{' || ch === '(') depth++;
-    else if (ch === ']' || ch === '}' || ch === ')') depth--;
-    else if (ch === ';' && depth === 0) return src.slice(m.index, j + 1).replace(/^export\s+/, '');
-    else if (ch === '`') {   // skip template literals whole — they hold `;` and braces
-      const end = src.indexOf('`', j + 1);
-      if (end < 0) die(`unterminated template in const ${name} (${label})`);
-      j = end;
-    }
-  }
-  die(`no terminator for const ${name} in ${label}`);
-}
-
 const TP_FNS = ['esc', 'summaryKeyFor', 'availabilityOfPool', 'untrackedBoundOf', 'boundText',
   'inactiveSubtractionsOf', 'grossReason', 'isGross', 'grossRolesOf', 'grossNoteHtml',
   'unknownCellHtml', 'availCellHtml', 'remainingCellHtml', 'remainingIsNegative'];
 
-function build(sources) {
-  const parts = [
-    constFrom(sources.doe, 'doe_bands.js', 'REMAINING_UNKNOWN_REASON'),
-    fnFrom(sources.doe, 'doe_bands.js', 'remainingState'),
-    constFrom(sources.tp, 'transfer_plan.js', 'UNTRACKED_REASON'),
-    constFrom(sources.tp, 'transfer_plan.js', 'GROSS_MARK'),
-    ...TP_FNS.map(n => fnFrom(sources.tp, 'transfer_plan.js', n)),
-  ];
-  // The two stubs are the module's environment, not its logic: `S.summaries` is the fetch
-  // cache the harness fills with server payloads, and `stageOfTable` only supplies the cache
-  // key prefix. Nothing under test is re-typed here.
-  const prelude = `
-const S = { summaries: new Map(), ctx: { table: 'dt_map' } };
-function stageOfTable() { return { id: 'S1' }; }
-`;
-  const epilogue = `
-const __api = { S, availabilityOfPool, availCellHtml, remainingCellHtml, remainingIsNegative,
-  inactiveSubtractionsOf, grossRolesOf, grossNoteHtml, grossReason, isGross,
-  esc, UNTRACKED_REASON, GROSS_MARK, remainingState };
-`;
-  const ctx = vm.createContext({ Number, Array, String, Math, JSON, Map, Set, console });
-  try {
-    vm.runInContext(prelude + parts.join('\n') + epilogue + '\n__api;', ctx,
-      { filename: 'availability_slice.js' });
-  } catch (e) { die(`sliced source does not evaluate: ${e && e.message}`); }
-  return vm.runInContext('__api', ctx);
+const TP_PATH = join(SRC, 'transfer_plan.js');
+
+// 무대에 올릴 이름들. `S` 와 `stageOfTable` 이 여기 «있는» 것이 이 전환의 요점입니다 —
+// 종전에는 둘 다 하니스가 지어낸 것이었고, 지금은 모듈 자기 것입니다.
+const EXPOSE = [...TP_FNS, 'UNTRACKED_REASON', 'GROSS_MARK', 'remainingState',
+                'S', 'stageOfTable'];
+
+async function build(sources) {
+  const spec = { expose: EXPOSE, tag: 'avail' };
+  // 🔴 «변이일 때만» mutate 를 겁니다. 안 걸면 probe 가 「사본이 디스크와 바이트 동일한가」를
+  //    단언하고, 그 단언이 기준선을 지킵니다. 변이면 그 대신 「원본과 달라야 한다」가 섭니다.
+  if (sources.tp !== PRISTINE.tp) spec.mutate = () => sources.tp;
+  const { probe } = await loadWithProbe(TP_PATH, spec);
+  // 🔵 스텁이 아니라 «씨앗»입니다. `summaryKeyFor` 는 `stageOfTable(S.ctx.table).id` 로 키를
+  //    만드므로(transfer_plan.js:392-395), 스테이지 하나를 심으면 그 «출하 함수»가 'S1' 을
+  //    돌려줍니다. 종전에는 하니스가 `stageOfTable` 을 통째로 대신 써서 그 경로가 안 돌았습니다.
+  probe.S.ctx.table = 'dt_map';
+  probe.S.stages = [{ id: 'S1', targetTable: 'dt_map' }];
+  probe.S.summaries.clear();
+  return probe;
 }
 
 // ── fixtures ────────────────────────────────────────────────────────────────────
@@ -166,8 +130,8 @@ function seed(api, pool, payload) {
   api.S.summaries.set(`S1::${pool.key}`, { status: 'ok', data: payload });
 }
 
-function suite(sources) {
-  const api = build(sources);
+async function suite(sources) {
+  const api = await build(sources);
   let pass = 0, fail = 0;
   const failed = [];
   const ok = (name, cond, detail) => {
@@ -351,18 +315,26 @@ const RENAMES = [
 ];
 const stripComments = src => src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
 
+// 🔴 대조군이 «transfer_plan 만» 건드립니다. 전에는 doe_bands 도 같이 바꿨는데, 지금은 그
+//    모듈이 «진짜로 import» 되므로 여기서 그 텍스트를 바꿔도 «아무 데도 안 닿습니다» —
+//    닿지 않는 변형을 남겨 두면 그 대조군은 「빠져나갔다」로 초록인데 그 초록이 «이유가
+//    아닌 이유»로 난 것입니다. 그래서 좁히고, 좁혔다고 적습니다.
+// 🔵 대신 이쪽은 «세졌습니다»: 전에는 잘라낸 조각 안에서만 이름을 바꿨는데 이제 모듈
+//    «전체»가 바뀐 채로 돌아야 합니다.
+// ⏭ doe_bands 쪽 대조를 되살리려면 그 모듈의 «변이 사본»을 만들고 transfer_plan 사본이
+//    그것을 import 하게 해야 합니다 — 별개의 일이라 여기서 하지 않습니다.
 const CONTROLS = [
-  ['consistent rename of locals across both sliced modules', s => {
+  ['consistent rename of locals across the imported module', s => {
     const r = t => RENAMES.reduce((acc, [re, to]) => acc.replace(re, to), t);
-    return { tp: r(s.tp), doe: r(s.doe) };
+    return { tp: r(s.tp), doe: s.doe };
   }],
-  ['every full-line comment stripped from both sliced modules', s => ({
-    tp: stripComments(s.tp), doe: stripComments(s.doe) })],
+  ['every full-line comment stripped from the imported module', s => ({
+    tp: stripComments(s.tp), doe: s.doe })],
 ];
 
 // ── run ─────────────────────────────────────────────────────────────────────────
 
-const base = suite(PRISTINE);
+const base = await suite(PRISTINE);
 console.log(`[baseline] ${base.pass} passed, ${base.fail} failed`);
 if (base.failed.length) console.error(`  ${base.failed.join('\n  ')}`);
 
@@ -371,7 +343,7 @@ const escapedNames = [];
 console.log(`\n── defect mutants (each must be CAUGHT) ────────────────────────────`);
 for (const [name, mutate] of DEFECTS) {
   let r;
-  try { r = suite(mutate(PRISTINE)); }
+  try { r = await suite(mutate(PRISTINE)); }
   catch (e) { r = { fail: 1, failed: [`threw: ${e && e.message}`] }; }
   if (r.fail > 0) { caught++; console.log(`  caught  ${name}  (${r.failed[0]})`); }
   else { escaped++; escapedNames.push(name); console.log(`  ESCAPED ${name}`); }
@@ -382,7 +354,7 @@ const controlsCaughtNames = [];
 console.log(`\n── control mutants (each must ESCAPE) ──────────────────────────────`);
 for (const [name, mutate] of CONTROLS) {
   let r;
-  try { r = suite(mutate(PRISTINE)); }
+  try { r = await suite(mutate(PRISTINE)); }
   catch (e) { r = { fail: 1, failed: [`threw: ${e && e.message}`] }; }
   if (r.fail === 0) console.log(`  escaped ${name}`);
   else { controlsCaught++; controlsCaughtNames.push(`${name} (${r.failed[0]})`); console.log(`  CAUGHT  ${name}  (${r.failed[0]})`); }
