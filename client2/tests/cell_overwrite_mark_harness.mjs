@@ -93,6 +93,18 @@ const writers = jsFiles(SRC_DIR)
 ok(writers.length === 1 && writers[0] === 'grid.js',
   `A10 exactly one file marks a cell overwritten -- found [${writers.join(', ')}]`);
 
+// A11: the UNDO direction, same drift oracle and the same reason. C-22, measured 2026-09-06:
+// three sites restore a saved `is_overwrite` and only two restored the other half, so
+// discarding a staged edit left the cell drawn as a pin it no longer had. Counting rather than
+// window-matching on purpose -- a window is what hid the sixth marking site this morning.
+// 🔵 The pair is what is asserted, not a number: if a fourth restore site lands, both counts
+//    move together or this goes red.
+const bodies = jsFiles(SRC_DIR).map((p) => readFileSync(p, 'utf8')).join('\n');
+const restoresFlag = (bodies.match(/\.is_overwrite\s*=\s*old[A-Za-z]*/g) || []).length;
+const restoresPin = (bodies.match(/\.priority_source\s*=\s*old[A-Za-z]*/g) || []).length;
+ok(restoresFlag > 0 && restoresFlag === restoresPin,
+  `A11 every site that restores the flag restores the pin too -- flag ${restoresFlag}, pin ${restoresPin}`);
+
 // -- mutants ---------------------------------------------------------------------------
 const DEFECTS = [
   ['the pin half is dropped again',

@@ -309,8 +309,14 @@ export function boot(doc, host, deps) {
       box.append(line);
     } else if (state.result) {
       const r = state.result;
-      box.append(el(doc, 'div', 'wk-counts',
-        `노드 ${r.nodes.length} · 엣지 ${r.edges.length}`));
+      // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다»(오늘
+      //    판정), 그래서 한 줄에 나란히 두면 읽는 사람이 «같은 그래프»로 봅니다 — 응답에
+      //    대해서는 참인데 그 줄이 두 뜻입니다. collect 가 걸렸을 때만 «주어»를 답니다.
+      // ⚠️ 문장이 아니라 «주어»입니다. 안 걸렸으면 둘 다 전부라 붙일 것이 없습니다.
+      const asked = [...state.collect].map(bare).join(', ');
+      box.append(el(doc, 'div', 'wk-counts', asked
+        ? `노드 ${r.nodes.length} (collect: ${asked}) · 엣지 ${r.edges.length} (전부)`
+        : `노드 ${r.nodes.length} · 엣지 ${r.edges.length}`));
       // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다 —
       //    예산에서 끊겼거나, 그 방향으로 더 갈 것이 없었거나.
       if (r.walk) {

@@ -2287,13 +2287,18 @@ function discardPendingTxEdits() {
   if (pendingCount === 0) return;
 
   Object.values(state.pendingTxEdits).forEach(edit => {
-    const { rowId, colId, oldValue, oldIsOverwrite, data } = edit;
+    const { rowId, colId, oldValue, oldIsOverwrite, oldPrioritySource, data } = edit;
     const latestNode = state.gridApi.getRowNode(rowId);
     const latestData = latestNode ? latestNode.data : data;
     if (latestData) {
       ensureCellObject(latestData, colId);
       latestData.data[colId].value = oldValue;
+      // 🔴 C-22. BOTH halves, because the paint rule reads `priority_source` and never
+      //    `is_overwrite`: restoring one left a discarded edit still drawn as a pin.
+      //    `?? null` rather than a bare read — a record staged before this field existed has
+      //    no key, and writing `undefined` there is not the same as clearing it.
       latestData.data[colId].is_overwrite = oldIsOverwrite;
+      latestData.data[colId].priority_source = oldPrioritySource ?? null;
     }
   });
 

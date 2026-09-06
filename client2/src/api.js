@@ -428,6 +428,14 @@ export async function handleCellEdit(event) {
         newValue: finalValue,
         oldValue: oldValue,
         oldIsOverwrite: oldIsOverwrite,
+        // 🔴 C-22. The undo restores what this record holds, and it held only HALF the pair:
+        //    `is_overwrite` came back and `priority_source` did not, so discarding a staged edit
+        //    left the cell claiming a pin it no longer had. Both non-tx paths in this same
+        //    function already capture and restore both (the refusal path just above), so the
+        //    transaction path was the one place not doing what its neighbours do.
+        //    The value is already computed at the top of this function; the record simply
+        //    dropped it.
+        oldPrioritySource: oldPrioritySource,
         data: data
       };
     } else {
