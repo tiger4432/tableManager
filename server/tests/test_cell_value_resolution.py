@@ -315,7 +315,7 @@ def test_recompute_dry_run_enumerates_the_stale_cell_and_writes_nothing(res_env,
     change = stats["changes"][0]
     assert (change["row_id"], change["column"]) == (row.row_id, "pitch")
     assert (change["old_value"], change["new_value"]) == ("1", "7")
-    assert change["winning_source"] == "zzz_new.csv"
+    assert change["top_source"] == "zzz_new.csv"
     assert change["sources"] == ["aaa_old.csv", "zzz_new.csv"]
     res_env.refresh(row)
     assert row.pitch == "1", "a dry-run must change nothing"

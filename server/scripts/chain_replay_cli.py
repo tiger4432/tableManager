@@ -84,7 +84,7 @@ def _report_withdraw(s):
             lines.append(f"      SKIP {sm['row_id'][:8]}.{sm['column']}: {sm['why']}")
         else:
             lines.append(f"      {sm['row_id'][:8]}.{sm['column']}: {sm['old_value']!r} -> "
-                         f"{sm['new_value']!r} (now from {sm['revealed_source']!r}; "
+                         f"{sm['new_value']!r} (now from {sm['top_source']!r}; "
                          f"remaining {sm['remaining_sources']})")
     lines.append("")
     return "\n".join(lines)
@@ -110,7 +110,7 @@ def _report_resolve(s, list_all=False):
     shown = s["changes"] if list_all else s["changes"][:20]
     for c in shown:
         lines.append(f"      {c['business_key_val']}.{c['column']}: {c['old_value']!r} -> "
-                     f"{c['new_value']!r} (now from {c['winning_source']!r}, "
+                     f"{c['new_value']!r} (now from {c['top_source']!r}, "
                      f"{c['reason']}; layers {c['sources']})")
     if not list_all and len(s["changes"]) > len(shown):
         lines.append(f"      ... {len(s['changes']) - len(shown)} more (use --list-all)")
