@@ -56,7 +56,9 @@
 
 ```
 제 실측 (07:5x)   정의    effort_meter.js:501  export function commitIfRecorded(resBody)
-                호출    api.js:492 · clipboard.js:602 · clipboard.js:860        -> «3»
+                호출    api.js:492 · clipboard.js:602 · clipboard.js:860 · ui.js  -> «4 이상»
+                🔴 제 「3」도 틀렸습니다 — 파일별로 다시 세니 `ui.js` 가 더 나왔습니다.
+                   그러므로 이 수는 «하한»입니다. 짓기 전에 «전수»로 세십시오
                 수입    api.js:13 · clipboard.js:12 · main.js:84                -> import 3
 🔴 「여섯 호출자」는 «제가 확인 못 했습니다» — 부르는 자리로는 «셋»입니다.
    여섯이 «호출»이 아니라 «수입+호출»의 합이거나, 제가 못 본 자리가 있습니다
