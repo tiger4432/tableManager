@@ -347,6 +347,18 @@ export function handleWebSocketMessage(msg) {
 
   // 1. Process and append audit logs to local history cache first (independent of currentTable check, especially for global history)
   const createdLogs = msg.created_logs || [];
+  // \u{1f534} THE LIST MAY BE A SAMPLE, AND APPENDING A SAMPLE MAKES IT LOOK LIKE THE
+  //    POPULATION. The server caps this list at `MAX_NOTIFY_CREATED_LOGS` (500) and sends the
+  //    pre-truncation total as `total_log_count` for exactly this question -- measured
+  //    2026-09-07: the field is on the wire from four senders and had ZERO readers here, so a
+  //    change of 65,000 rows appended 500 lines of history and the timeline showed them as
+  //    「what changed」. Locally appending is an optimisation over reloading; the moment the
+  //    list is short, the optimisation is a wrong answer and the reload is the right one.
+  // ⚠️ ABSENT IS NOT COMPLETE. An older server sends no `total_log_count`; that is 「말 안 함」,
+  //    not 「안 잘렸음」, so it does not trigger a reload either - it simply cannot be compared,
+  //    which is what the `== null` check says and what a `|| 0` would have hidden.
+  const totalLogs = msg.total_log_count;
+  const logsTruncated = totalLogs != null && createdLogs.length < totalLogs;
   if (createdLogs.length > 0) {
     createdLogs.forEach(log => {
       // For non-global tabs ('cell' or 'row'), only process if the log belongs to the current table
@@ -363,6 +375,10 @@ export function handleWebSocketMessage(msg) {
       appendHistoryLocally(log, false);
     });
   }
+  // \u{1f534} AND THEN SAY SO. The append above is not wrong - those logs did happen - but it
+  //    is not everything, so the screen is asked to go and read the rest rather than left
+  //    believing a truncated list is the change set.
+  if (logsTruncated) triggerHistoryReloadDebounced();
 
   // 2. Perform table-specific data/grid updates
   if (msg.table_name !== state.currentTable) return;
@@ -488,7 +504,15 @@ export function handleWebSocketMessage(msg) {
     // next explicit refresh reads current data, but do not auto-replace the
     // on-screen grid merely because another actor changed the table.
     state.pageCache.clear();
-    if (window.triggerHistoryReloadDebounced) window.triggerHistoryReloadDebounced();
+    // \u{1f534} THIS CALL WAS DEAD. It went through `window.triggerHistoryReloadDebounced`,
+    //    which is assigned NOWHERE in this client - measured in the shipped bundle, where the
+    //    name survives exactly twice (this guard and this call) and never as an assignment.
+    //    So the guard was always false and the reload never ran. The same file imports the
+    //    real function at the top and calls it correctly 148 lines up; this was one
+    //    capability with two spellings, and the spelling that was dead is the one this whole
+    //    line depends on -- the server caps `created_logs` and `deleted_row_ids` and
+    //    compensates by sending THIS event for the client to reload on.
+    triggerHistoryReloadDebounced();
   } else {
     // 🔴 AN EVENT NOBODY MATCHED IS A DELTA THAT DID NOT LAND, AND THIS CHAIN USED TO CLOSE IN
     //    SILENCE. These names are literals here and again on the server -- measured 2026-09-06:
