@@ -226,6 +226,32 @@ function ingestionKey(tableName, filename) {
   return `${tableName}-${getCleanFilename(filename).replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 
+/**
+ * 성공 카드의 아래 줄 — 🔴 「검증 완료」는 «서버가 아무 말도 안 했을 때만» 참입니다.
+ *
+ * 적재는 성공하고도 행을 «버릴 수» 있습니다. 인제션이 그 사실을 세어서 문장으로 만들고
+ * (`_compose_detail`: 「키 결측으로 N행 스킵」 · 「파싱 결과 0행 ― 저장된 셀 없음」),
+ * 그 문장은 성공 통지의 사유 슬롯에 실려 «화면까지» 옵니다. 그런데 이 카드는 상태가
+ * SUCCESS 라는 것만 보고 「적재 성공 및 정합성 검증 완료」를 «무조건» 말했습니다 —
+ * 즉 버려진 행이 있는 적재가 «완전한 것»으로 보였고, 다음 공정이 그것을 그대로 받았습니다.
+ *
+ * ⛔ 그리고 «자막»을 달지 않습니다. 「검증 완료 (일부 행 제외됨)」처럼 뒤에 붙이면 앞 절이
+ *    여전히 «거짓»입니다. 서버가 할 말이 있으면 그 말이 «답»이고, 없을 때만 위 문장입니다.
+ *
+ * ⚠️ 상한은 «오늘의 조립기»에 맞춰져 있습니다 — 위 세 조각이 " / " 로 이어진 길이가
+ *    들어갑니다. 조립기가 조각을 더 붙이는 날 이 수를 «다시 재야» 합니다. 잘라서 뒤를 버리면
+ *    버리는 것이 대개 «수»입니다 (「키 결측으로 N행」이 뒤에 옵니다).
+ */
+export const INGESTION_DONE_STATS = '적재 성공 및 정합성 검증 완료';
+export const MAX_INGESTION_DONE_STATS = 120;
+
+export function ingestionDoneStats(detail) {
+  const said = detail == null ? '' : String(detail).trim();
+  if (!said) return INGESTION_DONE_STATS;
+  return said.length > MAX_INGESTION_DONE_STATS
+    ? said.slice(0, MAX_INGESTION_DONE_STATS) : said;
+}
+
 export function showIngestionProgress(tableName, filename, progress, processedRows, totalRows) {
   showProgressCard({
     key: ingestionKey(tableName, filename),
@@ -236,7 +262,9 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
     total: totalRows,
     statsSuffix: ' 행 처리됨',
     doneTitle: '\u2705 파일 적재 완료',
-    doneStats: '적재 성공 및 정합성 검증 완료',
+    // 진행이 시작될 때는 서버가 아직 아무 말도 안 했습니다 — 여기서는 기본 문장이 맞고,
+    // 끝날 때 `finishIngestionProgress` 가 할 말이 있으면 «갈아 끼웁니다».
+    doneStats: INGESTION_DONE_STATS,
   });
 }
 
@@ -245,7 +273,7 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
     key: ingestionKey(tableName, filename),
     ok: status === 'SUCCESS',
     okTitle: '\u2705 파일 적재 완료',
-    okStats: '적재 성공 및 정합성 검증 완료',
+    okStats: ingestionDoneStats(errorMsg),
     failTitle: '\u274c 파일 적재 실패',
     failStats: errorMsg ? errorMsg.slice(0, 50) : '처리 중 예외 발생',
   });
