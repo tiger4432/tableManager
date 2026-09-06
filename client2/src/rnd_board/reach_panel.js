@@ -31,7 +31,7 @@ export class ReachPanel extends Panel {
     //    같은 자리). 이걸 빼면 `startFor()` 가 «항상» null 이라 부품이 조용히 아무것도
     //    묻지 않고 「아직 안 골랐다」만 그립니다 -- 마킹이 «차 있어도». 하니스 C1 이 그것입니다.
     this.start = options.start || null;
-    this.collect = options.collect || 'reach';
+    this.legacyRoute = options.legacyRoute || 'reach';
     this.model = null;
     this.loadState = 'idle';
     // 지금 펼친 술어. 인스턴스마다 자기 것이라 같은 화면의 둘이 서로 다른 줄을 펼칠 수 있습니다.
@@ -59,7 +59,7 @@ export class ReachPanel extends Panel {
     }
     this.loadState = 'loading';
     this.render();
-    const model = await this.walkFn({ start, collect: this.collect });
+    const model = await this.walkFn({ start, legacyRoute: this.legacyRoute });
     this.model = model;
     this.loadState = model && model.ok ? 'ready' : 'refused';
     this.render();

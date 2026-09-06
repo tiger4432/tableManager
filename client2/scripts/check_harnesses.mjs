@@ -1066,7 +1066,7 @@ const FLOORS = new Map([
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 38],
+  ['walk_wire_harness.mjs', 42],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   ['truncation_harness.mjs', 12],
   // whether the DECLARED unique key survives measurement -- and that an empty table

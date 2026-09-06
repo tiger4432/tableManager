@@ -217,14 +217,14 @@ async function suite(mods) {
     reads: 'marking:1',
     writes: 'marking:2',
     start: { marking: 'marking:1', groupby: 'wafer' },
-    collect: 'reach',
+    legacyRoute: 'reach',
     walk: (spec) => { asked.push(spec); return Promise.resolve(model); },
   });
   panel.mount();
   await settle();
 
   eq('C1 it asked exactly once', asked.length, 1);
-  eq('C2 it asked the reach collect', asked[0].collect, 'reach');
+  eq('C2 it asked the reach route', asked[0].legacyRoute, 'reach');
   ok('C3 the marking was the subject', asked[0].start && asked[0].start.value === SEED,
     JSON.stringify(asked[0].start && asked[0].start.value));
   ok('C4 the part does not carry hops', asked[0].hops === undefined, String(asked[0].hops));
@@ -262,7 +262,7 @@ async function suite(mods) {
   markings.set('marking:2', SEED, SIGN.CASE);
   const a = new ReachPanel(hostA, {
     doc, markings, reads: 'marking:1', writes: 'marking:3',
-    start: { marking: 'marking:1', groupby: 'wafer' }, collect: 'reach',
+    start: { marking: 'marking:1', groupby: 'wafer' }, legacyRoute: 'reach',
     walk: () => Promise.resolve(model),
   });
   // 🔴 EACH GETS ITS OWN ANSWER OBJECT. Two panels asking the SAME question share one
@@ -272,7 +272,7 @@ async function suite(mods) {
   const modelB = reachModel({ ok: true, status: 200, body: BODY });
   const b = new ReachPanel(hostB, {
     doc, markings, reads: 'marking:2', writes: 'marking:4',
-    start: { marking: 'marking:2', groupby: 'wafer' }, collect: 'reach',
+    start: { marking: 'marking:2', groupby: 'wafer' }, legacyRoute: 'reach',
     walk: () => Promise.resolve(modelB),
   });
   a.mount(); b.mount();
@@ -295,7 +295,7 @@ async function suite(mods) {
   const hostE = doc.createElement('div');
   const pe = new ReachPanel(hostE, {
     doc, markings: empty, reads: 'marking:1', writes: 'marking:2',
-    start: { marking: 'marking:1', groupby: 'wafer' }, collect: 'reach',
+    start: { marking: 'marking:1', groupby: 'wafer' }, legacyRoute: 'reach',
     walk: () => Promise.resolve(model),
   });
   pe.mount();
@@ -308,7 +308,7 @@ async function suite(mods) {
   const refused = reachModel({ ok: false, status: 503, body: null });
   const pr = new ReachPanel(hostR, {
     doc, markings, reads: 'marking:1', writes: 'marking:2',
-    start: { marking: 'marking:1', groupby: 'wafer' }, collect: 'reach',
+    start: { marking: 'marking:1', groupby: 'wafer' }, legacyRoute: 'reach',
     walk: () => Promise.resolve(refused),
   });
   pr.mount();
@@ -321,7 +321,7 @@ async function suite(mods) {
   const noEdges = reachModel({ ok: true, status: 200, body: { ...BODY, edges: [] } });
   const pn = new ReachPanel(hostN, {
     doc, markings, reads: 'marking:1', writes: 'marking:2',
-    start: { marking: 'marking:1', groupby: 'wafer' }, collect: 'reach',
+    start: { marking: 'marking:1', groupby: 'wafer' }, legacyRoute: 'reach',
     walk: () => Promise.resolve(noEdges),
   });
   pn.mount();
@@ -366,8 +366,8 @@ const MUTANTS = [
     from: "    row.nodeIds.forEach((id, i) => this.mark(id, SIGN.CASE, i === 0 ? 'replace' : 'add'));",
     to: "    row.nodeIds.forEach((id) => this.mark(id, SIGN.CASE, 'add'));" },
   { name: 'the-part-carries-its-own-hops', target: 'reach_panel.js', wakes: 'C4',
-    from: '    const model = await this.walkFn({ start, collect: this.collect });',
-    to: '    const model = await this.walkFn({ start, collect: this.collect, hops: 1 });' },
+    from: '    const model = await this.walkFn({ start, legacyRoute: this.legacyRoute });',
+    to: '    const model = await this.walkFn({ start, legacyRoute: this.legacyRoute, hops: 1 });' },
   { name: 'an-empty-marking-asks-anyway', target: 'reach_panel.js', wakes: 'E1/E2',
     from: '    if (!this.walkFn || !start) {',
     to: '    if (!this.walkFn) {' },

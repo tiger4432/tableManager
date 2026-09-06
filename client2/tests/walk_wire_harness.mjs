@@ -14,7 +14,10 @@
 // ⚠️ 잘라쓰기 «아닙니다» — 대상 모듈을 그대로 import 합니다 (`api.js` 는 node 에서 열립니다).
 //
 // Run: node client2/tests/walk_wire_harness.mjs
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createWalkBoxWalk, entitySeedId } from '../src/rnd_board/api.js';
+import { loadWithProbe } from './lib/probe.mjs';
 
 let pass = 0;
 const failures = [];
@@ -210,6 +213,83 @@ console.log('\n[5] a refusal carries its reason');
   ok('...in a sentence, not an empty string', res.message.length > 0, res.message);
 }
 
+// ═══ ⑨ 개명 — 옛 키가 «조용히 지나가지» 않는지 ══════════════════════════════════════
+//
+// 🔴 `collect` 는 이 클라에서 «LEGACY_ROUTES 표의 행 이름»(라우트 선택자)이었고, 전선이 그
+//    낱말을 «원장의 낱말»(도메인 노드 타입)로 가져갑니다. 그래서 클라 쪽 키가 `legacyRoute` 로
+//    비켰습니다 — 사라질 쪽이 이름을 내줍니다.
+// 🔴 이 절이 재는 것은 «개명»이 아니라 «옛 키의 운명»입니다. 이름만 바꾸면 옛 키는 `...rest` 로
+//    흘러 `fetchSubgraph` 의 고정 인자 목록에서 «조용히 버려지고», 옛 방식으로 쓴 좌석이
+//    아무 말 없이 «다른 질문»을 묻습니다. 그래서 «거절»이어야 하고, 거절이 실재하는지는
+//    「요청이 안 나갔다」로만 증명됩니다 — 요청을 재는 이 하니스가 그 자리인 이유입니다.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const API_PATH = path.join(HERE, '..', 'src', 'rnd_board', 'api.js');
+const SEED = { value: entitySeedId('wafer', { wafer: 'W-1' }) };
+
+async function renameSuite(M) {
+  const before = failures.length;
+
+  const r1 = recorder();
+  let threw = null;
+  await M.createWalk({ apiBase: '', fetchImpl: r1.fetchImpl })({ legacyRoute: 'candidate', start: SEED })
+    .catch((e) => { threw = e; });
+  ok('R1 the new key still reaches the table and asks', r1.seen.length === 1 && !threw,
+    `seen=${r1.seen.length} threw=${threw && threw.message}`);
+
+  const r2 = recorder();
+  let refusal = null;
+  await M.createWalk({ apiBase: '', fetchImpl: r2.fetchImpl })({ collect: 'candidate', start: SEED })
+    .then(() => {}, (e) => { refusal = e; });
+  ok('R2 the OLD key is refused', Boolean(refusal), 'it resolved instead');
+  ok('R3 ... and NOTHING went to the wire', r2.seen.length === 0,
+    `${r2.seen.length} request(s) left anyway: ${r2.seen[0] || ''}`);
+  ok('R4 ... and the refusal names the key to use instead',
+    Boolean(refusal) && /legacyRoute/.test(String(refusal.message)),
+    String(refusal && refusal.message));
+
+  return { failed: failures.length - before };
+}
+
+console.log('\n[9] the renamed axis, and the fate of the old key');
+await renameSuite(await import('../src/rnd_board/api.js'));
+
+const base = { pass, failed: failures.length };
+
+const RENAME_DEFECTS = [
+  ['the refusal is deleted, so the old key is silently forwarded',
+    (src) => src.replace(/ {4}if \(rest\.collect !== undefined\) \{[\s\S]*?\n {4}\}\n/, '')],
+];
+const RENAME_CONTROLS = [
+  ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],
+];
+
+let caught = 0; const wrong = [];
+console.log('\n[9-bis] mutants (defects CAUGHT, controls ESCAPE)');
+async function score(name, mutate, tag) {
+  try { return await renameSuite((await loadWithProbe(API_PATH, { mutate, tag })).module); }
+  catch (e) {
+    if (/did not mutate|unchanged/.test(String(e && e.message))) {
+      console.error(`  anchor GONE: ${name} — ${e.message}`);
+      process.exit(2);
+    }
+    return { failed: 1 };
+  }
+}
+for (const [name, mutate] of RENAME_DEFECTS) {
+  const r = await score(name, mutate, 'rn');
+  if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
+  else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
+}
+for (const [name, mutate] of RENAME_CONTROLS) {
+  const r = await score(name, mutate, 'rnc');
+  if (r.failed === 0) console.log(`  escaped ${name}`);
+  else { wrong.push(`control caught: ${name}`); console.log(`  CAUGHT  ${name} <- control caught`); }
+}
+// 변이가 만든 실패는 «대상의» 실패가 아닙니다. 보고되는 수는 실물 run 의 것입니다.
+pass = base.pass;
+failures.length = base.failed;
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
+console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length} caught, ${wrong.length} wrong`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
-process.exit(failures.length === 0 ? 0 : 1);
+process.exit(failures.length === 0 && wrong.length === 0 ? 0 : 1);

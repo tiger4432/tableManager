@@ -100,7 +100,7 @@ export class GridShell {
         // 🔴 소유자 데이터 흐름 정본: 부품이 선언하는 것은 «읽을 마킹»과 «무엇을 걷나»입니다.
         //    reads/writes 와 «같은 자리»에 서는 이유가 그것입니다 -- start 가 곧 마킹이니까요.
         start: decl.start || null,
-        collect: decl.collect || null,
+        legacyRoute: decl.legacyRoute || null,
         title: decl.title || '',
         ...(decl.options || {}),
       });
