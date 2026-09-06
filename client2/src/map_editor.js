@@ -6,7 +6,7 @@
 //    늘어도 빨개집니다 (소유자 2026-09-02: 「잘라쓰기 하니스 절대금지」).
 //    ⚠️ 여기에 CSS import 를 다시 넣으면 그 27개가 «한 줄로» 되살아납니다.
 import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
-import { initTheme } from './theme.js';
+import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
 // The ONE material-list normalizer. The panel parses what the user types with it and the
@@ -3419,7 +3419,7 @@ function toExcelHex(color, backdrop, fallback) {
 
 // 테마 전환 시: 색 캐시 재빌드 + 캔버스 1회 재렌더 (theme.js 'themechange' 구독)
 // 위 DOMContentLoaded 와 같은 이유로 가드합니다 -- 브라우저 거동은 그대로입니다.
-if (typeof document !== 'undefined') document.addEventListener('themechange', () => {
+if (typeof document !== 'undefined') document.addEventListener(THEME_CHANGE_EVENT, () => {
   rebuildThemeColorCache();
   scheduleRenderGridCanvas();
 });

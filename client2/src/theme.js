@@ -32,13 +32,20 @@ export function getTheme() {
 }
 
 /** 테마 적용: data-theme 스탬프 + 영속 + AG-Grid 클래스 스왑 + 이벤트 발행 */
+// 🔴 THE NAME OF THE NOTIFICATION, OWNED HERE BECAUSE THIS FILE SENDS IT.
+//    Measured 2026-09-06: three files spelled `'themechange'` independently -- this dispatcher
+//    and both subscribers -- so renaming it here would have left them listening for an event
+//    nobody sends, with no error and no failing check. Both already import from this module, so
+//    sharing the spelling cost no new wiring.
+export const THEME_CHANGE_EVENT = 'themechange';
+
 export function applyTheme(theme) {
   const next = THEMES.includes(theme) ? theme : DEFAULT_THEME;
   document.documentElement.setAttribute('data-theme', next);
   try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* 무시 */ }
   syncAgGridThemeClasses(next);
   updateToggleButtons(next);
-  document.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
+  document.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme: next } }));
 }
 
 /** 라이트 ↔ 다크 전환 */

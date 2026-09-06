@@ -489,5 +489,18 @@ export function handleWebSocketMessage(msg) {
     // on-screen grid merely because another actor changed the table.
     state.pageCache.clear();
     if (window.triggerHistoryReloadDebounced) window.triggerHistoryReloadDebounced();
+  } else {
+    // 🔴 AN EVENT NOBODY MATCHED IS A DELTA THAT DID NOT LAND, AND THIS CHAIN USED TO CLOSE IN
+    //    SILENCE. These names are literals here and again on the server -- measured 2026-09-06:
+    //    17 literal spellings across three server files, and exactly one name owns a constant --
+    //    so nothing makes the two sides agree. A renamed or added event reaches this chain,
+    //    matches nothing, and the grid stays behind the server without a word. That is the same
+    //    consequence the dropped-frame branch above already speaks about, so it speaks the same
+    //    way rather than inventing a second dialect for it.
+    // ⚠️ Reachable ONLY for the current table with a live grid: the two guards above return
+    //    first, so this cannot fire for an event that was never meant for this screen.
+    console.warn('[WebSocket] unhandled event', event);
+    showToast(`실시간 갱신 누락 · 알 수 없는 이벤트 «${event}»`, 'warning',
+      { dedupeKey: 'ws-unhandled' });
   }
 }
