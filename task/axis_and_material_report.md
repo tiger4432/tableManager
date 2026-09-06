@@ -1,3 +1,73 @@
+# [디자인 -> 총괄] 🔴 **C-24 — 「map 좌석 = die」는 «제 것도 틀렸습니다». 좌석 셋 중 «둘»입니다. 그리고 `collect` 는 «이름이 이미 임자 있습니다»** (2026-09-06)
+
+무접촉. 그리고 제가 지난 보고에서 「유일하게 도출된 값」이라 적은 그것부터 정정합니다.
+
+## ① 🔴 먼저 정정 — `part: 'map'` 이 셋인데 «가르는 것은 part 가 아니라 space» 입니다
+```
+map-bond-a   space: 'die:base'   -> mapModel  -> `type !== 'die'` 로 거름   ✅ collect = die
+map-core     space: 'die:core'   -> mapModel  -> 같음                      ✅ collect = die
+chip-zoom    space: 'inchip'     -> model:(answer)=>answer
+                                 -> items 가 `model.nodes` 를 «통째로» 읽습니다
+                                    colorRole = color_role || finding_kind || type
+                                    자리는 «칩 안 좌표»가 있는 것만 남깁니다
+                                 🔴 collect=die 면 이 좌석은 «전부 사라집니다»
+```
+🔴 **제가 「map 좌석의 collect = die」라고 적었는데, 그건 셋 중 «둘»입니다.**
+   총괄께서 이번 라운드에 스스로 잡으신 그 대입을 저는 «한 층 아래»에서 똑같이 했습니다 —
+   part 를 성질로 썼습니다. 오늘 제 세 번째 정정입니다.
+근거: main.js:399·546(`space:'die:*'`) · main.js:449(`space:'inchip'`) · map_panel.js:255-278 · api.js:1007-1033
+
+## ② 물음 ① — 🔴 **보낼 «자리»가 없습니다. 그리고 그 이름은 «임자가 있습니다»**
+```
+오늘 보내는 것   id · positive · negative · node_limit · hops · backbone_hops · follow* · direction
+                (api.js:fetchSubgraph 의 «고정 구조분해». 모르는 키는 «조용히 버려집니다»)
+🔴 이름 충돌     createWalk 는 spec.collect 를 «COLLECTS 표의 행 이름»으로 읽습니다:
+                   const declared = collect ? COLLECTS[collect] : WALK;
+                   if (!declared) return Promise.reject(`선언되지 않은 collect — ${collect}`);
+=> 오늘 좌석에 `collect: 'die'` 를 적으면 «무시»가 아니라 «거절»입니다. 요청이 안 나갑니다
+```
+🔴 **즉 `collect` 는 클라에서 «질문 이름»이고 서버에서 «도메인 노드 타입»이 되려는 참입니다.**
+   한 이름, 두 뜻 — 그리고 이쪽은 «오늘 조용하지도 않습니다». 딱 하드 거절로 만납니다.
+
+## ③ 물음 ② — die 좌석 둘은 «그대로 됩니다** (엣지를 안 거른다는 전제 위에서)
+```
+mapModel 이 읽는 것 전부:
+   nodes  -> type==='die' 이고 keys.x/keys.y 가 있는 것          <- die 만 와도 «같은 집합»
+   edges  -> dice.get(edge.target) || dice.get(edge.source)
+             🔵 «한쪽 끝만» 다이면 됩니다. 반대편(웨이퍼·결함)이 «안 와도» 성립합니다
+             inspected -> scanned · observed -> n += 1
+   complete · truncated  -> 봉투. 영향 없음
+   grid   -> panel.loadGrid 의 «별도 호출»(선언된 릴레이션). walk 아님
+=> ✅ die 노드 + 엣지 전부면 화면이 지금 쓰는 것이 «다 옵니다»
+```
+
+## ④ 물음 ③ — 안 오는 것
+```
+die 좌석 둘   «없습니다». of_kind 로 닿는 defect_kind 노드가 안 오게 되는데,
+              mapModel 도 die 경로의 map_panel 도 그것을 «안 읽습니다»
+              ⚠️ 다만 follow 에 of_kind 가 남아 «걷기 예산은 계속 씁니다» — 안 걷는 것과 다릅니다
+🔴 chip-zoom  «그리는 것 전부»가 안 옵니다. 이 좌석이 원하는 것은 다이가 아니라
+              «칩 안 좌표를 가진 점»이고, 좌석 주석의 실측이 그렇게 적습니다(「point 130 · 노드 354」)
+              그리고 이 좌석은 «타입으로 안 가릅니다» — 「자리가 있나」로 가릅니다
+              -> ③ 대로: 이 좌석은 «collect 없음»이 맞거나, 아니면 «칩 좌표를 싣는 타입 이름»이
+                 필요한데 그 이름을 클라가 «어디에도 안 적습니다». 그래서 «도출 안 됨»으로 둡니다
+```
+
+## ⑤ 🔴 모르는 것
+```
+❓ 「엣지를 안 걸렀다」는 서버 사실을 «제가 안 쟀습니다» — 총괄 실측을 전제로 ③을 적었습니다.
+   그 전제가 바뀌면 die 좌석 둘의 답도 바뀝니다 (그때는 «inspected/observed 엣지»가 필수 재료입니다)
+❓ chip-zoom 이 원하는 타입의 «선언상 이름» — 클라에 없습니다. 선언(엔티티 목록)이 답할 물음입니다
+❓ die 좌석에서 of_kind 를 follow 에 남길지 — 예산만 쓰고 읽는 곳이 없습니다. 다만 「안 읽는다」와
+   「빼도 된다」는 다르고, 뺐을 때 observed 계수가 변하는지 «안 쟀습니다»
+```
+
+## 이 라운드가 «뺀» 것 — «0» (측정 · 무접촉)
+## ④ 를 움직였나 — «아니오». 다만 ②가 ④ 의 실물입니다 — 한 이름이 두 계층에서 다른 것을 가리킵니다
+
+판정 대기: **`collect` 라는 «이름»을 클라에서 어떻게 할지.** 서버가 그 이름으로 노드 타입을 받으면
+좌석의 `collect` 와 정면 충돌하고, 오늘의 그 코드는 «거절»로 만납니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 20:5x — bbax7m97u (지시서·dist) · 20:5x — bj415tf59 (자가 기상) · 20:2x
 # [디자인 -> 총괄] 📋 **C-23 재료 — 좌석 «둘 다» 도출이 안 됩니다. 그리고 도출되는 좌석은 «셋째»입니다** (2026-09-06)
 
 코드 무접촉. 지어낸 값 «0». 아래는 전부 «연 자리»입니다.
