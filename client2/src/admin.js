@@ -1417,9 +1417,19 @@ function scheduleActiveRefresh() {
       if (res.ok) {
         const r = await res.json();
         activeIngestionData = r.data || [];
-        renderActiveIngestions();
+        renderActiveIngestions();   // re-arms the chain -- see below for why that matters
+        return;
       }
     } catch (e) { /* 보조 정보 — 무음 */ }
+    // 🔴 F-18. The ONLY place this chain re-arms is `renderActiveIngestions()`, and that was
+    //    reachable only through `res.ok`. So one failed read -- a 401 after a token expiry, a
+    //    restart, a dropped packet -- ended the poll FOREVER, and the bars kept standing at
+    //    whatever they last said. A frozen progress bar is not read as 「stopped updating」;
+    //    it is read as 「this job has not moved」, which is a different and wrong fact.
+    // 🔵 So the failure path re-arms too. This is not a retry policy: the same 5s tick, the
+    //    same guards at the top of the callback, and the same natural death when the list
+    //    empties or the operator leaves the tab.
+    scheduleActiveRefresh();
   }, 5000);
 }
 
