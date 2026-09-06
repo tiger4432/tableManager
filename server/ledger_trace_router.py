@@ -470,8 +470,20 @@ def ledger_declaration_catalog():
             "reason": "declaration_unreadable",
             "message": f"선언을 읽지 못했습니다: {exc}"})
 
+    # 🔴 `class` IS CARRIED, NOT DECIDED HERE. The walk refuses a step from a static type
+    # to a dynamic one (`_static_step_predicates`), and a client deriving paths from the
+    # type graph alone cannot know that - so the route list offers walks that come back
+    # with the seed and nothing else. The value published is the one `_static_types()`
+    # already reads, so declaring a type static changes both at once and neither can
+    # drift from the other.
+    #
+    # ⚠️ AN ENTITY THAT DECLARES NO CLASS PUBLISHES `None`, NOT "dynamic". "I was not
+    # told" and "I was told it is dynamic" are different facts, and filling the first
+    # with the second is the exact shape this route exists to avoid - the reader would
+    # then draw a path the walk may still refuse, with no way to know it guessed.
     entities = [
-        {"type": name, "keys": list((spec or {}).get("keys") or [])}
+        {"type": name, "keys": list((spec or {}).get("keys") or []),
+         "class": (spec or {}).get("class")}
         for name, spec in sorted((declared.get("entities") or {}).items())
     ]
     predicates = [
