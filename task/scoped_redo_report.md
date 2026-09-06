@@ -8726,3 +8726,93 @@ tests/test_retroactive_admin.py · test_the_spawned_line_stops_being_a_lie.py
 
 판정 대기: 🔴 위 「지나가며 본」 둘 (특히 queue 패널의 「막는 것 없음」) 착수 여부 · ★ 깊이(D)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【기준 ④ — 이름 하나, 계약 여럿】 ⛔ **세기만 했습니다. 안 고쳤습니다**
+
+## 흐름 / 이음매
+```
+흐름 ② 원장 -> 화면 · 이음매 「서버 브로드캐스트 -> websocket.js」
+```
+## 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0   |   움직인 「깔끔」 — 없음 (측정 라운드)
+
+## 🔴 먼저 — 제 수가 총괄 수와 «다릅니다». 그리고 제 첫 수도 틀렸었습니다
+```
+1차 (정규식)   upsert 5가지   <- 🔴 «틀렸습니다». 중첩 dict 가 새어 들어왔습니다
+2차 (ast 파싱)  upsert «4»가지 · refresh «3»가지
+총괄 보고       upsert 3가지 · refresh 4가지
+```
+🔵 파싱한 수를 냅니다. 정규식은 `{...}` 를 세지 못해 안쪽 item dict 의 키를 바깥 것으로 셌습니다.
+
+### `batch_row_upsert` — 내는 곳 «6» · 키셋 «4»
+```
+x2  {table_name, items, change_count}                                    main.py:3361 · 3407
+x2  {table_name, items, change_count, created_logs}                      main.py:3508 · 3575
+x1  {table_name, items, change_count, created_logs, transaction_id, updated_by}   main.py:3087
+x1  {table_name, items, created_logs, total_log_count, transaction_id, updated_by}
+                                                       chain_ingestion_worker.py:1095
+🔴 마지막 하나만 `change_count` 가 «없고» `total_log_count` 가 «있습니다» — 유일하게 다른 축입니다
+```
+### `batch_refresh_required` — 내는 곳 «9» · 키셋 «3»
+```
+x7  {table_name, change_count}          main.py:466·3072·3493·3560·5647·5856 · worker:1434
+x1  {table_name, change_count, deleted_row_ids_omitted}                  main.py:3057
+x1  {table_name, change_count, created_logs, total_log_count, transaction_id}  worker:1085
+```
+
+## ① 「키 이름 차이인가, «뜻»이 다른가」 → **뜻은 «같습니다». 차이는 «있고 없고»입니다**
+```
+어느 자리에서도 같은 키가 «다른 뜻»으로 쓰이지 않습니다.
+갈리는 것은 «선택 필드의 유무»뿐이고, 그건 서로 «부분집합 관계»입니다
+=> 그러므로 「이름을 갈라야 하나」(경계 계약 변경)는 «아니라고 봅니다».
+   판정은 총괄 몫이지만, 제 측정이 그쪽을 가리키지 않습니다
+```
+
+## ② 「받는 쪽이 정말 «event 만» 보나」 → 🔴 **아닙니다. 셋을 봅니다**
+```
+websocket.js:361   if (msg.table_name !== state.currentTable) return;   <- «분기 «전»의 가드»
+                   즉 table_name 은 «모든 이벤트»의 문지기입니다
+websocket.js:382   batch_row_upsert  ->  msg.items 를 읽고 각 item.row_id 로 그리드를 고칩니다
+websocket.js:479   batch_refresh_required  ->  «본문을 안 읽습니다». pageCache.clear() 뿐입니다
+=> 읽는 것: event · table_name(가드) · items(upsert 만)
+🔵 그리고 worker:1374 의 주석이 «정확합니다» — 「클라는 table_name 으로 가드하고
+   change_count 는 refresh 판정에 안 쓴다」. 오늘 제가 확인했습니다
+```
+
+## ③ 「읽는 곳이 «0» 인 키」 → **하나뿐입니다. 셋이 아닙니다**
+```
+deleted_row_ids_omitted   🔴 «0» — 서버·클라·시험 전부에서 «내는 곳 하나»(main.py:3057) 말고 없음
+total_log_count           «0 아닙니다» — main.py:5911 이 payload.get("total_log_count") 로 «읽습니다»
+                          (/internal/events/batch-refresh 수신부). 시험도 넷이 읽습니다
+                          ⚠️ 클라에서는 0 입니다. 그래서 「0」으로 보고하면 틀립니다
+change_count              «0 아닙니다» — 클라 넷(api·clipboard·main·ui) + 서버 본문 파라미터
+                          다만 «refresh 판정»에는 안 씁니다 (위 ②)
+```
+🔵 그래서 「빼는 날 물건」은 `deleted_row_ids_omitted` **하나**입니다.
+🔴 다만 ⛔ 아직 «안 뺐습니다» — 그리고 «빼기 전에» 아래를 읽어 주십시오.
+
+## ⚠️ 그 하나를 빼는 것이 «반대로» 갈 수도 있습니다
+총괄이 같이 적으신 것: 「잘림이 말을 안 한다 — created_logs <= 5000 가드 다섯 곳」
+```
+그 자리에 이미 있는 모양이 «바로 그것»입니다:
+   deleted_row_ids_omitted   「목록을 잘랐다」를 말하는 키
+   total_log_count           「원래 몇이었나」를 말하는 키 (그리고 이건 읽힙니다)
+=> 즉 「읽는 곳 0」인 그 키는 «쓸모없어서» 0 이 아니라 «한 자리에서만 쓰여서» 0 입니다
+   빼면, 잘림을 말하는 모양을 «지우고» 나서 다섯 곳에 그 모양을 «다시 만들어야» 합니다
+```
+🔴 **판정 청합니다: 이건 「빼기」가 아니라 「퍼뜨리기」로 보입니다.** 제 측정이 그렇게 가리킵니다.
+
+## 📌 같은 기능에 «경로 둘»인 자리 — 지나가며 본 것, 이름만
+```
+① trigger_ws_refresh(main.py:460) vs sync_refresh_callback(main.py:5646)
+   시그니처가 «같습니다»(t_name, count, created_logs, total_log_count) — 콜백 둘이 같은 일을 합니다
+② batch_refresh_required 를 내는 «일곱 곳»이 각자 dict 를 손으로 짓습니다
+   -> ④ 의 판별식 그대로: 「둘이 «갈라질 수» 있나」 = 예. 그리고 조용히 갈라집니다
+   -> 정본 함수 하나가 그 dict 를 짓게 하면 «갈라지려면 둘 다 고쳐야» 합니다
+⛔ 둘 다 안 고쳤습니다. 이름만 올립니다
+```
+
+판정 대기: 🔴 `deleted_row_ids_omitted` — 빼기입니까 «퍼뜨리기»입니까 (제 측정은 후자) ·
+          🔴 위 「경로 둘」 둘 중 착수할 것 · ★ 깊이(D)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
