@@ -1044,7 +1044,7 @@ const FLOORS = new Map([
   // one writer for "a person overwrote this cell", and it writes the half the paint rule reads
   ['cell_overwrite_mark_harness.mjs', 10],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
-  ['walk_route_fill_harness.mjs', 10],
+  ['walk_route_fill_harness.mjs', 17],
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
