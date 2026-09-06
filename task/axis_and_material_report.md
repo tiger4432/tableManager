@@ -1,3 +1,62 @@
+# [디자인 -> 총괄] ✅ **S-16 — «의도한 범위»였습니다. 그리고 ②는 «읽는 쪽»이 아니라 «발신»이 없습니다** (`e844ff8c`)
+
+## 답: ①만 닫았고 ②는 «남았습니다». 다만 사유가 지시서와 다릅니다
+```
+① 「고친 것이 반영됐나」   uptime · reload_age  ->  ✅ 닫힘 (읽는 쪽 2 · 3)
+② 「이 수가 언제 것인가」   🔴 «이 패널에서는 못 닫습니다» — 아래 실측
+```
+
+## 🔴 실측 — `/admin/chain/queue` 는 «as-of 를 아예 안 보냅니다»
+그 라우트가 내는 키 «전부»입니다:
+```
+waiting · running · loop_in_this_process · log_filename · waiting_by_owner ·
+oldest_waiting_seconds · oldest_waiting_at · retried_among_waiting · waiting_transactions ·
+listed{rows_scanned, cap, capped} · not_measured{retried_total, processed_recently}
+```
+```
+as_of · generated_at · last_updated · checked_at  ->  «하나도 없습니다»
+`oldest_waiting_at` 은 있지만 그건 「제일 오래된 대기가 «시작된» 시각」이지
+「이 응답이 «언제» 것인가」가 아닙니다 — 다른 물음입니다
+```
+🔴 **그래서 ②는 「한 줄」이 아닙니다.** 지금 ②를 지으면 «재료 없이 채택된 계약»이고,
+   오늘 밤 그 부류로 화면이 한 번 비었습니다. 발신이 서면 읽는 쪽은 그때 한 줄입니다.
+
+## 🔵 그리고 `last_updated` 는 «이 패널의 셋째 칸이 아닙니다»
+```
+loop_uptime_seconds · mapper_reload_age_seconds   ->  GET /admin/chain/queue      (이 패널)
+last_updated                                       ->  GET /admin/auto-update/status (다른 패널)
+```
+그래서 「큐 패널의 셋」은 «둘 + 남의 것 하나»였습니다. 커밋에 적었고 여기서 한 번 더 적습니다 —
+제가 «고르지» 않고 «재서» 갈랐습니다.
+🔵 다만 `last_updated` 는 «진짜로 안 읽힙니다»(소스 0 · 번들 0). 그건 어드민 화면(`admin.js`)의
+   행이고, 그 라우트의 부재 경로는 이미 `absent_listing(..., last_updated=None)` 로 «자리»가
+   있습니다 — 즉 그쪽은 «발신이 살아 있는» 쪽입니다. 등급 2 로 «따로» 세워 주십시오.
+
+## 요약하면
+```
+S-16 ①      ✅ 닫힘        (이 커밋)
+S-16 ②      🔴 «발신 없음»  — 읽는 쪽 문제가 아닙니다. 서버가 as-of 를 내면 그때 한 줄
+last_updated 🟡 별도 행     — 다른 라우트 · 다른 패널 · 발신은 «살아 있음»
+```
+
+## 판정 대기
+```
+🔵 없음 (새 질문)
+```
+```
+🔁 이월  줄바꿈 정규화 «사본 33» 을 공용 독자로 훑을지            (첫 제출 00:58)
+🔁 이월  「src 를 직접 읽는 하니스」를 게이트가 «세게» 할지        (첫 제출 00:58)
+🔁 이월  바닥 «없는» 하니스 «넷» 을 제가 채워도 되는지            (첫 제출 01:43)
+🔁 이월  소스가 `undefined` 일 때 화면에 「undefined」가 찍히는 것  (첫 제출 02:46)
+```
+
+## 빌드 빚
+```
+2 + 이번 라운드(S-6 · S-16)  -> 다음에 «묶어서». 그때까지 그 둘의 «도달 가능»은 «주장 안 합니다»
+```
+**감시: bjeebjyu8 · bbax7m97u · bj415tf59**
+
+---
 # [디자인 -> 총괄] ✅ **지도 셋 · S-6 착지. 그리고 «제 게이트가 대부분 공허했습니다»** (`ac5899a5` · `a9c6f77c`)
 
 ## ① 지도 셋 — 약속을 한 줄씩
