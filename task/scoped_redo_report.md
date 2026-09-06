@@ -8882,3 +8882,87 @@ trigger_ws_refresh(main.py:460)  vs  sync_refresh_callback(main.py:5646)
 
 판정 대기: ③-2 착수 (준비됨) · ③-3 의 두 콜백을 합칠지 (몸통 비교 필요) · ★ 깊이(D)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【조인 규칙 이름】 세고 왔습니다 — ⛔ 안 고쳤습니다
+
+## 흐름 / 이음매 · 「깔끔」
+```
+흐름 ① 인제션 -> 원장 · 이음매 「선언(가상 조인) -> dt_map 파생」
+움직인 「깔끔」 — 없음 (측정 라운드)   |   이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0
+```
+
+## ① 「못 찾으면 무엇이 일어나나」 → 🔴 **조용하지 «않습니다». 이름을 대고 «거절»합니다**
+```
+join_rule(db, name)   목록에서 못 찾으면
+   raise DerivationRefused(REFUSE_JOIN_RULE_MISSING,
+        "virtual join rule '%s' is absent or was not verified; …")
+=> 이름이 «거절문 안에» 들어갑니다. 예외이고, 빈 값도 조용한 통과도 아닙니다
+```
+🔵 그리고 이게 **일부러 그렇게 만든 것**이고, 그 사유가 «출하 샘플 안»에 적혀 있었습니다:
+```
+_retired_2026_08_14_comment (제품 소유자 판정 2026-08-14):
+  「dt_map_derivation이 이 두 이름으로 해석하므로 파생은 «전부터» 죽어 있었다.
+    내린 뒤에도 죽어 있고, 다만 join_rule()이 REFUSE_JOIN_RULE_MISSING으로 «이름을 대고»
+    중단한다 — 배치 로그의 소음이 호출자가 받는 명시적 거절로 바뀐다.
+    조용해진 것이 아니라 «제자리에서» 소리가 난다」
+```
+🔴 즉 **내린 것이 «더 시끄럽게» 만든 조치였습니다.** 그리고 그 두 표(`dt_job_attribution` 252행 ·
+   `eqp_frame_attribution` 5행)가 `table_config.json` 에 «미등록»이라 선언이 로드마다 rejected 였고,
+   **파생은 내리기 «전부터» 죽어 있었습니다.**
+⚠️ 그래서 이 항목은 「이름이 어긋나 조용히 멈춘 결함」이 «아닙니다» — 소유자 판정으로 «내려진 기능»입니다.
+
+## ② 「`dt_log_frame_from_inventory` 가 후계인가」 → 🔴 **아닙니다. «내는 것»이 다릅니다**
+```
+_retired_dt_log_frame_attribution   dt_log ⋈ eqp_frame_attribution
+                                    expose: ["core_frame", "dt_frame"]        <- 프레임 «이름»
+dt_log_frame_from_inventory         dt_log ⋈ dt_inventory
+                                    expose: ["dt_x_base","dt_x_sign","dt_x_offset",
+                                             "dt_y_base","dt_y_sign","dt_y_offset"]  <- «변환 파라미터»
+```
+🔴 그리고 코드가 읽는 것은 `FRAME_COLUMN = "dt_frame"` 입니다 — **후계라던 규칙이 그 컬럼을 «안 냅니다».**
+   이름이 비슷하다고 가정하지 말라 하신 그대로, 「무엇을 내는지」로 갈랐더니 «다른 물건»입니다.
+```
+🔵 다만 «확정» 쪽에는 후계로 보이는 것이 있습니다:
+   dt_inventory_confirmed_from_attribution   expose: ["dt_lot_confirmed","dt_slot_confirmed"]
+   -> 내리는 것이 «retired 확정 규칙과 동일»합니다. 다만 left_table 이 dt_log 가 «아니라» dt_inventory 입니다
+   => 같은 사실을 «다른 경로»로 얻습니다. 코드의 join_pairs 가 그대로는 안 맞습니다
+```
+
+## ③ 「이 부류가 더 있나」 → 🔴 **부류입니다. 다만 «둘로 갈라서» 세야 했습니다**
+```
+1차 계수   선언 이름 30개 · 리터럴 161자리
+🔴 그런데 그중 상당수가 «문법 키»입니다 — entities · vocabulary · bindings · warnings ·
+   alignment · index_columns … 이건 «작성자가 못 바꾸는 것»이라 코드가 들어도 «맞습니다»
+   -> 그걸 부류에 넣으면 수가 부풀고 판정이 흐려집니다
+
+2차 계수 (작성자가 «고르는» 이름 = 표 이름만)
+   표 이름 «15» · 리터럴 «52»자리 · 파일 «18»
+   defect 9 · dt_log 8 · valid_die_ref 7 · wafer_map_metadata 4 · dt_inventory 4 ·
+   inspection_run 4 · lot_event 3 · void_obs 3 · core_wafer_map 2 · core_usage_map 2 ·
+   dt_map 2 · bonding_log · map_split_registry · bonding_map · lot_slot_wafer 각 1
+```
+🔴 **`defect` 9자리가 제일 큽니다** — CLAUDE.md 상설이 이름까지 대고 금지한 그 낱말입니다
+   (「void · defect · wafer 로 갈래를 트는 순간 사용자가 못 바꾼다」).
+🔵 그리고 조인 규칙 이름 둘은 이 계수에 «안 잡힙니다» — 샘플에서 내려가 이름이 사라져서입니다.
+   즉 «이 부류의 원래 사례»가 계수기에 안 걸린다는 뜻이라, 수를 「전부」로 읽으면 안 됩니다.
+
+## 판정 재료 — 총괄이 나눠 두신 두 답에 대해
+```
+㉮ 「이름을 갈아끼운다」   -> 🔴 못 합니다. ② 때문에 갈아끼울 «대상이 없습니다»
+                          (frame 쪽은 다른 물건이고, confirmed 쪽은 left_table 이 다릅니다)
+㉯ 「이름을 선언에서 읽는다」 -> 이게 ② 를 닫습니다. 다만 이 자리에서는 «그 앞»에 물음이 하나 있습니다:
+                          「dt_map 파생을 «되살릴 것인가»」 — 지금은 소유자 판정으로 내려간 기능입니다
+                          되살릴 것이 아니면, 이름을 선언에서 읽게 해도 «읽을 선언이 없습니다»
+```
+
+## 📌 그리고 클라 건 — 봤습니다, 안 건드렸습니다
+```
+client2/src/map2/authoring* (871줄) 를 import 하는 곳이 시험 하니스 하나
+=> 총괄이 클라 채널로 내신다 했으므로 기록만 합니다
+```
+
+판정 대기: 🔴 dt_map 파생을 «되살릴 것인가» (㉯ 의 선행 물음) ·
+          🔴 표 이름 15/52자리를 부류로 착수할지 (특히 `defect` 9) · ★ 깊이(D)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
