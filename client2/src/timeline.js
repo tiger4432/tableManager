@@ -19,6 +19,15 @@ export async function loadHistory() {
     elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
     try {
       const res = await fetch(`${API_BASE}/audit_logs/recent?limit_groups=100`);
+      // 🔴 F-11. There was no `res.ok` here, and the catch below could not stand in for
+      //    one: a 500 answers with a VALID JSON body (`{detail: …}`), so `res.json()`
+      //    resolves, `readHistoryPage` looks for `groups`, finds no such key, and returns
+      //    `logs: []` (see its `Array.isArray(list) ? list : []`). The panel then drew its
+      //    empty state -- 「no records」 for a route that had FAILED. Silence would have
+      //    been better; this was an answer, and a wrong one.
+      // 🔵 Throwing hands it to the catch that is already here, which paints the red
+      //    failure line. 「could not read」 and 「nothing to read」 stop sharing a pixel.
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // THE SAME ENVELOPE, OPENED BY THE SAME READER. This route answered with a bare array
       // until 2026-08-11 and now answers `{groups, truncated, next_cursor, ...}` — the shape the
       // row/cell history routes already used. `state.globalHistoryData = await res.json()` would
