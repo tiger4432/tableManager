@@ -1,13 +1,23 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **809개** 이력. (거버넌스 규칙 #4)
+> 총 **819개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-06 18:28** — [A Bare Call Meant The Merge History Was Always Lost](./20260906_182800_a_bare_call_meant_the_merge_history_was_always_lost.md)
+- **2026-09-06 16:45** — [The One Write The Outbox Could Not See](./20260906_164500_the_one_write_the_outbox_could_not_see.md)
+- **2026-09-06 16:25** — [The Grid Reads The Stored Pin Instead Of Whichever Read It Made](./20260906_162500_the_grid_reads_the_stored_pin_instead_of_whichever_read_it_made.md)
+- **2026-09-06 16:13** — [The History Says When It Is Capped And The Pager Cannot Be Built Here](./20260906_161300_the_history_says_when_it_is_capped_and_the_pager_cannot_be_built_here.md)
+- **2026-09-06 15:33** — [Two Confirmed Silent Drops Now Say What Went Missing](./20260906_153300_two_confirmed_silent_drops_now_say_what_went_missing.md)
+- **2026-09-06 15:13** — [A Lost Ingestion Record Took The Only Route Back With It](./20260906_151300_a_lost_ingestion_record_took_the_only_route_back_with_it.md)
+- **2026-09-06 14:55** — [An Unread Schema Was Disarming A Data Loss Guard](./20260906_145500_an_unread_schema_was_disarming_a_data_loss_guard.md)
+- **2026-09-06 14:31** — [The Progress Poll Rearms And This Entry Is Not Behaviourally Verified](./20260906_143100_the_progress_poll_rearms_and_this_entry_is_not_behaviourally_verified.md)
+- **2026-09-06 14:00** — [Three Failures That Each Read As An Ordinary Empty Screen](./20260906_140000_three_failures_that_each_read_as_an_ordinary_empty_screen.md)
+- **2026-09-06 13:59** — [A Claimed Retry Row Was In A State Nothing Looked For](./20260906_135900_a_claimed_retry_row_was_in_a_state_nothing_looked_for.md)
 - **2026-09-06 12:48** — [The Chain Counts Its Hops And A Declared Limit Refuses Beyond Them](./20260906_124800_the_chain_counts_its_hops_and_a_declared_limit_refuses_beyond_them.md)
 - **2026-09-06 11:07** — [Two More Source Files Were Binary To Every Search Tool](./20260906_110700_two_more_source_files_were_binary_to_every_search_tool.md)
 - **2026-09-06 10:45** — [Nine Senders Wrote One Payload And The Reader Checked None Of It](./20260906_104500_nine_senders_wrote_one_payload_and_the_reader_checked_none_of_it.md)
