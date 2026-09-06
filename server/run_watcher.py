@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 import time
 import threading
 
@@ -190,6 +191,84 @@ def reload_watcher_cache():
     logger.info("Watcher worker modules cache cleared.")
 
 # Database polling for PENDING_RETRY logs
+def reclaim_grace_setting():
+    """The operator's grace if they declared one; `None` means "use the derivation"."""
+    try:
+        import json
+
+        import paths
+        with open(paths.config_path("ingestion_settings.json"), encoding="utf-8") as f:
+            return json.load(f).get("retry_reclaim_after_seconds")
+    except Exception:
+        return None
+
+
+def reclaim_stranded_claims(db):
+    """Give back rows this poller claimed and never finished.
+
+    🔴 THE HALF THAT SURVIVES A KILLED PROCESS. The poller commits `status = "PENDING"`
+    before it works and its own query selects only `PENDING_RETRY`, so a row claimed by a
+    process that then stopped existing is in a state nothing looks for again. `fe3e9261`
+    closed the case where SETUP throws; nothing inside that process can close the case
+    where the process is gone. This can, from outside.
+
+    ⚠️ THE PREDICATE IS TWO FACTS. "Claimed and old" alone reclaims a healthy long
+    ingestion, and reclaiming a live job turns a LOSS into DUPLICATE work -- worse, because
+    loss means the data never arrives while duplication means wrong data arrives quietly.
+    The second fact is the checkpoint: if chunks are still landing it is alive, however long
+    it has run.
+
+    ⛔ A ROW WITH NO CHECKPOINT IS SKIPPED, NOT RECLAIMED, AND THE SKIP IS COUNTED. Three
+    arms of `directory_watcher._plan_checkpoint` produce none and none of them means the
+    file is stuck. Counting is what keeps the remaining hole visible: nobody knows today how
+    often those arms fire, and this line is what will answer it.
+    """
+    import ingestion_checkpoint
+
+    now = datetime.now(timezone.utc)
+    grace = ingestion_checkpoint.reclaim_after_seconds(reclaim_grace_setting())
+    cutoff = now - timedelta(seconds=grace)
+
+    claimed = (db.query(models.FileIngestionLog)
+               .filter(models.FileIngestionLog.status == "PENDING",
+                       models.FileIngestionLog.updated_at < cutoff)
+               .order_by(models.FileIngestionLog.id.asc()).all())
+    if not claimed:
+        return 0, 0
+
+    reclaimed = skipped = 0
+    for log in claimed:
+        has_checkpoint, moved_at = ingestion_checkpoint.liveness(
+            db, log.table_name, log.filename)
+        if not has_checkpoint:
+            skipped += 1
+            continue
+        if moved_at is not None:
+            moved = moved_at if moved_at.tzinfo else moved_at.replace(tzinfo=timezone.utc)
+            if moved >= cutoff:
+                continue                      # chunks are still landing: it is alive
+        stamped = (log.updated_at if log.updated_at.tzinfo
+                   else log.updated_at.replace(tzinfo=timezone.utc))
+        # ⚠️ Named, with the age, one line per row. A silent reclaim would hide how often
+        # this happens - the class this whole day was spent removing.
+        logger.warning(
+            "[Reclaim] log #%s (%s / %s) was claimed %.0fs ago and its checkpoint has not "
+            "moved; returning it to PENDING_RETRY so it runs again.",
+            log.id, log.table_name, log.filename, (now - stamped).total_seconds())
+        log.status = "PENDING_RETRY"
+        reclaimed += 1
+
+    if reclaimed or skipped:
+        db.commit()
+        # 🔴 THE SKIP COUNT IS THE POINT. "N candidates, M skipped" is the only thing that
+        # will ever say how big the checkpoint-less hole is.
+        logger.warning(
+            "[Reclaim] %d candidate(s) past the %.0fs grace: %d reclaimed, %d skipped "
+            "(no checkpoint - liveness unknown, left claimed on purpose).",
+            len(claimed), grace, reclaimed, skipped)
+    return reclaimed, skipped
+
+
 def poll_pending_retries():
     logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
@@ -235,6 +314,10 @@ def poll_pending_retries():
                     except Exception as e:
                         logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {e}")
                 
+            # Reclaim first, so anything given back is visible to the query below
+            # in this same cycle rather than waiting a whole extra one.
+            reclaim_stranded_claims(db)
+
             # Query for logs in PENDING_RETRY status
             pending_logs = db.query(models.FileIngestionLog).filter(
                 models.FileIngestionLog.status == "PENDING_RETRY"

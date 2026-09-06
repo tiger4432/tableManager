@@ -115,6 +115,51 @@ SIGNATURE_ALGO = "sha256"
 STAT_SIGNATURE_PREFIX = "stat"
 
 STATUS_IN_PROGRESS = "IN_PROGRESS"
+
+
+#: [L-1] How long a claimed retry may go without checkpoint progress before the sweep
+#: gives it back. 🔴 CITED, NOT COPIED. `heartbeat.DEFAULT_STALL_AFTER_SEC` is already the
+#: derived answer to "a claimed unit of work has not progressed": its comment records the
+#: measurement (chunk-to-chunk p50 9.20s, p95 9.70s, max 12.50s across a live 100,000-row
+#: heavy ingestion) and the floor it clears (an opaque user parser that reports nothing for
+#: minutes). Writing 300 here would be a second author for one number.
+#:
+#: ⚠️ IT IS COMPARED AGAINST CHUNK PROGRESS, NEVER AGAINST TOTAL RUNTIME. A seven-minute
+#: ingestion is not stalled; one whose last chunk landed six minutes ago is. Judging on
+#: runtime is how a reclaim turns LOSS into DUPLICATE work.
+def reclaim_after_seconds(declared=None):
+    """The sweep's grace, from the declaration when there is one."""
+    from utils import heartbeat
+
+    if isinstance(declared, bool) or not isinstance(declared, (int, float)):
+        return heartbeat.DEFAULT_STALL_AFTER_SEC
+    if declared <= 0:
+        return heartbeat.DEFAULT_STALL_AFTER_SEC
+    return float(declared)
+
+
+def liveness(db, table_name, filename):
+    """`(has_checkpoint, updated_at)` for this file's in-progress checkpoint.
+
+    🔴 TWO ANSWERS, NOT ONE. "No checkpoint" and "a checkpoint that has not moved" look
+    identical once collapsed into a boolean, and they must not be treated alike: three arms
+    of `directory_watcher._plan_checkpoint` produce no checkpoint (no signature, planning
+    threw, resume switched off) and none of them means the file is stuck.
+    """
+    from database.models import FileIngestionCheckpoint
+
+    if not table_name or not filename:
+        return False, None
+    row = (db.query(FileIngestionCheckpoint)
+           .filter(FileIngestionCheckpoint.table_name == table_name,
+                   FileIngestionCheckpoint.filename == filename,
+                   FileIngestionCheckpoint.status == STATUS_IN_PROGRESS)
+           .order_by(FileIngestionCheckpoint.updated_at.desc(),
+                     FileIngestionCheckpoint.id.desc())
+           .first())
+    if row is None:
+        return False, None
+    return True, row.updated_at
 STATUS_DONE = "DONE"
 # A terminal answer that is NOT success. Before the ledger carried this, the
 # only record of "this file failed" was its LOCATION (`err/`); a mode that stops
