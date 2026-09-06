@@ -3772,6 +3772,12 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             .filter(waiting_only).order_by(outbox.id.asc()).limit(_QUEUE_LIST_CAP).all())
     oldest = head[0].created_at if head else None
 
+    # 🔴 이 응답의 「지금」은 «하나»다. `oldest_seconds` 와 아래 `_age()` 와 `generated_at`
+    #    이 «같은 순간»을 써야 「기준 시각」이 그 옆의 수들을 실제로 설명한다. 여기서 나이마다
+    #    `now()` 를 따로 부르면 응답이 「지금」을 여러 번 말하고, 그 차이는 «오늘» 마이크로초라
+    #    안 보인다 — 보이는 날은 이 라우트에 캐시가 생기는 날이고 그때는 조용히 틀린다.
+    now_utc = datetime.now(timezone.utc)
+
     oldest_seconds = None
     if oldest is not None:
         # 🔴 시각은 «UTC 로» 뺀다. 이 컬럼은 PostgreSQL 에서 `timestamptz` 라 tz 를 달고
@@ -3781,7 +3787,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # naive 를 UTC 로 읽는 것이 맞는 이유: 두 dialect 다 이 컬럼에 UTC 를 넣는다
         # (`server_default=func.now()` 가 SQLite 에서는 `CURRENT_TIMESTAMP` = UTC).
         stamped = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
-        oldest_seconds = max(0.0, (datetime.now(timezone.utc) - stamped).total_seconds())
+        oldest_seconds = max(0.0, (now_utc - stamped).total_seconds())
 
     # ── 대기 «트랜잭션» 목록 ────────────────────────────────────────────────────
     # 깊이 하나로는 「누가」 기다리는지 모른다. 행을 트랜잭션으로 접어서 돌려준다 —
@@ -3818,8 +3824,6 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         if row.event_type and row.event_type not in g["event_types"]:
             g["event_types"].append(row.event_type)
         g["max_retry"] = max(g["max_retry"], int(row.retry_count or 0))
-
-    now_utc = datetime.now(timezone.utc)
 
     def _age(dt):
         if dt is None:
@@ -3906,6 +3910,11 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     from utils import logger as process_logging
 
     return {
+        # 🔴 이 수들이 「지금」이 아니라 «그때»의 것이다. 새로 고치지 않은 화면은 오래된
+        #    수를 «현재형»으로 말하고, 그것이 같아 보이는 0 들 중 「지나가는 중이라서」다.
+        # 🔴 «그 수를 만든 시각»이지 「이 줄을 실행한 시각」이 아니다 — 나이를 뺀 그 순간을
+        #    그대로 낸다(§`now_utc`). 여기서 `now()` 를 다시 부르면 값이 «항상 신선»해 보인다.
+        "generated_at": now_utc.isoformat(),
         "waiting": int(waiting or 0),
         "running": running,
         "loop_in_this_process": chain_activity.registry.attached,
