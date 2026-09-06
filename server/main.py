@@ -284,6 +284,39 @@ global_config_watcher = None
 _admin_auth_banner_logged = False
 
 
+def _log_chain_worker_exit(task):
+    """Say, through THIS logger, that the chain worker died and why.
+
+    🔴 IT REMOVES A LIE RATHER THAN ADDING A FEATURE. `create_task` succeeds even when the
+    coroutine dies at its first await, so `startup_event` logs "background task spawned"
+    and that sentence is FALSE the moment the loader refuses -- which it does BY DESIGN
+    when the cascade graph has a cycle (`event_driven_backend.md` §3.4 ②). Nothing awaited
+    this task and nothing observed it, so the reason surfaced only as asyncio's
+    "Task exception was never retrieved", at garbage-collection time, outside this logger.
+    What the operator was left with was a worker with no heartbeat and no `why`.
+
+    ⛔ IT DOES NOT RESTART, RECOVER OR NOTIFY. A callback that restarted the loop would put
+    a retry loop behind a refusal the loader raises on purpose; the fix here is that the
+    sentence above stops being a lie.
+    """
+    import asyncio as _asyncio
+
+    if task.cancelled():
+        # Ordinary shutdown cancels it. That is not a death to report.
+        return
+    error = task.exception()
+    if error is None:
+        # It returned. The loop runs forever, so this is still worth one line.
+        logger.warning("Chained Ingestion Worker stopped without an error.")
+        return
+    if isinstance(error, _asyncio.CancelledError):
+        return
+    logger.error(
+        "Chained Ingestion Worker did NOT start - the line above saying it was spawned is "
+        "about a task that is already gone. Reason: %s: %s",
+        type(error).__name__, error, exc_info=error)
+
+
 @app.on_event("startup")
 async def startup_event():
     global global_watcher, global_config_watcher, _admin_auth_banner_logged
@@ -511,10 +544,20 @@ async def startup_event():
 
         # Start Chained Ingestion Worker
         from chain_ingestion_worker import start_chain_ingestion_worker
-        main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+        chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+        # 🔴 「spawned」를 «참으로» 만드는 콜백. `create_task` 는 성공하므로 아래 except 는
+        #    태스크 «안»의 예외를 못 봅니다 — 그래서 종전에는 로더가 거절해도(설계상 거절입니다,
+        #    event_driven_backend.md §3.4 ②) 이 줄이 그대로 찍히고 사유는 asyncio 의
+        #    「Task exception was never retrieved」로만, 그것도 GC 시점에 이 로거 «밖»으로
+        #    나갔습니다. 운영자에게 남는 것은 심박 없는 워커 하나였고 「왜」가 없었습니다.
+        # ⛔ 재시작도 복구도 알림도 하지 않습니다. 사유를 이 로거로 «꺼내는» 것뿐입니다.
+        chain_task.add_done_callback(_log_chain_worker_exit)
         logger.info("Chained Ingestion Worker background task spawned.")
     except Exception as e:
-        logger.error(f"Failed to start Directory Watcher: {e}")
+        # 🔴 주어를 «지웠습니다». 이 try 는 워처«와» 체인 워커를 둘 다 감싸는데 문구가
+        #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을
+        #    만드는 문장이었습니다.
+        logger.error(f"Startup step failed (watcher/chain worker): {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
