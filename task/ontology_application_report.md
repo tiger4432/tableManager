@@ -12464,3 +12464,60 @@ positive/negative 🔒 덮임      🔒 덮임    params 가 `start.positive/neg
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔒 좌석별 {start · follow · collect} 표 — **셋은 정해지고 «나머지는 한 물음에 걸립니다»** (10:2x)
+
+```
+🔒 예약   줄 S-23 재료 · 파일 (읽기만) `client2/src/rnd_board/main.js`
+값 공간   서버 `_collectable_types()` = 선언의 엔터티 (버전 벗김) — 커밋된 샘플 «아홉»:
+         defect · defect_kind · die · dtjob · lot · lot_slot · quantity · recipe · wafer
+         🔵 좌석 `map-core` 가 «자기 주석에 그 아홉을 그대로» 적어 두었습니다 (main.js:565) — 두 출처가 일치
+```
+
+## 표
+```
+좌석                start(마킹)   follow                              collect     근거 (그 좌석의 «자기 문장»)
+head-summary       marking:1    [bonded_from]                       die        「이 주어가 «무엇으로 만들어졌나»」(walk ④)
+composition        marking:1    [bonded_from]                       die        「구성은 bonded_from 이 이미 답합니다 —
+                                                                               base die 에서 core die 로」
+expanded-layer     marking:1    [bonded_from]                       die        같은 문장 · 층은 그 다이들의 «펼침»
+────────────────────────────────────────────────────────────────────────────────────────────
+main-trend         marking:1    [inspected, observed, of_kind]      🔴 못 정함
+candidate-trend    marking:2    [inspected, observed, of_kind]      🔴 못 정함
+map-bond-a         marking:1    [inspected, observed, of_kind]      🔴 못 정함   (소유자 도식: 맵 = 트렌드와 «같은 collect»)
+map-core           marking:2    [inspected, observed, of_kind]      🔴 못 정함   (같음)
+chip-zoom          marking:1    [observed, inspected, bonded_from]  🔴 못 정함   짐이 «둘»일 수 있습니다 (발견 + 다이)
+candidate-list     marking:2    (미선언)                             🔴 못 정함
+rank-list          marking:2    (미선언)                             🔴 못 정함
+reach              marking:1    [inspected, observed, of_kind]      🔴 «전부»가 뜻일 수 있는 유일한 자리 —
+                                                                               「어느 술어로 «무엇에» 닿는가」가 그 질문입니다
+────────────────────────────────────────────────────────────────────────────────────────────
+control-bar · trend-declaration · composition-declaration          «해당 없음»  선언 조회이지 걷기가 아닙니다
+marking-status                                                     «해당 없음»  walk 을 «안 합니다»
+```
+
+## 🔴 못 정하는 여덟이 «한 물음»에 걸립니다 — 그리고 그게 판정 자리입니다
+```
+트렌드/맵 계열의 짐은 「Y축이 무엇이냐」에 따라 «달라질 수» 있습니다 —
+   Y 가 「보이드 수」면 짐은 defect      ·   Y 가 「측정값」이면 짐은 quantity
+   그리고 Y 는 «사용자가 control-bar 에서 고릅니다»(reads: 'axis:y')
+=> 그러면 `collect` 는 «좌석의 정적 선언»이 아니라 «요청마다 정해지는 값»입니다
+🔴 이건 제가 정할 것이 아닙니다 — 「이 값을 사용자가 적을 수 있나」의 답이 «예»이고,
+   그러면 자리를 만드는 방식(선언 vs 요청)이 설계 판정입니다
+```
+⛔ 값을 «지어내지» 않았습니다. 지시대로 «못 정함»으로 두었습니다.
+
+## 판정 대기: **쉰셋**
+```
+53  🔴 트렌드/맵 계열의 `collect` 가 «좌석 선언»인가 «축에 따라 바뀌는 값»인가.
+    ㉠ 좌석 선언이면 -> 표의 여덟 중 여섯이 한 값으로 정해집니다(축과 무관하게)
+    ㉡ 축을 따라가면 -> S-23 의 클라 수리가 «두 줄»이 아니라 「축 -> 짐」 사슬 하나입니다
+    🔵 셋(bonded_from 계열)은 어느 쪽이든 `die` 로 «이미» 정해집니다 — 그건 지금 지어도 됩니다
+```
+```
+판정 대기: 🔴 53 (첫 제출 10:2x)   ·   🔁 이월: 47 (S-14 의 주어)
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
