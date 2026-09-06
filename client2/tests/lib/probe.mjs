@@ -89,16 +89,71 @@ function die(msg) {
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
+/**
+ * Is this filename one of THIS module's temporary artifacts?
+ *
+ * 🔴 THE ONE PLACE THAT KNOWS THE SPELLING. Any harness that walks `src/` has to skip these,
+ *    because another harness running beside it writes one, imports it and deletes it — a walker
+ *    that lists it and reads it afterwards dies on ENOENT through no fault of its own.
+ * 🔴 IT IS EXPORTED SO NOBODY SPELLS IT AGAIN. Measured 2026-09-07: four harnesses wrote the
+ *    name by hand and THREE had gone stale at a rename (`.probe-copy.` / `.probe-stub.` /
+ *    `.probe-`), so their filters no longer matched what this file actually writes. Updating
+ *    those strings would have died the same way at the next rename; a predicate cannot.
+ * ⚠️ Both polarities are served: walkers of the source tree want `!isProbeArtifact`, and the
+ *    harness that scores this mechanism wants `isProbeArtifact`. One predicate, so they cannot
+ *    disagree about what an artifact is.
+ */
+export function isProbeArtifact(name) {
+  const n = String(name || '');
+  return n.includes(COPY_INFIX) || n.includes(STUB_INFIX);
+}
+
+// 🔴 THE OWNER'S MARK. Artifacts are written into `src/`, beside the subject, because their
+//    relative imports have to resolve. The gate runs harnesses CONCURRENTLY, so without this
+//    two processes pick the same name, overwrite each other's copy, and sweep each other's
+//    file out from under a pending import. Measured 2026-09-07 by the implementer: three
+//    consecutive full-gate runs gave 10, 7 and 3 reds with DIFFERENT members each time, and
+//    harnesses appeared red that their own author had not touched.
+const PROC = `p${process.pid}`;
+const OWNER = /\.__probe(?:_stub)?__\.p(\d+)_/;
+
+/** Is this artifact one THIS process wrote? */
+export function isOwnProbeArtifact(name) {
+  const m = OWNER.exec(String(name || ''));
+  return !!m && m[1] === String(process.pid);
+}
+
+// Is the process that wrote this artifact gone? `signal 0` tests for existence without
+// delivering anything.
+//
+// 🔴 AN ARTIFACT WITH NO OWNER MARK IS AN ORPHAN, and orphans are swept. Every name this file
+//    writes now carries the mark, so an unmarked one cannot belong to a live run of this code —
+//    it is litter from before the mark existed, or from a crash. Reading it as "owner unknown,
+//    therefore leave it" is the tempting answer and it is wrong: it would strand a file in
+//    `src/` forever, which is the one way this mechanism reaches production.
+// ⚠️ The reverse default DOES hold for a marked name we cannot ask about: a live sibling's copy
+//    must never be deleted, so anything other than "no such process" counts as alive.
+function ownerGone(name) {
+  const m = OWNER.exec(String(name || ''));
+  if (!m) return true;
+  const pid = Number(m[1]);
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try { process.kill(pid, 0); return false; } catch (e) { return e.code === 'ESRCH'; }
+}
+
 // A crashed run can leave a copy behind, and a stray copy in `src/` is the one way this
-// mechanism could reach production. Sweep before the first load rather than trusting a
-// `finally` that a `process.exit` skips.
+// mechanism could reach production — so the sweep stays. What it may NOT do any more is
+// delete indiscriminately: it takes its own, and it takes an orphan whose writer is gone,
+// and it leaves a live sibling's file alone.
 function sweep(dir) {
   let names;
   try { names = readdirSync(dir); } catch { return; }
   for (const n of names) {
-    if (n.includes(COPY_INFIX) || n.includes(STUB_INFIX)) {
-      try { rmSync(join(dir, n)); } catch { /* someone else's */ }
-    }
+    // The same predicate the harnesses use — so "what gets swept" and "what gets skipped"
+    // can never drift apart.
+    if (!isProbeArtifact(n)) continue;
+    if (!isOwnProbeArtifact(n) && !ownerGone(n)) continue;
+    try { rmSync(join(dir, n)); } catch { /* raced with its owner exiting */ }
   }
 }
 
@@ -242,7 +297,9 @@ export async function loadWithProbe(srcPath, spec = {}) {
   }
   assertAppendOnly(prefixBytes, copyBytes, suffix);
 
-  const tag = `${spec.tag || 'probe'}${seq++}`.replace(/[^A-Za-z0-9_]/g, '');
+  // 🔴 THE PROCESS MARK LEADS, so `OWNER` can read it straight after the infix. Without it the
+  //    name is a function of the harness alone and two concurrent runs collide.
+  const tag = `${PROC}_${spec.tag || 'probe'}${seq++}`.replace(/[^A-Za-z0-9_]/g, '');
   const copyPath = join(dir, `${basename(srcPath, '.js')}${COPY_INFIX}${tag}.js`);
 
   // ── dependencies the harness wants to intercept ─────────────────────────────────────
