@@ -435,6 +435,37 @@ console.log('\n[8] the owner split, and unknown is not chain');
   const host4 = doc4.createElement('div');
   new ChainQueuePanel(host4, { doc: doc4 }).render(QUIET);
   eq('a read that answered draws no box', byClass(host4, 'chain-queue-blocked').length, 0);
+
+  // \u{1f534} S-12: 「이 아래 수가 틀렸을 수 있다」 REACHES THE SCREEN, and it is FIRST.
+  //    Placed after the numbers it invalidates, an operator has already believed them.
+  const QUEUE = (over) => ({ waiting_transactions: [], waiting_by_owner: [{
+    owner: 'scheduler', waiting: 0, oldest_waiting_seconds: null, event_types: [],
+    blocked_by: null, queue: Object.assign({ last_pickup_at: 'x',
+      last_pickup_age_seconds: 3, picker_interval_seconds: 5,
+      waiting_count: 0, waiting: [] }, over) }] });
+  const drawn = (over) => {
+    const d = makeDoc();
+    const host = d.createElement('div');
+    new ChainQueuePanel(host, { doc: d }).render(QUEUE(over));
+    return host;
+  };
+  eq('a record failure is said on the screen',
+    byClass(drawn({ record_failures: [1, 2] }), 'chain-queue-stale').length, 1);
+  ok('and it names how many',
+    /2/.test(byClass(drawn({ record_failures: [1, 2] }), 'chain-queue-stale')[0].textContent));
+  // \u{1f534} THE NEGATIVE CONTROL IS THE ONE THAT MATTERS - a healthy queue must stay quiet,
+  //    or this line is another invented zero wearing a warning's clothes.
+  eq('an empty list says nothing',
+    byClass(drawn({ record_failures: [] }), 'chain-queue-stale').length, 0);
+  eq('and an older server that never sends it says nothing either',
+    byClass(drawn({}), 'chain-queue-stale').length, 0);
+  // It has to come BEFORE the pickup headline it invalidates.
+  ok('it is drawn above the numbers it invalidates', (() => {
+    const host = drawn({ record_failures: [1] });
+    const classes = walk(host).map((n) => n.className || '').filter(Boolean);
+    return classes.indexOf('chain-queue-stale')
+      < classes.indexOf('chain-queue-headline-pickup');
+  })());
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

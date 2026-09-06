@@ -121,5 +121,33 @@ console.log('\n[4] running with no owner, decided by the heartbeat and not here'
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
+console.log('\n\u2500\u2500 R. THE ROWS BELOW MAY BE WRONG \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500');
+{
+  // \u{1f534} WHEN A RUN ROW CANNOT BE UPDATED, the work still runs and the row still says
+  //    queued - so every number this module produces is stale in a way nothing else can
+  //    detect. The server publishes that as a VALUE precisely so it does not sit in a log
+  //    (`retroactive.record_failures`'s own docstring), and nothing read it: source 0,
+  //    bundle 0.
+  const base = { last_pickup_at: 'x', last_pickup_age_seconds: 3,
+    waiting_count: 2, waiting: [1, 2] };
+  const of = (over) => pickupState(Object.assign({}, base, over));
+
+  // \u26a0\ufe0f THREE STATES. Folding "not sent" into 0 invents 「기록이 멀쩡하다」.
+  ok('R1 an older server that does not send it is unknown, not zero',
+    of({}).recordFailures === null && of({}).stale === false);
+  ok('R2 an empty list is zero and is not stale',
+    of({ record_failures: [] }).recordFailures === 0
+    && of({ record_failures: [] }).stale === false);
+  ok('R3 failures are counted and named stale',
+    of({ record_failures: [1, 2] }).recordFailures === 2
+    && of({ record_failures: [1, 2] }).stale === true);
+  // \u{1f534} THE VERDICT HAS A NAME. A caller re-deriving `> 0` is how one fact grows two
+  //    answers, which is the shape this repository keeps closing.
+  ok('R4 the unread shape carries the field too, as unknown',
+    pickupState(null).recordFailures === null && pickupState(null).stale === false);
+  ok('R5 a non-array value is unknown rather than zero',
+    of({ record_failures: 'two' }).recordFailures === null);
+}
+
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

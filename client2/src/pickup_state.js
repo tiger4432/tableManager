@@ -37,7 +37,7 @@ export function ageText(seconds) {
 export function pickupState(queue, opts = {}) {
   if (opts.read === false || !queue || typeof queue !== 'object') {
     return { read: false, pickup: PICKUP_UNREAD, waiting: null, waitingText: '',
-             orphaned: [], rows: [] };
+             orphaned: [], rows: [], recordFailures: null, stale: false };
   }
   const age = num(queue.last_pickup_age_seconds);
   const interval = num(queue.picker_interval_seconds);
@@ -66,10 +66,25 @@ export function pickupState(queue, opts = {}) {
       age: ageText(row.started_seconds),
     }));
 
+  // \u{1f534} 「이 아래 수들이 «틀렸을 수» 있다」. 실행 «행»이 갱신되지 않으면 일은 돌고 행은
+  //    queued 로 남아서, 위의 모든 수가 «다른 무엇으로도 알 수 없는» 방식으로 낡습니다.
+  //    서버가 그것을 «로그에 두지 않으려고» 값으로 냅니다 — `retroactive.record_failures` 의
+  //    docstring 이 그 이유를 적습니다: 「NOT EMPTY MEANS THE QUEUE VIEW IS LYING … published
+  //    beside the queue instead of being left in a log」. 그런데 읽는 쪽이 «없었습니다»
+  //    (실측 2026-09-07: 소스 0 · 번들 0). 로그를 피하려고 만든 값이 로그만도 못하게 있었습니다.
+  // ⚠️ 세 상태입니다: 「안 보냄」(옛 서버 -> null, «모름») · 「빈 목록」(0, 정상) · 「있음」.
+  //    없는 것을 0 으로 접으면 「기록이 멀쩡하다」를 «지어내는» 것입니다.
+  const failures = Array.isArray(queue.record_failures) ? queue.record_failures.length : null;
+
   return {
     read: true,
     pickup,
     basis,
+    // 「몇 건이 기록에 실패했나」 — null 은 «안 보냄»이고 0 은 «정상»입니다.
+    recordFailures: failures,
+    // 🔴 그리고 그 뜻을 «이름»으로 답합니다. 부르는 쪽이 `> 0` 을 다시 쓰면 그 판정이
+    //    화면마다 갈립니다 — 오늘 밤 이 저장소가 계속 닫고 있는 그 모양입니다.
+    stale: failures !== null && failures > 0,
     waiting,
     waitingText: waiting === null ? PICKUP_UNREAD
       : truncated ? `대기 ${waiting} · 목록 ${rows.length}` : `대기 ${waiting}`,

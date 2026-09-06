@@ -388,6 +388,12 @@ export class ChainQueuePanel {
     //    side by side with their units, and the reading is the operator's. A threshold
     //    invented here would be a rule nobody declared.
     if (view.pickup) {
+      // \u{1f534} 이 줄이 «맨 앞»입니다. 「아래 수가 틀렸을 수 있다」는 그 수들보다 «먼저»
+      //    읽혀야 뜻이 있습니다 — 뒤에 붙이면 운영자가 이미 그 수를 믿은 뒤입니다.
+      if (view.pickup.stale) {
+        head.appendChild(this._line('chain-queue-stale',
+          `기록 실패 ${view.pickup.recordFailures} — 아래 수가 낡았을 수 있습니다`));
+      }
       head.appendChild(this._line('chain-queue-headline-pickup', view.pickup.pickup));
       if (view.pickup.basis) {
         head.appendChild(this._line('chain-queue-headline-basis', view.pickup.basis));
