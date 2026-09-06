@@ -51,6 +51,7 @@
 //    reported as an extent and is never laundered into `grid_cols`/`grid_rows`.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { escapeHtml } from '../utils.js';
 import { parseTsv, serializeTsv } from '../tsv.js';
 import { frameFromDeclaration, ABSENT, DECLARED } from './declaration.js';
 
@@ -750,9 +751,7 @@ function bandSpans(cols) {
   return spans;
 }
 
-function esc(s) {
-  return asText(s)
-    .split('&').join('&amp;')
-    .split('<').join('&lt;')
-    .split('>').join('&gt;');
-}
+// 정본은 `utils.js` 의 `escapeHtml`. 🔴 이 사본은 «따옴표를 안 하고» 있었습니다 -- 셋 중
+// 유일하게 달랐고, 그것이 사본이 갈라진다는 말의 실물입니다. `asText` 는 이 파일의 빈값 규칙이라
+// 그대로 두고 감쌉니다.
+function esc(s) { return escapeHtml(asText(s)); }

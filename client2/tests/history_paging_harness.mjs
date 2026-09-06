@@ -54,6 +54,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import { escapeHtml } from '../src/utils.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = (f) => join(HERE, '..', 'src', f);
@@ -273,6 +274,10 @@ function buildSandbox(src = UNDER_TEST) {
     // with a missing control. Stubbing an element instead would score the filter path against
     // a stand-in the browser never sees.
     document: { createElement: makeEl, getElementById: () => null },
+    // 🔴 sliced code cannot resolve an import, so the name is supplied here -- and it is
+    //    the REAL function from `src/utils.js`, not a copy. A copy here would put a second
+    //    author on the very fact C-14 exists to give one author.
+    escapeHtml,
     fetch: fetchFake,
     Date,
     JSON,

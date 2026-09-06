@@ -1,5 +1,6 @@
 import { API_BASE, pageLimit } from './config.js';
 import { ABSENT } from './absent.js';
+import { escapeHtml } from './utils.js';
 import { narrowingTail } from './narrowing.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
@@ -201,24 +202,31 @@ export function createTimelineItemDom(log) {
   const dateStr = (stamped && !Number.isNaN(stamped.getTime()))
     ? stamped.toLocaleString() : ABSENT;
 
+  // 🔴 이 줄의 값은 «전부 서버가 실어 준 것»이고, 그중 둘은 «운영자가 친 셀 값»입니다
+  //    (`old_value` · `new_value`). 이력은 그것을 «그대로» 되비추는 자리라, 이스케이프가 없으면
+  //    표에 넣은 글자가 여기서 마크업이 됩니다. `formatVal` 은 평문만 돌려주므로(:934) 감싸도
+  //    잃는 것이 없습니다.
+  // ⚠️ 감싸는 것은 «값»뿐입니다. 아래 삼항이 만드는 `<div class="tx-tag">` 는 이 파일이 지은
+  //    마크업이라 감싸면 화면에 태그가 «글자»로 찍힙니다 -- 안쪽 값만 감쌉니다.
+  const txId = log.transaction_id;
   li.innerHTML = `
-    <div class="timeline-time">${dateStr}</div>
+    <div class="timeline-time">${escapeHtml(dateStr)}</div>
     <div class="timeline-card">
       <div class="timeline-user">
-        <span class="user-tag">${log.updated_by}</span>
-        <span class="source-tag">${log.source_name}</span>
+        <span class="user-tag">${escapeHtml(log.updated_by)}</span>
+        <span class="source-tag">${escapeHtml(log.source_name)}</span>
       </div>
       <div class="timeline-changes">
         <div class="change-detail">
-          <span class="change-field">${log.column_name}</span>
+          <span class="change-field">${escapeHtml(log.column_name)}</span>
           <div class="change-values">
-            <span class="val-old">${formatVal(log.old_value, true)}</span>
+            <span class="val-old">${escapeHtml(formatVal(log.old_value, true))}</span>
             <span class="val-arrow">→</span>
-            <span class="val-new">${formatVal(log.new_value, false)}</span>
+            <span class="val-new">${escapeHtml(formatVal(log.new_value, false))}</span>
           </div>
         </div>
       </div>
-      ${log.transaction_id ? `<div class="tx-tag" data-tx-id="${log.transaction_id}">Tx: ${log.transaction_id.slice(0, 8)}... <span class="filter-tx-btn" data-tx-id="${log.transaction_id}" title="Filter table by this transaction">🔍</span></div>` : ''}
+      ${txId ? `<div class="tx-tag" data-tx-id="${escapeHtml(txId)}">Tx: ${escapeHtml(String(txId).slice(0, 8))}... <span class="filter-tx-btn" data-tx-id="${escapeHtml(txId)}" title="Filter table by this transaction">🔍</span></div>` : ''}
     </div>
   `;
 

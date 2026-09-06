@@ -21,6 +21,7 @@
 // because it stopped finding the code is worse than no harness - its green gets cited.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { escapeHtml } from '../src/utils.js';
 import { frameAdapted } from './oracle/revision_signature_drift.mjs';
 // The pinned baseline blob still reads this module binding; the working tree no longer
 // declares it. The shared sandbox must keep it or the OLD side dies with a ReferenceError
@@ -200,6 +201,10 @@ function buildSandbox(src, label, extraFns = [], extraCode = '') {
 
   const captured = { html: null, text: null, toasts: [], alerts: [], confirms: [] };
   const ctx = {
+    // 🔴 sliced code cannot resolve an import, so the name is supplied here -- and it is the
+    //    REAL function from `src/utils.js`, not a copy. `escapeHtmlAttr` in the subject now
+    //    delegates to it (C-14: one author), so a copy here would undo exactly what that did.
+    escapeHtml,
     console: Object.assign(Object.create(console), { debug: () => {} }),
     currentRotation: ROT, currentSide: SIDE,
     validDie: null, boundingBoxCache: {}, el: makeEl(),
