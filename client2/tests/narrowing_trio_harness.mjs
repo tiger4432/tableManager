@@ -92,13 +92,32 @@ console.log('\n[2] what narrows and what does not');
 // the source use this". A fifth hand-assembled site is exactly what ① cannot see.
 console.log('\n[3] the caller count');
 {
+  // 🔴 이 목록이 이 절의 «모집단»입니다. 그리고 모집단은 «말없이 줄면» 안 됩니다 —
+  //    아래 둘째 절반(「손으로 조립한 자리가 새로 생기면 안 된다」)은 훑지 «않은» 파일에서
+  //    조용히 꺼지기 때문입니다. 그래서 `readSrc` 가 없는 파일에 «죽습니다».
+  //
+  // ⚠️ 판정 근거 (총괄이 「재고 당신이 고르라」 하신 것, 2026-09-06):
+  //    시끄럽게 하면 «이름이 바뀔 때마다» 빨개진다는 것이 그 비용인데, 재 보니
+  //    최근 300 커밋에서 `client2/src` 의 «개명 0 · 삭제 54» 입니다.
+  //    -> 이 소리는 개명이 아니라 «삭제»에서 납니다. 그리고 삭제야말로 이 목록이
+  //       갱신돼야 하는 자리입니다 (오늘 enrichment.js 가 정확히 그랬습니다).
+  //    비용은 「문자열 하나 지우기」이고, 대가는 「감시가 꺼진 줄 모르는 것」입니다.
+  //    ⛔ enrichment.js 는 2026-09-06 에 잔해로 삭제돼 이 목록에서 나갔습니다.
   const files = ['api.js', 'main.js', 'timeline.js', 'grid.js', 'ui.js', 'websocket.js',
-                 'enrichment.js', 'admin.js', 'map_editor.js'];
+                 'admin.js', 'map_editor.js'];
+  const readSrc = (f) => {
+    try { return readFileSync(join(SRC, f), 'utf8'); } catch (e) {
+      console.error(`HARNESS FAILURE: '${f}' is on this scan list and is not on disk.`);
+      console.error('Remove it from the list if it is gone -- a scan that silently skips a '
+        + 'file also silently stops guarding it.');
+      console.log('ASSERTIONS 0 1');
+      process.exit(2);
+    }
+  };
   let callers = 0;
   const where = [];
   for (const f of files) {
-    let text;
-    try { text = readFileSync(join(SRC, f), 'utf8'); } catch (e) { continue; }
+    const text = readSrc(f);
     if (!/from '\.\/narrowing\.js'/.test(text)) continue;
     // count CALLS, not imports — one import can serve several sites (main.js has two).
     const n = (text.match(/\b(narrowingTail|buildNarrowing)\s*\(/g) || []).length;
@@ -113,9 +132,7 @@ console.log('\n[3] the caller count');
   //    callers would stay at four while a fifth site quietly grew beside them.
   const handmade = [];
   for (const f of files) {
-    let text;
-    try { text = readFileSync(join(SRC, f), 'utf8'); } catch (e) { continue; }
-    const lines = text.split(/\r?\n/);
+    const lines = readSrc(f).split(/\r?\n/);
     lines.forEach((l, i) => {
       if (/elements\.globalSearch\s*\?\s*elements\.globalSearch\.value\.trim\(\)/.test(l)) {
         handmade.push(`${f}:${i + 1}`);

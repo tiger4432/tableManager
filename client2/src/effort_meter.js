@@ -107,10 +107,17 @@ export const ROUTES = Object.freeze({
  *    directions were measured before leaving them in: the served list defaults to `[]` and no
  *    `server/config/effort_metric.json` exists, so nothing is exempt today and nothing can be
  *    un-exempted; and matching is exact against what `countNav` was actually passed, so an entry
- *    naming a dead route exempts nothing either way. Deleting them is therefore a housekeeping
- *    change to make with `src/enrichment.js` -- which is the only module that still names
- *    `ROUTES.ENRICHMENT` -- and that module is sliced by four gated harnesses. One decision, not
- *    two.
+ *    naming a dead route exempts nothing either way.
+ *
+ * 🔴 [2026-09-06] THE CONDITION THIS PARAGRAPH WAITED ON IS GONE. It used to end: 「deleting
+ *    them is a housekeeping change to make WITH `src/enrichment.js`, the only module that
+ *    still names `ROUTES.ENRICHMENT`, and that module is sliced by four gated harnesses --
+ *    one decision, not two」. `src/enrichment.js` was deleted as wreckage that day (no
+ *    importer, not an entry since 2026-08-11, absent from the bundle) and the four harnesses
+ *    went with it. So the sentence naming it is no longer true, and the housekeeping it was
+ *    holding back is now UNBLOCKED: `ROUTES.ENRICHMENT` and its `ROUTE_IDS` entry can go
+ *    whenever someone wants them gone. Not done here -- that is a separate edit, and this
+ *    one is a comment.
  */
 export const ROUTE_IDS = Object.freeze([
   ROUTES.GRID,
