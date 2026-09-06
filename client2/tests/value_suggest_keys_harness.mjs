@@ -64,6 +64,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+// 🔴 SUPPLIED, NOT COPIED. `requestValues` stopped reading `body.truncated`
+//    directly on 2026-09-07 - the wire carries that field in five shapes and this
+//    route's bool was right by luck - so it asks one place instead. Sliced code
+//    cannot resolve an import, and a copy here would put a second author on the very
+//    fact the one place exists to own.
+import { saysTruncated } from '../src/truncation.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUGGEST_PATH = join(HERE, '..', 'src', 'value_suggest.js');
@@ -309,6 +315,7 @@ function makeSandbox({ dataset, tableName = 'bonding_map', onFetch }) {
 
   const sandbox = {
     API_BASE: 'http://api',
+    saysTruncated,
     state: { currentTable: tableName, selectedCellsMap: {}, dragStartCell: null, dragEndCell: null,
              visibleColIndexMap: {}, txModeActive: false, pendingTxEdits: {} },
     document: doc,

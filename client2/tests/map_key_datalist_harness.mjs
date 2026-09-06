@@ -1192,10 +1192,15 @@ const MUTATIONS = [
   },
   {
     name: 'M3 [HIGH] a CUT list is cached and then narrowed locally (a sample as a population)',
-    find: `  if (body && body.truncated) {
+    // Re-anchored 2026-09-07: the field is no longer read as a bare truthy value. The wire
+    // carries `truncated` in five shapes and this route's bool was right only because of
+    // what it sends TODAY, so the reader asks one place whether the answer SAYS it was cut.
+    // THE CLAIM IS UNCHANGED - this mutant still caches a cut list as a complete one - so
+    // this is the same mutant re-spelled, not a weaker one.
+    find: `  if (saysTruncated(body && body.truncated) === true) {
     columnValueTruncated.add(key);
     columnValueComplete.delete(key);`,
-    repl: `  if (body && body.truncated) {
+    repl: `  if (saysTruncated(body && body.truncated) === true) {
     columnValueTruncated.delete(key);
     columnValueComplete.set(key, { prefix: pfx, values });`,
     breaks: 'typing over a cut list re-asks the server',

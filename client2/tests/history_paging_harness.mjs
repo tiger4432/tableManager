@@ -55,6 +55,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
 import { escapeHtml } from '../src/utils.js';
+import { saysTruncated } from '../src/truncation.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = (f) => join(HERE, '..', 'src', f);
@@ -278,6 +279,18 @@ function buildSandbox(src = UNDER_TEST) {
     //    the REAL function from `src/utils.js`, not a copy. A copy here would put a second
     //    author on the very fact C-14 exists to give one author.
     escapeHtml,
+    // 🔴 THE SECOND ONE, AND THE SAME REASON. `readHistoryPage` stopped asking
+    //    `body.truncated` directly on 2026-09-07: the wire carries `truncated` in five
+    //    shapes and this route's bool was right by luck, so every reader now asks one
+    //    place whether the answer SAYS it was cut. The real function is supplied here for
+    //    the reason the line above gives - a copy would put a second author on the very
+    //    fact that one place exists to own.
+    //
+    // ⚠️ AND THIS IS WHAT A SLICING HARNESS COSTS. Adding one import to
+    //    `timeline.js` made this file throw with code that is CORRECT, which is exactly the
+    //    failure the standing ban describes (CLAUDE.md 2026-09-02). The repair here is the
+    //    one this file already uses; converting it to import is a separate round.
+    saysTruncated,
     fetch: fetchFake,
     Date,
     JSON,
@@ -363,6 +376,20 @@ async function sectionA() {
   check('A4b ... and paints no cursor', noCur.nextCursor, null);
   check('A5 a cursor without truncated is not truncated',
     R({ logs: [log(1)], truncated: false, next_cursor: 'C' }).truncated, false);
+
+  // 🔴 THE SHAPE IS ASKED, NOT ASSUMED, AND THIS IS THE CASE THAT CAN TELL.
+  //    Every other body here carries a bool, where `!!body.truncated` and
+  //    `saysTruncated(...) === true` agree - so the whole corpus passed with the field read
+  //    as a bare truthy value, which is right on this route only because of what it sends
+  //    TODAY. The walk route already answers with an axis object that arrives on EVERY
+  //    response and is truthy even when nothing was cut; feeding that shape here is what
+  //    separates "asked" from "assumed" and what makes the mutant in section G catchable.
+  const axes = R({ logs: [log(1)], next_cursor: 'CUR9',
+    truncated: { depth: false, nodes: false, edges: false, reason: null } });
+  check('A5b an object that says nothing was cut is NOT truncated', axes.truncated, false);
+  check('A5c ... and one that names a reason IS',
+    R({ logs: [log(1)], next_cursor: 'CUR9',
+      truncated: { nodes: true, reason: 'nodes' } }).truncated, true);
 
   // A bare array is an UNPAGED server's answer, and "everything" is genuinely not truncated.
   const bare = R([log(1), log(2), log(3)]);
@@ -946,9 +973,22 @@ const MUTANTS = [
   // Re-anchored 2026-08-12: `readHistoryPage`'s return became a multi-line object when it
   // started carrying `row_history_total`. The CONTRACT is untouched — `truncated` still requires
   // a cursor — so this is the same mutant against the same line, spelled where the line now is.
+  //
+  // Re-anchored again 2026-09-07: the field is no longer read as a bare truthy value. The wire
+  // carries `truncated` in five shapes and this route's bool was right by luck, so the reader
+  // now asks `saysTruncated` whether the answer SAYS it was cut. THE CLAIM THIS MUTANT MAKES IS
+  // UNCHANGED — it removes `&& nextCursor`, and the corpus must still catch that — so this is
+  // the same mutant re-spelled, NOT a weaker one. (A relaxed anchor would have been the quiet
+  // way out and would have left the cursor rule unmeasured from here on.)
   { name: 'truncated no longer requires a cursor', defect: true,
-    find: '    truncated: !!(body && body.truncated) && !!nextCursor,',
-    repl: '    truncated: !!(body && body.truncated),' },
+    find: '    truncated: saysTruncated(body && body.truncated) === true && !!nextCursor,',
+    repl: '    truncated: saysTruncated(body && body.truncated) === true,' },
+  // 🔴 AND THE NEW HALF OF THE SAME LINE. Going back to the bare truthy read is a defect
+  // the day this route answers with the axis object, and nothing else in this corpus would
+  // notice — the bool it sends today makes both spellings agree.
+  { name: 'the shape is assumed again instead of asked', defect: true,
+    find: '    truncated: saysTruncated(body && body.truncated) === true && !!nextCursor,',
+    repl: '    truncated: !!(body && body.truncated) && !!nextCursor,' },
   // ── The two empty states ────────────────────────────────────────────────────
   // Each of these puts the screen back exactly where it was before this round: an empty cell tab
   // that says the records do not exist, over a row that has 225,101 of them.

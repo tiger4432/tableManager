@@ -51,7 +51,7 @@ function ok(name, cond, saw) {
 
 const rows = (n) => Array.from({ length: n }, (_, i) => ({ i }));
 const X = BASELINE;
-if (!X || !X.isTruncated) die('truncation.js did not import — its exports moved or renamed.');
+if (!X || !X.isTruncated || !X.saysTruncated) die('truncation.js did not import — its exports moved or renamed.');
 
 const CAP = 2000;
 
@@ -87,6 +87,61 @@ console.log('\n── B. THE EXTRA ROW IS A SIGNAL, NOT A CELL ─────�
   })());
 }
 
+console.log('\n── C. WHAT THE WIRE SAYS ABOUT ITSELF ───────────────────');
+{
+  // The bool shape: four live readers see this today, and it is the ONLY reason `!!` was right.
+  ok('C1 a bool true is truncated', X.saysTruncated(true) === true);
+  ok('C2 a bool false is not', X.saysTruncated(false) === false);
+
+  // The axis-object shape (`GET /api/ledger/subgraph`). It arrives on EVERY response.
+  const cut = { depth: false, nodes: true, edges: false, claims: false, actions: false,
+    reason: 'nodes' };
+  const whole = { depth: false, nodes: false, edges: false, claims: false, actions: false,
+    reason: null };
+  ok('C3 an object that names a reason is truncated', X.saysTruncated(cut) === true);
+  // \u{1f534} THE TRAP, AND THE POINT OF THIS ROUND. The object is present, so anything that
+  //    reads its PRESENCE or its truthiness answers "cut" on a complete walk. Every screen
+  //    would say 「절단됨」 forever, and nothing would throw.
+  ok('C4 an object with nothing cut is NOT truncated', X.saysTruncated(whole) === false,
+    X.saysTruncated(whole));
+  ok('C5 the two objects are told apart', X.saysTruncated(cut) !== X.saysTruncated(whole));
+
+  // \u26a0\ufe0f ABSENT IS NOT FALSE. A server that never had the field has not said "complete".
+  ok('C6 a missing field is unknown, not false', X.saysTruncated(undefined) === null
+    && X.saysTruncated(null) === null);
+  // The record-ARRAY shape is out of scope this round (no live reader, senders uncounted).
+  // It must not be guessed at: an unknown shape answers unknown rather than "complete".
+  ok('C7 a shape it does not know answers unknown', X.saysTruncated([{ role: 'x', cap: 1 }]) === null);
+  ok('C8 a string is unknown too, not truthy', X.saysTruncated('true') === null);
+}
+
+console.log('\n── D. THE TWO READERS OF ONE ROUTE GET ONE VERDICT ───────────');
+{
+  // \u{1f534} TEXT IS THE SUBJECT HERE, NOT A PROXY (CLAUDE.md 2026-09-03, per ASSERTION).
+  //    The question is 「does this site go through the one place」, and a site that does NOT
+  //    is invisible in output — it just keeps answering correctly until the shape changes.
+  //    The same exception the `total` check above already stands on.
+  const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const CALL = 'saysTruncated(body && body.truncated)';
+  const suggest = read('../src/value_suggest.js');
+  const editor = read('../src/map_editor.js');
+  const timeline = read('../src/timeline.js');
+  ok('D1 the value-suggest reader goes through it', suggest.includes(CALL));
+  ok('D2 the map-editor reader of THE SAME ROUTE goes through it', editor.includes(CALL));
+  ok('D3 both history readers go through it',
+    (timeline.split(CALL).length - 1) === 2, timeline.split(CALL).length - 1);
+  // \u{1f534} AND NOBODY BYPASSES IT. Importing without calling is the shape the order named:
+  //    a one place that some sites do not reach is a comment, not a contract.
+  const BYPASS = /(?:!!\s*\()?\s*body\s*&&\s*body\.truncated\s*\)?(?!\s*\))/;
+  for (const [name, src] of [['value_suggest', suggest], ['map_editor', editor],
+    ['timeline', timeline]]) {
+    const stray = src.split('\n').filter((l) => /body\.truncated/.test(l)
+      && !l.includes('saysTruncated') && !l.trim().startsWith('//') && !l.trim().startsWith('*'));
+    ok(`D4 ${name} has no site that reads the field directly`, stray.length === 0, stray);
+  }
+  void BYPASS;
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 //
 // ⚠️ `swap` 은 앵커가 안 맞으면 «죽습니다». 그리고 `importMutated` 가 「사본이 원본과 다른가」를
@@ -115,6 +170,22 @@ const DEFECTS = [
   //    그 입력을 채점기에 안 넣었을 때 이 변이는 그냥 빠져나갔습니다.
   ['M6 a negative cap turns every read into a truncated one',
     swap('if (!Number.isFinite(cap) || cap < 0) return false;', '')],
+  // \u{1f534} TWO ARMS, ON PURPOSE. One mutant cannot show that the two branches answer two
+  //    different questions \u2014 deleting either one has to redden a DIFFERENT assertion, or
+  //    "one place knows every shape" is a claim the harness never measured.
+  ['M7 the object shape is not understood (the walk goes quiet)',
+    swap("  if (said && typeof said === 'object' && !Array.isArray(said)) "
+      + 'return Boolean(said.reason);', '')],
+  ['M8 the bool shape is not understood (every other route goes quiet)',
+    swap("  if (typeof said === 'boolean') return said;", '')],
+  // The trap this round exists to close: presence read as truth.
+  ['M9 an object that arrived is read as an object that says yes',
+    swap('return Boolean(said.reason);', 'return true;')],
+  ['M10 an unknown shape is folded into "complete"',
+    // 🔴 A SINGLE-LINE ANCHOR ON PURPOSE. The first spelling of this mutant
+    //    carried a newline and died on this CRLF checkout - the harness went quiet
+    //    for a reason that had nothing to do with the code (C-32, five harnesses today).
+    swap('  return null;', '  return false;')],
 ];
 
 const CONTROLS = [
@@ -136,7 +207,14 @@ function verdict(M) {
     || M.isTruncated(rows(9), -1) !== false
     || M.withinCap(rows(CAP + 1), CAP).length !== CAP
     || M.withinCap(rows(7), CAP).length !== 7
-    || M.withinCap(null, CAP).length !== 0;
+    || M.withinCap(null, CAP).length !== 0
+    // the wire shapes \u2014 each line is the only one some mutant above moves
+    || M.saysTruncated(true) !== true
+    || M.saysTruncated(false) !== false
+    || M.saysTruncated({ nodes: true, reason: 'nodes' }) !== true
+    || M.saysTruncated({ nodes: false, reason: null }) !== false
+    || M.saysTruncated(undefined) !== null
+    || M.saysTruncated([{ role: 'x' }]) !== null;
 }
 
 // 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부

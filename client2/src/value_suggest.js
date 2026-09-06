@@ -75,6 +75,7 @@
 
 import { API_BASE } from './config.js';
 import { state } from './state.js';
+import { saysTruncated } from './truncation.js';
 
 // ── Knobs ───────────────────────────────────────────────────────────────────────
 /**
@@ -449,7 +450,9 @@ async function requestValues(table, column, prefix, limit) {
   columnRejects.delete(key);
   columnCooldown.delete(key);
   const values = Array.isArray(body && body.values) ? body.values.map(v => String(v)) : [];
-  const truncated = !!(body && body.truncated);
+  // 🔴 THE SHAPE IS ASKED, NOT ASSUMED. This route sends a bool today, and that is the
+  // only reason `!!` was right - a guard by luck rather than by construction.
+  const truncated = saysTruncated(body && body.truncated) === true;
   if (!truncated) completeResults.set(key, { prefix, values });
   return { values, truncated, ok: true, permanent: false, seq };
 }
