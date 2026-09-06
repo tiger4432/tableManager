@@ -193,7 +193,7 @@ def test_the_scan_is_bounded_and_the_grouping_is_not_the_bound():
         function.body = function.body[1:]
     code = ast.unparse(function)
     assert "LIMIT %(scan)s" in code, "the scan window lost its bound"
-    assert code.index("LIMIT %(scan)s") < code.index("GROUP BY value"), \
+    assert code.index("LIMIT %(scan)s") < code.index("GROUP BY"), \
         "the grouping happens before the window is cut - that is the full scan"
 
 
@@ -214,5 +214,77 @@ def test_the_order_is_stated_in_the_answer():
     import inspect
 
     body = inspect.getsource(ledger_trace_router.ledger_key_values)
-    assert "ORDER BY n DESC, value ASC" in body
+    assert "ORDER BY n DESC, " in body
     assert '"order": "count_desc_then_value_asc"' in body
+
+
+class _Recorder:
+    """The one call this route makes, captured: `exec_driver_sql(sql, params)`."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.sql = None
+        self.params = None
+
+    def exec_driver_sql(self, sql, params):
+        self.sql, self.params = sql, params
+        return self
+
+    def fetchall(self):
+        return self.rows
+
+
+def _run(monkeypatch, *, keys, rows, entity="die", key=None, limit=50):
+    """Drive the real handler against a recorded connection."""
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {entity + "@1": {"keys": list(keys)}}, "vocabulary": {}})
+    monkeypatch.setattr(ledger_trace_router.ledger_trace, "relation_exists",
+                        lambda *a, **k: True)
+    recorder = _Recorder(rows)
+    db = type("Db", (), {"connection": lambda self: recorder})()
+    answer = ledger_trace_router.ledger_key_values(
+        type=entity, key=key, limit=limit, db=db)
+    answer["_sql"], answer["_params"] = recorder.sql, recorder.params
+    return answer
+
+
+def test_a_composite_type_is_grouped_by_every_declared_key(monkeypatch):
+    """🔴 THE WHOLE ROUND. Asked per key, a two-key type answers with one list per axis,
+    and a screen pairing them offers the CROSS PRODUCT - 144 pairs against 128 dies that
+    exist. Every one of the 16 extra builds a seed the walk answers emptily, and an empty
+    answer reads as "nothing there" rather than "you asked for a die never made"."""
+    import inspect
+
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"die@1": {"keys": ["x", "y"]}}, "vocabulary": {}})
+    assert ledger_trace_router._declared_keys("die") == {"x", "y"}
+
+    # 🔴 RUN IT, DO NOT READ IT. A source match passed while the grouping was truncated to
+    # `sorted(declared_keys)[:1]` - the mutated line still CONTAINED the asserted text.
+    # Measured 2026-09-06, and it is the same vacuous shape as a one-typed collect fixture.
+    answer = _run(monkeypatch, keys=["x", "y"],
+                  rows=[("1", "2", 5), ("3", "4", 1)])
+    assert answer["keys"] == ["x", "y"], "the subject was grouped by one axis"
+    assert answer["subjects"][0]["keys"] == {"x": "1", "y": "2"}, \
+        "a subject must carry every key, or the caller has to pair them again"
+    assert answer["seedable"] is True
+
+
+def test_one_axis_of_a_composite_key_says_it_is_not_a_seed(monkeypatch):
+    """⚠️ SAID, NOT INFERRED. Leaving the caller to compare `keys` against the declaration
+    is exactly the inference that produced the cross product."""
+    asked = _run(monkeypatch, keys=["x", "y"], rows=[("1", 5)], key="x")
+    assert asked["keys"] == ["x"]
+    assert asked["seedable"] is False, "one axis was offered as if it could seed a walk"
+
+
+def test_the_key_argument_is_optional_now():
+    """A single-key type must answer the same as before, so `key` cannot be required."""
+    import inspect
+
+    signature = inspect.signature(ledger_trace_router.ledger_key_values)
+    assert signature.parameters["key"].default is not inspect.Parameter.empty
