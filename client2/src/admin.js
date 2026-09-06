@@ -965,6 +965,28 @@ async function fetchData(options = {}) {
       const status = await fetchEnrichmentStatus();
       if (isStale()) return false;
       renderEnrichmentTable(status);
+    } else if (tab === 'tables') {
+      // 🔴 `switchTab` 이 이 탭에 «이미» 이 함수를 부릅니다 (:588). 여기 없었을 뿐입니다 —
+      //    그래서 「이 탭의 데이터를 읽는다」에 경로가 «둘» 있었고 둘이 «서로 다른 탭 목록»을
+      //    알고 있었습니다. 부르는 함수를 같게 두는 것이 그 둘을 하나로 만듭니다.
+      await refreshTableConfig();
+      if (isStale()) return false;
+    } else if (tab === 'ontology') {
+      // ⚠️ 둘을 «따로» 받습니다 — `switchTab` (:580-584) 이 그렇게 하는 이유가 그대로입니다:
+      //    하나의 실패가 «다른 하나를 지우지» 않습니다. `allSettled` 가 그 규율입니다.
+      await Promise.allSettled([refreshOntologyExplorer(), refreshLedgerSources()]);
+      if (isStale()) return false;
+    } else {
+      // 🔴 여기가 F-9 입니다. 탭은 «일곱»인데 위 갈래가 «다섯»이었고, `else` 가 없었습니다.
+      //    그래서 tables·ontology 는 «어느 갈래도 안 타고» 아래로 내려가
+      //    `markRefreshed()` 가 «새 시각»을 찍고 `allRead` 가 true 인 채로 돌아갔습니다.
+      //    부르는 쪽은 그것을 성공으로 읽고 「새로고침했습니다」를 띄웠습니다 — 요청 «0건»으로.
+      //    즉 «무음»이 아니라 «거짓»이었고, 운영자는 낡은 수를 «새 수»로 읽었습니다.
+      // 🔵 갈래를 더한 것으로 오늘 것은 닫힙니다. 이 `else` 는 «다음»을 위한 것입니다 —
+      //    탭이 여덟째가 되는 날, 그것이 조용히 성공하지 «못하게» 합니다.
+      console.error(`fetchData: no branch for tab '${tab}' — refusing to report a refresh`);
+      if (!silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
+      return false;
     }
     // 부분 실패도 «말한다». 문구는 예외 경로와 같은 것을 쓴다 — 새로 짓지 않는다.
     if (!allRead && !silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
