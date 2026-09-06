@@ -483,24 +483,9 @@ async def startup_event():
             except Exception:
                 clean_filename = filename
 
-            if status == "SUCCESS":
-                message = f"{clean_filename} 파일이 처리되었습니다."
-                # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용 —
-                # 메시지 문자열에만 덧붙인다(페이로드 구조 불변).
-                if error_msg:
-                    message += f" ({error_msg[:100]})"
-            else:
-                message = f"{clean_filename} 파일 처리에 실패했습니다."
-                if error_msg:
-                    message += f" ({error_msg[:100]})"
-
-            msg = {
-                "event": "file_ingestion_completed",
-                "table_name": table_name,
-                "filename": clean_filename,
-                "status": status,
-                "message": message
-            }
+            # [F-5] 페이로드는 «한 자리»에서 만든다 — 셋이 각자 지으면 다음 사람이 둘만 고친다.
+            msg = event_constants.file_ingestion_completed_message(
+                table_name, clean_filename, status, error_msg)
             # [Heavy Lane P1] 완료/실패 시 진행 스냅샷 레지스트리 정리 (멱등)
             try:
                 ingestion_activity_registry.remove(table_name, clean_filename)
@@ -5654,23 +5639,9 @@ async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(
         except Exception:
             clean_filename = filename
 
-        if status == "SUCCESS":
-            message = f"{clean_filename} 파일이 처리되었습니다."
-            # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용.
-            if error_msg:
-                message += f" ({error_msg[:100]})"
-        else:
-            message = f"{clean_filename} 파일 처리에 실패했습니다."
-            if error_msg:
-                message += f" ({error_msg[:100]})"
-
-        msg = {
-            "event": "file_ingestion_completed",
-            "table_name": t_name,
-            "filename": clean_filename,
-            "status": status,
-            "message": message
-        }
+        # [F-5] 같은 자리를 부른다 (위 주석 참조).
+        msg = event_constants.file_ingestion_completed_message(
+            t_name, clean_filename, status, error_msg)
         loop.call_soon_threadsafe(
             lambda: asyncio.create_task(manager.broadcast(json.dumps(msg)))
         )
@@ -5923,24 +5894,9 @@ async def internal_event_file_processed(
     except Exception:
         clean_filename = filename
 
-    if status == "SUCCESS":
-        message = f"{clean_filename} 파일이 처리되었습니다."
-        # [F1] SUCCESS의 error_msg 슬롯은 detail(예: "키 결측으로 N행 스킵") 전달용 —
-        # 메시지 문자열에만 반영(페이로드 구조 불변).
-        if error_msg:
-            message += f" ({error_msg[:100]})"
-    else:
-        message = f"{clean_filename} 파일 처리에 실패했습니다."
-        if error_msg:
-            message += f" ({error_msg[:100]})"
-
-    msg = {
-        "event": "file_ingestion_completed",
-        "table_name": table_name,
-        "filename": clean_filename,
-        "status": status,
-        "message": message
-    }
+    # [F-5] 같은 자리를 부른다 — 분리 모드의 중계도 임베디드와 «같은 페이로드»를 낸다.
+    msg = event_constants.file_ingestion_completed_message(
+        table_name, clean_filename, status, error_msg)
     # [Heavy Lane P1] 완료/실패한 파일은 진행 스냅샷에서 제거 (멱등)
     try:
         ingestion_activity_registry.remove(table_name, clean_filename)

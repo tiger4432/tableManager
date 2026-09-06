@@ -398,3 +398,53 @@ def truncate_audit_value(value, max_chars: int = MAX_AUDIT_VALUE_CHARS):
 UNDELIVERED_MARKER_STATUS = "SUCCESS"          # the DATA succeeded; only the notice failed
 UNDELIVERED_MARKER_PROCESSED_CHAIN = True      # never re-run as a data transaction
 UNDELIVERED_MARKER_TAG = "undelivered_notification"   # payload["marker"], for attribution
+
+
+#: 실패 사유가 «카드»까지 가는 길에서 잘리던 상한. 토스트 문장은 100자로 접지만, 카드는
+#: 사유 «자체»를 받아 자기 폭에 맞춰 자릅니다 — 서버가 미리 접으면 카드는 접힌 것을 또 접습니다.
+MAX_INGESTION_ERROR_CHARS = 500
+
+EVENT_FILE_INGESTION_COMPLETED = "file_ingestion_completed"
+
+
+def file_ingestion_completed_message(table_name, filename, status, error_msg=None):
+    """`file_ingestion_completed` 페이로드 — 한 자리에서 만든다.
+
+    🔴 THE REASON WAS FOLDED INTO THE SENTENCE AND THE FIELD WAS NEVER SENT. Three senders
+    each built this dict by hand, each appended `error_msg` to `message`, and none of them
+    put `error_msg` in the payload. The client reads BOTH: the toast shows `message` (so the
+    reason was visible there) and the floating progress card reads `msg.error_msg` -- which
+    was always `undefined`, so the card fell back to its placeholder and EVERY failure looked
+    like the same failure. 실측 2026-09-07: 보내는 자리 «셋» · 그 칸을 싣는 자리 «0» ·
+    읽는 쪽은 «살아 있고 출하돼» 있었다(`utils.js` `finishIngestionProgress`).
+
+    🔴 그래서 이것은 「만들기」가 아니라 «나르기»다. 읽는 쪽도, 사유도, 내부 POST 의 칸도
+    (`run_watcher.trigger_ws_file_processed` 가 `payload["error_msg"]` 를 이미 싣는다) 전부
+    있었고, «브로드캐스트를 짓는 세 자리»에서만 떨어졌다.
+
+    ⛔ 그리고 셋에 한 줄씩 더하지 «않는다». `batch_refresh_message` 가 아홉 발신자에게
+    같은 이유로 만들어진 그 자리이고, 손으로 세 번 쓴 페이로드는 «세 갈래로» 갈린다 —
+    다음 사람이 둘만 고치는 것이 이 결함의 재발 경로다 (기준 ④).
+
+    ⚠️ `error_msg` 는 SUCCESS 에도 실린다. 그 슬롯은 성공에서 «detail»(예: 「키 결측으로 N행
+    스킵」)을 나르고, 그것을 여기서 «버리면» 화면이 그 사실에 닿을 길이 없어진다. 오늘 카드가
+    그 값을 성공 갈래에서 «안 읽는» 것은 별개의 줄(F-6)이고, 여기서 미리 접지 않는다.
+    """
+    if status == "SUCCESS":
+        message = f"{filename} 파일이 처리되었습니다."
+    else:
+        message = f"{filename} 파일 처리에 실패했습니다."
+    reason = str(error_msg) if error_msg else None
+    if reason:
+        # 문장은 짧게 — 토스트 한 줄이다. 칸은 길게 — 카드가 자기 폭으로 자른다.
+        message += f" ({reason[:100]})"
+    msg = {
+        "event": EVENT_FILE_INGESTION_COMPLETED,
+        "table_name": table_name,
+        "filename": filename,
+        "status": status,
+        "message": message,
+    }
+    if reason:
+        msg["error_msg"] = reason[:MAX_INGESTION_ERROR_CHARS]
+    return msg
