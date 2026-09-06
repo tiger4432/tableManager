@@ -106,6 +106,7 @@ console.log('\n[4] the response is not thrown away');
     edges: [{ predicate: 'inspected', from: 'n1', to: 'n2', qualifiers: { step: 7 } }],
     truncated: { nodes: 400 },
     walk: { hops_requested: 3, hops_reached: 2 },
+    generated_at: '2026-09-07T04:40:00Z',
   }) };
   const r = recorder(reply);
   const res = await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(FULL);
@@ -123,6 +124,16 @@ console.log('\n[4] the response is not thrown away');
   eq('truncation is carried, not swallowed', res.truncated, { nodes: 400 });
   eq('and the walk block that can catch the hops mismatch survives',
     res.walk, { hops_requested: 3, hops_reached: 2 });
+  // 🔴 S-13: 「이 답이 «언제» 것인가」. 서버가 줄곧 보냈고 읽는 자리가 «0» 이었습니다
+  //    (실측: 소스 0 · 번들 0). 새로 고치지 않은 화면은 오래된 수를 «현재형»으로 말합니다.
+  eq('the answer says WHEN it was taken', res.generatedAt, '2026-09-07T04:40:00Z');
+}
+{
+  // ⚠️ 없으면 «지어내지» 않습니다 — 옛 서버는 이 칸을 안 보낼 수 있고, 그때 화면은
+  //    「기준」 줄을 «안 그립니다». 「지금」으로 채우면 그게 «거짓 기준 시각»입니다.
+  const r = recorder({ ok: true, json: async () => ({ nodes: [], edges: [] }) });
+  const res = await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(FULL);
+  eq('an older server that omits it yields null, never a made-up now', res.generatedAt, null);
 }
 {
   const r = recorder({ ok: true, json: async () => ({ nodes: [] }) });

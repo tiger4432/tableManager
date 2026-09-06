@@ -1865,6 +1865,14 @@ export function createWalkBoxWalk(deps) {
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,
         cut: !!(cutAxes && cutAxes.length),
+        // 🔴 S-13: 「이 답이 «언제» 것인가」. 서버가 `generated_at` 을 «항상» 보내는데 읽는
+        //    자리가 «0» 이었습니다 (실측 2026-09-07: 소스 0 · 번들 0 — 클라 전체에서 유일한
+        //    언급 둘이 «주석»이었습니다). 그 물음은 「같아 보이는 다섯 개의 0」 중
+        //    «지나가는 중이라서»를 가르는 것이고, 새로 고치지 않은 화면은 «오래된 수»를
+        //    현재형으로 말합니다.
+        // ⚠️ 같은 물음이 `/admin/chain/queue` 에서는 «발신 자체가 없습니다» — 그쪽은 서버
+        //    라운드이고, 이쪽은 «이 한 줄»입니다. 둘을 한 행으로 묶지 않는 이유가 그것입니다.
+        generatedAt: body.generated_at || null,
         // 「닿은 것이 없다」와 「못 물어봤다」를 화면이 가를 수 있게 «둘 다» 나릅니다.
         state: body.state || null,
         message: body.message || null,
