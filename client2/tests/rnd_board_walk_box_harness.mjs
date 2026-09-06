@@ -284,11 +284,22 @@ async function suite(mods) {
     const pt = new WalkBoxPanel(hostT, {
       doc, markings, reads: 'marking:1', writes: 'marking:2',
       loadDeclaration: () => Promise.resolve(DECL),
-      // The shape the live route really returns -- measured 2026-08-27, wafer@1 SYN-BW-101-16:
-      // depth false, everything else true. A budget cut, not a question about depth.
-      walk: () => Promise.resolve({ ok: true, nodes: NODES, truncated: {
-        depth: false, nodes: true, edges: true, claims: true, actions: true,
-        reason: 'nodes, edges, claims, actions' } }),
+      // 🔴 THE REAL DECODER, not a hand-made copy of what it returns. This fixture used to
+      //    build the walk result itself -- `{ok, nodes, truncated}` -- and that made it a
+      //    fixture imitating its subject: when `createWalkBoxWalk` learned to fold `truncated`
+      //    into `cut`/`truncatedAxes`, the panel read the new fields and the stub still served
+      //    the old shape, so this went red for a change that was correct. It now stubs the
+      //    FETCH and lets the real function decode, which is the only version of this test that
+      //    can still be true after the decoder changes.
+      // The body is the shape the live route really returns -- measured 2026-08-27, wafer@1
+      // SYN-BW-101-16: depth false, everything else true. A budget cut, not a depth question.
+      walk: A.createWalkBoxWalk({
+        apiBase: '',
+        fetchImpl: async () => ({ ok: true, json: async () => ({
+          nodes: NODES, edges: [], truncated: {
+            depth: false, nodes: true, edges: true, claims: true, actions: true,
+            reason: 'nodes, edges, claims, actions' } }) }),
+      }),
     });
     pt.mount();
     await settle();

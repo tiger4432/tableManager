@@ -253,11 +253,77 @@ async function renameSuite(M) {
 console.log('\n[9] the renamed axis, and the fate of the old key');
 await renameSuite(await import('../src/rnd_board/api.js'));
 
+// ═══ ⑩ 「잘렸나」 — `depth` 는 «물은 것»일 때 절단이 아닙니다 ═══════════════════════════
+//
+// 🔴 실측 2026-09-06, 라이브: `depth: true` 는 「홉 상한이 이 걸음을 멈췄다」입니다.
+//      hops=2 · 넉넉한 예산  -> 2/2 도달, depth TRUE   (물은 만큼 갔고 더 있다)
+//      hops 안 줌(기본 12)   -> 3/12 도달, depth FALSE (그래프가 먼저 끝났다)
+//      hops=2 · 좁은 예산    -> 1/2 도달, depth FALSE · nodes TRUE (예산이 잘랐다)
+//    그래서 «고른 사람»이 있으면 depth 는 답이고, 서버 기본값이 정했으면 «안 고른 절단»입니다.
+//    응답은 그 둘을 구별 못 합니다(`hops_requested: 12` 가 양쪽에서 똑같습니다) -- 요청을
+//    «짓는 자리»만 압니다. 그 한 사실을 넘기는 것이 이 절이 재는 것입니다.
+// 🔴 왜 이 하니스인가: 이것도 «요청이 결정하는» 값입니다. 반환만 보면 두 경우가 같아 보입니다.
+const T = (over) => ({ depth: false, nodes: false, edges: false, claims: false, actions: false,
+  reason: null, ...over });
+const BODY = (truncated) => ({ ok: true, json: async () => ({ nodes: [], edges: [], truncated }) });
+
+async function cutOf(M, spec, truncated) {
+  const r = recorder(BODY(truncated));
+  return M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
+    { type: 'wafer@1', keys: { wafer: 'W-1' }, ...spec });
+}
+
+async function truncationSuite(M) {
+  const before = failures.length;
+
+  const asked = await cutOf(M, { hops: 2 }, T({ depth: true, reason: 'depth' }));
+  ok('D1 asking for 2 hops and getting 2 is NOT a truncation', asked.cut === false,
+    `cut=${asked.cut} axes=${JSON.stringify(asked.truncatedAxes)}`);
+  ok('D2 ... and no axis is named, so the screen has nothing to print',
+    Array.isArray(asked.truncatedAxes) && asked.truncatedAxes.length === 0,
+    JSON.stringify(asked.truncatedAxes));
+
+  // 🔴 반대 팔. 이게 없으면 「언제나 false」를 내는 함수가 D1·D2 를 통과합니다.
+  const budget = await cutOf(M, { hops: 2 }, T({ nodes: true, reason: 'nodes' }));
+  ok('D3 a real budget cut IS a truncation, even with hops chosen', budget.cut === true,
+    `cut=${budget.cut}`);
+  ok('D4 ... and it names the axis that was cut, not the reason string',
+    JSON.stringify(budget.truncatedAxes) === '["nodes"]', JSON.stringify(budget.truncatedAxes));
+
+  // 🔴 두 번째 반대 팔: 아무도 안 골랐으면 depth 는 «안 고른 절단»입니다.
+  const notAsked = await cutOf(M, {}, T({ depth: true, reason: 'depth' }));
+  ok('D5 depth IS a truncation when the caller never chose the hop count', notAsked.cut === true,
+    `cut=${notAsked.cut}`);
+
+  const clean = await cutOf(M, { hops: 2 }, T({}));
+  ok('D6 an untouched walk reports no cut', clean.cut === false, `cut=${clean.cut}`);
+
+  return { failed: failures.length - before };
+}
+
+console.log('\n[10] what counts as a truncation');
+await truncationSuite(await import('../src/rnd_board/api.js'));
+
 const base = { pass, failed: failures.length };
 
 const RENAME_DEFECTS = [
   ['the refusal is deleted, so the old key is silently forwarded',
     (src) => src.replace(/ {4}if \(rest\.collect !== undefined\) \{[\s\S]*?\n {4}\}\n/, '')],
+];
+// Gate 3 of the 23:05 ruling: splitting the judgement apart again must turn D1 red.
+const TRUNCATION_DEFECTS = [
+  ['depth counts as a cut again, so a satisfied question reads as truncated',
+    (src) => src.replace("    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));",
+      '    .filter((key) => raw[key] === true);')],
+  ['the caller stops passing what it knows, so the judgement loses its one input',
+    (src) => src.replace(
+      '  const hopsChosen = !!(options && options.hopsChosen);', '  const hopsChosen = false;')],
+  ['the cut goes back to reading the reason string',
+    (src) => src.replace('        cut: !!(cutAxes && cutAxes.length),',
+      '        cut: !!(truncated && truncated.reason),')],
+  ['nothing is ever a cut, which would satisfy the first two assertions alone',
+    (src) => src.replace("    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));",
+      '    .filter(() => false);')],
 ];
 const RENAME_CONTROLS = [
   ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],
@@ -280,6 +346,18 @@ for (const [name, mutate] of RENAME_DEFECTS) {
   if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
   else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
 }
+for (const [name, mutate] of TRUNCATION_DEFECTS) {
+  let r;
+  try { r = await truncationSuite((await loadWithProbe(API_PATH, { mutate, tag: 'tr' })).module); }
+  catch (e) {
+    if (/did not mutate|unchanged/.test(String(e && e.message))) {
+      console.error(`  anchor GONE: ${name} — ${e.message}`); process.exit(2);
+    }
+    r = { failed: 1 };
+  }
+  if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
+  else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
+}
 for (const [name, mutate] of RENAME_CONTROLS) {
   const r = await score(name, mutate, 'rnc');
   if (r.failed === 0) console.log(`  escaped ${name}`);
@@ -290,6 +368,6 @@ pass = base.pass;
 failures.length = base.failed;
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
-console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length} caught, ${wrong.length} wrong`);
+console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length} caught, ${wrong.length} wrong`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 && wrong.length === 0 ? 0 : 1);
