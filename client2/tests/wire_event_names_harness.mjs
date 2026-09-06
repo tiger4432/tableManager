@@ -19,7 +19,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadWithProbe } from './lib/probe.mjs';
+import { loadWithProbe, isProbeArtifact } from './lib/probe.mjs';
 import { state } from '../src/state.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -95,7 +95,7 @@ function jsFiles(dir) {
   for (const e of readdirSync(dir)) {
     const p = path.join(dir, e);
     if (statSync(p).isDirectory()) out.push(...jsFiles(p));
-    else if (e.endsWith('.js') && !e.includes('.probe-copy.') && !e.includes('.probe-stub.')) out.push(p);
+    else if (e.endsWith('.js') && !isProbeArtifact(e)) out.push(p);
   }
   return out;
 }

@@ -153,7 +153,7 @@ console.log('\n-- how many templates still interpolate without escaping --------
 //    repairing those five: 33 harnesses carry their OWN copy of this normalisation. This one does
 //    not become the 34th.
 const { readdirSync, statSync } = await import('node:fs');
-const { readSourceText } = await import('./lib/probe.mjs');
+const { readSourceText, isProbeArtifact } = await import('./lib/probe.mjs');
 const path = (await import('node:path')).default;
 const { fileURLToPath } = await import('node:url');
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
@@ -162,7 +162,7 @@ function jsFiles(dir) {
   for (const e of readdirSync(dir)) {
     const p = path.join(dir, e);
     if (statSync(p).isDirectory()) out.push(...jsFiles(p));
-    else if (e.endsWith('.js') && !e.includes('.probe-')) out.push(p);
+    else if (e.endsWith('.js') && !isProbeArtifact(e)) out.push(p);
   }
   return out;
 }

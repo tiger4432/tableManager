@@ -89,6 +89,25 @@ function die(msg) {
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
+/**
+ * Is this filename one of THIS module's temporary artifacts?
+ *
+ * 🔴 THE ONE PLACE THAT KNOWS THE SPELLING. Any harness that walks `src/` has to skip these,
+ *    because another harness running beside it writes one, imports it and deletes it — a walker
+ *    that lists it and reads it afterwards dies on ENOENT through no fault of its own.
+ * 🔴 IT IS EXPORTED SO NOBODY SPELLS IT AGAIN. Measured 2026-09-07: four harnesses wrote the
+ *    name by hand and THREE had gone stale at a rename (`.probe-copy.` / `.probe-stub.` /
+ *    `.probe-`), so their filters no longer matched what this file actually writes. Updating
+ *    those strings would have died the same way at the next rename; a predicate cannot.
+ * ⚠️ Both polarities are served: walkers of the source tree want `!isProbeArtifact`, and the
+ *    harness that scores this mechanism wants `isProbeArtifact`. One predicate, so they cannot
+ *    disagree about what an artifact is.
+ */
+export function isProbeArtifact(name) {
+  const n = String(name || '');
+  return n.includes(COPY_INFIX) || n.includes(STUB_INFIX);
+}
+
 // A crashed run can leave a copy behind, and a stray copy in `src/` is the one way this
 // mechanism could reach production. Sweep before the first load rather than trusting a
 // `finally` that a `process.exit` skips.
@@ -96,7 +115,9 @@ function sweep(dir) {
   let names;
   try { names = readdirSync(dir); } catch { return; }
   for (const n of names) {
-    if (n.includes(COPY_INFIX) || n.includes(STUB_INFIX)) {
+    // The same predicate the harnesses use — so "what gets swept" and "what gets skipped"
+    // can never drift apart.
+    if (isProbeArtifact(n)) {
       try { rmSync(join(dir, n)); } catch { /* someone else's */ }
     }
   }

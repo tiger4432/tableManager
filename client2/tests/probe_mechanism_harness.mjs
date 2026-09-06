@@ -18,7 +18,7 @@
 //    아무도 모릅니다.
 //
 // Run: node client2/tests/probe_mechanism_harness.mjs
-import { loadWithProbe, MARK } from './lib/probe.mjs';
+import { loadWithProbe, MARK, isProbeArtifact } from './lib/probe.mjs';
 import { readdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -178,7 +178,7 @@ function runsAndDies(body, label) {
 console.log('\n[6] it leaves nothing behind');
 {
   const strays = readdirSync(SRC_DIR)
-    .filter((f) => f.includes('__probe__') || f.includes('__probe_stub__'));
+    .filter((f) => isProbeArtifact(f));
   eq('no probe copy survives the imports above', strays, []);
   const here = readdirSync(HERE).filter((f) => f.startsWith('.probe_guard_'));
   eq('and no guard script survives either', here, []);
