@@ -236,6 +236,15 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     total_deleted = 0
+    # [P-6] 「상한에 닿았나」는 «행 수로 말할 수 없다». 이 루프는 사이클당 max_chunks 까지만
+    # 지우고 나머지를 다음 사이클로 이월하므로, 「상한에 닿음」과 「그만큼만 만료됐음」이
+    # «같은 수»로 나온다. 유입이 삭제보다 빠른 설치에서는 잔량이 자라는데 증상이 «디스크»뿐이다.
+    # `drained` 는 「만료된 것을 다 지웠다」이고, 그것의 부정이 「더 있는데 멈췄다」이다.
+    #
+    # ⚠️ 예외로 빠지면 `capped` 는 `None` 으로 «남는다» — 세다 만 수라 참도 거짓도 아니다.
+    #    False 로 적으면 「더 없다」는 «거짓 진술»이 된다.
+    capped = None
+    drained = False
     db = db_session_factory()
     try:
         for _ in range(max_chunks):
@@ -248,7 +257,9 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
             deleted = res.rowcount or 0
             total_deleted += deleted
             if deleted < chunk_size:
+                drained = True
                 break
+        capped = (max_chunks > 0) and not drained
         if total_deleted:
             logger.info(
                 f"[Outbox Purge] Deleted {total_deleted} processed outbox row(s) "
@@ -259,6 +270,11 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
         logger.error(f"[Outbox Purge] Failed (will retry next cycle): {e}")
     finally:
         db.close()
+    # 🔴 계기는 «호출자»가 아니라 여기서 낸다 — 유일한 호출자는 이 결과를 안 받는다
+    # (`asyncio.create_task(asyncio.to_thread(...))`). 그래서 반환을 넓히면 «독자 0» 인
+    # 값이 하나 더 생길 뿐이고, 대신 이미 GET /admin/chain/queue 가 펼치는 레지스트리에
+    # 싣는다 — 새 표면이 아니라 «있는 표면의 한 칸»이다. 반환 모양은 «안 바꾼다».
+    chain_activity.registry.note_outbox_purge(total_deleted, capped)
     return total_deleted
 
 

@@ -35,6 +35,9 @@ class ChainActivityRegistry:
         self._attached = False
         self._attached_at = None
         self._reloaded_at = None
+        self._purged_at = None
+        self._purged_rows = None
+        self._purge_capped = None
         self._seq = 0
 
     def attach(self):
@@ -59,6 +62,25 @@ class ChainActivityRegistry:
         """
         with self._lock:
             self._reloaded_at = time.time()
+
+    def note_outbox_purge(self, deleted, capped):
+        """The last outbox retention purge in this process: how many rows went, and
+        whether it stopped at its PER-CYCLE cap with more still expired.
+
+        🔴 THE COUNT ALONE CANNOT SAY IT. The purge deletes in chunks up to
+        `OUTBOX_PURGE_MAX_CHUNKS` and carries the remainder to the next cycle, so
+        "the cap bound" and "that is all there was" arrive as the SAME number. A
+        deployment whose arrival rate outruns the purge rate therefore grows a
+        backlog whose only symptom is disk, and nothing in the system says so.
+
+        ⚠️ `capped=None` IS A THIRD STATE, not a shy False. The cycle raised partway,
+        so the count is partial and the question has no answer yet -- exactly the
+        distinction `mapper_reload_age_seconds` keeps with its own `None`.
+        """
+        with self._lock:
+            self._purged_at = time.time()
+            self._purged_rows = int(deleted or 0)
+            self._purge_capped = None if capped is None else bool(capped)
 
     @property
     def attached(self) -> bool:
@@ -101,11 +123,22 @@ class ChainActivityRegistry:
         now = time.time()
         with self._lock:
             attached_at, reloaded_at = self._attached_at, self._reloaded_at
+            purged_at = self._purged_at
+            purged_rows, purge_capped = self._purged_rows, self._purge_capped
         return {
             "loop_uptime_seconds": (None if attached_at is None
                                     else round(now - attached_at, 3)),
             "mapper_reload_age_seconds": (None if reloaded_at is None
                                           else round(now - reloaded_at, 3)),
+            # [P-6] Flat, like the two above, so the route that spreads this dict does
+            # not change. `outbox_purge_capped` is the one that carries the fact the
+            # row count cannot: True = stopped at the per-cycle cap with more expired
+            # rows waiting, False = drained everything expired, None = never ran, or
+            # the last cycle raised before it could tell.
+            "outbox_purge_age_seconds": (None if purged_at is None
+                                         else round(now - purged_at, 3)),
+            "outbox_purge_deleted": purged_rows,
+            "outbox_purge_capped": purge_capped,
         }
 
     def clear(self):
@@ -113,6 +146,9 @@ class ChainActivityRegistry:
             self._running.clear()
             self._attached_at = None
             self._reloaded_at = None
+            self._purged_at = None
+            self._purged_rows = None
+            self._purge_capped = None
             self._seq = 0
 
 

@@ -72,8 +72,14 @@ def test_clear_forgets_both():
     chain_activity.registry.attach()
     chain_activity.registry.note_reload()
     chain_activity.registry.clear()
+    # [P-6] The purge names joined this dict. The equality is kept EXACT rather than
+    # relaxed to a subset: this assertion's job is to notice a field arriving or
+    # leaving, and a subset check would stop doing that in both directions.
     assert chain_activity.registry.ages() == {"loop_uptime_seconds": None,
-                                              "mapper_reload_age_seconds": None}
+                                              "mapper_reload_age_seconds": None,
+                                              "outbox_purge_age_seconds": None,
+                                              "outbox_purge_deleted": None,
+                                              "outbox_purge_capped": None}
 
 
 # ------------------------------------------------------------------- the seam, both ways
@@ -103,4 +109,7 @@ def test_the_route_publishes_both_names():
     body = inspect.getsource(main.get_chain_queue_depth)
     assert "chain_activity.registry.ages()" in body
     assert set(chain_activity.registry.ages()) == {"loop_uptime_seconds",
-                                                   "mapper_reload_age_seconds"}
+                                                   "mapper_reload_age_seconds",
+                                                   "outbox_purge_age_seconds",
+                                                   "outbox_purge_deleted",
+                                                   "outbox_purge_capped"}
