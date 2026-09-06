@@ -3091,12 +3091,23 @@ def apply_row_update_internal(
                                         cell_overwrites_to_delete.discard(ow_key)
                                     
                                 # AuditLog 기록
-                                create_audit_log(
+                                # 🔴 THE RETURN IS KEPT, AND THAT IS THE WHOLE FIX. This
+                                # was the ONE call of ten that dropped it. When
+                                # `logs_to_cache` is a list, `add_to_cache` is False and
+                                # `create_audit_log` skips `db.add` as well as the cache
+                                # (its own docstring says so) - so a discarded return meant
+                                # the row reached NEITHER. The sole live caller of this
+                                # function always passes a list, so this merge's history
+                                # was not sometimes lost, it was always lost.
+                                # The sibling collision_merge site does exactly this.
+                                log_dict = create_audit_log(
                                     db, table_name, row.row_id, col_name, old_val, new_val,
                                     "collision_merge", (update_item.updated_by or "system"),
                                     transaction_id=transaction_id, business_key=row.business_key_val,
                                     add_to_cache=(logs_to_cache is None)
                                 )
+                                if logs_to_cache is not None:
+                                    logs_to_cache.append(log_dict)
 
                             # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
                             if cell_sources_to_upsert is not None:
