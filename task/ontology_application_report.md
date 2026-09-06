@@ -11024,3 +11024,79 @@ core.autocrlf = true  ·  progress_card.js 는 CRLF 182줄  ·  grid.js 도 CRLF
 ```
 
 **감시:** `b8imsoqu7`(지시 채널) · `b9fi6fi75`(보드) · `b7b6fyr7w`(자가 기상) — 마지막 이벤트 00:4x
+
+---
+
+# 🔎 «나머지» 셋 — 술어를 코드에 대고 쟀습니다. **셋 다 오늘도 참, 그리고 하나는 제 줄이 틀렸습니다** (00:5x)
+
+⛔ 안 고쳤습니다. 지시대로 «착수 전에» 줄의 술어부터 쟀습니다.
+
+## ⓒ F-2 — 참입니다. 그리고 **제 줄보다 «넓습니다»**
+```
+서버가 막나   «안 막습니다». main.py:4030  `if status != "ALL": query.filter(status == status)`
+             -> 아무 문자열이나 받습니다. 끊긴 것은 «나르개»가 아니라 «고를 이름»이라던 판정 그대로
+코드가 «쓰는» 상태 다섯
+   PENDING_RETRY  main.py:5616 · run_watcher.py:258
+   PENDING        run_watcher.py:330
+   FAILED         run_watcher.py:394
+   SUCCESS/SKIPPED parsers/directory_watcher.py:2030 · :2240
+화면이 «주는» 이름 셋   admin.html:1861-1864  ALL · FAILED · SUCCESS
+```
+🔴 **그러니 못 고르는 것이 `PENDING_RETRY` «하나»가 아니라 «셋»입니다** (＋PENDING ＋SKIPPED).
+🔴 그리고 그 닫힌 집합의 «철자»가 세 곳이고 셋 다 «셋»이라 적고 있습니다 —
+   `models.py:312` 주석 · `main.py:4030` 독스트링 · `admin.html` 옵션. **쓰는 쪽만 다섯입니다.**
+```
+기준 ②  이 값이 «손으로» 세 곳에 적혀 있습니다
+기준 ④  셋이 «갈라질 수» 있고, 갈라져도 «오류가 안 납니다» — 오늘 이미 갈라져 있습니다
+```
+
+## ⓑ F-15 — 참입니다. 🔴 **그런데 `body_error` 가 «답하지 않습니다»**
+```
+서버   retroactive.py:1150  "error": row.error   ·  :1478  values["error"] = str(error)[:2000]
+화면   retroactive_view.js:413 buildRunsView 가 읽는 칸 —
+       run_id · label · op · params · processed_rows · total_rows · started_at · queued_at ·
+       finished_at · state.     `error` 는 «파일 전체에 0회»
+```
+🔴 **오늘 지은 것을 여기 갖다 대면 «조용히 아무것도 안 잡습니다».** 그건 «봉투»의 오류이고
+   이건 «행의 칸»입니다 — 목록은 «성공»으로 오고, 실패한 «줄»이 그 안에 있습니다.
+   같은 낱말(`error`)이라 같아 보이는 것이 오늘 밤 세 번째입니다.
+
+## ⓓ F-19 — 참입니다. 🔴 **다만 제 줄의 「매퍼 «둘»」은 «제가 안 잰 인용»이었고, 오늘 재니 틀렸습니다**
+```
+FrameConfirmation 행을 «쓰는» 함수   frame_confirmation.record_confirmation  «하나»
+그 함수의 호출자                     main.py:4467  «하나» — 사람이 누르는 확정 라우트
+체인 매퍼 중 만드는 것               «0». 이름에 confirmation 이 든 것은 하나 있는데
+   mappers/core_alignment_mapper.build_core_frame_confirmation_batch
+   -> 독스트링: 「Write ... metadata onto `dt_inventory`」. `updates.append` 로 «컬럼»을 씁니다
+체인 매퍼 중 «읽는» 것 셋            dt_alignment_metadata(`confirmed_meta_for`) ·
+                                  dt_inventory_metadata(확정 로더) · dt_standard_map
+```
+🔴 **구조로 말하면: 확정 사실의 «생산자»가 «사람이 누르는 라우트 하나»이고, 체인은 «소비자»뿐입니다.**
+   그래서 「사실이 안 만들어진다」가 참이고, 그건 매퍼의 결함이 아니라 «생산 경로가 하나»여서입니다.
+⚠️ 제 줄(L-3)은 8439행에 「제가 «안 쟀습니다». 흐름 레인 인용입니다」라고 «제가 적어 뒀습니다».
+   오늘 처음 쟀고, 「둘」의 근거를 코드에서 «못 찾았습니다».
+
+## 판정 대기: **스물일곱** (24 는 총괄 판정 · 조건부 확인 대기)
+```
+25  ⓒ F-2 — 상태 집합의 «정본»을 어디에 둘지. 지금은 세 곳에 손으로 적혀 있고 «셋 다 낡았습니다».
+    화면 옵션만 늘리면 넷째 사본이 됩니다
+26  ⓑ F-15 — 소급 실행의 실패 사유를 화면이 읽게 할지. «클라 한 줄»이고, 오늘 지은 함수와는
+    «다른 기제»입니다 (봉투 아님 · 행의 칸)
+27  ⓓ F-19 — 확정 사실의 생산자가 «대화형 라우트 하나»입니다. 체인이 확정을 만들 수 있어야 하는지는
+    설계 물음이라 제가 판정하지 않습니다
+```
+
+## 모르는 것
+```
+🔴 운영에서 SKIPPED·PENDING 이 «실제로 얼마나» 생기는지 — 이 박스에서 세지 않았습니다
+🔴 F-19 에서 「체인이 확정을 만들어야 하는가」는 도메인 물음입니다. 코드로는 «안 만든다»까지만 잽니다
+```
+
+## ①②③④ 중 무엇을 움직였나
+```
+② (하드코딩)          🔴 F-2 가 「한 이름이 빠졌다」에서 「닫힌 집합이 세 곳에 손으로 적혀 있다」로
+④ (한 능력에 길 둘)    🔴 그 세 곳이 «이미» 갈라져 있습니다 (셋 vs 다섯)
+① (동작이 보인다)      F-19 의 원인이 매퍼가 아니라 «생산 경로가 하나»인 것으로 바뀝니다
+```
+
+**감시:** `b8imsoqu7`(지시 채널) · `b9fi6fi75`(보드) · `b7b6fyr7w`(자가 기상) — 마지막 이벤트 00:5x
