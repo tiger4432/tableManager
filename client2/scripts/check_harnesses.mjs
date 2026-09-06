@@ -1047,7 +1047,7 @@ const FLOORS = new Map([
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
-  ['walk_route_fill_harness.mjs', 23],
+  ['walk_route_fill_harness.mjs', 28],
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
@@ -1071,7 +1071,7 @@ const FLOORS = new Map([
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 50],
+  ['walk_wire_harness.mjs', 52],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   ['truncation_harness.mjs', 12],
   // whether the DECLARED unique key survives measurement -- and that an empty table

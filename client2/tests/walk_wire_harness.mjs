@@ -107,6 +107,7 @@ console.log('\n[4] the response is not thrown away');
     truncated: { nodes: 400 },
     walk: { hops_requested: 3, hops_reached: 2 },
     generated_at: '2026-09-07T04:40:00Z',
+    limits: { nodes: 400, edges: 2000, max_hops: 12 },
   }) };
   const r = recorder(reply);
   const res = await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(FULL);
@@ -127,6 +128,9 @@ console.log('\n[4] the response is not thrown away');
   // 🔴 S-13: 「이 답이 «언제» 것인가」. 서버가 줄곧 보냈고 읽는 자리가 «0» 이었습니다
   //    (실측: 소스 0 · 번들 0). 새로 고치지 않은 화면은 오래된 수를 «현재형»으로 말합니다.
   eq('the answer says WHEN it was taken', res.generatedAt, '2026-09-07T04:40:00Z');
+  // 🔴 S-13: 「«얼마»에서 잘렸나」. 축 이름만으로는 「많아서」와 「상한이 낮아서」가 같아 보입니다.
+  eq('and it carries the budgets it was cut at',
+    res.limits, { nodes: 400, edges: 2000, max_hops: 12 });
 }
 {
   // ⚠️ 없으면 «지어내지» 않습니다 — 옛 서버는 이 칸을 안 보낼 수 있고, 그때 화면은
@@ -134,6 +138,7 @@ console.log('\n[4] the response is not thrown away');
   const r = recorder({ ok: true, json: async () => ({ nodes: [], edges: [] }) });
   const res = await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(FULL);
   eq('an older server that omits it yields null, never a made-up now', res.generatedAt, null);
+  eq('and an omitted limits block is null, not an invented budget', res.limits, null);
 }
 {
   const r = recorder({ ok: true, json: async () => ({ nodes: [] }) });

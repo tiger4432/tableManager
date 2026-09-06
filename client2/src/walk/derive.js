@@ -61,6 +61,30 @@ export function tableColumns(entities, type, qualifierNames) {
 }
 
 /**
+ * 「잘렸다」 옆에 「«얼마»에서」를 붙인다.
+ *
+ * 🔴 S-13. 화면은 `truncated` 를 읽어 「절단됨」을 «말할 수» 있었지만 `limits` 를 안 읽어
+ *    「무슨 예산에서」를 «못 말했습니다» (실측 2026-09-07: `limits` 독자 소스 0 · 번들 0).
+ *    그 둘이 붙어야 운영자가 「더 넓혀 다시 물을지」를 정할 수 있습니다 — 축 이름만으로는
+ *    「많아서 잘렸다」와 「상한이 낮아서 잘렸다」가 같아 보입니다.
+ * 🔴 `depth` 의 예산은 `max_hops` 입니다 — 이름이 «다릅니다». 그대로 `limits.depth` 를 찾으면
+ *    «언제나 없음»이 되고, 그러면 이 줄이 조용히 축 이름만 그리던 때로 돌아갑니다.
+ * ⚠️ 상한을 «모르면 축만» 씁니다. 「0」이나 「모름」을 지어내지 않습니다 — 옛 서버는 `limits`
+ *    를 안 보낼 수 있고, 없는 예산을 그리면 그것이 «틀린 수»입니다.
+ *
+ * @param {string[]|null} axes    잘린 축 이름 (`truncationAxes` 의 답)
+ * @param {object|null} limits    응답의 `limits`
+ * @returns {string[]} 축마다 한 조각 — 「nodes 400」 또는 상한을 모르면 「nodes」
+ */
+export function cutBudgets(axes, limits) {
+  const caps = limits && typeof limits === 'object' ? limits : {};
+  return (axes || []).map((axis) => {
+    const cap = axis === 'depth' ? caps.max_hops : caps[axis];
+    return Number.isFinite(cap) ? `${axis} ${cap}` : String(axis);
+  });
+}
+
+/**
  * The types the walk treats as static, read off the declaration rather than decided here.
  *
  * 🔴 THE PREDICATE IS `class === 'static'` AND NOTHING ELSE, because that is the server's:
