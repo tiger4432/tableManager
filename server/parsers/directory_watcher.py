@@ -2096,14 +2096,66 @@ class IngestionHandler(FileSystemEventHandler):
             # operator reading it could not tell WHICH file had no record - and a file with
             # no record does not appear in /failed and has no Retry button, which is the
             # loss this line is the only warning of.
-            # ⚠️ This makes the failure legible; it does not make the record survive. The
-            # row is still missing. That half is L-2's remaining work.
             logger.error(
-                "[%s] Failed to write the %s ingestion log row for %s to the database, so "
-                "this file has NO record and will not appear in the failure list: %s",
+                "[%s] Failed to write the %s ingestion log row for %s to the database; "
+                "retrying with a reduced row that carries no text from the failure: %s",
                 t_name or "unknown", status, os.path.basename(original_path), e)
+            db.rollback()
+            self._log_reduced_ingestion_record(
+                db, original_path, archived_path, t_name, status)
         finally:
             db.close()
+
+    #: What a reduced row says instead of the original reason. 🔴 A FIXED SENTENCE, not a
+    #: summary: the whole point is that NOTHING here is derived from the failure.
+    REDUCED_RECORD_NOTE = ("원래 사유를 저장하지 못했습니다 — 서버 로그를 보십시오.")
+
+    def _log_reduced_ingestion_record(self, db, original_path: str, archived_path: str,
+                                      t_name: str, status: str):
+        """Second attempt at the record, carrying nothing that came from the failure.
+
+        🔴 THE ROW IS THE RECOVERY, NOT THE REPORT. Without a `FileIngestionLog` row the
+        file does not appear in the failure list and the operator gets no Retry button -
+        so what the first write loses is not a message but the only way back in.
+
+        ⛔ NO TEXT FROM THE FAILURE, and that is the whole design. If the first INSERT was
+        refused because of something IN the value (a NUL byte in a traceback is the shape
+        this repository would meet first), then carrying a shortened version of that same
+        text would be refused for the same reason - a repair that fails exactly when it is
+        needed. `error_message` has no length cap, so shortening was never the point;
+        removing the derived text is.
+
+        🔵 THE DETAIL IS NOT LOST - it is in the ERROR line above, with the table, the
+        status, the file and the original exception. The row restores the ROUTE; the log
+        carries the REASON. Each says one thing.
+
+        ⚠️ AND THIS DOES NOT CLOSE THE OTHER PATH. If the database became unreachable
+        between the checkpoint write and this one, this row fails too - narrow, not
+        impossible, and left open on purpose rather than papered over.
+        """
+        from database.models import FileIngestionLog
+
+        try:
+            db.add(FileIngestionLog(
+                filename=os.path.basename(original_path),
+                filepath=os.path.abspath(archived_path),
+                table_name=t_name or "unknown",
+                status=status,
+                error_message=self.REDUCED_RECORD_NOTE,
+                retry_count=0,
+            ))
+            db.commit()
+            logger.warning(
+                "[%s] Wrote a reduced %s ingestion log row for %s so the file can still be "
+                "retried; the reason is in the ERROR line above, not in the row.",
+                t_name or "unknown", status, os.path.basename(original_path))
+        except Exception as reduced_error:
+            db.rollback()
+            # ⛔ Not silent. This is the state where the file genuinely has no record.
+            logger.error(
+                "[%s] The reduced %s ingestion log row for %s ALSO failed, so this file "
+                "has no record and will not appear in the failure list: %s",
+                t_name or "unknown", status, os.path.basename(original_path), reduced_error)
 
     def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str, t_name: str = None):
         if t_name is None:
