@@ -9855,3 +9855,57 @@ chain_ingestion_worker.py
           ㉠ 은 「이벤트를 stage 한다」였고, 제가 «삭제 자리 합치기»를 더하려는 것이라 확인 청합니다
           (안 합치면 stage 호출이 «두 곳»이 되고, 그게 이 저장소가 오늘 세 번 닫은 모양입니다)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【L-4】 착지 `d95936a4` — **아웃박스가 그 삭제를 봅니다. 감사 이력은 «여전히 없습니다»**
+
+## 흐름 ① | 뺀 것: 파일 0 · 줄 «−27/+202»(시험 포함) | 「깔끔」 — 🔴 **④ 두 경로 없음** · ① 동작이 보인다
+
+## 짓기 «전»에 재라 하신 둘 — 답이 갈렸습니다
+```
+① DELETE 가 체인을 깨우나   🔵 «안 깨웁니다». 워커가 트리거를 고르는 «세 자리 모두»
+                          event_type in ("CREATE","EDIT") 로 거릅니다
+                          -> 「깊이가 막는다」로 안 넘겼습니다. 그럴 필요가 없었습니다
+② diff 아닌 갈래           🔴 «삭제가 하나 더» 있었습니다 (purged_row_ids, ~3696)
+                          그리고 3628·4081 은 삭제가 «아니었습니다»(범위 결정 · adopted 계수)
+                          -> ⓑ 만 고쳤으면 ⓐ 는 그대로 «안 보이는 삭제»였습니다
+```
+
+## 지은 것 — 헬퍼 하나
+```
+purge_map_rows(db, table_model, table_name, row_ids)
+   stage_collapsed_event(db, "DELETE", table, ids)   <- «삭제 «전»»에 stage (같은 flush)
+   그다음 CellSource · CellOverwrite · 표 본체 delete
+두 자리가 «그것을» 부릅니다 -> 삭제 자리 «둘 -> 하나». 이벤트를 한쪽에만 달 «수가 없습니다»
+빈 목록이면 이벤트도 «안» 냅니다 — 없던 삭제의 통지는 그 자체가 거짓입니다
+```
+
+## ⚠️ 안 닫은 절반을 «코드가» 말합니다
+```
+docstring: 「⚠️ THIS PUTS THE DELETION IN THE OUTBOX. IT DOES NOT WRITE AUDIT HISTORY」
+그리고 시험이 그 문장이 «있는지»를 단언합니다 — 반쪽 수리가 온전한 것처럼 읽히지 않게
+```
+
+## 🔵 제 시험이 또 «본문 아니라 docstring» 을 재고 있었습니다 — 라운드 안에서 잡았습니다
+```
+docstring 이 결함을 설명하느라 `.delete(synchronize_session=False)` 를 «적습니다»
+-> 그것 때문에 「delete 가 셋인가」와 「stage 가 먼저인가」가 «거짓 실패»했습니다
+=> ast 로 파싱해 docstring 을 떼고 «본문만» 채점하게 고쳤습니다
+   (오늘 `92d1c1ff` 의 콜백 시험에서 «같은 덫»을 밟았고, 그때 배운 대로 바로 알아봤습니다)
+```
+
+## ⚠️ 이웃 스위트에서 빨강 셋 — 🔴 **제 것일 수 있습니다. 확인 못 했습니다**
+```
+tests/test_outbox_owner_and_stall.py  «셋»
+   AttributeError: 'types.SimpleNamespace' object has no attribute 'runner'
+=> `runner` 는 «제가 오늘 아침» retroactive.in_flight 에 더한 칸입니다 (40d757e0 계열)
+   그 시험이 SimpleNamespace 로 행을 흉내 내는데 그 칸이 «없습니다»
+🔴 이번 커밋(crud) 과는 «무관»합니다 — 그 파일은 retroactive 를 쓰고 crud 를 안 씁니다
+   다만 «오늘 아침 제 변경»이 남긴 빨강일 «가능성»이 큽니다. 단정 안 하고 올립니다
+⛔ 안 고쳤습니다 — 범위 밖이고, 총괄이 「넓은 선택자의 기존 빨강」을 따로 관리하고 계십니다
+```
+
+판정 대기: 🔴 위 빨강 셋이 «제 아침 변경»의 것이면 제가 고치겠습니다 — 지시 주십시오
+다음: 큐대로 L-3 «확인»입니다 (⛔ 이 박스에 행 만들지 말 것 — 코드로 답합니다)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
