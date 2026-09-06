@@ -384,6 +384,14 @@ export function decodeReferenceView(payload) {
     //    provenance token is the gate, and it travels beside the value.
     declaredFrame: s && s.declared_frame != null ? String(s.declared_frame) : null,
     declaredFrameSource: s && s.declared_frame_source != null ? String(s.declared_frame_source) : null,
+    // 🔴 F-19. `declared_frame_source === confirmed` does NOT mean a person confirmed it — the
+    //    chain mappers stamp the same token, which is why the overlay called a map 확정됨 while
+    //    the confirmation worklist called it pending. The server now answers the narrower
+    //    question per map (`map_alignment.py` -> `map_overlay.confirmed_by_person`), and this
+    //    carries it beside the token rather than deriving it, because it cannot be derived.
+    // ⚠️ STRICTLY BOOLEAN, and absent is NOT true: an older server that does not send the field
+    //    must read as "no person confirmed this", never as a confirmation nobody made.
+    confirmedByPerson: !!(s && s.confirmed_by_person === true),
     // 🔴 TWO FIELDS, NOT ONE, AND THE SERVER SPLITS THEM FOR A REASON. `geometry` is what THIS
     //    MAP SAYS ABOUT ITSELF; `geometry_basis` is what THIS RUN ACTUALLY STOOD ON
     //    (`map_alignment.geometry_basis_of`). Folding them together makes a borrowed geometry
