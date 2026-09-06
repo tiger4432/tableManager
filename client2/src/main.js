@@ -44,6 +44,7 @@ import {
   updateViewModeUI,
   updatePaginationUI,
   ensureCellObject,
+  markCellOverwritten,
   renderGrid,
   registerSelectionListener,
 } from './grid.js';
@@ -2252,9 +2253,7 @@ async function applyPendingTxEdits() {
         const latestNode = state.gridApi.getRowNode(rowId);
         const latestData = latestNode ? latestNode.data : data;
         if (latestData) {
-          ensureCellObject(latestData, colId);
-          latestData.data[colId].value = newValue;
-          latestData.data[colId].is_overwrite = true;
+          markCellOverwritten(latestData, colId, newValue);
           latestData.updated_at = getLocalTimeString();
         }
       });
