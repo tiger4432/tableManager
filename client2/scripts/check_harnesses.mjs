@@ -291,75 +291,6 @@ const FLOORS = new Map([
   // /admin.html, with two more added so the REMOVAL itself has a scorer: a retired screen
   // must resolve to null rather than to a route id nothing can navigate to.
   ['effort_meter_harness.mjs', 133],
-  // New 2026-08-05 with the partial-decision-key round (the client asked for NO reference
-  // view when ANY key column was blank, so the sweep could resolve a row whose evidence a
-  // human could not see). Floor is the count it reports on the commit that introduces it --
-  // there is no earlier tree to measure it against.
-  //
-  // 🔴 ITS LOAD-BEARING HALF IS THE PROHIBITION, NOT THE FEATURE: that the client asks
-  //    rather than pre-deciding which views are answerable, and that the refusal text on
-  //    screen is the server's `detail` verbatim rather than a sentence composed here. Both
-  //    are the two-spellings class -- a client copy stays green against every server test
-  //    while the two drift. A floor drop here means one of them stopped being scored.
-  //
-  // 26 -> 28 (2026-08-05, same day). The reference panel became an AG-Grid, so "what reached
-  // the screen" moved from scraping the wrap's innerText to reading what the grid was handed.
-  // The count rose because the replacement is stronger than what it replaced: one assertion
-  // that the served rows arrived became three -- the rows, the HEADERS (derived from the
-  // response, never declared, because the operator writes the SQL), and that the grid was
-  // built inside the panel it belongs to.
-  ['enrichment_partial_key_reference_harness.mjs', 28],
-  // New 2026-08-05 with the round that made BOTH enrichment panels AG-Grid, sorting and
-  // filtering in the browser. Floor is the count it reports on the commit that introduces
-  // it -- there is no earlier tree to measure it against.
-  //
-  // 🔴 ITS LOAD-BEARING HALF IS THAT NOTHING ON THIS SCREEN SHOWS A SUBSET SILENTLY. The
-  //    worklist buffer is capped (`pageLimit`) while the server reports the whole queue in
-  //    `total`, and a client-side sort orders only what arrived. So the count carries both
-  //    numbers WHEN THEY DIFFER and says nothing extra when they do not (`G7`), the filtered
-  //    count appears only while a filter hides rows (`G8`, both panels), and the panel
-  //    overlay never calls a filtered-empty view a finished queue (`G9`). A drop in those
-  //    means the screen regained the ability to answer "the top ten" with "the top ten of
-  //    whatever arrived" and say nothing about it.
-  //
-  //    The other half is ONE SPELLING FOR TWO GRIDS (`G1`): both panels spread the same
-  //    `GRID_SORT_FILTER_DEFAULTS` and the same `GRID_SHARED_OPTIONS`, asserted by identity,
-  //    not by resemblance. Two grids on one screen behaving differently is its own trap, and
-  //    a second parallel configuration is exactly what this file's culture keeps paying for.
-  ['enrichment_grid_sort_filter_harness.mjs', 45],
-  // Floored 2026-08-05, when the queue became a NAMED server predicate and this harness
-  // gained the request itself as a target. It had been running unfloored since N36, which
-  // the runner had been reporting; the count here is what it reports on the commit that
-  // adopts the predicate.
-  //
-  // 🔴 ITS LOAD-BEARING HALF IS THAT A NUMBER IS READ RATHER THAN COMPUTED. "판단키 없음
-  //    N건" used to be remainder minus a keyed total -- a difference of two totals that
-  //    existed only because the filter DSL could not express a cross-column OR. Under the
-  //    ANY-blank queue those two totals count DIFFERENT populations, which is the N36
-  //    shape exactly. The assertion that catches its return is `P4 the count is the server
-  //    number verbatim`, and it is the reason this floor is worth defending.
-  //
-  //    It also carries a SECOND mutation target, `client2/src/enrichment_queue.js`, which
-  //    it evaluates as text AND imports, refusing to run if the two disagree. Two of the
-  //    other three call sites (`ui.js`, `admin.js`) cannot be imported under bare node at
-  //    all, so "all three share one composer" is what stands in for scoring them directly.
-  //    A drop here means either the shared composer or the read-not-computed count stopped
-  //    being scored.
-  ['enrichment_queue_partition_harness.mjs', 41],
-  // New 2026-08-05 with the round that made the conveyor's form show what it already knew.
-  // Floor is the count it reports on the commit that introduces it -- there is no earlier
-  // tree to measure it against.
-  //
-  // 🔴 ITS LOAD-BEARING ASSERTIONS ARE ABOUT WHAT IS *NOT* SENT. Once the queue predicate let
-  //    partly-filled rows stay, the form handed over empty boxes and the save demanded all of
-  //    them, so the operator retyped a value already there and the duplicate landed as `user`
-  //    (priority 0) -- a machine decision reissued as a human declaration. The checks that
-  //    catch its return are `P3 the untouched column is absent from the payload` and `P3 a
-  //    hand-typed duplicate of a machine value is NOT written`. `P7` guards the mirror image
-  //    on the way back: a locally reflected write carries `priority_source: null` (unread)
-  //    rather than the previous writer's name. A drop here means one of those stopped being
-  //    scored, and neither failure is visible on screen when it happens.
-  ['enrichment_provenance_harness.mjs', 59],
   // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
   // reports on the commit that introduces it -- there is no earlier tree to measure against.
   //
@@ -368,6 +299,12 @@ const FLOORS = new Map([
   //    module state, so a harness never has to slice its text, so the module's structure
   //    never acquires a veto over refactoring it. A floor drop here means the round trip
   //    stopped being scored in one of its two directions, which is invisible to exit codes.
+  // 🔴 what SURVIVED the enrichment deletion. Four harnesses had `src/enrichment.js` as a
+  //    subject; three had ONLY that, and this one also scored the shipped
+  //    `enrichment_queue.js` (admin.js:13 imports `queueQuery`). Deleting it wholesale
+  //    would have dropped live coverage, so its P6 assertions moved here -- and stopped
+  //    slicing on the way: they now import the module instead of rebuilding it.
+  ['enrichment_queue_harness.mjs', 14],
   ['excel_form_roundtrip_harness.mjs', 306],
   // New 2026-08-05 with MAP_ALIGNMENT_SPEC 0.3 step 1 (the frame becomes a value). Same rule
   // as the other new entries: the floor is the count it reports on the commit that introduces
