@@ -191,6 +191,22 @@ export function queueView(payload, opts = {}) {
   const logName = !('log_filename' in payload) ? ''
     : (typeof payload.log_filename === 'string' && payload.log_filename
       ? payload.log_filename : '모름');
+  // 🔴 S-16: 「재시작하면 풀리나」 — 서버가 «두 수»로 답하는데 읽는 자리가 «0» 이었습니다
+  //    (실측: 소스 0 · 번들 0. 발신은 `chain_activity.registry.ages()` 로 «살아 있었습니다»).
+  //    그 판단 근거는 이미 이 응답 안에 있었고, 지금까지는 «큐가 1분 이상 막힌 뒤에만»
+  //    «로그 문장 속 글자»로 나갔습니다 — 즉 이미 멈춘 시스템의 로그를 읽는 사람만 물을 수
+  //    있던 질문입니다.
+  // 🔴 「재적재 없음」과 「방금 재적재」는 «반대 사실»입니다. `null` 은 한 번도 안 했다는 뜻이고
+  //    `0` 은 방금 했다는 뜻이라, 둘을 같은 글자로 그리면 이 줄이 답하려던 물음이 뒤집힙니다.
+  // ⚠️ 세 상태, `logName` 과 «같은 규율»: 값 · `null`(모름/없음) · 키 없음(옛 서버 -> 안 그림).
+  const restart = !('loop_uptime_seconds' in payload) && !('mapper_reload_age_seconds' in payload)
+    ? ''
+    : [
+      `루프 ${formatAge(payload.loop_uptime_seconds) ?? '모름'}`,
+      payload.mapper_reload_age_seconds === null || payload.mapper_reload_age_seconds === undefined
+        ? '맵퍼 재적재 없음'
+        : `맵퍼 재적재 ${formatAge(payload.mapper_reload_age_seconds) ?? '모름'} 전`,
+    ].join(' · ');
   const running = Array.isArray(payload.running) ? payload.running.length : null;
   const sees = payload.loop_in_this_process;
   const runningCell = countWithAbsence(
@@ -296,6 +312,8 @@ export function queueView(payload, opts = {}) {
     failed,
     running: `도는 체인 ${runningCell.text}`,
     logName: logName ? `로그 ${logName}` : '',
+    // S-16: 「재시작하면 풀리나」. 키가 없으면 빈 문자열 -> 화면이 «안 그립니다».
+    restart,
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
@@ -382,6 +400,7 @@ export class ChainQueuePanel {
     if (view.running) head.appendChild(this._line('chain-queue-headline-running', view.running));
     // 🔴 「어느 프로세스인가」는 이 패널이 거절할 때 이미 말합니다. 그 «옆 칸»이 이것입니다.
     if (view.logName) head.appendChild(this._line('chain-queue-headline-log', view.logName));
+    if (view.restart) head.appendChild(this._line('chain-queue-headline-restart', view.restart));
     // 🔴 「집는 이가 살아 있나」. Biggest of the extra facts because it is the one that
     //    separates 「곧 돈다」 from 「아무도 안 집는다」 -- the queue length cannot.
     // ⛔ No verdict word and no predicted start: the age and the declared interval go out

@@ -468,6 +468,47 @@ console.log('\n[8] the owner split, and unknown is not chain');
   })());
 }
 
+// ═══ S-16: 「재시작하면 풀리나」 — 발신은 살아 있었고 «듣는 쪽»이 없었다 ═══════════════
+// 🔴 실측: `loop_uptime_seconds` · `mapper_reload_age_seconds` 가 `/admin/chain/queue` 응답에
+//    실리는데 읽는 자리가 소스 «0» · 번들 «0». 그 판단 근거는 지금까지 «큐가 1분 이상 막힌 뒤»
+//    «로그 문장 속 글자»로만 나갔다 — 이미 멈춘 시스템의 로그를 읽는 사람만 물을 수 있었다.
+// 🔴 이 블록이 재는 것은 «문구»가 아니라 «가름»이다. 규칙 ① 과 같은 자리에서:
+//    `null`(한 번도 재적재 안 함)과 `0`(방금 함)은 «반대 사실»이고 같은 픽셀이면 안 된다.
+{
+  const base = {
+    waiting: 0, running: [], loop_in_this_process: true,
+    oldest_waiting_seconds: null, waiting_by_owner: [], retried_among_waiting: 0,
+  };
+  const restartOf = (extra) => queueView({ ...base, ...extra }).restart;
+
+  // 세 상태 — `logName` 과 같은 규율. 키가 «없으면» 안 그린다(옛 서버).
+  eq('R1 an older server that sends neither key draws nothing', restartOf({}), '');
+  ok('R2 the loop age is named once the keys arrive',
+    restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('1분 30초'));
+
+  // 🔴 R3/R4 ARE THE POINT, AND THEY ARE COMPARED TO EACH OTHER, NOT TO A FIXED STRING —
+  //    so a copy edit cannot redden them and cannot silently collapse them either.
+  const never = restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null });
+  const justNow = restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: 0 });
+  ok('R3 「never reloaded」 and 「reloaded just now」 are NOT the same pixels', never !== justNow);
+  ok('R4 ...and neither is empty, so they differ by content rather than by absence',
+    never.length > 0 && justNow.length > 0);
+  // 모름: 값이 못 읽히는 것은 「0」이 아니다.
+  ok('R5 an unreadable loop age reads 모름, never 0초',
+    restartOf({ loop_uptime_seconds: 'x', mapper_reload_age_seconds: 0 }).includes('모름'));
+  ok('R6 CONTROL: a real loop age is NOT 모름 — else R5 passes for the wrong reason',
+    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: 0 }).includes('루프 모름'));
+
+  // 🔴 R7 EXISTS BECAUSE R3 DID NOT DO WHAT IT CLAIMED. Deleting the explicit `null` branch
+  //    was run as a mutant and R3 STAYED GREEN: `formatAge(null)` yields 모름, so the two
+  //    strings still differed and the discrimination survived by accident rather than by
+  //    the guard. But 모름 is the WRONG WORD here — the server's `null` means 「한 번도 재적재
+  //    안 함」, which is a fact it KNOWS, not one it failed to read. Conflating a known
+  //    absence with an unreadable value is the same collapse rule ① forbids, one word over.
+  ok('R7 「never reloaded」 is a KNOWN fact, so it must not read 모름',
+    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('재적재 모름'));
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
