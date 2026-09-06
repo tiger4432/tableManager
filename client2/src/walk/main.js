@@ -24,7 +24,8 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, pathsBetween } from '../rnd_board/api.js';
+import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
+  from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
@@ -61,6 +62,8 @@ export function boot(doc, host, deps) {
   const state = {
     decl: null, declState: 'loading', declReason: '',
     type: '', keys: {}, follow: new Set(), collect: new Set(),
+    subjects: null, subjectsState: 'idle', subjectsReason: '',
+    subjectsScanned: null, subjectsScanCut: false, subjectsListCut: false,
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
   };
@@ -160,9 +163,56 @@ export function boot(doc, host, deps) {
       state.follow = new Set([...state.follow].filter((f) => allowed.has(f)));
       state.result = null; state.run = 'idle';
       render();
+      loadSubjects();
     });
     typeBox.append(sel);
     root.append(typeBox);
+
+    // ── 씨앗: 주어 고르기 ──────────────────────────────────────────────────────
+    //
+    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «주어 하나»입니다. 그래서 한 번 고르면 아래 키 칸이
+    //    «전부» 찹니다 — die 는 넷, lot_slot 은 둘입니다. 칸마다 따로 고르게 하면 각 목록은
+    //    참인데 «그 조합은 없는» 씨앗을 만들 수 있습니다(키별 목록의 곱 ≠ 실재하는 개체).
+    // 🔵 직접 입력은 «남습니다» — 목록이 상한에 걸릴 수 있고, 그때 손으로 치는 길이 없으면
+    //    목록 밖의 주어는 영영 못 묻습니다.
+    if (state.type) {
+      const subjBox = field('주어 고르기');
+      if (state.subjectsState === 'loading') {
+        subjBox.append(el(doc, 'div', 'wk-note', '읽는 중'));
+      } else if (state.subjectsState === 'failed') {
+        subjBox.append(el(doc, 'div', 'wk-fail', `주어 목록 · ${state.subjectsReason}`));
+      } else if (state.subjectsState === 'ready') {
+        const list = state.subjects || [];
+        if (!list.length) {
+          // 🔴 「봤는데 없다」와 「다 못 봤다」는 다릅니다. 응답이 이미 그 둘을 나눠 줍니다.
+          subjBox.append(el(doc, 'div', 'wk-note', state.subjectsScanCut
+            ? `주어를 다 못 봤습니다 (${state.subjectsScanned} 까지)`
+            : '이 타입은 원장에 주어로 없습니다 (정적 허브)'));
+        } else {
+          const ssel = el(doc, 'select', 'wk-select');
+          ssel.append(el(doc, 'option', '', '— 고르거나 아래에 직접 —'));
+          list.forEach((s, i) => {
+            const vals = Object.values(s.keys || {}).map((v) => String(v)).join(' · ');
+            const o = el(doc, 'option', '', s.count ? `${vals}  (${s.count})` : vals);
+            o.value = String(i);
+            ssel.append(o);
+          });
+          ssel.addEventListener('change', () => {
+            const picked = list[Number(ssel.value)];
+            if (!picked) return;
+            // 통째로 갈아 끼웁니다 — 앞서 손으로 친 값이 «섞이면» 그것이 없는 조합입니다.
+            state.keys = { ...picked.keys };
+            render();
+          });
+          subjBox.append(ssel);
+          if (state.subjectsListCut) {
+            subjBox.append(el(doc, 'div', 'wk-note',
+              `목록 ${list.length} · 이게 전부가 아닙니다 — 없으면 아래에 직접`));
+          }
+        }
+      }
+      root.append(subjBox);
+    }
 
     // ── 씨앗: 키 ────────────────────────────────────────────────────────────────
     const keyBox = field('키');
@@ -325,8 +375,10 @@ export function boot(doc, host, deps) {
           + ` · ${r.walk.direction}`));
       }
       // ⚠️ 절단은 «말합니다». 안 말하면 잘린 목록이 「전부」로 읽힙니다.
+      // 🔴 «자른 축»을 씁니다. `reason` 을 그대로 쓰면 2홉을 물어 2홉을 걸은 답에도 "depth" 가
+      //    실려, 바로 위 「요청 2홉 · 도달 2홉」과 «정반대»를 말합니다 (실측 2026-09-06).
       if (r.cut) {
-        box.append(el(doc, 'div', 'wk-trunc', `절단됨 · ${r.truncated.reason}`));
+        box.append(el(doc, 'div', 'wk-trunc', `절단됨 · ${(r.truncatedAxes || []).join(', ')}`));
       }
       // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. 수만 보면
       //    collect 를 건 것과 안 건 것이 같아 보입니다: 둘 다 「노드 N」이니까요.
@@ -382,6 +434,27 @@ export function boot(doc, host, deps) {
       renderResult(root);
     }
     host.append(root);
+  }
+
+  async function loadSubjects() {
+    if (!state.type) { state.subjectsState = 'idle'; state.subjects = null; return; }
+    const forType = state.type;
+    state.subjectsState = 'loading'; state.subjects = null; render();
+    const got = await fetchKeyValues({ apiBase, fetchImpl: options.fetchImpl, type: forType });
+    // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다 — 늦게 온 응답이 새 타입의 목록을
+    // 덮으면 화면이 조용히 틀린 주어를 내놓습니다.
+    if (state.type !== forType) return;
+    if (got && got.ok) {
+      state.subjectsState = 'ready';
+      state.subjects = got.subjects;
+      state.subjectsScanned = got.scanned;
+      state.subjectsScanCut = got.scanTruncated;
+      state.subjectsListCut = got.valuesTruncated;
+    } else {
+      state.subjectsState = 'failed';
+      state.subjectsReason = (got && got.message) || '알 수 없음';
+    }
+    render();
   }
 
   async function load() {

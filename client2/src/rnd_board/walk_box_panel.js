@@ -502,8 +502,12 @@ export class WalkBoxPanel extends Panel {
     //    `truncated` 가 nodes·edges·claims·actions «전부 true» 이고 depth 만 false 입니다 --
     //    예산에서 잘린 진짜 끊김입니다. 이 부품은 hops 를 선언하지 않으므로 depth 도 끊김이지
     //    질문이 아닙니다(그 구분은 「닿는 곳」쪽 이야기입니다). 서버가 부른 이름을 그대로 씁니다.
-    const cut = this.walkState === 'ready' && this.result && this.result.truncated
-      && this.result.truncated.reason ? String(this.result.truncated.reason) : null;
+    // 🔴 판정을 «여기서 다시 하지 않습니다». 이 부품은 hops 를 선언하지 않으므로 depth 도
+    //    끊김이고, 그 사실은 `createWalkBoxWalk` 가 «요청을 지을 때» 알고 있어 이미 접었습니다
+    //    (`truncatedAxes`). 여기서 `reason` 을 다시 읽으면 그 판정의 «네 번째 사본»입니다.
+    const axes = this.walkState === 'ready' && this.result && this.result.cut
+      ? (this.result.truncatedAxes || []) : [];
+    const cut = axes.length ? axes.join(', ') : null;
     // 🔴 문장은 표 «밖»에 답니다. `TablePart.render()` 가 첫 줄에서 자기 host 를 비우므로,
     //    같은 상자에 붙이면 표가 그려지는 순간 «조용히 지워집니다» -- 오류도 안 나고 픽셀만
     //    사라집니다. 하니스 T1 이 그것을 잡았습니다.

@@ -491,9 +491,25 @@ export function measuredFromHops__untilServerServesIt(row, edges) {
 //    NOT a walk that ran to completion, so it returns `null` rather than `[]`. Turning an
 //    absent field into a confident empty is exactly what blanked the maps this morning
 //    (`placements`), and that mistake is not repeating in this file.
-function truncationNames(raw) {
+// 🔴 AND `depth` IS A CUT ONLY IF NOBODY ASKED FOR THE DEPTH. Measured 2026-09-06 against the
+//    live route: `depth: true` means exactly 「the hop limit is what stopped this walk」 --
+//      hops=2, roomy budget   -> reached 2 of 2, depth TRUE   (stopped by the limit, more exists)
+//      no hops (default 12)   -> reached 3 of 12, depth FALSE (the graph ran out first)
+//      hops=2, tiny budget    -> reached 1 of 2, depth FALSE, nodes TRUE (the budget cut it)
+//    So when the caller CHOSE the hop count, `depth: true` is the answer to their question, not
+//    a truncation; when the count came from the server default, it is a cut they never chose.
+//    The response cannot tell those apart -- `hops_requested: 12` looks the same either way --
+//    so the one fact that decides it is passed in from the request site, which knows it.
+// 🔴 WHY THIS IS ONE FUNCTION NOW. The same object was read three ways in this file: any true
+//    key, three named axes, or a non-null reason. On the ordinary answer to a two-hop question
+//    (depth true, every other axis false) two of the three said 「cut」, and the walk screen
+//    printed 「절단됨 · depth」 directly under 「요청 2홉 · 도달 2홉」 -- two lines denying each
+//    other, live. `reachModel` was the only one honouring what this file already knew.
+function truncationAxes(raw, options) {
   if (!raw || typeof raw !== 'object') return null;
-  return Object.keys(raw).filter((key) => raw[key] === true);
+  const hopsChosen = !!(options && options.hopsChosen);
+  return Object.keys(raw)
+    .filter((key) => raw[key] === true && !(key === 'depth' && hopsChosen));
 }
 
 export function subgraphModel(result) {
@@ -576,7 +592,9 @@ export function subgraphModel(result) {
     //    「없음을 고장으로 읽는」 부류입니다. 모르면 null 로 둡니다.
     complete: prop.complete === undefined || prop.complete === null
       ? null : prop.complete === true,
-    truncated: truncationNames(body.truncated),
+    // `hopsChosen: false` — CANDIDATE_QUESTION declares direction and node_limit and NOT
+    //    hops, so a depth stop here is the server default's doing and the panels should say so.
+    truncated: truncationAxes(body.truncated, { hopsChosen: false }),
     truncationReason: (body.truncated && body.truncated.reason) || null,
     candidates,
     topSet: Array.isArray(prop.top_set) ? prop.top_set.slice() : [],
@@ -946,13 +964,15 @@ export function reachModel(result) {
   }));
   // 큰 것부터. 동수는 «이름»으로 갈라 응답 순서가 대표를 정하지 못하게 합니다.
   rows.sort((a, b) => b.count - a.count || String(a.predicate).localeCompare(String(b.predicate)));
-  const t = body.truncated || {};
+  // 「닿는 곳」은 언제나 `hops: 1` 로 묻습니다(COLLECTS.reach), 그래서 depth 는 «질문»입니다 --
+  // 이 파일이 원래 여기에만 적어 두었던 그 구분이고, 이제 판정이 «한 자리»에 삽니다.
+  const cutAxes = truncationAxes(body.truncated, { hopsChosen: true }) || [];
   return {
     ok: true, state: body.state || 'ready', status: null, reason: null, message: null,
     seedId, seedLabel: (seed && seed.label) || null,
     rows, nodes: nodes.length, edges: edges.length,
     // depth 는 «질문»이라 여기 없습니다. 이 셋이 참이면 답이 «실제로» 모자란 것입니다.
-    cut: [t.nodes ? 'nodes' : null, t.edges ? 'edges' : null, t.claims ? 'claims' : null].filter(Boolean),
+    cut: cutAxes,
   };
 }
 
@@ -1714,6 +1734,41 @@ export async function fetchDeclaration(params) {
 }
 
 /**
+ * 「이 타입에 어떤 주어가 있나」 — 키 칸을 «외워서» 치지 않게 하는 목록.
+ *
+ * 🔴 돌아오는 것은 «키 하나의 값»이 아니라 «주어 하나»(`keys` 통째)입니다. 그 구별이 이 라우트의
+ *    요점입니다: 복합 키 타입(die 는 넷, lot_slot 은 둘)에서 칸마다 따로 고르게 하면 «실재하지
+ *    않는 조합»을 만들 수 있습니다 — 키별 목록의 곱은 실재하는 개체 집합이 아닙니다. 주어를
+ *    통째로 고르면 그 문제가 «생기지 않습니다».
+ * 🔴 그리고 세 사실을 «따로» 나릅니다. `scanned` 0 과 `scan_truncated` 는 「봤는데 없다」와
+ *    「다 못 봤다」이고, `values_truncated` 는 「목록이 상한에 걸렸다」입니다. 하나로 접으면
+ *    「없음」이 「못 셌음」과 같은 픽셀이 됩니다.
+ */
+export async function fetchKeyValues(params) {
+  const { apiBase, fetchImpl, type, limit } = params || {};
+  if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
+  const query = new URLSearchParams();
+  // 전선은 «버전 없는» 이름을 씁니다 — follow · collect 와 같은 규율입니다.
+  query.set('type', String(type).split('@')[0]);
+  if (limit) query.set('limit', String(limit));
+  try {
+    const res = await (fetchImpl || fetch)(`${apiBase || ''}/api/ledger/key-values?${query}`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) return { ok: false, message: refusalSentence(body, res.status) };
+    return {
+      ok: true,
+      subjects: Array.isArray(body.subjects) ? body.subjects : [],
+      // 「안 온 것」과 「0」을 가릅니다. 안 오면 null 이고, 그건 「못 셌다」입니다.
+      scanned: typeof body.scanned === 'number' ? body.scanned : null,
+      scanTruncated: body.scan_truncated === true,
+      valuesTruncated: body.values_truncated === true,
+    };
+  } catch (err) {
+    return { ok: false, message: `주어 목록에 닿지 못했습니다 — ${err && err.message}` };
+  }
+}
+
+/**
  * 거절의 «사유»를 서버가 보낸 모양 그대로 한 줄로 폅니다.
  *
  * 🔴 실측 2026-09-06: `hops=999` 로 422 를 받으면 서버는 사유를 «정확히» 말합니다 —
@@ -1794,11 +1849,17 @@ export function createWalkBoxWalk(deps) {
       const edges = Array.isArray(body.edges) ? body.edges : [];
       // 🔴 `truncated` 는 서버가 «항상» 보냅니다 -- 안 잘렸을 때도 객체가 오고 `reason` 만
       //    null 입니다. 그래서 `if (truncated)` 로 읽으면 «매번» 「절단됨」이 뜹니다.
-      //    자르는 것이 있었나는 `reason` 이 답합니다.
+      // 🔴 그리고 `reason` «만»으로는 부족합니다: 2홉을 물어 2홉을 걸으면 reason 이 "depth" 로
+      //    오는데 그건 «물은 것을 받은» 것입니다. 이 함수는 부른 쪽이 hops 를 «골랐는지»를
+      //    알고 있으므로, 그 하나를 판정에 넘깁니다 -- 응답은 그것을 구별할 수 없습니다.
       const truncated = body.truncated || null;
+      const cutAxes = truncationAxes(truncated, { hopsChosen: hops !== undefined && hops !== null });
       return {
         ok: true, nodes, edges, truncated,
-        cut: !!(truncated && truncated.reason),
+        // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
+        // depth 까지 문장에 실립니다.
+        truncatedAxes: cutAxes,
+        cut: !!(cutAxes && cutAxes.length),
         // 「닿은 것이 없다」와 「못 물어봤다」를 화면이 가를 수 있게 «둘 다» 나릅니다.
         state: body.state || null,
         message: body.message || null,
