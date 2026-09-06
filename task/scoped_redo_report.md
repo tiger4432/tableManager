@@ -10010,3 +10010,142 @@ test_outbox_owner_and_stall.py                     17 통과 (7 빨강 -> 0)
 
 판정 대기: 🔴 위 「한 줄 + 호출자 계수」로 착수할까요 (게이트는 제가 세우겠습니다)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 🟢 L-3 «닫힘» 확인 — 그리고 총괄께 없는 것 «하나»
+
+총괄 판정(06:2x)은 받았습니다. 제가 더 드릴 것은 **이웃에서 이미 빨갛던 둘**입니다.
+커밋 본문에 「따로 보고」라고 적어 두었습니다.
+
+## ⚠️ 이웃 227 통과 — 그런데 «이미 빨갛던» 둘이 있었습니다
+```
+tests/test_composite_key_prefetch_budget.py::test_inserting_new_rows_still_probes_once_per_row
+tests/test_recorrection_rate.py::test_dashboard_survives_a_failing_recorrection_query
+```
+🔴 **제 것이 아님을 «재서» 확인했습니다** — `git show HEAD:server/database/crud.py` 를 제자리에
+꽂고 같은 둘을 돌려 «같은 둘»이 빨갰습니다. 제 줄과 무관합니다.
+
+### 둘 다 «자기가 재던 코드보다 오래 산» 시험으로 보입니다
+```
+① 프리페치 예산   단언 `selects == ROWS + 1`(=201) · 실측 «1»
+                 시험 자기 문장: 「아무것도 못 맞히는 프리페치 하나 + 행마다 헛프로브 하나」
+                 -> 그 헛프로브가 «사라졌습니다». 한 질의가 bind 200 으로 한 번 돕니다
+                 ⚠️ 다만 반대 독법이 남습니다 — 프로브가 «돌아야 하는데 건너뛴» 것일 수도
+                    있습니다(`prefetched_row_ids` 의 「증명된 부재」 갈래). 저는 못 가릅니다
+② 대시보드       `KeyError: 'total_tables'`
+                 그 키는 «의도적으로 삭제»됐습니다 — main.py 의 그 자리 주석(2026-09-05):
+                 「THE PER-TABLE COUNTS ARE GONE, AND WITH THEM table_stats, total_rows
+                  and total_tables」 · 「소유자가 셋을 한 단위로 판정」
+                 -> 시험이 그 삭제와 «같은 커밋에서 안 죽었습니다». 결함 아님, 잔해입니다
+```
+⛔ **고치지 않았습니다** — 지시받은 것이 아닙니다. ②는 한 줄이고, ①은 «어느 독법이 맞나»를
+   먼저 판정해야 합니다.
+
+---
+
+# 🔍 S-9 «확인» — ①②③ 답합니다. 전부 «코드»입니다 (이 박스에 행 0)
+
+⚠️ **먼저 경계 하나**: `server/mappers/` 의 살아 있는 파일은 **gitignore** 입니다.
+저장소에 있는 것은 `.sample` 뿐이라 **아래 인용은 전부 `.sample`(커밋본)에서 잽니다.**
+
+## ① 「맵퍼가 확정 행 없이 좌표를 쓰나」 — **예. 그리고 «확정했다는 표지»까지 씁니다**
+```
+record_confirmation 의 «산» 호출자   main.py:4466  «하나»  (POST /api/maps/alignment/confirm)
+   맵퍼에서 부르는 곳                «0»
+   FrameConfirmation(...) 을 짓는 곳  frame_confirmation.py:547  «하나»
+```
+🔴 그런데 `dt_alignment_metadata_mapper` 는 **확정이 쓰는 것과 «같은 투영»**을 씁니다:
+```
+확정 경로   record_confirmation -> _write_confirmed_meta -> map_alignment.confirmed_meta_for
+맵퍼 경로                                                -> map_alignment.confirmed_meta_for
+                                                            (.sample:211, 직접)
+=> 헤더 «없이» wafer_map_metadata.grid_metadata 가 써지고,
+   그 안에 frame_confirmed_from / phys_confirmed_from 표지가 «들어갑니다»
+```
+
+### ⚠️ 개수는 「둘」이 아니라 «술어에 따라 하나 또는 셋»입니다
+```
+「좌표 «값»을 쓴다」   셋   dt_alignment_metadata(프레임) · dt_inventory_metadata(dt_frame+식)
+                          · dt_standard_map(표준 좌표를 dt_map 에)
+「프레임을 «세운다»」   하나  dt_alignment_metadata «만». 나머지 둘은 그 산출을 «나릅니다»
+```
+🔴 출처의 「둘」이 어느 술어인지 제가 모릅니다. 위 둘 중 하나로 접히면 알려 주십시오.
+
+### 🔴 그리고 표지의 «모양이 둘»입니다 — 공통 키가 «0» 입니다
+```
+확정이 넣는 mark   {table, map_id, confirmation_uid, confirmed_by, confirmed_at}
+맵퍼가 넣는 mark   {source, rule, decision_key, winner, input_fingerprint}
+```
+오늘은 «안 터집니다» — 산 소비자 둘이 `bool(...)` 로만 봅니다
+(`map_overlay.py:596` · `:938`). 내용을 읽는 유일한 곳은 `scripts/confirmed_origin_box_delta.py:125`
+이고 그건 스크립트지 프로세스가 아닙니다. **「가드는 도달 가능해지는 날 틀린다」 부류입니다.**
+
+## ② 소비자 — **셋. 전부 API 서버의 «읽기»입니다. 워커는 «없습니다»**
+```
+1  map_alignment.build_alignment_worklist        -> GET /api/maps/alignment/worklist   (확정 화면)
+2  bonding_plan.canonical_basis <- get_core_summary -> GET /api/bonding-plan/core-summary (M1)
+3  bonding_plan.canonical_basis <- transfer_plan._canonical_origin_meta                  (M2)
+```
+🔴 **「화면 아닌 소비자」를 저는 «못 찾았습니다».** `bonding_plan`·`transfer_plan` 을 import 하는
+비-시험 파일은 `main.py` 뿐이고, 둘 다 `apply_batch_updates`·`db.add`·`commit()` 이 «0» 입니다 —
+아무것도 저장하지 않습니다. 출처의 「화면 아닌」이 「확정 «화면»이 아닌 다른 화면」이라는 뜻이면
+2·3 이 그것이고, 「워커/맵퍼」라는 뜻이면 **그 전제가 코드와 어긋납니다.**
+
+### 행이 «없을 때» 무엇을 하나 — 셋 다 아닙니다. **«다른 프레임으로 답합니다»**
+```
+조용히 건너뛰나  ❌     거절하나  ❌     틀린 답을 내나  ⚠️ «다른» 답을 냅니다
+```
+```
+canonical_basis   header is None -> (None, {kind:"role_order", reason:"not_declared"})
+호출자 2 (M1)     퇴화형: CANONICAL_FRAME_ROLES «선언 순서 첫 원천»이 프레임을 정의
+                 🔵 그리고 «말합니다» — result["frame_basis"] 로 나갑니다 (bonding_plan.py:1068)
+호출자 3 (M2)     같은 퇴화형. 🔴 그런데 `meta, _basis = ...` — **사유를 «버립니다»**
+                 (transfer_plan.py:1480). 아무 데도 안 실립니다
+```
+🔴 **그래서 크기는 «한 값»이 아닙니다: M1 은 «이름 붙은 퇴화», M2 는 «조용한 퇴화»입니다.**
+
+### 🔴🔴 그리고 이것이 기준 ④ 입니다 — **한 사실에 대해 두 표면이 «반대»를 말합니다**
+```
+같은 맵에 대해
+   map_overlay.orientation_provenance   frame_confirmed_from 가 있으니 -> «확정됨»
+   bonding_plan.canonical_basis          FrameConfirmation 행이 없으니 -> «not_declared»
+```
+둘 다 살아 있고, 둘 다 오류를 내지 않습니다.
+
+## ③ 「안 만드는 것이 «의도»인가」 — **사유가 «없습니다». 오히려 반대로 읽힙니다**
+```
+`.sample` 에서 confirm 이라는 낱말이 나오는 곳 «셋» — 전부 사유가 아닙니다:
+   :5    「delegates ... to map_alignment.confirmed_meta_for」   무엇을 부르는지
+   :156  「Return ... upserts for automatically confirmed DT maps」  «확정됐다»고 «부릅니다»
+   :211  그 호출 자체
+=> 「헤더를 왜 안 만드는가」를 적은 줄이 «0» 입니다
+```
+🔴 **그리고 반대편에는 «명시적 거절»이 있습니다** — `frame_confirmation.py:633`:
+```
+record_confirmation(commit=False) 은 메타데이터 쓰기를 «거절»합니다
+사유: 「두 트랜잭션이 하나인 척하게 된다」
+=> 확정 경로는 「헤더 없이 메타만」을 «막으려고» 가드를 두었는데,
+   맵퍼 경로는 그 상태에 «반대쪽에서» 도착합니다. 가드는 그쪽을 안 봅니다
+```
+**따라서 ③의 답은 「의도가 적혀 있지 않다」이고, 오늘 그 갈래가 다섯 중 다섯이던 것과 «다릅니다».**
+
+## ⛔ 곁다리 둘 (요청 밖 · 고치지 않음)
+```
+① `.sample:159` 에 `print(payloads)` — 커밋본이 매 실행마다 «페이로드 본문»을 찍습니다
+   (「⛔ payload 본문 로그 금지」 상설에 정면으로 걸립니다)
+② 살아 있는 파일과 `.sample` 이 «다릅니다» — 그 print 한 줄 (live 는 `print(rule)`)
+   dt_map_mapper 의 docstring 이 「바이트 동일하게 유지하라, 아무것도 검사하지 않는다」고
+   적어 둔 바로 그 어긋남입니다. 지금은 한 줄이지만 «검사하는 것이 없습니다»
+```
+
+---
+
+판정 대기: 🔴 S-9 «크기» — 위 ②의 「M2 가 사유를 버린다」와 「두 표면이 반대를 말한다」로
+판정 청합니다. 그리고 ①의 「둘」이 «어느 술어»인지 한 줄 주시면 개수를 맞추겠습니다
+감시: bzt22u0py 15분 자가 기상 · bkd49b293 지시서 변경 감시 · 마지막 이벤트 18:2x
+이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (L-3 은 «빠진 줄 한 개»를 채운 라운드였고,
+S-9 은 «잰» 라운드입니다. 뺀 것이 없다고 적는 것이 맞습니다)
+④ 를 움직였나 — L-3: 예. 열 자리 중 «하나»가 갈라져 있던 것을 아홉과 같은 모양으로 모았고,
+파일 전체를 훑는 단언이 다음 갈라짐을 «빨갛게» 만듭니다.  S-9: 아직 아닙니다 — ④ 를
+«찾았을» 뿐입니다 (한 사실 · 두 표면 · 반대 답)
