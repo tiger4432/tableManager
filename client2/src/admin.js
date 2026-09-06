@@ -2666,6 +2666,17 @@ function renderRunning() {
     what.textContent = cfgText(row.what) + (cfgText(row.detail) ? ` · ${cfgText(row.detail)}` : '');
     line.appendChild(what);
 
+    // \u{1f534} 「누가 걸었나」 — 체인 큐 패널이 «이미» 그리는 그 사실입니다. 같은 값이 이 목록에도
+    //    오는데 이 화면만 «안 그렸습니다»(기준 ④). 서버가 안 보낸 행에는 «아무 말도» 안 합니다 —
+    //    「모름」을 매 행에 다는 것은 그 낱말이 뜻을 잃게 만듭니다(큐 패널은 «한 줄»짜리 요약이라
+    //    그 자리에서 「모름」이 뜻이 있고, 여기는 «목록»입니다).
+    if (row.who) {
+      const who = document.createElement('span');
+      who.className = 'running-who';
+      who.textContent = cfgText(row.who);
+      line.appendChild(who);
+    }
+
     const prog = document.createElement('span');
     prog.className = 'running-progress';
     if (row.progress.mode === 'bar') {

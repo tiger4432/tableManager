@@ -436,6 +436,14 @@ export function buildRunsView(payload, now, cancellable) {
       kind: 'run',
       what: text(run.label) || text(run.op),
       detail: text(Object.values(run.params || {}).join(' · ')),
+      // \u{1f534} 「«누가» 걸었나」. 같은 사실이 «체인 큐 패널엔 가고 이 목록엔 안 갔습니다» —
+      //    서버는 네 자리에서 `requested_by` 를 내는데(`retroactive.py` 의 queue_view ·
+      //    in_flight · runs · publish) 읽는 화면이 «하나»였습니다. 기준 ④ 이고, 갈라진 쪽이
+      //    조용해서 오류가 안 났습니다.
+      // ⚠️ `text()` 가 세 상태를 «이미» 지킵니다 — 서버가 안 보내면 `null` 이고, 그것은
+      //    「아무도 안 걸었다」가 아니라 「이 행이 그 말을 안 한다」입니다. 여기서 '모름' 같은
+      //    낱말을 «지어 넣지 않습니다**: 그리는 쪽이 그 null 을 보고 정합니다.
+      who: text(run.requested_by),
       progress: buildProgressCell(run.processed_rows, run.total_rows, minutes),
       // 🔴 멈출 수 없는 연산에는 × 를 안 그립니다 — 누르면 아무 일도 안 일어나는
       //    버튼은 화면이 하는 거짓말입니다. 선언이 모르는 연산도 그리지 않습니다.

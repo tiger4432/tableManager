@@ -707,6 +707,41 @@ async function suite(source) {
       'G9: ... so its clock stops instead of climbing for as long as the page is open');
   }
 
+  // ── W. WHO QUEUED IT — THE SAME ANSWER ON BOTH SCREENS ────────
+  // 🔴 S-17 IS A DIVERGENCE, NOT AN ABSENCE. The server publishes `requested_by` from four
+  //    places in `retroactive.py`, and the chain queue panel has drawn it all along; this list
+  //    received the same field from the same module and drew nothing. One capability, two paths,
+  //    and the silent path raised no error - which is why it lasted.
+  {
+    const queued = (over) => view.buildRunsView({ runs: [Object.assign({
+      run_id: 'w1', op: 'ledger_backfill', label: 'w', params: {}, state: 'running',
+      started_at: '2026-08-31T08:52:00+09:00' }, over)], ingestions: [] },
+    Date.parse('2026-08-31T09:00:00+09:00'), { ledger_backfill: true });
+    const rowOf = (v) => (v.rows[0] || v.done[0] || {});
+
+    ok(rowOf(queued({ requested_by: 'kk' })).who
+      && rowOf(queued({ requested_by: 'kk' })).who.text === 'kk',
+      'W1: the row carries who queued the run');
+    // ⚠️ ABSENT IS NOT A NAME, AND IT IS NOT 「모름」 EITHER. `text()` answers null when the
+    //    server said nothing, and inventing a word here would put it on every row of a list -
+    //    which is how 「모름」 stops meaning anything. The queue panel says it because that
+    //    panel is a ONE-LINE summary; this is a list.
+    ok(rowOf(queued({})).who === null,
+      'W2: a run the server named nobody for carries null, not an invented word');
+    ok(rowOf(queued({ requested_by: '' })).who === null,
+      'W3: ... and an empty name is the same as none');
+    // 🔴 TAGGED AS THE SERVER'S, like every other payload string here. An untagged string
+    //    would be this screen asserting the name itself - which P1 above already scores.
+    ok(rowOf(queued({ requested_by: 'kk' })).who.src === 'server',
+      'W4: the name is carried as a server value, not as chrome');
+    // 🔴 AND THE TWO SCREENS AGREE. The point is not that each has an answer but that they
+    //    give the SAME one. The queue panel's reader is the one that already existed
+    //    (`chain_queue_panel.whyLine`: a name, else 「모름」), so it is the reference: a NAME
+    //    must survive to both, and only the absent case is allowed to differ in wording.
+    ok(rowOf(queued({ requested_by: 'operator-7' })).who.text === 'operator-7',
+      'W5: a name reaches this screen unchanged, as it already did the queue panel');
+  }
+
   const stale = recordFor('lot_alias', 'inv');
   ok(view.resolveCount(stale, byOp.chain_replay).stale === true,
     'F1: a count measured for another parameter is reported stale');
