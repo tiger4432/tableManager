@@ -9090,3 +9090,80 @@ L-1 자리 후보   ingestion_activity.py:50·106 · parsers/directory_watcher.p
 
 판정 대기: 없음 (자리 확정은 제 몫입니다 — 다음 턴에 계속합니다)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【L-1】 ② 구조 측정 — **D 가 맞습니다. 그리고 D 가 «안 적은» 창이 하나 더 있습니다**
+
+## 흐름 / 이음매 · 「깔끔」 · 뺀 것
+```
+흐름 ① 인제션 -> 원장 · 이음매 「재시도 선점 -> 처리」
+움직인 「깔끔」 — 없음 (측정)   |   이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0
+```
+
+## 자리 확인 — `run_watcher.py::poll_pending_retries` 맞습니다
+```
+주어   models.FileIngestionLog 의 «행» (인제션 로그). outbox 도 메모리도 아닙니다 — D 그대로
+선택   query(FileIngestionLog).filter(status == "PENDING_RETRY").order_by(id.asc())
+선점   log.status = "PENDING"  ->  db.commit()      <- «처리 전»에 커밋. 여기가 창의 시작입니다
+```
+🔵 후보 넷 중 셋(`ingestion_activity`)이 메모리라 주어가 아니라는 제 짐작도 맞았습니다.
+
+## 🔴 창의 «폭» — 셋으로 갈립니다. 그리고 가운데 것이 D 에 없습니다
+```
+㉠ 커밋 직후 «가드 없는» 구간        try 가 «아직 시작 안 됐습니다»
+   table_name 대입 · import 둘 · resolve_workspace_root(...) ·
+   os.path.join · os.path.exists · os.listdir · IngestionHandler(...) 생성
+   -> 던질 수 있는 것: resolve_workspace_root · os.path.exists · os.listdir ·
+      IngestionHandler 생성 · import 둘
+   -> 던지면 루프 바깥 except 로 갑니다:  logger.error("Error in retry poller loop")
+      🔴 그 except 는 log.status 를 «안 건드립니다». 행은 PENDING 인 채로 남습니다
+
+㉡ 락 대기                          get_workspace_serial_lock(workspace_root)
+   -> 소스 주석이 스스로 적습니다: 「heavy 7분 처리 중이면 폴러가 그만큼 대기」
+   -> 즉 창은 «마이크로초»가 아니라 «분» 단위일 수 있습니다
+
+㉢ 처리 본체                        process_archived_file_sync(...)
+   -> 여기서 «예외»가 나면 정직합니다: status = "FAILED" · error_message · 통지까지 갑니다
+      🔵 이 갈래는 «고쳐져 있습니다». 문제는 ㉠ 과 «죽음»입니다
+```
+
+## 🔴 그래서 「되살릴 수 없다」의 «기제»는 이것입니다
+```
+선택자가  status == "PENDING_RETRY" «뿐»입니다
+그런데   선점이 그 값을 "PENDING" 으로 바꿔 놓았습니다
+=> 그 행은 폴러의 눈에 «영원히» 안 들어옵니다. 되살릴 코드가 없다는 D 의 문장 그대로입니다
+```
+
+## 🔵 D 보다 «한 걸음 더» — 죽지 않아도 잃습니다
+```
+D 의 문장   「그 창에서 워처가 «죽으면»」
+실측        죽지 않아도 잃습니다 — ㉠ 에서 «평범한 예외» 하나면 충분합니다
+            (예: 별칭 워크스페이스 역조회 실패 · config 디렉터리 권한 · 핸들러 생성 실패)
+            그때 로그에는 「Error in retry poller loop」 한 줄만 남고, 그 줄은 «어느 행»인지
+            말하지 않습니다. 행은 PENDING 으로 앉아 있고 화면은 아무 말도 안 합니다
+🔴 즉 이 항목은 「프로세스 죽음」이 아니라 «평상 운전»에서도 발화합니다. 크기가 D 보다 큽니다
+```
+
+## ③ 은 «안 했습니다» — 순서대로
+```
+「오늘 그 창에 든 행이 있나」는 DB 를 씁니다. 셋 세션이 한 DB 라 뒤로 뒀고, 이번 턴에 못 했습니다
+⚠️ 그리고 그 수는 «이 박스» 수입니다 — 위 ② 가 «구조의 답»이고 판정은 그것으로 하시면 됩니다
+   ③ 은 「이 박스에서는 N행」으로 옆에 붙일 값입니다
+```
+
+## 수리 방향 (제안만 — 판정 청합니다)
+```
+㉮ 창을 «좁힌다»    ㉠ 을 try 안으로 넣고, 그 except 가 status 를 «PENDING_RETRY 로 되돌린다»
+                  -> ㉠ 이 닫힙니다. ㉡㉢ 의 «죽음»은 안 닫힙니다
+㉯ 창을 «없앤다»    선점을 커밋하지 «않고» 처리와 «같은 트랜잭션»에 둔다
+                  -> 그러면 죽어도 롤백되어 PENDING_RETRY 로 돌아옵니다
+                  ⚠️ 다만 「동시 실행 방지」가 그 커밋의 «목적»이라 그것을 다른 것으로 대체해야 합니다
+                     (소스 주석: "to prevent concurrent runs")
+㉰ 되찾는다        선점 시각을 남기고, 오래된 PENDING 을 «회수»하는 스윕
+                  -> 이 저장소에 «이미 있는 모양»입니다 (미전달 표지 스윕)
+🔵 제 눈에는 ㉰ 이 이 저장소의 기존 부품과 가장 닮았습니다만, 고르지 않겠습니다
+```
+
+판정 대기: 🔴 수리 방향 ㉮/㉯/㉰ · ③ 을 이번에 잴지 (DB)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
