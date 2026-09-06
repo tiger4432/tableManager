@@ -224,6 +224,17 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
     for hb_name, cinfo in sorted(expected.items()):
         hb = heartbeats.get(hb_name)
         entry = {"heartbeat": hb_name}
+        # 🔴 WHAT IS IT DOING RIGHT NOW. The beat file already carries `note`
+        # (utils/heartbeat.py:191 writes it, :289 hands it back), and the workers put real
+        # words in it -- `hashed <file>`, `parsed <file>`, `start:`/`done:`. This assembly
+        # simply never picked that key up, so the surface answered 「is it alive, and for how
+        # long」 (supervisor_state / restarts / uptime) while the other half of the same
+        # question -- 「is it MAKING PROGRESS」 -- was written, carried, and dropped here.
+        # ⚠️ Absent stays absent: no beat, or a beat with no note, leaves the key
+        # off entirely rather than sending an empty string, because 「nothing written」 and
+        # 「wrote nothing」 are different answers and this surface is read by machines.
+        if isinstance(hb, dict) and hb.get("note") is not None:
+            entry["note"] = hb.get("note")
         if cinfo is not None:
             entry["supervisor_state"] = cinfo.get("state")
             entry["pid"] = cinfo.get("pid")

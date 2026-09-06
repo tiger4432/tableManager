@@ -698,3 +698,31 @@ def test_a_permanent_failure_still_reads_as_a_permanent_failure():
     assert status == 503
     assert payload["checks"]["supervisor"]["status"] == "failed_children"
     assert any("permanently failed" in p for p in payload["problems"])
+
+
+# ── S-10 · 「진행하고 있나」가 이 표면의 «빠진 절반»이었다 ────────────────────────
+#
+# 🔴 비트 파일은 `note` 를 «이미 나릅니다» (utils/heartbeat.py:191 이 쓰고 :289 가 돌려줍니다).
+#    워커들이 거기에 실제 낱말을 적습니다 — `hashed <file>` · `parsed <file>` · `start:`/`done:`.
+#    그런데 이 표면의 조립이 그 키를 «안 집었습니다». 그래서 「살아 있나 · 얼마나 됐나」는
+#    답하면서 «같은 물음의 나머지 절반»인 「진행하고 있나」가 쓰이고 날라져서 «여기서» 떨어졌습니다.
+#
+# ⚠️ 「없음」은 «없음»으로 둡니다 — 빈 문자열로 바꾸면 「아무것도 안 적혔다」와
+#    「적었는데 비어 있다」가 같아집니다. 기계가 읽는 표면이라 그 둘이 다릅니다.
+
+def test_a_worker_note_reaches_the_health_surface():
+    payload, _code = run(hbs={"chain": dict(fresh(), note="parsed lot_A.csv")})
+    assert payload["checks"]["workers"]["chain"]["note"] == "parsed lot_A.csv"
+
+
+def test_a_beat_without_a_note_carries_no_key():
+    """🔴 무회귀이자 판별식 — 이 표본은 «위 갈래로만» 잡힙니다."""
+    payload, _code = run(hbs={"chain": fresh()})
+    assert "note" not in payload["checks"]["workers"]["chain"]
+
+
+def test_an_absent_worker_carries_no_note_either():
+    """비트가 «아예 없을» 때도 키를 지어내지 않는다."""
+    payload, _code = run(hbs={})
+    for entry in payload["checks"]["workers"].values():
+        assert "note" not in entry
