@@ -1,4 +1,26 @@
 // Helper to get local time string in YYYY-MM-DD HH:MM:SS format
+/**
+ * HTML 특수문자 다섯을 «엔터티»로. 템플릿에 값을 끼워 넣기 «전»에 이것을 지납니다.
+ *
+ * 🔴 정본이 여기 «하나»인 이유. 2026-09-06 실측: 같은 함수가 세 벌 있었고 «하나도 export 되지
+ *    않아» 각 파일이 자기 사본을 들고 있었습니다. 그리고 셋이 «같지 않았습니다» —
+ *    `map2/excel_io.js` 것은 `& < >` «셋만» escape 하고 따옴표를 안 했습니다. 속성 자리에
+ *    쓰였다면 값 하나가 속성을 «닫고» 나올 수 있었습니다. 사본이 갈라진다는 것이 이런 모양입니다.
+ * 🔴 다섯 «전부» 합니다. 텍스트 자리에서 `&quot;` 는 그냥 따옴표로 보이므로 잃는 것이 없고,
+ *    속성 자리에서는 그 둘이 «막는 것»입니다. 자리마다 다른 함수를 두면 고르는 사람이 틀립니다.
+ * ⚠️ 이것은 «HTML 본문/속성»용입니다. URL 자리에는 `encodeURIComponent` 가 답이고,
+ *    이 함수는 그것을 대신하지 않습니다.
+ */
+const HTML_ENTITY = Object.freeze({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+});
+export function escapeHtml(value) {
+  // `null`/`undefined` 는 «빈 문자열»입니다 — `String(null)` 이 내는 「null」이 화면에 찍히는
+  // 것은 값이 아니라 «사고»이고, 세 사본 중 하나가 이미 그렇게 다루고 있었습니다.
+  const text = value === null || value === undefined ? '' : String(value);
+  return text.replace(/[&<>"']/g, (ch) => HTML_ENTITY[ch]);
+}
+
 export function getLocalTimeString(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
   const yyyy = date.getFullYear();

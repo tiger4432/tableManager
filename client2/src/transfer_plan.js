@@ -38,7 +38,7 @@
 //      사용자 지시로 보류다. 판정 로직은 지우지 않고 아래 §보류 구역에 그대로 두었다.
 // ============================================================
 import { API_BASE } from './config.js';
-import { showToast } from './utils.js';
+import { showToast, escapeHtml } from './utils.js';
 // The ONE TSV reader/writer, shared with the grid's Ctrl+C/Ctrl+V (client2/src/tsv.js).
 import { parseTsv, serializeTsv } from './tsv.js';
 // The pure zone model. Every derived number on this screen comes from here, so the panel
@@ -97,9 +97,8 @@ const elp = {};
 let controller = null;
 
 // ── 유틸 ────────────────────────────────────────────────
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-}
+// 정본은 `utils.js` 의 `escapeHtml`. 이 파일은 이름만 짧게 씁니다.
+function esc(s) { return escapeHtml(s); }
 
 // `YYYY-MM-DD H:MM:SS` → `HH:MM`.
 // ⚠️ utils.getLocalTimeString은 **시(hour)를 0으로 채우지 않는다**(`... 7:04:09`).

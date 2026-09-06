@@ -7,7 +7,7 @@
 //    ⚠️ 여기에 CSS import 를 다시 넣으면 그 27개가 «한 줄로» 되살아납니다.
 import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
-import { getLocalTimeString, showToast } from './utils.js';
+import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
 // The ONE material-list normalizer. The panel parses what the user types with it and the
 // storage layer normalizes with it, so the material COUNT on screen and the denominator of
@@ -11103,9 +11103,9 @@ function renderOverlayList() {
   });
 }
 
-function escapeHtmlAttr(s) {
-  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-}
+// 정본은 `utils.js` 의 `escapeHtml` 입니다. 이 이름은 이 파일의 «지역 별칭»이고, 함수 선언인
+// 것은 위쪽 호출자들이 정의보다 «먼저» 나오기 때문입니다(const 로 바꾸면 TDZ 로 죽습니다).
+function escapeHtmlAttr(s) { return escapeHtml(s); }
 
 // ── 오버레이 전용 블록 (메인 Load와 완전히 분리) ──
 // 메인 [📂 Load] = 항상 교체 로드 / 여기 [＋ 겹치기] = 항상 겹치기.
