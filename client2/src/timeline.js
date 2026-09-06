@@ -8,6 +8,7 @@ import { switchTable, fetchData } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { setMatchCount } from './match_count.js';
+import { saysTruncated } from './truncation.js';
 import { countNav, ROUTES } from './effort_meter.js';
 
 // Feature 3: Load audit log history from API
@@ -44,7 +45,7 @@ export async function loadHistory() {
       const body = await res.json();
       const { logs: groups } = readHistoryPage(body, 'groups');
       state.globalHistoryData = groups;
-      state.globalHistoryTruncated = !!(body && body.truncated);
+      state.globalHistoryTruncated = saysTruncated(body && body.truncated) === true;
       renderGlobalTimeline();
     } catch (err) {
       console.error('Failed to load global history', err);
@@ -172,7 +173,7 @@ export function readHistoryPage(body, listKey = 'logs') {
   const rowTotal = body ? body.row_history_total : null;
   return {
     logs,
-    truncated: !!(body && body.truncated) && !!nextCursor,
+    truncated: saysTruncated(body && body.truncated) === true && !!nextCursor,
     nextCursor,
     rowHistoryTotal: typeof rowTotal === 'number' ? rowTotal : null,
     rowHistoryTotalIsFloor: !!(body && body.row_history_truncated),
