@@ -13,14 +13,20 @@
 // like too.
 //
 // Every check is paired with a mutant; two controls must escape.
-import { readFileSync } from 'node:fs';
+//
+// ═══ 🔴 이 파일은 «잘라쓰기»였습니다 (2026-09-06 전환, truncation 과 «같은 틀») ═══
+// 기준선  «그냥 import». `match_count.js` 는 export 를 가진 평범한 모듈입니다
+// 변이    `importMutated` 가 원본 «전문»에 한 자리만 바꾼 사본을 만들어 import 합니다
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+import { loadWithProbe } from './lib/probe.mjs';//
+// 🔴 정정 (2026-09-06 오후): 이 파일은 «제가 오늘 만든» 다리를 쓰고 있었습니다. 그런데 그
+//    기제는 «이미 있었습니다» — `tests/lib/probe.mjs` (251줄 · 소비자 21). 덧붙이기도,
+//    바이트 접두 단언도, 「변이가 안 먹으면 죽는다」도, 의존 모듈 갈아끼우기도 «전부» 거기
+//    있습니다. 제가 그것을 안 찾고 두 번째 경로를 지었고, 그게 기준 ④ 위반입니다.
+//    -> 정본 하나로 모읍니다. 제 헬퍼는 삭제했습니다.
+import * as BASELINE from '../src/match_count.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SRC_PATH = join(HERE, '..', 'src', 'match_count.js');
-const SOURCE = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+const SRC_PATH = fileURLToPath(new URL('../src/match_count.js', import.meta.url));
 
 let passed = 0;
 let failed = 0;
@@ -37,15 +43,6 @@ function ok(name, cond, saw) {
   else { failed++; console.log(`  FAIL ${name}${saw === undefined ? '' : `  saw: ${JSON.stringify(saw)}`}`); }
 }
 
-function load(src) {
-  const sandbox = { Number, String, Math, Object, Boolean, JSON };
-  vm.createContext(sandbox);
-  const body = src.replace(/^export /gm, '');
-  vm.runInContext(`${body};
-    __out = { COUNTING, isCounted, matchCountText, setMatchCount, pagingView };`, sandbox);
-  return sandbox.__out;
-}
-
 /** An element stub with the one thing `setMatchCount` touches beyond textContent. */
 const mkEl = () => {
   const flags = new Set();
@@ -56,8 +53,8 @@ const mkEl = () => {
   };
 };
 
-const X = load(SOURCE);
-if (!X || !X.matchCountText) die('match_count.js did not evaluate — its exports moved or renamed.');
+const X = BASELINE;
+if (!X || !X.matchCountText) die('match_count.js did not import — its exports moved or renamed.');
 
 const LIMIT = 50;
 
@@ -165,34 +162,47 @@ const CONTROLS = [
     .join('\n')],
 ];
 
-function score(list, mustCatch, heading) {
-  console.log(`\n── ${heading} ─────────────────────────────`);
+/** 채점기. 기준선과 변이가 «같은 질문»에 답해야 비교가 뜻을 가집니다. */
+function verdict(M) {
+  const el0 = mkEl(); M.setMatchCount(el0, 0);
+  const elNull = mkEl(); M.setMatchCount(elNull, null);
+  const unknown = M.pagingView(null, 0, LIMIT);
+  const none = M.pagingView(0, 0, LIMIT);
+  const counted = M.pagingView(120, 0, LIMIT);
+  return M.matchCountText(12) !== 'Matches: 12'
+    || M.matchCountText(0) !== 'Matches: 0'
+    || M.matchCountText(null) === M.matchCountText(0)
+    || !M.matchCountText(null).includes(M.COUNTING)
+    || String(M.COUNTING).length === 0
+    || M.matchCountText(Number.NaN) !== M.matchCountText(null)
+    || elNull.has('is-counting') !== true
+    || el0.has('is-counting') !== false
+    || unknown.totalPages !== null
+    || unknown.nextDisabled !== false
+    || unknown.totalPagesText !== M.COUNTING
+    || none.totalPages !== 1
+    || none.nextDisabled !== true
+    || counted.totalPages !== 3
+    || counted.nextDisabled !== false;
+}
+
+// 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부
+//    변이가 아니라 채점기를 잰 것입니다.
+if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '
+  + 'every "caught" below would be scoring the scorer, not the mutant.');
+
+async function score(list, mustCatch, heading) {
+  console.log(`
+── ${heading} ─────────────────────────────`);
   let hit = 0;
   for (const [name, mutate] of list) {
     let bad = false;
     try {
-      const M = load(mutate(SOURCE));
-      const el0 = mkEl(); M.setMatchCount(el0, 0);
-      const elNull = mkEl(); M.setMatchCount(elNull, null);
-      const unknown = M.pagingView(null, 0, LIMIT);
-      const none = M.pagingView(0, 0, LIMIT);
-      const counted = M.pagingView(120, 0, LIMIT);
-      bad = M.matchCountText(12) !== 'Matches: 12'
-        || M.matchCountText(0) !== 'Matches: 0'
-        || M.matchCountText(null) === M.matchCountText(0)
-        || !M.matchCountText(null).includes(M.COUNTING)
-        || String(M.COUNTING).length === 0
-        || M.matchCountText(Number.NaN) !== M.matchCountText(null)
-        || elNull.has('is-counting') !== true
-        || el0.has('is-counting') !== false
-        || unknown.totalPages !== null
-        || unknown.nextDisabled !== false
-        || unknown.totalPagesText !== M.COUNTING
-        || none.totalPages !== 1
-        || none.nextDisabled !== true
-        || counted.totalPages !== 3
-        || counted.nextDisabled !== false;
+      bad = verdict((await loadWithProbe(SRC_PATH, { mutate, tag: 'matchcount' })).module);
     } catch (e) {
+      // 🔴 「던졌다」와 「틀린 답을 냈다」는 둘 다 «잡힘»이지만, 변이가 «안 먹은» 것은
+      //    잡힘이 아닙니다 — 그건 계기 고장이라 죽어야 합니다.
+      if (/did not mutate|unchanged/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;
     }
     if (bad === mustCatch) { hit++; console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`); }
@@ -201,8 +211,8 @@ function score(list, mustCatch, heading) {
   return hit;
 }
 
-const caught = score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
-const escaped = score(CONTROLS, false, 'control mutants (each must ESCAPE)');
+const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
+const escaped = await score(CONTROLS, false, 'control mutants (each must ESCAPE)');
 
 console.log(`\n${passed} passed, ${failed} failed; ${caught}/${DEFECTS.length} defects caught; `
   + `${escaped}/${CONTROLS.length} controls escaped.`);

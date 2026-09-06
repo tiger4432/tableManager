@@ -23,10 +23,16 @@
 //   변이    `importMutated` 가 원본 «전문»에 한 자리만 바꾼 사본을 만들어 import 합니다.
 //           잘라내는 양은 «0» 이고, 「변이가 안 먹으면 던진다」가 그 헬퍼 안에 있습니다
 import { readFileSync } from 'node:fs';
-import { importMutated } from './lib/appended_module.mjs';
+import { fileURLToPath } from 'node:url';
+import { loadWithProbe } from './lib/probe.mjs';//
+// 🔴 정정 (2026-09-06 오후): 이 파일은 «제가 오늘 만든» 다리를 쓰고 있었습니다. 그런데 그
+//    기제는 «이미 있었습니다» — `tests/lib/probe.mjs` (251줄 · 소비자 21). 덧붙이기도,
+//    바이트 접두 단언도, 「변이가 안 먹으면 죽는다」도, 의존 모듈 갈아끼우기도 «전부» 거기
+//    있습니다. 제가 그것을 안 찾고 두 번째 경로를 지었고, 그게 기준 ④ 위반입니다.
+//    -> 정본 하나로 모읍니다. 제 헬퍼는 삭제했습니다.
 import * as BASELINE from '../src/truncation.js';
 
-const SRC = new URL('../src/truncation.js', import.meta.url);
+const SRC_PATH = fileURLToPath(new URL('../src/truncation.js', import.meta.url));
 
 let passed = 0;
 let failed = 0;
@@ -144,11 +150,11 @@ async function score(list, mustCatch, heading) {
   for (const [name, mutate] of list) {
     let bad = false;
     try {
-      bad = verdict(await importMutated(SRC, mutate));
+      bad = verdict((await loadWithProbe(SRC_PATH, { mutate, tag: 'trunc' })).module);
     } catch (e) {
       // 🔴 「던졌다」와 「틀린 답을 냈다」는 둘 다 «잡힘»이지만, 사본이 아예 «안 만들어진»
       //    것(변이가 안 먹음)은 잡힘이 아닙니다 — 그건 계기 고장이라 죽어야 합니다.
-      if (/mutation changed nothing/.test(String(e && e.message))) die(`${name}: ${e.message}`);
+      if (/did not mutate|unchanged/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;
     }
     if (bad === mustCatch) { hit++; console.log(`  ${mustCatch ? 'caught ' : 'escaped'} ${name}`); }

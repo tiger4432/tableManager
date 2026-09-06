@@ -382,7 +382,11 @@ function countDetail(n) {
  * -- an absent offset and a declared zero offset must not compare equal.
  */
 function spell(v) {
-  if (v === null || v === undefined || v === '') return ' absent';
+  // The sentinel is an ESCAPE, not a literal NUL byte -- same string at runtime, and the
+  // file stops reading as binary (a literal NUL hid all 395 lines from every search tool).
+  // It stays unprintable on purpose: a printable prefix could be typed by a user, and then
+  // a declared value would compare equal to absence, which is what this function prevents.
+  if (v === null || v === undefined || v === '') return '\u0000absent';
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   const n = Number(v);
   if (Number.isFinite(n) && String(v).trim() !== '') return String(n);
