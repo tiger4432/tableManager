@@ -1257,6 +1257,32 @@ for (const name of harnesses) {
   for (const m of (run.stdout || '').matchAll(/^ASSERTIONS (\d+) (\d+)\s*$/gm))
     counts = { ran: +m[1], failed: +m[2] };
   const said = counts ? `ran ${counts.ran}, failed ${counts.failed}` : 'no ASSERTIONS line';
+
+  // 🔴 A RED VERDICT WITH ZERO FAILED ASSERTIONS IS ITS OWN STATE, AND `failed` CANNOT SAY IT.
+  //    `failed` carries the ASSERTION counter and nothing else. A harness that scores a mutation
+  //    corpus adds its escapes and its caught controls to the EXIT CODE on a separate line
+  //    (`retroactive_view_harness.mjs`: `bad = base.fail + escapedNames.length + controlsCaught`,
+  //    while the ASSERTIONS line prints `base.fail`). So the one case that machine exists to
+  //    catch -- an assertion that stayed green while its subject changed -- surfaces on a RED
+  //    line reading `failed 0`, which is exactly the crash disguise the header above says this
+  //    line exists to strip, running backwards. Measured 2026-09-06: the summary of a caught
+  //    escape was `✗ <name>  [BLOCKING] (ran 318, failed 0)`.
+  //
+  //    THIS RE-SCORES NOTHING. `ran` and `failed` still come only from the harness's own
+  //    counters, and the CAUSE is deliberately not named here: naming it would mean reading the
+  //    escaped mutant's name out of stderr, and the contract above closes that for a reason that
+  //    is still true. What is stated is only what the two signals the runner ALREADY holds
+  //    disagree about -- the exit code says red, the count says nothing failed -- which is true
+  //    whatever produced it (an escaped mutant, a caught control, a `die()` after the summary, a
+  //    crash on the way out). The harness's own output is dumped in full below and says which.
+  //
+  //    IT GOES ON BOTH RED BRANCHES. Putting it only on the blocking one would leave two paths
+  //    describing the same state differently, which is the owner's criterion ④ -- and this file
+  //    is the instrument the rest of that criterion is measured with.
+  const beyondCount = (!ok && counts && counts.ran > 0 && counts.failed === 0)
+    ? ' ― every assertion it counted PASSED, so the red verdict came from scoring this count '
+      + 'does not carry; its own output below says which'
+    : '';
   const floor = FLOORS.get(name);
 
   // Floor bookkeeping runs BEFORE the ceiling verdict below, which can `continue`. A harness
@@ -1350,10 +1376,10 @@ for (const name of harnesses) {
     console.log(`✓ ${name}  (${said}${up})`);
   } else if (known) {
     stillRed.push(name);
-    console.log(`✗ ${name}  [known red] (${said}) ${known.why}`);
+    console.log(`✗ ${name}  [known red] (${said})${beyondCount} ${known.why}`);
   } else {
     blocking.push({ name, run });
-    console.log(`✗ ${name}  [BLOCKING] (${said})`);
+    console.log(`✗ ${name}  [BLOCKING] (${said})${beyondCount}`);
   }
 }
 

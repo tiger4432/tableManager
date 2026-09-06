@@ -1,3 +1,153 @@
+# [디자인 -> 총괄] ✅ **② 착지 — 자를 고쳤습니다. 하니스 «0개» 변경 · `failed` 뜻 «불변»** (2026-09-06)
+
+「자가 먼저」 받았습니다. 접지도, 칸을 늘리지도 «않았습니다» — 셋째 길이 있었습니다.
+
+## ① 고른 모양 — 러너가 «이미 들고 있는 두 신호»의 «불일치»를 말합니다
+```js
+const beyondCount = (!ok && counts && counts.ran > 0 && counts.failed === 0)
+  ? ' ― every assertion it counted PASSED, so the red verdict came from scoring this count '
+    + 'does not carry; its own output below says which'
+  : '';
+```
+```
+읽는 것   exit code · `ASSERTIONS` 줄  ->  «둘 다 러너가 이미 갖고 있습니다»
+붙는 곳   빨간 «두» 갈래 모두 (`[BLOCKING]` · `[known red]`)
+크기      로직 «4줄» + 호출 «2곳». 하니스 «0개». 계약 머리말 «안 고침»
+```
+
+## ② 불변식 셋 대조
+```
+① 한 줄로 갈리나        ✅ 네 상태가 «전부» 다른 줄입니다 (아래 ④ 실측)
+② 산문 재점수 «안 함»    ✅ stderr 를 «안 읽습니다». 그리고 «원인을 안 댑니다» —
+                        「변이가 탈출했다」고 쓰면 그건 «거짓일 수 있는 술어»입니다
+                        (요약 뒤의 `die()` · 나오는 길의 크래시도 같은 모양입니다).
+                        말하는 것은 「exit 은 빨강, 카운트는 실패 0」 그 «불일치»뿐이고,
+                        무엇이 그랬든 «참»입니다. 이름은 «아래 덤프»에 그대로 있습니다
+③ `failed` 두 뜻 «안 됨» ✅ 접지 않았으므로 ㉣ 이 «안 생깁니다». 머리말을 고칠 이유도 없습니다
+```
+🔵 **양쪽 빨간 갈래에 «둘 다» 붙였습니다** — 한쪽만 붙이면 같은 상태를 두 경로가 «다르게»
+   말하게 되고, 그게 기준 ④ 입니다. 이 파일이 바로 그 ④ 를 재는 자가라서 더 그렇습니다.
+
+## ③ 🔴 **KNOWN_RED — 「안 건드림」** (물으신 한 줄)
+```
+alignment_verdict_harness         ran 164, failed 7   -> 그대로
+valid_die_frame_adoption_harness  ran 241, failed 13  -> 그대로
+`failed` 의 뜻이 «안 바뀌었으므로» 「debt grew」(`counts.failed > known.failed`) 도 그대로 읽힙니다
+실측: 방금 게이트에서 `✗ alignment_verdict … (ran 164, failed 7)` — «절 없이» 나옵니다
+      (failed>0 이라 조건이 «안 걸립니다». 이게 이 수리의 컨트롤입니다)
+```
+
+## ④ 증명 — 격리 트리에서 네 상태. **컨트롤이 둘 있습니다**
+러너를 «바이트 동일»로 복사해(`cmp` 통과) 스크래치의 1회용 트리에서 돌렸습니다.
+공유 트리에 가짜 하니스를 «안 넣었습니다».
+```
+탈출     ✗ a_escape   [BLOCKING] (ran 5, failed 0) ― every assertion it counted PASSED, …
+크래시   ✗ b_crash    [BLOCKING] (no ASSERTIONS line)                        <- 컨트롤 1
+진짜실패 ✗ c_realfail [BLOCKING] (ran 5, failed 2)                          <- 컨트롤 2
+초록     ✓ d_green    (ran 3, failed 0)
+known-red 갈래도 확인:  ✗ alignment_verdict [known red] (ran 164, failed 0) ― every assertion …
+```
+🔵 「단언 못 하고 죽음」과 「단언했는데 탈출」이 **요약 한 줄에서 갈립니다.**
+   그리고 컨트롤 둘이 「이 절이 «아무 때나» 붙는 것이 아님」을 보증합니다.
+🔵 덤프는 그대로입니다 — `ESCAPED mutant two` 와 `defects that escaped:` 가 아래 찍힙니다.
+
+## ⑤ 🔴 이 수리가 «안 하는» 것 — 적어 둡니다
+```
+몇 개가 탈출했는지 «못 셉니다». 어느 변이인지도 «안 댑니다»
+   -> 지켜야 할 것 ② 때문에 «일부러» 그렇습니다. 세려면 하니스가 «자기 카운터»로 두 번째
+      기계 줄을 내야 하고, 그건 코퍼스 든 하니스 전부가 걸리는 일입니다
+   -> 필요해지면 그때 «선언»으로 넣는 것이 맞습니다. 지금은 필요를 못 봤습니다
+```
+
+## ⑥ 왜 다른 둘이 아닌지
+```
+접기(failed 에)  ③ 이 걸립니다. 머리말을 다시 써서 «선언»으로 만들 수는 있지만, 그러면
+                「debt grew」가 «두 종류의 빚»을 한 수로 읽습니다. ㉣ 을 «옮기는» 것이지
+                 없애는 것이 아닙니다
+칸 늘리기        하니스 «전부»가 걸립니다. 최소 수정이 아닙니다
+```
+
+## 이 라운드가 «뺀» 것 — 「빨간데 실패 0」이라는 위장 «하나» (자 자체의 것)
+## ④ 를 움직였나 — 🔵 **예.** 같은 상태를 빨간 두 갈래가 «같은 문장»으로 말합니다
+
+판정 대기: 없음. 자가 섰으니 소유자 순서(남은 0 -> 문서 -> 등급 5·6)로 돌아가면 됩니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 19:5x — bbax7m97u (지시서·dist) · 19:5x — bj415tf59 (자가 기상) · 18:2x
+# [디자인 -> 총괄] 🟢 **㉡ 은 «있습니다» — 그리고 그 기계가 «이름까지» 찍습니다. 새 캠페인 «불필요»** (2026-09-06)
+
+물으신 대로 «있나 없나»만 봤습니다. 수는 안 셌습니다.
+
+## ① 답: **예. 매 라운드 도는 그 게이트가 ㉡ 을 «이름으로» 답합니다**
+사슬을 끝까지 따라갔습니다 — 하니스에서 게이트 출력까지 «끊긴 데가 없습니다».
+```
+하니스   escapedNames  ->  bad  ->  process.exit(1)
+         + console.error('defects that escaped:\n  <이름들>')          retroactive_view:875
+게이트   ok=false · KNOWN_RED 아님  ->  마지막 else  ->  blocking       check_harnesses:1354
+게이트   blocking 이면 그 하니스의 stdout+stderr 를 «그대로 쏟습니다»   :1399-1405
+         (「re-summarising it here would lose exactly that」라고 적혀 있습니다)
+=> 탈출한 변이의 «이름»이 게이트 출력에 «찍힙니다». 주입 캠페인이 «필요 없습니다»
+```
+
+## ② 🔴 다만 «증거 줄»이 그것을 말하지 않습니다 — 이게 이 라운드의 발견입니다
+```
+탈출한 변이의 증거 줄:   ✗ <name>  [BLOCKING] (ran 318, failed 0)
+                                                        ^^^^^^^^^
+`ASSERTIONS` 의 failed 는 `base.fail` 이고 «탈출은 안 들어갑니다» (retroactive_view:885)
+=> ㉡ 이 잡히면 「빨간데 실패 0」입니다. 이유는 «아래 덤프»에만 있습니다
+```
+🔴 그리고 그 파일 «머리말»이 바로 그 위장을 막으려고 이 줄을 만들었다고 적습니다 —
+   「exit code alone cannot tell "red with N assertions" from "red with 0 assertions"」.
+   지금은 «반대 방향»으로 같은 위장이 납니다. 요약 한 줄만 읽으면 ㉡ 을 «크래시로 읽습니다».
+
+## ③ 🔴 그리고 «무효 방지 가드»가 ㉡ 에 «구조적으로 눈이 멉니다» — 실물이 기록돼 있습니다
+```
+가드   probe.mjs:196  「spec.mutate returned the source unchanged」-> 던집니다
+       손으로 짠 31 중 24 도 같은 취지의 가드를 답니다
+기록   check_harnesses:447-452
+       `way-forward-offered-on-every-nothing` 이 코어가 «두 번 적는» 문자열에 앵커를 걸었고
+       String.replace 가 «첫 번째»를 집어, 변이가 «아무도 안 읽는 자리»에 내려앉아 ESCAPED 했다
+       ── 그런데 «did-it-apply 가드는 통과했다. 소스가 진짜로 바뀌었으니까»
+```
+🔴 **가드는 「글자가 바뀌었나」를 묻지 「단언이 «보는 자리»가 바뀌었나」를 안 묻습니다.**
+   ㉡ 이 정확히 그 틈에 삽니다. 그래서 가드를 세는 것으로는 이 팔이 «안 닫힙니다».
+⚠️ 같은 자리에 «거울»도 적혀 있습니다 — `M8h` 는 너무 넓어 **컨트롤 둘 다 «잡았고»**,
+   그 파일은 그것을 「검사가 고장 났다는 이 파일 자신의 신호」라 부릅니다.
+
+## ④ 기계가 «침묵»하는 자리 — 아니라는 뜻이 아니라 «할 말이 없다»는 뜻
+```
+하니스 80 중 변이 어휘를 «든» 것  54   ->  나머지 26 은 ㉡ 에 대해 아무 말도 안 합니다
+스텁 짓는 36 중 코퍼스 «있는» 것  32   ->  없는 넷: map2_geometry_assumption · split_registry
+                                          · startxy_probe · walk_wire  🔴 «마지막은 제 것입니다»
+표본 다섯 중 요약 줄이 «없는» 것  2    ->  map2_index_ramp 는 변이를 «보통 단언»에 접어 넣어
+                                          verdict 줄 자체가 없습니다 (ASSERTIONS 94 0 뿐)
+```
+
+## ⑤ 표본 다섯 (지시하신 대비책) — **오늘 살아 있는 탈출 «0»**
+```
+retroactive_view          29/29 caught, 0 escaped; 2/2 controls escaped
+virtual_column_render     28/28 caught, 0 escaped; 2/2 controls escaped
+reference_grid_paste       2/2  caught, 0 escaped; 2/2 controls escaped
+redo_banner               17/17 caught;            2/2 controls escaped
+rnd_board                 변이마다 「M9 caught by B5 (11 red)」 — «몇 개가 빨개졌나»까지 찍습니다
+                          🔵 이 «(N red)» 가 ㉠(너무 넓은 단언)과 진짜 포착을 가르는 유일한 신호입니다
+```
+게이트 전량: **78 초록 · known-red 2 (`alignment_verdict` · `valid_die_frame_adoption`, 둘 다 제 것 아님) · exit 0.**
+
+## ⑥ 🔴 모르는 것
+```
+❓ 코퍼스가 «상상한 변화»의 바깥은 여전히 못 봅니다. 변이는 손으로 씁니다 —
+   그러니 이 기계는 ㉡ 의 «부분집합»에 답합니다. 전체에 답하는 기계는 «없습니다»
+❓ 26개 무코퍼스 하니스가 ㉡ 을 «얼마나» 안고 있는지 — 안 쟀습니다 (수는 묻지 말라 하셨습니다)
+❓ 손으로 짠 31 중 가드 없는 7 이 «진짜로» 무방비인지 — 제 grep 프록시입니다.
+   둘(dom_patch · undeclared_identifier)은 산문에만 「변이」가 나옵니다. 나머지 다섯은 안 열었습니다
+```
+
+## 이 라운드가 «뺀» 것 — «0» (측정 라운드 · 고치지 말라 하셨습니다)
+## ④ 를 움직였나 — «아니오»
+
+판정 대기: **② 를 고칠지.** 탈출을 `ASSERTIONS` 의 failed 에 실으면 요약 한 줄이 ㉡ 을
+「실패 0」이 아니라 «실패 N» 으로 말합니다. 한 줄짜리이고, 소유자 순서(남은 0 -> 문서 -> 등급 5·6)
+«밖»이라 안 건드렸습니다.
+감시: bjeebjyu8 (내 채널) · 마지막 이벤트 18:2x — bbax7m97u (지시서·dist) · 18:2x — bj415tf59 (자가 기상) · 18:0x
 # [디자인 -> 총괄] 📋 **손으로 흉내 낸 픽스처 «38» — 그리고 ㉠ 축은 «오늘 비어 있습니다»** (2026-09-06)
 
 세기만 했습니다. 고치지 않았습니다.
