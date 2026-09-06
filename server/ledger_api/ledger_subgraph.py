@@ -775,14 +775,29 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
-             static_follow=None, follow_keys=None):
+             static_follow=None, follow_keys=None, collect=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
 
-    🔴 `collect`, `observation_mode` and `include_values` left on 2026-08-28 with their
-    last caller. They chose among node KINDS, and there is one kind now: a declared entity.
-    What narrows a walk is `follow`, and nothing else.
+    🔴 `collect` IS THE LOAD, `follow` IS THE ROAD, and they are not the same axis.
+    Reaching a defect from a wafer means walking THROUGH the dies, so narrowing the walk
+    cannot be how a caller says which nodes it wants carried back. `collect` names
+    DECLARED ENTITY TYPES to keep in the response's `nodes`; absent, everything comes
+    back exactly as before.
+
+    ⚠️ IT CHANGES NOTHING BUT THAT LIST. The walk still follows every step `follow`
+    allows - it has to, or the wanted nodes are unreachable - and `propagation` still
+    ranks over EVERY node reached, on the owner's 2026-08-28 ruling that the population
+    is all of them. Filtering the population here would put two axes into one argument.
+
+    ⚠️ EDGES ARE NOT FILTERED THIS ROUND. Dropping edges whose endpoints were collected
+    away would hide the path that explains why a node is in the answer, and deciding that
+    is a separate ruling.
+
+    🔴 `observation_mode` and `include_values` left on 2026-08-28 and did NOT come back:
+    they chose among node KINDS, and there is one kind now, a declared entity. `collect`
+    returned because it chooses among DOMAIN TYPES, which is a different question.
     """
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
@@ -1202,6 +1217,16 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 for predicate, count in sorted(counts.items())]
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
+    # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
+    # reached, so `seed` and `propagation` below read the full population - which is the
+    # ruling. Versions are stripped on both sides: a caller writes `defect`, the
+    # declaration may spell it `defect@1`, and neither should have to know the other's
+    # form to ask a question.
+    visible_nodes = ordered_nodes
+    if collect:
+        wanted = {str(name).split("@", 1)[0] for name in collect if str(name).strip()}
+        visible_nodes = [item for item in ordered_nodes
+                         if str(item.get("type") or "").split("@", 1)[0] in wanted]
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
@@ -1218,7 +1243,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "schema_version": 3,
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "seed": seed, "nodes": ordered_nodes, "edges": ordered_edges,
+        "seed": seed, "nodes": visible_nodes, "edges": ordered_edges,
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
         "propagation": _propagation(

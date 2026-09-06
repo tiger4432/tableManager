@@ -105,6 +105,11 @@ def evidence_subgraph(
         description=("같은 자재를 따라가는 걸음에 주는 «별도» 예산. "
                      "양 끝이 «둘 다 dynamic» 인 걸음만 여기서 빠진다 — "
                      "정적/동적은 선언의 `class` 가 정한다. 0 이면 오늘과 같다")),
+    collect: list[str] | None = Query(
+        None, description=("응답의 `nodes` 에 실어 올 «노드 타입». 없으면 «전부» — "
+                           "오늘 동작 그대로. 걷기는 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
+                           "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
+                           "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
     db: Session = Depends(get_db),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
@@ -112,6 +117,23 @@ def evidence_subgraph(
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
     # other layers. The declared set is read from the vocabulary, never restated here.
+    # ⚠️ A DIRECT CALL LEAVES FastAPI's SENTINEL IN PLACE. Several tests call this
+    # function rather than the route, and an omitted argument is then the `Query` object
+    # itself - truthy, and not iterable. Through the app it is always a list or None.
+    collect = list(collect) if isinstance(collect, (list, tuple, set)) else None
+    # 🔴 SAME RULE AS `follow`, AND FOR THE SAME REASON. A type nobody declared can never
+    # match, so answering it with an empty graph hands back exactly what "there is nothing
+    # here" hands back and the caller cannot tell a typo from a fact.
+    if collect:
+        collectable = _collectable_types()
+        unknown = sorted({str(name).split("@", 1)[0] for name in collect
+                          if str(name).strip()} - collectable)
+        if unknown:
+            raise HTTPException(status_code=422, detail={
+                "reason": "node_type_not_declared", "unknown": unknown,
+                "declared": sorted(collectable),
+                "message": "선언에 없는 노드 타입입니다: " + ", ".join(unknown),
+            })
     follow, follow_keys = _split_follow(follow)
     if follow:
         followable = _followable_predicates()
@@ -130,7 +152,8 @@ def evidence_subgraph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-            follow_keys=follow_keys, backbone_hops=backbone_hops)
+            follow_keys=follow_keys, backbone_hops=backbone_hops,
+            collect=collect)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={
             "reason": "subgraph_request_invalid", "message": str(exc)})
@@ -282,7 +305,8 @@ def _static_step_predicates():
 
 def _evidence_graph(connection, *, node_id, hops, direction,
                     node_limit, edge_limit, follow=None, follow_keys=None,
-                    backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS):
+                    backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
+                    collect=None):
     if not ledger_trace.relation_exists(connection, LEDGER_RELATION):
         raise _relation_absent()
     missing = _subgraph_contract_state(connection)
@@ -300,7 +324,29 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(),
-        static_follow=_static_step_predicates())
+        static_follow=_static_step_predicates(), collect=collect)
+
+
+def _collectable_types():
+    """Every node type a caller may name in `collect` -- read from the DECLARATION, only.
+
+    🔴 THE SAME AUTHORITY `/declaration` PUBLISHES, not a second copy. That route already
+    answers "what may I ask for" out of `entities`, and a list restated here would be a
+    second author for one fact: declaring an entity would make it collectable on one
+    surface and refused on the other.
+
+    Versions are stripped so `defect` and `defect@1` are the same answer -- the caller
+    should not have to know which spelling the declaration happens to use.
+    """
+    try:
+        from ledger import config as _config
+        declared = (_config.load() or {}).get("entities") or {}
+    except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
+        logger.error("declaration unreadable while resolving collect: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"선언을 읽지 못했습니다: {exc}"})
+    return {str(name).split("@", 1)[0] for name in declared}
 
 
 

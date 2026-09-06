@@ -216,11 +216,14 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
     def params(path):
         return {field.alias or field.name
                 for field in routes[path].dependant.query_params}
-    # 🔴 `collect` LEFT WITH THE KINDS IT CHOSE BETWEEN (2026-08-28). Every node is a
-    #    declared entity now, so a switch selecting a node kind has one value and is not a
-    #    switch. The signed seeds stay -- they change the WALK, not the projection.
-    assert {"positive", "negative"} <= params("/api/ledger/subgraph")
-    assert not ({"collect", "include_values", "enrich_actions", "shape", "property_limit"}
+    # 🔴 `collect` CAME BACK ON 2026-09-06, BY OWNER RULING, AND AS A DIFFERENT AXIS.
+    #    It left on 2026-08-28 because it chose among node KINDS, and every node is a
+    #    declared entity now so that switch had one value. What returned chooses among
+    #    DOMAIN TYPES: `follow` is the road and `collect` is the load, and a walk from a
+    #    wafer to a defect has to pass THROUGH the dies whether or not it carries them
+    #    back. The other four are still retired - they were projection knobs.
+    assert {"positive", "negative", "collect"} <= params("/api/ledger/subgraph")
+    assert not ({"include_values", "enrich_actions", "shape", "property_limit"}
                 & params("/api/ledger/subgraph")), "a projection knob came back"
     # `/api/ledger/explore_entity` was retired 2026-08-23; `/subgraph` answers it.
     # `/trace` and `/explore` were DELETED 2026-08-25 with the legacy screens, so the
@@ -1010,3 +1013,110 @@ def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monk
     assert raised.value.status_code == 422
     assert raised.value.detail["reason"] == "subgraph_request_invalid"
     assert "x" in raised.value.detail["message"]
+
+
+# ------------------------------------------------ [collect] the load, not the road (2026-09-06)
+#
+# `collect` names the node types carried back in `nodes`. It does NOT narrow the walk:
+# reaching a defect from a wafer means passing through the dies, and passing through is
+# not the same as carrying back. Restored by owner ruling after leaving on 2026-08-28,
+# when it chose among node KINDS rather than domain TYPES.
+
+def _collect_fixture():
+    legacy = atom(9, "OLD", "register", event=None, event_state=None)
+    return (ledger_subgraph.InMemoryEvidenceLookup([legacy]),
+            ledger_explorer.entity_id("Lot", {"lot": "OLD"}))
+
+
+def test_no_collect_answers_exactly_what_it_answered_before():
+    """🔴 GATE ①, AND THE MOST IMPORTANT ONE. An absent `collect` must not change a byte
+    of the answer; a filter that alters the default response is a new behaviour wearing
+    an optional argument's clothes."""
+    lookup, seed = _collect_fixture()
+    without = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    explicit_none = ledger_subgraph.subgraph(seed, lookup, hops=2, collect=None)
+    for body in (without, explicit_none):
+        body.pop("generated_at")
+    assert without == explicit_none
+    assert without["nodes"], "the fixture must produce nodes or this proves nothing"
+
+
+def _two_type_fixture():
+    """A graph with TWO entity types.
+
+    🔴 THE FIXTURE IS THE ASSERTION HERE. On a single-typed graph, `collect=["Lot"]`
+    keeps everything, so the test passes with the filter DELETED - measured 2026-09-06,
+    and it is exactly the vacuous shape this repository keeps finding. Two types is what
+    makes deleting the filter turn this red.
+    """
+    lot_to_wafer = ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=91)), subject_type="Lot", subject_keys={"lot": "OLD"},
+        predicate="contains", object_kind="entity_ref",
+        object_payload={"type": "Wafer", "keys": {"wafer": "W1"}, "qualifiers": {}},
+        occurred_at=NOW, source_who="fixture", source_translator_ver="v1",
+        source_raw_ref="row:91", supersedes=None, source_event_id=EVENT,
+        source_event_state="source_molecule")
+    return (ledger_subgraph.InMemoryEvidenceLookup([lot_to_wafer]),
+            ledger_explorer.entity_id("Lot", {"lot": "OLD"}))
+
+
+def test_collect_keeps_the_named_type_and_nothing_else():
+    """🔴 GATE ②. Non-empty AND homogeneous - either alone would pass for the wrong
+    reason, and a single-typed graph would pass with no filter at all."""
+    lookup, seed = _two_type_fixture()
+    everything = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    assert {node["type"] for node in everything["nodes"]} == {"Lot", "Wafer"}, \
+        "the fixture must carry two types or this test proves nothing"
+
+    body = ledger_subgraph.subgraph(seed, lookup, hops=2, collect=["Wafer"])
+    assert body["nodes"], "collecting a type the graph HAS returned nothing"
+    assert {node["type"] for node in body["nodes"]} == {"Wafer"}
+
+
+def test_a_version_suffix_is_not_a_different_type():
+    """A caller writes `Lot`; a declaration may spell it `Lot@1`. Neither should have to
+    know the other's form to ask the question."""
+    lookup, seed = _two_type_fixture()
+    versioned = ledger_subgraph.subgraph(seed, lookup, hops=2, collect=["Wafer@1"])
+    assert versioned["nodes"] == ledger_subgraph.subgraph(
+        seed, lookup, hops=2, collect=["Wafer"])["nodes"]
+    assert versioned["nodes"], "both spellings returned nothing, which proves nothing"
+
+
+def test_collecting_an_absent_type_empties_the_list_without_stopping_the_walk():
+    """🔴 THE POINT OF THE AXIS. The walk is unchanged - it still reached what it reached,
+    which is why `walk` and `truncated` still describe the same traversal. Only the load
+    is empty."""
+    lookup, seed = _collect_fixture()
+    full = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    narrowed = ledger_subgraph.subgraph(seed, lookup, hops=2, collect=["Wafer"])
+    assert narrowed["nodes"] == []
+    assert narrowed["walk"] == full["walk"], "the walk was narrowed, and it must not be"
+    assert narrowed["edges"] == full["edges"], "edges are NOT filtered this round"
+
+
+def test_the_seed_and_the_ranking_still_see_every_node():
+    """⛔ OWNER RULING 2026-08-28, UNTOUCHED. The ranking population is every node
+    reached; filtering it here would put two axes into one argument."""
+    lookup, seed = _collect_fixture()
+    full = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    narrowed = ledger_subgraph.subgraph(seed, lookup, hops=2, collect=["Wafer"])
+    assert narrowed["seed"] == full["seed"]
+    assert narrowed["propagation"] == full["propagation"]
+
+
+def test_an_undeclared_node_type_is_refused_by_name():
+    """🔴 GATE ③, THE REFUSAL EXECUTED. Same rule as `follow`: a type nobody declared can
+    never match, so an empty graph would be indistinguishable from 'there is nothing
+    here' and a typo would read as a fact."""
+    with pytest.raises(HTTPException) as raised:
+        ledger_trace_router.evidence_subgraph(
+            node_id=ledger_explorer.entity_id("Lot", {"lot": "A"}),
+            hops=4, direction="both", node_limit=100, edge_limit=200,
+            positive=None, negative=None, follow=None,
+            collect=["definitely_not_a_node_type"], db=None)
+    detail = raised.value.detail
+    assert raised.value.status_code == 422
+    assert detail["reason"] == "node_type_not_declared"
+    assert detail["unknown"] == ["definitely_not_a_node_type"]
+    assert detail["declared"], "the refusal must say what IS collectable"
