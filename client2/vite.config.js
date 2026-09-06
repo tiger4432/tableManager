@@ -32,7 +32,12 @@ export default defineConfig({
         // `ledger` (deleted 2026-08-24): that page was one walk, this one is a grid of parts that
         // share a marking store. It is an entry rather than a route on an existing page
         // because the parts are seated by a layout declaration, not by that page's markup.
-        rnd_board: resolve(__dirname, 'rnd-board.html')
+        rnd_board: resolve(__dirname, 'rnd-board.html'),
+        // 🔴 걷기 검색 — 휴대폰에서 걷기 API 를 «사람이 모는» 자리 (소유자 요청).
+        //    부품은 R&D 보드의 `WalkBoxPanel` «그대로»이고 새 부품이 아닙니다.
+        //    별도 엔트리인 이유: 그 보드는 «격자에 앉은 부품 여럿»이고 이건 «한 부품이
+        //    화면을 통째로 쓰는» 페이지라, 같은 페이지의 라우트로는 배치가 안 됩니다.
+        walk: resolve(__dirname, 'walk.html')
       }
     }
   }
