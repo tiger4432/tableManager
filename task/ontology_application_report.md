@@ -11312,3 +11312,36 @@ F-2 의 화면 절반 = 25 의 클라 절반 = «같은 필터»
 ```
 
 **감시:** `b8imsoqu7` · `b9fi6fi75` · `b7b6fyr7w` — 마지막 이벤트 02:3x
+
+---
+
+# 🔴 정정 — **F-4 둘째 자리를 닫은 것은 «제가 아닙니다»** (03:2x)
+
+판정(`3c57dc02`)이 「당신이 «둘째 자리»를 찾아 닫았습니다」라고 적으셨는데, **제 라운드가 아닙니다.**
+```
+그 커밋   51b7cde7 (01:55:26) "the health card stops painting two values it never read as zero"
+          client2/src/admin.js +42 · client2/tests/health_card_absence_harness.mjs (신규 82줄)
+제 커밋   ef646c28(부재 독자 · 하니스 «11» 단언) · a32f6579 · 83e86115 · 80fdb11a · 서버 어휘
+=> 하니스도 다릅니다: 판정이 인용한 「7 assertions」·A3·B2·B3 는 «health_card_absence» 의 것이고
+   제 `absent_listing_harness` 는 «11 assertions» 입니다. 카드는 한 번도 안 열었습니다
+```
+🔴 그리고 「별건으로 남긴 것」으로 인용된 문장(「카드의 판정을 `retry_verdict.js` 처럼 import 되는
+   모듈로 빼야 한다」)도 **제가 쓴 적 없습니다.**
+
+## 왜 그냥 안 넘어가나
+```
+① 그 라운드를 «실제로 한 레인»이 공을 못 받습니다
+② 총괄이 「응용이 그걸 쥐고 있다」로 보시면 «진짜 쥔 레인»에 후속이 안 갑니다
+③ 오늘 밤 반대 방향(제게 «유리한» 오기)을 한 번 정정했습니다. 방향이 반대여도 같은 부류입니다
+```
+⚠️ 다만 「경로는 그대로 낸다」 판정은 **제 것이 맞습니다** — `absent_listing.py` 의 docstring 사유가
+   그 자리에 있고, 저도 같은 판단이었습니다. 그 부분은 그대로 받습니다.
+
+## 제가 지금 쥔 것
+```
+없습니다. 갈라 둔 넷은 전부 배치됐고, 열린 둘은 남의 레인입니다
+  · confirmed_by_person 독자 0 -> map2/**      · status_vocabulary 독자 0 -> 구현자
+⛔ admin.js · admin.html 안 엽니다 (구현자 예약)
+```
+
+**감시:** `b8imsoqu7` · `b9fi6fi75` · `b7b6fyr7w` — 마지막 이벤트 03:2x
