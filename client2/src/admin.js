@@ -5,6 +5,9 @@
 import './tokens.css';
 // `isCount` 는 인제션 행이 `admin_rows.js` 로 옮겨가며 이 파일에서 «쓰는 곳이 없어졌습니다».
 import { localeCountText } from './absent.js';
+// 🔴 「이 본문이 오류를 나르나」의 «유일한» 철자. 봉투가 둘이라 «칸 이름»으로 물으면
+//    한쪽에서 조용히 아무것도 안 잡는다 (총괄 판정 22, 2026-09-07).
+import { errorText } from './body_error.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -883,6 +886,8 @@ async function fetchData(options = {}) {
   //    401 이면 잘못한 것 없는 절까지 같이 사라졌다. 이제 못 읽은 절만 «—» 가 되고
   //    나머지는 자기 데이터를 그린다.
   let allRead = true;
+  // 🔴 200 인데 본문이 오류를 나르는 자리들의 «사유». 비어 있으면 아래 문구가 «오늘과 같다».
+  const bodyFailures = [];
   try {
     if (tab === 'overview') {
       await fetchOverview(isStale);
@@ -941,8 +946,14 @@ async function fetchData(options = {}) {
       if (queueOpts.unavailable) allRead = false;
       if (ob) { outboxData = ob.data || []; outboxTotal = ob.total || 0; renderOutboxTable(); }
       else { markSectionUnread('chain-fail-count'); allRead = false; }
-      if (rules) { chainData = rules.data || []; renderChainTable(); }
-      else { markSectionUnread('chain-rule-count'); allRead = false; }
+      // 🔴 200 이어도 본문이 오류를 나를 수 있다 (main.py:4913). `data` 는 그때 «빈 목록»이라
+      //    그대로 넘기면 화면이 「선언된 규칙 없음」을 그린다 — 깨진 것과 없는 것이 같아진다.
+      const rulesFailure = errorText(rules);
+      if (rules && !rulesFailure) { chainData = rules.data || []; renderChainTable(); }
+      else {
+        markSectionUnread('chain-rule-count'); allRead = false;
+        if (rulesFailure) bodyFailures.push(rulesFailure);
+      }
       if (maps) { mapperData = maps.data || []; renderMapperTable(); }
       else { markSectionUnread('mapper-count'); allRead = false; }
     } else if (tab === 'autoupdate') {
@@ -956,11 +967,18 @@ async function fetchData(options = {}) {
       const ws = wsRes.ok ? await wsRes.json().catch(() => null) : null;
       if (isStale()) return false;
       if (ws) workspaceData = ws.data || [];
-      if (st) { autoUpdateData = st.data || []; renderAutoUpdateTable(); }
-      else { markSectionUnread('autoupdate-count'); allRead = false; }
+      // 🔴 같은 봉투, 같은 병 (main.py:5732).
+      const stFailure = errorText(st);
+      if (st && !stFailure) { autoUpdateData = st.data || []; renderAutoUpdateTable(); }
+      else {
+        markSectionUnread('autoupdate-count'); allRead = false;
+        if (stFailure) bodyFailures.push(stFailure);
+      }
       // 산출물 인제션 연계 (감사 §1.2): auto-update 대상 테이블 ∩ 최근 실패 로그.
       // 🔴 «둘 다» 있어야 답이 나온다 — 하나만 있으면 교집합이 「없음」처럼 보인다.
-      if (st && fails) {
+      // 🔴 오류면 `autoUpdateData` 는 «지난번 값»이다 — 그것으로 교집합을 그리면
+      //    낡은 표를 «새 표»로 읽게 된다.
+      if (st && !stFailure && fails) {
         const autoTables = new Set(autoUpdateData.map(c => c.table_name));
         const failLogs = fails.data || [];
         linkedFailLogs = failLogs.filter(l => autoTables.has(l.table_name));
@@ -995,7 +1013,12 @@ async function fetchData(options = {}) {
       return false;
     }
     // 부분 실패도 «말한다». 문구는 예외 경로와 같은 것을 쓴다 — 새로 짓지 않는다.
-    if (!allRead && !silent) showToast(TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패', 'error');
+    // 🔴 사유가 있으면 «같이» 말한다 — 「로드 실패」만으로는 고칠 자리를 못 찾는다.
+    //    사유가 없으면(네트워크·HTTP) 문구는 «오늘과 같다».
+    if (!allRead && !silent) {
+      const why = bodyFailures.length ? ` — ${bodyFailures.join(' · ')}` : '';
+      showToast(`${TAB_ERROR_MSG[tab] || '❌ 목록 로드 실패'}${why}`, 'error');
+    }
     markRefreshed();
     return allRead;
   } catch (err) {
@@ -1185,8 +1208,11 @@ async function refreshLedgerSources() {
       // 🔵 No new mechanism: `unavailable` is the reason channel this function already uses
       //    three times above, and the panel already refuses to draw a table when it is set.
       //    The body is dropped for the same reason the 404 path drops it.
-      if (body && body.error) {
-        opts = { unavailable: `\uc120\uc5b8\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 ${body.error}` };
+      // 🔵 F-10 은 닫혔다 — 묻는 방식만 «기제»에서 «성질»로 옮긴다. 동작은 그대로다:
+      //    이 봉투는 `status` 칸이 없어 `error` 가 참인가로만 갈린다.
+      const failure = errorText(body);
+      if (failure) {
+        opts = { unavailable: `\uc120\uc5b8\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 ${failure}` };
         body = null;
       }
     }
@@ -3668,6 +3694,14 @@ async function runAutoUpdateNow(tableName, scriptName) {
       })
     });
     if (!res.ok) throw new Error('Run Now API returned error status');
+    // 🔴 등급 1. 서버는 실패하면 `db.rollback()` 하고도 «200» 으로 답한다 (main.py:5805-5807).
+    //    상태만 보고 성공을 그리면 화면이 「정상적으로 발행되었습니다」라고 «거짓»을 말한다 —
+    //    빈 목록보다 나쁘다. 운영자는 수집이 도는 줄 알고 기다린다.
+    const failure = errorText(await res.json().catch(() => null));
+    if (failure) {
+      showToast(`❌ [${tableName}] 강제 수집 실패 — ${failure}`, 'error');
+      return;
+    }
     showToast(`🔄 [${tableName}] 강제 수집 지시가 정상적으로 발행되었습니다.`, 'success');
 
     setTimeout(() => {
