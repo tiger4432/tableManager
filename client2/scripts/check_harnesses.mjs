@@ -290,7 +290,7 @@ const FLOORS = new Map([
   // class -- and the two route-resolution assertions that named /trace.html now name
   // /admin.html, with two more added so the REMOVAL itself has a scorer: a retired screen
   // must resolve to null rather than to a route id nothing can navigate to.
-  ['effort_meter_harness.mjs', 133],
+  ['effort_meter_harness.mjs', 140],
   // New 2026-08-05 with the Excel form gateway (`map2/excel_io.js`). Floor is the count it
   // reports on the commit that introduces it -- there is no earlier tree to measure against.
   //

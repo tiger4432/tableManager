@@ -251,6 +251,35 @@ console.log('\n=== 3b. reset is gated on the server having RECORDED (F1) ===');
   eq('  ...counters cleared', api.snapshot(), undefined);
 }
 {
+  // ── S-6: the SIBLING field on the same response ────────────────────────────────────────
+  // 🔴 `effort_error` had ZERO readers in source and in the bundle while `effort_recorded`
+  //    beside it had two, so a refusal to record was silent. That silence does not produce
+  //    「모른다」 — a dead instrument reports 0, and 0 reads as "there was no effort".
+  const { api } = await load({});
+  api.startSession();
+  api.countKey(2);
+
+  // ① 가름 — with and without must be DIFFERENT answers.
+  eq('no effort_error => the instrument reports none', api.getConfig().last_effort_error, null);
+  // 🔴 ② 무회귀, AND IT IS THE ONE THAT MATTERS: the save outcome is untouched. Binding the two
+  //    would let a broken instrument switch off the thing it was built to measure.
+  eq('an effort_error does NOT change the commit verdict',
+    api.commitIfRecorded({ change_count: 1, effort_recorded: true, effort_error: 'weights missing' }), true);
+  eq('  ...and the counters still cleared exactly as before', api.snapshot(), undefined);
+  eq('the server sentence is kept VERBATIM', api.getConfig().last_effort_error, 'weights missing');
+
+  // ⚠️ Absence must CLEAR it. Otherwise the operator reads a stale complaint about a batch
+  //    that has since recorded fine — a wrong sentence rather than a missing one.
+  api.countKey(1);
+  eq('a later clean response clears it', api.commitIfRecorded({ change_count: 1, effort_recorded: true }), true);
+  eq('  ...back to none', api.getConfig().last_effort_error, null);
+
+  // An empty string is not a sentence; it must not be reported as one.
+  api.countKey(1);
+  api.commitIfRecorded({ change_count: 1, effort_recorded: true, effort_error: '   ' });
+  eq('a blank effort_error is not a complaint', api.getConfig().last_effort_error, null);
+}
+{
   // Older server, or a body we could not parse: fall back to the previous behaviour.
   // Never resetting would grow the counter without bound and bill a whole session's
   // browsing to whichever save finally succeeds — its own defect, and a louder one.

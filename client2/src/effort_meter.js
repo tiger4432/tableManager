@@ -142,6 +142,8 @@ let servedWeights = null;
 let preservingSet = new Set(); // empty = everything counted (the safe default)
 let rejectedTransitions = []; // [{ entry, reason }] — inert entries, reported loudly
 let configLoaded = false;
+// S-6: the server's last refusal-to-record sentence. `null` = it has never said anything.
+let lastEffortError = null;
 let configPromise = null;
 
 function normRoute(v) {
@@ -294,8 +296,33 @@ export function getConfig() {
     weights: servedWeights,
     context_preserving_transitions: Array.from(preservingSet),
     rejected_transitions: rejectedTransitions.map(r => ({ entry: r.entry, reason: r.reason })),
-    known_routes: ROUTE_IDS.slice()
+    known_routes: ROUTE_IDS.slice(),
+    // 🔴 S-6: the last thing the server said about REFUSING to record. `null` means it has
+    //    never said anything, which is not the same as "it said everything is fine".
+    last_effort_error: lastEffortError
   };
+}
+
+/**
+ * The server refused to record this batch's effort, and said why.
+ *
+ * 🔴 THE SERVER'S SENTENCE, VERBATIM. `_validate_effort` already knows what was wrong and
+ *    composes the words; inventing a second phrasing here would put two authors on one fact,
+ *    and the client's copy would be the one that goes stale.
+ * ⚠️ REPORTED LOUDLY AND ONLY ON CHANGE, following `rejectedTransitions` — a save loop must not
+ *    print the same line hundreds of times, and a silent field is what this repair is closing.
+ * ⚠️ It records; it does not decide. The caller's save outcome is untouched.
+ */
+function noteEffortError(said) {
+  const text = typeof said === 'string' && said.trim() !== '' ? said : null;
+  if (text === lastEffortError) return;
+  lastEffortError = text;
+  if (text) {
+    console.error(
+      `[effort] the server did NOT record this batch's effort: ${text} `
+      + '(the save itself succeeded; inspect window.__assyEffort.getConfig())'
+    );
+  }
 }
 
 // ── Session id ──────────────────────────────────────────────────────────────────
@@ -499,6 +526,14 @@ export function commit() {
  * @returns {boolean} whether the counters were reset
  */
 export function commitIfRecorded(resBody) {
+  // 🔴 S-6. THE SIBLING FIELD, READ AT THE ONE PLACE EVERY CALLER PASSES. The same response
+  //    carries `effort_error`, and until now nothing read it — measured: 0 readers in source
+  //    AND in the bundle, while `effort_recorded` beside it had two. A dead instrument makes
+  //    the count look like 0, and 0 reads as "there was no effort", so the silence does not
+  //    produce 「모른다」 — it produces a WRONG NUMBER.
+  // ⚠️ It is noted BEFORE the commit decision and cannot change it: an instrument that refuses
+  //    to record must not also stop the save it was measuring.
+  noteEffortError(resBody && typeof resBody === 'object' ? resBody.effort_error : undefined);
   const recorded = resBody && typeof resBody === 'object' ? resBody.effort_recorded : undefined;
   if (typeof recorded === 'boolean') {
     if (recorded) commit();
