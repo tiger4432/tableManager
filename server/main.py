@@ -7,6 +7,7 @@ from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_
 from database import models, schemas, crud
 import system_reload
 from listing_absence import absent_listing
+from file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 import uuid 
 import os
 import io
@@ -4023,12 +4024,23 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
         "page": page,
         "limit": limit,
         "oldest_failed_at": oldest_failed_at,
+        # 🔴 이 목록의 상태가 아니라 이 «계열이 쓸 수 있는» 상태 어휘다.
+        #    화면의 필터 목록이 여기서 나온다 — 그래서 «로드 때 이미 부르는» 이
+        #    응답이 싣는다. 목록 라우트에 실으면 화면이 «첫 요청»을 보낸 뒤에야
+        #    집합을 알게 돼서, 딝링크가 없는 옵션에 대입하고 «조용히» 실패한다
+        #    (총괄 판정 30 — 「고칠 수 없는 것을 만드나」).
+        "status_vocabulary": list(FILE_INGESTION_STATUS_VOCABULARY),
         "data": result_list
     }
 
 @app.get("/admin/file-ingestion/logs", dependencies=[Depends(require_admin_token)])
 def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
-    """File Ingestion 로그 목록을 페이지네이션하여 반환합니다. status 필터(ALL, SUCCESS, FAILED)를 지원합니다."""
+    """File Ingestion 로그 목록을 페이지네이션하여 반환합니다.
+
+    `status` 는 `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY` 의 한 값이거나
+    `"ALL"`(거르지 않음)입니다. 여기에 상태를 «이름으로 적지 않습니다» —
+    그 목록은 위 상수가 정본이고, 적으면 사본이 된다 (총괄 판정 25·30).
+    """
     query = db.query(models.FileIngestionLog)
     if status != "ALL":
         query = query.filter(models.FileIngestionLog.status == status)
