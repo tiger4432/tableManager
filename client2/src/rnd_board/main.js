@@ -723,6 +723,14 @@ export function bindLoaders(layout, deps) {
                 start: { groupby: 'wafer',
                   value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
                 follow: ['inspected', 'observed', 'of_kind'],
+                // 🔴 라운드 ⓪. 안 적으면 서버 «기본값»(both)을 탑니다 — 즉 이 좌석은 옳은 것이
+                //    아니라 «기본값이 오늘 마침 같은» 것입니다. 옆의 `CANDIDATE_QUESTION` 은
+                //    이미 선언하고 있었고, 여섯 자리 중 넷만 고쳐졌던 것이 이 라운드입니다.
+                // ⚠️ 값은 «재서» 골랐습니다 (판정 50): 이 씨앗·이 follow 로
+                //    outgoing 251 노드 · incoming «1»(씨앗뿐) · both 251.
+                //    incoming 이 1 이라는 것이 이 술어들이 웨이퍼에서 «나간다»는 증거이고,
+                //    그래서 both 는 «넓어서» 같은 게 아니라 «되돌아올 것이 없어서» 같습니다.
+                direction: 'outgoing',
               }).then(trendFromWalk),
               walkHere({
                 start: { groupby: 'wafer',
@@ -764,6 +772,10 @@ export function bindLoaders(layout, deps) {
         bound.loadWaferFacts = (kind, wafer) => walkHere({
           start: { value: entitySeedId('wafer', { wafer: wafer || options.waferQuestion.row }) },
           follow: ['inspected', 'observed', 'of_kind'],
+          // 🔴 라운드 ⓪. 이 자리는 «셉니다»(`waferFactsFromWalk`) — 그래서 기본값에 기대는 것이
+          //    특히 나쁩니다. 잘린 걷기 위에서 센 수는 «조용히 적고», 화면에서 「없어서 적음」과
+          //    「잘려서 적음」이 «같은 수»가 됩니다. 값의 근거는 위 `optionsFor` 와 같습니다.
+          direction: 'outgoing',
           // 🔴 이 곁가지는 «관측만» 봅니다 -- 좌석이 선언한 «자재» 예산을 물려받으면 안 됩니다
           //    (지시: 관측만 보는 자리엔 안 붙인다). 실측으로 좌석 질문이 그대로 새고 있어서
           //    여기서 «명시적으로» 끕니다. null 이면 경계가 안 싣습니다.

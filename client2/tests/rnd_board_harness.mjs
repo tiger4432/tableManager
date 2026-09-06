@@ -33,7 +33,7 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe): no emoji, no em-dash.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
@@ -1264,6 +1264,46 @@ for (const m of MUTANTS) {
     + ` (${red.failures.length} red) -- ${m.what}`);
   record(`${m.id} is caught by ${m.catches}`, hit,
     red.failures.length ? `red instead: ${red.failures.slice(0, 3).join(' / ')}` : 'nothing went red');
+}
+
+// ═══ 라운드 ⓪ — 좌석이 «걷는 방향»을 선언하나 ═══════════════════════════════════════════
+//
+// 🔴 재는 성질이 «선언»입니다 (판정 50). 「수가 움직인다」가 아닙니다 — 실측으로 이 두 자리의
+//    씨앗·follow 에서는 `both` 와 `outgoing` 이 251 노드 · 370 엣지로 «같고» 절단도 없습니다.
+//    그래도 결함인 이유는 좌석이 «서버 기본값에 기대고» 있다는 것입니다: 옳은 것이 아니라
+//    «기본값이 오늘 마침 같은» 것이고, 서버가 기본을 바꾸는 날 조용히 달라집니다.
+// 🔴 그래서 텍스트가 «주어»입니다 — 「이 자리가 선언하나」가 질문 자체입니다. 동작의 «대리»로
+//    텍스트를 쓰는 것이 아니므로 잘라쓰기 금지의 예외에 듭니다 (CLAUDE.md, 단언 단위 판정).
+// ⚠️ 브라우저로 «요청»을 재려 했고 이 두 자리를 «깨우지 못했습니다» — 첫 로드와 마킹 클릭에서
+//    뜬 요청은 전부 이미 선언하던 좌석들이었습니다. 그래서 그 관측은 근거로 «안 씁니다».
+{
+  const CALL = /\b(walkHere|walk)\(\s*\{/g;
+  const none = [];
+  for (const f of readdirSync(BOARD_DIR).filter((x) => x.endsWith('.js'))) {
+    const src = readSourceText(path.join(BOARD_DIR, f)).text;
+    let m;
+    while ((m = CALL.exec(src)) !== null) {
+      const open = src.indexOf('{', m.index);
+      let depth = 0, i = open;
+      for (; i < src.length; i += 1) {
+        if (src[i] === '{') depth += 1;
+        else if (src[i] === '}') { depth -= 1; if (depth === 0) break; }
+      }
+      const body = src.slice(open, i + 1);
+      // 전개(...)는 «위에서 물려받을 수» 있으므로 「안 선언」으로 세지 않습니다 — 물려받는지는
+      // 전개의 출처를 따라가야 알고, 그건 이 단언이 답하는 질문이 아닙니다.
+      if (/\bdirection\b/.test(body) || /\.\.\./.test(body)) continue;
+      none.push(`${f}:${src.slice(0, m.index).split('\n').length}`);
+    }
+  }
+  // 8 은 이 라운드가 남기는 수입니다: 종전 10, 빼기 `optionsFor('y')` 와 `loadWaferFacts`.
+  record(`Z1 walk calls that declare no direction: ${none.length} (ceiling 8, was 10)`,
+    none.length <= 8, none.join(' '));
+  record('Z2 ... and the ceiling is not vacuous — the sweep is unfinished', none.length > 0);
+  // 🔴 남은 여덟 중 «하나»는 정당합니다: 걷기 상자는 «사용자»가 방향을 고르는 자리입니다.
+  //    나머지 일곱은 아직 «안 잰» 것이지 「괜찮다고 판정한」 것이 아닙니다.
+  record('Z3 the walk box is among them, and it is the one that SHOULD not hardcode a direction',
+    none.some((s) => s.startsWith('walk_box_panel.js')), none.join(' '));
 }
 
 for (const f of outerFailures) console.log(`FAIL ${f}`);

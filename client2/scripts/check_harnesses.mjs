@@ -1059,7 +1059,7 @@ const FLOORS = new Map([
   // the board part: control trend
   ['rnd_board_control_trend_harness.mjs', 59],
   // the board shell that seats the parts above
-  ['rnd_board_harness.mjs', 170],
+  ['rnd_board_harness.mjs', 173],
   // the board part: intersection
   ['rnd_board_intersection_harness.mjs', 24],
   // the board part: reach
