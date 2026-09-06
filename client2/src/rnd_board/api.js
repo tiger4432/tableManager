@@ -1702,36 +1702,93 @@ export async function fetchDeclaration(params) {
 }
 
 /**
- * 걷기 검색창 전용 walk. 부품이 «고른 것»을 그대로 받습니다: `{type, keys, follow?, collect}`.
+ * 거절의 «사유»를 서버가 보낸 모양 그대로 한 줄로 폅니다.
+ *
+ * 🔴 실측 2026-09-06: `hops=999` 로 422 를 받으면 서버는 사유를 «정확히» 말합니다 —
+ *    `{"detail": [{"loc": ["query","hops"], "msg": "Input should be less than or equal to 40"}]}`
+ *    그런데 읽는 쪽이 `detail.message` «하나»만 보고 있었습니다. 배열에는 그 칸이 없어
+ *    화면에는 「걷지 못했습니다 (422)」만 떴습니다 — 사유가 «전선에는 있고 화면에는 없는»
+ *    상태이고, 그건 이 함수가 hops 를 안 싣던 것과 «같은 모양»의 결함입니다.
+ *
+ * ⛔ 오류 종류를 낱말로 «적지 않습니다» (계약 INV-F9-7). 문장은 서버가 짓고 여기는
+ *    «돌면서 잇기»만 합니다 — 여기에 「홉이 너무 큽니다」를 쓰면 서버가 한계를 바꾸는 날
+ *    화면만 옛 문장을 말합니다.
+ */
+function refusalSentence(body, status) {
+  const detail = body && body.detail;
+  if (detail && typeof detail.message === 'string') return detail.message;
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((d) => {
+        const where = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : null;
+        return where ? `${where} · ${d.msg}` : String(d.msg || '');
+      })
+      .filter(Boolean)
+      .join(' / ');
+  }
+  if (typeof detail === 'string' && detail) return detail;
+  return `걷지 못했습니다 (${status})`;
+}
+
+/**
+ * 걷기 walk. 부르는 쪽이 «고른 것»을 그대로 받습니다:
+ * `{type, keys, follow?, direction?, hops?, node_limit?}`.
  *
  * 🔴 `createWalk` 을 못 씁니다 -- 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고, 이쪽은
  *    «서버의 노드 종류»입니다. 같은 낱말이 두 뜻이라 섞으면 조용히 빈 답이 됩니다.
- * 🔴 결과는 «COLLECT 된 것»입니다 (소유자: 「결과는 COLLECT된 RETURN으로 보여줘」).
- *    walk 은 노드를 전부 실어 보내므로 «고른 종류»로 거르는 것이 그 문장의 뜻입니다.
+ *
+ * ═══ 🔴 이 함수는 «반쪽만» 배선돼 있었습니다 (2026-09-06 감사 실측) ═══
+ * 부르는 쪽이 `spec.hops` 를 «싣는데»(walk_box_panel.js:230) 여기가 그것을 «안 꺼냈습니다».
+ * 그래서 화면이 「경로 A · 3홉」이라 쓰고 서버 기본값 12홉을 쐈습니다 -- 화면의 문장이
+ * «거짓»이었고, 오류는 안 났습니다. `direction` 도 `node_limit` 도 같은 이유로 안 갔고,
+ * 응답의 `edges` 는 «버려져서» 화면이 엣지 수를 알 방법이 없었습니다.
+ *
+ * 🔵 그래서 규칙은 하나입니다: **부르는 쪽이 준 것은 «전부» 전선에 싣고, 안 준 것은 «안 싣는다».**
+ *    안 실으면 서버 기본값이 답하고, 그건 「이 값을 안 골랐다」의 «정직한» 표현입니다.
+ *    ⛔ 여기서 기본값을 «지어내지» 마십시오 -- 그 순간 두 번째 기본값 저자가 생깁니다.
  */
 export function createWalkBoxWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
-    const { type, keys, follow } = spec || {};
+    const { type, keys, follow, direction, hops, node_limit: nodeLimit } = spec || {};
     if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
     const query = new URLSearchParams();
     query.set('id', entitySeedId(type, keys));
     // 🔴 «안 고르면 안 싣습니다». 빈 배열은 「아무것도 따르지 마라」이고 서버 기본값의 반대입니다.
     (follow || []).forEach((p) => query.append('follow', String(p).split('@')[0]));
+    // 같은 규율로 셋. `0` 은 안 싣습니다 -- 홉 0 도 예산 0 도 서버가 받는 값이 아닙니다.
+    if (direction) query.set('direction', String(direction));
+    if (hops) query.set('hops', String(hops));
+    if (nodeLimit) query.set('node_limit', String(nodeLimit));
     try {
       const res = await doFetch(`${apiBase || ''}/api/ledger/subgraph?${query}`);
       const body = await res.json().catch(() => null);
       if (!res.ok || !body) {
-        const detail = body && body.detail;
-        return { ok: false, message: (detail && detail.message)
-          || `걷지 못했습니다 (${res.status})` };
+        return { ok: false, message: refusalSentence(body, res.status) };
       }
       // 🔴 여기서 «거르지 않습니다». 거르는 것은 walk 이 할 일이고, 부품이 받은 것을
       //    다시 좁히면 그 순간 화면이 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
       const nodes = (body.nodes || [])
         .map((n) => ({ id: n.id, type: n.type, label: n.label }));
-      return { ok: true, nodes, truncated: body.truncated || null };
+      // ⚠️ 엣지는 «모양을 안 바꿉니다». 노드처럼 세 칸으로 줄이면 술어 이름과 수식어가
+      //    사라지고, 그러면 「무엇을 타고 왔나」를 화면이 영원히 못 말합니다.
+      const edges = Array.isArray(body.edges) ? body.edges : [];
+      // 🔴 `truncated` 는 서버가 «항상» 보냅니다 -- 안 잘렸을 때도 객체가 오고 `reason` 만
+      //    null 입니다. 그래서 `if (truncated)` 로 읽으면 «매번» 「절단됨」이 뜹니다.
+      //    자르는 것이 있었나는 `reason` 이 답합니다.
+      const truncated = body.truncated || null;
+      return {
+        ok: true, nodes, edges, truncated,
+        cut: !!(truncated && truncated.reason),
+        // 「닿은 것이 없다」와 「못 물어봤다」를 화면이 가를 수 있게 «둘 다» 나릅니다.
+        state: body.state || null,
+        message: body.message || null,
+        // 🔴 `walk` 가 「몇 홉을 «실제로» 걸었나」를 들고 옵니다. 요청과 같은 자리에서 이것도
+        //    같이 버려지고 있었습니다 -- 즉 hops 가 안 가는 것을 «들킬 수 있는 값»이 함께
+        //    사라졌습니다. 그래서 여기를 고칠 때 이것도 같이 살립니다.
+        walk: body.walk || null,
+      };
     } catch (err) {
       return { ok: false, message: `걷기에 닿지 못했습니다 — ${err && err.message}` };
     }

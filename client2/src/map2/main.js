@@ -476,7 +476,11 @@ export function bootstrap(deps) {
     if (!node || !Array.isArray(options)) return;
     // Rebuilt only when the option set actually changed: replacing the children on every
     // repaint would close an open dropdown mid-choice and lose the operator's place.
-    const signature = options.map(o => o.value).join(' ');
+    // The separator is written as an ESCAPE, not as a literal NUL byte. Same string at
+    // runtime -- and the file stops reading as binary, which was hiding all 2,610 lines of
+    // it from every search tool. A space would NOT be the same fix: values containing a
+    // space would start colliding, and the select would go stale instead of rebuilding.
+    const signature = options.map(o => o.value).join('\u0000');
     if (node.getAttribute('data-me2-options') !== signature) {
       node.textContent = '';
       for (const opt of options) {

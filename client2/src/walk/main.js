@@ -1,58 +1,288 @@
-// 걷기 검색 — «휴대폰»에서 걷기 API 를 사람이 모는 자리.
+// 걷기 검색 — 「걷기 API 에 «폼 채워서 날려 보는» 자리」 (소유자 주문 그대로).
 //
-// 🔴 이 파일이 «새로 만드는 것»은 페이지뿐입니다. 폼은 이미 있습니다.
-//    `WalkBoxPanel` 이 타입 -> 키 -> 목적지 -> follow -> 실행 -> 결과 -> 이력을 전부 그리고,
-//    `follow` 는 «선언의 술어»에서 고른 체크박스입니다 (타이핑이 아닙니다).
-//    그래서 여기는 그 부품에 «자리와 재료»만 줍니다.
+// 🔴 탐색기가 «아닙니다». 마킹 저장소도, 이력 나무도, 줍기(collect) 체인도 없습니다 —
+//    총괄이 그것을 명시적으로 거뒀습니다. 여기 있는 것은 인자를 채우는 칸들과 「날리기」
+//    하나, 그리고 «응답을 보여 주는 자리»뿐입니다.
 //
-// ⚠️ R&D 보드와 «같은 부품»입니다. 이 페이지 때문에 그 파일을 고치면 그 화면이 같이 움직입니다.
-//    그래서 배치는 이 페이지의 CSS 가 감싸고, 부품 파일은 안 건드립니다.
+// ⚠️ R&D 보드의 `WalkBoxPanel` 을 «안 씁니다». 처음에 그것을 앉혔다가 걷어냈습니다:
+//    그 부품은 `direction` · `node_limit` 컨트롤이 «없고», `hops` 는 「고르는 값이 아니라
+//    고른 경로가 데려오는 값」으로 지어져 있습니다(그 파일이 그렇게 적습니다). 이 주문은
+//    셋을 «폼 칸»으로 요구하므로, 그 부품으로는 «고쳐야만» 됩니다 — 그리고 그 파일은
+//    R&D 보드 것이라 못 고칩니다. 그래서 이 페이지가 자기 폼을 갖습니다.
 //
-// 🔴 마킹은 «이 페이지의 것 하나»입니다. R&D 보드는 부품 여럿이 한 저장소를 나눠 쓰지만
-//    여기는 부품이 하나라 나눌 상대가 없습니다 — 그래도 «만들어» 줍니다: 부품이 자기 이력을
-//    마킹에 적기 때문입니다(`historyName()`). 안 주면 이력이 조용히 안 남습니다.
+// 🔴🔴 그런데 «요청을 짓는 것»은 이 페이지 일이 아닙니다 (소유자 2026-09-06, 깔끔 ④:
+//    「같은 기능인데 «두 경로»가 있어서도 안 됨」). 오늘 이 저장소가 그 부류로 결함을
+//    하나 냈습니다 — 걷기 요청을 짓는 함수가 둘이라 한쪽만 `hops` 를 안 실었고, 화면이
+//    「3홉」이라 쓰는 동안 서버는 12홉을 걸었습니다. 오류도 경고도 «0» 이었습니다.
+//    => 그래서 이 페이지는 «폼»만 갖고, 요청은 `createWalkBoxWalk` «하나»가 짓습니다.
+//       세 번째 저자를 만들지 않습니다.
+//
+// 🔵 가져다 쓰는 것 둘. 다시 쓰지 않습니다:
+//      `fetchDeclaration`    무엇을 고를 수 있나는 «선언»이 답합니다. 화면이 목록을 안 듭니다
+//      `createWalkBoxWalk`   전선. 다섯 인자와 응답 키가 «한 자리»에 삽니다
+//                            (씨앗 접기도 그 안입니다 — 여기서 base64 를 다시 적지 않습니다)
+//
+// ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { WalkBoxPanel } from '../rnd_board/walk_box_panel.js';
-import { MarkingStore } from '../rnd_board/marking_store.js';
 import { fetchDeclaration, createWalkBoxWalk } from '../rnd_board/api.js';
+// 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
+//    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
+//    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
+import { ensureWalkStyles } from './styles.js';
+
+/** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
+const DIRECTIONS = ['both', 'outgoing', 'incoming'];
+
+// 🔴 손잡이의 기본값을 «여기 안 적습니다». 적으면 서버가 기본을 바꾸는 날 이 화면만
+//    옛 수를 보여 주고, 그게 오늘 고친 그 병(값의 저자가 둘)입니다. 비워 두면 «안 실리고»,
+//    안 실리면 서버가 정합니다 — 그리고 무엇으로 정해졌는지는 응답의 `walk` 가 말합니다.
+const SERVER_DEFAULT = '서버 기본';
+
+const el = (doc, tag, cls, text) => {
+  const n = doc.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = String(text);
+  return n;
+};
 
 /**
  * @param {Document} doc
- * @param {HTMLElement} host  이 부품이 «소유»하는 div. 페이지가 만듭니다
+ * @param {HTMLElement} host
  * @param {{apiBase?: string, fetchImpl?: Function}} [deps]
  */
 export function boot(doc, host, deps) {
   const options = deps || {};
   const apiBase = options.apiBase || '';
-  const fetchImpl = options.fetchImpl;
+  // 자기 규칙을 «자기가» 들고 앉습니다. 호스트는 아무것도 안 챙깁니다.
+  ensureWalkStyles(doc);
+  const walk = createWalkBoxWalk({ apiBase, fetchImpl: options.fetchImpl });
 
-  // 🔴 선언은 «한 번만» 풉니다 — R&D 보드가 같은 이유로 그렇게 합니다. 다만 «거절은 가두지»
-  //    않습니다: 선언 자체는 안 바뀌어도 「못 읽었다」는 다음 번에 읽힐 수 있고, 실패한 약속을
-  //    캐시하면 이 화면은 영원히 「선언을 못 읽었습니다」가 됩니다.
-  let once = null;
-  const loadDeclaration = () => {
-    if (!once) {
-      once = fetchDeclaration({ apiBase, fetchImpl })
-        .then((got) => { if (!got || !got.ok) once = null; return got; });
-    }
-    return once;
+  const state = {
+    decl: null, declState: 'loading', declReason: '',
+    type: '', keys: {}, follow: new Set(),
+    direction: '', hops: '', nodeLimit: '',
+    run: 'idle', result: null, reason: '',
   };
 
-  const panel = new WalkBoxPanel(host, {
-    doc,
-    markings: new MarkingStore(),
-    // 이력이 사는 이름. 부품이 자기 이름을 짓지만, 읽는 쪽이 «이 페이지에 하나»뿐이라
-    // 여기서 선언해 둡니다 — 부품이 옮겨 갈 때 이 줄만 바뀝니다.
-    reads: 'marking:1',
-    writes: 'marking:1',
-    loadDeclaration,
-    // 🔴 걷기 검색창은 «다른 모양의 walk» 을 받습니다. 이 부품의 collect 는 화면이 선언한
-    //    질문 이름이 아니라 «서버의 노드 종류»이고, 씨앗도 마킹이 아니라 사람이 넣은 키에서
-    //    만들어집니다. 같은 이름이 두 뜻이라 섞으면 오류 없이 «빈 답»이 나옵니다.
-    walk: createWalkBoxWalk({ apiBase, fetchImpl }),
-  });
-  panel.mount();
-  return panel;
+  const entities = () => (state.decl && state.decl.entities) || [];
+  const keysOf = (type) => {
+    const found = entities().find((e) => e.type === type);
+    return (found && found.keys) || [];
+  };
+  // 🔴 술어도 «선언»에서, 그리고 «고른 타입을 주어로 갖는 것»만. 이것이 사람이 배관 낱말을
+  //    몰라도 되는 이유입니다 — 고를 수 있는 것만 보입니다.
+  const followOptions = () => {
+    const all = (state.decl && state.decl.predicates) || [];
+    if (!state.type) return all.map((p) => p.name);
+    return all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
+  };
+
+  /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */
+  function spec() {
+    const out = { type: state.type, keys: state.keys };
+    if (state.follow.size) out.follow = [...state.follow];
+    if (state.direction) out.direction = state.direction;
+    const hops = parseInt(state.hops, 10);
+    if (Number.isFinite(hops)) out.hops = hops;
+    const limit = parseInt(state.nodeLimit, 10);
+    if (Number.isFinite(limit)) out.node_limit = limit;
+    return out;
+  }
+
+  async function fire() {
+    if (!state.type) return;
+    state.run = 'running'; state.result = null; state.reason = ''; render();
+    const res = await walk(spec());
+    if (res && res.ok) { state.run = 'done'; state.result = res; }
+    else {
+      // ⚠️ 실패도 «보여야» 합니다. 빈 화면은 「안 눌렸나」와 구별이 안 됩니다.
+      state.run = 'failed';
+      state.reason = (res && res.message) || '알 수 없음';
+    }
+    render();
+  }
+
+  function field(label) {
+    const box = el(doc, 'div', 'wk-field');
+    box.append(el(doc, 'div', 'wk-label', label));
+    return box;
+  }
+
+  function renderForm(root) {
+    // ── 씨앗: 타입 ──────────────────────────────────────────────────────────────
+    const typeBox = field('노드 타입');
+    const sel = el(doc, 'select', 'wk-select');
+    sel.append(el(doc, 'option', '', '— 고르십시오 —'));
+    for (const e of entities()) {
+      const o = el(doc, 'option', '', e.type);
+      o.value = e.type;
+      if (e.type === state.type) o.selected = true;
+      sel.append(o);
+    }
+    sel.addEventListener('change', () => {
+      state.type = sel.value;
+      // 타입을 바꾸면 그 타입에 «없는» 키와 술어는 따라올 자격이 없습니다.
+      const allowedKeys = new Set(keysOf(state.type));
+      state.keys = Object.fromEntries(
+        Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));
+      const allowed = new Set(followOptions());
+      state.follow = new Set([...state.follow].filter((f) => allowed.has(f)));
+      state.result = null; state.run = 'idle';
+      render();
+    });
+    typeBox.append(sel);
+    root.append(typeBox);
+
+    // ── 씨앗: 키 ────────────────────────────────────────────────────────────────
+    const keyBox = field('키');
+    const keys = keysOf(state.type);
+    if (!state.type) keyBox.append(el(doc, 'div', 'wk-note', '타입을 고르면 키가 나옵니다'));
+    else if (!keys.length) keyBox.append(el(doc, 'div', 'wk-note', '이 타입은 키가 없습니다'));
+    for (const k of keys) {
+      const row = el(doc, 'label', 'wk-keyrow');
+      row.append(el(doc, 'span', 'wk-keyname', k));
+      const input = el(doc, 'input', 'wk-input');
+      input.type = 'text';
+      input.value = state.keys[k] === undefined ? '' : state.keys[k];
+      input.addEventListener('input', () => { state.keys[k] = input.value; });
+      row.append(input);
+      keyBox.append(row);
+    }
+    root.append(keyBox);
+
+    // ── follow ────────────────────────────────────────────────────────────────
+    const followBox = field('follow');
+    const opts = followOptions();
+    if (!opts.length) {
+      followBox.append(el(doc, 'div', 'wk-note', state.type
+        ? `${state.type} 에서 나가는 술어 없음`
+        : '선언에 술어 없음'));
+    }
+    for (const name of opts) {
+      const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
+      row.setAttribute('data-follow', name);
+      const cb = el(doc, 'input');
+      cb.type = 'checkbox';
+      cb.checked = state.follow.has(name);
+      cb.addEventListener('change', () => {
+        if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
+        render();
+      });
+      row.append(cb, el(doc, 'span', '', name));
+      followBox.append(row);
+    }
+    if (opts.length) followBox.append(el(doc, 'div', 'wk-note', `안 고르면 ${SERVER_DEFAULT}`));
+    root.append(followBox);
+
+    // ── 손잡이 셋. 비면 «안 갑니다» — 그 상태를 칸이 «말합니다» ────────────────────
+    const knobs = field('걸음');
+    const dirRow = el(doc, 'label', 'wk-keyrow');
+    dirRow.append(el(doc, 'span', 'wk-keyname', 'direction'));
+    const dir = el(doc, 'select', 'wk-select');
+    dir.append(el(doc, 'option', '', SERVER_DEFAULT));
+    for (const d of DIRECTIONS) {
+      const o = el(doc, 'option', '', d);
+      o.value = d;
+      if (d === state.direction) o.selected = true;
+      dir.append(o);
+    }
+    dir.addEventListener('change', () => { state.direction = dir.value; });
+    dirRow.append(dir);
+    knobs.append(dirRow);
+    for (const [name, key, min, max] of [['hops', 'hops', 1, 40],
+                                         ['node_limit', 'nodeLimit', 10, 5000]]) {
+      const row = el(doc, 'label', 'wk-keyrow');
+      row.append(el(doc, 'span', 'wk-keyname', name));
+      const input = el(doc, 'input', 'wk-input');
+      input.type = 'number';
+      input.min = String(min); input.max = String(max);
+      input.placeholder = SERVER_DEFAULT;
+      input.value = state[key];
+      input.addEventListener('input', () => { state[key] = input.value; });
+      row.append(input);
+      knobs.append(row);
+    }
+    root.append(knobs);
+
+    // ── 날리기 ────────────────────────────────────────────────────────────────
+    const go = el(doc, 'button', 'wk-go', state.run === 'running' ? '걷는 중' : '날리기');
+    go.type = 'button';
+    go.disabled = !state.type || state.run === 'running';
+    go.addEventListener('click', fire);
+    root.append(go);
+  }
+
+  function renderResult(root) {
+    if (state.run === 'idle') return;
+    const box = el(doc, 'div', 'wk-result');
+    if (state.run === 'running') { box.append(el(doc, 'div', 'wk-note', '걷는 중')); }
+    else if (state.run === 'failed') {
+      // 🔴 사유를 «서버의 말»로. 여기서 다시 쓰면 같은 거절이 두 화면에서 달라집니다.
+      const line = el(doc, 'div', 'wk-fail');
+      line.append(el(doc, 'b', '', '실패'), el(doc, 'span', '', ' · ' + state.reason));
+      box.append(line);
+    } else if (state.result) {
+      const r = state.result;
+      box.append(el(doc, 'div', 'wk-counts',
+        `노드 ${r.nodes.length} · 엣지 ${r.edges.length}`));
+      // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다 —
+      //    예산에서 끊겼거나, 그 방향으로 더 갈 것이 없었거나.
+      if (r.walk) {
+        box.append(el(doc, 'div', 'wk-walk',
+          `요청 ${r.walk.hops_requested}홉 · 도달 ${r.walk.hops_reached}홉`
+          + ` · ${r.walk.direction}`));
+      }
+      // ⚠️ 절단은 «말합니다». 안 말하면 잘린 목록이 「전부」로 읽힙니다.
+      if (r.cut) {
+        box.append(el(doc, 'div', 'wk-trunc', `절단됨 · ${r.truncated.reason}`));
+      }
+      // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 그 문장을 들고 오므로 그것을 씁니다.
+      if (!r.nodes.length) {
+        box.append(el(doc, 'div', 'wk-note', r.message || '닿은 노드 없음'));
+      }
+      for (const n of r.nodes.slice(0, 200)) {
+        const row = el(doc, 'div', 'wk-row');
+        row.append(el(doc, 'span', 'wk-rowtype', n.type || '—'));
+        row.append(el(doc, 'span', 'wk-rowlabel', n.label || n.id || ''));
+        box.append(row);
+      }
+      if (r.nodes.length > 200) {
+        box.append(el(doc, 'div', 'wk-note', `이 아래 ${r.nodes.length - 200} 개 안 그림`));
+      }
+    }
+    root.append(box);
+  }
+
+  function render() {
+    host.textContent = '';
+    const root = el(doc, 'div', 'wk-form');
+    if (state.declState === 'loading') {
+      root.append(el(doc, 'div', 'wk-note', '선언 · 읽는 중'));
+    } else if (state.declState === 'failed') {
+      // 「못 읽음」과 「없음」은 다릅니다 — 앞은 다시 눌러 볼 수 있습니다.
+      const line = el(doc, 'div', 'wk-fail');
+      line.append(el(doc, 'b', '', '선언 못 읽음'), el(doc, 'span', '', ' · ' + state.declReason));
+      const again = el(doc, 'button', 'wk-go', '다시');
+      again.type = 'button';
+      again.addEventListener('click', load);
+      root.append(line, again);
+    } else {
+      renderForm(root);
+      renderResult(root);
+    }
+    host.append(root);
+  }
+
+  async function load() {
+    state.declState = 'loading'; render();
+    const got = await fetchDeclaration({ apiBase, fetchImpl: options.fetchImpl });
+    if (got && got.ok) { state.decl = got; state.declState = 'ready'; }
+    else { state.declState = 'failed'; state.declReason = (got && got.message) || '알 수 없음'; }
+    render();
+  }
+
+  load();
+  return { state, spec, fire, render };
 }
 
 // 🔴 부팅은 «이 파일 끝»에서만. bare node 로 이 모듈을 읽어도 DOM 을 안 건드려야
