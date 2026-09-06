@@ -24,7 +24,7 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk } from '../rnd_board/api.js';
+import { fetchDeclaration, createWalkBoxWalk, pathsBetween } from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
@@ -59,10 +59,15 @@ export function boot(doc, host, deps) {
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
-    type: '', keys: {}, follow: new Set(),
+    type: '', keys: {}, follow: new Set(), collect: new Set(),
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
   };
+
+  // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
+  //    `wafer` 로 씁니다 -- 둘을 섞으면 경로가 «0 개»로 나오고, 그 0 은 「길이 없다」와
+  //    구별이 안 됩니다.
+  const bare = (t) => String(t || '').split('@')[0];
 
   const entities = () => (state.decl && state.decl.entities) || [];
   const keysOf = (type) => {
@@ -77,10 +82,30 @@ export function boot(doc, host, deps) {
     return all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
   };
 
+  /**
+   * 시작 타입에서 «고른 도착지»까지 선언이 아는 길. 지어내지 않고 `pathsBetween` 을 씁니다 --
+   * 그 함수가 `{hops, follow, chain}` 을 이미 돌려주고, 같은 follow 를 가진 것은 «가장 짧은
+   * 홉»으로 접어 줍니다.
+   * 🔴 도착지마다 «따로» 냅니다. 합치면 「defect 로 가는 길」과 「die 로 가는 길」이 한 줄에
+   *    섞여, 누른 사람이 «무엇을 향한 길»을 골랐는지 알 수 없게 됩니다.
+   */
+  function routes() {
+    if (!state.decl || !state.type || !state.collect.size) return [];
+    const out = [];
+    for (const to of state.collect) {
+      for (const r of pathsBetween(state.decl, bare(state.type), bare(to))) {
+        out.push({ ...r, to: bare(to) });
+      }
+    }
+    return out.sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length);
+  }
+
   /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */
   function spec() {
     const out = { type: state.type, keys: state.keys };
     if (state.follow.size) out.follow = [...state.follow];
+    // 🔴 `follow` 와 «같은 규율». 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
+    if (state.collect.size) out.collect = [...state.collect];
     if (state.direction) out.direction = state.direction;
     const hops = parseInt(state.hops, 10);
     if (Number.isFinite(hops)) out.hops = hops;
@@ -150,8 +175,62 @@ export function boot(doc, host, deps) {
     }
     root.append(keyBox);
 
+    // ── collect: «무엇을 가져오나» ────────────────────────────────────────────
+    //
+    // 🔴 목록이 시작 타입 드롭다운과 «같은 선언»에서 나옵니다. 사람이 배관 낱말(point ·
+    //    collection · claim …)을 몰라도 되는 이유가 그것입니다 -- 고를 수 있는 것만 보입니다.
+    // 🔵 체크박스입니다. 이 화면의 «여럿 고르기»는 이미 follow 가 체크박스라, 여기만 다중 선택
+    //    드롭다운을 쓰면 같은 일을 하는 컨트롤이 «두 모양»이 됩니다. 그리고 ctrl+클릭 다중
+    //    선택은 「하나 누르면 나머지가 풀리는」 사고가 나는 자리입니다.
+    const collectBox = field('collect · 무엇을 가져오나');
+    const types = entities().map((e) => e.type);
+    if (!types.length) collectBox.append(el(doc, 'div', 'wk-note', '선언에 엔터티 없음'));
+    for (const t of types) {
+      const row = el(doc, 'label', 'wk-check' + (state.collect.has(t) ? ' is-on' : ''));
+      row.setAttribute('data-collect', t);
+      const cb = el(doc, 'input');
+      cb.type = 'checkbox';
+      cb.checked = state.collect.has(t);
+      cb.addEventListener('change', () => {
+        if (state.collect.has(t)) state.collect.delete(t); else state.collect.add(t);
+        render();
+      });
+      row.append(cb, el(doc, 'span', '', t));
+      collectBox.append(row);
+    }
+    if (types.length) collectBox.append(el(doc, 'div', 'wk-note', `안 고르면 ${SERVER_DEFAULT} · 전부`));
+    root.append(collectBox);
+
+    // ── 경로: 시작과 도착지가 정해지면 선언이 «길을 알려 줍니다» ──────────────────
+    //
+    // 🔴 채워 주는 것이지 «뺏는 게 아닙니다». 누르면 아래 follow 체크와 hops 가 채워지고,
+    //    그다음 손으로 고쳐도 됩니다 -- 도출은 출발점이지 잠금이 아닙니다.
+    if (state.type && state.collect.size) {
+      const pathBox = field('경로 · 선언이 아는 길');
+      const found = routes();
+      if (!found.length) {
+        // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
+        pathBox.append(el(doc, 'div', 'wk-note',
+          `${bare(state.type)} 에서 ${[...state.collect].map(bare).join(' · ')} 로 가는 길 없음`));
+      }
+      for (const r of found) {
+        const row = el(doc, 'button', 'wk-path');
+        row.type = 'button';
+        row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
+        row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
+        row.append(el(doc, 'span', 'wk-pathmeta', `${r.hops}홉 · ${r.follow.join(', ')}`));
+        row.addEventListener('click', () => {
+          state.follow = new Set(r.follow);
+          state.hops = String(r.hops);
+          render();
+        });
+        pathBox.append(row);
+      }
+      root.append(pathBox);
+    }
+
     // ── follow ────────────────────────────────────────────────────────────────
-    const followBox = field('follow');
+    const followBox = field('follow · 어느 길로');
     const opts = followOptions();
     if (!opts.length) {
       followBox.append(el(doc, 'div', 'wk-note', state.type
@@ -235,6 +314,25 @@ export function boot(doc, host, deps) {
       // ⚠️ 절단은 «말합니다». 안 말하면 잘린 목록이 「전부」로 읽힙니다.
       if (r.cut) {
         box.append(el(doc, 'div', 'wk-trunc', `절단됨 · ${r.truncated.reason}`));
+      }
+      // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. 수만 보면
+      //    collect 를 건 것과 안 건 것이 같아 보입니다: 둘 다 「노드 N」이니까요.
+      //    ⚠️ 여기서 «거르지 않습니다». 세기만 합니다 -- 거르는 것은 walk 의 일이고,
+      //       화면이 거르면 「서버가 무엇을 줬나」를 영영 못 봅니다.
+      if (r.nodes.length) {
+        const byType = new Map();
+        for (const n of r.nodes) {
+          const t = n.type || '—';
+          byType.set(t, (byType.get(t) || 0) + 1);
+        }
+        const dist = el(doc, 'div', 'wk-dist');
+        dist.append(el(doc, 'span', 'wk-distlabel', '타입'));
+        for (const [t, n] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
+          const chip = el(doc, 'span', 'wk-distchip' + (state.collect.has(t) || state.collect.has(`${t}@1`) ? ' is-asked' : ''));
+          chip.append(el(doc, 'b', '', t), el(doc, 'span', '', ` ${n}`));
+          dist.append(chip);
+        }
+        box.append(dist);
       }
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 그 문장을 들고 오므로 그것을 씁니다.
       if (!r.nodes.length) {

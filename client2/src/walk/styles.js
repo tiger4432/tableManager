@@ -52,6 +52,21 @@ export const WALK_CSS = `
   background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
   border-radius: 8px; }
 .wk-counts { font-weight: 600; }
+/* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. */
+.wk-path { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; width: 100%;
+  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0 0 6px;
+  border: 1px solid var(--line, #e4e4e7); border-radius: 6px; cursor: pointer;
+  background: var(--surface, #fff); color: inherit; font: inherit; }
+.wk-path:hover { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
+.wk-pathchain { font-size: 0.86rem; }
+.wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+/* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
+.wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line, #e4e4e7); font-size: 0.82rem; }
+.wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warn, #b45309); }

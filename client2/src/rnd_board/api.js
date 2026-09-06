@@ -1431,7 +1431,7 @@ const WALK = Object.freeze({
   run: (params) => fetchSubgraph(params).then(subgraphModel),
 });
 
-export const COLLECTS = Object.freeze({
+export const LEGACY_ROUTES = Object.freeze({
   // 기본 트렌드 ① · 맵 ⑤ — 같은 collect. 트렌드는 창 전체를, 맵은 한 그룹을 그립니다.
   // 🔴 좌석 3 을 걷기로 옮겼다가 «되돌렸습니다» (라운드 ①, 2026-08-29). 옮기면 404 는
   //    사라지는데 «컨트롤 바의 종류 축»이 같이 사라집니다 -- 이 좌석은 마킹을 안 읽어
@@ -1511,27 +1511,39 @@ export const COLLECTS = Object.freeze({
  * The one function a part calls. `createWalk` binds WHERE (apiBase) and HOW (fetchImpl) once,
  * at the composition root, so those two never appear in a part again.
  *
- * @returns {(spec: {start?, collect: string}) => Promise<any>}
+ * @returns {(spec: {start?, legacyRoute: string}) => Promise<any>}
  */
 export function createWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const inflight = new Map();
   return function walk(spec) {
-    const { start, collect, ...rest } = spec || {};
+    const { start, legacyRoute, ...rest } = spec || {};
+    // 🔴 `collect` CHANGED HANDS, AND THE OLD KEY IS REFUSED RATHER THAN IGNORED.
+    //    It named a ROW IN THE TABLE BELOW -- a route selector -- and the wire is taking the
+    //    word back for the ledger's own vocabulary (a domain node type). If this key merely
+    //    fell into `rest`, `fetchSubgraph` would drop it on its fixed parameter list and a
+    //    seat still written the old way would ask a different question in silence. A refusal
+    //    costs one round trip of nobody's time and cannot be misread.
+    // ⏭ This guard is the RENAME's, not the feature's: the round that lets a seat declare a
+    //    domain type replaces it with forwarding, and it must be removed in that same commit.
+    if (rest.collect !== undefined) {
+      return Promise.reject(new Error('walk: `collect` 는 이제 전선의 낱말입니다 — '
+        + `라우트 이름은 \`legacyRoute\` 로 부르십시오 (받은 값: ${rest.collect})`));
+    }
     // 🔴 NO NAME IS THE WALK ITSELF (round Z, 2026-08-28). A seat that declares `follow` has
     // stated its question in the LEDGER's words -- which predicates to walk from which marking
-    // -- and needs no row in `COLLECTS`. What is left in that table is exactly the seats that
+    // -- and needs no row in `LEGACY_ROUTES`. What is left in that table is exactly the seats
     // still name a ROUTE, so the table shrinking to nothing is the round's own measure.
     //
     // WHY THE TABLE WAS THE DEFECT AND THE DELETED ROUTES WERE NOT: a seat naming `map` or
     // `wafer_process` is naming a place on the server, so when that place went the seat went
     // 404 whole. A seat naming `[observed, inspected, bonded_from]` names things the
     // declaration owns, and a walk answers it.
-    const declared = collect ? COLLECTS[collect] : WALK;
+    const declared = legacyRoute ? LEGACY_ROUTES[legacyRoute] : WALK;
     // A collect nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
     // here would let a part draw 「없음」 for a question that was never asked.
-    if (!declared) return Promise.reject(new Error(`walk: 선언되지 않은 collect — ${collect}`));
-    const key = JSON.stringify([collect, start || null, rest]);
+    if (!declared) return Promise.reject(new Error(`walk: 선언되지 않은 legacyRoute — ${legacyRoute}`));
+    const key = JSON.stringify([legacyRoute, start || null, rest]);
     const joined = inflight.get(key);
     if (joined) return joined;
     const running = Promise.resolve()
@@ -1751,12 +1763,18 @@ export function createWalkBoxWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
-    const { type, keys, follow, direction, hops, node_limit: nodeLimit } = spec || {};
+    const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit } = spec || {};
     if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
     const query = new URLSearchParams();
     query.set('id', entitySeedId(type, keys));
     // 🔴 «안 고르면 안 싣습니다». 빈 배열은 「아무것도 따르지 마라」이고 서버 기본값의 반대입니다.
     (follow || []).forEach((p) => query.append('follow', String(p).split('@')[0]));
+    // 🔴 `collect` — 「무엇을 «가져오나»」. `follow` 가 길이면 이것이 짐입니다.
+    //    같은 규율입니다: 안 고르면 «안 싣고», 안 실으면 서버가 전부 줍니다. 그래서 이 줄이
+    //    붙어도 오늘 도는 화면의 요청은 «한 글자도» 안 바뀝니다.
+    // ⚠️ 이것은 좌석 선언의 `legacyRoute`(표의 행 이름)와 «다른 축»입니다 — 이쪽이 전선의
+    //    낱말이고, 그래서 그쪽이 이름을 비켰습니다.
+    (collect || []).forEach((t) => query.append('collect', String(t).split('@')[0]));
     // 같은 규율로 셋. `0` 은 안 싣습니다 -- 홉 0 도 예산 0 도 서버가 받는 값이 아닙니다.
     if (direction) query.set('direction', String(direction));
     if (hops) query.set('hops', String(hops));
