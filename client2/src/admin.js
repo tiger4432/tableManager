@@ -10,6 +10,7 @@ import { localeCountText } from './absent.js';
 import { errorText } from './body_error.js';
 // 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
 import { absentPath } from './absent_listing.js';
+import { retryVerdict, retryMessage } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -3862,8 +3863,12 @@ function selectFileRow(log, bodyEl = fileListBody) {
 
   diagnosticsTitle.textContent = '🔍 File Ingestion Diagnostics';
   tracebackTitle.textContent = 'Ingestion Error Message';
+  // 🔴 「SUCCESS 아니면 danger」였습니다. 그러면 «대기»가 «실패»로 그려집니다 --
+  //    운영자는 고칠 것이 있다고 읽고, 실제로는 워처를 기다리는 중입니다.
   tracebackSeverity.textContent = log.status || 'FAILED';
-  tracebackSeverity.className = log.status === 'SUCCESS' ? 'badge badge-success' : 'badge badge-danger';
+  const severityTone = retryVerdict(log.status).tone;
+  tracebackSeverity.className = 'badge badge-'
+    + (severityTone === 'ok' ? 'success' : (severityTone === 'danger' ? 'danger' : 'warning'));
   tracebackSeverity.style.display = 'inline';
 
   tracebackViewer.textContent = log.error_message || 'No error traceback log captured (File ingested successfully).';
@@ -4157,14 +4162,21 @@ async function retryFileIngestion(logId) {
     const result = await res.json().catch(() => ({}));
 
     await fetchData({ silent: true });
-    const stillFailed =
-      (currentTab === 'file' && fileData.some(f => f.id === logId && f.status === 'FAILED')) ||
-      (currentTab === 'autoupdate' && linkedFailLogs.some(f => f.id === logId));
-    if (stillFailed) {
-      showToast(`⚠️ 파일 인제션 ID #${logId} 재시도가 다시 실패했습니다. 오류 메시지를 확인하세요.`, 'warning');
-      return;
-    }
-    showToast(`✅ 파일 인제션 ID #${logId} 재시도 완료 — ${result.message || '실패 목록에서 해제되었습니다.'}`, 'success');
+    // 🔴 THE OUTCOME IS READ FROM THE ROW'S STATE, NOT FROM ONE STATE'S ABSENCE.
+    //    This asked 「is it still FAILED」 and called everything else a success. In decoupled
+    //    mode the route does not retry -- it marks the row `PENDING_RETRY` for a separate
+    //    watcher -- and that state is not FAILED, so a job that had not started reported
+    //    「완료」. The states are three and the verdict now has three answers.
+    //
+    // ⚠️ AND A ROW THAT LEFT THE PAGE IS NOT A ROW THAT SUCCEEDED. When the refreshed
+    //    page no longer carries this id (another filter, another page), the state is UNKNOWN
+    //    and is reported as such rather than as the success the old shape assumed.
+    const refreshed = fileData.find(f => f.id === logId);
+    const stillLinked = currentTab === 'autoupdate'
+      && linkedFailLogs.some(f => f.id === logId);
+    const status = stillLinked ? 'FAILED' : (refreshed ? refreshed.status : null);
+    const said = retryMessage(status, result.message);
+    showToast(`${said.text.replace(/^(.)\s*/, '$1 ')} (ID #${logId})`, said.tone);
   } catch (err) {
     console.error('Failed to retry file ingestion', logId, err);
     showToast('❌ 파일 인제션 재시도 요청 실패', 'error');
