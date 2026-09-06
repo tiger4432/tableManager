@@ -29,6 +29,7 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween } from '../rnd_board/
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
+import { bareName, followFromRoute, followChoices } from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -66,8 +67,8 @@ export function boot(doc, host, deps) {
 
   // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
   //    `wafer` 로 씁니다 -- 둘을 섞으면 경로가 «0 개»로 나오고, 그 0 은 「길이 없다」와
-  //    구별이 안 됩니다.
-  const bare = (t) => String(t || '').split('@')[0];
+  //    구별이 안 됩니다. 술어에서도 «같은 함정»이라, 그 규칙은 `derive.js` 한 곳에 삽니다.
+  const bare = bareName;
 
   const entities = () => (state.decl && state.decl.entities) || [];
   const keysOf = (type) => {
@@ -81,11 +82,8 @@ export function boot(doc, host, deps) {
     const all = (state.decl && state.decl.predicates) || [];
     if (!state.type) return all.map((p) => p.name);
     const fromHere = all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
-    // 🔴 «고른 것은 언제나 보입니다». 이 목록은 「시작 타입에서 나가는 술어」인데, 도출된 경로는
-    //    «뒤쪽 홉»의 술어도 씁니다 — wafer -inspected-> die -observed-> defect 에서 `observed` 의
-    //    주어는 die 라 이 목록에 «없습니다». 합치지 않으면 체크는 켜져 있고 화면에는 안 보이는,
-    //    「보낼 것을 화면이 숨기는」 상태가 됩니다.
-    return [...new Set([...fromHere, ...allPredicates().filter((n) => state.follow.has(n))])];
+    // 규칙과 그 사유는 `derive.js` 에 있습니다 — 하니스가 «그 함수»를 재기 때문입니다.
+    return followChoices(fromHere, allPredicates(), state.follow);
   };
 
   /**
@@ -226,12 +224,8 @@ export function boot(doc, host, deps) {
         row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
         row.append(el(doc, 'span', 'wk-pathmeta', `${r.hops}홉 · ${r.follow.join(', ')}`));
         row.addEventListener('click', () => {
-          // 🔴 도출은 «bare» 이름(`observed`)을 주고 체크박스는 «선언 철자»(`observed@1`)를 씁니다.
-          //    그대로 넣으면 어느 상자도 안 켜지고 hops «만» 채워집니다 — 실측으로 잡았습니다
-          //    (2026-09-06 브라우저: hops=2 는 들어갔고 체크는 «0»). 같은 `@1` 함정이 타입에
-          //    이어 술어에서 «한 번 더» 났습니다.
-          const wanted = new Set(r.follow.map(bare));
-          state.follow = new Set(allPredicates().filter((n) => wanted.has(bare(n))));
+          // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
+          state.follow = new Set(followFromRoute(allPredicates(), r.follow));
           state.hops = String(r.hops);
           render();
         });
