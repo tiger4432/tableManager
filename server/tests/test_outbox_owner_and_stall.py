@@ -82,7 +82,20 @@ class _Runs:
 
 def run_row(op="ledger_backfill", state=retroactive.RUN_RUNNING,
             started_ago=3600.0, progressed_ago=None, params='{"source": "lot_event"}',
-            requested_by="kim", queued_ago=7200.0):
+            requested_by="kim", queued_ago=7200.0, runner=None):
+    """A stand-in for one `RetroactiveRun`.
+
+    ⚠️ IT HAS TO CARRY EVERY FIELD THE READER TOUCHES. A `SimpleNamespace` raises
+    `AttributeError` for anything it was not given, so a column added to the real row and
+    to `in_flight` kills this whole file - not one assertion, the import-time collection of
+    every test in it. `runner` landed on 2026-09-06 and did exactly that: seven tests here
+    died on a field none of them is about.
+
+    🔴 `None` IS THE DEFAULT AND IS A REAL VALUE. Rows written before the column existed
+    have no runner, and `in_flight` reports that as `None` rather than guessing - so the
+    default here is the same "unknown", not a placeholder name that would make every test
+    silently exercise the identified case.
+    """
     now = datetime.now(timezone.utc)
     return types.SimpleNamespace(
         run_id="abc123", op=op, state=state,
@@ -92,6 +105,7 @@ def run_row(op="ledger_backfill", state=retroactive.RUN_RUNNING,
         started_at=now - timedelta(seconds=started_ago),
         last_progress_at=(None if progressed_ago is None
                           else now - timedelta(seconds=progressed_ago)),
+        runner=runner,
         processed_rows=10, total_rows=None)
 
 
