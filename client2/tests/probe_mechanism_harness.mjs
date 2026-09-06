@@ -18,7 +18,7 @@
 //    아무도 모릅니다.
 //
 // Run: node client2/tests/probe_mechanism_harness.mjs
-import { loadWithProbe, MARK, isProbeArtifact } from './lib/probe.mjs';
+import { loadWithProbe, MARK, isProbeArtifact, isOwnProbeArtifact } from './lib/probe.mjs';
 import { readdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -177,9 +177,13 @@ function runsAndDies(body, label) {
 //    남으면 추적 안 되는 파일이 `src/` 에 서고, 다음 사람의 git status 에 «남의 것»처럼 보입니다.
 console.log('\n[6] it leaves nothing behind');
 {
+  // 🔴 MINE, not everyone's. The gate runs harnesses concurrently and their artifacts live in
+  //    this same directory, so asserting the directory is empty of ALL artifacts makes this
+  //    harness fail whenever a sibling happens to be mid-import — which is a true statement
+  //    about the clock, not about the mechanism. What this harness owns is what it wrote.
   const strays = readdirSync(SRC_DIR)
-    .filter((f) => isProbeArtifact(f));
-  eq('no probe copy survives the imports above', strays, []);
+    .filter((f) => isOwnProbeArtifact(f));
+  eq('no probe copy of MINE survives the imports above', strays, []);
   const here = readdirSync(HERE).filter((f) => f.startsWith('.probe_guard_'));
   eq('and no guard script survives either', here, []);
 }
