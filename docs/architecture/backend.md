@@ -118,7 +118,8 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 - 영구 실패 문구가 이유를 말한다: *"That is a permanent local misconfiguration, not an environment outage - retrying cannot take a port away from the process that owns it."* + 한국어 조치(기존 스택이면 그대로 쓰고, 중복이면 PID 종료 후 재시작).
 
 **③ 자식 stdout를 파일로 받는다.** `ChildSpec(log_file=...)`이 선언되면 `Popen(stdout=PIPE, stderr=STDOUT)` + `PYTHONUNBUFFERED=1`로 띄우고, 데몬 스레드 `logpump-<name>`이 **디코딩 없이 바이트 그대로** 파일과 콘솔에 동시 기록한다(줄마다 flush). 시작마다 `=== <name> started <시각> pid=<pid> cmd=<...> ===` 헤더가 들어간다. 🔴 **바이트 통과가 설계다** — 자식이 cp949로 찍든 UTF-8로 찍든 런처가 재해석하지 않는다.
-- 파일은 데이터 루트(`paths.log_path`): `server_stdout.log` · `watcher_stdout.log` · `graph_sync_stdout.log` · `chain_worker_stdout.log` · `auto_update_stdout.log` · `desktop_client_stdout.log`.
+- 파일은 데이터 루트(`paths.log_path`)에 **다섯**: `server_stdout.log` · `watcher_stdout.log` · `chain_worker_stdout.log` · `auto_update_stdout.log` · `desktop_client_stdout.log`.
+  - ⚰️ **`graph_sync_stdout.log` 는 «없습니다»** — 그 자식(Graph DB Sync Worker)은 2026-08-14 은퇴했고(`R-2026-08-14-H`, 묘비는 `run_decoupled_app.py:318-324`), 런처가 선언하는 `log_file` 은 **다섯뿐**입니다. 🔴 이 줄이 «여섯»을 적고 있던 동안, 인시던트에서 「그 로그가 비어 있다」가 **«부재의 증거»로 읽힐 수 있었습니다** — 애초에 만들어지지 않는 파일입니다.
 - 보관은 **자식당 20 MB + `.1` 백업 하나**(`CHILD_LOG_MAX_BYTES`, `os.replace`로 회전) — 즉 최대 40 MB. 회전 실패는 원본을 다시 열 뿐 출력을 버리지 않는다.
 - **캡처 실패는 치명적이지 않다**(`WARNING` 후 자식은 계속 돈다). ⚠️ 이 경로가 없던 동안 **자식의 bind 에러는 어디에도 안 남았다** — "왜 안 뜨는가"의 답이 콘솔 스크롤 밖으로 사라지는 자리였다.
 
