@@ -44,6 +44,9 @@ import { buildViewModel, VIEW_STATE, CROSS_SOURCE_ROW_ID, WORDS, CAUSE, ATTRIBUT
          decisionKeyRefusal, DECISION_KEY, UNKNOWN } from './view_model.js';
 import { decideVerdict } from './verdict_bridge.js';
 import { parseCandidateId, candidateList } from './candidates.js';
+// F-19: 「프레임이 있나」와 「사람이 확정했나」를 가르는 «한 판정». 클로저 밖에 사는 이유는
+// 하니스가 DOM 없이 그것을 채점하기 위해서입니다.
+import { sourceFrameAttestation } from './attestation.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext, INDEX_WALK_READY, INDEX_WALK_ABSENT,
          INDEX_WALK_TRUNCATED, INDEX_WALK_POOLED, INDEX_WALK_INCONSISTENT } from './decode.js';
@@ -758,13 +761,11 @@ export function bootstrap(deps) {
       //    silently move the picture as well as the
       //    label. A confirmation is not a selection; this round changes what the row SAYS and
       //    nothing about what the canvas shows.
-      const confirmed = !declared && src.confirmed_candidate_id ? src.confirmed_candidate_id : null;
-      row.setAttribute('data-me2-attest',
-        declared ? 'declared' : (confirmed ? 'confirmed' : 'none'));
-      setChildText(row, '[data-me2-source-value]',
-        declared ? spellFrame(declared)
-          : confirmed ? `✓ ${spellFrame(confirmed)}`
-            : '고르지 않음');
+      // 🔴 F-19. The attribute and the sentence come from ONE decision, in `attestation.js`,
+      //    so they cannot drift apart and so the gate can score them without a DOM.
+      const attestation = sourceFrameAttestation(src, spellFrame);
+      row.setAttribute('data-me2-attest', attestation.attest);
+      setChildText(row, '[data-me2-source-value]', attestation.text);
       // Same rule as the count slots above: write a number or write nothing. The page's
       // three-sibling pattern already shows `미상` in the states where no number was measured.
       const card = declared ? vm.candidates.find(c => c.id === declared) : null;
@@ -2247,6 +2248,12 @@ export function adaptPayload(raw) {
           //    a human confirmed. So: its own field, read only by the label.
           confirmed_candidate_id:
             s.declaredFrameSource === CONFIRMED ? s.declaredFrame : null,
+          // 🔴 F-19. The FRAME above stays exactly as it was — it is real for a chain-stamped
+          //    map too, and dropping it would make the row read 고르지 않음 about a frame that
+          //    exists. What was wrong is the CONFIRM MARK, which the token cannot decide because
+          //    the chain mappers stamp the same one. This boolean is the only thing that
+          //    separates them, so it travels beside the value instead of replacing it.
+          confirmed_by_person: s.confirmedByPerson === true,
           // 🔴 WHAT THIS MAP SAYS ABOUT ITS OWN GEOMETRY, AND WHAT THIS RUN ACTUALLY STOOD ON.
           //    Two fields because they can disagree, and the disagreement IS the fact: a map
           //    whose own geometry is `absent` but whose basis is `assumed` was scored on the

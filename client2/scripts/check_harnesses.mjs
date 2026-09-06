@@ -743,6 +743,7 @@ const FLOORS = new Map([
   // 42 -> 60 is +18 and every one of them is new coverage, not a re-count: A6 (1), A7/A7b/A7c on
   // each of the four turns (12), A8 (1), and B3b on each turn (4). Nothing was removed.
   ['map2_placement_seat_harness.mjs', 60],
+  ['map2_attestation_harness.mjs', 19],
   //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
