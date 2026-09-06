@@ -8816,3 +8816,69 @@ change_count              «0 아닙니다» — 클라 넷(api·clipboard·main
 판정 대기: 🔴 `deleted_row_ids_omitted` — 빼기입니까 «퍼뜨리기»입니까 (제 측정은 후자) ·
           🔴 위 「경로 둘」 둘 중 착수할 것 · ★ 깊이(D)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【④-1】 정본 함수 하나 — 착지 `bffa792b`
+
+## 흐름 / 이음매 · 「깔끔」
+```
+흐름 ② 원장 -> 화면 · 이음매 「서버 브로드캐스트 -> websocket.js」
+움직인 「깔끔」 — 🔴 **④ 같은 기능에 두 경로 없음** (아홉 -> 하나)
+                 그리고 ③ 분기 중첩도 «조금» — main.py 의 dict 리터럴 여섯이 호출 한 줄이 됐습니다
+```
+
+## 이 라운드가 «뺀» 것 — **파일 0 · 줄 «−51» · 축 0**
+```
+insertions 173 · deletions 51   (신규 시험 109줄이 insertions 의 대부분입니다)
+시험을 빼고 «제품 코드»만 세면:  +64 / −51
+   그중 +45 는 event_constants 의 정본 함수(주석 포함)이고, 아홉 자리에서 51줄이 없어졌습니다
+```
+⛔ 부풀리지 않겠습니다 — 순감이 아닙니다. 「짓는 자리」가 아홉에서 하나가 된 것이 값입니다.
+
+## ⛔ 페이로드는 «한 키도» 안 바뀌었습니다
+```
+일곱   {event, table_name, change_count}
+하나   + deleted_row_ids_omitted
+하나   + transaction_id, created_logs, total_log_count
+=> 셋 다 «필드 대 필드»로 재현되는지 단언했습니다. 모양 통일은 «경계 계약»이라 이번 것이 아닙니다
+```
+
+## ⚠️ `is not None` 이지 truthiness 가 «아닙니다» — 이 라운드에서 제일 미끄러운 자리였습니다
+```
+빈 created_logs · 0 인 total_log_count · 0 인 deleted_row_ids_omitted
+   truthiness 로 걸렀으면 «조용히 사라집니다»
+   -> 그러면 「아무것도 안 잘렸다」와 「이 발신자는 잘림을 말하지 않는다」가 «같아 보입니다»
+   -> 이 저장소가 이틀 내내 닫아 온 그 부류입니다. 단언 셋으로 박았습니다
+change_count 0 도 같습니다 — 스윕 복구가 «일부러» 0 을 보냅니다
+```
+
+## 게이트
+```
+① 손으로 짓는 리터럴 «0»   main.py 0 · chain_ingestion_worker.py 0
+   🔴 ast «파싱»으로 셌습니다 — 앞 라운드에서 정규식이 안쪽 item dict 를 바깥 키로 세어
+      제 수를 틀리게 만든 적이 있어서, 같은 계측기를 두 번 쓰지 않았습니다
+② 세 모양 재현            필드 대 필드로 일치
+③ 이웃 스위트             39 통과 (batch_response_log_budget · broadcast_recovery ·
+                          undelivered_marker_seam · a_control_event_names_no_table)
+```
+🔵 그리고 「같은 것 둘」의 실물이 하나 있었습니다 — `len(changed_rows)` 두 자리가 «완전히 동일한»
+   리터럴이라 한 번에 바꿨습니다. 그게 이 라운드가 없애는 그 중복 자체입니다.
+
+## ⏭ 다음 (지시 ③-2) — 준비됐습니다
+```
+created_logs <= 5000 가드 «다섯»에 잘림을 «말하게» — deleted_row_ids_omitted 모양 그대로
+🔵 이제 «한 자리»만 고치면 됩니다. 총괄이 순서를 그렇게 잡으신 이유가 여기서 나옵니다
+⛔ 아직 안 했습니다 — 이번 커밋의 게이트가 「페이로드 무변동」이라 같이 하면 그 게이트가 흐려집니다
+```
+
+## 📌 「경로 둘」 — 지시 ③-3 은 «세기만»
+```
+trigger_ws_refresh(main.py:460)  vs  sync_refresh_callback(main.py:5646)
+   시그니처 «동일»: (t_name/table_name, count, created_logs=None, total_log_count=None)
+   둘 다 이제 «같은 정본 함수»를 부릅니다 -> 페이로드는 더 이상 갈라질 수 없습니다
+   ⚠️ 다만 «남은 몸통»이 같은 일인지는 아직 안 쟀습니다. 그게 다음 판정 재료입니다
+```
+
+판정 대기: ③-2 착수 (준비됨) · ③-3 의 두 콜백을 합칠지 (몸통 비교 필요) · ★ 깊이(D)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
