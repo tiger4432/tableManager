@@ -5969,6 +5969,10 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         ({"table": reference.get("table"), "map_id": reference.get("map_id")}
          if reference.get("table") else None),
         basis_why)
+    #: 이 요청의 기준 마스크 — «한 번» 만들어 맵마다 쓴다(상자는 (프레임 축, 마스크) 단위로 캐시된다).
+    _origin_mask = (map_overlay.die_mask_from_reference(reference.get("meta"),
+                                                       reference.get("cells"))
+                    if isinstance(reference.get("meta"), dict) else frozenset())
     assumption = {
         "state": a_state,
         "requested": bool(assume_reference_geometry),
@@ -6040,6 +6044,17 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
                           #    적으면 축별 답과 맵별 답이 갈릴 수 있다.
                           confirmed_by_person=map_overlay.confirmed_by_person(
                               sm.get("meta")),
+                          # 🔴 「이 원점이 «무엇 위에» 섰나」 — «맵별» 한 칸. 바로 아래
+                          #    `geometry_basis` 는 「«기하»가 무엇 위에 섰나」이고 둘은
+                          #    «직교»한다 — 규격이 `declared` 인 맵도 원점은 원으로 물러난다.
+                          # 🔴 판정은 `map_overlay` «한 자리»에서 온다. 여기서 다시 유도하면
+                          #    「상자」와 「그 상자의 이름」이 갈리고, 갈려도 «오류가 안 난다».
+                          # ⚠️ 마스크가 «잘렸으면»(§`reference.truncated`) 이 토큰은 «잘린
+                          #    마스크»를 말한다 — 그것이 옳다. 이 칸은 「이상적으로 무엇 위에
+                          #    섰어야 하나」가 아니라 «상자가 실제로 무엇 위에서 만들어졌나»
+                          #    이고, 상자 자신이 «같은 재료»로 만들어진다.
+                          origin_basis=map_overlay.origin_box_basis(
+                              sm.get("meta"), _origin_mask),
                           # [D6] 바닥 메타를 함께 넘긴다 — 격자만 빌린 맵은 phys가 `declared`
                           # 여서 이 인자 없이는 「선언 위에 섰다」고 답한다.
                           geometry_basis=geometry_basis_of(

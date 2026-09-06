@@ -1192,6 +1192,38 @@ def die_mask_from_reference(ref_meta: dict, ref_cells) -> frozenset:
     return frozenset(out)
 
 
+# ---------------------------------------------------------------------------
+# 원점 상자가 «무엇 위에» 섰나 — 이 파일의 다른 어휘와 «다른 질문»이다
+# ---------------------------------------------------------------------------
+# 🔴 왜 새 토큰인가 (판정 37 · 48). 전수를 먼저 셌고, 겹치는 것이 «하나» 있었다:
+#   · `SOURCE_CIRCLE`/`SOURCE_REF`/`SOURCE_REFUSED` (§resolve_valid_die_basis) 는
+#     「유효 다이 «마스크»가 어디서 왔나」다. 세 갈래 중 «둘»을 이미 이름 대지만
+#     `SOURCE_REF` 인데 원점은 «원»인 맵이 실재한다 — 마스크가 이 격자를 빗나가면
+#     그렇다(아래 `ORIGIN_BOX_MASK_OFF_GRID`). 두 이름이 «어긋나는» 그 자리가
+#     이것이 사본이 아니라는 판별식이고, 게이트가 그 표본으로 채점한다.
+#     ⛔ 그렇다고 그 트리오에 «넷째 값»을 더하지 않는다 — 계약 심볼이고
+#        클라 `validDieBasis()` 가 «같은 벡터»로 채점된다. 판정 29 와 같은 부류다.
+#   · `GEOMETRY_*` 는 「기하(웨이퍼·칩 규격)의 출처」다. 원점과 «직교»한다 —
+#     규격이 `declared` 인 맵도 원점은 원으로 물러날 수 있다.
+#   · `ALIGN_ORIGIN_*` 는 「«어떻게» 얻었나(방법)」이고 이것은 「«무엇 위에» 섰나(기준)」다.
+#     ⚠️ `ALIGN_ORIGIN_UNRESOLVABLE` 을 «재사용하지 않는다». 더 이상 발화하지 않아
+#        빈 자리처럼 보이지만, 채우면 «죽은 낱말에 새 뜻»이라 grep 에는 살아 보인다.
+#
+# 🔴 왜 «여기» 사는가. 이 사실을 싣는 경로가 «둘»이다 — 응답(`map_alignment` 의 `maps[]`)과
+#    저장 메타(`dt_frame_transform` 의 DT/core 식, S-22). 둘 다 이 모듈을 import 하고
+#    이 모듈은 둘 중 아무것도 import 하지 않는다. 응답을 «빚는» 모듈에 두면 저장 경로가
+#    그것을 import 하게 되어 방향이 뒤집힌다. 그리고 «판정은 한 자리»여야 한다 —
+#    나중에 저쪽에서 다시 지으면 그때 철자가 둘이 된다.
+ORIGIN_BOX_MASK = "mask"                    # 유효 다이 마스크가 상자를 정했다
+ORIGIN_BOX_CIRCLE = "circle"                # 마스크가 «없어» 웨이퍼 원이 정했다 (정상이고 흔하다)
+ORIGIN_BOX_MASK_OFF_GRID = "mask_off_grid"  # 마스크는 «있는데» 이 격자에 한 칸도 안 앉았다
+# ⚠️ 넷째는 「값이 셋」의 예외가 아니라 그 «근거가 요구하는» 것이다. 판정 48 이 셋으로 정한
+#    이유가 「칸의 «없음»이 「옛 서버」 하나만 뜻하게」이고, 그러려면 상자를 «못 만든» 맵에도
+#    실을 값이 있어야 한다. 격자 없는 맵은 `maps[]` 에 실재로 들어온다(§stamp_meta_refusal 이
+#    `meta is None` 을 다룬다). 값을 안 주면 그 칸의 부재가 다시 «두 뜻»이 된다.
+ORIGIN_BOX_ABSENT = "absent"                # 격자가 없어 «상자 자체»가 없다
+
+
 def origin_box(meta: dict, die_mask=None):
     """이 맵의 **원점 상자** — 저장 좌표가 상대적으로 표현되는 그 사각형.
 
@@ -1216,32 +1248,60 @@ def origin_box(meta: dict, die_mask=None):
        분기와 같은 판단이다. 빈 상자는 `(0,0,0,0)`으로 무너져 좌표계 전체를 조용히 옮긴다:
        미상은 0이 아니다.
     """
+    return origin_box_with_basis(meta, die_mask)[0]
+
+
+def origin_box_with_basis(meta: dict, die_mask=None):
+    """상자 «와» 그 상자가 무엇 위에 섰나 — `(box, ORIGIN_BOX_*)`.
+
+    🔴 **갈래를 정하는 자리는 여기 하나다.** `origin_box` 는 이 함수의 «앞 절반»이고,
+       왜 갈래가 이 모양인지는 그쪽 docstring 이 답한다(§`origin_box`). 두 번째로 유도하면
+       「상자는 마스크가 정했다」와 「무엇 위에 섰다고 말한다」가 갈릴 수 있고, 갈려도
+       «오류가 안 난다».
+    """
     grid = _grid_of(meta)
     if grid is None:
-        return None
+        return None, ORIGIN_BOX_ABSENT
     tf = _frame_transformer(meta, grid)
     if not die_mask:
-        return tf.get_wafer_bounding_box()
+        return tf.get_wafer_bounding_box(), ORIGIN_BOX_CIRCLE
     # [스케일] 격자 전 셀 1회 훑기(실 격자는 최대 100x100 안팎)이고, 한 판의 여러 소스 맵이
     # 같은 마스크를 공유하므로 (프레임 축, 마스크) 단위로 캐시한다. 셀 단위 반복 호출로
     # 떨어지는 경로는 없다 — `circle_die_mask`와 같은 규율이다.
     key = (frame_axes(meta), die_mask)
     hit = _ORIGIN_BOX_CACHE.get(key)
     if hit is not None:
-        return hit
+        #: 캐시에 «드는» 갈래가 아래 하나뿐이라 적중은 「마스크가 정했다」와 동치다.
+        return hit, ORIGIN_BOX_MASK
     cells = [(c, r)
              for r in range(tf.visual_rows) for c in range(tf.visual_cols)
              if tf.cell_to_physical(c, r) in die_mask]
     if not cells:
         logger.warning("[OriginBox] the valid-die mask has no cell inside this grid — "
                        "the origin box falls back to the wafer circle (coordinates unchanged)")
-        return tf.get_wafer_bounding_box()
+        return tf.get_wafer_bounding_box(), ORIGIN_BOX_MASK_OFF_GRID
     box = (min(c for c, _ in cells), max(c for c, _ in cells),
            min(r for _, r in cells), max(r for _, r in cells))
     if len(_ORIGIN_BOX_CACHE) >= _ORIGIN_BOX_CACHE_MAX:
         _ORIGIN_BOX_CACHE.clear()
     _ORIGIN_BOX_CACHE[key] = box
-    return box
+    return box, ORIGIN_BOX_MASK
+
+
+def origin_box_basis(meta: dict | None, die_mask=None) -> str:
+    """이름«만», 그리고 «어떤 메타에도» 답한다 — 응답의 칸이 «모든 맵에» 실려야 하므로.
+
+    🔴 **`origin_box` 의 거절을 «옮기지 않는다».** 기하가 못 서는 메타에 `origin_box` 는
+       오늘 «던지고», 그대로 던져야 한다 — `dt_frame_transform` 은 상자 «둘»을 짝으로 쓰고,
+       한쪽만 None 이 되면 «조용히 틀린 변환»이 된다. 던지는 편이 낫다.
+    ⚠️ 그런데 응답 경로(`map_alignment` 의 `maps[]`)에는 그런 맵이 «정상적으로» 들어온다
+       (`GEOMETRY_UNPARSABLE` 이 그래서 있다). 거기서 던지면 오늘 도는 화면이 500 이 된다.
+    🔵 그래서 «묻는다, 잡지 않는다» — `geometry_computable` 은 `make_physical_transform` 이
+       쓰는 그 술어이고, 실측상 `origin_box` 가 던지는 입력과 «정확히 같은 집합»을 거절한다.
+    """
+    if geometry_computable(meta) is not None:
+        return ORIGIN_BOX_ABSENT
+    return origin_box_with_basis(meta, die_mask)[1]
 
 
 def make_frame_transform(source_meta: dict, target_meta: dict,
