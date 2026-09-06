@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- 🔴 이 페이지는 «휴대폰»이 대상입니다. `maximum-scale` 을 걸지 않는 것은 의도입니다 —
+       확대를 막으면 결과 표를 읽을 방법이 사라집니다. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>걷기 검색</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔎</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- 🔴 부품의 스타일은 `board.css` 에 삽니다. 이 페이지는 그것을 «그대로» 싣습니다 —
+       사본을 만들면 R&D 보드와 이 페이지가 같은 부품을 다르게 그리기 시작합니다. -->
+  <link rel="stylesheet" href="/src/tokens.css">
+  <link rel="stylesheet" href="/src/rnd_board/board.css">
+  <style>
+    /* 🔴 이 페이지의 «전부»입니다: 한 칸. 격자도 좌석도 없습니다.
+       부품은 R&D 보드의 «데스크톱 격자»에 앉도록 지어졌고 여기서는 화면 하나를 통째로
+       씁니다. 그래서 배치를 «페이지가» 감싸고 부품 파일은 안 건드립니다 — 같은 부품이
+       그 화면에도 서 있어서, 여기서 고치면 그 화면이 같이 움직입니다. */
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg-inset);
+      color: var(--text);
+      font-family: 'Outfit', system-ui, sans-serif;
+      /* 휴대폰이 세로 글자를 제멋대로 키우지 않게. */
+      -webkit-text-size-adjust: 100%;
+    }
+    .wk-page {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      /* 노치 있는 기기에서 첫 줄이 상태바 밑으로 들어가지 않게. */
+      padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+      box-sizing: border-box;
+      gap: 8px;
+    }
+    .wk-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+    .wk-head b { color: var(--text); font-size: 1rem; }
+    /* 부품의 자기 div. 세로로 남는 자리를 전부 씁니다. */
+    #wk-host { flex: 1; min-height: 0; }
+    /* ⚠️ 부품 «안»의 요소를 이름으로 겨냥하지 않습니다 — 그건 부품을 고치는 것과 같아지고,
+       R&D 보드가 같이 움직입니다. 자리와 스크롤만 이 자리에서 정합니다. */
+    #wk-host > * { max-width: 100%; }
+  </style>
+</head>
+
+<body>
+  <div class="wk-page">
+    <header class="wk-head"><b>걷기 검색</b><span>씨앗 · 걸음 · 결과</span></header>
+    <div id="wk-host"></div>
+  </div>
+  <script type="module" src="/src/walk/main.js"></script>
+</body>
+
+</html>
