@@ -107,6 +107,60 @@ def test_an_empty_reason_is_no_reason():
     assert parser.take_refusal() is None
 
 
+# ------------------------------------ 🔴 the window is NOT serial, so the channel is keyed
+
+def test_two_workspaces_do_not_take_each_other_s_reason():
+    """🔴 THE STOP CONDITION I DID NOT MEASURE BEFORE BUILDING. The first version of this
+    channel was a module global, and `take` emptying it only protects a SECOND READER - it does
+    not create an ORDER. Measured afterwards: `get_workspace_serial_lock` is per WORKSPACE and
+    the heavy lane's stated purpose is 「교차 워크스페이스 격리」, so two workspaces ingest
+    concurrently in one process. A's reason could be taken by B's read.
+
+    The key is the THREAD, because one file's clear -> parse -> take all happen on the thread
+    that owns that file's processing, and concurrent workspaces are different threads.
+    """
+    import threading
+
+    parser.note_refusal("workspace A refused: no ruler row")
+    seen = []
+    other = threading.Thread(target=lambda: seen.append(parser.take_refusal()))
+    other.start()
+    other.join()
+
+    assert seen == [None], "another workspace's thread took this file's reason"
+    assert parser.take_refusal() == "workspace A refused: no ruler row", \
+        "the owning thread lost its own reason"
+
+
+def test_each_thread_keeps_its_own():
+    """The symmetric half: two threads refusing at once must not blend."""
+    import threading
+
+    results = {}
+
+    def refuse_and_take(name):
+        parser.note_refusal(f"{name} refused")
+        results[name] = parser.take_refusal()
+
+    threads = [threading.Thread(target=refuse_and_take, args=(n,)) for n in ("A", "B")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results == {"A": "A refused", "B": "B refused"}
+
+
+def test_the_source_says_the_window_is_not_serial():
+    """⚠️ AND THE FACT IS WRITTEN WHERE THE NEXT PERSON EDITS. A reader who makes this
+    per-process again needs to meet the measurement, not rediscover it."""
+    import inspect
+
+    src = inspect.getsource(parser)
+    assert "직렬이 아닙니다" in src or "not serial" in src.lower(), \
+        "the concurrency measurement is not recorded beside the channel"
+
+
 # ------------------------------------------------------- the reason reaches the sentence
 
 def test_the_detail_says_the_reason_instead_of_where_to_look():

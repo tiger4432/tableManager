@@ -1,4 +1,5 @@
 import logging
+import threading
 from bs4 import BeautifulSoup
 from typing import List, Dict, Tuple, Set, Any, Optional
 
@@ -788,26 +789,36 @@ class HTMLMatrixTableParser:
 # ⚠️ 수명의 «주인»은 여기가 아니라 «워처»입니다. 워처가 파일 하나를 처리하기 «전»에 비우고
 #    처리 «후»에 읽습니다 (`directory_watcher` 의 플러그인 호출 자리). 그래서 곁 채널의
 #    통상 실패인 「누가 지우나」에 답이 있습니다. 그 밖에서 읽으면 «비어» 있습니다.
-# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 🔴 그리고 그 구간은 «직렬이 아닙니다» — 이것을 «짓기 전에 재지 않았습니다».
+#    실측 2026-09-07: `get_workspace_serial_lock` 은 «워크스페이스별» 락이고, heavy lane 의
+#    선언된 목적이 「교차 워크스페이스 격리」입니다. 즉 워크스페이스 A 와 B 는
+#    «같은 프로세스에서 동시에» 인제션합니다. 처음 판은 모듈 전역이었고, 그러면
+#    A 의 사유를 B 의 읽기가 «가져갈 수» 있었습니다 — `take` 는 «둘째 독자»만 막지 «순서»를
+#    만들지 않습니다.
+#
+# ✅ 그래서 «스레드»가 키입니다. 한 파일의 clear -> parse -> take 가 «같은 스레드»에서
+#    일어나고, 동시에 도는 워크스페이스는 «다른 스레드»입니다.
+# ⚠️ 병렬로 바꾸는 사람에게: 한 파일의 처리가 «스레드를 건너뛰게» 되는 순간 이 채널이
+#    조용히 빁니다. 그때는 (표, 파일) 키가 필요합니다.
+# ═════════════════════════════════════════════════════════════════════════════
 
-_LAST_REFUSAL = None
+_REFUSAL = threading.local()
 
 
 def note_refusal(reason):
     """파서가 격자를 «거절한 사유»를 남긴다. 판정이 아니라 «문장»이다."""
-    global _LAST_REFUSAL
-    _LAST_REFUSAL = str(reason) if reason else None
+    _REFUSAL.said = str(reason) if reason else None
 
 
 def take_refusal():
     """마지막 사유를 «가져가며 비운다». 두 번째 독자는 빈 손이 맞다 —
     한 파일의 사유가 다음 파일의 화면에 붙는 것이 이 채널의 유일한 위험이다."""
-    global _LAST_REFUSAL
-    said, _LAST_REFUSAL = _LAST_REFUSAL, None
+    said = getattr(_REFUSAL, "said", None)
+    _REFUSAL.said = None
     return said
 
 
 def clear_refusal():
     """수명의 시작. 워처가 파일 하나를 넘기기 «전»에 부른다."""
-    global _LAST_REFUSAL
-    _LAST_REFUSAL = None
+    _REFUSAL.said = None
