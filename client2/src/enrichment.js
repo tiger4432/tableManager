@@ -1153,7 +1153,11 @@ function renderRefTable(payload) {
   wrap.style.display = 'block'; // AG-Grid가 크기를 재기 전에 보이는 상태여야 한다
 
   const defs = refColumnDefs(payload.columns);
-  const signature = payload.columns.map(String).join(' ');
+  // The separator is an ESCAPE, not a literal NUL byte: same string at runtime, and the
+  // file stops reading as binary -- a literal NUL made every search tool skip all 1,279
+  // lines of this file. A printable separator would NOT be the same fix, since a column
+  // name containing it would start colliding and the grid would silently not rebuild.
+  const signature = payload.columns.map(String).join('\u0000');
 
   if (!S.refGridApi) {
     S.refGridApi = createGrid(wrap, {
