@@ -3,7 +3,7 @@ import { state, isVirtualColumn } from './state.js';
 import { elements } from './dom.js';
 import { getLocalTimeString } from './utils.js';
 import { updateGridSortState } from './grid.js';
-import { ensureCellObject } from './grid.js';
+import { ensureCellObject, markCellOverwritten } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 // 🔴 STATIC, and it must stay static. `api.js` imports THIS file back, so the two form an
 //    ESM cycle -- but all three bindings that cross it (`fetchData` here, `updateSelectedCellUI`
@@ -259,9 +259,7 @@ export async function applyValueToSelectedRange(newValue) {
           const latestData = rowNode.data;
           if (latestData) {
             Object.keys(item.updates).forEach(colId => {
-              ensureCellObject(latestData, colId);
-              latestData.data[colId].value = item.updates[colId];
-              latestData.data[colId].is_overwrite = true;
+              markCellOverwritten(latestData, colId, item.updates[colId]);
             });
             latestData.updated_at = getLocalTimeString();
           }

@@ -448,7 +448,12 @@ export function foldFilterChips() {
   more.style.display = hidden.length ? '' : 'none';
 }
 
-// Ensure that the cell data structure exists as an object: { value, is_overwrite, sources, updated_by }
+// Ensure that the cell data structure exists as an object. THE FIELD LIST IS THE ONE BELOW, and
+// it is written out because the previous version of this line was not: it documented a cell as
+// { value, is_overwrite, sources, updated_by } and named NEITHER field the paint rule reads.
+// Measured 2026-09-06: of the five sites that mark a cell as user-overwritten, the three that
+// set only `is_overwrite` are the three whose author had this sentence in front of them. A
+// comment that lists a shape is read as the shape.
 export function ensureCellObject(dataObj, colId) {
   if (!dataObj) return;
   if (!dataObj.data) dataObj.data = {};
@@ -464,6 +469,33 @@ export function ensureCellObject(dataObj, colId) {
       priority_source: null
     };
   }
+}
+
+// 🔴 THE ONE PLACE THAT SAYS "A PERSON OVERWROTE THIS CELL", AND IT SAYS IT IN FULL.
+//    The paint rules below read `priority_source` / `manual_priority_source` and NEVER
+//    `is_overwrite`, so a site that sets only `is_overwrite` leaves a real overwrite drawn as
+//    an untouched cell. Measured 2026-09-06 across the five marking sites: two set both, three
+//    set only `is_overwrite`, and the split is invisible on a cell that ALREADY carried a
+//    'user' pin, because these patches merge -- it shows on a cell's FIRST overwrite, through
+//    paste, range-write, or a transaction commit.
+//    Adding the missing line at those three would come back at the fourth site, so the fact
+//    has one writer instead. `PRIORITY_SOURCE_USER` is exported for the same reason: the rule
+//    that reads this value and the code that writes it now share one spelling, so they cannot
+//    drift apart in silence.
+// ⚠️ NOT the rollback direction. `main.js:discardPendingTxEdits` restores `is_overwrite` alone
+//    and CANNOT restore the other half -- the staged edit record captures `oldIsOverwrite` and
+//    no `oldPrioritySource`, so the value to restore does not exist. Closing that needs the
+//    staging site to capture it, which is a wider change than routing the writers, and it is
+//    reported rather than done here.
+export const PRIORITY_SOURCE_USER = 'user';
+
+export function markCellOverwritten(dataObj, colId, value) {
+  ensureCellObject(dataObj, colId);
+  const cell = dataObj && dataObj.data ? dataObj.data[colId] : null;
+  if (!cell) return;
+  if (value !== undefined) cell.value = value;
+  cell.is_overwrite = true;
+  cell.priority_source = PRIORITY_SOURCE_USER;
 }
 
 // The raw stored value behind one grid cell, in the shape the row payload uses.
@@ -654,8 +686,7 @@ export function buildColumnDefs() {
 
         params.data.data[col].value = finalVal;
         if (!state.txModeActive) {
-          params.data.data[col].is_overwrite = true;
-          params.data.data[col].priority_source = 'user';
+          markCellOverwritten(params.data, col);
         }
         return true;
       },
@@ -695,8 +726,8 @@ export function buildColumnDefs() {
           const key = `${params.data.row_id}_${col}`;
           if (state.pendingTxEdits.hasOwnProperty(key)) return false;
           const cell = params.data.data?.[col];
-          return cell?.priority_source === 'user'
-            || cell?.manual_priority_source === 'user';
+          return cell?.priority_source === PRIORITY_SOURCE_USER
+            || cell?.manual_priority_source === PRIORITY_SOURCE_USER;
         },
         'custom-range-selected': (params) => {
           return isCellInRange(params.node.rowIndex, col);

@@ -1041,6 +1041,8 @@ const FLOORS = new Map([
   ['closed_list_harness.mjs', 34],
   // the grid says WHERE its rows came from
   ['grid_source_label_harness.mjs', 18],
+  // one writer for "a person overwrote this cell", and it writes the half the paint rule reads
+  ['cell_overwrite_mark_harness.mjs', 10],
   // how many matched, and the difference between 0 and unmeasured
   ['match_count_harness.mjs', 20],
   // the banner that offers a re-run, and what it refuses to offer one for

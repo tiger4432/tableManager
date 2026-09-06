@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, applyFillTargetHeaders } from './grid.js';
+import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -488,10 +488,7 @@ export async function handleCellEdit(event) {
       const latestNode = state.gridApi.getRowNode(rowId);
       const latestData = latestNode ? latestNode.data : data;
 
-      ensureCellObject(latestData, colId);
-      latestData.data[colId].value = finalValue;
-      latestData.data[colId].is_overwrite = true;
-      latestData.data[colId].priority_source = 'user';
+      markCellOverwritten(latestData, colId, finalValue);
 
       // Update updated_at timestamp locally to trigger sort update
       latestData.updated_at = getLocalTimeString();

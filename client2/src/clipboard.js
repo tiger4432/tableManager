@@ -1,7 +1,7 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn } from './state.js';
 import { elements } from './dom.js';
-import { ensureCellObject, updateGridSortState } from './grid.js';
+import { ensureCellObject, markCellOverwritten, updateGridSortState } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
 import { getLocalTimeString } from './utils.js';
 // The ONE TSV reader/writer. Lifted out of this file (it used to be four lines inline in
@@ -609,9 +609,7 @@ export function setupClipboardHandlers() {
               const latestData = rowNode.data;
               if (latestData) {
                 Object.keys(update.updates).forEach(col => {
-                  ensureCellObject(latestData, col);
-                  latestData.data[col].value = update.updates[col];
-                  latestData.data[col].is_overwrite = true;
+                  markCellOverwritten(latestData, col, update.updates[col]);
                 });
                 latestData.updated_at = getLocalTimeString();
               }
@@ -869,11 +867,8 @@ export async function clearSelectedCells() {
         if (rowNode) {
           const latestData = rowNode.data;
           if (latestData) {
-            if (!latestData.data) latestData.data = {};
             Object.keys(item.updates).forEach(colId => {
-              if (!latestData.data[colId]) latestData.data[colId] = {};
-              latestData.data[colId].value = item.updates[colId];
-              latestData.data[colId].is_overwrite = true;
+              markCellOverwritten(latestData, colId, item.updates[colId]);
             });
             latestData.updated_at = getLocalTimeString();
           }
