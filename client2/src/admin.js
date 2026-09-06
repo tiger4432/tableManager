@@ -583,6 +583,15 @@ function switchTab(tabName, opts = {}) {
   // 딥링크 옵션: File 탭 상태 필터 프리셋 (헬스 카드 → 실패 필터)
   if (opts.statusFilter && statusFilterSelect) {
     statusFilterSelect.value = opts.statusFilter;
+    // 🔴 A SELECT REFUSES A VALUE IT HAS NO OPTION FOR, AND IT REFUSES IT SILENTLY.
+    //    The assignment above then leaves `ALL` standing and the operator gets the WHOLE
+    //    list where they asked for one state - which reads as 「아무 문제 없음」. Since the
+    //    options now arrive from the server, saying so out loud is the difference between
+    //    a late vocabulary and a screen that quietly answers a different question.
+    if (statusFilterSelect.value !== opts.statusFilter) {
+      console.warn('[admin] status filter has no option for', opts.statusFilter,
+        '- the vocabulary has not arrived yet; showing all statuses instead.');
+    }
     filePage = 1;
   }
 
@@ -3328,6 +3337,34 @@ async function confirmRetroactiveRun(op) {
 
 // ── Overview 탭 (헬스 스트립 확장판 — 첫 화면) ─────────────
 
+/**
+ * File 탭 상태 필터의 옵션 — 🔴 서버가 말한 것을 «그립니다». 여기에 상태를 적지 않습니다.
+ *
+ * 목록의 정본은 `server/file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY` 이고 그것을
+ * 응답이 `status_vocabulary` 로 싣습니다. 여기에 이름을 적으면 그 순간 «사본»이 되고, 서버가
+ * 상태를 하나 더 만드는 날 이 화면만 모르게 됩니다 -- 그것이 이 라운드 이전의 상태였습니다
+ * (손으로 적힌 둘 · 실제 다섯 · 그래서 고를 수 없는 상태가 셋).
+ *
+ * ⚠️ 「못 받았다」와 「목록이 비었다」는 다릅니다. 응답이 그 칸을 «안 실으면» 옵션을 그리지
+ *    않고 `ALL` 만 남깁니다 -- 빈 목록을 그려서 「상태가 없다」로 보이게 하지 않습니다.
+ */
+function applyStatusVocabulary(body) {
+  const vocabulary = body && Array.isArray(body.status_vocabulary)
+    ? body.status_vocabulary : null;
+  if (!vocabulary || !statusFilterSelect) return;
+  const already = new Set(Array.from(statusFilterSelect.options).map(o => o.value));
+  for (const value of vocabulary) {
+    const spelled = String(value);
+    if (already.has(spelled)) continue;
+    const option = document.createElement('option');
+    option.value = spelled;
+    // 화면 낱말은 서버 철자에서 «만듭니다» — 라벨 표를 두면 그것이 또 하나의 사본입니다.
+    option.textContent = spelled.charAt(0) + spelled.slice(1).toLowerCase().replace(/_/g, ' ');
+    statusFilterSelect.appendChild(option);
+    already.add(spelled);
+  }
+}
+
 async function fetchOverview(isStale) {
   // 의도적으로 await 하지 않는다(위 주석 참조): 본문 카드가 이 요청을 기다리지 않는다.
   refreshCoreValueLines();
@@ -3352,6 +3389,13 @@ async function fetchOverview(isStale) {
   const [failed, ws, outbox, rules, mappers, auto, active] = await Promise.all(
     [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes].map(jsonOf)
   );
+
+  // 🔴 THE FILTER LEARNS ITS OPTIONS HERE, AT LOAD, BEFORE THE FILE TAB ASKS ANYTHING.
+  //    This runs on the overview that opens first, so by the time anything sets the filter
+  //    (the health card's 「실패」 link, a deep link) the options exist. Drawing them later -
+  //    when the File tab first fetches - would make that assignment land on a select that
+  //    has no such option, and a select refuses a missing value WITHOUT ERROR.
+  applyStatusVocabulary(outbox);
 
   let enrich = null;
   try {

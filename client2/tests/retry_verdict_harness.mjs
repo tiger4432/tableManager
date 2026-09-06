@@ -121,6 +121,27 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   ok('D4 this module exports no state list',
     X.INGESTION_STATUSES === undefined && X.STATUS_LABEL === undefined,
     Object.keys(X));
+  // 🔴 AND NEITHER DOES THE SCREEN. The filter draws its options from the vocabulary the
+  //    server publishes. Before this round the markup spelled two of five by hand, so the one
+  //    state an operator needed to look for (`PENDING_RETRY`) was the one they could not
+  //    filter to — the half of F-2 that was true.
+  const html = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
+  ok('D5 the filter reads the published vocabulary',
+    js.includes('status_vocabulary') && js.includes('applyStatusVocabulary'),
+    'admin.js does not read the vocabulary');
+  ok('D6 the markup spells no statuses',
+    !/<option value="(FAILED|SUCCESS|PENDING_RETRY|PENDING|SKIPPED)"/.test(html),
+    'admin.html still spells a status by hand');
+  // ⚠️ ALL IS NOT A STATE. It stays in the markup on purpose: it means 「거르지
+  //    않음」, and putting it in the vocabulary would make the state count and the option
+  //    count disagree by one forever.
+  ok('D7 ALL survives as the no-filter option', /<option value="ALL"/.test(html));
+  // 🔴 A SELECT REFUSES A MISSING VALUE WITHOUT ERROR. The deep link from the health card
+  //    assigns `FAILED` to it; if the options had not arrived the assignment leaves `ALL` and
+  //    the operator gets the whole list where they asked for one state.
+  ok('D8 a filter preset that does not take is not silent',
+    /statusFilterSelect\.value !== opts\.statusFilter/.test(js),
+    'the deep-link assignment can still fail silently');
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
