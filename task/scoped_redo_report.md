@@ -8229,3 +8229,148 @@ server/tests/test_notation_fold_contract.py    변동 없음 (40 통과 · 4 ski
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금 · **끄지 않았습니다** (내일 이것이 깨웁니다)
 
 오늘 수고 많으셨습니다.
+
+---
+---
+
+# 【09-06 아침 큐】 측정 보고 — **이 라운드가 «뺀» 것: 파일 0 · 줄 0 · 축 0** (전부 측정이라 뺀 것이 없습니다)
+
+---
+
+# 【2】 `gate.captured()` — **셋 중 어느 쪽도 아닙니다. 「없어진」게 아니라 «아직 안 온» 것입니다**
+
+## 물으신 것: 「dry-run 이 이걸 부르나」 → **부를 것이 «없습니다»**
+```
+b74ffa2d 실측    파일 10 · 전부 client2/ + docs + task 보고
+                 서버 파일 «0». 즉 어제 착지한 dry-run 은 «클라의 계획 미리보기»(plan_dry_run.js)이고
+                 docstring 이 말하는 「진짜 게이트를 도는 관리자 dry-run」이 «아닙니다»
+
+ledger/dry_run.py::preview()   본문 첫 실행 문이 `raise DryRunUnavailable(...)` 입니다
+                 v1 번역기 4종이 2026-08-18 에 은퇴해서 «무조건 거절»합니다
+                 게이트를 «한 번도 안 지납니다»
+main.py:5172     그 거절을 declaration_rejected 로 바꿔 화면에 냅니다
+```
+
+## 그래서 세 갈래에 대한 답
+```
+❌ 「안 부른다 -> 미리보기가 카운터를 오염시킨다」   -> «아닙니다». 오염될 수 없습니다.
+                                              미리보기가 게이트에 «닿지를 못합니다»
+✅ 「부른다 -> 총괄의 호출자 세기가 틀렸다」        -> 아닙니다. 세기는 «맞습니다» (호출자 0)
+⚠️ 「필요가 없어진 것이면 빼도 된다」              -> 🔴 여기가 갈립니다.
+    필요가 «없어진» 게 아니라 «아직 안 왔습니다»
+```
+
+## 🔴 빼지 «마십시오» — 코드가 그 복구를 «예정으로» 적어 두고 있습니다
+`preview()` 자신의 docstring:
+```
+「⚠️ 화면의 2단은 v2 미리보기가 배선될 때까지 내려가 있고, 여기서 그것을 숨기지 않는다.
+  v2 경로는 이미 DB 쓰기 없이 이 일을 할 수 있다(ledger.setup.preview_selected_cursor_batch)
+  — 다만 «아직 그것을 부르는 HTTP 라우트가 없다».
+  «진짜» 미리보기를 되살린다는 것은 이 진입점을 그 함수에 «겨누는» 것이지 렌더러를 다시 붙이는 게 아니다」
+```
+=> 그 배선이 되는 «순간» 미리보기가 진짜 실행기를 돌고, 그때 `captured()` 가 «없으면»
+   총괄이 적으신 그 결함(「미리보기만 해도 라이브 총계가 오른다」)이 «그날 생깁니다».
+🔵 지금 빼면 «되살리는 라운드가 그것을 다시 만들어야» 합니다. 그건 빼기가 아니라 «미루기»입니다.
+
+⛔ 그리고 어제의 그 교훈이 여기 그대로 걸립니다 — 「어차피 죽어 있으니」가 근거의 전부였다가
+   틀렸던 그 부류입니다. 이번엔 «왜 살려 두는지»가 코드에 적혀 있습니다.
+
+---
+
+# 【3】 `server/_archive/` — **«둘 다»입니다. 그리고 그 섞임이 이 디렉터리의 문제입니다**
+
+## 실측 — 파일 11 · 줄 3,523 · 「왜 여기 있는지」를 적은 것 «2»
+```
+✅ 일부러 둔 «기록» 2       _archive/audit_changeset.py (416) · tests/test_audit_changeset.py (467)
+   두 파일 다 맨 위에 배너가 있습니다:
+   「PARKED - NOT WIRED, ZERO PRODUCTION CALLERS … 2026-08-12 에 그 레인이 «의도적으로 중단»됐고
+     crud/main/schemas 훅은 되돌려졌으며 이 파일과 시험만 남았다」
+   -> 이건 «중단된 레인의 설계 + 중단 사유»를 담은 기록입니다
+
+⚠️ 남은 것 9              chain_mapper(363) · enrichment_actions(417) · profile_chain_mapper(469) ·
+                        profile_lookup_adapters(105) · ledger_api/mechanism_gate(373) ·
+                        examples/__init__(2) · tests 3편(146+589+176)
+   🔴 이 아홉의 docstring 은 «현재형»입니다. 죽었다는 표시가 «없습니다»
+      mechanism_gate.py: 「This is the M4 mechanism graph's **first consumer**」
+      -> 지금은 «거짓인 현재형»입니다. 읽는 사람이 살아 있는 코드로 읽습니다
+```
+
+## 「지우면 무엇을 잃나」 — 두 부류가 «다릅니다»
+```
+audit_changeset 짝   «중단 사유»를 잃습니다. 되돌려진 레인이 «왜» 되돌려졌는지가 여기에만 있습니다
+                    -> 지우려면 그 사유를 다른 데(히스토리 문서)로 옮기고 지워야 합니다
+남은 아홉            설계 사고 외에는 잃을 것이 «측정되지 않습니다». 다만 지금 상태로는
+                    «잃는 것보다 잘못 얻는 것»이 큽니다 — 거짓 현재형을 읽습니다
+```
+
+## ⚠️ 그리고 하나 더 — 그 시험들은 «깨져 있습니다»
+```
+pytest server/_archive/tests/ --collect-only
+   -> 11 tests collected, «3 errors» (4파일 중 3파일이 «수집 단계»에서 터집니다)
+문서화된 명령(`pytest server/tests/`)은 «안 건드립니다» — _archive/tests 는 tests/ «밖»입니다
+⚠️ 다만 「루트에서 맨 pytest」가 어떻게 되는지는 «안 재 봤습니다». 재 보고 말씀드릴까요
+```
+⛔ 지우지 않았습니다. 판정만 청합니다.
+
+---
+
+# 【★1 깊이(D)】 — 측정 셋. **①이 크기를 정했고, 총괄 전제와 «반대»입니다**
+
+## ① 「값이 안 바뀌면 저절로 서나」 → 🔴 **안 섭니다. 깊이는 «안전망»이 아니라 «필수»입니다**
+총괄 전제: 「쓰기 emit 이 `attr.history.has_changes()` 를 봅니다(database.py:163) — 값이 진짜로
+안 바뀌면 저절로 설 여지가 있습니다」. **그 기제가 그 일을 못 합니다.** 두 겹으로 못 합니다:
+```
+겹1  has_changes() 는 「값이 «달라졌나»」가 아니라 「이 속성이 «대입됐나»」를 답합니다
+     실측(SQLAlchemy 순수 모델, 라이브러리 의미론):
+        r.val = "same"   (이미 "same")  ->  session.dirty «포함» · has_changes() -> ['val']
+     => 같은 값을 써도 dirty_cols 가 «비지 않습니다». 컬럼 이름이 그대로 들어옵니다
+
+겹2  그 목록이 «비어도» emit 은 나갑니다 — 가드가 그 위치에 없습니다 (database.py:158-173 인용):
+        if dirty_cols:
+            graph_meta_cols = {...}
+            if all(col in graph_meta_cols for col in dirty_cols):
+                continue
+        _emit("EDIT", obj)          <- `if dirty_cols:` «블록 밖»입니다
+     => dirty_cols == [] 이면 블록을 «통째로 건너뛰고» 그대로 emit 합니다
+```
+⚠️ 겹1은 «라이브러리 의미론»을 순수 모델로 잰 것이고(앱의 동적 클래스가 아닙니다),
+   겹2는 «앱 코드의 제어 흐름»을 그대로 인용한 것입니다. 두 근거의 성질이 다릅니다.
+🔵 **결론: 깊이는 «필수»입니다.** 그리고 그것이 이 라운드의 크기를 정합니다.
+🔵 부수 판정 재료: 그러므로 「검증기를 거절로 둘까 경고로 둘까」는 «거절 유지»가 맞아 보입니다 —
+   저절로 서는 기제가 없으니 정적 검사가 유일한 방벽입니다. (제안만입니다)
+
+## ② 「깊이를 어디에 싣나」 → **봉투(payload). 마이그레이션 «불필요»**
+```
+DatabaseOutbox 컬럼   id · event_uuid · event_type · table_name · payload · status ·
+                    retry_count · processed_chain · created_at · processed_at · broadcast_at
+                    -> 칸을 더하면 «스키마 변경»입니다 (되돌릴 수 없는 것 = 올려야 하는 부류)
+payload 가 «이미» 나르는 워커-판독 제어 필드
+                    transaction_id · row_ids · reexpanded_into · source_name · error_log …
+                    -> 선례가 «이미 있습니다». 깊이는 그 옆의 한 칸이고 마이그레이션이 «0» 입니다
+```
+🔵 그리고 payload 는 PG 에서 JSONB 라 나중에 인덱싱이 필요해져도 길이 열려 있습니다.
+
+## ③ 「한계에 닿았을 때 무엇이 보이나」 → 제안: **수 둘. 문장 «0»**
+오늘 이 저장소가 두 번 쓴 그 모양 그대로 (`/admin/chain/queue` 의 나이 둘 · `refused_*` 셋):
+```
+행에    payload.depth        지금 이 사건이 «몇 번째»인가 — 잘린 사건이 «자기 깊이»를 말합니다
+집계에  depth_exhausted      이 배치에서 «한계에 닿아 멈춘» 사건 수
+       depth_limit          그 한계값 (선언에서 온 값 — 읽는 쪽이 기준선을 지어내지 않게)
+=> 「끝났다」와 「잘렸다」가 «다른 픽셀»이 됩니다. 0 이면 0, 없으면 null
+```
+⛔ 아직 «짓지 않았습니다». 지시대로 재기만 했습니다.
+
+## 📌 출하 참조 설정 — **같은 고리이고, 깊이가 들어오면 «같이» 풀립니다**
+```
+docs/guide/config_reference/chain_rules.json  (규칙 8)
+커밋된 검증기로 돌린 실측:
+   REFUSES -> allow_chain_trigger cycle: wafer_map_metadata -> dt_inventory -> wafer_map_metadata
+allow_chain_trigger 를 단 규칙 셋: dt_metadata_to_dt_inventory ·
+   dt_inventory_to_standard_dt_map · dt_inventory_to_core_usage_map
+```
+🔵 라이브가 걸린 그 고리와 «같은 변»입니다 — 따로 손볼 것이 아니라 같은 판정에 실립니다.
+
+판정 대기: 🔴 ① 이 「필수」로 나왔으니 «깊이 짓기»에 착수할까요 (②③ 제안 포함) ·
+          🔴 `captured()` 는 «두지» 마십시오가 제 판단인데 판정 청합니다 ·
+          🔴 `_archive` 아홉의 처리(배너를 달까 / 옮길까 / 둘까)
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
