@@ -113,8 +113,13 @@ console.log('\n[4] the response is not thrown away');
   // 🔴 엣지의 «모양»을 안 줄인다 — 술어 이름이 사라지면 「무엇을 타고 왔나」가 사라집니다.
   eq('and the predicate survives', res.edges[0].predicate, 'inspected');
   eq('and its qualifiers survive', res.edges[0].qualifiers, { step: 7 });
-  eq('nodes are still narrowed to the three the screen draws',
-    Object.keys(res.nodes[0]), ['id', 'type', 'label']);
+  // 🔴 NARROWED TO FIVE NOW, AND THE TWO THAT WERE ADDED ARE THE POINT. The result table's
+  //    identity columns come from `keys` and its first column is `depth`, and this narrowing was
+  //    dropping both — the screen could not have shown them however it was written. `extra` is
+  //    still dropped, so this is still a narrowing and not "carry the whole node": a field
+  //    nobody draws is a field nobody has to keep true.
+  eq('nodes carry what the table draws, and nothing more',
+    Object.keys(res.nodes[0]).sort(), ['depth', 'id', 'keys', 'label', 'type']);
   eq('truncation is carried, not swallowed', res.truncated, { nodes: 400 });
   eq('and the walk block that can catch the hops mismatch survives',
     res.walk, { hops_requested: 3, hops_reached: 2 });

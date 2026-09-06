@@ -30,7 +30,8 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
-import { bareName, followFromRoute, followChoices, keepWalkableRoutes } from './derive.js';
+import { bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns }
+  from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -39,6 +40,12 @@ const DIRECTIONS = ['both', 'outgoing', 'incoming'];
 //    옛 수를 보여 주고, 그게 오늘 고친 그 병(값의 저자가 둘)입니다. 비워 두면 «안 실리고»,
 //    안 실리면 서버가 정합니다 — 그리고 무엇으로 정해졌는지는 응답의 `walk` 가 말합니다.
 const SERVER_DEFAULT = '서버 기본';
+
+// 🔴 「없음」과 「0」을 «가릅니다». `v || ''` 로 쓰면 0 과 빈 문자열과 false 가 «같은 빈 칸»이
+//    되고, 좌표 0 을 가진 다이가 좌표 없는 다이처럼 보입니다.
+const valueText = (v) => (v === null || v === undefined ? '' : String(v));
+// 자릿수 정렬은 «숫자로 읽히는 칸»에만. x·y 가 세로로 안 맞으면 못 읽습니다.
+const isNumeric = (s) => s !== '' && Number.isFinite(Number(s));
 
 const el = (doc, tag, cls, text) => {
   const n = doc.createElement(tag);
@@ -348,6 +355,91 @@ export function boot(doc, host, deps) {
     root.append(go);
   }
 
+  /**
+   * 응답을 «표»로. 행은 «노드 하나»이고, 타입이 여럿이면 구획으로 나뉩니다.
+   *
+   * 🔴 컬럼 이름을 «코드에 안 적습니다». 키는 «선언»의 그 타입 `keys` 에서, 수식어는 «온 응답»의
+   *    엣지가 들고 온 이름에서 옵니다. 그래서 선언에 키가 하나 늘면 컬럼도 «따라 늡니다» --
+   *    여기를 고치지 않고.
+   * 🔴 빈 칸은 «빈 칸»입니다. 「—」나 0 으로 채우면 「없다」와 「0 이다」가 같은 글자가 됩니다.
+   * 🔴 순서는 «서버가 준 그대로». 화면이 다시 정렬하지 않습니다 -- 그 순서(깊이 -> 종류 -> 라벨)
+   *    가 답의 일부입니다.
+   */
+  function renderTable(box, r) {
+    const CAP = 200;
+    const shown = r.nodes.slice(0, CAP);
+
+    // 노드에 «닿은 엣지»가 들고 온 수식어. 엣지는 collect 로 안 걸리므로 여기 다 있습니다.
+    const qualsByNode = new Map();
+    for (const e of r.edges || []) {
+      const q = e && e.qualifiers;
+      if (!q || typeof q !== 'object') continue;
+      for (const id of [e.target, e.source]) {
+        if (!id || !qualsByNode.has(id)) qualsByNode.set(id, qualsByNode.get(id) || {});
+      }
+      // 🔴 «닿은» 쪽에만 답니다 -- 씨앗 쪽에 달면 씨앗이 모든 엣지의 수식어를 다 이고 갑니다.
+      const at = qualsByNode.get(e.target) || {};
+      Object.assign(at, q);
+      qualsByNode.set(e.target, at);
+    }
+
+    // 타입별 구획. 서버 순서를 유지하려고 «처음 나온 순서»로 담습니다.
+    const sections = new Map();
+    for (const n of shown) {
+      const t = n.type || '';
+      if (!sections.has(t)) sections.set(t, []);
+      sections.get(t).push(n);
+    }
+
+    for (const [type, rows] of sections) {
+      const sec = el(doc, 'div', 'wk-sec');
+      sec.append(el(doc, 'div', 'wk-sechead', `${type || '타입 없음'} · ${rows.length}`));
+
+      // 컬럼은 «선언 + 온 것»에서. 규칙과 사유는 `derive.js` 에 있고 하니스가 그 함수를 잽니다.
+      const qualNames = [];
+      for (const n of rows) {
+        for (const k of Object.keys(qualsByNode.get(n.id) || {})) {
+          if (!qualNames.includes(k)) qualNames.push(k);
+        }
+      }
+      const cols = tableColumns(entities(), type, qualNames);
+      const declared = cols.slice(1, cols.length - 2 - qualNames.length);
+
+      const table = el(doc, 'table', 'wk-table');
+      const thead = el(doc, 'thead');
+      const hr = el(doc, 'tr');
+      for (const c of cols) hr.append(el(doc, 'th', '', c));
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = el(doc, 'tbody');
+      for (const n of rows) {
+        const tr = el(doc, 'tr');
+        const q = qualsByNode.get(n.id) || {};
+        const cells = [
+          n.depth === undefined || n.depth === null ? '' : String(n.depth),
+          ...declared.map((k) => valueText((n.keys || {})[k])),
+          ...qualNames.map((k) => valueText(q[k])),
+          n.label || '',
+          n.id || '',
+        ];
+        cells.forEach((v, i) => {
+          const td = el(doc, 'td', isNumeric(v) ? 'wk-num' : '', v);
+          if (cols[i] === 'id') td.className = 'wk-id';
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      sec.append(table);
+      box.append(sec);
+    }
+
+    if (r.nodes.length > CAP) {
+      box.append(el(doc, 'div', 'wk-note', `이 아래 ${r.nodes.length - CAP} 개 안 그림`));
+    }
+  }
+
   function renderResult(root) {
     if (state.run === 'idle') return;
     const box = el(doc, 'div', 'wk-result');
@@ -403,15 +495,7 @@ export function boot(doc, host, deps) {
       if (!r.nodes.length) {
         box.append(el(doc, 'div', 'wk-note', r.message || '닿은 노드 없음'));
       }
-      for (const n of r.nodes.slice(0, 200)) {
-        const row = el(doc, 'div', 'wk-row');
-        row.append(el(doc, 'span', 'wk-rowtype', n.type || '—'));
-        row.append(el(doc, 'span', 'wk-rowlabel', n.label || n.id || ''));
-        box.append(row);
-      }
-      if (r.nodes.length > 200) {
-        box.append(el(doc, 'div', 'wk-note', `이 아래 ${r.nodes.length - 200} 개 안 그림`));
-      }
+      renderTable(box, r);
     }
     root.append(box);
   }
