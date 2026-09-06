@@ -193,12 +193,16 @@ def _outbox_envelope():
     `source_name == 'chain_ingestion'` is the circular-loop filter - a collapsed
     event that lost either would be read as a foreign transaction, or would loop).
     """
-    from .context import request_user, request_transaction_id, request_source
+    from .context import (request_user, request_transaction_id, request_source,
+                          request_chain_depth)
     return (
         request_transaction_id.get() or str(uuid.uuid4()),
         request_user.get(),
         request_source.get(),
         datetime.now().isoformat(),
+        # [DEPTH] `None` for every write that is not the chain's. Staged as an ABSENT key
+        # rather than a zero - see `request_chain_depth`.
+        request_chain_depth.get(),
     )
 
 
@@ -225,18 +229,19 @@ def stage_collapsed_event(session, event_type, table_name, row_ids):
     """
     from .models import DatabaseOutbox
     try:
-        from event_constants import OUTBOX_COLLAPSE_CHUNK_ROWS
+        from event_constants import OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY
     except ImportError:  # pragma: no cover
         OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
+        CHAIN_DEPTH_KEY = "chain_depth"
 
-    tx_id, user, source, ts = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth = _outbox_envelope()
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
     # poison row re-expands at most one chunk into per-row retries).
     for i in range(0, len(row_ids), OUTBOX_COLLAPSE_CHUNK_ROWS):
         id_chunk = row_ids[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]
-        session.add(DatabaseOutbox(
+        chunk_event = DatabaseOutbox(
             event_uuid=str(uuid.uuid4()),
             event_type=event_type,
             table_name=table_name or "unknown",
@@ -255,7 +260,13 @@ def stage_collapsed_event(session, event_type, table_name, row_ids):
                 "timestamp": ts,
             },
             status="PENDING",
-        ))
+        )
+        # [DEPTH] Added AFTER construction and only when the chain wrote this, so a write
+        # from anywhere else carries no key at all. An absent key and a 0 are different
+        # facts and the reader has to be able to tell them apart.
+        if chain_depth is not None:
+            chunk_event.payload[CHAIN_DEPTH_KEY] = chain_depth
+        session.add(chunk_event)
 
     _notify_outbox_once(session)
 
@@ -263,12 +274,14 @@ def stage_collapsed_event(session, event_type, table_name, row_ids):
 def stage_event(session, event_type, table_name, data_row):
     from .models import DatabaseOutbox
     try:
-        from event_constants import OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED
+        from event_constants import (OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED,
+                                     CHAIN_DEPTH_KEY)
     except ImportError:  # pragma: no cover
+        CHAIN_DEPTH_KEY = "chain_depth"
         _EXCLUDED = frozenset({"row_id", "business_key_val", "created_at", "updated_at",
                                "is_graph_synced", "needs_graph_rollback", "graph_synced_at"})
 
-    tx_id, user, source, ts = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth = _outbox_envelope()
 
     data_dict = {}
     for col in data_row.__table__.columns:
@@ -303,6 +316,9 @@ def stage_event(session, event_type, table_name, data_row):
         },
         status="PENDING"
     )
+    # [DEPTH] Same rule as the collapsed stager: present only when the chain wrote it.
+    if chain_depth is not None:
+        event_obj.payload[CHAIN_DEPTH_KEY] = chain_depth
     session.add(event_obj)
 
     _notify_outbox_once(session)

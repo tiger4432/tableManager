@@ -19,6 +19,12 @@ if not hasattr(sys, "_context_vars_cache"):
         # from it would collapse precisely the path that must stay per-row.
         "request_outbox_mode": contextvars.ContextVar("request_outbox_mode",
                                                       default="per_row"),
+        # [DEPTH] How many chain hops produced the write being staged. `None` means
+        # "not written by the chain" and is NOT the same as 0 - an event with no depth
+        # came from outside the chain and must never be refused for being too deep,
+        # while a 0 would be a chain write that forgot to count. Folding the two would
+        # make them indistinguishable exactly when it matters.
+        "request_chain_depth": contextvars.ContextVar("request_chain_depth", default=None),
     }
 
 request_user = sys._context_vars_cache["request_user"]
@@ -29,6 +35,8 @@ request_source = sys._context_vars_cache["request_source"]
 # contexts where `server/` is not yet on sys.path; the two are pinned equal by
 # test_outbox_collapse.test_default_mode_is_per_row.
 request_outbox_mode = sys._context_vars_cache["request_outbox_mode"]
+#: [DEPTH] Set by the chain worker for the span of its writes; read by `_outbox_envelope`.
+request_chain_depth = sys._context_vars_cache["request_chain_depth"]
 
 
 def outbox_mode(mode: str):

@@ -107,6 +107,59 @@ def outbox_owner(event_type):
 MAX_NOTIFY_CREATED_LOGS = 500
 
 
+# ---------------------------------------------------------------------------
+# [DEPTH] How far a chain has travelled, and how far it may.
+# ---------------------------------------------------------------------------
+#
+# `source_name == "chain_ingestion"` says WHETHER the chain wrote a row. It cannot say HOW
+# MANY hops produced it, so between "the chain may never wake the chain" (too tight - the
+# owner's own words) and `allow_chain_trigger` (opt-in, then unbounded) there was nothing.
+# This is the middle: the write carries a number, and a declared limit refuses beyond it.
+#
+#: The payload key. ⚠️ ABSENT means "not written by the chain" and is NOT 0 - an event from
+#: outside the chain must never be refused for depth, and a 0 would be a chain write that
+#: forgot to count. Folding the two loses the distinction exactly where it decides.
+CHAIN_DEPTH_KEY = "chain_depth"
+
+#: Used only when the declaration does not say. ⚠️ NOT the answer - the answer is the
+#: declaration (`chain_rules.json`'s `max_chain_depth`), because an operator who knows their
+#: own cascade is the one who can set this. This is what a config written before the key
+#: existed gets, chosen to be generous enough that no cascade shipped today reaches it.
+DEFAULT_MAX_CHAIN_DEPTH = 8
+
+
+def chain_depth_of(payload):
+    """How deep this event is, or `None` when it did not come from the chain.
+
+    ⚠️ THREE STATES, NOT TWO. No key -> `None` (outside the chain). A key -> its number,
+    including 0. A caller that wants arithmetic reads `None` as "start", but a caller
+    deciding whether the limit applies must ask whether it is `None` FIRST.
+    """
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(CHAIN_DEPTH_KEY)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def max_chain_depth(rules):
+    """The declared hop limit, or the default when nothing declares one.
+
+    ⛔ ONE LIMIT, NOT ONE PER RULE. A per-rule limit was considered and not built: nothing
+    today needs two, and the gate that would read them is a single loop over every rule an
+    event matches, so a per-rule number would have to be reconciled at that point anyway.
+    Gate ② of the standing checklist - do not build an axis nothing asks for yet.
+    """
+    if isinstance(rules, dict):
+        declared = rules.get("max_chain_depth")
+    else:
+        declared = None
+    if isinstance(declared, bool) or not isinstance(declared, int) or declared < 1:
+        return DEFAULT_MAX_CHAIN_DEPTH
+    return declared
+
+
 #: The `batch_refresh_required` event name, and the ONE place its payload is built.
 EVENT_BATCH_REFRESH_REQUIRED = "batch_refresh_required"
 

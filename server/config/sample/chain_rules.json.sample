@@ -1,5 +1,7 @@
 {
   "__comment": "Chain ingestion rules. A chain reacts to a committed write on trigger_table and projects it onto target_table through a mapper. | The production->inventory rule was removed with the demo tables it referenced (2026-08-01 fixture reset).",
+    "_max_chain_depth_comment": "체인이 체인을 깨우는 깊이의 한계. 이 수를 넘는 사건은 이름을 대고 거절되고 FAILED 로 끝납니다 (뒤가 막히지 않도록). 체인 밖에서 온 사건은 깊이가 없어 영향받지 않습니다.",
+  "max_chain_depth": 8,
   "rules": [
     {
       "__comment": "dt_log -> dt_map: the DT map is DERIVED. dt_log is the record; the map is a projection of it, so nothing should ever write dt_map by hand -- a replay would then silently disagree with the hand-written rows. | SHIPS DISABLED and stays disabled this round by instruction. What was measured (2026-08-01): a chain CAN address a single map cell -- crud.apply_batch_updates composes the composite business key from the update payload itself (crud.py:1051-1059) when the caller omits business_key_val and supplies every composite_key_source column, and dt_map's composite key includes dt_x/dt_y, so one business key = one cell. What a chain CANNOT do is PURGE: replace_map lives on the batch (schemas.py:138) and chain_ingestion_worker.py:437-441 constructs the batch itself and never sets it, so a chain can only upsert cells and never delete stale ones. That is the open question, and it is why this stays off.",

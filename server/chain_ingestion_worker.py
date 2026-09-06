@@ -327,7 +327,16 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
                 f"notify={notify_ms:.0f}ms total={total_ms:.0f}ms ok={all_ok}"
             )
 
+#: [DEPTH] The chain-rules DOCUMENT as last loaded, for the settings that sit beside
+#: `rules` rather than inside a rule. Kept here instead of re-opening the file: a second
+#: reader is a second answer the day the two run at different moments, which is the
+#: fourth cleanliness rule. `load_chain_rules` refreshes it on every load and on every
+#: SYSTEM_RELOAD, so the loop reads whatever the last load saw and never the disk.
+_RULES_DOCUMENT = {}
+
+
 def load_chain_rules():
+    global _RULES_DOCUMENT
     rules = []
     if not os.path.exists(RULES_PATH):
         logger.warning(f"Chain rules configuration file not found at {RULES_PATH}. Using empty rules.")
@@ -336,6 +345,7 @@ def load_chain_rules():
             with open(RULES_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 rules = data.get("rules", [])
+                _RULES_DOCUMENT = data if isinstance(data, dict) else {}
         except Exception as e:
             logger.error(f"Failed to load chain rules: {e}")
 
@@ -809,12 +819,27 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     if table_updates or map_metadata_updates or scoped_batches:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
-                                      outbox_mode)
+                                      request_chain_depth, outbox_mode)
 
         chain_tx_id = f"chain_{tx_id}"
         token_user = request_user.set("chain_worker")
         token_tx = request_transaction_id.set(chain_tx_id)
         token_src = request_source.set("chain_ingestion")
+        # 🔴 [DEPTH] STAMPED ONCE, HERE, BECAUSE THIS IS WHERE THE CHAIN'S WRITES CONVERGE.
+        # Ten mappers spell `source_name: "chain_ingestion"` in the rows they return, but
+        # that is the ROW's source column; the OUTBOX envelope is built in exactly one
+        # place (`database._outbox_envelope`, whose own docstring says it exists so the
+        # per-row and collapsed events cannot drift) and it reads these context vars.
+        # Stamping in the mappers would be ten places to keep in step - the fourth
+        # cleanliness rule, and the same shape as `bffa792b`.
+        #
+        # The depth of what we are ABOUT to write is one more than the deepest thing that
+        # woke us. Events from outside the chain carry no depth, so `chain_depth_of`
+        # answers `None` for them and `max(..., default)` starts the count at 1.
+        incoming_depth = max(
+            [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
+                         for e in events) if d is not None] or [0])
+        token_depth = request_chain_depth.set(incoming_depth + 1)
 
         try:
             # Map metadata goes first. Its fixed standard frame and
@@ -1129,6 +1154,9 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
             request_user.reset(token_user)
             request_transaction_id.reset(token_tx)
             request_source.reset(token_src)
+            # Reset with the others: a depth left set would stamp the NEXT write, and the
+            # next write may not be the chain's at all.
+            request_chain_depth.reset(token_depth)
 
     return True, None, broadcast_messages
 
@@ -1760,6 +1788,10 @@ async def start_chain_ingestion_worker(db_session_factory):
                 #    fall through into process_chain_transaction_group, where a trigger
                 #    payload would be read as a set of changed rows.
                 normalized_events = []
+                # Read once per batch, not per event: the declaration cannot change
+                # mid-batch and reading it N times would invite N different answers.
+                max_depth = event_constants.max_chain_depth(_RULES_DOCUMENT)
+                depth_refused = 0
                 for event in pending_events:
                     payload_data = get_payload_dict(event)
                     event._parsed_payload = payload_data
@@ -1769,7 +1801,32 @@ async def start_chain_ingestion_worker(db_session_factory):
                     if event.event_type in event_constants.CONTROL_EVENT_TYPES:
                         continue
 
+                    # 🔴 [DEPTH] THE LIMIT IS ENFORCED HERE, ONCE, AND IT SAYS SO.
+                    # Not inside `_rule_accepts_event`: that is a pure predicate called
+                    # five times per event, so refusing there would log five times or
+                    # (worse) stay silent - and "silently not running" is the failure this
+                    # whole mechanism exists to replace.
+                    #
+                    # ⚠️ AND THE ROW IS FINISHED, not left pending. An over-deep event that
+                    # kept `processed_chain=False` would be re-read on every tick forever
+                    # and block the queue behind it - the defect repaired in `92d1c1ff`,
+                    # which this must not reintroduce one file away.
+                    depth = event_constants.chain_depth_of(payload_data)
+                    if depth is not None and depth > max_depth:
+                        logger.warning(
+                            "[Chain Depth] outbox#%s (%s) reached hop %d, over the "
+                            "declared limit of %d; refusing it and marking it finished so "
+                            "the queue behind it runs. Raise `max_chain_depth` in "
+                            "chain_rules.json if this cascade is meant to be this long.",
+                            event.id, event.table_name, depth, max_depth)
+                        mark_processed(event, "FAILED")
+                        depth_refused += 1
+                        continue
+
                     normalized_events.append(event)
+
+                if depth_refused:
+                    db.commit()          # the FAILED marks, so they are not re-read
 
                 if not normalized_events:
                     continue
