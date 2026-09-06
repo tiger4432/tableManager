@@ -8966,3 +8966,85 @@ client2/src/map2/authoring* (871줄) 를 import 하는 곳이 시험 하니스 �
 판정 대기: 🔴 dt_map 파생을 «되살릴 것인가» (㉯ 의 선행 물음) ·
           🔴 표 이름 15/52자리를 부류로 착수할지 (특히 `defect` 9) · ★ 깊이(D)
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【★ 깊이(D)】 착지 — `639655d7`
+
+## 흐름 / 이음매 · 「깔끔」
+```
+흐름 ③ 체인 · 이음매 「체인이 쓴 것 -> 체인이 읽는 것」 (오늘까지 «홉 수»가 그 사이에 없었습니다)
+움직인 「깔끔」 — ① 동작이 보인다(거절이 이름을 댑니다) · ② 하드코딩 줄임(한계가 «선언») ·
+                🔴 ④ 두 경로 없음(찍는 자리가 «하나»)
+이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0   (더한 라운드입니다)
+```
+
+## ㉰ 「모이는 데가 있습니까」 → 🔴 **있습니다. 그리고 그 자리가 스스로 그렇게 적어 뒀습니다**
+```
+맵퍼 «열»이 source_name: "chain_ingestion" 을 각자 씁니다
+   -> 그건 «행의» 소스 컬럼입니다. 깊이를 거기 찍으면 열 자리가 됩니다
+아웃박스 «봉투»는 한 곳에서 만들어집니다: database._outbox_envelope
+   그 함수 docstring: 「One place, so the collapsed event and the per-row event cannot drift」
+   -> 두 스테이저가 «그것 하나»를 부릅니다
+=> 워커가 컨텍스트 변수 «한 줄»을 세우고, 봉투가 그것을 읽습니다. 찍는 자리 «1»
+```
+🔵 `bffa792b`(아홉 빌더 → 하나)와 «같은 모양»이라 하신 그대로였습니다.
+게이트 ④ 를 시험이 «세어서» 지킵니다 — 깊이 키를 아는 함수가 정확히 셋(봉투 + 스테이저 둘)입니다.
+
+## ㉯ 세 상태 — «접지» 않았습니다
+```
+키 없음   None   체인 밖에서 온 것. «절대» 깊이로 거절되지 않습니다
+0        0      체인이 썼는데 세는 것을 빠뜨린 것. None 과 «다릅니다»
+N        N
+⚠️ True 도 막았습니다 — 파이썬에서 bool 은 int 라, 안 막으면 깊이 1 로 읽혀 «한 홉 일찍» 거절합니다
+```
+
+## ㉱ 거절 — 한 자리, 이름을 대고, **그리고 행이 끝납니다**
+```
+자리   루프의 normalize 단계 «한 곳» (제어 이벤트를 거르는 바로 그 자리)
+       ⛔ _rule_accepts_event 에 «안» 넣었습니다 — 이벤트당 다섯 번 불리는 순수 술어라
+          거기서 거절하면 «다섯 번 찍히거나 아무 말도 안 합니다»
+말     [Chain Depth] outbox#N (표) reached hop D, over the declared limit of L;
+       refusing it and marking it finished so the queue behind it runs.
+       Raise `max_chain_depth` in chain_rules.json if this cascade is meant to be this long.
+🔴 그리고 mark_processed(event, "FAILED") + commit —
+   안 찍으면 그 행이 «매 틱 다시» 읽히고 뒤가 막힙니다. 한 파일 건너 `92d1c1ff` 로 고친 그 결함을
+   «새 기능이» 되살리는 모양입니다. 시험이 그걸 지킵니다
+```
+
+## 한계는 «선언»입니다
+```
+chain_rules.json + 샘플 «둘 다»   "max_chain_depth": 8
+상수는 «답이 아니라» 키가 없던 시절의 설정이 받는 값입니다 (DEFAULT_MAX_CHAIN_DEPTH)
+⛔ 전역 «하나»입니다. 규칙별로 안 만들었습니다 — 지금 둘이 필요한 것이 없고,
+   읽는 자리가 「이벤트가 맞는 규칙 전부」를 도는 한 루프라 규칙별 수는 거기서 어차피 합쳐집니다
+   (관문 ②: 지금 필요 없는 축을 만들지 않는다)
+```
+
+## 게이트 넷 — 소스 아니라 «동작»으로도 쟀습니다
+```
+① 한계 1 · 2홉 이벤트    -> REFUSED   (그리고 1홉은 통과 — 경계가 «넘을 때»입니다)
+② 한계 8 · 오늘 최대 2홉 -> 통과      (무회귀)
+③ 체인 밖 이벤트 · 한계 1 -> 통과      (키가 없으니 «해당 없음»)
+   그리고 depth 0 도 통과 — 0 은 한계 초과가 아닙니다
+④ 찍는 자리              봉투 + 스테이저 둘 «셋». 맵퍼 열은 «안 건드렸습니다»
+⛔ 예상 수치는 제가 안 적었습니다. 위는 전부 «돌려서» 나온 값입니다
+```
+
+## ⛔ 이 라운드에 «안 한» 것
+```
+⛔ _validate_chain_cascade_graph 완화 «안 했습니다» — 시험이 그대로인지 지킵니다
+⛔ chain_rules.json 의 enabled: false «그대로»
+=> 깊이가 «문다»는 것을 먼저 보이고, 완화는 다음 라운드라 하신 그대로입니다
+```
+
+## 돌린 시험
+```
+tests/test_the_chain_counts_its_hops.py                       23 통과 (신규)
++ outbox_collapse · chain_cascade · chain_key_gate ·
+  a_thrown_trigger_stops_blocking_the_queue ·
+  one_place_builds_the_refresh_message                        합계 88 통과
+```
+
+판정 대기: 없음 — 다음은 큐 2번(표 이름 부류, `defect` 9를 틀로)로 갑니다
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
