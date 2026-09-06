@@ -11,12 +11,23 @@
 // predicate is composed SERVER-side as OR-of-blank across the rule's own
 // `target_fields`, and the client asks for it instead of reconstructing it.
 //
-// THIS MODULE IS THE CLIENT'S SINGLE SPELLING OF THAT REQUEST. Three call sites
-// consume it: the conveyor worklist (`enrichment.js`), the main-grid badge
-// (`ui.js`) and the admin missing-count (`admin.js`). Each composed the filter
-// dict on its own before -- one question's definition living in three places,
-// which is three places for it to drift and the reason the badge could disagree
-// with the list it links to.
+// THIS MODULE IS THE CLIENT'S SINGLE SPELLING OF THAT REQUEST. Each consumer
+// composed the filter dict on its own before -- one question's definition living
+// in three places, which is three places for it to drift and the reason the badge
+// could disagree with the list it links to.
+//
+// 🔴 CONSUMERS TODAY: **one**, the admin missing-count (`admin.js`). This comment
+//    said THREE until 2026-09-07 and the other two are gone:
+//      · `enrichment.js` (the conveyor worklist) was DELETED as wreckage (`42580305`)
+//      · `ui.js`'s main-grid 「결손 N건」 badge was removed by `5116f673`, because the
+//        owner retired `enrichment.html` from navigation and the badge was the thing
+//        pointing at it
+// ⚠️ AND THE GRID NEVER NARROWED. That badge COUNTED (`?skip=0&limit=1&<queue>`) and
+//    LINKED; it never applied the predicate to the grid's own view. So 「the grid has
+//    no queue narrowing」 is not a regression to restore — it has never existed, and
+//    building it is a new capability rather than a repair. Recorded here because this
+//    comment claiming a grid consumer is exactly what would make the next reader
+//    conclude the opposite.
 //
 // NOT here, deliberately: the progress bar's DENOMINATOR. That request is
 // unfiltered by design (every derived row), and the numerator being a subset of
