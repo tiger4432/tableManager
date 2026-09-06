@@ -1597,6 +1597,8 @@
     @keyframes running-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
     .running-pct { min-width: 34px; text-align: right; opacity: 0.75; font-variant-numeric: tabular-nums; }
     .running-elapsed { opacity: 0.5; font-variant-numeric: tabular-nums; }
+    /* 실패 사유 — 경과시간과 달리 «읽힐» 필요가 있어 흐리게 하지 않는다. */
+    .running-reason { color: var(--danger); }
     .running-act { text-align: right; padding-right: 2px; }
     .running-x {
       width: 18px;

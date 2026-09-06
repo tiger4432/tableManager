@@ -2679,6 +2679,15 @@ function renderRunning() {
     }
     line.appendChild(prog);
 
+    // 🔴 실패 사유는 «서버가 쓴 문장» 그대로입니다.
+    //    없으면 아무것도 그리지 않습니다 — 성한 줄은 오늘과 같습니다.
+    if (cfgText(row.reason)) {
+      const why = document.createElement('span');
+      why.className = 'running-reason';
+      why.textContent = ` — ${cfgText(row.reason)}`;
+      line.appendChild(why);
+    }
+
     const act = document.createElement('span');
     act.className = 'running-act';
     if (row.stopping) {

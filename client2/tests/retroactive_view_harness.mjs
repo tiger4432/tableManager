@@ -572,6 +572,24 @@ async function suite(source) {
     ok(view.buildRunsView(null, NOW, {}).rows.length === 0,
       'G6: no payload is the same empty, not a crash');
 
+    // G7 -- the failure reason. The server keeps it (retroactive.py:1150, :1478 to 2000 chars)
+    // and this view read every OTHER field on the row, so a failed replay drew exactly like a
+    // finished one. NOT the envelope illness `body_error.errorText` answers: the listing itself
+    // arrives successful and the failure is a FIELD ON ONE ROW inside it, which is why copying
+    // that helper here would compile and catch nothing.
+    const failedPayload = { runs: [
+      { run_id: 'r9', op: 'ledger_backfill', label: '원장 백필', state: 'failed',
+        error: 'OperationalError: server closed the connection' },
+      { run_id: 'r8', op: 'ledger_backfill', label: '성한 것', state: 'done' },
+    ], ingestions: [] };
+    const fv = view.buildRunsView(failedPayload, NOW, {});
+    ok(fv.rows[0].reason && fv.rows[0].reason.text.includes('OperationalError'),
+      'G7: a failed run carries the reason the server wrote, verbatim');
+    ok(fv.rows[1].reason === null,
+      'G7: ... and a run that did not fail carries none, so the healthy row is unchanged');
+    ok(fv.rows[0].what && fv.rows[0].what.text.length > 0,
+      'G7: ... the reason is an ADDITION -- what the row already said is still there');
+
     ok(view.elapsedMinutes(null, NOW) === null,
       'G7: a run with no start time has no elapsed, not zero');
 
