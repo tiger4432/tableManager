@@ -188,6 +188,31 @@ console.log('\n[6] it leaves nothing behind');
   eq('and no guard script survives either', here, []);
 }
 
+// ═══ ⑦ 🔴 정규화의 «사본 수» — 천장. 내려가기만 한다 ═══════════════════════════════════
+//
+// 🔴 이것은 «드리프트 오라클»이고 그렇게 이름 붙입니다. 새 하니스가 «자기 사본»을 들고
+//    태어나는 것은 어떤 행동 검사로도 안 보입니다 — 그 코드는 이 파일이 부르는 경로에
+//    없습니다. 그래서 모집단을 «소스에» 묻습니다.
+// 🔴 왜 사본이 위험한가: 이름이 같아서 «같은 것으로 보입니다». 2026-09-07 밤에 `escapeHtml`
+//    사본 셋이 정확히 그렇게 갈렸고(하나가 따옴표를 놔뒀습니다), 줄바꿈 정규화도 같은 모양입니다.
+// ⚠️ 이 수는 «회차»로 내려갑니다(총괄 판정: 이스케이프처럼). 올리려면 «판정»이 필요합니다.
+console.log('\n[7] how many test files still carry their own newline normalisation');
+{
+  const BS = String.fromCharCode(92);
+  const PRIVATE = 'replace(/' + BS + 'r' + BS + 'n/g';
+  const here = readdirSync(HERE).filter((f) => f.endsWith('.mjs'));
+  const priv = here.filter((f) => {
+    const s = readFileSync(join(HERE, f), 'utf8');
+    return s.includes('readFileSync') && !s.includes('readSourceText') && s.includes(PRIVATE);
+  });
+  // 45 is what this round leaves: 50 before, minus the five rnd_board harnesses moved onto
+  // `readSourceText`. The tranche took the ones that MATCH text, per the ruling — CRLF breaks
+  // comparison, not counting.
+  ok(`P1 private newline normalisers: ${priv.length} (ceiling 45, was 50)`, priv.length <= 45);
+  ok('P2 ... and the ceiling is not vacuously true — the sweep is not finished',
+    priv.length > 0);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
