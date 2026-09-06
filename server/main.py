@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE, DEFAULT_PG_URL
 from database import models, schemas, crud
 import system_reload
+from listing_absence import absent_listing
 import uuid 
 import os
 import io
@@ -4819,7 +4820,7 @@ def get_ingestion_workspaces():
     workspace_base = paths.WORKSPACE_DIR
 
     if not os.path.exists(workspace_base):
-        return {"status": "success", "data": []}
+        return absent_listing(workspace_base)
         
     workspaces = []
     for name in os.listdir(workspace_base):
@@ -4899,7 +4900,7 @@ def get_chain_rules():
     rules_path = paths.config_path("chain_rules.json")
     
     if not os.path.exists(rules_path):
-        return {"status": "success", "data": []}
+        return absent_listing(rules_path)
         
     try:
         with open(rules_path, "r", encoding="utf-8") as f:
@@ -4921,7 +4922,7 @@ def get_mappers():
     mappers_dir = os.path.join(script_dir, "mappers")
     
     if not os.path.exists(mappers_dir):
-        return {"status": "success", "data": []}
+        return absent_listing(mappers_dir)
         
     mappers = []
     for name in os.listdir(mappers_dir):
@@ -5709,7 +5710,7 @@ async def get_auto_update_status():
     status_path = os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
 
     if not os.path.exists(status_path):
-        return {"status": "success", "data": [], "last_updated": None}
+        return absent_listing(status_path, last_updated=None)
 
     try:
         with open(status_path, "r", encoding="utf-8") as f:
