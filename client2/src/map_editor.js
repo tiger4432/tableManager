@@ -1228,7 +1228,13 @@ async function switchTable(tableName) {
   selectedTable = tableName;
   const paintRulesReady = fetchPaintRules(tableName); // 잠금 선언은 맵 테이블별 — 전환 시 재조회
   try {
+    // 🔴 A failed schema read must not become 「this table has no columns」. Measured
+    //    2026-09-06: `logShapedPushDecision({detail: …})` answers `{mode:'clean'}` --
+    //    a body with no `columns` yields no extras, so the push gate that exists to stop
+    //    replace_map destroying off-contract columns passes SILENTLY. A dropped read
+    //    disarms a data-loss guard; this is not a display bug.
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+    if (!res.ok) throw new Error(`schema ${res.status}`);
     tableSchema = await res.json();
 
     // [U6] Value-column auto-detect and the empty-map seed both consume the served
@@ -8366,7 +8372,10 @@ function renderBreadcrumb() {
 async function switchTableQuiet(tableName) {
   selectedTable = tableName;
   const paintRulesReady = fetchPaintRules(tableName);
+  // Same guard as the loading path: a failure body reads as a column-less table and
+  // disarms the push gate. `openMapFrame` wraps this call in a try, so throwing lands.
   const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+  if (!res.ok) throw new Error(`schema ${res.status}`);
   tableSchema = await res.json();
   // [F1] The dropdown preselect reads the served-binding cache that this round-trip
   // fills. Fire-and-forget here would let the frame's auto-load run with the FIRST

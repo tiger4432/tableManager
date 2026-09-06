@@ -215,7 +215,12 @@ async function runLoadSchema(sources, response) {
   const s = withState(sources, {
     API_BASE: '/api',
     resetSuggestLearning: () => {},
-    fetch: async () => ({ json: async () => response })
+    // 🔴 `ok` and `status` are part of what `fetch` ANSWERS, and this stub left them off.
+    //    `api.js` now refuses a schema it could not read (a failure body silently became
+    //    「this table has no columns」), and an under-modelled response made correct code
+    //    look broken -- 2026-09-06. A stub that omits a field the subject reads is not a
+    //    smaller stub, it is a different server.
+    fetch: async () => ({ ok: true, status: 200, json: async () => response })
   });
   s.sandbox.elements = {
     performanceLog: { textContent: '' },

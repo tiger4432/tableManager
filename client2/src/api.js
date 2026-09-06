@@ -165,7 +165,10 @@ export async function loadSchema(tableName) {
   // once on the one path that has a signal.
   resetSuggestLearning();
   try {
+    // 🔴 Unchecked, a failure body became `columns: []` and the grid believed the table
+    //    had no columns -- which is the state writes start from. Same class as F-11.
     const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+    if (!res.ok) throw new Error(`schema ${res.status}`);
     const data = await res.json();
     state.currentColumns = data.columns || [];
     state.currentColumnTypes = data.column_types || {};
