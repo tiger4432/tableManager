@@ -6,6 +6,9 @@ import './style.css';
 import { initTheme } from './theme.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
+// C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
+// 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
+import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state } from './state.js';
 import { elements } from './dom.js';
 import {
@@ -1553,26 +1556,8 @@ async function refreshSourcesList() {
         const sourceVal = sources[sourceName];
         const isPinned = manualPriority === sourceName;
 
-        let displayVal = sourceVal;
-        let titleAttr = '';
-        if (sourceVal && typeof sourceVal === 'object') {
-          displayVal = sourceVal.value !== undefined ? sourceVal.value : '';
-          if (sourceVal.timestamp || sourceVal.updated_by) {
-            const timeStr = sourceVal.timestamp ? new Date(sourceVal.timestamp).toLocaleString() : 'N/A';
-            const userStr = sourceVal.updated_by || 'system';
-            titleAttr = `title="Updated by ${userStr} at ${timeStr}"`;
-          }
-        }
-
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${sourceName}</td>
-          <td><code ${titleAttr}>${displayVal !== null ? displayVal : 'NULL'}</code></td>
-          <td>
-            <button class="action-btn pin-btn ${isPinned ? 'active' : ''}" title="Pin this value">${isPinned ? '📌 Pinned' : '📍 Pin'}</button>
-            <button class="action-btn del-btn" title="Delete this source">🗑️ Delete</button>
-          </td>
-        `;
+        tr.innerHTML = sourceRowHtml(sourceName, sourceVal, { isPinned });
 
         // Bind Pin Action
         tr.querySelector('.pin-btn').addEventListener('click', async () => {
@@ -1685,25 +1670,8 @@ async function refreshSourcesList() {
         const pinnedCount = sourcePinnedCount[sourceName] || 0;
         const isPinnedAll = pinnedCount === cells.length;
 
-        const uniqueVals = Array.from(new Set(values));
-        let valText = '';
-        if (uniqueVals.length === 0) {
-          valText = 'N/A';
-        } else if (uniqueVals.length === 1) {
-          valText = String(uniqueVals[0]);
-        } else {
-          valText = `Multiple Values (${uniqueVals.length} types)`;
-        }
-
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${sourceName}</td>
-          <td><code>${valText}</code></td>
-          <td>
-            <button class="action-btn pin-btn ${isPinnedAll ? 'active' : ''}" title="Pin this source for all selected cells">${isPinnedAll ? '📌 Pinned' : '📍 Pin'}</button>
-            <button class="action-btn del-btn" title="Delete this source from all selected cells">🗑️ Delete</button>
-          </td>
-        `;
+        tr.innerHTML = sourceRowAllHtml(sourceName, values, { isPinnedAll });
 
         // Bind batch Pin Action
         tr.querySelector('.pin-btn').addEventListener('click', async () => {
