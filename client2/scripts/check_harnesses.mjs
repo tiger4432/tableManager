@@ -275,7 +275,7 @@ const FLOORS = new Map([
   // arrives, and counts the one remaining domain word - the overflow summary - so that
   // a second one turns this red.
   ['progress_card_harness.mjs', 19],
-  ['chain_queue_panel_harness.mjs', 104],
+  ['chain_queue_panel_harness.mjs', 122],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
