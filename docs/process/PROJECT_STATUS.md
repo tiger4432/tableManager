@@ -199,6 +199,28 @@
 🔴 **재개는 총괄이 부릅니다** — 각 채널 끝에 「재개」를 적기 «전»에는 스스로 안 잡습니다.
 🔵 「멈췄습니다」가 «없는» 레인은 「죽은 것」과 못 가릅니다. 그 줄을 «찾아서» 확인하십시오.
 
+## 🟢🟢 ①-ter 재기동 «완료» (08:0x) — 이 절이 위 ①-bis 보다 «최신»입니다
+```
+감시     넷 재장착 완료   착지 `b6ewyy4cl` · design `bpgna7r98` · 라이브 config `b7mvc5zvj` · 레인 정지 `be9j2wme3`
+         심박은 «걷기 씨앗 id» 를 확정한 뒤 겁니다 (인자 없는 /subgraph 는 422 — 「살아 있음」의 증거가 아님)
+서버     uvicorn «하나» PID 31476 · 07:59:25 · startup complete
+         체인 루프 «안에서» 떴음 — 로그: 「Chained Ingestion Worker background task spawned」 · dedup 규칙 4 합성
+         run_chain_worker.py / run_auto_update.py 는 «안 띄웠습니다» (보드 ② 그대로)
+재개     세 채널 끝에 「재개」 `070c36a3` — 레인별 다음 줄 번호 · «자기 감시 재장착» 요구 · 보고 첫 줄에 감시 id
+🔴 남은 것  소유자가 레인 창 «셋»을 한 글자씩 깨워야 합니다. 그전엔 채널 글이 «안 읽힙니다»
+```
+### 🟡 부팅 로그에서 «관측»한 것 — 판정 «안 함». 다음 사람이 이 줄을 «새 문제»로 올리지 않도록
+```
+[Schema Sync] ERROR ×5   void_obs_observed · bonding_core_lot · bonding_core_die · lot_slot_move · bonding_die_from_core
+                        「declared as a table but the database holds a VIEW; 4 declared column(s) cannot be added」
+                        (+ dt_log_transferable 은 0 컬럼이라 INFO)
+발화 관문 ①② 확인     코드 models.py:1070 이 «일부러» 내는 문장이고, test_schema_sync_speaks.py 가 그 문장을 «시험»합니다
+                        => «설계된 거절»입니다. 큐·보드에 결함으로 «없고», 이번에도 «안 올립니다»
+🔴 이 박스 상태          라이브(gitignore) 선언이 «표»라 하는데 이 DB 가 «뷰»를 들고 있는 것 — «이 설치»의 사실입니다
+                        운영 주장으로 «승격 금지» (「박스 얘기 금지」)
+⚠️ 남는 물음 «하나»      «설계된» 거절이 ERROR 레벨로 찍히는 것이 맞나 — 등급 6(모양) 후보. 지금 «안 잡습니다»
+```
+
 ## 🟢 ①-bis 정지 «현황» (08:0x 시점 — 재기동 «전»에 이 줄을 다시 확인하십시오)
 ```
 🟢 응용   멈춤 «확인». 세 줄 다 있음 (`8794f58f` · 보고 12092행에 「멈췄습니다」)
