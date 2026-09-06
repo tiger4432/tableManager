@@ -12666,3 +12666,64 @@ map_meta_registrar.py:69              `META_TABLE = "wafer_map_metadata"`
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔒 맵퍼 아홉 내부 읽기 전수 — **표 이름을 나르는 «규칙 키»가 다섯인데, 선언 모델은 «셋»만 압니다** (11:3x)
+
+⛔ 코드 0줄 · `.sample` 과 코드로만 · 라이브 규칙 파일 «안 봤습니다».
+
+## 🔴 먼저 — 멈춤 조건의 답: 표 이름은 «동적»이 아니라 «규칙 키»입니다
+```
+맵퍼는 표를 `models.DYNAMIC_TABLES.get(<변수>)` 로 잡고, 그 변수는 «전부» `rule.get("<키>", <기본값>)` 입니다
+=> 문자열 조립도 아니고 설정 밖에서 오지도 «않습니다». 정적으로 «셀 수 있습니다» -> 멈추지 «않았습니다»
+```
+### 그런데 그 키가 «다섯»입니다 — 그리고 선언/가드가 아는 것은 «셋»
+```
+✅ trigger_table   가드가 봅니다 (`_group_target_tables`)
+✅ source_table    선언에 있습니다
+✅ target_table    가드가 봅니다
+🔴 map_table            core_alignment_mapper.py:157 · dt_alignment_metadata_mapper.py:162
+🔴 inventory_table      core_usage_mapper.py:129
+🔴 metadata_target_table dt_alignment_metadata_mapper.py:163 (target 로) ·
+                        🔴🔴 dt_inventory_metadata_mapper.py:81 «에서는 source 로» 읽습니다
+```
+🔴 **마지막 줄이 이 라운드에서 제일 무겁습니다** — 이름에 `target` 이 든 키를 «읽기»로 씁니다.
+   한 이름이 두 뜻이고, 가드는 그것을 «쓰기»로도 «읽기»로도 안 봅니다.
+
+## ② 그리고 «기본값»이 읽기를 조용히 만듭니다
+```
+core_alignment:160    rule.get("source_table", "dt_log")        키가 없으면 «dt_log 를 읽습니다»
+core_usage:129        rule.get("inventory_table", "dt_inventory") 키가 없으면 «dt_inventory 를 읽습니다»
+dt_inventory_metadata:81  rule.get("metadata_target_table", "dt_log")  키가 없으면 «dt_log 를 읽습니다»
+=> 선언이 «침묵»하면 맵퍼가 «자기 기본값»으로 읽습니다. 선언만 봐서는 그 읽기를 «알 수 없습니다»
+```
+📎 부류: 「기계만을 위한 기본값을 코드에 두지 않는다」(`chain_bindings` 헤더가 같은 것을 이미 거절합니다) —
+   그 규율이 «컬럼»에는 걸려 있고 «표»에는 안 걸려 있습니다.
+
+## ③ 선언에 «없는» 읽기 — 확실한 것 넷
+```
+규칙                          맵퍼                       선언에 없는 읽기        근거
+dt_log_to_primary_core_frame  core_alignment_mapper      wafer_map_metadata   :215 load_map_meta → META_TABLE
+dt_log_to_core_usage_map      core_usage_mapper          dt_inventory         :129 inventory_table 기본값
+dt_metadata_to_dt_inventory   dt_inventory_metadata      dt_log               :81 metadata_target_table 기본값
+dt_inventory_to_standard_dt_map dt_standard_map_mapper   wafer_map_metadata   load_map_meta
+```
+⚠️ **미확인으로 남깁니다** (셈을 «하한»으로): `dt_map_mapper` 의 `source_table` 출처 ·
+   `lot_slot_wafer_mapper` 의 `chain_lot_slot_wafer` 문자열 · `production_mapper`(69줄, 정적 표 이름 «0»).
+   셋 다 「없다」가 아니라 「제 방법으로 «못 봤다»」입니다.
+
+## 판정 대기: **쉰여섯**
+```
+56  🔴 `reads` 선언의 «값»이 나왔습니다(위 넷 + 하한). 그런데 «키가 다섯»인 것이 먼저입니다 —
+    ㉠ `reads` 를 더하기 «전»에 map_table·inventory_table·metadata_target_table 을 어떻게 볼지
+       (그 셋은 «이미» 표 이름을 나르는데 선언 모델 밖입니다)
+    ㉡ 특히 `metadata_target_table` 이 «한 곳에선 target, 한 곳에선 source» — 이건 이름 문제입니다
+    ⛔ 저는 문법도 개명도 제안하지 않습니다
+```
+```
+판정 대기: 🔴 56 (첫 제출 11:3x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
