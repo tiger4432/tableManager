@@ -50,12 +50,25 @@ def dt_equations(frame_meta: dict, basis_meta: dict | None = None,
     # formula with circle boxes shifts 90/180-degree frames despite a correct
     # confirmed rotation.  An unresolved reference deliberately retains the
     # historical circle-box transform rather than guessing a mask.
-    source_box = target_box = None
+    mask = None
     if isinstance(basis_meta, dict) and basis_cells:
-        mask = map_overlay.die_mask_from_reference(basis_meta, basis_cells)
-        if mask:
-            source_box = map_overlay.origin_box(frame_meta, mask)
-            target_box = map_overlay.origin_box(target_meta, mask)
+        mask = map_overlay.die_mask_from_reference(basis_meta, basis_cells) or None
+    source_box = target_box = None
+    if mask:
+        source_box = map_overlay.origin_box(frame_meta, mask)
+        target_box = map_overlay.origin_box(target_meta, mask)
+    # WHICH BOX THIS EQUATION WAS DERIVED UNDER.  The retreat above is deliberate, but
+    # nothing recorded WHICH retreat happened, so a stored equation could not say what it
+    # stood on - and this file has no logger, so it is quieter than the two sites that do.
+    # The token is the one the map response already uses (S-19); its vocabulary lives in
+    # `map_overlay` precisely so this path and that one cannot spell it differently.
+    #
+    # ONE column for TWO boxes.  Measured over 36 frame combinations (rotation x side x
+    # y-invert, square and anisotropic grids): the source and target bases never differ,
+    # because the mask lives in PHYSICAL space and changing the frame does not move the
+    # grid's physical footprint.  The gate asserts that agreement, so the day it breaks it
+    # says so instead of this column quietly naming one of two answers.
+    origin_basis = map_overlay.origin_box_basis(frame_meta, mask)
     transform = map_overlay.make_frame_transform(
         frame_meta, target_meta, source_box=source_box, target_box=target_box)
     origin_x = int(frame_meta.get("grid_start_x", 1))
@@ -65,6 +78,7 @@ def dt_equations(frame_meta: dict, basis_meta: dict | None = None,
     return {
         "dt_x_base": x["base"], "dt_x_sign": x["sign"], "dt_x_offset": x["offset"],
         "dt_y_base": y["base"], "dt_y_sign": y["sign"], "dt_y_offset": y["offset"],
+        "dt_origin_basis": origin_basis,
     }
 
 
@@ -79,6 +93,7 @@ def core_equations(frame_meta: dict, basis_meta: dict | None = None,
         "core_y_base": equations["dt_y_base"],
         "core_y_sign": equations["dt_y_sign"],
         "core_y_offset": equations["dt_y_offset"],
+        "core_origin_basis": equations["dt_origin_basis"],
     }
 
 

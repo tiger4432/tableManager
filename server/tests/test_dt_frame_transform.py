@@ -1,3 +1,4 @@
+import map_overlay
 from dt_frame_transform import apply_dt_equations, core_equations, dt_equations
 
 
@@ -42,4 +43,8 @@ def test_core_equations_are_the_same_transform_with_core_column_names():
     assert equations == {
         "core_x_base": "Y", "core_x_sign": 1, "core_x_offset": 7,
         "core_y_base": "X", "core_y_sign": -1, "core_y_offset": 7,
+        # S-22: which box the equation was derived under.  This fixture's reference DOES
+        # seat cells on the grid, so the mask decided the box -- and the equality above is
+        # what proves the carrier says so rather than only the six numbers travelling.
+        "core_origin_basis": map_overlay.ORIGIN_BOX_MASK,
     }

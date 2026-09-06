@@ -119,12 +119,14 @@
       "dt_y_base": "string",
       "dt_y_sign": "number",
       "dt_y_offset": "number",
+      "dt_origin_basis": "string",
       "core_x_base": "string",
       "core_x_sign": "number",
       "core_x_offset": "number",
       "core_y_base": "string",
       "core_y_sign": "number",
-      "core_y_offset": "number"
+      "core_y_offset": "number",
+      "core_origin_basis": "string"
     },
     "display_columns": [
       "dt_job",
@@ -269,7 +271,8 @@
       "dt_x_offset": "number",
       "dt_y_base": "string",
       "dt_y_sign": "number",
-      "dt_y_offset": "number"
+      "dt_y_offset": "number",
+      "dt_origin_basis": "string"
     },
     "display_columns": [
       "base_lot",
