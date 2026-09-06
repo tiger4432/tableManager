@@ -583,7 +583,11 @@ function effortImports(src) {
 }
 
 // A correction write path: attaches `effort` and must gate its reset on the server.
-const WRITE_PAGES = ['api.js', 'ui.js', 'clipboard.js', 'main.js', 'enrichment.js', 'map_editor.js'];
+// `enrichment.js` was here until 2026-09-06 and went with the file: the queue page was
+// retired from navigation on 2026-08-11 and the module was deleted as wreckage (no
+// importer, not an entry, 0 of 22 string literals in the bundle). Unlike the 09-04
+// removals there is no mutant to move -- nothing here was keyed on that page.
+const WRITE_PAGES = ['api.js', 'ui.js', 'clipboard.js', 'main.js', 'map_editor.js'];
 // A read surface: writes no corrections, so nothing carries `effort` — but LEAVING counts.
 // `graph_viewer.js`/GRAPH and `trace.js`/TRACE were here until 2026-09-04 and went with
 // the pages. Their two mutants below MOVED to `admin.js` rather than being deleted: what
