@@ -34,6 +34,9 @@
  */
 
 import { readFileSync } from 'node:fs';
+// 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
+//    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
+import { readSourceText } from './lib/probe.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -60,7 +63,7 @@ async function loadModules(mutate = {}) {
   // the scan was reading the shipped file while the suite drove the mutated one.
   const sources = {};
   const read = (file) => {
-    const text = readFileSync(path.join(BOARD_DIR, file), 'utf8').replace(/\r\n/g, '\n')
+    const text = readSourceText(path.join(BOARD_DIR, file)).text
       .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
     const fn = mutate[file];
     sources[file] = fn ? fn(text) : text;
