@@ -13,8 +13,10 @@ deletes by hand. Repairing only the one that had been read would have left the o
 invisible -- so both call one helper, and that is what makes the event impossible to add to
 one and forget on the other.
 
-⚠️ THIS PUTS THE DELETION IN THE OUTBOX; IT DOES NOT WRITE AUDIT HISTORY. Two different
-things, and only the first is closed here.
+⚠️ THIS FILE IS ABOUT THE OUTBOX HALF. The audit-history half was open when this was
+written and was closed on 2026-09-07; it is scored in
+`test_both_deletion_paths_leave_a_history.py`, and the one assertion here that pinned its
+absence is now that absence's inverse rather than a deleted line.
 """
 import os
 import sys
@@ -125,9 +127,27 @@ def test_the_helper_still_clears_the_cell_metadata(db_session, model):
 
 # ------------------------------------------------------- what this does NOT claim to do
 
-def test_the_docstring_says_history_is_still_missing():
-    """⚠️ Saying the unclosed half out loud, in the place the next reader looks."""
-    assert "DOES NOT WRITE AUDIT HISTORY" in crud.purge_map_rows.__doc__
+def test_the_other_half_is_closed_too():
+    """🔴 REPLACED BY ITS INVERSE ON 2026-09-07, NOT RETIRED.
+
+    This used to assert that the docstring still said 「DOES NOT WRITE AUDIT HISTORY」 -- an
+    honest note about the half this file did not close. That half IS closed now, so the old
+    assertion would have gone red for the right reason; deleting it instead would have left
+    the new state unscored, and the file would once again say nothing about audit history
+    either way.
+
+    ⚠️ AND THE OLD NOTE IS WHY THE LINE STAYED OPEN. The lead closed grade-zero L-4 off
+    the commit TITLE (「the map purge becomes visible to the outbox」) while the function's
+    own docstring named the remaining half. One word, 「이력」, meant two things.
+    """
+    # The first spelling of this asserted the old sentence was GONE, and went red on the
+    # new docstring -- which QUOTES that sentence to say when it stopped being true. A
+    # text proxy for 'the note is gone' cannot tell a claim from a citation of one, so
+    # this asks for the claim the docstring makes NOW and leaves the property itself to
+    # `test_both_deletion_paths_leave_a_history.py`, which measures it by running.
+    assert "AND IT WRITES AUDIT HISTORY" in crud.purge_map_rows.__doc__
+    assert "record_row_deletions" in helper_code(), \
+        "the purge stopped going through the one place that records a deletion"
 
 
 def test_a_delete_event_cannot_wake_the_chain():

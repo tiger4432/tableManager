@@ -3323,9 +3323,19 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
     call this instead, which is why the event cannot be added to one and forgotten on the
     other.
 
-    ⚠️ THIS PUTS THE DELETION IN THE OUTBOX. IT DOES NOT WRITE AUDIT HISTORY -- those are
-    different things and only the first is closed here. The event says WHICH rows went;
-    `AuditLog` still has no entry for them.
+    🔴 AND IT WRITES AUDIT HISTORY, THROUGH THE PLACE THAT ALREADY DID.
+    Until 2026-09-07 this wrote the outbox event and nothing else, and the docstring said so
+    -- 「IT DOES NOT WRITE AUDIT HISTORY」. Those are two different questions and the second
+    stayed open for the whole time the first read as closed. `delete_rows_batch` had recorded
+    every row it removed since long before; the same 「행을 지운다」 through this path recorded
+    none, so 「what was deleted?」 had an answer for one kind of deletion and not the other.
+    `record_row_deletions` is that one place and both paths call it, which is why the
+    recording cannot be added to one and forgotten on the other.
+
+    ⚠️ THE USER AND THE TRANSACTION COME FROM THE REQUEST CONTEXT, not from new
+    arguments. `stage_collapsed_event` below reads the same three contextvars for the same
+    reason, and widening this signature would have moved the two call sites and the
+    assertions that pin them for a fact both callers already carry.
 
     🔵 A `DELETE` event cannot wake the chain: `chain_ingestion_worker` filters its
     triggers to `CREATE`/`EDIT` in all three places it selects them, so this adds no
@@ -3341,6 +3351,15 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
     # Staged BEFORE the deletes so the event is added to the same flush that removes the
     # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
     stage_collapsed_event(db, "DELETE", table_name, row_ids)
+
+    # 🔴 READ BEFORE THE DELETE, for the same reason `delete_rows_batch` reads first:
+    # the business key lives on the row, and after the delete there is nothing to ask.
+    from database.context import request_user, request_transaction_id
+    record_row_deletions(
+        db, table_name,
+        db.query(table_model).filter(table_model.row_id.in_(row_ids)).all(),
+        request_user.get() or "system",
+        request_transaction_id.get() or str(uuid6.uuid7()))
 
     db.query(models.CellSource).filter(
         models.CellSource.table_name == table_name,
@@ -4226,6 +4245,36 @@ def delete_row(db: Session, table_name: str, row_id: str, user_name: str = "syst
     """단일 행을 삭제합니다 (배치 로직으로 통합)."""
     return delete_rows_batch(db, table_name, [row_id], user_name) > 0
 
+def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
+                         transaction_id: str):
+    """The audit history for rows that are going away — ONE place, two callers.
+
+    🔴 THE TWO DELETION PATHS WROTE DIFFERENT HISTORY, AND ONLY ONE WROTE ANY.
+    `delete_rows_batch` recorded every row it removed; `purge_map_rows` recorded none, so
+    「what was deleted?」 had an answer for one kind of deletion and not for the other. The
+    rows are gone either way — what went missing was the place to ask.
+
+    ⚠️ IT WRITES TO THE LEDGER TABLE, NOT TO THE IN-MEMORY CACHE. The cache is a
+    post-COMMIT concern and this function does not own the commit: `delete_rows_batch`
+    commits and then publishes, while the map purge runs inside a batch that commits later.
+    Publishing here would put entries in the cache for a transaction that can still roll
+    back. Callers that own a commit publish the returned dicts themselves.
+
+    Returns the log dicts so a caller can do exactly that.
+    """
+    logs = []
+    for row in rows or []:
+        logs.append(create_audit_log(
+            db, table_name, row.row_id, "DELETE",
+            None, "행 삭제됨", "system", user_name,
+            transaction_id=transaction_id,
+            business_key=getattr(row, "business_key_val", None),
+            add_to_cache=False))
+    if logs:
+        bulk_insert_audit_logs(db, logs)
+    return logs
+
+
 def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str = "system"):
     """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
     if not row_ids:
@@ -4260,18 +4309,8 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
         ).delete(synchronize_session=False)
                 
         if deleted_count > 0:
-            logs_to_cache = []
-            for row in rows_to_delete:
-                log_dict = create_audit_log(
-                    db, table_name, row.row_id, "DELETE", 
-                    None, "행 삭제됨", "system", user_name,
-                    transaction_id=tx_id,
-                    business_key=row.business_key_val,
-                    add_to_cache=False
-                )
-                logs_to_cache.append(log_dict)
-            if logs_to_cache:
-                bulk_insert_audit_logs(db, logs_to_cache)
+            logs_to_cache = record_row_deletions(
+                db, table_name, rows_to_delete, user_name, tx_id)
             db.commit()
 
             if logs_to_cache:
