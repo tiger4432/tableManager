@@ -202,7 +202,8 @@
 ## 🟢🟢 ①-ter 재기동 «완료» (08:0x) — 이 절이 위 ①-bis 보다 «최신»입니다
 ```
 감시     넷 재장착 완료   착지 `b6ewyy4cl` · design `bpgna7r98` · 라이브 config `b7mvc5zvj` · 레인 정지 `be9j2wme3`
-         심박은 «걷기 씨앗 id» 를 확정한 뒤 겁니다 (인자 없는 /subgraph 는 422 — 「살아 있음」의 증거가 아님)
+         심박 `bqzib9rk2` 도 걸렸음 (08:0x) — 씨앗 = 클라 `entitySeedId` 와 «같은 식»: `ledger-entity:v1:` + base64url(`["wafer",{"wafer":"SYN-BW-101-16"}]`)
+         🔴 인자 없는 /subgraph 는 «422» 라 살아 있음의 증거가 «아니고», 이 씨앗으로 «200» 을 직접 확인함(응답에 generated_at · schema_version 3 · state ready)
 서버     uvicorn «하나» PID 31476 · 07:59:25 · startup complete
          체인 루프 «안에서» 떴음 — 로그: 「Chained Ingestion Worker background task spawned」 · dedup 규칙 4 합성
          run_chain_worker.py / run_auto_update.py 는 «안 띄웠습니다» (보드 ② 그대로)
