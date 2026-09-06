@@ -968,6 +968,10 @@ class MultiDiscoveryScheduler:
                     ).order_by(DatabaseOutbox.id.asc()).first()
                     
                     if latest_trigger:
+                        # Bound BEFORE the try: the parse itself can throw, and the
+                        # failure branch names the request. An unbound name there would
+                        # replace the reason with a NameError.
+                        payload_data = None
                         try:
                             payload_data = json.loads(latest_trigger.payload) if isinstance(latest_trigger.payload, str) else latest_trigger.payload
                             table_name = payload_data.get("table_name")
@@ -978,7 +982,48 @@ class MultiDiscoveryScheduler:
                             latest_trigger.processed_chain = True
                             db.commit()
                         except Exception as trig_err:
-                            logger.error(f"Failed to handle SCHEDULER_RUN_NOW trigger: {trig_err}")
+                            # 🔴 A REQUEST THAT THREW IS FINISHED, NOT PENDING. This block
+                            # used to log and stop: no rollback, no `status`, and
+                            # `processed_chain` left False. The select above is
+                            # `order_by(id.asc()).first()`, so the same row was picked
+                            # again on every tick FOREVER and every on-demand request
+                            # queued behind it never ran - with nothing on screen and
+                            # nothing raised. A restart did not clear it, because the
+                            # fault is in the row rather than in this process.
+                            #
+                            # 🔴 THIS IS THE SIBLING'S SHAPE, NOT A NEW ONE. The
+                            # RETROACTIVE_RUN handler below already carries this repair
+                            # and the reason it gives applies here word for word; the
+                            # repair had simply landed on one of the two watchers.
+                            #
+                            # ⛔ NOT skipped to the next row either - that leaves the row
+                            # waiting forever and the queue counting one nobody will take.
+                            # ⛔ And retry_count is NOT raised: a request that could not be
+                            # parsed or run will not parse or run next time.
+                            #
+                            # ⚠️ The REASON must survive: the row, the table and the script
+                            # are named. The payload body is not logged - operational data.
+                            logger.error(
+                                "Failed to handle SCHEDULER_RUN_NOW trigger "
+                                "(outbox#%s, table=%s, script=%s); marking it FAILED so "
+                                "the requests behind it can run: %s",
+                                getattr(latest_trigger, "id", "?"),
+                                (payload_data or {}).get("table_name", "?"),
+                                (payload_data or {}).get("script_name", "?"),
+                                trig_err)
+                            try:
+                                db.rollback()
+                                latest_trigger.status = "FAILED"
+                                latest_trigger.processed_chain = True
+                                db.commit()
+                            except Exception as mark_err:
+                                # If even this fails the row stays and the block remains -
+                                # but it says so instead of being silent.
+                                logger.error(
+                                    "Could not mark the failed SCHEDULER_RUN_NOW "
+                                    "(outbox#%s) as finished; the queue is still blocked "
+                                    "behind it: %s",
+                                    getattr(latest_trigger, "id", "?"), mark_err)
 
                     self.handle_retroactive_trigger(db)
                     db.close()
