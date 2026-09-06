@@ -2092,7 +2092,16 @@ class IngestionHandler(FileSystemEventHandler):
             db.commit()
             logger.info(f"[{t_name}] 📝 Logged file ingestion {status.lower()} to database.")
         except Exception as e:
-            logger.error(f"Failed to write file ingestion log to DB: {e}")
+            # 🔴 NAME THE FILE. This line used to say only that "a" log write failed, so an
+            # operator reading it could not tell WHICH file had no record - and a file with
+            # no record does not appear in /failed and has no Retry button, which is the
+            # loss this line is the only warning of.
+            # ⚠️ This makes the failure legible; it does not make the record survive. The
+            # row is still missing. That half is L-2's remaining work.
+            logger.error(
+                "[%s] Failed to write the %s ingestion log row for %s to the database, so "
+                "this file has NO record and will not appear in the failure list: %s",
+                t_name or "unknown", status, os.path.basename(original_path), e)
         finally:
             db.close()
 

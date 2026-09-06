@@ -9543,3 +9543,56 @@ sweep_undelivered_broadcasts 의 수확 (실측, 함수 본문)
 
 판정 대기: 🔴 **㉮/㉯/㉰** · 그리고 「파일 이름 한 줄」을 먼저 낼지
 감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
+
+---
+
+# 【L-2】 ㉱ 판별 → 🔴 **안 섭니다** · 파일 이름 한 줄 착지 `81ecd2dc`
+
+## 흐름 ① | 뺀 것: 파일 0 · 줄 0 · 축 0 | 「깔끔」: ① 동작이 보인다 (한 줄 분량)
+
+## 물으신 것: 「그 INSERT 를 무엇이 실패시키나」 — 컬럼 상한부터 봤습니다
+```
+FileIngestionLog 의 컬럼 상한 «전건»
+   filename · filepath · table_name   String   «길이 없음»
+   error_message                      String   «길이 없음»  <- traceback 전문을 받는 그 컬럼
+   status                             String(20)  쓰는 값은 FAILED/SUCCESS/SKIPPED/PENDING — 안전
+=> 🔴 «길이 상한이 없습니다». PG 에서 길이 없는 String 은 사실상 TEXT 입니다
+   따라서 「traceback 이 길어서 거절」이라는 가설은 «성립하지 않습니다»
+```
+```
+세션도 봤습니다   _log_ingestion_record 는 SessionLocal() 로 «자기 세션»을 엽니다
+                -> 바깥 트랜잭션이 오염돼서 실패하는 경우도 «아닙니다»
+```
+🔴 **그래서 남는 실패 원인은 「페이로드 모양」이 아니라 «DB 자체»입니다** —
+   접속 불가 · 풀 고갈 · 디스크 · 권한. 그리고 **축소된 행도 «같은 이유로» 실패합니다.**
+```
+=> ㉱ 는 이 자리를 못 닫습니다. 총괄 예비 판정대로 ㉯ 로 갑니다
+```
+⚠️ 하나 유보: PostgreSQL 은 텍스트의 NUL 바이트(`\x00`)를 거절합니다. 이진 파일에서 나온
+   traceback 이 그것을 담을 «수는» 있습니다 — 다만 그건 «가능성»이지 제가 잰 것이 아닙니다.
+   그 하나 때문에 ㉱ 를 세우면 「해 봤더니 안 되는 수리」가 되므로 그렇게 안 하겠습니다.
+
+## ✅ 파일 이름 — 지금 냈습니다 (`81ecd2dc`)
+```
+전   "Failed to write file ingestion log to DB: {e}"        <- «어느 파일인지 없음»
+후   "[{표}] Failed to write the {status} ingestion log row for {파일} to the database,
+      so this file has NO record and will not appear in the failure list: {e}"
+```
+🔵 그리고 그 줄이 «자기 한계»를 말합니다 — 「기록이 없다」까지만 말하고 「고쳤다」고 안 합니다.
+   문구만 좋아진 것을 수리로 읽히게 두는 것이 오늘 닫은 부류라서입니다.
+시험: -k "watcher or ingestion_log or nested_dir or drop_visibility" 107 통과
+
+## ⏭ 다음 — ㉯ 인데, 물음 하나가 남습니다 (총괄이 「그때 다시 물으라」 하신 것)
+```
+㉯ 워처가 «자기» 스윕을 돈다 — 주인이 맞고 reclaim_stranded_claims 옆자리입니다
+🔴 남은 물음: «표지를 어디에 두나»
+   ⓐ database_outbox    이미 있는 표지 기제. 다만 «DB 가 안 되는 것»이 원인인데 표지도 DB 입니다
+                       -> 일시 장애만 덮습니다 (앞서 제가 짚은 그 한계 그대로)
+   ⓑ 파일(워크스페이스)  DB 밖이라 «지속» 장애도 덮습니다. 다만 «새 저장소»라 관문 ③입니다
+                       ⚠️ 그런데 워처는 이미 파일 시스템의 주인입니다 — err 폴더로 파일을 «옮깁니다»
+                          즉 「DB 밖 저장」이 이 레인에서는 새 개념이 아닐 수 있습니다
+🔵 제 눈에는 ⓑ 가 이 결함을 «실제로» 닫는 유일한 것으로 보입니다만, 관문 ③ 이라 안 고릅니다
+```
+
+판정 대기: 🔴 **㉯ 의 표지 위치 ⓐ/ⓑ**
+감시: bzt22u0py 15분 자가 기상 · 마지막 이벤트 방금
