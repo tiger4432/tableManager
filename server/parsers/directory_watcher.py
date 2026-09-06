@@ -1706,7 +1706,8 @@ class IngestionHandler(FileSystemEventHandler):
                 # 완료 콜백의 detail(4번째 인자, 기존 error_msg 슬롯)로 전달되어
                 # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
                 # [P2-A] 재개/재시작 사유도 같은 detail 슬롯으로 노출한다(조용한 폴백 금지).
-                detail = self._compose_detail(skipped_no_key, plan, has_rows)
+                detail = self._compose_detail(skipped_no_key, plan, has_rows,
+                                              self._grid_refusal())
                 logger.info(
                     f"[{t_name}] ✅ Successfully processed and "
                     f"{'archived' if dest_path != abs_path else 'left in place'}: {basename}"
@@ -1747,7 +1748,28 @@ class IngestionHandler(FileSystemEventHandler):
     # ── [P2] 체크포인트 재개 / 시그니처 dedup ────────────────────────────
 
     @staticmethod
-    def _compose_detail(skipped_no_key: int, plan, has_rows: bool = True) -> str | None:
+    @staticmethod
+    def _grid_refusal() -> str | None:
+        """격자 거절 사유가 «있으면» 그 문장. 없으면 None.
+
+        🔴 「실패했나」를 «안» 묻습니다 — 사유만 가져옵니다. 0행 거절은 status 가 SUCCESS 이고
+        그것이 맞습니다(형식을 거부하는 것은 정당한 결과입니다). 이 함수가 판정을 흉내내면
+        그 정당한 성공이 화면에서 실패로 보입니다.
+        ⚠️ «가져가며 비웁니다» — 한 파일의 사유가 다음 파일의 화면에 붙는 것이 이 채널의
+        유일한 위험이고, 그것을 여기서 닫습니다.
+        """
+        try:
+            from html_topology_parser import take_refusal
+        except Exception:                                       # noqa: BLE001
+            return None
+        try:
+            return take_refusal()
+        except Exception:                                       # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _compose_detail(skipped_no_key: int, plan, has_rows: bool = True,
+                        grid_refusal: str = None) -> str | None:
         """완료 통지 detail 문자열 조립 — 키 결측 스킵(F1) + 재개/재시작 사유(P2)
         + **0행 파싱**(아래).
 
@@ -1760,7 +1782,13 @@ class IngestionHandler(FileSystemEventHandler):
         parts = []
         if not has_rows:
             # U+2015 (cp949-encodable), NOT U+2014 - this string reaches a cp949 console.
-            parts.append("파싱 결과 0행 ― 저장된 셀 없음(파서가 형식을 거부했을 수 "
+            # 🔴 사유가 «있으면» 그것이 답입니다. 종전 문장은 「파서가 거부했을 수 있음,
+            #    «워처 로그 확인»」 — 사유의 «자리»만 있고 사유가 없었습니다. 로그에는 정확한
+            #    문장이 있는데 화면엔 「어디를 보라」가 갔습니다.
+            # ⛔ 둘을 «같이» 쓰지 않습니다. 사유를 붙이면서 「로그 확인」을 남기면 그것이 자막이고,
+            #    운영자는 «이미 답을 받았는데» 또 로그를 보라는 말을 듣습니다.
+            parts.append(grid_refusal if grid_refusal else
+                         "파싱 결과 0행 ― 저장된 셀 없음(파서가 형식을 거부했을 수 "
                          "있음, 워처 로그 확인)")
         if skipped_no_key:
             parts.append(f"키 결측으로 {skipped_no_key}행 스킵")
@@ -2236,7 +2264,8 @@ class IngestionHandler(FileSystemEventHandler):
             self._finalize_checkpoint(plan, effective_total)
 
             # If successful, update the log entry to SUCCESS
-            detail = self._compose_detail(skipped_no_key, plan, has_rows)  # [F1] + [P2] + 0행
+            detail = self._compose_detail(skipped_no_key, plan, has_rows,
+                                          self._grid_refusal())  # [F1] + [P2] + 0행
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
             db.commit()
@@ -2435,6 +2464,17 @@ class IngestionHandler(FileSystemEventHandler):
             # 같은 파일이라도 행 순서·건수가 달라질 수 있어 재개 불가).
             if meta is not None:
                 meta["source_kind"] = f"pipeline:{filename}::{obj.__name__}"
+            # 🔴 수명의 «시작». 이 자리가 (표, 파일) 한 건의 경계이고, 그래서 곁 채널의
+            #    통상 실패인 「누가 지우나」에 답이 있습니다 — 워처가, 여기서.
+            #    ⚠️ 파서 «인스턴스»에 못 답니다: 그 객체를 «운영자 플러그인»이 만들고
+            #       워처는 절대 못 봅니다. 그래서 모듈 옆 채널이고, 그 값을 «여기서» 비웁니다.
+            try:
+                from html_topology_parser import clear_refusal as _clear_refusal
+                _clear_refusal()
+            except Exception:                                   # noqa: BLE001
+                # 그 파서를 안 쓰는 워크스페이스가 대부분입니다 — 없는 것은 «정상»이고,
+                # 여기서 실패해도 인제션을 막지 않습니다.
+                pass
             return (parser_instance.parse(file_path),)
 
         claim = scan_workspace_pipeline_parsers(

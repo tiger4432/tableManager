@@ -654,6 +654,9 @@ class HTMLMatrixTableParser:
                 "plausible-looking wrong grid origin, because X and Y are part of the "
                 "business key.", reason
             )
+            # 🔴 그리고 그 문장을 로그 «밖»에도 둔다. 로그는 배포의 청중이고, 이 문장을
+            #    읽어야 하는 사람은 「내 격자가 왜 거절됐나」를 묻는 «운영자»다.
+            note_refusal(reason)
             return []
 
         x_row_idx = top_anchor
@@ -766,3 +769,45 @@ class HTMLMatrixTableParser:
         return records
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔴 거절 «사유»가 로그 밖으로 나가는 자리 — 「실패했나」는 «답하지 않습니다»
+#
+# 이 파서가 격자 원점을 유도하지 못하면 사유를 «네 갈래로 정확히» 만들고 (행 번호와 눈금 값까지)
+# `logger.warning` 한 뒤 0행을 돌려줍니다. 그 사유는 `watcher.log` 에만 있었고, 화면에는
+# 「파싱 결과 0행 … «워처 로그 확인»」이 갔습니다 — 즉 사유 대신 «어디를 보라»를 줬습니다.
+#
+# ⛔ 채널은 «사유만» 나릅니다. 「이 파일이 실패했나」는 여기서 답하지 않습니다 —
+#    0행은 «성공»일 수 있고(파서가 형식을 거부하는 것은 정당한 결과입니다), 실제로 그 경로의
+#    status 는 SUCCESS 로 남습니다. 이 채널이 판정을 흉내내는 순간 그 «정당한 성공»이
+#    화면에서 실패로 보이고, 그건 이 줄이 고치려는 것보다 나쁜 거짓입니다.
+#
+# 🔴 인스턴스가 아니라 «모듈»인 이유: 이 파서를 «운영자 워크스페이스 플러그인»이 만듭니다.
+#    워처는 그 객체를 절대 못 봅니다. 그래서 반환 계약(`-> records`)을 넓히지 않고 —
+#    넓히면 이 저장소 «밖»의 스크립트가 전부 깨집니다 — 모듈 옆에 둡니다.
+#
+# ⚠️ 수명의 «주인»은 여기가 아니라 «워처»입니다. 워처가 파일 하나를 처리하기 «전»에 비우고
+#    처리 «후»에 읽습니다 (`directory_watcher` 의 플러그인 호출 자리). 그래서 곁 채널의
+#    통상 실패인 「누가 지우나」에 답이 있습니다. 그 밖에서 읽으면 «비어» 있습니다.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_LAST_REFUSAL = None
+
+
+def note_refusal(reason):
+    """파서가 격자를 «거절한 사유»를 남긴다. 판정이 아니라 «문장»이다."""
+    global _LAST_REFUSAL
+    _LAST_REFUSAL = str(reason) if reason else None
+
+
+def take_refusal():
+    """마지막 사유를 «가져가며 비운다». 두 번째 독자는 빈 손이 맞다 —
+    한 파일의 사유가 다음 파일의 화면에 붙는 것이 이 채널의 유일한 위험이다."""
+    global _LAST_REFUSAL
+    said, _LAST_REFUSAL = _LAST_REFUSAL, None
+    return said
+
+
+def clear_refusal():
+    """수명의 시작. 워처가 파일 하나를 넘기기 «전»에 부른다."""
+    global _LAST_REFUSAL
+    _LAST_REFUSAL = None
