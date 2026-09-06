@@ -11143,3 +11143,65 @@ FrameConfirmation 행을 «쓰는» 함수   frame_confirmation.record_confirmat
 ```
 
 **감시:** `b8imsoqu7` · `b9fi6fi75` · `b7b6fyr7w` — 마지막 이벤트 01:0x
+
+---
+
+# ✅ 판정 26 착지 · 🔎 판정 28 ① 답 — **㉮ 입니다(mint). 그런데 ㉢ 이 «작지 않습니다»** (01:2x)
+
+## ✅ 26 — 소급 실행이 «왜» 실패했는지 말합니다 (`a32f6579`)
+```
+고친 것   retroactive_view.buildRunsView 가 `reason: text(run.error)` 를 싣고, 렌더러가 그립니다
+게이트    기존 하니스에 G7 셋 — 321 통과 / 0 실패, 자체 변이 29/29 그대로
+⛔ 안 씀   `errorText` — 봉투가 아니라 «행의 칸»이라 갖다 대면 아무것도 안 잡습니다 (판정 그대로)
+🔴 안 냄   빌드는 «안 했습니다». CRLF 다섯이 아직 빨갛고 판정 24 가 「두 번째 우회 금지」입니다 —
+          클라 정규화 커밋과 «같은 빌드»로 나갑니다
+```
+
+## 🔎 28 ① — 두 자리가 표지에 «무엇을 넣나»
+**둘 다 «찍습니다»(㉮). 날라 오는 것이 아닙니다.** 다만 「리터럴 참」이 아니라 «출처 dict» 입니다:
+```
+사람 경로   frame_confirmation.py:638
+   mark = {table, map_id, «confirmation_uid»: uid, «confirmed_by», «confirmed_at»}
+체인 경로   dt_alignment_metadata_mapper.py:203  {source:"chain_alignment", rule, decision_key,
+                                                winner, input_fingerprint}
+           core_alignment_mapper.py:221         {source:"chain_core_alignment", rule, winner,
+                                                reference, primary_core, ...}
+   🔴 `confirmation_uid` «없음» · `confirmed_by` «없음» · `confirmed_at` «없음»
+```
+🔵 **그러므로 표지는 «이미» 두 경로를 가릅니다** — 행의 열쇠를 든 것과 안 든 것.
+   체인은 자기를 `chain_alignment` 이라 «이름 대고» 있습니다. 즉 표지가 «거짓말하지 않습니다» —
+   **읽는 쪽이 그 dict 을 `bool()` 로 접어서** 둘을 같게 만듭니다 (`map_overlay.py:938`).
+🔵 그리고 총괄의 멈춤 조건(「행에 싸게 닿나」)은 **안 걸립니다** — 행까지 갈 필요가 없습니다.
+   `m[FRAME_CONFIRMED_KEY].get("confirmation_uid")` 가 «그 자리에 이미» 있습니다.
+
+## 🔴 그런데 «다른» 사실이 걸립니다 — ㉢ 은 라벨 변경이 아닙니다
+```
+map_overlay.py:947-951   frame_confirmed 가 참이면 rotation·side 의 source 를 GEOMETRY_CONFIRMED 로
+그 토큰의 «소비자»        map_alignment.py:516 · :4751 —
+                        `if token not in (GEOMETRY_DECLARED, GEOMETRY_CONFIRMED)` 꼴로
+                        «신뢰 토큰»으로 씁니다 (선언과 «같은 급»으로 취급)
+=> ㉢ 을 그대로 하면 체인 정렬 맵들이 그 신뢰에서 «빠집니다». 화면 라벨이 아니라 «정렬 동작»이 바뀝니다
+```
+🔴 **그래서 멈춥니다.** 이건 「읽는 자리를 바꾸기」의 크기가 아니고, `map_alignment` 은 맵 레인 소관입니다.
+
+## 판정 대기: **스물아홉** (28 ① 은 위로 답함)
+```
+29  🔴 ㉢ 의 범위. 「확정」 토큰이 «두 뜻»입니다 — ㉠ 화면이 「누가 확정했나」로 읽는 뜻,
+    ㉡ map_alignment 이 「믿어도 되나」로 읽는 뜻. 지금은 «한 토큰»이 둘을 다 합니다
+    -> 화면만 갈라도 되는지, 토큰을 갈라야 하는지, 그리고 그 변경이 맵 레인 소관인지
+```
+
+## 모르는 것
+```
+🔴 체인 표지가 붙은 맵이 «실제로 몇 개»인지 — 이 박스의 행이라 안 셌습니다
+🔴 `map_alignment:516·4751` 이 그 신뢰를 잃으면 무엇이 달라지는지 — 맵 도메인이라 안 쟀습니다
+```
+
+## ①②③④ 중 무엇을 움직였나
+```
+① (동작이 보인다)   26 — 실패한 실행이 「끝남」과 같은 줄로 안 그려집니다
+④ (한 능력에 길 둘)  28 — 갈린 자리가 «표지»가 아니라 «읽는 쪽의 bool()» 인 것으로 좁혀졌습니다.
+                   그리고 그 토큰이 «두 뜻»을 겸하고 있는 것이 진짜 ④ 입니다
+```
+
+**감시:** `b8imsoqu7` · `b9fi6fi75` · `b7b6fyr7w` — 마지막 이벤트 01:2x
