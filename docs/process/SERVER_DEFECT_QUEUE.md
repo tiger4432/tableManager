@@ -128,7 +128,7 @@ redo_banner_harness  🔵 「못 읽음 ≠ 선언이 빈 것」을 «이미 단
 | # | 무엇 | 왜 되돌릴 수 없나 | 담당 | 상태 |
 |---|---|---|---|---|
 | ~~L-1~~ | 선점한 대기 행 — 설정 예외 «와» 프로세스 죽음, 둘 다 | ✅ **양쪽 닫힘** — `fe3e9261`(설정을 try 안으로) + `cb76478b`(회수 스윕). 술어 «둘»(오래됨 + 체크포인트가 «있고» 안 움직임) · 체크포인트 «없는» 행은 «건너뛰고 센다» · grace 는 유도를 «부른다»(300 복사 «0», 시험이 단언) · 회수마다 행·표·파일·경과 | 서버 | ✅ **닫힘** (총괄 검증 · 시험 48 통과) |
-| **L-2** | 인제션 기록 DB 쓰기 실패를 «삼킨다» | ✅ **총괄이 잼** — 막는 것은 «다른 표»다: `FileIngestionCheckpoint.status ∈ (DONE, FAILED)` 가 재처리를 막고, 삼켜지는 것은 `file_ingestion_logs`(«자기 세션»)다 → 체크포인트는 FAILED 로 남고 화면엔 «그 파일이 없다» | 서버 | 🔴 등급 0 |
+| ~~L-2~~ | 인제션 기록 DB 쓰기 실패를 «삼킨다» | ✅ **행 고유 실패는 닫힘** `8a78d469` — 축소 행이 «복구 경로»(Retry)를 되살립니다. 🔴 실패에서 «유래한 글자를 안 싣고», 시험이 그것을 «단언»합니다(`error_message == REDUCED_RECORD_NOTE` · `"Traceback" not in ...`). 세부는 로그가 나릅니다(`81ecd2dc`) ⚠️ **두 호출 «사이»에 DB 가 죽는 창은 «열려 있고», docstring 이 그렇게 말합니다** | 서버 | ✅ 닫힘(행 고유) |
 | **L-3** | 🔴 **참입니다 — 부르는데 «행이 안 써집니다»** | `create_audit_log` 는 `add_to_cache=False` 면 **`db.add` 도 생략**한다(자기 docstring). 호출부 3094 가 `add_to_cache=(logs_to_cache is None)` 인데 «유일한 운영 호출자»가 `[]` 를 넘겨 **항상 False** · 반환도 안 받고 append 도 없음 → 값은 바뀌고 이력은 «없다» | 서버 | 🔴 **등급 0 복원** |
 | **L-4** | `replace_map` 삭제가 이력을 안 남긴다 — 같은 행위를 `delete_rows_batch` 는 남긴다 | 「무엇이 지워졌나」를 물을 자리가 없다. 🔴 그리고 «두 경로가 다르다»(기준 ④) | 서버 | 🔴 열림 |
 | ~~L-5~~ | 🔴 **반증됨 — 셉니다. 그리고 «안 합치는 이유»까지 코드가 적어 뒀습니다** | `insert_atoms` 가 `(attempted, inserted)` 를 «따로» 반환 · 커서 표에 `atoms_deduped` 누적 · 라우트 둘이 내보냄 | 서버 | ⚰️ **등급 0 아님** |
@@ -675,6 +675,26 @@ terminal_finding_point_projection(decode_node_id 가 그 가지에 못 감)
    로그는 «고치는 사람»의 재료다. 로그 위생 안건이고 별건이다.
 ⚠️ 다만 그중 **하나는 화면에 닿는다**: 옮기기 실패가 «원본 경로로 폴백»해서 기록의 경로가
    «없는 파일»을 가리킨다 (F-17 과 같은 자리). 로그를 켜도 안 고쳐진다.
+
+### 🔴 6-bis. **표시 안 된 «빨간 시험»이 하나 있습니다** (총괄 16:0x 실측)
+
+L-2 검증 중 넓은 선택자로 돌리다 나왔습니다. **오늘 것과 무관하고, 그래서 더 문제입니다.**
+```
+FAILED  tests/test_frame_confirmation_meta.py::test_the_confirmation_records_the_valid_die_area_it_was_scored_against
+사유    「loading resolves the valid-die area from this key; an unwritten key is why the wrong floor was applied」
+        assert ref is not None  ->  None
+```
+🔵 **오늘 것이 «아닙니다»** — 그 시험 파일의 마지막 변경은 «2026-08-30» 이고,
+   오늘 커밋 중 frame_confirmation · valid_die 를 건드린 것이 «0» 입니다.
+🔴 **그런데 아무도 표시해 두지 않았습니다.** 그러면 넓게 돌리는 사람마다
+   「내가 깬 건가」를 «다시» 물어야 합니다 — 제가 방금 그랬습니다.
+```
+📎 클라가 오늘 아침 «같은 주제»에 같은 말을 했습니다:
+   「valid_die_frame_adoption 은 «이미 빨강 13» — 전환 «전»에 이름으로 못 박아야
+     전환 후의 빨강을 «귀속»시킬 수 있다」
+=> 같은 영역입니다. 「알려진 빨강」이 «어디에도 적혀 있지 않은» 것이 이 항목입니다
+```
+⛔ 지금 고치지 않습니다 — 오늘 범위 밖입니다. **적어 두는 것이 이 줄의 일입니다.**
 
 ---
 
