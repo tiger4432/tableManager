@@ -1134,6 +1134,13 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                             "event": "batch_row_upsert",
                             "table_name": target_table,
                             "items": msg_items,
+                            # 표준 계약 필드 — «항상» 실린다(§event_constants `:185`: 0 과
+                            # 「키 없음」은 다른 사실이다). 이 발신자«만» 안 싣고 있었고,
+                            # 그래서 이 경로에서만 「체인이 몇 칸을 바꿨나」가 «말해지지 않았다».
+                            # 🔴 `len(results)` 가 아니라 «이 메시지가 싣고 있는 수»다. 지금은
+                            #    둘이 같지만(위 불변 주석), 그 불변이 깨지는 날 이 수는 메시지에
+                            #    대해 계속 참이고 `len(results)` 는 과대가 된다.
+                            "change_count": len(msg_items),
                             "updated_by": user_name,
                             "transaction_id": chain_tx_id,
                             "created_logs": serialized_logs,
