@@ -284,6 +284,20 @@
   margin-left: auto; color: var(--oe-ink-meta); font-family: var(--oe-font-body);
   font-size: 11px; line-height: 1.2;
 }
+/* S-39. 🔴 It reads as a WARNING, not as a status word: this row's source is losing rows.
+   The change label keeps `margin-left: auto`, so this sits between the id and that label
+   rather than pushing it — one row, three things, no new line. */
+#ontology-explorer-root .oe-refusal {
+  margin-left: 8px; color: var(--oe-ink-warn, #b45309); font-family: var(--oe-font-body);
+  font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 45%;
+}
+/* 「이 프로세스가 뜬 뒤」 — quiet, because it is the frame the numbers are read in and not
+   itself a number. Once, on the heading. */
+#ontology-explorer-root .oe-refusal-since {
+  margin-left: 8px; color: var(--oe-ink-meta); font-family: var(--oe-font-body);
+  font-size: 10px; line-height: 1.2; font-weight: 400;
+}
 #ontology-explorer-root .oe-has-popover { position: relative; }
 /* 🔴 THE ANNOTATION IS NOT PART OF THE TARGET. It hangs below its row and over the rows
    after it, so while it is up those rows cannot be clicked -- owner: 「좌측 패널에서 마우스

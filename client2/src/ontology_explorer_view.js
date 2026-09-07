@@ -7,6 +7,7 @@ import {
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
+import { refusalCell } from './refusal_cell.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -195,6 +196,15 @@ function renderTree(state) {
     group.dataset.key = `group:${kind}`;
     const heading = h('div', 'oe-tree-heading');
     heading.append(h('span', 'oe-tree-heading-text', KIND_LABELS[kind] || kind));
+    // 🔴 S-39. 「SINCE WHEN」, ONCE. These are PROCESS counters, so a restart is zero — and
+    //    without this, 「아무것도 안 걸렸다」 and 「이 프로세스가 방금 떴다」 are the same empty
+    //    column while being opposite instructions. It sits on the heading rather than on every
+    //    row because it is one fact about the whole report, and repeating it per row would be
+    //    a subtitle saying what the title already said.
+    if (kind === 'source_plan') {
+      const since = refusalCell(state.refusals, null).since;
+      if (since) heading.append(h('small', 'oe-refusal-since', since));
+    }
     if (authorable.includes(kind)) {
       const add = button('+ New', 'new-declaration', kind, 'oe-tree-add');
       add.setAttribute('aria-label', `New ${KIND_LABELS[kind] || kind}`);
@@ -227,6 +237,23 @@ function renderTree(state) {
       // by what it IS -- kind and id -- which is what the index rows are keyed on anyway.
       row.setAttribute('aria-current', String(item.key === subjectKey));
       row.append(h('small', 'oe-change-label', item.change_status));
+      // 🔴 S-39. WHY THIS SOURCE'S ROWS DID NOT LAND, ON THIS SOURCE'S ROW. The gate counts
+      //    every refusal by name and keeps the sentence that says how to repair it; nothing
+      //    read those counters, so the screen could show HOW MANY rows never landed and never
+      //    WHY. `source_plan` is the explorer's name for the ledger config's `sources`
+      //    (`config_explorer.py:97`), which is the same key the gate counts under.
+      // ⚠️ NOTHING IS DRAWN AT ZERO. 「거절 0」 and 「nobody asked」 would be the same pixel,
+      //    and they are opposite instructions — the group heading's `since` is what separates
+      //    them, and it is drawn once because it is one fact about the whole report.
+      if (item.kind === 'source_plan') {
+        const cell = refusalCell(state.refusals, item.canonical_id);
+        if (cell.text) {
+          const tag = h('small', 'oe-refusal', cell.text);
+          // The gate's own sentence, verbatim — it already names the operator's next action.
+          if (cell.title) tag.title = cell.title;
+          row.append(tag);
+        }
+      }
       addPopover(row, item);
       group.append(row);
       // 🔴 THE REASON SITS UNDER THE ROW, NOT IN A TOOLTIP. A declaration that could not be
