@@ -140,12 +140,14 @@ console.log('\n[3] the columns are the declared names');
   // Gate ㉡, and it is true on BOTH sides of the landing: an entity that declares no
   // attributes must leave the table exactly as it is today.
   const bare = [{ type: TYPE, keys: [IDENTITY_KEY], class: null }];
+  const nameList = (cols) => cols.map((c) => c.name).join(',');
   eq('C1 a declaration without attributes leaves the table unchanged',
-    `깊이,${IDENTITY_KEY},라벨,id`, derive.tableColumns(bare, TYPE, []).join(','));
+    `깊이,${IDENTITY_KEY},라벨,id`, nameList(derive.tableColumns(bare, TYPE, [])));
 
   const drawn = CASES.map((c) => {
     const cols = derive.tableColumns(declarationFor(c), TYPE, []);
-    return (c.declared_attributes || []).filter((n) => cols.includes(n));
+    return (c.declared_attributes || [])
+      .filter((n) => cols.some((col) => col.name === n && col.kind === 'attribute'));
   });
   if (drawn.every((names) => names.length === 0)) {
     // ⚠️ PENDING BY NAME, not silence. The seam's server half is not on the wire
@@ -168,20 +170,35 @@ console.log('\n[3] the columns are the declared names');
   }
 }
 
-// ══ ④ VALUES AND THE CONFLICT COUNT — PENDING BY NAME ═══════════════════════════════════
-// 🔴 Named, with the expectations printed, because a half nobody can see is a half that
-//    quietly never lands. There is no importable client reader for `node.attributes` or
-//    `attribute_conflicts` today; `walk/main.js:renderTable` splits the columns back out of
-//    `tableColumns`'s answer by ARITHMETIC (`cols.slice(1, cols.length - 2 - qualNames.length)`),
-//    which is the second author this seam has to remove before ④ can be scored at all.
-console.log('\n[4] values and the conflict count');
+// ══ ④ VALUES — scored; THE CONFLICT COUNT — still PENDING BY NAME ═══════════════════════
+// 🔴 Scoreable since 판정 130-C ㉡ put the column→source mapping in `derive.js:cellSource`.
+//    Before that the mapping lived in `walk/main.js:renderTable` as ARITHMETIC over the name
+//    list (`cols.slice(1, cols.length - 2 - qualNames.length)`), which nothing could import
+//    and therefore nothing could redden.
+console.log('\n[4] values, and the conflict count');
 for (const c of CASES) {
   const node = nodeFor(c);
-  console.log(`  PENDING D «${c.name}» -> attributes ${JSON.stringify(node.attributes)} · `
-    + `attribute_conflicts ${node.attribute_conflicts}`);
+  for (const name of c.declared_attributes || []) {
+    const want = Object.prototype.hasOwnProperty.call(node.attributes, name)
+      ? node.attributes[name] : undefined;
+    const got = derive.cellSource({ kind: 'attribute', key: name }, node, {});
+    // ⚠️ `declared_but_not_reached` is the case that matters here: the expectation is
+    //    `undefined`, NOT an empty string and NOT 0. The client turns it into an empty cell
+    //    one layer up; deciding it here would make 「never reached」 unrecoverable.
+    eq(`D1 «${c.name}» reads ${name}`, want, got);
+  }
+  // 🔴 AND IT READS THE ATTRIBUTE MAP, NOT THE IDENTITY ONE. A node's keys never answer for
+  //    an attribute — that swap is what the removed arithmetic effectively did, and it is
+  //    invisible because its result (an empty cell) is also a legitimate answer.
+  for (const name of c.declared_attributes || []) {
+    eq(`D2 «${c.name}» does not find ${name} among the keys`, undefined,
+      derive.cellSource({ kind: 'key', key: name }, node, {}));
+  }
 }
-pending.push('D the cell value reader (a declared name with no value = EMPTY cell, 「—」/0 ⛔) '
-  + 'and the conflict count (the NUMBER only)');
+pending.push('E the conflict count — `attribute_conflicts` has no reader yet '
+  + '(the NUMBER only, 문장 ⛔), and it lands with C-40 ①');
+console.log('  PENDING E the conflict count has no client reader yet '
+  + `(the vectors expect ${CASES.map((c) => c.expect.attribute_conflicts).join('/')})`);
 
 console.log(`\n${failures.length === 0 ? 'OK' : 'DIVERGED'}: ${pass} passed, `
   + `${failures.length} failed, ${pending.length} pending`);

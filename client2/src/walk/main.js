@@ -31,7 +31,8 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues }
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
 import {
-  bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns, cutBudgets,
+  bareName, followFromRoute, followChoices, keepWalkableRoutes, tableColumns, cellSource,
+  cutBudgets,
 } from './derive.js';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -403,13 +404,17 @@ export function boot(doc, host, deps) {
           if (!qualNames.includes(k)) qualNames.push(k);
         }
       }
+      // 🔴 ONE LOOP FOR THE HEADER AND THE CELLS, so the order is stated once. The line that
+      //    used to sit here re-derived the identity columns by arithmetic
+      //    (`cols.slice(1, cols.length - 2 - qualNames.length)`) — a second author for the
+      //    layout that `derive.js` composes, and one that goes wrong SILENTLY the day a third
+      //    group of columns appears (판정 130-C ㉡).
       const cols = tableColumns(entities(), type, qualNames);
-      const declared = cols.slice(1, cols.length - 2 - qualNames.length);
 
       const table = el(doc, 'table', 'wk-table');
       const thead = el(doc, 'thead');
       const hr = el(doc, 'tr');
-      for (const c of cols) hr.append(el(doc, 'th', '', c));
+      for (const c of cols) hr.append(el(doc, 'th', '', c.name));
       thead.append(hr);
       table.append(thead);
 
@@ -417,16 +422,10 @@ export function boot(doc, host, deps) {
       for (const n of rows) {
         const tr = el(doc, 'tr');
         const q = qualsByNode.get(n.id) || {};
-        const cells = [
-          n.depth === undefined || n.depth === null ? '' : String(n.depth),
-          ...declared.map((k) => valueText((n.keys || {})[k])),
-          ...qualNames.map((k) => valueText(q[k])),
-          n.label || '',
-          n.id || '',
-        ];
-        cells.forEach((v, i) => {
+        cols.forEach((c) => {
+          const v = valueText(cellSource(c, n, q));
           const td = el(doc, 'td', isNumeric(v) ? 'wk-num' : '', v);
-          if (cols[i] === 'id') td.className = 'wk-id';
+          if (c.kind === 'id') td.className = 'wk-id';
           tr.append(td);
         });
         tbody.append(tr);
