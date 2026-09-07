@@ -174,6 +174,56 @@ async function drawWith(mutate, items, cellW, cellH) {
   return { paints: colours.length, fills: fills.length, colours, centres, fillSizes: fills };
 }
 
+// ── C-35: the overlay row, RENDERED ──────────────────────────────────────────────────────
+// 🔴 A10h/A11/A11b asked what the renderer's SOURCE contains -- a chip call, three `<button`
+//    spellings, no `<input`. What they mean is what the row PRODUCES, and the two part company
+//    the moment a button is written in a branch that never runs, or moved into a helper.
+//    Rendering answers the question that was being asked.
+const OV_LEGEND = [{ value: '1', color: '#10b981', desc: 'good' }];
+
+function overlayLayerFor(values) {
+  return {
+    id: 'L1', label: 'src map', sourceTable: 'dt_map', sourceKey: 'k1',
+    table: 'dt_map', key: 'k1', visible: true, failed: false, color: '#abcdef',
+    items: new Map(values.map((v, i) => [`${i},1`, [{ srcX: i, srcY: 1, val: v }]])),
+  };
+}
+
+async function renderOverlayRowHtml(mutate, values) {
+  const els = new Map();
+  const mk = (id) => ({ id, innerHTML: '', textContent: '', style: {}, appendChild() {},
+                        setAttribute() {}, querySelector: () => null, querySelectorAll: () => [],
+                        addEventListener() {} });
+  for (const id of ['overlay-count', 'btn-clear-overlays', 'overlay-list']) els.set(id, mk(id));
+  const savedDoc = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => els.get(id) || null, querySelector: () => null,
+    querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
+    createElement: () => mk('made'),
+  };
+  try {
+    const { probe } = await loadWithProbe(SRC_PATH, {
+      expose: ['renderOverlayList', 'overlayLegendChip'],
+      state: ['overlayLayers', 'activeOverlayLayers', 'legend', 'selectedTable'],
+      stubs: { './utils.js': { showToast: () => {} },
+               './transfer_plan.js': { notifyMapContext: () => {} } },
+      mutate: mutate || undefined,
+      tag: `ovcrow${Math.random().toString(36).slice(2, 7)}`,
+    });
+    const layer = overlayLayerFor(values);
+    probe.overlayLayers = [layer];
+    probe.activeOverlayLayers = [layer];
+    probe.legend = OV_LEGEND;
+    probe.selectedTable = 'dt_map';
+    probe.renderOverlayList();
+    // The chip the row is SUPPOSED to carry, taken from the function that composes it -- so
+    // the assertion ties the renderer to that function rather than to a spelling of its output.
+    return { html: els.get('overlay-list').innerHTML, chip: probe.overlayLegendChip(layer) };
+  } finally {
+    globalThis.document = savedDoc;
+  }
+}
+
 async function makeSandbox(src) {
   ctxSaves.length = 0;
 
@@ -447,8 +497,23 @@ async function runAll(src) {
     // ⚠️ So the assertion count DROPS by three and the floor drops with it. That is the one
     //    direction a floor may move without new coverage, and it is recorded there by name.
 
-    const list = stripComments(sliceFunction(srcText, 'renderOverlayList'));
-    ok(/overlayLegendChip\s*\(/.test(list), 'A10h the overlay row shows the unlisted chip');
+    // 🔴 RENDERED, NOT READ. And the pair is what makes it a claim: with every value declared
+    //    the chip is the empty string and the row must not carry one; with values the legend
+    //    does not declare, the row must carry EXACTLY what `overlayLegendChip` composed.
+    //    「the source mentions the function」 would stay green if the call sat in a dead branch.
+    const rowUnlisted = await renderOverlayRowHtml(src, ['ZZ9', 'QQ']);
+    const rowDeclared = await renderOverlayRowHtml(src, ['1', '1']);
+    ok(rowUnlisted.chip !== '' && rowUnlisted.html.includes(rowUnlisted.chip),
+      'A10h the overlay row shows the unlisted chip',
+      `chip ${JSON.stringify(rowUnlisted.chip)} is not in the row`);
+    // ⚠️ THE ABSENCE IS CHECKED AGAINST THE OTHER ROW'S CHIP, NOT AGAINST A CLASS NAME. The
+    //    first spelling of this line looked for `ov-chip` and FAILED on correct code: that
+    //    class is shared -- the row also carries `<span class="ov-chip dim">align 미상</span>`,
+    //    which has nothing to do with the legend. Comparing against the string the function
+    //    actually composed needs no guess about the markup and cannot catch a sibling chip.
+    ok(rowDeclared.chip === '' && !rowDeclared.html.includes(rowUnlisted.chip),
+      'A10h-b ...and carries none when every value is declared',
+      'a row with nothing unlisted is still showing the legend chip');
 
     // The chip counts against the LIVE legend, so a legend edit has to re-render the row.
     const legendTable = stripComments(sliceFunction(srcText, 'renderLegendTable'));
@@ -463,10 +528,14 @@ async function runAll(src) {
   // ── A11: COMPLEXITY BUDGET. No control was added for this feature. ──
   //         The overlay row's buttons are the whole interactive surface of this block.
   {
-    const list = stripComments(sliceFunction(srcText, 'renderOverlayList'));
-    const buttons = countOf(list, '<button');
+    // 🔴 THE BUDGET IS ABOUT WHAT THE OPERATOR CAN PRESS, so it is counted in the ROW, not in
+    //    the source. A button written inside a branch that never runs is not a control, and a
+    //    button moved into a helper is still one -- the source count answers neither case.
+    const row = await renderOverlayRowHtml(src, ['ZZ9', '1']);
+    const buttons = countOf(row.html, '<button');
     eq(buttons, 3, `A11 the overlay row still has exactly 3 buttons (import / toggle / delete)`);
-    ok(!/<input|<select|type="checkbox"/.test(list), 'A11b and no input was added to it');
+    ok(!/<input|<select|type="checkbox"/.test(row.html),
+      'A11b and no input was added to it', row.html.slice(0, 200));
   }
 
   // ── A12: LOADING AN OVERLAY PUTS ITS VALUES IN THE LEGEND — the headline, end to end. ──
