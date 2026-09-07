@@ -1073,7 +1073,14 @@ const FLOORS = new Map([
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
   // harness already scored stops being inert) added 16.
-  ['overlay_value_colour_harness.mjs', 82],
+  // 🔴 82 -> 79 IS A DELIBERATE DROP, C-35, and the only kind a floor may take: three
+  //    assertions RETIRED as duplicates, not lost. A10e/f/g read the letters of
+  //    `legendColorForValue` to claim it reads the map legend, falls back to the served
+  //    default, and never reaches a palette — all three already scored by EXECUTION in
+  //    A1/A2/A3/A4 a few dozen lines above, with `pickUnusedColor` stubbed to a sentinel so a
+  //    palette reach comes back as that sentinel instead of null. Measured before removing
+  //    them: neutralised but still counted, the sweep caught 23 of 23. They carried nothing.
+  ['overlay_value_colour_harness.mjs', 79],
   // New 2026-08-04 with the overlay-provenance round. Floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['overlay_provenance_harness.mjs', 21],
