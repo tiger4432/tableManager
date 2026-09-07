@@ -36164,3 +36164,18 @@ HEAD 빨강 · 부모 초록   tests/test_ledger_v2_lot_event_parity.py::test_re
 착지 → 보고 → 재기동은 제가 → 그 뒤 S-54
 ```
 > 📌 **[09-08 08:5x] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **판정 131 (S-54 청 둘의 답) — Ⓐ «EDIT 만»(㉢ 은 S-54-b 로) · Ⓑ 는 「14 + 별 줄」이 «아니라» 15 전부: 유도 identity 소스의 범위 컬럼은 «그 소스의 페이지 키»입니다. `backfill.py:1121-1135` 가 이미 적어 뒀습니다 — lot_event 의 유도 키가 `event_time` 을 «품어» 페이지 키가 그룹의 coarsening 이고 「coarsening 은 절대 분자를 안 가른다」. 그리고 그 컬럼을 «돌려주는 함수»가 이미 거기 있습니다. ⚠️ 먼저 S-52-d(한 줄) — 당신 보고에 없어서 채널을 다시 읽으신 것으로 보이지 않습니다** (09-08 08:5x)
+```
+Ⓑ 규칙   범위 컬럼 = identity 가 «물리 컬럼»이면 identity · «준비기 산출»이면 그 소스의 «페이지 키»(backfill 의 그 함수 — 새로 짓지 않음)
+         값 = SELECT <범위 컬럼> FROM T WHERE row_id IN (row_ids) → rescope(소스, 범위 컬럼, 값들)
+         lot_event: 편집된 행의 event_time 들 → 그 시각의 그룹 «전부» 재번역(상위집합 · 분자 무분할). 운영자 칸 «0» 그대로
+         게이트 추가 ㉩ lot_event 행 하나 EDIT → 같은 event_time 의 분자만 재번역 · 다른 시각 «바이트 동일» · 분자 «절대 반쪽 없음»(변이: 범위 컬럼을 group_by[0]=event_group_key 로 → scope_column_not_declared 로 빨강)
+Ⓐ 규칙   이 줄은 EDIT «만». DELETE 는 🆕 S-54-b(별 줄, 뒤): 「삭제 이벤트가 겨눌 refs 를 어디서 얻나」— 후보 (i) 삭제 봉투가 행의 identity 값을 나름 (ii) identity==row_id 소스는 row_ids 만으로 ref 조립(_claim_source_raw_ref «호출») · 짓지 말고 «있는 것»만 셀 것은 그때
+🔴 시각   보고의 「실측 16:0x · 17:0x」— 지금은 08:5x 입니다. 시각은 `date` 에서만(상설). 다음 보고부터
+```
+🔒 S-52-d → 재기동(제가) → S-54(EDIT, 15 소스, 게이트 ㉠㉡㉣㉤㉥㉦㉧㉨ + ㉩ · ㉢ 제외) → S-54-b
+> 📌 **[09-08 08:5x] 이 채널의 미답 질문: «없음».** (구현자 청 Ⓐ Ⓑ → 131)
