@@ -17,7 +17,7 @@
 | Object materialization | 등록 원자 (`register@1`, 목적어 없음 — 속성은 그 원자의 qualifiers) | 소스가 속성을 매기면 «암묵 등록» |
 | Link materialization | 사실 원자 (주어 → 술어 → 목적어) | 문장 `mappings` |
 | Edits layer (사용자 편집) | 표 쪽 `cell_sources` 사용자 층 (원장은 «쓰기 없음») | — |
-| Branch / 시간 여행 | «없음» (방향 논의 ③④) | — |
+| Dataset version / Branch / 시간 여행 (표 «전체» 단위) | «없음» — 우리 이력은 «사실 단위»(원자의 occurred_at) (방향 논의 ③④) | — |
 
 ## 1. 예시 — 「웨이퍼 마스터 표 + 검사 행 표」 두 표를 원장으로
 
@@ -113,7 +113,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 · 「Object 가 materialize 된다」= 그 소스가 register@1 문장을 내거나, 속성을 매긴 것만으로 «암묵 등록»(판정 127·Ⓖ — 타입이 register@1.subjects 에 있어야 함)
 · 「Link」는 술어. 링크에 값이 붙으면 술어의 qualifiers 로 — 노드 속성(attributes)과 «다른 것»이다
 · «걷기»가 파운드리의 Object set 질의: 씨앗 노드에서 follow(술어)로 걸어 collect(타입)를 가져온다. 노드는 {id, type, keys, attributes}
-· 파운드리와 «다른 것»: 원장은 append-only 사실 저장이고, 속성이 바뀌면 «새 등록 원자»가 생긴다(이력). 걷기는 최신을 보여 주고 충돌 «수»를 낸다
+· 파운드리와 «다른 것»은 append-only 여부가 «아니라» «이력의 단위»다(소유자 정정 09-08 08:3x). 파운드리는 «데이터셋 버전»(트랜잭션마다 새 버전, 시간 여행은 버전으로), 우리는 «사실(원자)» 단위(원자마다 occurred_at · 속성이 바뀌면 새 등록 원자). 표 «전체»의 버전·브랜치는 우리에게 없다(방향 논의 ③④). 걷기는 최신을 보여 주고 충돌 «수»를 낸다
 ```
 
 ## 2. 두 줄 (완성의 정의)
