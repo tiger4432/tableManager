@@ -425,6 +425,27 @@ def test_scoring_margin_is_a_die_count():
             f"the best other agreement {runner}")
 
 
+def _expected_frames():
+    """What this contract REQUIRES a value/occupancy run to enumerate: one candidate per
+    rotation, and every rotation.
+
+    A start corner is an ORDINAL axis - it says where an index walk begins - so a run that
+    ranks by value or occupancy has none, and `tl`/`tr` are the same candidate. Scoring
+    eight there would rank one geometry twice and compute the margin against a duplicate
+    of the winner.
+
+    ⚠️ THIS IS THE CONTRACT'S OWN STATEMENT, NOT A READING OF THE CODE, and it is only
+    worth anything because the caller compares it to what the run ACTUALLY rebuilt. A
+    companion test asserting properties OF THIS LIST was written first and deleted: it
+    scored a restatement against itself and stayed green under both mutants - narrowing to
+    one rotation, and narrowing by rotation instead of by corner. The comparison with
+    `calls` reddens on both.
+    """
+    every = list(_require("CANDIDATE_FRAMES"))
+    assert len(every) == 8, f"the full candidate set is no longer 8: {every}"
+    return [frame for frame in every if frame.endswith("_tl")]
+
+
 def test_scoring_rebuilds_a_full_meta_per_candidate():
     """THE PREMISE of section 2. One box with 8 transforms on top does not reproduce the
     cancellation between the y mirror and the offset sign flip, and production row `CORE_YINV`
@@ -452,8 +473,19 @@ def test_scoring_rebuilds_a_full_meta_per_candidate():
         map_alignment.source_meta_for_frame = saved
         dt_map_derivation.source_meta_for_frame = real
 
-    frames = list(_require("CANDIDATE_FRAMES"))
-    assert len(frames) == 8, f"the candidate set is no longer 8: {frames}"
+    # 🔴 ONCE PER CANDIDATE THIS RUN ENUMERATES - not once per member of
+    # `CANDIDATE_FRAMES` (2026-09-08). This asserted the full eight, and `2ec8e24c`
+    # narrowed a non-index run to four with the reason written beside the code:
+    # "Value/occupancy mode deliberately has no start corner". With no start corner
+    # `tl` and `tr` ARE THE SAME CANDIDATE, so eight was never the set this fixture
+    # could produce - the test was measuring the constant rather than the run, and
+    # the narrowing it flagged is correct.
+    #
+    # The property is untouched and still fails if anyone stacks transforms on one
+    # box: a WHOLE meta per candidate, exactly one each, none skipped and none twice.
+    frames = _expected_frames()
+    assert len(frames) > 1, (
+        "a one-candidate run cannot show that a meta is rebuilt PER candidate")
     assert sorted(calls) == sorted(frames), (
         "the scorer did not rebuild a whole meta once per candidate.\n"
         f"  candidates: {frames}\n  rebuilds:   {calls}\n"
