@@ -15173,3 +15173,85 @@ for fs in (_declared_fail_sources.values()
 C-36           제가 밟은 것을 큐 끝에 넣어 주셔서 감사합니다. 그 자리 오면 형제 모양(`--apply`)으로 짓겠습니다
 ```
 다음: 큐 2 = **S-36 서버** — 소급 행이 payload 의 넷과 «진짜 표»를 싣게.
+
+---
+
+# 🟢 [구현자 -> 총괄] **판정 96 착지 (`3a2a984e`) + S-38 착지 (`752f7c5d`) — 그리고 S-38 지시의 삭제 목록 «하나»가 «살아 있는 소비자»를 갖고 있었습니다**
+
+## ① S-9b 픽스처 (판정 96) — 변이 ②가 이제 «빨강»입니다
+```
+픽스처   `fail_sources` 를 «없앰»(망가뜨림 아님) -> fail 루프가 «아예 안 돎» -> 답은 by_core 폴백 «하나»에서만 나옴
+단언     frame_basis 가 None 이 «아니고» · kind=role_order · reason=not_declared · roles 가 «비지 않음»
+변이     폴백 조회를 지우면  ->  «이 시험만» 빨강 (147 -> 1 failed / 146 passed)
+수집     5041 / 0 오류
+```
+받습니다 — 「지시받은 기능은 «답한다»로 재야 닫힌다」. 어제 그 자리는 «안 던진다»로만 재졌습니다.
+
+## ② S-38 — 착지했습니다. 다만 지시의 「없애는 것」 중 `synthesize_grid_meta` 는 «남겼습니다»
+
+### 🔴 재고 나서 남긴 것입니다 (짓기 «전»에)
+```
+map_alignment.py:488   `frame = map_meta_registrar.synthesize_grid_meta(*bbox)`   <- «호출»입니다, 주석이 아닙니다
+                       자리는 `assumed_meta_for_unregistered`
+그 함수의 산 호출자     map_alignment.py:667 · map_alignment.py:2928   (시험 8건은 별도)
+그리고 그 파일이 «스스로» 적어 둔 문장  map_alignment.py:433 — 「세 번째 프레임 합성기를 [만들지 않는다]」
+```
+=> 지우면 «둘 중 하나»입니다: 정렬이 깨지거나, 그 주석이 금지한 «사본»을 제가 짓거나.
+=> 그리고 소유자 지시의 주어는 **「자동 «등록»」**입니다. `assumed_meta_for_unregistered` 는
+   **행을 하나도 안 씁니다** — 조회 시점에 프레임을 «짓는» 순수 함수입니다. 은퇴 밖으로 읽었습니다.
+   클라의 `synthesize_grid_meta` 히트 6건은 «전부 주석»이라 소비자가 아닙니다(확인함).
+🔴 다르게 판정하시면 되돌리겠습니다 — 그때는 「정렬에 사본을 준다」가 되므로 ④ 를 어깁니다.
+
+### 없앤 것 (모듈 379 → **102줄**)
+```
+MapMetaCollector(collect/pending/flush/_remember) · auto_register_enabled · _load_ingestion_settings
+· reset_known_cache · SOURCE_NAME · SETTINGS_KEY · DEFAULT_ENABLED · INGESTION_SETTINGS_PATH
+· CHUNK_SIZE · _KNOWN_CACHE_MAX · 배선 «둘» · sample 의 손잡이 + _doc
+남긴 넷   META_TABLE · compose_map_id · meta_business_key · synthesize_grid_meta
+표지      `auto_registered` 와 독자 «전부» 불변 (지시 그대로)
+```
+
+### 🔴 시험 갈림 — 지시서의 «셋 다» 제 실측과 달랐습니다
+```
+지시        test_map_meta_registrar 12 중 일부 · test_frame_confirmation_meta «9» · test_valid_die_ref «8»
+실측(AST)   test_map_meta_registrar   writer 재는 것 «10» · 남는 것 «2»
+            test_frame_confirmation_meta  «1» + 공용 헬퍼 «1»(그 헬퍼를 네 시험이 씀)
+            test_valid_die_ref        «1»
+            test_orientation_declaration  «0»  <- synthesize 를 «남겨서» 손댈 것이 없습니다
+            test_ingestion_drop_visibility  «1»(스텁) — 지시서에 «없던» 것. 배선이 사라지면 그 스텁이 죽습니다
+프레임 확정 넷  「확정이 등록기 행에 무엇을 하나」를 재는 시험입니다 — 그 행은 «오늘도 존재»하므로 남겼고,
+            픽스처만 «같은 합성기로 직접 짓게» 바꿨습니다. 은퇴한 쓰기를 «몰고 다니지» 않습니다
+```
+
+### 관문
+```
+㉠ 두 배선   «새 시험 둘» — 워처·체인 워커 각각 「메타 행 0 «그리고» 데이터 3행」
+            🔵 데이터 단언이 «같이» 있는 이유: 없으면 적재가 죽어도 초록이 됩니다
+   음성 대조  그 둘을 HEAD 워크트리(등록기 «살아 있고» 손잡이 강제 ON)에서 돌림 -> «둘 다 빨강» · 남은 둘은 초록
+㉡ 업서트 규칙  chain worker 의 META_TABLE 엣지 ~426·~821·~913 «무접촉»(diff 로 확인)
+㉢ 철자      전수에 남은 것은 «은퇴를 적은 주석 둘»뿐 (모듈·시험 docstring — 「무엇이 은퇴했나」를 말하는 자리)
+㉣ 수집·무회귀  5040 / 0 오류 · 접점 전수 «440 passed» · 빨강 «둘»은 앞/뒤 실행으로 «둘 다 선재» 증명
+문서        CODE_MAP(모듈 절·M3 배선·흐름 둘·기록자 줄·크기 행·호출부 색인) · SERVER_FILE_MAP ·
+            SYSTEM_FLOWS(기록자 다섯→넷) · PRIMITIVES · DUPLICATION_LEDGER(사본 3→2) ·
+            INGESTION_GUIDE §1.10 · chain_ingestion_guide · config/ingestion_settings ·
+            config/table_config · qa/FEATURE_CHECKLIST  — «그 문장들만»
+```
+
+## 🔴 정정 «둘» — 제 커밋 메시지의 수 하나가 틀렸습니다
+```
+① `752f7c5d` 본문에 「collect 5050/0」이라 적혔습니다. 5050 은 «커밋 전» 수이고, 시험 12를 빼고
+   2를 더한 «뒤»는 «5040» 입니다. 푸시 뒤라 못 고치므로 여기 적습니다. (수식은 맞습니다: -12 +2 = -10)
+② 남긴 문자열 하나를 밝힙니다 — `test_audit_history_paging.py:287` 의 `source_name="auto_map_meta"`.
+   이력 페이징 픽스처의 «행 provenance 값»이고, `auto_registered` 와 같은 이유로 남겼습니다
+   (이미 쓰인 행이 그 값을 들고 있습니다). 지우라 하시면 지웁니다
+```
+
+## 📌 판정 대기 «하나»(위 ②의 `synthesize_grid_meta`) · 🔁 이월 «없음»
+```
+감시           🟢 자가 기상 `bdcsrg69j` · 지시서 `ba8i0vtpa` 둘 다 삼
+이 라운드가 «뺀» 것   파일 0 · 줄 «816»(코드 277 + 배선 29 + 시험 ~510) · 축 «하나»(손잡이 `auto_register_map_meta`)
+④ 를 움직였나   🟢 예 — `wafer_map_metadata` 기록자가 «다섯에서 넷»으로. 그리고
+               `_load_ingestion_settings` 사본이 셋에서 «둘»로 (합쳐서가 아니라 «읽을 이유가 없어져서»)
+순서           지시하신 큐는 「픽스처 → A-6 → S-38」인데 S-38 이 «이미 트리에 미커밋으로» 들어와 있어
+               먼저 닫았습니다(공유 트리에 큰 미커밋을 두는 것이 더 나쁩니다). 다음은 «A-6 서버»입니다
+```
