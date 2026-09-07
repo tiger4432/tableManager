@@ -240,6 +240,24 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
     queueView({ ...BACKED_UP, waiting_transactions: [
       { transaction_id: 'x', rows: 1, tables: [], event_types: [], max_retry: 0,
         waiting_seconds: 5 }] }).rows[0].tables, '—');
+  // 🔴 S-36. A RETROACTIVE ROW SAYS WHAT IT IS, IN THE SLOT THAT SAID 「—」. Its `tables` is
+  //    empty by construction, so before this the operator saw a dash on exactly the row they
+  //    could not otherwise identify. Scored by VALUE on both sides of the fork.
+  eq('a retroactive row names its op, its requester and its params',
+    queueView({ ...BACKED_UP, waiting_transactions: [
+      { transaction_id: 'x', rows: 1, tables: [], event_types: [], max_retry: 0,
+        waiting_seconds: 5,
+        retroactive: [{ run_id: 'r1', op: 'enrichment_confirm', requested_by: 'kk980',
+                        params: { rule: 'dt_frame' }, outbox_id: 12 }] }] }).rows[0].tables,
+    '소급 · enrichment_confirm · kk980 · {"rule":"dt_frame"}');
+  // ⚠️ AND THE OTHER SIDE OF THE FORK IS THE HALF THAT CAN GO WRONG SILENTLY: a row with no
+  //    `retroactive` key must be BYTE-IDENTICAL to yesterday. The dash assertion above already
+  //    covers the empty case; this covers a row that DOES name tables.
+  eq('a row with no retroactive key still shows its tables, unchanged',
+    queueView({ ...BACKED_UP, waiting_transactions: [
+      { transaction_id: 'x', rows: 1, tables: ['wafer_process', 'lot_master'],
+        event_types: [], max_retry: 0, waiting_seconds: 5 }] }).rows[0].tables,
+    'wafer_process, lot_master');
   eq('the row count is carried', v.rows[0].rows, '40');
   eq('the age is formatted, not raw seconds', v.rows[0].age, '1시간 2분');
 
