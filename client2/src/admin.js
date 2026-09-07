@@ -14,7 +14,7 @@ import { retryVerdict, retryMessage } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
-import { showToast } from './utils.js';
+import { showToast, escapeHtml } from './utils.js';
 // C-14: 서버가 준 «이름»을 찍는 목록 행 다섯. 하니스가 import 로 채점할 수 있게 자기 모듈에
 // 삽니다 — 이 파일은 `tokens.css` 를 import 해서 node 가 못 읽습니다.
 import {
@@ -26,6 +26,11 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel } from './chain_queue_panel.js';
+// C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
+// 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
+import { ruleOutcomeView } from './rule_outcome.js';
+// 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
+import { ageText } from './pickup_state.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -234,6 +239,11 @@ let fileTotal = 0;
 
 let workspaceData = [];
 let chainData = [];
+// C-1. 규칙별 «마지막 결과». `/admin/chain/queue` 가 규칙 표와 «같은 새로고침»에서 오므로
+// 새 요청이 «아닙니다** — 이미 받아 둔 응답의 한 칸입니다.
+// 🔴 `null` 은 「못 읽었다/옛 서버」입니다. `{}` 로 두면 「규칙이 하나도 평가된 적 없다」와
+//    구별이 안 되고, 그 둘은 다른 사실입니다.
+let chainRuleOutcomes = null;
 let mapperData = [];
 let autoUpdateData = [];
 let linkedFailLogs = [];        // Auto Update 탭: 산출물 인제션 실패 (auto 대상 테이블 ∩ 최근 실패 100건)
@@ -960,6 +970,10 @@ async function fetchData(options = {}) {
       else if (queueRes.status === 404) queueOpts = { unavailable: '이 서버 프로세스에 /admin/chain/queue 가 없습니다 (404) — 재기동이 필요합니다.' };
       else if (!queueRes.ok) queueOpts = { unavailable: `대기열 조회 실패 (HTTP ${queueRes.status}). 수를 그리지 않습니다.` };
       else queueBody = await queueRes.json().catch(() => null);
+      // C-1. 규칙 표가 읽을 자리에 둡니다. 못 읽었으면 «null 그대로» — 지난번 값을 남기면
+      // 낡은 결과를 «지금»으로 읽습니다.
+      chainRuleOutcomes = (queueBody && typeof queueBody.rule_outcomes === 'object'
+                           && queueBody.rule_outcomes) || null;
       if (isStale()) return false;
       // 🔴 이것이 «항상» 돌다. 전에는 위의 throw 때문에 여기까지 못 와서, 토큰이 없으면
       //    패널이 «자기 거절 사유를 그릴 기회»를 잃고 절이 통째로 비었다.
@@ -1602,6 +1616,19 @@ function renderChainTable() {
     const activeBadge = isActive
       ? `<span class="badge badge-success">ACTIVE</span>`
       : `<span class="badge badge-danger">DISABLED</span>`;
+    // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
+    //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 ACTIVE 이면서 `skipped:disabled` 입니다 —
+    //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
+    const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
+    const outcomeBadge = outcome.read
+      ? `<span class="badge ${outcome.badge}">${escapeHtml(outcome.outcome)}</span>` : '';
+    // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
+    // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
+    //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
+    const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} 전`]
+      .filter(Boolean).map(escapeHtml);
+    const outcomeNote = outcomeBits.length
+      ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
     const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
     const source = rule.trigger_table || '-';
     const target = rule.target_table || '-';
@@ -1617,7 +1644,7 @@ function renderChainTable() {
         rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
         !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
       ].join('')}</div></td>
-      <td><div class="chain-state">${activeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span></div></td>
+      <td><div class="chain-state">${activeBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
     `;
 
     row.addEventListener('click', () => {
