@@ -2161,6 +2161,24 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         remaining_reliable = False   # region_chips.reliable에도 전파
         bins_base_reliable = False   # 모집단 불일치는 untracked와 무관한 실 강등이다
 
+    # 🔴 [S-15 ①-a-1 · 판정 102] 「정렬은 됐는데 근거가 약하다」는 M1 만 말하고 있었다.
+    #    M2 는 `warrant` 라는 낱말을 «한 번도» 안 썼고(실측: 0회), 그래서 M1 이 은퇴하면 그
+    #    등급이 «아무 데서도» 안 나온다 — 은퇴가 제품을 뺏는 자리였다. 재료는 ①-a-0' 이
+    #    받게 한 `frame_basis` 가 들고 오고, 판단은 `bonding_plan` 의 «그 한 함수»가 한다.
+    import bonding_plan
+    if by_core is None:
+        _own_meta, _own_basis = bonding_plan.canonical_basis(
+            db, source_cfg, _self_map_pairs(source_cfg, lot, slot), meta_cache)
+        _warrant_mark = bonding_plan.warrant_marker(_own_basis)
+    else:
+        _own_basis = None
+        # 코어마다 자기 기준이다 — 하나라도 약하면 이 답 «전체»가 약하다(스펙 §0.2 ⑨,
+        # `canonical_basis` 가 인용하는 그 규율).
+        _warrant_mark = bonding_plan.weakest_warrant_marker(frame_basis_by_core.values())
+    if _warrant_mark:
+        statuses = {role: bonding_plan.compose_status_marker(status, _warrant_mark)
+                    for role, status in statuses.items()}
+
     result = {
         "identity": {"lot": lot, "slot": slot},
         "stage": stage_name,
@@ -2186,9 +2204,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         #    `frame: "self"` 다) 그 답이 «항상 같은 상수»였고, 그 상수를 `frame_basis` 라는
         #    이름으로 내면 화면이 «다른 물음의 답»을 읽는다(상설: 대리 ≠ 성질).
         #    이제 «자기 맵»에 묻는다 — M1 이 답하던 그 물음을, `canonical_basis` 그 함수로.
-        import bonding_plan
-        _own_meta, _own_basis = bonding_plan.canonical_basis(
-            db, source_cfg, _self_map_pairs(source_cfg, lot, slot), meta_cache)
+        #    ⚠️ ①-a-1 이 «바로 위»에서 이미 물었다 — 두 번 묻지 않는다(질의도 답도 같다).
         result["frame_basis"] = _own_basis
     else:
         result["by_core"] = by_core
