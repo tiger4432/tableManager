@@ -801,6 +801,35 @@ const FLOORS = new Map([
   // naming the function would stay green against a copy, and a copy diverging is the defect.
   ['map2_truncation_reader_harness.mjs', 21],
   //
+  // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
+  //    bare number tells the next person nothing about why it may not drop, and a floor whose
+  //    reason is unreadable gets raised to make a red build green.
+  //    🔴 Each was checked to carry load before being written down — a floor over a harness
+  //    that asserts nothing is a number guarding a number.
+  //
+  // Scores that the health card ASKS WHAT THE TAB ASKS: it reads the error envelope and the
+  // absence before turning `data` into a count, so 「the collector list is empty」 stops looking
+  // like 「the source is not installed」 or 「the request failed」. Verified load-bearing: cutting
+  // the card's own absence read (`absentPath` -> null) drops it to 6/1.
+  ['health_card_absence_harness.mjs', 7],
+  //
+  // Scores the DONE-stats reader against a probe-loaded copy of the subject, and it drives its
+  // OWN mutants through `loadWithProbe` — so the floor is already known to be load-bearing
+  // without an external one. A drop here means one of those mutants stopped being run.
+  ['ingestion_done_stats_harness.mjs', 11],
+  //
+  // Scores the retry verdict the same way, mutants included. This is the judgement that decides
+  // whether a failed row is retried or parked; a floor drop means fewer of its states are
+  // separated, and the states that collapse first are the ones that look alike.
+  ['retry_verdict_harness.mjs', 29],
+  //
+  // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
+  // the server relies on to compensate for a capped list is still handled. Verified
+  // load-bearing: renaming `batch_refresh_required` out from under it drops it to 10/1.
+  // 🔴 Half of it reads the BUNDLE, where the bundler is the oracle for whether a line is
+  //    reachable at all — that half is why this floor is worth more than its size.
+  ['truncation_carriers_harness.mjs', 11],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite
