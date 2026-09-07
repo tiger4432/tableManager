@@ -263,6 +263,9 @@
       ]
     },
     "dtjob@1": {
+      "attributes": [
+        "dt_eqp"
+      ],
       "keys": [
         "dt_job"
       ]
@@ -752,12 +755,23 @@
           ]
         },
         "input_columns": [
+          "dt_eqp",
           "dt_index",
           "dt_job",
           "event_time"
         ]
       },
       "bind": {
+        "entities": {
+          "dtjob@1": {
+            "attributes": {
+              "dt_eqp": {
+                "kind": "column",
+                "column": "dt_eqp"
+              }
+            }
+          }
+        },
         "mappings": {
           "counted": {
             "bind": {

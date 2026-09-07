@@ -923,3 +923,53 @@ def test_runtime_module_has_no_cursor_store_gate_atom_or_transaction_capability(
     assert "atoms_from_ledger_frame" not in text
     assert not hasattr(SQLAlchemyVerifiedJoinBatchReader, "commit")
     assert not hasattr(SQLAlchemyVerifiedJoinBatchReader, "rollback")
+
+
+# ---------------------------------------------------------------------------
+# S-52 ⑥  «읽기»가 속성 바인딩을 따라간다 — 안 그러면 선언은 «통과»하고 값은 «빈다»
+# ---------------------------------------------------------------------------
+
+def test_a_bound_attribute_column_must_be_declared_like_every_other_bound_column():
+    """🔴 이 라운드가 «발견»한 것. 검증기는 「프로파일이 바인드한 «모든» 컬럼은
+    `map.input_columns` 에 있어야 한다」를 이미 강제하고, 속성 바인딩도 «그 규칙 안»이다.
+
+    그래서 오늘 운영자는 이름을 «세 자리»에 적는다 — 엔티티의 목록 · 소스의 bind · 그리고
+    `map.input_columns`. 판정 124 의 «두 줄»은 그 셋째 자리를 세지 않았다.
+
+    ⚠️ 이 시험은 그것을 «옳다»고 말하지 않는다. 오늘 그렇다는 것을 «못 박을» 뿐이고,
+    셋째 자리를 없애는 판정이 오면 이 시험이 그날 «빨개져서» 갱신을 부른다."""
+    from ledger.setup_bundle import LedgerSetupValidationError
+
+    raw = logical_bundle()
+    raw["entities"]["InputEntity@1"]["attributes"] = ["product"]
+    raw["sources"]["input_rows"]["bind"]["entities"] = {
+        "InputEntity@1": {"attributes": {"product": {"kind": "column",
+                                                     "column": "event_key"}}}}
+    mapper = raw["sources"]["input_rows"]["map"]
+    mapper["input_columns"] = [name for name in mapper["input_columns"]
+                               if name != "event_key"]
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        snapshot(raw)
+    assert caught.value.path.endswith("map.input_columns")
+    assert "event_key" in caught.value.message
+
+
+def test_the_declared_column_is_then_selected_by_the_cursor():
+    """셋째 자리를 적으면 커서가 읽는다 — 즉 오늘의 길은 «막혀 있지 않고», 다만 «한 자리 더»다."""
+    raw = logical_bundle()
+    raw["entities"]["InputEntity@1"]["attributes"] = ["product"]
+    raw["sources"]["input_rows"]["bind"]["entities"] = {
+        "InputEntity@1": {"attributes": {"product": {"kind": "column",
+                                                     "column": "event_key"}}}}
+
+    columns = v2_base_select_columns(snapshot(raw), "input_rows")
+
+    assert "event_key" in columns, columns
+
+
+def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
+    """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
+    plain = v2_base_select_columns(snapshot(), "input_rows")
+
+    assert plain == ("event_at", "event_key", "join_id", "record_id", "source_id")
