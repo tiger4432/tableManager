@@ -897,6 +897,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero.
 
     nodes = {}
+    #: node id -> {attribute name: [(occurred_at, value)]}, from every registration this
+    #: walk touched. Filled in `_expand_atom`, spent once just before the nodes are
+    #: ordered - so "latest wins" is decided in ONE place with the whole set in hand
+    #: rather than per atom as they arrive.
+    registrations: dict = {}
     refs = {}
     depths = {}
     #: node -> how many DEPARTURES were spent reaching it.  A second budget,
@@ -991,6 +996,16 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     def _expand_atom(atom, depth, frontier_entities):
         """Materialise one atom's far side and the single edge that carries it."""
         subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        # 🔴 EVERY REGISTRATION THIS WALK TOUCHED, RECORDED BEFORE ANY BRANCH (S-52 ③).
+        # A registration says what its SUBJECT is - the entity's own values ride in the
+        # qualifiers - so this is where a node's columns come from. Taken at the top
+        # because the branches below return early on several paths, and a registration
+        # dropped there would look exactly like an attribute nobody declared.
+        if atom.predicate == "register":
+            payload = atom.object_payload or {}
+            for name, value in (payload.get("qualifiers") or {}).items():
+                registrations.setdefault(subject_id, {}).setdefault(name, []).append(
+                    (atom.occurred_at, value))
         payload = atom.object_payload or {}
         target = None
         if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
@@ -1257,6 +1272,26 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             node["predicates"] = [
                 {"predicate": predicate, "count": count}
                 for predicate, count in sorted(counts.items())]
+    # 🔴 LATEST WINS, AND A DISAGREEMENT IS COUNTED RATHER THAN HIDDEN (S-52 ③, ruling
+    # 124). "Latest" is the reading rule: a changed attribute wrote a NEW registration and
+    # the old one stays, so the walk picks the newest instant and says out loud how many
+    # names had more than one distinct value. Same value at two instants is NOT a
+    # conflict - that is one fact stated twice.
+    #
+    # A node the walk reached no registration for gets NO KEY, not an empty object: "this
+    # entity carries no values" and "this walk did not reach its registration" are
+    # different answers.
+    for node_id, by_name in registrations.items():
+        node = nodes.get(node_id)
+        if node is None:
+            continue
+        values, conflicts = {}, 0
+        for name, seen in by_name.items():
+            values[name] = max(seen, key=lambda item: item[0])[1]
+            if len({_canonical(value) for _at, value in seen}) > 1:
+                conflicts += 1
+        node["attributes"] = values
+        node["attribute_conflicts"] = conflicts
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything

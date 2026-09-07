@@ -1125,3 +1125,75 @@ def test_an_undeclared_node_type_is_refused_by_name():
     assert detail["reason"] == "node_type_not_declared"
     assert detail["unknown"] == ["definitely_not_a_node_type"]
     assert detail["declared"], "the refusal must say what IS collectable"
+
+
+# ---------------------------------------------------------------------------
+# S-52 ③  노드가 «자기 값»을 든다 — 그 엔티티의 «최신 등록»이 말한 것
+#
+# 🔴 걷기 표는 여태 «엣지가 들고 온 수식어»만 노드 열로 보여 줬다. 술어에 수식어가 없으면
+# 노드에 열이 «하나도» 안 뜬다. 이제 등록 원자가 그 엔티티의 값을 나르고, 걷기가 그것을 읽는다.
+# ---------------------------------------------------------------------------
+
+def _registration(number, subject, when, **qualifiers):
+    return ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=number)), subject_type="Lot",
+        subject_keys={"lot": subject}, predicate="register", object_kind="none",
+        object_payload={"kind": "none", "qualifiers": dict(qualifiers)},
+        occurred_at=NOW + timedelta(hours=when), source_who="fixture",
+        source_translator_ver="v1", source_raw_ref="reg:%d" % number,
+        supersedes=None, source_event_id=EVENT, source_event_state="source_molecule")
+
+
+def _walk(atoms, subject="A"):
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(atoms)
+    seed = ledger_explorer.entity_id("Lot", {"lot": subject})
+    body = ledger_subgraph.subgraph(seed, lookup, hops=2)
+    return {node["id"]: node for node in body["nodes"]}[seed]
+
+
+def test_a_node_carries_what_its_registration_said():
+    node = _walk([atom(1, "A", "derived_from", target="B"),
+                  _registration(10, "A", 1, product="P-9")])
+
+    assert node["attributes"] == {"product": "P-9"}
+    assert node["attribute_conflicts"] == 0
+
+
+def test_the_latest_registration_wins_and_the_disagreement_is_counted():
+    """㉣ 「최신이 이긴다」는 «읽기»의 규칙이다 — 옛 등록은 지워지지 않고 «남아 있다»(이력).
+    그리고 값이 갈렸다는 사실을 «수»로 말한다: 조용히 하나를 고르면 운영자는 «둘이 있었다»는 것을
+    영영 모른다."""
+    node = _walk([atom(1, "A", "derived_from", target="B"),
+                  _registration(10, "A", 1, product="OLD"),
+                  _registration(11, "A", 5, product="NEW")])
+
+    assert node["attributes"] == {"product": "NEW"}
+    assert node["attribute_conflicts"] == 1
+
+
+def test_the_same_value_at_two_instants_is_not_a_conflict():
+    """한 사실을 «두 번 말한 것»이지 «어긋난 것»이 아니다 — 판정 124 의 정의 그대로."""
+    node = _walk([atom(1, "A", "derived_from", target="B"),
+                  _registration(10, "A", 1, product="SAME"),
+                  _registration(11, "A", 5, product="SAME")])
+
+    assert node["attributes"] == {"product": "SAME"}
+    assert node["attribute_conflicts"] == 0
+
+
+def test_an_entity_that_is_only_ever_a_subject_carries_its_values_too():
+    """㉦ 이 설계가 Ⓑ 를 기각한 이유. 어떤 문장의 «목적어로 한 번도 안 나오는» 엔티티도
+    자기 등록으로 값을 든다 — 출하 선언에 그런 타입이 오늘 «하나» 있다(dtjob@1)."""
+    node = _walk([atom(1, "A", "derived_from", target="B"),
+                  _registration(10, "A", 1, product="SUBJ-ONLY")], subject="A")
+
+    assert node["attributes"]["product"] == "SUBJ-ONLY"
+
+
+def test_a_node_with_no_registration_reached_gets_no_key_at_all():
+    """㉥ 「값을 안 든다」와 「이 걷기가 그 등록에 못 닿았다」는 «다른 답»이다.
+    빈 객체를 내면 그 둘이 같은 픽셀이 된다."""
+    node = _walk([atom(1, "A", "derived_from", target="B")])
+
+    assert "attributes" not in node
+    assert "attribute_conflicts" not in node
