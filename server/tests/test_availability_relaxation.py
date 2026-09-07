@@ -179,6 +179,36 @@ def test_malformed_fail_sources_is_declared_not_absent(env, client, shape):
     assert body["sources"]["origin_log"] == "connected"
 
 
+def test_a_core_with_no_fail_source_still_says_what_its_frame_stood_on(env, client):
+    """[S-9b · 판정 96] fail 원천이 하나도 없으면 위 fail 루프가 «안 돈다» —
+    그러면 이 답은 by_core 의 폴백 조회 «하나»에서만 나온다.
+
+    왜 이 시험이 따로 있나: S-9b 의 다른 모든 픽스처는 fail 원천이 «있어» 그 루프가
+    기준을 채우고, 그래서 폴백을 «통째로 지워도» 전부 초록이었다(변이 ②, 오늘 실측).
+    그 자리가 죽으면 `frame_basis` 가 조용히 `None`(=「답 안 함」)이 되고, 화면은
+    「확정으로 골랐다」와 그것을 구별하지 못한다.
+    """
+    db, tmp_path, monkeypatch = env
+    cfg = _tp_config()
+    del cfg["stages"]["bonding"]["source"]["fail_sources"]      # absent, not broken
+    _write_cfg(tmp_path, monkeypatch, tp_cfg=cfg)
+    _seed_scenario(db)
+    body = _summary(client)
+
+    assert "fail_sources" in (body.get("inactive_subtractions") or []),         "fixture lost its axis: the fail loop must be the thing that did not run"
+
+    by_core = body["by_core"]
+    assert by_core, "fixture lost its axis: no core to ask about"
+    for row in by_core:
+        basis = row["frame_basis"]
+        assert basis is not None, row["core_id"]
+        # 이 픽스처엔 확정 기록이 없다 -> «역할 순서»로 물러난다. 그것을 «말하는 것»이
+        # 이 줄의 주장이다 — 기준을 모르는 것과 기준이 없는 것은 다른 사실이다.
+        assert basis["kind"] == "role_order", (row["core_id"], basis)
+        assert basis["reason"] == "not_declared", (row["core_id"], basis)
+        assert basis["roles"], "roles must name the order it fell back to"
+
+
 def test_validate_never_names_a_declared_role_as_inactive(env, client):
     """The verdict surface carries the same lie downstream: with a malformed but
     PRESENT `fail_sources`, `validate` used to hand the operator a list naming a
