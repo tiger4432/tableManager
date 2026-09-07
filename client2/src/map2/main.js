@@ -49,6 +49,7 @@ import { parseCandidateId, candidateList } from './candidates.js';
 import { sourceFrameAttestation } from './attestation.js';
 import { originBoxNote } from './origin_basis.js';
 import { saysTruncated } from '../truncation.js';
+import { confirmRulingNote } from './confirm_ruling.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext, INDEX_WALK_READY, INDEX_WALK_ABSENT,
          INDEX_WALK_TRUNCATED, INDEX_WALK_POOLED, INDEX_WALK_INCONSISTENT } from './decode.js';
@@ -1298,8 +1299,14 @@ export function bootstrap(deps) {
     //    with the button. `#me2-confirm-note` is the wide line in the text column and already
     //    carries a sentence-shaped value. NOT a toast either -- a transient the operator can
     //    miss puts the failure back where it was, invisible.
+    // 🔴 S-35. THREE CLAIMS, ONE SLOT, IN ORDER OF WHAT IS TRUE NOW. A refusal describes a
+    //    write that did NOT happen; the ruling describes one that DID; the note describes the
+    //    basis of one that has not happened yet. Only one of the three can be the current
+    //    truth about the same act, which is the argument the refusal already stands on. The
+    //    ruling outranks the note for the same reason the refusal does — after the write, what
+    //    the record says beats what the control was going to rest on.
     const failure = vm.confirm.failure;
-    text(el.confirmNote, failure || vm.confirm.note || '');
+    text(el.confirmNote, failure || vm.confirm.rulingNote || vm.confirm.note || '');
     // One attribute for the CSS lane, no new element. Asked for by name:
     // `#me2-confirmbar[data-me2-confirm-state="failed"]` should read as a refusal, not as a note.
     if (el.confirmBar) {
@@ -1893,7 +1900,16 @@ export function bootstrap(deps) {
       state: (payload.__decoded && payload.__decoded.state) || null,
       reference: referenceOf(q.reference),
       confirmedBy: context.confirmedBy,
-    })).then(() => { confirmInFlight = false; setSession(withConfirmed(session)); })
+    // 🔴 S-35. THE RESPONSE IS READ. This settled with `() => …` — a callback taking no
+    //    argument — so the whole record the route returns was discarded, `ruling.winner`
+    //    included. That field is the scorer's candidate, and comparing it with the frame that
+    //    was actually confirmed is the only way, once the write has landed, to tell 「I took
+    //    the machine's answer」 from 「I overruled it」 from 「it had none to give」. 확정됨
+    //    looks identical in all three.
+    })).then((res) => {
+      confirmInFlight = false;
+      setSession(withConfirmed(session, confirmRulingNote(res)));
+    })
       // 🔴 THE FAILURE PATH SAYS WHAT HAPPENED. It used to be `.catch(() => { ...; render(); })`
       //    -- ten distinct server refusals, every one discarded, and the operator saw the button
       //    become clickable again and nothing else. That is 「결과를 숨기지 않는다」 broken on the
