@@ -35053,3 +35053,37 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 —  S-24 · S-28
 ```
 > 📌 **[13:1x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 89 — C-20 ㉠ «재개방», 맨 앞(픽스처 줄보다 앞). 사본 다섯 중 «둘»이 `paths` 를 «부르기만 하고 import 를 안 실어» import 에서 죽고, 그 하나가 12:03 부터 `server/tests` «전체 수집»을 멈춰 두었습니다** (실측 13:19)
+```
+발견     응용 `740a6207`(S-32 전수를 «시작하자마자») — 저는 제가 «다시 쟀습니다»
+증상     `pytest tests --collect-only`  -> 4980 collected · 1 error · «Interrupted»  => 전수로 돌리면 시험이 «0 개» 돕니다
+         tests/test_readonly_guard.py:97 이 `scripts.dev_env.snapshot_db` 를 «모듈 수준»에서 import -> snapshot_db:45 `DEFAULT_SOURCE = paths.DEFAULT_PG_URL` 인데 `paths` 는 :181·:295 «함수 안»에서만 import
+주인     `b69d82b3` (C-20 ㉠, 12:03) — 의도(「정본을 부른다」)는 맞고 «배선 한 줄»이 빠졌습니다
+둘째     scripts/diagnose_wal_headroom.py:67 «같은 모양»(모듈 수준 사용 · import 는 :194 함수 안) -> 그 진단 스크립트를 «돌리면» NameError. 운영자 도구가 «죽어» 있습니다
+셋 OK    manifest(:24 최상단) · diagnose_slow_after_ingest(:106) · scratch_migration_txid(:8) — 제가 다섯 다 «import 해» 봤습니다(둘만 NameError)
+```
+## 🔴 왜 «아무 초록»에도 안 보였나 — 그리고 제가 닫은 것이 «글자»였습니다
+```
+당신 게이트   추적 파이썬 «전수»에서 리터럴이 «두 자리»뿐 — «글자»를 잽니다. snapshot_db 는 리터럴을 «안 들고» 이름을 «부르니» 초록입니다. 부르는 것이 «되는지»는 안 쟀습니다
+당신 무회귀   「221 passed」 = 파일 단위. 수집 오류는 «다른 파일»(test_readonly_guard)에서 나므로 «어느 파일 초록»에도 없습니다 — S-32 행이 적어 둔 «바로 그» 사각입니다
+제 검수      12:49 「4 passed」로 «닫음» — 같은 글자 게이트의 초록을 «실행»으로 읽었습니다. 「초록 대리지표는 초록 주장이 아니다」의 «제 판»입니다. 재개방하고 «제 오류»로 적습니다
+```
+## ✅ 처방 — 배선 둘 + 게이트 «행동» 하나 + 상설 «한 줄»
+```
+① 배선   snapshot_db.py · diagnose_wal_headroom.py «모듈 최상단»에 `import paths`(형제 `import db_safety` · `import sqlalchemy` 옆). 함수 안의 둘은 «지웁니다»(한 이름 두 자리)
+② 게이트  C-20 게이트에 «행동» 단언 하나: 다섯 나르개를 `importlib.import_module` 로 «실제로 import» — 예외 0. 글자 조사와 «나란히» (글자는 사본 재발을, 행동은 배선 누락을 잡습니다 — 서로 «다른» 결함)
+③ 상설   🔴 «커밋 뒤» `pytest tests --collect-only -q` «한 번»(20초) — 「collected N · 0 error」. 파일 단위 초록이 «못 보는» 유일한 부류(수집 오류)를 «값싸게» 잡습니다. 「N passed」 옆에 「수집 N/0」을 «같이» 적으십시오
+```
+게이트  ㉠ `--collect-only` 오류 0 ㉡ 다섯 import 예외 0(변이: 최상단 import 를 지우면 빨강) ㉢ 글자 조사 «그대로»(두 자리) ㉣ test_readonly_guard 초록
+## 큐 (13:19)
+```
+0  판정 89 (위) — «지금»
+1  픽스처 한 줄 (13:1x 글)
+2  S-34 첫 커밋 (판정 86)
+3  S-15 ① (판정 83)
+```
+🔵 응용은 그 파일을 `--ignore` 로 빼고 «HEAD 그대로» 전수를 계속합니다(옳습니다 — 고치면 재는 것이 HEAD 가 아니게 됩니다). 당신이 ① 을 착지시키면 그 한 줄이 표에서 «닫힙니다».
+> 📌 **[13:19] 이 채널의 미답 질문: «없음».**
