@@ -78,6 +78,28 @@ SCHEDULER_OWNED_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACT
 #: `valid_events`; every event in a successful group is marked, `DELETE` included).
 CHAIN_OWNED_EVENT_TYPES = frozenset({"CREATE", "EDIT", "DELETE"})
 
+#: 한 규칙이 한 트랜잭션 그룹에 «무엇을 했나» — 닫힌 어휘.
+#: 🔴 운영자가 가르는 것은 다섯이다: 꺼짐 · 안 걸림 · 돌았는데 0 · 바뀜 · 실패.
+#:    원인은 «여섯»이지만 값으로 만들지 않는다 — 원인은 «사유 문자열»이 옆에서 말하고,
+#:    값이 원인마다 하나면 화면이 그 여섯을 다시 다섯으로 접어야 한다(판정 이 두 번이다).
+#: ⚠️ 「꺼짐」이 「안 걸림」을 이긴다. 둘 다 참일 때 운영자가 «고칠 수 있는» 쪽이 그것이고,
+#:    「안 걸림」은 데이터의 사실이라 고칠 대상이 아니다.
+RULE_OUTCOME_SKIPPED_DISABLED = "skipped:disabled"
+RULE_OUTCOME_SKIPPED_NOT_TRIGGERED = "skipped:not_triggered"
+RULE_OUTCOME_RAN_UNCHANGED = "ran:unchanged"
+RULE_OUTCOME_RAN_CHANGED = "ran:changed"
+RULE_OUTCOME_FAILED = "failed"
+#: 🔴 「아직 평가 안 됨」은 «부재가 아니라 값»이다. 이 프로세스가 그 규칙을 한 번도 안 본
+#:    상태이고, 그것과 「옛 서버라 이 칸이 없다」는 다른 사실이다 — 부재는 뒤엣것 «하나»만
+#:    뜻해야 한다(판정 45 게이트 ②와 같은 규율).
+RULE_OUTCOME_NEVER_EVALUATED = "never_evaluated"
+
+RULE_OUTCOMES = frozenset({
+    RULE_OUTCOME_SKIPPED_DISABLED, RULE_OUTCOME_SKIPPED_NOT_TRIGGERED,
+    RULE_OUTCOME_RAN_UNCHANGED, RULE_OUTCOME_RAN_CHANGED,
+    RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED,
+})
+
 OUTBOX_OWNER_SCHEDULER = "scheduler"
 OUTBOX_OWNER_CHAIN = "chain"
 OUTBOX_OWNER_UNKNOWN = "unknown"

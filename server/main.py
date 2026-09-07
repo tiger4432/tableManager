@@ -3895,6 +3895,15 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
     import chain_activity
     running = chain_activity.registry.snapshot()
+    # 🔴 「이 규칙이 «왜» 아무것도 안 했나」 — 규칙별 «마지막 결과». `running` 을 내는 «같은
+    #    경로»다(두 번째 경로 금지). 이력이 «아니라» 마지막 하나이고, 수명은 `running` 과
+    #    같은 «이 프로세스»다.
+    # ⚠️ `last_age_seconds` 이지 `last_at` 이 아니다 — 이 레지스트리는 시각이 아니라 «나이»를
+    #    낸다고 자기 docstring 에 적어 두었고(읽는 쪽이 서로와 `oldest_waiting_seconds` 와
+    #    견주므로), 기준 시각은 이 응답의 `generated_at` 이 이미 준다.
+    rule_outcomes = {name: {"last_outcome": e["outcome"], "last_reason": e["reason"],
+                            "last_age_seconds": e["age_seconds"]}
+                     for name, e in chain_activity.registry.outcomes().items()}
 
     # 🔴 «어느 파일을 열어야 하나». `loop_in_this_process` 는 「어느 «프로세스»인가」를
     # 답하는데, 운영자가 다음에 하는 일은 «파일을 여는» 것이고 그 이름을 내는 자리가
@@ -3917,6 +3926,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "generated_at": now_utc.isoformat(),
         "waiting": int(waiting or 0),
         "running": running,
+        "rule_outcomes": rule_outcomes,
         "loop_in_this_process": chain_activity.registry.attached,
         "log_filename": process_logging.active_log_filename(),
         # 🔴 「재시작하면 풀리나」에 답하는 두 수. 그 판단의 근거는 이미 이 프로세스 안에

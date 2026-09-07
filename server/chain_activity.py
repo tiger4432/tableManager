@@ -32,6 +32,9 @@ class ChainActivityRegistry:
     def __init__(self):
         self._lock = threading.Lock()
         self._running = {}
+        #: 규칙 이름 -> 그 규칙의 «마지막 결과». 이력이 아니다 — 수명은 프로세스이고
+        #: `_running` 과 같다. 새 표도 새 기록면도 아니고 이 객체의 칸 하나다.
+        self._outcomes = {}
         self._attached = False
         self._attached_at = None
         self._reloaded_at = None
@@ -98,6 +101,50 @@ class ChainActivityRegistry:
             }
         return token
 
+    def record_outcome(self, rule, outcome, reason=None):
+        """이 규칙의 «마지막 결과». `finish` 와 «다른 이름»인 이유가 있다.
+
+        🔴 `finish(token)` 이 하는 일은 「도는 목록에서 뺀다」 하나이고 그 토큰은 `start` 만
+           만든다 — 그래서 «시작한 적 없는» 규칙(꺼짐·안 걸림)은 그 문을 지날 수 없다.
+           두 사실(도는 중 / 마지막 결과)에 한 이름을 얹으면 호출자가 여섯이 되고,
+           그때 「이 함수를 부르는 자리가 하나인가」를 아무도 못 묻는다.
+        ⚠️ `finish` 와 마찬가지로 «절대 던지지 않는다». 자기를 설명하는 대상을 계측이
+           쓰러뜨릴 수 있으면 안 된다.
+        """
+        try:
+            with self._lock:
+                self._outcomes[str(rule)] = {
+                    "outcome": outcome,
+                    "reason": (str(reason) if reason else None),
+                    "at": time.time(),
+                }
+        except Exception:                                        # noqa: BLE001
+            pass
+
+    def seed_rules(self, names):
+        """선언된 규칙을 «값»으로 세워 둔다 — 「아직 평가 안 됨」이 부재가 아니라 답이 되게.
+
+        🔴 부재는 「옛 서버라 이 칸이 없다」 «하나»만 뜻해야 한다. 씨를 안 뿌리면 「평가돼서
+           할 일이 없던 규칙」과 「이 프로세스가 아직 못 본 규칙」이 «같은 없음»이 된다.
+        ⚠️ 이미 있는 이름은 «안 건드린다** — 재적재가 지난 결과를 지우면 안 된다.
+        """
+        try:
+            with self._lock:
+                for name in names or ():
+                    self._outcomes.setdefault(str(name), {
+                        "outcome": "never_evaluated", "reason": None, "at": time.time()})
+        except Exception:                                        # noqa: BLE001
+            pass
+
+    def outcomes(self) -> dict:
+        """규칙 이름 -> `{outcome, reason, age_seconds}`. 빈 dict = 이 프로세스가 아직
+        «아무 규칙도» 평가하지 않았다 — 그것도 답이다."""
+        now = time.time()
+        with self._lock:
+            return {name: {"outcome": e["outcome"], "reason": e["reason"],
+                           "age_seconds": round(now - e["at"], 3)}
+                    for name, e in self._outcomes.items()}
+
     def finish(self, token):
         """Idempotent, and never raises: a registry that can fail must not be able to take
         down the mapper it is describing."""
@@ -144,6 +191,7 @@ class ChainActivityRegistry:
     def clear(self):
         with self._lock:
             self._running.clear()
+            self._outcomes.clear()
             self._attached_at = None
             self._reloaded_at = None
             self._purged_at = None
