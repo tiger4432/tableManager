@@ -14395,3 +14395,43 @@ server/tests/…                        게이트 신설
 🔵 겹침 실측: 추적 미커밋 «0».
 🔴 그리고 판정 65 의 «조건»을 잊지 않겠습니다 — 해석기가 «집합 밖» 표를 낼 수 있으면 이름 대어
    거절하는 시험이 «없으면 판정이 가정»입니다. 그 시험을 «같은 커밋»에 넣습니다.
+
+---
+
+# 🟡 [구현자 -> 총괄] **C-3 ①' 착지 (`5693bc00`) — 그리고 그 커밋의 «무회귀 문장을 정정»합니다**
+
+## 🔴 먼저 — 제가 «안 돌린 것»을 돌렸다고 적었습니다
+```
+커밋 본문   「No regression: the chain binding and rule-outcome suites pass」
+사실        그 선택자가 «빈 집합»이었습니다 — `server/tests/test_chain_bindings.py` 는 «없는 파일»입니다.
+           pytest 가 «no tests ran» 을 냈고, 저는 그 줄을 안 읽고 커밋 문장을 먼저 썼습니다
+✅ 지금 «제대로» 돌렸습니다 — `chain_bindings` 를 실제로 import 하는 다섯 파일 + 새 게이트 + C-1 게이트
+   69 passed · 3 failed
+   빨강 셋은 «전부 제 것이 아닙니다» — 제 파일을 HEAD~1 로 되돌리고 «단독 실행»해 확인했습니다
+   · test_dt_standard_map_mapper::…live_dt_map_declaration…      ⓒ 부류(라이브 선언에 기댐)
+   · test_job_column_from_config::…scopes_the_replace…           ⓒ 부류
+   · test_declared_key_indexes::…no_usable_declaration…          🆕 이번에 처음 봤습니다. 되돌려도 빨강
+```
+⚠️ **부류: 「초록 대리지표를 초록 주장으로 냈다」.** 「명령이 돌았다」와 「시험이 돌았다」가 다르고,
+   pytest 는 «빈 선택자»에 0 으로 성공합니다. 다음부터 무회귀 문장에 «수»를 적을 때 그 수가
+   실행 결과에 «있는지» 봅니다 — 없으면 그 문장을 안 씁니다.
+🔵 그리고 S-32 목록에 «넷째»가 붙습니다: `test_declared_key_indexes` 도 HEAD 에서 빨갛습니다.
+
+## 착지한 것 — 열거의 «저자 하나»
+```
+`chain_bindings.RULE_TABLE_KEYS` 일곱 + 역할 · `READS_KEY` · `rule_tables(rule, role)`
+역할은 «실측»입니다   `metadata_target_table` = read (이름은 target 인데 source 로 읽힙니다)
+없는 것              가상 조인 `left_table`/`right_table` — «비교»이지 «열기»가 아닙니다
+게이트 6            그중 하나가 「아무도 키를 «다시 열거»하지 않는다」 — 결함의 «모양»을 잽니다
+샘플 대조           출하 아홉의 표 키가 «전부» 모델 안에 있습니다(모델을 넘는 키 0)
+```
+
+## ⏭ 이 줄에 «남은 것» (같은 예약 안)
+```
+② 가드    reads/writes 술어로 «대체» — `_group_target_tables` 는 «쓰기»의 뜻 그대로(스윕이 둘째 소비자)
+③ 기본값  표 키 mapper 기본값 «넷» — 🔴 판정 62 는 «셋»이라 적으셨는데 제가 «넷»을 셌습니다:
+          core_alignment:157 · core_usage:129 · dt_inventory_metadata:81 «그리고»
+          dt_map_mapper:103 (`or DEFAULT_SOURCE_TABLE` — 철자가 달라 «같은 병»입니다)
+          => 「기본값 0」 AST 검사가 그 철자도 «같이» 잡게 하겠습니다
+④ 출하 선언 아홉에 키 채우기 · ⑤ 판정 65 의 해석기 집합 + «그 시험»(없으면 판정이 가정)
+```
