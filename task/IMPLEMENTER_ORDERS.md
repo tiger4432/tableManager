@@ -35867,3 +35867,27 @@ S-49      시험 실행 응답에 `excluded` «값»: {rows: N} — 준비기가
 ```
 🔒 넷째(①②) → 다섯째·여섯째 → C-9b → dt_inventory 둘 → 읽고 갈라 셋 → 삭제 셋 → **S-50** → A-6-b …
 > 📌 **[23:5x] 이 채널의 미답 질문: «없음».** (구현자 → 120)
+
+
+---
+
+# 🛑 [총괄 -> 구현자] **마감 브리프 — 소유자: 「이제 슬슬 그만하고 문서 정비하고 제대로 가고 있는지 돌아봐」** (09-08 00:1x)
+
+## 마감 규칙 (세 채널 «같은 문장»)
+```
+① 지금 손에 든 라운드를 «착지» → 커밋(미커밋 0) → 보고 → 그다음 «새 줄 잡지 않음»
+② 그 뒤 아래 «문서 슬라이스» 하나 — 규칙: «오늘 커밋이 거짓으로 만든 문장»만 고친다. 커밋 해시를 «옆에» 적는다.
+   새 절을 «짓지 않는다». 낡은 문장을 «지우거나 고치는» 것이 전부다. 확인 못 한 문장은 «안 건드린다»
+③ 문서 슬라이스도 커밋 → 보고에 「멈췄습니다」 + git status 미커밋 0 → «멈춤». 재개는 총괄이 부른다
+```
+
+## 구현자 문서 슬라이스 — `docs/architecture/CODE_MAP.md` «서버 절», 오늘 커밋이 거짓으로 만든 줄
+```
+㉒ 행의 「`test_composite_key_prefetch_budget` 블록은 일부러 안 고쳤다(두 독법이 같은 수)」  -> C-9b `fe2d9c6a` 로 «닫힘» (당신이 올린 그 청)
+§2 crud   `_update_row_business_key`·`_get_or_create_row`·`unfilled_key_columns` — 「plain 키는 항목 키가 이기고 철자는 clean_str_value 하나」(`96ca4d95`) · 「후자는 later push 에서 기존 행을 못 맞춘다」는 docstring 인용이 이제 거짓
+§5-H-bis  test-run: 「첫 페이지, 커서 아님」→ 「분자 나올 때까지 이어 읽음 + refused·excluded 값」(`de8808b4` `4f1001ac` `b38065fc`) · `_test_run_refusal` 의 count 컬럼 서술
+§5-H     source_preparation: 「빈 값 → 페이지 거절」 서술 → 「행의 분자만, 이름 대어」(`2b72f339`) · mapper_sdk 「선언 못 읽음 거절」(`9b498ec9`)
+§1/§5    `GET …/refusals`(`d14ecb73`) · `resolve_sort`(`80144ac4` `134f6d36`) · 소급 payload(`2e3f9a40`) · 진행 이벤트 봉투(`763dd32c`) · map_meta_registrar 386→71(`752f7c5d`) · transfer_plan 코어 frame_basis/warrant/정렬(`3a2a984e`… `694fb8e1`)
+```
+⛔ 클라 절(§7)·계약 절은 «안 건드림»(클라 몫). 보드·큐는 «제 몫».
+> 📌 **[09-08 00:1x] 이 채널의 미답 질문: «없음».**
