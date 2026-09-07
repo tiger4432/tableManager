@@ -95,6 +95,82 @@ function extendRangeByKeyboard(api, key) {
   return true;
 }
 
+// 🔴 MODULE LEVEL, AND ONLY SO IT CAN BE IMPORTED BY A HARNESS THAT DOES NOT RUN AG-GRID.
+//    It used to be an arrow inside `renderGrid`'s `gridOptions`, which meant the only way to
+//    reach it was to build a grid — so the harness sliced it out of this file as TEXT, and
+//    every import the file gained broke that harness while the code was correct.
+// ⚠️ THE MOVE HAS ZERO DEGREES OF FREEDOM, and that was checked before making it: every name
+//    this body closes over is already module level — `RANGE_ARROW_DELTA`, `extendRangeByKeyboard`,
+//    `state`, `clearRangeSelection`, `applyValueToSelectedRange`, `handleEditorKey`,
+//    `isSuggestEditorActive`. No `renderGrid` local (`gridDiv`, `gridOptions`, `columnDefs`,
+//    `initialRows`) appears in it — measured, zero occurrences. So this is a move, not a change.
+// 🔴 `export` is the RESULT, not the point. The point is that the behaviour stops being
+//    reachable only through a live grid.
+export function suppressKeyboardEvent(params) {
+  const event = params.event;
+  const key = event.key;
+
+  // ── [0b-a] Suggestion list keys, FIRST and while editing ────────────────
+  // This hook is the deterministic ordering primitive for the one-Enter property.
+  // AG-Grid's `processCellKeyboardEvent` consults `suppressKeyboardEvent` BEFORE it
+  // runs `cellCtrl.onKeyDown`, and `onKeyDown`'s Enter branch is what calls
+  // `stopEditing` -> `cellEditor.getValue()`. So an 'accepted' verdict here means the
+  // candidate is ALREADY in the input by the time the very same event dispatch
+  // commits the cell: accept and commit are one press, not two, and the ordering is
+  // guaranteed by the framework's own sequence rather than by a timer or a
+  // microtask. Returning false is therefore not "giving up" — it is the commit.
+  if (params.editing && isSuggestEditorActive()) {
+    const verdict = handleEditorKey(event);
+    if (verdict === 'suppress') return true;   // the list consumed the key
+    if (verdict === 'accepted') return false;  // let THIS event commit the candidate
+    // 'pass' falls through to the pre-existing branches below, unchanged.
+  }
+
+  if (params.editing && event.ctrlKey && key === 'Enter') {
+    event.preventDefault();
+    const editors = params.api.getCellEditorInstances();
+    if (editors && editors.length > 0) {
+      const editingValue = editors[0].getValue();
+      params.api.stopEditing(true);
+      applyValueToSelectedRange(editingValue);
+    }
+    return true;
+  }
+
+  // [0b-c] Shift+Arrow grows the bulk-fill rectangle with no mouse involved.
+  // Ctrl/Alt are excluded so this never shadows a browser or grid chord.
+  if (!params.editing && event.shiftKey && !event.ctrlKey && !event.metaKey
+      && !event.altKey && RANGE_ARROW_DELTA[key]) {
+    event.preventDefault();
+    return extendRangeByKeyboard(params.api, key);
+  }
+
+  // A PLAIN arrow collapses the range, and this is a data-safety guard rather than
+  // tidiness: without it a rectangle selected by Shift+Arrow stays live after the
+  // user has arrowed away from it, and the next Ctrl+Enter writes the typed value
+  // into cells they no longer believe are selected. The mouse path already behaves
+  // this way (a plain mousedown calls clearRangeSelection); the keyboard path has
+  // to match it or the two disagree about what is selected.
+  if (!params.editing && !event.shiftKey && RANGE_ARROW_DELTA[key]
+      && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
+    clearRangeSelection();
+    return false; // AG-Grid still moves focus — only the rectangle is dropped
+  }
+
+  // Escape abandons a keyboard range the same way it abandons an edit.
+  if (!params.editing && key === 'Escape'
+      && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
+    clearRangeSelection();
+    return false;
+  }
+
+  if (!params.editing && (key === 'Delete' || key === 'Backspace')) {
+    return true;
+  }
+  return false;
+}
+
+
 // Apply AG-Grid client-side sorting configuration based on Sort Latest toggle
 export function updateGridSortState() {
   if (!state.gridApi) return;
@@ -1041,69 +1117,7 @@ export function renderGrid(initialRows) {
       // instruction depends on. (It was also inert as written: AG-Grid 35 reads
       // `colDef.suppressFloatingFilterButton`, not this key, so the line did nothing and the
       // next reader would have spent a day on "why doesn't this work".)
-      suppressKeyboardEvent: (params) => {
-        const event = params.event;
-        const key = event.key;
-
-        // ── [0b-a] Suggestion list keys, FIRST and while editing ────────────────
-        // This hook is the deterministic ordering primitive for the one-Enter property.
-        // AG-Grid's `processCellKeyboardEvent` consults `suppressKeyboardEvent` BEFORE it
-        // runs `cellCtrl.onKeyDown`, and `onKeyDown`'s Enter branch is what calls
-        // `stopEditing` -> `cellEditor.getValue()`. So an 'accepted' verdict here means the
-        // candidate is ALREADY in the input by the time the very same event dispatch
-        // commits the cell: accept and commit are one press, not two, and the ordering is
-        // guaranteed by the framework's own sequence rather than by a timer or a
-        // microtask. Returning false is therefore not "giving up" — it is the commit.
-        if (params.editing && isSuggestEditorActive()) {
-          const verdict = handleEditorKey(event);
-          if (verdict === 'suppress') return true;   // the list consumed the key
-          if (verdict === 'accepted') return false;  // let THIS event commit the candidate
-          // 'pass' falls through to the pre-existing branches below, unchanged.
-        }
-
-        if (params.editing && event.ctrlKey && key === 'Enter') {
-          event.preventDefault();
-          const editors = params.api.getCellEditorInstances();
-          if (editors && editors.length > 0) {
-            const editingValue = editors[0].getValue();
-            params.api.stopEditing(true);
-            applyValueToSelectedRange(editingValue);
-          }
-          return true;
-        }
-
-        // [0b-c] Shift+Arrow grows the bulk-fill rectangle with no mouse involved.
-        // Ctrl/Alt are excluded so this never shadows a browser or grid chord.
-        if (!params.editing && event.shiftKey && !event.ctrlKey && !event.metaKey
-            && !event.altKey && RANGE_ARROW_DELTA[key]) {
-          event.preventDefault();
-          return extendRangeByKeyboard(params.api, key);
-        }
-
-        // A PLAIN arrow collapses the range, and this is a data-safety guard rather than
-        // tidiness: without it a rectangle selected by Shift+Arrow stays live after the
-        // user has arrowed away from it, and the next Ctrl+Enter writes the typed value
-        // into cells they no longer believe are selected. The mouse path already behaves
-        // this way (a plain mousedown calls clearRangeSelection); the keyboard path has
-        // to match it or the two disagree about what is selected.
-        if (!params.editing && !event.shiftKey && RANGE_ARROW_DELTA[key]
-            && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
-          clearRangeSelection();
-          return false; // AG-Grid still moves focus — only the rectangle is dropped
-        }
-
-        // Escape abandons a keyboard range the same way it abandons an edit.
-        if (!params.editing && key === 'Escape'
-            && (state.dragStartCell || Object.keys(state.selectedCellsMap).length > 0)) {
-          clearRangeSelection();
-          return false;
-        }
-
-        if (!params.editing && (key === 'Delete' || key === 'Backspace')) {
-          return true;
-        }
-        return false;
-      }
+      suppressKeyboardEvent,
     },
     rowSelection: 'multiple',
     // 선택이 바뀌었다는 «신호»만 냅니다. 누가 듣는지는 화면이 정합니다 --
