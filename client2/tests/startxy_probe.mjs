@@ -64,7 +64,14 @@ const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 const die = (m) => { console.error(`PROBE FAILURE: ${m}\n(Nothing was measured.)`); process.exit(2); };
 
 function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
+  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
+  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
+  //    a module-level declaration — stopped this regex matching and the harness said "nothing
+  //    compared". That is the standing ban's symptom in its declaration-prefix form.
+  //    The fix is this file importing instead; until that round, this keeps it alive.
+  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
+  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
+  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
   const m = decl.exec(source);
   if (!m) return null;
   const start = m.index + (m[1] ? m[1].length : 0);
@@ -79,7 +86,7 @@ function sliceFunction(source, name) {
   let depth = 0;
   for (; i < source.length; i++) {
     if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
+    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
   }
   die(`unbalanced braces extracting '${name}'`);
 }
@@ -166,7 +173,7 @@ async function buildEnv(src, opts = {}) {
   const missing = [];
   for (const spellings of WANTED) {
     const used = spellings.find(n =>
-      new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${n}\\s*\\(`).test(src));
+      new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${n}\\s*\\(`).test(src));
     if (used) declared.push(used); else missing.push(spellings[0]);
   }
   if (!declared.includes('loadExistingMap')) die('loadExistingMap not found');
