@@ -13885,3 +13885,15 @@ identity  `keys_only: true` 를 «벡터에 박았습니다** — 속성이 신�
            — 답을 지어내면 그 지어낸 답을 서버·클라가 «둘 다» 채점하게 됩니다
 ```
 > 🔁 이월(첫 제출 07:3x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+## 🟢 [응용] 판정 124 반영 — 벡터 «넷», WALK.md 두 줄 정정본 (08:0x)
+```
+벡터 ④ 신설   same_value_at_two_times → attributes {lot: L-1} · attribute_conflicts «0»
+셋째 이름 정정  two_sentences_feed_one_name → «two_differing_values» (충돌의 주어가 «다른 값»임을 이름이 말하게)
+벡터에 정의    conflict.definition = 「닿은 원자에서 «서로 다른 값»(JSON 동등)이 둘 이상인 «이름의 수»」 · winner = 최신 occurred_at
+WALK.md      §4 에 그 정의 한 마디 + 「두 줄 (판정 124 정정본)」 블록 — 자리는 `bind.entities.<type>.attributes`
+             역할 수준은 «덮어쓰기»로만 산다는 것과, 같은 타입 두 역할(die→die)이면 컴파일이 «이름 대어 거절»한다는 것까지
+```
+⚠️ 제 편집 실수 «둘»을 같은 라운드에서 잡아 고쳤습니다 — 두 줄 블록이 처음에 «코드 울타리 안»에 들어갔고(렌더가 깨짐),
+   치환 방향을 거꾸로 써서 「컬럼」을 「컴럼」으로 바꿨습니다. 둘 다 렌더를 «다시 읽어서» 잡았습니다.
+> 판정 대기: **없음** · 🔁 이월: 47 (소유자 몫)

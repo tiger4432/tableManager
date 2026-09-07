@@ -1,5 +1,5 @@
 {
-  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Both sides are scored against the `expect` recorded here rather than against each other: server-vs-client alone stays green when both drift the same wrong way. Three shapes are scored because they are the three an operator can actually meet -- an attribute that arrived, one that was declared and never reached, and one that two sentences fed. The third is the only one that needs a rule, and the rule is `occurred_at` latest-wins with a COUNT beside it.",
+  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Ruling 124 puts the binding ONCE PER SOURCE (bind.entities.<type>.attributes, a sibling of mappings) with role-level allowed only as an override, and defines a conflict as a DIFFERING value: the same value arriving at two times is not one. Both sides are scored against the `expect` recorded here rather than against each other, because server-vs-client alone stays green when both drift the same wrong way. Four shapes are scored because they are the four an operator can meet -- an attribute that arrived, one declared and never reached, two differing values, and the same value twice. The last two are the pair that decides the count.",
   "version": 1,
   "seam": {
     "server": "walk node builder (S-52) -- server/ledger_trace_router.py :: /subgraph node payload",
@@ -44,7 +44,7 @@
       }
     },
     {
-      "name": "two_sentences_feed_one_name",
+      "name": "two_differing_values",
       "declared_attributes": [
         "lot"
       ],
@@ -66,6 +66,35 @@
         },
         "attribute_conflicts": 1
       }
+    },
+    {
+      "name": "same_value_at_two_times",
+      "declared_attributes": [
+        "lot"
+      ],
+      "atoms": [
+        {
+          "attribute": "lot",
+          "value": "L-1",
+          "occurred_at": "2026-09-01T01:00:00Z"
+        },
+        {
+          "attribute": "lot",
+          "value": "L-1",
+          "occurred_at": "2026-09-02T01:00:00Z"
+        }
+      ],
+      "expect": {
+        "attributes": {
+          "lot": "L-1"
+        },
+        "attribute_conflicts": 0
+      }
     }
-  ]
+  ],
+  "conflict": {
+    "definition": "number of NAMES holding two or more differing values (JSON equality) among the atoms reached",
+    "winner": "latest occurred_at",
+    "$why": "counting arrivals instead of differing values makes a re-stated fact look like a disagreement."
+  }
 }
