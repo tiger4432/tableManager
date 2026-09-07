@@ -6,6 +6,20 @@
       "kind": "record",
       "fields": [
         {
+          "key": "attributes",
+          "required": false,
+          "label": "속성 (이 역할만)",
+          "help": "한 문장이 같은 타입을 두 역할로 쓸 때만. 없으면 소스 것을 물려받는다.",
+          "node": {
+            "kind": "map",
+            "keyed_by": "name",
+            "member": "속성",
+            "of": {
+              "use": "binding"
+            }
+          }
+        },
+        {
           "key": "kind",
           "required": true,
           "label": "바인딩",
@@ -140,6 +154,21 @@
                   "kind": "map",
                   "keyed_by": "index",
                   "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "attributes",
+                "required": false,
+                "label": "속성",
+                "help": "이 엔티티가 드는 값의 이름. 식별키와 겹칠 수 없다.",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "이름",
                   "of": {
                     "kind": "leaf",
                     "hint": "free"
@@ -611,6 +640,35 @@
                 "node": {
                   "kind": "record",
                   "fields": [
+                    {
+                      "key": "entities",
+                      "required": false,
+                      "label": "엔티티 속성",
+                      "help": "이 소스가 그 엔티티에 매기는 값. 엔티티마다 한 번.",
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "name",
+                        "member": "엔티티",
+                        "of": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "attributes",
+                              "required": true,
+                              "label": "속성",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "속성",
+                                "of": {
+                                  "use": "binding"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
                     {
                       "key": "mappings",
                       "required": true,

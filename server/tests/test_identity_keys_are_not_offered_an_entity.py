@@ -99,10 +99,15 @@ def test_the_narrowed_node_is_still_a_binding_record_of_one_layer():
 
 
 def test_it_takes_fields_away_and_never_adds_any():
+    """🔴 WHAT IT REMOVES IS "THE ENTITY-ONLY FIELDS", AND `attributes` JOINED THEM ON
+    2026-09-08 (S-52). `_validate_binding` allows it for `kind == "entity"` and for
+    nothing else - the same rule that governs `entity_type` and `keys` - so an identity
+    key must not be offered it either. Listing the three is deliberate: a `<` alone would
+    stay true on the day the narrowing dropped a field it should have kept."""
     wide = {field["key"] for field in skeleton()["defs"]["binding"]["fields"]}
     narrow = {field["key"] for field in identity_node()["fields"]}
     assert narrow < wide
-    assert wide - narrow == {"entity_type", "keys"}
+    assert wide - narrow == {"entity_type", "keys", "attributes"}
 
 
 def test_nothing_under_it_can_nest_another_binding():

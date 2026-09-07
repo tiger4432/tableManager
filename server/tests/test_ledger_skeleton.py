@@ -64,6 +64,11 @@ ANCHORS = {
     # else is called `_validate_packs`, a stale entry would place it at a skeleton node
     # that does not exist and the failure would name the skeleton instead of the map.
     ("_validate_profile", "path"): "sources.*.bind",
+    # S-52 (ruling 124): attributes bind ONCE PER SOURCE, so `bind` grew a sibling of
+    # `mappings`. The client draws this form from the skeleton and holds no literals, so
+    # without the node here the canonical place for an attribute binding has no box to be
+    # typed into - the validator would accept a shape the screen cannot produce.
+    ("_validate_bind_entities", "epath"): "sources.*.bind.entities.*",
     ("_validate_profile", "mpath"): "sources.*.bind.mappings.*",
     ("_validate_binding", "path"): "def:binding",
     ("_validate_sources", "path"): "sources.*",
