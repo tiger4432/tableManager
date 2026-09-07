@@ -149,6 +149,8 @@ const 를 하나 더하면         vm 에서 const 는 컨텍스트의 «속성�
 ```
 실측 2026-09-02: `map_editor.js` 가 import 안 되는 이유는 «줄 수»가 아니라 `import './tokens.css'` 였다.
 node 가 CSS 를 못 읽어 «import 문 자체»가 죽는다. 잘라쓰기 34건 중 «27건»이 이 파일 하나 때문이었다.
+⚰️ **[2026-09-07 14:1x 실측] 그 CSS import 는 «같은 날 22:26» `49725ea3` 에서 사라졌다 — 오늘 `map_editor.js` 는 node 가 «import 한다»(export 만 0).**
+   위 두 줄을 근거로 「map_editor 는 import 안 된다」를 다시 말하지 말 것. 남은 벽은 «가져갈 이름이 없음»이고 그건 «노출/추출»의 일이다(클라 판정 91).
 
 ## 새 부품은 «처음부터» 이 규율로
 오늘 뽑은 `truncation.js` · `match_count.js` · `dropdown.js` 가 그 예다 —
