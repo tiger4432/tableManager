@@ -14,10 +14,13 @@
 ⛔ `assy_qa` 를 가리키는 자리들은 «다른 데이터베이스»라 접지 않는다 — 값이 같아 보이는 것과
 같은 사실인 것은 다르다.
 """
+import importlib
 import os
 import re
 import subprocess
 import sys
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -70,3 +73,48 @@ def test_the_home_module_creates_no_engine():
     src = open(os.path.join(ROOT, "server", "paths.py"), encoding="utf-8").read()
     assert "create_engine" not in src
     assert not re.search(r"^\s*import sqlalchemy", src, re.M)
+
+
+#: 🔴 [판정 89] 글자 조사(위)는 «사본이 돌아오는 것»을 잡는다. 그것이 못 잡는 것이
+#: «부르기만 하고 배선이 없는 것»이다 — 나르개가 리터럴을 «안 들고» 이름을 «부르니»
+#: 위의 단언은 초록인데 그 파일은 import 에서 죽는다. 그래서 «행동»을 나란히 잰다.
+CARRIERS = [
+    ("scratch.scratch_migration_txid",     "server/scratch/scratch_migration_txid.py"),
+    ("scripts.dev_env.manifest",           "server/scripts/dev_env/manifest.py"),
+    ("scripts.dev_env.snapshot_db",        "server/scripts/dev_env/snapshot_db.py"),
+    ("scripts.diagnose_slow_after_ingest", "server/scripts/diagnose_slow_after_ingest.py"),
+    ("scripts.diagnose_wal_headroom",      "server/scripts/diagnose_wal_headroom.py"),
+]
+
+#: `__main__` 으로 «돌리지 않는다» — scratch 사본은 argparse 가 없어 곧장 ALTER TABLE 을 친다.
+#: `sys.path[0]` 을 스크립트 자기 디렉터리로 바꾸는 것이 `python <script>` 와 같은 조건이다.
+_START = ("import runpy, sys; sys.path[0] = sys.argv[1]; "
+          "runpy.run_path(sys.argv[2], run_name='__not_main__')")
+
+
+def _clean_env():
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
+@pytest.mark.parametrize("dotted,rel", CARRIERS, ids=[c[0] for c in CARRIERS])
+def test_every_carrier_imports(dotted, rel):
+    """정본을 «부르는» 파일은 import 가 된다 — 이름을 부르는데 안 실은 것이 있으면 여기서 죽는다."""
+    importlib.import_module(dotted)
+
+
+@pytest.mark.parametrize("dotted,rel", CARRIERS, ids=[c[0] for c in CARRIERS])
+def test_every_carrier_starts_as_a_script(dotted, rel):
+    """🔴 위 단언과 «다른 성질»이다. 위는 「server 가 sys.path 에 있을 때」를 재고, 이것은
+    운영자가 실제로 치는 `python <script>` 를 잰다.
+
+    `manifest.py` 가 그 둘을 갈랐다 — `import paths` 가 sys.path 배선 «위»에 있어서
+    pytest 에서는 초록, 스크립트로는 ModuleNotFoundError 였다. 하나만 걸었으면 못 봤다.
+    """
+    p = subprocess.run([sys.executable, "-c", _START,
+                        os.path.dirname(os.path.join(ROOT, rel)),
+                        os.path.join(ROOT, rel)],
+                       cwd=ROOT, capture_output=True, text=True, env=_clean_env())
+    assert p.returncode == 0, rel + "\n" + p.stderr[-2000:]

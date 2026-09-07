@@ -62,7 +62,10 @@ if hasattr(sys.stdout, "reconfigure"):
         except Exception:
             pass
 
-import sqlalchemy as sa
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+import sqlalchemy as sa                                              # noqa: E402
+import paths                                                        # noqa: E402
 
 DEFAULT_PG_URL = paths.DEFAULT_PG_URL
 STATEMENT_TIMEOUT_MS = 15000
@@ -188,10 +191,6 @@ def main():
         # 앱이 해석하는 것과 같은 URL 을 쓴다. 아무도 묻지 않은 DB 에 대한 깨끗한
         # 보고서는 오류보다 나쁘다.
         try:
-            sys.path.insert(0, os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "server"))
-            import paths                                            # noqa: E402
             url, src = paths.resolve_database_url(DEFAULT_PG_URL)
         except Exception:
             url, src = DEFAULT_PG_URL, "내장 기본값"

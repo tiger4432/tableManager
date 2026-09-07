@@ -21,9 +21,12 @@ import hashlib
 import argparse
 from datetime import datetime, date
 from decimal import Decimal
-import paths
 
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+if SERVER_DIR not in sys.path:
+    sys.path.insert(0, SERVER_DIR)
+
+import paths                                                     # noqa: E402
 
 # Directories whose contents are rewritten by the LIVE pipeline itself (scheduler
 # drops CSVs, watcher archives them). They are still captured, but reported in a

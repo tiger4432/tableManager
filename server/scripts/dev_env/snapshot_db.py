@@ -40,6 +40,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 
 import db_safety
+import paths
 
 #: 정본을 «부른다» — 스냅숏 출처의 기본값은 서버의 기본 DB 와 «같은 값»이어야 한다.
 DEFAULT_SOURCE = paths.DEFAULT_PG_URL
@@ -178,7 +179,6 @@ def build_target_schema(target_url):
     the isolated server expects. Reads table_config through server/paths.py, so
     running this with ASSY_DATA_ROOT set uses the isolated config.
     """
-    import paths
     from database import models
     from database.database import engine as target_engine
 
@@ -292,7 +292,6 @@ def run(args):
     log(f"target truncated ({len(shared)} tables)")
 
     # -- table_config drives which tables carry map keys -----------------------
-    import paths
     with open(paths.config_path("table_config.json"), encoding="utf-8") as f:
         table_config = json.load(f)
 
