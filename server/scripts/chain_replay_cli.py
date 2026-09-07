@@ -114,7 +114,7 @@ def _report_resolve(s, list_all=False):
                      f"{c['reason']}; layers {c['sources']})")
     if not list_all and len(s["changes"]) > len(shown):
         lines.append(f"      ... {len(s['changes']) - len(shown)} more (use --list-all)")
-    if s["changes_truncated"]:
+    if (s.get("truncated") or {}).get("changes", {}).get("cut"):
         lines.append("      WARNING: the change list hit its in-memory cap; the AuditLog "
                      "rows written by --apply are the complete record.")
     lines.append("")

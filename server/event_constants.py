@@ -100,6 +100,21 @@ RULE_OUTCOMES = frozenset({
     RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED,
 })
 
+#: 「이 목록이 «잘렸다»」의 정본 모양 — 축마다 하나. 걷기 응답이 이미 그 모양이다
+#: (`ledger_subgraph` 의 `truncated: {depth, nodes, edges, …}`), 그래서 새 모양이 아니다.
+#: 🔴 「잘렸다」와 「버렸다」는 «다른 사실»이다. 앞은 운영자에게 「상한을 올려라」이고 뒤는
+#:    「선언을 고쳐라」다. 그래서 `columns_omitted`(버림)와 `python_default_omitted`(드리프트
+#:    라벨)는 이 안으로 «안 접힌다» — 접으면 운영자의 다음 행동이 사라진다.
+#: ⚠️ `omitted` 가 `None` 이면 「잘렸는데 «몇 개인지 모른다»」다. 0 이 아니다 — 예산 비트만
+#:    아는 자리가 실재한다(`chain_replay` 의 보고 예산).
+def truncated_note(cut, omitted=None, reason=None):
+    return {
+        "cut": bool(cut),
+        "omitted": (int(omitted) if omitted is not None else None),
+        "reason": (str(reason) if (reason and cut) else None),
+    }
+
+
 OUTBOX_OWNER_SCHEDULER = "scheduler"
 OUTBOX_OWNER_CHAIN = "chain"
 OUTBOX_OWNER_UNKNOWN = "unknown"
@@ -201,7 +216,7 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     ⛔ THE PAYLOAD IS UNCHANGED - NOT ONE KEY ADDED OR REMOVED. The optional four are
     omitted when they are not given, so every sender still produces exactly the object it
     produced before: seven send `{event, table_name, change_count}`, one adds
-    `deleted_row_ids_omitted`, one adds the audit trio. Unifying the SHAPES is a different
+    `truncated`, one adds the audit trio. Unifying the SHAPES is a different
     change and would be a boundary-contract decision, not this one.
 
     ⚠️ `change_count` IS ALWAYS PRESENT, INCLUDING WHEN IT IS 0. The client does not use it
@@ -223,7 +238,10 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     if total_log_count is not None:
         message["total_log_count"] = total_log_count
     if deleted_row_ids_omitted is not None:
-        message["deleted_row_ids_omitted"] = deleted_row_ids_omitted
+        # 정본 — 축 이름은 그 목록의 이름이다. 인자 이름은 «발신자의 말»이라 그대로 둔다.
+        message["truncated"] = {"deleted_row_ids": truncated_note(
+            int(deleted_row_ids_omitted) > 0, deleted_row_ids_omitted,
+            "deleted ids beyond BROADCAST_ITEM_LIMIT")}
     return message
 
 # [P1b] Row count above which a write's broadcast degrades from per-row `batch_row_upsert`

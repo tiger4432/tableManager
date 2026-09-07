@@ -159,7 +159,7 @@ def test_adopted_id_list_is_capped_and_says_so(client):
 
     assert body["scope"]["adopted"] == n, "every seeded row should have been adopted"
     assert len(body["deleted_row_ids"]) == n, "the response still names every one"
-    assert body["scope"]["delete_ids_omitted"] == n, (
+    assert body["scope"]["truncated"]["delete_ids"]["omitted"] == n, (
         "the id list exceeds BROADCAST_ITEM_LIMIT, so the broadcast withholds it - and "
         "the response must say so rather than let the caller read silence as 'none'"
     )

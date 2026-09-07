@@ -290,7 +290,7 @@ def test_refusal_detail_is_capped_but_the_count_never_is(caplog):
     _kept, report = vsf.screen(VOID, many)
     assert report["refused_rows"] == 60
     assert len(report["rows"]) == vsf.MAX_REFUSAL_ROWS
-    assert report["rows_omitted"] == 60 - vsf.MAX_REFUSAL_ROWS
+    assert report["truncated"]["rows"]["omitted"] == 60 - vsf.MAX_REFUSAL_ROWS
     assert vsf.refused_rows() == {VOID: 60}
 
 

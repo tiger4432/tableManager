@@ -232,7 +232,7 @@ def test_a_large_removal_is_capped_and_says_so(client):
     assert body["scope"]["deleted"] == n
     assert body["updated_count"] == 0, "the payload is empty - nothing was upserted"
     assert len(body["deleted_row_ids"]) == n
-    assert body["scope"]["delete_ids_omitted"] == n, (
+    assert body["scope"]["truncated"]["delete_ids"]["omitted"] == n, (
         "the id list is over the limit and must be withheld from the broadcast, with the "
         "count said out loud - and note `results` is 0 here, so a cap keyed on the "
         "upsert size would have let the largest possible frame through"

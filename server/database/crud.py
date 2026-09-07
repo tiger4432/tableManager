@@ -24,6 +24,7 @@ import math
 import os
 import logging
 from datetime import datetime, date, timezone
+import event_constants
 
 logger = logging.getLogger("Server")
 
@@ -272,7 +273,12 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
         "columns_omitted": drop_stats["columns_omitted"],
         "rows_affected": rows_affected,
         "rows": list(drop_stats["sample"]),
-        "rows_omitted": max(0, rows_affected - len(drop_stats["sample"])),
+        # 정본 — 「표본 목록이 «잘렸다»」. 바로 위 `columns_omitted` 는 «버림»이라 여기 «안»
+        # 들어온다: 잘림은 「상한을 올려라」이고 버림은 「선언을 고쳐라」다.
+        "truncated": {"rows": event_constants.truncated_note(
+            rows_affected > len(drop_stats["sample"]),
+            max(0, rows_affected - len(drop_stats["sample"])),
+            "affected rows beyond the detail sample cap")},
         # Whole ROWS refused before a single cell was read, by name. The version gate is
         # the only such refusal today and it already counts itself per batch; this puts
         # its verdict where the caller can reach it instead of only in the log.

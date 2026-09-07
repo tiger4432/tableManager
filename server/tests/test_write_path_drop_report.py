@@ -293,7 +293,8 @@ def test_some_dropped_names_the_column_the_row_and_the_reason(db):
     assert report["by_reason"] == {crud.DROP_UNDECLARED_COLUMN: 3}
     assert report["by_column"] == {"dt_job_id": 2, "extra": 1}
     assert report["rows_affected"] == 2, "the healthy row must not be counted as damaged"
-    assert report["rows_omitted"] == 0
+    assert report["truncated"]["rows"]["omitted"] == 0
+    assert report["truncated"]["rows"]["cut"] is False
     assert sorted(r["business_key_val"] for r in report["rows"]) == ["U2", "U3"]
     by_key = {r["business_key_val"]: r["columns"] for r in report["rows"]}
     assert by_key["U2"] == {"dt_job_id": crud.DROP_UNDECLARED_COLUMN}
@@ -366,7 +367,7 @@ def test_the_row_sample_is_capped_and_says_how_much_it_withheld(db, monkeypatch)
     assert report["dropped_cells"] == 10, "the COUNT must not be capped"
     assert report["rows_affected"] == 10
     assert len(report["rows"]) == 3
-    assert report["rows_omitted"] == 7
+    assert report["truncated"]["rows"]["omitted"] == 7
 
 
 def test_the_column_census_is_capped_and_says_how_much_it_withheld(db, monkeypatch):

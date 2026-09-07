@@ -75,6 +75,7 @@ fixed deployment and a broken one do not produce identical logs.
 from __future__ import annotations
 
 import logging
+import event_constants
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,8 @@ def screen(table_name: str, items, rule_names=(), transaction_id=None):
         "by_column": {},
         "columns_omitted": 0,
         "rows": [],
-        "rows_omitted": 0,
+        # 정본 — 「이 목록이 잘렸나」. `columns_omitted` 는 «버림»이라 여기 «안» 들어온다.
+        "truncated": {},
     }
 
     kept = []
@@ -207,7 +209,9 @@ def screen(table_name: str, items, rule_names=(), transaction_id=None):
                 "unfilled": list(unfilled),
             })
 
-    report["rows_omitted"] = max(0, report["refused_rows"] - len(report["rows"]))
+    _cut = max(0, report["refused_rows"] - len(report["rows"]))
+    report["truncated"] = {"rows": event_constants.truncated_note(
+        _cut > 0, _cut, "refused rows beyond MAX_REFUSAL_ROWS")}
 
     if report["refused_rows"]:
         announce = _record(table_name, report["rules"], by_column,

@@ -8,7 +8,7 @@ key produces no error, no warning and no visible change. That is the owner's fou
 cleanliness rule -- one capability must not have two paths -- and this event had nine.
 
 ⛔ THE PAYLOAD IS UNCHANGED. Not one key added or removed: seven senders produce
-`{event, table_name, change_count}`, one adds `deleted_row_ids_omitted`, one adds the audit
+`{event, table_name, change_count}`, one adds `truncated`, one adds the audit
 trio. Unifying the SHAPES would be a boundary-contract decision and is NOT this change.
 """
 import ast
@@ -65,7 +65,9 @@ def test_the_omitted_deletes_sender_is_what_it_was():
     assert event_constants.batch_refresh_message(
         "dt_map", 12, deleted_row_ids_omitted=12) == {
             "event": EVENT, "table_name": "dt_map", "change_count": 12,
-            "deleted_row_ids_omitted": 12}
+            "truncated": {"deleted_row_ids": {
+                "cut": True, "omitted": 12,
+                "reason": "deleted ids beyond BROADCAST_ITEM_LIMIT"}}}
 
 
 def test_the_chain_sender_is_what_it_was():
@@ -83,18 +85,23 @@ def test_an_optional_that_was_not_given_is_absent_rather_than_null():
     `null` and "this sender does not say" are different facts on the wire."""
     message = event_constants.batch_refresh_message("dt_map", 1)
     for optional in ("transaction_id", "created_logs", "total_log_count",
-                     "deleted_row_ids_omitted"):
+                     "truncated"):
         assert optional not in message
 
 
-@pytest.mark.parametrize("field,value", [("created_logs", []),
-                                         ("total_log_count", 0),
-                                         ("deleted_row_ids_omitted", 0)])
-def test_an_empty_or_zero_optional_still_travels(field, value):
+#: 🔴 인자 이름은 «발신자의 말»이고 전선의 이름은 «정본»이다 — S-5 이후 그 둘이 다르다.
+#:    그래서 읽는 자리를 따로 받는다. 단언의 뜻은 그대로다: 0 도 «간다».
+@pytest.mark.parametrize("field,value,on_wire", [
+    ("created_logs", [], lambda m: m["created_logs"]),
+    ("total_log_count", 0, lambda m: m["total_log_count"]),
+    ("deleted_row_ids_omitted", 0,
+     lambda m: m["truncated"]["deleted_row_ids"]["omitted"]),
+])
+def test_an_empty_or_zero_optional_still_travels(field, value, on_wire):
     """⚠️ `is not None`, NOT truthiness. An empty list and a zero are things a sender MEANT
     to say; dropping them would make "nothing was omitted" look like "this sender does not
     report omissions" -- the absence-versus-zero confusion this repository keeps closing."""
-    assert event_constants.batch_refresh_message("t", 1, **{field: value})[field] == value
+    assert on_wire(event_constants.batch_refresh_message("t", 1, **{field: value})) == value
 
 
 def test_change_count_zero_is_carried_not_dropped():

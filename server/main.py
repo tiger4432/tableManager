@@ -2962,7 +2962,10 @@ async def apply_batch_updates_endpoint(
             # How many ids the `batch_row_delete` broadcast withheld because the list
             # exceeded BROADCAST_ITEM_LIMIT. 0 on the normal path. Never omitted
             # silently - a refresh signal carrying this same count goes out instead.
-            "delete_ids_omitted": delete_ids_omitted,
+            # 정본 — 「이 목록이 잘렸다」. 이름이 축, 값이 그 축의 사실이다.
+            "truncated": {"delete_ids": event_constants.truncated_note(
+                int(delete_ids_omitted or 0) > 0, delete_ids_omitted,
+                "deleted ids beyond BROADCAST_ITEM_LIMIT")},
         }
 
     # A pure scope wipe (deleted > 0, no upserts) must still invalidate the count cache.
@@ -3034,7 +3037,7 @@ async def apply_batch_updates_endpoint(
                     # 2026-07-25 event-loop freeze.
                     #
                     # NOT a silent truncation: the count rides the refresh signal and the
-                    # response's `scope.delete_ids_omitted`. A cap that drops the tail
+                    # response's `scope.truncated["delete_ids"]`. A cap that drops the tail
                     # without saying so would rebuild, one level up, exactly the silence
                     # this change exists to remove.
                     await manager.broadcast(json.dumps(
