@@ -85,8 +85,14 @@ def test_slow_has_one_spelling_in_the_repository():
     out = subprocess.run(["git", "ls-files", "server"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     other = []
+    me = os.path.basename(__file__)
     for rel in out.splitlines():
         if not rel.endswith(".py"):
+            continue
+        #: 🔴 «자기 자신»은 뺀다 — 이 게이트는 찾는 철자를 «적어야» 하고, 그러면 커밋되는
+        #:    순간 자기가 사본이 된다. 판정 85 에서 값을 치른 그 구멍이고, 그때 세운 상설
+        #:    (「모집단이 git ls-files 인 게이트는 커밋 «뒤»에 한 번 더」)이 이번엔 «잡았다».
+        if os.path.basename(rel) == me:
             continue
         try:
             src = open(os.path.join(ROOT, rel), encoding="utf-8").read()
