@@ -759,6 +759,14 @@ const FLOORS = new Map([
   // the browser".
   ['map2_origin_basis_harness.mjs', 25],
   //
+  // S-9b. Scores that a core whose frame was picked by ROLE ORDER (the degenerate path the
+  // server calls 퇴화형) is drawn differently from one a confirmation picked, and that the
+  // screen prints the server reason/roles rather than translating them into a second
+  // spelling. The load-bearing part is 「전부」: it is only said when EVERY core answered and
+  // every answer was role_order — a core that did not answer is unknown, not confirmed, and
+  // counting it either way is the overclaim this floor exists to hold.
+  ['transfer_plan_frame_basis_harness.mjs', 25],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite

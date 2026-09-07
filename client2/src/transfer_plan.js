@@ -438,6 +438,13 @@ async function getPoolSummary(pool, force = false) {
 //      status unknown    -> 절단 등으로 수를 신뢰할 수 없다
 //      항목이 없음/축 미구성 -> 미상. **chips.remaining으로 대체하지 않는다** — 그것은 이
 //      자재 전체(모든 BIN)의 수이고, 한 BIN의 가용으로 쓰면 조용히 과대 보고가 된다.
+// S-9b. `availabilityOfPool` 과 «같은 항목»을 읽습니다 — 그쪽은 BIN 축을 투영하고 이쪽은
+// 코어별 근거를 봅니다. 두 질문이라 투영을 통과시키지 않고 요약 «본문»을 냅니다.
+function summaryDataOf(pool) {
+  const entry = S.summaries.get(summaryKeyFor(pool));
+  return (entry && entry.status === 'ok' && entry.data) ? entry.data : null;
+}
+
 function availabilityOfPool(pool) {
   // [7c] 반환 형태에 `bound`가 **항상** 있다(없으면 null). 어떤 갈래에서만 빠지면 소비자가
   // `undefined`와 "상한 없음"을 구분하려 들게 되고, 그 순간 판정이 둘로 갈린다.
@@ -553,6 +560,62 @@ const GROSS_MARK = '*';
 function grossReason(inactive) {
   return `감산을 빼지 않은 수입니다 — 이 사이트가 선언하지 않아 집계에서 빠진 감산: ${
     inactive.join(', ')}. 실제 잔여는 이 값보다 적을 수 있습니다.`;
+}
+
+// S-9b — 「이 계획이 «왜 이 프레임인가»」의 각주.
+//
+// 🔴 서버가 `canonical_basis` 로 «이미» 판정하고 M1(`bonding_plan`)은 `frame_basis` 로
+//    싣는데, M2 는 그것을 버렸고 «클라는 M1 것도 안 읽었습니다»(실측: 소스 0). 그래서
+//    「확정 기록이 지목한 프레임」과 「확정이 없어 역할 «순서»로 고른 프레임」이 화면에서
+//    같은 모양이었습니다 — 뒤엣것은 서버 주석이 «퇴화형»이라 부르는 상태입니다.
+//
+// ⛔ 문장을 «짓지» 않습니다. 위 `inactiveSubtractionsOf` 가 세운 이 파일의 규율 그대로 —
+//    서버의 `reason`·`roles` 를 «그대로» 인쇄합니다. 한국어로 옮기면 운영자가 config 에서
+//    찾아야 하는 토큰과 화면의 토큰이 갈라지고, 그 순간 이 표시는 동선을 늘리기만 합니다.
+//
+// 🔴 알갱이가 «코어별»인 이유: 코어마다 «다른 길»로 왔을 수 있습니다. 테이프 하나로 접으면
+//    그 차이가 사라집니다.
+// ⚠️ `confirmation` 코어는 «조용합니다» — 의도대로 골린 것이고 말할 것이 없습니다.
+//    답이 «없는» 코어(옛 서버 · 영역 맵 경로의 불투명 core)도 조용합니다: 「모른다」는
+//    「확정이다」가 «아니고», 그렇다고 지어낼 것도 없습니다.
+const FRAME_BASIS_ROLE_ORDER = 'role_order';   // 서버 `bonding_plan.BASIS_ROLE_ORDER` 의 철자 그대로
+
+/**
+ * 고른 풀들의 요약에서, 기준을 «역할 순서로» 고른 코어의 각주 한 줄.
+ *
+ * @param {Array<object|null>} summaries  풀별 요약 응답(`by_core` 를 나르는 그것)
+ * @returns {string}  빈 문자열이면 «아무 말도 안 합니다**
+ */
+export function frameBasisNote(summaries) {
+  const rows = [];
+  for (const d of (Array.isArray(summaries) ? summaries : [])) {
+    if (d && Array.isArray(d.by_core)) rows.push(...d.by_core);
+  }
+  // 🔴 «답한» 코어만 분모입니다. 답이 없는 코어를 confirmation 쪽으로 세면 「전부」가
+  //    거짓이 되고, role_order 쪽으로 세면 없는 사실을 그리게 됩니다.
+  const known = rows.filter(r => r && r.frame_basis
+                                && typeof r.frame_basis.kind === 'string');
+  if (known.length === 0) return '';
+  const fell = known.filter(r => r.frame_basis.kind === FRAME_BASIS_ROLE_ORDER);
+  if (fell.length === 0) return '';
+
+  // 사유가 코어마다 다를 수 있어 «사유별»로 묶습니다. 접으면 두 사유가 한 낱말이 됩니다.
+  const byReason = new Map();
+  for (const r of fell) {
+    const why = String(r.frame_basis.reason == null ? '' : r.frame_basis.reason);
+    if (!byReason.has(why)) byReason.set(why, []);
+    byReason.get(why).push(String(r.core_id == null ? '' : r.core_id));
+  }
+  // 🔵 코어가 «전부» 이 길로 왔고 사유도 하나면 «나열이 아니라 「전부」 한 줄»입니다 —
+  //    각주가 목록이 되는 순간 그것이 「주저리주저리」입니다.
+  // 🔴 «답한 코어 전부»로는 부족합니다. 답 안 한 코어가 하나라도 있으면 운영자는 「전부」를
+  //    «모든 코어»로 읽고, 그건 거짓입니다 — 그때는 이름을 답니다. 둘을 세는 이유가 그것입니다.
+  const all = fell.length === known.length && known.length === rows.length
+              && byReason.size === 1;
+  const parts = [...byReason.entries()].map(([why, ids]) =>
+    [all ? '전부' : ids.join(', '), why].filter(Boolean).join(' · '));
+  const roles = (fell[0].frame_basis.roles || []).map(String).join(', ');
+  return `기준 ${FRAME_BASIS_ROLE_ORDER} · ${parts.join(' · ')}${roles ? ` · 순서 ${roles}` : ''}`;
 }
 
 function isGross(av) {
@@ -1360,6 +1423,9 @@ function renderMaterialPane() {
 
   // [7d] 이 화면에 보이는 풀들이 밝힌 「빠진 감산」의 합집합 — 토스트와 **같은 함수**로 모은다.
   const grossRoles = grossRolesOf(pools.map(p => availabilityOfPool(p)));
+  // S-9b. 각주와 «같은 자리»에서 모읍니다 — 두 곳이 각자 모으면 서로 다른 목록을 말합니다
+  // (이 파일의 `grossRolesOf` 주석이 세운 그 규율).
+  const frameNote = frameBasisNote(pools.map(p => summaryDataOf(p)));
 
   const rows = pools.map(p => {
     const av = availabilityOfPool(p);
@@ -1403,7 +1469,9 @@ function renderMaterialPane() {
         srcTable ? ` · 대상 <b>${esc(srcTable)}</b>${srcDerived === 'fallback'
           ? ' <span class="tp-chip warn" title="stage 선언에서 유도하지 못해 하드코딩 폴백을 씁니다 — 서버에 명시 선언 요청됨">추정</span>' : ''}`
         : ' · <b class="tp-mat-nosrc">자재 맵 테이블 미상 — stage 선언 확인 필요</b>'}${
-        grossNoteHtml(grossRoles)}
+        grossNoteHtml(grossRoles)}${
+        // S-9b. 같은 각주 채널입니다 — 새 영역도 모드도 만들지 않습니다.
+        frameNote ? `<br>${esc(frameNote)}` : ''}
       </div>
     </div>`;
 
