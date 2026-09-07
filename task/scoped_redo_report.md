@@ -14475,3 +14475,47 @@ server/tests/…                        게이트 신설
 ④ 출하 아홉에 표 키 «전부»
 ⑤ 판정 65 해석기 집합 + «그 시험» (없으면 판정이 가정)
 ```
+
+---
+
+# 🛑 [구현자 -> 총괄] **C-3 ③ — 기본값이 «셋»이 아니라 «열셋»이고, 제 예약이 «파일을 잘못» 짚었습니다 (구현자 8)**
+
+## 🔴 ① 제 예약의 오류부터 — 맵퍼의 «실물»은 gitignore 입니다
+```
+커밋된 것   server/mappers/*.py.sample  (아홉) + ledger_v2_*.py (둘)
+gitignore   server/mappers/*.py         <- 제가 읽고 「기본값 넷」이라 센 그 파일들
+=> 라이브 맵퍼를 고치면 «조작자의 사본»을 고치는 것이고 «출하되지도» 않습니다.
+   제 예약이 「server/mappers/*.py (커밋된 것만)」이라 적었는데, 커밋된 것은 «.sample» 입니다
+```
+⚠️ 그러므로 이 라운드가 바꾸는 것은 «출하본»이고, 이 박스에서 도는 맵퍼는 «안 바뀝니다».
+   그것이 옳은 방향입니다(「라이브에만 고치면 출하본이 가드 꺼진 채로 돈다」의 역방향) — 다만
+   「고쳤는데 여기선 안 보인다」가 «정상»이라는 것을 미리 적습니다.
+
+## 🔴 ② 그리고 «셋»이 아닙니다 — 출하본에 «열셋», 철자 «셋»
+```
+core_alignment_mapper.py.sample        :157 map_table · :159 target_table · :160 source_table
+core_usage_mapper.py.sample            :128 source_table · :129 inventory_table · :185 target_table
+dt_inventory_metadata_mapper.py.sample :81 metadata_target_table · :82 target_table
+dt_map_mapper.py.sample                :103 derivation_source_table(«or DEFAULT_SOURCE_TABLE») · :203 target_table(«or "dt_map"»)
+dt_standard_map_mapper.py.sample       :101 source_table · :102 target_table
+lot_slot_wafer_mapper.py.sample        :59 target_table(«or "lot_slot_wafer"»)
+철자 셋   `get(k, "d")` 열 · `(rule or {}).get(k) or D` 둘 · `get(k) or "d"` 하나
+=> 「기본값 0」 AST 검사는 «세 철자 전부»를 잡아야 합니다. 하나만 잡으면 다음 기본값이 나머지
+   둘 중 하나로 들어옵니다 — 그게 이 부류의 재발 모양입니다
+```
+🔵 그리고 «target_table 기본값»이 여섯입니다. 그건 «쓰기» 키라 순서 가드의 읽기 문제와 다른
+   축이지만, 「키를 빼면 조용히 그 표에 쓴다」는 «같은 병»입니다.
+
+## ③ 청합니다 (구현자 8) — 크기와 경계
+```
+Ⓐ 열셋 «전부» 한 라운드   출하 템플릿 여섯 파일을 다 손댑니다. 조작자가 복사해 쓰는 파일이라
+                        반경이 「서버 코드 셋」보다 큽니다
+Ⓑ 기제 먼저 · 값은 그다음  `chain_bindings.resolve_table(rule, key)` (거절 정본 하나) +
+   (제 권고)              「기본값 0」 AST 검사 «세 철자» + 로드 시점 «모르는 표 이름» 거절.
+                        그 셋이 서면 열셋은 «기계적»이고, 다음 기본값은 «못 들어옵니다»
+                        그다음 커밋에서 여섯 파일을 정본 호출로 «갈아끼웁니다»
+Ⓒ 라이브 맵퍼            ⛔ 안 건드립니다. 조작자 파일입니다 — 다르게 보시면 말씀해 주십시오
+```
+⚠️ 그리고 «모르는» 것: 조작자가 이미 그 기본값에 «기대고» 있는지 — 키를 안 적은 라이브 규칙이
+   있으면 출하본 채택 시 «거절»로 바뀝니다. 이 박스에서 못 잽니다. 그래서 Ⓑ 의 거절 문장에
+   「어느 규칙 · 어느 키」를 넣는 것이 그 전환 비용을 결정합니다.
