@@ -236,8 +236,8 @@ console.log('\n[8] how many slicers tolerate an export prefix on the declaration
   const here = readdirSync(HERE).filter((f) => f.endsWith('.mjs'));
   const tolerant = here.filter((f) => readFileSync(join(HERE, f), 'utf8').includes(TOLERANT));
   // 🔴 THE CEILING ONLY DESCENDS. Raising it needs a ruling, like [7] and the escaping one.
-  ok(`E1 slicers tolerating an export prefix: ${tolerant.length} (ceiling 8)`,
-    tolerant.length <= 8, tolerant.join(' '));
+  ok(`E1 slicers tolerating an export prefix: ${tolerant.length} (ceiling 7)`,
+    tolerant.length <= 7, tolerant.join(' '));
   ok('E2 ... and the ceiling is not vacuous — the bridge has not been retired yet',
     tolerant.length > 0);
 }

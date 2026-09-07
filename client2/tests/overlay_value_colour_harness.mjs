@@ -37,7 +37,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -47,37 +46,18 @@ const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 
-function sliceFunction(source, name) {
-  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
-  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
-  //    a module-level declaration — stopped this regex matching and the harness said "nothing
-  //    compared". That is the standing ban's symptom in its declaration-prefix form.
-  //    The fix is this file importing instead; until that round, this keeps it alive.
-  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
-  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
-  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) die(`symbol not found: ${name} (renamed? this harness must be updated, never skipped)`);
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) die(`no body for ${name}`);
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
+// 🔴 C-35: THE SLICER IS GONE, and with it the last assertion in this file that read a
+//    function body instead of running it. Five subjects moved across five tranches --
+//    the marker renderer, the lookup (retired as already-scored), the overlay row, the
+//    legend-edit refresh, the legend row mark, and the seeding follow-up.
+// ⚠️ `SRC0` STAYS, and it is not the same thing. It is read for two purposes that are
+//    about TEXT AS THE SUBJECT rather than as a stand-in for behaviour: the palette arrays
+//    are lifted out of the declaration so A4b cannot go stale when a colour is added, and
+//    the mutation anchors below are matched against the file. Neither cuts a function out
+//    to run it, which is what the standing ban is about.
 
 // Comments stripped -- a sibling harness carried a permanent false red because an ordering
 // assertion matched a symbol that only appeared inside a comment.
-const stripComments = (s) => s.split('\n').map(ln => ln.replace(/\/\/.*$/, '')).join('\n');
 const countOf = (hay, needle) => hay.split(needle).length - 1;
 
 const SYMBOLS = [
@@ -312,6 +292,76 @@ async function legendRowBuild(mutate, sources) {
     };
   } finally {
     globalThis.document = savedDoc;
+    globalThis.requestAnimationFrame = savedRaf;
+  }
+}
+
+// ── C-35: the seeding follow-up, DRIVEN ──────────────────────────────────────────────────
+// 🔴 `addOverlayLayer` runs here (measured: it reaches its gate and returns). What the two
+//    runs differ in is the ONE thing the claim is about -- whether the seeding answered with
+//    values -- so the follow-up's condition is exercised both ways rather than matched.
+async function seedFollowUp(mutate, seededAnswer) {
+  const savedFetch = globalThis.fetch;
+  const savedRaf = globalThis.requestAnimationFrame;
+  const seen = [];
+  const ensureArgs = [];
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (u) => {
+    const url = String(u);
+    if (url.includes('paint-rules')) {
+      return { ok: true, status: 200, json: async () => ({
+        binding: { x: 'x', y: 'y', val: 'val', key_columns: ['k'], source: 'declared' } }) };
+    }
+    if (url.includes('wafer_map_metadata')) {
+      return { ok: true, status: 200, json: async () => ({ data: [], total: 0 }) };
+    }
+    return { ok: true, status: 200, json: async () => ({
+      data: [{ data: { x: { value: 1 }, y: { value: 1 }, val: { value: 'ZZ9' },
+                       k: { value: 'k1' } } }], total: 1 }) };
+  };
+  try {
+    const { probe } = await loadWithProbe(SRC_PATH, {
+      expose: ['addOverlayLayer', 'el'],
+      state: ['ensureLegendValues', 'recomputeLockedCells', 'renderLegendTable',
+              'renderOverlayList', 'renderGridCanvas', 'syncOverlayGeometry',
+              'drawOverlayMarkers', 'selectedTable', 'loadedIdentity', 'overlayLayers',
+              'activeOverlayLayers', 'tableSchema', 'currentRotation', 'currentSide',
+              'boundingBoxCache', 'legend'],
+      stubs: { './utils.js': { showToast: () => {} },
+               './transfer_plan.js': { notifyMapContext: () => {} } },
+      mutate: mutate || undefined,
+      tag: `ovcseed${Math.random().toString(36).slice(2, 7)}`,
+    });
+    probe.ensureLegendValues = (values, opts) => {
+      seen.push('ensureLegendValues');
+      // `values` is the set the layer carries; what is recorded is its SIZE and the options,
+      // because the claim is 「this layer's values, as vocabulary」.
+      ensureArgs.push({ size: values && values.size, opts });
+      return seededAnswer;
+    };
+    probe.recomputeLockedCells = () => { seen.push('recomputeLockedCells'); };
+    probe.renderLegendTable = () => { seen.push('renderLegendTable'); };
+    for (const n of ['renderOverlayList', 'renderGridCanvas', 'syncOverlayGeometry',
+                     'drawOverlayMarkers']) probe[n] = () => {};
+    probe.selectedTable = 'dt_map';
+    probe.loadedIdentity = null;
+    probe.overlayLayers = [];
+    probe.activeOverlayLayers = [];
+    probe.tableSchema = { column_types: {} };
+    probe.currentRotation = 0;
+    probe.currentSide = 'front';
+    probe.boundingBoxCache = {};
+    probe.legend = [];
+    const inp = (v) => ({ value: String(v), checked: false, querySelector: () => null,
+                          appendChild() {} });
+    Object.assign(probe.el, { physWaferDia: inp(300), physChipX: inp(2.5), physChipY: inp(2.5),
+      physOffsetX: inp(0), physOffsetY: inp(0), physEdgeMargin: inp(3), gridCols: inp(10),
+      gridRows: inp(10), gridStartX: inp(0), gridStartY: inp(0),
+      gridYInvert: { checked: false } });
+    await probe.addOverlayLayer('src_table', 'k1', null);
+    return { seen, ensureArgs };
+  } finally {
+    globalThis.fetch = savedFetch;
     globalThis.requestAnimationFrame = savedRaf;
   }
 }
@@ -717,15 +767,32 @@ async function runAll(src) {
 
     // ⑤ WIRING. As with A10, the functions above are worth nothing if the display path does
     //    not call them — and this is precisely the call that was missing.
-    const add = stripComments(sliceFunction(srcText, 'addOverlayLayer'));
-    ok(/ensureLegendValues\s*\(\s*overlayLayerValues\s*\(\s*layer\s*\)\s*,\s*\{\s*vocab:\s*true\s*\}\s*\)/.test(add),
-      'A12n adding a display layer registers that layer\'s values as vocabulary');
-    // The GUARD, not merely the call: `if (false) ensureLegendValues(...)` still contains it.
-    ok(!/if\s*\(\s*false\s*\)[^\n]*ensureLegendValues/.test(add),
-      'A12o ...and the call is not disabled in place');
-    ok(/seeded\.length\s*>\s*0[\s\S]{0,400}?recomputeLockedCells\s*\(/.test(add)
-      && /seeded\.length\s*>\s*0[\s\S]{0,400}?renderLegendTable\s*\(/.test(add),
-      'A12p ...and the same follow-up the import path does (locks + legend table) runs');
+    // 🔴 RUN, NOT MATCHED. The old form asserted the call's SPELLING and then, separately,
+    //    that it was not wrapped in `if (false)` -- a second regex for the same worry, and
+    //    neither could see a call that is written and never reached. Running it answers both:
+    //    a disabled call records nothing.
+    const seededSome = await seedFollowUp(src, ['ZZ9', 'QQ']);
+    const seededNone = await seedFollowUp(src, []);
+    ok(seededSome.ensureArgs.length === 1
+       && seededSome.ensureArgs[0].opts && seededSome.ensureArgs[0].opts.vocab === true
+       && seededSome.ensureArgs[0].size > 0,
+      'A12n adding a display layer registers that layer\'s values as vocabulary',
+      `seeding calls: ${JSON.stringify(seededSome.ensureArgs)}`);
+    // 🔴 EXACTLY ONCE. 「not disabled」 is one half of it and the run above already shows that;
+    //    the half a text check could never make is that it does not happen TWICE, which is how
+    //    a seeding gets doubled when a caller is added.
+    ok(seededSome.seen.filter(n => n === 'ensureLegendValues').length === 1,
+      'A12o ...and the call is not disabled in place, nor doubled',
+      `seen: ${JSON.stringify(seededSome.seen)}`);
+    // 🔴 THE FOLLOW-UP IS CONDITIONAL, AND BOTH SIDES ARE DRIVEN. With values seeded the locks
+    //    and the legend table both run; with nothing seeded neither does. A guard stuck either
+    //    way fails one of the two -- the old 400-character window could not tell them apart.
+    ok(seededSome.seen.includes('recomputeLockedCells')
+       && seededSome.seen.includes('renderLegendTable')
+       && !seededNone.seen.includes('recomputeLockedCells')
+       && !seededNone.seen.includes('renderLegendTable'),
+      'A12p ...and the same follow-up the import path does (locks + legend table) runs',
+      `seeded: ${JSON.stringify(seededSome.seen)} | none: ${JSON.stringify(seededNone.seen)}`);
   }
 
   // ── A13: AN OVERLAY-SOURCED LEGEND ROW SAYS SO, AND NAMES ITS SOURCE ─────────────
