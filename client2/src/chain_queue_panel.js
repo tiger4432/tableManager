@@ -207,6 +207,17 @@ export function queueView(payload, opts = {}) {
         ? '맵퍼 재적재 없음'
         : `맵퍼 재적재 ${formatAge(payload.mapper_reload_age_seconds) ?? '모름'} 전`,
     ].join(' · ');
+  // 🔴 S-20: 「이 수들이 «언제» 것인가」. 서버가 `generated_at` 을 «항상» 보내는데 읽는
+  //    자리가 «0» 이었습니다. 새로 고치지 않은 화면은 오래된 수를 «현재형»으로 말하고,
+  //    그것이 「같아 보이는 0」 중 「지나가는 중이라서」입니다.
+  // 🔵 그 값은 이 응답의 나이·`oldest_waiting_seconds` 와 «같은 순간»입니다 — 서버가
+  //    한 번 읽은 `now_utc` 를 셋이 나눠 씁니다. 그래서 이 한 줄이 그 옆의 수들을 «설명»합니다.
+  // ⚠️ 세 상태, `logName`·`restart` 와 «같은 규율»: 값 · 못 읽음(모름) · 키 없음(옛 서버 -> 안 그림).
+  //    ⛔ 「0」도 「지금」도 지어내지 않습니다 — 옛 서버에서 「방금 잰 수」로 읽히는 것이
+  //       이 줄이 막으려는 바로 그것입니다.
+  const generatedAt = !('generated_at' in payload) ? ''
+    : (typeof payload.generated_at === 'string' && payload.generated_at
+      ? payload.generated_at : '모름');
   const running = Array.isArray(payload.running) ? payload.running.length : null;
   const sees = payload.loop_in_this_process;
   const runningCell = countWithAbsence(
@@ -312,6 +323,9 @@ export function queueView(payload, opts = {}) {
     failed,
     running: `도는 체인 ${runningCell.text}`,
     logName: logName ? `로그 ${logName}` : '',
+    // 🔴 S-20. `logName` 과 «같은 모양»입니다 — 낱말은 여기서 한 번 붙고, 빈 문자열이
+    //    「안 그린다」입니다. 그리는 쪽이 다시 판정하지 않습니다.
+    generatedAt: generatedAt ? `기준 ${generatedAt}` : '',
     // S-16: 「재시작하면 풀리나」. 키가 없으면 빈 문자열 -> 화면이 «안 그립니다».
     restart,
     depth: countOf(payload.waiting),
@@ -428,6 +442,14 @@ export class ChainQueuePanel {
     }
     head.appendChild(this._line('chain-queue-headline-agg', view.headline.aggregate));
     head.appendChild(this._line('chain-queue-headline-sub', view.headline.sub));
+    // 🔴 S-20. 「기준 시각」은 위의 수 «전부»를 한정하므로 머리글의 «마지막» 줄입니다.
+    //    ⛔ `chain-queue-stale` 처럼 «앞»에 두지 않습니다 — 그 줄은 「아래 수를 믿지 말라」라
+    //       수보다 먼저 읽혀야 뜻이 있고, 이 줄은 그 수들을 «읽는 법»이라 뒤가 맞습니다.
+    //    ⚠️ 클래스가 `-basis` 가 «아닌» 이유: 그 이름은 집는 이의 「주기」가 이미 쓰고 있고,
+    //       한 이름이 두 뜻이 되는 순간 스타일이 둘 중 하나를 «조용히» 잘못 그립니다.
+    if (view.generatedAt) {
+      head.appendChild(this._line('chain-queue-headline-generated', view.generatedAt));
+    }
     this.root.appendChild(head);
 
     // ── 누가 비우나 ── 소유자가 «하나»면 그리지 않는다 (위 `splitByOwner` 참조).

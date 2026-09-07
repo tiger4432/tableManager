@@ -275,7 +275,12 @@ const FLOORS = new Map([
   // arrives, and counts the one remaining domain word - the overflow summary - so that
   // a second one turns this red.
   ['progress_card_harness.mjs', 19],
-  ['chain_queue_panel_harness.mjs', 122],
+  // 122 -> 132: S-20's ten. The stamp the server always sends had zero readers, so a
+  // panel that was not refreshed said 「그때」's numbers in the present tense. Guards three
+  // things, not one: the three-state reading (value / unreadable / older server), that the
+  // line REACHES the screen rather than only the view model, and that an unreadable stamp
+  // never becomes a client clock -- which would make every stale panel look freshly measured.
+  ['chain_queue_panel_harness.mjs', 132],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],

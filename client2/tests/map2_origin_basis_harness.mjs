@@ -35,8 +35,17 @@ const onMask = { origin_basis: ORIGIN_BASIS_MASK };
 const offGrid = { origin_basis: ORIGIN_BASIS_MASK_OFF_GRID };
 ok(originBoxNote(offGrid).note !== '', 'A1 a map whose origin fell back to the circle SAYS so');
 ok(originBoxNote(onMask).note === '', 'A2 ...and a map whose box stood on the mask says nothing');
-ok(originBoxNote(offGrid).note !== originBoxNote(onMask).note,
-  'A3 the two are drawn DIFFERENTLY, which is the whole round');
+// 🔴 A3 WAS NEARLY VACUOUS AS FIRST WRITTEN. 'the two differ' stays true when the two are
+//    SWAPPED, so the M1 mutant (fire on `mask`) left it green while A1/A2 caught it. What it
+//    now asserts is a property nothing else here covers: the note depends on THAT FIELD
+//    ALONE. A row that differs in everything else must still read the same, or some other
+//    field has quietly become part of this judgement.
+ok(originBoxNote({
+  origin_basis: ORIGIN_BASIS_MASK_OFF_GRID, confirmed_by_person: true,
+  stored_candidate_id: 'rot0_front', confirmed_candidate_id: 'rot90_front',
+  geometry: 'declared', geometry_basis: 'assumed',
+}).note === originBoxNote(offGrid).note,
+  'A3 the note follows origin_basis ALONE — every other field left it unmoved');
 // CONTROL: the two inputs differ in exactly one field, so A1..A3 cannot pass for another reason.
 ok(Object.keys(onMask).length === 1 && Object.keys(offGrid).length === 1,
   'A4 CONTROL: the two rows differ ONLY in origin_basis');
