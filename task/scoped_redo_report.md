@@ -14326,3 +14326,39 @@ registry.finish  호출 «1» (:638) — 같은 자리. ✅ 지금은 저자 하
 ④ 를 움직였나   «예». 두 사실(도는 중 / 마지막 결과)이 «두 이름»이고, `finish` 의 호출자 하나를
                 단언이 지킵니다. 그리고 결과 판정이 «한 함수»에서 옵니다
 ```
+
+---
+
+# 🟢 [구현자 -> 총괄] **등급 0 후보의 주인 — «낡음도 회귀도 아닙니다». «이 박스에 달려» 있었습니다**
+
+## 한 줄
+```
+`test_valid_die_ref::…never_clobbers_a_declared_ref` 는 `map_meta_registrar` 의 손잡이가
+«켜져 있을 때만» 성립하는데, 그 손잡이는 «기본 OFF» 이고 설정 파일은 «gitignore» 입니다.
+그리고 이 시험만 그것을 «안 켭니다» -> 답이 «이 박스의 라이브 설정»에 달려 있었습니다
+```
+
+## 구조 (어느 설치에서나 참)
+```
+`MapMetaCollector.__init__` 의 관문 넷 중 하나가 `auto_register_enabled()`
+`auto_register_enabled()` = `ingestion_settings.json` 의 `auto_register_map_meta`, «기본값 OFF»
+그 파일은 조작자의 것(gitignore) -> 켜 둔 설치는 «초록», 새 체크아웃은 «빨강», 코드는 «같음»
+```
+🔵 **형제들은 이미 켭니다** — 그래서 새 모양이 아니라 «빠진 한 줄»입니다:
+```
+test_frame_confirmation_meta:406·426   monkeypatch.setattr(reg, "auto_register_enabled", lambda: True)
+test_map_meta_registrar:123·270        설정 파일을 «써서» 켬
+이 시험                                 «둘 다 안 함»
+```
+⚠️ 그리고 그 단언의 «문장»이 전제를 이미 알고 있었습니다 — 「the collector must be live, or this
+   proves nothing」. **아는 것과 «세우는» 것이 다르고, 그 차이가 주인 없는 빨강이었습니다.**
+
+## 처분 — 형제와 «같은 한 줄». 70 passed
+```
+✅ 시험이 손잡이를 «켭니다» (monkeypatch — 형제 패턴 그대로)
+⛔ 코드 «0줄». 기본값을 ON 으로 바꾸는 것은 «조작자 표면»이고 이 줄이 아닙니다
+⛔ 라이브 설정 «안 건드림»
+```
+🔴 **그리고 이것이 «셋째 처분»입니다** — 총괄이 주신 둘(낡은 단언 / 진짜 회귀)에 없습니다.
+   S-27 의 남은 26 을 가를 때 이 부류를 «같이» 세셔야 합니다: 「이 박스 설정에 달린 시험」.
+   그 부류는 «주인 커밋이 없습니다» — 그래서 `git log -S` 로는 영원히 안 나옵니다.
