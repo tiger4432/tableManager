@@ -199,7 +199,11 @@ def test_the_vocabulary_is_borrowed_from_the_runtime_not_invented():
     "rather than refusing. The report invented the word to say that silence in advance, "
     "and this contract correctly caught the invention; both are right. It goes green the "
     "day the resolver says the word itself, which is a three-party change (Lead PM, "
-    "vectors.json, client harness) and therefore its own round."))
+    "vectors.json, client harness) and therefore its own round. AND THAT ROUND WAITS ON "
+    "A DECLARATION DECISION (ruling 122): whether a view that binds less than the "
+    "decision key is a MISTAKE or an INTENT is a domain fact, and today nothing in the "
+    "declaration can say which - so refusing every such view breaks the ones that meant "
+    "it, and allowing them keeps the silent wrong answer."))
 def test_every_report_reason_including_scope_unresolved_has_a_runtime_twin():
     """🔴 A NAMED RED, NOT A SKIP AND NOT A DELETION.
 
