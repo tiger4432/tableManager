@@ -13,6 +13,8 @@ import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
+import event_constants
+
 from . import setup_bundle
 
 
@@ -1155,7 +1157,8 @@ def explorer_view(
             "selection": None,
             "items": [], "page": page, "limit": limit, "total": 0,
             "outbound": [], "used_by": [], "outbound_total": 0, "used_by_total": 0,
-            "reference_limit": reference_limit, "references_truncated": False,
+            "reference_limit": reference_limit,
+            "truncated": {"references": event_constants.truncated_note(False)},
             "nodes": [], "integrity": [],
             "changes": [], "edge_changes": [],
         }
@@ -1209,8 +1212,11 @@ def explorer_view(
         "outbound_total": len(all_outbound),
         "used_by_total": len(all_inbound),
         "reference_limit": reference_limit,
-        "references_truncated": (
-            len(all_outbound) > reference_limit or len(all_inbound) > reference_limit),
+        # [S-34 ②] 나가는 쪽·들어오는 쪽을 «한 축»으로 접은 것은 종전 그대로다 — 운영자에게
+        # 「참조 목록이 잘렸다」는 하나이고, 그 판단은 이 라운드가 안 건드린다.
+        "truncated": {"references": event_constants.truncated_note(
+            len(all_outbound) > reference_limit or len(all_inbound) > reference_limit,
+            None, "reference list reached reference_limit (%d)" % reference_limit)},
         "nodes": neighborhood_mappings,
         "integrity": checks,
         "changes": [

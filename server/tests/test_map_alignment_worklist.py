@@ -584,7 +584,11 @@ def test_truncation_is_announced_and_never_silent(env):
     for i in range(4):
         _seed_unit(env, "E%d" % i, "P1", ["J%d" % i])
     w = ma.build_alignment_worklist(env, {}, RULE, MAPT, unit_cap=2)
-    assert w["totals"]["units_truncated"] is True
+    # [S-34 ②] 「잘렸다」의 주소가 정본 축 지도로 옴긴다 — 재는 사실은 같다.
+    assert w["truncated"]["units"]["cut"] is True
+    assert w["truncated"]["units"]["reason"], "a cut axis names why"
+    assert w["truncated"]["maps"]["cut"] is False, "the two axes are separate facts"
+    assert "units_truncated" not in w["totals"], w["totals"]
     assert w["totals"]["judged"] == 2
     assert w["totals"]["matched"] == 4
 
