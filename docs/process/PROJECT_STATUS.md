@@ -151,7 +151,8 @@
 > 🔴 확인은 포트가 아니라:
 >    Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Select ProcessId,CreationDate,CommandLine
 >    -> «고친 파일을 읽는» 진입점의 시작 시각을 그 파일의 mtime 과 견줍니다
-> 📎 워커는 콘솔에만 찍혀 있습니다 — -RedirectStandardOutput 으로 스크래치패드에 남기십시오
+> 📎 ~~워커는 콘솔에만 찍혀 있습니다~~ 🔴 [09:36 정정 — 응용 실측 S-4] «런처(`run_decoupled_app.py`)를 안 쓸 때만» 참입니다. 런처는 자식 다섯의 stdout 을 «파일로도» 텝니다.
+>    이 박스는 uvicorn «하나»(체인 루프는 안)로 돌아 런처를 «안 지나므로» 그 파일이 «안 생깁니다» — 그래서 -RedirectStandardOutput 이 필요한 것이고, 그건 «우회»이지 규칙이 아닙니다
 > ```
 > ```
 > Start-Process C:\Users\kk980\anaconda3\envs\assy_manager\python.exe
