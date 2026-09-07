@@ -177,6 +177,22 @@ RULE_TABLE_KEYS = {
 READS_KEY = "reads"
 
 
+#: 실행 «시점»에 정해지되 «집합»은 선언인 표 — `reference_spec` 이 이름 댈 수 있는 전부.
+#: 🔴 `core_alignment_mapper._reference_spec` 은 `"{table}:{map_id}"` 를 만드는데 «표는»
+#:    `rule["reference"]["table"]` 에서 오고 «map_id 만» 실행 시점에 정해진다. 그래서 순서
+#:    가드가 볼 수 있다 — 이름은 몰라도 «집합»은 선언이 안다.
+#: ⛔ 해석기를 고쳐 「읽은 표」를 반환에 «더하지» 않는다. 그건 실행 «뒤»라 순서 판단에 늦다.
+REFERENCE_BLOCK = "reference"
+REFERENCE_TABLE_KEY = "table"
+
+
+def reference_tables(rule):
+    """이 규칙의 `reference_spec` 이 «이름 댈 수 있는» 표 — 선언에서 도출한다."""
+    block = (rule or {}).get(REFERENCE_BLOCK) or {}
+    name = block.get(REFERENCE_TABLE_KEY) if isinstance(block, dict) else None
+    return {name.strip()} if isinstance(name, str) and name.strip() else set()
+
+
 def rule_tables(rule, role):
     """이 규칙이 그 역할로 «이름 댄» 표들 — 저자는 위 열거 «하나»다.
 
@@ -192,6 +208,9 @@ def rule_tables(rule, role):
         if isinstance(name, str) and name.strip():
             out.add(name.strip())
     if role == TABLE_ROLE_READ:
+        # 판정 65: 실행 시점에 «고르는» 표도 «집합»은 선언이라 합집합으로 든다.
+        # 과잉 미룸은 안전한 방향이고, 안 들면 그 읽기가 순서에 다시 안 보인다.
+        out |= reference_tables(rule)
         declared = rule.get(READS_KEY)
         if isinstance(declared, (list, tuple, set)):
             for name in declared:
