@@ -3893,6 +3893,23 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         is_placeholder = row.table_name in event_constants.PLACEHOLDER_TABLE_NAMES
         if row.table_name and not is_placeholder and row.table_name not in g["tables"]:
             g["tables"].append(row.table_name)
+        # 🔴 [S-36] 소급 행은 «자기 payload 에» 누가·무슨 op·어느 인자를 이미 들고 있는데
+        #    이 라우트가 `transaction_id` «하나»만 읽고 나머지를 버렸다. 그래서 화면에는
+        #    「(no tx · outbox#12) · 표 없음 · event_type 하나」로 나갔고, 운영자는 그 행이
+        #    «무엇인지» 알 길이 없었다 — 답이 그 행 «안»에 있는데도.
+        #    ⚠️ 키가 «없는» 것과 값이 `None` 인 것이 다르다: 이 묶음에 소급 행이 하나도
+        #    안 섞였으면 `retroactive` 키가 «아예 없고**, 섞였는데 `requested_by` 를
+        #    아무도 안 적었으면 그 «칸»이 None 이다. 앞은 「해당 없음」이고 뒤는
+        #    「물었는데 아무도 안 말했다」이며, 화면은 그 둘을 다르게 그린다.
+        if row.event_type == event_constants.EVENT_RETROACTIVE_RUN:
+            _rp = get_payload_dict(row) or {}
+            g.setdefault("retroactive", []).append({
+                "run_id": _rp.get("run_id"),
+                "op": _rp.get("op"),
+                "requested_by": _rp.get("requested_by"),
+                "params": _rp.get("params"),
+                "outbox_id": row.id,
+            })
         if row.event_type and row.event_type not in g["event_types"]:
             g["event_types"].append(row.event_type)
         g["max_retry"] = max(g["max_retry"], int(row.retry_count or 0))
@@ -3911,6 +3928,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # 같은 판정을 행 목록에도. 화면이 event_type 을 보고 «스스로» 누구 것인지 정하면
         # 그 판정의 사본이 하나 더 생긴다 — 집이 하나여야 하는 이유가 그것이다.
         "owners": sorted({event_constants.outbox_owner(t) for t in g["event_types"]}),
+        # 있을 때«만» 나간다 — 위 주석의 세 상태 그대로.
+        **({"retroactive": g["retroactive"]} if "retroactive" in g else {}),
         "max_retry": g["max_retry"],
         "waiting_seconds": _age(g["created_at"]),
         "waiting_at": to_local_str(g["created_at"]) if g["created_at"] is not None else None,
