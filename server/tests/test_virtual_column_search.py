@@ -8,8 +8,9 @@ the client alone would have produced the worst version of this: rows that LOOK f
 while `Matches:` stays unfiltered. Every test here therefore asserts the returned rows
 AND `total` together ― a filter that narrows one but not the other is the actual bug.
 
-[Sorting is out of scope] ― user ruling 2026-07-31 ("정렬은 안해도되고 검색만되게해").
-The resolved expression is only ever placed in WHERE, never in SELECT or ORDER BY.
+[Sorting joined this route on 2026-09-07 ― A-6] The 2026-07-31 user ruling
+("정렬은 안해도되고 검색만되게해") kept the resolved expression out of ORDER BY. It is
+in ORDER BY now, and `test_the_sort_column_is_named_or_refused.py` owns that fact.
 
 [Why this is allowed to be one LEFT JOIN and not a per-row subquery]
 `virtual_join_config` refuses to verify a declaration whose right side lacks a UNIQUE
@@ -286,14 +287,3 @@ def test_the_join_cannot_change_the_row_count(search_env, db_session):
     ids, joined_total = _get(search_env, q="M1", cols="fab_site")
     assert joined_total == 21, "L1 plus the 20 rows sharing its key"
     assert len(ids) == 21
-
-
-def test_no_sorting_was_added(search_env):
-    """Sorting stayed out of scope ― the resolved expression never reaches ORDER BY.
-
-    Asking to order by a virtual column falls back to the default ordering rather than
-    erroring or half-working. Pinned so a later round adding sorting has to do it
-    deliberately.
-    """
-    ids, total = _get(search_env, order_by="fab_site")
-    assert total == 5 and len(ids) == 5

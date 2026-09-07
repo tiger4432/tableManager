@@ -1522,6 +1522,69 @@ class VirtualColumnBinder:
         return query, self._cache[col]
 
 
+#: `?order_by=` 이름 중 표의 컬럼이 «아닌» 셋. 화면이 오늘 보내는 철자이고 각자 자기
+#: 정렬식과 tie-breaker 를 들고 있다. 아래 일반 갈래와 «두 경로»가 아닌 이유는 이 셋이
+#: 컬럼 이름이 아니어서다 — `id` 는 `business_key_val` 의 화면 철자다.
+def _named_sort(table_model, order_by, order_desc):
+    def pair(expr):
+        tie = table_model.row_id
+        return [expr.desc() if order_desc else expr.asc(),
+                tie.desc() if order_desc else tie.asc()]
+    if order_by == "updated_at":
+        return pair(table_model.updated_at)
+    if order_by == "id":
+        return pair(table_model.business_key_val)
+    if order_by == "row_id":
+        # 🔴 오늘 그대로다 — `order_desc` 를 «안 본다**. 화면 기본값이라 이 라운드는
+        #    그것을 «바이트 동일»로 남기라는 지시를 받았다. 그 무시 자체는 A-6 과 같은
+        #    부류이고 별 줄로 올렸다.
+        return [table_model.row_id.asc()]
+    return None
+
+
+def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
+    """`?order_by=` 이름 -> `(query, ORDER BY 목록)`. 모르는 이름은 «이름 대어» 거절한다.
+
+    🔴 조용한 기본값이 «없다**. 종전에는 아는 이름 둘 «밖»의 모든 값이 `row_id.asc()` 로
+       떨어졌다 — 오타든 실제 사용자 컬럼이든 «같은 답**을 받았고, 응답에는 그 사실을
+       말하는 칸이 없어 화면은 정렬된 줄 알았다. 전수 최댓값이 아닌 «첫 페이지의 최댓값**이
+       맨 위에 서고, 기호는 전수 정렬과 «같다**.
+
+    선언 «축**을 만들지 않는다 — 표가 선언한 컬럼이면 정렬된다(`sortable` 같은 칸은 없다).
+    가상 조인 컬럼은 `VirtualColumnBinder` 를 지난다: 필터·검색이 이미 그 자리를 쓰고,
+    「화면에 보이는 컬럼」과 「서버가 정렬할 수 있는 컬럼」이 갈리면 아무 에러도 안 난다.
+    """
+    named = _named_sort(table_model, order_by, order_desc)
+    if named is not None:
+        return query, named
+
+    stored = table_model.__table__.columns
+    if order_by in stored.keys():
+        expr = stored[order_by]
+    elif order_by in binder:
+        query, expr = binder.expr(query, order_by)
+        if expr is None:
+            # 가상인 줄은 아는데 식을 «못 지었다**. 물러나면 row_id 순서를 정렬이라
+            # 부르게 되므로, `?filters=` 가 같은 자리에서 하는 것과 같이 거절한다.
+            raise HTTPException(
+                status_code=422,
+                detail=("'%s' is a virtual-join column on '%s' but its expression could "
+                        "not be built, so it cannot be sorted. Check virtual_join_rules.json "
+                        "for that column's rule." % (order_by, table_name)))
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=("cannot sort by '%s': '%s' declares no such column and no verified "
+                    "join exposes it. Sortable names are the table's declared columns "
+                    "(table_config.json), the columns a virtual join exposes "
+                    "(virtual_join_rules.json), and the screen's own 'id'/'updated_at'/"
+                    "'row_id'." % (order_by, table_name)))
+
+    tie = table_model.row_id
+    return query, [expr.desc() if order_desc else expr.asc(),
+                   tie.desc() if order_desc else tie.asc()]
+
+
 def apply_column_filters(query, table_model, table_name, filters, binder):
     """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
     if not filters:
@@ -1854,6 +1917,11 @@ def get_table_data(
         filters=filters, enrichment_queue=enrichment_queue,
         enrichment_queue_scope=enrichment_queue_scope)
 
+    # ── [Step 0] 정렬 이름을 «먼저** 해석한다 ──
+    # 세는 것보다 앞이다: 모르는 이름이면 34,939행을 세고 나서 거절할 이유가 없다.
+    query, final_sort = resolve_sort(
+        query, table_model, table_name, order_by, order_desc, _binder)
+
     # ── [Step 1] 타겟 위치(Offset) 자동 계산 (Unified Jump) ──
     actual_target_offset = -1
     if target_row_id:
@@ -1901,8 +1969,18 @@ def get_table_data(
                         count_query = count_query.filter(or_(table_model.business_key_val > t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
                     else:
                         count_query = count_query.filter(or_(table_model.business_key_val < t_bk, and_(table_model.business_key_val == t_bk, table_model.row_id < target_row_id)))
-            else:
+            elif order_by == "row_id":
                 count_query = count_query.filter(table_model.row_id < target_row_id)
+            else:
+                # 🔴 이 블록은 정렬 «이름마다** 자기 비교식을 들고 있다. 새 컬럼으로 정렬하는
+                #    동안 row_id 비교로 오프셋을 세면 «다른 순서**의 위치를 답하게 되고,
+                #    점프는 조용히 엉뚱한 페이지에 앉는다. 세지 않고 이름을 댄다.
+                raise HTTPException(
+                    status_code=422,
+                    detail=("target_row_id cannot be resolved while sorting by '%s' — "
+                            "the offset is counted per sort name and only 'updated_at', "
+                            "'id' and 'row_id' carry that comparison. Drop target_row_id "
+                            "or sort by one of those." % order_by))
             t_tmp = time.time()
             actual_target_offset = count_query.count()
             t_target = time.time() - t_tmp
@@ -1923,16 +2001,7 @@ def get_table_data(
         total_count, t_count = cached_table_count(query, cache_key)
     
     from sqlalchemy.sql import func
-    if order_by == "updated_at":
-        sort_expr = table_model.updated_at.desc() if order_desc else table_model.updated_at.asc()
-        tie_breaker = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
-        final_sort = [sort_expr, tie_breaker]
-    elif order_by == "id":
-        bk_sort = table_model.business_key_val.desc() if order_desc else table_model.business_key_val.asc()
-        tie_breaker_bk = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
-        final_sort = [bk_sort, tie_breaker_bk]
-    else:
-        final_sort = [table_model.row_id.asc()]
+    # `final_sort` 는 [Step 0] 에서 이미 해석됐다 — 이름을 «한 자리**에서만 읽는다.
     
     # ── [Step 2.5] Session Memory Optimization (Search Only) ──
     if q and db.get_bind().dialect.name == "postgresql":
