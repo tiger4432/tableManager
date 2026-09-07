@@ -1,6 +1,7 @@
 // Ontology Config Explorer state contract.
 // The reducer is deliberately DOM-free: one response may describe exactly one compiled
 // context, and late responses can never overwrite a newer selection/search/draft request.
+import { saysTruncated } from './truncation.js';
 
 export const initialExplorerState = Object.freeze({
   activeSnapshot: null,
@@ -166,7 +167,12 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         usedBy: p.used_by || [],
         usedByTotal: p.used_by_total || 0,
         outboundTotal: p.outbound_total || 0,
-        referencesTruncated: Boolean(p.references_truncated),
+        // 🔴 THE CANONICAL SHAPE FIRST, THE OLD KEY AS A FALL-BACK (ruling 99). One reader
+        //    knows every shape the wire has worn; `null` means 「this response does not say」,
+        //    and only then is the per-list boolean still the answer. Without this, the day the
+        //    server folds `references_truncated` into the axis map, this screen would call a
+        //    truncated catalogue complete — no error, no empty screen, just a wrong 「전부」.
+        referencesTruncated: saysTruncated(p.truncated) ?? Boolean(p.references_truncated),
         // 🔴 THE ROOT PATH IS A PATH TO THE SELECTION, so with nothing selected there is
         // no path -- not an empty one. This ran on EVERY response, so on an empty config
         // it threw before a single node was rendered.

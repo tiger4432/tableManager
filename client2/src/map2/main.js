@@ -48,6 +48,7 @@ import { parseCandidateId, candidateList } from './candidates.js';
 // 하니스가 DOM 없이 그것을 채점하기 위해서입니다.
 import { sourceFrameAttestation } from './attestation.js';
 import { originBoxNote } from './origin_basis.js';
+import { saysTruncated } from '../truncation.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext, INDEX_WALK_READY, INDEX_WALK_ABSENT,
          INDEX_WALK_TRUNCATED, INDEX_WALK_POOLED, INDEX_WALK_INCONSISTENT } from './decode.js';
@@ -208,7 +209,13 @@ export function normaliseWorklist(res) {
     unscorable: numOrNullish(totals.unscorable),
     // Aggregated reasons, counted once. Never a sentence per row.
     reasons: Object.freeze(Array.isArray(body.unscorable_reasons) ? body.unscorable_reasons : []),
-    truncated: totals.units_truncated === true,
+    // 🔴 THE CANONICAL SHAPE FIRST, THE OLD KEY AS A FALL-BACK (ruling 99). The wire is moving
+    //    to one axis map (`truncated: {<axis>: {cut, omitted, reason}}`) and away from a
+    //    boolean per list. Reading `truncated` first means this line needs no second edit on
+    //    the day the server folds `units_truncated` into it; `null` from the reader means
+    //    「this response does not say」, which is exactly when the old key is still the answer.
+    //    ⚠️ `=== true` on the fall-back stays: absent is not false.
+    truncated: saysTruncated(body.truncated) ?? (totals.units_truncated === true),
     // The route ships the catalog with the page, so the five controls need no separate call.
     selection: body.selection || null,
   };

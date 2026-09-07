@@ -1,0 +1,5 @@
+var e=`"`,t=`	`;function n(e){return String(e??``).replace(/\r\n?/g,`
+`)}function r(r,i){let a=i||{},o=n(r),s=[],c=[],l=``,u=0,d=!1,f=!0,p=()=>{c.push(a.trimCells?l.trim():l),l=``,f=!0,d=!1},m=()=>{p(),s.push(c),c=[]};for(;u<o.length;){let n=o[u];if(d){if(n===e){if(o[u+1]===e){l+=e,u+=2;continue}d=!1,u++;continue}l+=n,u++;continue}if(n===e&&f){d=!0,f=!1,u++;continue}if(n===t){p(),u++;continue}if(n===`
+`){m(),u++;continue}l+=n,f=!1,u++}if(o.length>0&&m(),s.length>0){let e=s[s.length-1];e.length===1&&e[0]===``&&s.pop()}return a.dropBlankLines?s.filter(e=>!(e.length===1&&e[0]===``)):s}function i(n){return n.indexOf(t)>=0||n.indexOf(`
+`)>=0||n.indexOf(`\r`)>=0||n.indexOf(e)>=0}function a(t){let n=String(t??``);return i(n)?e+n.split(e).join(`""`)+e:n}function o(e){return(Array.isArray(e)?e:[]).map(e=>(Array.isArray(e)?e:[]).map(a).join(t)).join(`
+`)}export{o as n,r as t};

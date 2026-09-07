@@ -910,7 +910,7 @@ const FLOORS = new Map([
   // 256 -> 305: sections N..N4 -- the rule chooses the map table (`selection.map_tables`), a
   // refused table carries the server's reason, `derived` stops being folded into
   // `fallback_guess`, an override is visible as one, and a rule pick empties the worklist.
-  ['map_editor2_question_harness.mjs', 305],
+  ['map_editor2_question_harness.mjs', 309],
   // New 2026-08-04 with 📐 규격만 저장 (`saveMapSpecOnly`), the metadata-only write path, so its
   // floor is the count it reports on the commit that introduces it. It is the only scorer of
   // a write that must touch NO cells: its central assertions name the ENTIRE request list, and
@@ -999,7 +999,7 @@ const FLOORS = new Map([
   // 50 -> 56 (2026-08-19). Section G: an empty config through the whole client path.
   // Four separate places read "there is no selection" as "the selection is wrong" or
   // dereferenced it anyway; every one was found by the owner, not by a test.
-  ['ontology_explorer_harness.mjs', 56],
+  ['ontology_explorer_harness.mjs', 60],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to
@@ -1182,7 +1182,7 @@ const FLOORS = new Map([
   // sentence about a cut suggestion list now lives with the JUDGEMENT about it, in one place,
   // and two of them are text-as-subject drift oracles (a copy being BORN again is invisible to
   // any behavioural check, so the population is asked of the source and labelled as such).
-  ['truncation_harness.mjs', 32],
+  ['truncation_harness.mjs', 37],
   // whether the DECLARED unique key survives measurement -- and that an empty table
   // is neither unique nor duplicated, which the server's own boolean cannot spell
   ['uniqueness_harness.mjs', 31],
