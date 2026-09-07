@@ -188,6 +188,15 @@ SYSTEM_TABLE_COLUMNS = {
     "cell_overwrites": ('column_name', 'id', 'is_overwrite', 'manual_priority_source', 'row_id', 'table_name', 'updated_at', 'updated_by'),
     # confirmation_uid: migrations/add_frame_confirmation.py
     "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
+    # NEW TABLE, not a new column: `fefe2905` declared `RetroactiveRun` so every
+    # request-type operation gets one run row and one way to stop it. A whole table IS
+    # created by `create_all` on an existing database, which is why this entry needs no
+    # migration beside it - the ordering hazard this list guards is a COLUMN arriving on a
+    # table that is already there.
+    #   runner: migrations/add_retroactive_runs_runner.sql - and that one DOES need
+    #   running on every existing database, because `create_all` never adds a column to a
+    #   table it finds.
+    "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
     "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'status', 'table_name'),
     # file_mtime, file_size:
