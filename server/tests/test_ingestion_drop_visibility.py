@@ -53,18 +53,6 @@ class _StubSession:
         pass
 
 
-class _StubMetaCollector:
-    def __init__(self, *_args, **_kwargs):
-        pass
-
-    def collect(self, updates_iter):
-        for _ in updates_iter:
-            pass
-
-    def pending(self):
-        return False
-
-
 class _StubCrud:
     @staticmethod
     def apply_batch_updates(_db, _t_name, batch_obj):
@@ -74,11 +62,10 @@ class _StubCrud:
 
 @pytest.fixture
 def watcher(monkeypatch):
-    """A handler wired to stubs - no DB, no heartbeat file, no meta registration."""
+    """A handler wired to stubs - no DB, no heartbeat file."""
     monkeypatch.setattr(dw, "SessionLocal", _StubSession)
     monkeypatch.setattr(dw, "crud", _StubCrud)
     monkeypatch.setattr(dw.heartbeat, "beat", lambda *a, **k: None)
-    monkeypatch.setattr(dw.map_meta_registrar, "MapMetaCollector", _StubMetaCollector)
     # Process-lifetime registry: isolate each test from the ones before it.
     monkeypatch.setattr(dw, "_dropped_column_announced", {})
 

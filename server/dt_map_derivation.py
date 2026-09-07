@@ -632,10 +632,10 @@ def derive_cells(db, rows, source_table: str, target_table: str,
             continue
 
         # ---- the map this cell belongs to, and the frame that map is drawn in.
-        # Composed by the SHARED primitive, not by joining the parts here. Registration
-        # (`MapMetaCollector`) composes identities with it too, and an identity composed
-        # two ways is an identity that eventually differs - the meta exists and nothing
-        # can find it. It also refuses a partial identity by returning None.
+        # Composed by the SHARED primitive, not by joining the parts here. Every writer
+        # and reader of a map identity goes through it, and an identity composed two ways
+        # is an identity that eventually differs - the meta exists and nothing can find
+        # it. It also refuses a partial identity by returning None.
         import map_meta_registrar
         map_id = map_meta_registrar.compose_map_id(ident_cols, ident_values, target_table)
         if map_id is None:

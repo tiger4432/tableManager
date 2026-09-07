@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-31 (**§1.10 `auto_register_map_meta` 의 기본이 «true»에서 «false»로 뒤집힌 것만** — 2026-08-30 소유자 판정. 다른 절은 아래 날짜 기준 그대로) · 직전 2026-08-17 (§1.12 외부 읽기 전용 voids.json 감시 — 실제 경로 확인, 본문은 0바이트라 합성 계약) | **Previous verification:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-07 (**§1.10 맵 메타 자동 등록이 «은퇴»했습니다** — 소유자 지시 「맵 메타 자동 등록은 없애줘」(S-38). 그 절만 고쳤고 다른 절은 아래 날짜 기준입니다) · 직전 2026-08-17 (§1.12 외부 읽기 전용 voids.json 감시 — 실제 경로 확인, 본문은 0바이트라 합성 계약) | **Previous verification:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -248,23 +248,33 @@ filename  <  header  <  row
 
 > 계약 테스트: `server/tests/test_filename_rules_declaration.py` · 제자리 적재 쪽은 `server/tests/test_nested_dir_ingestion.py`(종전 `test_flatten_nested_dirs.py`).
 
-## 1.10 맵 메타 자동 등록 (M3, 2026-07-29)
+## 1.10 ⚰️ 맵 메타 자동 등록 — 은퇴 (M3, 2026-07-29 ~ 2026-09-07)
 
-인제션(파일 워처 **및** 체인 워커)이 `map_key_columns`가 선언된 테이블에 맵 셀을 적재하면, 배치가 건드린 **각 distinct 맵 키**에 대해 `wafer_map_metadata` 행의 존재를 보장합니다. 미등록 맵이 화면에 '화면기준' 칩으로 열화되는 공백(수동 에디터 push만 메타를 등록하던 문제)을 닫는 기능입니다. 구현: `server/map_meta_registrar.py`의 `MapMetaCollector` (워처 훅 `directory_watcher._send_to_upsert`, 체인 훅 `chain_ingestion_worker.process_chain_transaction_group`).
+> 소유자 지시(2026-09-07): 「맵 메타 자동 등록은 없애줘」. 인제션이 `wafer_map_metadata`
+> 행을 **지어 넣는 일은 이제 없습니다.** 메타는 맵 에디터 Push(사람)와 확정 기록으로만
+> 들어옵니다.
 
-| 항목 | 동작 |
-|---|---|
-| 발동 조건 | 대상 테이블에 `map_key_columns` 선언 **그리고** 좌표 바인딩 해석 가능(`map_overlay.resolve_binding` — 선언 > 유도). 좌표 없는 registry형 테이블(`map_split_registry` 등)은 자연 제외 |
-| 등록 내용 | **정직한 최소치** — 배치 x/y 범위(bbox) 격자(`grid_cols/rows`, `grid_start_x/y` = 데이터 최소 좌표), 회전 0, front, 마스크 중립 물리 어휘(chip 1×1 / offset 0 / margin 3 / 격자 반대각선 외접 dia) = 에디터 '표준' 선택과 동일한 합성 규격. 실제 웨이퍼 지오메트리(원)는 **추측하지 않습니다**. `auto_registered: true` 필드로 출처 표기 |
-| 그 표지가 하는 일 (**D1 · 2026-08-04**) | 🔴 **그 `chip 1×1`은 1mm 다이가 아니라 "아무도 재지 않았다"입니다.** 그래서 자동 등록된 맵은 **오버레이 정렬의 근거가 되지 못하고**, 소스·타깃 어느 쪽이 그런 맵이면 서버가 `align_unavailable` + 한국어 사유로 **이름을 대고 거절**합니다(`map_overlay.geometry_declaration` — 판정의 유일한 철자, 클라 `physDeclaration`과 같은 토큰 어휘). 원 마스크 판정은 **그대로**입니다(합성 규격은 전 셀 유효를 말하도록 만들어졌고 그 답은 옳습니다). 운영자의 조치는 **그 맵의 물리 규격을 실제로 선언하는 것**이고, 에디터에서 규격을 넣고 Push하면 표지가 사라집니다. 규율 전문은 [map_editor/architecture_and_management §2.3-ter](../map_editor/architecture_and_management.md) |
-| 절대 불변식 | **absent-only** — 이미 존재하는 메타 행은 어떤 경우에도 덮어쓰지 않습니다(사용자/에디터 등록이 정본). 생성 행의 소스는 `auto_map_meta`(최하위 우선순위)라 이후 사용자 편집이 항상 이깁니다 |
-| 확장성 | 존재 확인은 행이 아니라 **distinct 키당 1회**, 인덱스 컬럼(`business_key_val`) IN 조회(1000키 청킹). 프로세스 수명 내 확인-완료 키 캐시로 동일 맵 재적재는 추가 쿼리 0회 |
-| 이벤트 | 메타 행은 `crud.apply_batch_updates`(정상 쓰기 경로)로 생성 — outbox 이벤트가 흐르고 워커 스윕이 클라 갱신을 전달합니다. 재귀 가드: `wafer_map_metadata` 자신은 명시 거부(+ 메타 테이블엔 `map_key_columns`도 없음) |
-| **켜는** 법 | 🔴 **[2026-08-30 소유자 판정] 기본이 «false»로 뒤집혔습니다** — 켜려면 `ingestion_settings.json`에 `"auto_register_map_meta": true`를 **명시**합니다(핫리로드 — 다음 파일/체인 트랜잭션 그룹부터). **키를 안 적으면 «꺼짐»입니다.** 이유: 합성 행이 `grid_start_x/y`를 배치의 min x/y로 박는데, 에디터에서 start x/y는 shift 가 아니라 **좌표 «기준» 자체**입니다. 그래서 자동 등록 행은 구멍을 메우는 것이 아니라 **이후 모든 편집이 대조될 원점을 고정**하고 에디터가 그것을 되돌리지 못합니다 — 여기서는 **「행이 없음」이 더 안전한 상태**였습니다. 부재 전용·최하위 우선순위는 «행»을 보호했지 «원점»을 보호하지 않았습니다 |
-| 실패 격리 | 메타 등록 실패는 로그만 남기고 **파일/체인 적재는 정상 완료**됩니다(데이터가 먼저 커밋됨) |
+```
+운영에서는   맵 메타를 «메타 표»에 적습니다 — 에디터에서 규격을 넣고 Push 하거나 파일로.
+            자동으로 지어 넣는 것은 «없습니다».
+```
 
-> **맵 키 조합 규약**: map_id는 `map_key_columns` 값의 `'_'` 조인(에디터 `getMapIdFromMeta`와 동일)입니다. 키 컬럼이 하나라도 비면 그 행은 등록에 기여하지 않습니다(부분 정체성 추측 금지 — 에디터는 빈 조각을 버리고 나머지를 잇지만, 인제션은 자기가 메타까지 등록할 정체성을 추측해서는 안 되므로 의도적으로 다릅니다).
-> **[2026-07-29 7b 착지 — 같은 커밋]** 값 정규화는 이제 **선언 타입 기준 공용 캐노니컬라이저**(`map_overlay.canonical_bind_value`)를 경유합니다. 종전 `clean_str_value` 핀은 테이블/컬럼 선언을 못 찾을 때의 동작(트림 + 정수형 float 접기)으로만 남습니다. **등록과 조회가 같은 규칙으로 조합해야** 메타가 실제로 발견됩니다 — `number` 선언 키 컬럼에 pre-cast `'01'`이 오면 등록은 `LOT_01`인데 저장된 셀은 `1`로 캐스팅돼 모든 소비자가 `LOT_1`을 찾던 것이 이 함수가 막는 결함입니다(규율 전문은 [MAP_EDITOR_SPEC §5.0](../spec/MAP_EDITOR_SPEC.md)). 고정 테스트 `test_map_id_composition_pinned_for_7b`.
+**은퇴 이유**(2026-08-30 판정이 기본값을 끈 그 이유가 끝까지 갔습니다): 합성 행이
+`grid_start_x/y` 를 배치의 min x/y 로 박는데, 에디터에서 start x/y 는 shift 가 아니라
+**좌표 «기준» 자체**입니다. 그래서 자동 등록 행은 구멍을 메우는 것이 아니라 **이후 모든
+편집이 대조될 원점을 고정**했고, 에디터가 그것을 되돌리지 못했습니다.
+
+🔴 **이미 쓰인 행은 그대로 있습니다.** 그 행들은 `auto_registered: true` 표지를 들고 있고,
+그 표지를 읽는 쪽(`map_overlay.geometry_declaration` · 정렬의 참조 거절 · 에디터 화면)은
+**하나도 바뀌지 않았습니다** — 표지를 지우면 그 행들이 「declared」로 거짓이 됩니다.
+운영자의 조치도 종전과 같습니다: **그 맵의 물리 규격을 실제로 선언**하고 Push 하면 표지가
+사라집니다. 규율 전문은
+[map_editor/architecture_and_management §2.3-ter](../map_editor/architecture_and_management.md).
+
+> **맵 키 조합 규약은 남습니다** — map_id 는 `map_key_columns` 값의 `'_'` 조인이고, 값 정규화는
+> 선언 타입 기준 공용 캐노니컬라이저(`map_overlay.canonical_bind_value`)를 경유합니다.
+> 등록과 조회가 같은 규칙으로 조합해야 메타가 실제로 발견됩니다. 고정 테스트
+> `test_map_id_composition_pinned_for_7b`.
 
 ---
 

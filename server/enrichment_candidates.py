@@ -84,7 +84,8 @@ A COLUMN IS DECIDED ON ITS OWN EVIDENCE  [2026-08-05, user ruling]
                            declared: the undeclared one was skipped in silence
                            and its blank read exactly like a judged one.
 
-SAME SHAPE AS M3 (`auto_register_map_meta`, map_meta_registrar.py)
+THE ABSENT-ONLY SHAPE (M3 `auto_register_map_meta` had it too, until it retired
+2026-09-07 — this is now the only writer wearing it)
     Absent-only; writes carry `SOURCE_NAME` which is UNREGISTERED in
     `crud.SOURCE_PRIORITY` and therefore resolves to priority 99 - the lowest -
     so a later user edit (priority 0) always wins the displayed value and needs
@@ -125,7 +126,7 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
 
 # Provenance of an automatic confirmation. Deliberately NOT added to
 # crud.SOURCE_PRIORITY: unregistered -> 99 -> lowest, exactly like
-# `auto_map_meta` and `enrichment_backfill`. Registering it would be the one
+# `enrichment_backfill`. Registering it would be the one
 # edit that could let it outrank a human.
 SOURCE_NAME = "enrichment_auto_confirm"
 
@@ -299,8 +300,7 @@ def rule_auto_confirm_enabled(rule: dict, settings: dict = None) -> bool:
     """Is automatic confirmation enabled for THIS rule?
 
     Requires the global switch AND the per-rule opt-in. A non-boolean per-rule
-    value warns once and falls back to the default (OFF) - the same posture as
-    `map_meta_registrar.auto_register_enabled`, and the safe direction here.
+    value warns once and falls back to the default (OFF) - the safe direction here.
     """
     if not global_auto_confirm_enabled(settings):
         return False

@@ -53,7 +53,7 @@
 | ✅ | `ledger_trace_router` | 13,803 | 2026-08-27 | The ledger read routes — ten of them, and none is the pair this line used to name. |
 | ✅ | `main` | 305,779 | 2026-08-27 |  |
 | ✅ | `map_alignment` | 471,436 | 2026-08-25 | 맵 정렬 채점 — 후보 8개를 **한 번에** 채점해 한 payload로 낸다 (스펙 §0.2 층 ⑤·⑥·⑦). |
-| ✅ | `map_meta_registrar` | 16,312 | 2026-08-06 | Auto-registration of `wafer_map_metadata` rows for ingestion-created maps (M3). |
+| ✅ | `map_meta_registrar` | 16,312 | 2026-09-07 | `wafer_map_metadata` 신원(`META_TABLE`·`compose_map_id`·`meta_business_key`)과 마스크 중립 합성 프레임(`synthesize_grid_meta`). 🔴 인제션 자동 등록(M3 `MapMetaCollector`)은 2026-09-07 소유자 지시로 은퇴했다. |
 | ✅ | `map_overlay` | 163,825 | 2026-08-25 | 범용 맵 오버레이 (S1') — 임의의 맵을 임의의 맵 캔버스 위에 정렬해 겹쳐 보는 인프라. |
 | ✅ | `map_preset_routing` | 25,070 | 2026-07-30 | [F5] Load-time preset routing — WHICH physical spec a map opens with. |
 | 🔴 | `mappers` | 33 | 2026-06-07 |  |

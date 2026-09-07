@@ -390,56 +390,33 @@ def test_an_excluded_contributor_gets_no_confirmed_coordinate_system(env):
 
 
 # ---------------------------------------------------------------------------
-# The ingestion registrar and the confirmation write the SAME row from two processes.
-# Board #23 asks whether the two records of a confirmed frame can part; on this axis the
-# answer is no, and these two are the proof rather than the reading of the code.
+# A row carrying the ingestion registrar's marker, and what a confirmation does to it.
+# The WRITER retired 2026-09-07 (S-38, owner ruling), but rows that already carry
+# `auto_registered` did not, so these four stay -- what changed is how the fixture
+# composes the row: directly, through the same synthetic frame the writer called.
 # ---------------------------------------------------------------------------
 
-def test_the_registrar_does_not_overwrite_a_confirmed_row(env, monkeypatch):
-    """`MapMetaCollector` is absent-only, and the confirmation's row is not absent. If the
-    existence check ever stopped seeing it, ingestion would put a synthetic `rot0_front`
-    over an operator's confirmed frame and nothing on screen would say so."""
-    import map_meta_registrar as reg
-    # The knob default became OFF on 2026-08-30 (owner ruling), so an absent settings
-    # file no longer means "registrar active". These tests measure what the registrar
-    # DOES, not whether it is switched on -- so they switch it on and say so.
-    monkeypatch.setattr(reg, "auto_register_enabled", lambda: True)
-    reg.reset_known_cache()
+def _registrar_row(env, job, coords):
+    """A meta row shaped exactly like the one ingestion auto-registration used to write.
 
-    _confirm(env, "J1", "J1", "rot90_front")
-    before = _meta(env, MAP_TABLE, "J1")
-
-    collector = reg.MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE])
-    assert collector.active, "fixture lost its axis: an inert collector proves nothing"
-    collector.collect([{"job": "J1", "x": 3, "y": 4, "val": "1"}])
-    created = collector.flush(env)
-
-    assert created == 0
-    assert _meta(env, MAP_TABLE, "J1") == before
-
-
-def _registrar_row(env, monkeypatch, job, coords):
-    import map_meta_registrar as reg
-    # The knob default became OFF on 2026-08-30 (owner ruling), so an absent settings
-    # file no longer means "registrar active". These tests measure what the registrar
-    # DOES, not whether it is switched on -- so they switch it on and say so.
-    monkeypatch.setattr(reg, "auto_register_enabled", lambda: True)
-    reg.reset_known_cache()
-    collector = reg.MapMetaCollector(MAP_TABLE, TEST_TABLE_CONFIG[MAP_TABLE])
-    assert collector.active, "fixture lost its axis: an inert collector proves nothing"
-    collector.collect([{"job": job, "x": x, "y": y, "val": "1"} for x, y in coords])
-    assert collector.flush(env) == 1
+    `synthesize_grid_meta` is the frame the retired writer composed and is still the
+    frame `map_alignment.assumed_meta_for_unregistered` composes, so the fixture calls
+    it rather than copying its output into the test.
+    """
+    xs = [x for x, _ in coords]
+    ys = [y for _, y in coords]
+    _write_meta(env, MAP_TABLE, job,
+                map_meta_registrar.synthesize_grid_meta(min(xs), min(ys), max(xs), max(ys)))
     synthetic = _meta(env, MAP_TABLE, job)
     assert map_overlay.geometry_declaration(synthetic) == \
         map_overlay.GEOMETRY_AUTO_REGISTERED, "fixture lost its axis"
     return synthetic
 
 
-def test_a_confirmation_upgrades_the_registrars_synthetic_row_rather_than_racing_it(
-        env, monkeypatch):
+def test_a_confirmation_upgrades_the_registrars_synthetic_row_rather_than_racing_it(env):
     """The other order: the registrar gets there first with the mask-neutral synthetic
     frame, and the confirmation must upgrade that row rather than sit beside it."""
-    _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    _registrar_row(env, "J1", [(2, 1), (6, 5)])
 
     _confirm(env, "J1", "J1", "rot90_front")
 
@@ -451,7 +428,7 @@ def test_a_confirmation_upgrades_the_registrars_synthetic_row_rather_than_racing
                                    model.map_id == "J1").count() == 1
 
 
-def test_the_existing_row_branch_records_the_frame_the_scoring_ran_under(env, monkeypatch):
+def test_the_existing_row_branch_records_the_frame_the_scoring_ran_under(env):
     """🔴 [D8] THE GAP THE BOARD #23 AUDIT FOUND — the same defect the new-row branch was
     built to avoid, left open on the other branch and live in `3e96747` for four hours.
 
@@ -467,7 +444,7 @@ def test_the_existing_row_branch_records_the_frame_the_scoring_ran_under(env, mo
     inside `geometry_declaration` (the confirmed marker is read first) but not for anyone
     reading the flag directly, which `map_editor.js:6459` does on every Push.
     """
-    synthetic = _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    synthetic = _registrar_row(env, "J1", [(2, 1), (6, 5)])
     assert map_overlay.grid_dims(synthetic) == (5, 5)
     assert map_alignment.grid_needs_basis(synthetic, FLOOR_META) is True, \
         "fixture lost its axis: the scoring must actually borrow the grid here"
@@ -485,8 +462,7 @@ def test_the_existing_row_branch_records_the_frame_the_scoring_ran_under(env, mo
     assert map_overlay.GEOMETRY_DECLARED not in sources.values(), sources
 
 
-def test_the_registrars_marker_is_kept_when_the_grid_origin_cannot_be_named(env,
-                                                                            monkeypatch):
+def test_the_registrars_marker_is_kept_when_the_grid_origin_cannot_be_named(env):
     """[D8] The guard on dropping `auto_registered`, and the reason it is a guard rather
     than an unconditional drop.
 
@@ -504,7 +480,7 @@ def test_the_registrars_marker_is_kept_when_the_grid_origin_cannot_be_named(env,
         map_overlay.GEOMETRY_DECLARED, "fixture lost its axis: the floor must be borrowable"
     assert map_overlay._grid_of(gridless_floor) is None
     _write_meta(env, FLOOR_TABLE, "GRIDLESS", gridless_floor, source_name="user")
-    _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    _registrar_row(env, "J1", [(2, 1), (6, 5)])
 
     _confirm(env, "J1", "J1", "rot90_front",
              reference={"table": FLOOR_TABLE, "map_id": "GRIDLESS"})
@@ -517,14 +493,13 @@ def test_the_registrars_marker_is_kept_when_the_grid_origin_cannot_be_named(env,
     assert map_overlay.GEOMETRY_DECLARED not in sources.values(), sources
 
 
-def test_the_written_row_is_byte_identical_to_the_frame_the_scoring_ran_under(env,
-                                                                              monkeypatch):
+def test_the_written_row_is_byte_identical_to_the_frame_the_scoring_ran_under(env):
     """The general statement of [D8], asserted against the scoring's own composer rather
     than against numbers copied into the test. Everything must match except the provenance
     markers the confirmation replaces and the frame it confirms — those two are the whole
     content of the write, and anything else differing means the row records a frame nobody
     scored."""
-    synthetic = _registrar_row(env, monkeypatch, "J1", [(2, 1), (6, 5)])
+    synthetic = _registrar_row(env, "J1", [(2, 1), (6, 5)])
     scored_under = map_alignment.borrowed_meta_for(
         synthetic, FLOOR_META, BASIS,
         map_alignment.phys_needs_basis(synthetic),

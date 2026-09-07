@@ -759,41 +759,6 @@ def test_the_db_resolvers_refusal_carries_its_cause_into_the_basis(vdr_env, refe
 # The declaration must survive the server's own write paths (value ordering #2)
 # ---------------------------------------------------------------------------
 
-def test_ingestion_auto_registration_never_clobbers_a_declared_ref(vdr_env, monkeypatch):
-    """`map_meta_registrar` fills HOLES. If it ever overwrote an existing meta,
-    one ingestion batch would erase a hand-declared valid_die_ref and the map
-    would silently revert to circle geometry.
-
-    (`test_map_meta_registrar.test_existing_meta_is_never_overwritten` pins the
-    absent-only rule in general; this pins it for the field M4 introduces.)
-    """
-    import map_meta_registrar
-    # 🔴 그 손잡이를 «켠다». 기본값은 OFF 이고 `ingestion_settings.json` 은 gitignore 라,
-    #    안 켜면 이 시험의 답이 «이 박스의 라이브 설정»에 달린다 — 켜 둔 설치에서는 초록,
-    #    새로 받은 체크아웃에서는 빨강이고, 코드는 «양쪽에서 같다».
-    #    형제들이 이미 그렇게 합니다(`test_frame_confirmation_meta:406·426` 은 같은
-    #    monkeypatch, `test_map_meta_registrar:123·270` 은 설정 파일을 씁니다). 이것만 빠졌다.
-    # ⚠️ 아래 단언의 문장(「the collector must be live, or this proves nothing」)이 그 전제를
-    #    이미 알고 있었다 — 아는 것과 «세우는» 것이 다르고, 그 차이가 주인 없는 빨강이었다.
-    monkeypatch.setattr(map_meta_registrar, "auto_register_enabled", lambda: True)
-    db = vdr_env
-    ref = {"table": "vdr_test_template_map", "map_id": MAP_KEY}
-    _meta(db, "vdr_test_target_map", MAP_KEY, valid_die_ref=ref)
-    db.commit()
-    map_meta_registrar.reset_known_cache()
-
-    collector = map_meta_registrar.MapMetaCollector(
-        "vdr_test_target_map", VDR_TABLES["vdr_test_target_map"])
-    assert collector.active, "the collector must be live, or this proves nothing"
-    collector.collect([{"lot": "LOT", "slot": 1, "x": 9, "y": 9}])
-    collector.flush(db)
-
-    stored = json.loads(
-        db.query(models.DYNAMIC_TABLES["wafer_map_metadata"])
-        .filter_by(target_table="vdr_test_target_map", map_id=MAP_KEY)
-        .first().grid_metadata)
-    assert stored.get("valid_die_ref") == ref
-
 
 # ---------------------------------------------------------------------------
 # M4② INV-M4-6 — the ONE-HOP LIMIT, at the resolver

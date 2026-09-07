@@ -618,7 +618,7 @@ def map_production_plan_shortage(row_data: dict, db: Session) -> dict:
 3. **스키마 동적 로드 시점 고려**:
    - `database.models.get_dynamic_model_class(table_name)`는 DB 초기화 이후 동작합니다. 안전을 위해 맵퍼 내부에서 모델 임포트 시 `from database.models import ...`를 함수 내부에서 지연 임포트(Lazy Import)하는 것이 안전합니다.
 
-> ℹ️ **[M3 · 2026-07-29] 맵 테이블에 쓰는 체인 룰은 메타 자동 등록을 유발합니다.** 타깃 테이블이 `map_key_columns`를 선언하고 좌표 바인딩이 해석되면, 워커가 트랜잭션 그룹 처리 후 그 배치의 각 distinct 맵 키에 대해 **부재 시에만** `wafer_map_metadata` 행을 만듭니다(기존 행은 절대 덮지 않음). **맵퍼 코드는 바꿀 것이 없고** 실패해도 체인 적재는 정상 완료됩니다. 계약·끄는 법(`auto_register_map_meta`)은 [INGESTION_GUIDE §1.10](./INGESTION_GUIDE.md)이 정본입니다.
+> ⚰️ **[M3 은퇴 · 2026-09-07] 맵 테이블에 쓰는 체인 룰은 이제 메타를 «만들지 않습니다».** 2026-07-29 ~ 2026-09-07 사이에는 워커가 배치의 각 distinct 맵 키에 대해 부재 시 `wafer_map_metadata` 행을 지어 넣었습니다. 소유자 지시로 그 쓰기가 사라졌고, **맵퍼 코드는 그때도 지금도 바꿀 것이 없습니다.** 사유는 [INGESTION_GUIDE §1.10](./INGESTION_GUIDE.md)이 정본입니다.
 
 ---
 

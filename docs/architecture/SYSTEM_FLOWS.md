@@ -664,8 +664,8 @@ rnd_board_walk_harness.mjs     (329줄)   `hops` 히트 2 — 둘 다 픽스처 
 ### ⑨ 에서 목록이 놓친 흐름
 
 - **자동 정렬이 «두 갈래 더» 있다.** 사람 확정(`POST /confirm`) 말고 체인 매퍼 둘이 같은 채점기를 태워 좌표계를 쓴다 — `dt_alignment_metadata_mapper`(→`wafer_map_metadata`) · `core_alignment_mapper`(→`dt_inventory.core_frame`). 🔴 **둘 다 `FrameConfirmation` 행을 안 만든다** → 「확정 이력」에도, `bonding_plan` 의 warrant 조회에도 안 잡힌다.
-- **자동 메타 등록**(`map_meta_registrar.py`, `MapMetaCollector`) — `directory_watcher:2635` · `chain_ingestion_worker:993` 이 트리거. **`DEFAULT_ENABLED = False`**(2026-08-30 이후)라 선언으로 켜야 돈다. 켜지면 `source='auto_map_meta'`(우선순위 99)로 합성 프레임을 만들고, 그 행을 `map_alignment.make_frame_transform` 이 거절한다 — **워크리스트 `unscorable` 의 큰 원천**.
-- 🔴 **`wafer_map_metadata` 에 기록자가 «다섯»이다**: 레거시 Push(1/2) · 레거시 규격 저장 · 확정(`_write_confirmed_meta`) · 체인 자동 정렬 · 자동 등록. **다섯이 같은 `grid_metadata` 한 칸을 쓴다.**
+- ⚰️ **자동 메타 등록은 «없다»**(2026-09-07 은퇴, 소유자 지시). 종전 `map_meta_registrar.MapMetaCollector` 가 파일 워처·체인 워커 «둘»에서 합성 프레임을 만들었고 그 행을 `map_alignment` 이 거절해 워크리스트 `unscorable` 의 큰 원천이었다. 🔴 **이미 쓰인 행은 남아 있으므로 그 원천은 «과거형이지 0 이 아니다»** — 표지 `auto_registered` 와 그 독자들도 그대로다.
+- 🔴 **`wafer_map_metadata` 에 기록자가 «넷»이다**(2026-09-07 이전엔 다섯): 레거시 Push(1/2) · 레거시 규격 저장 · 확정(`_write_confirmed_meta`) · 체인 자동 정렬. ~~자동 등록~~은 은퇴했다. **넷이 같은 `grid_metadata` 한 칸을 쓴다.**
 - **범례/DOE 계획**은 별도 표(`map_split_registry`)에 `replace_map:true` 로 간다. `transfer_plan.js` 는 서버에 **쓰지 않는다** — fetch 3건 전부 GET(`/api/transfer-plan/stages`·`/source-summary`·`/validate`). `frontend.md` §5.1 의 「쓰기 소유권」 문장 ✅ 정확.
 - ⚠️ **[2026-09-06 닫힘 · 시제를 고침]** `map2/main.js` 에 리터럴 NUL 바이트가 **있었다**(오프셋 28521). 그동안 ripgrep·Grep 도구가 이 파일을 **binary 로 보고 건너뛰었고** — **grep 기반 감사가 map2 의 합성 루트 2,610줄을 통째로 못 봤다.** 이 절의 측정도 `grep -a`/`sed` 로만 읽혔다.
   🔵 **`78a88e7f` 가 이스케이프로 바꿔 닫았다**(런타임 문자열은 동일). 같은 날 `8121549e` 가 `enrichment.js`·`map2/authoring.js` 의 같은 결함을 닫았다 — 셋을 합쳐 **4,288줄**이 안 보이고 있었다. 2026-09-07 재측정: 셋 다 NUL **없음**.

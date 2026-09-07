@@ -37,8 +37,8 @@ from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
 # where they are read back into the payload shape the mappers take.
 import outbox_expand
 
-# [M3] Auto-registration of wafer_map_metadata for chain-ingested maps — shared
-# with the file watcher (absent-only; knob `auto_register_map_meta`).
+# `META_TABLE` — the meta-upsert rule points its edge at this name. (The M3
+# auto-registration this import once served retired 2026-09-07.)
 import map_meta_registrar
 
 # [Enrichment ①] Absent-only automatic confirmation when the declared reference
@@ -1080,22 +1080,13 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                 # Containment has to happen where the statement runs, which is
                 # why `enrichment_config._isolated_execute` wraps every
                 # reference query in a SAVEPOINT.
-                try:
-                    meta_collector = map_meta_registrar.MapMetaCollector(target_table)
-                    if meta_collector.active:
-                        meta_collector.collect(item.updates for item in batch_data.updates)
-                        created_meta = meta_collector.flush(db)
-                        if created_meta:
-                            logger.info(f"[M3] Auto-registered {created_meta} wafer_map_metadata row(s) for chain target '{target_table}'")
-                except Exception as meta_err:
-                    logger.error(f"[M3] Map-meta auto-registration failed for '{target_table}' (chain write unaffected): {meta_err}")
-
                 # [Enrichment ①] Absent-only automatic confirmation of SINGLE
-                # candidates for this rule's target fields. Same posture as the
-                # M3 hook above: runs on the VALIDATED batch items after the
-                # committed write, per-rule opt-in (default OFF), and a failure
-                # here is logged rather than propagated. See the M3 note above
-                # for what that `except` does NOT protect against.
+                # candidates for this rule's target fields: runs on the VALIDATED
+                # batch items after the committed write, per-rule opt-in (default
+                # OFF), and a failure here is logged rather than propagated. The
+                # note directly above says what that `except` does NOT protect
+                # against — it was written for the map-meta hook that stood here
+                # until 2026-09-07 and it holds for this one unchanged.
                 # Not a loop: writes land on the DERIVED table while the
                 # enrichment rule triggers on the SOURCE table, and the
                 # absent-only gate makes a second pass a no-op regardless.

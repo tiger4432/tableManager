@@ -184,7 +184,7 @@ restore는 **일부러 in-place로 써서 watcher를 발화**시킵니다(현재
 |---|---|
 | 파일 인제션(커스텀 파서·std 파서) | **예** — 파일에 그 컬럼이 있으니 페이로드에 실립니다 |
 | 사람의 그리드 편집 | **면제** — `user` 소스는 게이트에 닿지도 않습니다(§7.5) |
-| 맵 메타 자동 등록(`map_meta_registrar`) | **안전** — **부재한 행만** 만들고 기존 행은 손대지 않습니다. 생성은 덮어쓰기가 아니라 게이트를 그냥 지나갑니다 |
+| ~~맵 메타 자동 등록(`map_meta_registrar`)~~ | ⚰️ **2026-09-07 은퇴** — 인제션은 `wafer_map_metadata` 행을 만들지 않습니다([INGESTION_GUIDE §1.10](../INGESTION_GUIDE.md)) |
 | **체인 워커** — `chain_rules.json`의 `target_table` | 🔴 **아니오** — 매퍼가 만든 컬럼만 씁니다 |
 | **체인 재적용 R1** — `chain_replay_cli.py replay`(같은 룰 파일) | 🔴 **아니오** — 같은 매퍼 출력이라 결과도 같습니다 |
 | **결손 보정 자동 확정 ①** — `enrichment_rules.json`의 `derived_table` + `auto_confirm` | 🔴 **아니오** — `target_fields`만 씁니다 |
