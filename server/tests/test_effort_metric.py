@@ -631,7 +631,11 @@ def test_dashboard_survives_a_failing_effort_query(client, db_session, monkeypat
     res = client.get("/dashboard/summary")
     assert res.status_code == 200
     body = res.json()
-    assert body["total_tables"] >= 1, "the rest of the dashboard still renders"
+    #: 🪦 `total_tables` 는 «측정하고» 제거됐다(`471f66f7`, 2026-09-05) — 읽는 쪽 0(소스·번들)에
+    #:    이 라우트 벽의 67%. 이 단언이 재던 것은 «그 수»가 아니라 「나머지가 여전히 그려진다」이므로
+    #:    살아 있는 그 라우트의 «자기» 통계로 옮긴다. 「있음」이 아니라 «값»이다.
+    assert isinstance(body["today_updates"], int), "the rest of the dashboard still renders"
+    assert body["system_health"], "the dashboard's own verdict went dark with the failing part"
     assert body["effort"]["avg_score"] is None
     assert body["effort"]["measured_ratio"] is None, \
         "coverage must go dark too - a ratio without a score is unreadable"

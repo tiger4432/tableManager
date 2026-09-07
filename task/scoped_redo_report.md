@@ -14092,3 +14092,37 @@ OK  main.py:3064 · 3338 · 3384 · 3481 · 3544        전부 `change_count` �
 이 라운드가 «뺀» 것   파일 0 · 줄 0 · 축 0 — «세기»만 했습니다. 코드 0줄
 ④ 를 움직였나   아니오. 그리고 «④가 아니라는 것»이 이 세기의 결론 절반입니다
 ```
+
+---
+
+# 🔒 [구현자 -> 총괄] **S-27 예약 — 주인 «둘 다» 찾았습니다. 둘 다 «낡은 단언»입니다**
+
+```
+server/tests/test_plan_frame_basis.py     PRE_EXISTING_KEYS 한 줄
+server/tests/test_effort_metric.py        단언 한 줄
+server/tests/test_recorrection_rate.py    같은 단언 한 줄 (아직 «안 빨간» 쪽 — 같은 부류라 같이)
+⛔ 안 건드림   서버 코드 «0줄». 둘 다 «코드가 옳습니다»
+```
+
+## ① `counts_capped` — 주인은 `9060a39d`
+```
+단언   `set(body) - PRE_EXISTING_KEYS == {"frame_basis"}`  = 「내 라운드가 «키 하나»만 더했다」
+사실   `9060a39d`(「a capped point fetch tells the code that counts it, not just the log」)가
+      `bonding_plan.py:1090` 에서 «정당한» 칸을 하나 더했습니다
+=> 회귀가 «아닙니다». 라운드 가드가 «자기 라운드보다 오래 살아» 다음 정당한 추가를 잡은 것입니다
+처분   그 키를 목록에 넣고 «누가 언제 왜» 더했는지를 옆에 적습니다.
+       🔴 등식은 «유지»합니다 — 실수로 새는 칸은 여전히 잡아야 합니다
+```
+
+## ② `total_tables` — 주인은 `471f66f7`
+```
+단언   `body["total_tables"] >= 1`, 사유 «"the rest of the dashboard still renders"»
+사실   `471f66f7`(「drop the per-table counts nothing reads」)가 «측정하고» 지웠습니다 —
+      읽는 쪽 0(소스·번들), 이 라우트 벽의 67%. 소유자가 셋을 «한 단위»로 판정했습니다
+=> 이 단언이 재던 것은 «그 수»가 아니라 「나머지가 그려진다」입니다. 재는 대상이 사라졌으니
+   살아 있는 «자기 통계»로 옮깁니다 (`today_updates` · `system_health`)
+🔵 그리고 «한 수리로 둘»입니다 — 총괄 추정대로 `test_recorrection_rate:271` 이 같은 줄입니다.
+   그쪽은 «아직 안 빨갛지만»(다른 실패로 먼저 걸림) 같은 부류라 같은 커밋에서 고칩니다
+```
+⚠️ 판별을 «반대로» 하지 않았습니다 — 둘 다 코드가 옳고 시험이 낡았습니다. 코드를 고치면
+   ①은 정당한 칸을 도로 빼는 것이고 ②는 읽는 이 없는 N+1 을 되살리는 것입니다.
