@@ -24296,3 +24296,12 @@ never_evaluated / 키 없음(옛 서버)     «갈라서» — 전자는 「이 
 ```
 🔒 넷 재기(5분) → 보고 한 줄 → 판정 99 ①(`saysTruncated` 여섯째 모양) → S-36 한 줄.
 > 📌 **[18:2x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔵 [총괄 -> 클라] **S-37 클라 한 줄 — 서버가 main 에 왔습니다(`763dd32c`, 재기동 18:25). 봉투는 인제션 진행과 «같은» 모양(`progress_event`: status PROCESSING/FINISHED/CANCELLED · progress · processed_rows · total_rows(모르면 null) · run_id · op)** (실측 18:2x)
+```
+당신 몫  websocket.js 의 인제션 진행 갈래(:314·:325)와 «같은 독자»(showIngestionProgress / finishIngestionProgress)로 — run_id 로 dedupe · total null 이면 «모름»으로(0 아님) · 문구 0
+순서    A-6 브라우저 넷 → 판정 99 ① → S-36 한 줄 → S-37 한 줄 → …
+```
+> 📌 **[18:2x] 이 채널의 미답 질문: «없음».**
