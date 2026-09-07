@@ -16941,3 +16941,94 @@ S-44 는 「S-41 뒤」(판정 112: 「찬 행」의 철자가 하나여야 하�
 감시 🟢 `bdcsrg69j` · `ba8i0vtpa`
 이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0 (세기만)
 ④ 를 움직였나 — 아직. 다만 위 ②가 «④ 를 근거로» Ⓐ 를 고른 이유입니다
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-41 착지 (`2b72f339`) — 판정 116 Ⓐ 대로 «분자» 단위. 변이 다섯이 각각 다른 단언을 빨갛게 · 음성 대조군 초록. 도달 범위를 «전수로» 쟀고, 못 지은 게이트 하나를 «지어내지 않고» 적습니다** (실측 23:0x)
+
+## 지은 것
+```
+`source_preparation.py`   `MoleculeRefusal` (값) · 컨텍스트의 `refusals` 수집함 ·
+                          `_molecule_key` · `_refuse_molecule`(판단 한 자리)
+                          :562 에서 `occurred_at.column` «만» 뺌 (order_by·cursor_columns·identity 는 그대로)
+                          :741 의 «값» 검사 제거(«컬럼» 검사는 페이지 거절로 남김)
+                          :846 의 빈 값 raise 제거 — 도달 불가 잔해라 «남기지 않고 지움»
+                          🔴 사유 이름은 `gate` 에서 «import». 여기서 철자하지 않음
+`backfill.py`             `prepare_v2_cursor_batch(..., refusals=None)` · `PREVIEW_REFUSAL_SAMPLES = 20`
+`runtime_v2.py`           `CursorBatchPreview.refusals` · `_refusal_reasons` · `_record_refusals`
+                          🔴 기록은 «실행 두 문»에서만. 미리보기는 «같은 판단, 기록 0» — 그 한 줄이 차이의 전부
+                          `store.write_batch(refused=0, reasons={})` 가 «하드코딩 자리»였고 이제 값이 들어감
+`config_explorer_service` 시험 실행 응답에 `refused: {count, reasons, samples}` «값으로» ·
+                          status = molecules>0 이면 passed(거절이 있어도) · 0 이면 refused(값이 그것을 말함)
+```
+
+## 🔬 짓기 «전»에 잰 것 둘 — 하나가 제 픽스처를 바꿨습니다
+```
+① 시간 반쪽의 «도달 범위» (출하 .sample 전수)
+   occurred_at.column 이 order_by/cursor_columns 에 «같이» 있는 소스: 2 / 15
+     lot_event · lot_slot_move    -> 빈 시간이 «order_by» 로 먼저 페이지를 죽입니다(판정 110 의 규칙 그대로)
+     나머지 13                    -> 시간 반쪽이 «도달»합니다
+   🔴 그래서 시험 픽스처의 order_by 를 «출하 다수 모양»(시간 아닌 컬럼)으로 바꿔야 ㉡ 이 성립합니다.
+      안 바꿨으면 「초록인데 그 갈래를 한 줄도 안 지난」 게이트가 됐습니다
+   ⚠️ 소유자 소스(`lot_event`)에서는 «정체성 반쪽»이 착지합니다 — 신고 문구가 정확히 그것입니다
+      (「entity identity value is missing after preparation」 = :741)
+② 멈춤 조건 (앞 보고) — group 소스 2, 그중 하나가 `lot_event`
+```
+
+## 게이트
+```
+㉠ 한 행 빈 값 · 나머지 착지        분자 2 착지 · 거절 1 · 주소 `event_frame.rows[1].target_id`   ✅
+㉡ 빈 시간                       `missing_occurred_at` · 분자 1 착지                          ✅
+㉢ 카운터 «무변»                  준비는 값만 만들고 `gate.refusal_report()` 전/후 «동일»        ✅
+㉣ order_by 빈 값                오늘처럼 «페이지» 거절 · 경로 `source_batch.rows[1].record_id` ✅
+㉤ 페이지 전부 거절               예외 «아님» — frames 0 · 거절 2 · 이름                        ✅
+㉥ 뒤집기                        `…refuses_before_role_mapper` -> `…refuses_ITS_MOLECULE_not_the_page`
+                                삭제 «아님». 그 시험이 지키던 것(컴파일 0 · 커서 무이동)은 그대로 단언   ✅
+㉦ 다중 행 분자 (판정 116)         분자 «통째» 거절 · `rows == 2` · 사연에 group 키 «와» 컬럼 «둘 다»   ✅
+수집                            커밋 «뒤» 5097 · 이웃 183 passed / 48 skipped
+```
+
+## 변이
+```
+MA  `_refuse_molecule` 무력화        -> 7 빨강 (이 라운드 전부)
+MB  `rows=len(positions)` -> `rows=1` -> ㉦ «만» 빨강      (행 vs 분자를 가르는 유일한 픽스처)
+MC  시간을 `required_physical` 로 복원 -> ㉡ «만» 빨강
+MD  사연에서 분자 키 제거            -> ㉦ «만» 빨강
+ME  두 사유를 한 이름으로            -> ㉡ «만» 빨강
+N   주석 한 줄 재작성                -> 초록 25
+```
+🔴 **MD 가 제 「분자와 행을 «둘 다» 댄다」 시험을 «안» 빨갛게 했습니다.**
+```
+왜   unit=row 에서는 분자의 손잡이가 «rows[N]» 이라 행 주소와 «같은 문자열»입니다 — 그 시험은
+     자기 제목을 «벌 수 없습니다». 그 자리를 재는 것은 ㉦(group 픽스처) 하나뿐입니다
+고침 그 시험의 제목·docstring 을 «실제로 재는 것»(사연이 컬럼을 댄다)으로 낮추고,
+     「둘 다」 단언은 ㉦ 로 옮겼습니다
+부류 오늘 네 번째입니다 — 「내 게이트가 두 갈래가 다 내는 것을 단언」.
+     오늘은 변이 «전»에 잡힌 적이 «한 번도 없습니다». 변이가 유일한 검출기입니다
+```
+
+## 🔴 못 지은 게이트 «하나» — 지어내지 않고 적습니다
+```
+판정 109 ㉢ 의 «응답 층»(시험 실행 결과에 status passed + refused.count 1)은 «안 지었습니다».
+`_test_run` 은 살아 있는 서비스·엔진·컴파일된 setup 이 필요하고, 이 저장소는 그 자리에서 «이미 판정»했습니다 —
+   `tests/test_activation_is_not_gated_by_the_test_run.py:60~67`:
+   「이 절반은 여기서 시험되지 «않는다», 그리고 그것을 «가짜로 만들지 않고 말한다». 처음 쓴 시험은
+    메서드의 «소스 텍스트»를 단언했는데 그건 글자를 재는 것이고 이 저장소가 «금지»한다」
+그 선례를 그대로 따랐습니다. 값을 «정하는» 동작(`preview.refusals` · 카운터 무변)은 준비 층에서 게이트가 있습니다.
+응답 층까지 재려면 시험 실행 하니스가 필요하고 그건 «별 줄»입니다 — 판정에 올립니다.
+```
+
+## 제 것 아님 (앞/뒤 실행으로, `git log -S` 아님)
+```
+test_ledger_v2_lot_event_parity::test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else
+test_ontology_config_explorer::test_derivations_rebuild_by_force_what_the_operator_typed_by_hand
+test_ontology_config_explorer::test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list
+=> 셋 다 HEAD(제 변경 «없이»)에서도 빨갛습니다
+```
+
+## 📌 다음 — S-44 (판정 112) · 그 라운드 둘째 커밋으로 S-42
+```
+판정 대기 «하나» — 시험 실행 «응답 층» 게이트를 위한 하니스를 별 줄로 열지
+감시 🟢 `bdcsrg69j` · `ba8i0vtpa`
+이 라운드가 «뺀» 것 — 파일 0 · 줄 «2 갈래»(:846 의 빈 값 raise · :562 의 시간 항) · 축 0
+④ 를 움직였나 — «예». 한 사실(빈 필수값)에 «두 행동»이던 것이 하나가 됐고, 기록/미리보기가 «한 판단»을 씁니다
