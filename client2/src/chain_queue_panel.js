@@ -47,6 +47,7 @@
 import { countText } from './absent.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
+import { retroactiveNote } from './retroactive_note.js';
 
 export const STATUS = Object.freeze({ OK: 'ok', NEUTRAL: 'loading', UNAVAILABLE: 'warn' });
 
@@ -283,7 +284,13 @@ export function queueView(payload, opts = {}) {
     txId: String(t.transaction_id ?? ''),
     txShort: shortTx(t.transaction_id),
     rows: countOf(t.rows),
-    tables: Array.isArray(t.tables) && t.tables.length ? t.tables.join(', ') : '—',
+    // 🔴 S-36. A RETROACTIVE ROW SAYS WHAT IT IS, IN THE SLOT THAT SAID 「—」. Its `tables` is
+    //    empty by construction (the run is not about one table), so this column was a dash on
+    //    exactly the rows an operator most needs to identify — and the answer was already in
+    //    the row. Nothing new is drawn for any other row: `retroactiveNote` returns '' when the
+    //    key is absent, and this expression then falls through to what it drew yesterday.
+    tables: retroactiveNote(t.retroactive)
+      || (Array.isArray(t.tables) && t.tables.length ? t.tables.join(', ') : '—'),
     eventTypes: Object.freeze(Array.isArray(t.event_types) ? t.event_types.map(String) : []),
     // rule ①, per row: an unreadable age is a dash, never 「0초」.
     age: formatAge(t.waiting_seconds) ?? '—',

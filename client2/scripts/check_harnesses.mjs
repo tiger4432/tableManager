@@ -280,7 +280,7 @@ const FLOORS = new Map([
   // things, not one: the three-state reading (value / unreadable / older server), that the
   // line REACHES the screen rather than only the view model, and that an unreadable stamp
   // never becomes a client clock -- which would make every stale panel look freshly measured.
-  ['chain_queue_panel_harness.mjs', 132],
+  ['chain_queue_panel_harness.mjs', 134],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],
@@ -819,6 +819,13 @@ const FLOORS = new Map([
   // harness can see them move. It also holds the encoding of the column name, so a name can
   // never become a second query parameter.
   ['sort_params_harness.mjs', 15],
+  //
+  // S-36. The queue row that could not say what it was. A retroactive run carries its own op,
+  // requester and params, and this floor holds BOTH sides of the fork: the retroactive row
+  // draws them, and a row without the key stays byte-identical to what it drew yesterday.
+  // It also holds that the field is a LIST -- the brief said one object, the server appends,
+  // and reading it as an object would drop every entry after the first, silently.
+  ['retroactive_note_harness.mjs', 15],
   //
   // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
   //    bare number tells the next person nothing about why it may not drop, and a floor whose
