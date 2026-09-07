@@ -39,6 +39,7 @@
 import { REF_NONE, REF_OCCUPANCY, REF_VALUES } from './verdict.js';
 import { ASSUMED, CONFIRMED, DECLARED, DECLARATION_TOKENS } from './declaration.js';
 import { saysTruncated } from '../truncation.js';
+import { slowReasonNote } from '../slow_reason.js';
 
 /**
  * The three states of the borrowed-geometry offer, spelled exactly as
@@ -510,6 +511,11 @@ export function decodeReferenceView(payload) {
       // 340.7 a non-integer and report the elapsed time as unmeasured, which is a lie about a
       // measurement that was taken.
       elapsedMs: msOrNull(p && p.stats && p.stats.elapsed_ms),
+      // 🔴 S-7. 「얼마나」 옆의 「왜」. 이 라우트는 오늘 시간만 내므로 이 칸은 «없고**,
+      //    없으면 아무것도 안 그립니다 — 서버가 그 말을 시작하는 날 화면이 «이미» 듣습니다.
+      //    ⚠️ 「재료 없이 계약을 채택」이 아닙니다: 이 칸이 없어도 오늘 화면은 «한 픽셀도**
+      //       안 바뀝니다. 없는 것을 그리는 것이 아니라, 오면 그릴 자리를 여는 것입니다.
+      slowReason: slowReasonNote(p && p.stats),
     }),
     rejected: Object.freeze(rejected),
   });

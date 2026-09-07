@@ -801,6 +801,16 @@ const FLOORS = new Map([
   // naming the function would stay green against a copy, and a copy diverging is the defect.
   ['map2_truncation_reader_harness.mjs', 21],
   //
+  // S-7. The server builds the WHOLE sentence for a slow answer (reason + what to do) and the
+  // client read it in zero places. What this floor holds is the split the reader must not fold:
+  // no key means this route does not measure, an explicit null means it measured and was NOT
+  // slow. Both are silent today, and they are still different facts — folding them would lose
+  // the distinction on the day the server starts drawing it. Also held: the sentence is passed
+  // through verbatim, and no client file writes a copy of it (checked with comments stripped,
+  // because a comment cannot become a second author and the first version of that assertion
+  // reddened on my own).
+  ['slow_reason_harness.mjs', 29],
+  //
   // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
   //    bare number tells the next person nothing about why it may not drop, and a floor whose
   //    reason is unreadable gets raised to make a red build green.

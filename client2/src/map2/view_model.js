@@ -782,6 +782,10 @@ function metaLine(payload, numerals, verdict) {
   parts.push(numerals && scored !== null ? `채점 ${scored}다이` : `채점 ${UNKNOWN}`);
   const ms = numOrNull(payload.elapsed_ms);
   if (ms !== null) parts.push(`${ms}ms`);
+  // 🔴 S-7. 「얼마나」만 보면 운영자가 «행동할 수 없습니다** — 사유가 그 옆입니다.
+  //    서버 문장을 «그대로**. 오늘 이 라우트는 그 칸을 안 실으므로 아무것도 안 붙습니다.
+  const slow = payload.slow_reason;
+  if (slow && slow.state === 'slow') parts.push(slow.text);
   return parts.join(' · ');
 }
 

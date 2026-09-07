@@ -2295,6 +2295,8 @@ export function adaptPayload(raw) {
     excluded_map_count: decoded.counts.excludedMapCount,
     discriminating_dies: decoded.counts.discriminatingDies,
     elapsed_ms: decoded.counts.elapsedMs,
+    // 🔴 S-7. 판정 «그대로** 나릅니다 — 여기서 다시 읽으면 두 번째 저자입니다.
+    slow_reason: decoded.counts.slowReason,
     refusal_detail: decoded.refusalDetail,
     // 🔴 WHICH BRANCH REFUSED, NOT JUST THAT ONE DID. `no_cells_scored`, `no_candidate_scored`,
     //    `no_overlap`, `no_discrimination` and `tie` are all decided AHEAD of the two threshold
