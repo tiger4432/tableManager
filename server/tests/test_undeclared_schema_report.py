@@ -90,8 +90,11 @@ class TestModelledColumns:
     the JSON misses them and flags each one on every table.
     """
 
-    BOOKKEEPING = {"row_id", "business_key_val", "created_at", "updated_at",
-                   "is_graph_synced", "needs_graph_rollback", "graph_synced_at"}
+    #: The framework's own columns on every dynamic table. `is_graph_synced`,
+    #: `needs_graph_rollback` and `graph_synced_at` were here until 2026-09-07 and left
+    #: the models on 2026-08-31 - so for a week this asserted that three columns which do
+    #: not exist would not be reported as residue, which is true of any name at all.
+    BOOKKEEPING = {"row_id", "business_key_val", "created_at", "updated_at"}
 
     def test_bookkeeping_columns_are_expected(self, script, tmp_path):
         path = _write_config(tmp_path, {

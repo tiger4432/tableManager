@@ -173,20 +173,23 @@ def test_every_index_names_a_declaration(built, table):
         f"ix_{table}_business_key_val",       # business_key (materialised)
         f"idx_{table}_updated",               # updated_at ordering / watermark
         f"ix_{table}_updated_at",             # 〃
-        f"ix_{table}_is_graph_synced",        # graph sync cursor
-        f"ix_{table}_needs_graph_rollback",   # 〃
         f"idx_{table}_declared_key",          # THE declared lookup key
     }
     assert set(index_map(built[table])) <= allowed
 
 
 def test_a_table_with_no_usable_declaration_gets_no_key_index(built):
+    """🔴 THE MEMBERS, NOT A SUBSET (2026-09-07). This listed
+    `ix_…_is_graph_synced` and `ix_…_needs_graph_rollback`, whose columns retired on
+    2026-08-31 - so it was red for a week over indexes that no longer exist. The set stays
+    an EQUALITY rather than becoming a `<=`: what this asserts is that a table the
+    declaration cannot key gets the framework's indexes AND NOTHING ELSE, and a subset
+    check would pass on the day a stray index appeared."""
     idx = index_map(built["f6idx_broken"])
     assert "idx_f6idx_broken_declared_key" not in idx
     assert set(idx) == {
         "ix_f6idx_broken_business_key_val", "idx_f6idx_broken_updated",
-        "ix_f6idx_broken_updated_at", "ix_f6idx_broken_is_graph_synced",
-        "ix_f6idx_broken_needs_graph_rollback",
+        "ix_f6idx_broken_updated_at",
     }
 
 
