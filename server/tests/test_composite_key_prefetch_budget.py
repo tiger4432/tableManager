@@ -146,22 +146,38 @@ def test_the_metadata_prefetch_now_covers_those_rows_too(key_db):
         f"now costs {len(recorded)}")
 
 
-def test_inserting_new_rows_still_probes_once_per_row(key_db):
-    """Pinned because it is what P6 does NOT fix, and the number belongs in the open.
+def test_inserting_new_rows_costs_one_select_for_the_whole_batch(key_db):
+    """🔴 THE DAY THE N+1 DISAPPEARED. This test used to PIN the defect: the prefetch
+    proved these rows were absent - it selects on exactly their keys with no other filter -
+    and `_get_or_create_row` did not read that proof, so it asked for each one
+    individually before creating it. `ROWS + 1` selects, and a `replace_map` push purges
+    first and therefore took that path for every die.
 
-    The prefetch below proves these rows are absent - it selects on exactly their
-    keys with no other filter - but `_get_or_create_row` does not read that proof,
-    so it asks for each one individually before creating it. A `replace_map` map
-    push purges first and therefore takes this path for every die.
+    It is updated rather than deleted (ruling 93): what it measures is the same seam, and
+    a budget nobody watches is a budget that grows back.
 
-    Closing this needs a business-key equivalent of `prefetched_row_ids`, which is a
-    separate correctness argument and is not made here.
+    ⚠️ THE COUNT ALONE CANNOT TELL THE TWO READINGS APART, which is why it is not the only
+    assertion. "The futile probes are gone" and "probes that should have run were skipped"
+    both produce one SELECT. They differ in what LANDED: the first writes every row once,
+    the second loses or duplicates them. So this scores the statement AND the rows, and the
+    bind count says the one statement carried the whole batch rather than one key.
     """
     with record_statements(key_db) as recorded:
         crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0")))
 
-    assert len(selects_from(recorded, DECLARED)) == ROWS + 1, (
-        "one prefetch that matches nothing, plus one futile probe per row")
+    reads = selects_from(recorded, DECLARED)
+    assert len(reads) == 1, (
+        f"the whole batch resolves in ONE read of the data table; got {len(reads)}")
+    assert reads[0].bind_count == ROWS, (
+        f"the single read must carry every key in the batch, not one of them: "
+        f"{reads[0].bind_count} binds for {ROWS} rows")
+
+    model = _model(DECLARED)
+    landed = key_db.query(model).all()
+    assert len(landed) == ROWS, (
+        "one SELECT is only the right answer if every row still landed exactly once - "
+        "skipping a probe that WAS needed produces the same statement count and loses rows")
+    assert len({row.business_key_val for row in landed}) == ROWS
 
 
 # ---------------------------------------------------------------------------
