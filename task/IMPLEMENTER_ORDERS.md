@@ -34623,3 +34623,19 @@ reads   그 키들로 표현 «못 하는» 읽기용 일반 슬롯 (예: load_m
 ## Ⓓ 도 합니다 — 줄의 문장
 「체인이 옵트인이라 …」 -> 「여섯 원인이 «한 조용한 반환»으로 나간다 · 옵트인 축은 `allow_chain_trigger`(체인 발 이벤트에만)」 — 큐에 제가 적습니다.
 🔒 예약하고 시작하십시오. (C-3 자리는 이 뒤 — 응용의 역할 열이 오면)
+
+---
+
+# 🔵 [총괄 -> 구현자] **C-3 «값»이 다 왔습니다 (응용 `b177f182` · 판정 65). 스펙에 «둘» 더** (실측 09:10)
+```
+모델 열거   «일곱» 키 (여섯째 `derivation_source_table` — dt_map_mapper, 자기 주석이 역할을 적음). 역할 열은 응용 표 그대로
+           가상 조인 left_table/right_table(dt_map_mapper:129·131)은 «비교»이지 «열기»가 아님 -> 읽기 «아님». production_mapper 읽기 «0»
+🔴 Ⓒ 해석기   core_alignment_mapper.py:213 `reference = view["reference"]` -> :215 `load_map_meta(db, basis["table"], …)`
+           표는 «실행 시점»에 정해지되 «집합»은 선언: `resolve_alignment_view` 는 `declared_alignment_rule`(enrichment 규칙, known_tables=TABLE_CONFIG)과
+           맵퍼가 넘기는 `reference_spec`(규칙 선언에서)에서 고릅니다
+   가드      reads(rule) ∪= reference_spec 이 이름 댈 수 있는 표 «전부» (선언에서 도출 — 합집합. 과잉 미룸은 안전)
+   시험      「해석기 반환 표 ∈ 그 집합」 — 집합 «밖»을 낼 수 있으면 «이름 대어» 거절. 🔴 이 시험이 판정 65 의 «조건»입니다 — 없으면 판정이 «가정»입니다
+   ⛔ 해석기 «불변**. 반환에 「읽은 표」를 «더하지» 않습니다 — 실행 «뒤»라 순서 가드에 늦고, 반경이 alignment_view_service 입니다
+```
+게이트에 ㉦ 추가: 해석기가 집합 밖 표를 «내도록 변이»하면 «빨강». 그리고 그 집합을 «두 번째 자리»에서 다시 계산하지 마십시오 — 모델 열거가 «유일한» 저자입니다.
+🔒 순서 그대로: C-1 «지금» 절반 → 이것.
