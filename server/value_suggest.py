@@ -108,6 +108,7 @@ import math
 import re
 import time
 
+import event_constants
 import sqlalchemy as sa
 
 import paths
@@ -858,7 +859,9 @@ def _slow_reason(db, table, column, elapsed_ms, warn_ms, is_pg, settings) -> str
     are a small fraction of a cost that has already been paid — the per-request
     price of the fast path stays exactly zero.
     """
-    msg = f"응답이 {elapsed_ms}ms 걸렸습니다 (예산 {warn_ms}ms)"
+    #: 문장은 «한 자리»에서 온다(§`event_constants.slow_sentence`). 아래 색인 조언 절이
+    #: 이 정본만의 «둘째 절»이고, 그것은 여기 남는다.
+    msg = event_constants.slow_sentence(elapsed_ms, warn_ms)
     if is_pg:
         try:
             _, advice = _index_advice(db, table, column, settings)
