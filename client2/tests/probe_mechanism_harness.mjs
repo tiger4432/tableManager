@@ -205,13 +205,13 @@ console.log('\n[7] how many test files still carry their own newline normalisati
     const s = readFileSync(join(HERE, f), 'utf8');
     return s.includes('readFileSync') && !s.includes('readSourceText') && s.includes(PRIVATE);
   });
-  // 38 is where the sweep stands: 50 -> 45 (the rnd_board five) -> 40 (the valid_die five)
+  // 37 is where the sweep stands: 50 -> 45 (the rnd_board five) -> 40 (the valid_die five)
   // -> 39 -> 38, the last two taken by harnesses converting to import, which drops the private
   // reader as a side effect of dropping the slicing it fed.
   // Both tranches took harnesses that MATCH text, per the ruling — CRLF breaks comparison,
   // not counting, and the fifteen that only COUNT stay for a later round.
   // 🔴 THE CEILING ONLY DESCENDS. Raising it needs a ruling, like the escaping one.
-  ok(`P1 private newline normalisers: ${priv.length} (ceiling 38, was 40)`, priv.length <= 38);
+  ok(`P1 private newline normalisers: ${priv.length} (ceiling 37, was 40)`, priv.length <= 37);
   ok('P2 ... and the ceiling is not vacuously true — the sweep is not finished',
     priv.length > 0);
 }
@@ -236,8 +236,8 @@ console.log('\n[8] how many slicers tolerate an export prefix on the declaration
   const here = readdirSync(HERE).filter((f) => f.endsWith('.mjs'));
   const tolerant = here.filter((f) => readFileSync(join(HERE, f), 'utf8').includes(TOLERANT));
   // 🔴 THE CEILING ONLY DESCENDS. Raising it needs a ruling, like [7] and the escaping one.
-  ok(`E1 slicers tolerating an export prefix: ${tolerant.length} (ceiling 10)`,
-    tolerant.length <= 10, tolerant.join(' '));
+  ok(`E1 slicers tolerating an export prefix: ${tolerant.length} (ceiling 9)`,
+    tolerant.length <= 9, tolerant.join(' '));
   ok('E2 ... and the ceiling is not vacuous — the bridge has not been retired yet',
     tolerant.length > 0);
 }
