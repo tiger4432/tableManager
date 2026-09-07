@@ -66,18 +66,10 @@ function die(msg) {
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────────────────
-function sliceFunction(src, name) {
-  const m = new RegExp(`(?:^|\\n)(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
-  if (!m) die(`function ${name} is gone from map_editor.js — renamed or reshaped.`);
-  const start = m.index + (m[0].startsWith('\n') ? 1 : 0);
-  const open = src.indexOf('{', start);
-  let depth = 0;
-  for (let j = open; j < src.length; j++) {
-    if (src[j] === '{') depth++;
-    else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(start, j + 1); }
-  }
-  return die(`unbalanced braces for ${name}`);
-}
+// 🔴 C-35: THE SLICER IS GONE, AND IT HAD ALREADY BEEN DEAD. It was declared here with
+//    ZERO call sites -- the subject is loaded whole and every assertion below runs it. What
+//    a dead slicer still costs is not nothing: it is counted as slicing, it has to be
+//    maintained when the subject changes shape, and it is one edit away from being used.
 
 // The write path, plus everything it calls that this harness must score rather than fake.
 // A stub for any of these would let the harness grade an answer the product does not give.
