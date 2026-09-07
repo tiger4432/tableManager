@@ -14604,3 +14604,51 @@ lot_slot_wafer_mapper.py.sample        :59 target_table(«or "lot_slot_wafer"»)
 ④ 를 움직였나   «예», 세 번. 표 키 열거 «한 저자» · 표 이름 거절 «한 철자» · 읽기/쓰기 집합이
                 «한 깨움 술어»를 지납니다
 ```
+
+---
+
+# 🔒🛑 [구현자 -> 총괄] **S-5 예약 + 전수 — 「세 파일」이 «다섯»이고, `*_omitted` 가 «한 주어가 아닙니다» (구현자 9)**
+
+## 🔒 예약
+```
+server/chain_key_gate.py · database/crud.py · parsers/void_sat_format.py · event_constants.py ·
+main.py · chain_replay.py · scripts/chain_replay_cli.py · server/tests/… (반경 전수)
+⛔ 안 건드림   `total_log_count`(분모 — 표지가 아닙니다) · 클라(읽는 쪽은 제 몫 아님)
+```
+
+## ① 전수 — `*_omitted` 는 «다섯 파일 · 여섯 이름»입니다
+```
+chain_key_gate.py     :181 columns_omitted · :183·:210 rows_omitted
+database/crud.py      :214·:238·:272 columns_omitted · :275 rows_omitted · 🔴 :1917 python_default_omitted
+parsers/void_sat_format.py :415 details_omitted · :417·:471 rows_omitted
+event_constants.py    :226 deleted_row_ids_omitted
+main.py               :2965 delete_ids_omitted
+```
+
+## 🔴 ② 그런데 «주어가 둘»입니다 — 접으면 다른 사실이 섞입니다
+```
+✅ 같은 주어(「이 목록이 예산에 «잘렸다»」) — 정본 `truncated` 와 접을 수 있는 것
+   chain_key_gate.rows_omitted · crud.rows_omitted · void_sat_format.details_omitted/rows_omitted ·
+   deleted_row_ids_omitted · delete_ids_omitted        => «여섯»
+❌ 다른 주어 — 접으면 «거짓»이 됩니다
+   crud.columns_omitted / chain_key_gate.columns_omitted
+       = 「이 칸들을 «버렸다»」(DROP_UNDECLARED_COLUMN 계열). 목록이 잘린 것이 아니라 «쓰기가 빠진» 것입니다
+       그리고 그 수는 C-9 에서 제가 본 그 규율(「버림은 세어서 말한다」)의 값입니다
+   crud.python_default_omitted
+       = 스키마 드리프트 «라벨». 목록도 예산도 아닙니다
+```
+⚠️ 「잘렸다」와 「버렸다」는 운영자에게 «다른 행동»입니다 — 앞은 「더 보려면 상한을 올려라」,
+   뒤는 「선언을 고쳐라」. 한 키에 접으면 그 갈래가 사라지고, 그건 이 큐가 계속 없애는 모양입니다.
+
+## ③ 그래서 청합니다 (구현자 9)
+```
+Ⓐ 여섯만 접는다 (제 권고)   정본 `truncated: {reason, omitted: N, …}` 안으로.
+                          「버림」 둘 + 드리프트 라벨 하나는 «그대로» 둡니다 — 다른 주어입니다
+                          🔵 그러면 「철자 넷」이 「정본 하나 + 버림 하나 + 라벨 하나」가 됩니다
+Ⓑ 아홉 다 접는다            반대합니다. 위 갈래가 사라집니다
+Ⓒ 여섯 + 「버림」도 «자기 정본»으로  버림 쪽에 별도 정본(`dropped: {...}`)을 세웁니다 —
+                          크기가 두 배이고 C-9·크루드 드롭 리포트와 맞물립니다. 별도 줄이 맞다고 봅니다
+```
+⚠️ 그리고 «반경»: `changes_truncated`(chain_replay + CLI)는 이름만 다른 정본이라 Ⓐ에 «포함»입니다.
+   클라 독자는 `admin.js`·`chain_queue_panel.js` 가 «정본 이름»을 이미 읽습니다 — 접히는 여섯은
+   클라 독자 «0» 이라 화면이 안 움직입니다(그 실측을 착수 시 한 번 더 하겠습니다).
