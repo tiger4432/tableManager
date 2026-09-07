@@ -1,3 +1,91 @@
+# [디자인 -> 총괄] 🔵 **census 정정 한 줄 — `reposition_regime_probe` 는 «발견이 아닙니다». 관문이 이미 이름 대고 뺐습니다**
+
+```
+앞 보고의 「모르는 것」 첫 줄을 재서 지웁니다
+```
+
+```
+잰 것    맨몸으로 돌리면 «던집니다» — `readFileSync(undefined)`
+사유     `process.argv[2]`·`[3]` 로 «cells.json · frames.json» 을 받는 «손으로 돌리는 계기»입니다
+관문     `check_harnesses.mjs:89-98` 이 그 사실을 «이름 대고» 적어 두고 제외합니다
+         (「Run it by hand: node client2/tests/reposition_regime_probe.mjs <cells.json> <frames.json>」)
+=> 「관문에 없다」가 «누락»이 아니라 «판정»입니다. 제가 안 읽고 물었습니다
+🔴 그래서 C-35 의 ㉡ 목록에서 «뺍니다» — 전환 대상이 아니라 «인자를 받는 도구»이고,
+   그 도구를 probe 로 옮기는 것은 다른 질문입니다(오늘 안건 아님)
+```
+⚠️ 앞 표의 그 행은 «단언 ?» 로 남아 있고, 그 물음표의 답은 「이 계기는 인자 없이는 아무것도
+   단언하지 않는다」입니다. 표를 고치지 않고 여기 적습니다 — 표는 잰 그대로 두는 것이 맞습니다.
+
+> **판정 대기: 앞 보고 그대로** — 「㉠~㉣ 순서」와 「변이 없는 넷」. ㉡ 은 이제 «둘»입니다.
+
+---
+
+# [디자인 -> 총괄] 🔴 **census «코드 0» — 「나머지 다섯」이 아니라 «여덟»입니다. 그리고 벽의 종류가 앞의 넷과 다릅니다**
+
+```
+한 줄   대상을 «텍스트로» 받는 하니스가 오늘 «열», 그중 둘은 이미 ④·⑤ 로 잡혀 있으니 «여덟»이 새 것입니다
+```
+
+## ① 표 — 판정 111 이 말한 네 열 + 둘 (실측, 코드 0)
+```
+파일                                   slice  block  vm   probe  변이선언  단언
+copy_header_count_harness                0      0     1     0     있음     151
+load_shows_loaded_map_harness            1      0     0     1     없음      57
+m4_symbol_extractability_probe           2      0     1     1     있음      15
+map_spec_only_save_harness               1      0     0     1     없음      72
+reposition_regime_probe                  1      0     1     0     없음       ?
+valid_die_authoring_harness              0      0     3     1     있음     103
+valid_die_head_parity_oracle             0      0     5     0     없음   17,498
+virtual_column_render_harness            0      0     4     0     있음      66
+─ 이미 잡힌 둘 ─────────────────────────────────────────────────────────
+valid_die_dirty_guard_harness            2      2     1     0     없음      95   (C-35 ④)
+valid_die_frame_adoption_harness         1      0     1     0     있음  241/13  (C-35 ⑤)
+```
+⚠️ 「변이 선언」은 «선언했다»이지 «잰다»가 아닙니다 — 오늘 첫 파일이 7 선언 · 5 무득점이었습니다.
+   각 라운드의 «첫 걸음»은 여전히 `--mutate` 를 돌려 «전» 수를 적는 것입니다.
+
+## 🔴 ② 앞의 넷과 «종류가 다릅니다» — vm 이 주력입니다
+```
+앞의 넷    슬라이스가 «단언»에 있었습니다 -> 단언을 행동으로 바꾸면 끝났습니다
+이 여덟    슬라이스 «7» 대 vm 실행 «15». 즉 대부분이 «도는 부분»을 vm 에서 돌립니다 —
+          `vm.runInContext(parts.join('\n\n'))` 꼴로 «조각을 이어 붙여» 실행합니다
+=> 전환은 「단언 바꾸기」가 아니라 「샌드박스를 probe 로 갈아 끼우기」입니다.
+   앞의 넷보다 «한 단계 큰» 일이고, 대신 «기계적»입니다(단언은 그대로 두고 무대를 바꿉니다)
+```
+
+## ③ 크기가 다른 둘 — 먼저 말해 둡니다
+```
+valid_die_head_parity_oracle   단언 «17,498» · vm 5 · 변이 선언 «없음»
+                              전환이 잘못되면 «가장 큰» 초록이 조용히 무의미해집니다.
+                              여기는 「전후 수 동일」만으론 부족하고 «표본 몇 개의 값»을 봐야 합니다
+m4_symbol_extractability_probe 이름 그대로 «추출 가능성»을 재는 계기입니다 —
+                              슬라이스가 «주어»일 수 있습니다. 전환 전에 «무엇을 주장하는지»부터
+                              읽어야 하고, 잘못 손대면 계기 자체를 없애는 것이 됩니다
+```
+
+## ④ 제안하는 순서 (판정 요청)
+```
+㉠ 기계적 vm 셋      copy_header_count · virtual_column_render · valid_die_authoring
+                   («도는 부분»만 probe 로. 단언은 안 건드림)
+㉡ 슬라이스 셋       load_shows_loaded_map · map_spec_only_save · reposition_regime_probe
+㉢ 큰 것            valid_die_head_parity_oracle (17,498 — 별 라운드, 표본 검증 포함)
+㉣ 먼저 «읽을» 것    m4_symbol_extractability_probe (주어인지 대리인지 판정이 먼저)
+그리고 ④·⑤ 는 판정 111 대로 별 줄
+```
+
+## ⑤ 모르는 것
+```
+· `reposition_regime_probe` 의 단언 수를 «못 쟀습니다»(ASSERTIONS 줄이 안 나옵니다).
+  관문에 있는지부터 확인해야 합니다 — 없으면 그 자체가 발견입니다
+· 「변이 선언 없음」인 넷(load_shows_loaded_map · map_spec_only_save · head_parity ·
+  dirty_guard)은 전환의 «안전망»이 없습니다. 그 넷은 전환과 «같은 라운드»에 변이를 만들어야
+  하는지, 아니면 전환만 하고 ③-1 에 맡길지 — 판정이 필요합니다
+```
+
+> **판정 대기: 「㉠~㉣ 순서」와 「변이 없는 넷을 어떻게 할지」.**
+
+---
+
 # [디자인 -> 총괄] ✅ **㉯ «완료» — 다섯 트랜치, 슬라이서 제거, 천장 8 → «7»** (커밋 `462da632`·`4c8c2fdc`·`44c7ccad`, 푸시됨)
 
 ```
