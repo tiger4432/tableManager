@@ -516,38 +516,21 @@ def _scoped_batch_outputs(result: dict, rule: dict, target_table: str):
     and this one does not get a third.
     """
     outputs = result.get("batches") or ()
-    if outputs and not rule.get("allow_replace_map", False) and not rule.get("allow_retraction", False):
-        raise ReplayRefused(f"rule '{rule.get('name')}' returned scoped batches without allow_replace_map")
+    if outputs:
+        # 🔴 [C-15] 봉투 검증은 `dt_map_derivation` 의 «한 독자»가 한다 — 이 자리와 워커에
+        #    «두 사본»이 있었고 그 사실이 위 docstring 에 적혀 있었다. 거절 «타입»만 여기
+        #    것으로 감싼다(형제 `normalize_retraction_request` 와 같은 모양).
+        try:
+            dt_map_derivation.require_scoped_batches_allowed(rule)
+        except ValueError as e:
+            raise ReplayRefused(str(e))
     for raw in outputs:
-        if not isinstance(raw, dict):
-            raise ReplayRefused("chain scoped batch must be an object")
-        if (raw.get("target_table") or target_table) != target_table:
-            raise ReplayRefused("chain scoped batch cannot redirect to another target table")
-        retract = raw.get("retract")
-        if retract is not None and raw.get("replace_map"):
-            raise ReplayRefused(
-                f"rule '{rule.get('name')}' set both replace_map and retract on one batch; "
-                f"the purge would remove the sibling sources' cells before the retraction "
-                f"could spare them")
-        if retract is not None:
-            if not rule.get("allow_retraction", False):
-                raise ReplayRefused(
-                    f"rule '{rule.get('name')}' returned a retract envelope without allow_retraction")
-            import dt_map_derivation
-            try:
-                source_column, source_value = dt_map_derivation.normalize_retraction_request(
-                    retract, rule.get("name"))
-            except ValueError as e:
-                raise ReplayRefused(str(e))
-            yield None, (source_column, source_value), raw.get("updates") or ()
-            continue
-        if not raw.get("replace_map"):
-            raise ReplayRefused(
-                "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")
-        scope = raw.get("scope")
-        if not isinstance(scope, dict) or not scope:
-            raise ReplayRefused("chain scoped batch requires a non-empty scope")
-        yield scope, None, raw.get("updates") or ()
+        try:
+            _target, updates, scope, retract = dt_map_derivation.normalize_scoped_batch(
+                raw, rule, target_table)
+        except ValueError as e:
+            raise ReplayRefused(str(e))
+        yield scope, retract, updates
 
 
 def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, page,

@@ -852,59 +852,14 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                         # asked for. A retract-only rule must not have to grant itself
                         # `allow_replace_map` to be heard - that would leave a purge
                         # permission standing for a rule that never purges.
-                        if not rule.get("allow_replace_map", False) and not rule.get("allow_retraction", False):
-                            raise ValueError(
-                                f"rule '{rule.get('name')}' returned scoped batches without "
-                                f"allow_replace_map or allow_retraction")
+                        # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
+                        #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
+                        #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
+                        dt_map_derivation.require_scoped_batches_allowed(rule)
                         for requested in target_payload.get("batches") or []:
-                            if not isinstance(requested, dict):
-                                raise ValueError("chain scoped batch must be an object")
-                            requested_target = requested.get("target_table") or target_table
-                            if requested_target != target_table:
-                                raise ValueError(
-                                    f"rule '{rule.get('name')}' cannot redirect scoped batch to '{requested_target}'")
-                            # TWO REMOVAL STRATEGIES, NEVER BOTH.
-                            #
-                            # `replace_map` removes BY MAP: everything inside the scope
-                            # that the payload does not re-claim. It is correct exactly
-                            # while one map has one producer.
-                            #
-                            # `retract` removes BY SOURCE: what this one source owns and
-                            # no longer derives. It is the strategy for a map fed by
-                            # SEVERAL sources, where a purge scoped to the map would
-                            # delete a sibling's cells to correct this one's - the map key
-                            # cannot express "only my contribution" because
-                            # `derive_replace_map_scope` validates every scope key to be
-                            # INSIDE the map-key contract.
-                            #
-                            # Accepting both on one batch would run the purge first and
-                            # then retract against the survivors, so the sibling rows
-                            # would already be gone before the narrower strategy ever
-                            # looked at them. Refused rather than ordered.
-                            retract = requested.get("retract")
-                            if retract is not None and requested.get("replace_map"):
-                                raise ValueError(
-                                    f"rule '{rule.get('name')}' set both replace_map and retract on "
-                                    f"one batch for '{requested_target}'. replace_map removes by MAP "
-                                    f"and retract removes by SOURCE; running both would purge the "
-                                    f"sibling sources' cells before the retraction could spare them.")
-                            if retract is not None:
-                                if not rule.get("allow_retraction", False):
-                                    raise ValueError(
-                                        f"rule '{rule.get('name')}' returned a retract envelope without "
-                                        f"allow_retraction")
-                                source_column, source_value = dt_map_derivation.normalize_retraction_request(
-                                    retract, rule.get("name"))
-                                scoped_batches.append((requested_target, requested.get("updates") or [],
-                                                       None, (source_column, source_value)))
-                                continue
-                            if not requested.get("replace_map"):
-                                raise ValueError(
-                                    "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")
-                            if not isinstance(requested.get("scope"), dict) or not requested["scope"]:
-                                raise ValueError("chain scoped batch requires a non-empty scope")
-                            scoped_batches.append((requested_target, requested.get("updates") or [],
-                                                   requested["scope"], None))
+                            scoped_batches.append(
+                                dt_map_derivation.normalize_scoped_batch(
+                                    requested, rule, target_table))
                 else:
                     # Single event execution - one call per ROW, which for a per-row
                     # event is one call per event exactly as before.
