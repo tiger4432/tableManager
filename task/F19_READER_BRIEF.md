@@ -227,3 +227,52 @@ transfer_plan.py:1480 이 `_basis` 를 버리지 말고 M2 응답에 «M1 과 �
            도달은 «번들»에서, 축약에 안 죽는 문자열로 (`frame_basis` · `role_order`)
 ```
 🔴 **멈춤** — `canonical_basis` 가 셋째 `kind` 를 내면 세고 멈추십시오. 오늘 어휘는 «둘»입니다(:72-73).
+
+---
+
+# 지시서 ⑤ — S-5 「잘렸다」의 철자를 «하나»로, 그리고 «듣는 화면»을 붙인다
+
+> 총괄 판정 66 이행. **작성: 응용 레인. 코드 0줄.**
+> 🔒 예약: 줄 S-5 · 파일 서버 다섯 + `client2/src/truncation.js` 독자들
+
+## 정본 모양 — «인용»입니다. 새로 짓지 마십시오
+```
+client2/src/truncation.js:72-75  `saysTruncated(said)`
+   불리언이면 그대로 · 객체면 `Boolean(said.reason)` · 그 밖은 `null`(「말한 적 없음」)
+=> 서버가 낼 것: `truncated` — 불리언 «또는» `{reason, …}`. 이 함수가 «둘 다» 이미 읽습니다
+```
+
+## 서버 절 — 철자별 처분 (자리 · 파일:줄)
+```
+① `*_omitted` -> 정본 «안»으로   `truncated: {reason, omitted: N}`  «지우지 않고 옮깁니다»
+   chain_key_gate.py:181·183·201·210   ·   database/crud.py:214·238·272·275   ·   event_constants.py:169
+   🔵 근거: 「몇 개 뺐나」는 「잘렸다」의 «수식어»이지 «다른 사실»이 아닙니다
+② `changes_truncated` -> 정본 키로 «접힘»    chain_replay.py:103 (그 줄이 「`changes_truncated` says when it bit」)
+③ `total_log_count`  -> «그대로»            chain_ingestion_worker.py:1147
+   🔴 «절단 표지가 아닙니다»(분모) · 그리고 «독자가 하나 있습니다» — 건드리면 그것이 깨집니다
+④ history 나르개 -> «같은 라운드 끝»에      bonding_plan.py:1027 (`q.limit(HISTORY_LIMIT)`) · :1072 (`"history": history`)
+   🔵 이건 «진짜» 자리입니다 — 「50건이 전부」와 「최근 50건」이 오늘 «같은 그림»입니다
+⏸ samples -> «별도 판정»                    chain_replay.py:379·392
+   이름이 «samples» 라 「전부」를 주장하지 않습니다. 잘렸다고 말하게 할지는 «다른 물음»입니다
+```
+🔴 **반경 — 응답 «모양»이 바뀝니다.** 클라 독자가 0 이라고 안전한 것이 «아닙니다»:
+   오늘 아침 이름 «하나»를 바꿔 CLI 둘과 시험 하나가 깨졌습니다. 게이트에 «표면 전수»를 답니다 —
+   `server/tests` · `server/scripts` · `contracts/` · 하니스. 그리고 훑기는 «커밋 «전»».
+
+## 클라 절 — 독자는 «하나»를 부릅니다
+```
+✅ 부를 것   `truncation.js` 의 `saysTruncated` — 새 독자를 «만들지 마십시오»
+낱말        `walk/main.js:483` 의 「절단됨 · …」 과 «같게». S-13 화면이 이미 그 낱말을 씁니다
+🔴 제약     `cutBudgets` 는 `walk/derive.js:79` 에 «삽니다» — 걷기 상자 «밖» 화면은 못 부릅니다
+           ⛔ 복사하지 마십시오(사본 둘) · 옮기는 것은 «이 라운드 밖»입니다. 밖 화면은 `saysTruncated` 만 씁니다
+```
+
+## 게이트
+```
+① 철자 «하나»   서버 전수에 최상위 `*_omitted` «0» · `changes_truncated` «0»
+② 그림         잘린 목록에 「잘렸다」가 그려진다 · 🔴 «안 잘린» 목록은 오늘과 «동일»
+③ 독자         «수 + 도달»(번들 · 축약에 안 죽는 문자열) — 화면 «각각»에
+🔴 ④ 값        정본은 «성공에도 옵니다» -> 「칸이 있나」가 아니라 «값»을 단언하십시오
+               (`saysTruncated` 가 `null` 을 「말한 적 없음」으로 돌려주는 이유가 그것입니다)
+```
+🔴 **멈춤** — 다섯째 철자가 나오거나, 이 목록에 «없는» 라우트가 자르는 것을 그리는 화면이 있으면 세고 멈추십시오.
