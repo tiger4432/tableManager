@@ -2,7 +2,7 @@
 
 > **Status:** 🟢 Living | **Written:** 2026-09-08 08:3x (소유자 「팔란티어 기준으로 셋업 예시 하나만, 원장 선언 참고하게」) | **Owner:** 총괄
 > 문법 정본은 `server/ledger/setup_bundle.py`. 이 문서는 «대응표 + 예시 하나»이고, 키 이름은 출하 샘플 `server/config/sample/ledger_config.json.sample` 에서 «그대로» 가져왔다.
-> ⚠️ `attributes` 줄은 2026-09-08 S-52 로 착지 «중»(문법·원자·걷기·선언 발행 착지, 선언창 슬롯 ⑤·출하 샘플 ⑥ 대기).
+> `attributes` 는 2026-09-08 S-52 로 착지(문법·원자·걷기·선언 발행·선언창 슬롯·출하 샘플 `dtjob@1.attributes`).
 
 ## 0. 대응표 — 파운드리 ↔ 원장 선언
 
@@ -119,6 +119,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ## 2. 두 줄 (완성의 정의)
 ```
 「운영에서는 엔티티 선언에 attributes 이름을 적고, 소스의 bind.entities 에서 그 이름에 컬럼을 «한 번» 매기면 됩니다」
+⚠️ 소스가 `map.input_columns` 를 «명시»했으면 그 컬럼을 거기에도 — 안 적으면 검증기가 그 경로를 댑니다(빈 목록이면 기본값이 전부라 이 줄이 없음, 큐 S-52-c)
 ```
 
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
