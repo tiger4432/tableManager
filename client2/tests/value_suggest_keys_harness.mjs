@@ -79,6 +79,11 @@ import { saysTruncated } from '../src/truncation.js';
 //    imports cleanly in node today, so converting this file is possible; it is a round of its
 //    own and is reported rather than smuggled in here.
 import { slowReasonNote } from '../src/slow_reason.js';
+// 🔴 AND A THIRD, WITHIN ONE SESSION (클라 7 ㉯). The subject gained `suggestTruncatedNote`
+//    when two screens' copies of one sentence were folded into one place — correct code, and
+//    this file went red again. That is three imports and three breakages, which is the
+//    strongest argument for the conversion the lead has now queued as C-35 ②.
+import { suggestTruncatedNote } from '../src/truncation.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUGGEST_PATH = join(HERE, '..', 'src', 'value_suggest.js');
@@ -326,6 +331,7 @@ function makeSandbox({ dataset, tableName = 'bonding_map', onFetch }) {
     API_BASE: 'http://api',
     saysTruncated,
     slowReasonNote,
+    suggestTruncatedNote,
     state: { currentTable: tableName, selectedCellsMap: {}, dragStartCell: null, dragEndCell: null,
              visibleColIndexMap: {}, txModeActive: false, pendingTxEdits: {} },
     document: doc,

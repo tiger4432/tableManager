@@ -1168,7 +1168,12 @@ const FLOORS = new Map([
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
   ['walk_wire_harness.mjs', 52],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
-  ['truncation_harness.mjs', 12],
+  // 12 -> 32. The floor had not been raised since the file was written; the gate has been
+  // naming it as running above its floor for a while. The new assertions are 클라 7 ㉯ — the
+  // sentence about a cut suggestion list now lives with the JUDGEMENT about it, in one place,
+  // and two of them are text-as-subject drift oracles (a copy being BORN again is invisible to
+  // any behavioural check, so the population is asked of the source and labelled as such).
+  ['truncation_harness.mjs', 32],
   // whether the DECLARED unique key survives measurement -- and that an empty table
   // is neither unique nor duplicated, which the server's own boolean cannot spell
   ['uniqueness_harness.mjs', 31],

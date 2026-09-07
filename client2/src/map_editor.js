@@ -30,7 +30,7 @@ import {
 // `parseTsv`로 읽으면 **쓰는 규칙과 읽는 규칙이 다르다** — 그 비대칭이 DESC의 인용부호 하나로
 // 왕복을 깨뜨렸다(아래 copyGridToExcel의 측정 주석). 계약은 `parseTsv(serializeTsv(g)) === g`다.
 import { parseTsv, serializeTsv } from './tsv.js';
-import { saysTruncated } from './truncation.js';
+import { saysTruncated, suggestTruncatedNote } from './truncation.js';
 // [V1 effort instrument] The ONE collector (client2/src/effort_meter.js, owned by Lead PM).
 // This file counts NOTHING on its own: no local counters, no second session id, no copy of
 // the 1/3/5 weights (those live server-side and are applied at query time). Keystrokes and
@@ -10274,8 +10274,8 @@ async function populateColumnValueDatalist(table, column, listEl, input, prefix)
   if (saysTruncated(body && body.truncated) === true) {
     columnValueTruncated.add(key);
     columnValueComplete.delete(key);
-    markSuggestState(input, 'truncated',
-      `값이 많아 앞의 ${values.length}개만 내려왔습니다 — 더 입력하면 다시 좁혀 가져옵니다.`);
+    // 클라 7 ㉯. 같은 사실을 «다른 문장»으로 말하던 둘째 자리였습니다. 같은 함수를 부릅니다.
+    markSuggestState(input, 'truncated', suggestTruncatedNote(values.length));
   } else {
     columnValueTruncated.delete(key);
     columnValueComplete.set(key, { prefix: pfx, values });

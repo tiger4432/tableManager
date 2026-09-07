@@ -22,7 +22,8 @@
 //           다리조차 필요 없습니다 — 이 모듈이 «import 되라고» 뽑힌 파일이기 때문입니다
 //   변이    `importMutated` 가 원본 «전문»에 한 자리만 바꾼 사본을 만들어 import 합니다.
 //           잘라내는 양은 «0» 이고, 「변이가 안 먹으면 던진다」가 그 헬퍼 안에 있습니다
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';//
 // 🔴 정정 (2026-09-06 오후): 이 파일은 «제가 오늘 만든» 다리를 쓰고 있었습니다. 그런데 그
@@ -239,6 +240,45 @@ async function score(list, mustCatch, heading) {
     else { failed++; console.log(`  ${mustCatch ? 'ESCAPED' : 'CAUGHT '} ${name}  <- wrong`); }
   }
   return hit;
+}
+
+// ═══ 클라 7 ㈩ — 값 제안이 잘렸다는 문장이 «하나»인가 ═════════════
+//
+// 🔴 이 파일의 머리말이 이름 댈 잔여입니다 — «같은 라우트»의 같은 칸을 두 화면이 각자
+//    읽고 «다른 두 문장»을 만들었습니다. 갈라져도 «오류가 안 납니다».
+// ⚠️ 아래 둘은 «텍스트가 주어»인 단언입니다(드리프트 오라클) — 사본이 «다시 태어나는» 것은
+//    어느 행동 검사로도 안 보입니다. 그래서 모집단을 «소스에» 묻고, 그렇게 적습니다.
+{
+  const note = BASELINE.suggestTruncatedNote;
+  ok('K1 the note names the count it is about', String(note(7)).includes('7'));
+  // ⛔ 다음 행동을 떼면 「자막 단 실패」가 됩니다 — 이 줄이 그것을 막습니다.
+  ok('K2 ...and keeps the NEXT ACTION, which is what makes it more than a label',
+    String(note(7)).includes('입력'));
+  ok('K3 a different count gives a different sentence, so the number is not decorative',
+    note(7) !== note(8));
+
+  const SRC = fileURLToPath(new URL('../src/', import.meta.url));
+  const LINE_COMMENT = new RegExp('(^|[^:])//[^' + String.fromCharCode(10) + ']*', 'g');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(LINE_COMMENT, '$1');
+  const files = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(d, e.name));
+      else if (e.name.endsWith('.js')) files.push(join(d, e.name));
+    }
+  };
+  walk(SRC);
+  ok(`K4 CONTROL: the sweep saw the source tree (${files.length} files)`, files.length > 50);
+  const writers = files.filter((f) => {
+    const t = strip(readFileSync(f, 'utf8'));
+    return t.includes('더 입력하면');
+  }).map((f) => f.replace(SRC, ''));
+  // 오직 이 모듈만이 그 문장을 씁니다.
+  ok(`K5 exactly one file writes that sentence (${writers.join(', ')})`,
+    writers.length === 1 && writers[0].includes('truncation.js'));
+  // 🔴 그리고 예전의 둘째 문장은 «어느 파일에도» 없습니다.
+  const oldSecond = files.filter((f) => strip(readFileSync(f, 'utf8')).includes('내려왔습니다'));
+  ok('K6 the second sentence is gone from the source entirely', oldSecond.length === 0);
 }
 
 const caught = await score(DEFECTS, true, 'defect mutants (each must be CAUGHT)');
