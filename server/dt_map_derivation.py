@@ -859,6 +859,66 @@ def apply_retraction(db, plan) -> int:
 REFUSE_RETRACTION_UNKEYED = "retraction_derived_keys_incomplete"
 
 
+def require_scoped_batches_allowed(rule):
+    """어느 «한 쪽» 권한이 봉투를 연다 — 전략별 검사는 배치마다 따로 한다.
+
+    retract 만 쓰는 규칙이 자기에게 `allow_replace_map` 을 줄 필요가 «없어야» 한다.
+    주면 «purge 권한»이 한 번도 purge 하지 않는 규칙에 서 있게 된다.
+    """
+    if not rule.get("allow_replace_map", False) and not rule.get("allow_retraction", False):
+        raise ValueError(
+            "rule '%s' returned scoped batches without allow_replace_map or allow_retraction"
+            % (rule.get("name"),))
+
+
+def normalize_scoped_batch(raw, rule, target_table) -> tuple:
+    """범위 배치 «봉투» 하나 -> `(target_table, updates, scope, retract)`.
+
+    🔴 «두 손으로 맞추던» 자리다. `chain_ingestion_worker` 와 `chain_replay` 가 같은 여섯
+       규칙을 각자 적어 두고 「손으로 맞춘다」고 주석에 써 두었다 — 그리고 그 옆의 retract
+       봉투는 이미 «한 독자»(§`normalize_retraction_request`)를 갖고 있었다. 같은 모양이다.
+    ⚠️ 거절은 `ValueError` 다. 호출자가 «자기 거절 타입»으로 감싼다 — 형제가 이미 그 모양이고,
+       그래야 이 독자가 어느 한 쪽의 예외 계층을 안 끌고 온다.
+
+    ═══ 제거 전략은 «둘»이고 «동시에는 없다» ═══════════════════════════════════════════
+    `replace_map` 은 «맵 단위»로 지운다 — 범위 안에서 페이로드가 다시 주장하지 않은 전부.
+    한 맵에 생산자가 «하나»일 때 정확하다.
+    `retract` 는 «소스 단위»로 지운다 — 이 소스가 갖고 있고 더는 유도하지 않는 것. 여러
+    소스가 한 맵을 먹일 때의 전략이고, 그때 맵 범위 purge 는 이 소스를 고치려다 «형제의
+    셀»을 지운다(맵 키는 「내 몫만」을 표현할 수 없다 — `derive_replace_map_scope` 가 모든
+    범위 키를 맵 키 계약 «안»으로 검증하기 때문).
+    한 배치에 둘 다 받으면 purge 가 «먼저» 돌고 그다음 생존자에 retract 가 걸린다 — 형제
+    행은 좁은 전략이 보기도 전에 이미 사라진다. 그래서 «순서를 정하지 않고 거절»한다.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("chain scoped batch must be an object")
+    requested_target = raw.get("target_table") or target_table
+    if requested_target != target_table:
+        raise ValueError("rule '%s' cannot redirect scoped batch to '%s'"
+                         % (rule.get("name"), requested_target))
+    retract = raw.get("retract")
+    if retract is not None and raw.get("replace_map"):
+        raise ValueError(
+            "rule '%s' set both replace_map and retract on one batch for '%s'. "
+            "replace_map removes by MAP and retract removes by SOURCE; running both would "
+            "purge the sibling sources' cells before the retraction could spare them."
+            % (rule.get("name"), requested_target))
+    updates = raw.get("updates") or ()
+    if retract is not None:
+        if not rule.get("allow_retraction", False):
+            raise ValueError("rule '%s' returned a retract envelope without allow_retraction"
+                             % (rule.get("name"),))
+        return requested_target, updates, None, normalize_retraction_request(
+            retract, rule.get("name"))
+    if not raw.get("replace_map"):
+        raise ValueError(
+            "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")
+    scope = raw.get("scope")
+    if not isinstance(scope, dict) or not scope:
+        raise ValueError("chain scoped batch requires a non-empty scope")
+    return requested_target, updates, scope, None
+
+
 def normalize_retraction_request(request, rule_name=None) -> tuple:
     """`{"source_column": c, "source_value": v}` -> `(c, v)`, or a ValueError that NAMES it.
 

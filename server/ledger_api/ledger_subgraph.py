@@ -1282,7 +1282,12 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if claim_cut: reasons.append("claims")
     if action_cut: reasons.append("actions")
     return {
-        "schema_version": 3,
+        # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
+        #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
+        #    3 과 2 의 «뜻 차이»도 기록이 없었다. 형제(파일별 schema_version)는 이미 은퇴했고
+        #    문서 세대는 `setup_version` «하나»가 말한다 — 이것은 그 사본이었다.
+        # ⛔ `setup_version` 을 여기 «넣지» 않는다. 세대가 필요해지는 날 먼저 적을 것은
+        #    「다를 때의 «행동»」이고, 그것은 계약 라운드다.
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed, "nodes": visible_nodes, "edges": ordered_edges,
