@@ -13676,3 +13676,5 @@ test_composite_key_prefetch_budget::…probes_once_per_row  자기 docstring 이
 🔁 이월: 47 (S-14 의 주어 — 소유자 몫)
 ```
 > 🔁 이월(첫 제출 15:2x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+## 🔒 [응용] §4 등급 3 «미측정» 행 예약 (15:3x) — A-5 · A-6 · A-2/A-7 중 열린 것. 문서 먼저 → 코드 검증 순서
