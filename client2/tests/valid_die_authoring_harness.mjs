@@ -19,6 +19,10 @@
 // --mutate re-evaluates the sandbox with the DEFECT PUT BACK and asserts this suite goes
 // red. A suite that has never been shown to fail proves nothing.
 import { readFileSync } from 'node:fs';
+// 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 — 이름이 같아서
+//    «같은 것으로 보이고», 갈려도 오류가 «안 납니다». 그리고 그 한 자리는 «섞인 줄바꿈»을
+//    만나면 추측하지 않고 «거절»합니다 — 사본은 그 거절을 안 들고 태어납니다.
+import { readSourceText } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -47,13 +51,13 @@ function sliceBalanced(src, startIdx, open, close) {
   return null;
 }
 
-const SRC = readFileSync(SRC_MAP, 'utf8').replace(/\r\n/g, '\n');
+const SRC = readSourceText(SRC_MAP).text;
 // The 7b canonicalisation (canonIntString / canonicalKeyValue / composeMapId /
 // decomposeMapKey / canonicalMapKey + the two regexes) lives in its own module since the
 // map-key extraction round. It is sliced from THERE now; the slices and everything scored
 // with them are unchanged. `keyFn` dies just as loudly as `fn` if a name goes missing.
 const SRC_KEY_PATH = join(HERE, '..', 'src', 'map_key.js');
-const SRC_KEY = readFileSync(SRC_KEY_PATH, 'utf8').replace(/\r\n/g, '\n');
+const SRC_KEY = readSourceText(SRC_KEY_PATH).text;
 
 function sliceFn(src, path, name) {
   const m = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);

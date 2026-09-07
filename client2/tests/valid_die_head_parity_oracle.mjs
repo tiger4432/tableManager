@@ -11,6 +11,10 @@
 // a non-zero difference. A comparator that cannot tell two different answers apart proves
 // nothing when it reports zero.
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+// 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 — 이름이 같아서
+//    «같은 것으로 보이고», 갈려도 오류가 «안 납니다». 그리고 그 한 자리는 «섞인 줄바꿈»을
+//    만나면 추측하지 않고 «거절»합니다 — 사본은 그 거절을 안 들고 태어납니다.
+import { readSourceText } from './lib/probe.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -195,7 +199,7 @@ const baseSrc = (() => {
       { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch (e) { die(`could not read ${BASE}:client2/src/map_editor.js from git`); }
 })();
-const workSrc = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+const workSrc = readSourceText(SRC_PATH).text;
 // Kept, unweakened: comparing a file with itself yields 0 differing cells for the wrong
 // reason. With a fixed acceptance base this fires only if the tree really is checked out AT
 // that base, and dying is the right answer there. See the base note at the top for why it
