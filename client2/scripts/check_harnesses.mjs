@@ -776,6 +776,14 @@ const FLOORS = new Map([
   // outcome, grading it would be a claim this client cannot make.
   ['rule_outcome_harness.mjs', 24],
   //
+  // C-9. The refresh branch is the one websocket branch that shows the operator NOTHING —
+  // no cell flash, no status line, unlike its two siblings — so the row count the server
+  // always sends had nowhere to land. What the floor holds is the split: 0 is a VALUE (the
+  // sweep recovery arrives with it) and a missing key is an older server, and those two must
+  // never render the same. Also that the line says ROWS WRITTEN, never 「changed」, which is
+  // a claim this message does not carry.
+  ['chain_refresh_note_harness.mjs', 17],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite

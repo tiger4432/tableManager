@@ -9,6 +9,7 @@ import { showIngestionProgress, finishIngestionProgress, showToast, getLocalTime
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
+import { chainRefreshNote } from './chain_refresh_note.js';
 
 /**
  * Queue the next reconnect attempt and advance the backoff ladder.
@@ -504,6 +505,14 @@ export function handleWebSocketMessage(msg) {
     // next explicit refresh reads current data, but do not auto-replace the
     // on-screen grid merely because another actor changed the table.
     state.pageCache.clear();
+    // 🔴 C-9. 이 갈래는 형제들과 달리 «아무것도 안 보여 줍니다** — 위 두 갈래가 쓰는
+    //    `flashCells`·`redrawRows` 도, 상태줄도 없습니다. 운영자에게는 「아무 일도
+    //    없었다」와 «같은 모양»이고, 그래서 이 메시지가 «항상» 싣고 오는 행 수(0 포함)를
+    //    말할 자리가 비어 있었습니다 — 읽는 자리 «0».
+    // ⛔ 새 영역·토스트·모달이 아니라 형제 셋이 이미 쓰는 «그 상태줄»입니다.
+    //    그리고 없으면 «안 씁니다** — 옛 서버와 「0행」이 같은 글자가 되면 안 됩니다.
+    const chainNote = chainRefreshNote(msg);
+    if (chainNote) elements.performanceLog.textContent = chainNote;
     // \u{1f534} THIS CALL WAS DEAD. It went through `window.triggerHistoryReloadDebounced`,
     //    which is assigned NOWHERE in this client - measured in the shipped bundle, where the
     //    name survives exactly twice (this guard and this call) and never as an assignment.
