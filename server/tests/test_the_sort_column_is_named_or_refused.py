@@ -164,17 +164,20 @@ def test_a_virtual_join_column_sorts_through_the_binder(env):
 # ㉣ 화면이 오늘 보내는 두 값은 «바이트 동일»
 # ---------------------------------------------------------------------------
 
-def test_the_screens_own_two_names_answer_exactly_as_before(env):
-    """`row_id` 와 `updated_at` 은 이 라운드가 «건드리지 않은» 것이다.
+def test_the_screens_own_names_answer_exactly_as_before(env):
+    """화면이 오늘 «보내는» 것은 바이트 동일이고, 못 보던 갈래는 열렸다.
 
-    🔴 `row_id` 는 `order_desc` 를 «안 본다** — 종전 `else` 갈래가 무조건 `row_id.asc()`
-       였고, 그것이 이 두 이름의 「바이트 동일」의 내용이다. 그 무시는 A-6 과 «같은 부류»의
-       결함이고 별 줄로 올렸다: 여기서 고치면 그 판정 없이 화면 기본 정렬이 바뀐다.
+    [판정 97] 화면은 sortLatest 가 꺼지면 `row_id&order_desc=false` 를, 켜지면
+    `updated_at&true` 를 보낸다 — 그 둘은 이 라운드 앞뒤로 같다. 종전 `row_id` 는
+    `order_desc` 를 «안 봤고», 그래서 머리글을 내림차순으로 눌러도 오름차순이 오면서
+    기호만 내림차순였다 — A-6 의 판별식 문장과 «같은» 결함이다.
     """
     by_row_asc = _vals(_page(env, order_by="row_id", order_desc=False), "row_key")
-    by_row_desc = _vals(_page(env, order_by="row_id", order_desc=True), "row_key")
-    assert by_row_asc == by_row_desc, "row_id ignores order_desc, exactly as before"
     assert by_row_asc == ["K%02d" % i for i in range(LIMIT)], by_row_asc
+
+    by_row_desc = _vals(_page(env, order_by="row_id", order_desc=True), "row_key")
+    assert by_row_desc != by_row_asc, "row_id must now see order_desc"
+    assert by_row_desc == ["K%02d" % i for i in range(ROWS - 1, ROWS - 1 - LIMIT, -1)],         by_row_desc
 
     up_asc = _vals(_page(env, order_by="updated_at", order_desc=False), "row_key")
     up_desc = _vals(_page(env, order_by="updated_at", order_desc=True), "row_key")
@@ -197,6 +200,10 @@ def test_a_jump_under_a_new_sort_is_refused_rather_than_answered_wrongly(env):
     rid = _page(env, order_by="row_id")[5]["row_id"]
     ok = _refused(env, order_by="row_id", target_row_id=rid)
     assert ok.status_code == 200 and ok.json()["target_offset"] == 5, ok.text
+    # [판정 97] 오프셋도 방향을 «따라간다». 오름차순에서 6번째면 내림차순에서는
+    # 끝에서 6번째다 — 안 따라가면 점프가 표의 반대편에 앉는다.
+    rev = _refused(env, order_by="row_id", order_desc=True, target_row_id=rid)
+    assert rev.status_code == 200 and rev.json()["target_offset"] == ROWS - 1 - 5, rev.text
 
     res = _refused(env, order_by="dt_lot", target_row_id=rid)
     assert res.status_code == 422, res.text

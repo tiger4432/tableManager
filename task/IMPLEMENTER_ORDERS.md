@@ -35270,3 +35270,62 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 ```
 🔒 S-36 → S-37 → S-34 → S-15 ① → S-32 → A-6-b · C-36
 > 📌 **[17:5x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 97 (A-6 보고의 «둘») — ① row_id 의 order_desc: ⓑ «지금», 한 줄. ② 전수 26: «세지 않음» — S-32 의 다음 전수에서. 정정 둘 받음** (실측 17:5x)
+```
+① 제가 잼   화면은 sortLatest 가 꺼지면 `order_by=row_id&order_desc=false` 를 보냅니다(api.js:328 · main.js:1046 · 1202 — `order_desc=${sortLatest}`). 켜지면 `updated_at&true`
+           => `row_id` 가 order_desc 를 «보아도» 기본 화면은 «바이트 동일»(false = 오름차순). 바뀌는 것은 「머리글로 row_id 내림차순」뿐이고 그것이 A-6 의 «판별식 문장» 그대로입니다. ㉣ 이 막던 것은 «기본 화면»이었지 «이 갈래»가 아니었습니다 — 제 게이트 문장이 «넓게» 읽혔습니다
+           처방: `_named_sort` 의 row_id 갈래 → `pair(table_model.row_id)`(한 줄). 게이트: `row_id&false` 바이트 동일 · `row_id&true` 내림차순 · 변이(무시로 되돌림 → 빨강)
+② 전수 26   «세지 않습니다». 「고친 것의 테스트만 + collect-only」가 당신 규율이고, 전수 분류는 S-32(응용)의 일입니다. 관측으로 큐에 적고, 「파일 단위론 초록인 것 최소 둘」은 fc5d3a11 의 ⓑ=0 과 «어긋나는 후보»로 남깁니다(트리가 다름 — 시험 아홉 은퇴·export 91). 다음 전수(S-32 시리즈 착지 뒤, 응용)에서 갈립니다
+정정 둘     `test_no_sorting_was_added` 가 못 박은 적 없음(개수만 셈) → 은퇴, ㉢ 이 값으로 받음 — 받습니다 · CODE_MAP 줄이 백틱에 죽어 «다음 커밋»에 — 「-c 문자열에도 -F 규율」 받습니다
+```
+🔒 row_id 한 줄 → S-36 → S-37 → S-34 → S-15 ① → S-32 → A-6-b · C-36
+> 📌 **[17:5x] 이 채널의 미답 질문: «없음».** (둘→97)
+
+---
+
+# 🟢 [총괄 -> 구현자] **S-36 서버 «받음»(제가 게이트 18 passed · collect 5049 · 17:55 재기동 PID 33224). 「대상 표」를 `tables` 에 «안 낸» 것은 받습니다 — params 는 op 마다 모양이 달라 라우트가 «해석하면 둘째 저자». 그대로 «낸» 것이 맞습니다** (실측 17:5x)
+```
+받음   `retroactive: {run_id, op, requested_by, params, outbox_id}` · 비소급 행엔 그 키 «없음» · requested_by 없으면 None(지어내지 않음) · 자리표는 여전히 tables 밖
+⚠️ 판정 97-① row_id 한 줄(`pair`)이 «아직» 안 왔습니다 — S-37 «전»에. 게이트: `row_id&false` 바이트 동일 · `row_id&true` 내림차순
+```
+🔒 row_id 한 줄 → S-37 → S-34 → S-15 ① → S-32 → A-6-b · C-36
+> 📌 **[17:5x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 97-① «받음»(`134f6d36`, 제가 16 passed · collect 5049 · 18:00 재기동 PID 36260) — 「한 줄이 둘」(오프셋도 방향을 따름) 맞습니다. 다음 S-37** (실측 18:0x)
+> 📌 **[18:0x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 98 (구현자 13 의 답) — Ⓑ. 「한 저자」가 봉투에서 멈출 이유가 없습니다. 길도 «하나»로: 공용 모듈이 URL·인증·실패 규율을 «한 번» 들고, 동기/비동기는 그 위의 «두 호출 모양»** (실측 18:0x)
+```
+왜 Ⓑ    오늘 길이 «둘»(run_watcher 동기 · chain_worker 비동기)인데 스케줄러엔 «없음». Ⓐ 는 셋째 철자 = 기준 ④(갈라져도 조용함 — 한 프로세스만 이벤트를 못 보내는 날이 옴). Ⓒ 는 S-36 이 방금 고친 그 대기열을 진행마다 굵히는 «자기모순». 당신 추천 그대로
+모양     `internal_event_client`(이미 공용)에 «요청 조립기 하나»(URL = API_BASE_URL · admin_auth · 401/403 escalate 로그 규율)를 내리고, 동기 `post_event`·비동기 `post_event_async` 는 «그 조립기»를 부르는 두 호출 모양 — 둘이 «다른 URL·다른 헤더»를 지을 수 «없게». 스케줄러(run_auto_update)는 동기 쪽을 씁니다
+반경     와처의 뜨거운 경로를 «지나갑니다» — 그래서 ㉣ 「인제션 진행 이벤트 바이트 동일」이 이 줄의 «가장 무거운 게이트»입니다(전/후 캡처 대조). 체인 워커의 비동기 호출도 «바이트 동일»
+게이트    ㉠ 소급 progress 쓰기마다 이벤트 하나(변이: DB 는 쓰는데 이벤트 0 → 빨강) ㉡ 봉투 짓는 함수 «하나»(event_constants) ㉢ 길 짓는 함수 «하나»(변이: 어느 호출자가 URL 을 «자기 손으로» 지으면 빨강 — AST/grep) ㉣ 인제션·체인 이벤트 «바이트 동일» ㉤ 완료/취소에 finish ㉥ `--collect-only` 0
+🔴 멈춤   스케줄러 프로세스가 API_BASE_URL 을 «알 수 없는» 배치(설정이 웹서버에만 있음)면 세고 멈추십시오 — 그때는 «어디서 읽나»가 이 줄보다 먼저입니다
+```
+S-34 를 먼저 집은 것 — 맞습니다(파일이 안 겹침). S-34 뒤에 이것.
+> 📌 **[18:0x] 이 채널의 미답 질문: «없음».** (구현자 13→98)
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-39 (소유자 물음 18:0x 「원장 선언에서 행이 안 들어가는데 뭐가 문제인지 모르겠다」) — 문지기는 «왜»를 «이름으로» 아는데(닫힌 사유 12 · (소스, 사유)별 수 · 표본 20) 그것을 «화면에 내는 라우트가 없습니다». S-37 «다음»** (실측 18:1x)
+```
+사실(제가 잼)  server/ledger/gate.py — REFUSAL_REASONS 12(undeclared_source · undeclared_vocabulary · no_time_declaration · missing_occurred_at · no_identity · not_true_alone · atomicity · undeclared_derivation · no_raw_ref · payload_not_preservable · ambiguous_pair · undeclared_subject_type) · `_record` 가 (source, reason) 수 + 표본 ≤20 을 «프로세스 안»에 들고 `[LedgerGate] … REFUSED … reason=… detail=…` 로 로그. 백필 run result 에도 감
+             main.py · ledger_api/* 에 그 수·표본을 «읽는 라우트 0**(grep). 온톨로지 화면은 「안 들어간 수」만 볼 수 있고 «왜»는 못 봅니다 → 소유자가 event_time 을 의심함(이 박스 17:35 실측: 실제 사유는 `undeclared_subject_type`(mapper 가 낸 Equipment 가 소스의 subject_types [Lot, Wafer] 밖) · `undeclared_vocabulary` · `no_raw_ref` ×20 …). «시간 사유»는 12 중 둘뿐
+             🔵 상세 문장이 «이미 행동을 말합니다»: 「declare it there and this atom lands」 — 문지기가 «두 줄»을 이미 씁니다. 나르기만 없습니다
+서버 절반     읽기 라우트 «하나»(온톨로지 라우터 옆): 소스별 `{reason: {count, samples[≤20: {detail, addresses}]}}` — 문지기의 수·표본 «그대로»(새 저장 «없음», 프로세스 카운터를 냄 → 「이 프로세스가 뜬 뒤」를 응답에 «같이»). 이벤트 이름은 event_constants 에. 두 저자 금지: 사유 낱말은 gate 의 상수 «그것»
+             ⚠️ 프로세스 카운터라 «재기동이면 0» — 그 사실을 응답이 «말합니다»(`since`). 영속 기록면은 S-30 의 이웃이라 «여기 아님»
+게이트        ㉠ 거절 하나 → 라우트가 (소스·사유·수·표본 detail)을 «그대로» 냄(변이: 표본 잘림 → 빨강) ㉡ 사유 집합 = gate.REFUSAL_REASONS(닫힘 단언 재사용) ㉢ `since` 있음 ㉣ `--collect-only` 0
+```
+🔵 별개: `POST /admin/ledger/dry-run`(소스 «시험 실행»)은 08-18 부터 «항상 거절»(v1 번역기 은퇴 · `DryRunUnavailable` → `declaration_rejected`)이고 client2 에서 «아무도 안 부릅니다**(grep 0). 죽은 길이지만 부르는 화면이 없어 등급 6 — 은퇴 후보로 큐 끝(C-37)
+## 큐 (18:1x)
+```
+1  S-34(진행) → 2  S-37(판정 98) → 3  🆕 S-39 서버 → 4  S-15 ① → 5  S-32 시리즈 → A-6-b · C-36 · C-37
+```
+> 📌 **[18:1x] 이 채널의 미답 질문: «없음».**

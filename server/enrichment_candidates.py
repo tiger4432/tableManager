@@ -124,6 +124,8 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
     _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import paths
 
+import event_constants                                           # noqa: E402
+
 # Provenance of an automatic confirmation. Deliberately NOT added to
 # crud.SOURCE_PRIORITY: unregistered -> 99 -> lowest, exactly like
 # `enrichment_backfill`. Registering it would be the one
@@ -487,10 +489,21 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
             values[val] = values.get(val, 0) + count
             view_values.add(val)
             hits += count
+        # [S-34] 「잘렸다」의 철자를 정본 하나로. 이 자리는 «축이 둘»이고 종전에는 그중
+        # 하나만(`distinct_truncated`) 나가고 다른 하나(행 절단)는 «거절 사유»로만 나갔다 —
+        # 같은 사실의 두 철자였고, 한쪽만 읽는 쪽은 「행은 안 잘렸다」로 읽었다.
+        # 독자 «0** 이라(클라 전수 0) 옛 키를 남기는 두 걸음이 필요 없다.
         evidence.append({"label": label, "rows": probe["scanned"],
                          "distinct_values": len(probe["pairs"]),
                          "candidate_rows": hits,
-                         "distinct_truncated": probe["distinct_truncated"],
+                         "truncated": {
+                             "distinct": event_constants.truncated_note(
+                                 probe["distinct_truncated"], None,
+                                 "distinct values reached %s" % probe["distinct_values_cap"]),
+                             "rows": event_constants.truncated_note(
+                                 probe["row_truncated"], None,
+                                 "scan reached %s rows" % probe["scan_rows_cap"]),
+                         },
                          "scan_rows_cap": probe["scan_rows_cap"],
                          "distinct_values_cap": probe["distinct_values_cap"]})
         # Both truncations are the SAME fact - the read is incomplete - so both

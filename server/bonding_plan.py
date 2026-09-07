@@ -1098,13 +1098,24 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # 🔴 [S-5] 이 목록은 «조용히» 잘리고 있었다 — 최근 50건만 담고 그 사실을 «아무 데도»
     #    안 적었다. 그러면 「원래 50건」과 「500건 중 마지막 50」이 화면에서 «같아» 보인다.
     #    정본 모양이고(§`event_constants.truncated_note`), 축 이름은 그 목록의 이름이다.
-    # ⚠️ `counts_capped` 는 «다른 축»(영역 좌표 상한)이라 여기 안 접는다 — 다만 그것도
-    #    「잘렸다」의 또 다른 철자다. 그 정리는 이 라운드가 «받은 여섯» 밖이라 보고에만 적었다.
-    result["truncated"] = {"history": event_constants.truncated_note(
-        bool(history_cut), None,
-        "history beyond HISTORY_LIMIT (the most recent %d are shown)" % HISTORY_LIMIT)}
-    result["counts_capped"] = {"cap": MAX_REGION_POINTS,
-                               "roles": sorted(set(capped_roles))}
+    # 🔴 [S-34 · 판정 86 ③] `counts_capped` 가 이 지도의 «축»이 된다. 그것은 「다른 축」이지
+    #    「다른 사실」이 아니었다 — 영역 좌표가 상한에 닿아 «집계가 잘렸다»이고, 정본은 그
+    #    사실의 이름이 `truncated` 하나여야 한다고 말한다.
+    #    ⚠️ `roles` 를 «잃지 않는다**: 어느 집계 역할이 상한에 닿았는지는 정본 모양이
+    #    말하지 않는 «여분»이고, 판정 81 이 축에 여분을 허용한다. 그 이름을 잃으면 운영자는
+    #    「무엇이 잘렸나」를 다시 물어야 한다.
+    #    「항상 싣는다」(P-7)는 정본의 «cut 항상 존재»와 같은 규율이라 접어도 그대로다.
+    _capped_roles = sorted(set(capped_roles))
+    result["truncated"] = {
+        "history": event_constants.truncated_note(
+            bool(history_cut), None,
+            "history beyond HISTORY_LIMIT (the most recent %d are shown)" % HISTORY_LIMIT),
+        "region_counts": dict(
+            event_constants.truncated_note(
+                bool(_capped_roles), None,
+                "region coordinates reached MAX_REGION_POINTS (%d)" % MAX_REGION_POINTS),
+            cap=MAX_REGION_POINTS, roles=_capped_roles),
+    }
     if region_counts is not None:
         region_counts["remaining"] = (
             region_counts["total"] - region_counts["defect"]

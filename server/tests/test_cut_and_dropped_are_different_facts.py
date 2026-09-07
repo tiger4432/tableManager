@@ -24,7 +24,9 @@ import event_constants as ec                                     # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FOLDED = ("chain_key_gate.py", "database/crud.py", "parsers/void_sat_format.py",
-          "chain_replay.py", "main.py", "event_constants.py")
+          "chain_replay.py", "main.py", "event_constants.py",
+          # [S-34 첫 커밋] 독자가 «0» 이라 두 걸음 없이 접힌 둘.
+          "bonding_plan.py", "enrichment_candidates.py")
 
 
 # ============================================ 1. 정본이 «하나»다
@@ -83,7 +85,12 @@ def test_the_folded_names_are_gone_from_the_wire():
     """정본으로 옮긴 여섯은 «이름으로» 남아 있으면 안 된다 — 두 철자가 다시 생긴다.
     ⚠️ 지역 변수·인자 이름은 «발신자의 말»이라 세지 않는다. 재는 것은 «dict 키»다."""
     retired = {"rows_omitted", "details_omitted", "deleted_row_ids_omitted",
-               "delete_ids_omitted", "changes_truncated"}
+               "delete_ids_omitted", "changes_truncated",
+               # [S-34] `counts_capped` 는 `truncated.region_counts` 가 됐고,
+               # 증거 항목의 `distinct_truncated` 는 `truncated.distinct` 가 됐다.
+               # ⚠️ `enrichment_config` 의 «프로브 반환 계약» 은 전선이 아니라
+               #    그대로다 — 이 조사는 «나가는 키»만 셀다.
+               "counts_capped", "distinct_truncated"}
     for name in FOLDED:
         tree = ast.parse(open(os.path.join(SERVER, name), encoding="utf-8").read())
         for node in ast.walk(tree):
