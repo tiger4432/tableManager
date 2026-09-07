@@ -37,6 +37,7 @@ import os
 logger = logging.getLogger(__name__)
 
 import paths  # single override point (ASSY_DATA_ROOT)
+import event_constants
 CONFIG_PATH = paths.config_path("bonding_plan_config.json")
 
 ROLES = ("process_history", "defect", "eds_fail", "used_chips", "total_chips")
@@ -830,6 +831,8 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0}
     region_counts = {"total": 0, "defect": 0, "eds_fail": 0, "used": 0} if rects is not None else None
     history = []
+    #: 그 갈래가 안 돌면 목록이 «없는» 것이고, 없는 목록은 잘리지 않았다.
+    history_cut = False
     warnings_out = []
     meta_cache = {}          # 요청 경계 스냅샷 — 같은 (table, map_id) 재조회 금지
 
@@ -1024,7 +1027,12 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                     cols["slot"] == map_overlay.canonical_role_value(src, "slot", slot))
                 if "time" in cols:
                     q = q.order_by(cols["time"].desc())
-                rows = q.limit(HISTORY_LIMIT).all()
+                # 🔴 상한 «+1» 을 뜬다. 51 건이 오면 「잘렸다」를 «질의 하나 없이» 안다 —
+                #    세려면 COUNT 가 하나 더 들고, 이 목록은 진단용이라 그 값을 안 문다.
+                #    그래서 `omitted` 는 «모른다»(None)이고, 그것이 0 과 다른 사실이다.
+                rows = q.limit(HISTORY_LIMIT + 1).all()
+                history_cut = len(rows) > HISTORY_LIMIT
+                rows = rows[:HISTORY_LIMIT]
                 rows.reverse()  # 시간 오름차순 (계약)
 
                 col_names = src["columns"]
@@ -1087,6 +1095,14 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # [P-7] 잘린 집계가 «있으면 어느 것인지», 없으면 «없다»고 말한다. `frame_basis` 와 같은
     # 규율로 **항상 싣는다** — 이 키가 없으면 읽는 쪽은 「안 잘렸다」와 「이 서버는 그 말을
     # 안 한다」를 구별할 수 없다. 기존 키는 한 글자도 바뀌지 않는 추가 전용 필드다.
+    # 🔴 [S-5] 이 목록은 «조용히» 잘리고 있었다 — 최근 50건만 담고 그 사실을 «아무 데도»
+    #    안 적었다. 그러면 「원래 50건」과 「500건 중 마지막 50」이 화면에서 «같아» 보인다.
+    #    정본 모양이고(§`event_constants.truncated_note`), 축 이름은 그 목록의 이름이다.
+    # ⚠️ `counts_capped` 는 «다른 축»(영역 좌표 상한)이라 여기 안 접는다 — 다만 그것도
+    #    「잘렸다」의 또 다른 철자다. 그 정리는 이 라운드가 «받은 여섯» 밖이라 보고에만 적었다.
+    result["truncated"] = {"history": event_constants.truncated_note(
+        bool(history_cut), None,
+        "history beyond HISTORY_LIMIT (the most recent %d are shown)" % HISTORY_LIMIT)}
     result["counts_capped"] = {"cap": MAX_REGION_POINTS,
                                "roles": sorted(set(capped_roles))}
     if region_counts is not None:
