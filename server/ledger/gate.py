@@ -74,6 +74,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import contextlib
+import datetime as _dt
 import logging
 import threading
 
@@ -230,6 +231,10 @@ _rows_refused: dict = {}
 # it rides in the same heartbeat.
 _incomplete: dict = {}
 _samples: list = []
+#: 🔴 [S-39] 이 수들이 «언제부터»인가. 프로세스 집계라 재기동이면 0 이고, `since` 가 없으면
+#: 「거절이 없었다」와 「방금 떠서 아직 모른다」가 «같은 응답»이 된다 — 그 둘은 운영자에게
+#: 정반대 행동이다(하나는 「됐다」, 하나는 「더 기다려라」).
+_since = _dt.datetime.now(_dt.timezone.utc)
 
 
 def refusals() -> dict:
@@ -257,8 +262,58 @@ def samples() -> list:
     return list(_samples)
 
 
+def counting_since():
+    """이 프로세스가 세기 시작한 시각(UTC). 재기동이면 여기부터다."""
+    return _since
+
+
+def refusal_report() -> dict:
+    """문지기가 «이미 아는 것»을 화면이 읽을 수 있는 모양으로. 새 저장은 «없다**.
+
+    🔴 [S-39] 왜 있나: 이 모듈은 거절을 «사유 이름»으로 세고 표본까지 들고 있는데, 그것을
+       내놓는 라우트가 «하나도 없었다**(main·ledger_api 전수 0). 그래서 온톨로지 화면은
+       「몇 행이 안 들어갔나」만 볼 수 있고 «왜»는 못 봤고, 운영자는 짐작으로 시간 선언을
+       의심했다 — 실제 사유가 `undeclared_subject_type` 인 날에도. 사유 열둘 중 시간에
+       관한 것은 «둘»뿐이다.
+
+    ⚠️ 사유 낱말을 «여기서 짓지 않는다**. `REFUSAL_REASONS` 그것이고, 응답이 그 집합을
+       같이 실어 화면이 자기 목록을 «따로» 들 이유를 없앤다.
+    ⚠️ 표본은 이 모듈이 «전역 20건»으로 이미 자른다. 그 절단을 정본 모양으로 말한다 —
+       안 말하면 「거절이 20건이었다」와 「20건까지만 봤다」가 화면에서 같아 보인다.
+    """
+    import event_constants
+
+    sources: dict = {}
+    for (source, reason), count in _refusals.items():
+        bucket = sources.setdefault(source, {
+            "rows_refused": _rows_refused.get(source, 0),
+            "atoms_lost": _atoms_lost.get(source, 0),
+            "incomplete_molecules": _incomplete.get(source, 0),
+            "reasons": {},
+        })
+        bucket["reasons"][reason] = {
+            "count": count,
+            "samples": [dict(s) for s in _samples
+                        if s.get("source") == source and s.get("reason") == reason],
+        }
+    total = sum(_refusals.values())
+    kept = len(_samples)
+    return {
+        "since": _since.isoformat(),
+        "sources": sources,
+        "declared_reasons": sorted(REFUSAL_REASONS),
+        "samples_cap": MAX_REFUSAL_SAMPLES,
+        "truncated": {"samples": event_constants.truncated_note(
+            total > kept, (total - kept) if total > kept else None,
+            "only the first %d refusals of this process keep a sample"
+            % MAX_REFUSAL_SAMPLES)},
+    }
+
+
 def reset_counters():
     """Drop the process counters. For tests only - nothing in production calls this."""
+    global _since
+    _since = _dt.datetime.now(_dt.timezone.utc)
     _refusals.clear()
     _atoms_lost.clear()
     _rows_refused.clear()

@@ -2111,7 +2111,20 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         "history": history,
         "warnings": deg_warnings + inv_warnings + warnings_out,
     }
-    if by_core is not None:
+    if by_core is None:
+        # 🔴 [S-15 ①-a-0 · 판정 101] 코어 답도 «기준을 무엇으로 골랐나»를 말한다.
+        #    테이프 답은 `by_core[].frame_basis` 로 그것을 이미 말하고(S-9b), 코어 답만 그
+        #    칸이 없어서 「확정으로 골랐다」와 「이 서버는 그 말을 안 한다」가 «같은 침묵»이었다.
+        #    답을 지을 재료는 «이미 있다» — 나르개만 없었다(S-36·S-39 와 같은 부류).
+        #    ⚠️ `by_core` 를 «만들지 않는다» — 「코어 답엔 by_core 가 없다」는 기존 계약이고
+        #       (그 파일의 시험이 못 박는다), 여기서 물을 코어는 «자기 자신» 하나뿐이다.
+        #    ⚠️ 분기는 선언 낱말(`source_kind == "core"`)이 아니라 «구조»로 한다 —
+        #       by_core 가 없다는 것이 곷 「주어가 자기 자신」이다. 코드가 도메인 낱말로 갈래를
+        #       틀면 사용자가 선언을 바꾸는 날 그 갈래가 조용히 틀린다.
+        _self_basis = {}
+        _canonical_origin_meta(db, source_cfg, lot, slot, basis_out=_self_basis)
+        result["frame_basis"] = _self_basis.get((lot, slot))
+    else:
         result["by_core"] = by_core
         # 경로 마커 — 클라가 "코어별 불량 미상(영역 귀속 기준)" 안내를 띄울 근거
         result["by_core_origin"] = by_core_origin
