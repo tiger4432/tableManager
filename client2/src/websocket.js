@@ -5,7 +5,8 @@ import {
 import { state } from './state.js';
 import { elements } from './dom.js';
 import { checkServerHealth, loadTables, fetchData } from './api.js';
-import { showIngestionProgress, finishIngestionProgress, showToast, getLocalTimeString } from './utils.js';
+import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
+         finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
@@ -312,6 +313,24 @@ export function initWebSocket() {
 // Feature 2: WebSocket message processing for Real-time delta sync
 export function handleWebSocketMessage(msg) {
   if (msg.event === 'file_ingestion_progress') {
+    // 🔴 S-37. ONE EVENT NAME, TWO SUBJECTS. The server deliberately says "progress" with one
+    //    name — an operator has one idea of 「진행」, and a second name would grow a second
+    //    reader here. What differs is WHAT is progressing: ingestion names a table and a file,
+    //    a retroactive run names `run_id` and `op`. Sending the retroactive envelope down the
+    //    ingestion path is not merely mislabelled: `ingestionKey(undefined, undefined)` is the
+    //    SAME key for every run, so two concurrent runs would fight over one card.
+    // ⚠️ The fork is on `run_id` because that is the field that exists on exactly one of them.
+    if (msg.run_id != null) {
+      // 🔴 A run also ENDS on this event — there is no second "completed" name for it. The
+      //    status word is the server's, and it is the only thing that can say which end it was.
+      if (msg.status === 'FINISHED' || msg.status === 'CANCELLED') {
+        finishRetroactiveProgress(msg.run_id, msg.status);
+      } else {
+        showRetroactiveProgress(msg.run_id, msg.op, msg.progress,
+          msg.processed_rows, msg.total_rows);
+      }
+      return;
+    }
     showIngestionProgress(
       msg.table_name,
       msg.filename,
