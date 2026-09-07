@@ -965,16 +965,46 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
     return builder.seal()
 
 
+def _with_source_attributes(bind: Mapping[str, Any],
+                            by_type: Mapping[str, Any]) -> Mapping[str, Any]:
+    """One sentence's role bindings, with the source's attributes inherited.
+
+    Untouched when the source declares none, so this returns the same object and the
+    compiled bindings are the ones that were there before S-52.
+    """
+    if not by_type:
+        return bind
+    out = dict(bind)
+    for role, binding in bind.items():
+        if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+            continue
+        if isinstance(binding.get("attributes"), Mapping):
+            continue                     # the role said it itself; the role wins
+        inherited = (by_type.get(binding.get("entity_type")) or {}).get("attributes")
+        if isinstance(inherited, Mapping) and inherited:
+            out[role] = dict(binding, attributes=dict(inherited))
+    return out
+
+
 def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
     """One profile per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
     builder = _RegistryBuilder(ProfileRegistry)
     for source_id, source in section.items():
         item = source["bind"]
         path = f"bundle.sources.{source_id}.bind"
+        # 🔴 THE SOURCE'S ATTRIBUTE BINDINGS ARE FOLDED IN HERE, ONCE (S-52, ruling 124).
+        # `bind.entities.<type>.attributes` is written once per source and inherited by
+        # every sentence using that type, and a role that carries its OWN `attributes`
+        # wins - the override that exists for a sentence binding one type in two roles.
+        #
+        # Folding at COMPILE time rather than at evaluation is what keeps "the role wins"
+        # a single expression instead of a rule the runtime re-derives per unit, and it
+        # is why a declaration with no attributes compiles to byte-identical bindings.
+        by_type = item.get("entities") or {}
         mappings = MappingProxyType({
             sentence: ProfileMappingDescriptor(
                 predicate_id=mapping["predicate"],
-                bindings=_freeze(mapping["bind"]),
+                bindings=_freeze(_with_source_attributes(mapping["bind"], by_type)),
                 config_path=f"{path}.mappings.{sentence}",
             )
             for sentence, mapping in sorted(item["mappings"].items())

@@ -843,7 +843,20 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
             key: _evaluate_binding(child, unit, path=f"{path}.keys.{key}")
             for key, child in binding.get("keys", {}).items()
         }
-        return {"type": binding.get("entity_type"), "keys": keys}
+        payload = {"type": binding.get("entity_type"), "keys": keys}
+        # 🔴 ATTRIBUTES RIDE BESIDE THE KEYS AND ARE NOT PART OF THE IDENTITY (S-52). Two
+        # atoms differing only in an attribute name the SAME entity: the id and the
+        # duplicate check read `keys` alone. The key is ABSENT rather than empty when the
+        # declaration binds none, so an atom written before this axis existed and one
+        # written after with nothing declared are the same bytes.
+        attributes = binding.get("attributes")
+        if isinstance(attributes, Mapping) and attributes:
+            payload["attributes"] = {
+                name: _evaluate_binding(child, unit,
+                                        path=f"{path}.attributes.{name}")
+                for name, child in attributes.items()
+            }
+        return payload
     raise RoleFrameError(
         "unsupported_binding", f"{path}.kind",
         f"binding kind {kind!r} is not supported by Stage 4")
@@ -1034,10 +1047,17 @@ def _validate_role_value(
         raise RoleFrameError(
             "missing_role_value", path, "present Role values cannot be null/missing")
     if kind == "entity":
-        if not isinstance(value, Mapping) or set(value) != {"type", "keys"}:
+        # 🔴 `attributes` JOINS THE SHAPE ON 2026-09-08 (S-52) AND THE CHECK STAYS EXACT.
+        # It is optional, so a payload built before this axis existed still passes
+        # unchanged - and every OTHER name is still refused, which is the point: this is
+        # what stops a mapper inventing a third field the ledger would then carry forever.
+        # `attributes` is not part of the identity; `keys` alone decide sameness.
+        if (not isinstance(value, Mapping)
+                or not {"type", "keys"} <= set(value)
+                or not set(value) <= {"type", "keys", "attributes"}):
             raise RoleFrameError(
                 "invalid_entity_ref", path,
-                "entity Role must be exactly {'type', 'keys'}")
+                "entity Role must be {'type', 'keys'} with an optional 'attributes'")
         entity_type = value.get("type")
         entity = snapshot.entities.get(entity_type)
         if entity is None:

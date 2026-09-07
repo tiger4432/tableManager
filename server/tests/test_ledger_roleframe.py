@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 from datetime import datetime
 from pathlib import Path
 
@@ -496,3 +497,73 @@ def test_all_eventframe_context_attributes_are_preserved_in_roleframe():
         mapper_context(compiled, "input_rows"), source, implementations())
     for name in EVENT_FRAME_REQUIRED_ATTRS:
         assert result.attrs[name] == source.attrs[name]
+
+
+# ---------------------------------------------------------------------------
+# S-52 ②  속성은 «키 옆»에 실리고, «정체성이 아니다»
+# ---------------------------------------------------------------------------
+
+def _bundle_with_attribute(column="event_key"):
+    """소스가 `InputEntity@1` 의 `product` 를 «한 번» 맵는 번들."""
+    raw = logical_bundle()
+    raw["entities"]["InputEntity@1"]["attributes"] = ["product"]
+    raw["sources"]["input_rows"]["bind"]["entities"] = {
+        "InputEntity@1": {"attributes": {"product": {"kind": "column",
+                                                     "column": column}}}}
+    return raw
+
+
+def _subject_of(raw, want_source=False):
+    compiled = snapshot(raw)
+    context = mapper_context(compiled, "input_rows")
+    source = event_frame(compiled)
+    frame = map_event_frame(context, source, implementations())
+    subject = frame.iloc[0]["roles"]["subject"]
+    return (subject, source) if want_source else subject
+
+
+def test_an_entity_payload_carries_its_attributes_beside_its_keys():
+    subject, source = _subject_of(_bundle_with_attribute(), want_source=True)
+
+    assert subject["keys"] == {"input_id": "IN-1"}
+    # 값은 픽스처에서 «읽는다** — 여기에 적으면 컬럼이 바뀌는 날 이 시험이 «그 이유로» 죽는다.
+    assert dict(subject["attributes"]) == {"product": source.iloc[0]["event_key"]}
+
+
+def test_the_source_binds_it_once_and_every_sentence_of_that_source_inherits_it():
+    """㉦ 판정 124 의 핵심. 속성이 «문장의 것»이면 K 문장에 K 번 적어야 하고, 그러면
+    어긋날 자리가 K 개다 — 그 불일치는 «이 스키마가 만든» 것이지 데이터의 것이 아니다."""
+    raw = _bundle_with_attribute()
+    # 같은 타입을 주어로 쓰는 «둘째 문장** — bind.entities 는 «그대로 하나**.
+    mappings = raw["sources"]["input_rows"]["bind"]["mappings"]
+    second = copy.deepcopy(mappings["main_transition"])
+    mappings["second_sentence"] = second
+    raw["vocabulary"]["moves_to@1"]["object"]["types"] = ["OutputEntity@1"]
+
+    compiled = snapshot(raw)
+    profile = compiled.profiles["input_rows"]
+    for sentence in ("main_transition", "second_sentence"):
+        bound = profile.mappings[sentence].bindings["subject"]["attributes"]
+        assert set(bound) == {"product"}, sentence
+
+
+def test_an_attribute_does_not_change_what_makes_two_rows_the_same_entity():
+    """🔴 이 축의 «판별식». 속성만 다른 두 원자는 «같은 엔티티»다 — id 와 중복 판정은
+    `keys` «만» 읽는다. 이게 깨지면 속성 하나를 더할 때마다 원장이 «새 노드»를 낳는다."""
+    plain = _subject_of(logical_bundle())
+    with_attr = _subject_of(_bundle_with_attribute())
+    other_value = _subject_of(_bundle_with_attribute(column="source_id"))
+
+    assert with_attr["keys"] == plain["keys"]
+    assert other_value["keys"] == with_attr["keys"]
+    assert other_value["attributes"] != with_attr["attributes"], (
+        "the fixture must actually differ, or this asserts nothing")
+
+
+def test_a_declaration_that_binds_no_attribute_produces_the_payload_it_always_did():
+    """㉤ 무회귀. «키 없음»이지 «빈 값»이 아니다 — 이 축이 있기 «전»에 쓰인 원자와
+    이 축이 있고 «안 적은» 선언의 원자가 «같은 바이트»여야 한다."""
+    subject = _subject_of(logical_bundle())
+
+    assert subject == {"type": "InputEntity@1", "keys": {"input_id": "IN-1"}}
+    assert "attributes" not in subject
