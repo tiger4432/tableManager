@@ -55,6 +55,18 @@ def explorer_view(
         raise _refusal(exc) from exc
 
 
+@router.get("/refusals", dependencies=[Depends(require_admin_token)])
+def explorer_refusals() -> dict[str, Any]:
+    """문지기가 «왜» 거절했나 — 소스별·사유별 수와 표본.
+
+    읽기뿐이다: DB 를 안 건드리고 새로 저장하는 것이 없다. 문지기가 이 프로세스 안에
+    이미 들고 있는 수를 그대로 낸다(`since` 가 「언제부터」를 같이 말한다).
+    """
+    from ledger import gate
+
+    return gate.refusal_report()
+
+
 @router.get("/columns", dependencies=[Depends(require_admin_token)])
 def column_picker(
     relation: str = Query(...),
