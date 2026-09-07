@@ -110,7 +110,8 @@ import paths                                                        # noqa: E402
 #    (env DATABASE_URL > <config>/database.json > default), so this script and the
 #    server cannot end up looking at different databases. A clean report about a
 #    database nobody asked about is worse than an error.
-DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
+#: 🔴 위 주석의 약속(「서버와 다른 DB 를 볼 수 없다」)은 값이 «사본이 아닐 때만» 참이다.
+DEFAULT_PG_URL = paths.DEFAULT_PG_URL
 
 # The server's own pool arithmetic, quoted from server/database/database.py:48-49.
 # Kept as constants so the printed budget and the engine cannot drift apart

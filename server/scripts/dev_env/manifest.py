@@ -21,6 +21,7 @@ import hashlib
 import argparse
 from datetime import datetime, date
 from decimal import Decimal
+import paths
 
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
@@ -91,8 +92,7 @@ def capture_db(db_url):
 
 
 def cmd_capture(args):
-    db_url = args.db_url or os.getenv("DATABASE_URL") or \
-        "postgresql://postgres:admin@localhost:5432/assy_manager"
+    db_url = args.db_url or os.getenv("DATABASE_URL") or paths.DEFAULT_PG_URL
     snap = {
         "captured_at": datetime.now().isoformat(),
         "db_url": db_url,

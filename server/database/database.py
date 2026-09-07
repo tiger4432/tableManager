@@ -21,7 +21,8 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
     import paths as _paths
     import db_safety as _db_safety
 
-DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
+#: 값의 집은 `paths` 다(해석기 옆). 여기서 다시 내보내 기존 import 를 그대로 둔다.
+DEFAULT_PG_URL = _paths.DEFAULT_PG_URL
 # DB_URL_SOURCE: "env" | "config file" | "default" - logged (masked) at boot by main.py.
 SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE = _paths.resolve_database_url(DEFAULT_PG_URL)
 

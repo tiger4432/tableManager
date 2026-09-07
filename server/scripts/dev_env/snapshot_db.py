@@ -41,7 +41,8 @@ from sqlalchemy.engine.url import make_url
 
 import db_safety
 
-DEFAULT_SOURCE = "postgresql://postgres:admin@localhost:5432/assy_manager"
+#: 정본을 «부른다» — 스냅숏 출처의 기본값은 서버의 기본 DB 와 «같은 값»이어야 한다.
+DEFAULT_SOURCE = paths.DEFAULT_PG_URL
 DEFAULT_TARGET = "postgresql://postgres:admin@localhost:5432/assy_qa"
 
 CHUNK = 1000  # rows per round trip (10M-row discipline: never load a table whole)

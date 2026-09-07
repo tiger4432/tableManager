@@ -64,7 +64,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import sqlalchemy as sa
 
-DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
+DEFAULT_PG_URL = paths.DEFAULT_PG_URL
 STATEMENT_TIMEOUT_MS = 15000
 SEP = "=" * 78
 SUB = "-" * 78

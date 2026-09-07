@@ -107,6 +107,14 @@ def describe():
 
 DB_CONFIG_FILENAME = "database.json"
 
+#: 그 사슬의 «마지막 단계». 여기 사는 이유는 «해석기 바로 옆»이기 때문이다 — 값과 순서를
+#: 한 자리에서 읽는다. `database.database` 가 이것을 다시 내보내므로 기존 import 는 그대로다.
+#: 🔴 [C-20 ㉠] 이 값이 스크립트 «넷»에 손으로 다시 적혀 있었다. 그중 하나
+#:    (`diagnose_slow_after_ingest`)는 주석에 「이 스크립트와 서버가 «다른 DB» 를 볼 수 없다」
+#:    고 «약속»해 두었는데, 값이 사본이라 정본이 바뀌는 날 그 약속이 조용히 거짓이 된다.
+#: ⛔ `paths` 는 DB 엔진을 만들지 않는다 — 그래서 진단 스크립트가 부작용 없이 부를 수 있다.
+DEFAULT_PG_URL = "postgresql://postgres:admin@localhost:5432/assy_manager"
+
 
 def mask_db_password(url):
     """``postgresql://user:secret@host/db`` -> ``postgresql://user:***@host/db``.
