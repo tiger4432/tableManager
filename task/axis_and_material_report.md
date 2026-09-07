@@ -1,3 +1,63 @@
+# [디자인 -> 총괄] 🔴 **② 착수 «전» 읽기(코드 0) — 세 자리는 «맞게» 섰습니다. 다만 자리가 «넷»입니다: `binding` 의 `attributes` 가 «유일하게 안 잠긴» 칸이라, 서버가 «거절할» 두 종류에도 그려집니다**
+
+```
+한 줄   재기동 기다리는 동안 «읽기»만 했습니다. ② 는 아직 «안 잡았습니다»
+```
+
+## ① 세 자리는 섰습니다 (`5b28f832`)
+```
+root.entities.*.attributes                        map keyed_by=index · of leaf   -> 이름 «목록». 문법(_nonblank_list)과 일치
+root.sources.*.bind.entities.*.attributes         map keyed_by=name  · of binding -> «정본 자리». bind 가 {entities, mappings} 로 늘었습니다
+root.sources.*.bind.mappings.*.bind.*.attributes  map keyed_by=name  · of binding -> 역할 수준(덮어쓰기)
+```
+
+## ② 그런데 «넷째»가 나옵니다 — 그리고 그건 실수가 아니라 «한 칸이 안 잠겨서»입니다
+```
+넷째   root.sources.*.bind.entities.*.attributes.*.attributes
+       = 「속성의 «바인딩» 안에 또 속성」
+스켈레톤 defs.binding 의 필드 여섯, 그중 «다섯»이 kind 로 잠겨 있습니다:
+       column      when kind=column
+       value       when kind=constant
+       entity_type when kind=entity
+       keys        when kind=entity
+       attributes  when «null»   <- 잠금 «없음». 이 칸만
+클라    ontology_skeleton.js:fieldApplies — `if (!field.when) return true`  => «언제나 그립니다»
+서버    setup_bundle.py:1367-1383  kind=column  -> allowed ("kind","column")
+                                   kind=constant-> allowed ("kind","value")
+                                   kind=entity  -> allowed ("kind","entity_type","keys","attributes")
+       problems.exact 가 그 밖의 키를 «거절»합니다. `attributes` 는 _RETIRED_BINDING_FIELDS 에도 «없습니다»
+```
+🔴 **그래서 column·constant 바인딩에 그 상자가 «그려지는데», 값이 들어가면 저장이 «거절»됩니다.**
+그리고 속성 «자신»의 바인딩은 문법이 column·constant «만» 허용하므로(`setup_bundle.py:1380-1387`
+「entity attributes allow only column or constant bindings」), 넷째 자리는 **어떤 경우에도 합법이 될 수 없습니다**.
+
+## ③ 이 부류의 이름 — 「폼이 그리는데 서버가 거절한다」
+```
+증상   운영자가 «맞는 거절»을 「버튼이 고장」으로 읽습니다. 오류가 늦게, 저장할 때 납니다
+자리   server/ledger/ledger_skeleton.json 의 `defs.binding.attributes` 에 `when {field:"kind", is:"entity"}` 한 줄
+       -> `server/**` 라 «제 파일이 아닙니다». 보고만 합니다. 서버 ⑥ 재기동 «전»에 넣으면 왕복이 한 번 줍니다
+```
+
+## ④ 판정 124 의 「덮어쓰기가 «보이게»」 — 지금은 «보이게 하는 것이 없습니다»
+역할 수준 자리가 `keys` 옆에 «같은 모양»으로 서 있고, 위 잠금이 없어서 «모든 바인딩»에 뜹니다.
+그래서 「이건 덮어쓰기」라는 것이 자리로도 접힘으로도 «안 드러납니다». ②의 몫이고, 재기동 뒤에 잡겠습니다.
+
+## ⑤ 찾은 것 · 해결 여부 · 모르는 것
+```
+찾은 것   위 ②(안 잠긴 칸 하나 -> 잘못 그려지는 자리 둘)
+해결      ❌ 안 고쳤습니다 — server/** 입니다
+🔴 모르는 것
+  · 손 안 댄 «빈» 상자가 저장에 «실리는지»는 안 쟀습니다. 실리면 «column 바인딩 저장 전부»가 깨지고,
+    안 실리면 「눌러도 아무 일 없는 칸」입니다. 둘 다 결함이지만 «크기»가 다릅니다 — ② 착수 때 재겠습니다
+  · ② 자체는 «안 잡았습니다». 지시대로 재기동 알림을 기다립니다
+```
+
+🔒 **판정 대기:** `defs.binding.attributes` 의 `when` 한 줄을 서버 ⑥ 에 «같이» 넣으실지
+
+**멈췄습니다.** `git status --short` «비어 있음»(관측).
+
+---
+
 # [디자인 -> 총괄] 🔵 **C-40 ① 착지 (`22db1555`) — 표가 속성을 그리고, «몇 개가 어긋나는지»를 말합니다. 계약 절반이 «PENDING 0»이 됐습니다(30/0). 하니스 39→45 · 변이 13→16**
 
 ```
