@@ -1264,7 +1264,10 @@ def comparison_text_value(value):
 
 def get_row_by_business_key(db: Session, table_name: str, key_value: Any):
     """테이블별 비즈니스 키를 기반으로 행을 조회합니다. (인덱스 컬럼 사용으로 최적화)"""
-    target_val = str(key_value).strip() if key_value is not None else ""
+    # `clean_str_value`, not `str().strip()`: an identity has ONE spelling and the
+    # writers use that function. A float 1234.0 is `'1234'` there and would be
+    # `'1234.0'` here, so this lookup would miss the row it stored itself.
+    target_val = clean_str_value(key_value) if key_value is not None else ""
     if not target_val:
         return None
         
@@ -2498,7 +2501,13 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
     def _apply(raw):
         if raw is None:
             return
-        str_val = str(raw).strip()
+        # THE SAME FUNCTION the item's key was built with (`mapper_sdk.df_to_updates`,
+        # `compose_business_key`) and the same one `get_row_by_business_key` reads with.
+        # `str().strip()` is a SECOND spelling: it renders a float 1234.0 as `'1234.0'`
+        # where every other side of this seam says `'1234'`, so the row is stored under a
+        # key nothing looks it up by and the next push inserts another copy - without
+        # colliding on `uq_bk_`, because the two strings differ.
+        str_val = clean_str_value(raw)
         if str_val == "":
             # Blank -> write nothing. Never `''` (a shared identity that collides), and
             # never a clear (it destroys a map row's key on re-push). See the docstring.
@@ -2508,10 +2517,16 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
             if row_cache is not None:
                 row_cache[str_val] = row
 
-    if not key_col and update_item.business_key_val:
-        # Source-exact composite schemas deliberately have no physical key column.
-        # `assemble_composite_business_key` already produced the canonical identity;
-        # persist it in the framework column instead of inventing a source column.
+    if update_item.business_key_val:
+        # 🔴 THE ITEM'S OWN KEY WINS, WHETHER OR NOT THE TABLE HAS A KEY COLUMN. It is
+        # what the row was LOOKED UP by - `_get_or_create_row` and the batch prefetch
+        # both filter on `business_key_val` - so storing anything else means the row is
+        # found by one string and saved under another.
+        #
+        # This branch used to be guarded on `not key_col`, i.e. it only ran for
+        # source-exact composite schemas with no physical key column. A plain-keyed
+        # table has one, so it fell to the branch below and re-derived the identity from
+        # the payload instead of keeping the one it had just resolved on.
         _apply(update_item.business_key_val)
     elif key_col and key_col in update_item.updates:
         _apply(update_item.updates[key_col])

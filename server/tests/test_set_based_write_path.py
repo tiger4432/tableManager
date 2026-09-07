@@ -179,6 +179,125 @@ def test_a_business_key_with_surrounding_whitespace_still_matches(db_session):
     assert results[0][0].bn == "updated"
 
 
+# --------------------------------------------------------------------------
+# 1-bis. One identity, one spelling
+#
+# 🔴 THE SAME DEFECT CLASS AS THE WHITESPACE TEST ABOVE, ON A DIFFERENT AXIS. There the
+# two sides agreed on how to strip; here they disagreed on how to render a float. A
+# plain-keyed table's identity was built by `clean_str_value` (SDK, and the composite
+# assembler), looked up by `business_key_val`, and then STORED by `str().strip()` - so
+# 1234.0 was found as `'1234'` and saved as `'1234.0'`. Nothing errored: the strings
+# differ, so `uq_bk_` does not fire, and the next push simply inserts another copy.
+#
+# A float arrives on the ordinary path, not an exotic one: `pd.read_sql` types a numeric
+# SQL column as float64, which is exactly what the SDK's own `sql()` helper hands the
+# author.
+# --------------------------------------------------------------------------
+
+PLAIN = "inventory_master"          # plain `business_key`: part_no. No composite.
+
+
+def _plain_item(part_no, qty, key=None, row_id=None):
+    """An SDK-shaped item carries `business_key_val` (that is what `df_to_updates`
+    lifts); a grid-shaped one carries `row_id` and leaves the key to the writer."""
+    return schemas.GeneralUpdateItem(
+        row_id=row_id, business_key_val=key,
+        updates={"part_no": part_no, "stock_qty": qty},
+        source_name="probe.csv", updated_by="watcher")
+
+
+def _plain_rows(db, prefix):
+    model = models.DYNAMIC_TABLES[PLAIN]
+    return [r for r in db.query(model).all()
+            if str(r.business_key_val or "").startswith(prefix)]
+
+
+def test_a_float_identity_is_stored_under_the_spelling_it_was_resolved_by(db_session):
+    """Push the same row twice, a batch apart. The second must LAND ON the first.
+
+    The item resolves on `business_key_val` = '1234' and the payload carries the float
+    1234.0. Re-deriving the stored key from the payload writes '1234.0', so the second
+    push looks up '1234', misses, and inserts - without colliding, because the strings
+    differ."""
+    for qty in (1, 2):
+        crud.apply_batch_updates(db_session, PLAIN,
+                                 _batch([_plain_item(1234.0, qty, key="1234")]))
+    rows = _plain_rows(db_session, "1234")
+    assert len(rows) == 1, [r.business_key_val for r in rows]
+    assert rows[0].business_key_val == "1234"
+    assert rows[0].stock_qty == 2
+
+
+def test_two_items_with_one_float_identity_are_one_row_inside_a_batch(db_session):
+    """The in-batch half. A new row is cached with no key at creation time, so the row
+    cache is repopulated from whatever the writer stores - a second spelling there makes
+    the SECOND item of the SAME batch miss."""
+    crud.apply_batch_updates(db_session, PLAIN, _batch([
+        _plain_item(77.0, 1, key="77"),
+        _plain_item(77.0, 5, key="77"),
+    ]))
+    rows = _plain_rows(db_session, "77")
+    assert len(rows) == 1, [r.business_key_val for r in rows]
+    assert rows[0].business_key_val == "77"
+
+
+def test_a_key_the_writer_derives_itself_gets_the_same_spelling(db_session):
+    """The other door: a grid-shaped item names a `row_id` and carries no key, so the
+    writer derives one from the payload. That derivation is the one that used to render
+    a float differently - and the proof is that an SDK-shaped push afterwards, carrying
+    the SDK's spelling, must land on THIS row rather than make a second."""
+    model = models.DYNAMIC_TABLES[PLAIN]
+    seeded = model(row_id="FLOATKEY_SEED", part_no=None, stock_qty=0)
+    db_session.add(seeded)
+    db_session.commit()
+
+    crud.apply_batch_updates(db_session, PLAIN,
+                             _batch([_plain_item(5150.0, 1, row_id="FLOATKEY_SEED")]))
+    assert _plain_rows(db_session, "5150")[0].business_key_val == "5150"
+
+    crud.apply_batch_updates(db_session, PLAIN,
+                             _batch([_plain_item(5150.0, 9, key="5150")]))
+    rows = _plain_rows(db_session, "5150")
+    assert len(rows) == 1, [r.business_key_val for r in rows]
+    assert rows[0].row_id == "FLOATKEY_SEED" and rows[0].stock_qty == 9
+
+
+def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_session):
+    """🔴 THE DISCRIMINATING CASE FOR *WHOSE* VALUE IS STORED, and it needs the two to be
+    values one spelling cannot reconcile. A float payload folds to the item's key, so a
+    fixture built on one proves only the spelling half - it passes with the writer still
+    re-deriving. Here the payload carries the STRING '1234.0', which `clean_str_value`
+    leaves alone, while the item was resolved by '1234'.
+
+    The item's key is what the prefetch filtered on and what `_get_or_create_row`
+    matched, so storing anything else saves the row under a handle nothing looks it up
+    by."""
+    item = schemas.GeneralUpdateItem(
+        business_key_val="1234",
+        updates={"part_no": "1234.0", "stock_qty": 1},
+        source_name="probe.csv", updated_by="watcher")
+    crud.apply_batch_updates(db_session, PLAIN, _batch([item]))
+
+    rows = _plain_rows(db_session, "1234")
+    assert len(rows) == 1
+    assert rows[0].business_key_val == "1234", (
+        "the writer re-derived the identity from the payload; the row is now stored "
+        "under a key the batch never resolved on")
+
+
+def test_the_read_side_spells_a_float_the_way_the_write_side_did(db_session):
+    """`get_row_by_business_key` is the other end of the same seam. Given the value the
+    payload carried, it must reach the row that value stored.
+
+    ⚠️ It folds a FLOAT, not a string that looks like one: `'931.0'` is a different
+    identity and stays one. This unifies how a VALUE is spelled, it does not add
+    string-level normalisation."""
+    crud.apply_batch_updates(db_session, PLAIN,
+                             _batch([_plain_item(931.0, 8, key="931")]))
+    found = crud.get_row_by_business_key(db_session, PLAIN, 931.0)
+    assert found is not None and found.business_key_val == "931"
+
+
 def test_a_rename_inside_one_batch_does_not_orphan_the_old_key(db_session):
     """🔴 The case that makes the SUBTRACTION in `probed_identity` load-bearing.
 
