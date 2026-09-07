@@ -38,7 +38,7 @@
 // says out loud that the harness dies before measuring anything.
 
 import { spawnSync } from 'node:child_process';
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1340,6 +1340,49 @@ for (const [name, why] of NOT_A_HARNESS) {
       + 'entry now skips nothing.');
   }
   console.log(`  · skipped (not a harness) ${name} — ${why}`);
+}
+
+// ── C-35 ③-0: THE ONE PATH THAT COULD STAY SILENT ────────────────────────────
+//
+// 🔴 The sweep above is a `readdirSync` and it is NOT recursive, so a `.mjs` in a SUBFOLDER
+//    of `client2/tests/` never runs and nothing says so. Today that is `lib/`, `fixtures/`
+//    and `oracle/` — libraries, correctly not run, and every one is imported by a harness.
+//    But a standalone harness dropped into one of those folders would be invisible forever,
+//    and 「a guard goes wrong the day it becomes reachable」 is exactly this shape.
+//
+// This is the RECURSIVE half of the `NOT_A_HARNESS` rule above: a file that is not run has
+// to be accounted for OUT LOUD. Here the account is 「something imports it」 — that is what
+// makes it a library rather than a forgotten harness.
+{
+  const subFiles = [];
+  for (const d of readdirSync(TESTS_DIR, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const dir = path.join(TESTS_DIR, d.name);
+    for (const g of readdirSync(dir, { withFileTypes: true })) {
+      if (g.isFile() && g.name.endsWith(".mjs")) subFiles.push(`${d.name}/${g.name}`);
+    }
+  }
+  // Who imports what. Read the gated harnesses AND the subfolder files themselves, because a
+  // library may be used only by another library.
+  const readers = [
+    ...harnesses.map((n) => path.join(TESTS_DIR, n)),
+    ...subFiles.map((rel) => path.join(TESTS_DIR, rel)),
+  ];
+  const corpus = readers.map((fp) => {
+    try { return readFileSync(fp, "utf8"); } catch { return ""; }
+  });
+  const orphans = subFiles.filter((rel) => {
+    const base = path.basename(rel);
+    const self = path.join(TESTS_DIR, rel);
+    return !corpus.some((text, i) => readers[i] !== self && text.includes(base));
+  });
+  if (orphans.length) {
+    fail(`these sit in a SUBFOLDER of \`client2/tests/\`, so this gate never runs them, and `
+      + `nothing imports them either: ${orphans.join(", ")}. A harness there would be `
+      + `invisible forever. Either something should import it (it is a library) or it belongs `
+      + `beside the other harnesses (it is a harness).`);
+  }
+  console.log(`  · subfolder .mjs accounted for: ${subFiles.length} (every one imported)`);
 }
 
 if (harnesses.length === 0) {
