@@ -123,7 +123,7 @@ function paintLockMessage() {
 }
 
 // 이 좌표를 편집(페인트/지우기)할 수 없는가 — 전 편집 경로의 단일 관문
-function isProtectedFCell(key) {
+export function isProtectedFCell(key) {
   return loadedFCells.has(key) || isOverlayLocked(key);
 }
 
@@ -300,7 +300,7 @@ function defaultLegendRows() {
 // [U6] Declared default_legend row for one value — the lookup dictionary consulted when
 // a value is AUTO-added to the legend (autopaint E1/E2, unknown pasted/imported values,
 // map-load legend build). Declared row wins color/desc; else the palette rule.
-function declaredLegendRow(value) {
+export function declaredLegendRow(value) {
   const rows = (overlayContract && Array.isArray(overlayContract.defaultLegend))
     ? overlayContract.defaultLegend : [];
   return rows.find(r => r && String(r.value) === String(value)) || null;
@@ -424,7 +424,7 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
 
 // Cache DOM Elements
 const el = {};
-function initDOMElements() {
+export function initDOMElements() {
   el.tableSelect = document.getElementById('map-table-select');
   el.metadataContainer = document.getElementById('metadata-fields-container');
   el.gridCols = document.getElementById('grid-cols');
@@ -861,7 +861,7 @@ function initDOMElements() {
   el.gridCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, height) {
+export function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, height) {
   const cols = parseInt(el.gridCols.value, 10) || 10;
   const rows = parseInt(el.gridRows.value, 10) || 10;
   const startX = parseInt(el.gridStartX.value, 10) || 0;
@@ -900,7 +900,7 @@ function getGridCellObject(c, r, visualCols, visualRows, physConfig, width, heig
   };
 }
 
-function getGridCellFromMouseEvent(e) {
+export function getGridCellFromMouseEvent(e) {
   const canvasTarget = el.waferCanvas || el.gridCanvas;
   if (!canvasTarget) return null;
   const rect = canvasTarget.getBoundingClientRect();
@@ -1334,7 +1334,7 @@ async function switchTable(tableName) {
   }
 }
 
-function renderMetadataInputs() {
+export function renderMetadataInputs() {
   const container = el.metadataContainer;
   if (!container || !tableSchema) return;
   // [B1] 재생성으로 날아갈 현재 입력값을 먼저 붙든다 (아래에서 같은 컬럼에 되돌려 준다)
@@ -1498,7 +1498,7 @@ function fillColumnDropdowns() {
 //    the exact reason the frame window exists at all. So it is loud.
 // ⚠️ The throw is a backstop, not the protection. The protection is that every call site was
 //    enumerated and given an explicit argument; the throw only catches a future one.
-function physNum(frame, key, domEl, dflt) {
+export function physNum(frame, key, domEl, dflt) {
   if (frame === undefined) {
     throw new Error(`physNum('${String(key)}'): frame argument missing. Pass the frame that is `
       + `in scope, or \`null\` to read the screen controls on purpose.`);
@@ -1512,7 +1512,7 @@ function physNum(frame, key, domEl, dflt) {
 }
 
 // `physNum`의 격자 쌍둥이 — 같은 규약, 같은 인자 순서다(§physNum의 `undefined` 대 `null`).
-function gridDimNum(frame, key, domEl, dflt) {
+export function gridDimNum(frame, key, domEl, dflt) {
   if (frame === undefined) {
     throw new Error(`gridDimNum('${String(key)}'): frame argument missing. Pass the frame that `
       + `is in scope, or \`null\` to read the screen controls on purpose.`);
@@ -1573,7 +1573,7 @@ function gridDimNum(frame, key, domEl, dflt) {
 //    맵마다의 사실이지 세션의 사실이 아니다.
 // 🔴 **두 축 모두에 표지가 있어야 한다.** 한 축만 보면 나머지 한 축에 쓰는 코드가 아무것도
 //    하지 않게 되고, 안 읽히는 쓰기는 조용히 낡는다(둘이 갈라져도 아무도 모른다).
-function geometryIsAutoRegistered(frame) {
+export function geometryIsAutoRegistered(frame) {
   if (frame === undefined) {
     throw new Error('geometryIsAutoRegistered: frame argument missing. Pass the frame that is '
       + 'in scope, or `null` to read the screen mark on purpose.');
@@ -1592,11 +1592,11 @@ function geometryIsAutoRegistered(frame) {
 //    `physDeclaration` 안의 클로저 하나에만 있었고, 이번 라운드에 **격자 컨트롤 쪽에서 같은
 //    질문이 다시 필요해졌다** — 거기서 두 번째로 적었으면 이 저장소의 재발 결함 계급을 이
 //    라운드가 스스로 한 건 더 만드는 셈이었다.
-function controlIsSilent(raw) {
+export function controlIsSilent(raw) {
   return raw === undefined || raw === null || String(raw).trim() === '';
 }
 
-function physDeclaration(frame, key, domEl) {
+export function physDeclaration(frame, key, domEl) {
   if (frame === undefined) {
     throw new Error('physDeclaration: frame argument missing. Pass the frame that is in scope, '
       + 'or `null` to read the screen controls on purpose.');
@@ -1621,7 +1621,7 @@ function physDeclaration(frame, key, domEl) {
 // 화면 쪽 표지의 **유일한 쓰기 지점**. 칩 입력칸에 붙인다 — 규칙이 읽는 값이 거기 있다.
 // 켜는 곳: 합성 규격을 화면에 앉히는 두 자리(메타 로드 · `[fix C]`).
 // 끄는 곳: 사람이 규격을 선언하는 모든 자리(프리셋 적용 · 칩 칸 직접 편집 · 표지 없는 메타).
-function markGeometryAutoRegistered(on) {
+export function markGeometryAutoRegistered(on) {
   [el.physChipX, el.physChipY].forEach(input => {
     if (!input || !input.dataset) return;
     if (on) input.dataset.autoRegistered = '1';
@@ -1657,7 +1657,7 @@ function markGeometryAutoRegistered(on) {
 // ⚠️ 표지가 사는 곳은 값이 사는 곳과 같다 — 프레임의 원점이 START 칸에 있으므로 표지도 거기
 //    붙인다(모듈 상태를 만들지 않는다: `MODULE_STATE` 천장 여유 0). 두 축 모두에 쓰고 두 축
 //    모두를 읽는다: 한 축만 읽으면 나머지 한 축의 쓰기가 조용히 낡는다.
-function markFrameChosen(from) {
+export function markFrameChosen(from) {
   [el.gridStartX, el.gridStartY].forEach(input => {
     if (!input || !input.dataset) return;
     if (from) input.dataset.frameChosen = String(from);
@@ -1703,7 +1703,7 @@ function frameChosenFrom(frame) {
 //    전역 의존이 하나 늘 때마다 넷이 전부 ReferenceError로 죽는다(§getWaferBoundingBox의
 //    같은 경고 — 이 라운드에서 실제로 한 번 죽였다). 그래서 패리티 항은 인라인이다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side) {
+export function getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side) {
   if (frame === undefined) {
     throw new Error('getDieIndex: frame argument missing. Pass the frame that is in '
       + 'scope, or `null` to read the screen controls on purpose.');
@@ -1766,7 +1766,7 @@ function getDieIndex(frame, colVisual, rowVisual, cols, rows, rotation, side) {
   return { x: xp, y: yp, xCells: xRot, yCells: yRot };
 }
 
-function getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side) {
+export function getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side) {
   if (frame === undefined) {
     throw new Error('getCanvasCellFromDieIndex: frame argument missing. Pass the frame that is in '
       + 'scope, or `null` to read the screen controls on purpose.');
@@ -1839,7 +1839,7 @@ function getCanvasCellFromDieIndex(frame, xp, yp, cols, rows, rotation, side) {
 //    패리티·회전 부호표·오프셋 부호표가 여기에 한 줄도 없는 이유가 이것이다: 전부
 //    `getDieIndex` 안에 있고, 이 모듈에는 그 함수가 하나뿐이다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function frameDieLattice(frame) {
+export function frameDieLattice(frame) {
   const f = frame || currentFrame();
   {
     const p = getDieIndex(f, 0, 0, f.cols, f.rows, f.rotation, f.side);
@@ -1852,7 +1852,7 @@ function frameDieLattice(frame) {
 }
 
 // 다이 인덱스 → 그 다이 **중심**의 절대 웨이퍼 mm.
-function dieIndexToWaferMm(ix, iy, L) {
+export function dieIndexToWaferMm(ix, iy, L) {
   if (!L || !(L.chipX > 0) || !(L.chipY > 0)) return null;
   return { mmX: (L.ux0 + (ix - L.ix0)) * L.chipX, mmY: (L.uy0 + (iy - L.iy0)) * L.chipY };
 }
@@ -1865,7 +1865,7 @@ function dieIndexToWaferMm(ix, iy, L) {
 //    자리다. 그래서 칩 내 좌표는 맵 사이에서 그대로 옮길 수 없고 **반드시 절대 mm를 거쳐
 //    다시 나눠야** 한다. 지금 그리는 것은 없지만(결함 in-chip 표기가 앞으로 온다) 여기서
 //    버리면 그 경로를 나중에 통째로 다시 열어야 한다.
-function waferMmToDieCell(mmX, mmY, L) {
+export function waferMmToDieCell(mmX, mmY, L) {
   if (!L || !(L.chipX > 0) || !(L.chipY > 0)) return null;
   const dx = mmX / L.chipX - L.ux0;
   const dy = mmY / L.chipY - L.uy0;
@@ -1877,7 +1877,7 @@ function waferMmToDieCell(mmX, mmY, L) {
   };
 }
 
-function getCanvasCellFromDb(frame, dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
+export function getCanvasCellFromDb(frame, dbX, dbY, cols, rows, rotation, side, invertY, startX, startY) {
   if (frame === undefined) {
     throw new Error('getCanvasCellFromDb: frame argument missing. Pass the frame that is in scope, or `null` '
       + 'to read the screen controls on purpose.');
@@ -1936,7 +1936,7 @@ let boundingBoxCache = {};
 // `opts.circleOnly` — 마스크와 무관하게 **원 기하**의 상자를 묻는다. 유일한 소비자는
 // `computeNotchCell`이다: 노치는 웨이퍼의 물리 특징이자 클립보드 프레임 지문이라, 유효 다이
 // 해석의 성패(네트워크 1회 실패)에 따라 지문이 흔들리면 정상 붙여넣기가 엉뚱한 사유로 거절된다.
-function getWaferBoundingBox(frame, rotation, side, opts) {
+export function getWaferBoundingBox(frame, rotation, side, opts) {
   if (frame === undefined) {
     throw new Error('getWaferBoundingBox: frame argument missing. Pass the frame that is in '
       + 'scope, or `null` to read the screen controls on purpose.');
@@ -2052,7 +2052,7 @@ function getWaferBoundingBox(frame, rotation, side, opts) {
   return box;
 }
 
-function getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
+export function getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, invertY, startX, startY) {
   if (frame === undefined) {
     throw new Error('getDbCoords: frame argument missing. Pass the frame that is in scope, or `null` '
       + 'to read the screen controls on purpose.');
@@ -2089,7 +2089,7 @@ function getDbCoords(frame, colVisual, rowVisual, cols, rows, rotation, side, in
 // ═══════════════════════════════════════════════════════════════════════════════
 let cellsSeatedUnder = null;
 
-function seatingSnapshot(frame) {
+export function seatingSnapshot(frame) {
   if (frame === undefined) {
     throw new Error('seatingSnapshot: frame argument missing. Pass the frame that is in scope, '
       + 'or `null` to record the screen seating on purpose.');
@@ -2166,7 +2166,7 @@ function reseatForSeparationMode() {
   return placed;
 }
 
-function reseatCellsToStoredCoords(was, opts) {
+export function reseatCellsToStoredCoords(was, opts) {
   const now = seatingSnapshot(null);
   if (now) cellsSeatedUnder = now;
   if (!was || !now) return null;
@@ -2235,7 +2235,7 @@ function reseatCellsToStoredCoords(was, opts) {
 // ⚠️ `currentRotation`/`currentSide` SHADOW two module bindings of the same name. That is
 //    pre-existing and deliberately left alone this round (behaviour must not change), but it
 //    is a trap for anyone reading the body: inside here those names are the ARGUMENTS.
-function getTransformedPhysicalConfig(frame, currentRotation, currentSide) {
+export function getTransformedPhysicalConfig(frame, currentRotation, currentSide) {
   if (frame === undefined) {
     throw new Error('getTransformedPhysicalConfig: frame argument missing. Pass the frame that '
       + 'is in scope, or `null` to read the screen controls on purpose.');
@@ -2274,7 +2274,7 @@ function getTransformedPhysicalConfig(frame, currentRotation, currentSide) {
   };
 }
 
-function getScreenShift(physConfig, cellW, cellH) {
+export function getScreenShift(physConfig, cellW, cellH) {
   if (!physConfig) return { shiftX: 0, shiftY: 0 };
   const { origOffsetX, origOffsetY, origChipX, origChipY, rotation } = physConfig;
   const chipX = origChipX || 2.5;
@@ -2328,7 +2328,7 @@ function getScreenShift(physConfig, cellW, cellH) {
 //
 // ⚠️ 순수 함수다. 이 파일의 module-state 천장은 여유가 0이므로 상태를 만들지 않는다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function cellMetrics(width, height, visualCols, visualRows, physConfig) {
+export function cellMetrics(width, height, visualCols, visualRows, physConfig) {
   // [C2] 폴백에는 웨이퍼 기준 축척이 없다 — 두 축의 mm/px가 애초에 다르므로 붙일 자리가
   //      없다. `waferAnchored: false`는 그 사실 그대로다(지름 선언 여부에 대한 주장이
   //      아니다 — 그 구별은 `isotropic`이 이미 말한다).
@@ -2393,7 +2393,7 @@ function cellMetrics(width, height, visualCols, visualRows, physConfig) {
   };
 }
 
-function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width = 700, height = 700) {
+export function isCellInsideWaferFast(c, r, visualCols, visualRows, physConfig, width = 700, height = 700) {
   if (physConfig && physConfig.chipX > 0 && physConfig.chipY > 0 && physConfig.effectiveRadius > 0 && width > 0 && height > 0) {
     const cellW = width / visualCols;
     const cellH = height / visualRows;
@@ -2512,7 +2512,7 @@ let validDieResolveSeq = 0;
 // `currentTable`은 이제 조회 대상을 정하지 **않는다**. 선언이 원래 무엇을 뜻했는지(맨
 // 문자열 = "내 테이블의 맵")를 되살려 `declaredTable`에 담는 데만 쓴다 — 지운 정보를
 // 나중에 추측으로 복원하는 일을 만들지 않기 위해서다.
-function parseValidDieRef(meta, currentTable) {
+export function parseValidDieRef(meta, currentTable) {
   if (!meta || typeof meta !== 'object') return null;
   if (!('valid_die_ref' in meta)) return null;
   const raw = meta.valid_die_ref;
@@ -2558,7 +2558,7 @@ function parseValidDieRef(meta, currentTable) {
 // `resolveValidDie`는 저 셋 외의 값을 절대 만들지 않는다(하네스가 소스로 단언한다).
 // `template`은 메타에서 나올 수 없는 화면 상태이므로 이음매 벡터(`valid_die_basis_cases`)가
 // 채점하는 집합은 한 글자도 변하지 않는다.
-function validDieBasis(state) {
+export function validDieBasis(state) {
   const v = (state === undefined) ? validDie : state;
   if (!v) return 'circle';
   if (v.basis === 'ref' || v.basis === 'template') {
@@ -2586,7 +2586,7 @@ function validDieBasis(state) {
 //      · `frame === undefined` → 호출자가 잊은 것이다. 폴백하면 화면 규격으로 조용히 접혀
 //        「화면은 멀쩡한데 저장값이 틀린」 상태가 되므로, 폴백하지 않고 던진다.
 //        `null`은 잊은 게 아니라 **답**이다 — 「프레임 없음, 이 맵의 마스크를 걸어라」.
-function isValidDieAt(frame, physX, physY, circleInside, state) {
+export function isValidDieAt(frame, physX, physY, circleInside, state) {
   if (frame === undefined) {
     throw new Error('isValidDieAt: frame argument missing. Pass the frame that is in scope, '
       + 'or `null` to apply this map mask on purpose.');
@@ -2622,7 +2622,7 @@ function isValidDieAt(frame, physX, physY, circleInside, state) {
 //         filled: string[]  — 이번 프리셋이 칠할 셀,
 //         outsideCircle: number — 그중 원 밖 개수(정직한 확인문에 쓴다) }
 // ═══════════════════════════════════════════════════════════════════════════════
-function buildValidDieTemplate(shape) {
+export function buildValidDieTemplate(shape) {
   const cols = gridDimNum(null, 'cols', el.gridCols, 10);
   const rows = gridDimNum(null, 'rows', el.gridRows, 10);
   const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
@@ -2655,7 +2655,7 @@ function buildValidDieTemplate(shape) {
 // 선언 원문 → 화면 컨트롤 두 칸. `validDieRefForPush`의 정확한 역함수여야 한다.
 // 읽을 수 없는 선언도 **보여준다** — 지워 버리면 사용자는 자기가 무엇을 잘못 썼는지조차
 // 볼 수 없다(①이 raw를 붙든 이유와 같다).
-function validDieRefDisplay(raw) {
+export function validDieRefDisplay(raw) {
   if (raw === null || raw === undefined) return { table: '', key: '' };
   if (typeof raw === 'string') return { table: '', key: raw };
   if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -2684,7 +2684,7 @@ function validDieRefDisplay(raw) {
 // 🔴 **나머지 키는 손대지 않는다.** 아는 필드로 메타를 다시 짜면 모르는 키가 사라지고,
 //    `v || dflt`로 베끼면 선언된 `phys_edge_margin: 0`이 3.0이 되어 참조만 지운 맵의
 //    웨이퍼 마스크가 움직인다(D1과 같은 falsy 치환, 한 층 위).
-function applyValidDieRef(meta, ref) {
+export function applyValidDieRef(meta, ref) {
   const out = { ...(meta && typeof meta === 'object' ? meta : {}) };
   const clear = () => { delete out.valid_die_ref; return out; };
   if (ref === null || ref === undefined) return clear();
@@ -2729,14 +2729,14 @@ function applyValidDieRef(meta, ref) {
 //           테이블도 원문이 말하는 그대로 둔다 → 아래에서 `keep`이 되어 원문이 보존된다.
 //         · 키가 다르다(새로 골랐거나 타이핑했다) → 그것은 **새 지정**이고, 새 지정의
 //           테이블은 언제나 `VALID_DIE_TABLE`이다.
-function validDieRefFromControls() {
+export function validDieRefFromControls() {
   const shown = validDieRefDisplay(validDie ? validDie.raw : undefined);
   const key = (el.validDieRefKey && el.validDieRefKey.value ? el.validDieRefKey.value : '').trim();
   const table = (key === shown.key) ? shown.table : VALID_DIE_TABLE;
   return { shown, table, key };
 }
 
-function validDieRefForPush() {
+export function validDieRefForPush() {
   const raw = validDie ? validDie.raw : undefined;
   const { shown, table: curTable, key: curKey } = validDieRefFromControls();
   // [F2] 선언은 **있는데** 표시가 비었다 — `""`·`null`·빈 키 객체. 컨트롤이 변하지 않으니
@@ -2766,7 +2766,7 @@ function validDieRefForPush() {
 //    "같은 키를 같은 순서로 다시 만들었다"로 바뀐다.
 // 인자: gridMeta = 컨트롤에서 재구성된 grid_metadata · decision = `validDieRefForPush()`
 //       raw = `validDie.raw`(선언 원문, 없으면 undefined)
-function validDieRefPayload(gridMeta, decision, raw) {
+export function validDieRefPayload(gridMeta, decision, raw) {
   if (decision && decision.keep) {
     return (raw !== undefined) ? { ...gridMeta, valid_die_ref: raw } : gridMeta;
   }
@@ -2813,7 +2813,7 @@ function mergeStoredGridMeta(stored, gridMetaOut) {
 // 인자: ref = {table, mapKey}(해석·정준화 완료) · refMeta = 참조 맵의 grid_metadata(미상이면 null)
 //       home = 선언한 맵의 {table, mapKey}
 // 반환: 사유 문자열(위법) | null(적법)
-function validDieChainError(ref, refMeta, home) {
+export function validDieChainError(ref, refMeta, home) {
   const r = ref || {};
   const h = home || {};
   if (r.table !== undefined && h.table !== undefined
@@ -2833,7 +2833,7 @@ function validDieChainError(ref, refMeta, home) {
     + `허용합니다. 유효 다이 맵 자신은 valid_die_ref를 갖지 않아야 합니다.`;
 }
 
-function applyPhysicalGeometry() {
+export function applyPhysicalGeometry() {
   const waferDia = el.physWaferDia ? parseFloat(el.physWaferDia.value) : 300;
   const edgeMargin = el.physEdgeMargin ? parseFloat(el.physEdgeMargin.value) : 3.0;
   const effectiveRadius = Math.max(0, (waferDia / 2.0) - edgeMargin);
@@ -2979,7 +2979,7 @@ function renderPresetDropdown() {
 
 // 프리셋 객체를 물리 규격/방향 UI에 적용 (프리셋 셀렉트와 무관하게 재사용 —
 // 영역 선택 모드가 CORE/BASE 프리셋 규격 강제 시에도 동일 경로를 탄다)
-function applyPresetObject(preset) {
+export function applyPresetObject(preset) {
   if (!preset) return;
   if (preset.phys_wafer_dia !== undefined && el.physWaferDia) {
     const diaStr = String(preset.phys_wafer_dia);
@@ -3119,7 +3119,7 @@ async function applyRoutedPreset(table, mapKey) {
   return resp;
 }
 
-function loadSelectedPreset() {
+export function loadSelectedPreset() {
   if (!el.presetSelect) return;
   const val = el.presetSelect.value;
   if (!val) {
@@ -3246,7 +3246,7 @@ async function deleteCustomPreset() {
 //    빈 값 판정은 Push가 쓰던 식(`(v || '') !== ''`)을 **글자 그대로** 옮겼다 — 여기서
 //    표현을 "개선"하면 그 개선분만큼 화면과 저장이 갈린다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function eachSavableCell(fn) {
+export function eachSavableCell(fn) {
   if (!gridCells2D) return;
   Object.keys(gridCells2D).forEach(rStr => {
     const r = parseInt(rStr, 10);
@@ -3279,7 +3279,7 @@ function eachSavableCell(fn) {
 // ⚠️ 판정은 새로 만들지 않는다. 정의역(`gridCells2D`)·`inside`·빈 값 식은 `eachSavableCell`이
 //    쓰는 그것과 글자 그대로 같고, 세 수의 합 + 저장 대상 수 == `nonEmptyOnGrid`가 항등이다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function classifyUnsavableCells() {
+export function classifyUnsavableCells() {
   const insideByKey = new Map();
   Object.keys(gridCells2D || {}).forEach(rStr => {
     Object.keys(gridCells2D[rStr] || {}).forEach(cStr => {
@@ -3312,7 +3312,7 @@ function classifyUnsavableCells() {
 // ⚠️ 지금 소비자는 `pushMapData` **하나뿐**이다(두 번째였던 채택 안내는 F8에서 사라졌다).
 //    그래도 이름을 지우지 않는다 — 갈릴 수 있다는 사실이 사라진 것이 아니라 두 번째 소비자가
 //    사라진 것뿐이고, 다음에 세는 곳이 생기면 그 곳이 이 함수를 부르면 된다.
-function pushBlockingCount(u) {
+export function pushBlockingCount(u) {
   return u.offGrid.length + u.outsideRetained.length;
 }
 
@@ -3388,7 +3388,7 @@ const UNLISTED_VALUE_FILL = '#10b981';
 // 🔴 셀 채움색의 **유일한 판정**. 캔버스와 엑셀 내보내기가 같은 함수를 부른다.
 //    갈라져 있던 동안 화면은 UNLISTED_VALUE_FILL로 칠하고 내보내기는 "빈 셀" 색을 써서,
 //    엑셀 파일이 조용히 다른 내용을 담았다 (INV-1c-3). "보이는 대로"가 요구사항이다.
-function cellFillColor(val, inside, colorMap, C) {
+export function cellFillColor(val, inside, colorMap, C) {
   if (!inside) return C.outBg;
   if (val !== '') return colorMap[val] || UNLISTED_VALUE_FILL;
   return C.insideEmpty;
@@ -3464,7 +3464,7 @@ function fitGridToWorkspace() {
   scheduleRenderGridCanvas();
 }
 
-function renderGridCanvas() {
+export function renderGridCanvas() {
   if (!el.waferCanvas || !el.gridCanvas) return;
 
   const cols = parseInt(el.gridCols.value, 10) || 10;
@@ -3791,7 +3791,7 @@ function renderGridCanvas() {
   updateLegendCounts();
 }
 
-function handleCellClick(cell, event) {
+export function handleCellClick(cell, event) {
   if (!cell) return;
   const c = cell.c !== undefined ? cell.c : 0;
   const r = cell.r !== undefined ? cell.r : 0;
@@ -3930,7 +3930,7 @@ function pickUnusedColor() {
 // [U6] The ONE way a value gets auto-added to the legend. Declared default_legend row
 // wins (its color/desc); else fallbackDesc + the palette rule. Returns true only when a
 // row was actually added — callers decide how to persist/render.
-function autoAddLegendValue(value, fallbackDesc) {
+export function autoAddLegendValue(value, fallbackDesc) {
   const v = String(value);
   if (legend.some(item => String(item.value) === v)) return false;
   const dr = declaredLegendRow(v);
@@ -4025,7 +4025,7 @@ let serverCellKeys = null;   // { table, mapKey, keys: Set<string> } | null
 
 // 지금 화면의 맵에 대해 서버 셀 집합을 신뢰할 수 있는가. 정체는 `loadedIdentity`가 지고
 // 있으므로(프레임 스택이 스냅샷으로 함께 옮긴다) 여기서 다시 만들지 않고 대조만 한다.
-function serverCellKeySet() {
+export function serverCellKeySet() {
   if (!serverCellKeys || !loadedIdentity) return null;
   if (serverCellKeys.table !== loadedIdentity.table) return null;
   if (serverCellKeys.mapKey !== loadedIdentity.mapKey) return null;
@@ -4636,7 +4636,7 @@ function renderLegendMetaOnly() {
 
 // [재설계 v2] 가시 legend UI는 우측 「2. Legend & DOE」 패널이 담당한다.
 // 이 함수는 legend 변경을 패널에 통지하고, (남아 있다면) 구 테이블 DOM도 갱신한다.
-function renderLegendTable() {
+export function renderLegendTable() {
   notifyLegendChanged();
   // [N2] Overlay dots take their colour from the legend, so a legend edit has to recount the
   // overlay rows' "no legend colour" chip. (The canvas needs no hook: it reads the legend on
@@ -5086,7 +5086,7 @@ async function fetchGridMetaFor(table, mapId) {
 //   ⑥ deriveLegendFromCellValues     the cells' values -> the legend rows
 //   ⑦ restoreDoeDraftWithPrecedence  server baseline   -> which draft may be applied
 // Three blocks resisted and stayed inline; each says why where it sits.
-async function loadExistingMap(opts = {}) {
+export async function loadExistingMap(opts = {}) {
   const quiet = !!opts.quiet;
   const restoreDraft = !!opts.restoreDraft;
   // ── [fix E-3] 미저장 편집 가드 — **이 함수가 무엇이든 하기 전에** 묻는다 ─────────────
@@ -5550,7 +5550,7 @@ async function loadExistingMap(opts = {}) {
 
 // ① 메타 입력칸 → 조회 필터. 값이 하나도 없으면 `hasFilter === false`이고, 호출부가
 //    「맵 키가 비었다」로 되돌린다 — 여기서는 판정하지 않는다.
-function collectMapKeyFilterModel() {
+export function collectMapKeyFilterModel() {
   const filterModel = {};
   const metaInputs = document.querySelectorAll('[id^="meta-input-"]');
   let hasFilter = false;
@@ -5573,7 +5573,7 @@ function collectMapKeyFilterModel() {
 
 // ② 응답 행 → 저장 좌표의 bbox. 파싱되는 셀이 하나도 없으면 초기 센티넬(minX 9999)이 그대로
 //    돌아가고, 호출부는 그 값으로 「해석된 셀 0개」를 가른다. 센티넬은 계약의 일부다.
-function scanCoordinateBounds(result, xCol, yCol) {
+export function scanCoordinateBounds(result, xCol, yCol) {
   // Pre-calculate coordinate bounds first
   let maxX = -9999;
   let maxY = -9999;
@@ -5603,7 +5603,7 @@ function scanCoordinateBounds(result, xCol, yCol) {
 
 // ③ wafer_map_metadata 해석 → `{ ok: true, gridMeta, mapKey }`,
 //    또는 확인 실패 시 `{ ok: false, refusal }` (호출부가 그 값을 그대로 반환한다).
-async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result) {
+export async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, result) {
   let loadedGridMeta = null;
   let loadedMapKey = null; // split registry 적용을 위해 맵 식별자를 함수 스코프로 유지
 
@@ -5727,7 +5727,7 @@ async function resolveDeclaredGridMeta(selectedTable, tableSchema, filterModel, 
 
 // ④ 선언이 없는 맵의 좌표계 선택 모달 → 'standard' | 'current' | 'cancel'.
 //    `el`을 인자로 받는다 — 이 단계가 손대는 유일한 바깥 것이고, 그래서 시그니처가 말한다.
-function promptCoordinateChoice(el) {
+export function promptCoordinateChoice(el) {
   return new Promise((resolve) => {
     // [fix C] The default's behavior changed (data bounding box, no mask in
     // effect) — keep the highlighted button honest. Label set here in JS because
@@ -5785,7 +5785,7 @@ function promptCoordinateChoice(el) {
 
 // ⑤ 선택 → 격자·원점·회전·면. 셋 중 **정확히 하나**가 프레임을 정한다는 사실이 이 함수의
 //    전부다. `boundingBoxCache` 무효화는 호출부가 한다 — 이 단계는 모듈 상태에 쓰지 않는다.
-function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide) {
+export function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el, currentRotation, currentSide) {
   let cols, rows, startX, startY, invertY, rotation, side;
 
   if (userChoice === 'standard') {
@@ -5896,7 +5896,7 @@ function resolveGridFrame(userChoice, loadedGridMeta, minX, minY, maxX, maxY, el
 // ⑥ 셀 값 집합 → legend 행 배열. `legend`(현재 화면)와 팔레트를 인자로 받아 **새 배열을
 //    돌려줄 뿐** 대입은 호출부가 한다 — 「어느 시점에 화면의 legend가 바뀌는가」가 한 줄로
 //    읽혀야 하기 때문이다(H1의 자리).
-function deriveLegendFromCellValues(uniqueVals, legend, predefinedColors) {
+export function deriveLegendFromCellValues(uniqueVals, legend, predefinedColors) {
   const newLegend = [];
   const usedColors = new Set();
 
@@ -5950,7 +5950,7 @@ function deriveLegendFromCellValues(uniqueVals, legend, predefinedColors) {
 //    어긋나면 **누가 썼다** — 적용하면 남의 저장을 지운다. 적용하지 않고, 버리지도 않고,
 //    사실을 드러낸다.
 //    반환: `restoredUnsavedEdits`(→ legendDirty) · `staleDraftKept`(→ persist 보류).
-function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp) {
+export function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serverFp, serverCellsFp) {
   let staleDraftKept = false;   // [fix A] see the persist at the call site
   let restoredUnsavedEdits = false;
   const draft = readDoeDraft(selectedTable, loadedMapKey);
@@ -6528,7 +6528,7 @@ function collectMetaFieldValues(tableSchema) {
 //    바뀌는 것은 **지어내던 자리 하나**뿐이다: 읽히지 않으면 수 대신 `null`을 낸다.
 // ⚠️ `null`이지 기본값이 아니다. 소비자가 검사를 잊으면 `null`은 페이로드에서 그대로 눈에
 //    띄고 서버 `int(None)`이 거절하지만, 0은 조용히 통과해 남의 좌표계를 덮는다.
-function gridFrameControlNum(input, dflt) {
+export function gridFrameControlNum(input, dflt) {
   const raw = input ? input.value : undefined;
   if (controlIsSilent(raw)) return null;
   const n = parseInt(raw, 10);
@@ -6540,7 +6540,7 @@ function gridFrameControlNum(input, dflt) {
 // `current` 분기가 같은 질문을 `parseInt(...) || N`으로 **다시** 물었고, 두 철자가 갈리기도
 // 전에 **둘 다** 빈 칸을 지어냈다.
 // `silent`는 아무 말도 하지 않은 칸의 **이름**이다 — 거절문이 어느 칸인지 말할 수 있어야 한다.
-function readGridFrameControls(el) {
+export function readGridFrameControls(el) {
   const frame = {
     cols: gridFrameControlNum(el.gridCols, 10),
     rows: gridFrameControlNum(el.gridRows, 10),
@@ -7065,7 +7065,7 @@ function copyTitleText() {
 //    270 → visualCols). 그런데 종전에는 격자 밖 좌표를 그대로 돌려주었고, 호출부는 그것을
 //    "지문 있음"으로 다룰 수도 있었다. 없는 것을 0으로 읽으면 안 되므로 여기서 `null`로
 //    말한다 — 이 파일의 규율(미상 ≠ 0)이 여기에도 그대로 적용된다.
-function computeNotchCell(rotation, side) {
+export function computeNotchCell(rotation, side) {
   // 🔴 **원 상자로 묻는다.** 노치는 웨이퍼의 물리 특징이고, 이 좌표는 클립보드의 프레임
   //    지문이다. 유효 다이 기준 상자를 쓰면 참조 해석이 한 번 실패한 세션에서 지문이 조용히
   //    달라져, 정상적인 붙여넣기가 "회전·면이 다릅니다"라는 무관한 사유로 거절된다.
@@ -8576,7 +8576,7 @@ function recomputeActiveOverlays() {
 //    would dress an undeclared value in a confident colour: the screen looks fine and the
 //    meaning is wrong, which is the whole class of defect this domain exists to stop. When
 //    there is no declaration we draw the absence (an unfilled dot).
-function legendColorForValue(val) {
+export function legendColorForValue(val) {
   if (val === null || val === undefined) return null;
   const v = String(val);
   if (v === '') return null;
@@ -8597,7 +8597,7 @@ function legendColorForValue(val) {
 // NAME A SINGLE DECLARED COLOUR -- and a solid dot always means one source chip whose value
 // the legend declares. The two reasons behind an unfilled dot (undeclared value / several
 // values) are told apart in WORDS by the chips on the layer row.
-function overlayMarkerFill(list) {
+export function overlayMarkerFill(list) {
   if (!Array.isArray(list) || list.length !== 1) return null;
   return legendColorForValue(list[0].val);
 }
@@ -8609,7 +8609,7 @@ function overlayMarkerFill(list) {
 //     마커는 그 칸의 값을 말하는 것으로 읽히므로, 이건 미관이 아니라 오독 방지다.
 // 함수로 두는 이유는 네 자리(1:1 반지름 x2, 펼침 반지름 x2)가 상수를 **복사**하지 않고
 // 같은 정의를 실행하도록 하기 위해서다.
-function markerAxisRadius(cellPx, frac, floorPx) {
+export function markerAxisRadius(cellPx, frac, floorPx) {
   return Math.min(cellPx / 2, Math.max(floorPx, cellPx * frac));
 }
 
@@ -8620,7 +8620,7 @@ function markerAxisRadius(cellPx, frac, floorPx) {
 // colour as its own value.
 // [C3] `radY`는 선택이다 — 주지 않으면 `radX`와 같아 **원**이 되고, 그때 그리는 호출은
 //      한 글자도 바뀌지 않는다(정사각 칸 = 운영 대다수의 경로).
-function paintOverlayDot(ctx, cx, cy, radX, fill, ringColor, radY) {
+export function paintOverlayDot(ctx, cx, cy, radX, fill, ringColor, radY) {
   const ry = (radY === undefined) ? radX : radY;
   ctx.beginPath();
   // 칸이 직사각이면 마커도 직사각이다. `ellipse`가 없는 컨텍스트에서는 원으로 물러난다 —
@@ -8645,7 +8645,7 @@ function paintOverlayDot(ctx, cx, cy, radX, fill, ringColor, radY) {
 // ⚠️ [N2] What changed is the FILL, not the position (see `overlayMarkerFill` above). No new
 //    screen, mode or modal, and no new control: the marker layer that already existed now
 //    takes its colour from the legend instead of one flat colour per layer.
-function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
+export function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
   // [C3] 마커는 **칸 자신의 비례**를 따른다 — 짧은 변이 아니다. (운영 회귀 보고 2026-08-04:
   //      "메인 맵은 멀쩡한데 오버레이 마커만 아주 작게 나온다".)
   //
@@ -8726,7 +8726,7 @@ function drawOverlayMarkers(ctx, coordKey, x0, y0, cellW, cellH) {
 // 좌표계를 정의하는 축 전부: 치수·시작좌표·y반전·회전·면 + 물리 파라미터.
 // 메타에 없는 물리 항목은 undefined로 남겨 두면 프레임 창에서 **현재 화면 값으로 폴백**한다
 // (그래서 물리 파라미터가 기하 시그니처에 반드시 들어가야 한다 — 아래 currentGeomSignature).
-function frameFromMeta(meta) {
+export function frameFromMeta(meta) {
   if (!meta || typeof meta !== 'object') return null;
   const num = (v) => {
     if (v === undefined || v === null || v === '') return undefined;
@@ -8775,7 +8775,7 @@ function frameFromMeta(meta) {
 //       마스크가 **참조가 선언한 적 없는 인덱스 공간**에서 만들어진다 — 화면은 멀쩡한데 값이
 //       틀린 그 상태다.
 // ═══════════════════════════════════════════════════════════════════════════════
-function frameDimBounds() { return { min: 1, max: 100 }; }
+export function frameDimBounds() { return { min: 1, max: 100 }; }
 
 // 치수가 그 정의역 안인가. 사유 문자열을 돌려준다(문제가 없으면 빈 문자열).
 // 🔴 clamp하지 않는다. 잘라 넣으면 참조 맵의 인덱스 공간과 다른 격자로 마스크를 만들고,
@@ -8783,7 +8783,7 @@ function frameDimBounds() { return { min: 1, max: 100 }; }
 // ⚠️ 정수도 요구한다. `frameFromMeta`는 `45.5`도 받는데 `gridDimNum`은 `parseInt`로 45로
 //    읽는다 — 해석과 선언이 갈린다. `0`도 같다: `gridDimNum`의 `ov || dflt`가 0을 기본값
 //    10으로 조용히 바꾼다.
-function frameDimError(frame) {
+export function frameDimError(frame) {
   const b = frameDimBounds();
   const bad = (n, name) => (!Number.isInteger(n) || n < b.min || n > b.max) ? `${name}=${n}` : '';
   const errs = [bad(frame.cols, 'grid_cols'), bad(frame.rows, 'grid_rows')].filter(Boolean);
@@ -8791,7 +8791,7 @@ function frameDimError(frame) {
 }
 
 // 현재 화면 컨트롤도 그냥 하나의 프레임이다 (물리 항목은 undefined = DOM 그대로).
-function currentFrame() {
+export function currentFrame() {
   return {
     cols: parseInt(el.gridCols.value, 10) || 10,
     rows: parseInt(el.gridRows.value, 10) || 10,
@@ -8804,7 +8804,7 @@ function currentFrame() {
 }
 
 // 프레임의 모든 축을 실값으로 확정한다(undefined → 현재 화면 값). 축 비교의 유일한 근거.
-function resolveFrame(frame) {
+export function resolveFrame(frame) {
   const f = frame || currentFrame();
   return ({
     cols: gridDimNum(f, 'cols', el.gridCols, 10),
@@ -8821,7 +8821,7 @@ function resolveFrame(frame) {
   });
 }
 
-function frameAxesKey(rf) {
+export function frameAxesKey(rf) {
   return [rf.rotation, rf.side, rf.invertY ? 1 : 0, rf.startX, rf.startY, rf.cols, rf.rows,
   rf.waferDia, rf.chipX, rf.chipY, rf.offsetX, rf.offsetY, rf.edgeMargin].join('|');
 }
@@ -8836,7 +8836,7 @@ function frameAxesKey(rf) {
 //    (§dieIndexToWaferMm). 오버레이 전용 변환식을 쓰지 않는다는 계약이 이 구조다.
 // ⚠️ 피치가 없으면 `mm`이 null인 항목이 나온다 — 여기서 거절하지 않는다. 거절 문구를 쓰는
 //    자리는 호출자(오버레이)이고, 유효 다이 해석은 mm를 아예 보지 않기 때문이다.
-function projectCellsToWaferMm(cells, frame) {
+export function projectCellsToWaferMm(cells, frame) {
   const f = frame || currentFrame();
   const { cols, rows, rotation, side, invertY, startX, startY } = f;
   {
@@ -8866,7 +8866,7 @@ function projectCellsToWaferMm(cells, frame) {
 // 소스 **원본 셀** → 물리 키 Map. 시그니처도 의미도 종전 그대로다(유효 다이 해석의 입력).
 // 🔴 **같은 수를 두 번 계산하지 않는다** — 위 함수가 이미 만든 인덱스를 키로 옮길 뿐이다.
 //    마지막 값이 이긴다는 충돌 규약도 배열 순서가 곧 삽입 순서라 종전과 같다.
-function projectCellsToPhys(cells, frame) {
+export function projectCellsToPhys(cells, frame) {
   const map = new Map();
   projectCellsToWaferMm(cells, frame).forEach(it => { map.set(`${it.ix}_${it.iy}`, it.val); });
   return map;
@@ -8881,7 +8881,7 @@ function projectCellsToPhys(cells, frame) {
 // ⚠️ 앉히는 기준은 **지금 화면의 프레임**이다. 렌더 루프가 읽는 좌표계가 그것이기 때문이고,
 //    그래서 화면 규격이 바뀌면 `syncOverlayGeometry`가 이 함수를 다시 돌려야 한다
 //    (종전 다이 인덱스 키는 화면에 불변이었지만 **mm 좌석은 피치의 함수다**).
-function seatWaferMmInFrame(items, frame) {
+export function seatWaferMmInFrame(items, frame) {
   const f = frame || currentFrame();
   const seated = new Map();
   const L = frameDieLattice(f);
@@ -8930,7 +8930,7 @@ function seatWaferMmInFrame(items, frame) {
 // ⚠️ 저작 중(`template`)에는 캐시하지 않는다. 붓질은 세대 번호를 올리지 않아 **어떤 키로도**
 //    무효화되지 않기 때문이다.
 let seatKeyCache = { key: '', sets: null };
-function canvasSeatKeys() {
+export function canvasSeatKeys() {
   const f = resolveFrame(currentFrame());
   const basis = validDieBasis();
   const ck = `${frameAxesKey(f)}|${basis}|${validDieResolveSeq}`;
@@ -8969,7 +8969,7 @@ function canvasSeatKeys() {
 // 🔴 해석에 실패하면 조용히 원으로 되돌아가지 않는다. basis를 `refused`로 두고
 //    이유를 남긴다 — 틀린 답과 맞는 답이 구별되지 않는 상태를 만들지 않기 위해서다.
 // `homeMapKey` — 선언한 맵 자신의 키. [M4② INV-6] 자기 참조 판정에만 쓴다.
-async function resolveValidDie(meta, targetTable, homeMapKey) {
+export async function resolveValidDie(meta, targetTable, homeMapKey) {
   // 원문을 그대로 붙든다. Push가 메타를 **처음부터 다시 만들기** 때문에, 여기서 붙들지
   // 않으면 유효 다이를 선언한 맵을 한 번 저장하는 것만으로 그 선언이 사라진다.
   // 읽지 못한 선언도 보존한다 — 지워 버리면 사용자는 자기가 무엇을 잘못 썼는지조차
@@ -9430,7 +9430,7 @@ async function resolveValidDie(meta, targetTable, homeMapKey) {
 // an argument (`el`, `currentRotation`, `currentSide` deliberately shadow the module bindings of
 // the same name), so it reads NO module state: the body is byte-identical to what ran inline.
 // Returns the note the diagnostic log prints; the caller owns the assignment.
-function fitGridToMask(keys, el, currentRotation, currentSide) {
+export function fitGridToMask(keys, el, currentRotation, currentSide) {
   const dimMax = frameDimBounds().max;
   // 축별 위반 수. 두 축을 따로 세는 이유는 넓힐 치수를 **측정으로** 고르기 위해서다.
   const missAt = (c, r) => {
@@ -9490,7 +9490,7 @@ function fitGridToMask(keys, el, currentRotation, currentSide) {
 // The net count, taken as a set difference over PHYSICAL seat keys — see the comment it
 // carries. Every binding it reads is an argument, so it reads no module state; the caller
 // keeps the `netMoved > 0` branch, so the control flow at the call site is unchanged.
-function summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys) {
+export function summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, serverCellKeys) {
   // 넷 이동량 ― 이 호출 전체에서 자리를 옮긴 셀 수. 걸음마다 세면 서로 상쇄되는 두 걸음이
   // 「N칸 이동 후 N칸 이동」으로 읽혀 사용자에게 거짓 수를 준다. 좌석은 물리 키이므로
   // 집합 차이가 곧 이동한 셀이다.
@@ -9514,7 +9514,7 @@ function summariseReseat(seatsBefore, placed, nc, nr, gridData, loadedFCells, se
 // taken: `refuse` writes module state and stays with the orchestrator that owns those writes.
 // `fetchGridMetaFor` still throws on failure and the rejection still lands in the caller's
 // catch — that classification is what `M9b`/`M9c` score.
-async function resolveReferenceSpec(ref) {
+export async function resolveReferenceSpec(ref) {
   // [7b] 참조된 맵 키도 캐노니컬화한다 — 여기서만 원문을 쓰면 이 라운드가 고친 그 결함이
   // 유효 다이 경로로 그대로 재현된다.
   const spec = await fetchMapKeySpec(ref.table);
@@ -9552,7 +9552,7 @@ async function resolveReferenceSpec(ref) {
 // Moved verbatim, translation term included. The zeroed shift and the warning that explains
 // why it must stay zero travel together — separating the number from its reason is how it got
 // revived once already.
-function deriveMaskKeys(rawKeys) {
+export function deriveMaskKeys(rawKeys) {
   const pxs = rawKeys.map(k => Number(String(k).split('_')[0]));
   const pys = rawKeys.map(k => Number(String(k).split('_')[1]));
   const maskCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
@@ -9582,7 +9582,7 @@ function deriveMaskKeys(rawKeys) {
 // Measured on the POST-designation grid (`set` may have re-derived it from the reference
 // spec): a diagnosis solved with the old dimensions explains a screen the user is not looking
 // at. STATE# 0 — the panel arrives as `el`, the orientation as arguments.
-function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
+export function diagnoseDesignationAlignment(refResolved, hereResolved, refMinX, refMinY,
   hereInvertY, el, currentRotation, currentSide) {
   const box = getWaferBoundingBox(null, currentRotation, currentSide);
   // 지정이 **끝난 뒤의** 격자. `set`이 참조 규격에서 다시 파생시켰을 수 있으므로 아래
@@ -9662,7 +9662,7 @@ function renderValidDieChip() {
 //       로드가 고정된 뒤로 칩의 `r.table`은 언제나 `valid_die_ref`라서 원 선언을 말할 수
 //       없고, 저 사실이 필요한 순간은 정확히 해석이 실패했을 때뿐이다.
 //       입력칸에 없는 정보를 만들어 넣지 않고, 있는 표시 자리를 쓴다(새 컨트롤 0개).
-function syncValidDieRefControls() {
+export function syncValidDieRefControls() {
   const shown = validDieRefDisplay(validDie ? validDie.raw : undefined);
   if (el.validDieRefKey && el.validDieRefKey.value !== shown.key) el.validDieRefKey.value = shown.key;
   renderValidDieKeyControl();
@@ -10410,7 +10410,7 @@ function buildKeyFilters(keyColumns, mapKey, columnTypes) {
 // ⚠️ **불변 조건**: 이 함수는 편집 중인 맵을 **어떤 방식으로도 건드리지 않는다.**
 //    selectedTable / tableSchema / gridData / legend / 규격 / 브러시 / 메타 입력을 읽기만 하고
 //    쓰지 않으며, switchTable·renderMetadataInputs 경로를 타지 않는다.
-async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
+export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   const targetTable = (targetOverride && targetOverride.table) || selectedTable;
   // The target key is used for **one thing only**: looking up the target's registered spec
   // (wafer_map_metadata). Two different values used to be conflated here:
@@ -10733,7 +10733,7 @@ function clearOverlayLayers() {
 // 🔴 **대표값을 고르지 않는다.** 한 칸이 소스 여러 칸을 받으면 `cells`의 값은 `null`이고
 //    항목 전부는 `items`에 남는다. 대표를 고르면 나머지를 조용히 버리면서 한 값을 자신
 //    있게 보여 주게 된다(사용자 확정 ⓒ「전부 나열」).
-function reseatOverlayLayer(o) {
+export function reseatOverlayLayer(o) {
   if (!o || o.failed) return;
   const seat = resolveFrame(currentFrame());
   const { seated, duplicates } = seatWaferMmInFrame(o.mmItems, seat);
@@ -10877,11 +10877,11 @@ function overlayFanChip(o) {
 // 🔴 Recounted from the live legend, never cached at add time. The moment the user adds one
 //    of these values to the legend this chip must shrink; a captured count goes quietly stale
 //    and a stale count is indistinguishable from a defect.
-function overlayUnlistedValues(o) {
+export function overlayUnlistedValues(o) {
   return [...overlayLayerValues(o)].filter(v => !legendColorForValue(v));
 }
 
-function overlayLegendChip(o) {
+export function overlayLegendChip(o) {
   const miss = overlayUnlistedValues(o);
   if (miss.length === 0) return '';
   const shown = miss.slice(0, 8).join(', ') + (miss.length > 8 ? ' ...' : '');
@@ -10983,7 +10983,7 @@ function importOverlayToGrid(id) {
 //     맵을 다시 열 때 청구되지 않은 vocab 행을 **화면에서 내린다**, 그리고
 //     `reconcileVocabClaims`가 그 값으로 **칠하거나 행을 고치는 순간** 이 맵의 것으로 승격한다.
 //     즉 "목록에는 뜨지만 아무것도 저장하지 않는다"가 새 기계장치 없이 성립한다.
-function ensureLegendValues(values, opts) {
+export function ensureLegendValues(values, opts) {
   const asVocab = !!(opts && opts.vocab);
   const added = [];
   values.forEach(v => {
@@ -11022,7 +11022,7 @@ function ensureLegendValues(values, opts) {
 //  · 손대지 않은 채 층만 떼면 표시는 사라지지만 `vocab`은 남는다 — Push 페이로드에 안 들어가고
 //    맵을 다시 열 때 내려간다. 「오버레이(해제됨)」 같은 문구를 만들지 않는 이유는
 //    `seedEmptyDoe`의 기본 어휘 행도 `vocab: true`라서, 그 문구가 그쪽에는 거짓이 되기 때문이다.
-function legendOverlaySources(item) {
+export function legendOverlaySources(item) {
   if (!item || item.vocab !== true) return [];
   const v = String(item.value);
   // 실패한 층을 여기서 다시 거르지 않는다 — `overlayLayerValues`가 이미 빈 집합을 돌려주고,
@@ -11033,7 +11033,7 @@ function legendOverlaySources(item) {
     .map(o => `${o.sourceTable} · ${o.sourceKey}`);
 }
 
-function overlayLayerValues(o) {
+export function overlayLayerValues(o) {
   const out = new Set();
   if (!o || o.failed || !o.items) return out;
   o.items.forEach(list => list.forEach(it => {
@@ -11044,7 +11044,7 @@ function overlayLayerValues(o) {
   return out;
 }
 
-function renderOverlayList() {
+export function renderOverlayList() {
   const countBadge = document.getElementById('overlay-count');
   if (countBadge) countBadge.textContent = String(overlayLayers.length);
   const clearBtn = document.getElementById('btn-clear-overlays');
@@ -11106,7 +11106,7 @@ function renderOverlayList() {
 
 // 정본은 `utils.js` 의 `escapeHtml` 입니다. 이 이름은 이 파일의 «지역 별칭»이고, 함수 선언인
 // 것은 위쪽 호출자들이 정의보다 «먼저» 나오기 때문입니다(const 로 바꾸면 TDZ 로 죽습니다).
-function escapeHtmlAttr(s) { return escapeHtml(s); }
+export function escapeHtmlAttr(s) { return escapeHtml(s); }
 
 // ── 오버레이 전용 블록 (메인 Load와 완전히 분리) ──
 // 메인 [📂 Load] = 항상 교체 로드 / 여기 [＋ 겹치기] = 항상 겹치기.

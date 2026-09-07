@@ -59,6 +59,7 @@ function sliceFunction(source, name) {
   //    compared". That is the standing ban's symptom in its declaration-prefix form.
   //    The fix is this file importing instead; until that round, this keeps it alive.
   //    `probe_mechanism_harness` holds the ceiling that forces the count down.
+  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
   const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
   const m = decl.exec(source);
   if (!m) die(`symbol not found: ${name} (renamed? this harness must be updated, never skipped)`);
@@ -74,7 +75,7 @@ function sliceFunction(source, name) {
   let depth = 0;
   for (; i < source.length; i++) {
     if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
+    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
   }
   die(`unbalanced braces extracting '${name}'`);
 }

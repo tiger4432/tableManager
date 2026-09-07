@@ -95,6 +95,7 @@ function sliceFunction(src, name) {
   //    compared". That is the standing ban's symptom in its declaration-prefix form.
   //    The fix is this file importing instead; until that round, this keeps it alive.
   //    `probe_mechanism_harness` holds the ceiling that forces the count down.
+  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
   const m = new RegExp(`(?:^|\\n)(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
   if (!m) die(`function ${name} is gone from map_editor.js — renamed or reshaped.`);
   const start = m.index + (m[0].startsWith('\n') ? 1 : 0);
@@ -107,7 +108,7 @@ function sliceFunction(src, name) {
   let depth = 0;
   for (let j = open; j < src.length; j++) {
     if (src[j] === '{') depth++;
-    else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(start, j + 1); }
+    else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(start, j + 1).replace(/^\s*export\s+/, ''); }
   }
   return die(`unbalanced braces for ${name}`);
 }
