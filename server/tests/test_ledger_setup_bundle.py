@@ -1641,3 +1641,81 @@ def test_a_column_name_is_judged_against_three_different_universes():
         item for item in validate_bundle_errors(narrowed)
         if item.code == "invalid_mapper" and "is missing" in item.message
     ], "profile column bindings are judged against the mapper's input_columns"
+
+
+# ---------------------------------------------------------------------------
+# S-52 ①  노드 «속성» — 키 옆에, 그리고 «정체성이 아니게»
+#
+# 🔴 걷기 표는 «엣지가 들고 온 수식어»만 노드 열로 보여 준다. 술어에 수식어가 없으면 노드에
+# 열이 «하나도» 안 뜨고, 노드 자체의 값(웨이퍼의 product · 랏의 상태)은 선언에 «적을 자리가
+# 없었다». 원칙(술어 = 엣지)은 그대로이고, 「노드가 자기 값을 든다」만 바뀐다.
+# ---------------------------------------------------------------------------
+
+def _with_attributes(entity_attrs=None, bound=None):
+    """`InputEntity@1` 에 속성을 «선언»하고 / 문장에서 «매긴» 번들."""
+    bundle = copy.deepcopy(logical_bundle())
+    if entity_attrs is not None:
+        bundle["entities"]["InputEntity@1"]["attributes"] = entity_attrs
+    if bound is not None:
+        (bundle["sources"]["input_rows"]["bind"]["mappings"]["main_transition"]
+         ["bind"]["subject"]["attributes"]) = bound
+    return bundle
+
+
+def test_an_entity_may_declare_attributes_beside_its_keys(tmp_path):
+    """두 줄의 앞 줄: 「엔티티 선언에 attributes 이름을 적고」."""
+    write_tree(tmp_path, _with_attributes(
+        ["product"], {"product": {"kind": "column", "column": "source_id"}}))
+
+    bundle = load_setup_bundle(tmp_path)
+    # 적재된 번들은 섹션을 «불변»으로 얼린다 — 목록이 튜플로 온다.
+    assert tuple(bundle.section("entities")["InputEntity@1"]["attributes"]) == ("product",)
+
+
+def test_a_bound_attribute_the_type_never_declared_is_refused_by_name_and_path(tmp_path):
+    """㉡ 그 이름과 «폼 경로»를 «둘 다». 화면은 열 이름을 `/declaration` 에서 읽으므로,
+    이것이 안 걸리면 운영자는 온톨로지에 «없는 이름»을 열로 보게 된다."""
+    write_tree(tmp_path, _with_attributes(
+        ["product"], {"prodcut": {"kind": "column", "column": "source_id"}}))
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_setup_bundle(tmp_path)
+    assert caught.value.code == "unknown_entity_attribute"
+    assert caught.value.path == (
+        "bundle.sources.input_rows.bind.mappings.main_transition.bind.subject"
+        ".attributes.prodcut")
+    # 「오타냐 아직 안 썼냐」를 가르는 절반 — 이 저장소의 `_did_you_mean` 규율 그대로.
+    assert "product" in caught.value.message
+
+
+def test_an_attribute_may_not_wear_an_identity_keys_name(tmp_path):
+    """한 이름이 «정체성»과 «실린 값» 둘일 수 없다 — 컴파일러의 「키만이 같음을 정한다」가
+    선언을 든 사람에게 거짓으로 읽힌다."""
+    write_tree(tmp_path, _with_attributes(["input_id"]))
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_setup_bundle(tmp_path)
+    assert caught.value.code == "duplicate_id"
+    assert caught.value.path == "bundle.entities.InputEntity@1.attributes"
+    assert "input_id" in caught.value.message
+
+
+def test_an_attribute_bound_to_an_entity_is_refused_like_an_identity_key_is(tmp_path):
+    """엔티티를 값으로 든 속성은 «값의 옷을 입은 엣지»다. 엣지는 술어이고, 키가 다른
+    엔티티를 가리키는 자리는 `references` 다."""
+    write_tree(tmp_path, _with_attributes(
+        ["product"],
+        {"product": {"kind": "entity", "entity_type": "OutputEntity@1",
+                     "keys": {"output_id": {"kind": "column", "column": "target_id"}}}}))
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_setup_bundle(tmp_path)
+    assert caught.value.code == "invalid_binding"
+    assert caught.value.path.endswith(".attributes.product.kind")
+
+
+def test_a_declaration_with_no_attributes_is_accepted_exactly_as_before(tmp_path):
+    """㉤ 무회귀. 이 축은 «적은 선언에서만» 무언가를 한다."""
+    write_tree(tmp_path)
+    bundle = load_setup_bundle(tmp_path)
+    assert "attributes" not in bundle.section("entities")["InputEntity@1"]

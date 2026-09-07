@@ -1056,9 +1056,19 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         #: use it, for the reason `continues` is not: a field read as a default when missing
         #: must stay missing, or "declared dynamic" and "never classified" stop being
         #: distinguishable.
+        #: `attributes` are the values a node carries that are NOT its identity - a
+        #: wafer's product, a lot's state. Until 2026-09-08 a declaration had nowhere to
+        #: put them, so the walk's table could only show what an EDGE happened to carry
+        #: as a qualifier, and a predicate with no qualifiers produced a node with no
+        #: columns at all. The principle is untouched - a predicate is still an edge -
+        #: and what changed is that a node may hold its own values.
+        #:
+        #: 🔴 OPTIONAL, AND NOT AN IDENTITY. Two atoms differing only in an attribute are
+        #: the SAME entity; `keys` alone decide that, here and in the compiler.
         if not problems.exact(
                 item, path, required=("keys",),
-                optional=("key_types", "allow_null", "references", "class")):
+                optional=("key_types", "allow_null", "references", "class",
+                          "attributes")):
             continue
         if "class" in item and item["class"] not in ("static", "dynamic"):
             problems.add("invalid_entity_ref", f"{path}.class",
@@ -1082,6 +1092,24 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                         problems.add(
                             "invalid_type", f"{path}.key_types.{key}",
                             "key type must be a non-blank trimmed string")
+        if "attributes" in item:
+            attributes = item["attributes"]
+            _nonblank_list(attributes, f"{path}.attributes", problems)
+            if _has_duplicate_strings(attributes):
+                problems.add("duplicate_id", f"{path}.attributes",
+                             "attribute names must be unique")
+            # 🔴 AN ATTRIBUTE MAY NOT WEAR A KEY'S NAME. One name would then mean identity
+            # in one place and a carried value in another, and the compiler's "keys decide
+            # sameness" would read as false to anyone holding the declaration.
+            if _is_list(attributes) and _is_list(keys):
+                collide = sorted(set(_column_values(attributes))
+                                 & set(_column_values(keys)))
+                if collide:
+                    problems.add(
+                        "duplicate_id", f"{path}.attributes",
+                        f"these names are already identity keys: {collide}. An attribute "
+                        f"is not part of what makes this entity the same entity, so one "
+                        f"name cannot be both.")
         if "allow_null" in item and not isinstance(item["allow_null"], bool):
             problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
         if "references" in item:
@@ -1305,7 +1333,7 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
         allowed = ("kind", "value")
         required = ("kind", "value")
     elif kind == "entity":
-        allowed = ("kind", "entity_type", "keys")
+        allowed = ("kind", "entity_type", "keys", "attributes")
         required = ("kind", "entity_type", "keys")
     else:
         problems.add("invalid_binding", f"{path}.kind",
@@ -1331,6 +1359,21 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
                     problems.add(
                         "invalid_binding", f"{path}.keys.{key}.kind",
                         "entity identity keys allow only column or constant bindings")
+        attributes = value.get("attributes")
+        if "attributes" in value and not isinstance(attributes, Mapping):
+            problems.add("invalid_type", f"{path}.attributes", "must be an object")
+        elif isinstance(attributes, Mapping):
+            for name in sorted(attributes):
+                _nonblank_id(name, f"{path}.attributes.{name}", problems)
+                _validate_binding(attributes[name], f"{path}.attributes.{name}", problems)
+                if (isinstance(attributes[name], Mapping)
+                        and attributes[name].get("kind") == "entity"):
+                    # Same rule as an identity key, for the same reason: an entity-valued
+                    # attribute is an EDGE wearing a value's clothes, and edges are
+                    # predicates. `references` is where a key points at another entity.
+                    problems.add(
+                        "invalid_binding", f"{path}.attributes.{name}.kind",
+                        "entity attributes allow only column or constant bindings")
 
 
 def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1832,8 +1875,24 @@ def _binding_refs(binding: Any, path: str, entities: Mapping[str, Any],
         elif isinstance(binding.get("keys"), Mapping) and set(binding["keys"]) != set(descriptor.get("keys", [])):
             problems.add("invalid_entity_ref", f"{path}.keys",
                          "entity binding must contain exactly the registered identity keys")
+        bound_attributes = binding.get("attributes")
+        if descriptor is not None and isinstance(bound_attributes, Mapping):
+            # 🔴 THE TYPE OWNS THE LIST OF NAMES; A SENTENCE ONLY FILLS THEM. Without this
+            # a typo would ride all the way to the walk as a column nobody declared, and
+            # the screen reads its column names off `/declaration` - so the operator would
+            # be told a name the ontology never had. Refused HERE, with the form path, so
+            # the test-run box can point at the box the name was typed into.
+            declared = set(_column_values(descriptor.get("attributes") or []))
+            for name in sorted(set(bound_attributes) - declared):
+                problems.add(
+                    "unknown_entity_attribute", f"{path}.attributes.{name}",
+                    f"{entity_type!r} declares no attribute {name!r}"
+                    f"{_did_you_mean(name, declared, 'attribute')}")
         for key, child in binding.get("keys", {}).items() if isinstance(binding.get("keys"), Mapping) else ():
             _binding_refs(child, f"{path}.keys.{key}", entities, available, problems)
+        for name, child in (sorted(bound_attributes.items())
+                            if isinstance(bound_attributes, Mapping) else ()):
+            _binding_refs(child, f"{path}.attributes.{name}", entities, available, problems)
 
 
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]
@@ -1853,6 +1912,12 @@ def _binding_columns(binding: Mapping[str, Any], path: str) -> list[tuple[str, s
     if binding["kind"] == "entity":
         for key in sorted(binding["keys"]):
             out.extend(_binding_columns(binding["keys"][key], f"{path}.keys.{key}"))
+        # An attribute's column is read from the same frame as a key's, so it belongs in
+        # the same census - otherwise a source could declare a prepared column for an
+        # attribute and nothing would notice it was never produced.
+        for name in sorted(binding.get("attributes") or {}):
+            out.extend(_binding_columns(binding["attributes"][name],
+                                        f"{path}.attributes.{name}"))
     return out
 
 

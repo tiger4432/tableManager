@@ -55,8 +55,14 @@ _EDITABLE_FILE = "ledger_config.json"
 #: `unknown_pack` / `unknown_claim` went with the section; `unsupported_pack_version` with
 #: it.  They are removed rather than kept as harmless no-ops: a classifier listing codes
 #: nothing can raise is a list nobody can audit.
+#: 🔴 `unknown_entity_attribute` JOINS ON 2026-09-08 FOR THE REASON ABOVE, EXACTLY. An
+#: author binds a value into an attribute in one form and declares the name on the entity
+#: type in ANOTHER, so "typed here, not declared there yet" is the ordinary state of a
+#: half-written pair - the same shape `unknown_predicate` was moved here for. Left out, the
+#: draft screen would show a hard error on the path S-52 asks authors to walk every time.
 _UNRESOLVED_CODES = {
-    "unknown_entity_type", "unknown_predicate", "unknown_source",
+    "unknown_entity_type", "unknown_entity_attribute", "unknown_predicate",
+    "unknown_source",
     "unknown_preparer", "unknown_mapper", "unknown_table", "unknown_virtual_join",
 }
 _WRONG_VERSION_CODES = {
