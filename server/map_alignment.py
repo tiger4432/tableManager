@@ -38,6 +38,7 @@ import sys
 import time
 import uuid
 
+import event_constants
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
 from utils.logger import ConsoleSafeHandler
@@ -2784,7 +2785,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                      assume_reference_geometry: bool = True,
                      reference_ref: dict = None, value_weights: dict = None,
                      index_thresholds: dict = None,
-                     diag: list = None):
+                     diag: list = None, slow_warn_ms=None):
     """후보 8개를 **한 호출로** 채점한다. DB를 모른다 — 셀과 메타만 받는다.
 
     `source_maps`: `[{"map_id": str, "meta": dict, "cells": [(x, y), ...],
@@ -3948,6 +3949,15 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
              # 화면과 확정 기록이 같은 집합을 본다.
              "usable_map_ids": [sm.get("map_id") for sm in usable],
              "elapsed_ms": (time.monotonic() - t0) * 1000.0}
+    # 🔴 [S-7] 「성공했는데 «느렸다»」 — 예산이 «선언»됐을 때만 잰다. 인자가 None 이면 이 칸이
+    #    «없다»: `None` 은 「재 봤는데 안 느리다」는 주장이고, 부재는 「이 경로는 안 잰다」다.
+    # ⚠️ 이 함수는 config 를 «안 읽는다» — 예산도 `thresholds`·`cell_cap` 과 «같은 길»로
+    #    도착한다. 그 순수성은 계약이 기대는 성질이고(시험이 「세션이 필요 없다」를 못 박는다),
+    #    S-15 ④ 가 지킨 그것과 같다.
+    if slow_warn_ms is not None:
+        _e = stats["elapsed_ms"]
+        stats["slow_reason"] = (event_constants.slow_sentence(_e, slow_warn_ms)
+                                if _e > slow_warn_ms else None)
 
     if _dg is not None:
         _dg += _diag_scoring_block(
@@ -4284,6 +4294,16 @@ DEFAULT_THRESHOLDS = {"min_margin_dies": 1, "min_discriminating_dies": 1}
 #: (`state == STATE_SCORED` → None). 즉 화면이 문장을 가장 필요로 하는 경우에 종전의 문장
 #: 슬롯은 비어 있다. 그래서 판정 자신이 자기 문장을 들고 다닌다.
 TEXT_PROVISIONAL_RANKING = "잠정 순위 - 판정 기준값 미선언 · 기본값 1"
+
+
+def alignment_slow_warn_ms(cfg: dict):
+    """`alignment` 블록의 선언된 예산 -> 양의 정수, 또는 None(「안 잰다」).
+
+    형제(§`load_alignment_thresholds`)와 «같은 자리 · 같은 모양»이다 — 이 블록에서 한 키를
+    읽는 작은 독자. 자세(0·문자열·불리언 거절)는 `event_constants.slow_warn_ms` «하나»가 든다.
+    """
+    return event_constants.slow_warn_ms(
+        ((cfg or {}).get("alignment") or {}).get("slow_warn_ms"), "alignment")
 
 
 def load_alignment_thresholds(cfg: dict) -> dict:
@@ -5854,7 +5874,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
             reference_ref={"table": reference.get("table"),
                            "map_id": reference.get("map_id")},
             value_weights=value_weights,
-            index_thresholds=index_thresholds, diag=diag)
+            index_thresholds=index_thresholds, diag=diag,
+            #: 선언을 읽는 것은 «cfg 를 쥔 여기»다 — 채점기는 값만 받는다(순수성 유지).
+            slow_warn_ms=alignment_slow_warn_ms(cfg))
         if ruling.get("winner"):
             state = STATE_SCORED
         elif any(c["state"] == STATE_SCORED for c in candidates):

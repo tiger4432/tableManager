@@ -580,8 +580,12 @@ def _apply_replay_batch(db, schemas, crud, table_name, items, run_id, stats, pag
         source_column, source_value = retract
         derived_keys = dt_map_derivation.derived_keys_of(batch.updates, table_name,
                                                          source_column)
-        plan = dt_map_derivation.plan_retraction(db, table_name, source_column,
-                                                 source_value, derived_keys)
+        plan = dt_map_derivation.plan_retraction(
+            db, table_name, source_column, source_value, derived_keys,
+            #: 선언을 읽는 것은 «규칙을 쥔 여기»다 — 순수 함수는 값만 받는다.
+            slow_warn_ms=event_constants.slow_warn_ms(
+                (rule or {}).get("slow_warn_ms"),
+                (rule or {}).get("name") or "<unnamed rule>"))
         logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
         if plan.get("declined"):
             stats["retractions_declined"] = stats.get("retractions_declined", 0) + 1
