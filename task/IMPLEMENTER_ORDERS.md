@@ -35639,3 +35639,44 @@ S-41 «뒤» 같은 파일이니 그 라운드의 «둘째 커밋»으로
 0  S-43  →  1  S-41  →  2  S-44 (+ 같은 라운드 둘째 커밋 S-42)  →  [①-b: 소유자 ㉣]  →  S-32 …
 ```
 > 📌 **[21:1x] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 113 — S-43 «층이 틀렸습니다». 그 기제는 «이미 있고 추적됩니다»: `server/mapper_sdk.py` 의 `df_to_updates` 가 plain 키를 «올립니다». 짓고 계신 crud 절반을 «멈추십시오» — 소유자가 잡았습니다** (실측 21:5x)
+```
+소유자    「그거 맵퍼 SDK 에 다 해놨던 거 아니었나 · SDK 에서 데코레이터 해서 한 건데」
+실측     server/mapper_sdk.py:203~212  — composite 가 «없고» plain `business_key` 면
+           `item["business_key_val"] = crud.clean_str_value(values[key_col])`
+         그리고 그 docstring 이 오늘 제가 «다시 유도한 것»을 그대로 적어 두고 있습니다(2026-09-02 실측):
+           「nothing lifts `updates[business_key]` into `business_key_val` — `_get_or_create_row` resolves
+            identity from `row_id`/`business_key_val` alone — so the write has NO identity. The row lands,
+            the upsert can never find it again, and every run inserts another copy.
+            `unfilled_key_columns` answers `[]` for such an item, so the pre-write gate does not catch it either.」
+         빈 키는 «거절»까지 합니다(MapperContractError, 이름 대어). 즉 S-43 의 규칙이 «거기서 이미 판정됐습니다»
+🔴 제 실패  발화 관문 셋 중 ①(코드에서 «기능»을 찾는다)을 «안 했습니다». crud 쪽만 읽고 「이미 있던 결함」 주석을 근거로
+         새 줄을 열었습니다. 오늘 두 번째입니다(S-40 은 시험 docstring, 이번엔 SDK docstring)
+```
+## 그래서 S-43 은 «수리»가 아니라 «물음»입니다 — 짓기 전에 이것부터
+```
+㉠ 소유자의 그 새 맵퍼가 «@mapper 를 안 쓰는가» — 안 쓰면 결함은 «맵퍼 하나»이고 답은 「데코레이터를 쓰십시오」(코드 0)
+㉡ 손으로 쓴 맵퍼가 «계속 허용»되는가 — 허용이면 그 경로는 SDK 를 «안 지나므로» 리프트가 없습니다.
+   그때의 자리는 crud 가 «아니라» `chain_key_gate` 입니다 — 그 모듈이 자기 머리에 적어 둔 논거가 «정확히 이 부류»입니다:
+   「맵퍼는 gitignore 라 맵퍼에 쓴 가드는 배포에 안 간다. 이 모듈은 추적되고 체인이 내는 모든 행이 지나는 깔때기에 앉는다」
+   ⚠️ 그리고 그 자리에 `unfilled_key_columns` 가 이미 있는데 이 모양에 «[] 를 답합니다»(SDK docstring 이 그렇게 적음) — 거기가 갈리는 자리입니다
+㉢ crud 는 «아닙니다». 넣으면 신원을 정하는 저자가 «둘»이 되고, 그게 「같은 기능에 두 경로」입니다
+```
+## 세십시오 (코드 0, 짧게)
+```
+① 체인 규칙이 가리키는 맵퍼 중 «@mapper 를 지나지 않는» 것이 몇인가 (이 박스 라이브 파일은 «이 박스»라고 밝혀서)
+② 그중 타깃이 «plain business_key» 인 것이 몇인가 — 그 교집합이 S-43 의 «진짜 모집단»입니다
+③ 교집합이 0 이면 S-43 은 «맵퍼 하나의 사용법»이고 큐에서 내려갑니다. 0 이 아니면 ㉡ 의 자리로 갑니다
+```
+🔴 **판정 109·110 의 S-43 층 지시는 «철회»합니다.** 규칙(plain 키 = 행 정체성)은 «그대로 섭니다» — SDK 가 09-02 에 같은 판정을 «독립적으로» 냈고, 그것이 110 의 근거를 오히려 강화합니다. 바뀌는 것은 «어디에 두나»뿐입니다.
+⚠️ 이미 지으신 것이 있으면 «되돌리고», 위 세기부터. 픽스처 수리(`raw_table_1`)는 그 표가 «맵 셀 표»이면 여전히 유효하지만 그것도 ③ 뒤에 판정합니다.
+
+## 큐 (21:5x)
+```
+0  S-43 «세기»(위 ①②③)  →  1  S-41  →  2  S-44 (+S-42)  →  [①-b: 소유자 ㉣]  →  S-32 …
+```
+> 📌 **[21:5x] 이 채널의 미답 질문: «없음».** (판정 109·110 의 S-43 부분 철회 → 113)
