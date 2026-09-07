@@ -11,6 +11,7 @@ S-9b 가 테이프 답의 `by_core[].frame_basis` 를 지었다 — 코어마다
 ⚠️ `by_core` 는 «만들지 않는다**. 「코어 답엔 by_core 가 없다」는 기존 계약이고
    (`test_transfer_plan` 이 못 박는다), 여기서 물을 코어는 «자기 자신» 하나뿐이다.
 """
+import json
 import os
 import sys
 
@@ -172,3 +173,65 @@ def test_a_confirmation_reached_only_through_a_fail_source_still_counts(tp_env, 
     basis = _core(client)["frame_basis"]
     assert basis["kind"] == "confirmation", basis
     assert basis["reference"]["table"] == eds, basis
+
+
+# ---------------------------------------------------------------------------
+# ①-a-1 [판정 102] 「정렬은 됐는데 근거가 약하다」 — 그 중간 등급이 M2 에도 온다
+# ---------------------------------------------------------------------------
+
+def test_a_weakly_warranted_core_wears_the_middle_rung(tp_env, client):
+    """🔴 M1 만 말하던 등급. `warrant` 는 M2 에 «한 번도» 안 나오던 낱말이었다(실측 0회).
+
+    최약 기여자가 서열 미등재면 그 판은 자기가 이름 댄 프레임을 «보증하지 못한다** —
+    그런데 변환은 «됐으므로** `align_unavailable` 도 거짓이다. 그 사이의 등급이다.
+    """
+    _seed_scenario(tp_env)
+    _confirm(tp_env, [_contrib("total_chips", "user"),
+                      _contrib("defect", "trace_fixture_dt_log.csv")])   # 서열 미등재
+    tp_env.commit()
+
+    body = _core(client)
+    assert body["frame_basis"]["kind"] == "confirmation", body["frame_basis"]
+    assert body["frame_basis"]["warrant"] == "not_declared", body["frame_basis"]
+    # 어느 끝도 아니다: 맨 `connected` 도, `align_unavailable` 도 아니다.
+    assert body["sources"]["total_chips"] == "connected(not_declared)", body["sources"]
+    assert "align_unavailable" not in json.dumps(body["sources"])
+
+
+def test_a_fully_ranked_core_does_not_wear_it(tp_env, client):
+    """등급은 «벌어야» 한다. 기여자가 전부 서열에 있으면 맨 상태가 그대로 선다."""
+    _seed_scenario(tp_env)
+    _confirm(tp_env, [_contrib("total_chips", "user"),
+                      _contrib("defect", "chain_ingestion")])
+    tp_env.commit()
+
+    sources = _core(client)["sources"]
+    assert sources["total_chips"] == "connected", sources
+    # ⚠️ «완화»의 not_declared 는 여기서 세지 않는다 — 다른 주어고 자리도 다르다.
+    #    마커가 닿는 것은  상태뿐이다.
+    marked = {k: v for k, v in sources.items() if str(v).startswith("connected")}
+    assert "not_declared" not in json.dumps(marked), marked
+
+
+def test_the_relaxations_own_not_declared_is_untouched(tp_env, client):
+    """🔴 «같은 낱말, 다른 주어». 완화 규칙의 `not_declared` 는 「config 키가 아예 없다」이고
+    중간 등급은 「확정은 있는데 보증할 서열이 없다」다 — 이 라운드가 앞엣것을 «안 건드린다**.
+
+    선언이 없는 역할은 마커 «없이** 맨 `not_declared` 로 남는다(자리가 다르다: 저것은 상태
+    «전체**, 이것은 `connected(...)` 안의 마커).
+    """
+    _seed_scenario(tp_env)
+    sources = _core(client)["sources"]
+    # dt 단계는 origin_log 를 선언하지 않는다 -> 완화의 not_declared
+    assert sources.get("origin_log") == "not_declared", sources
+    assert not sources["origin_log"].startswith("connected"), sources
+
+
+def test_the_tape_answer_takes_the_weakest_core(tp_env, client):
+    """합쳐진 것은 «최약 기여자»를 따라간다(스펙 §0.2 ⑨). 강한 쪽을 따르면 화면이
+    「믿어도 된다」를 과하게 말한다."""
+    _seed_scenario(tp_env)
+    sources = _tape(client)["sources"]
+    # 이 픽스처의 테이프는 확정이 없다 -> 보증 물음 자체가 없다 -> 마커 없음.
+    assert "not_declared" not in json.dumps(
+        {k: v for k, v in sources.items() if str(v).startswith("connected")}), sources

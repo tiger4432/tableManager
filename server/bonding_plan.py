@@ -346,6 +346,38 @@ def _unresolved_roles(cols) -> tuple:
     return tuple(getattr(cols, "unresolved", ()) or ())
 
 
+def warrant_marker(frame_basis):
+    """「정렬은 됐는데 근거가 약하다」 — 그 등급의 마커, 또는 `None`.
+
+    확정 위에 서 있지만 그 판의 최약 기여자가 서열 미등재면 `connected` 도
+    `connected(align_unavailable)` 도 거짓이다. 여섯째 토큰을 만들지 않고 이미 있는
+    `not_declared` 를 마커로 얄는다 — 그 낱말의 뜻(선언이 없다) 그대로다.
+
+    🔴 [S-15 ①-a-1 · 판정 102] 이 «판단»이 함수인 이유: M2(`transfer_plan`)도 같은
+       등급을 내야 하고, 두 모듈이 각자 `frame_basis.get("warrant") == …` 을 적으면
+       그것이 둘째 저자다. 갈라져도 «오류가 안 난다» — 한 화면만 조용히
+       「믿어도 된다」고 말한다.
+    ⚠️ 같은 낱말, «다른 주어»에 주의. 완화 규칙의 `not_declared` 는 「config 키가 아예
+       없다」이고 이것은 「확정은 있는데 그 판을 보증할 서열이 없다」다. 자리가
+       다르므로(여기는 `connected(...)` 안의 마커) 섞이지 않는다.
+    """
+    return (STATUS_NOT_DECLARED
+            if (frame_basis or {}).get("warrant") == STATUS_NOT_DECLARED else None)
+
+
+def weakest_warrant_marker(bases):
+    """여러 기준 위에 선 답의 마커 — 「합쳤진 것은 최약 기여자를 따라간다」(스펙 §0.2 ⑧).
+
+    테이프 답은 코어마다 자기 기준을 갖는다. 그중 «하나라도» 약하게 보증됐으면 그 답
+    전체가 약하게 보증된 것이다 — 강한 쪽을 따라가면 화면이 「믿어도 된다」를 «과하게» 말한다.
+    """
+    for basis in bases:
+        marker = warrant_marker(basis)
+        if marker:
+            return marker
+    return None
+
+
 def compose_status_marker(status, marker):
     """Compose one demotion marker into a connected-status.
 
@@ -862,8 +894,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
     # 근거가 약함」이다. 종전에는 `connected`와 `connected(align_unavailable)` 둘뿐이라 이
     # 상태를 어느 한쪽으로 반올림할 수밖에 없었다. **여섯째 토큰을 만들지 않고** 이미 있는
     # `not_declared`를 마커로 얹는다 — 그 단어의 뜻(선언이 없다) 그대로다.
-    warrant_marker = (STATUS_NOT_DECLARED
-                      if frame_basis.get("warrant") == STATUS_NOT_DECLARED else None)
+    warrant_mark = warrant_marker(frame_basis)
 
     clamped_rects = clamp_rects(rects, canonical_grid) if rects is not None else None
 
@@ -918,8 +949,8 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                 status = f"connected({marker})"
             # 정렬이 성립한 경우에만 붙인다 — 정렬 자체가 안 됐으면 「정렬됐으나 약함」은
             # 참이 아니고, 그 상태는 이미 `align_unavailable`이 말한다.
-            if warrant_marker:
-                status = compose_status_marker(status, warrant_marker)
+            if warrant_mark:
+                status = compose_status_marker(status, warrant_mark)
 
         # [7b] pool binds canonicalized by the bound column's declared type
         filters = [cols["lot"] == map_overlay.canonical_role_value(src, "lot", lot),
