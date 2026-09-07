@@ -13443,3 +13443,50 @@ counts_capped       bonding_plan:1106                      🔴 «객체»      
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔴🔴 [응용 -> 총괄] **중간 보고 — `server/tests` 가 «수집 자체»에서 막혔습니다. 오늘 12:03 커밋 하나 때문입니다** (실측 13:1x)
+
+S-32 의 ① 전수 실행을 시작하자마자 나온 것이라 «표를 기다리지 않고» 먼저 올립니다 —
+이건 제 계측기 이야기가 아니라 **세 레인의 게이트가 지금 안 도는** 이야기입니다.
+
+## 무엇이
+```
+자리    server/scripts/dev_env/snapshot_db.py:45   `DEFAULT_SOURCE = paths.DEFAULT_PG_URL`
+증상    ModuleNotFound 가 아니라 «NameError» — `paths` 가 «모듈 최상단에서 import 되지 않습니다»
+        그 파일은 `paths` 를 «함수 안»에서만 부릅니다(:181 · :295). :42 의 `import db_safety` 옆에 «없습니다»
+전파    server/tests/test_readonly_guard.py:97 이 그 모듈을 «모듈 수준»에서 import 합니다
+        -> pytest 가 «수집 단계»에서 죽습니다 -> `Interrupted: 1 error during collection`
+        -> 🔴 **server/tests 의 시험이 «한 개도» 돌지 않습니다.** 빨강 하나가 아니라 «전부 0» 입니다
+```
+
+## 주인 — 찾았습니다. 그리고 그 커밋의 «의도»는 옳았습니다
+```
+sha    b69d82b3  2026-09-07 12:03  「fix(config): the default database URL gets one home, beside the resolver that consumes it」
+즉     C-20 ㉠ 의 수리입니다 — 「다섯이 정본(DEFAULT_PG_URL)을 «부르게»」 그대로
+사고    다섯 자리 중 «이 한 자리»에서 이름을 «부르기만» 하고 `import paths` 를 «안 실었습니다».
+        그 줄 바로 위 주석이 「정본을 «부른다»」라고 적혀 있어, 의도는 문장으로 남아 있고 배선만 빠졌습니다
+```
+🔵 **저는 안 고칩니다** — `server/scripts/` 는 제 레인이 아닙니다. 판정과 착지는 그쪽입니다.
+   고칠 양은 «한 줄»로 보입니다(:42 옆에 `import paths`). 다만 다른 넷도 «같은 모양인지»는 그 레인이 셀 몫입니다.
+
+## 재현 — «이 박스 상태»가 아니라 «HEAD 의 코드»입니다
+```
+✅ 메인 트리에서 그 모듈만 import  -> 같은 NameError (워크트리 이야기가 아닙니다)
+✅ 워크트리(HEAD fc5d3a11, 추적 파일 그대로) -> 수집 단계에서 같은 자리
+❌ 제 워크트리 설정 탓 아님       -> gitignore 된 server/config·server/mappers 를 «전부» 메인에서 복사해 맞췄습니다
+```
+
+## 그래서 S-32 는 이렇게 «계속»합니다 (코드는 한 줄도 안 건드립니다)
+```
+`--ignore=server/tests/test_readonly_guard.py` 로 «그 모듈만 빼고» 전수를 돌립니다
+=> 나머지 전부의 ⓐ/ⓑ 는 정상적으로 잽니다. 그 파일 «한 줄»은 표에 「수집 실패 · 주인 b69d82b3」로 «따로» 적습니다
+⛔ 코드를 고쳐서 돌리지 «않았습니다» — 고치면 제가 재는 것이 «HEAD 가 아니게» 됩니다
+```
+
+## 판정 대기 — «하나»
+```
+❓ 이 줄을 «누구 채널»로 보낼지는 총괄 몫입니다. 저는 제 채널에만 적었습니다(send_message 안 씁니다)
+```
+> 🔁 이월(첫 제출 13:1x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
