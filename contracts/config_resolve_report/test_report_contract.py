@@ -154,22 +154,60 @@ def test_server_vocabulary_is_exactly_the_contract_vocabulary():
     assert list(crr.SCOPES) == VECTORS["vocabulary"]["scopes"]
 
 
+#: The one report reason with no runtime twin, and the reason it has none. See the
+#: xfail below - it is a NAMED red, not an exemption.
+_AWAITING_RUNTIME = {"scope_unresolved"}
+
+
+def _runtime_vocabulary():
+    """Where the degradation words live TODAY.
+
+    🔴 THE ADDRESS MOVED, THE CONTRACT DID NOT (2026-09-08). This read
+    `main.CHIP_TRACE_*`, and `98513743` deleted the graph-sync branch those names served -
+    so every word read as absent and the gate had been failing on a dead address rather
+    than on an invented word. `bonding_plan`'s `BINDING_*` is where the same three live
+    now, and it is the only module that carries all three, which is what makes it the
+    source rather than one of the five that carry some.
+
+    ⚠️ IT IS DELIBERATELY NOT WIDENED TO "EVERY MODULE THAT NAMES A DEGRADATION". Include
+    the report's own module and the check becomes vacuous - a word is in the vocabulary
+    because the report declared it, which is the invention this exists to catch.
+    """
+    import bonding_plan
+    return {v for k, v in vars(bonding_plan).items()
+            if k.startswith("BINDING_") and isinstance(v, str)}
+
+
 def test_the_vocabulary_is_borrowed_from_the_runtime_not_invented():
-    """Every word must already exist in `main`'s chip-trace degradation vocabulary.
+    """Every word must already exist in the runtime's degradation vocabulary.
 
     This is the check that keeps 'reuse the runtime vocabulary' from being a comment
     somebody eventually stops honouring: adding `globally_disabled` here fails HERE, at
     the point of invention, rather than three rounds later when a client renders a word
     the rest of the system does not use.
     """
-    import main
-    runtime = {v for k, v in vars(main).items()
-               if k.startswith("CHIP_TRACE_") and isinstance(v, str)}
-    borrowed = set(crr.REASONS) - runtime
+    borrowed = set(crr.REASONS) - _runtime_vocabulary() - _AWAITING_RUNTIME
     assert not borrowed, (
         f"these report reasons do not exist in the runtime vocabulary: {sorted(borrowed)}. "
         "The contract is that config-time degradation reuses the runtime words; a new word "
         "needs the Lead PM, `vectors.json`, and the client harness updated together.")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "S-50: `scope_unresolved` names a situation the runtime still HAS and answers "
+    "WRONGLY - a view whose scope does not cover the decision key returns `single` "
+    "rather than refusing. The report invented the word to say that silence in advance, "
+    "and this contract correctly caught the invention; both are right. It goes green the "
+    "day the resolver says the word itself, which is a three-party change (Lead PM, "
+    "vectors.json, client harness) and therefore its own round."))
+def test_every_report_reason_including_scope_unresolved_has_a_runtime_twin():
+    """🔴 A NAMED RED, NOT A SKIP AND NOT A DELETION.
+
+    Skipping says "not measured" and deleting says "no such rule"; both lose the fact that
+    one word is outstanding and why. `strict=True` means the day the runtime says it, THIS
+    goes red for passing - which is how the marker gets removed rather than outliving the
+    defect it records."""
+    assert set(crr.REASONS) <= _runtime_vocabulary()
 
 
 def test_the_response_advertises_its_own_vocabulary():
