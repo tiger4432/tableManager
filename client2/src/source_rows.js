@@ -46,8 +46,17 @@ export function sourceRowHtml(sourceName, sourceVal, { isPinned }) {
  * The selection's row: this source across many cells.
  * 🔴 The "how many distinct values" sentence is built HERE rather than passed in, so that the
  *    one place deciding what the operator reads is also the place that escapes it.
+ *
+ * 🔴 S-21. `cellCount` is HOW MANY CELLS WERE SELECTED, and it is the missing half of a
+ *    fact this row could not state: a source present in 2 of 5 selected cells drew exactly
+ *    like one present in all 5. 「그 소스는 여기 없다」 and 「그 소스는 없다」 were the same
+ *    shape. `values` already carries one entry per cell THAT HAS THE SOURCE, so the
+ *    comparison needs nothing new on the wire -- only the denominator, which the caller
+ *    has been holding all along.
+ * ⚠️ Optional on purpose: a caller that does not pass it renders EXACTLY as before. The
+ *    single-cell row is a different function and is untouched.
  */
-export function sourceRowAllHtml(sourceName, values, { isPinnedAll }) {
+export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount }) {
   const uniqueVals = Array.from(new Set(values || []));
   let valText = '';
   if (uniqueVals.length === 0) {
@@ -56,6 +65,20 @@ export function sourceRowAllHtml(sourceName, values, { isPinnedAll }) {
     valText = String(uniqueVals[0]);
   } else {
     valText = `Multiple Values (${uniqueVals.length} types)`;
+  }
+  // 🔴 S-21. Said ONLY when this source is missing from some of the selection. Covering
+  //    every selected cell is the ordinary case and gets no note -- a mark on every row is
+  //    noise, and noise is how the one row that matters stops being seen.
+  // ⚠️ `values.length`, not `uniqueVals.length`: the question is HOW MANY CELLS, and two
+  //    cells holding the same value are still two cells. Deduplicating here would report
+  //    a source as missing from cells it actually covers.
+  const covered = Array.isArray(values) ? values.length : 0;
+  const selected = Number.isInteger(cellCount) ? cellCount : null;
+  // 🔴 THE RATIO ALONE, NO ABSENCE WORD. 「없음」 beside a PRESENCE count reads as its
+  //    numerator and inverts the sentence; the ratio cannot be read backwards because both
+  //    numbers carry their unit. Reported to the lead as a wording call, not buried.
+  if (selected !== null && covered > 0 && covered < selected) {
+    valText = `${valText} · ${selected}칸 중 ${covered}칸`;
   }
   return `
           <td>${escapeHtml(sourceName)}</td>

@@ -1671,7 +1671,11 @@ async function refreshSourcesList() {
         const isPinnedAll = pinnedCount === cells.length;
 
         const tr = document.createElement('tr');
-        tr.innerHTML = sourceRowAllHtml(sourceName, values, { isPinnedAll });
+        // 🔴 S-21. The denominator was here all along — `cells` is the selection. Without it
+        //    the row could not tell 「this source is missing from 3 of these cells」 from
+        //    「this source covers all of them」, and those looked identical.
+        tr.innerHTML = sourceRowAllHtml(sourceName, values,
+                                        { isPinnedAll, cellCount: cells.length });
 
         // Bind batch Pin Action
         tr.querySelector('.pin-btn').addEventListener('click', async () => {
