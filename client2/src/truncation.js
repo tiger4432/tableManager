@@ -91,9 +91,33 @@ export function suggestTruncatedNote(shown) {
   return `상위 ${shown}개만 표시 — 더 입력하면 좁혀집니다`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔴 여섯째 모양 — «정본 축-지도». 그리고 이것을 모르는 동안 이 함수는 «거짓»을 답했습니다.
+//
+//     truncated: { <축>: { cut, omitted, reason } }        (`event_constants.truncated_note`)
+//
+// 이 모양에는 «최상위 `reason` 이 없습니다». 그래서 아래의 `Boolean(said.reason)` 은
+// «잘린 응답»에 대해 `false` 를 돌려줍니다 — 「모른다」도 아니고 «틀린 답»입니다.
+// 화면은 잘린 목록을 «온전한 것»으로 그립니다. 오류 0.
+//
+// 🔴 판별은 `cut` 이지 `reason` 이 아닙니다. 서버는 `reason` 을 «잘렸고 사유가 있을 때만»
+//    싣습니다(`truncated_note` 는 `reason if (reason and cut) else None`) — 사유 없이 잘리는
+//    자리가 실재하므로(예산 비트만 아는 호출자) `reason` 으로 읽으면 그것을 «안 잘림»으로
+//    떨어뜨립니다. 서버가 «판정»으로 쓰는 칸을 그대로 읽습니다.
+//
+// ⚠️ 앞의 다섯 모양은 «한 바이트도» 안 바뀝니다. 옛 subgraph 모양의 축은 «불리언»이고
+//    (`{depth: true, nodes: false, reason: 'nodes'}`), 축-지도의 축은 «객체»입니다.
+//    그래서 「값이 객체이고 `cut` 키를 가진 것이 하나라도 있나」가 둘을 가릅니다.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /** 응답이 「잘렸다」고 말하나. `true` · `false` · `null`(모름) 셋입니다. */
 export function saysTruncated(said) {
   if (typeof said === 'boolean') return said;
-  if (said && typeof said === 'object' && !Array.isArray(said)) return Boolean(said.reason);
+  if (said && typeof said === 'object' && !Array.isArray(said)) {
+    const axes = Object.values(said).filter(
+      v => v && typeof v === 'object' && !Array.isArray(v) && 'cut' in v);
+    if (axes.length) return axes.some(a => a.cut === true);
+    return Boolean(said.reason);
+  }
   return null;
 }

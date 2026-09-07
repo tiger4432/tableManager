@@ -342,6 +342,24 @@ const payload = (token, selected = 'entity|A@1') => ({
       selection: { key: 'entity|E@1', context_token: 'active:other' } });
   } catch { refused = true; }
   check('G6 a selection carrying the wrong token is still refused', refused);
+
+  // 🔴 THE CANONICAL TRUNCATION SHAPE REACHES THIS READER — scored by BEHAVIOUR (ruling 99 ③).
+  //    `truncated: {<axis>: {cut, …}}` carries no top-level `reason`, so a reducer that had not
+  //    learned it would call a CUT catalogue complete: no error, no empty screen, just a wrong
+  //    「전부」 on a list that is missing rows.
+  const reduced = (payload) => reduceExplorerState(initialExplorerState,
+    { type: 'RESPONSE_RECEIVED', generation: 0, payload: { ...emptyPayload, ...payload } });
+  const axis = (cut) => ({ references: { cut, omitted: null, reason: cut ? 'cap' : null } });
+  check('G7 a cut axis map is read as a truncated reference list',
+    reduced({ truncated: axis(true) }).referencesTruncated === true);
+  check('G8 ...and an uncut one is not',
+    reduced({ truncated: axis(false) }).referencesTruncated === false);
+  // ⚠️ The fall-back is why this can land before the server folds the key; a fall-back nobody
+  //    scores is one that quietly stops working.
+  check('G9 with no axis map, the old per-list boolean is still the answer',
+    reduced({ references_truncated: true }).referencesTruncated === true);
+  check('G10 and the canonical shape outranks the old key when both arrive',
+    reduced({ truncated: axis(true), references_truncated: false }).referencesTruncated === true);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);

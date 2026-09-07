@@ -114,6 +114,28 @@ console.log('\n── C. WHAT THE WIRE SAYS ABOUT ITSELF ───────�
   // It must not be guessed at: an unknown shape answers unknown rather than "complete".
   ok('C7 a shape it does not know answers unknown', X.saysTruncated([{ role: 'x', cap: 1 }]) === null);
   ok('C8 a string is unknown too, not truthy', X.saysTruncated('true') === null);
+
+  // 🔴 THE SIXTH SHAPE — the canonical axis map (`event_constants.truncated_note`), which this
+  //    reader answered WRONG rather than "unknown": it has no top-level `reason`, so reading
+  //    that field called a truncated response complete. Measured 2026-09-07 (ruling 99).
+  const note = (cut, reason = null) => ({ cut, omitted: null, reason: cut ? reason : null });
+  const axisCut = { rows: note(true, 'cap'), columns: note(false) };
+  const axisWhole = { rows: note(false), columns: note(false) };
+  ok('C9 an axis map with one axis cut is truncated', X.saysTruncated(axisCut) === true,
+    X.saysTruncated(axisCut));
+  ok('C10 an axis map with nothing cut is NOT truncated', X.saysTruncated(axisWhole) === false,
+    X.saysTruncated(axisWhole));
+  ok('C11 the two axis maps are told apart', X.saysTruncated(axisCut) !== X.saysTruncated(axisWhole));
+  // 🔴 `cut` IS THE JUDGEMENT, NOT `reason`. The server only carries a reason when there is one
+  //    (`reason if (reason and cut) else None`), and a cut with no reason is a real shape --
+  //    a caller that knows only the budget bit. Reading `reason` would call that complete.
+  ok('C12 a cut with no reason is still cut', X.saysTruncated({ rows: note(true) }) === true);
+  // ⚠️ THE FIVE OLDER SHAPES MUST NOT MOVE. The old subgraph map's axes are BOOLEANS beside a
+  //    top-level reason; the new one's are OBJECTS. That is what tells them apart, and this
+  //    line fails if the axis branch starts swallowing the older map.
+  ok('C13 the older boolean-axis map still answers from its top-level reason',
+    X.saysTruncated({ depth: true, nodes: false, reason: 'depth' }) === true
+    && X.saysTruncated({ depth: false, nodes: false, reason: null }) === false);
 }
 
 console.log('\n── D. THE TWO READERS OF ONE ROUTE GET ONE VERDICT ───────────');
@@ -174,9 +196,11 @@ const DEFECTS = [
   // \u{1f534} TWO ARMS, ON PURPOSE. One mutant cannot show that the two branches answer two
   //    different questions \u2014 deleting either one has to redden a DIFFERENT assertion, or
   //    "one place knows every shape" is a claim the harness never measured.
+  // 🔴 THE ANCHOR MOVED WHEN THE SIXTH SHAPE LANDED, and it is kept SINGLE-LINE for the reason
+  //    M10 records below. Disabling the branch head kills both object shapes at once, which is
+  //    what "the object shape is not understood" means.
   ['M7 the object shape is not understood (the walk goes quiet)',
-    swap("  if (said && typeof said === 'object' && !Array.isArray(said)) "
-      + 'return Boolean(said.reason);', '')],
+    swap("  if (said && typeof said === 'object' && !Array.isArray(said)) {", '  if (false) {')],
   ['M8 the bool shape is not understood (every other route goes quiet)',
     swap("  if (typeof said === 'boolean') return said;", '')],
   // The trap this round exists to close: presence read as truth.
@@ -187,6 +211,20 @@ const DEFECTS = [
     //    carried a newline and died on this CRLF checkout - the harness went quiet
     //    for a reason that had nothing to do with the code (C-32, five harnesses today).
     swap('  return null;', '  return false;')],
+  // ── the sixth shape's own arms (ruling 99) ───────────────────────────────────────────
+  // 🔴 M11 IS THE DEFECT ITSELF, restored: without the axis branch the map falls through to
+  //    the top-level `reason`, which the canonical shape does not have, and a CUT response
+  //    comes back `false`. Not "unknown" — WRONG, and silently.
+  ['M11 the axis map is not understood, so a cut list reads as complete',
+    swap('    if (axes.length) return axes.some(a => a.cut === true);', '')],
+  // M12 keeps the branch but stops reading the judgement, so "cut" and "not cut" stop being
+  //     told apart. One mutant cannot show that; this is why the scorer holds BOTH axis lines.
+  ['M12 every axis map answers the same, cut or not',
+    swap('return axes.some(a => a.cut === true);', 'return false;')],
+  // M13: reading `reason` instead of `cut` is the plausible near-miss — the server only carries
+  //      a reason when it has one, so a budget-bit caller's cut would read as complete.
+  ['M13 the axis judgement is taken from `reason` instead of `cut`',
+    swap('return axes.some(a => a.cut === true);', 'return axes.some(a => Boolean(a.reason));')],
 ];
 
 const CONTROLS = [
@@ -215,7 +253,17 @@ function verdict(M) {
     || M.saysTruncated({ nodes: true, reason: 'nodes' }) !== true
     || M.saysTruncated({ nodes: false, reason: null }) !== false
     || M.saysTruncated(undefined) !== null
-    || M.saysTruncated([{ role: 'x' }]) !== null;
+    || M.saysTruncated([{ role: 'x' }]) !== null
+    // the sixth shape — the canonical axis map. Two lines, because "cut" and "not cut" must
+    // stay TOLD APART: a mutant that answers one constant passes either line alone.
+    || M.saysTruncated({ rows: { cut: true, omitted: null, reason: 'cap' } }) !== true
+    || M.saysTruncated({ rows: { cut: false, omitted: null, reason: null } }) !== false
+    // 🔴 THE DISCRIMINATING INPUT, and the scorer did not have it at first: on a cut that
+    //    carries a reason, `cut` and `reason` AGREE, so a mutant that reads the wrong one
+    //    walked straight through (M13 escaped until this line existed). A cut with no reason
+    //    is a real shape — the server writes `reason if (reason and cut) else None` — and it
+    //    is the only input on which the two spellings part.
+    || M.saysTruncated({ rows: { cut: true, omitted: null, reason: null } }) !== true;
 }
 
 // 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부

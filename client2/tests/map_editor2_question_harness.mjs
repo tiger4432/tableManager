@@ -300,6 +300,25 @@ const CATALOG = {
   eq(normaliseWorklist({ units: rows, totals: { by_state: { pending: '' } } }).remaining, null,
      'E12 an empty string is not a count');
   eq(normaliseWorklist(null).rows.length, 0, 'E13 a null response is an empty page, not a crash');
+
+  // 🔴 THE CANONICAL SHAPE REACHES THIS READER — scored by BEHAVIOUR, not by grepping for the
+  //    import (ruling 99 ③). `truncated: {<axis>: {cut, …}}` carries no top-level `reason`, so
+  //    a reader that had not learned it would answer `false` on E14: not "unknown", WRONG.
+  const axis = (cut) => ({ units: { cut, omitted: null, reason: cut ? 'cap' : null } });
+  eq(normaliseWorklist({ units: rows, truncated: axis(true) }).truncated, true,
+     'E14 a cut axis map is read as truncated');
+  eq(normaliseWorklist({ units: rows, truncated: axis(false) }).truncated, false,
+     'E15 ...and an uncut one is not');
+  // ⚠️ THE OLD KEY STILL ANSWERS WHILE THE WIRE STILL SENDS IT. The fall-back is the whole
+  //    reason this lands before the server folds the key, and a fall-back nobody scores is a
+  //    fall-back that quietly stops working.
+  eq(normaliseWorklist({ units: rows, totals: { units_truncated: true } }).truncated, true,
+     'E16 with no axis map, the old per-list boolean is still the answer');
+  // 🔴 AND THE CANONICAL SHAPE WINS WHEN BOTH ARRIVE. Without this the two could disagree and
+  //    nothing would say which one the screen believed.
+  eq(normaliseWorklist({ units: rows, truncated: axis(true),
+                         totals: { units_truncated: false } }).truncated, true,
+     'E17 the canonical shape outranks the old key when both are present');
   eq(normaliseWorklist({ units: rows, totals: { matched: 668, returned: 3 } }).total, 668,
      'E13b `matched` is the population; `returned` is only how many fit in this page');
 
