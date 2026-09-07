@@ -262,6 +262,60 @@ async function legendRefreshCalls(mutate, withOverlays) {
   }
 }
 
+// ── C-35: the legend row's overlay mark, RENDERED ────────────────────────────────────────
+// 🔴 Driven with `legendOverlaySources` REPLACED, so the two runs differ in one thing only:
+//    whether that function answered with sources. Everything the row builds is recorded by
+//    tag, which is what makes 「no control was added」 answerable without naming a class.
+async function legendRowBuild(mutate, sources) {
+  const savedDoc = globalThis.document;
+  const savedRaf = globalThis.requestAnimationFrame;
+  const made = [];
+  const mk = (tag) => {
+    const e = { tag, children: [], innerHTML: '', textContent: '', title: '', style: {},
+      appendChild(c) { this.children.push(c); }, setAttribute() {}, querySelector: () => null,
+      querySelectorAll: () => [], addEventListener() {}, dataset: {},
+      classList: { add() {}, remove() {}, contains: () => false } };
+    made.push(e);
+    return e;
+  };
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.document = { getElementById: () => null, querySelector: () => null,
+    querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
+    createElement: (t) => mk(t) };
+  try {
+    const asked = [];
+    const { probe } = await loadWithProbe(SRC_PATH, {
+      expose: ['renderLegendTable', 'el'],
+      state: ['renderOverlayList', 'legendOverlaySources', 'overlayLayers', 'activeOverlayLayers',
+              'legend', 'activeBrush', 'selectedTable'],
+      stubs: { './utils.js': { showToast: () => {} },
+               './transfer_plan.js': { notifyMapContext: () => {} } },
+      mutate: mutate || undefined,
+      tag: `ovcmark${Math.random().toString(36).slice(2, 7)}`,
+    });
+    probe.renderOverlayList = () => {};
+    probe.legendOverlaySources = (item) => { asked.push(item && item.value); return sources; };
+    probe.legend = OV_LEGEND;
+    probe.activeBrush = '1';
+    probe.selectedTable = 'dt_map';
+    probe.overlayLayers = [];
+    probe.activeOverlayLayers = [];
+    probe.el.legendList = mk('div');
+    probe.el.activeBrushVal = mk('span');
+    probe.renderLegendTable();
+    const marks = made.filter(e => sources.length && String(e.textContent).includes(sources[0]));
+    return {
+      asked,
+      counts: made.reduce((a, e) => ((a[e.tag] = (a[e.tag] || 0) + 1), a), {}),
+      markTags: marks.map(e => e.tag),
+      markFont: marks.map(e => (e.style || {}).fontSize),
+    };
+  } finally {
+    globalThis.document = savedDoc;
+    globalThis.requestAnimationFrame = savedRaf;
+  }
+}
+
 async function makeSandbox(src) {
   ctxSaves.length = 0;
 
@@ -733,17 +787,29 @@ async function runAll(src) {
       'A13h ...and removing every overlay does not take that colour away');
 
     // The mark is TEXT in the value cell, not a control, and not sized below the token.
-    const render = stripComments(sliceFunction(srcText, 'renderLegendTable'));
-    ok(/legendOverlaySources\s*\(\s*item\s*\)/.test(render),
-      'A13i the legend renderer asks for the mark');
-    ok(/createElement\('span'\)/.test(render.slice(render.indexOf('legendOverlaySources'))),
-      'A13j ...and renders it as a span — no button, no toggle, no new control');
-    const marked = render.slice(render.indexOf('legendOverlaySources'),
-                                render.indexOf('legendOverlaySources') + 900);
-    ok(!/createElement\('(button|select|input)'\)/.test(marked),
-      'A13k ...and adds no control of any kind alongside it');
-    ok(!/fontSize\s*=\s*'0\.[0-7]/.test(marked),
-      'A13l ...and does not shrink the type to make room');
+    // 🔴 RENDERED, AND THE PAIR DIFFERS IN ONE THING: whether `legendOverlaySources` answered
+    //    with sources. Everything the row builds is recorded BY TAG, so 「no control was
+    //    added」 is answerable without naming a class or slicing a 900-character window --
+    //    which is what the old form did, and it would have missed a control created outside
+    //    that window just as surely as it would have flagged one inside a dead branch.
+    const withMark = await legendRowBuild(src, ['dt_map · k1']);
+    const noMark = await legendRowBuild(src, []);
+    ok(withMark.asked.includes('1'), 'A13i the legend renderer asks for the mark',
+      `asked for ${JSON.stringify(withMark.asked)}`);
+    ok(withMark.markTags.length === 1 && withMark.markTags[0] === 'span',
+      'A13j ...and renders it as a span — no button, no toggle, no new control',
+      `the mark was carried by ${JSON.stringify(withMark.markTags)}`);
+    // 🔴 THE WHOLE BUILD IS COMPARED, not a window of source. The mark may add exactly one
+    //    span and nothing else; any other tag appearing is a control that came with it.
+    const extra = Object.keys({ ...withMark.counts, ...noMark.counts })
+      .map(t => [t, (withMark.counts[t] || 0) - (noMark.counts[t] || 0)])
+      .filter(([, d]) => d !== 0);
+    ok(extra.length === 1 && extra[0][0] === 'span' && extra[0][1] === 1,
+      'A13k ...and adds no control of any kind alongside it',
+      `the mark changed the build by ${JSON.stringify(extra)}`);
+    ok(withMark.markFont.every(f => f === undefined || f === null || f === ''),
+      'A13l ...and does not shrink the type to make room',
+      `font-size on the mark: ${JSON.stringify(withMark.markFont)}`);
   }
 
   return { fails, ran };
