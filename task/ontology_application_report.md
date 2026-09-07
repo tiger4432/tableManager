@@ -13490,3 +13490,118 @@ sha    b69d82b3  2026-09-07 12:03  「fix(config): the default database URL gets
 ❓ 이 줄을 «누구 채널»로 보낼지는 총괄 몫입니다. 저는 제 채널에만 적었습니다(send_message 안 씁니다)
 ```
 > 🔁 이월(첫 제출 13:1x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🟢 [응용 -> 총괄] **S-32 분류 실행 — 표 28행. ⓑ 는 «0» 이고, 오늘 깨진 것은 «하나»입니다** (실측 13:2x~14:5x)
+
+## ⓪ 어디서 · 무엇을 고쳐야 «잴 수 있었나» — 계측기 결함 «셋»을 먼저 적습니다
+```
+워크트리   .claude/worktrees/s32-classify   HEAD `fc5d3a11` (공유 트리 «안 씁니다»)
+계측기 ①   워크트리에 «라이브 선언이 없다» — server/config 26 · server/mappers 14 가 gitignore
+           -> 메인에서 «복사»해 맞췄습니다. 안 맞췄으면 선언 읽는 시험이 «제 워크트리 탓»으로 빨개집니다
+계측기 ②   🔴 «줄바꿈». core.autocrlf=true · .gitattributes «없음» -> 새 워크트리는 CRLF 로 체크아웃됩니다
+           세어 봤더니 추적 파일 2,336 중 «1,857»(79%)이 메인과 바이트가 달랐습니다
+           -> 빨강 «셋»이 그것 때문이었고(`\n` vs `\r\n`), 고치니 «초록»이 됐습니다
+           -> 메인의 작업 트리 바이트를 부어 «0 개 차이»로 맞춘 뒤 전수를 «다시» 돌렸습니다
+계측기 ③   「전수 한 번」이 «불가능»했습니다 — server/tests 와 contracts 에 «같은 파일 이름 셋»이 있어
+           한 번의 pytest 가 수집을 못 합니다. 다만 그 셋은 «중복이 아니라 shim» 입니다
+           (server/tests 쪽이 contracts 의 시험을 re-export 합니다) -> ④ 위반 «아님». 두 번 호출로 돌렸습니다
+```
+🔴 **②를 안 잡았으면 표 전체가 «다른 트리»의 표였습니다.** 넷으로 보였는데 세어 보니 79% 였습니다.
+
+## ① 수 — 그리고 「빨강 하나」와 「전부 0」은 다릅니다
+```
+server/tests   27 failed · 4,794 passed · 158 skipped · 1 xfailed  (15:04)
+contracts       2 failed ·   204 passed ·  22 skipped
+서로 다른 시험   «27» (server 의 둘은 contracts 둘의 shim — 같은 시험입니다)
++ 수집 실패      «1» (test_readonly_guard — 판정 89) => 표 «28행»
+🔴 ⓑ = «0»      빨강 29 개를 «전부 단독» 실행 -> 29/29 그대로 빨강. 순서·상태 의존은 «없습니다»
+```
+
+## ② 「주인」은 pickaxe 말고 «과거에서 돌려» 찾았습니다 — pickaxe 가 오늘 «틀린 주인»을 댔습니다
+```
+방법   워크트리 하나 더(`-c core.autocrlf=false` 로 LF 체크아웃) · 어제 끝(34c97eef) 과 5개 시점에서 «같은 29개»를 돌림
+왜     `git log -S'metadata_target_table'` 이 오늘 커밋 `5693bc00`·`4df0c520` 을 주인으로 지목했는데,
+       그 시험들은 «어제도 빨갰습니다». 리터럴은 「누가 그 낱말을 건드렸나」에 답하지 「누가 빨갛게 했나」에 답하지 않습니다
+결과   어제 끝 기준 29 중 «초록은 셋» — 오늘 깨진 것은 «시험 하나(매개변수 셋)»뿐입니다
+```
+
+## ③ 표 — 28행
+
+### 🔴 오늘 깨진 것 «하나» (ⓐ-결함 · 주인 «앞/뒤 실행»으로 확정)
+| 파일::시험 | 분류 | 주인 | 한 줄 |
+|---|---|---|---|
+| `test_availability_relaxation::test_malformed_fail_sources_is_declared_not_absent[string_none / wrong_type_int / wrong_type_list]` | ⓐ-결함 ×3 | **`195961b4`** (09-07 09:43) | 앞: 4 passed · 뒤: 3 failed. 삼킨 예외는 `'str' object has no attribute 'values'` — 새 코드가 `fail_sources` 를 «dict 로 가정»해서, 망가진 선언이 라우트를 «500» 으로 만듭니다. 그 시험이 막으려던 바로 그 부류입니다 |
+
+### ⓒ — 설치 의존 «일곱». 「손잡이 낱말」이 아니라 «선언을 빼고 다시 돌려» 갈랐습니다
+| 파일::시험 | 근거(측정) |
+|---|---|
+| `test_ontology_config_explorer::test_derivations_rebuild_by_force_what_the_operator_typed_by_hand` | 선언 빼면 failed -> **error** |
+| `test_ontology_config_explorer::test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list` | 선언 빼면 failed -> **error** |
+| `test_void_base_join_fixture::test_base_columns_are_declared` | 선언 빼면 **FileNotFoundError** |
+| `test_void_base_join_fixture::test_base_columns_are_not_key_material` | 선언 빼면 **FileNotFoundError** |
+| `test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract` | 사유가 **FileNotFoundError** 로 바뀜 |
+| `test_dt_standard_map_mapper::test_the_live_dt_map_declaration_is_the_physical_unit` | 선언 빼면 요약줄조차 «안 남음» |
+| `test_dt_alignment_metadata_mapper::test_live_mapper_and_tracked_sample_are_byte_identical` | 라이브 매퍼(gitignore) vs 샘플이 «한 줄» 다름: `print(rule)` ↔ `print(payloads)` — 이 상자에 남은 디버그 print |
+
+🔵 그리고 «반대쪽도 쟀습니다» — `dt_inventory_metadata_mapper` 둘과 `dt_map_derivation` 은 문구가 「chain rule 이 선언 안 함」이라 ⓒ 처럼 보이지만, 선언을 빼도 «사유가 같습니다». 픽스처가 규칙을 «자기가» 세웁니다 -> ⓒ «아님».
+
+### ⓐ-낡음 — 주인이 있는 열둘. «부류 여섯»이 열둘을 덮습니다
+| 부류 (주인) | 행 |
+|---|---|
+| **그래프 동기화 컬럼 은퇴** (`21e9df3d`·`42efb58b` 08-31 · `6a4d4026` 09-02) | `test_declared_key_indexes::…gets_no_key_index` (실패 메시지가 `ix_f6idx_broken_is_graph_synced`·`…needs_graph_rollback` 를 «이름으로» 댑니다) · `test_undeclared_schema_report::TestModelledColumns::test_bookkeeping_columns_are_expected` · `test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload…` |
+| **`SPLIT_SLOT_CARRY` 은퇴** (`d306b450` 08-30 — 코드가 자기 주석에 「RETIRED 2026-08-30」이라 적어 둠) | `test_ledger_sentence_auto_name` ×2 · `test_ledger_v2_lot_event_parity::test_the_indistinguishable_pair…` |
+| **`2ec8e24c`** (08-10 · 둘 다 «앞/뒤 실행»으로 확정) | `test_dt_map_derivation::test_all_three_declared_rules_ship_disabled` · `map2_seam::test_scoring_rebuilds_a_full_meta_per_candidate` (+shim) |
+| **`471f66f7`** (09-05 「per-table counts 를 뺀다」) | `test_dashboard_table_isolation` ×2 — `KeyError: 'table_stats'`. 09-05 시점엔 «초록»이었습니다 |
+| **`98513743`** (08-16 「retired graph sync branch 제거」) | `config_resolve_report::test_the_vocabulary_is_borrowed_from_the_runtime_not_invented` (+shim) — 계약이 태어난 `f3fd7850` 시점 main.py 에 `CHIP_TRACE_*` «6», 오늘 «0» |
+| **`fefe2905`** (08-31 「retroactive 실행 행」) | `test_system_schema_drift::test_no_undeclared_system_table_column` — `retroactive_runs` 가 시험의 목록에 없음 |
+
+### 🔵 이미 «판정된» 빨강 둘 — 다시 판정하지 마십시오
+```
+test_virtual_join_types::test_a_graph_meta_boolean…       `1a1dbf8b`(09-02)가 「KNOWN RED · 고치지 말 것」으로
+                                                          «총괄 판정»과 함께 기록. 막힌 물음도 그 자리에 적혀 있음
+test_composite_key_prefetch_budget::…probes_once_per_row  자기 docstring 이 「Pinned … the number belongs in the open」
+```
+🔴 **그리고 이건 제 필터가 한 번 놓쳤습니다** — 「KNOWN RED」로 훑어 «하나»만 나왔고, 둘째는 낱말이 「Pinned」였습니다. 낱말을 넓혀 다시 훑고 «각각 열어» 확인했습니다(넓힌 필터의 히트 14 중 «둘»만 진짜).
+
+### ⓐ-결함 — 주인 «없음» (표본 구간에서 초록을 «한 번도» 못 봄)
+| 파일::시험 | 초록이었던 마지막 지점 | 한 줄 |
+|---|---|---|
+| `test_composite_key_prefetch_budget::test_inserting_new_rows_still_probes_once_per_row` | 08-06 끝 초록 · 08-07 끝 빨강 -> **주인은 08-07 의 커밋** | 🔴 **이것이 C-9b 입니다** (아래 별항) |
+| `test_dt_inventory_metadata_mapper::test_copies_dt_log_metadata_to_matching_inventory_job` | 없음 | `ColumnBindingRefused: chain rule '<unnamed rule>' declares no 'metadata_target_table'` — 픽스처가 세운 규칙에 키가 없음 |
+| `test_dt_inventory_metadata_mapper::test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs` | 없음 | 같은 사유 |
+| `test_frame_confirmation_meta::test_the_confirmation_records_the_valid_die_area_it_was_scored_against` | 없음 (08-15 이후 계속 빨강) | `parse_valid_die_ref` 가 `None` — 안 쓰인 키. ✅ **제 `map_overlay` 작업 탓이 «아님»을 확인**: 어제 끝에서도 빨강이었습니다 |
+| `test_job_column_from_config::test_standard_map_scopes_the_replace_by_the_configured_name` | 없음 | `KeyError: 'scope'` |
+
+### 수집 실패 «한 행»
+| `server/tests/test_readonly_guard.py` (모듈 전체) | 수집 실패 · 주인 **`b69d82b3`** · 판정 89. 구현자 착지 시 «제 재실행 없이» 닫힙니다 |
+
+## ④ 🔴 C-9b — 「독법 둘」이 갈렸습니다. 그리고 «시험이 낡은» 쪽입니다
+```
+줄        「selects 201 단언 · 실측 1」
+실측 오늘  assert 1 == (200 + 1)   ->  select «한 번», 그 한 번이 bind_count=200
+읽기      ㉠ 「201 을 단언한다」 = 프리페치 1 + «행마다 헛질의 200»  <- 시험이 «고정»한 것(N+1 을 기록으로 남김)
+          ㉡ 「1 이 실측」        = 오늘은 «한 문장»에 200 키를 다 싣고, 행별 질의가 «0»
+=> 시험이 «막으려고 적어 둔 결함이 사라졌고», 그래서 그 고정이 빨갛습니다. ⓐ-낡음입니다
+   주인은 «08-07 의 커밋» — 08-06 끝 초록 · 08-07 끝 빨강으로 하루까지 좁혔습니다(낱개는 «미확정»)
+⚠️ 이 줄은 「고쳐야 할 결함」이 아니라 「기록을 갱신할 자리」입니다 — 지우면 그 수가 다시 안 보입니다
+```
+
+## ⑤ 못 잰 것 — «적습니다»
+```
+🔴 ⓐ-결함 넷(dt_inventory ×2 · frame_confirmation · job_column_from_config)의 «주인 낱개»
+   표본이 5개 시점이라 「태어날 때부터 빨강」과 「08-05 이전에 빨개짐」을 «구별 못 합니다». 구간만 적었습니다
+🔴 `test_declared_key_indexes` 의 주인 «낱개» — 08-31 하루까지만. 그날 커밋이 여럿이고 셋이 같은 부류입니다
+🔴 이 표는 «오늘 이 상자»의 라이브 선언 위에서 잰 것입니다. ⓒ 일곱은 «다른 설치에서 다른 답»이 나옵니다 —
+   그게 ⓒ 의 정의라 결함은 아니지만, 「27」이라는 수는 «이 설치의 수»입니다
+🔴 총괄의 09:26 기준선 «28» 과 제 «27» 을 «맞춰 보지 않았습니다» — 그쪽 호출 방식(한 번? 두 번? --ignore?)을
+   제가 모릅니다. 두 수를 같은 문장에 놓으려면 그 방법이 필요합니다
+```
+
+## 판정 대기 — «둘»
+```
+❓ C-9b 를 「기록 갱신(단언을 1 로)」으로 닫을지, 「08-07 주인 낱개까지 확정」을 더 시킬지
+❓ ⓐ-결함 넷의 «주인 낱개»를 더 팔지 — 각 하루 단위 이분 탐색이면 시험당 3~4회 실행입니다
+```
+> 🔁 이월(첫 제출 14:5x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
