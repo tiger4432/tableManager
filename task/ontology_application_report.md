@@ -12727,3 +12727,56 @@ dt_inventory_to_standard_dt_map dt_standard_map_mapper   wafer_map_metadata   lo
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🛑 역할 열 + 하한 닫기 — **멈춤 조건이 «걸립니다». 제 앞 라운드의 「안 걸림」이 부분집합이었습니다** (11:5x)
+
+⛔ 코드 0줄.
+
+## ① 미확인 «셋» — 전부 «봤다»로
+```
+dt_map_mapper          🔴 «여섯째 키»였습니다: `derivation_source_table` (:103, `DEFAULT_SOURCE_TABLE` 기본값)
+                       그 파일 :77 이 「the table the rows come FROM」이라 «역할까지» 적어 두었습니다 -> read
+lot_slot_wafer_mapper  `chain_lot_slot_wafer` 는 «표가 아닙니다» — `UPDATED_BY` (작성자 이름, :24).
+                       제 앞 라운드 정규식의 «노이즈»였습니다. 표 키는 `target_table`(:59) -> write
+production_mapper      «표를 안 읽습니다» — 69줄, `db` 를 받지만 질의 «0», payload 변환만 (:25 `return target_payload`)
+```
+
+## ② 표 이름을 나르는 자리 — «규칙 키»가 다가 아닙니다. «출처가 셋»입니다
+```
+Ⓐ 규칙 키 (일곱)   trigger_table read · source_table read · target_table write ·
+                  map_table (core_alignment:157 · dt_alignment_metadata:162 — 둘 다 «읽기») ·
+                  inventory_table read (core_usage:129) ·
+                  metadata_target_table 🔴 read (dt_inventory_metadata:81) / target 로 씀 (dt_alignment_metadata:163) ·
+                  derivation_source_table read (dt_map_mapper:103)
+Ⓑ 가상 조인 선언   left_table · right_table (dt_map_mapper:129·131) — «여는» 것이 아니라 «비교»합니다
+🔴 Ⓒ 해석 결과     `reference["table"]` — 표 이름이 «선언이 아니라 «해석기»에서» 옵니다
+```
+
+## 🛑 그래서 멈춥니다 — Ⓒ 는 «정적으로 셀 수 없습니다»
+```
+core_alignment_mapper.py:96   reference = rule.get("reference") or {}          <- «선언»에서 (정적)
+                      :196   view = alignment_view_service.resolve_alignment_view(...)
+                      :213   reference = view["reference"]                     <- 🔴 «실행 시점»에 정해짐
+                      :215   load_map_meta(db, basis["table"], …)              <- 그 표를 «읽습니다»
+=> 같은 이름(`reference`)이 한 파일 안에서 «선언»과 «해석 결과» 둘을 가리킵니다.
+   :215 가 읽는 표는 선언을 아무리 읽어도 «못 셉니다»
+```
+🔴 **정정**: 제 앞 라운드의 「멈춤 안 걸림 — 표 이름은 전부 `rule.get(key, default)`」은 **부분집합**이었습니다.
+   저는 `DYNAMIC_TABLES.get(...)` 자리만 봤고, `load_map_meta(...)` 계열을 «안 봤습니다».
+   부류: 「부재·개수를 «부분집합»으로 재지 않는다」 — 오늘 두 번째입니다.
+
+## 판정 대기: **쉰일곱**
+```
+57  🛑 Ⓒ(해석 결과에서 오는 표)는 «다른 부류»입니다 — 판정 61 의 멈춤 조건 그대로 올립니다
+    ㉠ `reads` 슬롯으로 «덮을 수 없습니다» — 값이 실행마다 다를 수 있습니다
+    ㉡ 후보 둘만 적습니다(제안 아님): 해석기가 «읽은 표를 돌려주게» 하거나 · 그 읽기를 «선언된 것으로 제한»하거나
+    🔴 어느 쪽이든 반경이 `alignment_view_service` 이고, 그건 제 판정 자리가 «아닙니다»
+```
+```
+판정 대기: 🔴 57 (첫 제출 11:5x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
