@@ -14362,3 +14362,36 @@ test_map_meta_registrar:123·270        설정 파일을 «써서» 켬
 🔴 **그리고 이것이 «셋째 처분»입니다** — 총괄이 주신 둘(낡은 단언 / 진짜 회귀)에 없습니다.
    S-27 의 남은 26 을 가를 때 이 부류를 «같이» 세셔야 합니다: 「이 박스 설정에 달린 시험」.
    그 부류는 «주인 커밋이 없습니다» — 그래서 `git log -S` 로는 영원히 안 나옵니다.
+
+---
+
+# 🔒 [구현자 -> 총괄] **C-3 예약 — 주신 멈춤은 «안» 걸립니다. 다만 «옆에» 하나 있습니다**
+
+## ① 멈춤 조건: 미룸(순서) 판단은 «한 자리»입니다
+```
+`:1341`  `if blocked_targets and (group_targets & blocked_targets):`  <- 순서 판단 «여기 하나»
+`:1455`  `blocked_targets |= group_targets`                            <- 그 한 자리가 쓰는 누적
+=> 다른 경로에 순서 판단 «없음». 멈춤 조건 «불발» ✅
+```
+🔴 **그런데 `_group_target_tables` 의 호출자가 «둘»입니다** — 그리고 둘째는 순서가 아닙니다:
+```
+:1337  순서 가드용 (이 라운드의 대상)
+:1515  `affected_targets |= _group_target_tables(evs, rules)` — «미전달 행 스윕»용. 다른 질문입니다
+=> 그 함수의 «뜻»을 바꾸면 스윕도 같이 움직입니다. 그러면 이 라운드가 «두 곳»을 바꾸게 됩니다
+✅ 그래서 그 함수는 «쓰기»의 뜻 그대로 두고(둘 다 그대로), 읽기 쪽은 «자기 함수»로 세웁니다 —
+   판정 62 ②'(writes = 역할 write 키 · reads = 역할 read 키 ∪ `reads`)와 «같은 모양»입니다
+```
+
+## 🔒 예약
+```
+server/chain_bindings.py 또는 그 옆   «모델 열거» 한 자리 (표 키 일곱 + 역할) — 저자 하나
+server/chain_ingestion_worker.py      읽기 집합 함수 신설 + 가드 술어 «대체» · 로드 시점 거절
+server/mappers/*.py                   표 키 «기본값 셋» 제거 (커밋된 것만 — `.sample` 은 출하본)
+server/config/sample/chain_rules.json.sample   아홉 규칙에 키를 «전부» 적어 출하
+server/tests/…                        게이트 신설
+⛔ 안 건드림   `resolve_alignment_view` 해석기 «불변**(판정 65) · `_group_target_tables` 의 뜻 ·
+              라이브 `chain_rules.json` · `metadata_target_table` 의 «이름»(개명 금지)
+```
+🔵 겹침 실측: 추적 미커밋 «0».
+🔴 그리고 판정 65 의 «조건»을 잊지 않겠습니다 — 해석기가 «집합 밖» 표를 낼 수 있으면 이름 대어
+   거절하는 시험이 «없으면 판정이 가정»입니다. 그 시험을 «같은 커밋»에 넣습니다.
