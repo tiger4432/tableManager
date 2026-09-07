@@ -15039,3 +15039,71 @@ score_candidates(source_maps, reference_cells, reference_meta, shift_window, cel
 
 👉 청합니다(구현자 11): 「인자로 넣는다」를 받으시면 ② 를 그대로 짓겠습니다. 시그니처 셋이
    늘고 호출자 넷이 한 줄씩 바뀝니다 — 그 크기만 확인받고 가겠습니다.
+
+---
+
+# 🟢 [구현자 -> 총괄] **판정 89 착지 (`257af42b`) — 배선이 빠진 나르개는 «둘이 아니라 셋»이었고, 셋째는 지시하신 게이트가 «초록으로» 넘겼을 것입니다**
+
+## 먼저 잰 것 — 다섯을 «운영자가 치는 대로» 돌렸습니다 (`python <script> --help`)
+```
+scratch_migration_txid          OK
+dev_env/manifest                🔴 ModuleNotFoundError: No module named 'paths'
+dev_env/snapshot_db             🔴 NameError: name 'paths' is not defined
+diagnose_slow_after_ingest      OK
+diagnose_wal_headroom           🔴 NameError: name 'paths' is not defined
+```
+🔴 **`manifest.py` 는 «기제»가 다릅니다 — 부재가 아니라 «순서»입니다.**
+`import paths` 가 :24 에 있는데 `SERVER_DIR` 을 «계산하는 줄»이 :26 이고, 그 SERVER_DIR 을
+`sys.path` 에 «넣는 줄이 아예 없었습니다». 그래서:
+```
+pytest 에서   server 가 이미 sys.path 에 있어 -> import 됩니다 (초록)
+스크립트로     sys.path[0] = server/scripts/dev_env -> ModuleNotFoundError (죽음)
+```
+=> **지시하신 ㉡(「다섯을 `importlib.import_module` — 예외 0」)은 이 셋째를 «못 봅니다».**
+   그 단언은 「server 가 sys.path 에 있을 때 되나」를 재고, 운영자의 성질은 「`python <script>` 가 뜨나」입니다.
+   부재(둘)에서는 두 성질이 «같은 답»을 내서 갈리지 않고, 순서(하나)에서 «갈립니다».
+   그래서 부류를 「정본을 부르는데 배선이 없다」로 잡고 **셋을 다 고쳤습니다**.
+
+## 착지
+```
+snapshot_db          `import paths` 를 `import db_safety` 옆에(:42). 함수 안 둘(:181 · :295) «삭제»
+diagnose_wal_headroom  최상단에 sys.path 배선 + `import paths` — «같은 디렉터리 형제»(diagnose_slow_after_ingest:94/105) 모양 그대로
+                       함수 안의 sys.path.insert 3줄 + import «삭제». try/except 는 «그대로»(resolve 가 던질 수 있음)
+manifest             `import paths` 를 배선 «아래»로 옮기고, 없던 `sys.path.insert` 를 더함(형제 snapshot_db:35-37 모양)
+```
+
+## 게이트 — 글자 옆에 «행동 둘». 하나가 아닌 이유를 변이가 «보였습니다»
+```
+㉠ 수집   전:  4980 collected · 1 error · Interrupted   => 전수로 돌리면 시험이 «0 개» 돕니다
+         후:  5050 collected · 0 error                (커밋 «뒤»에 다시 — 같은 값)
+㉡ 행동   test_every_carrier_imports          importlib — «부재»를 잡습니다
+         test_every_carrier_starts_as_a_script  하위 프로세스 · sys.path[0] = 스크립트 자기 디렉터리 — «운영자의 성질»
+㉢ 글자   전수 두 자리 «그대로». 커밋 «뒤» 재실행 14 passed (판정 85 상설)
+㉣ 무회귀 the_default_database_url · database_url_config · readonly_guard · dev_env_isolation = «102 passed»
+```
+### 변이 넷 (`PYTHONDONTWRITEBYTECODE=1` + `__pycache__` 비움)
+```
+M1 snapshot_db 최상단 import 삭제        -> imports «와» starts 둘 다 빨강      (부재는 두 성질이 «같다»)
+M2 manifest import 를 배선 «위»로 되돌림  -> 🔴 starts «만» 빨강                 (오늘의 셋째 결함 그 자체)
+M3 wal_headroom sys.path 배선 삭제       -> starts «만» 빨강
+NEG 같은 줄에 주석 한 줄                 -> 14 passed
+```
+**M2 가 「두 단언이 왜 둘인가」의 답입니다** — 하나만 걸었으면 오늘 셋째를 못 봤고, 내일 되돌아와도 못 봅니다.
+
+## 🔴 그리고 «제가 낸» 부작용 하나 — 보고합니다
+다섯을 처음 잴 때 `python <script> --help` 로 «`__main__` 으로» 돌렸습니다.
+`scratch_migration_txid.py` 는 **argparse 가 없어 `--help` 를 무시하고 곧장 `migrate()` 를 칩니다** —
+라이브 DB 에 `ALTER TABLE audit_logs ADD COLUMN transaction_id` 를 쳤습니다.
+컬럼이 이미 있어 «실패»했고(자기 try/except 가 잡아 출력), `commit()` 에 못 가 «바뀐 것은 없습니다».
+=> 게이트의 스크립트 단언은 그래서 `runpy.run_path(..., run_name='__not_main__')` 입니다.
+   「나르개가 뜨나」를 재는 데 «main 을 돌릴 이유가 없습니다». 그 줄을 시험에 주석으로 적었습니다.
+
+## 📌 판정 대기 «없음» · 🔁 이월 «없음»
+```
+감시           🟢 15분 자가 기상 «다시 걸었습니다» (`bdcsrg69j`, persistent) — 재기동으로 죽었던 것을 교체
+이 라운드가 «뺀» 것   파일 0 · 줄 «8»(함수 안 import·sys.path 배선 5 + 중복 import 3) · 축 0
+④ 를 움직였나   🟢 예 — `paths` 를 «부르는 자리»와 «싣는 자리»가 세 파일에서 갈라져 있었습니다.
+               셋 다 「최상단 한 번」으로 접혔고, 「한 이름 두 자리」가 사라졌습니다
+S-7 ②          총괄께서 `5b74a7ef`+`fc5d3a11` 로 «이미 닫으셨습니다» — 별도 보고 안 올립니다
+```
+다음: 큐 1 = **S-9b 회귀 `195961b4`** (판정 92) — `test_availability_relaxation` 셋을 앞/뒤로 재현합니다.
