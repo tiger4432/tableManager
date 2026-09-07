@@ -811,6 +811,15 @@ const FLOORS = new Map([
   // reddened on my own).
   ['slow_reason_harness.mjs', 29],
   //
+  // A-6. `order_by`/`order_desc` are ONE decision with TWO callers (the grid fetch and the
+  // row jump), and the header sort added a third answer to it. What this floor protects is
+  // that the two PRE-EXISTING answers did not move while the third was added: A1 and A2 pin
+  // `&order_by=row_id&order_desc=false` and `&order_by=updated_at&order_desc=true` as
+  // literals rather than recomputing them from the same expression, which is the only way a
+  // harness can see them move. It also holds the encoding of the column name, so a name can
+  // never become a second query parameter.
+  ['sort_params_harness.mjs', 9],
+  //
   // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
   //    bare number tells the next person nothing about why it may not drop, and a floor whose
   //    reason is unreadable gets raised to make a red build green.
