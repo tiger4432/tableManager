@@ -1440,7 +1440,8 @@ def _origin_map_id(source_cfg, origin_lot, origin_slot, binding=None) -> str:
 
 
 def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
-                           cache: dict = None, meta_cache: dict = None):
+                           cache: dict = None, meta_cache: dict = None,
+                           basis_out: dict = None):
     """출신(core) 프레임의 **canonical 맵 메타**를 로드한다.
 
     canonical = origin_log의 `(origin_x, origin_y)`가 사는 프레임, 즉 코어 웨이퍼 자신의
@@ -1455,8 +1456,13 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
     격자 규격만이 아니라 메타 전체가 필요하다 — 정렬은 회전·면·y반전·start·치수·phys 전부의
     델타에서 유도되므로, 치수만 넘기면 나머지 축의 차이가 조용히 무시된다.
     """
-    if cache is not None and (origin_lot, origin_slot) in cache:
-        return cache[(origin_lot, origin_slot)]
+    # [S-9b] 코어별 «기준을 무엇으로 골랐나». 캐시 적중으로 빠져나가면 그 답이 «조용히»
+    # 빠지므로, 청했는데 아직 없으면 지름길을 타지 않는다 — 없는 값을 「confirmation」으로
+    # 읽히게 두는 것이 이 라운드가 없애려는 바로 그 상태다.
+    _bkey = (origin_lot, origin_slot)
+    if (cache is not None and _bkey in cache
+            and not (basis_out is not None and _bkey not in basis_out)):
+        return cache[_bkey]
 
     import bonding_plan
 
@@ -1477,7 +1483,12 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
     # [층 ⑧ 2026-08-05] 확정 기록이 있으면 그것이 기준이다. M1 `get_core_summary`와 **같은
     # 함수**를 부른다 — 위 ⚠️와 같은 계급의 사고이기 때문이다. 두 경로가 서로 다른 프레임을
     # 기준 삼으면 같은 웨이퍼의 M1 수치와 M2 수치가 조용히 갈린다.
-    meta, _basis = bonding_plan.canonical_basis(db, source_cfg, origin_maps, meta_cache)
+    # [S-9b] `_basis` 를 «버리지 않는다». M1(`bonding_plan.py`)은 이것을 `frame_basis` 로
+    # 싣고 M2 만 버렸다 — 같은 함수, 두 호출자, 한쪽만 나르는 상태였다. 철자는 M1 과
+    # «같다»: 같은 사실이 두 응답에서 다른 이름이면 그것이 기준 ④ 다.
+    meta, basis = bonding_plan.canonical_basis(db, source_cfg, origin_maps, meta_cache)
+    if basis_out is not None:
+        basis_out[_bkey] = basis
     if meta is None:
         # 확정 없음 — 종전 퇴화형 그대로: 선언 순서 첫 원천이 기준을 정의한다.
         for table, map_id in origin_maps:
@@ -1489,7 +1500,8 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
 
 
 def _canonical_fail_set(db, source_cfg, fail_cfg, cols, origin_lot, origin_slot,
-                        grid_cache: dict = None, meta_cache: dict = None):
+                        grid_cache: dict = None, meta_cache: dict = None,
+                        basis_out: dict = None):
     """출신(core) 1장의 fail 좌표를 canonical 프레임 set으로 반환.
 
     반환: (set[(x,y)], align_marker|None, truncated) — 변환 미해결이면
@@ -1507,7 +1519,7 @@ def _canonical_fail_set(db, source_cfg, fail_cfg, cols, origin_lot, origin_slot,
     map_id = _origin_map_id(source_cfg, origin_lot, origin_slot, binding=fail_cfg)
     src_meta = bonding_plan.load_map_meta(db, source_cfg, fail_cfg["table"], map_id, meta_cache)
     dst_meta = _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
-                                      grid_cache, meta_cache)
+                                      grid_cache, meta_cache, basis_out=basis_out)
     if src_meta is not None and dst_meta is None:
         # [비대칭 지식] 이 맵의 프레임은 아는데 기준 프레임을 모른다. 둘 다 모르면
         # identity가 성립하지만(등록 누락), 한쪽만 알 때 identity로 가정할 근거는 없다.
@@ -1751,6 +1763,10 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
     # meta_cache는 (table, map_id) 단위 — 코어 × fail 원천 수만큼의 재조회를 막는다.
     canonical_grid_cache = {}
     meta_cache = {}
+    # [S-9b] 코어 -> 그 코어의 기준을 «무엇으로 골랐나». 아래 fail 루프가 코어마다 이미
+    # `canonical_basis` 를 부르므로 여기 담는 것은 «추가 질의가 아니다** — 오늘 버리던
+    # 값을 받아 두는 것뿐이다. by_core 가 그 값을 읽는다.
+    frame_basis_by_core = {}
     if origin_rows is not None:
         for (tx, ty, ol, os_, ox, oy) in origin_rows:
             bucket = rows_by_core.get((ol, os_))
@@ -1851,7 +1867,8 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             for (ol, os_) in involved_cores:
                 fail_set, mk, trunc = _canonical_fail_set(
                     db, source_cfg, fs, cols, ol, os_,
-                    grid_cache=canonical_grid_cache, meta_cache=meta_cache)
+                    grid_cache=canonical_grid_cache, meta_cache=meta_cache,
+                    basis_out=frame_basis_by_core)
                 if fail_set is None:
                     # [align 규율] 규격 불명 시 raw 좌표로 조용히 계산하지 않는다
                     status = "connected(align_unavailable)"
@@ -1911,9 +1928,19 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         by_core = []
         for (ol, os_) in sorted(agg.keys(), key=lambda k: (str(k[0]), str(k[1]))):
             a = agg[(ol, os_)]
+            # [S-9b] 이 코어의 기준을 «무엇으로 골랐나». 알갱이가 «코어별»인 이유는
+            # 코어마다 «다른 길»로 왔을 수 있어서다 — 테이프 하나로 접으면 그 차이가
+            # 사라진다. fail 원천이 하나도 없어 위 루프가 안 돌았으면 여기서 한 번
+            # 묻는다(캐시가 더운 경우가 대부분이라 대개 조회 0회).
+            if (ol, os_) not in frame_basis_by_core:
+                _canonical_origin_meta(db, source_cfg, ol, os_, canonical_grid_cache,
+                                       meta_cache, basis_out=frame_basis_by_core)
             by_core.append({
                 "core_id": f"{ol}{CORE_ID_SEP}{os_}",
                 "core_lot": ol, "core_slot": os_,
+                # [S-9b] M1 과 «같은 철자**. 항상 싣는다 — 이 키가 없으면 읽는 쪽은
+                # 「확정으로 골랐다」와 「이 서버는 그 말을 안 한다」를 구별할 수 없다.
+                "frame_basis": frame_basis_by_core.get((ol, os_)),
                 # [FIX 2026-07-28] count_only transfer_log: chip-level used is
                 # unknowable (used_set is empty), so serve null like the fail:null
                 # convention of the area_map path — never a fake 0. The remaining
@@ -1981,6 +2008,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                         # [relaxation] not_declared nulls `used` only; remaining
                         # stays the no-subtraction number (headline semantics).
                         "core_id": val, "core_lot": None, "core_slot": None,
+                        # [S-9b] 키 «집합»은 두 경로가 같아야 한다(이 절의 계약).
+                        # 값은 `None` — 이 경로의 core 는 영역 맵의 «불투명 값»이라
+                        # (lot, slot) 이 없고, 그래서 «무엇으로 골랐나»를 물을 주어가
+                        # 없다. 이 경로가 `fail`·`core_lot`·`core_slot` 에 이미 쓰는
+                        # 그 null 과 같은 뜻이다: 「모른다」이지 「확정이다」가 아니다.
+                        "frame_basis": None,
                         "total": a["total"], "fail": None,
                         "used": (None if (used_count_only or used_untracked
                                           or used_not_declared) else a["used"]),

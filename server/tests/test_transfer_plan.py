@@ -568,6 +568,11 @@ def test_tape_summary_projection_and_by_core(tp_env, client):
 
     assert body["by_core_origin"] == "log"
     by_core = {(r["core_lot"], r["core_slot"]): r for r in body["by_core"]}
+    # [S-9b] 수는 «그대로» 못 박는다. `frame_basis` 만 떼어 «따로» 단언하는 이유는 그 값이
+    # 선언(`CANONICAL_FRAME_ROLES`)에서 오기 때문이다 — 통째로 박으면 무관한 선언 편집이
+    # 이 «투영» 시험을 빨갛게 만들고, 그러면 다음 사람이 수를 의심한다.
+    basis_a = by_core[("CORE-A", "01")].pop("frame_basis")
+    basis_b = by_core[("CORE-B", "02")].pop("frame_basis")
     assert by_core[("CORE-A", "01")] == {
         "core_id": "CORE-A|01", "core_lot": "CORE-A", "core_slot": "01",
         "total": 4, "fail": 2, "used": 2, "remaining": 1,
@@ -576,6 +581,12 @@ def test_tape_summary_projection_and_by_core(tp_env, client):
         "core_id": "CORE-B|02", "core_lot": "CORE-B", "core_slot": "02",
         "total": 4, "fail": 2, "used": 1, "remaining": 1,
     }
+    # 이 픽스처에는 확정 기록이 없다 -> 두 코어 다 «역할 순서»로 물러난다. 그 «갈림»이
+    # 화면 절반이 읽는 사실이고, 사유는 서버 어휘 그대로여야 한다.
+    for basis in (basis_a, basis_b):
+        assert basis["kind"] == "role_order"
+        assert basis["reason"] == "not_declared"
+        assert basis["roles"], "roles must name the order it fell back to"
     # 이력 경고 (테이프 자체 이력)
     assert body["warnings"] and body["warnings"][0]["type"] == "result_fail"
     assert body["history"][0]["step"] == "DT"
@@ -740,7 +751,11 @@ def test_by_core_key_set_identical_across_paths(tp_env, client, tmp_path, monkey
     by_core_origin 마커 하나로만 한다.
     """
     _seed_scenario(tp_env)
-    expected_keys = {"core_id", "core_lot", "core_slot", "total", "fail", "used", "remaining"}
+    # [S-9b] `frame_basis` 는 «두 경로 모두»에 있어야 한다 — 그것이 이 시험의 주장이다.
+    # log 경로는 코어별 판정을, area_map 경로는 `None`(그 경로의 core 는 불투명 값이라
+    # (lot, slot) 이 없다)을 싣는다. 키가 «한쪽에만» 생기면 여기서 빨개진다.
+    expected_keys = {"core_id", "core_lot", "core_slot", "total", "fail", "used",
+                     "remaining", "frame_basis"}
 
     # 경로 1: origin_log (정본)
     log_body = client.get("/api/transfer-plan/source-summary",
