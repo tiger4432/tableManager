@@ -180,7 +180,6 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
     [Reliability F1] 반환값은 broadcast_at 스탬프 판정에만 쓰인다(전달 확정 시 True).
     데이터 처리 성공/재시도 판정에는 절대 반영하지 않는다(통지 실패 ≠ 처리 실패).
     """
-    url = f"{API_BASE_URL}{endpoint}"
     def do_post():
         try:
             # [Latency Fix #2] 통지는 커밋 이후 fire-and-forget으로 수행되므로
@@ -188,10 +187,9 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
             # [Warmup #3] 스레드-로컬 Session으로 keep-alive 재사용(매 호출 커넥션 수립 제거).
             # [B5] /internal/events/* carries the admin secret; inherited from
             # the launcher's environment. 401 here = worker started without it.
-            import admin_auth
-            res = internal_event_client.internal_event_session().post(
-                url, json=payload, timeout=3,
-                headers=admin_auth.internal_event_headers())
+            # [S-37 · 판정 98] URL·헤더·판별자는 `internal_event_client` 가 짓는다.
+            url, res, note = internal_event_client.send_internal_event(
+                API_BASE_URL, endpoint, payload, timeout=3)
             if not res.ok:
                 # [F8] The status code alone cannot say WHO refused, and the two
                 # answers have unrelated remedies. The response already carries
@@ -199,7 +197,6 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
                 # X-Admin-Token to every rejection it produces itself - and this
                 # line used to throw it away, which is how a repeated 403 here
                 # cost an incident's worth of source reading to attribute.
-                note = admin_auth.internal_event_failure_note(res.status_code, res.headers)
                 suffix = f" | {note}" if note else ""
                 logger.error(
                     f"[Chain Worker] API notification failed: {url} -> "

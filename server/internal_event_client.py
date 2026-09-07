@@ -36,6 +36,32 @@ a fourth sender has to remember is not good enough.
 import os
 import threading
 
+def send_internal_event(base_url, endpoint, payload, timeout):
+    """Assemble and send ONE internal event. Returns `(url, response, note)`.
+
+    🔴 [S-37 · 판정 98] 이 함수가 «URL 과 헤더»를 짓는 유일한 자리다. 종전에는 보내는
+    쪽마다 `f"{API_BASE_URL}{endpoint}"` 를 자기 손으로 적었고 — 오늘 «둘**, 스케줄러가
+    소급 진행을 내기 시작하면 «셋** — 그 셋이 갈라져도 «오류가 안 난다**: 한 프로세스만
+    조용히 다른 주소나 다른 헤더로 보내게 된다. 이 모듈이 세션을 이미 그 이유로 한 자리에
+    모아 두었고(위 docstring), 남아 있던 것이 «조립»이었다.
+
+    `note` 는 401/403 을 «누가» 거절했는지의 판별자다(`admin_auth` 가 계산한다) — 그 계산도
+    사본이 생길 자리라 여기서 한 번 한다.
+
+    ⚠️ 예외를 «잡지 않는다**. 통지 실패가 «무슨 뜻인가»는 프로세스마다 다르다 — 워처는
+    미전달로 적어 두고, 체인 워커는 broadcast_at 스탬프를 안 찍는다. 그 판단은 부르는
+    쪽의 것이고, 로그 문장도 부르는 쪽이 그대로 들고 있다(그 문장들이 오늘 서로 다르다).
+    """
+    import admin_auth
+    url = "%s%s" % (base_url, endpoint)
+    res = internal_event_session().post(
+        url, json=payload, timeout=timeout,
+        headers=admin_auth.internal_event_headers())
+    note = (None if res.ok
+            else admin_auth.internal_event_failure_note(res.status_code, res.headers))
+    return url, res, note
+
+
 #: The web server's address, in ONE place. Three modules previously repeated this
 #: literal, so a deployment that moved the port had three edits to find and
 #: nothing derived it from whatever actually chose the port.

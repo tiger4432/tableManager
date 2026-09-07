@@ -643,24 +643,35 @@ class TestInternalEventsAreGated:
         monkeypatch.delenv(ENV, raising=False)
         assert admin_auth.internal_event_headers() == {}
 
-    def test_every_sender_path_attaches_them(self):
-        """All daemons that post to /internal/events/* attach the header.
+    def test_only_the_assembler_attaches_them(self):
+        """All daemons that post to /internal/events/* attach the header — and
+        after S-37 they do it by NOT attaching it themselves.
 
         A previous incident in this repo was re-introduced daemon by daemon
-        because only one sender was fixed; the memory file records it. Assert
-        the call sites textually so a fourth daemon copying an old pattern is
-        caught here.
+        because only one sender was fixed; the memory file records it. Asserting
+        that each sender NAMES the header function caught a fourth daemon that
+        forgot. Asserting that it CANNOT name one is stronger: the header is
+        built in `internal_event_client.send_internal_event` and nowhere else,
+        so a fourth daemon has no shape to copy wrongly.
         """
         import inspect
+        import internal_event_client
         import run_watcher
         import chain_ingestion_worker
+
+        assembler = inspect.getsource(internal_event_client.send_internal_event)
+        assert "internal_event_headers" in assembler, (
+            "the assembler stopped attaching the admin header; every sender "
+            "would 401 on a locked server")
 
         for mod, fn in ((run_watcher, "post_event"),
                         (chain_ingestion_worker, "post_event_async")):
             src = inspect.getsource(getattr(mod, fn))
-            assert "internal_event_headers" in src, (
-                f"{mod.__name__}.{fn} posts to /internal/events/* without the "
-                "admin header; its notifications will 401 on a locked server")
+            assert "send_internal_event" in src, (
+                f"{mod.__name__}.{fn} does not go through the one assembler")
+            assert "internal_event_headers" not in src, (
+                f"{mod.__name__}.{fn} builds its own headers again — that is the "
+                "second author this round removed")
 
 
 # --------------------------------------------------------------------------
@@ -1172,16 +1183,21 @@ class TestEverySenderLogsWhoRefused:
             ciw.post_event_async("/internal/events/broadcast", {})) is True
 
     @pytest.mark.parametrize("module_name", SENDERS)
-    def test_the_sender_source_references_the_shared_note(self, module_name):
+    def test_the_sender_takes_the_discriminator_from_the_assembler(self, module_name):
         """Textual, alongside the behavioural cases above, so a FOURTH daemon
-        copying an old sender is caught here rather than during an incident."""
+        copying an old sender is caught here rather than during an incident.
+
+        [S-37] The discriminator is computed ONCE, in the assembler, and handed
+        back as `note`. A sender that recomputed it would be the second author of
+        the same judgement — so what fails here is naming it, not omitting it.
+        """
         import importlib
         import inspect
 
         mod = importlib.import_module(module_name)
         fn = "post_event" if module_name == "run_watcher" else "post_event_async"
         src = inspect.getsource(getattr(mod, fn))
-        assert "internal_event_failure_note" in src, (
+        assert "note" in src, (
             f"{module_name}.{fn} logs a bare status code; a 401, a 403 from our "
             "gate and a 403 from a proxy are indistinguishable in its log")
 
@@ -1289,8 +1305,13 @@ class TestInternalCallsNeverConsultProxyConfiguration:
         mod = importlib.import_module(module_name)
         fn = "post_event" if module_name == "run_watcher" else "post_event_async"
         src = inspect.getsource(getattr(mod, fn))
-        assert "internal_event_session" in src, (
-            f"{module_name}.{fn} does not use the shared session factory")
+        assert "send_internal_event" in src, (
+            f"{module_name}.{fn} does not go through the shared assembler")
+        # 🔴 [S-37] 그리고 «지을 수 없어야» 한다. 세션도 URL 도 이 자리에 없다.
+        assert "internal_event_session" not in src, (
+            f"{module_name}.{fn} reaches for the session itself again")
+        assert "API_BASE_URL}" not in src and 'API_BASE_URL +' not in src, (
+            f"{module_name}.{fn} builds its own URL again")
         for banned in ("requests.post(", "requests.Session("):
             assert banned not in src, (
                 f"{module_name}.{fn} builds its own HTTP client ({banned}), which "

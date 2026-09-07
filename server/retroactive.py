@@ -736,6 +736,8 @@ OPERATIONS = {
 #: finished while it was still writing.
 RUN_QUEUED = "queued"
 RUN_RUNNING = "running"
+import event_constants as ec                                      # noqa: E402
+
 RUN_DONE = "done"
 RUN_CANCEL_REQUESTED = "cancel_requested"
 RUN_CANCELLED = "cancelled"
@@ -1034,8 +1036,11 @@ class RunControl:
     could only be stopped by restarting the server, which takes every other job with it.
     """
 
-    def __init__(self, run_id, session_factory=None):
+    def __init__(self, run_id, session_factory=None, op=None):
         self.run_id = run_id
+        #: [S-37] 진행을 «말하려면» 무엇의 진행인지가 있어야 한다. run_id 만으로는
+        #: 화면이 「무슨 일이 도는가」를 못 말한다 — S-36 이 대기열에서 고친 그 부족이다.
+        self.op = op
         self.stopped = False
         self._session_factory = session_factory
 
@@ -1099,6 +1104,45 @@ class RunControl:
             logger.debug("progress write failed for run_id=%s: %s", self.run_id, exc)
         finally:
             session.close()
+        # [S-37] 쓰는 «자리 옆»에서 한 번 더 말한다. 여기가 아니면 「DB 는 갱신됐는데
+        # 아무도 못 들었다」가 다시 생긴다 — 그 둘이 갈라지는 것이 이 라운드의 결함이다.
+        import event_constants
+        announce_progress(self.run_id, self.op, event_constants.PROGRESS_STATUS_RUNNING,
+                          processed=processed, total=total)
+
+
+def announce_progress(run_id, op, status, processed=None, total=None):
+    """소급 실행의 진행을 «인제션과 같은 봉투·같은 길»로 낸다 (S-37, 판정 98).
+
+    🔴 왜 있나: 진행은 오늘 `retroactive_runs` 에 «DB 로만» 적히고, 그리드 화면은 발신이
+       «0** 이라 아무것도 못 듣는다. 관리 화면만 폴링으로 본다. 결함 부류는 「발신 없음」이고,
+       고칠 것은 «쓰는 자리 옆»에서 한 번 더 말하는 것뿐이다.
+    ⚠️ 실패해도 «일을 실패시키지 않는다** — 진행은 보고이지 작업이 아니다. 그 규율은 바로
+       위 `RunControl.progress` 가 DB 쓰기에 대해 이미 세운 것과 같다.
+    """
+    if not run_id:
+        return False
+    try:
+        import event_constants
+        import internal_event_client
+        payload = event_constants.progress_event(
+            status, processed_rows=processed, total_rows=total,
+            progress=(None if not total else int(processed * 100 / total)),
+            run_id=run_id, op=op)
+        # 길·헤더·판별자는 `internal_event_client` 가 짓는다 — 이 프로세스가 «셋째 철자»를
+        # 만들지 않는 것이 판정 98 의 요지다.
+        _url, res, note = internal_event_client.send_internal_event(
+            internal_event_client.api_base_url(),
+            "/internal/events/broadcast", payload, timeout=3)
+        if not res.ok:
+            suffix = " | %s" % note if note else ""
+            logger.error("[Retroactive] progress notification failed: %s -> %s%s",
+                         _url, res.status_code, suffix)
+            return False
+        return True
+    except Exception as exc:                       # noqa: BLE001
+        logger.debug("progress notification failed for run_id=%s: %s", run_id, exc)
+        return False
 
 
 def request_cancel(db, run_id: str) -> dict:
@@ -1375,7 +1419,7 @@ def execute(payload: dict, log=logger.info) -> dict:
         return out
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
-    control = RunControl(run_id if run_id != "?" else None)
+    control = RunControl(run_id if run_id != "?" else None, op=op)
     _mark_run(run_id, state=RUN_RUNNING, started=True)
     db = SessionLocal()
     try:
@@ -1388,9 +1432,11 @@ def execute(payload: dict, log=logger.info) -> dict:
             out.update(status="cancelled")
             _mark_run(run_id, state=RUN_CANCELLED, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} CANCELLED: {out['result']}")
+            announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)
         else:
             _mark_run(run_id, state=RUN_DONE, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} DONE: {out['result']}")
+            announce_progress(control.run_id, op, ec.PROGRESS_STATUS_DONE)
     except Exception as e:
         try:
             db.rollback()
@@ -1399,6 +1445,9 @@ def execute(payload: dict, log=logger.info) -> dict:
         out.update(status="error", error=str(e))
         _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         log(f"[Retroactive] run_id={run_id} op={op} FAILED: {e}")
+        # ⚠️ 실패도 «끝»이다. 안 내면 화면의 진행 표시가 «영원히» 돌고,
+        #    그것은 「도는 중」과 구별이 안 된다.
+        announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)
     finally:
         db.close()
     return out

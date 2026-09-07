@@ -118,6 +118,37 @@ def truncated_note(cut, omitted=None, reason=None):
     }
 
 
+#: 「얼마나 갔나」의 이벤트 이름 — 파일 인제션이 오래 쓰던 그것이다. 소급 실행도 «같은»
+#: 이름으로 말한다: 운영자에게 「진행」은 하나이고, 이름이 둘이면 화면도 독자가 둘이 된다.
+EVENT_INGESTION_PROGRESS = "file_ingestion_progress"
+
+#: 진행이 «끝났다**. 완료든 취소든 이 이름 하나다 — 끝난 이유는 `status` 가 말한다.
+PROGRESS_STATUS_RUNNING = "PROCESSING"
+PROGRESS_STATUS_DONE = "FINISHED"
+PROGRESS_STATUS_CANCELLED = "CANCELLED"
+
+
+def progress_event(status, progress=None, processed_rows=None, total_rows=None,
+                   **subject):
+    """진행 봉투 — 짓는 자리 «하나**.
+
+    🔴 [S-37] 종전 이 dict 는 `run_watcher.trigger_ws_progress` 가 «손으로» 지었고
+       이벤트 이름을 그 자리에 리터럴로 적었다. 소급 러너가 같은 사실을 말하기 시작하는
+       순간 그 봉투가 «둘**이 되고, 둘은 갈라져도 오류를 안 낸다 — 한쪽만 키를 하나 더
+       실으면 화면은 그 발신자에 대해서만 조용히 덜 안다.
+
+    `subject` 는 「무엇의 진행인가」다: 인제션은 `table_name`·`filename`, 소급은
+    `run_id`·`op`. 키 «순서**가 인제션의 오늘 봉투와 같도록 subject 를 앞에 편다 —
+    이 라운드의 ㉣ 가 「인제션 이벤트 바이트 동일」이기 때문이다.
+
+    ⚠️ `progress`/`processed_rows`/`total_rows` 는 `None` 을 «그대로** 싣는다. 0 이 아니다:
+       0 은 「하나도 안 했다」이고 None 은 「모른다」이며, 총계는 실제로 모를 수 있다.
+    """
+    return {"event": EVENT_INGESTION_PROGRESS, **subject,
+            "progress": progress, "processed_rows": processed_rows,
+            "total_rows": total_rows, "status": status}
+
+
 #: 「성공했는데 «느렸다»」의 정본 — 문장 «하나», 자세 «하나».
 #: 🔴 정의는 «시계»다: 「측정한 비용이 «선언된 예산»을 넘었다」. 상한에 닿은 사실은 이것이
 #:    «아니다» — 상한에 닿고도 «빠른» 답이 있고(상한이 그래서 있다), 상한에 «안» 닿고

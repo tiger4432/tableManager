@@ -85,18 +85,16 @@ def post_event(endpoint: str, payload: dict):
     # requests.post: `requests` trusts HTTP_PROXY and the Windows proxy registry,
     # whose `<local>` exemption does not cover a dotted address, so a notification
     # to 127.0.0.1 was relayed to a corporate proxy and refused with 403.
-    import admin_auth
+    # [S-37 · 판정 98] URL·헤더·판별자는 `internal_event_client` 가 «짓는다**. 이 자리는
+    # 「실패가 무슨 뜻인가」만 들고 있다 — 워처에게 그것은 «미전달 기록»이다.
     import internal_event_client
-    url = f"{API_BASE_URL}{endpoint}"
     try:
-        res = internal_event_client.internal_event_session().post(
-            url, json=payload, timeout=5,
-            headers=admin_auth.internal_event_headers())
+        url, res, note = internal_event_client.send_internal_event(
+            API_BASE_URL, endpoint, payload, timeout=5)
         if not res.ok:
             # [F8] Third sender, same discriminator. An auth-shaped refusal
             # escalates to ERROR: a 401/403 here means real-time propagation is
             # dead for every table this watcher feeds, which is not a warning.
-            note = admin_auth.internal_event_failure_note(res.status_code, res.headers)
             if note:
                 logger.error(f"API notification failed: {url} -> {res.status_code} | {note}")
             else:
@@ -147,15 +145,12 @@ def trigger_ws_progress(table_name: str, filename: str, progress: int, processed
         clean_filename = filename
 
     logger.info(f"Ingestion progress for {clean_filename} on {table_name}: {progress}% ({processed_rows}/{total_rows})")
-    payload = {
-        "event": "file_ingestion_progress",
-        "table_name": table_name,
-        "filename": clean_filename,
-        "progress": progress,
-        "processed_rows": processed_rows,
-        "total_rows": total_rows,
-        "status": "PROCESSING"
-    }
+    # [S-37] 봉투는 `event_constants` 가 짓는다 — 소급 러너가 «같은 함수»를 부른다.
+    import event_constants
+    payload = event_constants.progress_event(
+        event_constants.PROGRESS_STATUS_RUNNING,
+        progress=progress, processed_rows=processed_rows, total_rows=total_rows,
+        table_name=table_name, filename=clean_filename)
     post_event("/internal/events/broadcast", payload)
 
 def trigger_ws_ingestion_state(state: dict):
