@@ -47,6 +47,7 @@ import { parseCandidateId, candidateList } from './candidates.js';
 // F-19: 「프레임이 있나」와 「사람이 확정했나」를 가르는 «한 판정». 클로저 밖에 사는 이유는
 // 하니스가 DOM 없이 그것을 채점하기 위해서입니다.
 import { sourceFrameAttestation } from './attestation.js';
+import { originBoxNote } from './origin_basis.js';
 import { createApiClient } from './api.js';
 import { decodeReferenceView, verdictContext, INDEX_WALK_READY, INDEX_WALK_ABSENT,
          INDEX_WALK_TRUNCATED, INDEX_WALK_POOLED, INDEX_WALK_INCONSISTENT } from './decode.js';
@@ -765,7 +766,19 @@ export function bootstrap(deps) {
       //    so they cannot drift apart and so the gate can score them without a DOM.
       const attestation = sourceFrameAttestation(src, spellFrame);
       row.setAttribute('data-me2-attest', attestation.attest);
-      setChildText(row, '[data-me2-source-value]', attestation.text);
+      // 🔴 S-19. THE SECOND SENTENCE THIS ROW OWES, AND IT GOES IN THE SLOT THE ROW ALREADY
+      //    HAS. `origin_basis` answers a DIFFERENT question from the attestation above (one is
+      //    "did a person confirm this frame", the other is "what did the origin box stand on"),
+      //    so the two judgements stay in two modules and cannot fold into one another. What
+      //    they share is the one line the operator reads.
+      // ⚠️ EMPTY FOR THREE OF THE FOUR VALUES, so those rows render byte-identical to today.
+      //    The note exists only for `mask_off_grid`, where the operator would otherwise read the
+      //    origin as mask-based. No new region, no new mode, no new control -- and deliberately
+      //    NO new `data-me2-*` attribute: an attribute nothing styles is a sender with no
+      //    listener, which is the very defect this row is closing.
+      const origin = originBoxNote(src);
+      setChildText(row, '[data-me2-source-value]',
+                   origin.note ? `${attestation.text} · ${origin.note}` : attestation.text);
       // Same rule as the count slots above: write a number or write nothing. The page's
       // three-sibling pattern already shows `미상` in the states where no number was measured.
       const card = declared ? vm.candidates.find(c => c.id === declared) : null;
@@ -2254,6 +2267,12 @@ export function adaptPayload(raw) {
           //    the chain mappers stamp the same one. This boolean is the only thing that
           //    separates them, so it travels beside the value instead of replacing it.
           confirmed_by_person: s.confirmedByPerson === true,
+          // 🔴 S-19. WHAT THIS MAP'S ORIGIN BOX STOOD ON. Orthogonal to the two geometry
+          //    fields below: a map that DECLARES its geometry can still have had its origin
+          //    box fall back to the wafer circle, and the operator reading the frame has no
+          //    way to tell. Carried per row for the same reason those two are -- "some maps
+          //    fell back" is not an answer to "did this one?".
+          origin_basis: s.originBasis,
           // 🔴 WHAT THIS MAP SAYS ABOUT ITS OWN GEOMETRY, AND WHAT THIS RUN ACTUALLY STOOD ON.
           //    Two fields because they can disagree, and the disagreement IS the fact: a map
           //    whose own geometry is `absent` but whose basis is `assumed` was scored on the
