@@ -430,11 +430,22 @@ async function runAll(src) {
       `same centres for different rx/ry (${JSON.stringify(near.centres)}) -- the mm remainder `
       + 'was dropped while this path was being edited');
 
-    const lookup = stripComments(sliceFunction(srcText, 'legendColorForValue'));
-    ok(/legend\.find/.test(lookup), 'A10e the lookup reads the open map legend');
-    ok(/declaredLegendRow\s*\(/.test(lookup), 'A10f the lookup falls back to the served default_legend');
-    ok(!/pickUnusedColor|LEGEND_PALETTE|OVERLAY_COLORS/.test(lookup),
-      'A10g the lookup never reaches for a palette', 'that is the invented colour');
+    // 🔴 A10e/A10f/A10g ARE RETIRED (C-35), AND NOT CONVERTED. They read the letters of
+    //    `legendColorForValue` to claim it reads the map legend, falls back to the served
+    //    default, and never reaches a palette. Every one of those three is ALREADY SCORED BY
+    //    EXECUTION, a few dozen lines above:
+    //      A1/A1b/A1c  a value declared only by the map legend returns THAT colour
+    //      A2          a value declared only by the served default returns THAT colour
+    //      A3          a value declared by both returns the map legend's (precedence)
+    //      A4/A4b      an unlisted value returns null, and NO palette colour is returned --
+    //                  and `pickUnusedColor` is stubbed to a sentinel, so a lookup that
+    //                  reached for it would come back with that sentinel instead of null
+    //    Converting them would have produced a SECOND way of asking a question execution
+    //    already answers, which is the two-paths defect wearing a harness's clothes.
+    // 🔵 MEASURED, NOT ASSUMED: with these three neutralised (left in place, forced true) the
+    //    sweep still catches 23 of 23. They carried no weight of their own.
+    // ⚠️ So the assertion count DROPS by three and the floor drops with it. That is the one
+    //    direction a floor may move without new coverage, and it is recorded there by name.
 
     const list = stripComments(sliceFunction(srcText, 'renderOverlayList'));
     ok(/overlayLegendChip\s*\(/.test(list), 'A10h the overlay row shows the unlisted chip');
