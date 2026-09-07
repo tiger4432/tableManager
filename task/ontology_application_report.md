@@ -13899,3 +13899,52 @@ WALK.md      §4 에 그 정의 한 마디 + 「두 줄 (판정 124 정정본)�
 > 판정 대기: **없음** · 🔁 이월: 47 (소유자 몫)
 
 ## 🔒 [응용] 판정 126 예약 (08:1x) — ① 잠복 결함 선언 확인 → ② 첫 도약 명세 → ③ 운영 모양 규격. 코드 0
+
+---
+
+# 🟢 [응용 -> 총괄] **판정 126 ① — 잠복 결함은 «실재»하고, 출하 선언에 «정확히 하나» 삽니다** (실측 08:1x~08:3x · 코드 0)
+
+## ⚠️ 기준 — «출하»(`.sample`)입니다. 운영 선언은 다릅니다
+```
+읽은 것   server/config/sample/ledger_config.json.sample (소스 «15») · chain_rules.json.sample (규칙 «9») · table_config.json.sample
+안 읽은 것 라이브 `server/config/*.json` — gitignore 라 «운영에 대해 아무 말도 못 합니다»
+```
+
+## ① 커서의 «종류» — 열다섯 «전부»가 id/키 류입니다. updated_at 류는 «0»
+```
+판별식(제가 세운 것)  「이미 지나간 행을 «제자리에서 UPDATE» 하면 커서가 앞으로 «움직이나»」
+                    움직인다 = updated_at 류   ·   안 움직인다 = id/키 류(원장이 «다시 안 읽는다»)
+실측 15/15          param_id · edge_id · (dt_job, dt_cell_key) · (event_time, row_id) · dt_cell_key · run_uid ·
+                    void_uid · row_id · (base_id,bx,by,core_wafer,cx,cy) · (event_time, from_lot…) · lot_slot_wafer_key …
+                    🔴 `updated_at`·`modified_at` 류 «한 건도 없음»
+=> 그러므로 「id 커서」는 «부분집합이 아니라 전부»입니다. 위험을 좁히는 것은 커서가 아니라 «체인 타깃»입니다
+```
+
+## ② 체인 타깃과의 교집합 — «하나»
+```
+체인 타깃(출하 9 규칙 → 표 6)  core_usage_map · dt_inventory · dt_map · inventory_master · lot_slot_wafer · wafer_map_metadata
+원장 소스의 relation 15         ∩  위 여섯   =   **lot_slot_wafer «하나»**
+```
+| 소스 | relation | read.cursor | 체인 규칙 | enabled |
+|---|---|---|---|---|
+| `lot_slot_wafer` | `lot_slot_wafer` | `["lot_slot_wafer_key"]` | `lot_event_to_lot_slot_wafer` (`lot_event` → `lot_slot_wafer`) | **true** |
+
+## 🔴 그리고 그 하나는 «구조적으로 닿습니다» — 커서와 업서트 키가 «같은 컬럼»입니다
+```
+출하 table_config  lot_slot_wafer.business_key = **"lot_slot_wafer_key"**
+원장 read.cursor   ["lot_slot_wafer_key"]                    <- «같은 컬럼»
+체인 쓰기          통합 배치 업서트(업서트 키 = 그 business_key)
+=> 체인이 «이미 있는 행»을 갱신하면 그 키는 «안 바뀌고», 원장 커서는 그 키를 기준으로 앞으로만 가므로
+   **그 갱신을 영영 안 봅니다.** 삽입은 보이고 «갱신만» 안 보입니다 — 그래서 조용합니다
+⚠️ 「그 규칙이 실제로 갱신을 내나」는 «데이터 사실»이라 여기서 «안 셌습니다»(제 씨앗 위의 수가 됩니다).
+   제가 적는 것은 「이 선언 조합이면 «갱신이 나는 순간» 원장이 못 본다」는 «구조»입니다
+```
+
+## 못 잰 것
+```
+🔴 운영 선언의 교집합 — 라이브 config 는 소스도 규칙도 다를 수 있습니다. 출하에서 «하나»라는 것이
+   운영에서 «하나»라는 뜻이 아닙니다. 운영 수는 소유자/총괄이 그 파일을 열어야 나옵니다
+🔴 나머지 열넷은 「오늘 체인 타깃이 아니다」일 뿐이고, «어떤 표가 체인 타깃이 되는 날» 같은 부류가 됩니다 —
+   즉 이 결함은 «소스 15개의 성질»이 아니라 «두 선언의 교집합»이라, 선언이 바뀌면 «수가 바뀝니다»
+```
+> 판정 대기: **없음** (다음 ②) · 🔁 이월(첫 제출 08:3x)
