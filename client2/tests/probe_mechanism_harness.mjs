@@ -205,10 +205,11 @@ console.log('\n[7] how many test files still carry their own newline normalisati
     const s = readFileSync(join(HERE, f), 'utf8');
     return s.includes('readFileSync') && !s.includes('readSourceText') && s.includes(PRIVATE);
   });
-  // 45 is what this round leaves: 50 before, minus the five rnd_board harnesses moved onto
-  // `readSourceText`. The tranche took the ones that MATCH text, per the ruling — CRLF breaks
-  // comparison, not counting.
-  ok(`P1 private newline normalisers: ${priv.length} (ceiling 45, was 50)`, priv.length <= 45);
+  // 40 is what tranche two leaves: 50 -> 45 (the rnd_board five) -> 40 (the valid_die five).
+  // Both tranches took harnesses that MATCH text, per the ruling — CRLF breaks comparison,
+  // not counting, and the fifteen that only COUNT stay for a later round.
+  // 🔴 THE CEILING ONLY DESCENDS. Raising it needs a ruling, like the escaping one.
+  ok(`P1 private newline normalisers: ${priv.length} (ceiling 40, was 45)`, priv.length <= 40);
   ok('P2 ... and the ceiling is not vacuously true — the sweep is not finished',
     priv.length > 0);
 }

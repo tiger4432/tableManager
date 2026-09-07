@@ -35,6 +35,10 @@
  * Read-only against client2/. Not gated by `npm run build`; run by hand, per round.
  */
 import { readFileSync } from 'node:fs';
+// 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 — 이름이 같아서
+//    «같은 것으로 보이고», 갈려도 오류가 «안 납니다». 그리고 그 한 자리는 «섞인 줄바꿈»을
+//    만나면 추측하지 않고 «거절»합니다 — 사본은 그 거절을 안 들고 태어납니다.
+import { readSourceText } from './lib/probe.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -45,7 +49,7 @@ const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
 // Line endings normalised — every mutation matches a multi-line `\n` string and on a CRLF
 // checkout those matches silently MISS (measured 2026-07-30 on a sibling harness: 8 of 18
 // mutations went unapplied while the baseline stayed green).
-const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+const SRC0 = readSourceText(SRC_PATH).text;
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 

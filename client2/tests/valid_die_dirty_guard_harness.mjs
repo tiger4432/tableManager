@@ -61,6 +61,10 @@
 // reason `map_spec_only_save_harness` is: a square isotropic fixture cannot show a swap
 // defect at all, so a number it produced would be an artefact of the symmetry.
 import { readFileSync } from 'node:fs';
+// 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 — 이름이 같아서
+//    «같은 것으로 보이고», 갈려도 오류가 «안 납니다». 그리고 그 한 자리는 «섞인 줄바꿈»을
+//    만나면 추측하지 않고 «거절»합니다 — 사본은 그 거절을 안 들고 태어납니다.
+import { readSourceText } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -68,8 +72,8 @@ import vm from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC_PATH = join(ROOT, 'client2', 'src', 'map_editor.js');
-const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
-const CFG = readFileSync(join(ROOT, 'client2', 'src', 'config.js'), 'utf8').replace(/\r\n/g, '\n');
+const SRC = readSourceText(SRC_PATH).text;
+const CFG = readSourceText(join(ROOT, 'client2', 'src', 'config.js')).text;
 const verbose = process.argv.includes('--verbose');
 
 function die(msg) {
