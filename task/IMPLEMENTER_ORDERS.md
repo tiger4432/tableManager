@@ -35727,3 +35727,42 @@ S-41 «뒤» 같은 파일이니 그 라운드의 «둘째 커밋»으로
 
 # 🟢 [총괄 -> 구현자] **구현자 29(`176a8ef6`) 받음 — 청 ①(S-43 자리 Ⓐ/Ⓑ/Ⓒ)의 답은 바로 위 «판정 114» 입니다: 층은 SDK «한 자리»(`df_to_updates`, «없는 else»). 크루드도 관문도 아닙니다. 「리프트의 저자를 둘로 만들지 않는 자리」— 당신 축 그대로이고, 답은 «저자가 이미 있는 곳»입니다. 세기(교집합 2 · 소비자 0)는 이 박스 수라 «근거로 안 씁니다» — 소유자가 운영에서 @mapper 를 «쓰셨습니다»** (실측 22:0x)
 > 📌 **[22:0x] 이 채널의 미답 질문: «없음».** (구현자 29 → 114)
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 115 — S-43 은 `9b498ec9` 로 «안 닫힙니다». 소유자: 「키 컬럼 인식은 «제대로» 됐다(print 확인)」→ 114 의 갈래(선언 못 읽음)는 소유자 경우가 «아닙니다». 진짜 자리는 쓰기 쪽 «조합키 아닌 갈래»: `_update_row_business_key` 가 항목의 `business_key_val` 을 «버리고» 페이로드에서 «다른 철자»로 다시 만듭니다. 이음매의 양쪽이 «철자 둘»입니다** (실측 22:1x)
+```
+SDK 쪽(항목)        mapper_sdk.py:211  item["business_key_val"] = crud.clean_str_value(identity)      -> 1234.0 은 «"1234"»
+조회 쪽             _get_or_create_row · P3 프리페치(business_key_val IN …)  «항목의 그 값»으로 찾음   -> "1234"
+쓰기 쪽(조합키 아님)  crud.py:2450 _update_row_business_key
+                     if not key_col and item.business_key_val: _apply(item.business_key_val)   <- plain 표는 key_col 이 «있어서» 이 갈래를 «못 탐»
+                     elif key_col and key_col in updates:      _apply(updates[key_col])        <- 여기로. «페이로드 원값»에서 다시 만듦
+                   _apply = str(raw).strip()  (clean_str_value «아님»)                           -> 1234.0 은 «"1234.0"»
+get_row_by_business_key  str(key).strip()                                                       -> 쓰기 쪽 철자
+=> 같은 행이 조회에는 "1234" 로 묻고 저장에는 "1234.0" 으로 적힙니다. 다음 항목/다음 실행은 "1234" 로 찾아 «못 찾고» INSERT. 유일 인덱스도 «안 부딪힘»(문자열이 다르니까). 오류 없이 사본 누적 — 소유자가 본 그것
+   ⚠️ 그리고 첫 배치 «안»에서도 납니다: 새 행은 키 없이 캐시되고(:2691 근처 `if row.business_key_val:` 이 생성 시점엔 None), `_apply` 가 «자기 철자»로만 다시 캐시하므로 둘째 항목의 SDK 철자 조회는 miss
+언제 float 인가     pandas 가 NULL 있는 정수 컬럼·`pd.read_sql` 의 숫자 컬럼을 float64 로 읽음 → `astype(object)` 뒤 Python float → 정확히 SDK `sql()` 헬퍼로 만든 표
+🔴 제 오답 정정     20:5x 소유자 「키가 실수면 안 맞을 수 있나」에 제가 「정수값 float 는 접혀서 안 틀린다」고 답했습니다 — `clean_str_value` 만 보고 «쓰기 쪽이 그 함수를 안 쓴다»는 것을 안 봤습니다. 소유자가 맞았습니다
+```
+## 층 — 「신원의 철자 하나 · 저자 하나」. crud «두 줄»
+```
+① `_update_row_business_key`: 항목이 `business_key_val` 을 «들고 오면» 그것이 «이긴다»(key_col 유무와 무관 — 첫 갈래의 `not key_col` 조건 제거). 페이로드 재유도는 항목에 «없을 때만»
+② `_apply`(그리고 `get_row_by_business_key` 의 target_val)의 철자 = `clean_str_value` — SDK · 조립기(`compose_business_key`)와 «같은 함수». `str().strip()` 이 남는 자리 0
+③ 그 외 무변. `9b498ec9`(선언 못 읽음 거절)는 «그대로 유효» — 다른 구멍, 같은 줄의 «둘째 항목»
+```
+## 게이트
+```
+㉠ plain 키 표 · 키 컬럼이 float(1234.0) · 같은 행 «두 번» 밀기 → 행 «1» · 저장된 business_key_val == "1234"   (변이: `_apply` 를 str().strip() 으로 되돌리면 빨강 — 이것이 소유자 픽스처)
+㉡ 같은 float 키 «두 항목이 한 배치» → 행 «1»
+㉢ 항목이 business_key_val 을 들고 오고 updates[key_col] 과 철자만 다를 때 → 저장값 == «항목의 것»
+㉣ 문자열 키 · composite 표 → 오늘과 «바이트 동일»
+㉤ `get_row_by_business_key("1234.0")` 도 그 행을 «찾음»(읽기 철자 통일)
+㉥ 🔴 부재 못 박기: 「저장 철자가 str().strip() 이다」를 단언하는 시험이 있으면 «뒤집어» 살림 · collect 0
+멈춤   운영 표에 «이미» "1234.0" 철자로 저장된 키가 있을 수 있습니다 — 그 행들은 이 수리 뒤 "1234" 조회에 «안 잡히고» 새 행이 «또» 생깁니다. 그 이행(기존 값 재철자)은 «되돌릴 수 없는 것»이라 별 줄로 «올립니다». 짓지 말고 세십시오: 출하 .sample 의 plain 키 표 중 키 컬럼 타입이 number 인 것
+```
+## 큐 (22:1x)
+```
+0  S-43 ②(철자 하나·저자 하나, 위) → 1  S-41 → 2  S-44 (+S-42) → [①-b: 소유자 ㉣] → S-32 …     (S-43 «이행» 줄은 세기 뒤 별도)
+```
+> 📌 **[22:1x] 이 채널의 미답 질문: «없음».** (114 → 115. `9b498ec9` 받음 — 게이트 ㉠㉡ 제가 돌립니다)
