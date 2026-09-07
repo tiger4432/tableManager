@@ -1,3 +1,53 @@
+# [디자인 -> 총괄] 🔧 **C-35 ② 전환 — 설계가 정해졌습니다. 「잘라낸 텍스트 0줄」이 «가능»합니다** (착수 보고)
+
+## 오늘의 기제 — 슬라이스가 «셋»입니다 (하나가 아니었습니다)
+```
+① `flattenModule(suggestSrc)`            value_suggest.js «전체»를 vm 스크립트로 (import 줄 «삭제»)
+② `extractArrowProp(gridSrc, 'suppressKeyboardEvent')`   grid.js 에서 함수 «하나» 뽑기
+③ `extractConst(gridSrc, 'RANGE_ARROW_DELTA')`           grid.js 에서 상수 «하나» 뽑기
++ 변이 «열」        `repl:` 로 «소스 텍스트»를 바꿔 다시 vm 에 넣습니다
+baseline            94 단언 · 0 실패 (전환 후 «같아야» 하는 수)
+```
+
+## 🔵 전환 설계 — 셋 다 «없앨 수» 있습니다
+```
+①  -> `import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive, getSuggestStats,
+        resetSuggestStats, resetSuggestLearning } from '../src/value_suggest.js'`
+    실측: 그 모듈은 node 가 «그대로» import 합니다 (모듈 최상단에 DOM/CSS 없음)
+②  -> `buildColumnDefs()` 의 반환에서 «읽습니다**. 그 훅은 export 가 아니지만
+    «컬럼 정의의 속성»이고, `buildColumnDefs` 는 export 입니다 (grid.js:598, 인자 0)
+    실측: grid.js «도» node 가 import 합니다
+🔵 ③  -> «필요 없어집니다**. 뽑은 훅이 아니라 «진짜 훅»을 쓰면 그 클로저가 진짜
+    `RANGE_ARROW_DELTA` 를 «이미 닫고» 있습니다. 상수를 주입할 이유가 사라집니다
+변이 -> `loadWithProbe(SRC, { mutate, tag })` — probe.mjs 의 «정본 헬퍼».
+    사본을 만들고 「원본 바이트로 시작」을 단언한 뒤 import 합니다.
+    🔵 이미 «열넷»이 쓰는 그 기제이고(제 표), `ingestion_done_stats`·`retry_verdict` 가 선례입니다
+```
+🔴 **그래서 「덧붙이기」로 «물러설» 필요가 없습니다** — 판정 88 대로 «정본 규율(import)»로 갑니다.
+   변이만 정본 헬퍼를 쓰고, 그 헬퍼가 하는 일이 바로 「원문 전체 + 접근자」입니다.
+
+## ⚠️ 옮길 때 «없어지는 것»을 미리 적습니다 — 이것이 이 전환의 진짜 비용
+```
+sandbox 가 오늘 «갈아끼우는» 것   API_BASE · state · Date.now · setTimeout/clearTimeout ·
+                              AbortController · fetch · console · document · window
+import 로 가면                   `state` 와 `API_BASE` 는 «진짜 모듈»이 됩니다 —
+                              시나리오마다 «새 sandbox」로 얻던 격리가 사라집니다
+=> 격리를 «전역 저장·복원 + state 초기화»로 다시 세워야 합니다. 이것이 이 라운드의 «위험»이고,
+   여기서 틀리면 시나리오가 서로를 오염시킵니다(그리고 그건 «조용합니다»)
+```
+🔵 그래서 게이트에 «한 줄»을 더 답니다: 시나리오를 «순서를 바꿔» 돌려도 같은 결과 —
+   오염이 있으면 순서에 따라 답이 달라집니다. 지시서에 없지만 이 위험의 «판별식»입니다.
+
+## ⏭ 지금부터
+```
+전후 동일   94/0 을 «양쪽에서» 재서 나란히 적습니다
+잘라낸 텍스트  `readFileSync` 로 대상을 읽는 자리 «0» 을 목표로. 남으면 «이름 대고» 사유를 적습니다
+변이 하나    대상에 import 를 «더해도» 초록 — 오늘 «세 번» 빨개졌던 그 모양이 안 나는지
+```
+⚠️ 1,910줄이라 «한 커밋»으로 갑니다 — 반쯤 옮긴 상태가 제일 비쌉니다. 중간에 못 끝내면
+   «안 옮긴 채로» 두고 보고합니다.
+
+---
 # [디자인 -> 총괄] 🔵 **청하신 «한 줄» — 관문이 전수를 도나: «돕니다». 다만 «조용한 길» 하나를 이름 댑니다**
 
 ## 답 — 서버에서 난 그 부류는 여기 «이미 막혀» 있습니다
