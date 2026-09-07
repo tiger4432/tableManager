@@ -224,6 +224,44 @@ async function renderOverlayRowHtml(mutate, values) {
   }
 }
 
+// ── C-35: does a legend edit refresh the overlay rows? ───────────────────────────────────
+// 🔴 The old form asserted the GUARD as text (`overlayLayers.length … renderOverlayList(`)
+//    precisely because the call alone proves nothing -- `if (false) renderOverlayList();`
+//    still contains it. But a text guard has the same hole one level up: it cannot tell a
+//    live condition from one that is written and never true. Calling it twice can.
+async function legendRefreshCalls(mutate, withOverlays) {
+  const calls = [];
+  const savedDoc = globalThis.document;
+  const mk = () => ({ innerHTML: '', textContent: '', style: {}, appendChild() {},
+                      setAttribute() {}, querySelector: () => null, querySelectorAll: () => [],
+                      addEventListener() {}, dataset: {}, classList: { add() {}, remove() {} } });
+  globalThis.document = { getElementById: () => null, querySelector: () => null,
+    querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
+    createElement: () => mk() };
+  try {
+    const { probe } = await loadWithProbe(SRC_PATH, {
+      expose: ['renderLegendTable', 'el'],
+      state: ['renderOverlayList', 'overlayLayers', 'activeOverlayLayers', 'legend',
+              'activeBrush', 'selectedTable'],
+      stubs: { './utils.js': { showToast: () => {} },
+               './transfer_plan.js': { notifyMapContext: () => {} } },
+      mutate: mutate || undefined,
+      tag: `ovcref${Math.random().toString(36).slice(2, 7)}`,
+    });
+    probe.renderOverlayList = () => { calls.push('renderOverlayList'); };
+    probe.legend = OV_LEGEND;
+    probe.activeBrush = '1';
+    probe.selectedTable = 'dt_map';
+    const layers = withOverlays ? [overlayLayerFor(['1'])] : [];
+    probe.overlayLayers = layers;
+    probe.activeOverlayLayers = layers;
+    probe.renderLegendTable();
+    return calls.length;
+  } finally {
+    globalThis.document = savedDoc;
+  }
+}
+
 async function makeSandbox(src) {
   ctxSaves.length = 0;
 
@@ -516,13 +554,17 @@ async function runAll(src) {
       'a row with nothing unlisted is still showing the legend chip');
 
     // The chip counts against the LIVE legend, so a legend edit has to re-render the row.
-    const legendTable = stripComments(sliceFunction(srcText, 'renderLegendTable'));
-    // 🔴 The GUARD is asserted, not merely the call. `if (false) renderOverlayList();` still
-    //    contains the call, and that is exactly how a refresh gets disabled without anyone
-    //    noticing -- the chip then keeps the count it had before the user added the value.
-    ok(/overlayLayers\.length[^\n]*renderOverlayList\s*\(/.test(legendTable),
+    // 🔴 THE GUARD IS RUN, NOT READ, AND IT IS RUN BOTH WAYS. Asserting the call alone proves
+    //    nothing (`if (false) renderOverlayList();` still contains it), which is why the old
+    //    form matched the condition too -- but a text match cannot tell a live condition from
+    //    one that is written and never true. Two runs can: with overlays the refresh happens,
+    //    without them it does not, and a guard stuck either way fails one of the two.
+    const refreshWith = await legendRefreshCalls(src, true);
+    const refreshWithout = await legendRefreshCalls(src, false);
+    ok(refreshWith === 1 && refreshWithout === 0,
       'A10i a legend edit refreshes the overlay rows whenever overlays exist',
-      `renderLegendTable does not condition the refresh on overlayLayers: ${legendTable.slice(0, 400)}`);
+      `refresh ran ${refreshWith} time(s) with overlays and ${refreshWithout} without -- the `
+      + 'guard is stuck, so the chip keeps the count it had before the value was added');
   }
 
   // ── A11: COMPLEXITY BUDGET. No control was added for this feature. ──
