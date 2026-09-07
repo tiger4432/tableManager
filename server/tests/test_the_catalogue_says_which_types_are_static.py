@@ -299,3 +299,36 @@ def test_the_key_argument_is_optional_now():
 
     signature = inspect.signature(ledger_trace_router.ledger_key_values)
     assert signature.parameters["key"].default is not inspect.Parameter.empty
+
+
+# ---------------------------------------------------------------------------
+# S-52 ④  선언이 «속성 이름»을 발행한다 — 화면이 그 이름을 «적지 않게**
+#
+# 🔴 걷기 표의 노드 열이 곧 그 이름들이고, 「어떤 이름이 있나」의 유일한 권위는 «선언»이다.
+# 클라가 자기 목록을 들면 운영자가 하나 «더하는 날»까지만 맞고, 그다음부터 조용히 «짧다».
+# ---------------------------------------------------------------------------
+
+def test_the_catalogue_publishes_an_entitys_attribute_names(monkeypatch):
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"wafer@1": {"keys": ["wafer"], "attributes": ["product", "grade"]}},
+        "vocabulary": {}})
+    entity, = catalogue()["entities"]
+
+    assert entity["attributes"] == ["product", "grade"]
+
+
+def test_a_type_that_declares_none_publishes_no_key_rather_than_an_empty_list(monkeypatch):
+    """㉥ 「값을 안 든다」와 「이 배포는 이 축보다 먼저다」를 «구별할 수 있게**.
+    빈 목록을 내면 그 둘이 같은 픽셀이 된다 — 오늘 밤 내내 잡은 그 부류."""
+    from ledger import config as _config
+
+    monkeypatch.setattr(_config, "load", lambda: {
+        "entities": {"wafer@1": {"keys": ["wafer"]}},
+        "vocabulary": {}})
+    entity, = catalogue()["entities"]
+
+    assert "attributes" not in entity
+    # 그리고 나머지 칸은 «그대로**여야 한다(무회귀).
+    assert entity["keys"] == ["wafer"] and entity["class"] is None

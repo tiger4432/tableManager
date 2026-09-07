@@ -627,11 +627,20 @@ def ledger_declaration_catalog():
     # told" and "I was told it is dynamic" are different facts, and filling the first
     # with the second is the exact shape this route exists to avoid - the reader would
     # then draw a path the walk may still refuse, with no way to know it guessed.
-    entities = [
-        {"type": name, "keys": list((spec or {}).get("keys") or []),
-         "class": (spec or {}).get("class")}
-        for name, spec in sorted((declared.get("entities") or {}).items())
-    ]
+    # 🔴 `attributes` RIDES HERE SO NO SCREEN HAS TO NAME ONE (S-52). The walk's table gets
+    # a column per attribute, and the only authority for which names exist is this
+    # declaration - a client holding its own list would be right until the day an
+    # operator adds one, and then quietly short. ABSENT rather than empty when the type
+    # declares none, so a reader can tell "this type carries no values" from "this
+    # deployment predates the axis".
+    entities = []
+    for name, spec in sorted((declared.get("entities") or {}).items()):
+        item = {"type": name, "keys": list((spec or {}).get("keys") or []),
+                "class": (spec or {}).get("class")}
+        attributes = (spec or {}).get("attributes")
+        if attributes:
+            item["attributes"] = [str(entry) for entry in attributes]
+        entities.append(item)
     predicates = [
         {"name": name,
          "subjects": list((spec or {}).get("subjects") or []),
