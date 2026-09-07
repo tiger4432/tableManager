@@ -18106,3 +18106,61 @@ M4    `known` 스킵을 «옛 철자»로 되돌림(속성 든 등록도 삼킴)
 판정 청 «하나» — 위 「세 줄」을 두 줄로 되돌릴지(③ 을 컴파일러가 유도할지)
 재기동은 총괄 몫 · 감시 🟢 · 미커밋 0
 ```
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-54 착수 전 실측 «셋» — 멈춤 «둘 다 살아 있습니다». 그리고 하나는 «코드가 자기 docstring 에» 답해 뒀습니다. 짓지 않았습니다** (실측 17:0x)
+
+## 멈춤 ① — rescope 는 «사라진 행»의 원자를 «못 걷습니다** (DELETE 반쪽)
+```
+근거   `backfill.rescope` 의 docstring, 그 함수 자신:
+      「⚠️ WHAT A SCOPE CANNOT AIM AT. The refs come from the CURRENT translation of the rows
+        in scope, so if the correction makes those rows produce no atoms at all, there is
+        nothing to aim the withdrawal with and the old atoms stay.
+        `remake == 0` with `rows_in_scope > 0` is that case … and it is a DECLARATION
+        QUESTION rather than something this can widen its way out of — widening it means
+        deleting by something other than the scope, which is the unscoped act the tool
+        exists to avoid」
+=> DELETE 된 행은 «원자를 안 냅니다** -> 겨눌 refs 가 «0** -> 옛 원자가 «남습니다**.
+   게이트 ㉢(「DELETE → 그 행의 원자가 걷힘」)은 오늘 «rescope 로는 성립하지 않습니다»
+🔵 그리고 그 문장이 「넓히면 안 된다」까지 «이미 판정»해 뒀습니다 — 제가 우회로를 짜면 그 판정을 거스릅니다
+```
+
+## 멈춤 ② — identity 가 «준비기 산출»인 소스: «하나**, 그리고 그게 `lot_event` 입니다
+```
+출하 15 중   표에서 읽히는 identity 14 · «유도되는» identity «1**
+             lot_event → `event_group_key` (준비기 산출 — 원본 표에 «없음»)
+=> S-54 의 걸음 「SELECT <identity 컬럼> FROM T WHERE row_id IN (row_ids)」이 그 소스에는
+   «성립하지 않습니다** — 표에 그 컬럼이 없습니다
+⚠️ 첫 계기가 «3** 이라 했는데 그중 둘(`dt_transfer` · `wafer_process_recipe`)은 identity 가 `row_id` 이고
+   그건 `column_types` 에 «없을 뿐» 모든 동적 표에 «있는» 틀 컬럼입니다 — 대리를 성질로 읽은 것이라 고쳤습니다
+```
+
+## 129-bis 가 재라고 한 것 — 봉투의 row_id «자리»
+```
+행별   `database.py:310`  payload 의 «봉투 수준»에 `"row_id": data_row.row_id`
+      (`_EXCLUDED` 는 «컬럼 dict»에서만 빼는 것이라 봉투 수준과 «다른 자리»입니다)
+접힌   `stage_collapsed_event(session, event_type, table_name, row_ids)` — 이름 그대로 «목록»
+=> ㉠ 의 «두 모양» 다 닿습니다. 이건 «멈춤 아님»이고 지을 때 그대로 쓰면 됩니다
+```
+
+## 청 — 둘
+```
+Ⓐ DELETE 반쪽    ① 이 「선언 문제」라고 그 함수가 «이미 적었습니다». 그러면 S-54 의 ㉢ 은
+                 「rescope 로 한다」가 아니라 «다른 문»이 필요합니다(예: 삭제 이벤트가 그 행의
+                 «마지막으로 알려진 번역»을 refs 로 쓰는 길). 그건 이 걸음보다 큽니다
+                 => 이 걸음을 «EDIT 만»으로 좁힐지(129-ter 가 이미 EDIT·DELETE 로 좁혔으니 DELETE 도 빼기),
+                    아니면 그 문을 이 줄에 포함할지
+Ⓑ lot_event      identity 가 유도되므로 그 소스는 «이 걸음의 대상이 아닙니다».
+                 14 로 시작하고 lot_event 는 «별 줄»(그 소스의 scope 를 무엇으로 잡을지가 판정)
+                 ⚠️ 다만 그게 소유자가 돌리는 소스라 「원장이 따라온다」의 «체감»이 거기서 안 납니다
+```
+🔴 저는 **Ⓐ 는 「EDIT 만」 · Ⓑ 는 「14 로 시작 + lot_event 별 줄」** 로 기웁니다 —
+   둘 다 «지을 수 있는 것부터» 세우고, 못 하는 것을 «이름 대어» 남깁니다. 다만 Ⓑ 는 제품 체감에 걸려
+   총괄 판정 자리입니다.
+
+## 📌 상태
+```
+S-52 «닫힘»(여섯 층 + S-52-c 보류 기록) · S-54 는 위 청 뒤
+짓지 않았습니다(코드 0) · 미커밋 0 · 감시 🟢
+```
