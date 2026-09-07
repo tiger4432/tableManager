@@ -12966,3 +12966,60 @@ main.py 가 수퍼바이저에서 읽는 것은 `read_status()`(:266) «상태»
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔎 S-25 「설계된 거절이 ERROR 로 찍힌다」 — **인용된 자리는 «이미 갈라져» 있습니다. 부류도 아닙니다** (14:0x)
+
+⛔ 코드 0줄. 줄을 «인용»으로 두고 잤습니다.
+
+## ① 인용된 자리 — `models.py:1068-1074` 는 «오늘 이미» 레벨을 가릅니다
+```
+logger.log(logging.ERROR if absent else logging.INFO, "[Schema Sync] … holds a VIEW …")
+   absent «있음» = 선언된 컬럼이 «이 뷰에 못 생긴다» -> ERROR   (진짜 손실)
+   absent «없음» = 선언된 뷰라는 «사실»만        -> INFO    (그 자리 주석: 「It is still SAID, at INFO」)
+=> 🔴 「설계된 거절을 ERROR 로 찍는다」는 «이 자리에 대해» 오늘 «거짓»입니다.
+   ERROR 는 «설계된 거절»이 아니라 「선언한 컬럼이 «사라진다»」입니다
+```
+
+## ③ 부류인가 — **전수했고, «부류가 아닙니다»**
+```
+`logger.error` 전수 중 「예상된 상태」 후보 셋:
+  mappers/dt_map_mapper.py:225  `DerivationRefused` -> ERROR
+     🔵 «의도»입니다. 그 자리 주석: 「Named, loud, and empty-handed. A partial map is not a
+        smaller claim, it is a DIFFERENT claim」 -> 조용한 부분 지도가 «더 나쁘다»는 판단이
+        «그 자리에» 적혀 있습니다 = 결정
+  enrichment_mapper.py:143  「chain rule is missing embedded 'enrichment' config; skipping batch」
+     -> 그 맵퍼를 가리키면서 설정을 «안 준» 규칙 = «망가진 규칙». ERROR 가 맞습니다
+  ledger_api/declared_entities.py:71  「declared entities unreadable」 -> 못 읽는 것은 «사고»입니다
+=> 셋 다 「예상된 상태를 ERROR 로」가 «아닙니다». 낱개도 «0» 이고 부류도 «아닙니다»
+```
+
+## ② 레벨을 «선언»으로 정할 자리 — **없습니다**
+```
+utils/logger.py:180·251·273 · map_alignment.py:2600 — 레벨이 «코드 상수»입니다
+config/sample 에 로깅 선언 «없음»
+=> 「선언으로 낮춘다」는 «오늘 자리가 없습니다». 만들면 그건 «새 축»이고, 그것을 요구하는 사례가
+   이 라운드에는 «없습니다»(위 ①③ 으로 고칠 것이 없어서)
+```
+
+## 갈래
+```
+결함 아님   ① 인용된 자리는 이미 갈라짐 · ③ 후보 셋은 «전부 의도이거나 진짜 사고»
+줄의 처분   🔴 「거짓 — 이미 갈라져 있음(models.py:1069)」으로 닫습니다.
+           낱개 수리도 부류 수리도 «없습니다»
+⚠️ 안 쟀다  운영에서 그 ERROR 가 «얼마나» 뜨는지 — 이 박스 얘기이고, 뜨는 빈도는 «선언 상태»의 함수입니다
+```
+
+## 판정 대기: **예순하나**
+```
+61  🔵 S-25 는 «지을 것이 없습니다» — 줄을 「거짓 · 이미 갈라짐」으로 닫으실지.
+    ⚠️ 다만 이 줄이 «어디서 왔는지»는 제가 못 찾았습니다 — 큐 문장이 어느 관측에서 왔는지 적혀
+       있지 않고, 그 관측이 «다른 자리»를 본 것일 수 있습니다. 그때는 그 자리를 주시면 다시 잽니다
+```
+```
+판정 대기: 🔴 61 (첫 제출 14:0x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
