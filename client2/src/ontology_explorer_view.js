@@ -8,6 +8,7 @@ import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import { refusalCell, refusalSummary, excludedNote } from './refusal_cell.js';
+import { verificationNote } from './verification_note.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -884,10 +885,14 @@ function renderInspector(state) {
   // keeps the badge it had. A source that no batch has ever been compiled from is 미검증 --
   // it is still saved, still declared, still executed by the backfill exactly as before;
   // what it is not is something anybody has seen produce an atom.
+  // 🔴 S-46. WHY it is unverified, from the VALUE. The badge covered "never run" and "run
+  //    against different text" with one word, and those are opposite next actions -- run it
+  //    once, versus fix it and run it again. The server already tells them apart
+  //    (`ran_at` absent with `stale` false is the first); the word is chosen, never composed.
   const verified = verificationOf(state);
-  if (verified && verified.status !== 'verified') {
-    actions.append(h('span', 'oe-status oe-status--unverified',
-                     verified.stale ? '● 미검증 · 선언 변경됨' : '● 미검증'));
+  const verifiedNote = verificationNote(verified);
+  if (verifiedNote) {
+    actions.append(h('span', 'oe-status oe-status--unverified', verifiedNote));
   } else {
     actions.append(h('span', 'oe-status oe-status--active', `● ACTIVE · ${state.selection.compile_status}`));
   }

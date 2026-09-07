@@ -834,6 +834,13 @@ const FLOORS = new Map([
   // identical on screen, and those are opposite instructions.
   ['refusal_cell_harness.mjs', 25],
   //
+  // S-46. Three states behind one word. The badge said 미검증 for both「never run」and「run
+  // against different text」, and those are opposite next actions - run it once, versus fix
+  // it and run it again. The server already separates them by value; what this floor holds
+  // is that the ORDER survives (a stale record also carries ran_at, so reading ran_at first
+  // swallows it) and that an older response missing the keys keeps the word it had.
+  ['verification_note_harness.mjs', 8],
+  //
   // S-35. The confirm response carried the scorer choice and the screen threw the whole
   // record away. What this floor holds is the COMPARISON: took the machine answer / overruled
   // it / it had none - three cases that 확정됨 renders identically. It also holds that the
