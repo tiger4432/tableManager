@@ -1077,7 +1077,7 @@ const FLOORS = new Map([
   // New 2026-08-04 with the overlay-provenance round. Floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['overlay_provenance_harness.mjs', 21],
-  ['overlay_wafer_mm_harness.mjs', 69],
+  ['overlay_wafer_mm_harness.mjs', 72],
   // 15 -> 34 (2026-08-05, the first import-not-slice conversion). It stopped reading
   // `map_editor.js` as text: Gate 4 moved to `client2/src/push_columns.js` and this harness
   // now `import`s it. Two things happened to the count, and only one of them is new coverage.

@@ -42,7 +42,6 @@ import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
@@ -52,33 +51,13 @@ const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
 
-function sliceFunction(source, name) {
-  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
-  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
-  //    a module-level declaration — stopped this regex matching and the harness said "nothing
-  //    compared". That is the standing ban's symptom in its declaration-prefix form.
-  //    The fix is this file importing instead; until that round, this keeps it alive.
-  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
-  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
-  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) die(`symbol not found: ${name} (renamed? this harness must be updated, never skipped)`);
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) die(`no body for ${name}`);
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
+// 🔴 C-35: THE SLICER IS GONE. Its only remaining callers were three assertions that read
+//    the letters of `addOverlayLayer` to ask whether the gate consults the declaration
+//    reader; those now RUN it and record what it asked (see `driveOverlayGate`). Text as a
+//    proxy for behaviour is exactly what the standing ban names, and this proxy was
+//    measuring the shape of the letters: a rename of the helper would have kept it green,
+//    and putting `export` in front of a declaration reddened it on code that had not
+//    changed at all.
 
 // The coordinate core plus the rule-6 additions. A rename here is exit 2, never green.
 const SYMBOLS = [
@@ -297,12 +276,74 @@ function targetKeyIndex(ctx, f) {
 }
 
 // ── Assertions ─────────────────────────────────────────────────────────────────────────
+// 🔴 C-35. A12g-i USED TO READ `addOverlayLayer`'S SOURCE TEXT, on the grounds that it is
+//    async and does REST so it "is not executed here". That was true of the SLICING era and it
+//    is not true now: measured 2026-09-07, the function runs to its gate under the probe
+//    without throwing. Text as a proxy for behaviour is what the standing ban is about, and the
+//    proxy was measuring the shape of the letters -- a rename of the gate's helper would have
+//    kept it green, and putting `export` in front of a declaration reddened it on correct code.
+//
+// This drives the real function and records WHAT THE GATE ASKED. Its own probe instance,
+// because `physDeclaration` and `frameDimError` must be REPLACEABLE here (`state`) while the
+// rest of the file reads them as they are (`expose`), and one name cannot be both.
+async function driveOverlayGate(mutate) {
+  const asked = [];
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: ['addOverlayLayer', 'el'],
+    state: ['physDeclaration', 'frameDimError', 'selectedTable', 'loadedIdentity',
+            'activeOverlayLayers', 'tableSchema', 'currentRotation', 'currentSide',
+            'boundingBoxCache', 'renderGridCanvas', 'syncOverlayGeometry', 'renderOverlayList',
+            'drawOverlayMarkers'],
+    stubs: { './utils.js': { showToast: () => {} },
+             './transfer_plan.js': { notifyMapContext: () => {} } },
+    mutate: mutate || undefined,
+    tag: 'wafermmgate',
+  });
+  probe.physDeclaration = function () { asked.push(`physDeclaration:${arguments[1]}`);
+    return { value: 2.5, source: 'frame' }; };
+  probe.frameDimError = () => { asked.push('frameDimError'); return ''; };
+  probe.selectedTable = 'dt_map';
+  probe.loadedIdentity = null;
+  probe.activeOverlayLayers = [];
+  probe.tableSchema = { column_types: {} };
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.boundingBoxCache = {};
+  for (const n of ['renderGridCanvas', 'syncOverlayGeometry', 'renderOverlayList',
+                   'drawOverlayMarkers']) probe[n] = () => {};
+  Object.assign(probe.el, {
+    physWaferDia: inp(300), physChipX: inp(2.5), physChipY: inp(2.5),
+    physOffsetX: inp(0), physOffsetY: inp(0), physEdgeMargin: inp(3),
+    gridCols: inp(10), gridRows: inp(10), gridStartX: inp(0), gridStartY: inp(0),
+    gridYInvert: { checked: false },
+  });
+  // The chain the gate stands behind: a served binding, the source's cells, the target's
+  // registered spec. Each is the shape its own reader asks for; nothing here is a fiction the
+  // product does not already handle.
+  const saved = { fetch: globalThis.fetch, raf: globalThis.requestAnimationFrame };
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (u) => {
+    const url = String(u);
+    if (url.includes('paint-rules')) {
+      return { ok: true, status: 200, json: async () => ({
+        binding: { x: 'x', y: 'y', val: 'val', key_columns: ['k'], source: 'declared' } }) };
+    }
+    if (url.includes('wafer_map_metadata')) {
+      return { ok: true, status: 200, json: async () => ({ data: [], total: 0 }) };
+    }
+    return { ok: true, status: 200, json: async () => ({
+      data: [{ data: { x: { value: 1 }, y: { value: 1 }, val: { value: 'a' },
+                       k: { value: 'k1' } } }], total: 1 }) };
+  };
+  try { await probe.addOverlayLayer('src_table', 'k1', null); }
+  finally {
+    globalThis.fetch = saved.fetch;
+    globalThis.requestAnimationFrame = saved.raf;
+  }
+  return asked;
+}
+
 async function runAll(mutate) {
-  // A12g-i read the SOURCE TEXT of `addOverlayLayer` rather than executing it (it is async and
-  // does REST). That is a structural check on the file, not a sliced fragment being run, so it
-  // stays -- but it must see the MUTATED text, or a mutant that edits that function would go
-  // unnoticed by exactly the three assertions written to notice it.
-  const src = mutate ? mutate(SRC0) : SRC0;
   const fails = [];
   let ran = 0;   // H1 protocol: how many assertions actually executed, crash-distinguishable
   const ok = (cond, name, detail) => { ran++; if (!cond) fails.push(`${name}${detail ? ` -- ${detail}` : ''}`); };
@@ -534,18 +575,24 @@ async function runAll(mutate) {
       `value=${good.value} source=${good.source} -- the guard refuses everything`);
     setScreen(ctx, TGT);
 
-    // A12g -- the SHIPPED guard must be wired to the fact, not to the defaulted number.
-    //         `addOverlayLayer` is async and does REST, so it is not executed here; this reads
-    //         its source. 🔴 Comments are stripped first -- a sibling harness has a permanent
-    //         false red because an ordering assertion matched a symbol inside a comment.
-    const addSrc = sliceFunction(src, 'addOverlayLayer')
-      .split('\n').map(ln => ln.replace(/\/\/.*$/, '')).join('\n');
-    ok(/physDeclaration\s*\(/.test(addSrc), 'A12g the overlay gate calls physDeclaration',
-      'the gate is reading a value that has already been defaulted');
-    ok(!/resolveFrame[^\n]*\.chipX\s*>\s*0/.test(addSrc), 'A12h the gate does not test resolveFrame output',
-      'the old shape is back');
-    ok(/frameDimError\s*\(/.test(addSrc), 'A12i the overlay path applies the dimension bound',
-      'a 1024x1024 metadata row would sweep the grid on the UI thread');
+    // A12g-i -- the SHIPPED guard must be wired to the FACT, not to the defaulted number, and
+    //           this now RUNS it instead of reading its letters. What is recorded is what the
+    //           gate ASKED: which reader, about which axis.
+    const asked = await driveOverlayGate(mutate);
+    ok(asked.some(a => a.startsWith('physDeclaration:')),
+      'A12g the overlay gate reaches physDeclaration',
+      `asked: ${asked.join(', ') || '(nothing)'} -- the gate reads a value already defaulted`);
+    // 🔴 THE AXES ARE THE CLAIM, NOT THE MERE CALL. "Does not test `resolveFrame(...).chipX`"
+    //    is a statement about where the pitch comes from, and its positive form is that the
+    //    gate asks the DECLARATION READER about each pitch by name. A revert to the resolved
+    //    number stops these two calls happening at all, which "was it reached" alone might not
+    //    notice if some other axis were still being asked about.
+    ok(asked.includes('physDeclaration:chipX') && asked.includes('physDeclaration:chipY'),
+      'A12h ...about BOTH pitch axes, which is what "not from resolveFrame" means',
+      `asked: ${asked.join(', ') || '(nothing)'} -- the old shape is back`);
+    ok(asked.includes('frameDimError'), 'A12i the overlay path applies the dimension bound',
+      `asked: ${asked.join(', ') || '(nothing)'} -- a 1024x1024 metadata row would sweep the `
+      + 'grid on the UI thread');
   }
 
   // A13 -- SOURCE GRID DIMS ARE BOUNDED. The dims-match refusal went away with rule 6; the
