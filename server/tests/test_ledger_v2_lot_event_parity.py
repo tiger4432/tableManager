@@ -159,23 +159,20 @@ def lot_event_bundle():
             "predicate": "register@1", "bind": bind(lot)},
         "first_sight_item": {
             "predicate": "register@1", "bind": bind(wafer)},
-        "in_slot": {
-            "predicate": "has_wafer@1",
-            "bind": bind(lot, wafer, (("slot", "slots"),))},
         "descent": {"predicate": "derived_from@1", "bind": bind(child, parent)},
-        # These two utter the SAME predicate and differ only in the rule that computed
-        # them.  Nothing about their structure tells them apart, which is exactly why
-        # structure stopped being how a sentence is chosen.  (Until 2026-08-21 they named
-        # two separate Claims, `split_slot` and `merge_slot`, whose bodies were identical
-        # down to the predicate -- so the distinctness was already only in the name.)
-        "split_slot_carry": {
-            "predicate": "slot_map@1",
-            "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
-                                         ("wafer", "wafers")))},
-        "merge_slot_join": {
-            "predicate": "slot_map@1",
-            "bind": bind(parent, child, (("from", "slots"), ("to", "slots"),
-                                         ("wafer", "wafers")))},
+        # 🔴 `in_slot` / `split_slot_carry` / `merge_slot_join` LEFT ON 2026-08-30, and
+        # this fixture kept saying them for a week. That is not a harmless copy: a test
+        # bundle that declares sentences the mapper cannot say makes "every sentence the
+        # mapper says is a mapping key" pass on a set that is not the shipped one, and it
+        # was the ONLY place left where two mappings had an equal bind - so a test could
+        # cite it as evidence that an indistinguishable pair existed. The shipped sample
+        # names all three ZERO times.
+        #
+        # Where each went is recorded at the mapper's own retirement note: `in_slot`'s
+        # subject has two identity keys, so it comes from the `lot_slot_wafer` source
+        # where the framework builds both from columns; the two slot-carry sentences went
+        # with the `slot_map@1` predicate, and seat-to-seat movement is now a WALK over
+        # `derived_from` and `has_wafer` rather than a sentence one mapper knew.
     }
     return {
         "setup_version": SETUP_VERSION,
@@ -486,16 +483,16 @@ def test_incomplete_pair_lands_visible_claims_and_updates_existing_cursor_metric
 # mapping that names no sentence" cannot either -- a member of a map has a key. The state
 # it refused stopped being expressible, which is the same shape as the retirement of
 # `mapping_id`'s duplicate check. What made it removable is asserted instead.
-def test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else():
-    bundle = lot_event_bundle()
-    mappings = bundle["sources"]["lot_event"]["bind"]["mappings"]
-    pair = {key: mapping for key, mapping in mappings.items()
-            if mapping["predicate"] == "slot_map@1"}
-    assert set(pair) == {"split_slot_carry", "merge_slot_join"}
-    # Same roles, same qualifier names, same entity types on both ends: nothing but the
-    # key separates them, and both keys are `SentenceShape` attributes of the mapper.
-    carry, join = pair["split_slot_carry"], pair["merge_slot_join"]
-    assert carry["bind"] == join["bind"]
-    assert {LotEventRoleMapper.SPLIT_SLOT_CARRY.sentence,
-            LotEventRoleMapper.MERGE_SLOT_JOIN.sentence} == set(pair)
-    validate_bundle(lot_event_bundle(), catalog=LOT_EVENT_CATALOG)
+# RETIRED 2026-09-07: test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else.
+# Its subject was the `slot_map@1` pair `split_slot_carry` / `merge_slot_join`, and both
+# sentences left the mapper on 2026-08-30 with the predicate they said. The shipped sample
+# names them ZERO times, so there is no indistinguishable pair in this source to tell
+# apart, and the only "two mappings with an equal bind" left anywhere was this file's own
+# fixture restating the retired declaration - a test's own copy of a dead thing is not
+# evidence that the thing exists.
+#
+# 🔴 THE PROPERTY IT PINNED IS NOT LOST, AND IT DID NOT NEED THIS PAIR. "Nothing but the
+# name separates two shapes" is asserted on the mapper itself in
+# `test_ledger_sentence_auto_name`, where the three surviving shapes are all EQUAL as
+# values - a stronger fixture than the two this had, and one that does not die with a
+# declaration.

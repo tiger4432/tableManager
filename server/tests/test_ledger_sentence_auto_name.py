@@ -15,7 +15,6 @@ they have no subject.  They are retired by name, next to what replaced them.
 """
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 from ledger.roleframe import (
@@ -34,27 +33,11 @@ from test_ledger_v2_lot_event_parity import (
 )
 
 
-def merge_rows():
-    """The merge half of the ambiguous pair -- `split_rows()` covers the other half.
-
-    Wafers W1/W2 sit in the parent's slots 1/2 and land in the child's slots 5/6, so the
-    slot map genuinely MOVES them.  A merge whose slots happened to match the parent's
-    would produce the same atoms as a split carry and prove nothing about which sentence
-    was resolved.
-    """
-    return pd.DataFrame([
-        {"lot": "P", "event_type": "merge", "slots": "1:2",
-         "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
-         "row_identity": "M1", "event_time": NOW},
-        {"lot": "C", "event_type": "merge", "slots": "5:6",
-         "wafers": "W1:W2", "parent_lot": "P", "child_lot": "",
-         "row_identity": "M2", "event_time": NOW},
-    ], dtype=object)
-
-
-def slot_map_derivations(frame):
-    return sorted({item["derivation"] for item in preview(frame, known=()).candidate_semantics
-                   if item["predicate"] == "slot_map"})
+# RETIRED 2026-09-07 with the sentences they served: `merge_rows()` and
+# `slot_map_derivations()`. Both existed only to drive `split_slot_carry` /
+# `merge_slot_join`, which left the mapper on 2026-08-30. A helper kept past its only
+# caller is a branch nothing takes, and the next reader has to prove that before deleting
+# it - so it goes here, with where it went.
 
 
 def test_a_shape_is_named_by_the_attribute_it_was_bound_to():
@@ -68,25 +51,46 @@ def test_a_shape_is_named_by_the_attribute_it_was_bound_to():
     said = {shape.sentence for shape in vars(LotEventRoleMapper).values()
             if isinstance(shape, SentenceShape)}
 
-    assert LotEventRoleMapper.SPLIT_SLOT_CARRY.sentence == "split_slot_carry"
-    assert LotEventRoleMapper.MERGE_SLOT_JOIN.sentence == "merge_slot_join"
     assert said == declared, (
         "every sentence the mapper can say is a mapping key, and nothing else is")
-    # The two slot-map shapes are otherwise identical: the NAME is the only thing telling
-    # them apart, which is what makes it selection rather than decoration.
-    assert (LotEventRoleMapper.SPLIT_SLOT_CARRY
-            == LotEventRoleMapper.MERGE_SLOT_JOIN), (
-        "the two are EQUAL as values -- `sentence` is compare=False -- so nothing but "
-        "the name they were bound to can separate them")
-    assert (LotEventRoleMapper.SPLIT_SLOT_CARRY.sentence
-            != LotEventRoleMapper.MERGE_SLOT_JOIN.sentence)
+
+    # 🔴 THE NAME IS THE ONLY DISCRIMINATOR, ASSERTED OVER THE WHOLE SET RATHER THAN A
+    # CHOSEN PAIR. This named `SPLIT_SLOT_CARRY` and `MERGE_SLOT_JOIN`, and both retired
+    # on 2026-08-30 - so the assertion died with a declaration rather than with the
+    # property, which is the failure this round exists to stop. Every shape the mapper
+    # declares is equal to every other as a VALUE (`sentence` is compare=False), so the
+    # attribute each was bound to is the only thing telling any two apart; a shape that
+    # ever stopped being interchangeable would redden here without anything being renamed.
+    shapes = [shape for shape in vars(LotEventRoleMapper).values()
+              if isinstance(shape, SentenceShape)]
+    assert len(shapes) > 1, "one shape cannot show that the name is what separates them"
+    for other in shapes[1:]:
+        assert shapes[0] == other, (
+            "the shapes are EQUAL as values -- nothing but the name they were bound to "
+            "can separate them")
+    assert len({shape.sentence for shape in shapes}) == len(shapes)
 
 
 def test_the_shapes_own_name_selects_the_mapping_end_to_end():
     """The mapper passes no selector anywhere and still lands the right mapping, which is
-    what each atom's `derivation` records -- and the `derivation` is now the sentence."""
-    assert slot_map_derivations(split_rows()) == ["split_slot_carry"]
-    assert slot_map_derivations(merge_rows()) == ["merge_slot_join"]
+    what each atom's `derivation` records -- and the `derivation` is now the sentence.
+
+    🔴 RE-AIMED, NOT WEAKENED (2026-09-07). It rode `split_slot_carry`/`merge_slot_join`,
+    both retired 2026-08-30 with the `slot_map@1` predicate they said. The mechanism is
+    untouched, so it is pointed at the sentences the mapper says TODAY - and read off the
+    class rather than listed here, so the next retirement changes this test's expectation
+    without changing this test."""
+    said = {shape.sentence for shape in vars(LotEventRoleMapper).values()
+            if isinstance(shape, SentenceShape)}
+    landed = {item["derivation"]
+              for item in preview(split_rows(), known=()).candidate_semantics}
+
+    assert landed, "the fixture must produce atoms or this asserts nothing"
+    assert landed <= said, (
+        "every derivation is a sentence the mapper declared - a derivation from anywhere "
+        "else would mean a selector crept back in")
+    assert len(landed) > 1, (
+        "one sentence cannot show that the NAME selected it rather than the only mapping")
 
 
 def test_one_shape_bound_to_two_attribute_names_is_refused_at_class_creation():
@@ -145,7 +149,16 @@ def test_a_sentence_no_mapping_realizes_is_a_named_refusal_that_lists_the_ones_t
     assert "'mislabelled'" in caught.value.message
     # The refusal has to name what IS declared, or an author cannot tell a typo from a
     # sentence that was never wired.
-    assert "'merge_slot_join'" in caught.value.message
+    #
+    # 🔴 READ FROM THE DECLARATION, NOT NAMED HERE (2026-09-07). This asserted
+    # `'merge_slot_join'`, a sentence that retired on 2026-08-30 - so it stopped testing
+    # "the refusal lists what is declared" and started testing "the fixture still says
+    # this one word". Asking the bundle means the assertion survives the next retirement
+    # and still fails if the refusal ever stops listing anything.
+    declared = set(lot_event_bundle()["sources"]["lot_event"]["bind"]["mappings"])
+    assert declared, "the fixture must declare something or this asserts nothing"
+    for sentence in declared:
+        assert repr(sentence) in caught.value.message
 
 
 def test_an_unbound_shape_says_nothing_rather_than_matching_by_structure():
