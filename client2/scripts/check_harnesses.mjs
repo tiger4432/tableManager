@@ -767,6 +767,15 @@ const FLOORS = new Map([
   // counting it either way is the overclaim this floor exists to hold.
   ['transfer_plan_frame_basis_harness.mjs', 25],
   //
+  // C-1. Scores that 「the rule was OFF」 and 「it ran and had nothing to do」 stop being the
+  // same pixels on the rule row. Three things carry the load: the six tokens are printed as
+  // the server spells them (a Korean synonym would give config and screen two words), the
+  // badge names are ones the stylesheet actually defines (an unstyled class draws nothing
+  // while the code claims it drew), and absence means ONLY 「older server」 — never_evaluated
+  // is a value. A seventh token is shown but ungraded: hiding it would swallow a real
+  // outcome, grading it would be a claim this client cannot make.
+  ['rule_outcome_harness.mjs', 24],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite
