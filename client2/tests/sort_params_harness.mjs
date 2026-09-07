@@ -61,7 +61,7 @@ async function score(mutate) {
   // Nothing is sliced: the whole file is copied, accessors are appended, and the copy is
   // asserted to begin with the original's bytes.
   const { probe } = await loadWithProbe(GRID_PATH, {
-    expose: ['sortParams', 'sortQueryTail'],
+    expose: ['sortParams', 'sortQueryTail', 'holdsWholeTable'],
     mutate,
     tag: 'sortparams',
   });
@@ -115,7 +115,33 @@ async function score(mutate) {
   ok('A9 with no header sort the answer is never blank',
      probe.sortParams().orderBy === 'row_id');
 
+  // ══ WHO ANSWERS THE SORT: the grid, or the table ════════════════════════════════════
+  // 🔴 THIS BLOCK EXISTS BECAUSE THE FIRST VERSION GOT IT WRONG AND THE BROWSER CAUGHT IT.
+  //    The predicate was `state.allDataLoaded` alone, and that flag is set by the 「Load All」
+  //    button and nothing else — so a 907-row table, complete in its first page, fired two
+  //    requests for rows it already held. An unmeasured predicate is what let that through.
+  const holds = (patch) => {
+    Object.assign(state, patch);
+    return probe.holdsWholeTable();
+  };
+  ok('B1 「Load All」 -> the grid holds the table',
+     holds({ allDataLoaded: true, hasMoreData: false, viewMode: 'pagination', currentSkip: 0 }) === true);
+  ok('B2 a short first page IS the whole table, even without that flag',
+     holds({ allDataLoaded: false, hasMoreData: false, viewMode: 'pagination', currentSkip: 0 }) === true);
+  ok('B3 ...but the LAST page of many is not — it is also "no more data"',
+     holds({ allDataLoaded: false, hasMoreData: false, viewMode: 'pagination', currentSkip: 33939 }) === false);
+  ok('B4 a full first page of many is not the table',
+     holds({ allDataLoaded: false, hasMoreData: true, viewMode: 'pagination', currentSkip: 0 }) === false);
+  ok('B5 infinite scrolling that reached the end holds everything, at any skip',
+     holds({ allDataLoaded: false, hasMoreData: false, viewMode: 'infinite', currentSkip: 33939 }) === true);
+  ok('B6 ...and infinite scrolling that has not is still partial',
+     holds({ allDataLoaded: false, hasMoreData: true, viewMode: 'infinite', currentSkip: 2000 }) === false);
+
   state.serverSort = null;
+  state.allDataLoaded = false;
+  state.hasMoreData = true;
+  state.viewMode = 'pagination';
+  state.currentSkip = 0;
   return { pass, failures: failures.slice() };
 }
 
@@ -139,6 +165,13 @@ const MUTATIONS = [
   ['M4 the toggle\'s two answers are swapped',
    s => s.replace("orderBy: sortLatest ? 'updated_at' : 'row_id'",
                   "orderBy: sortLatest ? 'row_id' : 'updated_at'")],
+  // 🔴 THE DEFECT THIS ROUND SHIPPED AND THE BROWSER CAUGHT, put back verbatim.
+  ['M5 「holds the whole table」 goes back to reading the Load-All flag alone',
+   s => s.replace('  if (state.allDataLoaded) return true;\n  if (state.hasMoreData) return false;\n  return state.viewMode === \'infinite\' || state.currentSkip === 0;',
+                  '  return state.allDataLoaded;')],
+  ['M6 the last page of many is mistaken for the whole table',
+   s => s.replace("return state.viewMode === 'infinite' || state.currentSkip === 0;",
+                  'return true;')],
 ];
 
 if (process.argv.includes('--mutate')) {

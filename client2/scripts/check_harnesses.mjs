@@ -818,7 +818,7 @@ const FLOORS = new Map([
   // literals rather than recomputing them from the same expression, which is the only way a
   // harness can see them move. It also holds the encoding of the column name, so a name can
   // never become a second query parameter.
-  ['sort_params_harness.mjs', 9],
+  ['sort_params_harness.mjs', 15],
   //
   // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
   //    bare number tells the next person nothing about why it may not drop, and a floor whose
