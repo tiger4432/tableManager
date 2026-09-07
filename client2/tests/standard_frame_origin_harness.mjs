@@ -28,53 +28,23 @@
  * Run:  node client2/tests/standard_frame_origin_harness.mjs [--mutate]
  * Read-only against client2/. Not gated by `npm run build`; run by hand, per round.
  */
-import { readFileSync } from 'node:fs';
-import { loadWithProbe } from './lib/probe.mjs';
+import { loadWithProbe, readSourceText } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = join(HERE, '..', 'src', 'map_editor.js');
-// Line endings normalised — every mutation below matches a multi-line `\n` string, and on a
-// CRLF checkout those matches silently MISS (measured 2026-07-30 on the sibling harness:
-// 8 of 18 mutations went unapplied while the baseline stayed green).
-const SRC0 = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+// 🔴 THE SHARED READER, NOT A PRIVATE ONE. It normalises CRLF the same way for every harness
+//    and REFUSES a file with mixed endings instead of guessing — the mutation anchors below
+//    are multi-line `\n` literals, and on a CRLF checkout a private normaliser that got it
+//    wrong would leave them silently unmatched (measured 2026-07-30 on a sibling: 8 of 18
+//    mutations went unapplied while the baseline stayed green).
+// ⚠️ `.text` — the reader returns the bytes, the original text, the normalised text and the
+//    restore function. Taking the whole record here made the structural assertion below test a
+//    regex against "[object Object]", which is VACUOUSLY TRUE and left the baseline green.
+const SRC0 = readSourceText(SRC_PATH).text;
 
 const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared.)`); process.exit(2); };
-
-// 🔴 THE PARAMETER LIST IS WALKED BEFORE THE BODY IS LOOKED FOR, and that is not a detail.
-//    The sibling harnesses find the body by `indexOf('{')` after the `(` — which on
-//    `loadExistingMap(opts = {})` lands on the DEFAULT VALUE's braces and returns a slice that
-//    ends inside the signature. It fails as `Unexpected end of input` on the JOINED source,
-//    naming nothing. Close the parens first, then take the next `{`.
-function sliceFunction(source, name) {
-  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
-  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
-  //    a module-level declaration — stopped this regex matching and the harness said "nothing
-  //    compared". That is the standing ban's symptom in its declaration-prefix form.
-  //    The fix is this file importing instead; until that round, this keeps it alive.
-  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
-  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
-  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;   // at the '(' of the parameter list
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) return null;
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
 
 // The load path and everything its coordinates pass through. A rename here is exit 2, never green.
 const SYMBOLS = [
@@ -164,27 +134,7 @@ function makeInput(v) {
 //                          marker_shape harness staged it as an array and was right. Two
 //                          contradictory fictions, both green, because a bare identifier in a
 //                          vm context is whatever the sandbox says it is.
-async function buildEnv(src, opts = {}) {
-  const pieces = [];
-  for (const name of SYMBOLS) {
-    const code = sliceFunction(src, name);
-    if (!code) die(`'${name}' is gone from map_editor.js — renamed or reshaped. Nothing compared.`);
-    // Compiled one at a time so a slice that goes wrong NAMES ITSELF. A joined-source
-    // `Unexpected end of input` says only that one of two dozen extractions is bad.
-    try { new vm.Script(code); }
-    catch (e) { die(`slice of '${name}' does not parse: ${e && e.message}`); }
-    pieces.push(code);
-  }
-  // `parseValidDieRef` pins its lookup table to this module const, so the slice above is not
-  // self-contained without it. Taken from the source rather than retyped: a harness that
-  // hardcoded 'valid_die_ref' would keep passing after the product changed the name.
-  // (This fixture's metadata declares no valid-die, so today the const is only reached on the
-  //  branch that returns null — but the slice must not be one fixture edit away from a
-  //  ReferenceError that this harness's catch would report as a 0-cell load.)
-  const vdTable = /^const VALID_DIE_TABLE = .*;$/m.exec(src);
-  if (!vdTable) die('const VALID_DIE_TABLE is gone from map_editor.js');
-  pieces.unshift(vdTable[0]);
-
+async function buildEnv(mutate, opts = {}) {
   const log = { toasts: [], alerts: [], requests: [] };
   const choice = opts.choice || 'standard';
   const panel = opts.panel || { cols: 10, rows: 10, startX: 0, startY: 0, invertY: false,
@@ -247,7 +197,10 @@ async function buildEnv(src, opts = {}) {
   };
 
   const { probe } = await loadWithProbe(SRC_PATH, {
-    expose: [...SYMBOLS, 'el', 'OVERLAY_CELL_LIMIT'],
+    // `VALID_DIE_TABLE` is here because `parseValidDieRef` reads it. It used to be lifted out
+    // of the source by regex so the slice would not ReferenceError; the imported module has it
+    // in scope already, and asking for it by name keeps the RENAME GUARD that regex provided.
+    expose: [...SYMBOLS, 'el', 'OVERLAY_CELL_LIMIT', 'VALID_DIE_TABLE'],
     state: [
       'boundingBoxCache',
       // Where the cells on screen are currently seated.
@@ -278,12 +231,28 @@ async function buildEnv(src, opts = {}) {
       // scores the frame origin -- keeping a fiction that the score does not need is how the
       // fiction outlives the reason for it.
     },
-    // This harness has no mutation sweep -- `src` reaches here as the SOURCE TEXT, which the
-    // sliced version needed and the imported one does not. The guard keeps the parameter
-    // harmless rather than silently handing a string to something that expects a function.
-    mutate: typeof src === 'function' ? src : undefined,
+    // 🔴 THE MUTANT REACHES THE CODE THAT RUNS, AND IT DID NOT BEFORE. This parameter was
+    //    written as `typeof src === 'function' ? src : undefined` while every caller passed
+    //    MUTATED SOURCE TEXT, so it evaluated to `undefined` on every mutation: the text was
+    //    handed to the (now deleted) slicer, whose output nothing executed. Measured before
+    //    this change: 7 mutations declared, 7 applied, and 5 STILL GREEN — the two that were
+    //    caught were caught by the structural TEXT assertion, not by anything running.
+    //    `loadWithProbe` refuses a mutate that returns the source unchanged, so a mutant that
+    //    misses its anchor is exit 2 here rather than a quiet green.
+    mutate,
     tag: 'stdframe',
   });
+
+  // 🔴 THE RENAME GUARD, KEPT — BY EXECUTION INSTEAD OF BY TEXT. The deleted slicer's one
+  //    surviving job was `die` when a symbol was gone; this asks the LOADED MODULE the same
+  //    question and gets a stronger answer, because a name can be present in the text and
+  //    still not be a callable binding. It names every missing symbol at once rather than
+  //    stopping at the first.
+  const missing = SYMBOLS.filter(n => typeof probe[n] !== 'function');
+  if (missing.length) {
+    die(`gone from map_editor.js — renamed or reshaped: ${missing.join(', ')}`);
+  }
+  if (!probe.VALID_DIE_TABLE) die('VALID_DIE_TABLE is gone from map_editor.js');
 
   Object.assign(probe.el, el);
 
@@ -373,7 +342,7 @@ const coordDisagreements = (payload) => Object.keys(payload)
   .filter(k => payload[k].coord !== payload[k].val)
   .map(k => `${k}: value says (${payload[k].val}) but Push would write (${payload[k].coord})`);
 
-async function scoreAll(src, { verbose = false } = {}) {
+async function scoreAll(mutate, { verbose = false } = {}) {
   failures = []; compared = 0; evidence.length = 0;
 
   const rows = fixtureRows();
@@ -382,7 +351,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   let round1 = null;
   let round1Meta = null;
   {
-    const { sandbox: S, el, log } = await buildEnv(src, { rows });
+    const { sandbox: S, el, log } = await buildEnv(mutate, { rows });
     const res = await S.loadExistingMap({ quiet: true });
 
     eq('std/loaded', rows.length, res && res.count);
@@ -451,7 +420,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     });
     // (a) metadata absent again -> the 표준 branch runs a second time
     {
-      const { sandbox: S, el } = await buildEnv(src, { rows: back });
+      const { sandbox: S, el } = await buildEnv(mutate, { rows: back });
       await S.loadExistingMap({ quiet: true });
       const p2 = pushPayload(S);
       const moved = Object.keys(p2).filter(k => !round1[k] || p2[k].coord !== round1[k].coord);
@@ -464,7 +433,7 @@ async function scoreAll(src, { verbose = false } = {}) {
     }
     // (b) metadata present (what a Push leaves behind) -> the `meta` branch runs
     {
-      const { sandbox: S } = await buildEnv(src, { rows: back, gridMeta: round1Meta });
+      const { sandbox: S } = await buildEnv(mutate, { rows: back, gridMeta: round1Meta });
       await S.loadExistingMap({ quiet: true });
       const p2 = pushPayload(S);
       const moved = Object.keys(p2).filter(k => !round1[k] || p2[k].coord !== round1[k].coord);
@@ -482,7 +451,7 @@ async function scoreAll(src, { verbose = false } = {}) {
   {
     const panel = { cols: SPAN_X, rows: SPAN_Y, startX: MIN_X, startY: MIN_Y, invertY: false,
                     dia: 600, chipX: 1, chipY: 1, offX: 0, offY: 0, margin: 3 };
-    const { sandbox: S, el } = await buildEnv(src, { rows, choice: 'current', panel });
+    const { sandbox: S, el } = await buildEnv(mutate, { rows, choice: 'current', panel });
     await S.loadExistingMap({ quiet: true });
     eq('current/panel-origin-kept', [String(MIN_X), String(MIN_Y)],
        [String(el.gridStartX.value), String(el.gridStartY.value)]);
@@ -494,9 +463,15 @@ async function scoreAll(src, { verbose = false } = {}) {
   }
 
   // ══ Structural: the shift must not come back anywhere on the load path ═══════════════
+  // 🔴 TEXT IS THE SUBJECT HERE, NOT A PROXY (standing, 2026-09-03). This one assertion asks
+  //    「is the deleted subtraction back in the file」 — a question about the source, which no
+  //    behavioural check can ask about a line that is not on today's execution path. It reads
+  //    the SAME text the module was loaded from, mutation included, so a mutant that puts the
+  //    subtraction back is scored by this assertion and by the running code alike.
   {
+    const text = mutate ? mutate(SRC0) : SRC0;
     eq('structural/no-min-subtraction-on-load', true,
-       !/xNum\s*=\s*xNum\s*-\s*minX/.test(src) && !/yNum\s*=\s*yNum\s*-\s*minY/.test(src),
+       !/xNum\s*=\s*xNum\s*-\s*minX/.test(text) && !/yNum\s*=\s*yNum\s*-\s*minY/.test(text),
        'renumbering a cell on load is the defect itself');
   }
 
@@ -547,7 +522,7 @@ const MUTATIONS = [
                   '            const cell = getCanvasCellFromDb(null, xNum, yNum, cols, rows, rotation, side, invertY, 0, 0);')],
 ];
 
-const base = await scoreAll(SRC0, { verbose: true });
+const base = await scoreAll(undefined, { verbose: true });
 console.log(`\n${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.compared} assertions, `
   + `${base.failures.length} failure(s)`);
 // H1 protocol: the runner reads this line to tell "red with N assertions" from a crash.
@@ -566,7 +541,7 @@ if (process.argv.includes('--mutate')) {
     }
     applied++;
     let r;
-    try { r = await scoreAll(mutated); }
+    try { r = await scoreAll(apply); }
     catch (e) {
       console.log(`  ~ ${name} -> harness THREW (${e && e.message}) — red, but unnamed`);
       byCrash++; crashed.push(name); continue;
@@ -576,7 +551,14 @@ if (process.argv.includes('--mutate')) {
       stillGreen++; green.push(name); continue;
     }
     byAssertion++;
-    console.log(`  ✓ ${name} -> ${r.failures.length} failure(s): ${r.failures[0].split(':')[0]}`);
+    // 🔴 WHICH ASSERTIONS, NOT HOW MANY. Two mutants that redden the SAME set measure the same
+    //    property however different their descriptions read, and a count alone cannot show it.
+    //    Measured here the moment this line was added: D1, D3 and D5 redden the SAME SIX. Zero
+    //    origin, swapped axes and maximum-instead-of-minimum are three spellings of one
+    //    property — 「the declared origin is the data minimum」 — and this set scores that
+    //    property once. That is not a hole; what would be a hole is believing they are three.
+    const names = r.failures.map(f => f.split(':')[0]).sort().join(' ');
+    console.log(`  ✓ ${name} -> ${r.failures.length} failure(s): ${names}`);
     // D0 is the shipped defect put back verbatim, so its full failure list is the round's
     // damage report — including whether the SECOND round trip moves anything, which is what
     // decides one-time vs cumulative and therefore whether a migration is owed.
