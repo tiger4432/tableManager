@@ -1,0 +1,5 @@
+function e(e){return typeof e==`boolean`?e:e&&typeof e==`object`&&!Array.isArray(e)?!!e.reason:null}var t=`"`,n=`	`;function r(e){return String(e??``).replace(/\r\n?/g,`
+`)}function i(e,i){let a=i||{},o=r(e),s=[],c=[],l=``,u=0,d=!1,f=!0,p=()=>{c.push(a.trimCells?l.trim():l),l=``,f=!0,d=!1},m=()=>{p(),s.push(c),c=[]};for(;u<o.length;){let e=o[u];if(d){if(e===t){if(o[u+1]===t){l+=t,u+=2;continue}d=!1,u++;continue}l+=e,u++;continue}if(e===t&&f){d=!0,f=!1,u++;continue}if(e===n){p(),u++;continue}if(e===`
+`){m(),u++;continue}l+=e,f=!1,u++}if(o.length>0&&m(),s.length>0){let e=s[s.length-1];e.length===1&&e[0]===``&&s.pop()}return a.dropBlankLines?s.filter(e=>!(e.length===1&&e[0]===``)):s}function a(e){return e.indexOf(n)>=0||e.indexOf(`
+`)>=0||e.indexOf(`\r`)>=0||e.indexOf(t)>=0}function o(e){let n=String(e??``);return a(n)?t+n.split(t).join(`""`)+t:n}function s(e){return(Array.isArray(e)?e:[]).map(e=>(Array.isArray(e)?e:[]).map(o).join(n)).join(`
+`)}export{s as n,e as r,i as t};
