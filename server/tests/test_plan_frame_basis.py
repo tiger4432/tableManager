@@ -1,66 +1,50 @@
-"""[Spec MAP_ALIGNMENT_SPEC 0.1/0.2] Layer 9 (the plan) reads layer 8 (the confirmation).
+# -*- coding: utf-8 -*-
+"""[Spec MAP_ALIGNMENT_SPEC 0.1/0.2] 계획(층 9)이 확정(층 8)을 읽는다 — **M2 표면에서**.
 
-The chain ends at the plan. Until now its canonical frame -- the frame every other source
-is aligned ONTO, which is the whole N-ary consolidation decision -- was picked by
-`CANONICAL_FRAME_ROLES`, a config-ordered tuple with no record, no version and no source
-list. These tests pin the three things that had to become true:
+사슬은 계획에서 끝난다. 그 canonical 프레임 — 다른 모든 원천이 «그 위로» 정렬되는, 즉
+N-ary 통합 결정 그 자체 — 는 종전 `CANONICAL_FRAME_ROLES` 라는 기록도 버전도 원천 목록도
+없는 config 순서 튜플이 골랐다. 이 파일이 못 박는 것은 그것이 «확정 기록»으로 바뀌었다는
+사실이고, 그 사실은 M1 이 은퇴해도 참이어야 한다.
 
-1. WHEN A CONFIRMATION EXISTS ITS FRAME WINS and the tuple is not consulted. Proved by
-   making the two disagree and watching the alignment markers invert -- a test where they
-   agree proves only that the code compiled.
-2. THE FALLBACK SAYS SO. Identical numbers with a silent provenance is the exact state
-   this chain exists to remove, so the absence of a confirmation is named, not implied.
-3. THE MIDDLE RUNG EXISTS. `connected` and `connected(align_unavailable)` could not say
-   "aligned, but weakly supported", so a confirmation whose WEAKEST contributor is
-   unranked had to be rounded to one end. It is now spelled -- with a word the project
-   already owns. No sixth token.
+🔴 [S-15 ①-a · 판정 103] 그래서 세계가 M1(`/api/bonding-plan/core-summary`, `bdp_env`)에서
+   **M2**(`/api/transfer-plan/source-summary`, `tp_env`)로 옮겨졌다. 재는 사실은 «같고»
+   표면만 바뀐다 — M1 이 은퇴하는 커밋에서 이 파일이 같이 죽으면 「확정이 프레임을 고른다」를
+   «아무도 안 재게» 된다.
 
-[격리] Table names use the `bdp_test_*` prefix shared with `test_bonding_plan.py` for the
-same reason it does: a name that exists in the operator's real (gitignored) config makes
-the import-time `init_dynamic_models` win the race and the fixture silently tests theirs.
+⚠️ 옮길 수 있게 된 것은 S-40(판정 106) 덕이다. 그 전에는 M2 코어 답이 자기 프레임 fail 을
+   «정렬하지 않아» 아래 「마커 뒤집힘」이 관측되지 않았다(실측: 전/후 바이트 동일).
+
+옮기면서 «죽은» 것 — 그리고 왜:
+    · `PRE_EXISTING_KEYS` 가드   M1 «자기» 키 집합에 대한 라운드 가드다. M2 로 다시 쓰면
+      그건 «다른 가드»이고, 판정 103 이 「M1 과 같이 죽는다」로 정했다
+    · 「약한 확정 → 중간 등급」·「전부 서열 → 등급 없음」
+      `test_a_core_answer_says_what_its_frame_stood_on.py` 가 M2 에서 «이미» 잰다.
+      옮겨 오면 두 파일이 같은 사실을 재고, 그것이 시험 쪽의 기준 ④ 다
+
+[격리] 표 이름 접두 `tp_test_*` — `test_transfer_plan.py` 와 공유하는 그 세계다.
 """
-import json
+import os
+import sys
 
 import pytest
 
-import bonding_plan
-import config_resolve_report
-import frame_confirmation as fc
-from database import crud, models
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from test_bonding_plan import _add_meta, _seed_core, bdp_env  # noqa: F401  (fixture)
+import bonding_plan                                              # noqa: E402
+import config_resolve_report                                     # noqa: E402
+import frame_confirmation as fc                                  # noqa: E402
+from test_transfer_plan import _seed_scenario, tp_env            # noqa: F401,E402
 
-# The unit is whatever the enrichment rule declares -- a column name written here would be
-# a second spelling of the decision unit (same discipline as `test_frame_confirmation.py`).
-RULE = {"name": "eqp_product_frame_attribution",
+CORE_TABLE = "tp_test_core_defect_map"
+EDS_TABLE = "tp_test_eds_fail_map"
+MAP_ID = "CORE-A_01"
+
+#: 확정은 «단위»에 쓰인다. M2 의 코어 답에서 그 단위는 코어 자신 `(lot, slot)` 이다 —
+#: 컬럼 이름을 여기 적으면 그것이 결정 단위의 둘째 철자가 된다.
+RULE = {"name": "core_frame_attribution",
         "derived_table": "eqp_frame_attribution",
-        "decision_key": ["dt_eqp", "product"],
-        "target_fields": ["core_frame", "dt_frame"]}
-
-CORE_TABLE = "bdp_test_core_defect_map"
-EDS_TABLE = "bdp_test_eds_fail_map"
-MAP_ID = "LOTX_01"
-
-# Every key `get_core_summary` answered with BEFORE layer 8 was wired in. Anything outside
-# this set is an addition and has to be a deliberate one.
-PRE_EXISTING_KEYS = {"identity", "sources", "chips", "history", "warnings",
-                     "region_chips", "inactive_subtractions",
-                     # ⚰️ [S-34] ~~`counts_capped`~~ 는 2026-09-07 에 `truncated` 의 «축»이 됐다.
-                     #    S-27 이 적은 규율(「정당한 추가는 그 라운드가 이 줄을 같이 고친다」)이
-                     #    «은퇴»에도 같이 걸린다 — 키가 사라졌으면 이 줄도 같은 커밋에서 사라진다.
-                     #    그 사실 자체는 안 잎혀다: `truncated.region_counts` 가 그것을 들고 있고
-                     #    `test_bonding_plan` 의 세 시험이 그 주소를 재고 있다.
-                     # 🪦 [S-5] `truncated` — history 목록이 «조용히» 50건에서 잘리던 것을
-                     #    말하게 한 정본 칸이다. 이 줄의 규율대로 «그 라운드가» 여기를
-                     #    같이 고친다: 그 규율을 제가 S-27 에 적었고, 이번엔 제가 지킨다.
-                     "truncated"}
-
-
-def _confirm(db, contributors, reference=None, unit=("EQP-A", "P1"), frames=None):
-    return fc.record_confirmation(
-        db, RULE, {"dt_eqp": unit[0], "product": unit[1]}, contributors,
-        confirmed_by="tester", frames=frames or {"core_frame": "rot0_front"},
-        reference=reference)
+        "decision_key": ["lot", "slot"],
+        "target_fields": ["core_frame"]}
 
 
 def _contrib(role, table, map_id, source_name, **kw):
@@ -71,195 +55,139 @@ def _contrib(role, table, map_id, source_name, **kw):
     return d
 
 
-def _summary(client, lot="LOTX", slot="01", **params):
-    res = client.get("/api/bonding-plan/core-summary",
-                     params=dict(lot=lot, slot=slot, **params))
-    assert res.status_code == 200, res.text
-    return res.json()
+def _confirm(db, contributors, reference=None, frames=None):
+    return fc.record_confirmation(
+        db, RULE, {"lot": "CORE-A", "slot": "01"}, contributors,
+        confirmed_by="tester", frames=frames or {"core_frame": "rot0_front"},
+        reference=reference)
 
 
-# ---------------------------------------------------------------------------
-# 1. The fallback: same answer, no longer a silent one
-# ---------------------------------------------------------------------------
+def _summary(client, lot="CORE-A", slot="01", **params):
+    """M2 의 코어 답. 종전 이 헬퍼는 M1 라우트를 쳤다.
 
-def test_a_unit_with_no_confirmation_keeps_every_pre_existing_key_unchanged(bdp_env, client):
-    """The additive rule. `frame_basis` is the ONLY new key and nothing else moved.
-
-    The values pinned here are the ones `test_bonding_plan.test_core_summary_counts`
-    already pins; repeating them is the point -- if wiring layer 8 in moves a single one of
-    them for a unit that has no confirmation, this fails before anyone reaches production.
+    ⚠️ 응답 «모양»이 다른 자리는 «여기서» 번역한다 — 시험 본문이 각자 번역하면 그 번역이
+       열 곳에 생긴다(판정 83 이 「번역은 헬퍼 안」이라 적은 이유).
     """
-    _seed_core(bdp_env)
-    body = _summary(client)
+    res = client.get("/api/transfer-plan/source-summary",
+                     params=dict(stage="dt", lot=lot, slot=slot, **params))
+    assert res.status_code == 200, res.text
+    body = res.json()
+    chips = body.get("chips") or {}
+    # M1 은 감산 종류를 chips 의 «형제 칸»으로 냈고 M2 는 `fail_breakdown` 안에 낸다.
+    body["chips"] = dict(chips, **(chips.get("fail_breakdown") or {}))
+    return body
 
-    assert set(body) - PRE_EXISTING_KEYS == {"frame_basis"}
-    assert body["chips"] == {"total": 36, "defect": 2, "eds_fail": 2, "used": 2,
-                             "remaining": 30}
-    assert body["sources"] == {"process_history": "connected", "defect": "connected",
-                               "eds_fail": "connected(aligned:180)",
-                               "used_chips": "connected", "total_chips": "connected"}
 
+# ---------------------------------------------------------------------------
+# 1. 물러남 — 같은 답이되 «조용하지» 않다
+# ---------------------------------------------------------------------------
 
-def test_the_fallback_names_itself_rather_than_looking_identical(bdp_env, client):
-    """"No confirmation" must be readable off the payload, not inferred from its absence."""
-    _seed_core(bdp_env)
+def test_the_fallback_names_itself_rather_than_looking_identical(tp_env, client):
+    """「확정 없음」은 payload 에서 «읽혀야» 한다 — 부재에서 «추론»되는 것이 아니라."""
+    _seed_scenario(tp_env)
     basis = _summary(client)["frame_basis"]
 
     assert basis["kind"] == bonding_plan.BASIS_ROLE_ORDER
     assert basis["reason"] == config_resolve_report.REASON_NOT_DECLARED
-    # and it names the degenerate rule it fell back to, so the reader knows WHAT decided.
+    # 그리고 «무엇이» 정했는지 — 물러난 그 퇴화 규칙을 이름 댄다.
     assert basis["roles"] == list(bonding_plan.CANONICAL_FRAME_ROLES)
     assert "confirmation_uid" not in basis
 
 
 # ---------------------------------------------------------------------------
-# 2. The confirmation wins -- proved by disagreement
+# 2. 확정이 이긴다 — «어긋나게» 해서 증명한다
 # ---------------------------------------------------------------------------
 
-def test_the_confirmation_picks_the_canonical_frame_and_the_role_tuple_is_not_consulted(
-        bdp_env, client):
-    """🔴 THE test. Role order says rot0 (core map); the confirmation says rot180 (EDS map).
+def test_the_confirmation_picks_the_frame_and_the_role_tuple_is_not_consulted(
+        tp_env, client):
+    """🔴 THE 시험. 역할 순서는 코어 맵(rot0)을, 확정은 EDS 맵(rot180)을 가리키게 만든다.
 
-    If the confirmation were merely *read* and the tuple still decided, every marker below
-    would keep its pre-confirmation value and this would pass on broken code. So the two
-    are made to disagree and the alignment markers must INVERT: the source that needed a
-    180 correction now needs none, and the one that needed none now needs 180.
+    확정을 «읽기만» 하고 튜플이 여전히 결정한다면 아래 마커가 «그대로»일 것이고 이 시험은
+    깨진 코드에서도 통과한다. 그래서 둘을 어긋나게 하고 정렬 마커가 «뒤집혀야» 한다:
+    보정이 필요 없던 쪽이 180 을 받고, 받던 쪽이 필요 없어진다.
     """
-    _seed_core(bdp_env)
+    _seed_scenario(tp_env)
     before = _summary(client)["sources"]
-    assert before["defect"] == "connected" and before["eds_fail"] == "connected(aligned:180)"
+    assert before["defect"] == "connected", before
+    assert before["eds_fail"] == "connected(aligned:180)", before
 
-    _confirm(bdp_env,
+    _confirm(tp_env,
              [_contrib("total_chips", CORE_TABLE, MAP_ID, "user"),
               _contrib("defect", CORE_TABLE, MAP_ID, "chain_ingestion")],
              reference={"table": EDS_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
+    tp_env.commit()
 
     after = _summary(client)
-    assert after["sources"]["defect"] == "connected(aligned:180)"
-    assert after["sources"]["eds_fail"] == "connected"
     assert after["frame_basis"]["kind"] == bonding_plan.BASIS_CONFIRMATION
     assert after["frame_basis"]["reference"] == {"table": EDS_TABLE, "map_id": MAP_ID}
+    # 🔴 뒤집힘. 기준이 EDS 로 옮겨졌으므로 이제 «코어 쪽»이 보정을 받는다.
+    assert after["sources"]["defect"] == "connected(aligned:180)", after["sources"]
+    assert after["sources"]["eds_fail"] == "connected", after["sources"]
 
 
-def test_a_superseded_confirmation_does_not_decide(bdp_env, client):
-    """Sealed판 is not the answer. Two판 for one unit -- only the live one may be read."""
-    _seed_core(bdp_env)
+def test_a_superseded_confirmation_does_not_decide(tp_env, client):
+    """봉인된 판은 답이 아니다. 한 단위에 판이 둘이면 «살아 있는» 것만 읽힌다."""
+    _seed_scenario(tp_env)
     contributors = [_contrib("total_chips", CORE_TABLE, MAP_ID, "user"),
                     _contrib("defect", CORE_TABLE, MAP_ID, "chain_ingestion")]
-    _confirm(bdp_env, contributors, reference={"table": EDS_TABLE, "map_id": MAP_ID})
-    # v2 for the SAME unit seals v1 and points at the core map instead.
-    _confirm(bdp_env, contributors, reference={"table": CORE_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
+    _confirm(tp_env, contributors, reference={"table": EDS_TABLE, "map_id": MAP_ID})
+    # 같은 단위의 v2 가 v1 을 봉인하고 코어 맵을 가리킨다.
+    _confirm(tp_env, contributors, reference={"table": CORE_TABLE, "map_id": MAP_ID})
+    tp_env.commit()
 
     body = _summary(client)
     assert body["frame_basis"]["version"] == 2
     assert body["frame_basis"]["reference"] == {"table": CORE_TABLE, "map_id": MAP_ID}
-    # v1's rot180 floor must be gone: back to the pre-confirmation markers.
-    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
+    # v1 의 180° 바닥은 사라져야 한다 — 확정 전 마커로 되돌아온다.
+    assert body["sources"]["eds_fail"] == "connected(aligned:180)", body["sources"]
+    assert body["sources"]["defect"] == "connected", body["sources"]
 
 
-def test_an_excluded_contributor_cannot_claim_the_confirmation(bdp_env, client):
-    """A source that was refused was never aligned onto anything.
+def test_an_excluded_contributor_cannot_claim_the_confirmation(tp_env, client):
+    """거절당한 원천은 «아무것에도» 정렬된 적이 없다.
 
-    It stays in the record (otherwise "absent" and "rejected" become indistinguishable),
-    but it may not answer "is this plan's coordinate system confirmed" with yes.
+    기록에는 남는다(안 그러면 「없음」과 「거절됨」이 구별되지 않는다). 다만 「이 계획의
+    좌표계가 확정됐나」에 «예»라고 답할 수는 없다.
     """
-    _seed_core(bdp_env)
-    _confirm(bdp_env,
+    _seed_scenario(tp_env)
+    _confirm(tp_env,
              [_contrib("total_chips", CORE_TABLE, MAP_ID, "user",
                        excluded_reason="meta_missing"),
               _contrib("defect", "some_other_table", "OTHER", "chain_ingestion")],
              reference={"table": EDS_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
+    tp_env.commit()
 
     body = _summary(client)
     assert body["frame_basis"]["kind"] == bonding_plan.BASIS_ROLE_ORDER
-    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
+    # 확정이 «안 섰으므로» 마커도 확정 전 그대로다.
+    assert body["sources"]["eds_fail"] == "connected(aligned:180)", body["sources"]
 
 
 # ---------------------------------------------------------------------------
-# 3. The middle rung
+# 3. 중간 등급 — 이 파일이 재는 것은 «다른 칸과 안 섞인다»는 사실이다
+#    (등급 «자체»는 test_a_core_answer_says_what_its_frame_stood_on.py 가 M2 에서 잰다)
 # ---------------------------------------------------------------------------
 
-def test_a_weak_confirmation_serves_the_middle_rung_not_either_end(bdp_env, client):
-    """Aligned, and weakly supported. Four sources with one unconfirmed is not confirmed.
-
-    The weakest contributor here is unranked, so the판 cannot warrant the frame it names --
-    and yet the transform WAS computed, so `align_unavailable` would be a lie in the other
-    direction. That is the rung that did not exist.
-    """
-    _seed_core(bdp_env)
-    _confirm(bdp_env,
+def test_the_middle_rung_does_not_fire_the_inactive_subtractions_footnote(tp_env, client):
+    """`inactive_subtractions` 는 「이 감산이 «안 돌았다»」다. 약하게 보증된 defect 집계는
+    «돌았다». 둘은 낱말을 공유하지만 칸을 공유해서는 안 된다."""
+    _seed_scenario(tp_env)
+    _confirm(tp_env,
              [_contrib("total_chips", CORE_TABLE, MAP_ID, "user"),
               _contrib("defect", CORE_TABLE, MAP_ID, "trace_fixture_dt_log.csv")],
              reference={"table": CORE_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
+    tp_env.commit()
 
     body = _summary(client)
-    assert body["frame_basis"]["warrant"] == fc.WARRANT_NOT_DECLARED
-    assert body["frame_basis"]["weakest"]["priority"] == fc.UNRANKED
-    # Neither end: not bare `connected`, not `align_unavailable`.
-    assert body["sources"]["defect"] == "connected(not_declared)"
-    assert body["sources"]["total_chips"] == "connected(not_declared)"
-    assert body["sources"]["eds_fail"] == "connected(aligned:180,not_declared)"
-    assert "align_unavailable" not in json.dumps(body["sources"])
+    assert "not_declared" in body["sources"]["defect"], body["sources"]
+    # 재는 것은 「중간 등급이 «defect 를» 그 목록에 넣지 않는다」이다.
+    assert "defect" not in (body.get("inactive_subtractions") or []), body
+    assert body["chips"]["remaining"] is not None, "여전히 «수»다 — 아무것도 빠지지 않았다"
 
 
-def test_a_fully_ranked_confirmation_does_not_wear_the_middle_rung(bdp_env, client):
-    """The rung must be earned. Every contributor ranked -> the plain status stands."""
-    _seed_core(bdp_env)
-    _confirm(bdp_env,
-             [_contrib("total_chips", CORE_TABLE, MAP_ID, "user"),
-              _contrib("defect", CORE_TABLE, MAP_ID, "chain_ingestion")],
-             reference={"table": CORE_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
-
-    body = _summary(client)
-    assert body["frame_basis"]["warrant"] == fc.WARRANT_CONFIRMED
-    assert body["sources"]["defect"] == "connected"
-    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
-
-
-def test_the_middle_rung_is_not_a_degradation_so_the_number_still_ships():
-    """What a consumer DOES with the rung. It is a weaker warrant, not a loss.
-
-    Nothing dropped out of the arithmetic, so `remaining` stays a number, no `source_degraded`
-    is raised, and the `*` footnote (driven by `inactive_subtractions`, an EXACT match on
-    `not_declared`) must not fire on it. If the rung ever starts reading as a degradation,
-    every weakly-warranted plan collapses to 미상 -- which is the rounding this rung exists
-    to stop, in the other direction.
-    """
-    import transfer_plan
-
-    assert transfer_plan._status_is_degraded("connected(not_declared)") is False
-    assert transfer_plan._status_is_degraded("connected(aligned:180,not_declared)") is False
-    # ...while the bottom rung still is one.
-    assert transfer_plan._status_is_degraded("connected(align_unavailable)") is True
-    # and the role-status `not_declared` (absent table) is a different animal: exact match.
-    assert "connected(not_declared)" != bonding_plan.STATUS_NOT_DECLARED
-
-
-def test_the_middle_rung_does_not_fire_the_inactive_subtractions_footnote(bdp_env, client):
-    """`inactive_subtractions` means "this subtraction never ran". A weakly-warranted
-    defect count DID run. The two share a word and must not share a field."""
-    _seed_core(bdp_env)
-    _confirm(bdp_env,
-             [_contrib("total_chips", CORE_TABLE, MAP_ID, "user"),
-              _contrib("defect", CORE_TABLE, MAP_ID, "trace_fixture_dt_log.csv")],
-             reference={"table": CORE_TABLE, "map_id": MAP_ID})
-    bdp_env.commit()
-
-    body = _summary(client)
-    assert body["sources"]["defect"] == "connected(not_declared)"
-    assert "inactive_subtractions" not in body
-    assert body["chips"]["remaining"] == 30      # still a number, nothing dropped out
-
-
-def test_the_middle_rung_is_not_a_sixth_token(bdp_env, client):
-    """`config_resolve_report.py:404` -- adding a word to a closed vocabulary is a contract
-    change. Pin the rung to the canonical spelling so a rename upstream cannot leave a
-    second one behind (same discipline as `test_binding_refusal.py`)."""
+def test_the_middle_rung_is_not_a_sixth_token():
+    """닫힌 어휘에 낱말을 더하는 것은 계약 변경이다. 등급을 정본 철자에 못 박아,
+    상류에서 개명해도 둘째 철자가 남지 않게 한다."""
     assert fc.WARRANT_NOT_DECLARED == config_resolve_report.REASON_NOT_DECLARED
     assert bonding_plan.STATUS_NOT_DECLARED == config_resolve_report.REASON_NOT_DECLARED
     assert bonding_plan.BINDING_MAPPING_UNAVAILABLE == \
@@ -267,16 +195,16 @@ def test_the_middle_rung_is_not_a_sixth_token(bdp_env, client):
 
 
 # ---------------------------------------------------------------------------
-# 4. A confirmation that cannot supply a floor
+# 4. 바닥을 못 주는 확정
 # ---------------------------------------------------------------------------
 
-def test_a_confirmation_with_no_reference_falls_back_but_still_names_itself(bdp_env, client):
-    """`map_alignment.REFERENCE_ABSENT` is common. A판 scored without a common floor cannot
-    hand the plan one -- but the plan must still say WHICH판 could not."""
-    _seed_core(bdp_env)
-    h = _confirm(bdp_env, [_contrib("total_chips", CORE_TABLE, MAP_ID, "user")],
+def test_a_confirmation_with_no_reference_falls_back_but_still_names_itself(tp_env, client):
+    """`map_alignment.REFERENCE_ABSENT` 는 흔하다. 공통 바닥 없이 채점된 판은 계획에 바닥을
+    줄 수 없지만, 계획은 «어느 판이» 못 줬는지를 말해야 한다."""
+    _seed_scenario(tp_env)
+    h = _confirm(tp_env, [_contrib("total_chips", CORE_TABLE, MAP_ID, "user")],
                  reference=None)
-    bdp_env.commit()
+    tp_env.commit()
 
     basis = _summary(client)["frame_basis"]
     assert basis["kind"] == bonding_plan.BASIS_ROLE_ORDER
@@ -284,14 +212,13 @@ def test_a_confirmation_with_no_reference_falls_back_but_still_names_itself(bdp_
     assert basis["confirmation_uid"] == h.confirmation_uid
 
 
-def test_an_unreadable_reference_is_mapping_unavailable_not_not_declared(bdp_env, client):
-    """Two different repairs, so two different words. "You never declared a floor" sends the
-    operator to declare one; "your declared floor did not load" sends them to the map that
-    is missing its meta. Folding them invites the wrong fix."""
-    _seed_core(bdp_env)
-    _confirm(bdp_env, [_contrib("total_chips", CORE_TABLE, MAP_ID, "user")],
+def test_an_unreadable_reference_is_mapping_unavailable_not_not_declared(tp_env, client):
+    """수리가 둘이면 낱말도 둘이다. 「바닥을 선언한 적이 없다」는 선언하러 보내고,
+    「선언한 바닥이 안 읽힌다」는 메타가 없는 그 맵으로 보낸다. 접으면 틀린 수리를 부른다."""
+    _seed_scenario(tp_env)
+    _confirm(tp_env, [_contrib("total_chips", CORE_TABLE, MAP_ID, "user")],
              reference={"table": CORE_TABLE, "map_id": "NO_SUCH_MAP"})
-    bdp_env.commit()
+    tp_env.commit()
 
     basis = _summary(client)["frame_basis"]
     assert basis["kind"] == bonding_plan.BASIS_ROLE_ORDER
@@ -300,19 +227,16 @@ def test_an_unreadable_reference_is_mapping_unavailable_not_not_declared(bdp_env
 
 
 # ---------------------------------------------------------------------------
-# 5. One spelling, two consumers
+# 5. 한 철자, 두 소비자 — M2 가 층 8 을 «정말로» 지나는가
 # ---------------------------------------------------------------------------
 
-def test_transfer_plan_asks_the_same_function_for_the_canonical_frame(bdp_env, monkeypatch):
-    """M1 and M2 must not pick different floors for the same wafer.
+def test_the_core_answer_reaches_layer_eight(tp_env, client, monkeypatch):
+    """M2 가 확정을 «안 읽고» 답하면 같은 웨이퍼가 두 수를 보고한다.
 
-    `transfer_plan._core_region_counts` already orders its adapter by
-    `bonding_plan.CANONICAL_FRAME_ROLES` precisely so the two agree; the moment M1 starts
-    reading a confirmation and M2 does not, that agreement is gone and the same wafer
-    reports two numbers. So M2's canonical resolver must reach the same function.
+    종전 이 시험은 M1 의 config 를 «어댑터»로 지어 내부 함수를 직접 불렀다. 이제
+    «라우트를 통해» 잰다 — 어댑터는 시험이 지은 물건이고 라우트는 «운영이 지나는» 길이다.
     """
-    import transfer_plan
-
+    _seed_scenario(tp_env)
     seen = []
     real = bonding_plan.canonical_basis
 
@@ -321,14 +245,7 @@ def test_transfer_plan_asks_the_same_function_for_the_canonical_frame(bdp_env, m
         return real(db, config, map_pairs, meta_cache)
 
     monkeypatch.setattr(bonding_plan, "canonical_basis", spy)
+    _summary(client)
 
-    cfg = bonding_plan.load_bonding_plan_config()
-    adapter = {"identity": cfg.get("core_identity"),
-               "map_metadata": cfg.get("map_metadata"),
-               "fail_sources": {k: dict(v, frame="origin")
-                                for k, v in (cfg.get("sources") or {}).items()
-                                if v.get("mode") == "map"}}
-    transfer_plan._canonical_origin_meta(bdp_env, adapter, "LOTX", "01")
-
-    assert seen, "transfer_plan resolved a canonical frame without consulting layer 8"
-    assert (CORE_TABLE, MAP_ID) in seen[0]
+    assert seen, "the core answer resolved a frame without consulting layer 8"
+    assert (CORE_TABLE, MAP_ID) in seen[0], seen[0]
