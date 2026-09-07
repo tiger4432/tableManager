@@ -35186,3 +35186,24 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 1  S-9b 회귀 (판정 92)   2  S-36 서버   3  S-37 서버   [A-6 서버 — 클라 실측 뒤]   4  S-34 첫 커밋   5  S-15 ①   6  S-32 시리즈   끝  C-36
 ```
 > 📌 **[17:0x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-38 (소유자 지시 17:0x 「맵 메타 자동 등록은 없애줘」) — «쓰는 쪽»을 은퇴시킵니다. S-9b «다음», S-36 «앞»** (실측 17:1x)
+```
+없애는 것   `map_meta_registrar.MapMetaCollector` + `synthesize_grid_meta` + `auto_register_enabled` + `_load_ingestion_settings` + 손잡이 `auto_register_map_meta`(SETTINGS_KEY · DEFAULT_ENABLED) + `SOURCE_NAME="auto_map_meta"`
+           배선 «둘»: parsers/directory_watcher.py:2732~2881(파일당 collector) · chain_ingestion_worker.py:1084~1087(배치당 collector) — 그 블록째
+           sample: ingestion_settings.json.sample 의 `auto_register_map_meta` + `_…_doc` 줄
+남기는 것   같은 모듈의 `META_TABLE` · `compose_map_id` · `meta_business_key` — 메타 «업서트 규칙»(`allow_map_metadata_upsert`, worker :426·:821·:913)이 쓰는 «다른 일»입니다. 모듈 이름을 바꾸지 마십시오(최소 수정) — 남는 셋이 «그 모듈의 뜻»이 됩니다. 머리 주석만 「자동 등록은 2026-09-07 은퇴」로
+           표지 `auto_registered` 와 그 독자 «전부»(map_alignment 의 참조 거절·차용·[D8] 떼기 · models 토큰 · enrichment_candidates · 클라 map2/declaration.js 의 세 갈래) — 이미 쓰인 행이 «들고 있는» 기록 어휘입니다. 지우면 그 행들이 「declared」로 «거짓»이 됩니다
+시험       「테스트는 자기가 재던 코드와 같은 커밋에서 죽는다」 — writer 를 재는 단언만: test_map_meta_registrar(12 중 compose/business_key 부분은 «남김») · test_frame_confirmation_meta(synthesize 로 픽스처를 짓는 9 — 픽스처를 «선언된 메타»로) · test_valid_die_ref(8 — S-32 의 등급 0 후보가 «이 손잡이에 기대던» 그것; 손잡이가 사라지면 그 시험의 전제도) · 나머지는 대개 `compose_map_id`·`META_TABLE` 참조라 «그대로». 갈림은 «당신이 읽어서» — 「writer 참조 / 남는 셋 참조」 수를 보고에
+문서       같은 커밋에: CODE_MAP 의 M3 행·§2049~2053(그리고 «DEFAULT_ENABLED=True» 라 적힌 것은 «오늘 코드가 False» — 낡음) · SERVER_FILE_MAP · SYSTEM_FLOWS · data_model · PRIMITIVES · DUPLICATION_LEDGER · guide 둘 — «그 문장들만»(정비 사이클이 아님)
+두 줄       「운영에서는 맵 메타를 «메타 표»에 적습니다(작성 폼 또는 파일). 자동으로 지어 넣는 것은 «없습니다»」— 역할 상설 그대로: 코드가 «지어낸 값»(합성 프레임)이 사라집니다
+```
+게이트   ㉠ 두 배선 자리에서 «메타가 생기지 않음»(변이: 메타 없는 맵 파일 → 메타 행 0) ㉡ 남는 셋을 지나는 메타 업서트 규칙 «바이트 동일» ㉢ 저장소 전수에 `auto_register`(map_meta 쪽) «0» · `auto_registered` 독자는 «불변» ㉣ `--collect-only` 0 오류 · 무회귀 N passed
+🔴 멈춤   남는 셋과 없애는 것이 «같은 함수 안»에서 얽혀 «갈라 낼 수 없으면» 세고 멈추십시오
+## 큐 (17:1x)
+```
+1  S-9b 회귀(진행 중이면 «끝내고»)   2  🆕 S-38 자동 등록 은퇴   3  S-36 서버   4  S-37 서버   [A-6 서버 — 클라 실측 뒤]   5  S-34   6  S-15 ①   7  S-32 시리즈   끝  C-36
+```
+> 📌 **[17:1x] 이 채널의 미답 질문: «없음».**
