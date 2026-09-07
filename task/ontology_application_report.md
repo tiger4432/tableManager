@@ -13605,3 +13605,5 @@ test_composite_key_prefetch_budget::…probes_once_per_row  자기 docstring 이
 ❓ ⓐ-결함 넷의 «주인 낱개»를 더 팔지 — 각 하루 단위 이분 탐색이면 시험당 3~4회 실행입니다
 ```
 > 🔁 이월(첫 제출 14:5x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+## 🔒 [응용] S-32 ② «처분 표» 예약 (14:3x) — 낡음 11 + 결함 4 + C-9b = «16행». 제외 셋의 이유는 표에 적습니다
