@@ -44,7 +44,14 @@ MAP_ID = "LOTX_01"
 # Every key `get_core_summary` answered with BEFORE layer 8 was wired in. Anything outside
 # this set is an addition and has to be a deliberate one.
 PRE_EXISTING_KEYS = {"identity", "sources", "chips", "history", "warnings",
-                     "region_chips", "inactive_subtractions"}
+                     "region_chips", "inactive_subtractions",
+                     # 🪦 [S-27] `counts_capped` 는 «정당한» 추가다 — `9060a39d` 가 「상한에 닿은
+                     #    수집을 «로그만»이 아니라 «세는 코드»에게 말한다」로 더했다. 아래 등식은
+                     #    「이 라운드가 키 «하나»만 더했다」를 재는 라운드 가드이고, 그 가드가
+                     #    자기 라운드보다 오래 살아 다음 정당한 추가를 «회귀처럼» 보이게 했다.
+                     # 🔴 등식은 «유지»한다 — 실수로 새는 칸은 여전히 여기서 잡힌다. 정당한 추가는
+                     #    그 라운드가 이 줄을 «같이» 고치는 것이 규율이다.
+                     "counts_capped"}
 
 
 def _confirm(db, contributors, reference=None, unit=("EQP-A", "P1"), frames=None):

@@ -12780,3 +12780,60 @@ core_alignment_mapper.py:96   reference = rule.get("reference") or {}          <
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔒 S-5 나머지 나르개 — **말하는 곳 «넷» 전부 독자 «0» · 모양이 «넷» · 조용히 자르는 곳 «둘»** (12:2x)
+
+⛔ 코드 0줄 · 커밋된 코드로만 · rnd_board 자리는 «미룸» 표시.
+
+## ① 자리 · 잘릴 수 있나 · 말하나 · 독자 · 모양
+```
+자리                          잘림   말하나                          독자   모양
+chain_key_gate:181·183         ✅    `columns_omitted`·`rows_omitted`  0    «수» (omitted 카운터)
+crud.py:272·275                ✅    같은 두 이름                      0    «수»
+event_constants.py:169         ✅    `deleted_row_ids_omitted`         0    «수»
+chain_replay.py:103            ✅    `changes_truncated`               0    «불리언» (이름이 다름)
+chain_ingestion_worker:1147    ✅    `total_log_count`                 1    «분모» (절단 표지가 아님)
+config_resolve_report:596      ✅    `truncated`                       —    🔵 S-13 정본 (`saysTruncated`)
+────────────────────────────────────────────────────────────────────────────────
+🔴 bonding_plan:1027·1072      ✅    «말 안 함» — `q.limit(HISTORY_LIMIT)` 뒤 `"history": history`
+                                    운영자는 「50건이 전부」와 「최근 50건」을 «구별 못 합니다»
+🔴 chain_replay:379·392        ✅    «말 안 함» — `samples`·`withdrawal_candidates` 가 SAMPLE_LIMIT 에서 끊김
+                                    ⚠️ 다만 이름이 «samples» 라 「전부」를 주장하지 않습니다 — 약한 자리로 표시
+⏸ rnd_board 계열               —     미룸 (소유자 지시)
+```
+
+## ② 독자 — **말하는 다섯 중 넷이 «0»**
+```
+columns_omitted · rows_omitted · deleted_row_ids_omitted · changes_truncated   -> client2/src 전수 «0»
+total_log_count                                                               -> «1»
+=> 서버는 「잘렸다」를 «네 가지 이름»으로 말하고 있고, 화면은 «하나도 안 듣습니다»
+```
+🔵 오늘 밤 여섯 번 닫은 그 부류이고, 여기서는 «다섯 자리»가 한꺼번에 그 모양입니다.
+
+## ③ 🔴 나르개의 «모양»이 하나가 «아닙니다» — 넷입니다
+```
+① `truncated` (불리언 또는 {reason})   S-13 정본 · `truncation.js:72 saysTruncated` 가 «둘 다» 읽습니다
+② `*_omitted` (수)                    「몇 개를 뺐나」 — 정본이 «못 읽습니다»
+③ `changes_truncated` (불리언)         같은 뜻, «다른 이름»
+④ `total_log_count` (분모)            절단 «표지가 아닙니다». 분모라 그 자체로는 아무 말도 안 합니다
+=> 화면이 하나만 읽으면 나머지 셋은 «조용합니다». 그리고 오늘 화면은 «하나도» 안 읽습니다
+```
+📎 부류: 기준 ④ — 한 능력(「잘렸다고 말한다」)에 «철자 넷». 갈라져도 오류가 «안 납니다».
+
+## 판정 대기: **쉰여덟**
+```
+58  🔴 S-5 의 남은 절반이 «나르개 추가»가 아니라 «모양 통일 + 독자»입니다
+    ㉠ 정본을 `truncated`/`saysTruncated` «하나»로 모을지 — 그러면 `*_omitted` 는 그 안의 «수»가 됩니다
+       (지우는 게 아니라 «담기는» 것: {reason, omitted})
+    ㉡ 아니면 독자 쪽이 «넷을 다 읽게» 할지 — 🔴 그건 사본 넷을 화면에 «다시 만드는» 것입니다
+    ⚠️ 「조용히 자르는 둘」(history · samples)은 ㉠ 이 정해진 «뒤»에 그 모양으로 붙습니다
+    ⛔ 저는 모양을 «고르지» 않았습니다 — 정본 변경이라 판정 자리입니다
+```
+```
+판정 대기: 🔴 58 (첫 제출 12:2x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
