@@ -1297,9 +1297,20 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
     🔴 AND IT STAYS A RECORD WITH ONE FIELD (owner: 「ㅇㅇ 남겨」).  `bind: [...]` would read
     the same today and would have to be unfolded -- with a migration -- the first time
     `bind` carries anything besides `mappings`.
+
+    ⚰️ **THAT DAY IS 2026-09-08 (S-52, ruling 124), AND KEEPING THE RECORD IS WHAT MADE IT
+    CHEAP.** `bind` now also carries `entities`, where a source binds an entity type's
+    ATTRIBUTES once. It is a sibling of `mappings` rather than a field inside each mapping
+    because an attribute belongs to the ENTITY, not to a sentence: bind it per role and a
+    type used by K sentences is written K times, which is not a longer declaration but a
+    different one - K places to disagree, and the walk's `attribute_conflicts` would then
+    be counting a disagreement this schema created. Role level still exists, as an
+    OVERRIDE for the one case source level cannot express (see below).
     """
-    if not problems.exact(profile, path, required=("mappings",)):
+    if not problems.exact(profile, path, required=("mappings",),
+                          optional=("entities",)):
         return
+    _validate_bind_entities(profile.get("entities"), f"{path}.entities", problems)
     mappings = profile.get("mappings")
     if not isinstance(mappings, Mapping) or not mappings:
         problems.add("invalid_profile", f"{path}.mappings",
@@ -1757,6 +1768,38 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
                                  + _did_you_mean(entity_type, entities, "entity types"))
 
 
+def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> None:
+    """`bind.entities.<type>.attributes` - one source, one place per entity type.
+
+    Shape only; whether the NAMES exist on the type is a cross-section question and is
+    asked where the rest of the entity references are resolved.
+    """
+    if section is None:
+        return
+    if not isinstance(section, Mapping):
+        problems.add("invalid_type", path, "must be an object keyed by entity type")
+        return
+    for entity_type in sorted(section, key=str):
+        epath = f"{path}.{entity_type}"
+        _versioned_id(entity_type, epath, problems)
+        item = section[entity_type]
+        if not problems.exact(item, epath, required=("attributes",)):
+            continue
+        attributes = item.get("attributes")
+        if not isinstance(attributes, Mapping) or not attributes:
+            problems.add("invalid_binding", f"{epath}.attributes",
+                         "must be a non-empty object keyed by attribute name")
+            continue
+        for name in sorted(attributes):
+            _nonblank_id(name, f"{epath}.attributes.{name}", problems)
+            _validate_binding(attributes[name], f"{epath}.attributes.{name}", problems)
+            if (isinstance(attributes[name], Mapping)
+                    and attributes[name].get("kind") == "entity"):
+                problems.add(
+                    "invalid_binding", f"{epath}.attributes.{name}.kind",
+                    "entity attributes allow only column or constant bindings")
+
+
 def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                             vocabulary: Mapping[str, Any], problems: _Problems) -> None:
     for sentence, mapping in sorted(profile.get("mappings", {}).items()):
@@ -1820,6 +1863,10 @@ def _cross_profile_source(path: str, profile: Mapping[str, Any],
                           entities: Mapping[str, Any],
                           vocabulary: Mapping[str, Any], available: set[str],
                           problems: _Problems) -> None:
+    # Source-level attribute bindings resolve against the same entity section and the same
+    # frame columns as the role-level ones, so they are asked here rather than in a second
+    # pass that could drift from this one.
+    _bind_entities_refs(path, profile, entities, available, problems)
     for sentence, mapping in sorted(profile["mappings"].items()):
         mpath = f"{path}.mappings.{sentence}"
         for role, binding in mapping["bind"].items():
@@ -1893,6 +1940,63 @@ def _binding_refs(binding: Any, path: str, entities: Mapping[str, Any],
         for name, child in (sorted(bound_attributes.items())
                             if isinstance(bound_attributes, Mapping) else ()):
             _binding_refs(child, f"{path}.attributes.{name}", entities, available, problems)
+
+
+def _bind_entities_refs(path: str, profile: Mapping[str, Any],
+                        entities: Mapping[str, Any], available, problems) -> None:
+    """The two refusals ruling 124 names, both of them cross-section.
+
+    (a) a source-level attribute name the TYPE never declared - same rule as the role
+        level, asked where the source binds it so the operator is pointed at the box they
+        typed in;
+    (b) 🔴 ONE SENTENCE USING ONE TYPE IN TWO ROLES. A `die -> die` transfer binds
+        `Die@1` as both subject and target, and a SOURCE-level attribute cannot say which
+        of the two it is about - both readings are defensible and the compiler must not
+        pick. Refused by name, and the fix is the role-level override, so the message
+        names the path to type it into.
+    """
+    section = profile.get("entities")
+    for entity_type in sorted(section or {}, key=str):
+        descriptor = entities.get(entity_type)
+        epath = f"{path}.entities.{entity_type}"
+        bound = (section[entity_type] or {}).get("attributes")
+        if not isinstance(bound, Mapping):
+            continue
+        if descriptor is None:
+            problems.add("unknown_entity_type", epath,
+                         f"unknown entity type {entity_type!r}")
+            continue
+        declared = set(_column_values(descriptor.get("attributes") or []))
+        for name in sorted(set(bound) - declared):
+            problems.add(
+                "unknown_entity_attribute", f"{epath}.attributes.{name}",
+                f"{entity_type!r} declares no attribute {name!r}"
+                + _did_you_mean(name, declared, "attribute"))
+        for name, child in sorted(bound.items()):
+            _binding_refs(child, f"{epath}.attributes.{name}", entities, available,
+                          problems)
+
+    for sentence, mapping in sorted(profile.get("mappings", {}).items()):
+        bindings = mapping.get("bind")
+        if not isinstance(bindings, Mapping):
+            continue
+        roles_by_type: dict = {}
+        for role in sorted(bindings):
+            binding = bindings[role]
+            if isinstance(binding, Mapping) and binding.get("kind") == "entity":
+                roles_by_type.setdefault(binding.get("entity_type"), []).append(role)
+        for entity_type, roles in sorted(roles_by_type.items(), key=lambda kv: str(kv[0])):
+            if len(roles) < 2 or entity_type not in (section or {}):
+                continue
+            for role in roles:
+                if isinstance(bindings[role].get("attributes"), Mapping):
+                    continue
+                problems.add(
+                    "ambiguous_entity_attributes",
+                    f"{path}.mappings.{sentence}.bind.{role}.attributes",
+                    f"this sentence binds {entity_type!r} as {sorted(roles)}, so the "
+                    f"source-level attributes cannot say which one they describe. Bind "
+                    f"them on each role of this sentence instead.")
 
 
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]

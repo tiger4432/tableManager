@@ -1719,3 +1719,93 @@ def test_a_declaration_with_no_attributes_is_accepted_exactly_as_before(tmp_path
     write_tree(tmp_path)
     bundle = load_setup_bundle(tmp_path)
     assert "attributes" not in bundle.section("entities")["InputEntity@1"]
+
+
+# ---------------------------------------------------------------------------
+# S-52 ① 정정 (판정 124) — 속성은 «소스당 한 번». 역할 수준은 «덮어쓰기»
+#
+# 🔴 속성을 «문장의 역할» 옆에만 두면 한 엔티티가 K 문장에 나올 때 둘째 줄이 K 번이 된다.
+# 더 긴 선언이 아니라 «다른» 선언이다 — 어긋날 자리가 K 개이고, 걷기의 `attribute_conflicts`
+# 는 그때 «이 스키마가 만든» 불일치를 세게 된다.
+# ---------------------------------------------------------------------------
+
+def _source_level(attrs, entity_attrs=("product",)):
+    bundle = copy.deepcopy(logical_bundle())
+    bundle["entities"]["InputEntity@1"]["attributes"] = list(entity_attrs)
+    bundle["sources"]["input_rows"]["bind"]["entities"] = {
+        "InputEntity@1": {"attributes": attrs}}
+    return bundle
+
+
+def _two_roles_one_type():
+    """한 문장이 한 타입을 «두 역할»로 쓰는 번들 — `die -> die` 이송의 모양.
+
+    술어의 목적어 타입도 같이 넓힌다: 안 넓히면 이 픽스처는 «재려는 것과 다른 이유»로
+    빨개지고(목적어 타입 계약), 그러면 이 시험은 자기 제목을 못 번다.
+    """
+    bundle = _source_level({"product": {"kind": "column", "column": "source_id"}})
+    bundle["vocabulary"]["moves_to@1"]["object"]["types"] = [
+        "OutputEntity@1", "InputEntity@1"]
+    bundle["sources"]["input_rows"]["bind"]["mappings"]["main_transition"]["bind"][
+        "target"] = {"kind": "entity", "entity_type": "InputEntity@1",
+                     "keys": {"input_id": {"kind": "column", "column": "target_id"}}}
+    return bundle
+
+
+def test_a_source_binds_an_entitys_attributes_once(tmp_path):
+    """두 줄의 뒤 줄(정정): 「소스의 bind 에서 그 엔티티에 컬럼을 «한 번» 매기면 됩니다」."""
+    write_tree(tmp_path, _source_level(
+        {"product": {"kind": "column", "column": "source_id"}}))
+
+    bundle = load_setup_bundle(tmp_path)
+    bound = bundle.section("sources")["input_rows"]["bind"]["entities"]
+    assert set(bound["InputEntity@1"]["attributes"]) == {"product"}
+
+
+def test_a_source_level_name_the_type_never_declared_is_refused_with_its_own_path(tmp_path):
+    """거절 (a). 역할 수준과 «같은 규칙»이고, 운영자가 «친 자리»를 가리켜야 하므로 경로가 다르다."""
+    write_tree(tmp_path, _source_level(
+        {"prodcut": {"kind": "column", "column": "source_id"}}))
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_setup_bundle(tmp_path)
+    assert caught.value.code == "unknown_entity_attribute"
+    assert caught.value.path == (
+        "bundle.sources.input_rows.bind.entities.InputEntity@1.attributes.prodcut")
+    assert "product" in caught.value.message
+
+
+def test_one_sentence_using_one_type_in_two_roles_is_refused_until_the_roles_say(tmp_path):
+    """㉧ 거절 (b). `die -> die` 이송처럼 한 문장이 한 타입을 두 역할로 쓰면 «소스 수준»은
+    어느 쪽을 말하는지 «못 말한다** — 두 독법이 다 그럴듯하므로 컴파일러가 «고르면 안 된다»."""
+    bundle = _two_roles_one_type()
+    write_tree(tmp_path, bundle)
+
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_setup_bundle(tmp_path)
+    assert caught.value.code == "ambiguous_entity_attributes"
+    assert caught.value.path.startswith(
+        "bundle.sources.input_rows.bind.mappings.main_transition.bind.")
+    assert caught.value.path.endswith(".attributes")
+    # 고치는 «방법»이 문장 안에 있어야 한다 — 그게 이 거절의 반쪽이다.
+    assert "each role" in caught.value.message
+
+
+def test_the_role_level_override_answers_that_refusal(tmp_path):
+    """같은 문장, 역할마다 매기면 «통과**. 역할 수준이 «덮어쓰기»로만 존재하는 이유가 이것이다."""
+    bundle = _two_roles_one_type()
+    binds = bundle["sources"]["input_rows"]["bind"]["mappings"]["main_transition"]["bind"]
+    binds["target"]["attributes"] = {"product": {"kind": "column",
+                                                 "column": "target_id"}}
+    binds["subject"]["attributes"] = {"product": {"kind": "column",
+                                                  "column": "source_id"}}
+    write_tree(tmp_path, bundle)
+
+    assert load_setup_bundle(tmp_path) is not None
+
+
+def test_a_source_with_no_bind_entities_loads_exactly_as_before(tmp_path):
+    """㉤ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
+    write_tree(tmp_path)
+    assert "entities" not in load_setup_bundle(tmp_path).section(
+        "sources")["input_rows"]["bind"]
