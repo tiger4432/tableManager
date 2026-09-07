@@ -76,6 +76,7 @@
 import { API_BASE } from './config.js';
 import { state } from './state.js';
 import { saysTruncated } from './truncation.js';
+import { slowReasonNote } from './slow_reason.js';
 
 // ── Knobs ───────────────────────────────────────────────────────────────────────
 /**
@@ -453,8 +454,11 @@ async function requestValues(table, column, prefix, limit) {
   // 🔴 THE SHAPE IS ASKED, NOT ASSUMED. This route sends a bool today, and that is the
   // only reason `!!` was right - a guard by luck rather than by construction.
   const truncated = saysTruncated(body && body.truncated) === true;
+  // 🔴 S-7. 서버가 「응답이 Nms 걸렸습니다 (예산 Mms) — <다음 행동>」까지 «만들어» 보냅니다.
+  //    읽는 자리가 0 이었습니다. 문구를 짓지 않고 «그대로» 냅니다 — 임계는 서버 선언입니다.
+  const slow = slowReasonNote(body);
   if (!truncated) completeResults.set(key, { prefix, values });
-  return { values, truncated, ok: true, permanent: false, seq };
+  return { values, truncated, slow, ok: true, permanent: false, seq };
 }
 
 // ── The floating list ───────────────────────────────────────────────────────────
@@ -514,6 +518,8 @@ export class SuggestCellEditor {
     this.column = params.column.getColId();
     this.values = [];
     this.truncated = false;
+    // S-7. 아직 안 물어본 상태 — 「안 느림」이 아닙니다.
+    this.slow = null;
     this.highlight = -1;
     this.listOpen = false;
     this.debounceTimer = null;
@@ -751,12 +757,15 @@ export class SuggestCellEditor {
     // refinement that IS still in flight for whoever owns the list now.
     this.setPending(false);
     if (!result.ok) { this.closeList(); return; }
-    this.applyValues(result.values, result.truncated);
+    this.applyValues(result.values, result.truncated, result.slow);
   }
 
-  applyValues(values, truncated) {
+  applyValues(values, truncated, slow) {
     this.values = values;
     this.truncated = truncated;
+    // 🔴 S-7. 「얼마나 걸렸나」가 아니라 「왜 느린가 + 무엇을 하면 되나」입니다.
+    //    없으면 «없는 채로** — 이 화면은 그 자리에 아무것도 안 그립니다.
+    this.slow = slow || null;
     if (values.length === 0) { this.closeList(); return; }
     // FIRST MATCH HIGHLIGHTED ON OPEN — this is what makes the common case Enter with no
     // arrow key at all, and it is the reason the cost is P + 1 rather than P + 1 + arrows.
@@ -813,6 +822,14 @@ export class SuggestCellEditor {
       more.className = 'value-suggest-more';
       more.textContent = `상위 ${this.values.length}개만 표시 — 더 입력하면 좁혀집니다`;
       el.appendChild(more);
+    }
+    // 🔴 S-7. «같은 슬롯**, 새 영역·토스트 «없음**. 그리는 것은 서버 문장 «그대로**이고,
+    //    이 파일에 그 문구의 리터럴은 «없습니다** — 있으면 그것이 두 번째 저자입니다.
+    if (this.slow && this.slow.state === 'slow') {
+      const why = document.createElement('div');
+      why.className = 'value-suggest-more';
+      why.textContent = this.slow.text;
+      el.appendChild(why);
     }
     el.style.display = 'block';
     this.listOpen = true;

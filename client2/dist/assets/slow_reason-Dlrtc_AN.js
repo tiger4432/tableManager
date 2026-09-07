@@ -1,0 +1,1 @@
+function e(e){if(!e||typeof e!=`object`||!(`slow_reason`in e))return{state:`unmeasured`,text:``};let t=e.slow_reason;return t==null?{state:`not_slow`,text:``}:typeof t!=`string`||t.trim()===``?{state:`unreadable`,text:``}:{state:`slow`,text:t}}export{e as t};

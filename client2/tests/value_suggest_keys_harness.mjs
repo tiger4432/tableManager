@@ -70,6 +70,15 @@ import vm from 'node:vm';
 //    cannot resolve an import, and a copy here would put a second author on the very
 //    fact the one place exists to own.
 import { saysTruncated } from '../src/truncation.js';
+// 🔴 SUPPLIED FOR THE SAME REASON, S-7. `requestValues` now asks one reader whether the
+//    server called this answer slow, instead of reading the field itself. Sliced code cannot
+//    resolve an import, and a copy here would put a second author on the fact that reader owns.
+// ⚠️ AND THIS IS THE SECOND TIME THIS FILE HAS NEEDED THAT. It runs the module as a SCRIPT in
+//    a vm with imports dropped, so every new import the subject gains breaks it while the code
+//    is CORRECT — the exact symptom the standing 「잘라쓰기 하니스 금지」 rule names. The subject
+//    imports cleanly in node today, so converting this file is possible; it is a round of its
+//    own and is reported rather than smuggled in here.
+import { slowReasonNote } from '../src/slow_reason.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUGGEST_PATH = join(HERE, '..', 'src', 'value_suggest.js');
@@ -316,6 +325,7 @@ function makeSandbox({ dataset, tableName = 'bonding_map', onFetch }) {
   const sandbox = {
     API_BASE: 'http://api',
     saysTruncated,
+    slowReasonNote,
     state: { currentTable: tableName, selectedCellsMap: {}, dragStartCell: null, dragEndCell: null,
              visibleColIndexMap: {}, txModeActive: false, pendingTxEdits: {} },
     document: doc,
