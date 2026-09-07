@@ -15462,3 +15462,67 @@ server/tests/test_a_retroactive_run_says_how_far_it_got.py   신설
 ## 그동안 «막히지 않은» 것을 집습니다
 판정이 오기 전까지 큐의 다음 줄(**S-34 첫 커밋**, 판정 86)로 갑니다 — S-37 과 파일이 안 겹칩니다.
 > 📌 이 보고의 미답 질문: «하나»(위 Ⓐ/Ⓑ/Ⓒ).
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-34 첫 커밋 착지 (`28316e71`) — 독자 «0» 인 둘만 접었습니다. 남은 셋은 «클라 독자가 정본 모양을 못 읽습니다» (실측, 인용 아님)**
+
+## 착지 — 두 걸음이 필요 «없는» 둘
+```
+enrichment_candidates  evidence[].distinct_truncated -> truncated: {distinct, rows}
+bonding_plan           counts_capped {cap, roles}    -> truncated.region_counts (+ cap · roles 유지)
+독자 실측              둘 다 client2/src 전수 «0» (서버 시험만 참조)
+```
+🔵 **enrichment 쪽은 이름만 바뀐 게 아닙니다** — 그 항목은 «축이 둘»인데 하나(`distinct`)만
+전선에 있었고 «행 절단»은 «거절 사유»로만 나갔습니다. 그래서 증거를 읽는 쪽은 「행은 안 잘렸다」로
+읽었습니다. 이제 둘 다 같은 자리에서 말하고, 한쪽만 참일 수 있습니다(㉡ 갈림 단언).
+🔵 `roles` 는 «유지**했습니다(판정 81 의 여분). `cut` 은 그 목록에서 유도합니다 — 축이 «사실»을,
+여분이 «무엇이»를 말합니다.
+
+## 🔴 남은 셋을 «안 접은 이유» — 재서 잡았습니다 (node 로 실행, 문장 인용 아님)
+> 지시서: 「독자는 그 화면의 `saysTruncated`(모양 다섯을 읽음) — «그대로»」
+
+```js
+// client2/src/truncation.js  (클라 레인이 «한 자리»로 지은 그 파일)
+export function saysTruncated(said) {
+  if (typeof said === 'boolean') return said;
+  if (said && typeof said === 'object' && !Array.isArray(said)) return Boolean(said.reason);
+  return null;
+}
+```
+`node` 로 «돌린» 결과:
+```
+정본 축-지도, 잘림      -> false      🔴 «잘린 것을 온전하다고 답합니다»
+정본 축-지도, 안 잘림   -> false         두 상태가 «구별이 안 됩니다»
+하이브리드(subgraph)    -> true       (축 불리언 + «최상위» reason — 이 모양을 위해 지어졌습니다)
+단일 note {cut,omitted,reason} -> true
+불리언 true             -> true
+```
+=> **정본 `{축: {cut, omitted, reason}}` 는 그 함수가 «모르는 여섯째 모양»입니다.** `reason` 이
+   축 «안»에 있어서 최상위 `said.reason` 이 undefined 이고, `Boolean(undefined)` = false 입니다.
+=> 그러므로 `units_truncated` · `references_truncated` · transfer_plan 의 불리언 `truncated` 를
+   지금 접으면 **클라가 「안 잘렸다」로 답합니다** — 옛 키를 남겨도 마찬가지입니다: 클라의 「전환」은
+   「새 키를 읽는다」가 아니라 «`saysTruncated` 가 새 모양을 배운다» 이고, 그건 «클라 레인 파일»입니다.
+
+### 그리고 하나 더 — transfer_plan 은 이름이 «충돌»합니다
+오늘 그 응답의 `truncated` 는 «불리언»입니다. 정본은 «같은 이름의 축 지도»라, 「정본을 더하고 옛 키를
+남긴다」가 이 자리에선 성립하지 않습니다(한 이름이 두 모양). 클라가 새 모양을 읽게 된 «뒤»에
+한 걸음으로 바꾸는 것이 맞아 보입니다.
+⚠️ `transfer_plan.js:1914` 의 축-지도 독자는 «죽은 코드»입니다(`__held_` 접두 · 파일 내 참조 1 = 자기 정의).
+   살아 있었다면 축 지도가 «항상» 비지 않아 매번 「응답 절단」이 떴을 것입니다 — 그 함정은 `truncation.js` 가 이미 적어 뒀습니다.
+
+## 청 — 「한 능력을 가를 땐 «한 문장»을 양쪽에」
+```
+클라에게   `saysTruncated` 가 «정본 축 지도»를 읽게 (축 중 하나라도 cut 이면 true)
+나에게     그 착지 «뒤»에 남은 셋을 한 걸음으로 접기
+```
+제가 클라 파일에 손대지 않는 것이 상설(⛔ client2 는 클라 레인)이라, 그 «한 문장»은 총괄께서 양쪽에 거셔야 합니다.
+
+## 📌 판정 대기 «둘** — ① S-37 포스터 Ⓐ/Ⓑ/Ⓒ ② S-34 남은 셋(클라 `saysTruncated` 선행)
+```
+게이트        변이 넷(roles 제거 -> 3 빨강 / cut 고정 -> 1 / rows 축 눈멂 -> 1 / 옛 철자 복귀 -> 2) · 음성 대조 106 passed
+             무회귀 306 passed · 수집 5051 / 0 오류 · 철자 조사에 파일 둘·이름 둘 «추가»
+감시          🟢 `bdcsrg69j` · `ba8i0vtpa` 둘 다 삼
+이 라운드가 «뺀» 것  파일 0 · 줄 0 · 축 «둘»(`counts_capped` · `distinct_truncated` — 이름이 사라지고 축이 됨)
+④ 를 움직였나  🟢 예 — 「잘렸다」의 철자가 일곱에서 «다섯»으로. enrichment 는 «한 사실 두 자리»(키 하나 + 거절 사유)가 한 자리로
+```
