@@ -1,0 +1,5 @@
+function e(e){return`상위 ${e}개만 표시 — 더 입력하면 좁혀집니다`}function t(e){return typeof e==`boolean`?e:e&&typeof e==`object`&&!Array.isArray(e)?!!e.reason:null}var n=`"`,r=`	`;function i(e){return String(e??``).replace(/\r\n?/g,`
+`)}function a(e,t){let a=t||{},o=i(e),s=[],c=[],l=``,u=0,d=!1,f=!0,p=()=>{c.push(a.trimCells?l.trim():l),l=``,f=!0,d=!1},m=()=>{p(),s.push(c),c=[]};for(;u<o.length;){let e=o[u];if(d){if(e===n){if(o[u+1]===n){l+=n,u+=2;continue}d=!1,u++;continue}l+=e,u++;continue}if(e===n&&f){d=!0,f=!1,u++;continue}if(e===r){p(),u++;continue}if(e===`
+`){m(),u++;continue}l+=e,f=!1,u++}if(o.length>0&&m(),s.length>0){let e=s[s.length-1];e.length===1&&e[0]===``&&s.pop()}return a.dropBlankLines?s.filter(e=>!(e.length===1&&e[0]===``)):s}function o(e){return e.indexOf(r)>=0||e.indexOf(`
+`)>=0||e.indexOf(`\r`)>=0||e.indexOf(n)>=0}function s(e){let t=String(e??``);return o(t)?n+t.split(n).join(`""`)+n:t}function c(e){return(Array.isArray(e)?e:[]).map(e=>(Array.isArray(e)?e:[]).map(s).join(r)).join(`
+`)}export{e as i,c as n,t as r,a as t};
