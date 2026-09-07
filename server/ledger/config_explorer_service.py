@@ -665,8 +665,38 @@ class OntologyExplorerService:
         result["atoms"] = preview.atom_count
         result["sentences"] = _atoms_per_sentence(
             preview, setup.snapshot.source_plans[source_id])
-        result["status"] = "passed"
-        self._record_test_run(result)
+        # 🔴 REFUSALS ARE NOW INFORMATION, NOT THE END OF THE RUN. One row with an empty
+        # declared value used to stop the whole page, so this route could only say
+        # "refused" and the operator could not tell a wrong declaration from one blank
+        # cell. The molecules that DID compile are the answer to "does my declaration
+        # work"; the refused ones are the answer to "which rows do I fix".
+        # ⛔ Values, never a sentence: how many, under which name, and which cell. The
+        # screen writes the words.
+        refused = tuple(preview.refusals)
+        reasons: dict[str, int] = {}
+        for refusal in refused:
+            reasons[refusal.reason] = reasons.get(refusal.reason, 0) + 1
+        result["refused"] = {
+            "count": len(refused),
+            "reasons": reasons,
+            "samples": [{"reason": r.reason, "detail": r.detail, "rows": r.rows,
+                         "addresses": [dict(a) for a in r.addresses]}
+                        for r in refused[:backfill.PREVIEW_REFUSAL_SAMPLES]],
+        }
+        if preview.molecule_count:
+            result["status"] = "passed"
+            self._record_test_run(result)
+            return result
+        # Read in full and refused in full. Not an exception - the values above say
+        # exactly that - but not a pass either: nothing was compiled from this
+        # declaration, so it has not been shown to work.
+        result["status"] = "refused"
+        if refused:
+            first = refused[0]
+            result["refusal"] = self._test_run_refusal({
+                "code": first.reason,
+                "path": (first.addresses[0]["path"] if first.addresses else ""),
+                "message": first.detail})
         return result
 
     @staticmethod

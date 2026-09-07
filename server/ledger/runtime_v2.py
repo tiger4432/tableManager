@@ -53,6 +53,8 @@ class CursorBatchPreview:
     candidate_semantics: tuple[Mapping[str, Any], ...]
     known_registrations: tuple[tuple[str, str], ...] | None
     incomplete_count: int
+    #: Molecules the preparation refused by name instead of killing the page.
+    refusals: tuple = ()
 
     @property
     def atom_count(self) -> int:
@@ -69,6 +71,32 @@ class CursorBatchExecutionResult:
     store_result: Mapping[str, Any]
 
 
+def _refusal_reasons(refusals) -> dict:
+    """`{reason: count}` for the store's per-batch breakdown. Sums to `refused`."""
+    counts: dict = {}
+    for refusal in refusals:
+        counts[refusal.reason] = counts.get(refusal.reason, 0) + 1
+    return counts
+
+
+def _record_refusals(source_id: str, preview: "CursorBatchPreview") -> None:
+    """Charge this batch's molecule refusals to the process counters.
+
+    🔴 CALLED FROM THE EXECUTE DOORS AND NOWHERE ELSE, WHICH IS WHAT MAKES A PREVIEW A
+    PREVIEW. `preview_cursor_batch` computes exactly the same refusals and touches no
+    counter, so a test run answers with the same values while `gate.refusal_report()`
+    stays byte-identical across it. One judge, two readers - rather than a second
+    predicate somewhere that knows it is "in dry-run mode".
+
+    Both doors, for the same reason: `execute_scoped_batch` is where an operator re-runs
+    the molecule they just fixed, so a refusal it hits has to land in the same counters
+    the forward scan reports from, or the two answer differently about one source.
+    """
+    for refusal in preview.refusals:
+        gate.refuse(source_id, refusal.reason, refusal.detail,
+                    rows=refusal.rows, addresses=refusal.addresses)
+
+
 def preview_cursor_batch(
     snapshot: LedgerSetupSnapshot,
     source_id: str,
@@ -83,8 +111,9 @@ def preview_cursor_batch(
     """Compile the exact candidates execute will use, without gate/store writes."""
     source_plan = _source_plan(snapshot, source_id)
     normalized_cursor = _cursor_value(source_plan, base_rows, cursor_value)
+    refusals: list = []
     event_frames = prepare_v2_cursor_batch(
-        snapshot, source_id, base_rows, join_reader, preparers)
+        snapshot, source_id, base_rows, join_reader, preparers, refusals=refusals)
     mapper_context = MapperContext(snapshot, source_plan)
     event_results = tuple(
         dry_run_event_frame(mapper_context, event_frame, mappers)
@@ -109,6 +138,7 @@ def preview_cursor_batch(
         incomplete_count=sum(
             bool(result.role_frame.attrs.get(SOURCE_EVENT_INCOMPLETE_ATTR, False))
             for result in event_results),
+        refusals=tuple(refusals),
     )
 
 
@@ -151,9 +181,9 @@ def execute_cursor_batch(
             kept_all,
             dict(preview.cursor_value),
             preview.molecule_count,
-            refused=0,
+            refused=len(preview.refusals),
             incomplete=preview.incomplete_count,
-            reasons={},
+            reasons=_refusal_reasons(preview.refusals),
             # Still True by default: without an approval the store refuses exactly as before.
             enforce_translator_version=not retranslate_approved,
         )
@@ -166,6 +196,7 @@ def execute_cursor_batch(
                 "LedgerStore must enforce the setup snapshot cursor version",
             ) from exc
         raise
+    _record_refusals(source_id, preview)
     if preview.incomplete_count:
         gate.record_incomplete(source_id, preview.incomplete_count)
     return CursorBatchExecutionResult(
@@ -231,9 +262,9 @@ def execute_scoped_batch(
             kept_all,
             dict(preview.cursor_value),
             preview.molecule_count,
-            refused=0,
+            refused=len(preview.refusals),
             incomplete=preview.incomplete_count,
-            reasons={},
+            reasons=_refusal_reasons(preview.refusals),
             advance_cursor=False,
         )
     except TypeError as exc:
@@ -246,6 +277,7 @@ def execute_scoped_batch(
                 "LedgerStore must be able to append atoms without moving the cursor",
             ) from exc
         raise
+    _record_refusals(source_id, preview)
     if preview.incomplete_count:
         gate.record_incomplete(source_id, preview.incomplete_count)
     return CursorBatchExecutionResult(

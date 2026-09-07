@@ -8,7 +8,7 @@ LedgerStore, commit, rollback, or Atom capability.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import json
@@ -274,10 +274,33 @@ class PreparedJoin:
 
 
 @dataclass(frozen=True)
+class MoleculeRefusal:
+    """One molecule the preparation could not build, named the way the GATE names it.
+
+    🔴 THE NAME COMES FROM `ledger.gate.REFUSAL_REASONS` AND IS NOT INVENTED HERE. The
+    gatekeeper already holds a closed vocabulary of twelve and already knows these two -
+    `no_identity` and `missing_occurred_at`. This module was refusing the same facts one
+    layer earlier, by raising, so the same fact had two behaviours: a name and a count on
+    one path, a dead page on the other.
+
+    It is a VALUE, not a gate call. `source_preparation` stays free of process counters:
+    the executing caller records these, the previewing caller reports them, and neither
+    has to remember which it is (see `runtime_v2`).
+    """
+    reason: str
+    detail: str
+    rows: int
+    addresses: tuple = ()
+
+
+@dataclass(frozen=True)
 class SourcePreparationContext:
     snapshot: LedgerSetupSnapshot
     source_plan: SourcePlan
     join_chunk_size: int = DEFAULT_JOIN_CHUNK_SIZE
+    #: Molecules refused during this preparation. Out-parameter, deliberately: the
+    #: return value is EventFrames and a batch can now produce both.
+    refusals: list = field(default_factory=list, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.snapshot.readiness != "ready":
@@ -555,7 +578,13 @@ def _validate_base_frame(
     required_physical = (set(driver.identity) | set(driver.group_by)) - outputs
     required_physical.update(driver.order_by)
     required_physical.update(driver.cursor_columns)
-    required_physical.add(driver.occurred_at.column)
+    # 🔴 `occurred_at.column` IS DELIBERATELY NOT HERE ANY MORE. An empty time is a fact
+    # about ONE ROW, and the gate has a name for it (`missing_occurred_at`); refusing the
+    # page for it threw away every other molecule in the batch. It is checked in
+    # `_event_frames`, where molecules exist to be refused one at a time.
+    #
+    # The rest stay: `order_by` and `cursor_columns` decide where the PAGE is, so a blank
+    # there is not a row defect - the reader cannot say what comes next at all.
     for column in sorted(required_physical):
         for position, value in enumerate(frame[column].tolist()):
             if _is_missing(value) or (isinstance(value, str) and not value.strip()):
@@ -736,13 +765,11 @@ def _assemble_prepared_frame(
                 "source_preparation_incomplete", f"event_frame.columns.{column}",
                 "entity identity column is missing after preparation",
             )
-        for position, value in enumerate(out[column].tolist()):
-            if _is_missing(value) or (isinstance(value, str) and not value.strip()):
-                raise SourcePreparationError(
-                    "source_preparation_incomplete",
-                    f"event_frame.rows[{position}].{column}",
-                    "entity identity value is missing after preparation",
-                )
+        # 🔴 A MISSING COLUMN IS STILL A PAGE REFUSAL AND A MISSING VALUE NO LONGER IS.
+        # The column is a fact about the DECLARATION - nothing in this batch can be
+        # prepared without it - while an empty cell is a fact about ONE ROW, and it now
+        # refuses that row's molecule by name in `_event_frames`. They read the same on a
+        # one-row page and are not the same fact.
     return out
 
 
@@ -795,6 +822,69 @@ def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
     return value
 
 
+def _molecule_key(driver, prepared, positions) -> str:
+    """What the operator has to look up to find this molecule.
+
+    `group_by` when the source declares one - that IS the molecule's name there. A
+    row-unit source has none, so the row's position in the page is the only handle the
+    refusal can offer.
+    """
+    if driver.group_by:
+        return _canonical(
+            {column: _plain(prepared.iloc[positions[0]][column])
+             for column in driver.group_by},
+            path="event_frame.molecule")
+    return f"rows[{positions[0]}]"
+
+
+def _refuse_molecule(context, prepared, positions) -> "MoleculeRefusal | None":
+    """The empty declared value that stops THIS molecule, or None.
+
+    🔴 THE UNIT IS THE MOLECULE, FOR BOTH FACTS (ruling 116). Time forces it: the event's
+    instant is read from EVERY row of the group in one pass, so a row with no time does
+    not make the event smaller, it makes it unbuildable. Refusing identity per row while
+    refusing time per molecule would put two units on one fact, and it would admit a
+    partial molecule - a different contract (`incomplete`) that is not this line.
+
+    Both names are the gate's own. The sentence carries the molecule's key and the
+    address carries the empty cell, so the operator reads WHICH EVENT and WHICH ROW from
+    one refusal.
+    """
+    # 🔴 IMPORTED, NOT RESPELLED. The refusal vocabulary is closed and lives in the
+    # gatekeeper; a second copy of either string here would drift the day one is renamed
+    # and `refuse()` would reject it at the door with no test having said so.
+    from .gate import REFUSE_MISSING_OCCURRED_AT, REFUSE_NO_IDENTITY
+
+    plan = context.source_plan
+    driver = plan.driver
+    key = _molecule_key(driver, prepared, positions)
+
+    def _empty(value) -> bool:
+        return _is_missing(value) or (isinstance(value, str) and not value.strip())
+
+    checks = (
+        (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity)),
+        (REFUSE_MISSING_OCCURRED_AT, (driver.occurred_at.column,)),
+    )
+    for reason, columns in checks:
+        for column in columns:
+            if column not in prepared.columns:
+                continue
+            for position in positions:
+                if not _empty(prepared.iloc[position][column]):
+                    continue
+                path = f"event_frame.rows[{position}].{column}"
+                return MoleculeRefusal(
+                    reason=reason,
+                    detail=(f"molecule {key} declares {column!r} and the row at "
+                            f"{path} leaves it empty"),
+                    rows=len(positions),
+                    addresses=({"code": "source_preparation_incomplete",
+                                "path": path},),
+                )
+    return None
+
+
 def _event_frames(
     context: SourcePreparationContext,
     prepared: pd.DataFrame,
@@ -826,6 +916,12 @@ def _event_frames(
         groups = list(grouped.values())
     events = []
     for positions in groups:
+        refusal = _refuse_molecule(context, prepared, positions)
+        if refusal is not None:
+            # Counted and named, never raised: the rest of this page still lands. The
+            # caller decides whether this is recorded (execute) or reported (preview).
+            context.refusals.append(refusal)
+            continue
         event = prepared.iloc[positions].copy(deep=True).reset_index(drop=True)
         incomplete = False
         if SOURCE_EVENT_INCOMPLETE_COLUMN in event.columns:
@@ -840,14 +936,10 @@ def _event_frames(
             incomplete = values[0]
         identity: dict[str, Any] = {}
         for column in driver.identity:
-            for position in positions:
-                value = prepared.iloc[position][column]
-                if _is_missing(value) or (isinstance(value, str) and not value.strip()):
-                    raise SourcePreparationError(
-                        "source_preparation_incomplete",
-                        f"event_frame.rows[{position}].{column}",
-                        "prepared event identity is missing",
-                    )
+            # The empty-value branch that stood here is gone rather than left unreachable:
+            # `_refuse_molecule` above answers that fact for the whole molecule, and a
+            # second copy of it here could only disagree. Disagreeing on ONE identity
+            # value below is a different fact and still refuses the page.
             values = {
                 _canonical(prepared.iloc[position][column],
                            path=f"source_batch.rows[{position}].{column}")

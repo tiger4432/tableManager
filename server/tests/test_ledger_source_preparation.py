@@ -542,7 +542,17 @@ def test_successful_right_row_change_yields_dependency_replay_worklist():
 # same `reader.calls == []` on a refusal that IS reachable.
 
 
-def test_missing_prepared_entity_identity_refuses_before_role_mapper():
+def test_missing_prepared_entity_identity_refuses_ITS_MOLECULE_not_the_page():
+    """🔴 INVERTED (S-41, rulings 110 · 116). This used to assert that one row with no
+    entity identity killed the WHOLE PAGE - and that is the defect, not the contract: an
+    operator with one blank cell got nothing translated and no name for why. The gate has
+    held a name for this fact all along (`no_identity`); the preparation was dying in
+    front of it.
+
+    What still holds is what this test was really protecting: nothing is compiled, and
+    the cursor does not move on the strength of a molecule that was not built. The
+    refusal is now a VALUE, so the caller can do both - land the rest and say what it
+    refused."""
     compiled = snapshot()
     base = base_rows()
     reader = FakeJoinReader({
@@ -554,13 +564,190 @@ def test_missing_prepared_entity_identity_refuses_before_role_mapper():
         values={"target_id": None}, updated_at=NOW),)
     cursor = "BEFORE"
 
-    with pytest.raises(SourcePreparationError) as exc:
-        prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers())
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                                     refusals=refusals)
 
+    assert events == ()
+    assert len(refusals) == 1
+    assert refusals[0].reason == "no_identity"
+    assert refusals[0].rows == 1
+    assert [a["path"] for a in refusals[0].addresses] == [
+        "event_frame.rows[0].target_id"]
+    assert cursor == "BEFORE"
+
+
+def test_one_blank_row_refuses_one_molecule_and_the_others_land():
+    """The whole point of the change, and a one-row fixture cannot show it: with a single
+    molecule, "refused the molecule" and "refused the page" produce the same answer."""
+    compiled = snapshot()
+    base = base_rows(3)
+    reader = FakeJoinReader({})
+    for index in range(3):
+        key = ("J-%04d" % index,)
+        target = None if index == 1 else "OUT-J-%04d" % index
+        reader.rows[key] = (JoinRightRow(
+            key=key, identity={"row_id": "RIGHT-%s" % key[0]},
+            values={"target_id": target}, updated_at=NOW),)
+
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                                     refusals=refusals)
+
+    assert len(events) == 2
+    assert [event["source_id"].tolist()[0] for event in events] == ["IN-0000", "IN-0002"]
+    assert len(refusals) == 1
+    assert refusals[0].reason == "no_identity"
+    assert refusals[0].addresses[0]["path"] == "event_frame.rows[1].target_id"
+
+
+def test_a_refusal_names_the_COLUMN_in_its_sentence_not_only_its_code():
+    """⚠️ IT DOES NOT PROVE "names the molecule AND the row", and the first draft of this
+    test claimed it did. On a row-unit source the molecule's handle IS `rows[N]` - the
+    same string as the cell address - so no assertion here can tell the two apart. The
+    multi-row test below is where that claim is earned; this one holds the smaller fact
+    that the sentence carries the column, so a refusal is readable without decoding the
+    address."""
+    compiled = snapshot()
+    base = base_rows(2)
+    reader = FakeJoinReader({})
+    for index in range(2):
+        key = ("J-%04d" % index,)
+        reader.rows[key] = (JoinRightRow(
+            key=key, identity={"row_id": "RIGHT-%s" % key[0]},
+            values={"target_id": None if index == 1 else "OUT-J-0000"},
+            updated_at=NOW),)
+
+    refusals = []
+    prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                            refusals=refusals)
+
+    refusal, = refusals
+    assert "target_id" in refusal.detail, refusal.detail
+    assert refusal.addresses[0]["path"] == "event_frame.rows[1].target_id"
+
+
+def test_a_page_whose_every_molecule_is_refused_is_values_not_an_exception():
+    """Not an error: a page fully read and fully refused. `rows_read > 0` with
+    `molecules == 0` is a thing the caller has to be able to SAY."""
+    compiled = snapshot()
+    base = base_rows(2)
+    reader = FakeJoinReader({})
+    for index in range(2):
+        key = ("J-%04d" % index,)
+        reader.rows[key] = (JoinRightRow(
+            key=key, identity={"row_id": "RIGHT-%s" % key[0]},
+            values={"target_id": None}, updated_at=NOW),)
+
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                                     refusals=refusals)
+
+    assert events == ()
+    assert len(refusals) == 2
+    assert {r.reason for r in refusals} == {"no_identity"}
+
+
+def _time_is_not_the_order_column():
+    """The shipped majority shape: 13 of 15 v2 sources order by something other than
+    their time column. The two that do not (`lot_event`, `lot_slot_move`) keep the PAGE
+    refusal below, and that is the rule, not an exception to it."""
+    raw = logical_bundle()
+    raw["sources"]["input_rows"]["read"]["order_by"] = ["record_id"]
+    return raw
+
+
+def test_a_blank_time_refuses_its_molecule_by_the_time_name():
+    """A different name, because the operator fixes a different cell. `no_identity` sends
+    them to the key column; this one sends them to the clock."""
+    compiled = snapshot(_time_is_not_the_order_column())
+    base = base_rows(2)
+    base.loc[1, "event_at"] = None
+
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader_for(base),
+                                     preparers(), refusals=refusals)
+
+    assert len(events) == 1
+    refusal, = refusals
+    assert refusal.reason == "missing_occurred_at"
+    assert refusal.addresses[0]["path"] == "event_frame.rows[1].event_at"
+
+
+def test_a_blank_ORDER_column_is_still_a_page_refusal():
+    """The half that does NOT move, and the reason it does not: `order_by` decides WHERE
+    THE PAGE IS. A blank there is not a row that cannot be translated, it is a reader
+    that cannot say what comes next - so there is no next molecule to keep."""
+    compiled = snapshot(_time_is_not_the_order_column())
+    base = base_rows(2)
+    base.loc[1, "record_id"] = None
+
+    with pytest.raises(SourcePreparationError) as exc:
+        prepare_v2_cursor_batch(compiled, "input_rows", base, reader_for(base),
+                                preparers(), refusals=[])
     error = issue(exc)
     assert error["code"] == "source_preparation_incomplete"
-    assert error["path"] == "event_frame.rows[0].target_id"
-    assert cursor == "BEFORE"
+    assert error["path"] == "source_batch.rows[1].record_id"
+
+
+def test_a_multi_row_molecule_is_refused_WHOLE_and_counts_all_its_rows():
+    """🔴 THE FIXTURE THE RULING RESERVED. On a row-unit source "the molecule" and "the
+    row" are the same set, so every assertion above passes under either reading. Here two
+    rows share one `event_key` and only one of them is blank: the whole event goes, its
+    row count is TWO, and the neighbouring molecule still lands.
+
+    Whole, because the event's instant is read from every row of the group in one pass -
+    a group with a hole does not become a smaller event, it becomes one that cannot be
+    built (ruling 116)."""
+    compiled = snapshot()
+    base = base_rows(3)
+    base.loc[0, "event_key"] = "E-SHARED"
+    base.loc[1, "event_key"] = "E-SHARED"
+    reader = FakeJoinReader({})
+    for index in range(3):
+        key = ("J-%04d" % index,)
+        reader.rows[key] = (JoinRightRow(
+            key=key, identity={"row_id": "RIGHT-%s" % key[0]},
+            values={"target_id": None if index == 1 else "OUT-J-%04d" % index},
+            updated_at=NOW),)
+
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                                     refusals=refusals)
+
+    assert len(events) == 1, "the untouched molecule must still land"
+    assert events[0]["source_id"].tolist() == ["IN-0002"]
+    refusal, = refusals
+    assert refusal.reason == "no_identity"
+    assert refusal.rows == 2, "the refused molecule is two rows, not the one blank row"
+    # BOTH handles, and here they are different strings: the molecule is named by its
+    # group key and the empty cell by its row. One without the other leaves the operator
+    # searching for the half that was dropped.
+    assert "E-SHARED" in refusal.detail, refusal.detail
+    assert "target_id" in refusal.detail, refusal.detail
+    assert refusal.addresses[0]["path"] == "event_frame.rows[1].target_id"
+
+
+def test_preparing_a_refused_molecule_touches_no_process_counter():
+    """🔴 THE PREVIEW'S WHOLE CLAIM. Preparation names and counts the refusal as a VALUE;
+    only an executing caller charges it to the gate. If this module recorded, a test run
+    would move the numbers an operator reads the real run from."""
+    from ledger import gate
+
+    before = gate.refusal_report()
+    compiled = snapshot()
+    base = base_rows()
+    reader = FakeJoinReader({})
+    reader.rows[("J-0000",)] = (JoinRightRow(
+        key=("J-0000",), identity={"row_id": "RIGHT-J-0000"},
+        values={"target_id": None}, updated_at=NOW),)
+
+    refusals = []
+    prepare_v2_cursor_batch(compiled, "input_rows", base, reader, preparers(),
+                            refusals=refusals)
+
+    assert len(refusals) == 1
+    assert gate.refusal_report() == before
 
 
 def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claims():

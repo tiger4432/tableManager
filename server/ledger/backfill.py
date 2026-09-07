@@ -93,6 +93,11 @@ DEFAULT_FETCH_ROWS = 2000
 #: screen asks "does this declaration work at all", and that answer arrives in the first
 #: page of a table with ten million rows exactly as it does in the first page of one with
 #: forty. `DEFAULT_FETCH_ROWS` belongs to a run that intends to sweep the whole table.
+#: How many refused molecules the test run carries back as samples. The COUNT is always
+#: exact; this caps only how many the operator is shown, the same way the gate caps its
+#: own. Not a declaration axis - an operator does not author an instrument's budget.
+PREVIEW_REFUSAL_SAMPLES = 20
+
 PREVIEW_FETCH_ROWS = 200
 
 
@@ -120,11 +125,17 @@ def v2_base_select_columns(snapshot, source_id):
     return base_select_columns(source_plan)
 
 
-def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations):
+def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
+                            refusals=None):
     """Convert one complete existing-cursor batch into prepared EventFrames.
 
     The function has no store/cursor mutation.  A preparation refusal propagates before
     any Role mapper/compiler call, so the caller keeps its current cursor unchanged.
+
+    `refusals`: a list to receive the molecules this batch could NOT build. A page whose
+    every molecule is refused returns no frames and raises nothing - that is a page fully
+    read and fully refused, and the values say so. Callers that do not pass one get the
+    frames alone, exactly as before.
     """
     import pandas as pd
     from .source_preparation import SourcePreparationContext, prepare_source_batch
@@ -133,8 +144,11 @@ def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations):
     except (AttributeError, KeyError) as exc:
         raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
     frame = rows if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows)
-    return prepare_source_batch(
-        SourcePreparationContext(snapshot, source_plan), frame, reader, implementations)
+    context = SourcePreparationContext(snapshot, source_plan)
+    frames = prepare_source_batch(context, frame, reader, implementations)
+    if refusals is not None:
+        refusals.extend(context.refusals)
+    return frames
 
 
 def fetch_page(connection, source, columns, after, limit):
