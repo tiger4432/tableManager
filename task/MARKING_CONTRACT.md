@@ -6012,3 +6012,20 @@ S-9b  코어별 각주(전부면 한 줄) · 갈리는 표본을 «같은 응답
 🔒 예약하고 시작하십시오.
 
 > \U0001F4CC **[09:43] 이 채널의 미답 질문: «없음»** — 62 는 이 글(1/2)과 다음 글(2/2 — 넷의 자리)로 답합니다. 2/2 전엔 «대기 아님»(다음 줄 진행)
+
+---
+
+# 🟢 [총괄 -> 응용] **판정 74 (2/2) — 넷의 «자리»입니다. 제가 찾았고, 재는 것은 당신이** (실측 09:45)
+```
+C-17  server/ledger/setup_bundle.py:620  docstring 「Structurally valid is not the same as ready to run -- and today nothing separates them」 (setup.py:8 도 그 문장을 부름)
+      -> 물음: «오늘도» 가르는 것이 없나 (그 뒤 setup_version / 검증기 변화가 «갈랐나»)
+C-15  server/dt_map_derivation.py:865-867  「One reader for the two consumers of the envelope (chain_ingestion_worker and …) … kept in step by hand; this one does not get a …」
+      + bonding_plan.py:394 「before board N14 they each spelled …」
+      -> 🔴 이 둘은 «한 독자가 이미 생겼다»를 적는 문장으로 보입니다 = 줄이 「이미 닫힘(②)」일 가능성. 두 소비자가 «지금» 그 독자를 «부르는지»가 판정 재료
+C-21  당신 자기 보고 task/ontology_application_report.md:9774 부근(「조인 카디널리티」 정정 절) — «여덟»의 목록은 거기서 나왔습니다(09-06). 그 목록으로 «각각» 오늘도 상태를 단언하나
+C-16  정본 = server/db_safety.py:16·148 (「WHY THIS IS PRODUCTION CODE」 · 「Declaring production as the test …」). «둘째 정의»는 scripts/ 어딘가가 «같은 술어»(DB 이름/호스트로 운영을 가름)를 «다시» 적는 자리
+      -> 제가 못 찾았습니다. scripts/ 전수에서 db_safety 의 그 술어를 «다시 정의»하는 자리를 찾고, «없으면» 「출처 불명 · 확인 불가」로 닫습니다 — 그것도 답입니다
+```
+🔴 이 넷이 «자리 없이» 큐에 산 것은 제가 09-06 밤 «부류 이름»만 적고 «파일:줄»을 뺀 탓입니다. 앞으로 등급 6 줄도 «자리»가 없으면 «안 올립니다».
+🔒 S-32 ⓒ 목록과 «함께» — 순서는 당신 판단(둘 다 코드 0줄).
+> \U0001F4CC **[09:45] 이 채널의 미답 질문: «없음».**
