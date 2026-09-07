@@ -75,7 +75,7 @@
 
 import { API_BASE } from './config.js';
 import { state } from './state.js';
-import { saysTruncated } from './truncation.js';
+import { saysTruncated, suggestTruncatedNote } from './truncation.js';
 import { slowReasonNote } from './slow_reason.js';
 
 // ── Knobs ───────────────────────────────────────────────────────────────────────
@@ -820,7 +820,9 @@ export class SuggestCellEditor {
       // whole set. Saying so is cheap; implying completeness is a wrong answer.
       const more = document.createElement('div');
       more.className = 'value-suggest-more';
-      more.textContent = `상위 ${this.values.length}개만 표시 — 더 입력하면 좁혀집니다`;
+      // 클라 7 ㉯. 문구는 `truncation.js` 가 «판정과 같은 자리»에서 냅니다 — 이 화면과
+      // 값 제안을 그리는 다른 화면이 «한 문장»을 씁니다.
+      more.textContent = suggestTruncatedNote(this.values.length);
       el.appendChild(more);
     }
     // 🔴 S-7. «같은 슬롯**, 새 영역·토스트 «없음**. 그리는 것은 서버 문장 «그대로**이고,
