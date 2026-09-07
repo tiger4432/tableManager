@@ -19,8 +19,46 @@
 
 const MARK = '거절';
 const SINCE_MARK = '이 프로세스가 뜬 뒤';
+/** 준비기가 «자기 표지로» 뺀 행. 거절과 다른 사실이라 다른 낱말이다. */
+const EXCLUDED_MARK = '제외';
 /** 툴팁 한 칸에 얹히는 표본 수. 자르는 것은 «개수»이고 문장은 «그대로»입니다. */
 const SAMPLES_SHOWN = 3;
+
+/**
+ * C-39. 「거절 N · <사유> k · <사유> k」 — «철자 한 곳».
+ *
+ * 🔴 왜 여기 있나. 시험 실행의 머리도 «같은 문장»을 씁니다. 그 화면이 자기 낱말을 적기
+ *    시작하면 「거절」이 두 철자가 되고, 한쪽만 고쳐지는 날 두 화면이 «같은 사실»을 다르게
+ *    말합니다 — 오류는 «안 납니다». 두 봉투의 «모양»은 다르지만(문지기는
+ *    `{사유: {count, samples}}`, 시험 실행은 `{사유: count}`) 문장은 하나입니다.
+ *
+ * @param {object} counts `{<사유>: <수>}` — 사유 낱말은 «응답의 키 그대로»
+ * @returns {string} 셀 수 있는 것이 없으면 «빈 문자열»
+ */
+export function refusalSummary(counts) {
+  const src = counts && typeof counts === 'object' ? counts : {};
+  const named = Object.keys(src)
+    .map(k => ({ reason: k, count: Number(src[k]) || 0 }))
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count || (a.reason < b.reason ? -1 : 1));
+  const total = named.reduce((n, r) => n + r.count, 0);
+  if (total === 0) return '';
+  return [`${MARK} ${total}`, ...named.map(r => `${r.reason} ${r.count}`)].join(' · ');
+}
+
+/**
+ * C-39. 「제외 M」 — 준비기의 «자기 표지»가 뺀 행.
+ *
+ * 🔴 키가 «없는» 것과 «0» 이 다릅니다. 표지를 선언하지 않은 소스는 «안 재진» 것이고,
+ *    거기에 0 을 그리면 「재 봤는데 없다」가 됩니다 — 서버가 그 둘을 키의 있음/없음으로
+ *    가르고 있고(그 주석이 「이 픽셀 뒤로 행을 잃은 적이 있다」라고 적습니다), 화면도 그렇게 갈립니다.
+ */
+export function excludedNote(excluded) {
+  if (!excluded || typeof excluded !== 'object') return '';
+  const rows = Number(excluded.rows);
+  if (!Number.isFinite(rows) || rows <= 0) return '';
+  return `${EXCLUDED_MARK} ${rows}`;
+}
 
 /**
  * @param {object} report `GET /admin/ontology-explorer/refusals` 응답, 그대로
@@ -37,15 +75,24 @@ export function refusalCell(report, sourceId) {
   if (!entry || typeof entry !== 'object') return Object.freeze({ text: '', title: '', since });
 
   const reasons = entry.reasons && typeof entry.reasons === 'object' ? entry.reasons : {};
-  // 🔴 응답의 «키 그대로». 정렬은 「많은 것부터」이고, 그건 뜻을 짓는 것이 아니라 순서입니다.
-  const named = Object.keys(reasons)
-    .map(k => ({ reason: k, count: Number(reasons[k] && reasons[k].count) || 0 }))
-    .filter(r => r.count > 0)
-    .sort((a, b) => b.count - a.count || (a.reason < b.reason ? -1 : 1));
-  const total = named.reduce((n, r) => n + r.count, 0);
-  if (total === 0) return Object.freeze({ text: '', title: '', since });
-
-  const text = [`${MARK} ${total}`, ...named.map(r => `${r.reason} ${r.count}`)].join(' · ');
+  // 🔴 이 봉투를 «저 봉투의 모양»으로 옮기고 문장은 `refusalSummary` 가 짓습니다 — 시험 실행
+  //    머리와 «같은 철자»여야 하고, 다른 것은 모양뿐입니다(여기 `{사유: {count}}`, 저기 `{사유: count}`).
+  // ⚠️ 거르기도 세기도 «여기서 다시 하지 않습니다». 한 번 더 하면 그 갈래가 «죽은 채»로 남고,
+  //    실제로 그랬습니다 — 그 두 줄을 지우는 변이가 답을 «하나도» 안 바꿔 빠져나갔습니다.
+  const counts = {};
+  for (const k of Object.keys(reasons)) {
+    counts[k] = Number(reasons[k] && reasons[k].count) || 0;
+  }
+  // ⚠️ 여기 「빈 문장이면 일찍 돌아간다」가 «있었고 지웠습니다» — 그대로 떨어져도 `named` 가
+  //    비어 표본이 없고 «같은 값»이 나옵니다. 그 갈래를 지우는 변이가 답을 하나도 안 바꿔
+  //    빠져나갔고, 등가 변이는 공허한 단언으로 쫓을 것이 아니라 «없앨 코드»입니다.
+  //    「쟀는데 0 이면 안 그린다」를 실제로 정하는 자리는 `refusalSummary` 의 `total === 0` 입니다.
+  const text = refusalSummary(counts);
+  // 표본은 「많은 사유부터」 — 뜻을 짓는 것이 아니라 순서입니다.
+  const named = Object.keys(counts)
+    .filter(k => counts[k] > 0)
+    .sort((a, b) => counts[b] - counts[a] || (a < b ? -1 : 1))
+    .map(k => ({ reason: k }));
   // 🔴 표본 문장은 «그대로». 문지기가 조작자의 다음 행동을 이미 그 안에 적어 두었고,
   //    다시 쓰거나 자르면 수는 남고 «수리 방법»이 사라집니다.
   const details = [];
