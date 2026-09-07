@@ -784,6 +784,15 @@ const FLOORS = new Map([
   // a claim this message does not carry.
   ['chain_refresh_note_harness.mjs', 17],
   //
+  // S-21 (the ㉮ half; the per-cell half closed as DESIGN, ruling 70 — source names are
+  // ingestion filenames, an open set, so there is no population to compare one cell against).
+  // Here the population IS the selection, and it was already in the caller. The floor holds
+  // three things: the note appears ONLY when the source misses part of the selection, it
+  // counts CELLS rather than distinct values (deduplicating would report a covered source as
+  // missing), and every other rendering stays byte-identical — including a caller that does
+  // not pass the denominator at all.
+  ['source_rows_coverage_harness.mjs', 17],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite
