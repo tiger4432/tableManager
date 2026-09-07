@@ -10,6 +10,10 @@
           "required": false,
           "label": "속성 (이 역할만)",
           "help": "한 문장이 같은 타입을 두 역할로 쓸 때만. 없으면 소스 것을 물려받는다.",
+          "when": {
+            "field": "kind",
+            "is": "entity"
+          },
           "node": {
             "kind": "map",
             "keyed_by": "name",

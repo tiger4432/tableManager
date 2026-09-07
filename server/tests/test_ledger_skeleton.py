@@ -321,3 +321,29 @@ def test_every_choice_names_a_list_the_server_publishes():
 
     arrays(document, "skeleton")
     assert not copied, f"a closed list is copied into the skeleton: {copied}"
+
+
+def test_every_kind_specific_field_of_a_binding_is_locked_to_its_kind():
+    """S-52-d — 「폼이 그리는데 서버가 거절한다」를 «부류로» 막는다.
+
+    🔴 `defs.binding` 은 한 레코드에 «네 종류»의 필드를 담는다: 모두에게 있는 `kind`, 그리고
+    각 kind 에만 있는 나머지. `when` 잠금이 없는 필드는 «모든» kind 에 상자로 그려지고,
+    `_validate_binding` 의 `exact` 는 그 값을 «거절»한다 — 운영자는 폼이 준 칸을 채우고 거절당한다.
+
+    ⚠️ 개별 필드를 이름으로 세지 않는다. 이름으로 세면 «다음에 더해지는 필드»가 이 시험을
+    지나가고, S-52-d 가 정확히 그렇게 났다(내가 `attributes` 를 잠금 없이 더했다).
+    """
+    fields = skeleton()["defs"]["binding"]["fields"]
+    unlocked = [field["key"] for field in fields if "when" not in field]
+
+    assert unlocked == ["kind"], (
+        f"these binding fields are drawn for every kind: {unlocked}. `kind` is the only "
+        f"one every binding has; anything else needs a `when` lock or the form offers a "
+        f"box the validator refuses.")
+    for field in fields:
+        if field["key"] == "kind":
+            continue
+        assert field["when"]["field"] == "kind", field["key"]
+        # 종류 목록은 «발행되는 닫힌 목록»에서 읽는다 — 여기에 적으면 셋째 종류가 생기는 날
+        # 이 시험이 «그 이유로» 죽는다.
+        assert field["when"]["is"] in closed_lists()["binding_kinds"], field["key"]
