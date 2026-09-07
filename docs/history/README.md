@@ -1,13 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **819개** 이력. (거버넌스 규칙 #4)
+> 총 **820개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
 
 ## 2026-09 (September 2026)
 
+- **2026-09-07 23:56** — [Fourteen Product Lines Landed And Two Of Them Repaired The Same Day They Broke](./20260907_235600_fourteen_product_lines_landed_and_two_of_them_repaired_the_same_day_they_broke.md)
 - **2026-09-06 18:28** — [A Bare Call Meant The Merge History Was Always Lost](./20260906_182800_a_bare_call_meant_the_merge_history_was_always_lost.md)
 - **2026-09-06 16:45** — [The One Write The Outbox Could Not See](./20260906_164500_the_one_write_the_outbox_could_not_see.md)
 - **2026-09-06 16:25** — [The Grid Reads The Stored Pin Instead Of Whichever Read It Made](./20260906_162500_the_grid_reads_the_stored_pin_instead_of_whichever_read_it_made.md)
@@ -843,4 +844,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-06 by gen_index.py*
+*Last generated: 2026-09-08 by gen_index.py*
