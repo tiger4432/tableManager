@@ -195,10 +195,25 @@ for (const c of CASES) {
       derive.cellSource({ kind: 'key', key: name }, node, {}));
   }
 }
-pending.push('E the conflict count — `attribute_conflicts` has no reader yet '
-  + '(the NUMBER only, 문장 ⛔), and it lands with C-40 ①');
-console.log('  PENDING E the conflict count has no client reader yet '
-  + `(the vectors expect ${CASES.map((c) => c.expect.attribute_conflicts).join('/')})`);
+// 🔴 THE COUNT, AND THE PAIR THAT DECIDES IT. `two_differing_values` must draw its number and
+//    `same_value_at_two_times` must draw nothing — the two cases the shared file exists to keep
+//    apart. A client that counted ARRIVALS instead of differing values would draw a number on
+//    both, and every server test would stay green.
+for (const c of CASES) {
+  const want = c.expect.attribute_conflicts > 0 ? c.expect.attribute_conflicts : undefined;
+  eq(`E «${c.name}» draws ${want === undefined ? 'nothing' : want}`, want,
+    derive.cellSource({ kind: 'conflicts' }, nodeFor(c), {}));
+}
+// ⚠️ Zero and never-reached are BOTH silent here, which is the ruling (0 이면 안 그림). What
+//    keeps them apart is the attribute cells one column to the left, and D1 above is that.
+{
+  const reached = CASES.find((c) => c.name === 'attributes_present');
+  const never = CASES.find((c) => c.name === 'declared_but_not_reached');
+  const name = (reached.declared_attributes || [])[0];
+  ok('E2 agreed-on and never-reached differ in the row, though not in this cell',
+    derive.cellSource({ kind: 'attribute', key: name }, nodeFor(reached), {}) !== undefined
+    && derive.cellSource({ kind: 'attribute', key: name }, nodeFor(never), {}) === undefined);
+}
 
 console.log(`\n${failures.length === 0 ? 'OK' : 'DIVERGED'}: ${pass} passed, `
   + `${failures.length} failed, ${pending.length} pending`);

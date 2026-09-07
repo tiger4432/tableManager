@@ -149,11 +149,16 @@ function suite(M) {
   //    layout can be scored BEFORE it lands rather than after it breaks.
   const WITH_ATTRS = [{ type: 'die@1', keys: ['mat_id', 'x'], attributes: ['grade', 'lot'] }];
   ok(colNames(M.tableColumns(WITH_ATTRS, 'die', ['gate']))
-    === '깊이,mat_id,x,gate,grade,lot,라벨,id',
+    === '깊이,mat_id,x,gate,grade,lot,충돌,라벨,id',
     'T7 declared attributes are columns of their own, after the qualifiers and before 라벨');
   ok(M.tableColumns(WITH_ATTRS, 'die', ['gate']).map((c) => c.kind).join(',')
-    === 'depth,key,key,qualifier,attribute,attribute,label,id',
+    === 'depth,key,key,qualifier,attribute,attribute,conflicts,label,id',
     'T8 every column says WHERE it reads from — that is what removes the arithmetic');
+  // 🔴 THE SHAPE FOLLOWS THE DECLARATION, NOT THE ANSWER. If the disagreement column only
+  //    appeared once some node disagreed, the same walk would draw two different tables and
+  //    an operator would never learn that the question is asked at all.
+  ok(M.tableColumns(DIE, 'die', []).every((c) => c.kind !== 'conflicts'),
+    'T10 a type declaring no attributes gets no disagreement column either');
   // 🔴 THE BYTE-IDENTICAL GATE. Today's declaration carries no `attributes`, so the drawn
   //    table must be exactly what it was. T1-T6 are that gate; this states it as one line.
   ok(colNames(M.tableColumns(DIE, 'die', ['gate'])) === '깊이,mat_id,x,y,mat_type,gate,라벨,id'
@@ -182,6 +187,25 @@ function suite(M) {
     'V7 a declared attribute with no value stays undefined rather than becoming a string');
   ok(M.cellSource({ kind: 'key', key: 'mat_id' }, null, null) === undefined,
     'V8 CONTROL: a missing node yields nothing rather than throwing');
+
+  // ── the disagreement count: three server states, and only one of them says anything ──
+  const conflicts = (v) => M.cellSource({ kind: 'conflicts' },
+    v === undefined ? { attributes: {} } : { attributes: {}, attribute_conflicts: v }, {});
+  ok(conflicts(2) === 2, 'W1 N names holding differing values is drawn as the NUMBER');
+  ok(conflicts(0) === undefined,
+    'W2 zero says nothing — a 0 in front of an operator means 「nothing is wrong」, a sentence');
+  ok(conflicts(undefined) === undefined,
+    'W3 no key at all — the walk reached no registration — says nothing either');
+  // 🔴 AND THE ROW STILL SPLITS THOSE TWO, one column to the left. Without this the harness
+  //    would be blessing a screen where 「없음」 and 「안 닿음」 are the same pixels.
+  const REACHED = { attributes: { grade: 'A' }, attribute_conflicts: 0 };
+  const UNREACHED = {};
+  ok(M.cellSource({ kind: 'attribute', key: 'grade' }, REACHED, {}) === 'A'
+    && M.cellSource({ kind: 'attribute', key: 'grade' }, UNREACHED, {}) === undefined,
+    'W4 agreed-on and never-reached are still told apart by the attribute cells');
+  ok(conflicts(-1) === undefined && M.cellSource({ kind: 'conflicts' },
+    { attribute_conflicts: 'two' }, {}) === undefined,
+    'W5 CONTROL: a number that cannot be a count is not drawn as one');
 
   // ── S-13: 「잘렸다」 옆의 「«얼마»에서」 ─────────────────────────────────────────
   // 🔴 화면은 `truncated` 를 읽어 절단을 «말할 수» 있었는데 `limits` 를 안 읽어 예산을
@@ -250,6 +274,17 @@ const DEFECTS = [
   ['the attribute names stop coming from the declaration',
     (s) => s.replace('  const attributes = (found && found.attributes) || [];',
       '  const attributes = [];')],
+  ['the disagreement column appears for every type, so today\'s table stops being unchanged',
+    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),",
+      "    { name: '충돌', kind: 'conflicts' },")],
+  ['the disagreement column moves behind the label, away from what it is about',
+    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),\n"
+      + "    { name: '라벨', kind: 'label' },",
+    "    { name: '라벨', kind: 'label' },\n"
+      + "    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),")],
+  ['a measured zero is drawn as 0, which tells the operator nothing is wrong',
+    (s) => s.replace('      return Number.isFinite(count) && count > 0 ? count : undefined;',
+      '      return count;')],
   ['the list widens to everything instead of to what is selected',
     (s) => s.replace('  const extra = (declaredNames || []).filter((name) => picked.has(name));',
       '  const extra = (declaredNames || []);')],

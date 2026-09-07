@@ -78,6 +78,13 @@ export function tableColumns(entities, type, qualifierNames) {
     ...declared.map((key) => ({ name: key, kind: 'key', key })),
     ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),
     ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),
+    // 🔴 THE DISAGREEMENT COLUMN EXISTS WHEN ATTRIBUTES ARE DECLARED, NOT WHEN ONE IS FOUND.
+    //    A header that appears only once some node disagrees would make the table's shape a
+    //    function of the answer, so the same walk would draw two different tables; and an
+    //    operator who never sees the column cannot learn that the question is being asked.
+    //    A type declaring no attributes gets no column at all, which keeps today's table
+    //    byte-identical.
+    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),
     { name: '라벨', kind: 'label' },
     { name: 'id', kind: 'id' },
   ];
@@ -100,6 +107,19 @@ export function cellSource(column, node, qualifiers) {
     case 'key': return (n.keys || {})[column.key];
     case 'qualifier': return (qualifiers || {})[column.key];
     case 'attribute': return (n.attributes || {})[column.key];
+    // 🔴 ONLY A DISAGREEMENT IS AN ANSWER HERE, and that is a reading rule rather than a
+    //    display one. The server sends three states — no key (the walk reached no
+    //    registration), 0 (it read them and they agree), and N (N names hold differing
+    //    values). The first two have nothing to say, and drawing 0 would put a number in
+    //    front of an operator that means 「nothing is wrong」, which is the sentence this
+    //    column exists to avoid making.
+    // ⚠️ The two silent states are still told apart ONE COLUMN TO THE LEFT: a node the walk
+    //    reached has its attribute cells filled and a node it did not has them empty. So the
+    //    row keeps 「없음」 and 「안 닿음」 apart even though this cell cannot.
+    case 'conflicts': {
+      const count = Number(n.attribute_conflicts);
+      return Number.isFinite(count) && count > 0 ? count : undefined;
+    }
     case 'label': return n.label;
     case 'id': return n.id;
     default: return undefined;
