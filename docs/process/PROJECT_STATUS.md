@@ -296,6 +296,7 @@
 🟢 [23:4x] S-32 넷째 착지 `40b55d4f` — 31 passed · 1 xfailed(S-50 사유) · collect 5112/0 · 재기동 불요. 4/6
 🟢 [23:5x] S-32 다섯째 `5b2447ee`(map2_seam 계약이 상수 8 이 아니라 실행의 후보를 채점) — 62 passed · collect 5112/0 · 재기동 불요. 5/6
 🟢 [09-08 00:0x] 클라 C-35: ㉡ 둘은 «죽은 슬라이서»라 전환 0(`a6847998` 병합) · valid_die_authoring 은 읽어 보니 ㉡(클로저 0) → 그 전환으로. 남은 것: authoring 전환 → ③-1 → ④(추출 둘) → ⑤. 구현자 S-32 여섯째 짓는 중. 서버 PID 6056(23:12) 그대로(그 뒤 시험·계약만 착지)
+🟢 [09-08 00:0x] S-32 C-9b `fe2d9c6a` — 17 passed · collect 5112/0 · 재기동 불요. 남은 처분: dt_inventory 둘 · 읽고 갈라 ②③ · 삭제 셋(조건 뒤)
    📎 부류: 「내 게이트는 «내가 떠올린 것»만 잰다」 — 이번엔 게이트가 아니라 «내가 소유자께 드린 목록»이었고, 목록이 짧으면 소유자가 그 밖을 헤맵니다
          체인 루프 «안에서» 떴음 — 로그: 「Chained Ingestion Worker background task spawned」 · dedup 규칙 4 합성
          run_chain_worker.py / run_auto_update.py 는 «안 띄웠습니다» (보드 ② 그대로)
