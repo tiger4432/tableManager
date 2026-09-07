@@ -691,6 +691,12 @@ class OntologyExplorerService:
         # operator cannot tell "my first page happened to be blank" from "my whole source
         # is blank", and those need opposite moves.
         result["pages"] = reading.pages
+        # 🔴 A KEY THAT IS ABSENT RATHER THAN ZERO. A source that declares no exclusion
+        # marker was not measured, and reporting `0` there would say "measured, none" -
+        # the two are different answers and this route has lost rows behind that exact
+        # pixel before. ⛔ A value, not a sentence: the screen writes 「거절 N · 제외 M」.
+        if reading.excluded_rows is not None:
+            result["excluded"] = {"rows": reading.excluded_rows}
         if preview is None:
             # "read 0 rows" IS the result. It is not a pass either: a declaration nothing
             # was compiled from has not been shown to work.

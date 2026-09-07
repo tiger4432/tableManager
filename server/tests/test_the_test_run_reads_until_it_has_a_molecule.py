@@ -192,8 +192,9 @@ class _Refusal:
 
 
 class _Compiled:
-    def __init__(self, molecules, refusals):
+    def __init__(self, molecules, refusals, excluded=None):
         self.molecule_count, self.refusals = molecules, tuple(refusals)
+        self.excluded_rows = excluded
 
 
 def _compiler(script):
@@ -230,3 +231,57 @@ def test_refusals_from_the_pages_walked_past_are_not_lost(setup, monkeypatch):
     assert reading.pages == 3
     assert [r.reason for r in reading.refusals] == [
         "no_identity", "missing_occurred_at", "no_identity"]
+
+
+# ---------------------------------------------------------------------------
+# S-49: the rows the preparer EXCLUDED are counted, because otherwise the screen
+# cannot say where they went.
+#
+# 🔴 THREE STATES, NOT TWO. `lot_event` holds two generations that spell the same facts
+# differently, and its preparer marks the ones it does not read as excluded - they leave
+# before anything asks them for an identity. So a test run could say "200 rows read, 3
+# molecules, 0 refused" with 197 rows unaccounted for, and the operator had no way to tell
+# that from a declaration quietly dropping their data.
+# ---------------------------------------------------------------------------
+
+def test_the_excluded_rows_are_counted_rather_than_silently_gone(setup):
+    """㉠ On the production declaration: the marker's rows are a NUMBER, and the molecules
+    that survived are still the answer."""
+    relation = [_row(i, filled=False) for i in range(4)] + [_row(i) for i in range(4, 8)]
+
+    reading = _read(setup, relation)
+
+    assert reading.excluded_rows is not None, "lot_event declares the marker"
+    assert reading.excluded_rows >= 4
+    assert reading.rows_read >= reading.excluded_rows
+
+
+def test_a_source_with_no_marker_reports_no_count_rather_than_zero(setup, monkeypatch):
+    """㉡ Absent, not `0`. A source that declares no exclusion marker was NOT MEASURED,
+    and `0` would say "measured, and none" - a different claim. This repository has lost
+    rows behind that exact pixel before, which is why the key is missing instead."""
+    monkeypatch.setattr("ledger.setup.preview_selected_cursor_batch",
+                        _compiler([_Compiled(1, [], excluded=None)]))
+    reading = _read(setup, [_row(i) for i in range(4)], fetch_rows=4)
+
+    assert reading.excluded_rows is None
+
+
+def test_the_counts_account_for_every_row_the_run_read(setup, monkeypatch):
+    """㉢ `rows_read` is spent, not approximated: what compiled, what was refused and what
+    the marker removed have to add up to it, or a row went somewhere with no name."""
+    monkeypatch.setattr("ledger.setup.preview_selected_cursor_batch", _compiler([
+        _Compiled(1, [_Refusal("no_identity")], excluded=2),
+    ]))
+    # `fetch_rows` above the relation's size on purpose: a page that FILLS has its
+    # trailing group cut off, and then `rows_read` is legitimately smaller than the table.
+    # Reading a whole relation in one page is what makes the sum below an identity rather
+    # than an approximation.
+    relation = [_row(i) for i in range(4)]
+    reading = _read(setup, relation, fetch_rows=len(relation) + 1)
+
+    refused_rows = sum(r.rows for r in reading.refusals)
+    assert reading.rows_read == len(relation)
+    assert reading.excluded_rows == 2
+    assert refused_rows == 1
+    assert refused_rows + reading.excluded_rows <= reading.rows_read

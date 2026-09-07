@@ -55,6 +55,8 @@ class CursorBatchPreview:
     incomplete_count: int
     #: Molecules the preparation refused by name instead of killing the page.
     refusals: tuple = ()
+    #: Rows the preparer's own marker removed, or `None` when it declares no marker.
+    excluded_rows: Any = None
 
     @property
     def atom_count(self) -> int:
@@ -112,8 +114,10 @@ def preview_cursor_batch(
     source_plan = _source_plan(snapshot, source_id)
     normalized_cursor = _cursor_value(source_plan, base_rows, cursor_value)
     refusals: list = []
+    excluded: list = []
     event_frames = prepare_v2_cursor_batch(
-        snapshot, source_id, base_rows, join_reader, preparers, refusals=refusals)
+        snapshot, source_id, base_rows, join_reader, preparers, refusals=refusals,
+        excluded=excluded)
     mapper_context = MapperContext(snapshot, source_plan)
     event_results = tuple(
         dry_run_event_frame(mapper_context, event_frame, mappers)
@@ -139,6 +143,7 @@ def preview_cursor_batch(
             bool(result.role_frame.attrs.get(SOURCE_EVENT_INCOMPLETE_ATTR, False))
             for result in event_results),
         refusals=tuple(refusals),
+        excluded_rows=(sum(excluded) if excluded else None),
     )
 
 

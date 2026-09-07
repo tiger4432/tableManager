@@ -138,7 +138,7 @@ def v2_base_select_columns(snapshot, source_id):
 
 
 def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
-                            refusals=None):
+                            refusals=None, excluded=None):
     """Convert one complete existing-cursor batch into prepared EventFrames.
 
     The function has no store/cursor mutation.  A preparation refusal propagates before
@@ -160,6 +160,8 @@ def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
     frames = prepare_source_batch(context, frame, reader, implementations)
     if refusals is not None:
         refusals.extend(context.refusals)
+    if excluded is not None:
+        excluded.extend(context.excluded_rows)
     return frames
 
 
@@ -944,7 +946,16 @@ class TestRunReading:
     rows_read: int
     pages: int
     preview: Any
-    refusals: tuple = ()
+    refusals: tuple
+    #: Rows the preparer's marker removed, or `None` where this source declares no
+    #: marker - "not measured" and "measured, none" are different answers.
+    excluded_rows: Any
+
+    # 🔴 NO FIELD DEFAULTS. There is exactly one place that builds this and it passes all
+    # five, so a default is a value nothing takes - and a mutant that changed one proved
+    # it by staying green. A default here would also be the wrong shape twice over:
+    # `excluded_rows = 0` would claim "measured, none" for a source that declares no
+    # marker at all.
 
 
 def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
@@ -989,6 +1000,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     page_key = _page_key(plan)
     rows_read = pages = 0
     refusals: list = []
+    excluded = None
     answered = None
     after = None
     read = engine.raw_connection()
@@ -1018,6 +1030,8 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
                 setup, source, frame, cursor_value, _no_join_reader(),
                 known_registrations=known)
             refusals.extend(answered.refusals)
+            if answered.excluded_rows is not None:
+                excluded = (excluded or 0) + answered.excluded_rows
             if answered.molecule_count >= PREVIEW_MIN_MOLECULES:
                 break
             if len(rows) < fetch_rows:
@@ -1029,7 +1043,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
         read.rollback()
         read.close()
     return TestRunReading(rows_read=rows_read, pages=pages, preview=answered,
-                          refusals=tuple(refusals))
+                          refusals=tuple(refusals), excluded_rows=excluded)
 
 
 def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_ROWS):

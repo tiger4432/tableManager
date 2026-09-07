@@ -301,6 +301,11 @@ class SourcePreparationContext:
     #: Molecules refused during this preparation. Out-parameter, deliberately: the
     #: return value is EventFrames and a batch can now produce both.
     refusals: list = field(default_factory=list, compare=False, repr=False)
+    #: Rows the preparer's own marker removed, per batch. A ONE-ELEMENT LIST rather than
+    #: an int because the count has three states and `0` can only say two: no entry at
+    #: all means this source declares no marker and nothing was measured, which is not
+    #: the same claim as "measured, and none".
+    excluded_rows: list = field(default_factory=list, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.snapshot.readiness != "ready":
@@ -758,6 +763,12 @@ def _assemble_prepared_frame(
                 f"source_preparation.outputs.{SOURCE_ROW_EXCLUDED_COLUMN}",
                 "row exclusion marker must be a boolean for every source row",
             )
+        # 🔴 COUNTED HERE BECAUSE THIS IS WHERE THEY GO. `excluded` is already the list
+        # this line filters on, so the number costs nothing and involves no second
+        # judgment. Without it the test run says "200 rows read, 3 molecules, 0 refused"
+        # and the screen cannot say where the other 197 went - the same pixel this
+        # repository keeps losing rows behind: absent and unmeasured looking alike.
+        context.excluded_rows.append(sum(1 for value in excluded if value))
         out = out.loc[[not value for value in excluded]].reset_index(drop=True)
     for column in _required_entity_columns(context.source_plan):
         if column not in out.columns:
