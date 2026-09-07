@@ -614,7 +614,8 @@ class OntologyExplorerService:
             result["status"] = "refused"
             return result
         try:
-            rows_read, preview = backfill.preview_first_batch(engine, setup, source_id)
+            reading = backfill.preview_first_batch(engine, setup, source_id)
+            rows_read, preview = reading.rows_read, reading.preview
         except Exception as exc:                       # noqa: BLE001 - see below
             # 🔴 EVERY EXCEPTION, NOT A LIST OF CLASSES. Nine refusal classes reach this
             # call today and a tenth arrives with the next grammar; a psycopg error from a
@@ -655,6 +656,12 @@ class OntologyExplorerService:
             result["refusal"]["partial_apply"] = False
             return result
         result["rows_read"] = rows_read
+        # 🔴 HOW FAR THE INSTRUMENT READ, AS A VALUE. A head of empty rows is a normal
+        # shape - the grid makes keyless rows and they sort first - so the test run reads
+        # onward until it has a molecule or its page budget runs out. Without this the
+        # operator cannot tell "my first page happened to be blank" from "my whole source
+        # is blank", and those need opposite moves.
+        result["pages"] = reading.pages
         if preview is None:
             # "read 0 rows" IS the result. It is not a pass either: a declaration nothing
             # was compiled from has not been shown to work.
@@ -672,7 +679,9 @@ class OntologyExplorerService:
         # work"; the refused ones are the answer to "which rows do I fix".
         # ⛔ Values, never a sentence: how many, under which name, and which cell. The
         # screen writes the words.
-        refused = tuple(preview.refusals)
+        # Every page walked, not just the one that answered: the empty head is part of
+        # what this run read and the operator has to see it.
+        refused = tuple(reading.refusals)
         reasons: dict[str, int] = {}
         for refusal in refused:
             reasons[refusal.reason] = reasons.get(refusal.reason, 0) + 1

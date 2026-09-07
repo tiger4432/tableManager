@@ -78,12 +78,14 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from dataclasses import dataclass
 import json
 import logging
 import os
 import sys
 from pathlib import Path
 import time
+from typing import Any
 
 logger = logging.getLogger("Ledger.Backfill")
 
@@ -93,6 +95,16 @@ DEFAULT_FETCH_ROWS = 2000
 #: screen asks "does this declaration work at all", and that answer arrives in the first
 #: page of a table with ten million rows exactly as it does in the first page of one with
 #: forty. `DEFAULT_FETCH_ROWS` belongs to a run that intends to sweep the whole table.
+#: How many MOLECULES are enough to have shown a declaration compiles. One is: the
+#: question a test run answers is "does my declaration work", not "how much of my table
+#: is good", and the second question has a whole route of its own.
+PREVIEW_MIN_MOLECULES = 1
+
+#: How many pages the test run may read looking for those molecules. An INSTRUMENT'S
+#: budget, not a declaration axis - an operator does not author how far a probe reads,
+#: and a source whose first pages are all empty must not turn one screen into a scan.
+PREVIEW_MAX_PAGES = 5
+
 #: How many refused molecules the test run carries back as samples. The COUNT is always
 #: exact; this caps only how many the operator is shown, the same way the gate caps its
 #: own. Not a declaration axis - an operator does not author an instrument's budget.
@@ -915,6 +927,26 @@ def rows_past_cursor(engine, setup, source, limit=DEFAULT_FETCH_ROWS):
     return len(page), len(page) < limit
 
 
+@dataclass(frozen=True)
+class TestRunReading:
+    """What a test run READ, as values.
+
+    🔴 IT REPLACED `(rows_read, preview_or_None)` BECAUSE THAT PAIR COULD NOT SAY WHAT
+    HAPPENED ANY MORE. `None` used to mean exactly one thing - the relation handed back no
+    rows - and once the run may read ONWARD it has to distinguish "read nothing" from
+    "read a thousand rows and compiled none of them". The first is an empty table; the
+    second is a declaration meeting rows it cannot use, and they need opposite moves.
+
+    `preview` is the batch that ANSWERED - the first page that compiled a molecule, or the
+    last one read if none did. `refusals` accumulates across every page walked, so a head
+    of empty rows is counted even though the answer came from further in.
+    """
+    rows_read: int
+    pages: int
+    preview: Any
+    refusals: tuple = ()
+
+
 def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
     """Compile ONE batch of this source's FIRST page. WRITES NOTHING, MOVES NO CURSOR.
 
@@ -954,32 +986,50 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
             "verified_join_reader_required", "source_preparation.join_reader",
             "the test run requires a registered read-only join reader",
         )
+    page_key = _page_key(plan)
+    rows_read = pages = 0
+    refusals: list = []
+    answered = None
+    after = None
     read = engine.raw_connection()
     try:
-        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
-        complete, dropped = _cut_on_group_boundary(
-            rows, fetch_rows, key=_page_key(plan))
-        # A page that is ENTIRELY one group cannot be cut down; fetch that group whole,
-        # exactly as `walk_group_pages` does, so a molecule is never previewed in halves.
-        if not complete and dropped is not None:
-            complete = _fetch_v2_lineage_group(read, plan, dropped)
+        while pages < PREVIEW_MAX_PAGES:
+            rows = _fetch_v2_lineage_page(read, plan, after, fetch_rows)
+            if not rows:
+                break
+            complete, dropped = _cut_on_group_boundary(rows, fetch_rows, key=page_key)
+            # A page that is ENTIRELY one group cannot be cut down; fetch that group
+            # whole, exactly as `walk_group_pages` does, so a molecule is never previewed
+            # in halves.
+            if not complete and dropped is not None:
+                complete = _fetch_v2_lineage_group(read, plan, dropped)
+            if not complete:
+                break
+            pages += 1
+            rows_read += len(complete)
+            frame = _v2_frame(complete)
+            subjects = _v2_registration_subjects(plan, frame)
+            known = None if subjects is None else ()
+            ordered = frame.sort_values(list(plan.driver.cursor_columns))
+            last = ordered.iloc[-1]
+            cursor_value = {column: last[column]
+                            for column in plan.driver.cursor_columns}
+            answered = preview_selected_cursor_batch(
+                setup, source, frame, cursor_value, _no_join_reader(),
+                known_registrations=known)
+            refusals.extend(answered.refusals)
+            if answered.molecule_count >= PREVIEW_MIN_MOLECULES:
+                break
+            if len(rows) < fetch_rows:
+                break                       # the relation ended inside this page
+            after = complete[-1][page_key]
     finally:
         # Every statement above is a SELECT; ending the transaction rather than leaving it
         # open is the same lock boundary the run keeps before it writes.
         read.rollback()
         read.close()
-    if not complete:
-        return 0, None
-    frame = _v2_frame(complete)
-    subjects = _v2_registration_subjects(plan, frame)
-    known = None if subjects is None else ()
-    ordered = frame.sort_values(list(plan.driver.cursor_columns))
-    last = ordered.iloc[-1]
-    cursor_value = {column: last[column] for column in plan.driver.cursor_columns}
-    preview = preview_selected_cursor_batch(
-        setup, source, frame, cursor_value, _no_join_reader(),
-        known_registrations=known)
-    return len(frame), preview
+    return TestRunReading(rows_read=rows_read, pages=pages, preview=answered,
+                          refusals=tuple(refusals))
 
 
 def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_ROWS):
