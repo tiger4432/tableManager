@@ -13389,3 +13389,57 @@ server/scripts/chain_replay_cli.py:59 `[:5]` · :61 `[:3]` · :82 `[:8]`
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔒 S-34 — 절단 철자 «일곱»의 자리 · 모양 · 주어 · 독자 (13:0x)
+
+⛔ 코드 0줄 · 「접어야 한다」를 «안 적습니다»(관문 그대로) — 주어만 적습니다.
+
+## 표
+```
+철자                자리                                   모양            주어                         독자(서버/시험/클라 src/dist)
+distinct_truncated  enrichment_candidates:493              불리언 키       «스캔 예산»에 잘림            4 / 1 / 0 / 0
+                    (`scan_rows_cap`·`CAP_PROBE_SCAN_ROWS` 옆)              (읽기 예산 — 「본 행 수」)
+row_truncated       enrichment_candidates:501              불리언 키       «같은 스캔 예산»의 둘째 축     2 / 1 / 0 / 0
+cells_truncated     transfer_plan:1096·1261·1345·2176      불리언 키       «예산 축»(셀) — :1261 이       1 / 0 / 0 / 0
+                                                                          `truncated`(단위) «옆»에 나란히
+units_truncated     map_alignment:7068 (`unit_cap` 옆)     불리언 키       «예산 축»(단위)              1 / 2 / 🔵 1 / 1
+references_truncated ledger/config_explorer:1158·1212      불리언 키       «예산 축»(참조) —            1 / 1 / 🔵 1 / 1
+                    (:1212 `len(all_outbound) > reference_limit …`)         in/out 둘을 «하나»로 접음
+result_truncated    transfer_plan:247 상수 · :2052·2061 사용 🔴 «값»       예산이되 «키가 아니라        1 / 1 / 0 / 0
+                                                          (경고 type)     경고 코드»입니다
+counts_capped       bonding_plan:1106                      🔴 «객체»       예산이되 «어느 역할이         1 / 2 / 0 / 0
+                                                          {cap, roles}    잘렸나»까지 답합니다
+```
+
+## 🔵 모양이 «셋»입니다 — 그게 이 표의 값입니다
+```
+① 불리언 키 «다섯»   distinct · row · cells · units · references
+② 값(경고 코드) «하나»  result_truncated — 키가 아니라 `warnings[].type` 의 «값»
+③ 객체 «하나»        counts_capped — {cap, roles}. 「잘렸다」 위에 «누가»를 얹습니다
+=> ①만 보고 접으면 ②는 «다른 자리»(경고 목록)에 남고, ③은 «정보를 잃습니다»(roles)
+```
+
+## 🔴 독자 — 일곱 중 «둘»만 화면에 닿습니다
+```
+클라 독자 있음   units_truncated · references_truncated (src 1 · 번들 1 — 도달 «확인»)
+클라 독자 0     나머지 «다섯» (distinct · row · cells · result · counts_capped)
+그중 cells_truncated 는 «시험도 0» — 서버 한 자리에서 «자기만» 씁니다
+```
+
+## 못 잰 것
+```
+🔴 `counts_capped` 의 `roles` 가 «무엇을 위해» 있는지 — S-27 이 「정당 추가」로 판정한 키라
+   그 판정문을 안 열었습니다. 접기 판정 때 «그 판정과 나란히» 놓아야 합니다
+🔴 `result_truncated` 가 실린 `warnings[]` 를 클라가 읽는지는 «그 배열 이름»으로 재야 하는데,
+   그건 이 표의 주어가 아니라 «다른 축»입니다 — 안 넓혔습니다
+```
+
+## 판정 대기: **없음** (관문대로 주어만 냈습니다)
+```
+🔁 이월: 47 (S-14 의 주어 — 소유자 몫)
+다음: S-32 (분류 실행 · 별도 워크트리)
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`

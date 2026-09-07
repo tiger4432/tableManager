@@ -24,7 +24,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import paths                                                     # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-LITERAL = "postgresql://postgres:admin@localhost:5432/assy_manager"
+#: 🔴 게이트가 그 문자열을 «자기 손으로» 적지 않는다. 두 가지가 걸려 있다:
+#:  ① 이 파일도 «추적 모집단» 안이라, 적으면 게이트가 «자기 자신»을 사본으로 센다
+#:     (커밋 «전»에 돌리면 미추적이라 안 보이고, 커밋한 순간 빨개진다 —
+#:      「스테이지된 것이 담긴 것은 아니다」의 «게이트 판»이고 제가 그 구멍에 빠졌다)
+#:  ② 집의 «값»이 바뀌는 날, 손으로 적은 게이트는 «옛 값»을 찾아 조용히 초록이 된다
+LITERAL = paths.DEFAULT_PG_URL
 
 
 def _tracked_python():

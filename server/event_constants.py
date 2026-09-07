@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """프로세스 간 이벤트 공용 상수 — 내부 이벤트(POST /internal/events/*) + 아웃박스 제어 이벤트.
 
 워처(parsers/directory_watcher.py)와 체인 워커(chain_ingestion_worker.py) 등
@@ -113,6 +116,33 @@ def truncated_note(cut, omitted=None, reason=None):
         "omitted": (int(omitted) if omitted is not None else None),
         "reason": (str(reason) if (reason and cut) else None),
     }
+
+
+#: 「성공했는데 «느렸다»」의 정본 — 문장 «하나», 자세 «하나».
+#: 🔴 정의는 «시계»다: 「측정한 비용이 «선언된 예산»을 넘었다」. 상한에 닿은 사실은 이것이
+#:    «아니다» — 상한에 닿고도 «빠른» 답이 있고(상한이 그래서 있다), 상한에 «안» 닿고
+#:    느린 답이 있다(DB 가 느린 날 — 이 계기가 잡으려는 «바로 그» 경우). 그리고 「잘렸다」는
+#:    이미 `truncated` 가 말한다 — 그것을 「느리다」라 부르면 한 사실에 철자가 둘이 된다.
+def slow_sentence(elapsed_ms, warn_ms) -> str:
+    """예산을 넘은 «성공»의 비용을 말한다. 사유·조언은 부르는 쪽이 «뒤에» 붙인다."""
+    return "응답이 %sms 걸렸습니다 (예산 %sms)" % (int(elapsed_ms), int(warn_ms))
+
+
+def slow_warn_ms(declared, where):
+    """선언된 예산 -> 양의 정수, 또는 `None` = 「이 경로는 «재지 않는다»」.
+
+    🔴 부재는 «세 상태의 첫째»다. 선언이 없으면 응답에 `slow_reason` 키가 «없다» —
+       `None` 이 아니다. `None` 은 「재 봤는데 안 느리다」는 «주장»이고, 부재는 「안 쟀다」다.
+    ⚠️ 0 · 음수 · 문자열 · 불리언은 «경고 후 무시»한다(= 선언 없음). 0 은 「모든 답이 느리다」
+       이고, 모든 응답에 붙는 사유는 신호가 아니다 — 정본이 그 이유로 0 을 거른다.
+    """
+    if declared is None:
+        return None
+    if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:
+        logger.warning("[Slow] '%s' slow_warn_ms must be a positive integer (got %r); "
+                       "not measuring.", where, declared)
+        return None
+    return declared
 
 
 OUTBOX_OWNER_SCHEDULER = "scheduler"
