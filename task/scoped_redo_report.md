@@ -16646,3 +16646,102 @@ test_replace_map.py:29-34   「3 cells for EQP_ID = EQP_UNIQUE_999」
 안 지었습니다 — 지시서의 「사이트 표를 «짓기 전»에」를 그대로 따랐고, 그 표가 멈춤을 가리킵니다
 트리   깨끗 · 감시 🟢 `bdcsrg69j` · `ba8i0vtpa`
 ```
+
+---
+
+# 🔴 [구현자 -> 총괄] **판정 113 의 세기 ①②③ — 교집합은 «2» 입니다. 그리고 113 의 전제 하나가 어긋납니다: `@mapper` 는 «소비자가 0» 이라 그 리프트를 «지나는 행이 하나도 없습니다»** (실측 22:0x)
+
+## 되돌렸습니다
+```
+판정 110 으로 지었던 crud 절반(`assemble_plain_business_key` + 호출 둘 + `raw_table_1` 픽스처)을
+113 대로 «되돌렸습니다». 트리에 그 흔적 «0» (git checkout, 제 파일 넷만)
+```
+
+## 세기 ①②③ — 지시하신 두 축
+```
+축      ① 체인 규칙이 이름 댄 맵퍼 중 «@mapper 를 안 지나는 것»
+        ② 그중 타깃이 «plain business_key»
+계기    워커와 «같은» import 기제(`importlib.import_module`) · 판별은 «코드 객체 동일성»
+        (감싼 함수의 `__code__` 가 `mapper_sdk.py` 의 `run` 인가) — 이름·소스 글자 아님
+        .sample 쪽은 «파일 전문»을 SourceFileLoader 로 적재. 자르지 않았습니다
+```
+```
+                                        규칙  ①안지남  ②plain  ③교집합
+이 박스 (라이브 규칙 + 라이브 mappers/*.py, 둘 다 gitignore)   9      9        2       2
+출하    (.sample 규칙 + *.py.sample, 추적)                  9      9        2       2
+=> 두 쪽이 «같은 수»입니다. 교집합 둘 다 «켜져 있습니다»:
+     production_to_inventory_reservation_batch -> inventory_master   (plain part_no)
+     lot_event_to_lot_slot_wafer               -> lot_slot_wafer     (plain lot_slot_wafer_key)
+③ 이 0 이 «아니므로» 지시대로 ㉡ 의 자리(`chain_key_gate`)로 갑니다 — 다만 아래를 먼저 봐 주십시오
+```
+⚠️ **첫 계기는 눈이 멀었습니다** — 모듈명에 `mappers.` 를 덧붙여 9건 전부 import 실패였고,
+   그때 화면은 「①=0 · ③=0」이었습니다. 「0」이 «잰 0» 이 아니라 «못 잰 0» 이었고,
+   그대로 냈으면 S-43 을 큐에서 내리게 했을 것입니다. 워커 코드를 열어 기제를 맞춘 뒤 다시 쟀습니다.
+
+## 🔴 전제 정정 — 「그 기제는 이미 있고 추적됩니다」는 «코드로는 참, 경로로는 거짓»입니다
+```
+plain 리프트가 사는 자리   `mapper_sdk.df_to_updates` :203~212  (판정 113 이 인용하신 그 줄)
+그 함수를 «부르는» 자리     mapper_sdk.py:263  «하나»  — `@mapper` 데코레이터의 `run`
+그 데코레이터를 쓰는 맵퍼   «0»  (추적 7 + 라이브 9, 전건 0)
+`df_to_updates` 소비자     mapper_sdk.py 밖에서 «0» (시험 `test_mapper_sdk.py` 제외)
+`BaseMapper` 는 «다른 것»   `payloads_to_df` · `sql` 헬퍼만 줍니다 — `df_to_updates` 를 «안 부릅니다».
+                         production_mapper 가 `BaseMapper` 를 쓰지만 리프트는 «안 지납니다»
+```
+🔴 **즉 SDK 의 판정은 09-02 에 «났고», 배선은 «오늘도 0» 입니다.** 부류는 보드가 아는 그것 —
+   「착지는 배선이 아니다」. 소유자 말씀(「SDK 에서 데코레이터 해서 한 건데」)은 «코드가 있다»로 참이고,
+   「그래서 오늘 도는 맵퍼가 그 리프트를 지난다」로는 거짓입니다.
+🔴 그래서 ㉠(「소유자의 새 맵퍼가 @mapper 를 안 쓰는가 → 답은 «데코레이터를 쓰십시오»」)의 답이 바뀝니다:
+   **맵퍼 «하나»의 문제가 아닙니다.** 아무도 안 씁니다 — 소유자가 «베껴 쓸» 출하 견본 일곱도 전부 안 씁니다.
+   그 조언은 이 저장소에 «예시가 0» 인 조언입니다.
+
+## 셋째 축 (제가 더한 것) — 오늘 «깨지는» 규칙은 0, 내일 깨지는 것은 «전부»
+```
+교집합 둘의 맵퍼는 `business_key_val` 을 «자기 손으로» 씁니다 (그 두 파일 심볼 grep, 라이브·출하 둘 다)
+출하 견본 9 중 8 이 그 칸을 손으로 적습니다. 안 적는 하나(dt_map_mapper)는 타깃이 composite 라 틀이 조립합니다
+=> 오늘 신원 없이 착지하는 규칙 «0». 그리고 그것이 정확히 `chain_key_gate` 가 «자기 머리에» 적어 둔 상황입니다:
+   「네 곳 중 «셋»이 손으로 막았다. 고치는 법은 «넷으로 만드는 것»이 아니다 —
+    mappers/*.py 는 gitignore 라 배포에 안 가고, 다음 달에 쓰는 맵퍼는 «가드 없이» 시작한다」
+   소유자 신고(「맵퍼 새로 만들고 리플레이 돌리는데 중복키 계속」)가 그 「다음 달」입니다
+```
+`unfilled_key_columns` 가 이 모양에 `[]` 를 답하는 것 — 확인했습니다(그 함수를 열어서, SDK 주석 말고):
+`declared and key_col in updates and 값 있음 → []`. 그리고 자기 docstring 이 「나중 푸시에서 MATCH 는 실패한다」를
+«스스로» 적어 둡니다. 갈리는 자리가 거기 맞습니다.
+
+## 📌 판정 청 «하나» — 자리가 «둘»이 됐습니다 (전제가 바뀌어서)
+```
+Ⓐ ㉡ 대로 `chain_key_gate`   추적됨 · 체인이 내는 «모든» 행이 지나는 깔때기 · 자기 머리 논거가 이 부류 그대로
+                          ⚠️ 다만 리프트의 «저자»가 `df_to_updates` 와 «둘»이 됩니다 —
+                             113 ㉢ 이 crud 를 물린 바로 그 사유(④)가 여기에도 붙습니다
+Ⓑ SDK 를 «배선»한다        출하 견본 일곱을 `@mapper` 로 (또는 워커가 반환 봉투를 «그 함수로» 통과시킨다)
+                          -> 저자가 «하나»로 남습니다. 다만 반경이 맵퍼 일곱 + 워커 경로이고,
+                             gitignore 된 라이브 맵퍼 아홉은 «운영자가» 바꿔야 합니다(코드 0이 아님)
+Ⓒ 워커 깔때기에서 «SDK 함수를 부른다»   `execute_custom_mapper` 반환 봉투에 대고 `df_to_updates` 의 plain 절반을
+                          부른다 -> 저자 «하나» · 맵퍼 무접촉 · 추적됨.
+                          ⚠️ 그 함수는 DataFrame 을 받으므로 「plain 절반」을 «그 모듈에서» 꺼내야 합니다
+```
+🔴 저는 **Ⓒ 로 기웁니다** — ④(두 저자)를 안 만들고, 맵퍼를 안 건드리고, 자리가 추적되며,
+   `chain_key_gate` 가 「깔때기」라고 지목한 «바로 그 두 호출 지점»과 같은 층입니다.
+   다만 Ⓐ 도 지시서가 이미 지목한 자리라 «지시대로»면 Ⓐ 입니다. 층은 총괄 몫이라 짓기 전에 청합니다.
+
+## 부수 — 판정 110 「세기 둘」의 답 (S-43 층이 바뀌어도 그 수는 «그대로» 유효합니다)
+```
+① 출하 .sample 선언 census (추적 — 운영에 참)
+     composite_key_source 있음                19
+     map_key_columns 만 있음(unresolvable)     0   <- ㉦ 이 비켜 가라 한 부류는 «출하 선언에 구성원이 0» 입니다
+     plain business_key                       13   lot_event · process_event · inventory_master ·
+                                                   production_plan · wafer_process · dt_job_attribution ·
+                                                   dt_transfer_log · eqp_event · entity_comment ·
+                                                   process_param{,_num,_txt} · lot_slot_wafer
+② «이 박스» DB (운영 주장 아님) — 그 13 표의 count(*) 대 count(distinct business_key_val)
+     surplus «0» (전 표). D3 의 08-07 surplus 0 이 오늘도 같습니다
+     🔴 다만 `production_plan`: 행 10 · distinct 0 · business_key_val «전부 NULL».
+        surplus 로는 안 보이는 모양이고, 「아무도 안 채운 plain 표」의 이 박스 발자국입니다
+```
+
+## 📌 판정 대기 «둘» — ① 위 S-43 자리(Ⓐ/Ⓑ/Ⓒ) ② 앞선 S-41 (Ⓐ/Ⓑ/Ⓒ + :562 반쪽)
+```
+🔁 이월  S-41 청(어휘 이름 없는 셋) — 판정 110 에서 Ⓐ + 시간 반쪽으로 답 받음. 다음 줄로 착수합니다
+감시    🟢 `bdcsrg69j`(자가 기상) · `ba8i0vtpa`(지시서 감시) — 둘 다 이 라운드에 울렸습니다
+이 라운드가 «뺀» 것 — 파일 0 · 줄 0 · 축 0   (지은 것을 되돌렸고, 세기는 코드 0)
+④ 를 움직였나 — «아니오». 오히려 ④ 가 이 청의 «축»입니다: 리프트의 저자를 둘로 만들지 않는 자리가 어디인가
+```
