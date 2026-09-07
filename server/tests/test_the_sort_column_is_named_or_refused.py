@@ -210,3 +210,52 @@ def test_a_jump_under_a_new_sort_is_refused_rather_than_answered_wrongly(env):
     detail = res.json()["detail"]
     assert "target_row_id" in detail and "dt_lot" in detail, detail
 
+
+
+# ---------------------------------------------------------------------------
+# A-6-c  빈 값은 «어느 방향이든» 뒤로
+#
+# 🔴 「위냐 아래냐」의 취향이 아니다. 빈 칸은 값의 «부재»이므로 값들의 «어느 끝»에도 속하지
+# 않는다 — 뒤다. 종전에는 PostgreSQL 이 오름차순에서 NULL 을 앞에 놓고 내림차순에서도 앞에
+# 놓아서, 반쯤 채워진 컬럼을 정렬한 운영자는 «어느 화살표를 눌러도» 빈 행 한 페이지를 먼저
+# 만났다. 찾던 행은 2 페이지에 있었다.
+# ---------------------------------------------------------------------------
+
+def _push(env, rows):
+    """Add rows through the same door the grid uses - the fixture owns `db_session`."""
+    res = env.put("/tables/a6_test_row/data/updates", json={
+        "updates": [{"updates": dict(r), "source_name": "pipeline_parser",
+                     "updated_by": "tester"} for r in rows]})
+    assert res.status_code == 200, res.text
+
+
+def _tail_value(env, order_desc):
+    """The LAST `dt_lot` on the page, which is where a blank has to be."""
+    rows = _page(env, order_by="dt_lot", order_desc=order_desc, limit=200)
+    return _vals(rows, "dt_lot")[-1]
+
+
+def test_a_blank_value_sorts_last_ascending(env):
+    _push(env, [{"row_key": "BLANK_A", "core_lot": "L", "core_slot": "1"}])
+
+    assert _tail_value(env, "false") in ("", None), (
+        "a blank must come after every value ascending")
+
+
+def test_a_blank_value_sorts_last_descending_too(env):
+    """The half that makes it a RULE rather than a direction. If "last" held only one
+    way, the other arrow would still open on a page of blanks."""
+    _push(env, [{"row_key": "BLANK_D", "core_lot": "L", "core_slot": "1"}])
+
+    assert _tail_value(env, "true") in ("", None), (
+        "a blank must come after every value descending too")
+
+
+def test_a_table_with_no_blank_value_is_ordered_exactly_as_before(env):
+    """바이트 동일 대조. 이 규칙은 «빈 값이 있을 때만» 무언가를 바꾼다 — 없으면 종전 순서다.
+    (이 픽스처의 25행에는 빈 `dt_lot` 이 없다.)"""
+    up = _vals(_page(env, order_by="dt_lot", order_desc="false", limit=200), "dt_lot")
+    down = _vals(_page(env, order_by="dt_lot", order_desc="true", limit=200), "dt_lot")
+
+    assert up == sorted(up)
+    assert down == sorted(down, reverse=True)

@@ -1525,11 +1525,28 @@ class VirtualColumnBinder:
 #: `?order_by=` 이름 중 표의 컬럼이 «아닌» 셋. 화면이 오늘 보내는 철자이고 각자 자기
 #: 정렬식과 tie-breaker 를 들고 있다. 아래 일반 갈래와 «두 경로»가 아닌 이유는 이 셋이
 #: 컬럼 이름이 아니어서다 — `id` 는 `business_key_val` 의 화면 철자다.
+def _order_by_clause(expr, tie, order_desc):
+    """`ORDER BY` for one sort: the column, then `row_id` to break its ties.
+
+    🔴 AN EMPTY VALUE GOES LAST IN BOTH DIRECTIONS. Ascending, SQL puts NULLs first on
+    PostgreSQL; descending, it puts them first too - so an operator sorting a
+    half-filled column met a page of blanks whichever arrow they pressed, and the rows
+    they were looking for were on page two. "Last" is not a preference between two
+    orders: a blank is the ABSENCE of a value, so it does not belong at either end of
+    the values - it belongs after them.
+
+    ⚠️ ONE CLAUSE, NOT TWO. `_named_sort` and `resolve_sort` each built this list by
+    hand, so the rule would have had to be written twice and could then be true in one
+    of them - the class this repository keeps meeting (`두 경로가 갈라진다`). `row_id`
+    is the primary key and never NULL, so the tie-break needs nothing.
+    """
+    ordered = expr.desc() if order_desc else expr.asc()
+    return [ordered.nullslast(), tie.desc() if order_desc else tie.asc()]
+
+
 def _named_sort(table_model, order_by, order_desc):
     def pair(expr):
-        tie = table_model.row_id
-        return [expr.desc() if order_desc else expr.asc(),
-                tie.desc() if order_desc else tie.asc()]
+        return _order_by_clause(expr, table_model.row_id, order_desc)
     if order_by == "updated_at":
         return pair(table_model.updated_at)
     if order_by == "id":
@@ -1581,9 +1598,7 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc, binder):
                     "(virtual_join_rules.json), and the screen's own 'id'/'updated_at'/"
                     "'row_id'." % (order_by, table_name)))
 
-    tie = table_model.row_id
-    return query, [expr.desc() if order_desc else expr.asc(),
-                   tie.desc() if order_desc else tie.asc()]
+    return query, _order_by_clause(expr, table_model.row_id, order_desc)
 
 
 def apply_column_filters(query, table_model, table_name, filters, binder):
