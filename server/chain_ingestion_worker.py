@@ -55,6 +55,7 @@ import chain_key_gate
 # removes by map and cannot express it - see the retract branch in the write loop.
 import dt_map_derivation
 import chain_activity
+import chain_bindings
 
 #: 🔴 THE FILE THIS PROCESS LOGS TO, NAMED ONCE AND CARRIED ONTO THE MAPPER LINES.
 #  A mapper runs in THIS process, so its lines land here and not in the web server's
@@ -692,6 +693,35 @@ def _record_pre_run_outcomes(rules, events):
         if outcome is not None:
             chain_activity.registry.record_outcome(
                 (rule or {}).get("name") or "<unnamed rule>", outcome, reason)
+
+
+def _group_triggered_rules(events_in_tx, rules):
+    """이 그룹이 «깨우는» 규칙들. `_group_target_tables` 와 아래 읽기 집합이 «같은 술어»를
+    지나야 한다 — 갈리면 한쪽이 보는 표를 다른 쪽이 못 본다.
+    """
+    trigger_tables = set(
+        e.table_name for e in events_in_tx if e.event_type in ("CREATE", "EDIT")
+        and any(r.get("trigger_table") == e.table_name and r.get("enabled", True)
+                and _rule_accepts_event(r, e) for r in rules)
+    )
+    if not trigger_tables:
+        return []
+    return [r for r in rules
+            if (r.get("enabled", True) and r.get("trigger_table") in trigger_tables
+                and any(e.table_name == r.get("trigger_table") and _rule_accepts_event(r, e)
+                        for e in events_in_tx))]
+
+
+def _group_read_tables(events_in_tx, rules):
+    """이 그룹이 «읽을» 표 집합 — 열거는 `chain_bindings.RULE_TABLE_KEYS` «하나»가 든다.
+
+    🔴 순서 가드가 이것을 못 봐서 선언된 교차 «다섯»이 통째로 안 보였다. 상류가 실패한 표를
+       읽는 하류 규칙이 그대로 돌았고, 그 답은 «낡은 값 위»에서 나왔다 — 오류 없이.
+    ⚠️ `_group_target_tables` 를 «고쳐서» 쓰지 않는다. 그 함수는 소비자가 «둘»이고 둘째는
+       순서가 아니라 «미전달 행 스윕»이라(:`affected_targets`), 뜻을 바꾸면 그쪽이 같이 움직인다.
+    """
+    return {t for r in _group_triggered_rules(events_in_tx, rules)
+            for t in chain_bindings.rule_tables(r, chain_bindings.TABLE_ROLE_READ)}
 
 
 def _group_target_tables(events_in_tx, rules):
@@ -1335,13 +1365,19 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
     for tx_id in group_order:
         events_in_tx = groups[tx_id]
         group_targets = _group_target_tables(events_in_tx, rules)
+        # 🔴 «읽기»도 순서에 걸린다. 앞선 그룹이 실패한 표를 이 그룹이 «읽으면», 그 답은
+        #    낡은 값 위에서 나오고 오류가 «안 난다» — 선언된 교차 다섯이 그 모양이었다.
+        # ⚠️ 실측(출하 아홉): 어느 규칙에서도 `target_table` 이 자기 «읽기 집합 안»에 없다.
+        #    그래서 읽기«만»으로 바꾸면 오늘의 미룸이 통째로 «사라진다» — 대체가 아니라 맞바꿈이다.
+        #    합집합이라야 오늘의 판단이 «그 안»에 들어오고, 과잉 미룸은 안전하다.
+        group_touches = group_targets | _group_read_tables(events_in_tx, rules)
 
-        # 순서 보존 가드: 앞선 실패 그룹과 동일 target을 건드리는 그룹은 이번 배치에서 보류한다.
-        # (retry_count를 올리지 않고 processed_chain=False 유지 → 다음 배치에서 blocker 뒤에 재시도)
-        if blocked_targets and (group_targets & blocked_targets):
+        # 순서 보존 가드: 앞선 실패 그룹이 «쓴» 표를 건드리는(읽거나 쓰는) 그룹은 이번 배치에서
+        # 보류한다. (retry_count를 올리지 않고 processed_chain=False 유지 → 다음 배치에서 재시도)
+        if blocked_targets and (group_touches & blocked_targets):
             logger.info(
-                f"[HOL Guard] Deferring tx '{tx_id}' this batch: target(s) "
-                f"{sorted(group_targets & blocked_targets)} held by an earlier failed group."
+                f"[HOL Guard] Deferring tx '{tx_id}' this batch: table(s) "
+                f"{sorted(group_touches & blocked_targets)} held by an earlier failed group."
             )
             continue
 
