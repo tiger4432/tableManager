@@ -1,0 +1,71 @@
+{
+  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Both sides are scored against the `expect` recorded here rather than against each other: server-vs-client alone stays green when both drift the same wrong way. Three shapes are scored because they are the three an operator can actually meet -- an attribute that arrived, one that was declared and never reached, and one that two sentences fed. The third is the only one that needs a rule, and the rule is `occurred_at` latest-wins with a COUNT beside it.",
+  "version": 1,
+  "seam": {
+    "server": "walk node builder (S-52) -- server/ledger_trace_router.py :: /subgraph node payload",
+    "client": "walk node reader (C-40) -- the walk table's attribute columns",
+    "why": "An attribute that was never reached must be ABSENT, not null. If 'no value' and 'not walked' render as the same pixel the caller cannot tell them apart, and the operator reads a gap in the data as a gap in the walk. `attribute_conflicts` is a NUMBER, not a list: the list is the atoms themselves and a second copy of them on the node would be a second author."
+  },
+  "identity": {
+    "keys_only": true,
+    "$why": "attributes never enter identity -- two nodes with the same keys are the same node however their attributes differ, and a node whose attribute changes does not become new."
+  },
+  "cases": [
+    {
+      "name": "attributes_present",
+      "declared_attributes": [
+        "lot",
+        "product"
+      ],
+      "atoms": [
+        {
+          "attribute": "lot",
+          "value": "L-1",
+          "occurred_at": "2026-09-01T01:00:00Z"
+        }
+      ],
+      "expect": {
+        "attributes": {
+          "lot": "L-1"
+        },
+        "attribute_conflicts": 0
+      }
+    },
+    {
+      "name": "declared_but_not_reached",
+      "declared_attributes": [
+        "lot",
+        "product"
+      ],
+      "atoms": [],
+      "expect": {
+        "attributes": {},
+        "attribute_conflicts": 0
+      }
+    },
+    {
+      "name": "two_sentences_feed_one_name",
+      "declared_attributes": [
+        "lot"
+      ],
+      "atoms": [
+        {
+          "attribute": "lot",
+          "value": "L-1",
+          "occurred_at": "2026-09-01T01:00:00Z"
+        },
+        {
+          "attribute": "lot",
+          "value": "L-2",
+          "occurred_at": "2026-09-02T01:00:00Z"
+        }
+      ],
+      "expect": {
+        "attributes": {
+          "lot": "L-2"
+        },
+        "attribute_conflicts": 1
+      }
+    }
+  ]
+}

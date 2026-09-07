@@ -20,6 +20,11 @@ collect  무엇을 «가져오나»  도메인 «노드 타입»(선언된 엔�
 ⚠️ **짝짓기는 부르는 쪽의 일이다** — 다이 맵이면 `collect=die` · `follow=inspected`.
 안 맞는 짝(`collect=defect` + 길 전체)을 만들어 놓고 «설계 문제»라 부르지 않는다.
 
+🔴 **정정(2026-09-08 판정 123) — 노드는 «자기 속성»을 든다.**
+「술어가 아닌 것은 표면적으로 노드」·「값은 수식어」와 «충돌이 아니라 확장»이다 —
+엣지가 나르는 수식어는 **그대로** 엣지의 것이고, 새로 생긴 것은 «노드 자신에 선언된 이름»이다.
+신원은 여전히 `keys` «하나»다 — 속성은 신원에 들지 «않는다».
+
 ## 2. 🔴 그리고 그 짝을 «선언이 뽑아 준다» — 이것이 이미 있다
 
 ```
@@ -63,7 +68,11 @@ edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 
 ## 4. 돌려주는 것
 
 ```
-nodes        {id, type, label, keys}    🔵 type 이 «도메인 낱말»(die·wafer·defect…)
+nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 낱말»(die·wafer·defect…)
+             🔴 `attributes` 는 «선언된 이름만» 든다. 같은 이름을 여러 문장이 먹이면
+             **최신 `occurred_at` 이 이긴다** · 그때 `attribute_conflicts` 가 «수»로 실린다(목록이 아니다)
+             ⚠️ «닿지 않은» 속성은 `null` 이 아니라 **키가 없다** — 「값이 없다」와 「안 걸어졌다」가
+             같은 그림이면 부르는 쪽이 둘을 못 가른다
 edges        {source, target, predicate, qualifiers}
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
