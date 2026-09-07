@@ -14126,3 +14126,108 @@ server/tests/test_recorrection_rate.py    같은 단언 한 줄 (아직 «안 �
 ```
 ⚠️ 판별을 «반대로» 하지 않았습니다 — 둘 다 코드가 옳고 시험이 낡았습니다. 코드를 고치면
    ①은 정당한 칸을 도로 빼는 것이고 ②는 읽는 이 없는 N+1 을 되살리는 것입니다.
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-27 «닫힘» (`50ca8670`) — 둘 다 «낡은 단언»이었습니다**
+```
+① counts_capped   주인 `9060a39d` — 정당한 추가. 라운드 가드가 «자기 라운드보다 오래» 살았습니다
+                  등식은 «유지»했습니다(실수로 새는 칸은 여전히 잡힙니다) + 누가/왜를 옆에
+② total_tables    주인 `471f66f7` — 측정 후 «의도된» 제거(읽는 쪽 0, 벽의 67%, 소유자가 셋을 한 단위로)
+                  단언이 재던 것은 그 수가 아니라 「나머지가 그려진다」라 «사는 통계»로 옮겼습니다
+                  🔵 한 수리로 «둘» — `test_recorrection_rate:271` 이 같은 줄이었고 아직 안 빨갰습니다
+97 passed. 서버 코드 «0줄» — 코드를 고쳤으면 ①은 정당한 칸을 도로 빼고 ②는 N+1 을 되살렸을 것입니다
+```
+
+---
+
+# 🛑 [구현자 -> 총괄] **S-9b — 주신 멈춤은 «안» 걸렸고, «다른» 멈춤이 걸렸습니다 (구현자 5)**
+
+## ① 주신 멈춤 조건: «안 걸립니다»
+```
+`canonical_basis` 의 kind 전수 = «둘» (BASIS_CONFIRMATION · BASIS_ROLE_ORDER). 셋째 «없음»
+반환 다섯 자리 전부 그 둘 중 하나입니다 (:287 · :290 · :293→:300/:306 · :308)
+```
+
+## 🔴 ② 그런데 «한 칸»이 안 됩니다 — M1 은 «한 코어», M2 는 «N 코어»입니다
+```
+M1  `get_core_summary(db, lot, slot, …)`   -> 기준 프레임 «하나» -> `frame_basis` 한 칸 ✅
+M2  `_summarize_inline` 은 «테이프» 단위입니다. 그 안에서
+    `for (ol, os_) in involved_cores:` 로 «코어마다» `_canonical_origin_meta` 를 부릅니다
+    그 자리 주석: 「테이프당 «수백 코어»」 (코어별 인덱스를 1회 구축하는 이유로 적혀 있습니다)
+=> 근거가 «코어마다 하나»입니다. 요청 하나에 `frame_basis` 가 N 개입니다
+```
+🔴 **그래서 「M1 과 같은 철자로 한 칸」은 «자리»가 안 맞습니다.** 철자는 같아야 하지만 «칸의 단위»가 다릅니다.
+
+## ③ 갈래 — 판정 청합니다 (구현자 5)
+```
+Ⓐ `by_core` «옆에» 코어별      M2 는 이미 `by_core` 블록을 갖고 있습니다. 철자 `frame_basis` «그대로»,
+   (제 권고)                  자리만 «코어별». M1 과 낱말이 같고 단위만 그 응답의 단위입니다
+Ⓑ 요청 단위 «하나»로 접기       N 개가 «같은 kind 일 때만» 참입니다. 갈리는 날 조용히 거짓이 되고,
+                             그게 이 줄이 없애려는 부류입니다. 반대합니다
+Ⓒ 코어가 하나일 때만 싣기       그러면 그 칸의 «없음»이 「옛 서버」와 「코어 여럿」 둘을 뜻합니다.
+                             판정 48 이 막은 그 자리입니다. 반대합니다
+```
+⚠️ 제가 «안 한» 것: 자리를 «제 재량으로» 고르지 않았습니다 — ⛔ 「새 이름 금지」와 「한 칸」이
+   함께 걸려 있고, 둘 중 무엇을 굽힐지는 판정입니다. 편집 «0줄», 트리 깨끗합니다.
+🔵 그리고 Ⓐ 면 크기가 작습니다 — `_canonical_origin_meta` 가 근거를 «버리는» 대신 자기 캐시에
+   같이 두면 되고(`map_alignment._CELL_COUNT_CK` 와 같은 모양), 재유도가 «0» 입니다.
+
+---
+```
+판정 대기   구현자 4 (C-1 · 어디에 싣나) · 구현자 5 (S-9b · 코어별인가 요청별인가)
+🔁 이월     S-15 ④ Ⓑ (편집 0 · 설계 유효)
+감시        둘 다 살아 있음 (`ba8i0vtpa` · `b2w42xlix`)
+이 라운드가 «뺀» 것   S-27: 파일 0 · 줄 0 · 축 0 (시험 세 줄 정정) · S-9b: 안 지었습니다
+④ 를 움직였나   S-27 은 아니오. S-9b 는 Ⓐ 면 «예» — 근거를 두 번 유도하지 않게 됩니다
+```
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **S-27 의 «크기»가 둘이 아닙니다 — 전수 실행에서 «26 + 2» (구현자 6)**
+
+S-27 을 닫은 뒤 「다른 주인 없는 빨강이 남았나」를 확인하려고 «전수»를 한 번 돌렸습니다.
+
+```
+server/tests 전수   26 failed · 4758 passed · 178 skipped   (15분 21초)
+contracts 전수      2 failed · 206 passed                   (7초)
+```
+⚠️ 캡처된 요약에 이름이 «일곱»만 남았습니다(나머지 19 는 출력이 잘렸습니다). 남은 일곱:
+```
+test_system_schema_drift::test_no_undeclared_system_table_column
+test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+test_undeclared_schema_report::TestModelledColumns::test_bookkeeping_columns_are_expected
+test_valid_die_ref::test_ingestion_auto_registration_never_clobbers_a_declared_ref
+test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload…
+test_void_base_join_fixture::test_base_columns_are_declared
+test_void_base_join_fixture::test_base_columns_are_not_key_material
+contracts/config_resolve_report::test_the_vocabulary_is_borrowed_from_the_runtime_not_invented
+contracts/map2_seam::test_scoring_rebuilds_a_full_meta_per_candidate
+```
+🔵 **제 수리는 버텼습니다** — `test_effort_metric`·`test_recorrection_rate`·`test_plan_frame_basis`
+   가 전수에서도 «안 보입니다».
+
+## 🔴 그리고 이것이 그 줄이 겨냥한 «그 병»입니다 — 다만 26 배입니다
+```
+레인은 «파일 단위»로 무회귀를 잽니다 (「고친 것의 테스트만 돌린다」 — 옳은 규율입니다)
+그런데 전수는 «다른 모집단»입니다. 그래서 모두의 「무회귀 통과」가 이 26 을 «한 번도» 못 봅니다
+=> 총괄 문장 그대로입니다: 「주인 없는 빨강은 모든 레인의 「무회귀 통과」를 «거짓»으로 만듭니다」
+   크기만 «1» 이 아니라 «28» 입니다
+```
+🔴 **그리고 «두 부류»가 섞여 있습니다** — 이것을 가르는 것이 다음 걸음입니다:
+```
+ⓐ 혼자 돌려도 빨강        진짜 결함/낡은 단언. 제가 하나는 이미 확인했습니다
+                        (`test_valid_die_ref::…never_clobbers…` 는 HEAD 에서 «단독»도 빨강)
+ⓑ 혼자면 초록, 전수면 빨강  «순서·상태 의존». 이건 시험의 결함이고, 그 초록은 «재현되지 않습니다»
+=> 처분이 «정반대»입니다. 가르지 않고 손대면 ⓑ 를 코드 결함으로 고치게 됩니다
+```
+
+## ⏭ 청합니다 (구현자 6)
+```
+줄의 «크기»를 다시 세십시오 — S-27 은 「빨강 하나」가 아니라 «28 + 분류»입니다. 별도 줄이 맞다고 봅니다
+첫 걸음 권고   ⓐ/ⓑ 를 «가르는» 실행 하나 (파일별 단독 실행 × 전수 결과 대조). 저는 «안 돌렸습니다» —
+              전수 한 번이 15분이고 공유 DB 라, 두 번째 전수는 다른 레인의 대기 시간이 됩니다
+⛔ 제 재량으로 26 을 손대지 않았습니다. 그건 「고친 것의 테스트만」의 반대편이고 라운드가 아닙니다
+```
+🔵 그리고 «작은 사실» 하나: `server/tests` 와 `contracts` 를 «같이» 수집하면 계약 셋이
+   수집 오류를 냅니다(따로 돌리면 «안 납니다»). 이름 충돌로 보이고, 전수 자동화가 생기면 그 자리가 걸립니다.
