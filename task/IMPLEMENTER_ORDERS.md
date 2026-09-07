@@ -35504,3 +35504,62 @@ S-28        ①-b 뒤 «고아» 확정 → 소유자 판정(그대로)
 ```
 🔒 ①-a-2 → ①-a → ①-b
 > 📌 **[19:5x] 이 채널의 미답 질문: «없음».** (구현자 21→108)
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **판정 109 — 소유자 「수리해」(20:5x). 새 줄 «셋»이 큐 «맨 앞»입니다: S-43 → S-41 → S-42. ①-b 는 소유자 판정(S-28 과 한 자물쇠)에 그대로 걸어 둡니다 — 당신의 관문 ② 판정(`c22b5e83`)이 맞고, 그 「한 줄」은 제가 ㉣ 에 «합쳐» 올립니다** (실측 20:5x)
+```
+받음   ①-b 를 «짓기 전»에 멈춘 것 · 「①-b 와 S-28 은 한 결정」 · 「이미 깨져 있으니 지워도 된다」를 자기 논거로 «안 쓴» 것
+순서   CODE_MAP §2(`database/crud.py` 절 — 비즈니스 키·프리페치·D3) 와 §5-H-bis(`test-run` 절)부터 «열고», 그다음 grep 검증
+```
+
+## S-43 (등급 1) — plain `business_key` 표는 «다시 밀면» 자기 행을 못 찾아 `uq_bk_` 에서 죽습니다 (소유자 20:4x 「맵퍼 새로 만들고 리플레이 돌리는데 중복키 계속」)
+```
+사실(코드)  `_get_or_create_row` 는 `row_id` · 항목의 `business_key_val` «로만» 찾습니다
+           `composite_key_source` 표: `assemble_composite_business_key` 가 조회 «전»에 `business_key_val` 을 채움 → 재푸시가 맞음
+           `business_key` «하나» 표: 아무도 안 채움 → INSERT → `_update_row_business_key` 가 «같은» 키를 찍음 → `uq_bk_<표>` 23505
+           회복(`apply_batch_updates`)은 `business_key_val IN (…)` 으로 다시 읽는데 그 목록이 «비어» 같은 충돌 ×2 → 「[BK Conflict Unresolved] … genuine duplicate identity」 배치 거절
+           `unfilled_key_columns` 의 docstring 이 이 빈틈을 「pre-existing defect」로 «스스로» 적어 둠(crud.py:2413 근처)
+           출하 샘플 맵퍼 9 중 8 이 항목에 `business_key_val` 을 «직접» 실어 비켜 감 — 새 맵퍼가 안 실으면 그대로 걸림. 리플레이 = «이미 있는 행 재푸시»라 배치마다
+층         crud 의 «조립 한 자리»(`assemble_composite_business_key` 의 형제, 같은 호출 지점): composite 가 «없고» plain `business_key` 가 선언돼 있고 항목에 `row_id`·`business_key_val` 이 «없으면»
+           `business_key_val = clean_str_value(updates[key_col])` — «프레임워크 칸만». `updates[key_col]` 은 «안 건드림»(scope-diff 순서 제약은 updates «쓰기»에 걸린 것이라 여기 무관)
+           `chain_replay._apply_replay_batch` · 워커 `write_batches` · 키 가드 `unfilled_key_columns` 는 «그대로»(같은 깔때기)
+게이트     ㉠ plain 표 픽스처: 같은 행 «두 번» 밀기 → 행 «1» · 둘째는 rows_updated (유일 인덱스 «없는» 시험 DB 에서도 갈림 — 오늘은 행 «둘»)
+           ㉡ float 키 `7.0` 픽스처 → 저장 `'7'` 과 «맞음»(`clean_str_value` 철자 하나) ㉢ composite 표 응답 바이트 동일 ㉣ `unfilled_key_columns` 무변
+           ㉤ plain 표 규칙 리플레이 «두 번» → 둘째 rows_created 0 · 로그에 「BK Conflict」 «0» ㉥ collect 0
+멈춤       `row_id` 도 `business_key_val` 도 «있는» 항목이 plain 키 컬럼과 «다른» 값을 실으면 — 어느 것이 정체성인가는 판정 자리. 세고 멈춤
+```
+
+## S-41 (등급 1) — 준비기가 «한 행»의 빈 identity/시간 값에 «페이지 전체»를 거절합니다 (소유자 20:2x 「entity identity value is missing after preparation」 · 09-04 판정 ② 의 «미룬 절반»)
+```
+사실(코드)  `source_preparation.py` :561(driver identity/order/cursor/time) · :740(entity identity value) · :596/:814/:845(join key 등) · :785/:866~875(occurred_at 파싱)
+           — 전부 경로에 «행 위치»(`rows[N].<col>`)를 적으면서 «페이지»를 raise 합니다
+           문지기는 같은 사실을 «분자 단위» 사유로 «이미» 갖고 있습니다: `no_identity` · `missing_occurred_at`(gate.py:178~) — 준비기가 앞에서 죽여 그 길이 «안 열림». 한 사실에 두 경로, 행동은 정반대(깔끔 ④)
+           09-04 판정 ②(「부분 실패는 전체 실패가 아니다」)에서 시험 실행 «표시»만 착지했고 «실행 절반»은 「재서 올려라」로 미뤄진 채 큐에 «안 들어갔습니다» — 제 누락
+규칙       «값»이 비었다(`rows[N].<col>`) → 그 «행의 분자»만 이름 대어 거절(`no_identity` / `missing_occurred_at` — 기존 이름 «그대로») · 세고 · 표본 문장은 「어느 행 어느 컬럼」(S-39 의 칸이 그것을 보여 줍니다) · 나머지 분자는 «들어감» · 커서는 오늘과 같이 페이지 끝
+           «컬럼»이 없다(`columns.<col>`) · 선언 문제 → 오늘처럼 «페이지» 거절 (선언 결함은 행 결함이 아닙니다)
+           시험 실행(preview)도 «같은 갈래»로 «세되» 프로세스 카운터에는 «기록하지 않음»(미리보기) → 응답에 `refused: {count, reasons{이름: n}, samples}` 를 «값으로»(문장 짓기 ⛔). `status` 는 rows_read>0 ∧ molecules>0 이면 passed(거절이 있어도 — 거절은 이제 «정보»)
+사이트 표  짓기 «전»에 준비기의 raise 사이트를 «전수» 표로(파일:줄 · 경로 모양 · 행/선언 갈래 · 어느 사유 이름). 🔴 사유 이름이 열둘 «밖»이면 멈춤 — 어휘는 닫혀 있고 `ledger_refusal_reasons` 표까지 걸립니다
+게이트     ㉠ 200행 중 1행 identity 빈 픽스처: 분자 199 착지 · 거절 1 `no_identity` · 표본에 `rows[N].<col>` · 커서 페이지 끝
+           ㉡ 같은 픽스처, 시간 빈 값 → `missing_occurred_at` ㉢ 시험 실행 그 픽스처: status passed · refused.count 1 · 이름 · 카운터 «무변»(`refusal_report` 전/후 바이트 동일)
+           ㉣ 컬럼 자체가 없는 픽스처: 오늘처럼 페이지 거절 «그대로» ㉤ 전부 빈 페이지: 예외 아님 — 행 200 · 분자 0 · 거절 200
+           ㉥ 「한 행이 페이지를 거절한다」를 못 박은 시험은 «뒤집어» 살림(S-40 의 교훈 — docstring 부터 찾으십시오) ㉦ collect 0
+멈춤       분자 경계가 «행 하나»가 아닌 소스(group_by)에서 빈 값 행이 «같은 분자의 다른 행»과 섞이면 — 분자 전체 거절인지 행만인지는 판정 자리. 세고 멈춤
+클라 절반  C-39(시험 실행 머리에 「거절 N · 사유 k」, S-39 의 낱말 «그대로») — 서버 착지 «뒤» 클라 채널로. 당신은 값만
+```
+
+## S-42 (등급 1, 작음) — 「N행 중 M행 · <컬럼>」이 거절과 «무관한 시간 컬럼»을 셉니다
+```
+사실  `config_explorer_service.py:636~650` — `column = driver.occurred_at.column` «무조건» → identity 거절 아래 「200행 중 0행 · event_time」 (소유자가 「event time 좋은 행도」로 읽은 «그 줄»)
+층    거절 경로 `…rows[N].<col>` 의 «그 컬럼»을 셉니다. 경로가 컬럼을 «안 대면» 그 줄 «없음». `count_rows_missing` 은 이미 아무 컬럼이나 받습니다
+게이트 ㉠ identity 거절 픽스처: column = 그 identity 컬럼 · M = 그 컬럼의 빈 수 (변이: 시간 컬럼을 세면 빨강) ㉡ 시간 거절: 오늘과 바이트 동일 ㉢ 컬럼 없는 경로(예: `verified_join_reader_required`): rows_read/rows_missing/column «없음» ㉣ collect 0
+S-41 «뒤» 같은 파일이니 그 라운드의 «둘째 커밋»으로
+```
+
+## 큐 (20:5x)
+```
+0  S-43 (plain 키 조회)  →  1  S-41 (행 단위 거절 + 시험 실행 값)  →  2  S-42 (센 컬럼)  →  [①-b: 소유자 ㉣ 뒤]  →  S-32 시리즈  →  A-6-b · A-6-c · C-36 · C-37 · C-38
+```
+착지마다 «멈추지 말고» 다음으로. 재기동·검증은 제가 합니다.
+> 📌 **[20:5x] 이 채널의 미답 질문: «없음».** (구현자 c22b5e83 → ㉣ 에 합쳐 올림)
