@@ -35311,3 +35311,21 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 ```
 S-34 를 먼저 집은 것 — 맞습니다(파일이 안 겹침). S-34 뒤에 이것.
 > 📌 **[18:0x] 이 채널의 미답 질문: «없음».** (구현자 13→98)
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-39 (소유자 물음 18:0x 「원장 선언에서 행이 안 들어가는데 뭐가 문제인지 모르겠다」) — 문지기는 «왜»를 «이름으로» 아는데(닫힌 사유 12 · (소스, 사유)별 수 · 표본 20) 그것을 «화면에 내는 라우트가 없습니다». S-37 «다음»** (실측 18:1x)
+```
+사실(제가 잼)  server/ledger/gate.py — REFUSAL_REASONS 12(undeclared_source · undeclared_vocabulary · no_time_declaration · missing_occurred_at · no_identity · not_true_alone · atomicity · undeclared_derivation · no_raw_ref · payload_not_preservable · ambiguous_pair · undeclared_subject_type) · `_record` 가 (source, reason) 수 + 표본 ≤20 을 «프로세스 안»에 들고 `[LedgerGate] … REFUSED … reason=… detail=…` 로 로그. 백필 run result 에도 감
+             main.py · ledger_api/* 에 그 수·표본을 «읽는 라우트 0**(grep). 온톨로지 화면은 「안 들어간 수」만 볼 수 있고 «왜»는 못 봅니다 → 소유자가 event_time 을 의심함(이 박스 17:35 실측: 실제 사유는 `undeclared_subject_type`(mapper 가 낸 Equipment 가 소스의 subject_types [Lot, Wafer] 밖) · `undeclared_vocabulary` · `no_raw_ref` ×20 …). «시간 사유»는 12 중 둘뿐
+             🔵 상세 문장이 «이미 행동을 말합니다»: 「declare it there and this atom lands」 — 문지기가 «두 줄»을 이미 씁니다. 나르기만 없습니다
+서버 절반     읽기 라우트 «하나»(온톨로지 라우터 옆): 소스별 `{reason: {count, samples[≤20: {detail, addresses}]}}` — 문지기의 수·표본 «그대로»(새 저장 «없음», 프로세스 카운터를 냄 → 「이 프로세스가 뜬 뒤」를 응답에 «같이»). 이벤트 이름은 event_constants 에. 두 저자 금지: 사유 낱말은 gate 의 상수 «그것»
+             ⚠️ 프로세스 카운터라 «재기동이면 0» — 그 사실을 응답이 «말합니다»(`since`). 영속 기록면은 S-30 의 이웃이라 «여기 아님»
+게이트        ㉠ 거절 하나 → 라우트가 (소스·사유·수·표본 detail)을 «그대로» 냄(변이: 표본 잘림 → 빨강) ㉡ 사유 집합 = gate.REFUSAL_REASONS(닫힘 단언 재사용) ㉢ `since` 있음 ㉣ `--collect-only` 0
+```
+🔵 별개: `POST /admin/ledger/dry-run`(소스 «시험 실행»)은 08-18 부터 «항상 거절»(v1 번역기 은퇴 · `DryRunUnavailable` → `declaration_rejected`)이고 client2 에서 «아무도 안 부릅니다**(grep 0). 죽은 길이지만 부르는 화면이 없어 등급 6 — 은퇴 후보로 큐 끝(C-37)
+## 큐 (18:1x)
+```
+1  S-34(진행) → 2  S-37(판정 98) → 3  🆕 S-39 서버 → 4  S-15 ① → 5  S-32 시리즈 → A-6-b · C-36 · C-37
+```
+> 📌 **[18:1x] 이 채널의 미답 질문: «없음».**
