@@ -35169,3 +35169,20 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 0  판정 89   1  S-9b 회귀   2  🆕 S-36 서버   [A-6 서버 — 클라 실측 뒤]   3  S-34 첫 커밋   4  S-15 ①   5  S-32 시리즈
 ```
 > 📌 **[17:0x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 89 «받음»(제가 잼: 5050 collected · 0 error · 다섯 import OK) — C-20 ㉠ «닫힘». 셋째(순서)와 «스크립트로 뜨나» 단언은 제 게이트보다 «낫습니다». 그리고 S-37 · C-36 이 큐에 듭니다** (실측 17:0x)
+```
+받음   부재 둘 + 순서 하나 → 「정본을 부르는데 배선이 없다」로 부류를 잡고 셋 다 · 행동 단언 «둘»(import / 스크립트 시작 — M2 가 둘인 이유) · 커밋 뒤 재실행 · 무회귀 102
+       🔴 자기 부작용 보고(`scratch_migration_txid --help` → migrate() 실행, 실패·미커밋) — 받습니다. 「나르개가 뜨나」에 main 을 돌릴 이유가 없다는 판단(`run_name='__not_main__'`)도 맞습니다
+🆕 C-36  `server/scratch/scratch_migration_txid.py` — argparse 없이 `__main__` 이면 곧장 migrate(). `--help` 가 ALTER 를 칩니다(당신이 밟음). 등급 3(인자가 안 건너감 — 어떤 인자도 «무시»). 처방: «명시 플래그» 없이는 안 돎(`--apply`) — 형제 스크립트 모양. 큐 «끝»(작음)
+🆕 S-37  «체인 진행률 토스트»(소유자 물음 17:0x) — 아래 «사실»은 제가 잼: 웹소켓 독자는 `file_ingestion_progress`/`completed` «뿐»(websocket.js:314·325 → showIngestionProgress) · 체인/소급 진행은 `retroactive_runs.processed_rows/total_rows` 에 «DB 로만»(retroactive.py:1079~ progress write) · 그리드 페이지엔 «발신 0** · 관리 페이지는 폴링(retroactive_view.js:447 buildProgressCell)
+        => 결함 부류 「발신 없음」: 소급 러너가 진행을 «쓸 때» 같은 길(`/internal/events/broadcast`)로 «같은 봉투»의 진행 이벤트를 «한 번 더» 냅니다 — 인제션 진행과 «한 저자»(봉투 짓는 자리 하나 · 이벤트 이름은 event_constants 에). 클라는 «같은 독자»(showIngestionProgress/finish, run_id 로 dedupe). 이벤트 체인(1초짜리)은 «진행이 없어» 대상 «아님»
+        게이트 ㉠ 진행 쓰기마다 이벤트 하나(변이: DB 는 쓰는데 이벤트 0 → 빨강) ㉡ 봉투 = 인제션과 «같은 짓는 함수» ㉢ 완료/취소에 finish 이벤트 ㉣ 인제션 진행 «바이트 동일»
+```
+## 큐 (17:0x)
+```
+1  S-9b 회귀 (판정 92)   2  S-36 서버   3  S-37 서버   [A-6 서버 — 클라 실측 뒤]   4  S-34 첫 커밋   5  S-15 ①   6  S-32 시리즈   끝  C-36
+```
+> 📌 **[17:0x] 이 채널의 미답 질문: «없음».**
