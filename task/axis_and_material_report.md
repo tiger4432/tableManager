@@ -1,3 +1,62 @@
+# [디자인 -> 총괄] 🔴 **㉠ 첫 파일도 착수 전에 갈렸습니다 — 제 census 가 «추출 기제»를 덜 셌습니다. 다섯째가 있고, 그게 판정 91 의 Ⓑ 입니다 (코드 0)**
+
+```
+전 수는 적었습니다   virtual_column_render: 단언 66 · 변이 «28/28» · 대조군 2/2 — 건강한 훑기입니다
+그런데              그 파일은 «vm 을 probe 로 갈아 끼우면 되는» 종류가 «아닙니다»
+```
+
+## 🔴 ① 제 census 의 네 열이 놓친 것 — `arrowBodyFrom`
+```
+virtual_column_render_harness   arrowBody «7» · fnFrom 7 · constFrom 3   (slice/block 열은 «0»)
+=> 제 표의 slice=0·block=0 은 «맞았고», 그래서 「기계적 vm」으로 분류했습니다.
+   틀린 것은 «열이 모자랐다»는 것입니다
+무엇을 뽑나   `arrowBodyFrom(clip, 'clipboard.js', 'targetCells.forEach(cell => {', 'cell')`
+             — 다른 함수 «안»의 «익명 화살표 본문»을 떼어 독립 함수로 만듭니다
+             (붙여넣기 1x1 · MxN · 지우기 · 대량채움 · 복사 범위 두 술어 — «일곱»)
+왜 못 옮기나  그것들은 «모듈 수준 이름이 없습니다». `loadWithProbe` 의 expose/state 로
+             «닿을 수가 없습니다» — 판정 91 의 Ⓑ(「재려는 로직을 import 되는 모듈로 «추출»」)이고,
+             그건 «제품 코드를 옮기는» 라운드입니다
+```
+🔵 그리고 같은 파일이 `state.js` 를 vm 에 넣으려고 `source.replace(/^export\s+/gm, '')` 로
+   «export 를 지웁니다». 오늘 아침 제가 export 를 «더해서» 하니스 여섯이 깨진 것의 «거울상»입니다 —
+   같은 결합을 반대 방향에서 보여 줍니다.
+
+## ② 남은 넷을 «다섯째 열»까지 넣어 다시 셌습니다
+```
+파일                              arrow  fnFrom  constFrom  sliceFn  sliceBlock  종류
+virtual_column_render               7      7        3         0         0       🔴 Ⓑ (추출 필요)
+valid_die_authoring                 0      0        0         0         0       ⚠️ 아래
+load_shows_loaded_map               0      0        0         1         0       ✅ 기계적
+map_spec_only_save                  0      0        0         1         0       ✅ 기계적
+valid_die_dirty_guard (C-35 ④)      0      0        0         2         3       🔴 Ⓑ (이미 별 줄)
+```
+⚠️ `valid_die_authoring` 은 다섯 열이 «전부 0» 인데 vm 을 «셋» 돌립니다 —
+   정규식 소스(`reSrc('CANON_INT_RE')`)와 «식 평가»(`vm.runInContext('projectCellsToPhys', ctx)`)로
+   또 «다른 기제»입니다. 여섯째 열이고, 아직 «안 읽었습니다».
+
+## ③ 그래서 «지금 확실히 기계적인 것은 둘»입니다
+```
+✅ load_shows_loaded_map  (slice 1 · 단언 57 · 변이 «없음»)
+✅ map_spec_only_save     (slice 1 · 단언 72 · 변이 «없음»)
+   -> 판정 119 의 「전환하는 단언마다 그것을 혼자 빨갛게 하는 변이 하나」가 «이 둘»에 붙습니다
+🔴 virtual_column_render  -> Ⓑ. `clipboard.js`·`ui.js` 의 인라인 화살표 «일곱»을 모듈로 빼는 라운드.
+                            C-35 ④(dirty_guard)와 «같은 부류»라 그 줄에 붙이는 것이 맞아 보입니다
+⚠️ valid_die_authoring    -> 읽기 먼저(㉣ 과 같은 종류의 일). 기제가 또 다릅니다
+```
+
+## ④ 그리고 제 census 에 대한 정직한 한 줄
+```
+제 표는 「slice · block · vm · probe」 네 열이었고, 그 네 열로는 «추출 기제를 못 셉니다» —
+vm 이 1 이든 4 든 «무엇을 넣어 돌리는지»가 종류를 정합니다. 오늘 그 값으로 두 번 틀렸습니다
+(㉠ 첫 파일, 그리고 그 전에 head_parity 를 「큰 전환」으로 본 것).
+✅ 다음 census 는 «무엇을 뽑나»를 열로 둡니다 — 그게 「얼마나 큰 일인가」를 실제로 정합니다
+```
+
+> **판정 대기: 「virtual_column_render 를 C-35 ④ 옆(Ⓑ 줄)로 옮길지」.**
+> 그동안 ㉡ 의 둘(기계적 · 변이 없음)로 갑니다 — 거기서 판정 119 의 최소 변이를 같이 넣겠습니다.
+
+---
+
 # [디자인 -> 총괄] 🔴 **㉠ 착수 전 실측 — 모집단이 «여섯 → 넷»입니다. 그중 «가장 큰 것»(17,498)이 전환 대상이 아니라 «드리프트 오라클»이었습니다 (코드 0)**
 
 ```
