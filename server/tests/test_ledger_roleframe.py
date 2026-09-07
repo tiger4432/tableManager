@@ -548,8 +548,10 @@ def test_the_source_binds_it_once_and_every_sentence_of_that_source_inherits_it(
 
 
 def test_an_attribute_does_not_change_what_makes_two_rows_the_same_entity():
-    """🔴 이 축의 «판별식». 속성만 다른 두 원자는 «같은 엔티티»다 — id 와 중복 판정은
-    `keys` «만» 읽는다. 이게 깨지면 속성 하나를 더할 때마다 원장이 «새 노드»를 낳는다."""
+    """🔴 이 축의 «판별식». 속성만 다른 두 페이로드는 «같은 엔티티»다 — 엔티티를 그 엔티티로
+    만드는 것은 `keys` 이고, 이게 깨지면 속성 하나를 더할 때마다 걷기가 «새 노드»를 낳는다.
+
+    ⚠️ 「같은 «원자»다」와는 «다른 말**이다 — 아래 시험이 그 둘을 가른다."""
     plain = _subject_of(logical_bundle())
     with_attr = _subject_of(_bundle_with_attribute())
     other_value = _subject_of(_bundle_with_attribute(column="source_id"))
@@ -567,3 +569,35 @@ def test_a_declaration_that_binds_no_attribute_produces_the_payload_it_always_di
 
     assert subject == {"type": "InputEntity@1", "keys": {"input_id": "IN-1"}}
     assert "attributes" not in subject
+
+
+def test_the_two_dedupe_spellings_agree_that_an_attribute_makes_a_new_atom():
+    """㉠ (판정 125) — 「원자가 같은가」를 «두 곳»이 답한다: Python 의 `identity` 와
+    DB 의 정체성 인덱스. 두 철자가 갈리면 한쪽이 «조용히» 다른 답을 낸다.
+
+    🔴 그리고 이 시험이 «제 문장 하나를 정정»한다. 층 ② 커밋이 「id·중복은 keys 만 읽는다」고
+    적었는데, 그건 «주어 쪽»(평면 컬럼 둘)에만 참이고 «목적어»는 페이로드 «전체»가 재료다.
+    속성이 바뀌면 «새 원자»이고, 그것이 판정 125 가 이력을 얻는 방식이다 — 결함이 아니다.
+    """
+    from ledger.envelope import Atom
+    from ledger.schema import DEDUPE_COLUMNS
+
+    def atom(product):
+        return Atom(
+            id="a", subject_type="InputEntity@1", subject_keys={"input_id": "IN-1"},
+            predicate="moves_to@1", object_kind="entity_ref",
+            object_payload={"type": "OutputEntity@1", "keys": {"output_id": "OUT-1"},
+                            "attributes": {"product": product}},
+            occurred_at=OCCURRED_AT, source_translator_ver="v1", source_raw_ref="r1")
+
+    # ① Python 쪽: 속성만 달라도 «다른 원자»다.
+    assert atom("A").identity() != atom("B").identity()
+    assert atom("A").identity() == atom("A").identity()
+
+    # ② DB 쪽이 «같은 재료»를 쓰는가 — 컬럼 이름에서 읽는다(그 표현식이 정본이므로).
+    joined = " ".join(DEDUPE_COLUMNS)
+    assert "object_payload" in joined, (
+        "the database's identity index must read the payload, or the two spellings "
+        "disagree about an attribute and one of them lets a duplicate through")
+    assert len(DEDUPE_COLUMNS) == len(atom("A").identity()), (
+        "the two dedupe spellings must carry the same number of fields")

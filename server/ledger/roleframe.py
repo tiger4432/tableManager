@@ -844,11 +844,21 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
             for key, child in binding.get("keys", {}).items()
         }
         payload = {"type": binding.get("entity_type"), "keys": keys}
-        # 🔴 ATTRIBUTES RIDE BESIDE THE KEYS AND ARE NOT PART OF THE IDENTITY (S-52). Two
-        # atoms differing only in an attribute name the SAME entity: the id and the
-        # duplicate check read `keys` alone. The key is ABSENT rather than empty when the
-        # declaration binds none, so an atom written before this axis existed and one
-        # written after with nothing declared are the same bytes.
+        # 🔴 ATTRIBUTES RIDE BESIDE THE KEYS AND ARE NOT PART OF THE ENTITY'S IDENTITY
+        # (S-52). Two payloads differing only in an attribute name the SAME entity: what
+        # makes an entity that entity is `keys`, and `entity_id` folds `type` + `keys`.
+        #
+        # ⚠️ THAT IS NOT THE SAME AS "THE ATOM IS THE SAME ATOM", and the first draft of
+        # this comment said it was. An atom's dedupe identity carries the WHOLE
+        # `object_payload` - `envelope.Atom.dedupe_key` and `schema.DEDUPE_COLUMNS` agree
+        # on that, seven fields in the same order - so an object whose attribute changed
+        # is a NEW atom. That is the mechanism ruling 125 builds on rather than a defect:
+        # a changed attribute value writes a new registration and the old one stays, which
+        # is what makes "latest wins" a reading of history instead of an overwrite.
+        #
+        # The key is ABSENT rather than empty when the declaration binds none, so an atom
+        # written before this axis existed and one written after with nothing declared are
+        # the same bytes.
         attributes = binding.get("attributes")
         if isinstance(attributes, Mapping) and attributes:
             payload["attributes"] = {
