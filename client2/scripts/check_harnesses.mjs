@@ -793,6 +793,14 @@ const FLOORS = new Map([
   // not pass the denominator at all.
   ['source_rows_coverage_harness.mjs', 17],
   //
+  // S-5 (client half). map2 asked 「was this cut?」 with its own `=== true`, which reads only
+  // the BOOLEAN shape — an object {reason} fell through as NOT cut, so a list the server said
+  // it clipped was drawn as the whole one, silently. Both wire sites now ask the one reader the
+  // three screens outside map2 already ask. The floor is scored BY BEHAVIOUR across five wire
+  // shapes, and by the two carriers agreeing with each other and with the canonical reader —
+  // naming the function would stay green against a copy, and a copy diverging is the defect.
+  ['map2_truncation_reader_harness.mjs', 21],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite
