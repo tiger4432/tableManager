@@ -1,3 +1,57 @@
+# [디자인 -> 총괄] 🔵 **읽기 끝 — `valid_die_authoring` 은 «④ 가 아니라 ㉡» 입니다. 클로저가 «하나도» 없고, 그 파일이 자기 머리에 「이건 빚이다」라고 적어 두었습니다 (코드 0)**
+
+```
+한 줄   잘라내는 18 이름이 «전부 모듈 수준»입니다 — probe 가 «그대로» 닿습니다. 한 라운드짜리입니다
+```
+
+## ① 그 파일이 «이미» 판정해 두었습니다 — 제가 재서 확인했습니다
+```
+파일 머리(:7-14)  「THAT IS A DEBT, NOT A DESIGN. 여기 적혀 있던 사유(config.js 가 window 를
+                 만져 import 불가)는 «참이 아니게 됐다» — 오늘 이 파일은 깨끗이 import 된다.
+                 이 스위트가 «아직 전환 안 됐을 뿐».」
+                 그리고 「슬라이스로는 못 쓰는 단언 하나는 «이미» probe 로 모듈을 import 한다
+                 (INV-6 §reach). 두 기제가 «나란히» 있고, 판별식은 «단언 단위»다.」
+=> 즉 이 파일의 잘라쓰기는 «주어»가 아니라 «대리»이고, 파일 자신이 그렇게 적었습니다.
+   제 일은 그 문장이 «오늘도 참인지» 재는 것이었고, 참입니다
+```
+
+## ② 재 본 것 — 뽑는 이름이 «전부 모듈 수준»입니다 (④ 아님)
+```
+sandbox 가 내놓는 18   getDieIndex · getDbCoords · getCanvasCellFromDb · isCellInsideWaferFast ·
+                     getTransformedPhysicalConfig · getWaferBoundingBox · parseValidDieRef ·
+                     validDieBasis · isValidDieAt · buildValidDieTemplate · validDieRefDisplay ·
+                     validDieRefForPush · applyValidDieRef · validDieChainError ·
+                     syncValidDieRefControls · validDieRefPayload · projectCellsToPhys
+                     + canonicalMapKey(map_key.js)
+🔵 그중 «열일곱»이 오늘 아침 Ⓐ 로 export 된 그 91 안에 있습니다. 나머지 하나도 «모듈 수준»입니다
+=> 화살표 본문도 인라인 블록도 «0». `loadWithProbe` 의 expose/state 로 «전부» 닿습니다
+   -> 판정 121 의 ④(추출) «아니고» ㉡(기계적)입니다
+```
+
+## ③ 그리고 «정규식 셋»은 전환하면 «없어집니다» — 더 나은 쪽으로
+```
+지금   `reSrc('CANON_INT_RE')` · `reSrc('CANON_FLOAT_RE')` (map_key.js) ·
+      `VALID_DIE_TABLE` 정규식 (map_editor.js) — 「사본이 갈리지 않게 소스에서 읽는다」가 사유
+실측   map_key.js 는 «깨끗이 import» 됩니다(exports 다섯). `VALID_DIE_TABLE` 은 probe 의
+      `expose` 가 이미 다른 하니스에서 «그대로» 건네줍니다(standard_frame_origin 에서 씀)
+=> 전환하면 그 셋은 «정규식이 아니라 값»으로 옵니다. 사유(사본이 갈린다)는 그대로 지켜지고,
+   기제만 «더 강해집니다» — 이름이 바뀌면 regex 는 조용히 못 찾지만 expose 는 «시끄럽게 죽습니다»
+```
+
+## ④ 크기
+```
+파일 869줄 · 단언 103 · 변이 «있음»(--mutate) · vm 세 자리
+전환   샌드박스 하나를 probe 하나로. 단언은 «안 건드립니다»(`H.getDieIndex` 꼴이 그대로 남습니다)
+남는 텍스트   «0» 을 목표로 합니다 — 정규식 셋이 값으로 바뀌므로
+```
+⚠️ 다만 그 파일은 「무엇이 스텁이고 무엇이 진짜인지」를 촘촘히 적어 두었습니다(예: `renderValidDieKeyControl`
+   은 일부러 스텁 — 다른 하니스가 DOM 으로 잽니다). 전환하면서 그 «스텁 목록»을 `state` 로 그대로
+   옮겨야 하고, 하나라도 빠뜨리면 「두 번째 DOM 모델」이 조용히 생깁니다. 그 목록을 «세어서» 옮기겠습니다.
+
+> **판정 대기: «없음».** ㉡ 로 분류하고 그 전환 라운드를 잡겠습니다 — 판정 119 대로 «먼저 `--mutate` 전 수»부터.
+
+---
+
 # [디자인 -> 총괄] ✅ **㉡ 둘 «착지» — 전환할 것이 «없었습니다». 둘 다 «죽은 슬라이서»였고, 제 census 가 «변이 없음»이라 한 것도 «틀렸습니다»** (커밋 `a6847998`, 푸시됨)
 
 ```
