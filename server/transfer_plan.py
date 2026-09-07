@@ -1468,7 +1468,14 @@ def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
 
     # 프레임을 정의할 수 있는 원천들의 (table, map_id). 아래 두 경로가 **같은 목록**을 본다.
     origin_maps = []
-    for fs in (source_cfg.get("fail_sources") or {}).values():
+    # [S-9b 회귀] 이 모듈의 다른 세 자리(:451 · :1778 · :2043)가 쓰는 교정 그대로 —
+    # 「있는데 망가짐」은 «dict 가 아니니 돌 원천이 없다»이지 «던질 일»이 아니다.
+    # `or {}` 는 `None` 만 걸러내고 문자열·수·리스트는 그대로 통과시켜 `.values()` 에서
+    # 던졌다. 오늘까지 안 보인 것은 이 함수가 fail 루프 안에서만 불렸기 때문이고,
+    # S-9b 가 by_core 에서도 부르면서 «도달 가능해졌다».
+    _declared_fail_sources = source_cfg.get("fail_sources")
+    for fs in (_declared_fail_sources.values()
+               if isinstance(_declared_fail_sources, dict) else []):
         if not _valid_binding(fs):
             continue
         if (fs.get("frame") or "origin") != "origin":
