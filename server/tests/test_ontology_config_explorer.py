@@ -404,7 +404,8 @@ def test_large_registry_search_and_used_by_payload_are_bounded():
     assert payload["total"] == total
     assert payload["used_by_total"] == total - 1
     assert len(payload["used_by"]) == 200
-    assert payload["references_truncated"] is True
+    assert payload["truncated"]["references"]["cut"] is True
+    assert "references_truncated" not in payload, sorted(payload)
     assert len(payload["nodes"]) <= 213
     assert len(encoded) < 1_500_000
 

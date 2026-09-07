@@ -288,7 +288,7 @@ UNIT_KEYS = [("E1", "P1"), ("E2", "P1"), ("E3", "P1"), ("E4", "P1")]
 def test_the_worklist_cap_keeps_the_head_of_the_list_not_a_sample_of_it(env):
     _seed_units(env, UNIT_KEYS)
     w = ma.build_alignment_worklist(env, {}, RULE, MAPT, unit_cap=2)
-    assert w["totals"]["units_truncated"], "the fixture must exceed the cap"
+    assert w["truncated"]["units"]["cut"], "the fixture must exceed the cap"
     assert [u["key"]["eqp"] for u in w["units"]] == ["E1", "E2"], w["units"]
 
 

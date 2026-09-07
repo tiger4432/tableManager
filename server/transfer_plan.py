@@ -125,6 +125,7 @@ import paths  # single override point (ASSY_DATA_ROOT)
 # block is the site stating "no such table here" — status `not_declared`, its
 # subtraction inactive (named in `inactive_subtractions`), NOT a degradation.
 # A PRESENT-but-broken declaration keeps every pre-existing demotion.
+import event_constants
 from bonding_plan import STATUS_NOT_DECLARED, finite_point, role_is_declared
 
 CONFIG_PATH = paths.config_path("transfer_plan_config.json")
@@ -1079,6 +1080,22 @@ def _bin_axis_refusal(stage_cfg: dict) -> tuple:
                     "bin_map", BIN_AXIS_WHERE)
 
 
+def _axis_cut(blocks, axis) -> bool:
+    """여러 bins 블록 중 그 축이 하나라도 잘렸나."""
+    for b in blocks:
+        note = (b.get("truncated") or {}).get(axis) or {}
+        if note.get("cut"):
+            return True
+    return False
+
+
+def _any_axis_cut(truncated) -> bool:
+    """정본 축 지도에서 «하나라도» 잘렸나. 클라의 `saysTruncated` 와 같은 판단이다."""
+    if not isinstance(truncated, dict):
+        return False
+    return any(isinstance(n, dict) and n.get("cut") for n in truncated.values())
+
+
 def _bins_unavailable(detail: str, scope: str, requested=None,
                       reason: str = None) -> dict:
     """축을 만들 수 없을 때의 블록. **`entries`를 빈 배열로 두지 않는다** —
@@ -1093,7 +1110,11 @@ def _bins_unavailable(detail: str, scope: str, requested=None,
         "axis": "unavailable", "detail": detail, "scope": scope,
         "reason": reason,
         "requested": list(requested) if requested else None,
-        "entries": None, "truncated": False, "cells_truncated": False,
+        "entries": None,
+        # [S-34 ②] 이 블록은 「잘렸다」를 불리언 «둘»로 말했다 — 같은 사실의 두 철자다.
+        # 정본은 축 지도 하나고, 클라의 한 독자가 이제 그 모양을 읽는다(판정 99 ①).
+        "truncated": {"units": event_constants.truncated_note(False, None, "unit list reached its cap"),
+                      "cells": event_constants.truncated_note(False, None, "cell list reached MAX_BIN_CELLS")},
     }
 
 
@@ -1258,7 +1279,8 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
         "axis": "connected", "scope": scope,
         "requested": list(requested) if requested is not None else None,
         "entries": entries,
-        "truncated": uni_trunc, "cells_truncated": cell_trunc,
+        "truncated": {"units": event_constants.truncated_note(uni_trunc, None, "unit list reached its cap"),
+                      "cells": event_constants.truncated_note(cell_trunc, None, "cell list reached MAX_BIN_CELLS")},
         "unbinned_cells": unbinned, "cells_total": cells_total,
         "population_ref": chips_total,
     }
@@ -1341,8 +1363,12 @@ def _merge_bins_over_slots(blocks, scope, requested, refused):
         "basis": "pool_sufficiency",
         "requested": list(requested) if requested is not None else None,
         "entries": entries,
-        "truncated": any(b.get("truncated") for b in blocks),
-        "cells_truncated": any(b.get("cells_truncated") for b in blocks),
+        # 여러 블록을 접을 때도 «축별»로 접는다 — 둘을 하나로 묶으면 「무엇이
+        # 잘렸나」를 잃는다.
+        "truncated": {
+            "units": event_constants.truncated_note(_axis_cut(blocks, "units"), None, "unit list reached its cap"),
+            "cells": event_constants.truncated_note(_axis_cut(blocks, "cells"), None, "cell list reached MAX_BIN_CELLS"),
+        },
         "unbinned_cells": sum(int(b.get("unbinned_cells") or 0) for b in blocks),
         "cells_total": sum(int(b.get("cells_total") or 0) for b in blocks),
         "population_ref": sum(int(b.get("population_ref") or 0) for b in blocks),
@@ -2193,7 +2219,7 @@ def _bin_warnings(bins: dict) -> list:
     ref = bins.get("population_ref")
     # 요청 BIN만 물었으면 부분합이 당연히 작다 — 그건 불일치가 아니다.
     if (bins.get("requested") is None and isinstance(ref, int)
-            and not bins.get("truncated") and not bins.get("cells_truncated")
+            and not _any_axis_cut(bins.get("truncated"))
             and all(e.get("reliable") for e in entries) and binned_total != ref):
         out.append({
             "type": WARN_BIN_POPULATION_MISMATCH,

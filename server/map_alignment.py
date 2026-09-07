@@ -7087,9 +7087,19 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
             "by_state": by_state,
             # 화면이 경계 아래로 가라앉히고 **한 번만 이름 부르는** 수. 클라가 세지 않는다.
             "unscorable": by_state[STATE_UNIT_UNSCORABLE],
-            "units_truncated": units_truncated,
-            "maps_truncated": maps_truncated,
             "unit_cap": unit_cap,
+        },
+        # 🔴 [S-34 ② · 판정 99] 「잘렸다」는 정본 «축 지도» 하나로 말한다. 종전 이 응답은
+        #    `totals` 안에 «불리언 둘»(`units_truncated`·`maps_truncated`)로 말했고, 그 둘은
+        #    같은 사실의 두 철자였다 — 한쪽만 읽는 화면은 다른 쪽 절단을 «온전함»으로 그린다.
+        #    ⚠️ 지시서가 이름 댄 것은 `units` 하나였다. `maps` 는 «바로 옆»에 있었고 독자가
+        #       0 이라(클라·시험 전수 0), 하나만 접으면 두 철자가 «나란히» 남는다.
+        #    자리는 «최상위»다 — 클라의 한 독자가 `body.truncated` 를 읽는다.
+        "truncated": {
+            "units": event_constants.truncated_note(
+                units_truncated, None, "unit list reached unit_cap (%d)" % unit_cap),
+            "maps": event_constants.truncated_note(
+                maps_truncated, None, "per-unit map list reached its cap"),
         },
         # 사유는 **집계로** 낸다. 행마다 문장을 실으면 목록이 색인하는 것보다 무거워지고,
         # 늘어난 것은 정보가 아니라 같은 문장의 N회 반복이다. 행은 코드만 갖는다.
