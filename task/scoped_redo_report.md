@@ -15643,3 +15643,73 @@ GET /admin/ontology-explorer/refusals      읽기뿐. DB 무접촉 · 새 저장
                화면이 자기 목록을 들면 열셋째 사유가 생기는 날 조용히 갈립니다
 ```
 다음: 클라 ① 이 아직 안 왔으면 **S-15 ①**(판정 83 — ①-a 헬퍼를 M2 표면으로).
+
+---
+
+# 🔒🛑 [구현자 -> 총괄] **S-15 ① — «멈춤 조건이 걸립니다». M2 는 이 열 시험의 주어(코어)에 `frame_basis` 를 «아예 안 답합니다». 짓기 전에 셌습니다 (구현자 14)**
+
+## 판정 100 먼저 — 받습니다
+```
+㉣ 를 «넓게» 읽은 것   맞습니다. 「이벤트 바이트 동일」이지 «로그 등급»이 아니었습니다.
+                    등급을 통일해도 ㉣ 은 초록입니다 — 제가 안 해도 될 조심을 했습니다
+C-38 (큐 끝)         와처 규칙(note 있으면 ERROR · 없으면 WARNING)으로 «조립기가» 정하게. 받습니다
+```
+
+## 🔴 멈춤 — 실측 (라우트를 «돌려서», 읽어서가 아니라)
+```
+M2 `/api/transfer-plan/source-summary` · stage=dt · lot=CORE-A · slot=01  (= source_kind "core")
+  keys        ['chips','history','identity','inactive_subtractions','source_kind','sources','stage','warnings']
+  frame_basis  «없음»          by_core  «없음»
+M2 같은 라우트 · stage=bonding (= source_kind "tape")
+  by_core[0].frame_basis  «있음»
+```
+🔴 `frame_basis` 는 `transfer_plan.py` 에서 «두 자리»(:1950 · :2023)에만 실리고 «둘 다 by_core 안»입니다.
+   그리고 **코어 답에는 `by_core` 가 없습니다**(그 파일의 기존 시험이 `"by_core" not in body` 로 못 박고 있습니다).
+   S-15 의 열 시험은 «코어 하나»가 주어입니다(`LOTX`/`01`).
+
+## 열 시험이 «무엇에» 기대나 — 셌습니다
+```
+공용 헬퍼(:74)를 지나는 시험     10   (호출 12회)
+  `frame_basis` 를 읽는 것        «9»   <- M2 코어 답에 그 칸이 «없습니다»
+  `sources` 를 읽는 것             7
+  `chips` 를 읽는 것               2
+  `inactive_subtractions`          1
+  M1 «키 집합»을 단언하는 것        1
+```
+
+## 그래서 「번역으로 될 것」과 「안 될 것」이 갈립니다
+```
+✅ 번역 가능   chips   M1 {total, defect, eds_fail, used, remaining}
+                     M2 {total, fail_breakdown, transferred, remaining, remaining_reliable}
+                     -> fail_breakdown/transferred 에서 만들 수 있습니다(헬퍼 «안»에서)
+⚠️ 선언이 다름  sources M1 {process_history, defect, eds_fail, used_chips, total_chips}
+                     M2 {defect, eds_fail, origin_log, process_history, total_chips, transfer_log}
+                     -> 겹치지만 «같지 않습니다». 역할 이름이 선언에서 오므로 픽스처를 다시 씁니다
+🔴 못 답함     frame_basis  코어 답에 «칸이 없습니다». 번역할 원본이 없습니다
+🔴 뜻이 사라짐  PRE_EXISTING_KEYS  그 가드의 주어는 「`get_core_summary` 가 «층 8 전»에 답하던 키」입니다.
+                     M2 로 옮기면 그 문장이 «가리킬 대상이 없어집니다» — 다시 쓰면 그건 다른 가드입니다
+```
+⚠️ 그리고 픽스처가 통째로 다릅니다: `bdp_env`(bonding_plan 선언·표) vs `tp_env`(transfer_plan 선언·표).
+   ①-a 는 「헬퍼의 URL 을 바꾸는 것」이 아니라 «열 시험의 세계를 다시 세우는 것»입니다.
+
+## 청 — 지시서가 이 자리에 «둘»을 적어 두셨습니다. 어느 쪽인지 판정해 주십시오
+```
+Ⓐ 「M2 가 M1 을 다 덮지 못한다」= 대체의 «결함»
+   -> 코어 답에도 `frame_basis` 를 싣는 것이 «은퇴보다 먼저»입니다.
+      코어 경로는 `_canonical_origin_meta` 를 지나므로 S-9b 가 만든 그 폴백으로 «답할 수 있습니다» —
+      크기는 「코어 답에 칸 하나」이고, 그러면 ①-a 가 지시하신 대로 «헬퍼 이동 + 번역»이 됩니다
+Ⓑ 「그 사실은 «진단»이었다」
+   -> `frame_basis` 는 M1 화면만의 진단이고 M2 는 그것을 낼 이유가 없다 -> 열 중 «아홉»이 은퇴와 같이 죽습니다.
+      그러면 ①-a 는 «없고** ①-b 만 남습니다(라우트+사슬+시험을 한 커밋에)
+```
+🔴 제 추천은 **Ⓐ**입니다 — S-9b 가 「코어마다 기준을 무엇으로 골랐나」를 «이미» 답하게 만들었고
+   (판정 96 의 폴백이 그 자리입니다), 코어 답만 그 칸을 안 싣습니다. 즉 «데이터가 없는 것»이 아니라
+   «나르개가 없는 것»이고, 그건 S-36·S-39 와 «같은 부류»입니다.
+   다만 「은퇴 전에 대상을 넓힌다」라 크기 판단이 총괄 몫입니다.
+
+## 📌 판정 대기 «둘» — ① 위 Ⓐ/Ⓑ ② S-34 ②(클라 판정 99 ① 대기)
+```
+감시           🟢 `bdcsrg69j` · `ba8i0vtpa` 둘 다 삼
+이 라운드      «짓지 않았습니다» — 재고 멈췄습니다(지시서 ①-a 의 멈춤 조건 그대로)
+```
+막히지 않은 다음 줄이 **S-32 시리즈**라 그쪽으로 갑니다(「한 부류 한 라운드」 — 은퇴 부류 여섯부터).
