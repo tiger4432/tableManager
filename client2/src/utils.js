@@ -268,6 +268,58 @@ export function showIngestionProgress(tableName, filename, progress, processedRo
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔁 S-37 — 소급 실행의 진행. «같은 카드, 같은 dedupe, 다른 주어».
+//
+// 🔴 서버는 인제션과 «같은 이벤트 이름»으로 말합니다(`EVENT_INGESTION_PROGRESS`) — 운영자에게
+//    「진행」은 하나이고, 이름이 둘이면 화면의 독자도 둘이 되기 때문입니다. 그러면 이 파일에는
+//    아무것도 필요 없어 보이는데, 그렇지 않습니다: 오늘 그 갈래는 `table_name`·`filename` 을
+//    읽고, 소급 봉투에는 그 둘이 «없습니다». 그대로 두면
+//      ① dedupe 키가 「undefined-」로 «모든 소급 실행에 대해 같아져» 카드가 하나로 겹치고
+//      ② 제목이 「📤 파일 파싱 및 적재 중」 — 파일이 없는 실행에 대해 «거짓»입니다
+//    ①은 조용히 틀리고, ②는 「이 줄이 참인가」에 걸립니다.
+//
+// ⚠️ 그래서 «독자를 하나 더 만들지 않고» 같은 `showProgressCard` 를 부르는 형제 한 쌍입니다.
+//    새 토스트 종류 0 · 새 영역 0 · 카드 기제 «그대로».
+// ⛔ op 를 번역하지 않습니다 — 부제는 서버가 준 `op` 그대로입니다. 여기서 사전을 만들면
+//    그 사전이 서버 어휘와 갈라지는 날 화면이 조용히 틀린 이름을 부릅니다.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 실행 하나에 카드 하나. 🔴 `run_id` 가 그 실행의 «이름»이고, 없으면 dedupe 가 무너집니다. */
+export function retroactiveKey(runId) {
+  return `retroactive-${String(runId ?? '').replace(/[^a-zA-Z0-9]/g, '_')}`;
+}
+
+export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows) {
+  showProgressCard({
+    key: retroactiveKey(runId),
+    title: '♻️ 소급 적용 중',
+    // 서버 값 그대로. 안 왔으면 «빈 줄» — 지어내지 않습니다.
+    subtitle: op == null ? '' : String(op),
+    progress,
+    processed: processedRows,
+    // 🔴 `null` 을 «그대로» 넘깁니다. 0 으로 접으면 「총계를 모른다」가 「할 일이 0」이 되고,
+    //    카드는 「0 중 12」라는 «불가능한 말»을 합니다. 서버가 None 을 싣는 이유가 그것입니다.
+    total: totalRows,
+    statsSuffix: ' 행 처리됨',
+    doneTitle: '✅ 소급 적용 완료',
+    doneStats: '',
+  });
+}
+
+/** 🔴 끝난 «이유»는 `status` 가 말합니다 — 완료도 취소도 이 한 자리로 들어옵니다. */
+export function finishRetroactiveProgress(runId, status) {
+  finishProgressCard({
+    key: retroactiveKey(runId),
+    ok: status === 'FINISHED',
+    okTitle: '✅ 소급 적용 완료',
+    okStats: '',
+    // 취소는 «실패가 아닙니다». 다만 끝났고, 끝난 방식이 다릅니다 — 그 낱말이 서버의 것입니다.
+    failTitle: status === 'CANCELLED' ? '⏹️ 소급 적용 취소됨' : '❌ 소급 적용 중단',
+    failStats: '',
+  });
+}
+
 export function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
   finishProgressCard({
     key: ingestionKey(tableName, filename),
