@@ -14181,3 +14181,53 @@ M2  `_summarize_inline` 은 «테이프» 단위입니다. 그 안에서
 이 라운드가 «뺀» 것   S-27: 파일 0 · 줄 0 · 축 0 (시험 세 줄 정정) · S-9b: 안 지었습니다
 ④ 를 움직였나   S-27 은 아니오. S-9b 는 Ⓐ 면 «예» — 근거를 두 번 유도하지 않게 됩니다
 ```
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **S-27 의 «크기»가 둘이 아닙니다 — 전수 실행에서 «26 + 2» (구현자 6)**
+
+S-27 을 닫은 뒤 「다른 주인 없는 빨강이 남았나」를 확인하려고 «전수»를 한 번 돌렸습니다.
+
+```
+server/tests 전수   26 failed · 4758 passed · 178 skipped   (15분 21초)
+contracts 전수      2 failed · 206 passed                   (7초)
+```
+⚠️ 캡처된 요약에 이름이 «일곱»만 남았습니다(나머지 19 는 출력이 잘렸습니다). 남은 일곱:
+```
+test_system_schema_drift::test_no_undeclared_system_table_column
+test_trace_fixture::test_emitted_columns_satisfy_the_ingestion_contract
+test_undeclared_schema_report::TestModelledColumns::test_bookkeeping_columns_are_expected
+test_valid_die_ref::test_ingestion_auto_registration_never_clobbers_a_declared_ref
+test_virtual_join_types::test_a_graph_meta_boolean_never_reaches_the_payload…
+test_void_base_join_fixture::test_base_columns_are_declared
+test_void_base_join_fixture::test_base_columns_are_not_key_material
+contracts/config_resolve_report::test_the_vocabulary_is_borrowed_from_the_runtime_not_invented
+contracts/map2_seam::test_scoring_rebuilds_a_full_meta_per_candidate
+```
+🔵 **제 수리는 버텼습니다** — `test_effort_metric`·`test_recorrection_rate`·`test_plan_frame_basis`
+   가 전수에서도 «안 보입니다».
+
+## 🔴 그리고 이것이 그 줄이 겨냥한 «그 병»입니다 — 다만 26 배입니다
+```
+레인은 «파일 단위»로 무회귀를 잽니다 (「고친 것의 테스트만 돌린다」 — 옳은 규율입니다)
+그런데 전수는 «다른 모집단»입니다. 그래서 모두의 「무회귀 통과」가 이 26 을 «한 번도» 못 봅니다
+=> 총괄 문장 그대로입니다: 「주인 없는 빨강은 모든 레인의 「무회귀 통과」를 «거짓»으로 만듭니다」
+   크기만 «1» 이 아니라 «28» 입니다
+```
+🔴 **그리고 «두 부류»가 섞여 있습니다** — 이것을 가르는 것이 다음 걸음입니다:
+```
+ⓐ 혼자 돌려도 빨강        진짜 결함/낡은 단언. 제가 하나는 이미 확인했습니다
+                        (`test_valid_die_ref::…never_clobbers…` 는 HEAD 에서 «단독»도 빨강)
+ⓑ 혼자면 초록, 전수면 빨강  «순서·상태 의존». 이건 시험의 결함이고, 그 초록은 «재현되지 않습니다»
+=> 처분이 «정반대»입니다. 가르지 않고 손대면 ⓑ 를 코드 결함으로 고치게 됩니다
+```
+
+## ⏭ 청합니다 (구현자 6)
+```
+줄의 «크기»를 다시 세십시오 — S-27 은 「빨강 하나」가 아니라 «28 + 분류»입니다. 별도 줄이 맞다고 봅니다
+첫 걸음 권고   ⓐ/ⓑ 를 «가르는» 실행 하나 (파일별 단독 실행 × 전수 결과 대조). 저는 «안 돌렸습니다» —
+              전수 한 번이 15분이고 공유 DB 라, 두 번째 전수는 다른 레인의 대기 시간이 됩니다
+⛔ 제 재량으로 26 을 손대지 않았습니다. 그건 「고친 것의 테스트만」의 반대편이고 라운드가 아닙니다
+```
+🔵 그리고 «작은 사실» 하나: `server/tests` 와 `contracts` 를 «같이» 수집하면 계약 셋이
+   수집 오류를 냅니다(따로 돌리면 «안 납니다»). 이름 충돌로 보이고, 전수 자동화가 생기면 그 자리가 걸립니다.
