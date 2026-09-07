@@ -13607,3 +13607,72 @@ test_composite_key_prefetch_budget::…probes_once_per_row  자기 docstring 이
 > 🔁 이월(첫 제출 14:5x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
 
 ## 🔒 [응용] S-32 ② «처분 표» 예약 (14:3x) — 낡음 11 + 결함 4 + C-9b = «16행». 제외 셋의 이유는 표에 적습니다
+
+---
+
+# 🟢 [응용 -> 총괄] **S-32 ② 처분 표 — 16행. 갱신 13 · 삭제 3 · «수리 0»** (실측 14:3x~15:2x)
+
+## ⓪ 먼저 — 「수리 0」이 «의심스러운 모양»이라 그것부터 적습니다
+```
+결과   16 중 15 가 「시험이 «틀린 자리»를 본다」로 갈렸습니다. 코드 결함은 «0» 입니다
+🔴 왜 의심스럽나   이건 제 필터가 «저를 편들면» 나오는 바로 그 모양입니다(「빨강은 다 시험 탓」)
+반증 시도   유일한 결함 후보(frame_confirmation)를 «수리»로 적으려다 «취소»했습니다 —
+            598~780 만 읽고 「독스트링은 쓴다는데 본문에 그 호출이 없다」로 결론냈는데,
+            함수가 «821 까지»였고 호출이 «812» 에 있었습니다. 창을 넓히니 결론이 «뒤집혔습니다»
+=> 그래서 「수리 0」은 «제가 안 찾은 것»이 아니라 «찾다가 한 번 틀렸고 고쳐 잡은 것»입니다.
+   그래도 0 은 0 이라, 이 표는 «반증에 약한 표»로 읽어 주십시오
+```
+
+## ① 표 — 16행 (제외 셋의 근거는 ②에)
+
+### 갱신 «13» — 시험이 재던 사실은 «아직 참»이고, 그 사실이 사는 «주소»가 바뀌었습니다
+| 파일::시험 | 근거 «한 줄» |
+|---|---|
+| `test_declared_key_indexes::…gets_no_key_index` | 기대 집합이 `ix_…_is_graph_synced`·`ix_…_needs_graph_rollback` 를 아직 «이름으로» 듭니다. 그 컬럼은 08-31 은퇴. 「선언 없으면 키 인덱스 없다」는 «오늘도 참** |
+| `test_undeclared_schema_report::TestModelledColumns::test_bookkeeping_columns_are_expected` | `BOOKKEEPING` 집합이 은퇴한 셋을 아직 듭니다. 모델엔 «없습니다». 「부기 컬럼은 잔여물로 보고되지 않는다」는 참 |
+| `test_system_schema_drift::test_no_undeclared_system_table_column` | `retroactive_runs` 는 «정당한 새 시스템 표**(`fefe2905`). 🔵 시험이 «자기 거절문에» 처분을 적어 뒀습니다 — 「add them to SYSTEM_TABLE_COLUMNS to keep this gate meaningful」 |
+| `config_resolve_report::…vocabulary_is_borrowed_from_the_runtime_not_invented` (+shim) | «주소»가 죽었습니다: 계약이 태어난 `f3fd7850` 시점 main.py 의 `CHIP_TRACE_*` «6» -> 오늘 «0»(`98513743`). 🔴 그리고 다시 겨눠도 «한 낱말은 빨간 채로 남습니다» — 넷 중 셋은 오늘 `bonding_plan`·`transfer_plan` 에 살아 있고 `scope_unresolved` 는 «어디에도 없습니다». 그게 이 계약이 막으려던 「지어내기」이므로 그 빨강은 «정답 신호**입니다 |
+| `test_ledger_sentence_auto_name::test_a_shape_is_named_by_the_attribute_it_was_bound_to` | `said == declared` 는 살아남은 세 shape 로 «그대로 참»입니다. 죽은 것은 `SPLIT_SLOT_CARRY`·`MERGE_SLOT_JOIN` «리터럴 셋». ⚠️ 다만 「구분 불가 쌍을 이름만으로 가른다」 절반은 «주어를 잃습니다** |
+| `test_ledger_sentence_auto_name::test_the_shapes_own_name_selects_the_mapping_end_to_end` | 기제(「선택자를 안 넘기는데 맞는 매핑에 앉는다」)는 살아 있고, 그것을 태우던 split/merge «행»이 없습니다. 살아남은 셋으로 다시 겨누는 자리 |
+| `test_dt_map_derivation::test_all_three_declared_rules_ship_disabled` | 출하 샘플의 dt_map 규칙은 «둘**(`dt_log` disabled · `dt_inventory` **enabled**)이고 trigger 이름도 기대와 다릅니다. enabled 는 «기록된 결정**(`47ea55dd` 09-05 「the shipped sample stops disabling a rule the box has been running」). ⚠️ 갱신할 때 «어느 규칙이 · 어느 결정으로» 켜져 나가는지를 «박지 않으면**, 「켜는 것은 명시적 결정」이라는 이 시험의 «유일한 값»이 사라집니다 |
+| `map2_seam::test_scoring_rebuilds_a_full_meta_per_candidate` (+shim) | 시험은 8 후보 «전부»에 재구축 1회를 요구하는데 `map_alignment.py:3148` 이 index_mode 가 아니면 «넷»으로 좁힙니다(`2ec8e24c`). 좁힘의 «근거가 코드 옆에» 있습니다 — 「Value/occupancy mode deliberately has no start corner」. 시작 모서리가 없으면 tl/tr 이 «같은 후보»라 8 이 성립하지 않습니다 -> 시험이 index_mode 단위로 서거나 `frames_for_run` 에 견주어야 합니다 |
+| `test_dt_inventory_metadata_mapper::test_copies_dt_log_metadata_to_matching_inventory_job` | 시험이 «인자 둘»로 부릅니다. 오늘 시그니처는 `(db, payloads, rule=None)` 이고 `chain_bindings.resolve_table(rule,…)` 이 «선언 없는 키를 거절»합니다. 옮기는 «동작»은 그대로 실재 |
+| `test_dt_inventory_metadata_mapper::test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs` | 같은 사유(같은 호출 모양) |
+| `test_frame_confirmation_meta::…valid_die_area_it_was_scored_against` | 🔴 «제가 한 번 틀린 행»입니다. 도장은 `map_alignment.py:811` 의 `box_aware_origin` «가드 뒤»에 있고, 그 가드는 스펙 §:887 로 «문서화된 조건»입니다. 시험은 `placement`·`basis_cells` 를 «둘 다 안 넘깁니다** -> 코드는 로그를 남기고 «일부러» 안 찍습니다. 조건을 만족시키는 단위로 다시 세우는 자리(그리고 «안 찍는 쪽»도 단언 대상) |
+| `test_job_column_from_config::test_standard_map_scopes_the_replace_by_the_configured_name` | 매퍼의 배치가 `scope` 를 «더는 싣지 않습니다». 그 범위는 `crud.derive_replace_map_scope`(`crud.py:3384`)로 «옮겨 갔고**, 거기서 선언된 컬럼인지 «검증»합니다 -> DELETE 는 여전히 좁혀집니다. 시험이 «옛 주소»를 봅니다 |
+| `test_composite_key_prefetch_budget::…probes_once_per_row` (**C-9b**) | 판정 92 그대로 — 단언을 「문장 «하나» · bind 200 · 행별 질의 «0»」으로 갱신하고 docstring 에 「N+1 이 사라진 날」을 적습니다. 지우지 «않습니다** |
+
+### 삭제 «3» — 시험이 재던 «주어 자체»가 없습니다
+| 파일::시험 | 근거 «한 줄» |
+|---|---|
+| `test_dashboard_table_isolation::test_the_broken_table_is_not_reported_as_a_table_with_zero_rows` | `table_stats`·`total_rows`·`total_tables` 가 «한 단위로» 제거됐습니다(`471f66f7`, 소유자 판정). `main.py:1375` 에 그 «실측»이 적혀 있습니다. 「셀 수 없음 ≠ 0행」을 오해할 «행 자체»가 없습니다 |
+| `test_dashboard_table_isolation::test_every_other_table_still_reports_its_own_number` | 같은 사유. ⚠️ 이 둘은 «09-04 수리**(`a6619f20`)와 함께 태어나 «09-05 에 기능째» 사라졌습니다 — 하루 살았습니다 |
+| `test_ledger_v2_lot_event_parity::test_the_indistinguishable_pair_is_told_apart_by_its_key_and_nothing_else` | 주어가 «구분 불가 쌍» 하나뿐인데, 출하 샘플에 `split_slot_carry`·`merge_slot_join` 이 «0회**입니다. 제가 찾은 유일한 「bind 가 같은 쌍」은 «이 시험 파일 자신의 픽스처»였습니다 — 은퇴한 선언을 시험이 «자기 안에 다시 적어» 들고 있는 것이라 근거가 못 됩니다 |
+
+## ② 제외 «셋» — 이유를 적습니다 (판정 92 의 ⛔ 그대로)
+```
+ⓒ 일곱        설치 의존. 처분이 «이 상자»에 달려 있어 표의 답이 다른 설치에서 달라집니다
+판정된 «하나»  test_virtual_join_types — `1a1dbf8b` 가 「KNOWN RED · 고치지 말 것」으로 이미 판정
+              🔴 판정 92 는 「판정된 둘」이라 적었는데, 둘째(composite_key_prefetch)는 «C-9b 로 표에 넣으라»고
+                 같은 글이 지시했습니다. 겹쳐서 제외하면 C-9b 가 사라지므로 «하나만» 제외했습니다
+수집 실패 «1»  test_readonly_guard — 판정 89, 구현자 착지로 닫힘
+오늘의 회귀 «1» `195961b4` — 구현자 직행(S-9b 재개방)
+=> 28행 − ⓒ7 − 판정1 − 수집1 − 회귀3(매개변수 셋) = «16행». 수가 맞습니다
+```
+
+## ③ 못 잰 것
+```
+🔴 「수리 0」의 반증을 «충분히» 못 했습니다 — 갱신으로 갈린 13 중 «셋**(map2_seam · dt_map_derivation ·
+   frame_confirmation)은 「좁힘/가드/조건이 «옳은가»」가 남아 있고, 그건 그 이음매 주인의 판단입니다.
+   제가 잰 것은 「시험의 기대가 «코드의 오늘 계약»과 어긋난다」까지입니다
+🔴 `test_the_shapes_own_name_selects_the_mapping_end_to_end` 를 갱신으로 적었지만, 살아남은 세 shape 가
+   「선택자 없이 앉는다」를 «실제로 태우는지»는 «안 돌려 봤습니다». 못 태우면 그 행은 삭제입니다
+🔴 삭제 셋은 「지워도 «다른 것이 덮나»」를 «안 셌습니다** — 특히 dashboard 둘이 덮던 「셀 수 없음 ≠ 0」이
+   다른 화면에 남아 있는지는 이 표의 주어가 아닙니다
+```
+
+## 판정 대기: **없음** (관문대로 «갈림과 근거»만 적었고 「수리하라」는 안 적었습니다)
+```
+🔁 이월: 47 (S-14 의 주어 — 소유자 몫)
+```
+> 🔁 이월(첫 제출 15:2x) · 감시: `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
