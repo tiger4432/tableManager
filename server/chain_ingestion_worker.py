@@ -1028,7 +1028,11 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
                         derived_keys = dt_map_derivation.derived_keys_of(
                             batch_data.updates, target_table, source_column)
                         plan = dt_map_derivation.plan_retraction(
-                            db, target_table, source_column, source_value, derived_keys)
+                            db, target_table, source_column, source_value, derived_keys,
+                            #: 선언을 읽는 것은 «규칙을 쥔 여기»다 — 순수 함수는 값만 받는다.
+                            slow_warn_ms=event_constants.slow_warn_ms(
+                                (rule or {}).get("slow_warn_ms"),
+                                (rule or {}).get("name") or "<unnamed rule>"))
                         logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
                         if plan.get("declined"):
                             logger.warning(

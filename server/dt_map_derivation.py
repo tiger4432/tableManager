@@ -93,6 +93,7 @@ import logging
 import time
 
 import map_overlay
+import event_constants
 
 logger = logging.getLogger(__name__)
 
@@ -540,7 +541,7 @@ def format_holdback_summary(held: dict, derived: int, elapsed_ms=None) -> str:
 
 def derive_cells(db, rows, source_table: str, target_table: str,
                  source_column: str, value_columns=None, origin_columns=None,
-                 meta_loader=None) -> dict:
+                 meta_loader=None, slow_warn_ms=None) -> dict:
     """`dt_log` rows -> derived `dt_map` cell payloads, plus what was held back.
 
     Returns {"updates": [...], "held": {...}, "derived": n, "identity_columns": [...],
@@ -703,6 +704,14 @@ def derive_cells(db, rows, source_table: str, target_table: str,
     result = {"updates": updates, "held": held.as_dict(), "derived": len(updates),
               "identity_columns": ident_cols, "coordinate_columns": coord_cols,
               "elapsed_ms": elapsed}
+    # 🔴 [S-7] 「성공했는데 «느렸다»」 — 예산이 «선언»됐을 때만 잰다.
+    #    인자가 None 이면 이 칸이 «없다». `None` 이 아니다: `None` 은 「재 봤는데 안 느리다」는
+    #    주장이고, 부재는 「이 경로는 안 잰다」다. 규칙에 키를 «잘못 적으면» 그 경로가
+    #    「안 잰다」로 보이지, 조용히 「안 느리다」로 «거짓말하지» 않는다.
+    # ⚠️ 정의는 «시계»다. 상한에 닿은 사실은 `truncated` 가 이미 말한다.
+    if slow_warn_ms is not None:
+        result["slow_reason"] = (event_constants.slow_sentence(elapsed, slow_warn_ms)
+                                 if elapsed > slow_warn_ms else None)
     logger.info("%s", format_holdback_summary(result["held"], len(updates), elapsed))
     return result
 
@@ -750,7 +759,8 @@ def _human_touched_row_ids(db, table_name: str, row_ids: list) -> set:
 
 def plan_retraction(db, target_table: str, source_column: str, source_value,
                     derived_keys, max_fraction=DEFAULT_MAX_RETRACT_FRACTION,
-                    min_population=DEFAULT_MIN_RETRACT_POPULATION) -> dict:
+                    min_population=DEFAULT_MIN_RETRACT_POPULATION,
+                    slow_warn_ms=None) -> dict:
     """Decide, WITHOUT WRITING ANYTHING, which cells this source no longer owns.
 
     `derived_keys` is the set of `business_key_val` the current derivation produced for
@@ -796,7 +806,17 @@ def plan_retraction(db, target_table: str, source_column: str, source_value,
                                       max_fraction * 100)),
         }
 
+    _elapsed = (time.monotonic() - t0) * 1000.0
+    # 🔴 [S-7] 「성공했는데 «느렸다»」 — 예산이 «선언»됐을 때만 잰다.
+    #    인자가 None 이면 이 칸이 «없다». `None` 이 아니다: `None` 은 「재 봤는데 안 느리다」는
+    #    주장이고, 부재는 「이 경로는 안 잰다」다. 규칙에 키를 «잘못 적으면» 그 경로가
+    #    「안 잰다」로 보이지, 조용히 「안 느리다」로 «거짓말하지» 않는다.
+    # ⚠️ 정의는 «시계»다. 상한에 닿은 사실은 `truncated` 가 이미 말한다.
+    _slow = ({} if slow_warn_ms is None else
+             {"slow_reason": (event_constants.slow_sentence(_elapsed, slow_warn_ms)
+                              if _elapsed > slow_warn_ms else None)})
     return {
+        **_slow,
         "target_table": target_table,
         "source_column": source_column,
         "source_value": source_value,
