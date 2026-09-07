@@ -16596,3 +16596,53 @@ test_replace_map.py:29-34   「3 cells for EQP_ID = EQP_UNIQUE_999」
 멈춤 조건은 지시서의 그것과 «다른» 자리였습니다 — 지시서는 「row_id·bk 가 둘 다 있고 키 컬럼과
 다른 값」을 멈춤으로 봤는데, 실제로 걸린 것은 「키 컬럼이 «행을 안 가르는» 표」입니다
 ```
+
+---
+
+# 🔒🛑 [구현자 -> 총괄] **S-41 «사이트 표» (지시의 첫 걸음) — 다섯 중 «둘»만 열두 어휘에 이름이 있습니다. 지시하신 멈춤 조건 그대로입니다 (구현자 28)**
+
+## 전수 — `source_preparation.py` 의 raise 사이트 «58», 그중 SourcePreparationError «44»
+```
+행 갈래 (경로가 «행 위치»를 이름 댐: `…rows[{}].{}`)   «5»
+선언 갈래                                            «39»
+   source_preparation_incomplete 12 · invalid_source_preparer_output 4 · invalid_join_reader 4 ·
+   invalid_source_batch 3 · output_collision 2 · unverified_join 2 · invalid_join_batch 2 ·
+   unsupported_…_implementation 2 · 그 외 각 1
+```
+🔵 행 갈래 다섯은 지시서가 이름 댄 그 다섯입니다(:561/:596/:740/:814/:845 — 제 계수는 raise 줄이라 +1).
+
+## 🔴 행 갈래 다섯의 «역할»과 사유 이름 — 여기서 멈춥니다
+```
+:562  driver.order_by ∪ cursor_columns ∪ occurred_at.column   -> «섞임». 시간 컬럼만 `missing_occurred_at`,
+                                                                order_by·cursor 는 열둘에 «이름 없음»
+:597  descriptor["join_key"] 의 left 컬럼                      -> 열둘에 «이름 없음»
+:741  entity identity 컬럼                                     -> ✅ `no_identity`
+:815  driver.group_by (분자 «경계»)                             -> 열둘에 «이름 없음»
+                                                                🔴 그리고 지시서가 «스스로» 적은 멈춤 자리입니다
+:846  driver.identity                                          -> ✅ `no_identity`
+```
+=> **열둘에 이름이 있는 것은 «둘»(:741 · :846)이고, 나머지 셋은 «없습니다».**
+   지시: 「🔴 사유 이름이 열둘 «밖»이면 멈춤 — 어휘는 닫혀 있고 `ledger_refusal_reasons` 표까지 걸립니다」
+
+## 청 — 셋을 어떻게 하나
+```
+Ⓐ 둘만 «먼저**    :741 · :846 (identity)만 행 단위 거절로. 나머지 셋은 «오늘처럼» 페이지 거절
+                -> 소유자가 본 문장(「entity identity value is missing after preparation」)이 «바로 그 둘»입니다
+                -> 즉 이 라운드의 «원인»은 덮이고, 어휘도 안 늘고, 멈춤도 안 걸립니다
+Ⓑ 어휘를 «넓힌다**  order/cursor · join_key · group_by 에 이름을 준다
+                -> 닫힌 열둘 + `ledger_refusal_reasons` 표 + S-39 라우트가 «같이» 움직입니다. 큰 줄입니다
+Ⓒ 부류로 접는다    셋을 «하나»의 새 이름(예: `no_required_value`)으로
+                -> 어휘 +1 이지만 운영자가 「무엇을 고치나」를 못 가릅니다(사유가 이름인 이유가 그것)
+```
+🔴 저는 **Ⓐ 로 기웁니다** — 소유자의 문장이 정확히 identity 둘이고, 어휘를 안 건드리며,
+   :815(group_by)는 지시서가 «이미» 멈춤으로 표시한 자리라 여기서 밀고 들어갈 이유가 없습니다.
+   그리고 Ⓐ 뒤에도 나머지 셋은 «오늘과 동일»이라 회귀 반경이 작습니다.
+⚠️ Ⓐ 면 게이트 ㉠㉡ 중 ㉡(시간 빈 값 -> `missing_occurred_at`)이 :562 에 걸립니다 —
+   그 자리는 «섞인» 루프라 시간 컬럼만 갈라내야 합니다. 할 수 있지만 「둘만」이 아니라 «둘 + 반쪽»입니다.
+   그 반쪽까지 포함할지도 판정에 넣어 주십시오.
+
+## 📌 판정 대기 «둘» — ① S-43 술어 좁히기(Ⓐ/Ⓑ/Ⓒ) ② 위 S-41 (Ⓐ/Ⓑ/Ⓒ + :562 반쪽)
+```
+안 지었습니다 — 지시서의 「사이트 표를 «짓기 전»에」를 그대로 따랐고, 그 표가 멈춤을 가리킵니다
+트리   깨끗 · 감시 🟢 `bdcsrg69j` · `ba8i0vtpa`
+```
