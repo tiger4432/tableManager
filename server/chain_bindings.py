@@ -147,6 +147,59 @@ def identity_column(table: str):
                   "single-column 'business_key'" % table)
 
 
+# ---------------------------------------------------------------------------
+# 규칙 선언에서 «표 이름을 나르는» 키 — 그리고 그 표를 «읽는가 쓰는가»
+# ---------------------------------------------------------------------------
+# 🔴 열거가 «여기 하나»다. 검증기·순서 가드·맵퍼 읽기 검사가 «전부» 이것을 읽는다.
+#    세 자리가 각자 목록을 들면, 새 키가 생긴 날 «하나»가 그것을 모르고 그 표가 조용히 빠진다 —
+#    이 줄의 사실이 정확히 그것이다: 모델과 가드가 «셋»만 알아서 선언된 교차 «다섯»이
+#    순서 가드에 «한 번도» 안 보였다.
+# ⚠️ 역할은 «실측»이지 이름이 아니다. `metadata_target_table` 은 이름이 target 인데
+#    `dt_inventory_metadata_mapper` 가 그것을 «source 로» 읽는다. 그래서 read 다.
+#    ⛔ 개명하지 않는다 — 운영자가 적는 키이고, 이름을 바꾸는 것은 조작자 표면이다.
+# ⚠️ 가상 조인의 `left_table`/`right_table` 은 여기 «없다» — 그 둘은 «비교»이지 «열기»가
+#    아니라서 읽기가 아니다(실측: `dt_map_mapper:129·131`).
+TABLE_ROLE_READ = "read"
+TABLE_ROLE_WRITE = "write"
+
+RULE_TABLE_KEYS = {
+    "trigger_table": TABLE_ROLE_READ,
+    "source_table": TABLE_ROLE_READ,
+    "target_table": TABLE_ROLE_WRITE,
+    "map_table": TABLE_ROLE_READ,
+    "inventory_table": TABLE_ROLE_READ,
+    "metadata_target_table": TABLE_ROLE_READ,
+    "derivation_source_table": TABLE_ROLE_READ,
+}
+
+#: 위 키들로 «표현 못 하는» 읽기를 담는 일반 슬롯 — 예: `load_map_meta` 가 여는
+#: `wafer_map_metadata`. ⛔ 목적마다 새 키를 만들지 않는다. 새 목적은 여기 «값»으로 적힌다.
+READS_KEY = "reads"
+
+
+def rule_tables(rule, role):
+    """이 규칙이 그 역할로 «이름 댄» 표들 — 저자는 위 열거 «하나»다.
+
+    🔴 여기서 다시 열거하지 않는다. 순서 가드도 로드 검사도 이 함수를 지나므로,
+       키가 하나 늘면 «한 줄»이 늘고 세 자리가 같이 안다.
+    """
+    rule = rule or {}
+    out = set()
+    for key, key_role in RULE_TABLE_KEYS.items():
+        if key_role != role:
+            continue
+        name = rule.get(key)
+        if isinstance(name, str) and name.strip():
+            out.add(name.strip())
+    if role == TABLE_ROLE_READ:
+        declared = rule.get(READS_KEY)
+        if isinstance(declared, (list, tuple, set)):
+            for name in declared:
+                if isinstance(name, str) and name.strip():
+                    out.add(name.strip())
+    return out
+
+
 def _refuse_unknown(rule_name, key, name, table, purpose, known):
     raise ColumnBindingRefused(
         "chain rule '%s' resolves %s='%s' for %s on table '%s', but '%s' declares no "
