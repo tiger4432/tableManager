@@ -66,6 +66,27 @@ def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
              "atoms": counts[sentence]} for sentence in sorted(counts)]
 
 
+def _refused_column(path: Any) -> str:
+    """The source column a refusal path points at, or `""`.
+
+    A refusal addresses `<frame>.rows[<n>].<column>`; anything else - a column-level path,
+    a reader path, a cursor path - names no row's column and gets no count. Read from the
+    path rather than from the plan, so the number and the sentence are about the same
+    cell.
+    """
+    text = str(path or "")
+    _head, sep, column = text.rpartition("].")
+    column = column.strip()
+    # ONE SEGMENT, or none. `role_frame.rows[0].roles.subject` addresses a ROLE inside a
+    # row, not a column of the source, and counting "how many rows leave roles.subject
+    # empty" would ask the relation for something it does not have. A `.rows[` guard
+    # stood here as well and every path this can receive already carries it, so it was a
+    # branch nothing took.
+    if not sep or not column or "." in column:
+        return ""
+    return column
+
+
 class OntologyExplorerService:
     def __init__(
         self,
@@ -635,9 +656,17 @@ class OntologyExplorerService:
             # ⚠️ Values, never a sentence: how many, out of how many, in which column.
             # ⚠️ And it must never turn one refusal into two. A counter that itself
             # raises would replace the real reason with its own.
-            column = str(getattr(
-                setup.snapshot.source_plans[source_id].driver.occurred_at,
-                "column", "") or "")
+            # 🔴 THE COLUMN THE REFUSAL NAMED, NOT THE TIME COLUMN ALWAYS. This read
+            # `driver.occurred_at.column` unconditionally, so an identity refusal was
+            # reported as "0 of 200 rows, event_time" - a count of a column that had
+            # nothing to do with it, under a refusal about another one. The owner read it
+            # exactly as it was written: 「event time 좋은 행도」.
+            #
+            # The refusal's own path is `...rows[N].<col>`, so the column is IN the
+            # answer; a path that names no column (`verified_join_reader_required`, whose
+            # path is `source_preparation.join_reader`) yields none, and then there is no
+            # count to show rather than a wrong one.
+            column = _refused_column(result["refusal"].get("path"))
             if column:
                 try:
                     missing, read = backfill.count_rows_missing(
