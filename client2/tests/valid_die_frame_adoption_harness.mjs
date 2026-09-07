@@ -60,7 +60,13 @@ const VALID_DIE_TABLE = (() => {
 })();
 
 function sliceFunction(source, name) {
-  const decl = new RegExp(`(^|\\n)\\s*(?:async\\s+)?function\\s+${name}\\s*\\(`);
+  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
+  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
+  //    a module-level declaration — stopped this regex matching and the harness said "nothing
+  //    compared". That is the standing ban's symptom in its declaration-prefix form.
+  //    The fix is this file importing instead; until that round, this keeps it alive.
+  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
+  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
   const m = decl.exec(source);
   if (!m) return null;
   const start = m.index + (m[1] ? m[1].length : 0);

@@ -1201,7 +1201,7 @@ const FLOORS = new Map([
   //    them: 21 harnesses use `lib/probe.mjs` and not one asserted that its append-only
   //    check or its no-op-mutant check still fires. Two of those guards exit(2), so they are
   //    measured in a child process -- 「cannot measure it here」 is how a guard disappears.
-  ['probe_mechanism_harness.mjs', 19],
+  ['probe_mechanism_harness.mjs', 21],
 
   // New 2026-09-07, both introduced by the same night's work on 「the screen draws a lie
   // instead of a fact」. Same rule as the other new entries: the floor is the count reported

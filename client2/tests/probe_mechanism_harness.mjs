@@ -214,6 +214,32 @@ console.log('\n[7] how many test files still carry their own newline normalisati
     priv.length > 0);
 }
 
+// ═══ ⑧ 🔴 «export 관용» 슬라이서의 수 — 천장. 내려가기만 한다 ═════════════
+//
+// 🔴 왜 이 수가 있나. 잘라쓰기 하니스는 대상의 «선언 텍스트»에 정규식을 겁니다. 그래서
+//    모듈 수준 선언 앞에 export 를 붙이는 «뜻이 하나도 안 바뀌는» 변경이 그 정규식을
+//    빗나가게 하고, 하니스는 「nothing compared」로 멈춥니다 — 2026-09-07 실측: 여섯이
+//    그렇게 빨개졌습니다. «옳은 코드가 빨개진다» — 잘라쓰기 상설이 적어 둔 그 증상입니다.
+// 🔵 그 여섯에 관용 한 줄을 넣은 것은 «새 잘라쓰기가 아닙니다» — 곧 import 로 죽을
+//    코드의 «생존 패치»이고, 잘라쓰기 총수는 그대로입니다. 이 천장이 그것을
+//    «영구 건물»이 못 되게 합니다: 그 파일이 import 로 가는 라운드마다 «한 칸» 내려갑니다.
+// ⚠️ 11 이지 6 이 아닙니다 — «다섯»이 오늘 전부터 그 모양이었습니다(HEAD 에서 셌습니다:
+//    history_paging · startup_socket_gate · virtual_column_render · ws_connect_watchdog ·
+//    ws_reconnect_backoff). 6 으로 적었으면 남의 다섯을 «내 것»으로 세고 첫 실행에서
+//    빨개졌을 것입니다.
+console.log('\n[8] how many slicers tolerate an export prefix on the declaration');
+{
+  // 🔴 이 조각은 «문자 코드»로 짓습니다 — 소스에 그대로 적으면 이 파일이 자기를 셉니다.
+  const TOLERANT = String.fromCharCode(40, 63, 58, 101, 120, 112, 111, 114, 116, 92, 92, 115, 43, 41, 63);
+  const here = readdirSync(HERE).filter((f) => f.endsWith('.mjs'));
+  const tolerant = here.filter((f) => readFileSync(join(HERE, f), 'utf8').includes(TOLERANT));
+  // 🔴 THE CEILING ONLY DESCENDS. Raising it needs a ruling, like [7] and the escaping one.
+  ok(`E1 slicers tolerating an export prefix: ${tolerant.length} (ceiling 11)`,
+    tolerant.length <= 11, tolerant.join(' '));
+  ok('E2 ... and the ceiling is not vacuous — the bridge has not been retired yet',
+    tolerant.length > 0);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
