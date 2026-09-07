@@ -1432,6 +1432,10 @@ function confirmModel(session, selectedId, storedId, state, attribution, assumpt
     //    own. Ten distinct refusals exist so the operator can tell them apart, and any bucketing
     //    performed here would be a second judgement about evidence already judged.
     failure: session.confirmError || null,
+    // 🔴 S-35. WHAT THE SERVER RULED ON THE WRITE THAT JUST LANDED. Carried as the text the
+    //    reader composed, so this layer does not compose a second sentence about the same
+    //    record; empty when the response did not carry the comparison.
+    rulingNote: (session.confirmRuling && session.confirmRuling.text) || '',
     // 🔴 `eqp` / `product` ARE GONE FROM THIS RECORD, AND THAT IS THE POINT OF THE CHANGE. Two
     //    named fields ARE the two-value shape: an arity-1 rule left `product` empty and the
     //    sentence rendered a dangling separator, an arity-3 rule lost its third value with

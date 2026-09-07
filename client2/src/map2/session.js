@@ -178,6 +178,10 @@ export function createMapSession(init = {}) {
     //    the write had landed (the label flipping back), so the acknowledgement became a value
     //    instead of a side effect of a state nobody wanted.
     confirmed: init.confirmed === true,
+    // 🔴 S-35. WHAT THE SERVER RULED ON THE WRITE THAT JUST LANDED — `{state, text}` from
+    //    `confirmRulingNote`, or null. It travels with `confirmed` and dies with it (see
+    //    `CONFIRM_CLEARED`), because it is a fact about THAT act on THAT unit.
+    confirmRuling: init.confirmRuling || null,
     // 🔴 THE SERVER'S REFUSAL SENTENCE, VERBATIM, OR NULL. `frame_confirmation` raises ten
     //    distinct Korean refusals and the route returns each as a 400; before 2026-08-06 the
     //    confirm's `.catch` discarded all ten and the operator saw the button become clickable
@@ -223,8 +227,7 @@ export function withDecision(session, decision) {
     // A confirmation was about THIS unit. Carrying the acknowledgement to the next row would
     // tell the operator they had confirmed a unit they have not looked at yet. The refusal
     // travels with it for the same reason: it names why THIS unit was refused.
-    confirmed: false,
-    confirmError: null,
+    ...CONFIRM_CLEARED,
     error: null,
     requestSeq: session.requestSeq + 1,
   });
@@ -250,7 +253,7 @@ export function withSelectedCandidate(session, candidateId) {
   // confirming must not leave `확정됨` sitting under the new pick. Nor a refusal, which named
   // the frame that was refused.
   return next(session, {
-    selectedCandidateId: candidateId, selections, confirmed: false, confirmError: null });
+    selectedCandidateId: candidateId, selections, ...CONFIRM_CLEARED });
 }
 
 /**
@@ -431,8 +434,7 @@ export function withQuestion(session, patch) {
     payload: null,
     // The confirmation named a column pair, a table and a floor. Change any of them and the
     // acknowledgement -- or the refusal -- is about a question that is no longer on screen.
-    confirmed: false,
-    confirmError: null,
+    ...CONFIRM_CLEARED,
     error: null,
     phase: session.decision ? PHASE.COMPUTING : PHASE.IDLE,
     requestSeq: session.requestSeq + 1,
@@ -484,11 +486,25 @@ export function withWorklistError(session, error, seq) {
 }
 
 /** One confirm landed. The only counter on this screen that a write is allowed to move. */
-export function withConfirmed(session) {
+/**
+ * 🔴 S-35. ONE SPELLING OF 「this unit's confirmation is no longer the truth on screen」.
+ *    THREE fields describe one act — it landed, it was refused, what the server ruled — and
+ *    four call sites used to clear them by hand. Adding the third by hand would have been a
+ *    fourth chance for one of those sites to keep a stale one, and a stale ruling line under
+ *    a different unit is the screen answering about a unit nobody is looking at.
+ */
+const CONFIRM_CLEARED = Object.freeze({
+  confirmed: false, confirmError: null, confirmRuling: null,
+});
+
+export function withConfirmed(session, ruling) {
   // Clearing the refusal here is not tidiness: a stale refusal beside a landed confirmation is
   // the screen contradicting itself about the same act.
   return next(session, {
-    confirmed: true, confirmError: null, confirmedCount: session.confirmedCount + 1 });
+    confirmed: true, confirmError: null, confirmedCount: session.confirmedCount + 1,
+    // 🔴 THE SERVER'S RULING, AS THE SERVER WROTE IT. Absent means the response did not carry
+    //    the comparison, and then this stays null and nothing is drawn.
+    confirmRuling: ruling || null });
 }
 
 /**
@@ -501,7 +517,7 @@ export function withConfirmed(session) {
  */
 export function withConfirmFailed(session, message) {
   const text = message == null ? '' : String(message).trim();
-  return next(session, { confirmed: false, confirmError: text === '' ? null : text });
+  return next(session, { ...CONFIRM_CLEARED, confirmError: text === '' ? null : text });
 }
 
 /**

@@ -827,6 +827,12 @@ const FLOORS = new Map([
   // and reading it as an object would drop every entry after the first, silently.
   ['retroactive_note_harness.mjs', 15],
   //
+  // S-35. The confirm response carried the scorer choice and the screen threw the whole
+  // record away. What this floor holds is the COMPARISON: took the machine answer / overruled
+  // it / it had none - three cases that 확정됨 renders identically. It also holds that the
+  // ruling dies with the act it describes, so it cannot answer about a unit nobody opened.
+  ['confirm_ruling_harness.mjs', 16],
+  //
   // S-37. One event name, two subjects. The server says 「진행」 with a single name on purpose,
   // so this branch was ALREADY receiving retroactive runs and reading them as ingestions:
   // the ingestion key built from two undefined fields is the same key for every run, so two runs

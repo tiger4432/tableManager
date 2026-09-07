@@ -74,6 +74,13 @@ export const REF_VALUES = 'values';
 // state, it reads the one the server put on the wire.
 export const STATE_SCORED = 'scored';
 export const STATE_NO_WINNER = 'no_winner';
+// 🔴 S-35. THE THIRD STATE THE RECORD CAN HOLD (`frame_confirmation.accepted_ruling_states`
+//    returns scored / no_winner / not_scorable), and it is declared HERE rather than reused
+//    from `VERDICT.NOT_SCORABLE` below even though the two spell the same word. They are two
+//    vocabularies that happen to agree: `VERDICT.*` is what THIS side decided to draw, and
+//    `STATE_*` is what the SERVER said it did. Folding them would make a rename on one side
+//    silently move the other, which is the 「한 이름이 두 뜻」 class.
+export const STATE_NOT_SCORABLE = 'not_scorable';
 
 export const VERDICT = Object.freeze({
   WINNER: 'winner',
