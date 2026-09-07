@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { switchTable, fetchData } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
-import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
+import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
 import { setMatchCount } from './match_count.js';
 import { saysTruncated } from './truncation.js';
 import { countNav, ROUTES } from './effort_meter.js';
@@ -1129,19 +1129,34 @@ export function navigatorStep2(log) {
 export async function navigatorStep3(log) {
   elements.performanceLog.textContent = '🌐 Requesting target position from server...';
 
-  const sortLatest = elements.sortLatestToggle.checked;
   const narrowing = narrowingTail({
     globalSearch: elements.globalSearch, searchCols: elements.searchCols,
     gridApi: state.gridApi, transactionId: state.currentTransactionId,
   });
 
+  // A-6. The SAME sort the grid is showing — `sortQueryTail` is the one spelling. This used to
+  // re-derive it from the toggle here, which was a second copy of one decision and would have
+  // computed the jump's offset in a different order from the one on screen.
   const url = `${API_BASE}/tables/${state.currentTable}/data?target_row_id=${log.row_id}`
-    + `&limit=${pageLimit}&order_by=${sortLatest ? 'updated_at' : 'row_id'}`
-    + `&order_desc=${sortLatest}${narrowing}`;
+    + `&limit=${pageLimit}${sortQueryTail()}${narrowing}`;
 
   try {
     const res = await fetch(url);
     const result = await res.json();
+
+    // 🔴 THE REFUSAL IS SHOWN, NOT SWALLOWED (A-6-b). Under a header sort the server refuses
+    //    this jump: its offset comparison is written for three names only. Without this branch
+    //    `result.data.length` throws on the refusal body and the outer catch reports
+    //    「Server fetch error」 — a transport story for a deliberate, explained refusal. The
+    //    sentence is the SERVER'S, verbatim, into the status line every other refusal uses; a
+    //    Korean equivalent written here would be this side classifying evidence the server
+    //    already judged.
+    if (!res.ok) {
+      releaseNavigationGuard(typeof result.detail === 'string' && result.detail
+        ? result.detail
+        : `❌ Jump refused (HTTP ${res.status})`);
+      return;
+    }
 
     if (result.target_offset === -1 || result.data.length === 0) {
       releaseNavigationGuard('❌ Target row does not match active search/transaction filters');

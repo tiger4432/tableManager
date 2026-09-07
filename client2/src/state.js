@@ -133,6 +133,18 @@ export const state = {
   pendingTxEdits: {}, // key: row_id + "_" + col_name -> { rowId, colId, newValue, oldValue, oldIsOverwrite, data }
   viewMode: 'pagination', // 'pagination' | 'infinite'
   allDataLoaded: false,
+  // A-6. The column the operator sorted by from the HEADER, or null for the 최신순 toggle's
+  // answer. `{ colId, desc }`.
+  //
+  // 🔴 WHY THIS IS SERVER STATE AND NOT A VIEW PREFERENCE. AG-Grid sorts the rows it holds,
+  //    and it holds ONE PAGE. Measured 2026-09-07 on a 34,939-row table: sorting DT_LOT
+  //    descending put SYN-DT-103 on top while the table's actual maximum, SYN-DT-CORE, sits
+  //    on page 22 of 35 — and the header arrow is the same arrow a whole-table sort draws.
+  //    A wrong answer that looks exactly like the right one.
+  // ⚠️ It stays null when `allDataLoaded` is true. There the page IS the table, so the local
+  //    sort is already the whole-table sort and a round trip would buy nothing (measured: a
+  //    907-row table sorts to its true maximum with zero requests).
+  serverSort: null,
   // 🔴 브라우저에서는 전과 «같은 값»입니다 -- window 가 있으면 같은 질의문자열을 읽습니다.
   //    window 가 «없는» 곳(node)에서는 false 이고, 그게 데스크톱이 아닌 것과 같은 답입니다.
   //    이 한 줄이 state.js 를 import 불가로 만들고, state.js 를 import 하는

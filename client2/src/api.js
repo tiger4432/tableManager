@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { elements } from './dom.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders } from './grid.js';
+import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -126,6 +126,12 @@ export async function switchTable(tableName) {
   state.txModeActive = true;
   if (elements.txModeToggle) elements.txModeToggle.checked = true;
   updateTxModeUI();
+
+  // 🔴 A-6. THE SORT COLUMN BELONGS TO THE TABLE IT WAS PICKED ON. Carrying `dt_lot` into a
+  //    table that does not declare it is the one way this screen could put an unknown name on
+  //    the wire, and the server answers that with a 422 — a refusal the operator did nothing
+  //    to earn. It dies with the table, like the transaction filter above it.
+  state.serverSort = null;
 
   // Reset transaction filter
   state.currentTransactionId = null;
@@ -318,14 +324,14 @@ export async function fetchData(resetSkip = true) {
 
   const startTime = performance.now();
 
-  const sortLatest = elements.sortLatestToggle.checked;
   const narrowing = narrowingParams();
   const table = state.currentTable;
 
   // 🔴 `defer_total=true` -> 응답의 `total` 이 «null» 입니다. 행이 먼저 나오고 개수는
   //    두 번째 요청이 채웁니다. 세는 데 걸리는 시간이 첫 화면에서 빠집니다.
   let url = `${API_BASE}/tables/${table}/data?skip=${state.currentSkip}&limit=${pageLimit}`;
-  url += `&order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}`;
+  // A-6. One spelling of the sort, shared with the row jump — see `grid.sortParams`.
+  url += sortQueryTail();
   url += '&defer_total=true';
   const tail = narrowing.toString();
   if (tail) url += `&${tail}`;

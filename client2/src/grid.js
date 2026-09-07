@@ -172,6 +172,37 @@ export function suppressKeyboardEvent(params) {
 
 
 // Apply AG-Grid client-side sorting configuration based on Sort Latest toggle
+/**
+ * A-6. THE SORT THE SERVER IS BEING ASKED FOR — spelled ONCE.
+ *
+ * 🔴 IT WAS SPELLED TWICE. `api.fetchData` and `timeline.navigatorStep3` each wrote
+ *    `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}` by hand. Two
+ *    copies of one decision is criterion ④, and the day a header sort became a server sort
+ *    they would have diverged silently: the grid would show one order and a row jump would
+ *    compute its offset in another, which is a wrong scroll position with nothing on screen
+ *    saying so. Both callers now ask here.
+ */
+export function sortParams() {
+  if (state.serverSort) {
+    return { orderBy: state.serverSort.colId, orderDesc: !!state.serverSort.desc };
+  }
+  const sortLatest = elements.sortLatestToggle.checked;
+  return { orderBy: sortLatest ? 'updated_at' : 'row_id', orderDesc: sortLatest };
+}
+
+/** The same pair as a query tail, so no caller re-spells the parameter names either. */
+export function sortQueryTail() {
+  const { orderBy, orderDesc } = sortParams();
+  return `&order_by=${encodeURIComponent(orderBy)}&order_desc=${orderDesc}`;
+}
+
+// 🔴 RE-ENTRANCY. `updateGridSortState` calls `applyColumnState`, which raises `sortChanged`;
+//    without this the handler below would treat the grid's own repaint as an operator action
+//    and fetch again, forever. AG-Grid's `source` already tells them apart
+//    (`uiColumnSorted` vs `api`) and the handler checks it — this flag is the second lock,
+//    because the cost of the first one being wrong in some version is an infinite fetch loop.
+let applyingSortState = false;
+
 export function updateGridSortState() {
   if (!state.gridApi) return;
 
@@ -186,14 +217,21 @@ export function updateGridSortState() {
     return;
   }
 
-  const sortLatest = elements.sortLatestToggle.checked;
-  state.gridApi.applyColumnState({
-    state: [
-      { colId: 'updated_at', sort: sortLatest ? 'desc' : null },
-      { colId: 'row_id', sort: sortLatest ? null : 'asc' }
-    ],
-    defaultState: { sort: null }
-  });
+  // 🔴 THE HEADER MUST KEEP SAYING WHAT THE SERVER WAS ASKED. This runs after every fetch and
+  //    used to blank every sort but the toggle's two (`defaultState: { sort: null }`), so a
+  //    header sort that now CAUSES a fetch would have had its own arrow wiped by the response
+  //    it asked for — the operator would press, the rows would change, and the indicator would
+  //    jump back to 최신순.
+  const { orderBy, orderDesc } = sortParams();
+  applyingSortState = true;
+  try {
+    state.gridApi.applyColumnState({
+      state: [{ colId: orderBy, sort: orderDesc ? 'desc' : 'asc' }],
+      defaultState: { sort: null }
+    });
+  } finally {
+    applyingSortState = false;
+  }
 }
 
 // Update Loaded count slice text
@@ -1142,6 +1180,35 @@ export function renderGrid(initialRows) {
     onFilterChanged: () => {
       fetchData(true);
       renderFilterBar();
+    },
+    // A-6. A HEADER SORT IS A QUESTION ABOUT THE TABLE, NOT ABOUT THE PAGE.
+    //
+    // 🔴 Until this existed, clicking a header re-ordered the rows the grid happened to hold
+    //    and drew the ordinary sort arrow over the result. Measured on a 34,939-row table:
+    //    DT_LOT descending put SYN-DT-103 on top, the table's real maximum SYN-DT-CORE sat on
+    //    page 22 of 35, and two clicks fired ZERO requests. The operator asked for the largest
+    //    value and was shown the largest value on page one, with nothing to tell them apart.
+    onSortChanged: (event) => {
+      // The grid re-applying its own state after a fetch is not the operator sorting.
+      if (applyingSortState) return;
+      if (event && event.source && event.source !== 'uiColumnSorted') return;
+      // 🔴 WHEN EVERYTHING IS LOADED THE LOCAL SORT IS ALREADY THE WHOLE-TABLE SORT, and
+      //    asking the server would be a round trip that changes nothing. Measured: a 907-row
+      //    table (under one page) sorts to its true maximum today, with zero requests.
+      if (state.allDataLoaded) { state.serverSort = null; return; }
+      const sorted = state.gridApi.getColumnState().find(c => c.sort);
+      // The column id IS the declared column name (`field: col` for both plain and 🔗 join
+      // columns), so the name on the wire is one the table declares — the server's 422 for an
+      // unknown name is unreachable from this control, not merely unlikely.
+      const next = sorted ? { colId: sorted.colId, desc: sorted.sort === 'desc' } : null;
+      const before = state.serverSort;
+      if ((before && before.colId) === (next && next.colId)
+          && (before && before.desc) === (next && next.desc)) return;
+      state.serverSort = next;
+      // The cached pages were built under the OLD order; keeping them would page the operator
+      // back into it.
+      state.pageCache.clear();
+      fetchData(true);
     },
     // The `+N열 →` count is a fact about the VIEWPORT, so it is re-measured by everything
     // that can move the viewport's right edge: the first paint, a sidebar drag, a column
