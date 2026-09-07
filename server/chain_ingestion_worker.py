@@ -381,6 +381,11 @@ def load_chain_rules():
         logger.error(f"[Enrichment] Failed to synthesize enrichment chain rules: {e}")
 
     _validate_chain_cascade_graph(rules)
+    # 🔴 선언된 규칙을 «값»으로 세운다 — 처리 루프가 결과를 덮어쓰고, 한 번도 안 걸린 규칙은
+    #    「아직 평가 안 됨」으로 «말해진다». 부재는 「옛 서버」 하나만 뜻해야 한다.
+    #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
+    chain_activity.registry.seed_rules(
+        (r or {}).get("name") or "<unnamed rule>" for r in (rules or ()))
     return rules
 
 
@@ -616,10 +621,21 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
         # The way out as well: whatever the mapper returns goes on to the write path,
         # which has its own integer columns and would hit the same conversion.
         cleaned = without_missing(result)
+        rows_out = _result_row_count(cleaned)
         logger.info("[%s] END   rule=%s mapper=%s target=%s rows_in=%d rows_out=%d "
                     "elapsed=%.3fs",
                     MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
-                    _result_row_count(cleaned), time.monotonic() - started)
+                    rows_out, time.monotonic() - started)
+        # ⚠️ 이 층이 아는 것은 「매퍼가 «행을 냈나»」다. 「쓰기가 «바꿨나»」를 아는 층은
+        #    `crud.apply_batch_updates` 이고 그 수는 규칙별로 여기까지 안 온다. 그래서
+        #    `ran:unchanged` 는 «확실»하고(행이 0이면 바뀐 것이 없다), `ran:changed` 는
+        #    「행을 냈다」까지가 참이다. 그 마지막 한 걸음은 별도 줄이다 — 대리를 성질처럼
+        #    적지 않으려고 여기 적는다.
+        chain_activity.registry.record_outcome(
+            rule_name,
+            event_constants.RULE_OUTCOME_RAN_CHANGED if rows_out
+            else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
+            None if rows_out else "the mapper produced no rows")
         return cleaned
     except Exception as e:
         # The throw gets its OWN line rather than being folded into the end line: a
@@ -629,6 +645,9 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
                      "-> %s: %s",
                      MAPPER_LOG_TAG, rule_name, who, target_table, rows_in,
                      time.monotonic() - started, type(e).__name__, e)
+        chain_activity.registry.record_outcome(
+            rule_name, event_constants.RULE_OUTCOME_FAILED,
+            "%s: %s" % (type(e).__name__, e))
         raise e
     finally:
         # 🔴 IN `finally`, NOT AFTER THE RETURN. A mapper that throws is exactly the case
@@ -636,6 +655,44 @@ def execute_custom_mapper(module_name: str, function_name: str, db, payload, rul
         # still running - and a stuck-looking chain is the symptom this whole step exists
         # to stop inventing.
         chain_activity.registry.finish(token)
+
+def _rule_outcome_before_running(rule, events):
+    """이 규칙이 이 그룹에 대해 «돌기 전에» 결정되는 결과 — 또는 `(None, None)`(돌 자격 있음).
+
+    🔴 판정이 여기 «한 자리»다. 아래 `valid_events` 가 같은 술어를 쓰지만 그것은 「이 그룹에
+       할 일이 있나」를 묻고 이것은 「이 «규칙»이 왜 안 도나」를 묻는다 — 답이 갈리면 안 되므로
+       둘 다 `_rule_accepts_event` 와 `enabled` «같은 것»을 지난다.
+    ⚠️ 꺼짐이 안 걸림을 «이긴다». 둘 다 참일 때 운영자가 고칠 수 있는 쪽이 그것이다.
+    """
+    if not rule.get("enabled", True):
+        return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
+    refused_chain = False
+    for e in events:
+        if e.event_type not in ("CREATE", "EDIT"):
+            continue
+        if rule.get("trigger_table") != e.table_name:
+            continue
+        if _rule_accepts_event(rule, e):
+            return None, None
+        refused_chain = True
+    if refused_chain:
+        return (event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED,
+                "chain-produced event; this rule does not declare allow_chain_trigger")
+    return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, None
+
+
+def _record_pre_run_outcomes(rules, events):
+    """평가된 «모든» 규칙이 이름 있는 결과를 갖는다 — 걸린 것만이 아니라.
+
+    🔴 걸린 것만 남기면, «평가돼서 할 일이 없던» 규칙이 영원히 `never_evaluated` 로 남는다.
+       그건 이 라운드가 없애려는 그 침묵이고, 부재는 「옛 서버」 «하나»만 뜻해야 한다.
+    """
+    for rule in rules or ():
+        outcome, reason = _rule_outcome_before_running(rule, events)
+        if outcome is not None:
+            chain_activity.registry.record_outcome(
+                (rule or {}).get("name") or "<unnamed rule>", outcome, reason)
+
 
 def _group_target_tables(events_in_tx, rules):
     """[Latency Fix #5] 이 트랜잭션 그룹이 기록할 target_table 집합을 매퍼 실행 없이 규칙에서 추정한다.
@@ -671,6 +728,10 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     # Chain-created events remain blocked by default.  Only a downstream rule that
     # declares allow_chain_trigger may consume them; config-load cycle validation
     # makes this opt-in graph acyclic.
+    # 🔴 여섯 원인이 «한 조용한 반환»으로 나가던 자리. 입구에서 «돌기 전»에 정해지는 둘을
+    #    이름 대어 남기면, 아래 어느 출구로 나가든 규칙마다 결과가 있다. 돌 자격이 있는
+    #    규칙은 여기서 아무것도 안 남기고 `_run_mapper` 가 자기 결과를 남긴다.
+    _record_pre_run_outcomes(rules, events)
     valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
         r.get("trigger_table") == e.table_name and r.get("enabled", True)
         and _rule_accepts_event(r, e) for r in rules)]
