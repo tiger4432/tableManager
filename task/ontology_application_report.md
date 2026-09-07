@@ -13296,3 +13296,54 @@ C-21 (이름 다섯 · 수 여덟)   -> 이름 둘이 «영영 없습니다»
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔎 순서 ④ C-20 «전수» — **DB 접속 기본값은 «3 이 아니라 6»(추적 기준) · 인제스터 라벨은 «2 가 아니라 4»** (16:4x)
+
+⛔ 코드 0줄. 방법을 적고, «이 박스»와 «저장소»를 갈랐습니다.
+
+## 방법 (부분집합 금지 — 앞 라운드의 실수를 안 되풀이하려고 적습니다)
+```
+범위   `server/**` «전수» (앞 라운드는 `database/*.py` 뿐이라 «3 을 1 로» 읽었습니다)
+낱말   getenv("DATABASE_URL") · environ.get("DATABASE_URL") · postgresql:// · localhost · 127.0.0.1 · 5432
+제외   `server/tests/**` · `.tmp`
+🔴 그리고 «추적 여부»로 다시 갈랐습니다 — `git ls-files` 로 파일마다
+```
+
+## ① DB 접속 기본값 — **리터럴 `postgresql://postgres:admin@localhost:5432/assy_manager` 이 «열하나»**
+```
+추적되는 것 «여섯» (= 저장소의 사실 · 운영에도 참)
+   database/database.py:24        `DEFAULT_PG_URL` — 🔵 «정본»입니다
+   scripts/dev_env/manifest.py · snapshot_db.py     (개발 환경 도구)
+   scripts/diagnose_slow_after_ingest.py · diagnose_wal_headroom.py  (진단 도구)
+   scratch/scratch_migration_txid.py                (스크래치)
+미추적 «다섯» = `ingestion_workspace/*/auto_update/generate_*.py`
+   ⚠️ 「운영자 워크스페이스 스크립트」이고 «이 박스 얘기»입니다 — 수에 «안 넣습니다»
+      (추적되는 것은 그 디렉터리에서 «하나»뿐입니다)
+=> 줄의 「3」 -> 오늘 «6»(추적). 🔴 그리고 «정본이 있는데 다섯이 그것을 안 부릅니다»
+```
+
+## ② 인제스터 신원 라벨 — **「2」가 아니라 «넷», 자리는 «열둘»**
+```
+"system"              «6»
+"chain_ingestion"     «3»
+"user"                «2»
+"enrichment_backfill" «1»
+=> 이름이 넷이고, 그중 `"system"` 이 여섯 자리에 «손으로» 적혀 있습니다
+   🔵 C-19(감사 행의 작성자 기본값 `"system"`)와 «같은 낱말»입니다 — 두 줄이 «한 사실»을 볼 수 있습니다
+```
+
+## 판정 대기: **예순일곱**
+```
+67  🔴 C-20 의 수가 «둘 다» 틀렸습니다 (3->6 · 2->4). 그리고 부류가 «둘로 갈립니다» —
+    ㉠ DB URL: «정본이 있는데»(DEFAULT_PG_URL) 다섯이 안 부릅니다 -> 기준 ④(경로 둘)
+    ㉡ 라벨: 정본이 «없습니다» -> 기준 ②(하드코딩). 그리고 C-19 와 «겹칩니다»
+    🔵 ㉡을 C-19 와 «합칠지»가 판정 자리입니다 — 같은 낱말을 두 줄이 세고 있습니다
+⚠️ 못 잰 것   미추적 다섯이 «운영에서» 어떤 모습인지 — 운영자 파일이라 제가 못 잽니다
+```
+```
+판정 대기: 🔴 67 (첫 제출 16:4x)   ·   🔁 이월: 47 (S-14 의 주어) · 66 (C-21 해체)
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
