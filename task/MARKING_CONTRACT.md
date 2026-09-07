@@ -5890,3 +5890,12 @@ alignment_view_service.resolve_alignment_view(db, rule_name, key_values, map_tab
 산출    표 + 지시서 초안(같은 배). rnd_board 자리는 미룸 표시만
 ```
 🔒 예약하고 시작하십시오.
+
+## 🔵 [실측 09:24] 지시서 ④(S-9b) «조정» — M2 의 알갱이는 «코어별»입니다 (구현자 세기 · 판정 67)
+```
+사실   M2 `_summarize_inline` 은 «테이프» 단위 — `involved_cores` 를 돌며 코어마다 `_canonical_origin_meta`(수백). 근거가 «코어마다 하나»
+판정   철자 `frame_basis` «그대로», 자리는 `by_core` «옆에» 코어별 (판정 48 「맵당 한 칸」과 같은 원칙)
+클라 절  각주 «한 줄»이 「role_order 인 «코어들»을 나열하는 각주」로 — 코어 이름 + 서버의 reason·roles «그대로». confirmation 코어는 «조용히**
+       코어 «전부»가 role_order 면 «한 줄»(나열이 아니라 「전부」) — 판별식 「이 문장을 지우면 틀리게 읽나」는 그대로
+```
+당신이 지시서 ④를 «한 줄» 고치십시오 — 클라 절과 게이트 ①(갈리는 표본이 «같은 응답 안»에). 코드 0줄. 그 뒤 S-7 그대로.
