@@ -1,3 +1,105 @@
+# [디자인 -> 총괄] 🔵 **읽기 끝 — `valid_die_authoring` 은 «④ 가 아니라 ㉡» 입니다. 클로저가 «하나도» 없고, 그 파일이 자기 머리에 「이건 빚이다」라고 적어 두었습니다 (코드 0)**
+
+```
+한 줄   잘라내는 18 이름이 «전부 모듈 수준»입니다 — probe 가 «그대로» 닿습니다. 한 라운드짜리입니다
+```
+
+## ① 그 파일이 «이미» 판정해 두었습니다 — 제가 재서 확인했습니다
+```
+파일 머리(:7-14)  「THAT IS A DEBT, NOT A DESIGN. 여기 적혀 있던 사유(config.js 가 window 를
+                 만져 import 불가)는 «참이 아니게 됐다» — 오늘 이 파일은 깨끗이 import 된다.
+                 이 스위트가 «아직 전환 안 됐을 뿐».」
+                 그리고 「슬라이스로는 못 쓰는 단언 하나는 «이미» probe 로 모듈을 import 한다
+                 (INV-6 §reach). 두 기제가 «나란히» 있고, 판별식은 «단언 단위»다.」
+=> 즉 이 파일의 잘라쓰기는 «주어»가 아니라 «대리»이고, 파일 자신이 그렇게 적었습니다.
+   제 일은 그 문장이 «오늘도 참인지» 재는 것이었고, 참입니다
+```
+
+## ② 재 본 것 — 뽑는 이름이 «전부 모듈 수준»입니다 (④ 아님)
+```
+sandbox 가 내놓는 18   getDieIndex · getDbCoords · getCanvasCellFromDb · isCellInsideWaferFast ·
+                     getTransformedPhysicalConfig · getWaferBoundingBox · parseValidDieRef ·
+                     validDieBasis · isValidDieAt · buildValidDieTemplate · validDieRefDisplay ·
+                     validDieRefForPush · applyValidDieRef · validDieChainError ·
+                     syncValidDieRefControls · validDieRefPayload · projectCellsToPhys
+                     + canonicalMapKey(map_key.js)
+🔵 그중 «열일곱»이 오늘 아침 Ⓐ 로 export 된 그 91 안에 있습니다. 나머지 하나도 «모듈 수준»입니다
+=> 화살표 본문도 인라인 블록도 «0». `loadWithProbe` 의 expose/state 로 «전부» 닿습니다
+   -> 판정 121 의 ④(추출) «아니고» ㉡(기계적)입니다
+```
+
+## ③ 그리고 «정규식 셋»은 전환하면 «없어집니다» — 더 나은 쪽으로
+```
+지금   `reSrc('CANON_INT_RE')` · `reSrc('CANON_FLOAT_RE')` (map_key.js) ·
+      `VALID_DIE_TABLE` 정규식 (map_editor.js) — 「사본이 갈리지 않게 소스에서 읽는다」가 사유
+실측   map_key.js 는 «깨끗이 import» 됩니다(exports 다섯). `VALID_DIE_TABLE` 은 probe 의
+      `expose` 가 이미 다른 하니스에서 «그대로» 건네줍니다(standard_frame_origin 에서 씀)
+=> 전환하면 그 셋은 «정규식이 아니라 값»으로 옵니다. 사유(사본이 갈린다)는 그대로 지켜지고,
+   기제만 «더 강해집니다» — 이름이 바뀌면 regex 는 조용히 못 찾지만 expose 는 «시끄럽게 죽습니다»
+```
+
+## ④ 크기
+```
+파일 869줄 · 단언 103 · 변이 «있음»(--mutate) · vm 세 자리
+전환   샌드박스 하나를 probe 하나로. 단언은 «안 건드립니다»(`H.getDieIndex` 꼴이 그대로 남습니다)
+남는 텍스트   «0» 을 목표로 합니다 — 정규식 셋이 값으로 바뀌므로
+```
+⚠️ 다만 그 파일은 「무엇이 스텁이고 무엇이 진짜인지」를 촘촘히 적어 두었습니다(예: `renderValidDieKeyControl`
+   은 일부러 스텁 — 다른 하니스가 DOM 으로 잽니다). 전환하면서 그 «스텁 목록»을 `state` 로 그대로
+   옮겨야 하고, 하나라도 빠뜨리면 「두 번째 DOM 모델」이 조용히 생깁니다. 그 목록을 «세어서» 옮기겠습니다.
+
+> **판정 대기: «없음».** ㉡ 로 분류하고 그 전환 라운드를 잡겠습니다 — 판정 119 대로 «먼저 `--mutate` 전 수»부터.
+
+---
+
+# [디자인 -> 총괄] ✅ **㉡ 둘 «착지» — 전환할 것이 «없었습니다». 둘 다 «죽은 슬라이서»였고, 제 census 가 «변이 없음»이라 한 것도 «틀렸습니다»** (커밋 `a6847998`, 푸시됨)
+
+```
+한 줄   호출자 0 인 슬라이서 둘을 지웠습니다. 단언 수 그대로, 훑기 둘 다 살아 있습니다
+```
+
+## ① 전환이 아니라 «삭제»였습니다
+```
+load_shows_loaded_map   `sliceFunction` 선언 «있음» · 호출 «0»  -> 17줄 삭제
+map_spec_only_save      같음                                  -> 12줄 삭제
+=> 대상은 이미 통째로 로드되고 모든 단언이 그것을 «돌립니다». 남은 건 «껍데기»였습니다
+🔵 오늘 이걸로 «넷째»입니다(standard_frame_origin · startxy_probe · 이 둘).
+   죽은 슬라이서가 공짜가 아닌 이유: 잘라쓰기로 «세어지고», 대상 모양이 바뀔 때 «따라 고쳐야 하고»,
+   «한 줄만 쓰면 되살아납니다» — 오늘 아침 export 라운드에서 여섯이 깨진 것이 그 증거입니다
+```
+
+## 🔴 ② 제 census 가 그 둘에 대해 «변이 없음»이라 했습니다 — 틀렸습니다
+```
+실측   load_shows_loaded_map  14/14 (결함 12 · 대조군 2)  «무조건 실행»
+      map_spec_only_save     22/22 결함                  «무조건 실행»
+왜 틀렸나  제 탐침이 `MUTATIONS|--mutate|DEFECTS` 를 찾았는데 이 둘은 `MUTANTS`/`CONTROLS` 로 씁니다
+결과   판정 119 의 「변이 «없는» 넷 -> 전환 단언마다 최소 변이 하나」는 «대상이 0 입니다».
+      넷 -> 둘 -> «0». 그 지시는 실행할 것이 없습니다
+```
+⚠️ 부류는 오늘 이미 두 번 걸린 그것입니다 — 「내가 기대한 기제를 찾고, 못 찾으면 성질이 없다고 읽는다」.
+   변이 «선언»을 이름으로 찾았고, 이름이 다른 둘을 「없다」로 읽었습니다.
+✅ 다음부터 「변이가 있나」는 «이름»이 아니라 «돌려서 나오는 줄»로 셉니다.
+
+## ③ 수
+```
+단언   57 · 72 «그대로» · 훑기 14/14 · 22/22 «그대로»
+텍스트로 받는 하니스   16 → «14»
+천장   «7 그대로» — 이 둘은 export 관용 목록에 «없었습니다»(그 목록은 여전히 일곱)
+관문   ✓ every gated harness green
+```
+
+## ④ 남은 줄 (판정 121 그대로)
+```
+읽기   valid_die_authoring — 여섯째 기제(정규식 소스 + 식 평가). 단언 단위로 주어/대리
+③-1   변이 바닥
+④     dirty_guard(인라인 배선 블록 셋) · virtual_column_render(화살표 본문 일곱) — «추출» 부류
+⑤     frame_adoption + known-red
+```
+
+> **판정 대기: «없음».** `valid_die_authoring` 읽기(코드 0)로 갑니다.
+
+---
+
 # [디자인 -> 총괄] 🔴 **㉠ 첫 파일도 착수 전에 갈렸습니다 — 제 census 가 «추출 기제»를 덜 셌습니다. 다섯째가 있고, 그게 판정 91 의 Ⓑ 입니다 (코드 0)**
 
 ```
