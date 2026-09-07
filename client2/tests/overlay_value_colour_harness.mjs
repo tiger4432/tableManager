@@ -114,6 +114,66 @@ const ctxSaves = [];
 //
 // `src` is a MUTATE FUNCTION now (or null): a mutant is a whole module, so one that fails to
 // parse fails loudly instead of counting as caught.
+// ── C-35: the marker renderer, DRIVEN ────────────────────────────────────────────────────
+// 🔴 Its own probe instance, because `paintOverlayDot` and `overlayMarkerFill` must be
+//    REPLACEABLE here (`state`) while the rest of this file reads them as they are (`expose`),
+//    and one name cannot be both. Nothing is shared between the two instances, so nothing
+//    staged for the other checks can leak into these.
+const FILL_ANSWER = '#f0f0f0';
+const THREE_ITEMS = [
+  { srcX: 1, srcY: 1, rx: 0.1, ry: 0.1, val: 'a' },
+  { srcX: 1, srcY: 2, rx: 0.5, ry: 0.5, val: 'b' },
+  { srcX: 2, srcY: 1, rx: 0.9, ry: 0.9, val: 'c' },
+];
+// One item, two in-chip positions. Same cell, same everything else -- only the remainder moves.
+const TWO_CORNERS = {
+  near: [{ srcX: 1, srcY: 1, rx: 0.05, ry: 0.05, val: 'a' },
+         { srcX: 1, srcY: 2, rx: 0.10, ry: 0.10, val: 'b' }],
+  far: [{ srcX: 1, srcY: 1, rx: 0.90, ry: 0.90, val: 'a' },
+        { srcX: 1, srcY: 2, rx: 0.95, ry: 0.95, val: 'b' }],
+};
+
+async function drawWith(mutate, items, cellW, cellH) {
+  const colours = [];
+  const centres = [];
+  const fills = [];
+  const { probe } = await loadWithProbe(SRC_PATH, {
+    expose: ['drawOverlayMarkers'],
+    state: ['paintOverlayDot', 'overlayMarkerFill', 'activeOverlayLayers', 'overlayLayers',
+            'currentRotation', 'currentSide', 'boundingBoxCache'],
+    stubs: { './utils.js': { showToast: () => {} },
+             './transfer_plan.js': { notifyMapContext: () => {} } },
+    mutate: mutate || undefined,
+    tag: `ovcdraw${Math.random().toString(36).slice(2, 7)}`,
+  });
+  probe.paintOverlayDot = function () {
+    centres.push([Math.round(arguments[1] * 100) / 100, Math.round(arguments[2] * 100) / 100]);
+    colours.push(arguments[4]);
+  };
+  probe.overlayMarkerFill = function (arg) {
+    fills.push(Array.isArray(arg) ? arg.length : -1);
+    return FILL_ANSWER;
+  };
+  probe.currentRotation = 0;
+  probe.currentSide = 'front';
+  probe.boundingBoxCache = {};
+  // `seatAxes`/`seatChip` are half of the `roomy` predicate, so they are present in BOTH
+  // fixtures -- what separates spread from collapsed is the cell size alone.
+  const layer = {
+    id: 'L1', label: 'src', visible: true, failed: false, color: '#abcdef',
+    seatAxes: { xc: 1, yc: 0, xr: 0, yr: 1 }, seatChip: { x: 1, y: 1 },
+    items: new Map([['1,1', items]]),
+  };
+  probe.overlayLayers = [layer];
+  probe.activeOverlayLayers = [layer];
+  const g2d = new Proxy({}, {
+    get: (t, k) => (k in t ? t[k] : (t[k] = () => {})),
+    set: (t, k, v) => { t[k] = v; return true; },
+  });
+  probe.drawOverlayMarkers(g2d, '1,1', 0, 0, cellW, cellH);
+  return { paints: colours.length, fills: fills.length, colours, centres, fillSizes: fills };
+}
+
 async function makeSandbox(src) {
   ctxSaves.length = 0;
 
@@ -326,21 +386,49 @@ async function runAll(src) {
     eq(ctx.overlayLegendChip({ failed: true }), '', 'A9e a failed row says nothing');
   }
 
-  // ── A10: WIRING. The functions above are worth nothing if the renderer does not call them.
-  //         (`drawOverlayMarkers` needs a live canvas + module state, so this reads its source.)
+  // ── A10: WIRING, RUN RATHER THAN READ (C-35).
+  //
+  // 🔴 THIS BLOCK USED TO COUNT CALL SITES IN THE SOURCE TEXT, on the stated grounds that
+  //    `drawOverlayMarkers` "needs a live canvas + module state". Measured 2026-09-07: a proxy
+  //    2d context and probe state are enough, and the function runs. Counting `paintOverlayDot(`
+  //    in the letters answers 「how many times is it WRITTEN」, which is not the claim — the
+  //    claim is 「both branches, when taken, go through the painter」, and a branch can be
+  //    written and unreachable. It also broke on `export`, on code that had not changed.
+  //
+  // 🔴 THE TWO BRANCHES ARE OPENED BY THE FIXTURE, NOT ASSUMED. `roomy` is
+  //    `list.length > 1 && (cellW >= 10 || cellH >= 10) && layer.seatAxes && layer.seatChip`,
+  //    so the pair below differs in the CELL SIZE only and both are driven for real:
+  //      spread   3 items in a 40x40 cell -> 3 dots, and each fill is asked about ONE item
+  //      collapsed 3 items in a 4x4 cell  -> 1 dot,  and the fill is asked about ALL THREE
+  //    That the two answer DIFFERENTLY is what shows both branches ran; a single fixture would
+  //    leave one of them unexercised and the assertion would pass with it dead.
   {
-    const draw = stripComments(sliceFunction(srcText, 'drawOverlayMarkers'));
-    const nFill = countOf(draw, 'overlayMarkerFill(');
-    const nPaint = countOf(draw, 'paintOverlayDot(');
-    ok(nPaint >= 2, 'A10 both marker branches go through the painter', `${nPaint} call(s)`);
-    ok(nFill === nPaint, 'A10b every painted dot asks the legend for its fill',
-      `${nFill} fill lookup(s) for ${nPaint} dot(s) -- a branch is painting a colour of its own`);
-    ok(!/fillStyle\s*=/.test(draw), 'A10c the marker code sets no fill of its own',
-      'a second colour source has appeared inside the renderer');
+    const spread = await drawWith(src, THREE_ITEMS, 40, 40);
+    const collapsed = await drawWith(src, THREE_ITEMS, 4, 4);
+    ok(spread.paints === 3 && collapsed.paints === 1,
+      'A10 both marker branches go through the painter',
+      `spread ${spread.paints} dot(s), collapsed ${collapsed.paints} -- a branch never reached `
+      + 'the painter, or the two branches stopped being different');
+    ok(spread.paints === spread.fills && collapsed.paints === collapsed.fills,
+      'A10b every painted dot asks the legend for its fill',
+      `spread ${spread.fills}/${spread.paints}, collapsed ${collapsed.fills}/${collapsed.paints}`
+      + ' -- a branch is painting a colour of its own');
+    // 🔴 「sets no fill of its own」 AS BEHAVIOUR: every colour handed to the painter is the one
+    //    the legend answered with. A second colour source inside the renderer shows up here as
+    //    a colour the recorder never returned.
+    const strayColour = [...spread.colours, ...collapsed.colours].filter(c => c !== FILL_ANSWER);
+    ok(strayColour.length === 0, 'A10c the marker code sets no fill of its own',
+      `painted with ${strayColour.join(', ')} -- a second colour source is inside the renderer`);
     // 🔴 The remainder is the in-chip position, and the long-term plan puts defects there.
-    //    Colouring must not have consumed it.
-    ok(/it\.rx/.test(draw) && /it\.ry/.test(draw), 'A10d the in-chip remainder is still used',
-      'the mm remainder was dropped while this path was being edited');
+    //    Colouring must not have consumed it. AS BEHAVIOUR: moving `rx`/`ry` moves the dot.
+    //    `/it\.rx/.test(source)` said only that the letters appear somewhere.
+    const near = await drawWith(src, TWO_CORNERS.near, 40, 40);
+    const far = await drawWith(src, TWO_CORNERS.far, 40, 40);
+    ok(near.centres.length === far.centres.length && near.centres.length > 0
+       && JSON.stringify(near.centres) !== JSON.stringify(far.centres),
+      'A10d the in-chip remainder is still used',
+      `same centres for different rx/ry (${JSON.stringify(near.centres)}) -- the mm remainder `
+      + 'was dropped while this path was being edited');
 
     const lookup = stripComments(sliceFunction(srcText, 'legendColorForValue'));
     ok(/legend\.find/.test(lookup), 'A10e the lookup reads the open map legend');
