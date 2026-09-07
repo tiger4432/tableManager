@@ -1465,6 +1465,39 @@ def _origin_map_id(source_cfg, origin_lot, origin_slot, binding=None) -> str:
         identity_cols, {"lot": origin_lot, "slot": origin_slot}, binding)
 
 
+def _self_map_pairs(source_cfg, lot, slot) -> list:
+    """이 주어가 «자기 프레임»에 바인딩한 소스들의 `(table, map_id)`.
+
+    🔴 [S-15 ①-a-0' · 판정 103] 아래 `_canonical_origin_meta` 와 «다른 물음»이다. 저것은
+       「테이프에서 되짚어 본 «출신 코어»의 프레임」을 묻고 `frame == "origin"` 원천만 모은다.
+       코어 단계는 그런 원천을 선언하지 않으므로 그 물음의 답이 «항상 같은 상수»가 된다 —
+       실측 2026-09-07: dt 단계의 origin 프레임 원천 «0», 그래서 basis 가 확정 기록과
+       «무관하게» role_order/not_declared 였다.
+
+    M1(`bonding_plan.declared_map_pairs`)이 «자기 선언 모양»으로 하는 것과 같은 일이다.
+    선언 모양이 달라 목록은 여기서 짓고, «판단»은 `bonding_plan.canonical_basis` 하나가 한다 —
+    둘째 저자를 만들지 않는다.
+    ⚠️ 좌표를 바인딩하지 않은 역할(process_history)은 어떤 프레임에도 살지 않아 빠진다.
+    """
+    seen, out = set(), []
+    candidates = [source_cfg.get("total_chips"), source_cfg.get("transfer_log")]
+    declared_fails = source_cfg.get("fail_sources")
+    if isinstance(declared_fails, dict):
+        candidates.extend(fs for fs in declared_fails.values()
+                          if (fs or {}).get("frame") != "origin")
+    for src in candidates:
+        if not _valid_binding(src):
+            continue
+        cols = src.get("columns") or {}
+        if "x" not in cols or "y" not in cols:
+            continue
+        key = (src["table"], _origin_map_id(source_cfg, lot, slot, binding=src))
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
 def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
                            cache: dict = None, meta_cache: dict = None,
                            basis_out: dict = None):
@@ -2147,9 +2180,16 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
         #    ⚠️ 분기는 선언 낱말(`source_kind == "core"`)이 아니라 «구조»로 한다 —
         #       by_core 가 없다는 것이 곷 「주어가 자기 자신」이다. 코드가 도메인 낱말로 갈래를
         #       틀면 사용자가 선언을 바꾸는 날 그 갈래가 조용히 틀린다.
-        _self_basis = {}
-        _canonical_origin_meta(db, source_cfg, lot, slot, basis_out=_self_basis)
-        result["frame_basis"] = _self_basis.get((lot, slot))
+        #    🔴 [정정 · 판정 103] 종전 이 자리는 `_canonical_origin_meta` 를 물었다 — 그것은
+        #    「테이프에서 되짚은 «출신 코어»의 프레임」을 묻고 `frame == "origin"` 원천만 모은다.
+        #    코어 단계는 그런 원천을 «선언하지 않으므로»(자기 맵이 곧 자기 프레임이라
+        #    `frame: "self"` 다) 그 답이 «항상 같은 상수»였고, 그 상수를 `frame_basis` 라는
+        #    이름으로 내면 화면이 «다른 물음의 답»을 읽는다(상설: 대리 ≠ 성질).
+        #    이제 «자기 맵»에 묻는다 — M1 이 답하던 그 물음을, `canonical_basis` 그 함수로.
+        import bonding_plan
+        _own_meta, _own_basis = bonding_plan.canonical_basis(
+            db, source_cfg, _self_map_pairs(source_cfg, lot, slot), meta_cache)
+        result["frame_basis"] = _own_basis
     else:
         result["by_core"] = by_core
         # 경로 마커 — 클라가 "코어별 불량 미상(영역 귀속 기준)" 안내를 띄울 근거
