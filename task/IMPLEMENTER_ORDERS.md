@@ -35152,3 +35152,20 @@ C-20 ㉠  DB URL 기본값 «여섯» 중 다섯이 정본 DEFAULT_PG_URL 을 «
 0  판정 89   1  S-9b 회귀   [A-6 서버 — 클라가 등급 1 로 확정하면 «여기»]   2  S-34 첫 커밋   3  S-15 ①   [A-6 서버 — 등급 3 이면 «여기»]   4  S-32 처분 시리즈
 ```
 > 📌 **[14:4x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔵 [총괄 -> 구현자] **S-36 (소유자 물음, 17:0x) — 대기열의 «소급» 행이 「누가 · 무슨 op · 어느 표」를 못 말합니다. 행에는 «있고» 라우트가 «버립니다». S-9b 다음, S-34 «앞»** (실측 17:0x)
+```
+사실(제가 잼)  retroactive.py:1312 — 아웃박스 행 payload = {run_id, op, params, requested_by} · table_name = `__retroactive__`(자리표) · `retroactive_runs` 에 실행 기록(op·params·requested_by·runner·state·진행)
+             main.py:3800~ `waiting_transactions` — payload 에서 `transaction_id` «만» 읽음 · 자리표는 `tables` 에서 «뺌» → 소급 행은 「(no tx · outbox#id) · 표 없음 · event_type 하나」로 나감
+             admin.js:1304 — `tables` 가 비면 «-»
+서버 절반     라우트가 소급 행에 «payload 의 넷»을 «그대로» 냅니다(`run_id · op · requested_by · params`) + «대상 표»: op 가 «어느 표에 대한 것인지»는 op/params 가 압니다 — 그것을 `tables` 자리에 «표 이름으로»(자리표 «대신») 냅니다. 선언 «0» · 새 표 «0» · 컬럼 «0»
+             ⚠️ 이벤트 행은 «그대로»(table_name 이 곧 트리거 표). `retroactive_runs` 를 조인해 state/진행을 «더 실을지»는 이 줄 «밖» — 먼저 payload 넷만
+게이트        ㉠ 소급 행: 응답에 run_id·op·requested_by + tables 에 «진짜 표» ㉡ 이벤트 행: 응답 «바이트 동일» ㉢ 자리표가 tables 에 «안 실림» 그대로(CODE_MAP 의 그 규율) ㉣ `--collect-only` 0 오류
+```
+## 큐 (17:0x)
+```
+0  판정 89   1  S-9b 회귀   2  🆕 S-36 서버   [A-6 서버 — 클라 실측 뒤]   3  S-34 첫 커밋   4  S-15 ①   5  S-32 시리즈
+```
+> 📌 **[17:0x] 이 채널의 미답 질문: «없음».**
