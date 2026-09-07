@@ -827,6 +827,13 @@ const FLOORS = new Map([
   // and reading it as an object would drop every entry after the first, silently.
   ['retroactive_note_harness.mjs', 15],
   //
+  // S-39. The gate counted every refusal by name, kept the sentence that says how to repair
+  // it, and nothing read those counters - so the screen showed how many rows never landed and
+  // never why. What this floor holds is THREE PIXELS: not measured / measured and zero /
+  // measured and N. Collapsing the middle one makes 「nothing was refused」 and 「nobody asked」
+  // identical on screen, and those are opposite instructions.
+  ['refusal_cell_harness.mjs', 16],
+  //
   // S-35. The confirm response carried the scorer choice and the screen threw the whole
   // record away. What this floor holds is the COMPARISON: took the machine answer / overruled
   // it / it had none - three cases that 확정됨 renders identically. It also holds that the

@@ -16,6 +16,11 @@ export const initialExplorerState = Object.freeze({
   usedByTotal: 0,
   outboundTotal: 0,
   referencesTruncated: false,
+  // 🔴 S-39. THE GATE'S OWN COUNTERS, AS THE GATE SHAPES THEM. `null` means「안 잼」 — the
+  //    route has not answered (or could not), which is NOT the same as「이 프로세스는 아무것도
+  //    거절하지 않았다」. Those two are opposite instructions to an operator, so they may not
+  //    share a value here or a pixel on screen.
+  refusals: null,
   currentPath: null,
   changes: [],
   edgeChanges: [],
@@ -130,6 +135,13 @@ export function reduceExplorerState(state = initialExplorerState, action) {
   switch (action.type) {
     case 'REQUEST_STARTED':
       return { ...state, loading: true, error: null, requestGeneration: action.generation };
+    // 🔴 S-39. ITS OWN ACTION, AND NOT FOLDED INTO `RESPONSE_RECEIVED`. The refusal report is a
+    //    SEPARATE route with a separate failure mode (it is admin-token gated and the explorer's
+    //    other calls are not), so a compile response arriving must not blank it and a refused
+    //    token must not blank the compile. A failure leaves `null` — 「안 잼」 — on purpose:
+    //    inventing an empty report there would draw 「거절 0」 for a question nobody asked.
+    case 'REFUSALS_RECEIVED':
+      return { ...state, refusals: action.report || null };
     case 'REQUEST_FAILED':
       if (action.generation !== state.requestGeneration) return state;
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {

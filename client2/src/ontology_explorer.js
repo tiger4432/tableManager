@@ -733,6 +733,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // For an edit draft the two are the same key, so preferring the draft is safe there.
       void loadAuthoring(
         payload.draft?.target_key || payload.selection?.key || selection || null);
+      // S-39. Beside the compile, never in front of it — these are process counters and the
+      // list is drawn whether or not they arrive.
+      void loadRefusals();
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
@@ -748,6 +751,27 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // A blank or broken root is precisely when `/view` cannot answer and the authoring
       // plan can. Loading it here is what gives a from-scratch operator a way in.
       void loadAuthoring(null);
+    }
+  };
+
+  // 🔴 S-39. WHY THE GATE REFUSED, fetched beside the compile rather than folded into it.
+  //    Separate route, separate failure: this one is admin-token gated and the compile is not,
+  //    so a token that does not answer must not blank the declarations, and a compile that
+  //    fails must not erase counters that are still true.
+  // ⚠️ A FAILURE LEAVES `null`, WHICH IS 「안 잼」. Substituting an empty report would draw
+  //    「거절 0」 for a question that was never answered, and 「nothing was refused」 and
+  //    「nobody asked」 are opposite instructions to the operator.
+  const loadRefusals = async () => {
+    try {
+      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/refusals`);
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      if (body && typeof body === 'object') dispatch({ type: 'REFUSALS_RECEIVED', report: body });
+    } catch (error) {
+      // Silence here is the correct answer: the column simply does not appear. It is not a
+      // failure of the screen the operator came for, and a toast about a counter would put
+      // an error in front of someone who asked to read declarations.
+      void error;
     }
   };
 
