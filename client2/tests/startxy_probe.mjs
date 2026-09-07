@@ -51,45 +51,24 @@
  * discovery runner can execute it bare; the argument remains for probing other commits.)
  * Exit: 0 green | 1 an assertion failed | 2 probe failure (nothing was measured).
  */
-import { readFileSync } from 'node:fs';
-import { loadWithProbe } from './lib/probe.mjs';
+import { loadWithProbe, readSourceText } from './lib/probe.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = process.argv[2] || path.join(HERE, '..', 'src', 'map_editor.js');
-const SRC = readFileSync(SRC_PATH, 'utf8').replace(/\r\n/g, '\n');
+// 🔴 THE SHARED READER. One normalisation for every harness, and it REFUSES a file that mixes
+//    CRLF and LF rather than guessing — this probe can be pointed at another revision
+//    (`process.argv[2]`), which is exactly where a mixed checkout would turn up.
+const SRC = readSourceText(SRC_PATH).text;
 
 const die = (m) => { console.error(`PROBE FAILURE: ${m}\n(Nothing was measured.)`); process.exit(2); };
 
-function sliceFunction(source, name) {
-  // 🔴 C-35 ③: TOLERATES `export`, AND THAT TOLERANCE IS ON ITS WAY OUT. This file slices its
-  //    subject, so a purely semantic-free change to the subject — putting `export` in front of
-  //    a module-level declaration — stopped this regex matching and the harness said "nothing
-  //    compared". That is the standing ban's symptom in its declaration-prefix form.
-  //    The fix is this file importing instead; until that round, this keeps it alive.
-  //    `probe_mechanism_harness` holds the ceiling that forces the count down.
-  //    ⤷ and the slice must DROP that keyword: `export` is a syntax error off a module.
-  const decl = new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`);
-  const m = decl.exec(source);
-  if (!m) return null;
-  const start = m.index + (m[1] ? m[1].length : 0);
-  let i = m.index + m[0].length - 1;
-  let paren = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '(') paren++;
-    else if (source[i] === ')') { paren--; if (paren === 0) { i++; break; } }
-  }
-  i = source.indexOf('{', i);
-  if (i < 0) return null;
-  let depth = 0;
-  for (; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1).replace(/^\s*export\s+/, ''); }
-  }
-  die(`unbalanced braces extracting '${name}'`);
-}
+// 🔴 C-35: THE SLICER IS GONE, AND IT HAD ALREADY BEEN DEAD. `sliceFunction` stood here with
+//    ZERO call sites — the subject has been loaded whole through `loadWithProbe` since the
+//    earlier conversion, and only the extractor was left behind. It still cost something: it
+//    carried the `export` tolerance, so it was one of the files that had to be patched when
+//    `map_editor.js` gained its exports, for code nothing ran.
 
 // Superset across commits. Each entry is the list of ACCEPTED SPELLINGS -- 35e84c3 renamed
 // four coordinate functions, and a probe that slices two revisions cannot use one spelling.
@@ -172,8 +151,15 @@ async function buildEnv(src, opts = {}) {
   const declared = [];
   const missing = [];
   for (const spellings of WANTED) {
+    // 🔴 NO `export` ALTERNATION, AND THAT IS THE WHOLE REPAIR. `\bfunction NAME(` already
+    //    matches all three shapes the subject can wear — `function f(`, `async function f(`
+    //    and `export function f(` — because both prefixes sit BEFORE the `function` keyword.
+    //    The old pattern anchored to the line start and therefore had to enumerate the
+    //    prefixes, which is why a change that altered nothing about the code broke it.
+    //    A name matched here that is not module-level fails LOUDLY at the load below (the
+    //    appended accessor cannot name it), so being more permissive here costs nothing.
     const used = spellings.find(n =>
-      new RegExp(`(^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${n}\\s*\\(`).test(src));
+      new RegExp(`\\bfunction\\s+${n}\\s*\\(`).test(src));
     if (used) declared.push(used); else missing.push(spellings[0]);
   }
   if (!declared.includes('loadExistingMap')) die('loadExistingMap not found');
