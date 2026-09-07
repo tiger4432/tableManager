@@ -60,10 +60,18 @@
 //
 // A harness whose answers can only arrive at a convenient moment cannot test dismissal.
 
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import vm from 'node:vm';
+// 🔴 C-35 ②. `node:vm` is GONE. The subject is imported.
+//    Baseline: a plain dynamic import with a cache-busting query, which gives a FRESH
+//    module instance per scenario — the isolation the per-scenario vm context used to
+//    provide. Without it the module's ONE floating list stays connected to the previous
+//    scenario's body (`isConnected` walks the parent chain), and every later scenario
+//    would look at an empty document.
+//    Mutants: `loadWithProbe`, the canonical helper — it copies, asserts the copy STARTS
+//    WITH the original bytes, appends, and imports. Fourteen harnesses already use it.
+import { pathToFileURL } from 'node:url';
+import { loadWithProbe } from './lib/probe.mjs';
 // 🔴 SUPPLIED, NOT COPIED. `requestValues` stopped reading `body.truncated`
 //    directly on 2026-09-07 - the wire carries that field in five shapes and this
 //    route's bool was right by luck - so it asks one place instead. Sliced code
@@ -89,39 +97,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SUGGEST_PATH = join(HERE, '..', 'src', 'value_suggest.js');
 const GRID_PATH = join(HERE, '..', 'src', 'grid.js');
 
-const read = p => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-
-// ── Extraction ──────────────────────────────────────────────────────────────────
-
-/** Balanced-brace slice of an arrow-function object property, e.g. `name: (p) => { ... }`. */
-function extractArrowProp(src, name) {
-  const re = new RegExp(`${name}\\s*:\\s*\\(([^)]*)\\)\\s*=>\\s*\\{`);
-  const m = re.exec(src);
-  if (!m) throw new Error(`property ${name} not found`);
-  const open = src.indexOf('{', m.index + m[0].length - 1);
-  let depth = 0;
-  for (let j = open; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) return `function (${m[1]}) ${src.slice(open, j + 1)}`;
-    }
-  }
-  throw new Error(`unbalanced braces for ${name}`);
-}
-
-/**
- * The module runs as a SCRIPT in the sandbox, so the ESM surface is textually flattened:
- * import lines are dropped (their two bindings are injected as globals instead) and the
- * `export` keyword is removed. Nothing inside a function body is touched — every assertion
- * below runs the real statements.
- */
-function flattenModule(src) {
-  return src
-    .replace(/^import[\s\S]*?from\s+'[^']+';\s*$/gm, '')
-    .replace(/^export\s+/gm, '');
-}
 
 // ── DOM / host stubs ────────────────────────────────────────────────────────────
 
@@ -236,11 +211,19 @@ const NETS = new Set();
 function makeSandbox({ dataset, tableName = 'bonding_map', onFetch }) {
   const body = new El('body');
   body._isRoot = true;
+  // 🔴 THE FAKE HOSTS THE WHOLE IMPORT GRAPH NOW, not just the subject. `utils.js` registers a
+  //    `visibilitychange` listener at module scope, and its own comment says a PARTIALLY stubbed
+  //    DOM is exactly what makes that line throw.
   const doc = {
     body,
     createElement: tag => new El(tag),
     createTextNode: t => { const n = new El('#text'); n.textContent = t; return n; },
-    querySelector: () => null
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    addEventListener() {},
+    removeEventListener() {},
+    hidden: false,
   };
   const win = { innerHeight: 800, innerWidth: 1280, addEventListener() {}, removeEventListener() {} };
 
@@ -522,49 +505,125 @@ function makeGrid({ suppressKeyboardEvent, EditorCtor, cellValue, onCommit }) {
 // ── Loading ─────────────────────────────────────────────────────────────────────
 
 /** The real `RANGE_ARROW_DELTA` declaration, lifted verbatim — the hook reads it. */
-function extractConst(src, name) {
-  const re = new RegExp(`const\\s+${name}\\s*=`);
-  const m = re.exec(src);
-  if (!m) throw new Error(`const ${name} not found`);
-  const semi = src.indexOf(');', m.index);
-  if (semi === -1) throw new Error(`const ${name}: no terminator`);
-  return src.slice(m.index, semi + 2);
+// 🔴 A FRESH INSTANCE PER SCENARIO, BY IMPORT. The query string is the only way to ask
+//    node's ESM loader for a second instance of the same file; nothing is copied and
+//    nothing is read as text.
+let instanceSeq = 0;
+const freshImport = (absPath) =>
+  import(`${pathToFileURL(absPath).href}?vsk=${++instanceSeq}`);
+
+// The host objects the subject reaches for. They used to be a vm context; now they are
+// globals, saved and restored so one scenario cannot leak into the next.
+// 🔴 TWO PHASES, AND THE ORDER IS LOAD-BEARING. The DOM-ish globals must be in place BEFORE
+//    the subject's import graph runs, because `utils.js` touches `document` at module scope.
+//    The CLOCK and the TIMERS must go in AFTER, because the fake `setTimeout` never fires —
+//    installing it first leaves the dynamic `import()` waiting forever, and node then exits 0
+//    with no output at all. That silence is what this split buys.
+// ⛔ `console` IS NOT IN THIS LIST, and that is not an oversight. Under the vm the silencing
+//    console lived inside the sandbox; as a GLOBAL it silences the harness's own output too —
+//    the run printed its banner and then went quiet and exited 0, which reads exactly like a
+//    harness that measured nothing. The subject's own logging goes to the real console.
+const DOM_KEYS = ['document', 'window', 'fetch', 'AbortController'];
+const CLOCK_KEYS = ['setTimeout', 'clearTimeout'];
+let hostSaved = null;
+function saveHostOnce() {
+  if (hostSaved !== null) return;
+  hostSaved = {};
+  for (const k of [...DOM_KEYS, ...CLOCK_KEYS]) hostSaved[k] = globalThis[k];
+  hostSaved.dateNow = Date.now;
+}
+function installDom(sandbox) {
+  saveHostOnce();
+  for (const k of DOM_KEYS) globalThis[k] = sandbox[k];
+}
+function installClock(sandbox) {
+  saveHostOnce();
+  for (const k of CLOCK_KEYS) globalThis[k] = sandbox[k];
+  // 🔴 `Date.now` ONLY. Replacing the whole `Date` would break anything that constructs one.
+  Date.now = sandbox.Date.now;
+}
+function restoreHost() {
+  if (hostSaved === null) return;
+  for (const k of [...DOM_KEYS, ...CLOCK_KEYS]) globalThis[k] = hostSaved[k];
+  Date.now = hostSaved.dateNow;
 }
 
-function load({ suggestSrc, gridSrc, dataset, tableName, onFetch }) {
+// 🔴 `state` and `API_BASE` are REAL modules now. The scenario's fields are written onto
+//    the real singleton instead of a fake being handed in — so a field the subject reads
+//    that this harness forgot to set is the REAL default, not `undefined`.
+function seedState(realState, scenarioState) {
+  for (const k of Object.keys(scenarioState)) realState[k] = scenarioState[k];
+}
+
+async function load({ dataset, tableName, onFetch, mutate } = {}) {
   const sandbox = makeSandbox({ dataset, tableName, onFetch });
   const calls = { extendRange: 0, clearRange: 0, bulkFill: [] };
   sandbox.__calls = calls;
-  // Collaborators the hook reaches for that are NOT under test here. Stubbed, and their
-  // invocation is recorded so a check can assert the pre-existing keyboard-range branches
-  // still fire (0b-c, committed at 883b680, must not regress).
-  sandbox.extendRangeByKeyboard = () => { calls.extendRange += 1; return true; };
-  sandbox.clearRangeSelection = () => { calls.clearRange += 1; };
-  sandbox.applyValueToSelectedRange = v => { calls.bulkFill.push(v); };
 
-  const ctx = vm.createContext(sandbox);
-  // `class`/`const` at the top level of a vm SCRIPT are lexical, so they never become
-  // properties of the context's global. The epilogue publishes exactly the module's export
-  // surface — and only that surface, so a test cannot reach past it into a private.
-  vm.runInContext(
-    flattenModule(suggestSrc)
-    + '\n;globalThis.__mod = { SuggestCellEditor, handleEditorKey, isSuggestEditorActive,'
-    + ' getSuggestStats, resetSuggestStats, resetSuggestLearning };',
-    ctx, { filename: 'value_suggest.js' });
-  const hookSrc = extractArrowProp(gridSrc, 'suppressKeyboardEvent');
-  vm.runInContext(
-    `${extractConst(gridSrc, 'RANGE_ARROW_DELTA')}\nvar __hook = ${hookSrc};`,
-    ctx, { filename: 'grid.js#suppressKeyboardEvent' });
+  // 🔴 The host objects are GLOBALS now, not a vm context. Saved once and restored at the end
+  //    of the run, so the harness cannot leave node's real timers replaced behind it.
+  installDom(sandbox);
+  // `state` is the REAL module singleton. Seeding it means a field this harness forgot to set
+  // is production's default, not `undefined` — closer to the screen, not further.
+  const { state: realState } = await import('../src/state.js');
+  seedState(realState, sandbox.state);
+
+  const suggest = mutate && mutate.file === 'suggest'
+    ? (await loadWithProbe(SUGGEST_PATH, { mutate: mutate.fn, tag: 'vsksuggest' })).module
+    : await freshImport(SUGGEST_PATH);
+
+  // 🔴 The grid always goes through the helper, and the reason is the STUB — not the mutation.
+  //    `applyValueToSelectedRange` is the one collaborator any assertion observes, and grid.js
+  //    IMPORTS it, so the canonical helper can redirect that import. Nothing is sliced.
+  //    ⚠️ `extendRangeByKeyboard` is module-private to grid.js and cannot be redirected — it
+  //       runs for real. Its counter was never read by any assertion (measured: the only
+  //       collaborator an assertion reads is `bulkFill`), so nothing observed changes.
+  // 🔴 AND THE HOOK MUST SEE *THIS* EDITOR. `grid.js` imports `./value_suggest.js` itself, so
+  //    without this the copy would hold its OWN instance and the hook would ask a different
+  //    module whether an editor is open — every hook↔editor assertion fails while both halves
+  //    look correct in isolation. Measured: 25 of 94 failed exactly that way before this stub.
+  const gridSpec = {
+    tag: 'vskgrid',
+    stubs: {
+      './ui.js': { applyValueToSelectedRange: (v) => { calls.bulkFill.push(v); } },
+      './clipboard.js': { clearRangeSelection: () => { calls.clearRange += 1; } },
+      './value_suggest.js': {
+        SuggestCellEditor: suggest.SuggestCellEditor,
+        handleEditorKey: (e) => suggest.handleEditorKey(e),
+        isSuggestEditorActive: () => suggest.isSuggestEditorActive(),
+      },
+    },
+  };
+  const grid = (await loadWithProbe(GRID_PATH,
+    mutate && mutate.file === 'grid' ? { ...gridSpec, mutate: mutate.fn } : gridSpec)).module;
+
+  // The clock and timers go in only AFTER every import has resolved.
+  installClock(sandbox);
+
   return {
-    ctx,
     sandbox,
     calls,
     net: sandbox.__net,
-    SuggestCellEditor: sandbox.__mod.SuggestCellEditor,
-    hook: sandbox.__hook,
-    stats: () => sandbox.__mod.getSuggestStats(),
-    resetLearning: () => sandbox.__mod.resetSuggestLearning(),
-    /** The ONE shared floating list, read out of the sandbox's document. */
+    // 🔴 EACH LOAD'S CALLS GO TO ITS OWN DOCUMENT. Under the vm every load had its own
+    //    `document` forever; as a GLOBAL it is last-writer-wins, so a scenario that loads a
+    //    second instance and then returns to the first was writing into the second's body
+    //    while asserting on the first's. Re-activating on use restores the vm's semantics
+    //    without any scenario having to know. (Measured: 2 of 94 failed exactly here.)
+    SuggestCellEditor: class extends suggest.SuggestCellEditor {
+      constructor(...args) { installDom(sandbox); super(...args); }
+    },
+    // 🔴 THE HOOK IS AN EXPORT NOW, so it is READ, not extracted. Lifting it out of
+    //    `renderGrid`'s gridOptions is what removed this harness's last slice — and it was a
+    //    move with zero degrees of freedom (every name it closes over was already module level).
+    hook: (params) => { installDom(sandbox); return grid.suppressKeyboardEvent(params); },
+    // The rest of the module's export surface, by name — the vm epilogue used to publish
+    // exactly this list, and nothing beyond it.
+    isSuggestEditorActive: () => suggest.isSuggestEditorActive(),
+    handleEditorKey: (e) => suggest.handleEditorKey(e),
+    resetStats: () => suggest.resetSuggestStats(),
+    stats: () => suggest.getSuggestStats(),
+    resetLearning: () => suggest.resetSuggestLearning(),
+    /** The ONE shared floating list, read out of the fake document. */
     sharedList: () => sandbox.document.body.children
       .find(c => String(c.className).includes('value-suggest-list'))
   };
@@ -866,8 +925,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
 
   // ── 8-bis. `unavailable_reason` IS ALSO A SILENT FALLBACK ─────────────────────
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g.colId = 'legacy_note'; // 200 + unavailable_reason, values: []
     await typeInto(g, 'ABC');
@@ -910,11 +969,11 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
     // size. So the limit on the wire is a latency contract, not a display preference, and
     // it is asserted on the wire rather than on the constant.
     const seen = [];
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET,
+    const fresh = await load({
+      dataset: DATASET, mutate: mod.mutate,
       onFetch: (url) => { seen.push(Number(new URL(url, 'http://x').searchParams.get('limit'))); return null; }
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'T');
     results.wireLimit = seen[0];
@@ -930,8 +989,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // ── 9. REQUESTS PER TYPED PREFIX ──────────────────────────────────────────────
   {
     // Fresh module so the complete-result cache starts empty for this column.
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g.colId = 'lot_id';
     await typeInto(g, 'K23A00'); // 6 characters
@@ -955,11 +1014,11 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   {
     // The dataset grows between the two edits, exactly as a commit makes it grow.
     const pool = ['K23A0011', 'K23A0012'];
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc,
+    const fresh = await load({
+      mutate: mod.mutate,
       dataset: { get lot_id() { return pool.slice(); } }
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
 
     const g1 = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g1.colId = 'lot_id';
@@ -994,8 +1053,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   {
     let gate = null;
     let call = 0;
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET,
+    const fresh = await load({
+      dataset: DATASET, mutate: mod.mutate,
       onFetch: (url) => {
         const prefix = new URL(url, 'http://x').searchParams.get('prefix');
         if (prefix !== 'T') return null;
@@ -1011,7 +1070,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
                  json: async () => ({ values: ['FRESH-2'], truncated: true }) };
       }
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
 
     g.key('T');                       // request #1 for 'T', held; truncated so no narrowing
@@ -1057,11 +1116,11 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
 
   // ── 12. LOCAL NARROWING IS ASCII-ONLY (db_fold disagreement) ──────────────────
   {
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc,
+    const fresh = await load({
+      mutate: mod.mutate,
       dataset: { pkg_id: ['ÄBC-1', 'äBC-2'] }
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'ÄB'); // U+00C4: PG lower() and JS toLowerCase() disagree
     results.nonAsciiRequests = fresh.stats().requests;
@@ -1104,7 +1163,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
     results.sharedListBefore = listState();
 
     first.destroy(); // the previous editor is torn down AFTER the next one registered
-    results.stillActive = mod.sandbox.__mod.isSuggestEditorActive();
+    results.stillActive = mod.isSuggestEditorActive();
     results.sharedListAfter = listState();
     if (strict) {
       check('tearing down the previous editor leaves the live one registered',
@@ -1125,8 +1184,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // `REQUEST_LIMIT = 12` production is the other regime — a truncated answer is never cached,
   // so refinement cannot be served locally and every keystroke issues a request.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g.colId = 'wafer_id';                 // 40 values, all sharing 'WF0'
     await typeInto(g, 'WF0');
@@ -1161,7 +1220,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // chose, or lose the typed text.
   {
     const runEscape = async (deliverFirst) => {
-      const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+      const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
       const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: 'OLD' });
       await typePending(g, 'TFB');
       if (deliverFirst) await deliver();          // SLOW operator / fast server: list is up
@@ -1198,7 +1257,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // the NEXT ENTER WROTE A VALUE THE OPERATOR NEVER CHOSE. QA reproduced the full chain with
   // `COMMITTED=["DEVENV_ISO_PROBE_7f3c1a9e"]` against a typed "DEV".
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: 'OLD' });
     await typePending(g, 'TFB');
     results.lateHadInFlight = fresh.net.inFlight();
@@ -1222,7 +1281,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // The dismissal must be sticky enough to survive the answer landing, and no stickier: the
   // operator's way out of the edit cannot become unreachable.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: 'OLD' });
     await typePending(g, 'TFB');
     g.key('Escape');
@@ -1241,7 +1300,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // they were in it. Typing is the implicit way back; ArrowDown is the explicit one that the
   // module header promises and that `scheduleQuery`'s new early return would otherwise kill.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'TFB');
     g.key('Escape');
@@ -1265,7 +1324,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // and has not been issued, so the correct behaviour is that it never is: a dismissal must
   // cancel work that has not started, or the server is asked a question nobody is waiting for.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: 'OLD' });
     g.key('T');                    // the editor opens and arms its debounce; no timer has fired
     g.key('Escape');
@@ -1292,8 +1351,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // the fetch closes the browser socket without cancelling a handler already inside
   // `db.execute`. The victims are UNRELATED requests failing on `pool_timeout`.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g.colId = 'legacy_note';       // answers `unavailable_reason`
     await typeInto(g, 'ABCDEFGHIJKLMNOPQ');   // the same 17 characters
@@ -1323,13 +1382,13 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // construction, and invisible to the `table_config` hot reload this deployment relies on.
   {
     let refusing = true;
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET,
+    const fresh = await load({
+      dataset: DATASET, mutate: mod.mutate,
       onFetch: () => (refusing
         ? { status: 404, ok: false, json: async () => ({ detail: 'no such column' }) }
         : null)
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
 
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'TFBGA');           // 5 refusals: floor -> 6 AND the column disabled
@@ -1367,13 +1426,13 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // newly-declared column work at once instead of a minute later.
   {
     let refusing = true;
-    const fresh = load({
-      suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET,
+    const fresh = await load({
+      dataset: DATASET, mutate: mod.mutate,
       onFetch: () => (refusing
         ? { status: 400, ok: false, json: async () => ({ detail: 'not a suggestion target' }) }
         : null)
     });
-    fresh.suggestSrc = mod.suggestSrc; fresh.gridSrc = mod.gridSrc;
+    fresh.mutate = mod.mutate;
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'TFBGA');
     g.key('Escape'); g.key('Escape'); await flush();
@@ -1404,7 +1463,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // has become the live editor, and its `setPending(true)` marks the SUCCESSOR's list as
   // refining when nothing is refining it.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const mk = () => {
       const ed = new fresh.SuggestCellEditor();
       ed.init({ value: '', eventKey: 'F2', cellStartedEdit: true,
@@ -1449,7 +1508,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // to a question already superseded cleared the hairline belonging to the question that had
   // superseded it.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     g.colId = 'wafer_id';                      // truncated regime: nothing is served locally
     await typeInto(g, 'WF0');                  // a settled, open list
@@ -1484,7 +1543,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // the next open — a list claiming a refinement is in flight when none is. `setPending`
   // cannot clear it once `listOpen` is false, so closing is the moment it stops being true.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const g = makeGrid({ suppressKeyboardEvent: fresh.hook, EditorCtor: fresh.SuggestCellEditor, cellValue: '' });
     await typeInto(g, 'T');                    // one request; its COMPLETE answer is cached
     g.editor.eInput.value = 'X';               // not a refinement of 'T' — must go to the server
@@ -1527,7 +1586,7 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
   // cannot scroll to a fixed element and there was no scrollbar to drag. The operator could not
   // read the value Enter was about to write, which is the one thing the highlight is for.
   {
-    const fresh = load({ suggestSrc: mod.suggestSrc, gridSrc: mod.gridSrc, dataset: DATASET });
+    const fresh = await load({ dataset: DATASET, mutate: mod.mutate });
     const VW = fresh.sandbox.window.innerWidth;          // 1280
     const cell = new El('div');
     cell._rect = { left: 1180, top: 300, right: 1280, bottom: 326, width: 100, height: 26 };
@@ -1571,13 +1630,9 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
 }
 
 // ── Baseline ────────────────────────────────────────────────────────────────────
-const suggestSrc = read(SUGGEST_PATH);
-const gridSrc = read(GRID_PATH);
 
 console.log('\n=== BASELINE: real source ===');
-const base = load({ suggestSrc, gridSrc, dataset: DATASET });
-base.suggestSrc = suggestSrc;
-base.gridSrc = gridSrc;
+const base = await load({ dataset: DATASET });
 const baseResults = await runChecks(base, { strict: true });
 
 console.log('\n--- the two instrument scores, from the same edit ---');
@@ -1863,21 +1918,27 @@ const MUTATIONS = [
 console.log('\n=== MUTATION SWEEP ===');
 let applied = 0, caught = 0, notApplied = [], escaped = [];
 for (const m of MUTATIONS) {
-  const target = m.file === 'grid' ? gridSrc : suggestSrc;
-  if (!target.includes(m.find)) {
+  // 🔴 The mutation is a FUNCTION over the source, handed to the canonical helper — this
+  //    harness never reads either subject as text. `hit` is how 「search string not found」 is
+  //    still detected: the helper hands the source in and the anchor either matches or not.
+  let hit = false;
+  const mutate = {
+    file: m.file,
+    fn: (src) => {
+      if (!src.includes(m.find)) return src;
+      hit = true;
+      return src.replace(m.find, m.repl);
+    },
+  };
+  const mod = await load({ dataset: DATASET, mutate });
+  if (!hit) {
     notApplied.push(m.name);
-    console.error(`  NOT APPLIED  ${m.name}\n    search string not found in ${m.file}`);
+    console.error(`  NOT APPLIED  ${m.name}` + `
+    search string not found in ${m.file}`);
     continue;
   }
   applied++;
-  const mutated = target.replace(m.find, m.repl);
-  const mod = load({
-    suggestSrc: m.file === 'suggest' ? mutated : suggestSrc,
-    gridSrc: m.file === 'grid' ? mutated : gridSrc,
-    dataset: DATASET
-  });
-  mod.suggestSrc = m.file === 'suggest' ? mutated : suggestSrc;
-  mod.gridSrc = m.file === 'grid' ? mutated : gridSrc;
+  mod.mutate = mutate;
 
   const before = { pass, fail, failures: failures.length };
   let threw = null;
