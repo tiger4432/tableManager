@@ -745,6 +745,15 @@ const FLOORS = new Map([
   ['map2_placement_seat_harness.mjs', 60],
   ['map2_attestation_harness.mjs', 19],
   //
+  // S-19 «화면 절반». Scores that a map whose origin box fell back from the valid-die mask to
+  // the wafer circle SAYS so, and that the other three values stay silent -- so the note lands
+  // only where the operator would otherwise read the origin as mask-based. Floor guards three
+  // links, not one: the judgement (`origin_basis.js`), the wire (`decode.js`), and the adapter
+  // that builds the row the screen reads. A drop in any one of them leaves the other two
+  // looking correct while the screen is unchanged, which is the shape of "in the source, not in
+  // the browser".
+  ['map2_origin_basis_harness.mjs', 25],
+  //
   // THE SET-UP QUESTION. Scores that the screen's three parameters -- table, coordinate
   // columns, reference floor -- are held as ONE primitive tuple that cannot express an invalid
   // combination; that a `fallback_guess` binding is marked as a guess and refuses to underwrite

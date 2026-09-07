@@ -392,6 +392,17 @@ export function decodeReferenceView(payload) {
     // ⚠️ STRICTLY BOOLEAN, and absent is NOT true: an older server that does not send the field
     //    must read as "no person confirmed this", never as a confirmation nobody made.
     confirmedByPerson: !!(s && s.confirmed_by_person === true),
+    // 🔴 S-19. WHAT THE ORIGIN BOX STOOD ON, WHICH IS ORTHOGONAL TO EVERY FIELD AROUND IT.
+    //    A map whose geometry is `declared` can still have had its origin box fall back to the
+    //    wafer circle -- that happens when the valid-die mask misses this grid entirely -- and
+    //    today the screen cannot say so, because nothing here carries it
+    //    (`map_alignment.py` -> `map_overlay.origin_box_basis`). Carried, not derived: the
+    //    client has neither the mask nor the grid, so deriving it is not available even in
+    //    principle.
+    // ⚠️ ABSENT IS `null`, AND `null` MEANS EXACTLY ONE THING: an older server. The server
+    //    sends a value on EVERY map, `absent` included, so a missing field cannot also mean
+    //    "this map has no box".
+    originBasis: s && s.origin_basis != null ? String(s.origin_basis) : null,
     // 🔴 TWO FIELDS, NOT ONE, AND THE SERVER SPLITS THEM FOR A REASON. `geometry` is what THIS
     //    MAP SAYS ABOUT ITSELF; `geometry_basis` is what THIS RUN ACTUALLY STOOD ON
     //    (`map_alignment.geometry_basis_of`). Folding them together makes a borrowed geometry
