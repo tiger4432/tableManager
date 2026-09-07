@@ -1080,7 +1080,7 @@ const FLOORS = new Map([
   //    A1/A2/A3/A4 a few dozen lines above, with `pickUnusedColor` stubbed to a sentinel so a
   //    palette reach comes back as that sentinel instead of null. Measured before removing
   //    them: neutralised but still counted, the sweep caught 23 of 23. They carried nothing.
-  ['overlay_value_colour_harness.mjs', 79],
+  ['overlay_value_colour_harness.mjs', 80],
   // New 2026-08-04 with the overlay-provenance round. Floor is the count it reports on the
   // commit that introduces it — there is no earlier tree to measure it against.
   ['overlay_provenance_harness.mjs', 21],
