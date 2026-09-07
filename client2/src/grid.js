@@ -196,6 +196,26 @@ export function sortQueryTail() {
   return `&order_by=${encodeURIComponent(orderBy)}&order_desc=${orderDesc}`;
 }
 
+/**
+ * A-6. Does the grid hold the WHOLE table right now? Only then is a local sort already the
+ * whole-table sort.
+ *
+ * 🔴 `allDataLoaded` ALONE IS NOT THE ANSWER, and reading it as one shipped a defect for one
+ *    round. That flag is set by the 「Load All」 button and by nothing else — a 907-row table
+ *    that arrives complete in its first page never sets it. Measured in the browser: sorting
+ *    that table's header fired two requests it did not need, for rows the grid already had.
+ * 🔴 `hasMoreData` IS THE FACT: the last fetch came back short of `pageLimit`, so there is no
+ *    page after this one. What it does NOT say is whether there is a page BEFORE this one —
+ *    page 35 of 35 is also "no more data" and is emphatically not the table. In pagination
+ *    that is what `currentSkip === 0` adds; in infinite scrolling every earlier page is still
+ *    in the grid, so being at the end IS holding everything.
+ */
+export function holdsWholeTable() {
+  if (state.allDataLoaded) return true;
+  if (state.hasMoreData) return false;
+  return state.viewMode === 'infinite' || state.currentSkip === 0;
+}
+
 // 🔴 RE-ENTRANCY. `updateGridSortState` calls `applyColumnState`, which raises `sortChanged`;
 //    without this the handler below would treat the grid's own repaint as an operator action
 //    and fetch again, forever. AG-Grid's `source` already tells them apart
@@ -1195,7 +1215,7 @@ export function renderGrid(initialRows) {
       // 🔴 WHEN EVERYTHING IS LOADED THE LOCAL SORT IS ALREADY THE WHOLE-TABLE SORT, and
       //    asking the server would be a round trip that changes nothing. Measured: a 907-row
       //    table (under one page) sorts to its true maximum today, with zero requests.
-      if (state.allDataLoaded) { state.serverSort = null; return; }
+      if (holdsWholeTable()) { state.serverSort = null; return; }
       const sorted = state.gridApi.getColumnState().find(c => c.sort);
       // The column id IS the declared column name (`field: col` for both plain and 🔗 join
       // columns), so the name on the wire is one the table declares — the server's 422 for an
