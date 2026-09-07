@@ -1,6 +1,6 @@
 # `chain_rules.json` 세팅 — 체인 인제션 룰
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-08 00:5x (§5 를 «코드가 읽는 키» 전수로 다시 씀 — 파일 수준·프레임워크·맵퍼 사설 «세 층», `reads`·`slow_warn_ms`·`max_chain_depth`·표 역할 키 추가, «없는 것» 절) · 직전 2026-09-05 (§5 키 표에 `source_table`·`allow_chain_trigger`·`allow_map_metadata_upsert` 세 행 추가 — 그중 마지막이 «둘째 엣지»다) · 직전 2026-08-13 (§5 키 표에 **제거 전략 옵트인 둘**(`allow_replace_map`·`allow_retraction`)과 **`*_job_column` 명시 선언** 행 추가 — `4d5198c`. 셋 다 표에 없어서, `dt_map`처럼 맵 키가 둘인 타깃에서 왜 체인이 이름을 대며 거절하는지 이 문서만으로는 알 수 없었다) | **Owner:** Ingester
 > 상위: [폴더 인덱스](./README.md) · 동작 원리 정본은 [chain_ingestion_guide](../chain_ingestion_guide.md) · 절차 요약은 [CONFIG_GUIDE §3-S8](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
@@ -60,19 +60,55 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 
 복원 후 **다시 `reload-configs`** (워커가 옛 룰로 돌아가야 하므로). 이미 잘못 전파된 target 데이터는 룰 복원으로 돌아오지 않습니다 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
 
-## 5. 키 참조 (`rules[]` 항목)
+## 5. 키 참조 — «코드가 읽는 키» 전수 (2026-09-08 00:5x 실측, `git grep` 추적 파일 기준)
 
-| 키 | 의미 |
+> 🔴 **옵션은 «두 층»이다.** 프레임워크가 읽는 키(아래 표, 닫힌 집합)와 «맵퍼가 스스로 읽는» 키(§5-bis, 맵퍼마다 다름).
+> 워커는 규칙 dict «통째로» 맵퍼에 넘기고(`run(db, payloads, rule)`), 맵퍼 사설 키는 **검증하지 않는다** — 오타는 조용하다.
+> 컬럼 이름 키만 `chain_bindings.resolve_column` 이 «이름 대어» 거절한다.
+
+### 5-A. 파일 수준 (`chain_rules.json` 최상위)
+
+| 키 | 읽는 곳 | 의미 · 기본값 |
+|---|---|---|
+| `max_chain_depth` | `event_constants.max_chain_depth` | 체인이 체인을 깨우는 «홉 상한». 양의 정수 아니면 **기본 8**. 깊이 초과 행은 `[Chain Depth]` 로 이름 대어 거절되고 «끝난 것»으로 표시된다(2026-09-06) |
+| `rules[]` | 워커 로더 | 규칙 목록. 아래 5-B |
+| `__comment` · `_*_comment` | 아무도 안 읽음 | 주석 자리 |
+
+### 5-B. 규칙 수준 — 프레임워크 키 (`rules[]` 항목)
+
+| 키 | 읽는 곳 | 의미 · 기본값 |
+|---|---|---|
+| `name` | 워커 · 리플레이 · bindings · 큐 패널 | 규칙 식별자. 로그·화면·소급 실행의 «인자»가 이 이름이다 |
+| `enabled` | 워커 | `false` 면 비활성. **생략 = 켜짐**. 꺼진 규칙은 순환 검사 그래프에 안 들어간다 |
+| `trigger_table` | 워커 · 리플레이 · bindings(역할 read) | 이 표의 변경이 발화. 순환 검사의 «엣지 출발점». 🔴 **정확히 한 트리거** |
+| `target_table` | 워커 · 리플레이 · SDK · bindings(역할 write) | 맵퍼 행이 가는 표. «엣지 도착점». `@mapper` 는 «이 선언»에서 비즈니스 키 층을 정한다 — 규칙이 안 주면 데코레이터 인자로 |
+| `source_table` | bindings(역할 read) · 맵퍼 | 맵퍼가 «읽는» 표. 엣지가 «아니다» — `trigger_table` 과 뜻이 겹쳐 보여 바꿔 읽기 쉽다 |
+| `mapper_module` / `mapper_function` | 워커 · 리플레이 | `server/mappers/<module>.py` 의 함수. 🔴 맵퍼 파일은 gitignore(`.sample` 만 출하) |
+| `is_batch` | 워커 · 리플레이 | `true` = DataFrame 배치 모드(트랜잭션 그룹 하나를 한 번에). 🔴 배치 맵퍼는 dict «하나»를 돌려준다 — 목록을 주면 오류 없이 `mapper_items: 0` |
+| `allow_chain_trigger` | 워커 | 체인이 만든 이벤트(`source_name: "chain_ingestion"`)를 «받겠다»는 옵트인. 없으면 지나감. 순환 검사가 보는 엣지는 «이 옵트인이 걸린 것»뿐. 깊이 상한은 5-A |
+| `allow_map_metadata_upsert` | 워커 · 리플레이 | 맵퍼가 «맵 메타 봉투»(`map_metadata_updates`)를 낼 수 있게. 🔴 그 쓰기는 `wafer_map_metadata` 에 착지하며 «자기 체인 이벤트를 낸다» = 둘째 엣지(2026-09-04). 2026-09-07 부터 «자동 등록»은 은퇴(S-38) — 등록된 메타만 갱신 |
+| `allow_replace_map` | 워커 · `dt_map_derivation` | 맵 단위 «전량 교체» 봉투 옵트인. 없이 내면 거부 |
+| `allow_retraction` | 워커 · `dt_map_derivation` | 출처 단위 «철회» 봉투 옵트인. 🔴 한 배치에 `replace_map` 과 `retract` 을 같이 실으면 거부(2026-08-13). 둘 중 무엇은 «그 맵의 생산자가 하나인가 여럿인가»가 정한다 |
+| `slow_warn_ms` | 워커 · 리플레이 (`event_constants.slow_warn_ms`) | 이 규칙의 맵퍼 실행·철회가 «느리다»고 경고할 문턱(ms). 양의 정수 아니면 경고 한 줄 뒤 기본값. 「느리다」는 이 선언이 정한다 — 캡 맞음 ≠ 느림 |
+| `reads` | `chain_bindings.READS_KEY` (순서 가드, C-3) | 위 표 키로 «표현 못 하는» 읽기 표 목록(예: `load_map_meta` 가 여는 `wafer_map_metadata`). 🔴 **목적마다 새 키를 만들지 않는다** — 새 읽기는 여기 «값»으로. 순서는 이 선언에서 «도출»된다(의존을 적지 않고 «읽는 표»를 적는다, 판정 61) |
+| `map_table` · `inventory_table` · `derivation_source_table` · `metadata_target_table` | bindings `RULE_TABLE_KEYS`(역할 read) · 각 맵퍼 | 맵퍼가 «여는» 표 이름들. 순서 가드가 «읽기»로 센다. ⚠️ `metadata_target_table` 은 이름과 달리 «소스»(read)다 — 개명 가부는 S-29(소유자) |
+| `reference` `{table, …}` | bindings `REFERENCE_BLOCK` · `core_alignment_mapper` | 실행 시점에 map_id 가 정해지되 «표 집합»은 선언인 참조. 순서 가드는 «표»만 본다 |
+| `*_job_column` (`trigger_`·`source_`·`target_`·`inventory_`·`reference_`) · `job_column` | `chain_bindings.resolve_column` | 잡 컬럼 이름의 «명시 선언». 미선언이면 `table_config`(`map_key_columns` 단일 컬럼 → `business_key`)에서 유도, 그래도 없으면 «이름 대어 거절». 🔴 `map_key_columns` 가 둘 이상인 타깃은 «반드시» 선언 |
+
+### 5-bis. 맵퍼 «사설» 키 — 프레임워크가 «안 읽고 안 검증한다» (출하 샘플 기준)
+
+| 맵퍼 | 사설 키 |
 |---|---|
-| `name` | 룰 식별자(로그·관리 화면 표기) |
-| `trigger_table` | 이 테이블의 변경이 체인을 발화. 🔴 **순환 검사 그래프의 «엣지 출발점»이 이 칸이다** |
-| `target_table` | 맵퍼가 갱신할 테이블. 그래프의 «엣지 도착점» |
-| `source_table` | 🔴 **맵퍼가 데이터를 «읽는» 표 — 엣지가 «아니다».** `trigger_table`과 뜻이 겹쳐 보여 바꿔 읽기 쉽고, 바꿔 읽으면 그래프를 틀리게 그린다 |
-| `mapper_module` / `mapper_function` | `server/mappers/` 하위 모듈 경로와 함수명 |
-| `is_batch` | `true` = 배치(DataFrame) 모드 |
-| `enabled` | `false`면 룰 비활성. **생략하면 켜짐.** 꺼진 룰은 순환 검사 그래프에 **안 들어간다** |
-| `allow_chain_trigger` | 체인이 만든 이벤트(`source_name: "chain_ingestion"`)를 이 룰이 **받겠다는 옵트인.** 선언 없으면 그런 이벤트는 그냥 지나간다. 🔴 **로드 시점 순환 검사가 보는 것은 «이 옵트인이 걸린 엣지»뿐이다** |
-| `allow_map_metadata_upsert` | 맵퍼가 **맵 메타데이터 봉투**(`map_metadata_updates`)를 낼 수 있게 하는 옵트인. 🔴 **[2026-09-04] 이 칸이 곧 «두 번째 엣지»다** — 그 쓰기는 `wafer_map_metadata`에 착지하고 **자기 체인 이벤트를 낸다.** 종전 순환 검사가 이 엣지를 못 봐서 **살아 있는 순환이 통과**했다 → [chain_ingestion_guide 「Target-map metadata within a chain」](../chain_ingestion_guide.md) |
-| `allow_replace_map` | 맵퍼가 **맵 단위 전량 교체** 봉투를 낼 수 있게 하는 옵트인. 선언 없이 그 봉투를 내면 워커가 거부한다 |
-| `allow_retraction` | (2026-08-13 `4d5198c`) 맵퍼가 **출처 단위 철회** 봉투(`retract`)를 낼 수 있게 하는 옵트인. 🔴 **한 배치에 `replace_map`과 `retract`을 함께 실으면 거부된다** — purge가 먼저 돌면 형제 출처의 셀을 구할 기회가 없다. 어느 쪽을 쓸지는 취향이 아니라 **그 맵의 생산자가 하나인가 여럿인가**가 정한다 → [chain_ingestion_guide](../chain_ingestion_guide.md) |
-| `*_job_column` (`trigger_`/`source_`/`target_`/`inventory_`) | 잡 컬럼 이름의 **명시 선언**. 미선언이면 `table_config`에서 유도한다. 🔴 **유도는 「한 컬럼짜리 `map_key_columns`」에 기대므로, `map_key_columns`가 둘 이상인 타깃은 반드시 선언해야 한다** — `dt_map`이 2026-08-13에 그 상태가 됐고 `dt_inventory_to_standard_dt_map`은 `target_job_column`을 선언한다 → [DT_CORE_FRAME_CHAINS_GUIDE §1-bis](../DT_CORE_FRAME_CHAINS_GUIDE.md) |
+| `dt_alignment_metadata_mapper` · `core_alignment_mapper` | `alignment_rule` · `alignment_thresholds` · `reference` · `reference_by_job_pattern` · `geometry_bootstrap` · `primary_selector` · `assume_reference_geometry` · `allow_assumed_geometry` · `accepted_metrics` |
+| `dt_map_mapper` · `dt_standard_map_mapper` | `x_col` · `y_col` · `value_col` · `index_col` · `target_field` (+ 가상 조인 규칙의 `right_table`·`join_key`·`expose` 는 `virtual_join_config` 쪽 파일) |
+| `lot_slot_wafer_mapper` | `list_delimiter` · `slot_list_column` · `wafer_list_column` · `lot_column` · `time_column` · `event_type_column` |
+
+🔴 **이 층의 규율**: 사설 키의 오타는 «조용»하다(프레임워크가 모른다). 컬럼 이름은 `resolve_column` 을 «지나게» 써서 거절이 이름을 대게 하고, 새 사설 키를 만들기 전에 5-B 의 «같은 역할» 키(`reads` · `*_job_column`)로 표현되는지 먼저 본다.
+
+### 5-ter. «없는» 것 — 적을 자리가 없어서 코드가 정하는 것 (2026-09-08 실측)
+```
+· 트리거가 «둘 이상»인 규칙          — 없다. 같은 맵퍼를 규칙 둘로 쓴다(core_usage 가 그 예)
+· 규칙 «의존 순서»의 명시            — 없다(의도). `reads` 에서 «도출»한다
+· 재생(replay) 페이스               — 규칙 키가 아니라 실행 인자(`--pace`, `pacing.json`)
+· 「이 규칙을 바꾸면 무엇이 다시 도나」 — 없다. 내일 방향 논의(변경 비용)
+```
