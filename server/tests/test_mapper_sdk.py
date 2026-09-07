@@ -26,6 +26,14 @@ from database import crud
 
 COMPOSITE = "sdk_composite_tbl"
 PLAIN = "sdk_plain_tbl"
+# Declared, and declaring no identity - the third shape. It is not an oddity: a table
+# whose rows are addressed by `row_id` alone is legitimate everywhere else in this
+# system, so a mapper naming one is a mistake the SDK has to catch rather than assume
+# away.
+KEYLESS = "sdk_keyless_tbl"
+# Never put in TABLE_CONFIG. Stands for the process that did not load the declaration -
+# a worker started before the table was added, or a rule naming it differently.
+UNDECLARED = "sdk_undeclared_tbl"
 
 TABLES = {
     COMPOSITE: {
@@ -38,6 +46,9 @@ TABLES = {
     PLAIN: {
         "business_key": "part_no",
         "column_types": {"part_no": "string", "qty": "number", "note": "string"},
+    },
+    KEYLESS: {
+        "column_types": {"part_no": "string", "qty": "number"},
     },
 }
 
@@ -167,6 +178,57 @@ def test_a_blank_key_value_on_a_plain_target_is_refused_too():
         _emit(PLAIN, pd.DataFrame([{"part_no": "  ", "qty": 5}]))
     with pytest.raises(mapper_sdk.MapperContractError):
         _emit(PLAIN, pd.DataFrame([{"part_no": None, "qty": 5}]))
+
+
+# ---------------------------------------------------------------------------
+# the two refusals the declaration itself can earn
+#
+# 🔴 THESE ARE THE ONES THAT USED TO PASS. Neither branch above fires when there is no
+# declaration to branch on, so the envelope went out with no `business_key_val` and no
+# error - the identity-less write this module exists to refuse. It does not even fail
+# loudly downstream: a UNIQUE index treats NULLs as distinct, so every run lands another
+# copy. Nothing here asserted that silence, which is why it survived.
+# ---------------------------------------------------------------------------
+
+def test_a_table_this_process_never_loaded_is_refused_rather_than_emitted():
+    """And refused AS UNREADABLE. "Refused at all" is not enough to assert here: put the
+    `or {}` back and an unread table becomes an empty declaration, which the keyless
+    branch below refuses too - same exception, same table name, wrong diagnosis. So the
+    assertion has to be the one thing only this branch can say."""
+    assert UNDECLARED not in crud.TABLE_CONFIG, "the fixture must not declare this one"
+    with pytest.raises(mapper_sdk.MapperContractError) as raised:
+        _emit(UNDECLARED, pd.DataFrame([{"part_no": "P1", "qty": 5},
+                                        {"part_no": "P2", "qty": 6}]))
+    assert UNDECLARED in str(raised.value)
+    assert "declarations this process loaded" in str(raised.value)
+
+
+def test_a_declared_table_that_names_no_identity_is_refused_rather_than_emitted():
+    with pytest.raises(mapper_sdk.MapperContractError) as raised:
+        _emit(KEYLESS, pd.DataFrame([{"part_no": "P1", "qty": 5},
+                                     {"part_no": "P2", "qty": 6}]))
+    assert KEYLESS in str(raised.value)
+    assert "declares no identity" in str(raised.value)
+
+
+def test_the_two_say_different_things_because_the_operator_does_different_things():
+    """An unreadable table is a CONFIGURATION fact - the process did not load it, or the
+    rule spells it differently. A keyless one is a DECLARATION fact - nothing says what
+    identifies a row. Folding them into one sentence sends the operator to one place for
+    two problems, so the split is the assertion, not the wording of either half."""
+    with pytest.raises(mapper_sdk.MapperContractError) as unloaded:
+        _emit(UNDECLARED, pd.DataFrame([{"part_no": "P1"}]))
+    with pytest.raises(mapper_sdk.MapperContractError) as keyless:
+        _emit(KEYLESS, pd.DataFrame([{"part_no": "P1"}]))
+
+    unloaded_text, keyless_text = str(unloaded.value), str(keyless.value)
+    assert unloaded_text != keyless_text
+    # each names the fact the other cannot: one is about the declaration being ABSENT
+    # from this process, the other about a declaration that is present and silent.
+    assert "declarations this process loaded" in unloaded_text
+    assert "declarations this process loaded" not in keyless_text
+    assert "declares no identity" in keyless_text
+    assert "declares no identity" not in unloaded_text
 
 
 # ---------------------------------------------------------------------------

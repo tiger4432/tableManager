@@ -159,6 +159,19 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
     name, because a batch that lands without identity cannot be distinguished afterwards
     from one that was never sent.
 
+    🔴 SO IS A MISSING *DECLARATION*, AND THAT IS A DIFFERENT SENTENCE. The paragraph
+    above was true of a COLUMN and silently false of the declaration that names it: when
+    this process cannot see the table at all, or sees it and finds no key declared,
+    neither branch below fires and the envelope went out with no `business_key_val` and
+    no refusal - the exact identity-less write the paragraph promises to refuse. It lands
+    without an error, because a UNIQUE index treats NULLs as distinct, so every run adds
+    another copy (owner report 2026-09-07, running a decorated mapper in production).
+
+    The two cases get their own sentence because the operator's next move differs: an
+    unreadable table is a CONFIGURATION fact (this process did not load it, or the rule
+    names it differently), a keyless one is a DECLARATION fact (nothing says what
+    identifies a row of it). One message for both sends them looking in one place.
+
     NaN and NaT become `None`, not the string "nan". `pd.read_sql` turns SQL NULL into
     NaN - a float - so a bare `to_dict("records")` turns "there was no value" into "the
     value is nan", which is a value. Measured 2026-09-02 on `lot_event.parent_lot`.
@@ -170,7 +183,16 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
     if df is None or len(df) == 0:
         return {"updates": []}
 
-    config = crud.TABLE_CONFIG.get(table_name) or {}
+    # NOT `or {}`. That turned "this process cannot see the table" into "the table
+    # declares nothing", and the second is a state this function can reason about while
+    # the first is one it must refuse.
+    config = crud.TABLE_CONFIG.get(table_name)
+    if config is None:
+        raise MapperContractError(
+            f"'{table_name}' is not among the table declarations this process loaded, so "
+            f"there is nothing to read the business key from. Emitting anyway lands rows "
+            f"with no identity. Check that the target table is declared in "
+            f"table_config.json and that this process has been restarted since.")
     composite_src = config.get("composite_key_source")
     key_col = config.get("business_key")
 
@@ -192,6 +214,12 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
                 f"'{table_name}' carries the key '{key_col}' and the frame has no such "
                 f"column. Emitting anyway would land rows with no identity - the upsert "
                 f"cannot find them again and every run inserts another copy.")
+    else:
+        raise MapperContractError(
+            f"'{table_name}' declares no identity: it names neither a "
+            f"'composite_key_source' nor a 'business_key', so no column of this frame "
+            f"identifies a row of it. Emitting anyway lands rows with no identity - the "
+            f"upsert cannot find them again and every run inserts another copy.")
 
     updates = []
     for record in clean.to_dict("records"):
