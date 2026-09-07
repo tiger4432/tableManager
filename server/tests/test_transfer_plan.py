@@ -534,7 +534,9 @@ def test_dt_stage_core_availability(tp_env, client):
         "remaining_reliable": True,   # 전 역할 정상 → 신뢰 가능(상한 필드 없음)
     }
     assert body["sources"]["transfer_log"] == "connected"
-    assert body["sources"]["eds_fail"] == "connected"
+    # [S-40] eds 맵은 rot180 이고 캐노니컬은 rot0 이다 — 이제 좌표를 «옮겨서» 세고
+    # 그 사실을 «말한다». 수(total·fail 개수)는 회전에 불변이라 위 `chips` 는 그대로다.
+    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
     assert "by_core" not in body
 
 
@@ -1154,23 +1156,27 @@ def test_source_region_scopes_core_availability(tp_env, client):
     rc = body["region_chips"]
     assert rc["cells"] == 3
     assert rc["total"] == 3                       # 3칸 모두 defect 풀맵에 존재
-    # defect (2,2)만 영역 안. eds는 저장 (6,6)이고 정렬이 없어 영역 밖.
-    assert rc["fail_breakdown"] == {"all_fail": 1}
-    assert rc["remaining"] == 2                   # (1,1)과 (5,5)
+    # [S-40] defect (2,2) «그리고» eds — eds 는 저장 (6,6)이지만 rot180 이라 캐노니컬에서
+    # (1,1) 이고, 영역 {(1,1),(2,2),(5,5)} «안»이다. 종전에는 정렬이 없어 영역 «밖»으로
+    # 셌다 — 그것이 S-40 이고, 아래 `…_is_not_aligned` 가 그 기댓값을 적어 두었다.
+    assert rc["fail_breakdown"] == {"all_fail": 2}
+    assert rc["remaining"] == 1                   # (5,5) 하나만 남는다
 
 
-def test_core_frame_fail_source_is_not_aligned(tp_env, client):
-    """🔴 **부재를 못 박는 테스트다 — 고칠 때 이 단언을 뒤집어라.**
+def test_core_frame_fail_source_is_aligned(tp_env, client):
+    """✅ **뒤집혔다 (S-40 · 판정 106/108, 2026-09-07).**
 
-    `frame: "self"` fail 원천은 자기 맵의 **회전 선언을 상의하지 않는다**. 회전을 180에서
-    0으로 바꿔도 영역 교차 결과가 **변하지 않는다**는 것이 그 증거다 — 정렬이 붙어 있다면
-    180일 때 (6,6)→(1,1)로 사상돼 결과가 달라져야 한다.
+    이 시험은 «부재를 못 박는» 형태로 서 있었고 자기 docstring 에 「고칠 때 이 단언을
+    뒤집어라」와 되돌릴 기댓값(`all_fail 2 / remaining 1`)까지 적어 두었다. 그대로 했다.
 
-    M1 위임 경로(`bonding_plan.canonical_basis` + `CANONICAL_FRAME_ROLES`)에는 이 정렬이
-    있었고 2026-08-14 은퇴와 함께 사라졌다(`server/M1_SOURCE_CONFIG_REF.RETIRED.md`).
-    라이브에서는 잠복 상태다 — `dt` stage가 fail 원천을 하나도 선언하지 않기 때문이지,
-    엔진이 그것을 처리할 수 있어서가 아니다. 회전된 코어 계측 맵을 선언하는 순간 영역·BIN
-    수치가 조용히 틀린다.
+    `frame: "self"` 는 「변환 없음」이 아니라 「출발 프레임 = 그 맵 자신」이고, 메타가 그
+    프레임이 캐노니컬과 어떻게 놓였나를 말한다. 조작자가 영역을 긋는 자리는 캐노니컬
+    프레임이므로 좌표를 «옮겨서» 센다 — 그래서 회전을 180 에서 0 으로 바꾸면 영역 교차
+    결과가 «달라진다». 종전에는 둘 다 1 이었고, 그것이 「정렬이 없다」의 증거였다.
+
+    이력: M1 위임 경로에 있던 정렬이 2026-08-14 은퇴와 함께 사라졌다
+    (`server/M1_SOURCE_CONFIG_REF.RETIRED.md`). 「잠복」이라 적혀 있었으나 2026-09-07
+    실측으로 «영역만 걸면 이 픽스처에서 이미 관측»됐다 — 잠복이 아니라 서 있는 결함이었다.
     """
     def _eds_in_region(db, tag, rotation):
         _seed_region(db, tag, ("CORE-A", "01"), [(1, 1), (2, 2), (5, 5)])
@@ -1188,9 +1194,11 @@ def test_core_frame_fail_source_is_not_aligned(tp_env, client):
     rot0 = _eds_in_region(db, "BASE-C-0", 0)
     # `all_fail` 하나뿐이다(위 테스트 참조). 180이면 (6,6)→(1,1)로 사상돼 영역에 걸려
     # 2가 되어야 하고, 0이면 1이어야 한다 — 지금은 둘 다 1이다: 정렬이 없다는 뜻.
-    assert rot180["all_fail"] == rot0["all_fail"] == 1, (
-        "정렬이 붙었다면 이 둘은 달라야 한다 — 이 테스트를 뒤집고 위 테스트의 "
-        "기댓값(all_fail 2 / remaining 1)을 되돌려라")
+    # rot180: 저장 (6,6) -> 캐노니컬 (1,1) -> 영역 «안». rot0: (6,6) 그대로 -> 영역 «밖».
+    assert rot180["all_fail"] == 2, rot180
+    assert rot0["all_fail"] == 1, rot0
+    assert rot180["all_fail"] != rot0["all_fail"], (
+        "정렬이 사라지면 이 둘이 같아진다 — 그것이 S-40 의 재발이다")
 
 
 def test_source_region_binding_reported_in_plan_store(tp_env, client):

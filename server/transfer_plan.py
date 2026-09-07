@@ -1498,6 +1498,40 @@ def _self_map_pairs(source_cfg, lot, slot) -> list:
     return out
 
 
+def _to_canonical(db, source_cfg, fs, lot, slot, pts, canonical_meta, meta_cache):
+    """자기 맵 프레임의 점들을 «캐노니컬 프레임»으로. `(pts, marker|None)`.
+
+    🔴 [S-40 · 판정 106] `frame: "self"` 는 「변환 없음」이 아니라 「출발 프레임 = 그 맵
+       자신」이고, 메타가 「그 프레임이 캐노니컬과 어떻게 놓였나」를 말한다. 조작자가 영역을
+       긋는 자리는 캐노니컬 프레임이므로, 안 옮기면 영역 답이 fail 을 «틀린 칸»에서 센다.
+    🔴 변환 구현은 이 저장소에 `map_overlay.resolve_map_transform` «하나»다 — M1 이 부르는
+       그 함수를 그대로 부른다(둘째 저자 금지).
+    ⚠️ 비대칭 지식: 이 맵의 프레임은 아는데 기준을 모르면 identity 를 «가정하지 않는다».
+    """
+    import bonding_plan
+    import map_overlay
+
+    map_id = _origin_map_id(source_cfg, lot, slot, binding=fs)
+    src_meta = bonding_plan.load_map_meta(db, source_cfg, fs.get("table"), map_id, meta_cache)
+    if src_meta is None:
+        return pts, None                    # 프레임을 모르면 옮길 근거도 없다 — 종전 그대로
+    if canonical_meta is None:
+        logger.warning("[TransferPlan] canonical frame unregistered while '%s' declares its "
+                       "own (%s) - refusing to assume identity", fs.get("table"), map_id)
+        return pts, "align_unavailable"
+    try:
+        transform, align, _origin, _note = map_overlay.resolve_map_transform(
+            src_meta, canonical_meta)
+    except ValueError as ve:
+        logger.warning("[TransferPlan] frame transform unavailable (%s/%s): %s",
+                       fs.get("table"), map_id, ve)
+        return pts, "align_unavailable"
+    marker = map_overlay.align_status_label(align)
+    if transform:
+        return {transform(x, y) for (x, y) in pts}, marker
+    return set(pts), marker
+
+
 def _canonical_origin_meta(db, source_cfg, origin_lot, origin_slot,
                            cache: dict = None, meta_cache: dict = None,
                            basis_out: dict = None):
@@ -1841,6 +1875,21 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 involved_cores.append((ol, os_))
             bucket.append((tx, ty, ox, oy))
 
+    # [S-40] 자기 프레임 fail 을 옮길 «기준». M1 과 같은 퇴화형: 확정이 있으면 그것,
+    # 없으면 선언 순서 첫 좌표 원천.
+    _self_canonical_meta = None
+    if any((fs.get("frame") or ("origin" if origin_rows is not None else "self")) == "self"
+           for fs in (fail_sources.values() if isinstance(fail_sources, dict) else [])):
+        import bonding_plan
+        _pairs = _self_map_pairs(source_cfg, lot, slot)
+        _self_canonical_meta, _ = bonding_plan.canonical_basis(
+            db, source_cfg, _pairs, meta_cache)
+        if _self_canonical_meta is None:
+            for _t, _m in _pairs:
+                _self_canonical_meta = bonding_plan.load_map_meta(
+                    db, source_cfg, _t, _m, meta_cache)
+                break
+
     for name, fs in (fail_sources.items() if isinstance(fail_sources, dict) else []):
         name = str(name)
         frame = fs.get("frame") or ("origin" if origin_rows is not None else "self")
@@ -1873,6 +1922,12 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 if "x" in cols and "y" in cols:
                     pts, trunc = _fetch_pairs(db, cols, filters, cap=MAX_FAIL_POINTS,
                                               tag=f"fail:{name}")
+                    # [S-40] 자기 맵 프레임 -> 캐노니컬. 안 옮기면 영역 답이 틀린 칸을 센다.
+                    pts, _mark = _to_canonical(db, source_cfg, fs, lot, slot, pts,
+                                               _self_canonical_meta, meta_cache)
+                    if _mark:
+                        import bonding_plan as _bp
+                        status = _bp.compose_status_marker(status, _mark)
                     fail_union.update(pts)
                     if trunc:
                         truncations.append({"role": name, "cap": MAX_FAIL_POINTS})
