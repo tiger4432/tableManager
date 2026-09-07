@@ -135,6 +135,37 @@ def canonical_keys(keys) -> str:
                       ensure_ascii=False)
 
 
+def registration_token(subject_type, keys) -> tuple:
+    """「이 엔티티가 원장에 있나」 — EXISTENCE, and nothing else.
+
+    🔴 IT MUST NOT CARRY ATTRIBUTES, AND THE REASON IS MEASURED. The registration probe
+    (`backfill._registration_subjects`) builds its set from the SOURCE RELATION - a
+    declared identity column - so it has no attribute values to hash. A token that
+    carried them would never match the probe's, every entity would re-register on every
+    run, and the walk would fill with duplicates nobody asked for.
+    """
+    return (subject_type, canonical_keys(keys))
+
+
+def registration_fingerprint(object_payload) -> str:
+    """「이 엔티티가 «이 상태로» 등록됐나」 — the attributes a registration carries.
+
+    Deliberately a SECOND function rather than a longer token: existence and state are
+    different questions with different producers, and one function answering both is how
+    the probe's spelling and the filter's drift apart. The empty fingerprint is what a
+    registration with no attributes has, and it is what keeps that case byte-identical to
+    the day before this axis existed.
+
+    ⚠️ NOT a duplicate check. Two registrations of one state are the SAME ATOM - the id
+    hashes the whole payload - so storage folds them. This only tells the batch filter
+    that two registrations say DIFFERENT things and both have to go.
+    """
+    qualifiers = (object_payload or {}).get("qualifiers") or {}
+    if not qualifiers:
+        return ""
+    return canonical_keys(qualifiers)
+
+
 def entity_ref(entity_type, keys, **qualifiers):
     """An `entity_ref` object payload: `{type, keys{...}[, qualifiers{...}]}`.
 

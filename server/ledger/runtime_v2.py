@@ -16,7 +16,7 @@ import pandas as pd
 
 from . import gate
 from .backfill import prepare_v2_cursor_batch
-from .envelope import canonical_keys
+from .envelope import registration_fingerprint, registration_token
 from .ledger_frame import atoms_from_ledger_frame
 from .roleframe import (
     LedgerV2DryRunResult,
@@ -414,6 +414,18 @@ def _known_registrations(value: Any) -> tuple[tuple[str, str], ...] | None:
     return tuple(sorted(normalized))
 
 
+def _registration_slot(atom) -> tuple:
+    """What makes two registrations THE SAME ONE for this batch: the entity, and what the
+    registration says about it.
+
+    Two functions, not one: `registration_token` answers existence and is the only
+    spelling the probe can produce; `registration_fingerprint` answers state and exists
+    only inside atoms. Folding them would make the probe's set unmatchable - measured.
+    """
+    return (*registration_token(atom.subject_type, atom.subject_keys),
+            registration_fingerprint(atom.object_payload))
+
+
 def _filtered_event_atoms(
     event_results: tuple[LedgerV2DryRunResult, ...],
     known_registrations: tuple[tuple[str, str], ...] | None,
@@ -428,13 +440,19 @@ def _filtered_event_atoms(
             "sources emitting register require an explicit existing-registration snapshot",
         )
     known = set(known_registrations or ())
-    selected: dict[tuple[str, str], tuple[tuple[Any, ...], tuple[int, int]]] = {}
+    selected: dict[tuple, tuple[tuple[Any, ...], tuple[int, int]]] = {}
     for event_index, atoms in enumerate(raw):
         for atom_index, atom in enumerate(atoms):
             if atom.predicate != "register":
                 continue
-            token = (atom.subject_type, canonical_keys(atom.subject_keys))
-            if token in known:
+            token = _registration_slot(atom)
+            # 🔴 THE `known` SKIP APPLIES TO REGISTRATIONS THAT SAY NOTHING (S-52, ruling
+            # 128). The probe that built `known` reads the source RELATION and has no
+            # attribute values, so it can only answer "does this entity exist". A
+            # registration carrying attributes says something the probe never saw, so it
+            # is not filtered here - two registrations of the same state are the SAME
+            # ATOM (the id hashes the payload) and storage folds them.
+            if not token[2] and token[:2] in known:
                 continue
             sort_key = (
                 atom.occurred_at.timestamp(), event_index, atom_index,
@@ -447,8 +465,9 @@ def _filtered_event_atoms(
         kept = []
         for atom_index, atom in enumerate(atoms):
             if atom.predicate == "register":
-                token = (atom.subject_type, canonical_keys(atom.subject_keys))
-                if token in known or selected[token][1] != (event_index, atom_index):
+                token = _registration_slot(atom)
+                if ((not token[2] and token[:2] in known)
+                        or selected[token][1] != (event_index, atom_index)):
                     continue
             kept.append(atom)
         filtered.append(tuple(kept))
