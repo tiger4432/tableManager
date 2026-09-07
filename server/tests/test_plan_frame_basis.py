@@ -51,7 +51,11 @@ PRE_EXISTING_KEYS = {"identity", "sources", "chips", "history", "warnings",
                      #    자기 라운드보다 오래 살아 다음 정당한 추가를 «회귀처럼» 보이게 했다.
                      # 🔴 등식은 «유지»한다 — 실수로 새는 칸은 여전히 여기서 잡힌다. 정당한 추가는
                      #    그 라운드가 이 줄을 «같이» 고치는 것이 규율이다.
-                     "counts_capped"}
+                     "counts_capped",
+                     # 🪦 [S-5] `truncated` — history 목록이 «조용히» 50건에서 잘리던 것을
+                     #    말하게 한 정본 칸이다. 이 줄의 규율대로 «그 라운드가» 여기를
+                     #    같이 고친다: 그 규율을 제가 S-27 에 적었고, 이번엔 제가 지킨다.
+                     "truncated"}
 
 
 def _confirm(db, contributors, reference=None, unit=("EQP-A", "P1"), frames=None):
