@@ -509,6 +509,70 @@ console.log('\n[8] the owner split, and unknown is not chain');
     !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('재적재 모름'));
 }
 
+// ═══ S-20: 「이 수들이 «언제» 것인가」 — 발신은 살아 있었고 «듣는 쪽»이 0 이었다 ═══
+// 🔴 실측: `/admin/chain/queue` 가 `generated_at` 을 «항상» 싣는데(`server/main.py`, 이 응답의
+//    나이·`oldest_waiting_seconds` 와 «같은 순간») 읽는 자리가 소스 «0» 이었다. 새로 고치지 않은
+//    화면은 «그때»의 수를 «현재형»으로 말한다.
+// 🔴 이 블록이 재는 것은 «문구»가 아니라 «가름»이다 — 옛 서버(키 없음)와 오늘 서버가 같은
+//    픽셀이면 안 되고, 못 읽은 값이 «지어낸 시각»이 되어서도 안 된다.
+// ⚠️ 라우트가 어드민 토큰 뒤(401)라 브라우저로 못 본다. 그래서 본문은 «픽스쳐»이고, 도달은
+//    별도로 «번들 문자열»로 재다 — 그 둘이 이 줄의 증거 전부이고, 보고에 그렇게 적는다.
+{
+  const BODY = (over = {}) => Object.assign({
+    waiting: 3, running: [], loop_in_this_process: true,
+    oldest_waiting_seconds: 12, waiting_by_owner: [], retried_among_waiting: 0,
+  }, over);
+  const AT = '2026-09-07T09:30:00+00:00';
+  const genOf = (over) => queueView(BODY(over)).generatedAt;
+
+  // 세 상태 — `logName`·`restart` 와 «같은 규율».
+  eq('G1 an older server that never sends the key draws nothing', genOf({}), '');
+  ok('G2 the value is drawn once the key arrives, and it is the SERVER instant',
+    genOf({ generated_at: AT }).includes(AT));
+  // 🔴 G3 IS THE POINT. A screen that cannot read the stamp must say so; substituting a
+  //    client clock here would make every stale panel look freshly measured, which is the
+  //    exact failure this row exists to close.
+  ok('G3 an unreadable stamp reads 모름, never an invented time',
+    genOf({ generated_at: null }).includes('모름'));
+  ok('G4 CONTROL: a real stamp is NOT 모름 — else G3 passes for the wrong reason',
+    !genOf({ generated_at: AT }).includes('모름'));
+  ok('G5 an empty string is not a time either (it is neither null nor undefined)',
+    genOf({ generated_at: '' }).includes('모름'));
+
+  // 🔴 무회귀, AND IT IS THE WHOLE VIEW, NOT A SPOT CHECK. Adding the stamp must not move
+  //    one other thing the panel already drew.
+  const withOut = { ...queueView(BODY({})) };
+  const withIn = { ...queueView(BODY({ generated_at: AT })) };
+  delete withOut.generatedAt; delete withIn.generatedAt;
+  eq('G6 nothing else on the view moves when the stamp arrives',
+    JSON.stringify(withOut), JSON.stringify(withIn));
+
+  // 🔴 AND IT REACHES THE SCREEN. A field on the view model that nothing renders is the
+  //    same defect one layer in — a sender with no listener.
+  const drawnAs = (over) => {
+    const d = makeDoc();
+    const host = d.createElement('div');
+    new ChainQueuePanel(host, { doc: d }).render(BODY(over));
+    return host;
+  };
+  eq('G7 the stamp is on the screen, not only on the view model',
+    byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-generated').length, 1);
+  // 🔴 TOTAL ON PURPOSE. Indexing [0] directly THREW when the line was absent, and a
+  //    harness that throws stops scoring — G9 and G10 never ran, so two different mutants
+  //    (drop the line / collide with the pickup class) looked like the same finding.
+  //    A mutant that throws is a hole, not a catch.
+  ok('G8 ...carrying the server instant', (() => {
+    const hit = byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-generated')[0];
+    return !!hit && hit.textContent.includes(AT);
+  })());
+  eq('G9 NEGATIVE CONTROL: an older server draws no such line at all',
+    byClass(drawnAs({}), 'chain-queue-headline-generated').length, 0);
+  // ⚠️ 이름 충돌. 집는 이의 「주기」가 `-basis` 를 이미 쓰고 있어, 한 이름이 두 뜻이 되면
+  //    스타일이 둘 중 하나를 «조용히» 잘못 그린다.
+  eq('G10 it does not land on the pickup line class',
+    byClass(drawnAs({ generated_at: AT }), 'chain-queue-headline-basis').length, 0);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
