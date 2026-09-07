@@ -530,6 +530,51 @@ def test_support_counts_every_row_not_just_the_first_limit(cand_env):
     assert res["evidence"][0]["rows"] == 5
 
 
+def test_each_evidence_axis_says_whether_it_was_cut(cand_env):
+    """[S-34] 증거 항목은 «축 둘»을 정본 모양으로 말한다 — 종전엔 그중 하나만
+    불리언으로 나가고(`distinct_truncated`) 행 절단은 «거절 사유»으로만 나갔다.
+
+    안 잘린 때도 «항상» 실린다: 키가 없으면 읽는 쪽은 「안 잘렸다」와
+    「이 서버는 그 말을 안 한다」를 구별할 수 없다.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"A{i}", "lot": "LA", "slot": "S1", "wafer_id": "WF1"}
+        for i in range(3)
+    ])
+    rule = _loaded_rule()
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, rule, {"lot": "LA", "slot": "S1"}, "wafer_id")
+
+    ev = res["evidence"][0]
+    assert "distinct_truncated" not in ev, ev
+    assert set(ev["truncated"]) == {"distinct", "rows"}, ev["truncated"]
+    for axis, note in ev["truncated"].items():
+        assert set(note) == {"cut", "omitted", "reason"}, (axis, note)
+        assert note["cut"] is False, (axis, note)
+        assert note["reason"] is None, "an uncut axis carries no reason"
+
+
+def test_the_two_evidence_axes_can_disagree(cand_env):
+    """[S-34 ㈞ 갈림] 축마다 답이 «다를 수» 있어야 축이다.
+
+    행 상한을 낮추면 `rows` 만 잘리고 `distinct` 는 안 잘린다 — 종전엔 그 둘이
+    한 불리언과 한 거절 사유로 갈라 있어서 「무엇이 잘렸나」를 한 자리에서 못 읽었다.
+    """
+    _seed(cand_env, "encand_test_hist", [
+        {"hist_id": f"D{i}", "lot": "LD", "slot": "S1", "wafer_id": "WF1"}
+        for i in range(4)
+    ])
+    res = enrichment_candidates.resolve_target_candidate(
+        cand_env, _loaded_rule(), {"lot": "LD", "slot": "S1"}, "wafer_id",
+        caps=_caps(probe_scan_rows=2))
+
+    axes = res["evidence"][0]["truncated"]
+    assert axes["rows"]["cut"] is True, axes
+    assert axes["rows"]["reason"], "a cut axis names why"
+    assert axes["distinct"]["cut"] is False, axes
+    assert axes["distinct"]["reason"] is None, axes
+
+
 def test_a_truncated_probe_refuses_instead_of_claiming_single(cand_env):
     """A truncated READ cannot prove 'exactly one' - the unread remainder may hold
     the contradiction. Same posture as `view_error`: incomplete is UNKNOWN, not empty.

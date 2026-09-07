@@ -45,13 +45,11 @@ MAP_ID = "LOTX_01"
 # this set is an addition and has to be a deliberate one.
 PRE_EXISTING_KEYS = {"identity", "sources", "chips", "history", "warnings",
                      "region_chips", "inactive_subtractions",
-                     # 🪦 [S-27] `counts_capped` 는 «정당한» 추가다 — `9060a39d` 가 「상한에 닿은
-                     #    수집을 «로그만»이 아니라 «세는 코드»에게 말한다」로 더했다. 아래 등식은
-                     #    「이 라운드가 키 «하나»만 더했다」를 재는 라운드 가드이고, 그 가드가
-                     #    자기 라운드보다 오래 살아 다음 정당한 추가를 «회귀처럼» 보이게 했다.
-                     # 🔴 등식은 «유지»한다 — 실수로 새는 칸은 여전히 여기서 잡힌다. 정당한 추가는
-                     #    그 라운드가 이 줄을 «같이» 고치는 것이 규율이다.
-                     "counts_capped",
+                     # ⚰️ [S-34] ~~`counts_capped`~~ 는 2026-09-07 에 `truncated` 의 «축»이 됐다.
+                     #    S-27 이 적은 규율(「정당한 추가는 그 라운드가 이 줄을 같이 고친다」)이
+                     #    «은퇴»에도 같이 걸린다 — 키가 사라졌으면 이 줄도 같은 커밋에서 사라진다.
+                     #    그 사실 자체는 안 잎혀다: `truncated.region_counts` 가 그것을 들고 있고
+                     #    `test_bonding_plan` 의 세 시험이 그 주소를 재고 있다.
                      # 🪦 [S-5] `truncated` — history 목록이 «조용히» 50건에서 잘리던 것을
                      #    말하게 한 정본 칸이다. 이 줄의 규율대로 «그 라운드가» 여기를
                      #    같이 고친다: 그 규율을 제가 S-27 에 적었고, 이번엔 제가 지킨다.

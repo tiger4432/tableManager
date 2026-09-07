@@ -730,7 +730,11 @@ def test_the_response_always_carries_the_cap_field(bdp_env, client):
     _seed_core(bdp_env)
     body = client.get("/api/bonding-plan/core-summary",
                       params={"lot": "LOTX", "slot": "01"}).json()
-    assert body["counts_capped"] == {"cap": bonding_plan.MAX_REGION_POINTS, "roles": []}
+    # [S-34] 「잔렸다」의 철자가 정본 하나로 접혔다 — 이 사실은 이제
+    # `truncated` 지도의 «축» 하나다. 재는 것은 같고 주소만 옴긴다.
+    assert body["truncated"]["region_counts"] == {
+        "cut": False, "omitted": None, "reason": None,
+        "cap": bonding_plan.MAX_REGION_POINTS, "roles": []}
 
 
 def test_a_capped_count_names_itself_in_the_response(bdp_env, client, monkeypatch):
@@ -742,7 +746,9 @@ def test_a_capped_count_names_itself_in_the_response(bdp_env, client, monkeypatc
         "lot": "LOTX", "slot": "01",
         "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
     }).json()
-    field = body["counts_capped"]
+    field = body["truncated"]["region_counts"]
+    assert field["cut"] is True, "the axis must say it was cut, not only name roles"
+    assert field["reason"], "a cut axis carries its reason"
     assert field["cap"] == 2
     assert field["roles"], "the cap bound and the response did not say so"
     # BOTH call sites: `used` comes from the distinct-pair branch, the rest from the
@@ -759,5 +765,5 @@ def test_the_roles_are_deduplicated_and_ordered(bdp_env, client, monkeypatch):
     roles = client.get("/api/bonding-plan/core-summary", params={
         "lot": "LOTX", "slot": "01",
         "region": _region([{"x1": 1, "y1": 1, "x2": 6, "y2": 6}]),
-    }).json()["counts_capped"]["roles"]
+    }).json()["truncated"]["region_counts"]["roles"]
     assert roles == sorted(set(roles))
