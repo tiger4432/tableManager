@@ -209,13 +209,14 @@ export function normaliseWorklist(res) {
     unscorable: numOrNullish(totals.unscorable),
     // Aggregated reasons, counted once. Never a sentence per row.
     reasons: Object.freeze(Array.isArray(body.unscorable_reasons) ? body.unscorable_reasons : []),
-    // 🔴 THE CANONICAL SHAPE FIRST, THE OLD KEY AS A FALL-BACK (ruling 99). The wire is moving
-    //    to one axis map (`truncated: {<axis>: {cut, omitted, reason}}`) and away from a
-    //    boolean per list. Reading `truncated` first means this line needs no second edit on
-    //    the day the server folds `units_truncated` into it; `null` from the reader means
-    //    「this response does not say」, which is exactly when the old key is still the answer.
-    //    ⚠️ `=== true` on the fall-back stays: absent is not false.
-    truncated: saysTruncated(body.truncated) ?? (totals.units_truncated === true),
+    // 🔴 ONE SHAPE (ruling 99 ③). The fall-back to `totals.units_truncated` is GONE, because
+    //    the server no longer spells it: the worklist response says 「잘렸다」 in one top-level
+    //    axis map, and it folded `maps` in beside `units` in the same step. Leaving a reader
+    //    for a key nothing sends is how a screen keeps a branch nobody can reach and nobody
+    //    can test — and the next person reads it as evidence the key still exists.
+    //    ⚠️ `=== true` is the whole guard: `saysTruncated` answers `null` for a response that
+    //       does not say, and this field is a boolean the screen draws. Unknown is not cut.
+    truncated: saysTruncated(body.truncated) === true,
     // The route ships the catalog with the page, so the five controls need no separate call.
     selection: body.selection || null,
   };

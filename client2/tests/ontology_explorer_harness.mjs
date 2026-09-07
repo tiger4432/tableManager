@@ -354,12 +354,14 @@ const payload = (token, selected = 'entity|A@1') => ({
     reduced({ truncated: axis(true) }).referencesTruncated === true);
   check('G8 ...and an uncut one is not',
     reduced({ truncated: axis(false) }).referencesTruncated === false);
-  // ⚠️ The fall-back is why this can land before the server folds the key; a fall-back nobody
-  //    scores is one that quietly stops working.
-  check('G9 with no axis map, the old per-list boolean is still the answer',
-    reduced({ references_truncated: true }).referencesTruncated === true);
-  check('G10 and the canonical shape outranks the old key when both arrive',
-    reduced({ truncated: axis(true), references_truncated: false }).referencesTruncated === true);
+  // 🔴 G9 IS ITS OWN INVERSE NOW (ruling 99 ③). It held 「the old per-list boolean still
+  //    answers」 while the fall-back existed; the server has folded that key, the fall-back is
+  //    deleted, and the claim worth keeping is that the dead key CANNOT answer. Retiring the
+  //    line instead would let a fall-back return by accident and return green.
+  check('G9 the retired per-list boolean no longer answers',
+    reduced({ references_truncated: true }).referencesTruncated === false);
+  check('G10 and a response that does not say is not read as truncated',
+    reduced({}).referencesTruncated === false);
 }
 
 console.log(`ASSERTIONS ${ran} ${failed}`);
