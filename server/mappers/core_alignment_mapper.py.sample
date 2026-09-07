@@ -154,10 +154,10 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
     """Write config-approved core-frame metadata onto ``dt_inventory``."""
     rule = rule or {}
     rule_name = rule.get("alignment_rule", "core_frame_review")
-    map_table = rule.get("map_table", "dt_log")
+    map_table = chain_bindings.resolve_table(rule, "map_table")
     target_field = rule.get("target_field", "core_frame")
-    target_table = rule.get("target_table", "dt_inventory")
-    source_table = rule.get("source_table", "dt_log")
+    target_table = chain_bindings.resolve_table(rule, "target_table")
+    source_table = chain_bindings.resolve_table(rule, "source_table")
     # The trigger table and the source table are the same table for this rule by
     # construction (both `dt_log`), so ONE name serves the payload read and the row
     # filter — and the `decision_key` cross-check below is what pins them together.

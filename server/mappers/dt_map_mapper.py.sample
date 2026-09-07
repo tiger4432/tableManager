@@ -100,7 +100,7 @@ DEFAULT_ORIGIN_COLUMNS = ("core_wafer", "core_lot", "core_slot", "core_x", "core
 
 
 def _rule_source_table(rule) -> str:
-    return str((rule or {}).get("derivation_source_table") or DEFAULT_SOURCE_TABLE)
+    return chain_bindings.resolve_table(rule, "derivation_source_table")
 
 
 def _rule_source_column(rule) -> str:
@@ -200,8 +200,8 @@ def build_dt_map_batch_df(db: Session, payloads: List[Dict[str, Any]], rule=None
         return {"updates": []}
 
     source_table = _rule_source_table(rule)
-    target_table = str((rule or {}).get("target_table") or "dt_map")
-    trigger = (rule or {}).get("trigger_table") or source_table
+    target_table = chain_bindings.resolve_table(rule, "target_table")
+    trigger = chain_bindings.resolve_table(rule, "trigger_table")
 
     if trigger == source_table:
         rows = list(payloads)                       # the rows themselves just landed

@@ -20,6 +20,8 @@ changes shape.
 """
 from __future__ import annotations
 
+import chain_bindings
+
 SOURCE_NAME = "chain_ingestion"
 UPDATED_BY = "chain_lot_slot_wafer"
 
@@ -56,7 +58,7 @@ def build_lot_slot_wafer_rows(db, payloads, rule=None):
     for, expressed as a key rather than as a check.
     """
     rule = rule or {}
-    target_table = rule.get("target_table") or "lot_slot_wafer"
+    target_table = chain_bindings.resolve_table(rule, "target_table")
     slot_col = rule.get("slot_list_column") or DEFAULT_SLOT_COLUMN
     wafer_col = rule.get("wafer_list_column") or DEFAULT_WAFER_COLUMN
     delimiter = rule.get("list_delimiter") or DEFAULT_DELIMITER

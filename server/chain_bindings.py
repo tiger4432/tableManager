@@ -200,6 +200,32 @@ def rule_tables(rule, role):
     return out
 
 
+def resolve_table(rule, key: str, purpose: str = None) -> str:
+    """이 규칙이 그 키로 «이름 댄» 표. 리터럴 기본값 «없음» — 없으면 이름 대어 거절한다.
+
+    🔴 기본값이 실제로 하는 일은 「키를 빼면 «조용히» 그 표를 연다/쓴다」이다. 컬럼에는 이미
+       그 규율이 있었고(§`resolve_column`) 표에만 «없었다» — 출하 템플릿 여섯에 열셋이 그렇게
+       서 있었고 철자가 셋이었다.
+    ⚠️ 거절문이 «규칙 이름과 키 이름»을 댄다. 이 전환의 비용은 「어느 규칙에 어느 키를 적어야
+       하나」를 조작자가 아는 데 달려 있고, 그 답이 문장 안에 있어야 한다.
+    """
+    rule = rule or {}
+    rule_name = rule.get("name") or "<unnamed rule>"
+    if key not in RULE_TABLE_KEYS:
+        raise ColumnBindingRefused(
+            "'%s' is not a declared table key. The enumeration is "
+            "chain_bindings.RULE_TABLE_KEYS (%s)."
+            % (key, ", ".join(sorted(RULE_TABLE_KEYS))))
+    name = rule.get(key)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    raise ColumnBindingRefused(
+        "chain rule '%s' declares no '%s'%s. Add it to the rule in chain_rules.json — "
+        "this key used to fall back to a literal, so a rule that omitted it silently "
+        "reached a table nobody had named."
+        % (rule_name, key, (" for %s" % purpose) if purpose else ""))
+
+
 def _refuse_unknown(rule_name, key, name, table, purpose, known):
     raise ColumnBindingRefused(
         "chain rule '%s' resolves %s='%s' for %s on table '%s', but '%s' declares no "

@@ -78,8 +78,8 @@ def _core_wafer_lists(db, source_table, job_ids, job_column):
 
 def copy_dt_metadata_to_inventory_batch(db, payloads, rule=None):
     rule = rule or {}
-    source_table = rule.get("metadata_target_table", "dt_log")
-    target_table = rule.get("target_table", "dt_inventory")
+    source_table = chain_bindings.resolve_table(rule, "metadata_target_table")
+    target_table = chain_bindings.resolve_table(rule, "target_table")
     source_job_column = chain_bindings.resolve_column(
         rule, "source_job_column", source_table,
         "the source rows the core-wafer list is rolled up from")

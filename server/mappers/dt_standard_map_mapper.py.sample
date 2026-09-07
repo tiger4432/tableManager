@@ -98,8 +98,8 @@ def build_standard_dt_map_batches(db, payloads, rule=None):
     from database import models
 
     rule = rule or {}
-    source_table = rule.get("source_table", "dt_log")
-    target_table = rule.get("target_table", "dt_map")
+    source_table = chain_bindings.resolve_table(rule, "source_table")
+    target_table = chain_bindings.resolve_table(rule, "target_table")
     trigger_table = rule.get("trigger_table")
     trigger_job_column = chain_bindings.resolve_column(
         rule, "trigger_job_column", trigger_table,
