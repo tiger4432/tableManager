@@ -167,12 +167,13 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         usedBy: p.used_by || [],
         usedByTotal: p.used_by_total || 0,
         outboundTotal: p.outbound_total || 0,
-        // 🔴 THE CANONICAL SHAPE FIRST, THE OLD KEY AS A FALL-BACK (ruling 99). One reader
-        //    knows every shape the wire has worn; `null` means 「this response does not say」,
-        //    and only then is the per-list boolean still the answer. Without this, the day the
-        //    server folds `references_truncated` into the axis map, this screen would call a
-        //    truncated catalogue complete — no error, no empty screen, just a wrong 「전부」.
-        referencesTruncated: saysTruncated(p.truncated) ?? Boolean(p.references_truncated),
+        // 🔴 ONE SHAPE (ruling 99 ③). The fall-back to `references_truncated` is GONE: the
+        //    explorer response now says 「잘렸다」 in one top-level axis map and no longer
+        //    spells the per-list boolean. A reader kept for a key nothing sends is a branch
+        //    nothing can reach, and it reads as evidence that the key still exists.
+        //    ⚠️ `=== true`, not `??`: `null` is 「this response does not say」, and this field
+        //       is a boolean the screen draws — unknown may not become 「잘림」.
+        referencesTruncated: saysTruncated(p.truncated) === true,
         // 🔴 THE ROOT PATH IS A PATH TO THE SELECTION, so with nothing selected there is
         // no path -- not an empty one. This ran on EVERY response, so on an empty config
         // it threw before a single node was rendered.

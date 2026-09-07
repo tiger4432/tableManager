@@ -309,16 +309,18 @@ const CATALOG = {
      'E14 a cut axis map is read as truncated');
   eq(normaliseWorklist({ units: rows, truncated: axis(false) }).truncated, false,
      'E15 ...and an uncut one is not');
-  // ⚠️ THE OLD KEY STILL ANSWERS WHILE THE WIRE STILL SENDS IT. The fall-back is the whole
-  //    reason this lands before the server folds the key, and a fall-back nobody scores is a
-  //    fall-back that quietly stops working.
-  eq(normaliseWorklist({ units: rows, totals: { units_truncated: true } }).truncated, true,
-     'E16 with no axis map, the old per-list boolean is still the answer');
-  // 🔴 AND THE CANONICAL SHAPE WINS WHEN BOTH ARRIVE. Without this the two could disagree and
-  //    nothing would say which one the screen believed.
-  eq(normaliseWorklist({ units: rows, truncated: axis(true),
-                         totals: { units_truncated: false } }).truncated, true,
-     'E17 the canonical shape outranks the old key when both are present');
+  // 🔴 E16 WAS ITS OWN INVERSE ONE ROUND AGO, and that is the point of replacing rather than
+  //    retiring it. It read 「with no axis map, the old per-list boolean is still the answer」
+  //    while the fall-back existed; the server has since folded that key, the fall-back is
+  //    gone, and the claim worth holding now is that the dead key CANNOT answer. Deleting the
+  //    assertion instead would leave that silent — and a fall-back that comes back by accident
+  //    would come back green.
+  eq(normaliseWorklist({ units: rows, totals: { units_truncated: true } }).truncated, false,
+     'E16 the retired per-list boolean no longer answers');
+  // ⚠️ AND UNKNOWN IS NOT CUT. A response that says nothing at all is not a truncated one; this
+  //    field is a boolean the screen draws, so `null` may not leak into it.
+  eq(normaliseWorklist({ units: rows }).truncated, false,
+     'E17 a response that does not say is not read as truncated');
   eq(normaliseWorklist({ units: rows, totals: { matched: 668, returned: 3 } }).total, 668,
      'E13b `matched` is the population; `returned` is only how many fit in this page');
 
