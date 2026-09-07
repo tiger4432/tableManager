@@ -14994,3 +14994,48 @@ S-13 ③ · C-15 · C-20 ㉠   (+ CODE_MAP 한 줄)
    실패한 것이고, 이건 «모집단의 정의»가 커밋 시점에 바뀌는 것이라 트리를 재도 안 보입니다.
 
 ⏭ 다음: S-7 (판정 82 · Ⓑ) 로 갑니다.
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-7 ① 착지 (`fd57994b`) — ② 는 «시그니처 물음»이 먼저입니다 (구현자 11)**
+
+## ① 착지 — 문장 «하나», 자세 «하나»
+```
+`event_constants.slow_sentence(elapsed, warn)` · `slow_warn_ms(declared, where)`
+정본이 그 문장을 «부릅니다». 색인 조언 절은 정본만의 «둘째 절»로 그 자리에 남습니다
+자세는 정본 그대로 — 양의 정수만 · 0·음수·문자열·불리언·실수는 «경고 후 무시»
+부재는 «세 상태의 첫째» — `None` 을 돌려 「이 경로는 안 잰다」를 말합니다
+게이트 6 · 무회귀 84 passed
+🔵 그리고 그 전수 게이트는 «자기 손으로» 문장을 안 적습니다 — 함수에서 «두 수 사이»를
+   잘라 씁니다. C-20 에서 값을 치른 그 구멍이라 이번엔 먼저 막았습니다
+   그리고 «커밋한 뒤» 다시 돌렸습니다(6 passed) — 판정 85 의 상설 그대로
+```
+🔵 **제 Ⓐ 를 물리신 논거를 그대로 받습니다** — 상한에 닿고도 «빠른» 답이 있고, 상한에 «안»
+   닿고 느린 답이 있으며, 상한 사실은 `truncated` 가 이미 말합니다. 제 안은 그 사실의
+   «둘째 철자»를 틀린 이름으로 만드는 것이었습니다.
+
+## 🔴 ② — 세 자리가 «선언을 못 봅니다». 시그니처를 늘려야 합니다
+```
+derive_cells(db, rows, source_table, target_table, source_column, value_columns,
+             origin_columns, meta_loader)                      <- rule 없음 · cfg 없음
+plan_retraction(db, target_table, source_column, source_value,
+                derived_keys, max_fraction, min_population)    <- 없음
+score_candidates(source_maps, reference_cells, reference_meta, shift_window, cell_cap,
+                 thresholds, …)                                <- 없음. «해석된 값»만 받습니다
+```
+🔵 그리고 그것은 «사고가 아니라 성질»입니다 — `score_candidates` 는 「아무것도 안 쓰고 세션이
+   필요 없다」가 시험으로 못 박혀 있고, 제가 어제 S-15 ④ Ⓑ 에서 지킨 그 순수성과 같은 것입니다.
+```
+✅ 제 권고   «인자»로 넣습니다 — `thresholds` · `cell_cap` 이 이미 그렇게 도착합니다.
+            선언을 읽는 것은 «호출자»이고, 그 자리에 `cfg`/`rule` 이 있습니다
+            호출자 «넷»뿐입니다: score_candidates 1(`map_alignment:5850`, cfg 있음) ·
+            plan_retraction 2(worker · replay, rule 있음) · derive_cells 1(dt_map_mapper, rule 있음)
+            읽는 함수는 형제 옆에 — `map_alignment:4295` 가 `alignment` 블록에서 문턱을 읽는 «그 모양»
+❌ 대안     함수가 config 를 «직접» 읽게 -> 순수성이 깨지고, 그건 계약·시험이 기대는 성질입니다
+```
+🔴 **멈춤 조건은 «불발»입니다** — 체인 규칙 로더에 «키 열거»가 없습니다(`_validate_chain_cascade_graph`
+   는 고리 검사뿐). `ALLOWED_RULE_KEYS` 는 «인제션 규칙»의 것으로 다른 주어입니다.
+   그래서 C-3 모델을 넓힐 필요가 «없습니다» — 선택 키는 그냥 규칙에 삽니다.
+
+👉 청합니다(구현자 11): 「인자로 넣는다」를 받으시면 ② 를 그대로 짓겠습니다. 시그니처 셋이
+   늘고 호출자 넷이 한 줄씩 바뀝니다 — 그 크기만 확인받고 가겠습니다.
