@@ -18,7 +18,29 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import frame_confirmation as fc                                  # noqa: E402
 from test_transfer_plan import _seed_scenario, tp_env            # noqa: F401,E402
+
+CORE_MAP = "tp_test_core_defect_map"
+CORE_MAP_ID = "CORE-A_01"
+#: 확정 기록은 «단위»에 쓴다. 이 시험의 단위는 코어 자신이다.
+RULE = {"name": "core_frame_attribution", "derived_table": "eqp_frame_attribution",
+        "decision_key": ["lot", "slot"], "target_fields": ["core_frame"]}
+
+
+def _contrib(role, source_name, **kw):
+    d = {"role": role, "source_table": CORE_MAP, "map_id": CORE_MAP_ID,
+         "source_name": source_name, "applied_frame": "rot0_front",
+         "shift_dx": 0, "shift_dy": 0}
+    d.update(kw)
+    return d
+
+
+def _confirm(db, contributors, reference=None):
+    return fc.record_confirmation(
+        db, RULE, {"lot": "CORE-A", "slot": "01"}, contributors,
+        confirmed_by="tester", frames={"core_frame": "rot0_front"},
+        reference=reference or {"table": CORE_MAP, "map_id": CORE_MAP_ID})
 
 BASIS_KEYS = {"kind", "reason", "roles"}
 
@@ -90,3 +112,63 @@ def test_no_other_key_moved(tp_env, client):
     }
     assert body["sources"]["transfer_log"] == "connected"
     assert body["sources"]["eds_fail"] == "connected"
+
+
+# ---------------------------------------------------------------------------
+# ㈟ [정정 · 판정 103] 확정이 있는 코어는 「확정으로 골랐다」고 말한다
+# — 종전 이 갈래는 «도달 불가»였고, 그래서 첫 게이트가 «상수를 상수라» 단언했다.
+# ---------------------------------------------------------------------------
+
+def test_a_confirmed_core_says_confirmation_not_role_order(tp_env, client):
+    """🔴 이 라운드의 판별식. 이것이 «새 갈래»이고, 종전엔 들어갈 수가 없었다.
+
+    종전 자리는 `frame == "origin"` 원천만 모으는 함수를 물었고, 코어 단계는 그런
+    원천을 선언하지 않는다 — 그래서 확정을 아무리 기록해도 답이 role_order 였다.
+    """
+    _seed_scenario(tp_env)
+    _confirm(tp_env, [_contrib("total_chips", "user"),
+                      _contrib("defect", "chain_ingestion")])
+    tp_env.commit()
+
+    basis = _core(client)["frame_basis"]
+    assert basis["kind"] == "confirmation", basis
+    assert basis["confirmation_uid"], basis
+    assert basis["reference"] == {"table": CORE_MAP, "map_id": CORE_MAP_ID}, basis
+    # 그리고 «보증»이 같이 온다 — ①-a-1 이 그것을 읽는다.
+    assert "warrant" in basis, basis
+
+
+def test_an_unconfirmed_core_still_falls_back_and_says_so(tp_env, client):
+    """㈞ 확정이 없으면 종전과 «같은» 답 — 이 라운드가 바꾸는 것은 그 갈래가 아니다."""
+    _seed_scenario(tp_env)
+    basis = _core(client)["frame_basis"]
+    assert basis["kind"] == "role_order", basis
+    assert basis["reason"] == "not_declared", basis
+
+
+def test_the_tape_answer_did_not_move(tp_env, client):
+    """㈡ 테이프 답은 «바이트 동일» — 이 정정은 코어 갈래만 건드렸다."""
+    _seed_scenario(tp_env)
+    tape = _tape(client)
+    assert "frame_basis" not in tape, sorted(tape)
+    assert tape["by_core"][0]["frame_basis"]["kind"] == "role_order"
+
+
+def test_a_confirmation_reached_only_through_a_fail_source_still_counts(tp_env, client):
+    """🔴 목록이 «어느 원천까지» 세는지의 판별식.
+
+    앞 시험의 확정은 `total_chips` 와 «같은 표»(core_defect_map)에 걸려 있어, 목록에서
+    fail 원천을 빼도 여전히 찾아진다 — 즉 그 변이를 «못 가른다**(실측 2026-09-07: 살아 나옴).
+    이 확정은 eds 맵에만 걸린다. 자기 프레임의 fail 원천이 목록에서 빠지면 «못 찾는다**.
+    """
+    _seed_scenario(tp_env)
+    eds = "tp_test_eds_fail_map"
+    _confirm(tp_env,
+             [_contrib("eds_fail", "user", source_table=eds),
+              _contrib("defect", "chain_ingestion", source_table=eds)],
+             reference={"table": eds, "map_id": CORE_MAP_ID})
+    tp_env.commit()
+
+    basis = _core(client)["frame_basis"]
+    assert basis["kind"] == "confirmation", basis
+    assert basis["reference"]["table"] == eds, basis
