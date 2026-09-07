@@ -5178,29 +5178,55 @@ def _resolve_reference(db, cfg: dict, spec: str, source_maps: list, cap: int,
         table, map_id = (p.strip() for p in spec.split(":", 1))
         origin = "explicit"
     else:
+        # 🔴 [S-15 ④ Ⓑ · 판정 58] 이 갈래가 «계약 심볼»을 지난다.
+        #    `resolve_valid_die_basis` 는 `contracts/map_seam` 이 채점하는 «그» 함수인데
+        #    운영 호출자가 «0» 이었다 — 그래서 그 초록이 운영에 대해 아무 말도 안 했다.
+        #    이제 판정(선언을 읽고 · 풀고 · 거절한다)이 «그 함수 안»에서 일어나고,
+        #    DB 절반은 resolver 로 «주입»된다. 코어는 그대로 순수하다.
+        # ⚠️ 번역층이 아니다 — 상태 토큰이 이미 «같은 객체»다(REFERENCE_* = SOURCE_*).
         for sm in source_maps:
             if not sm.get("meta"):
                 continue
-            ref, err = map_overlay.parse_valid_die_ref(sm["meta"],
-                                                      default_table=sm.get("table"))
-            if err:
+            loaded = {}
+
+            def _resolve(ref, _loaded=loaded):
+                _loaded["state"] = _memoized_reference(
+                    db, cfg, ref["table"], ref["map_id"], "valid_die_ref", cap, cache)
+                out = _loaded["state"]
+                return (out.get("cells")
+                        if out.get("state") == REFERENCE_RESOLVED else None)
+
+            verdict = map_overlay.resolve_valid_die_basis(
+                sm["meta"], _resolve, table=sm.get("table"))
+            if "state" in loaded:
+                #: 읽기까지 갔다 — 그 «풍부한» 답이 운영의 답이다. 상태 토큰은 계약의 것과
+                #: 같은 객체이므로 두 쪽이 갈릴 수 없다.
+                return loaded["state"]
+            if verdict["source"] == map_overlay.SOURCE_REFUSED:
+                #: 선언 자체를 «못 읽었다» — 읽기까지 못 갔고, 사유는 코어가 만든 것이다.
                 return _ref_state(REFERENCE_REFUSED, source="valid_die_ref",
-                                  reason_code=REF_REFUSAL_DECLARATION, reason=err)
-            if ref:
-                table, map_id, origin = ref["table"], ref["map_id"], "valid_die_ref"
-                break
+                                  reason_code=REF_REFUSAL_DECLARATION,
+                                  reason=verdict["reason"])
+            #: `circle` = 이 맵에는 선언이 «없다». 다음 소스 맵으로 (종전 `if ref:` 와 같다)
     if not table or not map_id:
         return _ref_state(REFERENCE_ABSENT)
 
-    if cache is not None:
-        ck = ("ref", table, map_id, origin, cap)
-        if ck in cache:
-            return cache[ck]
-        out = _load_reference(db, cfg, table, map_id, origin, cap, cache=cache)
-        if len(cache) < _REF_CACHE_MAX:
-            cache[ck] = out
-        return out
-    return _load_reference(db, cfg, table, map_id, origin, cap)
+    return _memoized_reference(db, cfg, table, map_id, origin, cap, cache)
+
+
+def _memoized_reference(db, cfg, table, map_id, origin, cap, cache):
+    """읽기 «하나» + 작업 단위 메모. 🔴 캐시와 캡은 «코어 밖»에 있다 — 계약이 부르는 코어
+    (`map_overlay.resolve_valid_die_basis`)가 «순수»해야 벡터가 그것을 부를 수 있고,
+    그 순수성이 계약의 전제다(판정 58)."""
+    if cache is None:
+        return _load_reference(db, cfg, table, map_id, origin, cap)
+    ck = ("ref", table, map_id, origin, cap)
+    if ck in cache:
+        return cache[ck]
+    out = _load_reference(db, cfg, table, map_id, origin, cap, cache=cache)
+    if len(cache) < _REF_CACHE_MAX:
+        cache[ck] = out
+    return out
 
 
 #: Request-scoped slot holding `{(table, map_id): rows}` for keys whose size the
