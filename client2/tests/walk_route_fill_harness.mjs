@@ -116,23 +116,72 @@ function suite(M) {
   // 🔴 THE RESULT TABLE'S COLUMNS. The gate the ruling asked for is "add a key to the
   //    declaration and the column follows, without editing code" - so the declaration is the
   //    only thing that moves between T1 and T3.
+  const colNames = (cols) => cols.map((c) => c.name).join(',');
   const DIE = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
     { type: 'wafer@1', keys: ['wafer'] }];
-  ok(M.tableColumns(DIE, 'die', []).join(',') === '깊이,mat_id,x,y,mat_type,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'die', [])) === '깊이,mat_id,x,y,mat_type,라벨,id',
     'T1 the columns are depth, the declared keys in order, label, then id');
-  ok(M.tableColumns(DIE, 'wafer', []).join(',') === '깊이,wafer,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'wafer', [])) === '깊이,wafer,라벨,id',
     'T2 a different type brings its OWN keys, which is why sections are per type');
   const GREW = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type', 'lot'] }];
-  ok(M.tableColumns(GREW, 'die', []).includes('lot'),
+  ok(colNames(M.tableColumns(GREW, 'die', [])).includes('lot'),
     'T3 a key added to the declaration adds a column, with no edit here');
-  ok(M.tableColumns(DIE, 'die', ['gate', 'unit']).join(',')
+  ok(colNames(M.tableColumns(DIE, 'die', ['gate', 'unit']))
     === '깊이,mat_id,x,y,mat_type,gate,unit,라벨,id',
     'T4 qualifiers that arrived become columns too, after the keys');
   // 🔴 The control: a type the declaration does not carry must not invent identity columns.
-  ok(M.tableColumns(DIE, 'unknown_type', []).join(',') === '깊이,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'unknown_type', [])) === '깊이,라벨,id',
     'T5 an undeclared type gets no key columns rather than borrowed ones');
-  ok(M.tableColumns(DIE, 'die@1', []).includes('mat_id'),
+  ok(colNames(M.tableColumns(DIE, 'die@1', [])).includes('mat_id'),
     'T6 the version suffix does not hide the declaration from the lookup');
+
+  // ── 판정 130-C ㉡: the layout has ONE author ────────────────────────────────────
+  // 🔴 THE DEFECT THIS CLOSES WAS NOT IN THIS FILE. `main.js` re-derived the identity
+  //    columns out of the name list by arithmetic — `cols.slice(1, cols.length - 2 -
+  //    qualNames.length)` — which is right while there are exactly two groups and wrong
+  //    the day there are three. It fails SILENTLY, and worse: the wrong rendering (an
+  //    empty attribute cell) is also the CORRECT rendering for an attribute the walk never
+  //    reached, so no pixel gives it away.
+  //
+  // ⚠️ THE ATTRIBUTE FIXTURE IS HAND-HELD. `/declaration` publishes {type, keys, class}
+  //    today (server/ledger_trace_router.py), so nothing on the live wire carries
+  //    `attributes` yet. This is the shape S-52 will publish, written out here so the
+  //    layout can be scored BEFORE it lands rather than after it breaks.
+  const WITH_ATTRS = [{ type: 'die@1', keys: ['mat_id', 'x'], attributes: ['grade', 'lot'] }];
+  ok(colNames(M.tableColumns(WITH_ATTRS, 'die', ['gate']))
+    === '깊이,mat_id,x,gate,grade,lot,라벨,id',
+    'T7 declared attributes are columns of their own, after the qualifiers and before 라벨');
+  ok(M.tableColumns(WITH_ATTRS, 'die', ['gate']).map((c) => c.kind).join(',')
+    === 'depth,key,key,qualifier,attribute,attribute,label,id',
+    'T8 every column says WHERE it reads from — that is what removes the arithmetic');
+  // 🔴 THE BYTE-IDENTICAL GATE. Today's declaration carries no `attributes`, so the drawn
+  //    table must be exactly what it was. T1-T6 are that gate; this states it as one line.
+  ok(colNames(M.tableColumns(DIE, 'die', ['gate'])) === '깊이,mat_id,x,y,mat_type,gate,라벨,id'
+    && M.tableColumns(DIE, 'die', ['gate']).every((c) => c.kind !== 'attribute'),
+    'T9 a declaration without attributes leaves the table exactly as it is');
+
+  // ── the other half of the same decision: where a column READS ───────────────────
+  // 🔴 THE DISCRIMINATING NODE. `keys` and `attributes` hold DIFFERENT names here, so a
+  //    column that reads the wrong map comes back empty rather than coincidentally right —
+  //    which is exactly what the arithmetic did.
+  const NODE = { depth: 2, keys: { mat_id: 'M1', x: 3 }, attributes: { grade: 'A' },
+    label: 'die 1', id: 'ledger-entity:v1:die@1:M1' };
+  const QUALS = { gate: 7 };
+  const at = (kind, key) => M.cellSource({ kind, key }, NODE, QUALS);
+  ok(at('depth') === 2, 'V1 depth reads the node depth');
+  ok(at('key', 'mat_id') === 'M1', 'V2 a key column reads the identity map');
+  ok(at('qualifier', 'gate') === 7, 'V3 a qualifier column reads what the edge carried');
+  ok(at('attribute', 'grade') === 'A', 'V4 an attribute column reads the ATTRIBUTE map');
+  ok(at('key', 'grade') === undefined && at('attribute', 'mat_id') === undefined,
+    'V5 and neither map answers for the other — the two are not interchangeable');
+  ok(at('label') === 'die 1' && at('id') === 'ledger-entity:v1:die@1:M1',
+    'V6 label and id read themselves');
+  // ⚠️ RAW, NOT TEXT. 「the walk never reached this」 must survive as `undefined` so the
+  //    caller can tell it from a value; inventing 「」 here would decide that in the wrong file.
+  ok(M.cellSource({ kind: 'attribute', key: 'lot' }, NODE, QUALS) === undefined,
+    'V7 a declared attribute with no value stays undefined rather than becoming a string');
+  ok(M.cellSource({ kind: 'key', key: 'mat_id' }, null, null) === undefined,
+    'V8 CONTROL: a missing node yields nothing rather than throwing');
 
   // ── S-13: 「잘렸다」 옆의 「«얼마»에서」 ─────────────────────────────────────────
   // 🔴 화면은 `truncated` 를 읽어 절단을 «말할 수» 있었는데 `limits` 를 안 읽어 예산을
@@ -178,8 +227,29 @@ const DEFECTS = [
     (s) => s.replace('  const declared = (found && found.keys) || [];',
       "  const declared = ['mat_id', 'x', 'y', 'mat_type'];")],
   ['the columns stop carrying the qualifiers that arrived',
-    (s) => s.replace("  return ['깊이', ...declared, ...(qualifierNames || []), '라벨', 'id'];",
-      "  return ['깊이', ...declared, '라벨', 'id'];")],
+    (s) => s.replace(
+      "    ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),\n",
+      '')],
+  // 🔴 판정 130-C ㉡. THIS IS THE ARITHMETIC, EXPRESSED AS WHAT IT DID. `main.js` used to
+  //    split the identity columns out by position, which put the attribute columns on the
+  //    identity side — so their values were looked up in `keys` and every one came back
+  //    empty, with no error and no distinguishable pixel. The mutant makes this file say
+  //    the same wrong thing, and the hand-held attribute fixture is what reddens.
+  ['the attribute columns are labelled identity, which is what the arithmetic did',
+    (s) => s.replace("    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),",
+      "    ...attributes.map((key) => ({ name: key, kind: 'key', key })),")],
+  ['the attribute columns move ahead of the qualifiers, so the order stops being one answer',
+    (s) => s.replace(
+      "    ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),\n"
+      + "    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),",
+      "    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),\n"
+      + "    ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),")],
+  ['an attribute cell reads the identity map, so a declared attribute is always empty',
+    (s) => s.replace("    case 'attribute': return (n.attributes || {})[column.key];",
+      "    case 'attribute': return (n.keys || {})[column.key];")],
+  ['the attribute names stop coming from the declaration',
+    (s) => s.replace('  const attributes = (found && found.attributes) || [];',
+      '  const attributes = [];')],
   ['the list widens to everything instead of to what is selected',
     (s) => s.replace('  const extra = (declaredNames || []).filter((name) => picked.has(name));',
       '  const extra = (declaredNames || []);')],

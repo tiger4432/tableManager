@@ -44,20 +44,66 @@ export function followChoices(fromStartType, declaredNames, selected) {
 }
 
 /**
- * The result table's columns for one type section.
+ * The result table's columns for one type section — each one saying WHERE its value comes from.
  *
  * 🔴 NO KEY NAME IS WRITTEN HERE OR ANYWHERE IN THIS CLIENT. The identity columns come from the
- *    DECLARATION's `keys` for that type, and the qualifier columns come from what the response
- *    actually carried. So a key added to the declaration adds a column with no edit here, which
- *    is the whole point: the screen follows the declaration instead of copying it.
+ *    DECLARATION's `keys` for that type, the attribute columns from its `attributes`, and the
+ *    qualifier columns from what the response actually carried. So a name added to the
+ *    declaration adds a column with no edit here, which is the whole point: the screen follows
+ *    the declaration instead of copying it.
  * 🔴 `depth` first because the first question about a returned node is how far it is from the
  *    seed, and `id` last because it is long and is for picking up, not for reading.
+ *
+ * 🔴 WHY DESCRIPTORS AND NOT A LIST OF NAMES (ruling 130-C ㉡). This used to return names only,
+ *    and the renderer split the identity columns back out of that answer by ARITHMETIC:
+ *    `cols.slice(1, cols.length - 2 - qualNames.length)`. Two authors for one layout, and the
+ *    day a THIRD group of columns appears the arithmetic mis-splits — attribute values would be
+ *    looked up in `keys`, every attribute cell would come back empty, and NO ERROR WOULD BE
+ *    RAISED. Worse, an empty cell is the CORRECT rendering for a declared attribute the walk
+ *    never reached, so the wrong screen and the right screen are the same pixels. Saying where
+ *    each column reads from removes the second author instead of correcting its arithmetic.
+ *
+ * ⚠️ `attributes` IS NOT ON THE WIRE YET. `/declaration` publishes {type, keys, class} today, so
+ *    this slot is empty on the live screen and the table is unchanged. It is filled here
+ *    because a structure that cannot express the third group is the same structure that made
+ *    the arithmetic look correct.
  */
 export function tableColumns(entities, type, qualifierNames) {
   const bare = bareName(type);
   const found = (entities || []).find((e) => e && bareName(e.type) === bare);
   const declared = (found && found.keys) || [];
-  return ['깊이', ...declared, ...(qualifierNames || []), '라벨', 'id'];
+  const attributes = (found && found.attributes) || [];
+  return [
+    { name: '깊이', kind: 'depth' },
+    ...declared.map((key) => ({ name: key, kind: 'key', key })),
+    ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),
+    ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),
+    { name: '라벨', kind: 'label' },
+    { name: 'id', kind: 'id' },
+  ];
+}
+
+/**
+ * The raw value one column reads for one node — the other half of the same decision.
+ *
+ * 🔴 IT LIVES HERE, NOT IN THE RENDERER, because this is the mapping the arithmetic used to get
+ *    wrong and a mapping nobody can import is a mapping no mutant can redden. The renderer is
+ *    left with one loop over `tableColumns`, used for the header and the cells alike, so the
+ *    order is stated exactly once.
+ * ⚠️ Raw, not text. Turning `undefined` into 「」 is the caller's job, and doing it here would
+ *    hide 「the walk never reached this」 behind a string this function invented.
+ */
+export function cellSource(column, node, qualifiers) {
+  const n = node || {};
+  switch (column && column.kind) {
+    case 'depth': return n.depth;
+    case 'key': return (n.keys || {})[column.key];
+    case 'qualifier': return (qualifiers || {})[column.key];
+    case 'attribute': return (n.attributes || {})[column.key];
+    case 'label': return n.label;
+    case 'id': return n.id;
+    default: return undefined;
+  }
 }
 
 /**
