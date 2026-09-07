@@ -38,6 +38,7 @@
 
 import { REF_NONE, REF_OCCUPANCY, REF_VALUES } from './verdict.js';
 import { ASSUMED, CONFIRMED, DECLARED, DECLARATION_TOKENS } from './declaration.js';
+import { saysTruncated } from '../truncation.js';
 
 /**
  * The three states of the borrowed-geometry offer, spelled exactly as
@@ -803,7 +804,10 @@ export function decodeIndexWalk(payload, rejected) {
   const axis = (p && p.ruling && p.ruling.index_axis != null)
     ? String(p.ruling.index_axis) : null;
   const cells = arr(src && src.cells);
-  const truncated = !!(src && src.truncated === true);
+  // 🔴 S-5. Same question, same reader as `api.js` and the three screens outside map2.
+  //    `=== true` is blind to the object shape the wire also uses, and blindness here means
+  //    a cut source list is drawn as the whole one.
+  const truncated = saysTruncated(src && src.truncated) === true;
   const numbered = intOrNull(p && p.stats && p.stats.source_indices_usable);
 
   const refuse = (state, reason) => {

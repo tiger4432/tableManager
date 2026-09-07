@@ -63,6 +63,8 @@
  *    layer an absent threshold wearing the clothes of a declared one. Named and unreachable is
  *    the honest state, and the loader below refuses loudly rather than fetching nothing.
  */
+import { saysTruncated } from '../truncation.js';
+
 export const ROUTES = Object.freeze({
   // The decision unit is declared by an enrichment rule, never by one map. A per-map route
   // would rebuild the reload loop this screen exists to end.
@@ -545,7 +547,14 @@ export function normaliseReferenceCatalog(body) {
     examined: Number.isFinite(Number(rec.examined)) ? Number(rec.examined) : null,
     rejected: Number.isFinite(Number(rec.rejected)) ? Number(rec.rejected) : null,
     rejectedExample: rec.rejected_example == null ? null : String(rec.rejected_example),
-    truncated: rec.truncated === true,
+    // 🔴 S-5. ONE READER FOR ONE QUESTION. `=== true` reads only the BOOLEAN shape, and the
+    //    wire's `truncated` has been measured in five shapes — an object `{reason}` reads as
+    //    FALSE here, so a list the server said it cut would be drawn as whole. `saysTruncated`
+    //    is the one place that knows all of them, and it already answers for three other
+    //    screens. ⛔ No new reader, and no copy of its logic.
+    // ⚠️ Unchanged for every shape this file saw before: `true` stays true, `false` and a
+    //    missing key stay not-true. Only the shape that was silently wrong moves.
+    truncated: saysTruncated(rec.truncated) === true,
     reason: rec.reason == null ? null : String(rec.reason),
   });
 }
