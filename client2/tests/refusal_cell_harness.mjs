@@ -36,9 +36,11 @@ const reason = (count, details = []) => ({
 async function score(mutate) {
   pass = 0; failures.length = 0;
   const { probe } = await loadWithProbe(SRC, {
-    expose: ['refusalCell'], mutate, tag: 'refusalcell',
+    expose: ['refusalCell', 'refusalSummary', 'excludedNote'], mutate, tag: 'refusalcell',
   });
   const C = probe.refusalCell;
+  const S = probe.refusalSummary;
+  const X = probe.excludedNote;
 
   // ══ 세 픽셀 ═══════════════════════════════════════════════════════════════════════
   const nothing = C(null, 'dt_job');
@@ -97,6 +99,30 @@ async function score(mutate) {
   eq('A16 사유 블록이 비어도 같다', '',
      C(report({ s: { reasons: {} } }), 's').text);
 
+  // ══ C-39: 시험 실행 머리도 «같은 철자»를 쓴다 ═══════════════════════════════════════
+  // 🔴 두 봉투의 «모양»이 다릅니다 — 문지기는 `{사유: {count, samples}}`, 시험 실행은
+  //    `{사유: count}`. 문장은 «하나»여야 하고, 그것이 이 단언들의 전부입니다.
+  eq('B1 시험 실행 모양(사유: 수)도 같은 문장을 낸다',
+     '거절 11 · undeclared_event_type 9 · no_time_column 2',
+     S({ no_time_column: 2, undeclared_event_type: 9 }));
+  // 🔴 그리고 그 문장이 «문지기 쪽과 글자까지 같다» — 이것이 「사전 0」의 실제 시험입니다.
+  //    한쪽만 고쳐지는 날 이 줄이 빨개집니다.
+  ok('B2 ...그리고 문지기 쪽 문장과 «글자까지» 같다',
+     S({ no_time_column: 2, undeclared_event_type: 9 })
+       === C(report({ s: { reasons: { no_time_column: reason(2),
+                                      undeclared_event_type: reason(9) } } }), 's').text,
+     `${S({ no_time_column: 2, undeclared_event_type: 9 })}`);
+  eq('B3 셀 것이 없으면 아무 말도 안 한다', '', S({}));
+  eq('B4 0 뿐이어도 같다', '', S({ no_time_column: 0 }));
+  eq('B5 봉투가 없으면 조용하다', '', S(undefined));
+
+  // ══ 제외 — 「키 없음」과 「0」이 다르다 ═════════════════════════════════════════════
+  eq('B6 표지를 선언한 소스의 제외 행 수', '제외 4', X({ rows: 4 }));
+  // 🔴 키가 «없으면» 안 잰 것입니다 — 0 을 그리면 「재 봤는데 없다」가 됩니다.
+  eq('B7 키가 없으면 «아무것도» 안 그린다', '', X(undefined));
+  eq('B8 0 도 그리지 않는다 — 그릴 것이 없다', '', X({ rows: 0 }));
+  eq('B9 수가 아니면 조용하다', '', X({ rows: null }));
+
   return { pass, failures: failures.slice() };
 }
 
@@ -106,8 +132,15 @@ console.log(`\n${base.failures.length === 0 ? '✓' : '✗'} baseline: ${base.pa
 console.log(`ASSERTIONS ${base.pass + base.failures.length} ${base.failures.length}`);
 
 const MUTATIONS = [
+  // 🔴 RE-ANCHORED TWICE WHEN THE CODE MOVED (C-39), AND THE SECOND TIME IT MOVED THE CODE.
+  //    The guard used to live in `refusalCell` as `total === 0`; the counting went into
+  //    `refusalSummary`, so the first re-anchor pointed at an empty-string check there --
+  //    which turned out to be EQUIVALENT (falling through produced the same value), so the
+  //    guard was deleted from the subject rather than scored with a vacuous assertion. What
+  //    actually decides 「measured zero draws nothing」 is the line below, and it is the one
+  //    a mutant has to be able to reach.
   ['M1 a measured zero is drawn as 「거절 0」, so 「none」 and 「not measured」 look alike',
-   s => s.replace("  if (total === 0) return Object.freeze({ text: '', title: '', since });", '')],
+   s => s.replace("  if (total === 0) return '';", '')],
   ['M2 「not measured」 starts carrying a since, so the two collapse the other way',
    s => s.replace("  if (!report || typeof report !== 'object') return Object.freeze({ ...none });",
                   "  if (!report || typeof report !== 'object') return Object.freeze({ text: '', title: '', since: 'x' });")],
@@ -120,6 +153,14 @@ const MUTATIONS = [
                   'const entry = Object.values(sources)[0] || null;')],
   ['M6 a zero-count reason still takes a segment',
    s => s.replace('    .filter(r => r.count > 0)', '')],
+  // C-39. 🔴 THE ONE MUTANT THAT MATTERS FOR "one spelling": give the test-run head its own
+  //    word and the two screens start saying the same fact differently, with no error.
+  ['M7 the test-run head grows a second spelling of 거절',
+   s => s.replace('  return [`${MARK} ${total}`, ...named.map(r => `${r.reason} ${r.count}`)].join(\' · \');',
+                  '  return [`refused ${total}`, ...named.map(r => `${r.reason} ${r.count}`)].join(\' · \');')],
+  ['M8 an unmeasured exclusion is drawn as zero',
+   s => s.replace('  if (!Number.isFinite(rows) || rows <= 0) return \'\';',
+                  '  if (!Number.isFinite(rows)) return `${EXCLUDED_MARK} 0`;')],
 ];
 
 if (process.argv.includes('--mutate')) {

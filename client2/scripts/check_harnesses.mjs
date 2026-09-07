@@ -832,7 +832,7 @@ const FLOORS = new Map([
   // never why. What this floor holds is THREE PIXELS: not measured / measured and zero /
   // measured and N. Collapsing the middle one makes 「nothing was refused」 and 「nobody asked」
   // identical on screen, and those are opposite instructions.
-  ['refusal_cell_harness.mjs', 16],
+  ['refusal_cell_harness.mjs', 25],
   //
   // S-35. The confirm response carried the scorer choice and the screen threw the whole
   // record away. What this floor holds is the COMPARISON: took the machine answer / overruled

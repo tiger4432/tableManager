@@ -7,7 +7,7 @@ import {
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
-import { refusalCell } from './refusal_cell.js';
+import { refusalCell, refusalSummary, excludedNote } from './refusal_cell.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -825,6 +825,19 @@ function renderTestRun(state) {
   head.append(h('span', 'oe-testrun-count',
                 `행 ${run.rows_read} · 분자 ${run.molecules} · 원자 ${run.atoms}`));
   if (run.incomplete) head.append(h('span', 'oe-testrun-note', `미완 ${run.incomplete}`));
+  // 🔴 C-39. WHY THE ROWS DID NOT BECOME MOLECULES, BESIDE THE COUNTS THAT SAY THEY DID NOT.
+  //    The route stopped ending the run on one bad row and now reports the refusals BY NAME
+  //    (`refused {count, reasons, samples}`) -- its own comment says 「values, never a
+  //    sentence: the screen writes the words」. The words are `refusal_cell.js`'s, shared with
+  //    the source list, so 「거절」 has one spelling on this screen and not two.
+  const refusedHead = refusalSummary(run.refused && run.refused.reasons);
+  if (refusedHead) head.append(h('span', 'oe-testrun-note', refusedHead));
+  // ⚠️ ABSENT IS NOT ZERO. A source that declares no exclusion marker was NOT MEASURED, and
+  //    drawing 「제외 0」 there would say 「measured, none」. The server keeps those apart by
+  //    omitting the key -- it records having lost rows behind exactly that pixel -- so an
+  //    absent key draws nothing at all.
+  const excludedHead = excludedNote(run.excluded);
+  if (excludedHead) head.append(h('span', 'oe-testrun-note', excludedHead));
   // 🔴 A RED RESULT IS NOT A GATE, AND THE SCREEN HAD NO WAY TO SAY SO. `activate`
   //    refuses on one thing -- the snapshot compare-and-swap -- and this is not it. Nobody
   //    presses Save beside a red panel though, so declarations that were writable the whole
