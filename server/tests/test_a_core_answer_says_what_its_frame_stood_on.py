@@ -112,7 +112,9 @@ def test_no_other_key_moved(tp_env, client):
         "remaining_reliable": True,
     }
     assert body["sources"]["transfer_log"] == "connected"
-    assert body["sources"]["eds_fail"] == "connected"
+    # [S-40] eds 맵은 rot180 이라 이제 좌표를 «옴겨서» 세고 그 사실을 말한다.
+    #    위  는 그대로다 — 회전은 «위치»를 바꾸지 «개수»를 안 바꿔다.
+    assert body["sources"]["eds_fail"] == "connected(aligned:180)"
 
 
 # ---------------------------------------------------------------------------
