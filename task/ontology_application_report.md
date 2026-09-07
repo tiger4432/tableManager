@@ -13080,3 +13080,57 @@ C-21   「이름이 아니라 상태를 단언하는 여덟」 — 그 여덟의
 ```
 
 **감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
+
+---
+
+# 🔎 S-32 ⓒ 후보 전수 — **후보 열하나 중 «둘 이상이 가짜 양성»입니다. 방법을 적고 넘깁니다** (15:0x)
+
+⛔ 코드 0줄 · 실행 «안 했습니다»(정적) · 디렉터리 «둘 다».
+
+## 방법 (그대로 재현 가능하게)
+```
+대상   `server/tests/**/*.py` + `contracts/**/*.py`  -> 파일 «276»
+손잡이 낱말   ingestion_settings · auto_register · TABLE_CONFIG · DYNAMIC_TABLES ·
+            os.environ|getenv · config_path( | config/*.json
+   -> 언급 «123»
+「세우나」 판정   monkeypatch | tmp_path | write_text | fixture 가 그 파일에 «있나»
+   -> 없으면 ⓒ 후보. 결과 «열하나»
+```
+
+## 🔴 그런데 그 열하나가 «그대로 목록이 아닙니다» — 두 가짜 양성 원인을 찾았습니다
+```
+가짜 ①  낱말이 «손잡이가 아닌» 경우
+        `test_orientation_declaration.py` -> `auto_registered` 는 «메타의 키 이름»입니다(:150·158).
+        제 낱말 목록의 `auto_register` 가 그것을 삼켰습니다. 손잡이가 «아닙니다»
+가짜 ②  «conftest 가 세우는» 경우
+        `server/tests/conftest.py:2·17·29` 가 `TESTING` · `DATABASE_URL` 을 «세우고»
+        `ASSY_ADMIN_TOKEN` 을 «지웁니다» -> 개별 파일에 monkeypatch 가 없어도 «세워져» 있습니다
+        => `env` 로 걸린 다섯(contracts 둘 · 서버 셋)은 «이 이유로 다시 봐야» 합니다
+```
+🔴 **그러므로 「열하나」는 «ⓒ 후보의 상한»이고 실제는 그보다 작습니다.** 그대로 분류에 쓰면
+   「설치 의존」이 아닌 시험이 그 부류로 들어갑니다.
+
+## 남는 후보 — «손잡이가 진짜»이고 «세우는 자리가 안 보이는» 것 넷
+```
+server/tests/test_a_collision_merge_leaves_history.py   DYNAMIC_TABLES
+server/tests/test_audit_log_persistence.py              DYNAMIC_TABLES
+server/tests/test_bulk_chunking_budget.py               DYNAMIC_TABLES
+server/tests/test_set_based_write_path.py               DYNAMIC_TABLES
+server/tests/test_schema_map_push_ok.py                 TABLE_CONFIG
+```
+⚠️ 다섯입니다(넷이라 적을 뻔했습니다 — 세어서 씁니다). 그리고 이것도 «상한»입니다:
+   `DYNAMIC_TABLES` 를 «세우는» 헬퍼가 conftest 밖에 있으면 제 판정이 또 틀립니다 — «안 봤습니다».
+
+## 판정 대기: **예순셋**
+```
+63  🔴 ⓒ 분류를 «이 목록으로» 돌리면 안 됩니다 — 낱말 필터가 두 가지로 틀립니다
+    ㉠ 「손잡이 낱말」을 «심볼»로 좁힐지(그 상수를 «import 하는» 시험만)
+    ㉡ 「세우나」를 «파일 단위»가 아니라 «conftest 포함»으로 볼지
+    🔵 둘 다 제 방법의 결함이고, 고치면 다섯이 더 줄 것입니다. 어느 쪽으로 좁힐지가 판정입니다
+```
+```
+판정 대기: 🔴 63 (첫 제출 15:0x)   ·   🔁 이월: 47 (S-14 의 주어)
+⏸ 미룸(rnd_board): 53 · S-23 · S-24
+```
+
+**감시:** `b17vxx5cc` · `bfnxwmcfs` · `byf6rh22n`
