@@ -1222,7 +1222,12 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             if isinstance(item, Mapping) and item.get("status") == "active")),
         note="retired 낱말은 후보에서 빠진다.",
     )
-    roles = predicate_claim(predicate_id, predicate)["roles"]
+    # The screen lays out one row per slot the predicate forces, and since S-52 an
+    # object-less predicate forces one per attribute its subject types declare - so the
+    # author sees the boxes to bind them in. `entities` is already this function's
+    # argument; without passing it the form would silently offer fewer rows than the
+    # compiler accepts.
+    roles = predicate_claim(predicate_id, predicate, entities)["roles"]
     bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
 
     # The row set itself is derived: which roles exist is the predicate's business.

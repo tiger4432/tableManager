@@ -447,7 +447,8 @@ VALUE_ROLE = "value"
 _OBJECT_VALUE_ROLE_KINDS = {"value": "quantity", "event_ref": "identity"}
 
 
-def predicate_claim(predicate_id: str, predicate: Any) -> dict[str, Any]:
+def predicate_claim(predicate_id: str, predicate: Any,
+                    entities: Any = None) -> dict[str, Any]:
     """The Roles and the emission ONE predicate forces -- the Claim, with nobody to say it.
 
     🔴 THIS FUNCTION IS WHAT `packs` USED TO BE (owner, 2026-08-21: 「packs 도 아예 삭제
@@ -471,7 +472,32 @@ def predicate_claim(predicate_id: str, predicate: Any) -> dict[str, Any]:
     object_kind = obj.get("kind")
     qualifiers = obj.get("qualifiers") if isinstance(obj.get("qualifiers"), Mapping) else {}
     required_qualifiers = _column_values(qualifiers.get("required"))
-    optional_qualifiers = _column_values(qualifiers.get("optional"))
+    optional_qualifiers = list(_column_values(qualifiers.get("optional")))
+
+    # 🔴 A SENTENCE WITH NO OBJECT IS A STATEMENT ABOUT ITS SUBJECT, so it carries the
+    # values that subject declares (S-52, ruling 130 ②). Written structurally - "object
+    # kind is `none`" - and NEVER as a predicate name: a domain word here would decide the
+    # rule for one vocabulary and be wrong for the next declaration, which is the thing
+    # this repository forbids in as many words.
+    #
+    # This is why an operator adds NOTHING for an attribute: naming it on the entity and
+    # binding it once on the source is the whole of it. Without this the name would have
+    # to be written a third time, into the predicate's own qualifier list.
+    #
+    # ⚠️ `entities` widens this function's input from the predicate to the predicate AND
+    # the entity section, and that is CORRECT rather than tolerated: a declaration that
+    # gives an entity a new attribute IS a different declaration, and a snapshot hash that
+    # did not move for it would be saying the two are the same.
+    if object_kind == "none" and isinstance(entities, Mapping):
+        declared = []
+        for subject_type in _column_values(predicate.get("subjects")
+                                           if isinstance(predicate, Mapping) else None):
+            descriptor = entities.get(subject_type)
+            if isinstance(descriptor, Mapping):
+                declared.extend(_column_values(descriptor.get("attributes")))
+        for name in declared:
+            if name not in optional_qualifiers and name not in required_qualifiers:
+                optional_qualifiers.append(name)
 
     roles: dict[str, Any] = {
         SUBJECT_ROLE: {"kind": "entity", "required": True},
@@ -485,7 +511,9 @@ def predicate_claim(predicate_id: str, predicate: Any) -> dict[str, Any]:
         roles[VALUE_ROLE] = {
             "kind": _OBJECT_VALUE_ROLE_KINDS[object_kind], "required": True}
         emit_object["value"] = f"${VALUE_ROLE}"
-    if object_kind != "none":
+    # An object-less sentence carries qualifiers too, WHEN THERE ARE ANY. Empty stays
+    # absent so a vocabulary that declares none emits exactly the bytes it did before.
+    if object_kind != "none" or required_qualifiers or optional_qualifiers:
         emit_object["qualifiers"] = {
             **{name: f"${name}" for name in required_qualifiers},
             **{name: f"${name}?" for name in optional_qualifiers},
@@ -1591,7 +1619,8 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         profile = source.get("bind")
         if isinstance(profile, Mapping):
             _cross_profile_contract(
-                f"bundle.sources.{source_id}.bind", profile, vocabulary, problems)
+                f"bundle.sources.{source_id}.bind", profile, vocabulary, problems,
+                entities)
 
     for rule_id, rule in bundle["virtual_joins"].items():
         path = f"bundle.virtual_joins.{rule_id}"
@@ -1801,7 +1830,8 @@ def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> Non
 
 
 def _cross_profile_contract(path: str, profile: Mapping[str, Any],
-                            vocabulary: Mapping[str, Any], problems: _Problems) -> None:
+                            vocabulary: Mapping[str, Any], problems: _Problems,
+                            entities: Mapping[str, Any] = None) -> None:
     for sentence, mapping in sorted(profile.get("mappings", {}).items()):
         mpath = f"{path}.mappings.{sentence}"
         predicate_id = mapping.get("predicate")
@@ -1814,7 +1844,7 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
         if predicate.get("status") != "active":
             problems.add("inactive_predicate", f"{mpath}.predicate",
                          f"predicate {predicate_id!r} is not active")
-        roles = predicate_claim(predicate_id, predicate)["roles"]
+        roles = predicate_claim(predicate_id, predicate, entities)["roles"]
         bindings = mapping["bind"]
         for role in sorted(bindings):
             if role not in roles:

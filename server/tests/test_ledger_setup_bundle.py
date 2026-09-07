@@ -1809,3 +1809,62 @@ def test_a_source_with_no_bind_entities_loads_exactly_as_before(tmp_path):
     write_tree(tmp_path)
     assert "entities" not in load_setup_bundle(tmp_path).section(
         "sources")["input_rows"]["bind"]
+
+
+# ---------------------------------------------------------------------------
+# S-52 Ⓖ (판정 130 ②) — «목적어 없는» 문장은 자기 «주어»에 대한 말이므로,
+# 그 주어가 선언한 값을 나른다.
+#
+# 🔴 그래서 운영자가 «세 번째로» 적을 것이 없다: 엔티티에 이름을 적고, 소스에서 한 번 매기면 끝이다.
+#    이게 없으면 그 이름을 술어의 수식어 목록에도 «또» 적어야 한다(두 줄 -> 세 줄).
+# ---------------------------------------------------------------------------
+
+def _objectless_vocabulary(attributes=("product",)):
+    """`InputEntity@1` 이 속성을 선언하고, 목적어 «없는» 술어가 그것을 주어로 받는 어휘."""
+    raw = copy.deepcopy(logical_bundle())
+    raw["entities"]["InputEntity@1"]["attributes"] = list(attributes)
+    raw["vocabulary"]["sighted@1"] = {
+        "status": "active", "subjects": ["InputEntity@1"],
+        "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}},
+    }
+    return raw
+
+
+def test_an_objectless_predicate_takes_its_subjects_declared_attributes_as_qualifiers():
+    raw = _objectless_vocabulary()
+    claim = predicate_claim("sighted@1", raw["vocabulary"]["sighted@1"], raw["entities"])
+
+    assert "product" in claim["roles"], claim["roles"]
+    assert claim["roles"]["product"]["required"] is False
+    # 그리고 «발화»에도 실린다 — 역할로만 받고 페이로드에 안 실으면 조용히 사라진다.
+    assert claim["emit"]["object"]["qualifiers"] == {"product": "$product?"}
+
+
+def test_a_predicate_whose_subjects_declare_nothing_emits_exactly_what_it_did():
+    """㉥ 무회귀. 이 축은 «적은 선언에서만» 무언가를 한다."""
+    raw = copy.deepcopy(logical_bundle())
+    raw["vocabulary"]["sighted@1"] = {
+        "status": "active", "subjects": ["InputEntity@1"],
+        "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}},
+    }
+    claim = predicate_claim("sighted@1", raw["vocabulary"]["sighted@1"], raw["entities"])
+
+    assert "qualifiers" not in claim["emit"]["object"]
+    assert claim == predicate_claim("sighted@1", raw["vocabulary"]["sighted@1"])
+
+
+def test_the_derivation_reads_the_declaration_and_names_nothing_itself():
+    """🔴 판별식. 규칙은 «구조»(목적어가 none)이지 «술어 이름»이 아니다 — 이름을 박으면 한 어휘에서만
+    맞고 다음 선언에서 틀린다. 술어 이름을 바꿔도 «같은» 답이어야 한다."""
+    raw = _objectless_vocabulary()
+    body = raw["vocabulary"]["sighted@1"]
+    under_another_name = predicate_claim("anything_else@1", body, raw["entities"])
+
+    assert "product" in under_another_name["roles"]
+
+
+def test_an_attribute_the_subject_does_not_declare_is_not_offered():
+    raw = _objectless_vocabulary()
+    claim = predicate_claim("sighted@1", raw["vocabulary"]["sighted@1"], raw["entities"])
+
+    assert "grade" not in claim["roles"]

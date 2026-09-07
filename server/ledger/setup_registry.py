@@ -627,7 +627,8 @@ def compile_setup_snapshot(
     entities = _compile_entities(bundle.section("entities"))
     preparers = _compile_preparers(bundle.section("sources"))
     mappers = _compile_mappers(bundle.section("sources"))
-    claims = _compile_claims(bundle.section("vocabulary"))
+    claims = _compile_claims(bundle.section("vocabulary"),
+                             bundle.section("entities"))
     profiles = _compile_profiles(bundle.section("sources"))
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
@@ -865,7 +866,8 @@ def _role_reference(value: str) -> RoleReferenceDescriptor:
     )
 
 
-def _compile_claims(section: Mapping[str, Any]) -> ClaimRegistry:
+def _compile_claims(section: Mapping[str, Any],
+                    entities: Mapping[str, Any] = None) -> ClaimRegistry:
     """One Claim per PREDICATE, derived -- the `packs` section is gone.
 
     The body comes from `setup_bundle.predicate_claim`, so this function does exactly what
@@ -876,7 +878,7 @@ def _compile_claims(section: Mapping[str, Any]) -> ClaimRegistry:
     """
     builder = _RegistryBuilder(ClaimRegistry)
     for predicate_id, predicate in section.items():
-        claim = predicate_claim(predicate_id, predicate)
+        claim = predicate_claim(predicate_id, predicate, entities)
         claim_path = f"bundle.vocabulary.{predicate_id}"
         roles: dict[str, RoleDescriptor] = {}
         for role_id, role in claim["roles"].items():
