@@ -469,7 +469,8 @@ def test_the_report_states_what_it_withheld_rather_than_ending_silently(db):
 
     assert report["refused_rows"] == 60, "counts are never capped"
     assert len(report["rows"]) == chain_key_gate.MAX_REFUSAL_ROWS
-    assert report["rows_omitted"] == 60 - chain_key_gate.MAX_REFUSAL_ROWS
+    assert report["truncated"]["rows"]["omitted"] == 60 - chain_key_gate.MAX_REFUSAL_ROWS
+    assert report["truncated"]["rows"]["cut"] is True
 
 
 # ---------------------------------------------------------------------------

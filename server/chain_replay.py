@@ -76,6 +76,7 @@ import uuid
 logger = logging.getLogger(__name__)
 
 import keyset_scan
+import event_constants
 # [ChainKeyGate] The same gate the live chain worker runs. Replay re-runs the same
 # mappers, so it must not be able to re-create in bulk the unkeyed rows the worker refuses.
 import chain_key_gate
@@ -100,7 +101,7 @@ R3_AUDIT_SOURCE = "resolution_recompute"
 
 # Upper bound on the per-cell change list a recompute keeps in memory. The AuditLog
 # rows it writes are the permanent, unbounded enumeration; this only bounds what one
-# call hands back to a CLI or a report. `changes_truncated` says when it bit.
+# call hands back to a CLI or a report. `truncated["changes"]` says when it bit.
 DEFAULT_MAX_REPORT = 10000
 
 # R1 never writes a blank value. See the module docstring: "the rule produces
@@ -1044,7 +1045,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
         large run is restartable and an interrupt loses at most the page in flight.
 
     Returns the stats dict; `changes` enumerates the affected cells up to
-    `max_report`, and `changes_truncated` says whether the list ran out of budget.
+    `max_report`, and `truncated["changes"]` says whether the list ran out of budget.
     The AuditLog rows are the unbounded record.
     """
     from database import crud, models
@@ -1068,7 +1069,10 @@ def recompute_display_values(db, table_name: str, columns: list = None,
              "rows_scanned": 0, "pages": 0, "cells_examined": 0,
              "pinned_examined": 0, "cells_changed": 0, "changed_by_tiebreak": 0,
              "changed_by_stale_materialisation": 0, "pinned_changed": 0,
-             "changes": [], "changes_truncated": False}
+             "changes": [],
+             # 정본 — 이 자리는 «예산 비트»만 안다. 몇 개가 빠졌는지는 모르므로 `omitted` 가
+             # None 이고, 그것이 0 과 «다른» 사실이다.
+             "truncated": {"changes": event_constants.truncated_note(False)}}
 
     condition = model.row_id.in_(list(row_ids)) if row_ids else None
     tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
@@ -1184,7 +1188,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                         "sources": sorted(srcs),
                     })
                 else:
-                    stats["changes_truncated"] = True
+                    stats["truncated"]["changes"] = event_constants.truncated_note(
+                        True, None, "report budget (max_report) reached")
 
                 if apply:
                     setattr(row, col, decision["new_value"])

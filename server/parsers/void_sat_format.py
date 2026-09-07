@@ -53,6 +53,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+import event_constants
 
 logger = logging.getLogger(__name__)
 
@@ -412,9 +413,9 @@ def screen(table_name: str, rows, source: str = None):
         "refused_rows": 0,
         "by_reason": {},
         "details": [],
-        "details_omitted": 0,
         "rows": [],
-        "rows_omitted": 0,
+        #: 정본 — 축마다 하나. 이 보고는 «두 목록»(rows · details)을 자른다.
+        "truncated": {},
     }
     kept, seen_keys = [], {}
     by_reason = report["by_reason"]
@@ -463,12 +464,19 @@ def screen(table_name: str, rows, source: str = None):
             if len(report["details"]) < MAX_REFUSAL_DETAILS:
                 report["details"].append(detail)
             else:
-                report["details_omitted"] += 1
+                report["_details_cut"] = report.get("_details_cut", 0) + 1
         if len(report["rows"]) < MAX_REFUSAL_ROWS:
             report["rows"].append({"index": index, "reasons": reasons,
                                    "detail": detail})
 
-    report["rows_omitted"] = max(0, report["refused_rows"] - len(report["rows"]))
+    _rows_cut = max(0, report["refused_rows"] - len(report["rows"]))
+    _details_cut = report.pop("_details_cut", 0)
+    report["truncated"] = {
+        "rows": event_constants.truncated_note(
+            _rows_cut > 0, _rows_cut, "refused rows beyond MAX_REFUSAL_ROWS"),
+        "details": event_constants.truncated_note(
+            _details_cut > 0, _details_cut, "detail samples beyond the cap"),
+    }
 
     if report["refused_rows"]:
         announce = _record(table_name, by_reason, report["refused_rows"])

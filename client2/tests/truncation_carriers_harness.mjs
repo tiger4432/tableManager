@@ -108,8 +108,9 @@ console.log('\n── B-bis. WHAT THE SHIPPED BUNDLE SAYS (EVIDENCE, NOT A VERDI
 
 console.log('\n── C. THE SIBLING CARRIERS ARE ALREADY COMPENSATED ─────────────────');
 {
-  // 🔵 MEASURED BEFORE BUILDING ANYTHING FOR THEM. `deleted_row_ids_omitted` and
-  //    `scope.delete_ids_omitted` count ids the delete broadcast withheld — and where the server
+  // 🔵 MEASURED BEFORE BUILDING ANYTHING FOR THEM. Both now ride the canonical
+  //    `truncated` (S-5): the broadcast's `truncated.deleted_row_ids` and the response's
+  //    `scope.truncated.delete_ids` count ids the delete broadcast withheld — and where the server
   //    withholds them it sends `batch_refresh_required` INSTEAD of the capped list. The client
   //    never reads `deleted_row_ids` at all, so there is nothing there to correct; what had to
   //    work was the refresh branch, and that is what B1/B2 above are about.
