@@ -16,7 +16,7 @@ import pandas as pd
 
 from . import gate
 from .backfill import prepare_v2_cursor_batch
-from .envelope import registration_fingerprint, registration_token
+from .envelope import canonical_keys, registration_fingerprint, registration_token
 from .ledger_frame import atoms_from_ledger_frame
 from .roleframe import (
     LedgerV2DryRunResult,
