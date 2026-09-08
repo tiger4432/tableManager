@@ -63,13 +63,16 @@ def test_every_source_whose_relation_has_one_reads_the_row_id(snapshot):
     replaces was a mechanism that worked on four of fifteen, and any fixture drawn from the
     four would have agreed with it.
 
-    ⚠️ ALL 44 RELATIONS IN THE SHIPPED CATALOGUE ARE TABLES, which is why this file could
-    not have found 판정 136's case on its own -- see
-    `test_a_source_reading_a_relation_without_one_asks_for_none`."""
-    without = [name for name in snapshot.source_plans
-               if source_preparation.FRAME_ROW_ID_COLUMN not in
-               source_preparation.base_select_columns(snapshot.source_plans[name])]
-    assert without == [], without
+    ⚠️ AND "EVERY" MEANS EVERY SOURCE WHOSE RELATION HAS ONE (판정 138). Ten of the
+    catalogue's relations are VIEWs and five of those carry no `row_id`; the four sources
+    reading them are NAMED here rather than counted, so a fifth appearing is a decision
+    somebody makes on purpose instead of a number quietly moving."""
+    without = sorted(
+        name for name, plan in snapshot.source_plans.items()
+        if source_preparation.FRAME_ROW_ID_COLUMN not in
+        source_preparation.base_select_columns(plan))
+    assert without == ["bonded_from", "bw_dt_seat", "lot_slot_move", "void_observation"]
+    assert all(snapshot.source_plans[name].frame_row_id is None for name in without)
     assert len(snapshot.source_plans) == 15, (
         "the shipped sample changed size -- confirm the claim still covers all of it")
 
@@ -101,8 +104,11 @@ def test_the_declaration_says_nothing_about_it(document, catalog, snapshot):
                   {key: value for key, value in source.items() if key != "bind"})]
     assert len(silent) >= 11, silent
     for name in silent:
+        plan = snapshot.source_plans[name]
+        if plan.frame_row_id is None:
+            continue        # its relation is a VIEW that carries none -- 판정 138
         assert source_preparation.FRAME_ROW_ID_COLUMN in \
-            source_preparation.base_select_columns(snapshot.source_plans[name])
+            source_preparation.base_select_columns(plan)
 
 
 def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog,
@@ -113,13 +119,19 @@ def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog
     every table for a column none of them has -- and the SELECT would fail at runtime, on
     all fifteen at once.
 
-    The catalogue is what decides it: `row_id` is the frame column of every relation, and
-    that is the only reason the engine may read it without a declaration."""
-    for relation in sorted({plan.relation for plan in snapshot.source_plans.values()}):
+    The catalogue is what decides it, relation by relation (판정 138): a TABLE gets the
+    column planted by the loader and a VIEW gets whatever its SELECT lists."""
+    checked = 0
+    for relation in sorted({plan.relation for plan in snapshot.source_plans.values()
+                            if plan.frame_row_id}):
         declared = (catalog[relation] or {}).get("columns") or {}
         names = declared if isinstance(declared, dict) else {
             (item.get("name") if isinstance(item, dict) else item) for item in declared}
         assert source_preparation.FRAME_ROW_ID_COLUMN in names, relation
+        checked += 1
+    assert checked == 11, (
+        "the eleven relations the fifteen sources read that carry a row_id -- fifteen "
+        "sources over fourteen relations, four of them on a view without one")
 
 
 # ------------------------------------------------------- and it costs no cursor a restamp
