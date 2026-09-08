@@ -1204,6 +1204,17 @@ const FLOORS = new Map([
   // are fast because nothing contended, a route that 500s is fast because it did no work --
   // so twelve mutants stand behind this number rather than beside it.
   ['ten_user_driver_harness.mjs', 38],
+  // New 2026-09-08 with C-42 (「이 소스, 돌 게 있나」). Floor is the count it reports on the
+  // commit that introduces it. 🔴 SEVEN MUTANTS, and the first is the one the ruling names:
+  // an uncounted field drawn as 0 tells an operator asking whether anything is waiting that
+  // the queue is empty.
+  ['source_backlog_harness.mjs', 22],
+  // New 2026-09-08 with C-43 ② (the map's cell query). Floor is the count it reports on the
+  // commit that introduces it. 🔴 The first mutant is the round: without defer_total the load
+  // makes the server COUNT the same filter over the same table before answering, and that
+  // second scan is invisible everywhere except in the seconds the operator waits.
+  ['map_cell_query_harness.mjs', 13],
+
 
 
   // an event nothing matches is audible, and the theme notification has one speller

@@ -1085,9 +1085,12 @@ const MUTATIONS = [
   ['M8 cleanup ignores provenance (would delete ingested rows outside the mask)',
     s => s.replace(/ {4}if \(known && !known\.has\(k\)\) outsideStray\.push\(k\);\r?\n {4}else outsideRetained\.push\(k\);/,
       '    outsideStray.push(k);')],
+  // 🔴 RE-ANCHORED 2026-09-08 (C-43 ②). The decider moved from `result.total` to the ROW COUNT
+  //    — the load no longer makes the server COUNT the same filter a second time — so the
+  //    mutant follows the decision rather than the sentence that used to carry it.
   ['M9 a truncated cell load is trusted as a complete server set',
-    s => s.replace('const cellsTruncated = !!(result && typeof result.total === \'number\'',
-      'const cellsTruncated = false && !!(result && typeof result.total === \'number\'')],
+    s => s.replace('const cellsTruncated = isCellsTruncated(result && result.data);',
+      'const cellsTruncated = false;')],
   ['M10 off-grid keys are swept into the cleanable population (H2 guard weakened)',
     s => s.replace('if (inside === undefined) { offGrid.push(k); return; }',
       'if (inside === undefined) { outsideStray.push(k); return; }')],

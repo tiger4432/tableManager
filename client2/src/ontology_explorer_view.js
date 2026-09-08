@@ -9,6 +9,7 @@ import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import { refusalCell, refusalSummary, excludedNote } from './refusal_cell.js';
 import { verificationNote } from './verification_note.js';
+import { backlogCells, hasBacklog } from './source_backlog.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -916,6 +917,26 @@ function renderInspector(state) {
   }
   head.append(title, actions);
   article.append(head);
+  // 🔴 C-42. 「돌 게 있나」 — 소유자가 운영에서 물은 그것입니다. 이 화면은 소스가 «선언됐고
+  //    저장됐고 검증됐고 거절당했다»까지 말할 수 있었는데 「무엇이 «기다리고» 있나」는 한 번도
+  //    못 말했습니다. 그래서 조작자는 로그가 흐르는 것을 보며 «도는 중»과 «할 일 없음»을
+  //    구별할 수가 없었습니다.
+  // ⚠️ 안 세었으면 «줄 자체가 없습니다». 빈 칸 넷을 그리면 「아직 안 셌다」가 「세 봤더니
+  //    없다」로 읽히고, 그 둘은 정반대 지시입니다 — 그리고 그것이 서버 절반(S-69)이 오기 전
+  //    오늘 화면이 «바이트 동일»한 이유이기도 합니다.
+  if (state.selection.kind === 'source_plan' && hasBacklog(verified)) {
+    const line = h('div', 'oe-backlog');
+    for (const cell of backlogCells(verified)) {
+      if (!cell.text) continue;
+      const item = h('span', 'oe-backlog-cell');
+      // 이름은 «서버가 보낸 키 그대로». 번역하면 서버가 키를 바꾸는 날 옛 이름으로 옳아 보입니다.
+      item.append(h('code', 'oe-backlog-name', cell.name),
+                  h('span', 'oe-backlog-value', cell.text));
+      if (cell.note) item.append(h('small', 'oe-backlog-note', cell.note));
+      line.append(item);
+    }
+    article.append(line);
+  }
   // Above the tabs, so the answer stays on screen whichever tab the operator moves to
   // next -- the refusal names a box, and the box is on 작성.
   const testRun = renderTestRun(state);
