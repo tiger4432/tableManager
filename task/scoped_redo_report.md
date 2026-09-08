@@ -19915,3 +19915,132 @@ generate_trace_fixture        raws 파일                              ❌      
 ```
 
 ## 다음 바퀴 — `seed_syn_aug_material` 을 «지금» 시작합니다 (판정 기다리지 않습니다)
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **④-b 넷째 바퀴 `seed_syn_aug_material` — 이미 적재돼 있고 «멱등»이라 새 원자 0. 그리고 이 바퀴에서 ④-b «전체»가 닫혔습니다 — 비율은 «선언»이 정합니다** (09-08 16:4x)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0 · 이 바퀴도 아무것도 «안 썼습니다»(dry-run + 읽기)
+```
+
+## ① --help — 규모 손잡이 «없음» (셋째 바퀴와 같은 모양)
+```
+usage: seed_syn_aug_material.py [-h] [--apply] [--i-accept-writing-to-owner-database]
+리터럴   LOTS=(1..6) · SLOTS=(1..5) -> 웨이퍼 30 · PREFIX="SYN-AUG-" · SEED=20260824
+```
+
+## ② dry-run — «BEFORE 에 이미 있습니다». AFTER == BEFORE
+```
+--- BEFORE: 125 lots ...  new SYN-AUG-001 .. SYN-AUG-006      <- 여섯 «다» 이미 있음
+--- AFTER (simulated): 125 lots ...                            <- «같은 값 그대로»
+계획 행   void_obs 753 · core_defect_map 655 · wafer_map_metadata 90 · bonding_map 4,230
+DRY RUN - rolled back
+```
+=> 이 생성기는 「자기 범위를 «교체»」하는 멱등 픽스처입니다. 다시 돌려도 «새 원자 0» 이라 적재하지 않았고,
+   되돌리기 술어(`SYN-AUG-%`)도 쓸 일이 없었습니다.
+
+## 🔴 그런데 이 바퀴에서 ④-b 가 «통째로» 닫혔습니다 — 비율은 재는 것이 아니라 «읽는» 것입니다
+선언 15 소스 전부를 라이브에 대고 한 번에 쟀습니다(읽기만):
+```
+source                     relation                unit   maps      rows     atoms   /row
+bonded_from                bonding_die_from_core   row       3     18,609    55,827  3.000
+void_observation           void_obs_observed       row       2    103,857   207,714  2.000
+bw_dt_seat                 bonding_core_die        row       1    371,673   371,673  1.000
+die_inspection             inspection_run          row       1    117,742   117,742  1.000
+dt_transfer                dt_log_transferable     row       1     28,208    28,208  1.000
+lot_slot_move              lot_slot_move           row       1        135       135  1.000
+lot_slot_wafer             lot_slot_wafer          row       1     35,721    35,731  1.000
+mechanism_edge_to_finding_causes  mechanism_edge_to_finding  row 1      9         9  1.000
+mechanism_edge_to_quantity_causes mechanism_edge_to_quantity row 1     13        13  1.000
+process_param_num_measure  process_param_num       row       1     73,275    73,275  1.000
+process_param_txt_measure  process_param_txt       row       1      7,055     7,055  1.000
+transfer_event             dt_transfer_log         row       1      1,405     1,405  1.000
+wafer_process_recipe       wafer_process           row       1      3,032     3,032  1.000
+dt_job                     dt_log                  group     2     34,939       792  0.023
+lot_event                  lot_event               group     3      3,230       190  0.059
+                                                                          합계 902,801
+```
+🔴 **법칙이 나옵니다 — 예외 «0»:**
+```
+row 단위 소스     원자/행  = 그 소스의 mappings «수»          13/13 정확히 일치
+group 단위 소스   원자     = «그룹 수» x mappings             dt_job 396 x 2 = 792 ✅
+```
+=> 남은 생성기 둘(`seed_syn_complex_composite` · `seed_syn_composite_chip`)을 «돌 필요가 없습니다».
+   대상 표만 알면 비율은 선언에서 «읽힙니다». ④-b 는 여기서 닫습니다.
+
+## ④-b 최종표
+```
+생성기                        대상 표                    원장 소스        원자                규모 손잡이
+generate_syn_lot_split_merge  lot_event · process_event  lot_event(group) 그룹당 3 / 행당 0.059  ✅ --root-lots · --wafers-per-root
+seed_dt_index_walk            dt_map                     (없음)           0                    없음
+seed_dt_log_from_root_refs    dt_log                     dt_job(group)    분자당 2 · 최대 100   없음(리터럴 5 뿌리)
+seed_syn_aug_material         void_obs · bonding_map 등  void_observation 행당 2               없음(리터럴 30 웨이퍼) · «이미 적재»
+seed_syn_complex_composite    위 + valid_die_ref         같음             같음(선언에서)        없음
+seed_root_lot_valid_die_refs  valid_die_ref              (없음)           0                    -
+seed_syn_composite_chip       (표 리터럴 없음)           (없음)           0                    -
+generate_trace_fixture        raws 파일                  (없음)           0                    -
+```
+
+## ④ 계획 — 9,097,199 원자를 «무엇으로», «얼마나»
+```
+필요        902,801 -> 10^7   =  «9,097,199» 더
+처리량 실측  오늘 14:24 backfill: 33,917 분자 / 274.3 s = «123.6 분자/s» = 8.09 ms/분자
+```
+```
+비율        필요 행/분자    소요        후보 소스
+3 원자/행     3.03 M       «6.8 h»     bonded_from (bonding_die_from_core)
+2 원자/행     4.55 M      «10.2 h»     void_observation (void_obs_observed)
+1 원자/행     9.10 M      «20.5 h»     wafer_process · inspection_run · dt_log_transferable …
+```
+🔴 **그런데 비율이 높은 쪽이 «전부 뷰»입니다** (table_config 의 `kind` 로 확인):
+```
+bonding_die_from_core  view  3      void_obs_observed  view  2
+bonding_core_die       view  1      dt_log_transferable view 1      process_param_num  view  1
+inspection_run · wafer_process · lot_event · dt_log · lot_slot_wafer · lot_slot_move …  «표»
+```
+=> 뷰에는 «못 씁니다». 기반 표를 키워야 하는데, 그 기반을 키울 «규모 손잡이 있는 생성기»가 «없습니다» —
+   픽스처 여섯은 전부 리터럴 고정이고(위 표의 「규모 손잡이」 칸), 그중 둘은 «화면의 단언»에 맞춰 크기가 정해져 있습니다
+   (`seed_syn_aug_material` 자기 문서: 중앙값·문턱·날짜 셋을 안 깨뜨리려고 6 로트로 잡음).
+
+🔴 **규모 손잡이는 «하나»뿐입니다:**
+```
+generate_syn_lot_split_merge_sources.py --root-lots <목록> --wafers-per-root 25
+   188 뿌리 -> lot_event 3,008 행  ·  process_event «470,000» 행   <- 둘 다 «이미 디스크에» 있습니다
+```
+⚠️ 그런데 `process_event.csv` 는 «아직 안 실었고», «그대로는 안 들어갑니다» — 열 철자가 다릅니다:
+```
+CSV            txn_seq, lot_id, wafer_id, step_seq, rcp_id,     eqp_id, event_time
+wafer_process  ...      lot_id, wafer_id, step,     recipe_id,  eqp_id, eventtime, proc_id, …
+```
+=> `step_seq -> step` · `rcp_id -> recipe_id` · `event_time -> eventtime` 대응이 «필요»합니다.
+   저는 지어내지 않고 «올립니다» — 이건 도메인 철자이지 제 판단이 아닙니다.
+
+## 🔴🔴 그리고 이 바퀴가 «판정 143 의 결함을 3,008 행으로 재현»했습니다 (읽기만으로 잡혔습니다)
+```
+lot_event 소스 커서   {row_id …, event_time '2026-08-12 06:00:00'}   마지막 이동 «08-30 21:31»
+SYN-R 행               3,008    event_time 범위  2026-01-01 .. 2026-01-05   <- «커서보다 앞»
+lot_event 원자 중 SYN-R 을 가진 것   «0»
+   (커서가 낡았다는 «대리»가 아니라, subject_keys 를 직접 세었습니다)
+오류 0 · 거절 0 · 커서는 「다 했다」 상태
+```
+🔴 SYN-P 907 행보다 «큰» 재현입니다 — 판정 144 의 게이트 ㉥ 에 이 케이스를 같이 쓰시면 됩니다.
+🔴 **그리고 제 ① 보고를 정정합니다** — ④-b 표에 「lot_event 행당 1」이라 적었던 것은 «lot_slot_wafer 의 수»였습니다.
+   `lot_event` «소스»는 오늘 원자를 «하나도» 안 만들었습니다(190 은 전부 08-30 것).
+
+## 🔴 모르는 것 (밝힙니다)
+```
+process_event -> wafer_process 열 대응    도메인 철자라 «올립니다»
+뷰 기반 표를 키울 생성기가 있는지         픽스처 여덟 «밖»은 안 봤습니다
+lot_slot_wafer 원자 35,731 vs 행 35,721   10 차이. 오늘 축이 아니라 «안 팠습니다»
+process_param_num_measure 거절 35,982     커서 표에 있는 수. 오늘 축이 아님
+```
+
+## 🔴 판정 청합니다 — «한 줄»로 갈립니다
+```
+「④ 를 (A) 1 원자/행로 9.1M 행 = «20.5 h» 로 갈지,
+      (B) process_event 470k 의 열 대응을 정해 주시고 그것부터 넣을지,
+      (C) 3 원자/행(뷰 기반)을 키울 생성기를 «만들» 것인지(= 새 코드, 지시 필요)」
+```
+⚠️ (C) 는 「지시받지 않은 것은 만들지 않는다」에 걸려 제가 «먼저 짓지 않았습니다».
