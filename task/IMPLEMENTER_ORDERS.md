@@ -37005,3 +37005,17 @@ database_outbox 전 역사   CREATE 1,618 · RETROACTIVE_RUN 1 · **EDIT/DELETE 
 > 🔵 **[09-09 06:03 예고, 판정 169] S-76 «뒤» 첫 줄 = S-77: DB CHECK `ck_ledger_register_has_no_object` 의 'register' 리터럴 제거 — 「목적어 없음」은 선언(object.kind none)이 정하고 발행 층이 검증한다. 저장 층은 구조 불변식(`ck_ledger_objectless_carries_only_qualifiers`)만. 마이그레이션 스크립트는 `migrate_ledger_objectless_payload_constraint.py` 와 같은 모양. 게이트: retire@1(목적어 없음) 선언 → 원자 «들어감» · register 무회귀. 지금은 S-76 조각 2·3 계속**
 
 > ✅ **[09-09 06:15] 조각 2 `3a93470d` 검증 — 이웃 733 중 2 빨강은 `test_void_base_join_fixture`(라이브 table_config 모양 단언, S-32 부류)라 당신 것 아님 · 제가: dry-run wafer_process_recipe → pages 0(표 478,035 = 색인 478,035) · void_observation → refused no_row_id · 재기동 PID 2716. 5,000 행 게이트(3.74 ms/행 · 큐 4 · 원자=색인 +5,000 · uq 겹침 1,000) «인정» — 470k 전체는 S-55 ④ 10^7 채우기가 «그 자리»다(같은 길로 채운다). 🔴 조각 3 게이트에 «한 줄» 추가: `--via-events` 가 dry-run 에서도 「표 행 N · 색인 M · 남은 N−M」을 «값»으로 찍는다 — 「nothing was staged」만으로는 S-69 의 침묵과 같다. 조각 3 진행**
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 171 (`9cddcb7b` 의 답) = Ⓐ. run() 은 이름을 지키고 안이 사건 길이 된다 — 두 경로가 «한 순간도» 같이 살지 않는다. 한 커밋, 당신 순서 ①~④ 그대로. 그리고 «갈래 하나 더»를 제가 답합니다: 뷰 소스의 최초 적재** (09-09 06:18)
+```
+Ⓐ 근거   판정 163 「도착지는 아웃박스 하나」· 상설 ④ 「같은 기능에 두 경로 없음」. Ⓑ 는 그 병의 모양이고 Ⓒ 는 반쪽
+결과 dict  칸 이름 유지 · 뜻은 «밝힌다»: rows_read = «세운 사건의 행 수» · cursor = «지문(translator_ver)만» · caught_up_* «없음». 읽던 두 자리(config_explorer_service · retroactive)는 같은 커밋에서 «뜻대로» 고친다(칸이 남아 «옛 뜻»으로 읽히면 그것이 거짓 로그 — ①)
+뷰 소스    run(뷰 소스) = «그 뷰의 기반 표»를 사건 길로 적재(`base_tables_of` — S-65-c 유도 그대로) → 팔로워로 뷰 소스가 번역한다. 진행 표지는 «뷰 관계» 아래 행 색인이고, 그것은 뷰가 «row_id 를 나를 때만» 선다(오늘 5/9)
+          🔴 row_id 없는 뷰(void_obs_observed · bonding_die_from_core · lot_slot_move · bonding_core_die)는 최초 적재를 «이름 대어 거절»(no_row_id, 조각 2 그대로) — 라이브 길(새 행)은 페이지 키로 «이미» 닿으므로 «잃는 것은 최초 적재뿐». 그 원자는 «이미» 있다(473k)
+          두 줄(뷰의 빚): 「그 뷰에 기반 표의 row_id 컬럼을 «노출»하면 됩니다」— 카탈로그 kind: view + row_id 형이 그 선언. 거절문에 이 두 줄을 «싣는다»
+게이트     당신 것 + 「run(view source, row_id 있음)」이 기반 표 사건으로 뷰 소스 원자를 만든다(dt_transfer 로 하나) · 「run(row_id 없는 뷰)」 거절문에 두 줄
+```
+> 📌 **[09-09 06:18] 이 채널의 미답 질문: «없음».** (갈래 → 171)
