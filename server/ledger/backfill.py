@@ -938,11 +938,21 @@ def index_existing_refs(engine, source, apply=False, pace=None,
 
     units, rest = resolve_pace(pace)
     store = LedgerStore(engine)
-    result = {"source": source, "refs_total": 0, "refs_read": 0, "indexed": 0,
+    # 🔴 A DRY RUN THAT ANSWERS `0` ANSWERS NOTHING. 「저장 전에 무엇이 도나」 -- the point of
+    # running this without `--apply` is to learn the size of the job, so `would_index` is
+    # counted on both paths and `indexed` counts only what was written.
+    result = {"source": source, "refs_total": 0, "refs_read": 0,
+              "would_index": 0, "indexed": 0,
               "unreadable_refs": 0, "unindexable_refs": 0, "unindexable_sample": [],
               "applied": bool(apply), "pace": pace or "fast"}
     connection = store.connection()
     try:
+        with connection.cursor() as cursor:
+            # An install that has not run a translation since the index was added has no
+            # table to write into, and `UndefinedTable` out of a paced job is a worse
+            # answer than making it. Same DDL as `ensure_schema`, called rather than copied.
+            schema.ensure_row_ref_table(cursor)
+        connection.commit()
         with connection.cursor() as cursor:
             cursor.execute(
                 f"SELECT count(DISTINCT source_raw_ref) FROM {schema.LEDGER_TABLE} "
@@ -998,6 +1008,7 @@ def _index_one_chunk(connection, store, source, refs, result, apply):
         result["unindexable_sample"].append(
             {"relation": relation,
              "identity": dict(zip(names, [str(value) for value in identity]))})
+    result["would_index"] += len(pairs)
     if not apply or not pairs:
         return
     store._write_row_refs(connection, source, pairs)
@@ -1033,7 +1044,16 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     store = LedgerStore(engine)
     ids = [str(item) for item in (row_ids or ()) if item]
     result = {"relation": relation, "rows": len(ids), "applied": False,
-              "sources": {}, "forgotten": 0}
+              "sources": {}, "forgotten": 0, "no_row_index": []}
+    # 🔴 A SOURCE WITH NO ROW INDEX IS NAMED, NOT PASSED OVER IN SILENCE (판정 136). A source
+    # reading a VIEW has no `row_id` to index by, so this step can do nothing for it -- and
+    # a quiet zero would be indistinguishable from "there was nothing to withdraw". The
+    # absence is structurally correct (nothing writes an outbox DELETE for a view), which is
+    # the reason to say it plainly rather than to treat it as a gap.
+    plans = getattr(getattr(setup, "snapshot", None), "source_plans", None) or {}
+    result["no_row_index"] = sorted(
+        name for name, plan in plans.items()
+        if plan.relation == relation and not getattr(plan, "frame_row_id", None))
     if not ids:
         return result
     by_source: dict = {}

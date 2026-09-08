@@ -200,6 +200,21 @@ def test_the_same_delete_twice_changes_nothing_the_second_time(store):
     assert store.withdrawn == [] and store.forgotten == [] and again["applied"] is False
 
 
+def test_a_source_with_no_row_index_is_named_rather_than_passed_over(store):
+    """🔴 판정 136. A source reading a VIEW has no `row_id` to index by, so this step can do
+    nothing for it -- and a quiet zero is indistinguishable from "there was nothing to
+    withdraw". The absence is structurally correct (nothing writes an outbox DELETE for a
+    view), which is the reason to say it plainly rather than treat it as a gap."""
+    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
+        "on_a_view": SimpleNamespace(relation=RELATION, frame_row_id=None),
+        "on_a_table": SimpleNamespace(relation=RELATION, frame_row_id="row_id"),
+        "elsewhere": SimpleNamespace(relation="other", frame_row_id=None),
+    }))
+    result = backfill.withdraw_deleted_rows(None, setup, RELATION, ["R1"], apply=True)
+    assert result["no_row_index"] == ["on_a_view"], (
+        "only the sources that read THIS relation and cannot be served")
+
+
 # ------------------------------------------------------------- and the queue routes it there
 
 def test_a_delete_is_withdrawn_from_the_index_not_rescoped(monkeypatch):

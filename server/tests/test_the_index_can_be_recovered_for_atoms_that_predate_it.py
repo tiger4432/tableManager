@@ -50,7 +50,12 @@ class FakeCursor:
 
     def execute(self, sql, params=None):
         text = " ".join(sql.split())
-        if text.startswith("SELECT count(DISTINCT source_raw_ref)"):
+        if text.startswith("CREATE TABLE"):
+            # 판정 136 ②: an install that has never translated since the index was added has
+            # no table for this job to write into, so it makes one before it reads.
+            self.world["created"] += 1
+            self.rows = []
+        elif text.startswith("SELECT count(DISTINCT source_raw_ref)"):
             self.rows = [(len(self.world["refs"]),)]
         elif text.startswith("SELECT DISTINCT source_raw_ref"):
             _source, limit, offset = params
@@ -99,7 +104,8 @@ class FakeStore:
 
 @pytest.fixture
 def world(monkeypatch):
-    made = {"refs": [], "table": {}, "written": [], "commits": 0, "joins": 0}
+    made = {"refs": [], "table": {}, "written": [], "commits": 0, "joins": 0,
+            "created": 0}
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: FakeStore(made))
     return made
 
@@ -118,14 +124,27 @@ def test_a_ref_whose_row_is_still_there_gets_its_index_line(world):
     assert sorted(world["written"]) == [
         ("dt_job", RELATION, "RID-J1", ref_for("J1")),
         ("dt_job", RELATION, "RID-J2", ref_for("J2"))]
-    assert world["commits"] == 1
+    # Two: the DDL commits on its own before the read starts, then the chunk's write.
+    assert world["commits"] == 2
 
 
-def test_a_dry_run_writes_nothing_and_still_reports(world):
-    result = run(world, ["J1"], ["J1"])
-    assert world["written"] == [] and world["commits"] == 0
+def test_a_dry_run_says_how_big_the_job_is(world):
+    """🔴 ③ A DRY RUN THAT ANSWERS `0` ANSWERS NOTHING. 「저장 전에 무엇이 도나」 is the whole
+    reason to run this without `--apply`, so the size is counted on both paths and `indexed`
+    counts only what was actually written."""
+    result = run(world, ["J1", "J2"], ["J1", "J2", "GONE"])
+    assert world["written"] == []
     assert result["applied"] is False and result["indexed"] == 0
-    assert result["refs_read"] == 1
+    assert result["would_index"] == 2 and result["unindexable_refs"] == 1
+    assert result["refs_read"] == 3
+
+
+def test_it_makes_the_index_table_before_it_reads(world):
+    """🔴 ② An install that has not translated since the index was added has no table to
+    write into, and `UndefinedTable` out of a paced job is a worse answer than making it.
+    Same DDL as `ensure_schema`, called rather than copied."""
+    run(world, ["J1"], ["J1"], apply=True)
+    assert world["created"] == 1
 
 
 # ---------------------------------------------- ㉭ what will not join, counted AND named

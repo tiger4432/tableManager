@@ -58,16 +58,38 @@ def snapshot(document, catalog):
 
 # --------------------------------------------------------------------- every source, not four
 
-def test_every_source_reads_the_row_id(snapshot):
+def test_every_source_whose_relation_has_one_reads_the_row_id(snapshot):
     """🔴 ㉮. Stated over the WHOLE shipped set rather than over a sample: the defect this
     replaces was a mechanism that worked on four of fifteen, and any fixture drawn from the
-    four would have agreed with it."""
+    four would have agreed with it.
+
+    ⚠️ ALL 44 RELATIONS IN THE SHIPPED CATALOGUE ARE TABLES, which is why this file could
+    not have found 판정 136's case on its own -- see
+    `test_a_source_reading_a_relation_without_one_asks_for_none`."""
     without = [name for name in snapshot.source_plans
                if source_preparation.FRAME_ROW_ID_COLUMN not in
                source_preparation.base_select_columns(snapshot.source_plans[name])]
     assert without == [], without
     assert len(snapshot.source_plans) == 15, (
         "the shipped sample changed size -- confirm the claim still covers all of it")
+
+
+def test_a_source_reading_a_relation_without_one_asks_for_none(document, catalog):
+    """🔴 판정 136. 판정 135 said "always", measured on a catalogue where every relation is a
+    TABLE. A source may legitimately read a VIEW, and a view has no `row_id` -- asking for it
+    turns that source's SELECT into `UndefinedColumn` on the cursor path, on rescope and on
+    the index backfill at once, which is what happened on the deployment this was found on.
+
+    ⚠️ THE ABSENCE IS CORRECT, NOT TOLERATED. Nothing writes an outbox DELETE for a view, so
+    there is no delete to follow and nothing the index could have done. What must not happen
+    is the delete step going quiet about it, and it names the source instead."""
+    without = json.loads(json.dumps(catalog))
+    without["dt_log"]["columns"].pop("row_id")
+    snapshot = compiled(document, without)
+    assert snapshot.source_plans["dt_job"].frame_row_id is None
+    assert source_preparation.FRAME_ROW_ID_COLUMN not in         source_preparation.base_select_columns(snapshot.source_plans["dt_job"])
+    # and its neighbours are untouched -- the answer is per RELATION, not per deployment
+    assert snapshot.source_plans["lot_event"].frame_row_id == "row_id"
 
 
 def test_the_declaration_says_nothing_about_it(document, catalog, snapshot):
@@ -119,6 +141,14 @@ def test_the_read_is_not_what_a_cursor_fingerprint_is_made_of(snapshot, monkeypa
     assert len(fingerprints) == 15 and calls == [], (
         "a cursor fingerprint read the SELECT list, so an engine-owned column would "
         "restamp every source")
+    # 🔴 AND THE COMPILED ANSWER IS OUT OF THE MATERIAL TOO. `source_cursor_fingerprint`
+    # hashes the compiled plan, so carrying `frame_row_id` there moved all fifteen -- caught
+    # by re-measuring after 판정 136, which is the same restamp cost 판정 135 chose Ⓐ to
+    # avoid. It is how the engine READS, not what it says, and the atoms are byte-identical
+    # either way (the test below).
+    from ledger.setup_registry import _NOT_ATOM_MATERIAL
+
+    assert "frame_row_id" in _NOT_ATOM_MATERIAL
 
 
 def test_a_declaration_edit_still_moves_the_one_it_should(document, catalog, snapshot):
