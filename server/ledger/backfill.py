@@ -1001,6 +1001,16 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     frame = _v2_frame(rows)
     if result.get("rows_in_scope") is None:
         result["rows_in_scope"] = len(frame)
+    if frame.empty:
+        # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81). A VIEW does not have to contain
+        # every row of the table it reads -- measured 2026-09-09, `dt_log_transferable`
+        # excludes 7,731 of `dt_log`'s 35,939 -- so a base-table event naming an excluded row
+        # scopes this source to nothing at all. Falling through handed an empty frame to the
+        # write boundary, which refused it as `scope.row_id: the batch does not carry
+        # 'row_id'`: a missing-column error for a frame that has no columns because it has no
+        # rows. It repeated every three seconds and the drain DROPPED each event.
+        result["scope_empty"] = True
+        return result
     subjects = _v2_registration_subjects(plan, frame)
     executed = execute_selected_scoped_batch(
         setup, source, frame, scoped, _no_join_reader(), store,
