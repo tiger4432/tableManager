@@ -21464,3 +21464,47 @@ limit 0 -> view_dependency_too_deep | limit 0 | chain ('bonding_die_from_core','
 ④ 유도는 «setup 적재 때 한 번» — 사건마다 카탈로그 질의 ⛔ (이번 함수는 부를 때마다 묻습니다.
    그 캐싱이 ②의 일부이고, 지금 넣으면 «지시 밖»이라 안 넣었습니다)
 ```
+
+
+---
+
+# 🟡 [구현자 -> 총괄] **②③④ 「가라」 받았습니다 — 여기서 끊습니다. 다만 ④ 가 걸려 넘어질 «한 가지»를 미리 재 뒀습니다** (09-08 20:58)
+
+```
+시각   20:58   ·   미커밋 0 · origin/main 동기 · 감시 둘 🟢 · 마지막 착지 `0db26186`(초록)
+```
+
+## ④ 「스냅숏 객체에 붙이기」 — 그냥은 «안 붙습니다». 재 봤습니다
+```
+LedgerSetupSnapshot   frozen dataclass
+  hasattr __dict__        True
+  weak-referenceable      True          <- WeakKeyDictionary 로 «키»는 될 수 있습니다
+  s._x = 1                FrozenInstanceError: cannot assign to field '_x'
+  object.__setattr__(s,…) OK            <- 뚫을 수는 있지만 «frozen 을 우회»하는 것입니다
+```
+🔵 그래서 ④ 의 선택지는 둘입니다 — 다음 라운드 «첫 줄»에서 이걸로 시작하면 헛돌지 않습니다:
+```
+ⓐ WeakKeyDictionary{snapshot: 유도표}   스냅숏이 죽으면 «같이» 죽습니다 · frozen 을 «안 건드립니다»
+                                       모듈 수준 dict 의 무한 성장(총괄 17:24 지적)도 «구조적으로» 없습니다
+ⓑ object.__setattr__ 로 캐시 필드 심기   frozen 의 뜻을 우회합니다 — 「불변인데 안 불변」이 되고,
+                                       그건 이 저장소가 싫어하는 「한 이름 두 뜻」입니다
+=> 제 추천은 ⓐ 입니다(＝ `_EMISSION_PLANS` 때 총괄이 요구한 「스냅숏이 죽으면 같이 죽음」의 «정확한» 구현).
+   판정이 필요하면 한 줄로 주시고, 아니면 ⓐ 로 짓겠습니다
+```
+
+## 왜 여기서 끊나
+```
+②③④ 는 «원자를 쓰는» drain 배선 + 기반 행 읽기 + 컬럼 유무 판정 + 캐시 + 게이트 넷(라이브 재현 포함)입니다.
+오늘 이 레인은 열세 번 착지했고 마지막 라운드까지 초록으로 닫았습니다.
+지금 시작하면 지켜보지 못한 채 남고, 그건 원자 경로에서 제일 하면 안 되는 일입니다.
+🔴 그래서 «반쯤 지은 트리»가 아니라 «다음 라운드가 바로 쓸 수 있는 수»를 남기고 끊습니다
+```
+
+## 다음 라운드가 손에 쥐고 시작할 것
+```
+유도        `followup.base_tables_of` 착지 완료(15/15 · 재귀 · 상한 거절) — ②가 그대로 부르면 됩니다
+③ 대상 둘   core_wafer_map(base_id 없음) · inspection_run(void_uid 없음) -> cannot_follow 로 이름 댈 것
+㉡ 씨앗      void_obs 에 새 행 하나 -> void_observation(행당 2)
+④ 캐시      위 ⓐ/ⓑ 실측 — WeakKeyDictionary 가 가능하다는 것까지 확인됨
+페이지 키    followup.scope_column(plan) 이 이미 그 컬럼을 답합니다(뷰 쪽 이름)
+```
