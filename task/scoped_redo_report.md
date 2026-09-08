@@ -20628,3 +20628,53 @@ prepare_source_batch        (a) 전 측정에서 19% — 다시 재야 합니다
 ㉤  deepcopy 0 은 «아직 아닙니다»(290,000) — 남은 자리 둘이 그것을 들고 있습니다
 ㉣  「컴파일 1 회」 변이는 (a) 가 끝났으니 이제 «한 자리»에서 걸 수 있습니다
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **회귀 일곱 «초록». 그런데 원인은 「원자 철자」가 «아니었습니다» — 시험 «대역»이 옛 칸을 들고 있었습니다** (09-08 18:32)
+
+```
+시각   18:32   ·   착지 `daea1f9d`   ·   재기동 동결 «해제해도 됩니다»(아래 수)
+```
+
+## 🔴 먼저 — 제가 이웃을 «좁게» 골랐습니다. 그 지적이 맞습니다
+지시하신 심볼 훑기를 «착지 전»에 했어야 했습니다. 다음부터 `runtime_v2|envelope|registration_fingerprint|_write_row_refs|source_raw_ref` 로 «먼저» 셉니다.
+
+## 🔴 다만 «원인 진단»은 정정드립니다 — 철자 경로가 아닙니다
+```
+E  AttributeError: 'types.SimpleNamespace' object has no attribute 'ledger_rows'   (runtime_v2:142)
+E  AttributeError: '_Result' object has no attribute 'ledger_rows'                  (runtime_v2:497)
+```
+```
+test_a_deleted_row…:44   result_with() = SimpleNamespace(ledger_frame=pd.DataFrame(...))
+test_a_registration…:71  class _Result: self.ledger_frame = ledger_frame_from_atoms(atoms)
+```
+=> 둘 다 «컴파일 결과의 대역(stand-in)»이고, 그 대역이 «컴파일러가 더는 만들지 않는 칸»을 들고 있었습니다.
+   원자의 철자·등록 지문은 «한 글자도» 안 바뀌었습니다 — 그래서 바이트 동일 게이트 다섯이 초록이었던 것이고,
+   그 게이트가 «놓친» 것이 아니라 이건 «다른 부류»(대역의 모양)였습니다.
+⚠️ 그렇다고 제 게이트가 충분했다는 뜻은 «아닙니다» — 대역을 쓰는 시험은 바이트 게이트로 «영원히» 안 잡힙니다.
+   잡는 것은 «심볼 이웃 실행»뿐이고, 그걸 제가 안 했습니다.
+
+## 고침 — 대역이 «진짜 결과»를 흉내 내게
+```
+ledger_rows_from_atoms   «정본»으로 신설 · ledger_frame_from_atoms 는 그 어댑터 (이 라운드 무늬 그대로)
+대역 둘                   ledger_rows 를 들도록 · 각각에 「무엇을 흉내 내야 하나」를 한 줄로 박음
+```
+
+## 실행 수
+```
+그 두 파일          «23 passed · 2 skipped»   <- (a) 전 커밋에서 총괄이 재신 23 과 «같습니다»
+심볼 이웃 45 파일    «690 passed · 108 skipped · 2 failed»
+남은 빨강 둘        test_dt_map_derivation::all_three_declared_rules_ship_disabled
+                      -> `AssertionError: expected three trigger rules, found 2`  (라이브 «선언» 내용)
+                   test_dt_standard_map_mapper::live_dt_map_declaration
+                      -> `assert types.get(col) == "string"`                      (라이브 «선언» 내용)
+                   둘 다 «선언 내용»을 재는 시험이고 제 코드 경로를 안 지납니다 — 총괄께서 가르신 그대로입니다
+```
+
+## 다음
+```
+㉡ 조용한 박스   rescope 종료 뒤 «원본(S-64 이전) vs 지금» 벽시계. 그것이 정본 수입니다
+㉣ 컴파일 1 회 변이 · ㉤ deepcopy 0(현재 290,000)   — 그 뒤
+```
