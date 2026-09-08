@@ -869,6 +869,27 @@ def declared_key_columns(table_cfg: dict):
     return [], "no map_key_columns, no composite_key_source, and no single-column business_key"
 
 
+#: Columns the model builder creates ITSELF, so a declaration naming one is saying the same
+#: thing twice rather than adding a column.
+#:
+#: 🔴 `row_id` JOINED ON 2026-09-08 (판정 140). The builder makes it the PRIMARY KEY, and
+#: until now no `column_types` listed it -- the catalogue loader planted it into its own
+#: `columns` view of a relation and nobody declared it. A VIEW must declare its columns as
+#: they are (판정 138), so five of them now say `row_id`, and SQLAlchemy refused the second
+#: definition: "Trying to redefine primary-key column 'row_id' as a non-primary-key column".
+#:
+#: ⚠️ SKIPPING IS NOT IGNORING THE DECLARATION. The declaration stays true -- that view does
+#: have the column -- and the catalogue loader reads it to answer `frame_row_id`. What is
+#: skipped is BUILDING it twice.
+#:
+#: One spelling: both the hot-swap pass and the fresh build read this list. They carried two
+#: hand-written copies of it before.
+FRAMEWORK_COLUMNS = (
+    "row_id", "created_at", "updated_at",
+    "is_graph_synced", "needs_graph_rollback", "graph_synced_at",
+)
+
+
 def init_dynamic_models(config_dict: dict):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
@@ -891,7 +912,7 @@ def init_dynamic_models(config_dict: dict):
             mapper = class_mapper(dynamic_class)
             
             for col_name, type_str in col_types.items():
-                if col_name in ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
+                if col_name in FRAMEWORK_COLUMNS:
                     continue
                 if col_name not in table_obj.columns:
                     if type_str == "number":
@@ -952,7 +973,7 @@ def init_dynamic_models(config_dict: dict):
         # 2. table_config에 정의된 사용자 컬럼들을 native 타입으로 바인딩
         col_types = table_cfg.get("column_types", {})
         for col_name, type_str in col_types.items():
-            if col_name in ["created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]:
+            if col_name in FRAMEWORK_COLUMNS:
                 continue
             if type_str == "number":
                 sql_type = Float
