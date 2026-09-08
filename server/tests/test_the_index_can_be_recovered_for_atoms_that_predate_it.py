@@ -259,3 +259,22 @@ def test_the_delete_step_and_this_read_the_same_function():
         backfill.withdraw_deleted_rows)
     assert "sources_without_row_index(" in inspect.getsource(
         backfill.index_existing_refs)
+
+
+def test_no_setup_loads_one_rather_than_answering_nothing(world, monkeypatch):
+    """🔴 S-61-c. `sources_without_row_index(None)` has no plans to look at, so it answers
+    `[]` -- "nothing lacks a row index", which reads exactly like a clean answer and then
+    dies on `UndefinedColumn` inside the join. The CLI is the caller that omits the setup,
+    so the default root is loaded here, through the same function every other entry point
+    uses. A vacuous answer that passes is worse than a refusal."""
+    loaded = []
+    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
+        "dt_job": SimpleNamespace(relation=RELATION, frame_row_id=None)}))
+    monkeypatch.setattr("ledger.setup.load_setup",
+                        lambda *a, **k: loaded.append(1) or setup)
+    world["refs"] = [ref_for("J1")]
+    world["table"] = {"J1": "RID-J1"}
+    result = backfill.index_existing_refs(None, "dt_job", apply=True)
+    assert loaded == [1], "the setup was never loaded, so the answer was vacuous"
+    assert result["no_row_index"] == ["dt_job"]
+    assert world["joins"] == 0 and world["written"] == []

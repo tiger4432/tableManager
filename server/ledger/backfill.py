@@ -970,6 +970,15 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
     # no `row_id` cannot be indexed by one, and joining for it would ask the read for a
     # column it does not have -- which is the `UndefinedColumn` this whole round is about.
     # It is named and skipped, not attempted and not silently zero.
+    if setup is None:
+        # 🔴 `None` MUST NOT ANSWER `[]`. Without a setup this helper has no plans to look
+        # at, so it says "nothing lacks a row index" -- a vacuous answer that reads exactly
+        # like a clean one and then dies on `UndefinedColumn` inside the join. The CLI is
+        # the caller that omits it, so the default root is loaded here, through the same
+        # function every other entry point uses.
+        from .setup import load_setup
+
+        setup = load_setup()
     result["no_row_index"] = sources_without_row_index(setup, source=source)
     if result["no_row_index"]:
         return result

@@ -211,3 +211,22 @@ def test_the_atoms_are_byte_identical_with_the_column_in_the_frame(snapshot):
                 for _, row in result.ledger_frame.iterrows()]
 
     assert atoms({}) == atoms({"row_id": "RID-1"})
+
+
+def test_a_misspelt_kind_is_refused_by_path(catalog, tmp_path):
+    """⛔ A CLOSED LIST, REFUSED BY PATH (판정 138 ㉡). `"veiw"` would otherwise read as
+    `table` and plant `row_id` back on the view -- so the typo would look exactly like never
+    having written the line, which is the one failure mode this field has."""
+    import io as _io
+    from ledger.setup_bundle import LedgerSetupValidationError, load_physical_catalog
+
+    document = json.loads(_io.open(
+        os.path.join(SAMPLE, "table_config.json.sample"), encoding="utf-8").read())
+    document["dt_log"]["kind"] = "veiw"
+    path = tmp_path / "table_config.json"
+    _io.open(path, "w", encoding="utf-8").write(json.dumps(document))
+    with pytest.raises(LedgerSetupValidationError) as caught:
+        load_physical_catalog(str(path))
+    assert caught.value.code == "invalid_catalog"
+    assert caught.value.path == "dt_log.kind"
+    assert "veiw" in caught.value.message, "the refusal must quote what was typed"
