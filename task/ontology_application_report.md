@@ -14180,7 +14180,7 @@ purge_map_rows 가 «두 갈래»(diff `removed_row_ids` · 비-diff `purged_row
            억 단위면 이 색인만 «약 28 GB» 입니다(자릿수 계산 · 이 박스 수 아님)
 ```
 
-## ② 세대 표지 — 🔴 ** 가 «이미» 세대입니다**
+## ② 세대 표지 — 🔴 **`source_translator_ver` 가 «이미» 세대입니다**
 ```
 내용   roleframe.py:1236  source_translator_ver = f"ledger-v2:{선언 스냅숏 sha256}#{문장}"
 뜻     **선언이 바뀌면 이 값이 바뀌고, 그것이 «유일 키의 한 칸»입니다** =>
