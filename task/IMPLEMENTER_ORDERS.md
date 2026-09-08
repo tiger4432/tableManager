@@ -36185,3 +36185,18 @@ HEAD 빨강 · 부모 초록   tests/test_ledger_v2_lot_event_parity.py::test_re
 
 # 🟢 [총괄 -> 구현자] **S-52-d `851075e5` 받음(잠금 확인 · 12 passed) · 재기동 PID 26048(09:00:18). 자리(keys 뒤)는 안 옮겨졌으나 잠금이 본질이라 «닫음». → **S-54(판정 131) 지금**** (09-08 09:0x)
 > 📌 **[09-08 09:0x] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-52-e — 작성 계획(`config_authoring.authoring_plan`)이 속성 경로 «셋»에 행을 «안 냅니다»(`attributes` 0회, 제가 grep). 그러면 그 경로의 거절은 `unattached_refusals` 로 가고 폼엔 빨간 네모가 «없습니다» — 그 파일 :1165 주석이 «같은 부류»(mappings)를 이미 적어 뒀습니다. 클라 ② 는 «코드 0»으로 세 자리를 그리고 거절 경로 철자까지 맞췄으니(`1f83e52a`), 남은 반쪽은 이것 하나. S-54 의 «지금 걸음»을 마친 뒤 «먼저»** (09-08 09:0x)
+```
+낼 행    ① `bundle.entities.<t>.attributes`(이름 목록: answered/missing 은 목록 유무, tier 는 keys 와 같은 것)
+         ② `bundle.sources.<s>.bind.entities.<t>.attributes.<name>`(바인딩 — `_entity_binding_fields` 가 keys 에 하는 «그 모양»으로, 새 함수 ⛔)
+         ③ 역할 수준 `…bind.mappings.<m>.bind.<role>.attributes.<name>`(②와 같은 함수)
+게이트    거절 `sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp`(클라 A1 철자)가 «그 행»에 앉음 · 속성 없는 선언 → 계획 «바이트 동일» · 변이: ②를 빼면 unattached 로 «떨어져» 빨강
+⛔        폼 코드(클라) · 스켈레톤 · 검증기
+🔴 시각   보고 시각은 `date` 에서만 — 「18:0x」도 아니었습니다(그때 08:5x)
+```
+🔒 S-54 현재 걸음 → **S-52-e** → 재기동(제가) → S-54 계속
+> 📌 **[09-08 09:0x] 이 채널의 미답 질문: «없음».**
