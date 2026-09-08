@@ -1847,8 +1847,18 @@ export function createWalkBoxWalk(deps) {
       //    「내 씨앗에서 몇 홉인가」입니다. 서버는 둘 다 «이미» 보냈고 이 줄이 버리고 있었습니다.
       //    좁히는 쪽이 「무엇을 못 봤는지」를 말할 수 없게 만든다는 것이 바로 아래 주석인데,
       //    그 주석을 단 함수가 스스로 그러고 있었습니다.
-      const nodes = (body.nodes || [])
-        .map((n) => ({ id: n.id, type: n.type, label: n.label, keys: n.keys || null, depth: n.depth }));
+      // 🔴 THE NODE GOES THROUGH WHOLE (2026-09-08). Narrowing it to a field list was a
+      //    RECURRING defect, not a one-off: the list was three fields, `keys` and `depth`
+      //    were put back in 09-06 after the table could not name a row or say how far it
+      //    was, and on 09-08 `attributes`/`attribute_conflicts` died in exactly the same
+      //    place — the server sent them, the declaration named the columns, the table drew
+      //    the headers, and every cell was empty. NO ERROR EITHER TIME.
+      //    The narrowing never had a reason written beside it, and the one it would need
+      //    (bytes) is refuted by the sibling line below: edges already ride through whole,
+      //    with a comment saying why narrowing them would be wrong. Same rule, one place.
+      // ⚠️ So this is deliberately NOT 「add the two new names」. That repair is the one that
+      //    has now failed twice, and it fails again the next time the server learns a field.
+      const nodes = Array.isArray(body.nodes) ? body.nodes : [];
       // ⚠️ 엣지는 «모양을 안 바꿉니다». 노드처럼 세 칸으로 줄이면 술어 이름과 수식어가
       //    사라지고, 그러면 「무엇을 타고 왔나」를 화면이 영원히 못 말합니다.
       const edges = Array.isArray(body.edges) ? body.edges : [];
