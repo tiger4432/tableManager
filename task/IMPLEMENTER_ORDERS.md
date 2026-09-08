@@ -36925,3 +36925,27 @@ S-68    `python -m ledger.backfill --help` 가 cp949 콘솔에서 UnicodeEncodeE
 > 📌 **[09-08 22:04] 이 채널의 미답 질문: «없음».**
 
 > 🔴 **[09-08 22:05 소유자] 「야간에 그것까지만 하고 끝내」— 오늘 밤 과제는 «S-65-d 하나»입니다(S-62·S-68 은 같은 파일의 한 줄짜리라 동반, 그 밖엔 «아무것도»). 착지 → 제가 재기동·삭제 재현 → 닫음 → 마감. 그 뒤 S-65-b·S-66·S-64-b 는 «내일»**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **S-65-d 라이브 게이트가 «막혔고», 막은 것은 S-65-d 가 아닙니다 — 제품의 «삭제 문»이 아웃박스를 «안 지납니다». S-74. 오늘 밤 «이것까지» — S-65-d 의 게이트가 이것 없이는 못 서기 때문입니다** (09-08 22:16)
+## 잰 것 (PID 5800, `d89acd8d` 위)
+```
+S-65-d 코드    이웃 224 passed · 로그 「cannot be followed … (no_row_id)」는 시험 실행에서 «보임» — 기제는 맞습니다
+라이브         DELETE /tables/process_param/rows/{id} → 200, 행 사라짐 → 아웃박스 «행 없음» → 뒤따르기 0 · 행 색인 «그대로»
+              POST /tables/void_obs/rows/batch_delete → 200 → 아웃박스 «행 없음»
+              PUT(EDIT) 같은 행 → 아웃박스 EDIT · SUCCESS · processed_chain ✅   <- 문은 «있고», CREATE·EDIT 는 지납니다
+database_outbox 전 역사   CREATE 1,618 · RETROACTIVE_RUN 1 · **EDIT/DELETE 0** (이 박스 — 밝혀 씀) → 그래서 S-54-b 의 DELETE 뒤따르기도 «라이브 사건을 한 번도 받은 적이 없습니다»
+원인(코드)     crud.delete_rows_batch :4330~ 이 `query(...).delete(synchronize_session=False)` — 벌크 삭제라 객체가 session.deleted 에 «안 들어가고» before_flush 훅(database.py:176~183)이 «못 봅니다». delete_row 는 그 함수에 위임(:4267) → 문 «둘 다» 우회
+              같은 부류의 «전례»가 이미 고쳐져 있습니다: purge_map_rows → `stage_collapsed_event(db, "DELETE", table_name, row_ids)` (crud.py:3374). CODE_MAP:1193 이 그것을 「아웃박스가 볼 수 없던 «유일한» 쓰기」라 적었는데 — «둘째»가 이것입니다(문서 거짓)
+```
+## S-74 = 삭제 문이 아웃박스를 지나게 — 최소 수정
+```
+① delete_rows_batch 의 벌크 삭제 «뒤·커밋 전»에 `stage_collapsed_event(db, "DELETE", table_name, row_ids)` 한 줄(purge_map_rows 와 «같은 상수·같은 함수» — 두 경로 ⛔). 삭제된 행 목록은 이미 `rows_to_delete` 로 들고 있습니다
+② CODE_MAP:1193 「유일한」 → 두 자리로 정정(한 줄)
+게이트   시험: 배치 삭제 뒤 아웃박스에 DELETE 1(collapsed) — 라이브 타입 규율 · 이웃 심볼(`delete_rows_batch` · `stage_collapsed_event`) 초록
+        제가: 재기동 → process_param 행 삭제(row_id 나르는 뷰) → 행 색인 «사라짐» + 원자 물림 · void_obs 행 삭제 → server.log 「cannot be followed … no_row_id」 «라이브로»
+⚠️ 잔여(이 박스)   제가 문 없이 지운 행 넷(process_param 2 · void_obs 2)의 색인 항목이 남아 있습니다 — 소급 실행이 «정본 채움»이라 그쪽 몫. 오늘 밤 ⛔
+```
+> 📌 **[09-08 22:16] 이 채널의 미답 질문: «없음».**
