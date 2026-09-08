@@ -21299,3 +21299,47 @@ backfill.run(start_from=…) -> LedgerSetupError:
    판정 없이 그 인자를 넘기지 않았습니다 — 그 관문이 있는 이유가 그것입니다.
 청합니다   ㉢ 을 (A) 재번역 승인으로 이 박스에서 잴지, (B) uq_ledger_atom 의 성질로 «구조 논증»만 남길지
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-65-c 측정 — «아홉 중 아홉»이 이 길로 닿습니다(한 겹 재귀가 필요합니다). 짓지 않았습니다** (09-08 20:27)
+
+```
+시각   20:27   ·   판정 153 대로 «수만» 냈습니다
+```
+
+## ① `pg_depend` / `pg_rewrite` 로 뷰의 기반 표를 «자동으로» 얻을 수 있나 — «예»
+```
+소스                                뷰                          페이지 키    기반 표(그 컬럼 있나)
+bonded_from                        bonding_die_from_core      base_id      «표 없음» -> 아래 재귀 참고
+bw_dt_seat                         bonding_core_die           base_id      bonding_log(+) · core_wafer_map(-)
+dt_transfer                        dt_log_transferable        row_id       dt_log(+)
+lot_slot_move                      lot_slot_move              event_time   lot_event(+)
+mechanism_edge_to_finding_causes   mechanism_edge_to_finding  edge_id      mechanism_edge(+)
+mechanism_edge_to_quantity_causes  mechanism_edge_to_quantity edge_id      mechanism_edge(+)
+process_param_num_measure          process_param_num          param_id     process_param(+)
+process_param_txt_measure          process_param_txt          param_id     process_param(+)
+void_observation                   void_obs_observed          void_uid     inspection_run(-) · void_obs(+)
+```
+🔵 «(+)» = 그 뷰의 «페이지 키»가 기반 표에 «같은 이름»으로 있습니다 — 즉 기반 표 사건의 row_ids 로
+   기반 행을 읽어 그 컬럼 값을 얻고, 그것으로 뷰 소스를 rescope 할 수 있습니다(커서 무접촉).
+
+## ② 「닿나」의 답 — «8/9», 그런데 나머지 하나도 «한 겹 더 파면» 닿습니다
+```
+bonded_from 의 뷰 `bonding_die_from_core` 는 «뷰 위의 뷰»입니다:
+   bonding_die_from_core -> bonding_core_die (뷰) -> bonding_log(표) · core_wafer_map(표)
+   그리고 `bonding_core_die` 에 `base_id` 가 «있습니다»
+=> 의존을 «한 겹»만 보면 8/9, «표에 닿을 때까지 재귀»하면 «9/9» 입니다
+```
+🔴 **그래서 이 길의 답은 「아홉 중 아홉」이고, 필요한 것은 «재귀 한 줄»입니다** — 선언에 칸을 더할 필요가
+   없고(운영자 칸 «0»), 카탈로그(PostgreSQL 자신)가 이미 답을 들고 있습니다.
+
+## 안 한 것 · 남는 물음
+```
+짓지 않았습니다 — 판정 153 이 「수만」이라 하셨습니다
+남는 물음 ①   `core_wafer_map(-)` · `inspection_run(-)` 처럼 «페이지 키가 없는» 기반 표의 사건은 어떻게 하나.
+              그 표가 바뀌어도 뷰의 그 행이 바뀔 수 있습니다 -> 「그 표는 이 뷰를 못 따름」을 «이름 대야» 합니다
+남는 물음 ②   재귀 깊이 상한(뷰가 뷰를 계속 물면). 이 박스는 «한 겹»이지만 상한은 값으로 있어야 합니다
+소유자 사실   운영 원장 소스 중 뷰를 읽는 것이 몇인지 — 총괄께서 올리신다고 하셨습니다
+```
