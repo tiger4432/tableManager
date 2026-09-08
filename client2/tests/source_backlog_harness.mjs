@@ -4,8 +4,15 @@
  * 🔴 THE THREE STATES ARE THE WHOLE ROUND. A count that is ABSENT and a count that is `0` are
  *    opposite instructions — 「아직 아무도 안 셌다」 versus 「세 봤고 돌 게 없다」 — and the
  *    cheap version of this feature draws both as 0. That reads as 「비었다」 to an operator
- *    who is asking whether anything is waiting, which is the exact question this line exists
- *    to answer.
+ *    who is asking whether anything is waiting, which is the exact question this line answers.
+ *
+ * 🔴 AND ONE MORE, ADDED WITH THE NEW NAMES (2026-09-09): `rows_remaining` is READ, never
+ *    computed. It equals N − M today, which is why a client would be tempted, and the day the
+ *    server's definition stops being plain subtraction the arithmetic goes on producing a
+ *    confident wrong number with nothing to raise.
+ *
+ * ⚠️ 서버는 이 셋을 «아직 안 보냅니다». 그래서 이 파일의 픽스처가 계약의 «유일한 재료»이고,
+ *    실배선은 서버가 실은 뒤입니다 — 그렇게 지시받았고 그렇게 적습니다.
  *
  * Run:  node client2/tests/source_backlog_harness.mjs [--mutate]
  */
@@ -26,11 +33,11 @@ const eq = (name, expected, actual) => ok(name, actual === expected,
   `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 
 // The record as `verificationOf` hands it over — the S-46 fields the row already reads, plus
-// the four S-69 will add. Written together because that is how the screen meets them.
+// the three the server will add. Written together because that is how the screen meets them.
 const COUNTED = { target_key: 'source_plan|s', status: 'verified', stale: false,
-  rows_total: 4200, rows_past_cursor: 120, rows_before_cursor: 7, caught_up: false };
-const CAUGHT = { ...COUNTED, rows_past_cursor: 0, rows_before_cursor: 0, caught_up: true };
-// An older server, before S-69: the four keys are simply not there.
+  rows_total: 4200, rows_indexed: 4080, rows_remaining: 120 };
+const DONE = { ...COUNTED, rows_indexed: 4200, rows_remaining: 0 };
+// A server that does not carry the three at all — today's, and every older one.
 const UNCOUNTED = { target_key: 'source_plan|s', status: 'verified', stale: false };
 
 async function score(mutate) {
@@ -41,65 +48,57 @@ async function score(mutate) {
   const cells = probe.backlogCells;
   const has = probe.hasBacklog;
   const textOf = (status, name) => (cells(status).find((c) => c.name === name) || {}).text;
-  const noteOf = (status, name) => (cells(status).find((c) => c.name === name) || {}).note;
 
-  // ══ ① 계약의 네 이름, 그 순서 ═══════════════════════════════════════════════════════
-  eq('A1 the four names are the contract, in order',
-    'rows_total,rows_past_cursor,rows_before_cursor,caught_up',
-    probe.BACKLOG_FIELDS.join(','));
-  eq('A2 every field gets a cell, counted or not', 4, cells(UNCOUNTED).length);
+  // ══ ① 계약의 세 이름, 그 순서 ═══════════════════════════════════════════════════════
+  eq('A1 the three names are the contract, in order',
+    'rows_total,rows_indexed,rows_remaining', probe.BACKLOG_FIELDS.join(','));
+  eq('A2 every field gets a cell, counted or not', 3, cells(UNCOUNTED).length);
   // 🔴 THE LABEL IS THE SERVER'S KEY, NOT A TRANSLATION. A translated label goes on looking
   //    right on the day the server renames the field, with the number under the old name.
   ok('A3 the cell carries the name it was sent',
     cells(COUNTED).every((c) => probe.BACKLOG_FIELDS.includes(c.name)));
+  // ⚠️ THE CURSOR'S WORDS ARE GONE, NOT RENAMED. `rows_past_cursor`, `rows_before_cursor` and
+  //    `caught_up` belonged to a world S-76 retired; keeping one under a new spelling would
+  //    keep asking a question nobody answers any more.
+  ok('A4 no cursor-world name survives',
+    !probe.BACKLOG_FIELDS.some((n) => /cursor|caught/.test(n)), probe.BACKLOG_FIELDS.join(','));
 
   // ══ ② 안 셈 / 셌는데 0 / 셌고 N — «다른 픽셀» ═══════════════════════════════════════
   eq('B1 a counted number is drawn', '4200', textOf(COUNTED, 'rows_total'));
   eq('B2 a measured ZERO is drawn as zero — somebody counted', '0',
-    textOf(CAUGHT, 'rows_past_cursor'));
+    textOf(DONE, 'rows_remaining'));
   // 🔴 THE ONE THAT MATTERS. Absent is not zero: nobody has looked, and telling an operator
   //    who is asking 「돌 게 있나」 that the answer is 0 is telling them the queue is empty.
   eq('B3 an ABSENT count is a blank, never a zero', '', textOf(UNCOUNTED, 'rows_total'));
   ok('B4 ...and the two are different pixels',
-    textOf(CAUGHT, 'rows_past_cursor') !== textOf(UNCOUNTED, 'rows_past_cursor'));
+    textOf(DONE, 'rows_remaining') !== textOf(UNCOUNTED, 'rows_remaining'));
   eq('B5 an explicit null is also 「안 셈」', '',
     textOf({ ...COUNTED, rows_total: null }, 'rows_total'));
+  eq('B6 a value that is not a number is 「안 셈」, not a drawn string', '',
+    textOf({ ...COUNTED, rows_indexed: 'many' }, 'rows_indexed'));
 
-  // ══ ③ 「커서 앞」— 낱말 하나, 값 «옆»에, 0 보다 클 때만 ══════════════════════════════
-  eq('C1 rows the cursor already passed carry the reason word', '커서 앞',
-    noteOf(COUNTED, 'rows_before_cursor'));
-  // ⚠️ 0 에 붙이면 그 낱말이 «칸의 제목»이 되고, 제목은 이미 이름이 하고 있습니다.
-  eq('C2 ...and zero of them carries none', '', noteOf(CAUGHT, 'rows_before_cursor'));
-  eq('C3 an absent one carries none either', '', noteOf(UNCOUNTED, 'rows_before_cursor'));
-  ok('C4 no other cell grows a word', cells(COUNTED)
-    .filter((c) => c.name !== 'rows_before_cursor').every((c) => c.note === ''));
-  // 🔴 문장 ⛔. The whole line is names, numbers and one word; anything longer means the
-  //    screen went back to explaining instead of showing.
-  // ⚠️ MEASURED BY LENGTH, NOT BY WHITESPACE. The first version of this line forbade a space
-  //    and reddened on 「커서 앞」 — the very word the ruling names. A label may be two
-  //    syllables with a space in it; what it may not be is a sentence.
-  ok('C5 nothing drawn is a sentence',
-    cells(COUNTED).every((c) => c.note.length <= 6 && c.text.length <= 8
-      && !/[.·:]/.test(c.note)));
+  // ══ ③ 「남은 수」는 «읽습니다» — 안 셈합니다 ═════════════════════════════════════════
+  // 🔴 N − M IS RIGHT TODAY, WHICH IS THE WHOLE DANGER. A client that computed it would agree
+  //    with the server until the day the definition stops being subtraction, and then disagree
+  //    silently and confidently. So a record carrying the two but not the third leaves the
+  //    third BLANK.
+  eq('C1 with no remaining sent, the cell is blank rather than N − M', '',
+    textOf({ rows_total: 4200, rows_indexed: 4080 }, 'rows_remaining'));
+  // ⚠️ CONTROL for C1: it must not be blank because the whole row is blank — the other two
+  //    are drawn from the same record.
+  eq('C2 CONTROL: ...while the two that WERE sent are drawn', '4200',
+    textOf({ rows_total: 4200, rows_indexed: 4080 }, 'rows_total'));
+  // 🔴 AND THE SERVER'S NUMBER WINS EVEN WHEN IT DISAGREES WITH THE SUBTRACTION. This is the
+  //    discriminating case: a client doing arithmetic would draw 120 here, and the ledger said 7.
+  eq('C3 a remaining that contradicts N − M is drawn AS SENT', '7',
+    textOf({ rows_total: 4200, rows_indexed: 4080, rows_remaining: 7 }, 'rows_remaining'));
 
-  // ══ ④ caught_up 은 «참/거짓만» 답합니다 ═════════════════════════════════════════════
-  eq('D1 caught up says so in one word', '따라잡음', textOf(CAUGHT, 'caught_up'));
-  eq('D2 ...and not caught up says the thing the operator asked about', '남음',
-    textOf(COUNTED, 'caught_up'));
-  ok('D3 the two are different words', textOf(CAUGHT, 'caught_up') !== textOf(COUNTED, 'caught_up'));
-  // ⚠️ A truthy value that is not `true` is NOT 「따라잡음」 — folding it in would put a word
-  //    in the server's mouth. Absent, a string, a number: all 「안 셈」.
-  eq('D4 anything that is not a boolean is 「안 셈」', '',
-    textOf({ ...COUNTED, caught_up: 'yes' }, 'caught_up'));
-  eq('D5 CONTROL: and false is not swallowed with it', '남음',
-    textOf({ ...COUNTED, caught_up: false }, 'caught_up'));
-
-  // ══ ⑤ 안 세었으면 «줄 자체가 없습니다» — 오늘 화면 바이트 동일 ═══════════════════════
-  ok('E1 nothing counted, nothing drawn', has(UNCOUNTED) === false);
-  ok('E2 one counted field is enough to draw the line', has(UNCOUNTED) === false
-    && has({ ...UNCOUNTED, rows_total: 0 }) === true);
-  ok('E3 no record at all draws nothing', has(null) === false && has(undefined) === false);
-  ok('E4 CONTROL: a fully counted record does draw', has(COUNTED) === true);
+  // ══ ④ 안 세었으면 «줄 자체가 없습니다» — 오늘 화면 바이트 동일 ═══════════════════════
+  ok('D1 nothing counted, nothing drawn', has(UNCOUNTED) === false);
+  ok('D2 one counted field is enough to draw the line',
+    has({ ...UNCOUNTED, rows_total: 0 }) === true);
+  ok('D3 no record at all draws nothing', has(null) === false && has(undefined) === false);
+  ok('D4 CONTROL: a fully counted record does draw', has(COUNTED) === true);
 
   return { pass, failures: failures.slice() };
 }
@@ -112,23 +111,28 @@ console.log(`ASSERTIONS ${base.pass + base.failures.length} ${base.failures.leng
 const MUTATIONS = [
   // 🔴 THE ONE THE ORDER NAMES: absent drawn as zero.
   ['M1 an uncounted field is drawn as 0, so 「아직 모름」 reads as 「돌 게 없다」',
-   s => s.replace("    if (raw === undefined || raw === null) return { name, text: '', note: '' };",
-                  "    if (raw === undefined || raw === null) return { name, text: '0', note: '' };")],
+   s => s.replace("    if (raw === undefined || raw === null) return { name, text: '' };",
+                  "    if (raw === undefined || raw === null) return { name, text: '0' };")],
   ['M2 a measured zero stops being drawn, so counted-and-empty looks uncounted',
-   s => s.replace('    const note = ', '    if (count === 0) return { name, text: \'\', note: \'\' };\n    const note = ')],
-  ['M3 the reason word rides on every count, so it becomes a column title',
-   s => s.replace("count > 0 ? BEHIND_MARK : ''", "BEHIND_MARK")],
-  ['M4 the reason word attaches to the wrong count',
-   s => s.replace("name === 'rows_before_cursor' && count > 0", "name === 'rows_past_cursor' && count > 0")],
-  ['M5 any truthy value becomes 「따라잡음」, which the server never said',
-   s => s.replace('      if (raw === true) return { name, text: CAUGHT_UP, note: \'\' };',
-                  '      if (raw) return { name, text: CAUGHT_UP, note: \'\' };')],
-  ['M6 the line is drawn even when nothing was counted',
+   s => s.replace('    return { name, text: String(count) };',
+                  "    return { name, text: count === 0 ? '' : String(count) };")],
+  // 🔴 THE NEW ONE: the client starts doing the ledger's arithmetic.
+  ['M3 the client computes the remainder, becoming a second author for it',
+   s => s.replace('    const raw = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;',
+                  "    const raw = name === 'rows_remaining' && src.rows_remaining === undefined\n"
+                  + "      ? Number(src.rows_total) - Number(src.rows_indexed)\n"
+                  + '      : (Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined);')],
+  ['M4 the presence check becomes a truthiness check, so every zero vanishes',
+   s => s.replace('    const raw = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;',
+                  '    const raw = src[name] || undefined;')],
+  ['M5 the line is drawn even when nothing was counted',
    s => s.replace("  return backlogCells(status).some((cell) => cell.text !== '');",
                   '  return true;')],
-  ['M7 the labels are translated, so a renamed field keeps the old name',
-   s => s.replace("  'rows_total', 'rows_past_cursor', 'rows_before_cursor', 'caught_up',",
-                  "  '전체', '커서 뒤', '커서 앞', '상태',")],
+  ['M6 the labels are translated, so a renamed field keeps the old name',
+   s => s.replace("export const BACKLOG_FIELDS = Object.freeze(['rows_total', 'rows_indexed', 'rows_remaining']);",
+                  "export const BACKLOG_FIELDS = Object.freeze(['전체', '색인', '남음']);")],
+  ['M7 a cursor-world name comes back',
+   s => s.replace("'rows_remaining']);", "'rows_remaining', 'rows_past_cursor']);")],
 ];
 
 if (process.argv.includes('--mutate')) {

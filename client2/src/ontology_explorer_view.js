@@ -932,7 +932,6 @@ function renderInspector(state) {
       // 이름은 «서버가 보낸 키 그대로». 번역하면 서버가 키를 바꾸는 날 옛 이름으로 옳아 보입니다.
       item.append(h('code', 'oe-backlog-name', cell.name),
                   h('span', 'oe-backlog-value', cell.text));
-      if (cell.note) item.append(h('small', 'oe-backlog-note', cell.note));
       line.append(item);
     }
     article.append(line);

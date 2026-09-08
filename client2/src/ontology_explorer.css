@@ -1271,4 +1271,3 @@
    response without wondering whether the screen renamed it. */
 #ontology-explorer-root .oe-backlog-name { color: var(--oe-ink-meta); font-size: 10px; }
 #ontology-explorer-root .oe-backlog-value { font-variant-numeric: tabular-nums; font-weight: 600; }
-#ontology-explorer-root .oe-backlog-note { color: var(--oe-ink-meta); font-size: 10px; }

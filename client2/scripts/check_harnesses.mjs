@@ -1208,7 +1208,13 @@ const FLOORS = new Map([
   // commit that introduces it. 🔴 SEVEN MUTANTS, and the first is the one the ruling names:
   // an uncounted field drawn as 0 tells an operator asking whether anything is waiting that
   // the queue is empty.
-  ['source_backlog_harness.mjs', 22],
+  // 🔴 LOWERED 22 -> 17 ON 2026-09-09, AND THE REASON IS A RULING, NOT A LOSS. S-69 became
+  //    S-76 and the cursor's four cells became three (`rows_total` · `rows_indexed` ·
+  //    `rows_remaining`); the five assertions about `caught_up` and the five about the
+  //    「커서 앞」 note went with the words they were about. Three took their place -- the
+  //    remainder is READ and never computed -- so the file scores a smaller contract, not
+  //    the same contract more weakly. A floor lowered without that sentence is a retreat.
+  ['source_backlog_harness.mjs', 17],
   // New 2026-09-08 with C-43 ② (the map's cell query). Floor is the count it reports on the
   // commit that introduces it. 🔴 The first mutant is the round: without defer_total the load
   // makes the server COUNT the same filter over the same table before answering, and that
