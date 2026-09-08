@@ -127,4 +127,5 @@ Link type    inspected  Wafer -> Die                              backing datase
 · 그룹 소스(한 이벤트 = 여러 행, `read.unit: "group"` + `group_by`) — 출하 샘플 lot_event 참고
 · 준비기가 «산출»하는 컬럼(`prepare.output_columns`) — 출하 샘플 참고
 · 검증된 가상 조인(`accepts_verified_join_rules`) — `docs/guide/config/` 의 그 문서
+· 파일 «신원»을 데이터 행에 놓기(수동 메타 표와 잇는 열쇠) — 원장 선언이 아니라 «표 선언»의 `filename_rules`(경로에서 뽑을 값 → 컬럼). 배치 id 는 회(run)의 신원이라 감사 행에 있다(판정 159, 2026-09-08)
 ```
