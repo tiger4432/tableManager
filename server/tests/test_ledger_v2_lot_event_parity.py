@@ -278,18 +278,22 @@ def mappers():
 
 def split_rows():
     return pd.DataFrame([
-        {"lot": "P", "event_type": "split", "slots": "1:2",
+        # 판정 135: the engine reads `row_id` on every source, declared or not, so a
+        # frame standing in for a cursor page has to carry it.
+        {"row_id": "RID-1", "lot": "P", "event_type": "split", "slots": "1:2",
          "wafers": "W1:W2", "parent_lot": "", "child_lot": "C",
          "row_identity": "R1", "event_time": NOW},
         {"lot": "C", "event_type": "split", "slots": "3",
          "wafers": "W3", "parent_lot": "P", "child_lot": "",
-         "row_identity": "R2", "event_time": NOW},
+         "row_identity": "R2", "event_time": NOW, "row_id": "RID-2"},
     ], dtype=object)
 
 
 def track_rows(at=NOW + timedelta(minutes=2), prefix="T"):
     return pd.DataFrame([
-        {"lot": "T", "event_type": "track_in", "slots": "7:8",
+        # 판정 135: the engine reads `row_id` on every source, declared or not, so a
+        # frame standing in for a cursor page has to carry it.
+        {"row_id": "RID-T", "lot": "T", "event_type": "track_in", "slots": "7:8",
          "wafers": "W7:W8", "parent_lot": "", "child_lot": "",
          "row_identity": prefix, "event_time": at},
     ], dtype=object)

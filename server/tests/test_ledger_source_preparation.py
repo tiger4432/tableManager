@@ -43,6 +43,10 @@ NOW = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
 
 def base_rows(count=1):
     return pd.DataFrame([{
+        # 판정 135: the engine reads `row_id` on EVERY source, declared or not, so a frame
+        # standing in for one has to carry it -- the preparation boundary checks that every
+        # column `base_select_columns` names survived, and this is now one of them.
+        "row_id": f"RID-{index:04d}",
         "record_id": f"R-{index:04d}",
         "join_id": f"J-{index:04d}",
         "source_id": f"IN-{index:04d}",
@@ -250,7 +254,8 @@ def test_existing_cursor_selects_only_base_physical_columns():
 
     columns = v2_base_select_columns(compiled, "input_rows")
 
-    assert columns == ("event_at", "event_key", "join_id", "record_id", "source_id")
+    assert columns == ("event_at", "event_key", "join_id", "record_id", "row_id",
+                       "source_id")
     assert "target_id" not in columns
 
 
@@ -780,6 +785,7 @@ def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claim
             }
 
     base = pd.DataFrame([{
+        "row_id": f"DT-RID-{index}",                       # 판정 135 -- see `base_rows`
         "record_id": f"DT-R-{index}", "dt_job_id": "DT-JOB-1",
         "event_at": NOW, "core_wafer": "CORE-WF-1",
         "core_x": index, "core_y": index + 10,
@@ -972,4 +978,5 @@ def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
     """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
     plain = v2_base_select_columns(snapshot(), "input_rows")
 
-    assert plain == ("event_at", "event_key", "join_id", "record_id", "source_id")
+    assert plain == ("event_at", "event_key", "join_id", "record_id", "row_id",
+                     "source_id")
