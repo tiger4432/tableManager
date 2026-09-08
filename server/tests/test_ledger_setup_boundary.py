@@ -353,7 +353,7 @@ def test_backfill_runs_the_ontology_root_without_being_asked_to(monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        backfill, "_run_v2_lineage",
+        backfill, "_run_via_events",
         lambda engine, setup, **kwargs: calls.append((engine, setup, kwargs)) or {
             "source": kwargs["source"], "selected": "v2"})
 
@@ -364,7 +364,8 @@ def test_backfill_runs_the_ontology_root_without_being_asked_to(monkeypatch):
 
     assert explicit == implied == {"source": "lot_event", "selected": "v2"}
     assert len(calls) == 2
-    assert calls[0][2]["reset_cursor"] is False
+    # ⚠️ The retired cursor arguments are no longer forwarded -- `run()` refuses them
+    # before it reaches the body -- so what this case pins is the SETUP both calls got.
     assert calls[0][1].config_root == calls[1][1].config_root
 
 
@@ -376,68 +377,17 @@ def test_v2_backfill_refuses_reset_controls_before_store_access():
             object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
             reset_cursor=True)
 
-    # 🔴 THE MESSAGE NOW NAMES A DOOR THAT EXISTS. It used to demand "a separate
-    # destructive approval" with no way in the code to give one - the refusal asked for
-    # something no caller could produce, which is the defect this round fixed. The refusal
-    # itself is unchanged: no argument still means no.
-    assert exc.value.to_mapping() == {
-        "code": "destructive_approval_required",
-        "path": "reset_cursor",
-        "message": (
-            "v2 cursor reset or replay requires a separate destructive approval - "
-            "pass retranslate='lot_event' to give it"),
-    }
+    # 🔴 THE PROPERTY IS "BEFORE STORE ACCESS", AND THAT IS WHY IT SURVIVED 판정 171.
+    # `reset_cursor` used to demand a destructive approval; there is no cursor to reset now,
+    # so the refusal names the argument as retired instead. What must not change is WHEN it
+    # fires -- the engine here is a bare `object()`, so any refusal that reached the database
+    # first would raise AttributeError rather than refuse.
+    refusal = exc.value.to_mapping()
+    assert refusal["code"] == "retired_cursor_argument"
+    assert refusal["path"] == "run().reset_cursor"
+    assert "rescope" in refusal["message"], refusal
 
 
-def test_the_approval_must_name_the_source_it_unlocks():
-    """A global switch would be left on; a source name can only unlock the one it names."""
-    import ledger.backfill as backfill
-
-    with pytest.raises(LedgerSetupError) as exc:
-        backfill.run(object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
-                     retranslate=True)
-    assert exc.value.to_mapping()["code"] == "approval_names_another_source"
-
-    with pytest.raises(LedgerSetupError) as other:
-        backfill.run(object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
-                     retranslate="void_observation")
-    assert other.value.to_mapping()["code"] == "approval_names_another_source"
-
-
-def test_existing_legacy_cursor_shape_blocks_v2_before_source_read(monkeypatch):
-    import ledger.backfill as backfill
-    import ledger.store as store_module
-
-    class ReadConnection:
-        def close(self):
-            pass
-
-    class FakeStore:
-        def __init__(self, engine):
-            self.engine = engine
-
-        def ensure_schema(self):
-            pass
-
-        def connection(self):
-            return ReadConnection()
-
-        def read_cursor(self, connection, source):
-            return {"cursor_value": {"event_time": NOW.isoformat()}}
-
-    monkeypatch.setattr(store_module, "LedgerStore", FakeStore)
-
-    with pytest.raises(LedgerSetupError) as exc:
-        backfill.run(
-            object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
-
-    assert exc.value.to_mapping() == {
-        "code": "legacy_cursor_reset_required",
-        "path": "ledger_cursor.lot_event.cursor_value",
-        "message": (
-            "existing cursor shape does not match the v2 physical cursor; inspect, "
-            "back up, and obtain separate reset approval"),
-    }
 
 
 def test_operator_cli_has_no_legacy_escape_hatch(monkeypatch):
@@ -490,57 +440,6 @@ def test_operator_cli_blocks_reset_and_replay_before_io(
     }
 
 
-def test_existing_other_snapshot_cursor_blocks_before_source_read(monkeypatch):
-    import ledger.backfill as backfill
-    import ledger.store as store_module
-
-    class ReadConnection:
-        def close(self):
-            pass
-
-    class FakeStore:
-        def __init__(self, engine):
-            pass
-
-        def ensure_schema(self):
-            pass
-
-        def connection(self):
-            return ReadConnection()
-
-        def read_cursor(self, connection, source):
-            return {
-                "translator_ver": "ledger-v2:older-snapshot",
-                # 🔴 THE SHAPE MUST BE RIGHT HERE, or the earlier guard answers instead.
-                # `legacy_cursor_reset_required` fires on a cursor whose COLUMNS do not
-                # match the plan, and this test is about the version guard that comes
-                # after it -- so the columns are the declared `(event_time, row_id)`.
-                "cursor_value": {
-                    "event_time": NOW.isoformat(), "row_id": "ROW-2"},
-            }
-
-    monkeypatch.setattr(store_module, "LedgerStore", FakeStore)
-
-    with pytest.raises(LedgerSetupError) as exc:
-        backfill.run(
-            object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT)
-
-    assert exc.value.to_mapping() == {
-        "code": "cursor_snapshot_reset_required",
-        "path": "ledger_cursor.lot_event.translator_ver",
-        "message": (
-            "existing cursor belongs to a different setup snapshot; inspect, back up, "
-            "and obtain separate reset or replay approval"),
-    }
-
-
-# ------------------------------------------------- `--root`: verify a draft, not the live file
-#
-# 🔴 THE GUIDE TELLS AN OPERATOR TO VERIFY BEFORE EDITING. Until `--root` existed,
-# `python -m ledger.setup` was hard-wired to `DEFAULT_ONTOLOGY_ROOT` and took no argument,
-# so the only way to verify a draft was to overwrite the live file first — the one thing
-# the guide forbids. These pin the argument AND the two ways of getting it wrong, because
-# an operator pointing at a draft in production meets both.
 
 def test_verify_without_root_still_reads_the_live_config(capsys):
     assert setup_main([]) == 0

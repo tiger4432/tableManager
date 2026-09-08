@@ -264,33 +264,6 @@ def _note_cannot_follow(done, cannot, table):
                   for item in cannot))
 
 
-def caught_up_sources(engine, sources):
-    """Which of these sources has been SEEN with nothing past its cursor (S-65).
-
-    🔴 THE QUESTION IS ASKED HERE AND NOT IN `enqueue`. `enqueue` is pure memory and runs
-    inside the chain worker's commit path; reading the cursor table there would put a query
-    on the path that must not carry one. This runs in the drain, which already holds the
-    engine, so the information is read where it is already free.
-
-    ⚠️ ABSENT MEANS NO. A source that has never run, and one that was cut short, both read
-    NULL -- and neither may be handed the live path, because for them the cursor path is
-    still the one that will reach those rows.
-    """
-    from .store import LedgerStore
-
-    store = LedgerStore(engine)
-    connection = store.connection()
-    caught = set()
-    try:
-        for source in sources:
-            row = store.read_cursor(connection, source) or {}
-            if row.get("caught_up_at"):
-                caught.add(source)
-    finally:
-        connection.rollback()
-        connection.close()
-    return caught
-
 #: The job name the pace is declared under, in `server/pacing.json`.
 FOLLOWUP_JOB = "chain_followup"
 
@@ -506,22 +479,15 @@ def drain_once(engine, setup):
     # a view, so without this the nine view-backed sources are unreachable by the live path.
     # Each pair is (source, that view's page key), and the value is read from the BASE row.
     _note_cannot_follow(done, cannot_follow, table)
-    if event_type == "CREATE":
-        # 🔴 ONLY A SOURCE THAT HAS BEEN SEEN CAUGHT UP (S-65 · ruling 144). For one still
-        # catching up, its own forward run will read these rows, and following them here as
-        # well would translate the same molecule twice.
-        #
-        # ⚠️ THE SKIPPED ONES ARE NAMED. "Nothing happened" and "this source is still
-        # catching up so the cursor will get there" render identically otherwise, and the
-        # difference is the whole reason this branch exists.
-        wanted = table_sources + [source for source, _key in view_followers]
-        caught = caught_up_sources(engine, wanted)
-        skipped = [source for source in wanted if source not in caught]
-        if skipped:
-            done["skipped_not_caught_up"] = skipped
-        table_sources = [source for source in table_sources if source in caught]
-        view_followers = [(source, key) for source, key in view_followers
-                          if source in caught]
+    # ⚰️ THE "CAUGHT UP" GATE WENT WITH THE CURSOR (판정 171). It existed because a source
+    # still walking its cursor would read a new row itself, so following it here too would
+    # translate the same molecule twice. There is no cursor walk any more -- the initial load
+    # stages CREATE events like everything else, and a row already translated is in the row
+    # index and so is never staged again -- which leaves the gate one possible answer.
+    #
+    # 🔴 IT COULD NOT BE LEFT IN PLACE. Nothing writes `caught_up_at` since `run()` stopped
+    # walking, so a source that had not already been marked would have had its new rows
+    # skipped forever: a gate whose input is never produced fails closed, and silently.
     # 🔴 ONE LOOP, TWO KINDS, ONE AIM. A table source's page key and a view source's page key
     # are both read from THIS table -- the table source from its own relation, the view source
     # from the base row the event named. Two loops would be two spellings of one read.

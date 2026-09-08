@@ -9,8 +9,8 @@ cursor's instant and 470,000 `wafer_process` rows whose uuid7 ids all sort befor
 hand-written literal the cursor sat on produced ZERO atoms, with no error and a cursor
 reporting it was finished.
 
-🔴 AND ONLY FOR A CAUGHT-UP SOURCE, which is what keeps the two paths from doing the same
-work: a source still catching up will read these rows itself.
+⚰️ THE "ONLY FOR A CAUGHT-UP SOURCE" HALF WENT WITH THE CURSOR (판정 171). It existed to stop
+the two paths doing the same work; there is one path now, so the question has one answer.
 """
 import os
 import sys
@@ -46,42 +46,4 @@ def test_an_unfollowed_type_is_still_refused():
         followup.reset()
 
 
-def test_the_drain_asks_whether_the_source_is_caught_up_and_names_the_skipped():
-    """The CREATE branch consults the mark and REPORTS what it skipped.
 
-    ⚠️ NARROW ON PURPOSE: this reads the decision, not a run. The behavioural half -- a new
-    row landing on a caught-up source and not landing on one still catching up -- needs a
-    live source and is the gate that follows. What it pins is that the branch cannot quietly
-    become "follow everything" or "follow nothing": both would drop one of these two names.
-    """
-    class _Plan:
-        relation = "dt_log"
-        driver = type("D", (), {"cursor_columns": ("dt_job",), "identity": ("dt_job",)})()
-
-    setup = type("S", (), {"snapshot": type("Snap", (), {
-        "source_plans": {"dt_job": _Plan()}})()})()
-
-    followup.reset()
-    saved_caught = followup.caught_up_sources
-    saved_views = followup.view_followers_of
-    followup.caught_up_sources = lambda engine, sources: set()
-    # The same one seam every non-view test blocks (판정 158).
-    followup.view_followers_of = lambda engine, setup, table: ([], [])
-    try:
-        followup.enqueue("dt_log", ["r1"], "CREATE")
-        done = followup.drain_once(object(), setup)
-    finally:
-        followup.caught_up_sources = saved_caught
-        followup.view_followers_of = saved_views
-        followup.reset()
-
-    assert done["event_type"] == "CREATE"
-    assert done["skipped_not_caught_up"] == ["dt_job"], done
-    assert done["sources"] == {}, "a source still catching up must not be followed"
-
-
-def test_absent_means_not_caught_up():
-    """NULL is "never seen caught up", and a source that has never run reads NULL too."""
-    assert callable(followup.caught_up_sources)
-    assert "seen" in (followup.caught_up_sources.__doc__ or "").lower()
-    assert "ABSENT MEANS NO" in (followup.caught_up_sources.__doc__ or "")

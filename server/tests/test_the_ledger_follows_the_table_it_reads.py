@@ -389,10 +389,6 @@ def test_a_create_is_translated_once_and_an_edit_twice(monkeypatch):
     ⚠️ AN EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
     withdrawing would leave the old generation standing beside the new one."""
     seen = calls_to_rescope(monkeypatch)
-    # A CREATE is only followed for a source already seen caught up (판정 144); that
-    # question is a separate seam and is not this case's subject.
-    monkeypatch.setattr(followup, "caught_up_sources",
-                        lambda engine, sources: set(sources))
     engine = FakeEngine([("J1",)])
     followup.enqueue("dt_log", ["r1"], "CREATE")
     followup.drain_once(engine, one_source_on("dt_log"))

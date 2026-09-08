@@ -321,11 +321,93 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     # source with nothing to do. A refusal that only fires when there is work is not a
     # refusal. Reuses the cutover module's own predicate so there is one spelling of it.
     _require_declared_source(cutover, source)
-    return _run_v2_lineage(
-        engine, cutover, source=source, fetch_rows=fetch_rows,
-        reset_cursor=reset_cursor, start_from=start_from,
-        max_batches=max_batches, retranslate=retranslate, checkpoint=checkpoint,
-        pace=pace)
+    for name, value in (("reset_cursor", reset_cursor), ("start_from", start_from),
+                        ("retranslate", retranslate)):
+        if value:
+            # 🔴 THESE THREE WERE CURSOR WORDS, and there is no cursor to reset, start from
+            # or replay past. Accepting them silently would let an operator ask for a rewind
+            # and get a normal load, which is the "answered a different question" shape this
+            # whole retirement is about. `rescope` is the tool for redoing a named part.
+            raise LedgerSetupError(
+                "retired_cursor_argument", f"run().{name}",
+                f"{name!r} named a position in the cursor path, which no longer reads "
+                f"anything (판정 163). Use `rescope` to redo a named set of rows.")
+    return _run_via_events(
+        engine, cutover, source=source, page_rows=fetch_rows,
+        max_pages=max_batches, checkpoint=checkpoint, pace=pace)
+
+
+def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
+                    max_pages=None, checkpoint=None, pace=None):
+    """`run()`'s body since 판정 171: the load goes down the live path.
+
+    🔴 THE SAME KEYS, AND THE MEANINGS SAID OUT LOUD. Callers read `rows_read`, `batches`,
+    `inserted`, `deduped`, `molecules` and `stopped`, so those names stay -- but a name kept
+    with a changed meaning is a false log, so: `rows_read` is the rows STAGED as events,
+    `batches` is the pages that became events, and `molecules` is gone rather than reported
+    as something it no longer counts. `cursor`/`cursor_after` are gone for the same reason:
+    nothing advances a position any more, and `translator_ver` is the fingerprint that
+    remains.
+    """
+    from . import followup
+    from .setup_registry import cursor_translator_version
+
+    plan = setup.snapshot.source_plans[source]
+    report = {"source": source, "relation": plan.relation, "batches": 0, "rows_read": 0,
+              "inserted": 0, "deduped": 0, "max_queue_depth": 0, "stopped": False,
+              "translator_ver": cursor_translator_version(setup.snapshot, source),
+              "page_rows": page_rows}
+    if not plan.frame_row_id:
+        # 🔴 A VIEW THAT DOES NOT CARRY row_id CANNOT BE INITIALLY LOADED, and the refusal
+        # says what to do about it rather than only that it happened (판정 171). Its LIVE
+        # path is unaffected -- a new base-table row reaches it through the page key -- so
+        # what is refused is the one-time load, not the source.
+        report["refused"] = "no_row_id"
+        report["remedy"] = (
+            f"expose the base table's row_id column on {plan.relation!r}: declare it in "
+            f"table_config as a view column of type string, and this load can then say "
+            f"which rows are already translated.")
+        return report
+
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    started = time.perf_counter()
+    after = None
+    while max_pages is None or report["batches"] < max_pages:
+        page = rows_missing_from_the_index(engine, setup, source, page_rows, after)
+        if not page:
+            break
+        after = page[-1]
+        report["batches"] += 1
+        report["rows_read"] += len(page)
+        followup.enqueue(plan.relation, page, "CREATE")
+        report["max_queue_depth"] = max(report["max_queue_depth"],
+                                        followup.queue_depth())
+        while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
+            _drain_into(engine, setup, report)
+        if pages_per_cycle and rest_seconds and (
+                report["batches"] % pages_per_cycle == 0):
+            time.sleep(rest_seconds)
+        if checkpoint is not None and checkpoint(report["rows_read"]):
+            report["stopped"] = True
+            logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
+            break
+    while followup.queue_depth():
+        _drain_into(engine, setup, report)
+    report["seconds"] = round(time.perf_counter() - started, 3)
+    return report
+
+
+def _drain_into(engine, setup, report):
+    from . import followup
+
+    done = followup.drain_once(engine, setup)
+    if done is None:
+        return
+    for value in (done.get("sources") or {}).values():
+        report["inserted"] += value.get("inserted", 0) or 0
+        report["deduped"] += value.get("deduped", 0) or 0
+    if done.get("cannot_follow"):
+        report.setdefault("cannot_follow", []).extend(done["cannot_follow"])
 
 
 def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
