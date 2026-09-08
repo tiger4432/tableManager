@@ -233,3 +233,29 @@ def test_the_grouping_and_the_join_are_the_orphan_sweeps(world):
 
     body = inspect.getsource(backfill.count_orphan_atoms)
     assert "_group_ref_identities(refs)" in body and "_join_identities(" in body
+
+
+def test_a_source_with_no_row_index_is_named_and_never_joined(world):
+    """🔴 판정 138 ㉣ — ONE ANSWER FOR BOTH ENDS. The delete step asks per RELATION and this
+    asks per SOURCE, and `sources_without_row_index` is where both ask. Two spellings would
+    disagree silently: this would join for a column the read cannot supply -- the
+    `UndefinedColumn` the whole round is about -- while the delete reported nothing owed."""
+    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
+        "dt_job": SimpleNamespace(relation=RELATION, frame_row_id=None)}))
+    world["refs"] = [ref_for("J1")]
+    world["table"] = {"J1": "RID-J1"}
+    result = backfill.index_existing_refs(None, "dt_job", setup=setup, apply=True)
+    assert result["no_row_index"] == ["dt_job"]
+    assert world["joins"] == 0 and world["written"] == [], (
+        "a source with no row index must not be joined for one")
+    assert result["would_index"] == 0 and result["refs_read"] == 0
+
+
+def test_the_delete_step_and_this_read_the_same_function():
+    """⛔ TWO PREDICATES FOR ONE QUESTION IS THE FAILURE ④ NAMES."""
+    import inspect
+
+    assert "sources_without_row_index(" in inspect.getsource(
+        backfill.withdraw_deleted_rows)
+    assert "sources_without_row_index(" in inspect.getsource(
+        backfill.index_existing_refs)
