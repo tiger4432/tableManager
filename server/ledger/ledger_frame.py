@@ -77,7 +77,12 @@ def empty_ledger_frame() -> pd.DataFrame:
 
 
 def ledger_frame_from_atoms(atoms: Sequence[Atom]) -> pd.DataFrame:
-    """Create a LedgerFrame without mutating translator-owned ``Atom`` instances."""
+    """The DataFrame spelling of :func:`ledger_rows_from_atoms`."""
+    return ledger_frame_of(ledger_rows_from_atoms(atoms))
+
+
+def ledger_rows_from_atoms(atoms: Sequence[Atom]) -> "LedgerRows":
+    """Create a LedgerFrame's rows without mutating translator-owned ``Atom`` instances."""
     rows = []
     for index, atom in enumerate(atoms):
         if not isinstance(atom, Atom):
@@ -112,16 +117,10 @@ def ledger_frame_from_atoms(atoms: Sequence[Atom]) -> pd.DataFrame:
             "molecule_ref": atom.molecule_ref,
             "derivation": atom.derivation,
         })
+    marked = {LEDGER_FRAME_ATTR: LEDGER_FRAME_SCHEMA_VERSION}
     if not rows:
-        return empty_ledger_frame()
-    # Per-column object Series prevents pandas from coercing nested JSON or nullable
-    # values into strings/floats.  The validator still proves every cell below.
-    frame = pd.DataFrame({
-        name: pd.Series([row[name] for row in rows], dtype=object)
-        for name in LEDGER_FRAME_COLUMNS
-    })
-    frame.attrs[LEDGER_FRAME_ATTR] = LEDGER_FRAME_SCHEMA_VERSION
-    return validate_ledger_frame(frame)
+        return LedgerRows((), marked)
+    return validate_ledger_rows(LedgerRows(tuple(rows), marked))
 
 
 @dataclass(frozen=True)

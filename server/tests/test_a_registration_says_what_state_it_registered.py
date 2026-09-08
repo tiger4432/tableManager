@@ -70,8 +70,10 @@ def test_the_two_functions_are_not_folded_into_one():
 
 class _Result:
     def __init__(self, atoms):
-        from ledger.ledger_frame import ledger_frame_from_atoms
-        self.ledger_frame = ledger_frame_from_atoms(atoms)
+        # ⚠️ `ledger_rows` is what the runtime reads; this used to build a DataFrame, which
+        # the compiler no longer produces per molecule (S-64).
+        from ledger.ledger_frame import ledger_rows_from_atoms
+        self.ledger_rows = ledger_rows_from_atoms(atoms)
 
 
 def _register(keys, when, **qualifiers):

@@ -41,8 +41,17 @@ def frame(pairs):
 
 
 def result_with(claim_refs):
-    return SimpleNamespace(
-        ledger_frame=pd.DataFrame({"source_raw_ref": list(claim_refs)}))
+    """A stand-in for one molecule's compile result.
+
+    ⚠️ IT HOLDS `ledger_rows`, WHICH IS WHAT THE RUNTIME READS. It used to hold a
+    DataFrame, and when the compiler stopped building one per molecule (S-64) this double
+    was the only thing still claiming it did -- the double has to imitate the real result,
+    not the one it replaced.
+    """
+    from ledger.ledger_frame import LedgerRows
+
+    return SimpleNamespace(ledger_rows=LedgerRows(
+        tuple({"source_raw_ref": ref} for ref in claim_refs), {}))
 
 
 def claim_ref(*row_refs):
