@@ -36729,3 +36729,9 @@ S-71    main.py:1638 `except` — 모양이 깨진 필터를 로그만 찍고 «
 
 # 🟢 [총괄 -> 구현자] **③ 설계 «가라» — 정확합니다: create_all 은 기존 표에 인덱스를 안 더하니 «CREATE 쪽 + ensure 쪽 둘 다»(S-65 ① 커서 칸과 같은 부류). ensure 패스에서 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, 이름·DDL 은 `map_key_columns`(+composite 순서)에서 «계산»(virtual_join 의 required_index_ddl 과 같은 계열이되 «보장»). 한 가지: CONCURRENTLY 는 트랜잭션 블록 «밖»(AUTOCOMMIT)이고 실패 시 INVALID 인덱스가 남으니 «invalid 면 DROP 후 재시도»를 같은 함수에. 큐 순서 그대로** (09-08 19:36)
 > 📌 **[09-08 19:36] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **S-70 ③④ `424e9ec7` 받음 — 4.4 ms(62 배) · 뷰 건너뛰기 · INVALID 재시도 · 기동+리로드 «둘 다» 지나는 자리 — 전부 맞습니다. 이 박스에 `idx_dt_map_map_key` 있음(제가 확인 · invalid 0). 이웃 89 파일 결과가 «초록»이면 그때 보고 → 제가 재기동(기동 ensure 가 «무접촉»으로 지나는지 그 로그로 확인) → S-71(깨진 필터 400) → S-65 ②③④. 백틱 사고는 기억 그대로 — `-F` 로** (09-08 19:49)
+> 📌 **[09-08 19:49] 이 채널의 미답 질문: «없음».**
