@@ -1237,15 +1237,76 @@ def _scalar(value: Any, path: str, *, allow_null: bool = False) -> None:
         "Role value must be a finite JSON scalar")
 
 
+#: What a predicate's declaration decides, resolved once per (snapshot, predicate) rather
+#: than once per molecule.  🔴 EVERY FIELD HERE IS A FUNCTION OF THE DECLARATION ALONE, and
+#: that is the whole admission test for this cache -- the checks that read a ROW's values
+#: (the subject's Entity type, which qualifiers this row actually carries) stay in the loop
+#: below, because they answer a different question on every row.
+#:
+#: ⚠️ REFUSALS ARE NOT CACHED. A declaration that fails one of the two checks here raises
+#: the same `RoleFrameError` on every call because nothing is stored for it -- caching the
+#: failure would make the first molecule the only one that reports it.
+@dataclass(frozen=True)
+class _EmissionPlan:
+    claim: Any
+    emission: Any
+    predicate: Any
+    predicate_runtime_id: str
+    required_qualifiers: frozenset
+    allowed_qualifiers: frozenset
+
+
+_EMISSION_PLANS: dict[tuple[str, str], _EmissionPlan] = {}
+
+
+def _emission_plan(context: MapperContext, predicate_id: Any, path: str) -> _EmissionPlan:
+    key = (context.snapshot.snapshot_sha256, predicate_id)
+    plan = _EMISSION_PLANS.get(key) if isinstance(predicate_id, str) else None
+    if plan is not None:
+        return plan
+    claim = _claim(context.snapshot, predicate_id, path)
+    emission = claim.emission
+    predicate = context.snapshot.vocabulary.get(emission.predicate_id)
+    if predicate is None or predicate.status != "active":
+        raise RoleFrameError(
+            "invalid_predicate", f"{claim.config_path}.emit.predicate",
+            "Pack emission requires an active registered predicate")
+    if emission.object_kind != predicate.object_kind:
+        raise RoleFrameError(
+            "invalid_predicate", f"{claim.config_path}.emit.object.kind",
+            "Pack object kind disagrees with the Vocabulary signature")
+    required = frozenset(predicate.required_qualifiers)
+    plan = _EmissionPlan(
+        claim=claim,
+        emission=emission,
+        predicate=predicate,
+        predicate_runtime_id=_runtime_id(emission.predicate_id),
+        required_qualifiers=required,
+        allowed_qualifiers=required | frozenset(predicate.optional_qualifiers),
+    )
+    _EMISSION_PLANS[key] = plan
+    return plan
+
+
 def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.DataFrame:
     """Compile a normalized RoleFrame with the snapshot-owned Pack emission only."""
     normalized = validate_role_frame(context, role_frame)
+    # 🔴 THE ROWS ARE READ ONCE, NOT PER POSITION. `normalized.iloc[position]` builds a
+    # pandas Series for every row and pandas copies the frame's `attrs` through
+    # `__finalize__` on the way, which is where 468 deep copies per molecule came from
+    # (S-64). Every column here is `dtype=object` and holds the Python object the mapper
+    # put there, so `to_dict("records")` hands back those same objects.
+    records = normalized.to_dict("records")
+    molecule_ref = normalized.attrs["molecule_ref"]
+    source_raw_ref = str(normalized.attrs["source_raw_ref"])
+    source_id = context.source_plan.source_id
+    translator_prefix = f"ledger-v2:{context.snapshot.snapshot_sha256}#"
     rows = []
-    for position in range(len(normalized)):
-        row = normalized.iloc[position]
-        claim = _claim(context.snapshot, row["predicate"],
-                       f"role_frame.rows[{position}].predicate")
-        emission = claim.emission
+    for position, row in enumerate(records):
+        plan = _emission_plan(context, row["predicate"],
+                              f"role_frame.rows[{position}].predicate")
+        emission = plan.emission
+        predicate = plan.predicate
         roles = row["roles"]
         subject = roles[emission.subject.role_id]
         occurred_at = roles[emission.occurred_at.role_id]
@@ -1256,20 +1317,11 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
             for name, reference in emission.qualifiers.items()
             if reference.role_id in roles
         }
-        predicate = context.snapshot.vocabulary.get(emission.predicate_id)
-        if predicate is None or predicate.status != "active":
-            raise RoleFrameError(
-                "invalid_predicate", f"{claim.config_path}.emit.predicate",
-                "Pack emission requires an active registered predicate")
         if subject["type"] not in predicate.subject_entity_types:
             raise RoleFrameError(
                 "invalid_entity_ref", f"role_frame.rows[{position}].roles."
                 f"{emission.subject.role_id}.type",
                 "subject Entity type is outside the Vocabulary signature")
-        if emission.object_kind != predicate.object_kind:
-            raise RoleFrameError(
-                "invalid_predicate", f"{claim.config_path}.emit.object.kind",
-                "Pack object kind disagrees with the Vocabulary signature")
         if (emission.object_kind == "entity_ref"
                 and obj_value["type"] not in predicate.object_entity_types):
             raise RoleFrameError(
@@ -1277,18 +1329,16 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
                 f"{emission.object_role.role_id}.type",
                 "object Entity type is outside the Vocabulary signature")
         qualifier_names = set(qualifiers)
-        required_qualifiers = set(predicate.required_qualifiers)
-        allowed_qualifiers = required_qualifiers | set(predicate.optional_qualifiers)
-        if not required_qualifiers <= qualifier_names:
-            missing = sorted(required_qualifiers - qualifier_names)[0]
+        if not plan.required_qualifiers <= qualifier_names:
+            missing = sorted(plan.required_qualifiers - qualifier_names)[0]
             raise RoleFrameError(
-                "missing_required_payload", f"{claim.config_path}.emit.object."
+                "missing_required_payload", f"{plan.claim.config_path}.emit.object."
                 f"qualifiers.{missing}",
                 f"predicate requires qualifier {missing!r}")
-        if not qualifier_names <= allowed_qualifiers:
-            unknown = sorted(qualifier_names - allowed_qualifiers)[0]
+        if not qualifier_names <= plan.allowed_qualifiers:
+            unknown = sorted(qualifier_names - plan.allowed_qualifiers)[0]
             raise RoleFrameError(
-                "unknown_payload_field", f"{claim.config_path}.emit.object."
+                "unknown_payload_field", f"{plan.claim.config_path}.emit.object."
                 f"qualifiers.{unknown}",
                 f"predicate does not allow qualifier {unknown!r}")
         if emission.object_kind == "none":
@@ -1319,15 +1369,15 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
             object_payload = {"event": _plain(obj_value)}
         else:
             raise RoleFrameError(
-                "unsupported_object_kind", f"{claim.config_path}.emit.object.kind",
+                "unsupported_object_kind", f"{plan.claim.config_path}.emit.object.kind",
                 f"object kind {emission.object_kind!r} is unsupported")
         if qualifiers:
             object_payload["qualifiers"] = _plain(qualifiers)
         expected_id, event_state = source_event_identity(
-            context.source_plan.source_id,
+            source_id,
             occurred_at,
-            molecule_ref=str(normalized.attrs["molecule_ref"]),
-            source_raw_ref=str(normalized.attrs["source_raw_ref"]),
+            molecule_ref=str(molecule_ref),
+            source_raw_ref=source_raw_ref,
         )
         if expected_id != row["source_event_id"]:
             raise RoleFrameError(
@@ -1340,18 +1390,16 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
             "source_event_state": event_state,
             "subject_type": _runtime_id(subject["type"]),
             "subject_keys": _plain(subject["keys"]),
-            "predicate": _runtime_id(emission.predicate_id),
+            "predicate": plan.predicate_runtime_id,
             "object_kind": object_kind,
             "object_payload": object_payload,
             "occurred_at": occurred_at,
-            "source_who": context.source_plan.source_id,
-            "source_translator_ver": (
-                f"ledger-v2:{context.snapshot.snapshot_sha256}#"
-                f"{row['sentence']}"),
+            "source_who": source_id,
+            "source_translator_ver": f"{translator_prefix}{row['sentence']}",
             "source_raw_ref": _claim_source_raw_ref(
-                normalized.attrs["source_raw_ref"], row["source_row_refs"]),
+                source_raw_ref, row["source_row_refs"]),
             "supersedes": None,
-            "molecule_ref": normalized.attrs["molecule_ref"],
+            "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
     frame = pd.DataFrame({
