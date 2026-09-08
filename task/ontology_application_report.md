@@ -14042,3 +14042,63 @@ fa0e6485  07:42  126 ③ 운영 모양 박스 «규격» (MARKING_CONTRACT 에 �
 🔵 **⑤ 가 바꾼 것 셋:** ① 원장 «크기»가 규격에 든다(원장이 비면 모든 수가 빨라져 「빠르다」를 못 말한다 — 자릿수를 밝히고 «외삽 금지») · ② 무효화 폭에 «분모»가 붙는다(수천 원자 / 그때의 전체 원자) · ③ 저장은 「사본 N 벌」이 아니라 «되돌림 창 D 일»(억 단위에서 사본은 자리가 없다 — 보드 09-08)
 ⚠️ 그리고 「07:44 뒤 산출 없음」은 «한 커밋 빗나갔습니다** — 마지막 푸시가 `06e801bc` **07:46** 입니다. 07:46 이후 «비어 있던 것은 제 큐»였고(129 가 시킨 한 줄까지 끝), 그 사이 정지 감시가 내려가 있어 그게 «안 보이신» 것으로 읽습니다. 지금은 ⑤ 까지 끝났고 큐는 다시 «비었습니다».
 > 판정 대기: **없음** · 🔁 이월: 47 (소유자 몫)
+
+---
+
+# 🟢 [응용 -> 총괄] **S-54-b «명세» — 삭제는 «겨눌 이름이 없습니다». 그리고 더 앞에 «못 듣는» 문제가 있습니다** (실측 10:2x~10:4x · 코드 0)
+
+## 🔴 먼저 — 판정 129 의 자리(체인 워커의 이벤트 루프)로는 삭제를 «못 듣습니다»
+```
+실측   crud.purge_map_rows 의 주석: **「A `DELETE` event cannot wake the chain: `chain_ingestion_worker` filters its …」**
+       즉 체인 워커는 DELETE 를 «거릅니다»(그 필터가 무한 사슬을 막는 자리입니다)
+=> 원장 소비자가 「체인 워커가 소비하는 그 이벤트의 한 걸음」(129)으로만 서면, EDIT 는 듣고 **DELETE 는 «영영 안 옵니다»**
+🔵 이것이 S-54(EDIT)와 S-54-b(DELETE)가 «같은 자리»에 못 앉는 이유입니다 — 판정 131 의 분리가 «구조적으로» 맞습니다
+```
+
+## (i) 삭제 봉투가 «identity 값»을 나르나 — ❌ **안 나릅니다. `row_ids` 뿐입니다**
+```
+자리   database.stage_collapsed_event -> DatabaseOutbox.payload
+싣는 것  {row_ids, row_count, table_name, transaction_id, updated_by, source_name, timestamp}
+       (+ 봉투 `_outbox_envelope` = tx_id · user · source · ts · chain_depth · 1,000 id 청크)
+🔴 없는 것  **행의 «값»이 하나도 없습니다** — 삭제된 뒤에는 그 표에서 «찾아볼 수도» 없습니다
+자리 확인  purge_map_rows 는 `stage_collapsed_event(db, "DELETE", table_name, row_ids)` 를 «삭제 전에» 스테이지합니다(같은 flush)
+```
+
+## (ii) identity==row_id 소스는 row_ids 만으로 ref 가 «그대로» 나오나 — ✅ **둘만**
+```
+ref 의 철자(정본)  source_preparation.py:1011~1016
+                 row_ref = f"{plan.relation}:" + _canonical({컬럼: 값 for 컬럼 in driver.order_by})
+                 => ref 는 «order_by 컬럼의 «값»»으로 지어집니다. row_id 가 아닙니다
+```
+| order_by | 소스 수 | row_ids 만으로 ref 재현 |
+|---|---|---|
+| `["row_id"]` | **2** — `dt_transfer` · `wafer_process_recipe` | ✅ 됩니다(철자가 곧 row_id) |
+| 그 밖(도메인 값) | **13** — `param_id` · `edge_id` · `(dt_job,dt_cell_key)` · `(event_time,row_id)` · `dt_cell_key` · `run_uid` · `void_uid` · `(base_id,bx,by,core_wafer,cx,cy)` · `(event_time,from_lot,…)` · `(base_id,bx,by)` · `lot_slot_wafer_key` … | ❌ **안 됩니다** — 그 값들은 삭제와 «함께 사라집니다» |
+🔴 `lot_event` 은 `["event_time","row_id"]` 라 «절반만» row_id 입니다 — 그래도 event_time 이 없으면 철자가 안 서므로 «안 되는 쪽»입니다.
+
+## (iii) replace_map 차집합 삭제는 «어느 종류»로 나오나 — ✅ **`DELETE`, 접힌 사건**
+```
+purge_map_rows 가 «두 갈래»(diff `removed_row_ids` · 비-diff `purged_row_ids`) 를 «한 함수»로 모아 스테이지합니다
+=> 종류는 DELETE 하나이고, 갈래가 둘이어도 이벤트는 «같은 모양»입니다 (그 통합이 09-06 의 수리였습니다)
+```
+
+## ⚖️ 갈리는 것 — «셋». 두 줄은 아직 «안 섭니다»
+```
+㉠ 삭제 봉투가 «ref 재료»를 싣는다        payload 에 order_by 값(또는 ref 문자열)을 «삭제 전»에 담는다.
+                                       → 운영자 «0 칸»(목표 달성) · 대신 «봉투 모양»이 바뀌고 모든 소비자가 그 크기를 진다
+㉡ 원장이 row_id → ref «색인»을 든다      원자는 `source_raw_ref` 만 들고 row_id 를 «안 듭니다** → 새 자리(표 하나)
+                                       → 봉투 불변 · 대신 «셋째 저장»이 생기고 그 색인이 «또 낡을 수» 있다
+㉢ 삭제는 «값으로» 안 겨누고 «범위»로 건다  삭제된 행이 속한 «단위/페이지»를 통째로 rescope
+                                       → 새 저장 0 · 대신 무효화 폭이 «행 하나 → 단위 전체»로 커진다(억 단위에서 그 폭이 문제)
+🔴 그리고 셋 중 무엇을 골라도 «위의 못 듣는 문제»가 먼저입니다 — 들을 자리가 없으면 겨눌 이름도 소용없습니다
+```
+
+## 두 줄 — 오늘 기준
+```
+🔴 «안 나옵니다». 삭제를 «듣는 자리»가 정해지지 않았고(체인 워커는 DELETE 를 거름),
+   들은 뒤 «겨눌 이름»도 13/15 소스에서 재현 불가입니다. 두 줄의 주어가 둘 다 비어 있습니다
+✅ 다만 «2/15»(dt_transfer · wafer_process_recipe)는 오늘 그대로도 두 줄이 섭니다 —
+   「운영에서는 아무것도 적지 않습니다」. 그 둘이 «첫 픽스처»로 맞습니다(가장 싼 증명)
+```
+> 판정 대기 — **둘**: ⓐ 삭제를 «어디서 듣나»(체인 워커 밖 새 구독 vs 체인 필터를 여는 것) · ⓑ ㉠/㉡/㉢
+> 🔁 이월(첫 제출 10:4x)
