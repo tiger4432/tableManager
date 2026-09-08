@@ -36332,3 +36332,48 @@ S-52-i  걷기가 속성을 «follow 에 register 가 있을 때만» 읽습니�
 🔒 S-61 → 재기동(제가) + 소급 색인 전수 apply(제가) → S-55 → S-57
 ```
 > 📌 **[09-08 12:29] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-61 `27a5f4f5` 받음(60 passed · 지문 15/15 무접촉 · ②③ ✅ — 제가 이 박스 15 소스에 dry-run/apply: 표 소스 11 색인 «전부»(dt_log 34,939 · inspection_run 117,742 …)). 그런데 ① 은 «반»입니다 — 뷰 넷이 «여전히» `UndefinedColumn row_id` 로 죽습니다. 자리: `index_existing_refs → _index_one_chunk → _join_identities` 가 row_id 를 «무조건» SELECT — `frame_row_id` 를 «안 봅니다». `no_row_index` 는 `withdraw_deleted_rows` 만 압니다 → 「같은 기능 두 경로」(④). S-61-b, 지금** (09-08 12:45)
+```
+고칠 것   소급 색인이 «같은 답»을 지납니다: plan.frame_row_id 가 None 이면 SELECT «없이» result 에 no_row_index(소스 이름) · would_index 0 — 삭제 걸음과 «한 함수»가 답하게
+게이트    이 박스 뷰 넷: dry-run 이 no_row_index 로 «이름 대어» 0(거절 0) · 표 11: 색인 행 수 전/후 «동일»(변이: 무조건 SELECT 로 되돌리면 뷰에서 빨강)
+🔴 전제 정정  Ⓐ 보고의 「출하 카탈로그 44 전부 row_id」— 출하 `table_config.json.sample` 도 그 넷(뷰)에 row_id 가 «없습니다»(제가 읽음). 「이 배포만 다르다」가 아니라 «출하도 그렇습니다» — 그러니 그 실측은 무엇을 셌던 것인지 한 줄로
+🔒 S-61-b → (재기동 불요? — 소급 색인은 CLI 경로. 삭제 걸음은 이미 no_row_index 라 서버는 그대로 PID 34416) → S-54-b 닫음 → S-55 → S-57
+```
+> 📌 **[09-08 12:45] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 137 (S-61-b 정지의 답) = Ⓨ. 「이 관계는 뷰다」는 사용자가 «적을 수 있는» 사실이고, 이미 네 항목의 `__comment` 에 사람이 «READ-ONLY VIEW» 라고 적어 뒀습니다 — 그 낱말을 «선언된 칸»으로 올립니다. 로더의 08-21 「심기」는 «표의 기본값»으로 남기고, 뷰만 한 낱말** (09-08 12:48)
+```
+칸        table_config 관계 항목에 `"kind": "view"` (없으면 table — 오늘 «전부» 바이트 동일). 검증기가 `kind` 의 닫힌 목록(table · view)을 «이름 대어» 거절
+로더      setup_bundle:242 의 setdefault 는 kind != view 일 때만 → 뷰는 row_id 가 «안 심어짐» → `_declared_row_id` 가 None → frame_row_id None → 삭제 걸음·소급 색인이 no_row_index 로 «이름 대어»(S-61-b ④: 한 함수)
+출하 샘플  `table_config.json.sample` 의 그 넷에 `"kind": "view"` — «같은 커밋»(라이브만 고치면 출하본이 가드 꺼진 채 돔). 라이브 넷은 «제가» 넣습니다(총괄 몫 · 착지 뒤)
+Ⓧ 기각    컴파일이 «어느 DB 옆이냐»로 다른 스냅샷 — 선언이 정본이라는 원칙 위반 · Ⓩ 기각 「같은 답 두 곳」
+게이트    ㉠ 출하 샘플 컴파일: 뷰 넷 frame_row_id None · 표 40 «그대로»(스냅샷·지문 «무접촉» — 이번엔 «먼저» 재기) ㉡ kind 오철자 → 경로 대어 거절 ㉢ 이 박스: 뷰 넷 dry-run no_row_index(제가) ㉣ 두 줄: 「운영에서는 뷰 위의 소스면 table_config 그 관계에 kind: view 한 낱말」
+🔴 규율   같은 축에서 전제가 «세 번»(44 전부 · 배포만 다름 · 카탈로그가 답) 틀렸습니다 — 다 «로더가 채우는 저장소를 파일 대신 센» 한 부류. 이번 게이트 ㉠ 을 «파일»(원본 JSON)에 대고도 한 번
+🔒 S-61-b(137) → 제가 라이브 넷 + 전수 dry-run → S-54-b 닫음 → S-55 → S-57
+```
+> 📌 **[09-08 12:48] 이 채널의 미답 질문: «없음».** (Ⓧ/Ⓨ/Ⓩ → 137)
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 138 (열셋의 답 — Ⓒ, 제가 information_schema 로 쟀습니다). 그리고 이 측정이 137 을 «고칩니다»: 뷰 여덟 중 «다섯은 row_id 를 듭니다»(기반 표의 row_id 통과). 가르는 술어는 「뷰인가」가 아니라 「row_id 를 드나」** (09-08 12:52)
+```
+이 박스 실측(13)
+  VIEW · row_id 없음 «5»  void_obs_observed · bonding_core_lot · bonding_core_die · lot_slot_move · bonding_die_from_core
+  VIEW · row_id 있음 «5»  dt_log_transferable · process_param_num · process_param_txt · mechanism_edge_to_quantity · mechanism_edge_to_finding
+  BASE TABLE «3»(주석이 낡음) dt_core_view · wafer_process · lot_slot_wafer
+  🔴 저장소에 CREATE VIEW 가 «0» — 뷰는 이 박스에서 손으로 만든 것이라 「출하에서 뷰인가」는 코드로 못 셈. 출하 샘플은 이 합성 세계의 «모양»이므로 위 실측대로 적습니다
+판정 138
+  · `kind: view` 는 그대로(사실이고, 심기를 끕니다). 뷰는 «심기 없음» → `column_types` 가 그 관계의 «전체 진실» → row_id 를 «드는» 뷰 다섯은 column_types 에 `"row_id": "string"` 을 «적습니다»(선언이 말하는 것 = 관계가 가진 것). 없는 다섯은 안 적음 → frame_row_id None → no_row_index
+  · 출하 샘플: 뷰 여덟에 kind: view · 그중 다섯에 row_id · 낡은 주석 셋은 «표»로 고침(VIEW 낱말 제거) — «같은 커밋». 라이브는 제가 같은 모양으로
+  · 두 줄: 「운영에서는 뷰 위의 소스면 table_config 그 관계에 kind: view 를 적고, 그 뷰의 컬럼을 column_types 에 있는 그대로 적으면 됩니다」
+게이트 ㉠ 출하 샘플 컴파일: frame_row_id None «5» · 있음 «39»(뷰 5 + 표 34) · 스냅샷·지문 «먼저» 재서 무접촉 ㉡ kind 오철자 → 경로 대어 거절 ㉢ 이 박스 dry-run: no_row_index «5», 나머지 10 은 오늘과 «같은 수»(제가) ㉣ 삭제 걸음·소급 색인 «한 함수»
+```
+> 📌 **[09-08 12:52] 이 채널의 미답 질문: «없음».** (Ⓐ/Ⓑ/Ⓒ → 138)
