@@ -912,7 +912,28 @@ INDEX_BACKFILL_CHUNK = 1000
 INDEX_BACKFILL_SAMPLE = 20
 
 
-def index_existing_refs(engine, source, apply=False, pace=None,
+def sources_without_row_index(setup, *, relation=None, source=None):
+    """Which sources this system can NEVER index or withdraw by row, and why. ONE answer.
+
+    🔴 BOTH ENDS ASK IT, SO BOTH ENDS MUST ASK IT HERE (판정 138 ㉣). The delete step asks
+    per RELATION -- that is what the outbox names -- and the retroactive index asks per
+    SOURCE. Two spellings of "does this one have a row index" is how they come to disagree,
+    and the disagreement would be silent: the backfill would try a column the read cannot
+    supply while the delete reported nothing owed.
+
+    A source's relation is a VIEW with no `row_id` (판정 138), so the absence is structural
+    rather than a gap: nothing writes an outbox DELETE for a view. It is NAMED because a
+    quiet zero and "there was nothing to withdraw" are the same pixel.
+    """
+    plans = getattr(getattr(setup, "snapshot", None), "source_plans", None) or {}
+    return sorted(
+        name for name, plan in plans.items()
+        if not getattr(plan, "frame_row_id", None)
+        and (relation is None or plan.relation == relation)
+        and (source is None or name == source))
+
+
+def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
                         chunk=INDEX_BACKFILL_CHUNK):
     """Recover `(relation, row_id) -> source_raw_ref` for atoms written before the index.
 
@@ -944,7 +965,14 @@ def index_existing_refs(engine, source, apply=False, pace=None,
     result = {"source": source, "refs_total": 0, "refs_read": 0,
               "would_index": 0, "indexed": 0,
               "unreadable_refs": 0, "unindexable_refs": 0, "unindexable_sample": [],
-              "applied": bool(apply), "pace": pace or "fast"}
+              "no_row_index": [], "applied": bool(apply), "pace": pace or "fast"}
+    # 🔴 THE SAME ANSWER THE DELETE STEP GETS (판정 138 ㉣). A source whose relation carries
+    # no `row_id` cannot be indexed by one, and joining for it would ask the read for a
+    # column it does not have -- which is the `UndefinedColumn` this whole round is about.
+    # It is named and skipped, not attempted and not silently zero.
+    result["no_row_index"] = sources_without_row_index(setup, source=source)
+    if result["no_row_index"]:
+        return result
     connection = store.connection()
     try:
         with connection.cursor() as cursor:
@@ -1050,10 +1078,7 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     # a quiet zero would be indistinguishable from "there was nothing to withdraw". The
     # absence is structurally correct (nothing writes an outbox DELETE for a view), which is
     # the reason to say it plainly rather than to treat it as a gap.
-    plans = getattr(getattr(setup, "snapshot", None), "source_plans", None) or {}
-    result["no_row_index"] = sorted(
-        name for name, plan in plans.items()
-        if plan.relation == relation and not getattr(plan, "frame_row_id", None))
+    result["no_row_index"] = sources_without_row_index(setup, relation=relation)
     if not ids:
         return result
     by_source: dict = {}
