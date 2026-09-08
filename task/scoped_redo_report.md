@@ -21255,3 +21255,47 @@ row_id     01a080b7-28b3-74d9-b97a-072f78fbd4f9
 ㉢ 전환 경계 겹침(uq 로 삽입 0)  · ㉣ 뷰 넷(아웃박스 없음 -> 커서 길)  · lot_event 쪽 새 행 하나
    -> 다음 라운드. 위 셋은 «구조상» 성립하지만 «재지 않았습니다»
 ```
+
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-65-b — ㉣ 는 «넷이 아니라 아홉»입니다. lot_event 재현은 «제 픽스처 탓»으로 결론 못 냅니다. ㉢ 은 «파괴적 승인»이 필요해 멈췄습니다** (09-08 20:24)
+
+```
+시각   20:24
+```
+
+## ㉣ 뷰 소스 — «넷»이 아니라 «아홉»입니다 (실측)
+```
+bonded_from · bw_dt_seat · dt_transfer · lot_slot_move · mechanism_edge_to_finding_causes ·
+mechanism_edge_to_quantity_causes · process_param_num_measure · process_param_txt_measure · void_observation
+=> 15 소스 중 «9» 가 뷰를 읽습니다. 커서 길에만 있는 소스가 «절반이 넘습니다»
+```
+🔴 **그리고 「이름 대어 건너뜀」이 «일어나지 않습니다»** — 아웃박스는 «기반 표»의 이름을 싣고 뷰의 이름을 안 싣습니다.
+   그래서 뷰 소스는 뒤따르기에 «도달하지도» 않습니다: 건너뛴다고 이름 대는 것이 아니라 «보이지도 않습니다».
+   `sources_for_table(setup, <뷰 이름>)` 은 그 소스를 돌려주지만, 그 이름으로 오는 사건이 «없습니다».
+=> S-65 가 연 라이브 길은 «표를 읽는 6 소스»에만 닿습니다. 나머지 «9» 는 커서 길 그대로이고,
+   그 9 에 대해서는 「커서보다 앞에 서는 새 행」 결함이 «그대로 남아 있습니다».
+
+## lot_event 재현 — 결론 «못 냅니다». 다만 «기제는 돌았습니다»
+```
+넣은 행   lot_event · txn_seq S65B-GATE-1 · lot_id 'SYN-A-000' · event_time 2026-01-01
+아웃박스   그 행을 이름 대는 사건 «1» (미처리 1)
+뒤따르기   DRAIN -> sources {'lot_event': {'scope_values': 1, 'withdrawn': 0, 'inserted': 0, 'deduped': 0}}
+원자      190 -> 190 · 그 로트를 이름 대는 원자 «0»
+```
+🔵 «범위는 제대로 잡혔습니다»(scope_values 1 · scope column = event_time = 페이지 키). 즉 CREATE 가 drain 에
+   닿았고 소스도 골라졌습니다 — S-65 가 하는 일은 «다 했습니다».
+🔴 원자가 0 인 이유는 «제가 넣은 행»입니다: 컬럼 넷만 채운 최소 행이라 이 소스의 선언(그룹 단위 · 맵퍼 입력)을
+   만족하지 못해 분자가 안 섭니다. 이건 S-65 의 결함이 아니라 «제 픽스처의 결함»이고, 그래서
+   이 재현은 «결론 없음»으로 적습니다 — 초록으로도 빨강으로도 세지 마십시오.
+   ⚠️ 제대로 재려면 `lot_event` 의 «완전한» 행 하나가 필요합니다(어느 컬럼이 필수인지 다음 라운드에 선언에서 읽겠습니다).
+
+## ㉢ 경계 겹침 — «안 쟀습니다». 파괴적 승인이 필요합니다
+```
+backfill.run(start_from=…) -> LedgerSetupError:
+   「v2 cursor reset or replay requires a separate destructive approval - pass retranslate='lot_event'」
+=> 이미 번역된 구간을 전진 경로로 다시 읽으려면 «재번역 승인»을 줘야 합니다.
+   판정 없이 그 인자를 넘기지 않았습니다 — 그 관문이 있는 이유가 그것입니다.
+청합니다   ㉢ 을 (A) 재번역 승인으로 이 박스에서 잴지, (B) uq_ledger_atom 의 성질로 «구조 논증»만 남길지
+```
