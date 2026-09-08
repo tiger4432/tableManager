@@ -1204,6 +1204,12 @@ const FLOORS = new Map([
   // are fast because nothing contended, a route that 500s is fast because it did no work --
   // so twelve mutants stand behind this number rather than beside it.
   ['ten_user_driver_harness.mjs', 38],
+  // New 2026-09-08 with C-42 (「이 소스, 돌 게 있나」). Floor is the count it reports on the
+  // commit that introduces it. 🔴 SEVEN MUTANTS, and the first is the one the ruling names:
+  // an uncounted field drawn as 0 tells an operator asking whether anything is waiting that
+  // the queue is empty.
+  ['source_backlog_harness.mjs', 22],
+
 
 
   // an event nothing matches is audible, and the theme notification has one speller

@@ -1258,3 +1258,17 @@
   font-family: var(--oe-font-mono); font-size: 12px; font-weight: 600;
   text-align: right; font-variant-numeric: tabular-nums;
 }
+
+/* C-42 — 「돌 게 있나」. One line under the source's head: name, number, and at most one
+   word. It is a row of facts, not a panel: a heading here would make four numbers look
+   like a section, and the operator's question is answered by the numbers themselves. */
+#ontology-explorer-root .oe-backlog {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline;
+  padding: 4px 0 0; font-family: var(--oe-font-body); font-size: 11px;
+}
+#ontology-explorer-root .oe-backlog-cell { display: inline-flex; gap: 5px; align-items: baseline; }
+/* The name is the SERVER'S key, so it is set as code -- a reader can match it against the
+   response without wondering whether the screen renamed it. */
+#ontology-explorer-root .oe-backlog-name { color: var(--oe-ink-meta); font-size: 10px; }
+#ontology-explorer-root .oe-backlog-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+#ontology-explorer-root .oe-backlog-note { color: var(--oe-ink-meta); font-size: 10px; }
