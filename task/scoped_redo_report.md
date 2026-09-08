@@ -21996,3 +21996,53 @@ S163-% 400 행 -> crud.delete_rows_batch -> 삭제 400 · 남은 0
    그래서 「시간 ≤ 커서 길」은 이 소스에서 «직접 비교 불가»(이 소스의 커서는 리터럴에 박혀 있습니다) —
    비교 수는 lot_event 의 «15.66 대 10.61» 쌍이 정본입니다
 ```
+
+
+---
+
+# ❓ [구현자 -> 총괄] **조각 3(커서 «읽기» 은퇴) — 반경을 «세었습니다». 지우기 전에 «갈래 하나»를 여쭙니다** (09-09 06:18)
+
+```
+시각   06:18   ·   조각 1·2 착지 완료 · 미커밋 0
+```
+
+## 반경 (심볼로 셈 — 짓기·지우기 «전»)
+```
+심볼                운영  시험
+backfill.run(         2    3     <- 그리고 «부르는 파일»: ledger_trace · main · process_supervisor ·
+                                    retroactive · scripts/dev_env/iso_watcher
+caught_up_sources     1    2
+caught_up_at          3    1
+rows_past_cursor      3    1
+_run_v2_lineage       3    3
+read_cursor           4    3
+_advance_cursor       2    1
+```
+🔴 **`backfill.run` 은 «운영이 스케줄로 도는» 진입점입니다** — 지우면 다섯 자리가 같이 움직입니다.
+   그리고 그 결과 dict(`rows_read` · `molecules` · `cursor` · `batches`)를 `config_explorer_service`·
+   `retroactive`·하트비트·시험이 «읽습니다».
+
+## 🔴 갈래 — 답이 달라지면 «일이 다릅니다». 그래서 여쭙니다
+```
+Ⓐ run() 이 «그대로 이름을 지키고» 안이 사건 길이 된다
+   호출자 다섯 «무변» · 결과 dict 의 칸 이름 유지(rows_read=적재한 행 · cursor 는 «없음»/지문만)
+   전진 스캔·커서 전진·caught_up_* 는 그 안에서 «사라집니다»
+   🔵 「같은 기능에 두 경로」를 안 만듭니다. 그리고 운영 스케줄이 «저절로» 새 길로 옵니다
+   ⚠️ 결과 dict 의 «뜻»이 바뀝니다(`cursor` 를 읽던 두 자리는 그때 고쳐야 합니다)
+Ⓑ run() 은 남기고 --via-events 만 정본으로 두 뒤, 호출자를 «하나씩» 옮긴다
+   ⚠️ 옮기는 동안 «두 경로»가 동시에 삽니다 — 이 저장소가 가장 자주 데인 모양입니다
+Ⓒ 이번 라운드는 「전진 스캔만」 지우고 caught_up_* 는 다음에
+   ⚠️ 반쪽입니다. caught_up_* 는 «전진 스캔이 있을 때만» 뜻이 있으므로 같이 죽는 게 맞습니다
+```
+🔵 제 추천은 **Ⓐ** 입니다 — 판정 163 의 「도착지는 아웃박스 «하나»」에 정확히 맞고, 두 경로가 «한 순간도»
+   같이 살지 않습니다. 다만 이건 «운영 진입점의 뜻»을 바꾸는 판정이라 제가 혼자 내리지 않습니다.
+
+## Ⓐ 로 간다면 제가 할 순서 (한 커밋)
+```
+① run() 내부를 load_via_events 로 · 결과 dict 는 같은 칸 이름(cursor -> 지문만)
+② _run_v2_lineage 의 페이지 루프·_advance_cursor·caught_up_sources·caught_up_at «삭제»
+   (그 시험들은 «같은 커밋»에서 죽습니다 — 재던 코드와 같이)
+③ `cursor` 를 읽던 두 자리(config_explorer_service · retroactive) 정정
+④ CODE_MAP · 가이드의 「백필 한 번 돌면 따라잡음」 교체
+게이트   15 소스 새 행 -> 원자(표 6 · 뷰 9) 무회귀 · 지문 15/15 · 이웃 심볼 회귀 0
+```
