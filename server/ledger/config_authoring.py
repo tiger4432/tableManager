@@ -75,6 +75,8 @@ from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
 from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _MAPPER_UNITS,
+    CARDINALITIES,
+    LIFECYCLE_STATES,
     OBJECT_KINDS,
     _OCCURRED_AT_BASES,
     _ROLE_KINDS,
@@ -82,16 +84,19 @@ from .setup_bundle import (
     _SOURCE_UNITS,
     PHYSICAL_CATALOG_FILENAME,
     SUBJECT_ROLE,
+    VALUE_TYPES,
     predicate_claim,
     public_bundle_schema,
     role_binding_kinds,
     validate_bundle_errors,
 )
 
-#: `setup_bundle` spells these inline in `_validate_vocabulary` rather than binding them
-#: to a name, so this is the one closed list this module cannot import.  Kept next to the
-#: imports so the day it becomes a constant there, the fix is one line here.
-PREDICATE_STATUSES = ("active", "retired")
+#: ⚰️ THE DAY THE COMMENT ABOVE PREDICTED. It read 「`setup_bundle` spells these
+#: inline ... the day it becomes a constant there, the fix is one line here」 -- and on
+#: 2026-09-09 it became `LIFECYCLE_STATES`, because an ENTITY and a SOURCE now carry the
+#: same field and the pair was no longer the predicate's alone. One author, so a screen
+#: can no longer offer a choice the validator refuses.
+LIFECYCLE_STATUSES = tuple(sorted(LIFECYCLE_STATES))
 
 #: The canonical predicate whose emission makes `read.registration_probe` load-bearing.
 #: The declaration addresses it as `register@1`; the atom spelling -- not that address --
@@ -556,7 +561,9 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
     implementations = implementation_choices(sources)
     return {
         **schema,
-        "predicate_status": list(PREDICATE_STATUSES),
+        "lifecycle_status": list(LIFECYCLE_STATUSES),
+        "value_type": sorted(VALUE_TYPES),
+        "cardinality": sorted(CARDINALITIES),
         "object_kind": sorted(OBJECT_KINDS),
         "role_kind": sorted(_ROLE_KINDS),
         "scalar_role_kind": sorted(_SCALAR_ROLE_KINDS),

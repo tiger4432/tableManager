@@ -128,6 +128,31 @@ _SCALAR_ROLE_KINDS = frozenset({
 #: one, and the admin catalogue built from it could not offer a value the declaration
 #: actually uses. No underscore: three modules outside this one read it.
 OBJECT_KINDS = frozenset({"none", "entity_ref", "value", "event_ref"})
+
+#: What a `value` object HOLDS. Until now the compiler read every value object as a
+#: quantity, so 「this predicate's value is a piece of text」 could not be said at all --
+#: an operator with a string-valued fact had to invent a number or a second entity.
+#:
+#: OPTIONAL, AND ABSENCE MEANS `number`, which is what every declaration on disk means
+#: today. Spelled here rather than left implicit because a default nobody can read is a
+#: hardcoding with a nicer name. Closed on purpose: an open string would let "numeric"
+#: become a silent claim the compiler cannot honour.
+VALUE_TYPES = frozenset({"number", "string", "boolean", "timestamp"})
+DEFAULT_VALUE_TYPE = "number"
+
+#: How many objects one subject may hold on this predicate. Without it an aggregate can
+#: count a subject twice and NOTHING refuses -- the quiet arithmetic error this project
+#: keeps naming. ABSENCE MEANS `many`, because that is what every predicate on disk is
+#: today and narrowing one silently would refuse facts that are already stored.
+CARDINALITIES = frozenset({"one", "many"})
+DEFAULT_CARDINALITY = "many"
+
+#: 「this type / this source is no longer used」. The predicate has said it since the
+#: grammar existed; an entity and a source could only be DELETED, which also deletes the
+#: history that points at them. Same two words, same shape, so an operator learns it
+#: once. ABSENCE MEANS `active`.
+LIFECYCLE_STATES = frozenset({"active", "retired"})
+DEFAULT_LIFECYCLE = "active"
 _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 # A source whose table carries no world time declares that instead of naming a column.
@@ -1047,15 +1072,22 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: still have them. So the field is refused again, which is what keeps a retired
         #: word from quietly reading as a live rule.
         if not problems.exact(
-                item, path, required=("status", "subjects", "object")):
+                item, path, required=("status", "subjects", "object"),
+                optional=("cardinality",)):
             continue
-        if item.get("status") not in ("active", "retired"):
-            problems.add("invalid_predicate", f"{path}.status", "must be active or retired")
+        status = item.get("status")
+        if not isinstance(status, str) or status not in LIFECYCLE_STATES:
+            problems.add("invalid_predicate", f"{path}.status",
+                         f"must be one of {sorted(LIFECYCLE_STATES)}")
+        cardinality = item.get("cardinality", DEFAULT_CARDINALITY)
+        if not isinstance(cardinality, str) or cardinality not in CARDINALITIES:
+            problems.add("invalid_predicate", f"{path}.cardinality",
+                         f"must be one of {sorted(CARDINALITIES)} (absent means {DEFAULT_CARDINALITY!r})")
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
         if problems.exact(
                 obj, f"{path}.object", required=("kind", "qualifiers"),
-                optional=("types",)):
+                optional=("types", "value_type")):
             kind = obj.get("kind")
             if not isinstance(kind, str) or kind not in OBJECT_KINDS:
                 problems.add("invalid_predicate", f"{path}.object.kind",
@@ -1069,6 +1101,18 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
             elif "types" in obj:
                 problems.add("invalid_predicate", f"{path}.object.types",
                              f"{kind!r} object must not declare entity types")
+            if "value_type" in obj:
+                # ⚠️ SCORED THE SAME WAY `types` IS. A field that is meaningful for one
+                # object kind and merely ignored on the others is a place an author can
+                # write a sentence nothing reads -- which is exactly the ③′ class this
+                # round exists to stop creating.
+                if kind != "value":
+                    problems.add("invalid_predicate", f"{path}.object.value_type",
+                                 f"{kind!r} object must not declare a value type")
+                elif (not isinstance(obj["value_type"], str)
+                      or obj["value_type"] not in VALUE_TYPES):
+                    problems.add("invalid_predicate", f"{path}.object.value_type",
+                                 f"must be one of {sorted(VALUE_TYPES)} (absent means {DEFAULT_VALUE_TYPE!r})")
             qualifiers = obj.get("qualifiers")
             qpath = f"{path}.object.qualifiers"
             if problems.exact(
@@ -1117,11 +1161,19 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         if not problems.exact(
                 item, path, required=("keys",),
                 optional=("key_types", "allow_null", "references", "class",
-                          "attributes")):
+                          "attributes", "status")):
             continue
         if "class" in item and item["class"] not in ("static", "dynamic"):
             problems.add("invalid_entity_ref", f"{path}.class",
                          "must be static or dynamic")
+        # 🔴 THE SAME TWO WORDS THE PREDICATE USES. Retiring a type used to mean DELETING
+        # its declaration, which also removes the name every stored atom points at -- the
+        # 「투영은 지워도 기록은 안 된다」 line, applied to the grammar. Optional, because
+        # every declaration on disk predates it and means `active`.
+        entity_status = item.get("status", DEFAULT_LIFECYCLE)
+        if not isinstance(entity_status, str) or entity_status not in LIFECYCLE_STATES:
+            problems.add("invalid_entity_ref", f"{path}.status",
+                         f"must be one of {sorted(LIFECYCLE_STATES)} (absent means {DEFAULT_LIFECYCLE!r})")
         keys = item.get("keys")
         _nonblank_list(keys, f"{path}.keys", problems)
         if _has_duplicate_strings(keys):
@@ -1463,9 +1515,27 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         _nonblank_id(source_id, path, problems)
         source = section[source_id]
         if not problems.exact(
-                source, path, required=("relation", "read", "prepare", "map", "bind")):
+                source, path, required=("relation", "read", "prepare", "map", "bind"),
+                optional=("status", "decision_key")):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
+        # 🔴 SAME TWO WORDS AGAIN. Retiring a source is deleting it today, and the exact
+        # check then refuses every other key -- so a source that has stopped being read
+        # cannot be left on record saying so.
+        source_status = source.get("status", DEFAULT_LIFECYCLE)
+        if not isinstance(source_status, str) or source_status not in LIFECYCLE_STATES:
+            problems.add("invalid_driver", f"{path}.status",
+                         f"must be one of {sorted(LIFECYCLE_STATES)} (absent means {DEFAULT_LIFECYCLE!r})")
+        # 🔴 THE UNIT A JUDGEMENT IS MADE ON, which is NOT always the row and NOT always
+        # the business key (ruling 151). ⛔ NO DEFAULT: a wrong decision unit is a wrong
+        # answer that looks right, so a reader that needs one and does not find it must
+        # REFUSE BY NAME rather than guess the row. Nothing reads it yet -- this round
+        # builds the place, not the reader.
+        if "decision_key" in source:
+            _nonblank_list(source["decision_key"], f"{path}.decision_key", problems)
+            if _has_duplicate_strings(source.get("decision_key")):
+                problems.add("duplicate_id", f"{path}.decision_key",
+                             "decision key columns must be unique")
         # Each clause is judged on its own: one malformed clause must not silence the
         # other three, or an author fixes four rounds of one refusal at a time.
         _validate_profile(source.get("bind"), f"{path}.bind", problems)
