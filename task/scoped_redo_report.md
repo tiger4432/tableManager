@@ -22238,3 +22238,92 @@ qa/FEATURE_CHECKLIST  🔴 «대리»를 재던 항목을 «성질»을 재는 �
    보이는 것」까지만 알고 «함수가 어디서 끝나는지»는 모릅니다
 ```
 > 📌 **[09-09 08:21] 총괄께 «판정 요청» 하나:** `SERVER_DEFECT_QUEUE:1204` 의 「사람 경로 per-row 유지」 판정 — 위 실측대로 «주어가 추론»이라 S-82 가 그 안에 있다고 읽었습니다. 다르게 보시면 되물릴 수 있습니다(코드 한 줄 + 문서 다섯).
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **① 픽스처 `eb706287` · ② 조각 3 잔해 `d91fba43` — 커서 «읽기»가 끝났고, 삭제가 «결함 둘»을 드러냈습니다** (09-09 08:41)
+
+```
+시각   09-09 08:41   ·   심볼 이웃 59 passed / 0 failed · 새 시험 8 passed · 수집 5,314 정상
+```
+
+## ① test_api 픽스처 — 그리고 제 앞선 문장 «정정»
+```
+고침    prod_row_id = str(uuid.uuid4()) 와 row_id=prod_row_id «둘 다 삭제» — 엔진이 찍습니다
+부류로 훑음   server/tests 의 GeneralUpdateItem(row_id=…) 전부를 갈랐습니다:
+        «기존 행 갱신»(가드가 안 봄) 또는 «ORM 직삽»(문을 안 지남) — 새 행에 공급하는 것은 «이것 하나»
+🔴 정정  제가 S-82 보고에 「셋 다 제 것 아님」이라 적었는데, 그 근거는 «S-82 앞/뒤»였습니다.
+        「S-82 가 원인인가」에만 답한 수를 「제 것인가」로 «넓혀» 적었습니다. 총괄 지적이 맞습니다
+```
+
+## ② 조각 3 잔해 — 지운 것과 «대신 선 것»
+```
+지움   _run_v2_lineage(255줄) · rows_past_cursor · BackfillResult(그 드라이버만 짓던 클래스) ·
+      run(..., probe_lag)(호출자 0 · 읽는 곳 0 — CODE_MAP 이 이미 「읽히지 않는다」고 적어 둔 그것) ·
+      schema.CAUGHT_UP_COLUMN + DDL 줄 + CURSOR_ADDITIONS 항목 · store.mark_caught_up + read_cursor 의 칸
+⛔ 컬럼은 DROP 안 함  판정 165 처방 그대로 — 쓰는 자 0 · 읽는 자 0 · 새 설치는 «안 만듭니다»
+대신    rows_not_yet_translated(engine, setup, source) -> 「표 행 N · 색인 M · 남은 N−M」 «세 값»
+        row_id 안 나르는 소스는 «거절»(no_row_id + 두 줄 처방) — 0 을 «답하지 않습니다»
+        소급은 그것을 not_applicable 로 렌더 · count_kind 는 이제 «항상 EXACT»(페이지가 없으니 「최소 N」이 안 생김)
+CLI     result 에서 «인쇄만» 합니다 — census/lag_note 두 None 제거, 세 값 출력
+```
+🔴 **S-69 는 이 커밋으로 닫힙니다** — 「돌 게 없다」와 「닿지 못하는 행이 있다」가 «다른 값»이 됐습니다.
+
+## 🔴 삭제가 드러낸 결함 «둘» (같은 커밋에서 고침)
+```
+㉠ 거절 집계 셋이 «조용히 사라져 있었습니다»
+   refused_total · refused_samples · refused_samples_capped 는 운영자가 「어느 칸을 고치나」를 읽는 칸인데,
+   c8801a97 에서 사건 길로 옮길 때 «안 따라왔습니다». 아무도 못 본 이유:
+   유일한 시험이 inspect.getsource(backfill._run_v2_lineage) — «부를 수 없는 함수»를 재고 초록이었습니다
+   => _run_via_events 가 다시 발행 · 시험은 _run_via_events 로 «겨눔» + 그 사유를 시험 안에 적었습니다
+   🔴 부류 이름: 「죽은 코드를 재는 시험은 «없는 시험»보다 나쁩니다 — 답을 하니까」
+㉡ main() 이 load_setup 을 «분기 안에서» 두 철자로 임포트
+   함수 지역 임포트는 «그 분기가 돌 때만» 바인딩되므로 폴스루에서 읽으면 UnboundLocalError.
+   제 첫 초안이 거기서 census 를 불렀고 — 착지 «전» 이웃 실행이 잡았습니다
+```
+그리고 첫 초안은 CLI 에서 census 를 «두 번째로» 불렀는데, `test_operator_cli_has_no_legacy_escape_hatch`
+가 잡았습니다(run 을 스텁해도 CLI 가 뒤에서 세팅을 또 읽고 DB 를 또 봅니다). 세 값을 «결과에» 실어 해결.
+
+## 게이트
+```
+✅ 이웃(심볼 13개로 뽑은 5 파일 + 소급 둘)      59 passed · 0 failed
+✅ 새 시험 test_a_source_says_how_many_rows_it_has_not_translated.py   8 passed
+   (거절이 «숫자를 같이 주지 않음» · 세 값 · 색인>표 를 «이름 대어» · 읽기 연결 닫힘 ·
+    relation «과» source 로 물음 · CLI 가 None 대신 세 값)
+✅ 수집                                        5,314 collected · 오류 0
+📏 넓은 이웃 60 파일 «전/후»                    전 6 failed/1,170 passed → 후 5 failed/1,171 passed
+   줄어든 하나 = 제가 고친 test_chained_ingestion. 남은 다섯 «전부 이름 붙임»:
+     3  occurred_at/event_time 표본↔카탈로그 (S-79/S-80) — 제 변경 «되물려도 동일»함을 실행으로 확인
+     2  test_void_base_join_fixture — 라이브 table_config 컬럼명 단언(base_lot vs bond_lot) = S-32 부류
+        (총괄이 06:15 에 「당신 것 아님」이라 판정한 그 파일)
+   그리고 test_ontology_config_explorer 의 오류 12 도 «되물린 트리에서 동일»(12 errors · 2 failed)
+⛔ 못 잰 것   라이브 게이트(15 소스 새 행 · 원자 표 6/뷰 9 무회귀 · 지문 15/15) — 재기동이 필요해 총괄 몫
+```
+
+## 🔴 제 실수 하나 — 숨기지 않고 적습니다
+```
+시험 삭제가 «한 커밋 일찍» eb706287(픽스처 커밋)에 들어갔습니다.
+원인: git rm 이 스테이지된 상태에서 add 에는 경로를 달고 «commit 에는 안 달았습니다»
+      — 제 기록에 이미 있는 「경로 없는 commit 이 add 규율을 무력화한다」 그 부류입니다
+결과: eb706287 ~ d91fba43 사이가 「코드는 있고 시험은 없는」 창이었습니다. eb706287 은 이미 origin 에
+      있어 제가 되쓸 것이 아닙니다. 이번 커밋은 add «와» commit 양쪽에 경로를 달았습니다
+```
+
+## 총괄께 올릴 것 «둘»
+```
+㉠ 클라 계약 키 (C-42)   client2/src/source_backlog.js 가 rows_total · rows_past_cursor ·
+   rows_before_cursor · caught_up 넷을 철자합니다. 그중 «셋»은 이제 «없는 것의 이름»입니다.
+   소급 extra 가 내는 새 이름: relation_rows · indexed_rows · not_yet_translated.
+   client2/src 는 클라 레인 소유라 «안 건드렸습니다» — 배선은 그쪽 판정이 필요합니다
+㉡ 남은 잔해 «둘» (안 지웠습니다)   walk_group_pages · v2_base_select_columns 는 이제
+   «운영 호출자 0 · 시험만 참조»입니다. 판정 173 목록에 없어 손대지 않았고, 지우면 그 시험도
+   같이 죽으므로 «부류로» 판정하실 자리입니다
+```
+
+## 다음 (소유자 08:36 확정 순서)
+```
+Ⓐ 자리 일곱 한 라운드 (문법·검증·스켈레톤·샘플 기본값 — 읽는 쪽 ⛔) + 「ingested 인데 bind.occurred_at」 거절
+  + read.cursor/order_by Ⓓ 은퇴 후보(08:38 여덟째) → S-77 → Ⓓ → S-83 → S-64-b → S-78 → S-32 → D9
+```
+> 📌 **[09-09 08:41] 이 채널의 미답 질문: 위 ㉠㉡ 둘.**
