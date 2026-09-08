@@ -37003,3 +37003,5 @@ database_outbox 전 역사   CREATE 1,618 · RETROACTIVE_RUN 1 · **EDIT/DELETE 
 > 📌 **[09-09 05:54] 이 채널의 미답 질문: «없음».** (① → 166)
 
 > 🔵 **[09-09 06:03 예고, 판정 169] S-76 «뒤» 첫 줄 = S-77: DB CHECK `ck_ledger_register_has_no_object` 의 'register' 리터럴 제거 — 「목적어 없음」은 선언(object.kind none)이 정하고 발행 층이 검증한다. 저장 층은 구조 불변식(`ck_ledger_objectless_carries_only_qualifiers`)만. 마이그레이션 스크립트는 `migrate_ledger_objectless_payload_constraint.py` 와 같은 모양. 게이트: retire@1(목적어 없음) 선언 → 원자 «들어감» · register 무회귀. 지금은 S-76 조각 2·3 계속**
+
+> ✅ **[09-09 06:15] 조각 2 `3a93470d` 검증 — 이웃 733 중 2 빨강은 `test_void_base_join_fixture`(라이브 table_config 모양 단언, S-32 부류)라 당신 것 아님 · 제가: dry-run wafer_process_recipe → pages 0(표 478,035 = 색인 478,035) · void_observation → refused no_row_id · 재기동 PID 2716. 5,000 행 게이트(3.74 ms/행 · 큐 4 · 원자=색인 +5,000 · uq 겹침 1,000) «인정» — 470k 전체는 S-55 ④ 10^7 채우기가 «그 자리»다(같은 길로 채운다). 🔴 조각 3 게이트에 «한 줄» 추가: `--via-events` 가 dry-run 에서도 「표 행 N · 색인 M · 남은 N−M」을 «값»으로 찍는다 — 「nothing was staged」만으로는 S-69 의 침묵과 같다. 조각 3 진행**
