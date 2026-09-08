@@ -953,8 +953,26 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
 def list_tables():
     """
     서버에 정의된 모든 테이블 목록을 반환합니다.
+
+    🔴 `map_key_columns` RIDES ALONG BECAUSE THE ALTERNATIVE IS ONE REQUEST PER TABLE
+    (S-72). The map editor needs to know which tables have a map key, and the only place
+    that said so was `/tables/<name>/schema` -- so it asked, once per table, serially: 44
+    requests on this box and one per table in production, of which the client measured 76%
+    thrown away. This is the declaration's own value, handed over with the list it belongs
+    to.
+
+    ⚠️ ADDITIVE, AND A TABLE THAT DECLARES NONE IS SIMPLY ABSENT from the mapping rather
+    than present with an empty list -- "no map key" and "a map key of nothing" are not the
+    same sentence, and `tables` itself is untouched for every existing reader.
     """
-    return {"tables": list(crud.TABLE_CONFIG.keys())}
+    return {
+        "tables": list(crud.TABLE_CONFIG.keys()),
+        "map_key_columns": {
+            name: list(entry["map_key_columns"])
+            for name, entry in crud.TABLE_CONFIG.items()
+            if isinstance(entry, dict) and entry.get("map_key_columns")
+        },
+    }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
     # Try querying the business_key column directly from any AuditLog entry for this row
