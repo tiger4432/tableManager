@@ -18662,3 +18662,50 @@ test_an_empty_static_intersection_skips_the_fetch... 가 「모든 fetch 가 wal
 🔒 총괄: 재기동 + 걷기 확인 -> S-54-b -> S-55 -> S-57
 미커밋 0 · 감시 🟢🟢
 ```
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-54-b 착수 «전» 실측 — 판정 132 ⓑ 의 전제 「row_id 는 SELECT 에 «항상» 실림」이 «오늘 거짓»입니다. 15 중 «넷»만 실립니다** (09-08 11:34)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0
+```
+
+## 잰 것 — 출하 샘플 + 출하 카탈로그(둘 다 추적)
+```
+✅ 참    row_id 는 «틀 컬럼»이 맞습니다 — 카탈로그 관계 «44 전부»가 들고 있습니다
+🔴 거짓  그런데 «읽지» 않습니다. base_select_columns 에 row_id 가 있는 소스는 15 중 «넷»:
+           dt_transfer · lot_event · transfer_event · wafer_process_recipe
+         나머지 «열하나»는 안 실립니다 (dt_job · bonded_from · die_inspection · lot_slot_move ·
+           lot_slot_wafer · void_observation · bw_dt_seat · process_param_num/txt_measure ·
+           mechanism_edge_to_finding/quantity_causes)
+         까닭: base_select_columns 는 identity ∪ group_by ∪ order_by ∪ cursor ∪ occurred_at ∪
+              준비기/맵퍼 input 이고, 저 넷은 «우연히» order_by 나 input 이 row_id 를 «이름 대서» 실립니다
+```
+🔴 **그래서 ⓑ 를 지금 그대로 지으면 색인이 «15 중 넷»만 채워집니다** — DELETE 가 열한 소스에서
+   «조용히 아무것도 안 합니다». 「없어서 0」과 「무해해서 0」이 같은 픽셀이 되는 그 부류입니다.
+
+## 제안 — 한 줄이고, 비용을 «재 봤습니다»
+```
+엔진이 읽기에 row_id 를 «항상» 싣는다(선언 무변 — SOURCE_ROW_REF_COLUMN 처럼 «엔진 소유» 컬럼)
+비용 ①  커서 지문 «안 움직입니다» — source_cursor_fingerprint 의 재료는 «선언»(소스 플랜 · 술어 ·
+        엔티티)과 compiler_contract_version 이고, 엔진의 SELECT 는 그 안에 없습니다(제가 함수의
+        재료 목록으로 확인). 즉 재스탬프 «0»
+비용 ②  원자 «바이트 동일» — dt_job 을 row_id 있는 프레임과 없는 프레임으로 «둘 다» 번역해
+        보았습니다: 원자 둘, object_payload 까지 같습니다(거절도 없습니다)
+비용 ③  질의당 컬럼 하나. 운영 규격(수천 행/트랜잭션)에서 재 본 수는 «없습니다» — 이건 제가 못 잽니다
+```
+
+## 판정을 청합니다
+```
+Ⓐ 엔진이 row_id 를 «항상» 싣는다 -> 색인이 15 전부를 덮습니다 (제 제안)
+Ⓑ 넷만 덮고 나머지는 «이름 대어» 미덮음으로 남긴다 -> DELETE 가 부분만 듣습니다.
+   그러면 그 «부분»이 어디인지 응답이 말해야 합니다(조용한 0 ⛔)
+Ⓒ 선언이 row_id 를 read 에 적게 한다 -> 열한 선언이 바뀌고 «지문 열한 개»가 움직입니다.
+   방금 두 개 재스탬프하신 그 비용의 열한 배라 제 쪽에서는 제일 비싸 보입니다
+```
+⚠️ **그때까지 S-54-b 를 «안 짓습니다»** — ⓑ 가 그 위에 서 있어서, 지금 지으면 넷만 되는 기제를
+   「된다」로 보고하게 됩니다. 첫 픽스처(dt_transfer · wafer_process_recipe)가 «되는 넷 안»이라
+   그 둘로만 재면 초록이 나옵니다. 그게 이 실측이 막는 것입니다.
+🔴 그리고 S-54-b 의 나머지(색인 표 · 철회 호출 · 소급 색인)는 Ⓐ/Ⓑ 어느 쪽이든 «모양이 같습니다» —
+   판정만 오면 바로 짓습니다.
