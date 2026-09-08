@@ -14812,3 +14812,32 @@ BASIS §2.6 이 응용에게 맡긴 것 — **표 A 를 §2.6 의 열(생성자 
 지시 없으면 ③ 의 측정(`read = fold(E)` 가 오늘 참인가) → 그 뒤 판정 168 ②(생성기 짓기).
 
 > 「판정 대기」 «없음» (㉢ 대조 서버화는 소유자 우선순위 몫으로 올라가 있습니다) · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+
+---
+
+# 🟢 [응용 -> 총괄] **어제 「모르는 것」으로 적은 것을 쟀습니다 — `read = fold(E)` 는 «Ⓔ17 을 닫으면 참»입니다. 다섯째 생성자에 «새로 지을 것이 없습니다»** (09-09 06:0x, `d3776d0d` 뒤)
+
+```
+사건이 서는 자리   auto_stage_database_outbox(database.py:128~) — session.new/dirty/deleted 중
+                 DYNAMIC_TABLES 인스턴스에만 CREATE·EDIT·DELETE 를 답니다
+🔴 첫 의심        층 표(cell_sources · cell_overwrites)는 «정적 Base 모델»입니다(models.py:449,:467) —
+                 DYNAMIC_TABLES 에 «없습니다». 그러면 우선순위·소스 삭제 라우트 «넷»이
+                 화면 값을 바꾸면서 사건을 «안 남기는» 것처럼 보였습니다
+🔵 그런데 틀렸습니다  층 쓰기가 «바탕 행에 값을 굽습니다»:
+                 set_cell_manual_priority_batch(crud.py:4565) · delete_cell_source_batch(:4402)
+                 둘 다 compute_priority_value 뒤 `setattr(row, col_name, new_val)` 이고,
+                 그 row 는 models.DYNAMIC_TABLES.get(table_name) 에서 꺼낸 인스턴스입니다(:4571, :4408)
+                 => session.dirty 에 들어가고 before_flush 가 EDIT 를 «답니다»
+                 ⚠️ 값이 안 바뀌면 사건도 없고 «화면 값도 안 바뀝니다» — 어긋나지 않습니다
+```
+⚠️ **하마터면 결함을 «지어낼» 뻔했습니다** — 층 표의 모델 선언만 보고 라우트가 «부르는 함수»를 안 열었으면 그랬습니다(상설 「축소판 재현은 동작이 아니다」).
+
+```
+🔵 결론  정의가 깨지는 자리는 «둘»뿐이고 둘 다 이미 목록에 있습니다:
+        ① 벌크 질의(new/dirty/deleted 에 안 들어감)  ② 표 직접 쓰기(세션 미경유)
+        => 둘 다 D1 «봉투 없는 쓰기»(Ⓔ17)입니다. 새 항목이 «아닙니다»
+🔵 그래서 Ⓔ17 의 «값»이 올라갑니다 — 봉투 없는 쓰기는 「되돌릴 수 없다」에 더해
+   **「읽기의 «정의»를 깬다」**입니다. 판정 168 의 read = fold(E) 가 그것 하나에 걸려 있습니다
+```
+> 「판정 대기」 «없음» · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n

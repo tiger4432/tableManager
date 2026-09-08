@@ -646,3 +646,35 @@ B6 대조        「③ — 순위표가 클라」  -> 🔵 «대부분 ①» (�
    · Ⓐ5 가 없으면 「노드 은퇴」가 «선언 한 줄»이 아니다
 ⚠️ 그리고 이 목록에 «없는» 것: 순서. 그것은 소유자 몫이고 총괄이 올릴 자리다
 ```
+
+## F-2. `read = fold(E)` 는 오늘 «참인가» — 판정 168 ㉣ 의 정의를 잰다
+
+> 판정 168 이 다섯째 생성자를 «정의»로 못 박았다: `read = fold(E)`, `D_read` = 표 카탈로그.
+> 정의가 «오늘 참»이 아니면 read 를 더하는 순간 둘이 갈라진다. 그래서 잰다.
+
+```
+사건이 서는 자리   `auto_stage_database_outbox`(database.py:128~) — session.new / dirty / deleted 중
+                 `DYNAMIC_TABLES` 의 인스턴스에만 CREATE · EDIT · DELETE 를 «단다»
+🔴 첫 의심        층 표(`cell_sources` · `cell_overwrites`)는 «정적 Base 모델»이다(models.py:449,:467) —
+                 DYNAMIC_TABLES 에 «없다». 그러면 우선순위를 바꾸는 라우트 «넷»이
+                 화면 값을 바꾸면서 사건을 «안 남기는» 것처럼 보인다
+```
+### 🔵 그런데 «틀렸다» — 층 쓰기가 «바탕 행에 값을 굽는다»
+```
+set_cell_manual_priority_batch  crud.py:4565 -> ... `setattr(row, col_name, new_val)`
+delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` 뒤 같은 `setattr`
+그 `row` 는 `models.DYNAMIC_TABLES.get(table_name)` 로 꺼낸 인스턴스다(:4571, :4408)
+=> session.dirty 에 들어가고 before_flush 가 EDIT 를 «단다»
+⚠️ 값이 «안 바뀌면» dirty 가 아니라 사건도 없다 — 그리고 그때는 화면 값도 «안 바뀐다». 어긋나지 않는다
+```
+🔵 **그러므로 우선순위·소스 삭제 넷은 정의를 «지킨다».** 층은 사건을 안 내지만 «효력 있는 값»이 바탕 행에 구워지고, 그 쓰기가 사건이다.
+⚠️ 하마터면 여기서 결함을 «지어낼» 뻔했다 — 층 표의 모델 선언만 보고 라우트가 부르는 함수를 «안 열었으면» 그랬다(상설 「축소판 재현은 동작이 아니다」).
+
+### 그래서 정의가 깨지는 자리는 «둘»뿐이고, 둘 다 이미 목록에 있다
+```
+① 벌크 질의        session.query(...).update()/.delete() 는 new/dirty/deleted 에 «안 들어간다» -> 사건 0
+② 표 직접 쓰기      세션을 안 지나는 스크립트 -> 사건 0
+=> 둘 다 D1 «봉투 없는 쓰기»(Ⓔ17)다. 새 항목이 «아니다»
+```
+🔵 **결론: `read = fold(E)` 는 Ⓔ17 을 닫으면 «참이 된다». 다섯째 생성자를 위해 «새로 지을 것이 없다».**
+   그리고 이것이 Ⓔ17 의 값을 올린다 — 봉투 없는 쓰기는 「되돌릴 수 없다」에 더해 **「읽기의 정의를 깬다」**이다.
