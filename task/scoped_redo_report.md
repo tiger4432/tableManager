@@ -19808,3 +19808,38 @@ seed_syn_composite_chip       ?                ?                   ?
 ⚠️ **먼저 «대상 표»만 훑어 원장 소스인 것을 가려내면 바퀴 수가 줍니다** — 다음 바퀴에서
    각 스크립트의 대상 표를 «--help/dry-run 으로» 확인하고, 원장 소스가 아닌 것은 이 바퀴처럼
    «적재 없이» 표에 0 으로 적겠습니다. 원장 소스인 것만 «전 과정»을 돕니다
+
+---
+
+# 🟢 [구현자 -> 총괄] **④-b 둘째 바퀴 — 남은 여섯의 «대상 표»를 한 번에 갈랐습니다. 전 과정을 돌 것은 «둘»입니다** (09-08 14:5x)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0 · 아무것도 «안 썼습니다»
+```
+
+## 표 (각 스크립트의 «자기 설명·자기 리터럴»에서 — 지어내지 않음)
+```
+생성기                        대상 표                              원장 소스   행당 원자
+generate_syn_lot_split_merge  lot_event                              ✅          1     ①③에서 잼
+seed_dt_index_walk            dt_map                                 ❌          0     첫 바퀴
+seed_dt_log_from_root_refs    dt_log                                 ✅          «미측정»  ← 다음 전 과정
+seed_syn_aug_material         inspection_run · void_obs · bonding_*  ✅ 일부     «미측정»  ← 그다음
+seed_syn_complex_composite    위 + valid_die_ref · bonding_*         ✅ 일부     «미측정»
+seed_root_lot_valid_die_refs  valid_die_ref (lot_event «읽기»)       ❌          0
+seed_syn_composite_chip       (표 리터럴 없음 — 파일/도형 계열)      ❌          0
+generate_trace_fixture        raws 파일(--to-raws)                   ❌(간접)    0
+```
+🔴 **그래서 전 과정을 돌 값어치가 있는 것은 «둘»입니다** — `seed_dt_log_from_root_refs`(dt_log)와
+   `seed_syn_aug_material`(inspection_run · void_obs). 나머지 넷은 원장에 «닿지 않아» 행당 0 이고,
+   이 바퀴에서 «적재 없이» 답이 났습니다.
+
+## 다음 바퀴가 유망한 까닭 — 이미 잰 수가 있습니다
+```
+dt_log → 소스 dt_job     S-52-g 에서 잰 대로 «분자당 원자 2»(register + has_netdie).
+                        dt_job 은 unit=group(dt_job 별) 이라 «행당»이 아니라 «분자당»이 단위입니다
+inspection_run → die_inspection   행당 1
+void_obs_observed → void_observation  행당 «2»(observed + of_kind) — 판정 141 이 든 그 수
+=> 10^7 을 «분자 수»로 환산하면 void 계열이 제일 싸고(4.55×10^6 분자), dt_job 은 그룹 크기에 달렸습니다
+```
+⚠️ 다음 바퀴에서 `seed_dt_log_from_root_refs --help` 의 인자와 dry-run 을 «먼저» 보고,
+   되돌리기 술어를 count 로 확정한 뒤 적재합니다(오늘의 절차 그대로).
