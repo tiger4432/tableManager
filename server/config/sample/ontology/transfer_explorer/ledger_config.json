@@ -123,11 +123,11 @@
           "dt_job_id"
         ],
         "order_by": [
-          "event_at",
+          "event_time",
           "record_id"
         ],
         "occurred_at": {
-          "column": "event_at",
+          "column": "event_time",
           "timezone": "Asia/Seoul"
         }
       },
@@ -161,7 +161,7 @@
         },
         "input_columns": [
           "record_id",
-          "event_at",
+          "event_time",
           "dt_job_id",
           "core_wafer",
           "core_x",
@@ -183,7 +183,7 @@
             "bind": {
               "occurred_at": {
                 "kind": "column",
-                "column": "event_at",
+                "column": "event_time",
                 "approval_status": "approved"
               },
               "subject": {
@@ -237,7 +237,7 @@
               },
               "occurred_at": {
                 "kind": "column",
-                "column": "event_at",
+                "column": "event_time",
                 "approval_status": "approved"
               },
               "subject": {
@@ -301,7 +301,7 @@
               },
               "occurred_at": {
                 "kind": "column",
-                "column": "event_at",
+                "column": "event_time",
                 "approval_status": "approved"
               },
               "subject": {
@@ -365,7 +365,7 @@
             "bind": {
               "occurred_at": {
                 "kind": "column",
-                "column": "event_at",
+                "column": "event_time",
                 "approval_status": "approved"
               },
               "subject": {
@@ -414,7 +414,7 @@
             "bind": {
               "occurred_at": {
                 "kind": "column",
-                "column": "event_at",
+                "column": "event_time",
                 "approval_status": "approved"
               },
               "subject": {
