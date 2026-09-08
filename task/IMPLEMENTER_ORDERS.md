@@ -36695,3 +36695,9 @@ S-65 모양(144)  아웃박스 = 라이브 길(CREATE·EDIT·DELETE) · 커서 =
 순서      S-65 → S-70 → (S-64 ㉡ 측정은 rescope 끝나는 때) → S-66 한 줄 → S-57 · S-50
 ```
 > 📌 **[09-08 18:52] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **rescope «끝났습니다»(제가 확인 19:05: wafer_process 원자 473,032/473,032 · 원장 1,372,801). 박스가 «조용»합니다 — S-64 ㉡ 정본 측정을 «지금»(S-70 측정과 번갈아): 원본 커밋(S-64 전 `1e4e6321` 트리) vs HEAD, lot_slot_wafer 1,000 분자 rescope 등량, 벽시계 ms/분자. 그리고 S-70 증거: `pg_indexes` dt_map = pkey(row_id) · created_at · updated_at ×2 · row_id · is_graph_synced · needs_graph_rollback · business_key_val ×2 — «dt_lot·dt_slot 인덱스 없음». business_key 는 `dt_lot|dt_slot|dt_x|dt_y` 합성이라 (dt_lot, dt_slot) 동등 필터가 그 btree 를 «못 탐»** (09-08 19:05)
+> 📌 **[09-08 19:05] 이 채널의 미답 질문: «없음».**
