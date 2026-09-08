@@ -38,6 +38,7 @@ import datetime
 import json
 import os
 import sys
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SERVER = os.path.abspath(os.path.join(_HERE, ".."))
@@ -80,6 +81,9 @@ class Plan:
     monotonic: bool
     maps: int
     atoms_per_row: int
+    business_key: str = None
+    column_types: tuple = ()
+    occurred_at_column: str = None
 
     @property
     def atoms(self) -> int:
@@ -245,6 +249,22 @@ def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS
             f"relation {relation!r} is a VIEW. Rows cannot be inserted into one -- name "
             f"the TABLE the view selects from, and let the view do what it does.")
 
+    # 🔴 `--months` MOVES ROWS, AND ONLY MOVES ATOMS WHEN THE SOURCE TIMES ITS FACTS BY A
+    # COLUMN. A source declaring `read.occurred_at.basis: ingested` stamps every atom with
+    # the INGESTION instant, so one run lands in one partition however many months the rows
+    # spread over -- and a gate asking for two partitions would read as failed code rather
+    # than as a declaration that cannot answer it. Measured 2026-09-09: `dt_job` is exactly
+    # that source, and its mappings' `bind.occurred_at.column` does not change it (the
+    # binding's column is ignored always, ruled 2026-08-23).
+    occurred = (source.get("read") or {}).get("occurred_at") or {}
+    if months > 1 and not occurred.get("column"):
+        raise GeneratorRefusal(
+            f"--months {months} cannot spread ATOMS for source {source_id!r}: its "
+            f"read.occurred_at declares basis {occurred.get('basis')!r} and names no "
+            f"column, so every atom carries the ingestion instant and one run lands in ONE "
+            f"partition. Use --months 1 here and get the second partition from a source "
+            f"that times its facts by a column, or declare an occurred_at column.")
+
     # 🔴 A KNOB THAT CANNOT BE HONOURED IS REFUSED BY NAME, NOT QUIETLY ROUNDED DOWN.
     # One map is MAP_SIDE^2 cells, so `--maps 10` needs 4,000 rows; asking for ten maps in
     # a thousand rows used to produce two and a half of them and say nothing, which is the
@@ -256,7 +276,13 @@ def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS
             f"lower --maps to {rows // (MAP_SIDE * MAP_SIDE)}.")
 
     mappings = ((source.get("bind") or {}).get("mappings") or {})
-    return Plan(source_id=source_id, relation=relation, target_table=relation,
+    declared_types = entry.get("columns") or {}
+    return Plan(business_key=entry.get("business_key"),
+                column_types=tuple((name, str(declared_types.get(name) or "string"))
+                                   for name in wanted),
+                occurred_at_column=((source.get("read") or {}).get("occurred_at")
+                                    or {}).get("column"),
+                source_id=source_id, relation=relation, target_table=relation,
                 columns=wanted, rows=rows, months=months_from(months),
                 monotonic=monotonic, maps=maps, atoms_per_row=len(mappings))
 
@@ -278,31 +304,174 @@ def build_row(plan: Plan, index: int) -> dict:
     # a wide stride when it is not -- a NAME axis behaves that way, and the difference is
     # the whole reason the knob exists.
     key = index if plan.monotonic else (index * 7919) % max(plan.rows, 1)
+    types = dict(plan.column_types)
     row = {}
     for column in plan.columns:
-        row[column] = _value_for(column, key, when, plan)
+        row[column] = _value_for(column, types.get(column, "string"), key, when, plan)
     return row
 
 
-def _value_for(column: str, key: int, when: datetime.datetime, plan: Plan):
-    """A value shaped by the column's NAME only where the name is structural.
+def _value_for(column: str, declared_type: str, key: int,
+               when: datetime.datetime, plan: Plan):
+    """A value of the type the CATALOG declares for this column.
 
-    🔴 NO DOMAIN WORDS. This does not know what a wafer is; it knows that a column the
-    declaration binds to `occurred_at` must hold an instant, and that a map needs an x and
-    a y inside `MAP_SIDE`. Everything else is a stable synthetic string, which is what a
-    load generator owes: shape, not meaning.
+    🔴 THE TYPE COMES FROM THE DECLARATION, NOT FROM THE COLUMN'S NAME. Measured
+    2026-09-09: `dt_log.dt_index` is declared `number`, and the first version of this
+    function sent it `"GEN-dt_index-00000000"` because the name told it nothing.
+    `crud.cast_value_by_type` either raises on that or silently repairs it, and both
+    outcomes are worse than asking the catalog.
+
+    🔴 AND THE INSTANT COLUMN IS NAMED BY THE SOURCE, not guessed from a `_time` suffix.
+    `dt_log.event_time` is declared `string` and still has to hold a parseable instant,
+    because `read.occurred_at.column` points at it -- a name-shaped rule gets that right by
+    luck and gets the next declaration wrong.
+
+    🔴 NO DOMAIN WORDS. This does not know what a wafer is. It knows the declared type, the
+    column the source times its facts by, and that a map needs an x and a y inside
+    `MAP_SIDE`. Everything else is a stable synthetic value: shape, not meaning.
     """
-    lowered = column.lower()
-    if lowered.endswith("_at") or lowered.endswith("_time") or lowered == "occurred_at":
+    if column == plan.occurred_at_column:
         return when
+
+    lowered = column.lower()
     if plan.maps and (lowered.endswith("_x") or lowered.endswith("_y")
                       or lowered in ("x", "y", "bx", "by", "cx", "cy")):
-        axis = key // MAP_SIDE if lowered.endswith("y") or lowered == "y" else key
-        return axis % MAP_SIDE
+        return (key // MAP_SIDE if lowered.endswith("y") or lowered == "y" else key) % MAP_SIDE
+
+    normalized = (declared_type or "string").strip().lower()
+    if normalized == "number":
+        return key
+    if normalized == "datetime":
+        return when
     if plan.maps and ("mat" in lowered or "material" in lowered or "wafer" in lowered):
         # Each map is a different material: the map index picks the name.
         return f"GEN-MAT-{(key // (MAP_SIDE * MAP_SIDE)) % max(plan.maps, 1):03d}"
     return f"GEN-{column}-{key:08d}"
+
+
+#: Ruling 170: rows go in through the PRODUCT DOOR, never straight into the table.
+#: A direct insert carries no envelope, and an envelope-less write breaks `read = fold(E)`
+#: (S-78) as well as leaving the load with no `write⁻¹`. The HTTP batch is also the shape
+#: production runs -- thousands of rows per transaction -- so the load exercises the path
+#: it is meant to measure instead of a private one.
+PRODUCT_DOOR = "/tables/{table}/data/updates"
+#: Ruling 170 caps a request at this. Not a tuning knob: it is the batch size the chain
+#: is specified to carry, so a larger one would measure something production never does.
+MAX_ROWS_PER_REQUEST = 1000
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+#: The generator's own layer name, so its rows are attributable and removable as a set.
+SOURCE_NAME = "row_generator"
+
+
+def _opener():
+    """A urllib opener with proxies disabled FOR THIS OPENER ONLY.
+
+    🔴 NOT `NO_PROXY`. Setting that environment variable disables the proxy registry
+    process-wide and has broken unrelated lookups here before; the surgical form is an
+    empty `ProxyHandler` on one opener. It matters at all because a corporate proxy will
+    happily accept `127.0.0.1` and answer for it, which reads as "the server is down".
+    """
+    import urllib.request
+
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _jsonable(value):
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    return value
+
+
+def request_body(plan: Plan, rows) -> dict:
+    """One product-door request.
+
+    🔴 `business_key_val` IS SUPPLIED PER ROW AND THAT IS NOT OPTIONAL. `dt_log` declares a
+    composite key over columns this source does not name, so a payload without an explicit
+    key leaves every row's identity blank -- and `crud._update_row_business_key` records
+    what happens then: blank-keyed rows in one batch collide WITH EACH OTHER, the
+    IntegrityError recovery cannot resolve rows that were never committed, and the batch is
+    REFUSED after the retries. The generated business key is the source's own key column,
+    so the two spellings agree by construction rather than by luck.
+
+    🔴 NO `effort`. `EffortReport` says in as many words that an automatic path must not
+    send it: absent means "not measured", and a zero would dilute the human-effort average
+    that is this product's first core value. A load generator is exactly that path.
+    """
+    key_column = _key_column(plan)
+    items = []
+    for row in rows:
+        payload = {name: _jsonable(value) for name, value in row.items()}
+        items.append({
+            "business_key_val": payload[key_column],
+            "updates": payload,
+            "source_name": SOURCE_NAME,
+            "updated_by": SOURCE_NAME,
+        })
+    # `silent` stays false: the broadcast is part of the path being measured.
+    return {"updates": items, "silent": False}
+
+
+def _key_column(plan: Plan) -> str:
+    """The column whose value is this row's identity, taken from the CATALOG.
+
+    Kept separate so the choice is one named thing rather than an index into `columns`.
+    """
+    if plan.business_key and plan.business_key in plan.columns:
+        return plan.business_key
+    raise GeneratorRefusal(
+        f"relation {plan.relation!r} declares business key {plan.business_key!r}, and the "
+        f"source does not name it, so this script cannot give a row an identity. Rows "
+        f"without one collide with each other and the batch is refused.")
+
+
+def write_rows(plan: Plan, *, base_url: str = DEFAULT_BASE_URL, timeout: float = 60.0,
+               log=print) -> dict:
+    """Push the plan's rows through the product door, in requests of at most 1,000.
+
+    Returns the numbers the gate asks for. Timing is per REQUEST because ruling 170's gate
+    is stated per request ("<= 1 s"), and an average over a whole run would hide the one
+    slow request that is the actual finding.
+    """
+    import urllib.error
+    import urllib.request
+
+    opener = _opener()
+    url = base_url.rstrip("/") + PRODUCT_DOOR.format(table=plan.target_table)
+    sent, batches, seconds = 0, [], []
+    buffer = []
+
+    def _flush():
+        if not buffer:
+            return
+        body = json.dumps(request_body(plan, buffer)).encode("utf-8")
+        request = urllib.request.Request(
+            url, data=body, method="PUT",
+            headers={"Content-Type": "application/json"})
+        started = time.monotonic()
+        with opener.open(request, timeout=timeout) as response:
+            answer = json.loads(response.read().decode("utf-8") or "{}")
+        elapsed = time.monotonic() - started
+        seconds.append(elapsed)
+        batches.append(len(buffer))
+        log(f"  request {len(batches):>4}  rows {len(buffer):>5}  {elapsed:6.2f}s"
+            + (f"  effort_error={answer.get('effort_error')}"
+               if answer.get("effort_error") else ""))
+        buffer.clear()
+
+    for row in rows_for(plan):
+        buffer.append(row)
+        sent += 1
+        if len(buffer) >= MAX_ROWS_PER_REQUEST:
+            _flush()
+    _flush()
+
+    return {
+        "rows_sent": sent,
+        "requests": len(batches),
+        "seconds_total": round(sum(seconds), 2),
+        "seconds_max": round(max(seconds), 2) if seconds else 0.0,
+        "atoms_expected": plan.atoms,
+    }
 
 
 def main(argv=None) -> int:
@@ -326,6 +495,10 @@ def main(argv=None) -> int:
                              "(default: the server's own)")
     parser.add_argument("--catalog", default=None,
                         help="table_config.json to read instead of this deployment's")
+    parser.add_argument("--apply", action="store_true",
+                        help="actually write, through the product door")
+    parser.add_argument("--url", default=DEFAULT_BASE_URL,
+                        help=f"server base url (default {DEFAULT_BASE_URL})")
     parser.add_argument("--dry-run", action="store_true",
                         help="say the rows, the table and the months, and write NOTHING")
     parser.add_argument("--json", action="store_true", help="print the plan as JSON")
@@ -348,14 +521,21 @@ def main(argv=None) -> int:
         print("\ndry run -- nothing was written")
         return 0
 
-    # 🔴 THE WRITE IS NOT IMPLEMENTED IN THIS COMMIT, AND SAYING SO BEATS A HALF ONE.
-    # The gate for this script is a 1,000-row run against a real table, and the first
-    # declared source refuses at `plan_for` today (its catalog entry lacks the columns the
-    # source reads). Writing rows before that refusal is resolved would mean choosing the
-    # column spellings myself, which is the one thing a load generator must not do.
-    print("\nREFUSED: the write path is not wired yet -- run with --dry-run.")
-    return 3
+    if not args.apply:
+        print("\nnothing written -- pass --apply to write through the product door")
+        return 0
 
+    print(f"\nwriting through {args.url}{PRODUCT_DOOR.format(table=plan.target_table)}")
+    try:
+        result = write_rows(plan, base_url=args.url)
+    except GeneratorRefusal as refusal:
+        print(f"REFUSED: {refusal}")
+        return 2
+    except Exception as failure:                        # noqa: BLE001 - reported, not hidden
+        print(f"FAILED after starting: {type(failure).__name__}: {failure}")
+        return 4
+    print("\n" + json.dumps(result, indent=2))
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
