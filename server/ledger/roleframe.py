@@ -8,6 +8,7 @@ single owner of LedgerFrame payload construction.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -1039,10 +1040,16 @@ def validate_role_frame(
             "invalid_role_frame_schema", f"{path}.columns",
             f"columns must exactly match RoleFrame v{ROLE_FRAME_SCHEMA_VERSION}")
     sort_rows: list[tuple[str, dict[str, Any]]] = []
-    for position in range(len(value)):
-        row = value.iloc[position]
+    # 🔴 READ THE COLUMNS ONCE. The loop below used `value.iloc[position]` for the row and
+    # `value.iloc[0]` AGAIN inside the same iteration just to reach the first row's event
+    # id -- two pandas Series per row, each of them copying the frame's attrs. Every
+    # RoleFrame column is `dtype=object`, so `.tolist()` returns the same objects.
+    rows = [dict(zip(ROLE_FRAME_COLUMNS, row))
+            for row in value.to_numpy(dtype=object)]
+    first_event_id = rows[0]["source_event_id"] if rows else None
+    for position, row in enumerate(rows):
         row_path = f"{path}.rows[{position}]"
-        if row["source_event_id"] != value.iloc[0]["source_event_id"]:
+        if row["source_event_id"] != first_event_id:
             raise RoleFrameError(
                 "cross_event_mapper_output", f"{row_path}.source_event_id",
                 "one RoleFrame may not cross source-event boundaries")
@@ -1256,13 +1263,20 @@ class _EmissionPlan:
     allowed_qualifiers: frozenset
 
 
-_EMISSION_PLANS: dict[tuple[str, str], _EmissionPlan] = {}
+#: 🔴 BOUNDED, BECAUSE THE PROCESS THAT USES IT NEVER RESTARTS. The key carries the setup
+#: snapshot hash, so a plain dict would gain an entry per predicate per DECLARATION REVISION
+#: and the chain worker's follow-up loop runs for the life of the process. The cap is the
+#: server-side reading of "no module-level state": the map may not outlive its usefulness.
+#: Evicting the oldest entry is safe at any moment -- a miss costs one re-resolution.
+_EMISSION_PLAN_CAPACITY = 512
+_EMISSION_PLANS: "OrderedDict[tuple[str, str], _EmissionPlan]" = OrderedDict()
 
 
 def _emission_plan(context: MapperContext, predicate_id: Any, path: str) -> _EmissionPlan:
     key = (context.snapshot.snapshot_sha256, predicate_id)
     plan = _EMISSION_PLANS.get(key) if isinstance(predicate_id, str) else None
     if plan is not None:
+        _EMISSION_PLANS.move_to_end(key)
         return plan
     claim = _claim(context.snapshot, predicate_id, path)
     emission = claim.emission
@@ -1285,6 +1299,8 @@ def _emission_plan(context: MapperContext, predicate_id: Any, path: str) -> _Emi
         allowed_qualifiers=required | frozenset(predicate.optional_qualifiers),
     )
     _EMISSION_PLANS[key] = plan
+    while len(_EMISSION_PLANS) > _EMISSION_PLAN_CAPACITY:
+        _EMISSION_PLANS.popitem(last=False)
     return plan
 
 
@@ -1293,10 +1309,13 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
     normalized = validate_role_frame(context, role_frame)
     # 🔴 THE ROWS ARE READ ONCE, NOT PER POSITION. `normalized.iloc[position]` builds a
     # pandas Series for every row and pandas copies the frame's `attrs` through
-    # `__finalize__` on the way, which is where 468 deep copies per molecule came from
-    # (S-64). Every column here is `dtype=object` and holds the Python object the mapper
-    # put there, so `to_dict("records")` hands back those same objects.
-    records = normalized.to_dict("records")
+    # `__finalize__` on the way (S-64). Every column here is `dtype=object` and holds the
+    # object the mapper put there, so a column's `.tolist()` hands those same objects back.
+    # ⚠️ `to_dict("records")` was the first attempt and it is NOT this -- it builds a row
+    # object per row too, and measured slightly WORSE than the iloc it replaced.
+    names = tuple(normalized.columns)
+    records = [dict(zip(names, row))
+               for row in normalized.to_numpy(dtype=object)]
     molecule_ref = normalized.attrs["molecule_ref"]
     source_raw_ref = str(normalized.attrs["source_raw_ref"])
     source_id = context.source_plan.source_id
