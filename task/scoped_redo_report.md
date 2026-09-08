@@ -20678,3 +20678,58 @@ ledger_rows_from_atoms   «정본»으로 신설 · ledger_frame_from_atoms 는 
 ㉡ 조용한 박스   rescope 종료 뒤 «원본(S-64 이전) vs 지금» 벽시계. 그것이 정본 수입니다
 ㉣ 컴파일 1 회 변이 · ㉤ deepcopy 0(현재 290,000)   — 그 뒤
 ```
+
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-65 착수 — 자리를 «전부 실측»했습니다. 첫 조각(「따라잡음」 표시)은 «관측만» 하는 조각이라 먼저 갑니다** (09-08 18:50)
+
+```
+시각   18:50   ·   rescope 203/235 · 406,000/470,000 · busy 110.5 분 (종료 ≈19:2x)
+```
+
+## 실측한 자리 (짓기 «전»에 연 것들 — 지어내지 않았습니다)
+```
+커서 표 DDL      schema.py  CREATE TABLE {CURSOR_TABLE}
+                 이미 있는 칸: source_head · head_probed_at · molecules_done · atoms_written …
+                 «없는» 칸: 「따라잡음」 -> 새 칸 하나 필요
+칸 추가 방법      schema.py `CURSOR_ADDITIONS` — 「이 표에 칸을 더하는 자리」가 «이미» 있습니다
+                 (지금은 refusal_reasons 하나. 같은 무늬로 하나 더)
+「얼마나 남았나」  backfill.py:1132 `rows_past_cursor(engine, setup, source, limit)`
+                 -> `(rows, complete)`. complete=True 는 「페이지가 «짧게» 왔다 = 이 수가 정확」
+                 🔵 즉 «따라잡음»의 판별식이 이미 있습니다: `complete and rows == 0`
+전진 루프의 끝    backfill.py:488 `for complete, next_after, _last_page in pages:`
+                 break 가 둘(max_batches · checkpoint) — 그래서 「루프가 끝났다」로 판정하면 «대리»입니다
+                 ✅ 성질로 재야 합니다: 런 끝에 `rows_past_cursor` 를 «한 번» 물어 0 이면 표시
+뒤따르기          ledger/followup.py:43  `FOLLOWED_EVENT_TYPES = ("EDIT", "DELETE")`
+                 :36 주석이 「CREATE 는 커서 길이 한 번 읽으니 여기 없다」라고 «판정 129 ㉣»을 적어 두고 있습니다
+                 -> 이 주석이 판정 144 로 «갱신»되어야 하는 바로 그 줄입니다
+```
+
+## 조각 순서 (각각 «초록으로» 착지)
+```
+① 「따라잡음」이 «값»으로 보인다        커서 표에 칸 하나 + 런 끝에서 `rows_past_cursor` 로 «성질»을 재서 표시
+                                    ⚠️ 원자를 «안 씁니다» · 번역을 «안 바꿉니다» -> 되돌리기 쉬움. 그래서 먼저
+② CREATE 가 뒤따르기로 (따라잡은 소스만)  FOLLOWED_EVENT_TYPES 에 CREATE · enqueue 가 「따라잡음」을 보고 가름
+                                    안 따라잡은 소스의 CREATE 는 «건너뜀 이름 대어»(게이트 ㉡)
+③ 체인 워커가 CREATE 를 넣는다           chain_ingestion_worker 의 enqueue 좌석(이미 EDIT/DELETE 를 넣는 그 자리)
+④ 129 ㉣ 주석 갱신 · 두 줄 문서
+```
+🔴 **①에서 「대리로 재지 않기」를 미리 못 박습니다** — 「루프가 break 없이 끝났다」는 «제어 흐름»이지 «성질»이
+   아닙니다(max_batches 로 끊고 끝나도 루프는 끝납니다). 물어야 하는 것은 「지금 커서 뒤에 행이 0인가」입니다.
+
+## ㉤ 재현 둘은 «이미 이 박스에 있습니다» (착지 뒤 새 행 하나씩으로 잽니다)
+```
+lot_event      SYN-R 3,008 행 · event_time 2026-01 < 커서 2026-08-12  -> 오늘 원자 0
+wafer_process  470,000 행 · row_id 커서가 리터럴 'zzdoe-wp-brk-1' 에 박힘 -> 전진 0 행
+⛔ 기존 470k 재번역 «안 합니다»(rescope 가 이미 넣는 중) — 착지 뒤 «새 행 하나씩» 넣어 들어오는지만 봅니다
+```
+
+## ⚠️ 지금 상태를 정직하게
+```
+①의 코드는 «아직 안 썼습니다». 이 보고는 「자리를 다 열었고 순서를 정했다」까지입니다
+남은 게이트    ㉡ 조용한 박스(rescope 끝나는 그때) · ㉣ 컴파일 1 회 변이 — 하니스는 «준비돼 있습니다»(스모크 완료:
+              normal _claim 41 / mutant 80, 20 분자)
+그 스모크에서 하나 더  normal 41 중 «40» 은 `validate_role_frame` 이 «행마다» claim 을 다시 푸는 것입니다.
+              검증기도 `_emission_plan` 을 쓰면 ㉣ 의 수가 깨끗해집니다 — 작은 다음 후보로 적어만 둡니다
+```
