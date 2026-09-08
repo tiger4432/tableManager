@@ -221,6 +221,7 @@ def execute_scoped_batch(
     store: Any,
     *,
     known_registrations: Any = None,
+    withdraw_refs: Any = None,
 ) -> CursorBatchExecutionResult:
     """Redo ONE NAMED PART of a source. Same gate, same translation, CURSOR UNTOUCHED.
 
@@ -240,9 +241,13 @@ def execute_scoped_batch(
     carries names a value the caller declared. A full-source batch cannot get through,
     whatever it says about itself.
 
-    What this does NOT do is withdraw the old atoms. `backfill.rescope` does that first, by
-    `source_raw_ref`, and in that order; called on its own this ADDS a generation rather
-    than replacing one.
+    🔴 THE WITHDRAWAL RIDES IN THE SAME TRANSACTION AS THE WRITE, when there is one.
+    `withdraw_refs` names the `source_raw_ref`s whose atoms this batch REPLACES, and the
+    store deletes them inside the one commit that writes the new ones. `backfill.rescope`
+    used to do that delete in a transaction of its own and commit it first, so a remake that
+    failed left the withdrawal standing and the rows' atoms were gone -- measured, twice, on
+    2026-09-08. Passed as `None` this still ADDS a generation rather than replacing one,
+    which is what a caller with nothing to withdraw wants.
     """
     _require_scope(base_rows, scope)
     plan = _source_plan(snapshot, source_id)
@@ -271,15 +276,18 @@ def execute_scoped_batch(
             incomplete=preview.incomplete_count,
             reasons=_refusal_reasons(preview.refusals),
             advance_cursor=False,
+            withdraw_refs=withdraw_refs,
         )
     except TypeError as exc:
-        # A store that cannot separate the two statements would advance the cursor instead.
-        # Refused by name, in the same shape as the version-guard refusal beside it, rather
-        # than left to land as an ordinary TypeError.
-        if "advance_cursor" in str(exc):
+        # A store that cannot separate the two statements would advance the cursor instead,
+        # and one that cannot take the withdrawal would leave it to a second transaction --
+        # the shape that lost atoms. Both are refused by name, in the same shape as the
+        # version-guard refusal beside them, rather than left to land as a bare TypeError.
+        if "advance_cursor" in str(exc) or "withdraw_refs" in str(exc):
             raise LedgerV2RuntimeError(
                 "unsupported_store_contract", "store.write_batch",
-                "LedgerStore must be able to append atoms without moving the cursor",
+                "LedgerStore must be able to append atoms without moving the cursor, and "
+                "to withdraw the generation they replace in the same transaction",
             ) from exc
         raise
     _record_refusals(source_id, preview)
