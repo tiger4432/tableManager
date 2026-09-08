@@ -18404,3 +18404,75 @@ process_chain_transaction_group 은 valid_events 가 비면 «즉시 반환»합
 이월  S-52-c · S-48 · S-49 ② · S-43-b · S-41 ② ③ · 픽스처 raw_table_1 · S-51 · S-32 남은 처분
 미커밋 0 · 감시 🟢🟢
 ```
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-52-g `3607b396` — 결함이 «하나»가 아니라 «넷»이었습니다. 층마다 하나씩, 앞의 것이 뒤의 것을 가리고 있었습니다** (09-08 10:57)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢
+```
+
+## 진단 — 총괄 진단이 맞았고, 그 «뒤에» 셋이 더 있었습니다
+지시대로 «출하 샘플 + 출하 카탈로그»로 `dry_run_event_frame`(추적의 그 함수)을 태워 하나씩 벗겼습니다:
+```
+① say()      `values[name]` — 맵퍼가 «안 넘긴» 수식어에서 KeyError   <- 총괄이 잡으신 그것
+② 채우는 자리 «없음» — 값을 넣을 코드가 어디에도 없었습니다
+③ 컴파일러   _compile_vocabulary 가 서명을 «선언의 두 배열»에서 읽음
+             -> claim 이 연 칸을 «같은 스냅샷의 다른 반쪽»이 unknown_payload_field 로 거절
+④ 원자       object_kind == "none" -> object_payload = None, 그다음 payload["qualifiers"] = …
+             -> 컴파일러 «안»에서 맨 TypeError
+```
+🔴 **①을 고치니 ③이 나오고, ③을 고치니 ④가 나왔습니다.** 하나만 고쳤으면 「고쳤는데 여전히 죽습니다」였습니다.
+
+## 고친 것 — 자리는 «맵()», 이유가 그 자리를 정합니다
+```
+채우는 자리   BaseLedgerMapper.map — interpret_unit «뒤», 프레임 «앞». @final 이고
+             «코드 맵퍼와 선언형 맵퍼가 둘 다 지나는» 유일한 자리이며 unit 이 손에 있습니다
+             say() 에 넣으면 코드 맵퍼만, DeclarativeRoleMapper 에 넣으면 반대쪽만 닿습니다
+어느 것이     주어 역할의 «바인딩»에서 읽습니다 — _with_source_attributes 가 bind.entities 를
+속성인가      이미 그 자리에 접어 뒀으므로 이름의 «세 번째 철자»가 안 생깁니다
+두 주인 ⛔    맵퍼가 그 이름을 넘기면 attribute_has_two_owners 로 거절(합치지 «않음»)
+NULL         수식어 «없음». 그 밖의 판단은 전부 _evaluate_binding 것 그대로 —
+             그룹의 행이 어긋나면 ambiguous_binding_value 가 «컬럼과 경로를» 댑니다
+서명         _compile_vocabulary 가 predicate_claim 을 지납니다. 그 docstring 이 「컴파일러·검증기·
+             작성 계획이 «하나의» 도출을 읽는다」고 이미 적어 뒀고, 이 함수만 안 듣고 있었습니다
+             순서를 «항 단위로» 보존 -> 속성 없는 어휘는 종전과 같은 두 튜플
+```
+
+## 게이트 — 지시대로 «단위 시험 ⛔», 실제 번역 경로로
+```
+㉠ 출하 샘플 dt_job -> register 원자 object_payload == {"qualifiers": {"dt_eqp": "EQP-7"}}
+   fingerprint == '{"dt_eqp":"EQP-7"}'                          (코드 맵퍼 · 선언형 맵퍼 «둘 다»)
+㉢ dt_eqp NULL -> payload None · fingerprint ''
+㉡ 선언 두 칸을 빼면 원자가 «NULL 일 때와 같은 바이트» + 속성 없는 어휘의 두 튜플이 «항 순서까지» 동일
+㉣ 그룹 안 두 값 -> ambiguous_binding_value, 경로가 …bind.subject.attributes.dt_eqp.column
+   두 주인 -> attribute_has_two_owners, 메시지가 이름과 엔티티를 댐
+변이 7/7 잡힘(①②③④ 되돌리기 넷 + NULL 특례 제거 + 두 주인 허용 + 서명 순서 흐트리기)
+음성 대조군 1/1 통과 · 이웃(심볼로) 306 passed
+   ⚠️ ontology_config_explorer 둘은 그대로 빨강 — 총괄이 이미 «S-32 모집단»으로 판정하신 그 둘
+수집 5188 (직전 5181 + 7)
+```
+
+## 🔴 재서 나온 «변경 비용» 사실 — 판정 필요
+```
+dtjob@1 에 속성 «하나»를 선언하면 lot_event 의 커서 지문«도» 움직입니다.
+   까닭: register@1 의 subjects 가 [lot@1, wafer@1, dtjob@1] «셋»이라 그 claim 이
+        두 소스의 지문에 «같이» 들어갑니다
+틀린 것은 아닙니다 — 선언이 실제로 달라졌습니다(predicate_claim 이 그 판단을 적어 뒀습니다).
+다만 «운영 비용»이 이렇습니다: 속성 한 칸 = 그 술어를 공유하는 «모든 소스»의 커서 재스탬프.
+소유자 상설(「소급을 싸게 만드는 것이 기술」)에 걸리는 자리라, 저장 «전»에 「무엇이 다시 도나」를
+말해 주는 자리가 필요해 보입니다. 지금은 아무도 안 말합니다
+```
+
+## 걷기 쪽은 «이미» 배선돼 있습니다
+```
+ledger_subgraph.py:1006 이 등록 원자의 payload["qualifiers"] 를 그대로 읽습니다 —
+제 원자가 내는 모양이 «그 모양»입니다. 총괄이 같은 명령을 다시 돌리시면 노드에 떠야 합니다
+```
+
+## 다음
+```
+🔒 S-52-g 닫음 요청 -> 재기동(총괄) -> S-54-b(판정 132) -> S-55 -> S-57
+미커밋 0 · 감시 🟢🟢
+```

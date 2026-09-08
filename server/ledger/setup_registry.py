@@ -623,7 +623,8 @@ def compile_setup_snapshot(
         raise issues[0]
     bundle = validate_bundle(bundle.to_mapping(), catalog=catalog)
 
-    vocabulary = _compile_vocabulary(bundle.section("vocabulary"))
+    vocabulary = _compile_vocabulary(bundle.section("vocabulary"),
+                                     bundle.section("entities"))
     entities = _compile_entities(bundle.section("entities"))
     preparers = _compile_preparers(bundle.section("sources"))
     mappers = _compile_mappers(bundle.section("sources"))
@@ -825,11 +826,32 @@ def cursor_translator_version(
     return f"ledger-v2:{source_cursor_fingerprint(snapshot, source_id)}"
 
 
-def _compile_vocabulary(section: Mapping[str, Any]) -> VocabularyRegistry:
+def _compile_vocabulary(section: Mapping[str, Any],
+                        entities: Mapping[str, Any] = None) -> VocabularyRegistry:
+    """The signature `validate_role_frame` scores an atom's qualifiers against.
+
+    🔴 THE QUALIFIER LISTS COME FROM `predicate_claim`, NOT FROM THE DECLARATION'S OWN
+    TWO ARRAYS, AND THAT IS THE WHOLE OF S-52-g's SECOND HALF. Since S-52 an object-less
+    predicate ALSO carries one optional qualifier per attribute its subject types declare,
+    and `predicate_claim` is where that derivation lives -- its docstring says in as many
+    words that the compiler, the validator and the authoring plan read one derivation
+    rather than three agreeing ones. Reading `object.qualifiers` here made this the one
+    reader that had not been told: the claim opened the slot, the frame filled it, and then
+    the signature refused it as `unknown_payload_field` on the SHIPPED sample's own
+    declaration.
+
+    ⚠️ THE ORDER IS UNCHANGED FOR A PREDICATE WITH NO ATTRIBUTES. `predicate_claim`
+    builds its Role map required-first and then optional in declaration order, so a
+    vocabulary that declares no attribute compiles to the same two tuples it did before and
+    every source's fingerprint holds.
+    """
     builder = _RegistryBuilder(VocabularyRegistry)
     for predicate_id, item in section.items():
         _, version = _versioned_parts(predicate_id)
         obj = item["object"]
+        roles = predicate_claim(predicate_id, item, entities)["roles"]
+        qualifiers = [(name, role) for name, role in roles.items()
+                      if role.get("kind") == "attribute"]
         builder.add(predicate_id, PredicateDescriptor(
             predicate_id=predicate_id,
             version=version,
@@ -837,8 +859,10 @@ def _compile_vocabulary(section: Mapping[str, Any]) -> VocabularyRegistry:
             subject_entity_types=tuple(item["subjects"]),
             object_kind=obj["kind"],
             object_entity_types=tuple(obj.get("types", ())),
-            required_qualifiers=tuple(obj["qualifiers"]["required"]),
-            optional_qualifiers=tuple(obj["qualifiers"]["optional"]),
+            required_qualifiers=tuple(name for name, role in qualifiers
+                                      if role.get("required")),
+            optional_qualifiers=tuple(name for name, role in qualifiers
+                                      if not role.get("required")),
             config_path=f"bundle.vocabulary.{predicate_id}",
         ))
     return builder.seal()
