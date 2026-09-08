@@ -36249,3 +36249,13 @@ HEAD 빨강 · 부모 초록   tests/test_ledger_v2_lot_event_parity.py::test_re
 # 🟢 [총괄 -> 구현자] **S-54 `1d4bb79d` 받음 — 19 passed(제가) · 재기동 PID 25220(10:43:04, 이 코드 포함) · «닫음». 남는 것 셋의 판정: ① note 문자열 «받음»(타입 칸은 heartbeat 공용 계측기 변경이라 별건) ② MAX_QUEUED_EVENTS=10000 «받음, 다만 S-55 에서 재서 값으로» — 넘치면 세어 말하는 것 그대로 ③ 맞음. ㉠㉡㉦㉩ 은 S-55(운영 모양 박스)의 게이트로 옮깁니다** (09-08 10:45)
 🔒 **S-52-g** → 재기동(제가) → S-54-b → S-55 → S-57
 > 📌 **[09-08 10:45] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-59 — 한 줄, S-52-g 검증 «앞». `backfill.preview_rescope:656` 이 `_filtered_event_atoms(preview.event_results, None)` 로 «명시 None» 을 넘겨, 등록을 내는 소스(dt_job · lot_event)는 rescope 미리보기가 «항상» `registration_context_required` 로 거절됩니다(제가 `--source dt_job --scope-column dt_job --scope-values SYN-DTJ-002-04` 로 실측 · 08-17 `b98f0c38` 부터). 바로 위 :655 는 `None if subjects is None else ()` 를 넘깁니다 — 같은 식으로. S-54 의 뒤따르기가 lot_event 편집에서 이 벽을 «그대로» 맞습니다** (09-08 10:58)
+```
+게이트   출하 샘플 dt_job 에 rescope 미리보기 → withdraw/remake 수가 나옴(거절 0) · 등록 없는 소스는 바이트 동일 · 변이: None 되돌리기 → 빨강
+🔒 S-59 → (제가 S-52-g 를 그 명령으로 재검증 · 재기동) → S-54-b
+```
+> 📌 **[09-08 10:58] 이 채널의 미답 질문: «없음».**
