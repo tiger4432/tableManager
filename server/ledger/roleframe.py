@@ -263,7 +263,9 @@ class BaseLedgerMapper:
                         f"mapper.units[{unit_index}].emissions[{emission_index}]",
                         "raw Atom, LedgerFrame, mappings, and arbitrary values are forbidden",
                     )
-                emissions.append(emission)
+                emissions.append(_with_attribute_values(
+                    context, profile, emission, unit,
+                    f"mapper.units[{unit_index}].emissions[{emission_index}]"))
         frame = _role_frame_from_emissions(event_frame.attrs, emissions, profile)
         return validate_role_frame(context, frame, descriptor, profile)
 
@@ -483,7 +485,19 @@ class ProfileSentences:
             roles[emission.object_role.role_id] = self._object_value(
                 mapping, emission, obj)
         for name, reference in emission.qualifiers.items():
-            roles[reference.role_id] = values[name]
+            # 🔴 A QUALIFIER THE MAPPER DID NOT PASS IS NOT NECESSARILY MISSING. Since
+            # S-52 a subject's declared ATTRIBUTES are qualifiers of its registration, and
+            # no mapper knows their names -- they are the operator's, bound once on the
+            # source, and they are filled from that binding after `interpret_unit` returns
+            # (`_with_attribute_values`). Until then this line read `values[name]` and a
+            # shipped declaration that gave an entity one attribute died on a bare
+            # `KeyError` from inside the engine.
+            #
+            # A qualifier that is neither passed nor bound stays ABSENT, and
+            # `validate_role_frame` refuses it as `missing_required_role` one step later,
+            # naming the role -- which is the refusal an author can act on.
+            if name in values:
+                roles[reference.role_id] = values[name]
         return RoleEmission(
             sentence=shape.sentence,
             roles=roles,
@@ -872,6 +886,93 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         f"binding kind {kind!r} is not supported by Stage 4")
 
 
+#: An attribute the rows say nothing about. Distinct from `None`, which would be a value.
+_NO_ATTRIBUTE_VALUE = object()
+
+
+def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str) -> Any:
+    """One attribute's value for this unit, or `_NO_ATTRIBUTE_VALUE` when the rows are empty.
+
+    🔴 A NULL IS "NOTHING TO SAY", AND THAT IS THE ONE PLACE AN ATTRIBUTE DIFFERS FROM A
+    ROLE. A role the sentence requires and the row does not carry is a broken declaration;
+    an attribute is a value the entity MAY have, so an empty cell has to leave the qualifier
+    absent -- and an absent qualifier is byte-identical to what a declaration with no
+    attributes at all writes today, which is what keeps `registration_fingerprint` stable
+    for every source that declares none.
+
+    ⚠️ EVERYTHING ELSE IS `_evaluate_binding`'S, DELIBERATELY. A group whose rows disagree
+    is `ambiguous_binding_value` naming the column -- silently taking the first row would
+    make the atom depend on the page order -- and a column the frame does not carry is
+    `missing_binding_column`. Re-deciding either here would be a second reading of one
+    binding.
+    """
+    if binding.get("kind") == "column":
+        column = binding.get("column")
+        if column in unit.columns and all(
+                _is_missing(unit.iloc[index][column]) for index in range(len(unit))):
+            return _NO_ATTRIBUTE_VALUE
+    return _evaluate_binding(binding, unit, path=path)
+
+
+def _with_attribute_values(
+    context: MapperContext,
+    profile: ProfileDescriptor,
+    emission: RoleEmission,
+    unit: pd.DataFrame,
+    path: str,
+) -> RoleEmission:
+    """Fill an emission's ATTRIBUTE qualifiers from the source's own bindings.
+
+    🔴 ONE PATH, WHATEVER THE IMPLEMENTATION IS. An attribute is named on the entity and
+    bound once on the source, and the mapper is never told about it: a code mapper writes a
+    business reading that has no word for it, and `DeclarativeRoleMapper` executes
+    `bind.<role>` and never looks inside a binding. So the value is filled HERE -- after
+    `interpret_unit` and before the frame -- because `map()` is `@final` and is the single
+    place both kinds pass with the unit still in hand. Filling it in `say()` would reach
+    code mappers only, and filling it in `DeclarativeRoleMapper` would reach the other one.
+
+    ⛔ TWO OWNERS IS REFUSED RATHER THAN MERGED. A mapper that passes a name the source
+    binds is not being helpful: two declarations would then decide one value, and the day
+    they disagree the atom quietly follows whichever ran last.
+
+    Which qualifiers are attributes is read from the SUBJECT's binding rather than from a
+    list of names: `setup_bundle.predicate_claim` opens one optional qualifier per attribute
+    the subject types declare, and `setup_registry._with_source_attributes` has already
+    folded `bind.entities.<type>.attributes` onto that role. So the two sides meet on the
+    entity, and no third spelling of the name exists.
+    """
+    mapping = profile.mappings.get(emission.sentence)
+    claim = None if mapping is None else context.snapshot.claims.get(mapping.predicate_id)
+    if claim is None:
+        return emission
+    subject_role = claim.emission.subject.role_id
+    binding = mapping.bindings.get(subject_role)
+    attributes = binding.get("attributes") if isinstance(binding, Mapping) else None
+    if not isinstance(attributes, Mapping) or not attributes:
+        return emission
+    roles = dict(emission.roles)
+    for name, reference in claim.emission.qualifiers.items():
+        if name not in attributes:
+            continue
+        if reference.role_id in roles:
+            raise RoleFrameError(
+                "attribute_has_two_owners", f"{path}.roles.{reference.role_id}",
+                f"the mapper passed {name!r}, which the source already binds as an "
+                f"attribute of {binding.get('entity_type')!r} -- one value, one declaration")
+        value = _attribute_value(
+            attributes[name], unit,
+            path=f"{mapping.config_path}.bind.{subject_role}.attributes.{name}")
+        if value is not _NO_ATTRIBUTE_VALUE:
+            roles[reference.role_id] = value
+    if roles == emission.roles:
+        return emission
+    return RoleEmission(
+        sentence=emission.sentence,
+        roles=roles,
+        source_row_refs=emission.source_row_refs,
+    )
+
+
 def _role_frame_from_emissions(
     event_attrs: Mapping[str, Any],
     emissions: Sequence[RoleEmission],
@@ -1192,7 +1293,18 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
                 f"predicate does not allow qualifier {unknown!r}")
         if emission.object_kind == "none":
             object_kind = None
-            object_payload = None
+            # 🔴 A SENTENCE WITH NO OBJECT STILL HAS SOMEWHERE TO PUT ITS QUALIFIERS
+            # (S-52). `register@1` says nothing about an object and everything about its
+            # SUBJECT, and the attributes it carries are exactly that -- which is why
+            # `envelope.registration_fingerprint` reads `object_payload["qualifiers"]` and
+            # why this line used to make it unreachable: assigning into `None` raised a
+            # bare `TypeError` from inside the compiler the moment a declaration gave an
+            # entity one attribute.
+            #
+            # It stays `None` when there are none, so an atom written before this axis
+            # existed and one written after with nothing declared are the same bytes --
+            # the empty fingerprint that keeps the two indistinguishable.
+            object_payload = {} if qualifiers else None
         elif emission.object_kind == "entity_ref":
             object_kind = "entity_ref"
             object_payload = {
