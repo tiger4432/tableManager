@@ -863,12 +863,20 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     new generation. Nothing outside that transaction can see between the two statements, so
     the "two generations at once" objection has no observer.
 
-    ⚠️ WHAT A SCOPE CANNOT AIM AT. The refs come from the CURRENT translation of the rows in
-    scope, so if the correction makes those rows produce no atoms at all, there is nothing to
-    aim the withdrawal with and the old atoms stay. `remake == 0` with `rows_in_scope > 0` is
-    that case, visible in the return, and it is a declaration question rather than something
-    this can widen its way out of - widening it means deleting by something other than the
-    scope, which is the unscoped act the tool exists to avoid.
+    ⚠️ WHAT A SCOPE CANNOT AIM AT, AS OF S-54-b. A DELETION is no longer this problem: the
+    ledger writes down which physical row each fact came from, so `withdraw_deleted_rows`
+    aims by that INDEX and needs nothing from a translation that can no longer be made. What
+    is left is narrower and has a name -- a source with no row index yet
+    (`sources_without_row_index`, reported as `no_row_index`), whose facts were written
+    before the index existed and have to be backfilled into it first.
+
+    For a correction that is not a deletion the old sentence still holds: the refs come from
+    the CURRENT translation of the rows in scope, so if the correction makes those rows
+    produce no atoms at all there is nothing to aim the withdrawal with and the old atoms
+    stay. `remake == 0` with `rows_in_scope > 0` is that case, visible in the return, and it
+    is a declaration question rather than something this can widen its way out of - widening
+    it means deleting by something other than the scope, which is the unscoped act the tool
+    exists to avoid.
 
     Registrations are offered on the same basis the dry-run counted them on (`()` - nothing
     assumed already registered), so `remake` and `attempted` are the same question asked
@@ -1561,7 +1569,7 @@ def main(argv=None):
         "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
         help="the Ledger config root (the only operator path)")
     parser.add_argument("--pace", default=None,
-                        help="fast (default, unchanged) | slow | trickle — yield between "
+                        help="fast (default, unchanged) | slow | trickle - yield between "
                              "pages so the database stays free for everything else. "
                              "Declared in ledger/pacing.json")
     parser.add_argument("--scope-column", default=None,
