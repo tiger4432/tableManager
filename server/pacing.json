@@ -3,6 +3,10 @@
   "_why_this_is_a_file_and_not_constants": "The brief's S1 (2026-08-31): the chain's own pacing numbers (OUTBOX_PURGE_CHUNK, OUTBOX_PURGE_MAX_CHUNKS, SWEEP_INTERVAL) are hardcoded in chain_ingestion_worker.py, and the order was to copy the SHAPE without copying that. An operator who needs a backfill to stop crowding the database at 2am cannot edit a constant and restart the server - that is the very restart this round exists to remove.",
   "_default_is_todays_behaviour": "S3: `fast` must be exactly what the backfill did before this existed - no cap, no rest - because changing the default is a different decision and it belongs to the owner. Slowing down is something an operator CHOOSES per run.",
   "_the_shape_is_the_chain_s": "units_per_cycle is the chain's max_chunks; rest_seconds is what it gets instead of the chain's sweep interval, because a backfill runs to completion inside one call rather than waking on a timer. Both are per RUN, chosen by whoever starts it.",
+  "_a_job_that_nobody_starts_by_hand_names_its_pace_here": "A backfill takes its pace from whoever pressed the button. A job that runs by itself has nobody to ask, so the answer is declared - one cell, no restart. The ledger follow-up starts on the SLOWEST declared pace on purpose: it is work nobody is waiting for, and the chain that feeds it is.",
+  "jobs": {
+    "chain_followup": "trickle"
+  },
   "paces": {
     "fast": {
       "label": "빠르게 — 지금까지와 같습니다",

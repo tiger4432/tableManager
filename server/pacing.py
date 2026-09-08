@@ -42,6 +42,23 @@ def load_paces(path=None):
     return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
 
 
+def load_jobs(path=None):
+    """Which pace each self-starting job runs at. `{}` when the file declares none."""
+    return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get("jobs", {})
+
+
+def job_pace(job, path=None):
+    """-> (units_per_cycle, rest_seconds) for a job that has nobody to ask.
+
+    🔴 A JOB NOBODY STARTS HAS NO OPERATOR TO CHOOSE FOR IT. Every caller so far took
+    `pace` from whoever pressed the button; a task that wakes on its own cannot, so the
+    answer is a declared cell instead of a constant in its module -- which is this file's
+    whole reason for existing. An undeclared job resolves to `DEFAULT_PACE`, and that stays
+    the one decision this module will not make on somebody's behalf.
+    """
+    return resolve(load_jobs(path).get(job), load_paces(path))
+
+
 def resolve(name, paces=None):
     """-> (units_per_cycle, rest_seconds). `units_per_cycle` None means "never yield"."""
     paces = paces or load_paces()
