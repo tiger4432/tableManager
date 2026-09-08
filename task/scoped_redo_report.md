@@ -20574,3 +20574,57 @@ atoms_from_ledger_rows(정본) + atoms_from_ledger_frame(어댑터) · validate_
 그 뒤 남는 DataFrame  분자당 «0» -> 게이트 ㉤(deepcopy 0)·㉣(컴파일 1 회 변이)을 그때 같이
 ```
 ⚠️ 게이트 ㉡ 「조용한 박스」는 rescope 종료(≈19:0x) 뒤에 «원본 커밋 vs 최종»으로 한 번에 재겠습니다.
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **(a) 후반 착지 `225ef45a` — 분자 경로에 DataFrame «없습니다». 45.53 → «19.36» = «2.35 배»(경합 중)** (09-08 18:26)
+
+```
+시각   18:26 (date +%H:%M)   ·   rescope 계속 도는 중 — 이 수도 «경합 중»입니다
+```
+
+## 무엇을 했나 — (a) 전반과 «같은 무늬»
+```
+정본      LedgerRows(레코드 + 스키마 표지)  ·  compile_role_rows  ·  atoms_from_ledger_rows
+어댑터    compile_role_frame · validate_ledger_frame · atoms_from_ledger_frame
+          «이름·시그니처·동작 그대로». 시험 파일 «수정 0»
+결과 객체  LedgerV2DryRunResult.ledger_rows 를 담고 ledger_frame 은 property
+운영 소비  runtime_v2 두 자리(142 claim refs · 497 atoms)가 레코드를 읽습니다
+```
+🔴 **행 계약이 «주인 하나»가 됐습니다** — `_validate_ledger_records` 를 프레임 검증기와 레코드 검증기가
+   «둘 다» 부릅니다. 사본을 뒀으면 그것이 「두 경로가 갈라진다」의 다음 사례였을 것입니다. 원자 조립도 같은 함수(`_atom_of`).
+⛔ 거절 코드·주소·문구 «한 글자도» 안 바꿨습니다.
+
+## 게이트
+```
+바이트 동일   다섯 소스 ✅ (바뀐 파일 «셋을 같이» 갈아 끼워 A/B)
+시험         71 passed + 이웃 28 passed · 시험 파일 «수정 0»
+원자         프로파일 실행 delta «+0» · withdrawn 1000 = inserted 1000
+```
+
+## 수 (cProfile · 같은 소스·크기 · 전부 «경합 중»)
+```
+원본             45.53 s
+조각 1~3         42.96
+(b) 검증 한 번    42.49
+(a) 전반          31.03
+(a) 후반         «19.36 s»       <- 원본 대비 «2.35 배 빠름» (−57.5%)
+isinstance    11.5 M -> «4.44 M»   ·  deepcopy 937,000 -> «290,000»
+fast_xs       54,002 -> «24,002»   ·  psycopg2 1.23 s  <- «이제 이것이 프로파일의 1위»입니다
+```
+
+## 🔴 남은 자리 (다음 후보 · 아직 «안 손댔습니다»)
+```
+fast_xs 24,002 (분자당 12)   source_preparation._event_frames  ·  _partition_units 의
+                            `frame.iloc[[position]].copy(deep=False)`(단위마다 «새 프레임»)
+prepare_source_batch        (a) 전 측정에서 19% — 다시 재야 합니다
+목표 10 배                   현재 «2.35 배». 못 닿았다고 적습니다
+```
+
+## 다음 — 게이트 ㉡ · ㉤ · ㉣
+```
+㉡  rescope 종료(≈19:2x) 뒤 «조용한 박스»에서 «원본 커밋(S-64 이전) vs 지금»을 벽시계로. 그것이 정본 수입니다
+㉤  deepcopy 0 은 «아직 아닙니다»(290,000) — 남은 자리 둘이 그것을 들고 있습니다
+㉣  「컴파일 1 회」 변이는 (a) 가 끝났으니 이제 «한 자리»에서 걸 수 있습니다
+```
