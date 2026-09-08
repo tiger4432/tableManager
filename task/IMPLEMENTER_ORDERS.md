@@ -37046,3 +37046,5 @@ CLI   `run()` 이 여전히 「census by predicate: None」「None」 두 줄을
 운영 뜻  체인 «수천 행/txn»이 규격이라, 접기 없이는 라이브 길이 D5(마진)를 «구조적으로» 못 지킴
 ```
 > 📌 **[09-09 06:33] 이 채널의 미답 질문: «없음».** (S-81 → 지금 · 조각 3 잔여 · S-82)
+
+> 🔴 **[09-09 06:35 판정 174 — 순서 뒤집음: S-82 «먼저», S-81 «다음»]** 응용 실측(`6a8f9b80`): 접힘은 «이미 있고»(`stage_collapsed_event` · `OUTBOX_MODE_COLLAPSED`, event_constants:376) 인제션(directory_watcher:2750)·체인(chain_ingestion_worker:1006)은 «켜는데» 제품 문 `PUT /tables/{t}/data/updates`(apply_batch_updates)는 «안 켭니다» → 요청 «안»에서 아웃박스 1,000 행을 쓰며 41.28 s, 큐 깊이 1,003, drain 은 사건당 페이스. **S-82 = 그 문에 접힘 모드를 «같은 상수·같은 함수»로 켜기(한 자리) + 게이트: 1,000 행 요청 ≤ 1 s · 아웃박스 CREATE «1 건»(row_ids 1,000) · drain 한 번에 dt_job 2,000 원자.** 그 뒤 S-81(그때는 큐가 «비어» 게이트를 바로 잴 수 있음). 지금 큐에 남은 dt_log 사건은 재기동으로 «버립니다»(dt_job 원자는 소급으로) — 제가 S-82 착지 때 합니다
