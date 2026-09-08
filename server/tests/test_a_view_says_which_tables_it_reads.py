@@ -28,8 +28,8 @@ from ledger import followup                                          # noqa: E40
 
 
 class _Cursor:
-    def __init__(self, edges, asked):
-        self._edges, self._asked = edges, asked
+    def __init__(self, edges, asked, columns):
+        self._edges, self._asked, self._columns = edges, asked, columns
         self._rows = []
 
     def __enter__(self):
@@ -39,20 +39,30 @@ class _Cursor:
         return False
 
     def execute(self, query, params=None):
+        # Two questions reach this fake, and they are told apart by WHAT IS ASKED rather
+        # than by the shape of the SQL: "what does this relation read" takes one argument,
+        # "does this table have this column" takes two.
+        if params is not None and len(params) == 2:
+            table, column = params
+            self._rows = [(1,)] if column in self._columns.get(table, ()) else []
+            return
         name = params[0]
         self._asked.append(name)
         self._rows = list(self._edges.get(name, ()))
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
 
     def fetchall(self):
         return self._rows
 
 
 class _Connection:
-    def __init__(self, edges, asked):
-        self._edges, self._asked = edges, asked
+    def __init__(self, edges, asked, columns):
+        self._edges, self._asked, self._columns = edges, asked, columns
 
     def cursor(self):
-        return _Cursor(self._edges, self._asked)
+        return _Cursor(self._edges, self._asked, self._columns)
 
     def rollback(self):
         pass
@@ -64,12 +74,13 @@ class _Connection:
 class _Engine:
     """A stand-in catalogue: {relation: [(name, relkind), ...]}."""
 
-    def __init__(self, edges):
+    def __init__(self, edges, columns=None):
         self.edges = edges
+        self.columns = columns or {}
         self.asked = []
 
     def raw_connection(self):
-        return _Connection(self.edges, self.asked)
+        return _Connection(self.edges, self.asked, self.columns)
 
 
 def test_a_table_answers_with_itself():
@@ -129,3 +140,64 @@ def test_each_relation_is_asked_about_once():
     })
     assert followup.base_tables_of(engine, "top") == ("t",)
     assert engine.asked.count("shared") == 1, engine.asked
+
+
+# ------------------------------------------------- which view sources a base table wakes
+
+class _Plan:
+    def __init__(self, relation, page_key):
+        self.relation = relation
+        self.driver = type("D", (), {"cursor_columns": (page_key,),
+                                     "identity": (page_key,)})()
+
+
+def _setup(plans):
+    return type("S", (), {"snapshot": type(
+        "Snap", (), {"source_plans": plans})()})()
+
+
+def test_a_base_tables_event_wakes_the_sources_that_read_views_on_it():
+    """🔴 THE MISSING HALF OF THE LIVE PATH. The outbox names base tables, never views, so
+    without this the view-backed sources are unreachable -- S-65 covered six of fifteen."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r")]},
+        columns={"void_obs": ("void_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid")})
+    followers, cannot = followup.view_followers_of(engine, setup, "void_obs")
+    assert followers == [("void_observation", "void_uid")]
+    assert cannot == []
+
+
+def test_a_base_table_without_the_page_key_is_named_and_not_silently_dropped():
+    """⛔ THE SILENT ZERO IS THE DEFECT. `inspection_run` is a base of `void_obs_observed`
+    and carries no `void_uid`, so there is nothing to aim a scope with -- and "nothing to
+    aim with" must not render the same as "nothing to do"."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r"), ("inspection_run", "r")]},
+        columns={"void_obs": ("void_uid",), "inspection_run": ("run_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid")})
+    followers, cannot = followup.view_followers_of(engine, setup, "inspection_run")
+    assert followers == []
+    assert cannot == [{"view": "void_obs_observed", "source": "void_observation",
+                       "base": "inspection_run", "missing_column": "void_uid"}]
+
+
+def test_a_table_source_is_not_woken_twice():
+    """It is already woken by `sources_for_table`; adding it here would translate the same
+    molecule twice."""
+    engine = _Engine(edges={}, columns={"dt_log": ("dt_job",)})
+    setup = _setup({"dt_job": _Plan("dt_log", "dt_job")})
+    followers, cannot = followup.view_followers_of(engine, setup, "dt_log")
+    assert followers == [] and cannot == []
+
+
+def test_the_derivation_is_built_once_per_snapshot():
+    """판정 156. Asking twice must not ask the catalogue twice."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r")]},
+        columns={"void_obs": ("void_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid")})
+    followup.view_followers_of(engine, setup, "void_obs")
+    asked_once = list(engine.asked)
+    followup.view_followers_of(engine, setup, "void_obs")
+    assert engine.asked == asked_once, engine.asked

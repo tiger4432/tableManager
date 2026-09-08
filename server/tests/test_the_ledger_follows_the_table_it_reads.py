@@ -95,6 +95,24 @@ def empty_queue():
     followup.reset()
 
 
+@pytest.fixture(autouse=True)
+def no_views(monkeypatch):
+    """🔴 VIEWS ARE NOT THIS FILE'S SUBJECT, AND THE SEAM IS ONE NAME (판정 158).
+
+    Since S-65-c the drain also asks which view-backed sources a base table's event wakes,
+    and it asks in exactly one place. Blocking that name is how a test about the queue stays
+    a test about the queue -- the alternative, teaching the fake cursor to recognise
+    catalogue SQL by its shape, would sniff the FORM of a query instead of the question, and
+    would answer wrongly on the day that query is written differently.
+
+    ⚠️ IT ALSO KEEPS `engine.queries == []` HONEST rather than widened: with no views to
+    ask about, no catalogue question goes out, so "this table costs no query" is still
+    exactly true instead of true-except-for-one.
+    """
+    monkeypatch.setattr(followup, "view_followers_of",
+                        lambda engine, setup, table: ([], []))
+
+
 def one_source_on(table, cursor_columns=("dt_job",), identity=("dt_job",)):
     return FakeSetup({"dt_job": FakePlan(table, cursor_columns, identity)})
 

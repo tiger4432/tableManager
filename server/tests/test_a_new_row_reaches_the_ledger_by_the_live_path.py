@@ -62,13 +62,17 @@ def test_the_drain_asks_whether_the_source_is_caught_up_and_names_the_skipped():
         "source_plans": {"dt_job": _Plan()}})()})()
 
     followup.reset()
-    saved = followup.caught_up_sources
+    saved_caught = followup.caught_up_sources
+    saved_views = followup.view_followers_of
     followup.caught_up_sources = lambda engine, sources: set()
+    # The same one seam every non-view test blocks (판정 158).
+    followup.view_followers_of = lambda engine, setup, table: ([], [])
     try:
         followup.enqueue("dt_log", ["r1"], "CREATE")
         done = followup.drain_once(object(), setup)
     finally:
-        followup.caught_up_sources = saved
+        followup.caught_up_sources = saved_caught
+        followup.view_followers_of = saved_views
         followup.reset()
 
     assert done["event_type"] == "CREATE"

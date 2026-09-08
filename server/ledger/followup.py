@@ -28,6 +28,7 @@ import logging
 import threading
 import time
 from collections import deque
+import weakref
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,78 @@ def base_tables_of(engine, relation, limit=VIEW_DEPENDENCY_DEPTH_LIMIT):
             else:
                 frontier.append((str(child), depth + 1))
     return tuple(tables)
+
+
+#: Derived once per setup snapshot: which view-backed sources a BASE TABLE's event wakes.
+#:
+#: 🔴 WEAK-KEYED ON THE SNAPSHOT (판정 156), so it dies with the snapshot it describes. A
+#: module-level dict keyed by a hash would grow one entry per declaration revision in a
+#: worker that never restarts, and `object.__setattr__` onto the frozen snapshot would make
+#: "immutable" mean two things. The snapshot is weak-referenceable, so this is the version of
+#: "hang it on the snapshot" that goes around nothing.
+_VIEW_INDEX = weakref.WeakKeyDictionary()
+
+
+def _has_column(engine, table, column):
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM information_schema.columns "
+                " WHERE table_name = %s AND column_name = %s", (table, column))
+            return cursor.fetchone() is not None
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def view_followers_of(engine, setup, table):
+    """`(followers, cannot_follow)` for one base table's event.
+
+    🔴 THE HALF OF THE LIVE PATH THAT WAS MISSING. The outbox names base tables and never a
+    view, so the nine view-backed sources never reached the follow-up at all -- S-65 covered
+    six of fifteen. A base table's event now also wakes every source reading a view built on
+    it, scoped by the value of that view's page key read from the base row.
+
+    🔴 AND IT IS THE ONE SEAM (판정 158). Every question the drain asks about views goes
+    through this name, so a test whose subject is not views blocks it here rather than
+    teaching a fake to recognise catalogue SQL -- which would be sniffing the shape of a
+    query instead of the question being asked.
+
+    ⚠️ THE ONES IT CANNOT WAKE SAY SO. When the base table carries no column of that name --
+    measured here for `core_wafer_map` and `inspection_run` -- there is nothing to aim a
+    scope with, so the pair is reported as `cannot_follow`. A silent zero is indistinguishable
+    from "there was nothing to do".
+    """
+    snapshot = setup.snapshot
+    built = _VIEW_INDEX.get(snapshot)
+    if built is None:
+        follows, cannot = {}, {}
+        for source, plan in snapshot.source_plans.items():
+            relation = plan.relation
+            key = scope_column(plan)
+            try:
+                bases = base_tables_of(engine, relation)
+            except ViewDependencyTooDeep as exc:
+                cannot.setdefault(relation, []).append(
+                    {"view": relation, "source": source, "reason": exc.code,
+                     "limit": exc.limit, "chain": list(exc.chain)})
+                continue
+            for base in bases:
+                if base == relation:
+                    # A source reading a real table: `sources_for_table` already wakes it,
+                    # and adding it here would translate the same molecule twice.
+                    continue
+                if _has_column(engine, base, key):
+                    follows.setdefault(base, []).append((source, key))
+                else:
+                    cannot.setdefault(base, []).append(
+                        {"view": relation, "source": source, "base": base,
+                         "missing_column": key})
+        built = (follows, cannot)
+        _VIEW_INDEX[snapshot] = built
+    follows, cannot = built
+    return list(follows.get(table, ())), list(cannot.get(table, ()))
 
 
 def caught_up_sources(engine, sources):
@@ -291,10 +364,21 @@ def _scope_values(connection, plan, column, row_ids):
     always one of `base_select_columns` (`cursor_columns` is a term of that set), which is
     the same allow-list `backfill._scope_predicate` checks a hand-typed scope against.
     """
+    return _scope_values_from(connection, plan.relation, column, row_ids)
+
+
+def _scope_values_from(connection, relation_name, column, row_ids):
+    """The same read, aimed at a named relation.
+
+    ⚠️ ONE IMPLEMENTATION, TWO AIMS. A view source's scope is read from the BASE TABLE the
+    event named (S-65-c), not from the view -- the event carries base-table row ids. Copying
+    this query to do that would be the second spelling this file's own docstrings keep
+    warning about, so the aim is a parameter instead.
+    """
     from psycopg2 import sql
 
     relation = sql.SQL(".").join(
-        sql.Identifier(part) for part in plan.relation.split("."))
+        sql.Identifier(part) for part in str(relation_name).split("."))
     query = sql.SQL("SELECT DISTINCT {} FROM {} WHERE row_id = ANY(%s)").format(
         sql.Identifier(column), relation)
     with connection.cursor() as cursor:
@@ -347,6 +431,12 @@ def drain_once(engine, setup):
                            table, len(row_ids), exc)
         return done
     table_sources = list(sources_for_table(setup, table))
+    # 🔴 A VIEW'S SOURCE IS WOKEN BY ITS BASE TABLE'S EVENT (S-65-c). The outbox never names
+    # a view, so without this the nine view-backed sources are unreachable by the live path.
+    # Each pair is (source, that view's page key), and the value is read from the BASE row.
+    view_followers, cannot_follow = view_followers_of(engine, setup, table)
+    if cannot_follow:
+        done["cannot_follow"] = cannot_follow
     if event_type == "CREATE":
         # 🔴 ONLY A SOURCE THAT HAS BEEN SEEN CAUGHT UP (S-65 · ruling 144). For one still
         # catching up, its own forward run will read these rows, and following them here as
@@ -355,20 +445,26 @@ def drain_once(engine, setup):
         # ⚠️ THE SKIPPED ONES ARE NAMED. "Nothing happened" and "this source is still
         # catching up so the cursor will get there" render identically otherwise, and the
         # difference is the whole reason this branch exists.
-        caught = caught_up_sources(engine, table_sources)
-        skipped = [source for source in table_sources if source not in caught]
+        wanted = table_sources + [source for source, _key in view_followers]
+        caught = caught_up_sources(engine, wanted)
+        skipped = [source for source in wanted if source not in caught]
         if skipped:
             done["skipped_not_caught_up"] = skipped
         table_sources = [source for source in table_sources if source in caught]
-        if not table_sources:
-            return done
-    for source in table_sources:
-        plan = setup.snapshot.source_plans[source]
-        column = scope_column(plan)
+        view_followers = [(source, key) for source, key in view_followers
+                          if source in caught]
+    # 🔴 ONE LOOP, TWO KINDS, ONE AIM. A table source's page key and a view source's page key
+    # are both read from THIS table -- the table source from its own relation, the view source
+    # from the base row the event named. Two loops would be two spellings of one read.
+    targets = [(source, scope_column(setup.snapshot.source_plans[source]))
+               for source in table_sources] + view_followers
+    if not targets:
+        return done
+    for source, column in targets:
         try:
             connection = engine.raw_connection()
             try:
-                values = _scope_values(connection, plan, column, row_ids)
+                values = _scope_values_from(connection, table, column, row_ids)
             finally:
                 connection.rollback()
                 connection.close()
