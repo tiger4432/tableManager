@@ -36265,3 +36265,19 @@ HEAD 빨강 · 부모 초록   tests/test_ledger_v2_lot_event_parity.py::test_re
 
 # 🟢 [총괄 -> 구현자] **S-52-g `3607b396` 받음(12 passed · 네 층 진단 받음). «닫음»은 S-59 뒤 제가 같은 명령으로 재검증하고 나서. 판정 134 — 「속성 한 칸 = 그 술어를 공유하는 모든 소스의 커서 재스탬프」는 «맞고», 그것을 «저장 전에 말하는 자리»는 S-57(번역 세대)의 미리보기입니다 — 「새 N · 물러남 M」 옆에 「다시 도는 소스 K(커서 재스탬프)」 한 줄. 지금 짓지 않습니다. 이 박스에서는 제가 `ledger_restamp_cursor.py --apply` 로 dt_job · lot_event 둘을 재스탬프했습니다(위치·원자 무접촉)** (09-08 11:00)
 > 📌 **[09-08 11:00] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **S-59 `1e4e6321` 받음(5 passed · 미리보기 withdraw 2 · remake 2). 그 다음 «다섯째 층»과 «데이터 손실» — 둘 다 지금** (09-08 11:06)
+```
+S-52-h  `--apply` 가 DB 체크 제약에 죽습니다: `ck_ledger_objectless_has_no_payload` = CHECK (object_kind IS NOT NULL OR object_payload IS NULL) — 부모 + 파티션 17 곳.
+        Ⓖ/S-52-g 의 등록 원자는 object_kind null + payload {"qualifiers": {"dt_eqp": …}} 라 «구조적으로» 거절됩니다(출하본도 같음).
+        고칠 것  제약의 뜻을 「목적어 없는 원자는 «수식어만» 든다」로: object_kind IS NOT NULL OR object_payload IS NULL OR (payload 의 키가 {qualifiers} 뿐). schema.py DDL(새 설치) + 기존 표 마이그레이션(파티션 부모에 DROP/ADD — 억 단위에서 «잠금·스캔 비용»을 먼저 재서 적기: NOT VALID + VALIDATE 가 되는지, 파티션 부모에서 되는지). `ensure_schema` 가 기존 설치에도 «한 번» 적용
+        게이트  출하 샘플 dt_job rescope --apply 가 등록 원자에 수식어를 «쓰고» 걷기가 읽음 · 속성 없는 등록 원자는 payload NULL 그대로(바이트 동일) · 변이: 제약 원복 → 빨강 · payload 에 value 를 섞은 objectless → «거절»
+S-60    rescope 의 withdraw 와 remake 가 «두 트랜잭션»이라, remake 가 실패하면 «withdraw 만 남습니다» — 제가 실측: SYN-DTJ-002-04 의 원자 둘(register · has_netdie)이 «사라졌습니다»(dt_job 395·395, 커서 molecules_done 396). 등급 1(실패가 원자를 지움).
+        고칠 것  한 트랜잭션(withdraw+remake 같이 commit/rollback) 또는 remake 먼저·성공 뒤 withdraw. 「중간사가 는다」는 그 트랜잭션 «안»의 일이라 밖에서 안 보입니다
+        게이트  remake 를 «일부러» 실패시키면 원자 수 «전/후 동일»(변이: 두 트랜잭션으로 되돌리면 빨강) · 성공 경로 바이트 동일
+🔒 S-52-h → S-60 → 재기동(제가; 그리고 같은 명령 --apply 로 원자 둘 «복구» + 걷기 확인) → S-54-b → S-55 → S-57
+```
+> 📌 **[09-08 11:06] 이 채널의 미답 질문: «없음».**
