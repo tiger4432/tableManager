@@ -21645,3 +21645,57 @@ void_obs(기반 표) 새 행 하나 -> CREATE -> drain
 ```
 🔵 즉 «기반 표의 사건»이 «뷰 소스»를 깨워 원장에 넣었습니다 — S-65-c 가 열려던 바로 그 길입니다.
    총괄께서 21:51 에 재신 「원자 0」의 원인이 위 회귀였고, 그것이 사라지자 «자기 힘으로» 들어옵니다.
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **오늘 밤 과제 «완료» — S-65-d `d89acd8d` · S-62·S-68 `70f38e5d`. 이제 총괄의 재기동·삭제 재현 차례입니다** (09-08 22:08)
+
+```
+시각   22:08   ·   이웃 12 파일 «224 passed · 10 skipped» · 미커밋 0
+소유자 지시   「야간에 그것까지만」 — 이 셋 말고 «아무것도» 안 했습니다
+```
+
+## S-65-d — 삭제가 뷰를 따릅니다, 못 따르면 «이름을 댑니다»
+```
+왜 필요했나   withdraw_deleted_rows 는 «관계»로 묻고, 뷰 소스의 원자는 «뷰» 이름을 답니다
+             -> 기반 행을 지워도 뷰 소스의 사실이 «그대로 서 있었습니다»
+지금          기반 표 사건 -> 그 표 위의 뷰 소스마다 «그 뷰 관계»로 한 번 더 물림
+한계와 그 이름  색인은 (relation, row_id) 라, 뷰가 row_id 를 «안 나르면» 색인 행이 없어 겨눌 게 없습니다
+             -> cannot_follow{view, source, base, reason: "no_row_id"}
+```
+🔵 **라이브 실측 — 뷰 소스 아홉 중 「row_id 를 나르는」 것은 «다섯»입니다**
+```
+✅ 나름(5)   dt_transfer · mechanism_edge_to_finding_causes · mechanism_edge_to_quantity_causes ·
+            process_param_num_measure · process_param_txt_measure
+❌ 안 나름(4) bonded_from · bw_dt_seat · lot_slot_move · void_observation
+            -> 이 넷은 삭제가 «구조적으로» 못 따릅니다. 그래서 이름을 댑니다
+```
+🔴 **그리고 cannot_follow 가 «로그로도» 나갑니다** — 지금까지 로그는 «실패»만 실었습니다.
+   그러면 「구조적으로 못 따르는 짝」은 운영에서 «아무 흔적도» 안 남습니다. 그게 이 축이 없애려는 조용한 0입니다.
+
+## S-62 · S-68 (같은 파일 한 줄씩, `70f38e5d`)
+```
+S-68   `python -m ledger.backfill --help` 이 cp949 콘솔에서 em-dash 로 죽던 것 -> 문자 하나 교체.
+       PYTHONIOENCODING «없이» 종료 «0» · 파일에 em-dash «0»
+       (오늘 제 주석에서 낱말 둘을 먹은 «같은 함정»입니다)
+S-62   rescope 의 「WHAT A SCOPE CANNOT AIM AT」이 «삭제»를 못 겨눈다고 적고 있었는데,
+       S-54-b 가 그걸 고쳤습니다 -> 남는 것은 «색인 없는 소스»(no_row_index) 하나로 좁혀 적었습니다
+⚠️ 둘을 «한 커밋»으로 냈습니다 — 한 파일의 두 조각이라 나누려면 대화식 스테이징이 필요하고
+   얻는 게 없습니다. 판정이 「커밋 셋」이었으므로 그 차이를 밝힙니다
+```
+
+## 게이트 (시험 셋 + 이웃)
+```
+row_id 나르는 뷰 -> 그 관계로 «두 번째» 물림(asked == ['void_obs','void_obs_observed'])
+안 나르는 뷰     -> cannot_follow{reason: 'no_row_id'} · 원자 안 건드림
+로그             -> "cannot be followed" 줄에 'no_row_id' 가 «실제로» 찍히는지(caplog)
+이웃 12 파일     224 passed · 삭제 시험 파일도 판정 158 대로 «이음매 하나»를 막습니다
+```
+
+## 총괄 몫 (재현)
+```
+① row_id 를 «나르는» 뷰 하나의 기반 행 삭제 -> 뷰 소스 원자가 «물리는지»
+   (후보: process_param 의 행 -> process_param_num_measure / txt_measure)
+② void_obs 행 삭제 -> cannot_follow 가 «로그에 보이는지»(server.log WARNING)
+```

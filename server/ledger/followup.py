@@ -226,6 +226,44 @@ def view_followers_of(engine, setup, table):
     return list(follows.get(table, ())), list(cannot.get(table, ()))
 
 
+def _view_sources_on(setup, followers, cannot):
+    """Every view-backed source built on this table, whatever the page key said.
+
+    ⚠️ THE PAGE-KEY QUESTION IS NOT THE DELETE QUESTION. `view_followers_of` splits the
+    sources by whether the BASE carries the view's page key, which is what a rescope needs;
+    a deletion aims by `row_id` instead, so it has to see both halves.
+    """
+    seen, out = set(), []
+    for source, _key in followers:
+        if source not in seen:
+            seen.add(source)
+            out.append((source, setup.snapshot.source_plans[source].relation))
+    for entry in cannot:
+        source = entry.get("source")
+        if source and source not in seen:
+            seen.add(source)
+            out.append((source, entry.get("view")))
+    return out
+
+
+def _note_cannot_follow(done, cannot, table):
+    """Put the unfollowable pairs in the result AND in the log.
+
+    🔴 THE RESULT ALONE IS NOT VISIBLE (S-65-d). Only failures were logged, so a pair the
+    follow-up structurally cannot reach left no trace an operator could find -- which is the
+    silent zero this whole axis exists to remove.
+    """
+    if not cannot:
+        return
+    done["cannot_follow"] = cannot
+    logger.warning(
+        "[LedgerFollowUp] %s: %d view source(s) cannot be followed: %s",
+        table, len(cannot),
+        "; ".join(f"{item.get('source')} <- {item.get('view')}"
+                  f" ({item.get('reason') or 'missing ' + str(item.get('missing_column'))})"
+                  for item in cannot))
+
+
 def caught_up_sources(engine, sources):
     """Which of these sources has been SEEN with nothing past its cursor (S-65).
 
@@ -422,6 +460,8 @@ def drain_once(engine, setup):
 
     done = {"table": table, "event_type": event_type, "rows": len(row_ids),
             "waited": time.time() - queued_at, "sources": {}}
+    # 🔴 ASKED BEFORE THE DELETE BRANCH, because a deletion has view followers too (S-65-d).
+    view_followers, cannot_follow = view_followers_of(engine, setup, table)
     if event_type == "DELETE":
         # 🔴 A DIFFERENT INSTRUMENT, NOT A DIFFERENT SCOPE. The rows are gone, so there is
         # nothing to re-translate and nothing to build a ref from; `withdraw_deleted_rows`
@@ -433,20 +473,39 @@ def drain_once(engine, setup):
                                                        apply=True)
             done["sources"] = withdrawn["sources"]
             done["forgotten"] = withdrawn["forgotten"]
+            # 🔴 THE VIEWS ON THIS TABLE ARE A SECOND WITHDRAWAL, NOT THE SAME ONE (S-65-d).
+            # `withdraw_deleted_rows` asks by RELATION, and a view source's atoms carry the
+            # VIEW's name, so the base table's withdrawal never touches them.
+            #
+            # ⚠️ AND IT ONLY WORKS WHERE THE VIEW CARRIES `row_id`. The index is
+            # `(relation, row_id)`, so a view that does not pass row_id through wrote no
+            # index rows and there is nothing to aim with -- measured on this box for
+            # `void_obs_observed`. That is named, not silently skipped.
+            for source, relation in _view_sources_on(setup, view_followers,
+                                                     cannot_follow):
+                if not setup.snapshot.source_plans[source].frame_row_id:
+                    cannot_follow.append(
+                        {"view": relation, "source": source, "base": table,
+                         "reason": "no_row_id"})
+                    continue
+                view_withdrawn = backfill.withdraw_deleted_rows(
+                    engine, setup, relation, list(row_ids), apply=True)
+                done["sources"].update(view_withdrawn["sources"])
+                done["forgotten"] = (done.get("forgotten") or 0) + (
+                    view_withdrawn.get("forgotten") or 0)
         except Exception as exc:
             with _lock:
                 _failed += 1
             done["error"] = f"{type(exc).__name__}: {exc}"
             logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
                            table, len(row_ids), exc)
+        _note_cannot_follow(done, cannot_follow, table)
         return done
     table_sources = list(sources_for_table(setup, table))
     # 🔴 A VIEW'S SOURCE IS WOKEN BY ITS BASE TABLE'S EVENT (S-65-c). The outbox never names
     # a view, so without this the nine view-backed sources are unreachable by the live path.
     # Each pair is (source, that view's page key), and the value is read from the BASE row.
-    view_followers, cannot_follow = view_followers_of(engine, setup, table)
-    if cannot_follow:
-        done["cannot_follow"] = cannot_follow
+    _note_cannot_follow(done, cannot_follow, table)
     if event_type == "CREATE":
         # 🔴 ONLY A SOURCE THAT HAS BEEN SEEN CAUGHT UP (S-65 · ruling 144). For one still
         # catching up, its own forward run will read these rows, and following them here as
