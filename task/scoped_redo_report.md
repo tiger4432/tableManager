@@ -19843,3 +19843,75 @@ void_obs_observed → void_observation  행당 «2»(observed + of_kind) — 판
 ```
 ⚠️ 다음 바퀴에서 `seed_dt_log_from_root_refs --help` 의 인자와 dry-run 을 «먼저» 보고,
    되돌리기 술어를 count 로 확정한 뒤 적재합니다(오늘의 절차 그대로).
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **④-b 셋째 바퀴 `seed_dt_log_from_root_refs` — «적재 못 합니다»(자기 가드가 거절) · 그리고 «적재할 값어치도 없습니다»(분자당 2 · 행당 0.023)** (09-08 16:3x)
+
+```
+감시   bdcsrg69j 🟢(16:20) · ba8i0vtpa 🟢(15:50) · 미커밋 0 · 이 바퀴는 아무것도 «안 썼습니다»
+```
+
+## ① --help — 규모 손잡이가 «없습니다»
+```
+usage: seed_dt_log_from_root_refs.py [-h] [--apply] [--show] [--i-accept-writing-to-owner-database]
+```
+크기 인자 «0». 규모를 정하는 것은 인자가 아니라 파일의 «리터럴»입니다:
+```
+EXPECTED_ROOTS = {NAB115, NAB122, NAB123, NAB163, NAB539}    뿌리 5      (:51)
+jobs           = 뿌리 x slot 1..10                           분자 50     (:347 · :367)
+MAX_SOURCE_ROWS = 10_000                                     lot_event 읽기 상한 (:50)
+```
+
+## ② dry-run — REFUSED. 그리고 «거절시킨 것이 S-55 ①» 입니다
+```
+REFUSED: root set changed; measured=[NAB115 .. NAB539, SYN-P-001..005, SYN-R-001..188] expected=[5 개]
+```
+`scripts/seed_dt_log_from_root_refs.py:136` — `if set(by_root) != EXPECTED_ROOTS`.
+`by_root` 는 lot_event 의 core wafer id 에서 뽑습니다. ① 에서 SYN-R 3,008 행을 넣었으므로 «측정 193 뿌리 vs 기대 5».
+🔴 결함이 «아닙니다» — 가드가 자기 일을 했습니다. 이 생성기는 「이 박스가 그때 그대로일 때」만 쓰라고 적혀 있습니다.
+🔴 그리고 이 리터럴을 «고치지 않았습니다»: 지시받지 않았고, 고쳐 봐야 ③ 때문에 값이 «없습니다».
+
+## ③ 적재 «없이» 답이 났습니다 — 그 표는 이미 원장에 들어와 있습니다
+라이브 실측(이 박스 · 읽기만):
+```
+dt_log 행                        34,939
+dt_log 서로 다른 dt_job             396      <- «분자»
+원자 source_who='dt_job'            792      = 396 x 2   (has_netdie 396 · register 396)
+분자당 원자                            2      ✅ S-52-g 에서 잰 값과 «같습니다»
+행당 원자                         0.0227      = 792 / 34,939
+dt_log 행 중 dt_job LIKE 'SYN-DT-ROOT-%'   0  <- 이 생성기는 여기 «한 번도 안 썼습니다»
+원장 전체                        902,801
+```
+
+## 🔴 구조가 답입니다 — group 소스는 «행»으로 안 큽니다
+선언 `sources.dt_job`: `read.unit = "group"` · `group_by = ["dt_job"]` · mappings «둘»(`register@1` · `has_netdie@1`).
+```
+원자 = (서로 다른 dt_job 수) x 2
+=> 행을 아무리 더해도 job 이 안 늘면 원자는 «그대로»입니다
+=> 이 생성기가 가드를 열고 «다» 돌아도 분자 50 -> 원자 «100» (10^7 의 0.001%)
+```
+🔴 그러므로 dt_log 는 ④ 의 씨앗이 «될 수 없습니다». 이것은 이 박스 사정이 아니라 «선언의 단위»라
+   어느 설치에서나 참입니다 — group 소스의 원자는 «그룹 수»에 달렸지 행 수에 달려 있지 않습니다.
+
+## 🔴 모르는 것 (밝힙니다)
+```
+이 생성기가 «계획했을» dt_log 행 수    거절이 report 출력보다 «앞»이라 못 봤습니다.
+                                   다만 분자(50)는 리터럴이라 원자 100 은 «행 수와 무관»하게 확정입니다
+```
+
+## ④-b 표 (셋째 바퀴 반영)
+```
+생성기                        대상 표                              원장 소스   원자
+generate_syn_lot_split_merge  lot_event                              ✅        행당 1        (①③ 실측)
+seed_dt_index_walk            dt_map                                 ❌        0            (첫 바퀴)
+seed_dt_log_from_root_refs    dt_log                                 ✅        분자당 2 · 행당 0.023 · 최대 100  (이 바퀴)
+seed_syn_aug_material         inspection_run · void_obs · bonding_*  ✅ 일부   «미측정»      <- 다음 바퀴
+seed_syn_complex_composite    위 + valid_die_ref · bonding_*         ✅ 일부   «미측정»
+seed_root_lot_valid_die_refs  valid_die_ref (lot_event 읽기)         ❌        0
+seed_syn_composite_chip       (표 리터럴 없음)                       ❌        0
+generate_trace_fixture        raws 파일                              ❌        0
+```
+
+## 다음 바퀴 — `seed_syn_aug_material` 을 «지금» 시작합니다 (판정 기다리지 않습니다)
