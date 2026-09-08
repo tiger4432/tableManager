@@ -8,6 +8,7 @@
 import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
 import { CELL_LIMIT, cellQuery, cellsTruncated as isCellsTruncated, cellsToDraw }
   from './map_cell_query.js';
+import { createOpenTimer, timingText, duplicateTitle } from './map_open_timing.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -330,6 +331,41 @@ const SPLIT_REGISTRY_TABLE = 'map_split_registry';
 //    place; the alias keeps this file's existing readers unchanged.
 const MAIN_CELL_LIMIT = CELL_LIMIT;
 
+// 🔴 C-43 ①③ — COUNTED AT THE DOOR. The opening path is spread over presets, paint rules, a
+//    metadata probe, cells, overlays and virtual joins, and an instrument added to the calls
+//    somebody REMEMBERS measures exactly those. Wrapping `fetch` for the duration of the open
+//    counts what actually went out, including the call nobody remembered — and a URL that
+//    appears twice is the screen asking the same question twice, which has happened here.
+// ⚠️ It is installed and removed by ONE function, in a `finally`. A wrapper that survives its
+//    own open would go on counting the user's next click into the last map's number.
+let openTimer = null;
+/** 문을 감쌉니다. 돌려주는 것은 «되돌리기» — 부르는 쪽의 `finally` 가 반드시 부릅니다. */
+function installOpenTiming() {
+  const timer = createOpenTimer(() => performance.now());
+  const real = window.fetch;
+  openTimer = timer;
+  window.fetch = async (...args) => {
+    const at = performance.now();
+    try { return await real.apply(window, args); }
+    finally {
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+      timer.note(url, performance.now() - at);
+    }
+  };
+  return () => { window.fetch = real; };
+}
+
+/** 마지막 열기가 쓴 것을 «값»으로. 안 잰 것은 안 그립니다 — 그 자리의 0 은 「빨랐다」입니다. */
+function drawOpenTiming(timer) {
+  const box = el.openTiming;
+  if (!box || !timer) return;
+  const summary = timer.summary();
+  const text = timingText(summary);
+  box.textContent = text;
+  box.title = duplicateTitle(summary);
+  box.hidden = !text;
+}
+
 let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
 // (자동 저장 디바운스 타이머는 2026-07-28에 제거됐다 — 서버 쓰기는 Push 하나뿐이다)
 // { table, mapKey, fingerprint } | null - the ONE map whose registry rows we have
@@ -460,6 +496,7 @@ export function initDOMElements() {
   el.colMapVal = document.getElementById('col-map-val');
 
   el.btnLoadMap = document.getElementById('btn-load-map');
+  el.openTiming = document.getElementById('map-open-timing');
   // 오버레이 전용 소스 선택기 — 메인 테이블 셀렉터(el.tableSelect)와 **다른 DOM**이며,
   // 이쪽을 조작해도 switchTable/selectedTable/gridData는 절대 건드리지 않는다.
   el.overlaySrcTable = document.getElementById('overlay-src-table');
@@ -5166,6 +5203,8 @@ export async function loadExistingMap(opts = {}) {
 
   el.btnLoadMap.textContent = '📂 Loading...';
   el.btnLoadMap.disabled = true;
+  // 🔴 계기는 «여기서» 켭니다 — 사람이 버튼을 누른 순간이 그 사람이 기다리기 시작한 순간입니다.
+  const restoreFetch = installOpenTiming();
 
   // 🔴 C-43 ②. `defer_total=true` 를 «붙입니다». 종전에는 절단을 `total` 로 판정하느라 이
   //    호출이 «세는 일»을 같이 시켰고, 그 COUNT 는 같은 필터로 표를 한 번 더 훑습니다 —
@@ -5561,6 +5600,10 @@ export async function loadExistingMap(opts = {}) {
   } finally {
     el.btnLoadMap.textContent = '📂 Load Existing Map';
     el.btnLoadMap.disabled = false;
+    // 🔴 「그려졌다」는 여기입니다 — 응답이 온 시각이 아니라 화면이 선 시각이 사람이 기다린
+    //    것이고, 그 둘이 갈라지는 자리가 정확히 이 라운드가 재려는 것입니다.
+    restoreFetch();
+    if (openTimer) { openTimer.drawn(); drawOpenTiming(openTimer); }
   }
 }
 

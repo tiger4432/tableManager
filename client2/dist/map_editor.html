@@ -16,8 +16,8 @@
        모르므로 그 import 한 줄이 map_editor.js 를 «import 불가»로 만들고, 그러면 하니스가
        파일을 텍스트로 잘라 재는 수밖에 없습니다 (map_editor2.html 이 이미 이 모양입니다).
        ⚠️ 순서가 계약입니다 -- 빌드가 싣던 순서가 tokens -> transfer_plan -> style 이고,
-          style.css 가 «마지막»이어야 지금 화면과 같은 cascade 가 나옵니다. -->
-  <script type="module" crossorigin src="/assets/map_editor-D-dJDRyt.js"></script>
+          style.css 가 «마지막»이어야 지금 화면과 같은 cascade 가 나옵니다. -->
+  <script type="module" crossorigin src="/assets/map_editor-pqV9IOK0.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-nTqwt3FA.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CkNwtCUZ.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
@@ -25,7 +25,7 @@
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-ZCVo3oho.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor-D6VuCMOe.css">
-  <link rel="stylesheet" crossorigin href="/assets/style-BbdddHOh.css">
+  <link rel="stylesheet" crossorigin href="/assets/style-D44gDXok.css">
 </head>
 
 <body>
@@ -82,6 +82,10 @@
             <button type="button" id="btn-load-map" class="glass-btn w-full"
               style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; margin-top: 4px;">📂
               Load Existing Map</button>
+            <!-- C-43 ①③ — 마지막 열기가 «무엇을» 썼나. 값만: 요청 수 · 가장 느린 호출 · 마지막
+                 셀이 그려지기까지 · 같은 URL 을 두 번 부른 수(이름은 툴팁). 열기 전에는 «없습니다» —
+                 빈 자리에 0 을 두면 「빨랐다」가 되고, 그건 아직 아무도 답 안 한 물음입니다. -->
+            <div id="map-open-timing" class="map-open-timing" hidden></div>
             <!-- The 0.7rem note ("[📂 Load]는 항상 교체 로드입니다 …") was deleted: it sat below the
                  0.8rem fact floor and restated what the two buttons already say by being two
                  buttons. The contract lives in docs/map_editor/README.md. -->
@@ -462,7 +466,7 @@
     </div>
   </div>
 
-
+
 </body>
 
 </html>

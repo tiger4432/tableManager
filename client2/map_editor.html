@@ -76,6 +76,10 @@
             <button type="button" id="btn-load-map" class="glass-btn w-full"
               style="background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: bold; justify-content: center; margin-top: 4px;">📂
               Load Existing Map</button>
+            <!-- C-43 ①③ — 마지막 열기가 «무엇을» 썼나. 값만: 요청 수 · 가장 느린 호출 · 마지막
+                 셀이 그려지기까지 · 같은 URL 을 두 번 부른 수(이름은 툴팁). 열기 전에는 «없습니다» —
+                 빈 자리에 0 을 두면 「빨랐다」가 되고, 그건 아직 아무도 답 안 한 물음입니다. -->
+            <div id="map-open-timing" class="map-open-timing" hidden></div>
             <!-- The 0.7rem note ("[📂 Load]는 항상 교체 로드입니다 …") was deleted: it sat below the
                  0.8rem fact floor and restated what the two buttons already say by being two
                  buttons. The contract lives in docs/map_editor/README.md. -->
