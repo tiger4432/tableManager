@@ -208,8 +208,17 @@
                   "kind": "leaf",
                   "hint": "free"
                 }
+              },
+              {
+                "key": "status",
+                "required": false,
+                "label": "상태",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "choice",
+                  "list": "lifecycle_status"
+                }
               }
-
             ]
           }
         }
@@ -230,7 +239,7 @@
                 "node": {
                   "kind": "leaf",
                   "hint": "choice",
-                  "list": "predicate_status"
+                  "list": "lifecycle_status"
                 }
               },
               {
@@ -321,8 +330,28 @@
                           }
                         ]
                       }
+                    },
+                    {
+                      "key": "value_type",
+                      "required": false,
+                      "label": "값 타입",
+                      "node": {
+                        "kind": "leaf",
+                        "hint": "choice",
+                        "list": "value_type"
+                      }
                     }
                   ]
+                }
+              },
+              {
+                "key": "cardinality",
+                "required": false,
+                "label": "주어당 개수",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "choice",
+                  "list": "cardinality"
                 }
               }
             ]
@@ -711,6 +740,31 @@
                       }
                     }
                   ]
+                }
+              },
+              {
+                "key": "status",
+                "required": false,
+                "label": "상태",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "choice",
+                  "list": "lifecycle_status"
+                }
+              },
+              {
+                "key": "decision_key",
+                "required": false,
+                "label": "결정 단위",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "컬럼",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "column",
+                    "universe": "relation"
+                  }
                 }
               }
             ]

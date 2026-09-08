@@ -22327,3 +22327,73 @@ CLI     result 에서 «인쇄만» 합니다 — census/lag_note 두 None 제�
   + read.cursor/order_by Ⓓ 은퇴 후보(08:38 여덟째) → S-77 → Ⓓ → S-83 → S-64-b → S-78 → S-32 → D9
 ```
 > 📌 **[09-09 08:41] 이 채널의 미답 질문: 위 ㉠㉡ 둘.**
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **Ⓐ 자리 «넷» 착지 `cf858ff5` — 문법·검증·스켈레톤. 읽는 쪽은 «안 지었습니다». 라운드의 «둘»은 재고 올립니다** (09-09 08:52)
+
+```
+시각   09-09 08:52   ·   이웃 28 파일 593 passed · 새 시험 13 passed · 수집 5,327 정상 · 미커밋 0
+```
+
+## 지은 자리 넷 — 전부 «선택 칸», 기본값을 «적었습니다»
+```
+Ⓐ1 값 타입     vocabulary.<p>.object.value_type   number | string | boolean | timestamp   기본 number
+Ⓐ2 카디널리티   vocabulary.<p>.cardinality         one | many                              기본 many
+Ⓐ3 생애        entities.<e>.status · sources.<s>.status   active | retired                기본 active
+Ⓐ4 결정 단위   sources.<s>.decision_key           [컬럼들]                                 ⛔ 기본 «없음»
+```
+🔴 기본값을 상수로 «적은» 이유: 「아무도 읽을 수 없는 기본값은 이름만 예쁜 하드코딩」입니다 —
+`DEFAULT_VALUE_TYPE` · `DEFAULT_CARDINALITY` · `DEFAULT_LIFECYCLE`. decision_key 만 기본값이
+«없습니다»(판정 151) — 틀린 판단 단위는 «맞아 보이는 틀린 답»이라, 필요한 쪽이 «이름 대어 거절»해야 합니다.
+⛔ 읽는 쪽(발행·걷기)은 «한 줄도» 안 지었습니다. 소유자 08:34 「자리만」 그대로입니다.
+
+## 🔴 같은 목록의 «두 번째 철자»를 접었습니다
+```
+있던 것   config_authoring.PREDICATE_STATUSES = ("active","retired")   <- 검증기의 사본 옆에 «또»
+지금     setup_bundle.LIFECYCLE_STATES 에서 «유도». 페이로드 키도 lifecycle_status
+        (엔티티·소스도 같은 칸을 드니 predicate_status 는 «거짓 이름»이 됩니다)
+클라 무접촉   closed_list.js 가 schema[node.list] 로 «데이터 구동»이라 이름만 바꾸면 됩니다
+📎 그 자리 주석이 «미리» 적어 뒀습니다: 「그것이 상수가 되는 날, 여기 한 줄이면 된다」
+```
+
+## 🔴 제가 넣은 결함 하나 — 착지 «전»에 스위트가 잡았습니다
+```
+증상   TypeError: unhashable type: 'list'
+원인   frozenset 멤버십은 왼쪽 피연산자를 «해시»합니다. 술어의 기존 status 검사는 «튜플»이라
+      in 이 == 로 비교해 «절대 안 터졌는데», 제가 frozenset 으로 바꾸면서
+      「거절해야 할 모양」에 «크래시»를 넣었습니다 — 새 칸 셋이 아니라 «있던 칸»까지
+잡은 것   test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds
+      (모든 JSON 값 종류를 모든 노드에 먹여 «구조적 거절»을 요구하는 시험 — 정확히 이걸 위한 시험)
+수리   멤버십 다섯 자리 «전부» isinstance(..., str) 를 먼저 — 옆의 object.kind 검사가 쓰던 그 모양
+```
+
+## 게이트
+```
+✅ 출하 샘플 «무회귀»   399 issues 전 → 399 후, 그중 제 새 칸을 언급하는 것 «0»
+                     = F-0 의 약속(안 쓰는 선택 칸은 지문을 안 움직임) — 동결에 재번역 비용 0
+✅ 이웃 28 파일        593 passed. 남은 2 failed + 12 errors 는 전부 test_ontology_config_explorer
+                     = occurred_at/event_time 표본↔카탈로그(S-79/S-80). «되물린 트리에서 동일»함을
+                     실행으로 확인했습니다(12 errors · 2 failed, 같은 수)
+✅ 새 시험 13 passed    기본값 셋이 «상수» · decision_key 는 DEFAULT_* 가 «없어야 함» ·
+                     값 타입은 value 목적어에만 · 세 자리가 «같은 두 낱말» · 중복/공백 컬럼 거절 ·
+                     넷 다 안 쓰는 선언은 «채점이 한 글자도 안 바뀜»
+✅ 수집               5,327 collected · 오류 0
+```
+
+## ⚠️ 라운드의 «둘»은 안 지었습니다 — 짐작 대신 올립니다
+```
+㉠ 「basis 가 ingested 인데 mapping 이 occurred_at 을 컬럼에 바인딩」 거절
+   실측: 출하 샘플 dt_job 이 read.occurred_at={basis: ingested} 인데
+        bind.mappings.counted.bind.occurred_at={kind: column, column: event_time}
+   막힌 것: 「그 칸이 «basis 일 때만» 죽은 칸인가, «항상» 죽은 칸인가」를 roleframe:339 로 «재야»
+        합니다. 그리고 거절을 켜면 «출하 샘플이 안 섭니다» — 샘플의 그 칸을 «무엇으로» 바꾸는지가
+        같이 정해져야 합니다(빼는가 · 다른 kind 인가). 짐작으로 쓰면 죽은 칸을 «다른 죽은 칸»으로
+        바꾸는 것이라 재고 올립니다
+㉡ read.cursor · order_by 은퇴 (08:38 여덟째)
+   cursor 는 이미 ignored 로 «삼키고» 있고, order_by 는 required 입니다. 커서가 은퇴한 뒤
+   order_by 를 «읽는 쪽»이 남아 있는지가 판정의 재료인데, required 문법 칸을 지우는 것은
+   출하/라이브 선언 전부를 건드립니다 — 총괄 판정 자리로 봅니다
+```
+> 📌 **[09-09 08:52] 이 채널의 미답 질문: 위 ㉠㉡ 둘 + 앞선 보고의 클라 계약 키(C-42) · 잔해 둘(walk_group_pages · v2_base_select_columns).**

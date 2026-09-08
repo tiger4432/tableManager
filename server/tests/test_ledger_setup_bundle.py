@@ -1463,7 +1463,9 @@ def test_an_unknown_field_refusal_names_what_the_object_does_take(tmp_path):
     # does not pin the join text of the sentence.
     listed = refused.message.split("allowed here: ", 1)[1]
     assert {part.strip() for part in listed.split(",")} == {
-        "kind (required)", "qualifiers (required)", "types"}
+        "kind (required)", "qualifiers (required)", "types", "value_type"}
+    # `value_type` joined the list on 2026-09-09 (Ⓐ1): a value object could only ever
+    # be a quantity, so 「this predicate carries text」 had nowhere to be written.
 
     # The retired-section help still wins where it applies -- it says what happened and
     # where the truth moved, which a bare field list would replace with something less
