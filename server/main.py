@@ -1605,10 +1605,15 @@ def apply_column_filters(query, table_model, table_name, filters, binder):
     """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
     if not filters:
         return query
+    #: Which filter item was being built when something went wrong, so the refusal below
+    #: can name it. `None` means the failure happened before any item -- a `?filters=`
+    #: that is not JSON at all.
+    failing_item = None
     try:
         import json
         filter_dict = json.loads(filters)
         for col_name, f_info in filter_dict.items():
+            failing_item = col_name
             override = None
             if col_name in binder:
                 # The filter must run against the value the user SEES. For a virtual_only
@@ -1635,7 +1640,20 @@ def apply_column_filters(query, table_model, table_name, filters, binder):
         # back into the silent 200 it exists to prevent.
         raise
     except Exception as e:
-        print(f"[Server] Failed to apply column filters on '{table_name}': {e}")
+        # 🔴 A FILTER THAT CANNOT BE BUILT IS REFUSED, NOT DROPPED (S-71). This used to log
+        # and fall through, and the response then carried the WHOLE table while still
+        # implying the column had been filtered: measured 2026-09-08 on `dt_map`, a filter
+        # whose shape the parser could not read came back with 1,006,147 rows instead of
+        # 400, HTTP 200, and nothing in the answer saying which half was wrong.
+        #
+        # ⚠️ IT IS THE SAME REFUSAL THE BLOCK ABOVE ALREADY MAKES for a virtual-join column
+        # it cannot express -- one rule, both reasons, rather than a 400 for the case
+        # somebody thought of and a silent 200 for the rest.
+        where = (f"'{failing_item}' 항목" if failing_item else "filters 파라미터")
+        raise HTTPException(
+            status_code=400,
+            detail=(f"'{table_name}'의 필터를 만들 수 없습니다 ({where}): {e}. "
+                    f"필터 없이 전체를 돌려주지 않습니다.")) from e
     return query
 
 
