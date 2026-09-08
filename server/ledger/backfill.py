@@ -653,7 +653,19 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
     preview = preview_selected_cursor_batch(
         setup, source, frame, cursor_value, _no_join_reader(),
         known_registrations=None if subjects is None else ())
-    atoms = [atom for group in _filtered_event_atoms(preview.event_results, None)
+    # 🔴 THE SAME REGISTRATION BASIS AS THE LINE ABOVE, AND IT HAS TO BE. `None` there
+    # means "this source declares no probe"; here it means "no snapshot was supplied", and
+    # `_filtered_event_atoms` refuses that outright the moment any `register` atom appears
+    # (`registration_context_required`). So a source that registers -- which is most of
+    # them -- could never get a rescope PREVIEW at all, while `rescope` itself offered `()`
+    # and worked. Two spellings of one question, and the preview held the wrong one from
+    # `b98f0c38` (2026-08-17) until now.
+    #
+    # `()` is "nothing assumed already registered", which is exactly what `rescope`'s own
+    # docstring says it offers: the preview counts what the apply then writes, so the two
+    # have to ask on the same basis or the number shown is not the number produced.
+    atoms = [atom for group in _filtered_event_atoms(
+                preview.event_results, None if subjects is None else ())
              for atom in group]
     refs = sorted({str(atom.source_raw_ref) for atom in atoms})
     result["remake"] = len(atoms)
