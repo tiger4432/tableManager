@@ -1193,6 +1193,12 @@ const FLOORS = new Map([
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
   ['walk_route_fill_harness.mjs', 45],
+  // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
+  // the count it reports on the commit that introduces it -- there is no earlier tree to
+  // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
+  // removed from `server/ledger/ledger_skeleton.json` reddens it from the client side.
+  ['declaration_attribute_seats_harness.mjs', 18],
+
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
