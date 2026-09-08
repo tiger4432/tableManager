@@ -14571,3 +14571,24 @@ table_config.json.sample:646 (VOID 스키마 절)
 ```
 > 판정 대기 — **하나**: ㉡ 의 「`filename_rules` 확장」 vs 「카탈로그 새 칸」
 > 🔁 이월: 47 (소유자 몫)
+
+## 🛑 [응용] 생성기 짓기 «멈춤» — 코드 «0 줄» 썼습니다 (22:06 · `date`)
+```
+지시     「야간은 S-65-d 만 · 생성기는 내일 첫 줄 · 시작했으면 커밋 없이 멈춤」
+제 상태   «읽기만» 했습니다 — 파일 생성 0 · 편집 0. 멈출 것이 없었습니다
+트리     미커밋 둘은 «제 것이 아닙니다**: `server/ledger/backfill.py`(구현자 S-65-d 진행 중) ·
+         `outputs/syn_lot_split_merge/scenario_summary.json`(구현자 적재 산출). 손대지 않았습니다
+```
+### 🔵 다만 «내일 첫 줄»이 바로 쓸 실측 하나를 남깁니다 — 첫 소스가 «뷰 위»에 있습니다
+```
+bonded_from  relation = `bonding_die_from_core` = **뷰**
+             정의: SELECT base_id,bx,by,core_wafer,cx,cy,core_seat,core_lot,core_slot,event_time
+                   FROM **bonding_core_die**
+                   WHERE core_wafer IS NOT NULL AND cx IS NOT NULL AND cy IS NOT NULL
+=> 🔴 생성기가 쓸 «표»는 `bonding_core_die` 하나이고, 그 세 칸이 «NULL 이 아니어야» 뷰에 뜹니다
+   (NULL 로 만들면 행은 있는데 소스가 «못 봅니다» — 「넣었는데 원자 0」이 그 모양입니다)
+read.unit = "row" ✅(행 단위 — 배율 3 후보 맞음) · occurred_at = `event_time`(Asia/Seoul)
+⚠️ 커서 = (base_id,bx,by,core_wafer,cx,cy) — «이름 축»입니다. 손잡이 ③(페이지 키 단조)에서
+   이 소스는 «단조가 아니고», 그래서 따라잡기가 아니라 «라이브 길»(S-65)이 새 행을 봅니다
+```
+> 마감. 미커밋(제 것) «0» · 다음 = 생성기 짓기(내일 첫 줄) · 🔁 이월: 47 (소유자 몫)
