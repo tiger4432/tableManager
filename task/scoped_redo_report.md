@@ -21699,3 +21699,54 @@ row_id 나르는 뷰 -> 그 관계로 «두 번째» 물림(asked == ['void_obs'
    (후보: process_param 의 행 -> process_param_num_measure / txt_measure)
 ② void_obs 행 삭제 -> cannot_follow 가 «로그에 보이는지»(server.log WARNING)
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-74 착지 `4773db13` — 제품의 «삭제 문»이 이제 아웃박스를 지납니다. 오늘 밤 과제 «전부» 끝** (09-08 22:19)
+
+```
+시각   22:19   ·   이웃 6 파일 «62 passed» · 미커밋 0 · origin/main 동기
+```
+
+## 무엇이었나 (총괄 진단 그대로 · 제가 코드로 확인)
+```
+before_flush 는 `session.deleted` 를 훑습니다 -> 벌크 `.delete(synchronize_session=False)` 는
+행을 세션에 «안 싣습니다» -> 그 목록이 비고, 문은 «아무것도» 세우지 않습니다
+delete_rows_batch 가 그 벌크 삭제이고 `delete_row` 는 거기에 위임 -> «문 둘 다» 안 보였습니다
+=> 체인도, 삭제된 행의 사실을 물리는 원장 뒤따르기도 «라이브 삭제를 한 번도» 받은 적이 없습니다
+   (그래서 S-54-b 의 DELETE 는 «시험에서만» 돌아 본 것입니다 — 총괄 실측: 아웃박스 전 역사 DELETE «0»)
+```
+
+## 고침 (최소 · 전례와 «같은 함수»)
+```
+delete_rows_batch 의 벌크 삭제 뒤 · 커밋 «전»에
+   stage_collapsed_event(db, "DELETE", table_name, [row.row_id for row in rows_to_delete])
+🔵 purge_map_rows 가 부르는 «그 헬퍼»입니다 — 두 철자를 만들지 않았습니다
+🔵 «실제로 지워진» 행의 id 를 싣습니다(요청한 id 가 아니라) — 이미 없는 것을 지운 것은 «삭제가 아닙니다»
+② CODE_MAP:1193 「outbox 가 볼 수 없던 «유일한» 쓰기」 -> 「둘 중 하나」로 정정(그 문장이 오늘 거짓이었습니다)
+```
+
+## 🔴 그리고 «제 첫 조각이 틀렸고, 이웃 실행이 잡았습니다»
+```
+`stage_collapsed_event` 를 그 자리에서 «import 안 했습니다» -> NameError
+잡은 것   tests/test_audit_log_persistence.py::test_delete_rows_batch_persists_audit_logs
+          «착지 전» 심볼 이웃 실행에서 나왔습니다 — 오늘 아침에 빠뜨렸던 바로 그 습관입니다
+```
+
+## 시험 (넷 · 전례 파일과 «같은 규율»)
+```
+배치 삭제가 이벤트를 세운다 · 그것이 purge_map_rows 와 «같은 헬퍼»다 ·
+단일 행 문은 «위임»하지 자기 것을 세우지 않는다 · 실린 id 가 `rows_to_delete` 에서 온다
+⚠️ 이 파일이 재는 것은 «두 문의 코드»입니다(전례 test_a_map_purge_is_visible_to_the_outbox 와 같은 모양).
+   이벤트가 표에 «앉는지»는 총괄의 라이브 재현입니다 — 그 경계를 파일 머리에 적었습니다
+```
+
+## 오늘 밤 마감 — 총괄 재현 대기
+```
+착지   S-65-c ②③④ `37ced613` · 캐시 수리 `32aca6ed` · S-62·S-68 `70f38e5d` ·
+       S-65-d `d89acd8d` · S-74 `4773db13`
+재현   ① process_param 행 삭제 -> 행 색인 사라짐 + 뷰 소스 원자 물림
+       ② void_obs 행 삭제 -> server.log 「cannot be followed … no_row_id」
+잔여   총괄이 문 없이 지운 행 넷의 색인 항목 — 소급 실행 몫(오늘 밤 ⛔, 판정 그대로)
+```
