@@ -36900,3 +36900,26 @@ server/ledger/setup_registry.py:459  @dataclass(frozen=True)  /  :460  class Led
 착지 → 보고 → 제가 재기동 · void_obs «새 행» → 원자 2(void-is-a-kind · void-at-die) · 표 소스 하나도 새 행 → 원자(S-65 핵심 무회귀)
 ```
 > 📌 **[09-08 21:56] 이 채널의 미답 질문: «없음».** (캐시 키 → 160)
+
+
+---
+
+# ✅ [총괄 -> 구현자] **S-65-c «닫음» — `32aca6ed` 위에서 제가 잰 것: 이웃 207 passed · 재기동 PID 20008(21:59:51) · 게이트 ㉡㉣㉥ «셋 다» 라이브로 통과 + 표 소스 무회귀. 다음 = S-65-d, 그리고 S-62·S-68 을 «같은 라운드»에(셋 다 backfill.py — 응용에게서 가져옵니다)** (09-08 22:04)
+## 잰 것
+```
+㉡  PUT /tables/void_obs/data/updates 새 행(표가 키를 다시 지음: sat|…|5|6 — 커서 zzdoe 앞) → **원자 2(observed · of_kind) 5.2 s** · 커서 무접촉
+㉣  라이브 스냅숏으로 view_followers_of(engine, setup, "inspection_run") → ([], [{view: void_obs_observed, source: void_observation, base: inspection_run, missing_column: void_uid}])  <- 이름 대어짐
+㉥  restamp_cursor report 15/15 already
+무회귀  PUT wafer_process 새 행(uuid7 row_id < 커서 'zzdoe-wp-brk-1') → processed_with 원자 1 + 행 색인 (wafer_process, wafer_process_recipe) · 커서 무접촉
+⚠️ server.log 의 「delete on dt_log … failed: no」·「dt_job <- dt_log … failed: no」(21:47·21:57·21:59)은 «시험 더블»입니다(두 시험의 RuntimeError("no"), pytest 프로세스가 같은 server.log 에 씀) — 결함 아님. 다만 «공유 로그에 시험 줄»은 계측 위생 항목으로 적어 둡니다(짓지 않음)
+```
+## 다음 라운드 = S-65-d + S-62 + S-68 (한 파일, 한 라운드, 커밋은 «셋»)
+```
+S-65-d  DELETE 가 뷰 소스를 안 덮음. 제가 잰 «증거»: void_obs 프로브 2 의 원자는 있는데 ledger_source_row_ref 에 (void_obs_observed, row_id) 가 «없습니다» — 그 뷰는 row_id 를 안 나릅니다(카탈로그 5/10 만 나름). 판정 158 방향 그대로:
+        기반 row_id X 삭제 → 그 표를 따르는 뷰 중 row_id 를 «나르는» 뷰는 (뷰, X) 로 행 색인이 물림 · «안 나르는» 뷰는 cannot_follow{view, source, base, reason: no_row_id} 이름 대어(조용한 0 ⛔)
+        게이트: 시험(라이브 타입 픽스처 규율 그대로) + 제가 라이브로: row_id 나르는 뷰 하나의 기반 행 삭제 → 원자 물림 · void_obs 행 삭제 → cannot_follow 가 «어딘가 보임»(지금 done{} 은 실패만 로그합니다 — cannot_follow 도 «한 줄» 로그로. 그게 없으면 ㉣ 이 운영에서 안 보입니다)
+S-62    backfill.rescope docstring 「WHAT A SCOPE CANNOT AIM AT …」→ 「삭제는 행 색인이 겨눈다(S-54-b) · 색인 없는 소스(no_row_index)만 남는다」. 주석만
+S-68    `python -m ledger.backfill --help` 가 cp949 콘솔에서 UnicodeEncodeError(em-dash) → argparse «앞»에서 stdout utf-8 재설정 «또는» ASCII — 한 줄인 쪽. 게이트: PYTHONIOENCODING 없이 `--help` 종료 0
+🔒 그 뒤: S-65-b 잔여(lot_event 완전한 행) → S-66 가드(150) → S-64-b
+```
+> 📌 **[09-08 22:04] 이 채널의 미답 질문: «없음».**
