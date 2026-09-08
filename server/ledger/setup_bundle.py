@@ -239,9 +239,22 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         # was therefore dead on every table -- a permanently-false branch, which is the
         # exact defect this block exists to remove.  Declaring the column is what makes the
         # index nameable: a cursor may only cite columns the catalog admits.
-        relation["columns"].setdefault("row_id", "string")
-        relation.setdefault("indexes", []).append(
-            {"columns": ["row_id"], "unique": True})
+        # 🔴 A VIEW IS NOT AN INGESTED TABLE, so the invariant above is not its (판정 138).
+        # It has whatever columns its SELECT lists, and planting `row_id` there turned four
+        # sources' reads into `UndefinedColumn` on the cursor path, on rescope and on the
+        # index backfill at once. For a view `column_types` is the WHOLE truth: five of the
+        # ten here pass their base table's `row_id` through and say so, five do not.
+        if str(declared.get("kind") or "table") != "view":
+            relation["columns"].setdefault("row_id", "string")
+        # ⚠️ THE INDEX FOLLOWS THE COLUMN, NOT THE KIND. Wherever `row_id` is present it is
+        # unique -- that is what the column IS -- and a view passing it through passes its
+        # uniqueness with it. Measured when the two were not split: `dt_transfer` orders by
+        # `row_id` on a view and was refused with "ordering must include every column of a
+        # catalog-declared ... UNIQUE index". Splitting them is what keeps the operator's
+        # job to two lines.
+        if "row_id" in relation["columns"]:
+            relation.setdefault("indexes", []).append(
+                {"columns": ["row_id"], "unique": True})
         business_key = declared.get("business_key")
         if (isinstance(business_key, str) and business_key.strip()
                 and business_key in relation["columns"]):

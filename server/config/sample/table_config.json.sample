@@ -992,6 +992,7 @@
     ]
   },
   "void_obs_observed": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW: void_obs joined to inspection_run on run_uid, so a void observation carries the time it was actually inspected. void_obs itself has no time column, and created_at is the loader's clock rather than the inspection's. Join measured total: 103,729 of 103,729, run_uid one-to-one. Rollback: DROP VIEW void_obs_observed;",
     "business_key": "void_uid",
     "composite_key_source": [
@@ -1032,6 +1033,7 @@
     ]
   },
   "dt_log_transferable": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW: dt_log rows that carry a core_wafer, which is the core die's identity. 6,731 of 34,939 rows have none; the translator RAISES on a missing identity rather than skipping, and `read` has no filter axis, so the exclusion lives here. One condition suffices: the 522 rows without event_time (= product SYNTHETIC) are a subset of those 6,731. Keeps 28,208. Rollback: DROP VIEW dt_log_transferable;",
     "composite_key_source": [
       "dt_job_id",
@@ -1040,6 +1042,7 @@
     ],
     "composite_key_separator": "|",
     "column_types": {
+      "row_id": "string",
       "b_wx": "number",
       "b_wy": "number",
       "c_bn": "string",
@@ -1086,6 +1089,7 @@
     "business_key": "dt_cell_key"
   },
   "bonding_core_lot": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW: every (bonding wafer, core wafer) pair in bonding_log, 3,650 rows, resolved through core_wafer_map on (core_lot, core_slot) with the slot cast to int on both sides ('02' vs 2.0). No collapsing: a bonding wafer takes dies from as many as 30 core wafers and naming one of them would be false. Uses event_time, NOT eventtime (the latter is NULL in all 380,273 rows). 1,072 (wafer, lot) pairs have no map row and make no edge, by design. Rollback: DROP VIEW bonding_core_lot;",
     "column_types": {
       "base_id": "string",
@@ -1100,6 +1104,7 @@
     "composite_key_separator": "|"
   },
   "bonding_core_die": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW, one row per bonded die: 371,593 rows = 371,593 distinct (base_id, bx, by). Widened from bonding_core_lot, which folded the same 380,273 log rows to 3,650 with DISTINCT and dropped every coordinate. NOT joined to core_wafer_map: that LEFT JOIN inflates to 6,444,693 and the fold that made it survivable is what lost the coordinates. Core travels on this row's own core_lot/core_slot/cx/cy, present on 93,118 (25.1%). dt_seat is dt_lot||'|'||dt_slot because mat_id takes ONE column. Rollback: DROP VIEW bonding_core_die;",
     "column_types": {
       "base_id": "string",
@@ -1126,6 +1131,7 @@
     "composite_key_separator": "|"
   },
   "lot_slot_move": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW, one row per seat-to-seat move: 135 rows. Two lot_event rows paired on wafer id after exploding slot_numbers and wafer_ids positionally; both directions unioned because 38 moves are recorded only by the receiving lot. 21 of 135 change slot -- the same 21 the ledger's own slot_map qualifiers give by a separate path. event_type is the RECORDING row's: the giving-side axis gave one move two types and invented 20 track_in moves that do not exist. THE KEY INCLUDES event_time -- the five move columns alone give 122, because 13 seat pairs move twice at different instants (split then merge). Rollback: DROP VIEW lot_slot_move;",
     "column_types": {
       "from_lot": "string",
@@ -1147,6 +1153,7 @@
     "composite_key_separator": "|"
   },
   "bonding_die_from_core": {
+    "kind": "view",
     "__comment": "READ-ONLY VIEW: bonding_core_die filtered to the rows that resolved a core wafer. 18,545 rows = 18,545 distinct (bonded die, core die); no fold, just a WHERE. It exists as its own relation because a null identity value does not refuse a MOLECULE -- it raises SourcePreparationError and the whole SOURCE dies, which would have taken all 371,593 DT-seat edges with it. Measured by dry run, not assumed. Rollback: DROP VIEW bonding_die_from_core;",
     "column_types": {
       "base_id": "string",
@@ -1201,9 +1208,11 @@
     ]
   },
   "process_param_num": {
+    "kind": "view",
     "__comment": "[ledger source] VIEW over process_param, value IS NOT NULL. Split because a NULL in a numeric column becomes NaN in the event frame and NaN is not deterministic JSON - so a source may not bind a column its own rows leave empty. Same predicate as its sibling; only the bound value column differs.",
     "business_key": "param_id",
     "column_types": {
+      "row_id": "string",
       "param_id": "string",
       "wafer_id": "string",
       "step": "string",
@@ -1231,9 +1240,11 @@
     ]
   },
   "process_param_txt": {
+    "kind": "view",
     "__comment": "[ledger source] VIEW over process_param, value_text IS NOT NULL. Split because a NULL in a numeric column becomes NaN in the event frame and NaN is not deterministic JSON - so a source may not bind a column its own rows leave empty. Same predicate as its sibling; only the bound value column differs.",
     "business_key": "param_id",
     "column_types": {
+      "row_id": "string",
       "param_id": "string",
       "wafer_id": "string",
       "step": "string",
@@ -1289,9 +1300,11 @@
     "composite_key_separator": "|"
   },
   "mechanism_edge_to_quantity": {
+    "kind": "view",
     "__comment": "[ledger source] VIEW over mechanism_edge, to_role='quantity'. A binding builds ONE entity type, so an edge ending on a defect kind and one ending on a quantity cannot share a mapping. `to_role` comes from the model's own `finding_kind`, not from a spelled-out defect name.",
     "business_key": "edge_id",
     "column_types": {
+      "row_id": "string",
       "edge_id": "string",
       "model": "string",
       "from_quantity": "string",
@@ -1317,9 +1330,11 @@
     "composite_key_separator": "|"
   },
   "mechanism_edge_to_finding": {
+    "kind": "view",
     "__comment": "[ledger source] VIEW over mechanism_edge, to_role='finding'. A binding builds ONE entity type, so an edge ending on a defect kind and one ending on a quantity cannot share a mapping. `to_role` comes from the model's own `finding_kind`, not from a spelled-out defect name.",
     "business_key": "edge_id",
     "column_types": {
+      "row_id": "string",
       "edge_id": "string",
       "model": "string",
       "from_quantity": "string",
