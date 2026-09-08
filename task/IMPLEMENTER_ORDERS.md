@@ -36231,3 +36231,21 @@ HEAD 빨강 · 부모 초록   tests/test_ledger_v2_lot_event_parity.py::test_re
 
 # 🟢 [총괄 -> 구현자] **S-52-e `d8ec410b` 받음(제가 직접: 새 시험 5 + 스켈레톤 11 passed · authoring_plan 이웃 76 중 빨강 2 = ontology_config_explorer 둘, «부모 트리 + 라이브 config 복사»에서도 같은 둘 = S-32 모집단) · 재기동 **PID 22156 (10:29:51)** · /declaration 200. «컴팩트가 원인»이라는 설명 받음 — 그러면 보고 첫 줄의 감시 id 둘이 그 답입니다. → **S-54(판정 131) 지금**** (09-08 10:30)
 > 📌 **[09-08 10:30] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **S-52-g — «먼저»(S-54-b 앞). 라이브 선언에 속성 한 칸을 넣고(소유자 허가, dtjob@1.attributes [dt_eqp] + dt_job bind.entities — 출하 샘플 ⑥과 같은 칸) `python -m ledger.backfill --source dt_job --scope-column dt_job --scope-values SYN-DTJ-002-04` 를 돌리자 «번역이 죽습니다»: `roleframe.py:486 roles[reference.role_id] = values[name]` → `KeyError: 'dt_eqp'` (경로 runtime_v2.preview_cursor_batch → dry_run_event_frame → map → interpret_unit → say). 출하 샘플 ⑥ 도 같은 선언이라 «출하본이 이 경로에서 죽습니다»** (09-08 10:45)
+```
+진단     Ⓖ 는 등록 문장의 «모양»(emission.qualifiers)에 속성을 넣었는데, 그 «값»을 채우는 자리가 없습니다.
+         `say()` 는 맵퍼가 넘긴 qualifiers 만 보고, 코드 맵퍼(dt-job-role 등 구현체)는 속성을 «모릅니다».
+         판정 127 의 「bind.entities.<t>.attributes → 그 소스의 register 문장 qualifiers 바인딩으로 «컴파일 시점에» 접힘」이 «선언형 맵퍼 경로에서만» 착지한 것으로 보입니다(⑥ 시험은 「컬럼이 선택된다」까지만 쟀음)
+고칠 것   속성 수식어의 값은 «roleframe 이» 소스 bind 의 컬럼에서 «단위 프레임 행»을 읽어 채웁니다 — 구현체가 코드든 선언형이든 «한 경로». 맵퍼가 속성을 넘기면 «그 이름은 맵퍼 것이 아님»으로 거절(두 주인 ⛔)
+게이트    ㉠ 출하 샘플 + 출하 카탈로그로 dt_job 의 «실제 번역 경로»(preview_cursor_batch / rescope 미리보기)가 등록 원자에 qualifiers {dt_eqp: <그 행 값>} 를 냄 — predicate_claim 단위 시험 ⛔(그건 이미 초록이고 여기서 거짓이었음)
+         ㉡ 속성 없는 소스 15 중 14 → 바이트 동일 · ㉢ 값이 NULL 인 행 → 수식어 «없음»(빈 지문 = 오늘) · ㉣ 그룹 소스(unit=group)에서 «그룹 안에 값이 둘»이면 → 세고 «이름 대어 거절»(조용히 첫 값 ⛔)
+         변이: 값 채우기 제거 → ㉠ 빨강 · 맵퍼가 넘긴 이름을 받아 주기 → 빨강
+착지 뒤   제가 같은 명령을 다시 돌려 «걷기 노드에 dt_eqp» 가 뜨는지 봅니다(브라우저 증명이 이 뒤)
+```
+# 🟢 [총괄 -> 구현자] **S-54 `1d4bb79d` 받음 — 19 passed(제가) · 재기동 PID 25220(10:43:04, 이 코드 포함) · «닫음». 남는 것 셋의 판정: ① note 문자열 «받음»(타입 칸은 heartbeat 공용 계측기 변경이라 별건) ② MAX_QUEUED_EVENTS=10000 «받음, 다만 S-55 에서 재서 값으로» — 넘치면 세어 말하는 것 그대로 ③ 맞음. ㉠㉡㉦㉩ 은 S-55(운영 모양 박스)의 게이트로 옮깁니다** (09-08 10:45)
+🔒 **S-52-g** → 재기동(제가) → S-54-b → S-55 → S-57
+> 📌 **[09-08 10:45] 이 채널의 미답 질문: «없음».**
