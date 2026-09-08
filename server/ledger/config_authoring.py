@@ -746,6 +746,23 @@ def _entities_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
             value=list(keys), declared=list(keys) if keys else _ABSENT,
             note="이 이름이 이후 모든 entity binding의 keys를 결정한다.",
         )
+        # 🔴 ONLY WHERE THE TYPE DECLARES ONE.  `attributes` is optional on an entity, so
+        # a row drawn unconditionally would put a square on every type in every declaration
+        # that has never used the feature, and the skeleton already offers the box.  What
+        # the plan is needed for is the STATE and the refusal: `invalid_type` and
+        # `duplicate_id` are written at exactly this path (`setup_bundle._validate_entities`)
+        # and until now had no field to land on.
+        if not isinstance(entity, Mapping) or "attributes" not in entity:
+            continue
+        names = _listed(entity.get("attributes"))
+        yield Field(
+            path=f"bundle.entities.{entity_id}.attributes",
+            step="entities", label="속성",
+            state="answered" if names else "missing",
+            tier=TIER_CONSTRAINED,
+            value=list(names), declared=list(names) if names else _ABSENT,
+            note="이 이름이 소스의 attributes 결선 칸을 결정한다.",
+        )
 
 
 def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
@@ -1161,6 +1178,19 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `packs` was a `derived` row here on the same terms as the mapper's `emits`, and
         # left the file with it on 2026-08-21.
         available = prepared_columns(bundle, catalog, source)
+        # 🔴 `bind.entities` IS A SIBLING OF `bind.mappings` and gets squares the same
+        # way -- one per attribute the type declares -- so a refusal written at
+        # `….attributes.<name>` lands on a row instead of in `unattached_refusals`.
+        bound_entities = profile.get("entities")
+        for entity_type in sorted(
+                bound_entities if isinstance(bound_entities, Mapping) else {}, key=str):
+            item = bound_entities[entity_type]
+            declared = entities.get(entity_type)
+            yield from _attribute_binding_fields(
+                f"{base}.entities.{entity_type}", str(entity_type),
+                _listed(declared.get("attributes"))
+                if isinstance(declared, Mapping) else (),
+                item.get("attributes") if isinstance(item, Mapping) else None)
         sentences = _mappings(profile)
         # 🔴 THE MAP ITSELF IS A SQUARE.  An empty `mappings` is refused with
         # `invalid_profile ... must be a non-empty object keyed by sentence`, and until this
@@ -1327,6 +1357,15 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
     if not isinstance(entity, Mapping):
         return
     keys = tuple(str(name) for name in _listed(entity.get("keys")))
+    # 🔴 THE OVERRIDE, DRAWN ONLY WHERE IT IS ALREADY USED.  A source binds an attribute
+    # at `bind.entities`; this address exists for the one case that cannot express -- one
+    # sentence using one type in two roles -- so laying its squares out on every entity
+    # binding would advertise the second-best answer as the ordinary one, and a type used by
+    # K sentences would be offered K places to disagree.
+    if isinstance(binding.get("attributes"), Mapping):
+        yield from _attribute_binding_fields(
+            path, str(entity_type), _listed(entity.get("attributes")),
+            binding.get("attributes"))
     if not keys:
         return
     declared_keys = binding.get("keys")
@@ -1356,6 +1395,57 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
             state="answered" if column else "unanswered", tier=TIER_CONSTRAINED,
             value=column, declared=column if column else _ABSENT,
             candidates=tuple(available), universe=UNIVERSE_PREPARED,
+        )
+
+
+def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[Any],
+                              bound: Any) -> Iterable[Field]:
+    """The attribute squares of ONE entity binding -- source level and role level alike.
+
+    🔴 ONE FUNCTION FOR TWO ADDRESSES.  `bind.entities.<type>.attributes` is where a
+    source binds an attribute once, and `…bind.<role>.attributes` is the override for the
+    one case that address cannot express (one sentence using one type in two roles).  Two
+    copies would let the levels draw different boxes for the same question, and the walk's
+    `attribute_conflicts` would then be counting a disagreement this screen created.
+
+    🔴 THE ROW IS THE BINDING, NOT THE COLUMN INSIDE IT, and the refusals decide that.
+    `unknown_entity_attribute` and `invalid_binding` are both written at
+    `….attributes.<name>` (`setup_bundle._bind_entities_refs` / `_validate_bind_entities`),
+    so a plan that addressed `….attributes.<name>.column` -- the shape the identity keys
+    use -- would leave every one of them in `unattached_refusals`: refused on save, with no
+    red square to go to.  No candidate list rides here for the same reason: `editableFor`
+    turns candidates into a control that writes at `row.path`, and a column name written
+    there is a string where the grammar holds a binding record.
+
+    The shape row is what makes the form draw an UNBOUND one.  `renderSkeletonMap` asks
+    `plannedMembers`, which reads a `derived` row with `disposition="shape"` and takes its
+    value as the member list; without it a name-keyed map shows only what the document
+    already holds, so an attribute nobody has bound yet has no box to bind it in.
+    """
+    names = sorted(str(name) for name in declared)
+    held = bound if isinstance(bound, Mapping) else {}
+    if names:
+        yield Field(
+            path=f"{path}.attributes", step="sources", label="속성",
+            state="derived", tier=TIER_STRUCTURAL,
+            value=names,
+            ground=Ground(
+                "entity_binding_attributes_from_entity",
+                f"채움: {entity_type}의 속성",
+                (f"bundle.entities.{entity_type}.attributes",), names),
+            disposition="shape",
+        )
+    # A name the type never declared is drawn too: that is precisely where
+    # `unknown_entity_attribute` is written, and a refusal on a row nobody renders is the
+    # defect this function exists to remove.
+    for name in sorted({*names, *(str(key) for key in held)}, key=str):
+        yield Field(
+            path=f"{path}.attributes.{name}", step="sources",
+            label=f"속성 {name}",
+            state="answered" if name in held else "unanswered",
+            tier=TIER_CONSTRAINED,
+            value=held.get(name),
+            declared=held[name] if name in held else _ABSENT,
         )
 
 

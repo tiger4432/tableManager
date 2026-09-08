@@ -18206,3 +18206,96 @@ S-52 «닫힘»(여섯 층 + S-52-c 보류 기록) · S-54 는 위 청 뒤
       「관련 있는 것을 읽었다」와 「그것이 이 물음의 답임을 알았다」는 다릅니다
 미커밋 0 · 감시 🟢
 ```
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-52-e `d8ec410b` — 속성 거절 «다섯»이 전부 `unattached_refusals` 였고, 이제 «자기 네모»에 앉습니다** (09-08 10:26)
+
+```
+감시 id   bdcsrg69j (15분 자가 감시 — «살아 있습니다». 10:1x 에 발화했습니다)
+         ba8i0vtpa (지시서 감시 — 10:0x·10:15 두 번 발화)
+🔴 정정   깨어난 직후 「안 걸려 있다」는 판정을 받아 새로 하나 더 걸었다가(bbenrw1ii),
+         bdcsrg69j 가 «발화»해서 살아 있음이 드러나 새것을 즉시 껐습니다. 지금 감시는 «둘»입니다.
+         못 깬 원인은 감시가 아니라 «컴팩트»입니다 — 09:2x·10:04 블록을 받은 세션이 요약으로 접혔습니다
+```
+
+## 잰 것 — 「행이 없다」가 아니라 «거절이 어디로 가나»를 셌습니다
+출하 샘플 + 출하 카탈로그(둘 다 «추적»됩니다. 라이브 루트는 이 박스 파일이라 안 씁니다):
+```
+문법이 attributes 밑에 쓸 수 있는 거절 «다섯», 착지 전 전부 unattached_refusals:
+  invalid_binding            sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp   <- 클라 A1 철자 그대로
+  unknown_entity_attribute   sources.dt_job.bind.entities.dtjob@1.attributes.nope
+  invalid_type               entities.dtjob@1.attributes
+  unknown_entity_attribute   sources.dt_job.bind.mappings.counted.bind.subject.attributes.nope
+  invalid_binding            …attributes.dt_eqp.kind                                  <- ⚠️ 아래 «남는 것»
+계획 행 637 · attributes 를 담은 행 «0»
+```
+
+## 지은 것 — 행 셋, 함수 «하나»
+```
+① bundle.entities.<t>.attributes                       _entities_fields  (타입이 «선언했을 때만»)
+② bundle.sources.<s>.bind.entities.<t>.attributes.<n>  _profile_fields   (bind.entities 가 «있을 때만»)
+③ …bind.mappings.<m>.bind.<role>.attributes.<n>        _entity_binding_fields («이미 쓰고 있을 때만»)
+②③ 은 _attribute_binding_fields «하나»를 지납니다 — 두 사본이면 두 층이 갈라지고,
+   걷기의 attribute_conflicts 가 «이 화면이 만든» 불일치를 세게 됩니다
+착지 후 계획 행 640 (+3) · unattached «0» (네 경우 전부)
+```
+
+### 🔴 지시를 «그대로» 안 따른 자리 «하나» — 주소가 `.<name>` 이고 `.column` 이 아닙니다
+```
+지시     「`_entity_binding_fields` 가 keys 에 하는 «그 모양»으로」
+keys 의 모양   {path}.keys (shape 행) + {path}.keys.<key>.column (컬럼 피커)
+따랐다면      {path}.attributes.<name>.column
+그런데        authoring_plan 은 «정확 경로»로 붙입니다(by_path[item.path]).
+             위 거절 넷 중 «셋»이 `…attributes.<name>` «자체»에 쓰입니다
+=> `.column` 으로 주소를 잡으면 게이트가 겨눈 그 거절이 «그대로» 느슨한 목록에 남습니다.
+   그래서 shape 행은 keys 와 «같은 모양»으로, 멤버 행은 «지시가 적은 주소»로 두었습니다
+🔴 그리고 이 행에는 «후보를 안 싣습니다» — editableFor 가 candidates 를 «row.path 에 쓰는 컨트롤»로
+   바꾸므로, 바인딩 레코드 자리에 컬럼 «문자열»을 쓰게 됩니다. 그게 S-52-d 와 «같은 부류»입니다
+```
+
+## 게이트 — 변이 «먼저», 그다음 커밋
+```
+㉠ 세 자리에 행이 있다                                  M1 M2 M3 이 빨강
+㉡ 거절 넷이 각자 «자기 행»에 앉고 unattached 0          M1(둘) M2 M3 이 각각 «다른» 파라미터를 빨강
+㉢ 속성 없는 선언 → 새 행 «0»                            M4 (① 무조건 그리기) 빨강
+㉣ shape 행이 derived+shape (plannedMembers 가 읽는 것)   M5 빨강
+㉤ 바인딩 행에 칩 없음                                   M6 빨강
+변이 6/6 잡힘 · 음성 대조군 C1(아무도 안 재는 note 문구) «통과» 8 passed
+이웃은 «심볼»로 골랐습니다: git grep -l authoring_plan -- server/tests  ->  74 passed
+수집 5162 (직전 5150 + 병합분 4 + 제 8)
+```
+
+### ⚠️ 제 것 «아닌» 빨강 둘 — 실행으로 갈랐습니다(판정 92)
+```
+test_ontology_config_explorer.py::test_derivations_rebuild_by_force_what_the_operator_typed_by_hand
+test_ontology_config_explorer.py::test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list
+HEAD 의 config_authoring.py 를 그 자리에 놓고 돌려도 «같은 둘»이 빨강입니다.
+둘 다 DEFAULT_ONTOLOGY_ROOT/ledger_config.json — «라이브 루트»(gitignore)를 읽습니다
+```
+
+## 남는 것 — 제가 «안 지은» 것 하나 (판정 필요)
+```
+`…attributes.<name>.kind` 에 쓰이는 거절이 «아직» unattached 입니다.
+   폼의 값 바인딩은 column·constant·entity «셋»을 내미는데 검증기는 셋째를 거절합니다
+   -> S-52-d 와 «글자 그대로 같은 부류»(폼이 그리는데 서버가 거절)이고, 자리는 «스켈레톤»입니다
+   -> 지시에 없어서 «안 지었습니다». 짓는다면 defs.binding 의 kind 잎이 이 자리에서만 좁혀지는
+      identity_binding 과 «같은 처방»입니다(닫힌 목록 하나 더). 판정 주십시오
+```
+
+## 문서
+```
+CODE_MAP 서버 절에서 이 커밋이 «거짓으로 만든 줄»: «없음».
+  §5-H-bis 의 헬퍼 행은 「이 구간 신설·분리」의 «이력» 목록이고 오늘의 전수 목록이 아닙니다
+  authoring_plan 의 「필드 출처 다섯」은 그대로 다섯입니다 (새 함수는 _profile_fields 가 부릅니다)
+  줄 수는 이미 다른 커밋들로 낡아 있었습니다 — 이 커밋이 만든 낡음이 아니라 손대지 않았습니다
+```
+
+## 다음
+```
+🔒 S-54(판정 131) «지금» — Ⓑ 의 답을 이렇게 읽었습니다: 범위 컬럼은 «15 소스 전부»
+   `_page_key(plan) = plan.driver.cursor_columns[0]`. dt_job 은 그것이 곧 identity 이고
+   lot_event 은 유도 키를 «품는» coarsening 이라, 갈래 «없이» 한 함수가 15를 답합니다
+   -> 이후 S-52-e 는 닫힘. 재기동은 총괄 몫
+미커밋 0 · 감시 🟢🟢
+```
