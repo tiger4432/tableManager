@@ -139,6 +139,12 @@ def _json_key(value):
     return str(value)
 
 
+#: How many registration atoms the follow-independent sweep fetches PER NODE. A node's
+#: attributes come from its newest registration, and a new one is written only when a value
+#: CHANGES, so this is a history depth rather than a row count.
+REGISTRATIONS_FETCHED_PER_NODE = 8
+
+
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
@@ -897,10 +903,11 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # moved to `_archive/ledger_api/` on 2026-08-28 once the consumer count reached zero.
 
     nodes = {}
-    #: node id -> {attribute name: [(occurred_at, value)]}, from every registration this
-    #: walk touched. Filled in `_expand_atom`, spent once just before the nodes are
-    #: ordered - so "latest wins" is decided in ONE place with the whole set in hand
-    #: rather than per atom as they arrive.
+    #: node id -> {attribute name: [(occurred_at, value)]}. Filled by ONE sweep after the
+    #: walk finishes -- not by the expansion, because what the expansion sees is whatever
+    #: `follow` fetched and a node's own columns must not depend on which roads were asked
+    #: for. Spent once just before the nodes are ordered, so "latest wins" is decided in one
+    #: place with the whole set in hand rather than per atom as they arrive.
     registrations: dict = {}
     refs = {}
     depths = {}
@@ -993,6 +1000,23 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
         return edge
 
+    def _record_registration(atom):
+        """File one registration's qualifiers under its SUBJECT. The only recorder.
+
+        🔴 A REGISTRATION SAYS WHAT ITS SUBJECT IS -- the entity's own values ride in the
+        qualifiers -- so this is where a node's columns come from.
+
+        ⛔ AND IT IS ONE CALLER, DELIBERATELY. The expansion used to record these too, from
+        whatever `follow` happened to fetch; that is exactly the dependence S-52-i removes,
+        and once the sweep below asks for EVERY node the second call could only ever record
+        a subset of what the first already had. Which atoms these are is stated once, by the
+        sweep's `follow=["register"]`, rather than restated as a predicate check here.
+        """
+        subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
+        for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
+            registrations.setdefault(subject_id, {}).setdefault(name, []).append(
+                (atom.occurred_at, value))
+
     def _expand_atom(atom, depth, frontier_entities):
         """Materialise one atom's far side and the single edge that carries it."""
         subject_id = ledger_explorer.entity_id(atom.subject_type, atom.subject_keys)
@@ -1001,11 +1025,6 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # qualifiers - so this is where a node's columns come from. Taken at the top
         # because the branches below return early on several paths, and a registration
         # dropped there would look exactly like an attribute nobody declared.
-        if atom.predicate == "register":
-            payload = atom.object_payload or {}
-            for name, value in (payload.get("qualifiers") or {}).items():
-                registrations.setdefault(subject_id, {}).setdefault(name, []).append(
-                    (atom.occurred_at, value))
         payload = atom.object_payload or {}
         target = None
         if atom.object_kind == "entity_ref" and payload.get("type") and payload.get("keys"):
@@ -1272,6 +1291,41 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             node["predicates"] = [
                 {"predicate": predicate, "count": count}
                 for predicate, count in sorted(counts.items())]
+    # 🔴 A NODE'S OWN COLUMNS DO NOT COME THROUGH `follow` (S-52-i). A registration is the
+    # entity DESCRIBING ITSELF, not a predicate anybody walks -- 「술어가 아닌 것은 노드」 --
+    # and every screen seat declares `follow` as the predicates that seat cares about. So a
+    # walk with `follow=['has_netdie']` returned its `dtjob` node with the attribute column
+    # permanently empty, which reads as "this entity carries no values" and means "this walk
+    # never asked".
+    #
+    # 🔴 ONE QUERY FOR THE WHOLE RESULT. Every entity node is asked at once, through the same
+    # `claims_for_entities` the walk uses; a query per node would be a walk-sized fan-out on
+    # the request path. The atoms land through `_record_registration`, the same recorder the
+    # expansion uses, so a walk that DID follow `register` and one that did not cannot come
+    # back with different values.
+    #
+    # ⚠️ A TRUNCATED SWEEP IS SAID OUT LOUD rather than left to look like an absence: the cut
+    # rides the flag `truncated` already carries for a walk that ran out of claims.
+    registration_refs = []
+    for node in nodes.values():
+        try:
+            ref = decode_node_id(node["id"])
+        except ValueError:
+            continue
+        registration_refs.append((ref["type"], ref["keys"]))
+    if registration_refs:
+        # Generous on purpose (owner, 2026-09-08: 「성능 마진 넉넉하게」). An entity registers
+        # once per distinct attribute STATE, so a node with eight generations of one name is
+        # already extraordinary; the multiplier is what stops a long-lived entity's history
+        # from crowding out a short-lived one's current values.
+        found, registration_cut = lookup.claims_for_entities(
+            registration_refs, "outgoing",
+            len(registration_refs) * REGISTRATIONS_FETCHED_PER_NODE,
+            follow=["register"])
+        claim_cut |= registration_cut
+        for atom in found:
+            _record_registration(atom)
+
     # 🔴 LATEST WINS, AND A DISAGREEMENT IS COUNTED RATHER THAN HIDDEN (S-52 ③, ruling
     # 124). "Latest" is the reading rule: a changed attribute wrote a NEW registration and
     # the old one stays, so the walk picks the newest instant and says out loud how many
