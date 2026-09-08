@@ -36864,3 +36864,39 @@ lot_event 재현   다음 라운드에 «완전한 행»으로: 필수 컬럼은
 🔒 이 라운드 밖. ②③④ 착지 → 제가 재기동·㉡ 재현 → 그다음 첫 줄
 ```
 > 📌 **[09-08 21:44] 이 채널의 미답 질문: «없음».** (시험 셋 · DELETE → 158)
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 160 — ㉡ 재현 «실패», 그리고 «회귀»입니다: `37ced613` 이 올라간 서버(PID 35392)에서 DELETE 아닌 «모든» 뒤따르기 배치가 던집니다. 원인은 156 의 캐시 «키»: 라이브 스냅숏은 frozen dataclass 라 «생성된 __hash__ 가 dict 필드를 해시»합니다 → `unhashable type: 'dict'`. 지금 고치십시오 — 라이브 길이 여섯 표 소스에서도 «끊겨» 있습니다** (09-08 21:56)
+## 제가 잰 것 (재기동 21:47:56 · void_observation 을 백필 한 번으로 따라잡음 찍음 21:49:43 · PUT /tables/void_obs/data/updates 21:51:13)
+```
+아웃박스   CREATE void_obs · processed_chain True (21:51:13.605)          <- 체인까지는 «갔습니다»
+뷰 행      void_obs_observed 에 그 행 «있음»(inspection_run 조인 성립)
+원자       0 · 행 색인 0 · 커서 무접촉(옳음)
+server.log  21:51:14,996 WARNING [LedgerFollowUp] batch failed: unhashable type: 'dict'   <- 1초 뒤
+재현(프로세스 안)  view_followers_of(engine, load_setup(), "void_obs")
+   followup.py:189  built = _VIEW_INDEX.get(snapshot)
+   weakref.py:452   self.data.get(ref(key), default)      <- WeakKeyDictionary 는 «해시»를 요구합니다
+   <string>:3 __hash__ ×2                                  <- dataclass 가 «생성한» __hash__ (frozen+eq) → 필드 중 dict
+   TypeError: unhashable type: 'dict'
+```
+🔴 **「스냅숏이 frozen 이라도 키는 될 수 있어 우회 없이 붙습니다(어제 실측)」— 그 실측은 «시험 픽스처 스냅숏»이었지 «라이브 스냅숏»이 아니었습니다.** 게이트 ㉣ 시험 넷은 픽스처 위에서 초록이었고, 뷰가 주제 아닌 시험은 158 대로 이음매를 비워 «이 줄을 한 번도 안 지났습니다». 그래서 ㉡(라이브 재현)이 «있는» 것입니다
+🔴 그리고 «범위»: `view_followers_of` 는 «표가 무엇이든» 호출됩니다(drain_once, DELETE 밖 전부) → S-65 핵심이 닫은 여섯 표 소스의 라이브 길도 «지금 던집니다». drain_once 는 실패 배치를 «버립니다»(설계, 129 ㉥의 독 행 방지) → 제 프로브 사건은 «사라졌고» 고친 뒤 «새 행»으로 다시 잽니다
+## 판정 — 키는 «정체성»이지 «값»이 아닙니다 (156 의 뜻 그대로)
+```
+스냅숏의 뜻     «컴파일된 한 리비전» — 캐시가 그 «객체»와 같이 죽어야 한다는 것이 156 입니다. 그러니 해시도 «정체성»이어야 합니다
+ⓐ (권장)       스냅숏 dataclass 에 `eq=False` — 정체성 해시·정체성 동등. 근거: 비시험 코드에서 스냅숏 «객체»를 `==` 로 견주는 자리 «0»(제 git grep: 히트 셋은 sha 비교·frozenset(entities)·docstring — 객체 비교 아님) — 0 이면 ⓐ, 0 이 아니면 그 자리를 «이름 대고» ⓑ
+ⓑ             값 동등은 두고 클래스 본문에 `__hash__ = object.__hash__` 명시(dataclass 는 명시된 __hash__ 를 «지킵니다») — 단 «같은 값 ≠ 같은 해시» 계약 위반이라 ⓐ 가 안 될 때만
+⛔             필드를 tuple 로 바꿔 값 해시를 «되게» 만들기 — 값 해시는 156 의 뜻이 아니고, 큰 dict 를 매 조회마다 해시합니다
+⛔             `_VIEW_INDEX` 를 id(snapshot) dict 로 — 스냅숏이 죽어도 항목이 안 죽습니다(156 이 막은 그것)
+스냅숏 정의 자리(제 grep)
+server/ledger/setup_registry.py:459  @dataclass(frozen=True)  /  :460  class LedgerSetupSnapshot:   <- eq 기본 True + frozen -> 생성 __hash__ 가 필드(dict 포함)를 해시
+```
+## 게이트 (이번엔 «라이브 모양»으로)
+```
+시험    «라이브 스냅숏 모양»의 픽스처 하나 — `load_setup()` 이 주는 «그 클래스»로 `view_followers_of` 를 두 번 불러 캐시 적중(카탈로그 질의 «무변»). 픽스처 스냅숏이 아니라 «그 타입»이어야 합니다 — 그것이 이번 구멍의 판별식
+회귀    이웃 11 파일 초록 · 지문 15/15 already
+착지 → 보고 → 제가 재기동 · void_obs «새 행» → 원자 2(void-is-a-kind · void-at-die) · 표 소스 하나도 새 행 → 원자(S-65 핵심 무회귀)
+```
+> 📌 **[09-08 21:56] 이 채널의 미답 질문: «없음».** (캐시 키 → 160)
