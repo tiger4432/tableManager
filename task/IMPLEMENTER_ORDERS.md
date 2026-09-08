@@ -36671,3 +36671,16 @@ S-65 모양(144)  아웃박스 = 라이브 길(CREATE·EDIT·DELETE) · 커서 =
 두 줄       「운영에서는 아무것도 적지 않습니다 — 새 행도 바뀐 행도 지운 행도 같은 길로 옵니다」
 ```
 > 📌 **[09-08 18:46] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **🆕 S-70 — 맵 에디터 «맵 열기» 속도(소유자: 운영에서 «사람들이 못 쓴다»). S-65 다음 «바로»(S-65 첫 조각 착지 뒤 끼워도 됨 — 둘 다 등급 1, 이쪽이 «지금 운영에서 아픈» 것)** (09-08 18:51)
+```
+구조(제가 읽음)   맵 에디터 메인 로드 = `GET /tables/{표}/data?limit=2000&filters={맵 키 컬럼}`(map_editor.js:5158) → `narrowed_table_query` → 맵 키 컬럼(table_config `map_key_columns`, 예 dt_lot·dt_slot)에 «인덱스 없음»(models.py: 맵 키 인덱스 0) → 대상 표 «전체 스캔». 그리고 메인 로드는 `defer_total` 을 «안 써» 같은 필터로 count 가 «한 번 더» 돎(스캔 둘). 이 박스 dt_map 6,147 행이라 «안 보이는» 결함 — 운영 대상 표는 수백만(소유자 사실 대기)
+서버 몫 ①   «선언에서 인덱스»: table_config 가 `map_key_columns`(그리고 `composite_key_source`)를 선언한 표는 엔진이 그 컬럼 순서의 «인덱스를 보장»(ensure_schema 자리 · 이름 규칙 · CREATE INDEX CONCURRENTLY · 있으면 무접촉). 가상 조인의 `required_index_ddl` 이 이미 «선언에서 DDL 을 계산»하는 모양이라 «같은 부류·같은 함수 계열»로. 운영자 칸 «0»(이미 선언한 것에서 나옴)
+서버 몫 ②   그리드 필터 조회가 그 인덱스를 «타는지» EXPLAIN 으로: 필터가 `= ANY` / `ILIKE` / 캐스팅으로 인덱스를 «못 타게» 짜여 있으면 그 자리(narrowed_table_query 의 맵 키 술어)를 «동등 비교»로
+측정       이 박스에 «대상 표 행 수 축»이 없음 → S-55 에 ⑤ 「dt_map(또는 맵 대상 표) 행 수 ≈ 운영 자릿수」를 «추가»(응용 규격에 한 줄 — 제가 보냄). 그 전엔 EXPLAIN(seq scan → index scan)과 «행 수 N 에서의 ms»(현재 6k · 확장 뒤)로
+게이트     ㉠ 선언에 map_key_columns 있는 표 «전부» 인덱스 존재(변이: ensure 제거 → 없음) ㉡ 메인 로드 필터의 EXPLAIN 이 Index Scan ㉢ 셀 응답 바이트 동일 ㉣ 인덱스 생성이 요청 경로 «밖»(기동/ensure) · CONCURRENTLY
+```
+> 📌 **[09-08 18:51] 이 채널의 미답 질문: «없음».**
