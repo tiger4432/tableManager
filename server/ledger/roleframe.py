@@ -696,16 +696,30 @@ class RoleMapperImplementationRegistry:
             ) from exc
 
 
-def map_event_frame(
+def map_event_rows(
     context: MapperContext,
     event_frame: pd.DataFrame,
     implementations: RoleMapperImplementationRegistry,
-) -> pd.DataFrame:
+) -> RoleRows:
+    """The canonical mapping step: an EventFrame in, validated role RECORDS out."""
     if not isinstance(implementations, RoleMapperImplementationRegistry):
         raise TypeError("implementations must be RoleMapperImplementationRegistry")
     descriptor = context.source_plan.driver.mapper
     mapper = implementations.resolve(descriptor.implementation)
     return mapper.map(context, event_frame, descriptor, context.source_plan.profile)
+
+
+def map_event_frame(
+    context: MapperContext,
+    event_frame: pd.DataFrame,
+    implementations: RoleMapperImplementationRegistry,
+) -> pd.DataFrame:
+    """The DataFrame spelling of :func:`map_event_rows`, for callers that want a frame.
+
+    ⚠️ NOT A SECOND PATH. It calls the one above and adapts the result; the production
+    caller (`dry_run_event_frame`) takes the records and never builds this.
+    """
+    return _role_frame_of(map_event_rows(context, event_frame, implementations))
 
 
 def _validate_event_frame(
@@ -1018,6 +1032,38 @@ def _with_attribute_values(
     )
 
 
+@dataclass(frozen=True)
+class RoleRows:
+    """A RoleFrame's rows as records, with the provenance the frame kept in `attrs`.
+
+    🔴 THIS IS THE CANONICAL VALUE, AND THE DATAFRAME IS AN ADAPTER OVER IT. The compiler
+    ran per molecule and built three DataFrames on the way (S-64), each of which made pandas
+    copy these very attrs through `__finalize__`. Records cost none of that, and a frame is
+    built only where something outside asks for one.
+    """
+
+    rows: tuple[Mapping[str, Any], ...]
+    attrs: Mapping[str, Any]
+
+    def column(self, name: str) -> tuple:
+        return tuple(row[name] for row in self.rows)
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+
+def _role_frame_of(role_rows: "RoleRows") -> pd.DataFrame:
+    """The DataFrame spelling of a RoleRows, for callers that still want one."""
+    frame = pd.DataFrame({
+        column: pd.Series([row[column] for row in role_rows.rows], dtype=object)
+        for column in ROLE_FRAME_COLUMNS
+    })
+    for name, value in role_rows.attrs.items():
+        if name != ROLE_FRAME_VALIDATED_ATTR:
+            frame.attrs[name] = value
+    return frame
+
+
 def _role_frame_from_emissions(
     event_attrs: Mapping[str, Any],
     emissions: Sequence[RoleEmission],
@@ -1037,17 +1083,13 @@ def _role_frame_from_emissions(
         "roles": emission.roles,
         "source_row_refs": emission.source_row_refs,
     } for emission in emissions]
-    frame = pd.DataFrame({
-        column: pd.Series([row[column] for row in rows], dtype=object)
-        for column in ROLE_FRAME_COLUMNS
-    })
-    frame.attrs[ROLE_FRAME_ATTR] = ROLE_FRAME_SCHEMA_VERSION
+    attrs = {ROLE_FRAME_ATTR: ROLE_FRAME_SCHEMA_VERSION}
     for name in EVENT_FRAME_REQUIRED_ATTRS:
-        frame.attrs[name] = event_attrs[name]
+        attrs[name] = event_attrs[name]
     for name in EVENT_FRAME_PASSTHROUGH_ATTRS:
         if name in event_attrs:
-            frame.attrs[name] = event_attrs[name]
-    return frame
+            attrs[name] = event_attrs[name]
+    return RoleRows(tuple(rows), MappingProxyType(attrs))
 
 
 def validate_role_frame(
@@ -1056,34 +1098,41 @@ def validate_role_frame(
     descriptor: MapperDescriptor | None = None,
     profile: ProfileDescriptor | None = None,
 ) -> pd.DataFrame:
-    if (isinstance(value, pd.DataFrame)
+    # 🔴 THE STAMP IS ON THE RECORDS, NOT ON A FRAME. A DataFrame built from validated
+    # records by `_role_frame_of` is a different shape arriving from outside, and the
+    # caller that hands one in is asking for exactly the checks it used to get.
+    if (isinstance(value, RoleRows)
             and value.attrs.get(ROLE_FRAME_VALIDATED_ATTR)
             == context.snapshot.snapshot_sha256):
         return value
     descriptor = descriptor or context.source_plan.driver.mapper
     profile = profile or context.source_plan.profile
     path = "role_frame"
-    if not isinstance(value, pd.DataFrame):
+    if not isinstance(value, (pd.DataFrame, RoleRows)):
         raise RoleFrameError(
             "invalid_role_frame", path, "expected pandas.DataFrame")
-    if value.attrs.get(ROLE_FRAME_ATTR) != ROLE_FRAME_SCHEMA_VERSION:
+    if isinstance(value, RoleRows):
+        frame_attrs, frame_columns = value.attrs, ROLE_FRAME_COLUMNS
+    else:
+        frame_attrs, frame_columns = value.attrs, tuple(value.columns)
+    if frame_attrs.get(ROLE_FRAME_ATTR) != ROLE_FRAME_SCHEMA_VERSION:
         raise RoleFrameError(
             "unmarked_role_frame", f"{path}.attrs.{ROLE_FRAME_ATTR}",
             "arbitrary DataFrames are not RoleFrames")
     for name in EVENT_FRAME_REQUIRED_ATTRS:
-        if name not in value.attrs:
+        if name not in frame_attrs:
             raise RoleFrameError(
                 "missing_event_context", f"{path}.attrs.{name}",
                 "RoleFrame must preserve EventFrame provenance")
-    if value.attrs["source_id"] != context.source_plan.source_id:
+    if frame_attrs["source_id"] != context.source_plan.source_id:
         raise RoleFrameError(
             "invalid_event_context", f"{path}.attrs.source_id",
             "RoleFrame source_id disagrees with SourcePlan")
-    if value.attrs["setup_snapshot_hash"] != context.snapshot.snapshot_sha256:
+    if frame_attrs["setup_snapshot_hash"] != context.snapshot.snapshot_sha256:
         raise RoleFrameError(
             "snapshot_mismatch", f"{path}.attrs.setup_snapshot_hash",
             "RoleFrame was not built for this setup snapshot")
-    if tuple(value.columns) != ROLE_FRAME_COLUMNS:
+    if frame_columns != ROLE_FRAME_COLUMNS:
         raise RoleFrameError(
             "invalid_role_frame_schema", f"{path}.columns",
             f"columns must exactly match RoleFrame v{ROLE_FRAME_SCHEMA_VERSION}")
@@ -1092,8 +1141,9 @@ def validate_role_frame(
     # `value.iloc[0]` AGAIN inside the same iteration just to reach the first row's event
     # id -- two pandas Series per row, each of them copying the frame's attrs. Every
     # RoleFrame column is `dtype=object`, so `.tolist()` returns the same objects.
-    rows = [dict(zip(ROLE_FRAME_COLUMNS, row))
-            for row in value.to_numpy(dtype=object)]
+    rows = (list(value.rows) if isinstance(value, RoleRows)
+            else [dict(zip(ROLE_FRAME_COLUMNS, row))
+                  for row in value.to_numpy(dtype=object)])
     first_event_id = rows[0]["source_event_id"] if rows else None
     for position, row in enumerate(rows):
         row_path = f"{path}.rows[{position}]"
@@ -1101,7 +1151,7 @@ def validate_role_frame(
             raise RoleFrameError(
                 "cross_event_mapper_output", f"{row_path}.source_event_id",
                 "one RoleFrame may not cross source-event boundaries")
-        if row["source_event_id"] != value.attrs["source_event_id"]:
+        if row["source_event_id"] != frame_attrs["source_event_id"]:
             raise RoleFrameError(
                 "cross_event_mapper_output", f"{row_path}.source_event_id",
                 "RoleFrame row source_event_id disagrees with preserved EventFrame context")
@@ -1169,18 +1219,14 @@ def validate_role_frame(
         canonical_row["source_event_id"] = str(row["source_event_id"])
         sort_rows.append((_canonical(canonical_row, path=row_path), normalized_row))
     sorted_rows = [item[1] for item in sorted(sort_rows, key=lambda item: item[0])]
-    out = pd.DataFrame({
-        column: pd.Series([row[column] for row in sorted_rows], dtype=object)
-        for column in ROLE_FRAME_COLUMNS
-    })
-    out.attrs[ROLE_FRAME_ATTR] = ROLE_FRAME_SCHEMA_VERSION
-    out.attrs[ROLE_FRAME_VALIDATED_ATTR] = context.snapshot.snapshot_sha256
+    out_attrs = {ROLE_FRAME_ATTR: ROLE_FRAME_SCHEMA_VERSION,
+                 ROLE_FRAME_VALIDATED_ATTR: context.snapshot.snapshot_sha256}
     for name in EVENT_FRAME_REQUIRED_ATTRS:
-        out.attrs[name] = value.attrs[name]
+        out_attrs[name] = frame_attrs[name]
     for name in EVENT_FRAME_PASSTHROUGH_ATTRS:
-        if name in value.attrs:
-            out.attrs[name] = value.attrs[name]
-    return out
+        if name in frame_attrs:
+            out_attrs[name] = frame_attrs[name]
+    return RoleRows(tuple(sorted_rows), MappingProxyType(out_attrs))
 
 
 def _claim(snapshot: LedgerSetupSnapshot, predicate_id: Any, path: str) -> ClaimDescriptor:
@@ -1362,9 +1408,7 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
     # object the mapper put there, so a column's `.tolist()` hands those same objects back.
     # ⚠️ `to_dict("records")` was the first attempt and it is NOT this -- it builds a row
     # object per row too, and measured slightly WORSE than the iloc it replaced.
-    names = tuple(normalized.columns)
-    records = [dict(zip(names, row))
-               for row in normalized.to_numpy(dtype=object)]
+    records = normalized.rows
     molecule_ref = normalized.attrs["molecule_ref"]
     source_raw_ref = str(normalized.attrs["source_raw_ref"])
     source_id = context.source_plan.source_id
@@ -1513,11 +1557,20 @@ def _claim_source_raw_ref(event_ref: str, row_refs: Sequence[str]) -> str:
 
 @dataclass(frozen=True)
 class LedgerV2DryRunResult:
-    role_frame: pd.DataFrame
+    role_rows: RoleRows
     ledger_frame: pd.DataFrame
     gate_preview: Mapping[str, Any]
     provenance: Mapping[str, Any]
     snapshot_hash: str
+
+    @property
+    def role_frame(self) -> pd.DataFrame:
+        """The RoleFrame as a DataFrame, built on demand.
+
+        Production reads `role_rows`; this exists so anything that asks for the frame --
+        a test, an explorer -- still gets exactly the frame it used to get.
+        """
+        return _role_frame_of(self.role_rows)
 
 
 def dry_run_event_frame(
@@ -1529,12 +1582,12 @@ def dry_run_event_frame(
     _validate_event_frame(
         context, event_frame, context.source_plan.driver.mapper,
         context.source_plan.profile)
-    role_frame = map_event_frame(context, event_frame, implementations)
-    ledger_frame = compile_role_frame(context, role_frame)
+    role_rows = map_event_rows(context, event_frame, implementations)
+    ledger_frame = compile_role_frame(context, role_rows)
     derivations = tuple(sorted(set(ledger_frame["derivation"].tolist())))
     subjects = tuple(sorted(set(ledger_frame["subject_type"].tolist())))
-    sentences = tuple(sorted(set(role_frame["sentence"].tolist())))
-    refs = tuple(sorted({ref for values in role_frame["source_row_refs"].tolist()
+    sentences = tuple(sorted(set(role_rows.column("sentence"))))
+    refs = tuple(sorted({ref for values in role_rows.column("source_row_refs")
                          for ref in values}))
     gate_preview = MappingProxyType({
         "status": "candidate",
@@ -1557,7 +1610,7 @@ def dry_run_event_frame(
         "setup_snapshot_hash": context.snapshot.snapshot_sha256,
     })
     return LedgerV2DryRunResult(
-        role_frame=role_frame,
+        role_rows=role_rows,
         ledger_frame=ledger_frame,
         gate_preview=gate_preview,
         provenance=provenance,

@@ -189,7 +189,7 @@ def preview_cursor_batch(
         candidate_semantics=tuple(MappingProxyType(item) for item in semantics),
         known_registrations=normalized_registrations,
         incomplete_count=sum(
-            bool(result.role_frame.attrs.get(SOURCE_EVENT_INCOMPLETE_ATTR, False))
+            bool(result.role_rows.attrs.get(SOURCE_EVENT_INCOMPLETE_ATTR, False))
             for result in event_results),
         refusals=tuple(refusals),
         excluded_rows=(sum(excluded) if excluded else None),
@@ -403,7 +403,7 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
         preview.event_results, preview.known_registrations)
     _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
     for result, atoms in zip(preview.event_results, event_atoms):
-        molecule_ref = result.role_frame.attrs["molecule_ref"]
+        molecule_ref = result.role_rows.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
             # 🔴 `_report` STAYS DISCARDED HERE, AND THAT IS MEASURED RATHER THAN LAZY.
             # This call sits inside `gate.building_molecule`, and a refusal there does not
@@ -421,7 +421,7 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
                 result.gate_preview["declared_subject_types"],
                 molecule_ref=molecule_ref,
                 source_rows=len({
-                    ref for refs in result.role_frame["source_row_refs"].tolist()
+                    ref for refs in result.role_rows.column("source_row_refs")
                     for ref in refs
                 }),
             )
