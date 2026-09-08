@@ -37,7 +37,7 @@
 | **A3 값** | value 목적어 · 단위(수식어 관례) · 정의역(문자열·수·불·목록·json·시각·null) | 정의역 일곱 층 «미검» |
 | **A4 소스** | `relation`(표/뷰) · `read`(unit row/group · identity · group_by · order_by · cursor · occurred_at) · `prepare`(구현 · input/output columns · verified join) · `map`(구현 · unit · input columns) · `bind`(entities.attributes · mappings: predicate · subject · target · qualifiers · occurred_at) · **결정 단위** `decision_key` · 삭제 겨눔(행 색인 · 뷰는 row_id 를 나를 때만) | decision_key ③(S-50) · row_id 없는 뷰 ②+이름(뷰의 빚) · 단조 컬럼 없는 소스 ②(근본 ①로 없앨 자리) |
 | **A5 선언 자체** | `setup_version` · sha(`source_translator_ver`) · **세대**(born/retired · 내용 여섯 칸 재사용, 판정 133) · **변경 비용 미리보기**(선언 diff → 다시 도는 범위·행·시간) | 세대 ③(S-57) · 미리보기 ③ |
-| **A6 출처(봉투)** | `transaction_id`(파일당 하나) · `user` · `source` · `ts` · `chain_depth` · 파일 신원 → 데이터 행 = 표 선언의 `filename_rules`(판정 159) | ① |
+| **A6 출처(봉투)** | `transaction_id`(파일당 하나) · `user` · `source` · `ts` · `chain_depth` · 파일 신원 → 데이터 행 = **인제스터 선언**의 `filename_rules`(판정 159) | ① |
 | **A7 변경 동사** | CREATE · EDIT · DELETE(표 × 행, 접힘) · SYSTEM_RELOAD · RETROACTIVE_RUN · **외부 응답**(싱크로 보낸 명령의 답) | 외부 응답 ③ 후보 · DELETE 문은 09-08 밤에야 지남(S-74) |
 | **A8 이력** | append-only 원자 · occurred_at 월 파티션 · supersede · 세대 · 표 «전체»의 버전/브랜치는 «없음»(파운드리와 이력 «단위»가 다름 — 사실 단위) | ① (설계 선택) |
 
