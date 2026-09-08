@@ -19288,3 +19288,47 @@ $ generate_syn_lot_split_merge_sources.py --root-lots 188 --dry-run
    이 보고를 갱신하겠습니다 — 지금은 「이렇게 지울 계획」이지 「이렇게 지워진다」가 아닙니다
 ```
 🔒 다음: 루트 이름 형태 판정 → dry-run 재보고 → 적재 → ② 접힘 한 트랜잭션(사건 수 ⌈N_t/1000⌉)
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-55 ① dry-run 재보고 + 되돌리기 SQL «확정». 적재는 아직 «안 했습니다»** (09-08 13:4x)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0
+```
+
+## dry-run (판정 139 Ⓐ 형태 그대로 · 아무것도 안 씁니다)
+```
+$ generate_syn_lot_split_merge_sources.py --root-lots $(seq -f 'SYN-R-%03g' 1 188) --dry-run
+  roots         : 188
+  wafers        : 4,700
+  process rows  : 470,000     <- 응용 표의 선형 예측(≈470,000) 과 «일치»
+  lot rows      : 3,008       <- N_t. 16 × 188 = 3,008 «그대로»
+  SYN-R-001 events: 6,41,49,52,64,65,79,96   …   SYN-R-188 events: 17,38,59,68,73,74,83,90
+  dry-run       : nothing written
+=> ② 접힘 사건 수 ⌈N_t/1000⌉ = ⌈3,008/1000⌉ = «4»
+```
+
+## 되돌리기 — 접두를 «코드에서» 확인하고 확정했습니다
+```
+확인    lot 이름은 뿌리 이름에서 파생됩니다: child_lot_name(root, i) = f"{root}T{letters}"
+        (source_fixtures/lot_split_merge.py:88). 즉 모든 lot 이 «SYN-R-» 로 시작합니다 —
+        제가 이름을 그렇게 주기 때문입니다(생성기가 박은 접두가 «아닙니다»)
+🔴 그래서 앞 보고의 'SYN-%' 는 «너무 넓습니다» — 이 박스엔 다른 SYN- 씨앗이 이미 있습니다
+   (SYN-DTJ-… · SYN-DTE-… · SYN-R-CMP-… 등). 좁힙니다:
+   DELETE FROM lot_event     WHERE lot_id LIKE 'SYN-R-0%' OR parent_lot LIKE 'SYN-R-0%'
+                                OR child_lot LIKE 'SYN-R-0%';
+   DELETE FROM process_event WHERE lot_id LIKE 'SYN-R-0%';
+⚠️ 아직 «안 돌렸습니다». 그리고 적재 «후»에 이 술어가 실제로 «넣은 행만» 집는지
+   SELECT count(*) 로 먼저 재고 나서 지우겠습니다 — 「지울 계획」과 「지워진다」는 다릅니다
+```
+
+## 남은 것 — 적재는 «다음 세션»입니다
+```
+적재는 470,000 + 3,008 행을 넣고 체인을 돌리는 걸음이라, 넣어 놓고 못 지켜보면 안 됩니다.
+제 작업 컨텍스트가 끝나가서 «여기까지»로 끊습니다. 다음 세션의 출발점:
+  ① CSV 생성(--output-dir 기본 outputs/syn_lot_split_merge) → 접두 «CSV 로» 재확인
+  ② lot_event 표에 적재(원자 직접 쓰기 ⛔) · 접힘 한 트랜잭션 · 사건 «4» 세기
+  ③ 체인 뒤 N_x = lot_slot_wafer 행 수 · S-54 뒤따르기 지연을 «값으로»(첫 측정값)
+  되돌리기 SQL 은 위에 «확정»돼 있습니다
+```
