@@ -18521,3 +18521,90 @@ DB 없이  행 가져오기와 원장 저장소«만» 대역입니다 — _v2_f
 🔒 S-59 닫음 요청 -> (총괄이 S-52-g 를 그 명령으로 재검증 · 재기동) -> S-54-b -> S-55 -> S-57
 미커밋 0 · 감시 🟢🟢
 ```
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-52-h `28b298d6` + S-60 `ddf3fb10` — 다섯째 층과 데이터 손실, 둘 다 착지** (09-08 11:20)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢
+```
+
+## S-52-h — 제약의 «뜻»을 고쳤고, 규칙은 그대로 남습니다
+```
+새 뜻   object_kind IS NOT NULL OR object_payload IS NULL
+        OR (payload 가 object 이고, 비어 있지 않고, 'qualifiers' 를 빼면 «빈 object»)
+이름    ck_ledger_objectless_has_no_payload -> ck_ledger_objectless_carries_only_qualifiers
+        (뜻이 바뀌었으니 이름도. 옛 이름은 상수로 남겨 마이그레이션이 찾고, 다음 사람이
+         「속성 이전 설치」와 「누가 제약을 지웠다」를 구별합니다)
+철자    «하나» — CREATE_LEDGER 가 그 상수를 끼워 넣고 ALTER 가 같은 것을 씁니다.
+        uq_ledger_atom(`4bdbff36`)이 「이름만 보고 IF NOT EXISTS」로 두 박스가 다른 인덱스를
+        갖게 된 그 사고의 재발 방지입니다
+```
+
+### 🔴 지시대로 «먼저 재고» 적었습니다 — 이 박스 PostgreSQL 18.3, 스크래치 파티션 표(원장 무접촉)
+```
+ADD CONSTRAINT ... NOT VALID  «파티션 부모에서» 통과 · 파티션 «전부»로 재귀(전부 NOT VALID)
+VALIDATE CONSTRAINT (부모)     통과 · 부모와 파티션 «전부» validated 로
+```
+🔴 **NOT VALID 는 편법이 아닙니다** — 그 순간부터 모든 INSERT·UPDATE 에 «적용»됩니다.
+   건너뛰는 것은 «이미 있는 행을 다시 읽는 것»뿐입니다. 그래서 일을 이렇게 갈랐습니다:
+```
+ensure_schema   DROP 옛것 + ADD 새것 NOT VALID, «한 트랜잭션»(둘 다 카탈로그만, 스캔 0)
+                -> 표가 「둘 다 없는」 창을 «안 만듭니다». 카탈로그 게이트라 최신 설치는 DDL 0·잠금 0
+                   (이 함수는 «모든 백필 시작»에 돕니다)
+새 스크립트     같은 것 + VALIDATE 스캔. «비용이 있는 유일한 부분»이라 운영자 결정으로 뺐습니다
+                scripts/migrate_ledger_objectless_payload_constraint.py --apply
+🔴 그리고 새 규칙은 «옛 규칙 OR 한 항»이라 «엄격히 약합니다» — 기존 행은 «구조적으로» 위반 불가.
+   VALIDATE 는 실패할 수 없고 고칠 데이터도 없습니다
+```
+
+### 제약의 «뜻»은 실제 Postgres 로 여덟 모양 재서 확인
+```
+ACCEPTED  qualifiers 만 · payload NULL · object_kind 있는 원자
+REFUSED   {"value":1} · qualifiers+value 섞임 · entity_ref 모양 · {} · [] · 문자열
+```
+
+## S-60 — 두 트랜잭션이 한 트랜잭션이 됐습니다
+```
+옛 모양   DELETE 커밋 -> 번역 -> 쓰기 커밋.  remake 가 실패하면 «철회만 남습니다»
+          (총괄 실측: SYN-DTJ-002-04 의 원자 «둘»이 사라짐)
+🔴 재정렬은 답이 아닙니다  remake 먼저면 uq_ledger_atom 에 부딪혀 «전부 deduped» 되고
+   그다음 철회가 «전부» 가져갑니다 — 같은 손실인데 반환값이 초록입니다
+새 모양   refs 가 store.write_batch 로 «withdraw_refs» 로 가고, DELETE 가 «새 세대를 쓰는
+          그 커밋 안»에서 돕니다. 「사이에 두 세대가 있다」는 «관찰자가 없습니다»
+자리      _withdraw_refs 는 insert_atoms «옆», 즉 커밋이 사는 곳. source_who 를 술어에 유지
+          (한 소스의 rescope 가 다른 소스의 원자에 닿지 못하게)
+전진 스캔  refs 를 «안 넘깁니다» — 철회할 것이 없는 호출자는 «세대를 더하는» 것이 맞습니다
+```
+
+## 게이트
+```
+S-52-h  마이그레이션이 «무엇을 하나»는 어디서나 돕니다 — 최신 설치는 DDL «0» · 옛 설치는
+        DROP 다음 ADD · 둘 다 없으면 ADD 만 · ALTER 에 NOT VALID · CREATE 와 «한 몸»
+        제약의 «뜻»은 서버가 필요해 pg_engine 시험 여섯 -> 여기서는 «건너뜁니다»
+        (QA DB 미선언). 그래서 위 여덟 모양을 «손으로» 재서 보고에 적습니다
+S-60    refs 가 store 로 가고 rescope 는 DELETE 도 COMMIT 도 «자기 것으로 안 냅니다» ·
+        쓰기가 던지면 아무것도 안 지워진 채 전파 · refs 없으면 아무것도 안 엶 ·
+        DELETE 는 «한 문장»이고 source_who 로 좁혀짐
+        진짜 Postgres 쪽 셋(실패해도 행 유지 · 성공하면 세대 교체 · refs 없으면 withdrawn 0)은 «건너뜀»
+변이    5/6 잡힘 · 음성 대조군 1/1 통과
+🔴 «생존한 변이 하나를 이름 대어 남깁니다»: store 의 삭제를 «통째로 빼면» 여기서는 안 잡힙니다.
+   그것을 잡는 단언은 «있고»(pg 쪽) 이 환경에 DB 가 없어 안 돕니다. 약한 단언이 아니라 «안 도는 단언»입니다
+이웃(심볼로) 214 passed · 57 skipped · 수집 5214
+```
+
+### 이웃 셋을 «계약과 함께» 고쳤습니다(우회 아님)
+```
+store 대역 둘이 새 인자를 배웁니다 · 거절 문구가 늘어난 계약의 반쪽을 말합니다 ·
+test_a_scoped_redo_re_reads_the_row_... 가 「delete 이벤트」 대신 「refs 가 writer 에 간다」를 잽니다
+— 같은 사실, 새 주소
+```
+
+## 다음
+```
+🔒 총괄: 재기동 + 같은 명령 --apply 로 원자 둘 «복구» + 걷기 확인 -> S-54-b -> S-55 -> S-57
+⚠️ 기존 설치의 제약은 «백필 첫 실행»에 ensure_schema 가 넓힙니다(스캔 0).
+   VALIDATE 를 지금 돌리시려면 위 스크립트 --apply
+미커밋 0 · 감시 🟢🟢
+```
