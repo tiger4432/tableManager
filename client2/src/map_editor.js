@@ -9,6 +9,7 @@ import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
 import { CELL_LIMIT, cellQuery, cellsTruncated as isCellsTruncated, cellsToDraw }
   from './map_cell_query.js';
 import { createOpenTimer, timingText, duplicateTitle } from './map_open_timing.js';
+import { mapTablesFrom } from './map_table_list.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -1218,35 +1219,17 @@ async function loadTablesList() {
     el.tableSelect.innerHTML = '';
 
     if (data.tables && data.tables.length > 0) {
-      // Fetch schema for all tables and filter ONLY map tables that have map_key_columns configured
-      const mapTables = [];
-      // 🔴 A table whose schema cannot be read was dropped here in TWO ways -- the catch
-      //    logged to the console, and a non-ok response was skipped without even that. Either
-      //    way it simply vanished from the picker, indistinguishable from 「not a map table」.
-      //    The operator then looks for a map that is there and cannot find it.
-      let unreadable = 0;
-      for (const tableName of data.tables) {
-        try {
-          const sRes = await fetch(`${API_BASE}/tables/${tableName}/schema`);
-          if (sRes.ok) {
-            const schema = await sRes.json();
-            const keys = schema.map_key_columns || [];
-            if (Array.isArray(keys) && keys.length > 0) {
-              mapTables.push(tableName);
-            }
-          } else {
-            unreadable++;
-            console.warn(`schema ${sRes.status} for ${tableName}`);
-          }
-        } catch (e) {
-          unreadable++;
-          console.warn(`Failed to fetch schema for ${tableName}:`, e);
-        }
-      }
-      // 🔵 One line, one number. Naming every table would push the real list off screen, and
-      //    the count is what tells the operator the picker is short.
-      if (unreadable > 0) {
-        showToast(`\uc2a4\ud0a4\ub9c8\ub97c \ubabb \uc77d\uc5b4 \ubaa9\ub85d\uc5d0\uc11c \ube60\uc9c4 \ud45c ${unreadable}\uac1c`,
+      // 🔴 C-44 ②. THE LOOP IS GONE, NOT PARALLELISED. It asked every table for its whole
+      //    schema — one round trip each, awaited in order — to read ONE field. Measured on
+      //    this box: 45 requests to build a list of ten, and 34 of the answers thrown away.
+      //    Running them at once would have kept the shape (requests = tables) and hidden it;
+      //    `/tables` now carries `map_key_columns` itself (S-72), so there is nothing to loop.
+      // ⚠️ 「이 서버는 그 칸을 안 보낸다」와 「맵 표가 없다」는 «다른 답»입니다. The reason is
+      //    what separates them, and it is one word rather than a sentence.
+      const picked = mapTablesFrom(data);
+      const mapTables = picked.tables;
+      if (picked.reason) {
+        showToast(`\ub9f5 \ud45c \ubaa9\ub85d \u00b7 ${picked.reason}`,
           'error', { dedupeKey: 'map-table-schema' });
       }
 
