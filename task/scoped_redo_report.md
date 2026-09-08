@@ -20733,3 +20733,62 @@ wafer_process  470,000 행 · row_id 커서가 리터럴 'zzdoe-wp-brk-1' 에 �
 그 스모크에서 하나 더  normal 41 중 «40» 은 `validate_role_frame` 이 «행마다» claim 을 다시 푸는 것입니다.
               검증기도 `_emission_plan` 을 쓰면 ㉣ 의 수가 깨끗해집니다 — 작은 다음 후보로 적어만 둡니다
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-65 ① 착지 `479064b7` — 「따라잡음」이 «값»이 됐습니다. 관측만 하는 조각이라 번역은 «한 글자도» 안 바뀝니다** (09-08 18:52)
+
+```
+시각   18:52   ·   rescope 213/235 · 426,000/470,000 · busy 116.3 분
+S-70   받았습니다. 이 조각이 착지했으니 «다음»으로 잡습니다(아래 마지막 절)
+```
+
+## 무엇이 생겼나
+```
+schema.py   CAUGHT_UP_COLUMN = "caught_up_at"
+            CREATE_CURSOR 에 «그리고» CURSOR_ADDITIONS 에 «둘 다»
+            -> CREATE TABLE IF NOT EXISTS 는 이미 표가 있는 박스에 «아무 일도 안 합니다».
+               새 설치는 CREATE 로, 도는 설치는 ADD COLUMN 으로 — 한쪽만 하면 절반이 못 받습니다
+store.py    mark_caught_up(source, caught)  — «세우기와 지우기가 한 writer».
+            따라잡았다가 «다시 뒤처지는» 소스(선언 리비전이 되감기 · rescope 가 범위를 넓힘)가
+            표시를 계속 달고 있으면 라이브 길이 «양쪽 다 안 읽는 행»을 만듭니다
+backfill    런 끝에서 `rows_past_cursor(engine, setup, source, limit=1)` 를 «묻고»
+            result["caught_up"] = complete and rows == 0 · 그 값을 표에 씁니다
+```
+🔴 **「루프가 끝났다」로 판정하지 «않았습니다»** — `max_batches` 도 체크포인트도 루프를 끝냅니다.
+   끊긴 런이 「따라잡음」을 주장하면 그게 곧 「양쪽 길이 다 안 읽는 행」입니다. 그래서 «성질을 묻습니다».
+
+## 게이트
+```
+시험 신설    tests/test_a_source_says_when_it_was_seen_caught_up.py  «3 passed»
+            ① 새 설치가 CREATE 로 받는다 ② 도는 설치가 ADD COLUMN 으로 받는다
+            ③ 결정이 `rows_past_cursor` 의 «두 값»에서 나오고 `stopped` 같은 제어 흐름 플래그가 «안 들어간다»
+            ⚠️ ③ 은 «한 결정»에 대한 텍스트 단언이고 좁습니다 — 행동 판(끊긴 런은 표시 안 됨)은
+               라이브 소스가 필요해 «다음 게이트»라고 그 자리에 적어 뒀습니다
+심볼 이웃    CURSOR_ADDITIONS · read_cursor · rows_past_cursor · CURSOR_TABLE · ensure_schema · caught_up
+            10 파일 «97 passed · 109 skipped»  (이번엔 착지 «전»에 돌렸습니다)
+라이브       ensure_schema 로 이 박스 마이그레이션 적용 · read_cursor 가 값을 돌려줌 확인 ·
+            mark_caught_up(False) 왕복 확인. 원자 «0» 씀
+```
+
+## 남은 조각 (S-65)
+```
+② CREATE 를 뒤따르기로 — 「따라잡은 소스만」. 안 따라잡은 소스는 «건너뜀 이름 대어»
+③ 체인 워커 enqueue 좌석에 CREATE
+④ followup.py:36 의 판정 129 ㉣ 주석을 144 로 갱신 · 두 줄 문서
+㉤ 재현 둘   lot_event SYN-R · wafer_process 470k — 착지 뒤 «새 행 하나씩»으로 (기존 재번역 ⛔)
+```
+
+## 남은 게이트(S-64)
+```
+㉡ 조용한 박스 · ㉣ 컴파일 1 회 변이 — 하니스 대기 중. rescope 종료(≈19:2x)에 끼워 «짧게»
+```
+
+## S-70 — 받았습니다. 짓기 «전»에 잴 것 둘을 먼저 적습니다
+```
+① 지금 정말 seq scan 인가   `narrowed_table_query` 의 맵 키 술어를 EXPLAIN 으로 (이 박스 dt_map 6,147 행)
+② 인덱스를 «못 타게» 짜였나   `= ANY` · `ILIKE` · 캐스팅 여부를 그 자리에서 읽고, 술어를 «동등»으로 고칠지 판단
+그다음 선언에서 DDL — `required_index_ddl` 이 이미 「선언에서 DDL 을 계산」하는 그 함수 계열로
+⚠️ 「인덱스가 없다」는 지금 «models.py 에 맵 키 인덱스 0」이라는 총괄 실측입니다 — 제가 EXPLAIN 으로 «다시» 재고 시작합니다
+```
