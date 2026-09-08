@@ -1219,6 +1219,12 @@ const FLOORS = new Map([
   // it missed is a smaller number, a folded duplicate is a tidier one, a draw time filled in
   // as 0 is an instant screen -- so seven mutants stand behind this number.
   ['map_open_timing_harness.mjs', 22],
+  // New 2026-09-08 with C-44 (the map-table picker). Floor is the count it reports on the
+  // commit that introduces it. 🔴 THE ORDER ASSERTION IS THE ONE TO KEEP: this box's own
+  // response cannot tell 'walk the table list' from 'walk the map's keys' -- the two agree
+  // on it -- so the fixture is built with them DISAGREEING.
+  ['map_table_list_harness.mjs', 16],
+
 
 
 
