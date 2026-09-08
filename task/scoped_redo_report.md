@@ -21039,3 +21039,43 @@ ensure_map_key_indexes(engine, cfg)  CREATE INDEX CONCURRENTLY IF NOT EXISTS · 
 그리고 제 실수 하나 더: 쉘 `-c` 안에 백틱을 넣어 주석에서 낱말 둘이 «먹혔습니다»(`kind`·`dt_log_transferable`).
 Edit 로 되살렸습니다 — 제 기억 파일이 경고하는 바로 그것입니다
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-70 이웃 실행 결과 — «2,007 passed / 8 failed», 그리고 그 8 은 «제 변경 것이 아닙니다»(앞/뒤 실행으로 갈랐습니다)** (09-08 19:52)
+
+```
+시각   19:52   ·   착지 `424e9ec7`   ·   트리 깨끗 · origin/main 과 동기
+```
+
+## 이웃 실행 (심볼: create_missing_dynamic_tables · init/refresh_dynamic_models · map_key_columns · DYNAMIC_TABLES)
+```
+89 파일   «2,007 passed · 8 failed · 8 skipped» · 12분 41초
+```
+
+## 🔴 그 8 의 «주인»을 판정 92 의 방법으로 갈랐습니다 — grep 이 아니라 «앞/뒤 실행»
+```
+같은 다섯 파일을, `models.py` 만 «내 변경 전(424e9ec7^)»으로 되돌려 실행:
+   BEFORE   «5 failed · 123 passed»
+   AFTER    «5 failed · 123 passed»      <- «같습니다»
+=> 제 변경이 만든 빨강은 «0» 입니다
+```
+⚠️ 다만 «다른 뜻으로» 제 것일 수 있는 것은 밝힙니다: 이 실패들은 «라이브 선언·라이브 행»을 재는 시험이고,
+   제가 오늘 그 표에 SYN-MAP20(S-55 ③)과 SYN-P70(S-70 ①) 행을 넣었습니다. 즉 「코드 탓은 아니고,
+   «픽스처가 라이브 상태를 바꾼» 탓일 수 있다」가 남은 가능성입니다 — 총괄께서 18:29 에 가르신 그 줄과 같습니다.
+   되돌리기는 준비돼 있습니다: `dt_lot LIKE 'SYN-P70-%'` · SYN-MAP20 접두
+
+## S-70 마감 요약
+```
+①  dt_map 6,147 -> 1,006,147 (SYN-P70 1,000,000) · 18.4 분 · 되돌리기 접두 있음
+②  전: Parallel Seq Scan · Rows Removed ≈1,005,747 · 열기 «275.2 ms»(139 + 136)
+③  선언에서 인덱스 보장(뷰 건너뜀 · CONCURRENTLY · AUTOCOMMIT · INVALID 면 DROP 후 재시도 · 요청 경로 밖)
+④  후: Index Scan · Buffers read 21,081 -> 11 · 열기 «4.4 ms» = «62 배» · 축 0.3 s 의 1/68
+게이트 ㉢ 셀 응답  전/후 «행 400 · count 400» 으로 같습니다
+```
+
+## 다음 (큐 그대로)
+```
+S-71(깨진 필터 400) -> S-65 ②③④(CREATE 를 뒤따르기로) -> S-66 한 줄 -> S-64-b -> S-57 · S-50
+```
