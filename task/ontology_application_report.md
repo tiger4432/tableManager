@@ -14841,3 +14841,70 @@ BASIS §2.6 이 응용에게 맡긴 것 — **표 A 를 §2.6 의 열(생성자 
    **「읽기의 «정의»를 깬다」**입니다. 판정 168 의 read = fold(E) 가 그것 하나에 걸려 있습니다
 ```
 > 「판정 대기」 «없음» · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+
+---
+
+# 🟡 [응용 -> 총괄] **생성기 착지 `33b4f616` — 손잡이 다섯·거절 다섯 다 돕니다. 🔴 그런데 «게이트를 못 돌렸습니다»: 첫 소스의 relation 이 «뷰»입니다. 그리고 제가 어제 이월한 문장이 «틀렸습니다»** (09-09 06:14)
+
+## 🔴 먼저 — 제 이월 문장을 정정합니다
+```
+어제 이월   「생성기가 쓸 표는 `bonding_core_die` 하나」
+실제        `bonding_core_die` 는 «뷰»입니다 (출하 카탈로그 kind=view). 사슬이 «넷»입니다:
+           bonding_log(표) + core_wafer_map(표)
+             -> bonding_core_die(뷰, create_bonding_core_die_view.py)
+               -> bonding_die_from_core(뷰)  <- bonded_from 의 relation
+=> 생성기가 쓸 표는 «bonding_log» 이고, core_wafer 가 NULL 이 아니려면 core_wafer_map 도 채워야 합니다
+🔵 이 정정을 «도구가 스스로» 냈습니다 — 라이브 선언으로 --dry-run 을 돌리니:
+   REFUSED: relation 'bonding_die_from_core' is a VIEW. Rows cannot be inserted into one --
+            name the TABLE the view selects from, and let the view do what it does.
+```
+
+## 지은 것 — `server/scripts/generate_source_rows.py` (새 파일 하나, 충돌 0)
+```
+원자 ⛔        행만 씁니다. 배율은 손잡이가 «아니라» 선언에서 읽습니다(len(bind.mappings)) — store.write_batch 안 부릅니다
+컬럼 ⛔ 하드코딩  소스 선언이 «이름 부른» 컬럼을 모읍니다(read.identity/group_by/order_by · occurred_at ·
+              prepare/map.input_columns · bind 의 column 바인딩 전부). 목록을 코드에 적으면 «둘째 선언»입니다
+import 됨     로직이 모듈 최상단에 있고 CLI 는 main() 아래. 잘라쓰기 «0»
+로더          `ledger.setup.load_setup` «하나»를 부릅니다 — 카탈로그를 두 번 읽지 않습니다
+손잡이 다섯    --rows(기본 1000) · --months(기본 3, 파티션 둘 이상) · --no-monotonic(이름 축) ·
+              «표»만(뷰는 거절) · --maps(20x20 K장, 장마다 다른 자재)
+거절 다섯      선언 안 된 소스 · 카탈로그에 없는 relation · relation 이 «뷰» ·
+              소스가 읽는데 카탈로그가 «선언 안 한» 컬럼(이름을 전부 댐) ·
+              🔴 --maps 를 «행 수가 못 받칠 때»(=조용한 불가 하나를 제가 만들었다가 거절로 바꿨습니다)
+```
+🔵 **손잡이·거절 실측** — 4,000행·3개월·비단조·10맵으로 돌리니 파티션 «3», bx/by «0~19», 자재 «10종», 원자 = 행×배율. 거절 다섯 전부 이름을 대고 떨어집니다(`--maps 10 --rows 1000` → 「4000 행이 필요하고, 아니면 --maps 2」).
+
+## 🔴 안 한 것 «둘» — 그리고 «왜»
+```
+① 쓰기 경로를 «안 이었습니다»
+   첫 소스가 plan 단계에서 거절되므로, 쓰려면 제가 «대상 표의 컬럼 철자»를 골라야 합니다.
+   그건 부하 생성기가 절대 하면 안 되는 일입니다(「스키마는 도메인 사실을 말하지 않는다」)
+② 1,000행 게이트를 «못 돌렸습니다» — ① 의 귀결입니다. 표에 한 행도 안 넣었습니다
+```
+
+## 🔴 그 과정에 «출하 샘플» 불일치 둘을 봤습니다 (제 소관 아님 — `server/config/` 는 읽기만)
+```
+㉠ bonding_log   출하 카탈로그가 선언한 컬럼에 «여덟»이 없습니다 — 그런데 출하 뷰 SQL
+                (create_bonding_core_die_view.py)이 그 여덟을 `b.<컬럼>` 으로 읽습니다:
+                base_id · bx · by · cx · cy · dt_x · dt_y · event_time
+                카탈로그에는 base_wafer_id · b_wx · b_wy · c_wx · c_wy 가 있어 «개명»처럼 보이지만
+                제가 그 짝을 «정하지 않습니다» — 그게 이 라운드의 물음입니다
+㉡ transfer_explorer  출하 셋업(config/sample/ontology/transfer_explorer/ledger_config.json)이
+                출하 카탈로그로 «로드되지 않습니다»:
+                bundle.sources.dt_log.bind.mappings.bond_component.bind.occurred_at.column:
+                  column 'event_at' is not in EventFrame schema
+                카탈로그의 dt_log 는 `event_time` 을 선언합니다. 두 «추적 파일»이 어긋납니다
+🔵 둘 다 「라이브에만 맞고 출하본은 안 맞는」 부류입니다 — 상설 메모리의 그 항목과 같은 모양입니다
+```
+
+## 판정 필요 «하나»
+```
+㉦ 생성기의 «첫 대상 표»를 무엇으로 하나
+   ⓐ bonding_log + core_wafer_map 로 간다  -> 그러면 위 ㉠ 의 «컬럼 짝»을 누가 정하는지가 먼저입니다
+                                            (운영 카탈로그가 정본이라면 그건 소유자/총괄의 답입니다)
+   ⓑ relation 이 «표»인 다른 소스를 첫 대상으로 바꾼다  -> 그러면 오늘 바로 게이트를 돌 수 있습니다.
+                                            제가 «고르지 않습니다» — 배율과 월 분포가 소스마다 다릅니다
+   🔵 도구는 어느 쪽이든 «선언만 바꾸면» 돕니다 — 컬럼을 코드에 안 적었기 때문입니다
+```
+> 「판정 대기」 ㉦ · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
