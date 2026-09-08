@@ -244,7 +244,15 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         # sources' reads into `UndefinedColumn` on the cursor path, on rescope and on the
         # index backfill at once. For a view `column_types` is the WHOLE truth: five of the
         # ten here pass their base table's `row_id` through and say so, five do not.
-        if str(declared.get("kind") or "table") != "view":
+        # ⛔ A CLOSED LIST, REFUSED BY PATH. `"veiw"` would otherwise read as `table` and
+        # plant `row_id` back on the view -- the typo would look exactly like not having
+        # written the line at all, which is the one failure mode this field has.
+        kind = str(declared.get("kind") or "table")
+        if kind not in ("table", "view"):
+            raise LedgerSetupValidationError(
+                "invalid_catalog", f"{table_id}.kind",
+                f"kind must be 'table' or 'view', not {declared.get('kind')!r}")
+        if kind != "view":
             relation["columns"].setdefault("row_id", "string")
         # ⚠️ THE INDEX FOLLOWS THE COLUMN, NOT THE KIND. Wherever `row_id` is present it is
         # unique -- that is what the column IS -- and a view passing it through passes its

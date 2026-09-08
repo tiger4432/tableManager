@@ -36383,3 +36383,32 @@ S-52-i  걷기가 속성을 «follow 에 register 가 있을 때만» 읽습니�
 
 # 🟢 [총괄 -> 구현자] **「뷰 여덟」은 제 오산입니다 — 5 + 5 = «열»이 맞습니다. 열로 지으십시오. ④(컬럼은 kind 로 가르고 UNIQUE 인덱스는 «컬럼이 있으면» — dt_transfer 가 뷰를 row_id 로 정렬) 받음. 되돌린 판단 맞음(반쯤 고친 트리 ⛔). 다음 라운드 한 번에** (09-08 12:57)
 > 📌 **[09-08 12:57] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢🔴 [총괄 -> 구현자] **㉣ `88eb8d93` 받음(13 passed). 제가 이 박스에서 «컴파일된 setup»(`ledger.setup.load_setup`)을 넘겨 dry-run: 뷰 넷 → `no_row_index` 로 «이름 대어 0» · dt_transfer 28,208 ✅. 그런데 `index_existing_refs(engine, src)` 처럼 **`setup=None` 이면** `sources_without_row_index(None)` 이 `[]` 를 내고 «그대로 진행»해 `UndefinedColumn` 으로 죽습니다 — 「공허한 답이 통과」 부류. 마지막 조각 S-61-c: `setup=None` 은 기본 루트를 «싣거나»(다른 진입점과 같은 함수) 이름 대어 «거절». 그리고 ㉡(kind 닫힌 목록 검증)** (09-08 13:27)
+```
+게이트  setup 안 넘긴 호출이 뷰 소스에서 «no_row_index»(변이: None 통과 → 빨강) · ㉡ `"kind": "veiw"` → 경로 대어 거절
+착지 뒤  제가 15 전수 dry-run 한 번 더 → S-54-b·S-61 «닫음» → 재기동 → S-55
+```
+> 📌 **[09-08 13:27] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# ✅ [총괄 -> 구현자] **S-61-c `cc2ea78e` 받음(22 passed) — 제가 15 소스 dry-run(setup 안 넘김): no_row_index 넷 «이름 대어» · 색인 가능 11 · 거절 0 · 지문 15/15 · 재기동 **PID 35856 (13:34:25)**. **S-54-b · S-61 닫음.** → **S-55 운영 모양 박스 만들기** 지금: 첫 걸음 = 이 박스 `database_outbox` VACUUM FULL(소유자 「운영은 VACUUM 함」) → 계획 표(응용 `21a5b667`) ①~④ 순: ① lot_event 트리거 행 N_t=수천(`generate_syn_lot_split_merge_sources.py --root-lots ≈188`, N_x 는 적재 후 lot_slot_wafer 행 수) · 표에 적재(원자 직접 쓰기 ⛔) ② 한 트랜잭션·접힘 모드 명시 ③ 20x20 = 메타 1행 + 대상 표 400행(새 map_id) ④ 원자 M=10^7(≈39 GB). 각 걸음마다 «어느 상태에서 잰 수»를 적기 · 게이트: S-54 ㉠㉡㉦㉩ + MAX_QUEUED_EVENTS 값** (09-08 13:35)
+> 📌 **[09-08 13:35] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **S-55 첫 걸음 받음(1,335 MB → 112 kB · 3.6초 · dead 0 = 빈 페이지 · lock_timeout·AUTOCOMMIT). 깨끗한 트리로 끊은 판단 맞음. 🔴 깨어나면(또는 새 세션이면) «여기부터»: S-55 ①** (09-08 13:37)
+```
+① 트리거 행 적재   `server/scripts/generate_syn_lot_split_merge_sources.py --root-lots 188`(N_t = 16 × roots ≈ 3,000 · 리스트 길이 = --wafers-per-root 기본 25) → 산출 CSV 를 «lot_event 표에 적재»(원자 직접 쓰기 ⛔ · 08-28 규칙). 적재 «전»에 --dry-run 요약(roots · wafers · process rows · lot rows)을 보고에 «먼저»
+   되돌리기       적재한 행을 «이름 대어» 지울 수 있게(생성기 접두 SYN- 로 구분 — 지우는 SQL 을 보고에 «미리» 적기). 시작해 놓고 못 지켜보면 «시작하지 않기»
+   한 트랜잭션    ② 접힘 모드(`OUTBOX_MODE_COLLAPSED`)로 «한 트랜잭션»에 넣고, 사건 수 ⌈N_t/1000⌉ 를 «세어» 적기
+   그 뒤          체인 lot_event→lot_slot_wafer 가 돈 뒤 N_x = lot_slot_wafer 행 수 · S-54 뒤따르기 지연(체인 커밋 → 원장 원자, «페이스된 뒤»)을 «값으로» — 이것이 첫 측정값
+③ ④ 는 ①② 착지 뒤. 게이트 S-54 ㉠㉡㉦㉩ + MAX_QUEUED_EVENTS
+```
+> 📌 **[09-08 13:37] 이 채널의 미답 질문: «없음».**
