@@ -20521,3 +20521,56 @@ MODE mutant   표지를 «들어올 때 벗김»(= 표지 무시)
 게이트 ㉡ 조용한 박스   rescope 종료(≈19:0x) 뒤. 위 19.62 ms/분자는 «경합 중»의 수입니다
 게이트 ㉣ 컴파일 1 회 변이   (a) 라운드에서 같이 (그때 컴파일이 «한 자리»가 되므로 더 정확합니다)
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **(a) 전반 착지 `04b765f8` — RoleFrame 이 분자 경로에서 «나갔습니다». 45.53 → «31.03» (−31.9%, 경합 중)** (09-08 18:05)
+
+```
+시각   18:05 (date +%H:%M)   ·   rescope 계속 도는 중 — 아래 수는 «전부 경합 중»입니다
+```
+
+## 무엇을 했나 — DataFrame 이 «어댑터»가 됐습니다 (두 경로가 «아닙니다»)
+```
+정본      RoleRows(rows: 레코드 튜플, attrs: 출처)  <- 분자 경로가 «이것만» 씁니다
+어댑터    map_event_frame(...) = _role_frame_of(map_event_rows(...))
+          이름·시그니처·반환형 «그대로»라 시험도 외부 호출자도 «한 줄도» 안 바뀌었습니다
+결과 객체  LedgerV2DryRunResult.role_rows 를 «담고», role_frame 은 «요청 시 짓는 property»
+운영 소비  runtime_v2 세 자리가 레코드를 읽습니다(192 · 406 · 424)
+```
+
+## 🔴 첫 시도가 틀렸고, 시험 다섯이 잡았습니다 — 적어 둡니다
+```
+「검증됨 표지」를 어댑터 프레임이 «같이 들고» 나갔습니다
+-> compile_role_frame 이 그 프레임을 「이미 검증됨」으로 그대로 돌려받고 «레코드처럼» 읽으려다 터졌습니다
+고침   표지는 «레코드에만» 삽니다. 어댑터 프레임은 표지를 «떼고» 나가고,
+      밖에서 들어온 프레임은 «오늘과 똑같이» 검증됩니다
+```
+
+## 게이트
+```
+바이트 동일   다섯 소스 ✅ (이번엔 «바뀐 파일 둘을 같이» 갈아 끼워 A/B — roleframe + runtime_v2)
+시험         71 passed · 10 skipped  (시험 파일 «수정 0»)
+원자         프로파일 실행 delta «+0» · withdrawn 1000 = inserted 1000
+```
+
+## 수 (cProfile · 같은 소스·크기, 전부 경합 중)
+```
+원본            45.53 s
+조각 1~3        42.96
+(b) 검증 한 번   42.49
+(a) 전반        «31.03 s»      <- 원본 대비 «−31.9%»
+isinstance   11.5M -> «7.9M»   ·  fast_xs 54,002 -> «34,002»  ·  __finalize__ 135,057 -> «80,057»
+```
+
+## 다음 — (a) 후반 (LedgerFrame)
+```
+같은 무늬로 하나 더: compile_role_rows(정본) + compile_role_frame(어댑터) ·
+LedgerV2DryRunResult.ledger_rows + ledger_frame(property) ·
+atoms_from_ledger_rows(정본) + atoms_from_ledger_frame(어댑터) · validate_ledger_rows
+반경 하나 늘어납니다   server/ledger/ledger_frame.py  (그 두 함수)
+운영 소비 자리       runtime_v2:142 · 497
+그 뒤 남는 DataFrame  분자당 «0» -> 게이트 ㉤(deepcopy 0)·㉣(컴파일 1 회 변이)을 그때 같이
+```
+⚠️ 게이트 ㉡ 「조용한 박스」는 rescope 종료(≈19:0x) 뒤에 «원본 커밋 vs 최종»으로 한 번에 재겠습니다.
