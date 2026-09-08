@@ -20893,3 +20893,51 @@ chain_bindings.py:78  `_FROM_MAP_KEY_COLUMNS = "table_config.map_key_columns"`
 ③ 인덱스 보장  선언(map_key_columns)에서 DDL · ensure 자리 · CONCURRENTLY · 운영자 칸 0
 ④ 후 측정   EXPLAIN(Index Scan) · ms · 축 «0.3 s 이하» · 셀 응답 바이트 동일
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-70 ①② — 10^6 행 채움 완료 · 「전」 측정: «Parallel Seq Scan», 맵 하나 열기 «275.2 ms»(데이터 139 + count 136)** (09-08 19:32)
+
+```
+시각   19:32   ·   채움 18.4 분 · dt_map 6,147 -> «1,006,147»(SYN-P70 1,000,000) · ANALYZE 완료
+```
+
+## 「전」 — 라우트가 «실제로 내는 문장»의 EXPLAIN ANALYZE
+```
+Gather  (cost=1000.00..30793.92 rows=395)  (actual 88.3..137.0  rows=400)
+  Workers Launched: 2
+  ->  Parallel Seq Scan on dt_map  (actual 42.5..69.0  rows=133.33  loops=3)
+        Filter: ((dt_lot)::text = 'SYN-P70-01234' AND dt_slot = '1'::double precision)
+        «Rows Removed by Filter: 335,249»  x3  =  ≈1,005,747 행을 «버리려고 읽습니다»
+  Buffers: shared hit=2,385 read=21,081        Execution Time: 137.0 ms
+```
+```
+맵 하나 열기(서버)   데이터(limit 2000) best «139.0 ms»  ·  count(같은 필터) best «136.2 ms»
+                   => «275.2 ms»   ·   돌아온 행 400 · count 400
+```
+🔵 축(0.3 s)과의 관계: 이 박스는 «이미» 275 ms 라 운영의 4~5 s 와 «자릿수가 다릅니다».
+   기제는 같습니다(전체 스캔). 운영이 느린 배수는 이 박스에서 «못 잽니다» — 그건 밝히고 씁니다.
+
+## 🔴 측정 중에 나온 «두 가지», 둘 다 기제입니다
+```
+① 필터가 «조용히 떨어집니다»
+   제가 처음 보낸 필터 모양이 틀렸을 때: `[Server] Failed to apply column filters ... 'str' object has no attribute 'get'`
+   를 «찍고 넘어가서», 응답은 «표 전체»였습니다 — 돌아온 count 가 «1,006,147».
+   main.py:1638 의 `except` 가 그 자리입니다. 가상 조인 컬럼에는 «400 으로 거절»하는 코드가 바로 위에 있는데,
+   모양이 깨진 필터에는 «없습니다». 즉 「필터한 척하고 전부 돌려주는」 답이 나옵니다
+   ⚠️ 이건 S-70 의 성능 축이 아니라 «정확성» 축입니다 — 별도로 세어 주십시오(제가 고치라 하시면 한 줄입니다)
+② dt_slot 의 형이 «double precision» 입니다
+   Filter 가 `dt_slot = '1'::double precision` 로 «리터럴 쪽»을 캐스팅합니다(컬럼이 아니라).
+   -> (dt_lot, dt_slot) btree 는 «탈 수 있습니다». 캐스팅이 컬럼 쪽이었으면 인덱스가 안 먹었을 자리입니다
+```
+
+## 다음 — ③ 인덱스 보장 · ④ 후 측정
+```
+③  선언 `map_key_columns` 에서 DDL 을 «계산» · ensure 자리(기동) · CREATE INDEX CONCURRENTLY ·
+    이미 있으면 무접촉 · 운영자 칸 «0»
+④  같은 계기로 EXPLAIN(Index Scan) · 데이터/count/합계 ms · 셀 응답 «바이트 동일»
+게이트 ㉠  선언에 map_key_columns 가 있는 표 «전부»에 인덱스(변이: ensure 제거 -> 없음)
+```
+⚠️ 제 실수 하나: 첫 측정에서 필터 모양(AG-Grid 필터 모델)을 틀리게 보냈고, 그 수(전체 스캔 203 ms)는
+   «맵 열기가 아니었습니다». 위 275.2 ms 가 필터가 «실제로 붙은» 수입니다.
