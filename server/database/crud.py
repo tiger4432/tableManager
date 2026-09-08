@@ -2193,6 +2193,39 @@ def _absence_is_proven(value: Any, probed: frozenset) -> bool:
     return probed is not None and value in probed
 
 
+def _engine_minted_row_id(supplied: Any, table_name: str) -> str:
+    """The `row_id` a NEW row gets. The engine mints it; a caller may not invent one.
+
+    🔴 ROW IDS ARE THE ENGINE'S, AND THAT IS AN ORDERING CONTRACT (S-66 · 판정 150). uuid7
+    is time-ordered, so "later row, later id" holds and anything paging on `row_id` walks
+    arrivals in order. A supplied id that is not uuid7 breaks that silently: measured
+    2026-09-08, ten hand-written `zzdoe-wp-brk-*` ids in `wafer_process` sort AFTER every
+    uuid7 in a varchar column, the ledger cursor came to rest on the largest of them, and
+    470,000 later rows were then invisible to the forward scan -- no error, and a cursor
+    reporting it had finished.
+
+    ⚠️ THE UPDATE PATH IS UNTOUCHED. Naming an existing row by its id is how every caller
+    addresses a row; what is refused is MINTING one. So this guard sits on the branch that
+    creates, and `enrichment_candidates` naming a row it is updating never reaches it.
+
+    ⛔ AND IT REFUSES BY NAME rather than quietly minting a replacement. Substituting one
+    would leave the caller believing the id it chose is the id that exists.
+    """
+    if not supplied:
+        return str(uuid6.uuid7())
+    try:
+        version = uuid.UUID(str(supplied)).version
+    except (ValueError, AttributeError, TypeError):
+        version = None
+    if version != 7:
+        raise ValueError(
+            f"'{table_name}': row_id {supplied!r} was supplied for a NEW row and is not a "
+            f"uuid7. Row ids are minted by the engine so that they sort by arrival; a "
+            f"hand-written id breaks every reader that pages on row_id. Omit row_id to "
+            f"create a row, or name an existing row to update it.")
+    return str(supplied)
+
+
 def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.GeneralUpdateItem, row_cache: dict, table_name: str,
                        probed_identity: "ProbedIdentity" = None) -> tuple[Any, bool]:
     """대상 행 객체를 캐시 또는 DB에서 획득하고, 존재하지 않으면 신규 생성합니다."""
@@ -2241,7 +2274,7 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
         # time on a 100,000-row file, while the outbox rows written in the SAME flush -
         # plain values, batchable - cost 8.2 s for the same count.
         row = table_model(
-            row_id=update_item.row_id or str(uuid6.uuid7())
+            row_id=_engine_minted_row_id(update_item.row_id, table_name)
         )
         db.add(row)
         is_new = True
