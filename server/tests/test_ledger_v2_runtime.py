@@ -40,9 +40,12 @@ class RecordingStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None):
+                    withdraw_refs=None, row_refs=None):
         self.calls.append({
             "advance_cursor": advance_cursor,
+            # S-54-b: which physical row each `source_raw_ref` was built from, written in
+            # the same transaction as the atoms so the pair cannot come apart.
+            "row_refs": tuple(row_refs or ()),
             # S-60: the scoped door hands the store the generation it REPLACES, so the
             # delete and the insert share one commit. A double that could not take it
             # would make the contract untestable from this side.
@@ -237,7 +240,8 @@ def test_store_without_version_guard_is_explicitly_unsupported():
 
     class LegacyShapeStore:
         def write_batch(self, source, translator_ver, atoms, cursor_value,
-                        molecules, refused=0, incomplete=0, *, reasons):
+                        molecules, refused=0, incomplete=0, *, reasons,
+                        row_refs=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as exc:
@@ -403,7 +407,8 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
     class CursorAlwaysStore:
         def write_batch(self, source, translator_ver, atoms, cursor_value,
                         molecules, refused=0, incomplete=0, *, reasons,
-                        enforce_translator_version=False, withdraw_refs=None):
+                        enforce_translator_version=False, withdraw_refs=None,
+                        row_refs=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as caught:

@@ -44,8 +44,11 @@ class RecordingStore:
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False):
+                    enforce_translator_version=False, row_refs=None):
         self.calls.append({
+            # S-54-b: which physical row each `source_raw_ref` came from, written in the
+            # same transaction as the atoms -- so a DELETE can still name them afterwards.
+            "row_refs": tuple(row_refs or ()),
             "source": source,
             "translator_ver": translator_ver,
             "atoms": tuple(atoms),

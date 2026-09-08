@@ -31,17 +31,16 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
-#: EDIT only.
+#: EDIT and DELETE, each with its OWN instrument -- see `drain_once`.
 #:
-#: CREATE is the cursor's own path -- the forward run reads the row once, and following it
-#: here would translate the same row twice for nothing (ruling 129 ㉣).
+#: CREATE is still not here: the forward run reads a new row once from the cursor, and
+#: following it as well would translate the same row twice for nothing (ruling 129 ㉣).
 #:
-#: DELETE is a different instrument and is not this one. `rescope` aims its withdrawal with
-#: the CURRENT translation of the rows in scope, so a row that is gone has no translation to
-#: aim with and its old atoms would stay (`backfill.rescope`'s own docstring says so). That
-#: is a structural "cannot", not a width to widen, and it is why DELETE waits for its own
-#: instrument rather than riding this queue quietly and doing nothing.
-FOLLOWED_EVENT_TYPES = ("EDIT",)
+#: 🔴 DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS NOT THE SAME STEP. `rescope` aims its
+#: withdrawal with the CURRENT translation of the rows in scope, so a row that is gone
+#: produces no ref and its atoms would stay -- which is why DELETE waited until the ledger
+#: wrote down, while the row was still there, which physical row each fact came from.
+FOLLOWED_EVENT_TYPES = ("EDIT", "DELETE")
 
 #: The job name the pace is declared under, in `server/pacing.json`.
 FOLLOWUP_JOB = "chain_followup"
@@ -201,6 +200,24 @@ def drain_once(engine, setup):
 
     done = {"table": table, "event_type": event_type, "rows": len(row_ids),
             "waited": time.time() - queued_at, "sources": {}}
+    if event_type == "DELETE":
+        # 🔴 A DIFFERENT INSTRUMENT, NOT A DIFFERENT SCOPE. The rows are gone, so there is
+        # nothing to re-translate and nothing to build a ref from; `withdraw_deleted_rows`
+        # reads the refs the ledger wrote down while they were still here. It asks by
+        # RELATION, so it needs no source list -- one deleted row withdraws the atoms of
+        # every source that read that table.
+        try:
+            withdrawn = backfill.withdraw_deleted_rows(engine, setup, table, list(row_ids),
+                                                       apply=True)
+            done["sources"] = withdrawn["sources"]
+            done["forgotten"] = withdrawn["forgotten"]
+        except Exception as exc:
+            with _lock:
+                _failed += 1
+            done["error"] = f"{type(exc).__name__}: {exc}"
+            logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
+                           table, len(row_ids), exc)
+        return done
     for source in sources_for_table(setup, table):
         plan = setup.snapshot.source_plans[source]
         column = scope_column(plan)

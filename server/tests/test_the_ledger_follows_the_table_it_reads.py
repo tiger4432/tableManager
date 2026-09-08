@@ -115,19 +115,20 @@ def calls_to_rescope(monkeypatch, result=None):
 
 @pytest.mark.parametrize("event_type,followed", [
     ("EDIT", True),
+    ("DELETE", True),
     ("CREATE", False),
-    ("DELETE", False),
     ("SYSTEM_RELOAD", False),
 ])
-def test_only_an_edit_is_followed(event_type, followed):
+def test_only_a_change_to_an_existing_row_is_followed(event_type, followed):
     """🔴 ㉣ CREATE COSTS NOTHING HERE, and it is not an oversight. The forward run reads a
     new row once from the cursor; following it as well would translate the same row twice
     and buy nothing.
 
-    ⛔ DELETE IS NOT SILENTLY HANDLED EITHER. `rescope` aims its withdrawal with the
-    CURRENT translation of the rows in scope, so a row that is gone has nothing to aim
-    with and its atoms would quietly stay -- a queue entry that did nothing would read as
-    "deletes are covered". It is refused at the door instead."""
+    ⚠️ DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS A DIFFERENT INSTRUMENT, not a wider
+    scope -- see `test_a_delete_is_withdrawn_from_the_index_not_rescoped`. Until the ledger
+    could name which physical row a fact came from, a DELETE here would have queued and
+    then quietly done nothing, which reads as "deletes are covered"; it was refused at the
+    door for exactly that reason."""
     assert followup.enqueue("dt_log", ["r1"], event_type) is followed
     assert followup.queue_depth() == (1 if followed else 0)
 
