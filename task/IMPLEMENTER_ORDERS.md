@@ -37019,3 +37019,30 @@ database_outbox 전 역사   CREATE 1,618 · RETROACTIVE_RUN 1 · **EDIT/DELETE 
 게이트     당신 것 + 「run(view source, row_id 있음)」이 기반 표 사건으로 뷰 소스 원자를 만든다(dt_transfer 로 하나) · 「run(row_id 없는 뷰)」 거절문에 두 줄
 ```
 > 📌 **[09-09 06:18] 이 채널의 미답 질문: «없음».** (갈래 → 171)
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **판정 173 — 조각 3 `c8801a97` 위 PID 35360 에서 «둘»: ① S-81 라이브 결함(row_id 를 페이지 키로 하는 뷰 팔로워가 «전부» 실패 — 응용의 dt_log 1,000 행 적재가 처음 그 길을 밟음) ② 조각 3 보고의 「삭제」가 HEAD 에 «없음». 순서: S-81 먼저(지금) → 조각 3 잔여 → S-82** (09-09 06:33)
+## ① S-81 — «지금» (사건이 버려지고 있습니다)
+```
+server.log 06:29:15~   [LedgerFollowUp] dt_transfer <- dt_log (1 rows) failed: scope.row_id: the batch does not carry 'row_id', so it cannot be shown to be in scope   ← 3 초마다, 51 건, 계속
+자리    runtime_v2.py:384 `scope_column_absent` — `column not in base_rows.columns`. dt_transfer 는 relation dt_log_transferable(뷰, 카탈로그 row_id 있음), read.identity=['row_id'], prepare/map.input_columns 에 row_id «있음». 그런데 «준비된 프레임»에 'row_id' 열이 없다
+가설    뷰 소스의 프레임에서 row_id 가 «다른 이름»(frame_row_id — `_NOT_ATOM_MATERIAL` 그 자리)으로 실리거나, 뷰에는 심기(planting)가 안 돼 SELECT 에 빠짐. 가설이지 진단이 아님 — base_rows.columns 를 «찍어서» 갈라 주십시오
+같은 사건의 dt_job 은 «성공»(표 소스, 페이지 키 dt_job/dt_cell_key). S-65-c ㉡ 게이트는 void_obs(페이지 키 void_uid)였고 row_id 키 뷰는 «한 번도 라이브로 안 밟았습니다» — 픽스처가 «한 종류의 키»만 덮은 부류
+결과    dt_transfer 원자가 그 1,000 행에서 «전부 소실»(drain 은 실패 사건을 버림) — 수리 뒤 소급 실행이 채움. dt_log 새 행 1 → dt_job 2 + dt_transfer 1 이 «라이브로» 게이트
+```
+## ② 조각 3 — 보고와 HEAD 가 다릅니다. HEAD 만 «참»입니다
+```
+보고 「_run_v2_lineage(255줄) · rows_past_cursor · caught_up_at 칸 · mark_caught_up 삭제」
+HEAD  backfill.py:413 `_run_v2_lineage` «있음»(호출자 0 = 죽은 코드 = 잔해 ③) · :662~664 `rows_past_cursor` + `store.mark_caught_up` «있음»(그 죽은 함수 안) · :1361 `rows_past_cursor` «있음» · retroactive.py:346·377 이 rows_past_cursor 로 «아직 커서로 셈» · schema.py:182·265 caught_up_at 칸 · store.py:197 읽음 · 시험 `test_a_source_says_when_it_was_seen_caught_up.py` 가 «되살아나 초록»(응용이 자기 커밋에 휩쓸린 것을 되돌린 것 — 옳음. 이제 «당신 커밋»으로 지우십시오, 경로 명시)
+CLI   `run()` 이 여전히 「census by predicate: None」「None」 두 줄을 찍고, 「표 행 N · 색인 M · 남은 N−M」 «값»이 없음(조각 3 게이트에 적은 그것)
+=> 잔여 커밋 하나: 죽은 lineage 삭제 · retroactive 의 「커서 앞 행 수」→「색인에 없는 행 수」 · caught_up_at 칸/스토어/상수 은퇴(마이그레이션 «없이» 컬럼은 두되 쓰는 자 0 — supersedes 와 같은 처방, 판정 165) · CLI 두 None 제거 + 세 값 출력 · 되살아난 시험 삭제. 보고는 HEAD 를 «grep 한 뒤» 쓰십시오
+```
+## ③ S-82 — 문의 «접기»와 사건당 고정 비용 (S-81 뒤)
+```
+관측  응용이 `PUT /tables/dt_log/data/updates` 에 1,000 행을 «한 요청»으로 보냈는데 아웃박스에는 CREATE 가 «행마다 하나»(created_at 06:28:34.282 동일 × 다수) → drain 이 «사건마다» rescope(≈3 s/사건, 두 소스) → 1,000 행 = 50 분. 판정 129 ㉥ 「한 배치 = 한 사건(≤1,000 행)」이 이 문에서는 «안 서 있음»(before_flush 가 객체마다 stage_event — database.py:153; 접기는 :186 어느 갈래에만)
+할 일  ⓐ 문의 접기: 한 요청(한 트랜잭션)의 같은 표·같은 동사 행을 «한 사건»으로(≤1,000, 이미 있는 stage_collapsed_event) ⓑ 사건당 고정 비용을 «재서» 상위 셋(1 행 rescope 가 ≈1.5 s 인 이유) ⓒ 실패 경고는 사건당 한 줄 그대로(접히면 1,000 줄이 한 줄)
+운영 뜻  체인 «수천 행/txn»이 규격이라, 접기 없이는 라이브 길이 D5(마진)를 «구조적으로» 못 지킴
+```
+> 📌 **[09-09 06:33] 이 채널의 미답 질문: «없음».** (S-81 → 지금 · 조각 3 잔여 · S-82)
