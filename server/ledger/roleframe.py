@@ -27,7 +27,9 @@ from .ledger_frame import (
     LEDGER_FRAME_COLUMNS,
     LEDGER_FRAME_ATTR,
     LEDGER_FRAME_SCHEMA_VERSION,
-    validate_ledger_frame,
+    LedgerRows,
+    ledger_frame_of,
+    validate_ledger_rows,
 )
 from .setup_registry import (
     ClaimDescriptor,
@@ -1399,7 +1401,12 @@ def _emission_plan(context: MapperContext, predicate_id: Any, path: str) -> _Emi
     return plan
 
 
-def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.DataFrame:
+def compile_role_frame(context: MapperContext, role_frame) -> pd.DataFrame:
+    """The DataFrame spelling of :func:`compile_role_rows`, for callers that want a frame."""
+    return ledger_frame_of(compile_role_rows(context, role_frame))
+
+
+def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
     """Compile a normalized RoleFrame with the snapshot-owned Pack emission only."""
     normalized = validate_role_frame(context, role_frame)
     # 🔴 THE ROWS ARE READ ONCE, NOT PER POSITION. `normalized.iloc[position]` builds a
@@ -1514,12 +1521,9 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
             "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
-    frame = pd.DataFrame({
-        column: pd.Series([row[column] for row in rows], dtype=object)
-        for column in LEDGER_FRAME_COLUMNS
-    })
-    frame.attrs[LEDGER_FRAME_ATTR] = LEDGER_FRAME_SCHEMA_VERSION
-    return validate_ledger_frame(frame)
+    return validate_ledger_rows(LedgerRows(
+        tuple(rows),
+        MappingProxyType({LEDGER_FRAME_ATTR: LEDGER_FRAME_SCHEMA_VERSION})))
 
 
 def claim_source_row_refs(claim_ref: str) -> tuple[str, ...]:
@@ -1558,10 +1562,15 @@ def _claim_source_raw_ref(event_ref: str, row_refs: Sequence[str]) -> str:
 @dataclass(frozen=True)
 class LedgerV2DryRunResult:
     role_rows: RoleRows
-    ledger_frame: pd.DataFrame
+    ledger_rows: LedgerRows
     gate_preview: Mapping[str, Any]
     provenance: Mapping[str, Any]
     snapshot_hash: str
+
+    @property
+    def ledger_frame(self) -> pd.DataFrame:
+        """The LedgerFrame as a DataFrame, built on demand."""
+        return ledger_frame_of(self.ledger_rows)
 
     @property
     def role_frame(self) -> pd.DataFrame:
@@ -1583,15 +1592,15 @@ def dry_run_event_frame(
         context, event_frame, context.source_plan.driver.mapper,
         context.source_plan.profile)
     role_rows = map_event_rows(context, event_frame, implementations)
-    ledger_frame = compile_role_frame(context, role_rows)
-    derivations = tuple(sorted(set(ledger_frame["derivation"].tolist())))
-    subjects = tuple(sorted(set(ledger_frame["subject_type"].tolist())))
+    ledger_rows = compile_role_rows(context, role_rows)
+    derivations = tuple(sorted(set(ledger_rows.column("derivation"))))
+    subjects = tuple(sorted(set(ledger_rows.column("subject_type"))))
     sentences = tuple(sorted(set(role_rows.column("sentence"))))
     refs = tuple(sorted({ref for values in role_rows.column("source_row_refs")
                          for ref in values}))
     gate_preview = MappingProxyType({
         "status": "candidate",
-        "atom_count": len(ledger_frame),
+        "atom_count": len(ledger_rows),
         "source_event_id": str(event_frame.attrs["source_event_id"]),
         "declared_derivations": derivations,
         "declared_subject_types": subjects,
@@ -1611,7 +1620,7 @@ def dry_run_event_frame(
     })
     return LedgerV2DryRunResult(
         role_rows=role_rows,
-        ledger_frame=ledger_frame,
+        ledger_rows=ledger_rows,
         gate_preview=gate_preview,
         provenance=provenance,
         snapshot_hash=context.snapshot.snapshot_sha256,

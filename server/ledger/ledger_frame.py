@@ -11,7 +11,9 @@ deterministic UUID in every row that belongs to it.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 import uuid
 
 import pandas as pd
@@ -122,6 +124,83 @@ def ledger_frame_from_atoms(atoms: Sequence[Atom]) -> pd.DataFrame:
     return validate_ledger_frame(frame)
 
 
+@dataclass(frozen=True)
+class LedgerRows:
+    """A LedgerFrame's rows as records, with the schema marker the frame kept in `attrs`.
+
+    🔴 THE CANONICAL VALUE; THE DATAFRAME IS AN ADAPTER OVER IT. The compiler runs per
+    molecule, and every DataFrame it built made pandas deep-copy the frame's attrs through
+    `__finalize__` (S-64). Records cost none of that.
+    """
+
+    rows: tuple[Mapping[str, Any], ...]
+    attrs: Mapping[str, Any]
+
+    def column(self, name: str) -> tuple:
+        return tuple(row[name] for row in self.rows)
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+
+def ledger_frame_of(ledger_rows: LedgerRows) -> pd.DataFrame:
+    """The DataFrame spelling of a LedgerRows, for callers that still want one."""
+    if not ledger_rows.rows:
+        return empty_ledger_frame()
+    frame = pd.DataFrame({
+        name: pd.Series([row[name] for row in ledger_rows.rows], dtype=object)
+        for name in LEDGER_FRAME_COLUMNS
+    })
+    for name, value in ledger_rows.attrs.items():
+        frame.attrs[name] = value
+    return frame
+
+
+def validate_ledger_rows(value: LedgerRows, *, path: str = "ledger_frame") -> LedgerRows:
+    """The LedgerFrame contract, scored on records.
+
+    ⚠️ ONE IMPLEMENTATION OF THE ROW CHECKS. Both this and `validate_ledger_frame` call
+    `_validate_ledger_records`, so the two spellings cannot answer differently -- which is
+    the whole reason the frame validator was not left to drift beside a copy.
+    """
+    if not isinstance(value, LedgerRows):
+        raise LedgerFrameError(
+            "invalid_ledger_frame", path,
+            f"mapper returned {type(value).__name__}; expected pandas.DataFrame")
+    if value.attrs.get(LEDGER_FRAME_ATTR) != LEDGER_FRAME_SCHEMA_VERSION:
+        raise LedgerFrameError(
+            "unmarked_ledger_frame", f"{path}.attrs[{LEDGER_FRAME_ATTR!r}]",
+            "arbitrary DataFrames are not LedgerFrames; use the schema builder")
+    _validate_ledger_records(value.rows, path=path)
+    return value
+
+
+def atoms_from_ledger_rows(value: LedgerRows) -> list[Atom]:
+    """Validate records and build the gate's atoms, preserving nested values."""
+    rows = validate_ledger_rows(value).rows
+    return [_atom_of(row) for row in rows]
+
+
+def _atom_of(row) -> Atom:
+    return Atom(
+        subject_type=row["subject_type"],
+        subject_keys=dict(row["subject_keys"]),
+        predicate=row["predicate"],
+        object_kind=row["object_kind"],
+        object_payload=(None if row["object_payload"] is None
+                        else dict(row["object_payload"])),
+        occurred_at=row["occurred_at"],
+        source_who=row["source_who"],
+        source_translator_ver=row["source_translator_ver"],
+        source_raw_ref=row["source_raw_ref"],
+        supersedes=row["supersedes"],
+        molecule_ref=row["molecule_ref"],
+        derivation=row["derivation"],
+        source_event_id=row["source_event_id"],
+        source_event_state=row["source_event_state"],
+    )
+
+
 def validate_ledger_frame(value, *, path: str = "ledger_frame") -> pd.DataFrame:
     """Return ``value`` unchanged when it is exactly the LedgerFrame contract."""
     if value is None:
@@ -147,10 +226,21 @@ def validate_ledger_frame(value, *, path: str = "ledger_frame") -> pd.DataFrame:
             "invalid_ledger_frame_schema", f"{path}.columns",
             f"columns must exactly match LedgerFrame v1; missing={missing}, extra={extra}")
 
+    _validate_ledger_records(
+        [dict(zip(LEDGER_FRAME_COLUMNS, row)) for row in value.to_numpy(dtype=object)],
+        path=path)
+    return value
+
+
+def _validate_ledger_records(records, *, path: str) -> None:
+    """The per-row half of the LedgerFrame contract, on records.
+
+    Called by both `validate_ledger_frame` and `validate_ledger_rows`; the refusal codes,
+    addresses and messages are the ones that were here before and are not re-spelled.
+    """
     event_facts: dict[uuid.UUID, tuple] = {}
     event_boundaries: dict[tuple[str, str, str], uuid.UUID] = {}
-    for position in range(len(value)):
-        row = value.iloc[position]
+    for position, row in enumerate(records):
         row_path = f"{path}.rows[{position}]"
         event_id = row["source_event_id"]
         if not isinstance(event_id, uuid.UUID):
@@ -227,33 +317,17 @@ def validate_ledger_frame(value, *, path: str = "ledger_frame") -> pd.DataFrame:
                     "inconsistent_source_event", f"{row_path}.occurred_at",
                     "one explicit source-event boundary produced multiple event IDs; "
                     "a mapper may not split one event by world time")
-    return value
 
 
 def atoms_from_ledger_frame(value) -> list[Atom]:
-    """Validate and recreate the existing gate input, preserving nested values."""
+    """The DataFrame spelling of :func:`atoms_from_ledger_rows`.
+
+    ⚠️ NOT A SECOND PATH. It validates the frame with the same checks and then builds the
+    atoms with the same builder; production takes the records route and never lands here.
+    """
     frame = validate_ledger_frame(value)
-    atoms = []
-    for position in range(len(frame)):
-        row = frame.iloc[position]
-        atoms.append(Atom(
-            subject_type=row["subject_type"],
-            subject_keys=dict(row["subject_keys"]),
-            predicate=row["predicate"],
-            object_kind=row["object_kind"],
-            object_payload=(None if row["object_payload"] is None
-                            else dict(row["object_payload"])),
-            occurred_at=row["occurred_at"],
-            source_who=row["source_who"],
-            source_translator_ver=row["source_translator_ver"],
-            source_raw_ref=row["source_raw_ref"],
-            supersedes=row["supersedes"],
-            molecule_ref=row["molecule_ref"],
-            derivation=row["derivation"],
-            source_event_id=row["source_event_id"],
-            source_event_state=row["source_event_state"],
-        ))
-    return atoms
+    return [_atom_of(dict(zip(LEDGER_FRAME_COLUMNS, row)))
+            for row in frame.to_numpy(dtype=object)]
 
 
 def _required_text(value, path: str) -> str:

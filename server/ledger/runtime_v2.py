@@ -17,7 +17,7 @@ import pandas as pd
 from . import gate
 from .backfill import prepare_v2_cursor_batch
 from .envelope import canonical_keys, registration_fingerprint, registration_token
-from .ledger_frame import atoms_from_ledger_frame
+from .ledger_frame import atoms_from_ledger_rows
 from .roleframe import (
     LedgerV2DryRunResult,
     MapperContext,
@@ -139,7 +139,7 @@ def _row_ref_index(source_plan, event_frames, event_results):
         return ()
     pairs = set()
     for result in event_results:
-        for claim_ref in set(result.ledger_frame["source_raw_ref"].tolist()):
+        for claim_ref in set(result.ledger_rows.column("source_raw_ref")):
             for row_ref in claim_source_row_refs(str(claim_ref)):
                 row_id = row_id_of.get(row_ref)
                 if row_id is not None:
@@ -494,7 +494,7 @@ def _filtered_event_atoms(
     event_results: tuple[LedgerV2DryRunResult, ...],
     known_registrations: tuple[tuple[str, str], ...] | None,
 ) -> tuple[tuple[Any, ...], ...]:
-    raw = tuple(tuple(atoms_from_ledger_frame(result.ledger_frame))
+    raw = tuple(tuple(atoms_from_ledger_rows(result.ledger_rows))
                 for result in event_results)
     has_register = any(atom.predicate == "register"
                        for atoms in raw for atom in atoms)
