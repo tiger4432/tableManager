@@ -2847,10 +2847,16 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 #### `backfill.py`
 
+> ⚰️ **[2026-09-09 판정 173 · 조각 3] 이 표의 «커서» 항목들은 죽었습니다 — 아래 넷은 «코드에 없습니다».** `_run_v2_lineage`(전진 스캔 드라이버, 255줄) · `rows_past_cursor`(「커서 뒤 한 페이지」 세기) · `BackfillResult`(그 드라이버만 짓던 결과 클래스) · `run(...)` 의 `probe_lag`(호출자 0 · 읽는 곳 0 — 이 지도가 🆕⑩ 에서 이미 「읽히지 않는다」고 적어 둔 그것). 그리고 `schema.CAUGHT_UP_COLUMN` · `store.mark_caught_up` 도 함께 은퇴했습니다(컬럼은 «DROP 하지 않습니다» — 판정 165 의 `supersedes` 처방, 쓰는 자 0).
+>
+> 🔴 **대신 들어온 것 «하나»**: **`rows_not_yet_translated(engine, setup, source)`** — 「표 행 N · 색인 M · 남은 N−M」을 «값 셋»으로 돌려주고, row_id 를 안 나르는 소스는 `refused: no_row_id` + 두 줄 처방으로 «거절»합니다(0 을 답하지 않습니다). 소비자 둘: `retroactive._count_ledger_backfill` · `backfill.main` 의 CLI. 실행 경로는 `run()` → **`_run_via_events`** 하나입니다.
+>
+> ⚠️ **아래 표의 나머지 커서 문장들은 이 패스에서 «재측정하지 않았습니다» — 낡았다고 가정하십시오.** 이 줄이 지우는 것은 「없는 심볼을 있다고 적은 것」뿐입니다.
+
 | 심볼 | 무엇인가 |
 |---|---|
 | CLI | `conda run -n assy_manager python -m ledger.backfill --source dt_job` · `--fetch-rows` · `--max-batches` · **`--ontology-root`**(구 표기 `--config`는 파서에 없다). 🔴 **`--reset-cursor`와 `--from`은 파서에 있지만 실행되지 않는다** — `main()`이 config·DB·소스 접근 **앞에서** `destructive_approval_required`로 거절한다 |
-| `DEFAULT_FETCH_ROWS = 2000` · `class BackfillResult(dict)` · `_bootstrap_path()` | |
+| `DEFAULT_FETCH_ROWS = 2000` · ⚰️ ~~`class BackfillResult(dict)`~~ · `_bootstrap_path()` | `BackfillResult` 는 2026-09-09 에 그것을 짓던 유일한 함수와 «같이» 삭제됐습니다 |
 | `fetch_page(connection, source, columns, after, limit)` / `fetch_group(connection, source, columns, event_time)` | 논리 이름으로 별칭한 dict를 낸다 — **번역기는 물리 컬럼명을 못 본다**. 두 번째 함수는 한 페이지보다 큰 `event_time` 그룹의 탈출구 |
 | `_cut_on_group_boundary(rows, page_limit, key="event_time")` | 커서는 행 오프셋이 아니라 **키**이고, 배치는 언제나 **그 키 그룹의 정수 개**다. 페이지가 찼으면 **마지막 그룹을 버린다**(잘렸을 수 있고 페이지 안에서는 알 방법이 없다). 반환은 `(complete_rows, trailing_key_value_or_None)`. 기본값 `"event_time"`은 첫 문법의 잔재이고 **호출자는 항상 명시한다** |
 | 🆕 `walk_group_pages(fetch_page, fetch_group, key, after, page_limit)` | 🔴 **페이지 규칙이 사는 한 자리**(2026-08-14 신설 — 두 곳에 있었고 둘 다 같은 방식으로 틀렸다). 규칙 셋: ① 찬 페이지는 마지막 그룹을 버린다 ② 페이지가 통째로 한 그룹이면 그 그룹을 따로 통째로 읽는다 ③ **커서는 «온전히 처리된» 마지막 그룹으로만 전진한다**(버린 그룹의 키로 전진하면 그 그룹을 통째로 건너뛴다 — 실측 당시 17그룹 1,862행이 조용히 사라졌다) |

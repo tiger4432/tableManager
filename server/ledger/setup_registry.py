@@ -846,7 +846,7 @@ def cursor_translator_version(
     snapshot: LedgerSetupSnapshot, source_id: str) -> str:
     """The string a source's cursor stores and is compared against. ONE spelling.
 
-    The reader (`backfill._run_v2_lineage`) and the writer (`runtime_v2.execute_cursor_batch`)
+    The reader (`backfill._run_via_events`) and the writer (`runtime_v2.execute_cursor_batch`)
     both call this. They used to build `f"ledger-v2:{snapshot_sha256}"` separately, and two
     spellings of the value a guard compares is how a guard stops guarding.
     """

@@ -5,7 +5,14 @@
 🔴 ONE GRAMMAR, ONE DRIVER (owner ruling, 2026-08-18: "remove legacy")
 -----------------------------------------------------------------------------
 `run()` loads the ontology root, requires that the source is selected for v2, and drives
-it through `_run_v2_lineage`. There is one execution path and one driver.
+it through `_run_via_events`. There is one execution path and one driver.
+
+⚰️ THE CURSOR READ PATH IS GONE (판정 163/171/173). `_run_v2_lineage` walked a
+watermark forward and `rows_past_cursor` counted one page from it; both are deleted here,
+with the result class only they built (`BackfillResult`). What replaces them is not a
+smaller cursor -- it is a different question. The row index says WHICH ROWS the ledger
+holds facts from, so 『how much is left』 is `rows_not_yet_translated`: the relation's
+rows minus the indexed rows, exactly, with no page that can come back short.
 
 ⚠️ THE FOUR GRAMMAR DRIVERS ARE GONE (this commit, 798 lines).
 `_run_lineage`, `_run_observation`, `_run_transfer` and `_run_declared` each lazily
@@ -117,10 +124,6 @@ def _bootstrap_path():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
         sys.path.insert(0, here)
-
-
-class BackfillResult(dict):
-    """A plain dict, named so a caller can see what a run reports without reading code."""
 
 
 def v2_base_select_columns(snapshot, source_id):
@@ -275,9 +278,9 @@ def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
 
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
-        reset_cursor=False, start_from=None, max_batches=None, probe_lag=True,
+        reset_cursor=False, start_from=None, max_batches=None,
         ontology_root=None, retranslate=None, checkpoint=None, pace=None):
-    """Translate everything past the cursor. Returns a `BackfillResult`.
+    """Translate every row this source has not translated yet, down the LIVE path.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
     ------------------------------------------------------------------
@@ -293,10 +296,11 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     name that answers for a body that no longer decides anything, which is the failure
     this retirement is cleaning up.
 
-    `reset_cursor=True` deliberately re-reads work that is already done - it is how net 2
-    of the idempotency argument gets exercised, and how an operator re-translates after a
-    rule change (the new `source_translator_ver` makes the new atoms distinct from the
-    old ones, which is correct: they are different claims made by different rules).
+    ⚰️ `reset_cursor`, `start_from` and `retranslate` are REFUSED BY NAME below
+    (판정 171). They named a position in a path that no longer reads anything, and
+    `rescope` is the tool for redoing a named set of rows. `probe_lag` went WITHOUT a
+    refusal because it was never an operator's word: nothing passed it and nothing read
+    it, so a refusal would have announced a retirement no caller could have noticed.
     """
     from .setup import (
         DEFAULT_ONTOLOGY_ROOT, LedgerSetupError, _require_declared_source,
@@ -393,6 +397,27 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             break
     while followup.queue_depth():
         _drain_into(engine, setup, report)
+    # 🔴 THE REFUSAL COUNTS COME WITH THE KEYS (판정 171: keep the names).
+    # These three were published by the cursor driver and were LOST when the load
+    # moved here, silently -- the only test of them inspected that driver's source, so
+    # it stayed green while measuring a function nothing called. Restored with the
+    # driver's own reasoning intact: `refused_samples` stops at `MAX_REFUSAL_SAMPLES`,
+    # so "400 refused, 20 addressed" must never render as "20 refusals" -- truncation
+    # read as absence. Two counts and a flag, no sentence.
+    from . import gate
+
+    report["refused_total"] = sum(gate.refusals().values())
+    report["refused_samples"] = gate.samples()
+    report["refused_samples_capped"] = (
+        report["refused_total"] > len(report["refused_samples"]))
+    # 🔴 THE THREE VALUES RIDE THE RESULT (S-69, 판정 173). The CLI must stay a
+    # PRINTER: a second call from there would load the setup again and read the database
+    # a second time, and a caller that stubs this function out would find the CLI still
+    # doing work behind it. One read, one place, and every reader of the result gets it.
+    report.update({key: value for key, value in
+                   rows_not_yet_translated(engine, setup, source).items()
+                   if key in ("relation_rows", "indexed_rows", "not_yet",
+                              "index_names_absent_rows")})
     report["seconds"] = round(time.perf_counter() - started, 3)
     return report
 
@@ -408,263 +433,6 @@ def _drain_into(engine, setup, report):
         report["deduped"] += value.get("deduped", 0) or 0
     if done.get("cannot_follow"):
         report.setdefault("cannot_follow", []).extend(done["cannot_follow"])
-
-
-def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
-                    reset_cursor=False, start_from=None, max_batches=None,
-                    retranslate=None, checkpoint=None, pace=None):
-    """Run one selected source on the existing Store/cursor.
-
-    ``run()`` is the only caller and there is no longer an alternative driver to fall back
-    to.  Reset/re-read controls are refused here because changing an existing source
-    cursor requires a separate destructive approval.
-    """
-    from .setup import (
-        LedgerSetupError,
-        execute_selected_cursor_batch,
-    )
-    from .setup_registry import cursor_translator_version
-    from . import schema
-    from .store import LedgerStore
-
-    # 🔴 THE APPROVAL IS THE SOURCE'S OWN NAME, and that is the whole design.
-    # `retranslate=True` would be a global switch a caller could leave on; `retranslate=
-    # "void_observation"` can only ever unlock the one source it names, and unlocking a
-    # second one means writing its name too. The default is None, so a call with no new
-    # argument refuses exactly as it did before this existed.
-    approved = retranslate is not None and retranslate == source
-    if retranslate is not None and not approved:
-        raise LedgerSetupError(
-            "approval_names_another_source", "retranslate",
-            "the approval must name the source being re-translated: "
-            f"got {retranslate!r} while running {source!r}",
-        )
-    if (reset_cursor or start_from is not None) and not approved:
-        path = "reset_cursor" if reset_cursor else "start_from"
-        raise LedgerSetupError(
-            "destructive_approval_required", path,
-            "v2 cursor reset or replay requires a separate destructive approval - "
-            f"pass retranslate={source!r} to give it",
-        )
-    if not isinstance(fetch_rows, int) or isinstance(fetch_rows, bool) or fetch_rows < 1:
-        raise LedgerSetupError(
-            "invalid_fetch_rows", "fetch_rows", "must be a positive integer")
-
-    plan = setup.snapshot.source_plans[source]
-    if plan.driver.preparation.verified_join_descriptors:
-        raise LedgerSetupError(
-            "verified_join_reader_required", "source_preparation.join_reader",
-            "the backfill entry requires a registered read-only join reader",
-        )
-    store = LedgerStore(engine)
-    store.ensure_schema()
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-        cursor_value = (existing or {}).get("cursor_value") or {}
-        expected_version = cursor_translator_version(setup.snapshot, source)
-        # ⚠️ BOTH GUARDS STAY. An approval does not delete them - it is the thing
-        # they were asking for. Without `retranslate` naming this source they refuse exactly
-        # as before, which is what makes「the declaration changed, re-read it」an explicit
-        # act rather than a side effect of editing a file.
-        cursor_before = dict(cursor_value) if cursor_value else None
-        if existing and set(cursor_value) != set(plan.driver.cursor_columns):
-            if not approved:
-                raise LedgerSetupError(
-                    "legacy_cursor_reset_required", f"ledger_cursor.{source}.cursor_value",
-                    "existing cursor shape does not match the v2 physical cursor; "
-                    "inspect, back up, and obtain separate reset approval",
-                )
-            cursor_value = {}
-        if existing and existing.get("translator_ver") != expected_version:
-            if not approved:
-                raise LedgerSetupError(
-                    "cursor_snapshot_reset_required",
-                    f"ledger_cursor.{source}.translator_ver",
-                    "existing cursor belongs to a different setup snapshot; inspect, "
-                    "back up, and obtain separate reset or replay approval",
-                )
-            cursor_value = {}
-        if approved and reset_cursor:
-            cursor_value = {}
-        after_key = cursor_value.get(_page_key(plan))
-        # Resolved BEFORE the first page, so an unknown pace is refused before the run
-        # has written anything rather than partway through.
-        pages_per_cycle, rest_seconds = resolve_pace(pace)
-        result = BackfillResult(
-            source=source,
-            translator_ver=expected_version,
-            started_from=dict(cursor_value) if cursor_value else None,
-            molecules=0, refused_molecules=0, incomplete_molecules=0,
-            attempted=0, inserted=0, deduped=0, batches=0,
-            rows_read=0, cursor=dict(cursor_value) if cursor_value else None,
-            seconds=0.0,
-        )
-        # 🔴 AN APPROVED REPLAY REPLACES; IT DOES NOT ADD. Measured 2026-08-28 with
-        # one batch: re-translating under a changed declaration wrote 1,999 NEW `observed`
-        # atoms beside the 1,999 old ones - `deduped 0`, because the new shape has a
-        # different `uq_ledger_atom` key and collides with nothing. A full run that way
-        # leaves two generations of the same finding and the walk counts both.
-        #
-        # So the approval that unlocks the cursor also clears what this source wrote before.
-        # The atoms are a PROJECTION of the source rows, which are still there, so this
-        # removes a derived generation rather than a record - the standing distinction.
-        #
-        # ⚠️ NAMED, NOT HIDDEN: the clear and the rewrite are not one transaction. A
-        # run that dies midway leaves the old generation gone and the new one partial. The
-        # honest fix is a snapshot column the reader filters on, which is a declaration
-        # change; until then a failed replay is re-run, and `atoms_deleted` in the return is
-        # how a caller sees that it happened at all.
-        if approved:
-            write = store.connection()
-            try:
-                cur = write.cursor()
-                cur.execute(
-                    f"DELETE FROM {schema.LEDGER_TABLE} WHERE source_who = %s", (source,))
-                result["atoms_deleted"] = int(cur.rowcount or 0)
-                write.commit()
-            finally:
-                write.close()
-        started = time.monotonic()
-        # 🔴 THE SPLIT GUARD. One source event must land in ONE batch; if a group this run
-        # already processed IN FULL comes back in a later page, it did not, and every
-        # count taken over it is a count of a page rather than of the event. It asserts
-        # the SYMPTOM, not the cause, so it survives whatever produces the split -- a page
-        # key that stops being group-constant, an ORDER BY that stops making groups
-        # contiguous, a fourth grammar that copies the loop. `_page_key` explains why the
-        # cause cannot be asserted from the declaration at all.
-        #
-        # IT WOULD HAVE FIRED ON DAY ONE. Paging `dt_job` on `created_at` split 24 jobs;
-        # this run would have stopped at the SECOND sighting of the first one instead of
-        # silently writing ingestion-batch counts for all 24.
-        #
-        # 🔴 WHAT IT DOES NOT DO: it fires when the group comes BACK, so the first half is
-        # already committed. It bounds the damage to that one molecule and makes it loud;
-        # it cannot prevent it, because nothing in a page can see the row that follows it.
-        #
-        # Scope is THIS RUN, deliberately. Across runs the pager reads `WHERE page_key >
-        # cursor`, so a completed group is never re-read -- and a run that legitimately
-        # re-reads (a future reset/replay) must not be refused by a guard that remembers
-        # work it was told to redo. Bounded by group count per run, not by row count.
-        guard_columns = tuple(
-            column for column in plan.driver.group_by
-            if column in v2_base_select_columns(setup.snapshot, source))
-        split_guard = len(guard_columns) == len(plan.driver.group_by)
-        if not split_guard:
-            # Said out loud rather than skipped quietly: this source's group identity is
-            # DERIVED by its preparer, so the guard cannot read it from a base row and the
-            # operator is entitled to know the run is unguarded on this axis.
-            derived = sorted(set(plan.driver.group_by) - set(guard_columns))
-            result["split_guard"] = f"inactive: group key is derived ({derived})"
-            logger.warning(
-                "[Ledger] split guard inactive for %s: group columns %s are not base "
-                "columns, so a split molecule cannot be detected from the page", source,
-                derived)
-        completed_groups: set[tuple] = set()
-        pages = walk_group_pages(
-            lambda position: _fetch_v2_lineage_page(
-                read, plan, position, fetch_rows),
-            lambda page_value: _fetch_v2_lineage_group(read, plan, page_value),
-            _page_key(plan), after_key, fetch_rows,
-        )
-        for complete, next_after, _last_page in pages:
-            if max_batches is not None and result["batches"] >= max_batches:
-                break
-            # 🔴 BETWEEN PAGES, WHICH IS THE ONLY PLACE A STOP IS SAFE HERE. The last page's
-            # atoms and its cursor were committed together, and this page has not been read,
-            # so stopping leaves the watermark and the ledger agreeing exactly as a finished
-            # run would. Stopping anywhere inside would split a molecule across batches -
-            # the same fault this loop's own split guard exists to catch.
-            # 🔴 THE PACE YIELDS AT THE SAME BOUNDARY THE STOP USES, and that is not a
-            # coincidence: between pages is where the last page's atoms and cursor are
-            # committed together and the next has not been read, so it is the only place
-            # where pausing costs nothing and resuming is exact. Cancel is the handle that
-            # STOPS; this is the handle that SLOWS - and most of the time slowing is enough
-            # that nobody has to stop anything.
-            if pages_per_cycle and result["batches"] and rest_seconds and (
-                    result["batches"] % pages_per_cycle == 0):
-                time.sleep(rest_seconds)
-            if checkpoint is not None and checkpoint(result["rows_read"]):
-                result["stopped"] = True
-                logger.info("[Ledger] stopped by request after %d rows at cursor %s",
-                            result["rows_read"], result.get("cursor"))
-                break
-            frame = _v2_frame(complete)
-            result["rows_read"] += len(frame)
-            subjects = _v2_registration_subjects(plan, frame)
-            known = (None if subjects is None
-                     else store.existing_registrations(read, subjects))
-            # End every SELECT-only transaction before LedgerStore opens its existing
-            # Atom+cursor write transaction.  This is the same lock boundary as legacy.
-            read.rollback()
-            ordered = frame.sort_values(list(plan.driver.cursor_columns))
-            last = ordered.iloc[-1]
-            next_cursor = {
-                column: last[column] for column in plan.driver.cursor_columns}
-            # Checked BEFORE the write, so the returning half is refused rather than
-            # committed beside the half that is already there. Read off the base frame the
-            # loop already holds -- a second preparation pass to recover molecule refs
-            # measured 61% of a preview per batch, which is not a price a guard may charge
-            # on every batch forever.
-            batch_groups = set(
-                frame[list(guard_columns)].drop_duplicates()
-                .itertuples(index=False, name=None)) if split_guard else set()
-            repeated = sorted(str(token) for token in batch_groups & completed_groups)
-            if repeated:
-                raise LedgerSetupError(
-                    "source_event_split_across_batches",
-                    f"sources.{source}.read.cursor.columns",
-                    f"{len(repeated)} source event(s) already processed in full came "
-                    f"back in a later page, so one event is being split across two "
-                    f"batches and its counts describe pages rather than events: "
-                    f"{repeated[:5]}",
-                )
-            executed = execute_selected_cursor_batch(
-                setup, source, frame, next_cursor, _no_join_reader(), store,
-                known_registrations=known, retranslate_approved=approved,
-            )
-            written = executed.store_result
-            result["molecules"] += executed.preview.molecule_count
-            result["incomplete_molecules"] += executed.preview.incomplete_count
-            result["attempted"] += int(written.get("attempted", 0))
-            result["inserted"] += int(written.get("inserted", 0))
-            result["deduped"] += int(written.get("deduped", 0))
-            result["batches"] += 1
-            result["cursor"] = dict(executed.preview.cursor_value)
-            completed_groups |= batch_groups
-            after_key = next_after
-        result["seconds"] = round(time.monotonic() - started, 3)
-        # 🔴 WHAT AN APPROVAL ACTUALLY DID, IN NUMBERS. A caller who unlocked the
-        # cursor must be able to read back what changed without querying anything.
-        result["retranslated"] = bool(approved)
-        result["cursor_before"] = cursor_before
-        result["cursor_after"] = result.get("cursor")
-        # 🔴 WHICH FIELD DO I FIX. The gate has produced `(code, path)` per refusal since
-        # `check_envelope` landed and it reached nobody: three carriers, no reader, and the
-        # only production caller of the report threw it away. This is the read.
-        #
-        # ⚠️ AND THE CAP IS SAID OUT LOUD, AS A NUMBER. `refused_samples` stops at
-        # `MAX_REFUSAL_SAMPLES`, so "400 refused, 20 addressed" must not render as "20
-        # refusals" -- that is truncation read as absence, which is the failure this
-        # whole surface exists to remove. Two counts, no sentence.
-        # Imported here, like everything else in this file: `.gate` is reachable only
-        # through the lazy chain the module docstring explains.
-        from . import gate
-
-        result["refused_total"] = sum(gate.refusals().values())
-        result["refused_samples"] = gate.samples()
-        result["refused_samples_capped"] = (
-            result["refused_total"] > len(result["refused_samples"]))
-        # 🔴 ASK, DO NOT INFER (S-65). Whether this source is caught up is a property of the
-        # relation and the cursor, and "the page loop ended" does not say it -- `max_batches`
-        # and the checkpoint end the loop too. `rows_past_cursor` answers the property, and
-        # `complete` is what makes the zero exact rather than a short read.
-        remaining, exact = rows_past_cursor(engine, setup, source, limit=1)
-        result["caught_up"] = bool(exact and remaining == 0)
-        store.mark_caught_up(source, result["caught_up"])
-        return result
-    finally:
-        read.close()
 
 
 def _no_join_reader():
@@ -1085,6 +853,62 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
         connection.close()
 
 
+def rows_not_yet_translated(engine, setup, source):
+    """Three values: the relation's rows, the rows the index names, and the difference.
+
+    🔴 THIS IS THE LINE S-69 ASKED FOR, AND A CURSOR COULD NOT SAY IT.
+    `rows_past_cursor` read ONE PAGE from a watermark, so a full page could only ever report
+    "at least N" -- counting past a position means reading past it. The row index is a set of
+    statements about ROWS, so the remainder is arithmetic, and it is EXACT.
+
+    ⚠️ IT REFUSES A SOURCE WITHOUT `row_id` RATHER THAN ANSWERING. Such a source
+    writes no index rows at all, so `relation - indexed` would be the whole table, and a
+    source whose rows all arrived by the live path would be reported as one that has never
+    been touched. "Cannot be counted" and "nothing has been done" are different sentences.
+    """
+    from psycopg2 import sql
+
+    from . import schema
+
+    plan = setup.snapshot.source_plans[source]
+    report = {"source": source, "relation": plan.relation}
+    if not plan.frame_row_id:
+        report["refused"] = "no_row_id"
+        report["remedy"] = (
+            f"expose the base table's row_id column on {plan.relation!r}: declare it in "
+            f"table_config as a view column of type string, and this count can then say "
+            f"which rows are already translated.")
+        return report
+
+    relation = sql.SQL(".").join(
+        sql.Identifier(part) for part in str(plan.relation).split("."))
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql.SQL("SELECT count(*) FROM {relation}").format(
+                relation=relation))
+            total = cursor.fetchone()[0]
+            cursor.execute(
+                sql.SQL("SELECT count(*) FROM {refs} WHERE relation = %s "
+                        "  AND source_who = %s").format(
+                            refs=sql.Identifier(schema.ROW_REF_TABLE)),
+                (plan.relation, source))
+            indexed = cursor.fetchone()[0]
+    finally:
+        connection.rollback()
+        connection.close()
+
+    remainder = total - indexed
+    report.update({"relation_rows": total, "indexed_rows": indexed,
+                   "not_yet": max(remainder, 0)})
+    if remainder < 0:
+        # ⛔ A SILENT ZERO. The index names rows the relation no longer holds -- a
+        # deletion the follow-up could not withdraw. Clamping without saying so would report
+        # "nothing left" for a table that is actually missing its withdrawals.
+        report["index_names_absent_rows"] = -remainder
+    return report
+
+
 def load_via_events(engine, setup, source, page_rows=EVENT_LOAD_PAGE_ROWS,
                     queue_limit=EVENT_LOAD_QUEUE_LIMIT, max_pages=None, apply=False):
     """Translate everything this source has NOT translated, down the live path.
@@ -1368,44 +1192,6 @@ def load_paces(path=None):
     return pacing.load_paces(path)
 
 
-def rows_past_cursor(engine, setup, source, limit=DEFAULT_FETCH_ROWS):
-    """How many rows this source has NOT translated yet. READ ONLY, MOVES NOTHING.
-
-    🔴 IT PAGES FROM THE CURSOR, WHICH `preview_first_batch` DOES NOT. That one compiles the
-    relation's FIRST page - it exists to show what a source's output looks like - and using
-    it to answer "how much is left" reports rows that were translated long ago. Measured
-    2026-08-31 on `dt_transfer`: the first page offered 199 rows while the run past the
-    cursor read ZERO. A count built on it would have told an operator there was work waiting
-    and then done nothing, which reads as a broken button rather than as an empty queue.
-
-    Returns `(rows, complete)`. `complete` is True when the page came back SHORT, because
-    then the page IS the remainder and the number is exact; a full page means there is more
-    behind it and the caller must say `sample`. The two cases are returned separately rather
-    than as one number, since "12 left" and "at least 200 left" are different sentences.
-    """
-    from .store import LedgerStore
-
-    plan = setup.snapshot.source_plans[source]
-    store = LedgerStore(engine)
-    read = store.connection()
-    try:
-        existing = store.read_cursor(read, source)
-    finally:
-        read.rollback()
-        read.close()
-    cursor_value = (existing or {}).get("cursor_value") or {}
-    # The same key the run pages on, read the same way. A second spelling of this is how
-    # the count and the run would come to disagree about where the source stands.
-    after_key = cursor_value.get(_page_key(plan))
-    connection = engine.raw_connection()
-    try:
-        page = _fetch_v2_lineage_page(connection, plan, after_key, limit)
-    finally:
-        connection.rollback()
-        connection.close()
-    return len(page), len(page) < limit
-
-
 @dataclass(frozen=True)
 class TestRunReading:
     """What a test run READ, as values.
@@ -1605,7 +1391,8 @@ def _page_key(plan):
     cannot verify it and cannot refuse a future source whose cursor starts on a column
     that varies within its group; such a config would read as correct right up to the
     day it silently split a molecule. That is why the run carries a cause-agnostic guard
-    on the SYMPTOM (`completed_groups` in `_run_v2_lineage`) instead of an assertion here
+    on the SYMPTOM (`completed_groups` in the deleted cursor driver) instead of an
+    assertion here
     on the cause.
 
     This function returns `event_time` for `lot_event`, the same column as before; only
@@ -1777,7 +1564,11 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
-    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerSetupError
+    # One import for the whole function. Two branches imported `load_setup`
+    # themselves under two spellings (`load_setup` and `_load_setup`), which is the
+    # 「same thing, two names」 shape -- and a function-local import binds only on the
+    # branch that runs, so reading the name anywhere else is an UnboundLocalError.
+    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerSetupError, load_setup
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
@@ -1830,8 +1621,6 @@ def main(argv=None):
         # batching and the cursor all belong to the scan; a scope names rows. Falling
         # through to `run` with a scope it ignores would read as "redid that carrier"
         # while re-reading the whole source from the watermark.
-        from .setup import load_setup
-
         if not (args.scope_column and args.scope_values):
             raise LedgerSetupError(
                 "scope_incomplete", "scope",
@@ -1850,9 +1639,7 @@ def main(argv=None):
     if args.via_events:
         # 🔴 THE LOAD USES THE PATH THAT IS TOLD (판정 163). The cursor path has to work out
         # what the outbox already knows, which is what every repair of the last week was.
-        from .setup import load_setup as _load_setup
-
-        setup = _load_setup(args.ontology_root)
+        setup = load_setup(args.ontology_root)
         report = load_via_events(engine, setup, args.source, apply=args.apply)
         logger.info("[Ledger] %s", report)
         if not args.apply:
@@ -1864,11 +1651,23 @@ def main(argv=None):
                  max_batches=args.max_batches, ontology_root=args.ontology_root)
     beat(result)
 
-    logger.info("[Ledger] %s", {k: v for k, v in result.items() if k != "census"})
-    logger.info("[Ledger] census by predicate: %s", result.get("census"))
-    if result.get("gate_note"):
-        logger.warning("[Ledger] %s", result["gate_note"])
-    logger.info("[Ledger] %s", result.get("lag_note"))
+    logger.info("[Ledger] %s", result)
+    # 🔴 THREE VALUES, NOT A SILENCE (S-69, 판정 173). `census`, `gate_note`
+    # and `lag_note` were the cursor driver's keys; nothing has produced them since
+    # 판정 171, so two of those lines printed the word "None" and the third could
+    # never fire. And "nothing was staged" ALONE is the very silence S-69 named -- it
+    # reads the same whether the table is empty, already translated, or uncountable.
+    # The index answers all three at once.
+    if result.get("refused"):
+        logger.info("[Ledger] not counted (%s): %s",
+                    result["refused"], result.get("remedy"))
+    elif "relation_rows" in result:
+        logger.info("[Ledger] relation rows %s | indexed %s | not yet translated %s",
+                    result["relation_rows"], result["indexed_rows"], result["not_yet"])
+        if result.get("index_names_absent_rows"):
+            logger.warning(
+                "[Ledger] the index names %s row(s) the relation no longer holds",
+                result["index_names_absent_rows"])
     return 0
 
 

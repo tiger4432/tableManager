@@ -327,54 +327,66 @@ def _count_enrichment_confirm(db, params, scan_limit):
 
 
 def _count_ledger_backfill(db, params, scan_limit):
-    """One page PAST THE CURSOR, fetched the way the run fetches it.
+    """How many rows this source has NOT translated, counted by the ROW INDEX.
 
-    🔴 THE FIRST DRAFT OF THIS ASKED THE WRONG QUESTION AND WAS CAUGHT BY MEASURING IT.
-    It called `preview_first_batch`, which compiles the relation's FIRST page rather than
-    the page after the cursor, and reported 199 rows waiting on `dt_transfer` at the same
-    moment the run itself read ZERO. That count would have sent an operator to press a
-    button that did nothing - the failure this whole round is about.
+    🔴 THE OLD ANSWER WAS A PAGE, AND A PAGE CANNOT SAY A TOTAL. It read one page past
+    the cursor, so a full page could only report "at least N" and the route had to carry
+    `count_kind` to say which kind of number it was handing over. There is no cursor now
+    (판정 163): the index names the rows the ledger holds facts from, so the remainder is
+    the relation's count minus the index's count and it is EXACT, every time.
 
-    A full page means "at least this many"; a short page means "exactly this many", and
-    `count_kind` carries which. Reporting a full page as a total would be the fake total
-    the brief forbids, and an operator would start a long run believing it was short.
+    ⚠️ A SOURCE THAT CANNOT BE COUNTED SAYS SO. A relation carrying no `row_id` writes
+    no index rows, so the subtraction would return the whole table and report a source
+    translated entirely by the live path as one that has never been touched. That is
+    `not_applicable` -- the number does not stand up in that place -- and NOT a zero.
     """
     from ledger import backfill
     from ledger.setup import load_setup
 
     source = params["source"]
-    rows, complete = backfill.rows_past_cursor(db.get_bind(), load_setup(), source)
+    census = backfill.rows_not_yet_translated(db.get_bind(), load_setup(), source)
+
+    if census.get("refused"):
+        return {
+            "affected": 0,
+            "affected_label": "아직 번역되지 않은 행",
+            "absence": ABSENCE_NOT_APPLICABLE,
+            "count_kind": COUNT_EXACT,
+            "scanned": 0,
+            "scan_limit": None,
+            "truncated": False,
+            "detail": (f"'{source}' 는 행 색인을 세울 수 없어 «몇 건이 남았는지 셀 수 "
+                       f"없습니다». 0 이 아니라 «모릅니다» 입니다. "
+                       f"{census['remedy']}"),
+            "extra": {"source": source, "refused": census["refused"]},
+        }
+
+    rows = census["not_yet"]
+    total, indexed = census["relation_rows"], census["indexed_rows"]
     if not rows:
-        detail = (f"'{source}' 의 커서 뒤에 읽을 행이 «없습니다». 지금 돌리면 아무것도 "
-                  f"하지 않고 끝납니다.")
-    elif complete:
-        detail = (f"'{source}' 의 커서 뒤에 «{rows}건»이 남았습니다. 한 배치에 다 들어가는 "
-                  f"양이라 이 수가 «전부»입니다.")
+        detail = (f"'{source}' 에 «아직 번역되지 않은 행»이 없습니다 — 표 {total}행 · "
+                  f"색인 {indexed}행. 지금 돌리면 아무것도 하지 않고 끝납니다.")
     else:
-        detail = (f"'{source}' 의 커서 뒤에 «최소 {rows}건»이 남았습니다 — 한 페이지가 "
-                  f"가득 찼으니 뒤에 더 있고, 전체가 몇 건인지는 «모릅니다». 세는 것이 곧 "
-                  f"실행이라서입니다. 도는 중에 멈출 수 있습니다.")
+        detail = (f"'{source}' 에 «{rows}건»이 아직 번역되지 않았습니다 — 표 {total}행 · "
+                  f"색인 {indexed}행. 이 수는 «전부»입니다. 도는 중에 멈출 수 있습니다.")
+    if census.get("index_names_absent_rows"):
+        detail += (f" ⚠ 색인이 표에 «없는» 행 {census['index_names_absent_rows']}건을 "
+                   f"들고 있습니다 — 걷히지 못한 삭제입니다.")
     return {
         "affected": rows,
-        "affected_label": "커서 뒤에 남은 행",
-        "absence": (ABSENCE_TRULY_NONE if not rows
-                    else None if complete else ABSENCE_NOT_EXHAUSTIVE),
-        # EXACT only when the page came back short, because then the page IS the remainder.
-        #
-        # 🔴 A FULL PAGE IS `sample`, NOT `upper_bound`, AND THE NEXT READER WILL WANT TO
-        # "FIX" THAT. A full page means "at least N", which is a LOWER bound, and the
-        # vocabulary has no word for one. `upper_bound` would lie in the opposite
-        # direction - the operator would read "at most N" when the truth may be fifty
-        # thousand. `sample` is right because a page IS a sample of the remainder, and the
-        # application vocabulary folds `sample` into "not exhaustive", which sets the
-        # behaviour that matters: do not judge completion by this number. One case is not
-        # enough to add a lower bound to a shared vocabulary.
-        "count_kind": COUNT_EXACT if complete else COUNT_SAMPLE,
-        "scanned": rows,
+        "affected_label": "아직 번역되지 않은 행",
+        "absence": ABSENCE_TRULY_NONE if not rows else None,
+        # \U0001f534 EXACT, ALWAYS, AND THAT IS THE CHANGE. The old answer was `sample`
+        # whenever a page came back full, because "at least N" has no word in the shared
+        # vocabulary. Subtracting two counts has no page to come back full, so the
+        # vocabulary's awkward case simply stops arising -- the fix was not a better word.
+        "count_kind": COUNT_EXACT,
+        "scanned": total,
         "scan_limit": None,
-        "truncated": not complete,
+        "truncated": False,
         "detail": detail,
-        "extra": {"source": source, "rows_past_cursor": rows, "is_all": complete},
+        "extra": {"source": source, "relation_rows": total, "indexed_rows": indexed,
+                  "not_yet_translated": rows},
     }
 
 

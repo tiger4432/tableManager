@@ -113,7 +113,11 @@ def test_the_run_result_publishes_both_counts_and_flags_the_cap():
 
     from ledger import backfill
 
-    body = inspect.getsource(backfill._run_v2_lineage)
+    # ⚠ RE-AIMED 2026-09-09. This read `_run_v2_lineage`, the cursor driver, which
+    # nothing had called since 판정 171 -- so the assertion was green about a function
+    # that could not run, while the live path had quietly stopped reporting all three.
+    # The deletion of the corpse is what exposed it.
+    body = inspect.getsource(backfill._run_via_events)
     for name in ("refused_total", "refused_samples", "refused_samples_capped"):
         assert '"%s"' % name in body, "the run result stopped reporting %s" % name
     assert "gate.samples()" in body and "gate.refusals()" in body

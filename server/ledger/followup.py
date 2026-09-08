@@ -485,9 +485,10 @@ def drain_once(engine, setup):
     # stages CREATE events like everything else, and a row already translated is in the row
     # index and so is never staged again -- which leaves the gate one possible answer.
     #
-    # 🔴 IT COULD NOT BE LEFT IN PLACE. Nothing writes `caught_up_at` since `run()` stopped
+    # 🔴 IT COULD NOT BE LEFT IN PLACE. Nothing wrote `caught_up_at` once `run()` stopped
     # walking, so a source that had not already been marked would have had its new rows
     # skipped forever: a gate whose input is never produced fails closed, and silently.
+    # The column itself is retired now (판정 173) -- `ledger/schema.py` says where it went.
     # 🔴 ONE LOOP, TWO KINDS, ONE AIM. A table source's page key and a view source's page key
     # are both read from THIS table -- the table source from its own relation, the view source
     # from the base row the event named. Two loops would be two spellings of one read.
