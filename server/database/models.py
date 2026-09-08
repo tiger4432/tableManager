@@ -1180,6 +1180,78 @@ def create_missing_dynamic_tables(engine):
 # 걷어냈으므로 함수와 모델이 같은 커밋에서 사라진다.
 
 
+def map_key_index_ddl(table_name, entry):
+    """The index a table's own declaration asks for, or `(None, None)`.
+
+    🔴 IT COMES OUT OF THE DECLARATION, SO THERE IS NO OPERATOR FIELD. `map_key_columns` is
+    what the map editor narrows on; the index is that list in that order. An installation
+    with a different schema declares different columns and gets a different index, with zero
+    lines of code -- which is the whole definition of done here.
+    """
+    # 🔴 A VIEW CANNOT BE INDEXED, and the catalogue already says which relations are
+    # views (S-63 made `kind` a declared, closed-list field). Measured 2026-09-08: without
+    # this, `dt_log_transferable` failed on every boot and every config reload with
+    # WrongObjectType -- isolated and harmless, but a permanent error line is how a real
+    # one stops being read.
+    if (entry or {}).get("kind") == "view":
+        return None, None
+    columns = (entry or {}).get("map_key_columns") or []
+    columns = [str(name) for name in columns if str(name).strip()]
+    if not columns:
+        return None, None
+    name = f"idx_{table_name}_map_key"[:63]
+    quoted = ", ".join(f'"{column}"' for column in columns)
+    return name, (f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{name}" '
+                  f'ON "{table_name}" ({quoted})')
+
+
+def ensure_map_key_indexes(engine, config=None):
+    """Create the map-key index of every table that declares one. Returns the names made.
+
+    ⚠️ CONCURRENTLY, AND THEREFORE OUTSIDE A TRANSACTION. A plain CREATE INDEX takes a lock
+    that blocks writers for as long as it runs, and on a production-sized map table that is
+    the outage this was meant to prevent. `CONCURRENTLY` cannot run inside a transaction
+    block, so this opens its own AUTOCOMMIT connection.
+
+    ⚠️ AND OUTSIDE THE REQUEST PATH. It belongs beside `create_missing_dynamic_tables`, at
+    boot and at config reload -- never in the route that noticed the index was missing.
+
+    Failures are isolated per table and reported, never raised: a box that cannot build one
+    index must still serve, and `IF NOT EXISTS` makes every later run a no-op.
+    """
+    from sqlalchemy import text as _text
+
+    catalog = config if config is not None else TABLE_CONFIG
+    created = []
+    for table_name, entry in list((catalog or {}).items()):
+        name, statement = map_key_index_ddl(table_name, entry)
+        if not statement:
+            continue
+        try:
+            with engine.connect().execution_options(
+                    isolation_level="AUTOCOMMIT") as connection:
+                # 🔴 A FAILED `CONCURRENTLY` LEAVES THE INDEX BEHIND, MARKED INVALID, and
+                # that is worse than leaving nothing: the planner will not use an invalid
+                # index, and `IF NOT EXISTS` sees a name that exists and skips forever. So
+                # the ensure would report success on every later boot while every map open
+                # kept scanning the table. Drop it first, then build again.
+                invalid = connection.execute(_text(
+                    "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+                    " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
+                ).first()
+                if invalid:
+                    print(f"[Schema Sync] map-key index '{name}' is INVALID from an "
+                          f"earlier failure; dropping and rebuilding.")
+                    connection.execute(_text(
+                        f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
+                connection.execute(_text(statement))
+            created.append(name)
+        except Exception as err:
+            print(f"[Schema Sync] Failed to ensure map-key index on "
+                  f"'{table_name}': {err}")
+    return created
+
+
 def ensure_ingestion_checkpoint_table(engine):
     """[P2] 파일 인제션 체크포인트 테이블(file_ingestion_checkpoints)의 존재를 보장한다.
 
@@ -1242,5 +1314,11 @@ def refresh_dynamic_models(engine=None):
         # 사라져서 이제는 되살릴 수단이 없다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
+        # [S-70] The map editor narrows a map target table by its declared map_key_columns,
+        # and nothing indexed them. This is the seat because it is the one place that runs
+        # at boot AND at config reload -- a table that starts declaring a map key gets its
+        # index on the next reload rather than on the next restart -- and because it is
+        # outside the request path.
+        created.extend(ensure_map_key_indexes(engine, new_config))
         return created
     return []

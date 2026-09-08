@@ -20985,3 +20985,57 @@ server/database/models.py 가 «세 곳»에 같은 문장을 적어 두고 있�
 S-70 ③ 인덱스 보장 -> ④ 후 측정 -> S-71(깨진 필터 400) -> S-65 ②③④(CREATE 를 뒤따르기로)
 -> S-66 한 줄 -> S-64-b -> S-57 · S-50
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-70 ③④ — 맵 하나 열기 «275.2 ms → 4.4 ms» (62 배). 축 0.3 s 대비 «68 배 여유»** (09-08 19:49)
+
+```
+시각   19:49   ·   dt_map 1,006,147 행 · ANALYZE 뒤 · 같은 계기·같은 맵
+```
+
+## ④ 「후」 — 같은 문장, 같은 맵
+```
+Index Scan using «idx_dt_map_map_key» on dt_map   (actual 0.099..0.303  rows=400)
+  Index Cond: ((dt_lot)::text = 'SYN-P70-01234' AND dt_slot = '1'::double precision)
+  Buffers: shared hit=4 «read=11»          <- 전: read=21,081
+  Execution Time: «0.330 ms»               <- 전: 137.0 ms
+```
+```
+                    전            후
+데이터(limit 2000)   139.0 ms  ->   3.5 ms
+count(같은 필터)     136.2 ms  ->   1.0 ms
+맵 하나 열기         «275.2»   ->  «4.4 ms»      = «62 배» · 축 0.3 s 의 «1/68»
+돌아온 행 400 · count 400 — 전/후 «같습니다»
+```
+⚠️ 이 수는 «이 박스»의 수입니다. 운영 배수는 C-43 ①이 운영에서 잽니다(그렇게 이해했습니다).
+
+## ③ 무엇을 지었나
+```
+map_key_index_ddl(table, entry)      선언 `map_key_columns` 에서 «이름과 DDL 을 계산». 운영자 칸 «0»
+                                     뷰는 «건너뜁니다» — 카탈로그의 `kind`(S-63)가 그것을 이미 말합니다
+ensure_map_key_indexes(engine, cfg)  CREATE INDEX CONCURRENTLY IF NOT EXISTS · AUTOCOMMIT ·
+                                     표마다 실패 격리 · 이미 있으면 무접촉
+                                     🔴 «INVALID 면 DROP 후 재시도»(판정 19:36) — 실패한 CONCURRENTLY 가
+                                        남긴 무효 인덱스는 플래너가 «안 쓰는데» IF NOT EXISTS 는 «있다»고 봐서
+                                        영원히 건너뜁니다. 그러면 ensure 는 매번 성공을 보고하고 맵은 계속 스캔합니다
+자리                                 `refresh_dynamic_models` 의 `create_missing_dynamic_tables` «옆» —
+                                     기동 «과» 설정 리로드 «둘 다» 지나는 유일한 자리 · 요청 경로 «밖»
+```
+
+## 실측(이 박스에서 실제로 돌려 본 것)
+```
+1 회차   9 개 생성 · 2.0 s   (dt_log · dt_map · bonding_log · bonding_map · map_split_registry ·
+                            valid_die_ref · core_usage_map · core_wafer_map · dt_core_view)
+        ⚠️ 그때 `dt_log_transferable` 이 «뷰»라 WrongObjectType 으로 실패 -> 그래서 뷰 건너뛰기를 넣었습니다
+2 회차   9 개 «무접촉» · 전부 `indisvalid = true`   (멱등 확인)
+```
+
+## ⚠️ 아직 안 끝난 것 (정직하게)
+```
+심볼 이웃 «89 파일» 실행이 «도는 중»입니다(600 s 초과로 백그라운드). 결과가 나오면 «그 자리에서» 보고합니다.
+빨강이 나오면 즉시 고칩니다 — 오늘 회귀 일곱을 그렇게 놓쳤습니다
+그리고 제 실수 하나 더: 쉘 `-c` 안에 백틱을 넣어 주석에서 낱말 둘이 «먹혔습니다»(`kind`·`dt_log_transferable`).
+Edit 로 되살렸습니다 — 제 기억 파일이 경고하는 바로 그것입니다
+```
