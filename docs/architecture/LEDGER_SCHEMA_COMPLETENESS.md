@@ -248,6 +248,8 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 | B9 노드 | ① | `{id, type, label, keys, attributes}` — `attributes` 는 선언된 이름만 · 최신 `occurred_at` 승 · «닿지 않은» 이름은 `null` 이 아니라 **키가 없다** · `attribute_conflicts` 는 「서로 다른 값이 둘 이상인 «이름의 수»」(WALK.md §4, 판정 123·124) |
 | B9 엣지 | ① | `{source, target, predicate, qualifiers}` |
 | B9 그 밖 | ① | `seeds`(부호) · `propagation` · `walk`(모드·방향·씨앗 부호 수·`hops_reached`) · `limits` · `truncated` |
+| **B11 근거 동반** (BASIS §3-0) | 🔵 **엣지 ① / 순위 트레일 ⚠️** | **엣지**: 원자에서 온 엣지는 `claim_id`(= `atom.id`)와 `basis`(= `atom.source_raw_ref`)를 «답니다» (`ledger_subgraph.py:996~999`), 그리고 응답은 `ordered_edges = sorted(edges.values(), …)` :1361 로 «투영 없이» 그대로 나갑니다 — 즉 「어느 원자가 이 엣지를 받쳤나」는 **이미 실립니다**. ⚠️ `WALK.md` §4 는 엣지를 `{source,target,predicate,qualifiers}` «넷»으로 적어 두었습니다 — **문서가 코드보다 좁습니다**(고칠 것). 🔴 **순위 트레일은 그것을 «안 씁니다»**: `_evidence` :565~593 의 hop 은 `atom`/`ref` 를 «노드»에서 읽는데(`nodes[item].keys.id` · `source_raw_ref` · `basis`), `_entity_node` :375 는 «셋 다 없습니다» — 엔티티 키는 도메인 키(wafer·x·y)라 `id` 가 없습니다. 그래서 **엔티티 홉의 `atom`·`ref` 는 «전부 null»** 이고, 걷기의 노드는 사실상 전부 엔티티입니다. 즉 순위는 「어느 길로 닿았나」는 말하고 「어느 «사실»이 그 걸음을 받쳤나」는 못 말합니다. 🔵 그런데 그 사실은 «같은 응답 안»에 있습니다 — 트레일이 «노드»가 아니라 «두 홉 사이의 엣지»를 보면 `claim_id`·`basis` 가 거기 있습니다. 잇는 일이지 «짓는» 일이 아닙니다 |
+| B11-bis 엣지의 «빈» 근거 칸 | 🔴 **③′** | `_edge()` :388~394 가 매 엣지에 `sources: []` · `witnesses: 1` · `rank: None` 을 답니다. `git grep` 으로 이 셋에 «쓰는» 자리 «0**(시험·다른 뜻의 동명이인 제외) — key_types·supersedes 와 «같은 부류»입니다 |
 | B10 거절 | ① 대부분 | «이름 대어» 넷: `predicate_not_declared` · `node_type_not_declared` · `subgraph_request_invalid` · 관계 부재. 범위·열거는 FastAPI 가 422 |
 | B10 «조용한 불가» | 🔵 **0 (이 라우트에서는)** | 선언에 없는 술어·타입을 «빈 그래프»로 답하지 않는다 — :117~129,:143~152 가 그 이유를 적어 두었다(「오타와 사실을 부르는 쪽이 못 가른다」) |
 

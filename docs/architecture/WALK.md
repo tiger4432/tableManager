@@ -77,7 +77,12 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              — 같은 값이 두 시각에 오는 것은 «충돌이 아니다»(판정 124). 도착을 세면 「다시 말한 사실」이
              「어긋난다」로 보인다
 
-edges        {source, target, predicate, qualifiers}
+edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
+              🔵 claim_id, basis}   — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
+              원자에서 온 엣지는 `claim_id` = 그 원자의 id · `basis` = 그 원자의 `source_raw_ref`(어느 «물리 행»)
+              를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`ledger_subgraph.py:996~999`, :1361)
+              ⚠️ 여기 「넷」이라고 적혀 있었다 — 문서가 코드보다 좁았고, 그 탓에 「근거를 안 싣는다」로 읽혔다
+              ⚠️ `sources`·`witnesses`·`rank` 도 매 엣지에 있지만 «쓰는 자리가 0» 이다(③′)
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
              모집단이 전부인 것은 «소유자 판정»(2026-08-28)이다 — 한 타입으로 거르면
