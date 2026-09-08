@@ -116,13 +116,19 @@ def calls_to_rescope(monkeypatch, result=None):
 @pytest.mark.parametrize("event_type,followed", [
     ("EDIT", True),
     ("DELETE", True),
-    ("CREATE", False),
+    ("CREATE", True),
     ("SYSTEM_RELOAD", False),
 ])
 def test_only_a_change_to_an_existing_row_is_followed(event_type, followed):
-    """🔴 ㉣ CREATE COSTS NOTHING HERE, and it is not an oversight. The forward run reads a
+    """🔴 CREATE FLIPPED TO True ON 2026-09-08 (S-65 · ruling 144), AND THE OLD REASON WAS
+    MEASURED FALSE. This case used to read False on ruling 129 ㉣: "the forward run reads a
     new row once from the cursor; following it as well would translate the same row twice
-    and buy nothing.
+    and buy nothing." But a new row only reaches the cursor if it sorts AFTER it, and the
+    shipped sources mostly page on a NAME -- 3,008 `lot_event` rows dated before the
+    cursor's own instant, and 470,000 `wafer_process` rows whose uuid7 ids all sort before
+    a hand-written literal the cursor sat on, both produced ZERO atoms with no error.
+    The queue is the live path now; `drain_once` is where "would this be translated twice"
+    is answered, by following a CREATE only for a source seen caught up.
 
     ⚠️ DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS A DIFFERENT INSTRUMENT, not a wider
     scope -- see `test_a_delete_is_withdrawn_from_the_index_not_rescoped`. Until the ledger
@@ -303,8 +309,8 @@ def test_the_chain_group_queues_above_its_trigger_filter_and_translates_nothing(
     ok, reason, messages = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
         worker.process_chain_transaction_group("tx", events, None, []))
     assert ok is True and reason is None and messages == []
-    assert followup.queue_depth() == 2, (
-        "both EDIT shapes queued, the CREATE did not, and no rule was needed for any of it")
+    assert followup.queue_depth() == 3, (
+        "both EDIT shapes and the CREATE queued, and no rule was needed for any of it")
 
 
 def test_an_empty_queue_never_becomes_a_hot_loop(monkeypatch):

@@ -33,14 +33,53 @@ logger = logging.getLogger(__name__)
 
 #: EDIT and DELETE, each with its OWN instrument -- see `drain_once`.
 #:
-#: CREATE is still not here: the forward run reads a new row once from the cursor, and
-#: following it as well would translate the same row twice for nothing (ruling 129 ㉣).
+#: 🔴 CREATE JOINED ON 2026-09-08 (S-65), AND THAT REPLACES RULING 129 ㉣. That ruling said
+#: the forward run reads a new row once from the cursor, so following it too would translate
+#: the same row twice for nothing. The premise was measured false: a new row only reaches the
+#: cursor if it sorts AFTER it, and the shipped sources mostly page on a NAME. A lot whose id
+#: sorts earlier is never read, with no error and a cursor that reports it is finished --
+#: measured here on 3,008 `lot_event` rows dated before the cursor's own instant, and on
+#: 470,000 `wafer_process` rows whose uuid7 row_ids all sort before a hand-written literal
+#: the cursor sat on. Both produced ZERO atoms.
+#:
+#: Ruling 144 splits the two paths instead: the outbox is the LIVE path and the cursor is the
+#: CATCH-UP path. `drain_once` therefore follows a CREATE only for a source that has been SEEN
+#: with nothing past its cursor, and skips the rest by name -- so a source still catching up
+#: keeps reading its own new rows exactly as before, and nothing is translated twice.
 #:
 #: 🔴 DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS NOT THE SAME STEP. `rescope` aims its
 #: withdrawal with the CURRENT translation of the rows in scope, so a row that is gone
 #: produces no ref and its atoms would stay -- which is why DELETE waited until the ledger
 #: wrote down, while the row was still there, which physical row each fact came from.
-FOLLOWED_EVENT_TYPES = ("EDIT", "DELETE")
+FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")
+
+
+def caught_up_sources(engine, sources):
+    """Which of these sources has been SEEN with nothing past its cursor (S-65).
+
+    🔴 THE QUESTION IS ASKED HERE AND NOT IN `enqueue`. `enqueue` is pure memory and runs
+    inside the chain worker's commit path; reading the cursor table there would put a query
+    on the path that must not carry one. This runs in the drain, which already holds the
+    engine, so the information is read where it is already free.
+
+    ⚠️ ABSENT MEANS NO. A source that has never run, and one that was cut short, both read
+    NULL -- and neither may be handed the live path, because for them the cursor path is
+    still the one that will reach those rows.
+    """
+    from .store import LedgerStore
+
+    store = LedgerStore(engine)
+    connection = store.connection()
+    caught = set()
+    try:
+        for source in sources:
+            row = store.read_cursor(connection, source) or {}
+            if row.get("caught_up_at"):
+                caught.add(source)
+    finally:
+        connection.rollback()
+        connection.close()
+    return caught
 
 #: The job name the pace is declared under, in `server/pacing.json`.
 FOLLOWUP_JOB = "chain_followup"
@@ -218,7 +257,23 @@ def drain_once(engine, setup):
             logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
                            table, len(row_ids), exc)
         return done
-    for source in sources_for_table(setup, table):
+    table_sources = list(sources_for_table(setup, table))
+    if event_type == "CREATE":
+        # 🔴 ONLY A SOURCE THAT HAS BEEN SEEN CAUGHT UP (S-65 · ruling 144). For one still
+        # catching up, its own forward run will read these rows, and following them here as
+        # well would translate the same molecule twice.
+        #
+        # ⚠️ THE SKIPPED ONES ARE NAMED. "Nothing happened" and "this source is still
+        # catching up so the cursor will get there" render identically otherwise, and the
+        # difference is the whole reason this branch exists.
+        caught = caught_up_sources(engine, table_sources)
+        skipped = [source for source in table_sources if source not in caught]
+        if skipped:
+            done["skipped_not_caught_up"] = skipped
+        table_sources = [source for source in table_sources if source in caught]
+        if not table_sources:
+            return done
+    for source in table_sources:
         plan = setup.snapshot.source_plans[source]
         column = scope_column(plan)
         try:
