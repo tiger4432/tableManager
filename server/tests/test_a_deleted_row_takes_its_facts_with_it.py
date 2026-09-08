@@ -26,6 +26,18 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import backfill, followup, runtime_v2, schema             # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_views(monkeypatch):
+    """🔴 VIEWS ARE NOT THIS FILE'S SUBJECT, AND THE SEAM IS ONE NAME (판정 158).
+
+    Since S-65-d a deletion also withdraws for the sources reading views on the deleted
+    row's table, and it asks in exactly one place. Blocking that name keeps these cases
+    about the base table's own index, which is what they were written to score.
+    """
+    monkeypatch.setattr(followup, "view_followers_of",
+                        lambda engine, setup, table: ([], []))
 from ledger.roleframe import SOURCE_ROW_REF_COLUMN                    # noqa: E402
 from ledger.source_preparation import FRAME_ROW_ID_COLUMN             # noqa: E402
 

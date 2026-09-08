@@ -232,3 +232,99 @@ def test_a_new_snapshot_replaces_the_cached_derivation():
     followers, _cannot = followup.view_followers_of(
         other, _setup({"s_b": _Plan("v_b", "k")}), "t_b")
     assert followers == [("s_b", "k")]
+
+
+# ------------------------------------------------------- S-65-d: a deletion and its views
+
+def _delete_setup(plans):
+    snapshot = type("Snap", (), {"source_plans": plans, "__hash__": None})()
+    return type("S", (), {"snapshot": snapshot})()
+
+
+def _plan_with_row_id(relation, page_key, frame_row_id):
+    plan = _Plan(relation, page_key)
+    plan.frame_row_id = frame_row_id
+    return plan
+
+
+def test_a_deletion_withdraws_for_the_views_that_carry_row_id(monkeypatch):
+    """🔴 THE BASE TABLE'S WITHDRAWAL NEVER TOUCHES THEM. `withdraw_deleted_rows` asks by
+    RELATION, and a view source's atoms carry the VIEW's name -- so a deleted base row left
+    the view source's facts standing until this."""
+    from ledger import backfill
+
+    asked = []
+
+    def fake_withdraw(engine, setup, relation, row_ids, apply=False):
+        asked.append(relation)
+        return {"sources": {relation: {"withdrawn": 1}}, "forgotten": 1}
+
+    monkeypatch.setattr(backfill, "withdraw_deleted_rows", fake_withdraw)
+    monkeypatch.setattr(
+        followup, "view_followers_of",
+        lambda engine, setup, table: ([("void_observation", "void_uid")], []))
+    setup = _delete_setup({
+        "void_observation": _plan_with_row_id("void_obs_observed", "void_uid", "row_id")})
+    followup.reset()
+    try:
+        followup.enqueue("void_obs", ["r1"], "DELETE")
+        done = followup.drain_once(object(), setup)
+    finally:
+        followup.reset()
+    assert asked == ["void_obs", "void_obs_observed"], asked
+    assert done["forgotten"] == 2
+    assert "cannot_follow" not in done
+
+
+def test_a_view_without_row_id_is_named_rather_than_skipped(monkeypatch):
+    """⛔ THE SILENT ZERO AGAIN. The index is `(relation, row_id)`, so a view that does not
+    pass row_id through wrote no index rows and a deletion has nothing to aim with --
+    measured on this box for `void_obs_observed`. Saying nothing would read as "done"."""
+    from ledger import backfill
+
+    monkeypatch.setattr(
+        backfill, "withdraw_deleted_rows",
+        lambda engine, setup, relation, row_ids, apply=False: {
+            "sources": {}, "forgotten": 0})
+    monkeypatch.setattr(
+        followup, "view_followers_of",
+        lambda engine, setup, table: ([("void_observation", "void_uid")], []))
+    setup = _delete_setup({
+        "void_observation": _plan_with_row_id("void_obs_observed", "void_uid", None)})
+    followup.reset()
+    try:
+        followup.enqueue("void_obs", ["r1"], "DELETE")
+        done = followup.drain_once(object(), setup)
+    finally:
+        followup.reset()
+    assert done["cannot_follow"] == [{"view": "void_obs_observed",
+                                      "source": "void_observation",
+                                      "base": "void_obs", "reason": "no_row_id"}]
+
+
+def test_what_cannot_be_followed_reaches_the_log(monkeypatch, caplog):
+    """🔴 THE RESULT ALONE IS NOT VISIBLE. Only failures were logged, so a pair the follow-up
+    structurally cannot reach left no trace an operator could find."""
+    import logging
+
+    from ledger import backfill
+
+    monkeypatch.setattr(
+        backfill, "withdraw_deleted_rows",
+        lambda engine, setup, relation, row_ids, apply=False: {
+            "sources": {}, "forgotten": 0})
+    monkeypatch.setattr(
+        followup, "view_followers_of",
+        lambda engine, setup, table: ([("void_observation", "void_uid")], []))
+    setup = _delete_setup({
+        "void_observation": _plan_with_row_id("void_obs_observed", "void_uid", None)})
+    followup.reset()
+    try:
+        followup.enqueue("void_obs", ["r1"], "DELETE")
+        with caplog.at_level(logging.WARNING, logger="ledger.followup"):
+            followup.drain_once(object(), setup)
+    finally:
+        followup.reset()
+    assert any("cannot be followed" in record.message for record in caplog.records), (
+        [r.message for r in caplog.records])
+    assert any("no_row_id" in record.getMessage() for record in caplog.records)
