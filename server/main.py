@@ -134,7 +134,8 @@ def bootstrap_database_schema(bind=None):
 app = FastAPI(title="AssyManager Table Server")
 
 # --- ContextVars Middleware config ---
-from database.context import request_user, request_transaction_id, request_source
+from database.context import (request_user, request_transaction_id, request_source,
+                              outbox_mode)
 
 @app.middleware("http")
 async def db_context_middleware(request: Request, call_next):
@@ -3043,9 +3044,27 @@ async def apply_batch_updates_endpoint(
     # the historical silent 200-noop.
     replace_report = {} if batch.replace_map else None
     try:
-        results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
-            crud.apply_batch_updates, db, table_name, batch, replace_report
-        )
+        # [S-82] 🔴 THIS DOOR STAGES ONE EVENT, NOT ONE PER ROW. Ingestion and the chain
+        # worker already opt in; this one did not, so a 1,000-row request wrote 1,000 outbox
+        # rows INSIDE the request (41.3 s measured 2026-09-09) and the ledger's follow-up
+        # then paced itself once per event. Same constant and same context manager as the
+        # other two callers - a second spelling is how one of them comes to be forgotten.
+        #
+        # ⚠️ THE DECLARATION USED TO PIN THIS DOOR TO per_row, on the grounds that "a
+        # correction that reaches the DB but not the screen stops the correction loop".
+        # MEASURED: the screen here is not fed by the outbox. The broadcast below is built
+        # from `results` - this call's own return value - and the recovery path
+        # (`chain_ingestion_worker.sweep_undelivered_broadcasts`) fires a table-level
+        # refresh keyed on `table_name`, reading no column values at all. The only consumer
+        # that reads a payload's columns is the chain worker, and it expands a collapsed
+        # event before doing so (`outbox_expand.expand_events`).
+        #
+        # 🔴 SCOPED TO THIS ONE CALL. The token is held across exactly one await - the write
+        # itself - so nothing else this handler awaits can collapse by accident.
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
+                crud.apply_batch_updates, db, table_name, batch, replace_report
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IntegrityError as e:

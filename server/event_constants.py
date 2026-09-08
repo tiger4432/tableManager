@@ -365,14 +365,24 @@ MAX_AUDIT_VALUE_CHARS = 4096
 
 #: Per-row outbox events - one row per changed row, payload carries its values.
 #: THE DEFAULT, so every caller that does not opt in keeps today's behaviour and
-#: the safe direction needs no edit. The human/correction path must stay here:
-#: a correction that reaches the DB but not the screen stops the correction loop.
+#: the safe direction needs no edit.
+#:
+#: ⚰️ [S-82, 2026-09-09] THIS USED TO ADD "the human/correction path must stay here:
+#: a correction that reaches the DB but not the screen stops the correction loop".
+#: MEASURED: the correction loop does not run through this table. The product door
+#: broadcasts from `crud.apply_batch_updates`' own return value, and the recovery
+#: sweep fires a table-level refresh keyed on `table_name`; the only consumer that
+#: reads a payload's COLUMNS is the chain worker, which expands first. That sentence
+#: was holding a door shut for a reason the door did not have.
 OUTBOX_MODE_PER_ROW = "per_row"
 
 #: Collapsed events - one row per (table, event_type) per flush, naming row_ids.
-#: Bulk ingestion only, opted into explicitly. NOT inferred from `request_source`
-#: (that is a FILENAME on the ingestion path, not a channel) and NOT inferred
-#: from row count (a human map push is thousands of rows and must stay per-row).
+#: Opted into explicitly by the three write paths that carry volume: ingestion
+#: (`directory_watcher`), the chain worker, and the product door
+#: (`main.apply_batch_updates_endpoint`, S-82). NOT inferred from `request_source`
+#: (that is a FILENAME on the ingestion path, not a channel) and NOT inferred from
+#: row count - inference is how a FOURTH caller would collapse without anyone
+#: having decided that it should.
 OUTBOX_MODE_COLLAPSED = "collapsed"
 
 #: Max row_ids carried by ONE collapsed event. Also the project-wide 1,000-row

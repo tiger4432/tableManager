@@ -90,7 +90,8 @@ outbox는 이벤트당 행 버전 3개(INSERT → 처리 UPDATE → broadcast_at
   **1,000배 적은 행, 58.6배 적은 바이트.**
 * **소비자 비용은 늘지 않았다 — 오히려 줄었다**(20,000행 기준, 각 팔이 자기 로드를 포함한 3회 반복): per-row `load+decode` **1,993~2,705 ms** vs collapsed `load+re-read` **1,725~1,769 ms**(0.65~0.87배). ⚠️ **첫 측정은 계기가 틀렸다** — per-row 팔의 JSONB 디코드가 타이머 **밖**(`.all()`)에서 일어나 149 ms로 읽혔고, 그대로 보고했으면 "재읽기가 13.7배 비싸다"는 **없는 결함**을 세울 뻔했다.
 * **모드 선택은 명시적 opt-in이고 기본은 `per_row`다**(`request_outbox_mode`, §2.2). 추론하지 않는 이유: `request_source`는 인제션 경로에서 **파일명**이지 채널이 아니고, 행 수로도 가를 수 없다(**사람의 맵 Push가 수천 행**이라 추론하면 per-row로 남아야 할 바로 그 경로가 축약된다). 사람 교정이 화면에 못 닿으면 교정 루프가 끊긴다(핵심가치 #3).
-  * 축약을 켜는 곳은 **둘뿐**: `parsers/directory_watcher._upsert_to_local_db`(파일 인제션), `chain_ingestion_worker`의 파생 쓰기.
+  * 축약을 켜는 곳은 **셋**: `parsers/directory_watcher._upsert_to_local_db`(파일 인제션), `chain_ingestion_worker`의 파생 쓰기, 🆕 **`main.apply_batch_updates_endpoint`(제품 문, 2026-09-09 S-82)**.
+  * ⚰️ **[2026-09-09 S-82] 「사람 경로는 per_row 로 남는다」는 되물렸다 — 다만 위 판정의 «주어»는 그대로다.** 판정이 금지한 것은 «추론»(`request_source`·행 수)이었고 S-82 는 «이름 대어 옵트인»이라 그 금지 안에 있다. 지킨다던 성질(「사람 교정이 화면에 닿는다」)은 실측 2026-09-09 결과 **이 표를 안 지난다** — 제품 문의 브로드캐스트는 `crud.apply_batch_updates` 의 «반환값»으로 짓고, 복구 스윕은 `table_name` 으로 표 단위 새로고침만 쏜다. 바로 아래 「미전달 스윕·WS 3경로: 변경 없음」이 그 줄이다.
 * 🔴 **DELETE는 어느 모드에서도 축약하지 않는다** — 지워진 행은 다시 읽을 수 없으므로 포인터가 가리킬 대상이 없다.
 * 🔴 **트랜잭션 아웃박스 보장은 그대로다.** `row_id`가 SERIAL이 아니라 **파이썬에서 발급**되므로(`crud._get_or_create_row`의 `uuid6.uuid7()`) id 목록이 `before_flush` 시점에 이미 완결이고, 축약 이벤트는 종전과 **같은 세션·같은 flush**에 `session.add`된다 → 행과 **한 트랜잭션에 원자 커밋**.
 * **소비자별 대응**(`server/outbox_expand.py`가 단일 지점):

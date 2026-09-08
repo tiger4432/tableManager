@@ -8,15 +8,15 @@ if not hasattr(sys, "_context_vars_cache"):
         "request_transaction_id": contextvars.ContextVar("request_transaction_id", default=None),
         "request_source": contextvars.ContextVar("request_source", default="user"),
         # [OUTBOX-4] Per-row vs collapsed outbox staging. DEFAULTS TO per_row, so
-        # every existing caller - every main.py endpoint, every human correction -
-        # keeps today's behaviour without being edited and the safe direction is
-        # the one you get by doing nothing. Bulk ingestion opts IN explicitly.
+        # every caller that does not opt in keeps today's behaviour and the safe
+        # direction is the one you get by doing nothing. Three write paths opt IN
+        # explicitly: ingestion, the chain worker, and the product door (S-82).
         #
         # Why an explicit channel and not an inference: `request_source` is a
         # FILENAME on the ingestion path (directory_watcher derives it from the
-        # file's basename), not a channel; and row count cannot separate the two
-        # paths either, because a human map push is thousands of rows - inferring
-        # from it would collapse precisely the path that must stay per-row.
+        # file's basename), not a channel; and row count says nothing about which
+        # caller is writing - inferring from either is how a path would collapse
+        # without anyone having decided that it should.
         "request_outbox_mode": contextvars.ContextVar("request_outbox_mode",
                                                       default="per_row"),
         # [DEPTH] How many chain hops produced the write being staged. `None` means
