@@ -103,35 +103,48 @@ def _record_refusals(source_id: str, preview: "CursorBatchPreview") -> None:
                     rows=refusal.rows, addresses=refusal.addresses)
 
 
-def _row_ref_index(source_plan, event_frames):
-    """`(relation, row_id, source_raw_ref)` for every row these event frames translated.
+def _row_ref_index(source_plan, event_frames, event_results):
+    """`(relation, row_id, source_raw_ref)` -- the ref the LEDGER stores, not the row's own.
 
-    🔴 THE ONE PLACE BOTH HALVES ARE IN HAND. `source_raw_ref` is built at the preparation
-    boundary from a row's `order_by` values, and `row_id` rides the same frame because the
-    engine now reads it on every source (판정 135). Once the physical row is DELETED neither
-    can be recovered -- the ref cannot be rebuilt from values that are gone -- so it is
-    written down while the row is still here.
+    🔴 THE TWO REFS ARE NOT THE SAME STRING, AND THAT IS THE WHOLE OF THIS FUNCTION.
+    `source_preparation` gives each ROW a ref of `<relation>:<json of its order_by values>`;
+    the atom carries `_claim_source_raw_ref`'s answer, which is that string only when the
+    molecule is one row and `{"event":…, "rows":[…]}` otherwise. The withdrawal matches
+    `source_raw_ref` on the ledger, so an index holding the ROW's spelling would find no
+    atom to withdraw and report success having removed nothing -- caught 2026-09-08 by
+    reading `count_orphan_atoms`, which had already had to know the difference.
 
-    A frame that carries neither column contributes nothing rather than raising: a caller
-    handing in a frame this shallow is a test double, and the write it feeds is the same
-    write it always was.
+    So the two are joined here: the frames say which row_id produced which row ref, the
+    ledger frames say which atom ref names which row refs, and one row may appear under
+    several atom refs because one event can emit several sentences over different rows.
+
+    A frame carrying neither column contributes nothing rather than raising: a caller
+    handing in one that shallow is a test double, and the write it feeds is unchanged.
     """
-    from .roleframe import SOURCE_ROW_REF_COLUMN
+    from .roleframe import SOURCE_ROW_REF_COLUMN, claim_source_row_refs
     from .source_preparation import FRAME_ROW_ID_COLUMN
 
-    pairs: dict = {}
+    row_id_of: dict = {}
     for frame in event_frames:
         if (FRAME_ROW_ID_COLUMN not in frame.columns
                 or SOURCE_ROW_REF_COLUMN not in frame.columns):
             continue
         for index in range(len(frame)):
             row_id = frame.iloc[index][FRAME_ROW_ID_COLUMN]
-            ref = frame.iloc[index][SOURCE_ROW_REF_COLUMN]
-            if row_id is None or ref is None:
+            row_ref = frame.iloc[index][SOURCE_ROW_REF_COLUMN]
+            if row_id is None or row_ref is None:
                 continue
-            pairs[str(row_id)] = str(ref)
-    return tuple((source_plan.relation, row_id, pairs[row_id])
-                 for row_id in sorted(pairs))
+            row_id_of[str(row_ref)] = str(row_id)
+    if not row_id_of:
+        return ()
+    pairs = set()
+    for result in event_results:
+        for claim_ref in set(result.ledger_frame["source_raw_ref"].tolist()):
+            for row_ref in claim_source_row_refs(str(claim_ref)):
+                row_id = row_id_of.get(row_ref)
+                if row_id is not None:
+                    pairs.add((source_plan.relation, row_id, str(claim_ref)))
+    return tuple(sorted(pairs))
 
 
 def preview_cursor_batch(
@@ -158,7 +171,7 @@ def preview_cursor_batch(
         dry_run_event_frame(mapper_context, event_frame, mappers)
         for event_frame in event_frames
     )
-    row_refs = _row_ref_index(source_plan, event_frames)
+    row_refs = _row_ref_index(source_plan, event_frames, event_results)
     normalized_registrations = _known_registrations(known_registrations)
     event_atoms = _filtered_event_atoms(event_results, normalized_registrations)
     semantics = []

@@ -414,13 +414,25 @@ class LedgerStore:
 
         rows = [(str(relation), str(row_id), source, str(ref))
                 for relation, row_id, ref in refs]
+        touched: dict = {}
+        for relation, row_id, _source, _ref in rows:
+            touched.setdefault(relation, set()).add(row_id)
         with connection.cursor() as cursor:
+            # 🔴 THIS SOURCE'S LINES FOR THESE ROWS ARE REPLACED, NOT MERGED. A
+            # re-translation may name the same row under a DIFFERENT claim ref -- a
+            # corrected `order_by` value moves it, which is what a rescope exists for --
+            # and the old line would then point at an atom the same transaction just
+            # withdrew. Same commit, so the index cannot be seen mid-replacement.
+            for relation, row_ids in sorted(touched.items()):
+                cursor.execute(
+                    f"DELETE FROM {schema.ROW_REF_TABLE} "
+                    "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
+                    (relation, source, sorted(row_ids)))
             execute_values(
                 cursor,
                 f"INSERT INTO {schema.ROW_REF_TABLE} "
                 "(relation, row_id, source_who, source_raw_ref) VALUES %s "
-                "ON CONFLICT (relation, row_id, source_who) DO UPDATE SET "
-                "source_raw_ref = EXCLUDED.source_raw_ref",
+                "ON CONFLICT DO NOTHING",
                 rows)
             return len(rows)
 

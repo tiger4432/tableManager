@@ -40,23 +40,71 @@ def frame(pairs):
                          for row_id, ref in pairs])
 
 
-def test_the_index_pairs_the_row_with_the_ref_it_produced():
-    """🔴 BOTH HALVES ARE ONLY EVER IN HAND HERE. The ref is built from the row's `order_by`
-    values and the `row_id` rides the same frame (판정 135); after the row is deleted neither
-    can be recovered, so the pair is written down now."""
-    plan = SimpleNamespace(relation=RELATION)
-    pairs = runtime_v2._row_ref_index(
-        plan, [frame([("R1", "dt_log:{\"a\":1}"), ("R2", "dt_log:{\"a\":2}")])])
-    assert pairs == ((RELATION, "R1", 'dt_log:{"a":1}'),
-                     (RELATION, "R2", 'dt_log:{"a":2}'))
+def result_with(claim_refs):
+    return SimpleNamespace(
+        ledger_frame=pd.DataFrame({"source_raw_ref": list(claim_refs)}))
+
+
+def claim_ref(*row_refs):
+    """The atom's ref, spelled the way `_claim_source_raw_ref` spells it -- built rather
+    than typed, so a test cannot pass on a shape the builder never produces."""
+    return json.dumps({"event": "dt_log:e", "rows": sorted(set(row_refs))},
+                      ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False)
+
+
+def index(frames, claim_refs):
+    return runtime_v2._row_ref_index(
+        SimpleNamespace(relation=RELATION), frames, [result_with(claim_refs)])
+
+
+def test_the_index_stores_the_ref_the_LEDGER_holds_not_the_rows_own():
+    """🔴 THE TWO REFS ARE DIFFERENT STRINGS, AND THE WITHDRAWAL MATCHES THE SECOND. A row's
+    ref is `<relation>:<json of its order_by values>`; the ATOM carries that string only
+    when the molecule is one row, and `{"event":…,"rows":[…]}` otherwise. An index holding
+    the row's spelling would find no atom to withdraw and report success having removed
+    nothing -- which is the failure this whole feature exists to prevent, wearing the
+    feature's own clothes."""
+    one, two = 'dt_log:{"a":1}', 'dt_log:{"a":2}'
+    claim = claim_ref(one, two)
+    assert index([frame([("R1", one), ("R2", two)])], [claim]) == (
+        (RELATION, "R1", claim), (RELATION, "R2", claim))
+
+
+def test_a_single_row_molecule_is_the_collapsed_spelling_and_is_still_found():
+    """⚠️ THE CASE A READER OF ONLY THE JSON SHAPE WOULD SILENTLY MISS, and it is most
+    molecules: when the rows ARE the event the builder collapses to the bare ref."""
+    one = 'dt_log:{"a":1}'
+    assert index([frame([("R1", one)])], [one]) == ((RELATION, "R1", one),)
+
+
+def test_one_row_under_two_claims_keeps_both():
+    """One event may emit several sentences over different subsets of its rows, so a row
+    belongs to more than one claim ref -- and each has to be withdrawable."""
+    one = 'dt_log:{"a":1}'
+    other = claim_ref(one)
+    pairs = index([frame([("R1", one)])], [one, other])
+    assert sorted(pairs) == sorted([(RELATION, "R1", other), (RELATION, "R1", one)])
+
+
+def test_an_empty_ref_names_no_row_at_all():
+    """⚠️ AND IT IS NOT THE SAME AS AN UNREADABLE ONE. An unreadable ref comes back as
+    itself, because it is still the exact string the ledger stores and a caller matching on
+    it still matches. An EMPTY one names nothing, and returning `("",)` for it would put a
+    line in the index whose ref matches every atom that has none."""
+    from ledger.roleframe import claim_source_row_refs
+
+    assert claim_source_row_refs("") == ()
+    assert claim_source_row_refs(None) == ()
+    assert claim_source_row_refs("not json at all") == ("not json at all",)
+    assert claim_source_row_refs('{"event":"e"}') == ('{"event":"e"}',)
 
 
 def test_a_frame_without_the_columns_contributes_nothing_rather_than_raising():
     """A frame this shallow is a test double, and the write it feeds is the write it always
     was -- an index that refused to be built would take the translation down with it."""
-    plan = SimpleNamespace(relation=RELATION)
-    assert runtime_v2._row_ref_index(plan, [pd.DataFrame([{"other": 1}])]) == ()
-    assert runtime_v2._row_ref_index(plan, []) == ()
+    assert index([pd.DataFrame([{"other": 1}])], ['dt_log:{"a":1}']) == ()
+    assert index([], ['dt_log:{"a":1}']) == ()
 
 
 def test_both_write_doors_carry_it(monkeypatch):
