@@ -706,7 +706,13 @@ def test_an_empty_static_intersection_skips_the_fetch_instead_of_passing_an_empt
 
     labels = {node["label"] for node in body["nodes"]}
     assert "Q" in labels and "W2" not in labels and "Q2" not in labels
-    assert all(follow == ("measures",) for _, follow in lookup.calls), (
+    # ⚠️ THE WALK'S FETCHES, not every call. Since S-52-i one further call goes out after
+    # the walk to read the result's registrations, and it is `follow=("register",)` by
+    # construction -- a node's own columns must not depend on which roads the caller asked
+    # for. It is excluded by NAME rather than by position, so a walk fetch that lost its
+    # follow still fails this.
+    walked = [follow for _, follow in lookup.calls if follow != ("register",)]
+    assert walked and all(follow == ("measures",) for follow in walked), (
         "the static group was fetched anyway, with an empty or absent follow")
 
 
