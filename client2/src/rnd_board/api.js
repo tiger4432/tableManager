@@ -129,6 +129,11 @@ export function projectionModel(body, axis) {
   const frame = p.frame || null;
   const prov = (body && body.provenance) || {};
   const cells = (p.cells || []).map((cell) => ({
+    // 🔴 C-45. NOTHING THE SERVER SENT IS DROPPED. This used to rebuild the cell from a field
+    //    list, which is the shape C-40 ③ closed on the walk node: the server learns a field,
+    //    the screen draws a blank, and nothing raises. The translations below stay — they are
+    //    what the panels read — but they are now ADDED to the record rather than instead of it.
+    ...cell,
     x: cell.x,
     y: cell.y,
     n: cell.n,
@@ -285,6 +290,8 @@ export function compositionModel(result) {
     },
     coreTypes: Array.isArray(summary.core_types) ? summary.core_types.slice() : [],
     components: (Array.isArray(body.components) ? body.components : []).map((c) => ({
+      // 🔴 C-45. The record rides through; the names below are added on top of it.
+      ...c,
       id: c.component_id || null,
       entityId: c.entity_id || null,
       core: c.core || null,
@@ -295,7 +302,7 @@ export function compositionModel(result) {
       // and `occurred_at` for the core wafer -- INGOT_RELEASE › WAFER_SORT › … So the
       // breadcrumb is a fact the ledger already holds, not a path this client assembles.
       steps: (((c.upstream_process || {}).evidence_ids) || [])
-        .map((e) => ({ step: e.step || null, at: e.occurred_at || null }))
+        .map((e) => ({ ...e, step: e.step || null, at: e.occurred_at || null }))   // C-45
         .filter((e) => e.step),
       // 목업의 「이력 4 ›」. The derived_from chain the ledger already walked for this core --
       // a COUNT of events, and `null` when the response carried no lineage at all.
@@ -550,9 +557,12 @@ export function subgraphModel(result) {
       measured: measuredFromHops__untilServerServesIt(row, body.edges),
       hopCount: (row.evidence || []).reduce((n, ev) => Math.max(n, (ev.hops || []).length), 0),
       evidence: (row.evidence || []).map((ev) => ({
+        // 🔴 C-45. Added to the record, not instead of it.
+        ...ev,
         seed: ev.seed || null,
         sign: ev.sign || null,
         hops: (ev.hops || []).map((h) => ({
+          ...h,                                    // C-45
           id: h.id || null, kind: h.node_kind || null, label: h.label || '',
           ref: h.ref || null,
           // A hop that points at the model file is a DECLARATION; one that points elsewhere is
@@ -699,8 +709,11 @@ export function trendsModel(result) {
     ok: true,
     state: body.state || null,
     points,
+    // 🔴 C-45. THE CLOSEST MATCH TO C-40 ③ IN THIS FILE: it kept the server's own names and
+    //    still dropped everything it did not list, so a new field on a finding kind would have
+    //    died with no error at all. The defaults stay; the record rides under them.
     kinds: (body.selectable_finding_kinds || []).map((k) => ({
-      id: k.id, label: k.label || k.id, active: Boolean(k.active),
+      ...k, id: k.id, label: k.label || k.id, active: Boolean(k.active),
     })),
     provenance: {
       numerator: (prov.numerator || {}).predicate || null,
