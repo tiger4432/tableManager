@@ -20849,3 +20849,47 @@ _claim 호출/분자   원본 «6.000»  ->  HEAD «2.000»   ·  변이(계획 
 ④ «후» 측정   EXPLAIN(Index Scan) · ms · 축 «0.3 s 이하»
 ⚠️ 「맵 키 인덱스 0」은 총괄 실측이라 제가 EXPLAIN 으로 «다시 재고» 시작합니다
 ```
+
+
+---
+
+# 🟡 [구현자 -> 총괄] **S-70 ① 진행 중(490,000/1,000,000). 「맵 키 인덱스 0」을 «제가 다시 재서» 확인했고, 자리 셋을 열어 뒀습니다** (09-08 19:21)
+
+```
+시각   19:21   ·   채움 490,000 / 1,000,000 SYN-P70 행 · ≈816 행/s · 종료 예상 ≈19:3x
+```
+
+## 🔴 「맵 키에 인덱스 없음」 — 제 실측 (총괄 전제를 대리로 안 쓰고 다시 쟀습니다)
+```
+dt_map 의 인덱스 «10 개», 전부 «프레임워크 컬럼»입니다:
+  dt_map_pkey(row_id) · ix_row_id · ix_created_at · ix_updated_at · idx_updated(updated_at,row_id)
+  ix_is_graph_synced · ix_needs_graph_rollback · ix_business_key_val · idx_bk(business_key_val,row_id)
+  uq_bk_dt_map(business_key_val)
+=> 선언된 «맵 키»(dt_lot · dt_slot)에 «하나도 없습니다» ✅ 총괄 실측과 일치
+🔵 다만 `business_key_val` 에는 UNIQUE 가 있습니다 — 이 표의 bk 는 (dt_lot·dt_slot·dt_x·dt_y)의 합성이라,
+   「맵 키로 좁히기」가 그 인덱스를 «못 쓰는» 이유(합성 문자열의 앞부분)까지 같이 봐야 합니다
+```
+
+## 채움의 모양 (되돌리기 포함)
+```
+2,500 맵 x 20x20 = 1,000,000 행 + 메타 2,500     (소유자가 말한 «기본 20x20»)
+되돌리기   dt_lot LIKE 'SYN-P70-%'   ·  경로: 운영 쓰기 경로 · 접힘 아웃박스 · 맵 25 개씩 커밋
+```
+⚠️ 제 계측 실수 하나: 백그라운드 명령을 `| tail -3` 으로 물려서 «진행 줄이 안 보입니다»(파이프가 끝까지 버퍼).
+   일은 정상이고, 진행은 «DB 행 수»로 봅니다 — 그게 어차피 더 나은 계기입니다.
+
+## 열어 둔 자리 (② 전 측정에서 쓸 것)
+```
+main.py:1811   `narrowed_table_query(...)`      <- 그리드 필터가 SQL 이 되는 «한 자리»
+main.py:1931   그리드 데이터 라우트가 그것을 부름
+main.py:2106   count 라우트가 «같은 것»을 부름  <- 「열기 한 번」에 스캔이 «둘»인 그 자리
+chain_bindings.py:78  `_FROM_MAP_KEY_COLUMNS = "table_config.map_key_columns"`
+                      <- 선언에서 맵 키를 읽는 «기존 소비자». 인덱스 DDL 도 «여기 부류»에서 나와야 합니다
+```
+
+## 다음 (판정 19:06 순서 그대로)
+```
+② 전 측정   10^6 행에서 메인 로드 필터 EXPLAIN(Seq Scan 예상) · 「열기 한 번」 서버 ms(데이터+count)
+③ 인덱스 보장  선언(map_key_columns)에서 DDL · ensure 자리 · CONCURRENTLY · 운영자 칸 0
+④ 후 측정   EXPLAIN(Index Scan) · ms · 축 «0.3 s 이하» · 셀 응답 바이트 동일
+```
