@@ -811,11 +811,20 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     a correction arrives after the row was first read - and a watermark that moved back
     would re-read everything after it, or, on the next correction, skip it.
 
-    🔴 THE WITHDRAWAL AND THE REMAKE ARE TWO TRANSACTIONS, NAMED RATHER THAN HIDDEN. A run
-    that dies between them leaves the old generation gone and the new one absent; the fix is
-    to run the same scope again, which is why the registry entry says `restartable`. Doing
-    it the other way round - remake first - is worse, not better: it would leave two
-    generations of the same rows in the ledger, and the walk counts both.
+    🔴 THE WITHDRAWAL AND THE REMAKE ARE ONE TRANSACTION SINCE 2026-09-08 (S-60), AND THE
+    REASON IS A MEASUREMENT RATHER THAN A PREFERENCE. They used to be two, in this order,
+    and this docstring called that "named rather than hidden" -- but naming a hazard is not
+    containing one: a remake that failed for ANY reason left the withdrawal committed and
+    the rows had no atoms at all. It happened: two atoms of one `dt_job` (its `register` and
+    its `has_netdie`) were gone, and only a second run of the same scope brought them back.
+    Grade 1, because a failure DELETED data.
+
+    Reordering does not fix it either. Remake-first collides with the atoms still present on
+    `uq_ledger_atom`, so the write dedupes to nothing and the withdrawal then takes
+    everything -- worse, and silently. The delete therefore travels to
+    `store.write_batch` as `withdraw_refs` and runs inside the one commit that writes the
+    new generation. Nothing outside that transaction can see between the two statements, so
+    the "two generations at once" objection has no observer.
 
     ⚠️ WHAT A SCOPE CANNOT AIM AT. The refs come from the CURRENT translation of the rows in
     scope, so if the correction makes those rows produce no atoms at all, there is nothing to
@@ -829,7 +838,6 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     twice. Any register atom that is in fact still there collides with `uq_ledger_atom` and
     comes back as `deduped`, which is the mechanism that already exists for exactly this.
     """
-    from . import schema
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
 
@@ -843,22 +851,6 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     plan = setup.snapshot.source_plans[source]
     scoped = _scope_predicate(plan, (scope_column, scope_values))
     store = LedgerStore(engine)
-    write = store.connection()
-    try:
-        with write.cursor() as cursor:
-            # `source_who` is in the predicate, so an atom another source wrote about the
-            # same die cannot be reached from here however the scope is spelled.
-            cursor.execute(
-                f"DELETE FROM {schema.LEDGER_TABLE} "
-                "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
-                (source, refs))
-            result["withdrawn"] = int(cursor.rowcount or 0)
-        write.commit()
-    except Exception:
-        write.rollback()
-        raise
-    finally:
-        write.close()
 
     read = engine.raw_connection()
     try:
@@ -870,8 +862,10 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     subjects = _v2_registration_subjects(plan, frame)
     executed = execute_selected_scoped_batch(
         setup, source, frame, scoped, _no_join_reader(), store,
-        known_registrations=None if subjects is None else ())
+        known_registrations=None if subjects is None else (),
+        withdraw_refs=refs)
     written = executed.store_result
+    result["withdrawn"] = int(written.get("withdrawn", 0))
     result["attempted"] = int(written.get("attempted", 0))
     result["inserted"] = int(written.get("inserted", 0))
     result["deduped"] = int(written.get("deduped", 0))

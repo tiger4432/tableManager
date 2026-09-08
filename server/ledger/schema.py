@@ -75,6 +75,34 @@ DEDUPE_COLUMNS = (
 )
 
 
+#: 🔴 ONE SPELLING, READ BY THE `CREATE` AND BY THE `ALTER`. A fresh install gets this
+#: constraint from `CREATE_LEDGER` and an existing one gets it from the migration in
+#: `ensure_schema`; two spellings is how the two end up enforcing different rules, which is
+#: exactly what happened to `uq_ledger_atom` (`4bdbff36`) -- live silently kept the old
+#: definition because `IF NOT EXISTS` asks about the NAME, never about the body.
+OBJECTLESS_PAYLOAD_CONSTRAINT = "ck_ledger_objectless_carries_only_qualifiers"
+
+#: 🔴 「목적어 없는 원자는 «수식어만» 든다」. `register` says nothing about an object and
+#: everything about its SUBJECT, and since S-52 the attributes it carries ride in
+#: `object_payload.qualifiers` -- which `envelope.registration_fingerprint` reads and the walk
+#: turns into a node's columns. The retired rule below refused that shape outright, so a
+#: declaration that gave an entity one attribute could not be written at all.
+#:
+#: ⚠️ THE RULE IS STILL A RULE. What may ride there is `qualifiers` and NOTHING else: an
+#: objectless atom carrying a `value` or a `type` is an object wearing no name, and the
+#: check refuses it exactly as before.
+OBJECTLESS_PAYLOAD_CHECK = """(
+        object_kind IS NOT NULL
+        OR object_payload IS NULL
+        OR (jsonb_typeof(object_payload) = 'object'
+            AND object_payload <> '{}'::jsonb
+            AND object_payload - 'qualifiers' = '{}'::jsonb))"""
+
+#: 🪦 What this replaces: `CHECK (object_kind IS NOT NULL OR object_payload IS NULL)`.
+#: Named so the migration can drop it, and kept named after it is gone so the next reader
+#: can tell "this install predates attributes" from "somebody dropped a constraint".
+RETIRED_OBJECTLESS_CONSTRAINT = "ck_ledger_objectless_has_no_payload"
+
 CREATE_LEDGER = f"""
 CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
     id                    UUID        NOT NULL,
@@ -95,8 +123,7 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
         object_kind IS NULL OR object_kind IN ('value', 'entity_ref', 'event_ref')),
     CONSTRAINT ck_ledger_register_has_no_object CHECK (
         (predicate = 'register') = (object_kind IS NULL)),
-    CONSTRAINT ck_ledger_objectless_has_no_payload CHECK (
-        object_kind IS NOT NULL OR object_payload IS NULL),
+    CONSTRAINT {OBJECTLESS_PAYLOAD_CONSTRAINT} CHECK {OBJECTLESS_PAYLOAD_CHECK},
     CONSTRAINT ck_ledger_subject_keys_is_object CHECK (
         jsonb_typeof(subject_keys) = 'object'),
     CONSTRAINT ck_ledger_no_self_supersede CHECK (
@@ -305,6 +332,51 @@ def _relation_exists(cursor, name: str) -> bool:
     return bool(cursor.fetchone()[0])
 
 
+def constraint_exists(cursor, table: str, name: str) -> bool:
+    """Does `table` carry a constraint called `name`? Catalogue first, as everywhere here."""
+    cursor.execute(
+        "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid "
+        "WHERE rel.oid = to_regclass(%s) AND con.conname = %s", (table, name))
+    return cursor.fetchone() is not None
+
+
+def ensure_objectless_payload_constraint(cursor) -> bool:
+    """Widen the objectless-payload rule on an install that predates attributes.
+
+    Returns whether it did anything, so a caller can say so. Idempotent: an install that
+    already carries the constraint asks the catalogue and issues no DDL, which matters
+    because `ensure_schema` runs at the start of every backfill.
+
+    🔴 NO SCAN, AND `NOT VALID` IS NOT A SHORTCUT HERE. Measured on this deployment's
+    PostgreSQL (18.3) against a scratch partitioned table: `ADD CONSTRAINT ... NOT VALID`
+    on a PARTITIONED PARENT is accepted and recurses to every partition, and a later
+    `VALIDATE CONSTRAINT` on the parent marks parent and partitions valid. `NOT VALID`
+    already enforces the rule on every INSERT and UPDATE from this moment; what it skips is
+    re-reading the rows already there -- which on a ledger of this shape is the whole cost.
+
+    🔴 AND NO EXISTING ROW CAN VIOLATE IT, so the validation is a formality rather than a
+    risk. The new rule is the old one OR one more disjunct, i.e. strictly WEAKER: every row
+    that satisfied `object_kind IS NOT NULL OR object_payload IS NULL` still satisfies this.
+    That is why the scan is left to `scripts/migrate_ledger_objectless_payload_constraint.py
+    --apply` and is not taken here: an operator starting a backfill has not asked for a full
+    read of the ledger, and there is nothing this could find.
+
+    ⚠️ DROP AND ADD RIDE IN THE CALLER'S TRANSACTION, so there is no window in which the
+    table carries neither rule. Both are catalogue-only.
+    """
+    if constraint_exists(cursor, LEDGER_TABLE, OBJECTLESS_PAYLOAD_CONSTRAINT):
+        return False
+    logger.info("[Ledger] widening %s to %s", RETIRED_OBJECTLESS_CONSTRAINT,
+                OBJECTLESS_PAYLOAD_CONSTRAINT)
+    if constraint_exists(cursor, LEDGER_TABLE, RETIRED_OBJECTLESS_CONSTRAINT):
+        cursor.execute(f"ALTER TABLE {LEDGER_TABLE} "
+                       f"DROP CONSTRAINT {RETIRED_OBJECTLESS_CONSTRAINT}")
+    cursor.execute(
+        f"ALTER TABLE {LEDGER_TABLE} ADD CONSTRAINT {OBJECTLESS_PAYLOAD_CONSTRAINT} "
+        f"CHECK {OBJECTLESS_PAYLOAD_CHECK} NOT VALID")
+    return True
+
+
 def column_exists(connection, table: str, column: str) -> bool:
     """Does `table` carry `column`, in the schema `search_path` resolves it to?
 
@@ -370,6 +442,9 @@ def ensure_schema(connection):
     with connection.cursor() as cursor:
         ledger_existed = _relation_exists(cursor, LEDGER_TABLE)
         cursor.execute(CREATE_LEDGER)
+        # An install that predates attributes still carries the narrow rule, and the
+        # translator is about to write an atom the narrow rule refuses. See the function.
+        ensure_objectless_payload_constraint(cursor)
         cursor.execute(CREATE_CURSOR)
         for column, statement in LEDGER_ADDITIONS:
             if not column_exists(cursor, LEDGER_TABLE, column):

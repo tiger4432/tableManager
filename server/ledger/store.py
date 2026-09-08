@@ -290,7 +290,8 @@ class LedgerStore:
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False, advance_cursor=True):
+                    enforce_translator_version=False, advance_cursor=True,
+                    withdraw_refs=None):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         🔴 `advance_cursor=False` IS THE SCOPED REDO, AND IT IS THIS SAME DOOR. Everything
@@ -346,6 +347,7 @@ class LedgerStore:
         connection = self.connection()
         try:
             self.ensure_partitions(connection, {a.occurred_at for a in atoms})
+            withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
             attempted, inserted = self.insert_atoms(connection, atoms)
             if advance_cursor:
                 self._advance_cursor(connection, source, translator_ver, cursor_value,
@@ -354,12 +356,42 @@ class LedgerStore:
                                      enforce_translator_version=enforce_translator_version)
             connection.commit()
             return {"attempted": attempted, "inserted": inserted,
-                    "deduped": attempted - inserted, "molecules": molecules}
+                    "deduped": attempted - inserted, "molecules": molecules,
+                    "withdrawn": withdrawn}
         except Exception:
             connection.rollback()
             raise
         finally:
             connection.close()
+
+    def _withdraw_refs(self, connection, source, refs):
+        """Delete this source's atoms for `refs`, IN THE CALLER'S TRANSACTION. Returns how
+        many.
+
+        🔴 IT LIVES HERE BECAUSE THE COMMIT DOES. `backfill.rescope` used to issue this
+        DELETE in a transaction of its own and commit it, then translate and write in a
+        second one -- so a remake that failed for any reason left the withdrawal standing
+        and the rows' atoms were GONE. Measured on 2026-09-08: two atoms of one `dt_job`
+        (its `register` and its `has_netdie`) disappeared exactly that way. Two transactions
+        cannot be made safe by ordering them differently either: doing the remake first
+        collides with the atoms still present on `uq_ledger_atom`, so the write would dedupe
+        to nothing and the delete would then take everything.
+
+        One transaction is the whole fix, and the "history briefly holds two generations"
+        objection does not arise: nothing outside this transaction can see between the two
+        statements.
+
+        `source_who` is in the predicate, so an atom another source wrote about the same
+        subject cannot be reached from here however the refs were spelled.
+        """
+        if not refs:
+            return 0
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"DELETE FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
+                (source, list(refs)))
+            return int(cursor.rowcount or 0)
 
     def restamp_cursor(self, source, *, expect, translator_ver):
         """Swap ONE cursor's fingerprint string. Reads no source row, moves no position.

@@ -997,12 +997,16 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
 
     written = {}
 
-    def _write(setup, source, frame, scope, reader, store, known_registrations=None):
+    def _write(setup, source, frame, scope, reader, store, known_registrations=None,
+               withdraw_refs=None):
         events.append("write")
         written["frame"] = frame
         written["scope"] = scope
+        # S-60: the withdrawal is no longer a transaction of `rescope`'s own -- it rides in
+        # with the write, so the double has to take it and report it back.
+        written["withdraw_refs"] = withdraw_refs
         return type("R", (), {"store_result": {"attempted": 1, "inserted": 1,
-                                               "deduped": 0}})()
+                                               "deduped": 0, "withdrawn": 1}})()
 
     monkeypatch.setattr(ledger_backfill, "preview_rescope", _preview)
     monkeypatch.setattr(ledger_backfill, "_scope_predicate",
@@ -1017,9 +1021,17 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     result = ledger_backfill.rescope(
         _Engine(), _Setup(), "src", "core_wafer", ["C1"], apply=True)
 
-    # The withdrawal happens first, and the rows are read AFTER it - not carried over
-    # from the preview that decided what to withdraw.
-    assert events == ["delete", "fetch", "write"]
+    # 🔴 THE ROWS ARE READ AFTER THE PREVIEW, not carried over from it -- that is what
+    # this test is for, and it is unchanged.
+    #
+    # 🔴 WHAT CHANGED IS THE WITHDRAWAL'S ADDRESS (S-60). It used to be a DELETE of
+    # `rescope`'s own, committed BEFORE this fetch -- and a write that then failed left the
+    # atoms deleted with nothing in their place, which happened. It now travels to the
+    # writer as `withdraw_refs` and runs inside the one commit that writes the
+    # replacement, so there is no `delete` event of ours to see.
+    assert events == ["fetch", "write"]
+    assert written["withdraw_refs"] == ["REF-1"], (
+        "the generation being replaced must still be named, just not deleted separately")
     assert written["frame"]["value"].tolist() == [CORRECTED]
     # And the scope travels with the batch, so the writer's own guard can prove it.
     assert written["scope"] == ("core_wafer", ["C1"])

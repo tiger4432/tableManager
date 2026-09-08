@@ -39,9 +39,14 @@ class RecordingStore:
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False, advance_cursor=True):
+                    enforce_translator_version=False, advance_cursor=True,
+                    withdraw_refs=None):
         self.calls.append({
             "advance_cursor": advance_cursor,
+            # S-60: the scoped door hands the store the generation it REPLACES, so the
+            # delete and the insert share one commit. A double that could not take it
+            # would make the contract untestable from this side.
+            "withdraw_refs": None if withdraw_refs is None else tuple(withdraw_refs),
             "source": source,
             "translator_ver": translator_ver,
             "atoms": tuple(atoms),
@@ -398,7 +403,7 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
     class CursorAlwaysStore:
         def write_batch(self, source, translator_ver, atoms, cursor_value,
                         molecules, refused=0, incomplete=0, *, reasons,
-                        enforce_translator_version=False):
+                        enforce_translator_version=False, withdraw_refs=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as caught:
@@ -408,7 +413,8 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
     assert caught.value.to_mapping() == {
         "code": "unsupported_store_contract",
         "path": "store.write_batch",
-        "message": "LedgerStore must be able to append atoms without moving the cursor",
+        "message": "LedgerStore must be able to append atoms without moving the cursor, "
+                   "and to withdraw the generation they replace in the same transaction",
     }
 
 
