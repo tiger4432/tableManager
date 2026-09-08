@@ -242,6 +242,7 @@ class BaseLedgerMapper:
         emissions: list[RoleEmission] = []
         for unit_index, unit in enumerate(
                 _partition_units(context, event_frame, descriptor)):
+            unit_columns = _unit_columns(unit)
             try:
                 produced = self.interpret_unit(context, unit, profile)
             except RoleFrameError:
@@ -266,7 +267,8 @@ class BaseLedgerMapper:
                     )
                 emissions.append(_with_attribute_values(
                     context, profile, emission, unit,
-                    f"mapper.units[{unit_index}].emissions[{emission_index}]"))
+                    f"mapper.units[{unit_index}].emissions[{emission_index}]",
+                    columns=unit_columns))
         frame = _role_frame_from_emissions(event_frame.attrs, emissions, profile)
         return validate_role_frame(context, frame, descriptor, profile)
 
@@ -297,6 +299,7 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
         refs = _source_row_refs(unit)
+        unit_columns = _unit_columns(unit)
         out = []
         for sentence, mapping in profile.mappings.items():
             claim = context.snapshot.claims.get(mapping.predicate_id)
@@ -331,10 +334,11 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                     # form should keep ASKING for a column that decides nothing.  Removing
                     # it rewrites `dt_job`'s and `lot_event`'s declarations and moves their
                     # fingerprints, so it belongs to a retirement round, not to this one.
-                    roles[role_id] = unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN]
+                    roles[role_id] = unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]
                 else:
-                    roles[role_id] = _evaluate_binding(binding, unit, path=(
-                        f"{mapping.config_path}.bind.{role_id}"))
+                    roles[role_id] = _evaluate_binding(
+                        binding, unit, columns=unit_columns,
+                        path=f"{mapping.config_path}.bind.{role_id}")
             out.append(RoleEmission(
                 sentence=sentence,
                 roles=roles,
@@ -749,9 +753,12 @@ def _partition_units(
         unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
         return (unit,)
     if kind == "row":
+        frame_columns = _unit_columns(frame)
         ordered = sorted(
             range(len(frame)),
-            key=lambda position: _row_sort_token(frame.iloc[position], frame.columns),
+            key=lambda position: _row_sort_token(
+                {name: values[position] for name, values in frame_columns.items()},
+                frame.columns),
         )
         units = []
         refs = _frame_row_refs(frame)
@@ -766,10 +773,11 @@ def _partition_units(
             raise RoleFrameError(
                 "invalid_mapper_unit", "mapper.unit.group_by",
                 "MapperDescriptor group_by columns must exist in EventFrame")
+        frame_columns = _unit_columns(frame)
         groups: dict[str, list[int]] = {}
         for position in range(len(frame)):
             token = _canonical(
-                {column: frame.iloc[position][column] for column in columns},
+                {column: frame_columns[column][position] for column in columns},
                 path=f"event_frame.rows[{position}]",
             )
             groups.setdefault(token, []).append(position)
@@ -787,7 +795,21 @@ def _partition_units(
         f"unsupported mapper unit {kind!r}")
 
 
-def _row_sort_token(row: pd.Series, columns: Sequence[Any]) -> str:
+def _unit_columns(frame: pd.DataFrame) -> dict[Any, tuple]:
+    """One mapper unit's values, read once, column by column.
+
+    🔴 THE POINT IS THAT NO PANDAS OBJECT IS BUILT. `unit.iloc[index][column]` made a Series
+    per row and pandas copied the frame's `attrs` through `__finalize__` on the way, and it
+    ran once per BINDING per row. `to_numpy` returns a plain array, so this costs one pass
+    over the unit however many bindings read it (S-64).
+    """
+    names = tuple(frame.columns)
+    rows = frame.to_numpy(dtype=object)
+    return {name: tuple(row[position] for row in rows)
+            for position, name in enumerate(names)}
+
+
+def _row_sort_token(row: Mapping[Any, Any] | pd.Series, columns: Sequence[Any]) -> str:
     return _canonical(
         {str(column): row[column] for column in sorted(columns, key=str)},
         path="event_frame.row",
@@ -828,19 +850,22 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
     return tuple(refs)
 
 
-def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str) -> Any:
+def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
+                      columns: Mapping[Any, tuple] | None = None) -> Any:
     # `approval_status` gated this call until 2026-08-21.  It refused any binding that did
     # not say `approved`, and no file in the tree ever held another value -- 40 of 40 live
     # bindings said `approved`, so the gate could not fire and the field could not be
     # withheld.  A permission that is never withheld is not a permission; it retired.
+    if columns is None:
+        columns = _unit_columns(unit)
     kind = binding.get("kind")
     if kind == "column":
         column = binding.get("column")
-        if column not in unit.columns:
+        if column not in columns:
             raise RoleFrameError(
                 "missing_binding_column", f"{path}.column",
                 f"column {column!r} is absent from the EventFrame unit")
-        values = [unit.iloc[index][column] for index in range(len(unit))]
+        values = columns[column]
         if any(_is_missing(value) for value in values):
             raise RoleFrameError(
                 "missing_binding_value", f"{path}.column",
@@ -855,7 +880,8 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         return _plain(binding.get("value"))
     if kind == "entity":
         keys = {
-            key: _evaluate_binding(child, unit, path=f"{path}.keys.{key}")
+            key: _evaluate_binding(child, unit, path=f"{path}.keys.{key}",
+                                   columns=columns)
             for key, child in binding.get("keys", {}).items()
         }
         payload = {"type": binding.get("entity_type"), "keys": keys}
@@ -878,7 +904,8 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         if isinstance(attributes, Mapping) and attributes:
             payload["attributes"] = {
                 name: _evaluate_binding(child, unit,
-                                        path=f"{path}.attributes.{name}")
+                                        path=f"{path}.attributes.{name}",
+                                        columns=columns)
                 for name, child in attributes.items()
             }
         return payload
@@ -891,7 +918,8 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
 _NO_ATTRIBUTE_VALUE = object()
 
 
-def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str) -> Any:
+def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
+                     columns: Mapping[Any, tuple] | None = None) -> Any:
     """One attribute's value for this unit, or `_NO_ATTRIBUTE_VALUE` when the rows are empty.
 
     🔴 A NULL IS "NOTHING TO SAY", AND THAT IS THE ONE PLACE AN ATTRIBUTE DIFFERS FROM A
@@ -907,12 +935,13 @@ def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: st
     `missing_binding_column`. Re-deciding either here would be a second reading of one
     binding.
     """
+    if columns is None:
+        columns = _unit_columns(unit)
     if binding.get("kind") == "column":
         column = binding.get("column")
-        if column in unit.columns and all(
-                _is_missing(unit.iloc[index][column]) for index in range(len(unit))):
+        if column in columns and all(_is_missing(value) for value in columns[column]):
             return _NO_ATTRIBUTE_VALUE
-    return _evaluate_binding(binding, unit, path=path)
+    return _evaluate_binding(binding, unit, path=path, columns=columns)
 
 
 def _with_attribute_values(
@@ -921,6 +950,7 @@ def _with_attribute_values(
     emission: RoleEmission,
     unit: pd.DataFrame,
     path: str,
+    columns: Mapping[Any, tuple] | None = None,
 ) -> RoleEmission:
     """Fill an emission's ATTRIBUTE qualifiers from the source's own bindings.
 
@@ -961,7 +991,7 @@ def _with_attribute_values(
                 f"the mapper passed {name!r}, which the source already binds as an "
                 f"attribute of {binding.get('entity_type')!r} -- one value, one declaration")
         value = _attribute_value(
-            attributes[name], unit,
+            attributes[name], unit, columns=columns,
             path=f"{mapping.config_path}.bind.{subject_role}.attributes.{name}")
         if value is not _NO_ATTRIBUTE_VALUE:
             roles[reference.role_id] = value
