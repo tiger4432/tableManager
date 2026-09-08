@@ -313,3 +313,146 @@ B6 대조        「③ — 순위표가 클라」  -> 🔵 «대부분 ①» (�
                     다만 재 본 것은 적습니다: 오늘 ③ 여섯 중 «다섯»(B1-1 · B4-1 · B5-1 · B6-1 · B6-2)이
                     이 판정 «하나»에 걸려 있습니다. 남는 하나는 B7(시간)이고 그건 A5 세대와 같은 줄입니다
 ```
+
+---
+---
+
+# 표 C — 행동 기저 (대수)
+
+> 축의 정본 `BASIS.md` §4(대수). 열은 판정 162 대로 「이 행동이 §4.5 꼴로 «어떻게 적히나» · 봉투가 있나 · 안 적히면 «무엇이» 빠졌나(생성자 / 규칙 / 정의역)」다 — «기능 이름»이 아니다.
+> 행의 재료: **서버 라우트 전수 117**(`main.py` 97 + `ledger_trace_router` 4 + `ontology_config_explorer_router` 16, `@app.`/`@router.` 실측) + **클라 손짓 전수**(C-46 `a5e6cdc0` — 리스너 260 · 액션 낱말 44).
+> 🔴 낱개 117 행을 적지 않는다 — 「부류로 묶되 구성원은 «센다»」(상설). 부류마다 수를 적고, **대수에 안 적히는 것은 이름으로 «전부»** 적는다.
+
+## C-0. 서버 라우트 117 이 §4.5 꼴로 어떻게 갈리나
+
+| # | §4.5 표기 | 수 | 봉투 | 대표 구성원 |
+|---|---|---|---|---|
+| 1 | «기저 밖» — 표현(§4.8 직교) | **12** | — | `/` · `/admin(.html)` · `/map-editor(2)(.html)` · `/enrichment(.html)` · `/{file_name:path}` · `/api/download/client` · `/api/desktop/download` |
+| 2 | `resolve` : K → M | **1** | — | `GET /api/ledger/key-values` |
+| 3 | `walk` : M × D_walk → G | **15** | — | `subgraph` · `gaps` · `maps/overlay` · `alignment/{view,worklist,references}` · `transfer-plan/{stages,source-summary}` · `bonding-plan/core-summary` · `maps/{paint-rules,preset-routing}` · `map-presets`×2 · `enrichment/rules`×2 |
+| 4 | 🔴 **읽기 — 표 행(R)** | **15** | — | `GET /tables` · `/tables/{t}/data` · `/data/count` 제외 · `/export` · `/schema` · `/columns/{c}/values` · `/{row_id}` · `/rows/{row}/history` · `/cells/{col}/history` · `/{row}/{col}/sources` · `/audit_logs/recent` · `/audit_logs/transaction/{tx}` · `/dashboard/summary` · `/api/effort/config` · **POST 둘**(`cells/sources/query` · `row_ids/target` — 몸통으로 «묻는» 읽기) |
+| 5 | 선언 «읽기» | **6** | — | `GET /api/ledger/declaration` + 탐색기 다섯(`view` · `refusals` · `columns` · `authoring/schema` · `authoring/plan`) |
+| 6 | 시스템 운영 읽기 (기저 D) | **20** | — | `/health` · `chain/queue` · `outbox/failed` · `file-ingestion/{logs,failed,active,workspaces}` · `mappers/list` · `config/resolve` · `ledger/{sources,relations,config/raw}` · `tables/config/raw` · `chain/rules(/raw)` · `retroactive/{operations,runs}` · `auto-update/status` · `scripts/{list,code}` |
+| 7 | 🔴 **미리보기** — `write` 를 «효과 없이» | **10** | — | `admin/ledger/dry-run` · `transfer-plan/dry-run` · `transfer-plan/validate` · `retroactive/{op}/count` · `enrichment/auto-confirm/dry-run` · `config/virtual-join/verify` · `config/notation/preview` · `tables/{t}/data/count` · 탐색기 `deletion-preview` · 탐색기 `test-run` |
+| 8 | `write` : (G\|입력) × D_write → E | **14** | ✅ 세션 경유 | `PUT /tables/{t}/data/updates` · `POST /tables/{t}/rows` · `DELETE /tables/{t}/rows/{row}` · `rows/batch_delete` · `upload` · 셀 소스 `DELETE`·`delete/batch` · 우선순위 `PUT`×2 · `map-presets` `POST`×2·`DELETE`×2 · `maps/alignment/confirm` |
+| 9 | `declare` : D × ΔD → D' | **12** | 부분 | `POST /admin/{tables/config,chain/rules,scripts/code}/raw` + 탐색기 아홉(`drafts` · `drafts/new` · `PUT drafts/{id}` · `review` · `revise` · `activate` · `DELETE drafts/{id}` · `DELETE declarations/{key}` · `bootstrap`) |
+| 10 | 사건 «주입» — E 를 직접 넣음 | **11** | 부분 | `internal/events/{batch-refresh,broadcast,file-processed,ingestion-state}` · `outbox/retry-failed` · `file-ingestion/retry-failed` · `reload-configs`(SYSTEM_RELOAD) · `retroactive/{op}/run`(RETROACTIVE_RUN) · `retroactive/runs/{id}/cancel` · `auto-update/{toggle,run-now}` |
+| 11 | `E ↦ write(D_sink)` — 실시간 전파 | **1** | ↑8 을 따름 | `WEBSOCKET /ws` |
+| | **합계** | **117** | | |
+
+🔵 **클라 쪽은 C-46 이 같은 표기로 이미 갈라 놓았다** — §4.5 꼴 «여덟»(1 resolve · 2 resolve;walk · 3 walk 인자만 · 4 병렬;diff · 5 write 봉투 보임 · 6 write 봉투 못 봄 · 7 declare;translate · 8 사건 연쇄) + 밖 «셋»(표현 · 폼 상태 · 창 사건). 두 전수가 «따로» 재서 부딪히지 않는다.
+
+## C-1. 🔴 이 표의 핵심 발견 — 「같은 «성질»이 생성자마다 따로 지어졌다」
+
+```
+미리보기(효과 없이 결과만)   write 에 «있다»   라우트 10 + `apply=False` 인자 «열하나»
+                                          (chain_replay ×4 · enrichment ×3 · backfill ×3 · migrations ×1)
+                          declare 에 «없다»  = 표 A 의 A5-2 「변경 비용 미리보기」 ③
+조건부 쓰기(내가 본 대로면 써라)  declare 에 «있다»  `expected_revision`
+                                          (`config_drafts.py:392,408,446,477,497` · 탐색기 라우트 :235)
+                                          커서에도 있다(`backfill.py:383,397` — translator_ver 대조)
+                          write 에 «없다»   표 행에 compare-and-set 이 «0». 동시 사용자 10 규격에서
+                                          마지막 쓰기가 조용히 이긴다
+```
+🔴 **둘 다 «생성자의 성질»인데 §4.2 가 그것을 성질로 안 적어서 «한쪽에만» 지어졌다.**
+그리고 우리는 그 둘을 «따로» 발견해 왔다 — A5-2 를 「없는 것을 짓는다」로 읽고 있었는데,
+실은 **「있는 패턴을 다른 생성자에 붙인다」**이다. 🔵 **변경 비용이 다르다**(상설 D8).
+
+=> 제안(짓지 않음, 한 줄): §4.2 의 각 생성자에 «성질» 둘을 붙인다 —
+   `preview(f)` : f 의 효과 없이 E 를 «예상»한다 · `f ⊳ expected(s)` : 본 상태와 같을 때만 f.
+   그러면 「어느 생성자에 없나」가 표의 «칸»이 되고, 지금처럼 라운드마다 하나씩 안 나온다.
+
+## C-2. 🔴 대수가 «타입을 안 준» 것 — 표 행 읽기 (15 라우트)
+
+```
+오늘 대수    walk : M × D_walk → G       G = 하위 그래프
+실제        GET /tables/{t}/data 는 R(표 × 행)을 «페이지»로 돌려준다 — G 가 아니다
+           resolve 도 아니다(K → M 은 «마킹»을 낸다)
+=> §4.6 (c) 「오늘의 모든 라우트가 4.5 꼴로 적히나」에 «15 개가 안 적힌다»
+```
+🔴 **그리고 이것이 제품에서 가벼운 자리가 아니다** — 그 15 개가 «교정 표면»(핵심가치 ①)이다.
+대수가 그 표면의 «쓰기»는 타입을 주고 «읽기»는 안 준다.
+```
+가능한 답 둘 (판정 대기 — 제 의견은 ㉡)
+ ㉠ walk 의 공역을 넓힌다     G ∪ R.  「표도 그래프의 한 투영」이라는 주장이 필요하다
+ ㉡ 다섯째 생성자 read : K × D_read → R
+    근거: 이미 «다른 선언 언어»가 그것을 정하고 있다 — table_config 의 column_types ·
+    display_columns · business_key · virtual_join_rules. D_read 는 «지어낼 것»이 아니라 «이미 있다»
+```
+
+## C-3. 표 C 의 ③
+
+```
+ C-1 미리보기가 생성자의 «성질»이 아니다      write 에만 있다. declare 에 붙이는 것이 A5-2
+ C-2 조건부 쓰기가 «성질»이 아니다            declare 에만 있다. write 에 없다 — 동시 사용자 10 에서 마지막 쓰기 승
+ C-3 표 행 «읽기»에 타입이 없다               15 라우트가 4.5 꼴로 안 적힌다
+ C-4 외부 응답 사건                          = 표 A 의 A6-2 «같은 칸». 싱크의 답이 E 로 안 돌아온다
+ C-5 마킹 대수 M × M → M                     = 표 B 의 B1-1 «같은 칸». 서버·클라 전수가 «따로» 같은 답
+ C-6 write⁻¹ 의 «주어»가 화면에 없다           판정 164 ⓐ — `created_logs[].transaction_id` 가
+                                           «응답에 있는데» 그리드가 안 읽는다. 대수의 역원은 «있다»
+```
+⚠️ **C-4 · C-5 는 표 A · B 와 «같은 칸»이라 관문에 두 번 세지 않는다.** 표 C 가 «새로» 여는 것은 **넷**(C-1 · C-2 · C-3 · C-6).
+
+## C-4. 시험 문제 셋 — 랏 홀드 · 해제 · 이송 (판정 162 추가분)
+
+```
+표기   홀드   resolve ; walk ⊳ write(D_transition) ↦ E ↦ write(D_sink)
+      해제   같은 표기, 전이가 반대 방향
+      이송   resolve ; walk ⊳ write(D_transition) — 가드가 「진행 중 이송 없음」
+```
+| 필요한 것 | 생성자인가 선언인가 | 오늘 |
+|---|---|---|
+| 상태 표(랏의 현재 상태) | **선언** — 표 하나 + `attributes` | ① 이 이미 있다(A1 속성). 「상태」는 도메인 낱말이라 코드에 안 들어간다 |
+| 허용 전이 표 | **선언** — 표 하나(from · to · 역할) | ① 표를 만들면 된다. 새 문법 ⛔ |
+| 가드 술어 | **선언** — 걷기의 `follow`(B2) | ① |
+| 가드가 «참일 때만» 쓴다 | 🔴 **생성자의 성질** | §4.3 의 `walk ⊳ write` 는 «대수에 있는데», 그것을 «원자적으로» 하려면 C-2(조건부 쓰기)가 필요하다 — 걷고 나서 쓰는 사이에 남이 바꾸면 가드가 «이미 거짓»이다 |
+| 바깥 장비/MES 에 알리고 «답»을 받기 | 🔴 **생성자/규칙** | C-4(외부 응답 사건) |
+🔵 **그래서 판정 162 추가분의 답:** 랏 운영 셋은 «선언 셋»으로 분해된다 — 생성자가 늘지 «않는다».
+   다만 **가드의 «원자성»과 «외부 답»** 둘은 선언이 아니라 «생성자의 성질»이고, 그 둘이 C-2 · C-4 다.
+   즉 소유자 물음(「나중에 랏 운영 액션이 필요해지면」)의 답: **표 셋만 적으면 된다. 단 C-2 가 먼저다.**
+
+## C-5. 판별식 ⓐ ⓑ 의 답 (BASIS §4.6)
+
+```
+ⓐ 「모든 행동이 넷으로 분해되나」
+   🔴 아니오 — 117 중 «15»(표 행 읽기)가 안 적힌다(C-3). 그 밖의 102 는 적힌다.
+   ⚠️ 「기저 밖」 12(표현)와 시스템 운영 20 은 §4.8 · 기저 D 가 «이미» 밖이라 적어 둔 것이라 위반이 아니다
+ⓑ 「임의 조합이 허용되거나 «이름 대어» 거절되나 — 조용한 불가 0」
+   🔵 걷기(표 B10)에서는 «0» — 선언에 없는 술어·타입을 빈 그래프로 답하지 않는다
+   🔴 쓰기에서는 «아니다» — 조건부 쓰기가 없어서(C-2) 「내가 본 상태가 바뀌었다」가
+      «거절»이 아니라 «덮어쓰기»로 끝난다. 조용한 불가가 아니라 «조용한 허용»이고, 더 나쁘다
+```
+
+## C-6. 동결 관문 — 🔴 «수»가 아니라 «유도»다 (판정 167, BASIS §2.6 말미)
+
+판정 167 이 관문의 술어를 바꿨다: 「③ 이 0」이 아니라
+**「문법의 모든 칸이 어느 생성자의 인자로 «유도»되고, 모든 생성자의 인자가 «칸»을 갖는다」.**
+그래서 아래 수는 «관문»이 아니라 «작업량»이다.
+
+```
+표 A  ③ 11 + ③′ 2   = 13   (판정 165)   -> BASIS §2.6 이 이것을 성격별로 다시 갈랐다:
+                                          문법 수리 «다섯»(①②③④⑤, ③④는 패턴 하나) ·
+                                          읽기 규칙 «셋» · 술어 한 줄 · 사건 둘 · 도구 하나 · 삭제 둘
+표 B  ③ 6                                -> §3.5: «진짜 구멍»은 시각(as-of·세대)과 M 대수 둘.
+                                          group·aggregate·diff 는 «자리»의 문제(생성자는 있다)
+표 C  ③ 6 중 둘(C-4·C-5)은 A·B 와 같은 칸  -> 새로 여는 것 «넷»(C-1·C-2·C-3·C-6)
+```
+🔴 **그리고 이 표가 관문의 술어에 대해 말하는 것:**
+```
+「모든 생성자의 인자가 칸을 갖는다」 쪽    C-3 이 그 반대다 — 15 라우트가 «어느 생성자의 상(image)도 아니다».
+                                    read : K × D_read → R 을 인정하든 walk 공역을 넓히든, 그 전에는
+                                    이 관문이 «참일 수 없다». 수를 0 으로 만들어도 참이 안 된다
+「모든 칸이 인자로 유도된다」 쪽          C-1 · C-2 는 «칸»이 아니라 «성질»이다. 성질로 적으면
+                                    A5-2 가 «따라온다» — 낱개로 세면 그것이 안 보인다
+```
+⚠️ **표 A 를 §2.6 의 열로 «다시 적는 일»이 남았다**(그 절이 응용에게 맡긴 것). 이번 라운드에는 «안 했다» —
+다음 라운드의 첫 줄이고, 그때 표 B 도 §3.5 열로 같이 맞춘다.
+
+## C-7. 표 C 의 판정 대기 «둘»
+
+```
+㉣ C-3 표 행 읽기의 타입 — ㉠ walk 공역 확장 vs ㉡ 다섯째 생성자 `read`
+   제 의견 ㉡ — D_read 를 «지어낼» 필요가 없다(table_config 가 이미 그 선언이다)
+㉤ C-1 · C-2 를 §4.2 의 «생성자 성질»로 올리나 (`preview(f)` · `f ⊳ expected(s)`)
+   올리면 A5-2 가 「짓기」에서 「붙이기」로 바뀐다 — 변경 비용 상설(D8)에 걸리는 판정이다
+```
