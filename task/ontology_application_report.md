@@ -15267,3 +15267,52 @@ B11-bis  엣지의 빈 근거 칸 셋 — ③′
    🔴 이것이 S-79 의 «진짜 선행 조건»입니다 — 이름 바꾸기보다 이쪽이 먼저 막습니다
 ```
 > 「판정 대기」 위 권고(이름 바꾸기 폐지)와 그 재번역 비용을 언제 치를지 · 다음: S-78 재료(직접 쓰기 스크립트 전수)
+
+
+---
+
+# 🟢 [응용 -> 총괄] **S-78 재료 — 「표에 직접 쓰는」 추적 스크립트 전수. 🔵 제일 중요한 결과는 «음성»입니다: 제품 쓰기 경로의 raw INSERT 는 «층 표에만» 쓰고 fold 를 안 깹니다** (09-09 08:5x)
+
+> 규율: `git grep` «만»(추적 파일). 시험·`_archive`·`migrations/` 제외. 「fold 를 깬다」 = 세션을 안 지나 `before_flush` 가 사건을 «못 단다».
+
+## 🔵 먼저 — 안 깨는 것 둘을 «확인»했습니다 (이게 이 라운드의 값입니다)
+```
+① crud._pg_multirow_upsert (:1811~, raw INSERT … ON CONFLICT)
+   호출자 «둘»뿐: :2041 models.CellSource.__table__ · :2101 models.CellOverwrite.__table__
+   => «층 표»에만 씁니다. 층 표는 원래 before_flush 의 대상이 아니고(정적 모델),
+      효력 있는 값이 «바탕 행에 구워지며»(setattr) 그 쓰기가 사건입니다 -> fold 안 깨짐 ✅
+   🔴 만약 이 빠른 경로가 DYNAMIC 표에도 쓰였다면 «주 경로»가 fold 를 깨는 것이었습니다. 아닙니다
+② store.write_batch 호출자
+   runtime_v2.py:233 · :324 «둘»뿐 (backfill 은 주석 인용 + store.withdraw)
+   => 상설 「정당한 호출자는 runtime_v2 하나」가 «오늘도 참»입니다 ✅
+```
+
+## Ⓐ 제품 표에 직접 — 🔴 fold 를 깹니다
+| 파일 | 표 | 동사 | 세션 경유로 바꿀 수 있나 |
+|---|---|---|---|
+| `setup/seed_data.py:29` | **DYNAMIC 표 전부**(루프) | `query(table_model).delete()` — 벌크 | ⚠️ 세션 삭제로 바꾸면 행마다 DELETE 사건. 「초기화」는 «사건이 필요 없는» 유일한 부류일 수 있음 — 판정 필요 |
+| `setup/seed_data.py:21,22` | `cell_overwrites` · `cell_sources` | 벌크 delete | 층 표라 fold 밖. 다만 바탕 행이 «옛 값»으로 남음 |
+| `scripts/load_mechanism_edge_rows.py:108` | 인자로 받은 표 | raw `INSERT INTO` | ✅ 됩니다 — 제품 문(`PUT /tables/{t}/data/updates`)이 같은 일을 합니다 |
+| `scripts/load_process_param_rows.py:148` | 인자로 받은 표 | raw `INSERT INTO` | ✅ 같음 |
+| `scripts/seed_syn_aug_material.py:47,48` | `void_obs` · `inspection_run` | raw `DELETE FROM` | ⚠️ 삭제는 S-74 로 문을 지나게 됐습니다 — 그 경로로 옮길 수 있는지 구현자 판단 |
+| `scripts/respell_syn_frame_map_ids.py:59,146` | `wafer_map_metadata` | raw `UPDATE` | ✅ 됩니다(제품 표) |
+| `scripts/dev_env/snapshot_db.py:215` | 임의 표(복원) | raw `INSERT INTO` | 🔴 **아니오 — 이건 «복원 도구»입니다.** 스냅샷 복원은 「사건의 접힘」이 아니라 «상태를 통째로 놓는» 것이라 대수 밖입니다. 예외로 «이름 붙여» 두는 것이 맞다고 봅니다 |
+| `scripts/migrate_to_postgres.py:59,80` | `DataRow` · `AuditLog` | 벌크 delete | 🔴 아니오 — 일회성 마이그레이션. 위와 같은 부류 |
+
+## Ⓑ 원장·감사 소유 표에 직접 — «다른 경계»입니다 (fold 와 무관하나 더 무거울 수 있음)
+| 파일 | 표 | 동사 | 비고 |
+|---|---|---|---|
+| `scripts/drop_retired_bonded_from_atoms.py:104,107` | `ledger_events` · `ledger_translator_cursor` | raw `DELETE` | 🔴 번역기를 «거치지 않고» 원자를 지웁니다 — 상설 「투영은 지워도 되고 기록은 안 된다」의 자리 |
+| `scripts/lowercase_entity_types.py:53~90` | `ledger_events` | raw `UPDATE`(subject_type · object_payload) | 🔴 «원자의 내용»을 손으로 고칩니다. append-only 와 정면으로 어긋납니다 |
+| `scripts/purge_outbox_backlog.py:67` | `database_outbox` | raw `DELETE` | ⚠️ 큐 정리. 오늘 총괄이 큐를 «버린» 그 일과 같은 부류 |
+| `crud.py:1484` | `audit_logs` | `bulk_insert_mappings` | 감사 로그는 정적 모델이라 원래 사건 대상 아님 |
+
+## 셈
+```
+제품 표 직접 쓰기   «여덟 자리 / 일곱 파일»  — 그중 «다섯»은 제품 문으로 옮길 수 있어 보입니다
+원장·감사 직접 쓰기 «네 자리»              — 이건 S-78 이 아니라 «다른 판정»입니다(기록을 손으로 고치는 것)
+안 깨는 것 확인      «둘»                  — 주 경로의 빠른 업서트 · write_batch 호출자
+```
+🔴 **모르는 것**: 위 「세션 경유로 바꿀 수 있나」의 ✅ 는 «모양»의 판단입니다 — 각 스크립트가 실제로
+   제품 문의 배치 크기·업무 키 요구를 만족하는지는 «파일마다» 열어 봐야 압니다. 전수 한 번의 결과이지 착수 지시가 아닙니다.
+> 「판정 대기」 Ⓐ 의 「초기화·복원은 예외로 이름 붙일지」 · Ⓑ 를 별도 큐 행으로 뗄지
