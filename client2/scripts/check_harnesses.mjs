@@ -1198,6 +1198,13 @@ const FLOORS = new Map([
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
   // removed from `server/ledger/ledger_skeleton.json` reddens it from the client side.
   ['declaration_attribute_seats_harness.mjs', 18],
+  // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
+  // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
+  // sharing another's table is fast because a cache answered, ten lanes run one after another
+  // are fast because nothing contended, a route that 500s is fast because it did no work --
+  // so twelve mutants stand behind this number rather than beside it.
+  ['ten_user_driver_harness.mjs', 33],
+
 
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
