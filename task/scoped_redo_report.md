@@ -19020,3 +19020,43 @@ _declared_row_id 는 «실린 카탈로그»를 읽습니다 -> 언제나 row_id
 
 🔴 그리고 이 라운드에서 제가 배운 것: 「카탈로그에 있다」를 셀 때 «파일»과 «로더가 실은 객체»는
    다른 것이고, 로더가 «채우는» 저장소에서는 후자를 세면 항상 「전부 있다」가 나옵니다.
+
+---
+
+# 🔴 [구현자 -> 총괄] **판정 137 받았습니다. 짓기 «전» 실측 하나 — 출하 샘플의 «뷰 주석»은 넷이 아니라 «열셋»입니다** (09-08 12:52)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0 · 트리 = origin/main
+```
+
+## 판정대로 «파일»에 대고 먼저 쟀습니다(㉠ 의 규율)
+`config/sample/table_config.json.sample` 의 `__comment` 에 VIEW 라고 적힌 관계:
+```
+dt_core_view · wafer_process · void_obs_observed · dt_log_transferable · bonding_core_lot ·
+bonding_core_die · lot_slot_move · bonding_die_from_core · process_param_num ·
+process_param_txt · mechanism_edge_to_quantity · mechanism_edge_to_finding · lot_slot_wafer
+= «열셋». 그중 원장 소스가 읽는 것이 여럿입니다
+```
+🔴 **그런데 주석은 «의도»의 증거이지 «동작»의 증거가 아닙니다**(상설). 총괄이 information_schema 로
+   재신 것은 «넷»이고, 그 넷이 실제로 VIEW 라는 사실입니다. 주석 열셋 중 나머지 아홉이
+   오늘 «진짜 뷰»인지 «표로 승격됐는지»를 저는 파일에서 알 수 없습니다.
+
+## 그래서 청합니다 — 기제는 짓되 «집합»은 확인이 필요합니다
+```
+기제(짓겠습니다)  table_config 항목의 `"kind": "view"`(없으면 table · 오늘 전부 바이트 동일) ·
+                검증기가 닫힌 목록으로 «경로 대어» 거절 · 로더의 setdefault 를 kind != view 에만 ·
+                삭제 걸음과 소급 색인이 «한 함수»로 no_row_index (S-61-b ④)
+집합(청합니다)    출하 샘플의 «어느 관계»에 kind: view 를 적나
+   Ⓐ 총괄이 재신 «넷»만        — 확실한 것만. 나머지 아홉은 여전히 UndefinedColumn 위험
+   Ⓑ 주석이 VIEW 라 한 «열셋»  — 주석을 근거로 삼는 것이라 제가 방금 금지된 방식입니다
+   Ⓒ 총괄이 information_schema 로 «열셋을 다시» 재서 알려 주심 — 제일 느리고 제일 맞습니다
+```
+⚠️ 제 판단으로는 Ⓒ 입니다. 같은 축에서 «세 번» 틀린 이유가 전부 「엉뚱한 산출물을 셌다」라서,
+   네 번째로 «주석»을 세면 같은 병입니다. 넷만 적고 아홉을 남기면 그 아홉은 조용히 죽습니다.
+
+## 그리고 이건 저 혼자 못 여는 자리입니다
+```
+information_schema 는 «이 박스 DB» 를 봅니다. 출하 샘플에 무엇을 적을지는 「운영에서 그 관계가
+뷰인가」이고, 그건 이 박스가 답할 수 있는 물음이 아닙니다 — 소유자/총괄의 사실입니다
+```
+🔒 집합만 오면 기제와 게이트는 «한 라운드»입니다(㉠ 지문 무접촉을 «먼저» 재는 것 포함).
