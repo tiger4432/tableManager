@@ -42,6 +42,20 @@ from .setup_registry import (
 
 ROLE_FRAME_SCHEMA_VERSION = 1
 ROLE_FRAME_ATTR = "assy_manager.role_frame_schema_version"
+
+#: Which setup snapshot a RoleFrame has already been validated and normalised against.
+#: 🔴 WRITTEN ONLY BY `validate_role_frame`, ON A FRAME IT BUILT ITSELF, and read only by
+#: `validate_role_frame`. It exists because the frame passes that function TWICE on the
+#: production path -- `map()` returns its output and `compile_role_frame` opens by
+#: validating its input -- so the same rows were checked and the frame rebuilt a second
+#: time for every molecule (S-64: two of the four DataFrames a molecule cost).
+#:
+#: ⚠️ THE CHECK IS NOT REMOVED, IT IS NOT REPEATED. A frame that arrives from anywhere else
+#: -- a test, an external caller, a different snapshot -- carries no mark and is validated
+#: exactly as before, which is why the refusals keep firing for the callers that need them.
+#: The mark carries the snapshot hash rather than `True` for the same reason the schema
+#: version does: a frame validated against another declaration revision is not validated.
+ROLE_FRAME_VALIDATED_ATTR = "assy_manager.role_frame_validated_for"
 ROLE_FRAME_COLUMNS = (
     "source_event_id",
     "sentence",
@@ -1042,6 +1056,10 @@ def validate_role_frame(
     descriptor: MapperDescriptor | None = None,
     profile: ProfileDescriptor | None = None,
 ) -> pd.DataFrame:
+    if (isinstance(value, pd.DataFrame)
+            and value.attrs.get(ROLE_FRAME_VALIDATED_ATTR)
+            == context.snapshot.snapshot_sha256):
+        return value
     descriptor = descriptor or context.source_plan.driver.mapper
     profile = profile or context.source_plan.profile
     path = "role_frame"
@@ -1156,6 +1174,7 @@ def validate_role_frame(
         for column in ROLE_FRAME_COLUMNS
     })
     out.attrs[ROLE_FRAME_ATTR] = ROLE_FRAME_SCHEMA_VERSION
+    out.attrs[ROLE_FRAME_VALIDATED_ATTR] = context.snapshot.snapshot_sha256
     for name in EVENT_FRAME_REQUIRED_ATTRS:
         out.attrs[name] = value.attrs[name]
     for name in EVENT_FRAME_PASSTHROUGH_ATTRS:
