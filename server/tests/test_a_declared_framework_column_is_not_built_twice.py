@@ -1,0 +1,82 @@
+# -*- coding: utf-8 -*-
+"""Declaring `row_id` broke the model builder, and the running server was hiding it.
+
+판정 140. The builder makes `row_id` the PRIMARY KEY of every dynamic table, and until
+2026-09-08 no `column_types` listed it -- the catalogue loader planted it into its own view
+of a relation and nobody declared it. Then 판정 138 made a VIEW declare its columns as they
+are, five of them carry `row_id`, and SQLAlchemy refused the second definition:
+「Trying to redefine primary-key column 'row_id' as a non-primary-key column」.
+
+🔴 THE RUNNING PROCESS HID IT. A server that started BEFORE the declaration keeps the models
+it already built, so nothing was red anywhere -- the failure waits for the next restart or
+config reload. This file is what makes it visible without one.
+
+⚠️ SKIPPING IS NOT IGNORING THE DECLARATION. The declaration stays true (that view does have
+the column) and the catalogue loader reads it to answer `frame_row_id`; what is skipped is
+BUILDING it twice.
+"""
+import json
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from database import models                                          # noqa: E402
+
+SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
+                      "table_config.json.sample")
+
+
+@pytest.fixture(scope="module")
+def catalog():
+    with open(SAMPLE, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def test_the_shipped_catalogue_builds(catalog):
+    """🔴 THE GATE. The shipped sample is what a new deployment starts from, and it declares
+    `row_id` on the five views that have one."""
+    models.init_dynamic_models(catalog)
+    assert len(models.DYNAMIC_TABLES) == len(catalog)
+
+
+def test_a_view_that_declares_row_id_gets_exactly_one_and_it_is_the_key(catalog):
+    """⚠️ NOT JUST "IT DID NOT RAISE". The column has to be there ONCE and be the primary
+    key -- a builder that skipped it entirely would also stop raising, and the table would
+    then have no key at all."""
+    models.init_dynamic_models(catalog)
+    declared = [name for name, entry in catalog.items()
+                if entry.get("kind") == "view"
+                and "row_id" in (entry.get("column_types") or {})]
+    assert len(declared) == 5, declared
+    for name in declared:
+        table = models.DYNAMIC_TABLES[name].__table__
+        assert [c.name for c in table.columns].count("row_id") == 1, name
+        assert [c.name for c in table.primary_key] == ["row_id"], name
+
+
+def test_a_relation_that_declares_none_is_unchanged(catalog):
+    """The tables -- 34 of them -- never declared it and must build exactly as before."""
+    models.init_dynamic_models(catalog)
+    silent = [name for name, entry in catalog.items()
+              if "row_id" not in (entry.get("column_types") or {})]
+    assert len(silent) == len(catalog) - 5
+    for name in silent:
+        table = models.DYNAMIC_TABLES[name].__table__
+        assert [c.name for c in table.primary_key] == ["row_id"], name
+
+
+def test_the_two_passes_read_one_list():
+    """⛔ THE LIST WAS WRITTEN OUT TWICE. `init_dynamic_models` has a fresh-build pass and a
+    hot-swap pass, and each carried its own copy of the framework columns -- so a name added
+    to one would be built by the other on any deployment that had already loaded the table.
+    """
+    import inspect
+
+    body = inspect.getsource(models.init_dynamic_models)
+    assert body.count("FRAMEWORK_COLUMNS") == 2
+    assert "created_at" not in body.split("FRAMEWORK_COLUMNS")[0][-400:], (
+        "a hand-written copy of the list is back")
+    assert "row_id" in models.FRAMEWORK_COLUMNS
