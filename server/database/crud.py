@@ -4330,6 +4330,22 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
         ).delete(synchronize_session=False)
                 
         if deleted_count > 0:
+            # 🔴 THE DELETE DOOR HAD TO BE TOLD (S-74). A bulk
+            # `.delete(synchronize_session=False)` never puts the objects in
+            # `session.deleted`, so the `before_flush` hook that stages every other write
+            # cannot see them: measured 2026-09-08, this box's whole outbox history holds
+            # 1,618 CREATE, one RETROACTIVE_RUN and ZERO DELETE, while an EDIT of the same
+            # row stages normally. Everything downstream of the outbox -- the chain, and the
+            # ledger's follow-up that withdraws a deleted row's facts -- had therefore never
+            # once received a live deletion.
+            #
+            # ⚠️ THE SAME CALL `purge_map_rows` ALREADY MAKES, not a second spelling of it.
+            # And it stages the ids that were actually removed rather than the ids asked
+            # for, so a delete of something already gone does not announce a deletion.
+            from database.database import stage_collapsed_event
+
+            stage_collapsed_event(
+                db, "DELETE", table_name, [row.row_id for row in rows_to_delete])
             logs_to_cache = record_row_deletions(
                 db, table_name, rows_to_delete, user_name, tx_id)
             db.commit()
