@@ -21204,3 +21204,54 @@ S-66       원인 규명(ZZ-DOE 손 입력) — 판정 150 은 다음
 S-70       맵 열기 275.2 -> 4.4 ms (62 배) · 선언에서 인덱스 보장
 S-71/S-72  깨진 필터 400(+ 시험 4) · /tables 가 map_key_columns 를 실음
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-65 라이브 게이트 ㉡·㉠·㉤ — 「커서보다 앞에 서는 새 행」이 «들어옵니다». 커서는 «안 움직였습니다»** (09-08 20:14)
+
+```
+시각   20:14   ·   재기동된 PID 27844(새 코드) 위에서
+```
+
+## ㉡ 따라잡기 «전» — 건너뛰고 «이름 댑니다» (총괄이 시키신 순서대로 «먼저»)
+```
+caught_up_at    lot_event · wafer_process_recipe · lot_slot_wafer = «전부 None»
+CREATE 하나 넣고 drain ->
+   {'event_type':'CREATE', 'rows':1, 'sources':{}, 'skipped_not_caught_up':['lot_event']}
+=> 번역 «0» · 소스 이름이 «결과에 실려» 나옵니다
+```
+
+## 따라잡음을 «찍었습니다» — 커서 배치 한 번
+```
+backfill.run(source='lot_event',            max_batches=1) -> rows_read «0» · caught_up «True»
+backfill.run(source='wafer_process_recipe', max_batches=1) -> rows_read «0» · caught_up «True»
+caught_up_at  lot_event 20:11:03.231 · wafer_process_recipe 20:11:03.314
+```
+🔵 rows_read 0 이 바로 그 결함의 모양입니다 — 표에 470,000 행이 있는데 전진은 «읽을 게 없다»고 답합니다.
+   이제 그 «없다»가 「따라잡음」으로 «기록»되고, 그 기록이 라이브 길을 엽니다.
+
+## ㉠·㉤ 새 행 하나 — «라이브 길로 들어왔습니다»
+```
+넣은 행    wafer_process · proc_id S65-GATE-0001 · lot_id 'SYN-A-000' · eventtime 2026-01-01
+row_id     01a080b7-28b3-74d9-b97a-072f78fbd4f9
+           «리터럴 커서보다 앞»에 정렬됩니다(True) -> 전진 스캔은 «영영 못 읽는» 행입니다
+결과       그 행을 이름 대는 원자 «1»  ·  {"wafer":"SYN-A-000-W01"} processed_with 2026-01-01
+           ledger_source_row_ref 에도 «1»
+커서       {"row_id": "zzdoe-wp-brk-1"}  «안 움직였습니다»
+```
+🔴 **그리고 제 손이 아니라 «라이브 길»이 넣었습니다** — 제가 수동 drain 을 부르기 «전»에 이미 원자가 있었고,
+   그래서 제 수동 drain 은 withdrawn 1 = inserted 1 · 원자 delta «+0» 이었습니다(멱등).
+   즉 운영 쓰기 -> 아웃박스 -> 체인 워커 -> 뒤따르기가 «자기 힘으로» 그 행을 원장에 넣었습니다.
+
+## 두 줄 (판정 144)
+```
+「운영에서는 아무것도 적지 않습니다 — 새 행도 바뀐 행도 지운 행도 «같은 길»로 옵니다」
+「단, 아직 따라잡는 중인 소스는 «자기 커서»가 읽습니다 — 그때까지는 건너뛰고 «이름을 댑니다»」
+```
+
+## 남은 것
+```
+㉢ 전환 경계 겹침(uq 로 삽입 0)  · ㉣ 뷰 넷(아웃박스 없음 -> 커서 길)  · lot_event 쪽 새 행 하나
+   -> 다음 라운드. 위 셋은 «구조상» 성립하지만 «재지 않았습니다»
+```
