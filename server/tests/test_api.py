@@ -57,8 +57,9 @@ def test_chained_ingestion(client, db_session):
     import uuid
     from database import schemas, crud
     
-    prod_row_id = str(uuid.uuid4())
-    
+    # S-66: the engine mints row_id, and this fixture used to supply a uuid4 one.
+    # The guard refuses that -- correctly -- so the fixture was asking the product to
+    # do something an operator cannot. It now leaves the id out, like production does.
     # ContextVars 바인딩 모사
     from database.context import request_user, request_transaction_id, request_source
     token_user = request_user.set("user")
@@ -70,7 +71,6 @@ def test_chained_ingestion(client, db_session):
         batch = schemas.GeneralUpdateBatch(
             updates=[
                 schemas.GeneralUpdateItem(
-                    row_id=prod_row_id,
                     updates={
                         "model_name": "STEEL_01",
                         "target_qty": 10
