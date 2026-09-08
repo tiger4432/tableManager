@@ -21417,3 +21417,50 @@ S65-GATE-0001 wafer_process 1 행 · S65B-GATE-1 lot_event 1 행   게이트 흔
 => ①(유도 + 상한 + 거절)은 «원자를 안 쓰는» 순수 함수라 그것만 «따로» 착지시킬 수 있습니다.
    ②③(drain 배선)은 그 뒤 별도 라운드가 안전합니다
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **판정 155 받고 S-65-c ① 착지 — 15 소스 «전부» 기반 표를 답합니다. 원자를 안 쓰는 순수 함수라 «따로» 갑니다** (09-08 20:56)
+
+```
+시각   20:56   ·   판정 155 대로: 이름 있는 상수 · 선언 칸 «없음» · 거절이 값을 보여 줌
+```
+
+## 라이브 유도 결과 — 15/15 (게이트 ㉠·㉢)
+```
+bonded_from        bonding_die_from_core   -> bonding_log, core_wafer_map   <- «뷰 위의 뷰», 재귀로 닿음 ✅
+bw_dt_seat         bonding_core_die        -> bonding_log, core_wafer_map
+dt_transfer        dt_log_transferable     -> dt_log
+lot_slot_move      lot_slot_move           -> lot_event
+mechanism_edge_to_finding_causes           -> mechanism_edge
+mechanism_edge_to_quantity_causes          -> mechanism_edge
+process_param_num_measure / txt_measure    -> process_param
+void_observation   void_obs_observed       -> inspection_run, void_obs
+표를 읽는 여섯      자기 이름으로 답합니다(die_inspection · dt_job · lot_event · lot_slot_wafer ·
+                   transfer_event · wafer_process_recipe) — 호출자가 «종류를 몰라도» 됩니다
+```
+🔵 지난 라운드 측정과 «같은 답»이고, 그때 「표 없음」이던 `bonded_from` 이 이제 «닿습니다» — 8/9 -> «9/9».
+
+## 게이트 ㉤ 상한 — 거절이 «값을 들고» 나옵니다
+```
+limit 0 -> view_dependency_too_deep | limit 0 | chain ('bonding_die_from_core','bonding_core_die')
+```
+⛔ 빈 목록으로 답하지 «않습니다» — 그건 「기반 표가 없다」와 «같은 모양»이고, 표는 그렇게 답합니다.
+
+## 시험 (7 passed) — 변이가 되돌리는 것들
+```
+표는 자기 이름으로 · 뷰는 표로 · «뷰 위의 뷰»는 재귀로(한 걸음이면 «빈 답»이 나오는 그 자리) ·
+고리는 안 돌고 · 상한 넘으면 «상한과 사슬»을 들고 거절 · 상한은 «상수 4» · 같은 관계는 «한 번만» 묻는다
+이웃 4 파일   «153 passed · 3 skipped»
+```
+
+## 다음 라운드 (②③ — drain 배선)
+```
+② 기반 표 사건 -> 그 표를 기반으로 하는 «따라잡은» 뷰 소스 -> 기반 행의 «뷰 페이지 키와 같은 이름» 컬럼 값
+   -> 뷰 소스 rescope(커서 무접촉)
+③ 페이지 키가 기반 표에 «없으면» cannot_follow{view, base, missing_column} 로 이름 대어
+   -> 이 박스의 대상 둘: core_wafer_map(base_id 없음) · inspection_run(void_uid 없음)
+④ 유도는 «setup 적재 때 한 번» — 사건마다 카탈로그 질의 ⛔ (이번 함수는 부를 때마다 묻습니다.
+   그 캐싱이 ②의 일부이고, 지금 넣으면 «지시 밖»이라 안 넣었습니다)
+```

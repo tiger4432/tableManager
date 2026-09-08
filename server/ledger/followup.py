@@ -54,6 +54,95 @@ logger = logging.getLogger(__name__)
 FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")
 
 
+#: How many times the walk below may step from a view to what it reads before giving up.
+#:
+#: 🔴 A NAMED CONSTANT AND NOT A DECLARED FIELD (판정 155). The test is "could a user write
+#: this value?" -- and an operator has no reason to: it is an engine safety limit on a
+#: catalogue walk, not a fact about their domain. A declaration field for it would be a
+#: field nobody fills, which is the axis-with-no-consumer this repo keeps deleting.
+#:
+#: ⚠️ "VISIBLE AS A VALUE" IS THE REFUSAL'S JOB HERE. Exceeding it does not return an empty
+#: list -- a silent zero would read as "this view has no base table" -- it raises with the
+#: limit and the chain it walked, so the answer names itself.
+VIEW_DEPENDENCY_DEPTH_LIMIT = 4
+
+
+class ViewDependencyTooDeep(Exception):
+    """The walk from a view to real tables did not end within the limit."""
+
+    def __init__(self, chain, limit):
+        self.code = "view_dependency_too_deep"
+        self.chain = tuple(chain)
+        self.limit = limit
+        super().__init__(
+            f"{self.code}: {' -> '.join(self.chain)} is deeper than {limit} steps")
+
+
+#: One view's direct dependencies, from PostgreSQL's own catalogue.
+#:
+#: 🔴 THE CATALOGUE ALREADY KNOWS, so nothing is declared twice. `pg_rewrite` holds the
+#: view's rule and `pg_depend` says what that rule reads; `relkind` then says whether each
+#: is a real table or another view. An installation with different views gets its own answer
+#: with zero operator fields -- which is the whole reason this is derived rather than listed.
+_DEPENDS_ON = """
+SELECT DISTINCT s.relname, s.relkind
+  FROM pg_depend d
+  JOIN pg_rewrite r ON r.oid = d.objid
+  JOIN pg_class v   ON v.oid = r.ev_class
+  JOIN pg_class s   ON s.oid = d.refobjid
+ WHERE d.classid = 'pg_rewrite'::regclass
+   AND d.refclassid = 'pg_class'::regclass
+   AND s.relname <> v.relname
+   AND v.relname = %s
+ ORDER BY 1
+"""
+
+
+def base_tables_of(engine, relation, limit=VIEW_DEPENDENCY_DEPTH_LIMIT):
+    """The real tables a relation ultimately reads. A table answers with itself.
+
+    🔴 IT RECURSES, BECAUSE A VIEW OVER A VIEW IS NOT AN EXCEPTION. Measured on this box:
+    eight of the nine view-backed sources reach a table in one step, and the ninth
+    (`bonding_die_from_core`) reads `bonding_core_die`, which reads two tables. Stopping at
+    one step would have answered "no base table" for it -- a silent zero for the one case
+    that most needed an answer.
+
+    ⚠️ A RELATION THAT IS NOT A VIEW ANSWERS WITH ITSELF rather than with nothing, so a
+    caller does not need to know which kind it was holding.
+    """
+    seen, tables, chain = set(), [], []
+    frontier = [(str(relation), 0)]
+    while frontier:
+        name, depth = frontier.pop(0)
+        if name in seen:
+            continue
+        seen.add(name)
+        if depth > limit:
+            raise ViewDependencyTooDeep(chain + [name], limit)
+        chain.append(name)
+        connection = engine.raw_connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(_DEPENDS_ON, (name,))
+                rows = cursor.fetchall()
+        finally:
+            connection.rollback()
+            connection.close()
+        if not rows:
+            # Nothing reads through it: either a real table, or a view over nothing this
+            # catalogue records. Both are the end of this branch.
+            if name not in tables:
+                tables.append(name)
+            continue
+        for child, kind in rows:
+            if kind in ("r", "p"):
+                if child not in tables:
+                    tables.append(child)
+            else:
+                frontier.append((str(child), depth + 1))
+    return tuple(tables)
+
+
 def caught_up_sources(engine, sources):
     """Which of these sources has been SEEN with nothing past its cursor (S-65).
 
