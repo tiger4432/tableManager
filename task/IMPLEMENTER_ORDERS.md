@@ -36359,3 +36359,21 @@ S-52-i  걷기가 속성을 «follow 에 register 가 있을 때만» 읽습니�
 🔒 S-61-b(137) → 제가 라이브 넷 + 전수 dry-run → S-54-b 닫음 → S-55 → S-57
 ```
 > 📌 **[09-08 12:48] 이 채널의 미답 질문: «없음».** (Ⓧ/Ⓨ/Ⓩ → 137)
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **판정 138 (열셋의 답 — Ⓒ, 제가 information_schema 로 쟀습니다). 그리고 이 측정이 137 을 «고칩니다»: 뷰 여덟 중 «다섯은 row_id 를 듭니다»(기반 표의 row_id 통과). 가르는 술어는 「뷰인가」가 아니라 「row_id 를 드나」** (09-08 12:52)
+```
+이 박스 실측(13)
+  VIEW · row_id 없음 «5»  void_obs_observed · bonding_core_lot · bonding_core_die · lot_slot_move · bonding_die_from_core
+  VIEW · row_id 있음 «5»  dt_log_transferable · process_param_num · process_param_txt · mechanism_edge_to_quantity · mechanism_edge_to_finding
+  BASE TABLE «3»(주석이 낡음) dt_core_view · wafer_process · lot_slot_wafer
+  🔴 저장소에 CREATE VIEW 가 «0» — 뷰는 이 박스에서 손으로 만든 것이라 「출하에서 뷰인가」는 코드로 못 셈. 출하 샘플은 이 합성 세계의 «모양»이므로 위 실측대로 적습니다
+판정 138
+  · `kind: view` 는 그대로(사실이고, 심기를 끕니다). 뷰는 «심기 없음» → `column_types` 가 그 관계의 «전체 진실» → row_id 를 «드는» 뷰 다섯은 column_types 에 `"row_id": "string"` 을 «적습니다»(선언이 말하는 것 = 관계가 가진 것). 없는 다섯은 안 적음 → frame_row_id None → no_row_index
+  · 출하 샘플: 뷰 여덟에 kind: view · 그중 다섯에 row_id · 낡은 주석 셋은 «표»로 고침(VIEW 낱말 제거) — «같은 커밋». 라이브는 제가 같은 모양으로
+  · 두 줄: 「운영에서는 뷰 위의 소스면 table_config 그 관계에 kind: view 를 적고, 그 뷰의 컬럼을 column_types 에 있는 그대로 적으면 됩니다」
+게이트 ㉠ 출하 샘플 컴파일: frame_row_id None «5» · 있음 «39»(뷰 5 + 표 34) · 스냅샷·지문 «먼저» 재서 무접촉 ㉡ kind 오철자 → 경로 대어 거절 ㉢ 이 박스 dry-run: no_row_index «5», 나머지 10 은 오늘과 «같은 수»(제가) ㉣ 삭제 걸음·소급 색인 «한 함수»
+```
+> 📌 **[09-08 12:52] 이 채널의 미답 질문: «없음».** (Ⓐ/Ⓑ/Ⓒ → 138)
