@@ -46,6 +46,27 @@ SOURCE_PREPARER_ATTR = "assy_manager.source_preparer"
 SOURCE_EVENT_INCOMPLETE_COLUMN = "__source_event_incomplete"
 SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"
 
+#: The frame column of every dynamic table, read by the ENGINE rather than by a declaration
+#: (판정 135, 2026-09-08).
+#:
+#: 🔴 IT IS NOT AN ENGINE-INVENTED NAME LIKE THE TWO ABOVE -- it is a real physical column,
+#: and `table_config` gives it to all 44 relations. What is engine-owned is the DECISION to
+#: read it: a source that never names `row_id` in its `read` still needs it, because the
+#: ledger has to be able to say which physical row an atom came from when that row is
+#: DELETED and there is nothing left to translate.
+#:
+#: 🔬 MEASURED BEFORE IT WAS ADDED: of the 15 shipped sources, FOUR carried `row_id` into the
+#: read and eleven did not -- the four only because their `order_by` or a mapper input
+#: happened to name it. Ruling 132 had assumed all of them did. Building on that would have
+#: given eleven sources a delete path that silently did nothing, and the first fixture the
+#: ruling named sits inside the lucky four, so measuring only there would have passed.
+#:
+#: ⚠️ IT GOES IN `base_select_columns` AND NOT IN `locked_select_columns`, deliberately. The
+#: second is what the authoring screen draws as pressed-and-locked chips, and this is not a
+#: column an author chose or may unchoose -- putting it there would offer the operator a
+#: decision they do not have.
+FRAME_ROW_ID_COLUMN = "row_id"
+
 
 class SourcePreparationError(ValueError):
     """Stable, path-addressed refusal raised before mapper/compiler execution."""
@@ -532,6 +553,9 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns
                    if column not in outputs)
+    # The engine's own column, on every source, whatever the declaration says. See
+    # `FRAME_ROW_ID_COLUMN`.
+    columns.add(FRAME_ROW_ID_COLUMN)
     return tuple(sorted(columns))
 
 

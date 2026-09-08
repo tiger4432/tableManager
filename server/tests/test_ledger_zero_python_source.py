@@ -121,9 +121,11 @@ def snapshot():
 @pytest.fixture
 def rows():
     return pd.DataFrame([
-        {"shipment_id": "S1", "box": "BX-01",
+        # 판정 135: the engine reads `row_id` on every source, declared or not, so a
+        # frame standing in for a cursor page has to carry it.
+        {"row_id": "RID-1", "shipment_id": "S1", "box": "BX-01",
          "shipped_at": pd.Timestamp("2026-08-01T09:00:00", tz="Asia/Seoul")},
-        {"shipment_id": "S2", "box": "BX-02",
+        {"row_id": "RID-2", "shipment_id": "S2", "box": "BX-02",
          "shipped_at": pd.Timestamp("2026-08-01T10:00:00", tz="Asia/Seoul")},
     ])
 
