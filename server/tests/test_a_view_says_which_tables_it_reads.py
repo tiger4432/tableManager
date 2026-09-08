@@ -152,8 +152,16 @@ class _Plan:
 
 
 def _setup(plans):
-    return type("S", (), {"snapshot": type(
-        "Snap", (), {"source_plans": plans})()})()
+    """🔴 THE SNAPSHOT STAND-IN IS UNHASHABLE, BECAUSE THE REAL ONE IS (판정 160).
+
+    `LedgerSetupSnapshot` is a frozen dataclass, so its generated `__hash__` hashes every
+    field -- including dict ones -- and raises `unhashable type: 'dict'`. The first cut of
+    the cache used a `WeakKeyDictionary`, which hashes its key, and every follow-up batch on
+    the live setup died; a double that was hashable by identity said nothing. Setting
+    `__hash__ = None` here is what makes this file able to see that class of bug at all.
+    """
+    snapshot = type("Snap", (), {"source_plans": plans, "__hash__": None})()
+    return type("S", (), {"snapshot": snapshot})()
 
 
 def test_a_base_tables_event_wakes_the_sources_that_read_views_on_it():
@@ -201,3 +209,26 @@ def test_the_derivation_is_built_once_per_snapshot():
     asked_once = list(engine.asked)
     followup.view_followers_of(engine, setup, "void_obs")
     assert engine.asked == asked_once, engine.asked
+
+
+def test_the_cache_does_not_require_a_hashable_snapshot():
+    """⛔ THE REGRESSION THAT BROKE THE LIVE PATH. Asking twice must work on a snapshot that
+    cannot be hashed -- which is every real one."""
+    engine = _Engine(
+        edges={"void_obs_observed": [("void_obs", "r")]},
+        columns={"void_obs": ("void_uid",)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", "void_uid")})
+    with pytest.raises(TypeError):
+        hash(setup.snapshot)
+    first = followup.view_followers_of(engine, setup, "void_obs")
+    assert followup.view_followers_of(engine, setup, "void_obs") == first
+
+
+def test_a_new_snapshot_replaces_the_cached_derivation():
+    """A reload must not be answered with the previous declaration's map."""
+    engine = _Engine(edges={"v_a": [("t_a", "r")]}, columns={"t_a": ("k",)})
+    followup.view_followers_of(engine, _setup({"s_a": _Plan("v_a", "k")}), "t_a")
+    other = _Engine(edges={"v_b": [("t_b", "r")]}, columns={"t_b": ("k",)})
+    followers, _cannot = followup.view_followers_of(
+        other, _setup({"s_b": _Plan("v_b", "k")}), "t_b")
+    assert followers == [("s_b", "k")]

@@ -146,12 +146,16 @@ def base_tables_of(engine, relation, limit=VIEW_DEPENDENCY_DEPTH_LIMIT):
 
 #: Derived once per setup snapshot: which view-backed sources a BASE TABLE's event wakes.
 #:
-#: 🔴 WEAK-KEYED ON THE SNAPSHOT (판정 156), so it dies with the snapshot it describes. A
-#: module-level dict keyed by a hash would grow one entry per declaration revision in a
-#: worker that never restarts, and `object.__setattr__` onto the frozen snapshot would make
-#: "immutable" mean two things. The snapshot is weak-referenceable, so this is the version of
-#: "hang it on the snapshot" that goes around nothing.
-_VIEW_INDEX = weakref.WeakKeyDictionary()
+#: 🔴 HELD BY IDENTITY, NOT BY HASH, AND THAT IS A REPAIR (판정 160). The first cut used a
+#: `WeakKeyDictionary`, which HASHES its key -- and `LedgerSetupSnapshot` is a frozen
+#: dataclass, so its generated `__hash__` hashes every field, including the dict ones. Every
+#: follow-up batch on the live setup raised `unhashable type: 'dict'` and the live path was
+#: broken for the table sources too. A test double that was hashable by identity hid it.
+#:
+#: One entry is enough: a process runs one setup at a time, and a new snapshot simply
+#: replaces it. The weak reference keeps the promise ruling 156 asked for -- the derivation
+#: dies with the snapshot it describes -- while `is` asks the only question that matters.
+_VIEW_INDEX = None
 
 
 def _has_column(engine, table, column):
@@ -185,8 +189,14 @@ def view_followers_of(engine, setup, table):
     scope with, so the pair is reported as `cannot_follow`. A silent zero is indistinguishable
     from "there was nothing to do".
     """
+    global _VIEW_INDEX
+
     snapshot = setup.snapshot
-    built = _VIEW_INDEX.get(snapshot)
+    built = None
+    if _VIEW_INDEX is not None:
+        cached_ref, cached_built = _VIEW_INDEX
+        if cached_ref() is snapshot:
+            built = cached_built
     if built is None:
         follows, cannot = {}, {}
         for source, plan in snapshot.source_plans.items():
@@ -211,7 +221,7 @@ def view_followers_of(engine, setup, table):
                         {"view": relation, "source": source, "base": base,
                          "missing_column": key})
         built = (follows, cannot)
-        _VIEW_INDEX[snapshot] = built
+        _VIEW_INDEX = (weakref.ref(snapshot), built)
     follows, cannot = built
     return list(follows.get(table, ())), list(cannot.get(table, ()))
 
