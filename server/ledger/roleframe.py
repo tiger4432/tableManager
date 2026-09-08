@@ -1362,6 +1362,30 @@ def compile_role_frame(context: MapperContext, role_frame: pd.DataFrame) -> pd.D
     return validate_ledger_frame(frame)
 
 
+def claim_source_row_refs(claim_ref: str) -> tuple[str, ...]:
+    """The per-row refs an ATOM's `source_raw_ref` names. The inverse of the line below.
+
+    🔴 IT LIVES BESIDE THE BUILDER BECAUSE IT IS THE SAME RULE READ BACKWARDS. The builder
+    collapses to the bare event ref when the rows ARE the event, and expands to
+    `{"event":…, "rows":[…]}` otherwise; a reader that only knew the second shape would
+    silently return nothing for every single-row molecule -- which is most of them.
+
+    Anything unparseable comes back as itself. That is not a guess: a ref this cannot read
+    is still the exact string the ledger stores, so a caller matching on it still matches.
+    """
+    text = str(claim_ref or "")
+    if not text.startswith("{"):
+        return (text,) if text else ()
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return (text,)
+    rows = parsed.get("rows") if isinstance(parsed, Mapping) else None
+    if isinstance(rows, (list, tuple)) and rows:
+        return tuple(str(item) for item in rows)
+    return (text,)
+
+
 def _claim_source_raw_ref(event_ref: str, row_refs: Sequence[str]) -> str:
     refs = tuple(sorted(set(row_refs)))
     if refs == (event_ref,):

@@ -158,7 +158,11 @@ CREATE TABLE IF NOT EXISTS {ROW_REF_TABLE} (
     row_id         TEXT NOT NULL,
     source_who     TEXT NOT NULL,
     source_raw_ref TEXT NOT NULL,
-    PRIMARY KEY (relation, row_id, source_who)
+    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one
+    -- event may emit several sentences over different subsets of its rows, and each
+    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence
+    -- would overwrite the first and its atoms would survive the row's deletion.
+    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)
 )
 """
 
