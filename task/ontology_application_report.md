@@ -15215,3 +15215,55 @@ B11-bis  엣지의 빈 근거 칸 셋 — ③′
 측정 위치    제 초시계는 `opener.open` «앞뒤»만 감쌉니다(본문 생성은 밖) — 순수 서버 왕복입니다
 ```
 > 「판정 대기」 요청 시간(37.41 s)을 어느 큐 행으로 둘지 · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+
+---
+
+# 🟢 [응용 -> 총괄] **S-79 명세 한 쪽 — 뷰가 하는 일은 «넷»이고, 그중 «셋»은 이미 선언에 자리가 있습니다. 코드의 도메인 컬럼명을 0 으로 만드는 모양은 「이름 바꾸기를 «그만두는» 것」입니다** (09-09 08:4x)
+
+## 문제 (실측)
+```
+출하 뷰 SQL   server/scripts/create_bonding_core_die_view.py 가 `b.base_id · b.bx · b.by ·
+             b.cx · b.cy · b.dt_x · b.dt_y · b.event_time` 을 «리터럴»로 읽습니다
+출하 카탈로그  bonding_log 는 그 «여덟»을 선언하지 않습니다.
+             있는 것은 base_wafer_id · b_wx · b_wy · c_wx · c_wy … — «다른 철자»입니다
+=> 카탈로그가 정본이면 이 SQL 은 «카탈로그에 없는 이름»을 읽습니다. 그리고 그 이름들은 «도메인 낱말»이고 «코드에» 있습니다
+```
+
+## 뷰가 «실제로» 하는 일 넷 → 선언의 자리
+| 뷰가 하는 일 | 그 자리 | 오늘 |
+|---|---|---|
+| **조인** `core_wafer_map` 을 «중복 제거»해 `core_wafer` 를 붙임 | `virtual_joins.<r>` = `{left_table, right_table, join_key[{left,right}], expose, join_cardinality, enabled, fold?}` (`setup_bundle.py:977~1006`) | ✅ **자리 있음** |
+| **하나임 보장** `SELECT DISTINCT core_lot, core_slot, wafer_id` | `join_cardinality: "one"` — 문법이 «그 값만» 받습니다 (:1000~1003) | ✅ 자리 있음. 🔴 지금은 «같은 뜻을 두 번» 적고 있습니다(선언의 one + SQL 의 DISTINCT) |
+| **키 합성** `dt_lot \|\| '\|' \|\| dt_slot AS dt_seat` | 카탈로그의 `composite_key_source` + `composite_key_separator` 가 «정확히 그 모양»입니다 | ⚠️ 기제는 있는데 «업무 키» 한 자리에 묶여 있습니다 — «이름 붙인 임의 컬럼»으로는 못 씁니다 |
+| **거르기** 일곱 컬럼 `IS NOT NULL` | 🔴 **자리 없음** — `read.identity` 는 «신원 컬럼»이지 「비면 버린다」가 아닙니다 | ③ |
+| **이름 바꾸기** `base_wafer_id → base_id` · `b_wx → bx` … | 🔴 **자리 «전혀» 없음** | ③ |
+
+## 🔵 권고 — 이름 바꾸기를 «없앱니다» (칸을 더하지 않는 쪽)
+```
+왜        「rename 을 선언할 칸」을 새로 만들면 «칸이 하나 늘고» 그 칸은 도메인 낱말을 «선언으로» 옮길 뿐입니다.
+          그런데 이 제품에는 이미 도메인 낱말이 사는 «정해진 자리»가 있습니다 — 원장 소스의 `bind` 입니다
+모양      뷰는 «base 표의 컬럼 이름 그대로» 냅니다(조인으로 얻은 것만 `expose` 가 이름을 줍니다).
+          그러면 SQL 에 남는 도메인 낱말이 «0» 이 됩니다 — 컬럼 목록이 «카탈로그에서» 나오기 때문입니다
+          그리고 「base_id 냐 base_wafer_id 냐」는 `bind.<role>.keys.<key>.column` 이 «한 번» 정합니다
+남는 것   ③ 둘: ⓐ 「비면 버린다」(NOT NULL 거르기)의 자리  ⓑ 「이름 붙인 합성 컬럼」(dt_seat 류)의 자리
+          ⓐ 는 소스의 `read` 에 «required_columns» 한 칸이면 서고,
+          ⓑ 는 composite_key_* 를 «업무 키 밖»으로 일반화하는 일입니다 — 둘 다 «선택 칸»이라 소급 0 (비용 모델 §F-0)
+```
+
+## 🔴 비용 — 이것만은 «공짜가 아닙니다»
+```
+뷰의 컬럼 이름이 바뀌면 `bonded_from` 의 bind 가 그 이름을 «따라가야» 합니다.
+=> 그 소스의 지문(source_cursor_fingerprint)이 «움직입니다» -> bonded_from 재번역
+   오늘 최종 목록의 Ⓐ1~4 는 「선택 칸이라 소급 0」이었는데, 이 항목은 «그 부류가 아닙니다».
+   S-79 를 언제 하느냐가 «비용의 크기»를 정합니다 — 원자가 적을수록 쌉니다
+```
+
+## ⚠️ 그리고 하나 더 — `fold` 가 이 조인을 «못 적습니다»
+```
+뷰의 조인 키   regexp_replace(m.core_slot::text, '\D', '', 'g')::int = b.core_slot::int   <- «숫자만 남기기»
+선언의 fold   {separator, case, zero_pad} 뿐이고, zero_pad 는 «미구현이라 거절»됩니다(:1027~1031)
+=> 이 조인을 virtual_joins 로 옮기려면 fold 에 «그 규칙»이 필요합니다. 없으면 S-79 의 조인 절반이 안 옮겨집니다
+   🔴 이것이 S-79 의 «진짜 선행 조건»입니다 — 이름 바꾸기보다 이쪽이 먼저 막습니다
+```
+> 「판정 대기」 위 권고(이름 바꾸기 폐지)와 그 재번역 비용을 언제 치를지 · 다음: S-78 재료(직접 쓰기 스크립트 전수)
