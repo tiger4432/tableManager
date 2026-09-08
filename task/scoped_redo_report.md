@@ -19332,3 +19332,43 @@ $ generate_syn_lot_split_merge_sources.py --root-lots $(seq -f 'SYN-R-%03g' 1 18
   ③ 체인 뒤 N_x = lot_slot_wafer 행 수 · S-54 뒤따르기 지연을 «값으로»(첫 측정값)
   되돌리기 SQL 은 위에 «확정»돼 있습니다
 ```
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **긴급 — 제 `e32c0ce1` 이 `init_dynamic_models` 를 깨뜨립니다. 라이브도 같은 모양이라 «다음 재기동이 실패합니다»** (09-08 14:0x)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · lot_event 적재 «안 했습니다»(여기서 걸렸습니다)
+```
+
+## 무엇이
+```
+$ models.init_dynamic_models(<출하 샘플 table_config>)
+  sqlalchemy.exc.ArgumentError: Trying to redefine primary-key column 'row_id'
+  as a non-primary-key column on table 'dt_log_transferable'
+LIVE   dt_log_transferable | kind=view | row_id in column_types: True
+SAMPLE 같음 (제가 e32c0ce1 에서 넣었습니다)
+```
+🔴 **까닭**: 모델 빌더가 `row_id` 를 «PK 컬럼으로 스스로» 만듭니다. 제가 뷰 다섯의
+   `column_types` 에 `"row_id": "string"` 을 «선언»하자 같은 컬럼이 «두 번» 정의됩니다.
+   판정 138 의 「뷰는 column_types 가 전체 진실」은 «카탈로그 로더»에 대해 참인데,
+   저는 그것이 «모델 빌더»에도 참인지 «안 쟀습니다» — 또 그 부류입니다.
+
+## 지금 상태 — 무엇이 도는가
+```
+도는 서버(PID 35856, 13:34 기동)는 «그 전» 설정으로 모델을 이미 지어서 «돌고 있습니다».
+그러나 «다음 재기동»(또는 config 핫리로드)이 이 지점에서 실패합니다. 즉 지금은 «숨어» 있습니다
+```
+
+## 고칠 방향 — 판정 청합니다(제 제안은 Ⓑ)
+```
+Ⓐ 선언을 뺀다        뷰 다섯의 column_types 에서 row_id 를 지운다
+   -> 그러면 카탈로그 로더가 그 뷰에 row_id 를 «안 실어» frame_row_id 가 None 이 되고,
+      dt_transfer 등 «row_id 를 실제로 가진» 뷰가 다시 no_row_index 로 떨어집니다 — 사실과 어긋납니다
+Ⓑ 모델 빌더가 «중복을 건너뛴다»  init_dynamic_models 가 column_types 의 row_id 를 «PK 를 이미 만들었으므로»
+   무시. 선언은 «참»으로 남고(뷰가 그 컬럼을 가진다), 빌더만 두 번 만들지 않습니다. 한 줄
+Ⓒ 로더가 뷰의 row_id 를 «다른 칸»에서 읽는다  선언 축을 하나 더 만드는 것이라 제일 무겁습니다
+```
+⚠️ **제가 고쳐도 되면 Ⓑ 로 지금 고치고 게이트(샘플 config 로 init 이 통과)를 답니다.**
+   되돌리기(Ⓐ)를 원하시면 그것도 한 줄입니다. 라이브 설정은 «총괄이 넣으신 것»이라 제가 안 건드립니다.
+🔴 그리고 이 부류가 «다섯 번째»입니다 — 「로더/빌더가 채우는 산출물 vs 선언」을 매번 한쪽만 재고 있습니다.
