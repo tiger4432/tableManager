@@ -22149,3 +22149,92 @@ S-65-c 라이브 게이트는 void_obs — 팔로워 키가 «void_uid» 였습�
 그 뒤        S-82
 소급         S-81 로 버려진 dt_transfer 원자 — 소급 실행이 정본 채움(제 몫 아님, 총괄 판정대로)
 ```
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-82 착지 `fc43c379` — 제품 문이 «한 사건»을 세웁니다. 그리고 총괄 판정 «하나»가 부딪혀서, 그 판정의 «주어»를 재서 갈랐습니다** (09-09 08:21)
+
+```
+시각   09-09 08:21   ·   이웃 45 파일 «앞/뒤 둘 다» 실행 · 미커밋 0 · 수집 5,309 정상
+```
+
+## 한 자리 — 판정 174 그대로
+```
+main.apply_batch_updates_endpoint   with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+                                        await run_in_threadpool(crud.apply_batch_updates, ...)
+«같은 상수 · 같은 컨텍스트매니저» — 인제션·체인이 쓰던 그것. 두 번째 철자 없음
+토큰은 «이 호출 하나»에만 걸립니다 (체인 워커 주석이 요구한 그 폭)
+```
+
+## 잰 것 — 짓기 «전»에 넷
+```
+① 컨텍스트 전파   run_in_threadpool 이 contextvar 를 «나릅니다»(AnyIO worker thread 에서 'collapsed')
+                 -> 안 날랐으면 with 문이 «조용한 무동작»이 됩니다. 오류가 안 나는 실패라 먼저 쟀습니다
+② 문 자체        12 행 요청 «하나» -> 아웃박스 CREATE «1 건»(row_ids 12)
+                 같은 입력, 옵트인 «안 한» 호출자 -> «12 건» (전/후 두 팔)
+③ 잃는 것        expand_events 가 그 1 건에서 «12 행»을 그대로 폅니다 (business_key 전부 일치)
+④ 흘림 횟수      apply_batch_updates 의 flush 는 루프 «뒤 한 번»(crud:4175) — replace_map 갈래만 하나 더
+                 => 사건 수 = flush 수 x ceil(행/1,000). 평범한 1,000 행 요청은 «1 건»
+```
+
+## 🔴 총괄 판정과 부딪힌 자리 — 그리고 부딪히지 «않는» 이유
+```
+선언 원문      OUTBOX_MODE_PER_ROW: "The human/correction path must stay here:
+              a correction that reaches the DB but not the screen stops the correction loop"
+같은 말이 «여섯» 자리에      CODE_MAP · event_driven_backend §2.4 · backend.md:194 ·
+                          history 20260807 · BACKLOG_ARCHIVE:228 ·
+                          🔴 qa/FEATURE_CHECKLIST:501 «즉시 NO-GO»
+그리고 큐에                SERVER_DEFECT_QUEUE:1204 — 「총괄 재측정: 낡지 않았습니다」
+```
+🔴 **그래서 「이미 판정된 것」인지부터 봤고, 판정의 «주어»를 재서 갈랐습니다** (은퇴 상설 판별식 ②):
+```
+판정이 «금지한» 것    «추론» — request_source 는 인제션 경로에서 «파일명»이고, 행 수로도 못 가른다
+                    (문서 원문이 그 두 가지만 사유로 답니다)
+S-82 는            «이름 대어 명시 옵트인» -> 그 금지 «안»입니다. 판정은 «지켜집니다»
+판정이 «지키려던» 성질  「사람 교정이 화면에 닿는다」
+   실측: 그 성질은 이 표를 «안 지납니다»
+     화면      이 문의 브로드캐스트는 crud.apply_batch_updates 의 «반환값»(results)으로 짓습니다
+     복구      sweep_undelivered_broadcasts 는 table_name 으로 «표 단위 새로고침»만 쏩니다 (값 0 읽음)
+     payload 의 «컬럼»을 읽는 소비자는 «체인 워커 하나» — 그리고 그것은 «펴서» 읽습니다
+   🔴 그리고 이 문장은 제가 «지어낸 게 아니라» event_driven_backend §2.4 가 «이미» 적어 둔 것입니다:
+      「미전달 스윕·WS 3경로 … 변경 없음」
+```
+
+## 그래서 고친 문장들 (같은 커밋)
+```
+event_constants   PER_ROW / COLLAPSED 두 선언 — 되물린 문장과 «그 사유»를 적었습니다
+database/context  「every main.py endpoint … keeps today's behaviour」 -> 옵트인 «셋»
+CODE_MAP          같은 두 괄호
+event_driven_backend  「축약을 켜는 곳은 둘뿐」 -> «셋» + 되물림 주석
+backend.md:194        「사람의 맵 Push는 여전히 per-row」가 «거짓»이 됨 — 표시만 하고 «판정은 안 했습니다»
+                      (그 판정이 임계로 무엇을 세는지에 기대면 총괄이 다시 재야 합니다)
+qa/FEATURE_CHECKLIST  🔴 «대리»를 재던 항목을 «성질»을 재는 항목으로 바꿨습니다:
+                      전: 「outbox 행이 행마다 1건이고 data를 나른다」  <- 모양(대리)
+                      후: 「클라 둘 띄우고 한쪽에서 편집 -> 다른 쪽 화면에 닿는다」  <- 성질. NO-GO 유지
+```
+🔴 **`SERVER_DEFECT_QUEUE:1204` 은 손대지 «않았습니다» — 총괄 파일입니다. 여기서 «올립니다».**
+
+## 게이트
+```
+✅ 아웃박스 CREATE «1 건»(row_ids N)   시험 3 초록 (문 · 옵트인 안 한 팔 · 펴기)
+✅ 이웃 회귀 «0»                      45 파일을 «제 변경 빼고» / «넣고» 둘 다 실행
+                                    전 736 passed / 3 failed · 후 739 passed / 3 failed (+3 = 제 새 시험)
+                                    같은 셋: test_chained_ingestion · chain_key_gate 하트비트 ·
+                                    virtual_join payload — «손 안 댄 트리»에서도 빨갛습니다
+✅ 수집                              5,309 collected, 오류 0
+⛔ «못 잰 것» — 1,000 행 요청 ≤ 1 s · drain 한 번에 dt_job 2,000 원자
+   재기동이 필요하고 그것은 총괄 몫입니다. 판정 174 의 「그 뒤 S-81(큐가 비어)」도 같은 자리입니다
+```
+
+## 다음
+```
+조각 3 잔여   _run_v2_lineage · rows_past_cursor · caught_up_at 칸 · store.mark_caught_up 삭제
+             + retroactive 를 rows_not_yet_translated 로 + CLI 두 None 제거 + 세 값 출력
+             + 되살아난 시험 삭제(«코드와 같은 커밋»에서 — 그게 79c6ad7a 의 정정이라 읽었습니다)
+             + CODE_MAP·가이드의 「백필 한 번 돌면 따라잡음」
+⚠️ 지난 두 번의 삭제가 «이웃을 같이» 가져갔습니다(모듈 상태 한 번 · rescope/preview_rescope 한 번).
+   이번엔 ast 로 함수의 «정확한 줄 범위»를 잘라내는 도구로 합니다 — 마커 검색은 「다음에 함수처럼
+   보이는 것」까지만 알고 «함수가 어디서 끝나는지»는 모릅니다
+```
+> 📌 **[09-09 08:21] 총괄께 «판정 요청» 하나:** `SERVER_DEFECT_QUEUE:1204` 의 「사람 경로 per-row 유지」 판정 — 위 실측대로 «주어가 추론»이라 S-82 가 그 안에 있다고 읽었습니다. 다르게 보시면 되물릴 수 있습니다(코드 한 줄 + 문서 다섯).
