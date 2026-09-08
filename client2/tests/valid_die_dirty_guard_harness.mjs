@@ -68,6 +68,7 @@ import { readSourceText } from './lib/probe.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import vm from 'node:vm';
+import * as cellQueryModule from '../src/map_cell_query.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -257,6 +258,13 @@ function buildEnv(src, opts = {}) {
     isNaN, encodeURIComponent, Promise,
     el,
     API_BASE: '/api',
+    // 🔴 THE STANDING RULE'S EXACT FAILURE, MET ON 2026-09-08. C-43 ② moved the cell query into
+    //    `src/map_cell_query.js`, and this harness SLICES its subject — so the slice could not
+    //    see the new import and threw `cellQuery is not defined` while the product code was
+    //    correct. 「import 를 하나 더하면 잘라낸 조각이 그 함수를 못 찾아 던집니다」, verbatim.
+    //    Handing the names in keeps the bridge standing for one more day; the repair is the
+    //    extraction round (C-35 ④), which this file is already named in.
+    ...cellQueryModule,
     CURRENT_USER: 'tester',
     selectedTable: 'bonding_map',
     currentRotation: ROT,

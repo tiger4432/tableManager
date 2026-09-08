@@ -1209,6 +1209,11 @@ const FLOORS = new Map([
   // an uncounted field drawn as 0 tells an operator asking whether anything is waiting that
   // the queue is empty.
   ['source_backlog_harness.mjs', 22],
+  // New 2026-09-08 with C-43 ② (the map's cell query). Floor is the count it reports on the
+  // commit that introduces it. 🔴 The first mutant is the round: without defer_total the load
+  // makes the server COUNT the same filter over the same table before answering, and that
+  // second scan is invisible everywhere except in the seconds the operator waits.
+  ['map_cell_query_harness.mjs', 13],
 
 
 

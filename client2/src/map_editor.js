@@ -6,6 +6,8 @@
 //    늘어도 빨개집니다 (소유자 2026-09-02: 「잘라쓰기 하니스 절대금지」).
 //    ⚠️ 여기에 CSS import 를 다시 넣으면 그 27개가 «한 줄로» 되살아납니다.
 import { API_BASE, CURRENT_USER, MAP_SPEC_SAVE_TIMEOUT_MS } from './config.js';
+import { CELL_LIMIT, cellQuery, cellsTruncated as isCellsTruncated, cellsToDraw }
+  from './map_cell_query.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -316,6 +318,17 @@ export function declaredLegendRow(value) {
 // 같은 행을 두 모듈이 쓰면 replace_map이 서로의 컬럼을 지운다.
 // ----------------------------------------------------
 const SPLIT_REGISTRY_TABLE = 'map_split_registry';
+
+// 🔴 ONE CAP, TWO LOADERS (C-43 ②). The main cell load spelled `2000` inline and the overlay
+//    kept `OVERLAY_CELL_LIMIT = 2000` with a comment saying 「메인 로드와 같은 상한」 — a fact
+//    with two authors, and the comment is what was holding them together. They pass through
+//    this constant now, so a change moves both or neither.
+// ⚠️ The REQUEST asks for one more than this. That extra row is how truncation is judged:
+//    if it arrives, the set was cut. Judging by `total` instead made the load pay for a COUNT
+//    over the same filter, which is the second scan this round removes.
+// 🔴 The cap and the query live in `map_cell_query.js` so the two loaders pass through one
+//    place; the alias keeps this file's existing readers unchanged.
+const MAIN_CELL_LIMIT = CELL_LIMIT;
 
 let legendMeta = {}; // legend value -> { updated_by, updated_at } (registry 조회/저장 메타)
 // (자동 저장 디바운스 타이머는 2026-07-28에 제거됐다 — 서버 쓰기는 Push 하나뿐이다)
@@ -5154,8 +5167,14 @@ export async function loadExistingMap(opts = {}) {
   el.btnLoadMap.textContent = '📂 Loading...';
   el.btnLoadMap.disabled = true;
 
-  // 🔴 `defer_total` 을 «안 붙입니다». 이 응답의 `total` 로 셀 절단을 경고합니다 (아래).
-  const url = `${API_BASE}/tables/${selectedTable}/data?limit=2000&filters=${encodeURIComponent(JSON.stringify(filterModel))}`;
+  // 🔴 C-43 ②. `defer_total=true` 를 «붙입니다». 종전에는 절단을 `total` 로 판정하느라 이
+  //    호출이 «세는 일»을 같이 시켰고, 그 COUNT 는 같은 필터로 표를 한 번 더 훑습니다 —
+  //    맵을 여는 사람은 그 시간을 «두 번» 기다렸고, 화면에는 그 사실이 안 보였습니다.
+  // 🔴 절단은 «행 수»로 봅니다 — 오버레이 로드가 이미 그 규율이고(`rows.length > 상한`),
+  //    같은 판정을 두 방식으로 하는 것이 이 파일에 두 저자를 만들던 자리입니다.
+  //    상한보다 «하나 더» 달라고 해서, 그 하나가 오면 잘린 것입니다. total 이 null 이어도
+  //    판정이 그대로인 것이 이 방식의 값입니다.
+  const url = `${API_BASE}/tables/${selectedTable}/data?${cellQuery(filterModel)}`;
 
   try {
     const res = await fetch(url);
@@ -5326,7 +5345,10 @@ export async function loadExistingMap(opts = {}) {
     const uniqueVals = new Set();
 
     if (result && result.data) {
-      result.data.forEach(row => {
+      // 🔴 C-43 ②. 상한 «까지»만 그립니다. 요청이 상한보다 하나 더 달라고 하는 것은 「잘렸나」를
+      //    묻기 위해서이지 한 칸 더 그리려는 것이 아니고, 안 자르면 «절단된 맵만» 종전보다
+      //    셀 하나가 더 그려집니다 — 화면이 조용히 달라지는 자리입니다.
+      cellsToDraw(result.data).forEach(row => {
         const rowData = row.data || {};
         const xVal = rowData[xCol]?.value;
         const yVal = rowData[yCol]?.value;
@@ -5371,10 +5393,12 @@ export async function loadExistingMap(opts = {}) {
     //    맵에서 "서버에 없다"는 판정은 거짓이 될 수 있고, 그 거짓 위에서 정리하면 실재하는
     //    행이 다음 Push에서 삭제된다. split registry 조회가 절단을 실패로 강등하는 것과
     //    같은 규칙이다(readRegistryScope).
-    const cellsTruncated = !!(result && typeof result.total === 'number'
-      && result.total > (Array.isArray(result.data) ? result.data.length : 0));
+    // 🔴 C-43 ②. 「행 수」로 판정합니다 — 상한보다 하나 더 달라고 했으므로 그 하나가 오면
+    //    잘린 것입니다. 오버레이 로드가 이미 이 규율이고, `total` 을 안 쓰므로 이 호출이
+    //    COUNT 를 시키지 않습니다(같은 필터로 표를 한 번 더 훑던 그 두 번째 스캔).
+    const cellsTruncated = isCellsTruncated(result && result.data);
     if (cellsTruncated) {
-      console.warn(`[Map Editor] cell load truncated (${result.total} > ${result.data.length}) — `
+      console.warn(`[Map Editor] cell load truncated (${fetchedRows} > ${MAIN_CELL_LIMIT}) — `
         + 'server cell set demoted to unknown; outside-wafer cleanup will not be offered');
     } else {
       serverCellKeys = {
@@ -10389,7 +10413,7 @@ function pushFailedOverlay(sourceTable, sourceKey, status, reason, targetOverrid
 // (paint-rules `binding` — fetchServedBinding). 종전의 클라 로컬 유도(deriveMapBinding
 // + 스키마 조회)는 삭제됐다: 서버 매처의 복사본이라 답이 어긋날 수 있었고(F3),
 // 선언 바인딩(tx/ty·대문자 등 관례 밖 컬럼)을 아예 볼 수 없었다.
-const OVERLAY_CELL_LIMIT = 2000;   // 메인 로드(loadExistingMap)와 같은 상한
+const OVERLAY_CELL_LIMIT = MAIN_CELL_LIMIT;   // 메인 로드(loadExistingMap)와 «같은 상수»
 
 // map_key('_' 조인)를 key_columns에 분해 — 마지막 컬럼이 나머지를 흡수(랏 이름의 '_' 방어).
 // [7b] Decomposition is `decomposeMapKey` — the same split the server's `build_key_filters`
