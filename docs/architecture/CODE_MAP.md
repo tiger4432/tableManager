@@ -2702,6 +2702,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑩ `config_drafts.py` | 🆕⑱ **850** @`6345ef3d`(🆕⑪ 828 · 구 표기 806/548) | 탐색기의 **파일시스템 작업 초안**(`OntologyDraftStore`) — 🔴 **작성 경로에서 «쓰는» 유일한 자리**(`config_authoring`은 한 줄도 안 쓴다) |
 | `source_profile.py` | 🆕⑪ **1,429**(구 표기 1,512) | v1 Profile. **줄어들었다** — 은퇴한 바인딩 필드 셋을 삼키는 자리(`_RETIRED_BINDING_FIELDS` 계열, 「읽고 버린다」)만 남고 승인 게이트가 빠졌다 |
 | `ledger_frame.py` | **278** | (🆕⑯ 무변동) |
+| 🆕㉑ **`followup.py`** | **234**(신설 `1d4bb79d`) | 「원장이 «자기가 읽는 표»를 따라간다」 — 체인/사람이 그 표의 행을 고치면 그 분자만 다시 번역한다(S-54). 🔴 **큐일 뿐이고 번역은 안 한다** — 체인 워커가 `(표, row_ids, EDIT)` 를 «메모리 deque»에 넣고 제 길을 가고, 옆에서 도는 페이싱된 asyncio 작업이 `backfill.rescope` 를 부른다. 범위 컬럼은 «15 소스 전부» `backfill._page_key`(갈래 «없음» — 판정 131). `enqueue`/`row_ids_of`/`queue_depth`/`note`/`reset`/`sources_for_table`/`scope_column`/`drain_once` · `FOLLOWED_EVENT_TYPES = ("EDIT",)` · `FOLLOWUP_JOB = "chain_followup"` · `MAX_QUEUED_EVENTS = 10000`. ⚠️ **큐는 메모리이고 유실이 «사실의 유실이 아니다»** — 소급 실행이 정본 메움이고 이쪽은 «빠른» 쪽이다. 채점자 `server/tests/test_the_ledger_follows_the_table_it_reads.py`(**350줄** / `def test_` 16, 수집 19) |
 | 🆕⑯ **`gaps.py`** | **346**(신설 `b18b22a6`) | 선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳을 «센다». 🔴 **이름은 여기서 짓지 않는다.** 아래 별항 |
 | 🆕⑯ **`gap_names.json`** | **72**(신설 `b18b22a6`, 🆕⑰ 무변동) | 그 결측들의 «이름표» — 🆕⑰ **`docs/spec/APPLICATION_GAP_SPEC.md`** 의 기계 판형(`21407fac` 에서 `task/` → `docs/spec/`). 아래 별항 |
 | 🪦 🆕⑯ `chain_mapper.py` · `profile_chain_mapper.py` · `profile_lookup_adapters.py` · `legacy_import.py` · `shadow_parity.py` | — | 🔴 **`server/ledger/` 에 이 파일들이 «없다»**(`9eb30691` 전건 실측). 앞의 셋은 **`server/_archive/` 로 옮겨졌고**, `legacy_import.py`·`shadow_parity.py` 는 **삭제됐다**(`_archive/` 에도 없다). 🆕⑬ 이 산문으로 적어 두고 «표는 안 고쳤기 때문에» 이 다섯이 두 패스 동안 살아 있는 행으로 남았다 — 특히 `shadow_parity.py` 는 「레거시 ↔ v2 결정적 의미 그림자 대조」라는 역할 서술까지 달고 있었다. 🔴 **이 이름들을 앵커로 쓰지 마라** |
@@ -3492,6 +3493,8 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 ## 5-J. `server/pacing.py` + `pacing.json` — 긴 작업이 얼마나 미는가 (표 하나, `49988247` 신설)
 
+> 🟢 🆕㉑ **[2026-09-08 재측정 — `1d4bb79d`]** `pacing.py` **73줄**(🆕⑯ 56) · `pacing.json` **30줄**(🆕⑯ 26). 증분은 «스스로 도는 작업»의 자리다 — 아래 `jobs` 문단.
+>
 > 🟢 🆕⑯ **[2026-08-31 전량 실측 — `9eb30691`]** `pacing.py` **56줄** · `pacing.json` **26줄**. 둘 다 tracked 다(`pacing.json` 은 `server/config/` 밑이 «아니라» `server/` 바로 밑이라 gitignore 대상이 아니고, **그래서 실값을 여기 인용해도 된다** — 이 저장소가 「라이브 선언은 안 옮긴다」로 막는 그 부류가 아니다).
 
 > 🔴 **한 표를, 모든 긴 작업이 읽는다 — 「작업마다 하나」가 아니다.** 이 파일은 `server/ledger/` 밑에 있다가 **두 번째 호출자가 생긴 «그 순간»** 위로 올라왔고, 그게 이 저장소의 상설(「근원 템플릿 요소 개발 후 데이터 갈아끼우기」)이 말하는 시점이다 — 더 이르면 소비자가 하나뿐인 층이 되고, 더 늦으면 두 번째 호출자가 자기 사본을 짜서 둘이 갈라진다.
@@ -3510,7 +3513,17 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 
 **`pacing.json` — `paces` 셋**(값 그대로): `fast` = `{units_per_cycle: null, rest_seconds: 0}` · `slow` = `{5, 1.0}` · `trickle` = `{1, 3.0}`. 각 항목은 `label`·`when` 을 **한국어로** 들고 있고, 🔴 **화면은 그 낱말을 «지어내지 않고 읽는다**»([§5-D](#5-d-2026-08-04-신설-서버-모듈) 의 `_pace_choices`). 페이스를 하나 더하는 것은 **이 파일에 항목 하나**이고 코드는 어디도 안 바뀐다.
 
-**호출자 — 🆕⑰ 전건(`64b562b6` grep 실측, «넷». 🆕⑯ 은 셋이었다)**
+> 🆕㉑ **[`1d4bb79d`] 「스스로 도는 작업」은 «고를 사람이 없다» — 그래서 페이스가 «선언»이다.**
+> 여기까지의 호출자는 전부 «누가 버튼을 눌렀나»에서 페이스를 받았다. 체인 뒤따르기는 아무도 시작하지 않으므로 물을 사람이 없고, 그러면 답은 «그 모듈의 상수»가 되기 쉽다 — 그건 이 파일이 없애려는 바로 그 모양이다. 그래서 `pacing.json` 에 «칸 하나»가 생겼다: `jobs.chain_followup = "trickle"`.
+>
+> | 심볼 | 무엇인가 |
+> |---|---|
+> | `load_jobs(path=None)` | JSON 의 `["jobs"]`, **없으면 `{}`** |
+> | **`job_pace(job, path=None) -> (units_per_cycle, rest_seconds)`** | `resolve(load_jobs()[job])`. 미선언 job 은 `DEFAULT_PACE` — 「어느 것이 기본인가」는 여전히 이 모듈이 남 대신 안 하는 그 결정이다 |
+>
+> 🔴 **기본값이 «가장 느린 것»인 것도 판정이다**(129-bis, 소유자 「성능 마진 넉넉하게」): 뒤따르기는 아무도 기다리지 않는 일이고, 그것을 먹여 주는 체인은 기다리는 일이다. 채점자는 「가장 느린 것」을 «표에서 재서» 대조하므로, `trickle` 보다 느린 페이스가 하나 생기면 빨개져 사람이 고르게 된다.
+
+**호출자 — 🆕㉑ 전건(`1d4bb79d`, «다섯». 🆕⑰ 은 넷이었다)**
 
 > 🆕⑰ 🔴 **네 번째가 «표를 베끼지 않았다»는 것이 이 절이 재는 것 전부다.** `chain_replay.resolve_pace(name, paces=None)` 는 자기 표를 들지 않고 `pacing.resolve` 를 부르며, 하는 일은 **거절의 모양을 바꾸는 것 하나**다(`pacing.UnknownPace` → `ReplayRefused`). 사유를 소스가 적는다 — 이 경로의 다른 모든 거절이 `ReplayRefused` 라, 「선언 안 된 것을 물었다」에 예외 타입 «둘»을 잡게 만든 호출자는 결국 하나만 잡는다.
 
@@ -3519,6 +3532,7 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | 🆕⑰ `chain_replay.py` (`resolve_pace` 껍질 → `replay_rule`) | **페이지** | 페이지 «끝» — 🔴 **맨 위가 아닌 것이 안전성 논거 전부다.** `iter_pages` 는 질의하고 나서 yield 하므로 본문 «머리»에서 자면 그 페이지의 SELECT 스냅샷을 `rest_seconds` 동안 깔고 앉는다 — 그건 페이싱이 아니라 «점유»이고, 고치려던 바로 그것이다. 끝에서는 이 페이지의 쓰기가 전부 커밋됐고 다음 페이지는 아직 안 읽혔다. 🔴 **`db.rollback()` 이 그것을 «드문 경우»에도 참으로 만든다** — 맵퍼가 아무것도 못 낸 페이지는 커밋에 닿은 적이 없어 SELECT 의 트랜잭션이 열린 채다 | **실행마다** (`retroactive` 의 `chain_replay.pace` 파라미터 — 🆕⑰ `_pace_param()`) |
 | `ledger/backfill.py` (`resolve_pace`/`load_paces` 껍질 → `_run_v2_lineage`) | **페이지** | 페이지 사이 — 직전 페이지의 원자와 커서가 «한 커밋»으로 내려간 뒤 | **실행마다** (`retroactive` 의 `ledger_backfill.pace` 파라미터, `choices` 로 옴) |
 | `parsers/directory_watcher.py` — 🔴 **`IngestionHandler._send_to_upsert` 안**(모듈 함수가 아니다) | **청크** | `db.commit()` **직후** — 오프셋이 이미 내려간 자리라 재개가 정확하다 | **설정으로** — `ingestion_settings.json` 의 **`ingestion_pace`**(`.sample` 에 키와 긴 설명이 있다). ⚠️ **오타는 «전속력»으로 돈다 + 경고 로그 1회** — 설정 오타로 적재를 멈추면 막으려던 것보다 큰 장애다 |
+| 🆕㉑ `chain_ingestion_worker.run_ledger_followup` (`pacing.job_pace` → `ledger/followup.drain_once`) | **이벤트 하나**(그 이벤트의 row_ids «전부»가 한 범위) | 배치 «끝» — 그 재번역이 이미 커밋된 뒤. 🔴 **`rescope` «안»이 아니다**(129-ter): 거기서 쉬면 분자 «하나»의 쓰기를 조이게 되고, 양보해야 할 것은 «큐»다. ⚠️ 큐가 비면 선언된 쉼과 무관하게 `FOLLOWUP_IDLE_SECONDS` 를 기다린다 — `fast` 의 쉼 0 은 빈 deque 위에서 «바쁜 루프»이고, 페이스는 「얼마나 자주 보나」가 아니라 「일이 있을 때 얼마나 미나」의 답이다 | 🔴 **«선언이»** — `pacing.json` 의 `jobs.chain_followup`. 시작하는 사람이 없어서 물을 데가 없다 |
 | `retroactive._pace_choices()` | — (읽기만) | — | 화면에 낼 «선택지»를 만든다 — 값·`label`·`when` 을 그대로 투영 |
 
 🔴 **🆕⑰ «세» 소비자가 같은 경계에서 쉬는 것은 우연이 아니다**(구 표기 「두 소비자」 — 그 뒤 `chain_replay` 가 셋째가 됐고 **같은 자리를 골랐다**) — 원장은 「멈춤(취소)이 안전한 자리」와 「늦춤이 공짜인 자리」가 같은 지점이고, 인제션도 같은 이유로 커밋 직후이며, 체인 재생은 **취소 체크포인트가 이미 쓰던 바로 그 페이지 경계**다(소스가 그 동일성을 이름 대고 적는다). **취소는 «멈추는» 손잡이, 페이스는 «늦추는» 손잡이이고, 대개는 늦추는 것으로 충분해서 아무도 멈출 필요가 없다.**
