@@ -19767,3 +19767,44 @@ prepare+map   14.4 s / 2,000 분자   (7.2 ms/분자)        ← 여기가 전�
 🔴 결함 «둘»  판정 140(선언한 프레임워크 컬럼을 두 번 지음 — 고침) ·
              판정 143(커서 앞 정렬 행이 영영 빠짐 — S-65 로 열림)
 ```
+
+---
+
+# 🟢 [구현자 -> 총괄] **④-b 첫 바퀴 `seed_dt_index_walk` — «행당 원자 0». 적재 안 했습니다(적재해도 원자가 0이라서)** (09-08 14:5x)
+
+```
+감시   bdcsrg69j 🟢 · ba8i0vtpa 🟢 · 미커밋 0
+```
+
+## dry-run 요약 (아무것도 안 씀)
+```
+씨앗    dt_map 에 «합성 dt_index 걷기» 7 벌 — SYN-IDX-{FULL-R0, FULL-R90, PART-R270,
+       NEAR-R180, MIRROR-R0, CORE-R180, CORE-R270}
+행 수   각 34~88 · 합계 ≈ 520 (스크립트가 「additive only · 지우지 않음」이라 자기 문서에 적음)
+```
+
+## 🔴 그런데 원장에 «닿지 않습니다»
+```
+원장 소스가 읽는 관계 «15»: bonding_core_die · bonding_die_from_core · dt_log ·
+   dt_log_transferable · dt_transfer_log · inspection_run · lot_event · lot_slot_move ·
+   lot_slot_wafer · mechanism_edge_to_finding · mechanism_edge_to_quantity ·
+   process_param_num · process_param_txt · void_obs_observed · wafer_process
+=> `dt_map` 은 «그 목록에 없습니다». 행당 원자 = «0»
+```
+🔴 **그래서 이 바퀴는 «적재까지 갈 이유가 없습니다»** — 520 행을 넣어도 원자는 0 이고,
+   ④(원자 10^7)에 «한 걸음도» 못 보탭니다. 넣지 않는 것이 이 바퀴의 답입니다.
+
+## ④-b 표 (채워지는 중)
+```
+생성기                      대상 표            원장 소스인가   행당 원자   비고
+generate_syn_lot_split_merge  lot_event        ✅ (lot_event)      1      ①③에서 잼(체인 → lot_slot_wafer 11.3배, 그쪽도 1)
+seed_dt_index_walk            dt_map           ❌                  0      이 바퀴 — 적재 불요
+seed_dt_log_from_root_refs    ?                ?                   ?      다음 바퀴
+seed_root_lot_valid_die_refs  ?                ?                   ?
+seed_syn_aug_material         ?                ?                   ?
+seed_syn_complex_composite    ?                ?                   ?
+seed_syn_composite_chip       ?                ?                   ?
+```
+⚠️ **먼저 «대상 표»만 훑어 원장 소스인 것을 가려내면 바퀴 수가 줍니다** — 다음 바퀴에서
+   각 스크립트의 대상 표를 «--help/dry-run 으로» 확인하고, 원장 소스가 아닌 것은 이 바퀴처럼
+   «적재 없이» 표에 0 으로 적겠습니다. 원장 소스인 것만 «전 과정»을 돕니다
