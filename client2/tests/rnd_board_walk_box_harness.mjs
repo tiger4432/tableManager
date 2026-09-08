@@ -384,6 +384,44 @@ async function suite(mods) {
   ok('E7 which is neither of the other two',
     !refused.includes('걸었는데 닿은 것이 없습니다') && !refused.includes('타입을 고르고 걸으십시오'));
 
+  // ── W: the reader hands the node ON, it does not re-author it ────────────────────────
+  // 🔴 THE DEFECT THIS CLOSES HAPPENED TWICE IN THREE DAYS, in the same line. `createWalkBoxWalk`
+  //    rebuilt each node from a FIELD LIST, so anything the server learned to send died here:
+  //    `keys` and `depth` on 09-06 (the table could not name a row or say how far it was), and
+  //    `attributes`/`attribute_conflicts` on 09-08 (the declaration named the columns, the table
+  //    drew the headers, every cell was empty). NO ERROR EITHER TIME — and the second time the
+  //    contract harness was green throughout, because it held the post-narrowing shape by hand.
+  // 🔴 SO THE ASSERTION IS ABOUT THE CLASS, NOT THE TWO NAMES. A field nobody has invented yet
+  //    has to survive too; naming only today's fields would pass this test and fail the next
+  //    round exactly as before.
+  {
+    const sent = {
+      id: 'ledger-entity:v1:WWW', type: 'dtjob@1', label: 'J-1', depth: 1,
+      keys: { dt_job: 'SYN-DTJ-002-04' },
+      attributes: { dt_eqp: 'SYN-DTE-03' }, attribute_conflicts: 0,
+      a_field_invented_after_this_test_was_written: 'survives',
+    };
+    const walk = A.createWalkBoxWalk({ apiBase: '',
+      fetchImpl: async () => ({ ok: true, status: 200,
+        json: async () => ({ nodes: [sent], edges: [], truncated: null }) }) });
+    const got = await walk({ type: 'dtjob@1', keys: { dt_job: 'SYN-DTJ-002-04' } });
+    const node = got.ok && got.nodes ? got.nodes[0] : null;
+    ok('W1 the walk read succeeds', !!node, JSON.stringify(got).slice(0, 90));
+    ok('W2 a declared value reaches the caller',
+      node && node.attributes && node.attributes.dt_eqp === 'SYN-DTE-03',
+      JSON.stringify(node && node.attributes));
+    ok('W3 ...and so does the disagreement count, INCLUDING when it is 0',
+      node && node.attribute_conflicts === 0, String(node && node.attribute_conflicts));
+    ok('W4 a field this test never heard of survives too — the narrowing is gone, not widened',
+      node && node.a_field_invented_after_this_test_was_written === 'survives');
+    ok('W5 and the fields that were rescued in 09-06 are still there',
+      node && node.depth === 1 && node.keys && node.keys.dt_job === 'SYN-DTJ-002-04');
+    // ⚠️ CONTROL. If the reader started passing the whole BODY through, or the stub were
+    //    wired wrong, W2-W5 would pass on something that is not a node at all.
+    ok('W6 CONTROL: what came back is the node, not the envelope',
+      node && node.id === sent.id && got.nodes.length === 1);
+  }
+
   return { ran, failed: failedList.slice() };
 }
 
@@ -393,6 +431,14 @@ async function suite(mods) {
 //    mutant whose anchor is absent reports as a harness failure rather than as a caught
 //    defect -- which is the honest behaviour, and why they leave rather than linger.
 const MUTANTS = [
+  // 🔴 THE ONE THAT COST TWO ROUNDS. Rebuilding the node from a field list is how
+  //    `keys`/`depth` died on 09-06 and `attributes` on 09-08 -- the server sends it, the
+  //    screen draws an empty cell, and nothing raises. The mutant restores exactly the line
+  //    that was there, so if anyone reintroduces it W2-W5 go red.
+  { name: 'the-node-is-rebuilt-from-a-field-list', wakes: 'W2/W3/W4', file: 'api.js',
+    from: "      const nodes = Array.isArray(body.nodes) ? body.nodes : [];",
+    to: "      const nodes = (body.nodes || []).map((n) => ({ id: n.id, type: n.type,"
+        + " label: n.label, keys: n.keys || null, depth: n.depth }));" },
   // ① the gate the order names: a fixed four-field form.
   { name: 'the-key-form-is-four-fixed-fields', wakes: 'A2/A3/A4',
     from: "    return (found && found.keys) || [];",
@@ -450,7 +496,8 @@ const main = async () => {
     let mods;
     try {
       mods = await loadModules({
-        'walk_box_panel.js': (src) => (src.includes(m.from) ? src.split(m.from).join(m.to) : src),
+        [m.file || 'walk_box_panel.js']:
+          (src) => (src.includes(m.from) ? src.split(m.from).join(m.to) : src),
       });
     } catch (err) {
       console.error(`HARNESS FAILURE: ${err.message} (${m.name})`);

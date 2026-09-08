@@ -53,12 +53,31 @@ const eq = (name, expected, actual) => ok(name, actual === expected,
 
 let VECTORS;
 let derive;
+let boardApi;
 try {
   VECTORS = JSON.parse(readFileSync(join(HERE, 'vectors.json'), 'utf8'));
   derive = await import(pathToFileURL(join(WALK_SRC, 'derive.js')).href);
+  // 🔴 THE READ PATH, NOT A HAND-HELD COPY OF ITS OUTPUT. This harness used to build the node
+  //    the server would send and score `derive` against it directly — which skipped the one
+  //    thing between them: `createWalkBoxWalk`, which NARROWED every node to a field list and
+  //    dropped `attributes` on the floor. Server correct, client correct, screen empty, and
+  //    this file green through all of it. The client half of a seam has to mean the client's
+  //    actual read.
+  boardApi = await import(pathToFileURL(join(ROOT, 'client2', 'src', 'rnd_board', 'api.js')).href);
 } catch (err) {
   console.error(`harness failure: ${err && err.message}`);
   process.exit(2);
+}
+
+/** The node as the CLIENT holds it: the server's payload, through the real reader. */
+async function readBack(node) {
+  const walk = boardApi.createWalkBoxWalk({
+    apiBase: '',
+    fetchImpl: async () => ({ ok: true, status: 200,
+      json: async () => ({ nodes: [node], edges: [], truncated: null }) }),
+  });
+  const out = await walk({ type: 'shape@1', keys: { k: '1' } });
+  return out.ok && out.nodes && out.nodes.length ? out.nodes[0] : null;
 }
 
 // ══ THE FIXTURES ARE DERIVED FROM THE FILE, NEVER RESTATED ══════════════════════════════
@@ -177,7 +196,12 @@ console.log('\n[3] the columns are the declared names');
 //    and therefore nothing could redden.
 console.log('\n[4] values, and the conflict count');
 for (const c of CASES) {
-  const node = nodeFor(c);
+  // 🔴 READ BACK THROUGH `createWalkBoxWalk`. Everything below is scored on what the client
+  //    actually holds after the response is decoded, which is where the values were being
+  //    lost while every assertion here passed.
+  const node = await readBack(nodeFor(c));
+  ok(`D0 «${c.name}» survives the client's own read of the response`, node !== null);
+  if (!node) continue;
   for (const name of c.declared_attributes || []) {
     const want = Object.prototype.hasOwnProperty.call(node.attributes, name)
       ? node.attributes[name] : undefined;
@@ -202,7 +226,7 @@ for (const c of CASES) {
 for (const c of CASES) {
   const want = c.expect.attribute_conflicts > 0 ? c.expect.attribute_conflicts : undefined;
   eq(`E «${c.name}» draws ${want === undefined ? 'nothing' : want}`, want,
-    derive.cellSource({ kind: 'conflicts' }, nodeFor(c), {}));
+    derive.cellSource({ kind: 'conflicts' }, await readBack(nodeFor(c)), {}));
 }
 // ⚠️ Zero and never-reached are BOTH silent here, which is the ruling (0 이면 안 그림). What
 //    keeps them apart is the attribute cells one column to the left, and D1 above is that.
@@ -211,8 +235,8 @@ for (const c of CASES) {
   const never = CASES.find((c) => c.name === 'declared_but_not_reached');
   const name = (reached.declared_attributes || [])[0];
   ok('E2 agreed-on and never-reached differ in the row, though not in this cell',
-    derive.cellSource({ kind: 'attribute', key: name }, nodeFor(reached), {}) !== undefined
-    && derive.cellSource({ kind: 'attribute', key: name }, nodeFor(never), {}) === undefined);
+    derive.cellSource({ kind: 'attribute', key: name }, await readBack(nodeFor(reached)), {}) !== undefined
+    && derive.cellSource({ kind: 'attribute', key: name }, await readBack(nodeFor(never)), {}) === undefined);
 }
 
 console.log(`\n${failures.length === 0 ? 'OK' : 'DIVERGED'}: ${pass} passed, `

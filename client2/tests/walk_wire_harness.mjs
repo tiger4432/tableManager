@@ -115,13 +115,19 @@ console.log('\n[4] the response is not thrown away');
   // 🔴 엣지의 «모양»을 안 줄인다 — 술어 이름이 사라지면 「무엇을 타고 왔나」가 사라집니다.
   eq('and the predicate survives', res.edges[0].predicate, 'inspected');
   eq('and its qualifiers survive', res.edges[0].qualifiers, { step: 7 });
-  // 🔴 NARROWED TO FIVE NOW, AND THE TWO THAT WERE ADDED ARE THE POINT. The result table's
-  //    identity columns come from `keys` and its first column is `depth`, and this narrowing was
-  //    dropping both — the screen could not have shown them however it was written. `extra` is
-  //    still dropped, so this is still a narrowing and not "carry the whole node": a field
-  //    nobody draws is a field nobody has to keep true.
-  eq('nodes carry what the table draws, and nothing more',
-    Object.keys(res.nodes[0]).sort(), ['depth', 'id', 'keys', 'label', 'type']);
+  // 🔴 THIS ASSERTION WAS INVERTED ON 2026-09-08, AND IT HAD BEEN HOLDING THE DEFECT IN PLACE.
+  //    It read 「nodes carry what the table draws, and nothing more」 and its reason was 「a
+  //    field nobody draws is a field nobody has to keep true」 — which sounds right and is
+  //    backwards: the client cannot know what nobody draws YET. The narrowing dropped `keys`
+  //    and `depth` until 09-06 and `attributes`/`attribute_conflicts` until 09-08, both times
+  //    silently, and both times this line went green on the repaired list — one field wider,
+  //    same defect, waiting for the next field. C-40 ③: the node rides through WHOLE.
+  // ⚠️ The narrowing's own justification is refuted three lines above: `edges` were never
+  //    narrowed, for a reason that applies word for word to nodes.
+  eq('an unknown field survives, because the client cannot know what nobody draws YET',
+    res.nodes[0].extra, 'narrowed away');
+  eq('...and the node arrives whole', Object.keys(res.nodes[0]).sort(),
+    ['extra', 'id', 'label', 'type']);
   eq('truncation is carried, not swallowed', res.truncated, { nodes: 400 });
   eq('and the walk block that can catch the hops mismatch survives',
     res.walk, { hops_requested: 3, hops_reached: 2 });
