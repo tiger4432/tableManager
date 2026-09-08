@@ -36332,3 +36332,15 @@ S-52-i  걷기가 속성을 «follow 에 register 가 있을 때만» 읽습니�
 🔒 S-61 → 재기동(제가) + 소급 색인 전수 apply(제가) → S-55 → S-57
 ```
 > 📌 **[09-08 12:29] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-61 `27a5f4f5` 받음(60 passed · 지문 15/15 무접촉 · ②③ ✅ — 제가 이 박스 15 소스에 dry-run/apply: 표 소스 11 색인 «전부»(dt_log 34,939 · inspection_run 117,742 …)). 그런데 ① 은 «반»입니다 — 뷰 넷이 «여전히» `UndefinedColumn row_id` 로 죽습니다. 자리: `index_existing_refs → _index_one_chunk → _join_identities` 가 row_id 를 «무조건» SELECT — `frame_row_id` 를 «안 봅니다». `no_row_index` 는 `withdraw_deleted_rows` 만 압니다 → 「같은 기능 두 경로」(④). S-61-b, 지금** (09-08 12:45)
+```
+고칠 것   소급 색인이 «같은 답»을 지납니다: plan.frame_row_id 가 None 이면 SELECT «없이» result 에 no_row_index(소스 이름) · would_index 0 — 삭제 걸음과 «한 함수»가 답하게
+게이트    이 박스 뷰 넷: dry-run 이 no_row_index 로 «이름 대어» 0(거절 0) · 표 11: 색인 행 수 전/후 «동일»(변이: 무조건 SELECT 로 되돌리면 뷰에서 빨강)
+🔴 전제 정정  Ⓐ 보고의 「출하 카탈로그 44 전부 row_id」— 출하 `table_config.json.sample` 도 그 넷(뷰)에 row_id 가 «없습니다»(제가 읽음). 「이 배포만 다르다」가 아니라 «출하도 그렇습니다» — 그러니 그 실측은 무엇을 셌던 것인지 한 줄로
+🔒 S-61-b → (재기동 불요? — 소급 색인은 CLI 경로. 삭제 걸음은 이미 no_row_index 라 서버는 그대로 PID 34416) → S-54-b 닫음 → S-55 → S-57
+```
+> 📌 **[09-08 12:45] 이 채널의 미답 질문: «없음».**
