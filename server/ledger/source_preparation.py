@@ -61,6 +61,11 @@ SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"
 #: given eleven sources a delete path that silently did nothing, and the first fixture the
 #: ruling named sits inside the lucky four, so measuring only there would have passed.
 #:
+#: 🔴 AND "ALWAYS" WAS TOO WIDE, WHICH THE SHIPPED SAMPLE COULD NOT SHOW (판정 136). All 44
+#: relations there are TABLES; a source may legitimately read a VIEW, and a view has no
+#: `row_id`. So the COMPILER asks the catalogue per relation and stores the answer on
+#: `SourcePlan.frame_row_id` -- see there for why the absence is correct rather than a gap.
+#:
 #: ⚠️ IT GOES IN `base_select_columns` AND NOT IN `locked_select_columns`, deliberately. The
 #: second is what the authoring screen draws as pressed-and-locked chips, and this is not a
 #: column an author chose or may unchoose -- putting it there would offer the operator a
@@ -553,9 +558,12 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns
                    if column not in outputs)
-    # The engine's own column, on every source, whatever the declaration says. See
-    # `FRAME_ROW_ID_COLUMN`.
-    columns.add(FRAME_ROW_ID_COLUMN)
+    # The engine's own column -- on every source whose RELATION HAS ONE. 판정 136 narrowed
+    # 판정 135's "always": the compiler asks the catalogue and a source reading a VIEW gets
+    # `None`, because a view has no `row_id` and asking for it turns the SELECT into
+    # `UndefinedColumn` on the cursor path, on rescope and on the index backfill at once.
+    if source_plan.frame_row_id:
+        columns.add(source_plan.frame_row_id)
     return tuple(sorted(columns))
 
 

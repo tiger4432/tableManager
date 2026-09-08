@@ -455,6 +455,16 @@ def _ensure_trigram(cursor):
             % exc) from exc
 
 
+def ensure_row_ref_table(cursor):
+    """Make the row index exist. Idempotent, and the ONLY spelling of its DDL.
+
+    Called from `ensure_schema` and from the index backfill, because an install that has
+    not run a translation since this table was added has no table for the backfill to write
+    into -- and `UndefinedTable` from inside a paced job is a worse answer than making it.
+    """
+    cursor.execute(CREATE_ROW_REF)
+
+
 def ensure_schema(connection):
     """Create the ledger, the cursor table and the indexes. Idempotent, additive only.
 
@@ -476,7 +486,7 @@ def ensure_schema(connection):
         # translator is about to write an atom the narrow rule refuses. See the function.
         ensure_objectless_payload_constraint(cursor)
         cursor.execute(CREATE_CURSOR)
-        cursor.execute(CREATE_ROW_REF)
+        ensure_row_ref_table(cursor)
         for column, statement in LEDGER_ADDITIONS:
             if not column_exists(cursor, LEDGER_TABLE, column):
                 logger.info("[Ledger] adding %s.%s", LEDGER_TABLE, column)

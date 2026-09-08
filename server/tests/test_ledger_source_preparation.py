@@ -254,8 +254,9 @@ def test_existing_cursor_selects_only_base_physical_columns():
 
     columns = v2_base_select_columns(compiled, "input_rows")
 
-    assert columns == ("event_at", "event_key", "join_id", "record_id", "row_id",
-                       "source_id")
+    # 판정 136: this fixture catalogue declares no `row_id`, so the read asks for none --
+    # which is the view case, stated where it costs nothing to state.
+    assert columns == ("event_at", "event_key", "join_id", "record_id", "source_id")
     assert "target_id" not in columns
 
 
@@ -978,5 +979,4 @@ def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
     """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
     plain = v2_base_select_columns(snapshot(), "input_rows")
 
-    assert plain == ("event_at", "event_key", "join_id", "record_id", "row_id",
-                     "source_id")
+    assert plain == ("event_at", "event_key", "join_id", "record_id", "source_id")

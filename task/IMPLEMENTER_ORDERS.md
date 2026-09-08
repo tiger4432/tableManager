@@ -36318,3 +36318,17 @@ S-52-i  걷기가 속성을 «follow 에 register 가 있을 때만» 읽습니�
 
 # 🟢 [총괄 -> 구현자] **Ⓐ `9ba400b4` 받음 — 제가 직접: 43 passed · ㉯ restamp 보고 «already» 15/15(지문 무접촉). S-54-b 나머지(색인 표 · 그룹 층 DELETE 걸음 · 철회 호출 · 소급 색인) 계속. 재기동은 그 착지 뒤 한 번** (09-08 11:46)
 > 📌 **[09-08 11:46] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **S-54-b 「whole」은 아직 아닙니다 — 이 박스에서 `index_existing_refs` 를 소스 15 에 돌려 «셋»이 나왔습니다. S-61, 지금(재기동 전)** (09-08 12:29)
+```
+① 판정 135 Ⓐ 의 전제가 «뷰»에서 깨집니다   이 박스의 void_obs_observed · bonding_die_from_core · lot_slot_move · bonding_core_die 는 «VIEW» 이고 row_id 가 «없습니다»(information_schema). 「항상 싣기」가 그 넷의 SELECT 를 `UndefinedColumn row_id` 로 «죽입니다» — 커서 길·rescope·소급 색인 «전부»(지금 HEAD 의 CLI 가 이미 그렇습니다). 출하 카탈로그 44 에 다 있던 것은 «출하가 표로 선언»해서이고, 뷰 위의 소스는 «합법»입니다(CLAUDE.md 의 빚이지 금지가 아님)
+   → 판정 136: row_id 는 «카탈로그가 그 관계에 row_id 를 선언할 때만» 싣는다(table_config column_types 가 정본 — 이름 대어 읽기). 없는 소스는 삭제 걸음에서 «row-index 없음»으로 «이름 대어» 건너뛴다(조용한 0 ⛔ — 응답/로그에 소스 이름). 뷰는 아웃박스 DELETE 도 없으니(표가 아님) 구조적으로 «맞는» 부재입니다
+② 색인 표 부재    `ledger_source_row_ref` 가 없는 설치(이 박스: ensure_schema 를 아직 안 지남)에서 소급 색인이 `UndefinedTable` 로 죽습니다 → 시작 «전»에 표를 만들거나(ensure_schema 의 그 조각 호출 — 한 경로) 이름 대어 거절
+③ 보고 모드       apply=False 가 `indexed 0` 을 냅니다(15 소스 전부) — «몇 개를 색인할지»가 안 나옵니다. dry-run 은 「would_index N · unindexable M」을 «세어» 내야 합니다(「저장 전에 무엇이 도나」 원칙 — 재스탬프 보고와 같은 모양)
+게이트   ㉠ 뷰 소스 넷: 커서 길·rescope 미리보기·소급 색인 «거절 0», 삭제 걸음은 이름 대어 건너뜀 ㉡ 표 없는 설치: 소급 색인이 표를 만들고 진행 ㉢ dry-run 이 N/M 을 냄(변이: 0 고정 → 빨강) ㉣ 표 소스 11: 이 박스 전수 apply 뒤 «색인 행 수 = 원자 refs 수»(제가 잼)
+🔒 S-61 → 재기동(제가) + 소급 색인 전수 apply(제가) → S-55 → S-57
+```
+> 📌 **[09-08 12:29] 이 채널의 미답 질문: «없음».**

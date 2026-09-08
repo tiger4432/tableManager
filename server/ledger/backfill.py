@@ -713,6 +713,56 @@ def _ref_row_keys(ref):
     return out
 
 
+def _group_ref_identities(refs):
+    """-> `(groups, owners, unreadable)` for a set of `source_raw_ref` strings.
+
+    `groups[(relation, key_names)]` is the set of identity tuples to look for, and
+    `owners[(relation, key_names, identity)]` is the refs that named it. Written once
+    because the orphan count and the index backfill ask the SAME question of the SAME
+    strings -- if the two grouped differently, one would index a row the other calls gone.
+    """
+    groups: dict = {}
+    owners: dict = {}
+    unreadable = 0
+    for ref in refs:
+        try:
+            named = _ref_row_keys(ref)
+        except Exception:
+            unreadable += 1
+            continue
+        for relation, keys in named:
+            names = tuple(sorted(keys))
+            identity = tuple(keys[name] for name in names)
+            groups.setdefault((relation, names), set()).add(identity)
+            owners.setdefault((relation, names, identity), set()).add(ref)
+    return groups, owners, unreadable
+
+
+def _join_identities(cursor, relation, names, identities, extra_columns=()):
+    """Which of these identities the relation still has. `-> [(identity, extras...)]`.
+
+    One query per thousand rather than one per identity: three sessions share this database
+    and a per-row loop is someone else's wait.
+
+    `extra_columns` rides along for a caller that needs more than the answer to "is it
+    there" -- the index backfill needs the `row_id` of the row it found. The predicate is
+    the same either way, which is the point of the shared function.
+    """
+    columns = ", ".join('"%s"' % name for name in names)
+    selected = ", ".join('"%s"' % name for name in (*names, *extra_columns))
+    out = []
+    items = sorted(identities, key=lambda item: [str(value) for value in item])
+    for start in range(0, len(items), ORPHAN_CHUNK):
+        chunk = tuple(items[start:start + ORPHAN_CHUNK])
+        cursor.execute(
+            'SELECT %s FROM "%s" WHERE (%s) IN %%s' % (selected, relation, columns),
+            (chunk,))
+        for row in cursor.fetchall():
+            out.append(tuple(row[:len(names)]) if not extra_columns
+                       else (tuple(row[:len(names)]), *row[len(names):]))
+    return out
+
+
 def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
     """Atoms this source wrote whose SOURCE ROW no longer exists. READ ONLY.
 
@@ -755,32 +805,12 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
             if result["truncated"]:
                 result["count_kind"] = "sample"
 
-            groups, owners = {}, {}
-            for ref in refs:
-                try:
-                    named = _ref_row_keys(ref)
-                except Exception:
-                    result["unreadable_refs"] += 1
-                    continue
-                for relation, keys in named:
-                    names = tuple(sorted(keys))
-                    identity = tuple(keys[name] for name in names)
-                    groups.setdefault((relation, names), set()).add(identity)
-                    owners.setdefault((relation, names, identity), set()).add(ref)
+            groups, owners, unreadable = _group_ref_identities(refs)
+            result["unreadable_refs"] = unreadable
 
             gone_refs = set()
             for (relation, names), wanted in groups.items():
-                columns = ", ".join('"%s"' % name for name in names)
-                found = set()
-                items = sorted(wanted, key=lambda item: [str(v) for v in item])
-                # One query per thousand identities rather than one per identity: three
-                # sessions share this database and a per-row loop is someone else's wait.
-                for start in range(0, len(items), ORPHAN_CHUNK):
-                    chunk = tuple(items[start:start + ORPHAN_CHUNK])
-                    cursor.execute(
-                        'SELECT %s FROM "%s" WHERE (%s) IN %%s'
-                        % (columns, relation, columns), (chunk,))
-                    found.update(tuple(row) for row in cursor.fetchall())
+                found = set(_join_identities(cursor, relation, names, wanted))
                 for identity in wanted - found:
                     result["rows_gone"] += 1
                     gone_refs |= owners[(relation, names, identity)]
@@ -873,6 +903,119 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     return result
 
 
+#: How many distinct refs one paced cycle of the index backfill reads.
+INDEX_BACKFILL_CHUNK = 1000
+
+#: How many unindexable refs the report NAMES before it stops listing them. A count says how
+#: big the hole is; the names say which rows are in it, and an operator cannot act on the
+#: first without a few of the second.
+INDEX_BACKFILL_SAMPLE = 20
+
+
+def index_existing_refs(engine, source, apply=False, pace=None,
+                        chunk=INDEX_BACKFILL_CHUNK):
+    """Recover `(relation, row_id) -> source_raw_ref` for atoms written before the index.
+
+    🔴 ONE-OFF AND PACED, because it reads every distinct ref a source ever wrote and joins
+    each identity back against the source table. It is not on any request path, nobody is
+    waiting for it, and the pace comes from the same declaration every other long job reads.
+
+    🔴 A REF THAT WILL NOT JOIN IS NOT A FAILURE OF THIS JOB. It means the physical row is
+    already gone -- the atom was ALREADY an orphan before the index existed, and this could
+    not have caught it either way. Those are counted and NAMED (`unindexable_sample`) and
+    left exactly where they are: no delete event was ever seen for them, and 「투영은 지워도
+    기록은 안 된다」. Folding them into a failure count would report a fact about the data as
+    a fault of the tool.
+
+    ⚠️ IT USES THE SAME GROUPING AND THE SAME JOIN AS `count_orphan_atoms`. If the two asked
+    differently, this would index a row that one calls present and the other calls gone.
+
+    `apply=False` reports what it would write and writes nothing.
+    """
+    from . import schema
+    from .source_preparation import FRAME_ROW_ID_COLUMN
+    from .store import LedgerStore
+
+    units, rest = resolve_pace(pace)
+    store = LedgerStore(engine)
+    # 🔴 A DRY RUN THAT ANSWERS `0` ANSWERS NOTHING. 「저장 전에 무엇이 도나」 -- the point of
+    # running this without `--apply` is to learn the size of the job, so `would_index` is
+    # counted on both paths and `indexed` counts only what was written.
+    result = {"source": source, "refs_total": 0, "refs_read": 0,
+              "would_index": 0, "indexed": 0,
+              "unreadable_refs": 0, "unindexable_refs": 0, "unindexable_sample": [],
+              "applied": bool(apply), "pace": pace or "fast"}
+    connection = store.connection()
+    try:
+        with connection.cursor() as cursor:
+            # An install that has not run a translation since the index was added has no
+            # table to write into, and `UndefinedTable` out of a paced job is a worse
+            # answer than making it. Same DDL as `ensure_schema`, called rather than copied.
+            schema.ensure_row_ref_table(cursor)
+        connection.commit()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT count(DISTINCT source_raw_ref) FROM {schema.LEDGER_TABLE} "
+                "WHERE source_who = %s", (source,))
+            result["refs_total"] = int(cursor.fetchone()[0])
+        offset = 0
+        done = 0
+        while True:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT DISTINCT source_raw_ref FROM {schema.LEDGER_TABLE} "
+                    "WHERE source_who = %s ORDER BY source_raw_ref LIMIT %s OFFSET %s",
+                    (source, chunk, offset))
+                refs = [row[0] for row in cursor.fetchall()]
+            if not refs:
+                break
+            offset += len(refs)
+            result["refs_read"] += len(refs)
+            _index_one_chunk(connection, store, source, refs, result, apply)
+            done += 1
+            if units is not None and done >= units:
+                done = 0
+                if rest:
+                    time.sleep(rest)
+    finally:
+        connection.rollback()
+        connection.close()
+    return result
+
+
+def _index_one_chunk(connection, store, source, refs, result, apply):
+    """One paced unit: group, join, write. The unit is where resuming is exact."""
+    from .source_preparation import FRAME_ROW_ID_COLUMN
+
+    groups, owners, unreadable = _group_ref_identities(refs)
+    result["unreadable_refs"] += unreadable
+    pairs = []
+    resolved = set()
+    with connection.cursor() as cursor:
+        for (relation, names), wanted in groups.items():
+            for identity, row_id in _join_identities(
+                    cursor, relation, names, wanted,
+                    extra_columns=(FRAME_ROW_ID_COLUMN,)):
+                if row_id is None:
+                    continue
+                resolved.add((relation, names, identity))
+                for ref in owners[(relation, names, identity)]:
+                    pairs.append((relation, str(row_id), ref))
+    missing = [key for key in owners if key not in resolved]
+    result["unindexable_refs"] += len(missing)
+    for relation, names, identity in missing[:max(
+            0, INDEX_BACKFILL_SAMPLE - len(result["unindexable_sample"]))]:
+        result["unindexable_sample"].append(
+            {"relation": relation,
+             "identity": dict(zip(names, [str(value) for value in identity]))})
+    result["would_index"] += len(pairs)
+    if not apply or not pairs:
+        return
+    store._write_row_refs(connection, source, pairs)
+    connection.commit()
+    result["indexed"] += len(pairs)
+
+
 def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     """Withdraw the atoms of physical rows that are GONE. No remake -- see below.
 
@@ -901,7 +1044,16 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     store = LedgerStore(engine)
     ids = [str(item) for item in (row_ids or ()) if item]
     result = {"relation": relation, "rows": len(ids), "applied": False,
-              "sources": {}, "forgotten": 0}
+              "sources": {}, "forgotten": 0, "no_row_index": []}
+    # 🔴 A SOURCE WITH NO ROW INDEX IS NAMED, NOT PASSED OVER IN SILENCE (판정 136). A source
+    # reading a VIEW has no `row_id` to index by, so this step can do nothing for it -- and
+    # a quiet zero would be indistinguishable from "there was nothing to withdraw". The
+    # absence is structurally correct (nothing writes an outbox DELETE for a view), which is
+    # the reason to say it plainly rather than to treat it as a gap.
+    plans = getattr(getattr(setup, "snapshot", None), "source_plans", None) or {}
+    result["no_row_index"] = sorted(
+        name for name, plan in plans.items()
+        if plan.relation == relation and not getattr(plan, "frame_row_id", None))
     if not ids:
         return result
     by_source: dict = {}

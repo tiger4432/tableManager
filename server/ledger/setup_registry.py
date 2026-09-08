@@ -71,6 +71,19 @@ def _plain(value: Any) -> Any:
     return value
 
 
+#: Compiled fields that are NOT "material that could change an atom", and so must stay out
+#: of every fingerprint.
+#:
+#: `config_path` is where a refusal points, not what it refuses.
+#:
+#: 🔴 `frame_row_id` IS HOW THE ENGINE READS, NOT WHAT IT SAYS (판정 136). It names the
+#: engine-owned `row_id` column when the catalogue declares one for the relation, and the
+#: atoms are byte-identical either way -- MEASURED on `dt_job`'s code mapper, the same row
+#: translated with and without the column in the frame. Leaving it in moved all fifteen
+#: cursor fingerprints, which is exactly the restamp cost 판정 135 chose Ⓐ over Ⓒ to avoid.
+_NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id"})
+
+
 def _semantic_plain(value: Any) -> Any:
     if isinstance(value, _SealedRegistry):
         return {key: _semantic_plain(value[key]) for key in value}
@@ -81,7 +94,8 @@ def _semantic_plain(value: Any) -> Any:
         return {
             field.name: _semantic_plain(getattr(value, field.name))
             for field in fields(value)
-            if not field.name.startswith("_") and field.name != "config_path"
+            if not field.name.startswith("_")
+            and field.name not in _NOT_ATOM_MATERIAL
         }
     if isinstance(value, (tuple, list)):
         return [_semantic_plain(item) for item in value]
@@ -351,6 +365,19 @@ class SourcePlan:
     driver: SourceDriverPlan
     profile: ProfileDescriptor
     config_path: str
+    #: The engine's `row_id` column WHEN THIS RELATION HAS ONE, else `None` (판정 136).
+    #:
+    #: 🔴 THE CATALOGUE DECIDES, NOT THE ENGINE. 판정 135 said "always", measured against the
+    #: shipped sample where all 44 relations are TABLES and every one declares it. A source
+    #: may legitimately read a VIEW -- four do on the deployment this was found on -- and a
+    #: view has no `row_id`, so "always" turned their SELECT into `UndefinedColumn` on the
+    #: cursor path, on rescope and on the index backfill at once.
+    #:
+    #: ⚠️ THE ABSENCE IS CORRECT RATHER THAN TOLERATED. A view is not a table, so nothing
+    #: ever writes an outbox DELETE for it; there is no delete to follow and therefore
+    #: nothing the index could have done. What must not happen is the delete step going
+    #: quiet about it -- it names the source instead.
+    frame_row_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -634,7 +661,7 @@ def compile_setup_snapshot(
     verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
         bundle.section("sources"), preparers, mappers, profiles,
-        verified_join_registry, entities)
+        verified_join_registry, entities, catalog)
 
     bundle_canonical_json = bundle.serialize()
     bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
@@ -1096,6 +1123,27 @@ def _compile_registration_probe(
     return tuple(sorted(out, key=lambda probe: probe.entity_type))
 
 
+def _declared_row_id(catalog, relation):
+    """`row_id` when the catalogue declares it for this relation, else `None`.
+
+    🔴 `table_config` IS THE AUTHORITY AND IT IS READ BY NAME. Asking the database instead
+    would make the answer depend on which database the compiler happened to be near, and a
+    snapshot compiled without one would differ from the same file compiled with one.
+    """
+    from .source_preparation import FRAME_ROW_ID_COLUMN
+
+    entry = (catalog or {}).get(relation) or {}
+    columns = entry.get("columns") if isinstance(entry, Mapping) else None
+    if isinstance(columns, Mapping):
+        names = set(columns)
+    elif isinstance(columns, (list, tuple)):
+        names = {item.get("name") if isinstance(item, Mapping) else item
+                 for item in columns}
+    else:
+        return None
+    return FRAME_ROW_ID_COLUMN if FRAME_ROW_ID_COLUMN in names else None
+
+
 def _compile_source_plans(
     section: Mapping[str, Any],
     preparers: SourcePreparerRegistry,
@@ -1103,6 +1151,7 @@ def _compile_source_plans(
     profiles: ProfileRegistry,
     verified_joins: VerifiedJoinRegistry,
     entities: EntityTypeRegistry,
+    catalog: Mapping[str, Any] = None,
 ) -> SourcePlanRegistry:
     builder = _RegistryBuilder(SourcePlanRegistry)
     for source_id, item in section.items():
@@ -1116,6 +1165,7 @@ def _compile_source_plans(
         builder.add(source_id, SourcePlan(
             source_id=source_id,
             relation=item["relation"],
+            frame_row_id=_declared_row_id(catalog, item["relation"]),
             driver=SourceDriverPlan(
                 unit=driver["unit"],
                 identity=tuple(driver["identity"]),
