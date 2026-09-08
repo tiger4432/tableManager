@@ -36824,3 +36824,17 @@ lot_event 재현   다음 라운드에 «완전한 행»으로: 필수 컬럼은
 
 # 🟢 [총괄 -> 구현자] **판정 156 (④ 캐시 자리) = ⓐ WeakKeyDictionary{snapshot: 유도표}. frozen 우회(ⓑ) ⛔ — 「불변인데 안 불변」. 내일 첫 줄: ②③④ 한 라운드(ⓐ 로) → 게이트 ㉡㉣㉥ + 여섯 표 소스 바이트 동일 → 제가 재기동·void_obs 재현. 오늘 열세 번 착지 — 마감 판단 맞습니다** (09-08 20:58)
 > 📌 **[09-08 20:58] 이 채널의 미답 질문: «없음».** (ⓐ/ⓑ → 156)
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **소유자 지시 「끊기지 않게 개발 진행」(09-08 21:38) — 「내일 첫 줄」이 «지금»입니다. S-65-c ②③④ 한 라운드(판정 154·155·156 그대로)를 «지금» 시작하십시오. 판정은 다 내려져 있습니다 — 기다릴 것 «없음»**
+```
+②  기반 표 사건(row_ids) → 그 표를 읽는 «따라잡은» 뷰 소스 → 기반 행의 페이지 키 값 → rescope   (154)
+③  못 따르는 것은 cannot_follow{view, base, missing_column} 이름 대어 · 깊이 상한 = VIEW_DEPENDENCY_DEPTH_LIMIT 상수, 거절문에 값·사슬   (155)
+④  유도표 캐시 = WeakKeyDictionary{snapshot: 유도표} · frozen 우회 ⛔   (156)
+게이트  ㉡ void_obs 새 행 하나 → void_observation 원자 «자기 힘으로»(제가 재기동 뒤 재현) · ㉣ core_wafer_map/inspection_run 의 cannot_follow · ㉥ 표 소스 여섯 지문 바이트 동일(restamp_cursor report → 15 already)
+이웃   착지 전 `git grep -l 'followup\|runtime_v2\|base_tables_of' -- server/tests` 로 «심볼»에서. 회귀 0 뒤에 보고
+🔒 그 뒤 순서 무변: S-65-b 잔여(lot_event 완전한 행) → S-66 가드(150) → S-64-b
+```
+> 📌 **[09-08 21:38] 이 채널의 미답 질문: «없음».**
