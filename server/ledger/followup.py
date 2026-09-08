@@ -543,7 +543,10 @@ def drain_once(engine, setup):
                 # and a null page key would have been refused by the read long before now.
                 done["sources"][source] = {"scope_values": 0}
                 continue
-            result = backfill.rescope(engine, setup, source, column, values, apply=True)
+            # 🔴 A CREATE IS TRANSLATED ONCE (판정 166). There is nothing to withdraw for a
+            # row that has just appeared, and the preview exists only to aim a withdrawal.
+            result = backfill.rescope(engine, setup, source, column, values, apply=True,
+                                      withdraw=(event_type != "CREATE"))
             done["sources"][source] = {
                 "scope_values": len(values),
                 "withdrawn": result.get("withdrawn", 0),

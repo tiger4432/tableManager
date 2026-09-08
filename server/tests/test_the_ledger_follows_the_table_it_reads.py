@@ -120,9 +120,12 @@ def one_source_on(table, cursor_columns=("dt_job",), identity=("dt_job",)):
 def calls_to_rescope(monkeypatch, result=None):
     seen = []
 
-    def fake(engine, setup, source, column, values, apply=False):
+    def fake(engine, setup, source, column, values, apply=False, withdraw=True):
+        # `withdraw` arrived with 판정 166: a CREATE has nothing to withdraw, so it is
+        # translated ONCE. Recording it here is what lets a case assert which kind of event
+        # it was following.
         seen.append({"source": source, "column": column, "values": list(values),
-                     "apply": apply})
+                     "apply": apply, "withdraw": withdraw})
         return result or {"withdrawn": 1, "inserted": 1, "deduped": 0}
 
     monkeypatch.setattr(backfill, "rescope", fake)
@@ -373,3 +376,29 @@ def test_the_follow_up_starts_on_the_slowest_declared_pace():
     slowest = max(rest, key=lambda name: rest[name])
     assert pacing.load_jobs()["chain_followup"] == slowest
     assert pacing.job_pace(followup.FOLLOWUP_JOB) == pacing.resolve(slowest)
+
+
+# ------------------------------------------------------- 판정 166: a CREATE translates once
+
+def test_a_create_is_translated_once_and_an_edit_twice(monkeypatch):
+    """🔴 THE PREVIEW EXISTS TO AIM A WITHDRAWAL, and a row that has just appeared holds
+    nothing to withdraw -- so for a CREATE that first translation answers a question with no
+    content. Measured 2026-09-09 on `lot_event`: 27.16 ms per molecule became 10.61, which is
+    also below the cursor path's 15.66.
+
+    ⚠️ AN EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
+    withdrawing would leave the old generation standing beside the new one."""
+    seen = calls_to_rescope(monkeypatch)
+    # A CREATE is only followed for a source already seen caught up (판정 144); that
+    # question is a separate seam and is not this case's subject.
+    monkeypatch.setattr(followup, "caught_up_sources",
+                        lambda engine, sources: set(sources))
+    engine = FakeEngine([("J1",)])
+    followup.enqueue("dt_log", ["r1"], "CREATE")
+    followup.drain_once(engine, one_source_on("dt_log"))
+    assert [call["withdraw"] for call in seen] == [False], seen
+
+    seen.clear()
+    followup.enqueue("dt_log", ["r1"], "EDIT")
+    followup.drain_once(engine, one_source_on("dt_log"))
+    assert [call["withdraw"] for call in seen] == [True], seen

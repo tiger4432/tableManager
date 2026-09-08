@@ -835,7 +835,8 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
     return result
 
 
-def rescope(engine, setup, source, scope_column, scope_values, apply=False):
+def rescope(engine, setup, source, scope_column, scope_values, apply=False,
+            withdraw=True):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -886,11 +887,23 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
 
-    result = preview_rescope(engine, setup, source, scope_column, scope_values)
-    refs = result.pop("refs", [])
+    # 🔴 `withdraw=False` TRANSLATES ONCE, AND A CREATE IS EXACTLY THAT CASE (판정 166).
+    # The preview exists to AIM a withdrawal: it compiles the rows to learn which refs the
+    # ledger currently holds for them. A row that has just been created holds none, so that
+    # first translation answers a question with no content -- and it is not free. Measured
+    # 2026-09-09 on `lot_event`, the event path cost 27.16 ms/molecule against the cursor
+    # path's 15.66, and the whole gap was this second pass.
+    #
+    # ⚠️ EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
+    # withdrawing would leave the old generation standing beside the new one.
+    if withdraw:
+        result = preview_rescope(engine, setup, source, scope_column, scope_values)
+        refs = result.pop("refs", [])
+    else:
+        result, refs = {"rows_in_scope": None, "previewed": False}, None
     result.update({"applied": False, "withdrawn": 0,
                    "attempted": 0, "inserted": 0, "deduped": 0})
-    if not apply or not refs:
+    if not apply or (withdraw and not refs):
         return result
 
     plan = setup.snapshot.source_plans[source]
@@ -904,6 +917,8 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
         read.rollback()
         read.close()
     frame = _v2_frame(rows)
+    if result.get("rows_in_scope") is None:
+        result["rows_in_scope"] = len(frame)
     subjects = _v2_registration_subjects(plan, frame)
     executed = execute_selected_scoped_batch(
         setup, source, frame, scoped, _no_join_reader(), store,
