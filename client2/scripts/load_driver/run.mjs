@@ -86,7 +86,7 @@ const observed = {
   chain_rows_per_transaction: null,
   atoms: null,
 };
-const header = specHeader(decl.spec, observed);
+const header = specHeader(decl.spec, observed, decl.given);
 
 console.log('# C-41 ten-user driver');
 console.log(`# declaration: ${declPath}`);
@@ -98,7 +98,8 @@ console.log('#');
 console.log('# spec coverage of THIS box — an unmet axis makes every number below a 박스 수:');
 for (const row of header) {
   console.log(`#   ${String(row.axis).padEnd(28)} want ${String(row.want).padEnd(10)}`
-    + ` got ${String(row.got === null ? '—' : row.got).padEnd(10)} ${row.verdict}`);
+    + ` got ${String(row.got === null ? '—' : row.got).padEnd(10)}`
+    + ` ${String(row.verdict).padEnd(6)} ${row.source || ''}`);
 }
 console.log(`# VERDICT: ${meetsSpec(header) ? '운영 모양 박스' : '규격 미달 박스에서 — 이 표의 수는 «박스 수»'}`);
 console.log('#');

@@ -9,11 +9,16 @@
     "users": 10,
     "atoms": 10000000
   },
+  "given": {
+    "$comment": "Axes this driver CANNOT measure, handed over by the Lead PM on 2026-09-08 15:20 and printed with their provenance. A supplied value is used ONLY where the driver has nothing of its own -- a measurement is never overwritten by a claim, least of all one that fell short.",
+    "chain_rows_per_transaction": { "value": 3008, "source": "총괄 실측" },
+    "atoms": { "value": 902801, "source": "총괄 실측" }
+  },
   "metadata_table": "wafer_map_metadata",
   "lanes": [
     { "id": "u01",
       "grid": { "table": "lot_event", "limit": 100, "order_by": "row_id", "order_desc": false },
-      "map": { "table": "bonding_map", "map_id": "4B12" },
+      "map": { "table": "dt_map", "map_id": "SYN-MAP20_1" },
       "walk": { "type": "wafer@1", "keys": { "wafer": "SYN-CX-BW-001" }, "follow": ["inspected", "observed"], "hops": 2 } },
     { "id": "u02",
       "grid": { "table": "process_event", "limit": 100, "order_by": "row_id", "order_desc": false },

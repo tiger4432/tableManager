@@ -166,13 +166,25 @@ export function gridOf(body) {
  *    carry, at its head, which axes were met. An unmet axis is named; an axis nobody could
  *    measure is named as unmeasured, which is a third state and not a zero.
  */
-export function specHeader(spec, observed) {
+export function specHeader(spec, observed, given) {
   return SPEC_AXES.map((axis) => {
     const want = spec ? spec[axis] : undefined;
-    const got = observed ? observed[axis] : undefined;
-    if (got === undefined || got === null) return { axis, want, got: null, verdict: '못 셈' };
+    const mine = observed ? observed[axis] : undefined;
+    // 🔴 A MEASUREMENT BEATS A CLAIM, ALWAYS. Someone handing this driver a number for an axis
+    //    it CAN measure would be overwriting an observation with an assertion — and the axis
+    //    most worth overwriting is the one that fell short. So a supplied value is used only
+    //    where this driver has nothing of its own.
+    const handed = mine === undefined || mine === null ? (given ? given[axis] : undefined) : null;
+    const got = mine === undefined || mine === null
+      ? (handed && handed.value !== undefined ? handed.value : undefined) : mine;
+    // 🔴 AND WHERE IT CAME FROM RIDES WITH IT. 「this driver watched it」 and 「somebody told
+    //    me」 are different kinds of fact, and a header that printed them alike would let one
+    //    lane's claim be quoted as a measurement.
+    const source = got === undefined || got === null ? null
+      : (handed && handed.value !== undefined ? String(handed.source || '받은 수') : '이 드라이버');
+    if (got === undefined || got === null) return { axis, want, got: null, source: null, verdict: '못 셈' };
     const met = typeof want === 'number' && typeof got === 'number' ? got >= want : got === want;
-    return { axis, want, got, verdict: met ? '갖춤' : '미달' };
+    return { axis, want, got, source, verdict: met ? '갖춤' : '미달' };
   });
 }
 

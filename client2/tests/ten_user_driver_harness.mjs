@@ -150,6 +150,32 @@ function suite(M) {
     && M.specHeader(spec, { map_grid: '40x40' }).find((r) => r.axis === 'map_grid').verdict === '미달',
   'H7 a numeric axis is met by more, a shape axis only by the shape');
 
+  // ══ ⑤-bis 남이 준 수 — 쓰되, «어디서 왔는지»를 달고 ═════════════════════════════════
+  // 🔴 A MEASUREMENT IS NEVER OVERWRITTEN BY A CLAIM. Two axes here cannot be measured from
+  //    the public surface, so somebody has to hand them over — and the moment a handed number
+  //    can replace a measured one, the axis most worth replacing is the one that fell short.
+  const given = { atoms: { value: 902801, source: '총괄 실측' },
+    map_grid: { value: '20x20', source: '총괄 실측' } };
+  {
+    const h = M.specHeader(spec, { users: 10, map_grid: '27x21' }, given);
+    const row = (axis) => h.find((r) => r.axis === axis);
+    ok(row('atoms').got === 902801 && row('atoms').verdict === '미달',
+      'H8 an axis nobody could measure takes the handed number, and is still judged',
+      JSON.stringify(row('atoms')));
+    ok(row('atoms').source === '총괄 실측',
+      'H9 ...and it says whose number it is', String(row('atoms').source));
+    ok(row('users').source === '이 드라이버',
+      'H10 a measured axis says it measured itself', String(row('users').source));
+    // 🔴 THE DISCRIMINATOR. `map_grid` is measured AND handed over, and the two disagree: a
+    //    27x21 box with somebody saying 20x20. The measurement has to win, or a shortfall can
+    //    be talked away — which is the exact use this parameter would be abused for.
+    ok(row('map_grid').got === '27x21' && row('map_grid').verdict === '미달'
+      && row('map_grid').source === '이 드라이버',
+    'H11 a handed number does NOT overwrite what the driver measured', JSON.stringify(row('map_grid')));
+  }
+  ok(M.specHeader(spec, {}, {}).every((r) => r.verdict === '못 셈' && r.source === null),
+    'H12 CONTROL: nothing measured and nothing handed is still 못 셈, with no source');
+
   // ══ ⑥ 맵 격자는 «응답에서» 읽습니다 ═════════════════════════════════════════════════
   const metaBody = { data: [{ data: { grid_metadata: { value: '{"grid_cols":20,"grid_rows":20}' } } }] };
   ok(M.gridOf(metaBody) === '20x20', 'G1 the grid is read off the metadata row',
@@ -196,8 +222,13 @@ const DEFECTS = [
     (s) => s.replace('  edges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);',
       '  edges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);')],
   ['an axis nobody could measure is reported as met',
-    (s) => s.replace("    if (got === undefined || got === null) return { axis, want, got: null, verdict: '못 셈' };",
-      "    if (got === undefined || got === null) return { axis, want, got: null, verdict: '갖춤' };")],
+    (s) => s.replace("source: null, verdict: '못 셈' }", "source: null, verdict: '갖춤' }")],
+  ['a handed number overwrites what the driver measured, so a shortfall can be talked away',
+    (s) => s.replace('    const handed = mine === undefined || mine === null ? (given ? given[axis] : undefined) : null;',
+      '    const handed = given ? given[axis] : undefined;')],
+  ['a handed number is printed as if this driver had measured it',
+    (s) => s.replace("      : (handed && handed.value !== undefined ? String(handed.source || '받은 수') : '이 드라이버');",
+      "      : '이 드라이버';")],
   ['a shape axis is met by anything that was measured',
     (s) => s.replace('    const met = typeof want === \'number\' && typeof got === \'number\' ? got >= want : got === want;',
       '    const met = true;')],
