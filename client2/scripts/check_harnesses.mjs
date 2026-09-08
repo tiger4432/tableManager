@@ -1224,6 +1224,13 @@ const FLOORS = new Map([
   // response cannot tell 'walk the table list' from 'walk the map's keys' -- the two agree
   // on it -- so the fixture is built with them DISAGREEING.
   ['map_table_list_harness.mjs', 16],
+  // New 2026-09-08 with C-45's remaining gate. Floor is the count it reports on the commit
+  // that introduces it. 🔴 IT IS SMALL AND IT IS THE ONE THAT MEASURES: the board is rendered
+  // TWICE -- records whole, and with the narrowing put back -- and the drawn text must match.
+  // Two of the five are the control: if the two builds produced the same view models, or if
+  // the board drew nothing, a zero diff would be a comparison with itself.
+  ['board_render_parity_harness.mjs', 5],
+
 
 
 

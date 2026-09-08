@@ -37,13 +37,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 // 🔴 정규화는 «한 자리»입니다 (`readSourceText`). 사본을 각자 들면 갈립니다 —
 //    2026-09-07 실측: 그 사본이 서른셋이었고, 새 하니스는 그것을 안 들고 태어납니다.
 import { readSourceText } from './lib/probe.mjs';
+import { loadBoardModules, BOARD_DIR } from './lib/board_modules.mjs';
+import { makeDoc, makeObserver, flush, walk, canvasIn, byClass } from './lib/board_dom.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SRC_DIR = path.join(HERE, '..', 'src');
-const BOARD_DIR = path.join(SRC_DIR, 'rnd_board');
-const srcUrl = (rel) => pathToFileURL(path.join(SRC_DIR, rel)).href;
 const dataUrl = (src) => `data:text/javascript;base64,${Buffer.from(src, 'utf8').toString('base64')}`;
 
 const FIX_07 = JSON.parse(readFileSync(
@@ -51,183 +50,15 @@ const FIX_07 = JSON.parse(readFileSync(
 const FIX_03 = JSON.parse(readFileSync(
   path.join(HERE, 'fixtures', 'rnd_board_lot_map_slot03.json'), 'utf8').replace(/\r\n/g, '\n'));
 
-// ── loading the modules under test, with an optional mutation per file ─────────────
-//
-// The relative imports are rewritten so a mutated copy still pulls the OTHER modules under
-// test (mutated or not), and reaches the real `map2/painter.js` where it sits.
+// ── loading the modules under test ────────────────────────────────────────────────
+// 🔴 THE LOADER MOVED TO  (2026-09-08). The render-parity harness
+//    needs the SAME wiring, and a copy would drift the first time a part is added — where
+//    the symptom is not one red assertion but ERR_INVALID_URL before any check runs.
+const loadModules = loadBoardModules;
 
-async function loadModules(mutate = {}) {
-  // 🔴 THE TEXTS ARE CARRIED OUT WITH THE MODULES. Section F scans SOURCE, and scanning the
-  // file on disk would make it blind to every mutant -- which is exactly what it did on the
-  // first run: M5 (a module-level `let` prepended to `map_panel.js`) sailed through, because
-  // the scan was reading the shipped file while the suite drove the mutated one.
-  const sources = {};
-  const read = (file) => {
-    const text = readSourceText(path.join(BOARD_DIR, file)).text
-      .replace(new RegExp(String.fromCharCode(13, 10), 'g'), String.fromCharCode(10));
-    const fn = mutate[file];
-    sources[file] = fn ? fn(text) : text;
-    return sources[file];
-  };
-  // 🔴 스타일시트도 «채점 대상»입니다. 오늘 화면을 깬 것은 자바스크립트가 아니라 CSS 한 줄
-  //    (flex-wrap)이었고, 소스에 안 읽어 두면 그 부류는 변이도 단언도 못 겁니다.
-  read('board.css');
-  const storeUrl = dataUrl(read('marking_store.js'));
-  const apiUrl = dataUrl(read('api.js'));
-  const panelUrl = dataUrl(read('panel.js')
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const mapUrl = dataUrl(read('map_panel.js')
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`)
-    .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`)
-    .replaceAll("'../map2/seating.js'", `'${srcUrl('map2/seating.js')}'`));
-  const shellUrl = dataUrl(read('grid_shell.js'));
-  const interUrl = dataUrl(read('marking_intersection.js')
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
-  // composition root cannot load at all -- which is how it failed the moment they landed.
-  const tableUrl = dataUrl(read('table_part.js')
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
-  const partUrl = (file) => dataUrl(read(file)
-    .replaceAll("'./panel.js'", `'${panelUrl}'`)
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
-    .replaceAll("'./table_part.js'", `'${tableUrl}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`));
-  const headUrl = partUrl('head_summary_panel.js');
-  const compUrl = partUrl('composition_panel.js');
-  const candUrl = partUrl('candidate_list_panel.js');
-  const rankUrl = partUrl('rank_list_panel.js');
-  const ctlUrl = partUrl('control_bar_panel.js');
-  const trendUrl = partUrl('main_trend_panel.js');
-  const statusUrl = partUrl('marking_status_panel.js');
-  const declUrl = partUrl('declaration_panel.js');
-  const mainUrl = dataUrl(read('main.js')
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
-    .replaceAll("'./grid_shell.js'", `'${shellUrl}'`)
-    .replaceAll("'./marking_intersection.js'", `'${interUrl}'`)
-    .replaceAll("'./map_panel.js'", `'${mapUrl}'`)
-    .replaceAll("'./head_summary_panel.js'", `'${headUrl}'`)
-    .replaceAll("'./composition_panel.js'", `'${compUrl}'`)
-    .replaceAll("'./candidate_list_panel.js'", `'${candUrl}'`)
-    .replaceAll("'./rank_list_panel.js'", `'${rankUrl}'`)
-    .replaceAll("'./control_bar_panel.js'", `'${ctlUrl}'`)
-    .replaceAll("'./main_trend_panel.js'", `'${trendUrl}'`)
-    .replaceAll("'./marking_status_panel.js'", `'${statusUrl}'`)
-    .replaceAll("'./declaration_panel.js'", `'${declUrl}'`)
-    .replaceAll("'./expanded_layer_panel.js'", `'${partUrl('expanded_layer_panel.js')}'`)
-    // 🔴 A PART THIS LIST FORGETS TAKES THE WHOLE HARNESS DOWN, not one assertion: the
-    //    composition root's import throws ERR_INVALID_URL before a single check runs.
-    //    Every part `main.js` imports has to be here.
-    .replaceAll("'./reach_panel.js'", `'${partUrl('reach_panel.js')}'`)
-    .replaceAll("'./walk_box_panel.js'", `'${partUrl('walk_box_panel.js')}'`)
-    .replaceAll("'./api.js'", `'${apiUrl}'`));
-  const [store, api, panel, map, shell, main] = await Promise.all([
-    import(storeUrl), import(apiUrl), import(panelUrl),
-    import(mapUrl), import(shellUrl), import(mainUrl),
-  ]);
-  return { store, api, panel, map, shell, main, sources };
-}
-
-// ── the document stub ──────────────────────────────────────────────────────────────
-
-function recordingContext(canvas) {
-  const ctx = {
-    fillStyle: null,
-    strokeStyle: null,
-    lineWidth: 1,
-    clearRect(x, y, w, h) { canvas.ops.push({ op: 'clear', x, y, w, h }); },
-    fillRect(x, y, w, h) { canvas.ops.push({ op: 'fill', x, y, w, h, color: ctx.fillStyle }); },
-    strokeRect(x, y, w, h) {
-      canvas.ops.push({ op: 'stroke', x, y, w, h, color: ctx.strokeStyle });
-    },
-  };
-  return ctx;
-}
-
-function makeNode(doc, tag) {
-  const node = {
-    tagName: String(tag).toUpperCase(),
-    className: '',
-    style: {},
-    children: [],
-    attrs: Object.create(null),
-    listeners: Object.create(null),
-    // The stub reports a zero-height head, so the canvas box equals the panel box here. The
-    // browser reports the real one; either way the panel SUBTRACTS what it measured and
-    // never assumes a number.
-    offsetHeight: 0,
-    _text: '',
-    parentNode: null,
-    appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
-    removeChild(c) {
-      const i = this.children.indexOf(c);
-      if (i >= 0) this.children.splice(i, 1);
-      c.parentNode = null;
-      return c;
-    },
-    setAttribute(k, v) {
-      this.attrs[String(k)] = String(v);
-      if (String(k) === 'class') this.className = String(v);
-    },
-    getAttribute(k) {
-      return Object.prototype.hasOwnProperty.call(this.attrs, String(k))
-        ? this.attrs[String(k)] : null;
-    },
-    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
-    set textContent(v) { this._text = String(v); this.children.length = 0; },
-    get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
-  };
-  if (node.tagName === 'CANVAS') {
-    node.width = 0;
-    node.height = 0;
-    node.ops = [];
-    node.paints = 0;
-    // One `getContext` per paint, so `ops` is THIS paint's ops. `paints` keeps the history
-    // that slicing would otherwise hide -- a double paint must still be visible.
-    node.getContext = () => { node.ops = []; node.paints += 1; return recordingContext(node); };
-  }
-  return node;
-}
-
-function makeDoc(theme) {
-  const doc = {
-    createElement(tag) { return makeNode(doc, tag); },
-    createElementNS(ns, tag) { return makeNode(doc, tag); },
-  };
-  doc.documentElement = makeNode(doc, 'html');
-  doc.documentElement.setAttribute('data-theme', theme || 'light');
-  return doc;
-}
-
-/** The injected size observer, so a resize is something the harness DOES, not waits for. */
-function makeObserver() {
-  const seats = [];
-  const observe = (el, cb) => {
-    const seat = { el, cb, live: true };
-    seats.push(seat);
-    return () => { seat.live = false; };
-  };
-  observe.seats = seats;
-  observe.fireAll = (w, h) => { for (const s of seats) if (s.live) s.cb(w, h); };
-  observe.fireFor = (el, w, h) => {
-    for (const s of seats) if (s.live && s.el === el) s.cb(w, h);
-  };
-  return observe;
-}
-
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-const walk = (node, out = []) => {
-  out.push(node);
-  for (const c of node.children || []) walk(c, out);
-  return out;
-};
-const canvasIn = (root) => walk(root).find((n) => n.tagName === 'CANVAS') || null;
-const byClass = (root, cls) => walk(root).filter(
-  (n) => String(n.className || '').split(/\s+/).includes(cls));
-
+// ── the document stub ─────────────────────────────────────────────────────────────
+// 🔴 MOVED TO  (2026-09-08) — the render-parity harness mounts the same
+//    panels and must meet the same document, and two stubs drift.
 // ── the suite ──────────────────────────────────────────────────────────────────────
 //
 // Returns `{ran, failures}`. Run once against the shipped modules (must be empty) and once
