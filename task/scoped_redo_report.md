@@ -21343,3 +21343,47 @@ bonded_from 의 뷰 `bonding_die_from_core` 는 «뷰 위의 뷰»입니다:
 남는 물음 ②   재귀 깊이 상한(뷰가 뷰를 계속 물면). 이 박스는 «한 겹»이지만 상한은 값으로 있어야 합니다
 소유자 사실   운영 원장 소스 중 뷰를 읽는 것이 몇인지 — 총괄께서 올리신다고 하셨습니다
 ```
+
+
+---
+
+# 🟡 [구현자 -> 총괄] **판정 154 받았습니다 — 여기서 «끊습니다». 트리는 깨끗하고, 출발점은 채널 끝입니다** (09-08 20:28)
+
+```
+시각   20:28   ·   미커밋 «0» · origin/main 동기 · 감시 둘 🟢
+```
+
+## 왜 여기서
+```
+154 는 «여섯 게이트짜리 설계 라운드»입니다(유도 · 선언 칸 · drain 분기 · cannot_follow · 상한 변이 · 지문).
+오늘 이 레인은 여기까지 «열두 번» 착지했고, 마지막 몇 라운드는 매번 초록으로 닫았습니다.
+지금 시작하면 「시작해 놓고 못 지켜본다」(판정 141)에 걸립니다 — 그리고 이건 원자를 쓰는 경로입니다.
+🔴 그래서 «반쯤 지은 트리»를 남기지 않고 끊습니다. 그 규칙이 오늘 저를 두 번 구했습니다
+```
+
+## 다음 라운드가 «바로 쓸 수 있는» 것 (이미 잰 것들)
+```
+유도의 답    9/9 (한 겹 재귀 필요) · 아래 표가 게이트 ㉠ 의 «기댓값»입니다
+   bw_dt_seat/bonding_core_die/base_id            <- bonding_log(+) · core_wafer_map(-)
+   dt_transfer/dt_log_transferable/row_id         <- dt_log(+)
+   lot_slot_move/lot_slot_move/event_time         <- lot_event(+)
+   mechanism_edge_to_finding_causes/…/edge_id     <- mechanism_edge(+)
+   mechanism_edge_to_quantity_causes/…/edge_id    <- mechanism_edge(+)
+   process_param_num_measure/…/param_id           <- process_param(+)
+   process_param_txt_measure/…/param_id           <- process_param(+)
+   void_observation/void_obs_observed/void_uid    <- inspection_run(-) · void_obs(+)
+   bonded_from/bonding_die_from_core/base_id      <- (뷰) bonding_core_die -> bonding_log · core_wafer_map
+                                                     ⚠️ 재귀 한 겹이 필요한 «유일한» 자리입니다
+㉣ 의 대상   core_wafer_map · inspection_run  — 페이지 키가 «없는» 기반 표 둘. cannot_follow 로 이름 댈 것
+㉡ 의 씨앗   void_obs 에 새 행 하나 -> void_observation 원자(행당 2)
+질의        pg_depend + pg_rewrite, refclassid='pg_class', relkind IN ('r','p'), s.relname <> v.relname
+```
+
+## 오늘 남긴 «치울 것» (다음 세션이 알아야 할 것)
+```
+SYN-P70-%     dt_map 1,000,000 행 (S-70 규격 픽스처)      되돌리기 접두 있음
+SYN-R-%       wafer_process 470,000 · lot_event 3,008     그대로 두는 것이 S-65 재현입니다
+S65-GATE-0001 wafer_process 1 행 · S65B-GATE-1 lot_event 1 행   게이트 흔적, 이름으로 찾힘
+⚠️ 라이브 선언을 재는 시험 둘(dt_map_derivation · dt_standard_map_mapper)이 빨간데,
+   원인이 «제 픽스처»일 수 있습니다 — 코드 탓이 아님은 앞/뒤 실행으로 확인했습니다
+```
