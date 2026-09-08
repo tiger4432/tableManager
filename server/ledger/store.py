@@ -291,7 +291,7 @@ class LedgerStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None):
+                    withdraw_refs=None, row_refs=None):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         🔴 `advance_cursor=False` IS THE SCOPED REDO, AND IT IS THIS SAME DOOR. Everything
@@ -349,6 +349,7 @@ class LedgerStore:
             self.ensure_partitions(connection, {a.occurred_at for a in atoms})
             withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
             attempted, inserted = self.insert_atoms(connection, atoms)
+            self._write_row_refs(connection, source, row_refs)
             if advance_cursor:
                 self._advance_cursor(connection, source, translator_ver, cursor_value,
                                      molecules, inserted, attempted - inserted,
@@ -392,6 +393,108 @@ class LedgerStore:
                 "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
                 (source, list(refs)))
             return int(cursor.rowcount or 0)
+
+    def _write_row_refs(self, connection, source, refs):
+        """Record which physical row each `source_raw_ref` was built from. Caller's
+        transaction.
+
+        🔴 THE SAME COMMIT AS THE ATOMS, AND THAT IS THE WHOLE ANSWER TO "CAN THIS INDEX GO
+        STALE". An atom that exists while its index row does not is not a state that has to
+        be repaired later -- it is a state that cannot be reached, because one transaction
+        writes both or neither. The write door is `runtime_v2`, singular, so there is no
+        second producer to disagree.
+
+        Upsert rather than insert: re-translating a row (a rescope) writes the same pair
+        again, and the ref may have MOVED if the row's `order_by` values changed -- which is
+        precisely the correction a rescope exists for, so the newest translation wins.
+        """
+        if not refs:
+            return 0
+        from psycopg2.extras import execute_values
+
+        rows = [(str(relation), str(row_id), source, str(ref))
+                for relation, row_id, ref in refs]
+        with connection.cursor() as cursor:
+            execute_values(
+                cursor,
+                f"INSERT INTO {schema.ROW_REF_TABLE} "
+                "(relation, row_id, source_who, source_raw_ref) VALUES %s "
+                "ON CONFLICT (relation, row_id, source_who) DO UPDATE SET "
+                "source_raw_ref = EXCLUDED.source_raw_ref",
+                rows)
+            return len(rows)
+
+    def withdraw(self, source, refs):
+        """Withdraw one source's atoms for `refs`, in a transaction of its own.
+
+        🔴 THE STANDALONE HALF, AND IT IS THE SAME STATEMENT. `write_batch` runs the
+        withdrawal inside the commit that writes the replacement, because there IS one; a
+        deleted physical row has no replacement, so there is nothing to be atomic with. Both
+        entries go through `_withdraw_refs` so the predicate -- `source_who` included --
+        cannot come to be spelled two ways.
+        """
+        if not refs:
+            return 0
+        connection = self.connection()
+        try:
+            removed = self._withdraw_refs(connection, source, refs)
+            connection.commit()
+            return removed
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def row_refs_for(self, relation, row_ids, connection=None):
+        """`[(source_who, source_raw_ref)]` for rows of `relation`. READ ONLY.
+
+        The answer to "these rows are gone -- what did the ledger say about them", and the
+        only way to ask it once they are: their translation is gone with them.
+        """
+        if not row_ids:
+            return []
+        own = connection is None
+        connection = connection or self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT source_who, source_raw_ref FROM {schema.ROW_REF_TABLE} "
+                    "WHERE relation = %s AND row_id = ANY(%s)",
+                    (str(relation), [str(item) for item in row_ids]))
+                return [(row[0], row[1]) for row in cursor.fetchall()]
+        finally:
+            if own:
+                connection.close()
+
+    def forget_row_refs(self, relation, row_ids, connection=None):
+        """Drop the index rows for physical rows that are gone. Returns how many.
+
+        Last, not first: while these are still here the withdrawal can be run again, and a
+        run that died between the two leaves an index row pointing at atoms that are already
+        withdrawn -- which the next pass reads as "nothing to withdraw" and clears.
+        """
+        if not row_ids:
+            return 0
+        own = connection is None
+        connection = connection or self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"DELETE FROM {schema.ROW_REF_TABLE} "
+                    "WHERE relation = %s AND row_id = ANY(%s)",
+                    (str(relation), [str(item) for item in row_ids]))
+                removed = int(cursor.rowcount or 0)
+            if own:
+                connection.commit()
+            return removed
+        except Exception:
+            if own:
+                connection.rollback()
+            raise
+        finally:
+            if own:
+                connection.close()
 
     def restamp_cursor(self, source, *, expect, translator_ver):
         """Swap ONE cursor's fingerprint string. Reads no source row, moves no position.

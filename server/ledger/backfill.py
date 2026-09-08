@@ -873,6 +873,52 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False):
     return result
 
 
+def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
+    """Withdraw the atoms of physical rows that are GONE. No remake -- see below.
+
+    운영에서는 아무것도 적지 않습니다 -- 표에서 행이 사라지면 원장에서 그 행의 사실이 걷힙니다.
+
+    🔴 WHY THIS IS NOT `rescope`. A scope aims its withdrawal with the CURRENT translation
+    of the rows it names: `source_raw_ref` is built from their `order_by` values, so a row
+    that is gone produces no ref and its atoms stay however wide the scope is spelled. That
+    is a structural cannot, not a width. The refs are taken from
+    `schema.ROW_REF_TABLE` instead -- written while the row was still there, in the same
+    transaction as the atoms it names.
+
+    🔴 AND THERE IS NO REMAKE HALF, so `store.withdraw` rather than `write_batch`: nothing
+    is being replaced, and a transaction that paired a delete with an empty write would be
+    asserting a replacement that does not exist.
+
+    ⚠️ THE INDEX ROWS GO LAST. While they are here the withdrawal can be run again; a run
+    that dies between the two leaves an index row pointing at atoms already withdrawn, which
+    the next pass reads as "nothing to withdraw" and then clears. Dropping them first would
+    make a failed run unrepeatable.
+
+    `apply=False` reports what it would do and writes nothing.
+    """
+    from .store import LedgerStore
+
+    store = LedgerStore(engine)
+    ids = [str(item) for item in (row_ids or ()) if item]
+    result = {"relation": relation, "rows": len(ids), "applied": False,
+              "sources": {}, "forgotten": 0}
+    if not ids:
+        return result
+    by_source: dict = {}
+    for source_who, ref in store.row_refs_for(relation, ids):
+        by_source.setdefault(source_who, set()).add(ref)
+    for source in sorted(by_source):
+        result["sources"][source] = {"refs": len(by_source[source]), "withdrawn": 0}
+    if not apply or not by_source:
+        return result
+    for source in sorted(by_source):
+        result["sources"][source]["withdrawn"] = store.withdraw(
+            source, sorted(by_source[source]))
+    result["forgotten"] = store.forget_row_refs(relation, ids)
+    result["applied"] = True
+    return result
+
+
 def resolve_pace(name, paces=None):
     """The shared pacing table, with this module's refusal shape.
 

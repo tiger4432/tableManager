@@ -1,0 +1,230 @@
+# -*- coding: utf-8 -*-
+"""운영에서는 아무것도 적지 않습니다 -- 표에서 행이 사라지면 원장에서 그 행의 사실이 걷힙니다.
+
+S-54-b, ruling 132. A scope cannot reach a deleted row: `source_raw_ref` is built from a
+row's `order_by` values at the preparation boundary, so once the row is gone there is
+nothing to build it from and its atoms stay however wide the scope is spelled. That is a
+structural cannot, not a width -- which is why DELETE waited for its own instrument instead
+of riding the EDIT path and quietly doing nothing.
+
+🔴 THE INSTRUMENT IS A NOTE TAKEN WHILE THE ROW WAS STILL THERE. `ledger_source_row_ref`
+records `(relation, row_id) -> (source_who, source_raw_ref)` in the SAME transaction as the
+atoms, so "the atom exists and its index row does not" is unreachable rather than repairable.
+The delete then asks by RELATION, which is what the outbox knows -- teaching the outbox the
+ledger's sources is the layer violation the ruling refused.
+"""
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from ledger import backfill, followup, runtime_v2, schema             # noqa: E402
+from ledger.roleframe import SOURCE_ROW_REF_COLUMN                    # noqa: E402
+from ledger.source_preparation import FRAME_ROW_ID_COLUMN             # noqa: E402
+
+RELATION = "dt_log"
+OCCURRED_AT = datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc)
+
+
+# ------------------------------------------------------- the note the translation takes
+
+def frame(pairs):
+    return pd.DataFrame([{FRAME_ROW_ID_COLUMN: row_id, SOURCE_ROW_REF_COLUMN: ref}
+                         for row_id, ref in pairs])
+
+
+def test_the_index_pairs_the_row_with_the_ref_it_produced():
+    """🔴 BOTH HALVES ARE ONLY EVER IN HAND HERE. The ref is built from the row's `order_by`
+    values and the `row_id` rides the same frame (판정 135); after the row is deleted neither
+    can be recovered, so the pair is written down now."""
+    plan = SimpleNamespace(relation=RELATION)
+    pairs = runtime_v2._row_ref_index(
+        plan, [frame([("R1", "dt_log:{\"a\":1}"), ("R2", "dt_log:{\"a\":2}")])])
+    assert pairs == ((RELATION, "R1", 'dt_log:{"a":1}'),
+                     (RELATION, "R2", 'dt_log:{"a":2}'))
+
+
+def test_a_frame_without_the_columns_contributes_nothing_rather_than_raising():
+    """A frame this shallow is a test double, and the write it feeds is the write it always
+    was -- an index that refused to be built would take the translation down with it."""
+    plan = SimpleNamespace(relation=RELATION)
+    assert runtime_v2._row_ref_index(plan, [pd.DataFrame([{"other": 1}])]) == ()
+    assert runtime_v2._row_ref_index(plan, []) == ()
+
+
+def test_both_write_doors_carry_it(monkeypatch):
+    """🔴 THE FORWARD SCAN IS WHERE THE INDEX IS ACTUALLY BUILT. A source is read forward
+    once and rescoped rarely, so an index only the rescope wrote would name a handful of
+    rows out of millions -- and a delete would look like it worked."""
+    import inspect
+
+    for door in (runtime_v2.execute_cursor_batch, runtime_v2.execute_scoped_batch):
+        body = inspect.getsource(door)
+        assert "row_refs=preview.row_refs" in body, door.__name__
+
+
+# ------------------------------------------------------------ and what the delete then does
+
+class FakeStore:
+    def __init__(self, index):
+        self.index = list(index)
+        self.withdrawn = []
+        self.forgotten = []
+
+    def row_refs_for(self, relation, row_ids):
+        wanted = {str(item) for item in row_ids}
+        return [(who, ref) for rel, row_id, who, ref in self.index
+                if rel == relation and row_id in wanted]
+
+    def withdraw(self, source, refs):
+        self.withdrawn.append((source, tuple(refs)))
+        return len(refs)
+
+    def forget_row_refs(self, relation, row_ids):
+        self.forgotten.append((relation, tuple(str(item) for item in row_ids)))
+        return len(row_ids)
+
+
+INDEX = [(RELATION, "R1", "dt_job", "dt_log:one"),
+         (RELATION, "R1", "other_source", "dt_log:one"),
+         (RELATION, "R2", "dt_job", "dt_log:two"),
+         ("somewhere_else", "R1", "dt_job", "somewhere_else:one")]
+
+
+@pytest.fixture
+def store(monkeypatch):
+    made = FakeStore(INDEX)
+    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: made)
+    return made
+
+
+def test_one_deleted_row_withdraws_every_source_that_read_that_table(store):
+    """🔴 THE INDEX IS KEYED BY RELATION BECAUSE THAT IS WHAT THE OUTBOX KNOWS. Two sources
+    may read one table; the row's disappearance is one fact about both of them, and neither
+    the outbox nor this step has to be told which sources exist."""
+    result = backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"], apply=True)
+    assert sorted(store.withdrawn) == [("dt_job", ("dt_log:one",)),
+                                       ("other_source", ("dt_log:one",))]
+    assert result["sources"]["dt_job"]["withdrawn"] == 1
+    assert result["applied"] is True
+
+
+def test_the_index_rows_go_last(store):
+    """⚠️ ORDER IS THE REPAIRABILITY. While the index rows are here the withdrawal can be
+    run again; dropping them first would make a run that died in the middle unrepeatable,
+    and the atoms would stay with nothing left pointing at them."""
+    backfill.withdraw_deleted_rows(None, None, RELATION, ["R1", "R2"], apply=True)
+    assert store.withdrawn, "nothing was withdrawn at all"
+    assert store.forgotten == [(RELATION, ("R1", "R2"))]
+
+
+def test_a_dry_run_writes_nothing_and_still_says_what_it_would_do(store):
+    result = backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"])
+    assert store.withdrawn == [] and store.forgotten == []
+    assert result["applied"] is False
+    assert result["sources"]["dt_job"] == {"refs": 1, "withdrawn": 0}
+
+
+def test_a_row_the_ledger_never_translated_costs_nothing(store):
+    """㉧ AT THE DELETE END. Most rows in this database belong to tables no source reads,
+    and the index simply has no line for them -- so there is no withdrawal to run and no
+    index row to drop."""
+    result = backfill.withdraw_deleted_rows(None, None, RELATION, ["R-UNKNOWN"], apply=True)
+    assert store.withdrawn == [] and store.forgotten == []
+    assert result["sources"] == {} and result["applied"] is False
+
+
+def test_the_same_delete_twice_changes_nothing_the_second_time(store):
+    """㉡′. The first pass drops the index rows, so the second finds no refs, withdraws
+    nothing and forgets nothing -- idempotent by construction rather than by a guard."""
+    backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"], apply=True)
+    store.index = [row for row in store.index if row[1] != "R1" or row[0] != RELATION]
+    store.withdrawn.clear()
+    store.forgotten.clear()
+    again = backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"], apply=True)
+    assert store.withdrawn == [] and store.forgotten == [] and again["applied"] is False
+
+
+# ------------------------------------------------------------- and the queue routes it there
+
+def test_a_delete_is_withdrawn_from_the_index_not_rescoped(monkeypatch):
+    """⛔ NOT A WIDER SCOPE. `rescope` is replaced with a detonator: a delete that reached it
+    would aim at the CURRENT translation of rows that no longer exist, find no refs, and
+    report success having withdrawn nothing."""
+    def boom(*args, **kwargs):
+        raise AssertionError("a delete was sent through the scope path")
+
+    seen = {}
+
+    monkeypatch.setattr(backfill, "rescope", boom)
+    monkeypatch.setattr(backfill, "withdraw_deleted_rows",
+                        lambda engine, setup, relation, row_ids, apply=False: seen.update(
+                            relation=relation, rows=list(row_ids), apply=apply)
+                        or {"sources": {"dt_job": {"withdrawn": 2}}, "forgotten": 2})
+    followup.reset()
+    followup.enqueue(RELATION, ["R1", "R2"], "DELETE")
+    done = followup.drain_once(None, None)
+    followup.reset()
+    assert seen == {"relation": RELATION, "rows": ["R1", "R2"], "apply": True}
+    assert done["event_type"] == "DELETE" and done["forgotten"] == 2
+
+
+def test_a_failed_delete_is_named_and_not_requeued(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(backfill, "withdraw_deleted_rows", boom)
+    followup.reset()
+    followup.enqueue(RELATION, ["R1"], "DELETE")
+    done = followup.drain_once(None, None)
+    assert "RuntimeError" in done["error"] and followup.queue_depth() == 0
+    followup.reset()
+
+
+# ----------------------------------------------------- and what the table means, in Postgres
+
+@pytest.fixture
+def real_store(pg_engine):
+    from ledger.store import LedgerStore
+
+    connection = pg_engine.raw_connection()
+    try:
+        schema.ensure_schema(connection)
+    finally:
+        connection.close()
+    return LedgerStore(pg_engine)
+
+
+def test_the_index_survives_a_re_translation_by_moving(real_store):
+    """A rescope writes the pair again, and the ref may have MOVED -- a corrected
+    `order_by` value is exactly what a rescope exists for -- so the newest translation wins
+    rather than colliding."""
+    connection = real_store.connection()
+    try:
+        real_store._write_row_refs(connection, "dt_job", [(RELATION, "R1", "dt_log:old")])
+        real_store._write_row_refs(connection, "dt_job", [(RELATION, "R1", "dt_log:new")])
+        connection.commit()
+    finally:
+        connection.close()
+    assert real_store.row_refs_for(RELATION, ["R1"]) == [("dt_job", "dt_log:new")]
+
+
+def test_two_sources_reading_one_table_each_keep_their_own_line(real_store):
+    connection = real_store.connection()
+    try:
+        real_store._write_row_refs(connection, "dt_job", [(RELATION, "R9", "a")])
+        real_store._write_row_refs(connection, "other", [(RELATION, "R9", "b")])
+        connection.commit()
+    finally:
+        connection.close()
+    assert sorted(real_store.row_refs_for(RELATION, ["R9"])) == [
+        ("dt_job", "a"), ("other", "b")]
+    assert real_store.forget_row_refs(RELATION, ["R9"]) == 2
+    assert real_store.row_refs_for(RELATION, ["R9"]) == []

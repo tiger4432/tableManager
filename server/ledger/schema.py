@@ -52,6 +52,22 @@ logger = logging.getLogger("Ledger.Schema")
 LEDGER_TABLE = "ledger_events"
 CURSOR_TABLE = "ledger_translator_cursor"
 
+#: Which PHYSICAL ROW each translated fact came from (S-54-b).
+#:
+#: 🔴 IT EXISTS BECAUSE A DELETED ROW HAS NO TRANSLATION. `rescope` aims its withdrawal with
+#: the CURRENT translation of the rows in scope -- `source_raw_ref` is built from their
+#: `order_by` values -- so a row that is GONE produces no ref and its atoms stay, however
+#: wide the scope is spelled. That is a structural cannot, not a width, and this table is
+#: the only thing that can still name what to withdraw: the ref is written down WHILE the
+#: row is still there.
+#:
+#: ⚠️ THE KEY IS `(relation, row_id)` AND NOT `(source, row_id)`, because of who asks. The
+#: question arrives from the outbox as "these rows of this TABLE are gone", and the outbox
+#: does not know the ledger's sources -- teaching it would be the layer violation ruling 132
+#: refused. `source_who` is what comes BACK, so one deleted row can withdraw the atoms of
+#: every source that reads that table.
+ROW_REF_TABLE = "ledger_source_row_ref"
+
 #: The seven columns the unique index compares. Named once, used by the DDL and by the
 #: writer's `ON CONFLICT` reasoning, so "what makes two atoms the same claim" has one
 #: definition.
@@ -134,6 +150,16 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
         occurred_at_basis IS NULL OR occurred_at_basis IN ('ingested')),
     PRIMARY KEY (id, occurred_at)
 ) PARTITION BY RANGE (occurred_at)
+"""
+
+CREATE_ROW_REF = f"""
+CREATE TABLE IF NOT EXISTS {ROW_REF_TABLE} (
+    relation       TEXT NOT NULL,
+    row_id         TEXT NOT NULL,
+    source_who     TEXT NOT NULL,
+    source_raw_ref TEXT NOT NULL,
+    PRIMARY KEY (relation, row_id, source_who)
+)
 """
 
 CREATE_CURSOR = f"""
@@ -446,6 +472,7 @@ def ensure_schema(connection):
         # translator is about to write an atom the narrow rule refuses. See the function.
         ensure_objectless_payload_constraint(cursor)
         cursor.execute(CREATE_CURSOR)
+        cursor.execute(CREATE_ROW_REF)
         for column, statement in LEDGER_ADDITIONS:
             if not column_exists(cursor, LEDGER_TABLE, column):
                 logger.info("[Ledger] adding %s.%s", LEDGER_TABLE, column)

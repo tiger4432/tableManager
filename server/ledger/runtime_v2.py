@@ -57,6 +57,10 @@ class CursorBatchPreview:
     refusals: tuple = ()
     #: Rows the preparer's own marker removed, or `None` when it declares no marker.
     excluded_rows: Any = None
+    #: `(relation, row_id, source_raw_ref)` for every physical row this batch translated
+    #: (S-54-b). Carried on the preview because this is the one place both halves are in
+    #: hand, and written in the same transaction as the atoms -- see `_row_ref_index`.
+    row_refs: tuple = ()
 
     @property
     def atom_count(self) -> int:
@@ -99,6 +103,37 @@ def _record_refusals(source_id: str, preview: "CursorBatchPreview") -> None:
                     rows=refusal.rows, addresses=refusal.addresses)
 
 
+def _row_ref_index(source_plan, event_frames):
+    """`(relation, row_id, source_raw_ref)` for every row these event frames translated.
+
+    🔴 THE ONE PLACE BOTH HALVES ARE IN HAND. `source_raw_ref` is built at the preparation
+    boundary from a row's `order_by` values, and `row_id` rides the same frame because the
+    engine now reads it on every source (판정 135). Once the physical row is DELETED neither
+    can be recovered -- the ref cannot be rebuilt from values that are gone -- so it is
+    written down while the row is still here.
+
+    A frame that carries neither column contributes nothing rather than raising: a caller
+    handing in a frame this shallow is a test double, and the write it feeds is the same
+    write it always was.
+    """
+    from .roleframe import SOURCE_ROW_REF_COLUMN
+    from .source_preparation import FRAME_ROW_ID_COLUMN
+
+    pairs: dict = {}
+    for frame in event_frames:
+        if (FRAME_ROW_ID_COLUMN not in frame.columns
+                or SOURCE_ROW_REF_COLUMN not in frame.columns):
+            continue
+        for index in range(len(frame)):
+            row_id = frame.iloc[index][FRAME_ROW_ID_COLUMN]
+            ref = frame.iloc[index][SOURCE_ROW_REF_COLUMN]
+            if row_id is None or ref is None:
+                continue
+            pairs[str(row_id)] = str(ref)
+    return tuple((source_plan.relation, row_id, pairs[row_id])
+                 for row_id in sorted(pairs))
+
+
 def preview_cursor_batch(
     snapshot: LedgerSetupSnapshot,
     source_id: str,
@@ -123,6 +158,7 @@ def preview_cursor_batch(
         dry_run_event_frame(mapper_context, event_frame, mappers)
         for event_frame in event_frames
     )
+    row_refs = _row_ref_index(source_plan, event_frames)
     normalized_registrations = _known_registrations(known_registrations)
     event_atoms = _filtered_event_atoms(event_results, normalized_registrations)
     semantics = []
@@ -144,6 +180,7 @@ def preview_cursor_batch(
             for result in event_results),
         refusals=tuple(refusals),
         excluded_rows=(sum(excluded) if excluded else None),
+        row_refs=row_refs,
     )
 
 
@@ -191,11 +228,16 @@ def execute_cursor_batch(
             reasons=_refusal_reasons(preview.refusals),
             # Still True by default: without an approval the store refuses exactly as before.
             enforce_translator_version=not retranslate_approved,
+            # 🔴 THE FORWARD SCAN IS WHERE THE INDEX IS BUILT. The scoped door fills it too,
+            # but a source is read forward once and rescoped rarely -- an index that only
+            # the rescope wrote would name a few rows out of millions and a delete would
+            # look like it worked.
+            row_refs=preview.row_refs,
         )
     except TypeError as exc:
         # A store implementation without the version-guarded existing transaction is
         # not a supported Stage 6 sink; fail before pretending the cursor was protected.
-        if "enforce_translator_version" in str(exc):
+        if "enforce_translator_version" in str(exc) or "row_refs" in str(exc):
             raise LedgerV2RuntimeError(
                 "unsupported_store_contract", "store.write_batch",
                 "LedgerStore must enforce the setup snapshot cursor version",
@@ -277,6 +319,7 @@ def execute_scoped_batch(
             reasons=_refusal_reasons(preview.refusals),
             advance_cursor=False,
             withdraw_refs=withdraw_refs,
+            row_refs=preview.row_refs,
         )
     except TypeError as exc:
         # A store that cannot separate the two statements would advance the cursor instead,
