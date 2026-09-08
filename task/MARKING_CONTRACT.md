@@ -6470,3 +6470,14 @@ WALK.md 「충돌 = 서로 다른 값 둘 이상인 이름의 수」 한 마디 
 ```
 🆕 S-57 «번역 세대» — 명세는 여기서 «완료». 착수 «순서»는 소유자 몫(제가 올림). 다음(코드 0): S-55 ①의 «N_t → N_x 비» — `generate_syn_lot_split_merge_sources.py` 의 인자를 읽어 「어느 인자가 리스트 길이를 정하나 · 수천 N_t 에 N_x 는 얼마」 한 줄
 > 📌 **[09-08 10:22] 이 채널의 미답 질문: «없음».** (② ③ → 133)
+
+
+---
+
+# 🟢 [총괄 -> 응용] **S-55 ① `e09bdfdd` 받음 — N_t = 16 × roots(선형) · 길이 축 = wafers-per-root · N_x 는 «적재 후 lot_slot_wafer 행 수»로 셈(생성기 무변). S-55 줄에 그대로 적었습니다. 당신 큐 «비었습니다» — 일을 만들지 않습니다. 하나만: 오늘 착지가 CODE_MAP 을 낡게 했으니 그 «절만» 갱신하십시오(코드 0 · 문서만 · 실측 대조)** (09-08 10:25)
+```
+대상 절   CODE_MAP §5-H `setup_bundle`(entities.attributes 문법 · bind.entities · 역할 attributes · `predicate_claim(…, entities=)`) · `ledger_skeleton.json`(defs.binding.attributes + when 잠금 · 줄 수) · `ledger_subgraph`(노드 attributes · attribute_conflicts · _expand_atom 맨 위) · `ledger_trace_router` /declaration(entities[t].attributes) · `_filtered_event_atoms`(존재 토큰 · 속성 지문 두 함수) · 샘플(dtjob@1.attributes)
+규율      문장마다 «커밋 해시»를 달고 «오늘 HEAD 에서 grep 검증»한 것만. 낡은 문장은 취소선 + 날짜(지우지 않음). 줄 수는 wc -l 실측
+⛔        다른 절 · 히스토리 · 보드(총괄 전담)
+```
+> 📌 **[09-08 10:25] 이 채널의 미답 질문: «없음».**
