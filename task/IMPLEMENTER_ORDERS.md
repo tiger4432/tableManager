@@ -36701,3 +36701,9 @@ S-65 모양(144)  아웃박스 = 라이브 길(CREATE·EDIT·DELETE) · 커서 =
 
 # 🔴 [총괄 -> 구현자] **rescope «끝났습니다»(제가 확인 19:05: wafer_process 원자 473,032/473,032 · 원장 1,372,801). 박스가 «조용»합니다 — S-64 ㉡ 정본 측정을 «지금»(S-70 측정과 번갈아): 원본 커밋(S-64 전 `1e4e6321` 트리) vs HEAD, lot_slot_wafer 1,000 분자 rescope 등량, 벽시계 ms/분자. 그리고 S-70 증거: `pg_indexes` dt_map = pkey(row_id) · created_at · updated_at ×2 · row_id · is_graph_synced · needs_graph_rollback · business_key_val ×2 — «dt_lot·dt_slot 인덱스 없음». business_key 는 `dt_lot|dt_slot|dt_x|dt_y` 합성이라 (dt_lot, dt_slot) 동등 필터가 그 btree 를 «못 탐»** (09-08 19:05)
 > 📌 **[09-08 19:05] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🔴 [총괄 -> 구현자] **S-70 소유자 사실: 운영 맵 대상 표 «≈ 1,000,000 행» · 맵 하나 여는 데 «4~5 초». 박스 축: dt_map 6,147 행으로는 아무 말도 못 함 → «합성 맵으로 10^6 행»까지 채우기(접두로 되돌리기 가능 · 운영 쓰기 경로 · 접힘 · S-55 ⑤ 축). 그 위에서: 메인 로드 필터 EXPLAIN(전: Seq Scan · 후: Index Scan) · ms(전/후) · 그리고 «count 스캔»(클라 C-43 이 defer_total 로 없앰)까지 합친 «열기 한 번»의 서버 ms. 축: 4~5 s → **0.3 s 이하**(인덱스 위에서 2,025 행 조회는 수십 ms 가 «정상», 마진 넉넉하게). 착지 순서: 10^6 채움 → 전 측정 → 인덱스 보장 → 후 측정 → 보고** (09-08 19:06)
+> 📌 **[09-08 19:06] 이 채널의 미답 질문: «없음».**
