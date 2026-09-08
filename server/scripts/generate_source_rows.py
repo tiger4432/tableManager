@@ -82,6 +82,7 @@ class Plan:
     maps: int
     atoms_per_row: int
     business_key: str = None
+    start: int = 0
     column_types: tuple = ()
     occurred_at_column: str = None
 
@@ -94,7 +95,7 @@ class Plan:
             f"source        {self.source_id}",
             f"relation      {self.relation}",
             f"target table  {self.target_table}",
-            f"rows          {self.rows}",
+            f"rows          {self.rows}   (index {self.start}..{self.start + self.rows - 1})",
             f"months        {len(self.months)}  ({', '.join(self.months)})",
             f"page key      {'monotonic' if self.monotonic else 'NOT monotonic'}",
             f"maps          {self.maps} x {MAP_SIDE}x{MAP_SIDE}"
@@ -216,7 +217,7 @@ def source_columns(source: dict) -> tuple[str, ...]:
 
 def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS,
              months: int = DEFAULT_MONTHS, monotonic: bool = True,
-             maps: int = DEFAULT_MAPS) -> Plan:
+             maps: int = DEFAULT_MAPS, start: int = 0) -> Plan:
     """What a run would do -- and every refusal this script can make, made HERE.
 
     Refusals live in the plan rather than in the writer so `--dry-run` reports them. A
@@ -277,7 +278,7 @@ def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS
 
     mappings = ((source.get("bind") or {}).get("mappings") or {})
     declared_types = entry.get("columns") or {}
-    return Plan(business_key=entry.get("business_key"),
+    return Plan(business_key=entry.get("business_key"), start=start,
                 column_types=tuple((name, str(declared_types.get(name) or "string"))
                                    for name in wanted),
                 occurred_at_column=((source.get("read") or {}).get("occurred_at")
@@ -458,7 +459,7 @@ def write_rows(plan: Plan, *, base_url: str = DEFAULT_BASE_URL, timeout: float =
                if answer.get("effort_error") else ""))
         buffer.clear()
 
-    for row in rows_for(plan):
+    for row in rows_for(plan, start=plan.start):
         buffer.append(row)
         sent += 1
         if len(buffer) >= MAX_ROWS_PER_REQUEST:
@@ -495,6 +496,12 @@ def main(argv=None) -> int:
                              "(default: the server's own)")
     parser.add_argument("--catalog", default=None,
                         help="table_config.json to read instead of this deployment's")
+    parser.add_argument("--start", type=int, default=0,
+                        help=("first row index (default 0). 🔴 ROWS ARE DETERMINISTIC IN THE "
+                              "INDEX, so a second run with the same --start re-sends the same "
+                              "business keys and upserts identical values - which changes "
+                              "nothing, stages no event, and times a no-op. Offset by --rows "
+                              "to generate NEW rows."))
     parser.add_argument("--apply", action="store_true",
                         help="actually write, through the product door")
     parser.add_argument("--url", default=DEFAULT_BASE_URL,
@@ -507,7 +514,7 @@ def main(argv=None) -> int:
     try:
         bundle, catalog, views = load_declaration(args.setup_root, args.catalog)
         plan = plan_for(bundle, catalog, views, args.source, rows=args.rows, months=args.months,
-                        monotonic=args.monotonic, maps=args.maps)
+                        monotonic=args.monotonic, maps=args.maps, start=args.start)
     except GeneratorRefusal as refusal:
         print(f"REFUSED: {refusal}")
         return 2
