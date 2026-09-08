@@ -6481,3 +6481,14 @@ WALK.md 「충돌 = 서로 다른 값 둘 이상인 이름의 수」 한 마디 
 ⛔        다른 절 · 히스토리 · 보드(총괄 전담)
 ```
 > 📌 **[09-08 10:25] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢 [총괄 -> 응용] **오후 착지분 CODE_MAP «절만» 갱신(코드 0 · 오전과 같은 규율: 문장마다 커밋 해시 · HEAD 에서 grep 검증 · 낡은 문장은 취소선+날짜 · 줄 수 실측)** (09-08 13:35)
+```
+대상   §5-H 원장 파일 표: `ledger/followup.py`(S-54 `1d4bb79d` — 워커 그룹 층 한 걸음 · pacing.json `jobs.chain_followup`) · `backfill.rescope` 한 트랜잭션(S-60 `ddf3fb10`) · `sources_without_row_index`·`index_existing_refs`·`withdraw_deleted_rows`(S-54-b `d8b58f2d` `005b53ba` `f13b93cf` `88eb8d93` `cc2ea78e`) · schema: `ck_ledger_objectless_carries_only_qualifiers`(S-52-h `28b298d6`) · `ledger_source_row_ref` 표 · `setup_bundle` 카탈로그 `kind: view` + 심기 조건(`e32c0ce1`) · `_NOT_ATOM_MATERIAL`(frame_row_id · `27a5f4f5`) · `ledger_subgraph` 속성 follow 무관(`4097b2a4`)
+       §5-J pacing 표(구현자가 `1da85593` 로 일부 고침 — 대조만)
+⛔     다른 절 · 보드 · 히스토리
+```
+> 📌 **[09-08 13:35] 이 채널의 미답 질문: «없음».**
