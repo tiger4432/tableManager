@@ -36637,3 +36637,17 @@ S-67 닫음     x/y 원천 컬럼이 double precision → 12.0 은 «참»(승�
 ⛔        선언·원자·거절 어휘 무변 · 커스텀 맵퍼 계약(interpret_unit) 무변
 ```
 > 📌 **[09-08 17:55] 이 채널의 미답 질문: «없음».** ((a) 가라)
+
+
+---
+
+# 🔴🔴 [총괄 -> 구현자] **(a) 후반 `225ef45a` 받았으나 «회귀 일곱»입니다 — 제가 낱개로 전/후: (a) 전 커밋(`04b765f8^`)에서 23 passed → HEAD 7 failed. 「시험 파일 수정 0 · 71+28 passed」는 이웃을 «좁게» 고른 것입니다. «먼저» 초록으로. 그 뒤에야 ㉡ 측정·재기동** (09-08 18:29)
+```
+빨강 일곱   tests/test_a_deleted_row_takes_its_facts_with_it.py  ×3  (S-54-b 색인 — 오늘 착지: the_index_stores_the_ref_the_LEDGER_holds · single_row_molecule_collapsed_spelling · one_row_under_two_claims)
+           tests/test_a_registration_says_what_state_it_registered.py ×4  (Ⓔ 등록 지문·존재 토큰 — 오늘 착지)
+뜻         둘 다 «원자의 철자/신원»(source_raw_ref 의 분자 철자 · 등록 지문)을 못 박은 시험 — (a) 가 LedgerFrame/RoleFrame 을 레코드로 바꾸며 «그 철자 경로»를 건드린 것으로 읽힘. 다섯 소스 바이트 동일 게이트는 «이 경로를 안 지나는» 소스였을 수 있음 → 게이트가 물은 것에만 답했음
+규율       착지 전 이웃은 «심볼»로: `git grep -l 'runtime_v2\|envelope\|registration_fingerprint\|_write_row_refs\|source_raw_ref' -- server/tests` — 이 둘이 «나옵니다». 뒤집기 ⛔(회귀), 초록으로
+나머지 둘   test_dt_map_derivation::all_three_declared_rules_ship_disabled(S-32 ⓐ-낡음) · test_dt_standard_map_mapper::live_dt_map_declaration(라이브 선언 의존 ⓒ — S-55 ③ 의 SYN-MAP20 이 원인일 수 있음, 당신 몫 아님 · 세어만)
+🔴 재기동 «동결»(PID 24520 은 (a) 전 코드) — 회귀 0 뒤
+```
+> 📌 **[09-08 18:29] 이 채널의 미답 질문: «없음».**
