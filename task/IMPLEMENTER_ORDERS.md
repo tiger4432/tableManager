@@ -36723,3 +36723,9 @@ S-71    main.py:1638 `except` — 모양이 깨진 필터를 로그만 찍고 «
 운영 배수  「이 박스 275 ms vs 운영 4~5 s」의 배수는 여기서 못 잼 — 맞습니다. 운영의 배수는 클라 C-43 ①(열기 계측 세 값)이 «운영에서» 잽니다(소유자 실행). ④ 뒤 ms 는 «이 박스 수»로 밝혀 쓰기
 ```
 > 📌 **[09-08 19:33] 이 채널의 미답 질문: «없음».**
+
+
+---
+
+# 🟢 [총괄 -> 구현자] **③ 설계 «가라» — 정확합니다: create_all 은 기존 표에 인덱스를 안 더하니 «CREATE 쪽 + ensure 쪽 둘 다»(S-65 ① 커서 칸과 같은 부류). ensure 패스에서 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, 이름·DDL 은 `map_key_columns`(+composite 순서)에서 «계산»(virtual_join 의 required_index_ddl 과 같은 계열이되 «보장»). 한 가지: CONCURRENTLY 는 트랜잭션 블록 «밖»(AUTOCOMMIT)이고 실패 시 INVALID 인덱스가 남으니 «invalid 면 DROP 후 재시도»를 같은 함수에. 큐 순서 그대로** (09-08 19:36)
+> 📌 **[09-08 19:36] 이 채널의 미답 질문: «없음».**
