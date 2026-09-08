@@ -183,7 +183,8 @@ class LedgerStore:
             cursor.execute(
                 f"SELECT translator_ver, cursor_value, molecules_done, atoms_written, "
                 f"       atoms_deduped, molecules_refused, incomplete_molecules, "
-                f"       source_head, head_probed_at, updated_at, refusal_reasons "
+                f"       source_head, head_probed_at, updated_at, refusal_reasons, "
+                f"       {schema.CAUGHT_UP_COLUMN} "
                 f"FROM {schema.CURSOR_TABLE} WHERE source = %s", (source,))
             row = cursor.fetchone()
         if row is None:
@@ -193,8 +194,31 @@ class LedgerStore:
             "molecules_done": row[2], "atoms_written": row[3], "atoms_deduped": row[4],
             "molecules_refused": row[5], "incomplete_molecules": row[6],
             "source_head": row[7], "head_probed_at": row[8], "updated_at": row[9],
-            "refusal_reasons": row[10],
+            "refusal_reasons": row[10], "caught_up_at": row[11],
         }
+
+    def mark_caught_up(self, source: str, caught: bool) -> None:
+        """Stamp -- or clear -- "this source has been seen with nothing past its cursor".
+
+        🔴 CLEARING IS PART OF IT. A source that was caught up and then falls behind (a
+        declaration revision rewinds it, a rescope widens what it must read) must stop
+        claiming it, or the live path would keep skipping rows the cursor path is no longer
+        going to reach either. One writer, both directions.
+        """
+        connection = self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"   SET {schema.CAUGHT_UP_COLUMN} = "
+                    f"       CASE WHEN %s THEN now() ELSE NULL END "
+                    f" WHERE source = %s", (caught, source))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     #: `now()` as UTC ISO-8601, built in SQL so `last_at` is stamped by the DATABASE
     #: clock in the same transaction as the count it belongs to. Rendering it here rather

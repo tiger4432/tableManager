@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
     refusal_reasons      JSONB,
     source_head          JSONB,
     head_probed_at       TIMESTAMPTZ,
+    caught_up_at         TIMESTAMPTZ,
     started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 )
@@ -250,9 +251,24 @@ LEDGER_ADDITIONS = (
 #: separately: `ledger_trace.coverage` asks the catalogue which of these exist before it
 #: selects them, so a web server that boots before the migration serves an answer rather
 #: than a 500.
+#: When this source was last observed to have NOTHING past its cursor.
+#:
+#: 🔴 IT IS A MEASUREMENT, NOT A CONTROL-FLOW FLAG (S-65). "The run ended" is not the same
+#: sentence: a run stopped by `max_batches` or by a checkpoint also ends, and a source that
+#: was cut short is not caught up. So this is stamped only where the run ASKS -- one
+#: `rows_past_cursor` at the end, whose `complete and rows == 0` is the property itself.
+#:
+#: ⚠️ NULL MEANS "NEVER OBSERVED CAUGHT UP", which is not the same as "behind". A source
+#: that has never been run and one that was cut short both read NULL, and neither may be
+#: treated as caught up -- the whole point of the column is that being caught up has to be
+#: SEEN rather than assumed.
+CAUGHT_UP_COLUMN = "caught_up_at"
+
 CURSOR_ADDITIONS = (
     (REFUSAL_REASONS_COLUMN,
      f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
+    (CAUGHT_UP_COLUMN,
+     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {CAUGHT_UP_COLUMN} TIMESTAMPTZ"),
 )
 
 # 🔴 EVERY INDEX BELOW HAS A NAMED CONSUMER, AND THAT IS THE ADMISSION RULE.

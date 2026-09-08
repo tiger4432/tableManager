@@ -573,6 +573,13 @@ def _run_v2_lineage(engine, setup, source="lot_event", fetch_rows=DEFAULT_FETCH_
         result["refused_samples"] = gate.samples()
         result["refused_samples_capped"] = (
             result["refused_total"] > len(result["refused_samples"]))
+        # 🔴 ASK, DO NOT INFER (S-65). Whether this source is caught up is a property of the
+        # relation and the cursor, and "the page loop ended" does not say it -- `max_batches`
+        # and the checkpoint end the loop too. `rows_past_cursor` answers the property, and
+        # `complete` is what makes the zero exact rather than a short read.
+        remaining, exact = rows_past_cursor(engine, setup, source, limit=1)
+        result["caught_up"] = bool(exact and remaining == 0)
+        store.mark_caught_up(source, result["caught_up"])
         return result
     finally:
         read.close()
