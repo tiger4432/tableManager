@@ -18106,3 +18106,103 @@ M4    `known` 스킵을 «옛 철자»로 되돌림(속성 든 등록도 삼킴)
 판정 청 «하나» — 위 「세 줄」을 두 줄로 되돌릴지(③ 을 컴파일러가 유도할지)
 재기동은 총괄 몫 · 감시 🟢 · 미커밋 0
 ```
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-54 착수 전 실측 «셋» — 멈춤 «둘 다 살아 있습니다». 그리고 하나는 «코드가 자기 docstring 에» 답해 뒀습니다. 짓지 않았습니다** (실측 17:0x)
+
+## 멈춤 ① — rescope 는 «사라진 행»의 원자를 «못 걷습니다** (DELETE 반쪽)
+```
+근거   `backfill.rescope` 의 docstring, 그 함수 자신:
+      「⚠️ WHAT A SCOPE CANNOT AIM AT. The refs come from the CURRENT translation of the rows
+        in scope, so if the correction makes those rows produce no atoms at all, there is
+        nothing to aim the withdrawal with and the old atoms stay.
+        `remake == 0` with `rows_in_scope > 0` is that case … and it is a DECLARATION
+        QUESTION rather than something this can widen its way out of — widening it means
+        deleting by something other than the scope, which is the unscoped act the tool
+        exists to avoid」
+=> DELETE 된 행은 «원자를 안 냅니다** -> 겨눌 refs 가 «0** -> 옛 원자가 «남습니다**.
+   게이트 ㉢(「DELETE → 그 행의 원자가 걷힘」)은 오늘 «rescope 로는 성립하지 않습니다»
+🔵 그리고 그 문장이 「넓히면 안 된다」까지 «이미 판정»해 뒀습니다 — 제가 우회로를 짜면 그 판정을 거스릅니다
+```
+
+## 멈춤 ② — identity 가 «준비기 산출»인 소스: «하나**, 그리고 그게 `lot_event` 입니다
+```
+출하 15 중   표에서 읽히는 identity 14 · «유도되는» identity «1**
+             lot_event → `event_group_key` (준비기 산출 — 원본 표에 «없음»)
+=> S-54 의 걸음 「SELECT <identity 컬럼> FROM T WHERE row_id IN (row_ids)」이 그 소스에는
+   «성립하지 않습니다** — 표에 그 컬럼이 없습니다
+⚠️ 첫 계기가 «3** 이라 했는데 그중 둘(`dt_transfer` · `wafer_process_recipe`)은 identity 가 `row_id` 이고
+   그건 `column_types` 에 «없을 뿐» 모든 동적 표에 «있는» 틀 컬럼입니다 — 대리를 성질로 읽은 것이라 고쳤습니다
+```
+
+## 129-bis 가 재라고 한 것 — 봉투의 row_id «자리»
+```
+행별   `database.py:310`  payload 의 «봉투 수준»에 `"row_id": data_row.row_id`
+      (`_EXCLUDED` 는 «컬럼 dict»에서만 빼는 것이라 봉투 수준과 «다른 자리»입니다)
+접힌   `stage_collapsed_event(session, event_type, table_name, row_ids)` — 이름 그대로 «목록»
+=> ㉠ 의 «두 모양» 다 닿습니다. 이건 «멈춤 아님»이고 지을 때 그대로 쓰면 됩니다
+```
+
+## 청 — 둘
+```
+Ⓐ DELETE 반쪽    ① 이 「선언 문제」라고 그 함수가 «이미 적었습니다». 그러면 S-54 의 ㉢ 은
+                 「rescope 로 한다」가 아니라 «다른 문»이 필요합니다(예: 삭제 이벤트가 그 행의
+                 «마지막으로 알려진 번역»을 refs 로 쓰는 길). 그건 이 걸음보다 큽니다
+                 => 이 걸음을 «EDIT 만»으로 좁힐지(129-ter 가 이미 EDIT·DELETE 로 좁혔으니 DELETE 도 빼기),
+                    아니면 그 문을 이 줄에 포함할지
+Ⓑ lot_event      identity 가 유도되므로 그 소스는 «이 걸음의 대상이 아닙니다».
+                 14 로 시작하고 lot_event 는 «별 줄»(그 소스의 scope 를 무엇으로 잡을지가 판정)
+                 ⚠️ 다만 그게 소유자가 돌리는 소스라 「원장이 따라온다」의 «체감»이 거기서 안 납니다
+```
+🔴 저는 **Ⓐ 는 「EDIT 만」 · Ⓑ 는 「14 로 시작 + lot_event 별 줄」** 로 기웁니다 —
+   둘 다 «지을 수 있는 것부터» 세우고, 못 하는 것을 «이름 대어» 남깁니다. 다만 Ⓑ 는 제품 체감에 걸려
+   총괄 판정 자리입니다.
+
+## 📌 상태
+```
+S-52 «닫힘»(여섯 층 + S-52-c 보류 기록) · S-54 는 위 청 뒤
+짓지 않았습니다(코드 0) · 미커밋 0 · 감시 🟢
+```
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-52-d 착지 (`851075e5`) — «제 ⑤ 의 결함»이었습니다. 그리고 제가 그것을 «놓친 경로»도 적습니다** (실측 18:0x)
+
+## 무엇이었나 — 제 것입니다
+```
+⑤ 에서 `defs.binding` 에 `attributes` 를 더하면서 «`when` 잠금을 안 걸었습니다».
+그 레코드의 나머지 다섯은 전부 `when: {field: kind, is: …}` 을 답니다 —
+=> 폼이 `column`·`constant` 바인딩에도 «속성 상자»를 그리고, 값을 넣으면 `_validate_binding` 의
+   exact 가 «거절»합니다. 「폼이 그리는데 서버가 거절한다」 부류
+```
+🔴 **게이트를 «필드»가 아니라 «부류»로 걸었습니다.**
+```
+단언   「`kind` 만이 잠금 없는 필드다」 + 「나머지 잠금은 «발행된 닫힌 목록»의 종류를 댄다」
+왜    개별 필드를 이름으로 세면 «다음에 더해지는 필드»가 그 시험을 «지나갑니다** —
+      그리고 S-52-d 가 정확히 그렇게 났습니다(제가 `attributes` 를 잠금 없이 더했고,
+      기존 시험 어느 것도 「새 필드에 잠금이 있나」를 안 물었습니다)
+변이   잠금 제거(= 결함 재현) · 없는 종류를 가리키기 -> 각각 빨강
+```
+
+## 🔴 제가 놓친 «경로» — 총괄 지적대로입니다
+```
+지적   「당신 보고에 없어서 채널을 다시 읽으신 것으로 보이지 않습니다」
+사실   맞습니다. ⑥ 보고를 쓰고 «바로» S-54 실측으로 갔고, 그 사이 채널에 올라온 S-52-d 를
+      «안 읽었습니다». 제 자가 기상은 「끝 블록」을 읽는데, 그때 «끝»은 S-54 였습니다
+🔴 부류  「마지막 한 줄만 읽는다」 — 제 감시가 `tail -1` 이라 «그 사이에 들어온 줄»을 못 봅니다.
+      오늘 이게 두 번째입니다(앞서 판정 130 도 «착지 뒤»에 알았습니다)
+고침  이제부터 채널 확인은 «내 마지막 보고 커밋 이후로 들어온 헤딩 전부»를 봅니다 —
+      `tail -1` 이 아니라 「내가 마지막으로 답한 판정 번호 «다음»부터」
+```
+
+## 📌 다음 — 판정 131 대로
+```
+🔒 S-52-d ✅ → 재기동(총괄) → S-54(EDIT · 15 소스 · 게이트 ㉠㉡㉣㉤㉥㉦㉧㉨ + ㉩, ㉢ 제외) → S-54-b
+🔵 131 Ⓑ 의 답이 제 청보다 낫습니다 — 유도 identity 소스의 범위 컬럼은 «그 소스의 페이지 키»이고,
+   `_page_key` 의 docstring 이 「lot_event 의 유도 키가 event_time 을 «품어» 페이지 키가 그룹의
+   coarsening 이고, coarsening 은 절대 분자를 안 가른다」를 «이미» 적어 뒀습니다.
+   🔴 그리고 저는 오늘 그 docstring 을 «읽었습니다»(층 ③ 을 재느라). 읽고도 «연결을 못 했습니다» —
+      「관련 있는 것을 읽었다」와 「그것이 이 물음의 답임을 알았다」는 다릅니다
+미커밋 0 · 감시 🟢
+```
