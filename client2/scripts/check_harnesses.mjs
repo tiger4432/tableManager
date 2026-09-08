@@ -1214,6 +1214,12 @@ const FLOORS = new Map([
   // makes the server COUNT the same filter over the same table before answering, and that
   // second scan is invisible everywhere except in the seconds the operator waits.
   ['map_cell_query_harness.mjs', 13],
+  // New 2026-09-08 with C-43 ①③ (the map-open instrument). Floor is the count it reports on
+  // the commit that introduces it. 🔴 AN INSTRUMENT'S DEFECTS ALL READ AS GOOD NEWS -- a call
+  // it missed is a smaller number, a folded duplicate is a tidier one, a draw time filled in
+  // as 0 is an instant screen -- so seven mutants stand behind this number.
+  ['map_open_timing_harness.mjs', 22],
+
 
 
 

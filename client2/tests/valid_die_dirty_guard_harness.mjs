@@ -265,6 +265,14 @@ function buildEnv(src, opts = {}) {
     //    Handing the names in keeps the bridge standing for one more day; the repair is the
     //    extraction round (C-35 ④), which this file is already named in.
     ...cellQueryModule,
+    // 🔴 SECOND TIME IN ONE ROUND. C-43 ① put the open-timing instrument at the door of
+    //    `loadExistingMap`, and the slice cannot see it either — same rule, same throw
+    //    (`installOpenTiming is not defined`). The instrument is handed in as a NO-OP: this
+    //    harness scores the dirty guard, not the timing, and a stub that counts nothing keeps
+    //    the two questions apart.
+    installOpenTiming: () => () => {},
+    drawOpenTiming: () => {},
+    openTimer: null,
     CURRENT_USER: 'tester',
     selectedTable: 'bonding_map',
     currentRotation: ROT,

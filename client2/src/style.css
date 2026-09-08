@@ -2998,3 +2998,17 @@ body.resizing-active .history-sidebar {
 /* 🔴 세는 중인 수는 «아직 쓸 수 없는» 수입니다. 글자로도(…) 구별되지만
    표지를 같이 달아 「0 건」과 한눈에 갈리게 합니다. */
 #total-rows.is-counting { opacity: 0.55; font-style: italic; }
+
+/* C-43 ①③ — 마지막 열기가 쓴 것. 값만, 한 줄, Load 버튼 바로 아래.
+   열기 전에는 hidden 이라 자리도 안 차지합니다 -- 빈 칸에 0 을 두면 「빨랐다」가 되고,
+   그건 아직 아무도 답하지 않은 물음입니다. */
+.map-open-timing {
+  margin-top: 3px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--text-dim, #94a3b8);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
