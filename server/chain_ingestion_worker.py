@@ -56,6 +56,7 @@ import chain_key_gate
 import dt_map_derivation
 import chain_activity
 import chain_bindings
+from ledger import followup as ledger_followup
 
 #: 🔴 THE FILE THIS PROCESS LOGS TO, NAMED ONCE AND CARRIED ONTO THE MAPPER LINES.
 #  A mapper runs in THIS process, so its lines land here and not in the web server's
@@ -759,6 +760,22 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     #    이름 대어 남기면, 아래 어느 출구로 나가든 규칙마다 결과가 있다. 돌 자격이 있는
     #    규칙은 여기서 아무것도 안 남기고 `_run_mapper` 가 자기 결과를 남긴다.
     _record_pre_run_outcomes(rules, events)
+
+    # 🔴 THE LEDGER LISTENS HERE, ABOVE THE TRIGGER FILTER, AND ONLY DROPS A NOTE.
+    #    Its subject is the OUTBOX EVENT and not a chain rule: a person editing a cell in
+    #    the grid produces the same event, and the source that reads that table has to be
+    #    followed the same way (ruling 129 ㉤). So it sits above `valid_events`, which
+    #    both filters on `trigger_table`/`enabled` and RETURNS EARLY when nothing matches
+    #    - two decisions this step must not inherit.
+    # ⛔ AND IT TRANSLATES NOTHING. `enqueue` appends to a memory deque and returns, so
+    #    a chain transaction costs what it cost before this line existed; the paced task
+    #    beside this loop does the work (ruling 129-bis).
+    for event in events:
+        ledger_followup.enqueue(
+            event.table_name,
+            ledger_followup.row_ids_of(get_payload_dict(event)),
+            event.event_type)
+
     valid_events = [e for e in events if e.event_type in ["CREATE", "EDIT"] and any(
         r.get("trigger_table") == e.table_name and r.get("enabled", True)
         and _rule_accepts_event(r, e) for r in rules)]
@@ -1581,7 +1598,8 @@ def _worker_note():
 
     `None` when both are clean, so a healthy deployment's heartbeat file is unchanged.
     """
-    parts = [p for p in (_undeclared_drop_note(), chain_key_gate.note()) if p]
+    parts = [p for p in (_undeclared_drop_note(), chain_key_gate.note(),
+                         ledger_followup.note()) if p]
     return " | ".join(parts) or None
 
 
@@ -1688,6 +1706,58 @@ def another_chain_loop_is_running(now=None):
     return "pid %s, last beat %.1fs ago" % (pid, entry.get("age_seconds") or 0.0)
 
 
+#: What the follow-up loop waits when the queue is empty, whatever the declared pace says.
+#: A pace of `fast` rests for zero seconds, and zero seconds around an empty deque is a hot
+#: loop -- the pace answers "how hard may I push while there is work", not "how often do I
+#: look".
+FOLLOWUP_IDLE_SECONDS = 1.0
+
+
+def _drain_ledger_followup_sync(db_session_factory):
+    """One follow-up batch, in a thread. The session is this call's and closes with it."""
+    from ledger.setup import load_setup
+
+    db = db_session_factory()
+    try:
+        return ledger_followup.drain_once(db.get_bind(), load_setup())
+    finally:
+        db.close()
+
+
+async def run_ledger_followup(db_session_factory):
+    """Drain the ledger follow-up queue at the declared pace, BESIDE the chain loop.
+
+    🔴 THE PACE IS THIS LOOP'S, NOT `rescope`'S. `rescope` has no pacing of its own and
+    keeps none (one seat, unchanged): a batch runs whole and then this rests. Pacing inside
+    the re-translation would throttle one molecule's write, which is not what needs to
+    yield -- the QUEUE is (ruling 129-ter).
+
+    🔴 THE DECLARATION IS RE-READ EVERY CYCLE. An operator who slows this down at 2am
+    edits one cell in `pacing.json`, which is the reason that file exists rather than a
+    constant; re-reading once per cycle is what makes "no restart" true.
+
+    ⛔ IT NEVER DIES QUIETLY. Anything this raises is named and the loop continues: the
+    queue is loss-tolerant by design, so one bad batch costs promptness, and a task that
+    ended silently would cost every batch after it with nothing on screen.
+    """
+    import pacing
+
+    while True:
+        try:
+            units, rest = pacing.job_pace(ledger_followup.FOLLOWUP_JOB)
+        except Exception as exc:
+            logger.warning("[LedgerFollowUp] pace unreadable, using the default: %s", exc)
+            units, rest = None, FOLLOWUP_IDLE_SECONDS
+        drained = 0
+        while ledger_followup.queue_depth() and (units is None or drained < units):
+            try:
+                await asyncio.to_thread(_drain_ledger_followup_sync, db_session_factory)
+            except Exception as exc:
+                logger.warning("[LedgerFollowUp] batch failed: %s", exc)
+            drained += 1
+        await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -1753,6 +1823,10 @@ async def start_chain_ingestion_worker(db_session_factory):
     # [Warmup] 콜드 스타트 제거: 매퍼 선(先)import + DB 풀 프라임 + HTTP 클라이언트 준비.
     #   sys.path에 server 디렉토리가 추가된 뒤에 실행해야 mappers.* import가 해석된다.
     warmup_worker(rules, db_session_factory)
+
+    # The ledger's follow-up runs BESIDE this loop and never inside it, so the chain's
+    # transaction time is what it was (ruling 129-bis ㉩).
+    asyncio.create_task(run_ledger_followup(db_session_factory))
 
     while True:
         # [B1/B2] Progress beat, emitted from the work loop itself. Idle
