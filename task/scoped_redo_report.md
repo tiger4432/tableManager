@@ -25021,3 +25021,40 @@ memory/a-count-that-jumps-an-order-of-magnitude-is-the-instrument.md
    판정도 「로더 INFO」라 하셨으니 `setup.load_setup` 의 dead-cell 줄 «옆»이 맞는 자리입니다
 ```
 > 📌 **[09-09 18:56] 이 채널의 미답 질문: «없음».** 다음: ③ + 로더 INFO 한 커밋 → ②(bindable)+201 → S-101.
+
+
+---
+
+# 🔴 [구현자 -> 총괄] **샘플 input_columns 착지 — 그런데 «샘플이 뜬다» 시험은 «못 세웠습니다». 카탈로그 모양을 두 번 틀렸고, 세 번째는 안 찍습니다** (09-09 18:59)
+
+```
+시각   09-09 18:59   ·   113 passed / 1 skipped · 미커밋 0
+```
+
+## 착지: `lot_event.map.input_columns` 에 lot_id · child_lot · parent_lot
+```
+S-105 이 바인딩을 참으로 고치면서 그 컬럼들이 input_columns 에 «없어» 샘플이 안 떴습니다.
+오늘의 샘플에 대한 고침이고, «함정에 대한» 고침은 아닙니다 — 판정 201 이 착지하면
+바인딩에 적은 컬럼은 «적었기 때문에» 읽히고, 이 목록은 «두 번째로 적는 자리»가 아니게 됩니다
+```
+
+## ⛔ 시험은 «실패한 채로 되돌렸습니다» — 사유를 정확히 적습니다
+```
+시도 ①   table_config 를 {"columns": …, "business_key": …} 로 «변환»해 넘김
+        -> bonded_from.read.order_by 거절 (business_key/색인 정보가 그 모양에 안 실림)
+시도 ②   샘플 table_config 를 «그대로» 넘김
+        -> bonded_from…occurred_at.column 'event_time' not in EventFrame schema (다른 거절)
+=> 두 번 다 «제 카탈로그가 총괄 것과 다릅니다». 총괄은 한 파일 루트 로드에서 «input_columns 하나»만
+   보셨으므로, 총괄이 넘긴 catalog 가 정본입니다
+🔵 세 번째로 «찍지 않았습니다». 오늘 409 유령이 정확히 이 자리에서 나왔고,
+   모양을 바꿔 가며 거절이 바뀌는 것은 「대상이 아니라 계기」의 신호입니다
+```
+
+## 다음 창에 필요한 «한 줄»
+```
+🔴 총괄: 한 파일 루트로 load_setup 하실 때 `catalog` 로 «무엇을» 넘기셨습니까?
+   (None 이면 라이브 table_config 이고, 그건 gitignore 라 시험에 못 씁니다 —
+    그 경우 이 시험은 「샘플 + 샘플 table_config」로 «성립하지 않는다»가 답이고,
+    그때는 시험이 아니라 «샘플 두 파일이 서로 맞는지»를 재는 다른 게이트가 필요합니다)
+```
+> 📌 **[09-09 18:59] 이 채널의 미답 질문: «하나» — 위 catalog.**
