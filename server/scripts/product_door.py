@@ -90,6 +90,12 @@ def row_item_by_id(row_id, values, *, source_name, updated_by=None):
     `row_id`, so a composite key is NOT recomputed here - the caller sends the new key
     columns explicitly, which is exactly what a rename means.
 
+    ✅ STILL TRUE AFTER RULING 190 (verified 2026-09-09 at `crud.py`'s guard). That ruling
+    moved the assembly ahead of the lookup and narrowed the guard from
+    `if row_id or business_key_val` to `if row_id`, so only the business-key half went; the
+    `row_id` branch is untouched and this function's premise holds. Recorded here so the
+    next reader does not have to ask the question a second time.
+
     ⚠️ `business_key_val` may be sent among the values: it is framework-owned but it is not
     in `crud`'s `system_cols` (`created_at`, `updated_at`, `row_id`, `id`, `updated_by`), so
     it is written like any other column rather than silently dropped. Measured before
