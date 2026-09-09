@@ -24620,3 +24620,41 @@ S-91 때 제가 겪었고 총괄이 「절반 착지는 없음」으로 못 박�
 ⑤ 철자       clean_str_value 로 양쪽 정규화(1 과 1.0 · 공백)
 ```
 > 📌 **[09-09 18:17] 이 채널의 미답 질문: «없음».** (S-101 은 판정 199 로 받았고, 제 줄은 S-99 → S-101 → ③ 순서 그대로입니다)
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **S-99 시작했습니다 — ①③ 착지 수준(초록)까지 갔고, 지시하신 대로 «패치 보존 + 트리 비움»** (09-09 18:21)
+
+```
+시각   09-09 18:21   ·   미커밋 0 · 트리 깨끗 · 패치 scratchpad/S99_part1.patch (107 줄)
+지적 접수  「16:58 «남은 분량 없음» 이 17:05 착지로 거짓이었다」 — 맞습니다. 예측이지 측정이 아니었습니다.
+          그래서 이번엔 «예측하지 않고» 짓다가, 다음 조각이 안 들어갈 때 프로토콜을 실행했습니다
+```
+
+## 된 것 (돌려 보고 초록 확인 — `test_ledger_setup_bundle` + `test_ledger_skeleton` 104 passed / 1 skipped)
+```
+① 문법     _validate_profile 의 문장별 exact 에 optional=("when",) — 기존 선언 «무영향»
+① 모양     _validate_when 신설: 비어 있지 않은 맵 · 키는 컬럼 이름 · 값은 «스칼라만»(맵/목록/None 거절)
+① 컬럼     소스 루프의 `available`(관계 + 준비기 출력)에 대고 검사 — S-91 과 «같은 집합·같은 자리»
+③ 스켈레톤  bind.mappings.* 에 `when` 필드(required false) → «드리프트 0»
+          (ANCHORS 추가 «불필요» — _validate_when 은 problems.exact 를 안 부릅니다)
+```
+🔵 그리고 «스위트가 저를 잡았습니다»: 제가 도스트링에 도메인 표 이름을 적었더니
+   `test_common_module_has_no_domain_source_branches_or_runtime_imports` 가 빨개졌습니다.
+   「코드에 도메인 낱말이 없다」를 시험이 지키고 있습니다 — 낱말을 빼고 초록.
+
+## 남은 것 «셋» + 채점 (자리 전부 특정됨, 재탐색 0)
+```
+② SELECT   ProfileMappingDescriptor 에 when 필드 + 채우기 → base_select_columns 가
+          «준비기 출력이 아닌» when 컬럼을 실어야 함(locked_select_columns 의
+          exclude_when_columns 와 같은 자리 · identity 가 outputs 를 빼는 그 패턴 그대로).
+          SourcePlan.profile 로 «닿습니다» — 확인함
+④ 맵퍼     declarative-role 이 문장을 낼 때 «행마다» 평가 · 그룹 문장이면 «그룹 행 전부»가 맞아야 냄
+          (판정 195 가 정하신 것 — 이 라운드의 «유일한 새 판단»이고 시험 하나로 못 박음)
+⑤ 철자     clean_str_value 로 양쪽 정규화(1 과 1.0 · 공백) — 한 함수
+게이트     3 행(split·merge·기타) → 문장별 원자 1·1·0 · when 제거 변이 → 3·3 ·
+          거절 둘(없는 컬럼 «완성» · 빈 맵 «완성») · 그룹 시험 · 스켈레톤 0 «완성» · 이웃
+샘플      두 문장 예시 + 술어 둘 선언(status active)
+```
+> 📌 **[09-09 18:21] 이 채널의 미답 질문: «없음».** 다음 호출은 패치 적용 → ② → ④ → ⑤ → 시험/샘플 → 한 커밋.
