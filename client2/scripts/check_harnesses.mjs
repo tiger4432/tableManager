@@ -1214,7 +1214,7 @@ const FLOORS = new Map([
   //    「커서 앞」 note went with the words they were about. Three took their place -- the
   //    remainder is READ and never computed -- so the file scores a smaller contract, not
   //    the same contract more weakly. A floor lowered without that sentence is a retreat.
-  ['source_backlog_harness.mjs', 17],
+  ['source_backlog_harness.mjs', 23],
   // New 2026-09-08 with C-43 ② (the map's cell query). Floor is the count it reports on the
   // commit that introduces it. 🔴 The first mutant is the round: without defer_total the load
   // makes the server COUNT the same filter over the same table before answering, and that

@@ -736,6 +736,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       // S-39. Beside the compile, never in front of it — these are process counters and the
       // list is drawn whether or not they arrive.
       void loadRefusals();
+      void loadCensus();
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         renderOntologyExplorer(root, state);
@@ -761,6 +762,25 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // ⚠️ A FAILURE LEAVES `null`, WHICH IS 「안 잼」. Substituting an empty report would draw
   //    「거절 0」 for a question that was never answered, and 「nothing was refused」 and
   //    「nobody asked」 are opposite instructions to the operator.
+  // 🔴 THE CENSUS RIDES ON THE DECLARATION, NOT ON THE COMPILE. `sources[].census` is where
+  //    S-58 put 「표 행 N · 색인 M · 남은」, so this is a second read of a route the screen
+  //    does not otherwise need — and it is NOT admin-gated, unlike the refusal report.
+  // ⚠️ A FAILURE LEAVES THE MAP EMPTY, which renders as 「안 쟀다」 per source. That is the
+  //    honest answer: nobody counted, as opposed to 「세 봤더니 0」.
+  const loadCensus = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/ledger/declaration`);
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      const rows = body && Array.isArray(body.sources) ? body.sources : [];
+      const bySource = {};
+      for (const row of rows) if (row && row.source && row.census) bySource[row.source] = row.census;
+      dispatch({ type: 'CENSUS_RECEIVED', bySource });
+    } catch (error) {
+      void error;                       // the line simply does not appear — see above
+    }
+  };
+
   const loadRefusals = async () => {
     try {
       const res = await adminFetch(`${apiBase}/admin/ontology-explorer/refusals`);

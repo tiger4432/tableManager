@@ -9,7 +9,7 @@ import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import { refusalCell, refusalSummary, excludedNote } from './refusal_cell.js';
 import { verificationNote } from './verification_note.js';
-import { backlogCells, hasBacklog } from './source_backlog.js';
+import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -924,9 +924,25 @@ function renderInspector(state) {
   // ⚠️ 안 세었으면 «줄 자체가 없습니다». 빈 칸 넷을 그리면 「아직 안 셌다」가 「세 봤더니
   //    없다」로 읽히고, 그 둘은 정반대 지시입니다 — 그리고 그것이 서버 절반(S-69)이 오기 전
   //    오늘 화면이 «바이트 동일»한 이유이기도 합니다.
-  if (state.selection.kind === 'source_plan' && hasBacklog(verified)) {
+  // 🔴 C-42. 「돌 게 있나」 — 소유자가 운영에서 물은 그것입니다. 수는 «선언 응답»의
+  //    `sources[].census` 에서 옵니다(S-58): 표 행 · 색인된 행 · 남은 것, 그리고 «언제 잰
+  //    값인지». 이 화면의 컴파일 응답에는 그 셋이 «없습니다» — 그래서 따로 읽습니다.
+  // ⚠️ 안 쟀으면 «줄 자체가 없습니다». 빈 칸 넷을 그리면 「아직 안 쟀다」가 「세 봤더니
+  //    없다」로 읽히고, 그 둘은 정반대 지시입니다.
+  const census = state.census?.[state.selection.canonical_id];
+  if (state.selection.kind === 'source_plan' && hasBacklog(census)) {
     const line = h('div', 'oe-backlog');
-    for (const cell of backlogCells(verified)) {
+    const refusal = censusRefusal(census);
+    // 🔴 「셀 수가 없다」는 «빈 칸이 아닙니다». 문지기가 사유와 «고칠 자리»를 문장으로 줬고,
+    //    그 문장은 여기서 다시 쓰지 않습니다 — 이미 무엇을 선언하면 되는지 말하고 있습니다.
+    if (refusal) {
+      const why = h('span', 'oe-backlog-cell');
+      why.append(h('code', 'oe-backlog-name', 'refused'),
+                 h('span', 'oe-backlog-value', refusal.reason));
+      if (refusal.remedy) why.title = refusal.remedy;
+      line.append(why);
+    }
+    for (const cell of backlogCells(census)) {
       if (!cell.text) continue;
       const item = h('span', 'oe-backlog-cell');
       // 이름은 «서버가 보낸 키 그대로». 번역하면 서버가 키를 바꾸는 날 옛 이름으로 옳아 보입니다.
