@@ -1854,6 +1854,72 @@ def _ensure_ledger_schema_sync(db_session_factory):
         db.close()
 
 
+def _ensure_business_key_unique_indexes_sync(db_session_factory):
+    """Build the UNIQUE index that makes `business_key_val` an enforced identity.
+
+    \U0001f534 판정 189 — S-88's SIBLING, WITH A GUARD S-88 DID NOT NEED. `models.py` keeps
+    this column NON-unique on purpose (`create_all` does not add indexes to tables that
+    already exist, so declaring it there is a no-op on exactly the databases where duplicates
+    accumulate) and says the migration "belongs in the setup sequence and not only in the
+    upgrade one". Measured 2026-09-09: nothing invoked it, so a fresh install enforced
+    nothing — and ㉡'s identity lookup is about to lean on this index.
+
+    \u26d4 AND IT MUST NOT BE S-88's ONE-LINER. That ensure only WEAKENS (add a column, drop
+    a check) and cannot fail on existing rows. A UNIQUE index STRENGTHENS: on a table that
+    already carries duplicates the build fails, so the surplus is COUNTED FIRST and a table
+    that cannot take the index is NAMED and left alone. Creating nothing is the correct
+    outcome there; the number is what an operator needs to decide whether to clean.
+
+    \u26a0\ufe0f AN INVALID LEFTOVER IS NOT "ALREADY DONE". A cancelled CONCURRENTLY build
+    leaves an index under the right NAME enforcing nothing, which is why the predicate is
+    「a VALID unique index on exactly (business_key_val)」 and not 「a name exists」. Dropping
+    that leftover is the script's job with an operator watching, not a daemon's at startup.
+
+    Startup continues whatever happens here, exactly as it does for the ledger schema: this
+    daemon also does chain work that owes none of this anything.
+    """
+    from migrations import add_business_key_unique_index as uq
+
+    db = db_session_factory()
+    try:
+        engine = db.get_bind()
+        built, refused, invalid = [], [], []
+        with engine.connect() as conn:
+            tables = uq.tables_with_business_key(conn)
+            for table in tables:
+                found = uq.existing_unique_index(conn, table)
+                if found is not None:
+                    if not found[1]:
+                        invalid.append((table, found[0]))
+                    continue
+                census = uq.duplicate_census(conn, table)
+                if census["surplus"]:
+                    refused.append((table, census["surplus"]))
+                    continue
+                name = uq.unique_index_name(table)
+                with engine.connect().execution_options(
+                        isolation_level="AUTOCOMMIT") as write_conn:
+                    verdict, detail = uq.build_index(write_conn, table, name)
+                built.append((table, verdict, detail))
+        for table, verdict, detail in built:
+            logger.info("[Ledger] business-key unique index on %s: %s (%s)",
+                        table, verdict, detail)
+        # \U0001f534 NAMES AND NUMBERS, NOT A COUNT. "3 tables refused" tells an operator
+        # nothing they can act on; the table and its surplus are what they clean.
+        for table, surplus in refused:
+            logger.warning("[Ledger] %s cannot take its business-key unique index: %d "
+                           "surplus row(s) share a key. The index was NOT created and the "
+                           "column is not an enforced identity there.", table, surplus)
+        for table, name in invalid:
+            logger.warning("[Ledger] %s carries an INVALID index %r under the unique name, "
+                           "so nothing is enforced. Left alone: dropping it belongs to "
+                           "scripts/migrations/add_business_key_unique_index.py with an "
+                           "operator watching.", table, name)
+        return {"built": built, "refused": refused, "invalid": invalid}
+    finally:
+        db.close()
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -1864,6 +1930,14 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] the ledger schema could not be ensured, so a column that "
                      "landed in code may be missing here: %s", exc)
+    # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
+    # refuse, and a refusal is a number an operator has to see rather than an error.
+    try:
+        await asyncio.to_thread(_ensure_business_key_unique_indexes_sync,
+                                db_session_factory)
+    except Exception as exc:
+        logger.error("[Ledger] the business-key unique indexes could not be ensured, "
+                     "so that column may not be an enforced identity here: %s", exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither
