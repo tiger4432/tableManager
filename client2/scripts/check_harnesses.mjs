@@ -1230,6 +1230,13 @@ const FLOORS = new Map([
   // response cannot tell 'walk the table list' from 'walk the map's keys' -- the two agree
   // on it -- so the fixture is built with them DISAGREEING.
   ['map_table_list_harness.mjs', 16],
+  // New 2026-09-09 with C-48 (the push toast's count). Floor is the count it reports on the
+  // commit that introduces it. 🔴 THE DEFECT IS A FALSY ZERO: ruling 192 made `updated_count`
+  // mean 「rows this request changed」, and `a || b || c` discards the correct answer 0 for the
+  // PAYLOAD SIZE -- an unchanged push of 200 cells said 「200건」. The discriminating fixture is
+  // `{updated_count: 0, count: 9}`: every other input is answered identically by the old chain
+  // and the new rule, so it is the only one that tells them apart.
+  ['changed_rows_harness.mjs', 15],
   // New 2026-09-08 with C-45's remaining gate. Floor is the count it reports on the commit
   // that introduces it. 🔴 IT IS SMALL AND IT IS THE ONE THAT MEASURES: the board is rendered
   // TWICE -- records whole, and with the narrowing put back -- and the drawn text must match.

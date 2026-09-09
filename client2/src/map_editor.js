@@ -10,6 +10,7 @@ import { CELL_LIMIT, cellQuery, cellsTruncated as isCellsTruncated, cellsToDraw 
   from './map_cell_query.js';
 import { createOpenTimer, timingText, duplicateTitle } from './map_open_timing.js';
 import { mapTablesFrom } from './map_table_list.js';
+import { changedRowsText } from './changed_rows.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -6422,12 +6423,17 @@ async function pushMapData() {
         showToast('DOE·split 서술 registry 저장 실패 · 오프라인 캐시에만 보관됨', 'warning');
       }
 
+      // 🔴 판정 192: `updated_count` 는 이제 「이 요청이 «바꾸거나 만든» 행 수」다. 무변경
+      //    푸시의 답은 «0» 이고, `||` 사슬은 0 이 falsy 라 그 답을 버리고 «보낸 행 수»를
+      //    말했다 — 아무것도 안 바뀐 푸시가 「200건」이라 보고했다. 두 토스트가 «같은 함수»를
+      //    지나므로 한쪽만 고쳐질 수 없다.
+      const changed = changedRowsText(result, updates.length);
       if (metaPushFailed) {
         // 셀은 들어갔지만 **규격이 저장되지 않았다** — 다음 로드/오버레이가 틀린 메타로 계산된다
-        showToast(`셀 ${result.updated_count || result.count || updates.length}건 적재 · 맵 규격 저장 실패 `
+        showToast(`셀 ${changed} · 맵 규격 저장 실패 `
           + `(${metaPushFailed}) — 다시 Push하십시오.`, 'error');
       } else {
-        showToast(`적재 완료 — ${result.updated_count || result.count || updates.length}건`, 'success');
+        showToast(`적재 완료 — ${changed}`, 'success');
       }
     } else {
       const errData = await res.json().catch(() => ({}));
