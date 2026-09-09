@@ -27660,3 +27660,51 @@ map 이 유닛을 잘라 interpret_unit(self, context, unit: pd.DataFrame, profi
 > 「맵퍼가 DataFrame 을 받는다」가 문제입니다.
 > 🔴 **그래서 230 대로 시작하지 «않고» 기다립니다.** 위 보고의 ⓐ/ⓑ/ⓒ 중 하나를 주시면 그대로 갑니다.
 > 제 추천은 ⓐ(S-64-b 를 3.36 으로 닫고 S-94 로 — 체인 82 h 가 번역 9.3 h 보다 «아홉 배» 큽니다)
+
+---
+
+# [구현자 → 총괄] 📏 **S-94 ① 전 «자리 확인» (코드 0) — 🔴 「같은 입력의 뷰를 한 번만」은 출하 맵퍼의 호출 모양에서 «안 맞습니다». 그리고 헬퍼 안에 «진짜 반복»이 둘 있습니다**
+
+## 1. 호출 모양 — 「같은 입력」이 «없습니다»
+```
+server/mappers/core_alignment_mapper.py.sample:196  (라이브 파일도 같은 줄)
+   for job_id in jobs:
+       reference_spec = _reference_spec(rule, selected["identity"])
+       view = resolve_alignment_view(db, rule_name, {job_column: job_id}, map_table,
+                                     reference_spec=…, source_filters=selected["identity"], …)
+=> «job 마다» key_values 도 source_filters 도 reference_spec 도 «다릅니다»
+🔴 그래서 「시그니처의 뷰 결정 인자 전부」를 키로 한 배치 메모는 «히트가 0» 입니다.
+   1,000 행 그룹에 job 이 1,000 개면 키도 1,000 개입니다
+```
+
+## 2. 그런데 헬퍼 안에 «호출마다 반복되는» 것이 둘 있습니다 — 캐시가 «없습니다»
+```
+resolve_alignment_view 는 매 호출에서
+   declared_alignment_rule → enrichment_config.load_enrichment_rules(known_tables=…)
+        = enrichment_rules.json 을 «디스크에서 읽고» «모든 규칙을 다시 검증»합니다
+   map_overlay.load_overlay_config()
+        = map_overlay_config.json 을 «디스크에서 읽습니다»
+둘 다 함수에 캐시가 «없습니다»(코드 확인). 그리고 둘 다 «rule_name 과 무관»하게 배치 내내 동일합니다
+실측(이 박스, 선언된 규칙 «넷»):  0.768 ms + 0.245 ms ≈ «1.0 ms / 호출»
+   -> 1,000 행 그룹이면 ≈ 1 s.  총괄님이 재신 35~43 s 의 «약 2.5%» 입니다
+⚠️ 그리고 이건 «규칙 수에 비례»합니다 — 규칙이 마흔이면 열 배가 됩니다(운영 규칙 수는 제가 모릅니다)
+```
+
+## 3. 그러면 py-spy 45% 는 `build_alignment_view` «안»입니다
+```
+남은 후보(제 추정, 아직 «안 잰» 것)
+   여러 job 이 «같은 기준(reference)»을 쓸 수 있습니다 -> 기준 쪽 기하/뷰가 반복될 수 있음
+   그것이 사실이면 메모의 자리는 «기준 뷰»이지 「호출 전체」가 아닙니다
+🔴 이건 «재기 전에는 주장 안 합니다». build_alignment_view 를 열어 한 번 재야 갈립니다
+```
+
+## 4. 그래서 ① 을 시작하기 전에 «하나만» 여쭙니다
+```
+🔴 응용 레인의 S-95 측정 스크립트 «경로»를 알려주십시오
+   ④ 에서 그 스크립트로 재측정하라 하셨으니, ① 의 기저도 «같은 계기»여야 전/후가 비교됩니다
+   제가 따로 만들면 「둘째 철자」이고, 오늘만 그 부류가 세 번 나왔습니다
+   (search_path 쉼표 · 스크래치 스키마 pid · 관문 사본)
+없으면 제가 만들겠습니다 — 다만 그때는 «그 스크립트가 정본»이 되도록 저장소에 넣겠습니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 위 하나(S-95 스크립트 경로).** 그 사이 `build_alignment_view` 를
+> 읽어 3 의 「기준 뷰가 반복되나」를 «재서» 올리겠습니다 — 코드는 그 수 뒤에
