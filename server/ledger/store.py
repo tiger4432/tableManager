@@ -341,6 +341,50 @@ class LedgerStore:
                     f"source {source!r} cursor belongs to a different "
                     "translator/setup snapshot; explicit replay/reset is required")
 
+    def _record_refusals(self, connection, source, translator_ver, refused, reasons):
+        """Charge this batch's refusals to the source's registry row. Caller's transaction.
+
+        🔴 WHY IT IS A SEPARATE STATEMENT FROM `_advance_cursor` (S-113 ⓓ-2, ruling 221).
+        The scoped door is the only door the live path uses, and it must not move the
+        position - so the counters that describe HOW FAR THE FORWARD SCAN GOT are skipped
+        with it. Refusals are not one of those: "this source refused two molecules for this
+        reason" is true of the source, not of a position, and skipping it is why the number
+        the refusal screen exists to show has been zero everywhere since S-76.
+
+        ⛔ THE AGGREGATE RIDES WITH THE BREAKDOWN AND THAT IS NOT OPTIONAL. `schema.py`
+        states it: the aggregate is the authority, the breakdown explains it, and one
+        transaction is what stops the two from disagreeing. `ledger_trace._unaccounted`
+        branches on the SIGN of `molecules_refused - sum(breakdown)`, and a negative one
+        means "a real bookkeeping fault". Writing the names without the number would
+        manufacture exactly that on every source that refuses anything - a status strip
+        crying wolf about its own bookkeeping.
+
+        ⚠️ AND IT CREATES THE ROW, for the same reason the census tick does (S-113 ⓑ-1):
+        since S-76 nothing else does, so an `UPDATE` would land nowhere for a source
+        declared today. `translator_ver` rides on the INSERT and is left alone on conflict -
+        re-stamping is `restamp_cursor`'s decision (S-87), never a side effect of counting.
+        """
+        if reasons is None:
+            raise TypeError(_REASONS_REQUIRED)
+        if not refused and not reasons:
+            # A clean batch has nothing to charge. Returning early rather than writing `{}`
+            # keeps NULL meaning "never broken down" for a row no writer has owned - the
+            # three-state distinction `ledger_admin` draws.
+            return
+        table = schema.CURSOR_TABLE
+        with connection.cursor() as cursor:
+            cursor.execute(f"""
+                INSERT INTO {table} (
+                    source, translator_ver, cursor_value, molecules_refused,
+                    {schema.REFUSAL_REASONS_COLUMN}, updated_at)
+                VALUES (%s, %s, 'null'::jsonb, %s, {self._SHAPE_REASONS}, now())
+                ON CONFLICT (source) DO UPDATE SET
+                    molecules_refused = {table}.molecules_refused
+                                        + EXCLUDED.molecules_refused,
+                    {schema.REFUSAL_REASONS_COLUMN} = {self._merge_reasons_sql()},
+                    updated_at        = now()
+            """, (source, translator_ver, refused, _json(dict(reasons))))
+
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
@@ -408,6 +452,11 @@ class LedgerStore:
                                      molecules, inserted, attempted - inserted,
                                      refused, incomplete, reasons=reasons,
                                      enforce_translator_version=enforce_translator_version)
+            else:
+                # 🔴 THE REFUSALS STILL LAND (S-113 ⓓ-2). Not the position, not the progress
+                # counters - those describe the forward scan and this door is not it. See
+                # `_record_refusals` for why the two halves separate exactly here.
+                self._record_refusals(connection, source, translator_ver, refused, reasons)
             connection.commit()
             return {"attempted": attempted, "inserted": inserted,
                     "deduped": attempted - inserted, "molecules": molecules,

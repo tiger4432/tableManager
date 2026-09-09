@@ -1050,3 +1050,51 @@ def test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint(
     assert (verdict, reason) == ("restamp", None)
     assert writer.restamp_cursor("dt_job", expect=stored, translator_ver=wanted)
     assert read_cursor_row(ledger)["translator_ver"] == wanted
+
+
+# ------------------------------------------------------- S-113 ⓓ-2 / S-114: the breakdown lands
+
+def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
+    """S-114: the process that TRANSLATES is the one that writes why it refused.
+
+    🔴 WHAT WAS BROKEN. `execute_scoped_batch` builds `{reason: molecules}` and hands it to
+    the store, and with `advance_cursor=False` the store validated it and then never read
+    it - a required argument with no consumer. The only surviving trace was `gate`'s
+    PROCESS counters, and production runs `DECOUPLED=True`, so translation happens in the
+    chain worker while `GET /admin/ontology-explorer/refusals` is served by the web process:
+    the route answered from counters that never move. An operator saw a number, and the
+    number was zero.
+
+    ⛔ THE AGGREGATE AND THE BREAKDOWN ARE ASSERTED TOGETHER, because `ledger_trace`
+    branches on the SIGN of their difference and a negative one accuses the writer of a
+    bookkeeping fault. Writing the names without the number would make every refusing
+    source look faulty - which is why they are one statement and why this pins both.
+    """
+    from ledger_trace import _unaccounted
+
+    connection = ledger.raw_connection()
+    try:
+        _seed_process_param(connection, PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+    finally:
+        connection.close()
+
+    result = run(ledger, source="process_param_num_measure")
+    assert result["refused_total"] == 2, result
+
+    row = read_cursor_row(ledger, "process_param_num_measure")
+    assert row is not None, (
+        "the refusal write must create the row too: since S-76 nothing else does, so an "
+        "UPDATE would land nowhere for a source declared today")
+    breakdown = row["refusal_reasons"]
+    assert set(breakdown) == {gate.REFUSE_NO_IDENTITY, gate.REFUSE_MISSING_OCCURRED_AT}, \
+        breakdown
+    assert [breakdown[name]["count"] for name in sorted(breakdown)] == [1, 1], breakdown
+    assert all(breakdown[name]["last_at"] for name in breakdown), breakdown
+
+    assert row["molecules_refused"] == 2
+    assert _unaccounted({"molecules_refused": row["molecules_refused"]}, breakdown) == 0, (
+        "a breakdown written without its aggregate reads as a bookkeeping fault")
+
+    # ⛔ AND THE POSITION STAYED PUT. The live door must not have become the forward scan
+    # by the back way: the refusal statement writes its own two columns and no others.
+    assert row["cursor_value"] is None and row["molecules_done"] == 0, row
