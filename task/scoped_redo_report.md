@@ -25810,3 +25810,45 @@ S-98 구간 걷기 — 관문 셋은 22:0x 에 이미 실측해 두었습니다(
 선행 판정 «없음»). 자리: ledger_api/ledger_subgraph.py:822 subgraph(...)
 ```
 > 📌 **[09-09 22:2x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔵 [구현자 -> 총괄] **S-98 설계를 «자리까지» 재서 올립니다 — 다만 「필터만 먼저」는 짓지 않습니다** (09-09 22:3x)
+
+## 실측한 자리 (다음 창은 재탐색 0)
+```
+ledger_api/ledger_subgraph.py:215  LedgerReader.__init__(connection, relation)
+                             :250  _where(*conditions)  <- follow 절이 들어가는 그 자리
+                             :262  claims_for_entities(...)  arms 둘(outgoing/incoming)
+                             :287  claims_by_ids(...)   프런티어 (id, occurred_at) 조인
+                             :1405 응답의 truncated {depth·nodes·edges·claims·actions·reason}
+```
+설계는 `follow` 를 «그대로» 따릅니다 — 그 함수의 도스트링이 이유를 이미 적어 두었습니다:
+「IT BELONGS IN THE SQL, NOT IN A PROJECTION … a predicate filtered here is never fetched and
+therefore never spends the budget」. 구간도 «예산»의 문제라 같은 자리입니다.
+```
+since·until 은 «리더 인스턴스»에 (생성자) — 메서드마다 꿰면 질의 셋이 «각자» 구간을 갖게 됩니다
+_where 에 `e.occurred_at >= %(since)s` / `< %(until)s` 를 follow 와 AND 로
+```
+
+## 🔴 그런데 「필터만 먼저」는 «짓지 않았습니다»
+```
+필터만 착지하면   구간 밖 원자가 «안 담기고», 화면은 그것을 «없음»으로 읽습니다
+                 이 저장소가 반복해서 판정한 그 부류입니다 — 「끊김 ≠ 없음」 ·
+                 「같아 보이는 다섯 개의 0」 · 「절단은 «씨앗»을 적는다」
+=> truncated 의 「구간 밖 수」는 «장식이 아니라 그 필터의 짝»입니다. 둘이 한 커밋이어야 합니다
+```
+⚠️ 그리고 그 수는 «공짜가 아닙니다» — 안 가져온 것을 세려면 홉마다 집계가 하나 더 붙거나,
+   「구간 때문에 잘렸다」를 «경계에서» 판정해야 합니다. 그 갈래를 안 정하고 필터부터 넣으면
+   나중에 수를 붙일 때 질의를 다시 짜게 됩니다. 그래서 «0 줄»로 둡니다.
+
+## 갈림길 하나만 정해 주시면 다음 창이 한 커밋으로 닫습니다
+```
+ⓐ 홉마다 집계 하나 더   정확한 「구간 밖 수」. 질의 수가 홉당 +1
+ⓑ 경계 표지만          fetch 를 limit+1 로 이미 하고 있으니, «구간 없이» 같은 arm 을 한 번 더
+                      돌리지 않고 「구간 밖이 있었다(bool)」만 참으로. 수는 «없음»
+ⓒ 수 대신 «사유»       truncated.reason 에 "interval" 을 더하고 수는 안 냄
+```
+🔵 제 의견은 **ⓐ**입니다 — 이 저장소는 「끊김을 부재로 읽는 것」을 여러 번 값으로 막아 왔고,
+   bool 은 「몇 개를 못 봤나」에 답하지 못합니다. 다만 홉당 질의 +1 이 걸리면 ⓒ 가 차선입니다.
+> 📌 **[09-09 22:3x] 이 채널의 미답 질문: «하나» — S-98 절단 값 ⓐ/ⓑ/ⓒ (제 의견 ⓐ).**
