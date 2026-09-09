@@ -27708,3 +27708,59 @@ resolve_alignment_view 는 매 호출에서
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 위 하나(S-95 스크립트 경로).** 그 사이 `build_alignment_view` 를
 > 읽어 3 의 「기준 뷰가 반복되나」를 «재서» 올리겠습니다 — 코드는 그 수 뒤에
+
+---
+
+# [구현자 → 총괄] ✅ **S-94 ② 착지(`4c392571`) — 호출당 1.01 → 0.26 ms. 🔴 그리고 이웃에서 «소유자 파일»의 빨강 하나를 찾았습니다(안 건드렸습니다)**
+
+## 1. 고침 — 「읽은 파일을 기억한다」를 «로더에» 넣었습니다
+```
+전   resolve_alignment_view 가 매 호출에 enrichment_rules.json 을 읽고 «모든 규칙을 재검증» +
+     map_overlay_config.json 을 읽음. 맵퍼는 job 마다 그것을 부름 -> 1,000 행 그룹에 «천 번»
+     이 박스(규칙 넷): 0.781 + 0.245 = 1.013 ms/호출  (그중 검증이 0.504)
+후   load_enrichment_rules  0.781 → «0.174»
+     load_overlay_config    0.245 → «0.088»
+     호출당 1.013 → «0.262» -> 1,000 행 그룹에서 약 «0.75 s»
+🔴 그리고 이미 «두 곳이 각자» 우회하고 있었습니다 — bonding_plan._OVERLAY_MEMO ·
+   transfer_plan 의 「작업 경계 1회 스냅샷」. 「다시 읽지 마라」의 철자가 셋이었습니다
+```
+
+## 2. «안 한» 것 셋 — 각각 답이 달라지기 때문입니다
+```
+① known_tables 가 crud.TABLE_CONFIG «가 아니면» 메모 끔
+   규칙을 무엇에 대고 판정하나는 «딕셔너리 전체»이고, 그것이 바뀌었다고 말해 줄 수 있는 키는
+   «그것이 온 파일»뿐입니다 -> table_config.json 의 stamp 가 키에 «같이» 들어갑니다
+   (crud.TABLE_CONFIG 는 싱글턴이라 id 로는 «내용 교체»를 못 봅니다)
+② caps 를 넘기면 메모 끔 — 그 인자는 검증기까지 가는데 «트리에 넘기는 자가 없습니다».
+   내 본 적 없는 답을 기억하는 건 짐작입니다
+③ rejections 는 «재생»합니다, 건너뛰지 않습니다 — 그것을 모으는 호출자는 «운영자 보고»를
+   짓고 있고, 규칙만 주고 사유를 안 주면 «거절된 선언이 두 번째 호출에서 받아들여진 것처럼»
+   보입니다
+그리고 둘 다 «사본»을 줍니다(alignment_view_service 가 받은 config 에 자기 임계값을 덮습니다)
+```
+
+## 3. 게이트 (판정 232)
+```
+같은 배치 답 동일   시험 넷: 두 번째 호출이 파일을 «안 열고» 같은 답 · 사본 격리
+파일 바꾸면 반영     mtime 바꿔 넣고 «다음 호출»에 새 규칙이 나오는 것 단언
+이웃                272 passed · 5,409 collected
+```
+
+## 4. 🔴 이웃에서 나온 빨강 하나 — «제 것이 아니고 소유자 파일»입니다
+```
+tests/test_dt_alignment_metadata_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+   live  mappers/dt_alignment_metadata_mapper.py:159      print(rule)
+   sample mappers/dt_alignment_metadata_mapper.py.sample:159  print(payloads)
+=> «라이브 맵퍼(gitignore, 소유자 것)»에 디버그 print 가 하나 들어가 샘플과 갈렸습니다.
+   제 커밋은 두 파일 «어느 쪽도» 안 건드렸습니다
+🔴 그리고 «제가 고칠 자리가 아닙니다» — 라이브 맵퍼는 소유자 파일입니다.
+   샘플을 라이브에 맞추면 «디버그 print 를 출하»하는 것이고, 라이브를 고치면 남의 파일입니다
+   -> 소유자께 「라이브에 print(rule) 이 남아 있습니다」 한 줄로 올리실 자리로 보입니다
+```
+
+## 5. 다음 — ③
+```
+build_alignment_view 의 «기준 뷰 반복»을 재겠습니다(판정 232 ③). 그 수가 나오면 한 보고로.
+① 기저는 응용의 스크립트가 커밋되면 그것으로
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 위 4(라이브 맵퍼의 print) 하나 — 판정만 주시면 됩니다**
