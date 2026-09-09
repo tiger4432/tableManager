@@ -951,6 +951,14 @@ def _batch(rows):
 PRE_DELETE = {"wafer_process": "lot LIKE 'SYN-CL-%'"}
 
 
+import product_door
+
+#: The layer name this seed's writes land under.
+SOURCE_NAME = "seed_syn_world"
+#: Where the door lives. Overridden by --url in `main`.
+DOOR_URL = product_door.DEFAULT_BASE_URL
+
+
 def clear_owned_rows(db, table: str) -> int:
     from sqlalchemy import text
 
@@ -962,13 +970,14 @@ def clear_owned_rows(db, table: str) -> int:
     # fails with UndefinedColumn; deleting by nothing would leave the layers orphaned.
     ids = [r[0] for r in db.execute(text(
         f"SELECT row_id FROM {table} WHERE {predicate}")).fetchall()]
-    for start in range(0, len(ids), CHUNK):
-        chunk = ids[start:start + CHUNK]
-        for layer in ("cell_sources", "cell_overwrites"):
-            db.execute(text(f"DELETE FROM {layer} WHERE table_name = :t "
-                            f"AND row_id = ANY(:k)"), {"t": table, "k": chunk})
-        db.execute(text(f"DELETE FROM {table} WHERE row_id = ANY(:k)"), {"k": chunk})
-    db.commit()
+    # 🔴 ONE CALL WHERE THERE WERE THREE (S-78, ruling 176). The door's delete already
+    # clears both cell layers for the rows it removes (`crud.delete_rows_batch` deletes
+    # `CellOverwrite` and `CellSource` by table and row_id), so the layer statements above
+    # were this script doing the framework's job - and doing it without an envelope, which
+    # left the removed rows' atoms standing.
+    if ids:
+        product_door.delete_rows(table, ids, base_url=DOOR_URL,
+                                 user_name=SOURCE_NAME, log=lambda *_: None)
     return len(ids)
 
 
@@ -1089,7 +1098,11 @@ def main(argv=None):
                     help="assert every axis in BOTH directions, then re-run the four "
                          "existing answer keys and print the comparison")
     ap.add_argument("--skip-ledger", action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url rows are cleared through")
     args = ap.parse_args(argv)
+    global DOOR_URL
+    DOOR_URL = args.url
 
     from database import crud, models
     from database.database import SessionLocal
