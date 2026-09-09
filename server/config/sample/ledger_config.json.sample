@@ -950,27 +950,27 @@
               },
               "subject": {
                 "approval_status": "approved",
+                "kind": "entity",
                 "entity_type": "lot@1",
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
-                    "kind": "column"
+                    "kind": "column",
+                    "column": "child_lot"
                   }
-                },
-                "kind": "entity"
+                }
               },
               "target": {
                 "approval_status": "approved",
+                "kind": "entity",
                 "entity_type": "lot@1",
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
-                    "kind": "column"
+                    "kind": "column",
+                    "column": "parent_lot"
                   }
-                },
-                "kind": "entity"
+                }
               }
             },
             "predicate": "split_from@1",
@@ -987,27 +987,27 @@
               },
               "subject": {
                 "approval_status": "approved",
+                "kind": "entity",
                 "entity_type": "lot@1",
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
-                    "kind": "column"
+                    "kind": "column",
+                    "column": "lot_id"
                   }
-                },
-                "kind": "entity"
+                }
               },
               "target": {
                 "approval_status": "approved",
+                "kind": "entity",
                 "entity_type": "lot@1",
                 "keys": {
                   "lot": {
                     "approval_status": "approved",
-                    "column": "lot",
-                    "kind": "column"
+                    "kind": "column",
+                    "column": "parent_lot"
                   }
-                },
-                "kind": "entity"
+                }
               }
             },
             "predicate": "merged_into@1",
