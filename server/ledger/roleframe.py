@@ -260,7 +260,7 @@ class BaseLedgerMapper:
         emissions: list[RoleEmission] = []
         for unit_index, unit in enumerate(
                 _partition_units(context, event_frame, descriptor)):
-            unit_columns = read_columns_once(unit)
+            unit_columns = _ColumnsOnFirstAsk(unit)
             try:
                 produced = self.interpret_unit(context, unit, profile)
             except RoleFrameError:
@@ -882,6 +882,43 @@ def read_columns_once(frame: pd.DataFrame) -> dict[Any, tuple]:
     rows = frame.to_numpy(dtype=object)
     return {name: tuple(row[position] for row in rows)
             for position, name in enumerate(names)}
+
+
+class _ColumnsOnFirstAsk(Mapping):
+    """`read_columns_once(unit)`, but only if somebody asks (S-64-b ⓐ).
+
+    🔴 `map` READ EVERY UNIT AND MOST UNITS WERE NEVER ASKED. The one consumer is
+    `_with_attribute_values`, which returns before touching a cell unless the source binds
+    ATTRIBUTES on the sentence's subject - and most sources bind none. So the eager read was
+    a `to_numpy` over a one-row frame per molecule, thrown away: measured on a 2,000-row
+    page, three reads per molecule where two were needed.
+
+    ⚠️ A MAPPING, NOT A CALLBACK, because `columns` is already typed as one and
+    `_attribute_value` indexes it. Nothing downstream learns a new word. And it memoises, so
+    a unit whose attributes ARE read is still read ONCE however many sentences ask - the
+    property the eager read had and the obvious fix (dropping to `columns=None`) would have
+    lost, since `_attribute_value` falls back to reading per call.
+    """
+
+    __slots__ = ("_frame", "_columns")
+
+    def __init__(self, frame: pd.DataFrame):
+        self._frame = frame
+        self._columns = None
+
+    def _read(self) -> Mapping[Any, tuple]:
+        if self._columns is None:
+            self._columns = read_columns_once(self._frame)
+        return self._columns
+
+    def __getitem__(self, key):
+        return self._read()[key]
+
+    def __iter__(self):
+        return iter(self._read())
+
+    def __len__(self):
+        return len(self._read())
 
 
 def _row_sort_token(row: Mapping[Any, Any] | pd.Series, columns: Sequence[Any]) -> str:
