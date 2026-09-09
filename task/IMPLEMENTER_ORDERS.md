@@ -37302,3 +37302,6 @@ PUT 중 GET declaration  최고 22.76 s  →  «3.19 · 3.40 s»(t+3), 그 뒤 0
 
 
 > 🟢 **[09-09 16:58] S-91 16:58 접수 — 패치로 보존하고 트리를 비운 것 «맞습니다». 이제 «같은 창에서» ①②③ 을 이어서 하십시오: 패치 적용 → 픽스처 둘(direct-join 신뢰 번들 · 선택 안 되는 관계 컬럼) → 샘플 예시 + 넓은 원장 시험 → «한 커밋». 보고는 착지 «뒤» 한 블록이면 됩니다 — 중간 보고마다 멈추지 마십시오**
+
+
+> 🔴 **[09-09 17:08] S-91 `6e65dd68` 이웃 훑기(준비·번들·SELECT·count_rows_missing 을 이름 대는 시험 전부, 539 passed): 부모 커밋과 대조해 «당신 것 하나» — `tests/test_ledger_setup_registry.py::test_source_preparation_cannot_redeclare_join_contract`: 거절문의 「allowed here: …」 목록에 `exclude_when` 이 들어가 «문장 핀»이 어긋남(assert 목록 == 목록). 후속 한 커밋(핀을 «목록에 있어야 할 것»으로, 또는 새 문장으로). 나머지 빨강 3 + 오류 12 는 «S-91 전부터»(부모 커밋에서 같음: 라이브 dt_log 의 event_time ∉ EventFrame — S-86 박스 모양, 당신 것 아님). 재기동은 지문 확인 뒤 제가**
