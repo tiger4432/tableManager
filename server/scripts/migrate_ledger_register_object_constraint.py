@@ -71,7 +71,12 @@ def state(cursor):
 
 
 def report(carrying, structural):
-    print(f"  {schema.RETIRED_REGISTER_OBJECT_CONSTRAINT}: {len(carrying)} relation(s)")
+    # 🔴 NAMES, NOT A COUNT. Measured live 2026-09-09: after the apply, NINE relations
+    # still carry it -- every one an archived `ledger_events_pre_rebuild*` with no writer,
+    # which the parent DROP does not reach. A bare "9 relation(s)" reads as a half-finished
+    # migration; the names are what say "these are archives, and that is fine".
+    print(f"  {schema.RETIRED_REGISTER_OBJECT_CONSTRAINT}: {len(carrying)} relation(s)"
+          + (": " + ", ".join(carrying) if carrying else ""))
     # 🔴 PRINTED BESIDE IT ON PURPOSE. The question an operator has after a DROP is 「what is
     # still enforced」, and a report that answers only 「it is gone」 invites the wrong one.
     print(f"  {schema.OBJECTLESS_PAYLOAD_CONSTRAINT} (kept): {structural} relation(s)")

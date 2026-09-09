@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
+import logging
 from pathlib import Path
 import sys
 from types import MappingProxyType
@@ -126,6 +127,51 @@ class LedgerSetup:
         return source_id
 
 
+logger = logging.getLogger(__name__)
+
+
+def _dead_time_cells(sources):
+    """`bind.occurred_at` paths that name a column the compiler will not read.
+
+    🔴 판정 179 ⓑ — NAMED, NOT REFUSED. `roleframe` fills a TIME role from the instant the
+    preparation boundary already interpreted and IGNORES the binding's column (ruled
+    2026-08-23: re-reading the cell would disagree with the event id minted from that same
+    value). Where the source also declares a `basis`, the declaration says out loud that its
+    time comes from somewhere else, and the cell beside it is dead.
+
+    ⚠️ REFUSING IT WOULD MOVE FINGERPRINTS. Two shipped sources carry such a cell, so a
+    refusal means editing their declarations, and editing a declaration re-translates it --
+    which is the one thing the freeze round promised not to do. So the loader SAYS it, and
+    the removal waits for the retirement round (Ⓐ, with S-79).
+    """
+    # ⚠️ TAKES THE `sources` SECTION, NOT THE BUNDLE. `load_setup` holds a
+    # `LedgerSetupBundle`, which is not a mapping -- a first draft called `.get` on it and
+    # 34 tests said so before it landed. Taking the section makes the raw-document caller
+    # and the loaded-bundle caller pass the SAME thing.
+    dead = []
+    for source_id in sorted(sources or {}, key=str):
+        source = sources[source_id]
+        if not isinstance(source, Mapping):
+            continue
+        read = source.get("read")
+        occurred = read.get("occurred_at") if isinstance(read, Mapping) else None
+        basis = occurred.get("basis") if isinstance(occurred, Mapping) else None
+        if not basis:
+            continue
+        profile = source.get("bind")
+        mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+        for sentence in sorted(mappings or {}, key=str):
+            mapping = mappings[sentence]
+            bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+            slot = bind.get("occurred_at") if isinstance(bind, Mapping) else None
+            column = slot.get("column") if isinstance(slot, Mapping) else None
+            if column:
+                dead.append(
+                    f"sources.{source_id}.bind.mappings.{sentence}.bind.occurred_at"
+                    f"={column} (basis {basis})")
+    return dead
+
+
 def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
@@ -144,6 +190,14 @@ def load_setup(
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     bundle = require_ready_bundle(
         load_setup_bundle(root_path, catalog=resolved_catalog))
+    # 🔴 ONE LINE, EVERY CELL NAMED (판정 179 ⓑ). A count would be the silence this
+    # says nothing about; a warning per load would fire every backfill on a condition that
+    # is EXPECTED, and a warning that always fires is one nobody reads. So: info, once,
+    # with the paths.
+    dead = _dead_time_cells(bundle.section("sources"))
+    if dead:
+        logger.info("[Ledger] dead cell: %s ignored -- the time role is filled from the "
+                    "source's declared basis", "; ".join(dead))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), verified_joins,
         catalog=resolved_catalog)

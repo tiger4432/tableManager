@@ -1218,14 +1218,26 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             declared=[sentence for sentence, _ in sentences] if sentences else _ABSENT,
             note="아래 「+ 매핑」으로 문장을 하나 이상 추가",
         )
+        # 🔴 판정 179 ⓑ. A TIME role's binding is IGNORED by the compiler -- always, not
+        # only where a basis is declared (`roleframe`, ruled 2026-08-23: the instant comes
+        # from the preparation boundary, and re-reading the cell would disagree with the
+        # event id minted from that same value). Where the source declares a BASIS the
+        # dead cell is also visible in the declaration, so that is where the form stops
+        # ASKING -- it shows the row as decided elsewhere rather than as a box.
+        read = source.get("read") if isinstance(source.get("read"), Mapping) else {}
+        occurred = read.get("occurred_at")
+        time_basis = (occurred.get("basis")
+                      if isinstance(occurred, Mapping) else None)
         for sentence, mapping in sentences:
             yield from _mapping_fields(
-                base, sentence, mapping, vocabulary, entities, available)
+                base, sentence, mapping, vocabulary, entities, available,
+                time_basis=time_basis, source_id=source_id)
 
 
 def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                     vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
-                    available: Sequence[str]) -> Iterable[Field]:
+                    available: Sequence[str], *, time_basis: Any = None,
+                    source_id: str = "") -> Iterable[Field]:
     """One sentence: which predicate it utters, and one row per slot that predicate forces.
 
     🔴 THE SLOTS ARE LAID OUT THE MOMENT A PREDICATE IS CHOSEN (owner, 2026-08-21:
@@ -1286,6 +1298,32 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
     for role_id in sorted(roles, key=str):
         role = roles[role_id]
         if not isinstance(role, Mapping):
+            continue
+        if time_basis and role.get("kind") == "time":
+            # ⚠️ SHOWN, NOT HIDDEN. Dropping the row would make a declaration that
+            # already carries a column here lose its square with no explanation -- and an
+            # author who wrote `event_time` there deserves to be told it decides nothing,
+            # not to watch it vanish. `derived` is this form's word for 「answered
+            # elsewhere」, so the row stops being a question without stopping being
+            # visible.
+            declared = bind.get(role_id)
+            declared_cell = (declared.get("column")
+                             if isinstance(declared, Mapping) else None)
+            yield Field(
+                path=f"{mpath}.bind.{role_id}", step="sources",
+                label=f"역할 {role_id}", state="derived", tier=TIER_DERIVATION,
+                value=time_basis,
+                ground=Ground(
+                    "time_from_source_basis",
+                    f"채움: 이 소스의 시각은 read.occurred_at.basis={time_basis!r} "
+                    f"가 정합니다",
+                    (f"bundle.sources.{source_id}.read.occurred_at",),
+                    time_basis),
+                disposition="shape",
+                note=(f"이 칸은 읽히지 않습니다"
+                      + (f" — 적혀 있는 {declared_cell!r} 도 무시됩니다"
+                         if declared_cell else "")),
+            )
             continue
         binding = bind.get(role_id)
         required = role.get("required") is True
