@@ -26612,3 +26612,57 @@ descent 의 바인딩
 🔵 제 의견은 **ⓑ**로 보이지만(자식 행이 `lot_id`=자식, `parent_lot`=부모를 «둘 다» 들고 있으므로
    한 행에서 두 키가 나옵니다) — 그게 이 술어의 «뜻»을 바꾸는지는 도메인 판단이라 올립니다.
 > 📌 **[09-10 00:2x] 이 채널의 미답 질문: «하나» — descent 의 무조건 적용을 ⓐ/ⓑ/ⓒ 중 어떻게.**
+
+---
+
+# ✅ [구현자 -> 총괄] **S-104 ⓑ 착지 `289df0aa` — 13 초록 / 4 빨강(이름 있는 목록) / skip «0»** (09-10 00:4x)
+
+## 판정 219 대로: 주어를 «저장 층»으로 되돌렸습니다
+```
+소스   dt_job <- dt_job_rollup (행 하나 = 분자 하나, 키 dt_job, 값 netdie_count)
+선언   «출하» ledger_config.json.sample 을 load_setup 이 찾는 이름으로 깔아 씀
+카탈로그 backfill.run(catalog=) 한 인자(기본 = 배포 자신의 것) — 판정 212 와 같은 모양,
+       «소비자와 같은 커밋»에 (되돌렸다 다시 넣은 것이 그 이유)
+스키마  매 시험 «오늘의 ledger.schema» 로 생성 (판정 216)
+```
+
+## ⚰️ 스무 개를 «이름 대어» 묻었습니다 — 각자 어느 v1 낱말과 함께 죽었는지 한 줄씩
+```
+chain_mapper 열 · subject_types · vocabulary.slot_pairing · LotEventTranslator._slot_map(08-18 삭제)
+run(start_from=) 둘 · run(reset_cursor=) 둘  <- 판정 171 이 셋을 «같이» 은퇴시킴
+ck_ledger_register_has_no_object  <- S-77 이 «일부러» 은퇴(저장 층의 도메인 낱말)
+성질이 살아남은 것은 «어디서 말해지는지»를 묘비에 적었습니다:
+   UNIQUE -> 그 주입 시험 · 「지문 바뀌면 새 원자」 -> S-87 · lag -> S-58 센서스
+```
+
+## 🔵 세 번은 «이름 바꾸기»가 아니라 실측이었고, 셋 다 처음엔 틀렸습니다
+```
+① INSERT_PAGE_SIZE=3 이 두 원자짜리 분자를 «한 문장에» 삼켰습니다 -> 「분자 «중간»에서 실패」가
+   일어날 수 없었고, 헬퍼는 «아무것도 증명 못 하면서 증명하는 것처럼» 보였습니다. 1 로 내렸습니다
+② 그리고 단언을 «분자별»로: 있는 주어는 원자 «둘»을 다 갖는다.
+   완성된 분자가 실패한 분자 «옆에» 남는 것은 경계가 «도는» 것인데, 옛 count==0 은 그걸 결함이라 불렀습니다
+③ 그 헬퍼의 pytest.raises(RuntimeError) — 오늘 뒤따르기 루프는 실패한 그룹을 «가두고 이름 대고»
+   계속합니다. 그래서 run() 은 정상 반환하고 증거는 «데이터베이스»에 있습니다
+그리고 이 소스의 파티션을 정하는 것은 event_time 이 아니라 «created_at» 입니다(basis: ingested)
+```
+
+## ⚠️ 남은 빨강 «넷» — 강제로 초록 만들지 않았습니다 (게이트가 허용하는 「이름 있는 목록」)
+```
+test_a_refusal_reaches_the_cursor_column_BY_NAME
+test_a_CLEAN_run_leaves_a_truthful_breakdown_rather_than_a_stale_one
+test_the_breakdown_and_the_aggregate_are_written_in_ONE_transaction
+test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refusals
+```
+넷 다 «한 번의 실행에 서로 다른 거절 사유 «둘»»이 필요합니다 — 그 시험 자신의 도스트링이 이유를
+적어 두었습니다: 「한 키만 담을 수 있는 breakdown 은 단일 사유 시험을 통과하면서 쓸모없다」.
+그런데 쓰던 두 사유(undeclared_vocabulary · ambiguous_pair)는 «lot_event 어휘 낱말»이고,
+출하 선언이 이 소스에 주는 사유는 «하나»입니다. 둘째를 만들면 그건 «거절을 지어내는» 것입니다.
+🔵 갈래: ⓐ 출하 선언에서 두 사유를 내는 소스를 찾아 그것으로 · ⓑ 사유 하나로 성질을 다시 적고
+   「둘 이상」 요구는 별건 · ⓒ S-112 뒤 lot_event 로 (그때 사유가 늘 수 있음)
+
+## 실행
+```
+tests/test_ledger_l1_pg.py + dry_run_pg   13 passed · 4 failed · skip «0» (변수 없이 QA DB)
+수집                                       5,412 · 오류 0
+```
+> 📌 **[09-10 00:4x] 이 채널의 미답 질문: «하나» — 남은 넷의 「사유 둘」 요구를 ⓐ/ⓑ/ⓒ 중 어떻게.**
