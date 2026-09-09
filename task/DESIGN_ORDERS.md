@@ -24731,3 +24731,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > 🔴 **[09-09 16:18] C-48 (작음, 지금) — 판정 192(`852107f9`)로 서버의 `updated_count` 가 「이 요청이 «바꾸거나 만든» 행 수」가 됐습니다(무변경 행은 응답에 «없음»). 그래서 `map_editor.js:6427·6430` 의 `result.updated_count || result.count || updates.length` 가 «완전 무변경» 푸시(0)에서 falsy 로 흘러 「적재 완료 — 200건」이라 «거짓»을 띄웁니다. 고침: 수는 `updated_count` 가 «숫자면 그 값»(0 포함), 없을 때만 폴백 — 그리고 0 이면 문구가 「바뀐 것 없음」(문장은 짧게, 상설). 이웃: 같은 패턴 `git grep -n 'updated_count' -- client2/src` 전부(둘). 빌드·dist 같은 커밋 → design 푸시. 제가 화면으로 확인 뒤 main 병합**
+
+> ✅ **[09-09 16:30] C-48 «닫음» — `4133ff78` main 병합(`c03aa845`): 두 토스트가 «같은 함수»(`changed_rows.js`)를 지나고 0 은 「바뀐 것 없음」, 없음은 ABSENT. 라이브가 새 번들(map_editor-DFn1t5Wx.js) 을 냄. 다음: 되돌리기 라우트 뒤 · 10^7 뒤 C-41. 그 전엔 대기**
