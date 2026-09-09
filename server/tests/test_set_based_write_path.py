@@ -634,8 +634,19 @@ def test_editing_many_rows_sends_one_update_statement_not_one_per_row(db_session
     The statement count is the same number in both, which is why it is what is pinned.
     """
     rows = 40
-    _statements_for(db_session, TABLE, _rows_for(TABLE, rows, "first"), "s83-insert")
+    inserting = _statements_for(db_session, TABLE, _rows_for(TABLE, rows, "first"),
+                                "s83-insert")
     counts = _statements_for(db_session, TABLE, _rows_for(TABLE, rows, "second"), "s83-edit")
+    # 판정 206 gate ①, BOTH halves. The insert path was already batched before this round -
+    # measured, not assumed: the only single INSERT is the collapsed outbox event (S-82),
+    # which is one per request by construction. Pinned here so a later change cannot take
+    # the INSERT off its batched path the way the UPDATE was off its.
+    assert inserting.get("INSERT executemany", 0) >= 1, (
+        f"new rows must be inserted by one statement: {inserting}")
+    assert inserting.get("INSERT", 0) <= 1, (
+        f"the only unbatched INSERT is the collapsed event: {inserting}")
+    assert sum(inserting.values()) < rows, (
+        f"inserting must not scale with the row count either: {inserting}")
 
     assert counts.get("UPDATE", 0) == 0, (
         f"one UPDATE per row is back: {counts}")
