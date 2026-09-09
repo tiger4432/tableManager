@@ -26396,3 +26396,57 @@ dev_env 가 선언한 QA DB   postgresql://postgres:admin@localhost:5432/assy_qa
 ⚠️ 이 라운드에서 코드는 «0 줄» 바꿨습니다 — 측정만 했습니다. 그 DB 에 쓴 것은 시험이 만든
    스크래치 스키마뿐이고, 운영 DB 는 건드리지 않았습니다.
 > 📌 **[09-10 00:4x] 이 채널의 미답 질문: «하나» — S-104 를 ⓐ/ⓑ/ⓒ 중 어디부터 (제 의견 ⓒ→ⓑ).**
+
+---
+
+# ✅ [구현자 -> 총괄] **S-104 ⓒ + 게이트 절반 착지 `cc8f668d` — 「통째 skip」 끝. 남은 것을 «세어서» 올립니다** (09-10 01:0x)
+
+## 게이트 절반 — 이제 «변수 없이도» 돕니다
+```
+마지막 폴백   scripts/dev_env/devenv.py 의 QA_DB_URL 을 «읽어» 씁니다(여기 적지 않고 «그 모듈에서»)
+              — 적어 두면 그 사실의 «둘째 선언»이 되고, 누가 옮기는 날 옛 자리를 가리킵니다
+안전          운영 DB 아님 · db_safety.check_test_database 를 «여전히» 지나야 함
+효과          「선언 안 하면 40 개 통째 skip」= 거짓 초록이 끝났습니다
+```
+
+## ⚰️ 묻은 것 «둘» — 조용히 지우지 않고 묘비로
+```
+_inject_breakdown_that_does_not_add_up    backfill._refusal_delta 를 바꿔치기 — 그 심볼 «없음»
+_inject_slot_map_refusal_swallowed        ledger.lot_event_translator 를 패치 — 08-18 에 «삭제된 모듈»
+=> 둘 다 AttributeError/ImportError 만 낼 수 있었고, 하니스는 그것을 「가드가 잡았다」로도
+   「가드가 받아들였다」로도 못 읽습니다. 「테스트는 자기가 재던 코드와 같은 커밋에서 죽는다」인데,
+   이 둘은 «파일이 skip 이라» 몇 주를 더 살았습니다 — 그게 위 게이트 변경의 이유 그 자체입니다
+```
+
+## 🔢 ⓑ 의 «크기» — 세었습니다
+```
+남은 빨강 24 중
+  20   TypeError: run() got multiple values for argument 'source'   <- «한 부류», 시그니처
+   3   주입 게이트 셋(아래)
+   1   그중 하나의 파생(구문 오류의 둘째 줄)
+=> ⓑ 는 「38 개를 옮긴다」가 아니라 «20 개»입니다. 그 20 이 CFG(v1 평면 문법)를 쓰고,
+   일곱 자리가 그것을 deepcopy 해서 시험마다 변형합니다 — 지시대로 «출하 샘플 루트»를
+   기저로 삼고 그 변형을 «선언 dict 변형»으로 옮기면 됩니다
+```
+
+## 🔴 «안 고친» 셋 — 큐에 이름 대어 올립니다 (판정 215 대로)
+```
+① [duplicate atom past the unique index]  «시험의 계기»가 낡음 — INSERT 가 ROW_COLUMNS 를
+   join 해 놓고 값은 12 개만 줍니다(occurred_at_basis 가 늘었는데 값이 안 늘었음).
+   주어(UNIQUE 인덱스)는 «살아 있고» 시험이 거기 못 닿습니다. 계기 수리라 작습니다
+② [register carrying an object]  주어 살아 있는데 «안 raise».
+   🔵 그런데 이 박스 assy_qa 의 제약 이름이 «옛 것»입니다:
+      DB    ck_ledger_objectless_has_no_payload · ck_ledger_register_has_no_object
+      코드  schema.OBJECTLESS_PAYLOAD_CONSTRAINT = ck_ledger_objectless_carries_only_qualifiers (S-52-h)
+   => 「제품 결함」이 아니라 «그 DB 스키마가 S-52-h 이전»일 수 있습니다. 가르려면 스크래치
+      스키마를 새로 만들어 제약 이름을 다시 봐야 합니다 — 이번엔 안 했습니다
+③ [transaction boundary removed]  같은 부류로 보이나 ①의 구문 오류에 가려 아직 못 갈랐습니다
+```
+
+## 실행
+```
+tests/test_ledger_l1_pg.py + test_ledger_dry_run_pg.py   24 failed · 6 passed · 8 skipped
+(변수 «없이» — 파일이 스스로 QA DB 를 찾습니다)
+```
+⚠️ 수는 «이 박스» 것입니다(assy_qa 는 이 기계의 DB). 운영 DB 무접촉, 시험이 만든 스크래치 스키마뿐.
+> 📌 **[09-10 01:0x] 이 채널의 미답 질문: «없음».** (다음 = ⓑ, 20 개 · 출하 샘플 루트 기저)
