@@ -77,6 +77,32 @@ def _auto_meta(**kw):
 # vocabulary
 # ---------------------------------------------------------------------------
 
+def test_the_alignment_console_can_be_switched_off_and_the_file_cannot(monkeypatch):
+    """S-96. An operator could not stop forty lines per click reaching their console.
+
+    ⛔ THE FILE HALF IS ASSERTED IN THE SAME TEST ON PURPOSE. "Turn the logging off" has
+    an obvious wrong implementation - drop both - and that would leave nothing to
+    reconstruct an incident from. What was asked to stop is the CONSOLE.
+    """
+    import logging as _logging
+
+    def handlers():
+        monkeypatch.setattr(ma, "_DIAG_LOGGER", None, raising=False)
+        return ma._diag_logger().handlers
+
+    monkeypatch.setenv(ma._DIAG_CONSOLE_ENV, "0")
+    off = handlers()
+    assert not any(isinstance(h, ma._ConsoleSafeHandler) for h in off), \
+        "ASSY_ALIGN_DIAG_CONSOLE=0 must leave the console handler unattached"
+    assert any(isinstance(h, _logging.FileHandler) for h in off), \
+        "the file half has no switch - an incident still has to be reconstructable"
+
+    # Unset is ON, so a box that says nothing behaves exactly as it does today.
+    monkeypatch.delenv(ma._DIAG_CONSOLE_ENV, raising=False)
+    assert any(isinstance(h, ma._ConsoleSafeHandler) for h in handlers()), \
+        "the default must stay what it was"
+
+
 def test_the_eight_candidates_are_exactly_what_the_existing_acceptor_accepts():
     """The frame vocabulary has ONE spelling. Listing 8 literals here would be the second."""
     assert len(ma.CANDIDATE_FRAMES) == 8

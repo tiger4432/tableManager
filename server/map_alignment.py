@@ -2236,9 +2236,17 @@ def values_equal(a, b) -> bool:
 # every candidate reports positional overlap and value agreement as two
 # independent counts, and a single DIAGNOSIS line names which one is at work.
 #
-# [both destinations, always] Console so the operator can watch a run live;
-# `align.log` so they can scroll back after the terminal has scrolled. No flag,
-# no config key, no environment variable — one behaviour.
+# [file always, console switchable] `align.log` so an operator can scroll back after
+# the terminal has scrolled - that half has no switch and is not meant to. The CONSOLE
+# half is on by default so a run can be watched live, and one environment variable
+# (`ASSY_ALIGN_DIAG_CONSOLE=0`) leaves it off.
+#
+# 🔴 THIS PARAGRAPH USED TO READ "no flag, no config key, no environment variable -
+# one behaviour", AND WRITING THAT DOWN IS WHAT MADE IT TRUE. Forty lines per click went
+# to whatever console the server was started from and an operator had no way to stop them
+# (owner, 2026-09-09). The variable takes the prefix the rest of this deployment already
+# uses (`ASSY_DATA_ROOT`, `ASSY_API_PORT`), so there is one convention rather than a
+# second.
 #
 # [never fatal] Every entry point here swallows its own failures. A diagnostic
 # that can take down the feature it diagnoses is worse than no diagnostic.
@@ -2248,6 +2256,22 @@ def values_equal(a, b) -> bool:
 #: user's live file. That directory is where a person already looks for logs, and
 #: the web server has proven it writable by keeping its own log there.
 _DIAG_LOG_FILENAME = "align.log"
+
+#: The console half's off switch (S-96). Absent means ON, so a box that says nothing keeps
+#: today's behaviour exactly.
+_DIAG_CONSOLE_ENV = "ASSY_ALIGN_DIAG_CONSOLE"
+
+#: ⚠️ OFF IS ENUMERATED, ON IS EVERYTHING ELSE. An operator who writes `no` or
+#: `nope` still gets the console, which is the safe direction: a diagnostic left on when it
+#: was meant to be off is noise, while one that went silent on a typo is an incident with
+#: no trace. Same reason the default is ON.
+_DIAG_CONSOLE_OFF_VALUES = frozenset({"0", "off", "false"})
+
+
+def _diag_console_enabled() -> bool:
+    """Whether to attach the console handler. The FILE handler never asks this."""
+    return (os.environ.get(_DIAG_CONSOLE_ENV, "").strip().lower()
+            not in _DIAG_CONSOLE_OFF_VALUES)
 #: 🔴 A test process must not append to the operator's live file. `paths.log_path`
 #: already states the discipline for the process logs ("the file a reviewer reads
 #: to reconstruct an incident must not carry a drill's lines") and the suite calls
@@ -2585,7 +2609,8 @@ _DIAG_FILE_ERROR = None
 
 
 def _diag_logger():
-    """The diagnostics logger: console + `align.log`, and **not** `server.log`.
+    """The diagnostics logger: `align.log` always, the console unless switched off, and
+    **not** `server.log`.
 
     `propagate=False` is the reason for the second point. Forty lines per click
     propagated to root would bury the file a reviewer reads to reconstruct an
@@ -2608,9 +2633,12 @@ def _diag_logger():
     # `sys.stdout` is None under pythonw / a console-less service host. Falling
     # back to stderr keeps the "console" half alive there instead of turning
     # every emit into a swallowed AttributeError.
-    con = _ConsoleSafeHandler(sys.stdout if sys.stdout is not None else sys.stderr)
-    con.setFormatter(fmt)
-    lg.addHandler(con)
+    # S-96. `align.log` below is attached whichever way this goes: the switch is about
+    # what an operator has to LOOK at, not about whether the run is recorded.
+    if _diag_console_enabled():
+        con = _ConsoleSafeHandler(sys.stdout if sys.stdout is not None else sys.stderr)
+        con.setFormatter(fmt)
+        lg.addHandler(con)
     name = _DIAG_LOG_FILENAME
     under_test = False
     try:
