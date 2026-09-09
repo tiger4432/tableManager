@@ -1529,6 +1529,58 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
                 _validate_binding(bindings[role], f"{mpath}.bind.{role}", problems)
 
 
+def _entity_key_columns(binding: Any) -> set:
+    """The physical columns one ENTITY binding reads for its identity keys."""
+    out = set()
+    if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+        return out
+    keys = binding.get("keys")
+    if not isinstance(keys, Mapping):
+        return out
+    for inner in keys.values():
+        if isinstance(inner, Mapping) and inner.get("kind") == "column":
+            column = inner.get("column")
+            if isinstance(column, str):
+                out.add(column)
+    return out
+
+
+def _validate_no_self_edge(profile, path, problems) -> None:
+    """S-105 ③. An entity-to-entity sentence may not read the same identity at both ends.
+
+    🔴 AVAILABILITY IS NOT MEANING, and this is the half that catches it. The defect
+    that prompted this bound a real column - one of the source's own preparer outputs - to
+    BOTH the subject and the target, so the sentence said a thing came from itself. Every
+    column existed; every type checked; the statement was empty. It reached the shipped
+    sample because the mapping was copied from a working one and only the predicate and the
+    condition were changed - the part that had to differ for it to MEAN anything was the
+    part nobody looked at.
+
+    ⚠️ EQUALITY OF THE WHOLE KEY SET, NOT AN OVERLAP. Two entities of one type may
+    legitimately share SOME key column; what cannot be is every key of the subject reading
+    the same columns as every key of the target, because then the two ends are one node.
+
+    ⛔ AND A REFLEXIVE PREDICATE WOULD GET A CELL, NOT THIS SILENCE. If a source ever
+    needs to say a thing relates to itself, that is a declaration to design rather than a
+    shape to permit by leaving this unchecked - nothing declares one today.
+    """
+    mappings = profile.get("mappings")
+    if not isinstance(mappings, Mapping):
+        return
+    for sentence in sorted(mappings, key=str):
+        mapping = mappings[sentence]
+        bindings = mapping.get("bind") if isinstance(mapping, Mapping) else None
+        if not isinstance(bindings, Mapping):
+            continue
+        left = _entity_key_columns(bindings.get("subject"))
+        right = _entity_key_columns(bindings.get("target"))
+        if left and left == right:
+            problems.add(
+                "invalid_profile", f"{path}.bind.mappings.{sentence}",
+                f"subject and target read the same column(s) {sorted(left)!r}, so this "
+                f"sentence points an edge at the node it started from")
+
+
 def _validate_when(value: Any, path: str, problems: _Problems) -> None:
     """`{<column>: <value>, ...}` - the rows for which this sentence is said.
 
@@ -2001,6 +2053,9 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             # the PREPARED frame - relation columns plus preparer outputs. That is the set
             # S-91's `exclude_when` is checked against, and ruling 195 asked for the same
             # function rather than a second opinion about what a column is.
+            # S-105 ③. Reads nothing but the profile, so it is independent of the
+            # `bindable` question and lands ahead of it.
+            _validate_no_self_edge(profile, path, problems)
             profile_mappings = profile.get("mappings")
             for sentence in sorted(profile_mappings if isinstance(profile_mappings, Mapping)
                                    else {}, key=str):

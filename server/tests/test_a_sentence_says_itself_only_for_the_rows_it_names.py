@@ -203,3 +203,51 @@ def test_a_group_unit_says_nothing_unless_the_whole_group_agrees():
 
     assert map_event_frame(context, mixed, implementations()).empty, (
         "a group that disagrees with itself must utter neither sentence")
+
+
+# ------------------------------------------------------------- S-105: the self edge
+
+def _entity(column, entity_type="InputEntity@1", key="input_id"):
+    return {"kind": "entity", "approval_status": "approved", "entity_type": entity_type,
+            "keys": {key: {"kind": "column", "approval_status": "approved",
+                           "column": column}}}
+
+
+def test_a_sentence_may_not_read_the_same_identity_at_both_ends():
+    """🔴 S-105. THE SHAPE OF MY OWN DEFECT, pinned.
+
+    The `split`/`merge` example I added in S-99 bound subject AND target to one column, so it
+    said a thing came from itself. Every column existed and every type checked - the
+    statement was simply empty - and it reached the shipped sample because I copied a working
+    mapping and changed only the predicate and the condition.
+
+    ⛔ AVAILABILITY WOULD NOT HAVE CAUGHT IT: the column was one of that source's own preparer
+    outputs, so it was perfectly readable. This asks about MEANING, which is a different
+    question and needs its own check.
+    """
+    raw = logical_bundle()
+    mapping = _mappings(raw)[sorted(_mappings(raw))[0]]
+    mapping["bind"]["subject"] = _entity("source_id")
+    mapping["bind"]["target"] = _entity("source_id", "OutputEntity@1", "output_id")
+
+    new = paths_of(raw) - paths_of(logical_bundle())
+
+    assert any(path.endswith("bind.mappings." + sorted(_mappings(logical_bundle()))[0])
+               for path in new), sorted(new)
+
+
+def test_sharing_one_key_column_of_several_is_not_a_self_edge():
+    """⚠️ EQUALITY, NOT OVERLAP. Two entities of one type may legitimately share SOME key
+    column; refusing on overlap would refuse ordinary declarations."""
+    raw = logical_bundle()
+    name = sorted(_mappings(raw))[0]
+    mapping = _mappings(raw)[name]
+    mapping["bind"]["subject"] = _entity("source_id")
+    target = _entity("source_id", "OutputEntity@1", "output_id")
+    target["keys"]["second"] = {"kind": "column", "approval_status": "approved",
+                                "column": "target_id"}
+    mapping["bind"]["target"] = target
+
+    new = paths_of(raw) - paths_of(logical_bundle())
+
+    assert not any(path.endswith("bind.mappings." + name) for path in new), sorted(new)
