@@ -1382,11 +1382,12 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
     `preview_first_batch`, so the number describes the rows the refusal came from rather
     than some other reading of the relation.
 
-    ⚠️ AND THE SAME PREDICATE. `_is_missing` is imported from the preparer that raised, not
-    respelled here - two spellings of "empty" would disagree on exactly the values this
-    question is about.
+    ⚠️ AND THE SAME PREDICATE. `is_blank_source_value` is imported from the preparer that
+    raised, not respelled here - two spellings of "empty" would disagree on exactly the
+    values this question is about. S-91 moved those two lines INTO that function so the
+    declaration's `exclude_when` asks with them too, rather than growing a third spelling.
     """
-    from .source_preparation import _is_missing
+    from .source_preparation import is_blank_source_value
 
     plan = setup.snapshot.source_plans[source]
     read = engine.raw_connection()
@@ -1400,7 +1401,7 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
     missing = 0
     for row in rows:
         value = row.get(column) if isinstance(row, dict) else None
-        if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+        if is_blank_source_value(value):
             missing += 1
     return missing, len(rows)
 

@@ -702,7 +702,9 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
               else occurred.get("column"))
     cursor = driver.get("cursor")
     cursor = cursor if isinstance(cursor, Mapping) else {}
-    outputs = _preparation(source).get("output_columns")
+    preparation = _preparation(source)
+    outputs = preparation.get("output_columns")
+    excluded = preparation.get("exclude_when")
     return locked_select_columns(
         identity=[str(name) for name in _listed(driver.get("identity"))],
         group_by=[str(name) for name in _listed(driver.get("group_by"))],
@@ -711,6 +713,12 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
         occurred_at_column=column if isinstance(column, str) else None,
         preparer_outputs=([str(name) for name in outputs]
                           if isinstance(outputs, Mapping) else ()),
+        # S-91. A half-written declaration may hold anything here, so each clause is
+        # read defensively - this screen draws bundles that do not compile.
+        exclude_when_columns=[
+            str(clause["column"]) for clause in (excluded or ())
+            if isinstance(clause, Mapping) and isinstance(clause.get("column"), str)
+        ],
     )
 
 

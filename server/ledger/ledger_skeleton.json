@@ -571,6 +571,37 @@
                           "section": "virtual_joins"
                         }
                       }
+                    },
+                    {
+                      "key": "exclude_when",
+                      "required": false,
+                      "label": "제외 조건",
+                      "node": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "조건",
+                        "of": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "column",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "blank",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "flag"
+                              }
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 },

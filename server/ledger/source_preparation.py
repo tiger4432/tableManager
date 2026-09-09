@@ -162,6 +162,22 @@ def _is_missing(value: Any) -> bool:
     return False
 
 
+def is_blank_source_value(value: Any) -> bool:
+    """"Empty" as this seam spells it: missing, or a string with nothing but space.
+
+    🔴 ONE FUNCTION BECAUSE TWO SPELLINGS DISAGREE EXACTLY WHERE THE QUESTION LIVES
+    (판정 194 ㉢). `count_rows_missing` already wrote `_is_missing(v) or (isinstance(v, str)
+    and not v.strip())` at its own call site, and `exclude_when` needs the same sentence.
+    Left as two, the day one of them learns about a new empty shape is the day an operator
+    is told "3 of 200 rows are blank" by one and "0" by the other, about the same rows.
+
+    ⚠️ WHITESPACE IS NOT `_is_missing`'S JOB. That one answers "is this value absent",
+    which a `"  "` is not - it is a present string. This is the IDENTITY question layered
+    on top: a key part made of spaces names nothing.
+    """
+    return _is_missing(value) or (isinstance(value, str) and not value.strip())
+
+
 @dataclass(frozen=True)
 class JoinRightRow:
     """One right-relation row returned for a normalized join key."""
@@ -431,7 +447,24 @@ class DirectJoinSourcePreparer(BaseSourcePreparer):
         joins: Mapping[str, PreparedJoin],
     ) -> Mapping[str, Sequence[Any]]:
         outputs: dict[str, tuple[Any, ...]] = {}
-        declared = context.source_plan.driver.preparation.preparer.output_columns
+        preparation = context.source_plan.driver.preparation
+        # 🔴 S-91. The row-exclusion marker, DECLARED rather than coded. The mechanism
+        # already existed and only a python preparer could emit it, so a relation whose
+        # early rows leave an identity part blank refused every atom and the only way out
+        # was to write a preparer class. `exclude_when` lets the declaration say it.
+        #
+        # ⚠️ ONE PATH, NOT TWO. This is the same column, the same downstream and the same
+        # spelling of "empty" the python preparer uses; `_assemble_prepared_frame` drops
+        # and COUNTS these rows exactly as it already did.
+        if preparation.exclude_when:
+            columns = [clause["column"] for clause in preparation.exclude_when]
+            frames = {column: base_frame[column].tolist() for column in columns}
+            outputs[SOURCE_ROW_EXCLUDED_COLUMN] = tuple(
+                any(is_blank_source_value(frames[column][position])
+                    for column in columns)
+                for position in range(len(base_frame))
+            )
+        declared = preparation.preparer.output_columns
         for output in sorted(declared):
             candidates = [join for join in joins.values()
                           if output in join.descriptor["expose"]]
@@ -516,6 +549,7 @@ def locked_select_columns(
     cursor_columns: Sequence[str] = (),
     occurred_at_column: str | None = None,
     preparer_outputs: Sequence[str] = (),
+    exclude_when_columns: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """What a source's read brings in BEFORE anybody declares an input column.
 
@@ -538,6 +572,18 @@ def locked_select_columns(
     columns.update(set(group_by) - outputs)
     columns.update(order_by)
     columns.update(cursor_columns)
+    # 🔴 S-91. A column named by `exclude_when` HAS to be read, or the preparer is asked
+    # about a column that is not in the frame. It goes HERE rather than only in
+    # `base_select_columns`, which is the opposite of where `FRAME_ROW_ID_COLUMN` goes -
+    # and for that field's own stated reason. `row_id` is kept off this list because an
+    # author did not choose it and a locked chip would offer a decision nobody has; an
+    # `exclude_when` column IS chosen, so drawing it as "this arrives anyway" is true.
+    #
+    # ⚠️ AND THE OWNER'S OWN CASE WOULD HAVE HIDDEN THIS. There the column is `core_x`, an
+    # identity part, so it is already in the first term and arrives by luck. Building
+    # against that case alone runs there and silently reads a missing column everywhere
+    # else.
+    columns.update(exclude_when_columns)
     if occurred_at_column:
         columns.add(occurred_at_column)
     return tuple(sorted(columns))
@@ -554,6 +600,8 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
         cursor_columns=driver.cursor_columns,
         occurred_at_column=driver.occurred_at.column,
         preparer_outputs=driver.preparation.preparer.output_columns,
+        exclude_when_columns=[clause["column"]
+                              for clause in driver.preparation.exclude_when],
     ))
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns
@@ -746,6 +794,13 @@ def _assemble_prepared_frame(
             "prepare_outputs must return a mapping of declared columns",
         )
     declared = set(context.source_plan.driver.preparation.preparer.output_columns)
+    # 🔴 S-91 (판정 194 ㉠). The FRAMEWORK widens the accepted set when the declaration
+    # asks for row exclusion; the operator does not also list the marker in
+    # `output_columns`. Two things to write would end the "one clause" definition of done,
+    # and the marker is not a column anybody maps - it is consumed a few lines below and
+    # never reaches an event frame.
+    if context.source_plan.driver.preparation.exclude_when:
+        declared = declared | {SOURCE_ROW_EXCLUDED_COLUMN}
     if set(outputs) != declared:
         raise SourcePreparationError(
             "invalid_source_preparer_output", "source_preparation.outputs",

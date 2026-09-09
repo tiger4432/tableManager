@@ -304,6 +304,10 @@ class ProfileDescriptor:
 class SourcePreparationPlan:
     preparer: SourcePreparerDescriptor
     verified_join_descriptors: tuple[VerifiedJoinDescriptor, ...]
+    #: S-91. `({"column": <name>, "blank": True}, ...)` - a row matching ANY clause is not
+    #: this source's. Empty for every source that does not declare it, which is the state
+    #: all 26 shipped sources are in.
+    exclude_when: tuple[Mapping[str, Any], ...] = ()
 
 
 #: What each declared basis reads INSTEAD of a world-time column. ``created_at`` is put on
@@ -1176,6 +1180,10 @@ def _compile_source_plans(
                     verified_join_descriptors=tuple(
                         verified_joins[rule_id]
                         for rule_id in preparation["inherit_virtual_join_rules"]
+                    ),
+                    exclude_when=tuple(
+                        _freeze(clause)
+                        for clause in preparation.get("exclude_when", ())
                     ),
                 ),
                 mapper=mappers[source_id],

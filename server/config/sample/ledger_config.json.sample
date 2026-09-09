@@ -1777,7 +1777,13 @@
           "cy",
           "event_time"
         ],
-        "output_columns": {}
+        "output_columns": {},
+        "exclude_when": [
+          {
+            "column": "core_wafer",
+            "blank": true
+          }
+        ]
       },
       "read": {
         "unit": "row",

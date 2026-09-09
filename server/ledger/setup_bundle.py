@@ -1348,6 +1348,42 @@ def _validate_references(value, path, own_keys, section, problems):
                                  "must name one of this entity's identity keys")
 
 
+def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
+    """`[{"column": <name>, "blank": true}, ...]` - rows this source says are not its own.
+
+    🔴 S-91. The mechanism (`__source_row_excluded`) already existed and only a PREPARER
+    CLASS could emit it, so a relation whose early rows leave an identity part blank made
+    no atoms at all and the only remedy was to write python. Measured in production
+    2026-09-09: 995 rows read, 0 molecules, 995 refused for no identity, because the rows
+    that carry one sit later in cursor order.
+
+    A list, and a row matching ANY clause is excluded.
+
+    ⛔ ONE PREDICATE, AND `blank` MUST BE `true`. Value comparisons are not built here:
+    nothing today needs them, and a grammar that grows an operator per question is how a
+    declaration turns into a query language. `blank: false` is refused rather than read as
+    "keep only the blanks" - that is a different feature and it should be asked for by
+    name, not arrived at by flipping a flag nobody designed to be flipped.
+    """
+    if value is None:
+        return
+    if not isinstance(value, list) or not value:
+        problems.add("invalid_type", path,
+                     "must be a non-empty list of exclusion conditions")
+        return
+    for index, clause in enumerate(value):
+        spot = f"{path}[{index}]"
+        if not problems.exact(clause, spot, required=("column", "blank")):
+            continue
+        column = clause.get("column")
+        if not isinstance(column, str) or not column.strip():
+            problems.add("invalid_type", f"{spot}.column",
+                         "must name a column of this source's relation")
+        if clause.get("blank") is not True:
+            problems.add("invalid_type", f"{spot}.blank",
+                         "the only supported condition is 'blank': true")
+
+
 def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
     """One source's preparer body, at `sources.<id>.prepare`.
 
@@ -1360,8 +1396,13 @@ def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
             item, path,
             required=("implementation_id", "implementation_version", "input_columns",
                       "output_columns", "accepts_verified_join_rules",
-                      "inherit_virtual_join_rules")):
+                      "inherit_virtual_join_rules"),
+            # S-91. OPTIONAL, so all 26 shipped sources stay valid without being edited -
+            # a source that says nothing here excludes nothing, which is what they all do
+            # today.
+            optional=("exclude_when",)):
         return
+    _validate_exclude_when(item.get("exclude_when"), f"{path}.exclude_when", problems)
     _implementation(item, path, problems)
     _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
                    allow_empty=True)
@@ -1851,6 +1892,27 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         f"{prep_path}.output_columns.{column}",
                         f"preparer output collides with physical relation {relation!r}")
                 available.update(prep["output_columns"])
+            # S-91. The column has to BE in the relation, and it has to be read by a
+            # preparer that looks at it.
+            for index, clause in enumerate(prep.get("exclude_when") or []):
+                if not isinstance(clause, Mapping):
+                    continue
+                column = clause.get("column")
+                if isinstance(column, str) and column not in physical:
+                    problems.add(
+                        "unknown_column", f"{prep_path}.exclude_when[{index}].column",
+                        f"column {column!r} is not in relation {relation!r}")
+            # 🔴 REFUSED BY NAME RATHER THAN IGNORED (판정 194 ㉡). Only the generic
+            # `direct-join` preparer reads this clause; a source that declares it under
+            # some other implementation would have it silently do nothing, which is the
+            # mirror image of the two-paths problem this feature exists to avoid. A
+            # preparer class that wants to exclude rows already emits the marker itself.
+            if prep.get("exclude_when") and prep.get("implementation_id") != "direct-join":
+                problems.add(
+                    "invalid_driver", f"{prep_path}.exclude_when",
+                    f"only the 'direct-join' preparer reads exclude_when; this source "
+                    f"declares {prep.get('implementation_id')!r}, whose implementation "
+                    f"emits the row-exclusion marker itself")
             inherited_rules = prep.get("inherit_virtual_join_rules", [])
             if inherited_rules and not prep.get("accepts_verified_join_rules"):
                 problems.add(
