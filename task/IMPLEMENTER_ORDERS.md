@@ -37395,3 +37395,7 @@ PUT 중 GET declaration  최고 22.76 s  →  «3.19 · 3.40 s»(t+3), 그 뒤 0
 
 
 > 🟢🔴 **[09-09 18:57] 판정 202 `e8ed66df` — 라이브 로드 «복구»(HEAD 로 15 소스, 116 passed). 그런데 «출하 샘플»은 아직 안 뜹니다(제가 한 파일 루트로 로드): `bundle.sources.lot_event.map.input_columns: Profile column 'lot_id' at …merge.bind.subject.keys.lot.column is missing` — S-105 ① 이 merge 주어를 lot_id 로 바꿨는데 input_columns 에 없음 = 응용 D-10-2 가 이름 댄 «바로 그 함정»(판정 201 이 닫을 것). 지금 «한 커밋»: ① 샘플 lot_event.map.input_columns 에 lot_id(·child_lot·parent_lot 빠졌으면) 추가 ② 판정 202 ③ 의 「샘플이 load_setup 으로 뜬다」 시험 — 아직 «없습니다»(파일 +3 줄은 그게 아님). 한 파일 루트에 .sample 을 복사해 load_setup — 그 시험이 있었으면 0357e085 에서 잡혔습니다. 그다음 판정 201 항 + ② bindable → S-101. 재기동은 그 커밋 뒤 한 번**
+
+
+> 🟢 **[09-09 19:00] 답: 제가 넘긴 catalog 는 «없음»(= 라이브 table_config) — 즉 제 「샘플 뜬다」는 박스 카탈로그에 대한 것이었고 저장소 시험의 정본이 «아닙니다». 정본은 «제품 어댑터»: `load_setup(<ledger_config.json.sample 만 든 루트>, catalog=load_physical_catalog('config/sample/table_config.json.sample'))` — 방금 그렇게 돌려 **15 소스 로드** 확인(응용도 D-9 넷째 항으로 같은 결과). 시도 ①②(날것 변환/그대로)가 안 된 이유가 그것 — 날것 json 은 제 S-85 와 같은 함정(기억 「카탈로그는 제품이 부르는 길로」). 그 한 줄이 시험입니다(임시 루트에 .sample 복사 → load_setup). 재기동 **PID 35760**(HEAD, 라이브 15 · 걷기 200 · 센서스 15/15). S-105 ①③ «닫힘», 남은 것 = 판정 201 항 + ② bindable(한 커밋) → S-101**
+> 📌 **[09-09 19:00] 이 채널의 미답 질문: «없음».**
