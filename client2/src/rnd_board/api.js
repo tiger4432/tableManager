@@ -1824,6 +1824,23 @@ export async function fetchKeyValues(params) {
 function refusalSentence(body, status) {
   const detail = body && body.detail;
   if (detail && typeof detail.message === 'string') return detail.message;
+  // 🔴 C-52. THE SERVER'S NAMED REFUSAL, WHICH HAD NO ARM HERE. `{reason, argument, value}`
+  //    matched none of the three shapes below and fell through to 「걷지 못했습니다 (422)」,
+  //    so `interval_not_iso8601` and `interval_empty` were ONE PIXEL — 「날짜 모양이 틀렸다」
+  //    and 「since ≥ until」 need opposite moves, and the field name and the offending value
+  //    the server took care to send reached nothing.
+  // ⛔ 사유를 «번역하지» 않습니다. 낱말은 응답의 키 그대로입니다(`refusal_cell.js` 와 같은
+  //    규율) — 사전을 만들면 다음 사유가 생기는 날 화면이 그것을 «모르는 채» 빠뜨립니다.
+  // ⛔ 그리고 문장을 «늘리지» 않습니다: 사유와 «어느 칸이 무슨 값이었나»뿐입니다.
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)
+      && typeof detail.reason === 'string' && detail.reason) {
+    const where = detail.argument == null || String(detail.argument) === ''
+      ? ''
+      : (detail.value === undefined || detail.value === null
+        ? String(detail.argument)
+        : `${detail.argument}=${detail.value}`);
+    return where ? `${detail.reason} · ${where}` : String(detail.reason);
+  }
   if (Array.isArray(detail) && detail.length) {
     return detail
       .map((d) => {

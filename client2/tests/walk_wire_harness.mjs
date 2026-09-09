@@ -434,10 +434,45 @@ async function intervalSuite(M) {
   return { failed: failures.length - before };
 }
 
+// 🔴 C-52. 거절이 «어느 칸의 무슨 값» 때문인지. 모듈 안쪽 함수가 아니라 «부르는 쪽에
+//    닿는 문장»으로 잽니다 — 그것이 화면이 읽는 값입니다.
+async function refusalSuite(M) {
+  const before = failures.length;
+  const said = async (status, body) => {
+    const r = recorder({ ok: false, status, json: async () => body });
+    const got = await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
+      { type: 'wafer@1', keys: { wafer: 'W-1' } });
+    return got.message;
+  };
+  // 🔴 THE TWO THE SERVER ACTUALLY SENDS (S-98), and they must not be one sentence.
+  const notIso = await said(422, { detail: { reason: 'interval_not_iso8601',
+                                             argument: 'since', value: '2026-13-01' } });
+  const empty = await said(422, { detail: { reason: 'interval_empty' } });
+  ok('F1 the reason is the server\'s word, untranslated', /interval_not_iso8601/.test(notIso), notIso);
+  ok('F2 ...and it says WHICH argument and WHAT value', /since=2026-13-01/.test(notIso), notIso);
+  ok('F3 a reason with no argument is just the reason', empty === 'interval_empty', empty);
+  // 🔴 THE DISCRIMINANT: before this arm both of these read 「걷지 못했습니다 (422)」.
+  ok('F4 the two 422s are DIFFERENT sentences', notIso !== empty, `${notIso} / ${empty}`);
+
+  // ⚠️ 기존 팔 «셋» 무회귀 — 새 팔이 그 앞을 가로채면 오늘 도는 화면의 문장이 바뀝니다.
+  ok('F5 a server message still wins',
+    (await said(400, { detail: { message: '이 씨앗은 없습니다' } })) === '이 씨앗은 없습니다');
+  ok('F6 a FastAPI validation array still reads as before',
+    (await said(422, { detail: [{ loc: ['query', 'hops'], msg: 'not an integer' }] }))
+      === 'hops · not an integer');
+  ok('F7 a bare string detail still reads as before',
+    (await said(500, { detail: 'boom' })) === 'boom');
+  ok('F8 and a body with nothing usable still falls back to the status',
+    (await said(503, {})) === '걷지 못했습니다 (503)');
+  return { failed: failures.length - before };
+}
+
 console.log('\n[10] what counts as a truncation');
 await truncationSuite(await import('../src/rnd_board/api.js'));
 console.log('\n[10-bis] the interval, out and back');
 await intervalSuite(await import('../src/rnd_board/api.js'));
+console.log('\n[10-ter] a refusal says which argument and what value');
+await refusalSuite(await import('../src/rnd_board/api.js'));
 
 const base = { pass, failed: failures.length };
 
@@ -484,6 +519,18 @@ const INTERVAL_DEFECTS = [
     (src) => src.replace("  return typeof n === 'number' && Number.isFinite(n) ? n : null;",
       "  return typeof n === 'number' && Number.isFinite(n) && n !== 0 ? n : null;")],
 ];
+// C-52. 🔴 세 가지 잃는 방식: 팔이 통째로 없어지거나, 사유만 남고 «자리»가 사라지거나,
+//    새 팔이 «기존 팔 앞»을 가로채 오늘 도는 문장을 바꾸거나.
+const REFUSAL_DEFECTS = [
+  ['the named arm goes away, so the two 422s collapse into one sentence again',
+    (src) => src.replace(/ {2}if \(detail && typeof detail === 'object' && !Array\.isArray\(detail\)\n[\s\S]*?\n {2}\}\n/, '')],
+  ['the reason survives but the address does not, so 「어느 칸」 is lost',
+    (src) => src.replace("    return where ? `${detail.reason} · ${where}` : String(detail.reason);",
+      '    return String(detail.reason);')],
+  ['the new arm jumps the queue, so a server message stops winning',
+    (src) => src.replace("  if (detail && typeof detail.message === 'string') return detail.message;\n",
+      '')],
+];
 const RENAME_CONTROLS = [
   ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],
 ];
@@ -529,6 +576,18 @@ for (const [name, mutate] of INTERVAL_DEFECTS) {
   if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
   else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
 }
+for (const [name, mutate] of REFUSAL_DEFECTS) {
+  let r;
+  try { r = await refusalSuite((await loadWithProbe(API_PATH, { mutate, tag: 'rf' })).module); }
+  catch (e) {
+    if (/did not mutate|unchanged/.test(String(e && e.message))) {
+      console.error(`  anchor GONE: ${name} — ${e.message}`); process.exit(2);
+    }
+    r = { failed: 1 };
+  }
+  if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
+  else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
+}
 for (const [name, mutate] of RENAME_CONTROLS) {
   const r = await score(name, mutate, 'rnc');
   if (r.failed === 0) console.log(`  escaped ${name}`);
@@ -539,6 +598,6 @@ pass = base.pass;
 failures.length = base.failed;
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
-console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length} caught, ${wrong.length} wrong`);
+console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length + REFUSAL_DEFECTS.length} caught, ${wrong.length} wrong`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 && wrong.length === 0 ? 0 : 1);
