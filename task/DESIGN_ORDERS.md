@@ -24733,3 +24733,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 🔴 **[09-09 16:18] C-48 (작음, 지금) — 판정 192(`852107f9`)로 서버의 `updated_count` 가 「이 요청이 «바꾸거나 만든» 행 수」가 됐습니다(무변경 행은 응답에 «없음»). 그래서 `map_editor.js:6427·6430` 의 `result.updated_count || result.count || updates.length` 가 «완전 무변경» 푸시(0)에서 falsy 로 흘러 「적재 완료 — 200건」이라 «거짓»을 띄웁니다. 고침: 수는 `updated_count` 가 «숫자면 그 값»(0 포함), 없을 때만 폴백 — 그리고 0 이면 문구가 「바뀐 것 없음」(문장은 짧게, 상설). 이웃: 같은 패턴 `git grep -n 'updated_count' -- client2/src` 전부(둘). 빌드·dist 같은 커밋 → design 푸시. 제가 화면으로 확인 뒤 main 병합**
 
 > ✅ **[09-09 16:30] C-48 «닫음» — `4133ff78` main 병합(`c03aa845`): 두 토스트가 «같은 함수»(`changed_rows.js`)를 지나고 0 은 「바뀐 것 없음」, 없음은 ABSENT. 라이브가 새 번들(map_editor-DFn1t5Wx.js) 을 냄. 다음: 되돌리기 라우트 뒤 · 10^7 뒤 C-41. 그 전엔 대기**
+
+
+> 🔴 **[09-09 19:55] C-49 (S-92 의 «화면 절반», 지금)** — 시험 실행 응답의 `refused` 가 이미 `{count, reasons, samples}` 를 싣는데(서버 backfill `refused_samples`, 최대 20 · `refused_samples_capped`), `ontology_explorer_view.js:renderTestRun` 은 `refusalSummary(run.refused.reasons)` 로 «건수만» 그린다. 소유자가 오늘 「체크한 로우들 줄 수 있나」를 물었고 그 표본이 답의 절반이다. 고침: 거절 줄 «밑»에 표본 표 하나 — 열 = 사유 · 분자 키(rows[N] 또는 group_by 값) · 서버가 준 주소(path) — `refusal_cell.js` 가 이미 표본을 그릴 줄 아니(«같은 함수», 소스 목록과 한 철자) 그것을 쓴다. 절단이면 「20 건까지」를 값으로(«20 이 전부»와 «20 까지만 봤다»는 다른 답). 문구 상설(설명 금지). 빌드·dist 같은 커밋 → design. 서버 변경 0. 읽은 행 자체(값)는 서버 절반(S-92 서버)이 뒤에**
