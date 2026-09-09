@@ -42,13 +42,13 @@ def test_slot_and_wafer_lists_correspond_positionally(built):
     rows = built.tables["lot_event"]
     assert rows, "no lot_event rows were produced at all"
     for r in rows:
-        slots = r["slot_numbers"].split(SEP) if r["slot_numbers"] else []
-        wafers = r["wafer_ids"].split(SEP) if r["wafer_ids"] else []
+        slots = r["slotnumbers"].split(SEP) if r["slotnumbers"] else []
+        wafers = r["waferids"].split(SEP) if r["waferids"] else []
         assert len(slots) == len(wafers), (
             "%s/%s at %s: %d slots vs %d wafers"
-            % (r["lot"], r["event_type"], r["event_time"], len(slots), len(wafers)))
-        assert len(set(slots)) == len(slots), "duplicate slot in %r" % r["slot_numbers"]
-        assert len(set(wafers)) == len(wafers), "duplicate wafer in %r" % r["wafer_ids"]
+            % (r["lot_id"], r["event_type"], r["event_time"], len(slots), len(wafers)))
+        assert len(set(slots)) == len(slots), "duplicate slot in %r" % r["slotnumbers"]
+        assert len(set(wafers)) == len(wafers), "duplicate wafer in %r" % r["waferids"]
 
 
 def test_lot_event_business_key_is_unique(built):
@@ -56,7 +56,7 @@ def test_lot_event_business_key_is_unique(built):
     would silently merge two events into one row."""
     seen = set()
     for r in built.tables["lot_event"]:
-        key = (r["lot"], r["event_type"], r["event_time"])
+        key = (r["lot_id"], r["event_type"], r["event_time"])
         assert key not in seen, "duplicate lot_event key %r" % (key,)
         seen.add(key)
 
@@ -82,7 +82,8 @@ def test_absent_lineage_side_is_blank_not_a_placeholder(built):
     """A literal '-' would be a perfectly good graph identity and would mint one
     Lot('-') hub wired to every split and merge in the fixture."""
     for r in built.tables["lot_event"]:
-        for col in ("parent_lot", "child_lot", "equipment"):
+        # `equipment` left with the column: the shipped catalogue declares none (판정 213).
+        for col in ("parent_lot", "child_lot"):
             assert r[col] != "-", "%s carries a '-' placeholder" % col
 
 
@@ -287,7 +288,12 @@ def test_emitted_columns_satisfy_the_ingestion_contract(built):
     """Header must be a subset of display_columns, and must carry either the business
     key or every composite source -- otherwise std_parser rejects the file to err/."""
     import json
-    cfg_path = os.path.join(_SERVER, "config", "table_config.json")
+    # ⛔ THE SHIPPED CATALOGUE, NOT THE LIVE ONE (판정 212). This opened
+    # `config/table_config.json`, which is gitignored - so it asked whether THIS BOX happens
+    # to declare the fixture's tables. That is a fact about one machine and says nothing
+    # about production. The fixture and the sample catalogue ship together, so they are what
+    # this contract is between.
+    cfg_path = os.path.join(_SERVER, "config", "sample", "table_config.json.sample")
     with open(cfg_path, encoding="utf-8") as fh:
         tc = json.load(fh)
 
@@ -325,7 +331,7 @@ def test_some_lot_attributions_are_genuinely_unresolvable(built):
            if r["question"] == "dt_lot"]
     assert amb, "no unresolvable lot attribution -- inference #1 always succeeds"
 
-    tracked = {r["lot"] for r in built.tables["lot_event"]
+    tracked = {r["lot_id"] for r in built.tables["lot_event"]
                if r["event_type"] == "track_in"}
     dt_lots = {j["dt_lot_true"] for j in built.jobs}
     assert tracked, "no track_in events at all -- nothing would ever resolve"

@@ -134,11 +134,20 @@ class World(object):
                  "duplicate lot_event business key %r -- the composite key "
                  "(lot, event_type, event_time) would collapse two events into one" % (key,))
         self._used_event_keys.add(key)
+        # \u26a0\ufe0f `equipment` IS NOT WRITTEN (판정 213). The shipped catalogue declares
+        # no such column on `lot_event`, and a fixture row carrying one is a row no
+        # deployment could load. The argument is still taken so the scenario reads the same
+        # and the day the column is declared it has one place to land.
+        # 🔴 `txn_seq` IS THE CATALOGUE'S BUSINESS KEY for this table, so a fixture
+        # without it emits rows no deployment can identify - `std_parser` rejects a file that
+        # carries neither the business key nor every composite source. One per event, in the
+        # order the scenario makes them, which is what a transaction sequence is.
         self.tables["lot_event"].append({
-            "lot": lot, "event_type": event_type,
+            "txn_seq": len(self.tables["lot_event"]) + 1,
+            "lot_id": lot, "event_type": event_type,
             "parent_lot": parent_lot, "child_lot": child_lot,
-            "slot_numbers": SEP.join(slots), "wafer_ids": SEP.join(wafers),
-            "equipment": equipment, "event_time": self._ts(when)})
+            "slotnumbers": SEP.join(slots), "waferids": SEP.join(wafers),
+            "event_time": self._ts(when)})
 
     def _members(self, lot):
         """(slots, wafer_ids) of a lot, sorted by slot and POSITIONALLY aligned."""

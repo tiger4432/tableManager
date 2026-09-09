@@ -28,8 +28,14 @@ from . import world as _world
 # `display_columns`; anything else is dropped by the parser with a warning, which is
 # a silent partial load rather than a refusal.
 ORDER = {
-    "lot_event": ["lot", "event_type", "parent_lot", "child_lot",
-                  "slot_numbers", "wafer_ids", "equipment", "event_time"],
+    # \U0001f534 THE SHIPPED CATALOGUE'S SPELLING (판정 213). This emitted `lot`,
+    # `slot_numbers`, `wafer_ids` and `equipment` - the shape `lot_event` had before
+    # 2026-08-02 - while `config/sample/table_config.json.sample` declares `lot_id`,
+    # `slotnumbers` and `waferids` and no `equipment` at all. The catalogue is a SHIPPED
+    # CONTRACT and this file is a test aid, so the aid follows: a contract bent to fit its
+    # own fixture stops being evidence about the product.
+    "lot_event": ["txn_seq", "lot_id", "event_type", "parent_lot", "child_lot",
+                  "slotnumbers", "waferids", "event_time"],
     "core_wafer_map": ["core_lot", "core_slot", "core_x", "core_y",
                        "c_bn", "wafer_id", "event_time"],
     "dt_log": ["dt_job", "dt_eqp", "product", "dt_lot", "dt_slot", "dt_x", "dt_y",

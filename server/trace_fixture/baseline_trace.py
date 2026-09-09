@@ -58,8 +58,8 @@ class PositionHistory:
         self._by_wafer = defaultdict(list)   # wafer -> [(time, lot, slot)]
         self._by_lot = defaultdict(list)     # lot -> [(time, {slot: wafer})]
         for r in rows:
-            slots = (r["slot_numbers"] or "").split(SEP) if r["slot_numbers"] else []
-            wafers = (r["wafer_ids"] or "").split(SEP) if r["wafer_ids"] else []
+            slots = (r["slotnumbers"] or "").split(SEP) if r["slotnumbers"] else []
+            wafers = (r["waferids"] or "").split(SEP) if r["waferids"] else []
             if len(slots) != len(wafers):
                 # The generator asserts this cannot happen; if it ever does, refusing
                 # is the only safe move -- a positional mismatch silently reattributes
@@ -70,8 +70,8 @@ class PositionHistory:
             for s, w in zip(slots, wafers):
                 s = norm_slot(s)
                 members[s] = w
-                self._by_wafer[w].append((t, norm_lot(r["lot"]), s))
-            self._by_lot[norm_lot(r["lot"])].append((t, members))
+                self._by_wafer[w].append((t, norm_lot(r["lot_id"]), s))
+            self._by_lot[norm_lot(r["lot_id"])].append((t, members))
         for w in self._by_wafer:
             self._by_wafer[w].sort(key=lambda x: x[0])
         for l in self._by_lot:
