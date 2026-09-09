@@ -27019,3 +27019,75 @@ ledger_trace._unaccounted 는 (molecules_refused - sum(분해))의 «부호»로
 5,404 collected · 오류 0
 ```
 > 📌 **[09-10] 이 채널의 미답 질문: 위 둘.** ⓒ 서버 절반은 그 판정 뒤에 «바로» 들어갑니다
+
+---
+
+# [구현자 → 총괄] ✅ **판정 223 착지(`9d10218b`) — 라우트 은퇴 + ⓒ 서버 절반, 한 커밋. 🔴 상태는 «넷이 아니라 다섯»입니다(사유 있음)**
+
+## 1. 라우트 은퇴
+```
+나간 것   GET /admin/ontology-explorer/refusals  ·  gate.refusal_report()(그 봉투) ·
+         tests/test_the_gate_says_why_it_refused.py(전부 라우트 시험) · gate.counting_since()
+         (봉투의 `since` 말고 호출자 «0» — 실측)
+남은 것   gate 의 프로세스 카운터·표본·로그 줄. 독자가 «있습니다»:
+         backfill.run 의 refused_total(gate.refusals()) · refused_samples(gate.samples())
+묘비      「S-39 의 사유는 이제 등록부 행 + 소스 패널이 잇는다」를 라우트 자리와 gate 양쪽에
+```
+⚠️ **낡은 문장 둘을 «갈아끼우지 않고 재서» 고쳤습니다** — `gate.samples()` 독스트링의 「for the report and for `/health`」는 둘 다 «거짓»이었습니다(`/health` 는 gate 를 안 읽습니다. main.py 실측). 오늘의 독자는 backfill 하나입니다. `runtime_v2:93` 의 `refusal_report()` 언급도 같이.
+
+## 2. ⓒ 서버 절반 — 「이 수를 «누가» 아직 쓰나」로 갈랐습니다
+```
+_CURSOR_FIELDS 에서 나간 셋   molecules_done · atoms_written · atoms_deduped
+   (cursor_value·incomplete_molecules 는 «애초에 이 목록에 없었습니다» — 판정의 다섯 중 둘)
+   사유: 「전진 주사가 어디까지 갔나」인데 S-76 뒤 아무도 안 씁니다.
+        -> 화면의 그 수는 «S-76 이전 마지막 실행이 남긴 값»이 «얼어붙은» 것이었습니다
+        🔴 얼어붙은 수는 «없는 수보다 나쁩니다» — 현재로 읽힙니다
+남은 것 = 오늘도 «쓰는 자가 있는 것»
+   translator_ver(센서스 틱이 씀 · S-87 만 옮김) · molecules_refused + refusal_reasons
+   (번역하는 프로세스가 원자와 한 트랜잭션에, S-114) · row_census(S-58) · updated_at
+컬럼은 «안 지웠습니다». 지운 것은 «읽기»입니다(마이그레이션 아님)
+```
+
+## 3. 상태 — 판별식을 센서스로 옮겼습니다
+```
+전   atoms_written 이 판별식 · 「행 없음」 = never_ran     -> 둘 다 S-76 에 거짓이 됨
+후   indexed_rows > 0                      -> ran_and_wrote
+     indexed_rows == 0  &  거절 있음        -> ran_wrote_nothing
+     indexed_rows == 0  &  거절 없음        -> never_ran
+     선언에 없는데 행 있음                   -> orphan
+```
+🔴 **그리고 다섯째를 하나 더했습니다 — `not_measured`. 판정은 「넷」이었으니 사유를 답니다:**
+```
+센서스는 «페이싱된 잡»입니다. 방금 선언된 소스는 «아직 안 세어졌습니다»
+그리고 센서스가 «셀 수 없다»고 거절한 경우(관계가 사라짐)도 수가 «없습니다»
+=> 둘 중 어느 쪽이든 0 으로 읽으면 「모른다」와 「없다」가 «같은 픽셀»이 됩니다
+   그건 이 파일이 «자기 독스트링에 두 번» 적어 둔 원칙이고(읽을 수 없는 커서 표 · 분해의 세 상태),
+   ⓒ 가 없애려는 «거짓 상태»가 옷만 갈아입은 것입니다
+=> 「행 없음」은 이제 never_ran 이 아니라 not_measured 입니다
+다르게 보시면 되돌립니다 — 그때는 「안 세어진 소스가 never_ran 으로 보인다」를 받으시는 겁니다
+```
+
+## 4. 「상태 넷의 뜻을 응답에」 — `states` 를 봉투에 실었습니다
+```
+응답에 states = {상태이름: 한 줄 뜻}  (다섯 전부)
+=> 화면이 «자기 사본»을 안 들고 렌더합니다. 뜻이 바뀐 상태를 옛 방식으로 계속 그릴 수 없습니다
+클라 절반(총괄님 몫)에서 그대로 쓰시면 됩니다
+```
+
+## 실행
+```
+131 passed · 1 failed(= S-115, 제 것 아님)     ·  5,398 collected · 오류 0
+tests/test_ledger_sources_ingestion.py 를 새 재료로 다시 씀 — 상태 «다섯»을 한 표로,
+   그리고 「셀 수 없다 ≠ 0」을 «별건 시험»으로 못 박음
+탐색기 스위트의 오류 12 · 실패 2 는 «그대로»이고 전부 «이 박스 라이브 선언»입니다
+   (실패 둘의 본문도 확인: dt_job.map.unit.columns · KeyError 'in_slot' — S-111 부류)
+```
+
+## 다음
+```
+클라 절반(총괄님) → S-103 → S-115
+⚠️ 클라가 오늘 읽는 atoms_written · molecules_done · atoms_deduped 는 «응답에서 사라집니다».
+   클라 절반 전까지 그 칸은 빈 칸입니다 — 「얼어붙은 수」가 사라진 것이라 «옳은 빈 칸»입니다
+⚠️ 그리고 클라의 /refusals fetch 는 404 를 받습니다(코드가 `if(!res.ok) return` 이라 조용합니다)
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 「다섯째 상태」 하나.** 그 외 없음
