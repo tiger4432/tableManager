@@ -33,9 +33,12 @@ class _Plan:
     the declaration now EXCLUDES but the index still names (ruling 199). Empty here: these
     cases are about the STAMP, and a source with no clause is asked nothing."""
 
-    def __init__(self, relation, frame_row_id, unit="row", group_by=(), exclude_when=()):
+    def __init__(self, relation, frame_row_id, unit="row", group_by=(), exclude_when=(),
+                 status="active"):
         self.relation = relation
         self.frame_row_id = frame_row_id
+        # S-103: the sweep asks this before it counts, so the fake carries it.
+        self.status = status
         self.driver = type("D", (), {
             "unit": unit, "group_by": tuple(group_by),
             "preparation": type("P", (), {"exclude_when": tuple(exclude_when)})()})()
@@ -222,3 +225,36 @@ def test_a_group_source_is_stamped_without_a_remainder_rather_than_crashing():
     assert census["indexed_rows"]["method"].endswith("[groups]")
     assert "not_yet" not in census
     assert "event_group_key" in census["not_comparable"]
+
+
+def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
+    """S-103: a retired source has nothing arriving, so 「rows not yet translated」 for it
+    is a remainder that will never move - published, it reads as a backlog somebody must
+    clear.
+
+    ⛔ AND THE SKIP IS NAMED. A sweep that quietly returns fewer sources than the
+    declaration has is indistinguishable from a sweep that lost them, which is the shape
+    this file's other cases exist to refuse.
+    """
+    import logging
+
+    from ledger import setup_registry
+
+    class _Store:
+        def __init__(self):
+            self.written = []
+
+        def write_row_census(self, source, census, *, translator_ver):
+            self.written.append(source)
+
+    monkeypatch.setattr(setup_registry, "cursor_translator_version",
+                        lambda snapshot, source_id: f"ledger-v2:{source_id}")
+    setup = _setup({"a": _Plan("rel_a", None),
+                    "gone": _Plan("rel_gone", None, status="retired"),
+                    "c": _Plan("rel_c", None)})
+    store = _Store()
+    with caplog.at_level(logging.INFO):
+        done = backfill.measure_every_source(_Engine([]), setup, store=store)
+
+    assert done == ["a", "c"] and store.written == ["a", "c"]
+    assert "gone" in chr(10).join(r.getMessage() for r in caplog.records)

@@ -762,6 +762,11 @@ def ledger_declaration_catalog():
             {
                 "source": source_id,
                 "relation": plan.relation,
+                # 🔴 REPORTED, NOT FILTERED (S-103). A retired source still has atoms and an
+                # operator who retired it needs to see that it is there and no longer
+                # moving; dropping it from this list would look like the declaration lost
+                # it. The live path is what stops reading it.
+                "status": plan.status,
                 "emits": sorted({
                     (mapping or {}).get("predicate")
                     for mapping in (((declared_sources.get(source_id) or {})

@@ -369,7 +369,12 @@ def sources_for_table(setup, table_name):
     129 ㉧).
     """
     plans = setup.snapshot.source_plans
-    return tuple(sorted(name for name in plans if plans[name].relation == table_name))
+    # 🔴 A RETIRED SOURCE IS NOT READ (S-103, ruling 198). This is the live path: every row
+    # that arrives asks which sources translate it, so a source left out here stops making
+    # atoms from now on and keeps every atom it already made - which is what retiring one
+    # means. A ledger appends; it does not forget.
+    return tuple(sorted(name for name, plan in plans.items()
+                        if plan.relation == table_name and plan.status == "active"))
 
 
 def scope_column(plan):

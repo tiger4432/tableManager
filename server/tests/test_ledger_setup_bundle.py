@@ -1845,3 +1845,39 @@ def test_an_attribute_the_subject_does_not_declare_is_not_offered():
     claim = predicate_claim("sighted@1", raw["vocabulary"]["sighted@1"], raw["entities"])
 
     assert "grade" not in claim["roles"]
+
+
+# ---------------------------------------------------- S-103: a retired type stops a sentence
+
+def test_a_sentence_about_a_retired_entity_type_is_refused_by_the_type_it_names():
+    """🔴 THE WORD HAD NO READER (S-103, ruling 198). `entities.*.status` has been in the
+    grammar since 2026-09-09 and nothing looked at it: an author could retire a type, the
+    form would show it retired, and every sentence about it went on being said - so the
+    ledger kept growing rows for a type its own declaration called dead. 「적을 수 있고
+    아무 일도 안 일어난다」 is the defect, and the fix is the mechanism the PREDICATE
+    already has (`inactive_predicate`) pointed at the other two words.
+
+    ⛔ THE TYPE IS NAMED, not just "something is retired". A sentence commits to a subject
+    type and may commit to an object type, so an author told only that one of them is
+    retired has to guess which field to edit.
+    """
+    bundle = logical_bundle()
+    bundle["entities"]["OutputEntity@1"] = {"keys": ["output_id"], "status": "retired"}
+
+    found = issue(bundle, "inactive_entity_type")
+    assert "OutputEntity@1" in found.message, found.message
+    assert found.path.endswith(".predicate"), found.path
+
+    # The subject side is the one every sentence has, and it is refused the same way.
+    bundle["entities"]["InputEntity@1"] = {"keys": ["input_id"], "status": "retired"}
+    named = {item.message for item in validate_bundle_errors(bundle)
+             if item.code == "inactive_entity_type"}
+    assert any("InputEntity@1" in message for message in named), named
+
+
+def test_an_active_declaration_says_nothing_about_retirement():
+    """The other half, and it is not decoration: a refusal that fires on a healthy bundle
+    would make every author's first save red, and the word would be turned off within a
+    day. Asserted on the same fixture so the two cannot drift apart."""
+    assert not [item for item in validate_bundle_errors(logical_bundle())
+                if item.code == "inactive_entity_type"]

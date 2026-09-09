@@ -279,6 +279,16 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     # source with nothing to do. A refusal that only fires when there is work is not a
     # refusal. Reuses the cutover module's own predicate so there is one spelling of it.
     _require_declared_source(cutover, source)
+    # 🔴 REFUSED BY NAME RATHER THAN SKIPPED, because this one was TYPED. The census above
+    # walks every source and a retired one is simply not its business; here an operator
+    # asked for this source by name, and answering with a clean zero would tell them the
+    # relation is empty. `status` is the answer to a different question than
+    # 「is it declared」, so it is a separate refusal with its own word.
+    if cutover.snapshot.source_plans[source].status != "active":
+        raise LedgerSetupError(
+            "source_retired",
+            f"source {source!r} is retired; its atoms stay and nothing new is read. "
+            f"Set `sources.{source}.status` to 'active' to read it again.")
     for name, value in (("reset_cursor", reset_cursor), ("start_from", start_from),
                         ("retranslate", retranslate)):
         if value:
@@ -1056,6 +1066,13 @@ def measure_every_source(engine, setup, store=None, now=None):
     writer = LedgerStore(engine) if store is None else store
     done = []
     for source in sorted(setup.snapshot.source_plans, key=str):
+        # ⛔ NAMED, NOT SILENT (S-103). A retired source has nothing arriving, so counting
+        # 「rows not yet translated」 for it would publish a remainder that will never move
+        # and read as a backlog. Saying which ones were skipped is what keeps that from
+        # looking like the sweep quietly losing sources.
+        if setup.snapshot.source_plans[source].status != "active":
+            logger.info("[Ledger] census skips %s: retired", source)
+            continue
         try:
             measure_and_store(engine, setup, source, writer, now=now)
         except Exception as exc:

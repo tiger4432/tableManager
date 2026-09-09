@@ -20,6 +20,7 @@ from verified_join_contract import (
 )
 
 from .setup_bundle import (
+    DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
@@ -193,6 +194,13 @@ class EntityTypeDescriptor:
     identity_keys: tuple[str, ...]
     allow_null: bool
     config_path: str
+    #: 🔴 `active` or `retired`, and it reaches the compiled plan for the same reason
+    #: `PredicateDescriptor.status` does (S-103, ruling 198). The grammar accepted this word
+    #: on an entity and on a source since 2026-09-09 and NOTHING read either: an author
+    #: could retire a type, the form would show it retired, and every sentence about it went
+    #: on being said. A field a screen can write and no reader can see is worse than an
+    #: absent one - it reads as an action that was taken.
+    status: str = "active"
 
 
 @dataclass(frozen=True)
@@ -397,6 +405,12 @@ class SourcePlan:
     driver: SourceDriverPlan
     profile: ProfileDescriptor
     config_path: str
+    #: 🔴 `active` or `retired` (S-103, ruling 198). A retired source is NOT deleted - its
+    #: atoms are facts and a ledger appends - it is a source the translator stops reading.
+    #: Everything that walks `source_plans` to DO something asks this; everything that walks
+    #: it to SHOW something reports it, because an operator who retired a source needs to
+    #: see that it is still there and no longer moving.
+    status: str = "active"
     #: 판정 201. Physical relation columns a role binding names, computed at COMPILE time
     #: where the catalogue is already resolved - so `base_select_columns` keeps its contract
     #: of never consulting one at run time. Preparer outputs and join-exposed columns are
@@ -956,6 +970,7 @@ def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
             identity_keys=tuple(item["keys"]),
             allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",
+            status=item.get("status", DEFAULT_LIFECYCLE),
         ))
     return builder.seal()
 
@@ -1262,6 +1277,7 @@ def _compile_source_plans(
         preparation = item["prepare"]
         builder.add(source_id, SourcePlan(
             source_id=source_id,
+            status=item.get("status", DEFAULT_LIFECYCLE),
             relation=item["relation"],
             frame_row_id=_declared_row_id(catalog, item["relation"]),
             binding_select_columns=_binding_select_columns(

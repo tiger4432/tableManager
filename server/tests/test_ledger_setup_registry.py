@@ -998,3 +998,42 @@ def test_editing_a_shared_predicate_moves_every_source_that_reaches_it():
 
     assert after["input_rows"] != before["input_rows"]
     assert after["other_rows"] != before["other_rows"]
+
+
+# ------------------------------------------- S-103: retirement reaches the compiled plan
+
+def test_a_sources_retirement_reaches_the_compiled_plan_and_the_live_reader():
+    """🔴 A WORD WITH NO READER IS WORSE THAN AN ABSENT ONE (S-103, ruling 198), because
+    the screen shows it taking effect. `sources.*.status` was accepted by the grammar and
+    dropped by the compiler, so the one thing retiring a source must do - stop the
+    translator reading it - did not happen.
+
+    ⛔ RETIRING IS NOT DELETING. The atoms it already made are facts and a ledger appends,
+    so what changes is only which sources a newly arrived row is offered to. That is
+    `followup.sources_for_table`, asserted here rather than the flag alone: the flag
+    reaching the dataclass and nothing consulting it is exactly the defect being closed.
+    """
+    from ledger import followup
+
+    bundle = logical_bundle()
+    compiled = snapshot(bundle)
+    plan = compiled.source_plans["input_rows"]
+    assert plan.status == "active", "an absent status means active"
+    setup = type("S", (), {"snapshot": compiled})()
+    assert followup.sources_for_table(setup, plan.relation) == ("input_rows",)
+
+    bundle["sources"]["input_rows"]["status"] = "retired"
+    retired = snapshot(bundle)
+    assert retired.source_plans["input_rows"].status == "retired"
+    setup = type("S", (), {"snapshot": retired})()
+    assert followup.sources_for_table(setup, plan.relation) == (), (
+        "a retired source must not be offered rows that arrive from now on")
+
+
+def test_an_entity_types_retirement_reaches_the_compiled_plan():
+    """The same word on the other declaration, compiled the same way. Its READER is the
+    bundle contract (`inactive_entity_type`), which refuses before a snapshot exists - so
+    what is asserted here is that the compiler does not silently drop the field on the
+    path that runs when the contract has already passed."""
+    bundle = logical_bundle()
+    assert snapshot(bundle).entities["OutputEntity@1"].status == "active"

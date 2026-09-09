@@ -2153,6 +2153,33 @@ def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> Non
                     "entity attributes allow only column or constant bindings")
 
 
+def _retired_entity_types(predicate: Mapping[str, Any],
+                          entities: Mapping[str, Any]) -> tuple:
+    """The entity types this predicate names that the declaration has retired.
+
+    ⚠️ IT ASKS THE PREDICATE, NOT THE BINDING. A binding names a COLUMN; the entity types a
+    sentence commits to are the predicate's `subjects` and, when its object is an
+    `entity_ref`, that object's `types`. Reading the bindings instead would miss exactly
+    the subject - the one every sentence has.
+
+    An entity type that is not declared at all is somebody else's refusal
+    (`unknown_entity_type`), so an absent one is passed over here rather than reported
+    twice under a word that would send the author to the wrong field.
+    """
+    if not isinstance(entities, Mapping):
+        return ()
+    named = list(predicate.get("subjects") or ())
+    objects = predicate.get("object")
+    if isinstance(objects, Mapping) and objects.get("kind") == "entity_ref":
+        named.extend(objects.get("types") or ())
+    retired = []
+    for entity_id in named:
+        item = entities.get(entity_id)
+        if isinstance(item, Mapping) and item.get("status", DEFAULT_LIFECYCLE) != "active":
+            retired.append(entity_id)
+    return tuple(sorted(set(retired)))
+
+
 def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                             vocabulary: Mapping[str, Any], problems: _Problems,
                             entities: Mapping[str, Any] = None) -> None:
@@ -2168,6 +2195,15 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
         if predicate.get("status") != "active":
             problems.add("inactive_predicate", f"{mpath}.predicate",
                          f"predicate {predicate_id!r} is not active")
+        # 🔴 AND THE TYPES IT SPEAKS ABOUT (S-103, ruling 198). Retiring an entity type used
+        # to be a word nothing read, so every sentence about it went on being said and the
+        # ledger went on growing rows for a type the author had declared dead. Named per
+        # type rather than as one "something is retired", because a sentence can name
+        # several and the author has to know WHICH one to edit.
+        for retired in _retired_entity_types(predicate, entities):
+            problems.add("inactive_entity_type", f"{mpath}.predicate",
+                         f"predicate {predicate_id!r} speaks about entity type "
+                         f"{retired!r}, which is retired")
         roles = predicate_claim(predicate_id, predicate, entities)["roles"]
         bindings = mapping["bind"]
         for role in sorted(bindings):

@@ -831,6 +831,10 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
     for entry in catalogue["sources"]:
         plan = plans[entry["source"]]
         assert entry["relation"] == plan.relation
+        # S-103: retirement is REPORTED here and enforced on the live path. A retired
+        # source still holds its atoms, so dropping it from this list would read as the
+        # declaration having lost it.
+        assert entry["status"] == plan.status
         assert entry["scope_columns"] == list(base_select_columns(plan))
         # Both directions, on the live declaration: every offered column is accepted...
         for column in entry["scope_columns"]:
