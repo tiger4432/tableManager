@@ -680,16 +680,28 @@ def test_source_preparation_cannot_redeclare_join_contract():
 
     # The preparer's fields are the driver clause's fields now, so the refusal lists
     # them -- which is the `_Problems.exact` behaviour, not a new message.
+    #
+    # 🔴 THE WHOLE SENTENCE IS PINNED ON PURPOSE, so adding a field to this clause
+    # turns this red. S-91 added `exclude_when` and it did, which is the pin working: an
+    # operator reads this message to learn what the clause takes, and a grammar that grows
+    # without the message growing would teach them a list that is missing a field.
+    #
+    # ⚠️ `exclude_when` CARRIES NO "(required)", and that is the half worth reading
+    # rather than the half worth pasting. Optional is what keeps all 26 shipped sources
+    # valid without being edited; if it ever gained the marker, every one of them would
+    # start refusing and this line is where that shows up first.
+    message = (
+        "field is not allowed; allowed here: implementation_id (required), "
+        "implementation_version (required), input_columns (required), "
+        "output_columns (required), accepts_verified_join_rules (required), "
+        "inherit_virtual_join_rules (required), exclude_when"
+    )
     assert [issue.to_mapping() for issue in errors] == [{
         "code": "unknown_field",
         "path": "bundle.sources.input_rows.prepare.join_key",
-        "message": (
-            "field is not allowed; allowed here: implementation_id (required), "
-            "implementation_version (required), input_columns (required), "
-            "output_columns (required), accepts_verified_join_rules (required), "
-            "inherit_virtual_join_rules (required)"
-        ),
+        "message": message,
     }]
+    assert "exclude_when (required)" not in message
 
 
 def test_new_config_entity_and_predicate_need_no_compiler_change():
