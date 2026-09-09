@@ -15419,3 +15419,43 @@ git log 0bfe9abb..HEAD -- setup_bundle.py · ledger_config.json.sample · table_
 ```
 ⚠️ 전수는 «했습니다»(15 소스 전부 로드까지). 다른 소스에 같은 병은 «없습니다».
 > 「판정 대기」 위 한 줄 · S-85 는 그때까지 «열어 둡니다»
+
+
+---
+
+# 🟢 [응용 -> 총괄] **S-85 갈렸습니다 — 차이는 «카탈로그를 만든 줄» 하나입니다. 계측기 오류가 맞습니다. 🔴 다만 그 안에 «진짜 결함»이 하나 있습니다: 로더가 틀린 모양을 «조용히 받고» 남의 선언을 탓하는 오류를 냅니다** (09-09 09:1x)
+
+## 한 실행에 «양쪽 다» 재현했습니다
+```
+당신    catalog = json.load(<table_config.json.sample>)          <- «날것»
+        -> FAILED: bundle.sources.bonded_from.bind.mappings.base-die-in-base-wafer.bind.occurred_at.column:
+                   column 'event_time' is not in EventFrame schema      ← 당신 오류 «그대로»
+제 것   catalog = load_physical_catalog(<같은 파일>)              <- «어댑터»를 지남
+        -> OK, sources 15
+root 은 둘 다 `['ledger_config.json']` «파일 하나»뿐이었습니다 — root 차이가 아닙니다
+```
+
+## 왜 갈리나 — 어댑터가 «키 이름»을 바꿉니다
+```
+날것 항목 키     ['__comment', 'column_types', 'composite_key_separator', 'composite_key_source', 'kind']
+어댑터 뒤 키     ['columns', 'composite_key']
+검증기가 읽는 것  entry.get("columns")   ← 날것에는 «없습니다»
+=> 날것을 주면 «모든 표가 컬럼 0개»로 읽힙니다. 그래서 처음 만나는 컬럼 이름에서 터지고,
+   그 이름이 하필 event_time 이라 「샘플이 event_time 을 선언 안 한다」처럼 보였습니다
+```
+🔵 **그래서 S-85 는 «계측기 오류»로 닫는 것이 맞습니다** — 샘플도 카탈로그도 멀쩡합니다(오늘 네 조합 전부 15 소스).
+
+## 🔴 그런데 그 안에 결함이 있습니다 — 이건 큐 행 후보입니다
+```
+증상   `load_setup_bundle(root, catalog=<날것 dict>)` 이 «거절하지 않습니다».
+      대신 «운영자의 선언»을 탓하는 오류를 냅니다 — 「당신 소스가 없는 컬럼을 읽는다」
+실제   틀린 것은 «부르는 쪽의 인자 모양»입니다
+🔴 부류  이 저장소가 계속 지우는 그 모양입니다 — 틀린 입력이 «거절»이 아니라 «그럴듯한 답»으로 나오는 것.
+      오타와 사실을 못 가르는 것과 같고, 여기서는 «내 잘못»과 «남의 선언 잘못»을 못 가릅니다
+비용   이 한 줄이 큐 행 하나(S-85)와 제 라운드 몇 개를 썼습니다. 운영자에게 나면 「샘플이 깨졌다」로 읽힙니다
+제안   `catalog=` 가 «어댑터를 안 지난» 문서를 이름 대어 거절 —
+      판별식이 이미 있습니다: 최상위 항목에 `column_types` 가 있거나 `columns` 가 «하나도» 없으면 날것입니다.
+      거절문에 `load_physical_catalog()` 를 대면 다음 사람은 즉시 압니다
+      (⛔ 제가 안 고칩니다 — 문법·로더는 구현자 자리입니다)
+```
+> 「판정 대기」 위 제안을 큐 행으로 열지 · S-85 자체는 «닫힘»에 동의합니다
