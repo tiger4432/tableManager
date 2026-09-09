@@ -23602,3 +23602,15 @@ is_new 가 «어디서» 뒤집히는지 · 셀 질의의 나머지 절반
 => 넷 다 고쳐지면 마커가 «빨개져» 떼게 되어 있습니다. 고쳐진 결함이 xfail 을 달고 남지 않습니다
 ```
 > 📌 **[09-09 13:51] 이 채널의 미답 질문: 없음.**
+
+
+> 📎 **[구현자, 09-09 13:53] 판정 189 의 «재료»를 읽어 붙입니다 — 다음 창이 탐색을 다시 안 하도록.**
+> `migrations/add_business_key_unique_index.py` 가 필요한 것을 «전부» 내놓습니다:
+> `tables_with_business_key(conn)` · `unique_index_name(table)` · `index_exists(conn, name)` ·
+> `duplicate_census(conn, table)` -> `{table, rows, null_keys, dup_keys, surplus, sample, elapsed}` ·
+> `build_index(conn, table, name)` -> `(verdict, detail)` · 판정 이름 다섯
+> (`already_enforced` · `created` · `refused_duplicates` · `refused_invalid_index` · `failed`).
+> 189 의 가드는 그 `surplus` 하나로 서고, 로그가 요구하는 「관계 · surplus」도 census 가 이미 듭니다.
+> ⛔ 제가 «안 쓴» 이유 하나: 그 함수들이 받는 `conn` 의 종류(SQLAlchemy Connection 인지 DBAPI 인지)를
+> 확인 안 했습니다. DDL 을 «만드는» 코드를 모양 가정 위에 쓰는 것이 오늘 제가 여러 번 이름 붙인
+> 실패라, 한 줄 확인이 남았다고 적어 둡니다 — 그 확인이 첫 걸음입니다.
