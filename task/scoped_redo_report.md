@@ -26348,3 +26348,51 @@ lot_event 가 통과하니 루프가 dt_log 에 닿았고, 거기서 멈춥니�
                             (KeyError 'scope' — 09:08 에 「처음 봄」이라 하신 그것, 제 것 아님)
 ```
 > 📌 **[09-10 00:2x] 이 채널의 미답 질문: «하나» — dt_log 어긋남 ⓐ/ⓑ/ⓒ (도메인 사실 필요).**
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-104 — 그 게이트를 «처음으로 돌렸습니다». 25 red / 7 pass / 8 skip, 원인은 «넷»** (09-10 00:4x)
+
+## 먼저: 이 박스에 시험용 PG 가 «있습니다»
+```
+dev_env 가 선언한 QA DB   postgresql://postgres:admin@localhost:5432/assy_qa
+연결                      ✅ 닿습니다(제가 확인). 운영(assy_manager)과 다른 DB이고
+                          db_safety.check_test_database 의 허용 목록을 지납니다
+=> ASSY_PG_TEST_DATABASE_URL 을 그 값으로 주면 «40 개가 실제로 돕니다».
+   지금까지는 변수가 없어 «통째로 skip» — 큐가 적은 「초록도 빨강도 아님」 그대로였습니다
+```
+
+## 돌린 결과 — 「아무 게이트도 안 돌던」 것이 이제 «이름 있는 목록»입니다
+```
+25 failed · 7 passed · 8 skipped
+원인별
+  20  TypeError: run() got multiple values for argument 'source'   <- S-76 시그니처 표류
+   1  ImportError: cannot import name 'lot_event_translator'        <- 08-18 에 지운 모듈
+   1  AttributeError: backfill._refusal_delta                        <- 사라진 심볼
+   1  psycopg2 SyntaxError (INSERT 의 target columns)
+   나머지  단언 실패 넷(파티션·CHECK·UNIQUE 주입 게이트가 «안 raise»)
+```
+
+## ⚠️ 20 건은 «인자 하나»가 아닙니다 — 선언 문법이 통째로 바뀐 자리입니다
+```
+그 파일의 CFG      v1/v3 평면 문법(occurred_at_column · subject_types · columns · vocabulary)
+오늘의 run()       run(engine, source=…) — 선언은 «ontology_root» 에서 읽습니다(S-76)
+그래서            backfill.run(engine, CFG, source="lot_event") 는 source 를 «두 번» 줍니다
+고침의 실제 크기   CFG 를 지우고 «v5 선언을 가진 루트»를 만들어 38 개가 그 위에서 돌게 하는 것.
+                  일곱 군데가 CFG 를 deepcopy 해서 «시험마다 변형»합니다(그 변형이 곧 시험의 주어)
+```
+
+## 판정 부탁드립니다
+```
+ⓐ 전환한다        v5 루트 + 시험별 «선언 변형»으로 38 개를 옮김. 큰 라운드고, 이제 «잴 수 있습니다»
+ⓑ 나눈다          20 건(시그니처 부류) 먼저 초록 → 나머지 다섯(사라진 심볼·주입 게이트)은 별건
+ⓒ 일부는 은퇴     lot_event_translator·_refusal_delta 를 재던 것은 «그 코드와 함께 죽은» 시험일 수
+                  있습니다 — 그 판정이 먼저면 전환 대상이 줄어듭니다
+표준 게이트       어느 쪽이든 「변수 없으면 통째로 skip」은 «거짓 초록»이라, 게이트가 dev_env 의
+                  QA DB 로 그 변수를 채우게 하는 것은 같이 가야 합니다(큐 항목의 나머지 절반)
+```
+🔵 제 의견은 **ⓒ → ⓑ** 순입니다. 죽은 심볼을 재는 시험을 먼저 가려내면 ⓐ 의 크기가 정해지고,
+   그 전에는 「38 개를 옮긴다」가 몇 개를 옮기는 일인지 아무도 모릅니다.
+⚠️ 이 라운드에서 코드는 «0 줄» 바꿨습니다 — 측정만 했습니다. 그 DB 에 쓴 것은 시험이 만든
+   스크래치 스키마뿐이고, 운영 DB 는 건드리지 않았습니다.
+> 📌 **[09-10 00:4x] 이 채널의 미답 질문: «하나» — S-104 를 ⓐ/ⓑ/ⓒ 중 어디부터 (제 의견 ⓒ→ⓑ).**
