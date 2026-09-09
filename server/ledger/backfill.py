@@ -853,9 +853,29 @@ def rows_not_yet_translated(engine, setup, source):
         connection.rollback()
         connection.close()
 
-    remainder = total - indexed
+    # 🔴 A GROUP SOURCE COUNTS TWO DIFFERENT THINGS, so the subtraction is refused
+    # rather than published. The index holds ONE entry per translated GROUP while the
+    # relation holds rows, and `rows - groups` is a number with no meaning: measured on
+    # `lot_event` (unit=group) it read 3,633 - 490 = 3,143 「not yet translated」 on the
+    # operator's screen while the source was fully translated. That is the false-log shape,
+    # and a plausible wrong number is worse than a blank.
+    #
+    # ⚠️ THE OTHER HALF OF THE ANSWER IS NOT BUILT: counting DISTINCT groups would make
+    # them comparable, but `driver.group_by` carries LOGICAL names (`event_group_key`) and
+    # the physical column behind one is resolved elsewhere. Guessing that mapping to produce
+    # a number is how the wrong number got there in the first place, so the shape says what
+    # it counted and stops.
+    grouped = getattr(plan.driver, "unit", "row") == "group"
     report.update({"relation_rows": total, "indexed_rows": indexed,
-                   "not_yet": max(remainder, 0)})
+                   "counts": "rows vs groups" if grouped else "rows"})
+    if grouped:
+        report["not_comparable"] = (
+            f"this source reads by group ({', '.join(plan.driver.group_by)}), so the "
+            f"relation's {total} ROWS and the index's {indexed} GROUPS are different units; "
+            f"the remainder is not published rather than published wrong.")
+        return report
+    remainder = total - indexed
+    report["not_yet"] = max(remainder, 0)
     if remainder < 0:
         # ⛔ A SILENT ZERO. The index names rows the relation no longer holds -- a
         # deletion the follow-up could not withdraw. Clamping without saying so would
@@ -902,11 +922,22 @@ def measure_row_census(engine, setup, source, now=None):
         stamped["refused"] = census["refused"]
         stamped["remedy"] = census["remedy"]
         return stamped
+    grouped = census.get("counts") == "rows vs groups"
     stamped["relation_rows"] = measured(
-        census["relation_rows"], exact=True, method="count(*)", measured_at=stamp)
+        census["relation_rows"], exact=True,
+        method="count(*) [rows]" if grouped else "count(*)", measured_at=stamp)
     stamped["indexed_rows"] = measured(
-        census["indexed_rows"], exact=True, method="count(distinct row_id)",
+        census["indexed_rows"], exact=True,
+        method="count(distinct row_id) [groups]" if grouped
+        else "count(distinct row_id)",
         measured_at=stamp)
+    # ⛔ NO REMAINDER FOR A GROUP SOURCE, and the reason travels instead of the number.
+    # `rows - groups` published 3,143 「not yet translated」 for a fully translated
+    # `lot_event`; a key that is simply absent leaves the cell blank, which is the honest
+    # rendering of 「these two do not subtract」.
+    if grouped:
+        stamped["not_comparable"] = census["not_comparable"]
+        return stamped
     stamped["not_yet"] = measured(
         census["not_yet"], exact=True, method="relation_rows - indexed_rows",
         measured_at=stamp)

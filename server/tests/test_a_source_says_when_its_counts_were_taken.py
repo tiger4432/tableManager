@@ -25,9 +25,14 @@ from ledger import backfill, schema                                  # noqa: E40
 
 
 class _Plan:
-    def __init__(self, relation, frame_row_id):
+    """⚠️ THE FAKE CARRIES A `driver`, because the real plan does. A fake thinner than the
+    thing it stands in for is more permissive than production, and this one hid that the
+    census has to know whether a source reads by ROW or by GROUP."""
+
+    def __init__(self, relation, frame_row_id, unit="row", group_by=()):
         self.relation = relation
         self.frame_row_id = frame_row_id
+        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by)})()
 
 
 def _setup(plans):
@@ -178,3 +183,20 @@ def test_the_job_has_a_declared_pace_rather_than_a_constant():
     units, rest = pacing.job_pace(backfill.ROW_CENSUS_JOB)
     assert rest > 0
     assert units is None or units >= 1
+
+
+def test_a_group_source_is_stamped_without_a_remainder_rather_than_crashing():
+    """🔴 THE JOB RUNS EVERY CYCLE. A census that assumed `not_yet` was always there would
+    raise on `lot_event` (unit=group) on every sweep — and the sweep names the failure and
+    moves on, so it would have been a source silently never measured.
+
+    ⛔ AND THE TWO COUNTS STILL SAY WHAT THEY COUNTED. `[rows]` and `[groups]` ride in the
+    `method`, which is the field that exists so a number cannot be read as the wrong thing."""
+    setup = _setup({"lot_event": _Plan("lot_event", "row_id", unit="group",
+                                       group_by=("event_group_key",))})
+    census = backfill.measure_row_census(_Engine([3633, 490]), setup, "lot_event")
+
+    assert census["relation_rows"]["method"].endswith("[rows]")
+    assert census["indexed_rows"]["method"].endswith("[groups]")
+    assert "not_yet" not in census
+    assert "event_group_key" in census["not_comparable"]

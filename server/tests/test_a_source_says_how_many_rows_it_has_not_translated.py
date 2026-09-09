@@ -30,9 +30,14 @@ from ledger import backfill                                          # noqa: E40
 
 
 class _Plan:
-    def __init__(self, relation, frame_row_id):
+    """⚠️ THE FAKE CARRIES A `driver`, because the real plan does. A fake thinner than the
+    thing it stands in for is more permissive than production, and this one hid that the
+    census has to know whether a source reads by ROW or by GROUP."""
+
+    def __init__(self, relation, frame_row_id, unit="row", group_by=()):
         self.relation = relation
         self.frame_row_id = frame_row_id
+        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by)})()
 
 
 def _setup(plans):
@@ -205,3 +210,32 @@ def test_the_index_is_counted_by_distinct_row_rather_than_by_ref():
 
     asked = " ".join(str(query) for query, _ in engine.connection.cursor_object.queries)
     assert "DISTINCT" in asked and "row_id" in asked, asked
+
+
+def test_a_group_source_does_not_publish_rows_minus_groups():
+    """🔴 MEASURED ON THE OPERATOR'S SCREEN (2026-09-09): `lot_event` reads by GROUP, and the
+    census subtracted the index's 490 GROUPS from the relation's 3,633 ROWS and published
+    「3,143 not yet translated」 for a source that was fully translated.
+
+    ⛔ A PLAUSIBLE WRONG NUMBER IS WORSE THAN A BLANK. The two counts are kept — each says
+    what it counted — and the remainder is refused with the reason, rather than computed
+    from two different units."""
+    setup = _setup({"lot_event": _Plan("lot_event", "row_id", unit="group",
+                                       group_by=("event_group_key",))})
+    report = backfill.rows_not_yet_translated(_Engine([3633, 490]), setup, "lot_event")
+
+    assert report["relation_rows"] == 3633
+    assert report["indexed_rows"] == 490
+    assert "not_yet" not in report, "rows minus groups is not a remainder"
+    assert report["counts"] == "rows vs groups"
+    assert "event_group_key" in report["not_comparable"], (
+        "the refusal names the group the source reads by, so an operator can see WHY")
+
+
+def test_a_row_source_still_publishes_the_remainder():
+    """The arm that must keep working — otherwise the fix above would have removed the
+    number for everyone instead of for the sources where it is meaningless."""
+    setup = _setup({"wafer_process": _Plan("wafer_process_recipe", "row_id")})
+    report = backfill.rows_not_yet_translated(_Engine([100, 40]), setup, "wafer_process")
+
+    assert report["not_yet"] == 60 and report["counts"] == "rows"
