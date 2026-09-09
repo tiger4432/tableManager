@@ -20,6 +20,7 @@ model.
 """
 from __future__ import annotations
 
+import io
 import os
 import sys
 
@@ -296,3 +297,25 @@ def test_the_shipped_sample_loads_through_the_product_loader(tmp_path):
         os.path.join(sample_dir, "table_config.json.sample")))
 
     assert setup.snapshot.source_plans, "the sample declares sources and they must compile"
+
+
+def test_the_sample_is_written_in_the_one_format_both_writers_use():
+    """S-107. The shipped sample's FORMAT is a contract, not a preference.
+
+    The authoring screen rewrites the whole file on every edit, so a section nobody touched
+    only stays byte-identical if the file is already in the format that writer emits -
+    `JSON.stringify(parsed, null, 2)`. A client harness pins exactly that.
+
+    🔴 I BROKE IT IN S-99 by writing the sample with a trailing newline, which python's
+    `json.dumps` does not emit and `JSON.stringify` does not either. Two lanes' writers
+    could then disagree about a file neither had changed. This asserts the python side of
+    the same format, so the two cannot drift apart again without one of them going red.
+    """
+    import json as _json
+
+    path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
+                        "ledger_config.json.sample")
+    raw = io.open(path, encoding="utf-8", newline="").read()
+
+    assert raw == _json.dumps(_json.loads(raw), indent=2, ensure_ascii=False), (
+        "the sample must be byte-identical to what both writers emit")
