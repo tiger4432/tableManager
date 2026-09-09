@@ -254,3 +254,45 @@ def test_sharing_one_key_column_of_several_is_not_a_self_edge():
     new = paths_of(raw) - paths_of(logical_bundle())
 
     assert not any(path.endswith("bind.mappings." + name) for path in new), sorted(new)
+
+
+# ------------------------------------------------- the gate that would have caught it
+
+def test_the_shipped_sample_loads_through_the_product_loader(tmp_path):
+    """🔴 THE GATE THAT WAS MISSING, and it is why the sample broke twice in one hour.
+
+    The sample is shipped and no test loaded it; the existing sample-load tests are red for
+    an unrelated box-shaped reason (S-86). This asks the one question a sample has to
+    answer: does the product loader accept it?
+
+    ⚠️ AND IT CATCHES ONE OF THE TWO DEFECTS, NOT BOTH - measured, because I first wrote
+    that it caught both. Reintroducing the missing `map.input_columns` entry turns this
+    red. Reintroducing the SELF-EDGE does not, and that is correct: `lot_event`'s role
+    mapper is python, so its bindings are placeholders nobody executes and the self-edge
+    check deliberately does not score them. That class is caught by
+    `test_a_sentence_may_not_read_the_same_identity_at_both_ends` on a source whose mapper
+    actually runs the bindings. Two defects, two nets, and this is one of them.
+
+    ⚠️ THE CATALOGUE COMES THROUGH `load_physical_catalog`, NOT `json.load`, and getting
+    that wrong twice is why this test took a round trip. Handing the raw file over - either
+    reshaped by hand or passed straight through - produced two different refusals, neither
+    of them real: `order_by` in one shape, `occurred_at.column` in the other. The adapter is
+    the door production uses, so it is the only reading that cannot disagree with
+    production about what the file says. This repository already has that lesson written
+    down from S-85; I had it and did not apply it.
+    """
+    import shutil
+
+    from ledger.setup import load_setup
+    from ledger.setup_bundle import load_physical_catalog
+
+    sample_dir = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
+    root = tmp_path / "ledger_root"
+    root.mkdir()
+    shutil.copyfile(os.path.join(sample_dir, "ledger_config.json.sample"),
+                    root / "ledger_config.json")
+
+    setup = load_setup(str(root), catalog=load_physical_catalog(
+        os.path.join(sample_dir, "table_config.json.sample")))
+
+    assert setup.snapshot.source_plans, "the sample declares sources and they must compile"
