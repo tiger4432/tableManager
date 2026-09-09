@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
     refusal_reasons      JSONB,
     source_head          JSONB,
     head_probed_at       TIMESTAMPTZ,
+    row_census           JSONB,
     started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 )
@@ -279,9 +280,20 @@ LEDGER_ADDITIONS = (
 #: it either; a DROP would be a schema change bought for nothing, on a table an operator
 #: may be looking at. A fresh install simply never creates it.
 
+#: 🔴 「표 행 N · 색인 M · 남은 N−M」, MEASURED SEPARATELY AND STAMPED (S-58,
+#: 판정 180). The request path may not count: `relation_rows` on a ten-million-row table
+#: and `count(DISTINCT row_id)` on the index are both scans, and D5 forbids a scan inside
+#: a request. So a paced job measures and this column HOLDS the answer, with the shape
+#: `ledger_trace.measured` gives every published number -- what it is, how it was
+#: obtained, and WHEN. A reader that finds NULL says 「not measured yet」, which is a
+#: different sentence from 「zero rows」.
+ROW_CENSUS_COLUMN = "row_census"
+
 CURSOR_ADDITIONS = (
     (REFUSAL_REASONS_COLUMN,
      f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
+    (ROW_CENSUS_COLUMN,
+     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROW_CENSUS_COLUMN} JSONB"),
 )
 
 # 🔴 EVERY INDEX BELOW HAS A NAMED CONSUMER, AND THAT IS THE ADMISSION RULE.

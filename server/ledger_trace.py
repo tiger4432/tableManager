@@ -1376,8 +1376,28 @@ def coverage(connection, relation="ledger_events",
 #: keeps. 🔴 `exact` is FALSE in every spelling of this field — there is no branch
 #: of this endpoint that counts rows — so a client that reads it can render "약"
 #: without deciding when to.
-ATOMS_UNKNOWN = {"estimate": 0, "exact": False, "method": "pg_class.reltuples",
-                 "unanalyzed_partitions": 0}
+def measured(value, *, exact, method, measured_at=None, **extra):
+    """A number that says HOW it was obtained and WHEN. One shape, one author.
+
+    🔴 EVERY COUNT THIS SYSTEM PUBLISHES IS ONE OF TWO THINGS and the reader cannot
+    tell them apart by looking: an exact count someone paid for, or a catalogue estimate
+    that is free and stale. Rendering the second as the first is how 「약 1,300만」 becomes
+    「1,300만」 on a screen, so `exact` and `method` travel WITH the value rather than
+    beside it in prose.
+
+    ⚠️ THE KEY IS `estimate` AND NOT `value`, because this shape already ships: the
+    trace client reads `atoms.estimate` today. Renaming it to match a newer sentence
+    would break a reader to make a word nicer.
+
+    `measured_at` is None where the number is read on the spot -- 「not measured
+    separately」 rather than 「measured at the epoch」, which are different answers.
+    """
+    return {"estimate": int(value), "exact": bool(exact), "method": method,
+            "measured_at": measured_at, **extra}
+
+
+ATOMS_UNKNOWN = measured(0, exact=False, method="pg_class.reltuples",
+                         unanalyzed_partitions=0)
 
 
 def _atom_estimate(connection, relation):

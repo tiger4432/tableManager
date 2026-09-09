@@ -183,7 +183,8 @@ class LedgerStore:
             cursor.execute(
                 f"SELECT translator_ver, cursor_value, molecules_done, atoms_written, "
                 f"       atoms_deduped, molecules_refused, incomplete_molecules, "
-                f"       source_head, head_probed_at, updated_at, refusal_reasons "
+                f"       source_head, head_probed_at, updated_at, refusal_reasons, "
+                f"       {schema.ROW_CENSUS_COLUMN} "
                 f"FROM {schema.CURSOR_TABLE} WHERE source = %s", (source,))
             row = cursor.fetchone()
         if row is None:
@@ -193,8 +194,32 @@ class LedgerStore:
             "molecules_done": row[2], "atoms_written": row[3], "atoms_deduped": row[4],
             "molecules_refused": row[5], "incomplete_molecules": row[6],
             "source_head": row[7], "head_probed_at": row[8], "updated_at": row[9],
-            "refusal_reasons": row[10],
+            "refusal_reasons": row[10], "row_census": row[11],
         }
+
+    def write_row_census(self, source: str, census) -> None:
+        """Store one source's 「table rows · indexed rows · remainder」 measurement.
+
+        ⛔ IT DOES NOT CREATE THE ROW. A source with no cursor row has never been set up,
+        and inserting one here would put a census beside a translator version that does
+        not exist -- a source that looks measured and has never run. The UPDATE simply
+        matches nothing, which is the honest outcome.
+        """
+        import json as _json
+
+        connection = self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"   SET {schema.ROW_CENSUS_COLUMN} = %s::jsonb "
+                    f" WHERE source = %s", (_json.dumps(census), source))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     #: `now()` as UTC ISO-8601, built in SQL so `last_at` is stamped by the DATABASE
     #: clock in the same transaction as the count it belongs to. Rendering it here rather

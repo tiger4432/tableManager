@@ -1724,6 +1724,75 @@ def _drain_ledger_followup_sync(db_session_factory):
         db.close()
 
 
+def _measure_one_source_sync(db_session_factory, source):
+    """One source's census, in a thread. The session is this call's and closes with it."""
+    from ledger import backfill as ledger_backfill
+    from ledger.setup import load_setup
+    from ledger.store import LedgerStore
+
+    db = db_session_factory()
+    try:
+        engine = db.get_bind()
+        census = ledger_backfill.measure_row_census(engine, load_setup(), source)
+        LedgerStore(engine).write_row_census(source, census)
+        return census
+    finally:
+        db.close()
+
+
+async def run_ledger_row_census(db_session_factory):
+    """Measure 「table rows · indexed · not yet translated」 per source, at the declared pace.
+
+    🔴 IT EXISTS SO THE REQUEST PATH DOES NOT DO THIS (D5, 판정 180). Both numbers are
+    scans; a declaration response that counted them would be a screen that waits for a
+    ten-million-row table. This writes, `/declaration` reads, and the answer carries the
+    instant it was true.
+
+    ⚠️ ONE SOURCE PER UNIT, NOT ONE SWEEP PER CYCLE. The pace's `units_per_cycle` is
+    counted in SOURCES, so an operator slowing this down slows the individual counts rather
+    than the gap between full sweeps -- which is the knob that matters when the concern is
+    「this is crowding the database right now」.
+
+    ⛔ ONE SOURCE'S FAILURE COSTS THAT SOURCE ONLY, and it is named. A source whose
+    relation was dropped must not silence the fourteen after it.
+    """
+    import pacing
+    from ledger.backfill import ROW_CENSUS_JOB
+
+    while True:
+        try:
+            units, rest = pacing.job_pace(ROW_CENSUS_JOB)
+        except Exception as exc:
+            logger.warning("[LedgerCensus] pace unreadable, using the default: %s", exc)
+            units, rest = 1, 60.0
+        try:
+            sources = sorted(await asyncio.to_thread(_declared_sources, db_session_factory))
+        except Exception as exc:
+            logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
+            sources = []
+        measured_now = 0
+        for source in sources:
+            try:
+                await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
+                                        source)
+            except Exception as exc:
+                logger.warning("[LedgerCensus] %s failed: %s", source, exc)
+            measured_now += 1
+            if units is not None and measured_now % max(units, 1) == 0:
+                await asyncio.sleep(rest)
+        await asyncio.sleep(rest if sources else max(rest, 60.0))
+
+
+def _declared_sources(db_session_factory):
+    from ledger.setup import load_setup
+
+    db = db_session_factory()
+    try:
+        return list(load_setup().snapshot.source_plans)
+    finally:
+        db.close()
+
+
 async def run_ledger_followup(db_session_factory):
     """Drain the ledger follow-up queue at the declared pace, BESIDE the chain loop.
 
@@ -1827,6 +1896,10 @@ async def start_chain_ingestion_worker(db_session_factory):
     # The ledger's follow-up runs BESIDE this loop and never inside it, so the chain's
     # transaction time is what it was (ruling 129-bis ㉩).
     asyncio.create_task(run_ledger_followup(db_session_factory))
+    # 🔴 ITS OWN LOOP, NOT A BRANCH OF THE FOLLOW-UP'S IDLE ARM. Two jobs sharing one
+    # loop share one pace, and these two want opposite ones: the follow-up is latency
+    # (a row is waiting), the census is politeness (nothing waits for it).
+    asyncio.create_task(run_ledger_row_census(db_session_factory))
 
     while True:
         # [B1/B2] Progress beat, emitted from the work loop itself. Idle

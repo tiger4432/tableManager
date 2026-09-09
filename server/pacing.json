@@ -5,7 +5,8 @@
   "_the_shape_is_the_chain_s": "units_per_cycle is the chain's max_chunks; rest_seconds is what it gets instead of the chain's sweep interval, because a backfill runs to completion inside one call rather than waking on a timer. Both are per RUN, chosen by whoever starts it.",
   "_a_job_that_nobody_starts_by_hand_names_its_pace_here": "A backfill takes its pace from whoever pressed the button. A job that runs by itself has nobody to ask, so the answer is declared - one cell, no restart. The ledger follow-up starts on the SLOWEST declared pace on purpose: it is work nobody is waiting for, and the chain that feeds it is.",
   "jobs": {
-    "chain_followup": "trickle"
+    "chain_followup": "trickle",
+    "ledger_row_census": "trickle"
   },
   "paces": {
     "fast": {
@@ -26,5 +27,6 @@
       "units_per_cycle": 1,
       "rest_seconds": 3.0
     }
-  }
+  },
+  "_ledger_row_census": "S-58. The declaration screen shows 'table rows / indexed / not yet translated' per source, and both numbers are scans. D5 forbids a scan inside a request, so this job measures them on its own clock and the request reads what it stored. 'trickle' because nothing waits for it: a number a few minutes old is answered by its own measured_at, while a fast sweep would put two full counts per source onto the same database the live path is writing to."
 }

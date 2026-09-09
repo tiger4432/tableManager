@@ -867,6 +867,76 @@ def rows_not_yet_translated(engine, setup, source):
     return report
 
 
+#: The paced job that measures 「table rows · indexed rows · remainder」 for every source.
+#: A NAME, because `pacing.json` is keyed by one and an operator who needs this to stop
+#: crowding the database at 2am edits a cell there rather than a constant.
+ROW_CENSUS_JOB = "ledger_row_census"
+
+
+def measure_row_census(engine, setup, source, now=None):
+    """One source's census, STAMPED -- what was counted, how, and when.
+
+    🔴 THIS IS THE JOB'S WORK, NOT THE REQUEST'S (D5, 판정 180). Both numbers are
+    scans: `count(*)` on a relation that may hold ten million rows, and
+    `count(DISTINCT row_id)` on the index. A request that did this would be a request that
+    waits for a table, so the request READS what this wrote.
+
+    ⚠️ BOTH NUMBERS COME FROM ONE MEASUREMENT, and the remainder is their difference
+    rather than a third query. Two queries a second apart can disagree -- rows arrive
+    between them -- and a remainder computed from a mismatched pair is a number that was
+    never true at any instant.
+
+    A source that cannot be counted is stamped as refused rather than as zero: the whole
+    point of `rows_not_yet_translated`'s refusal is that 「셀 수 없다」 and 「한 것이 없다」
+    are different, and storing a 0 here would throw that away one layer later.
+    """
+    from datetime import datetime, timezone
+
+    from ledger_trace import measured
+
+    census = rows_not_yet_translated(engine, setup, source)
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    stamped = {"source": census["source"], "relation": census["relation"],
+               "measured_at": stamp}
+    if census.get("refused"):
+        stamped["refused"] = census["refused"]
+        stamped["remedy"] = census["remedy"]
+        return stamped
+    stamped["relation_rows"] = measured(
+        census["relation_rows"], exact=True, method="count(*)", measured_at=stamp)
+    stamped["indexed_rows"] = measured(
+        census["indexed_rows"], exact=True, method="count(distinct row_id)",
+        measured_at=stamp)
+    stamped["not_yet"] = measured(
+        census["not_yet"], exact=True, method="relation_rows - indexed_rows",
+        measured_at=stamp)
+    if census.get("index_names_absent_rows"):
+        stamped["index_names_absent_rows"] = census["index_names_absent_rows"]
+    return stamped
+
+
+def measure_every_source(engine, setup, store=None, now=None):
+    """Measure each declared source in turn and store what it found.
+
+    ⛔ ONE SOURCE'S FAILURE DOES NOT END THE SWEEP. A relation that was dropped, or a
+    permission that changed, must cost that source's number and not every source after it --
+    the shape the follow-up loop already carries, for the same reason.
+    """
+    from .store import LedgerStore
+
+    writer = LedgerStore(engine) if store is None else store
+    done = []
+    for source in sorted(setup.snapshot.source_plans, key=str):
+        try:
+            census = measure_row_census(engine, setup, source, now=now)
+            writer.write_row_census(source, census)
+        except Exception as exc:
+            logger.warning("[Ledger] census of %s failed: %s", source, exc)
+            continue
+        done.append(source)
+    return done
+
+
 def load_via_events(engine, setup, source, page_rows=EVENT_LOAD_PAGE_ROWS,
                     queue_limit=EVENT_LOAD_QUEUE_LIMIT, max_pages=None, apply=False):
     """Translate everything this source has NOT translated, down the live path.

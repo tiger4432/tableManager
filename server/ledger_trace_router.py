@@ -589,6 +589,34 @@ def ledger_gap_catalogue(name: str = Query(None)):
             "reason": "gap_table_mismatch", "message": str(exc)})
 
 
+def _row_census_by_source():
+    """Every source's stored census, by source id. ONE query, no counting.
+
+    ⚠️ FAILURE HERE COSTS THE CENSUS AND NOT THE CATALOGUE. The declaration answers from the
+    DECLARATION; the census is a ledger table that may not exist yet on a fresh install, and
+    a route that 500s because an optional column is missing would take the four dropdowns
+    down with it.
+    """
+    try:
+        from database.database import engine
+        from ledger import schema
+
+        connection = engine.raw_connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT source, {schema.ROW_CENSUS_COLUMN} "
+                    f"  FROM {schema.CURSOR_TABLE} "
+                    f" WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
+                return {row[0]: row[1] for row in cursor.fetchall()}
+        finally:
+            connection.rollback()
+            connection.close()
+    except Exception as exc:                       # noqa: BLE001 - see the docstring
+        logger.warning("row census unavailable: %s", exc)
+        return {}
+
+
 @router.get("/declaration")
 def ledger_declaration_catalog():
     """무엇을 물을 수 있나 — 노드 타입 · 그 타입의 키 · 따라갈 술어 · 모을 노드 종류.
@@ -680,6 +708,18 @@ def ledger_declaration_catalog():
 
         plans = load_setup().snapshot.source_plans
         declared_sources = declared.get("sources") or {}
+        # 🔴 READ, NEVER COUNT (D5, 판정 180). 「표 행 N · 색인 M · 남은 N−M」 is two scans --
+        # `count(*)` on a relation that may hold ten million rows and
+        # `count(DISTINCT row_id)` on the index -- and a request that did them would be a
+        # screen that waits for a table. The paced job `ledger_row_census` measures and
+        # STAMPS; this reads the stamp.
+        #
+        # ⛔ ABSENT MEANS 「not measured yet」, NOT zero. A source whose census key is missing
+        # has never been swept (a fresh install, a source declared minutes ago), and a 0
+        # there would tell an operator their table is empty. The key is omitted rather than
+        # filled, which is the same three-state discipline the `sources` key itself uses
+        # eight lines up.
+        census = _row_census_by_source()
         catalogue["sources"] = [
             {
                 "source": source_id,
@@ -691,6 +731,7 @@ def ledger_declaration_catalog():
                     if (mapping or {}).get("predicate")
                 }),
                 "scope_columns": list(base_select_columns(plan)),
+                **({"census": census[source_id]} if source_id in census else {}),
             }
             for source_id, plan in sorted(plans.items())
         ]
