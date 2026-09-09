@@ -26554,3 +26554,61 @@ assert 0 > 0                                        원자가 «하나도» 안 
 > 📌 **[09-10 00:1x] 이 채널의 미답 질문: «둘»**
 > — ① 출하 `lot_event` 선언에서 「child_lot 없는 사건」(track_in)이 표현 가능한가(도메인 사실)
 > — ② ⓑ-3(start_from·reset_cursor) 을 묘비로 볼지
+
+---
+
+# 🔴🔴 [구현자 -> 총괄] **ⓑ-1 을 지시대로 «실제 시나리오 행»으로 다시 지었고 — 출하 `lot_event` 선언이 «그 시나리오도» 거절합니다. 자리를 특정했습니다** (09-10 00:2x)
+
+## 지시대로 했습니다
+```
+씨앗   outputs/syn_lot_split_merge/lot_event.csv 의 «행 모양»을 그대로:
+       부모 행  lot_id=SYN-R-001      child_lot=SYN-R-001TA   parent_lot=«빈 칸»
+       자식 행  lot_id=SYN-R-001TA    parent_lot=SYN-R-001    child_lot=«빈 칸»
+       (출하 철자 · 진짜 txn_seq(LE-…-P/-C) · T 구분 시각) · track_in 은 «뺐습니다»(v1 낱말)
+그 외   DDL·seeder·run 헬퍼·매 시험 schema 생성·backfill.run(catalog=) 전부 지시대로
+```
+결과: **여전히 원자 0**, 같은 거절.
+
+## 🔴 자리 — `descent` 문장에 «when 이 없습니다»
+```
+출하 lot_event 의 문장 다섯
+   descent            when: «없음»   predicate derived_from@1
+   first_sight_holder when: «없음»   register@1
+   first_sight_item   when: «없음»   register@1
+   split              when: {"event_type":"split"}   split_from@1
+   merge              when: {"event_type":"merge"}   merged_into@1
+descent 의 바인딩
+   subject.keys.lot  <- 컬럼 «child_lot»
+   target.keys.lot   <- 컬럼 «parent_lot»
+```
+🔴 **그래서 descent 는 «모든 행»에 대해 말해집니다.** 그런데 split 분자의 두 행은 각각 «둘 중
+   하나만» 들고 있습니다(부모 행엔 child_lot, 자식 행엔 parent_lot). 어느 행도 두 키를 다 못 채우고
+   -> `no_identity` -> **분자 전체가 거절 -> 원자 0**.
+```
+게이트 문구(실측, 두 번)
+  reason=no_identity | molecule {"event_group_key":["split","2026-05-03T02:17:00",
+  "SYN-R-001","SYN-R-001TA",null]} declares 'child_lot' and the row at
+  event_frame.rows[1].child_lot leaves it empty
+```
+
+## 이게 «픽스처 문제가 아닌» 이유
+```
+① 제가 지어낸 행이 아니라 «응용 레인의 실제 시나리오 행 모양»입니다(지시대로 가져왔습니다)
+② S-99 가 split·merge 에는 when 을 줬는데 descent 에는 «안 줬습니다» —
+   같은 라운드에서 갈라진 두 문장 중 하나만 조건을 얻은 모양입니다
+③ 오늘 라이브 lot_event 는 «파이썬» lot-event-role 매퍼가 돌아서 이 자리를 코드로 넘깁니다.
+   즉 이 결함은 «선언형으로 몰 때» 드러나고, 그게 바로 S-100 ⓑ 가 하려는 일입니다
+```
+⛔ 그래서 **선언을 제가 고치지 않았습니다** — 「픽스처 때문에 출하 선언을 바꾸지 않는다」(218)이고,
+   이건 픽스처 문제가 아니라 «선언의 결함»이라 더더욱 총괄 판정 자리입니다. 트리 되돌렸습니다.
+
+## 판정 요청
+```
+ⓐ descent 에 when 을 준다        어떤 조건인지가 도메인입니다(자식 행에서만? 두 컬럼이 다 있을 때만?)
+ⓑ descent 의 주어/목적어를 바꾼다  한 행에서 두 키가 다 나오게(예: lot_id + parent_lot)
+ⓒ 이건 별건(S-1xx)이고 ⓑ-1 은   그때까지 「원자 0 이 정상」인 시험으로만 —
+   그러면 판정 218 의 「나머지는 착지」가 성립 안 합니다
+```
+🔵 제 의견은 **ⓑ**로 보이지만(자식 행이 `lot_id`=자식, `parent_lot`=부모를 «둘 다» 들고 있으므로
+   한 행에서 두 키가 나옵니다) — 그게 이 술어의 «뜻»을 바꾸는지는 도메인 판단이라 올립니다.
+> 📌 **[09-10 00:2x] 이 채널의 미답 질문: «하나» — descent 의 무조건 적용을 ⓐ/ⓑ/ⓒ 중 어떻게.**
