@@ -96,8 +96,21 @@ def _declared_configs():
                  os.path.abspath(os.path.join(os.path.dirname(CONFIG_SAMPLE),
                                               "ledger_config.json"))):
         if os.path.exists(path):
-            out.append((os.path.basename(path), ledger_config.load(path)))
+            # 판정 212: the SHIPPED sample is checked against the catalogue that ships with
+            # it; the live declaration keeps the live one. Otherwise this reads the box's
+            # `table_config.json` and calls it a fact about the product.
+            catalog = shipped_catalog() if path.endswith(".sample") else None
+            out.append((os.path.basename(path), ledger_config.load(path, catalog=catalog)))
     return out
+
+
+def shipped_catalog():
+    """The catalogue that ships beside the sample. See 판정 212 - a shipped declaration
+    validated against a gitignored catalogue measures the box, not the product."""
+    from ledger.setup_bundle import load_physical_catalog
+
+    return load_physical_catalog(os.path.join(
+        os.path.dirname(os.path.abspath(CONFIG_SAMPLE)), "table_config.json.sample"))
 
 
 def _every_declared_derivation():

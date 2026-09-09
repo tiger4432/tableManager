@@ -169,10 +169,27 @@ def test_the_retired_singular_subject_type_is_refused_and_the_message_names_its_
         "the rename")
 
 
+def shipped_catalog():
+    """The catalogue that SHIPS BESIDE the sample (판정 212).
+
+    ⛔ NOT THE LIVE ONE. Validating the shipped declaration against this box's gitignored
+    `table_config.json` asks whether THIS MACHINE happens to declare the sample's relations -
+    a question about one box that says nothing about production, and one that goes red the
+    day the shipped declaration names a relation the box has not adopted (it did, on
+    2026-09-09, when `dt_job` moved to `dt_job_rollup`). The two files that ship together are
+    what a shipped-sample case is about.
+    """
+    from ledger.setup_bundle import load_physical_catalog
+
+    return load_physical_catalog(os.path.join(
+        os.path.dirname(__file__), "..", "config", "sample",
+        "table_config.json.sample"))
+
+
 def test_the_shipped_sample_config_validates():
     path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
-    cfg = ledger_config.load(os.path.abspath(path))
+    cfg = ledger_config.load(os.path.abspath(path), catalog=shipped_catalog())
     assert "lot_event" in cfg["sources"]
     assert ledger_config.translator_version(cfg, "lot_event").startswith("lot_event/")
 
@@ -186,7 +203,8 @@ def test_missing_live_config_falls_back_to_nested_sample(tmp_path):
     nested = sample_dir / "ledger_config.json.sample"
     shutil.copyfile(shipped, nested)
 
-    cfg = ledger_config.load(str(tmp_path / "ledger_config.json"))
+    cfg = ledger_config.load(str(tmp_path / "ledger_config.json"),
+                             catalog=shipped_catalog())
 
     assert os.path.normcase(cfg["__origin__"]) == os.path.normcase(str(nested))
 
@@ -325,7 +343,7 @@ def test_the_shipped_declaration_carries_the_product_owner_ruling():
     every atom by nine hours."""
     path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
-    cfg = ledger_config.load(os.path.abspath(path))
+    cfg = ledger_config.load(os.path.abspath(path), catalog=shipped_catalog())
     declared = cfg["sources"]["lot_event"]
     # 🔴 THE ADDRESS MOVED, THE RULING DID NOT. Until 2026-08-29 this read
     # `declared["occurred_at_timezone"]`; the declaration now carries the same value at

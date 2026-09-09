@@ -387,13 +387,25 @@ def sample_path(path: str = None) -> str:
     )
 
 
-def load(path: str = None) -> dict:
+def load(path: str = None, catalog=None) -> dict:
     """Load and validate. Falls back to ``sample/<name>.sample`` when live is absent.
 
     The `.sample` fallback is this project's convention for gitignored operator config
     (`server/config/*.json` is the operator's, `sample/*.json.sample` ships). Without it
     a fresh checkout could not run the backfill at all, and "it works on the box that has
     the untracked file" is not a deployable state.
+
+    \U0001f534 `catalog` NAMES WHICH PHYSICAL SCHEMA THE DECLARATION IS CHECKED AGAINST, and
+    omitting it keeps today's answer exactly: the deployment's own `table_config.json`, which
+    is what production must be checked against and what every product caller wants.
+
+    \u26a0\ufe0f IT EXISTS FOR THE CASE THAT WAS MEASURING THE WRONG THING (판정 212). A test
+    that opens the SHIPPED sample and validates it against the LIVE, gitignored catalogue is
+    asking whether THIS BOX's `table_config.json` happens to declare the sample's relations -
+    a question about one machine that says nothing about production, and one that goes red
+    the moment the shipped declaration names a relation the box has not adopted. Such a test
+    passes the shipped catalogue instead, and then it measures the two files that actually
+    ship together.
     """
     path = path or config_path()
     if not os.path.exists(path):
@@ -406,12 +418,12 @@ def load(path: str = None) -> dict:
                 f"translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)
-    _validate_for_version(raw, origin=path)
+    _validate_for_version(raw, origin=path, catalog=catalog)
     raw["__origin__"] = path
     return raw
 
 
-def _validate_for_version(raw: dict, origin: str):
+def _validate_for_version(raw: dict, origin: str, catalog=None):
     """Check the declaration with the validator that speaks ITS grammar.
 
     `validate` below is the v3 validator and `load` called it unconditionally, so no v5
@@ -443,7 +455,7 @@ def _validate_for_version(raw: dict, origin: str):
     from . import setup as _setup
     from . import setup_bundle as _bundle
     errors = _bundle.validate_bundle_errors(
-        raw, catalog=_setup.live_physical_catalog())
+        raw, catalog=_setup.live_physical_catalog() if catalog is None else catalog)
     if errors:
         # 🔴 THE ADDRESSES SURVIVE. Every one of these errors already carries
         # `(code, path, message)` - the path is the authoring box the operator has to open
