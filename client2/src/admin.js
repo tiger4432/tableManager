@@ -66,6 +66,7 @@ import {
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
+import { censusBySource } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
 import { ChainRulePanel } from './chain_rule_panel.js';
 import { countWithAbsence } from './count_with_absence.js';
@@ -1222,10 +1223,29 @@ async function saveTableConfig({ table, base, raw }) {
 }
 
 let ledgerSourcesPanel = null;
+
+// 🔴 C-47. 「돌 게 있나」는 «공개 선언 라우트»에 삽니다 — `adminFetch` 가 아니라 맨 `fetch`
+//    입니다. 그래서 이 반쪽은 토큰 없이 «옵니다», 그리고 아래 장부 조회가 401 이어도 화면이
+//    답을 하나는 들고 있습니다.
+// ⚠️ 못 읽으면 «빈 지도»입니다 — 소스마다 「안 쟀다」이지 「세 봤더니 0」이 아닙니다. 여기서
+//    빈 인구조사를 지어내면 「돌 게 없다」라는, 아무도 하지 않은 답이 화면에 뜹니다.
+// 🔵 봉투를 푸는 것은 `censusBySource` 하나입니다 — 탐색기 인스펙터가 같은 함수를 지납니다.
+async function loadSourceCensus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/ledger/declaration`);
+    if (!res.ok) return {};
+    return censusBySource(await res.json().catch(() => null));
+  } catch (e) {                                              // noqa
+    return {};
+  }
+}
+
 async function refreshLedgerSources() {
   const mount = byId('ledger-sources-mount');
   if (!mount) return;
   if (!ledgerSourcesPanel) ledgerSourcesPanel = new LedgerSourcesPanel(mount);
+  // 두 라우트를 «나란히» 부릅니다. 하나가 못 답해도 다른 하나를 지우지 않습니다.
+  const censusRequest = loadSourceCensus();
   let body = null;
   let opts = {};
   try {
@@ -1258,7 +1278,7 @@ async function refreshLedgerSources() {
   } catch (e) {                                              // noqa
     opts = { unavailable: '\uc18c\uc2a4 \uc0c1\ud0dc \uc870\ud68c\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4 (\ub124\ud2b8\uc6cc\ud06c). \uc218\ub97c \uadf8\ub9ac\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.' };
   }
-  const view = ledgerSourcesPanel.render(body, opts);
+  const view = ledgerSourcesPanel.render(body, opts, await censusRequest);
   const count = byId('ledger-sources-count');
   // \ubabb \uc77d\uc5c8\uc73c\uba74 \u00ab0 \uc774 \uc544\ub2c8\ub77c\u00bb \ub300\uc2dc\uc785\ub2c8\ub2e4 \u2014 view.count \uac00 \uc774\ubbf8 \uadf8\ub807\uac8c \ub3cc\uc544\uc635\ub2c8\ub2e4.
   if (count) count.textContent = view.count;

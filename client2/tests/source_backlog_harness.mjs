@@ -49,13 +49,20 @@ const REFUSED = { source: 'bonded_from', relation: 'bonding_die_from_core', meas
 async function score(mutate) {
   pass = 0; failures.length = 0;
   const { probe } = await loadWithProbe(SRC, {
-    expose: ['backlogCells', 'hasBacklog', 'censusRefusal', 'BACKLOG_FIELDS', 'MEASURED_AT'],
+    expose: ['backlogCells', 'hasBacklog', 'censusRefusal', 'censusBySource',
+             'BACKLOG_FIELDS', 'MEASURED_AT'],
     mutate, tag: 'backlog',
   });
   const cells = probe.backlogCells;
   const has = probe.hasBacklog;
   const refusalOf = probe.censusRefusal;
-  const textOf = (census, name) => (cells(census).find((c) => c.name === name) || {}).text;
+  // 🔴 A MUTANT THAT THROWS IS A HOLE, NOT A CATCH — the report then says 'THREW' instead of
+  //    naming which assertion went red, and a rotten anchor scores as caught. These read
+  //    through empty objects so a renamed field reddens A1 BY NAME.
+  const cellOf = (census, name) => cells(census).find((c) => c.name === name) || {};
+  const textOf = (census, name) => cellOf(census, name).text;
+  const methodOf = (census, name) => cellOf(census, name).method;
+  const refusalFacts = (census) => refusalOf(census) || {};
 
   // ══ ① 계약의 이름과 그 순서 ═════════════════════════════════════════════════════════
   eq('A1 the three counts are the contract, in order',
@@ -88,9 +95,9 @@ async function score(mutate) {
   //    Drawn as a blank it reads as 「아직 안 셌다」 and nobody fixes the thing the server
   //    already told them how to fix.
   ok('D1 a refused census is named', refusalOf(REFUSED) !== null);
-  eq('D2 ...by the server\'s own reason word', 'no_row_id', refusalOf(REFUSED).reason);
+  eq('D2 ...by the server\'s own reason word', 'no_row_id', refusalFacts(REFUSED).reason);
   ok('D3 ...and carries the gate\'s sentence verbatim',
-    refusalOf(REFUSED).remedy === REFUSED.remedy, refusalOf(REFUSED).remedy.slice(0, 40));
+    refusalFacts(REFUSED).remedy === REFUSED.remedy, String(refusalFacts(REFUSED).remedy).slice(0, 40));
   ok('D4 a counted census is not a refusal', refusalOf(COUNTED) === null);
   ok('D5 ...nor is an absent one', refusalOf(undefined) === null && refusalOf(null) === null);
   // ⚠️ 거절이어도 «시각»은 남습니다 — 「언제 못 셌는지」도 사실입니다.
@@ -113,6 +120,46 @@ async function score(mutate) {
   ok('E5 a refusal with no stamp still draws, because its reason is the thing to show',
     has({ source: 's', refused: 'no_row_id', remedy: 'declare it' }) === true);
 
+  // ══ ⑥ 「어떻게 잰 수인가」 — `≈` 가 말하지 «않는» 절반 ══════════════════════════════
+  // 🔴 `≈` says the number is an ESTIMATE. It does not say `pg_class.reltuples`, and the
+  //    operator deciding whether to trust a backlog needs the second half. It rides on the
+  //    cell rather than in a fifth column — the panel it draws in is 346px at its narrowest.
+  eq('F1 the method rides with the count', 'count(*)',
+    methodOf(COUNTED, 'relation_rows'));
+  eq('F2 ...and it is the server\'s own word for an estimate', 'pg_class.reltuples',
+    methodOf({ ...COUNTED, relation_rows: box(900, 'pg_class.reltuples', false) }, 'relation_rows'));
+  eq('F3 an uncounted field claims no method', '',
+    methodOf({ measured_at: AT }, 'relation_rows'));
+  eq('F4 the stamp is not a measurement, so it has no method', '',
+    methodOf(COUNTED, 'measured_at'));
+
+  // ══ ⑦ 봉투 -> 지도. 기준 ④: 이 함수가 «두 화면»의 유일한 경로입니다 ═══════════════
+  // 🔴 THE INSPECTOR LINE AND THE DASHBOARD TABLE BOTH COME THROUGH HERE. Two screens each
+  //    unwrapping `body.sources` themselves is the shape criterion ④ names: the day the
+  //    server renames that key, ONE of them goes quietly blank — and blank already means
+  //    「안 쟀다」, so nobody sees it.
+  const byName = probe.censusBySource;
+  const DECLARATION = { sources: [
+    { source: 'die_inspection', relation: 'inspection_run', census: COUNTED },
+    { source: 'bonded_from', relation: 'bonding_die_from_core', census: REFUSED },
+    // 🔴 아직 «세지 않은» 소스 — census 키가 «아예 없습니다». 페이싱된 작업이라 갓 선언한
+    //    소스가 한동안 이 모양입니다.
+    { source: 'freshly_declared', relation: 'brand_new' },
+  ] };
+  eq('G1 the map is keyed by source name', 'bonded_from,die_inspection',
+    Object.keys(byName(DECLARATION)).sort().join(','));
+  ok('G2 the census is carried verbatim, not rebuilt',
+    byName(DECLARATION).die_inspection === COUNTED);
+  // 🔴 AN UNCOUNTED SOURCE IS ABSENT FROM THE MAP, NOT PRESENT-AND-EMPTY. `{}` would draw
+  //    a row with four blanks, which reads the same as 「셌더니 아무것도 없다」.
+  ok('G3 a source with no census key is not in the map',
+    !Object.prototype.hasOwnProperty.call(byName(DECLARATION), 'freshly_declared'));
+  eq('G4 a refused census still reaches the map — it is the actionable one', 'no_row_id',
+    (byName(DECLARATION).bonded_from || {}).refused);
+  eq('G5 a body that could not be read is an EMPTY map, never invented counts', '0,0,0',
+    [byName(null), byName({}), byName({ sources: 'nope' })]
+      .map((m) => Object.keys(m).length).join(','));
+
   return { pass, failures: failures.slice() };
 }
 
@@ -125,11 +172,11 @@ const MUTATIONS = [
   ['M1 the envelope is read as a number, so every count goes blank',
    s => s.replace('    const count = Number(box.estimate);', '    const count = Number(box);')],
   ['M2 an uncounted field is drawn as 0, so 「아직 모름」 reads as 「돌 게 없다」',
-   s => s.replace("    if (!box || typeof box !== 'object') return { name, text: '' };",
-                  "    if (!box || typeof box !== 'object') return { name, text: '0' };")],
+   s => s.replace("    if (!box || typeof box !== 'object') return { name, text: '', method: '' };",
+                  "    if (!box || typeof box !== 'object') return { name, text: '0', method: '' };")],
   ['M3 a measured zero stops being drawn, so counted-and-empty looks uncounted',
-   s => s.replace('    return { name, text: `${mark}${count}` };',
-                  "    return { name, text: count === 0 ? '' : `${mark}${count}` };")],
+   s => s.replace('    return { name, text: `${mark}${count}`, method };',
+                  "    return { name, text: count === 0 ? '' : `${mark}${count}`, method };")],
   ['M4 an estimate is drawn like an exact count — the thing `measured()` exists to stop',
    s => s.replace("    const mark = box.exact === false ? ESTIMATE_MARK : '';",
                   "    const mark = '';")],
@@ -147,6 +194,14 @@ const MUTATIONS = [
   ['M10 the labels are translated, so a renamed field keeps the old name',
    s => s.replace("Object.freeze(['relation_rows', 'indexed_rows', 'not_yet'])",
                   "Object.freeze(['전체', '색인', '남음'])")],
+  ['M11 the method is dropped, so an estimate cannot be told from an exact count',
+   s => s.replace('    const method = box.method == null ? \'\' : String(box.method);',
+                  "    const method = '';")],
+  ['M12 the map is keyed by relation, so the table looks up a name nobody sends',
+   s => s.replace('bySource[row.source] = row.census;', 'bySource[row.relation] = row.census;')],
+  ['M13 sources with no census enter the map, so 「안 쟀다」 becomes 「셌더니 없다」',
+   s => s.replace('if (row && row.source && row.census) bySource[row.source] = row.census;',
+                  'if (row && row.source) bySource[row.source] = row.census || {};')],
 ];
 
 if (process.argv.includes('--mutate')) {
