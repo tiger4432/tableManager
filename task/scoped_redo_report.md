@@ -22460,3 +22460,81 @@ S-77(CHECK 리터럴, 마이그레이션) → Ⓓ(key_types 삭제 · supersedes
 → S-83(cProfile 한 요청, 상위 셋 «먼저» 보고) → S-64-b → S-84
 ```
 > 📌 **[09-09 09:04] 이 채널의 미답 질문: ㉠ ingested 거절(위 ⓐⓑ 둘이 정해지면 즉시) · C-42 클라 계약 키 · 잔해 둘(walk_group_pages · v2_base_select_columns).**
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **S-77 착지 `4f49fdff` — 저장 층이 술어 이름을 안 부릅니다. 그리고 ingested 항목은 «측정이 그 모양을 바꿨습니다»** (09-09 09:12)
+
+```
+시각   09-09 09:12   ·   이웃 24 파일 420 passed · 새 시험 6 · 수집 5,335 정상 · 미커밋 0
+```
+
+## 0. 총괄 첫 줄 — `test_job_column_from_config` 는 «기존»입니다
+```
+잰 방법   앞/뒤 실행 (git log 아님)
+  HEAD                      빨강
+  server/ledger/schema.py 되물림  빨강
+  🔴 fc43c379~1 (제 «첫 커밋 이전»: main.py · event_constants · context 되물림)  «빨강»
+=> 제 오늘 작업 «이전»부터 빨갛습니다. S-32 모집단입니다
+   (제품 문을 건드린 S-82 가 replace_map 시험에 닿을 수 있어 «그 이전»까지 되물려 쟀습니다)
+```
+
+## 1. S-77 — 지운 것과 «남긴 것»
+```
+지움   CONSTRAINT ck_ledger_register_has_no_object CHECK ((predicate='register') = (object_kind IS NULL))
+왜    ⓐ 도메인 낱말이 «선언이 못 닿는 유일한 층»에 있었습니다
+      ⓑ 중복이 아니라 «더 좁았습니다» — 그게 결함인 이유입니다.
+         목적어 없음은 «선언»이 정하고(object.kind: none), roleframe 이 이미
+         「Pack object kind disagrees with the Vocabulary signature」로 «양방향» 거절합니다
+         (짓기 «전»에 그 자리를 재서 확인했습니다)
+      => retire@1 을 선언하면 컴파일·발행·파이썬 검사 전부 통과하고 «DB 가» 거절합니다 — 세 층 밖에서
+남김   ck_ledger_objectless_carries_only_qualifiers — «어떤 어휘도 안 부릅니다».
+      그게 이 층의 «입회 규칙»이고, 시험이 그것을 «단언»합니다(둘 다 지웠으면 목적어 없는 원자가 무방비)
+안전   DROP 은 «약화»라 기존 행에 실패할 수 없습니다 — 스캔 없음 · 고칠 데이터 없음
+자리   ensure_schema 가 «카탈로그 먼저 묻고» 멱등 드롭(새 설치는 DDL 0 · 잠금 0) +
+      scripts/migrate_ledger_register_object_constraint.py (기본 dry-run, 전/후를 «보여줌»)
+이름   RETIRED_REGISTER_OBJECT_CONSTRAINT 로 남깁니다 — 「이 설치는 S-77 이전」과
+      「누가 제약을 손으로 뺐다」가 «둘 다 부재»로 읽히지 않게
+```
+
+## 2. 🔴 ingested 항목 — 재 보니 «지시가 가정한 것보다 넓고», 이 라운드 게이트와 «충돌»합니다
+같은 커밋에 넣으라 하셨는데, 재고 나니 두 가지가 달라졌습니다. 짓기 전에 올립니다.
+```
+㉠ 「basis 일 때만 죽은 칸」이 아니라 «항상» 죽은 칸입니다
+   roleframe:339 자기 주석: 「RULED 2026-08-23: the binding's column is ignored here ALWAYS,
+   not only where the two coincide」 — TIME 역할은 준비 경계가 해석한 순간에서 채워지고,
+   그 셀을 다시 읽으면 «source_event_identity 가 그 값으로 만든 사건 id 와 어긋납니다»
+   => 거절 조건을 「basis 면」으로 쓰면 «참인 것보다 좁은» 규칙을 또 하나 심는 것입니다
+      (S-77 이 방금 지운 것과 «같은 모양»입니다)
+㉡ 거절을 켜면 «지문이 움직입니다» — 이 라운드 게이트가 금지한 그것
+   같은 주석: 「Removing it rewrites dt_job's and lot_event's declarations and moves their
+   fingerprints, so it belongs to a retirement round, not to this one」
+   출하 샘플·라이브 선언 «둘 다» 그 칸을 들고 있어, 거절하면 선언이 «안 섭니다» →
+   고치면 지문이 움직입니다 → 「선택 칸 미사용 소스는 안 움직여야」(F-0)와 정면 충돌
+```
+### 갈래 둘 — 어느 쪽도 이 커밋에 «공짜»가 아닙니다
+```
+Ⓐ 검증기가 거절   선언 둘을 고쳐야 하고 지문 둘이 움직입니다 -> «은퇴 라운드»의 일
+Ⓑ 폼이 안 묻기    판정 169 가 이미 열어 둔 갈래(「검증기가 거절하거나 폼이 안 물어야」).
+                 다만 read.cursor 의 ignored= 템플릿이 «안 맞습니다» — 그건 «바인딩 안의 필드»고
+                 이건 «역할 바인딩 통째»라, 폼이 TIME 역할을 안 그리게 바꾸는 일입니다(반경 별개)
+🔴 어느 쪽이든 「지문 15/15 무변」을 «깨거나», 이 라운드 밖으로 나갑니다. 판정 부탁드립니다
+```
+
+## 게이트
+```
+✅ 새 시험 6 passed   DDL 에 «어떤» 도메인 낱말도 없음(부류로 — register 하나가 아니라) ·
+                    구조 불변식은 «남아 있음» · 드롭 헬퍼의 «양쪽 팔»(있음/없음) ·
+                    ensure_schema 가 그것을 부름
+✅ 이웃 24 파일       420 passed. 빨강 2 + 오류 12 = ontology_config_explorer(S-79/S-80) 그대로
+✅ 수집              5,335 collected · 오류 0
+⛔ 못 잰 것          게이트 「retire@1 선언 → 원자 들어감 · register 무회귀」는 라이브라 총괄 몫입니다
+```
+
+## 다음
+```
+Ⓓ (key_types 삭제 · supersedes 은퇴 · read.cursor/order_by 확인) → S-83(cProfile, 상위 셋 먼저 보고)
+→ S-64-b → S-84
+```
+> 📌 **[09-09 09:12] 이 채널의 미답 질문: ingested 의 갈래 Ⓐ/Ⓑ(위) · C-42 클라 계약 키 · 잔해 둘.**
