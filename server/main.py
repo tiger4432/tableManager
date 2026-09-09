@@ -3061,9 +3061,14 @@ async def apply_batch_updates_endpoint(
         #
         # 🔴 SCOPED TO THIS ONE CALL. The token is held across exactly one await - the write
         # itself - so nothing else this handler awaits can collapse by accident.
+        # [판정 207] The out-param the count needs. `results` is the REPORTING set and
+        # carries rows whose update keys were all dropped; those changed nothing, so they
+        # must not reach 「N rows updated」. The number to subtract travels here rather than
+        # on the return value, which ten call sites and dozens of tests unpack as a 4-tuple.
+        drop_report: dict = {}
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
-                crud.apply_batch_updates, db, table_name, batch, replace_report
+                crud.apply_batch_updates, db, table_name, batch, replace_report, drop_report
             )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -3263,7 +3268,10 @@ async def apply_batch_updates_endpoint(
 
     return {
         "status": "success",
-        "updated_count": len(results),
+        # [판정 207] The rows that are in `results` only to be reported are not part of
+        # this number. 「N rows updated」 has to be true, and a row whose every key was
+        # dropped updated nothing.
+        "updated_count": len(results) - int(drop_report.get("reported_only_for_drops", 0)),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,
         # [P4] Bounded, not removed. This used to be EVERY audit log the write created -

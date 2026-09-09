@@ -260,12 +260,23 @@ def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
 
 
 def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
-                        version_stats: Optional[dict], suppressed_row_ids: list):
+                        version_stats: Optional[dict], suppressed_row_ids: list,
+                        reported_only_for_drops: int = 0):
     """Fill the caller's dict in place. Shape is stable whether or not anything dropped:
-    a caller must be able to read `dropped_cells` without first testing for the key."""
+    a caller must be able to read `dropped_cells` without first testing for the key.
+
+    🔴 `reported_only_for_drops` IS THE NUMBER THE RESPONSE SUBTRACTS (판정 207). A row whose
+    every update key was dropped changed nothing, so it is not part of 「N rows updated」 -
+    but the caller still has to be TOLD about it, or the grid never learns the write was
+    processed at all. So it rides in the answer and not in the count, and this is how the
+    layer that builds the count knows how many of those there were.
+    """
     rows_affected = len(drop_stats["rows_with_drops"])
     drop_report.update({
         "table": table_name,
+        # ⚠️ ROWS, NOT CELLS, and a SUBSET of `rows_affected`: a row that lost one key and
+        # kept another changed, so it is counted like any other change and is not here.
+        "reported_only_for_drops": reported_only_for_drops,
         # Total discarded (row, column) pairs. Never capped.
         "dropped_cells": drop_stats["cells"],
         "by_reason": dict(drop_stats["by_reason"]),
@@ -4261,9 +4272,20 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         if version_stats is not None:
             log_version_gate_summary(table_name, version_col, source_val, version_stats)
 
+        # 🔴 판정 207. THE ROWS THAT ARE IN THE ANSWER ONLY BECAUSE SOMETHING WAS DROPPED.
+        # Computed ONCE, here, and read twice: `_render_drop_report` publishes the count so
+        # the response path can subtract it, and the `results` filter below lets these rows
+        # through. Two spellings of "which rows are these" would let the answer and the count
+        # disagree about the same batch, which is the whole of what 207 is separating.
+        reported_only_for_drops = {
+            r_id for r_id, (_row, was_new) in unique_results.items()
+            if r_id in drop_stats["rows_with_drops"]
+            and not (was_new or r_id in rows_with_content)}
+
         if drop_report is not None:
             _render_drop_report(drop_report, table_name, drop_stats, version_stats,
-                                suppressed_row_ids)
+                                suppressed_row_ids,
+                                reported_only_for_drops=len(reported_only_for_drops))
 
         # Execute Bulk Upserts, Bulk Inserts, and Deletes
         if logs_to_cache:
@@ -4394,9 +4416,18 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # The predicate is per ROW and not per item, which is why `rows_with_content` is
         # the right set rather than a per-item flag: item 1 can drop every key of a row
         # that item 2 then fills, and that row did change.
+        # 🔴 판정 207 ADDED THE THIRD TERM. 판정 192 took an unchanged save out of the
+        # answer so `updated_count` would stop counting rows it did not change - correct
+        # about the COUNT, and it also removed a row whose keys were all DROPPED, which the
+        # caller does need to hear about: without it the API broadcasts nothing for that row
+        # and the grid never learns the write was processed. The two sentences are about
+        # different things, so they are separated rather than one of them relaxed: this list
+        # is the REPORTING set, and the count is built by subtracting the drop-only rows
+        # from it (`reported_only_for_drops`, in the drop report).
         results = [(row, was_new)
                    for r_id, (row, was_new) in unique_results.items()
-                   if was_new or r_id in rows_with_content]
+                   if was_new or r_id in rows_with_content
+                   or r_id in reported_only_for_drops]
         return results, total_changed_cells, serialized_logs, deleted_row_ids
 
 def create_empty_row(db: Session, table_name: str):

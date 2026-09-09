@@ -522,3 +522,56 @@ def test_a_replayed_attempt_reports_only_the_transaction_that_committed(monkeypa
     crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch(), None, report)
 
     assert report == {"dropped_cells": 1}, "the abandoned attempt's drops were reported"
+
+
+# ------------------------------------------- 판정 207: reported, and not counted
+
+
+def test_a_row_whose_keys_were_all_dropped_is_reported_but_not_counted(db):
+    """🔴 판정 207. TWO SENTENCES ABOUT DIFFERENT THINGS, KEPT APART.
+
+    판정 192 took an unchanged save out of the answer so `updated_count` would stop counting
+    rows it did not change. Correct about the COUNT - and it also removed the row whose
+    update keys were all DROPPED, which the caller does need to hear about: without it the
+    API broadcasts nothing for that row and the grid never learns the write was processed.
+    That is how this file's `test_an_existing_row_is_never_removed_by_the_guard` went red on
+    main for a day.
+
+    So `results` is the REPORTING set and the count is built by subtracting from it. This
+    pins BOTH halves and the subtraction between them - either one alone is satisfiable by
+    the wrong answer.
+    """
+    _push(db, PLAIN, [_item(business_key_val="D1",
+                            updates={"unit_id": "D1", "payload": "P"})])
+
+    report = {}
+    results, _c, _l, _d = _push(
+        db, PLAIN,
+        [_item(business_key_val="D1", updates={"unit_id_TYPO": "D1", "payload_TYPO": "Q"})],
+        drop_report=report)
+
+    assert len(results) == 1, "the row must still reach the caller, or nothing is broadcast"
+    assert report["reported_only_for_drops"] == 1, (
+        "the response layer subtracts this; a zero here puts the row back into "
+        "「N rows updated」, which is what 판정 207 refused")
+    assert len(results) - report["reported_only_for_drops"] == 0, (
+        "nothing was updated, so the count the caller renders must be zero")
+
+
+def test_a_row_that_lost_one_key_and_kept_another_is_still_counted(db):
+    """The arm that must NOT fire, and the one that makes the subtraction a SUBSET rather
+    than 「every row that dropped anything」. A row that dropped one key and wrote another
+    changed, so it is counted like any other change."""
+    _push(db, PLAIN, [_item(business_key_val="D2",
+                            updates={"unit_id": "D2", "payload": "P"})])
+
+    report = {}
+    results, _c, _l, _d = _push(
+        db, PLAIN,
+        [_item(business_key_val="D2", updates={"payload": "Q", "payload_TYPO": "X"})],
+        drop_report=report)
+
+    assert report["dropped_cells"] >= 1, "precondition: something was dropped"
+    assert report["reported_only_for_drops"] == 0, (
+        "this row changed, so it is not one of the report-only rows")
+    assert len(results) - report["reported_only_for_drops"] == 1
