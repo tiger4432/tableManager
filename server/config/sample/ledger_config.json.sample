@@ -1021,16 +1021,17 @@
         "implementation_id": "lot-event-role",
         "implementation_version": 1,
         "input_columns": [
-          "lot",
-          "event_type",
-          "slots",
-          "wafers",
-          "parent_lot",
+          "__source_event_incomplete",
           "child_lot",
-          "row_identity",
-          "event_time",
           "event_group_key",
-          "__source_event_incomplete"
+          "event_time",
+          "event_type",
+          "lot",
+          "lot_id",
+          "parent_lot",
+          "row_identity",
+          "slots",
+          "wafers"
         ],
         "unit": {
           "kind": "event"
