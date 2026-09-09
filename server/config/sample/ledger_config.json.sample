@@ -45,11 +45,13 @@
     },
     "has_netdie@1": {
       "status": "active",
+      "cardinality": "many",
       "subjects": [
         "dtjob@1"
       ],
       "object": {
         "kind": "value",
+        "value_type": "number",
         "qualifiers": {
           "required": [],
           "optional": []
@@ -258,6 +260,7 @@
       "class": "static"
     },
     "defect@1": {
+      "status": "active",
       "keys": [
         "void_uid"
       ]
@@ -1577,6 +1580,7 @@
       "relation": "wafer_process"
     },
     "bonded_from": {
+      "status": "active",
       "bind": {
         "mappings": {
           "bonded-die-from-core-die": {
