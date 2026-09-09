@@ -20,7 +20,6 @@ export const initialExplorerState = Object.freeze({
   //    route has not answered (or could not), which is NOT the same as「이 프로세스는 아무것도
   //    거절하지 않았다」. Those two are opposite instructions to an operator, so they may not
   //    share a value here or a pixel on screen.
-  refusals: null,
   // 소스마다의 «행 인구조사» — `/api/ledger/declaration` 의 sources[].census, 그대로.
   // 🔴 «키 없음»이 「아직 안 쟀다」입니다. 빈 객체로 채우면 「재 봤는데 없다」가 됩니다.
   census: {},
@@ -143,8 +142,6 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     //    other calls are not), so a compile response arriving must not blank it and a refused
     //    token must not blank the compile. A failure leaves `null` — 「안 잼」 — on purpose:
     //    inventing an empty report there would draw 「거절 0」 for a question nobody asked.
-    case 'REFUSALS_RECEIVED':
-      return { ...state, refusals: action.report || null };
     // 🔴 ITS OWN ACTION, for the reason above it: a separate route with a separate failure.
     //    `/api/ledger/declaration` is NOT admin-token gated, so it answers where the refusal
     //    report may not — and a failure here must leave the counts absent rather than empty.

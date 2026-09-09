@@ -22,83 +22,20 @@ const ok = (name, cond, detail = '') => {
 const eq = (name, expected, actual) => ok(name, actual === expected,
   `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 
-const SINCE = '2026-09-07T19:00:00+00:00';
-const report = (sources) => ({
-  since: SINCE, sources,
-  declared_reasons: ['no_time_column', 'undeclared_event_type', 'subject_unresolvable'],
-  samples_cap: 20,
-  truncated: { samples: { cut: false, omitted: null, reason: null } },
-});
-const reason = (count, details = []) => ({
-  count, samples: details.map(d => ({ detail: d, atoms: 1, rows: 1, addresses: [] })),
-});
 
 async function score(mutate) {
   pass = 0; failures.length = 0;
   const { probe } = await loadWithProbe(SRC, {
-    expose: ['refusalCell', 'refusalSummary', 'excludedNote', 'refusalSamples'],
+    expose: ['refusalSummary', 'excludedNote', 'refusalSamples'],
     mutate, tag: 'refusalcell',
   });
-  const C = probe.refusalCell;
+  // ⚰️ C-54. `refusalCell` 과 그 열여섯 단언이 «같이» 은퇴했습니다 — 그것이 읽던 라우트가
+  //    404 이고, 대상이 없는 단언은 초록이어도 아무 말도 안 합니다. 남은 셋은 시험 실행
+  //    화면이 «오늘 쓰는» 함수들이고, 아래 B·C 블록이 그것을 잽니다.
+  //    ⚠️ 세 픽셀 규율(안 잼 / 쟀는데 0 / 쟀고 N)은 사라지지 않았습니다 — 그 규율을 지금
+  //    지는 자리는 소스 상태 패널의 `refusals` 셋이고, 그 하니스가 잽니다.
   const S = probe.refusalSummary;
   const X = probe.excludedNote;
-
-  // ══ 세 픽셀 ═══════════════════════════════════════════════════════════════════════
-  const nothing = C(null, 'dt_job');
-  eq('A1 응답이 없으면 아무것도 — since 도 없다', '', nothing.text);
-  eq('A2 ...그리고 그것이 「안 잼」의 표시다', '', nothing.since);
-
-  const clean = C(report({}), 'dt_job');
-  eq('A3 쟀는데 0 이면 「거절」을 안 그린다', '', clean.text);
-  ok('A4 ...다만 since 는 남는다 — 그게 「안 잼」과 갈리는 유일한 픽셀이다',
-     clean.since.includes(SINCE), clean.since);
-
-  const one = C(report({ dt_job: { rows_refused: 7, atoms_lost: 0, incomplete_molecules: 0,
-                                   reasons: { no_time_column: reason(7, ['declare it there and this atom lands']) } } }),
-                'dt_job');
-  eq('A5 쟀고 N 이면 수와 사유가 한 줄로', '거절 7 · no_time_column 7', one.text);
-
-  // ══ 사유 낱말은 «응답의 키» 그대로 — 사본 0 ══════════════════════════════════════
-  const two = C(report({ dt_job: { reasons: {
-    no_time_column: reason(2), undeclared_event_type: reason(9) } } }), 'dt_job');
-  eq('A6 여러 사유는 «많은 것부터», 낱말은 그대로',
-     '거절 11 · undeclared_event_type 9 · no_time_column 2', two.text);
-  ok('A7 화면이 사유를 «번역하지 않는다» — 응답에 없는 낱말이 안 나온다',
-     !/[가-힣]/.test(two.text.replace('거절', '')), two.text);
-
-  // ⚠️ 0 인 사유는 마디를 만들지 않습니다 — 「이 사유로는 안 걸렸다」는 그릴 것이 아닙니다.
-  eq('A8 0 인 사유는 세지도 그리지도 않는다', '거절 3 · undeclared_event_type 3',
-     C(report({ s: { reasons: { no_time_column: reason(0), undeclared_event_type: reason(3) } } }), 's').text);
-
-  // ══ 표본 문장은 «그대로» ═════════════════════════════════════════════════════════
-  const sampled = C(report({ s: { reasons: {
-    no_time_column: reason(1, ['source `s` declares no time column - declare it there and this atom lands']) } } }), 's');
-  eq('A9 표본 detail 이 «한 글자도 안 바뀌고» 툴팁으로',
-     'source `s` declares no time column - declare it there and this atom lands', sampled.title);
-  eq('A10 표본이 없으면 툴팁도 없다 — 빈 문장을 지어내지 않는다', '',
-     C(report({ s: { reasons: { no_time_column: reason(4) } } }), 's').title);
-
-  // ══ 다른 소스의 수를 이 행에 그리지 않는다 ═══════════════════════════════════════
-  const many = report({ dt_job: { reasons: { no_time_column: reason(5) } },
-                        other: { reasons: { undeclared_event_type: reason(99) } } });
-  eq('A11 이 행은 «이 소스»의 수만 말한다', '거절 5 · no_time_column 5', C(many, 'dt_job').text);
-  eq('A12 목록에 없는 소스는 0 이 아니라 «빈 칸»', '', C(many, 'absent_source').text);
-  ok('A13 ...그리고 그 행도 since 는 받는다(쟀다는 사실은 표 전체의 것)',
-     C(many, 'absent_source').since.includes(SINCE));
-
-  // 🔴 THE DISCRIMINATING INPUT, AND THE SWEEP FOUND IT MISSING. A3 uses a report with NO
-  //    entry for this source, so it returns at the "no entry" guard and never reaches the
-  //    zero-total one — a mutant that deleted the second walked straight through. A source
-  //    that IS listed and counted zero is a different shape, and it is the one 「거절 0 이면
-  //    빈 칸」 is actually about.
-  const listedZero = C(report({ s: { rows_refused: 0, atoms_lost: 0, incomplete_molecules: 0,
-                                     reasons: { no_time_column: reason(0) } } }), 's');
-  eq('A14 «목록에 있고» 0 인 소스도 「거절 0」을 안 그린다', '', listedZero.text);
-  ok('A15 ...다만 since 는 남는다 — 쟀다는 사실은 참이다',
-     listedZero.since.includes(SINCE), listedZero.since);
-  // 그리고 reasons 가 아예 «빈» 것도 같은 사실입니다.
-  eq('A16 사유 블록이 비어도 같다', '',
-     C(report({ s: { reasons: {} } }), 's').text);
 
   // ══ C-39: 시험 실행 머리도 «같은 철자»를 쓴다 ═══════════════════════════════════════
   // 🔴 두 봉투의 «모양»이 다릅니다 — 문지기는 `{사유: {count, samples}}`, 시험 실행은
@@ -106,13 +43,15 @@ async function score(mutate) {
   eq('B1 시험 실행 모양(사유: 수)도 같은 문장을 낸다',
      '거절 11 · undeclared_event_type 9 · no_time_column 2',
      S({ no_time_column: 2, undeclared_event_type: 9 }));
-  // 🔴 그리고 그 문장이 «문지기 쪽과 글자까지 같다» — 이것이 「사전 0」의 실제 시험입니다.
-  //    한쪽만 고쳐지는 날 이 줄이 빨개집니다.
-  ok('B2 ...그리고 문지기 쪽 문장과 «글자까지» 같다',
-     S({ no_time_column: 2, undeclared_event_type: 9 })
-       === C(report({ s: { reasons: { no_time_column: reason(2),
-                                      undeclared_event_type: reason(9) } } }), 's').text,
-     `${S({ no_time_column: 2, undeclared_event_type: 9 })}`);
+  // ⚰️ C-54. B2 는 「두 화면의 문장이 글자까지 같다」를 쟀습니다. 둘째 화면이 은퇴해서 그
+  //    단언의 «주어 한쪽»이 없어졌습니다 — 남겨 두면 자기와 자기를 비교하는 공허한 초록입니다.
+  //    「사전 0」은 M3·M7 이 계속 잽니다(낱말이 응답의 키인가 · 두 번째 철자가 생기나).
+  // 🔴 C-54. 이 단언은 «되살린» 것입니다. 0 인 사유가 마디를 안 만든다는 성질을 재던 곳은
+  //    은퇴한 A-블록(A8)이었고, 그것이 사라지자 그 필터를 지우는 변이(M6)가 «초록으로»
+  //    빠져나갔습니다 — 코드는 살아 있는데 재는 눈만 죽은 자리입니다. 살아 있는 함수 위에
+  //    다시 답니다. 「이 사유로는 안 걸렸다」는 그릴 것이 아닙니다.
+  eq('B0 0 인 사유는 마디를 만들지 않는다', '거절 3 · undeclared_event_type 3',
+     S({ no_time_column: 0, undeclared_event_type: 3 }));
   eq('B3 셀 것이 없으면 아무 말도 안 한다', '', S({}));
   eq('B4 0 뿐이어도 같다', '', S({ no_time_column: 0 }));
   eq('B5 봉투가 없으면 조용하다', '', S(undefined));
@@ -195,16 +134,8 @@ const MUTATIONS = [
   //    a mutant has to be able to reach.
   ['M1 a measured zero is drawn as 「거절 0」, so 「none」 and 「not measured」 look alike',
    s => s.replace("  if (total === 0) return '';", '')],
-  ['M2 「not measured」 starts carrying a since, so the two collapse the other way',
-   s => s.replace("  if (!report || typeof report !== 'object') return Object.freeze({ ...none });",
-                  "  if (!report || typeof report !== 'object') return Object.freeze({ text: '', title: '', since: 'x' });")],
   ['M3 the reason words stop being the response keys',
    s => s.replace('.map(r => `${r.reason} ${r.count}`)', '.map(r => `사유 ${r.count}`)')],
-  ['M4 the sample sentence is clipped instead of carried',
-   s => s.replace('details.push(String(s.detail))', 'details.push(String(s.detail).slice(0, 10))')],
-  ['M5 every source shows the whole table, not its own row',
-   s => s.replace('const entry = sourceId != null ? sources[String(sourceId)] : null;',
-                  'const entry = Object.values(sources)[0] || null;')],
   ['M6 a zero-count reason still takes a segment',
    s => s.replace('    .filter(r => r.count > 0)', '')],
   // C-39. 🔴 THE ONE MUTANT THAT MATTERS FOR "one spelling": give the test-run head its own
