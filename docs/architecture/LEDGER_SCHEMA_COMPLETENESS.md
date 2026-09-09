@@ -1147,15 +1147,20 @@ enrichment_rules.json.sample 규칙 4. 키 = {source_table, derived_table, decis
 ## D-8-2. 셋을 그 칸에 대 봅니다
 | 규칙 밖 축 | 체인의 칸 | 판정 |
 |---|---|---|
-| **그룹 집계** | ✅ 있음 — `aggregations: {컬럼: fn}` (샘플: `{"cell_count": "count"}`) | ⚠️ **②** — 정의역이 `count` «하나»입니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment_config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
+| **그룹 집계** | ⚠️ **칸은 있으나 «다른 파이프라인의 것»입니다** (판정 211 이 정정) — `aggregations: {컬럼: fn}` 은 «인리치먼트»(후보 → 사람 확인) 흐름의 칸입니다: 같은 규칙이 `auto_confirm`(기본 **False**) · `enrichment_candidates` · `process_pending_groups` 를 끼고 있습니다. 「체인이 계산해 표에 쓴다」의 일반 설비가 «아닙니다». 그 안에서의 정의역은 `count` «하나»입니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment_config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
 | **선언 조인** | ⚠️ 있음 — `reference_views[].query` | ⚠️ **②** — 칸은 있으나 내용이 «생 SQL»(샘플: `SELECT … FROM dt_log WHERE dt_job = :dt_job ORDER BY …`). 완성 정의가 지목한 자리 그대로입니다 — 「뷰는 두 줄로 안 말해진다」 |
 | **값 변환** | 🔴 **없음** | **③** — 변환은 `mapper_module`/`mapper_function` 이 가리키는 파이썬 «안»에 있습니다 |
 | **짝짓기 / 위치** | 🔴 **없음** | **③** — 같은 자리 |
 
 ## D-8-3. 🔴 그래서 S-100 은 «셋이 아니라 하나»만 선언으로 갑니다
 ```
-dt-job-role (집계)       ✅ 갈 곳이 있습니다 — 체인이 `aggregations: {cell_count: "count"}` 로 «세어» 표에 쓰고,
-                        원장 소스는 그 컬럼을 `declarative-role` 로 «그대로» 읽습니다. 국소·무계산 규칙을 지킵니다
+dt-job-role (집계)       ✅ 갈 곳이 있습니다 — 체인이 «세어» 표에 쓰고, 원장 소스는 그 컬럼을
+                        `declarative-role` 로 «그대로» 읽습니다. 규칙(국소·무계산)을 지킵니다
+   🔴 **정정(판정 211)**: 여기서 제가 그 「세는 자리」를 «`aggregations`» 라고 이름 댔는데 «틀렸습니다».
+      그 칸은 인리치먼트(사람 확인) 흐름의 것이고, 실제 자리는 «보통의 체인 규칙 + 맵퍼»입니다
+      (dt_log → 새 표에 {dt_job, netdie_count}). **성질은 맞고 기제를 틀렸습니다** —
+      「체인이 표에 쓴다」는 참인데, 그 성질을 이름이 비슷한 기제에 «색인»했습니다.
+      오늘 밤 제가 같은 부류로 두 번 더 틀렸습니다(술어 타입 vs 소스 타입 · 커서 카운터 vs 라이브 경로)
 lot-event-role (짝짓기·위치)  🔴 갈 곳이 «없습니다» — 체인에도 칸이 없습니다. 오늘 옮기면 파이썬이 원장에서
                         체인으로 «자리만» 옮깁니다. 규칙은 지켜지지만(원장 선언이 깨끗해짐) 부채는 «그대로»입니다
 lot-event-live-frame (준비기)  같은 부류
