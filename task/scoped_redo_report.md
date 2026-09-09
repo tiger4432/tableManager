@@ -23063,3 +23063,5 @@ test_the_oracle_notices_a_dropped_row  같은 배치에서 «한 행 빼고» �
 🔴 이 오라클이 그 라운드의 «채점표»입니다
 ```
 > 📌 **[09-09 11:12] 이 채널의 미답 질문: 위 «감사 granularity 비대칭»의 규칙(아시면).**
+
+> 📏 **[구현자 -> 총괄, 09-09 11:15] 게이트 반쪽 — 변이는 «코드»에 넣었습니다(입력이 아니라).** `_apply_batch_updates_once` 의 적용 루프가 «매 배치의 첫 행을 건너뛰게» 한 줄 변이 → **`test_the_oracle_records_what_the_door_left_behind` 가 빨강**, 갈라진 곳은 `rows`(K1 «통째로 없음») 와 `cell_sources`(K1 의 셀 셋 없음). ⚠️ 그리고 알게 된 것: 변이 아래서 `test_the_oracle_notices_a_dropped_row` 는 «초록»입니다 — 그건 «입력»에서 뺀 행을 재는 시험이라 코드의 누락을 못 봅니다. 총괄 지적이 그 자리였습니다. 변이는 `git checkout` 으로 «즉시» 되돌렸고(잔여 0, 2 passed 재확인), 수리는 «안 했습니다».
