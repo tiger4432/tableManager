@@ -40,8 +40,15 @@ from ledger.setup_registry import compile_setup_snapshot             # noqa: E40
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 SOURCE = "dt_job"
-RELATION = "dt_log"
-JOB = "SYN-DTJ-002-04"
+#: The relation `dt_job` reads. It became `dt_job_rollup` with S-100 ⓐ - the
+#: grouping moved to the chain - and this file is about the WITHDRAWAL, not
+#: about which table the source happens to read.
+RELATION = "dt_job_rollup"
+#: ⚠️ FIVE JOBS, NOT FIVE ROWS OF ONE JOB (S-100 ⓐ). `dt_job` used to read `dt_log` as a
+#: GROUP; it reads `dt_job_rollup` now, one row per job, so "five rows in scope" is five
+#: jobs. The applied experiment this file records was five rows either way.
+JOBS = [f"SYN-DTJ-002-0{index}" for index in range(5)]
+JOB = JOBS[0]
 OCCURRED_AT = datetime(2026, 9, 9, 1, 0, tzinfo=timezone.utc)
 
 #: What the ledger already said about those five rows, taken while they still spoke. Two
@@ -82,17 +89,17 @@ def setup_excluding():
 
 
 def rows(count=5, eqp="EQP-7"):
-    """Five rows of one `dt_job` group.
+    """Five rows of `dt_job_rollup` - one per job.
 
     ⚠️ THE CLAUSE IS ON `dt_eqp` RATHER THAN ON AN IDENTITY PART, and the reason is a
-    measurement: `dt_job` reads its cursor from `dt_job, dt_cell_key`, and a batch whose last
-    row leaves a CURSOR column blank is refused by name (`cursor_value.<column>: cursor value
-    is missing`) before any of this is reached. So a source cannot be made to stop
-    translating by blanking one of those - the refusal arrives first, and it is a different
-    question. `dt_eqp` is a column the clause can name and the cursor does not.
+    measurement: `dt_job` reads its cursor from `dt_job`, and a batch whose last row leaves a
+    CURSOR column blank is refused by name (`cursor_value.<column>: cursor value is missing`)
+    before any of this is reached. So a source cannot be made to stop translating by blanking
+    one of those - the refusal arrives first, and it is a different question. `dt_eqp` is a
+    column the clause can name and the cursor does not.
     """
-    return [{"created_at": OCCURRED_AT, "dt_cell_key": f"C{index}",
-             "dt_eqp": eqp, "dt_index": index, "dt_job": JOB,
+    return [{"created_at": OCCURRED_AT, "dt_job": JOBS[index],
+             "netdie_count": 2 + index, "dt_eqp": eqp,
              "event_time": OCCURRED_AT, "row_id": f"r{index}"}
             for index in range(count)]
 
@@ -169,7 +176,7 @@ def run(setup, monkeypatch, store, relation_rows, withdraw=True):
                         lambda *a, **k: relation_rows)
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
     engine = SimpleNamespace(raw_connection=Reader)
-    return backfill.rescope(engine, setup, SOURCE, "dt_job", [JOB],
+    return backfill.rescope(engine, setup, SOURCE, "dt_job", list(JOBS),
                             apply=True, withdraw=withdraw)
 
 

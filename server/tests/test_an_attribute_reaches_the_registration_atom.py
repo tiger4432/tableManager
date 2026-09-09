@@ -36,7 +36,10 @@ from ledger.setup_registry import compile_setup_snapshot                     # n
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 OCCURRED_AT = pd.Timestamp("2026-09-08T01:00:00+00:00")
-ROW = {"dt_job": "SYN-DTJ-002-04", "dt_index": 3,
+#: ⚠️ A ROLLUP ROW SINCE S-100 ⓐ. `dt_job` used to read `dt_log` as a GROUP and count it in
+#: python; the chain writes the count now and this source reads one row per job. What this
+#: file is about - where an entity ATTRIBUTE comes from - did not move with it.
+ROW = {"dt_job": "SYN-DTJ-002-04", "netdie_count": 3,
        "event_time": OCCURRED_AT.to_pydatetime()}
 
 
@@ -102,18 +105,12 @@ def test_the_shipped_declaration_reaches_the_registration_atom(shipped, catalog)
     assert registration_fingerprint(row["object_payload"]) == '{"dt_eqp":"EQP-7"}'
 
 
-def test_the_declarative_mapper_gets_it_from_the_same_place(shipped, catalog):
-    """🔴 ONE PATH, WHATEVER THE IMPLEMENTATION IS. `dt_job` ships with a code mapper that
-    has no word for `dt_eqp`, and `DeclarativeRoleMapper` executes `bind.<role>` and never
-    looks inside a binding -- so neither of them can fill this and both must get it.
-
-    Filling it in `say()` would have reached the first only; filling it in the declarative
-    mapper would have reached the second."""
-    swapped = json.loads(json.dumps(shipped))
-    swapped["sources"]["dt_job"]["map"]["implementation_id"] = "declarative-role"
-    row = registration(atoms(compiled(swapped, catalog), "dt_job",
-                             [dict(ROW, dt_eqp="EQP-7")]))
-    assert row["object_payload"] == {"qualifiers": {"dt_eqp": "EQP-7"}}
+# ⚰️ `test_the_declarative_mapper_gets_it_from_the_same_place` STOOD HERE AND DIED WITH ITS
+# SUBJECT (S-100 ⓐ). It swapped this source's CODE mapper for `declarative-role` to prove
+# both fill the attribute from the same place - and `dt_job` now SHIPS declarative, so the
+# swap was to what the case above already runs: two names for one assertion. The property is
+# unchanged and still scored above; the half that needed a code mapper belongs to the source
+# that still has one (`lot_event`), and its own file owns it.
 
 
 # ------------------------------------------------------------- and the three empty answers
@@ -169,12 +166,26 @@ def test_a_group_whose_rows_disagree_is_refused_by_name(shipped, catalog):
 
     ⚠️ This is `_evaluate_binding`'s existing refusal, reached rather than reimplemented:
     a second reading of one binding is how the two drift."""
+    # ⚠️ THE GROUP IS DECLARED HERE NOW. `dt_job` read `dt_log` as a group until S-100 ⓐ
+    # moved the grouping into the chain, so the shape this refusal is about has to be asked
+    # for rather than assumed - the refusal belongs to `_evaluate_binding` and to any group
+    # source, not to this one's old relation.
+    grouped = json.loads(json.dumps(shipped))
+    grouped["sources"]["dt_job"]["read"]["unit"] = "group"
+    grouped["sources"]["dt_job"]["read"]["group_by"] = ["dt_job"]
+    grouped["sources"]["dt_job"]["map"]["unit"] = {"kind": "group_by",
+                                                  "columns": ["dt_job"]}
     with pytest.raises(RoleFrameError) as caught:
-        atoms(compiled(shipped, catalog), "dt_job",
-              [dict(ROW, dt_eqp="EQP-7"), dict(ROW, dt_eqp="EQP-8", dt_index=4)])
+        atoms(compiled(grouped, catalog), "dt_job",
+              [dict(ROW, dt_eqp="EQP-7"), dict(ROW, dt_eqp="EQP-8", netdie_count=4)])
     assert caught.value.code == "ambiguous_binding_value"
-    assert caught.value.path.endswith(
-        "bind.mappings.register.bind.subject.attributes.dt_eqp.column")
+    # ⚠️ THE ATTRIBUTE AND THE COLUMN ARE PINNED, NOT WHICH SENTENCE REACHED THEM FIRST.
+    # Both of this source's sentences bind the same `dtjob@1` subject, so both carry the
+    # attribute and either may raise; naming one made this assert an evaluation ORDER that
+    # nothing declares. What the operator needs from the path is the column to go and look
+    # at, and that is what is scored.
+    assert caught.value.path.endswith("bind.subject.attributes.dt_eqp.column")
+    assert "dt_job" in caught.value.path
 
 
 def test_a_mapper_that_passes_the_name_is_refused(shipped, catalog):

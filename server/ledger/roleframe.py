@@ -971,12 +971,28 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         # the same bytes.
         attributes = binding.get("attributes")
         if isinstance(attributes, Mapping) and attributes:
-            payload["attributes"] = {
-                name: _evaluate_binding(child, unit,
-                                        path=f"{path}.attributes.{name}",
-                                        columns=columns)
+            # 🔴 `_attribute_value`, NOT `_evaluate_binding` - ONE READING OF ONE BINDING.
+            # This branch used to call the general evaluator, which REFUSES a missing value;
+            # the mapper-side path three screens down asks `_attribute_value`, which leaves
+            # the qualifier absent because "an attribute is a value the entity MAY have".
+            # So the same declaration meant two different things depending on which mapper
+            # ran it, and only the declarative one refused.
+            #
+            # ⚠️ IT WAS UNREACHABLE UNTIL A SOURCE WITH ATTRIBUTES WENT DECLARATIVE (S-100
+            # ⓐ, 2026-09-09) - the guard that goes wrong on the day it becomes reachable.
+            # Everything else about the binding is still the general evaluator's: a group
+            # whose rows disagree is `ambiguous_binding_value`, and a column the frame does
+            # not carry is `missing_binding_column`.
+            evaluated = {
+                name: _attribute_value(child, unit,
+                                       path=f"{path}.attributes.{name}",
+                                       columns=columns)
                 for name, child in attributes.items()
             }
+            kept = {name: value for name, value in evaluated.items()
+                    if value is not _NO_ATTRIBUTE_VALUE}
+            if kept:
+                payload["attributes"] = kept
         return payload
     raise RoleFrameError(
         "unsupported_binding", f"{path}.kind",

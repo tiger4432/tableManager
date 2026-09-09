@@ -100,15 +100,20 @@ def no_database(monkeypatch):
     return FakeEngine()
 
 
-def dt_log_rows(count=1):
+def dt_job_rows(count=1):
     """What the fetch returns: exactly `base_select_columns(dt_job)` and nothing invented.
 
     `created_at` is there because `read.occurred_at.basis` is `ingested` -- the instant the
     ledger stamps this source's atoms with -- and leaving it out is refused by the
     preparation boundary rather than silently ignored.
+
+    ⚠️ THE RELATION MOVED UNDER THIS FILE (S-100 ⓐ). `dt_job` used to read `dt_log` as a
+    GROUP and count it in python; it reads `dt_job_rollup` now, one row per job, with the
+    count already in a column. What this file is about is unchanged - `dt_job` is still the
+    source in this sample that emits `register` - so only the shape of a row moved.
     """
-    return [{"created_at": OCCURRED_AT, "dt_cell_key": f"C{index}",
-             "dt_eqp": "EQP-7", "dt_index": index, "dt_job": "SYN-DTJ-002-04",
+    return [{"created_at": OCCURRED_AT, "dt_job": f"SYN-DTJ-002-0{index}",
+             "netdie_count": 2 + index, "dt_eqp": "EQP-7",
              "event_time": OCCURRED_AT, "row_id": f"r{index}"}
             for index in range(count)]
 
@@ -127,14 +132,14 @@ def preview(setup, engine, monkeypatch, rows):
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda *args, **kwargs: rows)
     return backfill.preview_rescope(
-        engine, setup, "dt_job", "dt_job", ["SYN-DTJ-002-04"])
+        engine, setup, "dt_job", "dt_job", ["SYN-DTJ-002-00", "SYN-DTJ-002-01"])
 
 
 def test_a_source_that_registers_can_be_previewed(setup, no_database, monkeypatch):
     """🔴 THE GATE. `dt_job` emits `register`, which is what the refusal keyed on. The
     preview has to come back with numbers -- what it would withdraw and what it would
     remake -- rather than with an exception the operator cannot act on."""
-    result = preview(setup, no_database, monkeypatch, dt_log_rows())
+    result = preview(setup, no_database, monkeypatch, dt_job_rows())
     assert result["source"] == "dt_job" and result["scope_column"] == "dt_job"
     assert result["rows_in_scope"] == 1
     assert result["remake"] > 0, "a scope holding rows must offer atoms to remake"
@@ -148,9 +153,10 @@ def test_the_preview_counts_the_register_the_apply_would_write(setup, no_databas
     which is the basis `rescope` applies on -- so the registration has to be AMONG the
     atoms counted. Passing a non-empty snapshot instead would return a smaller number that
     still looked like a working preview."""
-    result = preview(setup, no_database, monkeypatch, dt_log_rows(2))
-    # Two rows of one `dt_job` are ONE group, so the source says `register` once and
-    # `has_netdie` once; the preview counts both.
+    result = preview(setup, no_database, monkeypatch, dt_job_rows())
+    # ⚠️ ONE ROW IS ONE JOB SINCE S-100 ⓐ - the grouping happened in the chain - so the
+    # source says `register` once and `has_netdie` once and the preview counts both. The
+    # claim is the same one the group shape made; only what produces the group moved.
     assert result["remake"] == 2
 
 
@@ -170,7 +176,7 @@ def test_the_preview_asks_on_exactly_the_basis_the_apply_offers(setup, no_databa
     real = runtime_v2._filtered_event_atoms
     monkeypatch.setattr(runtime_v2, "_filtered_event_atoms",
                         lambda results, known: (seen.append(known), real(results, known))[1])
-    preview(setup, no_database, monkeypatch, dt_log_rows())
+    preview(setup, no_database, monkeypatch, dt_job_rows())
     # Two call sites -- the cursor preview inside `setup` and the count here -- and the
     # whole defect was that they disagreed. So EVERY call is scored, not the last one.
     assert len(seen) == 2 and all(basis == () for basis in seen), (

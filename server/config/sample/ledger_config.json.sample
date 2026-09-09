@@ -758,7 +758,15 @@
         "occurred_at": {
           "basis": "ingested",
           "timezone": "Asia/Seoul"
-        }
+        },
+        "registration_probe": [
+          {
+            "entity_type": "dtjob@1",
+            "columns": [
+              "dt_job"
+            ]
+          }
+        ]
       },
       "prepare": {
         "implementation_id": "direct-join",

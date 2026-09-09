@@ -137,12 +137,22 @@ def run_rescope(setup, monkeypatch, store, rows):
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
     engine = SimpleNamespace(raw_connection=lambda: SpyConnection(statements))
     return backfill.rescope(
-        engine, setup, "dt_job", "dt_job", ["SYN-DTJ-002-04"], apply=True), statements
+        engine, setup, "dt_job", "dt_job", list(JOBS), apply=True), statements
+
+
+#: The jobs the scope names. One row per job since S-100 ⓐ, so the scope has to name as
+#: many values as the batch carries - `execute_scoped_batch` proves the batch IS the scope
+#: and refuses a row whose value the caller did not declare.
+JOBS = ["SYN-DTJ-002-04", "SYN-DTJ-002-05", "SYN-DTJ-002-06"]
 
 
 def dt_log_rows(count=2):
-    return [{"created_at": OCCURRED_AT, "dt_cell_key": f"C{index}", "dt_eqp": "EQP-7",
-             "dt_index": index, "dt_job": "SYN-DTJ-002-04", "event_time": OCCURRED_AT,
+    """⚠️ ROLLUP ROWS SINCE S-100 ⓐ, one per job. `dt_job` used to read `dt_log` as a GROUP
+    and count it in python; the chain writes the count now and the source reads one row per
+    job. The name is kept because every case below reads it as "the rows the scope found",
+    which is what it still is."""
+    return [{"created_at": OCCURRED_AT, "dt_job": JOBS[index],
+             "netdie_count": 2 + index, "dt_eqp": "EQP-7", "event_time": OCCURRED_AT,
              "row_id": f"r{index}"}
             for index in range(count)]
 
@@ -190,7 +200,7 @@ def test_nothing_is_withdrawn_when_neither_the_preview_nor_the_index_names_a_ref
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
     result = backfill.rescope(
         SimpleNamespace(raw_connection=lambda: SpyConnection(statements)),
-        setup, "dt_job", "dt_job", ["SYN-DTJ-002-04"], apply=True)
+        setup, "dt_job", "dt_job", list(JOBS), apply=True)
     assert store.calls == [] and result["applied"] is False
     assert result["withdrawn"] == 0 and result["forgotten"] == 0
     assert store.forgotten == [], "nothing was withdrawn, so no index line is stale"
