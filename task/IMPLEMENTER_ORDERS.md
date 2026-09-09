@@ -37156,3 +37156,6 @@ tests/test_api.py::test_chained_ingestion   픽스처가 «새 행»에 uuid4 ro
 
 
 > 🔴 **[09-09 13:57 소유자 판정] 「소진 안 됨, 그냥 시켜」 — 인계 «취소». «같은 창»에서 ㉡ 를 계속하십시오.** 시작점은 위 블록(판정 189) 그대로: ① `conn` 종류 한 줄 확인 → 유일 색인 ensure(S-88 형제 + surplus 0 가드) 별도 커밋 → ② 조립 뒤 조회 · strict xfail 뒤집기 → ③ 집합 연산(183/184/187). 라운드마다 보고서 한 블록. 판정 141 은 «중단»의 근거이지 «인계»의 근거가 아닙니다 — 창이 실제로 닫히기 전엔 계속합니다
+
+
+> ✅ **[09-09 14:09] 판정 189 «라이브 확인» — `837b5fc4` 시험 4 passed(제가 돌림) → 재기동 **PID 38096**(14:08:19). 기동 로그: 13 표 `created`(bonding_inventory · defect · delam_obs · lot_slot_wafer · mechanism_edge · metro · process_event · process_param · slot_trace_for_bonding · slot_trace_for_dt · step_defect_obs · step_inspection_run · void) · refused 0 · invalid 0. DB 로 재확인: business_key_val 을 가진 기본 표 44 = 유효 유일 색인 44(이미 있던 31 + 오늘 13), 색인 없는 표 0. 「무효 잔존은 이름만 남기고 손 안 댄다」와 「이미 됐다 = 유효한 색인」 판별 둘 다 맞습니다. ㉡ 의 「조립 뒤 조회」가 기댈 바닥이 이 박스에 «섰습니다». ② 계속(188) → ③(183/184/187). 걷기·선언·html 200 · admin 401**
