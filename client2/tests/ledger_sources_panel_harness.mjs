@@ -1,4 +1,4 @@
-// LEDGER SOURCES — 네 상태가 넷으로 남고, 「못 읽었다」가 「안 돌았다」가 되지 않는다.
+// LEDGER SOURCES — 상태 목록이 «서버의 것»으로 남고, 「못 읽었다」가 「안 돌았다」가 되지 않는다.
 //
 // The subject is imported (owner, 2026-09-02: 잘라쓰기 하니스 절대 금지). The panel touches
 // no DOM and no CSS at module scope, so it imports in node as it stands.
@@ -8,12 +8,12 @@
 //      could not be read" from "nothing has run", and says so in `ingestion_view`'s own
 //      docstring. A screen that drew four `never_ran` rows for an unreadable cursor would
 //      collapse the two into one picture, and no other assertion would notice.
-//   ② THE FOUR STATES STAY FOUR. Folding them into normal/warning/error loses a fact, and
+//   ② THE STATES STAY WHATEVER THE SERVER SENT. Folding them into normal/warning/error loses
 //      the server never said which of them is bad — so the screen deciding that would be
 //      inventing a judgement. Same ruling as `moving` / `cancel_reaches` on the queue.
 //
 // Run: node client2/tests/ledger_sources_panel_harness.mjs
-import { sourcesView, LedgerSourcesPanel, STATES } from '../src/ledger_sources_panel.js';
+import { sourcesView, LedgerSourcesPanel } from '../src/ledger_sources_panel.js';
 import { ABSENT } from '../src/absent.js';
 
 let pass = 0;
@@ -48,20 +48,38 @@ const byTag = (host, tag) => walk(host).filter(n => n.tagName === tag);
 const rowsOf = (host) => byClass(host, 'table-row');
 
 const NOTE = '이 수는 «번역기의 장부»입니다 — 지금 원장에 몇 개 있는지가 아닙니다.';
+// 🔴 C-54. THE ENTRY IS WHAT `ingestion_view` BUILDS TODAY, copied in shape off the server's
+//    own witness (`server/tests/test_ledger_sources_ingestion.py:wrote()`). The position
+//    counters are GONE -- `atoms_written`, `molecules_done`, `atoms_deduped` were frozen from
+//    S-76 and the response stopped sending them -- and the census on the registry row is what
+//    decides the state now. A fixture still carrying them would score a column the response
+//    cannot send, which is how a screen keeps passing while showing a number nobody writes.
 const row = (source, state, over = {}) => ({
   source, state, declared: state !== 'orphan',
-  translator_ver: 'v2', molecules_done: 10, atoms_written: 40,
-  atoms_deduped: 2, molecules_refused: 1, updated_at: '2026-09-04T10:00:00', ...over,
+  translator_ver: 'ledger-v2:abc', molecules_refused: 1,
+  row_census: { source, relation: 'r', measured_at: '2026-09-10T00:00:00+00:00',
+                indexed_rows: { estimate: 10 } },
+  updated_at: '2026-09-04T10:00:00', ...over,
 });
-const FOUR = {
+/** 🔴 다섯 낱말과 «그 뜻» — 서버가 응답에 싣는 그대로(판정 223). 화면은 사본을 안 듭니다. */
+const STATE_WORDS = {
+  ran_and_wrote: '행 색인이 이 소스의 행을 이름 대고 있습니다 — 번역된 행이 있습니다',
+  ran_wrote_nothing: '색인된 행이 0 인데 거절이 있습니다 — 돌았고, 아무것도 안 남았습니다',
+  never_ran: '색인된 행이 0 이고 거절도 없습니다',
+  orphan: '선언에 없는 소스인데 등록부에 행이 있습니다',
+  not_measured: '아직 세지 않았습니다 — 「없다」가 아니라 「모른다」입니다',
+};
+const FIVE = {
   ingestion: {
     note: NOTE,
     unavailable: null,
-    sources: [row('a', 'ran_and_wrote'), row('b', 'ran_wrote_nothing', { atoms_written: 0 }),
-              row('c', 'never_ran', { translator_ver: null, molecules_done: null,
-                                      atoms_written: null, atoms_deduped: null,
-                                      molecules_refused: null, updated_at: null }),
-              row('d', 'orphan')],
+    states: STATE_WORDS,
+    sources: [row('a', 'ran_and_wrote'), row('b', 'ran_wrote_nothing'),
+              row('c', 'never_ran', { translator_ver: null, molecules_refused: null,
+                                      updated_at: null }),
+              row('d', 'orphan'),
+              // 🔴 다섯째: 등록부 «행이 없는» 소스. 서버가 다른 칸을 «하나도» 안 싣습니다.
+              { source: 'e', declared: true, state: 'not_measured' }],
   },
 };
 
@@ -83,17 +101,29 @@ console.log('\n[1] an unreadable cursor is not an empty ledger');
   eq('the view keeps the note even when there is nothing to count', gone.note, NOTE);
 }
 
-// ═══ ② the four stay four ═══════════════════════════════════════════════════════
+// ═══ ② the states are the server's, and so are their meanings ═════════════════
 console.log('\n[2] four states, in the server\'s own words');
 {
-  const v = sourcesView(FOUR);
+  const v = sourcesView(FIVE);
   eq('every row keeps the state the server sent',
-    v.rows.map(r => r.state), ['ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan']);
-  eq('the four are counted separately',
+    v.rows.map(r => r.state),
+    ['ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan', 'not_measured']);
+  eq('each is counted separately',
     v.byState.map(b => `${b.state}=${b.count}`),
-    ['ran_and_wrote=1', 'ran_wrote_nothing=1', 'never_ran=1', 'orphan=1']);
-  eq('and the module names exactly those four', [...STATES].sort(),
-    ['never_ran', 'orphan', 'ran_and_wrote', 'ran_wrote_nothing']);
+    ['ran_and_wrote=1', 'ran_wrote_nothing=1', 'never_ran=1', 'orphan=1', 'not_measured=1']);
+  // 🔴 C-54. THE MODULE NO LONGER NAMES THEM -- the response does. A screen holding the list
+  //    could not obey its own rule 「늘리지도 접지도 않는다」: the day the server grew a fifth
+  //    word, the side holding the copy is the side that would have had to grow it.
+  eq('the order is the SERVER list order, not one of ours',
+    v.byState.map(b => b.state), Object.keys(STATE_WORDS));
+  eq('...and each carries the meaning the server sent, verbatim',
+    v.byState.map(b => b.meaning), Object.keys(STATE_WORDS).map(k => STATE_WORDS[k]));
+  eq('the row carries it too, so the cell can show it beside the word',
+    v.rows[4].stateMeaning, STATE_WORDS.not_measured);
+  // 🔴 「행이 없다」는 이제 상태 «다섯째»입니다. 예전엔 그것이 `never_ran` 이었고, S-76 뒤로
+  //    그 문장은 거짓이었습니다 — 안 쟀을 뿐인 소스가 「한 번도 안 돌았다」로 읽혔습니다.
+  eq('a source with no registry row is not_measured, not never_ran',
+    v.rows[4].state, 'not_measured');
 
   // 🔴 A STATE THE SCREEN DOES NOT KNOW IS SHOWN, NOT DROPPED. Folding to the known four
   //    would make a new server state vanish silently.
@@ -101,6 +131,8 @@ console.log('\n[2] four states, in the server\'s own words');
     sources: [row('x', 'something_new')] } });
   eq('an unknown state is carried through verbatim', odd.rows[0].state, 'something_new');
   eq('...and counted under its own name', odd.byState.map(b => b.state), ['something_new']);
+  // ⚠️ 뜻을 «지어내지» 않습니다. 서버가 안 준 낱말은 뜻이 빈 문자열이고, 화면은 수만 그립니다.
+  eq('...with no meaning invented for it', odd.byState[0].meaning, '');
 
   // one state is not a split
   const one = sourcesView({ ingestion: { note: NOTE, unavailable: null,
@@ -113,16 +145,23 @@ console.log('\n[2] four states, in the server\'s own words');
 // ═══ ③ a count that did not arrive is a dash ════════════════════════════════════
 console.log('\n[3] missing numbers, beside the real zeros');
 {
-  const v = sourcesView(FOUR);
+  const v = sourcesView(FIVE);
   const never = v.rows[2];
-  eq('a never-run source shows a dash for atoms', never.atomsWritten, ABSENT);
-  eq('...and for molecules', never.moleculesDone, ABSENT);
-  eq('...and for the timestamp', never.updatedAt, ABSENT);
+  eq('a source with no stamp shows a dash for it', never.updatedAt, ABSENT);
   eq('...and for translator_ver', never.translatorVer, ABSENT);
-  // 🔴 the other half — a source that ran and wrote NOTHING is a real 0, not a dash
-  eq('a real zero is a zero', v.rows[1].atomsWritten, '0');
-  ok('the two are different pixels', never.atomsWritten !== v.rows[1].atomsWritten,
-    `${never.atomsWritten} / ${v.rows[1].atomsWritten}`);
+  eq('...and for a refusal count that did not arrive', never.moleculesRefused, ABSENT);
+  // 🔴 the other half — a real zero is a zero, not a dash
+  eq('a measured zero is a zero',
+    sourcesView({ ingestion: { note: NOTE, unavailable: null, states: STATE_WORDS,
+      sources: [row('z', 'ran_wrote_nothing', { molecules_refused: 0 })] } })
+      .rows[0].moleculesRefused, '0');
+  ok('the two are different pixels', never.moleculesRefused !== '0', never.moleculesRefused);
+  // ⚰️ C-54. THE FROZEN COLUMNS ARE GONE FROM THE RECORD, NOT BLANKED. A key left behind
+  //    with `—` in it says 「안 쟀다」 about a number that no longer exists, and the next
+  //    reader would put the column back.
+  ok('the position counters are absent from the record entirely',
+    !('atomsWritten' in never) && !('moleculesDone' in never) && !('atomsDeduped' in never),
+    Object.keys(never).join(','));
 }
 
 // ═══ ④ what reaches the screen ═════════════════════════════════════════════════
@@ -130,10 +169,10 @@ console.log('\n[4] the screen');
 {
   const doc = makeDoc();
   const host = doc.createElement('div');
-  const v = new LedgerSourcesPanel(host, { doc }).render(FOUR);
-  eq('four rows are drawn', rowsOf(host).length, 4);
-  eq('the header declares six', byTag(host, 'TH').length, 6);
-  eq('and each row has six cells', rowsOf(host)[0].children.length, 6);
+  const v = new LedgerSourcesPanel(host, { doc }).render(FIVE);
+  eq('five rows are drawn', rowsOf(host).length, 5);
+  eq('the header declares four — 원자·분자가 나갔습니다(C-54)', byTag(host, 'TH').length, 4);
+  eq('and each row has four cells', rowsOf(host)[0].children.length, 4);
   // 🔴 IN THE TABLE HEAD, beside the numbers it qualifies -- not a paragraph above them
   //    (owner, 2026-09-04: 「ui에 설명 문구 주저리주저리 금지」).
   eq('the note is the table caption', byTag(host, 'CAPTION').length, 1);
@@ -141,10 +180,10 @@ console.log('\n[4] the screen');
   ok('each state reaches the screen under its own name',
     ['ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan']
       .every(s => rowsOf(host).some(r => r.getAttribute('data-state') === s)));
-  ok('the two extra cursor fields ride inside the row, not in a seventh column',
-    byClass(host, 'ledger-sources-sub').length === 4
-    && /translator_ver/.test(host.textContent) && /atoms_deduped/.test(host.textContent));
-  eq('the view reports the row count for the section chip', v.count, '4');
+  ok('the surviving cursor field rides inside the row, not in a fifth column',
+    byClass(host, 'ledger-sources-sub').length === 5
+    && /translator_ver/.test(host.textContent) && !/atoms_deduped/.test(host.textContent));
+  eq('the view reports the row count for the section chip', v.count, '5');
 
   // unavailable: no table at all, and the reason on screen
   const doc2 = makeDoc();
@@ -180,11 +219,11 @@ console.log('\n[5] two panels on one page');
   const p1 = new LedgerSourcesPanel(h1, { doc });
   const p2 = new LedgerSourcesPanel(h2, { doc });
   p1.render({ ingestion: { note: NOTE, unavailable: null, sources: [row('a', 'ran_and_wrote')] } });
-  p2.render(FOUR);
+  p2.render(FIVE);
   eq('the first keeps its own rows', rowsOf(h1).length, 1);
-  eq('the second keeps its own', rowsOf(h2).length, 4);
-  p1.render(FOUR);
-  eq('a re-render replaces rather than appends', rowsOf(h1).length, 4);
+  eq('the second keeps its own', rowsOf(h2).length, 5);
+  p1.render(FIVE);
+  eq('a re-render replaces rather than appends', rowsOf(h1).length, 5);
   eq('and leaves exactly one table', byTag(h1, 'TABLE').length, 1);
 }
 
@@ -330,8 +369,8 @@ console.log('\n[7] the census: a different route, a different availability');
   // ④ with the ledger available, the census rides INSIDE the source cell — no seventh column
   const full = drawWith({ ingestion: { note: NOTE, unavailable: null,
     sources: [row('a', 'ran_and_wrote'), row('c', 'ran_and_wrote')] } }, {}, CENSUS);
-  eq('the ledger table still has six columns', byTag(full.host, 'TH').length, 6);
-  eq('...and each row still six cells', rowsOf(full.host)[0].children.length, 6);
+  eq('the ledger table still has four columns', byTag(full.host, 'TH').length, 4);
+  eq('...and each row still four cells', rowsOf(full.host)[0].children.length, 4);
   ok('the census rides inside the source cell',
     /relation_rows 117742/.test(rowsOf(full.host)[0].children[0].textContent));
   // 🔴 AND A SOURCE NOBODY COUNTED DRAWS NOTHING — 「안 쟀다」, not 「셌더니 0」.
@@ -341,11 +380,11 @@ console.log('\n[7] the census: a different route, a different availability');
     && !/relation_rows/.test(rowsOf(full.host)[1].children[0].textContent));
 
   // ⑤ no census at all changes nothing about the ledger table
-  const noCensus = drawWith(FOUR, {}, {});
-  eq('four rows still draw with no census', rowsOf(noCensus.host).length, 4);
+  const noCensus = drawWith(FIVE, {}, {});
+  eq('five rows still draw with no census', rowsOf(noCensus.host).length, 5);
   eq('...and no census line appears', censusIn(noCensus.host).length, 0);
   eq('...and the call may omit the argument entirely',
-    rowsOf(drawWith(FOUR, {}, undefined).host).length, 4);
+    rowsOf(drawWith(FIVE, {}, undefined).host).length, 5);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

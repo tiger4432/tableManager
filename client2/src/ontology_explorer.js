@@ -736,7 +736,6 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         payload.draft?.target_key || payload.selection?.key || selection || null);
       // S-39. Beside the compile, never in front of it — these are process counters and the
       // list is drawn whether or not they arrive.
-      void loadRefusals();
       void loadCensus();
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
@@ -756,44 +755,6 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
-  // 🔴 S-39. WHY THE GATE REFUSED, fetched beside the compile rather than folded into it.
-  //    Separate route, separate failure: this one is admin-token gated and the compile is not,
-  //    so a token that does not answer must not blank the declarations, and a compile that
-  //    fails must not erase counters that are still true.
-  // ⚠️ A FAILURE LEAVES `null`, WHICH IS 「안 잼」. Substituting an empty report would draw
-  //    「거절 0」 for a question that was never answered, and 「nothing was refused」 and
-  //    「nobody asked」 are opposite instructions to the operator.
-  // 🔴 THE CENSUS RIDES ON THE DECLARATION, NOT ON THE COMPILE. `sources[].census` is where
-  //    S-58 put 「표 행 N · 색인 M · 남은」, so this is a second read of a route the screen
-  //    does not otherwise need — and it is NOT admin-gated, unlike the refusal report.
-  // ⚠️ A FAILURE LEAVES THE MAP EMPTY, which renders as 「안 쟀다」 per source. That is the
-  //    honest answer: nobody counted, as opposed to 「세 봤더니 0」.
-  const loadCensus = async () => {
-    try {
-      const res = await fetch(`${apiBase}/api/ledger/declaration`);
-      if (!res.ok) return;
-      const body = await res.json().catch(() => null);
-      // 🔴 C-47: 봉투를 «푸는 것»도 같은 리더가 합니다. 대시보드 표가 같은 지도를 쓰고,
-      //    각자 풀면 서버가 칸 이름을 바꾸는 날 «한쪽만» 조용히 빈 지도가 됩니다.
-      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body) });
-    } catch (error) {
-      void error;                       // the line simply does not appear — see above
-    }
-  };
-
-  const loadRefusals = async () => {
-    try {
-      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/refusals`);
-      if (!res.ok) return;
-      const body = await res.json().catch(() => null);
-      if (body && typeof body === 'object') dispatch({ type: 'REFUSALS_RECEIVED', report: body });
-    } catch (error) {
-      // Silence here is the correct answer: the column simply does not appear. It is not a
-      // failure of the screen the operator came for, and a toast about a counter would put
-      // an error in front of someone who asked to read declarations.
-      void error;
-    }
-  };
 
   // The authoring plan is fetched per selection (the server filters it) and the closed
   // lists exactly once -- they change only when the validator's constants change, which

@@ -5,10 +5,12 @@
 //
 // ═══ 이 파일이 지키는 네 가지 ═══════════════════════════════════════════════════════
 //
-// ① 상태 «넷»을 접지 않습니다. `never_ran` · `ran_and_wrote` · `ran_wrote_nothing` ·
-//    `orphan` 은 서버의 낱말이고 그대로 나갑니다. 「정상/경고/오류」로 접으면 네 사실이
-//    셋이 되고, 무엇보다 «어느 것이 나쁜지를 서버가 말하지 않았습니다» — 화면이 그걸
-//    정하면 서버가 안 한 판단을 지어내는 것입니다. 색도 아이콘도 쓰지 않는 이유입니다.
+// ① 상태를 접지 않습니다 — 그리고 «목록도 화면이 들지 않습니다»(C-54 / 판정 223).
+//    낱말도 뜻도 응답의 `ingestion.states` 에서 옵니다. 「정상/경고/오류」로 접으면 사실이
+//    줄고, 무엇보다 «어느 것이 나쁜지를 서버가 말하지 않았습니다» — 화면이 그걸 정하면
+//    서버가 안 한 판단을 지어내는 것입니다. 색도 아이콘도 쓰지 않는 이유입니다.
+//    ⚰️ 여기 넷이 «상수»였습니다. 서버가 다섯째(`not_measured`)를 낸 날, 상수를 든 화면은
+//    그 규칙을 «지킬 수가 없었습니다» — 목록을 가진 쪽이 목록을 늘리게 되니까요.
 //    (같은 판정: 대기열의 `moving` · `cancel_reaches`)
 //
 // ② `note` 는 «표 머리의 한 줄»입니다. 지우면 이 수가 「지금 원장에 몇 개」로
@@ -34,18 +36,32 @@
 //    그립니다. 그리고 그 수를 «읽는 쪽»은 `source_backlog.js` «하나»입니다 — 탐색기
 //    인스펙터가 같은 리더를 지납니다(기준 ④: 둘이 «갈라질 수» 없어야 합니다).
 // ═══ 모양 ══════════════════════════════════════════════════════════════════════════
-// 여섯 칸: source · state · atoms_written · molecules_done · molecules_refused · updated_at
-// 🔴 일곱째 칸을 만들지 «않습니다». 좁은 패널에서 표가 넘치는 것을 546~346px 전 구간
+// 네 칸: source · state · molecules_refused · updated_at
+// ⚰️ C-54 로 «원자·분자»가 나갔습니다 — S-76 뒤 아무도 그 칸을 안 써서 «얼어붙은 수»였고,
+//    화면은 그것을 현재형으로 말하고 있었습니다. 빈 칸으로 두면 「안 쟀다」로 읽히므로 칸째.
+// 🔴 다섯째 칸을 만들지 «않습니다». 좁은 패널에서 표가 넘치는 것을 546~346px 전 구간
 //    0 으로 만들어 둔 라운드가 있고(2026-09-04), 칸을 하나 더하면 그 수를 도로 씁니다.
-//    `translator_ver` 와 `atoms_deduped` 는 행 «안»의 보조 줄로 갑니다.
+//    `translator_ver` 는 행 «안»의 보조 줄, 상태의 «뜻»과 인구조사도 행 안입니다.
 // 클래스는 자기 mount 와 deps 를 받습니다 — 한 화면에 둘을 놓아도 서로를 안 건드립니다.
 
 import { ABSENT, countText, localeCountText } from './absent.js';
 
-/** 서버가 쓰는 네 낱말. 화면은 이 목록을 «늘리지도 접지도» 않습니다. */
-export const STATES = Object.freeze([
-  'ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan',
-]);
+/**
+ * C-54 / 판정 223 — 상태 «목록»도 서버가 줍니다. 화면이 자기 사본을 안 듭니다.
+ *
+ * 🔴 여기 넷이 «상수»였고, 서버가 다섯째(`not_measured`)를 낸 날 화면은 그것을 「모르는 낱말」로
+ *    떨어뜨렸을 것입니다 — 이 파일의 규칙 ①(「늘리지도 접지도 않는다」)이 «목록을 들고 있는 한»
+ *    지켜질 수 없었습니다. 이제 `ingestion.states = {이름: 한 줄 뜻}` 을 «그대로» 받습니다.
+ * ⚠️ 뜻도 서버 문장 그대로입니다. 여기서 다시 쓰면 규칙이 바뀌는 날 화면이 옛 뜻으로 옳아 보입니다.
+ */
+function stateMeanings(ing) {
+  const src = ing && ing.states && typeof ing.states === 'object' && !Array.isArray(ing.states)
+    ? ing.states : null;
+  if (!src) return Object.freeze({});
+  const out = {};
+  for (const name of Object.keys(src)) out[String(name)] = String(src[name] == null ? '' : src[name]);
+  return Object.freeze(out);
+}
 
 /** 사유 이름은 «서버 낱말»입니다 — 번역하지 않고, «전부» 나갑니다(자르지 않습니다). */
 function reasonsOf(s) {
@@ -125,6 +141,9 @@ export function sourcesView(payload, opts = {}, census = {}) {
     });
   }
 
+  // 🔴 상태 «목록과 뜻»은 서버가 줍니다(판정 223). 한 번 읽어 행과 머리 줄이 같이 씁니다 —
+  //    두 번 읽으면 그 둘이 갈라질 수 있고, 그것이 이 파일이 피하는 모양입니다.
+  const stateWords = stateMeanings(ing);
   const src = Array.isArray(ing.sources) ? ing.sources : [];
   const rows = src.map(s => Object.freeze({
     source: String((s && s.source) == null ? '' : s.source),
@@ -133,14 +152,19 @@ export function sourcesView(payload, opts = {}, census = {}) {
     // 규칙 ①: 서버의 낱말 그대로. 모르는 낱말이 와도 «그대로» 보여 줍니다 —
     // 화면이 아는 넷으로 «접으면» 새 상태가 조용히 사라집니다.
     state: String((s && s.state) == null ? '' : s.state),
+    // 뜻은 «서버 문장 그대로». 모르는 낱말이면 빈 문자열 — 지어내지 않습니다.
+    stateMeaning: (() => {
+      const name = String((s && s.state) == null ? '' : s.state);
+      return Object.prototype.hasOwnProperty.call(stateWords, name) ? stateWords[name] : '';
+    })(),
     declared: !!(s && s.declared),
-    atomsWritten: localeCountText(s && s.atoms_written),
-    moleculesDone: localeCountText(s && s.molecules_done),
+    // ⚰️ C-54. `atoms_written` · `molecules_done` · `atoms_deduped` 는 «응답에서 사라졌습니다»
+    //    (S-113: S-76 뒤 아무도 그 칸을 안 썼고, 화면은 얼어붙은 수를 현재형으로 말했습니다).
+    //    빈 칸으로 두지 «않습니다» — 빈 칸은 「안 쟀다」이고, 이건 「이제 그런 수가 없다」입니다.
     moleculesRefused: localeCountText(s && s.molecules_refused),
     updatedAt: (s && s.updated_at) ? String(s.updated_at) : ABSENT,
     // 보조 줄 — 칸을 늘리지 않기 위해 행 안에 둡니다
     translatorVer: (s && s.translator_ver) ? String(s.translator_ver) : ABSENT,
-    atomsDeduped: countText(s && s.atoms_deduped),
     // 🔴 셋을 접지 «않습니다». `none`(거절이 없었다) · `named`(분해가 있다) ·
     //    `unknowable`(이 행이 컬럼보다 오래됐다) 는 서로 «다른 사실»이고, 접으면
     //    「모른다」와 「없다」가 같은 픽셀이 됩니다. 그리고 «키가 아예 없는» 것이 넷째입니다 —
@@ -156,11 +180,18 @@ export function sourcesView(payload, opts = {}, census = {}) {
     })(),
   }));
 
-  // 상태별 수. 서버가 준 순서가 아니라 «나온 순서»로 세되, 아는 넷을 먼저 놓습니다.
+  // 상태별 수. 순서는 «서버가 준 목록»의 순서이고, 그 목록에 없는 낱말이 오면 «뒤에 그대로»
+  // 붙습니다 — 접지도 버리지도 않습니다(규칙 ①).
+  const known = Object.keys(stateWords);
   const seen = new Map();
   for (const r of rows) seen.set(r.state, (seen.get(r.state) || 0) + 1);
-  const ordered = [...STATES.filter(s => seen.has(s)), ...[...seen.keys()].filter(s => !STATES.includes(s))];
-  const byState = ordered.map(state => Object.freeze({ state, count: countText(seen.get(state)) }));
+  const ordered = [...known.filter(s => seen.has(s)), ...[...seen.keys()].filter(s => !known.includes(s))];
+  // 🔴 뜻은 «값 옆»의 한 줄입니다 — 단락이 아닙니다(소유자 상설 2026-09-04).
+  //    서버가 안 준 낱말은 뜻이 «빈 문자열»이고, 그때 화면은 수만 그립니다(지어내지 않습니다).
+  const byState = ordered.map(state => Object.freeze({
+    state, count: countText(seen.get(state)),
+    meaning: Object.prototype.hasOwnProperty.call(stateWords, state) ? stateWords[state] : '',
+  }));
 
   return Object.freeze({
     available: true,
@@ -302,6 +333,9 @@ export class LedgerSourcesPanel {
       for (const s of view.byState) {
         const line = this._line('ledger-sources-state', `${s.state} · ${s.count}`);
         line.setAttribute('data-state', s.state);
+        // 🔴 C-54. 「이 낱말이 무슨 뜻인가」는 서버가 «값으로» 보냅니다. 값 옆에 답니다 —
+        //    툴팁이라 표를 넓히지 않고, 화면이 그 문장의 두 번째 저자가 되지 않습니다.
+        if (s.meaning) line.title = s.meaning;
         strip.appendChild(line);
       }
       this.root.appendChild(strip);
@@ -324,9 +358,11 @@ export class LedgerSourcesPanel {
     const thead = doc.createElement('thead');
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
+    // ⚰️ C-54. 「원자」와 「분자」가 나갔습니다 — 그 수를 서버가 더 이상 «안 보냅니다»(얼어붙어
+    //    있었습니다). 빈 칸으로 남기면 「안 쟀다」로 읽히므로 칸째 없앱니다.
     for (const [label, width, align] of [
-      ['Source', '150px', ''], ['State', '130px', ''], ['원자', '80px', 'center'],
-      ['분자', '80px', 'center'], ['거절', '70px', 'center'], ['마지막', '', ''],
+      ['Source', '150px', ''], ['State', '130px', ''],
+      ['거절', '70px', 'center'], ['마지막', '', ''],
     ]) {
       const th = doc.createElement('th');
       th.textContent = label;
@@ -346,12 +382,14 @@ export class LedgerSourcesPanel {
 
       // 보조 줄과 인구조사가 이름 칸 «안»에 삽니다 — 일곱째 칸 대신입니다
       tr.appendChild(this._nameCell(r.source, r.census,
-        `translator_ver ${r.translatorVer} · atoms_deduped ${r.atomsDeduped}`));
+        `translator_ver ${r.translatorVer}`));
 
       // 🔴 서버의 낱말 그대로. `data-state` 로 나가지만 «색은 없습니다».
-      tr.appendChild(this._td(r.state));
-      tr.appendChild(this._td(r.atomsWritten, 'center'));
-      tr.appendChild(this._td(r.moleculesDone, 'center'));
+      // 🔴 C-54. 상태 낱말 옆에 «서버가 준 뜻» 한 줄(툴팁). 다섯 낱말 중 넷은 이 박스에
+      //    안 나타나므로, 뜻이 없으면 조작자는 그 낱말을 «추측»합니다.
+      const tdState = this._td(r.state);
+      if (r.stateMeaning) tdState.title = r.stateMeaning;
+      tr.appendChild(tdState);
       // 🔴 「몇 개」 옆에 「무슨 사유로 몇 개」. 수만 있으면 운영자가 수까지 가고 멈춥니다.
       //    ⚠️ 칸을 «늘리지 않습니다» — 같은 칸 안에서 줄로 쌓입니다.
       const tdRefused = this._td(r.moleculesRefused, 'center');

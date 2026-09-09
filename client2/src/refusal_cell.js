@@ -111,49 +111,11 @@ export function refusalSamples(refused) {
   });
 }
 
-/**
- * @param {object} report `GET /admin/ontology-explorer/refusals` 응답, 그대로
- * @param {string} sourceId 그 행의 소스 id (문지기가 세는 키와 «같은 이름»)
- * @returns {{text: string, title: string, since: string}}
- */
-export function refusalCell(report, sourceId) {
-  const none = { text: '', title: '', since: '' };
-  if (!report || typeof report !== 'object') return Object.freeze({ ...none });
-  const since = report.since != null && String(report.since) !== ''
-    ? `${SINCE_MARK} ${String(report.since)}` : '';
-  const sources = report.sources && typeof report.sources === 'object' ? report.sources : {};
-  const entry = sourceId != null ? sources[String(sourceId)] : null;
-  if (!entry || typeof entry !== 'object') return Object.freeze({ text: '', title: '', since });
-
-  const reasons = entry.reasons && typeof entry.reasons === 'object' ? entry.reasons : {};
-  // 🔴 이 봉투를 «저 봉투의 모양»으로 옮기고 문장은 `refusalSummary` 가 짓습니다 — 시험 실행
-  //    머리와 «같은 철자»여야 하고, 다른 것은 모양뿐입니다(여기 `{사유: {count}}`, 저기 `{사유: count}`).
-  // ⚠️ 거르기도 세기도 «여기서 다시 하지 않습니다». 한 번 더 하면 그 갈래가 «죽은 채»로 남고,
-  //    실제로 그랬습니다 — 그 두 줄을 지우는 변이가 답을 «하나도» 안 바꿔 빠져나갔습니다.
-  const counts = {};
-  for (const k of Object.keys(reasons)) {
-    counts[k] = Number(reasons[k] && reasons[k].count) || 0;
-  }
-  // ⚠️ 여기 「빈 문장이면 일찍 돌아간다」가 «있었고 지웠습니다» — 그대로 떨어져도 `named` 가
-  //    비어 표본이 없고 «같은 값»이 나옵니다. 그 갈래를 지우는 변이가 답을 하나도 안 바꿔
-  //    빠져나갔고, 등가 변이는 공허한 단언으로 쫓을 것이 아니라 «없앨 코드»입니다.
-  //    「쟀는데 0 이면 안 그린다」를 실제로 정하는 자리는 `refusalSummary` 의 `total === 0` 입니다.
-  const text = refusalSummary(counts);
-  // 표본은 「많은 사유부터」 — 뜻을 짓는 것이 아니라 순서입니다.
-  const named = Object.keys(counts)
-    .filter(k => counts[k] > 0)
-    .sort((a, b) => counts[b] - counts[a] || (a < b ? -1 : 1))
-    .map(k => ({ reason: k }));
-  // 🔴 표본 문장은 «그대로». 문지기가 조작자의 다음 행동을 이미 그 안에 적어 두었고,
-  //    다시 쓰거나 자르면 수는 남고 «수리 방법»이 사라집니다.
-  const details = [];
-  for (const r of named) {
-    const samples = Array.isArray(reasons[r.reason].samples) ? reasons[r.reason].samples : [];
-    for (const s of samples) {
-      if (s && s.detail != null && String(s.detail) !== '') details.push(String(s.detail));
-      if (details.length >= SAMPLES_SHOWN) break;
-    }
-    if (details.length >= SAMPLES_SHOWN) break;
-  }
-  return Object.freeze({ text, title: details.join('\n'), since });
-}
+// ⚰️ C-54. `refusalCell` 은 «은퇴했습니다». 그것이 읽던 라우트
+//    `GET /admin/ontology-explorer/refusals` 가 404 가 됐고(S-113/S-114: 거절 분해는 이제
+//    등록부 행의 `refusal_reasons` 로 오며, 그것을 그리는 자리는 소스 상태 패널입니다).
+//    남겨 두면 «아무도 안 타는 갈래»이고, 그 조용한 404 가 화면을 «빈 칸»으로 만들면서도
+//    「거절 없음」처럼 보이던 것이 이 라운드가 지운 결함입니다.
+//    ⚠️ 같이 지운 것: 탐색기 소스 목록의 「왜」 꼬리표와 그 무리 머리의 `since` 한 줄.
+//    그 자리를 «다시 채울지»는 판정이지 이 라운드가 아닙니다 — 재료는 등록부 행에 있습니다.
+//    `refusalSummary` · `excludedNote` · `refusalSamples` 는 시험 실행 화면이 씁니다.

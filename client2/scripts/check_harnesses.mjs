@@ -248,7 +248,7 @@ const FLOORS = new Map([
   // -- the server keeps 'could not read' and 'nothing ran' apart on purpose -- and the four
   // states stay four rather than folding into normal/warning/error, because the server never
   // said which of them is bad and a screen deciding that would be inventing a judgement.
-  ['ledger_sources_panel_harness.mjs', 82],
+  ['ledger_sources_panel_harness.mjs', 86],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
@@ -838,7 +838,15 @@ const FLOORS = new Map([
   //    the truncation pair is the one to keep — this envelope carries NO capped flag
   //    (backfill's `refused_samples_capped` is a DIFFERENT envelope), so 「20 이 전부」
   //    and 「20 까지만 봤다」 are told apart by counting, and two mutants ring on it.
-  ['refusal_cell_harness.mjs', 40],
+  // 🔴 LOWERED 40 -> 24 ON 2026-09-10 WITH C-54, AND THE REASON IS A RETIREMENT, NOT A LOSS.
+  //    `refusalCell` read `GET /admin/ontology-explorer/refusals`, which now answers 404
+  //    (S-113/S-114 moved the breakdown onto the registry row). Sixteen assertions and
+  //    three mutants measured that function and went with it -- assertions whose subject
+  //    is gone are green about nothing. What they protected did NOT go: 「0 인 사유는 마디를
+  //    만들지 않는다」 lost its only scorer when the block went, a mutant escaped GREEN
+  //    proving it, and it was re-anchored onto `refusalSummary` (B0). A floor lowered
+  //    without that sentence is a retreat.
+  ['refusal_cell_harness.mjs', 24],
   // New 2026-09-09 with C-49's other half. Floor is the count it reports on the commit
   // that introduces it. 🔴 THE PURE FUNCTION BEING RIGHT IS NOT THE SCREEN DRAWING IT --
   //    that is the gap this defect lived in. Both controls are paired runs differing in
