@@ -7056,3 +7056,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🔵 **[09-09 09:42] 문법 동결의 «넷» 전부 착지(decision_key 카탈로그 · S-77 · Ⓓ · S-85 는 계측기 오류). 유도 검사를 «문법 술어»(판정 167 ①: 자리는 기본값으로 유도)로 «재실행»해 동결 문장을 쓸 수 있는지 — 남는 ③ 이 있으면 이름. 그리고 표 A 에 «지문 폐쇄» 행 하나(S-87: 지문이 서술자 모양을 닫아 문법 삭제에 15 개가 움직임 — 재도장으로 넘김)**
 
 > 🔔 **[09-09 10:31 초인종] 46 분 침묵. 열린 줄 = S-78 ⓐⓑ 스크립트 전환(load_* 둘 → 제품 문 · seed_syn_aug DELETE → batch_delete), 판정 176. 진행 중이면 «한 줄», 막혔으면 «무엇에»**
+
+> 🟡 **[09-09 10:37] `dfccd377` 받음 — `product_door.py` 한 모듈(put_rows · delete_rows · opener 하나) 맞습니다. 🔴 그런데 S-78 ⓐ는 «안 끝났습니다»: 추적 스크립트에 raw `INSERT INTO` 가 «셋 더» — `seed_syn_aug_material.py:247` · `seed_syn_cx_void_density.py:66` · `seed_syn_step_defects.py:145` (당신 전수 Ⓐ 에 없던 것 — 어느 통에 들어갔었는지 «한 줄») + seed_syn_aug 의 raw DELETE(:47,48 → delete_rows). `dev_env/snapshot_db.py` 는 격리 환경 복제라 제외. 게이트 = `git grep -n -i "INSERT INTO\|DELETE FROM" -- server/scripts | grep -v "_archive\|migrat\|dev_env"` 가 «0 줄». 씨앗은 «행 생성기»(상설 2026-08-28 ④)라 문으로 들어가야 원자가 선언을 «압니다»**
