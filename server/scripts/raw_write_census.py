@@ -14,7 +14,7 @@ everything.
 
 THE THREE BUCKETS, and only the first is the gate:
 
-    write       SQL on a line that is neither a docstring nor a print. The gate is 0.
+    write       SQL on a line that is neither a docstring, a comment, nor a print. Gate 0.
     printed     SQL inside a `print(...)` - rollback instructions on stdout. Keep.
     docstring   SQL inside a bare string expression - how to recover. Keep.
 
@@ -37,14 +37,29 @@ SQL = re.compile(r"\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET)\b", re.I)
 #:   migrat    schema migrations - DDL and one-time data moves are not the product's writes
 #:   dev_env   isolated-environment cloning; a restore puts a whole state down at once and
 #:             is outside the algebra rather than a write that skipped the door
-SKIP = ("_archive", "migrat", "dev_env")
+#: 🔴 EXCLUDED BY NAME PATTERN, NEVER BY A HAND-KEPT LIST (ruling 186). A list of file
+#: names would need editing every time one is added, and the day it is not edited the gate
+#: reads green for a file nobody classified. A prefix is a claim the file makes about
+#: itself, and it comes with an obligation: a `migrate_`/`ops_` script writes ledger or
+#: outbox tables that the product door does not serve, and carries S-77's shape - dry run by
+#: default, `--apply --i-accept-writing-to-owner-database` to write.
+SKIP_DIRS = ("_archive", "dev_env")
+SKIP_PREFIXES = ("migrate_", "ops_")
 
 
 def tracked_scripts(root="server/scripts"):
     listing = subprocess.run(["git", "ls-files", root],
                              capture_output=True, text=True).stdout.split()
-    return [path for path in listing
-            if path.endswith(".py") and not any(part in path for part in SKIP)]
+    kept = []
+    for path in listing:
+        if not path.endswith(".py"):
+            continue
+        if any(part in path for part in SKIP_DIRS):
+            continue
+        if os.path.basename(path).startswith(SKIP_PREFIXES):
+            continue
+        kept.append(path)
+    return kept
 
 
 def _spans(tree, matches):
