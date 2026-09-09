@@ -25,7 +25,7 @@ from ledger.envelope import canonical_keys
 from ledger.roleframe import RoleMapperImplementationRegistry
 from ledger.runtime_v2 import (
     LedgerV2RuntimeError,
-    execute_cursor_batch,
+    execute_scoped_batch,
     preview_cursor_batch,
 )
 from ledger.setup_bundle import (
@@ -454,18 +454,18 @@ def test_incomplete_pair_lands_visible_claims_and_updates_existing_cursor_metric
 
     class Store:
         def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                        refused=0, incomplete=0, *, reasons,
-                        enforce_translator_version=False, row_refs=None):
+                        refused=0, incomplete=0, *, reasons, advance_cursor=True,
+                        withdraw_refs=None, row_refs=None):
             calls.append({"atoms": tuple(atoms), "molecules": molecules,
-                          "refused": refused, "incomplete": incomplete})
+                          "refused": refused, "incomplete": incomplete,
+                          "advance_cursor": advance_cursor})
             return {"attempted": len(atoms), "inserted": len(atoms),
                     "deduped": 0, "molecules": molecules}
 
     gate.reset_counters()
-    result = execute_cursor_batch(
+    result = execute_scoped_batch(
         compiled_lot_event(), "lot_event", frame,
-        {"event_time": frame.iloc[0]["event_time"],
-         "row_identity": frame.iloc[0]["row_identity"]},
+        ("row_identity", sorted(frame["row_identity"].tolist())),
         NoJoinReader(), preparers(), mappers(), Store(), known_registrations=())
 
     assert result.preview.incomplete_count == 1

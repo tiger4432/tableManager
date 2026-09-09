@@ -66,9 +66,9 @@ def main(argv=None) -> int:
             self._inner = inner
             self.written = {}
 
-        def write_row_census(self, source, census):
+        def write_row_census(self, source, census, **kwargs):
             self.written[source] = census
-            return self._inner.write_row_census(source, census)
+            return self._inner.write_row_census(source, census, **kwargs)
 
         def __getattr__(self, name):
             return getattr(self._inner, name)
@@ -77,8 +77,7 @@ def main(argv=None) -> int:
     if args.source is None:
         backfill.measure_every_source(engine, setup, store=store)
     else:
-        store.write_row_census(
-            args.source, backfill.measure_row_census(engine, setup, args.source))
+        backfill.measure_and_store(engine, setup, args.source, store)
     measured = store.written
 
     if args.json:

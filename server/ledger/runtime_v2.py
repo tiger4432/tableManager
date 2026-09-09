@@ -197,73 +197,18 @@ def preview_cursor_batch(
     )
 
 
-def execute_cursor_batch(
-    snapshot: LedgerSetupSnapshot,
-    source_id: str,
-    base_rows: pd.DataFrame,
-    cursor_value: Mapping[str, Any],
-    join_reader: VerifiedJoinBatchReader,
-    preparers: SourcePreparerImplementationRegistry,
-    mappers: RoleMapperImplementationRegistry,
-    store: Any,
-    *,
-    known_registrations: Any = None,
-    retranslate_approved: bool = False,
-) -> CursorBatchExecutionResult:
-    """Gate every complete event, then append atoms + cursor in LedgerStore once.
-
-    🔴 THIS IS THE FORWARD SCAN, and "atoms + cursor in one transaction" is a promise
-    about it specifically. There is a second caller of the same store door now -
-    `execute_scoped_batch` below - which redoes a NAMED PART of a source and therefore must
-    not move the position at all. The two are not two doors and not two write paths: they
-    share this module's preview, this module's screening, and `store.write_batch`. They
-    differ in one statement, and which one they get is decided HERE rather than by the
-    store, so a reader of either function can see the whole answer without leaving it.
-
-    🔴 `retranslate_approved` ARRIVES AS AN ARGUMENT AND NOTHING ELSE. The store's
-    version guard is the SECOND place this refusal lives - the first is `backfill.run` - and
-    a refusal in two places needs the approval in both. Passing it through global state or an
-    environment variable would make「who approved this write」unanswerable at the call site.
-    """
-    preview = preview_cursor_batch(
-        snapshot, source_id, base_rows, cursor_value, join_reader, preparers, mappers,
-        known_registrations=known_registrations)
-    kept_all = _screened_atoms(snapshot, source_id, preview)
-    try:
-        written = store.write_batch(
-            source_id,
-            preview.translator_version,
-            kept_all,
-            dict(preview.cursor_value),
-            preview.molecule_count,
-            refused=len(preview.refusals),
-            incomplete=preview.incomplete_count,
-            reasons=_refusal_reasons(preview.refusals),
-            # Still True by default: without an approval the store refuses exactly as before.
-            enforce_translator_version=not retranslate_approved,
-            # 🔴 THE FORWARD SCAN IS WHERE THE INDEX IS BUILT. The scoped door fills it too,
-            # but a source is read forward once and rescoped rarely -- an index that only
-            # the rescope wrote would name a few rows out of millions and a delete would
-            # look like it worked.
-            row_refs=preview.row_refs,
-        )
-    except TypeError as exc:
-        # A store implementation without the version-guarded existing transaction is
-        # not a supported Stage 6 sink; fail before pretending the cursor was protected.
-        if "enforce_translator_version" in str(exc) or "row_refs" in str(exc):
-            raise LedgerV2RuntimeError(
-                "unsupported_store_contract", "store.write_batch",
-                "LedgerStore must enforce the setup snapshot cursor version",
-            ) from exc
-        raise
-    _record_refusals(source_id, preview)
-    if preview.incomplete_count:
-        gate.record_incomplete(source_id, preview.incomplete_count)
-    return CursorBatchExecutionResult(
-        preview=preview,
-        store_result=MappingProxyType(dict(written)),
-    )
-
+#: ⚰️ `execute_cursor_batch` — the forward-scan door that wrote the cursor row. Retired
+#: with S-113 ⓐ (ruling 221): after S-76 the live path drains through events and calls the
+#: store with `advance_cursor=False`, so this function had ZERO product callers and the
+#: `INSERT` it reached was the only thing that ever created a row in the cursor table -- a
+#: door that wrote nothing and blocked nothing while still being the answer a reader found
+#: when asking 「who advances the cursor」. The forward scan lives in `backfill._run_via_events`
+#: -> `execute_scoped_batch`, and the source's registry row is now written by the census tick
+#: (`backfill.measure_and_store`, one statement, with the fingerprint).
+#:
+#: ⚠️ WHAT DID NOT GO WITH IT: `store._advance_cursor` and `write_batch(advance_cursor=True)`
+#: are still reachable from the seven seed scripts, which is the second door the standing rule
+#: already names -- converting those is a separate ruling, not this one.
 
 def execute_scoped_batch(
     snapshot: LedgerSetupSnapshot,

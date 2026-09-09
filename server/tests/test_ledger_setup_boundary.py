@@ -18,7 +18,7 @@ from ledger.setup import (
     DEFAULT_ONTOLOGY_ROOT,
     LedgerSetupError,
     dry_run_report,
-    execute_selected_cursor_batch,
+    execute_selected_scoped_batch,
     live_physical_catalog,
     load_setup,
     main as setup_main,
@@ -47,8 +47,8 @@ class RecordingStore:
         self.calls = []
 
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                    refused=0, incomplete=0, *, reasons,
-                    enforce_translator_version=False, row_refs=None):
+                    refused=0, incomplete=0, *, reasons, advance_cursor=True,
+                    withdraw_refs=None, row_refs=None):
         self.calls.append({
             # S-54-b: which physical row each `source_raw_ref` came from, written in the
             # same transaction as the atoms -- so a DELETE can still name them afterwards.
@@ -57,11 +57,12 @@ class RecordingStore:
             "translator_ver": translator_ver,
             "atoms": tuple(atoms),
             "cursor_value": dict(cursor_value),
+            "advance_cursor": advance_cursor,
             "molecules": molecules,
             "refused": refused,
             "incomplete": incomplete,
             "reasons": dict(reasons),
-            "enforce_translator_version": enforce_translator_version,
+            "withdraw_refs": withdraw_refs,
         })
         return {"attempted": len(atoms), "inserted": len(atoms),
                 "deduped": 0, "molecules": molecules}
@@ -279,23 +280,20 @@ def test_selected_execute_reuses_preview_candidates_and_existing_store_transacti
         setup, "lot_event", frame, cursor_for(frame), NoJoinReader(),
         known_registrations=(),
     )
-    executed = execute_selected_cursor_batch(
-        setup, "lot_event", frame, cursor_for(frame), NoJoinReader(), store,
-        known_registrations=(),
+    executed = execute_selected_scoped_batch(
+        setup, "lot_event", frame, ("row_id", sorted(frame["row_id"].tolist())),
+        NoJoinReader(), store, known_registrations=(),
     )
 
     assert executed.preview.candidate_semantics == preview.candidate_semantics
     assert len(store.calls) == 1
-    # Built from the DECLARATION for the reason `cursor_for` gives above: this line said
-    # (event_time, txn_seq) for as long as the declaration did, and went on saying it
-    # after the declaration moved to `row_id`. Values are rendered the way the writer
-    # renders them - a timestamp arrives as its isoformat - so what is pinned is WHICH
-    # columns and WHICH row, not a spelling of either.
-    assert store.calls[0]["cursor_value"] == {
-        column: value.isoformat() if isinstance(value, pd.Timestamp) else value
-        for column, value in cursor_for(frame).items()}
-    assert store.calls[0]["enforce_translator_version"] is True
     assert len(store.calls[0]["atoms"]) == preview.atom_count
+    # ⚰️ THE CURSOR ASSERTIONS WENT WITH `execute_selected_cursor_batch` (S-113 ⓐ, ruling
+    # 221): it had no product caller after S-76 and its wrapper went with it. What this
+    # asserted - that the value handed to the writer is built from the DECLARATION rather
+    # than spelled in the test - now lives on `cursor_for` above, which reads the columns
+    # off the plan and is still what the preview is given.
+    assert store.calls[0]["advance_cursor"] is False
 
 
 # RETIRED: test_v2_mode_requires_approved_parity.

@@ -149,14 +149,30 @@ def test_a_source_that_cannot_be_counted_is_stamped_refused_and_not_zero():
 
 # ----------------------------------------------------------------- the sweep
 
-def test_one_source_failing_does_not_silence_the_rest():
+def test_one_source_failing_does_not_silence_the_rest(monkeypatch):
     """A relation that was dropped must cost its own number and not the fourteen after it —
-    the shape the follow-up loop already carries."""
+    the shape the follow-up loop already carries.
+
+    ⚠️ THE FINGERPRINT IS STUBBED AND NOTHING ELSE IS. Since S-113 ⓑ-1 the census write is
+    what CREATES a source's registry row, so it carries `cursor_translator_version` - which
+    reads a whole compiled snapshot (plan, profile mappings, reachable entities). Faking
+    that to reach this file's subject would be a second declaration; stubbing the one
+    function keeps the subject where it is, which is the sweep's per-source isolation.
+    """
+    from ledger import setup_registry
+
+    monkeypatch.setattr(setup_registry, "cursor_translator_version",
+                        lambda snapshot, source_id: f"ledger-v2:{source_id}")
+
     class _Store:
         def __init__(self):
             self.written = []
 
-        def write_row_census(self, source, census):
+        def write_row_census(self, source, census, *, translator_ver):
+            # S-113 ⓑ-1: the write carries the fingerprint because it is now what CREATES
+            # the source's registry row, so a double that dropped it would let the sweep
+            # keep calling a signature the store no longer has.
+            assert translator_ver
             self.written.append(source)
 
     class _Broken(_Engine):

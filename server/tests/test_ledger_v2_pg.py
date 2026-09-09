@@ -21,7 +21,7 @@ from sqlalchemy.pool import NullPool
 
 from ledger import backfill, gate, schema
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
-from ledger.runtime_v2 import execute_cursor_batch, preview_cursor_batch
+from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
 from ledger.setup_bundle import validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
@@ -32,7 +32,8 @@ from ledger.source_preparation import (
     SourcePreparationError,
     SourcePreparerImplementationRegistry,
 )
-from ledger.store import CursorVersionConflict, LedgerStore
+from ledger.setup_registry import cursor_translator_version
+from ledger.store import LedgerStore
 from ledger_trace import DEFAULT_RESOLVER_CONFIG, coverage
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
@@ -291,6 +292,18 @@ def _cursor(base):
             "record_id": base.iloc[-1]["record_id"]}
 
 
+def _scope(base):
+    """Every row of this batch, named. The live door refuses an unscoped whole-source write.
+
+    These proofs used to drive `execute_cursor_batch`, which took a cursor here and wrote
+    the position; it retired with S-113 ⓐ (ruling 221) for having no product caller after
+    S-76. The storage properties below - one transaction, dedupe on replay, a refusal
+    leaving nothing behind - belong to the door the live path uses, so that is the door
+    they are asked of.
+    """
+    return ("join_id", sorted(base["join_id"].tolist()))
+
+
 def _counts(case):
     with case["runtime"].connect() as connection:
         atoms = connection.execute(text(
@@ -309,8 +322,8 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
         dry = preview_cursor_batch(
             case["compiled"], "input_rows", base, _cursor(base),
             SQLAlchemyVerifiedJoinBatchReader(session), *_registries())
-        result = execute_cursor_batch(
-            case["compiled"], "input_rows", base, _cursor(base),
+        result = execute_scoped_batch(
+            case["compiled"], "input_rows", base, _scope(base),
             SQLAlchemyVerifiedJoinBatchReader(session), *_registries(), case["store"])
     finally:
         session.rollback()
@@ -318,20 +331,28 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
 
     assert result.preview.candidate_semantics == dry.candidate_semantics
     assert result.store_result["inserted"] == dry.atom_count == 1
-    assert _counts(case) == (1, 1)
+    # ⚰️ IT USED TO BE `(1, 1)` AND READ THE CURSOR ROW BACK. The second number was the
+    # registry row, which only the retired forward-scan door ever created; the live door
+    # writes atoms and no position at all (S-113 ⓐ). A source gets its row from the census
+    # tick now (`backfill.measure_and_store`), which this fixture does not run - so 0 here
+    # is the honest count rather than a loss of coverage, and the fingerprint the cursor
+    # assertion used to pin is asserted directly on the preview below.
+    assert _counts(case) == (1, 0)
+    assert result.preview.translator_version == cursor_translator_version(
+        case["compiled"], "input_rows")
     raw = case["runtime"].raw_connection()
     try:
-        cursor = case["store"].read_cursor(raw, "input_rows")
         cov = coverage(raw, config=DEFAULT_RESOLVER_CONFIG)
-        walked = trace(
-            "NO-LOT", lookup=SqlClaimLookup(raw, relation=schema.LEDGER_TABLE),
-            config=DEFAULT_RESOLVER_CONFIG)
     finally:
         raw.close()
-    assert cursor["translator_ver"] == result.preview.translator_version
-    assert cursor["cursor_value"] == dict(result.preview.cursor_value)
     assert cov["state"] == "ready"
-    assert walked["hops"] and walked["terminal_reason"]
+    # ⚰️ THE WALK HALF CALLED A FUNCTION THAT DOES NOT EXIST. `ledger_trace.trace` is gone
+    # (`resolve` and the subgraph walk replaced it) and the line raised `NameError` before
+    # any assertion - unnoticed because this whole module skips unless
+    # `ASSY_PG_TEST_DATABASE_URL` is set, which is `test_ledger_l1_pg.py`'s false green
+    # (S-104) in its twin. Removed rather than renamed: what it asserted - that a walk from
+    # a seeded subject returns hops - is not this module's subject, and guessing a
+    # replacement would pin a walk nobody chose.
     with case["admin"].connect() as connection:
         assert connection.execute(text(
             f'SELECT count(*) FROM public."{SOURCE_TABLE}"')).scalar() == 1
@@ -339,15 +360,15 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
             f'SELECT count(*) FROM public."{RIGHT_TABLE}"')).scalar() == 1
 
 
-def test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0(clean_pg_v2):
+def test_postgres_missing_join_and_ambiguous_reader_leave_atom0(clean_pg_v2):
     case = clean_pg_v2
     _seed(case, with_right=False)
     base = _base_batch(case)
     session = case["sessionmaker"]()
     try:
         with pytest.raises(SourcePreparationError) as missing:
-            execute_cursor_batch(
-                case["compiled"], "input_rows", base, _cursor(base),
+            execute_scoped_batch(
+                case["compiled"], "input_rows", base, _scope(base),
                 SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
                 case["store"])
     finally:
@@ -367,8 +388,8 @@ def test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0(clean_pg
     session = case["sessionmaker"]()
     try:
         with pytest.raises(SourcePreparationError) as ambiguous:
-            execute_cursor_batch(
-                case["compiled"], "input_rows", base, _cursor(base),
+            execute_scoped_batch(
+                case["compiled"], "input_rows", base, _scope(base),
                 AmbiguousReader(session), *_registries(), case["store"])
     finally:
         session.rollback()
@@ -402,38 +423,21 @@ def test_postgres_missing_join_and_ambiguous_reader_leave_atom0_cursor0(clean_pg
 # assertion was reached.
 
 
-def test_postgres_cursor_snapshot_conflict_rolls_back_insert_and_cursor(clean_pg_v2):
-    case = clean_pg_v2
-    _seed(case)
-    base = _base_batch(case)
-    with case["runtime"].begin() as connection:
-        connection.execute(text(f'''
-            INSERT INTO {schema.CURSOR_TABLE}
-                (source, translator_ver, cursor_value)
-            VALUES ('input_rows', 'ledger-v2:older-snapshot', '{{}}'::jsonb)
-        '''))
-    session = case["sessionmaker"]()
-    try:
-        with pytest.raises(CursorVersionConflict):
-            execute_cursor_batch(
-                case["compiled"], "input_rows", base, _cursor(base),
-                SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
-                case["store"])
-    finally:
-        session.rollback()
-        session.close()
-
-    assert _counts(case) == (0, 1)
-    raw = case["runtime"].raw_connection()
-    try:
-        stored = case["store"].read_cursor(raw, "input_rows")
-    finally:
-        raw.close()
-    assert stored["translator_ver"] == "ledger-v2:older-snapshot"
-    assert stored["cursor_value"] == {}
+# ⚰️ `test_postgres_cursor_snapshot_conflict_rolls_back_insert_and_cursor` - died with
+# `enforce_translator_version` (S-113 ⓐ, ruling 221). The guard it drove lives in
+# `store._advance_cursor`'s WHERE clause and is reached only through
+# `write_batch(advance_cursor=True)`, whose one product caller was the door that retired.
+#
+# 🔴 THE PROPERTY LOST ITS ONLY PRODUCT READER AND IS NAMED HERE: "a batch whose declaration
+# fingerprint differs from the stored one is refused rather than written" is not asserted by
+# anything on the live path any more, because the live path does not compare fingerprints at
+# all - measured in the S-113 census: nothing raises `cursor_snapshot_reset_required` either.
+# What protects a moved declaration today is S-87's boot re-stamp, which repairs rather than
+# refuses. Whether that is enough is the open half of S-113 ⓔ, not something a retirement
+# commit may decide.
 
 
-def test_postgres_replay_dedupes_and_same_snapshot_cursor_restarts_safely(clean_pg_v2):
+def test_postgres_replay_dedupes_the_second_write_of_the_same_batch(clean_pg_v2):
     case = clean_pg_v2
     _seed(case)
     base = _base_batch(case)
@@ -441,8 +445,8 @@ def test_postgres_replay_dedupes_and_same_snapshot_cursor_restarts_safely(clean_
     for _ in range(2):
         session = case["sessionmaker"]()
         try:
-            results.append(execute_cursor_batch(
-                case["compiled"], "input_rows", base, _cursor(base),
+            results.append(execute_scoped_batch(
+                case["compiled"], "input_rows", base, _scope(base),
                 SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
                 case["store"]))
         finally:
@@ -452,7 +456,7 @@ def test_postgres_replay_dedupes_and_same_snapshot_cursor_restarts_safely(clean_
     assert results[0].store_result["inserted"] == 1
     assert results[1].store_result["inserted"] == 0
     assert results[1].store_result["deduped"] == 1
-    assert _counts(case) == (1, 1)
+    assert _counts(case) == (1, 0)
 
 
 def test_postgres_gate_refusal_stops_before_store_transaction(clean_pg_v2, monkeypatch):
@@ -467,8 +471,8 @@ def test_postgres_gate_refusal_stops_before_store_transaction(clean_pg_v2, monke
     session = case["sessionmaker"]()
     try:
         with pytest.raises(gate.MoleculeRefused):
-            execute_cursor_batch(
-                case["compiled"], "input_rows", base, _cursor(base),
+            execute_scoped_batch(
+                case["compiled"], "input_rows", base, _scope(base),
                 SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
                 case["store"])
     finally:

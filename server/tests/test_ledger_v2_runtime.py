@@ -10,7 +10,6 @@ import pytest
 from ledger import gate
 from ledger.runtime_v2 import (
     LedgerV2RuntimeError,
-    execute_cursor_batch,
     execute_scoped_batch,
     preview_cursor_batch,
 )
@@ -30,6 +29,17 @@ from test_ledger_source_preparation import (
 def cursor_for(frame):
     row = frame.iloc[-1]
     return {"event_at": row["event_at"], "record_id": row["record_id"]}
+
+
+def scope_for(frame):
+    """Every row of this batch, named. The live door writes nothing unscoped (S-113 ⓐ).
+
+    These tests used to drive `execute_cursor_batch`, which took a cursor here. It retired
+    with ruling 221 because after S-76 it had no product caller, so the properties below are
+    now asked of the door the live path actually uses -- which needs the batch PROVED to be
+    the named part rather than a position to write.
+    """
+    return ("join_id", sorted(frame["join_id"].tolist()))
 
 
 class RecordingStore:
@@ -93,8 +103,8 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
         preparers(), mappers())
     store = RecordingStore()
 
-    executed = execute_cursor_batch(
-        compiled, "input_rows", base, cursor_for(base), reader_for(base),
+    executed = execute_scoped_batch(
+        compiled, "input_rows", base, scope_for(base), reader_for(base),
         preparers(), mappers(), store)
 
     assert executed.preview.candidate_semantics == dry.candidate_semantics
@@ -112,7 +122,7 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
     assert executed.preview.translator_version != (
         f"ledger-v2:{compiled.snapshot_sha256}")
     assert len(store.calls) == 1
-    assert store.calls[0]["enforce_translator_version"] is True
+    assert store.calls[0]["advance_cursor"] is False
     canonical = lambda value: json.dumps(  # noqa: E731 - compact test comparator
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     stored = sorted((semantic_atom(atom) for atom in store.calls[0]["atoms"]),
@@ -122,62 +132,34 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
     assert store.calls[0]["cursor_value"] == dict(dry.cursor_value)
 
 
-@pytest.mark.parametrize("cursor", [
-    {"event_at": "2026-08-17T12:00:00+00:00"},
-    {"event_at": "2026-08-17T12:00:00+00:00", "record_id": "NOT-IN-BATCH"},
-    {"event_at": "2026-08-17T12:00:00+00:00", "record_id": "R-0000",
-     "target_id": "virtual-output"},
-    {"event_at": "2026-08-17T12:00:00+00:00", "record_id": "R-0001"},
-])
-def test_cursor_accepts_exact_physical_columns_and_only_values_in_the_batch(cursor):
-    compiled = snapshot()
-    base = base_rows()
-    store = RecordingStore()
-
-    with pytest.raises(LedgerV2RuntimeError) as exc:
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor, reader_for(base), preparers(),
-            mappers(), store)
-
-    assert exc.value.code == "invalid_cursor"
-    assert exc.value.path.startswith("cursor_value")
-    assert store.calls == []
+# ⚰️ `test_cursor_accepts_exact_physical_columns_and_only_values_in_the_batch` - died with
+# `execute_cursor_batch`'s `cursor_value` ARGUMENT (S-113 ⓐ, ruling 221). No live door takes
+# one: the scoped door derives an unwritten cursor from the batch itself, so there is no
+# operator-supplied value left to validate.
+#
+# ⚰️ `test_missing_physical_cursor_column_has_structured_failure_before_preparation` - same
+# door. 🔴 THE PROPERTY IT MEASURED LOST ITS ONLY READER AND IS NAMED HERE: the scoped door
+# also needs `plan.driver.cursor_columns` present (it sorts the batch by them) and answers a
+# batch without one with a bare pandas `KeyError` rather than `invalid_cursor_batch`. Not
+# reachable from the live path, which builds the batch from the relation - so this is a
+# contract gap to rule on, not a fault to fix inside a retirement.
 
 
-def test_missing_physical_cursor_column_has_structured_failure_before_preparation():
-    compiled = snapshot()
-    base = base_rows().drop(columns=["record_id"])
-    store = RecordingStore()
-
-    with pytest.raises(LedgerV2RuntimeError) as exc:
-        execute_cursor_batch(
-            compiled, "input_rows", base,
-            {"event_at": base.iloc[0]["event_at"], "record_id": "R-0000"},
-            FakeJoinReader(), preparers(), mappers(), store)
-
-    assert exc.value.to_mapping() == {
-        "code": "invalid_cursor_batch",
-        "path": "source_batch.columns",
-        "message": "base batch is missing cursor columns ['record_id']",
-    }
-    assert store.calls == []
-
-
-def test_source_preparation_failure_writes_no_atom_and_moves_no_cursor():
+def test_source_preparation_failure_writes_no_atom():
     compiled = snapshot()
     base = base_rows()
     store = RecordingStore()
 
     with pytest.raises(SourcePreparationError) as exc:
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor_for(base), FakeJoinReader(),
+        execute_scoped_batch(
+            compiled, "input_rows", base, scope_for(base), FakeJoinReader(),
             preparers(), mappers(), store)
 
     assert exc.value.code == "source_preparation_missing"
     assert store.calls == []
 
 
-def test_gate_refusal_writes_no_atom_and_moves_no_cursor(monkeypatch):
+def test_gate_refusal_writes_no_atom(monkeypatch):
     compiled = snapshot()
     base = base_rows()
     store = RecordingStore()
@@ -187,8 +169,8 @@ def test_gate_refusal_writes_no_atom_and_moves_no_cursor(monkeypatch):
 
     monkeypatch.setattr(gate, "screen_compiled_molecule", refuse)
     with pytest.raises(gate.MoleculeRefused):
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor_for(base), reader_for(base),
+        execute_scoped_batch(
+            compiled, "input_rows", base, scope_for(base), reader_for(base),
             preparers(), mappers(), store)
 
     assert store.calls == []
@@ -211,48 +193,36 @@ def test_later_event_refusal_does_not_partially_store_earlier_event(monkeypatch)
 
     monkeypatch.setattr(gate, "screen_compiled_molecule", refuse_second)
     with pytest.raises(gate.MoleculeRefused):
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor_for(base), reader_for(base),
+        execute_scoped_batch(
+            compiled, "input_rows", base, scope_for(base), reader_for(base),
             preparers(), mappers(), store)
 
     assert calls == 2
     assert store.calls == []
 
 
-def test_store_failure_is_not_converted_to_success_or_cursor_advance():
+def test_store_failure_is_not_converted_to_success():
     compiled = snapshot()
     base = base_rows()
     failure = RuntimeError("database write failed")
     store = RecordingStore(failure=failure)
 
     with pytest.raises(RuntimeError, match="database write failed"):
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor_for(base), reader_for(base),
+        execute_scoped_batch(
+            compiled, "input_rows", base, scope_for(base), reader_for(base),
             preparers(), mappers(), store)
 
     assert len(store.calls) == 1
-    assert store.calls[0]["enforce_translator_version"] is True
+    # The write was attempted and it was the scoped one: a door that swallowed the failure
+    # would show zero calls, and one that had quietly become the forward scan would ask for
+    # the cursor statement it is not allowed to issue.
+    assert store.calls[0]["advance_cursor"] is False
 
 
-def test_store_without_version_guard_is_explicitly_unsupported():
-    compiled = snapshot()
-    base = base_rows()
-
-    class LegacyShapeStore:
-        def write_batch(self, source, translator_ver, atoms, cursor_value,
-                        molecules, refused=0, incomplete=0, *, reasons,
-                        row_refs=None):
-            raise AssertionError("body must not run")
-
-    with pytest.raises(LedgerV2RuntimeError) as exc:
-        execute_cursor_batch(
-            compiled, "input_rows", base, cursor_for(base), reader_for(base),
-            preparers(), mappers(), LegacyShapeStore())
-    assert exc.value.to_mapping() == {
-        "code": "unsupported_store_contract",
-        "path": "store.write_batch",
-        "message": "LedgerStore must enforce the setup snapshot cursor version",
-    }
+# ⚰️ `test_store_without_version_guard_is_explicitly_unsupported` - died with
+# `enforce_translator_version`, which only the retired forward-scan door ever passed
+# (S-113 ⓐ). The property survives on the live door and is already measured: the scoped
+# door's own `unsupported_store_contract` refusal is pinned further down this file.
 
 
 class FakeCursor:
@@ -344,29 +314,28 @@ def test_same_cursor_version_commits_and_legacy_call_shape_remains_available():
 
 
 # ------------------------------------------------------ the scoped door (one named part)
-def test_the_scoped_door_lands_the_same_atoms_and_asks_for_no_cursor_advance():
+def test_the_live_door_lands_the_previews_atoms_and_asks_for_no_cursor_advance():
     """Same gate, same translation, same atoms - and the position is not written.
 
-    Compared against the forward scan over the identical batch rather than against a
-    hand-written expectation: the danger of a second write path is that it drifts into
-    screening differently, and only the forward scan's own output can detect that.
+    ⚰️ IT USED TO COMPARE THE TWO DOORS. The forward scan translated the identical batch
+    and the two outputs were asserted equal, because the danger of a second write path is
+    that it drifts into screening differently and only the other door's own output can
+    detect that. `execute_cursor_batch` retired with S-113 ⓐ (product callers 0), so there
+    is no second output left to compare against and the comparison is now against the
+    preview this door itself produced - which catches a door that drops or adds atoms after
+    screening, and cannot catch a drift in screening, because nothing can any more.
     """
     compiled = snapshot()
     base = base_rows()
 
-    forward = RecordingStore()
-    execute_cursor_batch(
-        compiled, "input_rows", base, cursor_for(base), reader_for(base),
-        preparers(), mappers(), forward)
-
     scoped = RecordingStore()
-    execute_scoped_batch(
+    executed = execute_scoped_batch(
         compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
         preparers(), mappers(), scoped)
 
-    assert [semantic_atom(atom) for atom in scoped.calls[0]["atoms"]] == \
-           [semantic_atom(atom) for atom in forward.calls[0]["atoms"]]
-    assert forward.calls[0]["advance_cursor"] is True
+    assert len(scoped.calls[0]["atoms"]) == executed.preview.atom_count
+    assert [semantic_atom(atom)["predicate"] for atom in scoped.calls[0]["atoms"]] == \
+           [value["predicate"] for value in executed.preview.candidate_semantics]
     assert scoped.calls[0]["advance_cursor"] is False
 
 

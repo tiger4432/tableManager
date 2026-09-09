@@ -891,11 +891,15 @@ def source_cursor_fingerprint(
 
 def cursor_translator_version(
     snapshot: LedgerSetupSnapshot, source_id: str) -> str:
-    """The string a source's cursor stores and is compared against. ONE spelling.
+    """The string a source's registry row stores and is compared against. ONE spelling.
 
-    The reader (`backfill._run_via_events`) and the writer (`runtime_v2.execute_cursor_batch`)
-    both call this. They used to build `f"ledger-v2:{snapshot_sha256}"` separately, and two
-    spellings of the value a guard compares is how a guard stops guarding.
+    Everyone who has to say 「which declaration is this source on」 calls this, and they used
+    to build `f"ledger-v2:{snapshot_sha256}"` separately -- two spellings of the value a
+    guard compares is how a guard stops guarding. Today that is: the preview that stamps
+    each atom (`runtime_v2`), the census tick that CREATES the row
+    (`backfill.measure_and_store`, S-113 ⓑ-1), the boot re-stamp and the re-stamp script
+    (which compare stored against wanted). The forward-scan writer that used to be named
+    here retired with S-113 ⓐ.
     """
     return f"ledger-v2:{source_cursor_fingerprint(snapshot, source_id)}"
 

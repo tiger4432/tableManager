@@ -1774,9 +1774,8 @@ def _measure_one_source_sync(db_session_factory, source):
     db = db_session_factory()
     try:
         engine = db.get_bind()
-        census = ledger_backfill.measure_row_census(engine, load_setup(), source)
-        LedgerStore(engine).write_row_census(source, census)
-        return census
+        return ledger_backfill.measure_and_store(
+            engine, load_setup(), source, LedgerStore(engine))
     finally:
         db.close()
 

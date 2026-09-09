@@ -128,15 +128,20 @@ def test_a_frame_without_the_columns_contributes_nothing_rather_than_raising():
     assert index([], ['dt_log:{"a":1}']) == ()
 
 
-def test_both_write_doors_carry_it(monkeypatch):
-    """🔴 THE FORWARD SCAN IS WHERE THE INDEX IS ACTUALLY BUILT. A source is read forward
-    once and rescoped rarely, so an index only the rescope wrote would name a handful of
-    rows out of millions -- and a delete would look like it worked."""
+def test_the_write_door_carries_it(monkeypatch):
+    """🔴 EVERY WRITE MUST BUILD THE INDEX, because a delete reads it to find what to
+    withdraw and an index only some writes filled would name a handful of rows out of
+    millions -- a delete would then look like it worked.
+
+    ⚰️ THERE WERE TWO DOORS. `execute_cursor_batch` was the forward scan and this asserted
+    the same line in both; it retired with S-113 ⓐ (ruling 221) because after S-76 the live
+    path drains through events and no product code called it. One door is now the whole of
+    "every write", which is why this reads as a single assertion rather than a weaker one.
+    """
     import inspect
 
-    for door in (runtime_v2.execute_cursor_batch, runtime_v2.execute_scoped_batch):
-        body = inspect.getsource(door)
-        assert "row_refs=preview.row_refs" in body, door.__name__
+    body = inspect.getsource(runtime_v2.execute_scoped_batch)
+    assert "row_refs=preview.row_refs" in body
 
 
 # ------------------------------------------------------------ and what the delete then does

@@ -273,7 +273,7 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     cutover = load_setup(
         DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root,
         **({} if catalog is None else {"catalog": catalog}))
-    # 🔴 Checked HERE and not left to the write boundary. `execute_selected_cursor_batch`
+    # 🔴 Checked HERE and not left to the write boundary. `execute_selected_scoped_batch`
     # does re-check, but only once a batch exists: an empty source would then return a
     # clean zero instead of the refusal, and a selector left on `legacy` would look like a
     # source with nothing to do. A refusal that only fires when there is work is not a
@@ -1025,6 +1025,25 @@ def measure_row_census(engine, setup, source, now=None):
     return stamped
 
 
+def measure_and_store(engine, setup, source, store, now=None):
+    """Measure one source's census and store it AGAINST ITS CURRENT FINGERPRINT.
+
+    🔴 THE ONE SEAT (S-113 ⓑ-1, ruling 221). Three loops measure a source -- the
+    worker's paced tick, the sweep below, and the CLI -- and the write is now what gives a
+    source its registry row, so each of them computing the fingerprint separately would be
+    three spellings of 「which declaration is this row on」. `cursor_translator_version` is
+    already the one spelling of the string itself; this is the one spelling of 「measure,
+    then say it」.
+    """
+    from .setup_registry import cursor_translator_version
+
+    census = measure_row_census(engine, setup, source, now=now)
+    store.write_row_census(
+        source, census,
+        translator_ver=cursor_translator_version(setup.snapshot, source))
+    return census
+
+
 def measure_every_source(engine, setup, store=None, now=None):
     """Measure each declared source in turn and store what it found.
 
@@ -1038,8 +1057,7 @@ def measure_every_source(engine, setup, store=None, now=None):
     done = []
     for source in sorted(setup.snapshot.source_plans, key=str):
         try:
-            census = measure_row_census(engine, setup, source, now=now)
-            writer.write_row_census(source, census)
+            measure_and_store(engine, setup, source, writer, now=now)
         except Exception as exc:
             logger.warning("[Ledger] census of %s failed: %s", source, exc)
             continue

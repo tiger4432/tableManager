@@ -37,7 +37,6 @@ from .roleframe import RoleMapperImplementationRegistry
 from .runtime_v2 import (
     CursorBatchExecutionResult,
     CursorBatchPreview,
-    execute_cursor_batch,
     execute_scoped_batch,
     preview_cursor_batch,
 )
@@ -358,26 +357,9 @@ def preview_selected_cursor_batch(
     )
 
 
-def execute_selected_cursor_batch(
-    setup: LedgerSetup,
-    source_id: str,
-    base_rows: pd.DataFrame,
-    cursor_value: Mapping[str, Any],
-    join_reader: VerifiedJoinBatchReader,
-    store: Any,
-    *,
-    known_registrations: Any = None,
-    retranslate_approved: bool = False,
-) -> CursorBatchExecutionResult:
-    """Use the existing Stage 6 gate/store transaction for an approved v2 source."""
-    _require_declared_source(setup, source_id)
-    return execute_cursor_batch(
-        setup.snapshot, source_id, base_rows, cursor_value, join_reader,
-        setup.preparers, setup.mappers, store,
-        known_registrations=known_registrations,
-        retranslate_approved=retranslate_approved,
-    )
-
+#: ⚰️ `execute_selected_cursor_batch` — the declared-source wrapper around
+#: `execute_cursor_batch`. It went with what it wrapped (S-113 ⓐ, ruling 221): product
+#: callers 0. Its neighbour below is the door the live path uses.
 
 def execute_selected_scoped_batch(
     setup: LedgerSetup,

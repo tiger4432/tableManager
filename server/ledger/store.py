@@ -197,13 +197,35 @@ class LedgerStore:
             "refusal_reasons": row[10], "row_census": row[11],
         }
 
-    def write_row_census(self, source: str, census) -> None:
+    def write_row_census(self, source: str, census, *, translator_ver: str) -> None:
         """Store one source's 「table rows · indexed rows · remainder」 measurement.
 
-        ⛔ IT DOES NOT CREATE THE ROW. A source with no cursor row has never been set up,
-        and inserting one here would put a census beside a translator version that does
-        not exist -- a source that looks measured and has never run. The UPDATE simply
-        matches nothing, which is the honest outcome.
+        🔴 THIS IS THE ONE PLACE A SOURCE GETS ITS ROW (S-113 ⓑ-1, ruling 221), and it
+        is one statement. `_advance_cursor`'s INSERT used to be the only row creator in the
+        table, and since S-76 the live path calls the store with `advance_cursor=False`, so
+        nothing created a row any more: a source declared after that date could be measured
+        every cycle and the UPDATE would match nothing, forever. That silence reached a
+        screen -- `/declaration` reads this very column, and the sources panel reads the row's
+        absence as `never_ran`.
+
+        ⛔ IT USED TO REFUSE TO CREATE THE ROW, and the reason was right: a census beside a
+        translator version that does not exist is "a source that looks measured and has never
+        run". The answer is not to keep the silence but to write the version IN THE SAME
+        STATEMENT, which is why `translator_ver` is required and keyword-only. The row that
+        appears therefore says two true things at once -- which declaration this source is on,
+        and what its relation held when it was last counted.
+
+        🔴 ON CONFLICT IT DOES NOT TOUCH `translator_ver`. Re-stamping is
+        `restamp_cursor`'s decision and it only ever moves a string it was told to expect
+        (S-87). A census tick that overwrote the fingerprint would be exactly the unattended
+        silent move that guard exists to prevent, so the version is carried by the INSERT
+        alone and every later tick writes the census and the clock.
+
+        ⚠️ `cursor_value` IS `'null'::jsonb` AND THAT IS THE HONEST VALUE. The column is
+        NOT NULL and the position is retired -- nothing reads it to decide where to resume
+        (`observability` reads it as `or {}`), so a JSON null says "this row carries no
+        position" rather than a zero that would read as one. Dropping the constraint is a
+        migration and is not part of this.
         """
         import json as _json
 
@@ -211,9 +233,15 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"UPDATE {schema.CURSOR_TABLE} "
-                    f"   SET {schema.ROW_CENSUS_COLUMN} = %s::jsonb "
-                    f" WHERE source = %s", (_json.dumps(census), source))
+                    f"INSERT INTO {schema.CURSOR_TABLE} "
+                    f"       (source, translator_ver, cursor_value, "
+                    f"        {schema.ROW_CENSUS_COLUMN}) "
+                    f"VALUES (%s, %s, 'null'::jsonb, %s::jsonb) "
+                    f"ON CONFLICT (source) DO UPDATE "
+                    f"   SET {schema.ROW_CENSUS_COLUMN} = "
+                    f"       EXCLUDED.{schema.ROW_CENSUS_COLUMN}, "
+                    f"       updated_at = now()",
+                    (source, translator_ver, _json.dumps(census)))
             connection.commit()
         except Exception:
             connection.rollback()

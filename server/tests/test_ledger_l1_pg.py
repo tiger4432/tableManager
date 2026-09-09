@@ -999,3 +999,54 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     # ⛔ AND THE COLUMN IS NAMED IN EACH. "two were refused" sends an operator looking; the
     # address is what they open.
     assert "wafer_id" in said and "eventtime" in said, said[:400]
+
+
+# ---------------------------------------------------------------- S-113 ⓑ-1: the registry row
+
+def test_the_census_tick_creates_the_registry_row_and_never_moves_a_fingerprint(ledger):
+    """S-113 ⓑ-1 (ruling 221): the ONE place a source gets its row, and what it must not do.
+
+    🔴 THREE PROPERTIES, ONE MECHANISM, SO ONE RUN. `store._advance_cursor`'s INSERT was the
+    only statement in the tree that ever created a row in this table, and it is reached only
+    through `write_batch(advance_cursor=True)` - whose one product caller retired with S-113
+    ⓐ because after S-76 the live path drains through events with `advance_cursor=False`. So
+    a source declared today had no row, and everything keyed on `source` matched nothing:
+    the census `UPDATE`, the boot re-stamp, the lag probe. The census tick creates it now.
+
+    ⛔ AND IT MUST NOT BECOME A SECOND WAY TO MOVE A FINGERPRINT. `restamp_cursor` only ever
+    moves a string it was told to expect (S-87), because an unattended silent move is how a
+    cursor comes to claim a declaration it was not written under. So the tick carries the
+    version on the INSERT and leaves it alone on conflict - asserted here by re-stamping to
+    a foreign string first and ticking again over it.
+    """
+    from ledger.setup import load_setup
+    from ledger.setup_registry import cursor_translator_version
+
+    setup = load_setup(shipped_root(), catalog=shipped_catalog())
+    wanted = cursor_translator_version(setup.snapshot, "dt_job")
+    writer = ledger_store.LedgerStore(ledger)
+
+    assert read_cursor_row(ledger) is None, "the fixture must start with no row at all"
+
+    backfill.measure_and_store(ledger, setup, "dt_job", writer)
+
+    created = read_cursor_row(ledger)
+    assert created is not None, (
+        "a declared source that is measured must exist in the registry; an UPDATE that "
+        "matches nothing is what the sources panel reads as never_ran")
+    assert created["translator_ver"] == wanted
+    assert created["row_census"] is not None
+
+    # ② the tick does NOT own the fingerprint: a foreign string survives the next tick
+    assert writer.restamp_cursor("dt_job", expect=wanted,
+                                 translator_ver="ledger-v2:not-this-declaration")
+    backfill.measure_and_store(ledger, setup, "dt_job", writer)
+    assert read_cursor_row(ledger)["translator_ver"] == "ledger-v2:not-this-declaration"
+
+    # ③ and the boot re-stamp reaches the row the tick made - the half of S-87 that makes a
+    # landed declaration change reach live without somebody running a script by hand.
+    stored = read_cursor_row(ledger)["translator_ver"]
+    verdict, reason = ledger_store.LedgerStore.restamp_decision(stored, wanted)
+    assert (verdict, reason) == ("restamp", None)
+    assert writer.restamp_cursor("dt_job", expect=stored, translator_ver=wanted)
+    assert read_cursor_row(ledger)["translator_ver"] == wanted
