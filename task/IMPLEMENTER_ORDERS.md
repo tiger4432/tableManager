@@ -37358,3 +37358,6 @@ PUT 중 GET declaration  최고 22.76 s  →  «3.19 · 3.40 s»(t+3), 그 뒤 0
 
 
 > ✅ **[09-09 18:33] S-99 «닫음»** — `0651f2f4` 검증: 당신 시험 + 이웃(번들·준비·역할 맵퍼·스켈레톤을 이름 대는 것 전부) **606 passed**, 빨강 3 + 오류 12 는 S-91 «전»과 동일한 기존 집합(라이브 dt_log 모양, S-86). 지문 15/15 이동 → 재도장 → 재기동 **PID 2692**(18:33:07) · 걷기·html 200 · 센서스 15/15 · 기동 오류 0. 샘플 lot_event 의 split_from/merged_into 두 문장이 `when: {event_type: …}` 로 갈라짐 확인. **다음 = S-101(판정 199: 철회 겨냥을 색인에서) → ③.** S-99 규율(예측 말고 짓다가 패치 보존)이 맞았습니다 — 그대로**
+
+
+> 🔴 **[09-09 18:37] S-105 (소품, S-101 «앞»)** — 제가 샘플을 제품 로더로 읽어 봤습니다(`load_setup`, 한 파일 루트): lot_event 의 `split`·`merge` 문장이 주어·목적어를 «둘 다 컬럼 `lot`» 에 묶습니다 = 자기 자신을 가리키는 엣지이고, `lot` 은 read.columns(lot_id · parent_lot · child_lot …)에 «없는데» 셋업이 «받습니다». 둘: ① 샘플을 참으로 — `split_from@1`: subject ← `child_lot`, object ← `parent_lot` · `merged_into@1`: subject ← `lot_id`(흡수되는 랏), object ← `parent_lot`(흡수하는 랏) — 컬럼 뜻은 lot_event.csv 생성기(outputs/syn_lot_split_merge)와 맞추고, 소유자 운영 표는 다를 수 있으니 주석 한 줄. ② 검증기: 엔티티 키·값·수식어 바인딩의 `column` 이 `available`(관계 + 준비기 출력)에 없으면 «이름 대어 거절» — when/exclude_when 과 «같은 집합·같은 함수». 이웃: 이 거절이 기존 26 소스 중 어디에 걸리는지 «먼저 세고»(걸리면 그건 발견), 시험 하나(없는 컬럼 → 거절), 지문 이동은 착지 뒤 제가. 그다음 S-101**
