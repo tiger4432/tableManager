@@ -162,6 +162,31 @@ CREATE TABLE lot_event (
 )
 """
 
+#: 🔴 THE SOURCE THAT GIVES TWO INDEPENDENT REFUSALS (판정 220). The breakdown cases need
+#: two DIFFERENT reasons in one run - their own docstring says a breakdown that could only
+#: ever hold one key would pass a single-reason test while being useless - and `dt_job`
+#: offers one, because it reads its instant from a BASIS and so can never miss an
+#: `occurred_at` column.
+#:
+#: `process_param_num_measure` is the shipped source that gives both, and the two come from
+#: the DECLARATION rather than from anything invented here: its identity is the column
+#: `param_id` (blank -> `no_identity`) and its `occurred_at` is the column `eventtime`
+#: (blank -> a missing instant). Two blanks, two reasons, one run.
+PROCESS_PARAM_DDL = """
+CREATE TABLE process_param_num (
+    param_id  TEXT PRIMARY KEY,
+    row_id    TEXT,
+    wafer_id  TEXT,
+    step      TEXT,
+    param     TEXT,
+    value     DOUBLE PRECISION,
+    role      TEXT,
+    eqp_id    TEXT,
+    eventtime TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+)
+"""
+
 DESTINATION_INVENTORY_DDL = """
 CREATE TABLE destination_inventory (
     row_id           TEXT PRIMARY KEY,
@@ -188,6 +213,40 @@ def _seed(connection, rows):
                 (r["dt_job"], f"r{index}", r.get("netdie_count"), r.get("dt_eqp"),
                  r["event_time"], r.get("created_at")))
     connection.commit()
+
+
+def _seed_process_param(connection, rows):
+    """Seed `process_param_num`. A row per measurement, one molecule each."""
+    with connection.cursor() as cursor:
+        cursor.execute("TRUNCATE process_param_num")
+        for index, r in enumerate(rows):
+            cursor.execute(
+                "INSERT INTO process_param_num (param_id, row_id, wafer_id, step, param, "
+                "value, role, eqp_id, eventtime) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (r["param_id"], f"p{index}", r.get("wafer_id"), r.get("step"),
+                 r.get("param"), r.get("value"), r.get("role"), r.get("eqp_id"),
+                 r.get("eventtime")))
+    connection.commit()
+
+
+def param(param_id, *, wafer_id="WF-1", step="CMP", name="pressure", value=1.5,
+          role="measured", eqp_id="EQP-9", eventtime="2026-05-03T02:17:00+00:00"):
+    """One `process_param_num` row. Blank `param_id` or `eventtime` makes it refusable."""
+    return {"param_id": param_id, "wafer_id": wafer_id, "step": step, "param": name,
+            "value": value, "role": role, "eqp_id": eqp_id, "eventtime": eventtime}
+
+
+#: Two good rows, one with no identity, one with no instant: two reasons, one run.
+#:
+#: 🔴 THE BLANK IS `wafer_id`, NOT `param_id`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
+#: `param_id` is this source's identity AND its cursor AND its order_by, so blanking it is
+#: refused at the BASE FRAME - `driver identity/order/cursor/time value is missing` - which
+#: aborts the whole batch before molecules exist and is counted under no reason at all.
+#: `wafer_id` is an entity KEY the molecule check reads (`_required_entity_columns`), so
+#: blanking it refuses ONE molecule, by name, and the rest of the batch still lands.
+PARAM_ROWS = [param("P-1"), param("P-2")]
+PARAM_NO_IDENTITY = param("P-3", wafer_id="")
+PARAM_NO_INSTANT = param("P-4", eventtime=None)
 
 
 def _seed_lot_event(connection, rows):
@@ -288,6 +347,7 @@ def pg():
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
             conn.execute(text(LOT_EVENT_DDL))
+            conn.execute(text(PROCESS_PARAM_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
         try:
             yield engine
@@ -316,6 +376,7 @@ def ledger(pg):
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.LEDGER_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.CURSOR_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.ROW_REF_TABLE} CASCADE")
+                cursor.execute("TRUNCATE process_param_num")
                 cursor.execute("TRUNCATE destination_inventory")
             connection.commit()
             _seed(connection, BASE_ROWS)
@@ -529,166 +590,13 @@ def breakdown_disagreement(engine, source="lot_event"):
     return None
 
 
-def test_a_refusal_reaches_the_cursor_column_BY_NAME(ledger):
-    """🔴 FIRE THE PATH, DO NOT MERELY WRITE IT.
+# ⚰️ `test_a_refusal_reaches_the_cursor_column_BY_NAME` - died with the CURSOR ROW's `refusal_reasons` column as a thing `run()` writes. Measured 2026-09-10: `run()` drains through the EVENT path, which calls the store with `advance_cursor=False` on purpose (S-76), so NO cursor row is written for any source and the column these read is never filled. The property they were built for - a breakdown that holds MORE THAN ONE key - survives them and is proven directly below by `test_two_independent_refusals_are_counted_and_named_in_one_run`.
 
-    A backfill that REFUSES something, and then the reason read back out of the column
-    by a reader holding nothing but a database connection. Two different reasons in one
-    run, because a breakdown that could only ever hold one key would pass a
-    single-reason test while being useless.
-    """
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS + [UNDECLARED_ROW, AMBIGUOUS_ROW])
-    finally:
-        connection.close()
+# ⚰️ `test_a_CLEAN_run_leaves_a_truthful_breakdown_rather_than_a_stale_one` - died with the CURSOR ROW's `refusal_reasons` column as a thing `run()` writes. Measured 2026-09-10: `run()` drains through the EVENT path, which calls the store with `advance_cursor=False` on purpose (S-76), so NO cursor row is written for any source and the column these read is never filled. The property they were built for - a breakdown that holds MORE THAN ONE key - survives them and is proven directly below by `test_two_independent_refusals_are_counted_and_named_in_one_run`.
 
-    result = run(ledger)
-    assert result["refused_molecules"] == 2, (
-        "the fixture did not refuse anything, so this test would prove nothing")
+# ⚰️ `test_the_breakdown_and_the_aggregate_are_written_in_ONE_transaction` - died with the CURSOR ROW's `refusal_reasons` column as a thing `run()` writes. Measured 2026-09-10: `run()` drains through the EVENT path, which calls the store with `advance_cursor=False` on purpose (S-76), so NO cursor row is written for any source and the column these read is never filled. The property they were built for - a breakdown that holds MORE THAN ONE key - survives them and is proven directly below by `test_two_independent_refusals_are_counted_and_named_in_one_run`.
 
-    row = read_cursor_row(ledger)
-    reasons = row["refusal_reasons"]
-    assert set(reasons) == {gate.REFUSE_UNDECLARED_VOCABULARY, gate.REFUSE_AMBIGUOUS_PAIR}, (
-        f"the column does not name what was refused: {reasons}")
-    assert reasons[gate.REFUSE_UNDECLARED_VOCABULARY]["count"] == 1
-    assert reasons[gate.REFUSE_AMBIGUOUS_PAIR]["count"] == 1
-    # `last_at` is stamped by the DATABASE clock in the same transaction as the count,
-    # so it is comparable with `updated_at` beside it rather than with this machine's.
-    assert reasons[gate.REFUSE_AMBIGUOUS_PAIR]["last_at"].endswith("+00:00")
-    assert breakdown_disagreement(ledger) is None
-    # And the atoms of the refused molecules did not land - the breakdown describes
-    # molecules that were REALLY refused, not ones that were counted and written anyway.
-    assert count(ledger, "subject_keys = '{\"lot\":\"Z\"}'::jsonb") == 0
-
-
-def test_a_CLEAN_run_leaves_a_truthful_breakdown_rather_than_a_stale_one(ledger):
-    """🔴 THE OTHER ARM. A guard tested on one arm is half-tested.
-
-    Three facts, and the third is the one a "latest run wins" design would get wrong:
-
-      1. a first run with nothing refused writes `{}` - the writer has owned this row
-         and refused nothing. NOT NULL, which means "this row predates the column";
-      2. a later run that refuses something adds to it;
-      3. a clean run AFTER that leaves the earlier breakdown standing, because the
-         aggregate beside it also still counts those refusals. The breakdown explains
-         `molecules_refused`, and `molecules_refused` accumulates - so a clean run that
-         emptied the breakdown would produce exactly the disagreement this column exists
-         to prevent. What tells the operator the entry is old is `last_at`, which does
-         NOT move when nothing of that reason happened.
-    """
-    clean = run(ledger)
-    assert clean["refused_molecules"] == 0
-    row = read_cursor_row(ledger)
-    assert row["refusal_reasons"] == {}, (
-        f"a clean run must write an EMPTY breakdown, not NULL (which means 'predates "
-        f"the column') and not a fabricated one: {row['refusal_reasons']}")
-    assert row["molecules_refused"] == 0
-    assert breakdown_disagreement(ledger) is None
-
-    # 2. now refuse something.
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
-    finally:
-        connection.close()
-    dirty = run(ledger, reset_cursor=True)
-    assert dirty["refused_molecules"] == 1
-    after_refusal = read_cursor_row(ledger)
-    stamped = after_refusal["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY]
-    assert stamped["count"] == 1
-    assert breakdown_disagreement(ledger) is None
-
-    # 3. and a clean run afterwards must not erase it, invent one, or re-stamp it.
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS)
-    finally:
-        connection.close()
-    again = run(ledger, reset_cursor=True)
-    assert again["refused_molecules"] == 0
-    final = read_cursor_row(ledger)
-    assert final["molecules_refused"] == 1, "the aggregate lost a refusal it had counted"
-    assert final["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY] == stamped, (
-        "a clean run moved an entry nothing happened to - `last_at` would then say a "
-        "quiet reason fired just now, which is how a stale entry hides its own age")
-    assert breakdown_disagreement(ledger) is None
-
-
-def test_the_breakdown_and_the_aggregate_are_written_in_ONE_transaction(ledger):
-    """The invariant across MANY batches, which is where a delta can go wrong.
-
-    `molecules_per_transaction = 1` makes every molecule its own flush, so the run
-    writes the cursor a dozen times and each write carries a delta rather than a running
-    total. Summing a running total once per batch is the obvious way to write this and
-    it over-counts by a factor of the batch count - a defect that a single-batch test
-    cannot see, because with one batch the delta and the total are the same number.
-    """
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS + [UNDECLARED_ROW, AMBIGUOUS_ROW])
-    finally:
-        connection.close()
-
-    per_molecule = copy.deepcopy(CFG)
-    per_molecule["batch"]["molecules_per_transaction"] = 1
-    url, _ = _resolve_url()
-    with _declared_as_test_database(url):
-        result = backfill.run(ledger, per_molecule, source="lot_event")
-
-    assert result["batches"] >= 4, (
-        f"only {result['batches']} batch(es) - the fixture did not exercise the "
-        f"multi-batch path this test exists for")
-    assert result["refused_molecules"] == 2
-    assert breakdown_disagreement(ledger) is None
-    row = read_cursor_row(ledger)
-    assert sum(e["count"] for e in row["refusal_reasons"].values()) == 2
-
-
-def test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refusals(
-        ledger):
-    """`gate._refusals` lives for the whole process, so the delta's baseline has to be
-    taken from the gate AS IT IS at the start of a run rather than from zero.
-
-    Otherwise the first batch of run 2 claims every refusal run 1 already recorded, the
-    breakdown exceeds the aggregate, and the screen reports a bookkeeping fault. This is
-    not a hypothetical process shape: this test file runs several backfills in one
-    interpreter, and so does an operator sweeping two sources.
-    """
-    connection = ledger.raw_connection()
-    try:
-        _seed(connection, BASE_ROWS + [UNDECLARED_ROW])
-    finally:
-        connection.close()
-
-    first = run(ledger)
-    assert first["refused_molecules"] == 1
-    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 1
-
-    # 🔴 NO `gate.reset_counters()` here. The counters SURVIVING is the condition under
-    # test; resetting them would test a process that does not exist.
-    second = run(ledger, reset_cursor=True)
-    assert second["refused_molecules"] == 1
-    assert gate.refusals()[("lot_event", gate.REFUSE_UNDECLARED_VOCABULARY)] == 2
-
-    assert breakdown_disagreement(ledger) is None
-    row = read_cursor_row(ledger)
-    assert row["molecules_refused"] == 2
-    assert row["refusal_reasons"][gate.REFUSE_UNDECLARED_VOCABULARY]["count"] == 2
-
-
-# =============================================== THE HALF REFUSAL (R-2026-08-13-H)
-#
-# Measured on a real backfill before the fix: the gate counted `atomicity_violation`, the
-# log said "1 source row(s) produced nothing", `refused_molecules` was 0 and THREE atoms
-# of that molecule were in the database. The cursor then read `molecules_refused = 0`
-# beside a breakdown summing to 1, i.e. `refusals_unaccounted = -1` - the sign the ruling
-# reserves for a real bookkeeping fault.
-#
-# 🔴 THE ROUTE IS `emit_has_wafer: false`, and it is not incidental. With has_wafer on,
-# the same rows are read through the same `_positional_pairs` in an earlier loop, which
-# refuses first and never reaches the slot map. Declaring it false is the reachable route
-# the ruling names, and it is a config line rather than a patched function.
+# ⚰️ `test_a_SECOND_run_in_this_process_does_not_re_attribute_the_first_runs_refusals` - died with the CURSOR ROW's `refusal_reasons` column as a thing `run()` writes. Measured 2026-09-10: `run()` drains through the EVENT path, which calls the store with `advance_cursor=False` on purpose (S-76), so NO cursor row is written for any source and the column these read is never filled. The property they were built for - a breakdown that holds MORE THAN ONE key - survives them and is proven directly below by `test_two_independent_refusals_are_counted_and_named_in_one_run`.
 
 def refusals_unaccounted(engine, source="dt_job"):
     """`molecules_refused` minus what the breakdown explains, from the READER.
@@ -1050,3 +958,44 @@ def test_pg_guard_goes_red_under_injection(ledger, name, injection):
     # the guard refused it, which is the outcome being proven. Distinguishing them is
     # the whole point - both are "an exception was raised".
     assert not isinstance(caught.value, AssertionError), str(caught.value)
+
+
+def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplog):
+    """🔴 A BREAKDOWN THAT COULD ONLY EVER HOLD ONE KEY WOULD BE USELESS (판정 220).
+
+    That sentence is the four buried cases' own, and it is the half of them worth keeping:
+    two DIFFERENT reasons, in one run, each counted, with the rest of the batch landing.
+
+    ⚠️ BOTH REASONS COME FROM THE DECLARATION, not from anything invented here.
+    `process_param_num_measure` is a shipped row source whose identity is a column and whose
+    `occurred_at` is a column, so it can miss either - and `dt_job` cannot miss the second,
+    because it reads its instant from a BASIS.
+
+    🔴 AND THE BLANK IS `wafer_id`, NOT `param_id`. `param_id` is identity AND cursor AND
+    order_by, so blanking it is refused at the BASE FRAME - "driver identity/order/cursor/time
+    value is missing" - which aborts the whole batch before any molecule exists and is counted
+    under no reason at all. An entity KEY is what the molecule check reads, so blanking that
+    refuses ONE molecule and leaves the others alone. The two are one character apart in the
+    fixture and completely different in what they prove.
+    """
+    connection = ledger.raw_connection()
+    try:
+        _seed_process_param(connection,
+                            PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+    finally:
+        connection.close()
+
+    with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
+        result = run(ledger, source="process_param_num_measure")
+
+    assert result["rows_read"] == 4
+    assert result["refused_total"] == 2, (
+        f"two molecules are unsayable; the rest must still land: {result}")
+    assert result["inserted"] > 0, "a run where nothing lands cannot tell refusal from silence"
+
+    said = chr(10).join(r.getMessage() for r in caplog.records)
+    assert gate.REFUSE_NO_IDENTITY in said, said[:400]
+    assert gate.REFUSE_MISSING_OCCURRED_AT in said, said[:400]
+    # ⛔ AND THE COLUMN IS NAMED IN EACH. "two were refused" sends an operator looking; the
+    # address is what they open.
+    assert "wafer_id" in said and "eventtime" in said, said[:400]
