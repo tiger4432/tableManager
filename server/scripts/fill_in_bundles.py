@@ -87,6 +87,31 @@ def atom_count(engine, source: str) -> int:
     return int(count or 0)
 
 
+def deletion_cost(*, rows_sent: int, atoms_per_row: int, atoms_gained: int) -> dict:
+    """What this bundle's write cost in DELETIONS, from numbers that exist (판정 210).
+
+    🔴 THE CURSOR'S COUNTERS CANNOT ANSWER THIS, and the first version of this file read them
+    anyway. A door write reaches the ledger by the LIVE path, and `runtime_v2` passes
+    `advance_cursor=False` there, so `atoms_written` and `atoms_deduped` do not move for these
+    bundles at all: `written - deduped - gained` would have printed a large NEGATIVE
+    "replaced" every time. Measured before the first bundle rather than after.
+
+    So the shortfall is stated in the two numbers that are real - what the declaration says
+    this many rows produce, and what the ledger actually gained:
+
+        expected = rows x atoms_per_row      (the declared multiplier, not a guess)
+        shortfall = expected - gained
+
+    A fill of NEW rows should show 0. Anything else means those rows were translated before
+    and this bundle replaced or deduplicated them - the deletion whose price ruling 210 asked
+    to keep visible. It does NOT separate "replaced" from "deduplicated": both are a write
+    that did not become a new row, and the store reports neither to a caller out here.
+    """
+    expected = int(rows_sent or 0) * int(atoms_per_row or 0)
+    return {"atoms_expected": expected, "atoms_gained": int(atoms_gained),
+            "atoms_shortfall": expected - int(atoms_gained)}
+
+
 def wait_for_drain(engine, *, limit_seconds: float, log=print):
     """Block until the outbox is empty. Returns (seconds, peak depth, timed_out)."""
     started, peak = time.monotonic(), 0
@@ -234,13 +259,23 @@ def main(argv=None) -> int:
         drained, peak, timed_out = wait_for_drain(
             engine, limit_seconds=args.drain_limit)
         after = atom_count(engine, args.source)
+        gained = after - before
+        cost = deletion_cost(rows_sent=sent or 0,
+                             atoms_per_row=summary.get("atoms_expected", 0) // max(sent or 1, 1),
+                             atoms_gained=gained)
         print("  bundle %2d  sent %-8s changed %-8s requests %-4s max %-6ss  "
               "drain %-7ss peak %-5d atoms %+d%s"
               % (index, sent, changed, summary.get("requests"),
-                 summary.get("seconds_max"), drained, peak, after - before,
+                 summary.get("seconds_max"), drained, peak, gained,
                  "  (drain unfinished)" if timed_out else ""))
-        results.append({**summary, "drain_seconds": drained, "peak_depth": peak,
-                        "atoms_delta": after - before})
+        # 🔴 판정 210's condition: withdrawal stays a deletion, so the price of deleting is
+        # printed beside every bundle instead of being reconstructed later. 0 is the value a
+        # fill of new rows should show; anything else is a write that did not become a row.
+        print("             atoms expected %-9d gained %-9d shortfall %-7d in %.1fs"
+              % (cost["atoms_expected"], cost["atoms_gained"], cost["atoms_shortfall"],
+                 (summary.get("wall_seconds") or 0) + drained))
+        results.append({**summary, **cost, "drain_seconds": drained,
+                        "peak_depth": peak, "atoms_delta": gained})
         start += args.rows
 
     if args.apply:
