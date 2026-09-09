@@ -237,11 +237,25 @@ def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS
             f"relation {relation!r} is not in the table catalog, so this script cannot "
             f"know its columns.")
 
-    wanted = source_columns(source)
+    # 🔴 THE ROWS THIS SCRIPT WRITES ARE THE RELATION'S, NOT THE SOURCE'S READ LIST. A source
+    # reads two kinds of column: the ones the TABLE has, and the ones its PREPARER makes
+    # (`prepare.output_columns`). Only the first kind can be written - the second is produced
+    # downstream, and a table has no business declaring it. Demanding both refused
+    # `lot_event` for six names that are exactly the preparer's own outputs, which is a
+    # refusal about the wrong thing: nothing was missing.
+    #
+    # ⚠️ THE REFUSAL SURVIVES FOR THE CASE IT WAS BUILT FOR. A column the source reads that
+    # is neither in the relation nor a preparer output is still named and still refused -
+    # that one really is a table the operator has to fix, and losing it would trade a loud
+    # refusal for eight silently blank columns.
+    prepared = set((source.get("prepare") or {}).get("output_columns") or {})
     declared = set(entry.get("columns") or {})
-    missing = tuple(name for name in wanted if name not in declared)
+    read_columns = source_columns(source)
+    missing = tuple(name for name in read_columns
+                    if name not in declared and name not in prepared)
     if missing:
         raise MissingColumns(relation, missing)
+    wanted = tuple(name for name in read_columns if name in declared)
 
     # 🔴 A VIEW IS NOT A WRITE TARGET, and saying so here is what keeps the standing rule
     # ("rows go into a table") enforced by the tool rather than remembered by the operator.
