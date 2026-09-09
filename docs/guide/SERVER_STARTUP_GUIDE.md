@@ -4,7 +4,7 @@
 >
 > 🔴 **이 문서는 기동 절차의 정본이 아닙니다.** 정본은 [SYSTEM_OVERVIEW §7](../overview/SYSTEM_OVERVIEW.md)이고, 환경 구성은 [CONDA_SETUP_GUIDE](./CONDA_SETUP_GUIDE.md)·[NATIVE_POSTGRES_SETUP_GUIDE](./NATIVE_POSTGRES_SETUP_GUIDE.md)입니다. 여기 남은 것은 **대용량 조회를 빠르게 유지하는 관점**뿐입니다.
 >
-> ⚠️ **2026-08-04 정정 — 이 문서가 인쇄하던 명령 셋이 전부 이 저장소에 존재하지 않았습니다.** `pip install -r requirements.txt`(그런 파일이 없다 — 환경은 conda `environment.yml`), `python scripts/setup_db_performance.py`(실제 경로는 `server/scripts/`), `uvicorn main:app --port 8000`(이 시스템은 그렇게 뜨지 않고 포트도 다르다). 존재하지 않는 명령을 인쇄하는 가이드는 없느니만 못합니다 — 운영자가 도구가 고장 났다고 결론짓습니다. **셋 다 고쳤습니다.**
+> ⚠️ **2026-08-04 정정 — 이 문서가 인쇄하던 명령 셋이 전부 이 저장소에 존재하지 않았습니다.** `pip install -r requirements.txt`(그런 파일이 없다 — 환경은 conda `environment.yml`), `python scripts/ops_setup_db_performance.py`(실제 경로는 `server/scripts/`), `uvicorn main:app --port 8000`(이 시스템은 그렇게 뜨지 않고 포트도 다르다). 존재하지 않는 명령을 인쇄하는 가이드는 없느니만 못합니다 — 운영자가 도구가 고장 났다고 결론짓습니다. **셋 다 고쳤습니다.**
 
 이 가이드는 대규모 데이터를 초고속으로 조회하는 관점(인덱스·트라이그램·`work_mem`)을 설명합니다.
 
@@ -22,7 +22,7 @@ conda activate assy_manager
 ## 2. 데이터베이스 성능 인덱스 (PostgreSQL)
 
 ```bash
-conda run -n assy_manager python server/scripts/setup_db_performance.py
+conda run -n assy_manager python server/scripts/ops_setup_db_performance.py
 ```
 
 *`btree_gin`·`pg_trgm` 확장을 활성화하고 최신순/품번순/검색용 인덱스를 구성합니다.*

@@ -738,7 +738,7 @@ def test_no_automatic_cast_is_ever_proposed(type_drifted_db):
     ("frame_confirmation", "geometry_assumed", "add_frame_confirmation.py"),
     ("frame_confirmation_source", "geometry_basis", "add_frame_confirmation.py"),
     ("cell_sources", "confirmation_uid", "add_frame_confirmation.py"),
-    ("interaction_effort_logs", "nav_preserved_count", "setup_db_performance.py"),
+    ("interaction_effort_logs", "nav_preserved_count", "ops_setup_db_performance.py"),
 ])
 def test_the_remedy_is_found_in_the_tree_not_remembered_in_a_dict(table, column, expected):
     """The check's whole value is naming the fix. Deriving it means a migration

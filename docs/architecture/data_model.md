@@ -309,7 +309,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 **분모(`measured_cells`)는 항상 함께 반환·표시한다.** 표본 8개짜리 "12%"와 5만개짜리 "12%"를 구분할 수 없으면 지표가 아니다.
 
-**스케일**: 전용 부분 커버링 인덱스 `idx_audit_user_recorrection`(`models.AuditLog.__table_args__` + `scripts/setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**)이 없으면 병렬 Seq Scan으로 떨어진다(2026-07-27 실측 2,628,453행/1.6GB에서 512ms·128,523블록). 부분 술어(`WHERE source_name='user'`)가 planner에 매칭되는 근거는 드라이버가 psycopg2(클라이언트측 파라미터 보간)라 리터럴이 서버에 도달하기 때문이다.
+**스케일**: 전용 부분 커버링 인덱스 `idx_audit_user_recorrection`(`models.AuditLog.__table_args__` + `scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**)이 없으면 병렬 Seq Scan으로 떨어진다(2026-07-27 실측 2,628,453행/1.6GB에서 512ms·128,523블록). 부분 술어(`WHERE source_name='user'`)가 planner에 매칭되는 근거는 드라이버가 psycopg2(클라이언트측 파라미터 보간)라 리터럴이 서버에 도달하기 때문이다.
 
 ### 2.4 완료까지의 상호작용 점수 (`crud.get_effort_stats`) — 핵심가치 #1의 **정본 계기**
 
@@ -344,7 +344,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   - 🚨 **그러나 그 공수를 버려서는 안 된다 (2026-07-29 F1, QA 실측).** 서버가 200을 주면 클라가 카운터를 리셋해 **no-op에 쓴 공수가 소멸**했다. 그 결과 "값이 이미 같아 보이는 셀을 20키+5클릭으로 고치려다 실패하고, 3키+1클릭으로 다시 성공"하는 **제품 최고 마찰 사건이 데이터셋 최저 점수(6, 실제 ~40)로** 기록됐다 — 계기가 잡아내야 할 대상과 역상관. 수리는 **기록 조건이 아니라 응답의 정직성**이다: `PUT`이 `effort_recorded: false`를 돌려주고 클라가 그때 리셋하지 않으면, 그 공수는 **다음(성공) tx에 합산**되어 2회 시도 교정 전체가 하나의 완료 단위로 계측된다([backend 수집 계약](./backend.md#상호작용-점수-dashboardsummary--effort)).
 - **재도달 처리**: `transaction_id`는 UNIQUE이며 **첫 기록이 이긴다**. 클라 재시도는 사람이 새로 쓴 공수가 아니다(카운트 필드를 SET 의미론으로 두었다가 마지막 메시지가 총계를 덮어쓴 QA D-1의 재발 방지).
 
-**스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `scripts/setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
+**스케일**: 전용 인덱스 2종 `uq_effort_transaction`(tx당 1행 불변식) + `idx_effort_window`(창 집계 커버링)이 `models.InteractionEffortLog.__table_args__` + `scripts/ops_setup_db_performance.py` **양쪽에 정의 — 함께 고칠 것**. `measured_ratio`의 분모는 **§2.3의 `idx_audit_user_recorrection`을 그대로 재사용**한다(`timestamp` + `INCLUDE transaction_id WHERE source_name='user'`) — 새 감사 인덱스는 필요 없다.
 
 ### 2.5 감사 이력(Audit History) 인덱스 — 최근 패널 discovery + 행/셀 페이징 · 2026-08-11 `dab9152`+`2630790`
 
@@ -449,7 +449,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 정리는 같은 마이그레이션의 `--drop-redundant`가 한다. 대상은 하드코딩 목록이 아니라 `pg_index` 질의로 **매번 다시 증명**한다 — `indkey`·`indclass`·`indcollation`·**`indoption`**(정렬 방향·NULLS 위치)·access method가 PK 인덱스와 **전부** 같고, 부분·표현식·INVALID가 아닐 것. 🔴 **`indoption`을 빼면 `(a, b DESC)` 인덱스가 평범한 `(a, b)` PK의 사본으로 판정된다** — 역방향 스캔은 키 전체를 뒤집으므로 혼합 정렬을 대신하지 못하고, 이것이 이 스크립트에서 **재실행으로 되돌릴 수 없는 유일한 결과**(운영에서 멀쩡한 인덱스를 지움)다. 그 위에 이름 관문이 하나 더 있다 — SQLAlchemy 자동 생성형 `ix_*`가 아니면 **보고만 하고 두고 간다**.
 
-**`setup_db_performance.py` Step 3.5와의 경계**: 저쪽은 `database_outbox` 인덱스 **넷을 이름으로** 지운다. 그중 PK 사본은 `ix_database_outbox_id` **하나뿐**이고 나머지 셋(`event_uuid`·`status`·`processed_chain`)은 **부분 인덱스로 대체됐거나 조회처가 없어서** 지우는 것이라 이 절의 판정식에 걸리지 않는다. 즉 **계급의 정본은 이쪽(D3)**이고 Step 3.5는 그 계급 밖의 셋을 마저 처리하는 자리다. 겹치는 하나는 어느 쪽이 먼저 돌아도 무해하다(둘 다 `IF EXISTS`·멱등).
+**`ops_setup_db_performance.py` Step 3.5와의 경계**: 저쪽은 `database_outbox` 인덱스 **넷을 이름으로** 지운다. 그중 PK 사본은 `ix_database_outbox_id` **하나뿐**이고 나머지 셋(`event_uuid`·`status`·`processed_chain`)은 **부분 인덱스로 대체됐거나 조회처가 없어서** 지우는 것이라 이 절의 판정식에 걸리지 않는다. 즉 **계급의 정본은 이쪽(D3)**이고 Step 3.5는 그 계급 밖의 셋을 마저 처리하는 자리다. 겹치는 하나는 어느 쪽이 먼저 돌아도 무해하다(둘 다 `IF EXISTS`·멱등).
 
 ### 3.3 「키 + 언제」 — as-of 컬럼은 조인 키가 아니다 · 2026-08-14 `50a21c7`
 
@@ -497,7 +497,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 | `frame_confirmation_source` | 소스 하나에 한 행 | **소스 목록** + 소스별 적용 프레임과 **시프트(dx, dy)** + 근거 개수 + 제외 사유 + **`geometry_basis`** |
 | `cell_sources.confirmation_uid` | 셀 | 파생 도장 — 「이 셀은 어느 확정 아래에서 만들어졌나」. NULL이 기존 전 행의 상태 |
 
-**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py` + `server/tests/test_frame_confirmation_meta.py`(2026-08-06 [D7]).
+**소유자**: `server/frame_confirmation.py`(쓰기는 `record_confirmation` 하나) · 라우트 `POST /api/maps/alignment/confirm` · 모델 `server/database/models.py` · 스키마 `server/migrations/add_frame_confirmation.py` + `server/scripts/ops_setup_db_performance.py` Step 3.10 · 회귀 그물 `server/tests/test_frame_confirmation.py` + `server/tests/test_frame_confirmation_meta.py`(2026-08-06 [D7]).
 
 🔴 **결정 단위에 컬럼명을 적지 않습니다.** 단위의 정본은 규칙의 `decision_key` 선언이고, 저장은 `rule_name` + `unit_key`(그 규칙 파생 테이블의 `business_key_val`과 **같은 조립**: 선언된 `composite_key_separator`로 join) + `decision_key` JSON입니다. `dt_eqp`·`product` 컬럼은 첫 선언의 흔적으로 남아 있을 뿐 신규 코드의 단위가 아닙니다(추가 전용 규율이라 지우지 않고 NULL 허용으로 물러났습니다). 확정 대상도 마찬가지로 규칙의 `target_fields` 밖이면 거절합니다.
 

@@ -835,7 +835,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #
     # `idx_sources_by_source` (table_name, source_name, column_name, row_id)
     # exists for this predicate -- declared in models.py CellSource and built on
-    # existing databases by scripts/setup_db_performance.py Step 3.10, which then
+    # existing databases by scripts/ops_setup_db_performance.py Step 3.10, which then
     # EXPLAINs this exact statement to prove the planner uses it. With it the same
     # query is an Index Only Scan: 10.9ms, 1,106 buffers, 0 rows discarded.
     # `count_withdrawable` below rides the same index for the same reason.

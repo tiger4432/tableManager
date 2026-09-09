@@ -114,7 +114,7 @@ covered by a valid unique index and nothing in section 2 failed.
 
 `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY` cannot run inside a transaction
 block, so the session runs with `isolation_level="AUTOCOMMIT"` (same shape as
-`server/scripts/setup_db_performance.py`). CONCURRENTLY is not optional: `bonding_map` is
+`server/scripts/ops_setup_db_performance.py`). CONCURRENTLY is not optional: `bonding_map` is
 ~1.76M rows in production and a plain build locks writes for the duration.
 
 READ-ONLY BY DEFAULT - AND THAT CLAIM USED TO BE FALSE. See the guard section below.

@@ -53,7 +53,7 @@ conda run -n assy_manager python scripts/<이름>.py
 | `dedupe_business_key_rows.py` | **드라이런** | 한 업무키에 여러 행 → 한 행으로 접는다 |
 | `backfill_enrichment.py` | **보고 후 선택** | 소급 enrichment 백필 |
 | `rebuild_blank_business_keys.py` | 쓴다 | 빈 컴포넌트가 든 업무키를 원본 컬럼에서 다시 조립 |
-| `purge_outbox_backlog.py` | 쓴다 | `database_outbox` 백로그 수동 정리 |
+| `ops_purge_outbox_backlog.py` | 쓴다 | `database_outbox` 백로그 수동 정리 |
 | `backup_config.py` | 쓴다 | `server/config/` 스냅샷·목록·검사·복원 |
 
 ## 셋업 — 멱등, 다시 돌려도 된다
@@ -62,7 +62,7 @@ conda run -n assy_manager python scripts/<이름>.py
 
 | 스크립트 | 무엇 |
 |---|---|
-| `setup_db_performance.py` | 성능용 인덱스 + `ANALYZE` |
+| `ops_setup_db_performance.py` | 성능용 인덱스 + `ANALYZE` |
 | `setup_transfer_plan_indexes.py` | Universal Transfer Plan(M2) 엔진용 인덱스 |
 | `setup_bonding_plan_indexes.py` | 본딩 실험계획(M1) 집계 API용 인덱스 |
 | `setup_ingestion_checkpoint.py` | 파일 인제션 체크포인트 표 |

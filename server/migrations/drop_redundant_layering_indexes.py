@@ -1,7 +1,7 @@
 """Retire indexes on `cell_sources` / `cell_overwrites` / `audit_logs` that no
 query can use, WITHOUT touching the ones that only LOOK redundant.
 
-WHY THIS IS A SEPARATE SCRIPT AND NOT A STEP IN `setup_db_performance.py`
+WHY THIS IS A SEPARATE SCRIPT AND NOT A STEP IN `ops_setup_db_performance.py`
 ------------------------------------------------------------------------
 The mechanism is copied from the two files that already do this work - AUTOCOMMIT
 session (CONCURRENTLY cannot run in a transaction block), `DROP INDEX
@@ -9,9 +9,9 @@ CONCURRENTLY IF EXISTS`, and "ask the catalogue whether it is gone" instead of
 trusting that the statement did not raise. What is deliberately NOT copied is the
 TRIGGER.
 
-`setup_db_performance.py` is a make-the-database-right script that operators are
+`ops_setup_db_performance.py` is a make-the-database-right script that operators are
 told to run routinely - the server logs literally instruct them to
-("접두 인덱스 ... 가 없습니다. server/scripts/setup_db_performance.py 를 실행하세요").
+("접두 인덱스 ... 가 없습니다. server/scripts/ops_setup_db_performance.py 를 실행하세요").
 Its Step 3.5 does drop indexes, but every one of those was superseded by an index
 that the SAME script had just created a few steps earlier, so the drop is part of
 that migration's own story and is safe to repeat on every run.
