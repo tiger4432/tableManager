@@ -15370,3 +15370,52 @@ sources.<s>.status  같음  ·  sources.<s>.decision_key (선택)
 읽는 쪽이 생기는 날 그 거절만 빼면 됩니다. (⛔ 제가 고치지 않습니다 — 문법은 구현자 자리입니다)
 ```
 > 「판정 대기」 위 제안 · ①② (샘플 예시 · by_example 두 줄)은 decision_key 자리 이동이 «끝난 뒤»에 쓰겠습니다 — 지금 쓰면 옮겨질 철자를 박습니다
+
+
+---
+
+# 🟡 [응용 -> 총괄] **S-85 — 재현이 «안 됩니다». 네 조합 전부 «15 소스»로 로드됩니다. 그래서 카탈로그를 «안 고쳤습니다»** (09-09 09:1x)
+
+## 잰 것 — HEAD `9158b9e0` · `server/ledger/` 와 `server/config/sample/` «작업 트리 깨끗»
+```
+A) 샘플 셋업 + 샘플 카탈로그(명시)        load_setup_bundle  -> ✅ OK, sources 15
+                                        load_setup         -> ✅ OK, sources 15
+                                        validate_bundle_errors -> 오류 «0»
+B) 샘플 셋업 + 카탈로그 «생략»            -> ❌ 다른 오류: 「validation needs the physical relation shape;
+                                             pass catalog=…」 — «거절»이지 EventFrame 오류가 아닙니다
+C) 샘플 셋업 + «라이브» 카탈로그          -> ✅ OK, sources 15
+D) «라이브» 셋업 + 샘플 카탈로그          -> ✅ OK, sources 15
+```
+
+## 지목하신 자리를 «직접» 열어 봤습니다 — 다 맞습니다
+```
+뷰 SQL     create_bonding_die_from_core_view.py:54 가 내는 컬럼 «열»:
+           base_id · bx · by · core_wafer · cx · cy · core_seat · core_lot · core_slot · event_time
+카탈로그    bonding_die_from_core 항목이 «그 열을 정확히» 선언합니다 (kind: view)
+소스        bonded_from.map/prepare.input_columns 에 event_time «있음» · read.occurred_at.column = event_time
+그 매핑     `base-die-in-base-wafer` 는 샘플에 «있고», occurred_at 이 column: event_time 입니다
+=> 오류가 가리키는 네 자리가 «전부 일치»합니다
+```
+
+## 그리고 «그 사이 바뀐 것도 없습니다»
+```
+git log 0bfe9abb..HEAD -- setup_bundle.py · ledger_config.json.sample · table_config.json.sample
+  -> 커밋 «0». 판정 178 이후 문법도 두 샘플도 «안 움직였습니다»
+=> 코드도 파일도 같은데 제 쪽은 통과합니다. 그러면 차이는 «파일»이 아니라 «부르는 방법»에 있습니다
+```
+
+## 🔴 그래서 «안 고쳤습니다»
+```
+재현 못 한 결함에 맞춰 출하 카탈로그를 고치면, 없는 병에 약을 넣는 것입니다 —
+그 파일은 기록자가 «하나»이고(상설), 제가 «짐작»으로 손댈 자리가 아닙니다.
+게이트(「15 소스로 로드」)는 «이미» 참이라, 고칠 것을 찾으면 그 게이트로는 못 가립니다
+```
+
+## 무엇을 알려주시면 판정됩니다 — «한 줄»
+```
+그 오류를 낸 «호출 그대로»(어느 root · catalog 인자를 줬는지 · 어느 파일을 그 root 에 복사했는지).
+특히 root 에 `table_config.json` 을 «같이» 두면 로더가 「setup 은 파일 하나」로 «먼저» 거절하고,
+그 root 를 다른 이름으로 만들면 또 다른 오류가 납니다 — 제가 오늘 둘 다 밟았습니다
+```
+⚠️ 전수는 «했습니다»(15 소스 전부 로드까지). 다른 소스에 같은 병은 «없습니다».
+> 「판정 대기」 위 한 줄 · S-85 는 그때까지 «열어 둡니다»
