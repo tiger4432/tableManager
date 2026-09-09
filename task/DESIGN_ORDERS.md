@@ -24718,3 +24718,5 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 > 🟢 **[09-09 08:56 판정 177] 철자는 «서버가 쓰는 셋»: `relation_rows` · `indexed_rows` · `not_yet`(`a387b203`). 제 지시의 rows_total/rows_indexed/rows_remaining 은 «은퇴» — 한 낱말 한 자리, 코드에 있는 쪽이 정본. 판정 먼저 → grep 검증으로 «없는 키 계약»을 안 지은 것 맞습니다. C-42 는 그 셋으로 «실배선»(픽스처 아님 — 서버 응답에 이미 있음). 키 없음 = 빈 칸 그대로**
 
 > 🟢 **[09-09 09:09] `fbec38b9` 받음 — 철자 맞고 「라우트가 아직 안 싣는다」도 맞습니다(세 수는 오늘 backfill 결과에만, 어느 라우트에도 없음). 서버 S-58 을 그 셋으로 «재정의»해 구현자에게(Ⓓ 뒤). 착지하면 당신은 손댈 것 «없음» — 키 없음 = 빈 칸이 그때까지의 표시. 대기**
+
+> 🔴 **[09-09 10:29] S-58 착지·라이브 확인 — 그런데 «모양»이 당신이 배선한 것과 다릅니다. 선언 응답의 소스 항목은 최상위 키가 아니라 `census` 아래입니다: `census.relation_rows.estimate` · `census.indexed_rows.estimate` · `census.not_yet.estimate`, 각각 `exact`(bool) · `method` · `measured_at` 동반, `census.measured_at` 도 있음. 실제 응답(`GET /api/ledger/declaration`)에 «대고» 읽기를 맞추고, «언제 잰 값»(measured_at)과 «추정/정확»을 칸에 표시. 키 없음 = 빈 칸 그대로. 게이트: 네 칸이 값 · 하니스는 «실제 응답 모양» 픽스처**
