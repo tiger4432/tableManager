@@ -91,7 +91,7 @@
 | 삭제 겨눔 | ① | `ledger_source_row_ref` (`schema.py:69`, 키 `(relation, row_id, source_who, source_raw_ref)`) · `backfill.sources_without_row_index` :915 · `index_existing_refs` :936 · `withdraw_deleted_rows` :1056 | |
 | 삭제 — row_id 없는 뷰 | ② | 🔵 «이름 대어» 남는다 — `sources_without_row_index` 가 그 소스를 «센다». 뷰가 base 의 `row_id` 를 흘려 주면 그 뷰는 겨눌 수 있다(:246 주석, 샘플 뷰 10 중 5) | |
 | 🔴 **행 선택·제외** (S-91, 09-09 17:10 **닫힘**) | ✅ **①** | `sources.<s>.prepare.exclude_when: [{column, blank:true}]` — 검증 `setup_bundle.py:1351` `_validate_exclude_when` · 미지 컬럼은 :1903 에서 이름 대어 거절 · `direct-join` 이 아닌 준비기에는 :1913 이 「그 준비기는 이것을 안 읽는다」로 거절 · 레지스트리 `setup_registry.py:310` · 읽는 곳 `source_preparation.py:459` · 스켈레톤 `:576`(폼이 그림) · 출하 샘플 `:1781`. ⚠️ **착지 전 상태를 기록으로 남깁니다** — 기제는 있었으나 «파이썬 준비기»만 냈습니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
-| **소스 은퇴** | 🔴 **③′** (09-09 18:2x 정정) | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe.py:1381` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
+| **소스 은퇴** | 🔴 **③′** (09-09 18:2x 정정) | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe._emission_plan` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
 
 ---
 
@@ -917,7 +917,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 => 「무계산」은 «출하 샘플에서 거짓»입니다. 그러므로 이 셋은 「밖의 일」이 아니라 «이 기저의 구멍»입니다.
    전제가 참인 소스가 12~13 이고, 나머지가 파이썬으로 «새는» 것입니다
 ```
-🔵 **그리고 새는 자리가 «이름 대어 거절»됩니다** — `roleframe.py:906` `ambiguous_binding_value`:
+🔵 **그리고 새는 자리가 «이름 대어 거절»됩니다** — `roleframe._evaluate_binding` `ambiguous_binding_value`:
 「column {c!r} has multiple values in one mapper unit」. 즉 범용 매퍼는 여러 값을 «조용히 첫 행으로»
 접지 않고 «거절»합니다. 그래서 이 구멍은 «침묵이 아니라 번호 붙일 수 있는 빚»입니다.
 
@@ -1010,7 +1010,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 제가 답한 것  「그러므로 한 술어의 목적어가 여러 타입일 수 있다」 = ①                     <- «다른 질문의 답»
 🔴 물음은 «소스»의 것이었습니다   「행마다 목적어 «타입»이 달라질 수 있나」
    실측: 엔티티 바인딩의 `entity_type` 은 «상수»입니다 — `_versioned_id(value.get("entity_type"))`
-        (`setup_bundle.py:1554`, 허용 키 `("kind","entity_type","keys","attributes")` :1540).
+        (`setup_bundle._validate_binding` 의 `_versioned_id`, 허용 키 `("kind","entity_type","keys","attributes")` :1540).
         컬럼일 수 «없습니다». 그래서 한 문장은 «한 타입»만 냅니다
 => `types` 목록은 «술어가 허용하는 것»이고, «소스가 고르는 것»이 아닙니다.
    행마다 다르려면 문장 둘 + 선택 ⇒ **S-99**. 판정 196 의 닫힘이 맞고 제 ① 이 틀렸습니다
@@ -1033,7 +1033,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 닫힘 주장(§2-0)   「행 삭제 → 철회: σ 는 행이 아니라 «사건»(문의 delete)이 정한다 — 번역 인자 아님」
 반증             σ 는 «filter»(번역 인자!)에도 달려 있습니다. 제외가 «나중에» 참이 되면 옛 원자가 «남습니다»
 경로 (코드 읽기)
-  ① 제외는 «프레임에서 떨굽니다» — `source_preparation.py:860` `out = out.loc[[not v for v in excluded]]`.
+  ① 제외는 «프레임에서 떨굽니다» — `source_preparation._assemble_prepared_frame` `out = out.loc[[not v for v in excluded]]`.
      그 자리 주석이 스스로 적어 뒀습니다: 「the base page is read off `rows_missing_from_the_index`,
      never off what survives here, so the excluded rows are passed over once and not re-read」
   ② 철회는 «사라진 행»만 겨눕니다 — `withdraw_deleted_rows(…, row_ids)` 는 표에서 «없어진» row_id 로 돕니다.
@@ -1067,7 +1067,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 | `read.registration_probe` | **규칙의 «명시된 예외»**(비국소) | ① |
 | `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |
 | `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules` | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
-| `status` (술어) | 번역 인자 «아님** — 선언의 수명 | ✅ ① — «읽힙니다**(`roleframe.py:1381` `predicate.status != "active"` 면 발행 안 함) |
+| `status` (술어) | 번역 인자 «아님** — 선언의 수명 | ✅ ① — «읽힙니다**(`roleframe._emission_plan` `predicate.status != "active"` 면 발행 안 함) |
 | `status` (엔티티·소스) | 번역 인자 «아님** | 🔴 **③′** — 적을 수 «있고»(:1611 `optional=("status",)`) 검증도 되는데 **레지스트리에 안 실립니다** (D-7-6) |
 ```
 🔴 다섯 인자에 대해서는 ③ 이 «하나»(select = S-99).
@@ -1100,7 +1100,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 ```
 ```
 🔴 그런데 «고쳐진 것도 아닙니다» — 상태는 ③ 이 아니라 ③′ 입니다:
-   술어      ✅ 읽힙니다 — `roleframe.py:1381` 「`predicate.status != "active"` 면 그 문장을 안 냅니다」
+   술어      ✅ 읽힙니다 — `roleframe._emission_plan` 「`predicate.status != "active"` 면 그 문장을 안 냅니다」
    엔티티·소스  🔴 «레지스트리에 안 실립니다** — `PredicateDescriptor` 에는 `status` 가 있는데
               (`setup_registry.py:154` · `:888`) 엔티티·소스 쪽 서술자에는 «필드가 없습니다».
               훑은 범위(server/ledger 의 `.status` 소비자 전부)에서 읽는 곳 «0»
@@ -1109,7 +1109,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 ```
 > 큐 행 초안 — **Q-수명**: 「운영에서는 소스나 엔티티에 `status: "retired"` 를 적으면 됩니다.
 > 그러면 그 소스는 «더 읽지 않고», 이미 쓴 원자는 «그대로 남습니다»(참인 역사).」
-> 술어가 이미 그렇게 돕니다(`roleframe.py:1381`) — 같은 술어를 나머지 둘에 «잇는» 일이지 새 기제가 아닙니다.
+> 술어가 이미 그렇게 돕니다(`roleframe._emission_plan`) — 같은 술어를 나머지 둘에 «잇는» 일이지 새 기제가 아닙니다.
 
 ---
 
@@ -1295,15 +1295,15 @@ S-101·S-103 은 «있는 칸이 말한 대로 되지 않는» 자리입니다. 
 ## D-10-2. 🔴 그런데 «충분성»으로는 다릅니다 — 거절이 «틀린 집합»에 대고 잽니다
 ```
 발견   바인딩의 컬럼은 «관계의 컬럼 ∪ 준비기 산출»에 대고 검사됩니다:
-         `setup_bundle.py:1919`  available = set(physical)
-         `setup_bundle.py:1931`  available.update(prep["output_columns"])
+         `setup_bundle._cross_validate`  available = set(physical)
+         `setup_bundle._cross_validate`  available.update(prep["output_columns"])
       그런데 원자를 만들 때 «프레임에 실려 오는» 컬럼은 그 집합이 «아닙니다»:
          `source_preparation.base_select_columns` = identity · group_by · order_by · cursor ·
          occurred_at · 준비기 입출력 · exclude_when · **when(S-99)** · **map.input_columns** · row_id
       🔴 이 목록에 «바인딩의 컬럼»이 «없습니다». 바인딩 컬럼은 `map.input_columns` 에 «따로 적어야»
          프레임에 옵니다
 결과   관계엔 있고 read 가 «안 싣는» 컬럼을 바인딩에 적으면 → 검증 «통과» → 실행에서 터집니다:
-         `roleframe.py:895` `missing_binding_column` 「column X is absent from the EventFrame unit」
+         `roleframe._evaluate_binding` `missing_binding_column` 「column X is absent from the EventFrame unit」
 => 「검사가 없다」가 아니라 **「검사가 다른 것을 잰다」**입니다. 그리고 그 차이가 실패를 «런타임으로» 미룹니다
 ```
 🔵 **그리고 S-99·S-91 은 이 함정을 «피했습니다»** — `when` 과 `exclude_when` 의 컬럼은
@@ -1316,7 +1316,7 @@ S-101·S-103 은 «있는 칸이 말한 대로 되지 않는» 자리입니다. 
 |---|---|---|
 | ✅ 번들 검증이 이름 대어 거절 | 36 | «작성 시점» — 폼이 그 경로를 짚어 줍니다 |
 | ⚠️ 스냅샷 컴파일이 거절 | 2 | «로드 시점» — 폼이 아니라 기동/재로드에서 |
-| 🔴 검증은 통과하고 «실행»에서 터짐 | 바인딩 컬럼 «전부»가 이 위험을 가짐 | `roleframe.py:895` — 이름은 대지만 «운영 중»입니다 |
+| 🔴 검증은 통과하고 «실행»에서 터짐 | 바인딩 컬럼 «전부»가 이 위험을 가짐 | `roleframe._evaluate_binding` — 이름은 대지만 «운영 중»입니다 |
 | 🔴 조용히 받고 «아무 말 없음» | 알려진 셋 → 각각 큐 | S-105 · S-86 · S-102 |
 ```
 ⚠️ 마지막 두 줄은 «칸 수»로 못 셉니다 — 「이 칸이 검사되나」가 아니라 「그 검사가 옳은 것을 재나」라서
@@ -1387,7 +1387,7 @@ Q-정의역-충분성  «검사가 무엇을 재는지»를 칸마다 한 줄로
 ## D-11-2. 참조(ref) — 「받는 집합」이 아니라 「지키는 집합」을 잽니다
 ```
 predicate     `unknown_predicate`(선언에 없음) + **`inactive_predicate`**(있는데 은퇴)
-              🔵 둘째가 요점입니다 — 런타임(`roleframe.py:1381`)이 «active 아니면 안 냅니다».
+              🔵 둘째가 요점입니다 — 런타임(`roleframe._emission_plan`)이 «active 아니면 안 냅니다».
                  즉 거절이 «발행이 지키는 집합»을 재고 있습니다. D-11-0 의 규칙대로입니다
 entity_type   `unknown_entity_type` · `keys` 는 「등록된 신원 키와 «정확히» 일치」 · 속성 이름은 «타입이 소유»
 ⚠️ 그림자 하나  엔티티의 `status` 는 «아무도 안 읽습니다»(S-103). 그래서 「은퇴한 엔티티를 내는 문장」이
@@ -1411,7 +1411,7 @@ implementation_version     `invalid_version` — 「모양이 버전인가」까
 ## D-11-4. 시각(instant) — 실물 tz 데이터베이스를 잽니다. 그리고 «넷째 상태»가 여기 있습니다
 ```
 timezone   `ZoneInfo(timezone)` 를 «실제로 만들어» 보고 `ZoneInfoNotFoundError` 면 `invalid_timezone`
-           (:1766~1769) -> 받는 집합 = 지키는 집합. 문자열 목록을 따로 들고 있지 «않습니다» ✅
+           (`ZoneInfo(...)` 를 실제로 구성) -> 받는 집합 = 지키는 집합. 문자열 목록을 따로 들고 있지 «않습니다» ✅
 basis      `_OCCURRED_AT_BASES = {"ingested"}` — 한 값짜리 열거
 🔴 그리고 여기가 «넷째 상태»입니다 — `bind.<역할>.occurred_at` 이 컬럼을 대는데 소스가 `basis` 를
    선언한 경우: 컴파일러가 그 컬럼을 «안 읽습니다». 검증은 «거절하지 않고», 로더가 «이름 대어 알립니다»
@@ -1443,4 +1443,18 @@ bind.occurred_at=event_time (basis ingested) ignored」. **기제가 아니라 �
 남긴 것 ②   ⚠️ 이 훑기는 «칸» 단위입니다. 「칸 둘 사이의 관계」는 안 봤습니다 —
            S-105 가 잡은 「한 문장의 주어와 목적어가 «같은 값»에 묶임」이 정확히 그 부류이고,
            칸마다로는 «둘 다 옳습니다». 그 축을 세려면 «문장 단위» 훑기가 따로 필요합니다
+```
+
+---
+
+## 🔴 이 문서의 «줄 번호»에 대하여 (2026-09-09 19:2x)
+```
+실측   오늘 제가 D-6~D-11 에 실은 앵커 21 개를 몇 시간 뒤 다시 재니 **아홉이 옮겨졌습니다** —
+      `roleframe` 의 술어 수명 검사 1381 -> 1420 · `missing_binding_column` 895 -> 935 ·
+      `available` 구성 1919 -> 1983 · 제외 행 드롭 860 -> 872 …
+원인   같은 저녁에 그 파일들이 «세 번» 착지했습니다(S-99 · S-105 ① · 202 의 좁히기)
+조치   위 아홉을 «심볼»로 바꿨습니다(`roleframe._emission_plan` · `setup_bundle._binding_refs` …).
+      남은 줄 번호는 «그 함수를 찾는 힌트»이지 근거가 아닙니다 — 근거는 «이름»입니다
+🔵 이건 상설(「공유 트리의 줄 번호는 유통기한이 있다 — 위치 말고 술어를 적는다」)의 실물이고,
+   유통기한이 «하루»가 아니라 «두 시간»일 수 있다는 것이 오늘 나온 수입니다
 ```
