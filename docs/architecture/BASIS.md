@@ -123,7 +123,9 @@ D_Π   출처 선언      소스 = 표/뷰 → fact 로 가는 «번역»(read �
                  · ✅ **행 선택** 「이 행이 «이 소스의» 행인가」 — S-91 착지(09-09 17:10)로 «칸 있음»:
                    `sources.<s>.prepare.exclude_when: [{column, blank:true}]`
                    (검증 `setup_bundle.py:1351` · 읽는 곳 `source_preparation.py:459` · 폼 `ledger_skeleton.json:576`)
-                 · 🔴 **문장 선택** 「이 분자가 «이 문장»을 말하나」 — 칸 «없음»(S-99). §2-0 의 `select_s`
+                 · ✅ **문장 선택** 「이 분자가 «이 문장»을 말하나」 — S-99 착지(09-09 18:33)로 «칸 있음»:
+                   `sources.<s>.bind.mappings.<문장>.when`  (§2-0 의 `select_s`)
+                   (검증 `setup_bundle.py:1521` `_validate_when` · 읽는 곳 `roleframe.py:325`)
                  · 🔴 **emit 안의 계산** 값 변환 · 그룹 집계 · 분자 안 짝짓기 — 칸 «없음».
                    출하 샘플 15 소스 중 «셋»이 이 때문에 범용 구현을 벗어나 파이썬 매퍼로 간다
                    (`dt-job-role` 집계 · `lot-event-role` 짝짓기/위치, `LEDGER_SCHEMA_COMPLETENESS.md` D-6-2)
