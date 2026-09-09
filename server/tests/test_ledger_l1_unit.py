@@ -980,8 +980,15 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         def raw_connection(self):
             return _Connection()
 
+    class _Plan:
+        """⚠️ `frame_row_id` IS READ DIRECTLY BY `rescope` SINCE S-101, so a plan double has
+        to answer it. `None` is the VIEW case - no `row_id` to index by - which keeps this
+        test on its own subject: the freshness of the read, not the aim of the withdrawal."""
+
+        frame_row_id = None
+
     class _Setup:
-        snapshot = type("S", (), {"source_plans": {"src": object()}})()
+        snapshot = type("S", (), {"source_plans": {"src": _Plan()}})()
 
     def _fetch(connection, plan, **kwargs):
         # The live read. It answers with the CORRECTED value, so a writer that used the

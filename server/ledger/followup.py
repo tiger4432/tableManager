@@ -48,10 +48,12 @@ logger = logging.getLogger(__name__)
 #: with nothing past its cursor, and skips the rest by name -- so a source still catching up
 #: keeps reading its own new rows exactly as before, and nothing is translated twice.
 #:
-#: 🔴 DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS NOT THE SAME STEP. `rescope` aims its
-#: withdrawal with the CURRENT translation of the rows in scope, so a row that is gone
-#: produces no ref and its atoms would stay -- which is why DELETE waited until the ledger
-#: wrote down, while the row was still there, which physical row each fact came from.
+#: 🔴 DELETE JOINED ON 2026-09-08 (S-54-b) AND IT IS STILL NOT THE SAME STEP. A deleted
+#: row cannot be selected, so there is nothing to scope and nothing to remake -- which is why
+#: DELETE waited until the ledger wrote down, while the row was still there, which physical
+#: row each fact came from. Since S-101 `rescope` aims its withdrawal with that same note
+#: rather than with the new translation, so an EDIT that stops a row being this source's row
+#: withdraws by the same road; the step stays separate because only DELETE has no remake.
 FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")
 
 

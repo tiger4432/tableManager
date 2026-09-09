@@ -61,11 +61,26 @@ def setup():
 # ------------------------------- the withdrawal never travels on a transaction of its own
 
 class SpyStore:
-    """A store that records the one call `execute_scoped_batch` is allowed to make."""
+    """A store that records the one call `execute_scoped_batch` is allowed to make.
+
+    ⚠️ ITS INDEX IS EMPTY ON PURPOSE (S-101). Since the withdrawal is aimed from
+    `schema.ROW_REF_TABLE` as well as from the new translation, a store double that answered
+    that question would change what these cases carry - and what they are about is the
+    TRANSACTION the refs travel in, not which refs they are. An empty index leaves the aim
+    exactly `REFS`, which is what the assertions below were written against.
+    """
 
     def __init__(self, raises=None):
         self.calls = []
         self.raises = raises
+        self.forgotten = []
+
+    def row_refs_for(self, relation, row_ids):
+        return []
+
+    def forget_row_refs(self, relation, row_ids, source=None):
+        self.forgotten.append((relation, tuple(row_ids), source))
+        return 0
 
     def write_batch(self, *args, **kwargs):
         self.calls.append(kwargs)
@@ -155,19 +170,31 @@ def test_a_write_that_raises_takes_the_withdrawal_down_with_it(setup, monkeypatc
         run_rescope(setup, monkeypatch, store, dt_log_rows())
 
 
-def test_nothing_is_withdrawn_when_the_preview_names_no_ref(setup, monkeypatch):
-    """A scope whose rows produce no atoms has nothing to aim a withdrawal with, and this
-    returns before opening anything -- `remake == 0` with `rows_in_scope > 0` is the case
-    `rescope`'s docstring calls a declaration question."""
+def test_nothing_is_withdrawn_when_neither_the_preview_nor_the_index_names_a_ref(
+        setup, monkeypatch):
+    """⚠️ THIS CASE NARROWED ON 2026-09-09 AND THE OLD SENTENCE WAS THE DEFECT (S-101).
+
+    It used to read "a scope whose rows produce no atoms has nothing to aim a withdrawal
+    with", and that was exactly what ruling 199 found: a row EXCLUDED by the declaration
+    produces no atoms either, so the aim went empty in the one case where the old atoms had
+    to go and this returned having done nothing. The aim now also asks the row index, so the
+    case that returns early is the narrower one - nothing to withdraw AND nothing to put in
+    its place, which is what this store's empty index says.
+    """
     store = SpyStore()
+    statements = []
     monkeypatch.setattr(backfill, "preview_rescope", lambda *a, **k: {
         "source": "dt_job", "scope_column": "dt_job", "scope_values": 1,
         "rows_in_scope": 3, "withdraw": 0, "remake": 0, "refs": []})
+    monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", lambda *a, **k: dt_log_rows(3))
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
     result = backfill.rescope(
-        SimpleNamespace(), setup, "dt_job", "dt_job", ["X"], apply=True)
+        SimpleNamespace(raw_connection=lambda: SpyConnection(statements)),
+        setup, "dt_job", "dt_job", ["SYN-DTJ-002-04"], apply=True)
     assert store.calls == [] and result["applied"] is False
-    assert result["withdrawn"] == 0
+    assert result["withdrawn"] == 0 and result["forgotten"] == 0
+    assert store.forgotten == [], "nothing was withdrawn, so no index line is stale"
+    assert not [line for line in statements if "DELETE" in line.upper()], statements
 
 
 # ------------------------------------------------- the statement itself, with no server

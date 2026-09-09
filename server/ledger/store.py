@@ -486,8 +486,14 @@ class LedgerStore:
     def row_refs_for(self, relation, row_ids, connection=None):
         """`[(source_who, source_raw_ref)]` for rows of `relation`. READ ONLY.
 
-        The answer to "these rows are gone -- what did the ledger say about them", and the
-        only way to ask it once they are: their translation is gone with them.
+        The answer to "what did the ledger say about these rows", and the only way to ask it
+        once they are gone: their translation goes with them.
+
+        🔴 AND ALSO WHAT A RESCOPE AIMS WITH (S-101). A row that is still there but no longer
+        translates -- excluded by `exclude_when`, or edited until its identity is blank --
+        produces no ref either, so a withdrawal aimed at the current translation has nothing
+        to aim with in exactly the case where the old atoms must go. Both callers therefore
+        read the note taken while the row still spoke, rather than asking the row again.
         """
         if not row_ids:
             return []
@@ -504,12 +510,21 @@ class LedgerStore:
             if own:
                 connection.close()
 
-    def forget_row_refs(self, relation, row_ids, connection=None):
-        """Drop the index rows for physical rows that are gone. Returns how many.
+    def forget_row_refs(self, relation, row_ids, connection=None, source=None):
+        """Drop the index rows for physical rows the ledger no longer speaks for. How many.
 
         Last, not first: while these are still here the withdrawal can be run again, and a
         run that died between the two leaves an index row pointing at atoms that are already
         withdrawn -- which the next pass reads as "nothing to withdraw" and clears.
+
+        🔴 `source` NAMES ONE SPEAKER, AND OMITTING IT MEANS ALL OF THEM. The two callers ask
+        different questions and the predicate has to follow: a DELETED row is gone for
+        everybody, so every source's line about it is stale; a row a rescope no longer
+        translates is STILL THERE, and another source reading the same relation still speaks
+        for it. Dropping that other source's line would leave an atom whose index row does
+        not exist -- the one state `_write_row_refs` says one transaction makes unreachable,
+        recreated here by a wider DELETE. One statement either way, so the two cannot come
+        to be spelled differently.
         """
         if not row_ids:
             return 0
@@ -517,10 +532,17 @@ class LedgerStore:
         connection = connection or self.connection()
         try:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    f"DELETE FROM {schema.ROW_REF_TABLE} "
-                    "WHERE relation = %s AND row_id = ANY(%s)",
-                    (str(relation), [str(item) for item in row_ids]))
+                if source is None:
+                    cursor.execute(
+                        f"DELETE FROM {schema.ROW_REF_TABLE} "
+                        "WHERE relation = %s AND row_id = ANY(%s)",
+                        (str(relation), [str(item) for item in row_ids]))
+                else:
+                    cursor.execute(
+                        f"DELETE FROM {schema.ROW_REF_TABLE} "
+                        "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
+                        (str(relation), str(source),
+                         [str(item) for item in row_ids]))
                 removed = int(cursor.rowcount or 0)
             if own:
                 connection.commit()

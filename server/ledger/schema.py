@@ -60,12 +60,13 @@ CURSOR_TABLE = "ledger_translator_cursor"
 
 #: Which PHYSICAL ROW each translated fact came from (S-54-b).
 #:
-#: 🔴 IT EXISTS BECAUSE A DELETED ROW HAS NO TRANSLATION. `rescope` aims its withdrawal with
-#: the CURRENT translation of the rows in scope -- `source_raw_ref` is built from their
-#: `order_by` values -- so a row that is GONE produces no ref and its atoms stay, however
-#: wide the scope is spelled. That is a structural cannot, not a width, and this table is
-#: the only thing that can still name what to withdraw: the ref is written down WHILE the
-#: row is still there.
+#: 🔴 IT EXISTS BECAUSE A ROW THAT NO LONGER SPEAKS CANNOT BE ASKED. `source_raw_ref` is
+#: built from a row's `order_by` values at translation time, so a withdrawal aimed at the
+#: CURRENT translation finds nothing to aim with in precisely the cases where the old atoms
+#: must go: the row was DELETED (S-54-b), or it is still there and is no longer this source's
+#: row -- excluded by `exclude_when`, or edited until the declared column is blank (S-101).
+#: This table is what can still name what to withdraw, because the ref is written down WHILE
+#: the row is still speaking. Both `withdraw_deleted_rows` and `rescope` read it.
 #:
 #: ⚠️ THE KEY IS `(relation, row_id)` AND NOT `(source, row_id)`, because of who asks. The
 #: question arrives from the outbox as "these rows of this TABLE are gone", and the outbox

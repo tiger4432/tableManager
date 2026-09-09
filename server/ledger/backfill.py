@@ -632,6 +632,26 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
     return result
 
 
+def _scope_row_ids(plan, frame):
+    """The physical row ids the scope read, in order, or `()`.
+
+    Empty for a source reading a VIEW, which has no `row_id` to index by - the same
+    structural absence `sources_without_row_index` reports, and the reason the caller says
+    so by name rather than reporting a quiet zero.
+    """
+    column = plan.frame_row_id
+    if not column or column not in frame.columns:
+        return ()
+    ids = []
+    for value in frame[column].tolist():
+        if value is None or value != value:            # NaN is not equal to itself
+            continue
+        text = str(value)
+        if text:
+            ids.append(text)
+    return tuple(dict.fromkeys(ids))
+
+
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             withdraw=True):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
@@ -661,20 +681,33 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     new generation. Nothing outside that transaction can see between the two statements, so
     the "two generations at once" objection has no observer.
 
-    ⚠️ WHAT A SCOPE CANNOT AIM AT, AS OF S-54-b. A DELETION is no longer this problem: the
-    ledger writes down which physical row each fact came from, so `withdraw_deleted_rows`
-    aims by that INDEX and needs nothing from a translation that can no longer be made. What
-    is left is narrower and has a name -- a source with no row index yet
-    (`sources_without_row_index`, reported as `no_row_index`), whose facts were written
-    before the index existed and have to be backfilled into it first.
+    🔴 THE WITHDRAWAL IS AIMED FROM THE INDEX, NOT FROM THE NEW TRANSLATION (S-101,
+    ruling 199). It used to be aimed only at the refs the CURRENT declaration makes from the
+    rows in scope, and that aim goes EMPTY in exactly the case where the old atoms most need
+    to go: a row that is no longer this source's row produces no ref at all. Adding S-91's
+    `exclude_when` to a source measured 5 rows in scope, 10 atoms already written and 0 refs
+    previewed - so this returned before writing anything and the 10 atoms and their 5 index
+    rows stayed. An EDIT that merely BLANKS the declared column arrives at the same place, so
+    it was never a deployment-only door.
 
-    For a correction that is not a deletion the old sentence still holds: the refs come from
-    the CURRENT translation of the rows in scope, so if the correction makes those rows
-    produce no atoms at all there is nothing to aim the withdrawal with and the old atoms
-    stay. `remake == 0` with `rows_in_scope > 0` is that case, visible in the return, and it
-    is a declaration question rather than something this can widen its way out of - widening
-    it means deleting by something other than the scope, which is the unscoped act the tool
-    exists to avoid.
+    The refs are therefore the union of two questions: what the new translation makes, and
+    what `schema.ROW_REF_TABLE` says this source already said about these rows - the note
+    taken while the row still spoke, which is the instrument `withdraw_deleted_rows` already
+    aims with. A row that stops being translated is then withdrawn by the same road as a row
+    that was deleted, and its index line goes with it.
+
+    ⚠️ THE UNION, NOT THE DIFFERENCE. Ruling 199 names the difference because that is what
+    this ADDS; the refs the new generation re-creates have to be withdrawn as well, or the
+    old generation stands beside the new one - which is the hazard the paragraph above is
+    about. It also picks up a ref that MOVED: a corrected `order_by` value spells a new ref,
+    and the atom under the old one was previously left behind.
+
+    ⚠️ AND ONLY WHERE THERE IS A ROW INDEX (판정 136). A source reading a VIEW has no
+    `row_id`, so there is nothing to ask the index with and the aim is the old one; the
+    return says `no_row_index` rather than reporting a quiet zero. For such a source
+    `remake == 0` with `rows_in_scope > 0` is still the declaration question it always was,
+    and widening it means deleting by something other than the scope - the unscoped act this
+    tool exists to avoid.
 
     Registrations are offered on the same basis the dry-run counted them on (`()` - nothing
     assumed already registered), so `remake` and `attempted` are the same question asked
@@ -698,9 +731,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         refs = result.pop("refs", [])
     else:
         result, refs = {"rows_in_scope": None, "previewed": False}, None
-    result.update({"applied": False, "withdrawn": 0,
+    result.update({"applied": False, "withdrawn": 0, "forgotten": 0,
                    "attempted": 0, "inserted": 0, "deduped": 0})
-    if not apply or (withdraw and not refs):
+    if not apply:
         return result
 
     plan = setup.snapshot.source_plans[source]
@@ -726,17 +759,47 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # rows. It repeated every three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
         return result
+    scope_row_ids = _scope_row_ids(plan, frame)
+    aimed = refs
+    if withdraw:
+        indexed = set()
+        if scope_row_ids:
+            indexed = {ref for who, ref
+                       in store.row_refs_for(plan.relation, scope_row_ids)
+                       if who == source}
+        else:
+            result["no_row_index"] = True
+        result["indexed_refs"] = len(indexed)
+        aimed = sorted(set(refs or ()) | indexed)
+        if not aimed:
+            # Neither the new translation nor the index says anything about these rows, so
+            # there is nothing to withdraw and nothing to put in its place.
+            return result
     subjects = _v2_registration_subjects(plan, frame)
     executed = execute_selected_scoped_batch(
         setup, source, frame, scoped, _no_join_reader(), store,
         known_registrations=None if subjects is None else (),
-        withdraw_refs=refs)
+        withdraw_refs=aimed)
     written = executed.store_result
     result["withdrawn"] = int(written.get("withdrawn", 0))
     result["attempted"] = int(written.get("attempted", 0))
     result["inserted"] = int(written.get("inserted", 0))
     result["deduped"] = int(written.get("deduped", 0))
     result["applied"] = True
+    if withdraw and scope_row_ids:
+        # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states: while
+        # they are still here the withdrawal can be run again, and a run that dies between
+        # the two leaves an index row pointing at atoms already withdrawn - which the next
+        # pass reads as "nothing to withdraw" and then clears.
+        #
+        # Only the rows the new generation did NOT name: one it did name has just had its
+        # index line rewritten by that same transaction. And only THIS source's line, because
+        # the row is still there and another source reading it still speaks for it.
+        spoken = {str(row_id) for _relation, row_id, _ref in executed.preview.row_refs}
+        stale = [row_id for row_id in scope_row_ids if row_id not in spoken]
+        if stale:
+            result["forgotten"] = store.forget_row_refs(
+                plan.relation, stale, source=source)
     return result
 
 
@@ -1180,12 +1243,21 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
 
     운영에서는 아무것도 적지 않습니다 -- 표에서 행이 사라지면 원장에서 그 행의 사실이 걷힙니다.
 
-    🔴 WHY THIS IS NOT `rescope`. A scope aims its withdrawal with the CURRENT translation
-    of the rows it names: `source_raw_ref` is built from their `order_by` values, so a row
-    that is gone produces no ref and its atoms stay however wide the scope is spelled. That
-    is a structural cannot, not a width. The refs are taken from
-    `schema.ROW_REF_TABLE` instead -- written while the row was still there, in the same
-    transaction as the atoms it names.
+    🔴 WHY THIS IS NOT `rescope`, SINCE S-101. Both aim with the same instrument now:
+    `schema.ROW_REF_TABLE`, written while the row was still there, in the same transaction as
+    the atoms it names. What separates them is the ROW, not the aim. A scope selects rows
+    FROM the relation and re-translates them; a deleted row cannot be selected, so there is
+    nothing to scope and nothing to remake.
+
+    That is also why this drops the index line for EVERY source (`forget_row_refs` with no
+    `source`) while a rescope drops only its own: a gone row is gone for everybody, and a row
+    one source stopped translating is still there for the rest.
+
+    Until S-101 the difference was larger and was stated here as the reason this function
+    exists: `rescope` aimed at the CURRENT translation, so it could not withdraw for a row
+    that no longer produced a ref. It could not do that for an EXCLUDED row either, which is
+    the defect ruling 199 named -- the sentence was true about deletions and false as a
+    statement about what a scope can be aimed with.
 
     🔴 AND THERE IS NO REMAKE HALF, so `store.withdraw` rather than `write_batch`: nothing
     is being replaced, and a transaction that paired a delete with an empty write would be
