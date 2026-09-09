@@ -118,12 +118,23 @@ def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT
     `items` may be any iterable, so a caller with ten million rows does not build a list.
     Timing is reported per REQUEST because that is how the gate is stated, and an average
     would hide the one slow request that is the finding.
+
+    🔴 `changed` IS REPORTED BESIDE `rows`, AND THE GAP BETWEEN THEM IS THE POINT. Rows are
+    what this call SENT; `changed` is what the server says it created or altered
+    (`updated_count`, which since ruling 192 excludes a row that was already what the
+    payload asked for). A run whose `changed` is zero wrote nothing and is therefore not a
+    measurement of writing anything - which is not hypothetical: on 2026-09-09 a re-run of
+    the row generator with unchanged knobs re-sent the same thousand upserts, answered
+    success in 0.38s, and was nearly reported as a hundredfold improvement. Only a separate
+    row-index count showed it had changed nothing. This line is so the next caller sees it
+    in the answer instead.
     """
     import urllib.request
 
     url = base_url.rstrip("/") + PUT_ROWS.format(table=table)
     send = opener()
     buffer, sent, seconds = [], 0, []
+    nonlocal_changed = [0]   # a list because `_flush` closes over it
 
     def _flush():
         if not buffer:
@@ -135,8 +146,9 @@ def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT
         with send.open(request, timeout=timeout) as response:
             answer = json.loads(response.read().decode("utf-8") or "{}")
         seconds.append(time.monotonic() - started)
-        log("  put %5d rows  %6.2fs%s" % (
-            len(buffer), seconds[-1],
+        nonlocal_changed[0] += int(answer.get("updated_count") or 0)
+        log("  put %5d rows  changed %5d  %6.2fs%s" % (
+            len(buffer), int(answer.get("updated_count") or 0), seconds[-1],
             "  effort_error=%s" % answer["effort_error"]
             if answer.get("effort_error") else ""))
         buffer.clear()
@@ -147,7 +159,7 @@ def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT
         if len(buffer) >= MAX_ROWS_PER_REQUEST:
             _flush()
     _flush()
-    return {"rows": sent, "requests": len(seconds),
+    return {"rows": sent, "changed": nonlocal_changed[0], "requests": len(seconds),
             "seconds_total": round(sum(seconds), 2),
             "seconds_max": round(max(seconds), 2) if seconds else 0.0}
 
