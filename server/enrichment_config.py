@@ -41,6 +41,7 @@
 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 한다.
 (dedup mapper가 판단키로부터 business_key_val을 결정론적으로 조립하기 위함 — 위반 시 규칙 스킵.)
 """
+import copy
 import json
 import logging
 import os
@@ -718,6 +719,57 @@ def validate_enrichment_rules(raw_config: dict, known_tables: dict = None,
     return rules
 
 
+#: `{rules_path: (stamp, rules, rejections)}` (S-94, 판정 232).
+#:
+#: 🔴 THIS RAN PER ROW. `alignment_view_service.resolve_alignment_view` asks for the
+#: declaration on every call and the alignment mapper calls it once per job, so a
+#: 1,000-row chain group read this file and re-validated EVERY rule a thousand times -
+#: 0.78 ms each here, of which 0.50 ms is the validation. And the cost is proportional to
+#: how many rules a deployment declares, which is a number nobody here knows: a per-row
+#: cost that grows with the declaration is a defect wherever the file is longer than this
+#: box's.
+_RULES_MEMO: dict = {}
+
+
+def _memo_stamp(rules_path: str, known_tables, caps):
+    """What must be unchanged for a remembered validation to still be true, or `None`.
+
+    🔴 TWO FILES, BECAUSE THE ANSWER DEPENDS ON TWO. The rules file is the obvious one;
+    the second is `table_config.json`, since `known_tables` is what decides whether a rule's
+    columns exist - `crud.TABLE_CONFIG` is a process singleton that a reload REPLACES THE
+    CONTENTS OF, so its identity cannot say it changed and its file's stamp can.
+    `None` disables the memo, which is what a caller passing its own `caps` gets: that
+    argument reaches the validator and nobody in the tree passes one, so the honest move is
+    to not remember an answer this module has never actually produced.
+    """
+    if caps is not None:
+        return None
+    rules = _file_stamp(rules_path)
+    if rules is None:
+        return None
+    if known_tables is None:
+        return (rules, None)
+    from database import crud
+    if known_tables is not crud.TABLE_CONFIG:
+        return None
+    return (rules, _file_stamp(crud.CONFIG_PATH))
+
+
+def _file_stamp(path: str):
+    """`(mtime_ns, size)`, or `None` when the file is not there. Both, because a same-second
+    write of the same length is exactly what a coarse mtime cannot see."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def clear_enrichment_rules_memo():
+    """Forget the remembered validation. For tests that write the file and read it back."""
+    _RULES_MEMO.clear()
+
+
 def load_enrichment_rules(path: str = None, known_tables: dict = None,
                           rejections: list = None, caps: dict = None) -> list:
     """enrichment_rules.json을 읽어 검증된 규칙 리스트를 반환한다(파일 없음 → 빈 목록).
@@ -726,6 +778,15 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
     `/graph/mapping-summary`가 `source.exists`로 같은 구분을 하는 것과 같은 규율이다.
     """
     rules_path = path or ENRICHMENT_RULES_PATH
+    stamp = _memo_stamp(rules_path, known_tables, caps)
+    remembered = _RULES_MEMO.get(rules_path)
+    if stamp is not None and remembered is not None and remembered[0] == stamp:
+        # The rejections are replayed, not skipped: a caller collecting them is building
+        # the operator's report, and a memo that answered with rules and no reasons would
+        # make a declaration that was refused look accepted on the second call.
+        for entry in remembered[2]:
+            _record(rejections, entry["scope"], entry["subject"], entry["detail"])
+        return copy.deepcopy(remembered[1])
     if not os.path.exists(rules_path):
         return []
     try:
@@ -737,8 +798,14 @@ def load_enrichment_rules(path: str = None, known_tables: dict = None,
                 f"enrichment_rules.json could not be read ({e.__class__.__name__}) — "
                 f"NO rule is in effect")
         return []
-    return validate_enrichment_rules(raw_config, known_tables=known_tables,
-                                     rejections=rejections, caps=caps)
+    collected: list = []
+    rules = validate_enrichment_rules(raw_config, known_tables=known_tables,
+                                      rejections=collected, caps=caps)
+    for entry in collected:
+        _record(rejections, entry["scope"], entry["subject"], entry["detail"])
+    if stamp is not None:
+        _RULES_MEMO[rules_path] = (stamp, rules, collected)
+    return copy.deepcopy(rules) if stamp is not None else rules
 
 
 def load_enrichment_chain_rules(path: str = None, known_tables: dict = None) -> list:

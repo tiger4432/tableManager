@@ -831,3 +831,95 @@ def test_a_display_column_the_derived_table_lacks_is_named_and_the_rule_still_st
     assert error is None and normalized is not None
     assert normalized["list_columns"] == ["chip_count"]
     assert [r for r in rejections if "not_a_column" in r["detail"]], rejections
+
+
+# ------------------------------------------------- S-94: a file read once, and read again
+
+def test_a_second_load_is_the_same_answer_without_reading_the_file(tmp_path, monkeypatch):
+    """🔴 THIS RAN PER ROW (S-94). `resolve_alignment_view` asks for the declaration on
+    every call and the alignment mapper calls it once per job, so a 1,000-row chain group
+    read this file and re-validated every rule a thousand times - and the cost grows with
+    how many rules a deployment declares, which is a number nobody here knows."""
+    import enrichment_config as ec
+    from database import crud
+
+    # ⚠️ THE MEMO ONLY ANSWERS FOR `crud.TABLE_CONFIG`, ON PURPOSE: what a rule is judged
+    # against is a whole dict, and the only key that can say it changed without hashing it
+    # is the file it came from. A caller handing in its own tables gets no memo and the
+    # validation it asked for - so the fixture becomes the singleton to exercise the path
+    # the alignment mapper actually takes.
+    monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
+    rules_file = tmp_path / "enrichment_rules.json"
+    rules_file.write_text(json.dumps({"r1": _base_rule()}), encoding="utf-8")
+    ec.clear_enrichment_rules_memo()
+
+    first = ec.load_enrichment_rules(str(rules_file), known_tables=crud.TABLE_CONFIG)
+    reads = []
+    real_open = open
+    monkeypatch.setattr("builtins.open",
+                        lambda *a, **k: (reads.append(a[0]), real_open(*a, **k))[1])
+    second = ec.load_enrichment_rules(str(rules_file), known_tables=crud.TABLE_CONFIG)
+
+    assert second == first
+    assert str(rules_file) not in reads, reads
+
+
+def test_editing_the_file_is_visible_on_the_next_call(tmp_path, monkeypatch):
+    """⛔ THE STAMP IS THE FILE'S, NOT A CLOCK. An operator who edits a declaration must
+    see it on the next call - a memo that needed a restart would be a config file that
+    silently lags the screen showing it."""
+    import os
+
+    import enrichment_config as ec
+    from database import crud
+
+    monkeypatch.setattr(crud, "TABLE_CONFIG", KNOWN)
+    rules_file = tmp_path / "enrichment_rules.json"
+    rules_file.write_text(json.dumps({"r1": _base_rule()}), encoding="utf-8")
+    ec.clear_enrichment_rules_memo()
+    assert [r["name"] for r in ec.load_enrichment_rules(
+        str(rules_file), known_tables=crud.TABLE_CONFIG)] == ["r1"]
+
+    rules_file.write_text(json.dumps({"r2": _base_rule()}), encoding="utf-8")
+    os.utime(rules_file, (0, 0))          # a stamp that cannot be confused with the first
+    assert [r["name"] for r in ec.load_enrichment_rules(
+        str(rules_file), known_tables=crud.TABLE_CONFIG)] == ["r2"]
+
+
+def test_a_remembered_load_still_reports_why_a_rule_was_refused(tmp_path):
+    """⛔ REJECTIONS ARE REPLAYED, NOT SKIPPED. A caller collecting them is building the
+    operator's report, and a memo that answered with rules and no reasons would make a
+    declaration that was refused look accepted on the second call."""
+    import enrichment_config as ec
+
+    rules_file = tmp_path / "enrichment_rules.json"
+    rules_file.write_text(json.dumps({
+        "good": _base_rule(),
+        "bad": _base_rule(list_columns=["chip_count", "not_a_column"]),
+    }), encoding="utf-8")
+    ec.clear_enrichment_rules_memo()
+
+    first: list = []
+    ec.load_enrichment_rules(str(rules_file), known_tables=KNOWN, rejections=first)
+    again: list = []
+    ec.load_enrichment_rules(str(rules_file), known_tables=KNOWN, rejections=again)
+    # (this one runs on the un-memoised path too, and must answer the same either way)
+
+    assert first, "the fixture must produce at least one rejection or this proves nothing"
+    assert again == first
+
+
+def test_the_overlay_config_is_read_once_and_handed_out_as_a_copy(tmp_path):
+    """⚠️ A COPY, ALWAYS. `alignment_view_service` overlays a chain's own thresholds onto
+    what it gets, and a memo handing out the stored object would let one caller's local
+    override reach every other caller."""
+    import map_overlay
+
+    config_file = tmp_path / "map_overlay_config.json"
+    config_file.write_text(json.dumps({"alignment": {"min_score": 1}}), encoding="utf-8")
+    map_overlay.clear_overlay_config_memo()
+
+    first = map_overlay.load_overlay_config(str(config_file))
+    first["alignment"]["min_score"] = 999
+    second = map_overlay.load_overlay_config(str(config_file))
+    assert second["alignment"]["min_score"] == 1, second

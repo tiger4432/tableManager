@@ -61,6 +61,7 @@
 [페이로드 규율] 셀 목록을 반환하는 유일한 API이므로 상한이 필수다. 캡 도달 시 **응답에 명시**
 표기한다(조용한 절단 금지 — QA F2 규율).
 """
+import copy
 import json
 import logging
 import os
@@ -86,14 +87,57 @@ ALIGN_ORIGIN_IDENTITY = "identity"
 ALIGN_ORIGIN_UNRESOLVABLE = "unresolvable"
 
 
+#: `{path: ((mtime_ns, size) | None, parsed)}` - what was read, and what the file looked
+#: like when it was read (S-94, 판정 232).
+#:
+#: 🔴 THIS FILE WAS RE-READ PER ROW. `alignment_view_service.resolve_alignment_view`
+#: calls this on every invocation, and the alignment mapper calls THAT once per job - so a
+#: 1,000-row chain group opened and parsed this file a thousand times. Two callers had
+#: already noticed and built their own one-shot memo (`bonding_plan._OVERLAY_MEMO`,
+#: `transfer_plan`'s 「작업 경계 1회 스냅샷」) - three spellings of "do not read this
+#: again", which is the shape that ends with them disagreeing.
+#:
+#: ⚠️ THE STAMP IS THE FILE'S, NOT A CLOCK. An operator who edits the config sees it on
+#: the next call, because `os.stat` is 0.012 ms and the read it replaces is 0.245 ms.
+_CONFIG_MEMO: dict = {}
+
+
+def _file_stamp(path: str):
+    """`(mtime_ns, size)`, or `None` when the file is not there. Both, because a same-second
+    write of the same length is exactly what a coarse mtime cannot see."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def clear_overlay_config_memo():
+    """Forget what was read. For tests that write the file and read it back in one tick."""
+    _CONFIG_MEMO.clear()
+
+
 def load_overlay_config(path: str = None) -> dict:
-    """map_overlay_config.json 로드. 없으면 {} (전 기능 기본값 동작 — 에러 아님)."""
+    """map_overlay_config.json 로드. 없으면 {} (전 기능 기본값 동작 — 에러 아님).
+
+    ⚠️ A COPY IS RETURNED, ALWAYS. Several callers edit what they get
+    (`alignment_view_service` overlays a chain's thresholds onto it), and a memo that
+    handed out the stored object would let one caller's local override reach every other
+    caller - a shared-mutable-default defect with a config file's blast radius.
+    """
     p = path or CONFIG_PATH
+    stamp = _file_stamp(p)
+    remembered = _CONFIG_MEMO.get(p)
+    if remembered is not None and remembered[0] == stamp:
+        return copy.deepcopy(remembered[1])
     try:
         with open(p, "r", encoding="utf-8") as f:
             raw = json.load(f)
-        return raw if isinstance(raw, dict) else {}
+        parsed = raw if isinstance(raw, dict) else {}
+        _CONFIG_MEMO[p] = (stamp, parsed)
+        return copy.deepcopy(parsed)
     except FileNotFoundError:
+        _CONFIG_MEMO[p] = (stamp, {})
         return {}
     except Exception as e:
         logger.warning("[MapOverlay] failed to load config %s: %s", p, e)
