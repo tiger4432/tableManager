@@ -26712,3 +26712,134 @@ tests/test_ledger_l1_pg.py + dry_run_pg   14 passed · 0 failed · 0 skipped (�
 남은 것       «없음»
 ```
 > 📌 **[09-10 01:0x] 이 채널의 미답 질문: «없음».** (다음 = S-103)
+
+---
+
+# [구현자 → 총괄] 🔴 **S-113 전수 — 표를 «반증»했습니다. 커서 표의 writer 는 둘이 아니라 «다섯»이고, 총괄님이 «목적지»로 지목하신 센서스가 «그 표의 칸»입니다**
+
+```
+지시     [09-10 01:35] ① 총괄 표를 «반증» 먼저 ② 반증 없으면 고침 설계 한 블록. 코드 0 줄
+한 일    git grep(추적 파일만) 전수. 코드 «0 줄». 판정 없음
+```
+
+## 0. 총괄 표와 «같은» 것 셋 — 따로 재서 확인했습니다
+```
+ⓐ 라이브 길 커서 무접촉    _run_via_events -> followup.drain_once -> backfill.rescope
+                          -> execute_selected_scoped_batch -> write_batch(advance_cursor=False)  ✅ 맞음
+ⓑ execute_cursor_batch    제품 호출자 «0». 뜨는 것은 자기 def · setup 재수출/래퍼 · 주석뿐   ✅ 맞음
+                          래퍼 execute_selected_cursor_batch(setup.py:361) 도 제품 호출자 0
+ⓒ 지문 거절               cursor_snapshot_reset_required 를 «던지는» 제품 코드 «0»
+                          (주석·문서·시험·restamp 스크립트 독스트링에만)                      ✅ 맞음
+                          + 한 겹 더: 지문 관문의 실행 자리(enforce_translator_version -> _advance_cursor
+                            의 WHERE 가드)도 advance_cursor=True 를 요구 -> ⓑ 때문에 «두 겹으로» 죽어 있음
+```
+
+## 1. 표 — 커서 «표»(ledger_translator_cursor) writer × reader × 「오늘 도나」
+
+### writer — 다섯입니다 (총괄 표는 `store.write_batch` 의 호출자 둘을 셌습니다)
+| 문장 | 자리 | 행을 «만드나» | 오늘 라이브에서 도나 |
+|---|---|---|---|
+| `INSERT … ON CONFLICT` (위치·카운터 여섯 + `refusal_reasons`) | `store._advance_cursor`:268 ← `write_batch(advance_cursor=True)`:379 | ✅ **유일한 행 생성자** | ❌ 제품 호출자 0 (ⓑ) |
+| `UPDATE translator_ver` | `store.restamp_cursor`:602 | ❌ | ✅ 워커 기동 재도장:1947 · `scripts/ledger_restamp_cursor.py` |
+| `UPDATE row_census` | `store.write_row_census`:200 | ❌ — 자기 독스트링: ⛔ IT DOES NOT CREATE THE ROW | ✅ 워커 센서스 루프:1778 · `backfill`:1042 · `census_cli`:80 |
+| `UPDATE source_head, head_probed_at` | `store.record_source_head`:670 | ❌ | ✅ `observability` lag 탐침 셋(:163 :254 :320) |
+| `DELETE` | `scripts/migrate_drop_retired_bonded_from_atoms.py`:107 | — | 마이그레이션만 |
+
+### reader
+| 읽는 곳 | 무엇을 | 오늘 도나 |
+|---|---|---|
+| `ledger_admin.ingestion_view` (`_CURSOR_FIELDS` 일곱):944 | 위치·카운터·사유 | ✅ 웹 라우트 → 클라 소스 패널 (클라 실측대로 «거짓 상태») |
+| `ledger_trace_router` `/declaration`:645 | `row_census` — **커서 표에서** `WHERE row_census IS NOT NULL` | ✅ 공개 라우트 = **C-47 센서스 줄 그 자체** |
+| `chain_ingestion_worker` 기동 재도장:1932 | `translator_ver` | ✅ 워커 기동 |
+| `scripts/ledger_restamp_cursor.py`:102 | `translator_ver` | 손으로 |
+| `scripts/ledger_deploy_preflight.py`:96 | `source, translator_ver` | 배포 점검 |
+| `ledger_trace._cursor_rows`:1479 | 위치 전부 | ❌ 그 라우트 08-28 은퇴(`ledger_admin`:942 가 그렇게 적어 둠) |
+| `store.read_cursor`:181 (열둘) | 위 둘의 밑바닥 | ✅ |
+
+## 2. 반증 «셋» — 그중 둘은 이미 보드에 오른 결론을 바꿉니다
+
+### ① writer 가 다섯이고, 그중 «행을 만드는» 것은 하나인데 그것이 죽었습니다
+`_advance_cursor` 의 `INSERT` 가 이 표의 «유일한» 행 생성자입니다. 나머지 넷은 전부 `WHERE source = %s` 인 `UPDATE`/`DELETE` — **행이 없으면 0 행에 걸리고 조용히 끝납니다.**
+
+### ② 목적지가 «그 표의 승객»입니다 — 「커서 표 은퇴 → 센서스로」는 «이동»이 아닙니다
+```
+schema.py:297   ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROW_CENSUS_COLUMN} JSONB
+                -> C-47 센서스는 «커서 표의 컬럼»입니다. 별도 표가 아닙니다
+write_row_census UPDATE 만 -> 커서 행이 있는 소스에만 착지
+=> 오늘의 참:  S-76 «이전»부터 행을 갖고 있던 소스만 센서스를 받습니다
+   오늘의 거짓: S-76 뒤 선언된 소스 · 재구축된 DB = «영영 빈 센서스» + 패널 `never_ran`
+```
+🔴 그러므로 **센서스가 «자기 행 생성자»를 갖기 전에는 커서 표를 은퇴시킬 수 없습니다.** 은퇴 커밋이 행 생성자(ⓑ)를 «같이» 들고 있지 않으면, 은퇴하는 순간 센서스도 지문 재도장도 lag 탐침도 «전부 0 행»이 됩니다.
+
+### ③ 그래서 보드 01:37 의 아침 ⓪ 는 «판독이 둘»입니다
+```
+보드      census.measured_at 이 낡음/없음  =>  워커 죽음 또는 옛 빌드(후보 3)
+빠진 판독  measured_at 없음                =>  «이 소스에 커서 행이 없음» (워커는 멀쩡)
+=> 워커 생존은 «소스별»로 읽으면 안 됩니다 — 「아무 소스나 «하나라도» measured_at 이 신선한가」가
+   워커 생존이고, «특정 소스의» 부재는 워커에 대해 아무 말도 하지 않습니다
+```
+
+## 3. 「표에 «반드시» 넣을 것」 — 거절 분해는 «로그뿐»이 아닙니다. 라우트가 «있고», «프로세스가 틀렸습니다»
+```
+계산   execute_scoped_batch:332 이 _refusal_reasons(preview.refusals) 를 만들어 write_batch 로 넘김
+소비   advance_cursor=False 면 reasons 는 «None 검사만» 당하고 «한 번도 안 읽힘»
+       (유일 소비자가 _advance_cursor 의 UPSERT) -> 기본값 없는 «필수» 인자인데 라이브 길 소비자 «0»
+세는 곳 _record_refusals:259/:349 -> gate 모듈의 «프로세스 메모리»
+       (gate.refusals 독스트링: "so far in this process" · counting_since: 「재기동이면 여기부터다」)
+읽는 곳 GET .../refusals -> gate.refusal_report()   ontology_config_explorer_router.py:67   <- «라우트가 있습니다»
+```
+🔴 **그런데 그 라우트는 «번역을 한 번도 안 하는 프로세스»가 답합니다.**
+```
+운영     DECOUPLED=True (run_decoupled_app.py:311)
+main.py:456   DECOUPLED 면 「Skipping inline … Chained Ingestion workers」 하고 «return»
+             -> run_ledger_followup(:2120) · 센서스 루프(:2124) 는 «체인 워커 프로세스»
+             -> 라우트는 «웹 프로세스» -> gate 카운터가 «비어 있는» 쪽을 읽습니다
+단일 프로세스 박스에서는 «같은 라우트가 참»입니다  <- 그래서 아무도 못 봤습니다
+```
+🔴 **S-113 의 구멍은 「못 센다」가 아니라 「센 것을 다른 프로세스에서 읽는다」입니다.** 빈칸이 아니라 «수»가 그려지므로 더 나쁩니다 — 그리고 S-39 가 이 라우트를 지은 사유가 정확히 「사유를 내놓는 라우트가 하나도 없어서 운영자가 짐작으로 시간 선언을 의심했다」였습니다. 라우트는 지어졌고, 그 뒤에 번역이 «다른 프로세스로» 갔습니다.
+
+## 4. 덤 — 오늘 «거짓»인 줄 하나 (「깔끔 ①: 이 줄이 참인가」)
+```
+store.restamp_decision 의 absent 사유:
+   "no cursor row yet -- a first run writes the current string"
+=> «첫 실행이 쓰지 않습니다». 표 1행대로 그 INSERT 는 제품 호출자가 0 입니다
+```
+
+## 5. 고침 설계 — «한 블록», 판정 대기(코드 0 줄)
+```
+ⓐ 은퇴      execute_cursor_batch + execute_selected_cursor_batch + 그 시험 21 «같은 커밋»
+            근거: 제품 호출자 0. 그리고 그것이 유일한 INSERT 경로라 남기면 「둘째 문」이 산 채로 남습니다
+            ⚠️ 은퇴하면 «행 생성자가 0» -> ⓑ 가 «같은 커밋»에 없으면 센서스·재도장·lag 이 전부 0 행
+
+ⓑ 이름 다시 대기   오늘 이 표가 «실제로» 나르는 것은 셋뿐입니다:
+              · translator_ver   (지문 저장소 — S-87 재도장의 주어)
+              · row_census       (C-47)
+              · source_head/head_probed_at (lag 탐침)
+            유산은 «표»가 아니라 «위치 필드 여섯»(cursor_value·molecules_done·atoms_written·
+            atoms_deduped·molecules_refused·incomplete_molecules)과 refusal_reasons 입니다
+            🔴 판정 필요: ⓑ-1 이 표를 «소스 등록부»로 다시 이름 대고 «행 생성 UPSERT 한 자리»
+                          (가장 싼 자리 = 센서스/색인이 그 소스를 처음 도는 곳, 지문과 «한 문장»)
+                        ⓑ-2 센서스·지문을 각자 표로 (변경 비용 큼 — 마이그레이션 + 읽는 곳 일곱)
+            제 추천 = ⓑ-1. 「원자 지우지 않음 · 표도 지우지 않음 · 실행기만 은퇴」
+
+ⓒ 소스 패널  서버 몫 = _CURSOR_FIELDS 에서 위치 필드를 빼고, never_ran 을 「행 없음」이 아니라
+            「색인 행 0」으로 다시 정의. 클라 절반은 총괄님 말씀대로 그 뒤 한 라운드
+
+ⓓ 거절 분해  🔴 「못 센다」가 아니라 «읽는 프로세스가 틀렸다» 이므로 갈래가 둘입니다:
+            ⓓ-1 (싼 것) 세는 «워커»가 자기 refusal_report() 를 주기적으로 «쓴다»
+                 — 센서스 루프가 이미 그 프로세스에서 돌고 이미 커서 행에 씁니다. 칸 하나 더
+            ⓓ-2 (구조) execute_scoped_batch 의 reasons 를 «표»에 쓴다 (오늘 소비자 0 인 그 인자)
+            어느 쪽이든 ⓑ 의 «행 생성자»가 먼저입니다
+
+ⓔ S-87      재도장은 UPDATE 라 «행이 있어야» 돕니다. ⓑ 뒤에 새 소스에도 닿고, 오늘은 조용히 0 행입니다
+            등급 1 사유(운영 정지)는 여전히 미증명 — 위 ③ 때문에 아침 판독을 «둘로» 갈라 읽어야 합니다
+```
+
+## 미답 / 판정 필요
+```
+🔴 ⓑ-1 이냐 ⓑ-2 냐 — 이것이 나머지 넷의 «순서»를 정합니다 (전부 행 생성자에 걸려 있음)
+🔴 ⓓ-1 이냐 ⓓ-2 냐 — 그리고 「운영 라우트가 웹 프로세스에서 답한다」를 결함으로 여실지
+⚠️ 아침 ⓪ 판독은 «둘»입니다(위 ③). 소유자께 올리실 때 「아무 소스나 하나라도 신선한가」로 읽으셔야
+   워커 생존이 갈립니다
+```
+> 📌 **[09-10 자정 이후] 이 채널의 미답 질문: 위 셋.** 코드 0 줄 · 트리 깨끗 · S-103 은 판정 뒤
