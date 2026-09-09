@@ -339,7 +339,7 @@ def test_diagnosis_names_the_missing_index_only_on_postgres_timeout(db_session):
 
 
 def test_missing_index_message_is_not_a_dead_end(db_session, monkeypatch):
-    """"Run setup_db_performance.py" is useless advice when the builder was never
+    """"Run ops_setup_db_performance.py" is useless advice when the builder was never
     going to create this index. An excluded column, a column missing from an
     `index_columns` list, and a table under `index_min_rows` (the live database
     has 15 of those) all re-run to the same nothing.
@@ -376,7 +376,7 @@ def test_missing_index_message_is_not_a_dead_end(db_session, monkeypatch):
     # ...and when the builder WOULD create it, the plain instruction is right —
     # no invented obstacle for an operator whose only step really is to re-run.
     msg = reason({"index_min_rows": 0})
-    assert msg.endswith("server/scripts/setup_db_performance.py 를 실행하세요.")
+    assert msg.endswith("server/scripts/ops_setup_db_performance.py 를 실행하세요.")
     assert "index_exclude" not in msg and "index_min_rows" not in msg
 
 
@@ -988,7 +988,7 @@ def test_slow_reason_carries_the_index_advice_on_postgres(db_session, monkeypatc
         value_suggest.resolve_settings({"index_min_rows": 0}))
     assert "240ms" in msg and "50" in msg
     assert "idx_suggest_inventory_master_category" in msg
-    assert "setup_db_performance.py" in msg
+    assert "ops_setup_db_performance.py" in msg
     # It must NOT claim a timeout — nothing timed out, the answer arrived.
     assert "시간 초과" not in msg
 

@@ -81,7 +81,7 @@ WHERE tablename = 'data_rows';
 ```
 
 > ⚠️ **`create_all`은 이미 존재하는 테이블에 인덱스를 추가하지 않는다.** 새 인덱스를 `models.py`에만 선언하고 아래 스크립트를 돌리지 않으면, 신규 설치에서만 빠르고 **기존 운영 DB에서는 조용히 Seq Scan으로 떨어진다.** 운영 DB에 인덱스를 반영하는 경로는 **둘**이다(둘 다 `CONCURRENTLY` · 멱등 · 무중단):
-> - `python server/scripts/setup_db_performance.py` — 성능 인덱스 일체
+> - `python server/scripts/ops_setup_db_performance.py` — 성능 인덱스 일체
 > - `python server/migrations/add_business_key_unique_index.py --apply` — 업무 키 UNIQUE 인덱스(§3.1-bis)
 
 #### 읽기 전용 가드 — 집은 하나이고, 모드가 둘입니다 (2026-08-13 `1260c9b` · 종전 `b1dd2f0`)
@@ -173,7 +173,7 @@ conda run -n assy_manager python server/migrations/drop_redundant_layering_index
 SELECT indexname FROM pg_indexes
 WHERE tablename = 'audit_logs' AND indexname = 'idx_audit_user_recorrection';
 ```
-없으면 `setup_db_performance.py`를 실행한다. 인덱스가 없어도 대시보드가 느려지지는 않는다(1500ms `statement_timeout` + 60초 캐시로 방어) — 대신 그 칸이 `—`로 비고 사유가 표시된다. 즉 **`—`가 계속 보이면 이 인덱스를 의심할 것.**
+없으면 `ops_setup_db_performance.py`를 실행한다. 인덱스가 없어도 대시보드가 느려지지는 않는다(1500ms `statement_timeout` + 60초 캐시로 방어) — 대신 그 칸이 `—`로 비고 사유가 표시된다. 즉 **`—`가 계속 보이면 이 인덱스를 의심할 것.**
 
 #### 상호작용 점수 인덱스 (`uq_effort_transaction` · `idx_effort_window`)
 **정본 계기**(완료까지의 상호작용 점수, [data_model §2.4](../architecture/data_model.md))가 쓰는 인덱스 2종. `interaction_effort_logs`는 신규 테이블이므로 **신규 설치에서는 `create_all`이 테이블과 인덱스를 함께 만든다** — 이 절이 필요한 경우는 **테이블만 먼저 생긴 DB**(구버전 기동 이력이 있는 운영 DB)다. 그 경우 `create_all`은 인덱스를 추가하지 않으므로 위 경고가 그대로 적용된다.
@@ -189,7 +189,7 @@ WHERE tablename = 'interaction_effort_logs';
 | `uq_effort_transaction` (UNIQUE) | **tx당 1행 불변식이 깨진다.** 클라 재시도가 같은 공수를 두 번 기록해 그 세션의 평균이 조용히 왜곡된다 — 숫자가 틀렸다는 신호가 어디에도 뜨지 않으므로 가장 위험하다 |
 | `idx_effort_window` (커버링) | 창 집계가 Seq Scan으로 떨어진다. 대시보드는 느려지지 않고(1500ms timeout + 60초 캐시) 그 칸이 `—`로 빈다 |
 
-없으면 `setup_db_performance.py`(Step 3.7)를 실행한다. `uq_effort_transaction` **생성이 실패하면 이미 중복 `transaction_id` 행이 있다는 뜻**이므로, 스크립트 출력의 `Failed to create uq_effort_transaction`을 그냥 넘기지 말 것 — 중복을 먼저 정리해야 한다.
+없으면 `ops_setup_db_performance.py`(Step 3.7)를 실행한다. `uq_effort_transaction` **생성이 실패하면 이미 중복 `transaction_id` 행이 있다는 뜻**이므로, 스크립트 출력의 `Failed to create uq_effort_transaction`을 그냥 넘기지 말 것 — 중복을 먼저 정리해야 한다.
 
 ```sql
 -- 중복 확인 (정상이면 0행)
@@ -211,16 +211,16 @@ JOIN pg_class ci ON ci.oid = i.indexrelid
 WHERE ci.relname = 'idx_sources_by_source';
 ```
 
-- 🔴 **기존 `idx_sources_lookup_source`가 이 일을 대신하지 못한다.** 그쪽 키 순서는 `(table_name, row_id, column_name, source_name)`이라 **`source_name`이 마지막**이고, `(table_name, source_name)` 술어로는 쓸 수 없다. 없으면 플래너는 `cell_sources` **전량 스캔**으로 떨어진다 — 실측 근거(행 수·소요·버퍼·버려진 행 수)는 `server/database/models.py`의 이 인덱스 주석과 `server/scripts/setup_db_performance.py` Step 3.10에 **기록돼 있으니 그쪽을 읽을 것**(여기 사본을 두지 않는다).
+- 🔴 **기존 `idx_sources_lookup_source`가 이 일을 대신하지 못한다.** 그쪽 키 순서는 `(table_name, row_id, column_name, source_name)`이라 **`source_name`이 마지막**이고, `(table_name, source_name)` 술어로는 쓸 수 없다. 없으면 플래너는 `cell_sources` **전량 스캔**으로 떨어진다 — 실측 근거(행 수·소요·버퍼·버려진 행 수)는 `server/database/models.py`의 이 인덱스 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있으니 그쪽을 읽을 것**(여기 사본을 두지 않는다).
 - **키 순서가 계약이다** — `column_name`이 **세 번째**라야 `--columns` 허용목록이 인덱스 내부 Filter가 아니라 **`Index Cond`의 일부**가 되고, `row_id`가 **네 번째**라야 회수 1단계(`(row_id, column_name)` 조회)가 **커버링**이 된다. 커버링이 아니면 플래너가 매치당 heap fetch와 Seq Scan을 저울질하다 **다시 Seq Scan을 고를 수 있다.**
-- **두 곳에 선언돼 있고 둘 다 고쳐야 한다** — `models.py`(신규 설치의 `create_all`)와 `setup_db_performance.py` Step 3.10(**기존 DB의 유일한 경로**). 위 ⚠️ 경고가 그대로 적용된다.
+- **두 곳에 선언돼 있고 둘 다 고쳐야 한다** — `models.py`(신규 설치의 `create_all`)와 `ops_setup_db_performance.py` Step 3.10(**기존 DB의 유일한 경로**). 위 ⚠️ 경고가 그대로 적용된다.
 - **스크립트는 만든 뒤 플래너가 실제로 그것을 골랐는지까지 검사한다**(Step 3.11). 검사 술어는 `chain_replay._claimed_filter` — **서빙되는 질의를 만드는 그 빌더**에서 컴파일하므로 검증한 계획과 서빙되는 계획이 갈릴 수 없고, 프로브 쌍은 합성 리터럴이 아니라 **데이터에서 가장 큰 실제 `(table_name, source_name)`**이다. 인덱스 **이름이 계획에 나타나는지**까지 따로 본다(다른 인덱스가 만든 그럴듯한 계획은 이 인덱스를 죽은 무게로 남긴다).
 - ⚠️ **`WITHDRAW_PLAN_MIN_ROWS` 미만이면 실패가 아니라 `NOT VERIFIED`**를 찍는다. 작은 표에서 Seq Scan은 **옳은 계획**이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만든다. 표가 커진 뒤 다시 돌릴 것.
 - 이 인덱스는 **아무것도 대체하지 않는다** — 기존 UNIQUE 복합 인덱스는 업서트의 충돌 대상이라 그대로 필요하다.
 
 #### 값 제안 접두 인덱스 (`idx_suggest_<테이블>_<컬럼>`) — F3
 
-입력 제안(`GET /tables/{t}/columns/{c}/values`)이 쓰는 인덱스. **이 계열은 `models.py`에 선언되어 있지 않고, `setup_db_performance.py`(Step 3.8)가 유일한 생성 경로다.** 이유가 둘 겹친다 — ⓐ `create_all`은 기존 테이블에 인덱스를 추가하지 않는다(위 경고), ⓑ 정의에 쓰이는 `COLLATE "C"`가 PostgreSQL 전용이라 테스트 스위트의 sqlite `create_all`이 깨진다.
+입력 제안(`GET /tables/{t}/columns/{c}/values`)이 쓰는 인덱스. **이 계열은 `models.py`에 선언되어 있지 않고, `ops_setup_db_performance.py`(Step 3.8)가 유일한 생성 경로다.** 이유가 둘 겹친다 — ⓐ `create_all`은 기존 테이블에 인덱스를 추가하지 않는다(위 경고), ⓑ 정의에 쓰이는 `COLLATE "C"`가 PostgreSQL 전용이라 테스트 스위트의 sqlite `create_all`이 깨진다.
 
 **왜 일반 btree로는 안 되는가 (이 DB에서 실측):** 이 데이터베이스의 콜레이션은 `Korean_Korea.949`다. **비-C 콜레이션에서 btree는 `LIKE '접두%'`를 범위로 만들지 못한다** — 플래너는 인덱스를 고르고도 전 엔트리를 Filter로 버린다.
 
@@ -251,7 +251,7 @@ ORDER BY usable, indexname;    -- usable=false가 위로 온다
 
 - **대상 선정은 config가 결정한다** — [config/suggest_config](./config/suggest_config.md)의 `index_min_rows`(기본 10,000행 이상 테이블) / `index_columns`(강제 지정) / `index_exclude`(제외). 정책 구현은 `server/value_suggest.py` `index_targets` **한 곳**뿐이다.
 - **없으면 그 컬럼의 제안이 조용히 느려지지 않고 꺼진다** — 응답이 `values: []` + `unavailable_reason`이 된다. 드롭다운이 비면 **먼저 이 사유 문자열을 볼 것.** 사유는 `index_targets` 정책에 직접 물어서 만들어지므로 상황마다 다르다:
-  - 대상인데 없다 → `… server/scripts/setup_db_performance.py 를 실행하세요.`
+  - 대상인데 없다 → `… server/scripts/ops_setup_db_performance.py 를 실행하세요.`
   - `index_exclude`에 있다 → 재실행해도 안 만들어진다고 말하고 제외 해제를 지시
   - `index_columns[테이블]`이 선언돼 있고 이 컬럼이 목록 밖 → 목록 추가를 지시
   - `index_min_rows` 미만 테이블 → 추정 행 수와 함께 `index_columns`에 명시 선언하라고 지시

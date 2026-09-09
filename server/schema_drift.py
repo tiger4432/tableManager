@@ -90,10 +90,17 @@ MIGRATION_OWNER = {
 # them sat in the tree. It went unnoticed until now because every earlier `.sql`
 # migration here creates INDEXES, and this check does not look at indexes at all,
 # so a `.sql` file had never owned a finding before.
+#: 🔴 THE PATTERNS ARE THE SEARCH, so a script that stops matching one stops being findable
+#: as a remedy - and the operator is then told "no migration is recorded" for a column a
+#: file in this tree does add. That happened on 2026-09-09: S-78 renamed
+#: `setup_db_performance.py` to `ops_setup_db_performance.py` under the migrate/ops
+#: convention, and it fell out of `setup_*.py`. The convention's own prefixes are listed
+#: here so the next rename under it stays visible.
 _MIGRATION_GLOBS = (
     os.path.join("server", "migrations", "*.py"),
     os.path.join("server", "migrations", "*.sql"),
     os.path.join("server", "scripts", "setup_*.py"),
+    os.path.join("server", "scripts", "ops_*.py"),
     os.path.join("server", "scripts", "*migrate*.py"),
 )
 _SOURCE_CACHE = None

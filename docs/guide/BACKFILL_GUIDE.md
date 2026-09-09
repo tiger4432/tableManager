@@ -32,7 +32,7 @@
 > - **§7 재작성 — 어드민 API가 착지했습니다**(라우트 3개). 🔴 **화면(버튼)은 아직 없습니다** — 「어드민 화면에는 자리가 없다」는 종전 문장은 절반만 참이 됐습니다. 지금 쓰려면 `curl`입니다.
 > - **§7.2 신설 — 카운트는 「어떤 종류의 수인지」를 함께 답합니다**(`exact`/`sample`/`upper_bound`). 다섯 중 넷은 요청 경로에서 정확할 수 없고, **어느 것도 정확하다고 주장하지 않습니다.**
 > - **§3에 각주 — ⓒ의 구현이 `server/enrichment_backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
-> - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `setup_db_performance.py` 하나입니다.
+> - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `ops_setup_db_performance.py` 하나입니다.
 >
 > (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain_replay.py` · `server/enrichment_analysis.py` · `server/enrichment_candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
@@ -370,8 +370,8 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 
 「이 소스가 이 테이블에서 주장하는 셀은 몇 개인가」는 `cell_sources`를 `(table_name, source_name)`으로 좁히는 질문입니다. 그 술어를 받는 인덱스는 **`idx_sources_by_source`(`table_name, source_name, column_name, row_id`) 하나**입니다 — 기존 `idx_sources_lookup_source`는 `source_name`이 **마지막 키**라 이 술어에 쓸 수 없습니다.
 
-- **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
-- **반영 경로는 하나입니다**: `conda run -n assy_manager python server/scripts/setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
+- **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
+- **반영 경로는 하나입니다**: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
 - 스크립트가 만든 뒤 **플래너가 실제로 그것을 골랐는지까지 검사**합니다(Step 3.11). 표가 작으면(`WITHDRAW_PLAN_MIN_ROWS` 미만) **실패가 아니라 `NOT VERIFIED`**를 찍습니다 — 작은 표에서 Seq Scan은 옳은 계획이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만듭니다.
 - 운영 관점 전문은 [POSTGRES_OPERATIONS §3.1](./POSTGRES_OPERATIONS_GUIDE.md).
 

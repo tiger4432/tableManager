@@ -1040,47 +1040,61 @@ def rollback():
     from database.database import engine
     from sqlalchemy import text
 
+    import ops_ledger_namespace
+    import product_door
+
     with engine.begin() as connection:
-        database = connection.execute(text("SELECT current_database()")).scalar()
-        if database not in {"assy_manager", "assy_qa"}:
-            raise SystemExit(f"REFUSED rollback on database {database!r}")
-        deleted = connection.execute(text(
-            "DELETE FROM ledger_events WHERE source_who = :source "
-            "AND source_translator_ver LIKE :translator"),
-            {"source": SOURCE, "translator": TRANSLATOR + "%"}).rowcount
-        connection.execute(text(
-            "DELETE FROM ledger_translator_cursor WHERE source = :source"),
-            {"source": SOURCE})
+        # 🔴 THE LEDGER HALF LIVES IN AN `ops_` MODULE (ruling 186). It writes tables the
+        # product door does not serve, so it belongs to the migrate/ops class - and that
+        # class is declared by a FILE NAME, which a block inside a seed cannot claim. The
+        # seed calls it; the seed itself keeps zero raw ledger writes.
+        ops_ledger_namespace.refuse_unknown_database(connection)
+        deleted = ops_ledger_namespace.clear_source(connection, SOURCE, TRANSLATOR)
         spatial_deleted = {}
-        statements = {
-            "void_obs": "DELETE FROM void_obs WHERE base_wafer_id LIKE 'SYN-CX-BW-%'",
-            "inspection_run": (
-                "DELETE FROM inspection_run WHERE base_wafer_id LIKE 'SYN-CX-BW-%'"),
-            "bonding_log": "DELETE FROM bonding_log WHERE bond_lot LIKE 'SYN-CX-BOND-%'",
-            "bonding_map": "DELETE FROM bonding_map WHERE base LIKE 'SYN-CX-BW-%'",
-            "dt_map": (
-                "DELETE FROM dt_map WHERE dt_lot IN ('SYN-CX-DT-01','SYN-CX-DT-02') "
-                "AND dt_slot IN ('01','02') AND dt_job LIKE 'SYN-CX-SPATIAL-%'"),
-            "core_wafer_map": (
-                "DELETE FROM core_wafer_map WHERE core_lot IN "
-                "('SYN-CX-LOGIC-MRG','SYN-CX-HBM-MRG') AND core_slot IN ('11','22')"),
-            "valid_die_ref": "DELETE FROM valid_die_ref WHERE product = :product",
-            "wafer_map_metadata": (
-                "DELETE FROM wafer_map_metadata WHERE map_id LIKE 'SYN-CX-%' "
-                "AND target_table IN "
-                "('bonding_log','bonding_map','dt_map','core_wafer_map','valid_die_ref')"),
+        # 🔴 PREDICATES, NOT STATEMENTS. Nothing executes these any more - the rows go out
+        # through the door, which deletes by id - so carrying `DELETE FROM <table>` in front
+        # of each WHERE would be text that only looks like a write. One spelling per
+        # predicate, and it is the one the SELECT below uses.
+        predicates = {
+            "void_obs": "base_wafer_id LIKE 'SYN-CX-BW-%'",
+            "inspection_run": "base_wafer_id LIKE 'SYN-CX-BW-%'",
+            "bonding_log": "bond_lot LIKE 'SYN-CX-BOND-%'",
+            "bonding_map": "base LIKE 'SYN-CX-BW-%'",
+            "dt_map": ("dt_lot IN ('SYN-CX-DT-01','SYN-CX-DT-02') "
+                       "AND dt_slot IN ('01','02') AND dt_job LIKE 'SYN-CX-SPATIAL-%'"),
+            "core_wafer_map": ("core_lot IN ('SYN-CX-LOGIC-MRG','SYN-CX-HBM-MRG') "
+                               "AND core_slot IN ('11','22')"),
+            "valid_die_ref": "product = :product",
+            "wafer_map_metadata": ("map_id LIKE 'SYN-CX-%' AND target_table IN "
+                                   "('bonding_log','bonding_map','dt_map','core_wafer_map',"
+                                   "'valid_die_ref')"),
         }
         params = {"d": final_wafer(UI_PRESETS["hero_defect"]),
                   "r": final_wafer(UI_PRESETS["hero_reference"]),
                   "product": MAP_PRODUCT}
-        for table, statement in statements.items():
-            spatial_deleted[table] = connection.execute(text(statement), params).rowcount
+        # 🔴 THE PRODUCT ROWS GO OUT THROUGH THE DOOR (S-78, ruling 176·181). This is the
+        # fixture's UNDO, and an undo issued as a statement carries no envelope: the rows
+        # vanish while their atoms stand, which is the S-74 shape this round exists to
+        # remove. Each predicate is resolved to ids first because the door deletes by id,
+        # and an event has to name the rows it is about.
+        #
+        for table, where in predicates.items():
+            ids = [r[0] for r in connection.execute(
+                text("SELECT row_id FROM %s WHERE %s" % (table, where)), params).fetchall()]
+            spatial_deleted[table] = len(ids)
+            if ids:
+                product_door.delete_rows(table, ids, base_url=DOOR_URL,
+                                         user_name=SOURCE, log=lambda *_: None)
         # Generic writes preserve every source layer. Remove only this fixture's layer
         # records after its SYN rows are gone; no other updated_by is touched.
-        connection.execute(text("DELETE FROM cell_sources WHERE updated_by = :updated_by"),
-                           {"updated_by": MAP_UPDATED_BY})
+        # ⚠️ Keyed on the WRITER, not on rows, so the door's own layer cleanup does not
+        # cover it - see `ops_ledger_namespace.clear_layer_rows`.
+        ops_ledger_namespace.clear_layer_rows(connection, MAP_UPDATED_BY)
     return {"deleted_atoms": deleted, "deleted_spatial_rows": spatial_deleted,
             "source": SOURCE}
+
+
+DOOR_URL = None  # set from --url in main; product_door supplies the default
 
 
 def main():

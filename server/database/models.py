@@ -240,7 +240,7 @@ class DatabaseOutbox(Base):
     # [C-3] 레거시 중복 인덱스 정리: id의 index=True(pkey와 완전 중복·실측 124MB),
     # event_uuid의 unique/index(224MB — 조회처 전무, uuid4 유일성은 통계적으로 보장),
     # status의 비부분 index(44MB — 부분 인덱스 idx_outbox_pending/idx_outbox_failed로 대체)를 제거.
-    # 기존 운영 DB의 해당 인덱스는 scripts/setup_db_performance.py의 멱등 DROP으로 정리한다.
+    # 기존 운영 DB의 해당 인덱스는 scripts/ops_setup_db_performance.py의 멱등 DROP으로 정리한다.
     id = Column(Integer, primary_key=True)
     event_uuid = Column(String, nullable=False)
     event_type = Column(String(50), nullable=False)
@@ -528,7 +528,7 @@ class CellSource(Base):
         # (row_id, column_name) -- without it the planner weighs one heap fetch per
         # match against a seq scan and can go back to the seq scan.
         #
-        # ALSO DECLARED in server/scripts/setup_db_performance.py Step 3.10 --
+        # ALSO DECLARED in server/scripts/ops_setup_db_performance.py Step 3.10 --
         # **fix both places**. create_all does not add indices to a table that
         # already exists, so that script is the only path onto an existing
         # database (`idx_audit_user_recorrection` is here for the same reason).

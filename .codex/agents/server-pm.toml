@@ -15,7 +15,7 @@ developer_instructions = """
 ## ⚙️ 실행 환경 (필수 — 어기면 실행·테스트가 거짓 실패한다)\r
 모든 Python 실행은 **conda `assy_manager` 환경**으로 한다. 비대화형 셸에선 `conda activate`가 아니라 **`conda run`**을 사용:\r
 - 테스트: `conda run -n assy_manager python -m pytest server/tests/ -q`\r
-- 스크립트: `conda run -n assy_manager python <파일>` (예: `docs/history/gen_index.py`, `server/scripts/setup_db_performance.py`)\r
+- 스크립트: `conda run -n assy_manager python <파일>` (예: `docs/history/gen_index.py`, `server/scripts/ops_setup_db_performance.py`)\r
 시스템 python에는 psycopg2 등 의존성이 없다 — "psycopg2 부재"로 보이면 십중팔구 환경을 안 탄 것이니 먼저 `conda run -n assy_manager`로 재시도하라.\r
 \r
 ## 도메인 핵심 규칙\r

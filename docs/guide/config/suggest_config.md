@@ -8,7 +8,7 @@
   validate: value_suggest.resolve_settings (bool/non-int/negative/zero -> warn + that key's default; default_limit > max_limit -> clamped)
   maps: value_suggest._resolve_column_map (non-dict or malformed entry -> dropped + warn)
   serve: main.get_column_unique_values -> GET /tables/{t}/columns/{c}/values
-  index policy: value_suggest.index_targets, consumed by server/scripts/setup_db_performance.py Step 3.8
+  index policy: value_suggest.index_targets, consumed by server/scripts/ops_setup_db_performance.py Step 3.8
 -->
 
 ## 1. 언제 이 파일을 만지는가
@@ -18,7 +18,7 @@
 - **접두 인덱스를 만들 대상을 조정할 때** (`index_min_rows` / `index_columns` / `index_exclude`) — 디스크가 아까운 컬럼을 빼거나, 작은 테이블에도 강제로 넣을 때
 - **파일이 없어도 정상입니다** — 전 항목 기본값으로 동작합니다.
 
-> ⚠️ **이 파일은 인덱스를 만들지 않습니다.** 대상 목록만 결정하고, 실제 생성은 `server/scripts/setup_db_performance.py`(Step 3.8)가 합니다. **값을 바꾸면 그 스크립트를 다시 돌려야** 반영됩니다.
+> ⚠️ **이 파일은 인덱스를 만들지 않습니다.** 대상 목록만 결정하고, 실제 생성은 `server/scripts/ops_setup_db_performance.py`(Step 3.8)가 합니다. **값을 바꾸면 그 스크립트를 다시 돌려야** 반영됩니다.
 
 ## 2. 세팅 절차
 
@@ -44,7 +44,7 @@
 4. 저장 — 조회 노브는 **다음 요청부터** 즉시 반영됩니다(요청당 1회 스냅샷).
 5. `index_*`를 건드렸다면 **인덱스를 다시 반영**합니다:
    ```bash
-   cd server && conda run -n assy_manager python scripts/setup_db_performance.py
+   cd server && conda run -n assy_manager python scripts/ops_setup_db_performance.py
    ```
 
 ## 3. 키 사전
@@ -94,7 +94,7 @@ curl "http://localhost:8080/tables/bonding_map/columns/base/values?prefix=c&limi
 
   ```
   조회 시간 초과 (1500ms) — 접두 인덱스 idx_suggest_bonding_map_base 가 없습니다.
-  server/scripts/setup_db_performance.py 를 실행하세요.
+  server/scripts/ops_setup_db_performance.py 를 실행하세요.
   ```
 
   **사유 문자열을 끝까지 읽으십시오 — 문장이 상황마다 다릅니다.** "스크립트를 실행하세요"는 그 컬럼이 **실제로 빌더의 대상일 때만** 나옵니다. 대상이 아니면 무엇이 막고 있는지를 말합니다(아래 판정은 `value_suggest.index_targets`에 직접 물어서 나옵니다 — 정책이 한 곳에만 있습니다):

@@ -407,7 +407,7 @@ def test_r2_unknown_column_is_refused(rep_env):
 # R2 cost contract: the index that bounds `_claimed_filter`.
 #
 # The index itself is a PostgreSQL artifact and this suite runs on sqlite, so
-# nothing here can prove a plan - `setup_db_performance.py` Step 3.11 does that,
+# nothing here can prove a plan - `ops_setup_db_performance.py` Step 3.11 does that,
 # against real data, by EXPLAINing the statement. What CAN drift silently is the
 # pairing, and it drifts in two directions that a comment saying "fix both
 # places" does not catch:
@@ -433,7 +433,7 @@ def test_withdraw_index_definition_matches_the_builder_script():
 
     cols = _withdraw_index_columns()
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "scripts", "setup_db_performance.py")
+                        "scripts", "ops_setup_db_performance.py")
     with open(path, "r", encoding="utf-8") as f:
         src = f.read()
     m = re.search(r'\("%s",\s*\n?\s*"cell_sources",\s*\n?\s*"\(([^)]*)\)"' % WITHDRAW_INDEX,
@@ -444,7 +444,7 @@ def test_withdraw_index_definition_matches_the_builder_script():
     script_cols = [c.strip() for c in m.group(1).split(",")]
     assert script_cols == cols, (
         f"index definition drifted: models.py has {cols}, "
-        f"setup_db_performance.py has {script_cols}")
+        f"ops_setup_db_performance.py has {script_cols}")
 
 
 def test_claimed_filter_stays_a_prefix_of_the_withdraw_index():

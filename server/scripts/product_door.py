@@ -81,6 +81,30 @@ def row_item(business_key, values, *, source_name, updated_by=None):
     }
 
 
+def row_item_by_id(row_id, values, *, source_name, updated_by=None):
+    """One item addressed by `row_id` instead of by business key.
+
+    🔴 THIS IS WHAT A RENAME NEEDS (ruling 185). A row whose identity columns are being
+    rewritten cannot be addressed by the identity it is losing, and `row_id` does not move.
+    Note that `assemble_composite_business_key` returns early when an item carries a
+    `row_id`, so a composite key is NOT recomputed here - the caller sends the new key
+    columns explicitly, which is exactly what a rename means.
+
+    ⚠️ `business_key_val` may be sent among the values: it is framework-owned but it is not
+    in `crud`'s `system_cols` (`created_at`, `updated_at`, `row_id`, `id`, `updated_by`), so
+    it is written like any other column rather than silently dropped. Measured before
+    relying on it, because a silently dropped key would half-apply a rename.
+    """
+    if not row_id:
+        raise DoorRefusal("addressing by row_id needs one")
+    return {
+        "row_id": str(row_id),
+        "updates": {name: jsonable(value) for name, value in values.items()},
+        "source_name": source_name,
+        "updated_by": updated_by or source_name,
+    }
+
+
 def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT,
              log=print):
     """Send `items` through the door in requests of at most `MAX_ROWS_PER_REQUEST`.

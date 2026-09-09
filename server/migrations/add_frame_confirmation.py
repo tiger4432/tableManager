@@ -6,7 +6,7 @@
 - DROP도 ALTER TYPE도 없다. 기존 데이터에 손대는 문장이 한 줄도 없다.
 - 기존 테이블에는 `create_all`이 컬럼도 인덱스도 추가하지 않는다. 운영 DB로 가는 길은
   이 스크립트뿐이다(`cell_sources`의 형제 인덱스가 같은 이유로
-  `scripts/setup_db_performance.py`에 중복 선언돼 있다).
+  `scripts/ops_setup_db_performance.py`에 중복 선언돼 있다).
 - `cell_sources`는 큰 표다. 그래서 두 가지를 지킨다:
   · 컬럼 추가는 **NULL 허용 · 기본값 없음**이라 PostgreSQL에서 카탈로그만 고친다(표 재작성 없음).
   · 인덱스는 `CONCURRENTLY`로 만든다. 일반 CREATE INDEX는 쓰기를 막고, 지금 이 DB에는

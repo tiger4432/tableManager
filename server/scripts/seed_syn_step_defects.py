@@ -72,10 +72,34 @@ EXTENT = (6.0, 18.0)           # FULL widths, um
 SEED = 20260824
 BASE_DAY = "2026-07-12"
 
+#: This script's namespace, as (table, predicate). The door deletes BY ID, so the predicate
+#: is resolved first - an outbox event names the rows it is about, and an unexpanded
+#: predicate would produce an event nobody can resolve (S-78, ruling 181).
 OWNED = (
-    "DELETE FROM step_defect_obs     WHERE mat_id LIKE 'SYN-AUG-%'",
-    "DELETE FROM step_inspection_run WHERE mat_id LIKE 'SYN-AUG-%'",
+    ("step_defect_obs", "mat_id LIKE 'SYN-AUG-%'"),
+    ("step_inspection_run", "mat_id LIKE 'SYN-AUG-%'"),
 )
+
+
+def _clear_owned(connection, url, log=print):
+    """Remove this script's namespace through the door. Returns rows removed."""
+    removed = 0
+    for table, where in OWNED:
+        ids = [r[0] for r in connection.execute(
+            text("SELECT row_id FROM %s WHERE %s" % (table, where))).fetchall()]
+        if not ids:
+            continue
+        log("   clearing %-22s %6d rows" % (table, len(ids)))
+        product_door.delete_rows(table, ids, base_url=url,
+                                 user_name=SOURCE_NAME, log=lambda *_: None)
+        removed += len(ids)
+    return removed
+
+
+import product_door
+
+#: The layer name these rows land under, so the set is attributable and removable.
+SOURCE_NAME = "seed_syn_step_defects"
 
 
 def _stamp(days, minutes):
@@ -138,15 +162,23 @@ def build():
     return [("step_inspection_run", runs), ("step_defect_obs", obs)]
 
 
-def _insert(connection, table, rows):
+def _put(table, rows, url, log=print):
+    """Write one table's rows through the product door.
+
+    No `row_id` is minted here: the engine mints it and ruling 150 refuses a supplied id
+    that is not a uuid7. Every row already carries `business_key_val`.
+    """
     if not rows:
         return 0
-    cols = list(rows[0])
-    sql = text("INSERT INTO %s (%s) VALUES (%s)" % (
-        table, ", ".join(cols), ", ".join(":" + c for c in cols)))
-    for i in range(0, len(rows), 500):
-        connection.execute(sql, rows[i:i + 500])
-    return len(rows)
+    items = []
+    for row in rows:
+        values = dict(row)
+        items.append(product_door.row_item(
+            values.pop("business_key_val"), values, source_name=SOURCE_NAME))
+    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None)
+    log("   wrote    %-22s %6d rows in %d request(s)"
+        % (table, result["rows"], result["requests"]))
+    return result["rows"]
 
 
 def _composite(connection, step):
@@ -171,6 +203,8 @@ def main(argv=None):
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--i-accept-writing-to-owner-database", dest="allow_owner",
                     action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url the rows are written through")
     args = ap.parse_args(argv)
 
     plan = build()
@@ -178,25 +212,30 @@ def main(argv=None):
     for table, rows in plan:
         print("   %-22s %6d" % (table, len(rows)))
 
+    # ⚠️ THE DRY RUN NO LONGER REHEARSES, and that is a real loss stated rather than hidden.
+    # It used to insert inside a transaction, print the composite computed from the
+    # SIMULATED rows, and roll back. Writes through the door commit on the server, so a
+    # rehearsal is not available: this stops before the door and prints the plan only.
+    if not (args.apply and args.allow_owner):
+        print("\nDRY RUN - nothing written. The composite is computed from rows in the"
+              " database,\nso it can only be shown after a real write; add --apply"
+              " --i-accept-writing-to-owner-database.")
+        return 0
+
     with db.engine.connect() as c:
         c.execute(text("SET statement_timeout = '300s'"))
-        try:
-            for stmt in OWNED:
-                c.execute(text(stmt))
-            for table, rows in plan:
-                _insert(c, table, rows)
-            print("\ncomposite per step (this is the discriminator):")
-            for step, *_ in STEPS:
-                _composite(c, step)
-            if args.apply and args.allow_owner:
-                c.commit()
-                print("\nCOMMITTED.")
-            else:
-                c.rollback()
-                print("\nDRY RUN - rolled back.")
-        except Exception:
-            c.rollback()
-            raise
+        print("")
+        _clear_owned(c, args.url)
+
+    for table, rows in plan:
+        _put(table, rows, args.url)
+
+    with db.engine.connect() as c:
+        c.execute(text("SET statement_timeout = '300s'"))
+        print("\ncomposite per step (this is the discriminator):")
+        for step, *_ in STEPS:
+            _composite(c, step)
+    print("\nCOMMITTED through the product door.")
     return 0
 
 

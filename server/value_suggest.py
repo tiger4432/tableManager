@@ -160,7 +160,7 @@ DEFAULTS = {
     # 200 ms therefore means "structurally wrong", not "this request was unlucky".
     # It sits above every healthy sample observed and still caught 6 of the 14
     # `wafer_process` columns when they had no index — and catching SIX columns of a
-    # broken table is enough, because the repair (`setup_db_performance.py`) fixes
+    # broken table is enough, because the repair (`ops_setup_db_performance.py`) fixes
     # the whole table at once. A threshold that cries wolf gets switched off, which
     # would cost more than the columns it would have caught.
     #
@@ -170,7 +170,7 @@ DEFAULTS = {
     # only hint at. This knob is the loud alarm, not the measurement.
     "slow_warn_ms": 200,
     # A table at least this large gets suggestion indexes built for its
-    # string-declared columns (setup_db_performance.py). Smaller tables scan
+    # string-declared columns (ops_setup_db_performance.py). Smaller tables scan
     # fine without one, and indexing them all would cost disk for nothing.
     "index_min_rows": 10000,
 }
@@ -930,7 +930,7 @@ def _index_advice(db, table, column, settings) -> tuple:
         # name, so re-running it fixes nothing. Say the repair out loud.
         return state, (
             f"인덱스 {idx} 가 INVALID 상태입니다(CONCURRENTLY 생성이 중단된 흔적). "
-            f"플래너가 사용하지 않으며 setup_db_performance.py 를 다시 돌려도 이름이 "
+            f"플래너가 사용하지 않으며 ops_setup_db_performance.py 를 다시 돌려도 이름이 "
             f"있어 건너뜁니다. REINDEX INDEX CONCURRENTLY {idx}; 또는 "
             f"DROP INDEX CONCURRENTLY {idx}; 후 재실행하세요.")
     if state == _INDEX_ABSENT:
@@ -942,7 +942,7 @@ def _index_advice(db, table, column, settings) -> tuple:
 def _why_not_a_target(db, table, column, settings) -> str:
     """The ACTIONABLE half of a missing-index message.
 
-    "run setup_db_performance.py" is a dead end whenever the builder was never
+    "run ops_setup_db_performance.py" is a dead end whenever the builder was never
     going to create this index: an `index_exclude` entry, an `index_columns`
     list this column is not in, or a table under `index_min_rows` (the live
     database has 15 such tables). Telling an operator to re-run a script that
@@ -960,7 +960,7 @@ def _why_not_a_target(db, table, column, settings) -> str:
         rows = _approx_row_count(db, table)
         targets = index_targets({table: cfg}, settings, {table: rows or 0})
         if any(t == table and c == column for t, c, _, _ in targets):
-            return "server/scripts/setup_db_performance.py 를 실행하세요."
+            return "server/scripts/ops_setup_db_performance.py 를 실행하세요."
         if column in set((settings.get("index_exclude") or {}).get(table) or ()):
             return (f"이 컬럼은 suggest_config.json 의 index_exclude['{table}'] 에 "
                     f"제외되어 있어 빌더가 만들지 않습니다. 제외를 풀고 재실행하세요.")
@@ -974,7 +974,7 @@ def _why_not_a_target(db, table, column, settings) -> str:
                 f"index_columns['{table}'] 에 이 컬럼을 선언하고 재실행하세요.")
     except Exception as e:
         logger.warning("[Suggest] target diagnosis failed for %s.%s: %s", table, column, e)
-        return ("server/scripts/setup_db_performance.py 를 실행하세요 "
+        return ("server/scripts/ops_setup_db_performance.py 를 실행하세요 "
                 "(대상 여부는 suggest_config.json 의 index_columns / index_exclude / "
                 "index_min_rows 확인).")
 
@@ -1102,7 +1102,7 @@ def classify_seek_plan(plan_text, expect_range: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# Index targets — consumed by server/scripts/setup_db_performance.py
+# Index targets — consumed by server/scripts/ops_setup_db_performance.py
 # ---------------------------------------------------------------------------
 
 def index_targets(table_config: dict, settings: dict, row_counts: dict) -> list:

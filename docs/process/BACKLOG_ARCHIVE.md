@@ -38,7 +38,7 @@
 | — | ~~DB 쓰기 2건~~ ✅ **완료** (로컬 라이브 적용 — 인덱스 6종+정리 4종+재교정 인덱스, CONCURRENTLY 무중단. 운영 실행 가이드 전달) | — | — | ✅ |
 | 2 | 🟠 **죽은 계약 하네스 + 그걸 놓친 가드의 범위 구멍** (2026-07-29, map-pm·code-mapper가 **서로 다른 경로로 독립 도달** — 확증). `client2/tests/split_registry_harness.mjs`(272줄)가 `loadLegend`·`fetchLegendFromServer`·`maybeOfferLegendMigration`·`loadLegendFromStorage`·`DEFAULT_LEGEND`를 **이름으로 추출**하는데 5개 전부 CODE_MAP §0 tombstone(삭제됨) → **추출 단계에서 throw**. 클린 트리에서도 재현되므로 이번 라운드 무관. **더 중요한 건 왜 안 걸렸나**: 심볼 개명을 exit 2로 잡아주는 §0 체크 ②-b가 `client2/src contracts`만 스코프해서 **`client2/tests`를 안 본다**. ⓐ 하네스 처분(개명 대응 복구 vs 폐기 — U6에서 하드코딩 기본값을 `default_legend` 선언으로 옮긴 뒤 계약 자체가 유효한지 판정 필요) ⓑ **체크 스코프에 `client2/tests` 편입** | client-pm+map-pm | T2 | 대기 |
 | 4 | **D1 — 에이전트 헌장 공백**: `CONFIG_GUIDE`·`DEPLOY_SETUP`·`PRODUCTION_READINESS`·`FEATURE_CHECKLIST`가 어느 헌장에도 없음(감사 발견). 문서 아닌 헌장 문제 | 총괄 | — | 대기 |
-| 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
+| 5 | **DB 쓰기 2건** — ⓐ 재교정 집계 부분 인덱스(`ops_setup_db_performance.py` 준비됨, 현재 512ms 순차 스캔을 60초 캐시로 방어 중) ⓑ 낡은 outbox 인덱스 정리 | 총괄+사용자 | — | DB 쓰기 필요 |
 | **0** | 🔴 **V1 계기 계측 — 완료까지의 상호작용 점수** (사용자 2026-07-29 사양 확정). **단위 = 한 tx 묶음 교정 완료**(서버가 이미 긋는 경계 — `PUT /tables/{t}/data/updates` + `AuditLog.tx_id` 재사용, 새 개념 신설 없음). **배점: 키입력 1 · 마우스 3 · 화면이동 5, 낮을수록 좋음.** ⚠️ **컨텍스트를 유지한 자연스러운 리다이렉트는 0점**(예: DOE → dt map 라우팅) — 판정은 **config 선언형**, 기본은 "상실(5점)"이고 유지 전이만 선언한다(낙관 편향 방지). 집계 = **세션별 평균**. 계약: `effort:{session_id,key,mouse,nav}`는 **선택 필드** — 워커·인제션 경로는 미계측이 정상이며 **0이 아니라 없음**이어야 평균이 조용히 희석되지 않는다. 원시 카운트를 저장하고 합산은 조회 시점(배점 변경 시 과거 데이터 재해석). **R1보다 먼저 머지** — 소급 산출 불가라 UI를 먼저 고치면 "before"를 영영 못 얻는다 | client-pm+map-pm+server-pm | T2 | **승인됨 — 투입 대기** |
 | **0b** | 🟡 **공수 절감 기능군** (계기에서 파생, 사용자 방향 제시 2026-07-29). 배점이 마우스 3·이동 5이므로 **손을 줄이는 기능이 곧 지표 개선**이다: ⓐ **드롭다운·입력 추천** 적극 활용 ⓑ **최대한 미리 값이 채워지게**(prefill) ⓒ **범위 묶어 Ctrl+Enter 일괄 채우기**. ⚠️ 착수 전 필수 확인: 그리드에 **이미 있는 범위·클립보드 프리미티브**(`clipboard.js`)와 겹치는지 — 없는 것만 만든다([[check-existing-primitives-first]]) | client-pm | T2 | 🟡 **ⓐ 완료 · ⓒ 이미 존재 · ⓑ만 남음** — ⓐ는 F3 클라 절반으로 착지하고 **계기가 92% 절감을 실측**(위 F3). ⓒ는 만들 것이 없었다: 기존 `Ctrl+Enter` 일괄 채우기가 그대로 살아 있고 **제안값과 합성된다**(25자 값 3칸 = 5타 vs 78타) — [[check-existing-primitives-first]]가 두 번째로 값을 했다. 남은 ⓑ prefill은 별 라운드 |
 | **1** | ✅ **전건 완료** — DOE UI 개편 사용자 VOC ⓐ~ⓘ 9건. 8건 `7694b42`, ⓗ splitter `ae2811c` | ui-designer+map-pm | T2 | ✅ |
@@ -83,7 +83,7 @@
 **✅ 사용자 결정 (2026-07-29) — 대기 4건 전부 해소**:
 - **V1 계기 교체** — 재교정률이 아니라 **완료까지의 상호작용 횟수**(클릭·화면 이동)가 정본. 재교정률은 보조로 강등. SSOT §1 갱신 완료. **미구현이고 소급 불가** → 계측이 R1 UI 라운드보다 **먼저** 머지돼야 전/후 비교가 성립
 - **`bonding_log` lot/slot = 테이프** — 코어 아님. 스펙 §7.5b DT/Tape 계층 확정. 파생: `Wafer` label에 섞인 `core_lot|core_slot`은 **테이프 위치**이므로 별도 label로 분리(#15), 해당 엣지는 DT 계층으로 retarget
-- **재교정 인덱스 승인** — `python server/scripts/setup_db_performance.py` (CONCURRENTLY·멱등·무중단). 절차는 [POSTGRES_OPERATIONS §3.1](../guide/POSTGRES_OPERATIONS_GUIDE.md)
+- **재교정 인덱스 승인** — `python server/scripts/ops_setup_db_performance.py` (CONCURRENTLY·멱등·무중단). 절차는 [POSTGRES_OPERATIONS §3.1](../guide/POSTGRES_OPERATIONS_GUIDE.md)
 - **선언 없는 테이블 처분 허용** — 총괄은 **선언 제거만**(워처 부활 차단) 수행하고 물리 `DROP`은 사용자가 직접 실행(기존 규율 유지)
 
 **🔁 로드맵 모델 (사용자 2026-07-29) — 얇은 수직 슬라이스 루프**:

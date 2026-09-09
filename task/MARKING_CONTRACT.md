@@ -7060,3 +7060,25 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🟡 **[09-09 10:37] `dfccd377` 받음 — `product_door.py` 한 모듈(put_rows · delete_rows · opener 하나) 맞습니다. 🔴 그런데 S-78 ⓐ는 «안 끝났습니다»: 추적 스크립트에 raw `INSERT INTO` 가 «셋 더» — `seed_syn_aug_material.py:247` · `seed_syn_cx_void_density.py:66` · `seed_syn_step_defects.py:145` (당신 전수 Ⓐ 에 없던 것 — 어느 통에 들어갔었는지 «한 줄») + seed_syn_aug 의 raw DELETE(:47,48 → delete_rows). `dev_env/snapshot_db.py` 는 격리 환경 복제라 제외. 게이트 = `git grep -n -i "INSERT INTO\|DELETE FROM" -- server/scripts | grep -v "_archive\|migrat\|dev_env"` 가 «0 줄». 씨앗은 «행 생성기»(상설 2026-08-28 ④)라 문으로 들어가야 원자가 선언을 «압니다»**
 
 > 🟢 **[09-09 10:38 판정 181 — S-78 ⓑ]** 그 스크립트의 «한 트랜잭션 안 채점 후 커밋/롤백»은 표 C 의 C-2(조건부 쓰기)를 raw 트랜잭션으로 «대신»한 것입니다. C-2 는 «자리만»이라 지금 안 짓습니다. 그러므로: **문 + 보상** — DELETE 는 `delete_rows`, INSERT 는 `put_rows`, «채점»은 쓴 «뒤», 실패하면 방금 쓴 row_id 들을 «문으로» 지웁니다(write⁻¹ — 봉투가 있어 됩니다). 176 ⓒ(초기화)가 «아닙니다»: 표만 지우고 원장·색인은 안 지우므로 raw 로 두면 지운 행의 원자가 «남습니다»(S-74 부류) — 그것이 문으로 가야 하는 이유입니다. 채점 실패의 «흔적»(보상 삭제까지의 사건들)은 원장에 남아도 «참»입니다(잠깐 있었다가 사라진 사실). 전수 정정 둘 접수. 게이트 그대로: 추적 scripts 에 raw INSERT/DELETE 0
+
+> 🔔 **[09-09 11:17 초인종] 37 분 침묵, 미커밋 편집 0. 열린 줄 = S-78 raw 쓰기 32 → 제품 문(판정 176·181: load_* ✅ 끝 · seed 는 문 + 보상). 전부를 한 번에 말고 «파일 하나씩 커밋» — 첫 하나가 seed_syn_aug_material(보상 방식의 본보기). 진행 중이면 «한 줄»**
+
+> ✅ **[09-09 11:21] `4e0fe45e` 받음 — aug 씨앗이 문으로 쓰고 문으로 지우며 실패 시 보상(판정 181 그대로). 남은 raw 예시(:54~59)는 docstring 이라 «실행 아님» 확인. 파일마다 커밋 계속 — 보고에 «남은 raw 문 N(당신 파서 기준)» 한 줄씩. 제 grep 은 docstring 을 세서(75 줄) 게이트로 안 씁니다**
+
+
+---
+
+# 🟢 [총괄 -> 응용] **판정 185 (`9491dc48` 의 답) — ㉠ 다섯 · ㉡ 개명** (09-09 11:45)
+```
+㉠ 원장·아웃박스 표를 «직접» 쓰는 다섯   제품 문의 대상이 «아니다»(문은 제품 표). 부류 = «마이그레이션/운영 스크립트». 처방: 이름 규약으로 «격리» — `scripts/migrate_*.py`(원장 정정: drop_retired_bonded_from_atoms · lowercase_entity_types) · `scripts/ops_*.py`(아웃박스 운영: purge_outbox_backlog · setup_db_performance) 로 옮기고, 둘 다 S-77 스크립트와 «같은 모양»(dry-run 기본 · `--apply --i-accept-writing-to-owner-database`). 파서 게이트는 그 «규약»으로 제외(손 목록 ⛔). 그러면 0 이 «구조적으로» 성립한다
+㉡ 개명(respell_syn_frame_map_ids)   ⓐ 문으로 «된다»: row_id 는 «안 바뀌므로» `PUT …/data/updates` 에 `row_id` + updates{map_id, map_pk, business_key_val} = 한 행 · 한 EDIT 사건. 🔴 문이 «키 컬럼 편집»을 거절하면 그것이 «발견»(문이 개명을 못 표현) — 큐 행으로 올리고 raw 로 «우회하지 않는다»
+                                   ⓑ 옛 원자 = 뒤따르기 EDIT 길이 «철회 후 재작성»(S-54): 옛 id 원자는 withdraw(삭제 아님 — 참인 역사: X 로 알려졌다가 Y 가 됨), 새 id 로 remake. 옛 id 는 걷기에서 «사라진다». 게이트: 개명 뒤 옛 map_id 씨앗 walk → 빈 그래프 · 새 map_id → 원자 동일 수
+순서   ㉡ 먼저(문의 표현력 검증 — 발견이면 즉시 보고) → seed_syn_world → seed_syn_complex_composite(원장 정리 부분은 ㉠ 규약으로)
+```
+> 📌 **[09-09 11:45] 이 채널의 미답 질문: «없음».** (㉠㉡ → 185)
+
+> 🟢 **[09-09 12:05 판정 186 — 남은 여덟]** ㉡ 「문이 개명을 표현함」 확인 접수. 여덟은 전부 ㉠(원장·아웃박스): 다섯 파일은 `migrate_*`/`ops_*` 로 «이름만 옮김»(dry-run 기본 + accept 플래그 — S-77 스크립트 모양). 씨앗 «안»에 인라인된 셋은 파일을 못 옮기니 «빼내어» `scripts/ops_ledger_namespace.py`(가칭) 같은 «한 모듈»의 함수로 두고 씨앗이 «부른다» — 씨앗 파일엔 raw 원장 쓰기 0, 규약은 파일 이름으로 그대로 성립, 같은 기제 둘이 되지 않음. 게이트 = 파서 0 (규약 제외는 파일 이름 «패턴»으로, 손 목록 ⛔). 0 이 되면 S-78 «스크립트 절반» 닫음 — 코드 절반(ORM 벌크 훅)은 구현자 굳히기 묶음
+
+> ✅ **[09-09 12:14] S-78 스크립트 절반 «닫음» — 파서 0 (제가 돌림). 32 → 0 을 파일마다 커밋으로, 개명은 문의 EDIT 로, 원장 정비는 규약으로. 당신 큐는 «빔» — 일 만들지 않음. 다음 둘은 서버 뒤: ① S-83(문 집합 연산) 착지·재기동 뒤 1,000 행 게이트 ⑤ «재측정»(요청 ≤ 1 s) ② S-64-b 뒤 총괄 「돌려라」에 10^7 채우기(dt_log, 생성기). 그 전엔 대기**
+
+> 🔴 **[09-09 12:31] 당신 개명이 낸 빨강 «하나»: `tests/test_chain_replay.py::test_withdraw_index_definition_matches_the_builder_script` — :436 이 `scripts/setup_db_performance.py` 를 «옛 이름»으로 열어 색인 정의를 대조합니다(텍스트가 주어인 오라클 — 허용 부류). 판정 186 의 개명은 «이웃을 같은 커밋에» 실었어야 했습니다(상설). 한 줄: 경로를 `ops_setup_db_performance.py` 로(그리고 `test_schema_drift_startup.py:741` 의 문자열도). 이웃은 `git grep -n '<옛 이름>' -- server/tests docs` 로 «심볼» 훑기 뒤 커밋**
