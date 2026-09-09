@@ -8,10 +8,17 @@ with that module on 2026-08-18. Two things remain, and neither of them is leftov
 
   * THE DECLARATION GRAMMAR, which `ledger/config.py` still validates and still runs.
     These die with that module, not before it.
-  * THE BATCH BOUNDARY - `backfill.walk_group_pages`. It uses no translator at all, and
-    it is the test that caught a silent loss of 17 job-runs / 1,862 rows: a group that
-    straddled a page cut was dropped and never re-read. `_FakePage` below drives the real
-    walk, so a group that goes missing has nowhere to hide.
+  * THE PAGE CUT - `backfill._cut_on_group_boundary`, which `preview_first_batch` still
+    calls. It uses no translator at all: a group the page may have cut is DROPPED
+    rather than processed, because a batch boundary inside a job-run folds a FRAGMENT
+    of the dies into `qty`, and a wrong count looks exactly like a right one.
+
+⚰️ THE WALK IS GONE (2026-09-09). `walk_group_pages` and the two tests that drove it
+measured 「the dropped group is read on the NEXT page」 -- the silent loss of 17 job-runs
+and 1,862 rows. There is no next page any more: since the cursor read path retired, a
+load pages by the rows the index does not name and an event NAMES its row ids, so a
+group cannot be straddled by a boundary that no longer exists. The rule those tests
+guarded did not weaken; the mechanism it guarded stopped being reachable.
 """
 import os
 import sys
@@ -155,65 +162,3 @@ def test_the_lineage_cut_is_unchanged_by_the_new_parameter():
     assert dropped == "t2"
 
 
-# ------------------------------------------------------- the dropped group comes BACK
-class _FakePage:
-    """A source table with a page limit, so the drop-and-resume path can be walked.
-
-    🔴 THIS IS THE ONLY TEST IN THE PACKAGE THAT MAKES THE PAGE LOOP DROP A GROUP.
-    `lot_event` is 43 rows on every box this has ever run on, so `dropped` was always
-    `None` and the resume path was unreachable - which is why a cursor that advanced PAST
-    the dropped group survived until a 34,939-row source ran the same loop.
-    """
-
-    def __init__(self, groups, limit):
-        self.rows = [{"group_key": g, "row_identity": f"{g}-{i}"}
-                     for g, n in groups for i in range(n)]
-        self.limit = limit
-        self.pages = 0
-
-    def page(self, after):
-        self.pages += 1
-        rows = [r for r in self.rows if after is None or r["group_key"] > after]
-        return rows[:self.limit]
-
-    def group(self, key):
-        return [r for r in self.rows if r["group_key"] == key]
-
-
-def _walk(source, max_pages=20):
-    """🔴 Drives `backfill.walk_group_pages` ITSELF, not a copy of it.
-
-    An earlier draft of this test reimplemented the loop, which would have gone green on a
-    driver that had regressed - the shape this project has already paid for twice ("a
-    snippet reproduced out of context is not the behaviour"). The fetch halves are fakes;
-    every rule under test is the production function's.
-    """
-    seen = []
-    pages = backfill.walk_group_pages(source.page, source.group, "group_key", None,
-                                      source.limit)
-    for complete, _after, _last in pages:
-        seen.extend(complete)
-        if len(seen) > max_pages * source.limit:      # a runaway guard, never a page count
-            raise AssertionError("walk_group_pages did not terminate")
-    return seen
-
-
-def test_a_group_dropped_at_a_page_boundary_is_read_on_the_next_page():
-    """The defect this round measured: 17 job-runs and 1,862 rows silently gone.
-
-    The cursor used to advance to the DROPPED group's key while the fetch is `> cursor`,
-    so the group that was set aside *because it might be cut* was then skipped entirely.
-    Both halves are asserted - every row arrives, and each arrives exactly once - because
-    a resume that re-read a group would pass a completeness check while doubling `qty`.
-    """
-    source = _FakePage([("J1", 2), ("J2", 3), ("J3", 2), ("J4", 1)], limit=4)
-    seen = _walk(source)
-    assert [r["row_identity"] for r in seen] == [r["row_identity"] for r in source.rows]
-    assert len(seen) == len(set(r["row_identity"] for r in seen)) == 8
-
-
-def test_a_group_larger_than_a_page_is_read_whole_and_the_walk_continues():
-    source = _FakePage([("J1", 6), ("J2", 1)], limit=4)
-    seen = _walk(source)
-    assert sorted(r["row_identity"] for r in seen) == sorted(
-        r["row_identity"] for r in source.rows)

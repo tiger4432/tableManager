@@ -126,20 +126,6 @@ def _bootstrap_path():
         sys.path.insert(0, here)
 
 
-def v2_base_select_columns(snapshot, source_id):
-    """Stage 5 hand-off: columns the existing cursor reads from the base relation.
-
-    This is deliberately a small adapter on the established driver module.  It does not
-    create a second cursor or reader; Stage 6 will exercise its PostgreSQL transaction.
-    """
-    from .source_preparation import base_select_columns
-    try:
-        source_plan = snapshot.source_plans[source_id]
-    except (AttributeError, KeyError) as exc:
-        raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
-    return base_select_columns(source_plan)
-
-
 def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
                             refusals=None, excluded=None):
     """Convert one complete existing-cursor batch into prepared EventFrames.
@@ -236,45 +222,6 @@ def _cut_on_group_boundary(rows, page_limit, key="event_time"):
     last_value = rows[-1][key]
     kept = [r for r in rows if r[key] != last_value]
     return kept, last_value
-
-
-def walk_group_pages(fetch_page, fetch_group, key, after, page_limit):
-    """Yield `(rows, cursor_after, is_last_page)` - whole groups only, none skipped.
-
-    🔴 THE ONE PLACE THE PAGE RULE LIVES, and it is one place because it was two and they
-    were both wrong in the same way. Both drivers that page over groups need three
-    behaviours and the third is the one that bit:
-
-      1. a page that filled may have CUT its trailing group, so that group is dropped;
-      2. a page that is ENTIRELY one group cannot be cut down at all, so that group is
-         fetched whole and processed alone;
-      3. 🔴 the cursor then advances to the last group processed IN FULL - never to the
-         dropped one. The fetch is `WHERE key > cursor`, so advancing to the dropped
-         group's key skips the very group that was set aside because it still needed
-         reading.
-
-    MEASURED 2026-08-14, when `dt_log` became the first source larger than one page: 396
-    job-runs in the table, 379 translated, 17 groups and 1,862 source rows silently gone.
-    `lot_event` is 43 rows, so `dropped` was always `None` there and rule 3 had never been
-    executed by anything.
-
-    `fetch_page(after)` and `fetch_group(key_value)` are the source-specific halves; every
-    rule above is here, so a fourth grammar inherits them by calling this rather than by
-    copying a loop.
-    """
-    while True:
-        rows = fetch_page(after)
-        if not rows:
-            return
-        complete, dropped = _cut_on_group_boundary(rows, page_limit, key=key)
-        if not complete:
-            complete = fetch_group(dropped)
-            dropped = None
-        after = complete[-1][key]
-        last = dropped is None and len(rows) < page_limit
-        yield complete, after, last
-        if last:
-            return
 
 
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
@@ -1285,7 +1232,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
                 break
             complete, dropped = _cut_on_group_boundary(rows, fetch_rows, key=page_key)
             # A page that is ENTIRELY one group cannot be cut down; fetch that group
-            # whole, exactly as `walk_group_pages` does, so a molecule is never previewed
+            # whole, so a molecule is never previewed
             # in halves.
             if not complete and dropped is not None:
                 complete = _fetch_v2_lineage_group(read, plan, dropped)
@@ -1471,7 +1418,7 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
     # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing
-    # group and `walk_group_pages` may resume with `> after`.
+    # group, and the caller may resume with `> after`.
     page_key = _page_key(plan)
     order = tuple(dict.fromkeys((page_key, *plan.driver.order_by)))
     select_sql = sql.SQL(", ").join(sql.Identifier(column) for column in columns)

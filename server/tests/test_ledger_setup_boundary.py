@@ -9,7 +9,11 @@ import shutil
 import pandas as pd
 import pytest
 
-from ledger.backfill import v2_base_select_columns
+# ⚰️ `backfill.v2_base_select_columns` WAS A ONE-LINE ADAPTER over this and was
+# deleted 2026-09-09 for having no production caller -- these tests were its only
+# users, and they were always measuring `base_select_columns`. Calling the authority
+# directly is what they meant; the adapter only made it look like backfill's rule.
+from test_ledger_source_preparation import base_select_columns_of
 from ledger.setup import (
     DEFAULT_ONTOLOGY_ROOT,
     LedgerSetupError,
@@ -233,14 +237,12 @@ def test_existing_cursor_selects_only_physical_lot_event_columns():
     # `row_id` is selected because the declared cursor is `(event_time, row_id)` -- the
     # keyset's own columns have to come back with the rows or the next page cannot be
     # asked for. It is not a projection column; the two exclusions below still hold.
-    assert v2_base_select_columns(setup.snapshot, "lot_event") == tuple(sorted({
+    assert base_select_columns_of(setup.snapshot, "lot_event") == tuple(sorted({
         "lot_id", "event_type", "slotnumbers", "waferids", "parent_lot",
         "child_lot", "txn_seq", "event_time", "row_id",
     }))
-    assert "event_group_key" not in v2_base_select_columns(
-        setup.snapshot, "lot_event")
-    assert "row_identity" not in v2_base_select_columns(
-        setup.snapshot, "lot_event")
+    assert "event_group_key" not in base_select_columns_of(setup.snapshot, "lot_event")
+    assert "row_identity" not in base_select_columns_of(setup.snapshot, "lot_event")
 
 
 def test_live_physical_batch_normalizes_then_uses_stage6_compiler_path():

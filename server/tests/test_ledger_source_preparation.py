@@ -10,7 +10,23 @@ from types import MappingProxyType
 import pandas as pd
 import pytest
 
-from ledger.backfill import prepare_v2_cursor_batch, v2_base_select_columns
+# ⚰️ `backfill.v2_base_select_columns` WAS A ONE-LINE ADAPTER over this and was
+# deleted 2026-09-09 for having no production caller -- these tests were its only
+# users, and they were always measuring `base_select_columns`. Calling the authority
+# directly is what they meant; the adapter only made it look like backfill's rule.
+from ledger.backfill import prepare_v2_cursor_batch
+from ledger.source_preparation import base_select_columns
+
+
+def base_select_columns_of(snapshot, source_id):
+    """`(snapshot, source_id)` -> the authority's answer, in ONE place.
+
+    ⚰️ `backfill.v2_base_select_columns` was this, in production code, with no production
+    caller. It is deleted (2026-09-09) and the convenience lives here, where the callers
+    actually are -- once, so `test_ledger_setup_boundary` imports it rather than spelling
+    the same two lines a second time.
+    """
+    return base_select_columns(snapshot.source_plans[source_id])
 from ledger.roleframe import (
     DeclarativeRoleMapper,
     MapperContext,
@@ -252,7 +268,7 @@ def issue(exc):
 def test_existing_cursor_selects_only_base_physical_columns():
     compiled = snapshot()
 
-    columns = v2_base_select_columns(compiled, "input_rows")
+    columns = base_select_columns_of(compiled, "input_rows")
 
     # 판정 136: this fixture catalogue declares no `row_id`, so the read asks for none --
     # which is the view case, stated where it costs nothing to state.
@@ -282,8 +298,7 @@ def test_preparer_output_can_own_event_identity_without_entering_cursor_select()
 
     base = base_rows(2)
     base["event_at"] = [NOW, NOW]
-    assert "prepared_event_key" not in v2_base_select_columns(
-        compiled, "input_rows")
+    assert "prepared_event_key" not in base_select_columns_of(compiled, "input_rows")
 
     event, = prepare_v2_cursor_batch(
         compiled, "input_rows", base, reader_for(base),
@@ -970,13 +985,13 @@ def test_the_declared_column_is_then_selected_by_the_cursor():
         "InputEntity@1": {"attributes": {"product": {"kind": "column",
                                                      "column": "event_key"}}}}
 
-    columns = v2_base_select_columns(snapshot(raw), "input_rows")
+    columns = base_select_columns_of(snapshot(raw), "input_rows")
 
     assert "event_key" in columns, columns
 
 
 def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
     """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
-    plain = v2_base_select_columns(snapshot(), "input_rows")
+    plain = base_select_columns_of(snapshot(), "input_rows")
 
     assert plain == ("event_at", "event_key", "join_id", "record_id", "source_id")
