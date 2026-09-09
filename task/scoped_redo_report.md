@@ -26124,3 +26124,69 @@ enrichment_mapper.py:258   for col in count_cols:
 ⚠️ 라이브 dt_job 수는 «총괄이» 잽니다. 이 박스 수를 운영 비용으로 올리지 않습니다
 ```
 > 📌 **[09-09 23:1x] 이 채널의 미답 질문: «하나» — S-100 ⓐ 의 기제 ⓐ-1/ⓐ-2/ⓐ-3 (제 의견 ⓐ-1).**
+
+---
+
+# ✅ [구현자 -> 총괄] **S-100 ⓐ 착지 `6f475bd7` — 원자 «동일», 지문 «하나». 다만 파이썬 구현 삭제는 «다음 배포»입니다** (09-09 23:2x)
+
+## 착지 (판정 211 모양 그대로, 한 커밋)
+```
+표    dt_job_rollup {dt_job(bk) · netdie_count · dt_eqp · event_time}
+규칙  dt_log_to_dt_job_rollup · is_batch · mappers.dt_job_rollup_mapper
+맵퍼  mappers/dt_job_rollup_mapper.py.sample  <- 추적됨(다른 아홉과 같은 모양)
+원장  dt_job: relation=dt_job_rollup · unit=row · declarative-role ·
+      counted.value = 컬럼 netdie_count
+```
+
+## 🔴 원자가 «같습니다» — 옛 파이썬 경로를 «지우기 전에» 재서 손으로 적었습니다
+```
+옛 경로(dt_log 5 행, dt-job-role)   has_netdie dtjob{dt_job} value 5
+                                    register   dtjob{dt_job} qualifiers {dt_eqp: EQP-7}
+새 경로(rollup 1 행, declarative)    «같음» — 술어·주어·수·수식어 전부
+```
+🔵 그리고 「선언이 이제 진짜로 값을 정한다」도 박았습니다: netdie_count 를 41 로 바꾸면 원자가 41 —
+   옛 선언은 `value: dt_index` 라 적어 놓고 맵퍼가 `len(unit)` 을 냈던 «허수»였습니다.
+
+## ⚠️ 컴파일러가 «거절해서» 알게 된 것 둘 — 추론이 아니라 실측입니다
+```
+dt_eqp      dtjob@1 의 «속성»이라 register 원자의 수식어로 탑니다.
+            빼면 원자가 달라집니다. `attributes` 를 비우면 「비어 있으면 안 됨」으로 거절돼 드러났습니다
+event_time  두 문장 다 occurred_at 역할이 «필수»이고 그 바인딩은 관계의 컬럼으로 «검사»됩니다.
+            ⚠️ 어차피 판정 179 의 «죽은 칸»입니다(이 소스는 basis=ingested) — 로더가 기동마다
+            그 둘을 이름 댑니다. 확인했습니다
+```
+
+## 🔴🔴 판정 211 중 «한 줄»을 그대로 못 했습니다 — 파이썬 구현 «삭제»
+```
+지웠더니   trusted 집합은 «존재하는 클래스»에서 나오므로, 자기 ledger_config.json 이 아직
+           `dt-job-role` 을 대는 «모든 배포»가 컴파일에 실패합니다 — 소스 하나가 아니라 «셋업 전체»
+실측       이 박스에서 test_ledger_setup_boundary «여섯»이 빨감.
+           원인은 이 박스의 «gitignore 된» ontology/ledger_config.json 이 아직 그 이름을 대기 때문.
+           운영에도 그런 파일이 있습니다
+같은 부류  오늘 낮 자기 엣지 검사가 «라이브 셋업을 거절»해서 한 시간 만에 좁힌 그 모양입니다
+```
+그래서 **클래스는 두되 «은퇴 문구»를 박았습니다**(순서를 문장으로: 이 선언이 나가고 → 각 배포의
+선언이 옮겨지고 → 그다음 클래스). 시험이 그 문구의 «존재»를 단언합니다 — 안 그러면 다음 사람이
+살아 있는 둘째 경로로 읽습니다.
+🔵 **판정 요청: 삭제를 «다음 배포» 항목으로 잡아 주십시오**(S-100 ⓐ-2). 운영 선언이 옮겨진 것을
+   확인한 뒤가 맞습니다. 지금 지우면 운영이 섭니다.
+
+## 게이트
+```
+원자 동일 · 값이 컬럼을 따름 · 출하 샘플이 load_setup+load_physical_catalog 로 «로드»
+선언 셋이 서로를 이름 댐 · 맵퍼가 «추적된» 샘플 · enrichment 아님(사람 큐 «0»)
+맵퍼가 «배치»가 아니라 «잡 전체»를 셈 · job 없는 행은 행을 안 만듦
+지문   15 중 «1»만 이동 — dt_job (전/후 실측)
+```
+## 소급
+```
+관계가 바뀌므로 source_raw_ref 가 전부 바뀝니다 -> dedupe 불가 -> «철회 후 재생성»(S-101 길)
+그룹당 원자 «둘». 이 박스 수(밝힘): 25,416 그룹 → 약 50,832
+```
+## 실행
+```
+이웃 302 passed · 1 skipped · 수집 5,436 · 오류 0
+빨강 1 = test_ledger_implementations (기존, d23aaa38 에서도 빨감)
+```
+⚠️ 재기동·라이브는 총괄 몫입니다. 이 박스 라이브 선언은 «소유자 파일»이라 손대지 않았습니다.
+> 📌 **[09-09 23:2x] 이 채널의 미답 질문: «하나» — 파이썬 `dt-job-role` 삭제를 다음 배포 항목으로.**
