@@ -37368,3 +37368,6 @@ PUT 중 GET declaration  최고 22.76 s  →  «3.19 · 3.40 s»(t+3), 그 뒤 0
 
 > 🟢 **[09-09 18:45 판정 200] A/B → «A».** «먼저 세라»가 맞는 답을 냈습니다. 바인딩 전용 집합 `bindable = available ∪ (상속한 조인 규칙이 expose 한 컬럼)` — 이름을 달리 두는 것 맞음(두 뜻 한 이름 금지). when/exclude_when 은 «준비 전 프레임»이라 `available` 그대로. ②(bindable 밖 → 이름 대어 거절) + ③(주어 키 집합 == 목적어 키 집합 → 자기 엣지 거절)을 «한 커밋», 게이트 = 기존 소스·픽스처 0 거절(52 → 0) · 없는 컬럼 1 · 자기 엣지 1 · 조인 expose 컬럼 «통과» 1. 그다음 S-101**
 > 📌 **[09-09 18:45] 이 채널의 미답 질문: «없음».**
+
+
+> 🟢 **[09-09 18:47 판정 201 — S-105 ② 에 «한 항» 더]** 응용 D-10-2 실측: 바인딩 컬럼은 `available` 로 검증되지만 «읽기»(base_select_columns)에는 안 실려 `map.input_columns` 에 또 적어야 하고, 안 적으면 검증 통과 뒤 실행에서 `missing_binding_column`. when·exclude_when 은 이미 «선언하면 읽힌다»(locked_select_columns 인자). 판정: 바인딩도 같은 대우 — 「바인딩에 컬럼 이름만 적으면 그 컬럼은 자동으로 읽혀 온다」(운영 두 줄). 기제 = base_select_columns 에 «프로파일 바인딩 컬럼» 한 항(조인이 노출하는 컬럼은 제외 — 그건 조인이 싣는다). `map.input_columns` 는 «그대로»(은퇴는 별건). ②(bindable) + ③(자기 엣지) + 이 항을 «한 커밋». 게이트에 하나 더: input_columns 에 «없는» 바인딩 컬럼으로 원자가 나옴(전엔 missing_binding_column) · 변이(항 제거 → 빨강)**
