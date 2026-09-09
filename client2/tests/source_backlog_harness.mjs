@@ -6,13 +6,16 @@
  *    cheap version of this feature draws both as 0. That reads as 「비었다」 to an operator
  *    who is asking whether anything is waiting, which is the exact question this line answers.
  *
- * 🔴 AND ONE MORE, ADDED WITH THE NEW NAMES (2026-09-09): `rows_remaining` is READ, never
+ * 🔴 AND ONE MORE, ADDED WITH THE NEW NAMES (2026-09-09): `not_yet` is READ, never
  *    computed. It equals N − M today, which is why a client would be tempted, and the day the
  *    server's definition stops being plain subtraction the arithmetic goes on producing a
  *    confident wrong number with nothing to raise.
  *
- * ⚠️ 서버는 이 셋을 «아직 안 보냅니다». 그래서 이 파일의 픽스처가 계약의 «유일한 재료»이고,
- *    실배선은 서버가 실은 뒤입니다 — 그렇게 지시받았고 그렇게 적습니다.
+ * ⚠️ 철자는 «서버의 것»입니다(판정 177) — `relation_rows` · `indexed_rows` · `not_yet`,
+ *    `ledger/backfill.rows_not_yet_translated()` 가 쓰는 낱말 그대로.
+ * 🔴 다만 이 줄이 읽는 레코드(`_verification_view`)에는 «아직 그 셋이 없습니다» — 그래서
+ *    화면은 «배선된 채로 비어» 있고, 서버가 더하는 순간 편집 0 으로 뜹니다. 픽스처가
+ *    오늘의 «유일한 재료»인 이유가 그것입니다.
  *
  * Run:  node client2/tests/source_backlog_harness.mjs [--mutate]
  */
@@ -35,8 +38,8 @@ const eq = (name, expected, actual) => ok(name, actual === expected,
 // The record as `verificationOf` hands it over — the S-46 fields the row already reads, plus
 // the three the server will add. Written together because that is how the screen meets them.
 const COUNTED = { target_key: 'source_plan|s', status: 'verified', stale: false,
-  rows_total: 4200, rows_indexed: 4080, rows_remaining: 120 };
-const DONE = { ...COUNTED, rows_indexed: 4200, rows_remaining: 0 };
+  relation_rows: 4200, indexed_rows: 4080, not_yet: 120 };
+const DONE = { ...COUNTED, indexed_rows: 4200, not_yet: 0 };
 // A server that does not carry the three at all — today's, and every older one.
 const UNCOUNTED = { target_key: 'source_plan|s', status: 'verified', stale: false };
 
@@ -51,7 +54,7 @@ async function score(mutate) {
 
   // ══ ① 계약의 세 이름, 그 순서 ═══════════════════════════════════════════════════════
   eq('A1 the three names are the contract, in order',
-    'rows_total,rows_indexed,rows_remaining', probe.BACKLOG_FIELDS.join(','));
+    'relation_rows,indexed_rows,not_yet', probe.BACKLOG_FIELDS.join(','));
   eq('A2 every field gets a cell, counted or not', 3, cells(UNCOUNTED).length);
   // 🔴 THE LABEL IS THE SERVER'S KEY, NOT A TRANSLATION. A translated label goes on looking
   //    right on the day the server renames the field, with the number under the old name.
@@ -64,18 +67,18 @@ async function score(mutate) {
     !probe.BACKLOG_FIELDS.some((n) => /cursor|caught/.test(n)), probe.BACKLOG_FIELDS.join(','));
 
   // ══ ② 안 셈 / 셌는데 0 / 셌고 N — «다른 픽셀» ═══════════════════════════════════════
-  eq('B1 a counted number is drawn', '4200', textOf(COUNTED, 'rows_total'));
+  eq('B1 a counted number is drawn', '4200', textOf(COUNTED, 'relation_rows'));
   eq('B2 a measured ZERO is drawn as zero — somebody counted', '0',
-    textOf(DONE, 'rows_remaining'));
+    textOf(DONE, 'not_yet'));
   // 🔴 THE ONE THAT MATTERS. Absent is not zero: nobody has looked, and telling an operator
   //    who is asking 「돌 게 있나」 that the answer is 0 is telling them the queue is empty.
-  eq('B3 an ABSENT count is a blank, never a zero', '', textOf(UNCOUNTED, 'rows_total'));
+  eq('B3 an ABSENT count is a blank, never a zero', '', textOf(UNCOUNTED, 'relation_rows'));
   ok('B4 ...and the two are different pixels',
-    textOf(DONE, 'rows_remaining') !== textOf(UNCOUNTED, 'rows_remaining'));
+    textOf(DONE, 'not_yet') !== textOf(UNCOUNTED, 'not_yet'));
   eq('B5 an explicit null is also 「안 셈」', '',
-    textOf({ ...COUNTED, rows_total: null }, 'rows_total'));
+    textOf({ ...COUNTED, relation_rows: null }, 'relation_rows'));
   eq('B6 a value that is not a number is 「안 셈」, not a drawn string', '',
-    textOf({ ...COUNTED, rows_indexed: 'many' }, 'rows_indexed'));
+    textOf({ ...COUNTED, indexed_rows: 'many' }, 'indexed_rows'));
 
   // ══ ③ 「남은 수」는 «읽습니다» — 안 셈합니다 ═════════════════════════════════════════
   // 🔴 N − M IS RIGHT TODAY, WHICH IS THE WHOLE DANGER. A client that computed it would agree
@@ -83,20 +86,20 @@ async function score(mutate) {
   //    silently and confidently. So a record carrying the two but not the third leaves the
   //    third BLANK.
   eq('C1 with no remaining sent, the cell is blank rather than N − M', '',
-    textOf({ rows_total: 4200, rows_indexed: 4080 }, 'rows_remaining'));
+    textOf({ relation_rows: 4200, indexed_rows: 4080 }, 'not_yet'));
   // ⚠️ CONTROL for C1: it must not be blank because the whole row is blank — the other two
   //    are drawn from the same record.
   eq('C2 CONTROL: ...while the two that WERE sent are drawn', '4200',
-    textOf({ rows_total: 4200, rows_indexed: 4080 }, 'rows_total'));
+    textOf({ relation_rows: 4200, indexed_rows: 4080 }, 'relation_rows'));
   // 🔴 AND THE SERVER'S NUMBER WINS EVEN WHEN IT DISAGREES WITH THE SUBTRACTION. This is the
   //    discriminating case: a client doing arithmetic would draw 120 here, and the ledger said 7.
   eq('C3 a remaining that contradicts N − M is drawn AS SENT', '7',
-    textOf({ rows_total: 4200, rows_indexed: 4080, rows_remaining: 7 }, 'rows_remaining'));
+    textOf({ relation_rows: 4200, indexed_rows: 4080, not_yet: 7 }, 'not_yet'));
 
   // ══ ④ 안 세었으면 «줄 자체가 없습니다» — 오늘 화면 바이트 동일 ═══════════════════════
   ok('D1 nothing counted, nothing drawn', has(UNCOUNTED) === false);
   ok('D2 one counted field is enough to draw the line',
-    has({ ...UNCOUNTED, rows_total: 0 }) === true);
+    has({ ...UNCOUNTED, relation_rows: 0 }) === true);
   ok('D3 no record at all draws nothing', has(null) === false && has(undefined) === false);
   ok('D4 CONTROL: a fully counted record does draw', has(COUNTED) === true);
 
@@ -119,8 +122,8 @@ const MUTATIONS = [
   // 🔴 THE NEW ONE: the client starts doing the ledger's arithmetic.
   ['M3 the client computes the remainder, becoming a second author for it',
    s => s.replace('    const raw = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;',
-                  "    const raw = name === 'rows_remaining' && src.rows_remaining === undefined\n"
-                  + "      ? Number(src.rows_total) - Number(src.rows_indexed)\n"
+                  "    const raw = name === 'not_yet' && src.not_yet === undefined\n"
+                  + "      ? Number(src.relation_rows) - Number(src.indexed_rows)\n"
                   + '      : (Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined);')],
   ['M4 the presence check becomes a truthiness check, so every zero vanishes',
    s => s.replace('    const raw = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;',
@@ -129,10 +132,10 @@ const MUTATIONS = [
    s => s.replace("  return backlogCells(status).some((cell) => cell.text !== '');",
                   '  return true;')],
   ['M6 the labels are translated, so a renamed field keeps the old name',
-   s => s.replace("export const BACKLOG_FIELDS = Object.freeze(['rows_total', 'rows_indexed', 'rows_remaining']);",
+   s => s.replace("export const BACKLOG_FIELDS = Object.freeze(['relation_rows', 'indexed_rows', 'not_yet']);",
                   "export const BACKLOG_FIELDS = Object.freeze(['전체', '색인', '남음']);")],
   ['M7 a cursor-world name comes back',
-   s => s.replace("'rows_remaining']);", "'rows_remaining', 'rows_past_cursor']);")],
+   s => s.replace("'not_yet']);", "'not_yet', 'rows_past_cursor']);")],
 ];
 
 if (process.argv.includes('--mutate')) {
