@@ -244,6 +244,38 @@
           "optional": []
         }
       }
+    },
+    "split_from@1": {
+      "status": "active",
+      "subjects": [
+        "lot@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "lot@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "merged_into@1": {
+      "status": "active",
+      "subjects": [
+        "lot@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "lot@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
     }
   },
   "entities": {
@@ -908,6 +940,80 @@
               }
             },
             "predicate": "register@1"
+          },
+          "split": {
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "column": "event_time",
+                "kind": "column"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              },
+              "target": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              }
+            },
+            "predicate": "split_from@1",
+            "when": {
+              "event_type": "split"
+            }
+          },
+          "merge": {
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "column": "event_time",
+                "kind": "column"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              },
+              "target": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              }
+            },
+            "predicate": "merged_into@1",
+            "when": {
+              "event_type": "merge"
+            }
           }
         }
       },

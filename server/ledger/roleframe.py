@@ -22,6 +22,8 @@ import uuid
 
 import pandas as pd
 
+from database.crud import clean_str_value
+
 from .envelope import source_event_identity
 from .ledger_frame import (
     LEDGER_FRAME_COLUMNS,
@@ -318,6 +320,10 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         unit_columns = _unit_columns(unit)
         out = []
         for sentence, mapping in profile.mappings.items():
+            # S-99. The declaration says WHEN this sentence applies; a unit that does not
+            # match says nothing here and goes on to the next sentence.
+            if mapping.when and not _unit_says(unit_columns, mapping.when):
+                continue
             claim = context.snapshot.claims.get(mapping.predicate_id)
             roles = {}
             for role_id, binding in mapping.bindings.items():
@@ -823,6 +829,39 @@ def _partition_units(
     raise RoleFrameError(
         "unsupported_mapper_unit", "mapper.unit.kind",
         f"unsupported mapper unit {kind!r}")
+
+
+def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bool:
+    """Does this unit say the sentence guarded by `when`? (S-99)
+
+    🔴 EVERY ROW OF THE UNIT MUST MATCH, and that single rule is both halves of 판정 195.
+    A row-unit source has one row here, so this reads as "this row matches"; a GROUP-unit
+    source has the whole group, and a group sentence is said only when the group agrees.
+    Written once rather than branched on the unit kind: two spellings would be free to
+    disagree exactly where a group is mixed, which is the case nobody would have a fixture
+    for.
+
+    ⚠️ NOT MATCHING IS NOT A REFUSAL AND NOT AN EXCLUSION. The unit simply does not say
+    THIS sentence and is free to say another - which is what separates it from S-91's
+    `exclude_when`, where the row is not the source's at all.
+
+    ⚠️ ONE SPELLING OF EQUALITY. `clean_str_value` folds both sides, so a declaration
+    saying `1` matches a column holding `1.0`, and padding does not decide an answer. It is
+    the same function the business key and the preparer's key parts are built with; a
+    second spelling here would disagree with them about exactly these values.
+
+    A column the frame does not carry answers False rather than raising: the validator
+    already refused unknown columns at load, so reaching here means the column is declared
+    and absent from THIS unit, and a sentence about a value that is not there is not said.
+    """
+    for column, expected in when.items():
+        values = unit_columns.get(column)
+        if values is None:
+            return False
+        target = clean_str_value(expected)
+        if any(clean_str_value(value) != target for value in values):
+            return False
+    return True
 
 
 def _unit_columns(frame: pd.DataFrame) -> dict[Any, tuple]:

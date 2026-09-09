@@ -550,6 +550,7 @@ def locked_select_columns(
     occurred_at_column: str | None = None,
     preparer_outputs: Sequence[str] = (),
     exclude_when_columns: Sequence[str] = (),
+    condition_columns: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """What a source's read brings in BEFORE anybody declares an input column.
 
@@ -584,6 +585,12 @@ def locked_select_columns(
     # against that case alone runs there and silently reads a missing column everywhere
     # else.
     columns.update(exclude_when_columns)
+    # 🔴 S-99, and the SAME reason as the line above. A column a sentence's `when` names is
+    # not otherwise read - it is neither an identity, a key, nor anybody's declared input -
+    # so without this the mapper is asked to judge a column that is not in the frame.
+    # `- outputs` because a `when` may name a PREPARER OUTPUT, which is produced rather
+    # than selected; asking the relation for it would be `UndefinedColumn`.
+    columns.update(set(condition_columns) - outputs)
     if occurred_at_column:
         columns.add(occurred_at_column)
     return tuple(sorted(columns))
@@ -602,6 +609,11 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
         preparer_outputs=driver.preparation.preparer.output_columns,
         exclude_when_columns=[clause["column"]
                               for clause in driver.preparation.exclude_when],
+        condition_columns=sorted({
+            column
+            for mapping in source_plan.profile.mappings.values()
+            for column in mapping.when
+        }),
     ))
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns

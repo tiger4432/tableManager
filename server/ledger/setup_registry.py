@@ -267,6 +267,9 @@ class ProfileMappingDescriptor:
     predicate_id: str
     bindings: Mapping[str, Any]
     config_path: str
+    #: S-99. `{column: value}` - the rows this sentence is said for, ANDed, equality only.
+    #: Empty means "every row", which is what every sentence declared before this meant.
+    when: Mapping[str, Any] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -1061,6 +1064,7 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
                 predicate_id=mapping["predicate"],
                 bindings=_freeze(_with_source_attributes(mapping["bind"], by_type)),
                 config_path=f"{path}.mappings.{sentence}",
+                when=_freeze(mapping.get("when") or {}),
             )
             for sentence, mapping in sorted(item["mappings"].items())
         })

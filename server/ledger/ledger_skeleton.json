@@ -752,6 +752,20 @@
                                   "use": "binding"
                                 }
                               }
+                            },
+                            {
+                              "key": "when",
+                              "required": false,
+                              "label": "행 조건",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "컬럼",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
                             }
                           ]
                         }

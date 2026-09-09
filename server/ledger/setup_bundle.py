@@ -1513,8 +1513,12 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
         mapping = mappings[sentence]
         mpath = f"{path}.mappings.{sentence}"
         _nonblank_id(sentence, mpath, problems)
-        if not problems.exact(mapping, mpath, required=("predicate", "bind")):
+        # S-99. OPTIONAL, so every sentence declared today stays valid unedited: a
+        # sentence that says nothing here is said for every row, which is what they all do.
+        if not problems.exact(mapping, mpath, required=("predicate", "bind"),
+                              optional=("when",)):
             continue
+        _validate_when(mapping.get("when"), f"{mpath}.when", problems)
         _versioned_id(mapping.get("predicate"), f"{mpath}.predicate", problems)
         bindings = mapping.get("bind")
         if not isinstance(bindings, Mapping) or not bindings:
@@ -1523,6 +1527,39 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
             for role in sorted(bindings):
                 _nonblank_id(role, f"{mpath}.bind.{role}", problems)
                 _validate_binding(bindings[role], f"{mpath}.bind.{role}", problems)
+
+
+def _validate_when(value: Any, path: str, problems: _Problems) -> None:
+    """`{<column>: <value>, ...}` - the rows for which this sentence is said.
+
+    🔴 S-99. One relation can hold rows that mean DIFFERENT predicates - a single event
+    table whose rows say one thing or its opposite - and until now the grammar had nowhere
+    to put that condition. The only workaround was a qualifier, which does not answer it:
+    `follow` selects by PREDICATE, so both sentences would still be said for every row.
+
+    ⚠️ A ROW THAT DOES NOT MATCH IS NOT REFUSED AND NOT EXCLUDED. It simply does not say
+    THIS sentence, and it may still say another - which is what separates this from S-91's
+    `exclude_when`, where the row is not the source's at all. The difference shows up as
+    the per-sentence atom count of a test run, not as a refusal anywhere.
+
+    ⛔ A MAP, AND EQUALITY ONLY. Same shape as `entities.references[].from.when`, which
+    ruling 195 named as the model: keys are ANDed, there is no list, no range, no OR and
+    no comparison. One spelling of "condition" in this grammar rather than two.
+    """
+    if value is None:
+        return
+    if not isinstance(value, Mapping) or not value:
+        problems.add("invalid_type", path,
+                     "must be a non-empty object of {column: value}")
+        return
+    for column in sorted(value, key=str):
+        if not isinstance(column, str) or not column.strip():
+            problems.add("invalid_type", f"{path}.{column}", "must name a column")
+            continue
+        if isinstance(value[column], (Mapping, list, tuple)) or value[column] is None:
+            problems.add(
+                "invalid_type", f"{path}.{column}",
+                "must be a single string, number or boolean to compare the column with")
 
 
 def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
@@ -1960,6 +1997,23 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                 problems.add("invalid_mapper", f"{mapper_path}.unit.kind",
                              "group_by mapper requires source group_by columns")
         if profile is not None:
+            # S-99. The column has to exist where the mapper will look for it, which is
+            # the PREPARED frame - relation columns plus preparer outputs. That is the set
+            # S-91's `exclude_when` is checked against, and ruling 195 asked for the same
+            # function rather than a second opinion about what a column is.
+            profile_mappings = profile.get("mappings")
+            for sentence in sorted(profile_mappings if isinstance(profile_mappings, Mapping)
+                                   else {}, key=str):
+                mapping = profile_mappings[sentence]
+                when = mapping.get("when") if isinstance(mapping, Mapping) else None
+                if not isinstance(when, Mapping):
+                    continue
+                for column in sorted(when, key=str):
+                    if isinstance(column, str) and column not in available:
+                        problems.add(
+                            "unknown_column",
+                            f"{path}.bind.mappings.{sentence}.when.{column}",
+                            f"column {column!r} is not in prepared EventFrame schema")
             # The EventFrame schema this source's Profile binds against is `available`,
             # which is only known HERE -- so the bind/column half of the Profile contract
             # is asked inside the source loop, while the file-only half was asked above.
