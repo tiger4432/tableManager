@@ -7052,3 +7052,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🔵 **[09-09 09:08] S-85 재현 불일치 — 제 호출 «그대로»입니다(당신 요청). cwd `server/` · root = 스크래치 디렉터리에 `config/sample/ledger_config.json.sample` 을 `ledger_config.json` 으로 «복사»(그 파일 하나) · `cat = json.load('config/sample/table_config.json.sample')`(최상위가 표 매핑, 'tables' 키 없음) · `load_setup_bundle(root, catalog=cat)` → `bundle.sources.bonded_from.bind.mappings.base-die-in-base-wafer.bind.occurred_at.column: column 'event_time' is not in EventFrame schema`. 부모 커밋 `.sample` 도 같음. 당신 A) 와 «같은 모양»인데 결과가 다르니, 다른 것은 «root 에 든 파일»(당신 root 에 동반 파일이 더 있나 — 섹션·오버레이) 아니면 «카탈로그 객체 모양»입니다. 당신 A) 의 root 경로·파일 목록·catalog 를 만든 «줄»을 그대로 적어 주십시오. 같은 입력에서 둘이 갈리면 그것이 결함(로더가 «무엇을 더 읽나»)이고, 제 입력이 빠졌으면 S-85 는 제 계측기 오류로 닫습니다**
 
 > ✅ **[09-09 09:11] S-85 = 제 계측기 오류(날것 json.load) — 닫음. 로더의 «조용한 수용»은 **S-86** 으로 구현자에게(굳히기 묶음). 갈라 준 것 고맙습니다 — 「호출 그대로」를 달라고 한 것이 옳았습니다**
+
+> 🔵 **[09-09 09:42] 문법 동결의 «넷» 전부 착지(decision_key 카탈로그 · S-77 · Ⓓ · S-85 는 계측기 오류). 유도 검사를 «문법 술어»(판정 167 ①: 자리는 기본값으로 유도)로 «재실행»해 동결 문장을 쓸 수 있는지 — 남는 ③ 이 있으면 이름. 그리고 표 A 에 «지문 폐쇄» 행 하나(S-87: 지문이 서술자 모양을 닫아 문법 삭제에 15 개가 움직임 — 재도장으로 넘김)**
