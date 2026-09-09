@@ -1156,7 +1156,7 @@ enrichment_rules.json.sample 규칙 4. 키 = {source_table, derived_table, decis
 ## D-8-2. 셋을 그 칸에 대 봅니다
 | 규칙 밖 축 | 체인의 칸 | 판정 |
 |---|---|---|
-| **그룹 집계** | ⚠️ **칸은 있으나 «다른 파이프라인의 것»입니다** (판정 211 이 정정) — `aggregations: {컬럼: fn}` 은 «인리치먼트»(후보 → 사람 확인) 흐름의 칸입니다: 같은 규칙이 `auto_confirm`(기본 **False**) · `enrichment_candidates` · `process_pending_groups` 를 끼고 있습니다. 「체인이 계산해 표에 쓴다」의 일반 설비가 «아닙니다». 그 안에서의 정의역은 `count` «하나»입니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment_config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
+| **그룹 집계** | ⚠️ **칸은 있으나 «다른 파이프라인의 것»입니다** (판정 211 이 정정) — `aggregations: {컬럼: fn}` 은 «인리치먼트»(후보 → 사람 확인) 흐름의 칸입니다: 같은 규칙이 `auto_confirm`(기본 **False**) · `enrichment_candidates` · `process_pending_groups` 를 끼고 있습니다. 「체인이 계산해 표에 쓴다」의 일반 설비가 «아닙니다». 그 안에서의 정의역은 `count` «하나»입니다. ⚰️ **그리고 「경고 후 조용히 드롭」은 닫혔습니다(S-102, 09-10 07:5x 확인)** — `enrichment_config` 가 이제 `count` 아닌 함수를 「aggregation '<컬럼>: <fn>' is not supported - 'count' is the only function this version applies」로 «이름 대어 거절»합니다. 그 자리 주석이 이유를 적어 뒀습니다: 조용히 버리면 「작성자가 `sum` 을 적어도 규칙은 집계 없이 서고, 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다」. 🔵 원장의 `value_type`(S-84)과 «같은 처리»가 됐습니다 — D-11-0 의 판별식이 두 자리에서 같이 섭니다. 🔴 그리고 그 밖은 **「경고 후 조용히 드롭」**입니다(`enrichment_config.py:585` 「aggregation '…' dropped (v1 supports 'count' only)」). 원장 쪽 같은 상황은 «이름 대어 거절»하고 S-84 를 댑니다 — **같은 상황, 두 처리** |
 | **선언 조인** | ⚠️ 있음 — `reference_views[].query` | ⚠️ **②** — 칸은 있으나 내용이 «생 SQL»(샘플: `SELECT … FROM dt_log WHERE dt_job = :dt_job ORDER BY …`). 완성 정의가 지목한 자리 그대로입니다 — 「뷰는 두 줄로 안 말해진다」 |
 | **값 변환** | 🔴 **없음** | **③** — 변환은 `mapper_module`/`mapper_function` 이 가리키는 파이썬 «안»에 있습니다 |
 | **짝짓기 / 위치** | 🔴 **없음** | **③** — 같은 자리 |
