@@ -1462,13 +1462,36 @@ def _inject_duplicate_atom_past_the_unique_index(engine):
     try:
         st.ensure_partitions(connection, [when])
         event_id = __import__("uuid").uuid4()
-        values = ("Lot", Json({"lot": "DUP"}), "register", None, None, when,
-                  "w", "v", "r", None, event_id, "source_record")
+        # 🔴 THE VALUES ARE DERIVED FROM `ROW_COLUMNS`, NOT COUNTED BY HAND (S-104 ①).
+        # This wrote a fixed `%s` list beside `', '.join(ROW_COLUMNS)`, so the day that tuple
+        # grew - `occurred_at_basis`, S-52 - the statement became a SYNTAX ERROR and the
+        # injection stopped reaching the index it exists to prove. The guard was alive the
+        # whole time and its instrument had quietly broken: two spellings of one column list.
+        row = {"subject_type": "Lot", "subject_keys": Json({"lot": "DUP"}),
+               "predicate": "register", "object_kind": None, "object_payload": None,
+               "occurred_at": when, "source_who": "w", "source_translator_ver": "v",
+               "source_raw_ref": "r", "supersedes": None, "source_event_id": event_id,
+               # ⚠️ NULL or "ingested" - the CHECK allows nothing else, and a value this
+               # injection invents is refused by a DIFFERENT constraint than the one it is
+               # here to prove. NULL is what an atom with a world-time column carries.
+               "source_event_state": "source_record", "occurred_at_basis": None}
+        missing = [column for column in ROW_COLUMNS
+                   if column != "id" and column not in row]
+        if missing:
+            # ⛔ NAMED, NOT DEFAULTED. A column added to the row shape that this injection
+            # does not know about must stop it loudly, or the next `ROW_COLUMNS` change
+            # repeats exactly the failure above.
+            raise AssertionError(
+                f"this injection does not know what to write for {missing}; add it here "
+                f"rather than letting the statement drift from ROW_COLUMNS again")
+        placeholders = ", ".join("gen_random_uuid()" if column == "id" else "%s"
+                                 for column in ROW_COLUMNS)
+        values = tuple(row[column] for column in ROW_COLUMNS if column != "id")
         with connection.cursor() as cursor:
             for _ in range(2):
                 cursor.execute(
                     f"INSERT INTO {schema.LEDGER_TABLE} ({', '.join(ROW_COLUMNS)}) "
-                    f"VALUES (gen_random_uuid(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", values)
+                    f"VALUES ({placeholders})", values)
         connection.commit()
     except psycopg2.errors.UniqueViolation as exc:
         connection.rollback()
@@ -1478,31 +1501,16 @@ def _inject_duplicate_atom_past_the_unique_index(engine):
     raise AssertionError("uq_ledger_atom accepted the SAME claim twice")
 
 
-def _inject_register_with_an_object(engine):
-    import psycopg2
-    from datetime import datetime, timezone
-    st = ledger_store.LedgerStore(engine)
-    st.ensure_schema()
-    connection = engine.raw_connection()
-    try:
-        st.ensure_partitions(connection, [datetime(2026, 5, 3, tzinfo=timezone.utc)])
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"INSERT INTO {schema.LEDGER_TABLE} (id, subject_type, subject_keys, "
-                f"predicate, object_kind, occurred_at, source_who, "
-                f"source_translator_ver, source_raw_ref, source_event_id, "
-                f"source_event_state) VALUES "
-                f"(gen_random_uuid(), 'Lot', '{{\"lot\":\"X\"}}'::jsonb, 'register', "
-                f"'value', '2026-05-03T00:00:00+00', 'w', 'v', 'r', "
-                f"gen_random_uuid(), 'source_record')")
-        connection.commit()
-    except psycopg2.errors.CheckViolation as exc:
-        connection.rollback()
-        raise ValueError(f"the CHECK constraint refused it: {exc}") from exc
-    finally:
-        connection.close()
-    raise AssertionError("a register carrying an object was accepted")
-
+# ⚰️ `_inject_register_with_an_object` STOOD HERE (S-104, 판정 215/216).
+# It inserted a `register` carrying an `object_kind` and expected
+# `ck_ledger_register_has_no_object` to refuse it. That constraint was RETIRED ON PURPOSE
+# by S-77 on 2026-09-09 - it read `(predicate = 'register') = (object_kind IS NULL)`, a
+# DOMAIN WORD in the storage layer, which is the one layer a declaration cannot change.
+# Which predicates are objectless is now a DECLARED fact and `roleframe` refuses an
+# emission that disagrees, so the guard moved rather than disappeared.
+#
+# ⚠️ SO ITS SILENCE WAS CORRECT, NOT A DEFECT. `schema.RETIRED_REGISTER_OBJECT_CONSTRAINT`
+# still names it, which is how this was told apart from a real red.
 
 def _inject_atom_outside_every_partition(engine):
     """A partitioned table with no matching partition must REFUSE, not silently drop.
@@ -1549,14 +1557,28 @@ def _inject_atom_outside_every_partition(engine):
 PG_INJECTIONS = [
     ("transaction boundary removed", _inject_missing_transaction_boundary),
     ("duplicate atom past the unique index", _inject_duplicate_atom_past_the_unique_index),
-    ("register carrying an object", _inject_register_with_an_object),
     ("atom outside every partition", _inject_atom_outside_every_partition),
 ]
 
 #: 4 built with this file + 1 added by ruling R-2026-08-13-F (the refusal breakdown must
 #: agree with the aggregate it explains) + 1 by ruling R-2026-08-13-H (a refusal swallowed
 #: between the gate and the writer).
-EXPECTED_PG_INJECTIONS = 6
+#: 🔴 SIX UNTIL 2026-09-09, THREE NOW, AND THE THREE THAT LEFT ARE NAMED (S-104,
+#: 판정 215/216). Each measured something that no longer exists, so none of them could
+#: report an outcome this harness understands - and none of them said so, because the whole
+#: file skipped for want of a declared test database:
+#:
+#:   * `refusal breakdown that does not add up`    `backfill._refusal_delta` is gone
+#:   * `a fragment's refusal swallowed by its caller`  `ledger.lot_event_translator` deleted 08-18
+#:   * `register carrying an object`               `ck_ledger_register_has_no_object` was
+#:                                                 RETIRED ON PURPOSE by S-77 - a domain word
+#:                                                 in the storage layer - and the guard moved
+#:                                                 into `roleframe`, so its silence was right
+#:
+#: ⚠️ THE NUMBER IS DECLARED SO A SHRINK CANNOT BE SILENT, which is what caught this
+#: edit. Lowering it is allowed; lowering it without saying which injection left, and why its
+#: subject is gone, is not.
+EXPECTED_PG_INJECTIONS = 3
 
 
 def test_pg_injection_count_is_declared():
