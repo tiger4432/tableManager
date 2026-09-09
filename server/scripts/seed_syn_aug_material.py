@@ -38,9 +38,16 @@ USAGE - dry run by default, and the owner's database has to be said out loud:
     python scripts/seed_syn_aug_material.py
     python scripts/seed_syn_aug_material.py --apply --i-accept-writing-to-owner-database
 
-The dry run INSERTS INSIDE A TRANSACTION AND ROLLS BACK, then scores the result with the
-excursion prove's own `lot_table`, so the numbers it prints are the numbers `--apply` lands --
-not an estimate of them.
+⚰️ THE DRY RUN USED TO INSERT INSIDE A TRANSACTION AND ROLL BACK, which made its numbers
+the numbers `--apply` landed rather than an estimate. That is gone as of S-78 (ruling 181):
+every write goes through the product door and commits on the server, so there is no
+transaction here to roll back. The dry run now prints the plan and the BEFORE score only.
+
+WHAT REPLACED THE ROLLBACK IS COMPENSATION. The scoring that used to gate the commit now
+runs AFTER the write, and when it refuses, this script clears its namespace again through
+the door. That is exact because the namespace was emptied before the run, so it holds this
+run's rows and nothing else. The ledger keeps both events -- written, then withdrawn -- and
+that is true rather than dirty: those facts existed and then did not.
 
 ROLLBACK - one predicate per table, all on the namespace this script owns:
 
@@ -56,7 +63,6 @@ import os
 import random
 import sys
 
-import uuid6
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SERVER = os.path.dirname(_HERE)
@@ -112,6 +118,12 @@ def _stamp(day_offset, minute):
     from datetime import datetime, timedelta, timezone
     base = datetime.fromisoformat(BASE_DAY + "T02:00:00+09:00")
     return (base + timedelta(days=day_offset, minutes=minute)).isoformat()
+
+
+import product_door
+
+#: The layer name these rows land under, so the set is attributable and removable.
+SOURCE_NAME = "seed_syn_aug_material"
 
 
 def build():
@@ -224,31 +236,64 @@ def build():
             ("wafer_map_metadata", frames), ("bonding_map", legs)]
 
 
+#: The namespace this script owns, as (table, predicate) rather than as DELETE statements.
+#:
+#: 🔴 THE DOOR DELETES BY ID (`RowDeleteBatch` is `{row_ids, user_name}`), so a predicate is
+#: resolved to ids and the ids are sent. That is not a workaround: an outbox event names the
+#: rows it is about, and a predicate nobody expanded would produce an event nobody can
+#: resolve.
+#:
+#: 🔴 AND RAW DELETE HERE WAS WORSE THAN "NO ENVELOPE" (ruling 181). This script empties the
+#: TABLE and not the ledger, so rows removed by a raw statement left their atoms standing --
+#: the S-74 shape. Going through the door is what withdraws them.
 OWNED = (
-    "DELETE FROM void_obs           WHERE base_wafer_id LIKE 'SYN-AUG-%'",
-    "DELETE FROM inspection_run     WHERE base_wafer_id LIKE 'SYN-AUG-%'",
-    "DELETE FROM bonding_log        WHERE bond_lot      LIKE 'SYN-AUG-%'",
-    "DELETE FROM core_defect_map    WHERE lot           LIKE 'SYN-AUG-%'",
-    "DELETE FROM bonding_map        WHERE base          LIKE 'SYN-AUG-%'",
-    "DELETE FROM wafer_map_metadata WHERE map_id        LIKE 'SYN-AUG-%'",
+    ("void_obs", "base_wafer_id LIKE 'SYN-AUG-%'"),
+    ("inspection_run", "base_wafer_id LIKE 'SYN-AUG-%'"),
+    ("bonding_log", "bond_lot LIKE 'SYN-AUG-%'"),
+    ("core_defect_map", "lot LIKE 'SYN-AUG-%'"),
+    ("bonding_map", "base LIKE 'SYN-AUG-%'"),
+    ("wafer_map_metadata", "map_id LIKE 'SYN-AUG-%'"),
 )
 
 
-def _insert(connection, table, rows):
-    """`row_id` is minted here because the column is NOT NULL with no default and the
-    application mints it the same way (`crud`: `str(uuid6.uuid7())`). Time-ordered ids keep
-    the physical order of these rows matching their event order, as every other writer's do.
+def _clear_owned(connection, url, log=print):
+    """Delete this script's namespace through the door, table by table.
+
+    Returns the number of rows removed. Used twice: once before writing, and again as the
+    COMPENSATION when scoring refuses what was written - the namespace holds only this
+    run's rows at that point, so clearing it again is exact.
+    """
+    removed = 0
+    for table, where in OWNED:
+        ids = [r[0] for r in connection.execute(
+            text("SELECT row_id FROM %s WHERE %s" % (table, where))).fetchall()]
+        if not ids:
+            continue
+        log("   clearing %-20s %6d rows" % (table, len(ids)))
+        product_door.delete_rows(table, ids, base_url=url,
+                                 user_name=SOURCE_NAME, log=lambda *_: None)
+        removed += len(ids)
+    return removed
+
+
+def _put(table, rows, url, log=print):
+    """Write one table's rows through the product door.
+
+    🔴 NO `row_id` IS MINTED HERE ANY MORE. The engine mints it, and ruling 150 refuses a
+    supplied id that is not a uuid7. Every row already carries `business_key_val`, which is
+    what the door resolves or creates on.
     """
     if not rows:
         return 0
-    for r in rows:
-        r.setdefault("row_id", str(uuid6.uuid7()))
-    cols = list(rows[0])
-    sql = text("INSERT INTO %s (%s) VALUES (%s)" % (
-        table, ", ".join(cols), ", ".join(":" + c for c in cols)))
-    for i in range(0, len(rows), 500):
-        connection.execute(sql, rows[i:i + 500])
-    return len(rows)
+    items = []
+    for row in rows:
+        values = dict(row)
+        items.append(product_door.row_item(
+            values.pop("business_key_val"), values, source_name=SOURCE_NAME))
+    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None)
+    log("   wrote    %-20s %6d rows in %d request(s)" % (
+        table, result["rows"], result["requests"]))
+    return result["rows"]
 
 
 def _score(connection, tag):
@@ -285,6 +330,8 @@ def main(argv=None):
     ap.add_argument("--apply", action="store_true", help="write; default is a dry run")
     ap.add_argument("--i-accept-writing-to-owner-database", dest="allow_owner",
                     action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url the rows are written through")
     args = ap.parse_args(argv)
 
     plan = build()
@@ -292,37 +339,56 @@ def main(argv=None):
     for table, rows in plan:
         print("   %-18s %6d" % (table, len(rows)))
 
+    # 🔴 THE CONNECTION IS A READER NOW. Every write goes through the door, so there is no
+    # transaction here to commit or roll back - which is the whole change (S-78, ruling 181).
     with db.engine.connect() as c:
         c.execute(text("SET statement_timeout = '600s'"))
-        before = _score(c, "BEFORE")
-        try:
-            # 🔴 THIS SCRIPT OWNS THE `SYN-AUG-` NAMESPACE AND NOTHING ELSE, so it clears
-            # that namespace before writing it. Without this a second run doubles every row
-            # it already landed. The predicates are the SAME ones the rollback block names —
-            # one namespace, one blast radius, stated once.
-            for stmt in OWNED:
-                c.execute(text(stmt))
-            for table, rows in plan:
-                _insert(c, table, rows)
-            after = _score(c, "AFTER (simulated)" if not args.apply else "AFTER")
-            broke = [l for l, r in after["new_lots"].items() if any(v >= 2.0 for v in r.values())]
-            planted_lost = [l for l, r in after["planted"].items()
-                            if any(v < 2.0 for v in r.values())]
-            if broke or planted_lost:
-                print("\nSTOP - new lots over the threshold: %s ; planted lots dropped: %s"
-                      % (broke or "none", planted_lost or "none"))
-                c.rollback()
-                return 1
-            if args.apply and args.allow_owner:
-                c.commit()
-                print("\nCOMMITTED.")
-            else:
-                c.rollback()
-                print("\nDRY RUN - rolled back. Add --apply "
-                      "--i-accept-writing-to-owner-database")
-        except Exception:
-            c.rollback()
-            raise
+        _score(c, "BEFORE")
+
+    if not (args.apply and args.allow_owner):
+        # ⚠️ THE DRY RUN NO LONGER SIMULATES, AND SAYING SO IS THE HONEST PART.
+        # It used to insert inside a transaction, score the real result and roll back, so
+        # its numbers WERE the numbers `--apply` landed. Writes through the door commit on
+        # the server and cannot be rolled back, so that is gone: what remains is the plan
+        # and the BEFORE score. The check that used to gate the commit now runs AFTER the
+        # write and compensates - see below.
+        print("\nDRY RUN - nothing written. The scoring that used to gate the commit now")
+        print("runs after the write and compensates on refusal; add --apply")
+        print("--i-accept-writing-to-owner-database to run it.")
+        return 0
+
+    with db.engine.connect() as c:
+        c.execute(text("SET statement_timeout = '600s'"))
+        # 🔴 THIS SCRIPT OWNS THE `SYN-AUG-` NAMESPACE AND NOTHING ELSE, so it clears that
+        # namespace before writing it. Without this a second run doubles every row it
+        # landed. One namespace, one blast radius, stated once in `OWNED`.
+        print("")
+        _clear_owned(c, args.url)
+
+    written = 0
+    for table, rows in plan:
+        written += _put(table, rows, args.url)
+
+    with db.engine.connect() as c:
+        c.execute(text("SET statement_timeout = '600s'"))
+        after = _score(c, "AFTER")
+        broke = [l for l, r in after["new_lots"].items() if any(v >= 2.0 for v in r.values())]
+        planted_lost = [l for l, r in after["planted"].items()
+                        if any(v < 2.0 for v in r.values())]
+        if broke or planted_lost:
+            # 🔴 COMPENSATION, NOT ROLLBACK (ruling 181). The rows are committed and their
+            # atoms exist; what undoes them is another write through the door. Clearing the
+            # namespace is exact here because the namespace was emptied before this run, so
+            # it holds this run's rows and nothing else.
+            print("\nSTOP - new lots over the threshold: %s ; planted lots dropped: %s"
+                  % (broke or "none", planted_lost or "none"))
+            print("compensating - withdrawing what this run wrote:")
+            _clear_owned(c, args.url)
+            # ⚠️ THE LEDGER KEEPS THE TRACE, AND THAT IS TRUE RATHER THAN DIRTY: these facts
+            # existed and then did not. An append-only ledger saying so is correct.
+            print("compensated. The ledger keeps both events - written, then withdrawn.")
+            return 1
+        print("\nCOMMITTED through the product door - %d rows." % written)
     return 0
 
 
