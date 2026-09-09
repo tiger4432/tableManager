@@ -1827,8 +1827,43 @@ async def run_ledger_followup(db_session_factory):
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 
+def _ensure_ledger_schema_sync(db_session_factory):
+    """Bring the ledger's own schema up to date. Catalogue-first and idempotent.
+
+    🔴 S-88 — WITHOUT THIS, A LANDED COLUMN NEVER REACHES A LIVE DATABASE.
+    `schema.CURSOR_ADDITIONS` is the ADD COLUMN list, `ensure_schema` applies it, and
+    MEASURED 2026-09-09 its only callers were seed scripts and tests: no production path ran
+    it at all. The procedure that used to — 「배포 뒤 소스마다 백필 한 번」 — went away with the
+    cursor read path (S-76), and the ensure it carried went with it, unnoticed because
+    nothing had needed a new column since.
+
+    S-58 is what found it: the census column landed, the job ran every tick, and every tick
+    failed on a column that did not exist. The fix is not that column; it is that a landed
+    column must reach live WITHOUT a person running one line by hand.
+
+    ⚠️ IT DOES NOT TAKE THE PROCESS DOWN. This daemon also does chain work that owes the
+    ledger nothing, so a ledger schema that cannot be ensured costs the ledger jobs and is
+    named — loudly, once, at startup, where an operator is already reading.
+    """
+    from ledger.store import LedgerStore
+
+    db = db_session_factory()
+    try:
+        LedgerStore(db.get_bind()).ensure_schema()
+    finally:
+        db.close()
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
+
+    # 🔴 BEFORE ANY LEDGER LOOP STARTS (S-88). Both loops below write to the ledger, and
+    # one of them was added the same day this gap was found.
+    try:
+        await asyncio.to_thread(_ensure_ledger_schema_sync, db_session_factory)
+    except Exception as exc:
+        logger.error("[Ledger] the ledger schema could not be ensured, so a column that "
+                     "landed in code may be missing here: %s", exc)
 
     # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
     # pick the same rows up twice and write one heartbeat file between them, so neither

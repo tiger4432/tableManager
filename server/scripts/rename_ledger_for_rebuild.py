@@ -21,7 +21,9 @@ an empty one.
 that are not part of the reload. If one of them runs later it will re-scan from the beginning;
 `uq_ledger_atom` stops it writing the same atom twice, so the cost is time, not duplicates.
 
-WHAT RECREATES THE EMPTY TABLE: nothing here. `ledger/backfill.py` calls `store.ensure_schema()`
+WHAT RECREATES THE EMPTY TABLE: nothing here. `backfill.run` and the chain daemon's
+startup both call `store.ensure_schema()` (S-88; until 2026-09-09 NEITHER did, and a
+column that landed in code never reached a live database without a hand-run line)
 on every run and the store ensures each month as it writes, so the reload builds its own table
 and partitions. This script only moves the old one out of the way.
 

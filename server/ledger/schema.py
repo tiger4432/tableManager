@@ -415,8 +415,8 @@ def ensure_register_object_constraint_dropped(cursor) -> bool:
     """Drop S-77's retired constraint on an install that predates the removal.
 
     Returns whether it did anything. Idempotent: a fresh install never creates it, so the
-    catalogue is asked and no DDL is issued -- which matters because `ensure_schema` runs at
-    the start of every backfill.
+    catalogue is asked and no DDL is issued -- which matters because `ensure_schema` runs
+    at the start of the chain daemon and of every `backfill.run` (S-88).
 
     🔴 A DROP CANNOT FAIL ON EXISTING DATA, which is the whole safety argument. Removing a
     CHECK weakens the table: every row that satisfied it still satisfies what remains, there
@@ -441,7 +441,8 @@ def ensure_objectless_payload_constraint(cursor) -> bool:
 
     Returns whether it did anything, so a caller can say so. Idempotent: an install that
     already carries the constraint asks the catalogue and issues no DDL, which matters
-    because `ensure_schema` runs at the start of every backfill.
+    because `ensure_schema` runs at the start of the chain daemon and of every
+    `backfill.run` (S-88).
 
     🔴 NO SCAN, AND `NOT VALID` IS NOT A SHORTCUT HERE. Measured on this deployment's
     PostgreSQL (18.3) against a scratch partitioned table: `ADD CONSTRAINT ... NOT VALID`
@@ -561,7 +562,7 @@ def ensure_schema(connection):
         for column, statement in CURSOR_ADDITIONS:
             # Gated rather than `ADD COLUMN IF NOT EXISTS`: that spelling still takes
             # ACCESS EXCLUSIVE on the table to decide it has nothing to do, and this runs
-            # at the start of every backfill.
+            # at every chain-daemon start and every `backfill.run` (S-88).
             if not column_exists(cursor, CURSOR_TABLE, column):
                 logger.info("[Ledger] adding %s.%s", CURSOR_TABLE, column)
                 cursor.execute(statement)

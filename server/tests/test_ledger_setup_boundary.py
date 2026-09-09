@@ -392,6 +392,48 @@ def test_v2_backfill_refuses_reset_controls_before_store_access():
 
 
 
+class _SatisfiedEngine:
+    """An engine whose catalogue says every object already exists.
+
+    🔴 IT EXISTS BECAUSE `object()` STOPPED BEING AN ENGINE (S-88). The CLI now ensures the
+    ledger schema before dispatching, and a stub that raises `AttributeError` on
+    `raw_connection` would fail this test for a reason that has nothing to do with what it
+    asserts — which is that the parser refuses retired flags.
+    """
+
+    class _Cursor:
+        def execute(self, statement, params=None):
+            self.statement = statement
+
+        def fetchone(self):
+            return (1,)          # `_relation_exists` / `constraint_exists`: 「already there」
+
+        def fetchall(self):
+            return []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class _Connection:
+        def cursor(self):
+            return _SatisfiedEngine._Cursor()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    def raw_connection(self):
+        return self._Connection()
+
+
 def test_operator_cli_has_no_legacy_escape_hatch(monkeypatch):
     """The retired flags are UNKNOWN to the parser, not merely discouraged.
 
@@ -402,7 +444,11 @@ def test_operator_cli_has_no_legacy_escape_hatch(monkeypatch):
     import ledger.backfill as backfill
 
     calls = []
-    monkeypatch.setattr(database_module, "engine", object())
+    # ⚠️ THE STUB HAS TO BE AN ENGINE NOW, not `object()`. Since S-88 the CLI ensures the
+    # ledger schema before it dispatches, so a fake that answers nothing was only ever
+    # sufficient because nothing touched it. This one answers the catalogue with 「already
+    # there」, which is the state a running install is in.
+    monkeypatch.setattr(database_module, "engine", _SatisfiedEngine())
     monkeypatch.setattr(backfill, "beat", lambda result: None)
     monkeypatch.setattr(
         backfill, "run", lambda engine, **kwargs: calls.append(kwargs) or {})

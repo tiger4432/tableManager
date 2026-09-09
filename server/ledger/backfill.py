@@ -1592,6 +1592,17 @@ def beat(result):
 
 def main(argv=None):
     _bootstrap_path()
+    # 🔴 S-88 — THE CLI IS A PROCESS TOO, and it must not need the daemon to have run
+    # first: a fresh install driven by `--source X` gets the schema the daemon would have
+    # ensured. Here rather than in `run()` for two reasons — `run()` is a LIBRARY function
+    # and a caller does not expect DDL from it, and every branch below (`rescope`,
+    # `--via-events`, the plain load) writes to the ledger, so one call at the entry
+    # point covers what three inside would.
+    #
+    # ⛔ AND IT CANNOT GO BEFORE THE REFUSALS. `test_v2_backfill_refuses_reset_controls
+    # _before_store_access` is right: a refusal that fires after the store has been
+    # opened is a report, not a refusal. The parser refuses first; this runs once the
+    # arguments are known good.
     # One import for the whole function. Two branches imported `load_setup`
     # themselves under two spellings (`load_setup` and `_load_setup`), which is the
     # 「same thing, two names」 shape -- and a function-local import binds only on the
@@ -1643,6 +1654,14 @@ def main(argv=None):
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
 
     from database.database import engine
+
+    # 🔴 S-88. The arguments are known good by here (the destructive gate above is the
+    # one that must precede store access), so the schema can be brought up to date
+    # before any branch below writes. Catalogue-first: a run with nothing to add costs
+    # one query and takes no lock.
+    from .store import LedgerStore
+
+    LedgerStore(engine).ensure_schema()
 
     if args.scope_column or args.scope_values:
         # A SCOPE IS NOT THE FORWARD SCAN AND DOES NOT SHARE ITS ARGUMENTS. Paging,

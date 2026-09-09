@@ -161,7 +161,12 @@ def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, 
 
     import database.database as database_module
 
-    monkeypatch.setattr(database_module, "engine", object())
+    # ⚠️ AN ENGINE, NOT `object()` (S-88). The CLI ensures the ledger schema before it
+    # dispatches, so a stub that raises on `raw_connection` would fail this test for a reason
+    # unrelated to what it asserts. Imported rather than copied: two fake engines drift.
+    from test_ledger_setup_boundary import _SatisfiedEngine
+
+    monkeypatch.setattr(database_module, "engine", _SatisfiedEngine())
     monkeypatch.setattr(backfill, "beat", lambda result: None)
     monkeypatch.setattr(backfill, "run", lambda engine, **kwargs: {
         "source": "wafer_process", "rows_read": 0, "batches": 0,
