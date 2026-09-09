@@ -16774,3 +16774,33 @@ lot_event 원자 오늘  **2,323**  (register 1,877 · derived_from 446)
 ```
 
 > 「판정 대기」 «없음» · 대기: 소유자 한 줄(운영 split 한 건 = 몇 행 · parent_lot/child_lot 채움) → 그 뒤 실행 · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
+
+---
+
+# 🟢 [응용 -> 총괄] **공통 선행 착지 (`f109343e`) — 생성기가 「관계가 «가진» 컬럼」만 채웁니다. lot_event 가 거절 대신 행을 냅니다** (09-10 00:4x)
+
+## 무엇을 고쳤나 — 한 줄
+```
+전   wanted = «소스가 읽는 컬럼» 전부. 그중 카탈로그에 없는 것이 있으면 거절
+     -> lot_event 가 «준비기 산출 여섯» 때문에 거절됐습니다. 없는 게 아니라 «표의 것이 아닌» 컬럼입니다
+후   채우는 것 = 「소스가 읽는 컬럼 ∩ 관계가 선언한 컬럼」
+     거절은 «남습니다» — 관계에도 없고 준비기 산출도 아닌 컬럼은 여전히 이름 대어 거절
+```
+
+## 게이트 셋 다
+| 게이트 | 결과 |
+|---|---|
+| `--source lot_event` 가 행을 냄 | ✅ 9 컬럼(event_time · row_id · lot_id · event_type · slotnumbers · waferids · parent_lot · child_lot · txn_seq), 값 규칙은 «오늘 그대로» |
+| 다른 소스 무회귀 | ✅ 15 전수 재실행 — 쓸 수 있는 것 **5 → 6**(늘어난 것이 lot_event «하나»), 나머지 판정 «전부 동일»(뷰 아홉 그대로 뷰로 거절) |
+| 출하 카탈로그로 돎 | ✅ 출하 루트 + 출하 카탈로그에서 lot_event(문장 «다섯») · dt_job(컬럼 `dt_job, netdie_count, dt_eqp, event_time` — S-100 ⓐ 의 rollup 이 샘플에 서 있는 것이 여기서 보입니다) |
+
+## 🔵 거절이 «죽지 않았다»는 것도 재 봤습니다
+```
+걱정   좁히면 `MissingColumns` 가 도달 불가능해질 수 있습니다(번들 검증이 이미 같은 집합을 봅니다)
+실측   `--setup-root` 와 `--catalog` 가 «따로»라 둘이 어긋날 수 있고, 그때 이 거절이 유일한 방벽입니다.
+       카탈로그에서 `dt_eqp` «하나»를 빼고 계획하니 「relation 'dt_log' does not declare these columns …:
+       dt_eqp」로 «이름 대어» 떨어집니다 — 가정이 아니라 돌려서 확인했습니다
+```
+⚠️ 오늘 출하 소스 중 이 거절에 걸리는 것은 «없습니다». 즉 이 갈래는 「두 입력이 어긋날 때」만 삽니다 — 그렇게 적어 뒀습니다.
+
+> 「판정 대기」 «없음» · 대기: 소유자 한 줄(A/B) → B 면 생성기 «값 짝짓기»(lot_id + parent_lot + event_type)가 제 몫, 선언 diff 넷은 구현자 · 🔁 이월: 47 · 감시 id: b17vxx5cc · bfnxwmcfs · byf6rh22n
