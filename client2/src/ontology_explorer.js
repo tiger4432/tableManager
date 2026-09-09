@@ -9,6 +9,7 @@ import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath,
 } from './ontology_path.js';
 import { declarationShape, emptyOf, shapeAt } from './ontology_skeleton.js';
+import { censusBySource } from './source_backlog.js';
 
 let controller = null;
 
@@ -772,10 +773,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       const res = await fetch(`${apiBase}/api/ledger/declaration`);
       if (!res.ok) return;
       const body = await res.json().catch(() => null);
-      const rows = body && Array.isArray(body.sources) ? body.sources : [];
-      const bySource = {};
-      for (const row of rows) if (row && row.source && row.census) bySource[row.source] = row.census;
-      dispatch({ type: 'CENSUS_RECEIVED', bySource });
+      // 🔴 C-47: 봉투를 «푸는 것»도 같은 리더가 합니다. 대시보드 표가 같은 지도를 쓰고,
+      //    각자 풀면 서버가 칸 이름을 바꾸는 날 «한쪽만» 조용히 빈 지도가 됩니다.
+      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body) });
     } catch (error) {
       void error;                       // the line simply does not appear — see above
     }

@@ -269,6 +269,85 @@ console.log('\n[6] how many, why, and what is unaccounted for');
 }
 
 
+// ═══ ⑦ C-47 — 「돌 게 있나」는 토큰이 «필요 없는» 라우트에서 옵니다 ═══════════════════
+//
+// 🔴 THE TWO HALVES HAVE DIFFERENT AVAILABILITY. The ledger comes from an admin-token route;
+//    the census rides on the PUBLIC declaration route. Blanking the whole panel on one reason
+//    string threw away an answer that HAD arrived — that 401 is exactly the case the operator
+//    was looking at when they asked 「돌 게 있는 건가」.
+// 🔴 AND BOTH SCREENS READ IT THROUGH ONE MODULE. The inspector line and this table go through
+//    `source_backlog.js`; criterion ④ is not 「둘이 있나」 but 「둘이 갈라질 수 있나」.
+console.log('\n[7] the census: a different route, a different availability');
+{
+  const AT = '2026-09-09T01:30:31.658998+00:00';
+  const box = (estimate, method, exact = true) => ({ estimate, exact, method, measured_at: AT });
+  const COUNTED = { source: 'a', relation: 'r', measured_at: AT,
+    relation_rows: box(117742, 'count(*)'),
+    indexed_rows: box(117000, 'count(distinct row_id)'),
+    not_yet: box(742, 'relation_rows - indexed_rows') };
+  const REMEDY = "expose the base table's row_id column on 'bonding_die_from_core'";
+  const REFUSED = { source: 'b', relation: 'q', measured_at: AT,
+    refused: 'no_row_id', remedy: REMEDY };
+  //  a  counted · b  refused · c  NOT in the map at all (nobody counted it yet)
+  const CENSUS = { a: COUNTED, b: REFUSED };
+  const drawWith = (payload, opts, census) => {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const view = new LedgerSourcesPanel(host, { doc }).render(payload, opts, census);
+    return { host, view };
+  };
+  const censusIn = (host) => byClass(host, 'ledger-sources-census').map((n) => n.textContent);
+  const refusedIn = (host) => byClass(host, 'ledger-sources-census-refused');
+
+  // ① 401: the ledger is gone and the census is NOT
+  const gated = drawWith(null, { unavailable: 'HTTP 401' }, CENSUS);
+  ok('a token failure still names its reason', /HTTP 401/.test(gated.host.textContent));
+  eq('...and the census rows survive it', gated.view.censusRows.map((r) => r.source), ['a', 'b']);
+  eq('...and reach the screen', rowsOf(gated.host).length, 2);
+  ok('the counts are drawn from the envelope, in the server\'s own key names',
+    censusIn(gated.host)[0].includes('relation_rows 117742')
+    && censusIn(gated.host)[0].includes('not_yet 742'), censusIn(gated.host)[0]);
+  // 🔴 THE DISCRIMINANT: the same 401 with NO census must still draw nothing. Otherwise this
+  //    section only proves the panel draws something, not that the census is what draws it.
+  const gatedBare = drawWith(null, { unavailable: 'HTTP 401' }, {});
+  eq('the same failure with no census draws no table', byTag(gatedBare.host, 'TABLE').length, 0);
+  ok('so the table is the census, not the failure',
+    byTag(gated.host, 'TABLE').length === 1 && byTag(gatedBare.host, 'TABLE').length === 0);
+  // ...and it is NOT the six-column ledger table wearing a disguise
+  eq('a census-only table declares no ledger columns', byTag(gated.host, 'TH').length, 0);
+
+  // ② 「셀 수 없다」 is not a blank — and the fix rides with it
+  eq('a refused census is named on screen', refusedIn(gated.host).length, 1);
+  eq('...by the server\'s own reason word', refusedIn(gated.host)[0].textContent, 'no_row_id');
+  eq('...and the remedy is carried verbatim', refusedIn(gated.host)[0].title, REMEDY);
+  ok('...while the counted one is not a refusal', refusedIn(gated.host).length === 1);
+
+  // ③ 「어떻게 잰 수인가」 rides in the tooltip — not a fifth column in a 346px panel
+  ok('the method is carried where it costs no width',
+    byClass(gated.host, 'ledger-sources-census')[0].title.includes('count(*)'),
+    byClass(gated.host, 'ledger-sources-census')[0].title);
+
+  // ④ with the ledger available, the census rides INSIDE the source cell — no seventh column
+  const full = drawWith({ ingestion: { note: NOTE, unavailable: null,
+    sources: [row('a', 'ran_and_wrote'), row('c', 'ran_and_wrote')] } }, {}, CENSUS);
+  eq('the ledger table still has six columns', byTag(full.host, 'TH').length, 6);
+  eq('...and each row still six cells', rowsOf(full.host)[0].children.length, 6);
+  ok('the census rides inside the source cell',
+    /relation_rows 117742/.test(rowsOf(full.host)[0].children[0].textContent));
+  // 🔴 AND A SOURCE NOBODY COUNTED DRAWS NOTHING — 「안 쟀다」, not 「셌더니 0」.
+  eq('a source with no census draws no census line', censusIn(full.host).length, 1);
+  ok('...and it is the counted one that drew it',
+    rowsOf(full.host)[1].children[0].textContent.includes('c')
+    && !/relation_rows/.test(rowsOf(full.host)[1].children[0].textContent));
+
+  // ⑤ no census at all changes nothing about the ledger table
+  const noCensus = drawWith(FOUR, {}, {});
+  eq('four rows still draw with no census', rowsOf(noCensus.host).length, 4);
+  eq('...and no census line appears', censusIn(noCensus.host).length, 0);
+  eq('...and the call may omit the argument entirely',
+    rowsOf(drawWith(FOUR, {}, undefined).host).length, 4);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

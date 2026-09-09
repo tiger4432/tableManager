@@ -1,3 +1,126 @@
+# [디자인 -> 총괄] 🔵 **C-47 착지 — 대시보드 표가 «공개 census» 를 같은 리더로 읽습니다(401 아래에서도 15 소스 한 표). 그리고 정정 «하나»: `/admin/ledger/sources` 는 «은퇴 후보가 아닙니다» — 그 패널이 그리는 «전부»가 그 라우트의 `ingestion` 이고 census 는 «거기 있던 적이 없습니다»**
+
+```
+게이트   패널 82 단언(62→82) · backlog 32 단언·변이 13/13(23→32) · 계약 8 무발산 ·
+        게이트 전건 초록(`✓ every gated harness is green.`) · 빌드 `BUILD_EXIT=0`(dist 해시 교체 확인)
+🔔 초인종 답 (09-09 11:45)  «진행 중이었고 지금 착지했습니다» — 막힌 것 없음
+```
+
+## ① 무엇이 바뀌었나 — 경로가 «하나»가 됐습니다 (기준 ④)
+```
+전   대시보드 표    adminFetch(/admin/ledger/sources)          -> 401 -> «빈 화면»
+     탐색기 인스펙터 fetch(/api/ledger/declaration) + 자기 봉투 풀기 -> census 한 줄
+     => 같은 사실을 두 화면이 «각자» 읽고, 이미 갈라져 있었습니다
+후   봉투 푸는 곳    `censusBySource(body)`  «하나»  (source_backlog.js)
+     칸 만드는 곳    `backlogCells` / `censusRefusal`  «그대로 하나»
+     대시보드·탐색기가 «둘 다» 그 함수를 지납니다 — 서버가 키를 바꾸면 «둘이 같이» 빨개집니다
+```
+🔴 **두 반쪽의 «가용성이 다르다»는 것이 설계입니다.** 장부(`ingestion`)는 토큰 뒤, census 는 공개 라우트.
+그래서 401 에서 화면을 «사유 하나로 비우면 도착한 답을 버립니다» — 그것이 총괄이 보신 그 빈 패널이었습니다.
+이제 401 이어도 census 표가 «그려집니다»(사유 줄은 그대로 남습니다 — 장부는 여전히 못 읽은 것이 사실이므로).
+
+## ② 🔴 정정 — 「커서 시대 넷뿐이면 은퇴」의 전제가 «거짓»입니다
+```
+sources_view() 가 주는 것  (server/ledger_admin.py:1021)
+  kinds · unsupported_kinds · sources(선언 원문) · ingestion · config_path · error
+census 는  «이 여섯 중 어디에도 없습니다». `_row_census_by_source` 는 선언 라우트에만 붙어 있습니다
+패널이 그리는 것   전부 `payload.ingestion.sources[]` 입니다 —
+  state 네 낱말 · declared · atoms_written · molecules_done · molecules_refused ·
+  refusals(none/named/unknowable) · refusal_reasons · refusals_unaccounted ·
+  translator_ver · atoms_deduped · updated_at
+=> 라우트를 은퇴시키면 census 가 옮겨 가는 것이 아니라 «여섯 칸이 통째로 사라집니다»
+```
+🔵 다만 «은퇴할 것»은 있습니다 — 클라에서 이 라우트를 부르는 자리는 `admin.js:1252` «하나»이고,
+그 자리가 읽는 것은 `ingestion` 과 `error` «둘»입니다. **`kinds` · `unsupported_kinds` · `sources` ·
+`config_path` 넷은 client2 에 소비자가 «0»입니다**(fetch 자리가 하나뿐이라 다른 소비자가 있을 수 없음).
+🔴 은퇴 후보는 «라우트»가 아니라 그 «네 칸»입니다. 그건 서버 판단이라 올립니다.
+
+## ③ 화면 텍스트 — 15 소스, 401 아래 (⚠️ «이 박스» 수입니다. 운영 주장 아님)
+```
+소스                              relation_rows  indexed_rows  not_yet     방법(툴팁)
+bonded_from                       🔴 거절 no_row_id                        remedy 툴팁에 그대로
+bw_dt_seat                        🔴 거절 no_row_id                        (bonding_core_die)
+die_inspection                        117,742      117,742          0     count(*) / count(distinct row_id) / 뺄셈
+dt_job                                 36,939       36,939          0
+dt_transfer                            28,208       28,208          0
+lot_event                               3,633          490    🔴 3,143
+lot_slot_move                     🔴 거절 no_row_id
+lot_slot_wafer                         37,325       35,725    🔴 1,600
+mechanism_edge_to_finding_causes            9            9          0
+mechanism_edge_to_quantity_causes          13           13          0
+process_param_num_measure              73,275       73,275          0
+process_param_txt_measure               7,049      🔴 7,052          0     ← 색인이 «표보다 많습니다»
+transfer_event                          1,405        1,405          0
+void_observation                  🔴 거절 no_row_id                        (void_obs_observed)
+wafer_process_recipe                  478,238      478,238          0
+언제 잰 값   전부 2026-09-09T03:48~03:49Z (칸에 그대로. 「몇 분 전」으로 다시 쓰지 않습니다)
+셈 11 · 거절 4
+```
+
+## ④ 🔴 찾은 문제 «둘» — 둘 다 이 배선이 «드러낸» 것입니다
+```
+㉠ 서버가 이름 붙인 사실을 화면이 «안 싣습니다»
+   process_param_txt_measure 의 census 에 «다섯째 칸»이 있습니다: `index_names_absent_rows: 3`
+   15 중 «하나»에만 있고(0 이면 안 보내는 모양), 제 리더는 그 키를 모릅니다
+   -> 화면은 「7,049 · 7,052 · 0」을 그립니다. 세 수가 «서로 안 맞아 보이는데» 서버가 이미
+      적어 둔 설명을 화면이 버립니다. C-42 의 거절과 «같은 부류»입니다
+   ⛔ 짓지 않았습니다 — 지시의 넷(값·방법·시각·거절 사유)에 없고, 어디에 어떤 낱말로 놓을지가
+      «표기 판정»입니다. 한 줄 주시면 한 라운드입니다
+㉡ 백로그가 «처음 보입니다» — lot_event 3,143 · lot_slot_wafer 1,600
+   소유자 물음(「돌 게 있는 건가」)에 이 화면이 처음으로 «예»라고 답합니다.
+   ⚠️ 이 박스 수이고, 그 둘이 «왜» 남았는지는 제 줄이 아닙니다
+㉢ 🔴 제 «계측기»가 거짓 초록을 낼 뻔했습니다 — 이 보고에 「빌드 완료」를 «틀리게» 적을 뻔했습니다
+   첫 빌드를 게이트와 «동시에» 돌렸습니다. 빌드의 사전 검사(`check_clipboard_convention.mjs`)가
+   `client2/src` 를 훑는데, 그때 하니스가 만든 «수명 몇 ms» 짜리 프로브 사본을 목록에 담고
+   읽으려다 ENOENT 로 죽었습니다. 그런데 제가 `npm run build | tail -12` 로 «파이프»를 걸어서
+   종료 코드가 `tail` 의 것(0)이 됐고, 알림이 「완료(exit 0)」로 왔습니다
+   -> `dist` 의 mtime 이 «제 편집보다 이른» 것을 보고 잡았습니다. 지금은 파이프 없이 다시 돌려
+      `BUILD_EXIT=0` · `admin-CvLJKZoy.js -> admin-3Gf9Z1x7.js` 로 «해시가 바뀐 것»이 증거입니다
+   교훈 둘: 빌드에 파이프를 걸지 않는다(종료 코드가 가려짐) · 게이트와 빌드를 «동시에» 돌리지
+   않는다(빌드의 사전 검사가 이미 그 게이트를 포함합니다 — 제가 같은 것을 두 번 돌렸습니다)
+```
+
+## ⑤ 어떻게 잽니다 — 「방법」은 «툴팁»입니다
+```
+값 옆    `≈` 하나 (exact:false 일 때만). 오늘 15 소스 전부 exact 라 «안 나옵니다»
+툴팁     relation_rows: count(*) | indexed_rows: count(distinct row_id) | not_yet: 뺄셈
+왜       이 패널은 좁을 때 346px 입니다. 다섯째 칸을 만들면 2026-09-04 에 0 으로 만들어 둔
+        가로 넘침을 도로 씁니다. 그리고 방법을 «문장»으로 적으면 「주저리주저리」입니다
+⚠️ 그래서 방법은 «보이지 않습니다»(가리켜야 보입니다). 보여야 한다면 그건 표기 판정입니다
+```
+
+## ⑥ 변이가 잡은 것 — 앵커 «둘»이 제 리팩터에 죽어 있었습니다
+```
+M2·M3 이 「바뀐 것 없음」으로 거부됐습니다 — cells 에 `method` 를 더하면서 그 두 줄의 글자가 바뀜
+   -> 프로브가 «이름으로» 잡았습니다(「변이가 안 변이했다」). 안 잡혔으면 둘 다 «caught» 로 찍혔습니다
+그리고 M6·M10 이 «던지고» 있었습니다 -> 접근자를 빈 객체로 읽게 바꿔 «어느 단언이» 빨개지는지 나오게:
+   M6 -> D1 D2 D3 E5 (4) · M10 -> A1 …외 10. 「던진 변이는 잡힌 게 아니다」
+13/13, 던짐 «0»
+```
+
+## ⑦ 찾은 문제 · 해결 여부 · 모르는 것
+```
+찾은 것   ② 은퇴 전제가 거짓 · ④㉠ 다섯째 칸 · ④㉡ 백로그 둘 · ⑥ 죽은 앵커 둘
+해결      ✅ 직접 잼 — 패널 82/0 · backlog 32/0 · 변이 13/13 · 게이트 전건 초록 · 빌드 완료
+         ✅ 라이브 응답(`GET /api/ledger/declaration`, 200)에 «모듈을 직접 태워» 위 표를 뽑음
+🔴 모르는 것
+  · 브라우저에서 그 표가 실제로 뜨는지는 «못 봅니다» — 어드민 화면이고 저는 토큰을 «안 넣습니다».
+    위 표는 «렌더 결과»(같은 클래스·같은 render)이지 스크린샷이 아닙니다
+  · `index_names_absent_rows` 가 «무슨 뜻»인지 — 이름은 「색인에 있는데 표에 없는 행」으로 읽히지만
+    그것이 결함인지 정상인지는 서버 낱말이 정합니다. 제가 정하면 두 번째 저자가 됩니다
+  · `not_yet` 이 «음수를 0 으로 접는지» — 위 소스에서 7,049−7,052 = −3 인데 0 이 왔습니다.
+    접는 것이라면 「3 이 어디 갔나」가 화면에서 «영원히» 안 보입니다
+  · census 갱신 주기 — 페이싱된 작업이라 갓 선언한 소스는 한동안 키가 «없습니다»(빈 칸이 맞는 표시).
+    「얼마나 오래」는 못 셉니다
+```
+
+🔒 **판정 대기:** ㉠ `index_names_absent_rows` 를 어디에 어떤 낱말로 · 「방법」이 툴팁이어도 되는지 ·
+   `/admin/ledger/sources` 의 «네 칸»(kinds · unsupported_kinds · sources · config_path) 은퇴 여부(서버)
+
+**멈췄습니다.**
+
+---
+
 # [디자인 -> 총괄] 🔵 **물음의 답: ⓐ 입니다 — 선언 라우트를 «따로» 부릅니다(토큰 없음). 못 찾으신 이유는 «다른 패널»이기 때문입니다. 그리고 그 자리에 «소스 상태 화면이 둘»이라는 사실이 붙습니다**
 
 ```

@@ -26,6 +26,13 @@
 // ⑤ 거절은 «셋»입니다 — `none` · `named` · `unknowable`. 그리고 «키가 없는» 것이 넷째입니다.
 //    접으면 「모른다」와 「없다」가 같은 픽셀이 됩니다. `refusals_unaccounted` 는 «부호»가
 //    뜻이고(0 보통 · >0 배포 이력 · <0 장부 결함), 그래서 부호로 갈래를 텁니다.
+//
+// ⑥ 🔴 C-47 — 「돌 게 있나」(인구조사)는 «다른 라우트»에서 오고 «토큰이 필요 없습니다».
+//    이 표는 `/admin/ledger/sources` 를 읽고, 그것은 토큰 게이트 뒤에 있습니다. 두 반쪽의
+//    «가용성이 다르다»는 것이 설계입니다 — 401 이어도 인구조사는 도착하고, 그때 화면이
+//    사유 하나로 비면 «가지고 있는 답»을 버립니다. 그래서 `unavailable` 에서도 census 표를
+//    그립니다. 그리고 그 수를 «읽는 쪽»은 `source_backlog.js` «하나»입니다 — 탐색기
+//    인스펙터가 같은 리더를 지납니다(기준 ④: 둘이 «갈라질 수» 없어야 합니다).
 // ═══ 모양 ══════════════════════════════════════════════════════════════════════════
 // 여섯 칸: source · state · atoms_written · molecules_done · molecules_refused · updated_at
 // 🔴 일곱째 칸을 만들지 «않습니다». 좁은 패널에서 표가 넘치는 것을 546~346px 전 구간
@@ -57,20 +64,48 @@ function unaccountedOf(s) {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+import { backlogCells, censusRefusal } from './source_backlog.js';
+
+/**
+ * 한 소스의 «인구조사» 칸 — 대시보드 표와 탐색기 인스펙터가 «같은 리더»를 지납니다(C-47).
+ *
+ * 🔴 두 화면이 같은 사실을 각자 읽으면 갈라집니다. 이미 갈라져 있었습니다 — census 가
+ *    인스펙터에만 있었고 이 표는 토큰이 없으면 «아무 말도» 못 했습니다.
+ * ⚠️ census 는 «공개 라우트»(선언)에서 옵니다. admin 응답이 401 이어도 이 칸들은 «옵니다» —
+ *    그래서 두 반쪽의 «가용성이 다릅니다», 그리고 그 사실이 행에 그대로 드러납니다.
+ */
+function censusOf(census) {
+  const refusal = censusRefusal(census);
+  return Object.freeze({
+    cells: Object.freeze(backlogCells(census).map((c) => Object.freeze({ ...c }))),
+    refusedReason: refusal ? refusal.reason : '',
+    refusedRemedy: refusal ? refusal.remedy : '',
+  });
+}
+
 /**
  * `payload` -> 그릴 것. 순수하고 총체적입니다.
  *
  * @param {object|null} payload  `/admin/ledger/sources` 의 응답, 또는 null
  * @param {{unavailable?: string}} [opts] 응답 자체를 못 얻은 이유
+ * @param {object} [census] 소스 id -> `sources[].census`, «공개 선언 라우트»의 것
  */
-export function sourcesView(payload, opts = {}) {
+export function sourcesView(payload, opts = {}, census = {}) {
+  const censusBy = census && typeof census === 'object' ? census : {};
+  // 🔴 census 는 admin 응답과 «가용성이 다릅니다» — 토큰이 없어 위가 401 이어도 여기는 옵니다.
+  //    그래서 「아무것도 못 그린다」는 이제 «틀린 답»이고, 아래 두 이른 반환이 census 를 싣습니다.
+  const censusRows = Object.freeze(Object.keys(censusBy).sort().map((source) => Object.freeze({
+    source, ...censusOf(censusBy[source]),
+  })));
   const empty = Object.freeze({
     available: false, reason: '', note: '', rows: Object.freeze([]),
     byState: Object.freeze([]), splitByState: false, count: ABSENT,
+    censusRows: Object.freeze([]),
   });
   if (opts.unavailable || !payload || typeof payload !== 'object') {
     return Object.freeze({
       ...empty,
+      censusRows,
       reason: opts.unavailable || '응답을 읽지 못했습니다.',
     });
   }
@@ -82,6 +117,7 @@ export function sourcesView(payload, opts = {}) {
   if (!ing || ing.unavailable) {
     return Object.freeze({
       ...empty,
+      censusRows,
       note,
       reason: ing && ing.unavailable
         ? `번역기 장부를 읽지 못했습니다 — ${String(ing.unavailable)}`
@@ -92,6 +128,8 @@ export function sourcesView(payload, opts = {}) {
   const src = Array.isArray(ing.sources) ? ing.sources : [];
   const rows = src.map(s => Object.freeze({
     source: String((s && s.source) == null ? '' : s.source),
+    // C-47: 같은 리더가 읽은 인구조사. 없는 소스는 빈 칸 — 「안 쟀다」입니다.
+    census: censusOf(censusBy[String((s && s.source) == null ? '' : s.source)]),
     // 규칙 ①: 서버의 낱말 그대로. 모르는 낱말이 와도 «그대로» 보여 줍니다 —
     // 화면이 아는 넷으로 «접으면» 새 상태가 조용히 사라집니다.
     state: String((s && s.state) == null ? '' : s.state),
@@ -127,6 +165,7 @@ export function sourcesView(payload, opts = {}) {
   return Object.freeze({
     available: true,
     reason: '',
+    censusRows,
     note,
     rows: Object.freeze(rows),
     byState: Object.freeze(byState),
@@ -166,6 +205,69 @@ export class LedgerSourcesPanel {
     return td;
   }
 
+  /**
+   * 인구조사 줄 — 「표에 N 행 · 색인 M · 남음 K」, 또는 «셀 수 없다는 사유».
+   *
+   * 🔴 두 자리가 «같은 픽셀»을 지납니다: 표가 그려질 때는 소스 칸 안의 보조 줄로, admin 이
+   *    401 일 때는 census 만의 표로. 각자 그리면 한쪽만 고쳐지는 날 두 화면이 갈라집니다.
+   * 🔴 라벨은 «서버의 키 그대로»입니다(판정 177). 옮기면 서버가 키를 바꾸는 날 화면이
+   *    «옛 이름으로» 옳아 보입니다.
+   * ⚠️ 방법(`count(*)` · `pg_class.reltuples`)은 «툴팁»입니다 — 좁은 패널에서 칸도 줄도
+   *    늘리지 않기 위해서이고, 「추정이다」라는 것만 값 옆의 `≈` 로 보입니다.
+   */
+  _censusLines(census) {
+    const out = [];
+    if (!census) return out;
+    // 🔴 거절이 «먼저»입니다. 셀 수 없다는 것은 조작자가 «고칠 수 있는» 사실이고, 수 아래
+    //    묻히면 「아직 안 돌았나 보다」로 읽힙니다. 고칠 문장은 문지기의 것 그대로(S-39).
+    if (census.refusedReason) {
+      const line = this._line('ledger-sources-census-refused', census.refusedReason);
+      line.setAttribute('data-refused', census.refusedReason);
+      if (census.refusedRemedy) line.title = census.refusedRemedy;
+      out.push(line);
+    }
+    const drawn = (census.cells || []).filter((c) => c.text !== '');
+    if (drawn.length) {
+      const line = this._line('ledger-sources-census',
+        drawn.map((c) => `${c.name} ${c.text}`).join(' · '));
+      const methods = drawn.filter((c) => c.method).map((c) => `${c.name}: ${c.method}`);
+      if (methods.length) line.title = methods.join('\n');
+      out.push(line);
+    }
+    return out;
+  }
+
+  /** 소스 이름 칸 — 보조 줄과 인구조사가 «여기» 삽니다. 일곱째 칸을 만들지 않습니다. */
+  _nameCell(source, census, sub) {
+    const td = this.doc.createElement('td');
+    td.appendChild(this._line('ledger-sources-name', source));
+    if (sub) td.appendChild(this._line('ledger-sources-sub', sub));
+    for (const line of this._censusLines(census)) td.appendChild(line);
+    return td;
+  }
+
+  /**
+   * admin 응답이 «없을 때»의 표 — 인구조사만.
+   *
+   * 🔴 census 는 «공개 선언 라우트»에서 옵니다. 토큰이 없어 위가 401 이어도 이 수들은
+   *    도착합니다 — 그때 「아무것도 못 그린다」로 두면 «가지고 있는 답»을 버리는 것입니다.
+   */
+  _censusTable(rows) {
+    const doc = this.doc;
+    const table = doc.createElement('table');
+    table.className = 'table-container ledger-sources-census-table';
+    const tbody = doc.createElement('tbody');
+    for (const r of rows) {
+      const tr = doc.createElement('tr');
+      tr.className = 'table-row';
+      tr.setAttribute('data-source', r.source);
+      tr.appendChild(this._nameCell(r.source, r, ''));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+  }
+
   _empty(icon, text) {
     const box = this.doc.createElement('div');
     box.className = 'empty-state';
@@ -177,14 +279,20 @@ export class LedgerSourcesPanel {
     return box;
   }
 
-  /** @param {object|null} payload @param {{unavailable?: string}} [opts] */
-  render(payload, opts = {}) {
-    const view = sourcesView(payload, opts);
+  /**
+   * @param {object|null} payload @param {{unavailable?: string}} [opts]
+   * @param {object} [census] 소스 id -> `sources[].census`, «공개 선언 라우트»의 것
+   */
+  render(payload, opts = {}, census = {}) {
+    const view = sourcesView(payload, opts, census);
     const doc = this.doc;
     this.root.textContent = '';
 
     if (!view.available) {
       this.root.appendChild(this._empty('⚪', view.reason));
+      // 🔴 두 반쪽의 «가용성이 다릅니다». 장부는 토큰이 필요하고 인구조사는 아닙니다 —
+      //    그래서 사유 하나로 화면을 비우면 «도착한 답»까지 같이 지웁니다.
+      if (view.censusRows.length) this.root.appendChild(this._censusTable(view.censusRows));
       return view;
     }
 
@@ -236,13 +344,9 @@ export class LedgerSourcesPanel {
       tr.setAttribute('data-source', r.source);
       tr.setAttribute('data-state', r.state);
 
-      const tdName = doc.createElement('td');
-      tdName.appendChild(this._line('ledger-sources-name', r.source));
-      // 보조 줄 — 일곱째 칸 대신입니다
-      const sub = this._line('ledger-sources-sub',
-        `translator_ver ${r.translatorVer} · atoms_deduped ${r.atomsDeduped}`);
-      tdName.appendChild(sub);
-      tr.appendChild(tdName);
+      // 보조 줄과 인구조사가 이름 칸 «안»에 삽니다 — 일곱째 칸 대신입니다
+      tr.appendChild(this._nameCell(r.source, r.census,
+        `translator_ver ${r.translatorVer} · atoms_deduped ${r.atomsDeduped}`));
 
       // 🔴 서버의 낱말 그대로. `data-state` 로 나가지만 «색은 없습니다».
       tr.appendChild(this._td(r.state));

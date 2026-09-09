@@ -248,7 +248,7 @@ const FLOORS = new Map([
   // -- the server keeps 'could not read' and 'nothing ran' apart on purpose -- and the four
   // states stay four rather than folding into normal/warning/error, because the server never
   // said which of them is bad and a screen deciding that would be inventing a judgement.
-  ['ledger_sources_panel_harness.mjs', 62],
+  ['ledger_sources_panel_harness.mjs', 82],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
@@ -1214,7 +1214,7 @@ const FLOORS = new Map([
   //    「커서 앞」 note went with the words they were about. Three took their place -- the
   //    remainder is READ and never computed -- so the file scores a smaller contract, not
   //    the same contract more weakly. A floor lowered without that sentence is a retreat.
-  ['source_backlog_harness.mjs', 23],
+  ['source_backlog_harness.mjs', 32],
   // New 2026-09-08 with C-43 ② (the map's cell query). Floor is the count it reports on the
   // commit that introduces it. 🔴 The first mutant is the round: without defer_total the load
   // makes the server COUNT the same filter over the same table before answering, and that

@@ -58,7 +58,7 @@ export function censusRefusal(census) {
 
 /**
  * @param {object} census `sources[].census`, 서버가 준 그대로
- * @returns {{name: string, text: string}[]} 칸 넷. 안 센 칸은 `text` 가 «빈 문자열»
+ * @returns {{name: string, text: string, method: string}[]} 칸 넷. 안 센 칸은 `text` 가 «빈 문자열»
  */
 export function backlogCells(census) {
   const src = census && typeof census === 'object' ? census : {};
@@ -66,16 +66,21 @@ export function backlogCells(census) {
     // ⚠️ 「키가 있나」로 봅니다. 참/거짓으로 보면 «0 이 사라집니다» — 그리고 0 은 이 화면이
     //    가장 말하고 싶어 하는 답(「다 돌았다」)입니다.
     const box = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;
-    if (!box || typeof box !== 'object') return { name, text: '' };
+    if (!box || typeof box !== 'object') return { name, text: '', method: '' };
+    // 🔴 「어떻게 잰 수인가」는 «수와 같이» 나릅니다. `count(*)` 와 `pg_class.reltuples` 는
+    //    같은 픽셀로 그리면 안 되는 두 사실이고, `≈` 는 그중 «추정이라는 것»만 말합니다 —
+    //    «무엇으로» 쟀는지는 서버 낱말 그대로 실려야 조작자가 그 수를 믿을지 정합니다.
+    //    ⚠️ 다섯째 칸을 만들지 «않습니다» — 칸이 아니라 그 칸에 «붙는» 사실입니다.
+    const method = box.method == null ? '' : String(box.method);
     const count = Number(box.estimate);
-    if (!Number.isFinite(count)) return { name, text: '' };
+    if (!Number.isFinite(count)) return { name, text: '', method };
     // 🔴 `exact` 가 «명시적으로 거짓»일 때만 표시합니다. 키가 없으면 「말 안 함」이고,
     //    말 안 한 것을 「추정」으로 그리는 것도 지어내는 것입니다.
     const mark = box.exact === false ? ESTIMATE_MARK : '';
-    return { name, text: `${mark}${count}` };
+    return { name, text: `${mark}${count}`, method };
   });
   const at = src[MEASURED_AT];
-  cells.push({ name: MEASURED_AT, text: at == null ? '' : String(at) });
+  cells.push({ name: MEASURED_AT, text: at == null ? '' : String(at), method: '' });
   return cells;
 }
 
@@ -88,4 +93,20 @@ export function backlogCells(census) {
 export function hasBacklog(census) {
   if (censusRefusal(census)) return true;
   return backlogCells(census).some((cell) => cell.text !== '');
+}
+
+/**
+ * `GET /api/ledger/declaration` 의 봉투 -> `{소스 이름: census}`.
+ *
+ * 🔴 C-47, 기준 ④ 「같은 기능에 «두 경로» 없음」. 이 지도를 «두 화면»이 씁니다 — 탐색기의
+ *    인스펙터 한 줄과 대시보드의 소스 표. 각자 `body.sources` 를 풀면 서버가 그 칸의 이름을
+ *    바꾸는 날 «한쪽만» 빈 지도가 되고, 그것은 「안 쟀다」와 «같은 픽셀»이라 아무도 못 봅니다.
+ * ⚠️ 못 읽은 것은 «빈 지도»입니다 — 소스마다 「안 쟀다」이지 「세 봤더니 0」이 아닙니다.
+ *    그래서 여기서 «지어내지» 않습니다: census 키가 없는 행은 지도에 «안 들어갑니다».
+ */
+export function censusBySource(body) {
+  const rows = body && Array.isArray(body.sources) ? body.sources : [];
+  const bySource = {};
+  for (const row of rows) if (row && row.source && row.census) bySource[row.source] = row.census;
+  return bySource;
 }
