@@ -24261,3 +24261,63 @@ S-93 이 되돌아가는 것(본문을 다시 인라인)을 잡는 «구조적 �
 ```
 > 📌 **[09-09 16:38] 이 채널의 미답 질문: «둘»(16:35 그대로).** ① S-93 구조적 그물을 만들까요
 > ② 값이 바뀌는 정련 픽스처를 만들까요 — 둘 다 «각각 한 커밋»이고, 지시 없이는 안 만듭니다
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **S-91 설계를 «코드에 대고» 확정했습니다 — 자리 넷이 다 특정됐고, 판정 194 가 안 정한 것 «셋»이 나왔습니다(제 답 포함)** (09-09 16:44)
+
+```
+시각   09-09 16:44   ·   미커밋 0 · 미푸시 0 · 문법 키 `exclude_when` 은 저장소에 «0 건»(git grep) — 새 문법 맞습니다
+```
+
+## 기제 확인 — 판정 194 의 전제가 «전부 참»입니다
+```
+표지        ledger/source_preparation.py:47  SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"
+거르는 자리  :791~803  _assemble_prepared_frame 이 그 컬럼을 보고 행을 «떨구고» excluded_rows 에 «셉니다»
+술어        :151 _is_missing  ·  backfill.py:1403 count_rows_missing 이 «그것 + 공백 문자열»로 셉니다
+오늘 내는 쪽  mappers/ledger_v2_lot_event_role_mapper.py «하나»뿐 — 파이썬 준비기입니다
+🔵 그리고 출하 샘플이 이 구멍을 «자기 주석에» 적어 두고 있었습니다:
+   table_config.json.sample:900 「the only row-exclusion mechanism (`__source_row_excluded`)
+   is emitted by a preparer implementation -- the live config declares zero `source_preparers`」
+```
+
+## 착지 자리 «넷» (전부 실측 확인)
+```
+① 문법 허용   setup_bundle.py:1360  problems.exact(..., required=(...))  ->  optional=("exclude_when",)
+             🔵 exact 는 이미 optional/ignored 를 받습니다(:447) — 기존 소스 26 개 «무영향»
+② 검증       같은 함수에 exclude_when 검사: 목록 · 각 항목 {column:str, blank:True} ·
+             blank «만» 허용 · 컬럼이 relation 에 있어야(:1847 의 physical 집합이 그 자리)
+③ 계획       setup_registry.py:304 SourcePreparationPlan 에 필드 추가 -> :1174 에서 채움
+④ 실행       source_preparation.DirectJoinSourcePreparer.prepare_outputs(:426) 가
+             exclude_when 이 있으면 base_frame 에서 표지를 «계산해 붙임».
+             철자는 count_rows_missing 과 «같은 것»: _is_missing(v) or (str 이고 strip() 이 빈 값)
+```
+
+## 🔴 판정 194 가 «안 정한» 것 셋 — 제 답을 답니다. 다르면 한 줄 주십시오
+```
+㉠ 「출력은 선언과 «정확히 일치»」 계약과 부딪힙니다
+   _assemble_prepared_frame:749  set(outputs) != declared  ->  거절
+   즉 direct-join 이 표지를 내면 output_columns 에 «없어서» 거절됩니다
+   제 답: exclude_when 이 선언됐을 때 «프레임워크가» 허용 집합에 표지를 더한다.
+          운영자가 output_columns 에도 적게 하면 「두 줄」 DoD 가 깨집니다(적을 것이 둘이 됨)
+㉡ 「direct-join 이 읽는다」면 «다른 준비기»에 exclude_when 을 적으면 조용히 무시됩니다
+   그건 판정 194 가 막으려던 「두 경로」의 거울상입니다
+   제 답: 무시하지 말고 «거절»한다 — exclude_when 이 direct-join 아닌 준비기에 있으면
+          셋업이 이름 대어 거절. 동작을 새로 «만들지» 않으면서 구멍만 닫습니다
+㉢ 「공백 문자열」이 _is_missing 에 «없습니다»(:151 은 None/NaN 만)
+   제 답: count_rows_missing 이 이미 쓰는 «그 두 줄»을 그대로 씁니다 — 새 철자 아님.
+          다만 그 두 줄이 «두 곳»이 되므로, 공용 술어 하나로 빼서 둘 다 부르게 하겠습니다
+          (판정 194 의 「같은 함수」를 문자 그대로 지키는 방법입니다)
+```
+
+## 착수하지 «않았습니다» — 사유는 14:20 · 16:38 과 같습니다
+```
+S-91 의 최소 «닫힌» 커밋 = 문법 + 검증 + 계획 + 실행 + 스켈레톤 + 샘플 + 게이트 시험 여섯
+선언 시스템에서 그 절반만 착지하면 「검증은 되는데 아무도 안 읽는 키」 또는 그 반대가 됩니다 —
+제 기억에 「착지는 배선이 아니다」로 적혀 있는 바로 그 부류입니다
+```
+다음 호출은 위 ①~④ 를 그대로 짚어 시작하면 됩니다 — **재탐색 0**.
+
+> 📌 **[09-09 16:44] 이 채널의 미답 질문: «셋».** 위 ㉠㉡㉢ (전부 제 답이 있으니 «다를 때만» 답 주십시오)
+> 그리고 16:35 의 둘(S-93 구조적 그물 · 정련 픽스처)은 여전히 열려 있습니다.
