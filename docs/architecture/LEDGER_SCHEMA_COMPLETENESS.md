@@ -1641,3 +1641,124 @@ Q-철회를-사실로  「as-of 가 필요하면 철회가 «삭제»가 아니�
             🔴 이건 소품이 아닙니다 — 읽기 규칙 · 유니크 색인 · 소급 불가(이미 지운 것)까지 걸립니다.
             열려면 «판정»이고, 저는 여기서 크기만 적습니다
 ```
+
+---
+
+# D-14. S-112 준비 — 배치 후보 둘(A 상보 두 행 / B 한 행 두 끝)의 «선언·생성기·소급» (지시 09-10 00:20, 코드 0)
+
+> 소유자 한 줄(「운영 lot_event 에서 split 한 건 = 몇 행, 각 행의 parent_lot·child_lot 채움」)이 오기 «전»에
+> 재 둘 수 있는 것을 재 둡니다. 실행은 그 답 뒤입니다.
+
+## D-14-0. 출하 선언이 «오늘» 무엇을 말하나 (실측)
+```
+read   unit=group · group_by=[event_group_key] · identity=[event_group_key] · occurred_at=event_time
+prepare  lot-event-live-frame (파이썬) — 산출 {event_group_key, lot, slots, wafers, row_identity,
+         __source_event_incomplete, __source_row_excluded}
+map      lot-event-role (파이썬) · unit.kind = event   -> 매퍼가 «그룹 전체»를 봅니다
+```
+| 문장 | 술어 | when | 주어 키 | 목적어 키 |
+|---|---|---|---|---|
+| `descent` | `derived_from@1` | **없음(무조건)** | `child_lot` | `parent_lot` |
+| `first_sight_holder` | `register@1` | 없음 | `lot`(준비기 산출) | — |
+| `first_sight_item` | `register@1` | 없음 | `wafers`(준비기 산출) | — |
+| `split` | `split_from@1` | `event_type=split` | `child_lot` | `parent_lot` |
+| `merge` | `merged_into@1` | `event_type=merge` | **`lot_id`** | `parent_lot` |
+```
+🔴 결정적인 규칙 하나: 분자가 «그룹»이면 바인딩이 읽는 컬럼은 그 그룹에서 «값이 하나»여야 합니다 —
+   `roleframe._evaluate_binding` 이 빈 값에 `missing_binding_value`, 값이 둘이면 `ambiguous_binding_value`
+   로 «이름 대어» 거절합니다. `when` 쪽도 같은 성질입니다(`_unit_says`: 모든 행이 맞아야 말한다, 판정 195)
+```
+
+## D-14-1. 후보 A — «상보 두 행» (오늘 생성기의 모양)
+```
+모양   한 사건이 두 행: 부모 행(parent_lot 채움 · child_lot 빔) + 자식 행(child_lot 채움 · parent_lot 빔)
+결과   그룹 안에서 `child_lot` 도 `parent_lot` 도 «한 행에서 비어» 있습니다
+      -> `missing_binding_value` -> 그 분자 거절 -> **원자 0** (구현자 실측 `bad5801d` 와 같은 자리)
+🔴 선언만으로 되나  «안 됩니다». 되려면 「이 바인딩은 그룹의 «어느 행»에서 읽어라」를 적을 자리가 필요합니다
+   (예: 「parent_lot 은 그것이 «채워진» 행에서」). 그 칸이 «없습니다»
+=> 이것이 새 구멍이 «아니라» 이미 적힌 구멍입니다 — D-12 의 「분자 안 위치·짝짓기」(③),
+   D-8 의 ⓑ(체인에도 칸이 없음). S-112 는 그 축의 «첫 운영 사례»입니다
+```
+| 문장 | A 에서 어느 행이 말하나 |
+|---|---|
+| `descent` · `split` | 🔴 «말할 수 없음» — 주어(child)와 목적어(parent)가 서로 «다른 행»에 있습니다 |
+| `merge` | 🔴 같은 이유 (`lot_id` ↔ `parent_lot`) |
+| `first_sight_holder`/`_item` | ✅ 준비기 산출(`lot`·`wafers`)이라 그룹에서 하나로 접히면 말해집니다 |
+
+## D-14-2. 후보 B — «한 행이 두 끝» (자식 행에 `lot_id` + `parent_lot`)
+```
+모양   split 한 건 = 자식마다 «한 행». 그 행이 자기(lot_id)와 부모(parent_lot)를 «둘 다» 듭니다
+결과   바인딩이 읽는 컬럼이 그 그룹에서 «값 하나» -> 다섯 문장이 전부 풉니다
+✅ 선언만으로 됩니다 — 국소(분자 하나)·무계산(투영뿐) 규칙 안입니다
+```
+| 문장 | B 에서 어느 행이 말하나 |
+|---|---|
+| `descent` | 자식 행 (child ← ? · parent ← `parent_lot`) — **주어 컬럼을 `lot_id` 로 바꿔야 합니다**(아래 diff) |
+| `split` | 자식 행 (`when event_type=split`) |
+| `merge` | 자식(=흡수되는) 행 (`when event_type=merge`) — 오늘 이미 `lot_id`↔`parent_lot` 입니다 |
+| `first_sight_holder`/`_item` | 자식 행 |
+
+### B 의 «선언 diff» (출하 샘플)
+```
+descent.subject.keys.lot   `child_lot`  ->  `lot_id`      (B 에서는 자식이 «자기 행»의 lot_id 입니다)
+split.subject.keys.lot     `child_lot`  ->  `lot_id`      (같은 이유. 목적어는 그대로 parent_lot)
+descent.when               «없음» -> 그대로 두면 parent_lot 이 빈 행(합병 아님·분할 아님)에서
+                           `missing_binding_value` 로 «분자 전체»가 거절됩니다
+                           -> `when: {}` 로는 못 하고, **`exclude_when`(행 제외) 또는 descent 에 when** 이 필요합니다
+                           🔴 여기서 갈림: 「부모 없는 행」이 그 소스의 행이 «아니다»면 exclude_when(S-91),
+                              「행이긴 한데 이 문장을 안 한다」면 when(S-99). **뜻이 다르므로 소유자 답이 정합니다**
+map.unit / read.unit       group 을 유지할 필요가 «없어집니다»(한 행이 한 사건) -> row 로 좁힐 수 있고,
+                           그러면 `lot-event-live-frame`·`lot-event-role` 파이썬 둘이 «필요 없어집니다»(S-100 ⓑ 와 만납니다)
+```
+
+### A 의 «선언 diff»
+```
+없습니다 — 적을 칸이 없기 때문입니다(D-14-1). A 를 고르면 그것은 «선언 작업»이 아니라
+「분자 안 행 선택」 칸을 «만드는» 라운드입니다(구멍 ③ · 새 문법)
+```
+
+## D-14-3. 생성기 diff — 두 후보 «공통»으로 먼저 걸리는 것 하나
+```
+오늘   `generate_source_rows.py --source lot_event` 는 «거절»합니다:
+      「relation 'lot_event' does not declare these columns, and the source reads them:
+        event_group_key, lot, slots, wafers, row_identity, __source_event_incomplete」
+왜    그 여섯은 «준비기 산출»입니다. 표가 그것을 선언할 이유가 «없습니다» — 준비기가 만듭니다
+diff  생성기가 「소스가 읽는 컬럼」이 아니라 「관계가 «가진» 컬럼」을 채우도록 좁혀야 합니다.
+      A·B 어느 쪽을 골라도 이 한 줄이 «먼저»입니다
+🔴 그리고 제 앞선 보고를 정정합니다  D-8·10⁷ 계획에서 저는 이 거절의 이유를
+      「출하 카탈로그의 lot_event 는 컬럼이 «0» 이다」로 적었습니다. **틀렸습니다** —
+      카탈로그는 여덟(+row_id)을 «선언합니다»(child_lot · event_time · event_type · lot_id ·
+      parent_lot · slotnumbers · txn_seq · waferids). 제가 «날것 dict 의 `columns` 키»를 읽었는데
+      날것의 철자는 `column_types` 이고, `columns` 는 제품 어댑터가 «만드는» 이름입니다
+      -> S-85 와 «같은 계측기 오류»이고, D-9 에 그 경고를 쓴 사람이 저입니다. 두 번 쓴 것을 여기서 무릅니다
+```
+```
+A 의 추가 diff   상보 두 행을 만들려면 «행마다 다른 컬럼 집합»을 써야 합니다(부모 행 / 자식 행).
+                오늘 생성기는 「선언된 컬럼 전부를 매 행에 채운다」라 그 모양이 «안 나옵니다»
+B 의 추가 diff   한 행에 lot_id + parent_lot + event_type 을 채우면 됩니다 — 오늘 생성기의 «채우는 방식»
+                그대로입니다(값만 짝지으면 됩니다). 즉 B 는 생성기 쪽 변경이 «작습니다»
+```
+
+## D-14-4. 소급(④) — 오늘의 원장 실측
+```
+lot_event 원자   **2,323**   (register 1,877 · derived_from 446)
+                🔴 `split_from` · `merged_into` = **0**. 다섯 문장 중 둘이 오늘 «한 번도 말해진 적 없습니다»
+소스 행          3,633
+소급의 뜻        선언을 바꾸면 그 소스의 원자가 «철회 후 재작성»됩니다 — 오늘 기준 2,323 개.
+                A·B 어느 쪽이든 이 수는 같습니다(선언이 바뀌므로)
+🔵 그런데 «되돌아올» 수는 다릅니다 — B 는 split/merge 가 처음으로 말해지므로 원자가 «는다»,
+   A 는 (칸을 만들기 전엔) 여전히 0 입니다
+⚠️ 이 수는 «이 박스»의 것입니다. 운영 lot_event 의 행 수·사건 수는 제가 모릅니다 —
+   소유자 한 줄이 그것도 정합니다
+```
+
+## D-14-5. 그래서 «오늘 말할 수 있는 것»
+```
+① B 는 «선언만으로» 됩니다(국소·무계산 안). diff 는 위 넷 — 주어 컬럼 둘 · descent 의 조건 하나 · unit 좁히기
+② A 는 «선언으로 안 됩니다». 그것은 「분자 안의 행 선택」이라는 «없는 칸»이고, 이미 적힌 구멍입니다
+   (D-12 짝짓기·위치 ③ / D-8 ⓑ). A 를 고르는 것은 «문법을 하나 늘리는» 결정입니다
+③ 어느 쪽이든 생성기는 「관계가 가진 컬럼만 채운다」로 한 줄 좁혀야 합니다
+④ 소급은 2,323 원자. split/merge 가 «0 → 처음»이 되는 것은 B 에서만입니다
+🔴 소유자 답이 정하는 것: 운영에서 split 한 건이 «몇 행»인가. 그것이 A 냐 B 냐를 정하고,
+   B 라면 descent 의 「부모 없는 행」이 «제외»(S-91)인지 «말 안 함»(S-99)인지도 같이 정합니다
+```
