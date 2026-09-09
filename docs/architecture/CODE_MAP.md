@@ -3574,6 +3574,27 @@ outbox LISTEN/NOTIFY 소비 → 체인 룰 매칭 → 맵퍼 실행 → 파생 �
 | `server/mappers/*` (gitignored) | 사용자 커스텀 체인 맵퍼 — **전수 Grep 시 반드시 포함**. ⚠️ **`paths.py`가 의도적으로 다루지 않는 트리**(데이터가 아니라 코드 — `sys.path`의 패키지로 해석) |
 | `server/config/*.json` (gitignored) | table_config·chain_rules·enrichment_rules·ontology_mapping·🆕 **virtual_join_rules**(v2 — `.sample`은 tracked) 등 사용자 설정. 실값을 이 문서에 옮겨 적지 말 것 — 구조만 기술한다.<br>🆕 **[`4e06eec`] `virtual_join_rules.json`**(`.sample` 40줄 tracked) — 선언 1건은 왼쪽 테이블·오른쪽 테이블·양쪽 조인 컬럼·노출 컬럼 목록으로 이뤄진다. **승인은 이 파일이 아니라 `pg_index`가 준다**([§5-C](#5-c-2026-07-31-신설-서버-모듈-2종)).<br>**2026-07-29에 추가된 선언 키 2종(구조만)**: `ingestion_settings.json`의 ~~**`auto_register_map_meta`**~~(⚰️ S-38 에서 손잡이째 사라졌다 — `.sample` 에서도 뺐다) · `transfer_plan_config.json`의 `stages.*.source.**`transfer_log`**에 문자열 `"none"`**을 허용(7c — "전사 기록 없음"의 **선언**. 문서 키 `__transfer_log_none_comment`). 둘 다 `.sample`에 주석과 함께 tracked |
 
+### 6-0. 운영 도구의 «문» — `python -m ledger` · `python -m chain` (S-109 신설)
+
+> 소유자: 「스크립트 이름 몰라도 되게 `python -m` 처럼, 체인 리플레이도」
+
+```
+python -m ledger                   있는 도구 목록
+python -m ledger backfill  [옵션]   -> ledger/backfill.py                 main(argv)
+python -m ledger restamp   [옵션]   -> scripts/ledger_restamp_cursor.py   main(argv)
+python -m ledger census    [옵션]   -> ledger/census_cli.py               main(argv)  🆕
+python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main(argv)
+```
+🔴 **문은 아무것도 구현하지 않는다.** 부명령은 위 모듈을 import 해 `main(argv)` 를 «부를 뿐»이고,
+나머지 명령줄은 «그대로» 넘긴다 — 그래서 `python -m ledger backfill --help` 는 **그 도구의 설명서**이지
+여기 적은 요약이 아니다(요약은 도구가 바뀌는 순간 낙는다). 목록은 `TOOLS` dict 하나.
+⛔ **입구가 없는 것은 감싸지 않고 이름만 대다** — `scripts/product_door.py` 는 `main` 이 없는 헬퍼 모음이라
+부명령이 «아니다». 여기서 CLI 를 지으면 어느 도구에도 없는 둘째 철자가 생긴다.
+⚠️ **문은 도구를 «옮기지 않는다»** — `chain/` 패키지는 입구만 들고 있고 워커·리플레이 본체는
+제자리(`chain_ingestion_worker.py` · `chain_replay.py` · `scripts/chain_replay_cli.py`)에 그대로 있다.
+시험: **`server/tests/test_one_door_per_family_calls_the_tool_that_exists.py`**(부명령마다 모듈이
+실제로 `main` 을 갖는가 · 인자가 그대로 가는가 · `--help` 가 도구에게 가는가 · 모르는 이름은 거절 2).
+
 ### 6-1. 설치·개발환경 스크립트 (`8e80fcc`·`4ba13ae`·`47c20f3` 신설)
 
 | 파일 | 책임 |
