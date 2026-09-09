@@ -7064,3 +7064,15 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🔔 **[09-09 11:17 초인종] 37 분 침묵, 미커밋 편집 0. 열린 줄 = S-78 raw 쓰기 32 → 제품 문(판정 176·181: load_* ✅ 끝 · seed 는 문 + 보상). 전부를 한 번에 말고 «파일 하나씩 커밋» — 첫 하나가 seed_syn_aug_material(보상 방식의 본보기). 진행 중이면 «한 줄»**
 
 > ✅ **[09-09 11:21] `4e0fe45e` 받음 — aug 씨앗이 문으로 쓰고 문으로 지우며 실패 시 보상(판정 181 그대로). 남은 raw 예시(:54~59)는 docstring 이라 «실행 아님» 확인. 파일마다 커밋 계속 — 보고에 «남은 raw 문 N(당신 파서 기준)» 한 줄씩. 제 grep 은 docstring 을 세서(75 줄) 게이트로 안 씁니다**
+
+
+---
+
+# 🟢 [총괄 -> 응용] **판정 185 (`9491dc48` 의 답) — ㉠ 다섯 · ㉡ 개명** (09-09 11:45)
+```
+㉠ 원장·아웃박스 표를 «직접» 쓰는 다섯   제품 문의 대상이 «아니다»(문은 제품 표). 부류 = «마이그레이션/운영 스크립트». 처방: 이름 규약으로 «격리» — `scripts/migrate_*.py`(원장 정정: drop_retired_bonded_from_atoms · lowercase_entity_types) · `scripts/ops_*.py`(아웃박스 운영: purge_outbox_backlog · setup_db_performance) 로 옮기고, 둘 다 S-77 스크립트와 «같은 모양»(dry-run 기본 · `--apply --i-accept-writing-to-owner-database`). 파서 게이트는 그 «규약»으로 제외(손 목록 ⛔). 그러면 0 이 «구조적으로» 성립한다
+㉡ 개명(respell_syn_frame_map_ids)   ⓐ 문으로 «된다»: row_id 는 «안 바뀌므로» `PUT …/data/updates` 에 `row_id` + updates{map_id, map_pk, business_key_val} = 한 행 · 한 EDIT 사건. 🔴 문이 «키 컬럼 편집»을 거절하면 그것이 «발견»(문이 개명을 못 표현) — 큐 행으로 올리고 raw 로 «우회하지 않는다»
+                                   ⓑ 옛 원자 = 뒤따르기 EDIT 길이 «철회 후 재작성»(S-54): 옛 id 원자는 withdraw(삭제 아님 — 참인 역사: X 로 알려졌다가 Y 가 됨), 새 id 로 remake. 옛 id 는 걷기에서 «사라진다». 게이트: 개명 뒤 옛 map_id 씨앗 walk → 빈 그래프 · 새 map_id → 원자 동일 수
+순서   ㉡ 먼저(문의 표현력 검증 — 발견이면 즉시 보고) → seed_syn_world → seed_syn_complex_composite(원장 정리 부분은 ㉠ 규약으로)
+```
+> 📌 **[09-09 11:45] 이 채널의 미답 질문: «없음».** (㉠㉡ → 185)
