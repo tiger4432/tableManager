@@ -44,82 +44,16 @@ SCRATCH_SCHEMA = "assy_ledger_l1_pytest" + (
 
 
 # --------------------------------------------------------------------------- isolation
-def _declared_qa_database():
-    """The QA database `dev_env` declares, or `None` if that module cannot say.
-
-    ⚠️ READ, NOT INVENTED. The URL comes from `scripts/dev_env/devenv.py`, which is
-    where this project says what its isolated database is; hard-coding one here would be a
-    second declaration of the same fact, and the day someone moves it the tests would point
-    at whatever used to be there.
-    """
-    try:
-        import importlib.util
-
-        here = os.path.dirname(os.path.abspath(__file__))
-        spec = importlib.util.spec_from_file_location(
-            "_devenv_declaration",
-            os.path.join(here, "..", "scripts", "dev_env", "devenv.py"))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        url = getattr(module, "QA_DB_URL", None)
-    except Exception:
-        return None
-    return url if isinstance(url, str) and url.startswith("postgres") else None
-
-
-def _resolve_url():
-    import db_safety
-    from database.database import DEFAULT_PG_URL
-
-    url = os.environ.get(PG_TEST_URL_ENV) or None
-    if not url:
-        candidate = os.environ.get(db_safety.TEST_DATABASE_URL_ENV) or ""
-        url = candidate if candidate.startswith("postgres") else None
-    if not url:
-        # 🔴 A WHOLESALE SKIP IS A FALSE GREEN, AND THAT IS WHAT THIS FILE WAS (S-104,
-        # 판정 215). Forty proofs of the things ONLY PostgreSQL can prove - partitions,
-        # jsonb, CHECK, ON CONFLICT - reported "skipped" on every run because nobody had
-        # exported a variable, so nothing here had been executed since the declaration
-        # grammar changed under it. Measured 2026-09-09, the first time it ran: 25 red.
-        #
-        # So the LAST resort is the database `scripts/dev_env/devenv.py` already declares for
-        # this purpose. It is named there, it is not production, and `db_safety` below still
-        # has to approve it - this only stops the suite from staying quiet when a test
-        # database exists and no one said so.
-        url = _declared_qa_database()
-    if not url:
-        return None, (
-            f"no PostgreSQL test database declared. Set {PG_TEST_URL_ENV} to an "
-            f"ISOLATED database, e.g. "
-            f"{PG_TEST_URL_ENV}=postgresql://postgres:...@localhost:5432/assy_qa")
-
-    violations = db_safety.check_test_database(url, production_url=DEFAULT_PG_URL,
-                                               opt_in=url)
-    if violations:
-        return None, f"{PG_TEST_URL_ENV} is not usable: {violations[0]}"
-
-    from sqlalchemy.engine import make_url
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "postgresql":
-        return None, f"{PG_TEST_URL_ENV} is not a PostgreSQL URL"
-    if (parsed.database or "") == "assy_manager":
-        return None, "refusing to run schema DDL against 'assy_manager'"
-    return url, None
-
-
-@contextlib.contextmanager
-def _declared_as_test_database(url):
-    import db_safety
-    key = db_safety.TEST_DATABASE_URL_ENV
-    previous = os.environ.get(key)
-    os.environ[key] = url
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = previous
+# TOMBSTONE: THE GATE MOVED OUT (S-115). `_resolve_url`, `_declared_qa_database` and the
+# `db_safety` context manager lived here AND in `test_ledger_v2_pg.py`, and the copies had
+# already drifted: this one grew the `dev_env` fallback when S-104 measured what a wholesale
+# skip was hiding, the other did not, and so the same suite decided differently about the
+# same machine. A safety gate with two spellings has a lenient one.
+from tests.support.isolated_pg import (       # noqa: E402
+    PG_TEST_URL_ENV,
+    declared_as_test_database as _declared_as_test_database,
+    resolve_url as _resolve_url,
+)
 
 
 #: \U0001f534 THE SUBJECT OF THESE PROOFS IS THE STORAGE LAYER (판정 219): partitions, jsonb,
@@ -458,8 +392,15 @@ def count(engine, where="TRUE", params=()):
 
 
 # ----------------------------------------------------------------------- idempotency
-def test_the_cursor_makes_a_second_run_read_nothing(ledger):
-    """Net 1. The brief's risk 1: a re-run must not duplicate atoms."""
+def test_a_second_run_reads_nothing_and_duplicates_no_atom(ledger):
+    """Net 1. The brief's risk 1: a re-run must not duplicate atoms.
+
+    ⚰️ IT WAS CALLED `test_the_cursor_makes_a_second_run_read_nothing`, and the cursor is
+    not what makes it (S-115). Since S-76 the live path drains through events and asks
+    `rows_missing_from_the_index` which rows it has not translated; no position is written
+    for any source. The BODY never touched a cursor - only the name did - so what changed
+    here is a sentence that had stopped being true, on the test other proofs now point at.
+    """
     first = run(ledger)
     assert first["inserted"] > 0
     total = count(ledger)

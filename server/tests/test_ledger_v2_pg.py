@@ -7,7 +7,6 @@ catalog before compiling the snapshot.
 """
 from __future__ import annotations
 
-import contextlib
 import copy
 from datetime import datetime, timezone
 import json
@@ -19,8 +18,7 @@ from sqlalchemy import Column, DateTime, String, create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
 
-from ledger import backfill, gate, schema
-from ledger.setup import DEFAULT_ONTOLOGY_ROOT
+from ledger import gate, schema
 from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
 from ledger.setup_bundle import validate_bundle
@@ -40,51 +38,23 @@ from test_ledger_setup_registry import trusted_implementations
 import virtual_join_config
 
 
-PG_TEST_URL_ENV = "ASSY_PG_TEST_DATABASE_URL"
+# TOMBSTONE: THE GATE MOVED OUT (S-115). This file carried its own `_resolve_url` and its
+# own `db_safety` context manager, and they were the copy WITHOUT the `dev_env` fallback -
+# so every proof here reported "skipped" on a machine where the other suite ran, and stayed
+# quiet through a `backfill.run` call in the retired v1 shape and a call to
+# `ledger_trace.trace`, which does not exist. One gate now answers for both.
+from tests.support.isolated_pg import (       # noqa: E402
+    PG_TEST_URL_ENV,
+    declared_as_test_database as _declared,
+    resolve_url as _resolve_url,
+)
+
 RUN_TOKEN = f"{os.getpid()}_{os.environ.get('PYTEST_XDIST_WORKER', 'gw0')}"
 SCRATCH_SCHEMA = f"assy_ledger_v2_s6_{RUN_TOKEN}"
 SOURCE_TABLE = f"v2s6_input_rows_{RUN_TOKEN}"
 RIGHT_TABLE = f"v2s6_reference_rows_{RUN_TOKEN}"
 UNIQUE_INDEX = f"uq_v2s6_reference_{RUN_TOKEN}"
 NOW = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
-
-
-def _resolve_url():
-    import db_safety
-    from database.database import DEFAULT_PG_URL
-
-    url = os.environ.get(PG_TEST_URL_ENV) or None
-    if not url:
-        candidate = os.environ.get(db_safety.TEST_DATABASE_URL_ENV) or ""
-        url = candidate if candidate.startswith("postgres") else None
-    if not url:
-        return None, f"no isolated PostgreSQL declared in {PG_TEST_URL_ENV}"
-    violations = db_safety.check_test_database(
-        url, production_url=DEFAULT_PG_URL, opt_in=url)
-    if violations:
-        return None, f"declared PostgreSQL is unsafe: {violations[0]}"
-    from sqlalchemy.engine import make_url
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "postgresql":
-        return None, "declared test database is not PostgreSQL"
-    if (parsed.database or "") == "assy_manager":
-        return None, "refusing production database assy_manager"
-    return url, None
-
-
-@contextlib.contextmanager
-def _declared(url):
-    import db_safety
-    key = db_safety.TEST_DATABASE_URL_ENV
-    previous = os.environ.get(key)
-    os.environ[key] = url
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = previous
 
 
 def _bundle():
@@ -493,49 +463,26 @@ def test_postgres_right_unique_index_is_used_by_the_join_probe(clean_pg_v2):
     assert "Index Scan" in plan
 
 
-def test_stage7_manifest_selected_lot_event_uses_existing_store_cursor_transaction(
-        clean_pg_v2):
-    case = clean_pg_v2
-    with case["runtime"].begin() as connection:
-        connection.execute(text("""
-            CREATE TABLE lot_event (
-                lot_id TEXT NOT NULL,
-                event_time TIMESTAMPTZ NOT NULL,
-                txn_seq TEXT PRIMARY KEY,
-                event_type TEXT NOT NULL,
-                parent_lot TEXT,
-                child_lot TEXT,
-                slotnumbers TEXT,
-                waferids TEXT
-            )
-        """))
-        connection.execute(text("""
-            INSERT INTO lot_event
-                (lot_id, event_time, txn_seq, event_type, parent_lot,
-                 child_lot, slotnumbers, waferids)
-            VALUES
-                ('P', :event_at, 'R1', 'split', '', 'C', '1:2', 'W1:W2'),
-                ('C', :event_at, 'R2', 'split', 'P', '', '3', 'W3')
-        """), {"event_at": NOW})
-
-    first = backfill.run(
-        case["runtime"], {}, source="lot_event", fetch_rows=100,
-        max_batches=1, ontology_root=DEFAULT_ONTOLOGY_ROOT)
-    second = backfill.run(
-        case["runtime"], {}, source="lot_event", fetch_rows=100,
-        max_batches=1, ontology_root=DEFAULT_ONTOLOGY_ROOT)
-
-    assert first["molecules"] == 1
-    assert first["inserted"] == 10
-    assert first["cursor"]["txn_seq"] == "R2"
-    assert second["rows_read"] == 0
-    assert second["inserted"] == 0
-    with case["runtime"].connect() as connection:
-        assert connection.execute(text(
-            f"SELECT count(*) FROM {schema.LEDGER_TABLE}"
-        )).scalar() == 10
-        cursor = connection.execute(text(
-            f"SELECT cursor_value FROM {schema.CURSOR_TABLE} "
-            "WHERE source='lot_event'"
-        )).scalar_one()
-    assert cursor["txn_seq"] == "R2"
+# TOMBSTONE: `test_stage7_manifest_selected_lot_event_uses_existing_store_cursor_transaction`
+# - died of four things at once (S-115), and each on its own would have been enough.
+#
+# 1. It called `backfill.run(engine, {}, source=...)`, the v1 shape with a config dict as
+#    the second positional. `run` has taken no declaration argument since S-76, so this
+#    raised `TypeError` before reaching an assertion - unseen, because this whole module
+#    skipped unless a variable was exported. That false green is what S-115 closed.
+# 2. It read `DEFAULT_ONTOLOGY_ROOT`, the deployment's OWN gitignored declaration. A proof
+#    that drives the live root measures whether THIS machine has adopted something (판정
+#    219 / 212); the shipped declaration is what a proof may lean on.
+# 3. It asserted the cursor row's `cursor_value`. Nothing writes a position any more
+#    (S-76), and the registry row exists for the fingerprint, the census and the refusal
+#    breakdown (S-113).
+# 4. Its fixture seeded a lot SPLIT, which the shipped declaration cannot translate today -
+#    `descent` carries no `when`, so it is said for every row while a split's two rows each
+#    hold only one of `child_lot`/`parent_lot` (S-112). The rows it needed could only come
+#    from a declaration of this file's own invention.
+#
+# WHAT IT ACTUALLY PROVED, AND WHERE THAT LIVES NOW: that a real `backfill.run` over real
+# PostgreSQL lands atoms and that running it again reads nothing and inserts nothing.
+# `test_ledger_l1_pg.py::test_a_second_run_reads_nothing_and_duplicates_no_atom` asserts
+# exactly that, on a SHIPPED row source, against the shipped catalogue - which is the same
+# proof with none of the four faults above.
