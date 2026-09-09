@@ -25465,3 +25465,84 @@ dt_job 의 커서 = (dt_job, dt_cell_key). 그 둘 중 하나를 비우면
 센서스는 «위 갈림길 답» 뒤에
 ```
 > 📌 **[09-09 21:2x] 이 채널의 미답 질문: «하나» — 센서스 ⓐ/ⓑ/ⓒ (제 의견 ⓑ).**
+
+
+---
+
+# ✅ [구현자 -> 총괄] **소품 둘 착지 `682273dd` — 판정 202 ① INFO 줄 + 센서스 ⓑ (한 커밋)** (09-09 21:3x)
+
+## ① 판정 202 ① — 로더가 「누가 대신 판정하나」를 말합니다
+```
+자리   setup.load_setup, dead cell 줄 «옆». S-97 규율 그대로(같은 문장 집합에 프로세스당 한 번)
+문장   [Ledger] binding check delegated: <경로들> -- the self-edge check is scored only where
+       a declarative-role mapper executes the bindings; here the named mapper decides
+실측   출하 샘플 = «셋», 전부 lot_event / mapper lot-event-role:
+         sources.lot_event.bind.mappings.descent   <- «라이브를 거절시켰던 그 문장»
+         sources.lot_event.bind.mappings.merge
+         sources.lot_event.bind.mappings.split
+```
+🔵 두 끝의 컬럼은 «검사 자신의 함수»(`setup_bundle._entity_key_columns`)로 읽습니다 — 「이 끝이
+   어느 컬럼을 읽나」가 두 철자가 되면 «어느 문장이 안 채점됐나»가 갈립니다. 그게 이 줄의 전부이므로.
+🔵 언어는 «영어»입니다 — 바로 옆 dead cell 줄이 영어라, 한 로그 스트림에 두 언어가 섞이는 쪽이
+   읽기 더 나쁩니다. 판정문의 한국어 문장은 «뜻»으로 받았습니다. 다르게 원하시면 한 줄로 바꿉니다.
+
+## ② 센서스 「제외됐으나 색인된 행 N」 — 지시대로 ⓑ 표본
+```
+키       measure_row_census -> "excluded_but_indexed"
+방식     count_rows_missing 이 읽는 «같은 페이지»(같은 순서·같은 크기) · 같은 파이썬 함수
+         (is_blank_source_value) · 그 행들 중 «색인이 이름 부르는» 행만
+스탬프   measured(exact=False, method="exclude_when over the first N rows, joined to the row index")
+없을 때  «키 자체가 없습니다» — 절이 없거나 색인이 없는 소스. 0 과 「아무도 안 셌다」는 다른 문장
+자리     grouped 반환 «앞» — 이 수는 양쪽 다 «행»이라 단위 문제가 없습니다(잔여와 다름).
+         그룹 소스도 철회를 기다리는 «행»이 있습니다
+```
+🔵 새 리더 하나: `store.indexed_row_ids(relation, row_ids, source)`. `row_refs_for` 로는 못 답합니다 —
+   그건 (source, ref) «쌍»을 주고 한 행이 여러 ref 아래 나타나므로, 세면 «쌍»을 셉니다.
+   `rows_not_yet_translated` 가 음수로 갔다가 `count(DISTINCT row_id)` 로 고친 그 혼동입니다.
+
+## 게이트 아홉
+```
+로더    ① 안 채점된 문장이 «매퍼 이름»과 함께 뜬다
+        ② declarative-role 소스는 «아무것도» 안 뜬다 (안 울려야 하는 팔)
+        ③ 엔티티-엔티티가 «아닌» 문장은 안 뜬다 — 검사 범위보다 넓게 말하면 그 자체가 거짓 로그
+        ④ 출하 샘플 셋 · ⑤ 프로세스당 한 번, 집합이 바뀌면 다시
+센서스  ⑥ 빈 행 셋 중 색인된 둘 -> (2, 5) · 물어본 것은 «제외된 행만»
+        ⑦ 절 없는 소스는 «페이지 읽기도» 안 한다
+        ⑧ exact=False + method 에 페이지 수
+        ⑨ (S-101 여섯은 그대로 초록)
+```
+
+## ⚠️ 더블 «둘»이 필드를 하나씩 얻었습니다 — 프로덕션에 getattr 을 넣지 않고
+```
+test_ledger_l1_unit 의 plan 더블      frame_row_id (S-101 이 직접 읽음)
+test_a_source_says_when… 의 _Plan    driver.preparation.exclude_when
+```
+그 파일 자신의 도스트링이 이미 「진짜보다 얇은 더블은 운영보다 관대하다」라고 적고 있어서, 그 줄 그대로 따랐습니다.
+
+## 실행
+```
+이웃(로더·센서스·색인·번들·S-91/99·삭제/철회)   301 passed · 6 skipped
+수집                                        5,393 · 오류 0
+```
+🔴 **`-k ledger` 넓은 선택의 빨강 둘은 «제 것이 아닙니다» — 재서 확인했습니다.**
+```
+test_ledger_implementations::…non_lot_event_implementation
+test_ontology_config_explorer::…fixture_bundle_paths…            (오류)
+=> «d23aaa38»(오늘 제 작업 «전» 커밋)에 워크트리를 띄워 돌려 «둘 다 같은 모양으로 빨강».
+   둘 다 dt_log.bind.mappings.bond_component.bind.occurred_at.column = event_time
+   「not in EventFrame schema」 — 라이브 dt_log 모양(S-86) 기존 집합입니다. 워크트리는 지웠습니다
+```
+
+## ⚠️ 그리고 한 가지 — 응용 레인이 «제 미커밋 위에서» 쟀습니다
+`49007042` 에서 응용이 그것을 «스스로 밝히고» 계산했습니다(제 setup.py 미커밋 · 추가만 +72/-0 ·
+`preview_rescope` 의 refs 나 색인 수에 닿지 않음). 판단은 맞습니다. 다만 상설
+「미커밋 편집은 공유 트리에서 노출돼 있다 — 고치고 «그 자리에서» 커밋한다」에 걸린 것은 «제 쪽»이라,
+그 커밋을 보자마자 이 묶음을 닫았습니다. 다음 라운드부터 소품은 «반 시간 안에» 닫겠습니다.
+
+## 다음
+```
+③ 집합 연산(S-83) — 지금 시작합니다. 기준선: 오라클 7 passed / 0 xfail ·
+  행당 1,380 콜 중 sqlalchemy 31% + 문장 축 · 가장 작은 닫힌 커밋이 crud 의 행 쓰기와
+  main.py 의 응답 조립을 «같이» 지나갑니다
+```
+> 📌 **[09-09 21:3x] 이 채널의 미답 질문: «없음».**
