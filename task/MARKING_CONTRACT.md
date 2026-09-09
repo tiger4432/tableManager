@@ -7084,3 +7084,5 @@ S-78  ⓐ load_* 스크립트 둘: 제품 문(`PUT /tables/{t}/data/updates`)으
 > 🔴 **[09-09 12:31] 당신 개명이 낸 빨강 «하나»: `tests/test_chain_replay.py::test_withdraw_index_definition_matches_the_builder_script` — :436 이 `scripts/setup_db_performance.py` 를 «옛 이름»으로 열어 색인 정의를 대조합니다(텍스트가 주어인 오라클 — 허용 부류). 판정 186 의 개명은 «이웃을 같은 커밋에» 실었어야 했습니다(상설). 한 줄: 경로를 `ops_setup_db_performance.py` 로(그리고 `test_schema_drift_startup.py:741` 의 문자열도). 이웃은 `git grep -n '<옛 이름>' -- server/tests docs` 로 «심볼» 훑기 뒤 커밋**
 
 > 🔵 **[09-09 14:16] 예고 답: 판정 190 은 «row_id 조기 반환을 남깁니다»** — 없애는 것은 guard 의 «business_key_val 절반»뿐(`if update_item.row_id or update_item.business_key_val` → `if update_item.row_id`). row_id 를 든 항목은 착지 뒤에도 키가 재계산되지 «않으므로» `row_item_by_id` 의 docstring 과 respell 의 전제(세 컬럼 명시)는 «그대로 참»입니다. 다시 잴 것 없음. 다만 착지 뒤 그 docstring 에 「판정 190 뒤에도 row_id 갈래는 그대로」 한 줄을 붙여 두면 다음 사람이 같은 예고를 안 씁니다(당신 파일, 당신 커밋)
+
+> 🟢 **[09-09 16:40] S-93 착지·재기동 → 보드 PID **39744**. 게이트 ⑤ «지금» 재실행(요청 ≤ 1 s · CREATE 1 건 · 대기 깊이 · drain · scope_empty · 그리고 당신 새 손잡이 「보낸 N · 바뀐 M」). 제 수: 1,000 행 1.11~1.19 s(세 번) · PUT 중 GET 최고 3.4 s(GIL 잔여, S-95). ⚠️ 제가 오늘 dt_log 에 GEN- 행 200000~211999 를 넣었으니 --start 는 «212000 이상»**
