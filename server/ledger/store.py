@@ -579,6 +579,27 @@ class LedgerStore:
             if own:
                 connection.close()
 
+    @staticmethod
+    def restamp_decision(stored, wanted):
+        """May this cursor's fingerprint string be moved, and why. ONE spelling (S-87).
+
+        Returns `("restamp"|"already"|"absent"|"refused", <reason or None>)`. The script and
+        the boot step both ask THIS, rather than each carrying an if-chain: two spellings of
+        「may it be moved」 is how one of them comes to move a cursor the other would refuse.
+
+        \u26d4 A v1-SHAPED CURSOR IS REFUSED BY NAME. Re-stamping it would hide its own gate
+        (`legacy_cursor_reset_required`, which reads `cursor_value`'s SHAPE) behind a
+        v2-looking string while the position stayed v1-shaped.
+        """
+        if stored is None:
+            return "absent", "no cursor row yet -- a first run writes the current string"
+        if stored == wanted:
+            return "already", None
+        if not str(stored or "").startswith("ledger-v2:"):
+            return "refused", (f"stored cursor is not a v2 cursor ({stored!r}); its shape "
+                               f"gate is a separate decision")
+        return "restamp", None
+
     def restamp_cursor(self, source, *, expect, translator_ver):
         """Swap ONE cursor's fingerprint string. Reads no source row, moves no position.
 

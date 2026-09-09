@@ -84,6 +84,18 @@ def _plain(value: Any) -> Any:
 _NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id"})
 
 
+def _is_unfilled(value: Any) -> bool:
+    """Nothing was declared here: absent, or an empty container.
+
+    \u26d4 `False`, `0` AND `""` ARE NOT UNFILLED. They are answers an author wrote, and a
+    fingerprint that dropped them would let `enabled: false` -> key removed pass as the same
+    declaration.
+    """
+    if value is None:
+        return True
+    return isinstance(value, (tuple, list, dict, frozenset, set)) and not value
+
+
 def _semantic_plain(value: Any) -> Any:
     if isinstance(value, _SealedRegistry):
         return {key: _semantic_plain(value[key]) for key in value}
@@ -91,11 +103,25 @@ def _semantic_plain(value: Any) -> Any:
         return {str(key): _semantic_plain(value[key])
                 for key in sorted(value, key=str)}
     if is_dataclass(value):
+        # \U0001f534 S-87 (grade 1). AN UNFILLED FIELD IS NOT IN THE MATERIAL, because the
+        # fingerprint has to close over the DECLARATION'S CONTENT and not over the
+        # descriptor's SHAPE. It used to walk `fields()` unconditionally, so adding or
+        # REMOVING a grammar key moved every source's hash even where no declaration used it:
+        # measured 2026-09-09, deleting `EntityTypeDescriptor.key_types` moved all 15
+        # fingerprints while neither the live config nor the sample declared one, and the
+        # operator's ledger sync stopped at yesterday's backfill until they were re-stamped
+        # by hand. A grammar generation that really does change atoms still moves every hash
+        # through `compiler_contract_version`, which is in the material by name.
+        #
+        # \u26a0\ufe0f THIS CONFLATES 「absent」 WITH 「empty」, DELIBERATELY. For every field in
+        # this material the two mean the same thing to a translator - no columns, no
+        # qualifiers, no clauses - and distinguishing them is what cost the stop.
         return {
             field.name: _semantic_plain(getattr(value, field.name))
             for field in fields(value)
             if not field.name.startswith("_")
             and field.name not in _NOT_ATOM_MATERIAL
+            and not _is_unfilled(getattr(value, field.name))
         }
     if isinstance(value, (tuple, list)):
         return [_semantic_plain(item) for item in value]
@@ -821,13 +847,23 @@ def source_cursor_fingerprint(
     # fail loudly at compile time rather than quietly stop applying and stop every cursor.
     #
     # ⚠️ REMOVING THESE MOVED EVERY FINGERPRINT ONCE, at the commit that did it -- the
-    # canonical JSON carries `"input_columns":[...]` (and `[]`: `_semantic_plain` keeps
-    # empty fields), so dropping the key changed the hash even where the value had not.
-    # That one-time stop is cleared with `scripts/ledger_restamp_cursor.py`, which moves
-    # the stored string and NOT the cursor position, so no atom is re-read or re-emitted.
-    for clause in (source["driver"]["preparation"]["preparer"],
-                   source["driver"]["mapper"]):
-        del clause["input_columns"]
+    # canonical JSON carried `"input_columns":[...]`, so dropping the key changed the hash
+    # even where the value had not. That one-time stop is cleared by
+    # `chain_ingestion_worker`'s boot re-stamp (S-87), which moves the stored string and NOT
+    # the cursor position, so no atom is re-read or re-emitted.
+    #
+    # 🔴 LOUD ON A RENAME, QUIET ON AN EMPTY VALUE, and the two halves are separate
+    # since S-87. The subscript used to be bare so that renaming this shape would fail at
+    # compile time rather than quietly stop applying and stop every cursor -- but S-87 made
+    # `_semantic_plain` DROP unfilled fields, so a source that declares no input columns no
+    # longer has the key at all and a bare `del` raised on it. `getattr` keeps the rename
+    # loud (AttributeError, naming the field) while the `pop` tolerates the absence that is
+    # now ordinary.
+    for descriptor, clause in (
+            (plan.driver.preparation.preparer, source["driver"]["preparation"]["preparer"]),
+            (plan.driver.mapper, source["driver"]["mapper"])):
+        getattr(descriptor, "input_columns")
+        clause.pop("input_columns", None)
     material: dict[str, Any] = {
         "compiler_contract_version": snapshot.compiler_contract_version,
         "setup_version": snapshot.setup_version,

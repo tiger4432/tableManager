@@ -1895,6 +1895,70 @@ def _ensure_ledger_schema_sync(db_session_factory):
         db.close()
 
 
+def _restamp_moved_fingerprints_sync(db_session_factory):
+    """Move the stored fingerprint of every cursor whose DECLARATION did not change.
+
+    \U0001f534 S-87, AND IT IS THE HALF THAT MAKES THE OTHER HALF SAFE. A cursor whose stored
+    string differs from the current one is REFUSED (`cursor_snapshot_reset_required`), which
+    is correct when the declaration moved and is a full stop when only the grammar did.
+    Measured 2026-09-09: removing one unused descriptor field moved all 15 fingerprints, the
+    operator's ledger stopped at the previous day's backfill, and it took a person running
+    `scripts/ledger_restamp_cursor.py --apply` by hand to start again. A landed change must
+    reach live WITHOUT that line, for the same reason S-88 exists three functions up.
+
+    \u26d4 THE POSITION IS NOT TOUCHED, and that is why this is safe to do unattended.
+    `restamp_cursor` writes `translator_ver` and nothing else - not `cursor_value`, not the
+    counters, not one atom - so the next batch reads the rows AFTER the unchanged position.
+    A reset or a rewind would re-read rows that are already in the ledger, and under a new
+    fingerprint they would land AGAIN rather than dedupe: on millions of rows, doubled.
+
+    \u26a0\ufe0f IT DECIDES NOTHING OF ITS OWN. `LedgerStore.restamp_decision` is the one
+    predicate, shared with the script, so a v1-shaped cursor is refused here exactly as it is
+    there rather than being quietly moved by the daemon that runs unattended.
+
+    Every move is NAMED in the log. A fingerprint that changes silently is a fingerprint
+    nobody can audit, and this runs on every boot.
+    """
+    from ledger.setup import load_setup
+    from ledger.setup_registry import cursor_translator_version
+    from ledger.store import LedgerStore
+
+    db = db_session_factory()
+    try:
+        setup = load_setup()
+        store = LedgerStore(db.get_bind())
+        read = store.connection()
+        try:
+            stored_rows = {source: store.read_cursor(read, source)
+                           for source in setup.snapshot.source_plans}
+        finally:
+            read.close()
+        moved, refused = [], []
+        for source in sorted(stored_rows):
+            existing = stored_rows[source]
+            wanted = cursor_translator_version(setup.snapshot, source)
+            stored = existing.get("translator_ver") if existing else None
+            verdict, reason = store.restamp_decision(stored, wanted)
+            if verdict == "refused":
+                refused.append(f"{source} ({reason})")
+                continue
+            if verdict != "restamp":
+                continue
+            if store.restamp_cursor(source, expect=stored, translator_ver=wanted):
+                moved.append(f"{source}: {stored} -> {wanted} "
+                             f"(position stays {existing.get('cursor_value')!r})")
+            else:
+                refused.append(f"{source} (row changed under us)")
+        if moved:
+            logger.info("[Ledger] re-stamped %d cursor(s) whose declaration did not "
+                        "change: %s", len(moved), " | ".join(moved))
+        if refused:
+            logger.warning("[Ledger] %d cursor(s) were NOT re-stamped: %s",
+                           len(refused), " | ".join(refused))
+    finally:
+        db.close()
+
+
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
@@ -1971,6 +2035,14 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] the ledger schema could not be ensured, so a column that "
                      "landed in code may be missing here: %s", exc)
+    # \U0001f534 S-87 — AFTER THE SCHEMA ENSURE AND BEFORE ANY LOOP READS A CURSOR. The
+    # ensure above may have added the very column this reads, and both ledger loops below
+    # refuse to run against a cursor whose fingerprint does not match.
+    try:
+        await asyncio.to_thread(_restamp_moved_fingerprints_sync, db_session_factory)
+    except Exception as exc:
+        logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
+                     "whose declaration did not change may still refuse to run: %s", exc)
     # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
     # refuse, and a refusal is a number an operator has to see rather than an error.
     try:

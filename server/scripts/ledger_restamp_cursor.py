@@ -112,16 +112,13 @@ def main(argv=None):
                   f"(a first run writes {wanted})")
             continue
         stored = existing.get("translator_ver")
-        if stored == wanted:
+        # [S-87] The decision lives in ONE place and the boot step asks the same one.
+        verdict, reason = store.restamp_decision(stored, wanted)
+        if verdict == "already":
             print(f"{source}: already {wanted}")
             continue
-        if not str(stored or "").startswith("ledger-v2:"):
-            # A v1-shaped cursor is a DIFFERENT problem and a different gate
-            # (`legacy_cursor_reset_required`, on `cursor_value`'s shape). Re-stamping it
-            # would hide that gate behind a v2-looking string while the position stays
-            # v1-shaped, so it is refused by name instead.
-            print(f"{source}: REFUSED -- stored cursor is not a v2 cursor "
-                  f"({stored!r}); its shape gate is a separate decision")
+        if verdict == "refused":
+            print(f"{source}: REFUSED -- {reason}")
             exit_code = 1
             continue
         print(f"{source}: {stored}\n{'':>{len(source) + 2}}-> {wanted}")
