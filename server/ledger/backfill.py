@@ -888,9 +888,17 @@ def rows_not_yet_translated(engine, setup, source):
             cursor.execute(sql.SQL("SELECT count(*) FROM {relation}").format(
                 relation=relation))
             total = cursor.fetchone()[0]
+            # 🔴 DISTINCT row_id, NOT count(*). The index is keyed
+            # `(relation, row_id, source_who, source_raw_ref)` and its own comment says
+            # why: ONE physical row appears under SEVERAL refs when a source emits
+            # more than one sentence over different subsets. `count(*)` therefore counts
+            # (row, ref) PAIRS, and subtracting pairs from rows gives a remainder that is
+            # too small -- and goes NEGATIVE on a source with two sentences, which this
+            # function would then have reported as an un-withdrawn deletion. Two
+            # different causes wearing one number.
             cursor.execute(
-                sql.SQL("SELECT count(*) FROM {refs} WHERE relation = %s "
-                        "  AND source_who = %s").format(
+                sql.SQL("SELECT count(DISTINCT row_id) FROM {refs} "
+                        " WHERE relation = %s AND source_who = %s").format(
                             refs=sql.Identifier(schema.ROW_REF_TABLE)),
                 (plan.relation, source))
             indexed = cursor.fetchone()[0]
@@ -903,8 +911,11 @@ def rows_not_yet_translated(engine, setup, source):
                    "not_yet": max(remainder, 0)})
     if remainder < 0:
         # ⛔ A SILENT ZERO. The index names rows the relation no longer holds -- a
-        # deletion the follow-up could not withdraw. Clamping without saying so would report
-        # "nothing left" for a table that is actually missing its withdrawals.
+        # deletion the follow-up could not withdraw. Clamping without saying so would
+        # report "nothing left" for a table that is actually missing its withdrawals.
+        # ⚠️ Since the count above is DISTINCT, this can no longer also mean "one row
+        # under several refs" -- which it silently did until 2026-09-09, so a source with
+        # two sentences reported a deletion fault that was not there.
         report["index_names_absent_rows"] = -remainder
     return report
 

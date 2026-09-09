@@ -183,3 +183,20 @@ def test_the_cli_says_a_refused_source_was_not_counted():
 
     body = inspect.getsource(backfill.main)
     assert 'result.get("refused")' in body and "not counted" in body
+
+
+def test_the_index_is_counted_by_distinct_row_rather_than_by_ref():
+    """🔴 THE INDEX IS KEYED `(relation, row_id, source_who, source_raw_ref)`, and its own
+    comment says why: ONE physical row appears under SEVERAL refs when a source emits more
+    than one sentence over different subsets. `count(*)` therefore counts (row, ref) PAIRS,
+    and 「rows minus pairs」 is too small -- negative for a two-sentence source, which this
+    function would then have reported as an un-withdrawn deletion. Two causes, one number.
+
+    ⚠️ SCORED ON THE QUERY because the fake cursor cannot produce the duplication: the
+    defect lives in what is ASKED, not in what comes back."""
+    setup = _setup({"dt_transfer": _Plan("dt_log_transferable", "row_id")})
+    engine = _Engine([10, 4])
+    backfill.rows_not_yet_translated(engine, setup, "dt_transfer")
+
+    asked = " ".join(str(query) for query, _ in engine.connection.cursor_object.queries)
+    assert "DISTINCT" in asked and "row_id" in asked, asked
