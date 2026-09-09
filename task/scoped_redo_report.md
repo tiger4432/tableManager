@@ -23202,3 +23202,54 @@ if probed_identity ... :
    질의를 0 으로 만들어도 그 1,480 만은 그대로입니다. 둘을 한 수로 말하지 않겠습니다
 ```
 > 📌 **[09-09 11:51] 이 채널의 미답 질문: 없음.**
+
+
+---
+
+# 🔴 [구현자 -> 총괄] **㉡ 의 첫 질문에 답이 나왔습니다 — 배치가 «자기가 만든 행»을 프리페치에 안 담습니다** (09-09 12:07)
+
+```
+시각   09-09 12:07   ·   20 행(쓰기 «전» 0 확인 · 후 20 착지 · 정리 후 0) · 코드 변경 0
+```
+
+## 잰 것 — 셀 호출을 (is_new, 프리페치에 있나)로 갈랐습니다
+```
+is_new=True   prefetched=False  -> absence_is_known=True    260   질의 «없음» ✅
+is_new=False  prefetched=False  -> absence_is_known=False   480   «질의하고, 아무것도 못 찾습니다»
+그리고 문의 응답:  results 20 개 중 is_new «0»   (표는 0 -> 20 으로 늘었는데)
+```
+🔴 **이 배치는 «전부 생성»이었습니다.** 쓰기 전 그 접두어로 0 행이었고 뒤에 20 행이 섰습니다.
+   그러니 저 480 번의 SELECT 는 «존재한 적 없는 행»의 CellSource 를 찾는 것이고, 결과는
+   «반드시» 빈 목록입니다. 셀 호출의 «65%» 가 그렇습니다.
+
+## 이것이 `[P2]` 주석이 없애려던 «바로 그» 비용입니다
+```
+그 주석    「that prefetch selects every cell_sources/cell_overwrites row for those ids …
+          so a column being written for the first time no longer costs two SELECTs per row
+          to be told it is empty」
+실측      그 문장이 «배치가 자기 손으로 만든 행»에는 «안 걸립니다» —
+          그 행의 id 는 프리페치 필터가 만들어질 «때» 아직 없었으니까요
+```
+
+## ⛔ 그래서 「prefetched 에 넣자」를 «제안으로 적지 않습니다»
+```
+같은 주석이 그 옆에 «금지»를 적어 두었습니다:
+   「THE PREDICATE IS MEMBERSHIP IN THE PREFETCHED SET, NOT "the row exists".
+    Substituting the latter is a data-loss bug … a row can be resolved AFTER the prefetch
+    filter was built … Those rows exist and were never read」
+=> 「프리페치 뒤에 «해소된» 행」과 「이 배치가 «만든» 행」은 다른 경우입니다.
+   앞의 것은 «읽은 적 없으니» 물어야 하고, 뒤의 것은 «방금 만들었으니» 물을 것이 없습니다.
+   둘을 가르는 것이 ㉡ 의 설계이지 제가 지금 단정할 것이 아닙니다.
+   그 주석은 「데이터 손실 버그」라고 이름까지 적어 두었고, 저는 그 경고를 넘지 않습니다
+```
+
+## ㉡ 에 넘기는 것
+```
+질의 축의 «전부»가 여기 있습니다: 12/15.2 가 이 헬퍼이고, 그 안에서 65% 가 «생성된 행» 몫
+그리고 남는 물음 «하나»: 문이 20 행을 만들고도 is_new 를 «0»으로 보고하는 것이
+  ⓐ 앞선 패스가 껍데기 행을 먼저 세워서 «문자 그대로 참»인지
+  ⓑ 라벨이 틀린 것인지
+  — 저는 «안 갈랐습니다». 라우트가 그 값으로 브로드캐스트의 is_new 를 싣기 때문에
+  ⓑ 라면 화면에도 닿습니다. ㉡ 이 그 자리를 지날 때 «먼저» 갈라야 합니다
+```
+> 📌 **[09-09 12:07] 이 채널의 미답 질문: 위 ⓐ/ⓑ (제가 다음 라운드에 갈라도 되고, ㉡ 안에서 같이 보셔도 됩니다).**
