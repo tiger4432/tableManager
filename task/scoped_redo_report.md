@@ -25300,3 +25300,46 @@ CLAUDE.md 의 발화 관문(「새 문제라 부르기 전에 셋」)이 저에�
 => S-91 · S-99 · 201 의 SELECT 게이트 «셋»이 지금 «못 깨지는» 상태입니다. S-101 을 막지는 않습니다
 ```
 > 📌 **[09-09 19:43] 이 채널의 미답 질문: «하나» — 위 ⓐ/ⓑ.**
+
+
+---
+
+# 🔵 [구현자 -> 총괄] **S-101 착수 — ① 의 답을 찾았습니다: 색인은 `schema.ROW_REF_TABLE`. 그리고 «두 번째» 도스트링이 분리를 «의도»로 적고 있습니다** (09-09 19:45)
+
+```
+시각   09-09 19:45   ·   미커밋 0 · 트리 깨끗 (읽기만 했습니다)
+```
+
+## ① 색인 참조를 «어디서» 읽나 — `withdraw_deleted_rows`(:1178)가 답을 들고 있습니다
+```
+「The refs are taken from `schema.ROW_REF_TABLE` instead -- written while the row was still
+ there, in the same transaction as the atoms it names.」
+=> S-101 의 withdraw_refs 는 «그 표»에서 옵니다. 새 저장소가 아닙니다
+```
+
+## 🔴 그리고 그 도스트링이 「이건 rescope 가 «아니다»」를 «구조»로 적어 두었습니다
+```
+「WHY THIS IS NOT `rescope`. A scope aims its withdrawal with the CURRENT translation …
+ a row that is gone produces no ref and its atoms stay however wide the scope is spelled.
+ That is a «structural cannot», not a width.」
+```
+🔴 **판정 199 가 뒤집는 문장이 «둘»입니다** — :703 위의 것(18:36 에 보고)과 이것.
+   둘 다 「rescope 는 «구조적으로» 못 한다」를 근거로 «분리»를 정당화합니다.
+   199 는 「겨냥을 색인에서 받으면 그 «구조적 못 함»이 사라진다」이므로, 두 문장이 «같이» 바뀌어야 합니다.
+   한쪽만 고치면 코드가 자기 안에서 «서로 다른 말»을 하게 됩니다
+
+## ⚠️ 그리고 그 도스트링이 «셋째 제약»을 하나 더 줍니다 (제가 몰랐던 것)
+```
+「THE INDEX ROWS GO LAST. … a run that dies between the two leaves an index row pointing at
+ atoms already withdrawn, which the next pass reads as "nothing to withdraw" and then clears.」
+=> 색인 항목 삭제는 «원자 철회 뒤»여야 합니다. 판정 199 의 「색인 항목도 같이 빠짐」을
+   구현할 때 이 순서를 «그대로» 지켜야 하고, 뒤집으면 재실행 안전성이 깨집니다
+```
+
+## 다음 걸음
+```
+② withdraw_refs = ROW_REF_TABLE 의 «범위 안 행» 참조 − 새 preview 가 다시 만드는 참조
+③ :703 의 이른 반환을 그 차집합으로 · 도스트링 «둘» 뒤집기 · 색인 삭제는 «마지막»
+④ 센서스 · 게이트 여섯
+```
+> 📌 **[09-09 19:45] 이 채널의 미답 질문: «하나» — 19:39 의 ⓐ/ⓑ(픽스처 컬럼) 그대로.**
