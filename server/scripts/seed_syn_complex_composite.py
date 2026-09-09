@@ -1040,19 +1040,16 @@ def rollback():
     from database.database import engine
     from sqlalchemy import text
 
+    import ops_ledger_namespace
     import product_door
 
     with engine.begin() as connection:
-        database = connection.execute(text("SELECT current_database()")).scalar()
-        if database not in {"assy_manager", "assy_qa"}:
-            raise SystemExit(f"REFUSED rollback on database {database!r}")
-        deleted = connection.execute(text(
-            "DELETE FROM ledger_events WHERE source_who = :source "
-            "AND source_translator_ver LIKE :translator"),
-            {"source": SOURCE, "translator": TRANSLATOR + "%"}).rowcount
-        connection.execute(text(
-            "DELETE FROM ledger_translator_cursor WHERE source = :source"),
-            {"source": SOURCE})
+        # 🔴 THE LEDGER HALF LIVES IN AN `ops_` MODULE (ruling 186). It writes tables the
+        # product door does not serve, so it belongs to the migrate/ops class - and that
+        # class is declared by a FILE NAME, which a block inside a seed cannot claim. The
+        # seed calls it; the seed itself keeps zero raw ledger writes.
+        ops_ledger_namespace.refuse_unknown_database(connection)
+        deleted = ops_ledger_namespace.clear_source(connection, SOURCE, TRANSLATOR)
         spatial_deleted = {}
         # 🔴 PREDICATES, NOT STATEMENTS. Nothing executes these any more - the rows go out
         # through the door, which deletes by id - so carrying `DELETE FROM <table>` in front
@@ -1090,8 +1087,9 @@ def rollback():
                                          user_name=SOURCE, log=lambda *_: None)
         # Generic writes preserve every source layer. Remove only this fixture's layer
         # records after its SYN rows are gone; no other updated_by is touched.
-        connection.execute(text("DELETE FROM cell_sources WHERE updated_by = :updated_by"),
-                           {"updated_by": MAP_UPDATED_BY})
+        # ⚠️ Keyed on the WRITER, not on rows, so the door's own layer cleanup does not
+        # cover it - see `ops_ledger_namespace.clear_layer_rows`.
+        ops_ledger_namespace.clear_layer_rows(connection, MAP_UPDATED_BY)
     return {"deleted_atoms": deleted, "deleted_spatial_rows": spatial_deleted,
             "source": SOURCE}
 
