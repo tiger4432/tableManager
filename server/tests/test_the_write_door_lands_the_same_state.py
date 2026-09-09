@@ -290,20 +290,14 @@ def test_a_composite_key_table_rewrites_the_key_the_caller_sent(door):
         "assumes it is will silently miss the row")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "OBSERVED, AND I COULD NOT SETTLE IT. Two requests carrying the SAME composite columns "
-    "under DIFFERENT supplied keys produce TWO rows sharing one assembled key. Either the "
-    "lookup runs on the supplied key before the assembly rewrites it, or a caller is never "
-    "supposed to send a different key for the same columns and this input is unreal. I did "
-    "not determine which, and the difference decides whether it is a defect or a fixture "
-    "fault — so it is pinned rather than asserted. `strict` so that whoever settles it has "
-    "to remove the marker. Related: this is the shape that let 1,000 seeded rows hide from "
-    "a cleanup filtering on the supplied key (2026-09-09)."
-))
 def test_the_assembled_key_is_the_one_a_second_write_matches_on(door):
-    """⛔ THE EXPECTATION: a second request carrying the same columns lands on the SAME row.
-    Otherwise a save inserts a duplicate under a key that already exists, which is the
-    failure the assembly exists to prevent."""
+    """⛔ A SECOND REQUEST WITH THE SAME COLUMNS LANDS ON THE SAME ROW.
+
+    🔴 THIS WAS A STRICT XFAIL UNTIL 판정 190. The supplied key used to switch the assembly
+    OFF, so two requests carrying identical composite columns under different supplied keys
+    made TWO rows sharing one assembled identity — and that is how 1,000 seeded rows hid from
+    three cleanups that filtered on the key I had sent. The marker came off when the fix made
+    it pass, which is what `strict` is for."""
     model = models.DYNAMIC_TABLES[COMPOSITE]
     for value in (1, 2):
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
@@ -320,3 +314,21 @@ def test_the_assembled_key_is_the_one_a_second_write_matches_on(door):
     rows = door.query(model).all()
     assert len(rows) == 1, "two writes of the same columns must not make two rows"
     assert rows[0].qty == 2.0
+
+
+def test_the_lookup_runs_on_the_assembled_key_not_the_one_that_was_sent(door):
+    """🔴 판정 190's gate, as one assertion. `SENT-1` goes in; the row is found and stored
+    under `T|M`, because identity is a function of the declared key columns and the supplied
+    key is advisory.
+
+    ⚠️ MUTATION: restore the old guard (`or update_item.business_key_val`) and this goes red —
+    the assembly is skipped, the row keeps `SENT-1`, and the two keys stop agreeing."""
+    from database import crud as _crud
+
+    item = schemas.GeneralUpdateItem(
+        business_key_val="SENT-1",
+        updates={"split_key": "SENT-1", "ref_table": "T", "map_key": "M", "qty": 1},
+        source_name="ingest", updated_by="oracle")
+    assert _crud.assemble_composite_business_key(COMPOSITE, item) is True, (
+        "a supplied key must no longer switch the assembly off")
+    assert item.business_key_val == "T|M", "the lookup key IS the assembled key"

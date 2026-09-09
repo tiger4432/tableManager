@@ -136,10 +136,12 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
     directions:
 
         composite target, key spelled by the mapper
-            `assemble_composite_business_key` returns at its first statement when the
-            item already has a `business_key_val`, so the mapper's string wins and the
-            declaration stops being followed. The day its separator or column list
-            changes, only that mapper's keys drift and nothing errors.
+            ⚰️ UNTIL 판정 190 the mapper's string won: `assemble_composite_business_key`
+            returned at its first statement when the item already carried a
+            `business_key_val`, so a mapper that spelled its own key silently stopped
+            following the declaration. It no longer does — the assembly runs whenever
+            the parts are there and the DECLARATION wins, so a separator or column-list
+            change now reaches every mapper instead of drifting in one.
 
         non-composite target, key left to the framework
             nothing lifts `updates[business_key]` into `business_key_val` -

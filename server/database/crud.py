@@ -2365,7 +2365,18 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     batch path therefore calls it AFTER the replace_map block, which is exactly where
     it effectively ran before (inside the per-row loop).
     """
-    if update_item.row_id or update_item.business_key_val:
+    # 🔴 판정 190 A. The supplied key USED TO TURN THIS OFF: `or
+    # update_item.business_key_val` meant a caller that sent one skipped assembly
+    # entirely, so its row was looked up and stored under a key that is not the
+    # table's identity. Two requests with the SAME composite columns under different
+    # supplied keys then made TWO rows sharing one assembled identity -- and that is
+    # how 1,000 seeded rows hid from three cleanups filtering on the supplied key.
+    #
+    # ⚠️ IDEMPOTENCE DID NOT LIVE IN THAT GUARD. This is a pure function of the
+    # payload's own columns, so calling it twice yields the same value -- the property
+    # the docstring credited to the guard is the FUNCTION's. Only `row_id` still stops
+    # it: a caller naming a row by id is not asking about identity at all.
+    if update_item.row_id:
         return False
 
     config = TABLE_CONFIG.get(table_name, {})
@@ -3031,7 +3042,12 @@ def apply_row_update_internal(
     # 2. 복합 비즈니스 키 실시간 재계산 및 동기화, 유일성 검사
     if composite_src and key_col:
         is_src_changed = any(col in changed_cols for col in composite_src)
-        if is_src_changed or is_new:
+        # ⛔ `or is_new` IS GONE (판정 190 B), NOT THE WHOLE BRANCH. Since A assembles
+        # before the lookup, a new row already ARRIVES carrying its assembled key, so
+        # recomputing here only produced the shell row the composite xfail was pinning.
+        # What remains is a DIFFERENT event: an edit that changes a key PART re-keys an
+        # existing row, and that path's collision merge is still needed.
+        if is_src_changed:
             raw_vals = [getattr(row, col, None) for col in composite_src]
             # 🔴 이 자리의 빈 값 판정은 `all(v != "")` 이고, 그것이 «이 호출자의 정책»이다.
             #    ①은 is_blank_value 로 묻는다 - 두 술어를 하나로 맞추는 것은 별건(S2)이고
@@ -3701,9 +3717,11 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     the race it recovered from, and a race that never shows up in a log is a race nobody
     ever measures. If it exhausts its attempts the error is re-raised unchanged.
 
-    ⚠️ Replay safety: `assemble_composite_business_key` is guarded on "neither id nor key
-    supplied", so a second pass over the same `batch.updates` recomputes nothing and the
-    keys are identical. `audit_cache.add_logs_batch` runs only AFTER `db.commit()`
+    ⚠️ Replay safety: `assemble_composite_business_key` is a PURE FUNCTION of the
+    payload's own columns, so a second pass over the same `batch.updates` computes the
+    same key and the keys are identical. (Until 판정 190 this said it was "guarded on
+    neither id nor key supplied" — that guard is gone, and the property it was credited
+    with was the function's all along, which is why replay is unaffected.) `audit_cache.add_logs_batch` runs only AFTER `db.commit()`
     returns, so a failed attempt contributes no cached logs. `db.rollback()` discards the
     pending rows of the failed attempt, and the outbox rows staged by `before_flush` go
     with them - the replay stages them again.
