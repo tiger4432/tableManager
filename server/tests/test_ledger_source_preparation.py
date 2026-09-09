@@ -755,7 +755,16 @@ def test_preparing_a_refused_molecule_touches_no_process_counter():
     would move the numbers an operator reads the real run from."""
     from ledger import gate
 
-    before = gate.refusal_report()
+    # ⚰️ THE INSTRUMENT CHANGED, THE SUBJECT DID NOT. This read `gate.refusal_report()`,
+    # an envelope that retired with the refusals route (S-114). The counters it folded are
+    # still here and are the better probe: the envelope could have gone on comparing equal
+    # while one of the five underneath moved, because it dropped `rows_refused` and
+    # `atoms_lost` into per-source buckets and summed the rest.
+    def counters():
+        return (gate.refusals(), gate.samples(), gate.rows_refused(),
+                gate.atoms_lost(), gate.incomplete_molecules())
+
+    before = counters()
     compiled = snapshot()
     base = base_rows()
     reader = FakeJoinReader({})
@@ -768,7 +777,7 @@ def test_preparing_a_refused_molecule_touches_no_process_counter():
                             refusals=refusals)
 
     assert len(refusals) == 1
-    assert gate.refusal_report() == before
+    assert counters() == before
 
 
 def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claims():
