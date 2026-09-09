@@ -510,6 +510,30 @@ class LedgerStore:
             if own:
                 connection.close()
 
+    def indexed_row_ids(self, relation, row_ids, source, connection=None):
+        """Which of `row_ids` this source's index already names. READ ONLY.
+
+        ⚠️ ROWS, WHICH `row_refs_for` CANNOT SAY. That one answers with `(source, ref)` pairs
+        and one row appears under SEVERAL refs, so counting its answer counts pairs -- the
+        exact confusion `rows_not_yet_translated` had to fix with `count(DISTINCT row_id)`
+        after it went negative on a source with two sentences.
+        """
+        if not row_ids:
+            return set()
+        own = connection is None
+        connection = connection or self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT DISTINCT row_id FROM {schema.ROW_REF_TABLE} "
+                    "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
+                    (str(relation), str(source),
+                     [str(item) for item in row_ids]))
+                return {row[0] for row in cursor.fetchall()}
+        finally:
+            if own:
+                connection.close()
+
     def forget_row_refs(self, relation, row_ids, connection=None, source=None):
         """Drop the index rows for physical rows the ledger no longer speaks for. How many.
 

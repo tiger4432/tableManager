@@ -115,3 +115,91 @@ def test_the_dead_cell_line_is_said_once_per_process_and_again_if_it_changes():
         assert setup._announce_dead_cells([]) is False, "nothing dead, nothing said"
     finally:
         setup._DEAD_CELLS_ANNOUNCED.clear()
+
+
+# ------------------------------------------------------- 판정 202 ①: the check's own scope
+
+def profile_bundle(implementation, subject_column, target_column):
+    """A source binding an entity at both ends of one sentence, under a named mapper."""
+    def entity(column):
+        return {"kind": "entity", "type": "lot@1",
+                "keys": {"lot_id": {"kind": "column", "column": column}}}
+
+    return {"lot_event": {
+        "relation": "lot_log",
+        "read": {"unit": "row", "identity": ["row_id"], "group_by": [],
+                 "order_by": ["row_id"], "occurred_at": {"column": "event_time"}},
+        "prepare": {}, "map": {"implementation_id": implementation},
+        "bind": {"mappings": {"descent": {
+            "predicate": "descends_from@1",
+            "bind": {"subject": entity(subject_column),
+                     "target": entity(target_column)}}}},
+    }}
+
+
+def test_a_sentence_no_one_scored_is_named_with_the_mapper_that_decides_instead():
+    """🔴 THE SILENCE MEANT TWO OPPOSITE THINGS (판정 202 ①, 응용 D-12-2).
+
+    `_validate_no_self_edge` is scored only where a `declarative-role` mapper EXECUTES the
+    bindings - written without that distinction it refused the live setup on a placeholder
+    that had stood harmlessly for weeks. Correct, and invisible: an author whose sentence was
+    checked and passed, and one whose sentence nobody looked at, saw the same nothing.
+    """
+    unscored = setup._unscored_self_edge_sentences(
+        profile_bundle("lot-event-role", "child_lot", "child_lot"))
+
+    assert len(unscored) == 1
+    assert "sources.lot_event.bind.mappings.descent" in unscored[0]
+    assert "lot-event-role" in unscored[0], (
+        "which mapper decides instead is the actionable half; a path alone sends the "
+        "reader back to the declaration that is not the authority")
+
+
+def test_a_source_whose_bindings_are_executed_names_nothing():
+    """The arm that must NOT fire. Without it this line would name every entity-to-entity
+    sentence in the declaration, including all the ones that WERE checked."""
+    assert setup._unscored_self_edge_sentences(
+        profile_bundle("declarative-role", "child_lot", "child_lot")) == []
+
+
+def test_a_sentence_that_is_not_entity_to_entity_names_nothing():
+    """⛔ SAME PAIR AS THE CHECK READS. The check only examines a sentence whose two ends are
+    both entity bindings, so naming a wider set would report sentences that were never in
+    its scope - a line that overstates what went unlooked-at is its own false log."""
+    bundle = profile_bundle("lot-event-role", "child_lot", "parent_lot")
+    bundle["lot_event"]["bind"]["mappings"]["descent"]["bind"]["target"] = {
+        "kind": "value", "column": "parent_lot"}
+
+    assert setup._unscored_self_edge_sentences(bundle) == []
+
+
+def test_the_shipped_sample_is_what_this_was_measured_on_too():
+    """🔴 THE REAL CASE. `lot_event` reads its roles through a PYTHON mapper, and its three
+    entity-to-entity sentences are exactly the ones the check steps over. This is the source
+    whose `descent` refused the live setup when the distinction was missing."""
+    import io
+    import json
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "..", "config", "sample", "ledger_config.json.sample")
+    unscored = setup._unscored_self_edge_sentences(
+        json.load(io.open(path, encoding="utf-8"))["sources"])
+
+    assert unscored, "the sample carries delegated sentences; if it no longer does, say so"
+    assert all("mapper lot-event-role" in item for item in unscored)
+
+
+def test_the_delegation_line_is_said_once_per_process_and_again_if_it_changes():
+    """S-97's discipline, because this line has S-97's problem: `load_setup` runs per census
+    tick, per drain and per declaration route."""
+    setup._DELEGATED_BINDINGS_ANNOUNCED.clear()
+    try:
+        assert setup._announce_unscored_bindings(["sources.a.bind.mappings.x"]) is True
+        assert setup._announce_unscored_bindings(["sources.a.bind.mappings.x"]) is False
+
+        assert setup._announce_unscored_bindings(["sources.b.bind.mappings.y"]) is True, (
+            "a different set of delegated sentences is a different fact")
+
+        assert setup._announce_unscored_bindings([]) is False
+    finally:
+        setup._DELEGATED_BINDINGS_ANNOUNCED.clear()

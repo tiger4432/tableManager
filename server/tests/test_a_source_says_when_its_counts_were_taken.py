@@ -27,12 +27,18 @@ from ledger import backfill, schema                                  # noqa: E40
 class _Plan:
     """⚠️ THE FAKE CARRIES A `driver`, because the real plan does. A fake thinner than the
     thing it stands in for is more permissive than production, and this one hid that the
-    census has to know whether a source reads by ROW or by GROUP."""
+    census has to know whether a source reads by ROW or by GROUP.
 
-    def __init__(self, relation, frame_row_id, unit="row", group_by=()):
+    `preparation.exclude_when` for the same reason, since the census also asks how many rows
+    the declaration now EXCLUDES but the index still names (ruling 199). Empty here: these
+    cases are about the STAMP, and a source with no clause is asked nothing."""
+
+    def __init__(self, relation, frame_row_id, unit="row", group_by=(), exclude_when=()):
         self.relation = relation
         self.frame_row_id = frame_row_id
-        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by)})()
+        self.driver = type("D", (), {
+            "unit": unit, "group_by": tuple(group_by),
+            "preparation": type("P", (), {"exclude_when": tuple(exclude_when)})()})()
 
 
 def _setup(plans):

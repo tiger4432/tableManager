@@ -290,3 +290,74 @@ def test_a_create_still_translates_once(setup, monkeypatch):
     assert store.forgotten == []
     assert not withdrawn_refs(store)
     assert result["previewed"] is False and result["applied"] is True
+
+
+# ------------------------------------------- the cost of the change, as a census value
+
+
+class CensusStore(IndexStore):
+    """Adds the one reader the census asks: which of these rows the index names."""
+
+    def __init__(self, indexed_rows=()):
+        super().__init__()
+        self.indexed_rows = set(indexed_rows)
+        self.asked = None
+
+    def indexed_row_ids(self, relation, row_ids, source):
+        self.asked = (relation, tuple(row_ids), source)
+        return {row_id for row_id in row_ids if row_id in self.indexed_rows}
+
+
+def count(setup, monkeypatch, store, page):
+    monkeypatch.setattr(backfill, "_fetch_v2_lineage_page", lambda *a, **k: page)
+    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
+    return backfill.count_excluded_but_indexed(
+        SimpleNamespace(raw_connection=Reader), setup, SOURCE)
+
+
+def test_the_census_counts_rows_the_declaration_now_excludes_but_the_index_still_names(
+        setup_excluding, monkeypatch):
+    """🔴 THE COST OF A DECLARATION CHANGE, AS A NUMBER (ruling 199). Adding `exclude_when`
+    does not un-write what the source already said: those rows keep their atoms until a scope
+    is run. This is how much is waiting - and 0 and 「nobody counted」 are different answers,
+    which is why the key is absent rather than zero when there is no clause."""
+    page = [dict(row, dt_eqp=("" if index < 3 else "EQP-7"))
+            for index, row in enumerate(rows())]
+    store = CensusStore(indexed_rows={"r0", "r2"})
+
+    excluded, read = count(setup_excluding, monkeypatch, store, page)
+
+    assert (excluded, read) == (2, 5), (
+        "three rows are blank, two of them are indexed; the third was never translated "
+        "and is not a backlog")
+    assert store.asked[0] == RELATION and store.asked[2] == SOURCE
+    assert sorted(store.asked[1]) == ["r0", "r1", "r2"], (
+        "only the excluded rows are asked about")
+
+
+def test_a_source_with_no_clause_asks_nothing_at_all(setup, monkeypatch):
+    """The arm that must NOT fire. Without it every source would pay a page read and report
+    a zero that means 「this source excludes nothing」 dressed as 「nothing is waiting」."""
+    store = CensusStore(indexed_rows={"r0"})
+
+    assert count(setup, monkeypatch, store, rows()) == (0, 0)
+    assert store.asked is None
+
+
+def test_the_number_is_stamped_as_a_sample_with_its_method(setup_excluding, monkeypatch):
+    """⚠️ THE OTHER CENSUS NUMBERS ARE FULL SCANS AND THIS ONE IS NOT, so it has to say so
+    itself. 「blank」 is a python predicate (판정 194 ㉢ made it ONE function); asking a whole
+    relation would mean spelling it a second time in SQL, and two spellings disagree exactly
+    about the values in dispute. Ruling of 2026-09-09: sample it and stamp it."""
+    monkeypatch.setattr(backfill, "rows_not_yet_translated", lambda *a, **k: {
+        "source": SOURCE, "relation": RELATION, "relation_rows": 5, "indexed_rows": 5,
+        "counts": "rows", "not_yet": 0})
+    monkeypatch.setattr(backfill, "count_excluded_but_indexed", lambda *a, **k: (2, 5))
+
+    stamped = backfill.measure_row_census(SimpleNamespace(), setup_excluding, SOURCE)
+
+    assert stamped["excluded_but_indexed"]["estimate"] == 2
+    assert stamped["excluded_but_indexed"]["exact"] is False, (
+        "a sample rendered as an exact count is the 「about 13 million」 defect `measured` "
+        "exists to stop")
+    assert "5 rows" in stamped["excluded_but_indexed"]["method"]

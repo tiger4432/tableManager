@@ -172,6 +172,76 @@ def _dead_time_cells(sources):
     return dead
 
 
+def _unscored_self_edge_sentences(sources):
+    """Entity-to-entity sentences whose self-edge check nobody ran, and who runs it instead.
+
+    🔴 THE CHECK HAS A SCOPE AND NOTHING SAID SO (ruling 202 ①). `_validate_no_self_edge`
+    is scored only where the bindings are EXECUTED - a `declarative-role` mapper - because a
+    source whose role mapper is PYTHON never reads them: they are placeholders the mapper
+    replaces, and scoring them refused the LIVE setup on one that had stood harmlessly for
+    weeks. That distinction is correct and it is INVISIBLE: an author of such a source gets
+    the same silence as an author whose sentence was checked and passed, and those two
+    silences mean opposite things.
+
+    ⚠️ NAMED, NOT REFUSED, and not widened either. The mapper is what decides for these
+    sources; this line says which mapper, so the reader knows where the answer lives.
+    """
+    from .setup_bundle import _entity_key_columns
+
+    unscored = []
+    for source_id in sorted(sources or {}, key=str):
+        source = sources[source_id]
+        if not isinstance(source, Mapping):
+            continue
+        mapper = source.get("map")
+        implementation = (mapper.get("implementation_id")
+                          if isinstance(mapper, Mapping) else None)
+        if implementation == "declarative-role":
+            continue
+        profile = source.get("bind")
+        mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+        for sentence in sorted(mappings or {}, key=str):
+            mapping = mappings[sentence]
+            bindings = mapping.get("bind") if isinstance(mapping, Mapping) else None
+            if not isinstance(bindings, Mapping):
+                continue
+            # The same pair the check reads, through the same function - two spellings of
+            # "which columns this end reads" would disagree about which sentences went
+            # unscored, which is the one thing this line is for.
+            if (_entity_key_columns(bindings.get("subject"))
+                    and _entity_key_columns(bindings.get("target"))):
+                unscored.append(
+                    f"sources.{source_id}.bind.mappings.{sentence} "
+                    f"(mapper {implementation or 'none'})")
+    return unscored
+
+
+#: Ruling 202 ①, S-97 discipline. Which delegation sentences this PROCESS has said.
+#:
+#: ⚠️ THE SAME KEY RULE AS THE DEAD CELLS BESIDE IT: keyed by the sentences themselves, so a
+#: declaration that changes which sources are delegated says it again, and one that does not
+#: says it once. `load_setup` runs per census tick, per drain and per declaration route.
+_DELEGATED_BINDINGS_ANNOUNCED: set = set()
+
+
+def _announce_unscored_bindings(unscored) -> bool:
+    """Say it once per process per distinct set of sentences. Returns whether it was said.
+
+    English, like the dead-cell line it stands beside: one log stream in two languages is
+    harder to read than either.
+    """
+    if not unscored:
+        return False
+    key = tuple(unscored)
+    if key in _DELEGATED_BINDINGS_ANNOUNCED:
+        return False
+    _DELEGATED_BINDINGS_ANNOUNCED.add(key)
+    logger.info("[Ledger] binding check delegated: %s -- the self-edge check is scored "
+                "only where a declarative-role mapper executes the bindings; here the "
+                "named mapper decides", "; ".join(unscored))
+    return True
+
+
 #: S-97. Which dead-cell sentences this PROCESS has already said.
 #:
 #: 🔴 THE COMMENT BELOW SAID "once" AND THE CODE SAID IT EVERY LOAD. `load_setup` is called
@@ -225,6 +295,8 @@ def load_setup(
     bundle = require_ready_bundle(
         load_setup_bundle(root_path, catalog=resolved_catalog))
     _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
+    _announce_unscored_bindings(
+        _unscored_self_edge_sentences(bundle.section("sources")))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), verified_joins,
         catalog=resolved_catalog)

@@ -985,6 +985,15 @@ def measure_row_census(engine, setup, source, now=None):
         stamped["refused"] = census["refused"]
         stamped["remedy"] = census["remedy"]
         return stamped
+    # ⚠️ BEFORE THE GROUPED RETURN, because this number does not have the unit problem
+    # that stops the remainder being published: it counts ROWS on both sides whatever the
+    # source's unit is. A source that reads by group still has rows waiting to be withdrawn.
+    excluded, page = count_excluded_but_indexed(engine, setup, census["source"])
+    if page:
+        stamped["excluded_but_indexed"] = measured(
+            excluded, exact=False,
+            method=f"exclude_when over the first {page} rows, joined to the row index",
+            measured_at=stamp)
     grouped = census.get("counts") == "rows vs groups"
     stamped["relation_rows"] = measured(
         census["relation_rows"], exact=True,
@@ -1476,6 +1485,59 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
         if is_blank_source_value(value):
             missing += 1
     return missing, len(rows)
+
+
+def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
+    """Of the page a test run reads, how many rows the declaration now EXCLUDES are still
+    indexed. `(excluded_and_indexed, rows_read)`.
+
+    🔴 THIS IS THE COST OF A DECLARATION CHANGE, MADE VISIBLE (ruling 199). Adding
+    `exclude_when` to a live source does not un-write what the source already said: those
+    rows keep their atoms until a scope is run over them. Until S-101 a scope could not even
+    do it, and there was still no number saying how much was waiting. Zero and 「nobody has
+    counted」 are different sentences, and an operator deciding whether to change a
+    declaration is deciding about exactly this.
+
+    ⚠️ A SAMPLE, AND IT SAYS SO. The other census numbers are full scans; this one asks the
+    SAME PAGE `count_rows_missing` reads, in the same order and the same size, because
+    「blank」 is a PYTHON predicate (`is_blank_source_value`, 판정 194 ㉢ made it one function
+    on purpose) and asking a whole relation would mean spelling it a second time in SQL. Two
+    spellings disagree exactly about the values in dispute, so the number is stamped
+    `exact=False` with its method rather than the predicate being duplicated. Ruling of
+    2026-09-09: ⓑ, with ⓐ (a scored SQL predicate) waiting for S-104.
+
+    Empty for a source that declares no clause, and for one with no row index - in both the
+    question has no subject, which is not the same as an answer of zero.
+    """
+    from .source_preparation import is_blank_source_value
+    from .store import LedgerStore
+
+    plan = setup.snapshot.source_plans[source]
+    columns = [clause.get("column")
+               for clause in getattr(plan.driver.preparation, "exclude_when", ())
+               if isinstance(clause, Mapping) and clause.get("column")]
+    if not columns or not plan.frame_row_id:
+        return 0, 0
+    read = engine.raw_connection()
+    try:
+        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
+    finally:
+        read.rollback()
+        read.close()
+    if not rows:
+        return 0, 0
+    excluded = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if any(is_blank_source_value(row.get(column)) for column in columns):
+            row_id = row.get(plan.frame_row_id)
+            if row_id is not None:
+                excluded.append(str(row_id))
+    if not excluded:
+        return 0, len(rows)
+    indexed = LedgerStore(engine).indexed_row_ids(plan.relation, excluded, source)
+    return len(indexed), len(rows)
 
 
 def _v2_frame(rows):
