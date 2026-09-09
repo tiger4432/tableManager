@@ -581,3 +581,79 @@ def test_fallback_chunk_boundaries_write_every_mapping(db_session, n):
         models.CellSource.table_name == TABLE,
         models.CellSource.row_id.like("CB_%")).count()
     assert stored == n
+
+
+# ------------------------------------------------- S-83 ③: the row write is ONE statement
+
+
+def _statements_for(db, table, items, tx):
+    """Every statement one request sends, by verb. THE production-relevant number."""
+    import event_constants
+    from sqlalchemy import event
+    from database.context import outbox_mode
+
+    counts = {}
+
+    def before(conn, cursor, statement, params, context, executemany):
+        verb = statement.strip().split()[0].upper()
+        key = f"{verb} executemany" if executemany else verb
+        counts[key] = counts.get(key, 0) + 1
+
+    engine = db.get_bind()
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(
+                updates=items, transaction_id=tx, silent=True))
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+    return counts
+
+
+def _rows_for(table, n, tag):
+    """⚠️ THE KEY IS ASSEMBLED, not supplied: this fixture table declares
+    `composite_key_source`, so the identity comes from the four columns and `bn` is the only
+    thing an edit can change."""
+    return [schemas.GeneralUpdateItem(
+        updates={"lot": "S83", "slot": "A", "cx": i, "cy": 0, "bn": f"{tag}-{i}"},
+        source_name="s83", updated_by="s83") for i in range(n)]
+
+
+def test_editing_many_rows_sends_one_update_statement_not_one_per_row(db_session):
+    """🔴 S-83 ③ (판정 183: 「행 «한 번» 벌크」). THE COUNT IS THE CONTRACT, NOT THE SECOND.
+
+    Measured before this landed: a 1,000-row edit sent 1,006 statements, of which 1,000 were
+    `UPDATE ... SET updated_at=CURRENT_TIMESTAMP, ... WHERE row_id = ?` - ONE DISTINCT TEXT,
+    executed a thousand times. The cause is the one [P3] already named for the cell upserts:
+    a `ClauseElement` in the SET clause takes the write off its batched path. The row's
+    instant is now read ONCE per request, as a value, and the write is one executemany.
+
+    ⛔ NOT A TIMING TEST, deliberately. On sqlite those thousand executions are function
+    calls and the whole request fits inside the second the ruling asked for - so a wall-clock
+    gate here would be GREEN on the defect. On PostgreSQL they are a thousand ROUND TRIPS.
+    The statement count is the same number in both, which is why it is what is pinned.
+    """
+    rows = 40
+    _statements_for(db_session, TABLE, _rows_for(TABLE, rows, "first"), "s83-insert")
+    counts = _statements_for(db_session, TABLE, _rows_for(TABLE, rows, "second"), "s83-edit")
+
+    assert counts.get("UPDATE", 0) == 0, (
+        f"one UPDATE per row is back: {counts}")
+    assert counts.get("UPDATE executemany", 0) == 1, (
+        f"the {rows} edited rows must be written by ONE statement: {counts}")
+    assert sum(counts.values()) < rows, (
+        f"the whole request must not scale with the row count: {counts}")
+
+
+def test_the_batch_instant_comes_from_the_database_rather_than_this_process(db_session):
+    """⚠️ THE CLOCK DID NOT MOVE, and that is the half a speed number cannot see.
+
+    INSERT still takes the database's clock through `server_default`. Had the UPDATE started
+    reading THIS process's clock instead, one column would carry two clock sources, and skew
+    between them is invisible until the day it orders `idx_<table>_updated` wrong. On
+    PostgreSQL `now()` is the TRANSACTION timestamp, so reading it once reproduces exactly
+    what the per-row expression produced rather than approximating it.
+    """
+    assert crud.batch_write_instant(db_session) is not None, (
+        "the instant must come from the session; a None here silently restores the "
+        "per-row expression")

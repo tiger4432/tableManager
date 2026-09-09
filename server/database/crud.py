@@ -2716,6 +2716,34 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
             
     return col_srcs, ow
 
+def batch_write_instant(db):
+    """ONE timestamp for a whole request, read from the DATABASE. `None` if it cannot be.
+
+    🔴 S-83 ③. This exists so the row UPDATE can carry a VALUE rather than a SQL expression:
+    an expression in the SET clause takes the write off its batched path, which is what made
+    a 1,000-row request send 1,000 UPDATE statements. See `apply_row_update_internal`.
+
+    ⚠️ ONE INSTANT PER REQUEST IS THE POINT, not merely a saving. On PostgreSQL `now()` is
+    the TRANSACTION timestamp, so the per-row expression already gave every row of a batch
+    the same value; reading it once reproduces that exactly rather than approximating it.
+
+    Falls back to `None` - the caller then keeps the expression - rather than reaching for
+    the app server's clock, which would be a SECOND clock source on a column whose INSERT
+    path takes the database's through `server_default`.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.sql import func
+
+    try:
+        # ⛔ NO AUTOFLUSH. This is a read taken for its VALUE, and a session query flushes
+        # pending work first by default -- so asking the time would push half-built rows at
+        # the database ahead of the batch that is still assembling them.
+        with db.no_autoflush:
+            return db.scalar(select(func.now()))
+    except Exception:  # pragma: no cover - a session that cannot answer keeps today's path
+        return None
+
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
@@ -2742,7 +2770,12 @@ def apply_row_update_internal(
     # [Drop report] Per-batch accumulator for update keys this row DISCARDED
     # (`_new_drop_stats`). Written only from a branch that has already decided to drop,
     # so a batch that discards nothing never touches it. None = do not account.
-    drop_stats: dict = None
+    drop_stats: dict = None,
+    # [S-83 ③] ONE instant for the whole request, read from the DATABASE by
+    # `batch_write_instant`. A VALUE here rather than a SQL expression is what keeps the row
+    # UPDATE on its batched path; None keeps the expression, so every caller outside the
+    # batch path writes exactly what it wrote before.
+    batch_now: Any = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
@@ -3377,7 +3410,24 @@ def apply_row_update_internal(
             # [P3] Only an UPDATE needs this. On an INSERT the column's server default
             # is the same `now()` in the same transaction, and setting it explicitly is
             # what forced one statement per row (see `_get_or_create_row`).
-            row.updated_at = func.now()
+            #
+            # 🔴 S-83 ③. AND ON AN UPDATE IT FORCED ONE STATEMENT PER ROW TOO, for the same
+            # reason [P3] already names three screens up: a `ClauseElement` in the SET clause
+            # takes the write off its batched path. Measured on 1,000 rows in this box:
+            # `UPDATE ... SET updated_at=CURRENT_TIMESTAMP, ... WHERE row_id = ?` ONE
+            # DISTINCT TEXT, executed a THOUSAND TIMES - 1,006 statements for one request.
+            # With a value here instead it is ONE executemany, and 7 statements for the
+            # request. On sqlite that is 0.44 s -> 0.26 s; on PostgreSQL those thousand
+            # executions are a thousand ROUND TRIPS, which is the number this is about.
+            #
+            # ⚠️ THE CLOCK STAYS THE DATABASE'S. `batch_now` is `SELECT now()` taken ONCE by
+            # the caller, in this transaction - and on PostgreSQL `now()` IS the transaction
+            # timestamp, so every row of the batch gets exactly the instant the per-row
+            # expression would have produced. Reading the app server's clock instead would
+            # put two clock sources on one column, since INSERT still takes the DB's through
+            # `server_default` - and skew between them is invisible until the day it orders
+            # `idx_<table>_updated` wrong.
+            row.updated_at = func.now() if batch_now is None else batch_now
     return row, is_new, changed_cols
 
 
@@ -4095,6 +4145,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
                 overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
     
+        # [S-83 ③] ONE instant for this whole request, read from the DATABASE before the
+        # loop. It travels into every row so the UPDATE carries a VALUE instead of a SQL
+        # expression - which is the difference between one executemany and one statement per
+        # row. See `batch_write_instant` and `apply_row_update_internal`'s `batch_now`.
+        batch_now = batch_write_instant(db)
+
         unique_results = {}
         total_changed_cells = []
         logs_to_cache = []
@@ -4137,7 +4193,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     version_stats=version_stats,
                     prefetched_row_ids=prefetched_row_ids,
                     probed_identity=probed_identity,
-                    drop_stats=drop_stats
+                    drop_stats=drop_stats,
+                    batch_now=batch_now
                 )
                 prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                 unique_results[row.row_id] = (row, is_new or prev_is_new)
