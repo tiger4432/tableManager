@@ -467,12 +467,58 @@ async function refusalSuite(M) {
   return { failed: failures.length - before };
 }
 
+// 🔴 C-53. 「생성기가 «하나»인가」 — 성질로 잽니다, 이름으로가 아니라.
+//    한 라우트에 URLSearchParams 가 둘이면 인자가 하나 늘 때 «한쪽에만» 실리는 날이 오고,
+//    그때 두 화면이 다른 질문을 보내면서 «오류는 안 납니다». 그래서 이 묶음이 재는 것은
+//    「걷기 상자가 만든 URL 이 정본 생성기의 URL «과 같은가»」입니다 — 둘째 생성기가
+//    돌아오는 순간 빨개지고, 정본에 인자를 더하면 «둘 다» 초록으로 따라옵니다.
+async function oneBuilderSuite(M) {
+  const before = failures.length;
+  const urlOfSpec = async (spec) => {
+    const r = recorder();
+    await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(spec);
+    return r.seen[0];
+  };
+  const urlOfSeat = async (params) => {
+    const r = recorder();
+    await M.fetchSubgraph({ apiBase: '', fetchImpl: r.fetchImpl, ...params });
+    return r.seen[0];
+  };
+  const seed = M.entitySeedId('wafer@1', { wafer_id: 'W-1' });
+
+  const boxUrl = await urlOfSpec({ ...PANEL, since: '2026-09-01', collect: ['defect@1'] });
+  const seatUrl = await urlOfSeat({ nodeId: seed, follow: ['inspected@1'],
+                                    collect: ['defect@1'], hops: 3, since: '2026-09-01' });
+  ok('G1 the walk box URL IS the canonical builder\'s URL — no second builder',
+    boxUrl === seatUrl, `\n        box  ${boxUrl}\n        seat ${seatUrl}`);
+
+  // 🔴 THE PAYOFF, MEASURED: `collect` and the bare-name rule now live in ONE place, so both
+  //    callers carry them. Before C-53 only the walk box stripped `@1`, and a seat that
+  //    declared `inspected@1` was answered 422 with 「서버가 거절」 and nothing else.
+  ok('G2 the version suffix is stripped for BOTH callers',
+    /follow=inspected(&|$)/.test(boxUrl) && /follow=inspected(&|$)/.test(seatUrl),
+    `${boxUrl} | ${seatUrl}`);
+  ok('G3 ...and so is `collect`, which only one of them used to know',
+    /collect=defect(&|$)/.test(boxUrl) && /collect=defect(&|$)/.test(seatUrl));
+
+  // ⚠️ 「0 은 안 싣는다」는 걷기 상자의 «화면 규칙»이고, 좌석은 0 을 «값으로» 보냅니다.
+  //    합치면서 한쪽 규칙이 조용히 이기면 그것이 「축과 값을 같이 죽이는」 자리입니다.
+  const zeros = await urlOfSpec({ type: 'wafer@1', keys: { wafer_id: 'W-1' }, hops: 0, node_limit: 0 });
+  ok('G4 the panel still drops its zeros', !/hops=0/.test(zeros) && !/node_limit=0/.test(zeros), zeros);
+  const seatZero = await urlOfSeat({ nodeId: seed, hops: 0 });
+  ok('G5 ...while the seat still sends one, because there they mean different things',
+    /hops=0/.test(seatZero), seatZero);
+  return { failed: failures.length - before };
+}
+
 console.log('\n[10] what counts as a truncation');
 await truncationSuite(await import('../src/rnd_board/api.js'));
 console.log('\n[10-bis] the interval, out and back');
 await intervalSuite(await import('../src/rnd_board/api.js'));
 console.log('\n[10-ter] a refusal says which argument and what value');
 await refusalSuite(await import('../src/rnd_board/api.js'));
+console.log('\n[10-quater] one route, one request builder');
+await oneBuilderSuite(await import('../src/rnd_board/api.js'));
 
 const base = { pass, failed: failures.length };
 
@@ -500,12 +546,15 @@ const TRUNCATION_DEFECTS = [
 //    end that is silently dropped, an absent count read as zero, and a zero read as absent.
 const INTERVAL_DEFECTS = [
   ['an empty date box travels, so the server refuses a question nobody asked',
-    (src) => src.replace("    if (since) query.set('since', String(since));\n"
-      + "    if (until) query.set('until', String(until));",
-    "    if (since !== undefined) query.set('since', String(since));\n"
-      + "    if (until !== undefined) query.set('until', String(until));")],
+  // 🔴 C-53 RE-ANCHORED, AND THE MOVE IS THE POINT: these used to have a twin inside
+  //    `createWalkBoxWalk` and the anchors had to name one of TWO places. There is one now,
+  //    so one mutation reaches both callers — which is the property C-53 bought.
+    (src) => src.replace("  if (since) query.set('since', String(since));\n"
+      + "  if (until) query.set('until', String(until));",
+    "  if (since !== undefined) query.set('since', String(since));\n"
+      + "  if (until !== undefined) query.set('until', String(until));")],
   ['one end is dropped, so [since, until) silently becomes [since, ∞)',
-    (src) => src.replace("    if (until) query.set('until', String(until));", '')],
+    (src) => src.replace("  if (until) query.set('until', String(until));", '')],
   // 🔴 RE-ANCHORED. The first version of this mutant deleted a `hasOwnProperty` guard and
   //    ESCAPED — an absent key is `undefined`, which the number check already rejects, so
   //    the guard changed no answer and was dead code. Chasing it with a vacuous assertion
@@ -530,6 +579,23 @@ const REFUSAL_DEFECTS = [
   ['the new arm jumps the queue, so a server message stops winning',
     (src) => src.replace("  if (detail && typeof detail.message === 'string') return detail.message;\n",
       '')],
+];
+// C-53. 🔴 「생성기가 하나」가 «성질»로 서 있는지: 정본에서 규칙을 빼면 «두 호출자»가
+//    같이 빨개져야 합니다. 한쪽만 빨개지면 그때 생성기가 둘로 돌아온 것입니다.
+const ONE_BUILDER_DEFECTS = [
+  ['the canonical builder forgets `collect`, and BOTH callers must lose it together',
+    (src) => src.replace(
+      "  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t).split('@')[0]);",
+      '')],
+  ['the bare-name rule is dropped, so a declared `inspected@1` reaches the route as-is',
+    (src) => src.replace(
+      "  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', String(p).split('@')[0]);",
+      "  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', p);")],
+  // 🔴 「걷기 상자가 자기 질문을 다시 짓는다」의 대역: 정본을 지나되 «자기만» 인자를 하나
+  //    더 실어 보냅니다. 그 순간 두 URL 이 갈라지고, 그것이 둘째 생성기가 하는 일 그대로입니다.
+  ['the walk box adds an argument of its own, so the two URLs part again',
+    (src) => src.replace('        nodeId: entitySeedId(type, keys),',
+      "        nodeId: entitySeedId(type, keys), positive: ['x'],")],
 ];
 const RENAME_CONTROLS = [
   ['comments stripped', (src) => src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')],
@@ -588,6 +654,18 @@ for (const [name, mutate] of REFUSAL_DEFECTS) {
   if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
   else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
 }
+for (const [name, mutate] of ONE_BUILDER_DEFECTS) {
+  let r;
+  try { r = await oneBuilderSuite((await loadWithProbe(API_PATH, { mutate, tag: 'ob' })).module); }
+  catch (e) {
+    if (/did not mutate|unchanged/.test(String(e && e.message))) {
+      console.error(`  anchor GONE: ${name} — ${e.message}`); process.exit(2);
+    }
+    r = { failed: 1 };
+  }
+  if (r.failed > 0) { caught++; console.log(`  caught  ${name}`); }
+  else { wrong.push(name); console.log(`  ESCAPED ${name}`); }
+}
 for (const [name, mutate] of RENAME_CONTROLS) {
   const r = await score(name, mutate, 'rnc');
   if (r.failed === 0) console.log(`  escaped ${name}`);
@@ -598,6 +676,6 @@ pass = base.pass;
 failures.length = base.failed;
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
-console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length + REFUSAL_DEFECTS.length} caught, ${wrong.length} wrong`);
+console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length + REFUSAL_DEFECTS.length + ONE_BUILDER_DEFECTS.length} caught, ${wrong.length} wrong`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 && wrong.length === 0 ? 0 : 1);

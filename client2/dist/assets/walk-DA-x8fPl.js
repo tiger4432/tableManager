@@ -1,5 +1,5 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/config-C6wMXuF6.js","assets/config-BUp4smhE.js"])))=>i.map(i=>d[i]);
-import"./tokens-nTqwt3FA.js";import{a as e,c as t,d as n,s as r,t as i}from"./preload-helper-Ds8M16xb.js";var a=`data-wk-styles`,o=`
+import"./tokens-nTqwt3FA.js";import{a as e,c as t,d as n,s as r,t as i}from"./preload-helper-DpGk4fEH.js";var a=`data-wk-styles`,o=`
 .wk-form { display: flex; flex-direction: column; gap: 10px;
   font-family: 'Outfit', system-ui, sans-serif; font-size: 15px; color: var(--text, #111); }
 .wk-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;

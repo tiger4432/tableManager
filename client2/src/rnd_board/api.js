@@ -343,7 +343,7 @@ export function compositionModel(result) {
 /** `GET /api/ledger/subgraph`. `fetchImpl` injected so the boundary scores without a network. */
 export async function fetchSubgraph(params) {
   const { apiBase, nodeId, fetchImpl, positive, negative,
-          node_limit: nodeLimit, hops, follow, direction,
+          node_limit: nodeLimit, hops, follow, collect, direction,
           backbone_hops: backboneHops, since, until } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
@@ -408,7 +408,17 @@ export async function fetchSubgraph(params) {
   //    `processed_with`/`transferred`. So the DECLARATION names it, never this function.
   //    Same shape as the signed sets and the budget above: absent stays absent, so a request
   //    that names neither is byte-identical to the one this boundary sent before.
-  for (const p of follow || []) query.append('follow', p);
+  // 🔴 C-53. `follow` 는 «버전을 벗겨서» 나갑니다. 실측(round V, 2026-08-29):
+  //    `follow=inspected` 200 · `follow=inspected@1` «422». 선언은 `inspected@1` 로 부르고
+  //    라우트는 벗은 이름만 받으므로, 벗기는 자리는 «전선 하나»입니다 — 부르는 쪽마다 벗기면
+  //    안 벗긴 좌석이 조용히 422 를 받습니다(그리고 화면엔 「서버가 거절」만 뜹니다).
+  // ⚠️ 배열이 «아니면» 아무것도 안 싣습니다. 문자열을 `for…of` 로 돌면 «글자마다» 인자가
+  //    하나씩 붙습니다 — 은퇴한 낱말을 문자열로 넘긴 호출이 그 모양을 만들었고(하니스 R3),
+  //    그건 「안 실림」보다 나쁩니다: 서버가 «지어낸 질문»에 답합니다.
+  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', String(p).split('@')[0]);
+  // 🔴 C-53. `collect` — 「무엇을 «가져오나»」. `follow` 가 길이면 이것이 짐입니다. 걷기 상자만
+  //    싣던 것을 «정본 생성기»로 올립니다: 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
+  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t).split('@')[0]);
   if (direction) query.set('direction', direction);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
@@ -417,7 +427,12 @@ export async function fetchSubgraph(params) {
     try { detail = await res.json(); } catch (e) { detail = null; }
     return { ok: false, status: res.status, detail, body: null };
   }
-  return { ok: true, status: res.status, detail: null, body: await res.json() };
+  // ⚠️ C-53. 200 인데 «본문이 JSON 이 아니면» 던지지 않고 `body: null` 입니다. 읽는 쪽들이
+  //    이미 `!body` 를 「거절」로 다루고 있고(`subgraphModel`), 던지면 그 갈래가 «처리되지 않은
+  //    거부»가 됩니다 — 걷기 상자가 자기 생성기를 들고 있을 때 그 자리를 이렇게 막고
+  //    있었고, 생성기를 접으면서 그 보호까지 같이 접히면 «합치기가 갈래를 하나 죽이는» 것입니다.
+  return { ok: true, status: res.status, detail: null,
+           body: await res.json().catch(() => null) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1878,32 +1893,27 @@ export function createWalkBoxWalk(deps) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
             since, until } = spec || {};
     if (!type) return { ok: false, message: '노드 타입을 먼저 고르십시오' };
-    const query = new URLSearchParams();
-    query.set('id', entitySeedId(type, keys));
-    // 🔴 «안 고르면 안 싣습니다». 빈 배열은 「아무것도 따르지 마라」이고 서버 기본값의 반대입니다.
-    (follow || []).forEach((p) => query.append('follow', String(p).split('@')[0]));
-    // 🔴 `collect` — 「무엇을 «가져오나»」. `follow` 가 길이면 이것이 짐입니다.
-    //    같은 규율입니다: 안 고르면 «안 싣고», 안 실으면 서버가 전부 줍니다. 그래서 이 줄이
-    //    붙어도 오늘 도는 화면의 요청은 «한 글자도» 안 바뀝니다.
-    // ⚠️ 이것은 좌석 선언의 `legacyRoute`(표의 행 이름)와 «다른 축»입니다 — 이쪽이 전선의
-    //    낱말이고, 그래서 그쪽이 이름을 비켰습니다.
-    (collect || []).forEach((t) => query.append('collect', String(t).split('@')[0]));
-    // 같은 규율로 셋. `0` 은 안 싣습니다 -- 홉 0 도 예산 0 도 서버가 받는 값이 아닙니다.
-    if (direction) query.set('direction', String(direction));
-    if (hops) query.set('hops', String(hops));
-    if (nodeLimit) query.set('node_limit', String(nodeLimit));
-    // 🔴 C-51 / S-98. 같은 규율로 둘 더 — 빈 칸은 「구간 없음」이라 «안 싣습니다». 실으면
-    //    서버가 422 로 옳게 거절하고, 화면은 「안 고른 것」을 고장으로 그립니다.
-    // ⛔ 여기서 «거르지 않습니다». 구간으로 거르는 것은 walk 의 일이고(상설: 부품이 거르면
-    //    어긴 것), 부품이 받은 것을 다시 자르면 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
-    if (since) query.set('since', String(since));
-    if (until) query.set('until', String(until));
+    // 🔴 C-53. 이 함수는 «요청을 짓지 않습니다». `fetchSubgraph` 가 이 라우트의 «정본
+    //    생성기»이고, 여기는 걷기 상자의 spec 을 그 인자 모양으로 «옮기기»만 합니다.
+    //    왜: 같은 라우트에 URLSearchParams 가 «둘»이었고, 인자가 하나 늘 때 한쪽에만 실리는
+    //    날이 오면 두 화면이 «다른 질문»을 조용히 보냅니다 — 오류는 안 납니다. 기준 ④ 는
+    //    「둘이 있나」가 아니라 「둘이 «갈라질 수» 있나」이고, 여기가 그 실물이었습니다.
+    // ⚠️ 「0 은 안 싣는다」는 이 «화면의» 규칙이라 여기 남습니다 — 걷기 상자에서 홉 0 도
+    //    예산 0 도 「안 골랐다」의 표시입니다. 정본 생성기는 「없으면 안 싣는다」만 압니다.
+    //    두 규칙을 하나로 접으면 좌석 쪽 전선이 «조용히» 바뀝니다.
     try {
-      const res = await doFetch(`${apiBase || ''}/api/ledger/subgraph?${query}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body) {
-        return { ok: false, message: refusalSentence(body, res.status) };
+      const got = await fetchSubgraph({
+        apiBase: apiBase || '', fetchImpl: doFetch,
+        nodeId: entitySeedId(type, keys),
+        follow, collect, direction,
+        hops: hops || undefined,
+        node_limit: nodeLimit || undefined,
+        since, until,
+      });
+      if (!got.ok || !got.body) {
+        return { ok: false, message: refusalSentence(got.detail, got.status) };
       }
+      const body = got.body;
       // 🔴 여기서 «거르지 않습니다». 거르는 것은 walk 이 할 일이고, 부품이 받은 것을
       //    다시 좁히면 그 순간 화면이 「무엇을 못 봤는지」를 말할 수 없게 됩니다.
       // 🔴 `keys` 와 `depth` 를 «싣습니다» (2026-09-06). 종전에 셋으로 좁히고 있었는데, 그 둘이
