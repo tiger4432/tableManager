@@ -749,3 +749,33 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 남음           ⑥ 목적어 없는 술어 둘째(S-77) · ⑦ 시각 · ⑧ 집합 읽기 · ⑨ 수식 · ⑩ M 대수 · ⑪ 진위(B12)
 => 동결 문장은 아직 «못 씁니다». 다음 관문은 S-84(값 타입의 정의역)와 S-77(목적어 없는 술어)입니다
 ```
+
+### D-3-bis. S-77 착지 — 구멍 ⑥ 닫힘, 하드코딩 하나 사라짐 (2026-09-09, `4f49fdff`)
+
+```
+전    CONSTRAINT ck_ledger_register_has_no_object CHECK ((predicate = 'register') = (object_kind IS NULL))
+      -> «동치»라 목적어 없는 술어가 `register` «하나»여야 했습니다(D-0 ㉠ 에서 잰 것)
+후    그 제약이 «사라졌습니다»(schema.py:20 묘비 · :128 사유 · :140 이름만 남겨 마이그레이션이 떨굴 수 있게)
+      저장 층은 이제 «구조 불변식»만 지킵니다 — 목적어 없으면 payload 는 수식어뿐(ck_ledger_objectless_carries_only_qualifiers)
+```
+**일곱 층으로 확인했습니다** — DB 만 본 것이 아닙니다:
+```
+문법     목적어 없는 술어를 여럿 «선언 가능»(전부터)                                  ✅
+발행     predicate_claim 이 목적어 없는 문장을 만듭니다                                ✅
+엔진     runtime_v2 :499~531 의 register 분기는 «등록 중복 제거» 전용이고,
+         `if atom.predicate != "register": continue` 라 «다른 술어는 그냥 지나갑니다»   ✅ 막지 않음
+DB       제약 없음                                                                  ✅
+=> 구멍 ⑥ «닫힘». 방향 ①의 하드코딩 「CHECK 의 register 리터럴」도 «사라졌습니다»(셋 -> 둘)
+```
+⚠️ **다만 대칭은 아닙니다 — 기록해 둡니다**: `register` 는 «중복 억제»를 갖습니다(`known_registrations` ·
+`store.py:117` 의 부분 인덱스 `WHERE predicate = 'register'`). 둘째 목적어 없는 술어는 그것을 «안 씁니다» —
+같은 사실을 두 시각에 내면 원자 «둘»입니다(`DEDUPE_COLUMNS` 에 occurred_at 이 있어 접히지 않음).
+🔵 결함이 아니라 «성질»입니다. 「은퇴를 두 번 적으면 두 사실」이 맞는 답인지는 그 술어를 쓸 때 판정할 일입니다.
+
+### 남은 구멍 (방향 ②)
+```
+닫힘   ①②③④⑤(자리) · ⑥(S-77)
+남음   ⑦ 시각 · ⑧ 집합 읽기 · ⑨ 수식 · ⑩ M 대수 · ⑪ 진위
+       + 정의역 하나: 값 타입이 아직 number 만(S-84)
+=> 문법 관문(09-12)에 남은 것은 «S-84 하나»입니다. 나머지 다섯은 걷기·행동 인자라 09-16 관문 쪽입니다
+```
