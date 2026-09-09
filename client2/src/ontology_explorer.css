@@ -1259,6 +1259,19 @@
   text-align: right; font-variant-numeric: tabular-nums;
 }
 
+/* C-49 — 「거절 N」 아래에 «어느 행이». Same shape as the sentence list above it: this is
+   a second table on one panel, so it takes the first one's geometry rather than a new
+   one (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). Scrolls at the same height —
+   the list is capped at 20 by the server and must not push the panel open. */
+#ontology-explorer-root .oe-testrun-samples {
+  display: flex; flex-direction: column; gap: 1.7px;
+  max-height: 190px; overflow: auto;
+}
+#ontology-explorer-root .oe-testrun-sample {
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10.2px; align-items: baseline; padding: 1.7px 0;
+}
+
 /* C-42 — 「돌 게 있나」. One line under the source's head: name, number, and at most one
    word. It is a row of facts, not a panel: a heading here would make four numbers look
    like a section, and the operator's question is answered by the numbers themselves. */
