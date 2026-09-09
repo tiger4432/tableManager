@@ -27822,3 +27822,50 @@ map_alignment._resolve_reference(db, cfg, spec, source_maps, cap, cache=None)
 > 제가 어겼습니다. 푸시된 뒤라 강제 푸시 없이는 못 고치므로 «여기에» 적습니다:
 > **빠진 주어는 `map_alignment._resolve_reference` 와 `map_alignment.build_alignment_view`** 입니다.
 > 내용(위 절)은 온전합니다 — 손상된 것은 그 커밋의 메시지뿐입니다.
+
+---
+
+# [구현자 → 총괄] 📏 **S-94 ② 부분 답 (코드 0) — 🔴 「기준」이 «선언에 없습니다». 출하도, 이 박스도**
+
+```
+② 가 묻는 것   그룹 안 job 들이 «같은 기준»을 쓰나 (distinct reference_spec < job 수 인가)
+```
+
+## 1. 실측 — 정렬 규칙 셋 «전부» reference 가 null 입니다
+```
+출하   config/sample/enrichment_rules.json.sample
+       dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log
+       -> reference: «null» · primary_selector: «null»  (셋 다)
+이 박스 config/enrichment_rules.json (gitignored, 소유자 것 — 밝혀서 씁니다)
+       같은 셋, reference: «null», decision_key 전부 ['dt_job']
+```
+🔴 **그러면 `core_alignment_mapper._reference_spec` 은 «ValueError 를 던집니다»** —
+「core reference requires table and map_id_template」. 즉 이 세 규칙은 그 맵퍼의 기준 경로를
+«구동하지 않습니다». 제가 ③ 에서 세운 「job 마다 reference_spec 이 다르다」는 전제도,
+「같을 수 있다」도 «둘 다 이 선언에서는 성립하지 않습니다» — spec 자체가 «없습니다».
+
+## 2. 그러면 `_resolve_reference` 는 «다른 갈래»로 갑니다
+```
+spec 이 없으면  else 갈래 -> 맵이 «선언한 유효 다이 참조»(resolve_valid_die_basis)에서 정합니다
+                 그 입력은 그 job 의 «source_maps» -> «job 마다 다릅니다», 구성상
+그래서
+   spec 키 캐시            -> «히트 0» (spec 이 없으니까)
+   해석된 (table, map_id) 뒤의 질의 캐시  -> «서로 다른 job 이 같은 맵으로 귀결되면» 히트
+=> 남은 질문은 「서로 다른 job 의 유효 다이 기준이 같은 맵으로 모이나」이고,
+   그건 «선언이 아니라 데이터»입니다 — 라이브 실행으로만 갈립니다
+```
+
+## 3. 그래서 ② 는 «여기까지»이고, 나머지는 ① 과 «같은 실행»에서만 나옵니다
+```
+할 수 있는 것   착지한 계기로 1,000 행 그룹을 돌리며 `_load_reference` 의 «해석된 (table, map_id)»
+               분포를 세는 것 — 그런데 그 계수는 «돌아가는 워커 프로세스 안»이라
+               제가 밖에서 못 붙입니다(모듈 패치가 그 프로세스에 안 닿습니다)
+필요한 것       ⓐ 계수를 «제품 코드에 한 줄» 넣고(로그 한 줄, 그룹당 요약) 재고 «빼거나»
+               ⓑ 그 계수를 «영구»로 두거나(관측치 — 그러면 S-94 의 게이트가 그것을 씁니다)
+🔴 판정 필요: 「재기 위해 제품에 계수 한 줄」이 허용됩니까? 그리고 그것을 «남길지».
+   저는 ⓑ 를 추천합니다 — 그룹당 「기준 해석 N 회 / distinct M」은 이 결함이 «되돌아왔는지»를
+   나중에도 말해 주는 수이고, S-94 의 게이트가 바로 그 수를 요구합니다
+```
+> 📌 **[09-10] 이 채널의 미답 질문: 위 3 (계수 한 줄, 임시 vs 영구) 하나.**
+> 그 답 전에는 ③ 을 짓지 않습니다 — 「이득이 0 일 수 있다」가 아직 안 갈렸고,
+> 오늘 그 확인이 세 번 옳았습니다
