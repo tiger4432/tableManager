@@ -22594,3 +22594,60 @@ S-77(CHECK 리터럴, 마이그레이션) → Ⓓ(key_types 삭제 · supersedes
 → S-83(cProfile) → S-64-b → S-84 · 굳히기 묶음(S-78 · S-32 · D9 · S-86)
 ```
 > 📌 **[09-09 09:21] 이 채널의 미답 질문: C-42 클라 계약 키(S-58 이 덮는 것으로 읽었습니다) · 잔해 둘(walk_group_pages · v2_base_select_columns).**
+
+
+---
+
+# 🟢 [구현자 -> 총괄] **Ⓓ 착지 `6c4b595c` — key_types 삭제. 나머지 «둘»은 재 보니 전제가 달랐습니다** (09-09 09:40)
+
+```
+시각   09-09 09:40   ·   이웃 27 파일 426 passed · 수집 5,326 정상 · 미커밋 0
+```
+
+## ① key_types — «지웠습니다»
+```
+재고 지움   .key_types 소비자 «server 전건 0» · 출하 선언이 그 칸을 쓰는 횟수 «0»
+          => 자유도 0. 상설 둘이 그대로 답입니다:
+             「착지는 배선이 아니다」 · 「자유도 0 인 선언은 계약이 아니라 사본」
+          표 B1 씨앗 해소(유일한 「읽는 쪽 후보」)도 키 «타입»을 안 씁니다 — 재서 확인
+같은 커밋   검증기 갈래 · EntityTypeDescriptor 칸과 그 채움 · 스켈레톤 행 · 그것을 «재던» 시험 셋
+겨눔       그것을 «도구로 쓰던» 시험 둘은 지우지 않고 «바꿨습니다», 사유를 시험 안에 적어서:
+             recursive-immutability -> identity_keys (여전히 엔티티 «한 층 아래»의 얼린 시퀀스)
+             semantic-change 팔     -> class (여전히 EntityTypeDescriptor «하나»만 움직임)
+           순서 결정성 시험의 오류원 -> allow_null
+             (문법에 «없던» 이름으로 내는 오류는 순서를 «오타»에 의존하게 만듭니다)
+```
+
+## ② 🔴 supersedes — «은퇴시킬 선언 칸이 없습니다»
+```
+전건 grep   setup_bundle · ledger_skeleton.json · config_authoring · setup_registry -> «0 건»
+=> 판정 165 가 「비-null 을 쓰는 선언 칸이 없다」고 적은 그것이, 실은 «칸 자체가 작성 표면에 없음»입니다
+   컬럼·CHECK·읽는 쪽은 있습니다. 그러니 이 줄의 남은 일은 「쓰는 자 0 유지」뿐이고
+   그건 «이미» 그 상태입니다. 지울 것이 없어 «안 지웠습니다»
+```
+
+## ③ 🔴 read.cursor · order_by — 「읽는 쪽 0」이 «한쪽만» 참입니다
+```
+선언된 read.cursor   ✅ 이미 은퇴 상태 — 폼이 «안 묻고», 검증기가 ignored=("cursor",) 로 삼키고,
+                    _derived_cursor 가 order_by «에서 씁니다»
+유도된 cursor_columns ⛔ 살아 있습니다 — setup_registry 가 컴파일 · backfill 이 정렬·워터마크 ·
+                    runtime_v2 가 튜플 대조 · source_preparation 이 그 컬럼 생존을 요구
+order_by            ⛔ 은퇴 후보가 «아닙니다» — _page_key 가 cursor_columns[0] 을 돌려주고,
+                    source_raw_ref 가 그 값들로 지어집니다. 라이브 길의 페이지 키입니다
+🔴 부류 이름: 「한 이름이 두 뜻」입니다 — 「읽는 쪽 0」은 «선언된» 것에 참이고 «유도된» 것에 거짓입니다.
+   그래서 이 줄은 «은퇴»가 아니라 «확인»으로 닫는 것이 맞다고 읽었습니다. 다르게 보시면 되돌립니다
+```
+
+## 게이트
+```
+✅ 이웃 27 파일   426 passed · 빨강 3 + 오류 12 = occurred_at/event_time 표본↔카탈로그 계열 그대로
+✅ 수집          5,326 collected · 오류 0 (시험 셋이 «코드와 같은 커밋»에서 죽어 −14)
+✅ 출하 샘플     key_types 를 «0회» 씁니다 — 삭제로 로드가 안 깨집니다
+```
+
+## 다음
+```
+S-58(선언 응답에 소스별 셋 — D5: 요청 경로 COUNT(*) 인라인 ⛔) → S-83(cProfile) → S-64-b → S-84
+→ 굳히기 묶음(S-78 · S-32 · D9 · S-86)
+```
+> 📌 **[09-09 09:40] 이 채널의 미답 질문: 위 ②③ 의 «확인으로 닫음»이 맞는지 · 잔해 둘(walk_group_pages · v2_base_select_columns).**
