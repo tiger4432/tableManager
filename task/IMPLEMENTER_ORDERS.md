@@ -37159,3 +37159,26 @@ tests/test_api.py::test_chained_ingestion   픽스처가 «새 행»에 uuid4 ro
 
 
 > ✅ **[09-09 14:09] 판정 189 «라이브 확인» — `837b5fc4` 시험 4 passed(제가 돌림) → 재기동 **PID 38096**(14:08:19). 기동 로그: 13 표 `created`(bonding_inventory · defect · delam_obs · lot_slot_wafer · mechanism_edge · metro · process_event · process_param · slot_trace_for_bonding · slot_trace_for_dt · step_defect_obs · step_inspection_run · void) · refused 0 · invalid 0. DB 로 재확인: business_key_val 을 가진 기본 표 44 = 유효 유일 색인 44(이미 있던 31 + 오늘 13), 색인 없는 표 0. 「무효 잔존은 이름만 남기고 손 안 댄다」와 「이미 됐다 = 유효한 색인」 판별 둘 다 맞습니다. ㉡ 의 「조립 뒤 조회」가 기댈 바닥이 이 박스에 «섰습니다». ② 계속(188) → ③(183/184/187). 걷기·선언·html 200 · admin 401**
+
+
+> 🟢 **[09-09 14:13 판정 190 — ② 의 둘째 자리는 제가 찾았습니다(문서 CODE_MAP 1213 → `git grep business_key_val` → 읽기). 실행 추적 라운드는 «불필요»**
+```
+경로 A  crud.assemble_composite_business_key(:2344) — 호출자가 키를 보내면 «조립 안 함»(첫 줄 guard) → _get_or_create_row 가 «보낸 키»(SENT-1)로 조회/생성
+경로 B  apply_row_update_internal 의 「2. 복합 비즈니스 키 실시간 재계산」(:3032~) — 셀을 «쓴 뒤» is_new 이거나 조립 컬럼이 바뀌면 행의 컬럼 값으로 compose_business_key → T|M → current_bk 와 다르면 _find_business_key_conflict → 충돌 행 있으면 «대안 B 조용한 병합»(껍데기 행 삭제 · 셀 소스 이전), 없으면 row.business_key_val 덮어씀(:3294)
+=> 당신 시험의 SENT-1 → T|M 은 B 가 «조회 뒤에» 고쳐 쓴 것. 그래서 조회는 틀린 키로 돌고, 신원은 나중에 맞춰집니다 — 「복합 키 둘째 쓰기가 행을 둘 만듦」 xfail 이 바로 이 틈(껍데기 행이 먼저 생기고 병합/삭제가 그것을 지우거나 못 지움)
+```
+## 판정 — 두 경로를 «하나»로: 신원은 «조회 전»에 한 번 조립되고, 쓰기 뒤 블록은 «재키잉»만 남는다
+```
+A 고침   guard 를 `if update_item.row_id: return False` 로. 조립 부품이 다 있으면 «항상» 조립(순수 함수라 두 번 불러도 같은 값 — 멱등은 guard 가 아니라 «함수의 성질»로 성립). 보낸 business_key_val 이 조립값과 «다르면» 조립이 이기고 그 재작성을 «이름 대어»(응답 created_logs 의 기존 자리, 판정 188) — 부품이 «비면» 보낸 키를 쓴다(오늘 :3046 폴백과 같은 정책)
+B 남김   `is_src_changed`(기존 행의 조립 컬럼이 «바뀐» 경우 = 재키잉 + 충돌 병합)만. `or is_new` 갈래는 A 가 먹으므로 «빠진다» — 새 행은 조회 시점에 이미 조립 키를 들고 옴 → 껍데기 행이 «생기지 않음» → 그 xfail 이 뒤집힘
+⛔ B 를 통째로 지우지 말 것 — 셀 편집으로 키 부품이 바뀌는 길은 «다른 사건»(re-key)이고 거기의 병합은 필요합니다
+```
+## 이웃 «다섯» — guard 의 뜻에 기대는 자리, 같은 커밋에 (`git grep -n 'assemble_composite_business_key'`)
+```
+crud.py:3704 도스트링 「Replay safety: guarded on neither id nor key」 → 재생이 «키를 보내는» 경우 조립이 이제 돈다: _snapshot/_restore_payload_identity(:3621/:3631) 가 «조립 뒤 값»을 되돌리는지 확인 · mapper_sdk.py:139 「returns at its first statement when …」 문장 갱신 · void_sat_format.py:269~278(반환값 소비) · dt_map_derivation.py:975 · ledger/setup_bundle.py:204 — 넷은 «문장»이고 하나(재생)는 «동작»입니다. 재생 시험(test_chain_replay)이 그 동작의 오라클
+```
+## 착지 게이트
+```
+오라클 파일: 복합 키 strict xfail «뒤집힘» · 「SENT-1 을 보내도 조회가 T|M 으로 돈다」 단언 하나(변이: A guard 를 옛 줄로 되돌리면 빨강) · 재생 시험 초록 · 이웃 다섯 같은 커밋 · 미커밋 0
+```
+> 📌 **[09-09 14:13] 이 채널의 미답 질문: «없음».** (14:11 의 ① 「둘째 자리를 실행으로 찾는다」 → 190 이 자리를 댐. 실행 확인은 «단언 하나»로 대신)
