@@ -105,7 +105,10 @@ def test_the_worker_sets_it_once_and_resets_it():
 
     import chain_ingestion_worker as worker
 
-    body = inspect.getsource(worker.process_chain_transaction_group)
+    # 판정 193 moved this body behind an `asyncio.to_thread` wrapper that carries the
+    # public name, so the source to read is the sync function that still holds the work.
+    # Named rather than made tolerant: if the body moves again this must fail loudly.
+    body = inspect.getsource(worker._process_chain_transaction_group_sync)
     assert body.count("request_chain_depth.set(") == 1
     assert "request_chain_depth.reset(" in body
 
@@ -115,7 +118,7 @@ def test_the_depth_is_one_more_than_what_woke_it():
 
     import chain_ingestion_worker as worker
 
-    body = inspect.getsource(worker.process_chain_transaction_group)
+    body = inspect.getsource(worker._process_chain_transaction_group_sync)
     assert "incoming_depth + 1" in body
 
 

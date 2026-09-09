@@ -39,6 +39,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.abspath(os.path.join(script_dir, ".."))
@@ -85,8 +86,18 @@ TEST_TABLE_CONFIG = {
 
 @pytest.fixture(name="db")
 def fixture_db():
+    # 🔴 StaticPool IS LOAD-BEARING, and it is about the HARNESS rather than the code.
+    # sqlite's default pool for an in-memory database hands out ONE CONNECTION PER THREAD,
+    # and each connection to ":memory:" is its OWN EMPTY DATABASE. 판정 193 moved this
+    # funnel's work into `asyncio.to_thread`, so without this the worker thread opens a
+    # second, empty database and every table in this file reads back "no such table" -
+    # the harness measuring sqlite's pool instead of the production funnel it exists to
+    # drive. `tests/conftest.py` already binds its shared engine this way for the same
+    # reason. Production is PostgreSQL, where a session keeps the connection it checked
+    # out whichever thread uses it.
     engine = create_engine("sqlite:///:memory:",
-                           connect_args={"check_same_thread": False})
+                           connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
     Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     models.init_dynamic_models(TEST_TABLE_CONFIG)

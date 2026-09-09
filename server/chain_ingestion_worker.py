@@ -748,7 +748,36 @@ def _group_target_tables(events_in_tx, rules):
                 targets.add(tgt)
     return targets
 
-async def process_chain_transaction_group(tx_id, events, db, rules):
+def _process_chain_transaction_group_sync(tx_id, events, db, rules):
+    """The whole of one transaction group's work, and every line of it is BLOCKING.
+
+    🔴 판정 193 / S-93 — THIS BODY DID NOT MOVE; ITS THREAD DID. It was written as an
+    `async def` and contained no `await` at any point, so every mapper call, every query
+    that mapper makes and the target write that follows ran ON THE EVENT LOOP. While it
+    ran, no other request could resume - including the response owed to the very user
+    whose write woke the chain.
+
+    Measured live 2026-09-09 by the lead (PID 38168, dt_job source, 1,000 fresh rows
+    through the real route): the PUT answered in 22.8-33.5 s, while the same code with
+    the same PostgreSQL and no chain worker answered in 1.36 s. The decisive experiment
+    was a GET issued every 3 s during the PUT: a route that normally costs 0.07 s took
+    22.76 s at t+3 and 5.94 s at t+9. So the wait was not in the writer's thread; the
+    LOOP was blocked, and the PUT's own answer was queued behind it. py-spy put 58% of
+    its samples under `execute_custom_mapper` on the loop thread.
+
+    ⚠️ THE GRANULARITY IS ONE GROUP, AND THAT IS NOT AN ARBITRARY CHOICE. `db` is a
+    single SQLAlchemy Session, which one thread may use at a time. Groups are awaited one
+    after another in `process_pending_groups` (no gather), so exactly one worker thread
+    ever holds this session. Splitting finer would put two threads on it.
+
+    ⚠️ AND THE CONTEXTVARS STILL WORK. `asyncio.to_thread` runs this inside a COPY of the
+    caller's context, so the four tokens set below are visible to everything this calls -
+    and, better than before, the copy is discarded afterwards, so they cannot leak into
+    the loop's own context even if a `reset` were missed.
+
+    Pacing, ordering and error handling are untouched: the wrapper returns exactly what
+    this returns, including the failure tuple.
+    """
     # [Latency Fix #2] 커밋 이후 fire-and-forget으로 발사할 브로드캐스트 메시지 큐.
     # 여기에는 이벤트명/페이로드 형식이 그대로(batch_row_*, batch_refresh_required) 담긴다.
     broadcast_messages = []
@@ -1237,6 +1266,18 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
             request_chain_depth.reset(token_depth)
 
     return True, None, broadcast_messages
+
+
+async def process_chain_transaction_group(tx_id, events, db, rules):
+    """Run one group off the event loop.
+
+    🔴 판정 193. The name, the signature and the 3-tuple are unchanged because thirteen
+    tests and one production caller address this function - what changed is which thread
+    the work happens on. See `_process_chain_transaction_group_sync` for the measurement.
+    """
+    return await asyncio.to_thread(
+        _process_chain_transaction_group_sync, tx_id, events, db, rules)
+
 
 def reload_worker_process_cache():
     """체인 워커 프로세스의 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
