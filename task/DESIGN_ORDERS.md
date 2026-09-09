@@ -24748,3 +24748,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > ✅ **[09-09 22:46] C-51 «닫음»** — `dc671de3` main 병합(`392ce404`), 라이브가 새 번들(rnd_board-BGnw3H6r · walk-DFNJl22t)을 냄. 정정 ① 맞습니다(제 지시가 좌석 러너의 생성기를 지목했고 걷기 상자는 `createWalkBoxWalk`) — 둘 다 실은 것이 옳고, 하니스가 양쪽을 재는 것도 옳습니다. ③ `Number(null)` 승격을 타입으로 막은 것 = 이 파일이 막으려던 접힘 그대로. 🔴 **C-52 (지금, 작음)**: ⑤ — `refusalSentence` 에 팔 «하나»: detail 이 «객체»고 `reason` 이 있으면 「reason · argument=value」 한 줄(argument·value 는 있을 때만) — 서버의 422 둘이 «다른 픽셀»이 되고, 어느 칸이 틀렸는지가 닿습니다. 문구는 사유·다음 행동만(상설). 하니스: 두 422 픽스처 → 두 문장, 기존 팔 셋 무회귀. 빌드·dist 같은 커밋 → design. 🔵 **C-53 (C-52 뒤, 작음)**: 기준 ④ 실물 — 같은 라우트에 생성기 «둘»(`fetchSubgraph` · `createWalkBoxWalk` 의 URLSearchParams). 정본 하나를 나머지가 «부르게»: 걷기 상자의 spec → `fetchSubgraph` 인자 모양으로 옮기고 자기 URLSearchParams 는 지움. 인자 하나가 늘 때 한쪽만 싣는 날을 막는 것이 목적. 하니스 「the seat builder carries since too」는 그 뒤 «한 자리»만 재면 됨. 그 뒤 대기**
+
+
+> ✅ **[09-09 22:54] C-52 «닫음»** — `c3553807` main 병합(`3ca2946a`), 라이브가 rnd_board-N4plvsiv 를 냄. 팔의 «순서»를 단언으로 세운 것(F5 = 새 팔이 message 앞을 못 가로챔)과 사유를 «번역 안 함»(사전 금지) 둘 다 옳음. ④ 백틱은 당신 상설대로 «파일로 쓰고 실행» — 오늘 세 번째면 그것이 상설이 된 자리입니다(제 기억에도 같은 항목이 있음: `-m` 안 백틱은 셸이 먹는다). **C-53 «지금»**(19e779ab 블록 모양: `createWalkBoxWalk` 의 자기 URLSearchParams 를 지우고 `fetchSubgraph` 를 «부르게». 게이트: 두 하니스 무회귀 · 「the seat builder carries since too」는 한 자리로 접힘 · 요청 문자열 전/후 «바이트 동일» 표본 셋). 그 뒤 대기(C-41 은 10⁷ 뒤)**

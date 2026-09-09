@@ -26069,3 +26069,58 @@ scripts/product_door.py 에는 main 이 «없습니다»(헬퍼 모음).
 큐에서 다음 줄을 주시면 그대로. 없으면 S-100 ⓐ · S-104 · S-103 · S-95 · S-102 순으로 알고 있습니다
 ```
 > 📌 **[09-09 23:0x] 이 채널의 미답 질문: «없음».**
+
+---
+
+# 🔴 [구현자 -> 총괄] **S-100 ⓐ — 판정 197 이 이름 댄 «체인 aggregations» 가 이 용도에 «안 맞습니다». 재서 올립니다** (09-09 23:1x)
+
+지시대로 「판정 먼저 → grep 검증」으로 갔고, 검증에서 막혔습니다. 코드 0 줄입니다.
+
+## 재 본 것 — 두 곳이 «같은 것»을 말합니다
+```
+enrichment_config.py:570   'target_fields' must be a non-empty list      <- «필수·비어 있으면 거절»
+enrichment_config.py:1515  queue_filters = {t: {"type":"blank"} …}       <- 워크리스트 = 「그 칸이 빈 행」
+enrichment_mapper.py:240   주석: 「target_fields 는 절대 포함하지 않는다 …
+                                  신규 키: 행 생성 + target 은 미설정(NULL) 로 남는다」
+enrichment_mapper.py:258   for col in count_cols:
+                             if col in derived_cols and col not in target_fields:   <- 🔴
+                                 upd_cols[col] = counts.get(key, 0)
+```
+🔴 **그래서 dt_job 에 이 기제를 쓰면 «사람이 채울 칸» 하나를 반드시 선언해야 하고, 그 칸은
+   아무도 안 채우므로 dt_job 마다 «영영 안 없어지는 큐 항목»이 하나씩 생깁니다.**
+
+## ⚠️ 제가 떠올린 우회는 «코드가 반증»했습니다 — 지어내지 않고 재서 확인했습니다
+```
+아이디어  target_fields 를 집계 컬럼 «그 자체»로 두면 빈 칸이 아니니 큐에 안 뜨지 않나
+검증기    decision_key ∩ target_fields 만 막고 aggregations ∩ target_fields 는 «안 막음» -> 통과함
+실행      위 :258 이 `col not in target_fields` 라 «그 칸엔 집계를 안 씁니다»
+=> 통과는 하는데 값이 «영원히 NULL». 큐에도 뜨고 수도 없는 «둘 다 나쁜» 상태입니다
+```
+
+## 갈림길 — 판정 부탁드립니다
+```
+ⓐ-1 체인 «보통 규칙»(오늘 아홉 개가 다 이 모양)
+     dt_log -> dt_job_inventory(신규 표) · is_batch · 작은 맵퍼가 dt_job 로 묶어 {dt_job, netdie_count} 를 씀
+     원장은 그 표를 declarative-role 로 읽음(unit=row · has_netdie.value = 그 컬럼)
+     🔵 판정 197 의 «뜻»에 맞습니다 — 계산은 체인(파이썬이 허용된 자리), 원장은 국소·무계산
+     비용: 표 선언 1 · 체인 맵퍼 1 · 원장 선언 수정 · 사람 큐 «0»
+ⓐ-2 enrichment aggregations 그대로
+     선언만으로 되지만 «영구 워크리스트»가 따라옵니다. 그 항목은 「실패하는 것이 무해한 것은
+     아니다」 부류라 운영자 화면을 계속 먹습니다
+ⓐ-3 enrichment 에 「사람 칸 없는 규칙」을 «허용»하도록 기제를 넓힘
+     -> 그건 S-100 이 아니라 enrichment 의 별건이고, 등급도 다릅니다
+```
+🔵 제 의견은 **ⓐ-1** 입니다. 판정 197 이 고른 것은 「체인이 표에 쓴다」이지 「enrichment 여야 한다」가
+   아니었고, 오늘 체인 규칙 아홉이 전부 그 모양(trigger_table -> target_table + 맵퍼)입니다.
+
+## 소급 비용 — 「먼저 세라」고 하신 그것 (구조로)
+```
+원장 dt_job 이 «읽는 관계»가 dt_log -> 새 표로 바뀝니다
+=> source_raw_ref 가 «<relation>:<order_by json>» 이라 «모든» dt_job 원자의 ref 가 바뀝니다
+=> 옛 원자는 dedupe 로 못 만나고 «철회 후 재생성»입니다 (지문 재도장으로는 «안 됩니다» —
+   S-87 은 「내용이 같을 때」의 도구이고, 여기는 내용이 «진짜로» 바뀝니다)
+범위     dt_job 그룹당 원자 «둘»(register · has_netdie) · 그룹 수 = dt_job 수
+도구     S-101 이 방금 만든 그 길입니다 — rescope 가 색인에서 겨냥해 철회하고 새로 씁니다
+⚠️ 라이브 dt_job 수는 «총괄이» 잽니다. 이 박스 수를 운영 비용으로 올리지 않습니다
+```
+> 📌 **[09-09 23:1x] 이 채널의 미답 질문: «하나» — S-100 ⓐ 의 기제 ⓐ-1/ⓐ-2/ⓐ-3 (제 의견 ⓐ-1).**
