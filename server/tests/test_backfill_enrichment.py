@@ -888,9 +888,23 @@ def test_probe_keeps_an_identity_this_run_created_out_of_already_derived(bkfl_en
     assert stats["existing_lookup"] == "probe"
     assert stats["already_derived"] == 0, (
         "the run's own creation was read back as pre-existing")
-    assert stats["created_rows"] == 1
-    assert stats["updated_rows"] == 1, (
-        "the second chunk's refinement write was dropped")
+    assert stats["created_rows"] == 1, (
+        "chunk 2 minted a SECOND row - the memo did not hold the identity")
+    # 🔴 ZERO, AND THAT IS A CORRECTION RATHER THAN A RELAXATION (판정 192).
+    # Measured 2026-09-09: chunk 2 sends a payload byte-identical to chunk 1's - the
+    # combination accumulator has already counted BOTH source rows by chunk 1, so it
+    # writes `chip_count: 2` there and repeats it - and `apply_batch_updates` reports
+    # `changed_cells == []` for it. Counting that as an updated row was the false number
+    # 판정 192 removed: an unchanged save has no item in the answer.
+    #
+    # ⚠️ THE TEST'S OWN PROPERTY IS UNTOUCHED AND IS ASSERTED ABOVE. The defect this
+    # file exists to catch is the probe reading back the row it just wrote and filing it
+    # under `already_derived` - that shows as `already_derived == 1` and as a SECOND
+    # derived row, both of which are pinned. `updated_rows` was only ever a proxy for it,
+    # and since 192 the proxy cannot tell "the write was dropped" from "the write changed
+    # nothing", so the assertions that CAN tell them apart are the ones left carrying it.
+    assert stats["updated_rows"] == 0, (
+        "chunk 2 repeats chunk 1's payload exactly, so there is nothing to update")
 
     rows = _derived_rows(db)
     assert [r.business_key_val for r in rows] == ["EQP7_T7"]
