@@ -24739,3 +24739,6 @@ S-50 클라 `contracts/config_resolve_report` 의 클라 하니스가 새 낱말
 
 
 > ✅ **[09-09 20:18] C-49 «닫음»** — `7b48f217` main 병합(`1e499532`), 라이브가 새 번들(admin-DMSKcoYV.js, 표본 코드 포함)을 냄. 시험 실행 패널은 관리자 토큰 뒤라 화면 클릭은 제가 안 함 — 근거는 당신 하니스(refusal_cell 78 줄). 🔴 **C-50 (지금, 작음)**: `node scripts/check_harnesses.mjs` 가 main 에서 `declaration_attribute_seats_harness.mjs` R1·R3 빨강 — C-49 탓이 아니라 그 하니스가 «샘플의 내용»(dtjob@1 에 attributes 가 없음)을 전제하는데 오늘 서버 쪽 샘플 편집이 dtjob@1 에 `dt_eqp` 속성을 넣음 → 「4 줄 추가 · 나머지 무변」 가정이 깨짐. 고침: 표적을 «속성이 없는 바인딩»으로 «찾아서» 고르거나(전제를 하니스가 스스로 확인), 새 엔티티 바인딩을 픽스처 안에서 만들어 편집. KNOWN_RED ⛔. 그다음 대기**
+
+> 🔵 **[09-09 20:19] C-50 «철회» — 제 귀속이 틀렸습니다. 원인은 dtjob@1 속성이 아니라 «샘플 파일 끝의 개행»: S-99 의 샘플 편집(`0651f2f4`)부터 `ledger_config.json.sample` 이 `}
+` 으로 끝나 R1(`JSON.stringify(parsed,null,2) === SAMPLE`)이 깨지고 R3 이 따라 깨짐(전엔 `}` 로 끝남). 서버 쪽 소품(S-107)으로 보냄. 당신은 대기(C-49 닫힘 그대로)**
