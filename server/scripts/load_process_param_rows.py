@@ -39,7 +39,6 @@ for _p in (_SERVER, _HERE):
 
 from sqlalchemy import text                                          # noqa: E402
 from database import database as db                                 # noqa: E402
-from ledger import uuid7                                            # noqa: E402
 
 TABLE = "process_param"
 SOURCE = "ledger_events_pre_rebuild"
@@ -69,6 +68,12 @@ SELECT e.id::text AS atom_id, v.key AS param, v.value AS value, v.role AS role,
 """
 
 
+import product_door
+
+#: The layer name these rows land under, so they are attributable and removable as a set.
+SOURCE_NAME = "load_process_param_rows"
+
+
 def unit_of(param):
     for suffix, unit in UNIT_SUFFIXES:
         if param.endswith(suffix):
@@ -79,6 +84,8 @@ def unit_of(param):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url the rows are written through")
     ap.add_argument("--i-accept-writing-to-owner-database", dest="allow_owner",
                     action="store_true")
     args = ap.parse_args(argv)
@@ -105,7 +112,9 @@ def main(argv=None):
                 # inspection_run: `row_id` is a uuid7 and `business_key_val` repeats the
                 # declared business key. Inventing a different shape here would make this
                 # table the one row the rest of the write path cannot recognise.
-                "row_id": str(uuid7.uuid7()),
+                # 🔴 NO `row_id` SINCE S-78: the engine mints it and ruling 150 refuses a
+                # supplied id that is not a uuid7. The business key is what the door needs
+                # to resolve or create the row.
                 "business_key_val": param_id,
                 "param_id": param_id,
                 "wafer_id": r.wafer_id, "step": r.step, "param": r.param,
@@ -134,24 +143,22 @@ def main(argv=None):
         print("\n   DRY RUN - nothing written.")
         return 0
 
-    columns = ("row_id", "business_key_val", "param_id", "wafer_id", "step", "param",
-               "value", "value_text", "role", "unit", "eqp_id", "recipe_id", "eventtime")
-    # 🔴 NO `ON CONFLICT`: `param_id` is the DECLARED business key but the table
-    # carries no unique constraint, and Postgres refuses the clause without one. Rather than
-    # add an index this round did not ask for, the script refuses to run against a non-empty
-    # table - so a second run cannot double the rows, which is what the clause was for.
+    # 🔴 NO `ON CONFLICT` REASONING IS NEEDED ANY MORE, and the refusal that stood in for
+    # it stays. `param_id` is the declared business key with no unique constraint behind
+    # it, so this loader still fills an EMPTY table only - the door would resolve onto
+    # existing rows by business key rather than double them, but "resolve" is not what an
+    # empty-table loader means, and clearing the table remains a ruling rather than a step.
     if existing:
         print("")
         print("   REFUSED: %s already holds %d rows. This loader fills an EMPTY"
               " table; clearing it is a ruling, not a step." % (TABLE, existing))
         return 1
-    insert = text("INSERT INTO %s (%s) VALUES (%s)"
-                  % (TABLE, ", ".join(columns),
-                     ", ".join(":" + name for name in columns)))
-    with db.engine.begin() as c:
-        c.execute(text("SET statement_timeout = '600s'"))
-        for start in range(0, len(rows), 2000):
-            c.execute(insert, rows[start:start + 2000])
+    # 🔴 THROUGH THE PRODUCT DOOR (S-78, ruling 176): a statement issued at the table
+    # carries no envelope, so the fold cannot see these rows and nothing can undo them.
+    items = [product_door.row_item(
+        row.pop("business_key_val"), row, source_name=SOURCE_NAME) for row in rows]
+    result = product_door.put_rows(TABLE, items, base_url=args.url)
+    print("\n   %s" % result)
     with db.engine.connect() as c:
         after = c.execute(text(f"SELECT count(*) FROM {TABLE}")).scalar()
         both = c.execute(text(

@@ -35,11 +35,16 @@ for _p in (_SERVER, _HERE):
 
 from sqlalchemy import text                                          # noqa: E402
 from database import database as db                                 # noqa: E402
-from ledger import uuid7                                            # noqa: E402
 
 TABLE = "mechanism_edge"
 MODELS = ("void_formation", "delam_formation", "void_observation_bias")
 REVIEWED = re.compile(r"owner-reviewed (\d{4}-\d{2}-\d{2})")
+
+
+import product_door
+
+#: The layer name these rows land under, so they are attributable and removable as a set.
+SOURCE_NAME = "load_mechanism_edge_rows"
 
 
 def _config_path():
@@ -62,8 +67,11 @@ def build_rows():
                     if found else None)
         for edge in spec.get("edges") or []:
             edge_id = "%s:%s:%s" % (model, edge["from"], edge["to"])
+            # 🔴 NO `row_id`. The engine mints it and ruling 150 refuses a supplied id
+            # that is not a uuid7 - a tool minting its own is doing the engine's job, and
+            # the business key is enough for the door to resolve or create the row.
             rows.append({
-                "row_id": str(uuid7.uuid7()), "business_key_val": edge_id,
+                "business_key_val": edge_id,
                 "edge_id": edge_id, "model": model,
                 "from_quantity": edge["from"], "to_quantity": edge["to"],
                 "dir": edge.get("dir"), "asserted_at": asserted,
@@ -74,6 +82,8 @@ def build_rows():
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--url", default=product_door.DEFAULT_BASE_URL,
+                    help="server base url the rows are written through")
     ap.add_argument("--i-accept-writing-to-owner-database", dest="allow_owner",
                     action="store_true")
     args = ap.parse_args(argv)
@@ -102,12 +112,14 @@ def main(argv=None):
         print("   REFUSED: %s already holds %d rows." % (TABLE, existing))
         return 1
 
-    columns = ("row_id", "business_key_val", "edge_id", "model", "from_quantity",
-               "to_quantity", "dir", "asserted_at")
-    with db.engine.begin() as c:
-        c.execute(text('INSERT INTO %s (%s) VALUES (%s)'
-                       % (TABLE, ", ".join('"%s"' % n for n in columns),
-                          ", ".join(":" + n for n in columns))), rows)
+    # 🔴 THROUGH THE PRODUCT DOOR, NOT AT THE TABLE (S-78, ruling 176). A statement issued
+    # here would carry no envelope, so the fold could not see these rows and nothing could
+    # undo them. The door also translates them down the live path, which is the point.
+    items = [product_door.row_item(
+        row.pop("business_key_val"), row, source_name=SOURCE_NAME) for row in rows]
+    result = product_door.put_rows(TABLE, items, base_url=args.url)
+    print("")
+    print("   %s" % result)
     with db.engine.connect() as c:
         after = c.execute(text(f"SELECT count(*) FROM {TABLE}")).scalar()
     print("")
