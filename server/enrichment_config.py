@@ -581,9 +581,15 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     if not isinstance(raw_aggs, dict):
         return None, "'aggregations' must be an object {column: fn}"
     for col, fn in raw_aggs.items():
+        # 🔴 이름 대어 거절한다 (S-102, 원장 S-84 와 같은 처리). 이 자리는 경고 한 줄을
+        # 남기고 «조용히 버렸다» — 그러면 작성자가 `sum` 을 적어도 규칙은 «집계 없이» 서고,
+        # 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다. 「로그에만 있는
+        # 스킵은 아무도 보지 못하는 스킵이다」는 이 모듈이 `_record` 옆에 이미 적어 둔 문장이고,
+        # 그 문장은 「고쳐야 할 선언」에 대해서는 «거절»까지 간다.
         if fn != "count":
-            logger.warning(f"[Enrichment:{name}] aggregation '{col}: {fn}' dropped (v1 supports 'count' only)")
-            continue
+            return None, (
+                f"aggregation '{col}: {fn}' is not supported - 'count' is the only "
+                f"function this version applies")
         aggregations[col] = fn
 
     # 테이블/컬럼 존재 검증 (table_config가 주어진 경우에만 — 순수 구조 검증과 분리)
@@ -610,9 +616,21 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
             if c in drv_cols:
                 kept_list_cols.append(c)
             else:
-                logger.warning(f"[Enrichment:{name}] list_column '{c}' dropped: not in derived table columns")
+                # ⚠️ 규칙은 «선다» — `list_columns` 는 보여 주기용이고, 하나가 빠져도 이 규칙이
+                # 하려는 일(target_fields 채우기)은 그대로 된다. 바뀐 것은 그 드롭이 «보인다»는
+                # 것뿐이다: `_record` 는 이 모듈이 reference_view 에 이미 쓰는 채널이고
+                # `config_resolve_report` 가 운영자에게 그것을 낸다.
+                _record(rejections, "enrichment_rule", f"{name}/list_columns",
+                        f"list_column '{c}' dropped: not a column of derived table "
+                        f"'{derived_table}'")
         list_columns = kept_list_cols
-        aggregations = {c: fn for c, fn in aggregations.items() if c in drv_cols}
+        # 🔴 집계는 «보여 주기»가 아니다 — 쓸 칸이 없으면 그 수는 어디에도 안 남는다. 바로 위
+        # `target_fields` 가 같은 사실에 대해 규칙을 거절하므로, 여기서 조용히 거르면 한 함수
+        # 안에서 같은 질문에 두 답이 있게 된다. 그리고 이쪽이 «더» 조용했다: 경고조차 없었다.
+        missing_aggs = sorted(c for c in aggregations if c not in drv_cols)
+        if missing_aggs:
+            return None, (
+                f"aggregation column(s) missing in derived table: {missing_aggs}")
         # 파생 테이블 키 계약: dedup mapper가 판단키로 business_key_val을 조립할 수 있어야 한다.
         comp_src = drv_cfg.get("composite_key_source")
         bk_col = drv_cfg.get("business_key")

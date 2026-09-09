@@ -782,3 +782,52 @@ def test_the_live_declaration_is_read_rather_than_backfilled():
         want = declared[r["name"]].get("alignment") is True
         assert r["alignment"] is want, r["name"]
         assert enrichment_config.to_public_rule(r)["alignment"] is want, r["name"]
+
+
+# --------------------------------------------------- S-102: a drop nobody sees is a defect
+
+def test_an_unsupported_aggregation_function_is_refused_by_name():
+    """🔴 IT USED TO WARN AND DROP (S-102). An author who wrote `sum` got a rule that
+    stood, computed no aggregation, and left the derived column empty forever - while the
+    declaration on their screen said it was filled. This module already writes the rule
+    beside `_record`: 「로그에만 있는 스킵은 아무도 보지 못하는 스킵이다」.
+
+    ⛔ REFUSED RATHER THAN RECORDED, and that is the same treatment the ledger gave the
+    same shape (S-84, `value_type` outside `number`): the declaration asks for something
+    the engine will not do, so there is no version of this rule that is what was written.
+    """
+    normalized, error = enrichment_config._validate_rule(
+        "r1", _base_rule(aggregations={"chip_count": "sum"}), KNOWN)
+
+    assert normalized is None
+    assert "sum" in error and "chip_count" in error, error
+    assert "count" in error, "the refusal names what IS supported, or it is a dead end"
+
+
+def test_an_aggregation_on_a_column_the_derived_table_lacks_is_refused_by_name():
+    """The same question its neighbour already refuses. `target_fields` naming a column the
+    derived table does not have refuses the rule; an AGGREGATION naming one was filtered out
+    silently - not even a warning - so one function held two answers to one question.
+
+    An aggregation is not decoration: with no column to write, the number lands nowhere.
+    """
+    normalized, error = enrichment_config._validate_rule(
+        "r1", _base_rule(aggregations={"not_a_column": "count"}), KNOWN)
+
+    assert normalized is None
+    assert "not_a_column" in error, error
+
+
+def test_a_display_column_the_derived_table_lacks_is_named_and_the_rule_still_stands():
+    """⚠️ THE OTHER HALF, AND IT IS NOT THE SAME ANSWER. `list_columns` is for showing rows;
+    one missing does not stop the rule from filling `target_fields`, so the rule stands and
+    the drop is NAMED in the channel `config_resolve_report` puts in front of an operator -
+    which is what this module's `_record` exists for."""
+    rejections = []
+    normalized, error = enrichment_config._validate_rule(
+        "r1", _base_rule(list_columns=["chip_count", "not_a_column"]), KNOWN,
+        rejections=rejections)
+
+    assert error is None and normalized is not None
+    assert normalized["list_columns"] == ["chip_count"]
+    assert [r for r in rejections if "not_a_column" in r["detail"]], rejections
